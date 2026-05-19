@@ -81,7 +81,7 @@ impl SessionMap {
                 return false;
             }
         };
-        let alive = is_process_alive(info.pid);
+        let alive = is_process_alive(info.pid, Some(&info.proc_start));
         tracing::debug!(
             "active? {session_id} pid={} alive={alive}",
             info.pid
@@ -231,19 +231,26 @@ fn run_watcher(
 
 // === 进程探活（Windows） ===
 //
-// 只判断 PID 是否还活着（OpenProcess 成功 + GetExitCodeProcess == STILL_ACTIVE）。
-// 不再校验 procStart：.NET 的 procStart 是 DateTime Ticks（自 0001-01-01）且可能携带本地时区，
-// 跟 Win32 GetProcessTimes 的 FILETIME（自 1601-01-01 UTC）需要复杂的归一化才能比对，
-// 而本应用是只读 monitor，PID 复用造成的代价仅是多显示一个 Tab，不值得增加这层复杂度。
+// 两道关卡：
+//   1) OpenProcess + GetExitCodeProcess == STILL_ACTIVE：PID 当前被占用着
+//   2) GetProcessTimes 返回的 creation FILETIME（u64）与 sessions/<PID>.json 里
+//      记录的 procStart 字符串（.NET DateTime.ToFileTime()，与 Win32 FILETIME 同零点同单位）
+//      在 100ms 容差内吻合
+//
+// 没有第二关，残留的死 session PID.json 会因为 PID 被另一个进程复用而被误判为活跃
+// （Windows PID 短期内复用很常见）。早期注释里"代价仅是多显示一个 Tab"的判断不成立，
+// 用户实际看到的是 4 个僵尸 Tab。
 
 #[cfg(windows)]
-fn is_process_alive(pid: u32) -> bool {
-    use windows::Win32::Foundation::CloseHandle;
+fn is_process_alive(pid: u32, expected_proc_start: Option<&str>) -> bool {
+    use windows::Win32::Foundation::{CloseHandle, FILETIME};
     use windows::Win32::System::Threading::{
-        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        GetExitCodeProcess, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
     };
 
     const STILL_ACTIVE: u32 = 259;
+    /// 100ms = 1,000,000 个 100ns tick
+    const PROC_START_TOLERANCE_TICKS: u64 = 1_000_000;
 
     if pid == 0 {
         return false;
@@ -254,15 +261,45 @@ fn is_process_alive(pid: u32) -> bool {
             Ok(h) if !h.is_invalid() => h,
             _ => return false,
         };
+
+        // 1) STILL_ACTIVE
         let mut code: u32 = 0;
-        let queried = GetExitCodeProcess(handle, &mut code).is_ok();
+        if GetExitCodeProcess(handle, &mut code).is_err() || code != STILL_ACTIVE {
+            let _ = CloseHandle(handle);
+            return false;
+        }
+
+        // 2) procStart 校验（如果有期望值）
+        if let Some(expected_str) = expected_proc_start {
+            let expected: Option<u64> = expected_str.parse().ok();
+            let mut creation = FILETIME::default();
+            let mut exit_t = FILETIME::default();
+            let mut kernel = FILETIME::default();
+            let mut user = FILETIME::default();
+            let got_times =
+                GetProcessTimes(handle, &mut creation, &mut exit_t, &mut kernel, &mut user)
+                    .is_ok();
+            if let (true, Some(exp)) = (got_times, expected) {
+                let actual =
+                    ((creation.dwHighDateTime as u64) << 32) | (creation.dwLowDateTime as u64);
+                let diff = actual.abs_diff(exp);
+                if diff > PROC_START_TOLERANCE_TICKS {
+                    tracing::debug!(
+                        "pid {pid} proc_start mismatch: expected={exp} actual={actual} diff={diff} — PID reused"
+                    );
+                    let _ = CloseHandle(handle);
+                    return false;
+                }
+            }
+        }
+
         let _ = CloseHandle(handle);
-        queried && code == STILL_ACTIVE
+        true
     }
 }
 
 #[cfg(not(windows))]
-fn is_process_alive(_pid: u32) -> bool {
+fn is_process_alive(_pid: u32, _expected_proc_start: Option<&str>) -> bool {
     false
 }
 
