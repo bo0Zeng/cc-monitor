@@ -102,10 +102,12 @@ fn list_meta_matches(dir: &Path, description: &str) -> std::io::Result<Vec<PathB
             Err(_) => continue,
         };
         if meta.description.as_deref() == Some(description) {
-            // .meta.json → .jsonl
-            let jsonl = p.with_file_name(name.trim_end_matches(".meta.json").to_string() + ".jsonl");
-            if jsonl.exists() {
-                hits.push(jsonl);
+            // .meta.json → .jsonl（strip_suffix 比 trim_end_matches 语义更清晰）
+            if let Some(stem) = name.strip_suffix(".meta.json") {
+                let jsonl = p.with_file_name(format!("{stem}.jsonl"));
+                if jsonl.exists() {
+                    hits.push(jsonl);
+                }
             }
         }
     }
@@ -137,9 +139,14 @@ fn first_line_timestamp(path: &Path) -> Option<String> {
     v.get("timestamp")?.as_str().map(str::to_string)
 }
 
-/// 粗暴解析 ISO 8601 至 unix ms。失败返回 None；只用于排序。
+/// 解析 ISO 8601 至 unix ms。失败返回 None；只用于排序。
+/// 形如 `2026-05-11T03:17:35.109Z` 或 `2026-05-11T03:17:35Z`。
+///
+/// 用 Howard Hinnant 的 days_from_civil 算法把 (y,m,d) 映射到 unix epoch
+/// 起算的天数 —— 这条公式跨月跨年单调。原实现 `(y*12+m)*31+d` 在月末/月
+/// 初边界不单调（例如 2026-01-31 与 2026-02-01 之间会产生异常大的差），
+/// 多 subagent candidate 排序会选错。
 fn parse_ts_ms(s: &str) -> Option<i64> {
-    // 形如 2026-05-11T03:17:35.109Z
     let s = s.trim_end_matches('Z');
     let (date, time) = s.split_once('T')?;
     let mut y_m_d = date.split('-');
@@ -152,8 +159,50 @@ fn parse_ts_ms(s: &str) -> Option<i64> {
     let mi: i64 = hms_p.next()?.parse().ok()?;
     let se: i64 = hms_p.next()?.parse().ok()?;
     let ms: i64 = frac.parse().unwrap_or(0);
-    // 简化为 "数字组合" — 我们不需要真实时戳，只需要可比较的单调值
-    Some(((y * 12 + mo) * 31 + d) * 24 * 3600_000 + h * 3600_000 + mi * 60_000 + se * 1000 + ms)
+
+    let days = days_from_civil(y, mo, d);
+    Some(days * 86_400_000 + h * 3_600_000 + mi * 60_000 + se * 1000 + ms)
+}
+
+/// Howard Hinnant 的 days_from_civil：把 (y,m,d) 转换为相对 1970-01-01 的天数。
+/// 跨月/跨年/闰年都单调。参考 http://howardhinnant.github.io/date_algorithms.html
+fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400; // [0, 399]
+    let mp = if m > 2 { m - 3 } else { m + 9 }; // Mar=0..Feb=11
+    let doy = (153 * mp + 2) / 5 + d - 1; // [0, 365]
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
+    era * 146097 + doe - 719468
+}
+
+#[cfg(test)]
+mod ts_tests {
+    use super::parse_ts_ms;
+
+    #[test]
+    fn cross_month_monotonic() {
+        let a = parse_ts_ms("2026-01-31T23:59:59.000Z").unwrap();
+        let b = parse_ts_ms("2026-02-01T00:00:00.000Z").unwrap();
+        assert!(b > a, "Feb 1 ms ({b}) must be greater than Jan 31 ms ({a})");
+        assert_eq!(b - a, 1000, "diff should be exactly 1 second across month boundary");
+    }
+
+    #[test]
+    fn cross_year_monotonic() {
+        let a = parse_ts_ms("2025-12-31T23:59:59.000Z").unwrap();
+        let b = parse_ts_ms("2026-01-01T00:00:00.000Z").unwrap();
+        assert_eq!(b - a, 1000);
+    }
+
+    #[test]
+    fn leap_year() {
+        let a = parse_ts_ms("2024-02-28T00:00:00.000Z").unwrap();
+        let b = parse_ts_ms("2024-02-29T00:00:00.000Z").unwrap();
+        let c = parse_ts_ms("2024-03-01T00:00:00.000Z").unwrap();
+        assert_eq!(b - a, 86_400_000);
+        assert_eq!(c - b, 86_400_000);
+    }
 }
 
 fn extract_agent_id(jsonl_path: &Path) -> Option<String> {
