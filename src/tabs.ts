@@ -221,9 +221,17 @@ export class TabManager {
   }
 
   switchTo(sessionId: string, options?: { user?: boolean }): void {
-    if (!this.tabs.has(sessionId)) return;
+    if (!this.tabs.has(sessionId)) {
+      if (!options?.user) {
+        console.info(`[focus] switchTo ${sessionId} ignored: tab not present`);
+      }
+      return;
+    }
     if (options?.user) this.lock();
-    if (this.locked && !options?.user && this.activeId !== null) return;
+    if (this.locked && !options?.user && this.activeId !== null) {
+      console.info(`[focus] switchTo ${sessionId} blocked by user lock`);
+      return;
+    }
 
     for (const [sid, t] of this.tabs) {
       t.streamEl.style.display = sid === sessionId ? "block" : "none";
