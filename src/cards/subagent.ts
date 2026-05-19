@@ -57,6 +57,8 @@ export function buildAgentCard(
 
   let loaded = false;
   let loading = false;
+  let bodyEl: HTMLElement | null = null;
+
   d.addEventListener("toggle", () => {
     if (!d.open || loaded || loading) return;
     void loadAndRender();
@@ -64,10 +66,13 @@ export function buildAgentCard(
 
   async function loadAndRender(): Promise<void> {
     loading = true;
-    const body = document.createElement("div");
-    body.className = "block-body block-agent-body";
-    body.textContent = "加载 subagent…";
-    d.appendChild(body);
+    if (!bodyEl) {
+      bodyEl = document.createElement("div");
+      bodyEl.className = "block-body block-agent-body";
+      d.appendChild(bodyEl);
+    }
+    bodyEl.replaceChildren();
+    bodyEl.textContent = "加载 subagent…";
 
     try {
       const result = await invoke<SubagentLoadResult>("load_subagent", {
@@ -75,11 +80,25 @@ export function buildAgentCard(
         description: desc,
         toolUseTimestamp: timestamp,
       });
-      body.replaceChildren();
-      renderSubagentBody(body, result, renderChild);
+      bodyEl.replaceChildren();
+      renderSubagentBody(bodyEl, result, renderChild);
       loaded = true;
     } catch (e) {
-      body.textContent = `加载失败：${String(e)}`;
+      bodyEl.replaceChildren();
+      const errMsg = document.createElement("div");
+      errMsg.className = "block-agent-error";
+      errMsg.textContent = `加载失败：${String(e)}`;
+      bodyEl.appendChild(errMsg);
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "block-agent-retry";
+      retry.textContent = "重试";
+      retry.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (!loading) void loadAndRender();
+      });
+      bodyEl.appendChild(retry);
     } finally {
       loading = false;
     }

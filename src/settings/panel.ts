@@ -102,6 +102,9 @@ export class SettingsPanel {
   }
 
   private async resetAll(): Promise<void> {
+    if (!window.confirm("确定要恢复全部外观默认？已保存的颜色和字体偏好会丢失。")) {
+      return;
+    }
     this.current = {};
     applyTheme({});
     await saveTheme({});

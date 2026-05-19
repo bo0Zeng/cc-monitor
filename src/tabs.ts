@@ -228,6 +228,30 @@ export class TabManager {
     }
   }
 
+  /**
+   * 切到上 / 下一个 Tab。delta=+1 下一个、-1 上一个。环回。
+   * 快捷键 Ctrl+Tab / Ctrl+Shift+Tab 用。
+   */
+  cycleActive(delta: 1 | -1): void {
+    const ids = Array.from(this.tabs.keys());
+    if (ids.length === 0) return;
+    const idx = this.activeId ? ids.indexOf(this.activeId) : -1;
+    const nextIdx = ((idx + delta) % ids.length + ids.length) % ids.length;
+    const targetId = ids[nextIdx];
+    if (targetId && targetId !== this.activeId) {
+      this.switchTo(targetId, { user: true });
+    }
+  }
+
+  /** 快捷键 Ctrl+W：当前活跃 Tab 是 archived 才关，live 不动 */
+  closeActiveIfArchived(): void {
+    if (!this.activeId) return;
+    const tab = this.tabs.get(this.activeId);
+    if (tab && tab.status === "archived") {
+      this.closeTab(this.activeId);
+    }
+  }
+
   switchTo(sessionId: string, options?: { user?: boolean }): void {
     if (!this.tabs.has(sessionId)) {
       if (!options?.user) {
