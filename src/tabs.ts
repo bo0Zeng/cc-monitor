@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { MessageStream } from "./stream";
 import {
   renderMessage,
@@ -174,8 +175,9 @@ export class TabManager {
   }
 
   /**
-   * 关闭 Tab：销毁 stream DOM、从 Map 中移除、必要时切到相邻 Tab。
+   * 关闭 Tab：销毁 stream DOM、从 Map 中移除、通知后端 forget 历史、必要时切到相邻 Tab。
    * 仅允许关闭 archived 状态的 Tab，避免误关运行中的会话。
+   * forget 后该 session 不会在下次 F5 刷新时被 event_replay 重放复活。
    */
   closeTab(sessionId: string): void {
     const tab = this.tabs.get(sessionId);
@@ -190,6 +192,11 @@ export class TabManager {
 
     tab.streamEl.remove();
     this.tabs.delete(sessionId);
+
+    // 让后端 event_replay 把这个 session 的历史也丢掉
+    void invoke("forget_session", { sessionId }).catch((e) => {
+      console.warn(`forget_session ${sessionId} failed:`, e);
+    });
 
     if (wasActive) {
       if (fallbackId !== null) {

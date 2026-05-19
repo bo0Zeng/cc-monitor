@@ -51,4 +51,16 @@ impl EventReplay {
         inner.ready = true;
         tracing::info!("replayed {n} buffered events to frontend");
     }
+
+    /// 把指定 session_id 的全部历史从 buffer 移除。
+    /// 用户主动关闭 archived Tab 时调用 —— 否则 F5 刷新 history 会重放出来"复活" Tab。
+    pub fn forget(&self, session_id: &str) {
+        let mut inner = self.inner.lock();
+        let before = inner.history.len();
+        inner.history.retain(|p| p.session_id != session_id);
+        let removed = before - inner.history.len();
+        if removed > 0 {
+            tracing::info!("event_replay forget {session_id}: dropped {removed} entries");
+        }
+    }
 }
