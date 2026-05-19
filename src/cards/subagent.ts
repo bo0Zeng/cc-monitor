@@ -100,7 +100,11 @@ function renderSubagentBody(
 
   // 嵌套渲染时把 ctx.parentPath 切到 subagent 自己的 JSONL 路径，
   // 这样如果 subagent 内部又有 Agent tool_use，能找到 *它自己* 的 subagents 目录
-  const nestedCtx: RenderContext = { parentPath: result.path };
+  // toolUseNames 用独立 Map，避免与父 session 的 id 冲突
+  const nestedCtx: RenderContext = {
+    parentPath: result.path,
+    toolUseNames: new Map(),
+  };
 
   for (const rec of result.records) {
     const r = renderChild(rec, nestedCtx);

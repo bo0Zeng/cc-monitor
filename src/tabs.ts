@@ -29,6 +29,11 @@ export interface Tab {
   unread: number;
   /** 当前正在累积的工具组（连续 tool-only assistant 消息），出现普通卡时清空 */
   pendingToolGroup: ToolGroup | null;
+  /**
+   * tool_use_id → tool_name 缓存。tool_use 在 assistant 消息出现时记下，
+   * 下一条 user 消息的 tool_result 反查显示工具名。
+   */
+  toolUseNames: Map<string, string>;
 }
 
 /** Tab 数量摘要，发给宿主用于状态栏 / empty-state 等外部 UI */
@@ -77,7 +82,10 @@ export class TabManager {
       return;
     }
 
-    const ctx: RenderContext = { parentPath: tab.parentPath };
+    const ctx: RenderContext = {
+      parentPath: tab.parentPath,
+      toolUseNames: tab.toolUseNames,
+    };
     const result = renderMessage(payload.message, ctx);
 
     switch (result.kind) {
@@ -138,6 +146,7 @@ export class TabManager {
       parentPath: sourcePath,
       unread: 0,
       pendingToolGroup: null,
+      toolUseNames: new Map(),
     };
     this.tabs.set(sessionId, tab);
 

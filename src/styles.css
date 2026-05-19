@@ -527,6 +527,9 @@ html, body {
 .block-tool-result.block-error {
   border-left-color: var(--error);
 }
+.block-tool-result.block-error > .block-summary {
+  color: var(--error);
+}
 
 /* Agent / Task 折叠卡（嵌入 subagent JSONL） */
 .block-agent {
