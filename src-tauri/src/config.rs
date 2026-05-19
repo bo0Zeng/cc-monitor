@@ -26,8 +26,37 @@ pub fn save_config(value: Value) -> Result<(), String> {
     let pretty = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, pretty).map_err(|e| format!("write {}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, &path).map_err(|e| format!("rename → {}: {e}", path.display()))?;
+    atomic_replace(&tmp, &path).map_err(|e| format!("replace → {}: {e}", path.display()))?;
     Ok(())
+}
+
+/// 把 src 原子替换到 dst。
+/// std::fs::rename 在 Windows 上目标文件已存在时会失败（不像 POSIX 原子覆盖），
+/// 所以这里走 MoveFileExW(MOVEFILE_REPLACE_EXISTING)；非 Windows 走 std::fs::rename。
+#[cfg(windows)]
+fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_REPLACE_EXISTING};
+
+    let to_wide = |p: &std::path::Path| -> Vec<u16> {
+        p.as_os_str().encode_wide().chain(std::iter::once(0)).collect()
+    };
+    let src_w = to_wide(src);
+    let dst_w = to_wide(dst);
+    unsafe {
+        MoveFileExW(
+            PCWSTR(src_w.as_ptr()),
+            PCWSTR(dst_w.as_ptr()),
+            MOVEFILE_REPLACE_EXISTING,
+        )
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.message().to_string()))
+    }
+}
+
+#[cfg(not(windows))]
+fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    std::fs::rename(src, dst)
 }
 
 fn config_path() -> Option<PathBuf> {
