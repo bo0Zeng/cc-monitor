@@ -115,6 +115,16 @@ export class TabManager {
     return tab;
   }
 
+  /** session 退出（~/.claude/sessions/<PID>.json 被删）—— 灰显归档，内容保留 */
+  archiveTab(sessionId: string): void {
+    const tab = this.tabs.get(sessionId);
+    if (!tab) return;
+    if (tab.status === "archived") return;
+    tab.status = "archived";
+    tab.pendingToolGroup = null;
+    this.refreshTabBar();
+  }
+
   switchTo(sessionId: string, options?: { user?: boolean }): void {
     if (!this.tabs.has(sessionId)) return;
     if (options?.user) this.lock();
@@ -146,10 +156,13 @@ export class TabManager {
       const btn = document.createElement("button");
       btn.className = "tab" + (sid === this.activeId ? " active" : "");
       if (t.isSubagent) btn.classList.add("subagent");
+      if (t.status === "archived") btn.classList.add("archived");
 
-      const dot = document.createElement("span");
-      dot.className = "live-dot";
-      btn.appendChild(dot);
+      if (t.status !== "archived") {
+        const dot = document.createElement("span");
+        dot.className = "live-dot";
+        btn.appendChild(dot);
+      }
 
       const label = document.createElement("span");
       label.className = "tab-title";
