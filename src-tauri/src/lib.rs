@@ -1,5 +1,6 @@
 mod bridge;
 mod config;
+mod event_replay;
 mod focus;
 mod hook_installer;
 mod messages;
@@ -7,9 +8,8 @@ mod parser;
 mod session_map;
 mod watcher;
 
-use parking_lot::Mutex;
 use std::sync::Arc;
-use tauri::{Emitter, Listener, Manager};
+use tauri::{Listener, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -44,31 +44,23 @@ pub fn run() {
             };
             let mut rx = watcher::spawn_watcher(projects_dir, active_filter);
 
-            // Handshake: 前端 listener 注册前后端就开始 emit 会丢，所以先缓冲。
-            // 前端 invoke "frontend-ready" 后清空缓冲，之后改为直接 emit。
-            let pending: Arc<Mutex<Option<Vec<bridge::JsonlLinePayload>>>> =
-                Arc::new(Mutex::new(Some(Vec::new())));
+            // 持久化重播：F5 刷新后整个 history 重新 emit，前端状态完整恢复。
+            let replay = Arc::new(event_replay::EventReplay::new());
 
-            // 前端 ready 事件 → drain
+            // 前端 ready 事件 → replay all（每次刷新都会重新触发）
             {
-                let pending = pending.clone();
+                let replay = replay.clone();
                 let handle = app.handle().clone();
                 app.listen("frontend-ready", move |_event| {
-                    let buf = pending.lock().take();
-                    if let Some(buf) = buf {
-                        let n = buf.len();
-                        for p in buf {
-                            let _ = handle.emit(bridge::events::JSONL_LINE, &p);
-                        }
-                        tracing::info!("flushed {n} buffered events to frontend");
-                    }
+                    replay.replay_and_mark_ready(&handle);
                 });
             }
 
             let handle = app.handle().clone();
+            let replay_loop = replay.clone();
             tauri::async_runtime::spawn(async move {
-                let mut emit_count = 0usize;
-                let mut skip_count = 0usize;
+                let mut total = 0usize;
+                let mut skip = 0usize;
                 while let Some(line) = rx.recv().await {
                     match parser::parse_line(&line.raw) {
                         Ok(Some(record)) if record.is_displayable() => {
@@ -79,32 +71,21 @@ pub fn run() {
                                 path: line.path.to_string_lossy().into_owned(),
                                 message: record,
                             };
-                            // 缓冲存在 = 前端未 ready；否则直接 emit
-                            let mut guard = pending.lock();
-                            if let Some(buf) = guard.as_mut() {
-                                buf.push(payload);
-                            } else {
-                                drop(guard);
-                                match handle.emit(bridge::events::JSONL_LINE, &payload) {
-                                    Ok(()) => {
-                                        emit_count += 1;
-                                        if emit_count % 50 == 0 {
-                                            tracing::info!("emitted {emit_count} jsonl-line events (skipped {skip_count})");
-                                        }
-                                    }
-                                    Err(e) => tracing::warn!("emit jsonl-line failed: {e}"),
-                                }
+                            replay_loop.record(&handle, payload);
+                            total += 1;
+                            if total % 200 == 0 {
+                                tracing::info!("recorded {total} jsonl events (skipped {skip})");
                             }
                         }
                         Ok(_) => {
-                            skip_count += 1;
+                            skip += 1;
                         }
                         Err(e) => {
                             tracing::warn!("parse line failed in {}: {e}", line.path.display());
                         }
                     }
                 }
-                tracing::info!("watcher loop ended; total emit={emit_count} skip={skip_count}");
+                tracing::info!("watcher loop ended; total={total} skip={skip}");
             });
 
             Ok(())
