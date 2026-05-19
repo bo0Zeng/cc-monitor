@@ -6,6 +6,7 @@ mod hook_installer;
 mod messages;
 mod parser;
 mod session_map;
+mod subagent;
 mod watcher;
 
 use std::sync::Arc;
@@ -146,6 +147,7 @@ pub fn run() {
             config::load_config,
             config::save_config,
             hook_installer::install_hook,
+            subagent::load_subagent,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

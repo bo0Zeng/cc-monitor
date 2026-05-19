@@ -47,7 +47,7 @@ fn run_watcher(
 
     for entry in WalkDir::new(&root).into_iter().filter_map(Result::ok) {
         let p = entry.path();
-        if p.is_file() && p.extension().map_or(false, |e| e == "jsonl") {
+        if p.is_file() && p.extension().map_or(false, |e| e == "jsonl") && !is_subagent_path(p) {
             process_file(p, &offsets, &tx, &active);
         }
     }
@@ -68,11 +68,18 @@ fn run_watcher(
     while let Ok(evt) = notify_rx.recv() {
         let Ok(events) = evt else { continue };
         for ev in events {
-            if ev.path.extension().map_or(false, |e| e == "jsonl") {
+            if ev.path.extension().map_or(false, |e| e == "jsonl") && !is_subagent_path(&ev.path) {
                 process_file(&ev.path, &offsets, &tx, &active);
             }
         }
     }
+}
+
+/// subagent JSONL 不走主流：路径含 `/subagents/` 段。
+/// 这些文件由前端 invoke `load_subagent` 命令在用户展开 Task 卡时按需加载。
+fn is_subagent_path(p: &Path) -> bool {
+    p.components()
+        .any(|c| c.as_os_str().eq_ignore_ascii_case("subagents"))
 }
 
 fn process_file(
