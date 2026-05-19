@@ -141,6 +141,9 @@ pub fn run() {
                 tracing::info!("watcher loop ended; total={total} skip={skip}");
             });
 
+            // 让 forget_session 命令能拿到 replay
+            app.manage(replay.clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -148,6 +151,7 @@ pub fn run() {
             config::save_config,
             hook_installer::install_hook,
             subagent::load_subagent,
+            forget_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -158,4 +162,15 @@ fn extract_cwd(rec: &messages::JsonlRecord) -> Option<String> {
         messages::JsonlRecord::User { cwd, .. } => cwd.clone(),
         _ => None,
     }
+}
+
+/// 前端关闭 archived Tab 时调用：从 event_replay 历史里抹掉这个 session，
+/// 防止下次 F5 刷新它原地复活。
+#[tauri::command]
+fn forget_session(
+    session_id: String,
+    replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
+) -> Result<(), String> {
+    replay.forget(&session_id);
+    Ok(())
 }
