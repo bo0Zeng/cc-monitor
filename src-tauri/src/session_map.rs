@@ -134,25 +134,31 @@ fn parent_map() -> Option<HashMap<u32, u32>> {
         TH32CS_SNAPPROCESS,
     };
     unsafe {
-        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
-        if snap.is_invalid() {
-            return None;
-        }
-        let mut entry = PROCESSENTRY32 {
-            dwSize: std::mem::size_of::<PROCESSENTRY32>() as u32,
-            ..Default::default()
+        let snap = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+            Ok(h) => h,
+            Err(_) => return None,
         };
-        let mut map = HashMap::new();
-        if Process32First(snap, &mut entry).is_ok() {
-            loop {
-                map.insert(entry.th32ProcessID, entry.th32ParentProcessID);
-                if Process32Next(snap, &mut entry).is_err() {
-                    break;
+        // 即使后续路径异常，也保证 CloseHandle 一定走
+        let result: Option<HashMap<u32, u32>> = if snap.is_invalid() {
+            None
+        } else {
+            let mut entry = PROCESSENTRY32 {
+                dwSize: std::mem::size_of::<PROCESSENTRY32>() as u32,
+                ..Default::default()
+            };
+            let mut map = HashMap::new();
+            if Process32First(snap, &mut entry).is_ok() {
+                loop {
+                    map.insert(entry.th32ProcessID, entry.th32ParentProcessID);
+                    if Process32Next(snap, &mut entry).is_err() {
+                        break;
+                    }
                 }
             }
-        }
+            Some(map)
+        };
         let _ = CloseHandle(snap);
-        Some(map)
+        result
     }
 }
 
