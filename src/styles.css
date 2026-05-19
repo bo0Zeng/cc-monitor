@@ -187,6 +187,58 @@ html, body {
   font-size: 11px;
 }
 
+/* compact 摘要折叠卡（/compact 留下的续接消息） */
+.card-compact {
+  background: #00000030;
+  border: 1px solid #ffffff10;
+  border-left: 3px solid var(--warn);
+  border-radius: 6px;
+  padding: 0;
+  margin: 8px 0;
+  overflow: hidden;
+}
+.card-compact-summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 8px 14px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-2);
+  user-select: none;
+}
+.card-compact-summary::-webkit-details-marker {
+  display: none;
+}
+.card-compact-summary::before {
+  content: "▸ ";
+  display: inline-block;
+  width: 14px;
+  color: var(--text-2);
+}
+.card-compact[open] > .card-compact-summary::before {
+  content: "▾ ";
+}
+.card-compact-summary:hover {
+  background: #ffffff08;
+  color: var(--text);
+}
+.card-compact[open] > .card-compact-summary {
+  background: #00000040;
+  color: var(--text);
+  border-bottom: 1px solid #ffffff10;
+}
+.card-compact-body {
+  margin: 0;
+  padding: 10px 14px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  max-height: 600px;
+  overflow: auto;
+}
+
 .card-assistant {
   background: transparent;
   border-left-color: var(--assistant);

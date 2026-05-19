@@ -1,5 +1,6 @@
 import { renderMarkdown, renderPlainText } from "../render";
 import { parseSlashCommand, buildSlashCommandCard } from "./slash";
+import { isCompactSummary, buildCompactSummaryCard } from "./compact";
 
 // === Rust 端 JsonlRecord 的 TS 镜像 ===
 
@@ -71,6 +72,12 @@ export function renderMessage(rec: JsonlRecord): RenderResult {
     case "user": {
       const text = extractText(rec.message.content);
       if (!text.trim()) return { kind: "skip" };
+      if (isCompactSummary(text)) {
+        return {
+          kind: "card",
+          element: buildCompactSummaryCard(text, rec.timestamp, formatTime),
+        };
+      }
       const slash = parseSlashCommand(text);
       if (slash) {
         return {
