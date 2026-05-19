@@ -2,6 +2,7 @@ import "./styles.css";
 import { emit } from "@tauri-apps/api/event";
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
+import { loadTheme } from "./theme";
 
 // 全局错误捕获 —— 渲染到 status-bar 便于无 devtools 也能诊断
 window.addEventListener("error", (e) => {
@@ -15,7 +16,10 @@ window.addEventListener("unhandledrejection", (e) => {
   console.error("unhandled rejection:", e.reason);
 });
 
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
+  // 主题尽早应用，避免渲染抖动
+  await loadTheme();
+
   const tabBar = document.getElementById("tab-bar");
   const streamRoot = document.getElementById("message-stream");
   const status = document.getElementById("status-bar");
