@@ -1,5 +1,7 @@
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import hljs from "highlight.js/lib/common";
+import "highlight.js/styles/atom-one-dark.css";
 
 marked.setOptions({
   gfm: true,
@@ -7,8 +9,42 @@ marked.setOptions({
 });
 
 /**
- * 基础 Markdown 渲染：GFM + sanitize。
- * KaTeX / 代码语法高亮在 M3 接入。
+ * 用 marked v9+ 的对象式 renderer 覆盖代码块输出，接 highlight.js。
+ *
+ * - 明确指定语言（` ```ts `）→ `hljs.highlight(code, { language })`
+ * - 未指定语言 → `hljs.highlightAuto`（在 common 子集里猜）
+ * - 任何异常 → 退回转义后的裸文本，永远不让 markdown 渲染崩
+ *
+ * 仅引 `highlight.js/lib/common`，约 30 种主流语言，bundle 体积约 100KB；
+ * 比 full 包小一个数量级。
+ */
+marked.use({
+  renderer: {
+    code(token) {
+      const lang = (token.lang ?? "").trim().split(/\s+/)[0];
+      const code = token.text ?? "";
+      let highlighted: string;
+      try {
+        if (lang && hljs.getLanguage(lang)) {
+          highlighted = hljs.highlight(code, {
+            language: lang,
+            ignoreIllegals: true,
+          }).value;
+        } else {
+          highlighted = hljs.highlightAuto(code).value;
+        }
+      } catch {
+        highlighted = escapeHtml(code);
+      }
+      const cls = lang ? `language-${lang} hljs` : "hljs";
+      return `<pre><code class="${cls}">${highlighted}</code></pre>`;
+    },
+  },
+});
+
+/**
+ * 基础 Markdown 渲染：GFM + sanitize + 代码高亮。
+ * KaTeX 在 Stage 3 接入。
  */
 export function renderMarkdown(md: string): string {
   const raw = marked.parse(md, { async: false }) as string;
@@ -20,4 +56,10 @@ export function renderPlainText(text: string): string {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML.replace(/\n/g, "<br>");
+}
+
+function escapeHtml(s: string): string {
+  const div = document.createElement("div");
+  div.textContent = s;
+  return div.innerHTML;
 }

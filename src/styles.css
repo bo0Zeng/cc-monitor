@@ -280,15 +280,24 @@ html, body {
   margin-bottom: 0;
 }
 
+/* Markdown 代码块外壳：hljs 主题（.hljs）自带背景/颜色，pre 只提供 margin 与圆角裁剪 */
 .card-body pre {
-  background: #00000040;
-  padding: 12px;
+  margin: 8px 0;
   border-radius: 4px;
-  overflow-x: auto;
+  overflow: hidden;
   font-family: "JetBrains Mono", Consolas, monospace;
   font-size: 13px;
 }
 
+.card-body pre code.hljs {
+  display: block;
+  padding: 12px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* 行内代码（不进 hljs） */
 .card-body code {
   background: #00000040;
   padding: 0 4px;
