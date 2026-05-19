@@ -3,8 +3,9 @@ use serde::Serialize;
 pub mod events {
     pub const JSONL_LINE: &str = "jsonl-line";
     pub const FOCUS_SWITCH: &str = "focus-switch";
-    pub const SUBAGENT_LINE: &str = "subagent-line";
     pub const SESSION_ENDED: &str = "session-ended";
+    // SUBAGENT_LINE 已废弃：subagent 不走实时 watcher，由前端 invoke
+    // `load_subagent` 在用户展开 Task 折叠卡时按需加载。
 }
 
 #[derive(Debug, Serialize, Clone)]

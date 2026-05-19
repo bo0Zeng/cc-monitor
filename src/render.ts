@@ -62,7 +62,12 @@ marked.use({
  */
 export function renderMarkdown(md: string): string {
   const raw = marked.parse(md, { async: false }) as string;
-  return DOMPurify.sanitize(raw, { ADD_ATTR: ["target", "rel"] });
+  // 显式 profile：html + svg + mathMl 都允许，避免 KaTeX 的 MathML
+  // 兜底输出在未来 DOMPurify 默认值变化时被静默丢掉
+  return DOMPurify.sanitize(raw, {
+    USE_PROFILES: { html: true, svg: true, mathMl: true },
+    ADD_ATTR: ["target", "rel"],
+  });
 }
 
 /** 纯文本（用户消息保守模式）：转义 + 保留换行 */

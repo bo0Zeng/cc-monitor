@@ -9,7 +9,15 @@ import {
   type RenderContext,
 } from "./cards";
 
-export type TabStatus = "live" | "idle" | "archived";
+/**
+ * Tab 生命周期：
+ * - `live`：session 进程还在跑（`~/.claude/sessions/<PID>.json` 存在且 PID 探活通过）
+ * - `archived`：session 进程退出，Tab 灰显但保留内容；用户可主动关
+ *
+ * 历史：设计文档原本规划过 `idle`（5min 无消息变灰），但实际未落地，
+ * 移除以免误用。
+ */
+export type TabStatus = "live" | "archived";
 
 export interface Tab {
   sessionId: string;
