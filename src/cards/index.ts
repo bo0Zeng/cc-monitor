@@ -1,4 +1,5 @@
 import { renderMarkdown, renderPlainText } from "../render";
+import { parseSlashCommand, buildSlashCommandCard } from "./slash";
 
 // === Rust 端 JsonlRecord 的 TS 镜像 ===
 
@@ -70,6 +71,13 @@ export function renderMessage(rec: JsonlRecord): RenderResult {
     case "user": {
       const text = extractText(rec.message.content);
       if (!text.trim()) return { kind: "skip" };
+      const slash = parseSlashCommand(text);
+      if (slash) {
+        return {
+          kind: "card",
+          element: buildSlashCommandCard(slash, rec.timestamp, formatTime),
+        };
+      }
       return { kind: "card", element: buildUserCard(rec, text) };
     }
     case "assistant": {

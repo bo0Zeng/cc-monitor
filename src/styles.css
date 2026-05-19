@@ -151,6 +151,42 @@ html, body {
   border-left-color: var(--user);
 }
 
+/* /command 紧凑卡（user 输入的斜杠命令） */
+.card-slash {
+  background: transparent;
+  border-left: 3px solid var(--user);
+  padding: 6px 14px;
+  margin: 6px 0;
+  border-radius: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.card-slash .slash-icon {
+  color: var(--user);
+  font-weight: 600;
+}
+.card-slash .slash-name {
+  color: var(--text);
+  font-weight: 600;
+}
+.card-slash .slash-args {
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+.card-slash .slash-ts {
+  margin-left: auto;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
 .card-assistant {
   background: transparent;
   border-left-color: var(--assistant);
