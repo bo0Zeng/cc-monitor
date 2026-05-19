@@ -275,7 +275,12 @@ fn is_process_alive(pid: u32, expected_proc_start: Option<&str>) -> bool {
             return false;
         }
 
-        // 2) procStart 校验（如果有期望值）
+        // 2) procStart 诊断（暂不作为硬校验 —— 见下方 TODO）
+        //
+        // 早期版本拿这条作为防 PID 复用的第二道关，但实测在用户机上 100ms 容差
+        // 把全部 active session 都拒了，怀疑 .NET ToFileTime() 与 Win32
+        // GetProcessTimes FILETIME 之间存在时区偏移（DateTime.Kind 处理差异）
+        // 或单位差异。先打印 actual / expected / diff 取数据再决定如何加回。
         if let Some(expected_str) = expected_proc_start {
             let expected: Option<u64> = expected_str.parse().ok();
             let mut creation = FILETIME::default();
@@ -289,12 +294,17 @@ fn is_process_alive(pid: u32, expected_proc_start: Option<&str>) -> bool {
                 let actual =
                     ((creation.dwHighDateTime as u64) << 32) | (creation.dwLowDateTime as u64);
                 let diff = actual.abs_diff(exp);
-                if diff > PROC_START_TOLERANCE_TICKS {
+                if diff <= PROC_START_TOLERANCE_TICKS {
                     tracing::debug!(
-                        "pid {pid} proc_start mismatch: expected={exp} actual={actual} diff={diff} — PID reused"
+                        "pid {pid} proc_start ok: expected={exp} actual={actual} diff={diff}"
                     );
-                    let _ = CloseHandle(handle);
-                    return false;
+                } else {
+                    // 仅 info 诊断，不影响活跃判定。等数据明确后再加回硬校验。
+                    tracing::info!(
+                        "pid {pid} proc_start DIFF: expected={exp} actual={actual} diff={diff} \
+                         (tolerance was {PROC_START_TOLERANCE_TICKS}); \
+                         currently NOT rejecting — please report"
+                    );
                 }
             }
         }
