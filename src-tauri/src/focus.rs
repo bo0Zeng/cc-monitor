@@ -92,6 +92,8 @@ unsafe extern "system" fn win_event_proc(
         return;
     }
     if let Some(tx) = SENDER.get() {
+        // 日志放在 send 前；CALLBACK 频率高（每次窗口切焦点），用 debug 级别
+        tracing::debug!("focus hwnd → pid={pid}");
         let _ = tx.send(pid);
     }
 }

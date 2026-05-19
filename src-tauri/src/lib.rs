@@ -77,8 +77,16 @@ pub fn run() {
                 let map = session_map.clone();
                 tauri::async_runtime::spawn(async move {
                     let mut last_sid: Option<String> = None;
+                    let mut last_unmatched_pid: u32 = 0;
                     while let Some(fg_pid) = fg_rx.recv().await {
                         let Some(sid) = map.lookup_by_foreground_pid(fg_pid) else {
+                            // 同一未命中 PID 反复来，只 log 一次避免刷屏
+                            if fg_pid != last_unmatched_pid {
+                                last_unmatched_pid = fg_pid;
+                                tracing::info!(
+                                    "focus fg_pid={fg_pid} not matched to any session"
+                                );
+                            }
                             continue;
                         };
                         if last_sid.as_deref() == Some(&sid) {
@@ -91,7 +99,7 @@ pub fn run() {
                         if let Err(e) = handle.emit(bridge::events::FOCUS_SWITCH, &payload) {
                             tracing::warn!("emit focus-switch failed: {e}");
                         } else {
-                            tracing::debug!("focus → {sid} (fg_pid={fg_pid})");
+                            tracing::info!("focus → {sid} (fg_pid={fg_pid})");
                         }
                     }
                 });
