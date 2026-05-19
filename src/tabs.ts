@@ -5,6 +5,7 @@ import {
   addToToolGroup,
   type JsonlRecord,
   type ToolGroup,
+  type RenderContext,
 } from "./cards";
 
 export type TabStatus = "live" | "idle" | "archived";
@@ -12,8 +13,8 @@ export type TabStatus = "live" | "idle" | "archived";
 export interface Tab {
   sessionId: string;
   /**
-   * Tab 标题。优先级：aiTitle > cwd 项目名 > session_id 前 8 位。
-   * aiTitle 一旦出现就锁住，后续 cwd 不再覆盖。
+   * Tab 标题。优先级：[项目] aiTitle > 项目名 > session_id 前 8 位。
+   * aiTitle 一旦出现就锁住，后续 cwd 不再回退。
    */
   title: string;
   cwd: string | null;
@@ -22,8 +23,9 @@ export interface Tab {
   status: TabStatus;
   streamEl: HTMLElement;
   stream: MessageStream;
+  /** 父 JSONL 路径（subagent 加载需要） */
+  parentPath: string;
   unread: number;
-  isSubagent: boolean;
   /** 当前正在累积的工具组（连续 tool-only assistant 消息），出现普通卡时清空 */
   pendingToolGroup: ToolGroup | null;
 }
@@ -74,7 +76,8 @@ export class TabManager {
       return;
     }
 
-    const result = renderMessage(payload.message);
+    const ctx: RenderContext = { parentPath: tab.parentPath };
+    const result = renderMessage(payload.message, ctx);
 
     switch (result.kind) {
       case "skip":
@@ -110,15 +113,13 @@ export class TabManager {
     if (tab) {
       if (!tab.cwd && cwd) {
         tab.cwd = cwd;
-        // 新 cwd 拿到后重算标题（aiTitle 可能已锁定，前缀需要补上）
         tab.title = this.computeTitle(tab);
         this.refreshTabBar();
       }
       return tab;
     }
 
-    const isSubagent = sourcePath.replace(/\\/g, "/").includes("/subagents/");
-    const title = computeTitleFor(sessionId, cwd, null, isSubagent);
+    const title = computeTitleFor(sessionId, cwd, null);
 
     const streamEl = document.createElement("div");
     streamEl.className = "stream";
@@ -133,8 +134,8 @@ export class TabManager {
       status: "live",
       streamEl,
       stream: new MessageStream(streamEl),
+      parentPath: sourcePath,
       unread: 0,
-      isSubagent,
       pendingToolGroup: null,
     };
     this.tabs.set(sessionId, tab);
@@ -157,9 +158,9 @@ export class TabManager {
     this.refreshTabBar();
   }
 
-  /** 根据 tab.cwd + tab.aiTitle + tab.isSubagent + sessionId 算出展示标题 */
+  /** 根据 tab.cwd + tab.aiTitle + sessionId 算出展示标题 */
   private computeTitle(tab: Tab): string {
-    return computeTitleFor(tab.sessionId, tab.cwd, tab.aiTitle, tab.isSubagent);
+    return computeTitleFor(tab.sessionId, tab.cwd, tab.aiTitle);
   }
 
   /** session 退出（~/.claude/sessions/<PID>.json 被删）—— 灰显归档，内容保留 */
@@ -232,7 +233,6 @@ export class TabManager {
     for (const [sid, t] of this.tabs) {
       const btn = document.createElement("button");
       btn.className = "tab" + (sid === this.activeId ? " active" : "");
-      if (t.isSubagent) btn.classList.add("subagent");
       if (t.status === "archived") btn.classList.add("archived");
 
       if (t.status !== "archived") {
@@ -293,19 +293,19 @@ function projectNameFromCwd(cwd: string): string | null {
  *   aiTitle 有 + cwd 有 → `[项目] aiTitle`
  *   aiTitle 有 + cwd 无 → `aiTitle`
  *   aiTitle 无 + cwd 有 → `项目`
- *   aiTitle 无 + cwd 无 + subagent → `↳ <sid 前 8 位>`
- *   aiTitle 无 + cwd 无 → `<sid 前 8 位>`
+ *   都没有 → `<sid 前 8 位>`
+ *
+ * Subagent 不再独立 Tab（嵌入到父 session 的 Task 折叠卡），所以没有 `↳` 前缀分支。
  */
 function computeTitleFor(
   sessionId: string,
   cwd: string | null,
   aiTitle: string | null,
-  isSubagent: boolean,
 ): string {
   const project = cwd ? projectNameFromCwd(cwd) : null;
   if (aiTitle) {
     return project ? `[${project}] ${aiTitle}` : aiTitle;
   }
   if (project) return project;
-  return isSubagent ? `↳ ${sessionId.slice(0, 8)}` : sessionId.slice(0, 8);
+  return sessionId.slice(0, 8);
 }

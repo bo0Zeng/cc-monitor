@@ -118,11 +118,6 @@ html, body {
   border-bottom-color: var(--assistant);
 }
 
-.tab.subagent .tab-title::before {
-  content: "↳ ";
-  color: var(--text-2);
-}
-
 /* 归档（session 退出）—— 灰显但仍可点 */
 .tab.archived {
   opacity: 0.55;
@@ -531,6 +526,33 @@ html, body {
 
 .block-tool-result.block-error {
   border-left-color: var(--error);
+}
+
+/* Agent / Task 折叠卡（嵌入 subagent JSONL） */
+.block-agent {
+  border-left-color: var(--assistant);
+}
+.block-agent-body {
+  white-space: normal;
+  padding: 10px 12px 14px;
+}
+.block-agent-header {
+  font-size: var(--font-size-xs);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border-faint);
+}
+.block-agent-tool-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0;
+  padding: 6px 8px;
+  background: var(--overlay-dim);
+  border-radius: 4px;
+  border-left: 2px solid var(--text-2);
 }
 
 /* === legacy placeholder (kept for safety; no longer rendered) === */

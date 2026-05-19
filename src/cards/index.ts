@@ -1,6 +1,7 @@
 import { renderMarkdown, renderPlainText } from "../render";
 import { parseSlashCommand, buildSlashCommandCard } from "./slash";
 import { isCompactSummary, buildCompactSummaryCard } from "./compact";
+import { isAgentTool, buildAgentCard } from "./subagent";
 
 // === Rust 端 JsonlRecord 的 TS 镜像 ===
 
@@ -56,6 +57,16 @@ export type JsonlRecord =
 
 // === 卡片渲染 ===
 
+/**
+ * 渲染上下文，沿调用链向下传递。当前只承载父 JSONL 路径，subagent 模块用它
+ * 来定位 `<parent>/subagents/` 目录。
+ *
+ * 字段命名保持稳定 —— 跨模块（cards/subagent、tabs）依赖。
+ */
+export interface RenderContext {
+  parentPath: string;
+}
+
 export type RenderResult =
   | { kind: "skip" }
   /** 普通独立卡片（user 或含 text 的 assistant） */
@@ -67,7 +78,7 @@ export type RenderResult =
    */
   | { kind: "tool-group"; timestamp: string; units: HTMLElement[] };
 
-export function renderMessage(rec: JsonlRecord): RenderResult {
+export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResult {
   switch (rec.type) {
     case "user": {
       const text = extractText(rec.message.content);
@@ -100,14 +111,14 @@ export function renderMessage(rec: JsonlRecord): RenderResult {
       if (hasText) {
         return {
           kind: "card",
-          element: buildAssistantCard(rec, meaningful),
+          element: buildAssistantCard(rec, meaningful, ctx),
         };
       }
       // 全是 thinking / tool_use / tool_result → 工具组成员
       return {
         kind: "tool-group",
         timestamp: rec.timestamp,
-        units: meaningful.map(renderBlock),
+        units: meaningful.map((b) => renderBlock(b, rec.timestamp, ctx)),
       };
     }
     case "ai-title":
@@ -172,6 +183,7 @@ function buildUserCard(
 function buildAssistantCard(
   rec: Extract<JsonlRecord, { type: "assistant" }>,
   meaningful: ContentBlock[],
+  ctx: RenderContext,
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-assistant";
@@ -180,13 +192,13 @@ function buildAssistantCard(
   const body = document.createElement("div");
   body.className = "card-body";
   for (const block of meaningful) {
-    body.appendChild(renderBlock(block));
+    body.appendChild(renderBlock(block, rec.timestamp, ctx));
   }
   card.appendChild(body);
   return card;
 }
 
-function renderBlock(block: ContentBlock): HTMLElement {
+function renderBlock(block: ContentBlock, timestamp: string, ctx: RenderContext): HTMLElement {
   switch (block.type) {
     case "text": {
       const div = document.createElement("div");
@@ -207,6 +219,15 @@ function renderBlock(block: ContentBlock): HTMLElement {
       );
     }
     case "tool_use": {
+      // Agent / Task tool_use → 折叠卡内嵌渲染 subagent JSONL
+      if (isAgentTool(block.name)) {
+        return buildAgentCard(
+          block.input as Parameters<typeof buildAgentCard>[0],
+          timestamp,
+          ctx,
+          renderMessage,
+        );
+      }
       const summary = summarizeInput(block.input);
       return makeCollapsible(
         "block-tool-use",
