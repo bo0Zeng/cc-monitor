@@ -107,8 +107,13 @@ fn process_file(
         Err(_) => return,
     };
 
-    let mut offsets_lock = offsets.lock();
-    let last_offset = offsets_lock.get(path).copied().unwrap_or(0);
+    // Windows 路径大小写不敏感，但 PathBuf::eq 是字节级；notify 偶发把同一
+    // 文件以不同大小写回放（NTFS 路径规范化不一致）会重复 emit。统一以小写
+    // 作 key，正常路径下 Linux/macOS 也无害（实际路径不变）。
+    let key = path_key(path);
+
+    // 锁内只读 + 写 offset，文件读循环走在锁外避免阻塞同 watcher 后续事件。
+    let last_offset = offsets.lock().get(&key).copied().unwrap_or(0);
     let start = if len < last_offset { 0 } else { last_offset };
 
     if start >= len {
@@ -135,5 +140,15 @@ fn process_file(
             return;
         }
     }
-    offsets_lock.insert(path.to_path_buf(), len);
+    offsets.lock().insert(key, len);
+}
+
+#[cfg(windows)]
+fn path_key(p: &Path) -> PathBuf {
+    PathBuf::from(p.to_string_lossy().to_ascii_lowercase())
+}
+
+#[cfg(not(windows))]
+fn path_key(p: &Path) -> PathBuf {
+    p.to_path_buf()
 }
