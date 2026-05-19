@@ -110,19 +110,15 @@ export class TabManager {
     if (tab) {
       if (!tab.cwd && cwd) {
         tab.cwd = cwd;
-        // aiTitle 已锁定时不再回退到 cwd
-        if (tab.aiTitle === null) {
-          tab.title = projectNameFromCwd(cwd) ?? tab.title;
-          this.refreshTabBar();
-        }
+        // 新 cwd 拿到后重算标题（aiTitle 可能已锁定，前缀需要补上）
+        tab.title = this.computeTitle(tab);
+        this.refreshTabBar();
       }
       return tab;
     }
 
     const isSubagent = sourcePath.replace(/\\/g, "/").includes("/subagents/");
-    const title =
-      (cwd && projectNameFromCwd(cwd)) ??
-      (isSubagent ? `↳ ${sessionId.slice(0, 8)}` : sessionId.slice(0, 8));
+    const title = computeTitleFor(sessionId, cwd, null, isSubagent);
 
     const streamEl = document.createElement("div");
     streamEl.className = "stream";
@@ -151,14 +147,19 @@ export class TabManager {
     return tab;
   }
 
-  /** 应用 ai-title：锁定 Tab 标题，后续 cwd 变化不再回退 */
+  /** 应用 ai-title：锁定语义标题，并按 [项目名] aiTitle 格式更新 Tab 标题 */
   private applyAiTitle(tab: Tab, aiTitle: string): void {
     const trimmed = aiTitle.trim();
     if (!trimmed) return;
     if (tab.aiTitle === trimmed) return;
     tab.aiTitle = trimmed;
-    tab.title = trimmed;
+    tab.title = this.computeTitle(tab);
     this.refreshTabBar();
+  }
+
+  /** 根据 tab.cwd + tab.aiTitle + tab.isSubagent + sessionId 算出展示标题 */
+  private computeTitle(tab: Tab): string {
+    return computeTitleFor(tab.sessionId, tab.cwd, tab.aiTitle, tab.isSubagent);
   }
 
   /** session 退出（~/.claude/sessions/<PID>.json 被删）—— 灰显归档，内容保留 */
@@ -285,4 +286,26 @@ function projectNameFromCwd(cwd: string): string | null {
   const normalized = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
   const last = normalized.split("/").filter(Boolean).pop();
   return last ?? null;
+}
+
+/**
+ * 标题格式（决策见 project_monitor_decisions.md）：
+ *   aiTitle 有 + cwd 有 → `[项目] aiTitle`
+ *   aiTitle 有 + cwd 无 → `aiTitle`
+ *   aiTitle 无 + cwd 有 → `项目`
+ *   aiTitle 无 + cwd 无 + subagent → `↳ <sid 前 8 位>`
+ *   aiTitle 无 + cwd 无 → `<sid 前 8 位>`
+ */
+function computeTitleFor(
+  sessionId: string,
+  cwd: string | null,
+  aiTitle: string | null,
+  isSubagent: boolean,
+): string {
+  const project = cwd ? projectNameFromCwd(cwd) : null;
+  if (aiTitle) {
+    return project ? `[${project}] ${aiTitle}` : aiTitle;
+  }
+  if (project) return project;
+  return isSubagent ? `↳ ${sessionId.slice(0, 8)}` : sessionId.slice(0, 8);
 }
