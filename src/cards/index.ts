@@ -58,13 +58,20 @@ export type JsonlRecord =
 // === 卡片渲染 ===
 
 /**
- * 渲染上下文，沿调用链向下传递。当前只承载父 JSONL 路径，subagent 模块用它
- * 来定位 `<parent>/subagents/` 目录。
+ * 渲染上下文，沿调用链向下传递。
  *
  * 字段命名保持稳定 —— 跨模块（cards/subagent、tabs）依赖。
  */
 export interface RenderContext {
+  /** 父 JSONL 路径，subagent 模块用它定位 `<parent>/subagents/` 目录 */
   parentPath: string;
+  /**
+   * tool_use_id → tool_name 映射。tool_use 出现在 assistant 消息，tool_result
+   * 出现在下一条 user 消息，跨消息不能就地反查；TabManager（或 subagent 嵌套
+   * 渲染）持有这张 Map 跨 renderMessage 调用累积。renderBlock 在 tool_use
+   * 时写入，在 tool_result 时读取来标注工具名。
+   */
+  toolUseNames: Map<string, string>;
 }
 
 export type RenderResult =
@@ -219,6 +226,9 @@ function renderBlock(block: ContentBlock, timestamp: string, ctx: RenderContext)
       );
     }
     case "tool_use": {
+      // 记下 id → name，给下一条消息的 tool_result 反查用
+      ctx.toolUseNames.set(block.id, block.name);
+
       // Agent / Task tool_use → 折叠卡内嵌渲染 subagent JSONL
       if (isAgentTool(block.name)) {
         return buildAgentCard(
@@ -241,18 +251,24 @@ function renderBlock(block: ContentBlock, timestamp: string, ctx: RenderContext)
       );
     }
     case "tool_result": {
-      const status = block.is_error ? "✗" : "✓";
-      const size = approximateSize(block.content);
-      return makeCollapsible(
-        block.is_error ? "block-tool-result block-error" : "block-tool-result",
-        `${status} ${size}`,
-        () => {
-          const pre = document.createElement("pre");
-          pre.className = "block-body block-body-result";
-          pre.textContent = renderResultContent(block.content);
-          return pre;
-        },
-      );
+      const text = renderResultContent(block.content);
+      const toolName = ctx.toolUseNames.get(block.tool_use_id) ?? "工具";
+      const exitCode = block.is_error ? extractExitCode(text) : null;
+      const preview = firstLinePreview(text, 80);
+      const statusIcon = block.is_error ? "✗" : "✓";
+      const exitTag = exitCode !== null ? ` exit ${exitCode}` : "";
+      const cls = block.is_error
+        ? "block-tool-result block-error"
+        : "block-tool-result";
+      const summaryText = preview
+        ? `${statusIcon} ${toolName}${exitTag}  ·  ${preview}`
+        : `${statusIcon} ${toolName}${exitTag}  ·  ${approximateSize(block.content)}`;
+      return makeCollapsible(cls, summaryText, () => {
+        const pre = document.createElement("pre");
+        pre.className = "block-body block-body-result";
+        pre.textContent = text;
+        return pre;
+      });
     }
     default: {
       // 未知 block.type（如 server_tool_use / web_search_tool_result 等扩展类型）
@@ -308,13 +324,17 @@ function renderResultContent(content: unknown): string {
   if (Array.isArray(content)) {
     const parts: string[] = [];
     for (const item of content) {
-      if (
-        item &&
-        typeof item === "object" &&
-        (item as { type?: string }).type === "text" &&
-        typeof (item as { text?: unknown }).text === "string"
-      ) {
+      if (!item || typeof item !== "object") {
+        parts.push(prettyJson(item));
+        continue;
+      }
+      const t = (item as { type?: string }).type;
+      if (t === "text" && typeof (item as { text?: unknown }).text === "string") {
         parts.push((item as { text: string }).text);
+      } else if (t === "image") {
+        // 图片是给模型看的 base64，监控视图不展开
+        const src = (item as { source?: { media_type?: string } }).source;
+        parts.push(`[image ${src?.media_type ?? "unknown"}]`);
       } else {
         parts.push(prettyJson(item));
       }
@@ -322,6 +342,20 @@ function renderResultContent(content: unknown): string {
     return parts.join("\n");
   }
   return prettyJson(content);
+}
+
+/** 第一行非空预览，截到 max 字符 */
+function firstLinePreview(text: string, max: number): string {
+  const firstLine = text.split("\n").find((l) => l.trim().length > 0) ?? "";
+  const trimmed = firstLine.trim();
+  if (trimmed.length <= max) return trimmed;
+  return trimmed.slice(0, max - 1) + "…";
+}
+
+/** 从 Bash 失败 tool_result 文本里抠 exit code（Claude Code 会把它写成 "Exit code N" 一行） */
+function extractExitCode(text: string): number | null {
+  const m = text.match(/Exit code (\d+)/);
+  return m ? Number(m[1]) : null;
 }
 
 // === helpers ===
