@@ -3,6 +3,7 @@ import { emit } from "@tauri-apps/api/event";
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
 import { loadTheme } from "./theme";
+import { SettingsPanel } from "./settings";
 
 // 全局错误捕获 —— 渲染到 status-bar 便于无 devtools 也能诊断
 window.addEventListener("error", (e) => {
@@ -50,6 +51,18 @@ window.addEventListener("DOMContentLoaded", async () => {
       live > 0 ? "M2 · 监听中" : "M2 · 等待活跃 Claude Code 会话…";
     empty.style.display = total > 0 ? "none" : "";
   });
+
+  // 外观设置入口 —— 注入到 #app 上（绝对定位到 Tab Bar 右上）
+  const settingsPanel = new SettingsPanel();
+  const settingsTrigger = document.createElement("button");
+  settingsTrigger.type = "button";
+  settingsTrigger.className = "settings-trigger";
+  settingsTrigger.title = "外观设置";
+  settingsTrigger.textContent = "⚙";
+  settingsTrigger.addEventListener("click", () => {
+    void settingsPanel.open();
+  });
+  document.getElementById("app")?.appendChild(settingsTrigger);
 
   bindEvents({
     onLine: (e) => tabs.onLine(e),
