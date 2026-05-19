@@ -40,22 +40,15 @@ window.addEventListener("DOMContentLoaded", () => {
   empty.innerHTML = `暂无活跃会话<br><small>打开终端跑 <code>claude</code> 后将自动出现</small>`;
   streamRoot.appendChild(empty);
 
-  let tabCount = 0;
-  const tabs = new TabManager(tabBar, streamRoot);
+  const tabs = new TabManager(tabBar, streamRoot, ({ total, live }) => {
+    statusCount.textContent = `活跃 ${live}`;
+    statusMsg.textContent =
+      live > 0 ? "M2 · 监听中" : "M2 · 等待活跃 Claude Code 会话…";
+    empty.style.display = total > 0 ? "none" : "";
+  });
 
   bindEvents({
-    onLine: (e) => {
-      const wasZero = tabCount === 0;
-      tabs.onLine(e);
-      if (wasZero) empty.style.display = "none";
-      const newCount = tabBar.querySelectorAll(".tab").length;
-      if (newCount !== tabCount) {
-        tabCount = newCount;
-        statusCount.textContent = `活跃 ${tabCount}`;
-        statusMsg.textContent =
-          tabCount > 0 ? "M2 · 监听中" : "M2 · 等待活跃 Claude Code 会话…";
-      }
-    },
+    onLine: (e) => tabs.onLine(e),
     onFocusSwitch: (sessionId) => tabs.switchTo(sessionId, { user: false }),
     onSessionEnded: (sessionId) => tabs.archiveTab(sessionId),
   });
