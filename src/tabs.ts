@@ -1,5 +1,11 @@
 import { MessageStream } from "./stream";
-import { renderMessage, type JsonlRecord } from "./cards";
+import {
+  renderMessage,
+  buildToolGroup,
+  addToToolGroup,
+  type JsonlRecord,
+  type ToolGroup,
+} from "./cards";
 
 export type TabStatus = "live" | "idle" | "archived";
 
@@ -13,6 +19,8 @@ export interface Tab {
   stream: MessageStream;
   unread: number;
   isSubagent: boolean;
+  /** 当前正在累积的工具组（连续 tool-only assistant 消息），出现普通卡时清空 */
+  pendingToolGroup: ToolGroup | null;
 }
 
 export class TabManager {
@@ -34,8 +42,30 @@ export class TabManager {
     message: JsonlRecord;
   }): void {
     const tab = this.ensureTab(payload.session_id, payload.cwd, payload.path);
-    const card = renderMessage(payload.message);
-    if (card) tab.stream.append(card);
+    const result = renderMessage(payload.message);
+
+    switch (result.kind) {
+      case "skip":
+        return;
+      case "card":
+        // 普通卡（user / 含 text 的 assistant）出现就断开工具组累积
+        tab.pendingToolGroup = null;
+        tab.stream.append(result.element);
+        break;
+      case "tool-group": {
+        if (tab.pendingToolGroup) {
+          // 追加到当前组
+          addToToolGroup(tab.pendingToolGroup, result.units);
+        } else {
+          // 新建组卡片并 append 到 stream
+          const group = buildToolGroup(result.timestamp);
+          addToToolGroup(group, result.units);
+          tab.pendingToolGroup = group;
+          tab.stream.append(group.root);
+        }
+        break;
+      }
+    }
 
     if (this.activeId !== tab.sessionId) {
       tab.unread += 1;
@@ -73,6 +103,7 @@ export class TabManager {
       stream: new MessageStream(streamEl),
       unread: 0,
       isSubagent,
+      pendingToolGroup: null,
     };
     this.tabs.set(sessionId, tab);
 

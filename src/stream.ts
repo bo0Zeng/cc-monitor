@@ -23,8 +23,15 @@ export class MessageStream {
     }
   }
 
+  /** rAF 包装：display 切 none→block 那帧 scrollHeight 还没算出来 */
   scrollToBottom(): void {
-    this.el.scrollTop = this.el.scrollHeight;
+    requestAnimationFrame(() => {
+      this.el.scrollTop = this.el.scrollHeight;
+      // 内嵌大图/字体加载完后高度还会变；再补一帧以兜底
+      requestAnimationFrame(() => {
+        this.el.scrollTop = this.el.scrollHeight;
+      });
+    });
   }
 
   clear(): void {
