@@ -254,6 +254,16 @@ function renderBlock(block: ContentBlock, timestamp: string, ctx: RenderContext)
         },
       );
     }
+    default: {
+      // 未知 block.type（如 server_tool_use / web_search_tool_result 等扩展类型）
+      // 不抛异常，给出可识别占位以便诊断。
+      const unknownType = (block as { type?: unknown }).type;
+      console.warn("renderBlock: unknown block type", unknownType, block);
+      const placeholder = document.createElement("div");
+      placeholder.className = "block-unknown";
+      placeholder.textContent = `⚠️ 未知 block 类型: ${String(unknownType)}`;
+      return placeholder;
+    }
   }
 }
 
