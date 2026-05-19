@@ -1,9 +1,11 @@
 :root {
+  /* === 颜色令牌 === */
   --bg: #1a1a24;
   --bg-2: #22222e;
   --card: #2a2a3a;
   --text: #e4e4e7;
   --text-2: #a1a1aa;
+  --text-faint: #666666;
   --user: #4a9eff;
   --assistant: #a78bfa;
   --success: #10b981;
@@ -11,9 +13,29 @@
   --error: #ef4444;
   --live: #10b981;
 
-  font-family: Inter, "Segoe UI", system-ui, sans-serif;
-  font-size: 14px;
-  line-height: 1.7;
+  /* 边/底色层级（替代散落的 #0006 / #ffffffXX / #000000XX） */
+  --border-strong: #0006;
+  --border-medium: #ffffff40;
+  --border-soft: #ffffff20;
+  --border-faint: #ffffff10;
+  --overlay-hover: #ffffff08;
+  --overlay-dim: #00000020;
+  --overlay-deep: #00000040;
+  --overlay-shadow: #00000080;
+
+  /* === 字体令牌 === */
+  --font-base: Inter, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, monospace;
+  --font-size-base: 14px;
+  --font-size-mono: 13px;
+  --font-size-small: 12px;
+  --font-size-xs: 11px;
+  --line-height-base: 1.7;
+  --line-height-mono: 1.5;
+
+  font-family: var(--font-base);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
   color: var(--text);
   background: var(--bg);
   color-scheme: dark;
@@ -40,7 +62,7 @@ html, body {
 
 #tab-bar {
   background: var(--bg-2);
-  border-bottom: 1px solid #0006;
+  border-bottom: 1px solid var(--border-strong);
   display: flex;
   align-items: stretch;
   overflow-x: auto;
@@ -64,7 +86,7 @@ html, body {
 
 .tab:hover {
   color: var(--text);
-  background: #ffffff08;
+  background: var(--overlay-hover);
 }
 
 .tab.active {
@@ -109,7 +131,7 @@ html, body {
   color: #fff;
   border-radius: 10px;
   padding: 0 6px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   line-height: 16px;
   min-width: 18px;
   text-align: center;
@@ -133,7 +155,7 @@ html, body {
   color: var(--text-2);
   text-align: center;
   margin-top: 30vh;
-  font-family: "JetBrains Mono", Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 /* === Cards === */
@@ -147,7 +169,7 @@ html, body {
 }
 
 .card-user {
-  background: #2a2a3a;
+  background: var(--card);
   border-left-color: var(--user);
 }
 
@@ -161,8 +183,8 @@ html, body {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
   color: var(--text-2);
 }
 .card-slash .slash-icon {
@@ -184,13 +206,13 @@ html, body {
 .card-slash .slash-ts {
   margin-left: auto;
   color: var(--text-2);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 /* compact 摘要折叠卡（/compact 留下的续接消息） */
 .card-compact {
-  background: #00000030;
-  border: 1px solid #ffffff10;
+  background: var(--overlay-dim);
+  border: 1px solid var(--border-faint);
   border-left: 3px solid var(--warn);
   border-radius: 6px;
   padding: 0;
@@ -201,8 +223,8 @@ html, body {
   cursor: pointer;
   list-style: none;
   padding: 8px 14px;
-  font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
   color: var(--text-2);
   user-select: none;
 }
@@ -219,19 +241,19 @@ html, body {
   content: "▾ ";
 }
 .card-compact-summary:hover {
-  background: #ffffff08;
+  background: var(--overlay-hover);
   color: var(--text);
 }
 .card-compact[open] > .card-compact-summary {
-  background: #00000040;
+  background: var(--overlay-deep);
   color: var(--text);
-  border-bottom: 1px solid #ffffff10;
+  border-bottom: 1px solid var(--border-faint);
 }
 .card-compact-body {
   margin: 0;
   padding: 10px 14px;
-  font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text);
@@ -248,7 +270,7 @@ html, body {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
   color: var(--text-2);
   margin-bottom: 8px;
 }
@@ -259,14 +281,14 @@ html, body {
 }
 
 .card-header .ts {
-  font-family: "JetBrains Mono", Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .card-header .model {
   margin-left: auto;
-  font-family: "JetBrains Mono", Consolas, monospace;
+  font-family: var(--font-mono);
   color: var(--text-2);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .card-body {
@@ -285,25 +307,25 @@ html, body {
   margin: 8px 0;
   border-radius: 4px;
   overflow: hidden;
-  font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
 }
 
 .card-body pre code.hljs {
   display: block;
   padding: 12px;
   overflow-x: auto;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: var(--font-size-mono);
+  line-height: var(--line-height-mono);
 }
 
 /* 行内代码（不进 hljs） */
 .card-body code {
-  background: #00000040;
+  background: var(--overlay-deep);
   padding: 0 4px;
   border-radius: 3px;
-  font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-mono);
 }
 
 .card-body pre code {
@@ -321,7 +343,7 @@ html, body {
 }
 
 .card-body th, .card-body td {
-  border: 1px solid #ffffff20;
+  border: 1px solid var(--border-soft);
   padding: 4px 10px;
 }
 
@@ -330,8 +352,8 @@ html, body {
 .card-tool-group {
   margin: 8px 0;
   padding: 0;
-  background: #00000030;
-  border: 1px solid #ffffff10;
+  background: var(--overlay-dim);
+  border: 1px solid var(--border-faint);
   border-left: 3px solid var(--text-2);
   border-radius: 6px;
   overflow: hidden;
@@ -341,8 +363,8 @@ html, body {
   cursor: pointer;
   list-style: none;
   padding: 8px 14px;
-  font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
   color: var(--text-2);
   user-select: none;
 }
@@ -363,14 +385,14 @@ html, body {
 }
 
 .card-tool-group-summary:hover {
-  background: #ffffff08;
+  background: var(--overlay-hover);
   color: var(--text);
 }
 
 .card-tool-group[open] > .card-tool-group-summary {
   color: var(--text);
-  background: #00000040;
-  border-bottom: 1px solid #ffffff10;
+  background: var(--overlay-deep);
+  border-bottom: 1px solid var(--border-faint);
 }
 
 .card-tool-group-body {
@@ -384,9 +406,9 @@ html, body {
 
 .block-collapsible {
   margin: 6px 0;
-  border-left: 2px solid #ffffff20;
+  border-left: 2px solid var(--border-soft);
   border-radius: 4px;
-  background: #00000020;
+  background: var(--overlay-dim);
   overflow: hidden;
 }
 
@@ -394,8 +416,8 @@ html, body {
   cursor: pointer;
   list-style: none;
   padding: 6px 10px;
-  font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
   color: var(--text-2);
   user-select: none;
   white-space: nowrap;
@@ -419,37 +441,37 @@ html, body {
 }
 
 .block-collapsible .block-summary:hover {
-  background: #ffffff08;
+  background: var(--overlay-hover);
   color: var(--text);
 }
 
 .block-collapsible[open] > .block-summary {
-  background: #00000040;
+  background: var(--overlay-deep);
   color: var(--text);
 }
 
 .block-collapsible .block-body {
   padding: 10px 12px;
   margin: 0;
-  font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text);
   background: transparent;
-  border-top: 1px solid #ffffff10;
+  border-top: 1px solid var(--border-faint);
   max-height: 600px;
   overflow: auto;
 }
 
 .block-body-md {
-  font-family: Inter, "Segoe UI", system-ui, sans-serif;
-  font-size: 13px;
+  font-family: var(--font-base);
+  font-size: var(--font-size-mono);
   white-space: normal;
 }
 
 .block-thinking {
-  border-left-color: #ffffff40;
+  border-left-color: var(--border-medium);
 }
 .block-thinking .block-summary {
   font-style: italic;
@@ -469,18 +491,18 @@ html, body {
 
 /* === legacy placeholder (kept for safety; no longer rendered) === */
 .block-placeholder {
-  font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
   color: var(--text-2);
-  background: #00000020;
+  background: var(--overlay-dim);
   padding: 6px 10px;
   margin: 6px 0;
   border-radius: 4px;
-  border-left: 2px solid #ffffff20;
+  border-left: 2px solid var(--border-soft);
 }
 
 .block-thinking {
-  border-left-color: #ffffff40;
+  border-left-color: var(--border-medium);
   font-style: italic;
 }
 
@@ -496,8 +518,8 @@ html, body {
 
 #status-bar {
   background: var(--bg-2);
-  border-top: 1px solid #0006;
-  font-size: 12px;
+  border-top: 1px solid var(--border-strong);
+  font-size: var(--font-size-small);
   color: var(--text-2);
   padding: 4px 12px;
   display: flex;
@@ -513,21 +535,21 @@ html, body {
 }
 
 .status-count {
-  font-family: "JetBrains Mono", Consolas, monospace;
+  font-family: var(--font-mono);
   color: var(--text-2);
 }
 
 .empty-state small {
   display: block;
   margin-top: 8px;
-  color: #666;
+  color: var(--text-faint);
 }
 
 .empty-state code {
-  background: #00000040;
+  background: var(--overlay-deep);
   padding: 0 4px;
   border-radius: 3px;
-  font-size: 12px;
+  font-size: var(--font-size-small);
 }
 
 /* === Toast === */
@@ -549,9 +571,9 @@ html, body {
   padding: 10px 14px;
   border-radius: 6px;
   border-left: 3px solid var(--text-2);
-  font-size: 13px;
+  font-size: var(--font-size-mono);
   max-width: 360px;
-  box-shadow: 0 4px 12px #00000080;
+  box-shadow: 0 4px 12px var(--overlay-shadow);
   opacity: 0;
   transform: translateX(8px);
   transition: opacity 0.3s, transform 0.3s;
