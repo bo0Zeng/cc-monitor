@@ -57,6 +57,7 @@ window.addEventListener("DOMContentLoaded", () => {
       }
     },
     onFocusSwitch: (sessionId) => tabs.switchTo(sessionId, { user: false }),
+    onSessionEnded: (sessionId) => tabs.archiveTab(sessionId),
   });
 
   // 通知后端可以发了 —— 缓冲的 line 会被 flush 过来

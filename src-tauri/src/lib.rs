@@ -9,7 +9,7 @@ mod session_map;
 mod watcher;
 
 use std::sync::Arc;
-use tauri::{Listener, Manager};
+use tauri::{Emitter, Listener, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -35,7 +35,32 @@ pub fn run() {
             let sessions_dir = home.join(".claude").join("sessions");
 
             // SessionMap = Claude Code 自己维护的 ~/.claude/sessions/<PID>.json
-            let session_map = session_map::SessionMap::load(sessions_dir);
+            let (session_map, session_changes) =
+                session_map::SessionMap::load_with_changes(sessions_dir);
+
+            // session 退出（PID.json 被删）→ 透传 session-ended 给前端，让 Tab 灰显归档
+            {
+                let handle = app.handle().clone();
+                std::thread::Builder::new()
+                    .name("session-ended-emitter".into())
+                    .spawn(move || {
+                        while let Ok(change) = session_changes.recv() {
+                            for sid in change.removed {
+                                let payload = bridge::SessionEndedPayload {
+                                    session_id: sid.clone(),
+                                };
+                                if let Err(e) =
+                                    handle.emit(bridge::events::SESSION_ENDED, &payload)
+                                {
+                                    tracing::warn!("emit session-ended failed: {e}");
+                                } else {
+                                    tracing::info!("session ended: {sid}");
+                                }
+                            }
+                        }
+                    })
+                    .ok();
+            }
 
             // Watcher: 只对活跃 session 的 jsonl emit
             let active_filter: watcher::ActiveFilter = {

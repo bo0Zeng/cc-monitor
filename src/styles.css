@@ -77,6 +77,20 @@ html, body {
   color: var(--text-2);
 }
 
+/* 归档（session 退出）—— 灰显但仍可点 */
+.tab.archived {
+  opacity: 0.55;
+}
+.tab.archived .tab-title {
+  color: var(--text-2);
+  font-style: italic;
+}
+.tab.archived .tab-title::after {
+  content: " ·";
+  color: var(--text-2);
+  margin-left: 2px;
+}
+
 .tab-title {
   overflow: hidden;
   text-overflow: ellipsis;

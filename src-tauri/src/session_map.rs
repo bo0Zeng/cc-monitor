@@ -8,10 +8,18 @@ use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use parking_lot::RwLock;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
+
+/// session 集合变化（added/removed）—— 由 watcher 线程每次重扫后比对旧表得出。
+#[derive(Debug, Clone)]
+pub struct SessionChange {
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+}
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct SessionInfo {
@@ -34,26 +42,34 @@ pub struct SessionMap {
 
 impl SessionMap {
     pub fn load(dir: PathBuf) -> Arc<Self> {
+        let (me, _rx) = Self::load_with_changes(dir);
+        me
+    }
+
+    /// 同 `load`，额外返回一个 channel 接收 session 集合变化。
+    /// 用于 lib.rs 把 session-ended 事件透传给前端。
+    pub fn load_with_changes(dir: PathBuf) -> (Arc<Self>, mpsc::Receiver<SessionChange>) {
         tracing::info!("session_map scanning {} (exists={})", dir.display(), dir.exists());
         let initial = scan_dir(&dir);
         tracing::info!("session_map loaded {} entries", initial.len());
         for (sid, info) in &initial {
             tracing::info!("  session: {} pid={} cwd={}", sid, info.pid, info.cwd);
         }
+        let (tx, rx) = mpsc::channel::<SessionChange>();
         let me = Arc::new(Self {
             dir: dir.clone(),
             by_id: Arc::new(RwLock::new(initial)),
         });
-        Self::spawn_watcher(&me);
-        me
+        Self::spawn_watcher(&me, Some(tx));
+        (me, rx)
     }
 
-    fn spawn_watcher(this: &Arc<Self>) {
+    fn spawn_watcher(this: &Arc<Self>, change_tx: Option<mpsc::Sender<SessionChange>>) {
         let dir = this.dir.clone();
         let by_id = this.by_id.clone();
         std::thread::Builder::new()
             .name("session-map-watcher".into())
-            .spawn(move || run_watcher(dir, by_id))
+            .spawn(move || run_watcher(dir, by_id, change_tx))
             .ok();
     }
 
@@ -100,7 +116,11 @@ fn read_one(path: &Path) -> Option<SessionInfo> {
     serde_json::from_str(&s).ok()
 }
 
-fn run_watcher(dir: PathBuf, by_id: Arc<RwLock<HashMap<String, SessionInfo>>>) {
+fn run_watcher(
+    dir: PathBuf,
+    by_id: Arc<RwLock<HashMap<String, SessionInfo>>>,
+    change_tx: Option<mpsc::Sender<SessionChange>>,
+) {
     if !dir.exists() {
         if let Err(e) = std::fs::create_dir_all(&dir) {
             tracing::warn!("create {} failed: {e}", dir.display());
@@ -123,11 +143,23 @@ fn run_watcher(dir: PathBuf, by_id: Arc<RwLock<HashMap<String, SessionInfo>>>) {
     }
 
     while let Ok(_evt) = rx.recv() {
-        // 任何变动都全量重扫（数量很小，<100 个文件）
         let next = scan_dir(&dir);
         let n = next.len();
+        let next_keys: HashSet<String> = next.keys().cloned().collect();
+        let prev_keys: HashSet<String> = by_id.read().keys().cloned().collect();
+        let removed: Vec<String> = prev_keys.difference(&next_keys).cloned().collect();
+        let added: Vec<String> = next_keys.difference(&prev_keys).cloned().collect();
         *by_id.write() = next;
-        tracing::debug!("session_map reloaded ({n} entries)");
+        if !removed.is_empty() || !added.is_empty() {
+            tracing::info!(
+                "session_map: {n} active (+{} -{})",
+                added.len(),
+                removed.len()
+            );
+            if let Some(tx) = &change_tx {
+                let _ = tx.send(SessionChange { added, removed });
+            }
+        }
     }
 }
 
