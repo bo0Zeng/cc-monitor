@@ -28,6 +28,13 @@ export interface Tab {
   pendingToolGroup: ToolGroup | null;
 }
 
+/** Tab 数量摘要，发给宿主用于状态栏 / empty-state 等外部 UI */
+export interface TabsSummary {
+  total: number;
+  live: number;
+  archived: number;
+}
+
 export class TabManager {
   private tabs = new Map<string, Tab>();
   private activeId: string | null = null;
@@ -37,7 +44,20 @@ export class TabManager {
   constructor(
     private barEl: HTMLElement,
     private streamRootEl: HTMLElement,
+    /** 任何 Tab 增/减/状态变化后回调；宿主用它驱动状态栏等外部 UI */
+    private onTabsChanged?: (summary: TabsSummary) => void,
   ) {}
+
+  private notifyChanged(): void {
+    if (!this.onTabsChanged) return;
+    let live = 0;
+    let archived = 0;
+    for (const t of this.tabs.values()) {
+      if (t.status === "archived") archived += 1;
+      else live += 1;
+    }
+    this.onTabsChanged({ total: this.tabs.size, live, archived });
+  }
 
   /** 收到一行 JSONL 时调用 */
   onLine(payload: {
@@ -151,6 +171,36 @@ export class TabManager {
     this.refreshTabBar();
   }
 
+  /**
+   * 关闭 Tab：销毁 stream DOM、从 Map 中移除、必要时切到相邻 Tab。
+   * 仅允许关闭 archived 状态的 Tab，避免误关运行中的会话。
+   */
+  closeTab(sessionId: string): void {
+    const tab = this.tabs.get(sessionId);
+    if (!tab) return;
+    if (tab.status !== "archived") return;
+
+    const wasActive = this.activeId === sessionId;
+    const orderedIds = Array.from(this.tabs.keys());
+    const idx = orderedIds.indexOf(sessionId);
+    // 优先切到后一个 Tab，否则前一个
+    const fallbackId = orderedIds[idx + 1] ?? orderedIds[idx - 1] ?? null;
+
+    tab.streamEl.remove();
+    this.tabs.delete(sessionId);
+
+    if (wasActive) {
+      if (fallbackId !== null) {
+        this.switchTo(fallbackId, { user: true });
+      } else {
+        this.activeId = null;
+        this.refreshTabBar();
+      }
+    } else {
+      this.refreshTabBar();
+    }
+  }
+
   switchTo(sessionId: string, options?: { user?: boolean }): void {
     if (!this.tabs.has(sessionId)) return;
     if (options?.user) this.lock();
@@ -177,7 +227,7 @@ export class TabManager {
   }
 
   private refreshTabBar(): void {
-    this.barEl.innerHTML = "";
+    this.barEl.replaceChildren();
     for (const [sid, t] of this.tabs) {
       const btn = document.createElement("button");
       btn.className = "tab" + (sid === this.activeId ? " active" : "");
@@ -202,11 +252,32 @@ export class TabManager {
         btn.appendChild(badge);
       }
 
+      // 归档 Tab 才显示关闭按钮 —— 防止误关运行中的会话
+      if (t.status === "archived") {
+        const close = document.createElement("span");
+        close.className = "tab-close";
+        close.textContent = "×";
+        close.title = "关闭 Tab";
+        close.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.closeTab(sid);
+        });
+        btn.appendChild(close);
+      }
+
       btn.addEventListener("click", () =>
         this.switchTo(sid, { user: true }),
       );
+      // 中键点击归档 Tab 也关闭（常见 UX）
+      btn.addEventListener("mousedown", (e) => {
+        if (e.button === 1 && t.status === "archived") {
+          e.preventDefault();
+          this.closeTab(sid);
+        }
+      });
       this.barEl.appendChild(btn);
     }
+    this.notifyChanged();
   }
 }
 

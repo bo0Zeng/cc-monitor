@@ -137,6 +137,26 @@ html, body {
   text-align: center;
 }
 
+/* 关闭按钮 —— 仅 archived Tab 显示 */
+.tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  color: var(--text-2);
+  font-size: var(--font-size-mono);
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.tab-close:hover {
+  background: var(--overlay-hover);
+  color: var(--text);
+}
+
 /* === Stream === */
 
 #message-stream {
