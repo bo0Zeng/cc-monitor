@@ -199,6 +199,7 @@ export class TabManager {
     // 优先切到后一个 Tab，否则前一个
     const fallbackId = orderedIds[idx + 1] ?? orderedIds[idx - 1] ?? null;
 
+    tab.stream.dispose();
     tab.streamEl.remove();
     this.tabs.delete(sessionId);
 

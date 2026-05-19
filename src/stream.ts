@@ -23,6 +23,8 @@ export class MessageStream {
   /** 是否粘底（用户向上滚动后变 false） */
   private stickToBottom = true;
   private resizeObserver: ResizeObserver;
+  private scrollHandler: () => void;
+  private disposed = false;
 
   constructor(root: HTMLElement) {
     this.scrollEl = root;
@@ -31,18 +33,30 @@ export class MessageStream {
     this.contentEl.className = "stream-content";
     this.scrollEl.appendChild(this.contentEl);
 
-    this.scrollEl.addEventListener("scroll", () => {
+    this.scrollHandler = () => {
       const distFromBottom =
         this.scrollEl.scrollHeight -
         this.scrollEl.scrollTop -
         this.scrollEl.clientHeight;
       this.stickToBottom = distFromBottom < 24;
-    });
+    };
+    this.scrollEl.addEventListener("scroll", this.scrollHandler);
 
     this.resizeObserver = new ResizeObserver(() => {
       if (this.stickToBottom) this.snap();
     });
     this.resizeObserver.observe(this.contentEl);
+  }
+
+  /**
+   * 释放 RO + scroll listener。Tab 被关闭时调用，避免每次关 Tab 累积一个
+   * MessageStream 实例 + RO 回调闭包持有 contentEl。
+   */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.resizeObserver.disconnect();
+    this.scrollEl.removeEventListener("scroll", this.scrollHandler);
   }
 
   append(node: HTMLElement): void {
