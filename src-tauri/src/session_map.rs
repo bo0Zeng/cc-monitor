@@ -93,6 +93,72 @@ impl SessionMap {
     pub fn get(&self, session_id: &str) -> Option<SessionInfo> {
         self.by_id.read().get(session_id).cloned()
     }
+
+    /// 焦点窗口 PID → session_id。
+    ///
+    /// session_map 存的是 claude CLI 的 PID（在进程树最深一层），而前台窗口的 PID
+    /// 是终端（WindowsTerminal / ConHost 等），通常是 claude 的祖先。
+    /// 所以从每个 session.pid 出发沿 parent 链向上 walk，匹配到 fg_pid 即命中。
+    ///
+    /// 取一次进程快照后在内存里 walk，避免对每个 session 重复 syscall。
+    pub fn lookup_by_foreground_pid(&self, fg_pid: u32) -> Option<String> {
+        if fg_pid == 0 {
+            return None;
+        }
+        let parents = parent_map()?;
+        let sessions = self.by_id.read();
+        for (sid, info) in sessions.iter() {
+            let mut cur = info.pid;
+            // 最多 walk 32 层，防御循环或异常深的进程树
+            for _ in 0..32 {
+                if cur == fg_pid {
+                    return Some(sid.clone());
+                }
+                let Some(&parent) = parents.get(&cur) else { break };
+                if parent == 0 || parent == cur {
+                    break;
+                }
+                cur = parent;
+            }
+        }
+        None
+    }
+}
+
+/// 当前所有进程的 pid → parent_pid 映射。一次 ToolHelp 快照。
+#[cfg(windows)]
+fn parent_map() -> Option<HashMap<u32, u32>> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
+        TH32CS_SNAPPROCESS,
+    };
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        if snap.is_invalid() {
+            return None;
+        }
+        let mut entry = PROCESSENTRY32 {
+            dwSize: std::mem::size_of::<PROCESSENTRY32>() as u32,
+            ..Default::default()
+        };
+        let mut map = HashMap::new();
+        if Process32First(snap, &mut entry).is_ok() {
+            loop {
+                map.insert(entry.th32ProcessID, entry.th32ParentProcessID);
+                if Process32Next(snap, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = CloseHandle(snap);
+        Some(map)
+    }
+}
+
+#[cfg(not(windows))]
+fn parent_map() -> Option<HashMap<u32, u32>> {
+    None
 }
 
 fn scan_dir(dir: &Path) -> HashMap<String, SessionInfo> {

@@ -69,6 +69,33 @@ pub fn run() {
             };
             let mut rx = watcher::spawn_watcher(projects_dir, active_filter);
 
+            // 焦点同步：SetWinEventHook 推前台 PID → 查 session_map 得 session_id → emit
+            {
+                let mut fg_rx = focus::spawn_focus_thread();
+                let handle = app.handle().clone();
+                let map = session_map.clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut last_sid: Option<String> = None;
+                    while let Some(fg_pid) = fg_rx.recv().await {
+                        let Some(sid) = map.lookup_by_foreground_pid(fg_pid) else {
+                            continue;
+                        };
+                        if last_sid.as_deref() == Some(&sid) {
+                            continue;
+                        }
+                        last_sid = Some(sid.clone());
+                        let payload = bridge::FocusSwitchPayload {
+                            session_id: sid.clone(),
+                        };
+                        if let Err(e) = handle.emit(bridge::events::FOCUS_SWITCH, &payload) {
+                            tracing::warn!("emit focus-switch failed: {e}");
+                        } else {
+                            tracing::debug!("focus → {sid} (fg_pid={fg_pid})");
+                        }
+                    }
+                });
+            }
+
             // 持久化重播：F5 刷新后整个 history 重新 emit，前端状态完整恢复。
             let replay = Arc::new(event_replay::EventReplay::new());
 
