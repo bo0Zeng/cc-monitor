@@ -11,9 +11,14 @@ export type TabStatus = "live" | "idle" | "archived";
 
 export interface Tab {
   sessionId: string;
-  /** Tab 标题（M1: cwd 项目名最后一段，缺失时退化为 session_id 前 8 位） */
+  /**
+   * Tab 标题。优先级：aiTitle > cwd 项目名 > session_id 前 8 位。
+   * aiTitle 一旦出现就锁住，后续 cwd 不再覆盖。
+   */
   title: string;
   cwd: string | null;
+  /** Claude 给出的语义标题（JSONL 里 `ai-title` 记录的 aiTitle 字段），出现一次就锁定 */
+  aiTitle: string | null;
   status: TabStatus;
   streamEl: HTMLElement;
   stream: MessageStream;
@@ -42,6 +47,13 @@ export class TabManager {
     message: JsonlRecord;
   }): void {
     const tab = this.ensureTab(payload.session_id, payload.cwd, payload.path);
+
+    // ai-title 不进入消息流，只更新 Tab 标题
+    if (payload.message.type === "ai-title") {
+      this.applyAiTitle(tab, payload.message.aiTitle);
+      return;
+    }
+
     const result = renderMessage(payload.message);
 
     switch (result.kind) {
@@ -78,8 +90,11 @@ export class TabManager {
     if (tab) {
       if (!tab.cwd && cwd) {
         tab.cwd = cwd;
-        tab.title = projectNameFromCwd(cwd) ?? tab.title;
-        this.refreshTabBar();
+        // aiTitle 已锁定时不再回退到 cwd
+        if (tab.aiTitle === null) {
+          tab.title = projectNameFromCwd(cwd) ?? tab.title;
+          this.refreshTabBar();
+        }
       }
       return tab;
     }
@@ -98,6 +113,7 @@ export class TabManager {
       sessionId,
       title,
       cwd,
+      aiTitle: null,
       status: "live",
       streamEl,
       stream: new MessageStream(streamEl),
@@ -113,6 +129,16 @@ export class TabManager {
       this.refreshTabBar();
     }
     return tab;
+  }
+
+  /** 应用 ai-title：锁定 Tab 标题，后续 cwd 变化不再回退 */
+  private applyAiTitle(tab: Tab, aiTitle: string): void {
+    const trimmed = aiTitle.trim();
+    if (!trimmed) return;
+    if (tab.aiTitle === trimmed) return;
+    tab.aiTitle = trimmed;
+    tab.title = trimmed;
+    this.refreshTabBar();
   }
 
   /** session 退出（~/.claude/sessions/<PID>.json 被删）—— 灰显归档，内容保留 */
