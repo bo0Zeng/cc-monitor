@@ -557,6 +557,25 @@ html, body {
   border-radius: 4px;
   border-left: 2px solid var(--text-2);
 }
+.block-agent-error {
+  color: var(--error);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  margin-bottom: 6px;
+}
+.block-agent-retry {
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  padding: 4px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-small);
+}
+.block-agent-retry:hover {
+  background: var(--overlay-hover);
+}
 
 .block-unknown {
   font-family: var(--font-mono);

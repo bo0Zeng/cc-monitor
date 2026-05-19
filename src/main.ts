@@ -57,12 +57,29 @@ window.addEventListener("DOMContentLoaded", async () => {
   const settingsTrigger = document.createElement("button");
   settingsTrigger.type = "button";
   settingsTrigger.className = "settings-trigger";
-  settingsTrigger.title = "外观设置";
+  settingsTrigger.title = "外观设置 (Ctrl+,)";
+  settingsTrigger.setAttribute("aria-label", "打开外观设置");
   settingsTrigger.textContent = "⚙";
   settingsTrigger.addEventListener("click", () => {
     void settingsPanel.open();
   });
   document.getElementById("app")?.appendChild(settingsTrigger);
+
+  // 快捷键：Ctrl+Tab 切下一个 / Ctrl+Shift+Tab 切上一个 / Ctrl+W 关 archived /
+  // Ctrl+, 开设置；Esc 关设置在 SettingsPanel 内部处理。
+  window.addEventListener("keydown", (e) => {
+    if (!e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key === "Tab") {
+      e.preventDefault();
+      tabs.cycleActive(e.shiftKey ? -1 : 1);
+    } else if (e.key === "w" || e.key === "W") {
+      e.preventDefault();
+      tabs.closeActiveIfArchived();
+    } else if (e.key === ",") {
+      e.preventDefault();
+      void settingsPanel.open();
+    }
+  });
 
   bindEvents({
     onLine: (e) => tabs.onLine(e),
