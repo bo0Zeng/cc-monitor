@@ -569,19 +569,6 @@ html, body {
   border-left: 2px solid var(--warn);
 }
 
-.block-thinking {
-  border-left-color: var(--border-medium);
-  font-style: italic;
-}
-
-.block-tool-use {
-  border-left-color: var(--warn);
-}
-
-.block-tool-result {
-  border-left-color: var(--success);
-}
-
 /* === Status Bar === */
 
 #status-bar {
@@ -618,49 +605,6 @@ html, body {
   padding: 0 4px;
   border-radius: 3px;
   font-size: var(--font-size-small);
-}
-
-/* === Toast === */
-
-.toast-host {
-  position: fixed;
-  top: 48px;
-  right: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  z-index: 1000;
-  pointer-events: none;
-}
-
-.toast {
-  background: var(--card);
-  color: var(--text);
-  padding: 10px 14px;
-  border-radius: 6px;
-  border-left: 3px solid var(--text-2);
-  font-size: var(--font-size-mono);
-  max-width: 360px;
-  box-shadow: 0 4px 12px var(--overlay-shadow);
-  opacity: 0;
-  transform: translateX(8px);
-  transition: opacity 0.3s, transform 0.3s;
-  pointer-events: auto;
-}
-
-.toast.show {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.toast-info {
-  border-left-color: var(--user);
-}
-.toast-success {
-  border-left-color: var(--success);
-}
-.toast-error {
-  border-left-color: var(--error);
 }
 
 /* === Settings Panel === */

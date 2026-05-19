@@ -2,7 +2,6 @@ mod bridge;
 mod config;
 mod event_replay;
 mod focus;
-mod hook_installer;
 mod messages;
 mod parser;
 mod session_map;
@@ -42,7 +41,7 @@ pub fn run() {
             // session 退出（PID.json 被删）→ 透传 session-ended 给前端，让 Tab 灰显归档
             {
                 let handle = app.handle().clone();
-                std::thread::Builder::new()
+                let spawned = std::thread::Builder::new()
                     .name("session-ended-emitter".into())
                     .spawn(move || {
                         while let Ok(change) = session_changes.recv() {
@@ -59,8 +58,13 @@ pub fn run() {
                                 }
                             }
                         }
-                    })
-                    .ok();
+                    });
+                if let Err(e) = spawned {
+                    tracing::error!(
+                        "failed to spawn session-ended-emitter thread: {e}; \
+                         session 退出后 Tab 将不会自动归档"
+                    );
+                }
             }
 
             // Watcher: 只对活跃 session 的 jsonl emit
@@ -157,7 +161,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             config::load_config,
             config::save_config,
-            hook_installer::install_hook,
             subagent::load_subagent,
             forget_session,
         ])
