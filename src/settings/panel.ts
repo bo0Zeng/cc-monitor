@@ -7,7 +7,13 @@
 
 import { applyTheme, loadTheme, saveTheme, type ThemeConfig } from "../theme";
 
-type FieldType = "color" | "text" | "number";
+/**
+ * 字段控件类型：
+ * - `color`/`number`/`text`：HTML `<input>`
+ * - `font-base` / `font-mono`：`<select>`，options 来自 BASE_FONT_PRESETS / MONO_FONT_PRESETS
+ *   + 自定义项（弹出文本输入）
+ */
+type FieldType = "color" | "number" | "text" | "font-base" | "font-mono";
 
 interface FieldSpec {
   key: keyof ThemeConfig;
@@ -16,9 +22,31 @@ interface FieldSpec {
   group: "font" | "color";
 }
 
+/**
+ * 字体预设。value 是完整 CSS font-family 字符串；label 是给用户看的名字。
+ * 第一个永远是"默认"（value 留空 → 删除覆盖，回到 styles.css :root）。
+ */
+const BASE_FONT_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
+  { label: "默认（推荐）", value: "" },
+  { label: "Inter", value: "Inter, 'Segoe UI', system-ui, sans-serif" },
+  { label: "Microsoft YaHei UI", value: "'Microsoft YaHei UI', 'PingFang SC', system-ui, sans-serif" },
+  { label: "Segoe UI", value: "'Segoe UI', system-ui, sans-serif" },
+  { label: "系统默认", value: "system-ui, sans-serif" },
+];
+
+const MONO_FONT_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
+  { label: "默认（推荐）", value: "" },
+  { label: "JetBrains Mono", value: "'JetBrains Mono', Consolas, monospace" },
+  { label: "Cascadia Code", value: "'Cascadia Code', Consolas, monospace" },
+  { label: "Fira Code", value: "'Fira Code', Consolas, monospace" },
+  { label: "Source Code Pro", value: "'Source Code Pro', Consolas, monospace" },
+  { label: "Consolas", value: "Consolas, monospace" },
+  { label: "系统等宽", value: "monospace" },
+];
+
 const FIELDS: ReadonlyArray<FieldSpec> = [
-  { key: "font-base", label: "正文字体", type: "text", group: "font" },
-  { key: "font-mono", label: "等宽字体", type: "text", group: "font" },
+  { key: "font-base", label: "正文字体", type: "font-base", group: "font" },
+  { key: "font-mono", label: "等宽字体", type: "font-mono", group: "font" },
   { key: "font-size-base", label: "基础字号 (px)", type: "number", group: "font" },
   { key: "bg", label: "主背景", type: "color", group: "color" },
   { key: "bg-2", label: "次背景", type: "color", group: "color" },
@@ -38,7 +66,7 @@ export class SettingsPanel {
   private current: ThemeConfig = {};
   /** 打开时的 theme 快照，取消时回滚 */
   private original: ThemeConfig = {};
-  private inputs = new Map<keyof ThemeConfig, HTMLInputElement>();
+  private inputs = new Map<keyof ThemeConfig, HTMLInputElement | HTMLSelectElement>();
   private isOpen = false;
 
   constructor() {
@@ -141,14 +169,34 @@ export class SettingsPanel {
     label.textContent = f.label;
     row.appendChild(label);
 
+    const control = this.buildControl(f);
+    row.appendChild(control);
+
+    this.inputs.set(f.key, control);
+    return row;
+  }
+
+  private buildControl(f: FieldSpec): HTMLInputElement | HTMLSelectElement {
+    if (f.type === "font-base" || f.type === "font-mono") {
+      const sel = document.createElement("select");
+      sel.className = "settings-input settings-input-select";
+      const presets = f.type === "font-base" ? BASE_FONT_PRESETS : MONO_FONT_PRESETS;
+      for (const p of presets) {
+        const opt = document.createElement("option");
+        opt.value = p.value;
+        opt.textContent = p.label;
+        // 控件预览：option 文字本身用对应字体显示
+        if (p.value) opt.style.fontFamily = p.value;
+        sel.appendChild(opt);
+      }
+      sel.addEventListener("change", () => this.onFieldChange(f, sel));
+      return sel;
+    }
     const input = document.createElement("input");
-    input.type = f.type;
+    input.type = f.type; // color / number / text
     input.className = "settings-input";
     input.addEventListener("input", () => this.onFieldChange(f, input));
-    row.appendChild(input);
-
-    this.inputs.set(f.key, input);
-    return row;
+    return input;
   }
 
   private buildFooter(): HTMLElement {
@@ -171,7 +219,7 @@ export class SettingsPanel {
 
   // === 数据同步 ===
 
-  private onFieldChange(f: FieldSpec, input: HTMLInputElement): void {
+  private onFieldChange(f: FieldSpec, input: HTMLInputElement | HTMLSelectElement): void {
     const v = input.value;
     if (v === "") {
       delete this.current[f.key];
@@ -194,7 +242,11 @@ export class SettingsPanel {
         input.value = String(override);
         continue;
       }
-      // 无覆盖：读计算值反向填，作为占位（不写入 this.current）
+      // 无覆盖：select 字段 → 选第一个 option（"默认"）；input 字段 → 读 :root 计算值
+      if (f.type === "font-base" || f.type === "font-mono") {
+        input.value = ""; // 第一个 option 的 value 是空串
+        continue;
+      }
       const cssVar = `--${f.key}`;
       const computed = root.getPropertyValue(cssVar).trim();
       if (f.type === "color") {

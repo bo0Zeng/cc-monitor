@@ -756,6 +756,10 @@ html, body {
 .settings-input[type="number"] {
   width: 70px;
 }
+.settings-input-select {
+  width: 220px;
+  cursor: pointer;
+}
 
 .settings-footer {
   display: flex;
