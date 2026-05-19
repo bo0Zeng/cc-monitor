@@ -1,7 +1,9 @@
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
+import markedKatex from "marked-katex-extension";
 import "highlight.js/styles/atom-one-dark.css";
+import "katex/dist/katex.min.css";
 
 marked.setOptions({
   gfm: true,
@@ -18,6 +20,18 @@ marked.setOptions({
  * 仅引 `highlight.js/lib/common`，约 30 种主流语言，bundle 体积约 100KB；
  * 比 full 包小一个数量级。
  */
+/**
+ * KaTeX 扩展：
+ * - `$...$` 行内、`$$...$$` 块级
+ * - throwOnError: false → 错误 LaTeX 渲染成红色源码而不是抛异常
+ * - 字体由 npm 包内的 katex.min.css 引用，vite 自动打包，绝不走 CDN
+ */
+marked.use(
+  markedKatex({
+    throwOnError: false,
+  }),
+);
+
 marked.use({
   renderer: {
     code(token) {
