@@ -551,7 +551,7 @@ html, body {
   color: var(--error);
 }
 
-/* tool_use 折叠条内部：args + 注入的 result */
+/* tool_use 折叠条内部：args + 注入的 result（嵌套 details） */
 .block-tool-use .block-body-wrap {
   display: flex;
   flex-direction: column;
@@ -563,25 +563,27 @@ html, body {
 .block-tool-use.block-has-error > .block-summary {
   color: var(--error);
 }
-.block-tool-result-inline {
+
+/* 嵌套 details：去外层圆角和边框，让它视觉上是 tool_use 的延续 */
+.block-collapsible.block-nested {
+  margin: 0;
+  border: none;
+  border-radius: 0;
   border-top: 1px solid var(--border-strong);
+  background: transparent;
+}
+.block-tool-result-inline > .block-summary {
+  color: var(--text-2);
   background: var(--overlay-dim);
 }
-.block-tool-result-inline.block-error {
+.block-tool-result-inline.block-error > .block-summary {
+  color: var(--error);
   background: rgba(217, 104, 104, 0.06);
 }
-.block-result-label {
-  padding: 6px 12px 2px;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  color: var(--text-2);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.block-tool-result-inline[open] > .block-summary {
+  border-bottom: 1px solid var(--border-strong);
 }
-.block-tool-result-inline.block-error .block-result-label {
-  color: var(--error);
-}
-.block-tool-result-inline pre.block-body {
+.block-tool-result-inline > pre.block-body {
   margin: 0;
   border-top: none;
 }
