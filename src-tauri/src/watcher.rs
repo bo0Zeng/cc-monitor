@@ -82,11 +82,6 @@ fn is_subagent_path(p: &Path) -> bool {
         .any(|c| c.as_os_str().eq_ignore_ascii_case("subagents"))
 }
 
-/// 首次扫一个 jsonl 文件时最多回放多少行（再多就丢最老的）。避免 monitor
-/// 启动被几天前历史淹没 + 触发 event_replay cap 把展示 snapshot 卡在早期。
-/// 取 1500：覆盖一次比较完整的会话 + 留出余量，超出部分用户基本不会回看。
-const INITIAL_TAIL_LINES: usize = 1500;
-
 fn process_file(
     path: &Path,
     offsets: &Arc<Mutex<HashMap<PathBuf, u64>>>,
@@ -120,7 +115,6 @@ fn process_file(
     // 锁内只读 + 写 offset，文件读循环走在锁外避免阻塞同 watcher 后续事件。
     let last_offset = offsets.lock().get(&key).copied().unwrap_or(0);
     let start = if len < last_offset { 0 } else { last_offset };
-    let is_initial_scan = start == 0;
 
     if start >= len {
         return;
@@ -129,53 +123,24 @@ fn process_file(
         return;
     }
 
+    // 全量发：无论首次扫还是增量都不截断行数。event_replay 的"持锁严格按序
+    // emit"保证前端按 jsonl 文件原始行顺序收到，不会因 snapshot/live emit 并
+    // 发而错乱。代价是启动 IPC 流量大、watcher 阻塞秒级，可接受。
     let reader = BufReader::new(&mut file);
-    if is_initial_scan {
-        // 首次扫：buffer 全部行后只发尾部 N 行
-        let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
-        let total = lines.len();
-        let skip = total.saturating_sub(INITIAL_TAIL_LINES);
-        if skip > 0 {
-            tracing::info!(
-                "watcher initial scan {}: keeping last {} of {} lines",
-                session_id,
-                INITIAL_TAIL_LINES,
-                total
-            );
+    for line in reader.lines().map_while(Result::ok) {
+        let trimmed = line.trim_start_matches('\u{feff}').trim();
+        if trimmed.is_empty() {
+            continue;
         }
-        for line in lines.into_iter().skip(skip) {
-            let trimmed = line.trim_start_matches('\u{feff}').trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            if tx
-                .send(JsonlLine {
-                    session_id: session_id.clone(),
-                    path: path.to_path_buf(),
-                    raw: line,
-                })
-                .is_err()
-            {
-                return;
-            }
-        }
-    } else {
-        // 增量扫：notify 事件触发，按行流式发，不截断
-        for line in reader.lines().map_while(Result::ok) {
-            let trimmed = line.trim_start_matches('\u{feff}').trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            if tx
-                .send(JsonlLine {
-                    session_id: session_id.clone(),
-                    path: path.to_path_buf(),
-                    raw: line,
-                })
-                .is_err()
-            {
-                return;
-            }
+        if tx
+            .send(JsonlLine {
+                session_id: session_id.clone(),
+                path: path.to_path_buf(),
+                raw: line,
+            })
+            .is_err()
+        {
+            return;
         }
     }
     offsets.lock().insert(key, len);
