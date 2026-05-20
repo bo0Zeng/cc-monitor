@@ -89,21 +89,36 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
   switch (rec.type) {
     case "user": {
       const text = extractText(rec.message.content);
-      if (!text.trim()) return { kind: "skip" };
-      if (isCompactSummary(text)) {
-        return {
-          kind: "card",
-          element: buildCompactSummaryCard(text, rec.timestamp, formatTime),
-        };
+      if (text.trim()) {
+        // 纯文本 user 输入：先看 compact / slash 特殊形态，否则普通用户卡
+        if (isCompactSummary(text)) {
+          return {
+            kind: "card",
+            element: buildCompactSummaryCard(text, rec.timestamp, formatTime),
+          };
+        }
+        const slash = parseSlashCommand(text);
+        if (slash) {
+          return {
+            kind: "card",
+            element: buildSlashCommandCard(slash, rec.timestamp, formatTime),
+          };
+        }
+        return { kind: "card", element: buildUserCard(rec, text) };
       }
-      const slash = parseSlashCommand(text);
-      if (slash) {
-        return {
-          kind: "card",
-          element: buildSlashCommandCard(slash, rec.timestamp, formatTime),
-        };
-      }
-      return { kind: "card", element: buildUserCard(rec, text) };
+
+      // text 为空 → 多半是工具结果回灌（content 全是 tool_result 块）。
+      // 拆出 tool_result 块走工具组路径，紧接前一条 assistant 的 tool_use
+      // 在同一外层折叠卡里展示。
+      const blocks = normalizeBlocks(rec.message.content).filter(
+        (b) => b.type === "tool_result",
+      );
+      if (blocks.length === 0) return { kind: "skip" };
+      return {
+        kind: "tool-group",
+        timestamp: rec.timestamp,
+        units: blocks.map((b) => renderBlock(b, rec.timestamp, ctx)),
+      };
     }
     case "assistant": {
       const blocks = normalizeBlocks(rec.message.content);
