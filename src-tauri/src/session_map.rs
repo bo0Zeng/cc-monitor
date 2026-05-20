@@ -105,56 +105,70 @@ impl SessionMap {
         if fg_pid == 0 {
             return None;
         }
-        let parents = parent_map()?;
+        let snap = process_snapshot()?;
         let sessions = self.by_id.read();
-        // 也算出 fg_pid 的祖先链，便于反向匹配（fg 是 claude 的远亲而非直系祖先时也能命中）
-        let fg_ancestors = ancestor_chain(fg_pid, &parents);
+        let fg_ancestors = ancestor_chain(fg_pid, &snap);
         for (sid, info) in sessions.iter() {
-            let session_chain = ancestor_chain(info.pid, &parents);
+            let session_chain = ancestor_chain(info.pid, &snap);
             // 正向：fg_pid 在 session 祖先链上（终端窗口是 claude 的祖先）
-            if session_chain.contains(&fg_pid) {
-                tracing::debug!(
-                    "focus match (forward) sid={sid} session_chain={:?} fg_pid={fg_pid}",
-                    session_chain
+            if session_chain.iter().any(|p| p.0 == fg_pid) {
+                tracing::info!(
+                    "focus match (forward) sid={sid} session_chain={} fg_pid={fg_pid}",
+                    fmt_chain(&session_chain)
                 );
                 return Some(sid.clone());
             }
             // 反向：两者祖先链有共同 PID（VSCode 集成终端等情况，claude 与窗口分属同一 pty/编辑器子树）
-            for ancestor in &session_chain {
-                if fg_ancestors.contains(ancestor) && *ancestor != 0 {
+            for (idx_s, (anc_pid, _)) in session_chain.iter().enumerate() {
+                if *anc_pid == 0 {
+                    continue;
+                }
+                if let Some(idx_f) = fg_ancestors.iter().position(|p| p.0 == *anc_pid) {
                     // 排除 explorer.exe / svchost 这类几乎所有进程都共享的根节点：
                     // 只接受深度合理（< 8）的共同祖先
-                    let depth_in_session = session_chain.iter().position(|p| p == ancestor).unwrap_or(usize::MAX);
-                    let depth_in_fg = fg_ancestors.iter().position(|p| p == ancestor).unwrap_or(usize::MAX);
-                    if depth_in_session < 8 && depth_in_fg < 8 {
-                        tracing::debug!(
-                            "focus match (cousin) sid={sid} common_ancestor={ancestor} \
-                             session_depth={depth_in_session} fg_depth={depth_in_fg}"
+                    if idx_s < 8 && idx_f < 8 {
+                        tracing::info!(
+                            "focus match (cousin) sid={sid} common_ancestor={anc_pid} \
+                             depths=({idx_s},{idx_f}) \
+                             session_chain={} fg_chain={}",
+                            fmt_chain(&session_chain),
+                            fmt_chain(&fg_ancestors),
                         );
                         return Some(sid.clone());
                     }
                 }
             }
         }
-        tracing::debug!(
-            "focus lookup miss: fg_pid={fg_pid} fg_chain={fg_ancestors:?} \
-             session_chains={:?}",
+        // miss 日志改 info 级，且打两条链 + 进程名，方便诊断 WT/VSCode 等场景
+        tracing::info!(
+            "focus lookup miss: fg_pid={fg_pid} fg_chain={} session_chains=[{}]",
+            fmt_chain(&fg_ancestors),
             sessions
                 .iter()
-                .map(|(s, i)| (s.clone(), ancestor_chain(i.pid, &parents)))
+                .map(|(s, i)| format!("{}:{}", &s[..8], fmt_chain(&ancestor_chain(i.pid, &snap))))
                 .collect::<Vec<_>>()
+                .join(" | ")
         );
         None
     }
 }
 
-/// 从 pid 向上 walk parent，返回包含 pid 自身和所有祖先的链（不超过 32 层）。
-fn ancestor_chain(pid: u32, parents: &HashMap<u32, u32>) -> Vec<u32> {
+#[derive(Clone)]
+struct ProcInfo {
+    parent: u32,
+    name: String,
+}
+
+/// 从 pid 向上 walk parent，返回包含 pid 自身和所有祖先（pid + 进程名）的链。
+fn ancestor_chain(pid: u32, snap: &HashMap<u32, ProcInfo>) -> Vec<(u32, String)> {
     let mut out = Vec::with_capacity(8);
     let mut cur = pid;
     for _ in 0..32 {
-        out.push(cur);
-        let Some(&parent) = parents.get(&cur) else { break };
+        let info = snap.get(&cur);
+        let name = info.map(|i| i.name.clone()).unwrap_or_else(|| "?".into());
+        out.push((cur, name));
+        let Some(info) = info else { break };
+        let parent = info.parent;
         if parent == 0 || parent == cur {
             break;
         }
@@ -163,9 +177,18 @@ fn ancestor_chain(pid: u32, parents: &HashMap<u32, u32>) -> Vec<u32> {
     out
 }
 
-/// 当前所有进程的 pid → parent_pid 映射。一次 ToolHelp 快照。
+/// 把祖先链格式化成 "pid:name → pid:name → ..." 便于读
+fn fmt_chain(chain: &[(u32, String)]) -> String {
+    chain
+        .iter()
+        .map(|(pid, name)| format!("{pid}:{name}"))
+        .collect::<Vec<_>>()
+        .join("→")
+}
+
+/// 当前所有进程的 pid → (parent_pid, exe_name) 映射。一次 ToolHelp 快照。
 #[cfg(windows)]
-fn parent_map() -> Option<HashMap<u32, u32>> {
+fn process_snapshot() -> Option<HashMap<u32, ProcInfo>> {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
@@ -176,8 +199,7 @@ fn parent_map() -> Option<HashMap<u32, u32>> {
             Ok(h) => h,
             Err(_) => return None,
         };
-        // 即使后续路径异常，也保证 CloseHandle 一定走
-        let result: Option<HashMap<u32, u32>> = if snap.is_invalid() {
+        let result: Option<HashMap<u32, ProcInfo>> = if snap.is_invalid() {
             None
         } else {
             let mut entry = PROCESSENTRY32 {
@@ -187,7 +209,14 @@ fn parent_map() -> Option<HashMap<u32, u32>> {
             let mut map = HashMap::new();
             if Process32First(snap, &mut entry).is_ok() {
                 loop {
-                    map.insert(entry.th32ProcessID, entry.th32ParentProcessID);
+                    let name = exe_name_from_buf(&entry.szExeFile);
+                    map.insert(
+                        entry.th32ProcessID,
+                        ProcInfo {
+                            parent: entry.th32ParentProcessID,
+                            name,
+                        },
+                    );
                     if Process32Next(snap, &mut entry).is_err() {
                         break;
                     }
@@ -200,8 +229,15 @@ fn parent_map() -> Option<HashMap<u32, u32>> {
     }
 }
 
+#[cfg(windows)]
+fn exe_name_from_buf(buf: &[i8]) -> String {
+    let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    let bytes: Vec<u8> = buf[..end].iter().map(|&b| b as u8).collect();
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
 #[cfg(not(windows))]
-fn parent_map() -> Option<HashMap<u32, u32>> {
+fn process_snapshot() -> Option<HashMap<u32, ProcInfo>> {
     None
 }
 
