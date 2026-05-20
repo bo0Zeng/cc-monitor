@@ -362,47 +362,52 @@ function injectOrBuildToolResult(
   if (host) {
     const wrap = host.querySelector(".block-body-wrap");
     if (wrap) {
+      // result 自己也是 details，默认收起，避免长输出占满
       let resultEl = wrap.querySelector(
         ".block-tool-result-inline",
-      ) as HTMLElement | null;
+      ) as HTMLDetailsElement | null;
       if (!resultEl) {
-        resultEl = document.createElement("div");
-        resultEl.className = "block-tool-result-inline";
+        resultEl = document.createElement("details");
+        resultEl.className =
+          "block-tool-result-inline block-collapsible block-nested";
         wrap.appendChild(resultEl);
+      } else {
+        resultEl.replaceChildren();
       }
       if (block.is_error) {
         resultEl.classList.add("block-error");
         host.classList.add("block-has-error");
       }
-      resultEl.replaceChildren();
-      const label = document.createElement("div");
-      label.className = "block-result-label";
-      label.textContent = block.is_error
+
+      const labelPrefix = block.is_error
         ? exitCode !== null
           ? `Error · exit ${exitCode}`
           : "Error"
         : "Output";
-      resultEl.appendChild(label);
+      const sizeHint = approximateSize(block.content);
+      const summary = document.createElement("summary");
+      summary.className = "block-summary";
+      summary.textContent = preview
+        ? `${labelPrefix} · ${preview}`
+        : `${labelPrefix} · ${sizeHint}`;
+      resultEl.appendChild(summary);
+
       const pre = document.createElement("pre");
       pre.className = "block-body block-body-result";
       pre.textContent = text;
       resultEl.appendChild(pre);
 
-      // 同步更新 summary（命令名 + 预览 / 错误码）
-      const summaryEl = host.querySelector(".block-summary") as HTMLElement | null;
+      // 同步 tool_use summary：只在原 summary 末尾追加错误标记（不重复加预览，
+      // 预览已经在 result 自己的 summary 上）。防止反复追加。
+      const summaryEl = host.querySelector(
+        ":scope > .block-summary",
+      ) as HTMLElement | null;
       if (summaryEl) {
-        const argsHint = summarizeInput(
-          (block as unknown as { _origInput?: unknown })._origInput,
-        ); // tool_use 已写过 summary，这里只在末尾追加 result 信息
-        // 不重写 args 部分，只追加错误标记 + preview（如果原 summary 没显示）
-        // 简化：原 summary "🔧 Name  input"，追加 " · exit N · <preview>"
-        const base = summaryEl.textContent ?? "";
-        // 防止反复追加：识别 "· exit" / "· Output" 已存在
-        const cleaned = base.replace(/\s+·\s+(exit \d+|error|Output|.+)$/u, "");
-        summaryEl.textContent = preview
-          ? `${cleaned}${errTag} · ${preview}`
-          : `${cleaned}${errTag}`;
-        void argsHint;
+        const base = (summaryEl.textContent ?? "").replace(
+          /\s+·\s+(exit\s+\d+|error)$/iu,
+          "",
+        );
+        summaryEl.textContent = `${base}${errTag}`;
       }
     }
     return null;
