@@ -32,6 +32,11 @@ pub struct SessionInfo {
     pub proc_start: String,
     #[serde(default)]
     pub status: Option<String>,
+    /// Claude 给会话起的语义名（aka ai-title）。Claude Code 同时把它设到 console
+    /// title，所以 WindowsTerminal 窗口的 tab title 实际是这个值——bring_to_front
+    /// 用它做 window title 匹配。
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 pub struct SessionMap {
@@ -133,13 +138,33 @@ impl SessionMap {
             cur = p.parent;
         }
 
-        // 项目名（cwd 最后一段）+ 前缀（前 8 字符，应对 title 截断长项目名的情况）
+        // 匹配 term 优先级：
+        //   1) session.name (= ai-title)，Claude Code 实际写到 console title 的字符串
+        //      —— 这是 WindowsTerminal tab title 的真实内容
+        //   2) cwd 项目名（cwd 最后一段），fallback 给没 ai-title 的早期 session
         let project = info
             .cwd
             .rsplit(['\\', '/'])
             .find(|s| !s.is_empty())
             .unwrap_or("");
-        let project_prefix: String = project.chars().take(8).collect();
+        let ai_title = info.name.as_deref().unwrap_or("").trim();
+        // 候选 search terms（按优先级），过滤掉太短的（< 4 字符避免误匹配）
+        let mut search_terms: Vec<String> = Vec::new();
+        if ai_title.len() >= 4 {
+            search_terms.push(ai_title.to_string());
+            // ai-title 前 12 字符前缀，应对 WT title 截断长 title
+            let prefix: String = ai_title.chars().take(12).collect();
+            if prefix.len() >= 4 && prefix != ai_title {
+                search_terms.push(prefix);
+            }
+        }
+        if project.len() >= 4 {
+            search_terms.push(project.to_string());
+            let p: String = project.chars().take(8).collect();
+            if p.len() >= 4 && p != project {
+                search_terms.push(p);
+            }
+        }
 
         let mut tier_a: Option<windows::Win32::Foundation::HWND> = None;
         let mut tier_b: Option<windows::Win32::Foundation::HWND> = None;
@@ -148,10 +173,8 @@ impl SessionMap {
 
         for w in &windows_list {
             let proc_name = snap.get(&w.pid).map(|p| p.name.as_str()).unwrap_or("");
-            // 全名命中或前缀（8 字符）命中都算 —— WT title 有时会截断长项目名
-            let title_match = !project.is_empty()
-                && (w.title.contains(project)
-                    || (project_prefix.len() >= 4 && w.title.contains(&project_prefix)));
+            // 命中任一 search term 即视为 title 匹配
+            let title_match = search_terms.iter().any(|term| w.title.contains(term));
             let in_ancestors = ancestors.contains(&w.pid);
             let is_terminal = is_terminal_process(proc_name);
             let is_system = is_system_shell_process(proc_name);
@@ -192,15 +215,17 @@ impl SessionMap {
                 .map(|w| format!("pid={} title={:?}", w.pid, w.title))
                 .collect();
             return Err(format!(
-                "no terminal window for session {session_id} (pid {}, project={project}); \
+                "no terminal window for session {session_id} (pid {}, search_terms={:?}); \
                  candidates: [{}]",
                 info.pid,
+                search_terms,
                 terminal_windows.join(" | ")
             ));
         };
 
         tracing::info!(
-            "bring_to_front sid={session_id} project={project} tier={tier} hwnd={:?}",
+            "bring_to_front sid={session_id} terms={:?} tier={tier} hwnd={:?}",
+            search_terms,
             hwnd
         );
 
