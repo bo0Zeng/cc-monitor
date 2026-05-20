@@ -107,22 +107,60 @@ impl SessionMap {
         }
         let parents = parent_map()?;
         let sessions = self.by_id.read();
+        // 也算出 fg_pid 的祖先链，便于反向匹配（fg 是 claude 的远亲而非直系祖先时也能命中）
+        let fg_ancestors = ancestor_chain(fg_pid, &parents);
         for (sid, info) in sessions.iter() {
-            let mut cur = info.pid;
-            // 最多 walk 32 层，防御循环或异常深的进程树
-            for _ in 0..32 {
-                if cur == fg_pid {
-                    return Some(sid.clone());
+            let session_chain = ancestor_chain(info.pid, &parents);
+            // 正向：fg_pid 在 session 祖先链上（终端窗口是 claude 的祖先）
+            if session_chain.contains(&fg_pid) {
+                tracing::debug!(
+                    "focus match (forward) sid={sid} session_chain={:?} fg_pid={fg_pid}",
+                    session_chain
+                );
+                return Some(sid.clone());
+            }
+            // 反向：两者祖先链有共同 PID（VSCode 集成终端等情况，claude 与窗口分属同一 pty/编辑器子树）
+            for ancestor in &session_chain {
+                if fg_ancestors.contains(ancestor) && *ancestor != 0 {
+                    // 排除 explorer.exe / svchost 这类几乎所有进程都共享的根节点：
+                    // 只接受深度合理（< 8）的共同祖先
+                    let depth_in_session = session_chain.iter().position(|p| p == ancestor).unwrap_or(usize::MAX);
+                    let depth_in_fg = fg_ancestors.iter().position(|p| p == ancestor).unwrap_or(usize::MAX);
+                    if depth_in_session < 8 && depth_in_fg < 8 {
+                        tracing::debug!(
+                            "focus match (cousin) sid={sid} common_ancestor={ancestor} \
+                             session_depth={depth_in_session} fg_depth={depth_in_fg}"
+                        );
+                        return Some(sid.clone());
+                    }
                 }
-                let Some(&parent) = parents.get(&cur) else { break };
-                if parent == 0 || parent == cur {
-                    break;
-                }
-                cur = parent;
             }
         }
+        tracing::debug!(
+            "focus lookup miss: fg_pid={fg_pid} fg_chain={fg_ancestors:?} \
+             session_chains={:?}",
+            sessions
+                .iter()
+                .map(|(s, i)| (s.clone(), ancestor_chain(i.pid, &parents)))
+                .collect::<Vec<_>>()
+        );
         None
     }
+}
+
+/// 从 pid 向上 walk parent，返回包含 pid 自身和所有祖先的链（不超过 32 层）。
+fn ancestor_chain(pid: u32, parents: &HashMap<u32, u32>) -> Vec<u32> {
+    let mut out = Vec::with_capacity(8);
+    let mut cur = pid;
+    for _ in 0..32 {
+        out.push(cur);
+        let Some(&parent) = parents.get(&cur) else { break };
+        if parent == 0 || parent == cur {
+            break;
+        }
+        cur = parent;
+    }
+    out
 }
 
 /// 当前所有进程的 pid → parent_pid 映射。一次 ToolHelp 快照。
