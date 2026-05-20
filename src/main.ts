@@ -65,6 +65,32 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   document.getElementById("app")?.appendChild(settingsTrigger);
 
+  // 代码块"复制"按钮全局事件代理：marked code renderer 输出 HTML 字符串无法
+  // 在生成时挂 listener，统一在这里 delegate。click 命中 .code-copy 时把所在
+  // .code-block 里 <pre> 的纯文本扔进剪贴板。
+  document.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement | null)?.closest?.(".code-copy");
+    if (!btn) return;
+    const block = btn.closest(".code-block");
+    const pre = block?.querySelector("pre");
+    const text = pre?.textContent ?? "";
+    if (!text) return;
+    void navigator.clipboard.writeText(text).then(
+      () => {
+        btn.classList.add("copied");
+        btn.textContent = "已复制";
+        window.setTimeout(() => {
+          btn.classList.remove("copied");
+          btn.textContent = "复制";
+        }, 1200);
+      },
+      () => {
+        btn.textContent = "失败";
+        window.setTimeout(() => (btn.textContent = "复制"), 1200);
+      },
+    );
+  });
+
   // 快捷键：Ctrl+Tab 切下一个 / Ctrl+Shift+Tab 切上一个 / Ctrl+W 关 archived /
   // Ctrl+, 开设置；Esc 关设置在 SettingsPanel 内部处理。
   window.addEventListener("keydown", (e) => {
