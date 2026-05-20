@@ -96,19 +96,22 @@ impl SessionMap {
 
     /// 把指定 session 对应的终端窗口调到前台。
     ///
-    /// 两步策略：
-    /// 1. 沿 claude.pid parent 链向上 walk，跳过系统 shell 进程（explorer/dwm/
-    ///    svchost 等），对剩余每个 PID 找它拥有的可见 top-level window；命中
-    ///    第一个即激活。对**独立 conhost / mintty / Alacritty 等**每窗口独立
-    ///    PID 的终端，这一步精确命中对应窗口。
-    /// 2. walk 全程未命中（WindowsTerminal 包装 PowerShell 时常见——
-    ///    PowerShell.exe 没自己的窗口，parent 是 explorer 又被跳过）→ fallback
-    ///    扫所有进程，找终端类（WindowsTerminal/conhost/OpenConsole/wt 等）
-    ///    且持有可见 top-level window 的进程，激活第一个找到的。WT 单进程多
-    ///    窗口架构下这只能调到"某个 WT 窗口"而非精确 tab，但至少把用户切到
-    ///    终端 UI 而非桌面。
+    /// 四级匹配策略（从精确到宽松）：
+    ///  A. 祖先链 PID 的窗口 + title 含 session.cwd 项目名（最精确，能区分独
+    ///     立 conhost 同名窗口）
+    ///  B. 祖先链 PID 的窗口（任意 title）
+    ///  C. 终端类进程的窗口 + title 含项目名（WT 多窗口时按项目名区分）
+    ///  D. 终端类进程的任一窗口（兜底，WT 默认 title 不含项目名时退化为此）
+    ///
+    /// **WT 限制**：多个 WT 窗口共享同一 WT.exe PID，只有 hwnd 不同。若用户没
+    /// 把 WT tab/window title 设成含 cwd / 项目名的字符串，A/C tier 永远匹配
+    /// 不上，所有 session 的 ↗ 都会落到 D tier 的第一个 WT 窗口。要分到具体
+    /// 窗口，用户需要在 PowerShell startup 里加：
+    ///     `$Host.UI.RawUI.WindowTitle = Split-Path -Leaf $PWD`
     #[cfg(windows)]
     pub fn bring_terminal_to_front(&self, session_id: &str) -> Result<(), String> {
+        use std::collections::HashSet;
+
         let info = self
             .by_id
             .read()
@@ -116,47 +119,75 @@ impl SessionMap {
             .cloned()
             .ok_or_else(|| format!("session {session_id} not in map"))?;
         let snap = process_info_snapshot().ok_or_else(|| "snapshot failed".to_string())?;
+        let windows_list = enumerate_top_level_windows();
 
-        // 1. walk ancestor chain，跳过系统 shell
+        // 祖先 PID 集合（跳过系统 shell）
+        let mut ancestors: HashSet<u32> = HashSet::new();
         let mut cur = info.pid;
         for _ in 0..32 {
-            let Some(proc_info) = snap.get(&cur) else { break };
-            if !is_system_shell_process(&proc_info.name) {
-                if let Some(hwnd) = first_visible_top_level_for(cur) {
-                    tracing::info!(
-                        "bring_to_front sid={session_id} via ancestor pid={cur} name={}",
-                        proc_info.name
-                    );
-                    return activate_window(hwnd);
-                }
-            } else {
-                tracing::debug!(
-                    "bring_to_front skip system shell pid={cur} name={}",
-                    proc_info.name
-                );
-            }
-            if proc_info.parent == 0 || proc_info.parent == cur {
+            ancestors.insert(cur);
+            let Some(p) = snap.get(&cur) else { break };
+            if p.parent == 0 || p.parent == cur {
                 break;
             }
-            cur = proc_info.parent;
+            cur = p.parent;
         }
 
-        // 2. fallback: 找已知终端类进程的窗口
-        for (pid, p) in snap.iter() {
-            if is_terminal_process(&p.name) {
-                if let Some(hwnd) = first_visible_top_level_for(*pid) {
-                    tracing::info!(
-                        "bring_to_front sid={session_id} via fallback terminal pid={pid} name={}",
-                        p.name
-                    );
-                    return activate_window(hwnd);
+        // 项目名（cwd 最后一段）
+        let project = info
+            .cwd
+            .rsplit(['\\', '/'])
+            .find(|s| !s.is_empty())
+            .unwrap_or("");
+
+        let mut tier_a: Option<windows::Win32::Foundation::HWND> = None;
+        let mut tier_b: Option<windows::Win32::Foundation::HWND> = None;
+        let mut tier_c: Option<windows::Win32::Foundation::HWND> = None;
+        let mut tier_d: Option<windows::Win32::Foundation::HWND> = None;
+
+        for w in &windows_list {
+            let proc_name = snap.get(&w.pid).map(|p| p.name.as_str()).unwrap_or("");
+            let title_match = !project.is_empty() && w.title.contains(project);
+            let in_ancestors = ancestors.contains(&w.pid);
+            let is_terminal = is_terminal_process(proc_name);
+            let is_system = is_system_shell_process(proc_name);
+
+            if in_ancestors && !is_system {
+                if title_match && tier_a.is_none() {
+                    tier_a = Some(w.hwnd);
+                } else if tier_b.is_none() {
+                    tier_b = Some(w.hwnd);
+                }
+            }
+            if is_terminal {
+                if title_match && tier_c.is_none() {
+                    tier_c = Some(w.hwnd);
+                } else if tier_d.is_none() {
+                    tier_d = Some(w.hwnd);
                 }
             }
         }
-        Err(format!(
-            "no terminal window found for session {session_id} (pid {})",
-            info.pid
-        ))
+
+        let (hwnd, tier) = if let Some(h) = tier_a {
+            (h, "A:ancestor+title")
+        } else if let Some(h) = tier_b {
+            (h, "B:ancestor")
+        } else if let Some(h) = tier_c {
+            (h, "C:terminal+title")
+        } else if let Some(h) = tier_d {
+            (h, "D:terminal-any")
+        } else {
+            return Err(format!(
+                "no terminal window for session {session_id} (pid {}, project={project})",
+                info.pid
+            ));
+        };
+
+        tracing::info!(
+            "bring_to_front sid={session_id} project={project} tier={tier} hwnd={:?}",
+            hwnd
+        );
+        activate_window(hwnd)
     }
 
     #[cfg(not(windows))]
@@ -256,50 +287,61 @@ fn process_info_snapshot() -> Option<HashMap<u32, ProcInfo>> {
     }
 }
 
-/// 给定 PID，返回其拥有的第一个可见 top-level 窗口。
+/// 单个 top-level 窗口的快照信息。
 #[cfg(windows)]
-fn first_visible_top_level_for(pid: u32) -> Option<windows::Win32::Foundation::HWND> {
-    use std::cell::Cell;
+struct WindowSnap {
+    hwnd: windows::Win32::Foundation::HWND,
+    pid: u32,
+    title: String,
+}
+
+/// 枚举所有可见 top-level（无 owner）窗口，连同它们的 PID 与 title。
+#[cfg(windows)]
+fn enumerate_top_level_windows() -> Vec<WindowSnap> {
+    use std::cell::RefCell;
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindow, GetWindowThreadProcessId, IsWindowVisible, GW_OWNER,
+        EnumWindows, GetWindow, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
+        IsWindowVisible, GW_OWNER,
     };
 
-    // 用 thread_local 把 (target_pid, found_hwnd) 传给 C 回调，避免在 closure 里捕获
     thread_local! {
-        static TARGET_PID: Cell<u32> = const { Cell::new(0) };
-        static FOUND_HWND: Cell<isize> = const { Cell::new(0) };
+        static COLLECTOR: RefCell<Vec<WindowSnap>> = const { RefCell::new(Vec::new()) };
     }
-    TARGET_PID.with(|c| c.set(pid));
-    FOUND_HWND.with(|c| c.set(0));
+    COLLECTOR.with(|c| c.borrow_mut().clear());
 
     unsafe extern "system" fn cb(hwnd: HWND, _lp: LPARAM) -> BOOL {
-        // top-level 窗口（无 owner）+ 可见
         if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
-            return BOOL(1); // continue
+            return BOOL(1);
         }
         if unsafe { GetWindow(hwnd, GW_OWNER) }.0 != 0 {
             return BOOL(1);
         }
-        let mut w_pid: u32 = 0;
-        let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut w_pid)) };
-        let target = TARGET_PID.with(|c| c.get());
-        if w_pid == target {
-            FOUND_HWND.with(|c| c.set(hwnd.0));
-            return BOOL(0); // stop
+        let mut pid: u32 = 0;
+        let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+        if pid == 0 {
+            return BOOL(1);
         }
+        let title = unsafe {
+            let len = GetWindowTextLengthW(hwnd);
+            if len <= 0 {
+                String::new()
+            } else {
+                let mut buf = vec![0u16; (len + 1) as usize];
+                let n = GetWindowTextW(hwnd, &mut buf);
+                String::from_utf16_lossy(&buf[..n as usize])
+            }
+        };
+        COLLECTOR.with(|c| {
+            c.borrow_mut().push(WindowSnap { hwnd, pid, title });
+        });
         BOOL(1)
     }
 
     unsafe {
         let _ = EnumWindows(Some(cb), LPARAM(0));
     }
-    let h = FOUND_HWND.with(|c| c.get());
-    if h == 0 {
-        None
-    } else {
-        Some(windows::Win32::Foundation::HWND(h))
-    }
+    COLLECTOR.with(|c| std::mem::take(&mut *c.borrow_mut()))
 }
 
 #[cfg(windows)]
