@@ -104,6 +104,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     } else if (e.key === ",") {
       e.preventDefault();
       void settingsPanel.open();
+    } else if (e.key === "`") {
+      e.preventDefault();
+      tabs.bringActiveTerminalToFront();
     }
   });
 
