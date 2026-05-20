@@ -106,6 +106,18 @@ impl SessionMap {
             return None;
         }
         let snap = process_snapshot()?;
+        // 拒绝系统 shell 进程作为前台 PID —— explorer / dwm / 桌面任务栏 等
+        // 都在 claude 进程链上（因为 PowerShell 从开始菜单启动 → parent=explorer），
+        // 不过滤就会随机命中第一个 session（HashMap 顺序不确定）。
+        if let Some(info) = snap.get(&fg_pid) {
+            if is_system_shell_process(&info.name) {
+                tracing::debug!(
+                    "focus ignored: fg_pid={fg_pid} is system process {}",
+                    info.name
+                );
+                return None;
+            }
+        }
         let sessions = self.by_id.read();
         let fg_ancestors = ancestor_chain(fg_pid, &snap);
         for (sid, info) in sessions.iter() {
@@ -157,6 +169,26 @@ impl SessionMap {
 struct ProcInfo {
     parent: u32,
     name: String,
+}
+
+/// 这些进程是系统 shell / 显示组件 / 服务宿主，几乎所有用户进程都把它们当祖先；
+/// 它们出现在前台只代表"用户切到桌面/任务栏/系统服务"，不应触发任何 session 切换。
+fn is_system_shell_process(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "explorer.exe"
+            | "dwm.exe"
+            | "services.exe"
+            | "svchost.exe"
+            | "wininit.exe"
+            | "csrss.exe"
+            | "smss.exe"
+            | "lsass.exe"
+            | "winlogon.exe"
+            | "shellexperiencehost.exe"
+            | "searchhost.exe"
+            | "startmenuexperiencehost.exe"
+    )
 }
 
 /// 从 pid 向上 walk parent，返回包含 pid 自身和所有祖先（pid + 进程名）的链。
