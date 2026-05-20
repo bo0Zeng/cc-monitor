@@ -133,12 +133,13 @@ impl SessionMap {
             cur = p.parent;
         }
 
-        // 项目名（cwd 最后一段）
+        // 项目名（cwd 最后一段）+ 前缀（前 8 字符，应对 title 截断长项目名的情况）
         let project = info
             .cwd
             .rsplit(['\\', '/'])
             .find(|s| !s.is_empty())
             .unwrap_or("");
+        let project_prefix: String = project.chars().take(8).collect();
 
         let mut tier_a: Option<windows::Win32::Foundation::HWND> = None;
         let mut tier_b: Option<windows::Win32::Foundation::HWND> = None;
@@ -147,7 +148,10 @@ impl SessionMap {
 
         for w in &windows_list {
             let proc_name = snap.get(&w.pid).map(|p| p.name.as_str()).unwrap_or("");
-            let title_match = !project.is_empty() && w.title.contains(project);
+            // 全名命中或前缀（8 字符）命中都算 —— WT title 有时会截断长项目名
+            let title_match = !project.is_empty()
+                && (w.title.contains(project)
+                    || (project_prefix.len() >= 4 && w.title.contains(&project_prefix)));
             let in_ancestors = ancestors.contains(&w.pid);
             let is_terminal = is_terminal_process(proc_name);
             let is_system = is_system_shell_process(proc_name);
@@ -177,9 +181,21 @@ impl SessionMap {
         } else if let Some(h) = tier_d {
             (h, "D:terminal-any")
         } else {
+            // 完全没命中 —— 打全部终端类窗口的 (pid, title) 给诊断用
+            let terminal_windows: Vec<String> = windows_list
+                .iter()
+                .filter(|w| {
+                    snap.get(&w.pid)
+                        .map(|p| is_terminal_process(&p.name))
+                        .unwrap_or(false)
+                })
+                .map(|w| format!("pid={} title={:?}", w.pid, w.title))
+                .collect();
             return Err(format!(
-                "no terminal window for session {session_id} (pid {}, project={project})",
-                info.pid
+                "no terminal window for session {session_id} (pid {}, project={project}); \
+                 candidates: [{}]",
+                info.pid,
+                terminal_windows.join(" | ")
             ));
         };
 
@@ -187,6 +203,26 @@ impl SessionMap {
             "bring_to_front sid={session_id} project={project} tier={tier} hwnd={:?}",
             hwnd
         );
+
+        // tier D 兜底意味着按项目名找不到精确窗口；输出所有终端类窗口的 title
+        // 给诊断（仅 D 时打，避免 A/B/C 命中时刷屏）
+        if tier == "D:terminal-any" {
+            let terminal_windows: Vec<String> = windows_list
+                .iter()
+                .filter(|w| {
+                    snap.get(&w.pid)
+                        .map(|p| is_terminal_process(&p.name))
+                        .unwrap_or(false)
+                })
+                .map(|w| format!("{:?}=\"{}\"", w.hwnd, w.title))
+                .collect();
+            tracing::info!(
+                "  ↳ tier-D candidates ({} terminal windows): [{}]",
+                terminal_windows.len(),
+                terminal_windows.join(" | ")
+            );
+        }
+
         activate_window(hwnd)
     }
 
