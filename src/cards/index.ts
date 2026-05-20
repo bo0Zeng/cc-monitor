@@ -96,7 +96,12 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
     case "user": {
       const text = extractText(rec.message.content);
       if (text.trim()) {
-        // 纯文本 user 输入：先看 compact / slash 特殊形态，否则普通用户卡
+        // 纯文本 user 输入：先过滤 Claude Code CLI 内部注入的 prompt 包装
+        // （<task-notification>…</task-notification> 后台命令完成通知 +
+        // "Continue from where you left off." 样板），不是真实用户输入
+        if (isInternalUserNoise(text)) {
+          return { kind: "skip" };
+        }
         if (isCompactSummary(text)) {
           return {
             kind: "card",
@@ -133,7 +138,11 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
     case "assistant": {
       const blocks = normalizeBlocks(rec.message.content);
       const meaningful = blocks.filter((b) => {
-        if (b.type === "text") return b.text.trim().length > 0;
+        if (b.type === "text") {
+          // 过滤 `<synthetic>` 包裹的自动应答（claude 内部 "No response
+          // requested." 之类），非真回复
+          return b.text.trim().length > 0 && !isSyntheticReply(b.text);
+        }
         if (b.type === "thinking") return b.thinking.trim().length > 0;
         return true;
       });
@@ -501,6 +510,36 @@ function firstLinePreview(text: string, max: number): string {
 function extractExitCode(text: string): number | null {
   const m = text.match(/Exit code (\d+)/);
   return m ? Number(m[1]) : null;
+}
+
+/**
+ * 识别 Claude Code CLI 注入到 user message 里的 prompt 包装：
+ * - `<task-notification>...</task-notification>` 后台命令完成通知（含 status/summary 等）
+ * - `Continue from where you left off.` 接续提示样板
+ * - `<system-reminder>...</system-reminder>` 各种系统级提醒
+ *
+ * 这些不是用户真实输入，剥离后若无剩余内容就 skip 整条 user 消息。
+ */
+function isInternalUserNoise(text: string): boolean {
+  const stripped = text
+    .replace(/<task-notification>[\s\S]*?<\/task-notification>/g, "")
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+    .replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/g, "")
+    .replace(/^continue from where you left off\.?$/gim, "")
+    .replace(/^no response requested\.?$/gim, "")
+    .trim();
+  return stripped.length === 0;
+}
+
+/**
+ * 识别 assistant 自动应答（claude 在收到 task-notification 之类时回的 `<synthetic>`
+ * 包裹的"无内容应答"），不是真实对话内容。
+ */
+function isSyntheticReply(text: string): boolean {
+  const t = text.trim();
+  if (!t.startsWith("<synthetic>")) return false;
+  // 简短 synthetic（如 "No response requested."）一律视为内部应答
+  return t.length < 300;
 }
 
 // === helpers ===
