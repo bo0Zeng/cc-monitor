@@ -26,10 +26,16 @@ pub fn spawn_watcher(root: PathBuf, active: ActiveFilter) -> mpsc::UnboundedRece
     let (tx, rx) = mpsc::unbounded_channel::<JsonlLine>();
     let offsets: Arc<Mutex<HashMap<PathBuf, u64>>> = Arc::new(Mutex::new(HashMap::new()));
 
-    std::thread::Builder::new()
+    // spawn 失败不要 panic 整个 app（生产场景应该日志降级，让 UI 至少能开）
+    if let Err(e) = std::thread::Builder::new()
         .name("jsonl-watcher".into())
         .spawn(move || run_watcher(root, offsets, tx, active))
-        .expect("spawn watcher thread");
+    {
+        tracing::error!(
+            "spawn jsonl-watcher thread failed: {e}; \
+             monitor will start but won't show any session content"
+        );
+    }
 
     rx
 }

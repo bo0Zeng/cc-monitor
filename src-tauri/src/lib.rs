@@ -1,8 +1,10 @@
 mod bridge;
 mod config;
 mod event_replay;
+mod history;
 mod messages;
 mod parser;
+mod paths;
 mod session_map;
 mod subagent;
 mod watcher;
@@ -22,6 +24,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Debug build 自动开 DevTools
             #[cfg(debug_assertions)]
@@ -29,9 +32,11 @@ pub fn run() {
                 window.open_devtools();
             }
 
-            let home = dirs::home_dir().ok_or("home dir not found")?;
-            let projects_dir = home.join(".claude").join("projects");
-            let sessions_dir = home.join(".claude").join("sessions");
+            // Claude 数据目录走三级回退：用户配置 → CLAUDE_CONFIG_DIR → ~/.claude
+            let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
+            tracing::info!("monitor using claude_dir: {}", claude_dir.display());
+            let projects_dir = claude_dir.join("projects");
+            let sessions_dir = claude_dir.join("sessions");
 
             // SessionMap = Claude Code 自己维护的 ~/.claude/sessions/<PID>.json
             let (session_map, session_changes) =
@@ -134,6 +139,12 @@ pub fn run() {
             subagent::load_subagent,
             forget_session,
             bring_terminal_to_front,
+            history::list_history_projects,
+            history::list_history_sessions_in_project,
+            history::read_session_jsonl,
+            history::delete_history_session,
+            history::update_history_metadata,
+            history::resume_history_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

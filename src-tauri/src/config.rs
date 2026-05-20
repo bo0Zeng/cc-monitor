@@ -1,14 +1,17 @@
 //! 用户配置 R/W —— `~/.claude/claudecode-frontend/config.json`。
 //!
 //! Rust 端不解释配置内容（schema 在前端定义），只负责原子读写 + 文件缺失时
-//! 给出最小骨架。前端 theme.ts / 后续 settings UI 通过 invoke 调到这里。
+//! 给出最小骨架。前端 theme.ts / settings UI 通过 invoke 调到这里。
+//!
+//! 配置文件位置走 `paths::resolve_config_path` —— monitor 自己的设置永远在
+//! 默认 `~/.claude/claudecode-frontend/` 下，不跟随 `claudeDir` 字段变化。
 
+use crate::paths;
 use serde_json::Value;
-use std::path::PathBuf;
 
 #[tauri::command]
 pub fn load_config() -> Result<Value, String> {
-    let path = config_path().ok_or_else(|| "no home dir".to_string())?;
+    let path = paths::resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
     if !path.exists() {
         return Ok(default_config());
     }
@@ -18,7 +21,7 @@ pub fn load_config() -> Result<Value, String> {
 
 #[tauri::command]
 pub fn save_config(value: Value) -> Result<(), String> {
-    let path = config_path().ok_or_else(|| "no home dir".to_string())?;
+    let path = paths::resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
@@ -57,15 +60,6 @@ fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Resu
 #[cfg(not(windows))]
 fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
     std::fs::rename(src, dst)
-}
-
-fn config_path() -> Option<PathBuf> {
-    Some(
-        dirs::home_dir()?
-            .join(".claude")
-            .join("claudecode-frontend")
-            .join("config.json"),
-    )
 }
 
 /// 文件缺失时返回的最小骨架。仅做占位，前端读到没有 `theme` 字段会用 :root 默认值。

@@ -3,8 +3,15 @@
 
 $ErrorActionPreference = "SilentlyContinue"
 
+# Claude 数据目录解析（与 paths.rs 一致）：CLAUDE_CONFIG_DIR > ~/.claude
+if ($env:CLAUDE_CONFIG_DIR -and (Test-Path $env:CLAUDE_CONFIG_DIR)) {
+    $claude_dir = $env:CLAUDE_CONFIG_DIR
+} else {
+    $claude_dir = Join-Path $env:USERPROFILE ".claude"
+}
+
 # 调试日志：每次 hook 被调用都写一行（不管后面成不成功）
-$dbg_log = Join-Path $env:USERPROFILE ".claude\claudecode-frontend\hook-debug.log"
+$dbg_log = Join-Path $claude_dir "claudecode-frontend\hook-debug.log"
 $dbg_dir = Split-Path $dbg_log -Parent
 if (-not (Test-Path $dbg_dir)) { New-Item -ItemType Directory -Path $dbg_dir -Force | Out-Null }
 $now = (Get-Date).ToString("o")
@@ -70,7 +77,7 @@ $claude_pid = Get-ParentPid $hook_pid
 $shell_pid  = Get-ParentPid $claude_pid
 $term_pid   = Find-TerminalPid $hook_pid
 
-$dir = Join-Path $env:USERPROFILE ".claude\claudecode-frontend"
+$dir = Join-Path $claude_dir "claudecode-frontend"
 if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
 $map_path = Join-Path $dir "sessions.json"
 

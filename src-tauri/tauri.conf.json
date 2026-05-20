@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Claude Code",
-  "version": "0.1.0",
-  "identifier": "com.local.monitor",
+  "productName": "cc-monitor",
+  "version": "1.5.0",
+  "identifier": "com.ccmonitor.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
-        "title": "Claude Code",
+        "title": "cc-monitor",
         "width": 1100,
         "height": 800,
         "decorations": true,
@@ -21,18 +21,31 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https: http: blob:"
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:"
     }
   },
   "bundle": {
     "active": true,
     "targets": ["msi", "nsis"],
+    "publisher": "cc-monitor",
+    "copyright": "Copyright © 2026 cc-monitor contributors",
+    "category": "DeveloperTool",
+    "shortDescription": "Claude Code CLI 的只读输出渲染窗口",
+    "longDescription": "cc-monitor 把 Claude Code CLI 写到 ~/.claude/projects/*.jsonl 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / Tab 自动管理 / 历史会话浏览与恢复。完全只读、零侵入。Windows 11 / 10。",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "displayLanguageSelector": false,
+        "languages": ["SimpChinese", "English"],
+        "installerIcon": "icons/icon.ico",
+        "installMode": "perMachine"
+      }
+    }
   }
 }

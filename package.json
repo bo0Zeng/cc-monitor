@@ -1,7 +1,10 @@
 {
-  "name": "monitor",
+  "name": "cc-monitor",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.5.0",
+  "description": "cc-monitor — Claude Code CLI 的只读输出渲染窗口（Tauri 2 + TypeScript，Windows）",
+  "license": "MIT",
+  "author": "cc-monitor contributors",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +15,7 @@
   "dependencies": {
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
     "dompurify": "^3.4.5",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.47",
