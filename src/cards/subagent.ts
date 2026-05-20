@@ -123,6 +123,7 @@ function renderSubagentBody(
   const nestedCtx: RenderContext = {
     parentPath: result.path,
     toolUseNames: new Map(),
+    toolUseElements: new Map(),
   };
 
   for (const rec of result.records) {

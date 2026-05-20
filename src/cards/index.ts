@@ -72,6 +72,12 @@ export interface RenderContext {
    * 时写入，在 tool_result 时读取来标注工具名。
    */
   toolUseNames: Map<string, string>;
+  /**
+   * tool_use_id → tool_use 折叠条 DOM 引用。tool_result 到达时把结果直接
+   * append 到对应 tool_use 内部（不创建独立折叠条），实现"展开命令同时
+   * 看到参数 + 输出"的合并 UX。
+   */
+  toolUseElements: Map<string, HTMLElement>;
 }
 
 export type RenderResult =
@@ -108,16 +114,20 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       }
 
       // text 为空 → 多半是工具结果回灌（content 全是 tool_result 块）。
-      // 拆出 tool_result 块走工具组路径，紧接前一条 assistant 的 tool_use
-      // 在同一外层折叠卡里展示。
+      // tool_result 渲染会注入到对应 tool_use 折叠条内部，返回 null；
+      // 只有找不到匹配 tool_use 的 fallback 才产生独立 element。
       const blocks = normalizeBlocks(rec.message.content).filter(
         (b) => b.type === "tool_result",
       );
       if (blocks.length === 0) return { kind: "skip" };
+      const units = blocks
+        .map((b) => renderBlock(b, rec.timestamp, ctx))
+        .filter((el): el is HTMLElement => el !== null);
+      if (units.length === 0) return { kind: "skip" };
       return {
         kind: "tool-group",
         timestamp: rec.timestamp,
-        units: blocks.map((b) => renderBlock(b, rec.timestamp, ctx)),
+        units,
       };
     }
     case "assistant": {
@@ -137,10 +147,14 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
         };
       }
       // 全是 thinking / tool_use / tool_result → 工具组成员
+      const units = meaningful
+        .map((b) => renderBlock(b, rec.timestamp, ctx))
+        .filter((el): el is HTMLElement => el !== null);
+      if (units.length === 0) return { kind: "skip" };
       return {
         kind: "tool-group",
         timestamp: rec.timestamp,
-        units: meaningful.map((b) => renderBlock(b, rec.timestamp, ctx)),
+        units,
       };
     }
     case "ai-title":
@@ -214,13 +228,22 @@ function buildAssistantCard(
   const body = document.createElement("div");
   body.className = "card-body";
   for (const block of meaningful) {
-    body.appendChild(renderBlock(block, rec.timestamp, ctx));
+    const el = renderBlock(block, rec.timestamp, ctx);
+    if (el) body.appendChild(el);
   }
   card.appendChild(body);
   return card;
 }
 
-function renderBlock(block: ContentBlock, timestamp: string, ctx: RenderContext): HTMLElement {
+/**
+ * 渲染单个 block。返回 null 表示"已合并到现有 DOM，无需追加新 element"——
+ * 当前 tool_result 命中已存在的 tool_use 折叠条时直接注入其内部，会返 null。
+ */
+function renderBlock(
+  block: ContentBlock,
+  timestamp: string,
+  ctx: RenderContext,
+): HTMLElement | null {
   switch (block.type) {
     case "text": {
       const div = document.createElement("div");
@@ -253,37 +276,10 @@ function renderBlock(block: ContentBlock, timestamp: string, ctx: RenderContext)
           renderMessage,
         );
       }
-      const summary = summarizeInput(block.input);
-      return makeCollapsible(
-        "block-tool-use",
-        `🔧 ${block.name}  ${summary}`,
-        () => {
-          const pre = document.createElement("pre");
-          pre.className = "block-body block-body-json";
-          pre.textContent = prettyJson(block.input);
-          return pre;
-        },
-      );
+      return buildToolUseCard(block, ctx);
     }
     case "tool_result": {
-      const text = renderResultContent(block.content);
-      const toolName = ctx.toolUseNames.get(block.tool_use_id) ?? "工具";
-      const exitCode = block.is_error ? extractExitCode(text) : null;
-      const preview = firstLinePreview(text, 80);
-      const statusIcon = block.is_error ? "✗" : "✓";
-      const exitTag = exitCode !== null ? ` exit ${exitCode}` : "";
-      const cls = block.is_error
-        ? "block-tool-result block-error"
-        : "block-tool-result";
-      const summaryText = preview
-        ? `${statusIcon} ${toolName}${exitTag}  ·  ${preview}`
-        : `${statusIcon} ${toolName}${exitTag}  ·  ${approximateSize(block.content)}`;
-      return makeCollapsible(cls, summaryText, () => {
-        const pre = document.createElement("pre");
-        pre.className = "block-body block-body-result";
-        pre.textContent = text;
-        return pre;
-      });
+      return injectOrBuildToolResult(block, ctx);
     }
     default: {
       // 未知 block.type（如 server_tool_use / web_search_tool_result 等扩展类型）
@@ -296,6 +292,135 @@ function renderBlock(block: ContentBlock, timestamp: string, ctx: RenderContext)
       return placeholder;
     }
   }
+}
+
+/**
+ * tool_use 折叠条结构：
+ *   <details class="block-collapsible block-tool-use">
+ *     <summary>🔧 ToolName  input-summary</summary>
+ *     <div class="block-body-wrap">
+ *       <pre class="block-args">     ← lazy 渲染（首次展开时）
+ *       <div class="block-tool-result-inline"> ← 由 injectOrBuildToolResult 追加
+ *     </div>
+ *   </details>
+ */
+function buildToolUseCard(
+  block: Extract<ContentBlock, { type: "tool_use" }>,
+  ctx: RenderContext,
+): HTMLElement {
+  const summary = summarizeInput(block.input);
+  const d = document.createElement("details");
+  d.className = "block-collapsible block-tool-use";
+
+  const s = document.createElement("summary");
+  s.className = "block-summary";
+  s.textContent = `🔧 ${block.name}  ${summary}`;
+  d.appendChild(s);
+
+  const wrap = document.createElement("div");
+  wrap.className = "block-body-wrap";
+  d.appendChild(wrap);
+
+  let argsRendered = false;
+  d.addEventListener("toggle", () => {
+    if (!d.open || argsRendered) return;
+    const pre = document.createElement("pre");
+    pre.className = "block-body block-body-json block-args";
+    pre.textContent = prettyJson(block.input);
+    // args 始终在 result 之前
+    wrap.insertBefore(pre, wrap.firstChild);
+    argsRendered = true;
+  });
+
+  ctx.toolUseElements.set(block.id, d);
+  return d;
+}
+
+/**
+ * tool_result 注入：找到对应 tool_use 折叠条 → 在 `.block-body-wrap` 末尾
+ * append 一个 `.block-tool-result-inline` 区块 → 同步更新 summary 加首行预览
+ * 与错误标记。返 null 让上层不再追加独立 element。
+ *
+ * 若找不到对应 tool_use（边界：result 先于 use 到达 / 跨 session 引用），
+ * fallback 渲染独立折叠条。
+ */
+function injectOrBuildToolResult(
+  block: Extract<ContentBlock, { type: "tool_result" }>,
+  ctx: RenderContext,
+): HTMLElement | null {
+  const text = renderResultContent(block.content);
+  const exitCode = block.is_error ? extractExitCode(text) : null;
+  const preview = firstLinePreview(text, 60);
+  const toolName = ctx.toolUseNames.get(block.tool_use_id) ?? "tool";
+  const errTag = block.is_error
+    ? exitCode !== null
+      ? ` · exit ${exitCode}`
+      : " · error"
+    : "";
+
+  const host = ctx.toolUseElements.get(block.tool_use_id);
+  if (host) {
+    const wrap = host.querySelector(".block-body-wrap");
+    if (wrap) {
+      let resultEl = wrap.querySelector(
+        ".block-tool-result-inline",
+      ) as HTMLElement | null;
+      if (!resultEl) {
+        resultEl = document.createElement("div");
+        resultEl.className = "block-tool-result-inline";
+        wrap.appendChild(resultEl);
+      }
+      if (block.is_error) {
+        resultEl.classList.add("block-error");
+        host.classList.add("block-has-error");
+      }
+      resultEl.replaceChildren();
+      const label = document.createElement("div");
+      label.className = "block-result-label";
+      label.textContent = block.is_error
+        ? exitCode !== null
+          ? `Error · exit ${exitCode}`
+          : "Error"
+        : "Output";
+      resultEl.appendChild(label);
+      const pre = document.createElement("pre");
+      pre.className = "block-body block-body-result";
+      pre.textContent = text;
+      resultEl.appendChild(pre);
+
+      // 同步更新 summary（命令名 + 预览 / 错误码）
+      const summaryEl = host.querySelector(".block-summary") as HTMLElement | null;
+      if (summaryEl) {
+        const argsHint = summarizeInput(
+          (block as unknown as { _origInput?: unknown })._origInput,
+        ); // tool_use 已写过 summary，这里只在末尾追加 result 信息
+        // 不重写 args 部分，只追加错误标记 + preview（如果原 summary 没显示）
+        // 简化：原 summary "🔧 Name  input"，追加 " · exit N · <preview>"
+        const base = summaryEl.textContent ?? "";
+        // 防止反复追加：识别 "· exit" / "· Output" 已存在
+        const cleaned = base.replace(/\s+·\s+(exit \d+|error|Output|.+)$/u, "");
+        summaryEl.textContent = preview
+          ? `${cleaned}${errTag} · ${preview}`
+          : `${cleaned}${errTag}`;
+        void argsHint;
+      }
+    }
+    return null;
+  }
+
+  // fallback：tool_use 没找到 → 独立折叠条
+  const cls = block.is_error
+    ? "block-tool-result block-error"
+    : "block-tool-result";
+  const summaryText = preview
+    ? `${toolName}${errTag} · ${preview}`
+    : `${toolName}${errTag} · ${approximateSize(block.content)}`;
+  return makeCollapsible(cls, summaryText, () => {
+    const pre = document.createElement("pre");
+    pre.className = "block-body block-body-result";
+    pre.textContent = text;
+    return pre;
+  });
 }
 
 /**
