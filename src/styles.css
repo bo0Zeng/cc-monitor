@@ -218,16 +218,23 @@ html, body {
 /* === Cards === */
 
 .card {
-  margin: 16px 0;
+  margin: 28px 0;
 }
 
-/* user 气泡：靠右、圆角、有底色 */
+/* user 气泡：靠右、圆角、有底色 + 细边框增强视觉边界（避免与 assistant 的 serif 段糊在一起） */
 .card-user {
   background: var(--card);
+  border: 1px solid var(--border-strong);
   border-radius: 16px;
   padding: 10px 16px;
   max-width: 80%;
   margin-left: auto;
+}
+/* user 内容用 sans 字体跟 assistant 的 serif 区分角色 */
+.card-user .card-body {
+  font-family: var(--font-base);
+  font-size: var(--font-size-base);
+  line-height: 1.55;
 }
 
 /* assistant 消息：full-width、无背景、无色条 */
