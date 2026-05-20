@@ -260,6 +260,15 @@ export class TabManager {
     }
   }
 
+  /** 快捷键 Ctrl+` ：把当前活跃 Tab 对应的终端窗口调到前台（仅 live） */
+  bringActiveTerminalToFront(): void {
+    if (!this.activeId) return;
+    const tab = this.tabs.get(this.activeId);
+    if (tab && tab.status !== "archived") {
+      void bringTerminalToFront(this.activeId);
+    }
+  }
+
   switchTo(sessionId: string): void {
     if (!this.tabs.has(sessionId)) return;
     if (this.activeId === sessionId) return;
@@ -299,6 +308,19 @@ export class TabManager {
         badge.className = "tab-badge";
         badge.textContent = t.unread > 99 ? "99+" : String(t.unread);
         btn.appendChild(badge);
+      }
+
+      // live Tab 显示"调出终端"按钮（archived 进程已死，无窗口可调）
+      if (t.status !== "archived") {
+        const focus = document.createElement("span");
+        focus.className = "tab-focus";
+        focus.textContent = "↗";
+        focus.title = "调出对应终端 (Ctrl+`)";
+        focus.addEventListener("click", (e) => {
+          e.stopPropagation();
+          void bringTerminalToFront(sid);
+        });
+        btn.appendChild(focus);
       }
 
       // 归档 Tab 才显示关闭按钮 —— 防止误关运行中的会话
@@ -354,4 +376,10 @@ function computeTitleFor(
   }
   if (project) return project;
   return sessionId.slice(0, 8);
+}
+
+function bringTerminalToFront(sessionId: string): Promise<void> {
+  return invoke<void>("bring_terminal_to_front", { sessionId }).catch((e) => {
+    console.warn(`bring_terminal_to_front ${sessionId} failed:`, e);
+  });
 }

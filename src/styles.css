@@ -164,7 +164,8 @@ html, body {
   text-align: center;
 }
 
-.tab-close {
+.tab-close,
+.tab-focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -178,9 +179,13 @@ html, body {
   cursor: pointer;
   flex-shrink: 0;
 }
-.tab-close:hover {
+.tab-close:hover,
+.tab-focus:hover {
   background: var(--overlay-hover);
   color: var(--text);
+}
+.tab-focus {
+  font-size: 14px;
 }
 
 /* === Stream === */

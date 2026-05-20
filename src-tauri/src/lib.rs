@@ -122,8 +122,9 @@ pub fn run() {
                 tracing::info!("watcher loop ended; total={total} skip={skip}");
             });
 
-            // 让 forget_session 命令能拿到 replay
+            // 让 forget_session 命令能拿到 replay，bring_terminal_to_front 拿到 session_map
             app.manage(replay.clone());
+            app.manage(session_map.clone());
 
             Ok(())
         })
@@ -132,6 +133,7 @@ pub fn run() {
             config::save_config,
             subagent::load_subagent,
             forget_session,
+            bring_terminal_to_front,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -153,4 +155,13 @@ fn forget_session(
 ) -> Result<(), String> {
     replay.forget(&session_id);
     Ok(())
+}
+
+/// 把 session 对应的终端窗口调到前台。前端 Tab 上的 ↗ 按钮 / Ctrl+\` 触发。
+#[tauri::command]
+fn bring_terminal_to_front(
+    session_id: String,
+    map: tauri::State<'_, Arc<session_map::SessionMap>>,
+) -> Result<(), String> {
+    map.bring_terminal_to_front(&session_id)
 }
