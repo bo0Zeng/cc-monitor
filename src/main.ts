@@ -5,6 +5,16 @@ import { TabManager } from "./tabs";
 import { loadTheme } from "./theme";
 import { SettingsPanel } from "./settings";
 
+// Vite HMR 默认在没显式 `hot.accept` 时对 TS 文件部分热替换，可能让旧模块的
+// 已注册 listener / 已渲染 DOM 与新代码并存。对监控这种长跑+事件密集的应用，
+// 部分热替换会造成视觉错乱、消息重复 listener、event_replay 状态不一致。
+// 强制：任何 hot update 一律 full reload，保证 monitor 视图永远是单一一致版本。
+if (import.meta.hot) {
+  import.meta.hot.accept(() => {
+    window.location.reload();
+  });
+}
+
 // 全局错误捕获 —— 渲染到 status-bar 便于无 devtools 也能诊断
 window.addEventListener("error", (e) => {
   const bar = document.getElementById("status-bar");
