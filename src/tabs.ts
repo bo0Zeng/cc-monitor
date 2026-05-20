@@ -160,7 +160,7 @@ export class TabManager {
     this.tabs.set(sessionId, tab);
 
     if (this.activeId === null) {
-      this.switchTo(sessionId, { user: false });
+      this.switchTo(sessionId);
     } else {
       this.refreshTabBar();
     }
@@ -219,7 +219,7 @@ export class TabManager {
 
     if (wasActive) {
       if (fallbackId !== null) {
-        this.switchTo(fallbackId, { user: true });
+        this.switchTo(fallbackId);
       } else {
         this.activeId = null;
         this.refreshTabBar();
@@ -240,7 +240,7 @@ export class TabManager {
     const nextIdx = ((idx + delta) % ids.length + ids.length) % ids.length;
     const targetId = ids[nextIdx];
     if (targetId && targetId !== this.activeId) {
-      this.switchTo(targetId, { user: true });
+      this.switchTo(targetId);
     }
   }
 
@@ -253,17 +253,9 @@ export class TabManager {
     }
   }
 
-  switchTo(sessionId: string, options?: { user?: boolean }): void {
-    if (!this.tabs.has(sessionId)) {
-      if (!options?.user) {
-        console.info(`[focus] switchTo ${sessionId} ignored: tab not present`);
-      }
-      return;
-    }
-    if (this.activeId === sessionId) {
-      // 已经是 active 直接跳过，避免无谓 refresh / scrollToBottom 抖动
-      return;
-    }
+  switchTo(sessionId: string): void {
+    if (!this.tabs.has(sessionId)) return;
+    if (this.activeId === sessionId) return;
 
     for (const [sid, t] of this.tabs) {
       t.streamEl.style.display = sid === sessionId ? "block" : "none";
@@ -315,9 +307,7 @@ export class TabManager {
         btn.appendChild(close);
       }
 
-      btn.addEventListener("click", () =>
-        this.switchTo(sid, { user: true }),
-      );
+      btn.addEventListener("click", () => this.switchTo(sid));
       // 中键点击归档 Tab 也关闭（常见 UX）
       btn.addEventListener("mousedown", (e) => {
         if (e.button === 1 && t.status === "archived") {

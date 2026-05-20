@@ -1,7 +1,6 @@
 mod bridge;
 mod config;
 mod event_replay;
-mod focus;
 mod messages;
 mod parser;
 mod session_map;
@@ -74,40 +73,10 @@ pub fn run() {
             };
             let mut rx = watcher::spawn_watcher(projects_dir, active_filter);
 
-            // 焦点同步：SetWinEventHook 推前台 PID → 查 session_map 得 session_id → emit
-            {
-                let mut fg_rx = focus::spawn_focus_thread();
-                let handle = app.handle().clone();
-                let map = session_map.clone();
-                tauri::async_runtime::spawn(async move {
-                    let mut last_sid: Option<String> = None;
-                    let mut last_unmatched_pid: u32 = 0;
-                    while let Some(fg_pid) = fg_rx.recv().await {
-                        let Some(sid) = map.lookup_by_foreground_pid(fg_pid) else {
-                            // 同一未命中 PID 反复来，只 log 一次避免刷屏
-                            if fg_pid != last_unmatched_pid {
-                                last_unmatched_pid = fg_pid;
-                                tracing::info!(
-                                    "focus fg_pid={fg_pid} not matched to any session"
-                                );
-                            }
-                            continue;
-                        };
-                        if last_sid.as_deref() == Some(&sid) {
-                            continue;
-                        }
-                        last_sid = Some(sid.clone());
-                        let payload = bridge::FocusSwitchPayload {
-                            session_id: sid.clone(),
-                        };
-                        if let Err(e) = handle.emit(bridge::events::FOCUS_SWITCH, &payload) {
-                            tracing::warn!("emit focus-switch failed: {e}");
-                        } else {
-                            tracing::info!("focus → {sid} (fg_pid={fg_pid})");
-                        }
-                    }
-                });
-            }
+            // 焦点同步功能已移除：Windows 11 默认 WT 是单进程多窗口架构，
+            // GetForegroundWindow 永远返回 WT 主进程 PID，OS 无法区分 tab/window。
+            // 旧 focus.rs / lookup_by_foreground_pid / focus-switch IPC 都已删。
+            // Tab 切换走手动点击或 Ctrl+Tab 快捷键。
 
             // 持久化重播：F5 刷新后整个 history 重新 emit，前端状态完整恢复。
             let replay = Arc::new(event_replay::EventReplay::new());

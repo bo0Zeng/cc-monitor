@@ -83,10 +83,6 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   bindEvents({
     onLine: (e) => tabs.onLine(e),
-    onFocusSwitch: (sessionId) => {
-      console.info(`[focus] received focus-switch sessionId=${sessionId}`);
-      tabs.switchTo(sessionId, { user: false });
-    },
     onSessionEnded: (sessionId) => tabs.archiveTab(sessionId),
   });
 
