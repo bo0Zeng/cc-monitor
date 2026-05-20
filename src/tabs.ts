@@ -217,6 +217,11 @@ export class TabManager {
 
     tab.stream.dispose();
     tab.streamEl.remove();
+    // 显式清 Map：释放对已卸载 DOM 节点的强引用，让 GC 可早回收
+    // （Map 本身也会随 Tab 对象一起回收，但显式 clear 让 DOM 引用计数立即归零）
+    tab.toolUseNames.clear();
+    tab.toolUseElements.clear();
+    tab.pendingToolGroup = null;
     this.tabs.delete(sessionId);
 
     // 让后端 event_replay 把这个 session 的历史也丢掉

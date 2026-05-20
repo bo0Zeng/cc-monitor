@@ -31,6 +31,9 @@ marked.use(
  *
  * 仅引 `highlight.js/lib/common`（约 30 种主流语言）。
  */
+// hljs.highlightAuto 会跑所有语言定义匹配最佳，10kB 无 lang 代码块单次 30-50ms。
+// replay 大量代码块时累积秒级阻塞主线程（鼠标光标卡死的次要根因）。
+// 改为：有显式 lang 才高亮；无 lang 直接转义当 plain text，保持代码块视觉但零开销。
 marked.use({
   renderer: {
     code(token) {
@@ -44,7 +47,8 @@ marked.use({
             ignoreIllegals: true,
           }).value;
         } else {
-          highlighted = hljs.highlightAuto(code).value;
+          // 不再 highlightAuto —— 改为转义后原样输出
+          highlighted = escapeHtml(code);
         }
       } catch {
         highlighted = escapeHtml(code);

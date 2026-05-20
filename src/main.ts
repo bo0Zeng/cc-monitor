@@ -4,6 +4,7 @@ import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
 import { loadTheme } from "./theme";
 import { SettingsPanel } from "./settings";
+import { HistoryView } from "./views/history";
 
 // Vite HMR 默认在没显式 `hot.accept` 时对 TS 文件部分热替换，可能让旧模块的
 // 已注册 listener / 已渲染 DOM 与新代码并存。对监控这种长跑+事件密集的应用，
@@ -75,6 +76,23 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   document.getElementById("app")?.appendChild(settingsTrigger);
 
+  // 历史浏览器入口 —— 顶栏右侧，紧邻设置按钮左边
+  const historyView = new HistoryView(streamRoot);
+  const historyTrigger = document.createElement("button");
+  historyTrigger.type = "button";
+  historyTrigger.className = "history-trigger";
+  historyTrigger.title = "历史会话浏览器 (Ctrl+H)";
+  historyTrigger.setAttribute("aria-label", "打开历史会话浏览器");
+  historyTrigger.textContent = "📜";
+  historyTrigger.addEventListener("click", () => {
+    if (historyView.isVisible()) {
+      historyView.close();
+    } else {
+      void historyView.open();
+    }
+  });
+  document.getElementById("app")?.appendChild(historyTrigger);
+
   // 代码块"复制"按钮全局事件代理：marked code renderer 输出 HTML 字符串无法
   // 在生成时挂 listener，统一在这里 delegate。click 命中 .code-copy 时把所在
   // .code-block 里 <pre> 的纯文本扔进剪贴板。
@@ -102,7 +120,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   // 快捷键：Ctrl+Tab 切下一个 / Ctrl+Shift+Tab 切上一个 / Ctrl+W 关 archived /
-  // Ctrl+, 开设置；Esc 关设置在 SettingsPanel 内部处理。
+  // Ctrl+, 开设置 / Ctrl+H 历史 / Ctrl+` 调出终端；Esc 关设置/历史在各自模块处理。
   window.addEventListener("keydown", (e) => {
     if (!e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.key === "Tab") {
@@ -117,6 +135,20 @@ window.addEventListener("DOMContentLoaded", async () => {
     } else if (e.key === "`") {
       e.preventDefault();
       tabs.bringActiveTerminalToFront();
+    } else if (e.key === "h" || e.key === "H") {
+      e.preventDefault();
+      if (historyView.isVisible()) {
+        historyView.close();
+      } else {
+        void historyView.open();
+      }
+    }
+  });
+
+  // Esc 关历史视图：在只读查看器里时先关查看器回列表，再次按才关整个视图
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && historyView.isVisible()) {
+      historyView.handleEscape();
     }
   });
 

@@ -72,10 +72,15 @@ impl SessionMap {
     fn spawn_watcher(this: &Arc<Self>, change_tx: Option<mpsc::Sender<SessionChange>>) {
         let dir = this.dir.clone();
         let by_id = this.by_id.clone();
-        std::thread::Builder::new()
+        if let Err(e) = std::thread::Builder::new()
             .name("session-map-watcher".into())
             .spawn(move || run_watcher(dir, by_id, change_tx))
-            .ok();
+        {
+            tracing::error!(
+                "spawn session-map-watcher failed: {e}; \
+                 active session list will stay frozen at initial scan"
+            );
+        }
     }
 
     pub fn is_session_active(&self, session_id: &str) -> bool {
@@ -142,10 +147,12 @@ impl SessionMap {
         //   1) session.name (= ai-title)，Claude Code 实际写到 console title 的字符串
         //      —— 这是 WindowsTerminal tab title 的真实内容
         //   2) cwd 项目名（cwd 最后一段），fallback 给没 ai-title 的早期 session
-        let project = info
-            .cwd
-            .rsplit(['\\', '/'])
-            .find(|s| !s.is_empty())
+        //
+        // 用 Path::file_name() 而非硬编码 rsplit(['\\','/'])：Path 已经处理跨平台
+        // 分隔符 + 尾部多余分隔符，行为更稳。
+        let project = Path::new(&info.cwd)
+            .file_name()
+            .and_then(|s| s.to_str())
             .unwrap_or("");
         let ai_title = info.name.as_deref().unwrap_or("").trim();
         // 候选 search terms（按优先级），过滤掉太短的（< 4 字符避免误匹配）

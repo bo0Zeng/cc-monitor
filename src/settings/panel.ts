@@ -1,11 +1,15 @@
 /**
- * 外观设置面板。
+ * 设置面板：外观（主题 / 字体）+ 数据目录（Claude 数据位置）。
  *
- * 解耦：只调 theme.ts 的 applyTheme / loadTheme / saveTheme；
- * 不直接 setProperty、不直接 invoke。所有 CSS 变量映射逻辑都封装在 theme 模块里。
+ * 解耦：
+ *  - 外观：只调 theme.ts 的 applyTheme / loadTheme / saveTheme
+ *  - 数据目录：只调 paths.ts 的 getClaudeDirOverride / setClaudeDirOverride
+ *  - 不直接 setProperty、不直接 invoke
  */
 
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { applyTheme, loadTheme, saveTheme, type ThemeConfig } from "../theme";
+import { getClaudeDirOverride, setClaudeDirOverride } from "../paths";
 
 /**
  * 字段控件类型：
@@ -69,6 +73,13 @@ export class SettingsPanel {
   private inputs = new Map<keyof ThemeConfig, HTMLInputElement | HTMLSelectElement>();
   private isOpen = false;
 
+  /** Claude 数据目录输入框 —— 改动后保存会提示需要重启 */
+  private claudeDirInput!: HTMLInputElement;
+  /** 打开时 claudeDir 的快照，用于判断是否变化（变了就提示重启） */
+  private claudeDirOriginal: string = "";
+  /** 顶部状态提示行（保存成功 / 需重启 等） */
+  private banner!: HTMLElement;
+
   constructor() {
     this.el = this.build();
     document.body.appendChild(this.el);
@@ -80,6 +91,10 @@ export class SettingsPanel {
   async open(): Promise<void> {
     this.original = await loadTheme();
     this.current = { ...this.original };
+    this.claudeDirOriginal = (await getClaudeDirOverride()) ?? "";
+    this.claudeDirInput.value = this.claudeDirOriginal;
+    this.banner.textContent = "";
+    this.banner.classList.remove("settings-banner-show");
     this.syncInputs();
     this.el.classList.add("open");
     this.isOpen = true;
@@ -98,6 +113,18 @@ export class SettingsPanel {
   private async save(): Promise<void> {
     await saveTheme(this.current);
     this.original = { ...this.current };
+
+    // claudeDir：与 theme 字段独立保存。变了就提示重启
+    const nextDir = this.claudeDirInput.value.trim();
+    const dirChanged = nextDir !== this.claudeDirOriginal;
+    if (dirChanged) {
+      await setClaudeDirOverride(nextDir === "" ? null : nextDir);
+      this.claudeDirOriginal = nextDir;
+      this.banner.textContent =
+        "Claude 数据目录已更新 —— 需要重启 monitor 才能生效";
+      this.banner.classList.add("settings-banner-show");
+      return; // 不关面板，让用户看到提示
+    }
     this.close();
   }
 
@@ -110,6 +137,25 @@ export class SettingsPanel {
     await saveTheme({});
     this.original = {};
     this.syncInputs();
+  }
+
+  private async pickClaudeDir(): Promise<void> {
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "选择 Claude 数据目录（含 projects 和 sessions 子目录）",
+      });
+      if (typeof selected === "string" && selected) {
+        this.claudeDirInput.value = selected;
+      }
+    } catch (e) {
+      console.warn("dialog open failed:", e);
+    }
+  }
+
+  private resetClaudeDir(): void {
+    this.claudeDirInput.value = "";
   }
 
   // === DOM 构建 ===
@@ -145,9 +191,68 @@ export class SettingsPanel {
   private buildBody(): HTMLElement {
     const body = document.createElement("div");
     body.className = "settings-body";
+
+    // 顶部状态条（保存提示 / 重启提示等）
+    this.banner = document.createElement("div");
+    this.banner.className = "settings-banner";
+    body.appendChild(this.banner);
+
+    body.appendChild(this.buildDataGroup());
     body.appendChild(this.buildGroup("字体", FIELDS.filter((f) => f.group === "font")));
     body.appendChild(this.buildGroup("颜色", FIELDS.filter((f) => f.group === "color")));
     return body;
+  }
+
+  /** "数据" 分组：当前只有 Claude 数据目录一项 */
+  private buildDataGroup(): HTMLElement {
+    const group = document.createElement("div");
+    group.className = "settings-group";
+
+    const heading = document.createElement("div");
+    heading.className = "settings-group-title";
+    heading.textContent = "数据";
+    group.appendChild(heading);
+
+    // 行 1：标签 + 文本输入
+    const row1 = document.createElement("div");
+    row1.className = "settings-row settings-row-stack";
+    const label = document.createElement("span");
+    label.className = "settings-label";
+    label.textContent = "Claude 数据目录";
+    row1.appendChild(label);
+    this.claudeDirInput = document.createElement("input");
+    this.claudeDirInput.type = "text";
+    this.claudeDirInput.className = "settings-input settings-input-wide";
+    this.claudeDirInput.placeholder = "默认：~/.claude  或  $CLAUDE_CONFIG_DIR";
+    row1.appendChild(this.claudeDirInput);
+    group.appendChild(row1);
+
+    // 行 2：操作按钮
+    const row2 = document.createElement("div");
+    row2.className = "settings-row settings-row-end";
+    const pickBtn = document.createElement("button");
+    pickBtn.type = "button";
+    pickBtn.className = "settings-btn settings-btn-secondary";
+    pickBtn.textContent = "浏览…";
+    pickBtn.addEventListener("click", () => void this.pickClaudeDir());
+    row2.appendChild(pickBtn);
+    const resetBtn = document.createElement("button");
+    resetBtn.type = "button";
+    resetBtn.className = "settings-btn settings-btn-secondary";
+    resetBtn.textContent = "重置";
+    resetBtn.title = "清空 → 回退到 $CLAUDE_CONFIG_DIR 或 ~/.claude";
+    resetBtn.addEventListener("click", () => this.resetClaudeDir());
+    row2.appendChild(resetBtn);
+    group.appendChild(row2);
+
+    // 行 3：说明文字
+    const hint = document.createElement("div");
+    hint.className = "settings-hint";
+    hint.textContent =
+      "应指向 .claude 根目录（其下应有 projects/ 和 sessions/ 子目录）。修改后需重启 monitor 生效。";
+    group.appendChild(hint);
+
+    return group;
   }
 
   private buildGroup(title: string, fields: ReadonlyArray<FieldSpec>): HTMLElement {
