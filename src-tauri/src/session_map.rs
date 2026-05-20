@@ -96,14 +96,17 @@ impl SessionMap {
 
     /// 把指定 session 对应的终端窗口调到前台。
     ///
-    /// 算法：从 claude.pid 出发沿 parent 链向上 walk，对每个祖先 PID 调
-    /// `EnumWindows + GetWindowThreadProcessId` 找属于它的 top-level visible
-    /// window；命中第一个就 `SetForegroundWindow`（如最小化则先 `ShowWindow
-    /// SW_RESTORE`）。
-    ///
-    /// 已知限制：WindowsTerminal 单进程多窗口架构下，所有 WT 窗口/tab 都属
-    /// 同一个 WT 主进程，只能调到"某个 WT 窗口"而非精确 tab。独立 conhost /
-    /// mintty / Alacritty 等每窗口独立 PID，能精确命中。
+    /// 两步策略：
+    /// 1. 沿 claude.pid parent 链向上 walk，跳过系统 shell 进程（explorer/dwm/
+    ///    svchost 等），对剩余每个 PID 找它拥有的可见 top-level window；命中
+    ///    第一个即激活。对**独立 conhost / mintty / Alacritty 等**每窗口独立
+    ///    PID 的终端，这一步精确命中对应窗口。
+    /// 2. walk 全程未命中（WindowsTerminal 包装 PowerShell 时常见——
+    ///    PowerShell.exe 没自己的窗口，parent 是 explorer 又被跳过）→ fallback
+    ///    扫所有进程，找终端类（WindowsTerminal/conhost/OpenConsole/wt 等）
+    ///    且持有可见 top-level window 的进程，激活第一个找到的。WT 单进程多
+    ///    窗口架构下这只能调到"某个 WT 窗口"而非精确 tab，但至少把用户切到
+    ///    终端 UI 而非桌面。
     #[cfg(windows)]
     pub fn bring_terminal_to_front(&self, session_id: &str) -> Result<(), String> {
         let info = self
@@ -112,22 +115,46 @@ impl SessionMap {
             .get(session_id)
             .cloned()
             .ok_or_else(|| format!("session {session_id} not in map"))?;
-        let parents = parent_pid_map().ok_or_else(|| "snapshot failed".to_string())?;
+        let snap = process_info_snapshot().ok_or_else(|| "snapshot failed".to_string())?;
 
-        // 沿 parent 链向上找一个有可见 top-level 窗口的 PID
+        // 1. walk ancestor chain，跳过系统 shell
         let mut cur = info.pid;
         for _ in 0..32 {
-            if let Some(hwnd) = first_visible_top_level_for(cur) {
-                return activate_window(hwnd);
+            let Some(proc_info) = snap.get(&cur) else { break };
+            if !is_system_shell_process(&proc_info.name) {
+                if let Some(hwnd) = first_visible_top_level_for(cur) {
+                    tracing::info!(
+                        "bring_to_front sid={session_id} via ancestor pid={cur} name={}",
+                        proc_info.name
+                    );
+                    return activate_window(hwnd);
+                }
+            } else {
+                tracing::debug!(
+                    "bring_to_front skip system shell pid={cur} name={}",
+                    proc_info.name
+                );
             }
-            let Some(&parent) = parents.get(&cur) else { break };
-            if parent == 0 || parent == cur {
+            if proc_info.parent == 0 || proc_info.parent == cur {
                 break;
             }
-            cur = parent;
+            cur = proc_info.parent;
+        }
+
+        // 2. fallback: 找已知终端类进程的窗口
+        for (pid, p) in snap.iter() {
+            if is_terminal_process(&p.name) {
+                if let Some(hwnd) = first_visible_top_level_for(*pid) {
+                    tracing::info!(
+                        "bring_to_front sid={session_id} via fallback terminal pid={pid} name={}",
+                        p.name
+                    );
+                    return activate_window(hwnd);
+                }
+            }
         }
         Err(format!(
-            "no visible window found in ancestor chain of pid {}",
+            "no terminal window found for session {session_id} (pid {})",
             info.pid
         ))
     }
@@ -138,9 +165,53 @@ impl SessionMap {
     }
 }
 
-/// 精简版进程快照：pid → parent_pid，不带进程名。
+#[derive(Clone)]
+struct ProcInfo {
+    parent: u32,
+    name: String,
+}
+
+/// 系统 shell / 显示 / 服务宿主进程——出现在 claude 祖先链上不代表"终端窗口"
+/// （PowerShell 从开始菜单启动 parent 就是 explorer.exe）。
+fn is_system_shell_process(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "explorer.exe"
+            | "dwm.exe"
+            | "services.exe"
+            | "svchost.exe"
+            | "wininit.exe"
+            | "csrss.exe"
+            | "smss.exe"
+            | "lsass.exe"
+            | "winlogon.exe"
+            | "shellexperiencehost.exe"
+            | "searchhost.exe"
+            | "startmenuexperiencehost.exe"
+    )
+}
+
+/// 已知终端类进程：fallback 阶段用来找"任意一个终端窗口"调到前台。
+fn is_terminal_process(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "windowsterminal.exe"
+            | "wt.exe"
+            | "conhost.exe"
+            | "openconsole.exe"
+            | "cmd.exe"
+            | "powershell.exe"
+            | "pwsh.exe"
+            | "mintty.exe"
+            | "alacritty.exe"
+            | "wezterm-gui.exe"
+            | "tabby.exe"
+    )
+}
+
+/// pid → (parent_pid, exe_name) 一次性 ToolHelp 快照。
 #[cfg(windows)]
-fn parent_pid_map() -> Option<HashMap<u32, u32>> {
+fn process_info_snapshot() -> Option<HashMap<u32, ProcInfo>> {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
@@ -158,7 +229,23 @@ fn parent_pid_map() -> Option<HashMap<u32, u32>> {
         let mut map = HashMap::new();
         if Process32First(snap, &mut entry).is_ok() {
             loop {
-                map.insert(entry.th32ProcessID, entry.th32ParentProcessID);
+                let name_end = entry
+                    .szExeFile
+                    .iter()
+                    .position(|&b| b == 0)
+                    .unwrap_or(entry.szExeFile.len());
+                let bytes: Vec<u8> = entry.szExeFile[..name_end]
+                    .iter()
+                    .map(|&b| b as u8)
+                    .collect();
+                let name = String::from_utf8_lossy(&bytes).into_owned();
+                map.insert(
+                    entry.th32ProcessID,
+                    ProcInfo {
+                        parent: entry.th32ParentProcessID,
+                        name,
+                    },
+                );
                 if Process32Next(snap, &mut entry).is_err() {
                     break;
                 }
