@@ -275,36 +275,35 @@ fn is_process_alive(pid: u32, expected_proc_start: Option<&str>) -> bool {
             return false;
         }
 
-        // 2) procStart 诊断（暂不作为硬校验 —— 见下方 TODO）
+        // 2) procStart 校验 —— 防 PID 复用
         //
-        // 早期版本拿这条作为防 PID 复用的第二道关，但实测在用户机上 100ms 容差
-        // 把全部 active session 都拒了，怀疑 .NET ToFileTime() 与 Win32
-        // GetProcessTimes FILETIME 之间存在时区偏移（DateTime.Kind 处理差异）
-        // 或单位差异。先打印 actual / expected / diff 取数据再决定如何加回。
+        // 单位换算（实测在 UTC+8 host 上 diff = 504_911_519_999_999_999 = 1601 offset
+        // + 8h 时区 + 1 tick 抖动验证得到的公式）：
+        //
+        //   Claude Code 写的 procStart  = .NET DateTime.Now.Ticks
+        //                               = 自 0001-01-01 本地时间起算的 100ns
+        //   GetProcessTimes 给的 FILETIME = 自 1601-01-01 UTC 起算的 100ns
+        //
+        // 转换：FILETIME (UTC) → 本地 FILETIME → +1601 偏移 → 与 expected 比对
         if let Some(expected_str) = expected_proc_start {
-            let expected: Option<u64> = expected_str.parse().ok();
-            let mut creation = FILETIME::default();
-            let mut exit_t = FILETIME::default();
-            let mut kernel = FILETIME::default();
-            let mut user = FILETIME::default();
-            let got_times =
-                GetProcessTimes(handle, &mut creation, &mut exit_t, &mut kernel, &mut user)
-                    .is_ok();
-            if let (true, Some(exp)) = (got_times, expected) {
-                let actual =
-                    ((creation.dwHighDateTime as u64) << 32) | (creation.dwLowDateTime as u64);
-                let diff = actual.abs_diff(exp);
-                if diff <= PROC_START_TOLERANCE_TICKS {
-                    tracing::debug!(
-                        "pid {pid} proc_start ok: expected={exp} actual={actual} diff={diff}"
-                    );
-                } else {
-                    // 仅 info 诊断，不影响活跃判定。等数据明确后再加回硬校验。
-                    tracing::info!(
-                        "pid {pid} proc_start DIFF: expected={exp} actual={actual} diff={diff} \
-                         (tolerance was {PROC_START_TOLERANCE_TICKS}); \
-                         currently NOT rejecting — please report"
-                    );
+            if let Ok(expected) = expected_str.parse::<u64>() {
+                let mut creation = FILETIME::default();
+                let mut exit_t = FILETIME::default();
+                let mut kernel = FILETIME::default();
+                let mut user = FILETIME::default();
+                if GetProcessTimes(handle, &mut creation, &mut exit_t, &mut kernel, &mut user)
+                    .is_ok()
+                {
+                    let actual_net = filetime_to_net_local_ticks(&creation);
+                    let diff = actual_net.abs_diff(expected);
+                    if diff > PROC_START_TOLERANCE_TICKS {
+                        tracing::debug!(
+                            "pid {pid} proc_start mismatch: expected={expected} \
+                             actual_net={actual_net} diff={diff} — PID reused"
+                        );
+                        let _ = CloseHandle(handle);
+                        return false;
+                    }
                 }
             }
         }
@@ -312,6 +311,36 @@ fn is_process_alive(pid: u32, expected_proc_start: Option<&str>) -> bool {
         let _ = CloseHandle(handle);
         true
     }
+}
+
+/// Win32 FILETIME (UTC, 自 1601-01-01) → .NET DateTime.Now.Ticks (Local, 自 0001-01-01)。
+/// Claude Code 写入 sessions/<PID>.json 的 procStart 字段就是 .NET Ticks 形式。
+///
+/// `FileTimeToLocalFileTime` 在 windows-rs 0.56 没有方便的封装路径，直接 raw FFI
+/// 调 kernel32.dll；windows::Win32::Foundation::FILETIME 是 `#[repr(C)]` 与 Win32
+/// 原生类型二进制兼容。
+#[cfg(windows)]
+fn filetime_to_net_local_ticks(utc: &windows::Win32::Foundation::FILETIME) -> u64 {
+    use windows::Win32::Foundation::FILETIME;
+    /// 从 .NET 0001-01-01 起到 Win32 1601-01-01 之间的 100ns 数。
+    const NET_EPOCH_TO_WIN32_FILETIME_TICKS: u64 = 504_911_232_000_000_000;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn FileTimeToLocalFileTime(lpFileTime: *const FILETIME, lpLocalFileTime: *mut FILETIME)
+            -> i32;
+    }
+
+    let mut local = FILETIME::default();
+    let local_ticks = unsafe {
+        if FileTimeToLocalFileTime(utc as *const _, &mut local as *mut _) == 0 {
+            // 转 local 失败时退回 utc，避免错误拒绝（最坏 case 是时区偏移落出容差被判不匹配）
+            ((utc.dwHighDateTime as u64) << 32) | (utc.dwLowDateTime as u64)
+        } else {
+            ((local.dwHighDateTime as u64) << 32) | (local.dwLowDateTime as u64)
+        }
+    };
+    local_ticks + NET_EPOCH_TO_WIN32_FILETIME_TICKS
 }
 
 #[cfg(not(windows))]
