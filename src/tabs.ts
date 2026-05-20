@@ -54,8 +54,9 @@ export interface TabsSummary {
 export class TabManager {
   private tabs = new Map<string, Tab>();
   private activeId: string | null = null;
-  private locked = false;
-  private lockTimer: number | null = null;
+  // 早期版本曾用 user lock（用户主动点 Tab 后 5s 内拒 focus-switch）防自动焦点撞回去，
+  // 实测 5s 太长导致用户切焦点窗口后 Tab 不跟着切（看上去焦点同步失效）。砍掉：用户
+  // 切焦点窗口本身就是明确意图，应该尊重。
 
   constructor(
     private barEl: HTMLElement,
@@ -259,9 +260,8 @@ export class TabManager {
       }
       return;
     }
-    if (options?.user) this.lock();
-    if (this.locked && !options?.user && this.activeId !== null) {
-      console.info(`[focus] switchTo ${sessionId} blocked by user lock`);
+    if (this.activeId === sessionId) {
+      // 已经是 active 直接跳过，避免无谓 refresh / scrollToBottom 抖动
       return;
     }
 
@@ -275,14 +275,6 @@ export class TabManager {
     }
     this.activeId = sessionId;
     this.refreshTabBar();
-  }
-
-  private lock(): void {
-    this.locked = true;
-    if (this.lockTimer !== null) window.clearTimeout(this.lockTimer);
-    this.lockTimer = window.setTimeout(() => {
-      this.locked = false;
-    }, 5000);
   }
 
   private refreshTabBar(): void {
