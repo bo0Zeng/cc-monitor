@@ -23,12 +23,14 @@ marked.setOptions({
 /**
  * KaTeX 扩展：
  * - `$...$` 行内、`$$...$$` 块级
+ * - `nonStandard: true` 才认 `$...$`（默认只认 `\(...\)`，README 示例那是误导）
  * - throwOnError: false → 错误 LaTeX 渲染成红色源码而不是抛异常
  * - 字体由 npm 包内的 katex.min.css 引用，vite 自动打包，绝不走 CDN
  */
 marked.use(
   markedKatex({
     throwOnError: false,
+    nonStandard: true,
   }),
 );
 
