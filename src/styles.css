@@ -551,6 +551,41 @@ html, body {
   color: var(--error);
 }
 
+/* tool_use 折叠条内部：args + 注入的 result */
+.block-tool-use .block-body-wrap {
+  display: flex;
+  flex-direction: column;
+}
+.block-tool-use .block-args {
+  border-top: none;
+  margin: 0;
+}
+.block-tool-use.block-has-error > .block-summary {
+  color: var(--error);
+}
+.block-tool-result-inline {
+  border-top: 1px solid var(--border-strong);
+  background: var(--overlay-dim);
+}
+.block-tool-result-inline.block-error {
+  background: rgba(217, 104, 104, 0.06);
+}
+.block-result-label {
+  padding: 6px 12px 2px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-2);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.block-tool-result-inline.block-error .block-result-label {
+  color: var(--error);
+}
+.block-tool-result-inline pre.block-body {
+  margin: 0;
+  border-top: none;
+}
+
 /* Agent 折叠卡（嵌入 subagent JSONL） */
 .block-agent-body {
   white-space: normal;

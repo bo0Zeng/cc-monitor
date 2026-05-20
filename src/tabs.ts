@@ -42,6 +42,11 @@ export interface Tab {
    * 下一条 user 消息的 tool_result 反查显示工具名。
    */
   toolUseNames: Map<string, string>;
+  /**
+   * tool_use_id → tool_use 折叠条 DOM。tool_result 直接注入对应 tool_use
+   * 内部，不再产生独立折叠条。详见 cards/index.ts 的 injectOrBuildToolResult。
+   */
+  toolUseElements: Map<string, HTMLElement>;
 }
 
 /** Tab 数量摘要，发给宿主用于状态栏 / empty-state 等外部 UI */
@@ -94,6 +99,7 @@ export class TabManager {
     const ctx: RenderContext = {
       parentPath: tab.parentPath,
       toolUseNames: tab.toolUseNames,
+      toolUseElements: tab.toolUseElements,
     };
     const result = renderMessage(payload.message, ctx);
 
@@ -156,6 +162,7 @@ export class TabManager {
       unread: 0,
       pendingToolGroup: null,
       toolUseNames: new Map(),
+      toolUseElements: new Map(),
     };
     this.tabs.set(sessionId, tab);
 
