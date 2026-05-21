@@ -8,7 +8,13 @@
  */
 
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { applyTheme, loadTheme, saveTheme, type ThemeConfig } from "../theme";
+import {
+  applyTheme,
+  applyThemeToken,
+  loadTheme,
+  saveTheme,
+  type ThemeConfig,
+} from "../theme";
 import { getClaudeDirOverride, setClaudeDirOverride } from "../paths";
 
 /**
@@ -280,8 +286,54 @@ export class SettingsPanel {
     const control = this.buildControl(f);
     row.appendChild(control);
 
+    // 单项"恢复默认"按钮：清掉该字段的覆盖，CSS var 回到 styles.css :root 默认
+    const resetBtn = document.createElement("button");
+    resetBtn.type = "button";
+    resetBtn.className = "settings-field-reset";
+    resetBtn.textContent = "↺";
+    resetBtn.title = `恢复 "${f.label}" 默认值`;
+    resetBtn.addEventListener("click", (e) => {
+      // row 是 <label>，点击会冒泡到关联的 input；阻止默认 + 阻止冒泡
+      e.preventDefault();
+      e.stopPropagation();
+      this.resetField(f);
+    });
+    row.appendChild(resetBtn);
+
     this.inputs.set(f.key, control);
     return row;
+  }
+
+  /** 单项重置：清掉 this.current[key]，单 token 应用，重画该 input 的占位值 */
+  private resetField(f: FieldSpec): void {
+    delete this.current[f.key];
+    applyThemeToken(f.key, undefined);
+    this.syncOneInput(f);
+  }
+
+  /** 把单个 token 当前值（如果覆盖了）或 :root 计算值写到对应 input */
+  private syncOneInput(f: FieldSpec): void {
+    const input = this.inputs.get(f.key);
+    if (!input) return;
+    const override = this.current[f.key];
+    if (override !== undefined && override !== null && override !== "") {
+      input.value = String(override);
+      return;
+    }
+    if (f.type === "font-base" || f.type === "font-mono") {
+      input.value = "";
+      return;
+    }
+    const computed = getComputedStyle(document.documentElement)
+      .getPropertyValue(`--${f.key}`)
+      .trim();
+    if (f.type === "color") {
+      input.value = isShortHex(computed) ? computed : "#000000";
+    } else if (f.type === "number") {
+      input.value = computed.replace(/px$/, "").trim() || "14";
+    } else {
+      input.value = computed;
+    }
   }
 
   private buildControl(f: FieldSpec): HTMLInputElement | HTMLSelectElement {
@@ -329,41 +381,27 @@ export class SettingsPanel {
 
   private onFieldChange(f: FieldSpec, input: HTMLInputElement | HTMLSelectElement): void {
     const v = input.value;
+    let nextValue: string | number | undefined;
     if (v === "") {
       delete this.current[f.key];
+      nextValue = undefined;
     } else if (f.type === "number") {
-      (this.current as Record<string, unknown>)[f.key] = Number(v);
+      const n = Number(v);
+      (this.current as Record<string, unknown>)[f.key] = n;
+      nextValue = n;
     } else {
       (this.current as Record<string, unknown>)[f.key] = v;
+      nextValue = v;
     }
-    applyTheme(this.current);
+    // 性能关键：拖 color picker 时 `input` 事件 ~60Hz 高频；只更新这一个 token，
+    // 避免每帧调 14 次 setProperty 触发整棵 :root 子树重算
+    applyThemeToken(f.key, nextValue);
   }
 
   /** 把 this.current 的值写回所有 input；无覆盖的字段读 :root 计算值作为占位 */
   private syncInputs(): void {
-    const root = getComputedStyle(document.documentElement);
     for (const f of FIELDS) {
-      const input = this.inputs.get(f.key);
-      if (!input) continue;
-      const override = this.current[f.key];
-      if (override !== undefined && override !== null && override !== "") {
-        input.value = String(override);
-        continue;
-      }
-      // 无覆盖：select 字段 → 选第一个 option（"默认"）；input 字段 → 读 :root 计算值
-      if (f.type === "font-base" || f.type === "font-mono") {
-        input.value = ""; // 第一个 option 的 value 是空串
-        continue;
-      }
-      const cssVar = `--${f.key}`;
-      const computed = root.getPropertyValue(cssVar).trim();
-      if (f.type === "color") {
-        input.value = isShortHex(computed) ? computed : "#000000";
-      } else if (f.type === "number") {
-        input.value = computed.replace(/px$/, "").trim() || "14";
-      } else {
-        input.value = computed;
-      }
+      this.syncOneInput(f);
     }
   }
 }
