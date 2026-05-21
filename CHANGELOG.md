@@ -15,6 +15,17 @@
 ### 新增
 
 - **历史浏览器"全量加载"按钮** —— 顶栏新增；点击后并发（max 4）拉取所有项目的会话详情进缓存。完成后搜索可命中 session 内容（ai-title / 自定义标题 / 首条消息 / sessionId）。状态条显示进度 `加载 N/M …`。
+
+### 变更
+
+- **图标改为纯字符**（去 emoji，避免跨平台字体差异）：
+  - 顶栏历史按钮 `📜` → `◷` (U+25F7 时钟样圆形)
+  - 重命名 `✏️` → `✎` (U+270E pencil)
+  - 隐藏 `🙈` → `–` / 取消隐藏 `👁️` → `+`
+  - 恢复 `↩️` → `↺` (U+21BA anticlockwise circle arrow)
+  - 删除 `🗑️` → `✕` (U+2715 X)
+  - 项目组前的 `📁` 移除（折叠指示器 `▸` 已够，多余）
+  - **星标 `★/☆` 保留**（颜色高亮区分状态，且没有跨平台问题）
 - **GitHub Actions CI** —— `.github/workflows/ci.yml`（push/PR 触发：rust fmt + clippy + test + frontend tsc + vite build）+ `release.yml`（`v*` tag 触发：tauri build + SHA256 + 自动 GitHub Release 发布）。
 - **关键路径 tracing 埋点** —— `list_history_projects` / `list_history_sessions_in_project` / `read_session_jsonl` / `replay_and_mark_ready` 各加 elapsed_ms 日志，便于生产诊断慢点。
 
@@ -44,7 +55,7 @@
 - **历史会话浏览器**（顶栏 📜 / `Ctrl+H` / Esc）
   - 按**工作目录分组**展示所有历史 jsonl，项目默认折叠
   - **两级懒加载**：初次打开仅读项目级元数据（< 100ms，500 项目）；展开某项目才读其下会话详情；同项目再次展开秒开（缓存）
-  - 操作：⭐ 标星 · ✏️ 重命名（中文 OK）· 🙈 隐藏 · ↩️ 恢复（拉起 wt.exe / cmd 跑 `claude --resume`）· 🗑️ 物理删除（二次确认）
+  - 操作：`★` 标星 · `✎` 重命名（中文 OK）· `–` 隐藏 · `↺` 恢复（拉起 wt.exe / cmd 跑 `claude --resume`）· `✕` 物理删除（二次确认）（v1.5 时是 emoji，v1.6 改纯字符）
   - 点击会话行进入**只读消息查看器**（复用实时 Tab 的渲染管线：Markdown / KaTeX / 代码高亮 / 折叠卡）；Esc 二级关闭（先关查看器再关视图）
   - 搜索框：匹配项目名 / 路径；已缓存项目附加匹配 ai_title / customTitle / first_user_excerpt
   - 用户元数据存 `<monitor_data_dir>/history-metadata.json`（永远在默认位置，不随 claudeDir 切换）
