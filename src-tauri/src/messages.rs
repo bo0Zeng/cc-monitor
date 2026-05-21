@@ -119,10 +119,7 @@ impl JsonlRecord {
     pub fn is_displayable(&self) -> bool {
         matches!(
             self,
-            Self::User { .. }
-                | Self::Assistant { .. }
-                | Self::AiTitle { .. }
-                | Self::System { .. }
+            Self::User { .. } | Self::Assistant { .. } | Self::AiTitle { .. } | Self::System { .. }
         )
     }
 }

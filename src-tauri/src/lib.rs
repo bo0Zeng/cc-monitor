@@ -54,8 +54,7 @@ pub fn run() {
                                 let payload = bridge::SessionEndedPayload {
                                     session_id: sid.clone(),
                                 };
-                                if let Err(e) =
-                                    handle.emit(bridge::events::SESSION_ENDED, &payload)
+                                if let Err(e) = handle.emit(bridge::events::SESSION_ENDED, &payload)
                                 {
                                     tracing::warn!("emit session-ended failed: {e}");
                                 } else {

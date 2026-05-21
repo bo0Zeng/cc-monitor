@@ -50,7 +50,11 @@ impl SessionMap {
     /// 加载 sessions/ 目录的全部活跃 session，并启动 watcher 线程。
     /// 返回一个 channel 接收 session 集合变化（lib.rs 用它推送 session-ended 事件给前端）。
     pub fn load_with_changes(dir: PathBuf) -> (Arc<Self>, mpsc::Receiver<SessionChange>) {
-        tracing::info!("session_map scanning {} (exists={})", dir.display(), dir.exists());
+        tracing::info!(
+            "session_map scanning {} (exists={})",
+            dir.display(),
+            dir.exists()
+        );
         let initial = scan_dir(&dir);
         tracing::info!("session_map loaded {} entries", initial.len());
         for (sid, info) in &initial {
@@ -88,13 +92,9 @@ impl SessionMap {
             }
         };
         let alive = is_process_alive(info.pid, Some(&info.proc_start));
-        tracing::debug!(
-            "active? {session_id} pid={} alive={alive}",
-            info.pid
-        );
+        tracing::debug!("active? {session_id} pid={} alive={alive}", info.pid);
         alive
     }
-
 
     /// 把指定 session 对应的终端窗口调到前台。
     ///
@@ -377,8 +377,7 @@ fn is_terminal_process(name: &str) -> bool {
 fn process_info_snapshot() -> Option<HashMap<u32, ProcInfo>> {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
-        TH32CS_SNAPPROCESS,
+        CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPPROCESS,
     };
     unsafe {
         let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
@@ -655,8 +654,10 @@ fn filetime_to_net_local_ticks(utc: &windows::Win32::Foundation::FILETIME) -> u6
 
     #[link(name = "kernel32")]
     extern "system" {
-        fn FileTimeToLocalFileTime(lpFileTime: *const FILETIME, lpLocalFileTime: *mut FILETIME)
-            -> i32;
+        fn FileTimeToLocalFileTime(
+            lpFileTime: *const FILETIME,
+            lpLocalFileTime: *mut FILETIME,
+        ) -> i32;
     }
 
     let mut local = FILETIME::default();
@@ -750,8 +751,7 @@ mod tests {
 
     #[test]
     fn search_terms_full_ai_title_and_project() {
-        let terms =
-            build_search_terms(r"D:\Sync\文档\claudecode-frontend", Some("filter-active"));
+        let terms = build_search_terms(r"D:\Sync\文档\claudecode-frontend", Some("filter-active"));
         // ai-title 全字 + 前缀 + 项目名（短于 12 字 → 无前缀）；项目名 16 字 → 前 8
         assert!(terms.iter().any(|t| t == "filter-active"));
         assert!(terms.iter().any(|t| t == "claudecode-frontend"));
@@ -865,17 +865,14 @@ mod tests {
 
         #[test]
         fn select_best_picks_highest_tier() {
-            let snap = build_snap(&[
-                (100, 0, "claude.exe"),
-                (200, 0, "WindowsTerminal.exe"),
-            ]);
+            let snap = build_snap(&[(100, 0, "claude.exe"), (200, 0, "WindowsTerminal.exe")]);
             let ancestors: HashSet<u32> = [100].into_iter().collect();
             let terms = vec!["proj".to_string()];
             let windows = vec![
-                ws(1, 200, "WT - proj"),           // C: TerminalWithTitle
-                ws(2, 100, "ancestor no title"),    // B: AncestorAny
-                ws(3, 200, "WT - random"),          // D: TerminalAny
-                ws(4, 100, "ancestor proj"),        // A: AncestorWithTitle ← 应选这个
+                ws(1, 200, "WT - proj"),         // C: TerminalWithTitle
+                ws(2, 100, "ancestor no title"), // B: AncestorAny
+                ws(3, 200, "WT - random"),       // D: TerminalAny
+                ws(4, 100, "ancestor proj"),     // A: AncestorWithTitle ← 应选这个
             ];
             let (best, tier) = select_best_window(&windows, &snap, &ancestors, &terms).unwrap();
             assert_eq!(tier, MatchTier::AncestorWithTitle);

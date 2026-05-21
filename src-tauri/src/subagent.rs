@@ -176,7 +176,11 @@ mod ts_tests {
         let a = parse_ts_ms("2026-01-31T23:59:59.000Z").unwrap();
         let b = parse_ts_ms("2026-02-01T00:00:00.000Z").unwrap();
         assert!(b > a, "Feb 1 ms ({b}) must be greater than Jan 31 ms ({a})");
-        assert_eq!(b - a, 1000, "diff should be exactly 1 second across month boundary");
+        assert_eq!(
+            b - a,
+            1000,
+            "diff should be exactly 1 second across month boundary"
+        );
     }
 
     #[test]
