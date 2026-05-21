@@ -2,7 +2,7 @@
 
 Vanilla TypeScript + Vite + Tauri 2 IPC。不引入框架（React/Vue 都没有）—— 这是个 ~3k 行的小应用，原生 DOM 足够。
 
-> 完整模块清单和数据流见 [`doc/实现状态.md §5`](../../doc/实现状态.md)。本文件做"开发者打开 src/ 后第一眼看到的导航"。
+本文件做"开发者打开 src/ 后第一眼看到的导航"。后端结构见 [`../src-tauri/README.md`](../src-tauri/README.md)。
 
 ## 入口
 
