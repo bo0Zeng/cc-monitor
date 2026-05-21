@@ -7,6 +7,7 @@ mod parser;
 mod paths;
 mod session_map;
 mod subagent;
+mod utils;
 mod watcher;
 
 use std::sync::Arc;
