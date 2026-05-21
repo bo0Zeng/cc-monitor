@@ -24,9 +24,14 @@
 - **代码块复制**：每个 code block 右上角"复制"按钮
 
 ### 历史浏览器
-- 顶栏 📜 按钮 / `Ctrl+H` 切换；按**工作目录分组**展示
+- 顶栏 `◷` 按钮 / `Ctrl+H` 切换；按**工作目录分组**展示
 - 项目组**默认折叠**；点击展开**懒加载**该项目的所有会话（初次打开几百项目 < 100ms）
-- 操作：⭐ 标星 · ✏️ 重命名（中文 OK）· 🙈 隐藏 · ↩️ 恢复（`claude --resume`）· 🗑️ 物理删除（二次确认）
+- 每行操作（纯字符按钮，不用 emoji 避免跨平台字体差异）：
+  - `★/☆` 标星（黄色高亮表示已星标）
+  - `✎` 重命名（支持中文）
+  - `–/+` 隐藏 / 取消隐藏（不删 jsonl，仅默认列表不显示）
+  - `↺` 恢复（在新终端窗口跑 `claude --resume`）
+  - `✕` 物理删除（二次确认；jsonl 文件被直接删，Claude Code 之后也无法 resume）
 - 点击会话条目进入**只读消息查看器**，复用实时 Tab 的渲染管线
 
 ### 设置面板（Ctrl+,）
@@ -82,7 +87,8 @@
 |---|---|
 | 启动报 "WebView2 Runtime not found" | 安装 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) |
 | 跑 claude 后 Tab 不出现 | 检查 `~/.claude/sessions/` 下是否有 `<PID>.json`；如果没有，说明 Claude Code 没正常启动 |
-| 历史浏览器 ↩️ 恢复失败 | 确认终端 PATH 里有 `claude` 命令；Windows 自带 cmd.exe 总能用，wt.exe 是可选 |
+| `npm run tauri dev` 报 `EACCES: permission denied :::5174` | dev 端口被 Windows Hyper-V 动态保留占用（`netsh interface ipv4 show excludedportrange protocol=tcp` 查）。临时换端口：`$env:VITE_PORT=3000; powershell -NoProfile -File scripts\run.ps1 dev`，同步把 `src-tauri/tauri.conf.json` 的 `devUrl` 改成相同端口 |
+| 历史浏览器 `↺` 恢复失败 | 确认终端 PATH 里有 `claude` 命令；Windows 自带 cmd.exe 总能用，wt.exe 是可选 |
 | Claude 数据装在非默认路径 | 设置面板 → 数据 → Claude 数据目录；或设环境变量 `CLAUDE_CONFIG_DIR` 后重启 |
 | 鼠标光标卡住 | 已在 v1.5 修复；如仍出现，DevTools (F12) 查看 Performance |
 

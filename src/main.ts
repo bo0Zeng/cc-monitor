@@ -83,7 +83,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   historyTrigger.className = "history-trigger";
   historyTrigger.title = "历史会话浏览器 (Ctrl+H)";
   historyTrigger.setAttribute("aria-label", "打开历史会话浏览器");
-  historyTrigger.textContent = "📜";
+  // 纯字符的时钟符号（U+25F7），避免 emoji 跨平台/字体差异
+  historyTrigger.textContent = "◷";
   historyTrigger.addEventListener("click", () => {
     if (historyView.isVisible()) {
       historyView.close();

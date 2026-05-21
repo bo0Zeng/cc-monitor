@@ -2,10 +2,14 @@ import { defineConfig } from "vite";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
-// 端口可通过 VITE_PORT 覆盖（默认 1420）；端口冲突时改这个 + tauri.conf.json 的 devUrl 即可。
+// 端口可通过 VITE_PORT 覆盖（默认 5174，Vite 自身默认值，绝大多数机器不冲突）。
 // HMR 端口 = VITE_PORT + 1。
+// 历史上曾用 1420（Tauri 默认），实测 Windows Hyper-V 把 1366-1465 列入动态保留段，
+// 在很多机器上启动报 EACCES: permission denied。详见 README "故障排查" 段。
+// 若 5174 也被占用，设环境变量例：$env:VITE_PORT=3000 后重跑；同时把
+// src-tauri/tauri.conf.json 的 devUrl 改成同一端口。
 // @ts-expect-error process is a nodejs global
-const port = Number(process.env.VITE_PORT) || 1420;
+const port = Number(process.env.VITE_PORT) || 5174;
 const hmrPort = port + 1;
 
 // https://vite.dev/config/

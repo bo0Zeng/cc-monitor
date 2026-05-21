@@ -383,13 +383,10 @@ export class HistoryView {
 
     const indicator = document.createElement("span");
     indicator.className = "history-group-indicator";
-    indicator.textContent = "▸";
+    indicator.textContent = "▸"; // ▸ 折叠指示符（[open] 时 CSS 旋转 90deg）
     header.appendChild(indicator);
 
-    const folder = document.createElement("span");
-    folder.className = "history-group-icon";
-    folder.textContent = "📁";
-    header.appendChild(folder);
+    // 项目名前不再加 📁 emoji —— 折叠指示器 + 项目名已经够清，多余的图标视觉噪声
 
     const name = document.createElement("span");
     name.className = "history-group-name";
@@ -680,7 +677,7 @@ export class HistoryView {
     const renameBtn = document.createElement("button");
     renameBtn.type = "button";
     renameBtn.className = "history-action";
-    renameBtn.textContent = "✏️";
+    renameBtn.textContent = "✎"; // ✎ pencil（BMP，非 emoji）
     renameBtn.title = "重命名（中文 OK）";
     renameBtn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
@@ -703,7 +700,8 @@ export class HistoryView {
     const hideBtn = document.createElement("button");
     hideBtn.type = "button";
     hideBtn.className = "history-action";
-    hideBtn.textContent = e.hidden ? "👁️" : "🙈";
+    // hidden 时按钮指示"恢复显示"用 +；显示时按钮指示"隐藏"用 –（en-dash U+2013）
+    hideBtn.textContent = e.hidden ? "+" : "–";
     hideBtn.title = e.hidden ? "取消隐藏" : "隐藏（不删，但默认列表不显示）";
     hideBtn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
@@ -727,7 +725,7 @@ export class HistoryView {
     const resumeBtn = document.createElement("button");
     resumeBtn.type = "button";
     resumeBtn.className = "history-action";
-    resumeBtn.textContent = "↩️";
+    resumeBtn.textContent = "↺"; // ↺ anticlockwise circle arrow ("replay")
     resumeBtn.title = "在新终端窗口里 claude --resume 此会话";
     resumeBtn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
@@ -745,7 +743,7 @@ export class HistoryView {
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "history-action history-action-danger";
-    deleteBtn.textContent = "🗑️";
+    deleteBtn.textContent = "✕"; // ✕ multiplication X
     deleteBtn.title = "物理删除 jsonl 文件（不可恢复）";
     deleteBtn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
