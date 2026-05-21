@@ -8,6 +8,20 @@
 
 ---
 
+## [1.6.1] — 2026-05-21
+
+### 修复
+
+- **设置面板拖 color picker 卡顿** —— 每次 `input` 事件原本调 `applyTheme()`
+  全量遍历 14 个 token 调 `setProperty`，60Hz 拖动下整棵 :root 子树重算被
+  压垮。新增 `applyThemeToken(key, value)` 只更单 token；`onFieldChange`
+  改调它。重算量降到 1/14。
+
+### 新增
+
+- **设置面板每行 "↺ 恢复默认" 按钮** —— 24×24 单项重置，仅回退该字段到
+  styles.css :root 默认值。底栏的全量 "恢复默认" 按钮保留。
+
 ## [1.6.0] — 2026-05-21
 
 v1.5.0 的迭代版。首次通过 `release.yml` 自动发布（v1.5.0 tag 指向的 commit
