@@ -56,9 +56,7 @@ powershell -NoProfile -File scripts\run.ps1 [dev|build|check|clean]
 
 最初的 M2 计划是在 `~/.claude/settings.json` 安装一个 `SessionStart` hook 调这个脚本，让脚本写 `~/.claude/claudecode-frontend/sessions.json` 来登记活跃 session。
 
-**变更后**：Claude Code 自己在 `~/.claude/sessions/<PID>.json` 维护活跃 session 状态，monitor 直接读，**无需 hook，无需安装，零侵入**。
-
-详 [`doc/实现状态.md §2.1`](../../doc/实现状态.md)。
+**变更后**：Claude Code 自己在 `~/.claude/sessions/<PID>.json` 维护活跃 session 状态，monitor 直接读，**无需 hook，无需安装，零侵入**。详 [`../src-tauri/README.md`](../src-tauri/README.md) 的 IPC / session_map 模块说明。
 
 ### 为什么仍保留？
 

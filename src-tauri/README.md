@@ -2,7 +2,7 @@
 
 Rust + Tauri 2。crate 名 `monitor`（lib 名 `monitor_lib`）。
 
-> 完整架构与模块拓扑见 [`doc/实现状态.md`](../../doc/实现状态.md)。本文件做"开发者打开 src-tauri/ 后第一眼看到的导航"。
+本文件做"开发者打开 src-tauri/ 后第一眼看到的导航"。前端结构见 [`../src/README.md`](../src/README.md)。
 
 ## 目录结构
 
@@ -89,11 +89,11 @@ src-tauri/
 
 ## 工程坑（避雷）
 
-详 [`doc/实现状态.md §10`](../../doc/实现状态.md)。简要：
-- Windows 路径大小写不敏感导致 notify 重复回放 → `watcher.rs:path_key()` 用小写归一
-- `std::fs::rename` Windows 目标存在时失败 → `config.rs:atomic_replace()` 用 `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`
-- WT 单进程多窗口共享同一 PID，`bring_terminal_to_front` 落到 D 级匹配时所有 session 聚焦同一窗口 → 需用户在 PowerShell startup 设独特 console title
-- `pwsh.exe` 不是 Windows 自带 → `history.rs:resume_impl()` 用 cmd /K（cmd.exe 永远存在）
+- **Windows 路径大小写不敏感导致 notify 重复回放** → `watcher.rs:path_key()` 用小写归一
+- **`std::fs::rename` Windows 目标存在时失败** → `config.rs:atomic_replace()` 用 `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`
+- **WT 单进程多窗口共享同一 PID**：`bring_terminal_to_front` 落到 D 级匹配时所有 session 聚焦同一窗口 → 需用户在 PowerShell startup 设独特 console title
+- **`pwsh.exe` 不是 Windows 自带**（PowerShell Core 独立安装包）→ `history.rs:resume_impl()` 用 `cmd /K`（cmd.exe 永远存在）+ `CREATE_NEW_CONSOLE` flag
+- **WT 默认终端无 OS API 暴露 active tab/window** → 焦点同步功能整体已移除，Tab 切换走手动点击 + `Ctrl+Tab` 快捷键
 
 ## 添加新功能入口
 
@@ -103,4 +103,4 @@ src-tauri/
 | 新 IPC 命令 | 新建模块 `<feature>.rs` → 在 `lib.rs::run().invoke_handler![]` 注册 |
 | 新事件 | `bridge.rs::events` 加常量 + payload 结构 → 在 lib.rs 适当处 emit |
 | 新 Win32 调用 | 在 `Cargo.toml::[target.cfg(windows)].dependencies.windows.features` 加对应 feature；用 `#[cfg(windows)]` 包裹 |
-| 改 release 打包配置 | `tauri.conf.json::bundle`；详 [`doc/BUILD.md`](../../doc/BUILD.md) |
+| 改 release 打包配置 | `tauri.conf.json::bundle`；详 [`../README.md` § 生产构建 / 打包](../README.md) |
