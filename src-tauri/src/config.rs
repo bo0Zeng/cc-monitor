@@ -15,7 +15,8 @@ pub fn load_config() -> Result<Value, String> {
     if !path.exists() {
         return Ok(default_config());
     }
-    let raw = std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let raw =
+        std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
     serde_json::from_str(&raw).map_err(|e| format!("parse {}: {e}", path.display()))
 }
 
@@ -23,8 +24,7 @@ pub fn load_config() -> Result<Value, String> {
 pub fn save_config(value: Value) -> Result<(), String> {
     let path = paths::resolve_config_path().ok_or_else(|| "no home dir".to_string())?;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
     }
     let pretty = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
     let tmp = path.with_extension("json.tmp");
@@ -43,7 +43,10 @@ fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Resu
     use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_REPLACE_EXISTING};
 
     let to_wide = |p: &std::path::Path| -> Vec<u16> {
-        p.as_os_str().encode_wide().chain(std::iter::once(0)).collect()
+        p.as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
     };
     let src_w = to_wide(src);
     let dst_w = to_wide(dst);

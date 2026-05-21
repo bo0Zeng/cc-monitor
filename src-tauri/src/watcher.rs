@@ -94,7 +94,11 @@ fn process_file(
     tx: &mpsc::UnboundedSender<JsonlLine>,
     active: &ActiveFilter,
 ) {
-    let Some(session_id) = path.file_stem().and_then(|s| s.to_str()).map(str::to_string) else {
+    let Some(session_id) = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(str::to_string)
+    else {
         return;
     };
 

@@ -267,10 +267,7 @@ pub fn read_session_jsonl(
 }
 
 #[tauri::command]
-pub fn delete_history_session(
-    session_id: String,
-    jsonl_path: String,
-) -> Result<(), String> {
+pub fn delete_history_session(session_id: String, jsonl_path: String) -> Result<(), String> {
     // 安全校验：必须在 claude_dir/projects 之下，避免前端传错路径误删别处文件
     let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
     let projects_dir = claude_dir.join("projects");
@@ -289,8 +286,7 @@ pub fn delete_history_session(
         return Err("refuse delete: not a .jsonl file".into());
     }
 
-    std::fs::remove_file(&target)
-        .map_err(|e| format!("remove {}: {e}", target.display()))?;
+    std::fs::remove_file(&target).map_err(|e| format!("remove {}: {e}", target.display()))?;
     tracing::info!("history: deleted {}", target.display());
 
     // 同步从 metadata 移除条目
@@ -327,10 +323,7 @@ pub fn update_history_metadata(
 /// 在新终端窗口里跑 `claude --resume <session_id>`。
 /// Windows 上优先 wt.exe，找不到回退 powershell。其他平台暂不支持。
 #[tauri::command]
-pub fn resume_history_session(
-    session_id: String,
-    cwd: String,
-) -> Result<(), String> {
+pub fn resume_history_session(session_id: String, cwd: String) -> Result<(), String> {
     resume_impl(&session_id, &cwd)
 }
 
@@ -567,7 +560,11 @@ fn analyze_jsonl(
         .unwrap_or(&project_path)
         .to_string();
 
-    let entry_meta = metadata.entries.get(&session_id).cloned().unwrap_or_default();
+    let entry_meta = metadata
+        .entries
+        .get(&session_id)
+        .cloned()
+        .unwrap_or_default();
 
     Some(HistorySessionEntry {
         session_id: session_id.clone(),
@@ -615,7 +612,11 @@ fn extract_user_text(message: &ApiMessage) -> String {
 fn clean_user_text(s: &str) -> String {
     let mut out = s.to_string();
     // 简单去 tag 包裹（不需要完美，预览而已）
-    for tag in ["task-notification", "system-reminder", "local-command-caveat"] {
+    for tag in [
+        "task-notification",
+        "system-reminder",
+        "local-command-caveat",
+    ] {
         let open = format!("<{tag}>");
         let close = format!("</{tag}>");
         while let (Some(i), Some(j)) = (out.find(&open), out.find(&close)) {
@@ -675,9 +676,7 @@ fn save_metadata(m: &HistoryMetadata) -> Result<(), String> {
     // Windows 用 MoveFileExW 才能原子覆盖；这里走简单 rename + 容忍失败重试一次。
     // history-metadata 损坏代价很小（只丢用户的 star 信息，不影响 jsonl），不值得引入额外 unsafe。
     if let Err(first_err) = std::fs::rename(&tmp, &path) {
-        tracing::warn!(
-            "history-metadata rename failed (will retry after delete): {first_err}"
-        );
+        tracing::warn!("history-metadata rename failed (will retry after delete): {first_err}");
         let _ = std::fs::remove_file(&path);
         std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
     }
