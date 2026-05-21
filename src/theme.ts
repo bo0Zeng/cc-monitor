@@ -53,16 +53,31 @@ const TOKENS: ReadonlyArray<{ key: keyof ThemeConfig; cssVar: string; unit?: "px
 
 /** 把 theme 应用到 :root；undefined / 空串字段移除对应 CSS var，回退到 styles.css 默认 */
 export function applyTheme(cfg: ThemeConfig): void {
-  const root = document.documentElement;
-  for (const { key, cssVar, unit } of TOKENS) {
-    const raw = cfg[key];
-    if (raw === undefined || raw === null || raw === "") {
-      root.style.removeProperty(cssVar);
-      continue;
-    }
-    const str = unit === "px" ? `${raw}px` : String(raw);
-    root.style.setProperty(cssVar, str);
+  for (const { key } of TOKENS) {
+    applyThemeToken(key, cfg[key] as string | number | undefined);
   }
+}
+
+/**
+ * 单 token 增量应用。比 applyTheme 便宜 14 倍（不动其他 token）。
+ *
+ * 调用方场景：拖动 color picker / 输入数字字号时 `input` 事件高频触发。
+ * 拖动 60Hz × applyTheme 全量 setProperty 14 次 = 全局重排被压垮 → 卡顿。
+ * 改用 applyThemeToken 只动这一个，每帧仅触发该变量的下游样式重算。
+ */
+export function applyThemeToken(
+  key: keyof ThemeConfig,
+  value: string | number | undefined,
+): void {
+  const token = TOKENS.find((t) => t.key === key);
+  if (!token) return;
+  const root = document.documentElement;
+  if (value === undefined || value === null || value === "") {
+    root.style.removeProperty(token.cssVar);
+    return;
+  }
+  const str = token.unit === "px" ? `${value}px` : String(value);
+  root.style.setProperty(token.cssVar, str);
 }
 
 /** 启动时调用：从配置文件读取并应用 */

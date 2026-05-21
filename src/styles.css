@@ -821,6 +821,31 @@ html, body {
   cursor: pointer;
 }
 
+/* 单项"恢复默认"按钮：贴在每个 settings-row 右侧 */
+.settings-field-reset {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-small);
+  border-radius: 4px;
+  padding: 0;
+  margin-left: 4px;
+  transition: color 120ms, background 120ms, border-color 120ms;
+}
+.settings-field-reset:hover {
+  color: var(--text);
+  background: var(--overlay-hover);
+  border-color: var(--border-strong);
+}
+
 .settings-footer {
   display: flex;
   gap: 8px;
