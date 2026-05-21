@@ -28,6 +28,7 @@ use crate::messages::{ApiMessage, JsonlRecord};
 use crate::parser::parse_line;
 use crate::paths;
 use crate::session_map::SessionMap;
+use crate::utils::days_from_civil;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
@@ -709,20 +710,9 @@ fn parse_iso8601_ms(s: &str) -> Option<i64> {
         };
     }
     // 简化：忽略时区，统统按 UTC 计算（精度差几小时也能用于排序）
-    let days = days_from_civil(year, month, day);
+    let days = days_from_civil(year, month as i64, day as i64);
     let total = days * 86_400 + hour as i64 * 3600 + min as i64 * 60 + sec as i64;
     Some(total * 1000 + ms)
-}
-
-/// Howard Hinnant 的 days_from_civil 算法：把公历 (y, m, d) 转 1970-01-01 起的天数。
-fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = (y - era * 400) as u64;
-    let m_adj = if m > 2 { m - 3 } else { m + 9 };
-    let doy = (153 * m_adj as u64 + 2) / 5 + d as u64 - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe as i64 - 719_468
 }
 
 fn now_ms() -> i64 {

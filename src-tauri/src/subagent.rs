@@ -16,6 +16,7 @@
 
 use crate::messages::JsonlRecord;
 use crate::parser::parse_line;
+use crate::utils::days_from_civil;
 use serde::Deserialize;
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -164,17 +165,7 @@ fn parse_ts_ms(s: &str) -> Option<i64> {
     Some(days * 86_400_000 + h * 3_600_000 + mi * 60_000 + se * 1000 + ms)
 }
 
-/// Howard Hinnant 的 days_from_civil：把 (y,m,d) 转换为相对 1970-01-01 的天数。
-/// 跨月/跨年/闰年都单调。参考 http://howardhinnant.github.io/date_algorithms.html
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = y.div_euclid(400);
-    let yoe = y - era * 400; // [0, 399]
-    let mp = if m > 2 { m - 3 } else { m + 9 }; // Mar=0..Feb=11
-    let doy = (153 * mp + 2) / 5 + d - 1; // [0, 365]
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
-    era * 146097 + doe - 719468
-}
+// days_from_civil 已抽到 utils 模块（多处复用）
 
 #[cfg(test)]
 mod ts_tests {

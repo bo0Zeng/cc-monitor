@@ -14,10 +14,11 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// session 集合变化（added/removed）—— 由 watcher 线程每次重扫后比对旧表得出。
+/// session 集合变化 —— 由 watcher 线程每次重扫后比对旧表得出。
+/// 当前 lib.rs 只关心 removed（推 session-ended 事件），added 由 watcher 通过
+/// jsonl-line 事件自然覆盖，无需独立通道。
 #[derive(Debug, Clone)]
 pub struct SessionChange {
-    pub added: Vec<String>,
     pub removed: Vec<String>,
 }
 
@@ -30,8 +31,8 @@ pub struct SessionInfo {
     /// .NET DateTime.ToFileTime() —— FILETIME 100ns 自 1601-01-01 UTC，**字符串** 形式
     #[serde(rename = "procStart")]
     pub proc_start: String,
-    #[serde(default)]
-    pub status: Option<String>,
+    // status 字段（Claude Code 写入 "busy"/"shell"）当前 monitor 不消费；serde 默认
+    // 忽略 JSON 里的额外字段，无需显式声明
     /// Claude 给会话起的语义名（aka ai-title）。Claude Code 同时把它设到 console
     /// title，所以 WindowsTerminal 窗口的 tab title 实际是这个值——bring_to_front
     /// 用它做 window title 匹配。
@@ -46,13 +47,8 @@ pub struct SessionMap {
 }
 
 impl SessionMap {
-    pub fn load(dir: PathBuf) -> Arc<Self> {
-        let (me, _rx) = Self::load_with_changes(dir);
-        me
-    }
-
-    /// 同 `load`，额外返回一个 channel 接收 session 集合变化。
-    /// 用于 lib.rs 把 session-ended 事件透传给前端。
+    /// 加载 sessions/ 目录的全部活跃 session，并启动 watcher 线程。
+    /// 返回一个 channel 接收 session 集合变化（lib.rs 用它推送 session-ended 事件给前端）。
     pub fn load_with_changes(dir: PathBuf) -> (Arc<Self>, mpsc::Receiver<SessionChange>) {
         tracing::info!("session_map scanning {} (exists={})", dir.display(), dir.exists());
         let initial = scan_dir(&dir);
@@ -99,10 +95,6 @@ impl SessionMap {
         alive
     }
 
-    #[allow(dead_code)]
-    pub fn get(&self, session_id: &str) -> Option<SessionInfo> {
-        self.by_id.read().get(session_id).cloned()
-    }
 
     /// 把指定 session 对应的终端窗口调到前台。
     ///
@@ -483,16 +475,17 @@ fn run_watcher(
         let next_keys: HashSet<String> = next.keys().cloned().collect();
         let prev_keys: HashSet<String> = by_id.read().keys().cloned().collect();
         let removed: Vec<String> = prev_keys.difference(&next_keys).cloned().collect();
-        let added: Vec<String> = next_keys.difference(&prev_keys).cloned().collect();
+        let added_count = next_keys.difference(&prev_keys).count();
         *by_id.write() = next;
-        if !removed.is_empty() || !added.is_empty() {
+        if !removed.is_empty() || added_count > 0 {
             tracing::info!(
-                "session_map: {n} active (+{} -{})",
-                added.len(),
+                "session_map: {n} active (+{added_count} -{})",
                 removed.len()
             );
-            if let Some(tx) = &change_tx {
-                let _ = tx.send(SessionChange { added, removed });
+            if !removed.is_empty() {
+                if let Some(tx) = &change_tx {
+                    let _ = tx.send(SessionChange { removed });
+                }
             }
         }
     }
@@ -617,18 +610,23 @@ mod tests {
 
     #[test]
     fn parse_session_info() {
+        // 来自 Claude Code 实际写入的 sessions/<PID>.json 的最小代表样本；
+        // status / startedAt 等 monitor 不消费的字段也带上，确认 serde 默认能
+        // 忽略未声明的字段
         let raw = r#"{"pid":35776,"sessionId":"5b67f422-52a9-453c-bd64-3288a78a24a0","cwd":"D:\\x","startedAt":1779157297377,"procStart":"639147828963703970","status":"busy"}"#;
         let info: SessionInfo = serde_json::from_str(raw).unwrap();
         assert_eq!(info.pid, 35776);
         assert_eq!(info.session_id, "5b67f422-52a9-453c-bd64-3288a78a24a0");
         assert_eq!(info.proc_start, "639147828963703970");
-        assert_eq!(info.status.as_deref(), Some("busy"));
+        assert_eq!(info.name, None);
     }
 
     #[test]
-    fn parse_session_info_no_status() {
+    fn parse_session_info_minimal() {
+        // 最小必需字段（无 status / name / startedAt 等）也能解析
         let raw = r#"{"pid":1,"sessionId":"s","cwd":"x","procStart":"100"}"#;
         let info: SessionInfo = serde_json::from_str(raw).unwrap();
-        assert_eq!(info.status, None);
+        assert_eq!(info.session_id, "s");
+        assert_eq!(info.name, None);
     }
 }

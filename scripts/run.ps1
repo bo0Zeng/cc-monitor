@@ -1,11 +1,15 @@
 # monitor command wrapper: auto-injects MSVC dev shell env.
 # Usage (Windows PowerShell 5.1 / PowerShell 7+):
-#   powershell -NoProfile -File scripts\run.ps1 [dev|build|check|clean]
+#   powershell -NoProfile -File scripts\run.ps1 [dev|build|check|clean] [-- extra args]
+# 例：powershell -NoProfile -File scripts\run.ps1 build -- --bundles nsis
 
 param(
     [Parameter(Position=0)]
     [ValidateSet("dev","build","check","clean")]
-    [string]$Cmd = "dev"
+    [string]$Cmd = "dev",
+
+    [Parameter(ValueFromRemainingArguments=$true)]
+    [string[]]$Extra = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,8 +34,8 @@ if (-not (Test-Path $devShell)) {
 Set-Location (Resolve-Path "$PSScriptRoot\..")
 
 switch ($Cmd) {
-    "dev"   { npx tauri dev }
-    "build" { npx tauri build }
-    "check" { cargo check --manifest-path src-tauri\Cargo.toml }
-    "clean" { cargo clean --manifest-path src-tauri\Cargo.toml }
+    "dev"   { npx tauri dev @Extra }
+    "build" { npx tauri build @Extra }
+    "check" { cargo check --manifest-path src-tauri\Cargo.toml @Extra }
+    "clean" { cargo clean --manifest-path src-tauri\Cargo.toml @Extra }
 }
