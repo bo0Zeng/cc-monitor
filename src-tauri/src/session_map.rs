@@ -112,8 +112,6 @@ impl SessionMap {
     ///     `$Host.UI.RawUI.WindowTitle = Split-Path -Leaf $PWD`
     #[cfg(windows)]
     pub fn bring_terminal_to_front(&self, session_id: &str) -> Result<(), String> {
-        use std::collections::HashSet;
-
         let info = self
             .by_id
             .read()
@@ -123,115 +121,44 @@ impl SessionMap {
         let snap = process_info_snapshot().ok_or_else(|| "snapshot failed".to_string())?;
         let windows_list = enumerate_top_level_windows();
 
-        // 祖先 PID 集合（跳过系统 shell）
-        let mut ancestors: HashSet<u32> = HashSet::new();
-        let mut cur = info.pid;
-        for _ in 0..32 {
-            ancestors.insert(cur);
-            let Some(p) = snap.get(&cur) else { break };
-            if p.parent == 0 || p.parent == cur {
-                break;
-            }
-            cur = p.parent;
-        }
+        let ancestors = build_ancestors(info.pid, &snap);
+        let search_terms = build_search_terms(&info.cwd, info.name.as_deref());
 
-        // 匹配 term 优先级：
-        //   1) session.name (= ai-title)，Claude Code 实际写到 console title 的字符串
-        //      —— 这是 WindowsTerminal tab title 的真实内容
-        //   2) cwd 项目名（cwd 最后一段），fallback 给没 ai-title 的早期 session
-        //
-        // 用 Path::file_name() 而非硬编码 rsplit(['\\','/'])：Path 已经处理跨平台
-        // 分隔符 + 尾部多余分隔符，行为更稳。
-        let project = Path::new(&info.cwd)
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
-        let ai_title = info.name.as_deref().unwrap_or("").trim();
-        // 候选 search terms（按优先级），过滤掉太短的（< 4 字符避免误匹配）
-        let mut search_terms: Vec<String> = Vec::new();
-        if ai_title.len() >= 4 {
-            search_terms.push(ai_title.to_string());
-            // ai-title 前 12 字符前缀，应对 WT title 截断长 title
-            let prefix: String = ai_title.chars().take(12).collect();
-            if prefix.len() >= 4 && prefix != ai_title {
-                search_terms.push(prefix);
+        let best = select_best_window(&windows_list, &snap, &ancestors, &search_terms);
+        let (window, tier) = match best {
+            Some(v) => v,
+            None => {
+                // 完全没命中 —— 打全部终端类窗口的 (pid, title) 给诊断
+                let candidates: Vec<String> = windows_list
+                    .iter()
+                    .filter(|w| {
+                        snap.get(&w.pid)
+                            .map(|p| is_terminal_process(&p.name))
+                            .unwrap_or(false)
+                    })
+                    .map(|w| format!("pid={} title={:?}", w.pid, w.title))
+                    .collect();
+                return Err(format!(
+                    "no terminal window for session {session_id} (pid {}, search_terms={:?}); \
+                     candidates: [{}]",
+                    info.pid,
+                    search_terms,
+                    candidates.join(" | ")
+                ));
             }
-        }
-        if project.len() >= 4 {
-            search_terms.push(project.to_string());
-            let p: String = project.chars().take(8).collect();
-            if p.len() >= 4 && p != project {
-                search_terms.push(p);
-            }
-        }
-
-        let mut tier_a: Option<windows::Win32::Foundation::HWND> = None;
-        let mut tier_b: Option<windows::Win32::Foundation::HWND> = None;
-        let mut tier_c: Option<windows::Win32::Foundation::HWND> = None;
-        let mut tier_d: Option<windows::Win32::Foundation::HWND> = None;
-
-        for w in &windows_list {
-            let proc_name = snap.get(&w.pid).map(|p| p.name.as_str()).unwrap_or("");
-            // 命中任一 search term 即视为 title 匹配
-            let title_match = search_terms.iter().any(|term| w.title.contains(term));
-            let in_ancestors = ancestors.contains(&w.pid);
-            let is_terminal = is_terminal_process(proc_name);
-            let is_system = is_system_shell_process(proc_name);
-
-            if in_ancestors && !is_system {
-                if title_match && tier_a.is_none() {
-                    tier_a = Some(w.hwnd);
-                } else if tier_b.is_none() {
-                    tier_b = Some(w.hwnd);
-                }
-            }
-            if is_terminal {
-                if title_match && tier_c.is_none() {
-                    tier_c = Some(w.hwnd);
-                } else if tier_d.is_none() {
-                    tier_d = Some(w.hwnd);
-                }
-            }
-        }
-
-        let (hwnd, tier) = if let Some(h) = tier_a {
-            (h, "A:ancestor+title")
-        } else if let Some(h) = tier_b {
-            (h, "B:ancestor")
-        } else if let Some(h) = tier_c {
-            (h, "C:terminal+title")
-        } else if let Some(h) = tier_d {
-            (h, "D:terminal-any")
-        } else {
-            // 完全没命中 —— 打全部终端类窗口的 (pid, title) 给诊断用
-            let terminal_windows: Vec<String> = windows_list
-                .iter()
-                .filter(|w| {
-                    snap.get(&w.pid)
-                        .map(|p| is_terminal_process(&p.name))
-                        .unwrap_or(false)
-                })
-                .map(|w| format!("pid={} title={:?}", w.pid, w.title))
-                .collect();
-            return Err(format!(
-                "no terminal window for session {session_id} (pid {}, search_terms={:?}); \
-                 candidates: [{}]",
-                info.pid,
-                search_terms,
-                terminal_windows.join(" | ")
-            ));
         };
 
         tracing::info!(
-            "bring_to_front sid={session_id} terms={:?} tier={tier} hwnd={:?}",
+            "bring_to_front sid={session_id} terms={:?} tier={} hwnd={:?}",
             search_terms,
-            hwnd
+            tier.label(),
+            window.hwnd
         );
 
         // tier D 兜底意味着按项目名找不到精确窗口；输出所有终端类窗口的 title
         // 给诊断（仅 D 时打，避免 A/B/C 命中时刷屏）
-        if tier == "D:terminal-any" {
-            let terminal_windows: Vec<String> = windows_list
+        if tier == MatchTier::TerminalAny {
+            let candidates: Vec<String> = windows_list
                 .iter()
                 .filter(|w| {
                     snap.get(&w.pid)
@@ -242,18 +169,163 @@ impl SessionMap {
                 .collect();
             tracing::info!(
                 "  ↳ tier-D candidates ({} terminal windows): [{}]",
-                terminal_windows.len(),
-                terminal_windows.join(" | ")
+                candidates.len(),
+                candidates.join(" | ")
             );
         }
 
-        activate_window(hwnd)
+        activate_window(window.hwnd)
     }
 
     #[cfg(not(windows))]
     pub fn bring_terminal_to_front(&self, _session_id: &str) -> Result<(), String> {
         Err("only supported on Windows".into())
     }
+}
+
+// === WindowMatcher：bring_terminal_to_front 的纯逻辑部分 ===
+//
+// 把"找哪个窗口"从 Win32 API 调用里拆出来，单元测试可直接喂构造好的
+// HashMap / Vec 验证 tier 决策，不需要真实 OpenProcess / EnumWindows。
+
+/// 沿 ToolHelp 快照里的 parent 链向上走，收集所有祖先 PID（含起点）。
+/// 上限 32 层防 cyclic / 异常进程表导致死循环。
+fn build_ancestors(start_pid: u32, snap: &HashMap<u32, ProcInfo>) -> HashSet<u32> {
+    let mut acc = HashSet::new();
+    let mut cur = start_pid;
+    for _ in 0..32 {
+        if !acc.insert(cur) {
+            break; // 已访问过，链有环
+        }
+        let Some(p) = snap.get(&cur) else { break };
+        if p.parent == 0 || p.parent == cur {
+            break;
+        }
+        cur = p.parent;
+    }
+    acc
+}
+
+/// 构造按优先级排序的 search term 列表（用于 WT 窗口 title 匹配）。
+///
+/// 优先级（从精确到模糊）：
+///   1. ai-title 全字（Claude Code 实际写到 console title 的字符串）
+///   2. ai-title 前 12 字符前缀（应对 WT title 长度截断）
+///   3. cwd 最后一段（项目名）
+///   4. 项目名前 8 字符前缀
+///
+/// 短于 4 字符的 term 跳过（避免"src" 这种短串误匹配很多窗口）。
+fn build_search_terms(cwd: &str, ai_title: Option<&str>) -> Vec<String> {
+    let mut terms: Vec<String> = Vec::new();
+    let ai = ai_title.unwrap_or("").trim();
+    if ai.len() >= 4 {
+        terms.push(ai.to_string());
+        let prefix: String = ai.chars().take(12).collect();
+        if prefix.len() >= 4 && prefix != ai {
+            terms.push(prefix);
+        }
+    }
+    let project = Path::new(cwd)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    if project.len() >= 4 {
+        terms.push(project.to_string());
+        let prefix: String = project.chars().take(8).collect();
+        if prefix.len() >= 4 && prefix != project {
+            terms.push(prefix);
+        }
+    }
+    terms
+}
+
+/// 4 阶段窗口匹配优先级（从最精确到最宽松）。
+#[cfg(windows)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+enum MatchTier {
+    /// 祖先链 PID 的窗口 + title 含 search term —— 最精确
+    AncestorWithTitle,
+    /// 祖先链 PID 的窗口（任意 title）
+    AncestorAny,
+    /// 终端类进程窗口 + title 含 search term
+    TerminalWithTitle,
+    /// 终端类进程的任一窗口 —— 兜底，WT 多窗口时所有 session 落这里
+    TerminalAny,
+}
+
+#[cfg(windows)]
+impl MatchTier {
+    fn label(self) -> &'static str {
+        match self {
+            Self::AncestorWithTitle => "A:ancestor+title",
+            Self::AncestorAny => "B:ancestor",
+            Self::TerminalWithTitle => "C:terminal+title",
+            Self::TerminalAny => "D:terminal-any",
+        }
+    }
+}
+
+/// 给单个窗口分类。None 表示既不在祖先链也不是终端类（与本 session 无关）。
+#[cfg(windows)]
+fn classify_window(
+    w: &WindowSnap,
+    snap: &HashMap<u32, ProcInfo>,
+    ancestors: &HashSet<u32>,
+    search_terms: &[String],
+) -> Option<MatchTier> {
+    let proc_name = snap.get(&w.pid).map(|p| p.name.as_str()).unwrap_or("");
+    let is_system = is_system_shell_process(proc_name);
+    let in_ancestors = !is_system && ancestors.contains(&w.pid);
+    let is_terminal = is_terminal_process(proc_name);
+    let title_match = search_terms.iter().any(|t| w.title.contains(t));
+
+    if in_ancestors && title_match {
+        return Some(MatchTier::AncestorWithTitle);
+    }
+    if in_ancestors {
+        return Some(MatchTier::AncestorAny);
+    }
+    if is_terminal && title_match {
+        return Some(MatchTier::TerminalWithTitle);
+    }
+    if is_terminal {
+        return Some(MatchTier::TerminalAny);
+    }
+    None
+}
+
+/// 从窗口列表里挑出"按 tier 优先级最高且最早出现"的那个。
+///
+/// Iterate 一次，分别记下 4 个 tier 的首个命中。返回时按 tier 优先级输出。
+#[cfg(windows)]
+fn select_best_window<'a>(
+    windows: &'a [WindowSnap],
+    snap: &HashMap<u32, ProcInfo>,
+    ancestors: &HashSet<u32>,
+    search_terms: &[String],
+) -> Option<(&'a WindowSnap, MatchTier)> {
+    let mut best: [Option<&'a WindowSnap>; 4] = [None; 4];
+    for w in windows {
+        let Some(tier) = classify_window(w, snap, ancestors, search_terms) else {
+            continue;
+        };
+        let idx = tier as usize;
+        if best[idx].is_none() {
+            best[idx] = Some(w);
+        }
+    }
+    for (idx, slot) in best.iter().enumerate() {
+        if let Some(w) = slot {
+            let tier = match idx {
+                0 => MatchTier::AncestorWithTitle,
+                1 => MatchTier::AncestorAny,
+                2 => MatchTier::TerminalWithTitle,
+                _ => MatchTier::TerminalAny,
+            };
+            return Some((w, tier));
+        }
+    }
+    None
 }
 
 #[derive(Clone)]
@@ -628,5 +700,195 @@ mod tests {
         let info: SessionInfo = serde_json::from_str(raw).unwrap();
         assert_eq!(info.session_id, "s");
         assert_eq!(info.name, None);
+    }
+
+    // === build_ancestors（跨平台纯函数）===
+
+    fn proc(parent: u32, name: &str) -> ProcInfo {
+        ProcInfo {
+            parent,
+            name: name.into(),
+        }
+    }
+
+    #[test]
+    fn ancestors_walks_parent_chain() {
+        let mut snap = HashMap::new();
+        snap.insert(100, proc(50, "claude.exe"));
+        snap.insert(50, proc(20, "pwsh.exe"));
+        snap.insert(20, proc(4, "WindowsTerminal.exe"));
+        snap.insert(4, proc(0, "System")); // 走到根
+        let acc = build_ancestors(100, &snap);
+        assert!(acc.contains(&100));
+        assert!(acc.contains(&50));
+        assert!(acc.contains(&20));
+        assert!(acc.contains(&4));
+    }
+
+    #[test]
+    fn ancestors_breaks_on_cycle() {
+        // 异常进程表：100 -> 50 -> 100（环）
+        let mut snap = HashMap::new();
+        snap.insert(100, proc(50, "a.exe"));
+        snap.insert(50, proc(100, "b.exe"));
+        let acc = build_ancestors(100, &snap);
+        assert_eq!(acc.len(), 2); // 不死循环，最多 32 层但环检测先 break
+    }
+
+    #[test]
+    fn ancestors_breaks_on_missing_parent() {
+        // 走到一个 PID snap 里没记的（进程已退）
+        let mut snap = HashMap::new();
+        snap.insert(100, proc(99999, "a.exe"));
+        let acc = build_ancestors(100, &snap);
+        assert!(acc.contains(&100));
+        assert!(acc.contains(&99999));
+        assert_eq!(acc.len(), 2);
+    }
+
+    // === build_search_terms ===
+
+    #[test]
+    fn search_terms_full_ai_title_and_project() {
+        let terms =
+            build_search_terms(r"D:\Sync\文档\claudecode-frontend", Some("filter-active"));
+        // ai-title 全字 + 前缀 + 项目名（短于 12 字 → 无前缀）；项目名 16 字 → 前 8
+        assert!(terms.iter().any(|t| t == "filter-active"));
+        assert!(terms.iter().any(|t| t == "claudecode-frontend"));
+        // 项目名长 > 8 → 加前 8 字前缀
+        assert!(terms.iter().any(|t| t == "claudeco"));
+    }
+
+    #[test]
+    fn search_terms_skip_short_strings() {
+        // ai-title 3 字符（< 4）跳过；项目名 3 字符跳过 → 空
+        let terms = build_search_terms(r"D:\a\b", Some("hi"));
+        assert!(terms.is_empty(), "expected empty, got {:?}", terms);
+    }
+
+    #[test]
+    fn search_terms_ai_title_prefix_only_when_long() {
+        // ai-title 13 字符 → 前 12 字前缀加入
+        let terms = build_search_terms("/tmp", Some("abcdefghijklm")); // 13
+        assert!(terms.iter().any(|t| t == "abcdefghijklm"));
+        assert!(terms.iter().any(|t| t == "abcdefghijkl"));
+    }
+
+    // === classify_window + select_best_window（Win32 类型仅在 windows 编译）===
+    #[cfg(windows)]
+    mod matcher_win {
+        use super::*;
+        use windows::Win32::Foundation::HWND;
+
+        fn ws(hwnd_raw: isize, pid: u32, title: &str) -> WindowSnap {
+            WindowSnap {
+                hwnd: HWND(hwnd_raw),
+                pid,
+                title: title.to_string(),
+            }
+        }
+
+        fn build_snap(entries: &[(u32, u32, &str)]) -> HashMap<u32, ProcInfo> {
+            let mut m = HashMap::new();
+            for (pid, parent, name) in entries {
+                m.insert(*pid, proc(*parent, name));
+            }
+            m
+        }
+
+        #[test]
+        fn classify_ancestor_with_title() {
+            let snap = build_snap(&[(100, 0, "claude.exe")]);
+            let ancestors: HashSet<u32> = [100].into_iter().collect();
+            let terms = vec!["proj".to_string()];
+            let w = ws(1, 100, "myproject in foo");
+            assert_eq!(
+                classify_window(&w, &snap, &ancestors, &terms),
+                Some(MatchTier::AncestorWithTitle)
+            );
+        }
+
+        #[test]
+        fn classify_ancestor_any() {
+            let snap = build_snap(&[(100, 0, "claude.exe")]);
+            let ancestors: HashSet<u32> = [100].into_iter().collect();
+            let terms = vec!["proj".to_string()];
+            let w = ws(1, 100, "irrelevant title");
+            assert_eq!(
+                classify_window(&w, &snap, &ancestors, &terms),
+                Some(MatchTier::AncestorAny)
+            );
+        }
+
+        #[test]
+        fn classify_terminal_with_title() {
+            let snap = build_snap(&[(200, 0, "WindowsTerminal.exe")]);
+            let ancestors: HashSet<u32> = HashSet::new();
+            let terms = vec!["foobar".to_string()];
+            let w = ws(2, 200, "WT - foobar tab");
+            assert_eq!(
+                classify_window(&w, &snap, &ancestors, &terms),
+                Some(MatchTier::TerminalWithTitle)
+            );
+        }
+
+        #[test]
+        fn classify_terminal_any() {
+            let snap = build_snap(&[(200, 0, "WindowsTerminal.exe")]);
+            let ancestors: HashSet<u32> = HashSet::new();
+            let terms = vec!["foobar".to_string()];
+            let w = ws(2, 200, "no match here");
+            assert_eq!(
+                classify_window(&w, &snap, &ancestors, &terms),
+                Some(MatchTier::TerminalAny)
+            );
+        }
+
+        #[test]
+        fn classify_explorer_in_ancestors_not_matched_as_ancestor() {
+            // explorer.exe 是系统 shell，即使在祖先链也不算 ancestor 命中
+            let snap = build_snap(&[(50, 0, "explorer.exe")]);
+            let ancestors: HashSet<u32> = [50].into_iter().collect();
+            let terms = vec!["proj".to_string()];
+            let w = ws(3, 50, "proj");
+            assert_eq!(classify_window(&w, &snap, &ancestors, &terms), None);
+        }
+
+        #[test]
+        fn classify_unrelated_returns_none() {
+            let snap = build_snap(&[(300, 0, "code.exe")]);
+            let ancestors: HashSet<u32> = HashSet::new();
+            let terms: Vec<String> = vec![];
+            let w = ws(4, 300, "vscode");
+            assert_eq!(classify_window(&w, &snap, &ancestors, &terms), None);
+        }
+
+        #[test]
+        fn select_best_picks_highest_tier() {
+            let snap = build_snap(&[
+                (100, 0, "claude.exe"),
+                (200, 0, "WindowsTerminal.exe"),
+            ]);
+            let ancestors: HashSet<u32> = [100].into_iter().collect();
+            let terms = vec!["proj".to_string()];
+            let windows = vec![
+                ws(1, 200, "WT - proj"),           // C: TerminalWithTitle
+                ws(2, 100, "ancestor no title"),    // B: AncestorAny
+                ws(3, 200, "WT - random"),          // D: TerminalAny
+                ws(4, 100, "ancestor proj"),        // A: AncestorWithTitle ← 应选这个
+            ];
+            let (best, tier) = select_best_window(&windows, &snap, &ancestors, &terms).unwrap();
+            assert_eq!(tier, MatchTier::AncestorWithTitle);
+            assert_eq!(best.title, "ancestor proj");
+        }
+
+        #[test]
+        fn select_best_returns_none_when_no_match() {
+            let snap = build_snap(&[(300, 0, "code.exe")]);
+            let ancestors: HashSet<u32> = HashSet::new();
+            let terms: Vec<String> = vec![];
+            let windows = vec![ws(1, 300, "vscode")];
+            assert!(select_best_window(&windows, &snap, &ancestors, &terms).is_none());
+        }
     }
 }
