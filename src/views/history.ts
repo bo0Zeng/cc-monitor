@@ -79,6 +79,10 @@ export class HistoryView {
   private sort: SortMode = "updated_desc";
   private showHidden = false;
   private isOpen = false;
+  /** "全量加载" 按钮按过后置 true；之后搜索可命中 session 内容（ai-title/excerpt 等） */
+  private loadedAll = false;
+  /** 全量加载并发上限（控制对后端 IPC 的瞬时压力） */
+  private static readonly LOAD_ALL_CONCURRENCY = 4;
 
   // 子元素
   private listEl!: HTMLElement;
@@ -86,6 +90,8 @@ export class HistoryView {
   private statusEl!: HTMLElement;
   /** 列表模式的工具条+列表整体（切到查看器时整块隐藏） */
   private listShell!: HTMLElement;
+  /** "全量加载" 按钮 ref；加载中要 disable */
+  private loadAllBtn!: HTMLButtonElement;
   /** 当前打开的会话查看器（点击条目进入只读视图）；null = 列表模式 */
   private viewer: SessionViewer | null = null;
   /** project_dir → 用户展开状态。默认折叠；用户主动展开的记下来 */
@@ -107,8 +113,20 @@ export class HistoryView {
     // 重新打开时清掉旧缓存（避免文件已被外部改动后展示陈旧数据）
     this.sessionCache.clear();
     this.loadingProjects.clear();
+    this.loadedAll = false;
+    this.updateSearchPlaceholder();
     await this.refresh();
     this.searchInput.focus();
+  }
+
+  /** 根据是否已全量加载更新搜索框 placeholder，告知用户搜索覆盖范围 */
+  private updateSearchPlaceholder(): void {
+    if (this.loadedAll) {
+      this.searchInput.placeholder = "搜索：项目 + 所有会话内容（ai-title / 首条消息 / sid）";
+    } else {
+      this.searchInput.placeholder =
+        "搜索：项目名 / 路径（已展开项目还匹配会话内容；或点「全量加载」全文搜）";
+    }
   }
 
   close(): void {
@@ -224,8 +242,8 @@ export class HistoryView {
 
     this.searchInput = document.createElement("input");
     this.searchInput.type = "search";
-    this.searchInput.placeholder = "搜索：项目名 / 路径（已展开项目还匹配会话内容）";
     this.searchInput.className = "history-search";
+    // placeholder 在 updateSearchPlaceholder 里根据 loadedAll 动态设
     this.searchInput.addEventListener("input", () => {
       this.filter = this.searchInput.value.trim().toLowerCase();
       this.renderList();
@@ -255,9 +273,19 @@ export class HistoryView {
     expandAllBtn.type = "button";
     expandAllBtn.className = "history-refresh";
     expandAllBtn.textContent = "展开/收起";
-    expandAllBtn.title = "切换所有项目组的展开状态（展开会触发批量加载）";
+    expandAllBtn.title = "切换所有项目组的展开状态";
     expandAllBtn.addEventListener("click", () => void this.toggleAll());
     bar.appendChild(expandAllBtn);
+
+    // 全量加载：把每个项目的 session 详情都拉到缓存，让搜索可命中 session 内容
+    this.loadAllBtn = document.createElement("button");
+    this.loadAllBtn.type = "button";
+    this.loadAllBtn.className = "history-refresh";
+    this.loadAllBtn.textContent = "全量加载";
+    this.loadAllBtn.title =
+      "拉取所有项目的会话详情，加载后搜索可匹配 session 内容（ai-title / 首条消息 / sid）";
+    this.loadAllBtn.addEventListener("click", () => void this.loadAllSessions());
+    bar.appendChild(this.loadAllBtn);
 
     const hiddenLabel = document.createElement("label");
     hiddenLabel.className = "history-toggle";
@@ -289,6 +317,9 @@ export class HistoryView {
     this.listEl = document.createElement("div");
     this.listEl.className = "history-list";
     this.listShell.appendChild(this.listEl);
+
+    // 首次构造时给一份合理 placeholder（open() 里会再刷新一次以反映 loadedAll）
+    this.updateSearchPlaceholder();
 
     return view;
   }
@@ -440,6 +471,58 @@ export class HistoryView {
     if (expanded) renderBody();
 
     return details;
+  }
+
+  /**
+   * 全量加载：把所有项目的 session 详情拉到缓存。
+   *
+   * 完成后：
+   *   - 搜索的 matchProject 路径会命中已缓存的 session 字段（ai-title / customTitle /
+   *     first_user_excerpt / session_id）
+   *   - searchInput placeholder 更新提示
+   *   - loadedAll = true，再次打开历史视图前不会重复跑
+   *
+   * 节流：并发上限 LOAD_ALL_CONCURRENCY（默认 4），避免一次性向后端 fire 500 个 IPC。
+   */
+  private async loadAllSessions(): Promise<void> {
+    if (this.loadedAll) return;
+    const pending = this.projects.filter((p) => !this.sessionCache.has(p.project_dir));
+    if (pending.length === 0) {
+      this.loadedAll = true;
+      this.updateSearchPlaceholder();
+      this.statusEl.textContent = `已加载全部 ${this.projects.length} 个项目`;
+      return;
+    }
+
+    this.loadAllBtn.disabled = true;
+    const baseLabel = this.loadAllBtn.textContent;
+    const total = pending.length;
+    let done = 0;
+    const queue = pending.slice();
+
+    const worker = async (): Promise<void> => {
+      while (queue.length > 0) {
+        const proj = queue.shift();
+        if (!proj) break;
+        await this.loadProjectSessions(proj.project_dir);
+        done += 1;
+        this.statusEl.textContent = `加载中 ${done}/${total} …`;
+        this.loadAllBtn.textContent = `加载 ${done}/${total}`;
+      }
+    };
+
+    try {
+      await Promise.all(
+        Array.from({ length: HistoryView.LOAD_ALL_CONCURRENCY }, () => worker()),
+      );
+      this.loadedAll = true;
+      this.updateSearchPlaceholder();
+      // 重画一次以应用搜索匹配（如果用户已经在搜索框输入）
+      this.renderList();
+    } finally {
+      this.loadAllBtn.disabled = false;
+      this.loadAllBtn.textContent = baseLabel ?? "全量加载";
+    }
   }
 
   /** "展开/收起全部" 按钮：当前若全收起 → 全展开；否则 → 全收起 */
