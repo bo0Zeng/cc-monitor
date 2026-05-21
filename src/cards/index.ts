@@ -94,12 +94,12 @@ export type RenderResult =
 export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResult {
   switch (rec.type) {
     case "user": {
-      const text = extractText(rec.message.content);
-      if (text.trim()) {
-        // 纯文本 user 输入：先过滤 Claude Code CLI 内部注入的 prompt 包装
-        // （<task-notification>…</task-notification> 后台命令完成通知 +
-        // "Continue from where you left off." 样板），不是真实用户输入
-        if (isInternalUserNoise(text)) {
+      const rawText = extractText(rec.message.content);
+      if (rawText.trim()) {
+        // 先剥 Claude Code CLI 注入的 prompt 包装；剩余文本喂给下游识别 +
+        // 渲染。剥干净就 skip 整条。
+        const text = stripInternalNoise(rawText);
+        if (text.length === 0) {
           return { kind: "skip" };
         }
         if (isCompactSummary(text)) {
@@ -513,22 +513,26 @@ function extractExitCode(text: string): number | null {
 }
 
 /**
- * 识别 Claude Code CLI 注入到 user message 里的 prompt 包装：
- * - `<task-notification>...</task-notification>` 后台命令完成通知（含 status/summary 等）
- * - `Continue from where you left off.` 接续提示样板
+ * 剥掉 Claude Code CLI 注入到 user message 里的 prompt 包装：
+ * - `<task-notification>...</task-notification>` 后台命令完成通知
  * - `<system-reminder>...</system-reminder>` 各种系统级提醒
+ * - `<local-command-caveat>...</local-command-caveat>` 本地命令免责声明
+ * - `<local-command-stdout>...</local-command-stdout>` 本地命令（如 /compact）的 stdout
+ * - `Continue from where you left off.` / `No response requested.` 样板单行
  *
- * 这些不是用户真实输入，剥离后若无剩余内容就 skip 整条 user 消息。
+ * 返回剥过后的文本（trim 过）。空字符串表示整条都是 noise，调用方应 skip。
+ * 非空时下游 (parseSlashCommand / buildUserCard) 用这份剥过的文本渲染，
+ * 这样 `/compact` 后面跟的 stdout 不会拖累 slash 卡片识别。
  */
-function isInternalUserNoise(text: string): boolean {
-  const stripped = text
+function stripInternalNoise(text: string): string {
+  return text
     .replace(/<task-notification>[\s\S]*?<\/task-notification>/g, "")
     .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
     .replace(/<local-command-caveat>[\s\S]*?<\/local-command-caveat>/g, "")
+    .replace(/<local-command-stdout>[\s\S]*?<\/local-command-stdout>/g, "")
     .replace(/^continue from where you left off\.?$/gim, "")
     .replace(/^no response requested\.?$/gim, "")
     .trim();
-  return stripped.length === 0;
 }
 
 /**

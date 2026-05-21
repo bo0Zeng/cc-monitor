@@ -8,6 +8,23 @@
 
 ---
 
+## [1.6.2] — 2026-05-21
+
+### 修复
+
+- **`/compact` 等本地命令的 stdout 漏到 user 消息里渲染** —— Claude Code CLI
+  把 `/compact` 写进 JSONL 时格式是 `<command-name>/compact</command-name>
+  <command-message>compact</command-message><command-args></command-args>
+  <local-command-stdout>Compacted...</local-command-stdout>`。v1.5 已过滤
+  `<local-command-caveat>` 等 3 个标签但漏了 `<local-command-stdout>`，
+  整条 user 消息因尾部多了一段无法匹配 slash 紧凑卡正则，回落到普通
+  user 气泡把整段连同 stdout 一起渲染出来。这次：
+  - 前端 `isInternalUserNoise` 重构为 `stripInternalNoise(text): string`
+    返回剥过的文本（而非 boolean）；剥噪声列表补 `local-command-stdout`；
+    user 分支用剥过的文本喂下游 `parseSlashCommand` / `buildUserCard`，
+    `/compact` 现正确识别为 "⌘ /compact" 紧凑卡。
+  - 后端 `history.rs::clean_user_text` 历史预览的 tag 列表同步补一项。
+
 ## [1.6.1] — 2026-05-21
 
 ### 修复

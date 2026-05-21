@@ -616,6 +616,7 @@ fn clean_user_text(s: &str) -> String {
         "task-notification",
         "system-reminder",
         "local-command-caveat",
+        "local-command-stdout",
     ] {
         let open = format!("<{tag}>");
         let close = format!("</{tag}>");
