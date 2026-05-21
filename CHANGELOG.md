@@ -8,9 +8,10 @@
 
 ---
 
-## [Unreleased] / 1.6.0-dev
+## [1.6.0] — 2026-05-21
 
-进行中（main 分支已合）。预计 v1.6.0 时打 tag。
+v1.5.0 的迭代版。首次通过 `release.yml` 自动发布（v1.5.0 tag 指向的 commit
+当时 release.yml 还未引入，无法触发自动 build → 跳过 v1.5.0 release）。
 
 ### 新增
 
