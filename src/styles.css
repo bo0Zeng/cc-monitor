@@ -164,6 +164,14 @@ html, body {
   margin-left: 2px;
 }
 
+/* refreshTabBar 局部更新（v1.6）：所有 5 个子元素一次性 append，visibility 由 class 控制
+ * 避免每次 ondLine/状态变化时 replaceChildren 重建按钮（长会话每秒数十次重绘开销大） */
+.tab .tab-badge { display: none; }
+.tab.has-unread:not(.active) .tab-badge { display: inline-flex; }
+.tab.archived .live-dot,
+.tab.archived .tab-focus { display: none; }
+.tab:not(.archived) .tab-close { display: none; }
+
 .tab-title {
   overflow: hidden;
   text-overflow: ellipsis;

@@ -57,6 +57,7 @@ impl EventReplay {
     /// **持锁** 期间 emit，保证 record 排队等待 —— 前端不会先收到 live emit
     /// 再收到 replay snapshot 而错乱。
     pub fn replay_and_mark_ready<R: Runtime>(&self, handle: &AppHandle<R>) {
+        let started = std::time::Instant::now();
         let mut inner = self.inner.lock();
         let n = inner.history.len();
         for p in inner.history.iter() {
@@ -66,7 +67,10 @@ impl EventReplay {
         }
         inner.ready = true;
         drop(inner);
-        tracing::info!("replayed {n} events to frontend (order-strict)");
+        tracing::info!(
+            "replayed {n} events to frontend (order-strict) in {}ms",
+            started.elapsed().as_millis()
+        );
     }
 
     /// 把指定 session_id 的全部历史从 buffer 移除。

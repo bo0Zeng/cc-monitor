@@ -1,0 +1,53 @@
+name: Release
+
+# 推 v* tag 时触发：cargo tauri build → 把 NSIS / MSI bundle 作为 GitHub Release 附件上传。
+# 注意：默认 build 会尝试下载 WiX toolset 来打 MSI，若网络不稳定可临时改 --bundles nsis。
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build-windows:
+    name: Build Windows artifacts
+    runs-on: windows-latest
+    permissions:
+      contents: write   # 需要 write 才能上传 release 附件
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: npm install
+        run: npm ci
+
+      # tauri build 会顺序：npm run build (vite) → cargo build --release → bundle (msi + nsis)
+      - name: tauri build
+        run: npx tauri build --bundles nsis,msi
+
+      - name: Compute SHA256 checksums
+        shell: pwsh
+        run: |
+          $bundleDir = "src-tauri\target\release\bundle"
+          Get-ChildItem -Path "$bundleDir\nsis\*-setup.exe", "$bundleDir\msi\*.msi", "src-tauri\target\release\monitor.exe" -ErrorAction SilentlyContinue |
+            Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" } |
+            Out-File -FilePath "SHA256SUMS.txt" -Encoding utf8
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            src-tauri/target/release/monitor.exe
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/msi/*.msi
+            SHA256SUMS.txt

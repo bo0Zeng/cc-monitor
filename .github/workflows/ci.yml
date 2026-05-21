@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+# Windows-only：cc-monitor v1 不支持 Linux/macOS（核心 Win32 调用）。
+# 跨平台支持是 v2 计划，届时这里再加 matrix.os。
+jobs:
+  rust:
+    name: Rust lint + test
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # fmt 已经过项目历史校准，强制约束
+      - name: cargo fmt --check
+        run: cargo fmt --check
+
+      # clippy 仅警告，不强制（项目尚未做完整 lint 整治）
+      - name: cargo clippy
+        run: cargo clippy --all-targets
+
+      - name: cargo test
+        run: cargo test --all
+
+  frontend:
+    name: Frontend typecheck + build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+      # vite build 验证产物可生成（不打包 exe，那个 5+ 分钟太慢；
+      # 完整 tauri build 留给 tag 触发的 release 工作流）
+      - name: vite build (dist/)
+        run: npm run build

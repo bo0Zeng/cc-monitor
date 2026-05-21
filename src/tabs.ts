@@ -56,8 +56,19 @@ export interface TabsSummary {
   archived: number;
 }
 
+/** TabButton 的 DOM 引用：refreshTabBar 局部更新依赖这些 ref 避免重新创建 button */
+interface TabButtonRefs {
+  root: HTMLButtonElement;
+  label: HTMLSpanElement;
+  badge: HTMLSpanElement;
+}
+
 export class TabManager {
   private tabs = new Map<string, Tab>();
+  /** 按插入顺序的 sessionId 数组，与 this.tabs.keys() 顺序一致但避免每次 Array.from */
+  private orderedIds: string[] = [];
+  /** sessionId → button DOM refs，避免 refreshTabBar 每次重建整个 bar */
+  private tabButtons = new Map<string, TabButtonRefs>();
   private activeId: string | null = null;
   // 早期版本曾用 user lock（用户主动点 Tab 后 5s 内拒 focus-switch）防自动焦点撞回去，
   // 实测 5s 太长导致用户切焦点窗口后 Tab 不跟着切（看上去焦点同步失效）。砍掉：用户
@@ -165,6 +176,7 @@ export class TabManager {
       toolUseElements: new Map(),
     };
     this.tabs.set(sessionId, tab);
+    this.orderedIds.push(sessionId);
 
     if (this.activeId === null) {
       this.switchTo(sessionId);
@@ -210,10 +222,10 @@ export class TabManager {
     if (tab.status !== "archived") return;
 
     const wasActive = this.activeId === sessionId;
-    const orderedIds = Array.from(this.tabs.keys());
-    const idx = orderedIds.indexOf(sessionId);
+    const idx = this.orderedIds.indexOf(sessionId);
     // 优先切到后一个 Tab，否则前一个
-    const fallbackId = orderedIds[idx + 1] ?? orderedIds[idx - 1] ?? null;
+    const fallbackId =
+      this.orderedIds[idx + 1] ?? this.orderedIds[idx - 1] ?? null;
 
     tab.stream.dispose();
     tab.streamEl.remove();
@@ -223,6 +235,7 @@ export class TabManager {
     tab.toolUseElements.clear();
     tab.pendingToolGroup = null;
     this.tabs.delete(sessionId);
+    if (idx >= 0) this.orderedIds.splice(idx, 1);
 
     // 让后端 event_replay 把这个 session 的历史也丢掉
     void invoke("forget_session", { sessionId }).catch((e) => {
@@ -246,7 +259,7 @@ export class TabManager {
    * 快捷键 Ctrl+Tab / Ctrl+Shift+Tab 用。
    */
   cycleActive(delta: 1 | -1): void {
-    const ids = Array.from(this.tabs.keys());
+    const ids = this.orderedIds;
     if (ids.length === 0) return;
     const idx = this.activeId ? ids.indexOf(this.activeId) : -1;
     const nextIdx = ((idx + delta) % ids.length + ids.length) % ids.length;
@@ -290,68 +303,120 @@ export class TabManager {
     this.refreshTabBar();
   }
 
+  /**
+   * 局部更新策略（避免每次 onLine 都 replaceChildren）：
+   *   1. 删除：tabButtons 缓存里有但 orderedIds 已没的 sid → 摘 DOM + 清缓存
+   *   2. 创建：orderedIds 里有但缓存没的 sid → createTabButton 一次（含所有 5 个子
+   *      元素 + 事件 listener），visibility 全交 CSS 控制
+   *   3. 更新：updateTabButton 同步 active / archived / has-unread class + label/badge 文本
+   *   4. 排序：iterate orderedIds + insertBefore，确保 DOM 顺序 = orderedIds 顺序
+   *
+   * CSS 配合（styles.css）：
+   *   .tab.archived .live-dot/.tab-focus { display: none }
+   *   .tab:not(.archived) .tab-close { display: none }
+   *   .tab .tab-badge { display: none }
+   *   .tab.has-unread:not(.active) .tab-badge { display: inline-block }
+   */
   private refreshTabBar(): void {
-    this.barEl.replaceChildren();
-    for (const [sid, t] of this.tabs) {
-      const btn = document.createElement("button");
-      btn.className = "tab" + (sid === this.activeId ? " active" : "");
-      if (t.status === "archived") btn.classList.add("archived");
-
-      if (t.status !== "archived") {
-        const dot = document.createElement("span");
-        dot.className = "live-dot";
-        btn.appendChild(dot);
+    // 1. 删
+    const wanted = new Set(this.orderedIds);
+    for (const sid of Array.from(this.tabButtons.keys())) {
+      if (!wanted.has(sid)) {
+        const refs = this.tabButtons.get(sid)!;
+        refs.root.remove();
+        this.tabButtons.delete(sid);
       }
-
-      const label = document.createElement("span");
-      label.className = "tab-title";
-      label.textContent = t.title;
-      btn.appendChild(label);
-
-      if (t.unread > 0 && sid !== this.activeId) {
-        const badge = document.createElement("span");
-        badge.className = "tab-badge";
-        badge.textContent = t.unread > 99 ? "99+" : String(t.unread);
-        btn.appendChild(badge);
-      }
-
-      // live Tab 显示"调出终端"按钮（archived 进程已死，无窗口可调）
-      if (t.status !== "archived") {
-        const focus = document.createElement("span");
-        focus.className = "tab-focus";
-        focus.textContent = "↗";
-        focus.title = "调出对应终端 (Ctrl+`)";
-        focus.addEventListener("click", (e) => {
-          e.stopPropagation();
-          void bringTerminalToFront(sid);
-        });
-        btn.appendChild(focus);
-      }
-
-      // 归档 Tab 才显示关闭按钮 —— 防止误关运行中的会话
-      if (t.status === "archived") {
-        const close = document.createElement("span");
-        close.className = "tab-close";
-        close.textContent = "×";
-        close.title = "关闭 Tab";
-        close.addEventListener("click", (e) => {
-          e.stopPropagation();
-          this.closeTab(sid);
-        });
-        btn.appendChild(close);
-      }
-
-      btn.addEventListener("click", () => this.switchTo(sid));
-      // 中键点击归档 Tab 也关闭（常见 UX）
-      btn.addEventListener("mousedown", (e) => {
-        if (e.button === 1 && t.status === "archived") {
-          e.preventDefault();
-          this.closeTab(sid);
-        }
-      });
-      this.barEl.appendChild(btn);
     }
+
+    // 2 + 3 + 4. 创建 / 更新 / 排序
+    let prev: ChildNode | null = null;
+    for (const sid of this.orderedIds) {
+      const tab = this.tabs.get(sid);
+      if (!tab) continue;
+      let refs = this.tabButtons.get(sid);
+      if (!refs) {
+        refs = this.createTabButton(sid);
+        this.tabButtons.set(sid, refs);
+      }
+      this.updateTabButton(refs, sid, tab);
+      // 排序：希望此 button 出现在 prev 之后
+      const targetNext: ChildNode | null = prev
+        ? prev.nextSibling
+        : this.barEl.firstChild;
+      if (refs.root !== targetNext) {
+        this.barEl.insertBefore(refs.root, targetNext);
+      }
+      prev = refs.root;
+    }
+
     this.notifyChanged();
+  }
+
+  private createTabButton(sid: string): TabButtonRefs {
+    const root = document.createElement("button");
+    root.className = "tab";
+
+    const dot = document.createElement("span");
+    dot.className = "live-dot";
+    root.appendChild(dot);
+
+    const label = document.createElement("span");
+    label.className = "tab-title";
+    root.appendChild(label);
+
+    const badge = document.createElement("span");
+    badge.className = "tab-badge";
+    root.appendChild(badge);
+
+    const focusBtn = document.createElement("span");
+    focusBtn.className = "tab-focus";
+    focusBtn.textContent = "↗";
+    focusBtn.title = "调出对应终端 (Ctrl+`)";
+    focusBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void bringTerminalToFront(sid);
+    });
+    root.appendChild(focusBtn);
+
+    const closeBtn = document.createElement("span");
+    closeBtn.className = "tab-close";
+    closeBtn.textContent = "×";
+    closeBtn.title = "关闭 Tab";
+    closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.closeTab(sid);
+    });
+    root.appendChild(closeBtn);
+
+    root.addEventListener("click", () => this.switchTo(sid));
+    // 中键点击归档 Tab 也关闭（常见 UX）
+    root.addEventListener("mousedown", (e) => {
+      if (e.button !== 1) return;
+      const t = this.tabs.get(sid);
+      if (t?.status === "archived") {
+        e.preventDefault();
+        this.closeTab(sid);
+      }
+    });
+
+    return { root, label, badge };
+  }
+
+  private updateTabButton(refs: TabButtonRefs, sid: string, tab: Tab): void {
+    refs.root.classList.toggle("active", sid === this.activeId);
+    refs.root.classList.toggle("archived", tab.status === "archived");
+    const unread = tab.unread > 0 && sid !== this.activeId;
+    refs.root.classList.toggle("has-unread", unread);
+
+    if (refs.label.textContent !== tab.title) {
+      refs.label.textContent = tab.title;
+    }
+    if (unread) {
+      const text = tab.unread > 99 ? "99+" : String(tab.unread);
+      if (refs.badge.textContent !== text) {
+        refs.badge.textContent = text;
+      }
+    }
   }
 }
 

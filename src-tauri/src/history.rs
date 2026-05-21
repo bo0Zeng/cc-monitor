@@ -114,6 +114,7 @@ pub struct MetadataPatch {
 pub fn list_history_projects(
     map: tauri::State<'_, Arc<SessionMap>>,
 ) -> Result<Vec<HistoryProject>, String> {
+    let started = std::time::Instant::now();
     let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
     let projects_dir = claude_dir.join("projects");
     if !projects_dir.exists() {
@@ -145,6 +146,11 @@ pub fn list_history_projects(
             .then(b.last_activity.cmp(&a.last_activity))
     });
 
+    tracing::info!(
+        "list_history_projects: {} projects in {}ms",
+        out.len(),
+        started.elapsed().as_millis()
+    );
     Ok(out)
 }
 
@@ -154,6 +160,7 @@ pub fn list_history_sessions_in_project(
     project_dir: String,
     map: tauri::State<'_, Arc<SessionMap>>,
 ) -> Result<Vec<HistorySessionEntry>, String> {
+    let started = std::time::Instant::now();
     let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
     let projects_dir = claude_dir.join("projects");
     let target = PathBuf::from(&project_dir);
@@ -187,6 +194,12 @@ pub fn list_history_sessions_in_project(
             .cmp(&a.starred)
             .then(b.updated_at.cmp(&a.updated_at))
     });
+    tracing::info!(
+        "list_history_sessions_in_project({}): {} sessions in {}ms",
+        target.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
+        out.len(),
+        started.elapsed().as_millis()
+    );
     Ok(out)
 }
 
@@ -196,6 +209,7 @@ pub fn list_history_sessions_in_project(
 pub fn read_session_jsonl(
     jsonl_path: String,
 ) -> Result<Vec<crate::bridge::JsonlLinePayload>, String> {
+    let started = std::time::Instant::now();
     let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
     let projects_dir = claude_dir.join("projects");
     let target = PathBuf::from(&jsonl_path);
@@ -243,6 +257,12 @@ pub fn read_session_jsonl(
             message: rec,
         });
     }
+    tracing::info!(
+        "read_session_jsonl({}): {} records in {}ms",
+        session_id,
+        out.len(),
+        started.elapsed().as_millis()
+    );
     Ok(out)
 }
 
