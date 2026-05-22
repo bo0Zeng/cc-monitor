@@ -451,5 +451,24 @@ function computeTitleFor(
 function bringTerminalToFront(sessionId: string): Promise<void> {
   return invoke<void>("bring_terminal_to_front", { sessionId }).catch((e) => {
     console.warn(`bring_terminal_to_front ${sessionId} failed:`, e);
+    showStatusError(String(e));
   });
+}
+
+/**
+ * 后端 bring_terminal_to_front 失败时把详细错误抬到状态栏几秒；
+ * 之前只 console.warn 用户看不见，"拉不起来"找不到原因。
+ * 5 秒后让其他 status 更新自然覆盖（TabsSummary callback / 全局事件）。
+ */
+function showStatusError(msg: string): void {
+  const statusMsg = document.querySelector<HTMLElement>("#status-bar .status-msg");
+  if (!statusMsg) return;
+  const truncated = msg.length > 240 ? msg.slice(0, 240) + "…" : msg;
+  statusMsg.textContent = `⚠ ${truncated}`;
+  statusMsg.title = msg;
+  statusMsg.classList.add("status-error");
+  window.setTimeout(() => {
+    statusMsg.classList.remove("status-error");
+    statusMsg.title = "";
+  }, 8000);
 }
