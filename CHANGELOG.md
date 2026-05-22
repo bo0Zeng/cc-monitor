@@ -8,6 +8,17 @@
 
 ---
 
+## [1.6.4] — 2026-05-22
+
+### 修复
+
+- **`bring_terminal_to_front` 失败时用户看不到原因** —— v1.6.3 加了
+  Ambiguous / NoMatch 详细错误，但前端只 `console.warn` 没人开 DevTools。
+  这次把后端 Err 字符串抬到状态栏显示 8s（红色 `⚠` 前缀 + `title` 属性
+  保留完整文本，hover 可看截断前的全文）。现在"拉不起来"能直接读到
+  "歧义：A 命中 4 个终端窗口 (sid=..., terms=[...])；候选: [...]；
+  修复：在 PowerShell startup 给当前会话窗口设独特 title"。
+
 ## [1.6.3] — 2026-05-22
 
 ### 修复

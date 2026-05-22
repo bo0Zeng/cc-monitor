@@ -705,6 +705,11 @@ html, body {
   white-space: nowrap;
 }
 
+.status-msg.status-error {
+  color: var(--accent, #c25b3b);
+  font-weight: 500;
+}
+
 .status-count {
   font-family: var(--font-mono);
   color: var(--text-2);
