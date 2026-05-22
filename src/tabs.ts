@@ -449,26 +449,39 @@ function computeTitleFor(
 }
 
 function bringTerminalToFront(sessionId: string): Promise<void> {
-  return invoke<void>("bring_terminal_to_front", { sessionId }).catch((e) => {
+  // 加 5s timeout：若后端 Win32 调用（OpenProcess/EnumWindows/SetForegroundWindow）
+  // 在某些 OS 状态下卡死，invoke 永不返回；超时让用户看到具体错而非 monitor 假死。
+  const timeoutMs = 5000;
+  return Promise.race([
+    invoke<void>("bring_terminal_to_front", { sessionId }),
+    new Promise<never>((_, reject) =>
+      window.setTimeout(
+        () => reject(new Error(`invoke 超时 ${timeoutMs}ms（后端 Win32 调用可能卡住）`)),
+        timeoutMs,
+      ),
+    ),
+  ]).catch((e) => {
     console.warn(`bring_terminal_to_front ${sessionId} failed:`, e);
-    showStatusError(String(e));
+    showBringTerminalToast(String(e?.message ?? e));
   });
 }
 
 /**
- * 后端 bring_terminal_to_front 失败时把详细错误抬到状态栏几秒；
- * 之前只 console.warn 用户看不见，"拉不起来"找不到原因。
- * 5 秒后让其他 status 更新自然覆盖（TabsSummary callback / 全局事件）。
+ * bring_terminal_to_front 失败时弹一个 8s fixed-positioned toast。
+ *
+ * **为什么用 fixed 而不是写状态栏文字**：
+ *   v1.6.4 把错放进 #status-bar .status-msg 后用户报告"消息往右移动"——长错误
+ *   字符 wrap / textContent 改变可能触发 flex 重排，message stream 区域被
+ *   挤压重布局。toast 用 position:fixed 完全脱离正常文档流，绝对不会
+ *   推动其他 element。z-index 高于 settings / history view。
  */
-function showStatusError(msg: string): void {
-  const statusMsg = document.querySelector<HTMLElement>("#status-bar .status-msg");
-  if (!statusMsg) return;
-  const truncated = msg.length > 240 ? msg.slice(0, 240) + "…" : msg;
-  statusMsg.textContent = `⚠ ${truncated}`;
-  statusMsg.title = msg;
-  statusMsg.classList.add("status-error");
-  window.setTimeout(() => {
-    statusMsg.classList.remove("status-error");
-    statusMsg.title = "";
-  }, 8000);
+function showBringTerminalToast(msg: string): void {
+  const existing = document.querySelector("#bring-terminal-toast");
+  existing?.remove();
+  const toast = document.createElement("div");
+  toast.id = "bring-terminal-toast";
+  toast.textContent = `⚠ 拉前失败：${msg}`;
+  toast.title = msg;
+  document.body.appendChild(toast);
+  window.setTimeout(() => toast.remove(), 8000);
 }

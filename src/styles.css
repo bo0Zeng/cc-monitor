@@ -705,9 +705,32 @@ html, body {
   white-space: nowrap;
 }
 
+/* v1.6.4 status-error 已废弃（写到状态栏文字会触发 layout 重排导致 message
+   区域被挤；v1.6.5 改成 fixed toast）。规则保留但不实际使用 */
 .status-msg.status-error {
   color: var(--accent, #c25b3b);
   font-weight: 500;
+}
+
+/* bring_terminal_to_front 失败时的 fixed toast —— 见 tabs.ts showBringTerminalToast */
+#bring-terminal-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  max-width: 540px;
+  background: var(--bg-2, #2a2520);
+  border: 1px solid var(--accent, #c25b3b);
+  color: var(--accent, #c25b3b);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: var(--font-size-small, 13px);
+  font-weight: 500;
+  line-height: 1.45;
+  z-index: 9999;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: auto;
 }
 
 .status-count {

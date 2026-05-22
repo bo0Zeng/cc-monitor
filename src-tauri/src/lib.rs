@@ -179,10 +179,19 @@ fn forget_session(
 }
 
 /// 把 session 对应的终端窗口调到前台。前端 Tab 上的 ↗ 按钮 / Ctrl+\` 触发。
+///
+/// **必须 async + spawn_blocking**：内部走 `EnumWindows` / `OpenProcess` /
+/// `SetForegroundWindow` 等 Win32 sync 调用。Tauri 2 sync 命令默认在 main
+/// thread 跑（v1 是 spawn_blocking，v2 改了语义）——sync 命令期间 IPC
+/// dispatch 被阻塞，webview 整个假死。某些 OS 状态下 EnumWindows 可能卡
+/// 几秒（hung window 的 callback），sync 命令直接让用户看到 monitor 冻结。
 #[tauri::command]
-fn bring_terminal_to_front(
+async fn bring_terminal_to_front(
     session_id: String,
     map: tauri::State<'_, Arc<session_map::SessionMap>>,
 ) -> Result<(), String> {
-    map.bring_terminal_to_front(&session_id)
+    let map = map.inner().clone();
+    tokio::task::spawn_blocking(move || map.bring_terminal_to_front(&session_id))
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
