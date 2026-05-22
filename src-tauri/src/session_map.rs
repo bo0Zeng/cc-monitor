@@ -14,11 +14,16 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// session 集合变化 —— 由 watcher 线程每次重扫后比对旧表得出。
-/// 当前 lib.rs 只关心 removed（推 session-ended 事件），added 由 watcher 通过
-/// jsonl-line 事件自然覆盖，无需独立通道。
+/// session 集合变化 —— 由 watcher 线程每次重扫 / 心跳后比对旧表得出。
+///
+/// - `removed`：sessions/<PID>.json 被删 / 心跳探活失败 → lib.rs 推 session-ended 事件
+/// - `added`：sessions/<PID>.json 新增 → lib.rs 触发 jsonl-watcher 强制重扫该 session
+///   的 jsonl（修 Bug：若 jsonl 行先于 PID.json 到达，active() 被拒后 process_file
+///   early return 但不更新 offset，且不会再被自动重扫——导致 /resume 起的新 session
+///   在某些竞态下永远不出现 Tab。这里加 added → rescan 通道作为安全网）
 #[derive(Debug, Clone)]
 pub struct SessionChange {
+    pub added: Vec<String>,
     pub removed: Vec<String>,
 }
 
@@ -124,29 +129,44 @@ impl SessionMap {
         let ancestors = build_ancestors(info.pid, &snap);
         let search_terms = build_search_terms(&info.cwd, info.name.as_deref());
 
-        let best = select_best_window(&windows_list, &snap, &ancestors, &search_terms);
-        let (window, tier) = match best {
-            Some(v) => v,
-            None => {
-                // 完全没命中 —— 打全部终端类窗口的 (pid, title) 给诊断
-                let candidates: Vec<String> = windows_list
-                    .iter()
-                    .filter(|w| {
-                        snap.get(&w.pid)
-                            .map(|p| is_terminal_process(&p.name))
-                            .unwrap_or(false)
-                    })
-                    .map(|w| format!("pid={} title={:?}", w.pid, w.title))
-                    .collect();
-                return Err(format!(
-                    "no terminal window for session {session_id} (pid {}, search_terms={:?}); \
+        let (window, tier) =
+            match select_best_window(&windows_list, &snap, &ancestors, &search_terms) {
+                SelectResult::Single(w, tier) => (w, tier),
+                SelectResult::Ambiguous { tier, candidates } => {
+                    let titles: Vec<String> = candidates
+                        .iter()
+                        .map(|w| format!("{:?}=\"{}\"", w.hwnd, w.title))
+                        .collect();
+                    return Err(format!(
+                        "歧义：{} 命中 {} 个终端窗口，无法决定拉前哪一个 (sid={session_id}, \
+                     terms={:?})；候选: [{}]. 修复：在 PowerShell startup 给当前 \
+                     会话窗口设独特 title，例如 \
+                     `$Host.UI.RawUI.WindowTitle = Split-Path -Leaf $PWD`",
+                        tier.label(),
+                        candidates.len(),
+                        search_terms,
+                        titles.join(" | "),
+                    ));
+                }
+                SelectResult::NoMatch => {
+                    let candidates: Vec<String> = windows_list
+                        .iter()
+                        .filter(|w| {
+                            snap.get(&w.pid)
+                                .map(|p| is_terminal_process(&p.name))
+                                .unwrap_or(false)
+                        })
+                        .map(|w| format!("pid={} title={:?}", w.pid, w.title))
+                        .collect();
+                    return Err(format!(
+                        "no terminal window for session {session_id} (pid {}, search_terms={:?}); \
                      candidates: [{}]",
-                    info.pid,
-                    search_terms,
-                    candidates.join(" | ")
-                ));
-            }
-        };
+                        info.pid,
+                        search_terms,
+                        candidates.join(" | ")
+                    ));
+                }
+            };
 
         tracing::info!(
             "bring_to_front sid={session_id} terms={:?} tier={} hwnd={:?}",
@@ -211,8 +231,10 @@ fn build_ancestors(start_pid: u32, snap: &HashMap<u32, ProcInfo>) -> HashSet<u32
 /// 优先级（从精确到模糊）：
 ///   1. ai-title 全字（Claude Code 实际写到 console title 的字符串）
 ///   2. ai-title 前 12 字符前缀（应对 WT title 长度截断）
-///   3. cwd 最后一段（项目名）
-///   4. 项目名前 8 字符前缀
+///   3. cwd 完整路径（原样 + 反斜杠转斜杠版本）—— 应对用户在 PS startup 设
+///      `$Host.UI.RawUI.WindowTitle = $PWD` 之类的情况
+///   4. cwd 最后一段（项目名）
+///   5. 项目名前 8 字符前缀
 ///
 /// 短于 4 字符的 term 跳过（避免"src" 这种短串误匹配很多窗口）。
 fn build_search_terms(cwd: &str, ai_title: Option<&str>) -> Vec<String> {
@@ -223,6 +245,14 @@ fn build_search_terms(cwd: &str, ai_title: Option<&str>) -> Vec<String> {
         let prefix: String = ai.chars().take(12).collect();
         if prefix.len() >= 4 && prefix != ai {
             terms.push(prefix);
+        }
+    }
+    // 完整 cwd 路径作 term。8 字符门槛避免 "D:\x" 这种短路径误匹配。
+    if cwd.len() >= 8 {
+        terms.push(cwd.to_string());
+        let normalized = cwd.replace('\\', "/");
+        if normalized != cwd {
+            terms.push(normalized);
         }
     }
     let project = Path::new(cwd)
@@ -294,38 +324,59 @@ fn classify_window(
     None
 }
 
-/// 从窗口列表里挑出"按 tier 优先级最高且最早出现"的那个。
+/// 匹配结果：单一命中 / 歧义（多候选） / 完全没匹配。
 ///
-/// Iterate 一次，分别记下 4 个 tier 的首个命中。返回时按 tier 优先级输出。
+/// **修 Bug 1**：以前同 tier 多候选时默选"第一个"——WT 单进程多窗口下所有 WT
+/// 窗口的 PID 都等于 WT 主 PID，全部进同一个 tier，第一个被随机选中，造成
+/// 多个 session 都拉到同一窗口。现在多候选直接返 `Ambiguous`，由调用方报
+/// 详细错让用户配置独特窗口标题。
+#[cfg(windows)]
+enum SelectResult<'a> {
+    Single(&'a WindowSnap, MatchTier),
+    Ambiguous {
+        tier: MatchTier,
+        candidates: Vec<&'a WindowSnap>,
+    },
+    NoMatch,
+}
+
+/// 从窗口列表里挑出"按 tier 优先级最高"的命中。
+///
+/// 实现：分类后按 tier 分桶。返回首个非空桶的内容——单元素则 Single，
+/// 多元素则 Ambiguous。空则 NoMatch。
 #[cfg(windows)]
 fn select_best_window<'a>(
     windows: &'a [WindowSnap],
     snap: &HashMap<u32, ProcInfo>,
     ancestors: &HashSet<u32>,
     search_terms: &[String],
-) -> Option<(&'a WindowSnap, MatchTier)> {
-    let mut best: [Option<&'a WindowSnap>; 4] = [None; 4];
+) -> SelectResult<'a> {
+    let mut buckets: [Vec<&'a WindowSnap>; 4] = [vec![], vec![], vec![], vec![]];
     for w in windows {
         let Some(tier) = classify_window(w, snap, ancestors, search_terms) else {
             continue;
         };
-        let idx = tier as usize;
-        if best[idx].is_none() {
-            best[idx] = Some(w);
-        }
+        buckets[tier as usize].push(w);
     }
-    for (idx, slot) in best.iter().enumerate() {
-        if let Some(w) = slot {
-            let tier = match idx {
-                0 => MatchTier::AncestorWithTitle,
-                1 => MatchTier::AncestorAny,
-                2 => MatchTier::TerminalWithTitle,
-                _ => MatchTier::TerminalAny,
-            };
-            return Some((w, tier));
+    for (idx, bucket) in buckets.into_iter().enumerate() {
+        if bucket.is_empty() {
+            continue;
         }
+        let tier = match idx {
+            0 => MatchTier::AncestorWithTitle,
+            1 => MatchTier::AncestorAny,
+            2 => MatchTier::TerminalWithTitle,
+            _ => MatchTier::TerminalAny,
+        };
+        if bucket.len() == 1 {
+            return SelectResult::Single(bucket[0], tier);
+        }
+        return SelectResult::Ambiguous {
+            tier,
+            candidates: bucket,
+        };
     }
-    None
+    SelectResult::NoMatch
 }
 
 #[derive(Clone)]
@@ -540,22 +591,66 @@ fn run_watcher(
         return;
     }
 
-    while let Ok(_evt) = rx.recv() {
-        let next = scan_dir(&dir);
-        let n = next.len();
-        let next_keys: HashSet<String> = next.keys().cloned().collect();
-        let prev_keys: HashSet<String> = by_id.read().keys().cloned().collect();
-        let removed: Vec<String> = prev_keys.difference(&next_keys).cloned().collect();
-        let added_count = next_keys.difference(&prev_keys).count();
-        *by_id.write() = next;
-        if !removed.is_empty() || added_count > 0 {
-            tracing::info!(
-                "session_map: {n} active (+{added_count} -{})",
-                removed.len()
-            );
-            if !removed.is_empty() {
+    // 双触发：文件事件（即时） + 心跳（每 2s）。心跳是为修 Bug 2-B —— 用户关闭终端
+    // 窗口导致 claude.exe 被强杀时，sessions/<PID>.json **不会被删**（Claude Code 的
+    // 退出 hook 没跑）→ 文件事件永不触发 → 死 session 的 Tab 永远 live。心跳主动调
+    // is_process_alive 清理这种残留。
+    use std::sync::mpsc::RecvTimeoutError;
+    loop {
+        let evt = rx.recv_timeout(Duration::from_secs(2));
+        let scan = match evt {
+            Ok(_) => true,                           // 文件事件 → 全量重扫
+            Err(RecvTimeoutError::Timeout) => false, // 心跳 → 只探活
+            Err(RecvTimeoutError::Disconnected) => break,
+        };
+
+        if scan {
+            let next = scan_dir(&dir);
+            let n = next.len();
+            let next_keys: HashSet<String> = next.keys().cloned().collect();
+            let prev_keys: HashSet<String> = by_id.read().keys().cloned().collect();
+            let removed: Vec<String> = prev_keys.difference(&next_keys).cloned().collect();
+            let added: Vec<String> = next_keys.difference(&prev_keys).cloned().collect();
+            *by_id.write() = next;
+            if !removed.is_empty() || !added.is_empty() {
+                tracing::info!(
+                    "session_map: {n} active (+{} -{})",
+                    added.len(),
+                    removed.len()
+                );
                 if let Some(tx) = &change_tx {
-                    let _ = tx.send(SessionChange { removed });
+                    let _ = tx.send(SessionChange { added, removed });
+                }
+            }
+        } else {
+            // 心跳：探活所有当前条目。死的算 removed（PID.json 还在但进程没了）。
+            let snapshot: Vec<(String, SessionInfo)> = by_id
+                .read()
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            let dead: Vec<String> = snapshot
+                .into_iter()
+                .filter(|(_, info)| !is_process_alive(info.pid, Some(&info.proc_start)))
+                .map(|(sid, _)| sid)
+                .collect();
+            if !dead.is_empty() {
+                {
+                    let mut w = by_id.write();
+                    for sid in &dead {
+                        w.remove(sid);
+                    }
+                }
+                tracing::info!(
+                    "session_map heartbeat: {} dead session(s) removed: {:?}",
+                    dead.len(),
+                    dead
+                );
+                if let Some(tx) = &change_tx {
+                    let _ = tx.send(SessionChange {
+                        added: vec![],
+                        removed: dead,
+                    });
                 }
             }
         }
@@ -874,18 +969,117 @@ mod tests {
                 ws(3, 200, "WT - random"),       // D: TerminalAny
                 ws(4, 100, "ancestor proj"),     // A: AncestorWithTitle ← 应选这个
             ];
-            let (best, tier) = select_best_window(&windows, &snap, &ancestors, &terms).unwrap();
-            assert_eq!(tier, MatchTier::AncestorWithTitle);
-            assert_eq!(best.title, "ancestor proj");
+            match select_best_window(&windows, &snap, &ancestors, &terms) {
+                SelectResult::Single(best, tier) => {
+                    assert_eq!(tier, MatchTier::AncestorWithTitle);
+                    assert_eq!(best.title, "ancestor proj");
+                }
+                other => panic!("expected Single, got {:?}", select_label(&other)),
+            }
         }
 
         #[test]
-        fn select_best_returns_none_when_no_match() {
+        fn select_best_returns_no_match_when_nothing_classifies() {
             let snap = build_snap(&[(300, 0, "code.exe")]);
             let ancestors: HashSet<u32> = HashSet::new();
             let terms: Vec<String> = vec![];
             let windows = vec![ws(1, 300, "vscode")];
-            assert!(select_best_window(&windows, &snap, &ancestors, &terms).is_none());
+            assert!(matches!(
+                select_best_window(&windows, &snap, &ancestors, &terms),
+                SelectResult::NoMatch
+            ));
         }
+
+        // === 新增：歧义检测（修 Bug 1）===
+
+        #[test]
+        fn select_best_returns_ambiguous_when_tier_a_has_multiple() {
+            // 场景：WT 单进程多窗口。两个 WT 窗口 PID 都等于 WT 主 PID（在祖先链上），
+            // title 都含 search term "claudecode-frontend"（两个 session 在同项目）→
+            // 都进 tier A → 应当报歧义而非默选第一个。
+            let snap = build_snap(&[(200, 0, "WindowsTerminal.exe"), (100, 200, "claude.exe")]);
+            let ancestors: HashSet<u32> = [100, 200].into_iter().collect();
+            let terms = vec!["claudecode-frontend".to_string()];
+            let windows = vec![
+                ws(1, 200, "WT - claudecode-frontend - tab 1"),
+                ws(2, 200, "WT - claudecode-frontend - tab 2"),
+            ];
+            match select_best_window(&windows, &snap, &ancestors, &terms) {
+                SelectResult::Ambiguous { tier, candidates } => {
+                    assert_eq!(tier, MatchTier::AncestorWithTitle);
+                    assert_eq!(candidates.len(), 2);
+                }
+                other => panic!("expected Ambiguous, got {:?}", select_label(&other)),
+            }
+        }
+
+        #[test]
+        fn select_best_returns_ambiguous_when_tier_d_has_multiple_wt_windows() {
+            // 场景：祖先链都没匹配 + title 也都没匹配 → 全部 tier D（任意终端窗口）。
+            // 多个 WT 窗口都是"任意" → 歧义。
+            let snap = build_snap(&[(200, 0, "WindowsTerminal.exe")]);
+            let ancestors: HashSet<u32> = HashSet::new();
+            let terms: Vec<String> = vec!["nomatch".to_string()];
+            let windows = vec![ws(1, 200, "WT a"), ws(2, 200, "WT b"), ws(3, 200, "WT c")];
+            match select_best_window(&windows, &snap, &ancestors, &terms) {
+                SelectResult::Ambiguous { tier, candidates } => {
+                    assert_eq!(tier, MatchTier::TerminalAny);
+                    assert_eq!(candidates.len(), 3);
+                }
+                other => panic!("expected Ambiguous, got {:?}", select_label(&other)),
+            }
+        }
+
+        #[test]
+        fn select_best_picks_single_at_low_tier_when_high_tier_empty() {
+            // 没有祖先匹配，但有一个唯一的终端窗口 title 命中 → Single tier C
+            let snap = build_snap(&[(200, 0, "WindowsTerminal.exe")]);
+            let ancestors: HashSet<u32> = HashSet::new();
+            let terms = vec!["unique-title".to_string()];
+            let windows = vec![
+                ws(1, 200, "WT - unique-title here"),
+                ws(2, 200, "WT random"),
+            ];
+            match select_best_window(&windows, &snap, &ancestors, &terms) {
+                SelectResult::Single(best, tier) => {
+                    assert_eq!(tier, MatchTier::TerminalWithTitle);
+                    assert_eq!(best.title, "WT - unique-title here");
+                }
+                other => panic!("expected Single, got {:?}", select_label(&other)),
+            }
+        }
+
+        fn select_label(r: &SelectResult<'_>) -> &'static str {
+            match r {
+                SelectResult::Single(_, _) => "Single",
+                SelectResult::Ambiguous { .. } => "Ambiguous",
+                SelectResult::NoMatch => "NoMatch",
+            }
+        }
+    }
+
+    // === build_search_terms 新增：完整 cwd 作 term ===
+
+    #[test]
+    fn search_terms_include_full_cwd_when_long_enough() {
+        let cwd = r"D:\Sync\文档\claudecode-frontend";
+        let terms = build_search_terms(cwd, None);
+        assert!(
+            terms.iter().any(|t| t == cwd),
+            "full cwd should be in terms"
+        );
+        assert!(
+            terms
+                .iter()
+                .any(|t| t == r"D:/Sync/文档/claudecode-frontend"),
+            "normalized (forward-slash) cwd should also be in terms"
+        );
+    }
+
+    #[test]
+    fn search_terms_skip_full_cwd_when_too_short() {
+        // 短 cwd（< 8 字符）不加完整路径
+        let terms = build_search_terms(r"D:\x", None);
+        assert!(!terms.iter().any(|t| t == r"D:\x"));
     }
 }

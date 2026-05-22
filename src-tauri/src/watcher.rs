@@ -20,16 +20,30 @@ pub struct JsonlLine {
 /// 活跃过滤器：给定 session_id 返回是否应该 emit 这一行。
 pub type ActiveFilter = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 
+/// jsonl-watcher 的 handle：
+/// - `rx`：jsonl line 流（被动接收）
+/// - `force_rescan_tx`：主动重扫某个 session_id 对应的 jsonl 文件
+///
+/// `force_rescan_tx` 是为修 Bug 2-A 引入：当 session_map 后到（jsonl 行先于
+/// PID.json 出现）时，watcher 的 process_file 因 active() 返 false 而 early
+/// return，且不会自动重扫；外部（lib.rs）从 session-added 信号驱动这个通道
+/// 触发一次重扫作为安全网。
+pub struct WatcherHandle {
+    pub rx: mpsc::UnboundedReceiver<JsonlLine>,
+    pub force_rescan_tx: std::sync::mpsc::Sender<String>,
+}
+
 /// 递归监听 `root` 下所有 `*.jsonl` 文件。只 emit `active(session_id)` 为 true 的行。
 /// 初始全量扫描也走过滤，避免冷启动时回放死 session 的历史。
-pub fn spawn_watcher(root: PathBuf, active: ActiveFilter) -> mpsc::UnboundedReceiver<JsonlLine> {
+pub fn spawn_watcher(root: PathBuf, active: ActiveFilter) -> WatcherHandle {
     let (tx, rx) = mpsc::unbounded_channel::<JsonlLine>();
+    let (rescan_tx, rescan_rx) = std::sync::mpsc::channel::<String>();
     let offsets: Arc<Mutex<HashMap<PathBuf, u64>>> = Arc::new(Mutex::new(HashMap::new()));
 
     // spawn 失败不要 panic 整个 app（生产场景应该日志降级，让 UI 至少能开）
     if let Err(e) = std::thread::Builder::new()
         .name("jsonl-watcher".into())
-        .spawn(move || run_watcher(root, offsets, tx, active))
+        .spawn(move || run_watcher(root, offsets, tx, active, rescan_rx))
     {
         tracing::error!(
             "spawn jsonl-watcher thread failed: {e}; \
@@ -37,7 +51,10 @@ pub fn spawn_watcher(root: PathBuf, active: ActiveFilter) -> mpsc::UnboundedRece
         );
     }
 
-    rx
+    WatcherHandle {
+        rx,
+        force_rescan_tx: rescan_tx,
+    }
 }
 
 fn run_watcher(
@@ -45,6 +62,7 @@ fn run_watcher(
     offsets: Arc<Mutex<HashMap<PathBuf, u64>>>,
     tx: mpsc::UnboundedSender<JsonlLine>,
     active: ActiveFilter,
+    rescan_rx: std::sync::mpsc::Receiver<String>,
 ) {
     if !root.exists() {
         tracing::warn!("watch root does not exist: {}", root.display());
@@ -71,11 +89,40 @@ fn run_watcher(
         return;
     }
 
-    while let Ok(evt) = notify_rx.recv() {
-        let Ok(events) = evt else { continue };
-        for ev in events {
-            if ev.path.extension().map_or(false, |e| e == "jsonl") && !is_subagent_path(&ev.path) {
-                process_file(&ev.path, &offsets, &tx, &active);
+    // 主循环：用 recv_timeout 100ms 轮询 notify 事件，每轮 try_recv rescan 请求。
+    // 100ms 轮询额外延迟是为兼容 rescan 通道；jsonl-line 已有 notify_debouncer 100ms
+    // debounce，再加 100ms 总延迟 ~200ms，对流式渲染可接受。
+    use std::sync::mpsc::RecvTimeoutError;
+    loop {
+        match notify_rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(evt) => {
+                let Ok(events) = evt else { continue };
+                for ev in events {
+                    if ev.path.extension().map_or(false, |e| e == "jsonl")
+                        && !is_subagent_path(&ev.path)
+                    {
+                        process_file(&ev.path, &offsets, &tx, &active);
+                    }
+                }
+            }
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => break,
+        }
+
+        // Drain 所有待办 rescan 请求（修 Bug 2-A）。新加入的 session 可能因为
+        // jsonl 行先到的竞态没被 emit；这里强制重扫该 session 的所有 jsonl 文件
+        // （offset 没更新过的就 process，更新过的就跳过——process_file 内部判断）
+        while let Ok(sid) = rescan_rx.try_recv() {
+            tracing::info!("forced jsonl rescan for session {sid}");
+            for entry in WalkDir::new(&root).into_iter().filter_map(Result::ok) {
+                let p = entry.path();
+                if p.is_file()
+                    && p.extension().map_or(false, |e| e == "jsonl")
+                    && !is_subagent_path(p)
+                    && p.file_stem().and_then(|s| s.to_str()) == Some(&sid)
+                {
+                    process_file(p, &offsets, &tx, &active);
+                }
             }
         }
     }

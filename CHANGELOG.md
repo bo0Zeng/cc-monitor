@@ -8,6 +8,43 @@
 
 ---
 
+## [1.6.3] — 2026-05-22
+
+### 修复
+
+- **多 Tab 拉错终端（同一窗口被反复选中）** —— Windows Terminal 单进程多窗口
+  共享同一个 PID，所有 WT 窗口都"在 claude 的祖先链上"——`classify_window`
+  把它们全部归到 tier A 或 tier B，而 `select_best_window` 旧实现"同 tier 只
+  记第一个候选" 导致多个 session 撞同一窗口（EnumWindows Z-order 的第一个）。
+  - 新增 `SelectResult { Single | Ambiguous | NoMatch }`：tier 内多候选时返
+    `Ambiguous`，调用方报详细错（含命中 tier + 候选 hwnd/title + 配置建议）
+    而非随机选一个。**拉错 → 拉不到，但用户得知该如何修**。
+  - `build_search_terms` 加完整 cwd 路径作 term（含反斜杠 / 正斜杠两个版本）：
+    用户在 PS startup 设 `$Host.UI.RawUI.WindowTitle = $PWD` 时能精确匹配
+    每个会话独有的窗口。
+
+- **关闭终端窗口后 Tab 不归档** —— Claude Code 异常退出时
+  `~/.claude/sessions/<PID>.json` 可能不会被删，session_map 仅靠文件事件触发
+  扫描 → 死 session 永远不发 `session-ended`。`session_map::run_watcher`
+  加 **2 秒心跳**：`recv_timeout(2s)`，timeout 分支主动 `is_process_alive`
+  探活所有 by_id 条目，死的自动 remove + emit removed → 前端 Tab 在 ≤2s 内灰显。
+
+- **/resume 历史会话偶发不出现 Tab（多个并发时尤明显）** —— jsonl 行可能
+  在 `sessions/<PID>.json` 之前到达 watcher；此时 `active(sid)` 返 false →
+  `process_file` early return，且无任何机制重新触发该文件的扫描。新增
+  **session-added → 强制重扫**安全网：
+  - `SessionChange` 加 `added: Vec<String>`
+  - `watcher::spawn_watcher` 返回 `WatcherHandle { rx, force_rescan_tx }`
+  - lib.rs 收到 session_map 的 added 列表 → 通过 `force_rescan_tx` 通知
+    jsonl-watcher 主动重扫该 session 的所有 jsonl 文件
+  - jsonl-watcher 主循环改 `recv_timeout(100ms)` 兼容 rescan 通道（jsonl-line
+    总延迟从 ~100ms 上升到 ~200ms，对流式渲染可接受）
+
+### 测试
+
+- 单元测试 29 → 34。新增 5 个：tier A 多候选 → Ambiguous、tier D 多候选 →
+  Ambiguous、低 tier 唯一命中 → Single、完整 cwd 加入 terms、短 cwd 跳过完整路径。
+
 ## [1.6.2] — 2026-05-21
 
 ### 修复

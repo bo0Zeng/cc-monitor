@@ -43,13 +43,30 @@ pub fn run() {
             let (session_map, session_changes) =
                 session_map::SessionMap::load_with_changes(sessions_dir);
 
-            // session 退出（PID.json 被删）→ 透传 session-ended 给前端，让 Tab 灰显归档
+            // Watcher: 只对活跃 session 的 jsonl emit
+            let active_filter: watcher::ActiveFilter = {
+                let map = session_map.clone();
+                Arc::new(move |sid: &str| map.is_session_active(sid))
+            };
+            let watcher_handle = watcher::spawn_watcher(projects_dir, active_filter);
+            let mut rx = watcher_handle.rx;
+            let force_rescan_tx = watcher_handle.force_rescan_tx;
+
+            // session 集合变化 emitter：
+            //   - added：通知 jsonl-watcher 主动重扫该 session（修 Bug 2-A 竞态）
+            //   - removed：透传 session-ended 给前端，Tab 灰显归档
             {
                 let handle = app.handle().clone();
                 let spawned = std::thread::Builder::new()
-                    .name("session-ended-emitter".into())
+                    .name("session-changes-emitter".into())
                     .spawn(move || {
                         while let Ok(change) = session_changes.recv() {
+                            for sid in &change.added {
+                                tracing::info!("session added: {sid}, triggering jsonl rescan");
+                                if let Err(e) = force_rescan_tx.send(sid.clone()) {
+                                    tracing::warn!("force_rescan send failed for {sid}: {e}");
+                                }
+                            }
                             for sid in change.removed {
                                 let payload = bridge::SessionEndedPayload {
                                     session_id: sid.clone(),
@@ -65,18 +82,11 @@ pub fn run() {
                     });
                 if let Err(e) = spawned {
                     tracing::error!(
-                        "failed to spawn session-ended-emitter thread: {e}; \
-                         session 退出后 Tab 将不会自动归档"
+                        "failed to spawn session-changes-emitter thread: {e}; \
+                         session 增减事件将丢失，Tab 不会自动归档 / 新会话可能丢首屏"
                     );
                 }
             }
-
-            // Watcher: 只对活跃 session 的 jsonl emit
-            let active_filter: watcher::ActiveFilter = {
-                let map = session_map.clone();
-                Arc::new(move |sid: &str| map.is_session_active(sid))
-            };
-            let mut rx = watcher::spawn_watcher(projects_dir, active_filter);
 
             // 焦点同步功能已移除：Windows 11 默认 WT 是单进程多窗口架构，
             // GetForegroundWindow 永远返回 WT 主进程 PID，OS 无法区分 tab/window。
