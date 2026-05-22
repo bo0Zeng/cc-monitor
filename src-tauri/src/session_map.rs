@@ -235,6 +235,10 @@ fn build_ancestors(start_pid: u32, snap: &HashMap<u32, ProcInfo>) -> HashSet<u32
 ///      `$Host.UI.RawUI.WindowTitle = $PWD` 之类的情况
 ///   4. cwd 最后一段（项目名）
 ///   5. 项目名前 8 字符前缀
+///   6. **fallback**：无 ai-title 时加 "Claude Code"（claude CLI 的默认 console
+///      title，没生成 ai-title 时 WT tab 显示 "✳ Claude Code"）。让没 ai-title
+///      的 session 能命中默认 title 的窗口；多个无 ai-title 的并存时仍会歧义
+///      (toast 提示用户配置独特 title)。
 ///
 /// 短于 4 字符的 term 跳过（避免"src" 这种短串误匹配很多窗口）。
 fn build_search_terms(cwd: &str, ai_title: Option<&str>) -> Vec<String> {
@@ -265,6 +269,11 @@ fn build_search_terms(cwd: &str, ai_title: Option<&str>) -> Vec<String> {
         if prefix.len() >= 4 && prefix != project {
             terms.push(prefix);
         }
+    }
+    // 无 ai-title 时，claude 默认 console title 是 "Claude Code"。加入作 fallback
+    // 让无 ai-title 的 session 也能命中对应窗口。
+    if ai.is_empty() {
+        terms.push("Claude Code".to_string());
     }
     terms
 }
@@ -1081,5 +1090,30 @@ mod tests {
         // 短 cwd（< 8 字符）不加完整路径
         let terms = build_search_terms(r"D:\x", None);
         assert!(!terms.iter().any(|t| t == r"D:\x"));
+    }
+
+    #[test]
+    fn search_terms_include_claude_code_fallback_when_no_ai_title() {
+        // 无 ai-title 时加 "Claude Code" 作 fallback（命中 claude 默认 console title）
+        let terms = build_search_terms(r"D:\Sync\文档\claude-conversation", None);
+        assert!(
+            terms.iter().any(|t| t == "Claude Code"),
+            "should include 'Claude Code' fallback when ai-title is None, got: {:?}",
+            terms
+        );
+    }
+
+    #[test]
+    fn search_terms_skip_claude_code_fallback_when_ai_title_present() {
+        // 有 ai-title 时不加 "Claude Code"（避免误匹配其他默认 title 窗口）
+        let terms = build_search_terms(
+            r"D:\Sync\文档\claude-conversation",
+            Some("filter-active-sessions"),
+        );
+        assert!(
+            !terms.iter().any(|t| t == "Claude Code"),
+            "should NOT include 'Claude Code' when ai-title is set, got: {:?}",
+            terms
+        );
     }
 }

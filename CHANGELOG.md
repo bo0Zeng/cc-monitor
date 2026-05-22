@@ -8,6 +8,27 @@
 
 ---
 
+## [1.6.6] — 2026-05-22
+
+### 修复
+
+- **无 ai-title 的 session 拉前歧义** —— claude CLI 启动时默认 console title
+  是 "Claude Code"，要等会话生成 ai-title 后才改成项目语义名。**没生成 ai-title
+  之前**，对应的 WT 窗口 title 就是 "✳ Claude Code"。之前 `build_search_terms`
+  只用 cwd / 项目名做匹配，没有任何 term 能命中 "Claude Code"——所有终端类
+  窗口都 tier D，select 报歧义。
+  - `build_search_terms`：当 `ai_title is None` 时把 `"Claude Code"` 加入 terms。
+    "Claude Code" 窗口 title_match → 升 tier C (TerminalWithTitle)，唯一命中
+    时 select 取它。其他有 ai-title 的窗口（"filter-active..." / "Analyze
+    shengwu..."）仍 tier D，不参与竞争。
+  - 角落情况：多个无 ai-title 的 session 并存 → 所有 "Claude Code" 窗口同 tier
+    C 多候选 → 仍歧义，需要用户配独特 title（toast 提示）。
+
+### 测试
+
+- 单元测试 34 → 36。新增 2 个：`search_terms_include_claude_code_fallback_when_no_ai_title`
+  + `search_terms_skip_claude_code_fallback_when_ai_title_present`。
+
 ## [1.6.5] — 2026-05-22
 
 ### 修复
