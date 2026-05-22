@@ -8,6 +8,28 @@
 
 ---
 
+## [1.6.5] — 2026-05-22
+
+### 修复
+
+- **点 ↗ 按钮 monitor 假死 + 消息区域被挤位**（强烈关联 Bug 1 "拉不起来"）——
+  根因有两个，一起修：
+  1. `bring_terminal_to_front` 是 sync `#[tauri::command]`。Tauri 2 sync 命令
+     在 main IPC thread 跑（不是 spawn_blocking），命令期间整个 webview 假死
+     不响应任何输入。改 `async` + 显式 `tokio::task::spawn_blocking` 包 Win32
+     调用，IPC 主线程立即返回，webview 全程可点。
+  2. v1.6.4 把错误写进状态栏文字（`statusMsg.textContent`）会触发 flex 重排，
+     长错误字符让 `.status-msg` 内部 layout 变化，间接挤压上面的 message stream
+     区域 → 用户看到"消息往右移动"。改 fixed 定位的 `#bring-terminal-toast`
+     固定在右下角，完全脱离文档流，绝对不影响其他 element。
+- **前端 invoke 加 5s timeout** —— 若极端情况下后端仍卡（如 EnumWindows
+  callback 撞上 hung window），5s 后强制 reject 显示"invoke 超时"toast，
+  不再让 monitor 看上去假死。
+
+### 已废弃
+
+- `.status-msg.status-error` CSS 规则保留但不再使用（v1.6.4 引入 + v1.6.5 替换）。
+
 ## [1.6.4] — 2026-05-22
 
 ### 修复
