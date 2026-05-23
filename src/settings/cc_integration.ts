@@ -35,16 +35,24 @@ interface CcPreviewResponse {
   code: string;
 }
 
+interface AutoLaunchConfig {
+  auto_launch_enabled: boolean;
+  monitor_exe_path: string | null;
+}
+
 export class CcIntegrationSection {
   private root: HTMLElement;
   private commandInput!: HTMLInputElement;
   private rowsContainer!: HTMLElement;
   private regCountSpan!: HTMLSpanElement;
+  private autoLaunchCheckbox!: HTMLInputElement;
+  private autoLaunchPathSpan!: HTMLSpanElement;
   private status: CcStatusResponse | null = null;
 
   constructor() {
     this.root = this.build();
     void this.refresh();
+    void this.refreshAutoLaunch();
   }
 
   get element(): HTMLElement {
@@ -105,7 +113,66 @@ export class CcIntegrationSection {
     this.rowsContainer.className = "settings-cc-profiles";
     group.appendChild(this.rowsContainer);
 
+    // v1.7.1：auto-launch toggle
+    group.appendChild(this.buildAutoLaunchRow());
+
     return group;
+  }
+
+  private buildAutoLaunchRow(): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "settings-cc-autolaunch";
+
+    const row = document.createElement("label");
+    row.className = "settings-row";
+
+    this.autoLaunchCheckbox = document.createElement("input");
+    this.autoLaunchCheckbox.type = "checkbox";
+    this.autoLaunchCheckbox.className = "settings-checkbox";
+    this.autoLaunchCheckbox.addEventListener("change", () => {
+      void this.toggleAutoLaunch(this.autoLaunchCheckbox.checked);
+    });
+    row.appendChild(this.autoLaunchCheckbox);
+
+    const label = document.createElement("span");
+    label.className = "settings-checkbox-label";
+    label.textContent = "用 cc 启动 claude 时自动打开 monitor（如果未在跑）";
+    row.appendChild(label);
+
+    wrap.appendChild(row);
+
+    const hint = document.createElement("div");
+    hint.className = "settings-hint settings-cc-autolaunch-path";
+    hint.textContent = "monitor 路径: ";
+    this.autoLaunchPathSpan = document.createElement("span");
+    this.autoLaunchPathSpan.className = "settings-cc-autolaunch-path-value";
+    this.autoLaunchPathSpan.textContent = "—";
+    hint.appendChild(this.autoLaunchPathSpan);
+    wrap.appendChild(hint);
+
+    return wrap;
+  }
+
+  private async refreshAutoLaunch(): Promise<void> {
+    try {
+      const cfg = await invoke<AutoLaunchConfig>("cc_get_auto_launch");
+      this.autoLaunchCheckbox.checked = cfg.auto_launch_enabled;
+      this.autoLaunchPathSpan.textContent =
+        cfg.monitor_exe_path ?? "(未记录，重启一次 monitor 后会自动记录)";
+      this.autoLaunchPathSpan.title = cfg.monitor_exe_path ?? "";
+    } catch (e) {
+      console.warn("cc_get_auto_launch failed:", e);
+    }
+  }
+
+  private async toggleAutoLaunch(enabled: boolean): Promise<void> {
+    try {
+      await invoke<void>("cc_set_auto_launch", { enabled });
+    } catch (e) {
+      alert(`保存失败：${e}`);
+      // 回退 UI 状态
+      this.autoLaunchCheckbox.checked = !enabled;
+    }
   }
 
   private async refresh(): Promise<void> {
