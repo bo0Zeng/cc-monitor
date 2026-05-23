@@ -278,6 +278,15 @@ export class TabManager {
     }
   }
 
+  /** 快捷键 Ctrl+` ：把当前活跃 Tab 对应的终端窗口拉到前台（仅 live） */
+  bringActiveTerminalToFront(): void {
+    if (!this.activeId) return;
+    const tab = this.tabs.get(this.activeId);
+    if (tab && tab.status !== "archived") {
+      void bringTerminalToFront(this.activeId);
+    }
+  }
+
   switchTo(sessionId: string): void {
     if (!this.tabs.has(sessionId)) return;
     if (this.activeId === sessionId) return;
@@ -359,6 +368,17 @@ export class TabManager {
     badge.className = "tab-badge";
     root.appendChild(badge);
 
+    // ↗ 拉对应终端窗口（v1.7 用 sid_hwnd_cache）
+    const focusBtn = document.createElement("span");
+    focusBtn.className = "tab-focus";
+    focusBtn.textContent = "↗";
+    focusBtn.title = "调出对应终端 (Ctrl+`)";
+    focusBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void bringTerminalToFront(sid);
+    });
+    root.appendChild(focusBtn);
+
     const closeBtn = document.createElement("span");
     closeBtn.className = "tab-close";
     closeBtn.textContent = "×";
@@ -427,5 +447,46 @@ function computeTitleFor(
   }
   if (project) return project;
   return sessionId.slice(0, 8);
+}
+
+/**
+ * 拉对应终端到前台。v1.7 实现：后端查 sid_hwnd_cache + 复合指纹校验 + SetForegroundWindow。
+ *
+ * 失败模式（任一都会显示在 toast 上）：
+ *   - "未绑定窗口"：该 session 启动时没经过 cc function 握手（直接跑 claude 而非 cc）
+ *   - "窗口已不存在"：用户关掉了对应 PS/WT 窗口
+ *   - "HWND 复用"：原窗口关闭后 HWND 被另一个无关窗口拿到
+ *   - "invoke 超时"：极端情况下 Win32 调用卡住
+ */
+function bringTerminalToFront(sessionId: string): Promise<void> {
+  const timeoutMs = 5000;
+  return Promise.race([
+    invoke<void>("bring_terminal_to_front", { sessionId }),
+    new Promise<never>((_, reject) =>
+      window.setTimeout(
+        () => reject(new Error(`invoke 超时 ${timeoutMs}ms（后端 Win32 调用可能卡住）`)),
+        timeoutMs,
+      ),
+    ),
+  ]).catch((e) => {
+    console.warn(`bring_terminal_to_front ${sessionId} failed:`, e);
+    showBringTerminalToast(String(e?.message ?? e));
+  });
+}
+
+/**
+ * 拉前失败时右下角弹 8s fixed toast。
+ *
+ * 为什么 fixed：v1.6.4 把错放进 status-bar 文字会触发 flex 重排挤压消息区，
+ * 用户报告"消息往右移动"。toast 用 position:fixed 完全脱离正常文档流。
+ */
+function showBringTerminalToast(msg: string): void {
+  document.querySelector("#bring-terminal-toast")?.remove();
+  const toast = document.createElement("div");
+  toast.id = "bring-terminal-toast";
+  toast.textContent = `⚠ 拉前失败：${msg}`;
+  toast.title = msg;
+  document.body.appendChild(toast);
+  window.setTimeout(() => toast.remove(), 8000);
 }
 

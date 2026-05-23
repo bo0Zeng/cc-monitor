@@ -1,3 +1,4 @@
+mod bind;
 mod bridge;
 mod config;
 mod event_replay;
@@ -5,6 +6,7 @@ mod history;
 mod messages;
 mod parser;
 mod paths;
+mod profile_installer;
 mod session_map;
 mod subagent;
 mod utils;
@@ -39,6 +41,16 @@ pub fn run() {
             let projects_dir = claude_dir.join("projects");
             let sessions_dir = claude_dir.join("sessions");
 
+            // monitor 自己的数据目录：~/.claude/claudecode-frontend
+            let monitor_data_dir = paths::resolve_monitor_data_dir().ok_or("no data dir")?;
+            tracing::info!("monitor_data_dir: {}", monitor_data_dir.display());
+
+            // v1.7：BindRegistry 监听 ps-await/ → EnumWindows → 写 ps-registry/。
+            // SidHwndCache 持久化 sid → 拉前所需信息（含复合指纹）。
+            let bind_registry = bind::BindRegistry::spawn(monitor_data_dir.clone());
+            let sid_hwnd_cache =
+                bind::SidHwndCache::load(monitor_data_dir.join("sid-hwnd-cache.json"));
+
             // SessionMap = Claude Code 自己维护的 ~/.claude/sessions/<PID>.json
             let (session_map, session_changes) =
                 session_map::SessionMap::load_with_changes(sessions_dir);
@@ -54,9 +66,14 @@ pub fn run() {
 
             // session 集合变化 emitter：
             //   - added：通知 jsonl-watcher 主动重扫该 session（修 Bug 2-A 竞态）
+            //             + 调 SidHwndCache.record 把 sid → hwnd 绑定持久化
             //   - removed：透传 session-ended 给前端，Tab 灰显归档
+            //              + 调 SidHwndCache.forget 清理过期 sid
             {
                 let handle = app.handle().clone();
+                let session_map_for_emitter = session_map.clone();
+                let bind_for_emitter = bind_registry.clone();
+                let cache_for_emitter = sid_hwnd_cache.clone();
                 let spawned = std::thread::Builder::new()
                     .name("session-changes-emitter".into())
                     .spawn(move || {
@@ -66,8 +83,14 @@ pub fn run() {
                                 if let Err(e) = force_rescan_tx.send(sid.clone()) {
                                     tracing::warn!("force_rescan send failed for {sid}: {e}");
                                 }
+                                // 尝试绑定 sid → hwnd（通过 claude_pid 的 parent PS）
+                                if let Some(info) = session_map_for_emitter.lookup(sid) {
+                                    let _ =
+                                        cache_for_emitter.record(sid, info.pid, &bind_for_emitter);
+                                }
                             }
                             for sid in change.removed {
+                                cache_for_emitter.forget(&sid);
                                 let payload = bridge::SessionEndedPayload {
                                     session_id: sid.clone(),
                                 };
@@ -137,8 +160,10 @@ pub fn run() {
                 tracing::info!("watcher loop ended; total={total} skip={skip}");
             });
 
-            // 让 forget_session 命令能拿到 replay
+            // 给 Tauri 命令暴露 state
             app.manage(replay.clone());
+            app.manage(bind_registry.clone());
+            app.manage(sid_hwnd_cache.clone());
 
             Ok(())
         })
@@ -147,6 +172,11 @@ pub fn run() {
             config::save_config,
             subagent::load_subagent,
             forget_session,
+            bring_terminal_to_front,
+            cc_integration_status,
+            cc_integration_preview,
+            cc_integration_install,
+            cc_integration_uninstall,
             history::list_history_projects,
             history::list_history_sessions_in_project,
             history::read_session_jsonl,
@@ -174,4 +204,108 @@ fn forget_session(
 ) -> Result<(), String> {
     replay.forget(&session_id);
     Ok(())
+}
+
+/// v1.7：拉对应终端窗口。
+///
+/// 流程：sid → 查 SidHwndCache → 校验复合指纹（IsWindow + owner_pid + procStart）
+/// → activate_window。
+///
+/// **必须 async + spawn_blocking** 隔离 Win32 sync 调用（v1.6.5 的教训）。
+#[tauri::command]
+async fn bring_terminal_to_front(
+    session_id: String,
+    cache: tauri::State<'_, Arc<bind::SidHwndCache>>,
+) -> Result<(), String> {
+    let cache = cache.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let binding = cache.lookup(&session_id).ok_or_else(|| {
+            format!(
+                "session {session_id} 未绑定窗口。用 cc 命令启动 claude 才能拉前；\
+                 cc 集成的安装见设置面板。"
+            )
+        })?;
+        bind::verify_binding(&binding)?;
+        bind::activate(binding.hwnd)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}
+
+// === v1.7：PowerShell profile cc 集成 IPC ===
+
+#[derive(serde::Serialize)]
+struct CcStatusResponse {
+    profiles: Vec<profile_installer::ProfileScan>,
+    active_registrations: u32,
+    default_command_name: &'static str,
+}
+
+/// 扫描两个 PS profile + 报告当前活跃注册数。前端打开设置面板时调用。
+#[tauri::command]
+async fn cc_integration_status(
+    command_name: Option<String>,
+    bind_state: tauri::State<'_, Arc<bind::BindRegistry>>,
+) -> Result<CcStatusResponse, String> {
+    let cmd = command_name.unwrap_or_else(|| "cc".to_string());
+    let bind_state = bind_state.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let profiles: Vec<_> = profile_installer::discover_profiles()
+            .into_iter()
+            .map(|(kind, path)| profile_installer::scan_profile(kind, &path, &cmd))
+            .collect();
+        Ok(CcStatusResponse {
+            profiles,
+            active_registrations: bind_state.registration_count() as u32,
+            default_command_name: "cc",
+        })
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}
+
+#[derive(serde::Serialize)]
+struct CcPreviewResponse {
+    code: String,
+}
+
+/// 返回将要写入 profile 的代码（含 BEGIN/END marker）。前端预览 modal 显示。
+#[tauri::command]
+fn cc_integration_preview(command_name: String) -> Result<CcPreviewResponse, String> {
+    Ok(CcPreviewResponse {
+        code: profile_installer::render_cc_code(&command_name),
+    })
+}
+
+/// 安装 cc function 到指定 profile（PS 5.1 或 PS 7.x）。idempotent。
+#[tauri::command]
+async fn cc_integration_install(
+    kind: profile_installer::ProfileKind,
+    command_name: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let path = profile_installer::discover_profiles()
+            .into_iter()
+            .find(|(k, _)| *k == kind)
+            .map(|(_, p)| p)
+            .ok_or_else(|| "profile path not found".to_string())?;
+        profile_installer::install_to_profile(&path, &command_name)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}
+
+/// 卸载 cc function（删除 BEGIN/END 块；用户其他内容不动）。
+#[tauri::command]
+async fn cc_integration_uninstall(kind: profile_installer::ProfileKind) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let path = profile_installer::discover_profiles()
+            .into_iter()
+            .find(|(k, _)| *k == kind)
+            .map(|(_, p)| p)
+            .ok_or_else(|| "profile path not found".to_string())?;
+        profile_installer::uninstall_from_profile(&path)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }

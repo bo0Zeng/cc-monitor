@@ -16,6 +16,7 @@ import {
   type ThemeConfig,
 } from "../theme";
 import { getClaudeDirOverride, setClaudeDirOverride } from "../paths";
+import { CcIntegrationSection } from "./cc_integration";
 
 /**
  * 字段控件类型：
@@ -204,6 +205,8 @@ export class SettingsPanel {
     body.appendChild(this.banner);
 
     body.appendChild(this.buildDataGroup());
+    // v1.7：PowerShell 集成区（cc 命令注入式绑定）
+    body.appendChild(new CcIntegrationSection().element);
     body.appendChild(this.buildGroup("字体", FIELDS.filter((f) => f.group === "font")));
     body.appendChild(this.buildGroup("颜色", FIELDS.filter((f) => f.group === "color")));
     return body;

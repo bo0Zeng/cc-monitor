@@ -105,6 +105,11 @@ impl SessionMap {
         tracing::debug!("active? {session_id} pid={} alive={alive}", info.pid);
         alive
     }
+
+    /// 查 SessionInfo（v1.7 绑定逻辑用：拿 claude_pid → parent → BindRegistry）
+    pub fn lookup(&self, session_id: &str) -> Option<SessionInfo> {
+        self.by_id.read().get(session_id).cloned()
+    }
 }
 
 fn scan_dir(dir: &Path) -> HashMap<String, SessionInfo> {

@@ -8,6 +8,76 @@
 
 ---
 
+## [1.7.0] — 2026-05-22
+
+### 新增
+
+- **cc 命令注入式绑定 Tab ↔ 终端窗口**——v1.6.x 的 4-tier 启发式算法在
+  explorer 启 PowerShell + WT DefTerm 接管 console 的常见架构下不可靠（claude
+  祖先链与 WT 窗口完全脱节）。v1.7 改成 PS 主动跟 monitor 握手：
+  - 用户用 `cc` 命令替代 `claude` 启动会话（cc 是 PS function，包装 claude）
+  - cc function 写 `ps-await/<PID>.json` + 设独特 WindowTitle marker
+  - monitor 后台 watcher 调 EnumWindows 找含 marker 的窗口 → 拿到 hwnd
+  - 写 `ps-registry/<PID>.json`（PS_PID ↔ hwnd 映射）→ 解除 PS 阻塞
+  - 之后 claude 启动写 `sessions/<PID>.json`，monitor 用 ToolHelp 查
+    claude.exe 的 parent_pid 反推 PS_PID → ps-registry → 拿 hwnd
+  - 写永久 `sid-hwnd-cache.json`（含复合指纹：hwnd + owner_pid + procStart）
+  - Tab ↗ / Ctrl+\` 查缓存 + 校验指纹 + SetForegroundWindow
+
+- **设置面板"PowerShell 集成"区** —— 一键扫描 + 安装 + 卸载 cc function
+  到 PS profile：
+  - 同时扫描 PS 5.1 (`Documents/WindowsPowerShell/profile.ps1`) + PS 7.x
+    (`Documents/PowerShell/profile.ps1`) 两个 profile 路径
+  - 检测命令名冲突（profile 已有同名 function 时 UI 警告，建议改名）
+  - 命令名可自定义（默认 `cc`，用户可输入 `ccm` / `monclaude` 等）
+  - "预览代码"按钮弹 modal 展示完整将要写入的代码（含 BEGIN/END marker）
+  - 块标记隔离：`# === cc-monitor BEGIN v1 ===` / `# === cc-monitor END ===`
+    重装时整块替换、卸载时整块删除，用户在块外任何内容不动
+  - 实时显示当前活跃 PS 注册数
+
+- **rust 后端新增模块**：
+  - `bind.rs`：BindRegistry（ps-await 监听 + EnumWindows + ps-registry 持久化）
+    + SidHwndCache（sid → hwnd 持久化）+ verify_binding / activate 拉前
+    + 心跳 10s 清死 PS 注册
+  - `profile_installer.rs`：profile 路径解析 + 块插入/卸载 + 命令名冲突检测
+  - `scripts/cc.ps1.tpl`：cc function 模板（include_str! 嵌入二进制）
+
+- **rust 后端新增 4 个 Tauri IPC 命令**：
+  - `cc_integration_status` — 扫描两个 profile 状态
+  - `cc_integration_preview` — 渲染将要写入的代码（不修改文件）
+  - `cc_integration_install` — 写入指定 profile（PS 5.1 或 PS 7.x）
+  - `cc_integration_uninstall` — 移除 BEGIN/END 块
+  - `bring_terminal_to_front` — 拉前命令（v1.6.7 删除后恢复，但实现完全重写）
+
+### 改动
+
+- Cargo.toml 恢复 `Win32_System_Diagnostics_ToolHelp`（用于 claude.exe →
+  parent_pid 查询）+ `Win32_UI_WindowsAndMessaging`（EnumWindows / GetWindowTextW /
+  SetForegroundWindow）feature
+- 前端恢复 Tab ↗ 按钮 + Ctrl+\` 快捷键 + 失败时右下角 fixed toast
+
+### 关键决策
+
+| 决策 | 选择 | 理由 |
+|---|---|---|
+| profile 修改方式 | 一键安装 + 预览 + 卸载 | 默认便利但完全透明，BEGIN/END 块隔离不动用户其他内容 |
+| 默认命令名 | `cc` | 短易记；UI 可改 |
+| 没装 cc 时 | 报"未绑定窗口"不 fallback | 老 4-tier 算法已彻底删除 |
+| 复合指纹 | hwnd + owner_pid + owner_proc_start + ps_proc_start | 防 HWND 复用 + PID 复用 |
+
+### 用户操作流（首次安装）
+
+1. 设置面板（Ctrl+,）→ 滚到"PowerShell 集成"区
+2. 点 PS 5.1 或 PS 7.x 卡片的"安装"
+3. 重启 PowerShell
+4. 新 session 启动时 PS function 自动跟 monitor 握手（< 100ms，无感知）
+5. 用 `cc` 替代 `claude` 启动会话
+6. 之后 Tab ↗ / Ctrl+\` 直接拉对应 WT 窗口
+
+### 设计文档
+
+`D:/Sync/文档/cc-monitor-v1.7-cc-integration-plan.md`（plan + 时序图 + 数据结构）
+
 ## [1.6.7] — 2026-05-22
 
 ### 移除
