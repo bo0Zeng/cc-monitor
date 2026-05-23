@@ -62,6 +62,8 @@ export class CcIntegrationSection {
   private uninstallBtn!: HTMLButtonElement;
   private autoLaunchCheckbox!: HTMLInputElement;
   private autoLaunchPathSpan!: HTMLSpanElement;
+  private includeCcFnCheckbox!: HTMLInputElement;
+  private includeCcFnHint!: HTMLDivElement;
   /** 当前从后端拿到的推荐路径（按 PS 版本索引）。版本下拉改时用来回填 path 输入 */
   private recommended: Record<ProfileKind, string | null> = {
     Ps51: null,
@@ -170,6 +172,27 @@ export class CcIntegrationSection {
     // 冲突警告
     this.warnArea = document.createElement("div");
     group.appendChild(this.warnArea);
+
+    // v1.7.3：是否安装 function cc（用户已有自定义 cc 时默认不装，避免覆盖）
+    const ccFnRow = document.createElement("div");
+    ccFnRow.className = "settings-cc-include-cc";
+    const ccFnLabel = document.createElement("label");
+    ccFnLabel.className = "settings-row";
+    this.includeCcFnCheckbox = document.createElement("input");
+    this.includeCcFnCheckbox.type = "checkbox";
+    this.includeCcFnCheckbox.className = "settings-checkbox";
+    this.includeCcFnCheckbox.checked = true;
+    this.includeCcFnCheckbox.addEventListener("change", () => this.updateIncludeHint());
+    ccFnLabel.appendChild(this.includeCcFnCheckbox);
+    const ccFnTxt = document.createElement("span");
+    ccFnTxt.className = "settings-checkbox-label";
+    ccFnTxt.textContent = "同时安装一个默认 function cc（一键即用）";
+    ccFnLabel.appendChild(ccFnTxt);
+    ccFnRow.appendChild(ccFnLabel);
+    this.includeCcFnHint = document.createElement("div");
+    this.includeCcFnHint.className = "settings-hint";
+    ccFnRow.appendChild(this.includeCcFnHint);
+    group.appendChild(ccFnRow);
 
     // 按钮行
     const btnRow = document.createElement("div");
@@ -325,16 +348,34 @@ export class CcIntegrationSection {
       this.statusBadge.textContent = "✗ 未安装";
       this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-warn";
     }
+    // v1.7.3：检测到用户自定义 function cc 时，默认取消 "也装 cc function" 复选框
+    // 避免我们的 cc 覆盖用户的（PowerShell 后定义的同名 function 覆盖前面的）
     if (scan.conflicting_functions.length > 0 && !scan.has_ccm_block) {
       const warn = document.createElement("div");
       warn.className = "settings-cc-profile-warn";
-      warn.textContent =
-        `⚠ profile 已含自定义 function ${scan.conflicting_functions.join(", ")}；` +
-        `安装会覆盖（或改命令名避免冲突）。`;
+      warn.innerHTML =
+        `⚠ profile 已含自定义 function <code>${scan.conflicting_functions.join(", ")}</code>。` +
+        `<br>cc-monitor 不会覆盖它——下方"也装默认 function cc"会自动取消勾选，` +
+        `仅安装 <code>__ccm_bind</code> helper。` +
+        `<br><b>请在你的 <code>function cc</code> 开头加一行调用：<code>__ccm_bind</code></b>。`;
       this.warnArea.appendChild(warn);
+      this.includeCcFnCheckbox.checked = false;
+    } else if (!scan.has_ccm_block) {
+      this.includeCcFnCheckbox.checked = true;
     }
+    this.updateIncludeHint();
     this.installBtn.textContent = scan.has_ccm_block ? "重新安装" : "安装";
     this.uninstallBtn.style.display = scan.has_ccm_block ? "" : "none";
+  }
+
+  private updateIncludeHint(): void {
+    if (this.includeCcFnCheckbox.checked) {
+      this.includeCcFnHint.innerHTML =
+        "勾上：安装 <code>__ccm_bind</code> + <code>function cc</code>（` __ccm_bind; claude $args`）。新用户一键即用。";
+    } else {
+      this.includeCcFnHint.innerHTML =
+        "未勾：只安装 <code>__ccm_bind</code> helper。请在你自己的 cc function 开头加 <code>__ccm_bind</code> 调用。";
+    }
   }
 
   private renderLegacy(entries: LegacyEntry[]): void {
@@ -396,6 +437,7 @@ export class CcIntegrationSection {
     try {
       const resp = await invoke<CcPreviewResponse>("cc_integration_preview", {
         commandName: this.currentCommand(),
+        includeCcFunction: this.includeCcFnCheckbox.checked,
       });
       this.showPreviewModal(resp.code);
     } catch (e) {
@@ -447,13 +489,18 @@ export class CcIntegrationSection {
       alert("请先填 profile 路径");
       return;
     }
+    const includeCc = this.includeCcFnCheckbox.checked;
     try {
       await invoke<void>("cc_integration_install", {
         path: p,
         commandName: this.currentCommand(),
+        includeCcFunction: includeCc,
       });
       await this.scanCurrentPath();
-      alert("已写入 profile。请重启 PowerShell（关闭并新开窗口），新 session 启动时会自动注册。");
+      const tail = includeCc
+        ? "请重启 PowerShell，cc 命令立即可用。"
+        : "已装 __ccm_bind helper。请在你自己的 function cc 开头加一行 `__ccm_bind`，然后重启 PowerShell。";
+      alert("已写入 profile。" + tail);
     } catch (e) {
       alert(`安装失败：${e}`);
     }

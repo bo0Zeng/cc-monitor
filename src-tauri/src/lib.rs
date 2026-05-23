@@ -294,20 +294,31 @@ struct CcPreviewResponse {
 }
 
 /// 返回将要写入 profile 的代码（含 BEGIN/END marker）。前端预览 modal 显示。
+///
+/// `include_cc_function` 控制是否生成完整 cc function（true）还是只装 helper（false）。
 #[tauri::command]
-fn cc_integration_preview(command_name: String) -> Result<CcPreviewResponse, String> {
+fn cc_integration_preview(
+    command_name: String,
+    include_cc_function: bool,
+) -> Result<CcPreviewResponse, String> {
     Ok(CcPreviewResponse {
-        code: profile_installer::render_cc_code(&command_name),
+        code: profile_installer::render_cc_code(&command_name, include_cc_function),
     })
 }
 
 /// 安装 cc function 到指定 path（前端自己组装路径——版本下拉 + 可编辑覆盖）。
 /// idempotent；已有 ccm 块则原地替换。
+///
+/// `include_cc_function = false` 时只装 `__ccm_bind` helper，避免覆盖用户已有的 cc。
 #[tauri::command]
-async fn cc_integration_install(path: String, command_name: String) -> Result<(), String> {
+async fn cc_integration_install(
+    path: String,
+    command_name: String,
+    include_cc_function: bool,
+) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let p = PathBuf::from(path);
-        profile_installer::install_to_profile(&p, &command_name)
+        profile_installer::install_to_profile(&p, &command_name, include_cc_function)
     })
     .await
     .map_err(|e| format!("spawn_blocking join error: {e}"))?

@@ -164,16 +164,36 @@ pub fn scan_profile(kind: ProfileKind, path: &PathBuf, command_name: &str) -> Pr
     }
 }
 
-/// 生成将要写入的 cc function 代码（替换 placeholder）。
-pub fn render_cc_code(command_name: &str) -> String {
+/// 生成将要写入的代码（替换 placeholder）。
+///
+/// - `include_cc_function = true`：装 `__ccm_bind` helper **加上** `function {name}`
+///   （适合 profile 里没有自定义 cc 的新用户，一键 work）。
+/// - `include_cc_function = false`：只装 `__ccm_bind` helper（适合用户已有自定义
+///   `function cc`——避免覆盖用户原有 cd/代理/etc 逻辑，用户自己在 cc 开头加
+///   `__ccm_bind` 一行调用即可）。
+pub fn render_cc_code(command_name: &str, include_cc_function: bool) -> String {
     let safe_name = sanitize_command_name(command_name);
-    CC_TEMPLATE.replace("{{COMMAND_NAME}}", &safe_name)
+    let cc_block = if include_cc_function {
+        format!(
+            "\nfunction {0} {{\n    [CmdletBinding()] param(\n        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs\n    )\n    __ccm_bind\n    & claude $RemainingArgs\n}}\n",
+            safe_name
+        )
+    } else {
+        String::new()
+    };
+    CC_TEMPLATE.replace("{{CC_FUNCTION_BLOCK}}", &cc_block)
 }
 
 /// idempotent 安装：把 cc function 块写到 profile，已有 ccm 块则原地替换。
 /// 用户在 BEGIN/END 块外的内容完全不动。
-pub fn install_to_profile(path: &PathBuf, command_name: &str) -> Result<(), String> {
-    let code = render_cc_code(command_name);
+///
+/// `include_cc_function = false` 时只装 `__ccm_bind` helper，不抢 cc function 名。
+pub fn install_to_profile(
+    path: &PathBuf,
+    command_name: &str,
+    include_cc_function: bool,
+) -> Result<(), String> {
+    let code = render_cc_code(command_name, include_cc_function);
     let existing = if path.exists() {
         std::fs::read_to_string(path).map_err(|e| format!("read existing profile failed: {e}"))?
     } else {
@@ -383,12 +403,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn render_cc_code_substitutes_placeholder() {
-        let out = render_cc_code("ccm");
+    fn render_cc_code_with_function() {
+        let out = render_cc_code("ccm", true);
         assert!(out.contains("function ccm"));
-        assert!(!out.contains("{{COMMAND_NAME}}"));
+        assert!(out.contains("__ccm_bind"));
+        assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
         assert!(out.contains("BEGIN v1"));
         assert!(out.contains("cc-monitor END"));
+    }
+
+    #[test]
+    fn render_cc_code_helper_only() {
+        // 用户已有自定义 function cc 时只装 __ccm_bind helper，不生成 function cc
+        let out = render_cc_code("cc", false);
+        assert!(out.contains("__ccm_bind"));
+        assert!(!out.contains("function cc"));
+        assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
+        assert!(out.contains("BEGIN v1"));
     }
 
     #[test]

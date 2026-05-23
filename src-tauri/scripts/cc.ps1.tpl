@@ -23,14 +23,12 @@ function __ccm_bind {
     }
 
     # v1.7.1：可选 auto-launch monitor（用户在 monitor UI 里 toggle 开启）
-    # monitor 启动时把自己 exe 路径写到 auto-launch.json，cc function 不硬编码路径
     if (Test-Path $autoLaunchFile) {
         try {
             $alCfg = Get-Content $autoLaunchFile -Raw -ErrorAction Stop | ConvertFrom-Json
             if ($alCfg.auto_launch_enabled -and $alCfg.monitor_exe_path) {
                 $monPath = $alCfg.monitor_exe_path
                 if (Test-Path $monPath) {
-                    # 已有同路径 monitor 进程 → 不重复启动
                     $running = $false
                     try {
                         $procs = Get-Process -ErrorAction SilentlyContinue
@@ -42,7 +40,6 @@ function __ccm_bind {
                     } catch {}
                     if (-not $running) {
                         Start-Process -FilePath $monPath -ErrorAction SilentlyContinue | Out-Null
-                        # 等 monitor BindRegistry watcher 起来（Tauri 初始化 + setup() 约 1-2s）
                         Start-Sleep -Milliseconds 2000
                     }
                 }
@@ -70,12 +67,5 @@ function __ccm_bind {
         Write-Warning "cc-monitor: 绑定超时 (monitor 没在跑？)"
     }
 }
-
-function {{COMMAND_NAME}} {
-    [CmdletBinding()] param(
-        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs
-    )
-    __ccm_bind
-    & claude $RemainingArgs
-}
+{{CC_FUNCTION_BLOCK}}
 # === cc-monitor END ===
