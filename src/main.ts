@@ -121,7 +121,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   // 快捷键：Ctrl+Tab 切下一个 / Ctrl+Shift+Tab 切上一个 / Ctrl+W 关 archived /
-  // Ctrl+, 开设置 / Ctrl+H 历史 / Ctrl+` 调出终端；Esc 关设置/历史在各自模块处理。
+  // Ctrl+, 开设置 / Ctrl+H 历史；Esc 关设置/历史在各自模块处理。
+  // Ctrl+` 拉终端在 v1.6.7 撤回，等 v1.7 注入式绑定方案。
   window.addEventListener("keydown", (e) => {
     if (!e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.key === "Tab") {
@@ -133,9 +134,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     } else if (e.key === ",") {
       e.preventDefault();
       void settingsPanel.open();
-    } else if (e.key === "`") {
-      e.preventDefault();
-      tabs.bringActiveTerminalToFront();
     } else if (e.key === "h" || e.key === "H") {
       e.preventDefault();
       if (historyView.isVisible()) {

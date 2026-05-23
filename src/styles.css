@@ -168,8 +168,7 @@ html, body {
  * 避免每次 ondLine/状态变化时 replaceChildren 重建按钮（长会话每秒数十次重绘开销大） */
 .tab .tab-badge { display: none; }
 .tab.has-unread:not(.active) .tab-badge { display: inline-flex; }
-.tab.archived .live-dot,
-.tab.archived .tab-focus { display: none; }
+.tab.archived .live-dot { display: none; }
 .tab:not(.archived) .tab-close { display: none; }
 
 .tab-title {
@@ -196,8 +195,7 @@ html, body {
   text-align: center;
 }
 
-.tab-close,
-.tab-focus {
+.tab-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -211,13 +209,9 @@ html, body {
   cursor: pointer;
   flex-shrink: 0;
 }
-.tab-close:hover,
-.tab-focus:hover {
+.tab-close:hover {
   background: var(--overlay-hover);
   color: var(--text);
-}
-.tab-focus {
-  font-size: 14px;
 }
 
 /* === Stream === */
@@ -703,34 +697,6 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* v1.6.4 status-error 已废弃（写到状态栏文字会触发 layout 重排导致 message
-   区域被挤；v1.6.5 改成 fixed toast）。规则保留但不实际使用 */
-.status-msg.status-error {
-  color: var(--accent, #c25b3b);
-  font-weight: 500;
-}
-
-/* bring_terminal_to_front 失败时的 fixed toast —— 见 tabs.ts showBringTerminalToast */
-#bring-terminal-toast {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  max-width: 540px;
-  background: var(--bg-2, #2a2520);
-  border: 1px solid var(--accent, #c25b3b);
-  color: var(--accent, #c25b3b);
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: var(--font-size-small, 13px);
-  font-weight: 500;
-  line-height: 1.45;
-  z-index: 9999;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-  white-space: pre-wrap;
-  word-break: break-word;
-  pointer-events: auto;
 }
 
 .status-count {
