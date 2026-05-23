@@ -13,6 +13,7 @@ mod subagent;
 mod utils;
 mod watcher;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Emitter, Listener, Manager};
 
@@ -180,6 +181,7 @@ pub fn run() {
             bring_terminal_to_front,
             cc_integration_status,
             cc_integration_preview,
+            cc_integration_scan_path,
             cc_integration_install,
             cc_integration_uninstall,
             cc_get_auto_launch,
@@ -246,6 +248,16 @@ struct CcStatusResponse {
     profiles: Vec<profile_installer::ProfileScan>,
     active_registrations: u32,
     default_command_name: &'static str,
+    /// v1.7.0-1.7.1 错把 cc 块装到 profile.ps1（CurrentUserAllHosts，PS 不自动加载）
+    /// 的遗留文件列表。v1.7.2 起改装到 Microsoft.PowerShell_profile.ps1（默认 $PROFILE）。
+    /// UI 检测到非空时显示警告，引导用户清理。
+    legacy_profile_paths_with_block: Vec<LegacyProfileEntry>,
+}
+
+#[derive(serde::Serialize)]
+struct LegacyProfileEntry {
+    kind: profile_installer::ProfileKind,
+    path: String,
 }
 
 /// 扫描两个 PS profile + 报告当前活跃注册数。前端打开设置面板时调用。
@@ -261,10 +273,15 @@ async fn cc_integration_status(
             .into_iter()
             .map(|(kind, path)| profile_installer::scan_profile(kind, &path, &cmd))
             .collect();
+        let legacy = profile_installer::scan_legacy_profiles()
+            .into_iter()
+            .map(|(kind, path)| LegacyProfileEntry { kind, path })
+            .collect();
         Ok(CcStatusResponse {
             profiles,
             active_registrations: bind_state.registration_count() as u32,
             default_command_name: "cc",
+            legacy_profile_paths_with_block: legacy,
         })
     })
     .await
@@ -284,19 +301,27 @@ fn cc_integration_preview(command_name: String) -> Result<CcPreviewResponse, Str
     })
 }
 
-/// 安装 cc function 到指定 profile（PS 5.1 或 PS 7.x）。idempotent。
+/// 安装 cc function 到指定 path（前端自己组装路径——版本下拉 + 可编辑覆盖）。
+/// idempotent；已有 ccm 块则原地替换。
 #[tauri::command]
-async fn cc_integration_install(
-    kind: profile_installer::ProfileKind,
-    command_name: String,
-) -> Result<(), String> {
+async fn cc_integration_install(path: String, command_name: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        let path = profile_installer::discover_profiles()
-            .into_iter()
-            .find(|(k, _)| *k == kind)
-            .map(|(_, p)| p)
-            .ok_or_else(|| "profile path not found".to_string())?;
-        profile_installer::install_to_profile(&path, &command_name)
+        let p = PathBuf::from(path);
+        profile_installer::install_to_profile(&p, &command_name)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}
+
+/// 扫单个 path 的安装状态（前端用户改了路径后调）。
+#[tauri::command]
+async fn cc_integration_scan_path(
+    path: String,
+    command_name: String,
+) -> Result<profile_installer::ProfileScan, String> {
+    tokio::task::spawn_blocking(move || {
+        let p = PathBuf::from(path);
+        Ok(profile_installer::scan_path(&p, &command_name))
     })
     .await
     .map_err(|e| format!("spawn_blocking join error: {e}"))?
@@ -318,14 +343,10 @@ fn cc_set_auto_launch(enabled: bool) -> Result<(), String> {
 
 /// 卸载 cc function（删除 BEGIN/END 块；用户其他内容不动）。
 #[tauri::command]
-async fn cc_integration_uninstall(kind: profile_installer::ProfileKind) -> Result<(), String> {
+async fn cc_integration_uninstall(path: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        let path = profile_installer::discover_profiles()
-            .into_iter()
-            .find(|(k, _)| *k == kind)
-            .map(|(_, p)| p)
-            .ok_or_else(|| "profile path not found".to_string())?;
-        profile_installer::uninstall_from_profile(&path)
+        let p = PathBuf::from(path);
+        profile_installer::uninstall_from_profile(&p)
     })
     .await
     .map_err(|e| format!("spawn_blocking join error: {e}"))?

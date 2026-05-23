@@ -8,6 +8,51 @@
 
 ---
 
+## [1.7.2] — 2026-05-22
+
+### 修复（release-blocker）
+
+- **v1.7.0/1.7.1 装错 profile 文件名导致 cc 集成形同虚设** ——
+  - 错的：`Documents/WindowsPowerShell/profile.ps1`（CurrentUserAllHosts，PS 启动**不**自动读）
+  - 对的：`Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1`（CurrentUserCurrentHost，即默认 `$PROFILE`）
+  - 用户在 PS 里跑 `$PROFILE` 看到的就是后者。v1.7.0/1.7.1 装到前者 PowerShell 启动根本不加载，整个 cc 集成无效。
+  - v1.7.2 `profile_installer::discover_profiles` 改用正确文件名。
+  - 新增 `scan_legacy_profiles()` 检测 v1.7.0/1.7.1 错位的 profile.ps1 中是否含
+    cc-monitor 块。UI 在状态扫描时显示警告 + 列出文件路径，引导用户手动清理。
+
+### 改动（UX 大改）
+
+- **设置面板"PowerShell 集成"区单卡片重构**：
+  - PowerShell 版本下拉（Windows PowerShell 5.1 [默认] / PowerShell 7.x / 自定义路径）
+  - profile 路径**可编辑输入框**（默认按版本下拉自动填充 `Microsoft.PowerShell_profile.ps1`，
+    用户可手动改成任意路径——比如非标准的 OneDrive 同步路径、portable PowerShell、
+    或者特殊 host 的 profile）
+  - 选"自定义路径..."后路径输入框获焦让用户填
+  - "重新扫描"按钮配合 flash 视觉反馈（之前点了没反应的设计 bug）
+  - 状态徽章 (未安装/已安装/文件不存在)
+  - 旧位置遗留警告框（紧贴主操作下方）
+- **自动识别**：PS 5.1 永远显示（Windows 自带）；PS 7.x **只在 `Documents/PowerShell/` 目录存在时**才作为可选项展示，否则隐藏（绝大多数用户没装 7.x，UI 不再误导）
+
+### 重构（后端 IPC）
+
+- `cc_integration_install({path, command_name})` ← 之前 `{kind, command_name}` 改成接受路径直接
+- `cc_integration_uninstall({path})` ← 同上
+- 新增 `cc_integration_scan_path({path, command_name})` —— 用户改路径后扫描那个路径
+- `cc_integration_status` response 新增 `legacy_profile_paths_with_block` 字段
+- `ProfileKind` 加 `Custom` 变体
+
+### 用户操作流（v1.7.2 安装）
+
+1. 装 v1.7.2 后**首次启动 monitor**（auto-launch.json 会自动更新 monitor_exe_path）
+2. 设置面板 → PowerShell 集成
+3. 版本下拉默认 **PS 5.1**，路径已自动填 `Microsoft.PowerShell_profile.ps1`
+4. 如果有 v1.7.0/1.7.1 遗留块，会看到"⚠ 检测到旧位置遗留" + 路径列表 → 手动用编辑器
+   打开那个 profile.ps1 删除 BEGIN/END 之间内容（或整个文件删掉）
+5. 点"预览代码"看完整内容
+6. 点"安装" → 把 cc function 写到正确的 `Microsoft.PowerShell_profile.ps1`
+7. **重启 PowerShell**
+8. 跑 `cc` → 应该自动握手成功，Tab ↗ 能拉对应 WT 窗口
+
 ## [1.7.1] — 2026-05-22
 
 ### 新增

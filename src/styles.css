@@ -771,6 +771,18 @@ html, body {
   display: flex;
   gap: 8px;
   margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+/* v1.7.2 legacy profile (profile.ps1) 遗留警告 */
+.settings-cc-legacy-warn {
+  background: rgba(200, 130, 80, 0.10);
+  border-left: 3px solid var(--accent, #c25b3b);
+  padding: 10px 12px;
+  margin: 12px 0;
+  font-size: 12px;
+  color: var(--text-2, #bcb5a8);
+  border-radius: 4px;
 }
 
 /* === auto-launch toggle === */

@@ -1,19 +1,22 @@
 /**
- * 设置面板：PowerShell 集成区。
+ * 设置面板：PowerShell 集成区（v1.7.2 重写）。
  *
- * 提供 UI 让用户：
- *  - 扫描 PS 5.1 / PS 7.x profile 文件状态
- *  - 选自定义命令名（默认 cc）
- *  - 预览将要写入的代码块（含 BEGIN/END marker）
- *  - 一键安装 / 卸载 cc function
+ * UI 单卡片，让用户：
+ *  - 选 PS 版本（默认 5.1，Windows 自带）或自定义路径
+ *  - 编辑 profile 文件路径（默认填充 `Microsoft.PowerShell_profile.ps1`，可改）
+ *  - 预览 / 扫描 / 安装 / 卸载
+ *  - 看 v1.7.0-1.7.1 旧位置（profile.ps1）的遗留警告
+ *  - 控制 auto-launch monitor toggle
  *
- * 块边界设计：`# === cc-monitor BEGIN v1 ===` / `# === cc-monitor END ===`
- * 重装时块整体替换，卸载时块整体删除，用户在块外的任何内容不动。
+ * v1.7.0-1.7.1 的 bug：默认 profile 文件名搞成 `profile.ps1`（CurrentUserAllHosts），
+ * 但 PowerShell 默认 `$PROFILE` 指向 `Microsoft.PowerShell_profile.ps1`
+ * （CurrentUserCurrentHost）—— PowerShell 启动不读 `profile.ps1`，cc 集成形同虚设。
+ * v1.7.2 改回正确文件名并扫描旧位置遗留。
  */
 
 import { invoke } from "@tauri-apps/api/core";
 
-type ProfileKind = "Ps51" | "Ps7";
+type ProfileKind = "Ps51" | "Ps7" | "Custom";
 
 interface ProfileScan {
   kind: ProfileKind;
@@ -25,10 +28,16 @@ interface ProfileScan {
   size_bytes: number;
 }
 
+interface LegacyEntry {
+  kind: ProfileKind;
+  path: string;
+}
+
 interface CcStatusResponse {
-  profiles: ProfileScan[];
+  profiles: ProfileScan[]; // 自动检测到的"推荐"路径列表（5.1 + 可选 7.x）
   active_registrations: number;
   default_command_name: string;
+  legacy_profile_paths_with_block: LegacyEntry[];
 }
 
 interface CcPreviewResponse {
@@ -43,11 +52,22 @@ interface AutoLaunchConfig {
 export class CcIntegrationSection {
   private root: HTMLElement;
   private commandInput!: HTMLInputElement;
-  private rowsContainer!: HTMLElement;
+  private versionSelect!: HTMLSelectElement;
+  private pathInput!: HTMLInputElement;
+  private statusBadge!: HTMLSpanElement;
+  private warnArea!: HTMLDivElement;
+  private legacyArea!: HTMLDivElement;
   private regCountSpan!: HTMLSpanElement;
+  private installBtn!: HTMLButtonElement;
+  private uninstallBtn!: HTMLButtonElement;
   private autoLaunchCheckbox!: HTMLInputElement;
   private autoLaunchPathSpan!: HTMLSpanElement;
-  private status: CcStatusResponse | null = null;
+  /** 当前从后端拿到的推荐路径（按 PS 版本索引）。版本下拉改时用来回填 path 输入 */
+  private recommended: Record<ProfileKind, string | null> = {
+    Ps51: null,
+    Ps7: null,
+    Custom: null,
+  };
 
   constructor() {
     this.root = this.build();
@@ -68,7 +88,7 @@ export class CcIntegrationSection {
     heading.textContent = "PowerShell 集成";
     group.appendChild(heading);
 
-    // 行 1：说明
+    // 说明
     const intro = document.createElement("div");
     intro.className = "settings-hint";
     intro.innerHTML =
@@ -76,29 +96,115 @@ export class CcIntegrationSection {
       "<br>不装也能用 monitor，但 Tab ↗ / Ctrl+\\` 拉前不工作。";
     group.appendChild(intro);
 
-    // 行 2：命令名输入 + 扫描按钮
-    const row1 = document.createElement("div");
-    row1.className = "settings-row";
-    const label = document.createElement("span");
-    label.className = "settings-label";
-    label.textContent = "命令名";
-    row1.appendChild(label);
+    // 命令名
+    const rowCmd = document.createElement("div");
+    rowCmd.className = "settings-row";
+    const lblCmd = document.createElement("span");
+    lblCmd.className = "settings-label";
+    lblCmd.textContent = "命令名";
+    rowCmd.appendChild(lblCmd);
     this.commandInput = document.createElement("input");
     this.commandInput.type = "text";
     this.commandInput.className = "settings-input";
     this.commandInput.value = "cc";
-    this.commandInput.placeholder = "cc";
-    this.commandInput.addEventListener("change", () => void this.refresh());
-    row1.appendChild(this.commandInput);
-    const refreshBtn = document.createElement("button");
-    refreshBtn.type = "button";
-    refreshBtn.className = "settings-btn settings-btn-secondary";
-    refreshBtn.textContent = "扫描 profile";
-    refreshBtn.addEventListener("click", () => void this.refresh());
-    row1.appendChild(refreshBtn);
-    group.appendChild(row1);
+    this.commandInput.addEventListener("change", () => void this.scanCurrentPath());
+    rowCmd.appendChild(this.commandInput);
+    group.appendChild(rowCmd);
 
-    // 行 3：当前活跃注册数
+    // PowerShell 版本下拉
+    const rowVer = document.createElement("div");
+    rowVer.className = "settings-row";
+    const lblVer = document.createElement("span");
+    lblVer.className = "settings-label";
+    lblVer.textContent = "PowerShell";
+    rowVer.appendChild(lblVer);
+    this.versionSelect = document.createElement("select");
+    this.versionSelect.className = "settings-input";
+    [
+      { v: "Ps51", t: "Windows PowerShell 5.1 （Windows 自带，推荐）" },
+      { v: "Ps7", t: "PowerShell 7.x（独立安装）" },
+      { v: "Custom", t: "自定义路径..." },
+    ].forEach((opt) => {
+      const o = document.createElement("option");
+      o.value = opt.v;
+      o.textContent = opt.t;
+      this.versionSelect.appendChild(o);
+    });
+    this.versionSelect.value = "Ps51";
+    this.versionSelect.addEventListener("change", () => this.onVersionChange());
+    rowVer.appendChild(this.versionSelect);
+    group.appendChild(rowVer);
+
+    // profile 路径
+    const rowPath = document.createElement("div");
+    rowPath.className = "settings-row settings-row-stack";
+    const lblPath = document.createElement("span");
+    lblPath.className = "settings-label";
+    lblPath.textContent = "Profile 路径";
+    rowPath.appendChild(lblPath);
+    this.pathInput = document.createElement("input");
+    this.pathInput.type = "text";
+    this.pathInput.className = "settings-input settings-input-wide";
+    this.pathInput.placeholder = "...\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1";
+    this.pathInput.addEventListener("change", () => void this.scanCurrentPath());
+    rowPath.appendChild(this.pathInput);
+    group.appendChild(rowPath);
+
+    // 路径提示
+    const pathHint = document.createElement("div");
+    pathHint.className = "settings-hint";
+    pathHint.innerHTML =
+      "默认填充 PowerShell 启动时实际读的 <code>$PROFILE</code>（即 <code>Microsoft.PowerShell_profile.ps1</code>）。" +
+      "在 PS 里跑 <code>$PROFILE</code> 看你机器上具体路径。";
+    group.appendChild(pathHint);
+
+    // 状态行
+    const rowStatus = document.createElement("div");
+    rowStatus.className = "settings-cc-profile-status";
+    this.statusBadge = document.createElement("span");
+    this.statusBadge.className = "settings-cc-profile-badge";
+    this.statusBadge.textContent = "...";
+    rowStatus.appendChild(this.statusBadge);
+    group.appendChild(rowStatus);
+
+    // 冲突警告
+    this.warnArea = document.createElement("div");
+    group.appendChild(this.warnArea);
+
+    // 按钮行
+    const btnRow = document.createElement("div");
+    btnRow.className = "settings-cc-profile-buttons";
+    const previewBtn = document.createElement("button");
+    previewBtn.type = "button";
+    previewBtn.className = "settings-btn settings-btn-secondary";
+    previewBtn.textContent = "预览代码";
+    previewBtn.addEventListener("click", () => void this.openPreview());
+    btnRow.appendChild(previewBtn);
+
+    const scanBtn = document.createElement("button");
+    scanBtn.type = "button";
+    scanBtn.className = "settings-btn settings-btn-secondary";
+    scanBtn.textContent = "重新扫描";
+    scanBtn.addEventListener("click", () => void this.scanCurrentPath(true));
+    btnRow.appendChild(scanBtn);
+
+    this.installBtn = document.createElement("button");
+    this.installBtn.type = "button";
+    this.installBtn.className = "settings-btn";
+    this.installBtn.textContent = "安装";
+    this.installBtn.addEventListener("click", () => void this.install());
+    btnRow.appendChild(this.installBtn);
+
+    this.uninstallBtn = document.createElement("button");
+    this.uninstallBtn.type = "button";
+    this.uninstallBtn.className = "settings-btn settings-btn-secondary";
+    this.uninstallBtn.textContent = "卸载";
+    this.uninstallBtn.style.display = "none";
+    this.uninstallBtn.addEventListener("click", () => void this.uninstall());
+    btnRow.appendChild(this.uninstallBtn);
+    group.appendChild(btnRow);
+
+    // 活跃注册数
     const statRow = document.createElement("div");
     statRow.className = "settings-hint";
     statRow.textContent = "当前已注册 PowerShell session: ";
@@ -108,12 +214,11 @@ export class CcIntegrationSection {
     statRow.appendChild(this.regCountSpan);
     group.appendChild(statRow);
 
-    // profile 行容器（refresh 时填充）
-    this.rowsContainer = document.createElement("div");
-    this.rowsContainer.className = "settings-cc-profiles";
-    group.appendChild(this.rowsContainer);
+    // v1.7.0-1.7.1 旧位置遗留警告
+    this.legacyArea = document.createElement("div");
+    group.appendChild(this.legacyArea);
 
-    // v1.7.1：auto-launch toggle
+    // auto-launch toggle
     group.appendChild(this.buildAutoLaunchRow());
 
     return group;
@@ -153,147 +258,152 @@ export class CcIntegrationSection {
     return wrap;
   }
 
-  private async refreshAutoLaunch(): Promise<void> {
-    try {
-      const cfg = await invoke<AutoLaunchConfig>("cc_get_auto_launch");
-      this.autoLaunchCheckbox.checked = cfg.auto_launch_enabled;
-      this.autoLaunchPathSpan.textContent =
-        cfg.monitor_exe_path ?? "(未记录，重启一次 monitor 后会自动记录)";
-      this.autoLaunchPathSpan.title = cfg.monitor_exe_path ?? "";
-    } catch (e) {
-      console.warn("cc_get_auto_launch failed:", e);
-    }
+  private currentCommand(): string {
+    return this.commandInput.value.trim() || "cc";
   }
 
-  private async toggleAutoLaunch(enabled: boolean): Promise<void> {
-    try {
-      await invoke<void>("cc_set_auto_launch", { enabled });
-    } catch (e) {
-      alert(`保存失败：${e}`);
-      // 回退 UI 状态
-      this.autoLaunchCheckbox.checked = !enabled;
-    }
-  }
-
+  /** 打开面板时调用：拿推荐路径 + 填默认值 + 扫一遍当前路径状态 */
   private async refresh(): Promise<void> {
-    const cmd = this.sanitizedCommandName();
     try {
-      this.status = await invoke<CcStatusResponse>("cc_integration_status", {
-        commandName: cmd,
+      const status = await invoke<CcStatusResponse>("cc_integration_status", {
+        commandName: this.currentCommand(),
       });
-      this.render();
+      // 把推荐路径填入 lookup
+      this.recommended.Ps51 = null;
+      this.recommended.Ps7 = null;
+      for (const p of status.profiles) {
+        this.recommended[p.kind] = p.path;
+      }
+      // 如果只检测到 PS 5.1，下拉里 PS 7.x 也保留但路径会留空
+      // 默认选 PS 5.1
+      if (!this.pathInput.value) {
+        this.versionSelect.value = "Ps51";
+        this.pathInput.value = this.recommended.Ps51 ?? "";
+      }
+      this.regCountSpan.textContent = String(status.active_registrations);
+      this.renderLegacy(status.legacy_profile_paths_with_block);
+      await this.scanCurrentPath();
     } catch (e) {
-      console.error("cc_integration_status failed:", e);
-      this.rowsContainer.innerHTML = `<div class="settings-hint">扫描失败：${escapeHtml(String(e))}</div>`;
+      this.statusBadge.textContent = `扫描失败: ${e}`;
+      this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-warn";
     }
   }
 
-  private sanitizedCommandName(): string {
-    const v = this.commandInput.value.trim();
-    return v.length === 0 ? "cc" : v;
-  }
-
-  private render(): void {
-    if (!this.status) return;
-    this.regCountSpan.textContent = String(this.status.active_registrations);
-    this.rowsContainer.innerHTML = "";
-    for (const p of this.status.profiles) {
-      this.rowsContainer.appendChild(this.renderProfileRow(p));
+  /** 用户改了路径输入框或命令名时 / 重新扫描按钮 */
+  private async scanCurrentPath(notify = false): Promise<void> {
+    const p = this.pathInput.value.trim();
+    if (!p) {
+      this.statusBadge.textContent = "（请选 PS 版本或填路径）";
+      this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-info";
+      return;
+    }
+    try {
+      const scan = await invoke<ProfileScan>("cc_integration_scan_path", {
+        path: p,
+        commandName: this.currentCommand(),
+      });
+      this.renderScanResult(scan);
+      if (notify) {
+        this.flashScan();
+      }
+    } catch (e) {
+      this.statusBadge.textContent = `扫描失败: ${e}`;
+      this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-warn";
     }
   }
 
-  private renderProfileRow(p: ProfileScan): HTMLElement {
-    const card = document.createElement("div");
-    card.className = "settings-cc-profile-card";
-
-    // 头部：名字 + 路径
-    const head = document.createElement("div");
-    head.className = "settings-cc-profile-head";
-    const name = document.createElement("span");
-    name.className = "settings-cc-profile-name";
-    name.textContent = p.kind === "Ps51" ? "Windows PowerShell 5.1" : "PowerShell 7.x";
-    head.appendChild(name);
-    const path = document.createElement("span");
-    path.className = "settings-cc-profile-path";
-    path.textContent = p.path;
-    path.title = p.path;
-    head.appendChild(path);
-    card.appendChild(head);
-
-    // 状态行
-    const status = document.createElement("div");
-    status.className = "settings-cc-profile-status";
-    status.appendChild(this.renderStatusBadge(p));
-    card.appendChild(status);
-
-    // 冲突警告
-    if (p.conflicting_functions.length > 0 && !p.has_ccm_block) {
+  private renderScanResult(scan: ProfileScan): void {
+    this.warnArea.innerHTML = "";
+    if (!scan.exists) {
+      this.statusBadge.textContent = "○ profile 文件不存在（安装时自动创建）";
+      this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-info";
+    } else if (scan.has_ccm_block) {
+      const ver = scan.ccm_block_version ? ` (${scan.ccm_block_version})` : "";
+      this.statusBadge.textContent = `✓ 已安装${ver}`;
+      this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-ok";
+    } else {
+      this.statusBadge.textContent = "✗ 未安装";
+      this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-warn";
+    }
+    if (scan.conflicting_functions.length > 0 && !scan.has_ccm_block) {
       const warn = document.createElement("div");
       warn.className = "settings-cc-profile-warn";
-      warn.textContent = `⚠ profile 已有自定义 function ${p.conflicting_functions.join(", ")}。` +
+      warn.textContent =
+        `⚠ profile 已含自定义 function ${scan.conflicting_functions.join(", ")}；` +
         `安装会覆盖（或改命令名避免冲突）。`;
-      card.appendChild(warn);
+      this.warnArea.appendChild(warn);
     }
-
-    // 按钮行
-    const buttons = document.createElement("div");
-    buttons.className = "settings-cc-profile-buttons";
-    const previewBtn = document.createElement("button");
-    previewBtn.type = "button";
-    previewBtn.className = "settings-btn settings-btn-secondary";
-    previewBtn.textContent = "预览代码";
-    previewBtn.addEventListener("click", () => void this.openPreview());
-    buttons.appendChild(previewBtn);
-
-    const installBtn = document.createElement("button");
-    installBtn.type = "button";
-    installBtn.className = "settings-btn";
-    installBtn.textContent = p.has_ccm_block ? "重新安装" : "安装";
-    installBtn.addEventListener("click", () => void this.install(p.kind));
-    buttons.appendChild(installBtn);
-
-    if (p.has_ccm_block) {
-      const uninstallBtn = document.createElement("button");
-      uninstallBtn.type = "button";
-      uninstallBtn.className = "settings-btn settings-btn-secondary";
-      uninstallBtn.textContent = "卸载";
-      uninstallBtn.addEventListener("click", () => void this.uninstall(p.kind));
-      buttons.appendChild(uninstallBtn);
-    }
-    card.appendChild(buttons);
-
-    return card;
+    this.installBtn.textContent = scan.has_ccm_block ? "重新安装" : "安装";
+    this.uninstallBtn.style.display = scan.has_ccm_block ? "" : "none";
   }
 
-  private renderStatusBadge(p: ProfileScan): HTMLElement {
-    const badge = document.createElement("span");
-    badge.className = "settings-cc-profile-badge";
-    if (!p.exists) {
-      badge.textContent = "○ profile 文件不存在（安装时自动创建）";
-      badge.classList.add("settings-cc-badge-info");
-    } else if (p.has_ccm_block) {
-      badge.textContent = `✓ 已安装${p.ccm_block_version ? " (" + p.ccm_block_version + ")" : ""}`;
-      badge.classList.add("settings-cc-badge-ok");
-    } else {
-      badge.textContent = "✗ 未安装";
-      badge.classList.add("settings-cc-badge-warn");
+  private renderLegacy(entries: LegacyEntry[]): void {
+    this.legacyArea.innerHTML = "";
+    if (entries.length === 0) return;
+    const warn = document.createElement("div");
+    warn.className = "settings-cc-legacy-warn";
+    const head = document.createElement("div");
+    head.style.fontWeight = "600";
+    head.textContent = "⚠ 检测到 v1.7.0-1.7.1 旧位置遗留的 cc-monitor 块";
+    warn.appendChild(head);
+    const body = document.createElement("div");
+    body.style.marginTop = "4px";
+    body.textContent =
+      "v1.7.0-1.7.1 错把 cc function 装到 profile.ps1（PowerShell 启动时不读），实际无效。" +
+      "请手动删除这些文件（或保留但删除 BEGIN/END 之间的内容），然后用上面的安装按钮装到正确位置：";
+    warn.appendChild(body);
+    const list = document.createElement("ul");
+    list.style.marginTop = "4px";
+    list.style.marginLeft = "16px";
+    list.style.fontFamily = "var(--font-mono, monospace)";
+    list.style.fontSize = "11px";
+    for (const e of entries) {
+      const li = document.createElement("li");
+      li.textContent = e.path;
+      list.appendChild(li);
     }
-    return badge;
+    warn.appendChild(list);
+    this.legacyArea.appendChild(warn);
+  }
+
+  private flashScan(): void {
+    const prev = this.statusBadge.style.outline;
+    this.statusBadge.style.outline = "2px solid var(--accent, #c25b3b)";
+    window.setTimeout(() => {
+      this.statusBadge.style.outline = prev;
+    }, 500);
+  }
+
+  private onVersionChange(): void {
+    const v = this.versionSelect.value as ProfileKind;
+    if (v === "Custom") {
+      // 保留当前路径不变，等用户编辑
+      this.pathInput.focus();
+      return;
+    }
+    const rec = this.recommended[v];
+    if (rec) {
+      this.pathInput.value = rec;
+      void this.scanCurrentPath();
+    } else {
+      this.pathInput.value = "";
+      this.statusBadge.textContent = `（${v === "Ps7" ? "PS 7.x" : "PS 5.1"} 没自动检测到）`;
+      this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-info";
+    }
   }
 
   private async openPreview(): Promise<void> {
-    const cmd = this.sanitizedCommandName();
     try {
       const resp = await invoke<CcPreviewResponse>("cc_integration_preview", {
-        commandName: cmd,
+        commandName: this.currentCommand(),
       });
-      this.showPreviewModal(resp.code, cmd);
+      this.showPreviewModal(resp.code);
     } catch (e) {
       console.error("preview failed:", e);
     }
   }
 
-  private showPreviewModal(code: string, commandName: string): void {
+  private showPreviewModal(code: string): void {
     document.querySelector(".settings-cc-modal-backdrop")?.remove();
     const backdrop = document.createElement("div");
     backdrop.className = "settings-cc-modal-backdrop";
@@ -301,12 +411,12 @@ export class CcIntegrationSection {
     modal.className = "settings-cc-modal";
     const title = document.createElement("div");
     title.className = "settings-cc-modal-title";
-    title.textContent = `将要写入 PS profile 的代码（function ${commandName}）`;
+    title.textContent = `将要写入 profile 的代码（function ${this.currentCommand()}）`;
     modal.appendChild(title);
 
     const hint = document.createElement("div");
     hint.className = "settings-hint";
-    hint.textContent = "BEGIN/END 之间是 cc-monitor 管理的块。你 profile 内的其他内容完全不动。";
+    hint.textContent = "BEGIN/END 之间是 cc-monitor 管理的块。profile 内其他内容完全不动。";
     modal.appendChild(hint);
 
     const pre = document.createElement("pre");
@@ -331,32 +441,54 @@ export class CcIntegrationSection {
     document.body.appendChild(backdrop);
   }
 
-  private async install(kind: ProfileKind): Promise<void> {
-    const cmd = this.sanitizedCommandName();
+  private async install(): Promise<void> {
+    const p = this.pathInput.value.trim();
+    if (!p) {
+      alert("请先填 profile 路径");
+      return;
+    }
     try {
-      await invoke<void>("cc_integration_install", { kind, commandName: cmd });
-      await this.refresh();
-      alert("已安装。请重启 PowerShell（关闭并新开窗口），新 session 启动时会自动注册。");
+      await invoke<void>("cc_integration_install", {
+        path: p,
+        commandName: this.currentCommand(),
+      });
+      await this.scanCurrentPath();
+      alert("已写入 profile。请重启 PowerShell（关闭并新开窗口），新 session 启动时会自动注册。");
     } catch (e) {
       alert(`安装失败：${e}`);
     }
   }
 
-  private async uninstall(kind: ProfileKind): Promise<void> {
+  private async uninstall(): Promise<void> {
     if (!confirm("确认卸载？BEGIN/END 块会被整块删除，profile 其他内容不动。")) return;
     try {
-      await invoke<void>("cc_integration_uninstall", { kind });
-      await this.refresh();
+      await invoke<void>("cc_integration_uninstall", {
+        path: this.pathInput.value.trim(),
+      });
+      await this.scanCurrentPath();
     } catch (e) {
       alert(`卸载失败：${e}`);
     }
   }
-}
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  private async refreshAutoLaunch(): Promise<void> {
+    try {
+      const cfg = await invoke<AutoLaunchConfig>("cc_get_auto_launch");
+      this.autoLaunchCheckbox.checked = cfg.auto_launch_enabled;
+      this.autoLaunchPathSpan.textContent =
+        cfg.monitor_exe_path ?? "(未记录，重启一次 monitor 后会自动记录)";
+      this.autoLaunchPathSpan.title = cfg.monitor_exe_path ?? "";
+    } catch (e) {
+      console.warn("cc_get_auto_launch failed:", e);
+    }
+  }
+
+  private async toggleAutoLaunch(enabled: boolean): Promise<void> {
+    try {
+      await invoke<void>("cc_set_auto_launch", { enabled });
+    } catch (e) {
+      alert(`保存失败：${e}`);
+      this.autoLaunchCheckbox.checked = !enabled;
+    }
+  }
 }
