@@ -8,6 +8,46 @@
 
 ---
 
+## [1.6.7] — 2026-05-22
+
+### 移除
+
+- **`bring_terminal_to_front` 整条链路撤回**（v1.6.0–1.6.6 的"Tab ↗ 拉对应
+  终端窗口"功能）。在 explorer 启 PowerShell + Windows Terminal DefTerm 接管
+  console 的常见架构下，claude.exe 的祖先链与 WT 窗口完全脱节，4-tier
+  启发式（祖先链 / 终端类进程 + title 匹配）无法可靠定位"哪个 WT 窗口跑了
+  这个 session"。Ambiguous 报错让用户疲于配置独特 title，"Claude Code"
+  fallback 又引入新歧义（误命中无 ai-title session 的同名窗口）。算法层修不
+  动这个问题——需要 OS API 不暴露的"PowerShell PID ↔ WT HWND"映射。
+  - Rust：删 `session_map.rs` 里 `bring_terminal_to_front` 方法 + 整个
+    WindowMatcher（`SelectResult` / `MatchTier` / `build_ancestors` /
+    `build_search_terms` / `classify_window` / `select_best_window` /
+    `ProcInfo` / `WindowSnap` / `is_system_shell_process` /
+    `is_terminal_process` / `process_info_snapshot` /
+    `enumerate_top_level_windows` / `activate_window`）+ 14 个对应单测
+  - `lib.rs`：删 `bring_terminal_to_front` Tauri 命令注册
+  - `Cargo.toml`：删 `Win32_System_Diagnostics_ToolHelp` /
+    `Win32_System_ProcessStatus` / `Win32_UI_WindowsAndMessaging` 三个 feature
+  - 前端：删 `tabs.ts` 的 `bringActiveTerminalToFront` / `bringTerminalToFront` /
+    `showBringTerminalToast` + Tab 上的 ↗ 按钮 + `main.ts` 的 Ctrl+\` 快捷键 +
+    `styles.css` 的 `.tab-focus` / `#bring-terminal-toast` /
+    `.status-msg.status-error`
+  - 文档：删 `src-tauri/src/README.md`（专讲拉终端机制的设计文档）
+- 保留 `SessionInfo.name` 字段（标记 `#[allow(dead_code)]`），为 v1.7 注入式
+  绑定方案准备。
+
+### 保留
+
+- session_map.rs 心跳（2s 探活清死 session，v1.6.3 引入）
+- watcher.rs force_rescan 通道 + SessionChange.added 字段（v1.6.3 引入，修
+  /resume 竞态的 session 新增鲁棒重扫，跟拉终端无关）
+
+### 下一步
+
+v1.7 通过 `cc` 命令注入式绑定实现拉终端：用户用包装后的 `cc` 启动 claude，
+wrapper 主动把 (sid, hwnd) 映射注册给 monitor，绕开"无法从进程树定位窗口"
+的 OS 限制。
+
 ## [1.6.6] — 2026-05-22
 
 ### 修复

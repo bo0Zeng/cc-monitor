@@ -278,15 +278,6 @@ export class TabManager {
     }
   }
 
-  /** 快捷键 Ctrl+` ：把当前活跃 Tab 对应的终端窗口调到前台（仅 live） */
-  bringActiveTerminalToFront(): void {
-    if (!this.activeId) return;
-    const tab = this.tabs.get(this.activeId);
-    if (tab && tab.status !== "archived") {
-      void bringTerminalToFront(this.activeId);
-    }
-  }
-
   switchTo(sessionId: string): void {
     if (!this.tabs.has(sessionId)) return;
     if (this.activeId === sessionId) return;
@@ -312,7 +303,7 @@ export class TabManager {
    *   4. 排序：iterate orderedIds + insertBefore，确保 DOM 顺序 = orderedIds 顺序
    *
    * CSS 配合（styles.css）：
-   *   .tab.archived .live-dot/.tab-focus { display: none }
+   *   .tab.archived .live-dot { display: none }
    *   .tab:not(.archived) .tab-close { display: none }
    *   .tab .tab-badge { display: none }
    *   .tab.has-unread:not(.active) .tab-badge { display: inline-block }
@@ -367,16 +358,6 @@ export class TabManager {
     const badge = document.createElement("span");
     badge.className = "tab-badge";
     root.appendChild(badge);
-
-    const focusBtn = document.createElement("span");
-    focusBtn.className = "tab-focus";
-    focusBtn.textContent = "↗";
-    focusBtn.title = "调出对应终端 (Ctrl+`)";
-    focusBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      void bringTerminalToFront(sid);
-    });
-    root.appendChild(focusBtn);
 
     const closeBtn = document.createElement("span");
     closeBtn.className = "tab-close";
@@ -448,40 +429,3 @@ function computeTitleFor(
   return sessionId.slice(0, 8);
 }
 
-function bringTerminalToFront(sessionId: string): Promise<void> {
-  // 加 5s timeout：若后端 Win32 调用（OpenProcess/EnumWindows/SetForegroundWindow）
-  // 在某些 OS 状态下卡死，invoke 永不返回；超时让用户看到具体错而非 monitor 假死。
-  const timeoutMs = 5000;
-  return Promise.race([
-    invoke<void>("bring_terminal_to_front", { sessionId }),
-    new Promise<never>((_, reject) =>
-      window.setTimeout(
-        () => reject(new Error(`invoke 超时 ${timeoutMs}ms（后端 Win32 调用可能卡住）`)),
-        timeoutMs,
-      ),
-    ),
-  ]).catch((e) => {
-    console.warn(`bring_terminal_to_front ${sessionId} failed:`, e);
-    showBringTerminalToast(String(e?.message ?? e));
-  });
-}
-
-/**
- * bring_terminal_to_front 失败时弹一个 8s fixed-positioned toast。
- *
- * **为什么用 fixed 而不是写状态栏文字**：
- *   v1.6.4 把错放进 #status-bar .status-msg 后用户报告"消息往右移动"——长错误
- *   字符 wrap / textContent 改变可能触发 flex 重排，message stream 区域被
- *   挤压重布局。toast 用 position:fixed 完全脱离正常文档流，绝对不会
- *   推动其他 element。z-index 高于 settings / history view。
- */
-function showBringTerminalToast(msg: string): void {
-  const existing = document.querySelector("#bring-terminal-toast");
-  existing?.remove();
-  const toast = document.createElement("div");
-  toast.id = "bring-terminal-toast";
-  toast.textContent = `⚠ 拉前失败：${msg}`;
-  toast.title = msg;
-  document.body.appendChild(toast);
-  window.setTimeout(() => toast.remove(), 8000);
-}

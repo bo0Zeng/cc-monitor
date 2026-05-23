@@ -23,7 +23,7 @@ index.html  ─> /src/main.ts (defer)
 |---|---|---|
 | **main.ts** | 启动 + 全局快捷键 + 错误捕获 + HMR 强制 reload | DOMContentLoaded handler |
 | **events.ts** | 订阅后端事件，**批量调度让出主线程**（防 replay 卡死） | `bindEvents({onLine, onSessionEnded})` |
-| **tabs.ts** | TabManager 状态机：Tab 生命周期（live / archived）+ 工具组聚合 | `onLine() / archiveTab() / closeTab() / cycleActive() / bringActiveTerminalToFront()` |
+| **tabs.ts** | TabManager 状态机：Tab 生命周期（live / archived）+ 工具组聚合 | `onLine() / archiveTab() / closeTab() / cycleActive()` |
 | **stream.ts** | 单 Tab 的消息流容器，ResizeObserver 自动贴底滚动 | `MessageStream.append() / scrollToBottom() / dispose()` |
 | **cards/index.ts** | renderMessage 主分发：user 气泡 / assistant 卡 / 工具组合并 / tool_result 注入到 tool_use | `renderMessage(rec, ctx) → RenderResult` |
 | **cards/slash.ts** | `/` 命令紧凑卡 | `parseSlashCommand / buildSlashCommandCard` |

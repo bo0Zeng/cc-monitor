@@ -39,7 +39,7 @@ src-tauri/
 | **messages.rs** | `JsonlRecord` enum + `ApiMessage` + `ContentBlock` | `JsonlRecord::is_displayable()` |
 | **parser.rs** | 单行 JSONL → JsonlRecord | `parse_line(raw)` |
 | **watcher.rs** | notify_debouncer_mini 递归监听 projects；ActiveFilter 过滤死 session | `spawn_watcher(root, active) → mpsc::UnboundedReceiver` |
-| **session_map.rs** | 读 sessions/<PID>.json + Win32 进程探活 + 终端窗口匹配 | `SessionMap::load_with_changes() / is_session_active() / bring_terminal_to_front()` |
+| **session_map.rs** | 读 sessions/<PID>.json + Win32 进程探活 + 心跳清死 session | `SessionMap::load_with_changes() / is_session_active()` |
 | **subagent.rs** | 父 session 的 Agent tool_use 关联 `<parent>/subagents/agent-*.jsonl` | IPC `load_subagent` |
 | **event_replay.rs** | 内存 buffer + frontend-ready 时持锁完整 emit | `EventReplay::record() / replay_and_mark_ready() / forget()` |
 | **history.rs** | 历史浏览器后端：两级 IPC + metadata + 物理删除 + resume | IPC `list_history_projects / list_history_sessions_in_project / read_session_jsonl / delete / update_metadata / resume` |
@@ -56,7 +56,6 @@ src-tauri/
 | `save_config` | `{ value: Value }` | `()` | 设置面板保存时 |
 | `load_subagent` | `{ parentJsonlPath, description, toolUseTimestamp }` | `SubagentLoadResult` | 用户展开 Task 折叠卡 |
 | `forget_session` | `{ sessionId }` | `()` | 用户关闭 archived Tab |
-| `bring_terminal_to_front` | `{ sessionId }` | `()` | Tab ↗ 按钮 / `Ctrl+\`` |
 | `list_history_projects` | — | `HistoryProject[]` | 历史浏览器打开 |
 | `list_history_sessions_in_project` | `{ projectDir }` | `HistorySessionEntry[]` | 项目组展开 |
 | `read_session_jsonl` | `{ jsonlPath }` | `JsonlLinePayload[]` | 点击历史会话进入只读视图 |
@@ -91,9 +90,9 @@ src-tauri/
 
 - **Windows 路径大小写不敏感导致 notify 重复回放** → `watcher.rs:path_key()` 用小写归一
 - **`std::fs::rename` Windows 目标存在时失败** → `config.rs:atomic_replace()` 用 `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`
-- **WT 单进程多窗口共享同一 PID**：`bring_terminal_to_front` 落到 D 级匹配时所有 session 聚焦同一窗口 → 需用户在 PowerShell startup 设独特 console title
 - **`pwsh.exe` 不是 Windows 自带**（PowerShell Core 独立安装包）→ `history.rs:resume_impl()` 用 `cmd /K`（cmd.exe 永远存在）+ `CREATE_NEW_CONSOLE` flag
 - **WT 默认终端无 OS API 暴露 active tab/window** → 焦点同步功能整体已移除，Tab 切换走手动点击 + `Ctrl+Tab` 快捷键
+- **拉对应终端窗口（v1.6.0–1.6.6 的 `bring_terminal_to_front`）已在 v1.6.7 撤回**：在 explorer 启 PowerShell + WT DefTerm 接管 console 的常见架构下，claude 祖先链与 WT 窗口完全脱节，4-tier 启发式不可靠。v1.7 改走 `cc` 命令注入式绑定（用户启动 claude 时主动注册 sid↔hwnd 映射）
 
 ## 添加新功能入口
 
