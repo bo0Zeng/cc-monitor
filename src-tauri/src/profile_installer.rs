@@ -21,13 +21,15 @@ const END_MARKER: &str = "# === cc-monitor END";
 /// cc function 模板源码（含 `{{COMMAND_NAME}}` placeholder）
 const CC_TEMPLATE: &str = include_str!("../scripts/cc.ps1.tpl");
 
-/// 两种 PowerShell profile：5.1 (Windows PowerShell) 和 7.x (PowerShell Core)
+/// PowerShell profile 类型标签。v1.7.2 起 UI 只用作显示提示，实际安装传 path。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ProfileKind {
-    /// Windows PowerShell 5.1: ~/Documents/WindowsPowerShell/profile.ps1
+    /// Windows PowerShell 5.1（Windows 自带）→ Microsoft.PowerShell_profile.ps1
     Ps51,
-    /// PowerShell 7.x:        ~/Documents/PowerShell/profile.ps1
+    /// PowerShell 7.x（独立安装）→ Microsoft.PowerShell_profile.ps1
     Ps7,
+    /// 用户自定义路径
+    Custom,
 }
 
 impl ProfileKind {
@@ -35,6 +37,7 @@ impl ProfileKind {
         match self {
             Self::Ps51 => "Windows PowerShell 5.1",
             Self::Ps7 => "PowerShell 7.x",
+            Self::Custom => "自定义路径",
         }
     }
 }
@@ -60,8 +63,40 @@ pub struct IntegrationStatus {
     pub default_command_name: String,
 }
 
-/// 解析两个 profile 路径。无 USERPROFILE 时返回空 Vec。
+/// 解析当前用户实际安装的 PS profile 路径。
+///
+/// **关键**：用 `Microsoft.PowerShell_profile.ps1`（`$PROFILE` 默认指向，即
+/// CurrentUserCurrentHost）而非 `profile.ps1`（CurrentUserAllHosts，对所有
+/// host 包括 ISE / VSCode 集成 terminal 生效，但绝大多数用户不用这个）。
+///
+/// v1.7.0-1.7.1 错用 `profile.ps1` → PowerShell 启动时根本不读那个文件 →
+/// cc 集成形同虚设。v1.7.2 修正到默认 `$PROFILE`。
+///
+/// **自动识别**：
+///   - PS 5.1 永远显示（Windows 自带）
+///   - PS 7.x 只在 `Documents/PowerShell/` 目录存在时显示（说明用户装过且至少跑过一次）
 pub fn discover_profiles() -> Vec<(ProfileKind, PathBuf)> {
+    let Some(home) = dirs::document_dir() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    out.push((
+        ProfileKind::Ps51,
+        home.join("WindowsPowerShell")
+            .join("Microsoft.PowerShell_profile.ps1"),
+    ));
+    let ps7_dir = home.join("PowerShell");
+    if ps7_dir.exists() {
+        out.push((
+            ProfileKind::Ps7,
+            ps7_dir.join("Microsoft.PowerShell_profile.ps1"),
+        ));
+    }
+    out
+}
+
+/// v1.7.0-1.7.1 错位 profile 路径（已废弃，仅用于检测是否有遗留块需要清理）。
+fn legacy_profile_paths() -> Vec<(ProfileKind, PathBuf)> {
     let Some(home) = dirs::document_dir() else {
         return Vec::new();
     };
@@ -75,6 +110,29 @@ pub fn discover_profiles() -> Vec<(ProfileKind, PathBuf)> {
             home.join("PowerShell").join("profile.ps1"),
         ),
     ]
+}
+
+/// 扫所有 v1.7.0-1.7.1 错位 profile 文件，看哪些含 cc-monitor 块（需要用户手动清理）。
+pub fn scan_legacy_profiles() -> Vec<(ProfileKind, String)> {
+    let mut out = Vec::new();
+    for (kind, path) in legacy_profile_paths() {
+        if !path.exists() {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let (has_block, _) = find_block_version(&content);
+        if has_block {
+            out.push((kind, path.to_string_lossy().into_owned()));
+        }
+    }
+    out
+}
+
+/// 扫描任意路径的 profile 文件（v1.7.2 用户自定义路径用）。kind 字段标 Custom。
+pub fn scan_path(path: &PathBuf, command_name: &str) -> ProfileScan {
+    scan_profile(ProfileKind::Custom, path, command_name)
 }
 
 /// 扫描一个 profile 文件：是否存在 / 是否含 ccm 块 / 检测命令名冲突。
