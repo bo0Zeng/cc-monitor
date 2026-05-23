@@ -8,6 +8,52 @@
 
 ---
 
+## [1.7.3] — 2026-05-23
+
+### 修复
+
+- **v1.7.2 一键安装会覆盖用户已有的 `function cc`** —— 模板默认包含完整
+  `function cc { __ccm_bind; & claude $args }`，安装到 profile 时由于
+  PowerShell **后定义同名 function 覆盖前面**的机制，用户在 profile 中已有的
+  自定义 `function cc`（含 cd / 代理 / 自定义参数处理等逻辑）会被无声覆盖。
+  虽然 BEGIN/END 块外的代码本身没被改，但运行时实际生效的是 cc-monitor 的版本。
+
+### 改动
+
+- **模板拆成 `__ccm_bind` helper + 可选 `function cc` 两部分**
+  - `cc.ps1.tpl` 用 `{{CC_FUNCTION_BLOCK}}` placeholder，`render_cc_code`
+    根据 `include_cc_function` 决定是否填充
+  - `__ccm_bind` 永远装（cc 集成的核心）
+  - `function cc` 现在是**可选**部分
+- **UI 智能默认值**：扫描结果发现 profile 已含自定义 `function {命令名}` 时
+  自动取消勾选"也装默认 function cc"复选框，安装时跳过 cc function 段
+- 用户已有 cc 时的指引：在 cc 开头加一行 `__ccm_bind` 即可。例如：
+  ```powershell
+  function cc {
+      __ccm_bind                    # ← 加这一行
+      if ((Get-Location).Path -eq $env:USERPROFILE) {
+          Set-Location 'D:\Sync\文档\claude-conversation'
+      }
+      # ... 用户自定义代理 / 其他逻辑 ...
+      claude @args
+  }
+  ```
+
+### IPC 改动
+
+- `cc_integration_preview({command_name, include_cc_function})` ← 新增 bool 参数
+- `cc_integration_install({path, command_name, include_cc_function})` ← 新增 bool 参数
+
+### 用户操作
+
+v1.7.2 已安装 + 自定义 cc 被覆盖的用户：
+1. 装 v1.7.3 → 启动 monitor
+2. 设置面板 → PowerShell 集成
+3. 扫描会发现你已有 `function cc` → 复选框自动取消勾选
+4. 点"安装" → 只装 `__ccm_bind` helper（不动你的 cc）
+5. 编辑 profile，在你的 `function cc` 开头加一行 `__ccm_bind`
+6. 重启 PS
+
 ## [1.7.2] — 2026-05-22
 
 ### 修复（release-blocker）
