@@ -8,6 +8,37 @@
 
 ---
 
+## [1.7.1] — 2026-05-22
+
+### 新增
+
+- **cc → 自动启动 monitor**（可选 toggle）—— v1.7.0 要求先开 monitor 后跑 cc，
+  顺序反了 cc 会 fail-open（仍能启 claude，但没绑定）。v1.7.1 让 cc function
+  能主动启动 monitor，但**不硬编码安装路径**（保持 portable exe 特性）：
+  - monitor 每次启动调 `std::env::current_exe()` 写自身路径到
+    `<monitor_data_dir>/auto-launch.json` 的 `monitor_exe_path` 字段
+  - 用户移动 exe 后下次启动会自动更新（不需要重新装 cc function）
+  - 设置面板新加 toggle "用 cc 启动 claude 时自动打开 monitor"
+  - cc function 读 auto-launch.json：
+    - `auto_launch_enabled` = true 且 monitor 没在跑且记录的路径存在 →
+      `Start-Process` 启动 + `Start-Sleep -Milliseconds 2000` 等 watcher 起来
+    - 已在跑（按绝对路径比对 Get-Process 的 .Path）→ 跳过启动
+    - 任何检查失败 → fail-open（仍走握手，超时后 fail-open 启动 claude）
+- 新 IPC：`cc_get_auto_launch` / `cc_set_auto_launch`
+- 新模块 `src-tauri/src/auto_launch.rs`（含 3 个单测）
+
+### 改动
+
+- `scripts/cc.ps1.tpl` 加 auto-launch 段（读 auto-launch.json + Start-Process）
+- 设置面板 PowerShell 集成区底部新增 toggle + monitor 路径显示
+
+### 用户操作
+
+第一次启用 auto-launch：
+1. 至少启动一次 v1.7.1 monitor（让它记录自身路径到 auto-launch.json）
+2. 设置面板 → PowerShell 集成 → 勾选 "用 cc 启动 claude 时自动打开 monitor"
+3. 之后即使 monitor 没在跑，跑 cc 时会自动启动 monitor + 等 ~2s + 正常握手
+
 ## [1.7.0] — 2026-05-22
 
 ### 新增

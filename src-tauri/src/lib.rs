@@ -1,3 +1,4 @@
+mod auto_launch;
 mod bind;
 mod bridge;
 mod config;
@@ -44,6 +45,10 @@ pub fn run() {
             // monitor 自己的数据目录：~/.claude/claudecode-frontend
             let monitor_data_dir = paths::resolve_monitor_data_dir().ok_or("no data dir")?;
             tracing::info!("monitor_data_dir: {}", monitor_data_dir.display());
+
+            // v1.7.1：把当前 exe 路径记到 auto-launch.json，让 cc function 能在用户启用
+            // auto-launch 时主动启动 monitor（不硬编码安装路径）
+            auto_launch::update_monitor_path_on_startup(&monitor_data_dir);
 
             // v1.7：BindRegistry 监听 ps-await/ → EnumWindows → 写 ps-registry/。
             // SidHwndCache 持久化 sid → 拉前所需信息（含复合指纹）。
@@ -177,6 +182,8 @@ pub fn run() {
             cc_integration_preview,
             cc_integration_install,
             cc_integration_uninstall,
+            cc_get_auto_launch,
+            cc_set_auto_launch,
             history::list_history_projects,
             history::list_history_sessions_in_project,
             history::read_session_jsonl,
@@ -293,6 +300,20 @@ async fn cc_integration_install(
     })
     .await
     .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}
+
+/// 读 auto-launch.json：UI 显示当前 toggle 状态 + 记录的 exe 路径。
+#[tauri::command]
+fn cc_get_auto_launch() -> Result<auto_launch::AutoLaunchConfig, String> {
+    let dir = auto_launch::data_dir().ok_or("no data dir")?;
+    Ok(auto_launch::get_config(&dir))
+}
+
+/// UI toggle 改变时调：写 auto_launch_enabled。
+#[tauri::command]
+fn cc_set_auto_launch(enabled: bool) -> Result<(), String> {
+    let dir = auto_launch::data_dir().ok_or("no data dir")?;
+    auto_launch::set_enabled(&dir, enabled)
 }
 
 /// 卸载 cc function（删除 BEGIN/END 块；用户其他内容不动）。
