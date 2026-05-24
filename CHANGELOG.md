@@ -8,6 +8,30 @@
 
 ---
 
+## [1.7.11] — 2026-05-24
+
+### 修复 — [打开 profile] 按钮无效
+
+设置面板 PowerShell 集成区的 [打开 profile] 按钮点了无效，alert 报：
+```
+打开失败: opener.open_path not allowed. Permissions associated with this command: opener:allow-open-path
+```
+
+**根因**：`src-tauri/capabilities/default.json` 里只有 `opener:default`，而它**不含** `allow-open-path`（实测 `gen/schemas/acl-manifests.json` 中 default permission set 是 `["allow-open-url", "allow-reveal-item-in-dir", "allow-default-urls"]`）。Tauri runtime 在 invoke `plugin:opener|open_path` 时直接拒。
+
+**进一步坑**：单独加 `"opener:allow-open-path"` 仍不工作——`allow-open-path` 的 description 写明 "Enables the open_path command **without any pre-configured scope**"，默认 scope 为空 = 没有任何路径被允许打开。
+
+**修复**：capability 用 inline scoped permission entry：
+
+```json
+{
+  "identifier": "opener:allow-open-path",
+  "allow": [{ "path": "**" }]
+}
+```
+
+Tauri dev 模式实测：第一版改动后 alert 文本完全相同（permission denied），加 scope 后 [打开 profile] 直接用默认编辑器打开 .ps1（notepad / VSCode 等）。
+
 ## [1.7.10] — 2026-05-24 🚨 **紧急修复**
 
 ### 修复 — 严重事故：profile_installer 可能写坏用户 profile
