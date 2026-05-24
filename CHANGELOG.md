@@ -8,6 +8,41 @@
 
 ---
 
+## [1.7.10] — 2026-05-24 🚨 **紧急修复**
+
+### 修复 — 严重事故：profile_installer 可能写坏用户 profile
+
+v1.7.9 及更早版本在用户**已有内容的 PowerShell profile** 上点 [安装] 时存在两个事故路径，可能导致 profile 变 0 字节 / 普通用户读不了。**症状**：PowerShell 启动卡在 `Access to the path 'X' is denied` 报错，用户的别名/函数等全部失效。
+
+### 两个根因
+
+1. **非原子写**：`atomic_write_string` 走 `write(tmp) → remove(path) → rename(tmp, path)` 三步——如果 rename 因为 OneDrive 同步占用、杀软介入等失败，**原文件已被 remove** → profile 永久丢失。
+
+2. **ACL 被覆盖**：即使 rename 成功，**tmp 文件 ACL（继承父目录）会替换掉 dst 上原有的 explicit ACE**。如果用户把 Documents 重定向到非默认盘（如 `E:\<user>\Documents`），父目录 ACL 通常只给 Administrators + Everyone 部分权限，没有当前用户的 explicit ACE——atomic replace 后用户自己都读不了自己的 profile。这是 v1.7.0–1.7.9 在某些机器上"装上后 PS 启动全报 Access denied"的真凶。
+
+### 修复
+
+1. **`atomic_write_string` 改用 Win32 `ReplaceFileW`** —— 这个 API 专门做"原子替换内容但**保留 dst 的 ACL / ADS / 创建时间**"。MoveFileExW 不保留 ACL，所以 v1.7.10 早期尝试用 MoveFileExW 修也不够。dst 不存在时 fallback 到 rename（首次安装，没东西可保留）。
+2. **写之前必做 backup**：把原 profile 复制到 `<path>.ccm-backup-<ms>`，写入失败自动从 backup 恢复。备份文件保留给用户做最后手段。
+3. **写之后回读校验长度**：不匹配从 backup 回滚并报错。
+4. **`path.exists() == true` 但读到 `""` 时直接 abort**：不再用空字符串覆盖磁盘上有内容的文件（OneDrive placeholder / 文件锁等罕见场景）。
+5. **`uninstall_from_profile` 加同样保护**：backup + 校验 + 回滚。
+6. **新增 5 个端到端测试**：包括 `install_preserves_existing_user_content` 验证用户原内容不丢、`install_preserves_explicit_acl_entries`（Windows-only）验证 explicit ACE 被 ReplaceFileW 保留、`reinstall_replaces_block_keeps_user_content` 验证重装幂等。
+
+### 受影响用户的应急步骤
+
+如果你在 v1.7.0–1.7.9 装过 cc 集成后 PowerShell 启动报 `Access to the path … is denied`：
+
+**情况 A — profile 完全无法读（普通用户和管理员都报错）**：
+1. 用**文件资源管理器**（不要用 PowerShell）打开 profile 所在目录
+2. 把 `Microsoft.PowerShell_profile.ps1` 和 `profile.ps1` 改名加 `.broken-bak` 后缀
+3. 重启 PowerShell，错误消失；用 cmd `type` 看 `.broken-bak` 内容，抢救你自己的脚本
+
+**情况 B — 管理员能读、普通用户报 access denied**（ACL bug）：
+1. 用**管理员 PowerShell** 跑：`icacls "你的 profile 路径" /grant "$env:USERDOMAIN\$env:USERNAME:(F)"`
+2. 这一条给你自己加一个 explicit Full Control ACE，普通 PS 立即能读 profile
+3. 然后装 v1.7.10 再 [安装] cc 集成，新 ReplaceFileW 不会再吃 ACL
+
 ## [1.7.9] — 2026-05-24
 
 ### 改动 — 设置面板 / PowerShell 集成 UI 清理
