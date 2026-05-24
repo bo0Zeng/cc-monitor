@@ -8,6 +8,19 @@
 
 ---
 
+## [1.7.4] — 2026-05-24
+
+### 修复（release-blocker，v1.6.7 起的回归）
+
+- **历史浏览器打不开**："加载失败：state not managed for field `map` on command
+  `list_history_projects`. You must call `.manage()` before using this command"。
+  - 根因：v1.6.7 撤 `bring_terminal_to_front` 时把 `app.manage(session_map.clone())`
+    一并删了，但 `history.rs::list_history_projects` 和
+    `list_history_sessions_in_project` 也接 `State<Arc<SessionMap>>`，没补回去就 dead。
+  - v1.6.7 / 1.7.0 / 1.7.1 / 1.7.2 / 1.7.3 都带这个 bug——单测过（不跑 IPC dispatch），
+    我也没实测过历史浏览器。
+  - 修法：lib.rs setup 补 `app.manage(session_map.clone())`。
+
 ## [1.7.3] — 2026-05-23
 
 ### 修复
