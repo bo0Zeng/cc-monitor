@@ -279,8 +279,8 @@ fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
     use std::cell::RefCell;
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindow, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
-        IsWindowVisible, GW_OWNER,
+        EnumWindows, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
+        IsWindowVisible,
     };
 
     struct Match {
@@ -297,11 +297,18 @@ fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
     MARKER.with(|m| *m.borrow_mut() = req.marker.clone());
     FOUND.with(|f| *f.borrow_mut() = None);
 
+    // v1.7.5 修：不再过滤 `GetWindow(hwnd, GW_OWNER) != 0` 的窗口。
+    //
+    // 原本继承自 v1.6.x 4-tier 算法的"只看 top-level 无 owner 窗口"过滤，
+    // 在 v1.7 cc 注入式绑定下导致 bug：WindowsTerminal 的 XAML 子窗口（Microsoft.UI.Xaml.*）
+    // owner != 0（owner = WT 主窗口），会被过滤掉。PowerShell 的
+    // `$Host.UI.RawUI.WindowTitle` 可能同步到这些 XAML 子窗口而非 WT 主窗口
+    // （取决于 WT/conhost 版本）。
+    //
+    // marker 字符串 = "ccm-bind-{PID}-{8 char UUID}" 极独特，不会撞别的窗口
+    // title，不需要 owner=0 这个保险。
     unsafe extern "system" fn cb(hwnd: HWND, _lp: LPARAM) -> BOOL {
         if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
-            return BOOL(1);
-        }
-        if unsafe { GetWindow(hwnd, GW_OWNER) }.0 != 0 {
             return BOOL(1);
         }
         let title = unsafe {
