@@ -8,6 +8,61 @@
 
 ---
 
+## [1.7.5] — 2026-05-24
+
+### 新增
+
+- **"打开 profile"按钮** —— 设置面板 PowerShell 集成区加按钮，调系统默认编辑器
+  打开当前路径的 profile（用 `tauri-plugin-opener`）。方便用户手动编辑 profile
+  加 `__ccm_bind` 调用。
+
+### 改动（UI 默认值调整）
+
+- **Wrapper 命令名默认留空** —— 之前默认 `cc`，但 `cc` 是用户自己常用的别名，
+  cc-monitor 不该默认抢这个名字。**新默认：留空**，placeholder "留空只装 helper（推荐）"。
+  - 留空：只装 `__ccm_bind` helper，**不装任何 wrapper function**。
+    用户在自己的 wrapper（如自定义 `cc` / `mc` / 直接在 prompt 里）调 `__ccm_bind` 即可。
+  - 填名字（如 `ccm`）：装 `function 名字 { __ccm_bind; & claude $args }`。
+  - **填 `claude` 时阻止**：弹 alert 警告——PowerShell function 跟 exe 同名时
+    function 优先，会**无限递归**。
+- 移除 v1.7.3 加的"也装默认 function cc"复选框——逻辑改成"命令名是否非空"，
+  UI 更简洁。
+- 介绍文案重写：不再假设用户用 `cc` 命令，引导用户"自己有 wrapper 就在里面调 `__ccm_bind`"。
+
+### 修复（release-blocker，v1.7.0 起的）
+
+- **cc 命令握手成功但 ps-registry 不生成** —— monitor 处理 ps-await 文件
+  但 `find_window_for_marker` 返回 None，导致绑定永远建立不起来，Tab ↗
+  始终报"未绑定窗口"。
+  - 根因：`bind.rs::find_window_for_marker` 的 `EnumWindows` callback 过滤
+    `GetWindow(hwnd, GW_OWNER) != 0` 的窗口（只看顶层无 owner 窗口）。
+    这是从 v1.6.x 4-tier 算法继承的——当时为了排除 popup/dialog。
+  - 实测：用户的 PS 是从 explorer 启动的，Windows Terminal 接管 console。
+    `$Host.UI.RawUI.WindowTitle = $marker` 设的 title 同步到 **WT 内的
+    Microsoft.UI.Xaml.* 子窗口（owner != 0，owner = WT 主窗口）**，
+    而**不是** WT 主窗口本身。monitor 因为 owner 过滤直接跳过这些窗口。
+  - 影响版本：v1.7.0 / v1.7.1 / v1.7.2 / v1.7.3 / v1.7.4 全部带病——
+    cc 集成实际上从来没在 WT 接管 console 的常见场景下 work 过。
+    单测全过 + 终端流程跑通 + 文件 trace 正确，但**窗口找不到**，binding
+    永不生成。
+  - 修法：去掉 `GW_OWNER` 过滤。marker 字符串 = `ccm-bind-{PID}-{UUID 8 char}`
+    极独特，不需要 owner=0 这个"防 popup 误命中"的保险。
+
+### 诊断脚本（如本次复现）
+
+附 `ccm-diag.ps1`（本仓库外）可在用户 PS 跑：模拟 cc 握手并对比 PS 端 vs
+monitor 端 `EnumWindows` 看到的窗口差异。本 bug 就是这样定位的——PS 端能找到
+marker，monitor 端找不到 → 一定是过滤条件差异。
+
+### v1.7.x 教训
+
+v1.7.0-1.7.4 看似都"装上能用"，实际除非用户是从 WT 内开新 tab 启动 PS
+（owner=0 那种），否则握手永远失败。这次 bug 之所以拖到 v1.7.5 才发现：
+1. 自动化测试全是纯函数单测，没法测真实窗口枚举
+2. monitor 处理 await 后 silent drop（没写 ps-registry 也没报错日志可见）
+
+---
+
 ## [1.7.4] — 2026-05-24
 
 ### 修复（release-blocker，v1.6.7 起的回归）

@@ -15,6 +15,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { openPath } from "@tauri-apps/plugin-opener";
 
 type ProfileKind = "Ps51" | "Ps7" | "Custom";
 
@@ -62,8 +63,6 @@ export class CcIntegrationSection {
   private uninstallBtn!: HTMLButtonElement;
   private autoLaunchCheckbox!: HTMLInputElement;
   private autoLaunchPathSpan!: HTMLSpanElement;
-  private includeCcFnCheckbox!: HTMLInputElement;
-  private includeCcFnHint!: HTMLDivElement;
   /** 当前从后端拿到的推荐路径（按 PS 版本索引）。版本下拉改时用来回填 path 输入 */
   private recommended: Record<ProfileKind, string | null> = {
     Ps51: null,
@@ -94,24 +93,35 @@ export class CcIntegrationSection {
     const intro = document.createElement("div");
     intro.className = "settings-hint";
     intro.innerHTML =
-      "用 <code>cc</code> 命令启动 claude，自动绑定 Tab ↔ 终端窗口拉前。" +
+      "在你的 PS profile 里装 <code>__ccm_bind</code> helper，启动 claude 时" +
+      "自动绑定 Tab ↔ 终端窗口拉前。<br>" +
+      "<b>怎么用</b>：装完后在你启动 claude 的 wrapper（function）里加一行 " +
+      "<code>__ccm_bind</code>，或者直接用 <code>__ccm_bind; claude</code>。" +
       "<br>不装也能用 monitor，但 Tab ↗ / Ctrl+\\` 拉前不工作。";
     group.appendChild(intro);
 
-    // 命令名
+    // 可选 wrapper 命令名（默认空 = 只装 helper）
     const rowCmd = document.createElement("div");
     rowCmd.className = "settings-row";
     const lblCmd = document.createElement("span");
     lblCmd.className = "settings-label";
-    lblCmd.textContent = "命令名";
+    lblCmd.textContent = "Wrapper 命令名";
     rowCmd.appendChild(lblCmd);
     this.commandInput = document.createElement("input");
     this.commandInput.type = "text";
     this.commandInput.className = "settings-input";
-    this.commandInput.value = "cc";
+    this.commandInput.value = "";
+    this.commandInput.placeholder = "留空只装 helper（推荐）";
     this.commandInput.addEventListener("change", () => void this.scanCurrentPath());
     rowCmd.appendChild(this.commandInput);
     group.appendChild(rowCmd);
+    const cmdHint = document.createElement("div");
+    cmdHint.className = "settings-hint";
+    cmdHint.innerHTML =
+      "留空：只装 <code>__ccm_bind</code> helper（推荐——你自己已有 wrapper 时）。" +
+      "<br>填名字：额外装 <code>function {名字} { __ccm_bind; &amp; claude $args }</code>。" +
+      "<br>⚠ <b>不能填 <code>claude</code></b>——会跟 Claude Code CLI 命令同名导致无限递归。";
+    group.appendChild(cmdHint);
 
     // PowerShell 版本下拉
     const rowVer = document.createElement("div");
@@ -173,27 +183,6 @@ export class CcIntegrationSection {
     this.warnArea = document.createElement("div");
     group.appendChild(this.warnArea);
 
-    // v1.7.3：是否安装 function cc（用户已有自定义 cc 时默认不装，避免覆盖）
-    const ccFnRow = document.createElement("div");
-    ccFnRow.className = "settings-cc-include-cc";
-    const ccFnLabel = document.createElement("label");
-    ccFnLabel.className = "settings-row";
-    this.includeCcFnCheckbox = document.createElement("input");
-    this.includeCcFnCheckbox.type = "checkbox";
-    this.includeCcFnCheckbox.className = "settings-checkbox";
-    this.includeCcFnCheckbox.checked = true;
-    this.includeCcFnCheckbox.addEventListener("change", () => this.updateIncludeHint());
-    ccFnLabel.appendChild(this.includeCcFnCheckbox);
-    const ccFnTxt = document.createElement("span");
-    ccFnTxt.className = "settings-checkbox-label";
-    ccFnTxt.textContent = "同时安装一个默认 function cc（一键即用）";
-    ccFnLabel.appendChild(ccFnTxt);
-    ccFnRow.appendChild(ccFnLabel);
-    this.includeCcFnHint = document.createElement("div");
-    this.includeCcFnHint.className = "settings-hint";
-    ccFnRow.appendChild(this.includeCcFnHint);
-    group.appendChild(ccFnRow);
-
     // 按钮行
     const btnRow = document.createElement("div");
     btnRow.className = "settings-cc-profile-buttons";
@@ -210,6 +199,15 @@ export class CcIntegrationSection {
     scanBtn.textContent = "重新扫描";
     scanBtn.addEventListener("click", () => void this.scanCurrentPath(true));
     btnRow.appendChild(scanBtn);
+
+    // v1.7.5：用系统默认编辑器打开 profile（方便用户手动加 __ccm_bind 调用）
+    const openBtn = document.createElement("button");
+    openBtn.type = "button";
+    openBtn.className = "settings-btn settings-btn-secondary";
+    openBtn.textContent = "打开 profile";
+    openBtn.title = "用系统默认编辑器（记事本/VSCode 等）打开当前 profile 文件";
+    openBtn.addEventListener("click", () => void this.openProfileInEditor());
+    btnRow.appendChild(openBtn);
 
     this.installBtn = document.createElement("button");
     this.installBtn.type = "button";
@@ -281,8 +279,29 @@ export class CcIntegrationSection {
     return wrap;
   }
 
+  /**
+   * 返回用户填的命令名，空字符串表示"只装 helper 不装 wrapper"。
+   * 调 install/preview 时按这个判断 include_cc_function。
+   */
   private currentCommand(): string {
-    return this.commandInput.value.trim() || "cc";
+    return this.commandInput.value.trim();
+  }
+
+  private wantsWrapper(): boolean {
+    return this.currentCommand().length > 0;
+  }
+
+  private async openProfileInEditor(): Promise<void> {
+    const p = this.pathInput.value.trim();
+    if (!p) {
+      alert("请先填 profile 路径");
+      return;
+    }
+    try {
+      await openPath(p);
+    } catch (e) {
+      alert(`打开失败：${e}\n\n手动路径：${p}`);
+    }
   }
 
   /** 打开面板时调用：拿推荐路径 + 填默认值 + 扫一遍当前路径状态 */
@@ -348,34 +367,18 @@ export class CcIntegrationSection {
       this.statusBadge.textContent = "✗ 未安装";
       this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-warn";
     }
-    // v1.7.3：检测到用户自定义 function cc 时，默认取消 "也装 cc function" 复选框
-    // 避免我们的 cc 覆盖用户的（PowerShell 后定义的同名 function 覆盖前面的）
+    // 命令名非空且 profile 已含同名 function → 警告会覆盖
     if (scan.conflicting_functions.length > 0 && !scan.has_ccm_block) {
       const warn = document.createElement("div");
       warn.className = "settings-cc-profile-warn";
       warn.innerHTML =
         `⚠ profile 已含自定义 function <code>${scan.conflicting_functions.join(", ")}</code>。` +
-        `<br>cc-monitor 不会覆盖它——下方"也装默认 function cc"会自动取消勾选，` +
-        `仅安装 <code>__ccm_bind</code> helper。` +
-        `<br><b>请在你的 <code>function cc</code> 开头加一行调用：<code>__ccm_bind</code></b>。`;
+        `<br>把上面"Wrapper 命令名"留空，cc-monitor 只装 <code>__ccm_bind</code> helper 不覆盖。` +
+        `<br><b>然后在你的 <code>function ${scan.conflicting_functions[0]}</code> 开头加一行 <code>__ccm_bind</code></b>。`;
       this.warnArea.appendChild(warn);
-      this.includeCcFnCheckbox.checked = false;
-    } else if (!scan.has_ccm_block) {
-      this.includeCcFnCheckbox.checked = true;
     }
-    this.updateIncludeHint();
     this.installBtn.textContent = scan.has_ccm_block ? "重新安装" : "安装";
     this.uninstallBtn.style.display = scan.has_ccm_block ? "" : "none";
-  }
-
-  private updateIncludeHint(): void {
-    if (this.includeCcFnCheckbox.checked) {
-      this.includeCcFnHint.innerHTML =
-        "勾上：安装 <code>__ccm_bind</code> + <code>function cc</code>（` __ccm_bind; claude $args`）。新用户一键即用。";
-    } else {
-      this.includeCcFnHint.innerHTML =
-        "未勾：只安装 <code>__ccm_bind</code> helper。请在你自己的 cc function 开头加 <code>__ccm_bind</code> 调用。";
-    }
   }
 
   private renderLegacy(entries: LegacyEntry[]): void {
@@ -436,8 +439,8 @@ export class CcIntegrationSection {
   private async openPreview(): Promise<void> {
     try {
       const resp = await invoke<CcPreviewResponse>("cc_integration_preview", {
-        commandName: this.currentCommand(),
-        includeCcFunction: this.includeCcFnCheckbox.checked,
+        commandName: this.currentCommand() || "cc",
+        includeCcFunction: this.wantsWrapper(),
       });
       this.showPreviewModal(resp.code);
     } catch (e) {
@@ -489,18 +492,28 @@ export class CcIntegrationSection {
       alert("请先填 profile 路径");
       return;
     }
-    const includeCc = this.includeCcFnCheckbox.checked;
+    const cmd = this.currentCommand();
+    const includeCc = this.wantsWrapper();
+    // 命令名 = claude 会跟 Claude Code CLI 同名导致 PowerShell function 无限递归
+    if (cmd.toLowerCase() === "claude") {
+      alert(
+        "⚠ Wrapper 命令名不能填 `claude`——会跟 Claude Code CLI 的 `claude` 命令同名，" +
+          "PowerShell function 优先级高于 exe 会导致**无限递归**。\n\n" +
+          "建议：留空（只装 helper），或填 `ccm`/`mc`/`startclaude` 等独特名字。",
+      );
+      return;
+    }
     try {
       await invoke<void>("cc_integration_install", {
         path: p,
-        commandName: this.currentCommand(),
+        commandName: cmd || "cc", // 占位 cc，后端只在 includeCc=true 才用
         includeCcFunction: includeCc,
       });
       await this.scanCurrentPath();
       const tail = includeCc
-        ? "请重启 PowerShell，cc 命令立即可用。"
-        : "已装 __ccm_bind helper。请在你自己的 function cc 开头加一行 `__ccm_bind`，然后重启 PowerShell。";
-      alert("已写入 profile。" + tail);
+        ? `请重启 PowerShell，\`${cmd}\` 命令立即可用。`
+        : "已装 `__ccm_bind` helper。\n\n下一步：用上方[打开 profile]编辑，在你自己启动 claude 的 wrapper（function）开头加一行 `__ccm_bind`，然后重启 PowerShell。";
+      alert("已写入 profile。\n\n" + tail);
     } catch (e) {
       alert(`安装失败：${e}`);
     }
