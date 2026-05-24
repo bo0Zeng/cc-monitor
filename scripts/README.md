@@ -5,6 +5,12 @@
 | [`run.ps1`](run.ps1) | 自动注入 MSVC dev shell 环境后跑 tauri 命令 | ⭐ 活跃使用 |
 | [`session-register.ps1`](session-register.ps1) | Claude Code `SessionStart` hook，曾用于注册活跃 session | ❌ 已废止 |
 
+另有一份 PowerShell 模板存在 `src-tauri/scripts/`（编译时 `include_str!` 进 Rust 二进制，不在本目录）：
+
+| 模板 | 作用 |
+|---|---|
+| `../src-tauri/scripts/cc.ps1.tpl` | v1.7 cc 集成 PowerShell 块模板。设置面板装 cc 集成时把这段（含 `__ccm_bind` helper + 可选 `function cc`）写入用户 profile 的 `# === cc-monitor BEGIN === ... # === cc-monitor END ===` 块内 |
+
 ---
 
 ## run.ps1

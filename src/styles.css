@@ -774,6 +774,85 @@ html, body {
   flex-wrap: wrap;
 }
 
+/* 复选框行（同时安装 wrapper / auto-launch） */
+.settings-row-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-top: 6px;
+  cursor: pointer;
+}
+
+/* 活跃注册数行 */
+.settings-cc-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-2, #bcb5a8);
+}
+.settings-cc-stat-label {
+  color: var(--text-faint, #8a8275);
+  display: inline-flex;
+  align-items: center;
+}
+.settings-cc-stat-value {
+  font-weight: 600;
+  color: var(--text, #d6cfc6);
+}
+
+/* ! 信息图标 + hover tooltip
+   用 textContent 填充内容，CSS 控制显示/隐藏 + 多行（pre-line）。 */
+.settings-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--text-faint, #8a8275);
+  color: var(--text-faint, #8a8275);
+  font-size: 9px;
+  font-weight: 700;
+  cursor: help;
+  margin-left: 6px;
+  user-select: none;
+  position: relative;
+  font-family: var(--font-base, sans-serif);
+  line-height: 1;
+}
+.settings-info-icon:hover {
+  color: var(--text, #d6cfc6);
+  border-color: var(--text, #d6cfc6);
+}
+.settings-info-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 320px;
+  max-width: 90vw;
+  padding: 8px 10px;
+  background: var(--bg-2, #2a2520);
+  border: 1px solid var(--border-strong, #5a5046);
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-2, #bcb5a8);
+  z-index: 100;
+  text-align: left;
+  white-space: pre-line;
+  font-weight: 400;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.settings-info-icon:hover .settings-info-tooltip,
+.settings-info-icon:focus-within .settings-info-tooltip {
+  display: block;
+}
+
 /* v1.7.2 legacy profile (profile.ps1) 遗留警告 */
 .settings-cc-legacy-warn {
   background: rgba(200, 130, 80, 0.10);
