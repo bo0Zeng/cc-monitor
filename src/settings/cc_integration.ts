@@ -110,8 +110,8 @@ export class CcIntegrationSection {
     this.commandInput = document.createElement("input");
     this.commandInput.type = "text";
     this.commandInput.className = "settings-input";
-    this.commandInput.value = "";
-    this.commandInput.placeholder = "留空只装 helper（推荐）";
+    this.commandInput.value = "cc";
+    this.commandInput.placeholder = "cc / ccm / 留空只装 helper";
     this.commandInput.addEventListener("change", () => void this.scanCurrentPath());
     rowCmd.appendChild(this.commandInput);
     group.appendChild(rowCmd);
