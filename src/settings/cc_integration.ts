@@ -17,6 +17,25 @@ import { openPath } from "@tauri-apps/plugin-opener";
 
 type ProfileKind = "Ps51" | "Ps7" | "Custom";
 
+/** v1.7.12: 前端用的预设 id，覆盖 PS 版本 × profile scope 矩阵 */
+type PresetId =
+  | "Ps51-CurrentHost"
+  | "Ps51-AllHosts"
+  | "Ps7-CurrentHost"
+  | "Ps7-AllHosts"
+  | "Custom";
+
+const PRESET_OPTIONS: Array<{ id: PresetId; label: string }> = [
+  { id: "Ps51-CurrentHost", label: "PowerShell 5.1 - $PROFILE（默认）" },
+  { id: "Ps51-AllHosts", label: "PowerShell 5.1 - 所有 host（profile.ps1）" },
+  { id: "Ps7-CurrentHost", label: "PowerShell 7.x - $PROFILE" },
+  { id: "Ps7-AllHosts", label: "PowerShell 7.x - 所有 host" },
+  { id: "Custom", label: "自定义路径..." },
+];
+
+const LS_KEY_PRESET = "cc-monitor.profile_preset";
+const LS_KEY_PATH = "cc-monitor.profile_path";
+
 interface ProfileScan {
   kind: ProfileKind;
   path: string;
@@ -64,7 +83,7 @@ export class CcIntegrationSection {
   private uninstallBtn!: HTMLButtonElement;
   private autoLaunchCheckbox!: HTMLInputElement;
   private autoLaunchPathSpan!: HTMLSpanElement;
-  /** 当前从后端拿到的推荐路径（按 PS 版本索引）。版本下拉改时用来回填 path 输入 */
+  /** 当前从后端拿到的推荐路径（仅 PS 版本，CurrentHost 那条）。AllHosts 路径前端推算同目录的 profile.ps1 */
   private recommended: Record<ProfileKind, string | null> = {
     Ps51: null,
     Ps7: null,
@@ -106,19 +125,22 @@ export class CcIntegrationSection {
     rowVer.appendChild(lblVer);
     this.versionSelect = document.createElement("select");
     this.versionSelect.className = "settings-input";
-    [
-      { v: "Ps51", t: "Windows PowerShell 5.1（推荐）" },
-      { v: "Ps7", t: "PowerShell 7.x" },
-      { v: "Custom", t: "自定义路径..." },
-    ].forEach((opt) => {
+    for (const opt of PRESET_OPTIONS) {
       const o = document.createElement("option");
-      o.value = opt.v;
-      o.textContent = opt.t;
+      o.value = opt.id;
+      o.textContent = opt.label;
       this.versionSelect.appendChild(o);
-    });
-    this.versionSelect.value = "Ps51";
+    }
+    this.versionSelect.value = "Ps51-CurrentHost";
     this.versionSelect.addEventListener("change", () => this.onVersionChange());
     rowVer.appendChild(this.versionSelect);
+    rowVer.appendChild(
+      makeInfoIcon(
+        "AllHosts (profile.ps1)：所有 PowerShell host 都读 —— powershell.exe / pwsh.exe / VSCode 终端 / ISE / SSH 都生效。\n\n" +
+          "$PROFILE / CurrentHost (Microsoft.PowerShell_profile.ps1)：只有 powershell.exe / pwsh.exe 控制台读，VSCode/ISE 不读自己的同名文件。\n\n" +
+          "推荐 AllHosts —— cc 函数在哪个终端都用。",
+      ),
+    );
     group.appendChild(rowVer);
 
     // profile 路径
@@ -138,7 +160,14 @@ export class CcIntegrationSection {
     this.pathInput.type = "text";
     this.pathInput.className = "settings-input settings-input-wide";
     this.pathInput.placeholder = "...\\Documents\\WindowsPowerShell\\Microsoft.PowerShell_profile.ps1";
-    this.pathInput.addEventListener("change", () => void this.scanCurrentPath());
+    this.pathInput.addEventListener("change", () => {
+      // 用户手编路径：保存到 localStorage，下次打开记得
+      try {
+        localStorage.setItem(LS_KEY_PATH, this.pathInput.value.trim());
+        localStorage.setItem(LS_KEY_PRESET, "Custom");
+      } catch {}
+      void this.scanCurrentPath();
+    });
     rowPath.appendChild(this.pathInput);
     group.appendChild(rowPath);
 
@@ -209,6 +238,9 @@ export class CcIntegrationSection {
     this.installBtn.type = "button";
     this.installBtn.className = "settings-btn";
     this.installBtn.textContent = "安装";
+    this.installBtn.title =
+      "v1.7.10+：写入前自动备份原 profile 到同目录 <profile>.ccm-backup-<时间戳>，写入失败自动回滚。" +
+      "用 Win32 ReplaceFileW 保留原文件 ACL，不会出现 v1.7.9 那种用户读不了自己 profile 的事故。";
     this.installBtn.addEventListener("click", () => void this.install());
     btnRow.appendChild(this.installBtn);
 
@@ -321,16 +353,48 @@ export class CcIntegrationSection {
       for (const p of status.profiles) {
         this.recommended[p.kind] = p.path;
       }
-      if (!this.pathInput.value) {
-        this.versionSelect.value = "Ps51";
-        this.pathInput.value = this.recommended.Ps51 ?? "";
+
+      // v1.7.12: 优先恢复用户上次的选择 (localStorage)；没有就默认 PS 5.1 CurrentHost
+      let savedPreset: PresetId | null = null;
+      let savedPath: string | null = null;
+      try {
+        savedPreset = localStorage.getItem(LS_KEY_PRESET) as PresetId | null;
+        savedPath = localStorage.getItem(LS_KEY_PATH);
+      } catch {}
+      if (savedPreset && PRESET_OPTIONS.some((o) => o.id === savedPreset)) {
+        this.versionSelect.value = savedPreset;
+        if (savedPreset === "Custom" && savedPath) {
+          this.pathInput.value = savedPath;
+        } else {
+          this.pathInput.value = this.pathForPreset(savedPreset) ?? "";
+        }
+      } else {
+        this.versionSelect.value = "Ps51-CurrentHost";
+        this.pathInput.value = this.pathForPreset("Ps51-CurrentHost") ?? "";
       }
+
       this.regCountSpan.textContent = String(status.active_registrations);
       this.renderLegacy(status.legacy_profile_paths_with_block);
       await this.scanCurrentPath();
     } catch (e) {
       this.statusBadge.textContent = `扫描失败: ${e}`;
       this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-warn";
+    }
+  }
+
+  /** 根据下拉选项 id 推算实际 profile 路径。CurrentHost 用后端给的推荐，AllHosts 用同目录 profile.ps1 */
+  private pathForPreset(id: PresetId): string | null {
+    switch (id) {
+      case "Ps51-CurrentHost":
+        return this.recommended.Ps51;
+      case "Ps7-CurrentHost":
+        return this.recommended.Ps7;
+      case "Ps51-AllHosts":
+        return this.recommended.Ps51 ? swapFileName(this.recommended.Ps51, "profile.ps1") : null;
+      case "Ps7-AllHosts":
+        return this.recommended.Ps7 ? swapFileName(this.recommended.Ps7, "profile.ps1") : null;
+      case "Custom":
+        return null; // 由用户输入
     }
   }
 
@@ -394,13 +458,14 @@ export class CcIntegrationSection {
     warn.className = "settings-cc-legacy-warn";
     const head = document.createElement("div");
     head.style.fontWeight = "600";
-    head.textContent = "⚠ 检测到 v1.7.0-1.7.1 旧位置遗留";
+    head.textContent = "ℹ 在 profile.ps1 (AllHosts) 也检测到 cc-monitor 块";
     warn.appendChild(head);
     const body = document.createElement("div");
     body.style.marginTop = "4px";
     body.textContent =
-      "v1.7.0-1.7.1 错把 cc 块装到 profile.ps1（PowerShell 启动时不读），实际无效。" +
-      "请手动删除这些文件（或保留但删除 BEGIN/END 之间的内容）：";
+      "profile.ps1（CurrentUserAllHosts）是合法的 PowerShell profile 位置——所有 host 都会读它。" +
+      "如果你**故意**装在那里（比如想让 VSCode 终端 / ISE / SSH 也用 cc），保留即可。" +
+      "如果是 v1.7.0/1.7.1 残留 或 重复安装（同时也在 $PROFILE 装了一份），建议清理其中一份避免重复定义：";
     warn.appendChild(body);
     const list = document.createElement("ul");
     list.style.marginTop = "4px";
@@ -425,18 +490,27 @@ export class CcIntegrationSection {
   }
 
   private onVersionChange(): void {
-    const v = this.versionSelect.value as ProfileKind;
-    if (v === "Custom") {
+    const id = this.versionSelect.value as PresetId;
+    // 持久化用户选择，下次打开面板恢复
+    try {
+      localStorage.setItem(LS_KEY_PRESET, id);
+    } catch {}
+    if (id === "Custom") {
+      // Custom 不强填路径，让用户自己输
       this.pathInput.focus();
       return;
     }
-    const rec = this.recommended[v];
-    if (rec) {
-      this.pathInput.value = rec;
+    const path = this.pathForPreset(id);
+    if (path) {
+      this.pathInput.value = path;
+      try {
+        localStorage.setItem(LS_KEY_PATH, path);
+      } catch {}
       void this.scanCurrentPath();
     } else {
       this.pathInput.value = "";
-      this.statusBadge.textContent = `（${v === "Ps7" ? "PS 7.x" : "PS 5.1"} 没自动检测到）`;
+      const isPs7 = id.startsWith("Ps7");
+      this.statusBadge.textContent = `（${isPs7 ? "PS 7.x" : "PS 5.1"} 没自动检测到）`;
       this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-info";
     }
   }
@@ -543,6 +617,16 @@ export class CcIntegrationSection {
       this.autoLaunchCheckbox.checked = !enabled;
     }
   }
+}
+
+/**
+ * 替换路径的文件名部分。v1.7.12 用来从 Microsoft.PowerShell_profile.ps1 推 profile.ps1。
+ * 兼容 Windows `\` 和 POSIX `/` 分隔符（PowerShell 在 Windows 上两种都有）。
+ */
+function swapFileName(path: string, newName: string): string {
+  const lastSep = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+  if (lastSep < 0) return newName;
+  return path.slice(0, lastSep + 1) + newName;
 }
 
 /**
