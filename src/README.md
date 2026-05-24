@@ -22,7 +22,7 @@ index.html  ─> /src/main.ts (defer)
 | 文件 | 角色 | 关键 API |
 |---|---|---|
 | **main.ts** | 启动 + 全局快捷键 + 错误捕获 + HMR 强制 reload | DOMContentLoaded handler |
-| **events.ts** | 订阅后端事件，**批量调度让出主线程**（防 replay 卡死） | `bindEvents({onLine, onSessionEnded})` |
+| **events.ts** | 订阅后端 `jsonl-line` / `jsonl-batch` / `session-ended`，**批量调度让出主线程**（防 replay 卡死） | `bindEvents({onLine, onSessionEnded})` |
 | **tabs.ts** | TabManager 状态机：Tab 生命周期（live / archived）+ 工具组聚合 | `onLine() / archiveTab() / closeTab() / cycleActive()` |
 | **stream.ts** | 单 Tab 的消息流容器，ResizeObserver 自动贴底滚动 | `MessageStream.append() / scrollToBottom() / dispose()` |
 | **cards/index.ts** | renderMessage 主分发：user 气泡 / assistant 卡 / 工具组合并 / tool_result 注入到 tool_use | `renderMessage(rec, ctx) → RenderResult` |
@@ -33,7 +33,9 @@ index.html  ─> /src/main.ts (defer)
 | **config.ts** | invoke `load_config` / `save_config` 桥 | `loadConfig / saveConfig` |
 | **paths.ts** | 操作 config.json 里 `claudeDir` 字段（设置面板调） | `getClaudeDirOverride / setClaudeDirOverride` |
 | **theme.ts** | 把 ThemeConfig 应用到 :root CSS 变量 | `loadTheme / applyTheme / saveTheme` |
-| **settings/panel.ts** | 抽屉式设置面板（数据目录 + 字体 + 颜色） | `SettingsPanel.open() / close()` |
+| **settings/panel.ts** | 抽屉式设置面板（数据目录 + 字体 + 颜色 + PowerShell 集成） | `SettingsPanel.open() / close()` |
+| **settings/cc_integration.ts** | PowerShell 集成子区（profile 选项 + wrapper toggle + 5 个预设下拉） | `CcIntegrationSection.element` |
+| **settings/info-icon.ts** | `?` 信息图标 portal tooltip 组件 + 路径工具 | `makeInfoIcon(text) / swapFileName(path, newName)` |
 | **views/history.ts** | 历史浏览器（项目分组 + 两级懒加载 + 增删改） | `HistoryView.open() / handleEscape()` |
 | **views/session-viewer.ts** | 只读消息查看器（点击历史条目进入） | `SessionViewer.load(opts) / dispose()` |
 | **styles.css** | 全部样式 + token 系统 | — |
@@ -80,13 +82,50 @@ index.html  ─> /src/main.ts (defer)
 - **innerHTML 赋值前必过 DOMPurify**：见 render.ts 的 `renderMarkdown`
 - **批量 jsonl-line 事件让出主线程**：events.ts 不能改成 sync 派发（会让 replay 卡死光标）
 
+## 关键设计选择 + 理由
+
+### 不引入框架（React/Vue）
+~3k 行小应用，原生 DOM 够用；少 100-200KB 依赖体积；HMR 强制 full reload 简化心智模型。
+
+### `events.ts` 批量调度让出主线程
+replay 一次性 emit 整个 history Vec，前端用 BATCH_SIZE=40 + BATCH_MS=8 + `setTimeout(0)` 让出主线程。
+**为什么用 setTimeout 不用 queueMicrotask**：microtask 同一 tick 内连续清空，无让出效果，UI 仍卡。setTimeout(0) 强制让一帧。
+
+### `theme.applyThemeToken` 单 token 增量应用
+拖 color picker `input` 事件 ~60Hz 高频。`applyThemeToken(key, value)` 只动一个 CSS var，比 `applyTheme(全部)` 便宜 ~14 倍。否则每帧 setProperty 14 次会触发整棵 :root 子树重算。
+
+### `info-icon.ts` 真挂 body 实现 portal
+父 `.settings-panel` 有 `transform`，按 CSS spec 会让 `position: fixed` 的 containing block 从 viewport 重置到 panel → fixed 元素相对 panel 定位而非屏幕。挂 body 脱离 transform 子树是唯一可靠路径。详 [doc/INVARIANTS § 13](../doc/INVARIANTS.md#13-css-portal-元素必须真挂-body)。
+
+### `renderMessage` 是纯函数
+给定 record + ctx 返回 RenderResult，无副作用（除写 ctx.toolUseElements 配 tool_use ↔ tool_result）。实时 Tab 和历史只读视图复用同一套渲染，保证视觉一致。
+
+### `cards/` 分模块（slash / compact / subagent）
+不全塞 index.ts —— 这三种都有独立解析逻辑（regex / prefix / IPC），index.ts 是分发器。subagent 用回调注入主 renderMessage 避免运行时循环 require。
+
+---
+
+## 不变量
+
+- **renderMessage 是纯函数**：给定 record + ctx 返回 RenderResult，无副作用（除了写 ctx.toolUseElements）
+- **MessageStream 一个实例对应一个 Tab**：closeTab 必须调 stream.dispose() 释放 ResizeObserver
+- **innerHTML 赋值前必过 DOMPurify**：见 render.ts 的 `renderMarkdown`
+- **批量 jsonl-line 事件让出主线程**：events.ts 不能改成 sync 派发（会让 replay 卡死光标）
+- **portal 浮层挂 body**：tooltip / modal / dropdown 等 `position: fixed` 元素必须挂 `document.body`，不挂 `.settings-panel` 子树
+
+更多全局约束 → [doc/INVARIANTS.md](../doc/INVARIANTS.md)。
+
+---
+
 ## 添加新功能的入口
+
+详细 cookbook 见 [doc/CONTRIBUTING.md § 2](../doc/CONTRIBUTING.md#2-添加新东西-cookbook)。速查：
 
 | 需求 | 入口文件 |
 |---|---|
 | 新的消息类型（jsonl 出现新 type） | `cards/index.ts` 的 `renderMessage` switch |
 | 新的工具卡渲染 | `cards/index.ts` 的 `renderBlock` 或新建 `cards/<tool>.ts` |
-| 新的设置项 | `settings/panel.ts` 的 `FIELDS` 数组 + `theme.ts` 的 `TOKENS` 或新分组 |
+| 新的设置项 | `settings/panel.ts` 的 `FIELDS` 数组 + `theme.ts` 的 `TOKENS` |
 | 新的全局快捷键 | `main.ts` 的 `keydown` handler |
 | 新的 IPC 命令调用 | 直接 `invoke('cmd_name', args)`；TS 类型在调用处声明 |
 | 新的 CSS token | `styles.css` 的 `:root` + `theme.ts` 的 `TOKENS` 数组 |

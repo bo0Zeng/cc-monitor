@@ -94,32 +94,81 @@ src-tauri/
 |---|---|
 | `frontend-ready` | 触发 event_replay 完整回放历史（持锁严格按序） |
 
+## 事件常量（新增）
+
+后端 → 前端：
+
+| 事件 | payload | 时机 |
+|---|---|---|
+| `jsonl-batch` | `Vec<JsonlLinePayload>` | event_replay 持锁回放（一次性发整个 history Vec） |
+
+详 [doc/IPC-PROTOCOL.md](../doc/IPC-PROTOCOL.md)（跨进程文件协议）与 [doc/ARCHITECTURE.md § 5](../doc/ARCHITECTURE.md#5-关键设计选择--理由)（事件设计理由）。
+
+---
+
 ## 不变量
 
+详 [doc/INVARIANTS.md](../doc/INVARIANTS.md) 全局不变量清单。本模块特别相关：
+
 - **零侵入**：watcher 只读，绝不修改 `~/.claude/projects/` 或 `~/.claude/sessions/` 下的文件
-- **历史浏览器的物理删除是例外**：必须用户**显式触发**（点 🗑️ + 二次确认），且仅限 `<claude_dir>/projects/**.jsonl`，由 history.rs 做路径安全校验
-- **profile 写入也是例外**：必须用户**显式点设置面板的 [安装]**；只动 BEGIN/END 之间的内容，块外用户其他代码完全不动
-- **event_replay 持锁完整 emit**：替代旧的"snapshot + live"两步走，避免乱序
-- **session_map.rs 探活两道关卡**：`OpenProcess + GetExitCodeProcess == STILL_ACTIVE` + `GetProcessTimes` 与 `procStart` 100ms 容差校验（防 PID 复用导致僵尸 Tab）
-- **cc 集成的握手协议**：PS 写 `ps-await/<PID>.json` + 改窗口标题为 marker → monitor `EnumWindows` 找 marker 拿 HWND → 写 `ps-registry/<PID>.json` + 删 `ps-await/<PID>.json` 通知 PS 成功（800ms 超时）。所有 JSON 必须 **UTF-8 无 BOM**（v1.7.8 教训：PS 5.1 `Out-File -Encoding utf8` 写 BOM，serde_json 解析失败）
+- **历史浏览器的物理删除是例外**：必须用户**显式触发**（双确认），且仅限 `<claude_dir>/projects/**.jsonl`，由 history.rs 做路径安全校验
+- **profile 写入也是例外**：必须用户**显式点设置面板的 [安装]**；只动 BEGIN/END 之间的内容，块外用户其他代码完全不动；写入用 `ReplaceFileW` 保留 dst ACL + backup + 写后校验
+- **event_replay 持锁完整 emit**：保证前端不会先收到 live emit 再收到 snapshot
+- **session_map.rs 探活两道关卡**：`OpenProcess + GetExitCodeProcess == STILL_ACTIVE` + `GetProcessTimes` 与 `procStart` 100ms 容差校验
+- **cc 集成握手所有 JSON 必须 UTF-8 无 BOM**：写端用 .NET `UTF8Encoding($false)` 或 Rust `std::fs::write`；读端 `trim_start_matches('\u{feff}')` 兜底
+- **Win32 sync 调用必须 spawn_blocking**：`bring_terminal_to_front` / `cc_integration_*` 等都走 `tokio::task::spawn_blocking`
 - **跨平台分裂**：所有 Win32 调用都在 `#[cfg(windows)]` 块；非 Windows 给降级实现或 Err 字符串。当前 v1 仅支持 Windows
 
-## 工程坑（避雷）
+---
 
-- **Windows 路径大小写不敏感导致 notify 重复回放** → `watcher.rs:path_key()` 用小写归一
-- **`std::fs::rename` Windows 目标存在时失败** → `config.rs:atomic_replace()` 用 `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`
-- **`pwsh.exe` 不是 Windows 自带**（PowerShell Core 独立安装包）→ `history.rs:resume_impl()` 用 `cmd /K`（cmd.exe 永远存在）+ `CREATE_NEW_CONSOLE` flag
-- **WT 默认终端无 OS API 暴露 active tab/window** → 焦点同步功能整体已移除，Tab 切换走手动点击 + `Ctrl+Tab` 快捷键
-- **拉对应终端窗口（v1.6.0–1.6.6 的 `bring_terminal_to_front`）已在 v1.6.7 撤回**：在 explorer 启 PowerShell + WT DefTerm 接管 console 的常见架构下，claude 祖先链与 WT 窗口完全脱节，4-tier 启发式不可靠。v1.7 改走 `cc` 命令注入式绑定（用户启动 claude 时主动注册 sid↔hwnd 映射）
-- **PowerShell profile 文件名**：用 `Microsoft.PowerShell_profile.ps1`（`$PROFILE` 默认即 CurrentUserCurrentHost）而非 `profile.ps1`（CurrentUserAllHosts）—— PS 启动时不读后者。v1.7.0–1.7.1 错用 `profile.ps1` 导致 cc 集成形同虚设，v1.7.2 修
-- **PS 5.1 `Out-File -Encoding utf8` 写 UTF-8 BOM**（EF BB BF），serde_json 不剥 BOM 直接解析失败。`bind.rs::process_await_file` 必须先 `trim_start_matches('\u{feff}')` 再 parse；模板 `cc.ps1.tpl` 改用 `[System.IO.File]::WriteAllText` + `UTF8Encoding($false)` 显式无 BOM。这是 v1.7.0–1.7.7 cc 集成"装上没用"的真凶（v1.7.8 修）
+## 关键设计选择 + 理由
+
+### `watcher.rs::path_key()` 用小写归一
+Windows 路径大小写不敏感而 `PathBuf::eq` 是字节级比较，notify 偶发以不同大小写回放同文件导致重复 emit。归一到 lowercase 一次性解决。
+
+### `force_rescan_tx` 通道兜底竞态
+jsonl 行先于 `sessions/<PID>.json` 落地时，`active_filter` 返 false → `process_file` early return 但 offset 不变 → 下次扫描也不会重读。session-added 信号通过 force_rescan_tx 显式触发一次重扫，把 early return 漏掉的那段补上。
+
+### `config.rs::atomic_replace` 用 `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`
+`std::fs::rename` 在 Windows 上 dst 存在时失败（POSIX rename atomic overwrite 行为在 Windows 上没有）。MoveFileExW 是 Windows 原生原子替换 API，专门设计来实现"覆盖现有文件"语义。
+
+### `profile_installer::atomic_write_string` 用 `ReplaceFileW` 而非 `MoveFileExW`
+`MoveFileExW(tmp, dst)` 用 tmp 的 ACL 覆盖 dst → 用户 explicit ACE 丢失（Documents 重定向到非默认盘的用户读不了自己的 profile）。**ReplaceFileW 专门设计来保留 dst 的 ACL/ADS/创建时间**。这是 Windows 文档明确推荐用于"替换配置文件"的 API。详 [doc/INVARIANTS § 4](../doc/INVARIANTS.md#4-profile-等用户文件写入--replacefilew--backup--写后校验)。
+
+### `history::resume_impl` 用 `cmd /K` 而非 `pwsh /NoExit`
+`pwsh.exe`（PowerShell Core 7+）不是 Windows 自带，需独立安装包。普通用户环境只有 PS 5.1 = `powershell.exe` + cmd.exe。改用 `cmd /K claude --resume <sid>` + `CREATE_NEW_CONSOLE` flag 是兼容性最强的选择。
+
+### `session_map` 双触发（事件 + 2s 心跳）
+仅靠 notify 文件事件不够：用户强杀 claude.exe 时 `~/.claude/sessions/<PID>.json` 不会被 Claude Code 退出 hook 删 → notify 永不触发 → 死 Tab 永远 live。2s 心跳对当前内存中每个 PID 跑 `is_process_alive`，捕获这种"文件还在但进程死了"的状态。
+
+### `bind.rs` 用 marker 字符串而非 PID 反查窗口
+PowerShell 进程**不直接拥有终端窗口**（Windows Terminal 是单独进程；conhost 是另一个进程；VSCode integrated terminal 又是另一个）。`EnumWindows + GetWindowThreadProcessId` 反查 owner 会找到 WT / conhost / VSCode 进程，不会找到 PS 自己。改让 PS 把自己窗口标题改成 unique marker（`ccm-bind-<PID>-<8 字符 GUID>`）+ monitor `EnumWindows` 反查 title `contains(marker)` 是唯一可靠的跨进程握手方式。
+
+### cc 集成走文件 IPC 而非命名管道 / TCP
+- 简单（PS 写文件 + Rust notify 两边都 trivial）
+- 可追溯（用户 / 开发者出问题时可以 `Get-Content` 直接看）
+- 无连接管理（管道有 connect / disconnect 状态机，文件是 set-and-forget）
+- 跨进程权限简单（用户态读写自己 home 目录的文件不需要任何 ACL 配置）
+
+### 焦点同步功能完全移除
+原 `SetWinEventHook` 监听 `EVENT_SYSTEM_FOREGROUND` 然后切对应 Tab 的方向：在 Win11 默认 WT 单进程多窗口/多 tab 架构下，`GetForegroundWindow` 只能拿到 WT 主进程的 HWND，**无法区分同一 WT 窗口内哪个 tab active**。已彻底删除 `FOCUS_SWITCH` IPC 和相关代码。Tab 切换走手动点击 + `Ctrl+Tab` 快捷键。
+
+### `bring_terminal_to_front` 从启发式改为注入式绑定
+旧的 "4-tier 启发式"（parent chain + WT 进程 + 终端类进程 + ai-title 匹配）在 explorer 启 PowerShell + WT DefTerm 接管 console 的常见架构下不可靠：claude 祖先链与 WT 窗口完全脱节（claude 的 parent 是 PS，PS 的 parent 是 explorer；WT 是另一个独立进程，跟 claude/PS 没有 parent 关系）。改为 cc 命令注入式绑定（`__ccm_bind` 主动通知 monitor "我是哪个 PID + HWND"）。
+
+详细模块设计见各 `.rs` 文件顶部的 `//!` doc comment。
+
+---
 
 ## 添加新功能入口
+
+详细 cookbook 见 [doc/CONTRIBUTING.md § 2](../doc/CONTRIBUTING.md#2-添加新东西-cookbook)。速查：
 
 | 需求 | 入口文件 |
 |---|---|
 | 新 jsonl 记录类型 | `messages.rs:JsonlRecord` enum 加 variant |
 | 新 IPC 命令 | 新建模块 `<feature>.rs` → 在 `lib.rs::run().invoke_handler![]` 注册 |
-| 新事件 | `bridge.rs::events` 加常量 + payload 结构 → 在 lib.rs 适当处 emit |
-| 新 Win32 调用 | 在 `Cargo.toml::[target.cfg(windows)].dependencies.windows.features` 加对应 feature；用 `#[cfg(windows)]` 包裹 |
-| 改 release 打包配置 | `tauri.conf.json::bundle`；详 [`../README.md` § 生产构建 / 打包](../README.md) |
+| 新事件 | `bridge.rs::events` 加常量 + payload 结构 |
+| 新跨进程协议文件 | 见 [doc/IPC-PROTOCOL.md § 添加新的跨进程协议文件](../doc/IPC-PROTOCOL.md#添加新的跨进程协议文件) |
+| 新 Win32 调用 | `Cargo.toml::[target.cfg(windows)].dependencies.windows.features` 加 feature；用 `#[cfg(windows)]` 包裹 |
+| 改 release 打包配置 | `tauri.conf.json::bundle`；详 [doc/BUILDING.md](../doc/BUILDING.md) |
