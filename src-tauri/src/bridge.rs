@@ -2,6 +2,9 @@ use serde::Serialize;
 
 pub mod events {
     pub const JSONL_LINE: &str = "jsonl-line";
+    /// v1.7.13：replay 时一次性发整个 history（Vec<JsonlLinePayload>）。
+    /// 避免单条 emit N 次累计的 IPC 序列化 + 派发 overhead（3000 条曾经 ~400ms）。
+    pub const JSONL_BATCH: &str = "jsonl-batch";
     pub const SESSION_ENDED: &str = "session-ended";
     // FOCUS_SWITCH 已删除：Win11 默认终端 (WindowsTerminal.exe) 是单进程多窗口架构，
     // OS GetForegroundWindow 只能拿到 WT 主进程 PID，无法区分 tab/window 内跑哪个

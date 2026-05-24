@@ -129,14 +129,17 @@ cc-monitor 跟 PowerShell（cc.ps1.tpl）/ Claude Code 通信靠几个 JSON 文�
 - [ ] 如果删 / 改了跨进程协议 → **同时更新 doc/CHECKLIST.md § 3 表格**
 
 ### 实测（关键 UI 入口）
-当前 v1.7.4 至少必测：
+当前 v1.7.13 至少必测：
 - [ ] 启动 monitor，看 Tab 自动出现（jsonl-watcher + SessionMap）
 - [ ] 点 Tab ↗ 拉对应终端窗口（`bring_terminal_to_front` 走 SidHwndCache）
 - [ ] Ctrl+\` 同上
 - [ ] **Ctrl+H 历史浏览器打开**（这就是 v1.6.7→1.7.4 漏的，调 `list_history_projects`）
 - [ ] Ctrl+, 设置面板打开，看 PowerShell 集成区扫描出 profile（`cc_integration_status`）
+- [ ] 设置面板 hover 各个 `?` 图标 —— v1.7.13 portal tooltip 不被 `.settings-body` 裁，应该在 viewport 内可见
+- [ ] 设置面板 [打开 profile] —— v1.7.11 起需要 `opener:allow-open-path` capability，已配置
 - [ ] /resume 一个历史会话（`resume_history_session`）
 - [ ] 用 cc 跑 claude（PowerShell 端到端，看 ps-await → ps-registry → sid-hwnd-cache）
+- [ ] 装 cc 集成到一个**有自定义内容的 profile**，确认用户原内容保留 + 生成 `.ccm-backup-<ts>` 备份（v1.7.10 ACL + ReplaceFileW 保护）
 
 ### Git 操作
 - [ ] `git commit -m "release: vX.Y.Z"` （不加 Claude coauthor）

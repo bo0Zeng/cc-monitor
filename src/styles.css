@@ -826,18 +826,15 @@ html, body {
   color: var(--text, #d6cfc6);
   border-color: var(--text, #d6cfc6);
 }
+/* v1.7.13: tooltip 改 portal 模式（position: fixed + JS 算位置），
+   彻底脱离 .settings-body 的 overflow-y: auto 裁剪。位置完全由 JS 设置，CSS 只管样式 + 默认隐藏。 */
 .settings-info-tooltip {
   display: none;
-  position: absolute;
-  bottom: calc(100% + 6px);
-  /* v1.7.12: panel 内宽只有 332px，居中 + 320px 在右侧 ? 时溢出被裁。
-     改成右锚定：tooltip 右边对齐 ? 图标右边外侧 4px，向左展开，永远不出 panel 右边界。 */
-  right: -4px;
-  left: auto;
-  transform: none;
+  position: fixed;
+  /* top / left 由 JS 动态设 */
   width: max-content;
   min-width: 180px;
-  max-width: 240px;
+  max-width: 280px;
   padding: 8px 10px;
   background: var(--bg-2, #2a2520);
   border: 1px solid var(--border-strong, #5a5046);
@@ -845,16 +842,12 @@ html, body {
   font-size: 11px;
   line-height: 1.5;
   color: var(--text-2, #bcb5a8);
-  z-index: 100;
+  z-index: 10001; /* 高于 panel(100) 和预览 modal(10000) */
   text-align: left;
   white-space: pre-line;
   font-weight: 400;
   pointer-events: none;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-}
-.settings-info-icon:hover .settings-info-tooltip,
-.settings-info-icon:focus-within .settings-info-tooltip {
-  display: block;
 }
 
 /* v1.7.2 legacy profile (profile.ps1) 遗留警告 */

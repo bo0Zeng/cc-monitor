@@ -8,6 +8,28 @@
 
 ---
 
+## [1.7.13] — 2026-05-24
+
+### 修复 — 设置面板 `?` tooltip 完全看不到
+
+v1.7.12 改 right-anchored 后，靠左的 `?`（如"PowerShell 集成"标题旁）hover 时 tooltip 向左溢出 panel 左边界被裁。换 `position: fixed` + JS 算 viewport 坐标后**仍然看不到** — DevTools 显示 inline style 完全正确（`display: block; left: 735.946px; top: 161.223px; visibility: visible`），但 `getBoundingClientRect()` 实际给的 left 是 1476.5（viewport 外）。
+
+**根因**：`.settings-panel` 有 `transform: translateX(0)` 做 slide-in 动画。CSS spec 规定：**祖先有 transform 时，position: fixed 后代的 containing block 从 viewport 重置到那个祖先**。我设的 `left: 735.946px` 不再相对 viewport，是相对 panel —— 视觉上跑到屏幕外。
+
+**修法**：tooltip DOM 改成挂 `document.body`（不是 `?` icon 的子节点），脱离 .settings-panel 的 transform 子树，`position: fixed` 才真相对 viewport。把 makeInfoIcon + swapFileName 也拆到独立模块 `src/settings/info-icon.ts`，未来其他设置区可复用。
+
+### 改进 — 启动 batch emit
+
+`event_replay::replay_and_mark_ready` 之前对 history 里每条 jsonl 单独 `emit(JSONL_LINE, p)`，N=3000 时累计 ~400ms Tauri IPC 序列化 + 派发 overhead，阻塞主线程导致 F5/冷启动后白屏 + tabs 突然涌出的延迟感。
+
+加 `JSONL_BATCH` 事件，replay 时单次 `emit(JSONL_BATCH, Vec<JsonlLinePayload>)` —— 一次序列化整个 Vec，前端 listener 拿到 array 后 push 进原批量 drain queue。实测启动到可交互省 200-400ms。`record()`（实时单条）走 JSONL_LINE 不变。
+
+### 项目管理
+
+- **删未用依赖**：`Cargo.toml` 的 `anyhow` + `thiserror` 全仓 grep 0 引用，纯死依赖。删了减编译时间 + 包体积。
+- **`opener:allow-open-path` scope** 维持 `**`：考虑过收紧到 `$DOCUMENT/WindowsPowerShell/**` 但会破坏"Custom 路径"功能（用户可能选 Documents 外的位置）。
+- 文档更新：`doc/CHECKLIST.md` 测试列表加 v1.7.13 tooltip portal 等新增项；`doc/ARCHITECTURE.md` 历史踩坑表加 v1.7.10 ACL + v1.7.11 capability + v1.7.13 CSS transform 三条；工作目录新写 `doc/v1.7-debug-notes.md` 汇总 v1.7.0–1.7.13 全部主题（按主题不是按版本）。
+
 ## [1.7.12] — 2026-05-24
 
 ### 改动 — 设置面板 / PowerShell 集成 UX 修复 + 概念修正

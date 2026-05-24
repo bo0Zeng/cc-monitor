@@ -1,6 +1,6 @@
 [package]
 name = "monitor"
-version = "1.7.12"
+version = "1.7.13"
 description = "cc-monitor — Claude Code CLI 的只读输出渲染窗口（Tauri 2 + TypeScript，Windows）"
 authors = ["cc-monitor contributors"]
 edition = "2021"
@@ -35,8 +35,6 @@ walkdir = "2"
 tokio = { version = "1", features = ["full"] }
 parking_lot = "0.12"
 
-anyhow = "1"
-thiserror = "1"
 dirs = "5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

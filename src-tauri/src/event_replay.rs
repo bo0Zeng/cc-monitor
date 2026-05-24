@@ -52,23 +52,27 @@ impl EventReplay {
         }
     }
 
-    /// 前端 (重) ready：完整 emit 整个 history 再设 ready。
+    /// 前端 (重) ready：一次性 emit 整个 history 再设 ready。
     ///
     /// **持锁** 期间 emit，保证 record 排队等待 —— 前端不会先收到 live emit
     /// 再收到 replay snapshot 而错乱。
+    ///
+    /// v1.7.13: 之前对每条 history 单独 `emit(JSONL_LINE, p)` —— N=3000 时
+    /// Tauri IPC 每次 emit 都有序列化 + 派发 overhead，实测 ~400ms 阻塞主线程。
+    /// 改成单次 `emit(JSONL_BATCH, Vec<...>)`，序列化只跑一次，前端单次 listener
+    /// 回调 push 进原批量 queue。启动到首屏可交互直降 200-400ms。
     pub fn replay_and_mark_ready<R: Runtime>(&self, handle: &AppHandle<R>) {
         let started = std::time::Instant::now();
         let mut inner = self.inner.lock();
         let n = inner.history.len();
-        for p in inner.history.iter() {
-            if let Err(e) = handle.emit(events::JSONL_LINE, p) {
-                tracing::warn!("replay emit failed: {e}");
-            }
+        let snapshot: Vec<JsonlLinePayload> = inner.history.iter().cloned().collect();
+        if let Err(e) = handle.emit(events::JSONL_BATCH, &snapshot) {
+            tracing::warn!("replay batch emit failed: {e}");
         }
         inner.ready = true;
         drop(inner);
         tracing::info!(
-            "replayed {n} events to frontend (order-strict) in {}ms",
+            "replayed {n} events to frontend (batch, order-strict) in {}ms",
             started.elapsed().as_millis()
         );
     }

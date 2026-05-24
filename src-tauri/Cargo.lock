@@ -2116,9 +2116,8 @@ dependencies = [
 
 [[package]]
 name = "monitor"
-version = "1.7.12"
+version = "1.7.13"
 dependencies = [
- "anyhow",
  "dirs 5.0.1",
  "notify",
  "notify-debouncer-mini",
@@ -2129,7 +2128,6 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
- "thiserror 1.0.69",
  "tokio",
  "tracing",
  "tracing-subscriber",
