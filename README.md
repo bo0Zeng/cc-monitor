@@ -88,7 +88,11 @@
 为了让 **Tab ↗ / `Ctrl+\`` 跳焦** 能精确拉对应的终端窗口，需要在你的 PowerShell profile 里装 `__ccm_bind` helper：
 
 1. 打开 cc-monitor → `Ctrl+,` 设置面板 → **PowerShell 集成**
-2. 选 PowerShell 版本（默认 Windows PowerShell 5.1）和 profile 路径（默认填好）
+2. 选 profile 位置（下拉 5 项）：
+   - **`PowerShell 5.1 - $PROFILE（默认）`** — 装到 `Microsoft.PowerShell_profile.ps1`（CurrentUserCurrentHost），只有 powershell.exe 控制台读
+   - **`PowerShell 5.1 - 所有 host（profile.ps1）`** ⭐ 推荐 — 装到 `profile.ps1`（CurrentUserAllHosts），VSCode 终端 / ISE / SSH 都生效
+   - PowerShell 7.x 同上两项
+   - 自定义路径
 3. **默认不勾选"同时安装 cc wrapper"** —— 只装 `__ccm_bind` helper，不动你已有的命令
 4. 点 [安装] → 弹提示让你重启 PowerShell
 5. 重启 PS 后，在你自己启动 claude 的 wrapper（function / 别名）开头加一行 `__ccm_bind`
@@ -96,6 +100,8 @@
 如果你不需要自定义 wrapper、想要 cc-monitor 直接帮你建一个：勾上"同时安装 cc wrapper"，会装 `function cc { __ccm_bind; & claude $args }`；之后用 `cc` 启动 claude 即可（注意：会**覆盖** profile 里已有的同名 function）。
 
 也可以勾选"用 cc 启动 claude 时自动打开 monitor"：以后跑 `cc` 时如果 monitor 没在跑，PowerShell 会自动把它启起来再握手。
+
+**安全保证**（v1.7.10+）：[安装] 写 profile 前自动备份到 `<profile>.ccm-backup-<时间戳>`，写后自动回读校验，写入失败从备份恢复；用 Win32 `ReplaceFileW` API 保留原 profile 的 NTFS ACL（避免 v1.7.9 因为 atomic_write 覆盖 ACL 让用户读不了自己 profile 的事故）。设置选择会自动持久化到 localStorage，下次打开记得你的选择。
 
 不装这个集成完全 OK，只是 ↗ / `Ctrl+\`` 不工作；其他功能（实时渲染 / Tab / 历史浏览）全都正常。
 

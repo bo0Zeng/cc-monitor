@@ -128,10 +128,13 @@ src/
 | 时期 | 坑 | 当前处理 |
 |---|---|---|
 | v1.6.7 撤回 `bring_terminal_to_front` 时漏删 `app.manage(session_map.clone())` | history 模块运行时 panic，五个版本带病 | STATE.md 强制 grep checklist |
-| v1.7.0–1.7.1 装到 `profile.ps1` 而非 `Microsoft.PowerShell_profile.ps1` | PowerShell 启动不读，cc 集成形同虚设 | 改用默认 `$PROFILE`；profile_installer 扫旧位置遗留 |
+| v1.7.0–1.7.1 装到 `profile.ps1` 而非 `Microsoft.PowerShell_profile.ps1` | PowerShell 启动不读，cc 集成形同虚设 | v1.7.2 改用默认 `$PROFILE`；v1.7.12 又明确认识到 `profile.ps1` (AllHosts) 也是合法位置，作中性提示 |
 | v1.7.0–1.7.7 PS 5.1 `Out-File -Encoding utf8` 写 BOM | serde_json 不剥 BOM，解析失败，看似装好实则零握手 | bind 端剥 BOM；模板用无 BOM 写入 |
 | v1.6.x 拉错 / 拉不到终端 | 在 explorer 启 PS + WT DefTerm 时 claude 祖先链跟 WT 窗口完全脱节 | v1.7 改 PS profile 注入式绑定，PS 自己把 HWND 注册给 monitor |
 | Windows 路径大小写不敏感 | notify 重复回放 | `watcher.rs::path_key()` 用小写归一 |
+| v1.7.0–1.7.9 atomic_write 三步走（write tmp + remove + rename）非原子 + tmp 文件继承父目录 ACL 覆盖 dst explicit ACE | rename 失败丢 profile / 用户 Documents 重定向到非默认盘时装完 PS 启动报 Access denied | v1.7.10 改 Win32 `ReplaceFileW`（保留 dst ACL/ADS/创建时间）+ 写前 backup + 写后回读校验 |
+| v1.7.9 设置面板 [打开 profile] 按钮点了 alert "opener.open_path not allowed" | capability `opener:default` 不含 `allow-open-path` permission（实测 `acl-manifests.json` default permission set 是 [allow-open-url, allow-reveal-item-in-dir, allow-default-urls]）；单独加 `allow-open-path` 还不够（默认空 scope） | v1.7.11 capability 加 inline scoped permission entry `{ identifier: "opener:allow-open-path", allow: [{ path: "**" }] }` |
+| v1.7.13 之前 settings 面板 tooltip 用 `position: absolute` 被 `.settings-body { overflow-y: auto }` 在某个方向裁切 + 改 `position: fixed` 后又被 `.settings-panel { transform }` 把 containing block 从 viewport 重置到 panel | hover 完全看不到 tooltip | v1.7.13 portal：tooltip DOM 挂到 `document.body`（脱离 transformed 祖先子树）+ `position: fixed` + JS 算 viewport 坐标 + 边界感知 |
 
 每个坑修复时都更新了对应模块的 `//!` doc comment，并在 [CHANGELOG.md](../CHANGELOG.md) 的对应版本段写了复盘。新加坑请遵循同样模式。
 
@@ -140,7 +143,7 @@ src/
 ## 6. 当前没解决的小事
 
 - **lib.rs setup 是个 ~150 行的"上帝构造器"**——4 个 State + 3 个 spawn + watcher wiring + active_filter 闭包都堆这里。可以拆 `bootstrap::{init_paths, init_state, spawn_session_emitter, spawn_jsonl_pump}`。
-- **5 处独立 "atomic write" 实现**（bind / auto_launch / profile_installer / history / config）应合并到 `utils::atomic_write_json`。
+- **6 处独立 "atomic write" 实现**（bind.rs 有 2 处：`atomic_write_json` + `SidHwndCache::persist` 内联；其余 auto_launch / profile_installer / history / config）应合并到 `utils::atomic_write_json`。注意 profile_installer 自 v1.7.10 用 ReplaceFileW（保留 dst ACL），跟其他几处的 remove+rename 行为有别——合并时要区分"内容替换保留 dst metadata" vs "纯内容写"两种语义。
 - **事件名 / IPC 命令名**在 TS 端是字面量散布；后端 `bridge::events` 是单一来源但前端没对应 import。
 - **没有 graceful shutdown**：所有 spawn 的线程 `loop { recv() }` 无退出信号，靠 app exit OS 杀进程兜底。
 

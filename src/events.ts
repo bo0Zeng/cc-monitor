@@ -60,6 +60,19 @@ export function bindEvents(handlers: EventHandlers): void {
     }
   });
 
+  // v1.7.13: 启动时 replay 用 jsonl-batch 一次性发整个 history（替代之前的
+  // N 次单条 jsonl-line emit，省 200-400ms 启动 IPC overhead）。
+  // 拿到 Vec 后 push 进 queue 走原批量 drain 逻辑，UI 仍然分帧不卡。
+  void listen<JsonlLinePayload[]>("jsonl-batch", (e) => {
+    for (const p of e.payload) {
+      queue.push(p);
+    }
+    if (!scheduled && queue.length > 0) {
+      scheduled = true;
+      setTimeout(drain, 0);
+    }
+  });
+
   // session-ended 事件稀疏，直接同步派发
   void listen<SessionEndedPayload>("session-ended", (e) =>
     handlers.onSessionEnded(e.payload.session_id),

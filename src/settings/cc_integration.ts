@@ -14,6 +14,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { makeInfoIcon, swapFileName } from "./info-icon";
 
 type ProfileKind = "Ps51" | "Ps7" | "Custom";
 
@@ -619,28 +620,4 @@ export class CcIntegrationSection {
   }
 }
 
-/**
- * 替换路径的文件名部分。v1.7.12 用来从 Microsoft.PowerShell_profile.ps1 推 profile.ps1。
- * 兼容 Windows `\` 和 POSIX `/` 分隔符（PowerShell 在 Windows 上两种都有）。
- */
-function swapFileName(path: string, newName: string): string {
-  const lastSep = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
-  if (lastSep < 0) return newName;
-  return path.slice(0, lastSep + 1) + newName;
-}
-
-/**
- * 创建一个 ! 信息图标，鼠标悬停显示 tooltip。
- * tooltip 内容以 textContent 写入（不 innerHTML，安全）；支持 \n 换行（CSS white-space: pre-line）。
- */
-function makeInfoIcon(text: string): HTMLElement {
-  const wrap = document.createElement("span");
-  wrap.className = "settings-info-icon";
-  wrap.setAttribute("aria-label", text);
-  wrap.textContent = "?";
-  const tip = document.createElement("span");
-  tip.className = "settings-info-tooltip";
-  tip.textContent = text;
-  wrap.appendChild(tip);
-  return wrap;
-}
+// makeInfoIcon + swapFileName 已拆到 ./info-icon.ts（v1.7.13）
