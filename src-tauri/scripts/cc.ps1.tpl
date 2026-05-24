@@ -51,8 +51,13 @@ function __ccm_bind {
     $awaitDir = Join-Path $ccmDir "ps-await"
     try { New-Item -ItemType Directory -Path $awaitDir -Force -ErrorAction Stop | Out-Null } catch {}
     $awaitFile = Join-Path $awaitDir "$PID.json"
-    @{ ps_pid = $PID; marker = $marker; proc_start = "$procStart" } |
-        ConvertTo-Json -Compress | Out-File -Encoding utf8 $awaitFile
+    # v1.7.8：PS 5.1 `Out-File -Encoding utf8` 写 UTF-8 BOM，monitor 端 serde_json
+    # 不剥 BOM 解析失败。这里用 .NET WriteAllText + UTF8Encoding($false) 显式无 BOM。
+    # （v1.7.8 monitor 也加了剥 BOM 兜底，所以 v1.7.8 用户即使用老模板也能 work）
+    $json = @{ ps_pid = $PID; marker = $marker; proc_start = "$procStart" } |
+        ConvertTo-Json -Compress
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($awaitFile, $json, $utf8NoBom)
 
     $oldTitle = $Host.UI.RawUI.WindowTitle
     $Host.UI.RawUI.WindowTitle = $marker

@@ -222,7 +222,12 @@ fn process_await_file(this: &BindRegistry, await_file: &Path) {
             return;
         }
     };
-    let req: AwaitRequest = match serde_json::from_str(&raw) {
+    // v1.7.8：PS 5.1 `Out-File -Encoding utf8` 写 UTF-8 BOM（前 3 字节 EF BB BF），
+    // serde_json 不剥 BOM 直接解析失败 → process_await_file 早早 return，
+    // find_window_for_marker / ps-registry 全没机会跑。这是 v1.7.0-1.7.7 整个
+    // cc 集成"装上没用"的真凶。防御性剥 BOM 兜任何 UTF-8 输入。
+    let raw = raw.trim_start_matches('\u{feff}');
+    let req: AwaitRequest = match serde_json::from_str(raw) {
         Ok(r) => r,
         Err(e) => {
             tracing::warn!("bind: parse {} failed: {e}", await_file.display());
