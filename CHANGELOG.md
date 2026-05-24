@@ -8,6 +8,31 @@
 
 ---
 
+## [1.7.7] — 2026-05-24
+
+### 修复（接 v1.7.5 GW_OWNER 修复后发现的第二层 bug）
+
+- **`GetWindowTextLengthW` 对 WinUI / Microsoft.UI.Xaml.Controls 控件返回 0** ——
+  Windows Terminal 用的 XAML 控件（WT 1.18+ tab 容器之类）兼容 Win32 API 时有
+  quirk：`GetWindowTextLengthW` 报"长度 0"（说"无 title"），但**实际有 title**——
+  直接调 `GetWindowTextW(hwnd, buf, 512)` 给固定 buffer 能拿到。
+  - v1.7.5 去掉 `GW_OWNER` 过滤后 monitor 能枚举到 WT XAML 子窗口，但
+    `GetWindowTextLengthW` 返回 0 → title 当空字符串 → 永远 marker_match=false →
+    跳过 → ps-registry 仍不生成。
+  - 用户端诊断脚本用 `StringBuilder 512` 固定 buffer 调，能拿到 title，所以诊断
+    脚本能找到 marker，但 monitor 找不到。两者行为不一致就是这里。
+  - 修法：`find_window_for_marker` 的 callback **不再用 `GetWindowTextLengthW`**，
+    直接固定 512 buffer 调 `GetWindowTextW`。marker 长度 ≤ 50 字符，512 buffer
+    肯定够。
+
+### v1.7.x cc 集成回顾
+
+至此 cc 集成 4 个层级 bug 全部修完：
+- v1.7.2：profile 文件名错（`profile.ps1` vs `Microsoft.PowerShell_profile.ps1`）
+- v1.7.3：一键安装覆盖用户已有 `function cc`
+- v1.7.5：`GW_OWNER` 过滤拒绝 WT XAML 子窗口
+- v1.7.7：`GetWindowTextLengthW` 对 WinUI 控件 quirk 让 title 拿不到
+
 ## [1.7.6] — 2026-05-24
 
 ### 改动

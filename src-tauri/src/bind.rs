@@ -279,8 +279,7 @@ fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
     use std::cell::RefCell;
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
-        IsWindowVisible,
+        EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
     };
 
     struct Match {
@@ -311,14 +310,18 @@ fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
         if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
             return BOOL(1);
         }
+        // v1.7.7：不再用 GetWindowTextLengthW 预查询长度。
+        // 对 Microsoft.UI.Xaml.Controls / WinUI 控件（Windows Terminal 用的），
+        // GetWindowTextLengthW 经常返回 0（WinRT 控件兼容 Win32 API 的 quirk），
+        // 但 GetWindowTextW 直接给 buffer 调用能拿到实际 title。
+        // 固定 512 buffer 跟用户端诊断脚本一致；marker 长 ≤ 50 字符肯定够。
         let title = unsafe {
-            let len = GetWindowTextLengthW(hwnd);
-            if len <= 0 {
-                String::new()
-            } else {
-                let mut buf = vec![0u16; (len + 1) as usize];
-                let n = GetWindowTextW(hwnd, &mut buf);
+            let mut buf = vec![0u16; 512];
+            let n = GetWindowTextW(hwnd, &mut buf);
+            if n > 0 {
                 String::from_utf16_lossy(&buf[..n as usize])
+            } else {
+                String::new()
             }
         };
         let marker_match = MARKER.with(|m| {
