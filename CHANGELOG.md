@@ -8,6 +8,39 @@
 
 ---
 
+## [1.7.8] — 2026-05-24
+
+### 修复（v1.7.0–1.7.7 一直没修对的真凶）
+
+- **PS 5.1 `Out-File -Encoding utf8` 写 UTF-8 BOM，serde_json 解析失败** ——
+  这才是 cc 集成"装上没用"的真正根因。从 v1.7.0 起所有"修了又没用"的发版本质都是这个 bug，
+  之前 v1.7.5 / v1.7.7 改的 `GW_OWNER` / `GetWindowTextLengthW` 都在 EnumWindows
+  那一层，但**根本走不到那里**——`process_await_file` 在 `serde_json::from_str`
+  那一步就 fail 了，直接删 await + return。
+  - 实测：PS 5.1 `Out-File -Encoding utf8` 输出的文件前 3 字节是 `EF BB BF`（UTF-8 BOM）。
+    `serde_json::from_str` 看到非 `{` 字符开头直接 `Err`。
+  - 现象完美吻合：用户跑 cc 后 ps-await 被删（解析失败也删，避免重试）但 ps-registry
+    永远不生成（fn 早 return 了）。
+  - **修法 A**（核心）：`bind.rs::process_await_file` 读文件后
+    `raw.trim_start_matches('\u{feff}')` 喂给 serde_json。一行兜底，任何 BOM/无 BOM
+    UTF-8 输入都吃下。**已装 cc 集成的用户装 v1.7.8 monitor 立即 work，不需要重装 cc**。
+  - **修法 B**（源头清洁）：`cc.ps1.tpl` 改用 `[System.IO.File]::WriteAllText` +
+    `UTF8Encoding($false)` 显式无 BOM 写入。新装 cc 的用户拿到正确模板。
+- 这是 v1.7.x 系列的最后一根稻草。**至此 4 层 bug 全部找出**：
+
+| 版本 | bug | 实际"装上没用"原因 |
+|---|---|---|
+| v1.7.0–7.4 | 不知道 cc 没 work | 不知道 |
+| v1.7.5 | 以为是 `GW_OWNER` 过滤过紧 | 修了但还没用——因为根本到不了那一步 |
+| v1.7.7 | 以为是 `GetWindowTextLengthW` 对 WinUI 返 0 | 修了但还没用——同上 |
+| v1.7.8 | **PS Out-File 写 BOM + serde_json 不剥 BOM** | **真凶**，修了立即 work |
+
+### 教训
+
+`tracing::warn!("bind: parse ... failed")` 在 GUI app（windows-subsystem = "windows"）
+里**用户看不到**——v1.7.0 起这个 warn 一直在打，但没人能看到。下次必须给 GUI 加
+本地 log 文件或者 IPC log 命令。**已加入** `doc/CHECKLIST.md` § 4 发版必跑项。
+
 ## [1.7.7] — 2026-05-24
 
 ### 修复（接 v1.7.5 GW_OWNER 修复后发现的第二层 bug）
