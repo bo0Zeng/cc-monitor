@@ -8,6 +8,34 @@
 
 ---
 
+## [1.7.12] — 2026-05-24
+
+### 改动 — 设置面板 / PowerShell 集成 UX 修复 + 概念修正
+
+#### Tooltip 溢出修复
+- `?` 图标 hover tooltip 之前 `left: 50% + translateX(-50%)` 居中 + 320px 宽，靠右的 `?` 会让 tooltip 右半部分超出 360px 宽的设置面板被 `overflow-y: auto` 裁切。改成 right-anchored（`right: -4px`），宽度收到 240px max，永远向左展开不出 panel 右边界。
+
+#### Legacy 文案中性化（修正概念错误）
+- v1.7.2 起设置面板检测到 `profile.ps1` 有 cc-monitor 块时会弹"⚠ v1.7.0-1.7.1 旧位置遗留，PowerShell 启动时不读，实际无效"。**这个文案是错的**：`profile.ps1` = CurrentUserAllHosts，PowerShell 启动**会读它**（所有 host 都读）。
+- 改成中性文案"ℹ 在 profile.ps1 (AllHosts) 也检测到 cc-monitor 块"，把判断权给用户：故意装那的话保留，重复安装的话清理一份。
+
+#### Profile 路径下拉新增 AllHosts 选项
+- 之前下拉只有 `PS 5.1 / PS 7.x / Custom`，默认指向 `Microsoft.PowerShell_profile.ps1`（CurrentUserCurrentHost，只有 powershell.exe 控制台读）。
+- 新下拉 5 项：
+  - `PowerShell 5.1 - $PROFILE（默认）` → Microsoft.PowerShell_profile.ps1
+  - `PowerShell 5.1 - 所有 host（profile.ps1）` ⭐ 推荐：VSCode 终端 / ISE / SSH 都生效
+  - `PowerShell 7.x - $PROFILE`
+  - `PowerShell 7.x - 所有 host`
+  - `自定义路径...`
+- 旁边 `?` tooltip 解释 AllHosts vs CurrentHost 的实际差别。
+
+#### 路径选择持久化
+- 之前用户手动改 Profile 路径，关闭面板下次打开就被默认 PS 5.1 - $PROFILE 覆盖。
+- 现在用 `localStorage` 持久化用户选的下拉项 + 自定义路径，下次打开恢复。
+
+#### 备份机制说明
+- [安装] 按钮加 hover 提示："v1.7.10+ 写入前自动备份原 profile 到 `<profile>.ccm-backup-<时间戳>`，写入失败自动回滚，用 Win32 ReplaceFileW 保留原 ACL"。
+
 ## [1.7.11] — 2026-05-24
 
 ### 修复 — [打开 profile] 按钮无效

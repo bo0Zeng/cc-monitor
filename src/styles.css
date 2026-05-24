@@ -830,10 +830,14 @@ html, body {
   display: none;
   position: absolute;
   bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  width: 320px;
-  max-width: 90vw;
+  /* v1.7.12: panel 内宽只有 332px，居中 + 320px 在右侧 ? 时溢出被裁。
+     改成右锚定：tooltip 右边对齐 ? 图标右边外侧 4px，向左展开，永远不出 panel 右边界。 */
+  right: -4px;
+  left: auto;
+  transform: none;
+  width: max-content;
+  min-width: 180px;
+  max-width: 240px;
   padding: 8px 10px;
   background: var(--bg-2, #2a2520);
   border: 1px solid var(--border-strong, #5a5046);
