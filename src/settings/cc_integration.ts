@@ -1,12 +1,10 @@
 /**
- * 设置面板：PowerShell 集成区（v1.7.2 重写）。
+ * 设置面板：PowerShell 集成区（v1.7.9 简化版）。
  *
- * UI 单卡片，让用户：
- *  - 选 PS 版本（默认 5.1，Windows 自带）或自定义路径
- *  - 编辑 profile 文件路径（默认填充 `Microsoft.PowerShell_profile.ps1`，可改）
- *  - 预览 / 扫描 / 安装 / 卸载
- *  - 看 v1.7.0-1.7.1 旧位置（profile.ps1）的遗留警告
- *  - 控制 auto-launch monitor toggle
+ * v1.7.9 UI 改动：
+ *  - 命令名固定 "cc"（不再让用户输自由文本，避免填错 / 跟 claude.exe 同名等坑）
+ *  - "同时安装 cc wrapper" 改成复选框，**默认不勾选**（默认只装 helper，不覆盖用户已有 wrapper）
+ *  - 所有冗长说明 → ! 图标 hover tooltip，UI 干净
  *
  * v1.7.0-1.7.1 的 bug：默认 profile 文件名搞成 `profile.ps1`（CurrentUserAllHosts），
  * 但 PowerShell 默认 `$PROFILE` 指向 `Microsoft.PowerShell_profile.ps1`
@@ -35,7 +33,7 @@ interface LegacyEntry {
 }
 
 interface CcStatusResponse {
-  profiles: ProfileScan[]; // 自动检测到的"推荐"路径列表（5.1 + 可选 7.x）
+  profiles: ProfileScan[];
   active_registrations: number;
   default_command_name: string;
   legacy_profile_paths_with_block: LegacyEntry[];
@@ -50,15 +48,18 @@ interface AutoLaunchConfig {
   monitor_exe_path: string | null;
 }
 
+/** 固定命令名 —— 不让用户改。`claude` 跟 claude.exe 同名会无限递归；其他名字没必要让用户折腾 */
+const CC_COMMAND_NAME = "cc";
+
 export class CcIntegrationSection {
   private root: HTMLElement;
-  private commandInput!: HTMLInputElement;
   private versionSelect!: HTMLSelectElement;
   private pathInput!: HTMLInputElement;
   private statusBadge!: HTMLSpanElement;
   private warnArea!: HTMLDivElement;
   private legacyArea!: HTMLDivElement;
   private regCountSpan!: HTMLSpanElement;
+  private wrapperCheckbox!: HTMLInputElement;
   private installBtn!: HTMLButtonElement;
   private uninstallBtn!: HTMLButtonElement;
   private autoLaunchCheckbox!: HTMLInputElement;
@@ -84,44 +85,17 @@ export class CcIntegrationSection {
     const group = document.createElement("div");
     group.className = "settings-group";
 
+    // 标题 + 旁边 ! 图标显示原理
     const heading = document.createElement("div");
     heading.className = "settings-group-title";
     heading.textContent = "PowerShell 集成";
+    heading.appendChild(
+      makeInfoIcon(
+        "在 PowerShell profile 里装 __ccm_bind helper：启动 claude 时把当前终端 HWND 注册给 monitor，" +
+          "之后 Tab ↗ 跳焦能精确拉对应终端窗口。不装也能用 monitor，但拉前不工作。",
+      ),
+    );
     group.appendChild(heading);
-
-    // 说明
-    const intro = document.createElement("div");
-    intro.className = "settings-hint";
-    intro.innerHTML =
-      "在你的 PS profile 里装 <code>__ccm_bind</code> helper，启动 claude 时" +
-      "自动绑定 Tab ↔ 终端窗口拉前。<br>" +
-      "<b>怎么用</b>：装完后在你启动 claude 的 wrapper（function）里加一行 " +
-      "<code>__ccm_bind</code>，或者直接用 <code>__ccm_bind; claude</code>。" +
-      "<br>不装也能用 monitor，但 Tab ↗ / Ctrl+\\` 拉前不工作。";
-    group.appendChild(intro);
-
-    // 可选 wrapper 命令名（默认空 = 只装 helper）
-    const rowCmd = document.createElement("div");
-    rowCmd.className = "settings-row";
-    const lblCmd = document.createElement("span");
-    lblCmd.className = "settings-label";
-    lblCmd.textContent = "Wrapper 命令名";
-    rowCmd.appendChild(lblCmd);
-    this.commandInput = document.createElement("input");
-    this.commandInput.type = "text";
-    this.commandInput.className = "settings-input";
-    this.commandInput.value = "cc";
-    this.commandInput.placeholder = "cc / ccm / 留空只装 helper";
-    this.commandInput.addEventListener("change", () => void this.scanCurrentPath());
-    rowCmd.appendChild(this.commandInput);
-    group.appendChild(rowCmd);
-    const cmdHint = document.createElement("div");
-    cmdHint.className = "settings-hint";
-    cmdHint.innerHTML =
-      "留空：只装 <code>__ccm_bind</code> helper（推荐——你自己已有 wrapper 时）。" +
-      "<br>填名字：额外装 <code>function {名字} { __ccm_bind; &amp; claude $args }</code>。" +
-      "<br>⚠ <b>不能填 <code>claude</code></b>——会跟 Claude Code CLI 命令同名导致无限递归。";
-    group.appendChild(cmdHint);
 
     // PowerShell 版本下拉
     const rowVer = document.createElement("div");
@@ -133,8 +107,8 @@ export class CcIntegrationSection {
     this.versionSelect = document.createElement("select");
     this.versionSelect.className = "settings-input";
     [
-      { v: "Ps51", t: "Windows PowerShell 5.1 （Windows 自带，推荐）" },
-      { v: "Ps7", t: "PowerShell 7.x（独立安装）" },
+      { v: "Ps51", t: "Windows PowerShell 5.1（推荐）" },
+      { v: "Ps7", t: "PowerShell 7.x" },
       { v: "Custom", t: "自定义路径..." },
     ].forEach((opt) => {
       const o = document.createElement("option");
@@ -152,7 +126,13 @@ export class CcIntegrationSection {
     rowPath.className = "settings-row settings-row-stack";
     const lblPath = document.createElement("span");
     lblPath.className = "settings-label";
-    lblPath.textContent = "Profile 路径";
+    lblPath.textContent = "Profile";
+    lblPath.appendChild(
+      makeInfoIcon(
+        "PowerShell 启动时读的脚本文件。默认填 $PROFILE 实际指向的 " +
+          "Microsoft.PowerShell_profile.ps1（CurrentUserCurrentHost）。在 PS 里跑 $PROFILE 看你机器上具体路径。",
+      ),
+    );
     rowPath.appendChild(lblPath);
     this.pathInput = document.createElement("input");
     this.pathInput.type = "text";
@@ -162,13 +142,27 @@ export class CcIntegrationSection {
     rowPath.appendChild(this.pathInput);
     group.appendChild(rowPath);
 
-    // 路径提示
-    const pathHint = document.createElement("div");
-    pathHint.className = "settings-hint";
-    pathHint.innerHTML =
-      "默认填充 PowerShell 启动时实际读的 <code>$PROFILE</code>（即 <code>Microsoft.PowerShell_profile.ps1</code>）。" +
-      "在 PS 里跑 <code>$PROFILE</code> 看你机器上具体路径。";
-    group.appendChild(pathHint);
+    // ★ v1.7.9：是否同时装 wrapper 复选框（默认不勾选）
+    const wrapperRow = document.createElement("label");
+    wrapperRow.className = "settings-row settings-row-checkbox";
+    this.wrapperCheckbox = document.createElement("input");
+    this.wrapperCheckbox.type = "checkbox";
+    this.wrapperCheckbox.className = "settings-checkbox";
+    this.wrapperCheckbox.checked = false; // 默认不覆盖
+    this.wrapperCheckbox.addEventListener("change", () => void this.scanCurrentPath());
+    wrapperRow.appendChild(this.wrapperCheckbox);
+    const wrapperLabel = document.createElement("span");
+    wrapperLabel.className = "settings-checkbox-label";
+    wrapperLabel.textContent = "同时安装 cc wrapper";
+    wrapperRow.appendChild(wrapperLabel);
+    wrapperRow.appendChild(
+      makeInfoIcon(
+        "默认不勾选：只装 __ccm_bind helper。你需要在自己已有的 claude 启动 wrapper（function cc / function claude / 别名等）开头加一行 __ccm_bind 来触发绑定。\n\n" +
+          "勾选：额外装 function cc { __ccm_bind; & claude $args }。\n" +
+          "⚠ 如果你 profile 里已有 function cc 会被替换（cc-monitor 自己的块在 profile 后端，PowerShell function 后定义的会覆盖前面同名的）。",
+      ),
+    );
+    group.appendChild(wrapperRow);
 
     // 状态行
     const rowStatus = document.createElement("div");
@@ -186,10 +180,12 @@ export class CcIntegrationSection {
     // 按钮行
     const btnRow = document.createElement("div");
     btnRow.className = "settings-cc-profile-buttons";
+
     const previewBtn = document.createElement("button");
     previewBtn.type = "button";
     previewBtn.className = "settings-btn settings-btn-secondary";
     previewBtn.textContent = "预览代码";
+    previewBtn.title = "看一眼即将写入 profile 的 BEGIN/END 块内容";
     previewBtn.addEventListener("click", () => void this.openPreview());
     btnRow.appendChild(previewBtn);
 
@@ -197,15 +193,15 @@ export class CcIntegrationSection {
     scanBtn.type = "button";
     scanBtn.className = "settings-btn settings-btn-secondary";
     scanBtn.textContent = "重新扫描";
+    scanBtn.title = "重新读 profile 文件，刷新安装状态";
     scanBtn.addEventListener("click", () => void this.scanCurrentPath(true));
     btnRow.appendChild(scanBtn);
 
-    // v1.7.5：用系统默认编辑器打开 profile（方便用户手动加 __ccm_bind 调用）
     const openBtn = document.createElement("button");
     openBtn.type = "button";
     openBtn.className = "settings-btn settings-btn-secondary";
     openBtn.textContent = "打开 profile";
-    openBtn.title = "用系统默认编辑器（记事本/VSCode 等）打开当前 profile 文件";
+    openBtn.title = "用系统默认编辑器打开当前 profile 文件";
     openBtn.addEventListener("click", () => void this.openProfileInEditor());
     btnRow.appendChild(openBtn);
 
@@ -227,11 +223,20 @@ export class CcIntegrationSection {
 
     // 活跃注册数
     const statRow = document.createElement("div");
-    statRow.className = "settings-hint";
-    statRow.textContent = "当前已注册 PowerShell session: ";
+    statRow.className = "settings-cc-stat-row";
+    const statLabel = document.createElement("span");
+    statLabel.className = "settings-cc-stat-label";
+    statLabel.textContent = "已注册 PowerShell session";
+    statLabel.appendChild(
+      makeInfoIcon(
+        "正在跟 monitor 握手成功、可被 Tab ↗ 拉前的 PowerShell 进程数。\n" +
+          "数字 0 ≠ 没装好：只要你那个 PS 窗口最近没跑过 cc/__ccm_bind，就不会出现在这里。",
+      ),
+    );
+    statRow.appendChild(statLabel);
     this.regCountSpan = document.createElement("span");
+    this.regCountSpan.className = "settings-cc-stat-value";
     this.regCountSpan.textContent = "—";
-    this.regCountSpan.style.fontWeight = "500";
     statRow.appendChild(this.regCountSpan);
     group.appendChild(statRow);
 
@@ -250,7 +255,7 @@ export class CcIntegrationSection {
     wrap.className = "settings-cc-autolaunch";
 
     const row = document.createElement("label");
-    row.className = "settings-row";
+    row.className = "settings-row settings-row-checkbox";
 
     this.autoLaunchCheckbox = document.createElement("input");
     this.autoLaunchCheckbox.type = "checkbox";
@@ -262,14 +267,23 @@ export class CcIntegrationSection {
 
     const label = document.createElement("span");
     label.className = "settings-checkbox-label";
-    label.textContent = "用 cc 启动 claude 时自动打开 monitor（如果未在跑）";
+    label.textContent = "用 cc 启动 claude 时自动打开 monitor";
     row.appendChild(label);
+    row.appendChild(
+      makeInfoIcon(
+        "勾选后：跑 cc / __ccm_bind 时如果 monitor 没在跑，PowerShell 会自动启动它（路径下方显示）。\n" +
+          "不勾选：必须先手动开 monitor 再跑 cc，否则握手超时（800ms）。",
+      ),
+    );
 
     wrap.appendChild(row);
 
     const hint = document.createElement("div");
-    hint.className = "settings-hint settings-cc-autolaunch-path";
-    hint.textContent = "monitor 路径: ";
+    hint.className = "settings-cc-autolaunch-path";
+    const pathLabel = document.createElement("span");
+    pathLabel.textContent = "monitor 路径: ";
+    pathLabel.style.color = "var(--text-faint)";
+    hint.appendChild(pathLabel);
     this.autoLaunchPathSpan = document.createElement("span");
     this.autoLaunchPathSpan.className = "settings-cc-autolaunch-path-value";
     this.autoLaunchPathSpan.textContent = "—";
@@ -279,22 +293,14 @@ export class CcIntegrationSection {
     return wrap;
   }
 
-  /**
-   * 返回用户填的命令名，空字符串表示"只装 helper 不装 wrapper"。
-   * 调 install/preview 时按这个判断 include_cc_function。
-   */
-  private currentCommand(): string {
-    return this.commandInput.value.trim();
-  }
-
   private wantsWrapper(): boolean {
-    return this.currentCommand().length > 0;
+    return this.wrapperCheckbox.checked;
   }
 
   private async openProfileInEditor(): Promise<void> {
     const p = this.pathInput.value.trim();
     if (!p) {
-      alert("请先填 profile 路径");
+      alert("请先选 PS 版本或填 profile 路径");
       return;
     }
     try {
@@ -308,16 +314,13 @@ export class CcIntegrationSection {
   private async refresh(): Promise<void> {
     try {
       const status = await invoke<CcStatusResponse>("cc_integration_status", {
-        commandName: this.currentCommand(),
+        commandName: CC_COMMAND_NAME,
       });
-      // 把推荐路径填入 lookup
       this.recommended.Ps51 = null;
       this.recommended.Ps7 = null;
       for (const p of status.profiles) {
         this.recommended[p.kind] = p.path;
       }
-      // 如果只检测到 PS 5.1，下拉里 PS 7.x 也保留但路径会留空
-      // 默认选 PS 5.1
       if (!this.pathInput.value) {
         this.versionSelect.value = "Ps51";
         this.pathInput.value = this.recommended.Ps51 ?? "";
@@ -331,7 +334,6 @@ export class CcIntegrationSection {
     }
   }
 
-  /** 用户改了路径输入框或命令名时 / 重新扫描按钮 */
   private async scanCurrentPath(notify = false): Promise<void> {
     const p = this.pathInput.value.trim();
     if (!p) {
@@ -342,7 +344,7 @@ export class CcIntegrationSection {
     try {
       const scan = await invoke<ProfileScan>("cc_integration_scan_path", {
         path: p,
-        commandName: this.currentCommand(),
+        commandName: CC_COMMAND_NAME,
       });
       this.renderScanResult(scan);
       if (notify) {
@@ -367,14 +369,18 @@ export class CcIntegrationSection {
       this.statusBadge.textContent = "✗ 未安装";
       this.statusBadge.className = "settings-cc-profile-badge settings-cc-badge-warn";
     }
-    // 命令名非空且 profile 已含同名 function → 警告会覆盖
-    if (scan.conflicting_functions.length > 0 && !scan.has_ccm_block) {
+    // 命令名固定 cc：如果 profile 已有同名 function 且用户勾了 "同时安装 wrapper"，警告会覆盖
+    if (
+      scan.conflicting_functions.length > 0 &&
+      !scan.has_ccm_block &&
+      this.wantsWrapper()
+    ) {
       const warn = document.createElement("div");
       warn.className = "settings-cc-profile-warn";
-      warn.innerHTML =
-        `⚠ profile 已含自定义 function <code>${scan.conflicting_functions.join(", ")}</code>。` +
-        `<br>把上面"Wrapper 命令名"留空，cc-monitor 只装 <code>__ccm_bind</code> helper 不覆盖。` +
-        `<br><b>然后在你的 <code>function ${scan.conflicting_functions[0]}</code> 开头加一行 <code>__ccm_bind</code></b>。`;
+      warn.textContent =
+        `⚠ profile 已有 function ${scan.conflicting_functions.join(", ")}。` +
+        ` 你勾了 "同时安装 cc wrapper"，安装后 PowerShell 会用 cc-monitor 块里的版本（因为它在 profile 后端）。` +
+        ` 想保留你自己的：取消勾选，然后在自己的 function 开头加 __ccm_bind。`;
       this.warnArea.appendChild(warn);
     }
     this.installBtn.textContent = scan.has_ccm_block ? "重新安装" : "安装";
@@ -388,13 +394,13 @@ export class CcIntegrationSection {
     warn.className = "settings-cc-legacy-warn";
     const head = document.createElement("div");
     head.style.fontWeight = "600";
-    head.textContent = "⚠ 检测到 v1.7.0-1.7.1 旧位置遗留的 cc-monitor 块";
+    head.textContent = "⚠ 检测到 v1.7.0-1.7.1 旧位置遗留";
     warn.appendChild(head);
     const body = document.createElement("div");
     body.style.marginTop = "4px";
     body.textContent =
-      "v1.7.0-1.7.1 错把 cc function 装到 profile.ps1（PowerShell 启动时不读），实际无效。" +
-      "请手动删除这些文件（或保留但删除 BEGIN/END 之间的内容），然后用上面的安装按钮装到正确位置：";
+      "v1.7.0-1.7.1 错把 cc 块装到 profile.ps1（PowerShell 启动时不读），实际无效。" +
+      "请手动删除这些文件（或保留但删除 BEGIN/END 之间的内容）：";
     warn.appendChild(body);
     const list = document.createElement("ul");
     list.style.marginTop = "4px";
@@ -421,7 +427,6 @@ export class CcIntegrationSection {
   private onVersionChange(): void {
     const v = this.versionSelect.value as ProfileKind;
     if (v === "Custom") {
-      // 保留当前路径不变，等用户编辑
       this.pathInput.focus();
       return;
     }
@@ -439,7 +444,7 @@ export class CcIntegrationSection {
   private async openPreview(): Promise<void> {
     try {
       const resp = await invoke<CcPreviewResponse>("cc_integration_preview", {
-        commandName: this.currentCommand() || "cc",
+        commandName: CC_COMMAND_NAME,
         includeCcFunction: this.wantsWrapper(),
       });
       this.showPreviewModal(resp.code);
@@ -456,13 +461,10 @@ export class CcIntegrationSection {
     modal.className = "settings-cc-modal";
     const title = document.createElement("div");
     title.className = "settings-cc-modal-title";
-    title.textContent = `将要写入 profile 的代码（function ${this.currentCommand()}）`;
+    title.textContent = this.wantsWrapper()
+      ? "将写入 profile（helper + function cc）"
+      : "将写入 profile（仅 helper）";
     modal.appendChild(title);
-
-    const hint = document.createElement("div");
-    hint.className = "settings-hint";
-    hint.textContent = "BEGIN/END 之间是 cc-monitor 管理的块。profile 内其他内容完全不动。";
-    modal.appendChild(hint);
 
     const pre = document.createElement("pre");
     pre.className = "settings-cc-modal-code";
@@ -489,30 +491,20 @@ export class CcIntegrationSection {
   private async install(): Promise<void> {
     const p = this.pathInput.value.trim();
     if (!p) {
-      alert("请先填 profile 路径");
+      alert("请先选 PS 版本或填 profile 路径");
       return;
     }
-    const cmd = this.currentCommand();
     const includeCc = this.wantsWrapper();
-    // 命令名 = claude 会跟 Claude Code CLI 同名导致 PowerShell function 无限递归
-    if (cmd.toLowerCase() === "claude") {
-      alert(
-        "⚠ Wrapper 命令名不能填 `claude`——会跟 Claude Code CLI 的 `claude` 命令同名，" +
-          "PowerShell function 优先级高于 exe 会导致**无限递归**。\n\n" +
-          "建议：留空（只装 helper），或填 `ccm`/`mc`/`startclaude` 等独特名字。",
-      );
-      return;
-    }
     try {
       await invoke<void>("cc_integration_install", {
         path: p,
-        commandName: cmd || "cc", // 占位 cc，后端只在 includeCc=true 才用
+        commandName: CC_COMMAND_NAME,
         includeCcFunction: includeCc,
       });
       await this.scanCurrentPath();
       const tail = includeCc
-        ? `请重启 PowerShell，\`${cmd}\` 命令立即可用。`
-        : "已装 `__ccm_bind` helper。\n\n下一步：用上方[打开 profile]编辑，在你自己启动 claude 的 wrapper（function）开头加一行 `__ccm_bind`，然后重启 PowerShell。";
+        ? "请重启 PowerShell，cc 命令立即可用。"
+        : "下一步：用上方 [打开 profile]，在你自己启动 claude 的 wrapper 开头加一行 __ccm_bind，然后重启 PowerShell。";
       alert("已写入 profile。\n\n" + tail);
     } catch (e) {
       alert(`安装失败：${e}`);
@@ -536,7 +528,7 @@ export class CcIntegrationSection {
       const cfg = await invoke<AutoLaunchConfig>("cc_get_auto_launch");
       this.autoLaunchCheckbox.checked = cfg.auto_launch_enabled;
       this.autoLaunchPathSpan.textContent =
-        cfg.monitor_exe_path ?? "(未记录，重启一次 monitor 后会自动记录)";
+        cfg.monitor_exe_path ?? "(未记录，启动一次 monitor 后自动记录)";
       this.autoLaunchPathSpan.title = cfg.monitor_exe_path ?? "";
     } catch (e) {
       console.warn("cc_get_auto_launch failed:", e);
@@ -551,4 +543,20 @@ export class CcIntegrationSection {
       this.autoLaunchCheckbox.checked = !enabled;
     }
   }
+}
+
+/**
+ * 创建一个 ! 信息图标，鼠标悬停显示 tooltip。
+ * tooltip 内容以 textContent 写入（不 innerHTML，安全）；支持 \n 换行（CSS white-space: pre-line）。
+ */
+function makeInfoIcon(text: string): HTMLElement {
+  const wrap = document.createElement("span");
+  wrap.className = "settings-info-icon";
+  wrap.setAttribute("aria-label", text);
+  wrap.textContent = "?";
+  const tip = document.createElement("span");
+  tip.className = "settings-info-tooltip";
+  tip.textContent = text;
+  wrap.appendChild(tip);
+  return wrap;
 }

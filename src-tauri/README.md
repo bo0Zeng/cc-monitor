@@ -15,6 +15,8 @@ src-tauri/
 │   └── default.json   # IPC 权限（core / opener / dialog）
 ├── icons/             # 全套图标（ico / icns / png 各尺寸）
 ├── gen/               # tauri-build 生成的 schemas (自动)
+├── scripts/
+│   └── cc.ps1.tpl     # cc 集成 PowerShell helper 模板（include_str! 进 profile_installer）
 └── src/
     ├── main.rs        # → lib::run()
     ├── lib.rs         # Tauri Builder + 工作线程编排 + IPC 注册
@@ -22,7 +24,10 @@ src-tauri/
     ├── messages.rs    # JsonlRecord enum (覆盖全部 type)
     ├── parser.rs      # 按行解析 + BOM
     ├── watcher.rs     # 递归监听 ~/.claude/projects + 活跃过滤
-    ├── session_map.rs # 直读 ~/.claude/sessions/<PID>.json + 进程探活 + 终端跳焦
+    ├── session_map.rs # 直读 ~/.claude/sessions/<PID>.json + 进程探活
+    ├── bind.rs        # cc 集成绑定：ps-await/ps-registry 文件 IPC + EnumWindows 找 marker + SidHwndCache + bring_terminal_to_front
+    ├── profile_installer.rs # PowerShell profile 块插入/卸载 + 命令冲突扫描
+    ├── auto_launch.rs # auto-launch monitor 开关持久化（~/.claude/claudecode-frontend/auto-launch.json）
     ├── subagent.rs    # load_subagent IPC + description 关联
     ├── event_replay.rs # F5 重放（持锁严格按序）
     ├── history.rs     # 历史浏览器：两级懒加载 + 元数据 + 删除 + resume
@@ -40,6 +45,9 @@ src-tauri/
 | **parser.rs** | 单行 JSONL → JsonlRecord | `parse_line(raw)` |
 | **watcher.rs** | notify_debouncer_mini 递归监听 projects；ActiveFilter 过滤死 session | `spawn_watcher(root, active) → mpsc::UnboundedReceiver` |
 | **session_map.rs** | 读 sessions/<PID>.json + Win32 进程探活 + 心跳清死 session | `SessionMap::load_with_changes() / is_session_active()` |
+| **bind.rs** | cc 集成的核心：监听 `ps-await/`、PS 改窗口标题、EnumWindows 找 marker、写 `ps-registry/`、`SidHwndCache` 持久化 sid↔hwnd、`bring_terminal_to_front` | `BindRegistry::spawn() / SidHwndCache::load() / bring_terminal_to_front` |
+| **profile_installer.rs** | PowerShell profile 解析 + cc-monitor BEGIN/END 块插入 / 卸载 / 扫描 / 冲突检测 | `discover_profiles() / install_to_profile / scan_profile / render_cc_code` |
+| **auto_launch.rs** | "用 cc 启动 claude 时自动开 monitor" 开关持久化 | `AutoLaunchConfig::load / save` |
 | **subagent.rs** | 父 session 的 Agent tool_use 关联 `<parent>/subagents/agent-*.jsonl` | IPC `load_subagent` |
 | **event_replay.rs** | 内存 buffer + frontend-ready 时持锁完整 emit | `EventReplay::record() / replay_and_mark_ready() / forget()` |
 | **history.rs** | 历史浏览器后端：两级 IPC + metadata + 物理删除 + resume | IPC `list_history_projects / list_history_sessions_in_project / read_session_jsonl / delete / update_metadata / resume` |
@@ -62,6 +70,14 @@ src-tauri/
 | `delete_history_session` | `{ sessionId, jsonlPath }` | `()` | 物理删除会话（二次确认后） |
 | `update_history_metadata` | `{ sessionId, patch }` | `EntryMetadata` | star / 重命名 / 隐藏 |
 | `resume_history_session` | `{ sessionId, cwd }` | `()` | ↩️ 按钮（拉起 wt.exe / cmd） |
+| `bring_terminal_to_front` | `{ sessionId }` | `()` | Tab ↗ / `Ctrl+\`` 跳焦 |
+| `cc_integration_status` | `{ commandName }` | `CcStatusResponse` | 设置面板打开 PowerShell 集成区 |
+| `cc_integration_scan_path` | `{ path, commandName }` | `ProfileScan` | 用户改路径 / 重新扫描 |
+| `cc_integration_preview` | `{ commandName, includeCcFunction }` | `{ code }` | [预览代码] 按钮 |
+| `cc_integration_install` | `{ path, commandName, includeCcFunction }` | `()` | [安装] 按钮（写入 BEGIN/END 块） |
+| `cc_integration_uninstall` | `{ path }` | `()` | [卸载] 按钮（删除 BEGIN/END 块） |
+| `cc_get_auto_launch` | — | `AutoLaunchConfig` | 设置面板加载 auto-launch 状态 |
+| `cc_set_auto_launch` | `{ enabled }` | `()` | 用户勾选/取消 auto-launch |
 
 ## 事件
 
@@ -82,8 +98,10 @@ src-tauri/
 
 - **零侵入**：watcher 只读，绝不修改 `~/.claude/projects/` 或 `~/.claude/sessions/` 下的文件
 - **历史浏览器的物理删除是例外**：必须用户**显式触发**（点 🗑️ + 二次确认），且仅限 `<claude_dir>/projects/**.jsonl`，由 history.rs 做路径安全校验
+- **profile 写入也是例外**：必须用户**显式点设置面板的 [安装]**；只动 BEGIN/END 之间的内容，块外用户其他代码完全不动
 - **event_replay 持锁完整 emit**：替代旧的"snapshot + live"两步走，避免乱序
 - **session_map.rs 探活两道关卡**：`OpenProcess + GetExitCodeProcess == STILL_ACTIVE` + `GetProcessTimes` 与 `procStart` 100ms 容差校验（防 PID 复用导致僵尸 Tab）
+- **cc 集成的握手协议**：PS 写 `ps-await/<PID>.json` + 改窗口标题为 marker → monitor `EnumWindows` 找 marker 拿 HWND → 写 `ps-registry/<PID>.json` + 删 `ps-await/<PID>.json` 通知 PS 成功（800ms 超时）。所有 JSON 必须 **UTF-8 无 BOM**（v1.7.8 教训：PS 5.1 `Out-File -Encoding utf8` 写 BOM，serde_json 解析失败）
 - **跨平台分裂**：所有 Win32 调用都在 `#[cfg(windows)]` 块；非 Windows 给降级实现或 Err 字符串。当前 v1 仅支持 Windows
 
 ## 工程坑（避雷）
@@ -93,6 +111,8 @@ src-tauri/
 - **`pwsh.exe` 不是 Windows 自带**（PowerShell Core 独立安装包）→ `history.rs:resume_impl()` 用 `cmd /K`（cmd.exe 永远存在）+ `CREATE_NEW_CONSOLE` flag
 - **WT 默认终端无 OS API 暴露 active tab/window** → 焦点同步功能整体已移除，Tab 切换走手动点击 + `Ctrl+Tab` 快捷键
 - **拉对应终端窗口（v1.6.0–1.6.6 的 `bring_terminal_to_front`）已在 v1.6.7 撤回**：在 explorer 启 PowerShell + WT DefTerm 接管 console 的常见架构下，claude 祖先链与 WT 窗口完全脱节，4-tier 启发式不可靠。v1.7 改走 `cc` 命令注入式绑定（用户启动 claude 时主动注册 sid↔hwnd 映射）
+- **PowerShell profile 文件名**：用 `Microsoft.PowerShell_profile.ps1`（`$PROFILE` 默认即 CurrentUserCurrentHost）而非 `profile.ps1`（CurrentUserAllHosts）—— PS 启动时不读后者。v1.7.0–1.7.1 错用 `profile.ps1` 导致 cc 集成形同虚设，v1.7.2 修
+- **PS 5.1 `Out-File -Encoding utf8` 写 UTF-8 BOM**（EF BB BF），serde_json 不剥 BOM 直接解析失败。`bind.rs::process_await_file` 必须先 `trim_start_matches('\u{feff}')` 再 parse；模板 `cc.ps1.tpl` 改用 `[System.IO.File]::WriteAllText` + `UTF8Encoding($false)` 显式无 BOM。这是 v1.7.0–1.7.7 cc 集成"装上没用"的真凶（v1.7.8 修）
 
 ## 添加新功能入口
 

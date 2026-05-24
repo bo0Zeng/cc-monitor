@@ -8,6 +8,23 @@
 
 ---
 
+## [1.7.9] — 2026-05-24
+
+### 改动 — 设置面板 / PowerShell 集成 UI 清理
+
+- **"Wrapper 命令名"输入框移除**，命令名固定 `cc`：避免用户填错（最坑：填 `claude` → PowerShell function 跟 `claude.exe` 同名导致无限递归）。需要其他名字的用户直接编辑 profile。
+- **新增 "同时安装 cc wrapper" 复选框**，**默认不勾选**：默认只装 `__ccm_bind` helper，不动用户已有的命令；勾选才装 `function cc { __ccm_bind; & claude $args }`。这样新用户的 profile 不会被无意中覆盖。
+- **UI 干净化**：所有冗长 hint 改成 `?` 图标 hover 显示 tooltip。说明 = 想看才看；面板不再被 5-6 段说明文字塞满。
+- 状态行加 `?` 图标解释"已注册 PowerShell session" 的语义（很多人误以为 0 就是没装好）。
+
+### 文档
+
+- 新增 `doc/ARCHITECTURE.md`：数据流图 + State 矩阵摘要 + 跨进程文件 IPC 协议表 + 设计分层 + 历史踩坑表。新贡献者第一站。
+- `README.md` 新增"PowerShell 集成（可选）"章节，写清楚装 / 不装的影响，反映 v1.7.9 默认不勾选 wrapper 的新行为。
+- `README.md` 安装包名示例从 `1.5.0` 改成 `<version>` 占位，避免每次 bump 都得改 README。
+- `src-tauri/README.md` IPC 清单补全 v1.7 的 7 个命令（`bring_terminal_to_front` / `cc_integration_*` / `cc_*auto_launch`）；模块表加 `bind.rs` / `profile_installer.rs` / `auto_launch.rs`；不变量节加握手协议 + UTF-8 无 BOM 约束；工程坑节补 v1.7.0–1.7.1 profile.ps1 错位 + v1.7.8 BOM。
+- `scripts/README.md` 提 `src-tauri/scripts/cc.ps1.tpl` 模板的存在。
+
 ## [1.7.8] — 2026-05-24
 
 ### 修复（v1.7.0–1.7.7 一直没修对的真凶）

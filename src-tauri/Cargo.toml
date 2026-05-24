@@ -1,6 +1,6 @@
 [package]
 name = "monitor"
-version = "1.7.8"
+version = "1.7.9"
 description = "cc-monitor — Claude Code CLI 的只读输出渲染窗口（Tauri 2 + TypeScript，Windows）"
 authors = ["cc-monitor contributors"]
 edition = "2021"

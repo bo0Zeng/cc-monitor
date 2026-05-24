@@ -40,8 +40,10 @@
 - **颜色**：10 个 token（背景 / 文本 / 强调色 / 状态色），实时预览
 - 持久化到 `~/.claude/claudecode-frontend/config.json`
 
-### 终端跳焦点
-- 每个 live Tab 有 ↗ 按钮 / `Ctrl+\`` 调出对应终端窗口（4 阶段 HWND 匹配）
+### 终端跳焦点（可选，需装 cc 集成）
+- 每个 live Tab 有 ↗ 按钮 / `Ctrl+\`` 调出对应终端窗口
+- 走 **PowerShell profile 注入式绑定**：你启动 claude 时，profile 里的 `__ccm_bind` 把 (PS_PID → 终端 HWND) 注册到 monitor，Tab 点 ↗ 时 monitor 拿绑定准确拉前
+- 不装这个集成也能用 monitor，只是 ↗ 跳焦不工作（详见下面"PowerShell 集成（可选）"章节）
 
 ### 快捷键
 
@@ -65,10 +67,10 @@
 
 ### 下载与安装
 
-从 Releases 页下载：
+从 Releases 页下载最新版（文件名形如 `cc-monitor_<version>_x64-setup.exe`）：
 
-- `cc-monitor_1.5.0_x64-setup.exe` — NSIS 安装器（推荐普通用户）
-- `cc-monitor_1.5.0_x64_zh-CN.msi` — MSI 包（适合企业 IT 部署）
+- `*-setup.exe` — NSIS 安装器（推荐普通用户）
+- `*_zh-CN.msi` — MSI 包（适合企业 IT 部署）
 
 双击运行；首次会提示 Windows SmartScreen "未知发布者"（未签名），选「更多信息 → 仍要运行」。
 
@@ -81,12 +83,30 @@
 3. 在 claude 里输入一句话 → cc-monitor Tab 内 200ms 内出现 user / assistant 消息
 4. 点 📜 浏览历史；点设置 ⚙ 调主题 / Claude 数据目录
 
+### PowerShell 集成（可选）
+
+为了让 **Tab ↗ / `Ctrl+\`` 跳焦** 能精确拉对应的终端窗口，需要在你的 PowerShell profile 里装 `__ccm_bind` helper：
+
+1. 打开 cc-monitor → `Ctrl+,` 设置面板 → **PowerShell 集成**
+2. 选 PowerShell 版本（默认 Windows PowerShell 5.1）和 profile 路径（默认填好）
+3. **默认不勾选"同时安装 cc wrapper"** —— 只装 `__ccm_bind` helper，不动你已有的命令
+4. 点 [安装] → 弹提示让你重启 PowerShell
+5. 重启 PS 后，在你自己启动 claude 的 wrapper（function / 别名）开头加一行 `__ccm_bind`
+
+如果你不需要自定义 wrapper、想要 cc-monitor 直接帮你建一个：勾上"同时安装 cc wrapper"，会装 `function cc { __ccm_bind; & claude $args }`；之后用 `cc` 启动 claude 即可（注意：会**覆盖** profile 里已有的同名 function）。
+
+也可以勾选"用 cc 启动 claude 时自动打开 monitor"：以后跑 `cc` 时如果 monitor 没在跑，PowerShell 会自动把它启起来再握手。
+
+不装这个集成完全 OK，只是 ↗ / `Ctrl+\`` 不工作；其他功能（实时渲染 / Tab / 历史浏览）全都正常。
+
 ### 故障排查
 
 | 现象 | 排查 |
 |---|---|
 | 启动报 "WebView2 Runtime not found" | 安装 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) |
 | 跑 claude 后 Tab 不出现 | 检查 `~/.claude/sessions/` 下是否有 `<PID>.json`；如果没有，说明 Claude Code 没正常启动 |
+| Tab ↗ / `Ctrl+\`` 拉不出终端 | 没装 PowerShell 集成；或装了但 wrapper 里没调 `__ccm_bind`。设置面板 → PowerShell 集成 → 装 helper 并按说明加调用 |
+| 装完 cc 集成跑 `cc` 提示绑定超时 | monitor 没在跑：先开 monitor 再开 PS；或在设置面板勾选"自动打开 monitor" |
 | `npm run tauri dev` 报 `EACCES: permission denied :::5174` | dev 端口被 Windows Hyper-V 动态保留占用（`netsh interface ipv4 show excludedportrange protocol=tcp` 查）。临时换端口：`$env:VITE_PORT=3000; powershell -NoProfile -File scripts\run.ps1 dev`，同步把 `src-tauri/tauri.conf.json` 的 `devUrl` 改成相同端口 |
 | 历史浏览器 `↺` 恢复失败 | 确认终端 PATH 里有 `claude` 命令；Windows 自带 cmd.exe 总能用，wt.exe 是可选 |
 | Claude 数据装在非默认路径 | 设置面板 → 数据 → Claude 数据目录；或设环境变量 `CLAUDE_CONFIG_DIR` 后重启 |
@@ -150,16 +170,16 @@ powershell -NoProfile -File scripts\run.ps1 build
 npx tauri build
 ```
 
-约 3-8 分钟。输出：
+约 3-8 分钟。输出（`<version>` 是 `tauri.conf.json` 里的版本号）：
 
 ```
 src-tauri/target/release/
 ├── cc-monitor.exe                                       ← 主程序（需 WebView2）
 └── bundle/
     ├── msi/
-    │   └── cc-monitor_1.5.0_x64_zh-CN.msi               ← Windows Installer 包
+    │   └── cc-monitor_<version>_x64_zh-CN.msi           ← Windows Installer 包
     └── nsis/
-        └── cc-monitor_1.5.0_x64-setup.exe               ← NSIS Setup 安装器
+        └── cc-monitor_<version>_x64-setup.exe           ← NSIS Setup 安装器
 ```
 
 ### 三、产物对比
@@ -249,13 +269,18 @@ cc-monitor/
 │   ├── build.rs             # tauri_build::build()
 │   ├── capabilities/        # IPC 权限
 │   ├── icons/               # 全套图标（ico/icns/png）
+│   ├── scripts/
+│   │   └── cc.ps1.tpl       # PowerShell 集成 helper 模板（include_str! 进 profile_installer）
 │   └── src/
 │       ├── main.rs / lib.rs # 入口 + Tauri Builder
 │       ├── paths.rs         # CLAUDE_CONFIG_DIR 三级解析
 │       ├── messages.rs      # JsonlRecord enum
 │       ├── parser.rs        # 按行解析
 │       ├── watcher.rs       # 递归监听 projects + 活跃过滤
-│       ├── session_map.rs   # sessions/<PID>.json + 探活 + 终端跳焦
+│       ├── session_map.rs   # sessions/<PID>.json + 探活
+│       ├── bind.rs          # cc 集成绑定：ps-await/ps-registry 协议 + EnumWindows 找 marker + SidHwndCache
+│       ├── profile_installer.rs # PowerShell profile 块插入/卸载（cc-monitor BEGIN/END）
+│       ├── auto_launch.rs   # auto-launch monitor 开关持久化
 │       ├── subagent.rs      # load_subagent
 │       ├── event_replay.rs  # F5 重放
 │       ├── history.rs       # 两级懒加载历史 + 元数据 + resume
