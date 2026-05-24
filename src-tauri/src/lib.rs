@@ -166,7 +166,14 @@ pub fn run() {
                 tracing::info!("watcher loop ended; total={total} skip={skip}");
             });
 
-            // 给 Tauri 命令暴露 state
+            // 给 Tauri 命令暴露 state。
+            //
+            // **v1.7.4 修回归**：v1.6.7 撤 bring_terminal_to_front 时把
+            // `app.manage(session_map.clone())` 也删了，但 history 命令
+            // （list_history_projects / list_history_sessions_in_project）也接
+            // `State<Arc<SessionMap>>`，导致历史浏览器打不开，报"state not managed
+            // for field `map`"。这里补回去。
+            app.manage(session_map.clone());
             app.manage(replay.clone());
             app.manage(bind_registry.clone());
             app.manage(sid_hwnd_cache.clone());
