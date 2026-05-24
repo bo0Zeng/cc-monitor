@@ -1,15 +1,14 @@
 # `scripts/` 目录
 
-| 脚本 | 作用 | 状态 |
-|---|---|---|
-| [`run.ps1`](run.ps1) | 自动注入 MSVC dev shell 环境后跑 tauri 命令 | ⭐ 活跃使用 |
-| [`session-register.ps1`](session-register.ps1) | Claude Code `SessionStart` hook，曾用于注册活跃 session | ❌ 已废止 |
+| 脚本 | 作用 |
+|---|---|
+| [`run.ps1`](run.ps1) | 自动注入 MSVC dev shell 环境后跑 tauri 命令 |
 
 另有一份 PowerShell 模板存在 `src-tauri/scripts/`（编译时 `include_str!` 进 Rust 二进制，不在本目录）：
 
 | 模板 | 作用 |
 |---|---|
-| `../src-tauri/scripts/cc.ps1.tpl` | v1.7 cc 集成 PowerShell 块模板。设置面板装 cc 集成时把这段（含 `__ccm_bind` helper + 可选 `function cc`）写入用户 profile 的 `# === cc-monitor BEGIN === ... # === cc-monitor END ===` 块内 |
+| `../src-tauri/scripts/cc.ps1.tpl` | cc 集成 PowerShell 块模板。设置面板装 cc 集成时把这段（含 `__ccm_bind` helper + 可选 `function cc`）写入用户 profile 的 `# === cc-monitor BEGIN === ... # === cc-monitor END ===` 块内 |
 
 ---
 
@@ -54,22 +53,4 @@ powershell -NoProfile -File scripts\run.ps1 [dev|build|check|clean]
 4. npx tauri $Cmd
 ```
 
----
-
-## session-register.ps1
-
-### 状态：❌ 已废止
-
-最初的 M2 计划是在 `~/.claude/settings.json` 安装一个 `SessionStart` hook 调这个脚本，让脚本写 `~/.claude/claudecode-frontend/sessions.json` 来登记活跃 session。
-
-**变更后**：Claude Code 自己在 `~/.claude/sessions/<PID>.json` 维护活跃 session 状态，monitor 直接读，**无需 hook，无需安装，零侵入**。详 [`../src-tauri/README.md`](../src-tauri/README.md) 的 IPC / session_map 模块说明。
-
-### 为什么仍保留？
-
-- 备查（git 历史也可以）
-- 若未来 Claude Code 改变 sessions 维护方式，可能要重启用类似机制
-- 已加 `$env:CLAUDE_CONFIG_DIR` 兜底（与 paths.rs 一致），将来若重新启用不用改
-
-### 不要安装它
-
-`~/.claude/settings.json` 里没有 SessionStart hook 指向本脚本，**不要手动加**。当前 cc-monitor 不依赖。
+详 [`../doc/DEVELOPMENT.md`](../doc/DEVELOPMENT.md)。
