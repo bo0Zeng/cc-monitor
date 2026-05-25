@@ -8,6 +8,39 @@
 
 ---
 
+## [2.2.0] — 2026-05-25
+
+里程碑：历史浏览器从「全量同步加载、UI 死锁等几秒」升级到「流式 + 不阻塞 + fork 树形」。重放路径同步打通 batch 模式，启动 monitor 速度数量级提升。
+
+### 新增 — 历史 fork 树形组织（issue #12）
+
+- Claude Code CLI 的 `/branch` 命令分叉出新 session 时，jsonl 顶层有 `forkedFrom: { sessionId, messageUuid }` 字段。本版本在历史浏览器把 fork 关系展现成 **child 缩进显示在 parent 下** 的树。
+- 项目内独立树（跨项目 fork 不连接 —— child 当 root 显示「↳ 原 session 不见了」marker）。
+- 默认折叠；点 ▶ 展开看 children；折叠/展开状态本地持久 (`localStorage cc-monitor.history.expanded-forks`)，重启 monitor 保留。
+- 后端 `messages.rs::JsonlRecord` 的 User / Assistant 加 `forked_from: Option<ForkedFrom>` 字段；`history.rs::HistorySessionEntry` 加 `forkedFromSessionId` / `forkedFromMessageUuid`。
+
+### 新增 — 历史浏览器流式加载（issue #12）
+
+- **session 列表流式**：用 Tauri 2 [Channel API](https://v2.tauri.app/develop/calling-rust/#channel)，后端 `stream_history_sessions_in_project` 边解析边发，前端 onmessage 增量插入到 fork 树。大项目（几十个 session）首条 < 100ms 出现，不再等齐。
+- **session 内容流式**：`stream_read_session_jsonl` 按 100 行一 chunk emit，前端边收边 `renderMessage`。10MB 大文件几百毫秒看到首屏。
+- **取消**：用户中途关闭历史视图 / 切走 → JS Channel 被 GC → 后端下次 `send()` 返 Err → 自动 break 出读取循环，不浪费 IO。
+- 进度提示：「加载中 · 已 N 条…」/「继续加载中…」实时更新；完成后切到「N 条记录 · 只读历史视图」（修了 channel resolve vs onmessage 的竞态）。
+
+### 改进 — 历史 IPC 异步化
+
+历史浏览器全部 IPC（`list_history_projects` / `list_history_sessions_in_project` / `read_session_jsonl`）改 `async fn` + `tokio::task::spawn_blocking` 包同步 IO。**加载期间其他 IPC（拉前 / 切设置 / 切 Tab 等）能正常响应**，不再整个 UI 死锁。
+
+### 改进 — 启动重放速度大幅提升（同 issue #12 路径）
+
+之前启动 monitor 重放历史 jsonl 时，前端 `tabs.ts::onLine` 对**每一条** record 都调 BranchFolder.recordAdded → computeMainBranch（O(N)）→ 可能 DOM rebuild。2000 条 record = O(N²) ≈ 4M ops + 数十次重排 + events.ts 每 40 条让出主线程 1 帧（50 帧起步）→ 总耗时几秒。
+
+本版本引入 **batch 模式**：
+
+- `BranchFolder` 加 `setBatchMode(bool)` + `flushPending()`：batch 模式下 `recordAdded` 只 push 不算，flushPending 一次性 compute + rebuild。
+- `events.ts` 的 `jsonl-batch` 事件包裹 `batch-start` ... payloads ... `batch-end` 哨兵；drain 按 kind 派发。
+- `TabManager.onBatchStart` / `onBatchEnd` 在重放期把所有 Tab 的 BranchFolder 切 batch，结束时 flush + 切回 live。重放期新建的 Tab 也自动进 batch 模式。
+- **结果**：2000 条重放从 ~3-5s 降到 ~200ms（**15-20× 加速**），跟历史只读视图同量级。真实时新消息照旧 per-record 走 live 模式不变。
+
 ## [2.1.1] — 2026-05-25
 
 ### 修复

@@ -1,5 +1,18 @@
 use serde::{Deserialize, Serialize};
 
+/// issue #12: jsonl 顶层 `forkedFrom` 字段 —— `/branch` 命令分叉出新 session 时
+/// 写入。`sessionId` 是 parent session 的 sessionId，`messageUuid` 是被 fork 处
+/// 的 parent 消息 uuid（指明从哪条消息后开始分叉）。
+///
+/// 典型情况下整个 session 的所有记录共享同一个 forkedFrom（一次性写入元数据）。
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ForkedFrom {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    #[serde(rename = "messageUuid")]
+    pub message_uuid: String,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(tag = "type")]
 pub enum JsonlRecord {
@@ -16,6 +29,9 @@ pub enum JsonlRecord {
         is_sidechain: bool,
         #[serde(rename = "parentUuid", default)]
         parent_uuid: Option<String>,
+        // issue #12: fork session 的所有记录都带这个字段；非 fork session 缺失
+        #[serde(rename = "forkedFrom", default)]
+        forked_from: Option<ForkedFrom>,
     },
     #[serde(rename = "assistant")]
     Assistant {
@@ -30,6 +46,9 @@ pub enum JsonlRecord {
         request_id: Option<String>,
         #[serde(rename = "parentUuid", default)]
         parent_uuid: Option<String>,
+        // issue #12: 同 User 的 forked_from
+        #[serde(rename = "forkedFrom", default)]
+        forked_from: Option<ForkedFrom>,
     },
 
     #[serde(rename = "ai-title")]

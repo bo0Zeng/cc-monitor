@@ -74,6 +74,19 @@ pub struct HistorySessionEntry {
     pub starred: bool,
     pub custom_title: Option<String>,
     pub hidden: bool,
+    // issue #12: fork 关系。若本 session 是从某 parent session 用 /branch 分叉来的，
+    // 这两个字段记 parent session 的 id 和被 fork 处的 messageUuid。前端按 forked_from_session_id
+    // 在项目内建树（深度 = parent 链长度）。非 fork session 两字段都 None。
+    #[serde(
+        rename = "forkedFromSessionId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub forked_from_session_id: Option<String>,
+    #[serde(
+        rename = "forkedFromMessageUuid",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub forked_from_message_uuid: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
@@ -110,160 +123,338 @@ pub struct MetadataPatch {
 
 /// 项目级元数据列表 —— **不读 jsonl 内容**。首次打开历史浏览器时调。
 /// 每个项目仅 1 个 1-line read（拿 cwd） + N 个文件 stat（拿 mtime / count）。
+///
+/// v2.2 (issue #12)：改 async + spawn_blocking，避免 sync IO 阻塞 Tauri IPC
+/// 派发线程 —— 加载期间其他 IPC（拉前 / 切设置）能正常响应。
 #[tauri::command]
-pub fn list_history_projects(
+pub async fn list_history_projects(
     map: tauri::State<'_, Arc<SessionMap>>,
 ) -> Result<Vec<HistoryProject>, String> {
-    let started = std::time::Instant::now();
-    let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-    let projects_dir = claude_dir.join("projects");
-    if !projects_dir.exists() {
-        return Ok(Vec::new());
-    }
-    let metadata = load_metadata().unwrap_or_default();
-
-    let mut out: Vec<HistoryProject> = Vec::new();
-    let proj_iter = match std::fs::read_dir(&projects_dir) {
-        Ok(d) => d,
-        Err(e) => return Err(format!("read {}: {e}", projects_dir.display())),
-    };
-
-    for proj in proj_iter.flatten() {
-        let proj_path = proj.path();
-        if !proj_path.is_dir() {
-            continue;
+    let map = map.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let started = std::time::Instant::now();
+        let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
+        let projects_dir = claude_dir.join("projects");
+        if !projects_dir.exists() {
+            return Ok(Vec::new());
         }
-        if let Some(hp) = analyze_project_dir(&proj_path, &metadata, &map) {
-            out.push(hp);
+        let metadata = load_metadata().unwrap_or_default();
+
+        let mut out: Vec<HistoryProject> = Vec::new();
+        let proj_iter = match std::fs::read_dir(&projects_dir) {
+            Ok(d) => d,
+            Err(e) => return Err(format!("read {}: {e}", projects_dir.display())),
+        };
+
+        for proj in proj_iter.flatten() {
+            let proj_path = proj.path();
+            if !proj_path.is_dir() {
+                continue;
+            }
+            if let Some(hp) = analyze_project_dir(&proj_path, &metadata, &map) {
+                out.push(hp);
+            }
         }
-    }
 
-    // live → starred → last_activity desc（同 UI 顺序，前端可再排但默认就是这个）
-    out.sort_by(|a, b| {
-        b.has_live
-            .cmp(&a.has_live)
-            .then_with(|| (b.starred_count > 0).cmp(&(a.starred_count > 0)))
-            .then(b.last_activity.cmp(&a.last_activity))
-    });
+        // live → starred → last_activity desc（同 UI 顺序，前端可再排但默认就是这个）
+        out.sort_by(|a, b| {
+            b.has_live
+                .cmp(&a.has_live)
+                .then_with(|| (b.starred_count > 0).cmp(&(a.starred_count > 0)))
+                .then(b.last_activity.cmp(&a.last_activity))
+        });
 
-    tracing::info!(
-        "list_history_projects: {} projects in {}ms",
-        out.len(),
-        started.elapsed().as_millis()
-    );
-    Ok(out)
+        tracing::info!(
+            "list_history_projects: {} projects in {}ms",
+            out.len(),
+            started.elapsed().as_millis()
+        );
+        Ok(out)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join: {e}"))?
 }
 
 /// 单个项目内的全部会话详情（全量读 jsonl）。用户展开某项目组时才调。
+///
+/// v2.2 (issue #12)：改 async + spawn_blocking。注意此 IPC 仍是"等齐了一次返回"，
+/// 大项目慢但不阻塞其他 IPC；流式版见 stream_history_sessions_in_project。
 #[tauri::command]
-pub fn list_history_sessions_in_project(
+pub async fn list_history_sessions_in_project(
     project_dir: String,
     map: tauri::State<'_, Arc<SessionMap>>,
 ) -> Result<Vec<HistorySessionEntry>, String> {
-    let started = std::time::Instant::now();
-    let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-    let projects_dir = claude_dir.join("projects");
-    let target = PathBuf::from(&project_dir);
-    if !target.starts_with(&projects_dir) {
-        return Err(format!(
-            "refuse: {} outside {}",
-            target.display(),
-            projects_dir.display()
-        ));
-    }
-    if !target.is_dir() {
-        return Err(format!("{} not a directory", target.display()));
-    }
-    let metadata = load_metadata().unwrap_or_default();
+    let map = map.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let started = std::time::Instant::now();
+        let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
+        let projects_dir = claude_dir.join("projects");
+        let target = PathBuf::from(&project_dir);
+        if !target.starts_with(&projects_dir) {
+            return Err(format!(
+                "refuse: {} outside {}",
+                target.display(),
+                projects_dir.display()
+            ));
+        }
+        if !target.is_dir() {
+            return Err(format!("{} not a directory", target.display()));
+        }
+        let metadata = load_metadata().unwrap_or_default();
 
-    let mut out: Vec<HistorySessionEntry> = Vec::new();
-    let files = match std::fs::read_dir(&target) {
-        Ok(d) => d,
-        Err(e) => return Err(format!("read {}: {e}", target.display())),
-    };
-    for f in files.flatten() {
-        let p = f.path();
-        if p.extension().map_or(false, |e| e == "jsonl") {
-            if let Some(entry) = analyze_jsonl(&p, &metadata, &map) {
-                out.push(entry);
+        let mut out: Vec<HistorySessionEntry> = Vec::new();
+        let files = match std::fs::read_dir(&target) {
+            Ok(d) => d,
+            Err(e) => return Err(format!("read {}: {e}", target.display())),
+        };
+        for f in files.flatten() {
+            let p = f.path();
+            if p.extension().map_or(false, |e| e == "jsonl") {
+                if let Some(entry) = analyze_jsonl(&p, &metadata, &map) {
+                    out.push(entry);
+                }
             }
         }
-    }
-    out.sort_by(|a, b| {
-        b.starred
-            .cmp(&a.starred)
-            .then(b.updated_at.cmp(&a.updated_at))
-    });
-    tracing::info!(
-        "list_history_sessions_in_project({}): {} sessions in {}ms",
-        target.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
-        out.len(),
-        started.elapsed().as_millis()
-    );
-    Ok(out)
+        out.sort_by(|a, b| {
+            b.starred
+                .cmp(&a.starred)
+                .then(b.updated_at.cmp(&a.updated_at))
+        });
+        tracing::info!(
+            "list_history_sessions_in_project({}): {} sessions in {}ms",
+            target.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
+            out.len(),
+            started.elapsed().as_millis()
+        );
+        Ok(out)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join: {e}"))?
+}
+
+/// issue #12: 流式版 `list_history_sessions_in_project`。
+///
+/// 用 Tauri 2 `Channel<HistorySessionEntry>` 边解析边发，前端可逐条增量渲染。
+/// 收益：大项目（几十个 session × 几 MB jsonl）首条 < 100ms 出现，不再"等齐"。
+///
+/// 取消：前端 drop channel 引用时 `on_entry.send()` 返 Err → break loop。
+/// 因为本 IPC 在 spawn_blocking 里跑同步 IO，立刻终止下次 send 即可释放资源。
+///
+/// 返回总计 emit 的 entry 数（前端可拿来对账 / 显示进度终值）。
+#[tauri::command]
+pub async fn stream_history_sessions_in_project(
+    project_dir: String,
+    on_entry: tauri::ipc::Channel<HistorySessionEntry>,
+    map: tauri::State<'_, Arc<SessionMap>>,
+) -> Result<u32, String> {
+    let map = map.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let started = std::time::Instant::now();
+        let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
+        let projects_dir = claude_dir.join("projects");
+        let target = PathBuf::from(&project_dir);
+        if !target.starts_with(&projects_dir) {
+            return Err(format!(
+                "refuse: {} outside {}",
+                target.display(),
+                projects_dir.display()
+            ));
+        }
+        if !target.is_dir() {
+            return Err(format!("{} not a directory", target.display()));
+        }
+        let metadata = load_metadata().unwrap_or_default();
+
+        let mut count = 0u32;
+        let files = match std::fs::read_dir(&target) {
+            Ok(d) => d,
+            Err(e) => return Err(format!("read {}: {e}", target.display())),
+        };
+        for f in files.flatten() {
+            let p = f.path();
+            if p.extension().is_some_and(|e| e == "jsonl") {
+                if let Some(entry) = analyze_jsonl(&p, &metadata, &map) {
+                    if on_entry.send(entry).is_err() {
+                        // 前端 drop channel → 取消
+                        tracing::info!(
+                            "stream_history_sessions_in_project({}): cancelled at {} entries",
+                            target.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
+                            count
+                        );
+                        return Ok(count);
+                    }
+                    count += 1;
+                }
+            }
+        }
+        tracing::info!(
+            "stream_history_sessions_in_project({}): {} sessions in {}ms",
+            target.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
+            count,
+            started.elapsed().as_millis()
+        );
+        Ok(count)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join: {e}"))?
 }
 
 /// 把一个 jsonl 文件全量读出为 `JsonlLinePayload` 列表，用于历史查看器渲染。
 /// 复用前端 `renderMessage` 那一套，无需为只读视图另开渲染管线。
+///
+/// v2.2 (issue #12)：改 async + spawn_blocking。流式版（边读边 emit chunk）
+/// 见 stream_read_session_jsonl —— 大文件下用户更快看到首屏。
 #[tauri::command]
-pub fn read_session_jsonl(
+pub async fn read_session_jsonl(
     jsonl_path: String,
 ) -> Result<Vec<crate::bridge::JsonlLinePayload>, String> {
-    let started = std::time::Instant::now();
-    let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-    let projects_dir = claude_dir.join("projects");
-    let target = PathBuf::from(&jsonl_path);
-    if !target.starts_with(&projects_dir) {
-        return Err(format!(
-            "refuse: {} outside {}",
-            target.display(),
-            projects_dir.display()
-        ));
-    }
-    if target.extension().map_or(true, |e| e != "jsonl") {
-        return Err("not a .jsonl file".into());
-    }
-
-    let session_id = target
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_string();
-    let file = File::open(&target).map_err(|e| format!("open {}: {e}", target.display()))?;
-    let reader = BufReader::new(file);
-    let mut out: Vec<crate::bridge::JsonlLinePayload> = Vec::new();
-    let mut cwd_seen: Option<String> = None;
-    let path_str = target.to_string_lossy().into_owned();
-
-    for line in reader.lines().map_while(Result::ok) {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
+    tokio::task::spawn_blocking(move || {
+        let started = std::time::Instant::now();
+        let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
+        let projects_dir = claude_dir.join("projects");
+        let target = PathBuf::from(&jsonl_path);
+        if !target.starts_with(&projects_dir) {
+            return Err(format!(
+                "refuse: {} outside {}",
+                target.display(),
+                projects_dir.display()
+            ));
         }
-        let rec = match parse_line(trimmed) {
-            Ok(Some(r)) if r.is_displayable() => r,
-            _ => continue,
-        };
-        // 第一条 user 的 cwd 锁住，后续记录沿用，与 lib.rs 的实时流一致
-        if let JsonlRecord::User { cwd, .. } = &rec {
-            if cwd_seen.is_none() {
-                cwd_seen = cwd.clone();
+        if target.extension().map_or(true, |e| e != "jsonl") {
+            return Err("not a .jsonl file".into());
+        }
+
+        let session_id = target
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        let file = File::open(&target).map_err(|e| format!("open {}: {e}", target.display()))?;
+        let reader = BufReader::new(file);
+        let mut out: Vec<crate::bridge::JsonlLinePayload> = Vec::new();
+        let mut cwd_seen: Option<String> = None;
+        let path_str = target.to_string_lossy().into_owned();
+
+        for line in reader.lines().map_while(Result::ok) {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let rec = match parse_line(trimmed) {
+                Ok(Some(r)) if r.is_displayable() => r,
+                _ => continue,
+            };
+            // 第一条 user 的 cwd 锁住，后续记录沿用，与 lib.rs 的实时流一致
+            if let JsonlRecord::User { cwd, .. } = &rec {
+                if cwd_seen.is_none() {
+                    cwd_seen = cwd.clone();
+                }
+            }
+            out.push(crate::bridge::JsonlLinePayload {
+                session_id: session_id.clone(),
+                cwd: cwd_seen.clone(),
+                path: path_str.clone(),
+                message: rec,
+            });
+        }
+        tracing::info!(
+            "read_session_jsonl({}): {} records in {}ms",
+            session_id,
+            out.len(),
+            started.elapsed().as_millis()
+        );
+        Ok(out)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join: {e}"))?
+}
+
+/// issue #12: 流式版 `read_session_jsonl`。
+///
+/// 按 100 行一 chunk 边读边发，前端可在 ~500ms 内开始渲染首屏（即使整 jsonl
+/// 上千条 / 10MB+）。
+///
+/// 取消：前端 drop channel 时 send 返 Err → break。
+#[tauri::command]
+pub async fn stream_read_session_jsonl(
+    jsonl_path: String,
+    on_chunk: tauri::ipc::Channel<Vec<crate::bridge::JsonlLinePayload>>,
+) -> Result<u32, String> {
+    const CHUNK_SIZE: usize = 100;
+    tokio::task::spawn_blocking(move || {
+        let started = std::time::Instant::now();
+        let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
+        let projects_dir = claude_dir.join("projects");
+        let target = PathBuf::from(&jsonl_path);
+        if !target.starts_with(&projects_dir) {
+            return Err(format!(
+                "refuse: {} outside {}",
+                target.display(),
+                projects_dir.display()
+            ));
+        }
+        if target.extension().is_none_or(|e| e != "jsonl") {
+            return Err("not a .jsonl file".into());
+        }
+
+        let session_id = target
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        let file = File::open(&target).map_err(|e| format!("open {}: {e}", target.display()))?;
+        let reader = BufReader::new(file);
+        let path_str = target.to_string_lossy().into_owned();
+        let mut cwd_seen: Option<String> = None;
+        let mut buf: Vec<crate::bridge::JsonlLinePayload> = Vec::with_capacity(CHUNK_SIZE);
+        let mut total = 0u32;
+
+        for line in reader.lines().map_while(Result::ok) {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let rec = match parse_line(trimmed) {
+                Ok(Some(r)) if r.is_displayable() => r,
+                _ => continue,
+            };
+            if let JsonlRecord::User { cwd, .. } = &rec {
+                if cwd_seen.is_none() {
+                    cwd_seen = cwd.clone();
+                }
+            }
+            buf.push(crate::bridge::JsonlLinePayload {
+                session_id: session_id.clone(),
+                cwd: cwd_seen.clone(),
+                path: path_str.clone(),
+                message: rec,
+            });
+            total += 1;
+            if buf.len() >= CHUNK_SIZE {
+                let chunk = std::mem::replace(&mut buf, Vec::with_capacity(CHUNK_SIZE));
+                if on_chunk.send(chunk).is_err() {
+                    tracing::info!(
+                        "stream_read_session_jsonl({}): cancelled at {} records",
+                        session_id,
+                        total
+                    );
+                    return Ok(total);
+                }
             }
         }
-        out.push(crate::bridge::JsonlLinePayload {
-            session_id: session_id.clone(),
-            cwd: cwd_seen.clone(),
-            path: path_str.clone(),
-            message: rec,
-        });
-    }
-    tracing::info!(
-        "read_session_jsonl({}): {} records in {}ms",
-        session_id,
-        out.len(),
-        started.elapsed().as_millis()
-    );
-    Ok(out)
+        if !buf.is_empty() {
+            let _ = on_chunk.send(buf);
+        }
+        tracing::info!(
+            "stream_read_session_jsonl({}): {} records in {}ms",
+            session_id,
+            total,
+            started.elapsed().as_millis()
+        );
+        Ok(total)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join: {e}"))?
 }
 
 #[tauri::command]
@@ -497,6 +688,9 @@ fn analyze_jsonl(
     let mut first_user_excerpt = String::new();
     let mut started_at: i64 = 0;
     let mut message_count: u32 = 0;
+    // issue #12: 第一条带 forkedFrom 的 user/assistant 就锁住（典型整 session 共享）
+    let mut forked_from_session_id: Option<String> = None;
+    let mut forked_from_message_uuid: Option<String> = None;
 
     let reader = BufReader::new(file);
     for line in reader.lines().map_while(Result::ok) {
@@ -513,6 +707,7 @@ fn analyze_jsonl(
                 cwd: c,
                 timestamp,
                 message,
+                forked_from,
                 ..
             } => {
                 if cwd.is_none() {
@@ -529,11 +724,27 @@ fn analyze_jsonl(
                         first_user_excerpt = truncate_chars(&text, 120);
                     }
                 }
+                if forked_from_session_id.is_none() {
+                    if let Some(fk) = forked_from {
+                        forked_from_session_id = Some(fk.session_id.clone());
+                        forked_from_message_uuid = Some(fk.message_uuid.clone());
+                    }
+                }
                 message_count += 1;
             }
-            JsonlRecord::Assistant { timestamp, .. } => {
+            JsonlRecord::Assistant {
+                timestamp,
+                forked_from,
+                ..
+            } => {
                 if started_at == 0 {
                     started_at = iso_to_ms(timestamp);
+                }
+                if forked_from_session_id.is_none() {
+                    if let Some(fk) = forked_from {
+                        forked_from_session_id = Some(fk.session_id.clone());
+                        forked_from_message_uuid = Some(fk.message_uuid.clone());
+                    }
                 }
                 message_count += 1;
             }
@@ -580,6 +791,8 @@ fn analyze_jsonl(
         starred: entry_meta.starred,
         custom_title: entry_meta.custom_title.clone(),
         hidden: entry_meta.hidden,
+        forked_from_session_id,
+        forked_from_message_uuid,
     })
 }
 

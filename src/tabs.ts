@@ -78,6 +78,11 @@ export class TabManager {
   /** sessionId → button DOM refs，避免 refreshTabBar 每次重建整个 bar */
   private tabButtons = new Map<string, TabButtonRefs>();
   private activeId: string | null = null;
+  /**
+   * v2.2 (issue #12): 当前是否在 batch 模式（启动重放 jsonl-batch 期间）。
+   * batch 模式中 ensureTab 创建的新 Tab 也要把 BranchFolder 设成 batch。
+   */
+  private inBatch = false;
   // 早期版本曾用 user lock（用户主动点 Tab 后 5s 内拒 focus-switch）防自动焦点撞回去，
   // 实测 5s 太长导致用户切焦点窗口后 Tab 不跟着切（看上去焦点同步失效）。砍掉：用户
   // 切焦点窗口本身就是明确意图，应该尊重。
@@ -98,6 +103,30 @@ export class TabManager {
       else live += 1;
     }
     this.onTabsChanged({ total: this.tabs.size, live, archived });
+  }
+
+  /**
+   * v2.2 (issue #12): 启动重放（jsonl-batch）开始时调一次。所有现有 Tab 的
+   * BranchFolder 切到 batch 模式 —— 后续 recordAdded 只 push 不算 mainBranch。
+   * 重放期 ensureTab 新创建的 Tab 也会自动进 batch（看 this.inBatch）。
+   */
+  onBatchStart(): void {
+    this.inBatch = true;
+    for (const t of this.tabs.values()) {
+      t.branchFolder.setBatchMode(true);
+    }
+  }
+
+  /**
+   * v2.2 (issue #12): 重放批次完结。各 Tab 调 flushPending 一次性算 + rebuild，
+   * 然后切回 live 模式。后续真实时新消息按现有 per-record 路径走。
+   */
+  onBatchEnd(): void {
+    this.inBatch = false;
+    for (const t of this.tabs.values()) {
+      t.branchFolder.flushPending();
+      t.branchFolder.setBatchMode(false);
+    }
   }
 
   /** 收到一行 JSONL 时调用 */
@@ -186,6 +215,10 @@ export class TabManager {
     this.streamRootEl.appendChild(streamEl);
 
     const stream = new MessageStream(streamEl);
+    const branchFolder = new BranchFolder(stream.contentElement);
+    // v2.2 issue #12: 重放期创建的新 Tab 也进 batch 模式，避免每条 record 都
+    // 触发 O(N) computeMainBranch。批结束时 onBatchEnd 会统一 flush。
+    if (this.inBatch) branchFolder.setBatchMode(true);
     tab = {
       sessionId,
       title,
@@ -199,8 +232,7 @@ export class TabManager {
       pendingToolGroup: null,
       toolUseNames: new Map(),
       toolUseElements: new Map(),
-      // BranchFolder 扫的是真实容器（.stream-content），不是外层 scroll container
-      branchFolder: new BranchFolder(stream.contentElement),
+      branchFolder,
     };
     this.tabs.set(sessionId, tab);
     this.orderedIds.push(sessionId);

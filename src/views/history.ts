@@ -19,7 +19,7 @@
  *  - delete 从缓存移除条目，并 -1 project.session_count
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, Channel } from "@tauri-apps/api/core";
 import { SessionViewer } from "./session-viewer";
 
 /** 项目级元数据，从 `list_history_projects` 拿。不含 session 内容。 */
@@ -50,6 +50,21 @@ interface HistorySessionEntry {
   starred: boolean;
   custom_title: string | null;
   hidden: boolean;
+  /** issue #12: 若是 /branch fork 出来的，记 parent session id（在本项目内才能建树） */
+  forkedFromSessionId?: string;
+  /** issue #12: fork 处的 parent 消息 uuid（v1 树渲染不显示，将来可点击跳到父消息） */
+  forkedFromMessageUuid?: string;
+}
+
+/**
+ * issue #12: session tree node。child 关系由 forkedFromSessionId 建。
+ * 项目内独立树（跨项目 fork 不连接）。parent 不在本项目时 child 当 root + marker。
+ */
+interface SessionTreeNode {
+  entry: HistorySessionEntry;
+  children: SessionTreeNode[];
+  /** 1 = 本项目里找不到 parent（跨项目 fork / parent 已物理删除）→ root 上加 marker */
+  orphan: boolean;
 }
 
 interface EntryMetadata {
@@ -96,6 +111,11 @@ export class HistoryView {
   private viewer: SessionViewer | null = null;
   /** project_dir → 用户展开状态。默认折叠；用户主动展开的记下来 */
   private expandedProjects = new Set<string>();
+  /**
+   * issue #12: fork 树展开状态。session_id ∈ 集合 = 该 session 的 children 展开。
+   * **默认折叠** —— 第一次见到 fork 父节点时它的 children 不显示。从 localStorage 恢复。
+   */
+  private expandedForks: Set<string> = loadExpandedForks();
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -195,23 +215,48 @@ export class HistoryView {
     }
   }
 
-  /** 懒加载某个项目下的会话详情。重复调返回同一个 Promise。 */
+  /**
+   * 懒加载某个项目下的会话详情。重复调返回同一个 Promise。
+   *
+   * issue #12: 改用流式 IPC `stream_history_sessions_in_project` + Channel —— 后端
+   * 边解析边发，前端 rAF 节流 re-render。大项目（几十个 session）首条 < 100ms 出现，
+   * 不再"等齐"。完成（invoke resolve）即所有 entry 都在 cache 里。
+   *
+   * 取消：当 HistoryView 关闭 / 缓存 clear 时 channel 失去引用 → 后端 send 返 Err
+   * → 后端 break loop。无需显式 cancel IPC。
+   */
   private loadProjectSessions(projectDir: string): Promise<void> {
     const inFlight = this.loadingProjects.get(projectDir);
     if (inFlight) return inFlight;
     if (this.sessionCache.has(projectDir)) return Promise.resolve();
 
+    const entries: HistorySessionEntry[] = [];
+    this.sessionCache.set(projectDir, entries);
+
+    const channel = new Channel<HistorySessionEntry>();
+    let rafPending = false;
+    channel.onmessage = (entry) => {
+      entries.push(entry);
+      if (rafPending) return;
+      rafPending = true;
+      requestAnimationFrame(() => {
+        rafPending = false;
+        // 重画一次列表 —— 当前项目已在 expandedProjects 时其 body 会跟着重画
+        if (this.isOpen) this.renderList();
+      });
+    };
+
     const p = (async () => {
       try {
-        const items = await invoke<HistorySessionEntry[]>(
-          "list_history_sessions_in_project",
-          { projectDir },
-        );
-        this.sessionCache.set(projectDir, items);
+        await invoke("stream_history_sessions_in_project", {
+          projectDir,
+          onEntry: channel,
+        });
+        // 完成后再画一次（兜底最后一帧没触发 rAF 的边界）
+        if (this.isOpen) this.renderList();
       } catch (e) {
-        console.warn(`load sessions in ${projectDir} failed:`, e);
-        // 失败也写空数组，避免反复重试；用户可点"刷新"清缓存重来
-        this.sessionCache.set(projectDir, []);
+        console.warn(`stream sessions in ${projectDir} failed:`, e);
+        // 失败时保留已收集的 entries（部分流完的也算）
       } finally {
         this.loadingProjects.delete(projectDir);
       }
@@ -420,29 +465,53 @@ export class HistoryView {
     const renderBody = () => {
       body.replaceChildren();
       const cached = this.sessionCache.get(proj.project_dir);
+      const isLoading = this.loadingProjects.has(proj.project_dir);
       if (cached === undefined) {
-        if (this.loadingProjects.has(proj.project_dir)) {
-          body.appendChild(makeStatusRow("加载中…"));
-        } else {
-          body.appendChild(makeStatusRow("点击加载…"));
-        }
+        // 还没开始加载（用户没展开过）
+        body.appendChild(makeStatusRow(isLoading ? "加载中…" : "点击加载…"));
         return;
       }
       const visible = cached
         .filter((e) => (this.showHidden ? true : !e.hidden))
         .filter((e) => this.matchSession(e));
       if (visible.length === 0) {
-        body.appendChild(
-          makeStatusRow(
-            cached.length === 0
-              ? "此项目下无会话（可能已全部物理删除）"
-              : "无匹配会话",
-          ),
-        );
+        // 流式加载初期 cache 可能是 [] —— 此时显示 "加载中" 而非 "无会话"
+        if (isLoading) {
+          body.appendChild(makeStatusRow("加载中…"));
+        } else {
+          body.appendChild(
+            makeStatusRow(
+              cached.length === 0
+                ? "此项目下无会话（可能已全部物理删除）"
+                : "无匹配会话",
+            ),
+          );
+        }
         return;
       }
-      const sorted = this.applySort(visible);
-      for (const e of sorted) body.appendChild(this.buildEntryRow(e, proj));
+      // issue #12: 项目内建 fork 树（child 缩进显示在 parent 下，可折叠）
+      const roots = buildSessionTree(visible);
+      this.sortTree(roots);
+      // 迭代 DFS pre-order 输出（INVARIANT § 17: 不递归遍历用户数据）
+      const stack: Array<{ node: SessionTreeNode; depth: number }> = [];
+      for (let i = roots.length - 1; i >= 0; i--) {
+        stack.push({ node: roots[i], depth: 0 });
+      }
+      while (stack.length > 0) {
+        const { node, depth } = stack.pop()!;
+        body.appendChild(
+          this.buildEntryRow(node.entry, proj, depth, node.children.length, node.orphan),
+        );
+        if (node.children.length > 0 && this.expandedForks.has(node.entry.session_id)) {
+          for (let i = node.children.length - 1; i >= 0; i--) {
+            stack.push({ node: node.children[i], depth: depth + 1 });
+          }
+        }
+      }
+      // 流式加载未完成时，在已渲染条目下方加 "继续加载中…" 提示
+      if (isLoading) {
+        body.appendChild(makeStatusRow("继续加载中…"));
+      }
     };
 
     // 跟踪展开状态 + 触发懒加载
@@ -570,24 +639,35 @@ export class HistoryView {
     return hay.includes(this.filter);
   }
 
-  private applySort(items: HistorySessionEntry[]): HistorySessionEntry[] {
-    const arr = items.slice();
+  /**
+   * issue #12: 按当前 sort 模式排序整棵 fork 树。先排 roots，再迭代排每个 node 的 children。
+   */
+  private sortTree(roots: SessionTreeNode[]): void {
+    const cmp = this.entryComparator();
+    roots.sort(cmp);
+    // 迭代遍历所有节点排序它们的 children（INVARIANT § 17: 不递归）
+    const stack: SessionTreeNode[] = roots.slice();
+    while (stack.length > 0) {
+      const n = stack.pop()!;
+      if (n.children.length > 0) {
+        n.children.sort(cmp);
+        for (const c of n.children) stack.push(c);
+      }
+    }
+  }
+
+  private entryComparator(): (a: SessionTreeNode, b: SessionTreeNode) => number {
     switch (this.sort) {
       case "started_desc":
-        arr.sort(
-          (a, b) =>
-            Number(b.starred) - Number(a.starred) || b.started_at - a.started_at,
-        );
-        break;
+        return (a, b) =>
+          Number(b.entry.starred) - Number(a.entry.starred) ||
+          b.entry.started_at - a.entry.started_at;
       case "updated_desc":
       default:
-        arr.sort(
-          (a, b) =>
-            Number(b.starred) - Number(a.starred) || b.updated_at - a.updated_at,
-        );
-        break;
+        return (a, b) =>
+          Number(b.entry.starred) - Number(a.entry.starred) ||
+          b.entry.updated_at - a.entry.updated_at;
     }
-    return arr;
   }
 
   // === 会话行 ===
@@ -595,17 +675,62 @@ export class HistoryView {
   private buildEntryRow(
     e: HistorySessionEntry,
     proj: HistoryProject,
+    depth: number = 0,
+    childCount: number = 0,
+    orphan: boolean = false,
   ): HTMLElement {
     const row = document.createElement("div");
     row.className = "history-entry";
     if (e.hidden) row.classList.add("is-hidden-entry");
     if (e.is_live) row.classList.add("is-live-entry");
+    if (depth > 0) {
+      row.classList.add("is-fork-child");
+      row.style.setProperty("--fork-depth", String(depth));
+    }
 
     row.addEventListener("click", (ev) => {
       const target = ev.target as HTMLElement | null;
-      if (target?.closest(".history-star, .history-action")) return;
+      if (target?.closest(".history-star, .history-action, .history-fork-toggle"))
+        return;
       this.openViewer(e);
     });
+
+    // issue #12: fork 树展开 / 折叠按钮（只在有 children 时出现）
+    if (childCount > 0) {
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "history-fork-toggle";
+      const expanded = this.expandedForks.has(e.session_id);
+      toggle.textContent = expanded ? "▼" : "▶";
+      toggle.title = expanded
+        ? `折叠 ${childCount} 个 fork 子会话`
+        : `展开 ${childCount} 个 fork 子会话`;
+      toggle.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (this.expandedForks.has(e.session_id)) {
+          this.expandedForks.delete(e.session_id);
+        } else {
+          this.expandedForks.add(e.session_id);
+        }
+        saveExpandedForks(this.expandedForks);
+        this.renderList();
+      });
+      row.appendChild(toggle);
+    } else if (depth > 0) {
+      // child 行没有 toggle 但需要占位保持对齐
+      const spacer = document.createElement("span");
+      spacer.className = "history-fork-toggle history-fork-spacer";
+      row.appendChild(spacer);
+    }
+
+    // issue #12: orphan 标记（fork 自不存在的 parent → "↳ 原 session 不见了"）
+    if (orphan && e.forkedFromSessionId) {
+      const orphanMark = document.createElement("span");
+      orphanMark.className = "history-fork-orphan";
+      orphanMark.textContent = "↳";
+      orphanMark.title = `本会话从 ${e.forkedFromSessionId.slice(0, 8)} fork 而来，但原 session 已不在本项目（可能跨项目 fork 或已物理删除）`;
+      row.appendChild(orphanMark);
+    }
 
     const starBtn = document.createElement("button");
     starBtn.type = "button";
@@ -801,6 +926,60 @@ function makeStatusRow(text: string): HTMLElement {
   el.className = "history-group-status";
   el.textContent = text;
   return el;
+}
+
+// === issue #12: fork 树构建 + 持久化 ===
+
+const LS_EXPANDED_FORKS = "cc-monitor.history.expanded-forks";
+
+/**
+ * 按 forkedFromSessionId 在项目内建 tree。
+ *
+ * 算法（O(N) 迭代，遵 INVARIANT § 17）：
+ *  1. 一遍 byId 索引
+ *  2. 二遍把每个 entry 挂到 parent.children（parent 存在）或 roots（parent 不存在）
+ *  3. parent 存在但不在本项目集（跨项目 fork / parent 已物理删除）→ 当 root + orphan=true
+ */
+function buildSessionTree(entries: HistorySessionEntry[]): SessionTreeNode[] {
+  const byId = new Map<string, SessionTreeNode>();
+  for (const e of entries) {
+    byId.set(e.session_id, { entry: e, children: [], orphan: false });
+  }
+  const roots: SessionTreeNode[] = [];
+  for (const node of byId.values()) {
+    const parentId = node.entry.forkedFromSessionId;
+    if (parentId) {
+      const parent = byId.get(parentId);
+      if (parent) {
+        parent.children.push(node);
+        continue;
+      }
+      // parent 不在本项目集 → 孤儿，挂顶层加 marker
+      node.orphan = true;
+    }
+    roots.push(node);
+  }
+  return roots;
+}
+
+function loadExpandedForks(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LS_EXPANDED_FORKS);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr)) return new Set(arr.filter((x) => typeof x === "string"));
+  } catch (e) {
+    console.warn("[history] loadExpandedForks failed:", e);
+  }
+  return new Set();
+}
+
+function saveExpandedForks(s: Set<string>): void {
+  try {
+    localStorage.setItem(LS_EXPANDED_FORKS, JSON.stringify(Array.from(s)));
+  } catch (e) {
+    console.warn("[history] saveExpandedForks failed:", e);
+  }
 }
 
 function formatTime(ms: number): string {

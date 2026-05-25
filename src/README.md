@@ -22,11 +22,11 @@ index.html  ─> /src/main.ts (defer)
 | 文件 | 角色 | 关键 API |
 |---|---|---|
 | **main.ts** | 启动 + 全局快捷键 + 错误捕获 + HMR 强制 reload | DOMContentLoaded handler |
-| **events.ts** | 订阅后端 `jsonl-line` / `jsonl-batch` / `session-ended`，**批量调度让出主线程**（防 replay 卡死） | `bindEvents({onLine, onSessionEnded})` |
-| **tabs.ts** | TabManager 状态机：Tab 生命周期（live / archived）+ 工具组聚合 + BranchFolder 接入 (issue #8) | `onLine() / archiveTab() / closeTab() / cycleActive()` |
+| **events.ts** | 订阅后端 `jsonl-line` / `jsonl-batch` / `session-ended`，**批量调度让出主线程**；v2.2 (issue #12) `jsonl-batch` 包 `batch-start`/`batch-end` 哨兵让 TabManager 切 BranchFolder batch 模式 | `bindEvents({onLine, onSessionEnded, onBatchStart, onBatchEnd})` |
+| **tabs.ts** | TabManager 状态机：Tab 生命周期（live / archived）+ 工具组聚合 + BranchFolder 接入 (issue #8) + v2.2 batch mode 切换（重放期 setBatchMode(true)，结束 flushPending + 切 live） | `onLine() / onBatchStart() / onBatchEnd() / archiveTab() / closeTab() / cycleActive()` |
 | **stream.ts** | 单 Tab 的消息流容器，ResizeObserver 自动贴底滚动；`contentElement` 暴露真实卡片容器给 BranchFolder | `MessageStream.append() / scrollToBottom() / dispose()` |
 | **branching.ts** (issue #8) | parentUuid 拓扑分析：识别 ESC 回退主线 vs 被回退分支。`computeMainBranch` 算法 = "只在 fork 点选 latest-descendant 赢家"，无 fork 即全 on-main（多 root / 单链 / /compact 不误折叠） | `computeMainBranch(records) / extractBranchRecord(rec)` |
-| **branch-fold.ts** (issue #8) | DOM 重排：把连续的 off-main 卡片包到 `.branch-fold-wrap`，header「已被 ESC 回退（含 N 条）」；策略 = unwrap-then-rewrap 全量重建（增量太脆） | `new BranchFolder(container).recordAdded(rec) / setRecordsAndRebuild(records)` |
+| **branch-fold.ts** (issue #8) | DOM 重排：把连续的 off-main 卡片包到 `.branch-fold-wrap`，header「已被 ESC 回退（含 N 条）」；策略 = unwrap-then-rewrap 全量重建。v2.2 加 batch mode (`setBatchMode/flushPending`)，重放期延后到 batch 结束才算一次 mainBranch，省 O(N²) | `new BranchFolder(container).recordAdded / setRecordsAndRebuild / setBatchMode / flushPending` |
 | **cards/index.ts** | renderMessage 主分发：user 气泡 / assistant 卡 / 工具组合并 / tool_result 注入到 tool_use | `renderMessage(rec, ctx) → RenderResult` |
 | **cards/slash.ts** | `/` 命令紧凑卡 | `parseSlashCommand / buildSlashCommandCard` |
 | **cards/compact.ts** | `/compact` 续接消息折叠 | `isCompactSummary / buildCompactSummaryCard` |
@@ -41,8 +41,8 @@ index.html  ─> /src/main.ts (defer)
 | **settings/collapsible-group.ts** (issue #7) | 通用可折叠分组，localStorage 持久 + grid-rows 平滑动画 | `new CollapsibleGroup({id, title, defaultCollapsed}).appendChild(...)` |
 | **settings/diagnostics-section.ts** (v2.0.0+) | 设置面板「诊断」区：log_enabled toggle / log_level select / error_toast toggle / log 路径 / [打开 log/dir]；支持 `{ headless: true }` 给 CollapsibleGroup 复用 | `DiagnosticsSection.element` |
 | **error-toast.ts** (v2.0.0+) | listen `monitor-error` 事件，右下角垂直堆叠红色 toast，点击直接打开 log 文件 | `bindErrorToast()` |
-| **views/history.ts** | 历史浏览器（项目分组 + 两级懒加载 + 增删改） | `HistoryView.open() / handleEscape()` |
-| **views/session-viewer.ts** | 只读消息查看器（点击历史条目进入） | `SessionViewer.load(opts) / dispose()` |
+| **views/history.ts** | 历史浏览器（项目分组 + 两级懒加载 + 增删改 + v2.2 fork 树形 + 流式 session 列表） | `HistoryView.open() / handleEscape()` |
+| **views/session-viewer.ts** | 只读消息查看器（点击历史条目进入）；v2.2 改用 `stream_read_session_jsonl` + Channel 边收边渲染 | `SessionViewer.load(opts) / dispose()` |
 | **styles.css** | 全部样式 + token 系统 | — |
 
 ## 关键数据流
