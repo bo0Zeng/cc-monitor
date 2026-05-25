@@ -165,7 +165,7 @@ v1.7.9 及更早版本在用户**已有内容的 PowerShell profile** 上点 [�
 
 `tracing::warn!("bind: parse ... failed")` 在 GUI app（windows-subsystem = "windows"）
 里**用户看不到**——v1.7.0 起这个 warn 一直在打，但没人能看到。下次必须给 GUI 加
-本地 log 文件或者 IPC log 命令。**已加入** `doc/CHECKLIST.md` § 4 发版必跑项。
+本地 log 文件或者 IPC log 命令。**已加入** `doc/CONTRIBUTING.md` § 1.5 发版前 checklist。
 
 ## [1.7.7] — 2026-05-24
 
