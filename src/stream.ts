@@ -82,4 +82,12 @@ export class MessageStream {
   get element(): HTMLElement {
     return this.scrollEl;
   }
+
+  /**
+   * issue #8：BranchFolder 需要扫卡片所在的真实容器（.stream-content），不是
+   * 外层 scroll container；否则 querySelector :scope > .branch-fold-wrap 找不到。
+   */
+  get contentElement(): HTMLElement {
+    return this.contentEl;
+  }
 }

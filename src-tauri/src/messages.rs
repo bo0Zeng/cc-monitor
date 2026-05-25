@@ -50,10 +50,25 @@ pub enum JsonlRecord {
         timestamp: String,
         #[serde(rename = "sessionId", default)]
         session_id: Option<String>,
+        // issue #8: system 记录大多有 uuid+parentUuid 并参与 jsonl 链 ——
+        // 前端 BranchFolder 需要拿到它才能完整算 ESC 回退主线。Option 兜没有这些字段的少数情况。
+        #[serde(default)]
+        uuid: Option<String>,
+        #[serde(rename = "parentUuid", default)]
+        parent_uuid: Option<String>,
     },
 
+    // issue #8: attachment 不渲染卡片，但有 uuid+parentUuid 并夹在 user→assistant
+    // 之间（实测 5% 的 user/assistant 直接 parent 是 attachment）。如果不把它
+    // emit 给前端，前端的 parent 链就断在 attachment 处 → 主线检测全部失败 →
+    // 整段消息被错误折叠到"已被 ESC 回退"。所以本变体含完整字段且进 is_displayable()。
     #[serde(rename = "attachment")]
-    Attachment {},
+    Attachment {
+        uuid: String,
+        timestamp: String,
+        #[serde(rename = "parentUuid", default)]
+        parent_uuid: Option<String>,
+    },
     #[serde(rename = "permission-mode")]
     PermissionMode {},
     #[serde(rename = "last-prompt")]
@@ -116,10 +131,21 @@ pub enum ContentBlock {
 }
 
 impl JsonlRecord {
+    /// 是否应该被 emit 到前端。
+    ///
+    /// 两类记录都返回 true：
+    /// 1. 渲染目标：User / Assistant / AiTitle / System —— 前端会建卡 / 改标题等
+    /// 2. 仅链路用：Attachment —— 不渲染，但 issue #8 ESC 回退主线检测
+    ///    需要完整 uuid+parentUuid 链，attachment 夹在 user/assistant 之间，
+    ///    不 emit 会让前端 parent 链断成碎片 → 主线全错 → 全部消息被错折叠
     pub fn is_displayable(&self) -> bool {
         matches!(
             self,
-            Self::User { .. } | Self::Assistant { .. } | Self::AiTitle { .. } | Self::System { .. }
+            Self::User { .. }
+                | Self::Assistant { .. }
+                | Self::AiTitle { .. }
+                | Self::System { .. }
+                | Self::Attachment { .. }
         )
     }
 }

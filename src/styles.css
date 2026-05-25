@@ -1090,6 +1090,78 @@ html, body {
   margin-bottom: 8px;
 }
 
+/* issue #8: ESC 回退分支折叠。
+   被回退的连续卡片 wrap 到 .branch-fold-wrap，header 显示"已被 ESC 回退（含 N 条）"。
+   默认折叠；点击 header 展开。展开动画用 grid-template-rows 0fr↔1fr 技巧。 */
+.branch-fold-wrap {
+  margin: 8px 0;
+  padding: 0;
+  border-left: 2px solid var(--border-strong);
+  background: linear-gradient(to right, var(--overlay-dim), transparent 80%);
+  border-radius: 4px;
+  /* 视觉提示：被回退的内容比正常消息弱化 */
+  opacity: 0.92;
+}
+.branch-fold-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  outline: none;
+  border-radius: 4px;
+}
+.branch-fold-header:hover {
+  background: var(--overlay-hover);
+  color: var(--text);
+}
+.branch-fold-header:focus-visible {
+  background: var(--overlay-hover);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.branch-fold-arrow {
+  display: inline-block;
+  width: 10px;
+  font-size: 10px;
+  text-align: center;
+  color: var(--text-faint);
+  transition: transform 150ms ease;
+  transform: rotate(0deg);
+}
+.branch-fold-wrap.expanded .branch-fold-arrow {
+  transform: rotate(90deg);
+}
+.branch-fold-title {
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+.branch-fold-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 200ms ease;
+}
+.branch-fold-wrap.expanded .branch-fold-body {
+  grid-template-rows: 1fr;
+}
+.branch-fold-body-inner {
+  overflow: hidden;
+  min-height: 0;
+  /* 给被折叠的卡片一点缩进，强调"是分支不是主线" */
+  padding-left: 12px;
+  padding-right: 6px;
+  padding-bottom: 6px;
+}
+/* 被折叠卡的颜色稍弱（不强行 grayscale，会破坏代码高亮） */
+.branch-fold-body-inner > * {
+  opacity: 0.78;
+}
+.branch-fold-body-inner > *:hover {
+  opacity: 1;
+}
+
 /* issue #7: 可折叠分组（外观 / 诊断 / 快捷键 etc.）
    用 grid-template-rows: 0fr ↔ 1fr 技巧做平滑展开 —— 不用预测内容高度。 */
 .settings-collapsible-header {
