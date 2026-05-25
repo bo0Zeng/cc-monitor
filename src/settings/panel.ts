@@ -17,7 +17,8 @@ import {
 } from "../theme";
 import { getClaudeDirOverride, setClaudeDirOverride } from "../paths";
 import { CcIntegrationSection } from "./cc_integration";
-import { DiagnosticsSection } from "./diagnostics-section";
+import { DiagnosticsSection, DIAGNOSTICS_INFO_TEXT } from "./diagnostics-section";
+import { CollapsibleGroup } from "./collapsible-group";
 
 /**
  * 字段控件类型：
@@ -206,12 +207,33 @@ export class SettingsPanel {
     body.appendChild(this.banner);
 
     body.appendChild(this.buildDataGroup());
-    // v1.7：PowerShell 集成区（cc 命令注入式绑定）
+    // v1.7：PowerShell 集成区（cc 命令注入式绑定）—— 高频，不折叠
     body.appendChild(new CcIntegrationSection().element);
-    // v2.0.0 (issue #4)：诊断区（log 文件 / 级别 / error toast）
-    body.appendChild(new DiagnosticsSection().element);
-    body.appendChild(this.buildGroup("字体", FIELDS.filter((f) => f.group === "font")));
-    body.appendChild(this.buildGroup("颜色", FIELDS.filter((f) => f.group === "color")));
+
+    // issue #7：低频 section 收到 collapsible 里，默认折叠
+    //
+    // 外观（字体 + 颜色）—— 13 个字段，配一次几乎不再动
+    const appearance = new CollapsibleGroup({
+      id: "appearance",
+      title: "外观",
+      defaultCollapsed: true,
+      infoTooltip:
+        "字体（正文 / 等宽 / 字号）+ 颜色（10 个 token）。配一次后基本不再动，默认收起。",
+    });
+    appearance.appendChild(this.buildGroup("字体", FIELDS.filter((f) => f.group === "font")));
+    appearance.appendChild(this.buildGroup("颜色", FIELDS.filter((f) => f.group === "color")));
+    body.appendChild(appearance.element);
+
+    // 诊断 —— "出问题才用" 的工具，默认折叠
+    const diagnostics = new CollapsibleGroup({
+      id: "diagnostics",
+      title: "诊断",
+      defaultCollapsed: true,
+      infoTooltip: DIAGNOSTICS_INFO_TEXT,
+    });
+    diagnostics.appendChild(new DiagnosticsSection({ headless: true }).element);
+    body.appendChild(diagnostics.element);
+
     return body;
   }
 

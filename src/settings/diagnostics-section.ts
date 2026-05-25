@@ -39,6 +39,20 @@ type RestartHint = "none" | "needs_restart";
 
 const LOG_LEVELS = ["trace", "debug", "info", "warn", "error", "off"] as const;
 
+export interface DiagnosticsSectionOptions {
+  /**
+   * v2.x (issue #7)：被 CollapsibleGroup 包起来时传 `headless: true` —— 不渲染
+   * 自己的「诊断」小标题（用 collapsible header 那一行即可，避免重复）。
+   */
+  headless?: boolean;
+}
+
+/** 给 collapsible header 复用的 i 图标说明文字。headless 模式丢失了内嵌图标 → 让外面挂一下。 */
+export const DIAGNOSTICS_INFO_TEXT =
+  "monitor 是 GUI 应用（windows_subsystem=windows），没有 stderr 控制台。\n" +
+  "所有后端 tracing 输出写到 ~/.claude/claudecode-frontend/logs/monitor.YYYY-MM-DD.log。\n" +
+  "ERROR 级别同时弹右下角红色 toast，点击 toast 直接跳到 log 文件。";
+
 export class DiagnosticsSection {
   private root: HTMLElement;
   private current: DiagnosticsConfig = {
@@ -47,6 +61,7 @@ export class DiagnosticsSection {
     error_toast: true,
     max_files: 3,
   };
+  private headless: boolean;
 
   private logEnabledCheckbox!: HTMLInputElement;
   private levelSelect!: HTMLSelectElement;
@@ -55,7 +70,8 @@ export class DiagnosticsSection {
   private sizeSpan!: HTMLSpanElement;
   private openFileBtn!: HTMLButtonElement;
 
-  constructor() {
+  constructor(opts: DiagnosticsSectionOptions = {}) {
+    this.headless = opts.headless ?? false;
     this.root = this.build();
     void this.refresh();
   }
@@ -66,20 +82,17 @@ export class DiagnosticsSection {
 
   private build(): HTMLElement {
     const group = document.createElement("div");
-    group.className = "settings-group";
+    // headless 模式：不挂 .settings-group 边距，直接作为 collapsible body 内容
+    group.className = this.headless ? "settings-headless" : "settings-group";
 
-    // 标题 + 信息图标
-    const heading = document.createElement("div");
-    heading.className = "settings-group-title";
-    heading.textContent = "诊断";
-    heading.appendChild(
-      makeInfoIcon(
-        "monitor 是 GUI 应用（windows_subsystem=windows），没有 stderr 控制台。\n" +
-          "所有后端 tracing 输出写到 ~/.claude/claudecode-frontend/logs/monitor.YYYY-MM-DD.log。\n" +
-          "ERROR 级别同时弹右下角红色 toast，点击 toast 直接跳到 log 文件。",
-      ),
-    );
-    group.appendChild(heading);
+    if (!this.headless) {
+      // 标题 + 信息图标
+      const heading = document.createElement("div");
+      heading.className = "settings-group-title";
+      heading.textContent = "诊断";
+      heading.appendChild(makeInfoIcon(DIAGNOSTICS_INFO_TEXT));
+      group.appendChild(heading);
+    }
 
     // 1. 启用 log 文件 toggle
     const logRow = document.createElement("label");

@@ -14,6 +14,10 @@
 
 - **single-instance lock**（issue #9）：同一个用户同一台机器只允许一个 cc-monitor 进程。第二次双击 `cc-monitor.exe`（或装多份 exe 双击别处那份）→ 第二个实例立即退出，第一个窗口被 unminimize + show + set_focus 拉到前台。修复历史上"两个 monitor 同时跑导致双重渲染 + cc 集成 race"的混乱。底层走 Tauri 官方 [`tauri-plugin-single-instance`](https://v2.tauri.app/plugin/single-instance/)，user-scoped mutex，跨用户登录不冲突。详 [`doc/INVARIANTS.md § 16`](doc/INVARIANTS.md)。
 
+### 改进
+
+- **设置面板折叠分组**（issue #7）：低频 section（外观 = 字体 + 颜色 13 字段；诊断）默认折叠到可展开 ▶ 分组里。设置面板纵向缩短超过 1 屏，找 PowerShell 集成不用再滚很远。展开/折叠状态本地持久（localStorage `cc-monitor.settings.collapsed.<id>`），重启 monitor 保留。展开动画用 grid-template-rows 0fr↔1fr 技巧，200ms 平滑过渡。高频 section（数据 / PowerShell 集成）保持默认展开。
+
 ---
 
 ## [2.0.0] — 2026-05-25
