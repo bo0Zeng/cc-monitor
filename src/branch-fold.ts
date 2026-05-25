@@ -1,28 +1,23 @@
 /**
  * issue #8：ESC 回退分支的折叠 UI。
  *
- * 输入：一个 message stream 容器，里面已经按 jsonl 顺序追加好了一堆卡片。
- *      被识别为"主线"的 uuid 集合。
- * 输出：让连续的"被回退" off-main 卡片包到一个折叠容器里，header 显示
- *      "▶ 已被 ESC 回退（含 N 条消息）"。
+ * 输入：一个 message stream 容器（已按 jsonl 顺序追加好卡片）+ 主线 uuid 集合
+ * 输出：把连续的 off-main 卡片包到 `.branch-fold-wrap` 折叠容器
  *
- * **重建策略**（DOM 重排）：
- *  1. 先把所有现存 `.branch-fold-wrap` 解开 —— 把里面的卡 move 回容器顶层
+ * **重建策略**（unwrap-then-rewrap 全量重建）：
+ *  1. 解开所有现存 `.branch-fold-wrap`，把里面的卡 move 回容器顶层
  *  2. 顺序扫容器子元素：
- *     - 如果是带 data-uuid 的卡 + 在 mainBranch → 留在原位
- *     - 如果是带 data-uuid 的卡 + 不在 mainBranch → 加入"当前 run"
- *     - 工具组 / 其他无 uuid 元素：结束当前 run（如果有），自身保持原位
- *  3. 每个 run 结束时（≥1 张卡），用 `.branch-fold-wrap` 包起来，header 显示数量
+ *     - 带 data-uuid 且在 mainBranch → on-main，断 run
+ *     - 带 data-uuid 但不在 mainBranch → 加入当前 off-main run
+ *     - 无 data-uuid 元素：断 run
+ *  3. 每个 run 包到一个 wrap 里
  *
- * **为什么 unwrap-then-rewrap 而不是增量**：
- * - 分支变化是非局部的：一条新 user record 可能让一大段原本 on-main 的卡片
- *   转 off-main（如果它指向更早的 parent，把它们都甩到旧分支上）
- * - 增量 diff 复杂度高、bug 多；全量重建是 O(N) DOM 操作，N=几百到几千都在
- *   一帧渲染预算内
+ * **为什么全量重建而不是增量**：分支变化非局部 —— 一条新 user record 可能让一
+ * 大段原本 on-main 的卡转 off-main（指向更早 parent，把它们甩到旧分支）。增量
+ * diff 复杂度高 bug 多，全量重建是 O(N) DOM 操作，N=几百到几千都在一帧预算内。
  *
- * **折叠状态保留**：每个 fold-wrap 在 unwrap 前把 expanded class 状态记到 outer
- * 容器的 `data-fold-expanded:<rangeKey>` ……不行，rangeKey 不稳定。
- * 改为：用 fold 的第一条 uuid 当 key 写到 容器级 Map。重建时按这个 key 查表。
+ * **折叠状态保留**：fold-wrap 在 unwrap 前把 expanded 写到 `foldExpanded` Map
+ * （key = run 的首条 uuid，稳定）；wrap 时按 key 查表恢复。
  */
 
 import { computeMainBranch, setsEqual, type BranchRecord } from "./branching";
