@@ -101,11 +101,19 @@
 
 ---
 
-## 10. Win32 sync 调用 = `tokio::task::spawn_blocking`
+## 10. 长耗时 IO / 系统调用 = `tokio::task::spawn_blocking`
 
-所有 Win32 同步调用（`EnumWindows` / `SetForegroundWindow` / `ShellExecuteW` / `OpenProcess` 等）必须走 `tokio::task::spawn_blocking`，不能直接在 IPC handler 同步跑。前端再加 5s timeout 兜底。
+任何**可能阻塞数十毫秒以上**的同步调用必须走 `tokio::task::spawn_blocking`，不能直接在 IPC handler 跑。前端拉前类 IPC 再加 5s timeout 兜底。
 
-**为什么不能松动**：Win32 同步调用可能阻塞数十 ms 到秒级（窗口枚举 / 进程查询 / shell execute）。放到 Tauri 主 runtime 会卡死 IPC 派发，整个 UI 没反应。
+具体包括：
+
+- **Win32 同步调用**：`EnumWindows` / `SetForegroundWindow` / `ShellExecuteW` / `OpenProcess` 等（窗口枚举 / 进程查询 / shell execute 可能数十 ms 到秒级）
+- **文件系统 IO**：v2.2 起 `history.rs` 全部 IPC（`list_history_projects` / `list_history_sessions_in_project` / `stream_history_sessions_in_project` / `read_session_jsonl` / `stream_read_session_jsonl`）也走 spawn_blocking —— 扫几十个项目 / 读几 MB jsonl 都属此类
+- **`std::process::Command::spawn`**：spawn 外部进程（如 cc 集成的 wt.exe / cmd.exe 启 claude --resume）
+
+**为什么不能松动**：Tauri 的 `#[tauri::command] fn`（非 async）跑在 IPC 派发线程上。一个慢命令阻塞期间，其他 IPC 全部排队 → 整个 UI 没反应（切设置 / 拉前 / 切 Tab 全失灵）。即便代码"看起来快"（如 read_dir + stat 几百次），磁盘冷状态下也能轻松超过 100ms 阈值。
+
+**实施口诀**：IPC 命令默认写 `pub async fn`，函数体包 `tokio::task::spawn_blocking(move || { ... }).await.map_err(...)?`。State 参数前先 `state.inner().clone()` 拿 Arc 再 move 进 closure。
 
 ---
 

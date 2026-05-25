@@ -27,6 +27,7 @@
 ### `Arc<SessionMap>`
 - `history.rs::list_history_projects(map: State<'_, Arc<SessionMap>>)`
 - `history.rs::list_history_sessions_in_project(project_dir, map: State<'_, Arc<SessionMap>>)`
+- `history.rs::stream_history_sessions_in_project(project_dir, on_entry: Channel, map: State<'_, Arc<SessionMap>>)` (v2.2)
 
 ### `Arc<EventReplay>`
 - `lib.rs::forget_session(session_id, replay: State<'_, Arc<EventReplay>>)`
@@ -49,7 +50,7 @@
 - `subagent::load_subagent`
 - `cc_integration_preview / scan_path / install / uninstall`（path 参数直接进）
 - `cc_get_auto_launch / cc_set_auto_launch`（用 `paths::resolve_monitor_data_dir`）
-- `history::read_session_jsonl / delete_history_session / update_history_metadata / resume_history_session`
+- `history::read_session_jsonl / stream_read_session_jsonl / delete_history_session / update_history_metadata / resume_history_session`
 
 ---
 

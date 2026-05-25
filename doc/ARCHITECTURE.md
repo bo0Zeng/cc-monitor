@@ -63,9 +63,10 @@
 
 **关键路径**：
 
-- **实时增量**：jsonl 新行 → `notify-debouncer-mini` (100ms 合并) → `watcher.rs` 增量读 → `parser::parse_line` → `event_replay.record` → `emit("jsonl-line")` → 前端 `events.ts` 批量调度 → `tabs.ts.onLine` → `render.ts`
-- **启动重放**：F5 / 冷启动后，前端 `emit("frontend-ready")` → `event_replay.replay_and_mark_ready` 持锁 → 单次 `emit("jsonl-batch", Vec<...>)` 整个 history → 前端 push 进同一 queue
+- **实时增量**：jsonl 新行 → `notify-debouncer-mini` (100ms 合并) → `watcher.rs` 增量读 → `parser::parse_line` → `event_replay.record` → `emit("jsonl-line")` → 前端 `events.ts` 批量调度 → `tabs.ts.onLine` → `render.ts`（BranchFolder 在 **live 模式**，每条 record 增量算 mainBranch）
+- **启动重放**：F5 / 冷启动后，前端 `emit("frontend-ready")` → `event_replay.replay_and_mark_ready` 持锁 → 单次 `emit("jsonl-batch", Vec<...>)` 整个 history → 前端 events.ts 用 **`batch-start` / `batch-end` 哨兵**包裹整批 push 进 queue → TabManager.onBatchStart 把所有 Tab 的 BranchFolder 切 **batch 模式**（recordAdded 只 push 不算）→ drain 完最后一条 → onBatchEnd 调 flushPending **一次性**算主线 + rebuild → 切回 live。避免 O(N²) 重放成本（v2.2 优化 ~15-20×）
 - **cc 集成绑定**：PS 跑 `__ccm_bind` 写 `ps-await/<PID>.json` + 改窗口标题为 marker → `bind.rs` 监听 + EnumWindows → 写 `ps-registry/<PID>.json` + 删 await → PS 检测到删除恢复标题
+- **历史浏览（流式）**：v2.2 起，点 Ctrl+H → `list_history_projects`（async + spawn_blocking，不阻塞 IPC）→ 用户展开项目 → 前端创建 `Channel<HistorySessionEntry>` 传给 `stream_history_sessions_in_project` → 后端边解析 jsonl 元数据边 `on_entry.send()` → 前端 onmessage rAF 节流增量插入到 fork 树。点单 session → `Channel<Vec<JsonlLinePayload>>` + `stream_read_session_jsonl` 100 行一 chunk emit → session-viewer 边收边 `renderMessage`，几百毫秒看到首屏
 
 ---
 
