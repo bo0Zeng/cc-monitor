@@ -40,7 +40,26 @@ pub fn run() {
     // setup 闭包是 FnOnce + 'static，必须 move-capture。把 logging_state shadow 进闭包，
     // 闭包内同时 install_error_emitter（&self 借用）+ app.manage(clone)
     let logging_state = logging_state;
-    tauri::Builder::default()
+
+    // issue #9：single-instance lock。**必须是第一个 plugin**（Tauri 官方 plugin 要求）。
+    // 第二个 cc-monitor 实例启动 → 触发本回调（在第一个实例里跑）→ 把主窗口
+    // unminimize + show + set_focus → 第二个实例立即退出（plugin 内部处理）。
+    // 详 doc/INVARIANTS.md § 16。
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default();
+    #[cfg(windows)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            tracing::info!("second cc-monitor instance detected, bringing main window to front");
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.unminimize();
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        }));
+    }
+
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {

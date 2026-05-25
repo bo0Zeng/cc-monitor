@@ -40,7 +40,7 @@ src-tauri/
 
 | 文件 | 角色 | 关键 API |
 |---|---|---|
-| **lib.rs** | Tauri Builder + setup() + IPC handler 注册 | `pub fn run()` |
+| **lib.rs** | Tauri Builder + setup() + IPC handler 注册 + single-instance plugin (issue #9) | `pub fn run()` |
 | **paths.rs** | 解析 `.claude` 数据目录（三级回退） | `resolve_claude_dir() / resolve_monitor_data_dir() / resolve_config_path()` |
 | **messages.rs** | `JsonlRecord` enum + `ApiMessage` + `ContentBlock` | `JsonlRecord::is_displayable()` |
 | **parser.rs** | 单行 JSONL → JsonlRecord | `parse_line(raw)` |

@@ -52,6 +52,9 @@ windows = { version = "0.56", features = [
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_UI_WindowsAndMessaging",
 ] }
+# issue #9：single-instance lock。第二个 cc-monitor 实例启动时立即退出，
+# 第一个窗口拉到前台。Tauri 官方 plugin，user-scoped mutex，跨 user session 不冲突。
+tauri-plugin-single-instance = "2"
 
 [profile.release]
 opt-level = "z"
