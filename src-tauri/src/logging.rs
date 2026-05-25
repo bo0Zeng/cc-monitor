@@ -193,7 +193,11 @@ impl LoggingState {
             self.reload_handle
                 .modify(|f| *f = filter)
                 .map_err(|e| format!("reload filter failed: {e}"))?;
-            tracing::info!("log level changed: {} → {}", old.log_level, new_cfg.log_level);
+            tracing::info!(
+                "log level changed: {} → {}",
+                old.log_level,
+                new_cfg.log_level
+            );
         }
 
         // 2. error_toast 改变 → 切 atomic 开关
@@ -290,7 +294,10 @@ where
         let now = Instant::now();
         {
             let mut q = self.recent.lock();
-            while q.front().is_some_and(|t| now.duration_since(*t) > RATE_WINDOW) {
+            while q
+                .front()
+                .is_some_and(|t| now.duration_since(*t) > RATE_WINDOW)
+            {
                 q.pop_front();
             }
             if q.len() >= RATE_MAX {
@@ -328,7 +335,10 @@ pub fn init(monitor_data_dir: &Path) -> Arc<LoggingState> {
 
     // 1. EnvFilter + reload handle
     let initial_filter = build_env_filter(&cfg.log_level).unwrap_or_else(|| {
-        eprintln!("invalid initial log_level {:?}, falling back to info", cfg.log_level);
+        eprintln!(
+            "invalid initial log_level {:?}, falling back to info",
+            cfg.log_level
+        );
         EnvFilter::new("info")
     });
     let (filter_layer, reload_handle) = reload::Layer::new(initial_filter);
@@ -345,7 +355,10 @@ pub fn init(monitor_data_dir: &Path) -> Arc<LoggingState> {
         match build_rolling_appender(&log_dir, cfg.max_files as usize) {
             Some(appender) => {
                 let (nb, g) = tracing_appender::non_blocking(appender);
-                let layer = fmt::layer().with_ansi(false).with_target(true).with_writer(nb);
+                let layer = fmt::layer()
+                    .with_ansi(false)
+                    .with_target(true)
+                    .with_writer(nb);
                 (Some(layer), Some(g))
             }
             None => (None, None),
@@ -384,7 +397,10 @@ pub fn init(monitor_data_dir: &Path) -> Arc<LoggingState> {
 
 /// 只构造 RollingFileAppender（不构造 fmt::Layer —— 见 init() 内联注释）。
 /// 失败返回 None，init() 那边 fallback 到 stdout-only。
-fn build_rolling_appender(log_dir: &Path, max_files: usize) -> Option<tracing_appender::rolling::RollingFileAppender> {
+fn build_rolling_appender(
+    log_dir: &Path,
+    max_files: usize,
+) -> Option<tracing_appender::rolling::RollingFileAppender> {
     if let Err(e) = std::fs::create_dir_all(log_dir) {
         eprintln!("create log dir {} failed: {e}", log_dir.display());
         return None;
@@ -573,7 +589,10 @@ mod tests {
     fn diagnostics_default_is_user_friendly() {
         let d = DiagnosticsConfig::default();
         assert!(d.log_enabled, "log 默认开（issue #4 要求）");
-        assert!(d.error_toast, "error toast 默认开（用户看不见 ERROR 是 v1.7 事故根因）");
+        assert!(
+            d.error_toast,
+            "error toast 默认开（用户看不见 ERROR 是 v1.7 事故根因）"
+        );
         assert_eq!(d.log_level, "info");
         assert_eq!(d.max_files, 3);
     }
