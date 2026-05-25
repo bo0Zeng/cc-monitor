@@ -158,6 +158,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   bindEvents({
     onLine: (e) => tabs.onLine(e),
     onSessionEnded: (sessionId) => tabs.archiveTab(sessionId),
+    // v2.2 issue #12: 启动重放（jsonl-batch）期间走 batch 模式，结束时 flush
+    onBatchStart: () => tabs.onBatchStart(),
+    onBatchEnd: () => tabs.onBatchEnd(),
   });
 
   // v2.0.0 (issue #4)：后端 ERROR 级别 tracing → 右下角红色 toast

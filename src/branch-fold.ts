@@ -42,6 +42,19 @@ export class BranchFolder {
   private lastMainBranch: Set<string> = new Set();
   /** 折叠 ID（每个 fold 的第一条 uuid） → 用户是否手动展开了 */
   private foldExpanded = new Map<string, boolean>();
+  /**
+   * v2.2 (issue #12 性能优化)：batch 模式。
+   *
+   * - **batch = true**（重放期）：recordAdded 只 push 不算，不 rebuild。直到
+   *   调用方调 flushPending() 才一次性 computeMainBranch + rebuild。
+   *   适合启动时 event_replay 批量灌 2000+ 条 jsonl 的场景，省 O(N²)。
+   * - **batch = false**（live 模式，默认）：recordAdded 立刻算 + 可能 rebuild。
+   *   适合真实时新消息到达，每条 1 帧内反映 fold 状态。
+   *
+   * caller（TabManager）通过 setBatchMode(true) → 灌 records → flushPending() →
+   * setBatchMode(false) 控制切换。
+   */
+  private batchMode = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -51,15 +64,16 @@ export class BranchFolder {
    * 卡片刚 append 完之后调一次。caller 给出 uuid / parentUuid / timestamp（用于
    * 主线识别）。
    *
-   * 返回 true 表示有 fold 结构变化（off-main 集合变了），调用方可据此做日志。
+   * batch 模式下：只 push，不算主线，不 rebuild —— 等 flushPending。
+   * live 模式下：立即算主线，如变化 rebuild。
    */
-  recordAdded(rec: BranchRecord): boolean {
+  recordAdded(rec: BranchRecord): void {
     this.records.push(rec);
+    if (this.batchMode) return; // batch 模式：延后到 flush
     const next = computeMainBranch(this.records);
-    if (setsEqual(next, this.lastMainBranch)) return false;
+    if (setsEqual(next, this.lastMainBranch)) return;
     this.lastMainBranch = next;
     this.rebuild();
-    return true;
   }
 
   /**
@@ -69,6 +83,25 @@ export class BranchFolder {
   setRecordsAndRebuild(records: ReadonlyArray<BranchRecord>): void {
     this.records = records.slice();
     this.lastMainBranch = computeMainBranch(this.records);
+    this.rebuild();
+  }
+
+  /**
+   * v2.2: 切换 batch 模式。切到 batch 后到 flushPending 之间的 recordAdded
+   * 都不会触发计算 / rebuild。切回 live 不会自动 flush，需 caller 显式调 flushPending。
+   */
+  setBatchMode(enabled: boolean): void {
+    this.batchMode = enabled;
+  }
+
+  /**
+   * v2.2: 在 batch 模式累计完后调一次，计算最新主线并 rebuild。
+   * 也可在 live 模式手动调（等价于 setRecordsAndRebuild 但保持现有 records）。
+   */
+  flushPending(): void {
+    const next = computeMainBranch(this.records);
+    if (setsEqual(next, this.lastMainBranch)) return;
+    this.lastMainBranch = next;
     this.rebuild();
   }
 
