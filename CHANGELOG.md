@@ -8,6 +8,110 @@
 
 ---
 
+## [2.3.0] — 2026-05-25
+
+里程碑：启动加速 10× 量级 + 三个 feat 同发 + tool-result UI 全面重做。
+
+### 改进 — 启动加载速度 10× 提速（issue #1）
+
+之前 v2.2 启动重放 ~3920 条 record 前端 drain + 渲染管线耗时 **22s** 才完全可交互。
+
+本版本通过 **历史切块 + DOM prepend + lazy 代码高亮** 三层联防：
+
+#### 历史切块 emit
+
+后端 `event_replay::replay_and_mark_ready` 按 history 数量切块：
+
+- N < 200 → 单次 emit（保持 v2.2 行为，无切块开销）
+- N ≥ 200 → 按 session 分组取每 session 最新 N 条到 head 块，剩余按 600 条切 mid 块
+- **chunk 0** (head 最新) → 前端 append 到 stream 底部 → 用户**立刻可见最新消息**
+- **chunk 1..N** (older) → 前端 prepend 到 stream 顶部 → 后台默默 prepend 老内容
+- 块之间释放锁停顿 10ms，让 watcher 真新消息能 live emit 并行插入
+
+最终 DOM 顺序：`[最老 ... 次新 ... head 最新]` 时间升序保持。
+
+#### Lazy 代码高亮 (highlight.js)
+
+batch 重放期间 markdown 渲染走 lazy 路径：marked + DOMPurify + KaTeX 同步出 HTML，但 hljs **不跑** —— 留 `<div class="code-block code-pending">` 占位。
+
+全局 IntersectionObserver（`rootMargin: 300px`）观察卡片进可视区时调 `enhanceCard` 补跑 hljs。
+
+每条 record 渲染管线 5.6ms → 1.5ms（砍 ~70%）。KaTeX 保留同步（耗时占比小 + 拆开复杂度高收益小）。
+
+#### 实测结果
+
+| 阶段 | v2.2 | v2.3.0 |
+|---|---|---|
+| 首屏 head 可见 | ~22s | **~600ms** ⚡ |
+| 全部 drain 完毕 | ~22s | ~1.7s |
+| 用户可交互 | ~22s | **~600ms** |
+
+详 [v2.3 启动加速学习笔记](https://github.com/bo0Zeng/cc-monitor/blob/main/CHANGELOG.md#230---2026-05-25)。
+
+### 新增 — Tab Task 面板（issue #11）
+
+Claude Code CLI 终端底部的 task tracker（`TaskCreate` / `TaskUpdate` / `TaskStop` 工具维护）现在能直接在 monitor 看到，再不用切回终端确认任务进度。
+
+- 每个 Tab 的消息流顶部多一个 **sticky 折叠卡**：「N tasks (X done, Y in progress, Z open)」摘要 + 展开看完整列表（subject + 状态 icon），跟终端视觉对齐
+  - `□ pending` / `■ in_progress` / `✓ completed` / `✗ deleted`，未知值兜底 `•`
+  - 已完成的任务删除线 + 60% opacity，进行中的高亮一点背景色
+  - `description` / `activeForm` 进 hover tooltip（点行不展开，省视觉空间）
+- **默认折叠**；折叠状态写 `localStorage cc-monitor.tasks-panel.collapsed` **全局**持久（所有 Tab 同步偏好，重启 monitor 保留）
+- **0 task 时 panel 完全隐藏**（display:none），不占视觉空间
+- **实时同步**：CLI 跑 `TaskCreate` / `TaskUpdate` → ~100ms 内 monitor 对应 Tab 更新
+
+### 实现
+
+后端新增 `src-tauri/src/tasks.rs`：
+- `read_session_tasks(tasks_root, sid)` 扫 `<claude_dir>/tasks/<sid>/<id>.json`
+  - 跳过 `.lock` / `.highwatermark` / 非 `<digits>.json` 命名
+  - 半截 JSON 单条 catch 跳过（写者持锁中途读到 → 下次 debounce 自然修正），不会冻死整次重读
+  - 按 id 数字升序排序
+- `spawn_task_watcher(tasks_root, app)` 用 `notify-debouncer-mini` 监听 `tasks/` 递归
+  - 100ms debounce → 同批次按 sid `HashSet` dedup → 每 sid 重读整目录 → emit `task-update`（**完整重发**，无 diff）
+  - `tasks_root` 不存在时静默不 spawn（用户从没用过 task tracker 的兼容态）
+- `get_session_tasks` IPC（`async fn` + `spawn_blocking`）给 Tab 创建时拿初次快照
+- 新事件 `task-update` + `TasksUpdatePayload { sessionId, tasks }`
+- 9 个单元测试（empty / skip .lock / sort by numeric id / partial JSON tolerance / camelCase serde 契约 / session_id 路径反推 etc.）
+
+前端新增 `src/tasks-panel.ts`：
+- `TasksPanel` 组件（sticky 面板 + 摘要 header + 列表 body）
+- 全 panel 实例共享 `LS_KEY = cc-monitor.tasks-panel.collapsed`，一个 Tab 折叠所有同步
+- 完整 replace 渲染（task ≤ ~30 条无 diff 必要）
+- `tabs.ts` 在 ensureTab 时挂 panel 到 stream 顶部 + 异步 `fetchSessionTasks`；`updateTasks(sid, tasks)` 路由 `task-update`；closeTab 时 dispose
+- `events.ts` 加 `onTasksUpdate` 句柄；`task-update` 直接同步派发不进批量队列（稀疏事件）
+
+### 新增 — 数据存储透明化（issue #3 A 阶段）
+
+设置面板加「**数据存储**」折叠分组，列出 monitor 所有持久化数据位置 + WebView2 用户数据 + localStorage keys，每项配 [打开] 按钮直接进资源管理器查看。**纯展示，不动数据**。
+
+- monitor 持久化目录（`~/.claude/claudecode-frontend/`）的所有文件：`config.json` / `sid-hwnd-cache.json` / `auto-launch.json` / `history-metadata.json` / `ps-await/` / `ps-registry/` / `logs/`
+- WebView2 用户数据目录（`%LOCALAPPDATA%\<bundle>\EBWebView\`）— cache / localStorage / IndexedDB / cookies
+- PowerShell profile 备份（v1.7.10+ 自动备份的 `.ccm-backup-<时间戳>` 文件，仅在装过 cc 集成时显示）
+- 前端 localStorage 所有 `cc-monitor.*` keys + value（折叠 / 渲染模式 / profile 选项 / task panel 状态等）
+- 卸载说明：NSIS 默认不清这些数据，想彻底清除手动删
+
+后端新模块 `src-tauri/src/data_paths.rs`（4 个单元测试）+ IPC `get_data_paths`（async + spawn_blocking，stat 不递归算大小避免大目录卡 IPC）。前端 `src/settings/data-section.ts` 渲染分类卡片。
+
+### 新增 — Tool result 渲染模式切换 + 长 output 性能修复
+
+Tool 调用结果展开后顶部新加 [文本 | Markdown] 切换 toolbar：
+
+- **Markdown 模式**复用 `renderMarkdown`（marked + DOMPurify + KaTeX + hljs），含 LaTeX / 代码高亮
+- **行号前缀启发式 strip**：Read / Grep 等工具输出带 `<n>\t<content>` 或 `<n>:<content>` 行号前缀，MD 模式渲染前自动 strip 让 `#` 标题等结构暴露
+- **per-tool-name 偏好持久** `localStorage cc-monitor.tool-render.<toolName>`；`Read` / `Grep` / `WebFetch` / `NotebookRead` / `TodoWrite` 默认 MD，其他默认 text
+
+性能改进：
+
+- `.block-body` 加 `content-visibility: auto` + `contain: layout style paint` + `contain-intrinsic-size`，浏览器跳过 viewport 外的 layout/paint，长 output 滚动不再卡
+- 大 output (>200 KB) 默认只渲染前 800 行 + `[显示完整内容 (N KB)]` 按钮，避免一次性 marked 解析卡死主线程
+
+### 单元测试
+
+后端 44 → 57（+9 tasks tests +4 data_paths tests）。
+
+---
+
 ## [2.2.0] — 2026-05-25
 
 里程碑：历史浏览器从「全量同步加载、UI 死锁等几秒」升级到「流式 + 不阻塞 + fork 树形」。重放路径同步打通 batch 模式，启动 monitor 速度数量级提升。

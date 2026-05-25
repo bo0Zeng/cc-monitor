@@ -2,6 +2,7 @@ mod auto_launch;
 mod bind;
 mod bridge;
 mod config;
+mod data_paths;
 mod event_replay;
 mod history;
 mod logging;
@@ -11,6 +12,7 @@ mod paths;
 mod profile_installer;
 mod session_map;
 mod subagent;
+mod tasks;
 mod utils;
 mod watcher;
 
@@ -20,6 +22,9 @@ use tauri::{Emitter, Listener, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 启动 perf 测量起点
+    let t0 = std::time::Instant::now();
+
     // v2.0.0 (issue #4)：tracing 初始化提前到 Builder 之前 —— 一旦 init 全局
     // dispatcher 锁死，且我们要捕获 setup() 期间的所有 log。
     //
@@ -32,7 +37,8 @@ pub fn run() {
         .unwrap_or_else(|| std::env::temp_dir().join("cc-monitor-fallback"));
     let logging_state = logging::init(&monitor_data_dir);
     tracing::info!(
-        "cc-monitor starting (data_dir={}, log_dir={})",
+        "[perf] T+{}ms cc-monitor starting (data_dir={}, log_dir={})",
+        t0.elapsed().as_millis(),
         monitor_data_dir.display(),
         logging_state.log_dir().display()
     );
@@ -74,6 +80,8 @@ pub fn run() {
             tracing::info!("monitor using claude_dir: {}", claude_dir.display());
             let projects_dir = claude_dir.join("projects");
             let sessions_dir = claude_dir.join("sessions");
+            // v2.3.0 issue #11：Claude Code CLI 的 task tracker 文件根
+            let tasks_dir = claude_dir.join("tasks");
 
             // monitor 自己的数据目录：~/.claude/claudecode-frontend
             let monitor_data_dir = paths::resolve_monitor_data_dir().ok_or("no data dir")?;
@@ -158,6 +166,10 @@ pub fn run() {
             // 旧 focus.rs / lookup_by_foreground_pid / focus-switch IPC 都已删。
             // Tab 切换走手动点击或 Ctrl+Tab 快捷键。
 
+            // v2.3.0 issue #11：监听 task 文件变更，per-session 重读后 emit 给前端。
+            // 不依赖 SessionMap，独立 watcher。tasks_dir 不存在时函数内部 no-op。
+            tasks::spawn_task_watcher(tasks_dir.clone(), app.handle().clone());
+
             // 持久化重播：F5 刷新后整个 history 重新 emit，前端状态完整恢复。
             let replay = Arc::new(event_replay::EventReplay::new());
 
@@ -165,7 +177,12 @@ pub fn run() {
             {
                 let replay = replay.clone();
                 let handle = app.handle().clone();
+                let t0_capture = t0;
                 app.listen("frontend-ready", move |_event| {
+                    tracing::info!(
+                        "[perf] T+{}ms frontend-ready received, starting replay",
+                        t0_capture.elapsed().as_millis()
+                    );
                     replay.replay_and_mark_ready(&handle);
                 });
             }
@@ -216,6 +233,11 @@ pub fn run() {
             // v2.0.0 (issue #4)：logging state 也要 manage，IPC handler 才能拿到
             app.manage(logging_state.clone());
 
+            tracing::info!(
+                "[perf] T+{}ms setup() completed (watchers spawned, state managed)",
+                t0.elapsed().as_millis()
+            );
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -245,6 +267,10 @@ pub fn run() {
             history::delete_history_session,
             history::update_history_metadata,
             history::resume_history_session,
+            // v2.3.0 issue #11: task 面板初次拉
+            tasks::get_session_tasks,
+            // v2.3.0 issue #3 (A 透明化): 设置面板「数据」区列出所有持久路径
+            data_paths::get_data_paths,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

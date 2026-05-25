@@ -31,6 +31,8 @@ src-tauri/
     ├── subagent.rs    # load_subagent IPC + description 关联
     ├── event_replay.rs # F5 重放（持锁严格按序）
     ├── history.rs     # 历史浏览器：两级懒加载 + 元数据 + 删除 + resume
+    ├── tasks.rs       # v2.3.0 (issue #11) Claude task tracker 文件 ~/.claude/tasks/<sid>/ 监听 + IPC
+    ├── data_paths.rs  # v2.3.0 (issue #3 A) 透明化：枚举所有持久数据路径 + WebView2 + profile 备份
     ├── config.rs      # load/save_config + Windows 原子写
     ├── logging.rs     # v2.0.0 (issue #4) 滚动 log + EnvFilter reload + ErrorEmitterLayer
     └── bridge.rs      # IPC 事件常量
@@ -52,9 +54,11 @@ src-tauri/
 | **subagent.rs** | 父 session 的 Agent tool_use 关联 `<parent>/subagents/agent-*.jsonl` | IPC `load_subagent` |
 | **event_replay.rs** | 内存 buffer + frontend-ready 时持锁完整 emit | `EventReplay::record() / replay_and_mark_ready() / forget()` |
 | **history.rs** | 历史浏览器后端：两级 IPC + metadata + 物理删除 + resume；v2.2 (issue #12) 全部 async + spawn_blocking + 新 Channel 流式 IPC `stream_history_sessions_in_project` / `stream_read_session_jsonl` | IPC `list_history_projects / list_history_sessions_in_project / stream_history_sessions_in_project / read_session_jsonl / stream_read_session_jsonl / delete / update_metadata / resume` |
+| **tasks.rs** (v2.3.0 issue #11) | Claude Code CLI 的 task 列表读取 + watcher：扫 `<claude_dir>/tasks/<sid>/<id>.json` 跳过 `.lock`/`.highwatermark`/非数字命名；notify-debouncer 100ms 监听整个 tasks 目录递归；变更 → 反推 sid → 重读整目录 → emit `task-update`。tasks_root 不存在时静默不 spawn；半截 JSON 单条 catch 跳过 | `read_session_tasks() / spawn_task_watcher()` + IPC `get_session_tasks` |
+| **data_paths.rs** (v2.3.0 issue #3 A) | 透明化展示：枚举 monitor 所有持久路径（config / sid-hwnd-cache / auto-launch / history-metadata / ps-await / ps-registry / logs）+ WebView2 UserDataFolder（用 `app_local_data_dir().join("EBWebView")` 推断）+ PowerShell profile 备份目录。stat 不递归算大小，避免大目录卡 IPC | `collect()` + IPC `get_data_paths` |
 | **config.rs** | monitor 自己的 config.json R/W（Windows MoveFileExW 原子） | IPC `load_config / save_config` |
 | **logging.rs** (v2.0.0+) | tracing init（在 `tauri::Builder` 之前）+ 滚动 log 文件 + EnvFilter reload Handle + ErrorEmitterLayer（拦 ERROR emit `monitor-error` 给前端弹 toast）+ DiagnosticsConfig R/W | `init() / install_error_emitter() / update_config() / log_file_info()` + 5 个 IPC |
-| **bridge.rs** | 事件 / payload 常量与 schema | `events::JSONL_LINE / SESSION_ENDED`，`JsonlLinePayload / SessionEndedPayload` |
+| **bridge.rs** | 事件 / payload 常量与 schema | `events::JSONL_LINE / JSONL_BATCH / SESSION_ENDED / TASKS_UPDATE`，`JsonlLinePayload / SessionEndedPayload / TasksUpdatePayload` |
 
 ## IPC 清单
 
@@ -85,6 +89,8 @@ src-tauri/
 | `get_log_file_info` (v2.0.0+) | — | `LogFileInfo` | 当前 log 路径 / 大小 / 全部 .log 文件列表 |
 | `open_log_file` (v2.0.0+) | — | `()` | 用系统默认编辑器打开当前 log 文件 |
 | `open_log_dir` (v2.0.0+) | — | `()` | 用资源管理器打开 log 目录 |
+| `get_session_tasks` (v2.3.0 issue #11) | `{ sessionId }` | `TaskEntry[]` | Tab 创建时拉一次初始 task 列表（之后变更由 `task-update` 事件推） |
+| `get_data_paths` (v2.3.0 issue #3 A) | — | `DataPathsResponse` | 设置面板「数据存储」区打开时调一次，拉所有持久路径 + WebView2 + profile 备份 |
 
 ## 事件
 
@@ -95,6 +101,7 @@ src-tauri/
 | `JSONL_LINE` | `jsonl-line` | `JsonlLinePayload` | watcher 解析到一行后实时单条 emit |
 | `JSONL_BATCH` | `jsonl-batch` | `Vec<JsonlLinePayload>` | event_replay 启动重放时一次性发整个 history Vec |
 | `SESSION_ENDED` | `session-ended` | `SessionEndedPayload` | sessions/<PID>.json 被删（session 退出） |
+| `TASKS_UPDATE` (v2.3.0 issue #11) | `task-update` | `TasksUpdatePayload {sessionId, tasks}` | tasks/<sid>/ 内任何文件变更（debounce 100ms + dedup by sid） |
 | (logging::ERROR_EVENT) | `monitor-error` (v2.0.0+) | `MonitorErrorPayload {level,target,message,timestamp}` | tracing::error! 触发；前端 error-toast.ts 监听 |
 
 前端 → 后端（`Listener::listen`）：

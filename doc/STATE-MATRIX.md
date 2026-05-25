@@ -51,6 +51,8 @@
 - `cc_integration_preview / scan_path / install / uninstall`（path 参数直接进）
 - `cc_get_auto_launch / cc_set_auto_launch`（用 `paths::resolve_monitor_data_dir`）
 - `history::read_session_jsonl / stream_read_session_jsonl / delete_history_session / update_history_metadata / resume_history_session`
+- `tasks::get_session_tasks` (v2.3 issue #11)：用 `paths::resolve_claude_dir().join("tasks")`，session_id 参数直接拼路径；watcher 线程独立 spawn 不通过 State 共享
+- `data_paths::get_data_paths` (v2.3 issue #3 A)：用 `paths::resolve_monitor_data_dir()` + `AppHandle.path().app_local_data_dir()` 推断 WebView2 路径；纯 stat 不持有状态
 
 ---
 

@@ -6,6 +6,27 @@ import { loadTheme } from "./theme";
 import { SettingsPanel } from "./settings";
 import { HistoryView } from "./views/history";
 import { bindErrorToast } from "./error-toast";
+import { TasksPanel } from "./tasks-panel";
+
+// === 启动 perf 测量 ===
+// performance.now() 自页面 navigation start 起；前端各阶段时间点。
+// 跟后端 lib.rs 的 t0 (进程启动 Instant) 互补 —— 前后端协同看完整管线。
+declare global {
+  interface Window {
+    __ccmPerf: {
+      domContentLoaded: number;
+      themeLoaded?: number;
+      frontendReadyEmit?: number;
+      firstJsonlBatch?: number;
+      firstPayloadDrained?: number;
+      batchDrainEnd?: number;
+      onBatchEndFired?: number;
+    };
+  }
+}
+window.__ccmPerf = {
+  domContentLoaded: 0,
+};
 
 // Vite HMR 默认在没显式 `hot.accept` 时对 TS 文件部分热替换，可能让旧模块的
 // 已注册 listener / 已渲染 DOM 与新代码并存。对监控这种长跑+事件密集的应用，
@@ -30,8 +51,13 @@ window.addEventListener("unhandledrejection", (e) => {
 });
 
 window.addEventListener("DOMContentLoaded", async () => {
+  window.__ccmPerf.domContentLoaded = performance.now();
+  console.info(
+    `[perf] DOMContentLoaded @ ${window.__ccmPerf.domContentLoaded.toFixed(0)}ms (since navigation start)`,
+  );
   // 主题尽早应用，避免渲染抖动
   await loadTheme();
+  window.__ccmPerf.themeLoaded = performance.now();
 
   const tabBar = document.getElementById("tab-bar");
   const streamRoot = document.getElementById("message-stream");
@@ -52,17 +78,28 @@ window.addEventListener("DOMContentLoaded", async () => {
   statusCount.textContent = "活跃 0";
   status.appendChild(statusCount);
 
+  // issue #11: Task 面板的 summary chip 嵌入 status bar 右侧（活跃数右边）；
+  // popover 浮层挂到 #app（fixed bottom 浮出）。两个元素由同一 TasksPanel 单例管。
+  const tasksPanel = new TasksPanel();
+  status.appendChild(tasksPanel.summaryElement);
+  document.getElementById("app")?.appendChild(tasksPanel.popoverElement);
+
   const empty = document.createElement("div");
   empty.className = "empty-state";
   empty.innerHTML = `暂无活跃会话<br><small>打开终端跑 <code>claude</code> 后将自动出现</small>`;
   streamRoot.appendChild(empty);
 
-  const tabs = new TabManager(tabBar, streamRoot, ({ total, live }) => {
-    statusCount.textContent = `活跃 ${live}`;
-    statusMsg.textContent =
-      live > 0 ? "M2 · 监听中" : "M2 · 等待活跃 Claude Code 会话…";
-    empty.style.display = total > 0 ? "none" : "";
-  });
+  const tabs = new TabManager(
+    tabBar,
+    streamRoot,
+    ({ total, live }) => {
+      statusCount.textContent = `活跃 ${live}`;
+      statusMsg.textContent =
+        live > 0 ? "M2 · 监听中" : "M2 · 等待活跃 Claude Code 会话…";
+      empty.style.display = total > 0 ? "none" : "";
+    },
+    tasksPanel,
+  );
 
   // 外观设置入口 —— 注入到 #app 上（绝对定位到 Tab Bar 右上）
   const settingsPanel = new SettingsPanel();
@@ -159,13 +196,21 @@ window.addEventListener("DOMContentLoaded", async () => {
     onLine: (e) => tabs.onLine(e),
     onSessionEnded: (sessionId) => tabs.archiveTab(sessionId),
     // v2.2 issue #12: 启动重放（jsonl-batch）期间走 batch 模式，结束时 flush
+    // v2.3.1 issue #1: chunk 0 (head) 走 onBatchStart, chunk >0 走 onChunk 切 prepend 模式
     onBatchStart: () => tabs.onBatchStart(),
+    onChunk: (meta) => tabs.onChunk(meta.chunkIndex),
     onBatchEnd: () => tabs.onBatchEnd(),
+    // v2.3.0 issue #11: task watcher 推送的 task 列表更新
+    onTasksUpdate: (e) => tabs.updateTasks(e.sessionId, e.tasks),
   });
 
   // v2.0.0 (issue #4)：后端 ERROR 级别 tracing → 右下角红色 toast
   bindErrorToast();
 
   // 通知后端可以发了 —— 缓冲的 line 会被 flush 过来
+  window.__ccmPerf.frontendReadyEmit = performance.now();
+  console.info(
+    `[perf] emit frontend-ready @ ${window.__ccmPerf.frontendReadyEmit.toFixed(0)}ms`,
+  );
   void emit("frontend-ready");
 });

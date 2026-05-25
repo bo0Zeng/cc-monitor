@@ -67,6 +67,7 @@
 - **启动重放**：F5 / 冷启动后，前端 `emit("frontend-ready")` → `event_replay.replay_and_mark_ready` 持锁 → 单次 `emit("jsonl-batch", Vec<...>)` 整个 history → 前端 events.ts 用 **`batch-start` / `batch-end` 哨兵**包裹整批 push 进 queue → TabManager.onBatchStart 把所有 Tab 的 BranchFolder 切 **batch 模式**（recordAdded 只 push 不算）→ drain 完最后一条 → onBatchEnd 调 flushPending **一次性**算主线 + rebuild → 切回 live。避免 O(N²) 重放成本（v2.2 优化 ~15-20×）
 - **cc 集成绑定**：PS 跑 `__ccm_bind` 写 `ps-await/<PID>.json` + 改窗口标题为 marker → `bind.rs` 监听 + EnumWindows → 写 `ps-registry/<PID>.json` + 删 await → PS 检测到删除恢复标题
 - **历史浏览（流式）**：v2.2 起，点 Ctrl+H → `list_history_projects`（async + spawn_blocking，不阻塞 IPC）→ 用户展开项目 → 前端创建 `Channel<HistorySessionEntry>` 传给 `stream_history_sessions_in_project` → 后端边解析 jsonl 元数据边 `on_entry.send()` → 前端 onmessage rAF 节流增量插入到 fork 树。点单 session → `Channel<Vec<JsonlLinePayload>>` + `stream_read_session_jsonl` 100 行一 chunk emit → session-viewer 边收边 `renderMessage`，几百毫秒看到首屏
+- **Task 面板（v2.3 issue #11）**：`tasks.rs::spawn_task_watcher` 用 notify-debouncer-mini 监听 `<claude_dir>/tasks/` 递归 → 文件变更（CLI 跑 `TaskCreate` / `TaskUpdate` / `TaskStop`）→ debounce 100ms + 按 sid dedup → 重读整个 `tasks/<sid>/` 目录（跳过 `.lock` / `.highwatermark` / 非数字命名）→ emit `task-update` 携完整 task 列表。前端 `tasks-panel.ts` 按 sid 路由到对应 Tab 的 sticky 折叠卡。Tab 创建时另调 `get_session_tasks` IPC 拿初始快照（async + spawn_blocking）。0 task 时 panel 隐藏
 
 ---
 
@@ -84,6 +85,7 @@ src-tauri/src/
 │              subagent.rs   按需加载 subagents/*.meta.json
 ├── 业务层      event_replay.rs  内存 buffer + 持锁 batch emit
 │              history.rs    两级懒加载 + metadata + 物理删除 + resume
+│              tasks.rs      v2.3 CLI task tracker 读 + watcher + emit task-update
 ├── 集成层      bind.rs       cc 集成绑定核心（ps-await/registry/SidHwndCache）
 │              profile_installer.rs  PowerShell profile 块插入/卸载
 │              auto_launch.rs  auto-launch monitor 开关
@@ -100,6 +102,7 @@ src/
 │              cards/        折叠卡组件（slash / compact / subagent / tool）
 ├── 视图        views/history.ts  历史浏览器
 │              views/session-viewer.ts  只读会话查看器
+│              tasks-panel.ts  v2.3 Tab stream 顶部 sticky task 折叠卡
 ├── 设置        settings/panel.ts   总控
 │              settings/cc_integration.ts  PowerShell 集成区
 │              settings/info-icon.ts  portal tooltip 组件
@@ -142,6 +145,14 @@ monitor 与外部进程的所有通信都在 `~/.claude/claudecode-frontend/` �
 | `auto-launch.json` | monitor 设置面板 + 启动时回写 | PowerShell (`__ccm_bind` 头部) | "用 cc 启动 claude 时自动开 monitor" 开关 + monitor exe 路径 | 持久 |
 | `history-metadata.json` | monitor 历史浏览器 | monitor 历史浏览器 | star / 重命名 / 隐藏 | 持久 |
 | `logs/monitor.YYYY-MM-DD.log` (v2.0.0+) | monitor (tracing-appender) | 用户（设置面板 [打开 log] / 编辑器） | GUI app 诊断日志，按天滚动保留 3 天 | 持久（自动清理老文件） |
+
+**只读外部数据源**（不属于 monitor 写入域，但 monitor 读取并展示）：
+
+| 路径 | 写入方 | 读取方 | 用途 |
+|---|---|---|---|
+| `<claude_dir>/projects/<encoded-cwd>/<sid>.jsonl` | Claude Code CLI | monitor `watcher.rs` / `history.rs` | session 消息流，monitor 实时增量 + 历史浏览 |
+| `<claude_dir>/sessions/<PID>.json` | Claude Code CLI | monitor `session_map.rs` | 活跃 session 探活（PID + procStart 双校验） |
+| `<claude_dir>/tasks/<sid>/<id>.json` (v2.3) | Claude Code CLI (`TaskCreate`/`TaskUpdate`/`TaskStop` 工具) | monitor `tasks.rs` | Tab task 面板数据源；附 `.lock` / `.highwatermark` 控制文件需忽略 |
 
 每个文件的字段定义、编码约束（UTF-8 无 BOM）、写入方原子性语义、握手时序图 → [IPC-PROTOCOL.md](IPC-PROTOCOL.md)。
 

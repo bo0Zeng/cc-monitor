@@ -11,6 +11,28 @@ marked.setOptions({
 });
 
 /**
+ * v2.3.1 (issue #1 性能): 全局 lazy 模式 flag。
+ *
+ * - **false**（默认 / live 模式）：renderMarkdown 走全功能 pipeline（hljs 同步高亮）
+ * - **true**（batch 重放期）：renderMarkdown 走 lazy pipeline：marked + DOMPurify + KaTeX 同步出 HTML，
+ *   但代码块 hljs **不跑**——留 `<div class="code-block code-pending">` 占位。
+ *
+ * IntersectionObserver 在卡片进可视区时调 enhanceCard 跑 hljs。
+ *
+ * 为什么单独 lazy hljs 而不 lazy KaTeX：
+ * - 实测 hljs 是主要耗时（每代码块 0.5-5ms，含代码块的消息占 ~25%）
+ * - KaTeX 触发条件严（只有 `$..$` 才会进 markedKatex），多数消息不含 LaTeX 跳过快
+ * - markedKatex 是 marked 扩展深度集成的，拆 lazy 复杂度高，收益小
+ *
+ * TabManager.onBatchStart/onBatchEnd 切换这个 flag。
+ */
+let renderLazyMode = false;
+
+export function setRenderLazyMode(lazy: boolean): void {
+  renderLazyMode = lazy;
+}
+
+/**
  * KaTeX 扩展：
  * - `$...$` 行内、`$$...$$` 块级
  * - `nonStandard: true` 才认 `$...$`（默认只认 `\(...\)`，README 示例那是误导）
@@ -34,11 +56,36 @@ marked.use(
 // hljs.highlightAuto 会跑所有语言定义匹配最佳，10kB 无 lang 代码块单次 30-50ms。
 // replay 大量代码块时累积秒级阻塞主线程（鼠标光标卡死的次要根因）。
 // 改为：有显式 lang 才高亮；无 lang 直接转义当 plain text，保持代码块视觉但零开销。
+/**
+ * 代码块渲染：
+ * - **renderLazyMode = false**：现状路径，hljs 同步高亮
+ * - **renderLazyMode = true**：留占位 `<div class="code-block code-pending" data-lang="X">`，
+ *   `<code class="language-X">` 内是 escape 过的纯文本，等 enhanceCard 时跑 hljs
+ *
+ * 占位也写完整 code-block / code-bar DOM 结构，让 CSS / 复制按钮立刻能 work。
+ */
 marked.use({
   renderer: {
     code(token) {
       const lang = (token.lang ?? "").trim().split(/\s+/)[0];
       const code = token.text ?? "";
+
+      if (renderLazyMode) {
+        // lazy 路径：转义即可，hljs 留给 enhanceCard
+        const cls = lang ? `language-${lang}` : "";
+        const langLabel = lang || "text";
+        return (
+          `<div class="code-block code-pending"${lang ? ` data-lang="${escapeHtml(lang)}"` : ""}>` +
+          `<div class="code-bar">` +
+          `<span class="code-lang">${escapeHtml(langLabel)}</span>` +
+          `<button type="button" class="code-copy" data-copy>复制</button>` +
+          `</div>` +
+          `<pre><code class="${cls}">${escapeHtml(code)}</code></pre>` +
+          `</div>`
+        );
+      }
+
+      // 默认路径：同步 hljs
       let highlighted: string;
       try {
         if (lang && hljs.getLanguage(lang)) {
@@ -92,4 +139,78 @@ function escapeHtml(s: string): string {
   const div = document.createElement("div");
   div.textContent = s;
   return div.innerHTML;
+}
+
+/**
+ * v2.3.1 (issue #1) Phase 2：找卡片内**剩下没处理的代码块** (`.code-block.code-pending`)
+ * 跑 hljs 高亮。idempotent — 标 `data-enhanced` 防重复。
+ *
+ * 没 pending 时是 fast path：单次 querySelector 找不到东西后立即标记返回。
+ *
+ * **不处理 LaTeX**：KaTeX 在 markedKatex 扩展里同步处理过了，已经是最终 DOM。
+ */
+export function enhanceCard(el: HTMLElement): void {
+  if (el.dataset.enhanced === "1") return;
+  el.dataset.enhanced = "1";
+
+  const pendings = el.querySelectorAll<HTMLElement>(".code-block.code-pending");
+  if (pendings.length === 0) return; // fast path: 该卡片没代码块
+
+  for (const block of pendings) {
+    const lang = block.dataset.lang ?? "";
+    const codeEl = block.querySelector("code");
+    if (!codeEl) {
+      block.classList.remove("code-pending");
+      continue;
+    }
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        const raw = codeEl.textContent ?? "";
+        codeEl.innerHTML = hljs.highlight(raw, {
+          language: lang,
+          ignoreIllegals: true,
+        }).value;
+        codeEl.classList.add("hljs");
+      } catch (e) {
+        console.warn("[enhance] hljs failed:", e);
+      }
+    } else {
+      // 无 lang 或 lang unknown：仍 escape 文本不变，只去掉 pending 标记
+      codeEl.classList.add("hljs");
+    }
+    block.classList.remove("code-pending");
+  }
+}
+
+/**
+ * 全局 IntersectionObserver：观察 stream 内的卡片，进可视区调 enhanceCard，
+ * 然后 unobserve（一次性，不来回触发）。
+ *
+ * rootMargin: 300px 让卡片在快滚到时就预先 enhance，避免视觉看到 hljs "弹"出来。
+ */
+const enhanceObserver =
+  typeof IntersectionObserver !== "undefined"
+    ? new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            if (e.isIntersecting && e.target instanceof HTMLElement) {
+              enhanceCard(e.target);
+              enhanceObserver?.unobserve(e.target);
+            }
+          }
+        },
+        { rootMargin: "300px" },
+      )
+    : null;
+
+/**
+ * 让一个卡片接受 lazy enhance 调度。TabManager 在 lazy 渲染期间挂卡片时调。
+ * `enhanceObserver` 可能为 null（极老浏览器）→ 退化到立即 enhance。
+ */
+export function observeForEnhance(el: HTMLElement): void {
+  if (enhanceObserver) {
+    enhanceObserver.observe(el);
+  } else {
+    enhanceCard(el);
+  }
 }

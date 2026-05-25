@@ -22,8 +22,8 @@ index.html  ─> /src/main.ts (defer)
 | 文件 | 角色 | 关键 API |
 |---|---|---|
 | **main.ts** | 启动 + 全局快捷键 + 错误捕获 + HMR 强制 reload | DOMContentLoaded handler |
-| **events.ts** | 订阅后端 `jsonl-line` / `jsonl-batch` / `session-ended`，**批量调度让出主线程**；v2.2 (issue #12) `jsonl-batch` 包 `batch-start`/`batch-end` 哨兵让 TabManager 切 BranchFolder batch 模式 | `bindEvents({onLine, onSessionEnded, onBatchStart, onBatchEnd})` |
-| **tabs.ts** | TabManager 状态机：Tab 生命周期（live / archived）+ 工具组聚合 + BranchFolder 接入 (issue #8) + v2.2 batch mode 切换（重放期 setBatchMode(true)，结束 flushPending + 切 live） | `onLine() / onBatchStart() / onBatchEnd() / archiveTab() / closeTab() / cycleActive()` |
+| **events.ts** | 订阅后端 `jsonl-line` / `jsonl-batch` / `session-ended` / `task-update`，**批量调度让出主线程**；v2.2 (issue #12) `jsonl-batch` 包 `batch-start`/`batch-end` 哨兵让 TabManager 切 BranchFolder batch 模式；v2.3 (issue #11) `task-update` 稀疏事件直接同步派发不进 queue | `bindEvents({onLine, onSessionEnded, onBatchStart, onBatchEnd, onTasksUpdate})` |
+| **tabs.ts** | TabManager 状态机：Tab 生命周期（live / archived）+ 工具组聚合 + BranchFolder 接入 (issue #8) + v2.2 batch mode 切换 + v2.3 (issue #11) 每 Tab 挂 TasksPanel；ensureTab 触发初次 fetch，updateTasks 路由 `task-update` 事件 | `onLine() / onBatchStart() / onBatchEnd() / updateTasks() / archiveTab() / closeTab() / cycleActive()` |
 | **stream.ts** | 单 Tab 的消息流容器，ResizeObserver 自动贴底滚动；`contentElement` 暴露真实卡片容器给 BranchFolder | `MessageStream.append() / scrollToBottom() / dispose()` |
 | **branching.ts** (issue #8) | parentUuid 拓扑分析：识别 ESC 回退主线 vs 被回退分支。`computeMainBranch` 算法 = "只在 fork 点选 latest-descendant 赢家"，无 fork 即全 on-main（多 root / 单链 / /compact 不误折叠） | `computeMainBranch(records) / extractBranchRecord(rec)` |
 | **branch-fold.ts** (issue #8) | DOM 重排：把连续的 off-main 卡片包到 `.branch-fold-wrap`，header「已被 ESC 回退（含 N 条）」；策略 = unwrap-then-rewrap 全量重建。v2.2 加 batch mode (`setBatchMode/flushPending`)，重放期延后到 batch 结束才算一次 mainBranch，省 O(N²) | `new BranchFolder(container).recordAdded / setRecordsAndRebuild / setBatchMode / flushPending` |
@@ -43,6 +43,8 @@ index.html  ─> /src/main.ts (defer)
 | **error-toast.ts** (v2.0.0+) | listen `monitor-error` 事件，右下角垂直堆叠红色 toast，点击直接打开 log 文件 | `bindErrorToast()` |
 | **views/history.ts** | 历史浏览器（项目分组 + 两级懒加载 + 增删改 + v2.2 fork 树形 + 流式 session 列表） | `HistoryView.open() / handleEscape()` |
 | **views/session-viewer.ts** | 只读消息查看器（点击历史条目进入）；v2.2 改用 `stream_read_session_jsonl` + Channel 边收边渲染 | `SessionViewer.load(opts) / dispose()` |
+| **tasks-panel.ts** (v2.3.0 issue #11) | Tab stream 顶部 sticky 折叠卡：显示 Claude Code CLI 的 task 列表（`~/.claude/tasks/<sid>/`）。完整 replace 渲染（无 diff），0 task 时整 panel 隐藏。折叠状态 localStorage 全局持久 (`cc-monitor.tasks-panel.collapsed`) | `new TasksPanel().update(tasks) / fetchSessionTasks(sid)` |
+| **settings/data-section.ts** (v2.3.0 issue #3 A) | 设置面板「数据存储」折叠分组：调 `get_data_paths` 拉所有持久路径 + WebView2 UserDataFolder + localStorage keys；每项配 [打开] 按钮调 opener。纯展示，无危险操作 | `new DataSection({ headless }).element / refresh()` |
 | **styles.css** | 全部样式 + token 系统 | — |
 
 ## 关键数据流

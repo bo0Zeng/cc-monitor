@@ -4,12 +4,15 @@ import {
   renderMessage,
   buildToolGroup,
   addToToolGroup,
+  reconcilePendingToolResults,
   type JsonlRecord,
   type ToolGroup,
   type RenderContext,
 } from "./cards";
+import { observeForEnhance, setRenderLazyMode } from "./render";
 import { BranchFolder } from "./branch-fold";
 import { extractBranchRecord } from "./branching";
+import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 
 /**
  * Tab 生命周期：
@@ -55,6 +58,27 @@ export interface Tab {
    * 包到可折叠容器里。工具组（tool-group）不参与折叠（无单一 uuid）。
    */
   branchFolder: BranchFolder;
+  /**
+   * v2.3.1 (issue #1)：older chunk 累积 fragment 一次性 prepend 到 stream 顶部，
+   * 避免每条 prepend 触发多次 layout（3920 条 × layout 是几秒级开销）。
+   *
+   * 每次 chunk 切换 / batch-end 时 flushPendingPrepend 把它 prepend 到 stream
+   * **顶部**（contentEl.firstChild 前）。多 chunk 调用后 DOM 顺序自然是
+   * [最老, ..., 次新, head 最新]。
+   */
+  pendingPrependFragment: DocumentFragment | null;
+  /**
+   * v2.3.1 (issue #1)：切块场景下 tool_result 可能在 tool_use 之前到达
+   * （head 块含 result，older 块才有 tool_use）。先走 fallback 渲染独立卡，
+   * 全部 chunks 完成后 reconcilePendingToolResults 重新匹配 + 注入。
+   */
+  pendingToolResults: Map<
+    string,
+    {
+      block: { type: "tool_result"; tool_use_id: string; content: unknown; is_error?: boolean };
+      element: HTMLElement;
+    }
+  >;
 }
 
 /** Tab 数量摘要，发给宿主用于状态栏 / empty-state 等外部 UI */
@@ -83,6 +107,18 @@ export class TabManager {
    * batch 模式中 ensureTab 创建的新 Tab 也要把 BranchFolder 设成 batch。
    */
   private inBatch = false;
+  /**
+   * v2.3.1 (issue #1) 切块加速：当前是否在 "older chunk prepend 模式"。
+   * - chunk 0 (head) 到达：append 模式（默认），渲染完后第一个 child 当 anchor
+   * - chunk > 0 到达：prepend 模式，onLine 不直接 append 而是 buffer 到 fragment
+   * - 每个 chunk 边界（next chunk 来 or batch-end）flush fragment 一次 insertBefore
+   */
+  private inPrependMode = false;
+  /**
+   * issue #11: 每个 sid 当前 task 列表（由 ensureTab 拉初次快照 + task-update 事件
+   * 更新）。切 Tab 时把对应 sid 的快照喂给全局 TasksPanel。
+   */
+  private tasksBySid = new Map<string, TaskEntry[]>();
   // 早期版本曾用 user lock（用户主动点 Tab 后 5s 内拒 focus-switch）防自动焦点撞回去，
   // 实测 5s 太长导致用户切焦点窗口后 Tab 不跟着切（看上去焦点同步失效）。砍掉：用户
   // 切焦点窗口本身就是明确意图，应该尊重。
@@ -92,6 +128,8 @@ export class TabManager {
     private streamRootEl: HTMLElement,
     /** 任何 Tab 增/减/状态变化后回调；宿主用它驱动状态栏等外部 UI */
     private onTabsChanged?: (summary: TabsSummary) => void,
+    /** issue #11: 全局 TasksPanel，切 Tab / 收事件时由 TabManager 喂数据 */
+    private tasksPanel?: TasksPanel,
   ) {}
 
   private notifyChanged(): void {
@@ -109,23 +147,117 @@ export class TabManager {
    * v2.2 (issue #12): 启动重放（jsonl-batch）开始时调一次。所有现有 Tab 的
    * BranchFolder 切到 batch 模式 —— 后续 recordAdded 只 push 不算 mainBranch。
    * 重放期 ensureTab 新创建的 Tab 也会自动进 batch（看 this.inBatch）。
+   *
+   * v2.3.1 (issue #1)：切块场景下 chunk 0 (head) 走 append 模式正常路径。
    */
   onBatchStart(): void {
     this.inBatch = true;
+    this.inPrependMode = false;
+    // v2.3.1 Phase 2：batch 期间开 lazy hljs（代码块占位，IntersectionObserver 触发再 enhance）
+    setRenderLazyMode(true);
     for (const t of this.tabs.values()) {
       t.branchFolder.setBatchMode(true);
+      // v2.3.1: chunk 边界打断 tool-group 累积，避免相邻 chunk 的 tool-only
+      // assistant 被错误合并到同一个 group（它们时间上可能跨度大）
+      t.pendingToolGroup = null;
+    }
+  }
+
+  /**
+   * v2.3.1 (issue #1)：新 chunk 到达（chunkIndex > 0）。
+   *
+   * 切到 prepend 模式 —— 后续 onLine 渲染的卡 buffer 到 fragment。
+   * 下个 chunk 边界 / batch-end 时一次性 prependFragmentAtTop，多次切换最终
+   * 形成 DOM 顺序 [最老, ..., 次新, head 最新]。
+   */
+  onChunk(chunkIndex: number): void {
+    // 切换前先 flush 上一块累积的 fragment（如果有）
+    this.flushPendingPrepend();
+
+    if (chunkIndex === 0) {
+      // 不应该走这里（chunk 0 走 onBatchStart）；防御性
+      return;
+    }
+    this.inPrependMode = true;
+    // 给所有现有 Tab 创建 fragment + chunk 边界打断 tool-group
+    for (const t of this.tabs.values()) {
+      t.pendingToolGroup = null;
+      if (t.pendingPrependFragment === null) {
+        t.pendingPrependFragment = document.createDocumentFragment();
+      }
     }
   }
 
   /**
    * v2.2 (issue #12): 重放批次完结。各 Tab 调 flushPending 一次性算 + rebuild，
    * 然后切回 live 模式。后续真实时新消息按现有 per-record 路径走。
+   *
+   * v2.3.1 (issue #1)：先 flush 累积的 prepend fragment，再退出 batch 模式。
    */
   onBatchEnd(): void {
+    this.flushPendingPrepend();
     this.inBatch = false;
+    this.inPrependMode = false;
+    // v2.3.1 Phase 2：batch 结束切回 live 模式（后续真实时新消息走 full pipeline 同步 hljs）
+    setRenderLazyMode(false);
     for (const t of this.tabs.values()) {
       t.branchFolder.flushPending();
       t.branchFolder.setBatchMode(false);
+      // v2.3.1: 切块场景下，老块的 tool_use 现在已渲染 → 重试匹配早到的 fallback result
+      const ctx: RenderContext = {
+        parentPath: t.parentPath,
+        toolUseNames: t.toolUseNames,
+        toolUseElements: t.toolUseElements,
+        pendingToolResults: t.pendingToolResults,
+      };
+      reconcilePendingToolResults(ctx);
+      // 清 fragment 让下次启动时干净
+      t.pendingPrependFragment = null;
+    }
+  }
+
+  /**
+   * v2.3.1 (issue #1)：把每个 Tab 累积的 prepend fragment 一次性 prepend 到 stream 顶部。
+   *
+   * **不用 anchor**：直接贴到 contentEl 顶部（contentEl.firstChild 前）。多次调用
+   * 后 DOM 顺序自然是 [最新调用的内容, ..., 最早调用的内容]。
+   * 因为 chunks 顺序是 head(最新) → mid 次新 → ... → tail 最老：
+   *   - chunk 0 (head) → append 到 stream 底部
+   *   - chunk 1 (次新)→ prepend 到顶部 → DOM: [chunk1, chunk0]
+   *   - chunk 2 (再老) → prepend 到顶部 → DOM: [chunk2, chunk1, chunk0]
+   *   - ...
+   *   - chunk N (最老) → prepend 到顶部 → DOM: [chunkN, ..., chunk1, chunk0] ✓
+   * 最终时间升序正确。
+   */
+  private flushPendingPrepend(): void {
+    for (const t of this.tabs.values()) {
+      if (!t.pendingPrependFragment) continue;
+      if (t.pendingPrependFragment.childNodes.length === 0) continue;
+      t.stream.prependFragmentAtTop(t.pendingPrependFragment);
+      t.pendingPrependFragment = document.createDocumentFragment();
+    }
+  }
+
+  /**
+   * v2.3.1 (issue #1)：onLine 渲染出新卡片 element 时统一走这里。
+   * - 默认（append 模式 / live 模式 / chunk 0 head）：tab.stream.append() 加到 stream 底部
+   * - prepend 模式（chunk index > 0 期间）：buffer 到 tab.pendingPrependFragment，
+   *   下个 chunk 边界 / batch-end 一次性 insertBefore(...firstChunkAnchor)
+   *
+   * 用 fragment buffer 而不是逐条 insertBefore 是关键性能点：N=3000 时省 ~3000 次 layout。
+   */
+  private appendCardOrBuffer(tab: Tab, element: HTMLElement): void {
+    if (this.inPrependMode && tab.pendingPrependFragment) {
+      tab.pendingPrependFragment.appendChild(element);
+    } else {
+      tab.stream.append(element);
+    }
+    // v2.3.1 Phase 2: batch / 切块期间的卡片用 lazy hljs，注册 IntersectionObserver
+    // 让进可视区时再补跑高亮。live 路径的卡片本来 hljs 已经同步跑完，这里 observe
+    // 后 enhanceCard 是 fast path（没 .code-pending 即直接标 enhanced 返回）。
+    // 不区分模式统一 observe 简化逻辑 + 多余开销可忽略。
+    if (this.inBatch) {
+      observeForEnhance(element);
     }
   }
 
@@ -148,6 +280,7 @@ export class TabManager {
       parentPath: tab.parentPath,
       toolUseNames: tab.toolUseNames,
       toolUseElements: tab.toolUseElements,
+      pendingToolResults: tab.pendingToolResults,
     };
     const result = renderMessage(payload.message, ctx);
 
@@ -159,14 +292,14 @@ export class TabManager {
         tab.pendingToolGroup = null;
         // issue #8: 把 uuid/parentUuid 写到 DOM 上，让 BranchFolder 能扫
         markCardUuid(result.element, payload.message);
-        tab.stream.append(result.element);
+        this.appendCardOrBuffer(tab, result.element);
         break;
       case "tool-group": {
         if (tab.pendingToolGroup) {
-          // 追加到当前组
+          // 追加到当前组（不需要重新 append 到 stream / fragment——已经挂着）
           addToToolGroup(tab.pendingToolGroup, result.units);
         } else {
-          // 新建组卡片并 append 到 stream
+          // 新建组卡片并 append 到 stream / fragment
           const group = buildToolGroup(result.timestamp);
           addToToolGroup(group, result.units);
           tab.pendingToolGroup = group;
@@ -175,7 +308,7 @@ export class TabManager {
           // 也不算 off-main → 会切断 off-main 连续段，导致被回退的消息每条单独成 fold。
           // 用**首个**贡献消息的 uuid 当代表（典型情况下整组同主支，混合极罕见）。
           markCardUuid(group.root, payload.message);
-          tab.stream.append(group.root);
+          this.appendCardOrBuffer(tab, group.root);
         }
         break;
       }
@@ -219,6 +352,16 @@ export class TabManager {
     // v2.2 issue #12: 重放期创建的新 Tab 也进 batch 模式，避免每条 record 都
     // 触发 O(N) computeMainBranch。批结束时 onBatchEnd 会统一 flush。
     if (this.inBatch) branchFolder.setBatchMode(true);
+
+    // v2.3.0 issue #11: 异步 fetch 初始 task 快照。task-update 事件路径并行更新
+    // tasksBySid，两路收敛到同一份数据；若 sid 是 active 同步推给全局 panel。
+    void fetchSessionTasks(sessionId).then((tasks) => {
+      this.tasksBySid.set(sessionId, tasks);
+      if (this.activeId === sessionId) {
+        this.tasksPanel?.setSession(sessionId, tasks);
+      }
+    });
+
     tab = {
       sessionId,
       title,
@@ -233,6 +376,8 @@ export class TabManager {
       toolUseNames: new Map(),
       toolUseElements: new Map(),
       branchFolder,
+      pendingPrependFragment: null,
+      pendingToolResults: new Map(),
     };
     this.tabs.set(sessionId, tab);
     this.orderedIds.push(sessionId);
@@ -292,8 +437,10 @@ export class TabManager {
     // （Map 本身也会随 Tab 对象一起回收，但显式 clear 让 DOM 引用计数立即归零）
     tab.toolUseNames.clear();
     tab.toolUseElements.clear();
+    tab.pendingToolResults.clear();
     tab.pendingToolGroup = null;
     tab.branchFolder.dispose();
+    this.tasksBySid.delete(sessionId);
     this.tabs.delete(sessionId);
     if (idx >= 0) this.orderedIds.splice(idx, 1);
 
@@ -307,6 +454,8 @@ export class TabManager {
         this.switchTo(fallbackId);
       } else {
         this.activeId = null;
+        // issue #11: 关掉最后一个 Tab → panel 进入 null session 状态
+        this.tasksPanel?.setSession(null, []);
         this.refreshTabBar();
       }
     } else {
@@ -326,6 +475,20 @@ export class TabManager {
     const targetId = ids[nextIdx];
     if (targetId && targetId !== this.activeId) {
       this.switchTo(targetId);
+    }
+  }
+
+  /**
+   * issue #11: 后端 `task-update` 事件路由——总是更新内存 map（即使 Tab 还没建），
+   * 只有 sid 是当前 active 时才推全局 panel 重渲染。
+   *
+   * 不需要 "Tab 不存在就丢弃"——task 文件先于 jsonl 出现是合法时序，
+   * 之后 ensureTab 时会从 tasksBySid 拿数据；fetchSessionTasks 拿到的也是同样数据。
+   */
+  updateTasks(sessionId: string, tasks: TaskEntry[]): void {
+    this.tasksBySid.set(sessionId, tasks);
+    if (this.activeId === sessionId) {
+      this.tasksPanel?.setSession(sessionId, tasks);
     }
   }
 
@@ -360,6 +523,8 @@ export class TabManager {
       next.stream.scrollToBottom();
     }
     this.activeId = sessionId;
+    // issue #11: 切换 task panel 数据源到新 active Tab 的 sid
+    this.tasksPanel?.setSession(sessionId, this.tasksBySid.get(sessionId) ?? []);
     this.refreshTabBar();
   }
 

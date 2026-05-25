@@ -19,6 +19,7 @@ import { getClaudeDirOverride, setClaudeDirOverride } from "../paths";
 import { CcIntegrationSection } from "./cc_integration";
 import { DiagnosticsSection, DIAGNOSTICS_INFO_TEXT } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
+import { DataSection, DATA_SECTION_INFO_TEXT } from "./data-section";
 
 /**
  * 字段控件类型：
@@ -88,6 +89,8 @@ export class SettingsPanel {
   private claudeDirOriginal: string = "";
   /** 顶部状态提示行（保存成功 / 需重启 等） */
   private banner!: HTMLElement;
+  /** issue #3 (A): 数据存储展示区。打开面板时 refresh 一次拉最新 stat */
+  private dataSection?: DataSection;
 
   constructor() {
     this.el = this.build();
@@ -105,6 +108,8 @@ export class SettingsPanel {
     this.banner.textContent = "";
     this.banner.classList.remove("settings-banner-show");
     this.syncInputs();
+    // issue #3: 每次打开重拉一次 stat，让"已创建 / 文件大小"是最新的
+    this.dataSection?.refresh();
     this.el.classList.add("open");
     this.isOpen = true;
   }
@@ -233,6 +238,18 @@ export class SettingsPanel {
     });
     diagnostics.appendChild(new DiagnosticsSection({ headless: true }).element);
     body.appendChild(diagnostics.element);
+
+    // issue #3 (A): 数据存储 —— 透明展示所有持久路径 + WebView2 + localStorage
+    // 默认折叠（用户偶尔好奇查时才看，平时不占视觉）
+    const dataGroup = new CollapsibleGroup({
+      id: "data-storage",
+      title: "数据存储",
+      defaultCollapsed: true,
+      infoTooltip: DATA_SECTION_INFO_TEXT,
+    });
+    this.dataSection = new DataSection({ headless: true });
+    dataGroup.appendChild(this.dataSection.element);
+    body.appendChild(dataGroup.element);
 
     return body;
   }
