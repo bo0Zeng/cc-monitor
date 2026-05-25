@@ -48,7 +48,7 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 | `Ctrl+H` | Toggle history browser |
 | `Ctrl+\`` | Bring current tab's terminal to front |
 | `Ctrl+,` | Open settings panel |
-| `Esc` | Close overlays |
+| `Esc` | Close topmost overlay (read-only viewer → history view → settings panel) |
 
 ---
 

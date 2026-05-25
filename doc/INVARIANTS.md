@@ -41,7 +41,7 @@
 不能用 `std::fs::rename` / `MoveFileExW` 直接覆盖用户文件。必须：
 
 1. 备份原文件到 `<path>.ccm-backup-<ms>`
-2. 写 `.tmp` → `ReplaceFileW(MOVEFILE_REPLACE_EXISTING)` 替换
+2. 写 `.tmp` → `ReplaceFileW(dst, tmp, NULL, REPLACEFILE_WRITE_THROUGH, ...)` 替换
 3. `read_to_string` 回读校验长度
 4. 不匹配 → 从 backup 恢复
 
@@ -63,7 +63,7 @@
 
 ## 6. session 探活双重校验（PID + procStart）
 
-`is_session_active(sid)` = `OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE` + `GetProcessTimes` creation FILETIME 与 sessions/<PID>.json 里 `started_at` 100ms 容差比对。
+`is_session_active(sid)` = `OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE` + `GetProcessTimes` creation FILETIME 与 sessions/<PID>.json 里 `procStart` 字段（= .NET `DateTime.ToFileTime()` 字符串）100ms 容差比对。
 
 **为什么不能松动**：Windows PID 短期复用非常常见。仅靠 STILL_ACTIVE 会把"旧 PID 已被无关进程占用"误判为活跃 session → 僵尸 Tab。
 

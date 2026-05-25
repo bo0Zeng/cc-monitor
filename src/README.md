@@ -75,13 +75,6 @@ index.html  ─> /src/main.ts (defer)
   → 复用 renderMessage 渲染（与实时 Tab 同一套）
 ```
 
-## 不变量
-
-- **renderMessage 是纯函数**：给定 record + ctx 返回 RenderResult，无副作用（除了写 ctx.toolUseElements）
-- **MessageStream 一个实例对应一个 Tab**：closeTab 必须调 stream.dispose() 释放 ResizeObserver
-- **innerHTML 赋值前必过 DOMPurify**：见 render.ts 的 `renderMarkdown`
-- **批量 jsonl-line 事件让出主线程**：events.ts 不能改成 sync 派发（会让 replay 卡死光标）
-
 ## 关键设计选择 + 理由
 
 ### 不引入框架（React/Vue）
@@ -107,13 +100,18 @@ replay 一次性 emit 整个 history Vec，前端用 BATCH_SIZE=40 + BATCH_MS=8 
 
 ## 不变量
 
+前端特有不变量：
+
 - **renderMessage 是纯函数**：给定 record + ctx 返回 RenderResult，无副作用（除了写 ctx.toolUseElements）
 - **MessageStream 一个实例对应一个 Tab**：closeTab 必须调 stream.dispose() 释放 ResizeObserver
-- **innerHTML 赋值前必过 DOMPurify**：见 render.ts 的 `renderMarkdown`
 - **批量 jsonl-line 事件让出主线程**：events.ts 不能改成 sync 派发（会让 replay 卡死光标）
-- **portal 浮层挂 body**：tooltip / modal / dropdown 等 `position: fixed` 元素必须挂 `document.body`，不挂 `.settings-panel` 子树
 
-更多全局约束 → [doc/INVARIANTS.md](../doc/INVARIANTS.md)。
+全局约束（前端必读，定义在 [`doc/INVARIANTS.md`](../doc/INVARIANTS.md)）：
+
+- § 12 — alert 不算错误反馈，关键失败用状态栏 toast
+- § 13 — portal 浮层（tooltip/modal/dropdown）必须真挂 `document.body`
+- § 14 — localStorage / IndexedDB key 必须前缀 `cc-monitor.`
+- DOMPurify 防 XSS：所有 innerHTML 赋值前必过 `render.ts::renderMarkdown`
 
 ---
 
