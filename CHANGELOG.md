@@ -8,6 +8,80 @@
 
 ---
 
+## [2.0.0] — 2026-05-25
+
+里程碑：补齐 GUI app 诊断短板。v1.7 系列结尾的 BOM bug "7 个版本带病发布无人察觉" 暴露的结构性问题（`windows_subsystem = "windows"` 无 stderr → tracing 输出不可见）在本版本彻底解决。
+
+### 新增 — 诊断 / log 文件可视化（issue #4）
+
+**背景**：cc-monitor 用 `windows_subsystem = "windows"` 编译，**没有 stderr 控制台**。所有 `tracing::warn!` / `tracing::error!` 用户和开发者都看不到。v1.7.0-1.7.7 的 BOM 解析失败（`bind: parse ... failed`）一直在打 warn，但 7 个版本带病发布无人察觉，cc 集成 "装上没用" —— 用户和开发者都没有任何反馈渠道。
+
+本版本补齐这个结构性短板：
+
+#### 滚动 log 文件
+- 写到 `~/.claude/claudecode-frontend/logs/monitor.YYYY-MM-DD.log`
+- 按天滚动，默认保留最近 3 天
+- `tracing-appender` `non_blocking` writer，不阻塞业务线程
+- log 文件失败时自动 fallback 到 stdout-only —— **monitor 启动绝不会被 log 卡住**
+
+#### 设置面板「诊断」区
+- ☑ 启用 log 文件（默认开；切换需要重启 monitor）
+- 日志级别 [info ▼]（trace / debug / info / warn / error / off；**切换立即生效，无需重启**）
+- ☑ 后端 ERROR 时显示右下角 toast（默认开；立即生效）
+- log 文件路径 + 当前大小显示
+- [打开 log 文件] / [打开 log 目录] / [刷新信息] 三个按钮
+
+#### 后端 ERROR 红色 toast
+- 任何 `tracing::error!` → 右下角红色 toast（headline = tracing target 如 `bind`，body = 完整 message）
+- 多条 ERROR 垂直堆叠（不互相覆盖）
+- 6 秒自动消失；**点击 toast 直接打开 log 文件**
+- 限频 60 秒 / 20 条，避免错误风暴时屏幕被刷满
+
+#### Config schema 扩展
+`~/.claude/claudecode-frontend/config.json` 顶层新增 `diagnostics`：
+```json
+{
+  "diagnostics": {
+    "log_enabled": true,
+    "log_level": "info",
+    "error_toast": true,
+    "max_files": 3
+  }
+}
+```
+所有字段 `#[serde(default)]` —— 老 v1.7.x 用户 config.json 无 diagnostics 字段时自动 fallback 到默认值，**完全向后兼容**。
+
+### 新增 IPC
+
+| 命令 | 参数 | 返回 | 说明 |
+|---|---|---|---|
+| `get_diagnostics_config` | — | `DiagnosticsConfig` | 设置面板拉当前配置 |
+| `set_diagnostics_config` | `{ cfg }` | `RestartHint` | 写新配置；返回是否需要重启 |
+| `get_log_file_info` | — | `LogFileInfo` | dir / current_file / size / all_files |
+| `open_log_file` | — | `()` | 用系统默认编辑器打开当前 log |
+| `open_log_dir` | — | `()` | 用资源管理器打开 log 目录 |
+
+### 新增前端 / 后端模块
+- `src-tauri/src/logging.rs` —— tracing init + 滚动 appender + EnvFilter reload + ErrorEmitterLayer + DiagnosticsConfig R/W（含 8 个单元测试）
+- `src/error-toast.ts` —— listen `monitor-error` 弹堆叠 toast
+- `src/settings/diagnostics-section.ts` —— 设置面板「诊断」区
+
+### CSS
+- 新增通用 `.ccm-toast-stack` / `.ccm-toast` / `.ccm-toast-error` 类（落实 INVARIANT § 12）
+- 旧的 `#bring-terminal-toast` 保留作向后兼容；后续可重构复用 `.ccm-toast`
+
+### 项目管理
+- 新依赖：`tracing-appender = "0.2"`
+- 单元测试 36 → 44（+8 logging tests）
+- `tracing-subscriber` 现 init 走 `logging::init()` 而非 lib.rs 直接 `fmt().init()`
+
+### 不破坏现有行为
+- 不勾选诊断任何选项 → 行为跟 v1.7.13 一样（log 仍写但用户感知不到）
+- 关掉 log 文件 → 老 log 文件保留，新内容不写
+- 关掉 error toast → ERROR 仍写 log 文件，只是不弹 toast
+
+---
+
 ## [1.7.13] — 2026-05-24
 
 ### 修复 — 设置面板 `?` tooltip 完全看不到

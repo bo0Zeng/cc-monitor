@@ -937,6 +937,58 @@ html, body {
   gap: 8px;
 }
 
+/* === 通用 toast 体系（v2.0.0 落地 issue #4 + INVARIANT § 12）===
+ *
+ * .ccm-toast-stack: 固定右下角的堆叠容器；多个 toast append 进来自动垂直排列
+ * .ccm-toast:        toast 卡片本体
+ * .ccm-toast-error:  红色 variant（error-toast.ts 用）
+ *
+ * 旧的 #bring-terminal-toast 保留作向后兼容；后续 refactor tabs.ts 时可改成
+ * 复用 .ccm-toast class。
+ */
+#ccm-toast-stack {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column-reverse; /* 最新插入的在最下面（视觉上最靠近底部） */
+  gap: 8px;
+  max-width: 540px;
+  pointer-events: none; /* 容器不挡点击，子 toast 自己开 */
+}
+
+.ccm-toast {
+  background: var(--bg-2, #2a2520);
+  border: 1px solid var(--accent, #c25b3b);
+  color: var(--text, #d6cfc6);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: var(--font-size-small, 13px);
+  line-height: 1.45;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.ccm-toast-error {
+  border-color: var(--error, #e06c75);
+}
+
+.ccm-toast-headline {
+  font-weight: 600;
+  color: var(--error, #e06c75);
+  margin-bottom: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+}
+
+.ccm-toast-body {
+  color: var(--text, #d6cfc6);
+}
+
 /* bring_terminal_to_front 失败时右下角弹的 toast —— fixed positioned
    完全脱离文档流，绝对不会挤压消息区域。z-index 高于设置面板 / 历史视图 */
 #bring-terminal-toast {

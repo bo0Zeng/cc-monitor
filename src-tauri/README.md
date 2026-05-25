@@ -32,6 +32,7 @@ src-tauri/
     ├── event_replay.rs # F5 重放（持锁严格按序）
     ├── history.rs     # 历史浏览器：两级懒加载 + 元数据 + 删除 + resume
     ├── config.rs      # load/save_config + Windows 原子写
+    ├── logging.rs     # v2.0.0 (issue #4) 滚动 log + EnvFilter reload + ErrorEmitterLayer
     └── bridge.rs      # IPC 事件常量
 ```
 
@@ -52,6 +53,7 @@ src-tauri/
 | **event_replay.rs** | 内存 buffer + frontend-ready 时持锁完整 emit | `EventReplay::record() / replay_and_mark_ready() / forget()` |
 | **history.rs** | 历史浏览器后端：两级 IPC + metadata + 物理删除 + resume | IPC `list_history_projects / list_history_sessions_in_project / read_session_jsonl / delete / update_metadata / resume` |
 | **config.rs** | monitor 自己的 config.json R/W（Windows MoveFileExW 原子） | IPC `load_config / save_config` |
+| **logging.rs** (v2.0.0+) | tracing init（在 `tauri::Builder` 之前）+ 滚动 log 文件 + EnvFilter reload Handle + ErrorEmitterLayer（拦 ERROR emit `monitor-error` 给前端弹 toast）+ DiagnosticsConfig R/W | `init() / install_error_emitter() / update_config() / log_file_info()` + 5 个 IPC |
 | **bridge.rs** | 事件 / payload 常量与 schema | `events::JSONL_LINE / SESSION_ENDED`，`JsonlLinePayload / SessionEndedPayload` |
 
 ## IPC 清单
@@ -78,6 +80,11 @@ src-tauri/
 | `cc_integration_uninstall` | `{ path }` | `()` | [卸载] 按钮（删除 BEGIN/END 块） |
 | `cc_get_auto_launch` | — | `AutoLaunchConfig` | 设置面板加载 auto-launch 状态 |
 | `cc_set_auto_launch` | `{ enabled }` | `()` | 用户勾选/取消 auto-launch |
+| `get_diagnostics_config` (v2.0.0+) | — | `DiagnosticsConfig` | 设置面板「诊断」区拉当前配置 |
+| `set_diagnostics_config` (v2.0.0+) | `{ cfg }` | `RestartHint` | 写新配置 + reload；返回是否需要重启 |
+| `get_log_file_info` (v2.0.0+) | — | `LogFileInfo` | 当前 log 路径 / 大小 / 全部 .log 文件列表 |
+| `open_log_file` (v2.0.0+) | — | `()` | 用系统默认编辑器打开当前 log 文件 |
+| `open_log_dir` (v2.0.0+) | — | `()` | 用资源管理器打开 log 目录 |
 
 ## 事件
 
@@ -88,6 +95,7 @@ src-tauri/
 | `JSONL_LINE` | `jsonl-line` | `JsonlLinePayload` | watcher 解析到一行后实时单条 emit |
 | `JSONL_BATCH` | `jsonl-batch` | `Vec<JsonlLinePayload>` | event_replay 启动重放时一次性发整个 history Vec |
 | `SESSION_ENDED` | `session-ended` | `SessionEndedPayload` | sessions/<PID>.json 被删（session 退出） |
+| (logging::ERROR_EVENT) | `monitor-error` (v2.0.0+) | `MonitorErrorPayload {level,target,message,timestamp}` | tracing::error! 触发；前端 error-toast.ts 监听 |
 
 前端 → 后端（`Listener::listen`）：
 

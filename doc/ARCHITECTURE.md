@@ -120,6 +120,7 @@ src/
 | `Arc<EventReplay>` | setup 闭包 + frontend-ready listener + jsonl async pump + `app.manage` | `forget_session` |
 | `Arc<BindRegistry>` | setup 闭包 + `bind-await-watcher` 线程 + `bind-heartbeat` 线程 + `session-changes-emitter` 线程 + `app.manage` | `cc_integration_status` |
 | `Arc<SidHwndCache>` | setup 闭包 + `session-changes-emitter` 线程 + `app.manage` | `bring_terminal_to_front` |
+| `Arc<LoggingState>` (v2.0.0+) | `run()` 局部（持有 WorkerGuard） + setup 闭包（install_error_emitter 注入 closure） + `app.manage` | `get_diagnostics_config` / `set_diagnostics_config` / `get_log_file_info` / `open_log_file` / `open_log_dir` |
 
 详细 consumer 矩阵 + 修改规则 → [STATE-MATRIX.md](STATE-MATRIX.md)。
 
@@ -133,12 +134,13 @@ monitor 与外部进程的所有通信都在 `~/.claude/claudecode-frontend/` �
 
 | 路径 | 写入方 | 读取方 | 用途 | 生命周期 |
 |---|---|---|---|---|
-| `config.json` | monitor 设置面板 | monitor 启动 | 主题 / 字体 / claudeDir override | 持久 |
+| `config.json` | monitor 设置面板 | monitor 启动 | 主题 / 字体 / claudeDir override / diagnostics | 持久 |
 | `ps-await/<PID>.json` | PowerShell (`__ccm_bind`) | monitor (`bind::BindRegistry`) | PS 通知 monitor "去找标题 = marker 的窗口" | 短暂 (800ms 超时) |
 | `ps-registry/<PID>.json` | monitor | PowerShell (查 + 比较 procStart) | monitor 通知 PS "绑定成功，HWND = X" | 与 PS 进程同寿 |
 | `sid-hwnd-cache.json` | monitor | monitor 启动恢复 | sid → hwnd 持久缓存，新 session 出现时查这里复用绑定 | 持久 |
 | `auto-launch.json` | monitor 设置面板 + 启动时回写 | PowerShell (`__ccm_bind` 头部) | "用 cc 启动 claude 时自动开 monitor" 开关 + monitor exe 路径 | 持久 |
 | `history-metadata.json` | monitor 历史浏览器 | monitor 历史浏览器 | star / 重命名 / 隐藏 | 持久 |
+| `logs/monitor.YYYY-MM-DD.log` (v2.0.0+) | monitor (tracing-appender) | 用户（设置面板 [打开 log] / 编辑器） | GUI app 诊断日志，按天滚动保留 3 天 | 持久（自动清理老文件） |
 
 每个文件的字段定义、编码约束（UTF-8 无 BOM）、写入方原子性语义、握手时序图 → [IPC-PROTOCOL.md](IPC-PROTOCOL.md)。
 
@@ -197,6 +199,17 @@ PS 端模板 `cc.ps1.tpl` 用 `[System.IO.File]::WriteAllText(... UTF8Encoding($
 `?` 图标 tooltip 不挂自己子节点，而是 `document.body.appendChild(tip)` + `position: fixed` + JS 算 viewport 坐标。
 
 **为什么**：父 `.settings-panel` 有 `transform: translateX(0)`（slide-in 动画）。CSS spec 规定：祖先有 `transform` 时，`position: fixed` 后代的 containing block 从 viewport **重置到那个祖先** → `left/top` 不再是 viewport 坐标 → tooltip 实际跑出屏幕。挂 body 脱离 panel 子树即可恢复真 fixed 行为。
+
+### logging 子系统：tracing init 在 Builder 之前 + ErrorEmitterLayer + reload Handle（v2.0.0）
+`logging::init(monitor_data_dir)` 必须在 `tauri::Builder::default()` **之前**调用（tracing 全局 dispatcher 一旦 init 不能再换）。内部组装 `registry().with(reload<EnvFilter>).with(stdout).with(file).with(ErrorEmitter).init()`。
+
+- **file layer 用 `tracing-appender::rolling::daily` + `non_blocking` writer**：按天滚动 + 不阻塞业务线程。WorkerGuard 必须挂在 LoggingState 上（drop 时 flush）
+- **reload::Layer<EnvFilter>**：`set_diagnostics_config` 能改日志级别**不重启就生效**
+- **ErrorEmitterLayer**：自定义 Layer 拦 `Level::ERROR` → 通过注入的 emit closure 发 `monitor-error` 事件 → 前端弹红色 toast。limited 60s/20 条避免风暴
+- **AppHandle 通过 closure 注入**：tracing init 时 AppHandle 还没建（在 setup 里才有）→ ErrorEmitter 内部用 `RwLock<Option<closure>>`，setup 里调 `install_error_emitter(handle)` 把 emit closure 写进去
+- **失败兜底**：log 目录创建失败 / appender 构造失败 → 退化到 stdout-only，monitor 仍能启动（INVARIANT § 15）
+
+**为什么**：v1.7.0-1.7.7 的 BOM 真凶就是因为 `windows_subsystem = "windows"` 无 stderr，`tracing::warn!("bind: parse ... failed")` 没人看见，cc 集成"装上没用"7 个版本无人察觉。issue #4 就是补这个结构性短板。
 
 ### Win32 sync 调用走 spawn_blocking
 `bring_terminal_to_front` / `cc_integration_*` 都走 `tokio::task::spawn_blocking`。

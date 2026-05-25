@@ -25,14 +25,14 @@ cc-monitor 跟外部进程（PowerShell `__ccm_bind` helper、Claude Code CLI）
 
 ## 1. `config.json`
 
-monitor 自己的设置（主题 / 字体 / claudeDir override）。
+monitor 自己的设置（主题 / 字体 / claudeDir override / 诊断）。
 
 **位置**：`~/.claude/claudecode-frontend/config.json`
 
-**写入方**：monitor 设置面板（前端 `theme.ts` / `paths.ts` 通过 IPC `save_config`）
-**读取方**：monitor 启动时 `paths::resolve_claude_dir` + 前端启动时 `load_config`
+**写入方**：monitor 设置面板（前端 `theme.ts` / `paths.ts` / `diagnostics-section.ts` 通过 IPC `save_config` / `set_diagnostics_config`）
+**读取方**：monitor 启动时 `paths::resolve_claude_dir` + 前端启动时 `load_config` + `logging::init()` 读 `diagnostics` 子对象
 
-**Schema**（schema 收敛在 TS 端，Rust 端只读写 `serde_json::Value` 不解释）：
+**Schema**（schema 收敛在 TS 端 / Rust logging 模块；其他 Rust 代码只读写 `serde_json::Value` 不解释）：
 
 ```json
 {
@@ -43,6 +43,12 @@ monitor 自己的设置（主题 / 字体 / claudeDir override）。
     "font-base": "Inter, ...",
     "font-size-base": 14
     // ... 见 src/theme.ts TOKENS
+  },
+  "diagnostics": {                            // 可选；v2.0.0 起；缺省值见 src-tauri/src/logging.rs
+    "log_enabled": true,                      // 写 logs/monitor.YYYY-MM-DD.log；切换需重启
+    "log_level": "info",                      // trace/debug/info/warn/error/off；reload 立即生效
+    "error_toast": true,                      // ERROR 级别弹右下角 toast；立即生效
+    "max_files": 3                            // 保留最近 N 天 log；切换需重启
   }
 }
 ```
@@ -182,7 +188,32 @@ session_id → HWND 持久缓存。新 session 出现时查这里复用绑定，
 
 ---
 
-## 6. `history-metadata.json`
+## 6.5. `logs/monitor.YYYY-MM-DD.log`（v2.0.0 起，issue #4）
+
+GUI app 诊断日志（解决 `windows_subsystem = "windows"` 无 stderr 的结构性问题）。
+
+**位置**：`~/.claude/claudecode-frontend/logs/monitor.YYYY-MM-DD.log`
+
+**写入方**：monitor 自身（`tracing-appender::rolling::daily` + `non_blocking` writer）
+**读取方**：用户（设置面板 [打开 log 文件] → 系统默认编辑器；或手动用记事本/VSCode 打开）
+
+**滚动规则**：按天滚动，文件名形如 `monitor.2026-05-25.log`。`max_files` 默认 3 → 保留最近 3 天的文件，老文件由 rolling appender 自动删除。
+
+**格式**：`tracing_subscriber::fmt::Layer` 默认格式，`with_ansi(false) + with_target(true)`：
+```
+2026-05-25T14:23:11.234567Z  INFO monitor_lib::bind: registered ps_pid=12345 hwnd=0x1a2b3c
+2026-05-25T14:23:15.987654Z  WARN monitor_lib::bind: bind: parse C:\...\ps-await\9876.json failed: ...
+```
+
+**生命周期**：持久。`log_enabled = false` 时不创建 logs 目录，已有文件不删（用户自己删）。
+
+**编码**：UTF-8 无 BOM（appender 默认行为）。
+
+**ERROR 级别同时 emit Tauri 事件**：自定义 `ErrorEmitterLayer` 拦 `Level::ERROR` → `emit("monitor-error", {level, target, message, timestamp})` 给前端 → 弹右下角红色 toast。限频 60s/20 条。
+
+---
+
+## 7. `history-metadata.json`
 
 历史浏览器的用户元数据（star / 重命名 / 隐藏）。**与 jsonl 数据源完全分离**，绝不污染原始数据。
 

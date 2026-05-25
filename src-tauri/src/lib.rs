@@ -4,6 +4,7 @@ mod bridge;
 mod config;
 mod event_replay;
 mod history;
+mod logging;
 mod messages;
 mod parser;
 mod paths;
@@ -19,18 +20,30 @@ use tauri::{Emitter, Listener, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with_target(false)
-        .init();
+    // v2.0.0 (issue #4)：tracing 初始化提前到 Builder 之前 —— 一旦 init 全局
+    // dispatcher 锁死，且我们要捕获 setup() 期间的所有 log。
+    //
+    // logging 模块内部把所有复杂度（rolling file appender / non_blocking writer /
+    // ErrorEmitterLayer / EnvFilter reload）封死，对外只暴露 init + state。
+    //
+    // **monitor_data_dir 必须能解析**：这里用 dirs::home_dir 兜底，不依赖任何
+    // 配置（避免 log 初始化跟 config 初始化循环依赖）。
+    let monitor_data_dir = paths::resolve_monitor_data_dir()
+        .unwrap_or_else(|| std::env::temp_dir().join("cc-monitor-fallback"));
+    let logging_state = logging::init(&monitor_data_dir);
+    tracing::info!(
+        "cc-monitor starting (data_dir={}, log_dir={})",
+        monitor_data_dir.display(),
+        logging_state.log_dir().display()
+    );
 
+    // setup 闭包是 FnOnce + 'static，必须 move-capture。把 logging_state shadow 进闭包，
+    // 闭包内同时 install_error_emitter（&self 借用）+ app.manage(clone)
+    let logging_state = logging_state;
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
+        .setup(move |app| {
             // Debug build 自动开 DevTools
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
@@ -46,6 +59,10 @@ pub fn run() {
             // monitor 自己的数据目录：~/.claude/claudecode-frontend
             let monitor_data_dir = paths::resolve_monitor_data_dir().ok_or("no data dir")?;
             tracing::info!("monitor_data_dir: {}", monitor_data_dir.display());
+
+            // v2.0.0：把 AppHandle 注入给 ErrorEmitterLayer（之前一直是 None，
+            // setup 期间的 ERROR 只写 log；从这里开始 ERROR 才会弹前端 toast）
+            logging_state.install_error_emitter(app.handle().clone());
 
             // v1.7.1：把当前 exe 路径记到 auto-launch.json，让 cc function 能在用户启用
             // auto-launch 时主动启动 monitor（不硬编码安装路径）
@@ -177,6 +194,8 @@ pub fn run() {
             app.manage(replay.clone());
             app.manage(bind_registry.clone());
             app.manage(sid_hwnd_cache.clone());
+            // v2.0.0 (issue #4)：logging state 也要 manage，IPC handler 才能拿到
+            app.manage(logging_state.clone());
 
             Ok(())
         })
@@ -193,6 +212,12 @@ pub fn run() {
             cc_integration_uninstall,
             cc_get_auto_launch,
             cc_set_auto_launch,
+            // v2.0.0 (issue #4): 诊断 / log
+            get_diagnostics_config,
+            set_diagnostics_config,
+            get_log_file_info,
+            open_log_file,
+            open_log_dir,
             history::list_history_projects,
             history::list_history_sessions_in_project,
             history::read_session_jsonl,
@@ -368,4 +393,96 @@ async fn cc_integration_uninstall(path: String) -> Result<(), String> {
     })
     .await
     .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}
+
+// ===== v2.0.0 (issue #4): 诊断 / log IPC =====
+
+/// 读当前 diagnostics 配置。设置面板打开时调一次。
+#[tauri::command]
+fn get_diagnostics_config(
+    state: tauri::State<'_, Arc<logging::LoggingState>>,
+) -> Result<logging::DiagnosticsConfig, String> {
+    Ok(state.config())
+}
+
+/// 应用新 diagnostics 配置。日志级别 + error_toast 立即生效；
+/// log_enabled / max_files 改了返回 `NeedsRestart` 让前端提示用户重启。
+#[tauri::command]
+fn set_diagnostics_config(
+    cfg: logging::DiagnosticsConfig,
+    state: tauri::State<'_, Arc<logging::LoggingState>>,
+) -> Result<logging::RestartHint, String> {
+    state.update_config(cfg)
+}
+
+/// 返回 log 目录 + 当前 log 文件 + 全部 .log 文件列表（path / size / mtime）。
+/// 设置面板用来显示路径 + 文件大小，让用户一眼看到 log 状态。
+#[tauri::command]
+fn get_log_file_info(
+    state: tauri::State<'_, Arc<logging::LoggingState>>,
+) -> Result<logging::LogFileInfo, String> {
+    Ok(state.log_file_info())
+}
+
+/// 用系统默认编辑器打开当前 log 文件（rolling::daily 写入的 mtime 最新那个）。
+/// 失败常见原因：log_enabled=false 还没生成过 log 文件 → Err 让前端 alert 提示。
+#[tauri::command]
+async fn open_log_file(
+    state: tauri::State<'_, Arc<logging::LoggingState>>,
+) -> Result<(), String> {
+    let path = state
+        .current_log_file()
+        .ok_or_else(|| "没有 log 文件（log 文件未启用或还没产生）".to_string())?;
+    let path_str = path.to_string_lossy().into_owned();
+    tokio::task::spawn_blocking(move || open_with_os(&path_str))
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}
+
+/// 用资源管理器打开 log 目录。
+#[tauri::command]
+async fn open_log_dir(
+    state: tauri::State<'_, Arc<logging::LoggingState>>,
+) -> Result<(), String> {
+    let dir = state.log_dir();
+    // 目录可能还不存在（log_enabled=false 时不创建）
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir).map_err(|e| format!("create log dir: {e}"))?;
+    }
+    let dir_str = dir.to_string_lossy().into_owned();
+    tokio::task::spawn_blocking(move || open_with_os(&dir_str))
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}
+
+/// 跨平台调系统默认 opener。Windows 用 `cmd /C start ""` 兜 path 中的空格。
+/// 复用 tauri-plugin-opener 也行（前端就是走它），但这里在 Rust 端直接调更直接。
+fn open_with_os(path_or_dir: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", path_or_dir])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| format!("start failed: {e}"))?;
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path_or_dir)
+            .spawn()
+            .map_err(|e| format!("open failed: {e}"))?;
+        Ok(())
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path_or_dir)
+            .spawn()
+            .map_err(|e| format!("xdg-open failed: {e}"))?;
+        Ok(())
+    }
 }
