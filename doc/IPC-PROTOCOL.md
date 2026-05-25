@@ -238,6 +238,55 @@ GUI app 诊断日志（解决 `windows_subsystem = "windows"` 无 stderr 的结�
 
 ---
 
+## 8. `<claude_dir>/tasks/<sid>/<id>.json`（v2.3.0，issue #11）
+
+Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——本协议仅记录字段假设，方便后续校验 / CLI 更新时同步。
+
+**位置**：`<claude_dir>/tasks/<session_id>/<id>.json`
+- `<claude_dir>` = `paths::resolve_claude_dir()` 三级回退
+- `<session_id>` = Claude session UUID（跟 jsonl 文件名同款）
+- `<id>` = 数字字符串（CLI 用 `.highwatermark` 自增）
+
+**附属控制文件（monitor 必须忽略）**：
+- `<sid>/.lock` — CLI 写入期间的文件锁，半截 JSON 可能存在
+- `<sid>/.highwatermark` — 下一个 id 的计数器，非 task 数据
+
+**写入方**：Claude Code CLI（`TaskCreate` / `TaskUpdate` / `TaskStop` 工具）
+**读取方**：monitor `tasks.rs::read_session_tasks`（变更时由 watcher 触发整目录重读）
+
+**Schema**：
+
+```json
+{
+  "id": "15",
+  "subject": "#1a 前端 priority queue",
+  "description": "JSONL_BATCH 按 session 分组, Phase 1 同步建 tab, Phase 2 优先 active session",
+  "activeForm": "实现 priority queue",
+  "status": "in_progress",
+  "blocks": [],
+  "blockedBy": []
+}
+```
+
+**字段约定**：
+- `id` 字符串型数字。monitor 用 `<digits>.json` 文件名筛 + parse 到 u64 排序，非数字命名一律跳过
+- `subject` 必填，UI 主显示
+- `description` / `activeForm` 可选，UI 进 hover tooltip
+- `status` 已知值 `pending` / `in_progress` / `completed`，可能新增 `deleted` 等。monitor 不强类型化（用 String 容错），未知值显示为兜底 icon `•`
+- `blocks` / `blockedBy` 暂未在 UI 用，保留兼容
+
+**容错**：
+- 读到半截 JSON（CLI 持 `.lock` 中途）→ 单条 catch 跳过，notify 下次 100ms debounce 重读自然修正
+- `<claude_dir>/tasks/` 整个不存在（用户从没用过 task tracker）→ watcher 静默不 spawn，IPC 返空数组
+
+**变更触发**：
+- monitor `tasks.rs::spawn_task_watcher` 用 `notify-debouncer-mini` 监听 `tasks/` **递归**
+- 100ms debounce 后按 sid dedup，重读整个 `tasks/<sid>/` 后通过 `task-update` 事件 emit 完整列表（**不**做 diff）
+
+**生命周期**：跟 session 同寿；session 删除时 CLI 是否清理对应 tasks/<sid>/ 由 CLI 决定，monitor 不主动写。
+
+---
+
 ## 跨进程握手时序图（cc 集成）
 
 ```

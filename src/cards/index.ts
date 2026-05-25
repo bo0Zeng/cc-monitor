@@ -96,6 +96,21 @@ export interface RenderContext {
    * 看到参数 + 输出"的合并 UX。
    */
   toolUseElements: Map<string, HTMLElement>;
+  /**
+   * v2.3.1 (issue #1)：切块场景下 tool_result 可能在 tool_use 之前到达
+   * （head 块含 result，older 块才有 tool_use）。此时 injectOrBuildToolResult
+   * 走 fallback 路径产生独立卡，并把 block 引用存到这个 map。
+   *
+   * 全部 chunks 完成后 TabManager 调 reconcileToolResults 重试匹配：
+   * tool_use 现在已经有 host → 注入 + 删 fallback 卡。
+   *
+   * key = tool_use_id；value = {block, fallback element}。
+   * 可选字段：v2.3.0 之前的调用方不传也能用（reconcile 静默跳过）。
+   */
+  pendingToolResults?: Map<
+    string,
+    { block: Extract<ContentBlock, { type: "tool_result" }>; element: HTMLElement }
+  >;
 }
 
 export type RenderResult =
@@ -419,10 +434,8 @@ function injectOrBuildToolResult(
         : `${labelPrefix} · ${sizeHint}`;
       resultEl.appendChild(summary);
 
-      const pre = document.createElement("pre");
-      pre.className = "block-body block-body-result";
-      pre.textContent = text;
-      resultEl.appendChild(pre);
+      // 渲染模式 toolbar + body (lazy build 首次展开时再实际产生 DOM)
+      buildResultBody(resultEl, text, toolName);
 
       // 同步 tool_use summary：只在原 summary 末尾追加错误标记（不重复加预览，
       // 预览已经在 result 自己的 summary 上）。防止反复追加。
@@ -447,12 +460,271 @@ function injectOrBuildToolResult(
   const summaryText = preview
     ? `${toolName}${errTag} · ${preview}`
     : `${toolName}${errTag} · ${approximateSize(block.content)}`;
-  return makeCollapsible(cls, summaryText, () => {
-    const pre = document.createElement("pre");
-    pre.className = "block-body block-body-result";
-    pre.textContent = text;
-    return pre;
+  const fallback = makeCollapsible(cls, summaryText, () => {
+    const container = document.createElement("div");
+    buildResultBody(container, text, toolName);
+    return container;
   });
+  // 标记 + 登记到 pending map，给切块场景的 reconcile 用
+  fallback.setAttribute("data-tool-use-id", block.tool_use_id);
+  if (ctx.pendingToolResults) {
+    ctx.pendingToolResults.set(block.tool_use_id, { block, element: fallback });
+  }
+  return fallback;
+}
+
+/**
+ * v2.3.1 (issue #1)：切块完成后调一次。扫所有 pending fallback tool_result，
+ * 重试匹配现已渲染的 tool_use 折叠条 → 注入 + 删 fallback。
+ *
+ * 调用方（TabManager.onBatchEnd）：对每个 Tab 用自己的 ctx 调一次。
+ *
+ * 不匹配的（真 fallback：tool_use 永远不会来）留着，UI 仍然能看到独立卡。
+ */
+export function reconcilePendingToolResults(ctx: RenderContext): void {
+  if (!ctx.pendingToolResults || ctx.pendingToolResults.size === 0) return;
+  const toDelete: string[] = [];
+  for (const [toolUseId, { block, element }] of ctx.pendingToolResults) {
+    if (!ctx.toolUseElements.has(toolUseId)) continue; // 仍然没匹配，保留
+    // 已有 host → 重新调注入（injectOrBuildToolResult 走"已 host"分支，返 null）
+    const reInjected = injectOrBuildToolResult(block, ctx);
+    if (reInjected === null) {
+      // 注入成功 → 删除原 fallback
+      element.remove();
+      toDelete.push(toolUseId);
+    }
+  }
+  for (const id of toDelete) {
+    ctx.pendingToolResults.delete(id);
+  }
+}
+
+/**
+ * 把 tool_result 文本渲染到 host 里，并附 [文本|MD] 切换 toolbar。
+ *
+ * 性能权衡：
+ * - 默认只挂 toolbar + 空占位；首次 host 展开 (details open) 时才实际 build body
+ *   （由调用方控制：tool_use 内嵌 result 是 details，外层 tool_use 展开后才被看到；
+ *    fallback 的独立 result 也是 details；两者都触发 toggle）
+ * - 大 output（> 200KB） 默认只渲染前 N 行 + [显示完整] 按钮，避免一次性
+ *   塞几百 K 文本到 pre / marked 解析卡住主线程
+ * - 切到 Markdown 后再切回 Text 时复用上次 build 的 pre（少一次重建）
+ *
+ * 偏好持久：per-tool-name 写 localStorage `cc-monitor.tool-render.<name>`。
+ * Read / Grep 类阅读工具默认 MD，Bash 类命令默认 text。
+ */
+function buildResultBody(
+  host: HTMLElement,
+  text: string,
+  toolName: string,
+): void {
+  const toolbar = document.createElement("div");
+  toolbar.className = "block-result-toolbar";
+
+  const btnText = document.createElement("button");
+  btnText.type = "button";
+  btnText.className = "block-result-mode is-active";
+  btnText.textContent = "文本";
+  btnText.title = "原始文本（Pre 格式）";
+
+  const btnMd = document.createElement("button");
+  btnMd.type = "button";
+  btnMd.className = "block-result-mode";
+  btnMd.textContent = "Markdown";
+  btnMd.title = "Markdown 渲染（含 LaTeX / 代码高亮）";
+
+  toolbar.append(btnText, btnMd);
+  host.appendChild(toolbar);
+
+  const bodyHost = document.createElement("div");
+  bodyHost.className = "block-result-body-host";
+  host.appendChild(bodyHost);
+
+  let textBodyEl: HTMLElement | null = null;
+  let mdBodyEl: HTMLElement | null = null;
+  let currentMode: "text" | "md" =
+    loadRenderModePreference(toolName) ?? defaultModeForTool(toolName);
+
+  const renderMode = (mode: "text" | "md"): void => {
+    if (currentMode === mode && bodyHost.firstChild) return;
+    currentMode = mode;
+    btnText.classList.toggle("is-active", mode === "text");
+    btnMd.classList.toggle("is-active", mode === "md");
+
+    bodyHost.replaceChildren();
+    if (mode === "text") {
+      if (!textBodyEl) textBodyEl = buildTextBody(text);
+      bodyHost.appendChild(textBodyEl);
+    } else {
+      if (!mdBodyEl) mdBodyEl = buildMarkdownBody(text);
+      bodyHost.appendChild(mdBodyEl);
+    }
+  };
+
+  btnText.addEventListener("click", () => {
+    saveRenderModePreference(toolName, "text");
+    renderMode("text");
+  });
+  btnMd.addEventListener("click", () => {
+    saveRenderModePreference(toolName, "md");
+    renderMode("md");
+  });
+
+  // 初次：lazy 渲染——挂 toolbar 但 body 等 details open 才真正 render
+  // host 可能是 <details> 也可能是 <div>（fallback 路径），都用 hostNeedsLazy 判断
+  const detailsHost = host.closest("details");
+  if (detailsHost && !detailsHost.open) {
+    // details 未展开 → 等 toggle 时 render
+    const onToggle = () => {
+      if (!detailsHost.open) return;
+      detailsHost.removeEventListener("toggle", onToggle);
+      renderMode(currentMode);
+    };
+    detailsHost.addEventListener("toggle", onToggle);
+  } else {
+    renderMode(currentMode);
+  }
+}
+
+/** 大 output 阈值（字节估算）—— 超过先只渲染前 N 行 */
+const LARGE_TEXT_BYTES = 200_000;
+const LARGE_TEXT_HEAD_LINES = 800;
+
+function buildTextBody(text: string): HTMLElement {
+  const pre = document.createElement("pre");
+  pre.className = "block-body block-body-result";
+  // 大 output 截断：避免一次性塞几百 K 到 DOM
+  if (text.length > LARGE_TEXT_BYTES) {
+    const head = text.split("\n").slice(0, LARGE_TEXT_HEAD_LINES).join("\n");
+    pre.textContent = head;
+    const wrap = document.createElement("div");
+    wrap.className = "block-body-truncated-wrap";
+    wrap.appendChild(pre);
+    const expand = document.createElement("button");
+    expand.type = "button";
+    expand.className = "block-body-show-full";
+    const sizeKb = (text.length / 1024).toFixed(0);
+    expand.textContent = `显示完整内容 (${sizeKb} KB)`;
+    expand.addEventListener(
+      "click",
+      () => {
+        pre.textContent = text;
+        expand.remove();
+      },
+      { once: true },
+    );
+    wrap.appendChild(expand);
+    return wrap;
+  }
+  pre.textContent = text;
+  return pre;
+}
+
+function buildMarkdownBody(text: string): HTMLElement {
+  const div = document.createElement("div");
+  div.className = "block-body block-body-result block-body-md";
+  // Read / Grep 类工具输出带行号前缀（`<n>\t...` 或 `<n>:...`），
+  // 行首不是 `#` 等 markdown token → marked 不识别。
+  // MD 模式先 strip 这些前缀让结构暴露出来。
+  const cleaned = stripLineNumberPrefix(text);
+  // 大文本 markdown 渲染昂贵——同样做截断 + 显示完整按钮
+  if (cleaned.length > LARGE_TEXT_BYTES) {
+    const head = cleaned
+      .split("\n")
+      .slice(0, LARGE_TEXT_HEAD_LINES)
+      .join("\n");
+    div.innerHTML = renderMarkdown(head);
+    const expand = document.createElement("button");
+    expand.type = "button";
+    expand.className = "block-body-show-full";
+    const sizeKb = (cleaned.length / 1024).toFixed(0);
+    expand.textContent = `渲染完整内容 (${sizeKb} KB)`;
+    expand.addEventListener(
+      "click",
+      () => {
+        div.innerHTML = renderMarkdown(cleaned);
+      },
+      { once: true },
+    );
+    const wrap = document.createElement("div");
+    wrap.className = "block-body-truncated-wrap";
+    wrap.append(div, expand);
+    return wrap;
+  }
+  div.innerHTML = renderMarkdown(cleaned);
+  return div;
+}
+
+/**
+ * 启发式 strip 行号前缀，给 Markdown 渲染用。
+ *
+ * 支持两种典型格式：
+ * - **Read tool**：每行 `<digits>\t<content>` （cat -n 风格）
+ * - **Grep tool**：每行 `<digits>:<content>` 或 `<path>:<digits>:<content>`
+ *
+ * 判断逻辑：如果**绝大多数非空行**（≥ 80%）符合 `^\s*\d+[:\t]` 模式，
+ * 视为带行号前缀，整体 strip；否则原样返回。
+ *
+ * 这样的代价：极少数 markdown 文本本身就是 "1: 标题" 这种列表格式的会被误 strip，
+ * 但这种情况渲染效果差异不大（仍然能看），可接受。
+ */
+function stripLineNumberPrefix(text: string): string {
+  const lines = text.split("\n");
+  let nonEmpty = 0;
+  let withPrefix = 0;
+  const PREFIX = /^\s*\d+[:\t]/;
+  // Grep "<path>:<n>:<content>" — path 含 `/` 或 `\` 或 `:`，先 strip path 段
+  const GREP_PATH = /^[^\s:]+[/\\][^\s:]*?:\d+:/;
+  for (const line of lines) {
+    if (line.trim() === "") continue;
+    nonEmpty += 1;
+    if (PREFIX.test(line) || GREP_PATH.test(line)) withPrefix += 1;
+  }
+  if (nonEmpty < 3) return text; // 太短不判断
+  if (withPrefix / nonEmpty < 0.8) return text;
+
+  return lines
+    .map((line) => {
+      if (line.trim() === "") return line;
+      // 优先 strip Grep 完整路径前缀（含或不含 path 段）
+      const m1 = line.match(/^[^\s:]+[/\\][^\s:]*?:\d+:(.*)$/);
+      if (m1) return m1[1] ?? "";
+      const m2 = line.match(/^\s*\d+[:\t](.*)$/);
+      if (m2) return m2[1] ?? "";
+      return line;
+    })
+    .join("\n");
+}
+
+/** 偏好：哪些 tool 默认 MD 渲染（产生类 markdown 文本的工具） */
+const DEFAULT_MD_TOOLS = new Set([
+  "Read",
+  "Grep",
+  "WebFetch",
+  "NotebookRead",
+  "TodoWrite",
+]);
+
+function defaultModeForTool(toolName: string): "text" | "md" {
+  return DEFAULT_MD_TOOLS.has(toolName) ? "md" : "text";
+}
+
+function loadRenderModePreference(toolName: string): "text" | "md" | null {
+  try {
+    const v = localStorage.getItem(`cc-monitor.tool-render.${toolName}`);
+    if (v === "text" || v === "md") return v;
+  } catch (e) {
+    console.warn("[tool-result] localStorage read failed:", e);
+  }
+  return null;
+}
+
+function saveRenderModePreference(toolName: string, mode: "text" | "md"): void {
+  try {
+    localStorage.setItem(`cc-monitor.tool-render.${toolName}`, mode);
+  } catch (e) {
+    console.warn("[tool-result] localStorage write failed:", e);
+  }
 }
 
 /**

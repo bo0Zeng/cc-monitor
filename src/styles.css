@@ -569,19 +569,87 @@ html, body {
   margin: 0;
   font-family: var(--font-mono);
   font-size: var(--font-size-small);
+  /* 自动换行（不允许水平滚动）。
+     overflow-wrap: anywhere 是标准属性，等效于 word-break: break-word 但更可控。 */
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
   color: var(--text);
   background: transparent;
   max-height: 600px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 性能：containment + content-visibility 让浏览器跳过 viewport 外的 layout/paint，
+     内部滚动不要触发外层 reflow。contain-intrinsic-size 给个占位尺寸防止滚动跳跃。 */
+  contain: layout style paint;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 600px;
+  /* WebView2 GPU 滚动加速 */
+  overscroll-behavior: contain;
 }
 
 .block-body-md {
   font-family: var(--font-prose);
   font-size: var(--font-size-prose);
   line-height: var(--line-height-prose);
+  /* Markdown 渲染回到正常换行（block-body-md 覆盖 .block-body 的 pre） */
   white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+/* === Tool result 渲染模式 toolbar === */
+.block-result-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px 0 8px;
+  background: transparent;
+  font-size: var(--font-size-xs);
+}
+.block-result-mode {
+  background: transparent;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  color: var(--text-2);
+  cursor: pointer;
+  line-height: 1.4;
+}
+.block-result-mode:hover {
+  background: var(--overlay-hover);
+  color: var(--text);
+}
+.block-result-mode.is-active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--text);
+}
+.block-result-body-host {
+  contain: layout style;
+}
+
+/* 大 output 截断 + [显示完整] 按钮 */
+.block-body-truncated-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.block-body-show-full {
+  align-self: flex-start;
+  margin: 6px 12px 10px 12px;
+  padding: 4px 12px;
+  font-size: var(--font-size-xs);
+  font-family: inherit;
+  background: var(--bg-2);
+  color: var(--text-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.block-body-show-full:hover {
+  background: var(--card);
+  color: var(--text);
 }
 
 /* thinking 块视觉更弱 */
@@ -1160,6 +1228,301 @@ html, body {
 }
 .branch-fold-body-inner > *:hover {
   opacity: 1;
+}
+
+/* issue #3 (A 透明化): 设置面板「数据存储」区。
+   折叠分组内嵌一个 headless DataSection，列出所有持久路径 + WebView2 + localStorage。 */
+.settings-data-headless {
+  display: flex;
+  flex-direction: column;
+}
+.settings-data-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.settings-data-loading,
+.settings-data-error {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  padding: 8px 0;
+}
+.settings-data-error {
+  color: var(--error);
+}
+.settings-data-block {
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 8px 10px 4px 10px;
+  background: color-mix(in srgb, var(--bg-2) 50%, transparent);
+}
+.settings-data-block-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.settings-data-block-title {
+  font-size: var(--font-size-small);
+  font-weight: 500;
+  color: var(--text);
+}
+.settings-data-block-subtitle {
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+.settings-data-block-subtitle.clickable {
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+.settings-data-block-subtitle.clickable:hover {
+  color: var(--text-2);
+}
+.settings-data-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.settings-data-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  grid-template-areas:
+    "label  meta  open"
+    "desc   desc  desc"
+    "path   path  path";
+  gap: 2px 8px;
+  padding: 6px 6px;
+  border-top: 1px dashed var(--border-soft);
+  align-items: baseline;
+}
+.settings-data-item:first-child {
+  border-top: none;
+}
+.settings-data-item.absent {
+  opacity: 0.55;
+}
+.settings-data-item-label {
+  grid-area: label;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  color: var(--text);
+}
+.settings-data-item.kind-dir .settings-data-item-label::before {
+  content: "📁 ";
+}
+.settings-data-item.kind-file .settings-data-item-label::before {
+  content: "📄 ";
+}
+.settings-data-item-desc {
+  grid-area: desc;
+  font-size: var(--font-size-xs);
+  color: var(--text-2);
+}
+.settings-data-item-meta {
+  grid-area: meta;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+}
+.settings-data-item.exists .settings-data-item-meta {
+  color: var(--text-2);
+}
+.settings-data-item-open {
+  grid-area: open;
+  background: transparent;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: var(--font-size-xs);
+  font-family: inherit;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.settings-data-item-open:hover:not(:disabled) {
+  background: var(--overlay-hover);
+  color: var(--text);
+}
+.settings-data-item-open:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.settings-data-item-path {
+  grid-area: path;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  word-break: break-all;
+}
+.settings-data-ls-list {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+.settings-data-ls-list .settings-data-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  grid-template-columns: none;
+  grid-template-areas: none;
+}
+.settings-data-ls-key {
+  color: var(--accent);
+}
+.settings-data-ls-eq {
+  color: var(--text-faint);
+}
+.settings-data-ls-value {
+  color: var(--text-2);
+  word-break: break-all;
+}
+.settings-data-note {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  border-radius: 6px;
+  line-height: 1.5;
+}
+.settings-data-note strong {
+  color: var(--warn);
+}
+
+/* issue #11: Task 面板 —— summary chip 嵌入 status-bar，点击切换 popover 浮层。
+   popover 从 status-bar 上方往上展开，fixed 浮在消息流之上。 */
+
+/* 1) Status-bar 内的 summary chip */
+.status-tasks {
+  background: transparent;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 0 8px;
+  height: 18px;
+  line-height: 16px;
+  font: inherit;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.status-tasks:hover {
+  background: var(--overlay-hover);
+  color: var(--text);
+}
+.status-tasks.expanded {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--text);
+}
+.status-tasks-arrow {
+  font-size: 9px;
+  color: var(--text-faint);
+}
+.status-tasks.expanded .status-tasks-arrow {
+  color: var(--accent);
+}
+
+/* 2) Popover 浮层：fixed 贴在 status-bar 之上 */
+.tasks-popover {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 28px; /* status-bar 高 24px + 一点呼吸 */
+  z-index: 50;
+  max-height: 50vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 -4px 16px var(--overlay-shadow);
+  font-size: var(--font-size-small);
+  overflow: hidden;
+}
+.tasks-popover-head {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg);
+  flex: 0 0 auto;
+}
+.tasks-popover-title {
+  flex: 1;
+  font-weight: 500;
+  color: var(--text);
+}
+.tasks-popover-close {
+  background: transparent;
+  border: 0;
+  color: var(--text-2);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.tasks-popover-close:hover {
+  color: var(--text);
+}
+.tasks-popover-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 6px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+.tasks-popover-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  line-height: 1.5;
+}
+.tasks-popover-item:hover {
+  background: var(--overlay-hover);
+}
+.tasks-popover-icon {
+  flex: 0 0 14px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.tasks-popover-subject {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.tasks-popover-item.status-completed {
+  opacity: 0.6;
+}
+.tasks-popover-item.status-completed .tasks-popover-subject {
+  text-decoration: line-through;
+}
+.tasks-popover-item.status-completed .tasks-popover-icon {
+  color: var(--success);
+}
+.tasks-popover-item.status-in_progress {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.tasks-popover-item.status-in_progress .tasks-popover-icon {
+  color: var(--accent);
+}
+.tasks-popover-item.status-deleted {
+  opacity: 0.4;
+}
+.tasks-popover-item.status-deleted .tasks-popover-subject {
+  text-decoration: line-through;
 }
 
 /* issue #7: 可折叠分组（外观 / 诊断 / 快捷键 etc.）

@@ -65,6 +65,42 @@ export class MessageStream {
     if (this.stickToBottom) this.snap();
   }
 
+  /**
+   * v2.3.1 (issue #1)：把 DocumentFragment 一次性 prepend 到 stream 顶部。
+   * 专门给 replay 切块 prepend 用 —— 每个 older chunk 都贴到当前 contentEl 顶部，
+   * 多 chunk 调用后 DOM 顺序自然是 [最老 chunk, 次老 chunk, ..., chunk 0 head]。
+   *
+   * **不依赖外部 anchor 节点**（之前 `prependBefore(fragment, anchor)` 模式踩坑：
+   * BranchFolder rebuild / ensureTab 时机问题会让 anchor 脱离 contentEl 直接子节点，
+   * insertBefore 抛 NotFoundError）。直接 `contentEl.firstChild` 当 anchor，
+   * 它始终是 contentEl 的 child（或 null 时 insertBefore 自动 append）。
+   *
+   * **滚动位置保持**：
+   * - 用户在底部（stickToBottom=true）：插入老内容后保持滚到底部
+   * - 用户向上滚到老内容（stickToBottom=false）：补偿 scrollTop 让视觉位置不变
+   */
+  prependFragmentAtTop(fragment: DocumentFragment): void {
+    if (fragment.childNodes.length === 0) return;
+
+    const beforeHeight = this.contentEl.scrollHeight;
+    const beforeScrollTop = this.scrollEl.scrollTop;
+
+    // contentEl.firstChild 为 null 时 insertBefore 等价于 append —— 边界 safe
+    this.contentEl.insertBefore(fragment, this.contentEl.firstChild);
+
+    if (this.stickToBottom) {
+      // 用户在底部 → 让浏览器自动 layout 后 snap 贴底
+      this.snap();
+    } else {
+      // 用户向上看老内容 → 补偿 scrollTop 保持视觉位置不变
+      const afterHeight = this.contentEl.scrollHeight;
+      const delta = afterHeight - beforeHeight;
+      if (delta > 0) {
+        this.scrollEl.scrollTop = beforeScrollTop + delta;
+      }
+    }
+  }
+
   /** 强制贴底（Tab 切换时调用） */
   scrollToBottom(): void {
     this.stickToBottom = true;
