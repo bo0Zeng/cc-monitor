@@ -80,7 +80,10 @@ powershell -NoProfile -File scripts\run.ps1 dev
   - `src-tauri/tauri.conf.json::version`
 - [ ] `Cargo.lock` 提交（Rust 应用必须锁版本）
 - [ ] [CHANGELOG.md](../CHANGELOG.md) 加新版本段（写法见 [RELEASING.md](RELEASING.md)）
-- [ ] `cargo check + cargo test --lib + npm run build` 全绿
+- [ ] `cargo fmt --check + cargo check + cargo test --lib + npm run build` 全绿
+      （`.github/workflows/ci.yml` 第一步就是 `cargo fmt --check` 严格 verify；
+      本地写完代码先 `cargo fmt` 一次再发版，避免 tag 推完才发现 CI 红需要补
+      style commit 的尴尬。v2.0.0 就踩过这个坑）
 - [ ] **手测关键 UI 入口**：
   - [ ] 启动 monitor，Tab 自动出现
   - [ ] 点 Tab ↗ 拉对应终端窗口
