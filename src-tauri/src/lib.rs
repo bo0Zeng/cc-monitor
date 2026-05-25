@@ -427,9 +427,7 @@ fn get_log_file_info(
 /// 用系统默认编辑器打开当前 log 文件（rolling::daily 写入的 mtime 最新那个）。
 /// 失败常见原因：log_enabled=false 还没生成过 log 文件 → Err 让前端 alert 提示。
 #[tauri::command]
-async fn open_log_file(
-    state: tauri::State<'_, Arc<logging::LoggingState>>,
-) -> Result<(), String> {
+async fn open_log_file(state: tauri::State<'_, Arc<logging::LoggingState>>) -> Result<(), String> {
     let path = state
         .current_log_file()
         .ok_or_else(|| "没有 log 文件（log 文件未启用或还没产生）".to_string())?;
@@ -441,9 +439,7 @@ async fn open_log_file(
 
 /// 用资源管理器打开 log 目录。
 #[tauri::command]
-async fn open_log_dir(
-    state: tauri::State<'_, Arc<logging::LoggingState>>,
-) -> Result<(), String> {
+async fn open_log_dir(state: tauri::State<'_, Arc<logging::LoggingState>>) -> Result<(), String> {
     let dir = state.log_dir();
     // 目录可能还不存在（log_enabled=false 时不创建）
     if !dir.exists() {
