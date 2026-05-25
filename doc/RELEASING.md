@@ -7,7 +7,7 @@
 - [ ] 改 **版本号三处对齐**（package.json + src-tauri/Cargo.toml + src-tauri/tauri.conf.json）
 - [ ] `Cargo.lock` 提交
 - [ ] [CHANGELOG.md](../CHANGELOG.md) 加新版本段（写法见 § 3）
-- [ ] `cargo check + cargo test --lib + npm run build` 全绿
+- [ ] `cargo fmt --check + cargo check + cargo test --lib + npm run build` 全绿（fmt 不过 CI 会红）
 - [ ] [CONTRIBUTING.md § 1.5](CONTRIBUTING.md#15-发版前) 列出的关键 UI 入口手测
 
 ---
