@@ -1090,6 +1090,69 @@ html, body {
   margin-bottom: 8px;
 }
 
+/* issue #7: 可折叠分组（外观 / 诊断 / 快捷键 etc.）
+   用 grid-template-rows: 0fr ↔ 1fr 技巧做平滑展开 —— 不用预测内容高度。 */
+.settings-collapsible-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  /* 占用 .settings-group-title 的 8px 底部边距，折叠时也需要保留视觉间隔 */
+  margin-bottom: 8px;
+  padding: 2px 0;
+  border-radius: 3px;
+  outline: none;
+}
+.settings-collapsible-header:hover {
+  background: var(--bg-2);
+}
+.settings-collapsible-header:focus-visible {
+  background: var(--bg-2);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.settings-collapsible-arrow {
+  display: inline-block;
+  width: 12px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-2);
+  transition: transform 150ms ease;
+  transform: rotate(0deg);
+}
+.settings-collapsible-arrow.expanded {
+  transform: rotate(90deg);
+}
+.settings-collapsible-title {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.settings-collapsible-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 200ms ease;
+}
+.settings-collapsible-body.expanded {
+  grid-template-rows: 1fr;
+}
+.settings-collapsible-body-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+/* collapsible 折叠时不需要 header 下面的 8px 边距空气 */
+.settings-collapsible.collapsed .settings-collapsible-header {
+  margin-bottom: 0;
+}
+/* headless 的子 section（被 collapsible 包起来时）：去掉额外的 16px group spacing */
+.settings-headless + .settings-group {
+  margin-top: 16px;
+}
+.settings-headless {
+  /* 沿用 settings-group 内的 row 排列，但不要外层间距 */
+}
+
 .settings-row {
   display: flex;
   align-items: center;
