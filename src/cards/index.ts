@@ -38,6 +38,8 @@ export type JsonlRecord =
       message: ApiMessage;
       cwd?: string;
       sessionId?: string;
+      /** issue #8: ESC 回退分支检测用。parentUuid → 上一条 jsonl 记录 uuid。 */
+      parentUuid?: string;
     }
   | {
       type: "assistant";
@@ -45,6 +47,8 @@ export type JsonlRecord =
       timestamp: string;
       message: ApiMessage;
       sessionId?: string;
+      /** issue #8: ESC 回退分支检测用 */
+      parentUuid?: string;
     }
   | { type: "ai-title"; aiTitle: string; sessionId: string }
   | {
@@ -53,6 +57,20 @@ export type JsonlRecord =
       durationMs?: number;
       messageCount?: number;
       timestamp: string;
+      /** issue #8: 部分 system 记录有 uuid+parentUuid 参与 jsonl 链跟踪 */
+      uuid?: string;
+      parentUuid?: string;
+    }
+  | {
+      /**
+       * issue #8: attachment 不渲染（renderMessage 返回 skip），但有 uuid+parentUuid
+       * 夹在 user→assistant 之间。前端必须收到才能完整算 ESC 回退主线 ——
+       * 否则 parent 链断在 attachment 处，下游整段会被错误折叠为"已被回退"。
+       */
+      type: "attachment";
+      uuid: string;
+      timestamp: string;
+      parentUuid?: string;
     };
 
 // === 卡片渲染 ===

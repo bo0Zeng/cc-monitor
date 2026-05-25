@@ -8,6 +8,8 @@ import {
   type ToolGroup,
   type RenderContext,
 } from "./cards";
+import { BranchFolder } from "./branch-fold";
+import { extractBranchRecord } from "./branching";
 
 /**
  * Tab 生命周期：
@@ -47,6 +49,12 @@ export interface Tab {
    * 内部，不再产生独立折叠条。详见 cards/index.ts 的 injectOrBuildToolResult。
    */
   toolUseElements: Map<string, HTMLElement>;
+  /**
+   * issue #8: ESC 回退分支折叠管理器。
+   * 跟踪本 Tab 内所有有 uuid 的卡片，监听 parentUuid 分叉，把"被回退"的连续段
+   * 包到可折叠容器里。工具组（tool-group）不参与折叠（无单一 uuid）。
+   */
+  branchFolder: BranchFolder;
 }
 
 /** Tab 数量摘要，发给宿主用于状态栏 / empty-state 等外部 UI */
@@ -116,10 +124,12 @@ export class TabManager {
 
     switch (result.kind) {
       case "skip":
-        return;
+        break;
       case "card":
         // 普通卡（user / 含 text 的 assistant）出现就断开工具组累积
         tab.pendingToolGroup = null;
+        // issue #8: 把 uuid/parentUuid 写到 DOM 上，让 BranchFolder 能扫
+        markCardUuid(result.element, payload.message);
         tab.stream.append(result.element);
         break;
       case "tool-group": {
@@ -131,11 +141,25 @@ export class TabManager {
           const group = buildToolGroup(result.timestamp);
           addToToolGroup(group, result.units);
           tab.pendingToolGroup = group;
+          // issue #8: 给 tool-group root 写 data-uuid，让 BranchFolder 把它当
+          // 普通 card 一样判别主线。否则 tool-group 在 DOM 里既不算 on-main
+          // 也不算 off-main → 会切断 off-main 连续段，导致被回退的消息每条单独成 fold。
+          // 用**首个**贡献消息的 uuid 当代表（典型情况下整组同主支，混合极罕见）。
+          markCardUuid(group.root, payload.message);
           tab.stream.append(group.root);
         }
         break;
       }
     }
+
+    // issue #8: 主线检测必须 track **所有** user/assistant 记录，包括渲染成
+    // tool-group 的（纯工具调用 assistant）和被 skip 的（空内容 user）。
+    // 否则 parent 链断 → 几乎所有卡片判 off-main → 全部塞进折叠卡 = 已知 bug。
+    // 这些 "被 track 但没 data-uuid 的记录" 在 BranchFolder 里只参与主线计算，
+    // 不参与 DOM 扫描（rebuild 只看带 data-uuid 的元素）。
+    feedBranchFolder(tab.branchFolder, payload.message);
+
+    if (result.kind === "skip") return;
 
     if (this.activeId !== tab.sessionId) {
       tab.unread += 1;
@@ -161,6 +185,7 @@ export class TabManager {
     streamEl.style.display = "none";
     this.streamRootEl.appendChild(streamEl);
 
+    const stream = new MessageStream(streamEl);
     tab = {
       sessionId,
       title,
@@ -168,12 +193,14 @@ export class TabManager {
       aiTitle: null,
       status: "live",
       streamEl,
-      stream: new MessageStream(streamEl),
+      stream,
       parentPath: sourcePath,
       unread: 0,
       pendingToolGroup: null,
       toolUseNames: new Map(),
       toolUseElements: new Map(),
+      // BranchFolder 扫的是真实容器（.stream-content），不是外层 scroll container
+      branchFolder: new BranchFolder(stream.contentElement),
     };
     this.tabs.set(sessionId, tab);
     this.orderedIds.push(sessionId);
@@ -234,6 +261,7 @@ export class TabManager {
     tab.toolUseNames.clear();
     tab.toolUseElements.clear();
     tab.pendingToolGroup = null;
+    tab.branchFolder.dispose();
     this.tabs.delete(sessionId);
     if (idx >= 0) this.orderedIds.splice(idx, 1);
 
@@ -447,6 +475,36 @@ function computeTitleFor(
   }
   if (project) return project;
   return sessionId.slice(0, 8);
+}
+
+/**
+ * issue #8: 给 user/assistant 卡的 root element 写 data-uuid（+ data-parent-uuid）。
+ * BranchFolder 用 data-uuid 扫定位 + 主线判定。
+ *
+ * 工具组（tool-group）的 root 元素**不**走这里 —— 它没有单一 uuid，不参与折叠。
+ */
+function markCardUuid(el: HTMLElement, rec: JsonlRecord): void {
+  if (rec.type !== "user" && rec.type !== "assistant") return;
+  el.setAttribute("data-uuid", rec.uuid);
+  if (rec.parentUuid) {
+    el.setAttribute("data-parent-uuid", rec.parentUuid);
+  }
+}
+
+/**
+ * issue #8: 把记录推到 BranchFolder 做主线计算。
+ *
+ * **必须 track 的范围**（链完整性，详 branching.ts::extractBranchRecord）：
+ *  - user / assistant：被渲染的目标，参与 DOM 折叠
+ *  - attachment：不渲染但占 5% 链节点
+ *  - system：占 3% 链节点
+ *
+ * attachment/system 只参与算法（提供 parent 链节点），没 data-uuid 不参与
+ * DOM rebuild 扫描。
+ */
+function feedBranchFolder(folder: BranchFolder, rec: JsonlRecord): void {
+  const br = extractBranchRecord(rec);
+  if (br) folder.recordAdded(br);
 }
 
 /**

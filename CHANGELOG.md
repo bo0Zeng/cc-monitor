@@ -8,9 +8,17 @@
 
 ---
 
-## [Unreleased]
+## [2.1.0] — 2026-05-25
 
 ### 新增
+
+- **ESC 回退分支折叠**（issue #8）：Claude Code CLI 双击 ESC 回退到之前某条 user 重新发送，jsonl 里产生 `parentUuid` 分叉。本版本识别这种分叉并把"被回退"的连续消息段折叠到「已被 ESC 回退（含 N 条消息）」可展开容器里，主线显示一气呵成。
+  - **算法**："只在 fork 点选 latest-descendant 赢家"。单链 / 多 root（含 /compact 切断的多树）/ 无分叉的会话**完全不折叠**；只有真正的 ESC 回退（同 parent 多个 child）才把被抛弃的兄弟子树折叠。
+  - **链完整性**：jsonl 链里 attachment 和 system 记录夹在 user→assistant 之间（实测占 8% parent 指向）。后端把 attachment 也 emit 给前端（虽然不渲染卡片），系统级别保证 parent 链不断 → 主线判定正确。
+  - **工具组**：tool-group 卡（连续 tool-only assistant）也写 data-uuid（取首条贡献者），跟 user/assistant 一起参与折叠 → 被回退段不会因 tool-group 被切成碎片。
+  - 历史浏览器（Ctrl+H 进只读视图）同样支持。
+  - 折叠/展开状态本地持有，刷新（F5）不丢。
+  - 详 [`src/branching.ts`](src/branching.ts)、[`src/branch-fold.ts`](src/branch-fold.ts)。
 
 - **single-instance lock**（issue #9）：同一个用户同一台机器只允许一个 cc-monitor 进程。第二次双击 `cc-monitor.exe`（或装多份 exe 双击别处那份）→ 第二个实例立即退出，第一个窗口被 unminimize + show + set_focus 拉到前台。修复历史上"两个 monitor 同时跑导致双重渲染 + cc 集成 race"的混乱。底层走 Tauri 官方 [`tauri-plugin-single-instance`](https://v2.tauri.app/plugin/single-instance/)，user-scoped mutex，跨用户登录不冲突。详 [`doc/INVARIANTS.md § 16`](doc/INVARIANTS.md)。
 

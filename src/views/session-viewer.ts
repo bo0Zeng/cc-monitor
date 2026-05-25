@@ -19,6 +19,8 @@ import {
   type RenderContext,
   type ToolGroup,
 } from "../cards";
+import { BranchFolder } from "../branch-fold";
+import { extractBranchRecord, type BranchRecord } from "../branching";
 
 interface JsonlLinePayload {
   session_id: string;
@@ -98,14 +100,29 @@ export class SessionViewer {
       toolUseElements: new Map(),
     };
     let pendingToolGroup: ToolGroup | null = null;
+    // issue #8: 收集所有带 uuid+parentUuid 的链节点（user / assistant / attachment / system）。
+    // attachment + system 不渲染卡，但占 8% 链节点，少了它们 parent 链断 → 主线全错。
+    const branchRecords: BranchRecord[] = [];
 
     for (const p of payloads) {
       const result = renderMessage(p.message, ctx);
+
+      // 收集 branch record（无视 render 结果）—— 链完整性优先
+      const branchRec = extractBranchRecord(p.message);
+      if (branchRec) branchRecords.push(branchRec);
+
       switch (result.kind) {
         case "skip":
           continue;
         case "card":
           pendingToolGroup = null;
+          // 仅 card 类型的 user/assistant 拿 data-uuid（BranchFolder DOM 扫描看这个）
+          if (p.message.type === "user" || p.message.type === "assistant") {
+            result.element.setAttribute("data-uuid", p.message.uuid);
+            if (p.message.parentUuid) {
+              result.element.setAttribute("data-parent-uuid", p.message.parentUuid);
+            }
+          }
           this.stream.append(result.element);
           break;
         case "tool-group":
@@ -115,11 +132,23 @@ export class SessionViewer {
             const group = buildToolGroup(result.timestamp);
             addToToolGroup(group, result.units);
             pendingToolGroup = group;
+            // issue #8: tool-group root 也写 data-uuid（首个贡献者）。详见 tabs.ts 同处理。
+            if (p.message.type === "user" || p.message.type === "assistant") {
+              group.root.setAttribute("data-uuid", p.message.uuid);
+              if (p.message.parentUuid) {
+                group.root.setAttribute("data-parent-uuid", p.message.parentUuid);
+              }
+            }
             this.stream.append(group.root);
           }
           break;
       }
     }
+
+    // issue #8: 一次性算主线 + 重建 fold UI
+    const folder = new BranchFolder(this.stream.contentElement);
+    folder.setRecordsAndRebuild(branchRecords);
+
     // 渲染完贴底（只读视图打开时让用户先看到最新对话尾部）
     this.stream.scrollToBottom();
   }

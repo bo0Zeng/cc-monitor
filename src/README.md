@@ -23,8 +23,10 @@ index.html  ─> /src/main.ts (defer)
 |---|---|---|
 | **main.ts** | 启动 + 全局快捷键 + 错误捕获 + HMR 强制 reload | DOMContentLoaded handler |
 | **events.ts** | 订阅后端 `jsonl-line` / `jsonl-batch` / `session-ended`，**批量调度让出主线程**（防 replay 卡死） | `bindEvents({onLine, onSessionEnded})` |
-| **tabs.ts** | TabManager 状态机：Tab 生命周期（live / archived）+ 工具组聚合 | `onLine() / archiveTab() / closeTab() / cycleActive()` |
-| **stream.ts** | 单 Tab 的消息流容器，ResizeObserver 自动贴底滚动 | `MessageStream.append() / scrollToBottom() / dispose()` |
+| **tabs.ts** | TabManager 状态机：Tab 生命周期（live / archived）+ 工具组聚合 + BranchFolder 接入 (issue #8) | `onLine() / archiveTab() / closeTab() / cycleActive()` |
+| **stream.ts** | 单 Tab 的消息流容器，ResizeObserver 自动贴底滚动；`contentElement` 暴露真实卡片容器给 BranchFolder | `MessageStream.append() / scrollToBottom() / dispose()` |
+| **branching.ts** (issue #8) | parentUuid 拓扑分析：识别 ESC 回退主线 vs 被回退分支。`computeMainBranch` 算法 = "只在 fork 点选 latest-descendant 赢家"，无 fork 即全 on-main（多 root / 单链 / /compact 不误折叠） | `computeMainBranch(records) / extractBranchRecord(rec)` |
+| **branch-fold.ts** (issue #8) | DOM 重排：把连续的 off-main 卡片包到 `.branch-fold-wrap`，header「已被 ESC 回退（含 N 条）」；策略 = unwrap-then-rewrap 全量重建（增量太脆） | `new BranchFolder(container).recordAdded(rec) / setRecordsAndRebuild(records)` |
 | **cards/index.ts** | renderMessage 主分发：user 气泡 / assistant 卡 / 工具组合并 / tool_result 注入到 tool_use | `renderMessage(rec, ctx) → RenderResult` |
 | **cards/slash.ts** | `/` 命令紧凑卡 | `parseSlashCommand / buildSlashCommandCard` |
 | **cards/compact.ts** | `/compact` 续接消息折叠 | `isCompactSummary / buildCompactSummaryCard` |
