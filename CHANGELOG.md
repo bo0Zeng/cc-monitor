@@ -8,6 +8,14 @@
 
 ---
 
+## [Unreleased]
+
+### 新增
+
+- **single-instance lock**（issue #9）：同一个用户同一台机器只允许一个 cc-monitor 进程。第二次双击 `cc-monitor.exe`（或装多份 exe 双击别处那份）→ 第二个实例立即退出，第一个窗口被 unminimize + show + set_focus 拉到前台。修复历史上"两个 monitor 同时跑导致双重渲染 + cc 集成 race"的混乱。底层走 Tauri 官方 [`tauri-plugin-single-instance`](https://v2.tauri.app/plugin/single-instance/)，user-scoped mutex，跨用户登录不冲突。详 [`doc/INVARIANTS.md § 16`](doc/INVARIANTS.md)。
+
+---
+
 ## [2.0.0] — 2026-05-25
 
 里程碑：补齐 GUI app 诊断短板。v1.7 系列结尾的 BOM bug "7 个版本带病发布无人察觉" 暴露的结构性问题（`windows_subsystem = "windows"` 无 stderr → tracing 输出不可见）在本版本彻底解决。
