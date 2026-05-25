@@ -70,7 +70,7 @@ powershell -NoProfile -File scripts\run.ps1 dev
 - [ ] cargo build 后看 `src-tauri/gen/schemas/acl-manifests.json` 实际 permission set 内容确认
 - [ ] dev mode 实测涉及的 IPC 不报 `Permission xxx not allowed`
 
-**警示**：plugin 的 `<plugin>:default` permission set 通常**不包含所有** `allow-*`；某些 allow 默认空 scope 需要 inline 给 path/url pattern。详 [ARCHITECTURE.md § 5](ARCHITECTURE.md#5-关键设计选择--理由) capability 段。
+**警示**：plugin 的 `<plugin>:default` permission set 通常**不包含所有** `allow-*`；某些 allow 默认空 scope 需要 inline 给 path/url pattern。详 [DEVELOPMENT.md § 查 capability 报错](DEVELOPMENT.md#查-capability-报错)。
 
 ### 1.5 发版前
 
@@ -108,44 +108,40 @@ powershell -NoProfile -File scripts\run.ps1 dev
 
 ### 2.1 添加新 IPC 命令
 
-**目标**：加一个 `monitor_get_stats() -> StatsResponse` 返回当前 monitor 一些运行统计。
+**目标**：加一个 `monitor_get_active_ids() -> Vec<String>` 返回当前活跃 session id 列表。
 
 **步骤**：
 
 1. **后端** `src-tauri/src/lib.rs`（或独立 module 如 `stats.rs`）：
 
 ```rust
-#[derive(serde::Serialize)]
-struct StatsResponse { active_sessions: u32, replay_buffer_len: usize }
-
 #[tauri::command]
-async fn monitor_get_stats(
+async fn monitor_get_active_ids(
     session_map: tauri::State<'_, std::sync::Arc<session_map::SessionMap>>,
-    replay: tauri::State<'_, std::sync::Arc<event_replay::EventReplay>>,
-) -> Result<StatsResponse, String> {
-    Ok(StatsResponse {
-        active_sessions: session_map.active_count(),
-        replay_buffer_len: replay.history_len(),
-    })
+) -> Result<Vec<String>, String> {
+    // SessionMap 提供哪些公开 API 见 src-tauri/src/session_map.rs；
+    // 这里假设你需要的方法已存在，否则先在 session_map.rs 暴露一个。
+    Ok(session_map.list_active_session_ids())
 }
 ```
+
+⚠️ **示例 API 是说明性的**，落地前必须 `cargo check` 确认 `SessionMap` 上真有 `list_active_session_ids()`，没有就先在 `session_map.rs` 暴露。当前 `SessionMap` 公开方法见 `documentSymbol src-tauri/src/session_map.rs` 或 `pub fn` grep。
 
 2. **注册到 invoke_handler**（`lib.rs::run()` 内）：
 
 ```rust
 .invoke_handler(tauri::generate_handler![
     /* ... 现有命令 ... */
-    monitor_get_stats,    // ← 加这行
+    monitor_get_active_ids,    // ← 加这行
 ])
 ```
 
-3. **如果用了 State**：去 [STATE-MATRIX.md § 2](STATE-MATRIX.md#2-消费者矩阵ipc-命令) 对应 State 下加一行 `lib.rs::monitor_get_stats(...)`。
+3. **如果用了 State**：去 [STATE-MATRIX.md § 2](STATE-MATRIX.md#2-消费者矩阵ipc-命令) 对应 State 下加一行 `lib.rs::monitor_get_active_ids(...)`。
 
 4. **前端调用**：
 
 ```ts
-interface StatsResponse { active_sessions: number; replay_buffer_len: number }
-const stats = await invoke<StatsResponse>("monitor_get_stats");
+const activeIds = await invoke<string[]>("monitor_get_active_ids");
 ```
 
 5. **检查**：

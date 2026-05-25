@@ -22,7 +22,7 @@
               │ 写                                         │ 改窗口标题 + 写
               ▼                                            ▼
    ~/.claude/projects/                              ~/.claude/claudecode-frontend/
-       <cwd>/<sid>.jsonl                                ps-await/<PID>.json
+       <encoded-cwd>/<sid>.jsonl                        ps-await/<PID>.json
    ~/.claude/sessions/<PID>.json                        ps-registry/<PID>.json
               │                                            │
               │ notify-debouncer 监听              EnumWindows 找 marker
@@ -149,7 +149,7 @@ monitor 与外部进程的所有通信都在 `~/.claude/claudecode-frontend/` �
 每条都是踩过坑总结出来的"为什么不能用别的方案"。
 
 ### 零侵入 = 不写 Claude Code 数据源
-watcher / session_map 只读 `~/.claude/projects/` 和 `~/.claude/sessions/`。唯一写入是用户**显式**触发：历史浏览器 `delete_history_session`（双校验路径白名单）+ PowerShell profile [安装]（也只动 BEGIN/END 块外内容不动）。
+watcher / session_map 只读 `~/.claude/projects/` 和 `~/.claude/sessions/`。唯一写入是用户**显式**触发：历史浏览器 `delete_history_session`（双校验路径白名单）+ PowerShell profile [安装]（只动 BEGIN/END **块内**内容，块外用户其他代码完全不动）。
 
 **为什么**：cc-monitor 是个监控渲染器，写 jsonl 会破坏用户对"数据源 = 我自己的命令痕迹"的认知；profile 写入则是必要的可选副作用（用户显式 opt-in 装 `__ccm_bind`），仍然走完整的 backup + ACL 保留路径。
 

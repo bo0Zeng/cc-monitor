@@ -28,7 +28,7 @@ v1.7.12 改 right-anchored 后，靠左的 `?`（如"PowerShell 集成"标题旁
 
 - **删未用依赖**：`Cargo.toml` 的 `anyhow` + `thiserror` 全仓 grep 0 引用，纯死依赖。删了减编译时间 + 包体积。
 - **`opener:allow-open-path` scope** 维持 `**`：考虑过收紧到 `$DOCUMENT/WindowsPowerShell/**` 但会破坏"Custom 路径"功能（用户可能选 Documents 外的位置）。
-- 文档更新：`doc/CHECKLIST.md` 测试列表加 v1.7.13 tooltip portal 等新增项；`doc/ARCHITECTURE.md` 历史踩坑表加 v1.7.10 ACL + v1.7.11 capability + v1.7.13 CSS transform 三条；工作目录新写 `doc/v1.7-debug-notes.md` 汇总 v1.7.0–1.7.13 全部主题（按主题不是按版本）。
+- 文档更新：发版后另起一次文档大重整（doc/CONTRIBUTING.md / ARCHITECTURE.md / IPC-PROTOCOL.md / INVARIANTS.md / STATE-MATRIX.md / DEVELOPMENT.md / BUILDING.md / RELEASING.md 等），覆盖测试列表 + 关键设计理由 + 跨进程协议 schema + 全局不变量。
 
 ## [1.7.12] — 2026-05-24
 
@@ -716,38 +716,8 @@ v1.5.0 的迭代版。首次通过 `release.yml` 自动发布（v1.5.0 tag 指�
 
 ---
 
-## [1.4.0] — 2026-05-15（v1.5 前最后一版基准）
+## v1.5.0 之前 — pre-release dev 阶段（无独立 tag）
 
-### 新增
+第一个公开发布是 v1.5.0（2026-05-20）。在那之前，所有功能（实时渲染 / 多 Tab / SessionMap 进程探活 / LaTeX + 代码高亮 / tool_use 折叠卡 / subagent / 设置面板 GUI / `bring_terminal_to_front` 4 阶段 HWND 启发式 / 撤销 SessionStart hook 路线 / 撤销 U2 焦点同步等）都在 dev 阶段内完成，由一个 Initial scaffold + 数十个 feat/fix commit 累积成 v1.5.0 的初始功能集。
 
-- **`bring_terminal_to_front`**（Tab ↗ 按钮 / `Ctrl+\``）
-  - 4 阶段 HWND 匹配：① 祖先链 PID + title 含 ai-title/项目名 ② 祖先链任意窗口 ③ 终端类进程 + title 匹配 ④ 终端类任一窗口
-  - WT 单进程多窗口下落到 D 级，需用户在 PowerShell startup 设独特 console title 才能区分
-
-- **`tool_result` 合并到 `tool_use` 折叠条**：展开同一个折叠看 args + output，output 自身嵌套二级 details
-
-- **代码块"复制"按钮 + 语言标签**：每个 code block 顶部条
-
-### 修复
-
-- **PID 复用导致 4 个僵尸 Tab**：探活补回 procStart 校验（100ms 容差）
-- **save_config 第二次失败**：Windows `std::fs::rename` 目标存在时失败，改用 `MoveFileExW(MOVEFILE_REPLACE_EXISTING)`
-
-### 移除
-
-- **U2 焦点自动同步**：Win11 WT 单进程多窗口 OS API 无法区分 tab/window，整功能删除
-- **SessionStart hook 路线**：改为直读 `~/.claude/sessions/<PID>.json`，零侵入
-- **subagent 独立 Tab + `↳` 前缀**：嵌入到父 Task 折叠卡
-
----
-
-## [1.0.0 – 1.3.x] — 2026-04 至 2026-05 早期
-
-M1 + M2 + M3 + M4 + M5 阶段（依次）：
-
-- 单 session MVP + watcher + 全类型 JSONL 解析 + 基础 Markdown
-- 多 Tab + SessionMap + 进程探活
-- 富渲染：LaTeX + 代码高亮 + tool 卡 + thinking + ai-title
-- subagent Task 折叠卡 + description 关联
-- 设置面板 GUI（颜色 + 字体）+ Ctrl+Tab/W/, 快捷键
-- UI 全面对齐 claude.ai 视觉语言：warm gray-brown + 橙 accent + serif 正文 + user 气泡靠右
+详细的关键转向与设计演化叙事见 [`../doc/HISTORY.md`](../doc/HISTORY.md)（不在 git 仓库的工作目录文档）。

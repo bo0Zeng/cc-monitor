@@ -12,7 +12,7 @@
 
 | State 类型 | 注册位置 | 创建位置 | Arc 所有权 |
 |---|---|---|---|
-| `Arc<session_map::SessionMap>` | `lib.rs::setup()` `app.manage(session_map.clone())` | `SessionMap::load_with_changes()` | 共享：setup 局部 + 闭包 + `session-changes-emitter` 线程 + State |
+| `Arc<session_map::SessionMap>` | `lib.rs::setup()` `app.manage(session_map.clone())` | `SessionMap::load_with_changes()` | 共享：setup 局部 + `active_filter` 闭包（喂给 watcher）+ `session-changes-emitter` 线程 + State |
 | `Arc<event_replay::EventReplay>` | `lib.rs::setup()` `app.manage(replay.clone())` | `EventReplay::new()` | 共享：setup 局部 + frontend-ready listener + jsonl async pump + State |
 | `Arc<bind::BindRegistry>` | `lib.rs::setup()` `app.manage(bind_registry.clone())` | `BindRegistry::spawn()` | 共享：setup 局部 + `session-changes-emitter` 线程 + `bind-await-watcher` 线程 + `bind-heartbeat` 线程 + State |
 | `Arc<bind::SidHwndCache>` | `lib.rs::setup()` `app.manage(sid_hwnd_cache.clone())` | `SidHwndCache::load()` | 共享：setup 局部 + `session-changes-emitter` 线程 + State |

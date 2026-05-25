@@ -47,7 +47,7 @@ src-tauri/
 | **session_map.rs** | 读 sessions/<PID>.json + Win32 进程探活 + 心跳清死 session | `SessionMap::load_with_changes() / is_session_active()` |
 | **bind.rs** | cc 集成的核心：监听 `ps-await/`、PS 改窗口标题、EnumWindows 找 marker、写 `ps-registry/`、`SidHwndCache` 持久化 sid↔hwnd、`bring_terminal_to_front` | `BindRegistry::spawn() / SidHwndCache::load() / bring_terminal_to_front` |
 | **profile_installer.rs** | PowerShell profile 解析 + cc-monitor BEGIN/END 块插入 / 卸载 / 扫描 / 冲突检测 | `discover_profiles() / install_to_profile / scan_profile / render_cc_code` |
-| **auto_launch.rs** | "用 cc 启动 claude 时自动开 monitor" 开关持久化 | `AutoLaunchConfig::load / save` |
+| **auto_launch.rs** | "用 cc 启动 claude 时自动开 monitor" 开关持久化（模块级函数，非 impl 方法） | `auto_launch::{load, save, get_config, set_enabled, update_monitor_path_on_startup}` |
 | **subagent.rs** | 父 session 的 Agent tool_use 关联 `<parent>/subagents/agent-*.jsonl` | IPC `load_subagent` |
 | **event_replay.rs** | 内存 buffer + frontend-ready 时持锁完整 emit | `EventReplay::record() / replay_and_mark_ready() / forget()` |
 | **history.rs** | 历史浏览器后端：两级 IPC + metadata + 物理删除 + resume | IPC `list_history_projects / list_history_sessions_in_project / read_session_jsonl / delete / update_metadata / resume` |
@@ -81,12 +81,13 @@ src-tauri/
 
 ## 事件
 
-后端 → 前端（`Emitter::emit`）：
+后端 → 前端（`Emitter::emit`），全部常量在 `bridge::events`：
 
-| 事件 | payload | 时机 |
-|---|---|---|
-| `jsonl-line` | `JsonlLinePayload` | watcher 解析到一行 + event_replay 回放 |
-| `session-ended` | `SessionEndedPayload` | sessions/<PID>.json 被删（session 退出） |
+| 常量 | 事件名 | payload | 时机 |
+|---|---|---|---|
+| `JSONL_LINE` | `jsonl-line` | `JsonlLinePayload` | watcher 解析到一行后实时单条 emit |
+| `JSONL_BATCH` | `jsonl-batch` | `Vec<JsonlLinePayload>` | event_replay 启动重放时一次性发整个 history Vec |
+| `SESSION_ENDED` | `session-ended` | `SessionEndedPayload` | sessions/<PID>.json 被删（session 退出） |
 
 前端 → 后端（`Listener::listen`）：
 
@@ -94,30 +95,25 @@ src-tauri/
 |---|---|
 | `frontend-ready` | 触发 event_replay 完整回放历史（持锁严格按序） |
 
-## 事件常量（新增）
-
-后端 → 前端：
-
-| 事件 | payload | 时机 |
-|---|---|---|
-| `jsonl-batch` | `Vec<JsonlLinePayload>` | event_replay 持锁回放（一次性发整个 history Vec） |
-
 详 [doc/IPC-PROTOCOL.md](../doc/IPC-PROTOCOL.md)（跨进程文件协议）与 [doc/ARCHITECTURE.md § 5](../doc/ARCHITECTURE.md#5-关键设计选择--理由)（事件设计理由）。
 
 ---
 
 ## 不变量
 
-详 [doc/INVARIANTS.md](../doc/INVARIANTS.md) 全局不变量清单。本模块特别相关：
+完整清单在 [doc/INVARIANTS.md](../doc/INVARIANTS.md)，本模块特别相关：
 
-- **零侵入**：watcher 只读，绝不修改 `~/.claude/projects/` 或 `~/.claude/sessions/` 下的文件
-- **历史浏览器的物理删除是例外**：必须用户**显式触发**（双确认），且仅限 `<claude_dir>/projects/**.jsonl`，由 history.rs 做路径安全校验
-- **profile 写入也是例外**：必须用户**显式点设置面板的 [安装]**；只动 BEGIN/END 之间的内容，块外用户其他代码完全不动；写入用 `ReplaceFileW` 保留 dst ACL + backup + 写后校验
-- **event_replay 持锁完整 emit**：保证前端不会先收到 live emit 再收到 snapshot
-- **session_map.rs 探活两道关卡**：`OpenProcess + GetExitCodeProcess == STILL_ACTIVE` + `GetProcessTimes` 与 `procStart` 100ms 容差校验
-- **cc 集成握手所有 JSON 必须 UTF-8 无 BOM**：写端用 .NET `UTF8Encoding($false)` 或 Rust `std::fs::write`；读端 `trim_start_matches('\u{feff}')` 兜底
-- **Win32 sync 调用必须 spawn_blocking**：`bring_terminal_to_front` / `cc_integration_*` 等都走 `tokio::task::spawn_blocking`
-- **跨平台分裂**：所有 Win32 调用都在 `#[cfg(windows)]` 块；非 Windows 给降级实现或 Err 字符串。当前 v1 仅支持 Windows
+- § 1 — 零侵入（watcher 只读 projects/ + sessions/；history 物理删除是显式例外）
+- § 2 — monitor data dir 永远 `~/.claude/claudecode-frontend/`，不跟 claudeDir
+- § 3 — 跨进程 JSON UTF-8 无 BOM（双向防御）
+- § 4 — profile 写入 `ReplaceFileW` + backup + 校验
+- § 5 — event_replay 持锁完整 emit 保证顺序
+- § 6 — session 探活双重校验（PID + procStart）
+- § 7 — HWND 拉前三重校验
+- § 8 — Tauri State 必须 `app.manage`
+- § 9 — JSONL 单一时序
+- § 10 — Win32 sync 必须 `spawn_blocking`
+- § 11 — 跨平台分裂边界（所有 Win32 调用都在 `#[cfg(windows)]` 块；非 Windows 给 stub）
 
 ---
 

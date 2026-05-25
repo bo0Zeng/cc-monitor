@@ -100,22 +100,22 @@ monitor 通知 PS "绑定成功，HWND = X"，同时是个**持久映射**让 mo
   "ps_pid": 12345,
   "hwnd": 198342,
   "owner_pid": 8888,
-  "owner_proc_start": "133456000000000000",
+  "owner_proc_start": 133456000000000000,
   "ps_proc_start": "133456789012345678",
   "title_at_bind": "ccm-bind-12345-7f3a9b2c",
-  "registered_at": "2026-05-24T12:34:56.789Z"
+  "registered_at": 1716553496789
 }
 ```
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `ps_pid` | `u32` | PS 进程 PID |
-| `hwnd` | `i64` | 找到的窗口句柄 |
+| `hwnd` | `isize` | 找到的窗口句柄 |
 | `owner_pid` | `u32` | HWND 实际拥有进程的 PID（通常是 WT / conhost / VSCode integrated terminal） |
-| `owner_proc_start` | `string` | owner 的 procStart FILETIME，拉前时三重校验之一 |
-| `ps_proc_start` | `string` | PS 自己的 procStart，PS 重启时指纹不匹配会重新握手 |
+| `owner_proc_start` | `u64` | owner 的 procStart FILETIME 数值（0 = 拿不到，不致命） |
+| `ps_proc_start` | `string` | PS 自己的 procStart（.NET `Process.StartTime.ToFileTime()` 字符串，跟 SessionInfo.proc_start 同语义）|
 | `title_at_bind` | `string` | 绑定瞬间 marker 字符串，供调试 |
-| `registered_at` | `string` | ISO 8601 时间戳 |
+| `registered_at` | `i64` | Unix 毫秒时间戳 |
 
 **生命周期**：与 PS 进程同寿。PS 退出后由 monitor `bind-heartbeat` 线程每 10s 检测 PID 死亡时清理。
 
@@ -137,17 +137,17 @@ session_id → HWND 持久缓存。新 session 出现时查这里复用绑定，
   "<session_id_1>": {
     "hwnd": 198342,
     "owner_pid": 8888,
-    "owner_proc_start": "133456000000000000",
+    "owner_proc_start": 133456000000000000,
     "ps_pid": 12345,
     "ps_proc_start": "133456789012345678",
     "title_at_bind": "ccm-bind-12345-7f3a9b2c",
-    "registered_at": "2026-05-24T12:34:56.789Z"
+    "registered_at": 1716553496789
   },
   "<session_id_2>": { ... }
 }
 ```
 
-字段语义同 `ps-registry/<PID>.json`（直接复用结构）。
+字段语义同 `ps-registry/<PID>.json`（`SidHwndBinding` struct 直接复用 `HwndEntry` 的字段，注意 `hwnd` 是 `isize`、`owner_proc_start` 是 `u64`、`registered_at` 是 `i64` Unix ms）。
 
 **生命周期**：持久。monitor 启动加载到内存；session 退出时由 `session-changes-emitter` 线程调 `cache.forget` 删除该 sid。
 
