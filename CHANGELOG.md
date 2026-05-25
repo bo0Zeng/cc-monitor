@@ -8,6 +8,17 @@
 
 ---
 
+## [2.1.1] — 2026-05-25
+
+### 修复
+
+- **长 session 启动只渲染头几条消息 + console RangeError**（v2.1.0 起的回归）：
+  - 症状：~1000+ 条记录的 session 打开 monitor 后，前端只显示前几条消息，再就停了；F12 console 看到 `RangeError: Maximum call stack size exceeded`。
+  - 根因：v2.1.0 issue #8 的 `computeMainBranch` 用真递归 (`dfsLatest` + `walkMain`) 算主线。Claude session 的 parent 链典型几乎线性，递归深度 = 链长度。WebView2 (Chromium) 默认 JS stack 在 ~1000 frames 附近触底 → BranchFolder.recordAdded 抛 RangeError → events.ts 的 drain 异常逃逸 → 后续 record 永久滞留 queue 不渲染。
+  - 修法：
+    1. `src/branching.ts`：两个 DFS 都改迭代。`latestDescTs` 用 Kahn 拓扑序自底向上累加 O(N) 无递归；`walkMain` 本来就是 tail-recursive，改 `while` 循环深度 1 帧。
+    2. `src/events.ts`：drain 加 try/catch 包单条 `onLine` —— 防御未来类似的单条记录处理异常冻死整个 replay queue（详 [`doc/INVARIANTS.md § 17`](doc/INVARIANTS.md)）。
+
 ## [2.1.0] — 2026-05-25
 
 ### 新增

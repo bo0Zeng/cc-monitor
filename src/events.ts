@@ -39,7 +39,16 @@ export function bindEvents(handlers: EventHandlers): void {
       performance.now() - start < BATCH_MS
     ) {
       const p = queue.shift();
-      if (p) handlers.onLine(p);
+      if (p) {
+        // v2.1.1: try/catch 防御 —— 单条 record 处理出错不能冻死整个 replay
+        // queue（v2.1.0 踩过：computeMainBranch stack overflow → drain 异常逃逸
+        // → 后续上千条 record 永远不渲染）。错单条记日志继续。
+        try {
+          handlers.onLine(p);
+        } catch (e) {
+          console.error("[events] onLine threw, skipping record:", p, e);
+        }
+      }
       processed += 1;
     }
     if (queue.length > 0) {
