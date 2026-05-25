@@ -1,26 +1,23 @@
 /**
  * issue #8：JSONL parentUuid 分叉 → ESC 回退分支检测。
  *
- * **数据背景**（issue #8 body 实测）：
- * - Claude Code CLI 双击 ESC 回退 = 用户在某条历史 user message 处重新编辑发送
- * - jsonl 表现：被回退的旧分支保留在文件里，但用户重发的新 user record 的
- *   `parentUuid` 不指向上一条 assistant，而指向**回退到的那条历史 user 之前**
- * - 实测 11.52MB / 5152 记录的真实 jsonl：~3% 记录 parentUuid 形成分叉
+ * **数据背景**：
+ * - Claude Code CLI 双击 ESC = 在某条历史 user message 处重新编辑发送
+ * - jsonl 表现：被回退的旧分支保留在文件里，新 user record 的 `parentUuid`
+ *   指向**回退到的那个历史节点的 parent**（即同一个 parent 下产生第二个 child）
+ * - 实测 1297 条记录的真实 jsonl：~3% parent 形成 fork
  *
- * **主线识别算法**：
- *  1. 在记录集里，找出 "leaf" —— 没有任何其他记录的 parentUuid 指向自己
- *  2. leaf 不止一个时（多个分支末梢都活着），按 timestamp 取**最新那个**
- *     —— 用户最后操作的那条肯定在最新分支上
- *  3. 从最新 leaf 沿 parentUuid 链回溯到根（parentUuid=null 或 parent 不在记录集里）
- *  4. 这条链上所有 uuid 就是**主线**；其他都是被回退的分支
- *
- * **复杂度**：O(N)。每条记录至多入边、出边各一次。
+ * **主线算法详见** `computeMainBranch` —— "只在 fork 点选 latest-descendant 赢家"。
+ * 单链 / 多 root / 无分叉的会话整体 on-main 不折叠；只有真正的 fork 才把
+ * 被抛弃兄弟子树标 off-main。
  *
  * **不在这里处理**：
- * - 渲染 / 折叠 UI —— 见 branch-fold.ts
- * - 工具组（tool-group）不参与折叠 —— 它是多条 assistant 消息合并的 UI 复合体，
- *   不带单一 uuid。MVP 阶段把工具组当作"始终在主线"，会断开 off-main 连续段
- *   （工具组前后的回退分支会各自成 fold）。
+ * - DOM 折叠 UI → branch-fold.ts
+ *
+ * **链完整性**（详 [[project-branching-algorithm]] 笔记）：
+ * - attachment + system 记录不渲染卡片，但夹在 user/assistant 链中间
+ * - 必须 track 它们的 uuid+parentUuid，否则 parent 链断成碎片 → 大量误折叠
+ * - extractBranchRecord 显式接受这四种类型
  */
 
 export interface BranchRecord {
