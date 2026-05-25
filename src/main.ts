@@ -5,6 +5,7 @@ import { TabManager } from "./tabs";
 import { loadTheme } from "./theme";
 import { SettingsPanel } from "./settings";
 import { HistoryView } from "./views/history";
+import { bindErrorToast } from "./error-toast";
 
 // Vite HMR 默认在没显式 `hot.accept` 时对 TS 文件部分热替换，可能让旧模块的
 // 已注册 listener / 已渲染 DOM 与新代码并存。对监控这种长跑+事件密集的应用，
@@ -158,6 +159,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     onLine: (e) => tabs.onLine(e),
     onSessionEnded: (sessionId) => tabs.archiveTab(sessionId),
   });
+
+  // v2.0.0 (issue #4)：后端 ERROR 级别 tracing → 右下角红色 toast
+  bindErrorToast();
 
   // 通知后端可以发了 —— 缓冲的 line 会被 flush 过来
   void emit("frontend-ready");

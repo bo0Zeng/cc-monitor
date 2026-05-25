@@ -17,6 +17,7 @@ import {
 } from "../theme";
 import { getClaudeDirOverride, setClaudeDirOverride } from "../paths";
 import { CcIntegrationSection } from "./cc_integration";
+import { DiagnosticsSection } from "./diagnostics-section";
 
 /**
  * 字段控件类型：
@@ -207,6 +208,8 @@ export class SettingsPanel {
     body.appendChild(this.buildDataGroup());
     // v1.7：PowerShell 集成区（cc 命令注入式绑定）
     body.appendChild(new CcIntegrationSection().element);
+    // v2.0.0 (issue #4)：诊断区（log 文件 / 级别 / error toast）
+    body.appendChild(new DiagnosticsSection().element);
     body.appendChild(this.buildGroup("字体", FIELDS.filter((f) => f.group === "font")));
     body.appendChild(this.buildGroup("颜色", FIELDS.filter((f) => f.group === "color")));
     return body;

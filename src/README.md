@@ -36,6 +36,8 @@ index.html  ─> /src/main.ts (defer)
 | **settings/panel.ts** | 抽屉式设置面板（数据目录 + 字体 + 颜色 + PowerShell 集成） | `SettingsPanel.open() / close()` |
 | **settings/cc_integration.ts** | PowerShell 集成子区（profile 选项 + wrapper toggle + 5 个预设下拉） | `CcIntegrationSection.element` |
 | **settings/info-icon.ts** | `?` 信息图标 portal tooltip 组件 + 路径工具 | `makeInfoIcon(text) / swapFileName(path, newName)` |
+| **settings/diagnostics-section.ts** (v2.0.0+) | 设置面板「诊断」区：log_enabled toggle / log_level select / error_toast toggle / log 路径 / [打开 log/dir] | `DiagnosticsSection.element` |
+| **error-toast.ts** (v2.0.0+) | listen `monitor-error` 事件，右下角垂直堆叠红色 toast，点击直接打开 log 文件 | `bindErrorToast()` |
 | **views/history.ts** | 历史浏览器（项目分组 + 两级懒加载 + 增删改） | `HistoryView.open() / handleEscape()` |
 | **views/session-viewer.ts** | 只读消息查看器（点击历史条目进入） | `SessionViewer.load(opts) / dispose()` |
 | **styles.css** | 全部样式 + token 系统 | — |

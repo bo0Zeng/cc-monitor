@@ -1,6 +1,6 @@
 [package]
 name = "monitor"
-version = "1.7.13"
+version = "2.0.0"
 description = "cc-monitor — Claude Code CLI 的只读输出渲染窗口（Tauri 2 + TypeScript，Windows）"
 authors = ["cc-monitor contributors"]
 edition = "2021"
@@ -38,6 +38,8 @@ parking_lot = "0.12"
 dirs = "5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# v2.0.0 issue #4：滚动 log 文件 + non_blocking writer，给 GUI app（无 stderr）一个用户可见的诊断通道
+tracing-appender = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 # v1.7.0：cc 注入式绑定恢复 ToolHelp（claude.exe 的 parent_pid 反查 PS） +
