@@ -180,6 +180,30 @@
 
 ---
 
+## 17. 前端 IPC drain 必须捕获单条记录异常 + 用户数据遍历必须迭代
+
+两条相关的稳定性约束，都来自 v2.1.1 hotfix。
+
+### 17a. drain 必须 try/catch 单条 record
+
+[`src/events.ts`](../src/events.ts) 的 `drain` 循环每次 `handlers.onLine(p)` 必须 try/catch。单条 record 处理抛错时**只**记 log + 跳过该条，**不能**让异常逃出 while 循环 —— 否则后续上千条 record 永远滞留 queue 不被处理，前端看上去就停止刷新了。
+
+### 17b. 用户数据深度的遍历必须迭代而非递归
+
+任何对 jsonl 记录、Tab 历史、subagent 链等**用户数据驱动深度**的图 / 树遍历，必须用迭代算法（while 循环 + 显式 stack / Kahn 拓扑序等），不能依赖 JS 函数调用栈。
+
+**为什么不能松动**：
+- WebView2 (Chromium) 的 JS stack 在 ~1000-10000 frames 附近触底，跟 V8 配置和宿主有关
+- Claude session parent 链典型几乎线性，几千条记录是常态
+- 真递归一旦炸 stack 就是 RangeError，**异常**而不是返回错误值 —— 17a 的 drain 防御能保证整个 replay 不被冻死，但**单条数据从此渲染不出来**仍然是 bad UX
+- 写算法时凭直觉用真递归（"O(N) 嘛"）但忽略 stack 深度，是已经踩过的坑
+
+**已纠正**：v2.1.0 `computeMainBranch` 的 `dfsLatest` + `walkMain` 真递归 → v2.1.1 改 Kahn 拓扑序 + while。
+
+**未来加新代码注意**：处理 jsonl 记录树、event_replay 历史、subagent 嵌套时如果想写 `function f(node) { ... f(child) }`，停一下，改成 `while (stack.length > 0)` 风格。
+
+---
+
 ## 修改本文档
 
 加新的不变量时：

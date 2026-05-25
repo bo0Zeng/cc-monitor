@@ -42,7 +42,12 @@ export interface BranchRecord {
  * 整棵 pre-compact 树误标 off-main（因为 latest leaf 在 post-compact 树里）。
  * 现在每个 root 独立处理，"被回退"严格定义为"在同一个 parent 下被其他兄弟抢走"。
  *
- * **复杂度**：O(N)。children 构建 O(N)；每个节点至多被 DFS 访问一次（memoized 子树最大 ts）。
+ * **复杂度**：O(N)。children 构建 O(N)；latestDescTs 拓扑序累加 O(N)；walk 主线 O(N)。
+ *
+ * **为什么全部用迭代**：v2.1.0 用过真递归（dfsLatest + walkMain）。Claude session
+ * 的 parent 链典型几乎线性，递归深度 = 链长度，几千条记录就在 WebView2 上炸 stack
+ * （RangeError）→ replay drain 整个死掉，前端只渲染前几条。v2.1.1 改自底向上 Kahn
+ * 拓扑序算 latestDescTs + while 循环 walk，深度 1 帧。
  *
  * 空记录集 → 空 Set。
  */
@@ -68,50 +73,77 @@ export function computeMainBranch(records: ReadonlyArray<BranchRecord>): Set<str
     }
   }
 
-  // memoize: uuid → 该子树（含自己）的最大 timestamp。
+  // 迭代算 latestDescTs：Kahn 风格自底向上 —— 先处理 leaves，再处理它们的 parent
+  // remaining[uuid] = 该 uuid 还有几个 child 未处理。0 时它本身可以被处理（child 的 ts 都 ready）。
   const latestDescTs = new Map<string, string>();
-  function dfsLatest(r: BranchRecord): string {
-    const cached = latestDescTs.get(r.uuid);
-    if (cached !== undefined) return cached;
+  const remaining = new Map<string, number>();
+  const queue: BranchRecord[] = [];
+  for (const r of records) {
+    const c = childrenOf.get(r.uuid)?.length ?? 0;
+    if (c === 0) {
+      queue.push(r);
+    } else {
+      remaining.set(r.uuid, c);
+    }
+  }
+  while (queue.length > 0) {
+    const r = queue.shift()!;
     let max = r.timestamp;
     const kids = childrenOf.get(r.uuid);
     if (kids) {
       for (const k of kids) {
-        const kts = dfsLatest(k);
-        if (kts > max) max = kts;
+        const kts = latestDescTs.get(k.uuid);
+        if (kts !== undefined && kts > max) max = kts;
       }
     }
     latestDescTs.set(r.uuid, max);
-    return max;
-  }
-
-  // 从每个 root 走主线：fork 点选 latest-descendant-ts 最大的 child
-  const onMain = new Set<string>();
-  function walkMain(r: BranchRecord): void {
-    if (onMain.has(r.uuid)) return; // 环防御
-    onMain.add(r.uuid);
-    const kids = childrenOf.get(r.uuid);
-    if (!kids || kids.length === 0) return;
-    if (kids.length === 1) {
-      walkMain(kids[0]);
-      return;
-    }
-    // fork：选赢家
-    let winner = kids[0];
-    let winnerTs = dfsLatest(kids[0]);
-    for (let i = 1; i < kids.length; i++) {
-      const ts = dfsLatest(kids[i]);
-      if (ts > winnerTs) {
-        winner = kids[i];
-        winnerTs = ts;
+    // 通知 parent：少一个 pending child
+    if (r.parentUuid) {
+      const p = byUuid.get(r.parentUuid);
+      if (p) {
+        const next = (remaining.get(p.uuid) ?? 1) - 1;
+        if (next <= 0) {
+          remaining.delete(p.uuid);
+          queue.push(p);
+        } else {
+          remaining.set(p.uuid, next);
+        }
       }
     }
-    walkMain(winner);
-    // 兄弟 kids 不递归 → 它们整个子树都不进 onMain（= off-main）
+  }
+  // remaining 不空 = 环（理论不可能，jsonl append-only 保证 parent 早于 child；防御）
+  // fallback 用自身 ts，避免后续 walkMain 拿到 undefined
+  for (const [uuid] of remaining) {
+    const r = byUuid.get(uuid);
+    if (r) latestDescTs.set(uuid, r.timestamp);
   }
 
+  // 迭代 walk 主线：原来 walkMain 是 tail-recursive（每次只下钻一条路径），
+  // 直接改 while 循环，深度 1 帧。
+  const onMain = new Set<string>();
   for (const root of roots) {
-    walkMain(root);
+    let cursor: BranchRecord | undefined = root;
+    while (cursor) {
+      if (onMain.has(cursor.uuid)) break; // 环防御
+      onMain.add(cursor.uuid);
+      const kids = childrenOf.get(cursor.uuid);
+      if (!kids || kids.length === 0) break;
+      if (kids.length === 1) {
+        cursor = kids[0];
+        continue;
+      }
+      // fork：选 latest-descendant-ts 最大的 child；兄弟子树整体 off-main
+      let winner = kids[0];
+      let winnerTs = latestDescTs.get(kids[0].uuid) ?? kids[0].timestamp;
+      for (let i = 1; i < kids.length; i++) {
+        const ts = latestDescTs.get(kids[i].uuid) ?? kids[i].timestamp;
+        if (ts > winnerTs) {
+          winner = kids[i];
+          winnerTs = ts;
+        }
+      }
+      cursor = winner;
+    }
   }
 
   return onMain;

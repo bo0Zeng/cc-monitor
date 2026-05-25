@@ -1,7 +1,7 @@
 {
   "name": "cc-monitor",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "cc-monitor — Claude Code CLI 的只读输出渲染窗口（Tauri 2 + TypeScript，Windows）",
   "license": "MIT",
   "author": "cc-monitor contributors",
