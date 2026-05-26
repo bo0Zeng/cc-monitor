@@ -29,8 +29,20 @@ export interface BatchChunkMeta {
   chunkTotal: number;
 }
 
+/**
+ * v2.4 (修首次启动乱序)：onLine 收到 payload 时同时告知来源。
+ * - `"batch"`：来自 `jsonl-batch` (chunked replay 历史) → TabManager 按
+ *   inPrependMode 决定 append 还是 buffer 到 prepend fragment
+ * - `"live"`：来自 `jsonl-line` (用户在终端敲的真新行) → TabManager 永远
+ *   append 到 stream 底部，**绕开** prepend buffer 避免被错误塞到顶部
+ *
+ * 旧 bug：events.ts 把两种 payload 都标 `kind: "payload"` 无法区分，tabs.ts
+ * 的 inPrependMode 全局生效 → 加载期间用户敲的新行被错误 prepend。
+ */
+export type PayloadSource = "batch" | "live";
+
 export interface EventHandlers {
-  onLine: (e: JsonlLinePayload) => void;
+  onLine: (e: JsonlLinePayload, source: PayloadSource) => void;
   onSessionEnded: (sessionId: string) => void;
   /**
    * v2.2 (issue #12 性能): 启动重放（jsonl-batch 事件）开始时调一次。
@@ -65,7 +77,7 @@ export interface EventHandlers {
 
 /** queue 中的不同事件类型，drain 按 kind 派发 */
 type QueueItem =
-  | { kind: "payload"; payload: JsonlLinePayload }
+  | { kind: "payload"; source: PayloadSource; payload: JsonlLinePayload }
   | { kind: "batch-start"; meta: BatchChunkMeta }
   | { kind: "chunk"; meta: BatchChunkMeta }
   | { kind: "batch-end" };
@@ -162,7 +174,7 @@ export function bindEvents(handlers: EventHandlers): void {
           perf.firstPayloadDrained = performance.now();
         }
         payloadCount += 1;
-        handlers.onLine(item.payload);
+        handlers.onLine(item.payload, item.source);
       } else if (item.kind === "batch-start") {
         enterBatchMode(item.meta);
       } else if (item.kind === "chunk") {
@@ -215,7 +227,9 @@ export function bindEvents(handlers: EventHandlers): void {
   };
 
   void listen<JsonlLinePayload>("jsonl-line", (e) => {
-    queue.push({ kind: "payload", payload: e.payload });
+    // v2.4：jsonl-line = live emit（用户实时敲的新行）。标 source=live 让
+    // TabManager 永远 append 到 stream 底部，不被 inPrependMode 错误捕获。
+    queue.push({ kind: "payload", source: "live", payload: e.payload });
     ensureScheduled();
   });
 
@@ -248,7 +262,9 @@ export function bindEvents(handlers: EventHandlers): void {
       queue.push({ kind: "chunk", meta });
     }
     for (const p of e.payload.payloads) {
-      queue.push({ kind: "payload", payload: p });
+      // v2.4：jsonl-batch payloads = chunked replay 历史。标 source=batch 让
+      // TabManager 按 inPrependMode 决定 append 还是 buffer 到 prepend fragment。
+      queue.push({ kind: "payload", source: "batch", payload: p });
     }
     // 每块都发 batch-end —— 300ms grace 会续期等下一块或真新消息
     queue.push({ kind: "batch-end" });

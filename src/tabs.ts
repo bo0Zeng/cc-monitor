@@ -13,6 +13,7 @@ import { observeForEnhance, setRenderLazyMode } from "./render";
 import { BranchFolder } from "./branch-fold";
 import { extractBranchRecord } from "./branching";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
+import type { PayloadSource } from "./events";
 
 /**
  * Tab 生命周期：
@@ -245,9 +246,18 @@ export class TabManager {
    *   下个 chunk 边界 / batch-end 一次性 insertBefore(...firstChunkAnchor)
    *
    * 用 fragment buffer 而不是逐条 insertBefore 是关键性能点：N=3000 时省 ~3000 次 layout。
+   *
+   * v2.4 修首次启动乱序：**live source 永远 stream.append**（绕开 inPrependMode）。
+   * 用户在 chunked replay 期间敲的真新行时间序最新，必须贴到 stream 底部；
+   * 旧实现把 live 也丢进 prepend fragment 会被错误推到顶部。batch source 仍按
+   * inPrependMode 走 buffer / append 切块逻辑不变。
    */
-  private appendCardOrBuffer(tab: Tab, element: HTMLElement): void {
-    if (this.inPrependMode && tab.pendingPrependFragment) {
+  private appendCardOrBuffer(
+    tab: Tab,
+    element: HTMLElement,
+    source: PayloadSource,
+  ): void {
+    if (source === "batch" && this.inPrependMode && tab.pendingPrependFragment) {
       tab.pendingPrependFragment.appendChild(element);
     } else {
       tab.stream.append(element);
@@ -261,13 +271,21 @@ export class TabManager {
     }
   }
 
-  /** 收到一行 JSONL 时调用 */
-  onLine(payload: {
-    session_id: string;
-    cwd: string | null;
-    path: string;
-    message: JsonlRecord;
-  }): void {
+  /**
+   * 收到一行 JSONL 时调用。
+   *
+   * v2.4：`source` 区分 batch（chunked replay 历史）vs live（用户实时敲的真新行）。
+   * 加载期间 live 必须贴到 stream 底部，不被 inPrependMode 错误捕获。
+   */
+  onLine(
+    payload: {
+      session_id: string;
+      cwd: string | null;
+      path: string;
+      message: JsonlRecord;
+    },
+    source: PayloadSource = "live",
+  ): void {
     const tab = this.ensureTab(payload.session_id, payload.cwd, payload.path);
 
     // ai-title 不进入消息流，只更新 Tab 标题
@@ -292,7 +310,7 @@ export class TabManager {
         tab.pendingToolGroup = null;
         // issue #8: 把 uuid/parentUuid 写到 DOM 上，让 BranchFolder 能扫
         markCardUuid(result.element, payload.message);
-        this.appendCardOrBuffer(tab, result.element);
+        this.appendCardOrBuffer(tab, result.element, source);
         break;
       case "tool-group": {
         if (tab.pendingToolGroup) {
@@ -308,7 +326,7 @@ export class TabManager {
           // 也不算 off-main → 会切断 off-main 连续段，导致被回退的消息每条单独成 fold。
           // 用**首个**贡献消息的 uuid 当代表（典型情况下整组同主支，混合极罕见）。
           markCardUuid(group.root, payload.message);
-          this.appendCardOrBuffer(tab, group.root);
+          this.appendCardOrBuffer(tab, group.root, source);
         }
         break;
       }
