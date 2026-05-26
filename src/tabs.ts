@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { MessageStream } from "./stream";
 import {
   renderMessage,
@@ -95,6 +96,7 @@ interface TabButtonRefs {
   root: HTMLButtonElement;
   label: HTMLSpanElement;
   badge: HTMLSpanElement;
+  cwdBtn: HTMLSpanElement;
 }
 
 export class TabManager {
@@ -396,8 +398,7 @@ export class TabManager {
     const title = computeTitleFor(sessionId, cwd, null);
 
     const streamEl = document.createElement("div");
-    streamEl.className = "stream";
-    streamEl.style.display = "none";
+    streamEl.className = "stream"; // 默认 .stream 已含 visibility:hidden（见 styles.css）
     this.streamRootEl.appendChild(streamEl);
 
     const stream = new MessageStream(streamEl);
@@ -532,6 +533,19 @@ export class TabManager {
   }
 
   /**
+   * 跳到第 N 个 Tab（1-indexed，issue #5 快捷键 Ctrl+1..9 用）。
+   * N 大于现有 Tab 数 → 静默忽略；N 对应 Tab 已经 active → 无操作。
+   */
+  jumpToIndex(oneBasedIdx: number): void {
+    const ids = this.orderedIds;
+    if (oneBasedIdx < 1 || oneBasedIdx > ids.length) return;
+    const targetId = ids[oneBasedIdx - 1];
+    if (targetId && targetId !== this.activeId) {
+      this.switchTo(targetId);
+    }
+  }
+
+  /**
    * issue #11: 后端 `task-update` 事件路由——总是更新内存 map（即使 Tab 还没建），
    * 只有 sid 是当前 active 时才推全局 panel 重渲染。
    *
@@ -608,6 +622,23 @@ export class TabManager {
     }
   }
 
+  /** 快捷键 Ctrl+Shift+E：打开当前活跃 Tab 的工作目录到系统文件管理器 */
+  openActiveTabCwd(): void {
+    if (!this.activeId) return;
+    void this.openTabCwd(this.activeId);
+  }
+
+  /** 打开指定 Tab 的 cwd 到系统文件管理器。无 cwd 静默忽略。 */
+  private async openTabCwd(sid: string): Promise<void> {
+    const tab = this.tabs.get(sid);
+    if (!tab?.cwd) return;
+    try {
+      await openPath(tab.cwd);
+    } catch (e) {
+      console.warn(`[tabs] openPath ${tab.cwd} failed:`, e);
+    }
+  }
+
   /**
    * 切到目标 Tab。
    *
@@ -621,8 +652,10 @@ export class TabManager {
     if (!this.tabs.has(sessionId)) return;
     if (this.activeId === sessionId) return;
 
+    // 切 active 走 .active class（CSS visibility 控制），避免 display:none/block
+    // 触发整棵子树重建 layout tree 卡顿。详 styles.css 的 .stream 注释。
     for (const [sid, t] of this.tabs) {
-      t.streamEl.style.display = sid === sessionId ? "block" : "none";
+      t.streamEl.classList.toggle("active", sid === sessionId);
     }
     const next = this.tabs.get(sessionId);
     if (next) {
@@ -703,6 +736,17 @@ export class TabManager {
     badge.className = "tab-badge";
     root.appendChild(badge);
 
+    // 📂 打开工作目录（cwd）—— 系统默认文件管理器
+    const cwdBtn = document.createElement("span");
+    cwdBtn.className = "tab-cwd";
+    cwdBtn.textContent = "📂";
+    cwdBtn.title = "打开工作目录 (Ctrl+Shift+E)";
+    cwdBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void this.openTabCwd(sid);
+    });
+    root.appendChild(cwdBtn);
+
     // ↗ 拉对应终端窗口（v1.7 用 sid_hwnd_cache）
     const focusBtn = document.createElement("span");
     focusBtn.className = "tab-focus";
@@ -735,12 +779,13 @@ export class TabManager {
       }
     });
 
-    return { root, label, badge };
+    return { root, label, badge, cwdBtn };
   }
 
   private updateTabButton(refs: TabButtonRefs, sid: string, tab: Tab): void {
     refs.root.classList.toggle("active", sid === this.activeId);
     refs.root.classList.toggle("archived", tab.status === "archived");
+    refs.root.classList.toggle("has-cwd", !!tab.cwd);
     const unread = tab.unread > 0 && sid !== this.activeId;
     refs.root.classList.toggle("has-unread", unread);
 

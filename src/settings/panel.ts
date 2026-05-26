@@ -17,10 +17,12 @@ import {
 } from "../theme";
 import { getClaudeDirOverride, setClaudeDirOverride } from "../paths";
 import { CcIntegrationSection } from "./cc_integration";
-import { DiagnosticsSection, DIAGNOSTICS_INFO_TEXT } from "./diagnostics-section";
+import { DiagnosticsSection } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
-import { DataSection, DATA_SECTION_INFO_TEXT } from "./data-section";
+import { DataSection } from "./data-section";
 import { getBehavior, setBehavior, type BehaviorConfig } from "../behavior";
+import { dispatcher } from "../keybindings/registry";
+import { KeybindingsEditor } from "../keybindings/editor";
 
 /**
  * 字段控件类型：
@@ -80,6 +82,36 @@ export interface SettingsPanelOptions {
   onBehaviorChange?: (cfg: BehaviorConfig) => void;
 }
 
+// 各模块的 ? 图标 tooltip 文案（原来散在表单里的 .settings-hint 长文本收纳到这里）
+
+const BEHAVIOR_INFO_TEXT =
+  "自动跟随用户输入 + 拉前 monitor 窗口。\n\n" +
+  "「自动跟随」：watcher 反推—用户在 claude 里敲回车 → monitor 切到对应 session 的 Tab。" +
+  "只跟「真用户输入」（不跟工具返回、不跟 claude 流式回复）。你手动点 Tab 后 5 秒内不会被自动切抢回。\n\n" +
+  "「拉前 monitor」默认关：monitor 静静在后台切 Tab，不打断你正在用的其他窗口（浏览器/IDE）。" +
+  "开启后在终端输入时 monitor 浮上来抢焦。仅当「自动跟随」开启时生效。";
+
+const KEYBINDINGS_INFO_TEXT =
+  "自定义全部快捷键：Tab 切换 / 终端拉前 / 行为开关 / 弹层关闭 等约 17 项。\n\n" +
+  "改即生效，无需重启。点 [改] 后按下你想要的组合键。冲突会弹覆盖确认。";
+
+const INTEGRATION_INFO_TEXT =
+  "monitor 怎么对接 Claude Code：\n\n" +
+  "「Claude 数据目录」—— monitor 监听的 .claude 根目录（下含 projects/ 和 sessions/）。" +
+  "默认 ~/.claude 或 $CLAUDE_CONFIG_DIR。修改后需重启 monitor 生效。\n\n" +
+  "「PowerShell 集成」—— 把 cc 命令注入到 $PROFILE，让你打 `cc` 而不是 `claude` 启动 " +
+  "Claude Code，自动跟 monitor 双向绑定（拉前终端按钮才能 work）。可一键安装/卸载。";
+
+const APPEARANCE_INFO_TEXT =
+  "字体（正文 / 等宽 / 字号）+ 颜色（10 个语义 token：背景 / 卡片 / 文字 / user / assistant 等）。" +
+  "配一次基本不再动，所以默认收起。";
+
+const DIAG_STORAGE_INFO_TEXT =
+  "「诊断」—— 打开后端 INFO 级别 tracing 到状态栏（开发用；出问题排查时打开）。\n\n" +
+  "「数据存储」—— 透明展示 monitor 自身写入的所有持久化路径：config.json / history-metadata.json / " +
+  "WebView2 UserDataFolder / localStorage keys 等。每项可点 [打开] 直接到文件管理器。" +
+  "纯展示，无危险操作。";
+
 export class SettingsPanel {
   private el: HTMLElement;
   /** 当前编辑中的 theme（实时预览用） */
@@ -103,13 +135,21 @@ export class SettingsPanel {
   private bringFrontCheckbox!: HTMLInputElement;
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
 
+  // issue #5: 快捷键编辑器（lazy 构造，首次打开时建 DOM）
+  private kbEditor?: KeybindingsEditor;
+  private kbOverrideChip?: HTMLElement;
+
   constructor(opts: SettingsPanelOptions = {}) {
     this.onBehaviorChange = opts.onBehaviorChange;
     this.el = this.build();
     document.body.appendChild(this.el);
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && this.isOpen) this.cancel();
-    });
+    // issue #5: Esc 由 KeybindingDispatcher 统一调度。本面板 open 时
+    // pushOverlay 自己，close 时 pop —— 多弹层共存按 LIFO 顺序关。
+  }
+
+  /** dispatcher overlay 接口 */
+  handleEsc(): void {
+    if (this.isOpen) this.cancel();
   }
 
   async open(): Promise<void> {
@@ -127,8 +167,11 @@ export class SettingsPanel {
     this.syncInputs();
     // issue #3: 每次打开重拉一次 stat，让"已创建 / 文件大小"是最新的
     this.dataSection?.refresh();
+    // issue #5: 同步快捷键覆盖数 chip（编辑器关闭时也可能改了）
+    this.refreshKbChip();
     this.el.classList.add("open");
     this.isOpen = true;
+    dispatcher.pushOverlay(this);
   }
 
   /** v2.4 issue #2: autoFollow 关 → bringFront 灰显（依赖前者，无意义） */
@@ -154,6 +197,7 @@ export class SettingsPanel {
   close(): void {
     this.el.classList.remove("open");
     this.isOpen = false;
+    dispatcher.popOverlay(this);
   }
 
   private cancel(): void {
@@ -226,7 +270,7 @@ export class SettingsPanel {
     const header = document.createElement("div");
     header.className = "settings-header";
     const title = document.createElement("span");
-    title.textContent = "外观设置";
+    title.textContent = "设置";
     header.appendChild(title);
 
     const close = document.createElement("button");
@@ -248,47 +292,64 @@ export class SettingsPanel {
     this.banner.className = "settings-banner";
     body.appendChild(this.banner);
 
-    body.appendChild(this.buildDataGroup());
-    // v2.4 issue #2: 行为类 toggle —— 自动切 tab / 拉前 monitor 窗口
-    body.appendChild(this.buildBehaviorGroup());
-    // v1.7：PowerShell 集成区（cc 命令注入式绑定）—— 高频，不折叠
-    body.appendChild(new CcIntegrationSection().element);
+    // **5 大模块**。除「行为」外全部默认折叠；所有长描述收进 ? 图标 tooltip
+    // （由 CollapsibleGroup 自动渲染）。各 build*Group 方法只产出表单本体
+    // （不带标题 / 不带 hint），由 CollapsibleGroup 接管。
 
-    // issue #7：低频 section 收到 collapsible 里，默认折叠
-    //
-    // 外观（字体 + 颜色）—— 13 个字段，配一次几乎不再动
+    // 1. 行为 —— 唯一默认展开
+    const behavior = new CollapsibleGroup({
+      id: "behavior",
+      title: "行为",
+      defaultCollapsed: false,
+      infoTooltip: BEHAVIOR_INFO_TEXT,
+    });
+    behavior.appendChild(this.buildBehaviorGroup());
+    body.appendChild(behavior.element);
+
+    // 2. 快捷键 —— 编辑器入口
+    const kb = new CollapsibleGroup({
+      id: "keybindings",
+      title: "快捷键",
+      defaultCollapsed: true,
+      infoTooltip: KEYBINDINGS_INFO_TEXT,
+    });
+    kb.appendChild(this.buildKeybindingsGroup());
+    body.appendChild(kb.element);
+
+    // 3. 数据源 & 集成 —— "monitor 怎么对接 Claude" 同主题：Claude 目录在哪
+    //    + PowerShell cc 命令安装（v1.7 注入式绑定）
+    const integration = new CollapsibleGroup({
+      id: "integration",
+      title: "数据源 & 集成",
+      defaultCollapsed: true,
+      infoTooltip: INTEGRATION_INFO_TEXT,
+    });
+    integration.appendChild(this.buildDataGroup());
+    integration.appendChild(new CcIntegrationSection().element);
+    body.appendChild(integration.element);
+
+    // 4. 外观 —— 字体 + 颜色
     const appearance = new CollapsibleGroup({
       id: "appearance",
       title: "外观",
       defaultCollapsed: true,
-      infoTooltip:
-        "字体（正文 / 等宽 / 字号）+ 颜色（10 个 token）。配一次后基本不再动，默认收起。",
+      infoTooltip: APPEARANCE_INFO_TEXT,
     });
     appearance.appendChild(this.buildGroup("字体", FIELDS.filter((f) => f.group === "font")));
     appearance.appendChild(this.buildGroup("颜色", FIELDS.filter((f) => f.group === "color")));
     body.appendChild(appearance.element);
 
-    // 诊断 —— "出问题才用" 的工具，默认折叠
-    const diagnostics = new CollapsibleGroup({
-      id: "diagnostics",
-      title: "诊断",
+    // 5. 诊断 & 存储 —— 工具型/调试型信息：诊断 toggle + 各路径透明展示
+    const diag = new CollapsibleGroup({
+      id: "diag-storage",
+      title: "诊断 & 存储",
       defaultCollapsed: true,
-      infoTooltip: DIAGNOSTICS_INFO_TEXT,
+      infoTooltip: DIAG_STORAGE_INFO_TEXT,
     });
-    diagnostics.appendChild(new DiagnosticsSection({ headless: true }).element);
-    body.appendChild(diagnostics.element);
-
-    // issue #3 (A): 数据存储 —— 透明展示所有持久路径 + WebView2 + localStorage
-    // 默认折叠（用户偶尔好奇查时才看，平时不占视觉）
-    const dataGroup = new CollapsibleGroup({
-      id: "data-storage",
-      title: "数据存储",
-      defaultCollapsed: true,
-      infoTooltip: DATA_SECTION_INFO_TEXT,
-    });
+    diag.appendChild(new DiagnosticsSection({ headless: true }).element);
     this.dataSection = new DataSection({ headless: true });
-    dataGroup.appendChild(this.dataSection.element);
-    body.appendChild(dataGroup.element);
+    diag.appendChild(this.dataSection.element);
+    body.appendChild(diag.element);
 
     return body;
   }
@@ -300,13 +361,9 @@ export class SettingsPanel {
    * （前者依赖后者，单独开没意义）。
    */
   private buildBehaviorGroup(): HTMLElement {
+    // CollapsibleGroup 接管标题与描述（infoTooltip），这里只产出表单本体
     const group = document.createElement("div");
-    group.className = "settings-group";
-
-    const heading = document.createElement("div");
-    heading.className = "settings-group-title";
-    heading.textContent = "行为";
-    group.appendChild(heading);
+    group.className = "settings-group settings-headless";
 
     // 1. 自动切 tab
     const autoRow = document.createElement("label");
@@ -322,14 +379,6 @@ export class SettingsPanel {
     autoRow.appendChild(autoLabel);
     group.appendChild(autoRow);
 
-    const autoHint = document.createElement("div");
-    autoHint.className = "settings-hint";
-    autoHint.textContent =
-      "watcher 反推：用户在 claude 里敲回车 → monitor 切到对应 session 的 Tab。" +
-      "只跟「真用户输入」（不跟工具返回、不跟 claude 流式回复）。" +
-      "你手动点 Tab 后 5 秒内不会被自动切抢回。";
-    group.appendChild(autoHint);
-
     // 2. 拉前 monitor 窗口
     const frontRow = document.createElement("label");
     frontRow.className = "settings-row settings-row-checkbox";
@@ -344,24 +393,60 @@ export class SettingsPanel {
     frontRow.appendChild(frontLabel);
     group.appendChild(frontRow);
 
-    const frontHint = document.createElement("div");
-    frontHint.className = "settings-hint";
-    frontHint.textContent =
-      "默认关：monitor 静静在后台切 Tab，不打断你正在用的其他窗口（浏览器/IDE）。" +
-      "开启后：在终端输入时 monitor 浮上来抢焦。仅当上面的「自动切 Tab」开启时生效。";
-    group.appendChild(frontHint);
-
     return group;
   }
 
-  /** "数据" 分组：当前只有 Claude 数据目录一项 */
+  /**
+   * issue #5: 「快捷键」分组——只放一行说明 + [打开快捷键编辑器] 按钮 + 当前覆盖数 chip。
+   *
+   * 编辑器是 modal overlay (kb-editor-overlay)，点开后浮在设置面板之上。
+   * lazy 实例化：首次点开时建 DOM，后续 reuse 单例避免重复构建。
+   */
+  private buildKeybindingsGroup(): HTMLElement {
+    const group = document.createElement("div");
+    group.className = "settings-group settings-headless";
+
+    const row = document.createElement("div");
+    row.className = "settings-row";
+    row.style.gap = "8px";
+    row.style.alignItems = "center";
+
+    const openBtn = document.createElement("button");
+    openBtn.type = "button";
+    openBtn.className = "settings-btn";
+    openBtn.textContent = "打开快捷键编辑器";
+    openBtn.addEventListener("click", () => {
+      if (!this.kbEditor) this.kbEditor = new KeybindingsEditor();
+      this.kbEditor.open();
+    });
+    row.appendChild(openBtn);
+
+    const chip = document.createElement("span");
+    chip.className = "settings-kb-chip";
+    this.kbOverrideChip = chip;
+    this.refreshKbChip();
+    row.appendChild(chip);
+
+    group.appendChild(row);
+    return group;
+  }
+
+  /** 更新覆盖数 chip。open() 时 / 编辑器关闭时（如果需要）调 */
+  private refreshKbChip(): void {
+    if (!this.kbOverrideChip) return;
+    const n = Object.keys(dispatcher.exportOverrides()).length;
+    this.kbOverrideChip.textContent = n > 0 ? `已自定义 ${n} 项` : "全部默认";
+  }
+
+  /** "Claude 数据目录" 子表单（嵌在「数据源 & 集成」分组里） */
   private buildDataGroup(): HTMLElement {
     const group = document.createElement("div");
     group.className = "settings-group";
 
+    // 子标题（跟同分组里的「PowerShell 集成」子标题对称）
     const heading = document.createElement("div");
     heading.className = "settings-group-title";
-    heading.textContent = "数据";
+    heading.textContent = "Claude 数据目录";
     group.appendChild(heading);
 
     // 行 1：标签 + 文本输入
@@ -369,7 +454,7 @@ export class SettingsPanel {
     row1.className = "settings-row settings-row-stack";
     const label = document.createElement("span");
     label.className = "settings-label";
-    label.textContent = "Claude 数据目录";
+    label.textContent = "目录路径";
     row1.appendChild(label);
     this.claudeDirInput = document.createElement("input");
     this.claudeDirInput.type = "text";
@@ -395,13 +480,6 @@ export class SettingsPanel {
     resetBtn.addEventListener("click", () => this.resetClaudeDir());
     row2.appendChild(resetBtn);
     group.appendChild(row2);
-
-    // 行 3：说明文字
-    const hint = document.createElement("div");
-    hint.className = "settings-hint";
-    hint.textContent =
-      "应指向 .claude 根目录（其下应有 projects/ 和 sessions/ 子目录）。修改后需重启 monitor 生效。";
-    group.appendChild(hint);
 
     return group;
   }

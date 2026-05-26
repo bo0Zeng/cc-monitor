@@ -1,6 +1,7 @@
 import "./styles.css";
 import { emit } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
 import { loadTheme } from "./theme";
@@ -8,7 +9,9 @@ import { SettingsPanel } from "./settings";
 import { HistoryView } from "./views/history";
 import { bindErrorToast } from "./error-toast";
 import { TasksPanel } from "./tasks-panel";
-import { getBehavior } from "./behavior";
+import { getBehavior, setBehavior } from "./behavior";
+import { dispatcher } from "./keybindings/registry";
+import { getKeybindings } from "./keybindings/store";
 
 // === 启动 perf 测量 ===
 // performance.now() 自页面 navigation start 起；前端各阶段时间点。
@@ -107,7 +110,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 设置面板改了之后会再调 applyBehavior 同步。
   void getBehavior().then((b) => tabs.applyBehavior(b));
 
-  // 外观设置入口 —— 注入到 #app 上（绝对定位到 Tab Bar 右上）
+  // 设置入口 —— 注入到 #app 上（绝对定位到 Tab Bar 右上）
   // v2.4 issue #2: 行为 toggle 改了立即同步给 TabManager
   const settingsPanel = new SettingsPanel({
     onBehaviorChange: (cfg) => tabs.applyBehavior(cfg),
@@ -115,8 +118,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   const settingsTrigger = document.createElement("button");
   settingsTrigger.type = "button";
   settingsTrigger.className = "settings-trigger";
-  settingsTrigger.title = "外观设置 (Ctrl+,)";
-  settingsTrigger.setAttribute("aria-label", "打开外观设置");
+  settingsTrigger.title = "设置 (Ctrl+,)";
+  settingsTrigger.setAttribute("aria-label", "打开设置");
   settingsTrigger.textContent = "⚙";
   settingsTrigger.addEventListener("click", () => {
     void settingsPanel.open();
@@ -188,39 +191,48 @@ window.addEventListener("DOMContentLoaded", async () => {
     );
   });
 
-  // 快捷键：Ctrl+Tab 切下一个 / Ctrl+Shift+Tab 切上一个 / Ctrl+W 关 archived /
-  // Ctrl+, 开设置 / Ctrl+H 历史 / Ctrl+` 拉对应终端窗口；
-  // Esc 关设置/历史在各自模块处理。
-  window.addEventListener("keydown", (e) => {
-    if (!e.ctrlKey || e.altKey || e.metaKey) return;
-    if (e.key === "Tab") {
-      e.preventDefault();
-      tabs.cycleActive(e.shiftKey ? -1 : 1);
-    } else if (e.key === "w" || e.key === "W") {
-      e.preventDefault();
-      tabs.closeActiveIfArchived();
-    } else if (e.key === ",") {
-      e.preventDefault();
-      void settingsPanel.open();
-    } else if (e.key === "`") {
-      e.preventDefault();
-      tabs.bringActiveTerminalToFront();
-    } else if (e.key === "h" || e.key === "H") {
-      e.preventDefault();
-      if (historyView.isVisible()) {
-        historyView.close();
-      } else {
-        void historyView.open();
-      }
-    }
+  // 快捷键：issue #5 走 KeybindingDispatcher 统一派发。
+  // 各 action 默认 chord 见 keybindings/actions.ts；用户覆盖存 config.json
+  // `keybindings` 字段。Esc 关弹层由 dispatcher 的 overlay stack 管理（settings /
+  // history / tasks-panel 各自 push/pop）。
+  dispatcher.bind("tab.next", () => tabs.cycleActive(1));
+  dispatcher.bind("tab.prev", () => tabs.cycleActive(-1));
+  for (let i = 1; i <= 9; i++) {
+    dispatcher.bind(`tab.jump-${i}` as const, () => tabs.jumpToIndex(i));
+  }
+  dispatcher.bind("tab.close-archived", () => tabs.closeActiveIfArchived());
+  dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
+  dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
+  dispatcher.bind("app.open-settings", () => void settingsPanel.open());
+  dispatcher.bind("app.toggle-history", () => {
+    if (historyView.isVisible()) historyView.close();
+    else void historyView.open();
+  });
+  dispatcher.bind("app.minimize", () => void getCurrentWindow().minimize());
+  dispatcher.bind("panel.toggle-tasks", () => tasksPanel.toggle());
+  dispatcher.bind("behavior.toggle-auto-follow", () => {
+    void (async () => {
+      const cur = await getBehavior();
+      const next = { ...cur, autoFollowUserActive: !cur.autoFollowUserActive };
+      await setBehavior(next);
+      tabs.applyBehavior(next);
+    })();
+  });
+  dispatcher.bind("behavior.toggle-bring-monitor", () => {
+    void (async () => {
+      const cur = await getBehavior();
+      const next = {
+        ...cur,
+        bringMonitorToFrontOnUserActive: !cur.bringMonitorToFrontOnUserActive,
+      };
+      await setBehavior(next);
+      tabs.applyBehavior(next);
+    })();
   });
 
-  // Esc 关历史视图：在只读查看器里时先关查看器回列表，再次按才关整个视图
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && historyView.isVisible()) {
-      historyView.handleEscape();
-    }
-  });
+  // 先加载用户覆盖，再 start —— 避免 start 后 1-2ms 内按键走 default 而非用户值
+  dispatcher.applyOverrides(await getKeybindings());
+  dispatcher.start();
 
   bindEvents({
     // v2.4：透传 source 让 TabManager 区分 chunked replay (batch) 与真实时新行 (live)

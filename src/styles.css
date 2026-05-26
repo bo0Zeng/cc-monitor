@@ -169,7 +169,9 @@ html, body {
 .tab .tab-badge { display: none; }
 .tab.has-unread:not(.active) .tab-badge { display: inline-flex; }
 .tab.archived .live-dot,
-.tab.archived .tab-focus { display: none; }
+.tab.archived .tab-focus,
+.tab.archived .tab-cwd { display: none; }
+.tab:not(.has-cwd) .tab-cwd { display: none; }
 .tab:not(.archived) .tab-close { display: none; }
 
 .tab-title {
@@ -197,7 +199,8 @@ html, body {
 }
 
 .tab-close,
-.tab-focus {
+.tab-focus,
+.tab-cwd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -212,12 +215,17 @@ html, body {
   flex-shrink: 0;
 }
 .tab-close:hover,
-.tab-focus:hover {
+.tab-focus:hover,
+.tab-cwd:hover {
   background: var(--overlay-hover);
   color: var(--text);
 }
 .tab-focus {
   font-size: 14px;
+}
+.tab-cwd {
+  /* emoji 字号略小，跟 ↗ 视觉权重一致 */
+  font-size: 12px;
 }
 
 /* === Stream === */
@@ -227,11 +235,24 @@ html, body {
   overflow: hidden;
 }
 
+/* issue: 切 Tab 卡顿优化。
+   过去用 display:none/block 切换 active Tab —— 长对话 (上千卡片 / 上万 DOM 节点)
+   切回 display:block 触发整棵子树重建 layout tree，同步阻塞主线程 100-500ms。
+   改 visibility 后元素永久留在 layout tree 里，切 active 只改 attribute 0 reflow。
+   #message-stream 是 position:relative，所有 .stream 用 absolute inset:0 叠在一起，
+   单一 active 才显示。代价：所有 Tab 的 layout box 常驻内存，但 monitor 典型 < 10 tab
+   增量可控。 */
 .stream {
   position: absolute;
   inset: 0;
   overflow-y: auto;
   padding: 24px 24px 48px;
+  visibility: hidden;
+  pointer-events: none;
+}
+.stream.active {
+  visibility: visible;
+  pointer-events: auto;
 }
 
 /* 居中消息列 —— 仿 claude.ai 的窄消息流 */
@@ -2113,4 +2134,184 @@ html, body {
 .history-action-danger:hover {
   color: var(--error);
   border-color: var(--error);
+}
+
+/* === Keybindings Editor (issue #5) ===
+   modal overlay 仿小窗口风格：fixed 全屏 backdrop + 居中浮窗。
+   z-index 200 > settings(100)，保证从设置里点开能浮在设置之上。 */
+.kb-editor-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-deep);
+  z-index: 200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.kb-editor-overlay.open {
+  display: flex;
+}
+
+.kb-editor-window {
+  width: min(720px, 92vw);
+  max-height: 82vh;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px var(--overlay-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.kb-editor-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--bg);
+}
+.kb-editor-title {
+  font-weight: 600;
+  color: var(--text);
+}
+.kb-editor-close {
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 6px;
+}
+.kb-editor-close:hover {
+  color: var(--text);
+}
+
+.kb-editor-hint {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-strong);
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  line-height: 1.45;
+}
+
+.kb-editor-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+
+.kb-editor-section + .kb-editor-section {
+  margin-top: 16px;
+}
+.kb-editor-section-title {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 6px 0;
+  font-weight: 600;
+}
+
+.kb-editor-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.kb-editor-row {
+  border-bottom: 1px solid var(--border);
+}
+.kb-editor-row:last-child {
+  border-bottom: none;
+}
+.kb-editor-row-disabled {
+  opacity: 0.55;
+}
+
+.kb-editor-name {
+  padding: 8px 6px;
+  color: var(--text);
+  width: 50%;
+}
+.kb-editor-tag-coming {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 6px;
+  font-size: 11px;
+  background: var(--overlay-hover);
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.kb-editor-chord {
+  padding: 8px 6px;
+  font-family: var(--font-mono);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.kb-editor-chord.kb-editor-recording {
+  color: var(--warn);
+  background: var(--overlay-hover);
+  border-radius: 3px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.kb-editor-ops {
+  padding: 6px;
+  white-space: nowrap;
+  text-align: right;
+}
+.kb-editor-btn-record,
+.kb-editor-btn-reset {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 3px;
+  font-size: var(--font-size-small);
+  margin-left: 4px;
+}
+.kb-editor-btn-record:hover:not(:disabled),
+.kb-editor-btn-reset:hover:not(:disabled) {
+  background: var(--overlay-hover);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.kb-editor-btn-record:disabled,
+.kb-editor-btn-reset:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.kb-editor-footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-strong);
+  display: flex;
+  justify-content: flex-end;
+  background: var(--bg);
+}
+.kb-editor-reset-all {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: var(--font-size-small);
+}
+.kb-editor-reset-all:hover {
+  background: var(--overlay-hover);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+/* 设置面板「快捷键」分组的 "已自定义 N 项" chip */
+.settings-kb-chip {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
 }
