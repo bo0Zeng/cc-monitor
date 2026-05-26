@@ -1,5 +1,6 @@
 import "./styles.css";
 import { emit } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
 import { loadTheme } from "./theme";
@@ -139,6 +140,27 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   });
   document.getElementById("app")?.appendChild(historyTrigger);
+
+  // v2.4.3 issue #13: 外链全局事件代理。render.ts 给 http/https/mailto 链接
+  // 打了 data-external 标记；这里 preventDefault + openUrl 走系统默认浏览器，
+  // 避免 WebView2 把整个 monitor UI 替换成外站。
+  // capture 阶段 + 顶层接管，避免被卡片内部 click handler 抢先 stopPropagation。
+  document.addEventListener(
+    "click",
+    (e) => {
+      const a = (e.target as HTMLElement | null)?.closest?.(
+        "a[data-external]",
+      ) as HTMLAnchorElement | null;
+      if (!a) return;
+      const href = a.getAttribute("href") ?? "";
+      if (!href) return;
+      e.preventDefault();
+      void openUrl(href).catch((err) => {
+        console.warn("[external link] openUrl failed:", href, err);
+      });
+    },
+    true,
+  );
 
   // 代码块"复制"按钮全局事件代理：marked code renderer 输出 HTML 字符串无法
   // 在生成时挂 listener，统一在这里 delegate。click 命中 .code-copy 时把所在
