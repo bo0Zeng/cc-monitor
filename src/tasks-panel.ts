@@ -23,6 +23,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { dispatcher } from "./keybindings/registry";
 
 export interface TaskEntry {
   id: string;
@@ -116,19 +117,19 @@ export class TasksPanel {
 
     this.applyCollapsedClass();
 
-    // ESC 关 popover（捕获在 document，但仅在展开时拦截）
-    document.addEventListener("keydown", this.handleEsc);
+    // issue #5: Esc 通过 KeybindingDispatcher 统一调度。展开时 push、折叠时 pop，
+    // 跟设置 / 历史浏览器共享同一个 overlay 栈（LIFO）。
+    if (!this.collapsed && this.tasks.length > 0 && this.activeSid !== null) {
+      dispatcher.pushOverlay(this);
+    }
   }
 
-  private handleEsc = (e: KeyboardEvent): void => {
-    if (e.key !== "Escape" || this.collapsed) return;
-    // 只在 popover 是顶层 active 浮层时关；其他视图（设置 / 历史）有自己的 ESC 优先
-    // 用 hit-test：如果 popoverElement display:none 就不接管
-    if (this.popoverElement.style.display === "none") return;
-    e.preventDefault();
-    e.stopPropagation();
-    this.setCollapsed(true);
-  };
+  /** dispatcher overlay 接口 */
+  handleEsc(): void {
+    if (!this.collapsed && this.popoverElement.style.display !== "none") {
+      this.setCollapsed(true);
+    }
+  }
 
   /**
    * 切换当前显示的 session（TabManager.switchTo 或新 Tab 创建时调）。
@@ -150,8 +151,13 @@ export class TasksPanel {
     this.render();
   }
 
+  /** 快捷键 (issue #5) 用：折叠 ↔ 展开切换 */
+  toggle(): void {
+    this.setCollapsed(!this.collapsed);
+  }
+
   dispose(): void {
-    document.removeEventListener("keydown", this.handleEsc);
+    dispatcher.popOverlay(this);
     this.summaryElement.remove();
     this.popoverElement.remove();
   }
@@ -237,6 +243,12 @@ export class TasksPanel {
     // render() 会强制 display:none
     if (this.tasks.length > 0 && this.activeSid !== null) {
       this.popoverElement.style.display = this.collapsed ? "none" : "";
+    }
+    // issue #5: 同步 dispatcher overlay 栈 —— 展开进栈、折叠出栈
+    if (this.collapsed) {
+      dispatcher.popOverlay(this);
+    } else if (this.tasks.length > 0 && this.activeSid !== null) {
+      dispatcher.pushOverlay(this);
     }
   }
 

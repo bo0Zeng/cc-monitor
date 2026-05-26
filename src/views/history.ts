@@ -21,6 +21,7 @@
 
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { SessionViewer } from "./session-viewer";
+import { dispatcher } from "../keybindings/registry";
 
 /** 项目级元数据，从 `list_history_projects` 拿。不含 session 内容。 */
 interface HistoryProject {
@@ -135,6 +136,8 @@ export class HistoryView {
     this.loadingProjects.clear();
     this.loadedAll = false;
     this.updateSearchPlaceholder();
+    // issue #5: 注册到 dispatcher 弹层栈，Esc 由 dispatcher 派给我
+    dispatcher.pushOverlay(this);
     await this.refresh();
     this.searchInput.focus();
   }
@@ -155,6 +158,7 @@ export class HistoryView {
     this.container.replaceChildren(...this.savedChildren);
     this.savedChildren = [];
     this.isOpen = false;
+    dispatcher.popOverlay(this);
   }
 
   /** 打开只读查看器，列表 UI 临时隐藏 */
@@ -199,6 +203,11 @@ export class HistoryView {
     } else {
       this.close();
     }
+  }
+
+  /** issue #5 OverlayHandle 接口：跟 handleEscape 同一行为 */
+  handleEsc(): void {
+    this.handleEscape();
   }
 
   private async refresh(): Promise<void> {

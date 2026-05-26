@@ -8,6 +8,80 @@
 
 ---
 
+## [2.5.0] — 2026-05-26
+
+### 新功能 — 全部快捷键可自定义（issue #5）
+
+所有快捷键现在都能在设置面板里改。点设置 → 「快捷键」分组 → [打开快捷键编辑器] → 弹出 modal 编辑器（modal overlay，仿小窗口风格）。
+
+**支持的 action（17 个）**：
+
+| 类别 | 动作 | 默认 |
+|---|---|---|
+| Tab | 切到下一个 / 上一个 | Ctrl+Tab / Ctrl+Shift+Tab |
+| Tab | 跳到第 1-9 个 Tab | Ctrl+1..9 |
+| Tab | 关闭已归档 Tab | Ctrl+W |
+| Tab | 打开当前 Tab 的工作目录 | Ctrl+Shift+E（新） |
+| Tab | 拖出为独立窗口 | 未上线（预留，issue #10） |
+| 终端 | 把对应终端窗口拉到前台 | Ctrl+` |
+| 应用 | 打开设置 | Ctrl+, |
+| 应用 | 打开 / 关闭历史浏览器 | Ctrl+H |
+| 应用 | 历史浏览器全文搜索 | 未上线（预留，issue #6） |
+| 应用 | 最小化主窗口 | Ctrl+M（新） |
+| 应用 | 关闭弹层 / 历史 / 设置 | Esc |
+| 行为 | 切换「自动跟随用户输入」 | 未绑（新） |
+| 行为 | 切换「自动拉前 monitor」 | 未绑（新） |
+| 面板 | Task 面板开 / 关 | Ctrl+T（新） |
+
+**关键设计**：
+
+- **chord 用 `KeyboardEvent.code`** 而非 `key`，避免键盘布局差异（法语键盘 `Ctrl+,` 永远触发不了，因为 `,` 是 Shift+逗号——`e.code === "Comma"` 才稳）
+- **冲突弹覆盖确认**：要把 Ctrl+W 改绑别的 action，弹「Ctrl+W 当前是 XXX，要覆盖吗？」点确认后旧 action 自动变"未绑"
+- **Esc 改时强警告**：解绑 / 改成非 Esc 都弹 confirm，避免用户被锁在弹层里
+- **未上线 action 灰显**：tab.pop-out (issue #10) / app.search-history (issue #6) 显示但不可绑，让你知道路线图
+- **改即生效，无需重启**：保存即 unbind 旧 chord + bind 新 chord
+- **统一 overlay 栈**：Esc 关闭 settings / 历史 / tasks-panel / 快捷键编辑器 走同一个 dispatcher 维护的 LIFO 栈，多弹层按打开顺序逐个关
+- **持久化在 `config.json` 顶层 `keybindings` 字段**，缺失字段走默认，`null` = 显式解绑
+
+### 新功能 — Tab 上一键打开工作目录
+
+每个 live Tab 多出 📂 按钮（在 ↗ 拉终端按钮左边），点击 → 系统默认文件管理器打开该 session 的工作目录。也可用快捷键 `Ctrl+Shift+E`（"Explorer"）打开当前活跃 Tab 的 cwd。
+
+复用 `@tauri-apps/plugin-opener.openPath`，archived Tab / 无 cwd 的 Tab 按钮自动隐藏。
+
+### 性能修复 — 切 Tab 长对话不再卡顿
+
+**症状**：切到含千条消息的长对话 Tab 时 monitor 卡 100-500ms。
+
+**根因**：`display: none → block` 触发整棵子树重建 layout tree。`display: none` 时浏览器把那个子树完全踢出 layout tree（不算几何、不分配 box），切回 `block` 必须重建几万 DOM 节点的 layout tree + 解析每个 `<pre>` / `<code>` / KaTeX 元素的 box —— 同步阻塞主线程。
+
+**修复**：改成 `visibility: hidden ↔ visible` 类切换。元素永久留在 layout tree 里，切 active 只改 attribute，**0 reflow**。
+
+- `src/styles.css` `.stream` 默认 `visibility: hidden + pointer-events: none`；`.stream.active` 翻转
+- `src/tabs.ts` 删 `streamEl.style.display = "none"`，switchTo 改 `classList.toggle("active", ...)`
+- 代价：所有 Tab layout box 常驻内存，10 tab × ~5MB ≈ 可忽略
+
+### UI 改进 — 设置面板重组为 5 大模块
+
+7 个分散分组合并成 5 个折叠模块，除「行为」全部默认折叠：
+
+```
+设置
+├── ▼ 行为                  (默认展开)
+├── ▶ 快捷键
+├── ▶ 数据源 & 集成    （← Claude 数据目录 + PowerShell cc 集成）
+├── ▶ 外观
+└── ▶ 诊断 & 存储      （← 诊断 toggle + monitor 数据路径展示）
+```
+
+每个分组标题旁加 ? 图标，hover 看长描述—— 原来散在表单里的 `.settings-hint` 文字全部收纳。表单本体更紧凑。
+
+### 杂项
+
+- 设置面板顶部标题「外观设置」→「设置」（涵盖范围已远超外观）；齿轮按钮 tooltip / aria-label 同步
+
+---
+
 ## [2.4.3] — 2026-05-26
 
 ### 新功能 — 卡片内外链调用系统默认浏览器打开 (issue #13)
