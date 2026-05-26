@@ -121,27 +121,38 @@ pub fn run() {
             // 部分历史漏到 live emit 路径 → 跟 chunked replay 错位 → 首次启动乱序。
             // F5 因 backend 已稳定看不到 bug。详 watcher.rs::spawn_watcher 注释。
             let replay = Arc::new(event_replay::EventReplay::new());
-            let on_line: watcher::LineHandler = {
+            // v2.4.2 issue #2: watcher 改成一次 process_file 给一批 lines，
+            // lib.rs 这里 parse 整批后一次 on_line_batch 给 EventReplay。
+            // EventReplay 按 batch 大小分流（详 event_replay::on_line_batch 注释）。
+            let on_batch: watcher::BatchHandler = {
                 let replay = replay.clone();
                 let handle = app.handle().clone();
-                Arc::new(move |line: watcher::JsonlLine| match parser::parse_line(&line.raw) {
-                    Ok(Some(record)) if record.is_displayable() => {
-                        let cwd = extract_cwd(&record);
-                        let payload = bridge::JsonlLinePayload {
-                            session_id: line.session_id.clone(),
-                            cwd,
-                            path: line.path.to_string_lossy().into_owned(),
-                            message: record,
-                        };
-                        replay.record(&handle, payload);
+                Arc::new(move |lines: Vec<watcher::JsonlLine>| {
+                    let mut payloads = Vec::with_capacity(lines.len());
+                    for line in lines {
+                        match parser::parse_line(&line.raw) {
+                            Ok(Some(record)) if record.is_displayable() => {
+                                let cwd = extract_cwd(&record);
+                                payloads.push(bridge::JsonlLinePayload {
+                                    session_id: line.session_id.clone(),
+                                    cwd,
+                                    path: line.path.to_string_lossy().into_owned(),
+                                    message: record,
+                                });
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::warn!(
+                                    "parse line failed in {}: {e}",
+                                    line.path.display()
+                                );
+                            }
+                        }
                     }
-                    Ok(_) => {}
-                    Err(e) => {
-                        tracing::warn!("parse line failed in {}: {e}", line.path.display());
-                    }
+                    replay.on_line_batch(&handle, payloads);
                 })
             };
-            let watcher_handle = watcher::spawn_watcher(projects_dir, active_filter, on_line);
+            let watcher_handle = watcher::spawn_watcher(projects_dir, active_filter, on_batch);
             let force_rescan_tx = watcher_handle.force_rescan_tx;
             let initial_scan_done = watcher_handle.initial_scan_done;
 
@@ -328,12 +339,125 @@ fn forget_session(
 
 /// v2.4 (issue #2)：把 monitor 自己的主窗口拉到最前 + unminimize + 抢焦点。
 ///
-/// 用途：用户在终端敲键时，前端 USER_ACTIVE 信号路径下，若用户开了「拉前
+/// 用途：用户在终端敲键时，前端 user-active 信号路径下，若用户开了「拉前
 /// monitor 窗口」toggle 就 invoke 这个 IPC 让 monitor 主动浮上来。
 ///
-/// 实现复用 issue #9 single-instance plugin 回调的同款逻辑（lib.rs::run()）。
-/// AllowSetForegroundWindow 限制：monitor 自己只能在它在前台焦点链上时合法
-/// 拉前；其他时候 OS 可能只闪任务栏图标。这是 Windows 设计，无法绕开。
+/// **核心问题**：用户敲终端时前台是 PS/WT，**monitor 不是前台进程** →
+/// `SetForegroundWindow` 直接调被 OS 拒绝（只闪任务栏图标）。这是 Windows
+/// 对前台抢焦的设计限制（防恶意软件偷焦点）。
+///
+/// **解法 = AttachThreadInput hack**：临时把当前线程附加到前台线程的输入
+/// 队列，OS 把它俩视作"同输入上下文" → 借用前台线程的拉前权限 →
+/// SetForegroundWindow 通过 → 立刻 detach。广泛使用的可靠 hack
+/// （Visual Studio / 各 IDE 都用），不被 OS 视为恶意。
+///
+/// v2.4.0 直接用 win.set_focus()（内部就是 SetForegroundWindow）必败，
+/// v2.4.1 hotfix 改这版。
+///
+/// Tauri 内部用 windows crate 0.61（HWND.0 = *mut c_void），我们 0.56
+/// （HWND.0 = isize）；用 `as isize` cast 跨版本兼容。
+#[cfg(windows)]
+#[tauri::command]
+fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), String> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        keybd_event, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, VK_MENU,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, IsIconic,
+        SetForegroundWindow, SetWindowPos, ShowWindow, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOMOVE,
+        SWP_NOSIZE, SW_RESTORE, SW_SHOW,
+    };
+
+    tracing::info!("bring_monitor_to_front: invoked");
+
+    let win = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+    let tauri_hwnd = win.hwnd().map_err(|e| format!("hwnd: {e}"))?;
+    // 跨 windows crate 版本：tauri 0.61 *mut c_void → isize → 0.56 HWND
+    let hwnd_value = tauri_hwnd.0 as isize;
+
+    unsafe {
+        let h = HWND(hwnd_value);
+        tracing::info!("bring_monitor_to_front: monitor hwnd = {:#x}", hwnd_value);
+
+        // === 三层 hack 突破 Win10/11 前台抢焦限制 ===
+        //
+        // Microsoft 在 Win10 1903+ 加固了 SetForegroundWindow：仅 AttachThreadInput
+        // 不够，OS 会识别为绕过尝试拒绝。三层叠加才稳：
+        //
+        // 1. **keybd_event(Alt down)**：模拟用户级别 Alt 按键。OS 检测后将
+        //    当前进程视为"刚有用户输入"，临时获得前台资格。
+        //    配 down+up 配对几乎所有 Win32 应用都识别为 noop，副作用低。
+        // 2. **AttachThreadInput**：附加到前台线程输入队列，共享其拉前权限。
+        // 3. **SetWindowPos TOPMOST → NOTOPMOST**：触发 OS 重新计算 Z 序，
+        //    强制窗口浮到栈顶（即使 SetForegroundWindow 失败也至少在视觉上覆盖）。
+        //
+        // Visual Studio / PowerToys / TranslucentTB 等都用此套组合。
+
+        // 1. ShowWindow 先做：可能 minimize 状态
+        if IsIconic(h).as_bool() {
+            tracing::info!("bring_monitor_to_front: window iconic, SW_RESTORE");
+            let _ = ShowWindow(h, SW_RESTORE);
+        } else {
+            let _ = ShowWindow(h, SW_SHOW);
+        }
+
+        // 2. 模拟 Alt 按键（down 阶段，up 在末尾）
+        keybd_event(VK_MENU.0 as u8, 0, KEYEVENTF_EXTENDEDKEY, 0);
+
+        // 3. AttachThreadInput
+        let fg = GetForegroundWindow();
+        let fg_thread = GetWindowThreadProcessId(fg, None);
+        let cur_thread = GetCurrentThreadId();
+        tracing::info!(
+            "bring_monitor_to_front: fg_hwnd={:#x} fg_thread={} cur_thread={}",
+            fg.0,
+            fg_thread,
+            cur_thread
+        );
+        let attached = fg_thread != 0
+            && fg_thread != cur_thread
+            && AttachThreadInput(fg_thread, cur_thread, true).as_bool();
+
+        // 4. TOPMOST 强制 Z 序拉顶 + BringWindowToTop
+        let _ = SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+        let _ = SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+        let _ = BringWindowToTop(h);
+
+        // 5. SetForegroundWindow 真正抢焦
+        let ok = SetForegroundWindow(h).as_bool();
+        tracing::info!(
+            "bring_monitor_to_front: attached={} SetForegroundWindow={}",
+            attached,
+            ok
+        );
+
+        // 6. detach + Alt 释放
+        if attached {
+            let _ = AttachThreadInput(fg_thread, cur_thread, false);
+        }
+        keybd_event(
+            VK_MENU.0 as u8,
+            0,
+            KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP,
+            0,
+        );
+
+        if ok {
+            Ok(())
+        } else {
+            // 拉前真失败也 Z 序已被推顶，视觉上窗口浮起来了
+            // （只是焦点没抢到）。给前端 warn 但不视为 fatal。
+            tracing::warn!("bring_monitor_to_front: SetForegroundWindow rejected (window Z-order raised but no focus)");
+            Err("SetForegroundWindow rejected (window raised but not focused)".into())
+        }
+    }
+}
+
+#[cfg(not(windows))]
 #[tauri::command]
 fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), String> {
     let win = app

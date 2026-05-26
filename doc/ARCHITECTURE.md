@@ -31,17 +31,18 @@
    ┌───────────────────────────────────────────────────────────────────┐
    │                          Rust 后端 (Tauri)                         │
    │                                                                    │
-   │   watcher.rs  ────► parser.rs ────► messages::JsonlRecord         │
-   │       │                                       │                    │
-   │       ▼ active filter                         ▼                    │
-   │   session_map.rs (PID 探活)            event_replay.rs (内存 buf)  │
-   │       │                                       │                    │
-   │       │                                       │ emit("jsonl-line") │
-   │       │                                       │ / "jsonl-batch"    │
-   │       ▼                                       ▼                    │
+   │   watcher.rs ─batch handler─► parser.rs ────► messages::JsonlRecord│
+   │       │ (同步同线程调用)                       │                   │
+   │       ▼ active filter                          ▼                   │
+   │   session_map.rs (PID 探活)        event_replay::on_line_batch     │
+   │       │                                       │  按大小分流：       │
+   │       │                                       │  小→jsonl-line     │
+   │       │                                       │  大→jsonl-batch    │
+   │       ▼                                       ▼   (切块 chunk_i/N) │
    │   bind.rs (ps-await/ps-registry/SidHwndCache, EnumWindows)         │
    │       │                                       │                    │
    │       │  invoke("bring_terminal_to_front")    │                    │
+   │       │  invoke("bring_monitor_to_front")     │                    │
    │       └──────────────────┬────────────────────┘                    │
    │                          ▼                                          │
    │                     Tauri IPC                                       │
@@ -51,20 +52,28 @@
    ┌──────────────────────────────────────────────────────────────────┐
    │                  TypeScript 前端 (WebView2)                       │
    │                                                                    │
-   │   events.ts (订阅 + 批量调度) ─► tabs.ts (TabManager)              │
-   │                                       │                            │
-   │                                       ▼                            │
-   │                              stream.ts (MessageStream)             │
-   │                                       │                            │
-   │                                       ▼                            │
-   │     render.ts (marked + KaTeX + hljs + DOMPurify) ─► DOM           │
+   │   events.ts (订阅 + 批量调度 + source=batch|live 分流)             │
+   │       │                                                            │
+   │       ▼                                                            │
+   │   tabs.ts (TabManager: switchTo manual/auto, userActive, override) │
+   │       │                                                            │
+   │       ▼                                                            │
+   │   stream.ts (MessageStream: append / prependFragmentAtTop)         │
+   │       │                                                            │
+   │       ▼                                                            │
+   │   render.ts (marked + KaTeX + hljs + DOMPurify) ─► DOM             │
    └──────────────────────────────────────────────────────────────────┘
 ```
 
 **关键路径**：
 
-- **实时增量**：jsonl 新行 → `notify-debouncer-mini` (100ms 合并) → `watcher.rs` 增量读 → `parser::parse_line` → `event_replay.record` → `emit("jsonl-line")` → 前端 `events.ts` 批量调度 → `tabs.ts.onLine` → `render.ts`（BranchFolder 在 **live 模式**，每条 record 增量算 mainBranch）
-- **启动重放**：F5 / 冷启动后，前端 `emit("frontend-ready")` → `event_replay.replay_and_mark_ready` 持锁 → 单次 `emit("jsonl-batch", Vec<...>)` 整个 history → 前端 events.ts 用 **`batch-start` / `batch-end` 哨兵**包裹整批 push 进 queue → TabManager.onBatchStart 把所有 Tab 的 BranchFolder 切 **batch 模式**（recordAdded 只 push 不算）→ drain 完最后一条 → onBatchEnd 调 flushPending **一次性**算主线 + rebuild → 切回 live。避免 O(N²) 重放成本（v2.2 优化 ~15-20×）
+- **watcher batch 同步**（v2.4 重构）：`spawn_watcher` 接 `on_batch: BatchHandler` 回调；一次 `process_file` 把读到的所有行收集成 `Vec<JsonlLine>` **同步**调 `on_batch`。**没有 mpsc 中间层、没有 async drain task**。lib.rs 里 closure 在 watcher 线程内 parse + `replay.on_line_batch(handle, payloads)`，history 落盘和 emit 都在该线程同步发生。这条改动是 v2.4 修「首次启动消息乱序」（之前异步 drain 跟 frontend-ready 触发 replay snapshot 是竞态）的根因解。
+- **大小分流 emit**（v2.4.2）：`event_replay::on_line_batch` 按 batch 大小分流：
+  - `payloads.len() < 50`（用户日常敲键 1~N 行）→ 逐条 `emit("jsonl-line")` live 路径
+  - `payloads.len() >= 50`（用户跑 `claude --resume` 灌历史 / 大量追加）→ 复用 `build_chunks` 切块走 `emit("jsonl-batch")`，前端自动进入 batch 模式（lazy hljs / chunked prepend），跟启动 replay 一致的渲染管线
+- **启动重放等扫完**（v2.4 修首次启动乱序）：watcher 线程同步全量扫完成后才置 `initial_scan_done: AtomicBool = true`。frontend-ready listener 在 async task 里 spin-wait（10ms poll，10s timeout）等这个 flag → `replay_and_mark_ready` 持锁 → 切块 `emit("jsonl-batch")` 整个 history（head 块 append 到底，older 块倒序 prepend）→ mark ready。**保证 snapshot 时 history 完整**，无历史漏到 live emit 路径错位。
+- **前端 source 分流**（v2.4 修副因）：events.ts `PayloadSource = "batch" | "live"`。`jsonl-line` 入队标 source=live，`jsonl-batch` 拆出来标 source=batch。tabs.ts `appendCardOrBuffer(tab, el, source)`：**source=batch + inPrependMode** 才走 prepend fragment buffer（chunked replay 历史 prepend 到顶部）；**source=live 永远 `stream.append`** 贴底（用户实时敲的新行不会被 inPrependMode 错误捕获）。
+- **active session 自动同步**（v2.4 issue #2）：tabs.ts `onLine` 在 `result.kind === "card" && message.type === "user" && source === "live"` 时调 `userActive(sid)`。check `autoFollowUserActive` toggle + 5s `manualOverrideUntil` → `switchTo(sid, "auto")` + 可选 `invoke("bring_monitor_to_front")`。判别复用前端 `cards/index.ts::renderMessage` 既有逻辑——`kind === "card"` 已经过滤了 tool_result 回灌（走 tool-group）、CLI noise（走 skip 含 `[Request interrupted by user...]`）。
 - **cc 集成绑定**：PS 跑 `__ccm_bind` 写 `ps-await/<PID>.json` + 改窗口标题为 marker → `bind.rs` 监听 + EnumWindows → 写 `ps-registry/<PID>.json` + 删 await → PS 检测到删除恢复标题
 - **历史浏览（流式）**：v2.2 起，点 Ctrl+H → `list_history_projects`（async + spawn_blocking，不阻塞 IPC）→ 用户展开项目 → 前端创建 `Channel<HistorySessionEntry>` 传给 `stream_history_sessions_in_project` → 后端边解析 jsonl 元数据边 `on_entry.send()` → 前端 onmessage rAF 节流增量插入到 fork 树。点单 session → `Channel<Vec<JsonlLinePayload>>` + `stream_read_session_jsonl` 100 行一 chunk emit → session-viewer 边收边 `renderMessage`，几百毫秒看到首屏
 - **Task 面板（v2.3 issue #11）**：`tasks.rs::spawn_task_watcher` 用 notify-debouncer-mini 监听 `<claude_dir>/tasks/` 递归 → 文件变更（CLI 跑 `TaskCreate` / `TaskUpdate` / `TaskStop`）→ debounce 100ms + 按 sid dedup → 重读整个 `tasks/<sid>/` 目录（跳过 `.lock` / `.highwatermark` / 非数字命名）→ emit `task-update` 携完整 task 列表。前端 `tasks-panel.ts` 按 sid 路由到对应 Tab 的 sticky 折叠卡。Tab 创建时另调 `get_session_tasks` IPC 拿初始快照（async + spawn_blocking）。0 task 时 panel 隐藏
@@ -94,21 +103,24 @@ src-tauri/src/
 
 ```
 src/
-├── 入口        main.ts       快捷键、HMR full reload
-├── 事件        events.ts     订阅 + 批量调度让出主线程
-├── 状态        tabs.ts       TabManager 状态机 + Tab Bar 增量 DOM 更新
-│              stream.ts     MessageStream（ResizeObserver 贴底滚动）
-├── 渲染        render.ts     marked + KaTeX + hljs + DOMPurify
+├── 入口        main.ts       快捷键、HMR full reload、behavior 初始化
+├── 事件        events.ts     订阅 + 批量调度 + PayloadSource batch/live 分流
+├── 状态        tabs.ts       TabManager 状态机 + switchTo manual/auto + userActive
+│              stream.ts     MessageStream（append / prependFragmentAtTop）
+├── 渲染        render.ts     marked + KaTeX + hljs + DOMPurify + lazy hljs 模式
 │              cards/        折叠卡组件（slash / compact / subagent / tool）
+│                            cards/index.ts::stripInternalNoise 剥 CLI 注入 + ESC 中断
 ├── 视图        views/history.ts  历史浏览器
 │              views/session-viewer.ts  只读会话查看器
 │              tasks-panel.ts  v2.3 Tab stream 顶部 sticky task 折叠卡
-├── 设置        settings/panel.ts   总控
+├── 设置        settings/panel.ts   总控 + onBehaviorChange 回调
 │              settings/cc_integration.ts  PowerShell 集成区
 │              settings/info-icon.ts  portal tooltip 组件
+│              settings/data-section.ts  v2.3 数据存储透明化
 ├── 配置        config.ts     invoke load/save_config
 │              paths.ts      claudeDir 字段读写
 │              theme.ts      CSS token 应用
+│              behavior.ts   v2.4 autoFollowUserActive / bringMonitorToFront toggles
 └── 样式        styles.css    全部样式 + token 系统
 ```
 
@@ -151,7 +163,7 @@ monitor 与外部进程的所有通信都在 `~/.claude/claudecode-frontend/` �
 | 路径 | 写入方 | 读取方 | 用途 |
 |---|---|---|---|
 | `<claude_dir>/projects/<encoded-cwd>/<sid>.jsonl` | Claude Code CLI | monitor `watcher.rs` / `history.rs` | session 消息流，monitor 实时增量 + 历史浏览 |
-| `<claude_dir>/sessions/<PID>.json` | Claude Code CLI | monitor `session_map.rs` | 活跃 session 探活（PID + procStart 双校验） |
+| `<claude_dir>/sessions/<PID>.json` | Claude Code CLI | monitor `session_map.rs` | 活跃 session 探活（PID + procStart 双校验；procStart 缺失时自动降级仅 STILL_ACTIVE，详 INVARIANTS § 18） |
 | `<claude_dir>/tasks/<sid>/<id>.json` (v2.3) | Claude Code CLI (`TaskCreate`/`TaskUpdate`/`TaskStop` 工具) | monitor `tasks.rs` | Tab task 面板数据源；附 `.lock` / `.highwatermark` 控制文件需忽略 |
 
 每个文件的字段定义、编码约束（UTF-8 无 BOM）、写入方原子性语义、握手时序图 → [IPC-PROTOCOL.md](IPC-PROTOCOL.md)。
@@ -177,10 +189,12 @@ replay 时一次性发整个 Vec<JsonlLinePayload>，前端 push 进同一 queue
 
 **为什么**：Tauri IPC 每次 emit 都有序列化 + 派发 overhead。N=3000 时累计 ~400ms 主线程阻塞，启动可见显著卡顿。BATCH 单次序列化降到 ~50ms。
 
-### session 探活双重校验（PID + procStart）
-`OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE` + `GetProcessTimes` creation FILETIME 与 .NET DateTime.Ticks 100ms 容差比对。
+### session 探活双重校验（PID + procStart，procStart 可缺）
+`OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE` + 当 sessions/<PID>.json 含 `procStart` 字段时再加 `GetProcessTimes` creation FILETIME 100ms 容差比对。
 
-**为什么不**只查 PID：Windows PID 短期复用非常常见，仅靠 STILL_ACTIVE 会把僵尸条目误判为活跃（旧 PID 被一个无关进程占用）。procStart 二次校验是必须的。
+**为什么不**只查 PID：Windows PID 短期复用非常常见，仅靠 STILL_ACTIVE 会把僵尸条目误判为活跃（旧 PID 被一个无关进程占用）。procStart 二次校验**有的话**就必须做。
+
+**为什么 procStart 可缺**：v2.4.2 实测 Claude Code 2.1.150 在某些启动路径下（/resume 或类似）写 `sessions/<PID>.json` 漏 procStart。之前 schema 必填导致 serde 整条解析失败 → 整个 session 被静默忽略 → monitor 漏 Tab。改 `Option<String>` 后缺失就跳过 procStart 校验仅 STILL_ACTIVE。INVARIANTS § 18 完整论证。
 
 ### HWND 拉前三重校验
 `IsWindow(hwnd)` + 当前 `owner_pid == 绑定时 owner_pid` + 当前 owner 的 `procStart == 绑定时 owner_proc_start`。
@@ -228,16 +242,27 @@ PS 端模板 `cc.ps1.tpl` 用 `[System.IO.File]::WriteAllText(... UTF8Encoding($
 
 **为什么**：Win32 同步调用（`EnumWindows` / `SetForegroundWindow` / `ShellExecuteW` 等）可能阻塞数十 ms 到秒级；放到 Tauri 主 runtime 会卡死 IPC 派发。spawn_blocking 隔离到 blocking thread pool，前端再加 5s timeout 兜底。
 
+### bring_monitor_to_front 三层 hack（v2.4 issue #2）
+用户在终端敲键 → monitor 不是前台进程 → `SetForegroundWindow` 直接调被 Win10/11 拒绝（OS 防恶意软件偷焦点）。修复方案是叠加三层：
+
+1. **`keybd_event(VK_MENU)` 模拟 Alt 按键**：OS 检测后视当前进程为"刚有用户输入" → 临时获得前台资格（PowerToys / TranslucentTB 同款 trick）
+2. **`AttachThreadInput`**：附加到当前前台线程的输入队列，借用其拉前权限
+3. **`SetWindowPos(TOPMOST → NOTOPMOST)`**：强制 Z 序拉顶，即使 `SetForegroundWindow` 失败也至少视觉浮顶
+
+单层（v2.4.0 只 set_focus / v2.4.1 加 AttachThreadInput）实测在 Win10 1903+ 都不够，三层叠加才稳。详 `lib.rs::bring_monitor_to_front` + CHANGELOG v2.4.2。
+
 ---
 
 ## 6. 关于"不在主线 / 已废弃"特性
 
 设计中**主动放弃**的方向，写在这里给后续重构者参考避免重蹈：
 
-### 焦点同步（已删）
+### OS 焦点同步（已删 / v2.4 用 watcher 反推替代）
 原 `SetWinEventHook` 监听 `EVENT_SYSTEM_FOREGROUND` 然后切对应 Tab 的设计。
 
 **为什么放弃**：Windows Terminal 单进程多窗口/多 tab 架构，`GetForegroundWindow` 只能拿到 WT 主进程的 HWND，**无法区分同一 WT 窗口内哪个 tab active**。SidHwndCache 里 N 个 tab → 同一 HWND 的映射也反查不出。已彻底删除 `lookup_by_foreground_pid` 和 `FOCUS_SWITCH` IPC。
+
+**v2.4 issue #2 用 watcher 反推 `type=user` 替代**：用户在 claude 里敲回车 → claude 写一行 type=user 到 jsonl → watcher 识别 → 切对应 Tab。零侵入、信号准（详 doc/INVARIANTS.md § 20）。OS API 路径仍废弃；公开 API（[microsoft/terminal#19818](https://github.com/microsoft/terminal/issues/19818)）2026 年 5 月仍在 Backlog。
 
 ### subagent 实时流（已隔离）
 不走主 watcher，由前端 `invoke("load_subagent")` 在用户展开 Task 折叠卡时按需加载。

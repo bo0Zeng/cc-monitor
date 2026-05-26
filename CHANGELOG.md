@@ -8,6 +8,42 @@
 
 ---
 
+## [2.4.1] — 2026-05-26
+
+### 修复 — 「拉前 monitor 窗口」toggle 实际只闪任务栏不抢焦
+
+**症状**：v2.4.0 开启「自动切 Tab 时同时把 monitor 窗口拉到前台」后，用户在终端敲键回车 → monitor 切了对应 Tab，但**窗口没真浮上来**，只是任务栏图标闪了下。
+
+**根因**：Windows 的 [SetForegroundWindow 限制](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow)——只允许调用方进程本身**在前台焦点链上**时合法拉前别的窗口；其他情况 OS 直接拒绝（防恶意软件偷焦点），仅返回 false + 闪任务栏。
+
+v2.4.0 的 `bring_monitor_to_front` 走 Tauri 的 `WebviewWindow::set_focus()` 内部就是 `SetForegroundWindow`，被这条限制必拦：
+
+- `bring_terminal_to_front`（v1.7 既有，monitor→PS 拉前）能成功，是因为**用户点 monitor 按钮的瞬间** monitor 就是前台
+- `bring_monitor_to_front` 场景反过来——用户敲终端时**前台是 PS/WT**，monitor 没权抢
+
+**修复 = AttachThreadInput hack**：
+
+```
+fg_thread = GetWindowThreadProcessId(GetForegroundWindow())
+AttachThreadInput(fg_thread, current_thread, true)   ← 临时附加到前台线程输入队列
+SetForegroundWindow(monitor_hwnd)                     ← 借用其权限合法拉前
+AttachThreadInput(fg_thread, current_thread, false)  ← 立刻 detach
+```
+
+OS 把附加期间这两线程视作"同输入上下文"，前台限制自动通过。Visual Studio / 各 IDE / 切窗工具广泛使用，被 OS 视为合规（非恶意）。
+
+实施细节：
+- `windows` crate 0.56 中 `AttachThreadInput` 位于 `Win32::System::Threading::AttachThreadInput`（feature `Win32_System_Threading` 已有，无需新加）
+- Tauri 2 内部用 windows crate 0.61（HWND 内部是 `*mut c_void`），我们用 0.56（HWND 内部是 isize）—— 通过 `tauri_hwnd.0 as isize` 跨版本兼容
+- 加 `BringWindowToTop` 一步调整 Z 序辅助 SetForegroundWindow 在边界情况下成功
+- 非 Windows 平台保留 v2.4.0 的 set_focus 兜底实现
+
+### 备注
+
+非常少数情况下 OS 仍可能拒绝（hack 也不是 100% 万能；检测到滥用 / lock 时序竞争）。此时仍闪任务栏给用户提示。
+
+---
+
 ## [2.4.0] — 2026-05-26
 
 ### 新功能 — 终端 active session 自动同步到 monitor Tab（issue #2）

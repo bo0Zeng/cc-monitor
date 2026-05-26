@@ -212,6 +212,63 @@
 
 ---
 
+## 18. Claude Code 写的元数据文件按"宽容 schema" 反序列化
+
+任何对 Claude Code CLI 写入的文件做 `serde_json::from_str` 时，**所有非核心字段**必须 `#[serde(default)]` 或 `Option<T>`，**只把绝对必填**（如 `sessionId`、`pid`）当强制字段。
+
+**为什么不能松动**：实测 Claude Code 2.1.150 写 `~/.claude/sessions/<PID>.json` 时**偶发漏 `procStart` 字段**——同版本不同 session 写法不一致，可能是某种启动路径（`/resume`？多线程 race）下 procStart 还没拿到就先写文件，后续 status 更新路径不补写。
+
+v2.4.2 之前 `SessionInfo.proc_start: String` 必填 → serde 直接解析失败 → `read_one` 返 None → 整个 session 被静默忽略 → monitor 漏 Tab。修复 `Option<String>` 后，缺失时 `is_process_alive` 跳过 PID 复用校验只看 STILL_ACTIVE，**代价是极小概率误判活跃但远好过完全看不见 Tab**。
+
+**应用范围**：
+- `sessions/<PID>.json` (`session_map::SessionInfo`)
+- `tasks/<sid>/<id>.json` (`tasks::TaskEntry`) — 已经按宽容处理
+- `projects/**/*.jsonl` 的 `messages::JsonlRecord` enum — 用 `#[serde(other)] Unknown` 兜任何未知 type
+- 未来添加任何 Claude Code 数据源读取一律照此办
+
+**反过来**：monitor **自己写的**文件（`config.json` / `auto-launch.json` / `ps-registry/<PID>.json` 等）schema 可以严格——这是 monitor 控制的产物，schema 演进有版本管理。
+
+---
+
+## 19. 跨 windows crate 版本 HWND 互操作走 `as isize`
+
+cc-monitor 直接依赖 `windows = "0.56"`（`HWND.0 = isize`），但 Tauri 2 内部用 `windows = "0.61"`（`HWND.0 = *mut c_void`）—— Cargo.lock 两个版本共存。
+
+跨版本传 HWND 必须：
+
+```rust
+let tauri_hwnd = win.hwnd()?;                              // 0.61 HWND
+let hwnd_value = tauri_hwnd.0 as isize;                    // pointer → isize cast
+let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
+```
+
+**为什么不能松动**：直接 `transmute` 在两版本字段类型不同时是 UB。`as` cast `*mut c_void → isize` 在 64-bit Windows 上是合法的 pointer-to-integer cast，编译器保证语义正确。
+
+**反过来**：不要尝试统一两个 crate 版本——Tauri 锁死其内部依赖版本，外部强制 align 会触发其他依赖的连锁升级风暴。两版本共存 + 边界处 cast 是最干净的解法。
+
+---
+
+## 20. 用户 input 检测必须分辨"真用户输入" vs "CLI 注入 noise"
+
+任何"用户在终端输入"的行为感知（如 v2.4 issue #2 的自动切 Tab）**不能**只看 `JsonlRecord::User`——Claude Code 把多种非用户行为也写成 `type=user`：
+
+| 形态 | content 长啥样 | 是不是真用户输入 |
+|---|---|:---:|
+| 真用户敲键 | `[{type:"text", text:"..."}]` 或纯字符串 | ✓ |
+| Slash 命令 / compact summary | 用户主动行为 | ✓ |
+| CLI 内部 prompt 包装 | 被 `stripInternalNoise` 剥光 | ✗ |
+| **ESC 中断标记** | `[Request interrupted by user]` / `[Request interrupted by user for tool use]` | ✗ |
+| 工具结果回灌 | `[{type:"tool_result", ...}]` Anthropic API schema | ✗ |
+| `<synthetic>` 包裹 | claude 内部应答 | ✗ |
+
+**判别标准**：复用前端 `cards/index.ts::renderMessage` 的 `result.kind === "card"`，它已经把以上所有非真输入路径过滤到 `kind: "skip"` 或 `kind: "tool-group"`。判 user-active 时**只看 card 且 type === "user"**。
+
+**为什么不能松动**：v2.4 issue #2 v2.4.0 没考虑 ESC 中断的 `[Request interrupted by user]` 也是 `type=user`，导致用户按 ESC 时 monitor 错误抢前台。v2.4.2 把它加进 `stripInternalNoise` 让走 skip 修复。
+
+**未来加新的"用户行为感知"特性**（如：跨 Tab 跳焦提示、统计用户敲键次数等）必须先确认信号来源是否经过 `renderMessage` 过滤；如果走 raw `JsonlRecord::User` 必须独立维护一份等价过滤。
+
+---
+
 ## 修改本文档
 
 加新的不变量时：

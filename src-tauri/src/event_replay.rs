@@ -48,6 +48,16 @@ const MID_CHUNK_SIZE: usize = 600;
 /// 太短：watcher record() 抢锁来不及；太长：用户感知延迟。10ms 是 ergonomic balance。
 const CHUNK_PAUSE_MS: u64 = 10;
 
+/// v2.4.2 issue #2: incremental batch 切换到 chunked emit 的阈值。
+///
+/// watcher 一次 process_file 读到的行数 >= 此值时（典型场景：用户
+/// `claude --resume <sid>` 灌历史），后端把这批走 jsonl-batch 切块 emit；
+/// 否则（用户日常敲键 1-N 行）走 jsonl-line 单条 live emit 保持低延迟。
+///
+/// 经验值 50：日常增量绝对低于这个数（claude 流式回复一行一条 jsonl 也只有
+/// 几条到十几条）；/resume 历史灌入轻松几百几千行。50 是清晰的分水岭。
+const INCREMENTAL_BATCH_THRESHOLD: usize = 50;
+
 impl EventReplay {
     pub fn new() -> Self {
         Self {
@@ -58,15 +68,85 @@ impl EventReplay {
         }
     }
 
-    /// 收到一条新事件：写 history；前端 ready 后顺带 live emit。
-    pub fn record<R: Runtime>(&self, handle: &AppHandle<R>, payload: JsonlLinePayload) {
-        let mut inner = self.inner.lock();
-        inner.history.push_back(payload.clone());
-        if inner.ready {
-            if let Err(e) = handle.emit(events::JSONL_LINE, &payload) {
-                tracing::warn!("emit jsonl-line failed: {e}");
+    /// v2.4.2 issue #2: watcher 一次 process_file 收集到的 batch 入口。
+    ///
+    /// **未 ready 时**（启动 replay 还没触发）：全部 push 到 history buffer，
+    /// 等 frontend-ready 时 `replay_and_mark_ready` 一并切块发。等同 record()
+    /// 的行为，watcher 初始全量扫走这条路径。
+    ///
+    /// **已 ready 时**（debouncer 监听阶段）：按 batch 大小分流：
+    /// - `< INCREMENTAL_BATCH_THRESHOLD`：逐条 `emit(JSONL_LINE)`，保持 v2.4
+    ///   实时增量低延迟语义（用户日常敲键 1-N 行）
+    /// - `>= INCREMENTAL_BATCH_THRESHOLD`：切块 `emit(JSONL_BATCH)`，触发前端
+    ///   batch 模式（lazy hljs / chunked prepend），用户场景：`claude --resume
+    ///   <sid>` 灌几千行历史
+    ///
+    /// 两条路径都先把 payloads push 到 history（防 F5 刷新丢失）。
+    pub fn on_line_batch<R: Runtime>(
+        &self,
+        handle: &AppHandle<R>,
+        payloads: Vec<JsonlLinePayload>,
+    ) {
+        if payloads.is_empty() {
+            return;
+        }
+
+        // 先持锁 push history + 看 ready 状态，决定后续 emit 策略
+        let (ready, big_batch) = {
+            let mut inner = self.inner.lock();
+            for p in &payloads {
+                inner.history.push_back(p.clone());
+            }
+            (inner.ready, payloads.len() >= INCREMENTAL_BATCH_THRESHOLD)
+        };
+
+        if !ready {
+            // 启动 replay 还没触发，等 frontend-ready 时一并发
+            return;
+        }
+
+        if !big_batch {
+            // 小 batch：逐条 jsonl-line（保留 v2.4 实时低延迟语义）
+            for p in payloads {
+                if let Err(e) = handle.emit(events::JSONL_LINE, &p) {
+                    tracing::warn!("emit jsonl-line failed: {e}");
+                }
+            }
+            return;
+        }
+
+        // 大 batch：切块 jsonl-batch，复用 build_chunks 的 head + older 倒序策略。
+        // 前端 events.ts 收到 jsonl-batch 自动进 batch 模式 + chunked prepend。
+        let n = payloads.len();
+        let started = std::time::Instant::now();
+        let chunks = build_chunks(&payloads);
+        let chunk_total = chunks.len() as u32;
+        tracing::info!(
+            "[perf] incremental batch chunked: total={n}, chunks={chunk_total} (likely /resume or large append)"
+        );
+        for (idx, chunk) in chunks.into_iter().enumerate() {
+            let chunk_started = std::time::Instant::now();
+            let payload = JsonlBatchPayload {
+                chunk_index: idx as u32,
+                chunk_total,
+                payloads: chunk,
+            };
+            if let Err(e) = handle.emit(events::JSONL_BATCH, &payload) {
+                tracing::warn!("emit incremental jsonl-batch chunk {idx} failed: {e}");
+            }
+            tracing::info!(
+                "[perf] incremental chunk {idx}/{chunk_total} emit in {}ms",
+                chunk_started.elapsed().as_millis()
+            );
+            // 块间小 pause 让 watcher 真新行能 live emit 插入（同 replay 的策略）
+            if idx as u32 + 1 < chunk_total {
+                std::thread::sleep(std::time::Duration::from_millis(CHUNK_PAUSE_MS));
             }
         }
+        tracing::info!(
+            "[perf] incremental batch chunked emit done in {}ms total",
+            started.elapsed().as_millis()
+        );
     }
 
     /// 前端 (重) ready：按 session 倒序切块 emit 整个 history，最后设 ready。
