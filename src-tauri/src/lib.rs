@@ -276,6 +276,8 @@ pub fn run() {
             subagent::load_subagent,
             forget_session,
             bring_terminal_to_front,
+            // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
+            bring_monitor_to_front,
             cc_integration_status,
             cc_integration_preview,
             cc_integration_scan_path,
@@ -322,6 +324,24 @@ fn forget_session(
 ) -> Result<(), String> {
     replay.forget(&session_id);
     Ok(())
+}
+
+/// v2.4 (issue #2)：把 monitor 自己的主窗口拉到最前 + unminimize + 抢焦点。
+///
+/// 用途：用户在终端敲键时，前端 USER_ACTIVE 信号路径下，若用户开了「拉前
+/// monitor 窗口」toggle 就 invoke 这个 IPC 让 monitor 主动浮上来。
+///
+/// 实现复用 issue #9 single-instance plugin 回调的同款逻辑（lib.rs::run()）。
+/// AllowSetForegroundWindow 限制：monitor 自己只能在它在前台焦点链上时合法
+/// 拉前；其他时候 OS 可能只闪任务栏图标。这是 Windows 设计，无法绕开。
+#[tauri::command]
+fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), String> {
+    let win = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+    let _ = win.unminimize();
+    let _ = win.show();
+    win.set_focus().map_err(|e| format!("set_focus: {e}"))
 }
 
 /// v1.7：拉对应终端窗口。

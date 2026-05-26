@@ -8,6 +8,54 @@
 
 ---
 
+## [2.4.0] — 2026-05-26
+
+### 新功能 — 终端 active session 自动同步到 monitor Tab（issue #2）
+
+你在多个 PowerShell tab 里跑多个 claude session，切到某个 tab 在 claude 里敲回车 → monitor 自动切到对应的 Tab，不用再手动到 monitor 窗口点。
+
+**信号源：watcher 反推 `type=user`**
+
+- 不依赖 OS 焦点检测（Windows Terminal 单进程多 tab，`GetForegroundWindow` 永远拿 WT 主进程 HWND 无法区分 tab —— v1 早期 `FOCUS_SWITCH` 就是因此废弃）
+- 不依赖 ConPTY FOCUS_EVENT（PSReadLine 独占 console input，第三方进程抢句柄不稳）
+- 不依赖 claude code hooks（违反零侵入）
+- 不依赖 Windows Terminal 公开 API（[microsoft/terminal#19818](https://github.com/microsoft/terminal/issues/19818) 仍在 Backlog，"Spec Needed"，无 ETA）
+
+watcher 反推天然零侵入：jsonl 已经在监听，用户在终端敲回车 → claude 写一行 `type=user` 到对应 jsonl → monitor 立即识别 → 切对应 Tab。
+
+**严格分辨"真用户输入" vs "工具回灌"**
+
+Claude Code JSONL 里 `type=user` 实际三种形态：
+1. 真用户敲键的文本 → ✓ 触发自动切
+2. CLI 内部 prompt 包装（被 `stripInternalNoise` 剥光的）→ ✗ 不触发
+3. 工具结果回灌（`content: [{type: "tool_result", ...}]`，Anthropic API schema 把工具返回挂在 user role 上）→ ✗ 不触发
+
+判别复用前端 `cards/index.ts::renderMessage` 既有逻辑——`result.kind === "card"` 已经过滤了 noise + tool_result。**无后端新事件**，复用既有 `jsonl-line` 路径在 `tabs.onLine` 末尾加判断。
+
+**Manual override：5 秒不抢回**
+
+你手动点 monitor 的 Tab Bar / Ctrl+Tab 切到别的 Tab 后，**5 秒内**任何 user-active 信号都不会抢回。给"我现在主动看另一个 tab"的意图留缓冲。5 秒后才恢复自动跟随。
+
+**两个独立 toggle**
+
+设置面板新增「行为」分组：
+
+- **「用户在终端里输入时自动切到对应 Tab」**（默认开）
+- **「自动切 Tab 时同时把 monitor 窗口拉到前台」**（默认关）—— 默认不抢焦避免打断浏览器/IDE 工作；想让 monitor 主动浮上来时勾上
+
+第二个 toggle 仅当第一个开启时生效（前者关时灰显）。
+
+### 新增 IPC
+- `bring_monitor_to_front` — `unminimize + show + set_focus` 主窗口，复用 single-instance plugin 回调同款逻辑。受 `AllowSetForegroundWindow` 限制，某些场景 OS 仅闪任务栏不真拉前（Windows 设计）。
+
+### 新增 config 字段
+- `autoFollowUserActive: bool`（默认 true）
+- `bringMonitorToFrontOnUserActive: bool`（默认 false）
+
+均与 `theme` / `claudeDir` / `diagnostics` 字段平级。**运行时热更**（不像 claudeDir 需要重启）。
+
+---
+
 ## [2.3.1] — 2026-05-26
 
 ### 修复 — 首次启动消息乱序（必须按 F5 才正常）

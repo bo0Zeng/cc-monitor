@@ -20,6 +20,7 @@ import { CcIntegrationSection } from "./cc_integration";
 import { DiagnosticsSection, DIAGNOSTICS_INFO_TEXT } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
 import { DataSection, DATA_SECTION_INFO_TEXT } from "./data-section";
+import { getBehavior, setBehavior, type BehaviorConfig } from "../behavior";
 
 /**
  * 字段控件类型：
@@ -74,6 +75,11 @@ const FIELDS: ReadonlyArray<FieldSpec> = [
   { key: "error", label: "错误", type: "color", group: "color" },
 ];
 
+/** v2.4 issue #2：设置面板回调，行为类 toggle 改变时通知外部（TabManager 同步） */
+export interface SettingsPanelOptions {
+  onBehaviorChange?: (cfg: BehaviorConfig) => void;
+}
+
 export class SettingsPanel {
   private el: HTMLElement;
   /** 当前编辑中的 theme（实时预览用） */
@@ -92,7 +98,13 @@ export class SettingsPanel {
   /** issue #3 (A): 数据存储展示区。打开面板时 refresh 一次拉最新 stat */
   private dataSection?: DataSection;
 
-  constructor() {
+  // v2.4 issue #2: 行为类 toggle
+  private autoFollowCheckbox!: HTMLInputElement;
+  private bringFrontCheckbox!: HTMLInputElement;
+  private onBehaviorChange?: (cfg: BehaviorConfig) => void;
+
+  constructor(opts: SettingsPanelOptions = {}) {
+    this.onBehaviorChange = opts.onBehaviorChange;
     this.el = this.build();
     document.body.appendChild(this.el);
     document.addEventListener("keydown", (e) => {
@@ -105,6 +117,11 @@ export class SettingsPanel {
     this.current = { ...this.original };
     this.claudeDirOriginal = (await getClaudeDirOverride()) ?? "";
     this.claudeDirInput.value = this.claudeDirOriginal;
+    // v2.4 issue #2: 每次打开拉最新 behavior，避免跟外部其他改动脱节
+    const behavior = await getBehavior();
+    this.autoFollowCheckbox.checked = behavior.autoFollowUserActive;
+    this.bringFrontCheckbox.checked = behavior.bringMonitorToFrontOnUserActive;
+    this.updateBringFrontEnabled();
     this.banner.textContent = "";
     this.banner.classList.remove("settings-banner-show");
     this.syncInputs();
@@ -112,6 +129,26 @@ export class SettingsPanel {
     this.dataSection?.refresh();
     this.el.classList.add("open");
     this.isOpen = true;
+  }
+
+  /** v2.4 issue #2: autoFollow 关 → bringFront 灰显（依赖前者，无意义） */
+  private updateBringFrontEnabled(): void {
+    this.bringFrontCheckbox.disabled = !this.autoFollowCheckbox.checked;
+  }
+
+  /** v2.4 issue #2: 任一行为 toggle 改 → 立即 save + 通知 TabManager 同步 */
+  private async onBehaviorToggle(): Promise<void> {
+    this.updateBringFrontEnabled();
+    const next: BehaviorConfig = {
+      autoFollowUserActive: this.autoFollowCheckbox.checked,
+      bringMonitorToFrontOnUserActive: this.bringFrontCheckbox.checked,
+    };
+    try {
+      await setBehavior(next);
+      this.onBehaviorChange?.(next);
+    } catch (e) {
+      console.warn("save behavior failed:", e);
+    }
   }
 
   close(): void {
@@ -212,6 +249,8 @@ export class SettingsPanel {
     body.appendChild(this.banner);
 
     body.appendChild(this.buildDataGroup());
+    // v2.4 issue #2: 行为类 toggle —— 自动切 tab / 拉前 monitor 窗口
+    body.appendChild(this.buildBehaviorGroup());
     // v1.7：PowerShell 集成区（cc 命令注入式绑定）—— 高频，不折叠
     body.appendChild(new CcIntegrationSection().element);
 
@@ -252,6 +291,67 @@ export class SettingsPanel {
     body.appendChild(dataGroup.element);
 
     return body;
+  }
+
+  /**
+   * v2.4 issue #2: 「行为」分组——自动切 tab + 可选拉前 monitor 窗口。
+   *
+   * 两个 toggle 都是热更新（不重启）。"拉前窗口" 在 "自动切 tab" 关闭时灰显
+   * （前者依赖后者，单独开没意义）。
+   */
+  private buildBehaviorGroup(): HTMLElement {
+    const group = document.createElement("div");
+    group.className = "settings-group";
+
+    const heading = document.createElement("div");
+    heading.className = "settings-group-title";
+    heading.textContent = "行为";
+    group.appendChild(heading);
+
+    // 1. 自动切 tab
+    const autoRow = document.createElement("label");
+    autoRow.className = "settings-row settings-row-checkbox";
+    this.autoFollowCheckbox = document.createElement("input");
+    this.autoFollowCheckbox.type = "checkbox";
+    this.autoFollowCheckbox.className = "settings-checkbox";
+    this.autoFollowCheckbox.addEventListener("change", () => void this.onBehaviorToggle());
+    autoRow.appendChild(this.autoFollowCheckbox);
+    const autoLabel = document.createElement("span");
+    autoLabel.className = "settings-checkbox-label";
+    autoLabel.textContent = "用户在终端里输入时自动切到对应 Tab";
+    autoRow.appendChild(autoLabel);
+    group.appendChild(autoRow);
+
+    const autoHint = document.createElement("div");
+    autoHint.className = "settings-hint";
+    autoHint.textContent =
+      "watcher 反推：用户在 claude 里敲回车 → monitor 切到对应 session 的 Tab。" +
+      "只跟「真用户输入」（不跟工具返回、不跟 claude 流式回复）。" +
+      "你手动点 Tab 后 5 秒内不会被自动切抢回。";
+    group.appendChild(autoHint);
+
+    // 2. 拉前 monitor 窗口
+    const frontRow = document.createElement("label");
+    frontRow.className = "settings-row settings-row-checkbox";
+    this.bringFrontCheckbox = document.createElement("input");
+    this.bringFrontCheckbox.type = "checkbox";
+    this.bringFrontCheckbox.className = "settings-checkbox";
+    this.bringFrontCheckbox.addEventListener("change", () => void this.onBehaviorToggle());
+    frontRow.appendChild(this.bringFrontCheckbox);
+    const frontLabel = document.createElement("span");
+    frontLabel.className = "settings-checkbox-label";
+    frontLabel.textContent = "自动切 Tab 时同时把 monitor 窗口拉到前台";
+    frontRow.appendChild(frontLabel);
+    group.appendChild(frontRow);
+
+    const frontHint = document.createElement("div");
+    frontHint.className = "settings-hint";
+    frontHint.textContent =
+      "默认关：monitor 静静在后台切 Tab，不打断你正在用的其他窗口（浏览器/IDE）。" +
+      "开启后：在终端输入时 monitor 浮上来抢焦。仅当上面的「自动切 Tab」开启时生效。";
+    group.appendChild(frontHint);
+
+    return group;
   }
 
   /** "数据" 分组：当前只有 Claude 数据目录一项 */
