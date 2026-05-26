@@ -7,6 +7,7 @@ import { SettingsPanel } from "./settings";
 import { HistoryView } from "./views/history";
 import { bindErrorToast } from "./error-toast";
 import { TasksPanel } from "./tasks-panel";
+import { getBehavior } from "./behavior";
 
 // === 启动 perf 测量 ===
 // performance.now() 自页面 navigation start 起；前端各阶段时间点。
@@ -101,8 +102,15 @@ window.addEventListener("DOMContentLoaded", async () => {
     tasksPanel,
   );
 
+  // v2.4 issue #2：拉一次 behavior toggle 初值喂给 TabManager。
+  // 设置面板改了之后会再调 applyBehavior 同步。
+  void getBehavior().then((b) => tabs.applyBehavior(b));
+
   // 外观设置入口 —— 注入到 #app 上（绝对定位到 Tab Bar 右上）
-  const settingsPanel = new SettingsPanel();
+  // v2.4 issue #2: 行为 toggle 改了立即同步给 TabManager
+  const settingsPanel = new SettingsPanel({
+    onBehaviorChange: (cfg) => tabs.applyBehavior(cfg),
+  });
   const settingsTrigger = document.createElement("button");
   settingsTrigger.type = "button";
   settingsTrigger.className = "settings-trigger";

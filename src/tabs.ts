@@ -14,6 +14,7 @@ import { BranchFolder } from "./branch-fold";
 import { extractBranchRecord } from "./branching";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { PayloadSource } from "./events";
+import type { BehaviorConfig } from "./behavior";
 
 /**
  * Tab 生命周期：
@@ -120,9 +121,27 @@ export class TabManager {
    * 更新）。切 Tab 时把对应 sid 的快照喂给全局 TasksPanel。
    */
   private tasksBySid = new Map<string, TaskEntry[]>();
-  // 早期版本曾用 user lock（用户主动点 Tab 后 5s 内拒 focus-switch）防自动焦点撞回去，
-  // 实测 5s 太长导致用户切焦点窗口后 Tab 不跟着切（看上去焦点同步失效）。砍掉：用户
-  // 切焦点窗口本身就是明确意图，应该尊重。
+  /**
+   * v2.4 issue #2：用户在终端真敲键 → 自动切到对应 Tab 的开关。
+   * 默认 true，从 config.json (autoFollowUserActive) 加载。
+   */
+  private autoFollowUserActive: boolean = true;
+  /**
+   * v2.4 issue #2：自动切 tab 时是否同时把 monitor 窗口拉前台。默认 false。
+   */
+  private bringMonitorToFront: boolean = false;
+  /**
+   * v2.4 issue #2：用户**手动**点 Tab Bar / Ctrl+Tab 后 5s 内拒绝任何 user-active
+   * 自动切。表示"我现在主动在看另一个 tab，请别抢回去"。
+   *
+   * 跟 v1 早期 user-lock 的区别：v1 阻塞 OS focus 检测（已废），v2.4 阻塞
+   * watcher 反推的 type=user 信号；信号语义不同，5s 经验值复用合理。
+   *
+   * 0 = 没有 override 中。每次 manual switchTo 时更新为 now+5000。
+   */
+  private manualOverrideUntil: number = 0;
+  /** Manual override 窗口长度（ms）。issue #2 钦定 5s。 */
+  private static readonly MANUAL_OVERRIDE_MS = 5000;
 
   constructor(
     private barEl: HTMLElement,
@@ -311,6 +330,16 @@ export class TabManager {
         // issue #8: 把 uuid/parentUuid 写到 DOM 上，让 BranchFolder 能扫
         markCardUuid(result.element, payload.message);
         this.appendCardOrBuffer(tab, result.element, source);
+        // v2.4 issue #2: 真用户输入触发自动切 tab。
+        // 三个判断缺一不可，每个都是"信号准"的关键：
+        //   - result.kind === "card" 已经过滤了 tool_result 回灌（走 tool-group）
+        //     + CLI noise（走 skip）+ <synthetic> 占位（走 skip）。详 cards/index.ts
+        //   - message.type === "user" 排除 assistant 卡（claude 流式回复不抢焦）
+        //   - source === "live" 排除启动 replay 阶段的历史 user 消息（chunked
+        //     batch 进来会上千条连环触发 → 闪烁）
+        if (source === "live" && payload.message.type === "user") {
+          this.userActive(tab.sessionId);
+        }
         break;
       case "tool-group": {
         if (tab.pendingToolGroup) {
@@ -510,6 +539,51 @@ export class TabManager {
     }
   }
 
+  /**
+   * v2.4 issue #2：把 behavior config 应用到 TabManager。
+   * 启动时由 main.ts 调一次拉初值；设置面板 toggle 改了也调一次同步。
+   */
+  applyBehavior(cfg: BehaviorConfig): void {
+    this.autoFollowUserActive = cfg.autoFollowUserActive;
+    this.bringMonitorToFront = cfg.bringMonitorToFrontOnUserActive;
+  }
+
+  /**
+   * v2.4 issue #2：watcher 反推识别到"用户在终端真敲了一行回车"（type=user
+   * 且不是 tool_result 回灌 / CLI noise，由 tabs.onLine 的 result.kind 判定）
+   * 时调用本方法。
+   *
+   * **跳过条件**（任一命中就 silently no-op）：
+   * 1. autoFollowUserActive=false（设置面板关了）
+   * 2. manualOverrideUntil > now（用户 5s 内手动点过 tab，明确意图保护）
+   * 3. sid 不存在 / 已 archive（防御）
+   * 4. sid 已经是 active（无操作）
+   *
+   * 通过后调 switchTo(sid, "auto")，可选 invoke bring_monitor_to_front。
+   */
+  userActive(sessionId: string): void {
+    if (!this.autoFollowUserActive) return;
+    if (Date.now() < this.manualOverrideUntil) return;
+    const tab = this.tabs.get(sessionId);
+    if (!tab) return;
+    if (tab.status === "archived") return;
+    if (this.activeId === sessionId) {
+      // 已经在这个 tab 但用户开了"拉前 monitor"也照拉
+      if (this.bringMonitorToFront) {
+        void invoke("bring_monitor_to_front").catch((e) => {
+          console.warn("bring_monitor_to_front failed:", e);
+        });
+      }
+      return;
+    }
+    this.switchTo(sessionId, "auto");
+    if (this.bringMonitorToFront) {
+      void invoke("bring_monitor_to_front").catch((e) => {
+        console.warn("bring_monitor_to_front failed:", e);
+      });
+    }
+  }
+
   /** 快捷键 Ctrl+W：当前活跃 Tab 是 archived 才关，live 不动 */
   closeActiveIfArchived(): void {
     if (!this.activeId) return;
@@ -528,7 +602,16 @@ export class TabManager {
     }
   }
 
-  switchTo(sessionId: string): void {
+  /**
+   * 切到目标 Tab。
+   *
+   * v2.4 issue #2：`source` 区分用户主动 vs 自动跟随。
+   * - `"manual"`（默认）：Tab Bar 点击 / Ctrl+Tab / 中键关 / 内部 fallback 切。
+   *   设置 manualOverrideUntil = now+5s，期间拒绝 userActive 自动切。
+   * - `"auto"`：watcher 反推 user-active 触发的自动切。不更新 override，
+   *   不互相锁死（不然 auto 调 switchTo 又设 override 自己就被锁了）。
+   */
+  switchTo(sessionId: string, source: "manual" | "auto" = "manual"): void {
     if (!this.tabs.has(sessionId)) return;
     if (this.activeId === sessionId) return;
 
@@ -541,6 +624,9 @@ export class TabManager {
       next.stream.scrollToBottom();
     }
     this.activeId = sessionId;
+    if (source === "manual") {
+      this.manualOverrideUntil = Date.now() + TabManager.MANUAL_OVERRIDE_MS;
+    }
     // issue #11: 切换 task panel 数据源到新 active Tab 的 sid
     this.tasksPanel?.setSession(sessionId, this.tasksBySid.get(sessionId) ?? []);
     this.refreshTabBar();
