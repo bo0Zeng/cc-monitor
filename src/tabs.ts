@@ -307,9 +307,15 @@ export class TabManager {
   ): void {
     const tab = this.ensureTab(payload.session_id, payload.cwd, payload.path);
 
-    // ai-title 不进入消息流，只更新 Tab 标题
+    // ai-title / custom-title 不进入消息流，只更新 Tab 标题。
+    // Claude Code v2.1.x 起 schema 从 ai-title/aiTitle 改为 custom-title/customTitle；
+    // 两者语义一致（会话级语义标题），共用 applyAiTitle，旧 jsonl 兼容。
     if (payload.message.type === "ai-title") {
       this.applyAiTitle(tab, payload.message.aiTitle);
+      return;
+    }
+    if (payload.message.type === "custom-title") {
+      this.applyAiTitle(tab, payload.message.customTitle);
       return;
     }
 

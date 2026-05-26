@@ -752,6 +752,12 @@ fn analyze_jsonl(
                 // 后出现的覆盖（Claude 在会话里可能多次更新 ai-title）
                 ai_title = Some(t.clone());
             }
+            JsonlRecord::CustomTitle {
+                custom_title: t, ..
+            } => {
+                // Claude Code v2.1.x 起新名字，语义同 ai-title
+                ai_title = Some(t.clone());
+            }
             _ => {}
         }
     }

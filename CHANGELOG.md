@@ -8,6 +8,36 @@
 
 ---
 
+## [2.4.3] — 2026-05-26
+
+### 新功能 — 卡片内外链调用系统默认浏览器打开 (issue #13)
+
+assistant 消息渲染出的 markdown 链接（`https://` / `http://` / `mailto:`）之前点击会让 Tauri WebView2 直接导航，把 monitor UI 整个替换成外站页面。修复后点击外链由系统默认浏览器（Chrome / Edge / Firefox）打开，monitor 窗口保持不变。
+
+**实现**：
+- `src/render.ts` marked link renderer 重写 —— 协议链接渲染成 `target="_blank" rel="noopener noreferrer" data-external`
+- `src/main.ts` 全局 click 事件代理 (capture 阶段) —— 命中 `a[data-external]` → `preventDefault()` + `openUrl(href)`
+- 复用现有 `@tauri-apps/plugin-opener` 插件，`opener:default` 权限已含 `allow-default-urls`（mailto/tel/https/http），无需新加 capability
+- 锚点 / 站内相对链接不打 `data-external` 标记，保留默认行为
+
+### 修复 — Tab 标题在 Claude Code v2.1.x 起空白
+
+**症状**：v2.1 后开的新 Claude session，monitor 的 Tab 标题只显示项目名（如 `claudecode-frontend`），而不像 Claude Code CLI 终端那样显示完整的会话语义标题。
+
+**根因**：Claude Code v2.1.x 把 JSONL 里的标题记录从 `"type":"ai-title"` / `aiTitle` 字段改成了 `"type":"custom-title"` / `customTitle`。monitor 后端 `JsonlRecord` 枚举只认旧名字，全部 custom-title 记录被 fallthrough 到 `Unknown` 变体 → 不 emit → 前端永远拿不到标题。
+
+**修复**：保留旧 ai-title 兼容路径（旧 jsonl 历史文件仍可能有），同时新增 custom-title 路径，两者共用同一个 Tab 标题字段（`tab.aiTitle`）：
+- `src-tauri/src/messages.rs` — `JsonlRecord::CustomTitle { custom_title, session_id }` 变体 + `is_displayable()` 收录
+- `src-tauri/src/history.rs` — 历史扫描 match 加 CustomTitle 分支，与 AiTitle 同样写到 `ai_title` 字段（让历史浏览器列表里 v2.1.x 之后的会话也有标题）
+- `src/cards/index.ts` — JsonlRecord union 加 custom-title 类型
+- `src/tabs.ts` — onLine 加 custom-title → applyAiTitle 分支
+
+### 版本号同步
+
+本次同时把 `package.json` / `tauri.conf.json` / `Cargo.toml` 一起升到 `2.4.3`。之前 `release: v2.4.2` commit 漏升版本号文件（tag 已 push 但产物 metadata 仍是 2.4.1），本次一并修正。
+
+---
+
 ## [2.4.1] — 2026-05-26
 
 ### 修复 — 「拉前 monitor 窗口」toggle 实际只闪任务栏不抢焦

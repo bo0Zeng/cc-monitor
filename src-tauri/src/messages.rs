@@ -58,6 +58,16 @@ pub enum JsonlRecord {
         #[serde(rename = "sessionId")]
         session_id: String,
     },
+    // Claude Code v2.1.x 起把 ai-title schema 改为 custom-title / customTitle
+    // （旧 ai-title 在历史 jsonl 里仍可能出现，两个都保留）。前端按相同语义
+    // 处理 —— 写到同一个 Tab 标题字段。
+    #[serde(rename = "custom-title")]
+    CustomTitle {
+        #[serde(rename = "customTitle")]
+        custom_title: String,
+        #[serde(rename = "sessionId")]
+        session_id: String,
+    },
     #[serde(rename = "system")]
     System {
         #[serde(default)]
@@ -163,6 +173,7 @@ impl JsonlRecord {
             Self::User { .. }
                 | Self::Assistant { .. }
                 | Self::AiTitle { .. }
+                | Self::CustomTitle { .. }
                 | Self::System { .. }
                 | Self::Attachment { .. }
         )

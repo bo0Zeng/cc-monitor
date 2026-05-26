@@ -115,6 +115,27 @@ marked.use({
   },
 });
 
+// v2.4.3 issue #13: 外链由系统默认浏览器打开。renderer 阶段给 http/https/mailto
+// 链接打 data-external 标记 + target=_blank + rel=noopener noreferrer；main.ts
+// 全局 click delegation 捕获 data-external 调 openUrl(). 相对路径 / 锚点保留
+// 默认行为（默认就是站内导航，无 target）。
+marked.use({
+  renderer: {
+    link(token) {
+      const href = token.href ?? "";
+      const title = token.title ?? "";
+      const text = this.parser.parseInline(token.tokens);
+      const isExternal = /^(https?:|mailto:)/i.test(href);
+      const safeHref = escapeHtml(href);
+      const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+      if (isExternal) {
+        return `<a href="${safeHref}"${titleAttr} target="_blank" rel="noopener noreferrer" data-external>${text}</a>`;
+      }
+      return `<a href="${safeHref}"${titleAttr}>${text}</a>`;
+    },
+  },
+});
+
 /**
  * 基础 Markdown 渲染：GFM + KaTeX + 代码高亮 + sanitize。
  */
@@ -124,7 +145,7 @@ export function renderMarkdown(md: string): string {
   // 兜底输出在未来 DOMPurify 默认值变化时被静默丢掉
   return DOMPurify.sanitize(raw, {
     USE_PROFILES: { html: true, svg: true, mathMl: true },
-    ADD_ATTR: ["target", "rel", "data-copy"],
+    ADD_ATTR: ["target", "rel", "data-copy", "data-external"],
   });
 }
 

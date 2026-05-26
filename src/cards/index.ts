@@ -51,6 +51,9 @@ export type JsonlRecord =
       parentUuid?: string;
     }
   | { type: "ai-title"; aiTitle: string; sessionId: string }
+  // Claude Code v2.1.x 起的新名字。aiTitle / customTitle 语义一致 ——
+  // 都是会话级语义标题（旧 jsonl 用 ai-title，新 jsonl 用 custom-title）。
+  | { type: "custom-title"; customTitle: string; sessionId: string }
   | {
       type: "system";
       subtype?: string;
@@ -200,6 +203,7 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       };
     }
     case "ai-title":
+    case "custom-title":
     case "system":
       return { kind: "skip" };
     default:
