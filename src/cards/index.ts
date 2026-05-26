@@ -809,6 +809,9 @@ function extractExitCode(text: string): number | null {
  * - `<local-command-caveat>...</local-command-caveat>` 本地命令免责声明
  * - `<local-command-stdout>...</local-command-stdout>` 本地命令（如 /compact）的 stdout
  * - `Continue from where you left off.` / `No response requested.` 样板单行
+ * - `[Request interrupted by user...]` 用户 ESC 中断 / 拒绝工具调用时 CLI
+ *   注入的 user message。**不是真用户输入**——v2.4.2 issue #2 修
+ *   "用户 ESC 中断时 monitor 误以为是真敲键自动拉前" 时新增。
  *
  * 返回剥过后的文本（trim 过）。空字符串表示整条都是 noise，调用方应 skip。
  * 非空时下游 (parseSlashCommand / buildUserCard) 用这份剥过的文本渲染，
@@ -822,6 +825,10 @@ function stripInternalNoise(text: string): string {
     .replace(/<local-command-stdout>[\s\S]*?<\/local-command-stdout>/g, "")
     .replace(/^continue from where you left off\.?$/gim, "")
     .replace(/^no response requested\.?$/gim, "")
+    // v2.4.2 issue #2: `[Request interrupted by user]`（ESC 中断 assistant 流式生成）
+    // 和 `[Request interrupted by user for tool use]`（拒绝工具调用）都不是真用户
+    // 输入。剥掉让整条 skip → 既不渲染奇怪的"用户中断"卡片，也不触发自动拉前。
+    .replace(/^\[Request interrupted by user[^\]]*\]\s*$/gim, "")
     .trim();
 }
 

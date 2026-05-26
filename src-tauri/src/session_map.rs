@@ -40,8 +40,14 @@ pub struct SessionInfo {
     pub session_id: String,
     pub cwd: String,
     /// .NET DateTime.ToFileTime() —— FILETIME 100ns 自 1601-01-01 UTC，**字符串** 形式
-    #[serde(rename = "procStart")]
-    pub proc_start: String,
+    ///
+    /// v2.4.2 issue: 实测 Claude Code 某些启动路径（特定 /resume 流？）写出的
+    /// `sessions/<PID>.json` 不含 `procStart` 字段。之前 `String` 必填导致 serde
+    /// 解析失败 → 整个 session 被忽略 → monitor 漏 Tab。改 Option：缺失时
+    /// `is_process_alive` 跳过 PID 复用校验仅看 STILL_ACTIVE（代价是 PID 短期
+    /// 复用极小概率误判活跃，但比 "session 完全不出现" 强）。
+    #[serde(rename = "procStart", default)]
+    pub proc_start: Option<String>,
     // status 字段（Claude Code 写入 "busy"/"shell"）当前 monitor 不消费；serde 默认
     // 忽略 JSON 里的额外字段，无需显式声明
     /// Claude 给会话起的语义名（aka ai-title）。保留字段以备未来 v1.7 注入式绑定使用。
@@ -101,7 +107,7 @@ impl SessionMap {
                 return false;
             }
         };
-        let alive = is_process_alive(info.pid, Some(&info.proc_start));
+        let alive = is_process_alive(info.pid, info.proc_start.as_deref());
         tracing::debug!("active? {session_id} pid={} alive={alive}", info.pid);
         alive
     }
@@ -199,7 +205,7 @@ fn run_watcher(
                 .collect();
             let dead: Vec<String> = snapshot
                 .into_iter()
-                .filter(|(_, info)| !is_process_alive(info.pid, Some(&info.proc_start)))
+                .filter(|(_, info)| !is_process_alive(info.pid, info.proc_start.as_deref()))
                 .map(|(sid, _)| sid)
                 .collect();
             if !dead.is_empty() {
@@ -353,7 +359,7 @@ mod tests {
         let info: SessionInfo = serde_json::from_str(raw).unwrap();
         assert_eq!(info.pid, 35776);
         assert_eq!(info.session_id, "5b67f422-52a9-453c-bd64-3288a78a24a0");
-        assert_eq!(info.proc_start, "639147828963703970");
+        assert_eq!(info.proc_start.as_deref(), Some("639147828963703970"));
         assert_eq!(info.name, None);
     }
 
@@ -364,5 +370,17 @@ mod tests {
         let info: SessionInfo = serde_json::from_str(raw).unwrap();
         assert_eq!(info.session_id, "s");
         assert_eq!(info.name, None);
+    }
+
+    /// v2.4.2 issue：Claude Code 某些启动路径不写 procStart。
+    /// 之前 SessionInfo.proc_start: String 必填导致这种 session 被静默忽略
+    /// → monitor Tab 漏。Option 化后能正常解析，proc_start = None。
+    #[test]
+    fn parse_session_info_without_proc_start() {
+        let raw = r#"{"pid":22832,"sessionId":"2bb6394f-xx","cwd":"D:\\x"}"#;
+        let info: SessionInfo = serde_json::from_str(raw).unwrap();
+        assert_eq!(info.pid, 22832);
+        assert_eq!(info.session_id, "2bb6394f-xx");
+        assert!(info.proc_start.is_none());
     }
 }

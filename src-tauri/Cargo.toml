@@ -1,6 +1,6 @@
 [package]
 name = "monitor"
-version = "2.4.0"
+version = "2.4.1"
 description = "cc-monitor — Claude Code CLI 的只读输出渲染窗口（Tauri 2 + TypeScript，Windows）"
 authors = ["cc-monitor contributors"]
 edition = "2021"
@@ -51,6 +51,9 @@ windows = { version = "0.56", features = [
     "Win32_System_Threading",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_UI_WindowsAndMessaging",
+    # v2.4.2 issue #2: keybd_event 模拟 Alt 按键让 OS 视当前进程为
+    # "刚有用户输入"，配合 AttachThreadInput 突破 Win10/11 前台抢焦限制。
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }
 # issue #9：single-instance lock。第二个 cc-monitor 实例启动时立即退出，
 # 第一个窗口拉到前台。Tauri 官方 plugin，user-scoped mutex，跨 user session 不冲突。

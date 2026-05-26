@@ -20,15 +20,20 @@ pub struct JsonlLine {
 /// 活跃过滤器：给定 session_id 返回是否应该 emit 这一行。
 pub type ActiveFilter = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 
-/// 行回调：watcher 读到一条 jsonl 行后直接调用。
+/// 批回调：watcher 读完一个 jsonl 文件后把这次读到的所有行作为一批传出。
 ///
-/// v2.4：替代 v2.3 的 mpsc 中间层。watcher 同步调 on_line 避免下游 async
-/// task 异步消化导致 EventReplay 的 history snapshot 在 frontend-ready
-/// 触发时不完整（首次启动乱序根因）。
+/// v2.4.2 issue #2 修「/resume 历史灌入也走 live 一行一个 emit 导致卡顿」：
+/// 之前 v2.4 是逐行 on_line(JsonlLine)，process_file 内的 N 行 → N 次 emit。
+/// 用户 `claude --resume` 在新 sid 灌历史时单文件可能几千行 → 每行单独走渲染
+/// 管线 → 卡 + 视觉上像新消息一条一条到来。
 ///
-/// 回调是 Send+Sync+'static 闭包，运行在 watcher 线程上，不能阻塞太久。
-/// 业务侧（lib.rs）实现 parse + record，~几 μs 级别，足够。
-pub type LineHandler = Arc<dyn Fn(JsonlLine) + Send + Sync + 'static>;
+/// 改成 batch：lib.rs 拿到整批后根据大小分流：
+/// - 小 batch（用户日常敲键 / 1-N 行）→ 仍走 jsonl-line live emit
+/// - 大 batch（>= 阈值，如 /resume 历史灌入）→ 走 jsonl-batch chunked emit，
+///   前端自动进入切块路径（lazy hljs / chunked prepend）
+///
+/// 回调 Send+Sync+'static，运行在 watcher 线程，不能阻塞太久。
+pub type BatchHandler = Arc<dyn Fn(Vec<JsonlLine>) + Send + Sync + 'static>;
 
 /// jsonl-watcher 的 handle：
 /// - `force_rescan_tx`：主动重扫某个 session_id 对应的 jsonl 文件
@@ -44,8 +49,8 @@ pub struct WatcherHandle {
     pub initial_scan_done: Arc<AtomicBool>,
 }
 
-/// 递归监听 `root` 下所有 `*.jsonl` 文件。每读到一行（active 过滤通过）就
-/// 同步调用 `on_line`。
+/// 递归监听 `root` 下所有 `*.jsonl` 文件。每次 process_file 读完一个文件后
+/// 把这次读到的所有行作为一批同步调用 `on_batch`。
 ///
 /// **顺序保证**（v2.4 修首次启动乱序）：watcher 线程内先**同步**完成首次
 /// 全量扫，扫完才设置 `initial_scan_done = true` 并进入 debouncer 监听阶段。
@@ -54,7 +59,7 @@ pub struct WatcherHandle {
 /// 跟 chunked replay 错位。
 ///
 /// 初始全量扫描也走 active 过滤，避免冷启动时回放死 session 的历史。
-pub fn spawn_watcher(root: PathBuf, active: ActiveFilter, on_line: LineHandler) -> WatcherHandle {
+pub fn spawn_watcher(root: PathBuf, active: ActiveFilter, on_batch: BatchHandler) -> WatcherHandle {
     let (rescan_tx, rescan_rx) = std::sync::mpsc::channel::<String>();
     let offsets: Arc<Mutex<HashMap<PathBuf, u64>>> = Arc::new(Mutex::new(HashMap::new()));
     let initial_scan_done = Arc::new(AtomicBool::new(false));
@@ -63,7 +68,7 @@ pub fn spawn_watcher(root: PathBuf, active: ActiveFilter, on_line: LineHandler) 
     let scan_flag = initial_scan_done.clone();
     if let Err(e) = std::thread::Builder::new()
         .name("jsonl-watcher".into())
-        .spawn(move || run_watcher(root, offsets, on_line, active, rescan_rx, scan_flag))
+        .spawn(move || run_watcher(root, offsets, on_batch, active, rescan_rx, scan_flag))
     {
         tracing::error!(
             "spawn jsonl-watcher thread failed: {e}; \
@@ -82,7 +87,7 @@ pub fn spawn_watcher(root: PathBuf, active: ActiveFilter, on_line: LineHandler) 
 fn run_watcher(
     root: PathBuf,
     offsets: Arc<Mutex<HashMap<PathBuf, u64>>>,
-    on_line: LineHandler,
+    on_batch: BatchHandler,
     active: ActiveFilter,
     rescan_rx: std::sync::mpsc::Receiver<String>,
     initial_scan_done: Arc<AtomicBool>,
@@ -100,7 +105,7 @@ fn run_watcher(
     for entry in WalkDir::new(&root).into_iter().filter_map(Result::ok) {
         let p = entry.path();
         if p.is_file() && p.extension().map_or(false, |e| e == "jsonl") && !is_subagent_path(p) {
-            process_file(p, &offsets, &on_line, &active);
+            process_file(p, &offsets, &on_batch, &active);
             scanned_files += 1;
         }
     }
@@ -136,7 +141,7 @@ fn run_watcher(
                     if ev.path.extension().map_or(false, |e| e == "jsonl")
                         && !is_subagent_path(&ev.path)
                     {
-                        process_file(&ev.path, &offsets, &on_line, &active);
+                        process_file(&ev.path, &offsets, &on_batch, &active);
                     }
                 }
             }
@@ -156,7 +161,7 @@ fn run_watcher(
                     && !is_subagent_path(p)
                     && p.file_stem().and_then(|s| s.to_str()) == Some(&sid)
                 {
-                    process_file(p, &offsets, &on_line, &active);
+                    process_file(p, &offsets, &on_batch, &active);
                 }
             }
         }
@@ -173,7 +178,7 @@ fn is_subagent_path(p: &Path) -> bool {
 fn process_file(
     path: &Path,
     offsets: &Arc<Mutex<HashMap<PathBuf, u64>>>,
-    on_line: &LineHandler,
+    on_batch: &BatchHandler,
     active: &ActiveFilter,
 ) {
     let Some(session_id) = path
@@ -215,20 +220,26 @@ fn process_file(
         return;
     }
 
-    // 全量发：无论首次扫还是增量都不截断行数。同步调用 on_line 让下游 record()
-    // 把数据 push 进 history buffer。v2.4 起干掉 mpsc 中间层，避免异步 drain
-    // 跟 frontend-ready 触发 replay snapshot 的竞态（首次启动乱序根因）。
+    // 全量发：无论首次扫还是增量都不截断行数。v2.4.2 改成收集到 Vec 然后
+    // 一次性 on_batch，让下游 lib.rs 按 batch 大小分流：
+    //   - 小 batch（用户日常增量 1-N 行）→ 走 jsonl-line live emit
+    //   - 大 batch（/resume 历史灌入 N 千行）→ 切块走 jsonl-batch
+    // 而不是每行单独 emit 一次卡前端管线。
     let reader = BufReader::new(&mut file);
+    let mut batch: Vec<JsonlLine> = Vec::new();
     for line in reader.lines().map_while(Result::ok) {
         let trimmed = line.trim_start_matches('\u{feff}').trim();
         if trimmed.is_empty() {
             continue;
         }
-        on_line(JsonlLine {
+        batch.push(JsonlLine {
             session_id: session_id.clone(),
             path: path.to_path_buf(),
             raw: line,
         });
+    }
+    if !batch.is_empty() {
+        on_batch(batch);
     }
     offsets.lock().insert(key, len);
 }

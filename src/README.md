@@ -22,8 +22,8 @@ index.html  ─> /src/main.ts (defer)
 | 文件 | 角色 | 关键 API |
 |---|---|---|
 | **main.ts** | 启动 + 全局快捷键 + 错误捕获 + HMR 强制 reload | DOMContentLoaded handler |
-| **events.ts** | 订阅后端 `jsonl-line` / `jsonl-batch` / `session-ended` / `task-update`，**批量调度让出主线程**；v2.2 (issue #12) `jsonl-batch` 包 `batch-start`/`batch-end` 哨兵让 TabManager 切 BranchFolder batch 模式；v2.3 (issue #11) `task-update` 稀疏事件直接同步派发不进 queue | `bindEvents({onLine, onSessionEnded, onBatchStart, onBatchEnd, onTasksUpdate})` |
-| **tabs.ts** | TabManager 状态机：Tab 生命周期（live / archived）+ 工具组聚合 + BranchFolder 接入 (issue #8) + v2.2 batch mode 切换 + v2.3 (issue #11) 每 Tab 挂 TasksPanel；ensureTab 触发初次 fetch，updateTasks 路由 `task-update` 事件 | `onLine() / onBatchStart() / onBatchEnd() / updateTasks() / archiveTab() / closeTab() / cycleActive()` |
+| **events.ts** | 订阅后端 `jsonl-line` / `jsonl-batch` / `session-ended` / `task-update`，**批量调度让出主线程**；v2.2 (issue #12) `jsonl-batch` 包 `batch-start`/`batch-end` 哨兵；v2.3.1 (issue #1) 300ms grace 续期；v2.4 (issue #2) **`PayloadSource = "batch" \| "live"`** 区分 chunked replay 历史 vs 真实时新行 | `bindEvents({onLine, onSessionEnded, onBatchStart, onChunk, onBatchEnd, onTasksUpdate})` |
+| **tabs.ts** | TabManager 状态机：Tab 生命周期（live / archived）+ 工具组聚合 + BranchFolder + v2.3 TasksPanel 路由；v2.4 (issue #2) `switchTo(sid, "manual"\|"auto")` + `userActive(sid)` + 5s `manualOverrideUntil` + `appendCardOrBuffer(tab, el, source)` 按 source 分流 prepend buffer vs append；`applyBehavior(cfg)` 同步设置面板 toggle | `onLine(payload, source) / onBatchStart() / onChunk() / onBatchEnd() / userActive() / applyBehavior() / archiveTab() / closeTab() / cycleActive()` |
 | **stream.ts** | 单 Tab 的消息流容器，ResizeObserver 自动贴底滚动；`contentElement` 暴露真实卡片容器给 BranchFolder | `MessageStream.append() / scrollToBottom() / dispose()` |
 | **branching.ts** (issue #8) | parentUuid 拓扑分析：识别 ESC 回退主线 vs 被回退分支。`computeMainBranch` 算法 = "只在 fork 点选 latest-descendant 赢家"，无 fork 即全 on-main（多 root / 单链 / /compact 不误折叠） | `computeMainBranch(records) / extractBranchRecord(rec)` |
 | **branch-fold.ts** (issue #8) | DOM 重排：把连续的 off-main 卡片包到 `.branch-fold-wrap`，header「已被 ESC 回退（含 N 条）」；策略 = unwrap-then-rewrap 全量重建。v2.2 加 batch mode (`setBatchMode/flushPending`)，重放期延后到 batch 结束才算一次 mainBranch，省 O(N²) | `new BranchFolder(container).recordAdded / setRecordsAndRebuild / setBatchMode / flushPending` |
@@ -34,8 +34,9 @@ index.html  ─> /src/main.ts (defer)
 | **render.ts** | marked + KaTeX + highlight.js + DOMPurify | `renderMarkdown(md) / renderPlainText(text)` |
 | **config.ts** | invoke `load_config` / `save_config` 桥 | `loadConfig / saveConfig` |
 | **paths.ts** | 操作 config.json 里 `claudeDir` 字段（设置面板调） | `getClaudeDirOverride / setClaudeDirOverride` |
+| **behavior.ts** (v2.4 issue #2) | 操作 config.json 顶层两个行为 toggle：`autoFollowUserActive` (默认 true) + `bringMonitorToFrontOnUserActive` (默认 false)。运行时热更（不需要重启 monitor，跟 claudeDir 不同） | `getBehavior() / setBehavior(cfg)` |
 | **theme.ts** | 把 ThemeConfig 应用到 :root CSS 变量 | `loadTheme / applyTheme / saveTheme` |
-| **settings/panel.ts** | 抽屉式设置面板（数据目录 + PowerShell 集成 + 折叠：外观/诊断） | `SettingsPanel.open() / close()` |
+| **settings/panel.ts** | 抽屉式设置面板（数据目录 + 行为 + PowerShell 集成 + 折叠：外观/诊断/数据存储）。v2.4 (issue #2) 新增「行为」分组挂两个 toggle + onBehaviorChange 回调实时同步 TabManager | `new SettingsPanel({ onBehaviorChange }).open() / close()` |
 | **settings/cc_integration.ts** | PowerShell 集成子区（profile 选项 + wrapper toggle + 5 个预设下拉） | `CcIntegrationSection.element` |
 | **settings/info-icon.ts** | `?` 信息图标 portal tooltip 组件 + 路径工具 | `makeInfoIcon(text) / swapFileName(path, newName)` |
 | **settings/collapsible-group.ts** (issue #7) | 通用可折叠分组，localStorage 持久 + grid-rows 平滑动画 | `new CollapsibleGroup({id, title, defaultCollapsed}).appendChild(...)` |
