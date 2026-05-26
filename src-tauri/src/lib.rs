@@ -110,9 +110,40 @@ pub fn run() {
                 let map = session_map.clone();
                 Arc::new(move |sid: &str| map.is_session_active(sid))
             };
-            let watcher_handle = watcher::spawn_watcher(projects_dir, active_filter);
-            let mut rx = watcher_handle.rx;
+
+            // v2.4 (修首次启动乱序)：watcher 直接调 on_line 回调（取代之前的 mpsc
+            // 中间层）。回调内同步 parse + record() —— history buffer 在 watcher
+            // 线程内同步落盘，初始全量扫完成 = history 完整 = frontend-ready 触发
+            // replay 时 snapshot 一定完整。
+            //
+            // 旧设计：watcher tx → mpsc → tauri::async_runtime::spawn drain → record。
+            // async drain 跟 frontend-ready 是竞态：drain 没追上时 snapshot 不完整，
+            // 部分历史漏到 live emit 路径 → 跟 chunked replay 错位 → 首次启动乱序。
+            // F5 因 backend 已稳定看不到 bug。详 watcher.rs::spawn_watcher 注释。
+            let replay = Arc::new(event_replay::EventReplay::new());
+            let on_line: watcher::LineHandler = {
+                let replay = replay.clone();
+                let handle = app.handle().clone();
+                Arc::new(move |line: watcher::JsonlLine| match parser::parse_line(&line.raw) {
+                    Ok(Some(record)) if record.is_displayable() => {
+                        let cwd = extract_cwd(&record);
+                        let payload = bridge::JsonlLinePayload {
+                            session_id: line.session_id.clone(),
+                            cwd,
+                            path: line.path.to_string_lossy().into_owned(),
+                            message: record,
+                        };
+                        replay.record(&handle, payload);
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!("parse line failed in {}: {e}", line.path.display());
+                    }
+                })
+            };
+            let watcher_handle = watcher::spawn_watcher(projects_dir, active_filter, on_line);
             let force_rescan_tx = watcher_handle.force_rescan_tx;
+            let initial_scan_done = watcher_handle.initial_scan_done;
 
             // session 集合变化 emitter：
             //   - added：通知 jsonl-watcher 主动重扫该 session（修 Bug 2-A 竞态）
@@ -170,54 +201,53 @@ pub fn run() {
             // 不依赖 SessionMap，独立 watcher。tasks_dir 不存在时函数内部 no-op。
             tasks::spawn_task_watcher(tasks_dir.clone(), app.handle().clone());
 
-            // 持久化重播：F5 刷新后整个 history 重新 emit，前端状态完整恢复。
-            let replay = Arc::new(event_replay::EventReplay::new());
-
-            // 前端 ready 事件 → replay all（每次刷新都会重新触发）
+            // 前端 ready 事件 → 等 watcher 初始扫完成 → replay all。
+            //
+            // v2.4 修首次启动乱序：之前 listener 直接调 replay()，但 watcher 是
+            // 异步全量扫，snapshot 时 history 不完整 → 部分历史漏到 live emit 路径
+            // → 跟 chunked replay 错位。现在 listener 在 async task 里 spin-wait
+            // `initial_scan_done`，扫完才 snapshot，保证 chunked replay 包含全部历史。
+            //
+            // 等待用 10ms 间隔 poll，整体 timeout 10s（防 watcher 死锁卡死整个 UI
+            // 永远看不到内容）。timeout 到也会强行 replay，degraded but unblocked。
             {
                 let replay = replay.clone();
                 let handle = app.handle().clone();
+                let initial_scan_done = initial_scan_done.clone();
                 let t0_capture = t0;
                 app.listen("frontend-ready", move |_event| {
-                    tracing::info!(
-                        "[perf] T+{}ms frontend-ready received, starting replay",
-                        t0_capture.elapsed().as_millis()
-                    );
-                    replay.replay_and_mark_ready(&handle);
+                    let replay = replay.clone();
+                    let handle = handle.clone();
+                    let initial_scan_done = initial_scan_done.clone();
+                    let listen_recv_at = t0_capture.elapsed().as_millis();
+                    tauri::async_runtime::spawn(async move {
+                        tracing::info!(
+                            "[perf] T+{}ms frontend-ready received, waiting for watcher initial scan",
+                            listen_recv_at
+                        );
+                        let wait_started = std::time::Instant::now();
+                        const WAIT_TIMEOUT: std::time::Duration =
+                            std::time::Duration::from_secs(10);
+                        while !initial_scan_done
+                            .load(std::sync::atomic::Ordering::Acquire)
+                        {
+                            if wait_started.elapsed() > WAIT_TIMEOUT {
+                                tracing::warn!(
+                                    "watcher initial scan timed out after 10s; replay with partial history"
+                                );
+                                break;
+                            }
+                            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                        }
+                        tracing::info!(
+                            "[perf] T+{}ms watcher initial scan done (+{}ms wait), starting replay",
+                            t0_capture.elapsed().as_millis(),
+                            wait_started.elapsed().as_millis()
+                        );
+                        replay.replay_and_mark_ready(&handle);
+                    });
                 });
             }
-
-            let handle = app.handle().clone();
-            let replay_loop = replay.clone();
-            tauri::async_runtime::spawn(async move {
-                let mut total = 0usize;
-                let mut skip = 0usize;
-                while let Some(line) = rx.recv().await {
-                    match parser::parse_line(&line.raw) {
-                        Ok(Some(record)) if record.is_displayable() => {
-                            let cwd = extract_cwd(&record);
-                            let payload = bridge::JsonlLinePayload {
-                                session_id: line.session_id.clone(),
-                                cwd,
-                                path: line.path.to_string_lossy().into_owned(),
-                                message: record,
-                            };
-                            replay_loop.record(&handle, payload);
-                            total += 1;
-                            if total % 200 == 0 {
-                                tracing::info!("recorded {total} jsonl events (skipped {skip})");
-                            }
-                        }
-                        Ok(_) => {
-                            skip += 1;
-                        }
-                        Err(e) => {
-                            tracing::warn!("parse line failed in {}: {e}", line.path.display());
-                        }
-                    }
-                }
-                tracing::info!("watcher loop ended; total={total} skip={skip}");
-            });
 
             // 给 Tauri 命令暴露 state。
             //

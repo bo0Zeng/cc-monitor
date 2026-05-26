@@ -8,6 +8,39 @@
 
 ---
 
+## [2.3.1] — 2026-05-26
+
+### 修复 — 首次启动消息乱序（必须按 F5 才正常）
+
+**症状**：dev mode / 安装后首次启动 monitor，stream 里消息顺序错乱；用户必须按 F5 刷新一次才显示正确顺序。
+
+**根因双重**：
+
+1. **后端 watcher 异步初始扫与 frontend-ready 竞态**：v2.3 架构下，`spawn_watcher` 把全量扫扔进独立线程异步执行，setup() 立刻返回。同时另起一个 `tauri::async_runtime::spawn(while rx.recv())` async task 慢慢从 mpsc channel 把行 drain 给 `EventReplay::record`。前端 emit("frontend-ready") 时（~T+450ms）watcher 还没扫完 + async task 还没 drain 完 → `replay_and_mark_ready` 持锁 snapshot 看到的 history 不完整 → 部分历史漏到 ready=true 后的 live emit 路径，跟 chunked replay 的 chunks 错位到达前端。
+
+2. **前端 inPrependMode 误捕获 live emit**：`tabs.appendCardOrBuffer` 检查全局 `inPrependMode`，对**所有** payload 一视同仁。chunked replay 进入 prepend 模式（chunk index > 0）时，任何 `jsonl-line` live emit（不管是漏出来的旧历史还是用户实时敲的新行）都被错误丢进 `pendingPrependFragment`，最终被推到 stream 顶部。
+
+F5 不出 bug：刷新时 backend 已稳定几秒，history 完整，replay 一次成型，无 live emit 干扰。
+
+**修复**：
+
+后端：
+- `watcher.rs::spawn_watcher` 改接 `on_line: LineHandler` 闭包，**干掉 mpsc 中间层**。watcher 线程内同步调 record()，history buffer 在 watcher 线程内同步落盘。
+- `WatcherHandle` 增加 `initial_scan_done: Arc<AtomicBool>`，watcher 同步全量扫完才置 true 然后进 debouncer 监听阶段。
+- `lib.rs` frontend-ready listener 在 async task 里 spin-wait `initial_scan_done`（10ms poll，10s timeout 兜底），就绪才调 replay。保证 snapshot 时 history 完整。
+
+前端：
+- `events.ts` 新增 `PayloadSource = "batch" | "live"` 类型。`jsonl-batch` 拆出的 payload 标 `source: "batch"`，`jsonl-line` 标 `source: "live"`。
+- `tabs.ts::appendCardOrBuffer(tab, element, source)`：source==="batch" 且 inPrependMode 时才走 prepend fragment buffer，**source==="live" 永远 stream.append 贴底**。
+
+**用户体验**：首次启动跟 F5 后行为完全一致，无需手动刷新。加载期间用户在终端敲的新消息仍然实时贴到 stream 底部（绕开切块 prepend 逻辑）。
+
+### 内部
+- 删除 `tauri::async_runtime::spawn(while rx.recv())` async drain task。
+- watcher 模块的 `mpsc::UnboundedReceiver` import 移除。
+
+---
+
 ## [2.3.0] — 2026-05-25
 
 里程碑：启动加速 10× 量级 + 三个 feat 同发 + tool-result UI 全面重做。

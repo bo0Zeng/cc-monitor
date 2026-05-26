@@ -193,7 +193,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   bindEvents({
-    onLine: (e) => tabs.onLine(e),
+    // v2.4：透传 source 让 TabManager 区分 chunked replay (batch) 与真实时新行 (live)
+    onLine: (e, source) => tabs.onLine(e, source),
     onSessionEnded: (sessionId) => tabs.archiveTab(sessionId),
     // v2.2 issue #12: 启动重放（jsonl-batch）期间走 batch 模式，结束时 flush
     // v2.3.1 issue #1: chunk 0 (head) 走 onBatchStart, chunk >0 走 onChunk 切 prepend 模式
