@@ -36,9 +36,14 @@
 - 点击会话条目进入**只读消息查看器**
 
 ### 设置面板（Ctrl+,）
-- **数据目录**：可配置 Claude 数据目录（三级回退：设置 > `$CLAUDE_CONFIG_DIR` > `~/.claude`）
-- **PowerShell 集成**：装 `__ccm_bind` helper 让 Tab ↗ 跳焦精准拉对应终端窗口
-- **字体 / 颜色**：13 个外观 token，实时预览，持久化到 `~/.claude/claudecode-frontend/config.json`
+
+5 大折叠分组（除「行为」默认展开）：
+
+- **行为**：自动跟随用户在终端的输入切 Tab、是否拉前 monitor 窗口
+- **快捷键**：打开编辑器自定义全部 18 个可用 action 的 chord
+- **数据源 & 集成**：Claude 数据目录（三级回退：设置 > `$CLAUDE_CONFIG_DIR` > `~/.claude`）+ PowerShell `__ccm_bind` 一键装
+- **外观**：13 个 token（字体 + 颜色），实时预览，持久化到 `~/.claude/claudecode-frontend/config.json`
+- **诊断 & 存储**：tracing 等级 toggle + log 文件路径 + 所有持久化路径透明展示
 
 ### 终端跳焦（可选）
 - 每个 live Tab 有 ↗ 按钮 / `Ctrl+\`` 调出对应终端窗口
@@ -49,11 +54,17 @@
 | 按键 | 作用 |
 |---|---|
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | 切下一个 / 上一个 Tab |
+| `Ctrl+1` .. `Ctrl+9` | 跳到第 N 个 Tab |
 | `Ctrl+W` | 关闭当前 archived Tab |
-| `Ctrl+H` | 打开 / 关闭历史浏览器 |
+| `Ctrl+Shift+E` | 打开当前 Tab 的工作目录（资源管理器） |
 | `Ctrl+\`` | 调出当前 Tab 对应的终端窗口 |
+| `Ctrl+H` | 打开 / 关闭历史浏览器 |
 | `Ctrl+,` | 打开设置面板 |
-| `Esc` | 关历史只读视图 → 关历史视图 / 关设置 |
+| `Ctrl+M` | 最小化主窗口 |
+| `Ctrl+T` | Task 面板开 / 关 |
+| `Esc` | 关历史只读视图 → 关历史视图 / 关设置 / 关弹层 |
+
+> 全部 chord 可在 设置 → 快捷键 编辑器里改；行为/面板类还有 2 个默认未绑的 toggle 可手动赋键。
 
 ---
 

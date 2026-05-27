@@ -303,9 +303,7 @@ pub fn run() {
             open_log_file,
             open_log_dir,
             history::list_history_projects,
-            history::list_history_sessions_in_project,
             history::stream_history_sessions_in_project,
-            history::read_session_jsonl,
             history::stream_read_session_jsonl,
             history::delete_history_session,
             history::update_history_metadata,
@@ -358,7 +356,7 @@ fn forget_session(
 /// （HWND.0 = isize）；用 `as isize` cast 跨版本兼容。
 #[cfg(windows)]
 #[tauri::command]
-fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), String> {
+async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), String> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -372,94 +370,92 @@ fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), String> {
 
     tracing::info!("bring_monitor_to_front: invoked");
 
+    // HWND 必须在 webview 所属线程里取（Tauri 内部约束），随即 cast 成
+    // isize 跨线程，INVARIANTS § 19 跨 windows crate 版本约定。
     let win = app
         .get_webview_window("main")
         .ok_or_else(|| "main window not found".to_string())?;
     let tauri_hwnd = win.hwnd().map_err(|e| format!("hwnd: {e}"))?;
-    // 跨 windows crate 版本：tauri 0.61 *mut c_void → isize → 0.56 HWND
     let hwnd_value = tauri_hwnd.0 as isize;
 
-    unsafe {
-        let h = HWND(hwnd_value);
-        tracing::info!("bring_monitor_to_front: monitor hwnd = {:#x}", hwnd_value);
+    // INVARIANTS § 10：Win32 同步调用必须 spawn_blocking，否则慢路径会让 Tauri
+    // IPC 派发线程排队（v2.4 起 autoFollowUserActive 高频触发该 IPC）。
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        unsafe {
+            let h = HWND(hwnd_value);
+            tracing::info!("bring_monitor_to_front: monitor hwnd = {:#x}", hwnd_value);
 
-        // === 三层 hack 突破 Win10/11 前台抢焦限制 ===
-        //
-        // Microsoft 在 Win10 1903+ 加固了 SetForegroundWindow：仅 AttachThreadInput
-        // 不够，OS 会识别为绕过尝试拒绝。三层叠加才稳：
-        //
-        // 1. **keybd_event(Alt down)**：模拟用户级别 Alt 按键。OS 检测后将
-        //    当前进程视为"刚有用户输入"，临时获得前台资格。
-        //    配 down+up 配对几乎所有 Win32 应用都识别为 noop，副作用低。
-        // 2. **AttachThreadInput**：附加到前台线程输入队列，共享其拉前权限。
-        // 3. **SetWindowPos TOPMOST → NOTOPMOST**：触发 OS 重新计算 Z 序，
-        //    强制窗口浮到栈顶（即使 SetForegroundWindow 失败也至少在视觉上覆盖）。
-        //
-        // Visual Studio / PowerToys / TranslucentTB 等都用此套组合。
+            // === 三层 hack 突破 Win10/11 前台抢焦限制 ===
+            // 详 ARCHITECTURE.md § 5「bring_monitor_to_front 三层 hack」。
+            // attach/detach + Alt down/up 同闭包内必须配对，整段在同一 blocking
+            // 线程内串行，安全。
 
-        // 1. ShowWindow 先做：可能 minimize 状态
-        if IsIconic(h).as_bool() {
-            tracing::info!("bring_monitor_to_front: window iconic, SW_RESTORE");
-            let _ = ShowWindow(h, SW_RESTORE);
-        } else {
-            let _ = ShowWindow(h, SW_SHOW);
+            // 1. ShowWindow 先做：可能 minimize 状态
+            if IsIconic(h).as_bool() {
+                tracing::info!("bring_monitor_to_front: window iconic, SW_RESTORE");
+                let _ = ShowWindow(h, SW_RESTORE);
+            } else {
+                let _ = ShowWindow(h, SW_SHOW);
+            }
+
+            // 2. 模拟 Alt 按键（down 阶段，up 在末尾）
+            keybd_event(VK_MENU.0 as u8, 0, KEYEVENTF_EXTENDEDKEY, 0);
+
+            // 3. AttachThreadInput
+            let fg = GetForegroundWindow();
+            let fg_thread = GetWindowThreadProcessId(fg, None);
+            let cur_thread = GetCurrentThreadId();
+            tracing::info!(
+                "bring_monitor_to_front: fg_hwnd={:#x} fg_thread={} cur_thread={}",
+                fg.0,
+                fg_thread,
+                cur_thread
+            );
+            let attached = fg_thread != 0
+                && fg_thread != cur_thread
+                && AttachThreadInput(fg_thread, cur_thread, true).as_bool();
+
+            // 4. TOPMOST 强制 Z 序拉顶 + BringWindowToTop
+            let _ = SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+            let _ = SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+            let _ = BringWindowToTop(h);
+
+            // 5. SetForegroundWindow 真正抢焦
+            let ok = SetForegroundWindow(h).as_bool();
+            tracing::info!(
+                "bring_monitor_to_front: attached={} SetForegroundWindow={}",
+                attached,
+                ok
+            );
+
+            // 6. detach + Alt 释放
+            if attached {
+                let _ = AttachThreadInput(fg_thread, cur_thread, false);
+            }
+            keybd_event(
+                VK_MENU.0 as u8,
+                0,
+                KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP,
+                0,
+            );
+
+            if ok {
+                Ok(())
+            } else {
+                // 拉前真失败也 Z 序已被推顶，视觉上窗口浮起来了
+                // （只是焦点没抢到）。给前端 warn 但不视为 fatal。
+                tracing::warn!("bring_monitor_to_front: SetForegroundWindow rejected (window Z-order raised but no focus)");
+                Err("SetForegroundWindow rejected (window raised but not focused)".into())
+            }
         }
-
-        // 2. 模拟 Alt 按键（down 阶段，up 在末尾）
-        keybd_event(VK_MENU.0 as u8, 0, KEYEVENTF_EXTENDEDKEY, 0);
-
-        // 3. AttachThreadInput
-        let fg = GetForegroundWindow();
-        let fg_thread = GetWindowThreadProcessId(fg, None);
-        let cur_thread = GetCurrentThreadId();
-        tracing::info!(
-            "bring_monitor_to_front: fg_hwnd={:#x} fg_thread={} cur_thread={}",
-            fg.0,
-            fg_thread,
-            cur_thread
-        );
-        let attached = fg_thread != 0
-            && fg_thread != cur_thread
-            && AttachThreadInput(fg_thread, cur_thread, true).as_bool();
-
-        // 4. TOPMOST 强制 Z 序拉顶 + BringWindowToTop
-        let _ = SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-        let _ = SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-        let _ = BringWindowToTop(h);
-
-        // 5. SetForegroundWindow 真正抢焦
-        let ok = SetForegroundWindow(h).as_bool();
-        tracing::info!(
-            "bring_monitor_to_front: attached={} SetForegroundWindow={}",
-            attached,
-            ok
-        );
-
-        // 6. detach + Alt 释放
-        if attached {
-            let _ = AttachThreadInput(fg_thread, cur_thread, false);
-        }
-        keybd_event(
-            VK_MENU.0 as u8,
-            0,
-            KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP,
-            0,
-        );
-
-        if ok {
-            Ok(())
-        } else {
-            // 拉前真失败也 Z 序已被推顶，视觉上窗口浮起来了
-            // （只是焦点没抢到）。给前端 warn 但不视为 fatal。
-            tracing::warn!("bring_monitor_to_front: SetForegroundWindow rejected (window Z-order raised but no focus)");
-            Err("SetForegroundWindow rejected (window raised but not focused)".into())
-        }
-    }
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 #[cfg(not(windows))]
 #[tauri::command]
-fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), String> {
+async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), String> {
     let win = app
         .get_webview_window("main")
         .ok_or_else(|| "main window not found".to_string())?;

@@ -53,7 +53,7 @@
 - `history::read_session_jsonl / stream_read_session_jsonl / delete_history_session / update_history_metadata / resume_history_session`
 - `tasks::get_session_tasks` (v2.3 issue #11)：用 `paths::resolve_claude_dir().join("tasks")`，session_id 参数直接拼路径；watcher 线程独立 spawn 不通过 State 共享
 - `data_paths::get_data_paths` (v2.3 issue #3 A)：用 `paths::resolve_monitor_data_dir()` + `AppHandle.path().app_local_data_dir()` 推断 WebView2 路径；纯 stat 不持有状态
-- `bring_monitor_to_front` (v2.4 issue #2)：通过 `AppHandle.get_webview_window("main")` 直接拿主窗口；三层 Win32 hack 拉前（详 INVARIANTS § 19 跨 windows crate 版本）；无外部 State
+- `bring_monitor_to_front` (v2.4 issue #2)：通过 `AppHandle.get_webview_window("main")` 直接拿主窗口；三层 Win32 hack 拉前（详 ARCHITECTURE.md § 5「bring_monitor_to_front 三层 hack」；其中 HWND 跨 windows crate 版本互操作详 INVARIANTS § 19）；无外部 State
 
 ---
 

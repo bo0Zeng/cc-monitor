@@ -12,6 +12,7 @@
  */
 
 import { makeInfoIcon } from "./info-icon";
+import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 
 export interface CollapsibleGroupOptions {
   /** localStorage key 后缀，必须稳定（不要随翻译改） */
@@ -24,8 +25,6 @@ export interface CollapsibleGroupOptions {
   infoTooltip?: string;
 }
 
-const LS_PREFIX = "cc-monitor.settings.collapsed.";
-
 export class CollapsibleGroup {
   private root: HTMLElement;
   private header: HTMLElement;
@@ -36,7 +35,7 @@ export class CollapsibleGroup {
   private storageKey: string;
 
   constructor(opts: CollapsibleGroupOptions) {
-    this.storageKey = LS_PREFIX + opts.id;
+    this.storageKey = LS_KEYS.settingsCollapsed(opts.id);
     this.collapsed = this.loadCollapsedState(opts.defaultCollapsed ?? true);
 
     this.root = document.createElement("div");
@@ -108,11 +107,7 @@ export class CollapsibleGroup {
     this.collapsed = next;
     this.applyCollapsedClass();
     this.header.setAttribute("aria-expanded", next ? "false" : "true");
-    try {
-      localStorage.setItem(this.storageKey, next ? "1" : "0");
-    } catch (e) {
-      console.warn("[collapsible] localStorage write failed:", e);
-    }
+    safeSet(this.storageKey, next ? "1" : "0");
   }
 
   private applyCollapsedClass(): void {
@@ -122,13 +117,9 @@ export class CollapsibleGroup {
   }
 
   private loadCollapsedState(fallback: boolean): boolean {
-    try {
-      const v = localStorage.getItem(this.storageKey);
-      if (v === "1") return true;
-      if (v === "0") return false;
-    } catch (e) {
-      console.warn("[collapsible] localStorage read failed:", e);
-    }
+    const v = safeGet(this.storageKey);
+    if (v === "1") return true;
+    if (v === "0") return false;
     return fallback;
   }
 }

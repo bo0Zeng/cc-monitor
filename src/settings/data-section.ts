@@ -13,6 +13,9 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { showActionFailureToast } from "../error-toast";
+import { enumeratePrefix } from "../local-storage";
+import { formatBytes } from "../format";
 
 interface DataPathInfo {
   label: string;
@@ -29,10 +32,6 @@ interface DataPathsResponse {
   webviewUserDataDir: DataPathInfo | null;
   profileBackupDirs: DataPathInfo[];
 }
-
-export const DATA_SECTION_INFO_TEXT =
-  "列出 monitor 所有持久化到磁盘的数据位置 + WebView2 用户数据 + localStorage。" +
-  "纯展示，不会动数据。点 [打开] 用资源管理器打开对应位置。卸载 monitor 默认不清这些数据。";
 
 export class DataSection {
   private root: HTMLElement;
@@ -278,18 +277,7 @@ export class DataSection {
 }
 
 function collectMonitorLocalStorageKeys(): { key: string; value: string }[] {
-  const out: { key: string; value: string }[] = [];
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (!k || !k.startsWith("cc-monitor.")) continue;
-      out.push({ key: k, value: localStorage.getItem(k) ?? "" });
-    }
-  } catch (e) {
-    console.warn("[data-section] localStorage enumerate failed:", e);
-  }
-  out.sort((a, b) => a.key.localeCompare(b.key));
-  return out;
+  return enumeratePrefix("cc-monitor.");
 }
 
 async function openItem(path: string): Promise<void> {
@@ -297,15 +285,8 @@ async function openItem(path: string): Promise<void> {
     await openPath(path);
   } catch (e) {
     console.warn(`[data-section] openPath ${path} failed:`, e);
-    alert(`打开失败：${String(e)}`);
+    showActionFailureToast("打开失败", String(e));
   }
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 function truncateValue(v: string): string {

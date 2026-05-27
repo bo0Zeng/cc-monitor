@@ -53,11 +53,25 @@
 
 ---
 
-## 5. event_replay 持锁完整 emit 保证顺序
+## 5. event_replay 顺序保证：snapshot emit 完前 live 不许 emit + 收尾 catch-up
 
-`replay_and_mark_ready` **持锁** 期间完整 emit history snapshot 后再设 `ready = true`。
+`replay_and_mark_ready` 期间用 `inner.replaying = true` 把所有 `on_line_batch`
+新增行**只 push 进 history、不 emit**；snapshot chunks 全部 emit 完后再用
+jsonl-line 通道把"chunked 窗口期"积压的尾部 catch-up emit 出去，再清
+`replaying = false` + 设 `ready = true`。
 
-**为什么不能松动**：早期试过"锁外 emit snapshot + 锁内 push 后 ready 判断 live emit" → emit 期间 record 能并发拿锁 → 看到 ready=true 走 live emit → **前端先收到新 record 的 live emit、再收到 snapshot 的旧 emit** → 顺序错乱、时间线断裂。持锁完整发是唯一可靠路径。代价（replay 期间 watcher 阻塞数十毫秒到秒级）可接受。
+**为什么不能松动**：
+- 早期试过"锁外 emit snapshot + 锁内 push 后 ready 判断 live emit" → emit 期间
+  record 能并发拿锁 → 看到 ready=true 走 live emit → **前端先收到新 record 的
+  live emit、再收到 snapshot 的旧 emit** → 顺序错乱、时间线断裂。
+- v2.3.0 引入 chunked emit（块之间 sleep 让锁短暂释放）后，曾出现单纯 "未
+  ready 直接 return" 而不做 catch-up → chunked 窗口期（数百 ms 到秒级）watcher
+  真新行被吞，前端必须 F5 才能看到。`replaying` 标 + 末块 catch-up 是为了既保留
+  v2.3 的快速首屏切块体验，又重新闭合顺序保证。
+
+代价：replay chunked 期间 watcher 写文件后不会立即 live 渲染，要等末块发完
+（典型百毫秒到秒级），但 catch-up emit 之后**绝不会**到 F5 才出现。这条权衡跟
+v2.3 首屏 600ms 可见的设计目标兼容。
 
 ---
 

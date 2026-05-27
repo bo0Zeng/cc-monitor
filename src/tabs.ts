@@ -16,6 +16,7 @@ import { extractBranchRecord } from "./branching";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { PayloadSource } from "./events";
 import type { BehaviorConfig } from "./behavior";
+import { showActionFailureToast } from "./error-toast";
 
 /**
  * Tab 生命周期：
@@ -880,23 +881,8 @@ function bringTerminalToFront(sessionId: string): Promise<void> {
     ),
   ]).catch((e) => {
     console.warn(`bring_terminal_to_front ${sessionId} failed:`, e);
-    showBringTerminalToast(String(e?.message ?? e));
+    // P4.5: 改走统一 toast stack（去掉单例 #bring-terminal-toast 的"先到先被覆盖"问题）。
+    showActionFailureToast("拉前失败", String(e?.message ?? e));
   });
-}
-
-/**
- * 拉前失败时右下角弹 8s fixed toast。
- *
- * 为什么 fixed：v1.6.4 把错放进 status-bar 文字会触发 flex 重排挤压消息区，
- * 用户报告"消息往右移动"。toast 用 position:fixed 完全脱离正常文档流。
- */
-function showBringTerminalToast(msg: string): void {
-  document.querySelector("#bring-terminal-toast")?.remove();
-  const toast = document.createElement("div");
-  toast.id = "bring-terminal-toast";
-  toast.textContent = `⚠ 拉前失败：${msg}`;
-  toast.title = msg;
-  document.body.appendChild(toast);
-  window.setTimeout(() => toast.remove(), 8000);
 }
 

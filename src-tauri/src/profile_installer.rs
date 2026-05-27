@@ -32,16 +32,6 @@ pub enum ProfileKind {
     Custom,
 }
 
-impl ProfileKind {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Ps51 => "Windows PowerShell 5.1",
-            Self::Ps7 => "PowerShell 7.x",
-            Self::Custom => "自定义路径",
-        }
-    }
-}
-
 #[derive(Debug, Serialize)]
 pub struct ProfileScan {
     pub kind: ProfileKind,
@@ -54,13 +44,6 @@ pub struct ProfileScan {
     /// 已有同名 function（非 ccm 块内的）
     pub conflicting_functions: Vec<String>,
     pub size_bytes: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct IntegrationStatus {
-    pub profiles: Vec<ProfileScan>,
-    pub active_registrations: u32,
-    pub default_command_name: String,
 }
 
 /// 解析当前用户实际安装的 PS profile 路径。
@@ -407,76 +390,114 @@ fn find_block_range(content: &str) -> Option<(usize, usize)> {
     None
 }
 
+/// 检测 existing 用的行尾风格。包含任何 `\r\n` 就视为 CRLF（Windows 用户 profile
+/// 默认值——notepad / VSCode / git autocrlf=true 三大来源都是 CRLF）。
+fn detect_eol(s: &str) -> &'static str {
+    if s.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
+
+/// 把任意 EOL 风格的文本归一到指定 EOL：先全 → LF，再按需 → CRLF。
+fn rewrite_eol(content: &str, target: &str) -> String {
+    if target == "\n" {
+        content.replace("\r\n", "\n")
+    } else {
+        content.replace("\r\n", "\n").replace('\n', "\r\n")
+    }
+}
+
+/// `\n` / `\r\n` 都判 true（`\r\n` 的最后一个字符就是 `\n`）。
+fn ends_with_eol(s: &str) -> bool {
+    s.ends_with('\n')
+}
+
 /// 在 existing 中替换 ccm 块；若不存在则追加。
+///
+/// **必须保留原文件的 EOL 风格**：Windows 用户 profile 默认 CRLF；早期版本用
+/// `existing.lines().join("\n")` 静默把 CRLF → LF，length 校验检不出（两边都已
+/// LF），用户用 notepad 看会被"行尾不一致"警告/ git diff 整文件标红。
+/// 改用 `split_inclusive('\n')` 保留终止符，新 block 按 detected EOL 重写。
 fn replace_or_append_block(existing: &str, new_block: &str) -> String {
+    let eol = detect_eol(existing);
+    let block = rewrite_eol(
+        new_block.trim_end_matches(|c| c == '\r' || c == '\n'),
+        eol,
+    );
     if let Some((begin, end)) = find_block_range(existing) {
-        // 替换：[0, begin) + new_block + (end, end_of_file]
-        let lines: Vec<&str> = existing.lines().collect();
-        let before = lines[..begin].join("\n");
-        let after = if end + 1 < lines.len() {
-            lines[(end + 1)..].join("\n")
+        // split_inclusive('\n') 与 .lines() 索引一致：都按 '\n' 切，索引位置相同；
+        // 区别只是 split_inclusive 把 '\n'（及前一个 '\r'）保留在切片内部。
+        let lines: Vec<&str> = existing.split_inclusive('\n').collect();
+        let before: String = lines[..begin].concat();
+        let after: String = if end + 1 < lines.len() {
+            lines[(end + 1)..].concat()
         } else {
             String::new()
         };
         let mut out = String::new();
         if !before.is_empty() {
             out.push_str(&before);
-            if !before.ends_with('\n') {
-                out.push('\n');
+            if !ends_with_eol(&before) {
+                out.push_str(eol);
             }
         }
-        out.push_str(new_block.trim_end());
-        out.push('\n');
+        out.push_str(&block);
+        out.push_str(eol);
         if !after.is_empty() {
             out.push_str(&after);
-            if !after.ends_with('\n') {
-                out.push('\n');
+            if !ends_with_eol(&after) {
+                out.push_str(eol);
             }
         }
         out
     } else {
         // 追加
         let mut out = existing.to_string();
-        if !out.is_empty() && !out.ends_with('\n') {
-            out.push('\n');
+        if !out.is_empty() && !ends_with_eol(&out) {
+            out.push_str(eol);
         }
         if !out.is_empty() {
-            out.push('\n');
+            out.push_str(eol);
         }
-        out.push_str(new_block.trim_end());
-        out.push('\n');
+        out.push_str(&block);
+        out.push_str(eol);
         out
     }
 }
 
 /// 删除 ccm 块（如果有）。
 fn strip_block(existing: &str) -> String {
+    let eol = detect_eol(existing);
     let Some((begin, end)) = find_block_range(existing) else {
         return existing.to_string();
     };
-    let lines: Vec<&str> = existing.lines().collect();
-    let before = lines[..begin].join("\n");
-    let after = if end + 1 < lines.len() {
-        lines[(end + 1)..].join("\n")
+    let lines: Vec<&str> = existing.split_inclusive('\n').collect();
+    let before: String = lines[..begin].concat();
+    let after: String = if end + 1 < lines.len() {
+        lines[(end + 1)..].concat()
     } else {
         String::new()
     };
     let mut out = String::new();
     if !before.is_empty() {
         out.push_str(&before);
-        if !before.ends_with('\n') {
-            out.push('\n');
+        if !ends_with_eol(&before) {
+            out.push_str(eol);
         }
     }
     if !after.is_empty() {
         out.push_str(&after);
-        if !after.ends_with('\n') {
-            out.push('\n');
+        if !ends_with_eol(&after) {
+            out.push_str(eol);
         }
     }
-    // 防止文件结尾多空行
-    while out.ends_with("\n\n") {
-        out.pop();
+    // 防止文件结尾多空行：保留至多一个尾 EOL
+    let double = format!("{eol}{eol}");
+    while out.ends_with(&double) {
+        let new_len = out.len() - eol.len();
+        out.truncate(new_len);
     }
     out
 }
@@ -688,6 +709,51 @@ $PSDefaultParameterValues = @{}
     fn strip_block_no_op_when_no_block() {
         let content = "Set-Alias g git\n";
         assert_eq!(strip_block(content), content);
+    }
+
+    #[test]
+    fn install_preserves_crlf_line_endings() {
+        // Windows 用户 profile 普遍 CRLF（notepad/VSCode/git autocrlf 三大来源）。
+        // 早期 .lines().join("\n") 会静默把 CRLF → LF。这里验保留。
+        let crlf = "# my profile\r\nSet-Alias g git\r\nfunction prompt { 'PS> ' }\r\n";
+        let new_block =
+            "# === cc-monitor BEGIN v1 ===\nfunction cc {}\n# === cc-monitor END ===";
+        let out = replace_or_append_block(crlf, new_block);
+        // 用户原内容仍带 CRLF
+        assert!(out.contains("# my profile\r\n"), "用户首行 CRLF 丢了：{out:?}");
+        assert!(out.contains("Set-Alias g git\r\n"), "用户 alias CRLF 丢了：{out:?}");
+        // 新插入的 ccm 块也应是 CRLF
+        assert!(
+            out.contains("# === cc-monitor BEGIN v1 ===\r\n"),
+            "新块的 BEGIN 行 EOL 不是 CRLF：{out:?}"
+        );
+        // 整文件**不应出现**任何裸 \n（除了作为 \r\n 的一部分）
+        let bare_lf_count = out.matches('\n').count() - out.matches("\r\n").count();
+        assert_eq!(bare_lf_count, 0, "出现了裸 LF，CRLF 被破坏：{out:?}");
+    }
+
+    #[test]
+    fn strip_block_preserves_crlf_line_endings() {
+        let crlf = "Set-Alias g git\r\n\
+                    # === cc-monitor BEGIN v1 ===\r\n\
+                    function cc {}\r\n\
+                    # === cc-monitor END ===\r\n\
+                    function prompt { 'PS> ' }\r\n";
+        let out = strip_block(crlf);
+        assert!(out.contains("Set-Alias g git\r\n"));
+        assert!(out.contains("function prompt"));
+        assert!(!out.contains("BEGIN"));
+        let bare_lf_count = out.matches('\n').count() - out.matches("\r\n").count();
+        assert_eq!(bare_lf_count, 0, "出现了裸 LF：{out:?}");
+    }
+
+    #[test]
+    fn lf_only_file_stays_lf() {
+        let lf = "Set-Alias g git\n";
+        let new_block = "# === cc-monitor BEGIN v1 ===\nfunction cc {}\n# === cc-monitor END ===";
+        let out = replace_or_append_block(lf, new_block);
+        // 已是 LF 的文件不强加 CRLF
+        assert!(!out.contains("\r\n"), "纯 LF 文件被改成了 CRLF：{out:?}");
     }
 
     // === v1.7.10：install / uninstall end-to-end 落地保护测试 ===

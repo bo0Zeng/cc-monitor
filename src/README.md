@@ -73,14 +73,14 @@ index.html  ─> /src/main.ts (defer)
   → 渲染项目组 header（默认全折叠）
 
 点击某个项目组展开
-  → invoke('list_history_sessions_in_project', { projectDir }) → HistorySessionEntry[]
-  → 缓存到 sessionCache.set(projectDir, items)
+  → invoke('stream_history_sessions_in_project', { projectDir, onEntry: Channel })
+  → 每条 entry 通过 channel 增量到达；缓存到 sessionCache.set(projectDir, items)
   → 渲染该组内的 session 行
 
 点击某个 session 行
   → SessionViewer.load({ jsonlPath, ... })
-  → invoke('read_session_jsonl', { jsonlPath }) → JsonlLinePayload[]
-  → 复用 renderMessage 渲染（与实时 Tab 同一套）
+  → invoke('stream_read_session_jsonl', { jsonlPath, onChunk: Channel })
+  → 每 100 行一 chunk 增量渲染（复用 renderMessage，与实时 Tab 同一套）
 ```
 
 ## 关键设计选择 + 理由

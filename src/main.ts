@@ -127,7 +127,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("app")?.appendChild(settingsTrigger);
 
   // 历史浏览器入口 —— 顶栏右侧，紧邻设置按钮左边
-  const historyView = new HistoryView(streamRoot);
+  // v2.5+: HistoryView 不再接管 streamRoot，自挂 body 作 fixed overlay
+  const historyView = new HistoryView();
   const historyTrigger = document.createElement("button");
   historyTrigger.type = "button";
   historyTrigger.className = "history-trigger";

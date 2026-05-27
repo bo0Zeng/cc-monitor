@@ -14,6 +14,8 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { makeInfoIcon } from "./info-icon";
+import { showActionFailureToast } from "../error-toast";
+import { formatBytes } from "../format";
 
 interface DiagnosticsConfig {
   log_enabled: boolean;
@@ -48,7 +50,7 @@ export interface DiagnosticsSectionOptions {
 }
 
 /** 给 collapsible header 复用的 i 图标说明文字。headless 模式丢失了内嵌图标 → 让外面挂一下。 */
-export const DIAGNOSTICS_INFO_TEXT =
+const DIAGNOSTICS_INFO_TEXT =
   "monitor 是 GUI 应用（windows_subsystem=windows），没有 stderr 控制台。\n" +
   "所有后端 tracing 输出写到 ~/.claude/claudecode-frontend/logs/monitor.YYYY-MM-DD.log。\n" +
   "ERROR 级别同时弹右下角红色 toast，点击 toast 直接跳到 log 文件。";
@@ -261,13 +263,15 @@ export class DiagnosticsSection {
       const hint = await invoke<RestartHint>("set_diagnostics_config", { cfg });
       this.current = cfg;
       if (hint === "needs_restart") {
-        window.alert(
-          "设置已保存。\n\n切换「启用 log 文件」需要重启 monitor 才能生效。",
+        showActionFailureToast(
+          "设置已保存",
+          "切换「启用 log 文件」需重启 monitor 才生效。",
+          { level: "info", durationMs: 6000 },
         );
       }
       await this.refresh();
     } catch (e) {
-      window.alert(`保存诊断配置失败：${e}`);
+      showActionFailureToast("保存诊断配置失败", String(e));
       // 失败 → 回退到当前实际值
       await this.refresh();
     }
@@ -277,7 +281,7 @@ export class DiagnosticsSection {
     try {
       await invoke("open_log_file");
     } catch (e) {
-      window.alert(`打开 log 文件失败：${e}`);
+      showActionFailureToast("打开 log 文件失败", String(e));
     }
   }
 
@@ -285,14 +289,8 @@ export class DiagnosticsSection {
     try {
       await invoke("open_log_dir");
     } catch (e) {
-      window.alert(`打开 log 目录失败：${e}`);
+      showActionFailureToast("打开 log 目录失败", String(e));
     }
   }
 }
 
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(2)} MB`;
-  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}

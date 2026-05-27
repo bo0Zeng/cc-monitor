@@ -31,9 +31,14 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 - Clicking a session opens a **read-only viewer**
 
 ### Settings panel (Ctrl+,)
-- **Data directory**: configurable Claude data location (three-tier fallback: settings > `$CLAUDE_CONFIG_DIR` > `~/.claude`)
-- **PowerShell integration**: install the `__ccm_bind` helper for precise terminal-window focus on Tab ↗
-- **Fonts & colors**: 13 appearance tokens, live preview, persisted to `~/.claude/claudecode-frontend/config.json`
+
+Five collapsible groups (only "Behavior" expanded by default):
+
+- **Behavior**: auto-follow which tab the user is typing into; whether to bring monitor window to front on auto-switch
+- **Shortcuts**: built-in editor to customize all 18 available action chords
+- **Data sources & integration**: configurable Claude data location (three-tier fallback: settings > `$CLAUDE_CONFIG_DIR` > `~/.claude`) + one-click install for the PowerShell `__ccm_bind` helper
+- **Appearance**: 13 tokens (fonts + colors), live preview, persisted to `~/.claude/claudecode-frontend/config.json`
+- **Diagnostics & storage**: tracing level toggle + log file path + transparent listing of every persisted data path
 
 ### Terminal focus (optional)
 - Each live tab has a ↗ button / `Ctrl+\`` to bring the corresponding terminal window to front
@@ -44,11 +49,17 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 | Key | Action |
 |---|---|
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
+| `Ctrl+1` .. `Ctrl+9` | Jump to tab N |
 | `Ctrl+W` | Close current archived tab |
-| `Ctrl+H` | Toggle history browser |
+| `Ctrl+Shift+E` | Open the current tab's working directory in Explorer |
 | `Ctrl+\`` | Bring current tab's terminal to front |
+| `Ctrl+H` | Toggle history browser |
 | `Ctrl+,` | Open settings panel |
+| `Ctrl+M` | Minimize main window |
+| `Ctrl+T` | Toggle Task panel |
 | `Esc` | Close topmost overlay (read-only viewer → history view → settings panel) |
+
+> Every chord is customizable in Settings → Shortcuts; two behavior/panel toggles are unbound by default and can be assigned a key there.
 
 ---
 

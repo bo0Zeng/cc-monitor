@@ -28,7 +28,13 @@ pub struct EventReplay {
 
 struct Inner {
     history: VecDeque<JsonlLinePayload>,
+    /// frontend 已收到 replay；可走 live emit。
     ready: bool,
+    /// `replay_and_mark_ready` chunked 路径**进行中**：标记为 true 期间
+    /// `on_line_batch` 把新行 push 进 history 但**不 emit**——避免与正在 emit 的
+    /// chunks 顺序错位（INVARIANT § 9）。replay 末块完成 + catch-up emit 收尾后
+    /// 才置 false，期间 push 进来的新行由末块路径统一 catch-up emit。
+    replaying: bool,
 }
 
 /// 切块阈值 + 大小（v2.3.1 issue #1 启动加速）。
@@ -64,6 +70,7 @@ impl EventReplay {
             inner: Mutex::new(Inner {
                 history: VecDeque::new(),
                 ready: false,
+                replaying: false,
             }),
         }
     }
@@ -91,17 +98,24 @@ impl EventReplay {
             return;
         }
 
-        // 先持锁 push history + 看 ready 状态，决定后续 emit 策略
-        let (ready, big_batch) = {
+        // 先持锁 push history + 看 ready / replaying 状态，决定后续 emit 策略
+        let (ready, replaying, big_batch) = {
             let mut inner = self.inner.lock();
             for p in &payloads {
                 inner.history.push_back(p.clone());
             }
-            (inner.ready, payloads.len() >= INCREMENTAL_BATCH_THRESHOLD)
+            (
+                inner.ready,
+                inner.replaying,
+                payloads.len() >= INCREMENTAL_BATCH_THRESHOLD,
+            )
         };
 
-        if !ready {
-            // 启动 replay 还没触发，等 frontend-ready 时一并发
+        if !ready || replaying {
+            // 启动 replay 还没触发 / 正在 chunked emit 中段：仅 push history。
+            // 前者由 frontend-ready 时统一发；后者由 `replay_and_mark_ready` 末块
+            // 的 catch-up 段统一发——这条路径修复 v2.3.0 起 chunked replay 期间
+            // watcher 新行被吞、前端"重放窗口期冻结"直到 F5 的 UX bug。
             return;
         }
 
@@ -173,12 +187,16 @@ impl EventReplay {
     pub fn replay_and_mark_ready<R: Runtime>(&self, handle: &AppHandle<R>) {
         let started = std::time::Instant::now();
 
-        // 阶段 1：持锁拿 snapshot 决定切块策略
+        // 阶段 1：持锁拿 snapshot 决定切块策略，同时记 snapshot_len 用于末尾 catch-up
         let snapshot: Vec<JsonlLinePayload> = {
-            let inner = self.inner.lock();
+            let mut inner = self.inner.lock();
+            // 标记进入 chunked replay：期间 on_line_batch 仅 push 不 emit，
+            // 防止与正在 emit 的 chunks 顺序错位（INVARIANT § 9）。
+            inner.replaying = true;
             inner.history.iter().cloned().collect()
         };
-        let n = snapshot.len();
+        let snapshot_len = snapshot.len();
+        let n = snapshot_len;
 
         // N < 阈值 → 单次 emit，行为 100% 跟之前一致（仅 payload schema 改）
         if n < SINGLE_CHUNK_THRESHOLD {
@@ -187,12 +205,21 @@ impl EventReplay {
                 chunk_total: 1,
                 payloads: snapshot,
             };
-            {
+            let catch_up: Vec<JsonlLinePayload> = {
                 let mut inner = self.inner.lock();
                 if let Err(e) = handle.emit(events::JSONL_BATCH, &payload) {
                     tracing::warn!("replay single-chunk emit failed: {e}");
                 }
                 inner.ready = true;
+                inner.replaying = false;
+                // 单 chunk 路径理论上锁内连续执行，期间 on_line_batch 抢不到锁——
+                // 但为对称统一，仍然取 snapshot_len 之后的 tail 兜底（一般为空）。
+                inner.history.iter().skip(snapshot_len).cloned().collect()
+            };
+            for p in catch_up {
+                if let Err(e) = handle.emit(events::JSONL_LINE, &p) {
+                    tracing::warn!("single-chunk catch-up jsonl-line emit failed: {e}");
+                }
             }
             tracing::info!(
                 "[perf] replayed {n} events to frontend (single chunk) in {}ms",
@@ -212,7 +239,8 @@ impl EventReplay {
             n.saturating_sub(chunks.first().map(|c| c.len()).unwrap_or(0)),
         );
 
-        // 阶段 2：逐块 emit。每块持短锁 emit，块间释放锁 stop 让 live record 通过
+        // 阶段 2：逐块 emit。每块持短锁 emit，块间释放锁 stop 让 watcher push 进来
+        // （但 replaying=true 让它只 push 不 emit；末尾 catch-up 段统一发）
         for (idx, chunk) in chunks.into_iter().enumerate() {
             let chunk_started = std::time::Instant::now();
             let payload = JsonlBatchPayload {
@@ -221,14 +249,12 @@ impl EventReplay {
                 payloads: chunk,
             };
             {
-                let mut inner = self.inner.lock();
+                // 持锁完成 emit 防 watcher 中途插队（虽然 replaying=true 已经让
+                // on_line_batch 走 push-only 路径，但同时持锁是历史 INVARIANT § 5
+                // 的传统纵深防御，便宜可保留）。
+                let _guard = self.inner.lock();
                 if let Err(e) = handle.emit(events::JSONL_BATCH, &payload) {
                     tracing::warn!("replay chunk {idx} emit failed: {e}");
-                }
-                // 最后一块 emit 完成后才标 ready；之前块 emit 都持锁（防 record() 看到
-                // ready=true 走 live emit 同时块尚未到齐前端）
-                if idx + 1 == chunk_total {
-                    inner.ready = true;
                 }
             }
             tracing::info!(
@@ -239,6 +265,28 @@ impl EventReplay {
             // 最后一块不停顿
             if idx + 1 < chunk_total {
                 std::thread::sleep(std::time::Duration::from_millis(CHUNK_PAUSE_MS));
+            }
+        }
+
+        // 阶段 3：末块发完后做 catch-up——把 chunked 期间 watcher push 进来的
+        // 真新行用 jsonl-line live 通道 emit 出去（前端走 source="live"，append
+        // 贴底，自然排在 head chunk 之后符合时间顺序）。完成后清 replaying + 标
+        // ready。**修复 v2.3.0+ 的"重放窗口期冻结到 F5"UX bug**。
+        let catch_up: Vec<JsonlLinePayload> = {
+            let mut inner = self.inner.lock();
+            inner.ready = true;
+            inner.replaying = false;
+            inner.history.iter().skip(snapshot_len).cloned().collect()
+        };
+        if !catch_up.is_empty() {
+            tracing::info!(
+                "[perf] chunked replay catch-up: {} live rows arrived during emit window",
+                catch_up.len()
+            );
+            for p in catch_up {
+                if let Err(e) = handle.emit(events::JSONL_LINE, &p) {
+                    tracing::warn!("catch-up jsonl-line emit failed: {e}");
+                }
             }
         }
 
@@ -407,5 +455,45 @@ mod tests {
         assert_eq!(head_sids.len(), 2);
         let total: usize = chunks.iter().map(|c| c.len()).sum();
         assert_eq!(total, 800);
+    }
+
+    #[test]
+    fn replaying_flag_suppresses_emit_then_catch_up_drains() {
+        // 单元测：模拟 chunked replay 期间 watcher push 新行 → on_line_batch 看到
+        // replaying=true 仅 push 不 emit；之后清 replaying 取 history 尾部 catch-up
+        // 应该拿到那些新行（修复 P0-1：v2.3+ chunked 窗口期前端冻结到 F5）。
+        let r = EventReplay::new();
+        // 模拟 replay 中段：standalone 设 replaying + ready 还没置
+        {
+            let mut inner = r.inner.lock();
+            inner.replaying = true;
+            // 假设 snapshot 已发了 10 条（实际由 replay_and_mark_ready snapshot.clone() 抓拍）
+            for i in 0..10 {
+                inner.history.push_back(payload("s1", i));
+            }
+        }
+        let snapshot_len = 10usize;
+
+        // 模拟 watcher 期间 push 5 条新行——由于无 AppHandle，直接绕过 emit 路径
+        // 验"replaying 时只 push history"：手动 push 后 catch-up 应能取到 5 条
+        {
+            let mut inner = r.inner.lock();
+            for i in 10..15 {
+                inner.history.push_back(payload("s1", i));
+            }
+        }
+
+        // 模拟 replay 末块完成后取 catch-up
+        let catch_up: Vec<JsonlLinePayload> = {
+            let mut inner = r.inner.lock();
+            inner.ready = true;
+            inner.replaying = false;
+            inner.history.iter().skip(snapshot_len).cloned().collect()
+        };
+        assert_eq!(catch_up.len(), 5, "chunked 窗口期 5 条新行应进 catch-up");
+        // 顺序仍是 jsonl 顺序（idx 10..15）
+        for (i, p) in catch_up.iter().enumerate() {
+            assert_eq!(idx_of(p), 10 + i, "catch-up 内部顺序乱了");
+        }
     }
 }

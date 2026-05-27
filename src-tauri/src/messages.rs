@@ -179,3 +179,131 @@ impl JsonlRecord {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(line: &str) -> JsonlRecord {
+        serde_json::from_str(line).unwrap_or_else(|e| {
+            panic!("parse failed for {line}: {e}");
+        })
+    }
+
+    #[test]
+    fn user_minimal_golden_sample_parses() {
+        // 仅含必填字段（uuid / timestamp / message）的 user 行也应反序列化成功；
+        // 其余字段（cwd / sessionId / isSidechain / parentUuid / forkedFrom）走 default
+        let line = r#"{
+            "type":"user",
+            "uuid":"u-1",
+            "timestamp":"2026-05-20T01:23:45.678Z",
+            "message":{"role":"user","content":"hi"}
+        }"#;
+        let r = parse(line);
+        assert!(r.is_displayable());
+        match r {
+            JsonlRecord::User {
+                uuid,
+                is_sidechain,
+                forked_from,
+                ..
+            } => {
+                assert_eq!(uuid, "u-1");
+                assert!(!is_sidechain, "isSidechain 缺省应 false");
+                assert!(forked_from.is_none(), "forkedFrom 缺省应 None");
+            }
+            other => panic!("expected User, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn custom_title_v21_schema_hits_custom_title_variant() {
+        // v2.4.3 真实事故回归测试：Claude Code v2.1.x 把 ai-title → custom-title /
+        // customTitle。messages.rs 若漏 CustomTitle 变体，整个 type 走 Unknown →
+        // 不 emit → 前端拿不到标题（Tab 永远只显示项目名）。
+        let line = r#"{"type":"custom-title","customTitle":"我的会话","sessionId":"s-42"}"#;
+        let r = parse(line);
+        assert!(r.is_displayable());
+        match r {
+            JsonlRecord::CustomTitle {
+                custom_title,
+                session_id,
+            } => {
+                assert_eq!(custom_title, "我的会话");
+                assert_eq!(session_id, "s-42");
+            }
+            other => panic!("v2.1.x custom-title 未命中 CustomTitle 变体，got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ai_title_legacy_schema_still_works() {
+        // 历史 jsonl 仍可能有 ai-title（v2.0 及之前）。两个 schema 必须共存兼容。
+        let line = r#"{"type":"ai-title","aiTitle":"old","sessionId":"s-1"}"#;
+        let r = parse(line);
+        assert!(matches!(r, JsonlRecord::AiTitle { .. }));
+        assert!(r.is_displayable());
+    }
+
+    #[test]
+    fn attachment_preserves_uuid_chain_and_is_displayable() {
+        // issue #8: attachment 不渲染但**必须 emit**——前端 BranchFolder 需要
+        // attachment 的 uuid+parentUuid 才能完整跟 parent 链。漏 emit → ESC 回退
+        // 误判 → 整段消息被错误折叠到"已被回退"。
+        let line = r#"{
+            "type":"attachment",
+            "uuid":"att-1",
+            "timestamp":"2026-05-20T01:00:00Z",
+            "parentUuid":"prev-msg-uuid"
+        }"#;
+        let r = parse(line);
+        // 先校验 displayable（不 move r），再 destructure 取字段
+        assert!(r.is_displayable(), "attachment 必须 emit 保 parent 链完整");
+        match r {
+            JsonlRecord::Attachment {
+                uuid,
+                parent_uuid,
+                ..
+            } => {
+                assert_eq!(uuid, "att-1");
+                assert_eq!(parent_uuid.as_deref(), Some("prev-msg-uuid"));
+            }
+            other => panic!("expected Attachment, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_type_does_not_panic_and_not_displayable() {
+        let r = parse(r#"{"type":"future-unknown-type","x":1}"#);
+        assert!(matches!(r, JsonlRecord::Unknown));
+        assert!(!r.is_displayable());
+    }
+
+    #[test]
+    fn system_record_keeps_uuid_for_branch_detection() {
+        // issue #8 配套：system 大多有 uuid+parentUuid 参与 parent 链。
+        let line = r#"{
+            "type":"system",
+            "subtype":"turn_duration",
+            "durationMs":1234,
+            "timestamp":"2026-05-20T01:00:00Z",
+            "uuid":"sys-1",
+            "parentUuid":"prev"
+        }"#;
+        let r = parse(line);
+        match r {
+            JsonlRecord::System {
+                uuid,
+                parent_uuid,
+                duration_ms,
+                ..
+            } => {
+                assert_eq!(uuid.as_deref(), Some("sys-1"));
+                assert_eq!(parent_uuid.as_deref(), Some("prev"));
+                assert_eq!(duration_ms, Some(1234));
+            }
+            _ => panic!("expected System, got {r:?}"),
+        }
+    }
+}
