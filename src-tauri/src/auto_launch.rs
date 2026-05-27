@@ -46,18 +46,10 @@ pub fn load(file: &Path) -> AutoLaunchConfig {
     serde_json::from_str(&s).unwrap_or_default()
 }
 
-/// 原子写 auto-launch.json
+/// 原子写 auto-launch.json — 走 utils::atomic_write_json（Windows ReplaceFileW；
+/// 非 Windows rename），确保 crash 不丢 monitor exe 路径记录。
 pub fn save(file: &Path, cfg: &AutoLaunchConfig) -> std::io::Result<()> {
-    if let Some(parent) = file.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let s = serde_json::to_string_pretty(cfg)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-    let tmp = file.with_extension("json.tmp");
-    std::fs::write(&tmp, s)?;
-    let _ = std::fs::remove_file(file);
-    std::fs::rename(&tmp, file)?;
-    Ok(())
+    crate::utils::atomic_write_json(file, cfg)
 }
 
 /// monitor 启动时调：把当前 exe 路径更新到 auto-launch.json（保留 auto_launch_enabled）。

@@ -24,6 +24,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { dispatcher } from "./keybindings/registry";
+import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 
 export interface TaskEntry {
   id: string;
@@ -35,25 +36,15 @@ export interface TaskEntry {
   blockedBy: string[];
 }
 
-const LS_KEY = "cc-monitor.tasks-panel.collapsed";
-
 function loadCollapsed(): boolean {
-  try {
-    const v = localStorage.getItem(LS_KEY);
-    if (v === "1") return true;
-    if (v === "0") return false;
-  } catch (e) {
-    console.warn("[tasks-panel] localStorage read failed:", e);
-  }
+  const v = safeGet(LS_KEYS.tasksPanelCollapsed);
+  if (v === "1") return true;
+  if (v === "0") return false;
   return true;
 }
 
 function saveCollapsed(collapsed: boolean): void {
-  try {
-    localStorage.setItem(LS_KEY, collapsed ? "1" : "0");
-  } catch (e) {
-    console.warn("[tasks-panel] localStorage write failed:", e);
-  }
+  safeSet(LS_KEYS.tasksPanelCollapsed, collapsed ? "1" : "0");
 }
 
 export class TasksPanel {
@@ -116,12 +107,8 @@ export class TasksPanel {
     this.popoverElement.appendChild(this.list);
 
     this.applyCollapsedClass();
-
-    // issue #5: Esc 通过 KeybindingDispatcher 统一调度。展开时 push、折叠时 pop，
-    // 跟设置 / 历史浏览器共享同一个 overlay 栈（LIFO）。
-    if (!this.collapsed && this.tasks.length > 0 && this.activeSid !== null) {
-      dispatcher.pushOverlay(this);
-    }
+    // 构造时 tasks=[] / activeSid=null，永远不需要 pushOverlay；
+    // setSession 之后用户 toggle 折叠时再由 setCollapsed 路径推入。
   }
 
   /** dispatcher overlay 接口 */
@@ -141,25 +128,9 @@ export class TasksPanel {
     this.render();
   }
 
-  /**
-   * 仅刷新当前 session 的 task 数据（用户在 CLI 里改了 task）。
-   * 调用方应该已经判断过 sid 是 active，但 panel 内部再做一次保险确认。
-   */
-  refreshIfActive(sid: string, tasks: TaskEntry[]): void {
-    if (this.activeSid !== sid) return;
-    this.tasks = tasks;
-    this.render();
-  }
-
   /** 快捷键 (issue #5) 用：折叠 ↔ 展开切换 */
   toggle(): void {
     this.setCollapsed(!this.collapsed);
-  }
-
-  dispose(): void {
-    dispatcher.popOverlay(this);
-    this.summaryElement.remove();
-    this.popoverElement.remove();
   }
 
   private render(): void {

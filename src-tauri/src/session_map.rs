@@ -1,7 +1,9 @@
 //! 活跃 session 探测 —— 不用 hook，直接读 Claude Code 自己维护的 `~/.claude/sessions/<PID>.json`。
 //!
 //! 每个 PID.json 含：`{pid, sessionId, cwd, startedAt, procStart, status, ...}`
-//! - `procStart` 是 .NET DateTime.ToFileTime() 字符串（100ns 自 1601 UTC = Win32 FILETIME 整数）
+//! - `procStart` 是 **.NET DateTime.Ticks 字符串**（100ns 自 0001-01-01 **Local**，
+//!   非 Win32 FILETIME UTC——比较时要用 `FileTime::to_net_local_ticks` 转换。
+//!   详 `utils::NetTicks` / `FileTime` 模块文档）
 //! - 跟 `GetProcessTimes` 返回的 FILETIME 直接 u64 等值比对（容差几毫秒）
 //!
 //! **v1.6.7 撤回了 bring_terminal_to_front 整条链路**（4-tier WindowMatcher /
@@ -119,24 +121,8 @@ impl SessionMap {
 }
 
 fn scan_dir(dir: &Path) -> HashMap<String, SessionInfo> {
-    let mut out = HashMap::new();
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return out;
-    };
-    for entry in entries.flatten() {
-        let p = entry.path();
-        if p.extension().map_or(false, |e| e == "json") {
-            if let Some(info) = read_one(&p) {
-                out.insert(info.session_id.clone(), info);
-            }
-        }
-    }
-    out
-}
-
-fn read_one(path: &Path) -> Option<SessionInfo> {
-    let s = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&s).ok()
+    // P3 归并：走 utils::scan_dir_jsons。
+    crate::utils::scan_dir_jsons(dir, |info: &SessionInfo| info.session_id.clone())
 }
 
 fn run_watcher(
@@ -235,9 +221,9 @@ fn run_watcher(
 //
 // 两道关卡：
 //   1) OpenProcess + GetExitCodeProcess == STILL_ACTIVE：PID 当前被占用着
-//   2) GetProcessTimes 返回的 creation FILETIME（u64）与 sessions/<PID>.json 里
-//      记录的 procStart 字符串（.NET DateTime.ToFileTime()，与 Win32 FILETIME 同零点同单位）
-//      在 100ms 容差内吻合
+//   2) GetProcessTimes 返回的 creation FILETIME 与 sessions/<PID>.json 里记录的
+//      procStart（NetTicks 字符串）在 100ms 容差内吻合（FileTime → NetTicks 转换
+//      在 utils::FileTime::to_net_local_ticks 中处理）
 //
 // 没有第二关，残留的死 session PID.json 会因为 PID 被另一个进程复用而被误判为活跃
 // （Windows PID 短期内复用很常见）。早期注释里"代价仅是多显示一个 Tab"的判断不成立，
@@ -245,6 +231,7 @@ fn run_watcher(
 
 #[cfg(windows)]
 fn is_process_alive(pid: u32, expected_proc_start: Option<&str>) -> bool {
+    use crate::utils::{FileTime, NetTicks};
     use windows::Win32::Foundation::{CloseHandle, FILETIME};
     use windows::Win32::System::Threading::{
         GetExitCodeProcess, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
@@ -272,34 +259,24 @@ fn is_process_alive(pid: u32, expected_proc_start: Option<&str>) -> bool {
         }
 
         // 2) procStart 校验 —— 防 PID 复用
-        //
-        // 单位换算（实测在 UTC+8 host 上 diff = 504_911_519_999_999_999 = 1601 offset
-        // + 8h 时区 + 1 tick 抖动验证得到的公式）：
-        //
-        //   Claude Code 写的 procStart  = .NET DateTime.Now.Ticks
-        //                               = 自 0001-01-01 本地时间起算的 100ns
-        //   GetProcessTimes 给的 FILETIME = 自 1601-01-01 UTC 起算的 100ns
-        //
-        // 转换：FILETIME (UTC) → 本地 FILETIME → +1601 偏移 → 与 expected 比对
-        if let Some(expected_str) = expected_proc_start {
-            if let Ok(expected) = expected_str.parse::<u64>() {
-                let mut creation = FILETIME::default();
-                let mut exit_t = FILETIME::default();
-                let mut kernel = FILETIME::default();
-                let mut user = FILETIME::default();
-                if GetProcessTimes(handle, &mut creation, &mut exit_t, &mut kernel, &mut user)
-                    .is_ok()
-                {
-                    let actual_net = filetime_to_net_local_ticks(&creation);
-                    let diff = actual_net.abs_diff(expected);
-                    if diff > PROC_START_TOLERANCE_TICKS {
-                        tracing::debug!(
-                            "pid {pid} proc_start mismatch: expected={expected} \
-                             actual_net={actual_net} diff={diff} — PID reused"
-                        );
-                        let _ = CloseHandle(handle);
-                        return false;
-                    }
+        //   Claude Code 写的 procStart = NetTicks（.NET Local Ticks）
+        //   GetProcessTimes 给的 = FILETIME UTC
+        // FileTime → NetTicks 经 utils::FileTime::to_net_local_ticks 转换后比较。
+        if let Some(expected) = expected_proc_start.and_then(NetTicks::parse_str) {
+            let mut creation = FILETIME::default();
+            let mut exit_t = FILETIME::default();
+            let mut kernel = FILETIME::default();
+            let mut user = FILETIME::default();
+            if GetProcessTimes(handle, &mut creation, &mut exit_t, &mut kernel, &mut user).is_ok() {
+                let actual = FileTime::from_win32(&creation).to_net_local_ticks();
+                let diff = actual.abs_diff(expected);
+                if diff > PROC_START_TOLERANCE_TICKS {
+                    tracing::debug!(
+                        "pid {pid} proc_start mismatch: expected={} actual_net={} diff={} — PID reused",
+                        expected.0, actual.0, diff
+                    );
+                    let _ = CloseHandle(handle);
+                    return false;
                 }
             }
         }
@@ -307,38 +284,6 @@ fn is_process_alive(pid: u32, expected_proc_start: Option<&str>) -> bool {
         let _ = CloseHandle(handle);
         true
     }
-}
-
-/// Win32 FILETIME (UTC, 自 1601-01-01) → .NET DateTime.Now.Ticks (Local, 自 0001-01-01)。
-/// Claude Code 写入 sessions/<PID>.json 的 procStart 字段就是 .NET Ticks 形式。
-///
-/// `FileTimeToLocalFileTime` 在 windows-rs 0.56 没有方便的封装路径，直接 raw FFI
-/// 调 kernel32.dll；windows::Win32::Foundation::FILETIME 是 `#[repr(C)]` 与 Win32
-/// 原生类型二进制兼容。
-#[cfg(windows)]
-fn filetime_to_net_local_ticks(utc: &windows::Win32::Foundation::FILETIME) -> u64 {
-    use windows::Win32::Foundation::FILETIME;
-    /// 从 .NET 0001-01-01 起到 Win32 1601-01-01 之间的 100ns 数。
-    const NET_EPOCH_TO_WIN32_FILETIME_TICKS: u64 = 504_911_232_000_000_000;
-
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn FileTimeToLocalFileTime(
-            lpFileTime: *const FILETIME,
-            lpLocalFileTime: *mut FILETIME,
-        ) -> i32;
-    }
-
-    let mut local = FILETIME::default();
-    let local_ticks = unsafe {
-        if FileTimeToLocalFileTime(utc as *const _, &mut local as *mut _) == 0 {
-            // 转 local 失败时退回 utc，避免错误拒绝（最坏 case 是时区偏移落出容差被判不匹配）
-            ((utc.dwHighDateTime as u64) << 32) | (utc.dwLowDateTime as u64)
-        } else {
-            ((local.dwHighDateTime as u64) << 32) | (local.dwLowDateTime as u64)
-        }
-    };
-    local_ticks + NET_EPOCH_TO_WIN32_FILETIME_TICKS
 }
 
 #[cfg(not(windows))]

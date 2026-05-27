@@ -15,6 +15,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { makeInfoIcon, swapFileName } from "./info-icon";
+import { showActionFailureToast } from "../error-toast";
+import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 
 type ProfileKind = "Ps51" | "Ps7" | "Custom";
 
@@ -34,8 +36,7 @@ const PRESET_OPTIONS: Array<{ id: PresetId; label: string }> = [
   { id: "Custom", label: "自定义路径..." },
 ];
 
-const LS_KEY_PRESET = "cc-monitor.profile_preset";
-const LS_KEY_PATH = "cc-monitor.profile_path";
+// P2.1: 通过 LS_KEYS 中转保留下划线 key 名（迁移成本大于收益）。
 
 interface ProfileScan {
   kind: ProfileKind;
@@ -164,8 +165,8 @@ export class CcIntegrationSection {
     this.pathInput.addEventListener("change", () => {
       // 用户手编路径：保存到 localStorage，下次打开记得
       try {
-        localStorage.setItem(LS_KEY_PATH, this.pathInput.value.trim());
-        localStorage.setItem(LS_KEY_PRESET, "Custom");
+        safeSet(LS_KEYS.profilePath, this.pathInput.value.trim());
+        safeSet(LS_KEYS.profilePreset, "Custom");
       } catch {}
       void this.scanCurrentPath();
     });
@@ -333,13 +334,13 @@ export class CcIntegrationSection {
   private async openProfileInEditor(): Promise<void> {
     const p = this.pathInput.value.trim();
     if (!p) {
-      alert("请先选 PS 版本或填 profile 路径");
+      showActionFailureToast("请先选 PS 版本", "或在自定义里填一个 profile 路径", { level: "info" });
       return;
     }
     try {
       await openPath(p);
     } catch (e) {
-      alert(`打开失败：${e}\n\n手动路径：${p}`);
+      showActionFailureToast("打开失败", `${e}\n手动路径：${p}`);
     }
   }
 
@@ -359,8 +360,8 @@ export class CcIntegrationSection {
       let savedPreset: PresetId | null = null;
       let savedPath: string | null = null;
       try {
-        savedPreset = localStorage.getItem(LS_KEY_PRESET) as PresetId | null;
-        savedPath = localStorage.getItem(LS_KEY_PATH);
+        savedPreset = safeGet(LS_KEYS.profilePreset) as PresetId | null;
+        savedPath = safeGet(LS_KEYS.profilePath);
       } catch {}
       if (savedPreset && PRESET_OPTIONS.some((o) => o.id === savedPreset)) {
         this.versionSelect.value = savedPreset;
@@ -494,7 +495,7 @@ export class CcIntegrationSection {
     const id = this.versionSelect.value as PresetId;
     // 持久化用户选择，下次打开面板恢复
     try {
-      localStorage.setItem(LS_KEY_PRESET, id);
+      safeSet(LS_KEYS.profilePreset, id);
     } catch {}
     if (id === "Custom") {
       // Custom 不强填路径，让用户自己输
@@ -505,7 +506,7 @@ export class CcIntegrationSection {
     if (path) {
       this.pathInput.value = path;
       try {
-        localStorage.setItem(LS_KEY_PATH, path);
+        safeSet(LS_KEYS.profilePath, path);
       } catch {}
       void this.scanCurrentPath();
     } else {
@@ -566,7 +567,7 @@ export class CcIntegrationSection {
   private async install(): Promise<void> {
     const p = this.pathInput.value.trim();
     if (!p) {
-      alert("请先选 PS 版本或填 profile 路径");
+      showActionFailureToast("请先选 PS 版本", "或在自定义里填一个 profile 路径", { level: "info" });
       return;
     }
     const includeCc = this.wantsWrapper();
@@ -579,10 +580,10 @@ export class CcIntegrationSection {
       await this.scanCurrentPath();
       const tail = includeCc
         ? "请重启 PowerShell，cc 命令立即可用。"
-        : "下一步：用上方 [打开 profile]，在你自己启动 claude 的 wrapper 开头加一行 __ccm_bind，然后重启 PowerShell。";
-      alert("已写入 profile。\n\n" + tail);
+        : "下一步：[打开 profile]，在自己的 claude wrapper 开头加 __ccm_bind 再重启 PowerShell。";
+      showActionFailureToast("已写入 profile", tail, { level: "info", durationMs: 8000 });
     } catch (e) {
-      alert(`安装失败：${e}`);
+      showActionFailureToast("安装失败", String(e));
     }
   }
 
@@ -594,7 +595,7 @@ export class CcIntegrationSection {
       });
       await this.scanCurrentPath();
     } catch (e) {
-      alert(`卸载失败：${e}`);
+      showActionFailureToast("卸载失败", String(e));
     }
   }
 
@@ -614,7 +615,7 @@ export class CcIntegrationSection {
     try {
       await invoke<void>("cc_set_auto_launch", { enabled });
     } catch (e) {
-      alert(`保存失败：${e}`);
+      showActionFailureToast("保存失败", String(e));
       this.autoLaunchCheckbox.checked = !enabled;
     }
   }

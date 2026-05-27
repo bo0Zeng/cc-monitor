@@ -124,6 +124,9 @@ function renderSubagentBody(
     parentPath: result.path,
     toolUseNames: new Map(),
     toolUseElements: new Map(),
+    // P4：pendingToolResults 必填。subagent 内部一次性渲染，无 reconcile 路径，
+    // 但提供空 Map 防止 cards/index.ts 的 fallback 路径走 undefined 导致漏注入。
+    pendingToolResults: new Map(),
   };
 
   for (const rec of result.records) {

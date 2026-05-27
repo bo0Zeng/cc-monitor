@@ -2,17 +2,19 @@ import { renderMarkdown, renderPlainText } from "../render";
 import { parseSlashCommand, buildSlashCommandCard } from "./slash";
 import { isCompactSummary, buildCompactSummaryCard } from "./compact";
 import { isAgentTool, buildAgentCard } from "./subagent";
+import { LS_KEYS, safeGet, safeSet } from "../local-storage";
+import { formatTimestampShort } from "../format";
 
 // === Rust 端 JsonlRecord 的 TS 镜像 ===
 
-export interface ApiMessage {
+interface ApiMessage {
   role: string;
   content: unknown; // string | ContentBlock[]
   model?: string;
   usage?: Usage;
 }
 
-export interface Usage {
+interface Usage {
   input_tokens: number;
   cache_creation_input_tokens?: number;
   cache_read_input_tokens?: number;
@@ -108,9 +110,12 @@ export interface RenderContext {
    * tool_use 现在已经有 host → 注入 + 删 fallback 卡。
    *
    * key = tool_use_id；value = {block, fallback element}。
-   * 可选字段：v2.3.0 之前的调用方不传也能用（reconcile 静默跳过）。
+   *
+   * P4：改成**必填** —— SessionViewer / Subagent 之前漏传导致 fallback 路径
+   * 永久独立卡（fallback 后无人调 reconcile，那条结果再也不会被注入）。
+   * 不需要 reconcile 的 caller 也传一个空 Map 即可。
    */
-  pendingToolResults?: Map<
+  pendingToolResults: Map<
     string,
     { block: Extract<ContentBlock, { type: "tool_result" }>; element: HTMLElement }
   >;
@@ -141,14 +146,14 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
         if (isCompactSummary(text)) {
           return {
             kind: "card",
-            element: buildCompactSummaryCard(text, rec.timestamp, formatTime),
+            element: buildCompactSummaryCard(text, rec.timestamp, formatTimestampShort),
           };
         }
         const slash = parseSlashCommand(text);
         if (slash) {
           return {
             kind: "card",
-            element: buildSlashCommandCard(slash, rec.timestamp, formatTime),
+            element: buildSlashCommandCard(slash, rec.timestamp, formatTimestampShort),
           };
         }
         return { kind: "card", element: buildUserCard(rec, text) };
@@ -244,7 +249,7 @@ export function addToToolGroup(group: ToolGroup, units: HTMLElement[]): void {
 }
 
 function updateToolGroupSummary(group: ToolGroup): void {
-  group.summary.textContent = `🔧 工具调用 · ${group.count} 个 · 自 ${formatTime(group.startedAt)}`;
+  group.summary.textContent = `🔧 工具调用 · ${group.count} 个 · 自 ${formatTimestampShort(group.startedAt)}`;
 }
 
 function buildUserCard(
@@ -714,21 +719,13 @@ function defaultModeForTool(toolName: string): "text" | "md" {
 }
 
 function loadRenderModePreference(toolName: string): "text" | "md" | null {
-  try {
-    const v = localStorage.getItem(`cc-monitor.tool-render.${toolName}`);
-    if (v === "text" || v === "md") return v;
-  } catch (e) {
-    console.warn("[tool-result] localStorage read failed:", e);
-  }
+  const v = safeGet(LS_KEYS.toolRender(toolName));
+  if (v === "text" || v === "md") return v;
   return null;
 }
 
 function saveRenderModePreference(toolName: string, mode: "text" | "md"): void {
-  try {
-    localStorage.setItem(`cc-monitor.tool-render.${toolName}`, mode);
-  } catch (e) {
-    console.warn("[tool-result] localStorage write failed:", e);
-  }
+  safeSet(LS_KEYS.toolRender(toolName), mode);
 }
 
 /**
@@ -832,7 +829,11 @@ function stripInternalNoise(text: string): string {
     // v2.4.2 issue #2: `[Request interrupted by user]`（ESC 中断 assistant 流式生成）
     // 和 `[Request interrupted by user for tool use]`（拒绝工具调用）都不是真用户
     // 输入。剥掉让整条 skip → 既不渲染奇怪的"用户中断"卡片，也不触发自动拉前。
-    .replace(/^\[Request interrupted by user[^\]]*\]\s*$/gim, "")
+    //
+    // 注：不用 `gim`——`m` flag 让 `^...$` 锚到每一行，会误吞合法 user 消息中
+    // 偶然出现"以该模式开头的行"。CLI 实际把中断标记作为整条 user message 的唯一
+    // 文本写入；剥过其他 noise 后，整文本若 trim 完正好是该模式，就归零。
+    .replace(/^\[Request interrupted by user[^\]]*\]\s*$/, "")
     .trim();
 }
 
@@ -862,7 +863,7 @@ function cardHeader(
   h.appendChild(r);
   const t = document.createElement("span");
   t.className = "ts";
-  t.textContent = formatTime(timestamp);
+  t.textContent = formatTimestampShort(timestamp);
   h.appendChild(t);
   if (model) {
     const m = document.createElement("span");
@@ -871,15 +872,6 @@ function cardHeader(
     h.appendChild(m);
   }
   return h;
-}
-
-function formatTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return iso;
-  }
 }
 
 function normalizeBlocks(content: unknown): ContentBlock[] {

@@ -11,8 +11,8 @@
 //! 历史浏览器项目组默认折叠，因此后端分两级 IPC：
 //!  1. `list_history_projects` —— 项目级元数据，**不读 jsonl 内容**，每项目仅 1 个
 //!     1-line read 拿 cwd + 文件 stat 拿 mtime + 数 dir entries。500 个项目 < 50ms
-//!  2. `list_history_sessions_in_project` —— 用户展开某项目时才调，全量读那个项目下
-//!     的所有 jsonl 解析 ai_title / first_user_excerpt 等。前端缓存结果
+//!  2. `stream_history_sessions_in_project` —— 用户展开某项目时才调，流式 Channel
+//!     边解析边发，前端逐条增量渲染。（v2.2 起取代非流式 `list_history_sessions_in_project`）
 //!
 //! ## 用户元数据
 //!
@@ -28,26 +28,27 @@ use crate::messages::{ApiMessage, JsonlRecord};
 use crate::parser::parse_line;
 use crate::paths;
 use crate::session_map::SessionMap;
-use crate::utils::days_from_civil;
+use crate::utils::{now_ms, systime_to_ms};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::SystemTime;
 
 // === 数据结构 ===
 
 /// 项目级元数据 —— 首次 list 时返回，**不含**任何 session 内容。
+/// P1.2：全字段 camelCase wire，前端 TS interface 字段名一致。
 #[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct HistoryProject {
     /// 真实工作目录路径（从某个 jsonl 的首条 user 消息的 cwd 取）
     pub project_path: String,
     /// 项目名 = cwd 最后一段
     pub project_name: String,
     /// 编码后的目录名（位于 `<claude_dir>/projects/` 之下），前端调用
-    /// `list_history_sessions_in_project` 时传回来作 key
+    /// `stream_history_sessions_in_project` 时传回来作 key
     pub project_dir: String,
     pub session_count: u32,
     pub starred_count: u32,
@@ -59,6 +60,7 @@ pub struct HistoryProject {
 }
 
 #[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct HistorySessionEntry {
     pub session_id: String,
     pub project_path: String,
@@ -75,17 +77,10 @@ pub struct HistorySessionEntry {
     pub custom_title: Option<String>,
     pub hidden: bool,
     // issue #12: fork 关系。若本 session 是从某 parent session 用 /branch 分叉来的，
-    // 这两个字段记 parent session 的 id 和被 fork 处的 messageUuid。前端按 forked_from_session_id
-    // 在项目内建树（深度 = parent 链长度）。非 fork session 两字段都 None。
-    #[serde(
-        rename = "forkedFromSessionId",
-        skip_serializing_if = "Option::is_none"
-    )]
+    // 这两个字段记 parent session 的 id 和被 fork 处的 messageUuid。
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub forked_from_session_id: Option<String>,
-    #[serde(
-        rename = "forkedFromMessageUuid",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub forked_from_message_uuid: Option<String>,
 }
 
@@ -175,64 +170,7 @@ pub async fn list_history_projects(
     .map_err(|e| format!("spawn_blocking join: {e}"))?
 }
 
-/// 单个项目内的全部会话详情（全量读 jsonl）。用户展开某项目组时才调。
-///
-/// v2.2 (issue #12)：改 async + spawn_blocking。注意此 IPC 仍是"等齐了一次返回"，
-/// 大项目慢但不阻塞其他 IPC；流式版见 stream_history_sessions_in_project。
-#[tauri::command]
-pub async fn list_history_sessions_in_project(
-    project_dir: String,
-    map: tauri::State<'_, Arc<SessionMap>>,
-) -> Result<Vec<HistorySessionEntry>, String> {
-    let map = map.inner().clone();
-    tokio::task::spawn_blocking(move || {
-        let started = std::time::Instant::now();
-        let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-        let projects_dir = claude_dir.join("projects");
-        let target = PathBuf::from(&project_dir);
-        if !target.starts_with(&projects_dir) {
-            return Err(format!(
-                "refuse: {} outside {}",
-                target.display(),
-                projects_dir.display()
-            ));
-        }
-        if !target.is_dir() {
-            return Err(format!("{} not a directory", target.display()));
-        }
-        let metadata = load_metadata().unwrap_or_default();
-
-        let mut out: Vec<HistorySessionEntry> = Vec::new();
-        let files = match std::fs::read_dir(&target) {
-            Ok(d) => d,
-            Err(e) => return Err(format!("read {}: {e}", target.display())),
-        };
-        for f in files.flatten() {
-            let p = f.path();
-            if p.extension().map_or(false, |e| e == "jsonl") {
-                if let Some(entry) = analyze_jsonl(&p, &metadata, &map) {
-                    out.push(entry);
-                }
-            }
-        }
-        out.sort_by(|a, b| {
-            b.starred
-                .cmp(&a.starred)
-                .then(b.updated_at.cmp(&a.updated_at))
-        });
-        tracing::info!(
-            "list_history_sessions_in_project({}): {} sessions in {}ms",
-            target.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
-            out.len(),
-            started.elapsed().as_millis()
-        );
-        Ok(out)
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join: {e}"))?
-}
-
-/// issue #12: 流式版 `list_history_sessions_in_project`。
+/// issue #12: 流式版（取代已删的非流式 `list_history_sessions_in_project`）。
 ///
 /// 用 Tauri 2 `Channel<HistorySessionEntry>` 边解析边发，前端可逐条增量渲染。
 /// 收益：大项目（几十个 session × 几 MB jsonl）首条 < 100ms 出现，不再"等齐"。
@@ -299,77 +237,7 @@ pub async fn stream_history_sessions_in_project(
     .map_err(|e| format!("spawn_blocking join: {e}"))?
 }
 
-/// 把一个 jsonl 文件全量读出为 `JsonlLinePayload` 列表，用于历史查看器渲染。
-/// 复用前端 `renderMessage` 那一套，无需为只读视图另开渲染管线。
-///
-/// v2.2 (issue #12)：改 async + spawn_blocking。流式版（边读边 emit chunk）
-/// 见 stream_read_session_jsonl —— 大文件下用户更快看到首屏。
-#[tauri::command]
-pub async fn read_session_jsonl(
-    jsonl_path: String,
-) -> Result<Vec<crate::bridge::JsonlLinePayload>, String> {
-    tokio::task::spawn_blocking(move || {
-        let started = std::time::Instant::now();
-        let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-        let projects_dir = claude_dir.join("projects");
-        let target = PathBuf::from(&jsonl_path);
-        if !target.starts_with(&projects_dir) {
-            return Err(format!(
-                "refuse: {} outside {}",
-                target.display(),
-                projects_dir.display()
-            ));
-        }
-        if target.extension().map_or(true, |e| e != "jsonl") {
-            return Err("not a .jsonl file".into());
-        }
-
-        let session_id = target
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
-        let file = File::open(&target).map_err(|e| format!("open {}: {e}", target.display()))?;
-        let reader = BufReader::new(file);
-        let mut out: Vec<crate::bridge::JsonlLinePayload> = Vec::new();
-        let mut cwd_seen: Option<String> = None;
-        let path_str = target.to_string_lossy().into_owned();
-
-        for line in reader.lines().map_while(Result::ok) {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            let rec = match parse_line(trimmed) {
-                Ok(Some(r)) if r.is_displayable() => r,
-                _ => continue,
-            };
-            // 第一条 user 的 cwd 锁住，后续记录沿用，与 lib.rs 的实时流一致
-            if let JsonlRecord::User { cwd, .. } = &rec {
-                if cwd_seen.is_none() {
-                    cwd_seen = cwd.clone();
-                }
-            }
-            out.push(crate::bridge::JsonlLinePayload {
-                session_id: session_id.clone(),
-                cwd: cwd_seen.clone(),
-                path: path_str.clone(),
-                message: rec,
-            });
-        }
-        tracing::info!(
-            "read_session_jsonl({}): {} records in {}ms",
-            session_id,
-            out.len(),
-            started.elapsed().as_millis()
-        );
-        Ok(out)
-    })
-    .await
-    .map_err(|e| format!("spawn_blocking join: {e}"))?
-}
-
-/// issue #12: 流式版 `read_session_jsonl`。
+/// issue #12: 流式版（取代已删的非流式 `read_session_jsonl`）。
 ///
 /// 按 100 行一 chunk 边读边发，前端可在 ~500ms 内开始渲染首屏（即使整 jsonl
 /// 上千条 / 10MB+）。
@@ -886,100 +754,118 @@ fn load_metadata() -> Result<HistoryMetadata, String> {
 
 fn save_metadata(m: &HistoryMetadata) -> Result<(), String> {
     let path = metadata_path().ok_or("no monitor data dir")?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let pretty = serde_json::to_string_pretty(m).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, pretty).map_err(|e| e.to_string())?;
-    // 复用 config.rs 的原子替换逻辑：直接走 std::fs::rename 在 Linux/macOS 没问题，
-    // Windows 用 MoveFileExW 才能原子覆盖；这里走简单 rename + 容忍失败重试一次。
-    // history-metadata 损坏代价很小（只丢用户的 star 信息，不影响 jsonl），不值得引入额外 unsafe。
-    if let Err(first_err) = std::fs::rename(&tmp, &path) {
-        tracing::warn!("history-metadata rename failed (will retry after delete): {first_err}");
-        let _ = std::fs::remove_file(&path);
-        std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    // 走 utils::atomic_write_json：Windows ReplaceFileW + dst-not-exist fallback，
+    // 非 Windows 单步 rename，全程原子。比早期"write tmp + remove + rename"三步更
+    // 不易丢文件——后者中途 crash 用户的 star/重命名/隐藏全失。
+    crate::utils::atomic_write_json(&path, m).map_err(|e| e.to_string())
 }
 
-// === 时间换算 ===
-
-fn systime_to_ms(t: SystemTime) -> i64 {
-    t.duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
+// === 时间换算 → utils 归并（P3）===
+// `systime_to_ms` / `parse_iso8601_ms` / `now_ms` 已搬到 crate::utils。
+// 本地保留两个适配 helper（带 unwrap_or(0) 兜底）以最小化修改面。
 
 fn iso_to_ms(iso: &str) -> i64 {
-    // Claude 写的 timestamp 形如 "2026-05-20T15:11:42.345Z" —— 不引 chrono 依赖，
-    // 直接 parse 各字段。失败返回 0（前端会显示为 1970，看得见但不崩）。
-    parse_iso8601_ms(iso).unwrap_or(0)
-}
-
-fn parse_iso8601_ms(s: &str) -> Option<i64> {
-    // YYYY-MM-DDTHH:MM:SS[.fff][Z|+HH:MM]
-    let bytes = s.as_bytes();
-    if bytes.len() < 19 {
-        return None;
-    }
-    let year: i64 = s.get(0..4)?.parse().ok()?;
-    let month: u32 = s.get(5..7)?.parse().ok()?;
-    let day: u32 = s.get(8..10)?.parse().ok()?;
-    let hour: u32 = s.get(11..13)?.parse().ok()?;
-    let min: u32 = s.get(14..16)?.parse().ok()?;
-    let sec: u32 = s.get(17..19)?.parse().ok()?;
-    // fractional ms
-    let mut ms: i64 = 0;
-    if s.len() > 19 && bytes[19] == b'.' {
-        let mut end = 20;
-        while end < bytes.len() && bytes[end].is_ascii_digit() {
-            end += 1;
-        }
-        let frac = s.get(20..end)?;
-        let frac_num: i64 = frac.parse().ok()?;
-        // 归一到毫秒
-        ms = match frac.len() {
-            0 => 0,
-            1 => frac_num * 100,
-            2 => frac_num * 10,
-            3 => frac_num,
-            n if n > 3 => frac_num / 10_i64.pow((n - 3) as u32),
-            _ => 0,
-        };
-    }
-    // 简化：忽略时区，统统按 UTC 计算（精度差几小时也能用于排序）
-    let days = days_from_civil(year, month as i64, day as i64);
-    let total = days * 86_400 + hour as i64 * 3600 + min as i64 * 60 + sec as i64;
-    Some(total * 1000 + ms)
-}
-
-fn now_ms() -> i64 {
-    systime_to_ms(SystemTime::now())
+    // Claude 写的 timestamp 形如 "2026-05-20T15:11:42.345Z"；失败返 0
+    // （前端会显示为 1970，看得见但不崩）。
+    crate::utils::parse_iso8601_ms(iso).unwrap_or(0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// P1.2 contract test：守护后端 wire 跟前端 TS interface 字段名一致。
+    /// 改字段名必须同步改前端 views/history.ts 的 HistoryProject / HistorySessionEntry interface。
+    /// 若本测试失败 = 后端 wire 漂移；若 tsc 编译错 = 前端 access 漂移。两边都受保护。
     #[test]
-    fn iso_parse_simple() {
-        let ms = parse_iso8601_ms("2026-05-20T15:11:42.345Z").unwrap();
-        // sanity: 2026-05-20 是 2025 之后
-        assert!(ms > 1_700_000_000_000);
-        assert!(ms < 2_000_000_000_000);
+    fn history_project_camel_case_contract() {
+        let p = HistoryProject {
+            project_path: "/x/y".into(),
+            project_name: "y".into(),
+            project_dir: "/y-encoded".into(),
+            session_count: 1,
+            starred_count: 2,
+            hidden_count: 3,
+            last_activity: 1700_000_000_000,
+            has_live: true,
+        };
+        let j = serde_json::to_string(&p).unwrap();
+        for camel_key in [
+            "\"projectPath\"",
+            "\"projectName\"",
+            "\"projectDir\"",
+            "\"sessionCount\"",
+            "\"starredCount\"",
+            "\"hiddenCount\"",
+            "\"lastActivity\"",
+            "\"hasLive\"",
+        ] {
+            assert!(j.contains(camel_key), "HistoryProject wire 缺 {camel_key}: {j}");
+        }
+        // 反例守护：不应出现任何 snake_case 字段
+        for snake_key in [
+            "\"project_path\"",
+            "\"project_name\"",
+            "\"project_dir\"",
+            "\"session_count\"",
+            "\"starred_count\"",
+            "\"hidden_count\"",
+            "\"last_activity\"",
+            "\"has_live\"",
+        ] {
+            assert!(!j.contains(snake_key), "HistoryProject 漏改 {snake_key}: {j}");
+        }
     }
 
     #[test]
-    fn iso_parse_no_fraction() {
-        let ms = parse_iso8601_ms("2026-05-20T15:11:42Z").unwrap();
-        assert!(ms > 1_700_000_000_000);
+    fn history_session_entry_camel_case_contract() {
+        let e = HistorySessionEntry {
+            session_id: "s-1".into(),
+            project_path: "/x".into(),
+            project_name: "x".into(),
+            ai_title: Some("t".into()),
+            first_user_excerpt: "hi".into(),
+            started_at: 1,
+            updated_at: 2,
+            jsonl_path: "/a.jsonl".into(),
+            is_live: true,
+            message_count_approx: 5,
+            starred: false,
+            custom_title: None,
+            hidden: false,
+            forked_from_session_id: Some("p-1".into()),
+            forked_from_message_uuid: Some("u-1".into()),
+        };
+        let j = serde_json::to_string(&e).unwrap();
+        for camel_key in [
+            "\"sessionId\"",
+            "\"projectPath\"",
+            "\"projectName\"",
+            "\"aiTitle\"",
+            "\"firstUserExcerpt\"",
+            "\"startedAt\"",
+            "\"updatedAt\"",
+            "\"jsonlPath\"",
+            "\"isLive\"",
+            "\"messageCountApprox\"",
+            "\"customTitle\"",
+            "\"forkedFromSessionId\"",
+            "\"forkedFromMessageUuid\"",
+        ] {
+            assert!(j.contains(camel_key), "HistorySessionEntry wire 缺 {camel_key}: {j}");
+        }
+        for snake_key in [
+            "\"session_id\"",
+            "\"project_path\"",
+            "\"first_user_excerpt\"",
+            "\"is_live\"",
+            "\"forked_from_session_id\"",
+        ] {
+            assert!(!j.contains(snake_key), "HistorySessionEntry 漏改 {snake_key}: {j}");
+        }
     }
 
-    #[test]
-    fn iso_parse_bad_returns_none() {
-        assert!(parse_iso8601_ms("not-a-date").is_none());
-    }
+    // P3 归并：iso_parse_* 测试已搬到 utils::tests（函数本身搬到 utils）。
 
     #[test]
     fn truncate_chars_unicode() {

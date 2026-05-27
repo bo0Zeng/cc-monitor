@@ -19,6 +19,8 @@
   --border-medium: #ffffff20;
   --border-soft: #ffffff14;
   --border-faint: #ffffff08;
+  /* alias: 旧 var(--border) 引用（kb-editor 等 4 处无 fallback）默认走 strong */
+  --border: var(--border-strong);
   --overlay-hover: #ffffff06;
   --overlay-dim: #00000020;
   --overlay-deep: #00000040;
@@ -1032,8 +1034,8 @@ html, body {
  * .ccm-toast:        toast 卡片本体
  * .ccm-toast-error:  红色 variant（error-toast.ts 用）
  *
- * 旧的 #bring-terminal-toast 保留作向后兼容；后续 refactor tabs.ts 时可改成
- * 复用 .ccm-toast class。
+ * P4.5：tabs.ts::bringTerminalToFront 已改用 showActionFailureToast，旧的
+ * #bring-terminal-toast 单例 selector 已删除。
  */
 #ccm-toast-stack {
   position: fixed;
@@ -1078,27 +1080,6 @@ html, body {
   color: var(--text, #d6cfc6);
 }
 
-/* bring_terminal_to_front 失败时右下角弹的 toast —— fixed positioned
-   完全脱离文档流，绝对不会挤压消息区域。z-index 高于设置面板 / 历史视图 */
-#bring-terminal-toast {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  max-width: 540px;
-  background: var(--bg-2, #2a2520);
-  border: 1px solid var(--accent, #c25b3b);
-  color: var(--accent, #c25b3b);
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: var(--font-size-small, 13px);
-  font-weight: 500;
-  line-height: 1.45;
-  z-index: 9999;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-  white-space: pre-wrap;
-  word-break: break-word;
-  pointer-events: auto;
-}
 
 .status-count {
   font-family: var(--font-mono);
@@ -1739,8 +1720,13 @@ html, body {
 /* === History 视图（接管 #message-stream 区域） === */
 
 .history-view {
-  position: absolute;
+  /* v2.5+ fixed overlay：之前用 position: absolute 配合 replaceChildren(streamRoot)
+     接管父容器；那种写法导致 history 打开期间 ensureTab 把新 streamEl 加到
+     streamRoot 当 sibling，close 时 replaceChildren(savedChildren) 把新建的丢了
+     → 新 tab 显示空白。改 fixed 后 history 自挂 body 不影响 streamRoot 子树。 */
+  position: fixed;
   inset: 0;
+  z-index: 150;
   display: flex;
   flex-direction: column;
   background: var(--bg);

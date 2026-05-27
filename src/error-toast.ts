@@ -34,34 +34,77 @@ export function bindErrorToast(): void {
 }
 
 function showErrorToast(p: MonitorErrorPayload): void {
+  appendToast({
+    headline: `⚠ ${p.target || "monitor"}`,
+    body: p.message || "(无消息)",
+    level: "error",
+    durationMs: 6000,
+    onClick: () => {
+      void invoke("open_log_file").catch((err) => {
+        console.warn("open_log_file failed:", err);
+      });
+    },
+    title: "点击打开 log 文件查看完整堆栈",
+  });
+}
+
+/**
+ * 前端通用失败 / 信息提示。INVARIANT § 12 要求：关键失败不能用 alert（用户看不清就关了），
+ * 必须配持续可见的 toast。`level: "error"` 红色（与后端 ERROR 同栈），`level: "info"` 灰色。
+ * 多条堆叠不互相覆盖；默认 5s 自动消失。
+ */
+export function showActionFailureToast(
+  headline: string,
+  body: string,
+  opts: { level?: "error" | "info"; durationMs?: number; onClick?: () => void } = {},
+): void {
+  const level = opts.level ?? "error";
+  appendToast({
+    headline,
+    body,
+    level,
+    durationMs: opts.durationMs ?? 5000,
+    onClick: opts.onClick,
+    title: opts.onClick ? "点击查看" : undefined,
+  });
+}
+
+interface ToastSpec {
+  headline: string;
+  body: string;
+  level: "error" | "info";
+  durationMs: number;
+  onClick?: () => void;
+  title?: string;
+}
+
+function appendToast(spec: ToastSpec): void {
   const stack = ensureStack();
 
   const toast = document.createElement("div");
-  toast.className = "ccm-toast ccm-toast-error";
-  toast.title = "点击打开 log 文件查看完整堆栈";
+  toast.className = spec.level === "error" ? "ccm-toast ccm-toast-error" : "ccm-toast";
+  if (spec.title) toast.title = spec.title;
 
   const headline = document.createElement("div");
   headline.className = "ccm-toast-headline";
-  headline.textContent = `⚠ ${p.target || "monitor"}`;
+  headline.textContent = spec.headline;
   toast.appendChild(headline);
 
   const body = document.createElement("div");
   body.className = "ccm-toast-body";
-  body.textContent = p.message || "(无消息)";
+  body.textContent = spec.body;
   toast.appendChild(body);
 
-  toast.addEventListener("click", () => {
-    void invoke("open_log_file").catch((err) => {
-      console.warn("open_log_file failed:", err);
+  if (spec.onClick) {
+    const cb = spec.onClick;
+    toast.addEventListener("click", () => {
+      cb();
+      toast.remove();
     });
-    toast.remove();
-  });
+  }
 
-  // 最新的放最上面（用户视线先扫到）
   stack.insertBefore(toast, stack.firstChild);
-
-  // 自动消失。比 #bring-terminal-toast 的 8s 短一些（ERROR 频率比拉前失败高）
-  window.setTimeout(() => toast.remove(), 6000);
+  window.setTimeout(() => toast.remove(), spec.durationMs);
 }
 
 /**

@@ -107,16 +107,8 @@ export class MessageStream {
     this.snap();
   }
 
-  clear(): void {
-    this.contentEl.replaceChildren();
-  }
-
   private snap(): void {
     this.scrollEl.scrollTop = this.scrollEl.scrollHeight;
-  }
-
-  get element(): HTMLElement {
-    return this.scrollEl;
   }
 
   /**

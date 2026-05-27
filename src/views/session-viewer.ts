@@ -82,6 +82,10 @@ export class SessionViewer {
       parentPath: opts.jsonlPath,
       toolUseNames: new Map(),
       toolUseElements: new Map(),
+      // P4：pendingToolResults 改必填。SessionViewer 一次性 load 全文件，
+      // 理论上 tool_use 总在 tool_result 之前到（jsonl 顺序）；但 reconcile
+      // 至少要保证 fallback 路径不会成为永久独立卡。
+      pendingToolResults: new Map(),
     };
     let pendingToolGroup: ToolGroup | null = null;
     const branchRecords: BranchRecord[] = [];

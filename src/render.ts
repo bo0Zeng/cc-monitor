@@ -11,25 +11,34 @@ marked.setOptions({
 });
 
 /**
- * v2.3.1 (issue #1 性能): 全局 lazy 模式 flag。
- *
+ * v2.3.1 (issue #1 性能): lazy 模式 ——
  * - **false**（默认 / live 模式）：renderMarkdown 走全功能 pipeline（hljs 同步高亮）
- * - **true**（batch 重放期）：renderMarkdown 走 lazy pipeline：marked + DOMPurify + KaTeX 同步出 HTML，
- *   但代码块 hljs **不跑**——留 `<div class="code-block code-pending">` 占位。
- *
- * IntersectionObserver 在卡片进可视区时调 enhanceCard 跑 hljs。
+ * - **true**（batch 重放期）：marked + DOMPurify + KaTeX 同步出 HTML，但代码块
+ *   hljs **不跑**——留 `<div class="code-block code-pending">` 占位。IntersectionObserver
+ *   在卡片进可视区时调 enhanceCard 跑 hljs。
  *
  * 为什么单独 lazy hljs 而不 lazy KaTeX：
  * - 实测 hljs 是主要耗时（每代码块 0.5-5ms，含代码块的消息占 ~25%）
  * - KaTeX 触发条件严（只有 `$..$` 才会进 markedKatex），多数消息不含 LaTeX 跳过快
  * - markedKatex 是 marked 扩展深度集成的，拆 lazy 复杂度高，收益小
  *
- * TabManager.onBatchStart/onBatchEnd 切换这个 flag。
+ * P2.3 重构：lazy 从"全局 flag + setRenderLazyMode caller 调"改成 `renderMarkdown(md, { lazy })`
+ * **每次调用参数**。模块内仍持一个 currentLazy 供 marked code renderer 闭包访问，
+ * 但 renderMarkdown 用 save/restore 模式保证同步调用栈安全 —— 不再有"另一个 caller 期间
+ * lazy 被错误共享"的 bug（之前 session-viewer/subagent 没设 lazy 但被 tabs 的 batch
+ * 模式污染走 lazy 路径，代码块永远 .code-pending）。
+ *
+ * setRenderLazyMode 仍 export 但已加 deprecated 注释——P4（renderStreamRecord 抽取时）
+ * 会把 caller 全部改成显式 opts.lazy，届时删除。
  */
-let renderLazyMode = false;
+let currentLazy = false;
 
+/**
+ * @deprecated P2.3 已加 renderMarkdown(md, { lazy }) opts 参数；P4 时 caller 全部
+ * 改成显式传参后本函数将删除。新代码不要调；过渡期 tabs.ts 仍调以保留 batch 模式。
+ */
 export function setRenderLazyMode(lazy: boolean): void {
-  renderLazyMode = lazy;
+  currentLazy = lazy;
 }
 
 /**
@@ -70,7 +79,7 @@ marked.use({
       const lang = (token.lang ?? "").trim().split(/\s+/)[0];
       const code = token.text ?? "";
 
-      if (renderLazyMode) {
+      if (currentLazy) {
         // lazy 路径：转义即可，hljs 留给 enhanceCard
         const cls = lang ? `language-${lang}` : "";
         const langLabel = lang || "text";
@@ -136,17 +145,34 @@ marked.use({
   },
 });
 
+export interface RenderMarkdownOptions {
+  /** true = lazy hljs（启动 batch 期间用，避免 N 个代码块同步阻塞主线程） */
+  lazy?: boolean;
+}
+
 /**
  * 基础 Markdown 渲染：GFM + KaTeX + 代码高亮 + sanitize。
+ *
+ * P2.3：opts.lazy 显式传入，用 save/restore 模式避免"另一个 caller 同时调时被
+ * 错误共享"（session-viewer 历史 load 期间被 tabs batch 模式污染走 lazy 路径
+ * 是已知 bug）。同步调用栈内 try/finally 严格恢复，并发也安全（JS 单线程）。
  */
-export function renderMarkdown(md: string): string {
-  const raw = marked.parse(md, { async: false }) as string;
-  // 显式 profile：html + svg + mathMl 都允许，避免 KaTeX 的 MathML
-  // 兜底输出在未来 DOMPurify 默认值变化时被静默丢掉
-  return DOMPurify.sanitize(raw, {
-    USE_PROFILES: { html: true, svg: true, mathMl: true },
-    ADD_ATTR: ["target", "rel", "data-copy", "data-external"],
-  });
+export function renderMarkdown(md: string, opts: RenderMarkdownOptions = {}): string {
+  const prevLazy = currentLazy;
+  // 显式 opts.lazy 时覆盖；否则用现有 currentLazy（向后兼容 setRenderLazyMode）。
+  // P4 完成后 caller 全部显式传，删除 setRenderLazyMode 时也可改成 opts.lazy ?? false。
+  if (opts.lazy !== undefined) {
+    currentLazy = opts.lazy;
+  }
+  try {
+    const raw = marked.parse(md, { async: false }) as string;
+    return DOMPurify.sanitize(raw, {
+      USE_PROFILES: { html: true, svg: true, mathMl: true },
+      ADD_ATTR: ["target", "rel", "data-copy", "data-external"],
+    });
+  } finally {
+    currentLazy = prevLazy;
+  }
 }
 
 /** 纯文本（用户消息保守模式）：转义 + 保留换行 */

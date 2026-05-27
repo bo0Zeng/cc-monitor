@@ -33,14 +33,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 /// cc function 写入 ps-await/<PID>.json 的内容。
 #[derive(Debug, Deserialize, Clone)]
 pub struct AwaitRequest {
     pub ps_pid: u32,
     pub marker: String,
-    /// .NET DateTime.ToFileTime() 字符串（同 SessionInfo.proc_start 语义）
+    /// Win32 FILETIME 字符串（PS 端 `[Process].StartTime.ToFileTime()` 输出）。
+    /// **跟 `SessionInfo.proc_start` (NetTicks) 不同单位**——前者自 1601-01-01 UTC，
+    /// 后者自 0001-01-01 Local。详 `utils::FileTime` / `utils::NetTicks`。
     pub proc_start: String,
 }
 
@@ -120,15 +122,6 @@ impl BindRegistry {
         self.by_ps_pid.read().len()
     }
 
-    /// 当前所有注册条目的浅快照（UI 列表展示用）
-    pub fn snapshot(&self) -> Vec<HwndEntry> {
-        self.by_ps_pid.read().values().cloned().collect()
-    }
-
-    fn await_dir(&self) -> PathBuf {
-        self.monitor_data_dir.join("ps-await")
-    }
-
     fn registry_dir(&self) -> PathBuf {
         self.monitor_data_dir.join("ps-registry")
     }
@@ -157,22 +150,9 @@ impl BindRegistry {
 }
 
 /// 启动时扫已有 ps-registry/*.json（应对 monitor 重启）。
+/// P3 归并：走 utils::scan_dir_jsons。
 fn scan_registry_dir(dir: &Path) -> HashMap<u32, HwndEntry> {
-    let mut out = HashMap::new();
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return out;
-    };
-    for entry in entries.flatten() {
-        let p = entry.path();
-        if p.extension().map_or(false, |e| e == "json") {
-            if let Ok(s) = std::fs::read_to_string(&p) {
-                if let Ok(e) = serde_json::from_str::<HwndEntry>(&s) {
-                    out.insert(e.ps_pid, e);
-                }
-            }
-        }
-    }
-    out
+    crate::utils::scan_dir_jsons(dir, |e: &HwndEntry| e.ps_pid)
 }
 
 fn run_await_watcher(this: Arc<BindRegistry>, await_dir: PathBuf) {
@@ -253,7 +233,7 @@ fn process_await_file(this: &BindRegistry, await_file: &Path) {
 
     // 写到 ps-registry/<PID>.json
     let registry_file = this.registry_dir().join(format!("{}.json", req.ps_pid));
-    if let Err(e) = atomic_write_json(&registry_file, &entry) {
+    if let Err(e) = crate::utils::atomic_write_json(&registry_file, &entry) {
         tracing::warn!(
             "bind: write registry {} failed: {e}",
             registry_file.display()
@@ -353,7 +333,10 @@ fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
     }
 
     let m = FOUND.with(|f| f.borrow_mut().take())?;
-    let owner_proc_start = process_creation_filetime(m.owner_pid).unwrap_or(0);
+    // FileTime → u64（HwndEntry.owner_proc_start 仍 wire u64 保兼容；0 表示拿不到）
+    let owner_proc_start = process_creation_filetime(m.owner_pid)
+        .map(|ft| ft.0)
+        .unwrap_or(0);
 
     Some(HwndEntry {
         ps_pid: req.ps_pid,
@@ -362,7 +345,7 @@ fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
         owner_proc_start,
         ps_proc_start: req.proc_start.clone(),
         title_at_bind: m.title,
-        registered_at: now_ms(),
+        registered_at: crate::utils::now_ms(),
     })
 }
 
@@ -371,9 +354,10 @@ fn find_window_for_marker(_req: &AwaitRequest) -> Option<HwndEntry> {
     None
 }
 
-/// 拿指定 PID 的 GetProcessTimes creation FILETIME（u64）。失败返 None。
+/// 拿指定 PID 的 GetProcessTimes creation FILETIME。失败返 None。
+/// 返回 `crate::utils::FileTime` 强类型（避免跟 NetTicks 混用）。
 #[cfg(windows)]
-fn process_creation_filetime(pid: u32) -> Option<u64> {
+fn process_creation_filetime(pid: u32) -> Option<crate::utils::FileTime> {
     use windows::Win32::Foundation::{CloseHandle, FILETIME};
     use windows::Win32::System::Threading::{
         GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
@@ -396,12 +380,12 @@ fn process_creation_filetime(pid: u32) -> Option<u64> {
         if !ok {
             return None;
         }
-        Some(((creation.dwHighDateTime as u64) << 32) | (creation.dwLowDateTime as u64))
+        Some(crate::utils::FileTime::from_win32(&creation))
     }
 }
 
 #[cfg(not(windows))]
-fn process_creation_filetime(_pid: u32) -> Option<u64> {
+fn process_creation_filetime(_pid: u32) -> Option<crate::utils::FileTime> {
     None
 }
 
@@ -463,7 +447,8 @@ pub fn verify_binding(binding: &SidHwndBinding) -> Result<(), String> {
             ));
         }
         if binding.owner_proc_start != 0 {
-            let cur_proc_start = process_creation_filetime(cur_owner).unwrap_or(0);
+            // 两边都是 FileTime UTC（u64 同零点）→ 直接比 .0 即可
+            let cur_proc_start = process_creation_filetime(cur_owner).map(|ft| ft.0).unwrap_or(0);
             if cur_proc_start != 0 && cur_proc_start != binding.owner_proc_start {
                 return Err("属主进程 PID 复用（procStart 不一致）".to_string());
             }
@@ -548,7 +533,7 @@ impl SidHwndCache {
             ps_pid: entry.ps_pid,
             ps_proc_start: entry.ps_proc_start,
             title_at_bind: entry.title_at_bind,
-            registered_at: now_ms(),
+            registered_at: crate::utils::now_ms(),
         };
         self.by_sid.write().insert(sid.to_string(), binding.clone());
         self.persist();
@@ -571,13 +556,8 @@ impl SidHwndCache {
 
     fn persist(&self) {
         let snapshot = self.by_sid.read().clone();
-        if let Ok(s) = serde_json::to_string_pretty(&snapshot) {
-            // 复用 atomic_write_json 的语义但简化（不带 serde 因为我们手动 stringify 了）
-            let tmp = self.file.with_extension("json.tmp");
-            if std::fs::write(&tmp, s).is_ok() {
-                let _ = std::fs::remove_file(&self.file);
-                let _ = std::fs::rename(&tmp, &self.file);
-            }
+        if let Err(e) = crate::utils::atomic_write_json(&self.file, &snapshot) {
+            tracing::warn!("sid-hwnd persist failed: {e}");
         }
     }
 }
@@ -653,25 +633,7 @@ fn cleanup_dead(this: &BindRegistry) {
     );
 }
 
-/// 原子写：先写到 .tmp，再 rename。Windows 用 std::fs::rename 在目标存在时会失败，
-/// 这里直接 remove 旧文件后再 rename（不严格原子，但失败概率低，能容忍）。
-fn atomic_write_json<T: Serialize>(path: &Path, value: &T) -> std::io::Result<()> {
-    let tmp = path.with_extension("json.tmp");
-    let s = serde_json::to_string_pretty(value)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-    std::fs::write(&tmp, s)?;
-    // Windows: rename 目标存在会 fail，先 remove
-    let _ = std::fs::remove_file(path);
-    std::fs::rename(&tmp, path)?;
-    Ok(())
-}
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
+// P3 归并：本地 atomic_write_json / now_ms 已删，全部走 crate::utils。
 
 #[cfg(test)]
 mod tests {

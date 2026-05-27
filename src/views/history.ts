@@ -16,40 +16,44 @@
  *
  * 操作：star / 重命名 / 删除 / 恢复 全部走单条 IPC，本地状态在响应回来后同步。
  *  - star/hide 改变会更新缓存中那条 entry，并同步对应 project 的 starred/hidden_count
- *  - delete 从缓存移除条目，并 -1 project.session_count
+ *  - delete 从缓存移除条目，并 -1 project.sessionCount
  */
 
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { SessionViewer } from "./session-viewer";
 import { dispatcher } from "../keybindings/registry";
+import { showActionFailureToast } from "../error-toast";
+import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
+import { formatTimestampSmart } from "../format";
 
-/** 项目级元数据，从 `list_history_projects` 拿。不含 session 内容。 */
+/** 项目级元数据，从 `list_history_projects` 拿。不含 session 内容。
+ *  P1.2：后端 wire 全 camelCase（`#[serde(rename_all = "camelCase")]`）。 */
 interface HistoryProject {
-  project_path: string;
-  project_name: string;
+  projectPath: string;
+  projectName: string;
   /** `<claude_dir>/projects/<encoded-dir>` 的完整路径，作 lazy load 的 key */
-  project_dir: string;
-  session_count: number;
-  starred_count: number;
-  hidden_count: number;
-  last_activity: number;
-  has_live: boolean;
+  projectDir: string;
+  sessionCount: number;
+  starredCount: number;
+  hiddenCount: number;
+  lastActivity: number;
+  hasLive: boolean;
 }
 
-/** 会话级详情，从 `list_history_sessions_in_project` 拿。 */
+/** 会话级详情，从 `stream_history_sessions_in_project` 流式拿。 */
 interface HistorySessionEntry {
-  session_id: string;
-  project_path: string;
-  project_name: string;
-  ai_title: string | null;
-  first_user_excerpt: string;
-  started_at: number;
-  updated_at: number;
-  jsonl_path: string;
-  is_live: boolean;
-  message_count_approx: number;
+  sessionId: string;
+  projectPath: string;
+  projectName: string;
+  aiTitle: string | null;
+  firstUserExcerpt: string;
+  startedAt: number;
+  updatedAt: number;
+  jsonlPath: string;
+  isLive: boolean;
+  messageCountApprox: number;
   starred: boolean;
-  custom_title: string | null;
+  customTitle: string | null;
   hidden: boolean;
   /** issue #12: 若是 /branch fork 出来的，记 parent session id（在本项目内才能建树） */
   forkedFromSessionId?: string;
@@ -68,21 +72,20 @@ interface SessionTreeNode {
   orphan: boolean;
 }
 
+/** 后端 `update_history_metadata` 返回值；wire 是 camelCase（带 snake_case alias）。 */
 interface EntryMetadata {
   starred: boolean;
-  custom_title: string | null;
+  customTitle: string | null;
   hidden: boolean;
-  updated_at: number;
+  updatedAt: number;
 }
 
 /** 组内会话排序模式（顶层布局固定按工作目录分组，不是 sort 选项）。 */
 type SortMode = "updated_desc" | "started_desc";
 
 export class HistoryView {
-  private container: HTMLElement;
+  /** fixed overlay 根；open 时挂 document.body，close 时 remove。 */
   private root: HTMLElement;
-  /** message-stream 的原本子节点；视图关闭时还原 */
-  private savedChildren: ChildNode[] = [];
 
   /** 项目级数据，初次 open 拉一次 */
   private projects: HistoryProject[] = [];
@@ -118,15 +121,15 @@ export class HistoryView {
    */
   private expandedForks: Set<string> = loadExpandedForks();
 
-  constructor(container: HTMLElement) {
-    this.container = container;
+  constructor() {
     this.root = this.build();
   }
 
   async open(): Promise<void> {
     if (this.isOpen) return;
-    this.savedChildren = Array.from(this.container.childNodes);
-    this.container.replaceChildren(this.root);
+    // v2.5+: 挂 document.body 作为 fixed overlay（详 .history-view CSS 注释）。
+    // 不再接管 streamRoot —— history 打开期间 TabManager 仍可正常 ensureTab。
+    document.body.appendChild(this.root);
     this.isOpen = true;
     this.searchInput.value = "";
     this.filter = "";
@@ -155,8 +158,7 @@ export class HistoryView {
   close(): void {
     if (!this.isOpen) return;
     this.closeViewer();
-    this.container.replaceChildren(...this.savedChildren);
-    this.savedChildren = [];
+    this.root.remove();
     this.isOpen = false;
     dispatcher.popOverlay(this);
   }
@@ -168,17 +170,17 @@ export class HistoryView {
     this.root.appendChild(this.viewer.element);
     this.listShell.style.display = "none";
     const displayTitle =
-      entry.custom_title ??
-      entry.ai_title ??
-      entry.first_user_excerpt ??
-      entry.session_id.slice(0, 8);
-    const proj = entry.project_name || entry.project_path || "(未知项目)";
+      entry.customTitle ??
+      entry.aiTitle ??
+      entry.firstUserExcerpt ??
+      entry.sessionId.slice(0, 8);
+    const proj = entry.projectName || entry.projectPath || "(未知项目)";
     const subtitle =
-      entry.project_path && entry.project_path !== proj
-        ? `${proj}  ·  ${entry.project_path}`
+      entry.projectPath && entry.projectPath !== proj
+        ? `${proj}  ·  ${entry.projectPath}`
         : proj;
     void this.viewer.load({
-      jsonlPath: entry.jsonl_path,
+      jsonlPath: entry.jsonlPath,
       displayTitle,
       subtitle,
     });
@@ -395,28 +397,28 @@ export class HistoryView {
 
     // 项目排序：live > starred > last_activity desc（与后端默认一致，前端不改）
     const sorted = filteredProjects.slice().sort((a, b) => {
-      if (a.has_live !== b.has_live)
-        return Number(b.has_live) - Number(a.has_live);
-      const aStar = a.starred_count > 0;
-      const bStar = b.starred_count > 0;
+      if (a.hasLive !== b.hasLive)
+        return Number(b.hasLive) - Number(a.hasLive);
+      const aStar = a.starredCount > 0;
+      const bStar = b.starredCount > 0;
       if (aStar !== bStar) return Number(bStar) - Number(aStar);
-      return b.last_activity - a.last_activity;
+      return b.lastActivity - a.lastActivity;
     });
 
     const searchActive = this.filter.length > 0;
-    const total = this.projects.reduce((n, p) => n + p.session_count, 0);
-    const filteredTotal = sorted.reduce((n, p) => n + p.session_count, 0);
+    const total = this.projects.reduce((n, p) => n + p.sessionCount, 0);
+    const filteredTotal = sorted.reduce((n, p) => n + p.sessionCount, 0);
     this.statusEl.textContent =
       `${sorted.length} 个项目 · ${filteredTotal} 个会话` +
       (filteredTotal !== total ? ` / 共 ${total}` : "");
 
     for (const proj of sorted) {
       // 搜索激活 OR 用户主动展开 → 展开（搜索激活时还要确保数据已加载）
-      const expanded = searchActive || this.expandedProjects.has(proj.project_dir);
+      const expanded = searchActive || this.expandedProjects.has(proj.projectDir);
       this.listEl.appendChild(this.buildProjectGroup(proj, expanded));
       // 搜索激活但尚未加载该项目 → 触发加载
-      if (searchActive && expanded && !this.sessionCache.has(proj.project_dir)) {
-        void this.loadProjectSessions(proj.project_dir).then(() =>
+      if (searchActive && expanded && !this.sessionCache.has(proj.projectDir)) {
+        void this.loadProjectSessions(proj.projectDir).then(() =>
           this.renderList(),
         );
       }
@@ -444,23 +446,23 @@ export class HistoryView {
 
     const name = document.createElement("span");
     name.className = "history-group-name";
-    name.textContent = proj.project_name || "(未知项目)";
+    name.textContent = proj.projectName || "(未知项目)";
     header.appendChild(name);
 
     const pathLbl = document.createElement("span");
     pathLbl.className = "history-group-path";
-    pathLbl.textContent = proj.project_path;
-    pathLbl.title = proj.project_path;
+    pathLbl.textContent = proj.projectPath;
+    pathLbl.title = proj.projectPath;
     header.appendChild(pathLbl);
 
     const stats = document.createElement("span");
     stats.className = "history-group-stats";
-    const chips: string[] = [`${proj.session_count} 个会话`];
-    if (proj.has_live) chips.push("● live");
-    if (proj.starred_count > 0) chips.push(`★ ${proj.starred_count}`);
-    if (this.showHidden && proj.hidden_count > 0)
-      chips.push(`隐藏 ${proj.hidden_count}`);
-    chips.push(formatTime(proj.last_activity));
+    const chips: string[] = [`${proj.sessionCount} 个会话`];
+    if (proj.hasLive) chips.push("● live");
+    if (proj.starredCount > 0) chips.push(`★ ${proj.starredCount}`);
+    if (this.showHidden && proj.hiddenCount > 0)
+      chips.push(`隐藏 ${proj.hiddenCount}`);
+    chips.push(formatTimestampSmart(proj.lastActivity));
     stats.textContent = chips.join(" · ");
     header.appendChild(stats);
 
@@ -473,8 +475,8 @@ export class HistoryView {
     // 渲染 body：根据缓存命中情况
     const renderBody = () => {
       body.replaceChildren();
-      const cached = this.sessionCache.get(proj.project_dir);
-      const isLoading = this.loadingProjects.has(proj.project_dir);
+      const cached = this.sessionCache.get(proj.projectDir);
+      const isLoading = this.loadingProjects.has(proj.projectDir);
       if (cached === undefined) {
         // 还没开始加载（用户没展开过）
         body.appendChild(makeStatusRow(isLoading ? "加载中…" : "点击加载…"));
@@ -511,7 +513,7 @@ export class HistoryView {
         body.appendChild(
           this.buildEntryRow(node.entry, proj, depth, node.children.length, node.orphan),
         );
-        if (node.children.length > 0 && this.expandedForks.has(node.entry.session_id)) {
+        if (node.children.length > 0 && this.expandedForks.has(node.entry.sessionId)) {
           for (let i = node.children.length - 1; i >= 0; i--) {
             stack.push({ node: node.children[i], depth: depth + 1 });
           }
@@ -526,10 +528,10 @@ export class HistoryView {
     // 跟踪展开状态 + 触发懒加载
     details.addEventListener("toggle", () => {
       if (details.open) {
-        this.expandedProjects.add(proj.project_dir);
-        if (!this.sessionCache.has(proj.project_dir)) {
+        this.expandedProjects.add(proj.projectDir);
+        if (!this.sessionCache.has(proj.projectDir)) {
           renderBody(); // 显示 "加载中…"
-          void this.loadProjectSessions(proj.project_dir).then(() => {
+          void this.loadProjectSessions(proj.projectDir).then(() => {
             // 加载完后再画一次 body
             if (details.isConnected) renderBody();
           });
@@ -537,7 +539,7 @@ export class HistoryView {
           renderBody();
         }
       } else {
-        this.expandedProjects.delete(proj.project_dir);
+        this.expandedProjects.delete(proj.projectDir);
         body.replaceChildren(); // 折叠时清空，下次展开重画
       }
     });
@@ -561,7 +563,7 @@ export class HistoryView {
    */
   private async loadAllSessions(): Promise<void> {
     if (this.loadedAll) return;
-    const pending = this.projects.filter((p) => !this.sessionCache.has(p.project_dir));
+    const pending = this.projects.filter((p) => !this.sessionCache.has(p.projectDir));
     if (pending.length === 0) {
       this.loadedAll = true;
       this.updateSearchPlaceholder();
@@ -579,7 +581,7 @@ export class HistoryView {
       while (queue.length > 0) {
         const proj = queue.shift();
         if (!proj) break;
-        await this.loadProjectSessions(proj.project_dir);
+        await this.loadProjectSessions(proj.projectDir);
         done += 1;
         this.statusEl.textContent = `加载中 ${done}/${total} …`;
         this.loadAllBtn.textContent = `加载 ${done}/${total}`;
@@ -602,7 +604,7 @@ export class HistoryView {
 
   /** "展开/收起全部" 按钮：当前若全收起 → 全展开；否则 → 全收起 */
   private async toggleAll(): Promise<void> {
-    const projectDirs = this.projects.map((p) => p.project_dir);
+    const projectDirs = this.projects.map((p) => p.projectDir);
     if (projectDirs.length === 0) return;
     const allExpanded = projectDirs.every((d) => this.expandedProjects.has(d));
     if (allExpanded) {
@@ -626,10 +628,10 @@ export class HistoryView {
   /** 项目级匹配：name / path / project_dir。命中后可能再叠 session 级匹配 */
   private matchProject(p: HistoryProject): boolean {
     if (!this.filter) return true;
-    const hay = `${p.project_name}\n${p.project_path}\n${p.project_dir}`.toLowerCase();
+    const hay = `${p.projectName}\n${p.projectPath}\n${p.projectDir}`.toLowerCase();
     if (hay.includes(this.filter)) return true;
     // project 元数据不命中时，看看缓存里的 sessions 是否有命中（仅对已加载项目）
-    const cached = this.sessionCache.get(p.project_dir);
+    const cached = this.sessionCache.get(p.projectDir);
     if (!cached) return false;
     return cached.some((e) => this.matchSession(e));
   }
@@ -638,10 +640,10 @@ export class HistoryView {
   private matchSession(e: HistorySessionEntry): boolean {
     if (!this.filter) return true;
     const hay = [
-      e.ai_title ?? "",
-      e.custom_title ?? "",
-      e.first_user_excerpt,
-      e.session_id,
+      e.aiTitle ?? "",
+      e.customTitle ?? "",
+      e.firstUserExcerpt,
+      e.sessionId,
     ]
       .join("\n")
       .toLowerCase();
@@ -670,12 +672,12 @@ export class HistoryView {
       case "started_desc":
         return (a, b) =>
           Number(b.entry.starred) - Number(a.entry.starred) ||
-          b.entry.started_at - a.entry.started_at;
+          b.entry.startedAt - a.entry.startedAt;
       case "updated_desc":
       default:
         return (a, b) =>
           Number(b.entry.starred) - Number(a.entry.starred) ||
-          b.entry.updated_at - a.entry.updated_at;
+          b.entry.updatedAt - a.entry.updatedAt;
     }
   }
 
@@ -691,7 +693,7 @@ export class HistoryView {
     const row = document.createElement("div");
     row.className = "history-entry";
     if (e.hidden) row.classList.add("is-hidden-entry");
-    if (e.is_live) row.classList.add("is-live-entry");
+    if (e.isLive) row.classList.add("is-live-entry");
     if (depth > 0) {
       row.classList.add("is-fork-child");
       row.style.setProperty("--fork-depth", String(depth));
@@ -709,17 +711,17 @@ export class HistoryView {
       const toggle = document.createElement("button");
       toggle.type = "button";
       toggle.className = "history-fork-toggle";
-      const expanded = this.expandedForks.has(e.session_id);
+      const expanded = this.expandedForks.has(e.sessionId);
       toggle.textContent = expanded ? "▼" : "▶";
       toggle.title = expanded
         ? `折叠 ${childCount} 个 fork 子会话`
         : `展开 ${childCount} 个 fork 子会话`;
       toggle.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        if (this.expandedForks.has(e.session_id)) {
-          this.expandedForks.delete(e.session_id);
+        if (this.expandedForks.has(e.sessionId)) {
+          this.expandedForks.delete(e.sessionId);
         } else {
-          this.expandedForks.add(e.session_id);
+          this.expandedForks.add(e.sessionId);
         }
         saveExpandedForks(this.expandedForks);
         this.renderList();
@@ -751,15 +753,15 @@ export class HistoryView {
       ev.stopPropagation();
       try {
         const next = await invoke<EntryMetadata>("update_history_metadata", {
-          sessionId: e.session_id,
+          sessionId: e.sessionId,
           patch: { starred: !e.starred },
         });
         const wasStarred = e.starred;
         e.starred = next.starred;
         // 同步 project 的 starred_count
-        if (!wasStarred && next.starred) proj.starred_count += 1;
+        if (!wasStarred && next.starred) proj.starredCount += 1;
         else if (wasStarred && !next.starred)
-          proj.starred_count = Math.max(0, proj.starred_count - 1);
+          proj.starredCount = Math.max(0, proj.starredCount - 1);
         this.renderList();
       } catch (err) {
         console.warn("star update failed:", err);
@@ -773,33 +775,33 @@ export class HistoryView {
     const title = document.createElement("div");
     title.className = "history-title";
     const displayTitle =
-      e.custom_title ??
-      e.ai_title ??
-      e.first_user_excerpt ??
-      e.session_id.slice(0, 8);
+      e.customTitle ??
+      e.aiTitle ??
+      e.firstUserExcerpt ??
+      e.sessionId.slice(0, 8);
     title.textContent = displayTitle;
     main.appendChild(title);
 
-    if (e.custom_title && e.ai_title && e.custom_title !== e.ai_title) {
+    if (e.customTitle && e.aiTitle && e.customTitle !== e.aiTitle) {
       const subtitle = document.createElement("div");
       subtitle.className = "history-subtitle";
-      subtitle.textContent = e.ai_title;
+      subtitle.textContent = e.aiTitle;
       main.appendChild(subtitle);
     }
 
-    if (e.first_user_excerpt && e.first_user_excerpt !== displayTitle) {
+    if (e.firstUserExcerpt && e.firstUserExcerpt !== displayTitle) {
       const excerpt = document.createElement("div");
       excerpt.className = "history-excerpt";
-      excerpt.textContent = e.first_user_excerpt;
+      excerpt.textContent = e.firstUserExcerpt;
       main.appendChild(excerpt);
     }
 
     const meta = document.createElement("div");
     meta.className = "history-meta";
     meta.append(
-      makeChip(e.is_live ? "live" : "archived", e.is_live ? "history-live" : ""),
-      makeChip(`${e.message_count_approx} 条消息`),
-      makeChip(formatTime(e.updated_at)),
+      makeChip(e.isLive ? "live" : "archived", e.isLive ? "history-live" : ""),
+      makeChip(`${e.messageCountApprox} 条消息`),
+      makeChip(formatTimestampSmart(e.updatedAt)),
     );
     main.appendChild(meta);
 
@@ -815,15 +817,15 @@ export class HistoryView {
     renameBtn.title = "重命名（中文 OK）";
     renameBtn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
-      const cur = e.custom_title ?? e.ai_title ?? "";
+      const cur = e.customTitle ?? e.aiTitle ?? "";
       const next = window.prompt("自定义标题（留空恢复默认）", cur);
       if (next === null) return;
       try {
         const updated = await invoke<EntryMetadata>("update_history_metadata", {
-          sessionId: e.session_id,
+          sessionId: e.sessionId,
           patch: { customTitle: next.trim() === "" ? null : next.trim() },
         });
-        e.custom_title = updated.custom_title;
+        e.customTitle = updated.customTitle;
         this.renderList();
       } catch (err) {
         console.warn("rename failed:", err);
@@ -841,14 +843,14 @@ export class HistoryView {
       ev.stopPropagation();
       try {
         const updated = await invoke<EntryMetadata>("update_history_metadata", {
-          sessionId: e.session_id,
+          sessionId: e.sessionId,
           patch: { hidden: !e.hidden },
         });
         const wasHidden = e.hidden;
         e.hidden = updated.hidden;
-        if (!wasHidden && updated.hidden) proj.hidden_count += 1;
+        if (!wasHidden && updated.hidden) proj.hiddenCount += 1;
         else if (wasHidden && !updated.hidden)
-          proj.hidden_count = Math.max(0, proj.hidden_count - 1);
+          proj.hiddenCount = Math.max(0, proj.hiddenCount - 1);
         this.renderList();
       } catch (err) {
         console.warn("hide toggle failed:", err);
@@ -865,11 +867,11 @@ export class HistoryView {
       ev.stopPropagation();
       try {
         await invoke("resume_history_session", {
-          sessionId: e.session_id,
-          cwd: e.project_path,
+          sessionId: e.sessionId,
+          cwd: e.projectPath,
         });
       } catch (err) {
-        window.alert(`恢复失败：${String(err)}`);
+        showActionFailureToast("恢复失败", String(err));
       }
     });
     actions.appendChild(resumeBtn);
@@ -881,38 +883,38 @@ export class HistoryView {
     deleteBtn.title = "物理删除 jsonl 文件（不可恢复）";
     deleteBtn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
-      const label = e.custom_title ?? e.ai_title ?? e.session_id.slice(0, 8);
+      const label = e.customTitle ?? e.aiTitle ?? e.sessionId.slice(0, 8);
       const ok = window.confirm(
         `物理删除会话「${label}」？\n\njsonl 文件会被直接删除，Claude Code 之后也无法 resume。\n此操作不可恢复。`,
       );
       if (!ok) return;
       try {
         await invoke("delete_history_session", {
-          sessionId: e.session_id,
-          jsonlPath: e.jsonl_path,
+          sessionId: e.sessionId,
+          jsonlPath: e.jsonlPath,
         });
         // 从缓存移除 + 同步 project counts
-        const arr = this.sessionCache.get(proj.project_dir);
+        const arr = this.sessionCache.get(proj.projectDir);
         if (arr) {
-          const idx = arr.findIndex((x) => x.session_id === e.session_id);
+          const idx = arr.findIndex((x) => x.sessionId === e.sessionId);
           if (idx >= 0) arr.splice(idx, 1);
         }
-        proj.session_count = Math.max(0, proj.session_count - 1);
+        proj.sessionCount = Math.max(0, proj.sessionCount - 1);
         if (e.starred)
-          proj.starred_count = Math.max(0, proj.starred_count - 1);
+          proj.starredCount = Math.max(0, proj.starredCount - 1);
         if (e.hidden)
-          proj.hidden_count = Math.max(0, proj.hidden_count - 1);
+          proj.hiddenCount = Math.max(0, proj.hiddenCount - 1);
         // 项目内全部删完了 → 也从 projects 列表移除
-        if (proj.session_count === 0) {
+        if (proj.sessionCount === 0) {
           this.projects = this.projects.filter(
-            (p) => p.project_dir !== proj.project_dir,
+            (p) => p.projectDir !== proj.projectDir,
           );
-          this.sessionCache.delete(proj.project_dir);
-          this.expandedProjects.delete(proj.project_dir);
+          this.sessionCache.delete(proj.projectDir);
+          this.expandedProjects.delete(proj.projectDir);
         }
         this.renderList();
       } catch (err) {
-        window.alert(`删除失败：${String(err)}`);
+        showActionFailureToast("删除失败", String(err));
       }
     });
     actions.appendChild(deleteBtn);
@@ -939,8 +941,6 @@ function makeStatusRow(text: string): HTMLElement {
 
 // === issue #12: fork 树构建 + 持久化 ===
 
-const LS_EXPANDED_FORKS = "cc-monitor.history.expanded-forks";
-
 /**
  * 按 forkedFromSessionId 在项目内建 tree。
  *
@@ -952,7 +952,7 @@ const LS_EXPANDED_FORKS = "cc-monitor.history.expanded-forks";
 function buildSessionTree(entries: HistorySessionEntry[]): SessionTreeNode[] {
   const byId = new Map<string, SessionTreeNode>();
   for (const e of entries) {
-    byId.set(e.session_id, { entry: e, children: [], orphan: false });
+    byId.set(e.sessionId, { entry: e, children: [], orphan: false });
   }
   const roots: SessionTreeNode[] = [];
   for (const node of byId.values()) {
@@ -972,45 +972,12 @@ function buildSessionTree(entries: HistorySessionEntry[]): SessionTreeNode[] {
 }
 
 function loadExpandedForks(): Set<string> {
-  try {
-    const raw = localStorage.getItem(LS_EXPANDED_FORKS);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw);
-    if (Array.isArray(arr)) return new Set(arr.filter((x) => typeof x === "string"));
-  } catch (e) {
-    console.warn("[history] loadExpandedForks failed:", e);
-  }
+  const arr = safeGetJson<string[]>(LS_KEYS.historyExpandedForks);
+  if (Array.isArray(arr)) return new Set(arr.filter((x) => typeof x === "string"));
   return new Set();
 }
 
 function saveExpandedForks(s: Set<string>): void {
-  try {
-    localStorage.setItem(LS_EXPANDED_FORKS, JSON.stringify(Array.from(s)));
-  } catch (e) {
-    console.warn("[history] saveExpandedForks failed:", e);
-  }
+  safeSetJson(LS_KEYS.historyExpandedForks, Array.from(s));
 }
 
-function formatTime(ms: number): string {
-  if (!ms) return "—";
-  try {
-    const d = new Date(ms);
-    const today = new Date();
-    const sameDay =
-      d.getFullYear() === today.getFullYear() &&
-      d.getMonth() === today.getMonth() &&
-      d.getDate() === today.getDate();
-    if (sameDay) {
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    }
-    return d.toLocaleString([], {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return String(ms);
-  }
-}
