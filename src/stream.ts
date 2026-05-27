@@ -66,6 +66,38 @@ export class MessageStream {
   }
 
   /**
+   * P5.2 B 重构：RecordTimeline 按 seq binary insert 时用。`anchor` 是要插入位置
+   * 的下一个兄弟节点；null 时等价于 append 到末尾。
+   *
+   * **同步 snap**：跟 append/prependFragmentAtTop 一样，stickToBottom 时立刻贴底
+   *（不依赖 ResizeObserver 异步窗口，否则启动 chunked replay 滚动条会停在中间）。
+   *
+   * **滚动位置补偿**：anchor 不为 null（插入中间或顶部）且用户向上滚到老内容时
+   * （stickToBottom=false）补偿 scrollTop —— 已有 viewport 内容被新插入推下去时
+   * 保持视觉位置不变（同 prependFragmentAtTop 语义）。
+   */
+  insertNode(node: HTMLElement, anchor: HTMLElement | null): void {
+    const beforeHeight = this.contentEl.scrollHeight;
+    const beforeScrollTop = this.scrollEl.scrollTop;
+
+    if (anchor) {
+      this.contentEl.insertBefore(node, anchor);
+    } else {
+      this.contentEl.appendChild(node);
+    }
+
+    if (this.stickToBottom) {
+      this.snap();
+    } else if (anchor) {
+      const afterHeight = this.contentEl.scrollHeight;
+      const delta = afterHeight - beforeHeight;
+      if (delta > 0) {
+        this.scrollEl.scrollTop = beforeScrollTop + delta;
+      }
+    }
+  }
+
+  /**
    * v2.3.1 (issue #1)：把 DocumentFragment 一次性 prepend 到 stream 顶部。
    * 专门给 replay 切块 prepend 用 —— 每个 older chunk 都贴到当前 contentEl 顶部，
    * 多 chunk 调用后 DOM 顺序自然是 [最老 chunk, 次老 chunk, ..., chunk 0 head]。

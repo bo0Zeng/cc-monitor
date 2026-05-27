@@ -143,7 +143,7 @@ $env:RUST_LOG = "debug"; powershell -NoProfile -File scripts\run.ps1 dev
 $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 ```
 
-生产 build 没 stdout（`windows_subsystem = "windows"`）→ 看不到 tracing 输出。issue #4（GUI log 文件）会解决这个。
+生产 build 没 stdout（`windows_subsystem = "windows"`）→ 看不到 tracing 输出。**已在 v2.0.0+ 实现**：tracing 输出到 `<monitor_data_dir>/logs/monitor.YYYY-MM-DD.log` 文件 + 设置面板 → 诊断区可调日志级别 + ERROR 级 toast 反馈。详 `src-tauri/src/logging.rs` + 设置面板。
 
 ---
 

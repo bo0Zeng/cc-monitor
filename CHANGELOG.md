@@ -8,6 +8,73 @@
 
 ---
 
+## [Unreleased] — v2.6.0 B 重构
+
+### 修复 — 启动消息乱序（B 重构核心目标）
+
+**症状**：v2.5 用户反馈"刚启动软件时第一个 tab 出现消息乱序；F5 刷新后顺序正确"。
+
+**根因**：v2.3 引入 chunked emit + v2.4 加 PayloadSource batch/live 分流 + v2.5 加 replaying flag + catch-up tail，累积 5 个互相耦合的状态字段（PayloadSource / inPrependMode / pendingPrependFragment / pendingToolGroup / chunkIndex / EventReplay.replaying）。每对状态机相位差都是潜在 bug，5 个具体相位 bug 已知。
+
+**修法**：B 重构——把"恢复顺序"从"多 flag 协调"换成"单 seq 字段排序"：
+- 后端 watcher 给每行分配 per-file 单调 `seq: u64`，写进 `JsonlLinePayload` wire
+- 前端新模块 `RecordTimeline` 按 seq binary search 插入 DOM
+- tool-group 合并改后处理算法（看 timeline 左邻居），删 pendingToolGroup 状态字段
+- EventReplay 删 replaying flag + catch-up tail——chunked emit 期间 watcher 真新行直接 emit，前端按 seq 自动放对位置
+
+**回归性**：5 个状态字段全删；83 cargo test passed；任何 emit 顺序乱序到达都能自动恢复（不再担心第二批 batch / catch-up live 顺序问题）。
+
+详 [外部 v2.6-b-refactor-notes.md](../doc/v2.6-b-refactor-notes.md) + DECISIONS.md ADR-021..024（仓库外）。
+
+### 修复 — HistoryView 期间新 session 显示空白
+
+**症状**：打开历史浏览器（Ctrl+H）期间，到一个新终端跑 `claude`，关掉历史后新 session 的 Tab 显示空白不可切换。
+
+**根因**：HistoryView.open() 用 `container.replaceChildren(this.root)` 接管 streamRoot；期间 ensureTab 把新 streamEl `appendChild` 到 streamRoot 成 sibling；close 时 `replaceChildren(...savedChildren)` 只恢复打开时的那批 children，**新建的 streamEl 被丢弃**。
+
+**修法**：HistoryView 改 `position: fixed; inset: 0; z-index: 150` 自挂 `document.body` 作 overlay；不再接管 streamRoot。
+
+**回归性**：打开 history 期间能正常 ensureTab；关 history 后切到新 tab 内容正确。
+
+### 修复 — PowerShell profile 安装把 CRLF 改成 LF
+
+**症状**：用户的 PowerShell profile 是 Windows 默认 CRLF 行尾（notepad/VSCode/git autocrlf=true 三大来源），cc-monitor [安装] 后整文件被改成 LF；下次 notepad 打开会被警告 / git diff 整文件标红 / 团队共享 profile 触发行尾战争。
+
+**根因**：`profile_installer.rs::replace_or_append_block` / `strip_block` 用 `existing.lines().join("\n")` —— `str::lines()` 同时吃 `\n` 和 `\r\n` 终止符，`.join("\n")` 只用 LF 重组。长度校验也检不出（两边都已 LF）。
+
+**修法**：用 `detect_eol(existing)` 探测原 EOL 风格 + `split_inclusive('\n')` 保留终止符 + 新 block 按 detected EOL 重写。补 3 个 CRLF 单测守护。
+
+**回归性**：用户 CRLF profile 安装后仍 CRLF；LF profile 仍 LF；新插入的 ccm BEGIN/END 块跟随 detected EOL。
+
+### 修复 — 14 处 alert 改 toast
+
+**症状**：INVARIANT § 12 早就规定"关键失败必须 toast 不能 alert"，但 14 处生产代码仍在用 `alert(...)` —— 用户没看清就关掉，以为按钮坏了。
+
+**修法**：`error-toast.ts` export `showActionFailureToast(headline, body, opts?)`；改 views/history.ts / settings/cc_integration.ts / settings/diagnostics-section.ts / settings/data-section.ts 共 14 处 alert → toast。tabs.ts 拉前失败的 `#bring-terminal-toast` 单例也改用统一 toast stack。
+
+### 修复 — ESC 中断 regex 误吞合法消息
+
+**症状**：cards/index.ts:835 用 `/^\[Request interrupted by user[^\]]*\]\s*$/gim` 剥 CLI 中断标记；`gim` 中的 `m` flag 让 `^...$` 锚到每一行 —— 多行 user 消息里夹一行符合该模式会被静默删除。
+
+**修法**：去掉 `gim` flag，让 `^...$` 只匹配整字符串。CLI 实际把中断标记作为整条 user message 的唯一文本写入，整文本 trim 完正好是该模式才归零。
+
+### 修复 — bring_monitor_to_front 同步阻塞 IPC 派发
+
+**症状**：v2.4.0 加 `bring_monitor_to_front` IPC 是 `fn` 非 async，违反 INVARIANT § 10。Win32 同步调用（keybd_event / AttachThreadInput / SetForegroundWindow 等）数十 ms 阻塞期间其他 IPC（拉前 / 切设置 / 切 Tab）全部排队。
+
+**修法**：改 `async fn` + `tokio::task::spawn_blocking` 隔离 Win32 调用；HWND 走 `as isize` 跨 windows crate 版本（INVARIANT § 19）。
+
+### 内部清理（不影响用户）
+
+- 删 8 处死代码 + 2 死 IPC（`read_session_jsonl` / `list_history_sessions_in_project`，仅留 stream 版）
+- 加 `utils.rs` 新 helper：NetTicks/FileTime newtype（procStart 单位隔离）+ scan_dir_jsons 泛型 + atomic_write_json（统一 ReplaceFileW）+ parse_iso8601_ms/now_ms/systime_to_ms（归并散落实现）
+- 加 `local-storage.ts`（LS_KEYS 集中 + safeGet/safeSet）+ `format.ts`（formatTime 合并）
+- HistorySessionEntry/HistoryProject 全 camelCase + contract test 守护
+- release.yml 加版本号一致性 guard（防 v2.4.2 漂移事故复发）
+- 84 + 4 = 83 cargo test passed（删 1 旧 catch-up 测试 + 加 4 新切块/utils 测试）
+
+---
+
 ## [2.5.0] — 2026-05-26
 
 ### 新功能 — 全部快捷键可自定义（issue #5）

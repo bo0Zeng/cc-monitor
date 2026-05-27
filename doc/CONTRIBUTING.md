@@ -238,7 +238,7 @@ if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
 
 3. **更新文档** [`../README.md`](../README.md) 快捷键表加一行。
 
-4. **将来**：F5 [issue #5](https://github.com/bo0Zeng/cc-monitor/issues/5) 实现"所有快捷键可自定义"后，所有 chord 走 `keybindings.ts` dispatch table，不再硬编码到 main.ts。
+4. **已实现**：v2.5 issue #5 落地，所有 chord 走 `src/keybindings/` dispatch table（actions.ts + dispatcher）。新加 action 应该加到 actions.ts 而非 main.ts keydown handler；本节描述的"直接在 main.ts 加 case" 已过时，仅作背景参考。
 
 ### 2.6 添加新 Tauri capability permission
 

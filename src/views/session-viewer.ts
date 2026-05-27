@@ -11,21 +11,18 @@
 
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { MessageStream } from "../stream";
-import {
-  renderMessage,
-  buildToolGroup,
-  addToToolGroup,
-  type JsonlRecord,
-  type RenderContext,
-  type ToolGroup,
-} from "../cards";
+import { type JsonlRecord, type RenderContext } from "../cards";
 import { BranchFolder } from "../branch-fold";
-import { extractBranchRecord, type BranchRecord } from "../branching";
+import { type BranchRecord } from "../branching";
+import { RecordTimeline } from "../record-timeline";
+import { renderStreamRecord, type StreamSink } from "../render-stream-record";
 
 interface JsonlLinePayload {
   session_id: string;
   cwd: string | null;
   path: string;
+  /** P5.1：per-file 单调 seq。SessionViewer 一次性 load 时按 seq 排到 timeline。 */
+  seq: number;
   message: JsonlRecord;
 }
 
@@ -82,55 +79,24 @@ export class SessionViewer {
       parentPath: opts.jsonlPath,
       toolUseNames: new Map(),
       toolUseElements: new Map(),
-      // P4：pendingToolResults 改必填。SessionViewer 一次性 load 全文件，
-      // 理论上 tool_use 总在 tool_result 之前到（jsonl 顺序）；但 reconcile
-      // 至少要保证 fallback 路径不会成为永久独立卡。
       pendingToolResults: new Map(),
     };
-    let pendingToolGroup: ToolGroup | null = null;
+    // P5.2 B 重构：SessionViewer 改用 renderStreamRecord（跟 TabManager 共享管线）。
+    // BranchFolder 延后 — 流式期间不算，全部到齐后 setRecordsAndRebuild 一次（O(N²)→O(N)）。
+    const timeline = new RecordTimeline(this.stream);
     const branchRecords: BranchRecord[] = [];
+    const sink: StreamSink = {
+      timeline,
+      onBranchRecord: (rec) => branchRecords.push(rec),
+      // SessionViewer 不更新 tab 标题、不触发 user-active、无 batch lazy
+    };
     let totalRecords = 0;
 
     const channel = new Channel<JsonlLinePayload[]>();
     channel.onmessage = (chunk) => {
       if (!this.stream) return; // viewer 已 dispose
       for (const p of chunk) {
-        const result = renderMessage(p.message, ctx);
-
-        // 收集 branch record（无视 render 结果）—— 链完整性优先
-        const branchRec = extractBranchRecord(p.message);
-        if (branchRec) branchRecords.push(branchRec);
-
-        switch (result.kind) {
-          case "skip":
-            continue;
-          case "card":
-            pendingToolGroup = null;
-            if (p.message.type === "user" || p.message.type === "assistant") {
-              result.element.setAttribute("data-uuid", p.message.uuid);
-              if (p.message.parentUuid) {
-                result.element.setAttribute("data-parent-uuid", p.message.parentUuid);
-              }
-            }
-            this.stream.append(result.element);
-            break;
-          case "tool-group":
-            if (pendingToolGroup) {
-              addToToolGroup(pendingToolGroup, result.units);
-            } else {
-              const group = buildToolGroup(result.timestamp);
-              addToToolGroup(group, result.units);
-              pendingToolGroup = group;
-              if (p.message.type === "user" || p.message.type === "assistant") {
-                group.root.setAttribute("data-uuid", p.message.uuid);
-                if (p.message.parentUuid) {
-                  group.root.setAttribute("data-parent-uuid", p.message.parentUuid);
-                }
-              }
-              this.stream.append(group.root);
-            }
-            break;
-        }
+        renderStreamRecord(p, ctx, sink);
       }
       totalRecords += chunk.length;
       this.statusEl.textContent = `加载中 · 已 ${totalRecords} 条…`;

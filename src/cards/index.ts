@@ -119,6 +119,13 @@ export interface RenderContext {
     string,
     { block: Extract<ContentBlock, { type: "tool_result" }>; element: HTMLElement }
   >;
+  /**
+   * P5.5 B 重构：lazy hljs 模式（启动 batch 期间用，避免 N 个代码块同步阻塞主线程）。
+   * caller（TabManager）在 inBatch 时设 true；SessionViewer / Subagent 默认 false。
+   * 传到 renderMarkdown opts.lazy 决定代码块是否走占位 + IntersectionObserver。
+   * 默认 false（不传或 undefined 都视作 eager）。
+   */
+  lazy?: boolean;
 }
 
 export type RenderResult =
@@ -299,7 +306,7 @@ function renderBlock(
     case "text": {
       const div = document.createElement("div");
       div.className = "block-text";
-      div.innerHTML = renderMarkdown(block.text);
+      div.innerHTML = renderMarkdown(block.text, { lazy: ctx.lazy });
       return div;
     }
     case "thinking": {
@@ -309,7 +316,7 @@ function renderBlock(
         () => {
           const body = document.createElement("div");
           body.className = "block-body block-body-md";
-          body.innerHTML = renderMarkdown(block.thinking);
+          body.innerHTML = renderMarkdown(block.thinking, { lazy: ctx.lazy });
           return body;
         },
       );

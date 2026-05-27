@@ -137,6 +137,8 @@ pub fn run() {
                                     session_id: line.session_id.clone(),
                                     cwd,
                                     path: line.path.to_string_lossy().into_owned(),
+                                    // P5.1：watcher 给每行单调编号；前端按 seq 排到 timeline
+                                    seq: line.seq,
                                     message: record,
                                 });
                             }
