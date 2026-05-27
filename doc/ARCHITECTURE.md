@@ -35,7 +35,8 @@
    │       │ (同步同线程调用)                       │                   │
    │       ▼ active filter                          ▼                   │
    │   session_map.rs (PID 探活)        event_replay::on_line_batch     │
-   │       │                                       │  按大小分流：       │
+   │       │                                       │  按大小分流（每行带 │
+   │       │                                       │  watcher 给的 seq）│
    │       │                                       │  小→jsonl-line     │
    │       │                                       │  大→jsonl-batch    │
    │       ▼                                       ▼   (切块 chunk_i/N) │
@@ -52,28 +53,36 @@
    ┌──────────────────────────────────────────────────────────────────┐
    │                  TypeScript 前端 (WebView2)                       │
    │                                                                    │
-   │   events.ts (订阅 + 批量调度 + source=batch|live 分流)             │
+   │   events.ts (订阅 + 批量调度 + onBatchStart/End 哨兵)               │
    │       │                                                            │
    │       ▼                                                            │
    │   tabs.ts (TabManager: switchTo manual/auto, userActive, override) │
    │       │                                                            │
    │       ▼                                                            │
-   │   stream.ts (MessageStream: append / prependFragmentAtTop)         │
+   │   render-stream-record.ts ⭐ v2.6 三 caller 共享渲染管线 +          │
+   │       │                  tool-group 后处理合并（看 timeline 左邻居）│
+   │       ▼                                                            │
+   │   record-timeline.ts ⭐ v2.6 按 seq binary insert + DOM insertBefore│
    │       │                                                            │
    │       ▼                                                            │
-   │   render.ts (marked + KaTeX + hljs + DOMPurify) ─► DOM             │
+   │   stream.ts (MessageStream: insertNode 同步 stickToBottom)         │
+   │       │                                                            │
+   │       ▼                                                            │
+   │   render.ts (marked + KaTeX + hljs + DOMPurify; opts.lazy 参数)    │
+   │       │                                                            │
+   │       └─► DOM                                                      │
    └──────────────────────────────────────────────────────────────────┘
 ```
 
 **关键路径**：
 
-- **watcher batch 同步**（v2.4 重构）：`spawn_watcher` 接 `on_batch: BatchHandler` 回调；一次 `process_file` 把读到的所有行收集成 `Vec<JsonlLine>` **同步**调 `on_batch`。**没有 mpsc 中间层、没有 async drain task**。lib.rs 里 closure 在 watcher 线程内 parse + `replay.on_line_batch(handle, payloads)`，history 落盘和 emit 都在该线程同步发生。这条改动是 v2.4 修「首次启动消息乱序」（之前异步 drain 跟 frontend-ready 触发 replay snapshot 是竞态）的根因解。
-- **大小分流 emit**（v2.4.2）：`event_replay::on_line_batch` 按 batch 大小分流：
+- **watcher batch 同步 + seq 分配**（v2.4 重构 + v2.6 加 seq）：`spawn_watcher` 接 `on_batch: BatchHandler` 回调；一次 `process_file` 把读到的所有行收集成 `Vec<JsonlLine>` **同步**调 `on_batch`，**没有 mpsc 中间层、没有 async drain task**。lib.rs 里 closure 在 watcher 线程内 parse + `replay.on_line_batch(handle, payloads)`。v2.6 加 `seqs: HashMap<PathBuf, u64>` 给每行分配 per-file 单调 seq → `JsonlLinePayload.seq` 透传到前端，**前端 RecordTimeline 按 seq 排序，后端 emit 顺序不再影响视觉**。
+- **大小分流 emit**（v2.4.2，v2.6 chunked emit 简化）：`event_replay::on_line_batch` 按 batch 大小分流：
   - `payloads.len() < 50`（用户日常敲键 1~N 行）→ 逐条 `emit("jsonl-line")` live 路径
-  - `payloads.len() >= 50`（用户跑 `claude --resume` 灌历史 / 大量追加）→ 复用 `build_chunks` 切块走 `emit("jsonl-batch")`，前端自动进入 batch 模式（lazy hljs / chunked prepend），跟启动 replay 一致的渲染管线
-- **启动重放等扫完**（v2.4 修首次启动乱序）：watcher 线程同步全量扫完成后才置 `initial_scan_done: AtomicBool = true`。frontend-ready listener 在 async task 里 spin-wait（10ms poll，10s timeout）等这个 flag → `replay_and_mark_ready` 持锁 → 切块 `emit("jsonl-batch")` 整个 history（head 块 append 到底，older 块倒序 prepend）→ mark ready。**保证 snapshot 时 history 完整**，无历史漏到 live emit 路径错位。
-- **前端 source 分流**（v2.4 修副因）：events.ts `PayloadSource = "batch" | "live"`。`jsonl-line` 入队标 source=live，`jsonl-batch` 拆出来标 source=batch。tabs.ts `appendCardOrBuffer(tab, el, source)`：**source=batch + inPrependMode** 才走 prepend fragment buffer（chunked replay 历史 prepend 到顶部）；**source=live 永远 `stream.append`** 贴底（用户实时敲的新行不会被 inPrependMode 错误捕获）。
-- **active session 自动同步**（v2.4 issue #2）：tabs.ts `onLine` 在 `result.kind === "card" && message.type === "user" && source === "live"` 时调 `userActive(sid)`。check `autoFollowUserActive` toggle + 5s `manualOverrideUntil` → `switchTo(sid, "auto")` + 可选 `invoke("bring_monitor_to_front")`。判别复用前端 `cards/index.ts::renderMessage` 既有逻辑——`kind === "card"` 已经过滤了 tool_result 回灌（走 tool-group）、CLI noise（走 skip 含 `[Request interrupted by user...]`）。
+  - `payloads.len() >= 50`（用户跑 `claude --resume` 灌历史 / 大量追加）→ 切块走 `emit("jsonl-batch")`，前端进入 batch 模式（lazy hljs）。v2.6 简化：删 head/older 区分，统一按 `CHUNK_SIZE=600` 末块先发，前端按 seq 自动排到正确位置
+- **启动重放等扫完**（v2.4 修首次启动乱序）：watcher 线程同步全量扫完成后才置 `initial_scan_done: AtomicBool = true`。frontend-ready listener 在 async task 里 spin-wait（10ms poll，10s timeout）等这个 flag → `replay_and_mark_ready` 切块 `emit("jsonl-batch")` 整个 history → mark ready。v2.6 简化：**删了 `replaying` flag + catch-up tail 路径**，chunked emit 期间 watcher 真新行直接走 jsonl-line live emit，前端 timeline 按 seq 自动放到正确位置（详 v2.6-b-refactor-notes）
+- **前端按 seq 排序**（v2.6 B 重构）：`RecordTimeline.insert(seq, element)` 用 binary search 找位置 → `stream.insertNode(element, anchor)` 同步处理 stickToBottom 贴底。**消除了** PayloadSource batch/live / inPrependMode / pendingPrependFragment 等 5 个 flag。tool-group 合并改后处理算法：插入时 `timeline.peekPrev(seq)` 看左邻居，是 tool-group 就 `addToToolGroup`，否则建新 group 入 timeline（详 render-stream-record.ts）
+- **active session 自动同步**（v2.4 issue #2）：tabs.ts `onLine` 透传 payload 给 `renderStreamRecord`；sink.onRealUserInput 仅在 `result.kind === "card" && message.type === "user"` 触发（v2.6 删 source 参数后用 message.type 判定）→ TabManager.userActive 检查 `autoFollowUserActive` toggle + 5s `manualOverrideUntil` → `switchTo(sid, "auto")` + 可选 `invoke("bring_monitor_to_front")`
 - **cc 集成绑定**：PS 跑 `__ccm_bind` 写 `ps-await/<PID>.json` + 改窗口标题为 marker → `bind.rs` 监听 + EnumWindows → 写 `ps-registry/<PID>.json` + 删 await → PS 检测到删除恢复标题
 - **历史浏览（流式）**：v2.2 起，点 Ctrl+H → `list_history_projects`（async + spawn_blocking，不阻塞 IPC）→ 用户展开项目 → 前端创建 `Channel<HistorySessionEntry>` 传给 `stream_history_sessions_in_project` → 后端边解析 jsonl 元数据边 `on_entry.send()` → 前端 onmessage rAF 节流增量插入到 fork 树。点单 session → `Channel<Vec<JsonlLinePayload>>` + `stream_read_session_jsonl` 100 行一 chunk emit → session-viewer 边收边 `renderMessage`，几百毫秒看到首屏
 - **Task 面板（v2.3 issue #11）**：`tasks.rs::spawn_task_watcher` 用 notify-debouncer-mini 监听 `<claude_dir>/tasks/` 递归 → 文件变更（CLI 跑 `TaskCreate` / `TaskUpdate` / `TaskStop`）→ debounce 100ms + 按 sid dedup → 重读整个 `tasks/<sid>/` 目录（跳过 `.lock` / `.highwatermark` / 非数字命名）→ emit `task-update` 携完整 task 列表。前端 `tasks-panel.ts` 按 sid 路由到对应 Tab 的 sticky 折叠卡。Tab 创建时另调 `get_session_tasks` IPC 拿初始快照（async + spawn_blocking）。0 task 时 panel 隐藏
@@ -104,13 +113,17 @@ src-tauri/src/
 ```
 src/
 ├── 入口        main.ts       快捷键、HMR full reload、behavior 初始化
-├── 事件        events.ts     订阅 + 批量调度 + PayloadSource batch/live 分流
+├── 事件        events.ts     订阅 + 批量调度 + onBatchStart/End 哨兵（v2.6 删 source/onChunk）
 ├── 状态        tabs.ts       TabManager 状态机 + switchTo manual/auto + userActive
-│              stream.ts     MessageStream（append / prependFragmentAtTop）
-├── 渲染        render.ts     marked + KaTeX + hljs + DOMPurify + lazy hljs 模式
+│              stream.ts     MessageStream（insertNode 同步 stickToBottom）
+├── 渲染        render.ts     marked + KaTeX + hljs + DOMPurify（v2.6 opts.lazy 参数）
 │              cards/        折叠卡组件（slash / compact / subagent / tool）
 │                            cards/index.ts::stripInternalNoise 剥 CLI 注入 + ESC 中断
-├── 视图        views/history.ts  历史浏览器
+│ ⭐ v2.6 新模块  record-timeline.ts  按 seq binary insert + DOM 挂载，消除 inPrependMode
+│              render-stream-record.ts  三 caller 共享渲染管线 + tool-group 后处理合并
+│              local-storage.ts  LS_KEYS 集中 + safeGet/safeSet
+│              format.ts  formatTimestampShort/Smart + formatBytes 合并
+├── 视图        views/history.ts  历史浏览器（v2.6 fixed overlay 不替换 streamRoot）
 │              views/session-viewer.ts  只读会话查看器
 │              tasks-panel.ts  v2.3 Tab stream 顶部 sticky task 折叠卡
 ├── 设置        settings/panel.ts   总控 + onBehaviorChange 回调
@@ -132,7 +145,7 @@ src/
 
 | State 类型 | 持有者 | 喂给的 IPC 命令 |
 |---|---|---|
-| `Arc<SessionMap>` | setup 闭包 + `session-changes-emitter` 线程 + active-filter 闭包 + `app.manage` | `list_history_projects` / `list_history_sessions_in_project` |
+| `Arc<SessionMap>` | setup 闭包 + `session-changes-emitter` 线程 + active-filter 闭包 + `app.manage` | `list_history_projects` / `stream_history_sessions_in_project` |
 | `Arc<EventReplay>` | setup 闭包 + frontend-ready listener + jsonl async pump + `app.manage` | `forget_session` |
 | `Arc<BindRegistry>` | setup 闭包 + `bind-await-watcher` 线程 + `bind-heartbeat` 线程 + `session-changes-emitter` 线程 + `app.manage` | `cc_integration_status` |
 | `Arc<SidHwndCache>` | setup 闭包 + `session-changes-emitter` 线程 + `app.manage` | `bring_terminal_to_front` |

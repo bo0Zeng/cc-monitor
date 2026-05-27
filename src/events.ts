@@ -6,6 +6,12 @@ export interface JsonlLinePayload {
   session_id: string;
   cwd: string | null;
   path: string;
+  /**
+   * P5.1：per-file 单调递增的行号（后端 watcher 给）。
+   * 前端 RecordTimeline 按 seq 排序到 DOM —— 后端 emit 顺序不影响视觉。
+   * 同 session 内单调；跨 session 不可比；不跨 monitor 进程持久。
+   */
+  seq: number;
   message: JsonlRecord;
 }
 
@@ -19,54 +25,28 @@ export interface TasksUpdatePayload {
   tasks: TaskEntry[];
 }
 
-/**
- * v2.3.1 (issue #1): chunk metadata 用来路由 prepend vs append。
- * - `chunkIndex === 0`：head 块 → onLine 走 append（首块定义 anchor）
- * - `chunkIndex > 0`：older 块 → onLine 走 prepend (insertBefore firstChunkAnchor)
- */
-export interface BatchChunkMeta {
-  chunkIndex: number;
-  chunkTotal: number;
-}
-
-/**
- * v2.4 (修首次启动乱序)：onLine 收到 payload 时同时告知来源。
- * - `"batch"`：来自 `jsonl-batch` (chunked replay 历史) → TabManager 按
- *   inPrependMode 决定 append 还是 buffer 到 prepend fragment
- * - `"live"`：来自 `jsonl-line` (用户在终端敲的真新行) → TabManager 永远
- *   append 到 stream 底部，**绕开** prepend buffer 避免被错误塞到顶部
- *
- * 旧 bug：events.ts 把两种 payload 都标 `kind: "payload"` 无法区分，tabs.ts
- * 的 inPrependMode 全局生效 → 加载期间用户敲的新行被错误 prepend。
- */
-export type PayloadSource = "batch" | "live";
-
 export interface EventHandlers {
-  onLine: (e: JsonlLinePayload, source: PayloadSource) => void;
+  /**
+   * P5.2 B 重构：onLine 不再带 source 参数。
+   * payload 携带 seq，前端 RecordTimeline 按 seq 排到 DOM，emit 顺序不影响视觉。
+   */
+  onLine: (e: JsonlLinePayload) => void;
   onSessionEnded: (sessionId: string) => void;
   /**
-   * v2.2 (issue #12 性能): 启动重放（jsonl-batch 事件）开始时调一次。
-   * TabManager 在此把所有 tab 的 BranchFolder 切到 batch 模式（recordAdded 只 push 不算）。
+   * v2.2 (issue #12 性能): 启动重放（jsonl-batch 第一块）到达时调一次。
+   * TabManager 在此把所有 tab 的 BranchFolder 切到 batch 模式 + lazy hljs 开关。
+   * **整个 replay 期间只调一次**（多块在 300ms grace 续期下被视作连续 batch）。
    *
-   * v2.3.1 (issue #1)：传 chunk 元数据。chunkIndex === 0 = head 块，>0 = older 块。
-   * TabManager 据此切换 append vs prepend 渲染模式。**整个 replay 期间只调一次**
-   * （多块在 300ms grace 续期下被视作连续 batch）。
+   * P5.2 B 重构：删了 meta 参数 — 前端不再依赖 head/older 区分（timeline 按 seq 排）。
    */
-  onBatchStart?: (meta?: BatchChunkMeta) => void;
+  onBatchStart?: () => void;
   /**
    * v2.2: 同一批次的所有 record 都处理完后调一次。
-   * TabManager 在此对每个 tab 的 BranchFolder 调 flushPending() 一次性算主线 + rebuild，
-   * 然后切回 live 模式。
+   * TabManager 调 flushPending 算主线 + rebuild，切回 live 模式。
    *
-   * v2.3.1：在多块切片场景下，**只在 300ms grace 真正触发时调一次**（即所有块都
-   * 到齐 + 300ms 无新 payload），保证 BranchFolder 全 records 都到了再 fold。
+   * v2.3.1：在多块切片场景下，**只在 300ms grace 真正触发时调一次**。
    */
   onBatchEnd?: () => void;
-  /**
-   * v2.3.1 (issue #1)：每收到一个新 chunk 时调（除 chunk 0 外）。
-   * TabManager 据此知道"现在开始处理 older 块，要 prepend"。
-   */
-  onChunk?: (meta: BatchChunkMeta) => void;
   /**
    * v2.3.0 issue #11: 后端 task watcher 监听到 <claude_dir>/tasks/<sid>/ 变更，
    * 重读整目录后 emit。前端按 sid 路由到对应 Tab 的 tasksPanel。
@@ -77,9 +57,8 @@ export interface EventHandlers {
 
 /** queue 中的不同事件类型，drain 按 kind 派发 */
 type QueueItem =
-  | { kind: "payload"; source: PayloadSource; payload: JsonlLinePayload }
-  | { kind: "batch-start"; meta: BatchChunkMeta }
-  | { kind: "chunk"; meta: BatchChunkMeta }
+  | { kind: "payload"; payload: JsonlLinePayload }
+  | { kind: "batch-start" }
   | { kind: "batch-end" };
 
 /**
@@ -141,23 +120,19 @@ export function bindEvents(handlers: EventHandlers): void {
     }, BATCH_END_GRACE_MS);
   };
 
-  const enterBatchMode = (meta: BatchChunkMeta): void => {
+  const enterBatchMode = (): void => {
     if (endTimer !== null) {
       clearTimeout(endTimer);
       endTimer = null;
     }
     if (inBatchMode) {
-      // 已在 batch 模式收到新 chunk → 不重入 onBatchStart，但 chunk 路由给 TabManager
-      try {
-        handlers.onChunk?.(meta);
-      } catch (e) {
-        console.error("[events] onChunk threw:", e);
-      }
+      // 已在 batch 模式收到下一块 batch-start —— P5.2 B 重构后无 onChunk 概念，
+      // 直接 ignore（lazy hljs / BranchFolder.batchMode 仍开着，无需重入）。
       return;
     }
     inBatchMode = true;
     try {
-      handlers.onBatchStart?.(meta);
+      handlers.onBatchStart?.();
     } catch (e) {
       console.error("[events] onBatchStart threw:", e);
     }
@@ -174,16 +149,9 @@ export function bindEvents(handlers: EventHandlers): void {
           perf.firstPayloadDrained = performance.now();
         }
         payloadCount += 1;
-        handlers.onLine(item.payload, item.source);
+        handlers.onLine(item.payload);
       } else if (item.kind === "batch-start") {
-        enterBatchMode(item.meta);
-      } else if (item.kind === "chunk") {
-        // 切到新 chunk（仅在已 batch 模式时触发，让 TabManager 改 prepend 模式）
-        try {
-          handlers.onChunk?.(item.meta);
-        } catch (e) {
-          console.error("[events] onChunk threw:", e);
-        }
+        enterBatchMode();
       } else if (item.kind === "batch-end") {
         // 不直接切回 live，延迟 300ms；期间积压 payload / 下一个 chunk 会续期 timer
         // perf：记录 batch payload 全部 drain 完毕的时刻（不是 onBatchEnd fire）
@@ -227,9 +195,7 @@ export function bindEvents(handlers: EventHandlers): void {
   };
 
   void listen<JsonlLinePayload>("jsonl-line", (e) => {
-    // v2.4：jsonl-line = live emit（用户实时敲的新行）。标 source=live 让
-    // TabManager 永远 append 到 stream 底部，不被 inPrependMode 错误捕获。
-    queue.push({ kind: "payload", source: "live", payload: e.payload });
+    queue.push({ kind: "payload", payload: e.payload });
     ensureScheduled();
   });
 
@@ -237,36 +203,28 @@ export function bindEvents(handlers: EventHandlers): void {
   // N 次单条 jsonl-line emit，省 200-400ms 启动 IPC overhead）。
   // v2.2 (issue #12): 包裹 batch-start / batch-end 哨兵，让 TabManager 在
   // 重放期把 BranchFolder 切 batch 模式（每条 push 不算），结束后 flush 一次。
-  // 避免重放 2000 条时每条都 O(N) computeMainBranch 累计 O(N²) 卡 UI。
+  //
+  // P5.2 B 重构：chunkIndex / chunkTotal 元数据仍在后端 payload 里（兼容），
+  // 但前端 dispatcher 不再用 —— 所有 payload 走单一路径，前端 timeline 按 seq 排序。
   void listen<{
     chunkIndex: number;
     chunkTotal: number;
     payloads: JsonlLinePayload[];
   }>("jsonl-batch", (e) => {
-    const meta: BatchChunkMeta = {
-      chunkIndex: e.payload.chunkIndex,
-      chunkTotal: e.payload.chunkTotal,
-    };
     if (perf.firstJsonlBatch === undefined) {
       perf.firstJsonlBatch = performance.now();
       console.info(
-        `[perf] first jsonl-batch received @ ${perf.firstJsonlBatch.toFixed(0)}ms · chunk ${meta.chunkIndex + 1}/${meta.chunkTotal} payload=${e.payload.payloads.length}`,
+        `[perf] first jsonl-batch received @ ${perf.firstJsonlBatch.toFixed(0)}ms · chunk ${e.payload.chunkIndex + 1}/${e.payload.chunkTotal} payload=${e.payload.payloads.length}`,
       );
     }
-    // chunk 0 → batch-start (TabManager 进 batch 模式 + 记 anchor)
-    // chunk >0 → chunk 事件（TabManager 切到 prepend 模式）
-    // 不管 chunk index，所有 payload 入 queue
-    if (meta.chunkIndex === 0) {
-      queue.push({ kind: "batch-start", meta });
-    } else {
-      queue.push({ kind: "chunk", meta });
+    // 第一块触发 batch-start（后续块在 grace 续期内被视作同一 batch）。
+    if (e.payload.chunkIndex === 0) {
+      queue.push({ kind: "batch-start" });
     }
     for (const p of e.payload.payloads) {
-      // v2.4：jsonl-batch payloads = chunked replay 历史。标 source=batch 让
-      // TabManager 按 inPrependMode 决定 append 还是 buffer 到 prepend fragment。
-      queue.push({ kind: "payload", source: "batch", payload: p });
+      queue.push({ kind: "payload", payload: p });
     }
-    // 每块都发 batch-end —— 300ms grace 会续期等下一块或真新消息
+    // 每块末尾发 batch-end —— 300ms grace 内有新 payload / 新块都续期
     queue.push({ kind: "batch-end" });
     ensureScheduled();
   });

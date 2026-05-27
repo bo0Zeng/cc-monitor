@@ -53,25 +53,31 @@
 
 ---
 
-## 5. event_replay 顺序保证：snapshot emit 完前 live 不许 emit + 收尾 catch-up
+## 5. JSONL 单一时序由 seq 字段 + RecordTimeline binary insert 共同保证（v2.6 B 重构）
 
-`replay_and_mark_ready` 期间用 `inner.replaying = true` 把所有 `on_line_batch`
-新增行**只 push 进 history、不 emit**；snapshot chunks 全部 emit 完后再用
-jsonl-line 通道把"chunked 窗口期"积压的尾部 catch-up emit 出去，再清
-`replaying = false` + 设 `ready = true`。
+**后端契约**：`watcher.rs::process_file` 给每读出的一行分配 per-file 单调递增的
+`seq: u64`（`seqs: HashMap<PathBuf, u64>` 跨 process_file 调用累加）；
+`bridge::JsonlLinePayload` 携带该 seq 字段；所有 emit 路径（jsonl-line / jsonl-batch）
+都透传 seq 不变。
+
+**前端契约**：每个 Tab / SessionViewer 持一个 `RecordTimeline`，
+`insert(seq, element)` 用 binary search 找位置 → `stream.insertNode(element, anchor)`
+按 seq 单调维护 DOM 顺序。后端 emit 顺序、chunked emit 块到达顺序、live / batch
+路径混合，**对前端视觉顺序都无影响**。
 
 **为什么不能松动**：
-- 早期试过"锁外 emit snapshot + 锁内 push 后 ready 判断 live emit" → emit 期间
-  record 能并发拿锁 → 看到 ready=true 走 live emit → **前端先收到新 record 的
-  live emit、再收到 snapshot 的旧 emit** → 顺序错乱、时间线断裂。
-- v2.3.0 引入 chunked emit（块之间 sleep 让锁短暂释放）后，曾出现单纯 "未
-  ready 直接 return" 而不做 catch-up → chunked 窗口期（数百 ms 到秒级）watcher
-  真新行被吞，前端必须 F5 才能看到。`replaying` 标 + 末块 catch-up 是为了既保留
-  v2.3 的快速首屏切块体验，又重新闭合顺序保证。
+- 之前用"多 flag 协调"路径（PayloadSource batch/live + inPrependMode + pendingPrependFragment
+  + EventReplay.replaying 等 5 个 flag）反复出 inter-flag 相位 bug（详 ADR-021）。
+  v2.6 B 重构把所有 flag 替换为 seq + binary insert。
+- chunked emit 期间 watcher push 的真新行直接走 jsonl-line emit 出去；前端 timeline
+  按 seq 把它们放到正确位置——不再需要"replaying 期间 push 等末块后 catch-up"的
+  特殊路径。
 
-代价：replay chunked 期间 watcher 写文件后不会立即 live 渲染，要等末块发完
-（典型百毫秒到秒级），但 catch-up emit 之后**绝不会**到 F5 才出现。这条权衡跟
-v2.3 首屏 600ms 可见的设计目标兼容。
+**演进**：v2.3 加 chunked emit / v2.4 加 PayloadSource / v2.5 加 replaying flag + catch-up tail
+（详 v2.4-active-tab-sync-notes.md + v2.6-b-refactor-notes.md）—— 都在试图修补"多 flag
+状态机相位 bug"。v2.6 B 重构是一次性消除整套机制。
+
+详 [v2.6-b-refactor-notes § 3](../../doc/v2.6-b-refactor-notes.md) + ADR-021/022。
 
 ---
 
@@ -109,9 +115,15 @@ v2.3 首屏 600ms 可见的设计目标兼容。
 
 ## 9. JSONL 单一时序
 
-`watcher::process_file` 增量读 + 不截断；`event_replay` 单点 record；前端 `events.ts` 单 queue drain。这条链路保证**前端看到的行顺序 = jsonl 文件原始行顺序**，跨 snapshot/live 边界也成立。
+链路：`watcher::process_file` 增量读 + 不截断 + 给每行分配 per-file 单调 `seq: u64` →
+`bridge::JsonlLinePayload.seq` wire 字段透传 → 前端 `RecordTimeline.insert(seq, element)`
+按 seq binary insert + DOM insertBefore（详 § 5）→ 前端看到的卡片顺序 = jsonl 行顺序。
 
-**为什么不能松动**：jsonl 的行顺序是用户对话的时间顺序。乱序 = 看到 Claude 先回复再有 user 提问 → 完全没法用。
+跨 snapshot / live / chunked replay 各种边界都成立，因为 seq 不依赖 emit 时机。
+
+**为什么不能松动**：jsonl 的行顺序是用户对话的时间顺序。乱序 = 看到 Claude 先回复再有
+user 提问 → 完全没法用。**禁止**任何"按到达顺序排序"的代码（包括前端临时缓冲、后端
+chunked emit 时假设的 head/older 区分等）—— 必须按 seq 字段排序。
 
 ---
 
@@ -122,7 +134,7 @@ v2.3 首屏 600ms 可见的设计目标兼容。
 具体包括：
 
 - **Win32 同步调用**：`EnumWindows` / `SetForegroundWindow` / `ShellExecuteW` / `OpenProcess` 等（窗口枚举 / 进程查询 / shell execute 可能数十 ms 到秒级）
-- **文件系统 IO**：v2.2 起 `history.rs` 全部 IPC（`list_history_projects` / `list_history_sessions_in_project` / `stream_history_sessions_in_project` / `read_session_jsonl` / `stream_read_session_jsonl`）也走 spawn_blocking —— 扫几十个项目 / 读几 MB jsonl 都属此类
+- **文件系统 IO**：`history.rs` 全部 IPC（`list_history_projects` / `stream_history_sessions_in_project` / `stream_read_session_jsonl`）也走 spawn_blocking —— 扫几十个项目 / 读几 MB jsonl 都属此类
 - **`std::process::Command::spawn`**：spawn 外部进程（如 cc 集成的 wt.exe / cmd.exe 启 claude --resume）
 
 **为什么不能松动**：Tauri 的 `#[tauri::command] fn`（非 async）跑在 IPC 派发线程上。一个慢命令阻塞期间，其他 IPC 全部排队 → 整个 UI 没反应（切设置 / 拉前 / 切 Tab 全失灵）。即便代码"看起来快"（如 read_dir + stat 几百次），磁盘冷状态下也能轻松超过 100ms 阈值。
@@ -235,7 +247,7 @@ v2.3 首屏 600ms 可见的设计目标兼容。
 v2.4.2 之前 `SessionInfo.proc_start: String` 必填 → serde 直接解析失败 → `read_one` 返 None → 整个 session 被静默忽略 → monitor 漏 Tab。修复 `Option<String>` 后，缺失时 `is_process_alive` 跳过 PID 复用校验只看 STILL_ACTIVE，**代价是极小概率误判活跃但远好过完全看不见 Tab**。
 
 **应用范围**：
-- `sessions/<PID>.json` (`session_map::SessionInfo`)
+- `sessions/<PID>.json` (`session_map::SessionInfo`) —— procStart 字段在 v2.6 后端按 `Option<String>` 反序列化；调用点用 `utils::NetTicks::parse_str` 转 typed value 比较（详 ADR-024）。同样 wire 字符串可缺，Rust 内部用 newtype 隔离避免跟 `bind.rs::HwndEntry.owner_proc_start` (FILETIME) 单位混用
 - `tasks/<sid>/<id>.json` (`tasks::TaskEntry`) — 已经按宽容处理
 - `projects/**/*.jsonl` 的 `messages::JsonlRecord` enum — 用 `#[serde(other)] Unknown` 兜任何未知 type
 - 未来添加任何 Claude Code 数据源读取一律照此办

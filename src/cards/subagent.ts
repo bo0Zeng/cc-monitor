@@ -120,6 +120,11 @@ function renderSubagentBody(
   // 嵌套渲染时把 ctx.parentPath 切到 subagent 自己的 JSONL 路径，
   // 这样如果 subagent 内部又有 Agent tool_use，能找到 *它自己* 的 subagents 目录
   // toolUseNames 用独立 Map，避免与父 session 的 id 冲突
+  //
+  // P5.2 B 重构后 TabManager/SessionViewer 用 renderStreamRecord（基于 timeline +
+  // seq），但 subagent 内部还是用 array 顺序 + renderMessage 直接调（renderChild
+  // 由 caller 传入 = cards/index.ts::renderMessage）。subagent 一次性 load 没有
+  // 增量场景，timeline 抽象没收益；保留简单 for-loop。
   const nestedCtx: RenderContext = {
     parentPath: result.path,
     toolUseNames: new Map(),

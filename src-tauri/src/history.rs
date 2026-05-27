@@ -276,6 +276,9 @@ pub async fn stream_read_session_jsonl(
         let mut cwd_seen: Option<String> = None;
         let mut buf: Vec<crate::bridge::JsonlLinePayload> = Vec::with_capacity(CHUNK_SIZE);
         let mut total = 0u32;
+        // P5.1：history 流式读时同样给每行 seq（per-file 单调）。SessionViewer
+        // 用 RecordTimeline 排序时跟实时 tab 走同一套逻辑。
+        let mut next_seq: u64 = 0;
 
         for line in reader.lines().map_while(Result::ok) {
             let trimmed = line.trim();
@@ -291,10 +294,13 @@ pub async fn stream_read_session_jsonl(
                     cwd_seen = cwd.clone();
                 }
             }
+            let seq = next_seq;
+            next_seq += 1;
             buf.push(crate::bridge::JsonlLinePayload {
                 session_id: session_id.clone(),
                 cwd: cwd_seen.clone(),
                 path: path_str.clone(),
+                seq,
                 message: rec,
             });
             total += 1;

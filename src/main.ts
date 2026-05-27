@@ -236,13 +236,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.start();
 
   bindEvents({
-    // v2.4：透传 source 让 TabManager 区分 chunked replay (batch) 与真实时新行 (live)
-    onLine: (e, source) => tabs.onLine(e, source),
+    // P5.2 B 重构：onLine 不再带 source 参数（前端按 seq timeline 排，不分 batch/live）
+    onLine: (e) => tabs.onLine(e),
     onSessionEnded: (sessionId) => tabs.archiveTab(sessionId),
-    // v2.2 issue #12: 启动重放（jsonl-batch）期间走 batch 模式，结束时 flush
-    // v2.3.1 issue #1: chunk 0 (head) 走 onBatchStart, chunk >0 走 onChunk 切 prepend 模式
+    // 启动重放（jsonl-batch）期间走 batch 模式（lazy hljs + BranchFolder.batchMode），
+    // 结束时 flush。onChunk 已删 —— B 重构后 chunk 切边界对前端不可见。
     onBatchStart: () => tabs.onBatchStart(),
-    onChunk: (meta) => tabs.onChunk(meta.chunkIndex),
     onBatchEnd: () => tabs.onBatchEnd(),
     // v2.3.0 issue #11: task watcher 推送的 task 列表更新
     onTasksUpdate: (e) => tabs.updateTasks(e.sessionId, e.tasks),

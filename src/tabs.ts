@@ -2,21 +2,17 @@ import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { MessageStream } from "./stream";
 import {
-  renderMessage,
-  buildToolGroup,
-  addToToolGroup,
   reconcilePendingToolResults,
-  type JsonlRecord,
-  type ToolGroup,
   type RenderContext,
 } from "./cards";
-import { observeForEnhance, setRenderLazyMode } from "./render";
 import { BranchFolder } from "./branch-fold";
-import { extractBranchRecord } from "./branching";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
-import type { PayloadSource } from "./events";
+import type { JsonlLinePayload } from "./events";
 import type { BehaviorConfig } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
+import { RecordTimeline } from "./record-timeline";
+import { renderStreamRecord, type StreamSink } from "./render-stream-record";
+import type { BranchRecord } from "./branching";
 
 /**
  * Tab 生命周期：
@@ -44,8 +40,13 @@ export interface Tab {
   /** 父 JSONL 路径（subagent 加载需要） */
   parentPath: string;
   unread: number;
-  /** 当前正在累积的工具组（连续 tool-only assistant 消息），出现普通卡时清空 */
-  pendingToolGroup: ToolGroup | null;
+  /**
+   * P5.2 B 重构：按 seq 排序的 timeline。renderStreamRecord 调
+   * `timeline.insert / peekPrev` 决定 DOM 挂载位置 + tool-group 合并。
+   * **取代**：原 pendingToolGroup（tool-group 合并改后处理，看 timeline 左邻居）
+   * 和 pendingPrependFragment（无 source/inPrependMode 概念，永远按 seq 插入）。
+   */
+  timeline: RecordTimeline;
   /**
    * tool_use_id → tool_name 缓存。tool_use 在 assistant 消息出现时记下，
    * 下一条 user 消息的 tool_result 反查显示工具名。
@@ -63,18 +64,9 @@ export interface Tab {
    */
   branchFolder: BranchFolder;
   /**
-   * v2.3.1 (issue #1)：older chunk 累积 fragment 一次性 prepend 到 stream 顶部，
-   * 避免每条 prepend 触发多次 layout（3920 条 × layout 是几秒级开销）。
-   *
-   * 每次 chunk 切换 / batch-end 时 flushPendingPrepend 把它 prepend 到 stream
-   * **顶部**（contentEl.firstChild 前）。多 chunk 调用后 DOM 顺序自然是
-   * [最老, ..., 次新, head 最新]。
-   */
-  pendingPrependFragment: DocumentFragment | null;
-  /**
-   * v2.3.1 (issue #1)：切块场景下 tool_result 可能在 tool_use 之前到达
-   * （head 块含 result，older 块才有 tool_use）。先走 fallback 渲染独立卡，
-   * 全部 chunks 完成后 reconcilePendingToolResults 重新匹配 + 注入。
+   * v2.3.1 (issue #1)：tool_result 可能在 tool_use 之前到达（jsonl 行序错位 /
+   * 不同 session 文件混杂）。先走 fallback 渲染独立卡，batch 结束后
+   * reconcilePendingToolResults 重新匹配 + 注入。
    */
   pendingToolResults: Map<
     string,
@@ -110,15 +102,12 @@ export class TabManager {
   /**
    * v2.2 (issue #12): 当前是否在 batch 模式（启动重放 jsonl-batch 期间）。
    * batch 模式中 ensureTab 创建的新 Tab 也要把 BranchFolder 设成 batch。
+   *
+   * P5.2 B 重构：inPrependMode / pendingPrependFragment / source flag 全删 —— 前端
+   * 改用 RecordTimeline 按 seq binary-insert，DOM 位置由 seq 决定不受 emit 顺序影响。
+   * 仍保留 inBatch 是因为它控两件事：(1) lazy hljs 注册 (2) BranchFolder.batchMode。
    */
   private inBatch = false;
-  /**
-   * v2.3.1 (issue #1) 切块加速：当前是否在 "older chunk prepend 模式"。
-   * - chunk 0 (head) 到达：append 模式（默认），渲染完后第一个 child 当 anchor
-   * - chunk > 0 到达：prepend 模式，onLine 不直接 append 而是 buffer 到 fragment
-   * - 每个 chunk 边界（next chunk 来 or batch-end）flush fragment 一次 insertBefore
-   */
-  private inPrependMode = false;
   /**
    * issue #11: 每个 sid 当前 task 列表（由 ensureTab 拉初次快照 + task-update 事件
    * 更新）。切 Tab 时把对应 sid 的快照喂给全局 TasksPanel。
@@ -171,62 +160,28 @@ export class TabManager {
    * BranchFolder 切到 batch 模式 —— 后续 recordAdded 只 push 不算 mainBranch。
    * 重放期 ensureTab 新创建的 Tab 也会自动进 batch（看 this.inBatch）。
    *
-   * v2.3.1 (issue #1)：切块场景下 chunk 0 (head) 走 append 模式正常路径。
+   * P5.2 B 重构：删了 inPrependMode / pendingToolGroup 清零 —— 前端用 timeline
+   * 按 seq 排序，tool-group 合并改后处理（看左邻居），不再需要 chunk 边界协调。
    */
   onBatchStart(): void {
     this.inBatch = true;
-    this.inPrependMode = false;
-    // v2.3.1 Phase 2：batch 期间开 lazy hljs（代码块占位，IntersectionObserver 触发再 enhance）
-    setRenderLazyMode(true);
+    // P5.5 B 重构：lazy 通过 ctx.lazy 传到 renderMarkdown —— onLine 构造 ctx 时
+    // 用 this.inBatch 设置。不再依赖 setRenderLazyMode 全局开关。
     for (const t of this.tabs.values()) {
       t.branchFolder.setBatchMode(true);
-      // v2.3.1: chunk 边界打断 tool-group 累积，避免相邻 chunk 的 tool-only
-      // assistant 被错误合并到同一个 group（它们时间上可能跨度大）
-      t.pendingToolGroup = null;
-    }
-  }
-
-  /**
-   * v2.3.1 (issue #1)：新 chunk 到达（chunkIndex > 0）。
-   *
-   * 切到 prepend 模式 —— 后续 onLine 渲染的卡 buffer 到 fragment。
-   * 下个 chunk 边界 / batch-end 时一次性 prependFragmentAtTop，多次切换最终
-   * 形成 DOM 顺序 [最老, ..., 次新, head 最新]。
-   */
-  onChunk(chunkIndex: number): void {
-    // 切换前先 flush 上一块累积的 fragment（如果有）
-    this.flushPendingPrepend();
-
-    if (chunkIndex === 0) {
-      // 不应该走这里（chunk 0 走 onBatchStart）；防御性
-      return;
-    }
-    this.inPrependMode = true;
-    // 给所有现有 Tab 创建 fragment + chunk 边界打断 tool-group
-    for (const t of this.tabs.values()) {
-      t.pendingToolGroup = null;
-      if (t.pendingPrependFragment === null) {
-        t.pendingPrependFragment = document.createDocumentFragment();
-      }
     }
   }
 
   /**
    * v2.2 (issue #12): 重放批次完结。各 Tab 调 flushPending 一次性算 + rebuild，
-   * 然后切回 live 模式。后续真实时新消息按现有 per-record 路径走。
-   *
-   * v2.3.1 (issue #1)：先 flush 累积的 prepend fragment，再退出 batch 模式。
+   * 然后切回 live 模式。后续真实时新消息按 timeline 路径走。
    */
   onBatchEnd(): void {
-    this.flushPendingPrepend();
     this.inBatch = false;
-    this.inPrependMode = false;
-    // v2.3.1 Phase 2：batch 结束切回 live 模式（后续真实时新消息走 full pipeline 同步 hljs）
-    setRenderLazyMode(false);
     for (const t of this.tabs.values()) {
       t.branchFolder.flushPending();
       t.branchFolder.setBatchMode(false);
-      // v2.3.1: 切块场景下，老块的 tool_use 现在已渲染 → 重试匹配早到的 fallback result
+      // 切块场景下，老块的 tool_use 现在已渲染 → 重试匹配早到的 fallback result
       const ctx: RenderContext = {
         parentPath: t.parentPath,
         toolUseNames: t.toolUseNames,
@@ -234,152 +189,43 @@ export class TabManager {
         pendingToolResults: t.pendingToolResults,
       };
       reconcilePendingToolResults(ctx);
-      // 清 fragment 让下次启动时干净
-      t.pendingPrependFragment = null;
-    }
-  }
-
-  /**
-   * v2.3.1 (issue #1)：把每个 Tab 累积的 prepend fragment 一次性 prepend 到 stream 顶部。
-   *
-   * **不用 anchor**：直接贴到 contentEl 顶部（contentEl.firstChild 前）。多次调用
-   * 后 DOM 顺序自然是 [最新调用的内容, ..., 最早调用的内容]。
-   * 因为 chunks 顺序是 head(最新) → mid 次新 → ... → tail 最老：
-   *   - chunk 0 (head) → append 到 stream 底部
-   *   - chunk 1 (次新)→ prepend 到顶部 → DOM: [chunk1, chunk0]
-   *   - chunk 2 (再老) → prepend 到顶部 → DOM: [chunk2, chunk1, chunk0]
-   *   - ...
-   *   - chunk N (最老) → prepend 到顶部 → DOM: [chunkN, ..., chunk1, chunk0] ✓
-   * 最终时间升序正确。
-   */
-  private flushPendingPrepend(): void {
-    for (const t of this.tabs.values()) {
-      if (!t.pendingPrependFragment) continue;
-      if (t.pendingPrependFragment.childNodes.length === 0) continue;
-      t.stream.prependFragmentAtTop(t.pendingPrependFragment);
-      t.pendingPrependFragment = document.createDocumentFragment();
-    }
-  }
-
-  /**
-   * v2.3.1 (issue #1)：onLine 渲染出新卡片 element 时统一走这里。
-   * - 默认（append 模式 / live 模式 / chunk 0 head）：tab.stream.append() 加到 stream 底部
-   * - prepend 模式（chunk index > 0 期间）：buffer 到 tab.pendingPrependFragment，
-   *   下个 chunk 边界 / batch-end 一次性 insertBefore(...firstChunkAnchor)
-   *
-   * 用 fragment buffer 而不是逐条 insertBefore 是关键性能点：N=3000 时省 ~3000 次 layout。
-   *
-   * v2.4 修首次启动乱序：**live source 永远 stream.append**（绕开 inPrependMode）。
-   * 用户在 chunked replay 期间敲的真新行时间序最新，必须贴到 stream 底部；
-   * 旧实现把 live 也丢进 prepend fragment 会被错误推到顶部。batch source 仍按
-   * inPrependMode 走 buffer / append 切块逻辑不变。
-   */
-  private appendCardOrBuffer(
-    tab: Tab,
-    element: HTMLElement,
-    source: PayloadSource,
-  ): void {
-    if (source === "batch" && this.inPrependMode && tab.pendingPrependFragment) {
-      tab.pendingPrependFragment.appendChild(element);
-    } else {
-      tab.stream.append(element);
-    }
-    // v2.3.1 Phase 2: batch / 切块期间的卡片用 lazy hljs，注册 IntersectionObserver
-    // 让进可视区时再补跑高亮。live 路径的卡片本来 hljs 已经同步跑完，这里 observe
-    // 后 enhanceCard 是 fast path（没 .code-pending 即直接标 enhanced 返回）。
-    // 不区分模式统一 observe 简化逻辑 + 多余开销可忽略。
-    if (this.inBatch) {
-      observeForEnhance(element);
     }
   }
 
   /**
    * 收到一行 JSONL 时调用。
    *
-   * v2.4：`source` 区分 batch（chunked replay 历史）vs live（用户实时敲的真新行）。
-   * 加载期间 live 必须贴到 stream 底部，不被 inPrependMode 错误捕获。
+   * P5.2 B 重构：路由到 renderStreamRecord（三 caller 共享管线）。
+   * - timeline.insert 按 seq 决定 DOM 位置（不再有 source/inPrependMode 区分）
+   * - tool-group 后处理合并基于 timeline 左邻居
+   * - ai-title 走 sink.onTitleUpdate
+   * - 真用户输入走 sink.onRealUserInput → this.userActive
    */
-  onLine(
-    payload: {
-      session_id: string;
-      cwd: string | null;
-      path: string;
-      message: JsonlRecord;
-    },
-    source: PayloadSource = "live",
-  ): void {
+  onLine(payload: JsonlLinePayload): void {
     const tab = this.ensureTab(payload.session_id, payload.cwd, payload.path);
-
-    // ai-title / custom-title 不进入消息流，只更新 Tab 标题。
-    // Claude Code v2.1.x 起 schema 从 ai-title/aiTitle 改为 custom-title/customTitle；
-    // 两者语义一致（会话级语义标题），共用 applyAiTitle，旧 jsonl 兼容。
-    if (payload.message.type === "ai-title") {
-      this.applyAiTitle(tab, payload.message.aiTitle);
-      return;
-    }
-    if (payload.message.type === "custom-title") {
-      this.applyAiTitle(tab, payload.message.customTitle);
-      return;
-    }
 
     const ctx: RenderContext = {
       parentPath: tab.parentPath,
       toolUseNames: tab.toolUseNames,
       toolUseElements: tab.toolUseElements,
       pendingToolResults: tab.pendingToolResults,
+      // P5.5：batch 期间走 lazy hljs（代码块占位 + IntersectionObserver 触发再补跑）
+      lazy: this.inBatch,
     };
-    const result = renderMessage(payload.message, ctx);
+    const sink: StreamSink = {
+      timeline: tab.timeline,
+      onBranchRecord: (rec: BranchRecord) => tab.branchFolder.recordAdded(rec),
+      onTitleUpdate: (title: string) => this.applyAiTitle(tab, title),
+      onRealUserInput: (sid: string) => this.userActive(sid),
+      observeForLazyEnhance: this.inBatch,
+    };
 
-    switch (result.kind) {
-      case "skip":
-        break;
-      case "card":
-        // 普通卡（user / 含 text 的 assistant）出现就断开工具组累积
-        tab.pendingToolGroup = null;
-        // issue #8: 把 uuid/parentUuid 写到 DOM 上，让 BranchFolder 能扫
-        markCardUuid(result.element, payload.message);
-        this.appendCardOrBuffer(tab, result.element, source);
-        // v2.4 issue #2: 真用户输入触发自动切 tab。
-        // 三个判断缺一不可，每个都是"信号准"的关键：
-        //   - result.kind === "card" 已经过滤了 tool_result 回灌（走 tool-group）
-        //     + CLI noise（走 skip）+ <synthetic> 占位（走 skip）。详 cards/index.ts
-        //   - message.type === "user" 排除 assistant 卡（claude 流式回复不抢焦）
-        //   - source === "live" 排除启动 replay 阶段的历史 user 消息（chunked
-        //     batch 进来会上千条连环触发 → 闪烁）
-        if (source === "live" && payload.message.type === "user") {
-          this.userActive(tab.sessionId);
-        }
-        break;
-      case "tool-group": {
-        if (tab.pendingToolGroup) {
-          // 追加到当前组（不需要重新 append 到 stream / fragment——已经挂着）
-          addToToolGroup(tab.pendingToolGroup, result.units);
-        } else {
-          // 新建组卡片并 append 到 stream / fragment
-          const group = buildToolGroup(result.timestamp);
-          addToToolGroup(group, result.units);
-          tab.pendingToolGroup = group;
-          // issue #8: 给 tool-group root 写 data-uuid，让 BranchFolder 把它当
-          // 普通 card 一样判别主线。否则 tool-group 在 DOM 里既不算 on-main
-          // 也不算 off-main → 会切断 off-main 连续段，导致被回退的消息每条单独成 fold。
-          // 用**首个**贡献消息的 uuid 当代表（典型情况下整组同主支，混合极罕见）。
-          markCardUuid(group.root, payload.message);
-          this.appendCardOrBuffer(tab, group.root, source);
-        }
-        break;
-      }
-    }
+    const beforeSize = tab.timeline.size;
+    renderStreamRecord(payload, ctx, sink);
+    const inserted = tab.timeline.size > beforeSize;
 
-    // issue #8: 主线检测必须 track **所有** user/assistant 记录，包括渲染成
-    // tool-group 的（纯工具调用 assistant）和被 skip 的（空内容 user）。
-    // 否则 parent 链断 → 几乎所有卡片判 off-main → 全部塞进折叠卡 = 已知 bug。
-    // 这些 "被 track 但没 data-uuid 的记录" 在 BranchFolder 里只参与主线计算，
-    // 不参与 DOM 扫描（rebuild 只看带 data-uuid 的元素）。
-    feedBranchFolder(tab.branchFolder, payload.message);
-
-    if (result.kind === "skip") return;
-
-    if (this.activeId !== tab.sessionId) {
+    // unread 计数：只有真新 entry 入 timeline 才算（tool-group 合并到旧 group 不算）
+    if (inserted && this.activeId !== tab.sessionId) {
       tab.unread += 1;
       this.refreshTabBar();
     }
@@ -427,11 +273,10 @@ export class TabManager {
       stream,
       parentPath: sourcePath,
       unread: 0,
-      pendingToolGroup: null,
+      timeline: new RecordTimeline(stream),
       toolUseNames: new Map(),
       toolUseElements: new Map(),
       branchFolder,
-      pendingPrependFragment: null,
       pendingToolResults: new Map(),
     };
     this.tabs.set(sessionId, tab);
@@ -466,7 +311,8 @@ export class TabManager {
     if (!tab) return;
     if (tab.status === "archived") return;
     tab.status = "archived";
-    tab.pendingToolGroup = null;
+    // P5.2 B 重构后无 pendingToolGroup —— archive 不需要打断 tool-group 累积
+    // （tool-group 合并改后处理，看 timeline 邻居；archive 后无新 record 入 timeline）。
     this.refreshTabBar();
   }
 
@@ -493,7 +339,7 @@ export class TabManager {
     tab.toolUseNames.clear();
     tab.toolUseElements.clear();
     tab.pendingToolResults.clear();
-    tab.pendingToolGroup = null;
+    tab.timeline.dispose();
     tab.branchFolder.dispose();
     this.tasksBySid.delete(sessionId);
     this.tabs.delete(sessionId);
@@ -830,35 +676,8 @@ function computeTitleFor(
   return sessionId.slice(0, 8);
 }
 
-/**
- * issue #8: 给 user/assistant 卡的 root element 写 data-uuid（+ data-parent-uuid）。
- * BranchFolder 用 data-uuid 扫定位 + 主线判定。
- *
- * 工具组（tool-group）的 root 元素**不**走这里 —— 它没有单一 uuid，不参与折叠。
- */
-function markCardUuid(el: HTMLElement, rec: JsonlRecord): void {
-  if (rec.type !== "user" && rec.type !== "assistant") return;
-  el.setAttribute("data-uuid", rec.uuid);
-  if (rec.parentUuid) {
-    el.setAttribute("data-parent-uuid", rec.parentUuid);
-  }
-}
-
-/**
- * issue #8: 把记录推到 BranchFolder 做主线计算。
- *
- * **必须 track 的范围**（链完整性，详 branching.ts::extractBranchRecord）：
- *  - user / assistant：被渲染的目标，参与 DOM 折叠
- *  - attachment：不渲染但占 5% 链节点
- *  - system：占 3% 链节点
- *
- * attachment/system 只参与算法（提供 parent 链节点），没 data-uuid 不参与
- * DOM rebuild 扫描。
- */
-function feedBranchFolder(folder: BranchFolder, rec: JsonlRecord): void {
-  const br = extractBranchRecord(rec);
-  if (br) folder.recordAdded(br);
-}
+// P5.2 B 重构：markCardUuid + feedBranchFolder 已搬到 render-stream-record.ts
+// （三 caller 共用 renderStreamRecord 函数内部调用）。tabs.ts 不再持有这两个 helper。
 
 /**
  * 拉对应终端到前台。v1.7 实现：后端查 sid_hwnd_cache + 复合指纹校验 + SetForegroundWindow。

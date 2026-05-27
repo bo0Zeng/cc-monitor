@@ -2,9 +2,11 @@
 
 > **Claude Code CLI 的只读输出渲染窗口** — Tauri 2 + Vanilla TypeScript，Windows 桌面应用
 >
-> [English](./README.en.md) · 中文
+> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 | 当前版本: v2.5.0（v2.6 B 重构 [Unreleased]）
 
 把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复。**完全只读、零侵入**（不修改 Claude Code 任何文件，唯一例外是用户在历史浏览器里**显式**点删除）。
+
+**项目状态**：稳定可用。83 个 cargo 单元测试 + tsc 严格类型检查。8 个 feat issue 已完成 6 个（剩 #6 历史全文搜索、#10 Tab 拖出）。v2.6 是一次内部架构重构 release（用户感知零变化），把多 flag 协调状态机替换为按 seq 排序的 RecordTimeline 范式，详 [CHANGELOG](CHANGELOG.md) 和 [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
 
 ---
 
@@ -131,15 +133,66 @@
 
 ---
 
+## 项目结构
+
+```
+cc-monitor/
+├── src/                    前端 (Vanilla TS + Vite)
+│   ├── main.ts             入口：bindEvents + TabManager + 全局快捷键
+│   ├── events.ts           Tauri IPC listen + batch 调度
+│   ├── tabs.ts             多 Tab 管理 + active 同步 + behavior
+│   ├── record-timeline.ts  ⭐ v2.6 按 seq binary insert（取代 inPrependMode）
+│   ├── render-stream-record.ts ⭐ v2.6 三 caller 共享渲染管线 + tool-group 后处理
+│   ├── stream.ts           单 Tab 消息流 + stickToBottom
+│   ├── render.ts           marked + KaTeX + hljs + DOMPurify（opts.lazy 参数化）
+│   ├── branch-fold.ts      issue #8 ESC 回退分支折叠
+│   ├── branching.ts        Kahn 拓扑算 mainBranch
+│   ├── tasks-panel.ts      issue #11 Task 面板（status-bar chip + popover）
+│   ├── error-toast.ts      v2.0 ERROR 级 tracing 弹 toast + showActionFailureToast
+│   ├── local-storage.ts    ⭐ v2.6 LS_KEYS 集中 + safeGet/safeSet
+│   ├── format.ts           ⭐ v2.6 formatTimestampShort/Smart + formatBytes
+│   ├── cards/              卡片渲染：index, slash, compact, subagent
+│   ├── settings/           设置面板 5 大组
+│   ├── keybindings/        issue #5 快捷键编辑器
+│   └── views/              历史浏览器 + SessionViewer
+│
+├── src-tauri/              后端 (Rust + Tauri 2)
+│   └── src/
+│       ├── lib.rs          setup + invoke_handler 注册
+│       ├── watcher.rs      jsonl 文件 watcher（per-file seq 单调）
+│       ├── event_replay.rs 启动重放 + chunked emit
+│       ├── parser.rs       JSONL 行解析（BOM 剥）
+│       ├── messages.rs     JsonlRecord enum schema
+│       ├── session_map.rs  ~/.claude/sessions/ 监听
+│       ├── bind.rs         PowerShell ps-await/ps-registry 握手
+│       ├── tasks.rs        issue #11 tasks watcher
+│       ├── history.rs      历史浏览器 IPC（流式）
+│       ├── profile_installer.rs PS profile 安装（ACL 保留）
+│       ├── auto_launch.rs  cc 启动时自动开 monitor
+│       ├── logging.rs      tracing + ErrorEmitter
+│       ├── data_paths.rs   issue #3 透明化所有持久路径
+│       ├── config.rs       config.json R/W
+│       ├── paths.rs        Claude 数据目录三级回退
+│       ├── bridge.rs       事件常量 + payload schema（含 v2.6 seq 字段）
+│       ├── subagent.rs     Task/Agent tool 子 jsonl 按需加载
+│       └── utils.rs        ⭐ days_from_civil + NetTicks/FileTime newtype + scan_dir_jsons + atomic_write_json + parse_iso8601_ms 等共享 helper
+│
+├── doc/                    架构 + 协议 + 不变量等深度文档
+├── scripts/                run.ps1（msvc dev shell + tauri dev/build）
+└── CHANGELOG.md            版本历史
+```
+
+⭐ 标记的是 v2.6 B 重构新增 / 大改的模块。
+
 ## 文档
 
 | 文档 | 给谁看 | 内容 |
 |---|---|---|
-| **本 README** | 用户 | 安装 / 使用 / 故障排查 |
-| [CHANGELOG.md](CHANGELOG.md) | 升级用户 | 版本变更历史 |
-| [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) | 新贡献者第一站 | 数据流图 + 模块表 + 设计分层 |
+| **本 README** | 用户 / 新贡献者第一站 | 安装 / 使用 / 故障排查 / 项目结构 |
+| [CHANGELOG.md](CHANGELOG.md) | 升级用户 | 版本变更历史（v2.6 B 重构 Unreleased） |
+| [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) | 新贡献者深入第一站 | 数据流图 + 模块表 + 设计分层 |
 | [doc/IPC-PROTOCOL.md](doc/IPC-PROTOCOL.md) | 改协议的贡献者 | 跨进程文件 IPC 完整 schema + 握手时序 |
-| [doc/INVARIANTS.md](doc/INVARIANTS.md) | 全员 | 全局不变量清单（零侵入 / 编码 / ACL / 顺序保证） |
+| [doc/INVARIANTS.md](doc/INVARIANTS.md) | 全员 | 全局不变量清单（零侵入 / 编码 / ACL / 顺序保证 / seq 单调） |
 | [doc/STATE-MATRIX.md](doc/STATE-MATRIX.md) | 改 IPC 命令的贡献者 | Tauri State 注册矩阵 + 修改规则 |
 | [doc/CONTRIBUTING.md](doc/CONTRIBUTING.md) | 贡献者 | 操作 checklist + cookbook（加 IPC / jsonl 类型 / 设置项 / 快捷键） |
 | [doc/DEVELOPMENT.md](doc/DEVELOPMENT.md) | 开发者 | dev 环境 / 端口冲突 / 调试技巧 |
@@ -148,6 +201,16 @@
 | [src/README.md](src/README.md) | 前端开发 | 前端模块导览 |
 | [src-tauri/README.md](src-tauri/README.md) | 后端开发 | 后端模块导览 + IPC 清单 |
 | [scripts/README.md](scripts/README.md) | 用脚本的人 | 脚本说明 |
+
+**外部学习向文档**（不在仓库内，作者个人沉淀）：DECISIONS.md（24 条 ADR）/ HISTORY.md（12 大关键转向）/ KNOWLEDGE.md（14 大关键技术点）/ PHILOSOPHY.md / vX.Y-debug-notes.md（含 v2.6 B 重构完整记录）。如需阅读联系作者。
+
+## 项目当前状态
+
+- **版本**：v2.5.0（Released）；v2.6 B 重构在 `main` 分支待发布
+- **平台**：Windows 10 (1809+) / 11
+- **测试**：cargo test 83 passed，0 failed
+- **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~7.5K LOC TS + ~6K LOC Rust）
+- **设计原则**：只读零侵入（INVARIANT § 1）/ 可选性 / Windows-first / 长期记忆机制（CHANGELOG + ADR + doc）
 
 ---
 

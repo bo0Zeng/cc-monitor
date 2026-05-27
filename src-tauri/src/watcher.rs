@@ -14,6 +14,11 @@ use walkdir::WalkDir;
 pub struct JsonlLine {
     pub session_id: String,
     pub path: PathBuf,
+    /// P5.1：per-file 单调递增的行号。watcher 用 `seqs: HashMap<PathBuf, u64>` 维护
+    /// 每文件 next_seq；process_file 顺序读，单调保证。前端 RecordTimeline 按 seq
+    /// 排序到 DOM，emit 顺序不再影响视觉。同 session 内 seq 单调（同 session 通常
+    /// 单文件）；跨 session 不可比（独立 timeline）；不跨进程持久。
+    pub seq: u64,
     pub raw: String,
 }
 
@@ -62,13 +67,16 @@ pub struct WatcherHandle {
 pub fn spawn_watcher(root: PathBuf, active: ActiveFilter, on_batch: BatchHandler) -> WatcherHandle {
     let (rescan_tx, rescan_rx) = std::sync::mpsc::channel::<String>();
     let offsets: Arc<Mutex<HashMap<PathBuf, u64>>> = Arc::new(Mutex::new(HashMap::new()));
+    // P5.1：per-file next seq 计数器。跟 offsets 共生命周期；同一文件多次 process
+    // 跨调用单调递增。
+    let seqs: Arc<Mutex<HashMap<PathBuf, u64>>> = Arc::new(Mutex::new(HashMap::new()));
     let initial_scan_done = Arc::new(AtomicBool::new(false));
 
     // spawn 失败不要 panic 整个 app（生产场景应该日志降级，让 UI 至少能开）
     let scan_flag = initial_scan_done.clone();
     if let Err(e) = std::thread::Builder::new()
         .name("jsonl-watcher".into())
-        .spawn(move || run_watcher(root, offsets, on_batch, active, rescan_rx, scan_flag))
+        .spawn(move || run_watcher(root, offsets, seqs, on_batch, active, rescan_rx, scan_flag))
     {
         tracing::error!(
             "spawn jsonl-watcher thread failed: {e}; \
@@ -87,6 +95,7 @@ pub fn spawn_watcher(root: PathBuf, active: ActiveFilter, on_batch: BatchHandler
 fn run_watcher(
     root: PathBuf,
     offsets: Arc<Mutex<HashMap<PathBuf, u64>>>,
+    seqs: Arc<Mutex<HashMap<PathBuf, u64>>>,
     on_batch: BatchHandler,
     active: ActiveFilter,
     rescan_rx: std::sync::mpsc::Receiver<String>,
@@ -105,7 +114,7 @@ fn run_watcher(
     for entry in WalkDir::new(&root).into_iter().filter_map(Result::ok) {
         let p = entry.path();
         if p.is_file() && p.extension().map_or(false, |e| e == "jsonl") && !is_subagent_path(p) {
-            process_file(p, &offsets, &on_batch, &active);
+            process_file(p, &offsets, &seqs, &on_batch, &active);
             scanned_files += 1;
         }
     }
@@ -141,7 +150,7 @@ fn run_watcher(
                     if ev.path.extension().map_or(false, |e| e == "jsonl")
                         && !is_subagent_path(&ev.path)
                     {
-                        process_file(&ev.path, &offsets, &on_batch, &active);
+                        process_file(&ev.path, &offsets, &seqs, &on_batch, &active);
                     }
                 }
             }
@@ -161,7 +170,7 @@ fn run_watcher(
                     && !is_subagent_path(p)
                     && p.file_stem().and_then(|s| s.to_str()) == Some(&sid)
                 {
-                    process_file(p, &offsets, &on_batch, &active);
+                    process_file(p, &offsets, &seqs, &on_batch, &active);
                 }
             }
         }
@@ -178,6 +187,7 @@ fn is_subagent_path(p: &Path) -> bool {
 fn process_file(
     path: &Path,
     offsets: &Arc<Mutex<HashMap<PathBuf, u64>>>,
+    seqs: &Arc<Mutex<HashMap<PathBuf, u64>>>,
     on_batch: &BatchHandler,
     active: &ActiveFilter,
 ) {
@@ -220,6 +230,12 @@ fn process_file(
         return;
     }
 
+    // P5.1：取当前文件 next_seq 作起点，逐行 ++ 写入 JsonlLine.seq。
+    // 同一文件多次 process_file 跨调用累加（不重置）；保证 same-session 单调。
+    // 文件截断时（len < last_offset）offset 重置但 seq 不重置——前端 timeline
+    // 已经填了旧 seq，新行用更大的 seq 仍正确排在后面。
+    let mut next_seq = seqs.lock().get(&key).copied().unwrap_or(0);
+
     // 全量发：无论首次扫还是增量都不截断行数。v2.4.2 改成收集到 Vec 然后
     // 一次性 on_batch，让下游 lib.rs 按 batch 大小分流：
     //   - 小 batch（用户日常增量 1-N 行）→ 走 jsonl-line live emit
@@ -232,16 +248,20 @@ fn process_file(
         if trimmed.is_empty() {
             continue;
         }
+        let seq = next_seq;
+        next_seq += 1;
         batch.push(JsonlLine {
             session_id: session_id.clone(),
             path: path.to_path_buf(),
+            seq,
             raw: line,
         });
     }
     if !batch.is_empty() {
         on_batch(batch);
     }
-    offsets.lock().insert(key, len);
+    offsets.lock().insert(key.clone(), len);
+    seqs.lock().insert(key, next_seq);
 }
 
 #[cfg(windows)]

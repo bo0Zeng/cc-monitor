@@ -22,24 +22,13 @@ marked.setOptions({
  * - KaTeX 触发条件严（只有 `$..$` 才会进 markedKatex），多数消息不含 LaTeX 跳过快
  * - markedKatex 是 marked 扩展深度集成的，拆 lazy 复杂度高，收益小
  *
- * P2.3 重构：lazy 从"全局 flag + setRenderLazyMode caller 调"改成 `renderMarkdown(md, { lazy })`
- * **每次调用参数**。模块内仍持一个 currentLazy 供 marked code renderer 闭包访问，
- * 但 renderMarkdown 用 save/restore 模式保证同步调用栈安全 —— 不再有"另一个 caller 期间
- * lazy 被错误共享"的 bug（之前 session-viewer/subagent 没设 lazy 但被 tabs 的 batch
- * 模式污染走 lazy 路径，代码块永远 .code-pending）。
- *
- * setRenderLazyMode 仍 export 但已加 deprecated 注释——P4（renderStreamRecord 抽取时）
- * 会把 caller 全部改成显式 opts.lazy，届时删除。
+ * P5.5 B 重构：lazy 完全走 caller 参数 `renderMarkdown(md, { lazy })`，删了原
+ * setRenderLazyMode + currentLazy 全局 flag。模块内仍用 currentLazy 供 marked
+ * code renderer 闭包访问（marked.use renderer 是 module singleton），但用
+ * save/restore 模式同步调用栈内 try/finally 严格恢复——SessionViewer / Subagent
+ * 不会被 tabs batch 期间错误共享 lazy 状态。
  */
 let currentLazy = false;
-
-/**
- * @deprecated P2.3 已加 renderMarkdown(md, { lazy }) opts 参数；P4 时 caller 全部
- * 改成显式传参后本函数将删除。新代码不要调；过渡期 tabs.ts 仍调以保留 batch 模式。
- */
-export function setRenderLazyMode(lazy: boolean): void {
-  currentLazy = lazy;
-}
 
 /**
  * KaTeX 扩展：
@@ -159,11 +148,9 @@ export interface RenderMarkdownOptions {
  */
 export function renderMarkdown(md: string, opts: RenderMarkdownOptions = {}): string {
   const prevLazy = currentLazy;
-  // 显式 opts.lazy 时覆盖；否则用现有 currentLazy（向后兼容 setRenderLazyMode）。
-  // P4 完成后 caller 全部显式传，删除 setRenderLazyMode 时也可改成 opts.lazy ?? false。
-  if (opts.lazy !== undefined) {
-    currentLazy = opts.lazy;
-  }
+  // P5.5 B 重构：lazy 必须 caller 显式传（不传默认 false）；同步调用栈 save/restore
+  // 防止 marked.use renderer 单例的 closure 看到错误 state。
+  currentLazy = opts.lazy ?? false;
   try {
     const raw = marked.parse(md, { async: false }) as string;
     return DOMPurify.sanitize(raw, {
