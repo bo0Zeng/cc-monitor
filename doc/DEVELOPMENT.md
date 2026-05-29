@@ -169,6 +169,11 @@ $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 - 看 inline style 的 `left/top` 值是否合理（不应大于 `window.innerWidth` 或负数）
 - 详见 [ARCHITECTURE.md § 5 CSS portal](ARCHITECTURE.md#5-关键设计选择--理由) 的设计理由
 
-### Web 字体 / 图片 / KaTeX 加载导致消息错位
-- `stream.ts` 的 `MessageStream` 用 `ResizeObserver` 应对，append 后下一帧自动校准滚动位置
-- 如果错位仍发生，DevTools 看是否真的触发了 ResizeObserver 回调
+### Web 字体 / 图片 / KaTeX 加载导致消息错位 / 贴底跟随失灵
+- `stream.ts` 的 `MessageStream` 用 `ResizeObserver` + 守卫式 `snap()` 应对：内容后载长高时若仍贴底则自动跟随到底部
+- 如果贴底失灵，DevTools 看是否触发了 ResizeObserver 回调，以及 `snap()` 的守卫条件（落后底部 >1px 才贴）是否被满足
+
+### 启动重放期最新消息整行高频上下微抖（已修，回归排查）
+- 根因：旧内容逐帧插到贴底视口上方 → 浏览器逐帧重排 + 重做 scroll anchoring，HiDPI/高刷屏分数像素下舍入误差每帧不同 → 整块 ±0.5px 抖（详 INVARIANTS § 21）
+- 检查三道防线是否被破坏：(1) `snap()` 是否还守卫（没被改成无脑 `scrollTop=scrollHeight`）；(2) `.stream` 是否被加了 `overflow-anchor: none`；(3) `RecordTimeline` deferMode 是否仍在 `onBatchStart` 开、`onBatchEnd` 先 `flushDeferred()` 再 `branchFolder.flushPending()`
+- **关键**：`scrollTop` 本身不震荡（单调增长），只测 scrollTop 发现不了——要测可见元素 `getBoundingClientRect().top` 的逐帧方向反转。完整排查方法见 `D:/Sync/文档/claudecode-frontend/doc/scroll-jitter-investigation.md`

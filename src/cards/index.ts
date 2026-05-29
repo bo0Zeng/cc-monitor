@@ -1,3 +1,18 @@
+/**
+ * 卡片渲染的总分发器。
+ *
+ * `renderMessage(rec, ctx)` 是核心纯函数：给定一条 JsonlRecord + RenderContext，
+ * 返回 `RenderResult`（`card` 普通卡 / `tool-group` 工具组单元 / `skip` 不渲染）。
+ * 实时 Tab、历史只读视图、subagent 卡三处共用它，保证视觉一致（详 render-stream-record.ts）。
+ *
+ * 职责边界：
+ * - 本文件持有 Rust `JsonlRecord` 的 TS 镜像类型（ApiMessage / ContentBlock 等）。
+ * - 按 record.type + content 形态分发：user 气泡 / assistant 卡 / 纯工具 → tool-group /
+ *   tool_result 注入到对应 tool_use 折叠条；slash / compact / agent 子卡委派给 cards/ 同级模块。
+ * - `stripInternalNoise` 剥 CLI 注入的非真用户输入（含 ESC 中断标记，INVARIANT § 20）。
+ * - `pendingToolResults`：tool_result 先于 tool_use 到达时先 fallback 渲染，batch 末
+ *   `reconcilePendingToolResults` 重新匹配注入。
+ */
 import { renderMarkdown, renderPlainText } from "../render";
 import { parseSlashCommand, buildSlashCommandCard } from "./slash";
 import { isCompactSummary, buildCompactSummaryCard } from "./compact";

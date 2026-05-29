@@ -1,3 +1,10 @@
+//! 库 crate 根：模块声明 + Tauri 应用装配。
+//!
+//! `run()` 在 `tauri::Builder` 之前先 `logging::init`（tracing 全局 dispatcher 必须最先 init），
+//! 然后注册 single-instance plugin（须为链上第一个）、`setup()` 里 spawn watcher / 各后台线程
+//! 并 `app.manage` 所有 Arc-shared State，最后注册 `invoke_handler`（IPC 命令清单）。
+//! State 注册矩阵见 doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
+
 mod auto_launch;
 mod bind;
 mod bridge;

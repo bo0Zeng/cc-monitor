@@ -295,6 +295,20 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 ---
 
+## 21. 启动重放滚动稳定性（贴底不抖）
+
+`MessageStream`（[`src/stream.ts`](../src/stream.ts)）维持贴底时必须遵守三条，违反任一条都会让启动重放期间"最新消息整行高频上下微抖"回归：
+
+1. **`snap()` 必须守卫**：只在 `scrollHeight - clientHeight - scrollTop > 1`（确实落后底部）时才写 `scrollTop`。**禁止**每帧无脑 `scrollTop = scrollHeight`。
+2. **「视口上方」插入不手动补偿 scrollTop**：`insertNode` 对 anchor≠null（插到中间/上方）的情况不调整 scrollTop，交给浏览器原生 CSS `overflow-anchor`（默认 auto，**禁止**给 `.stream` 设 `overflow-anchor: none`）维持视觉稳定。手动补偿 + anchoring 会 double-shift。
+3. **重放期「视口上方」旧内容延后批量挂载**：`RecordTimeline` 在 deferMode（启动重放）下，插到非末尾的旧消息只进数组不挂 DOM；`flushDeferred()` 在 `onBatchEnd` 一次性挂回，且**必须在 `branchFolder.flushPending()` 之前**（后者要扫完整 DOM 算主线/折叠）。末尾追加（最新内容、用户正看着的）仍立即挂，首屏不受影响。
+
+**为什么不能松动**：根因实测定位 —— 末块先发的重放把旧消息逐条插到"贴底视口的上方"，持续约 60 帧；每次上方插入都触发浏览器重排 + 重做 scroll anchoring，而 HiDPI / 高刷屏分数像素下，整数 `scrollHeight` 与分数布局的舍入误差**每帧不同** → 整块内容逐帧 ±0.5px 高频重绘。压成"一次性批量挂载"后实测抖动帧数 66 → 1。注意：`scrollTop` 本身并不震荡（单调增长），所以**只测 `scrollTop` 发现不了这个 bug**，要测可见元素 `getBoundingClientRect().top` 的逐帧反转。
+
+详 `D:/Sync/文档/claudecode-frontend/doc/scroll-jitter-investigation.md`（项目外排查复盘）。
+
+---
+
 ## 修改本文档
 
 加新的不变量时：

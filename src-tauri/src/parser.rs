@@ -1,3 +1,5 @@
+//! 单行 JSONL → `JsonlRecord`。剥 UTF-8 BOM（INVARIANT § 3）+ 跳空行；解析错误向上抛。
+
 use crate::messages::JsonlRecord;
 
 /// 解析单行 JSONL。
@@ -34,9 +36,13 @@ mod tests {
     fn bom_prefix_does_not_corrupt_type() {
         // v1.7.8 教训：PS 5.1 Out-File -Encoding utf8 写 BOM，serde 不剥就解析失败 →
         // cc 集成"装上没用"7 个版本。parse_line 必须先剥 BOM 再 from_str。
-        let bom_user = "\u{feff}{\"type\":\"custom-title\",\"customTitle\":\"hi\",\"sessionId\":\"s1\"}";
+        let bom_user =
+            "\u{feff}{\"type\":\"custom-title\",\"customTitle\":\"hi\",\"sessionId\":\"s1\"}";
         let r = parse_line(bom_user).unwrap().expect("应该解析成功");
-        assert!(matches!(r, JsonlRecord::CustomTitle { .. }), "BOM 后类型识别失败：{r:?}");
+        assert!(
+            matches!(r, JsonlRecord::CustomTitle { .. }),
+            "BOM 后类型识别失败：{r:?}"
+        );
     }
 
     #[test]

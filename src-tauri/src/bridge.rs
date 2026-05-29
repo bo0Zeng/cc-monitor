@@ -1,3 +1,11 @@
+//! 前后端契约的单一来源：Tauri 事件名常量 + emit payload schema。
+//!
+//! `events` 子模块定义所有 `emit` 事件名（jsonl-line / jsonl-batch / session-ended /
+//! task-update）；payload 结构体（如 `JsonlLinePayload`，携带 per-file 单调 `seq`，
+//! 前端 RecordTimeline 据此排序）也在本文件。前端 `events.ts` 的 TS 接口须与此保持一致。
+//!
+//! 改任何事件名 / payload 字段都要同步前端订阅与类型；删事件名前 grep 确认无 emit/listen。
+
 use serde::Serialize;
 
 pub mod events {

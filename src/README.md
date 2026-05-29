@@ -24,9 +24,9 @@ index.html  ─> /src/main.ts (defer)
 | **main.ts** | 启动 + 全局快捷键 + 错误捕获 + HMR 强制 reload | DOMContentLoaded handler |
 | **events.ts** | 订阅后端 `jsonl-line` / `jsonl-batch` / `session-ended` / `task-update`，**批量调度让出主线程**；v2.2 (issue #12) `jsonl-batch` 包 `batch-start`/`batch-end` 哨兵；v2.3.1 (issue #1) 300ms grace 续期。**v2.6 B 重构**：删了 PayloadSource / onChunk callback / BatchChunkMeta；JsonlLinePayload 新增 `seq: u64` 字段（后端 watcher 给的 per-file 单调） | `bindEvents({onLine, onSessionEnded, onBatchStart, onBatchEnd, onTasksUpdate})` |
 | **tabs.ts** | TabManager 状态机：Tab 生命周期（live / archived）+ BranchFolder + v2.3 TasksPanel 路由；v2.4 (issue #2) `switchTo(sid, "manual"\|"auto")` + `userActive(sid)` + 5s `manualOverrideUntil`；`applyBehavior(cfg)` 同步设置面板 toggle。**v2.6 B 重构**：删了 inPrependMode / pendingPrependFragment / pendingToolGroup / appendCardOrBuffer / onChunk / markCardUuid / feedBranchFolder；onLine 改调 renderStreamRecord 共享管线 | `onLine(payload) / onBatchStart() / onBatchEnd() / userActive() / applyBehavior() / archiveTab() / closeTab() / cycleActive()` |
-| **record-timeline.ts** ⭐ v2.6 | 按 seq 排序的 TimelineEntry 数组 + DOM 挂载：`insert(entry)` binary search 找位置 → `stream.insertNode(element, anchor)` 同步贴底；`peekPrev(seq)` 给 tool-group 后处理用。**消除了** inPrependMode/pendingPrependFragment/chunkIndex 全部状态机 | `new RecordTimeline(stream).insert / peekPrev / dispose / size` |
+| **record-timeline.ts** ⭐ v2.6 | 按 seq 排序的 TimelineEntry 数组 + DOM 挂载：`insert(entry)` binary search 找位置 → `stream.insertNode(element, anchor)`；`peekPrev(seq)` 给 tool-group 后处理用。**消除了** inPrependMode/pendingPrependFragment/chunkIndex 全部状态机。**deferMode（启动重放消抖）**：重放期插到非末尾的"视口上方"旧内容只进数组不挂 DOM，`flushDeferred()` 在 onBatchEnd 一次性批量挂回（详 INVARIANT § 21） | `new RecordTimeline(stream).insert / peekPrev / setDeferMode / flushDeferred / dispose / size` |
 | **render-stream-record.ts** ⭐ v2.6 | 三 caller（TabManager / SessionViewer / Subagent）共享的渲染管线：renderMessage + markCardUuid + feedBranchFolder + tool-group 后处理合并（看 timeline 左邻居）+ userActive 检测。sink 接口抽象 caller 差异 | `renderStreamRecord(payload, ctx, sink: StreamSink)` |
-| **stream.ts** | 单 Tab 的消息流容器，ResizeObserver 自动贴底滚动；`contentElement` 暴露真实卡片容器给 BranchFolder。**v2.6 加 `insertNode(node, anchor)`**：RecordTimeline 用，同步处理 stickToBottom 不依赖 ResizeObserver 异步窗口（防启动滚动条停中间） | `MessageStream.append() / insertNode() / scrollToBottom() / dispose()` |
+| **stream.ts** | 单 Tab 的消息流容器，ResizeObserver + **守卫式 `snap()`** 自动贴底；`contentElement` 暴露真实卡片容器给 BranchFolder。`insertNode(node, anchor)` 给 RecordTimeline 按 seq 挂卡；`attachBatch(fragment, anchor)` 给 deferMode 一次性挂延后的上方内容。贴底稳定性三约束见 INVARIANT § 21（守卫 snap + overflow-anchor + 延后批量挂载） | `MessageStream.insertNode() / attachBatch() / scrollToBottom() / dispose()` |
 | **branching.ts** (issue #8) | parentUuid 拓扑分析：识别 ESC 回退主线 vs 被回退分支。`computeMainBranch` 算法 = "只在 fork 点选 latest-descendant 赢家"，无 fork 即全 on-main（多 root / 单链 / /compact 不误折叠） | `computeMainBranch(records) / extractBranchRecord(rec)` |
 | **branch-fold.ts** (issue #8) | DOM 重排：把连续的 off-main 卡片包到 `.branch-fold-wrap`，header「已被 ESC 回退（含 N 条）」；策略 = unwrap-then-rewrap 全量重建。v2.2 加 batch mode (`setBatchMode/flushPending`)，重放期延后到 batch 结束才算一次 mainBranch，省 O(N²)。**v2.6 起由 render-stream-record.ts 统一调用 recordAdded**（之前 tabs.ts 直接调） | `new BranchFolder(container).recordAdded / setRecordsAndRebuild / setBatchMode / flushPending` |
 | **cards/index.ts** | renderMessage 主分发：user 气泡 / assistant 卡 / 工具组合并 / tool_result 注入到 tool_use。**v2.6 RenderContext.pendingToolResults 改必填 + 加 lazy 字段**（透传给 renderMarkdown 控代码块占位） | `renderMessage(rec, ctx) → RenderResult` |
@@ -61,12 +61,16 @@ index.html  ─> /src/main.ts (defer)
   → events.ts 入队 (BATCH_SIZE=40 / BATCH_MS=8 让出主线程)
   → tabs.ts onLine(payload)
      ├─ ensureTab(sessionId, cwd, path)
-     ├─ renderMessage(record, ctx)
-     │    ├─ user → buildUserCard / Slash / Compact
-     │    ├─ assistant 含 text → buildAssistantCard
-     │    └─ assistant 全工具 / user 全 tool_result → tool-group 折叠卡
-     └─ stream.append(element) → ResizeObserver 贴底
+     └─ renderStreamRecord(payload, ctx, sink)        // 三 caller 共享管线
+          ├─ renderMessage(record, ctx)
+          │    ├─ user → buildUserCard / Slash / Compact
+          │    ├─ assistant 含 text → buildAssistantCard
+          │    └─ assistant 全工具 / user 全 tool_result → tool-group 折叠卡
+          └─ timeline.insert({seq, element, ...})      // 按 seq binary insert
+               → stream.insertNode(element, anchor)    // 守卫式 snap 贴底
 ```
+
+启动重放（jsonl-batch，末块先发）走同一管线，但 timeline 处于 deferMode：插到"视口上方"的旧内容只进数组不挂 DOM，onBatchEnd 时 `flushDeferred()` 一次性 `attachBatch` 挂回（消抖，INVARIANT § 21）。
 
 ### 历史浏览（懒加载）
 
@@ -123,6 +127,7 @@ replay 一次性 emit 整个 history Vec，前端用 BATCH_SIZE=40 + BATCH_MS=8 
 - § 12 — alert 不算错误反馈，关键失败用状态栏 toast
 - § 13 — portal 浮层（tooltip/modal/dropdown）必须真挂 `document.body`
 - § 14 — localStorage / IndexedDB key 必须前缀 `cc-monitor.`
+- § 21 — 启动重放贴底消抖：守卫式 snap + 不手动补偿（靠 overflow-anchor）+ 延后批量挂载
 - DOMPurify 防 XSS：所有 innerHTML 赋值前必过 `render.ts::renderMarkdown`
 
 ---
