@@ -1,3 +1,13 @@
+//! `<claude_dir>/projects/` 的 JSONL 文件监听器。
+//!
+//! `spawn_watcher` 用 notify-debouncer-mini 监听目录；每次 `process_file` 从上次
+//! 偏移**增量**读新行（不截断、记 per-file 偏移），剥 BOM 后交 parser，收集成
+//! `Vec<JsonlLine>` **同步**调 `on_batch` 回调（无 mpsc / 无 async drain）。
+//!
+//! 关键：给每读出的一行分配 per-file 单调递增的 `seq: u64`（`seqs: HashMap<PathBuf,u64>`
+//! 跨调用累加），透传到 `JsonlLinePayload.seq` —— 前端按 seq 排序，后端 emit 顺序不影响
+//! 视觉（INVARIANT § 5 / § 9）。另维护 `initial_scan_done` 供启动重放等待全量扫完。
+
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use parking_lot::Mutex;

@@ -65,7 +65,8 @@
    │   record-timeline.ts ⭐ v2.6 按 seq binary insert + DOM insertBefore│
    │       │                                                            │
    │       ▼                                                            │
-   │   stream.ts (MessageStream: insertNode 同步 stickToBottom)         │
+   │   stream.ts (MessageStream: insertNode + 守卫式 snap 贴底,           │
+   │             重放期上方插入靠 overflow-anchor + 延后批量挂载)        │
    │       │                                                            │
    │       ▼                                                            │
    │   render.ts (marked + KaTeX + hljs + DOMPurify; opts.lazy 参数)    │
@@ -115,7 +116,7 @@ src/
 ├── 入口        main.ts       快捷键、HMR full reload、behavior 初始化
 ├── 事件        events.ts     订阅 + 批量调度 + onBatchStart/End 哨兵（v2.6 删 source/onChunk）
 ├── 状态        tabs.ts       TabManager 状态机 + switchTo manual/auto + userActive
-│              stream.ts     MessageStream（insertNode 同步 stickToBottom）
+│              stream.ts     MessageStream（insertNode + 守卫式 snap；重放消抖 § 5）
 ├── 渲染        render.ts     marked + KaTeX + hljs + DOMPurify（v2.6 opts.lazy 参数）
 │              cards/        折叠卡组件（slash / compact / subagent / tool）
 │                            cards/index.ts::stripInternalNoise 剥 CLI 注入 + ESC 中断
@@ -201,6 +202,15 @@ record 期间 watcher 必须排队等锁，前端绝不会先收到 live emit �
 replay 时一次性发整个 Vec<JsonlLinePayload>，前端 push 进同一 queue 走原批量调度。
 
 **为什么**：Tauri IPC 每次 emit 都有序列化 + 派发 overhead。N=3000 时累计 ~400ms 主线程阻塞，启动可见显著卡顿。BATCH 单次序列化降到 ~50ms。
+
+### 启动重放贴底消抖 = 守卫式 snap + overflow-anchor + 延后批量挂载
+重放"末块先发"，最新一段先到并贴底，更老的内容随后**插到视口上方**。三条协同保证贴底时不抖（详 INVARIANTS § 21）：
+
+- **守卫式 `snap()`**：只在落后底部 >1px 时才写 scrollTop，不每帧重钉。
+- **上方插入交给原生 `overflow-anchor`**：不手动补偿 scrollTop（叠加会 double-shift）。
+- **`RecordTimeline` deferMode**：重放期插到非末尾的旧内容**只进数组不挂 DOM**，`onBatchEnd` 用 `attachBatch` 一次性挂回（在 `branchFolder.flushPending` 之前）。
+
+**为什么**：旧内容逐条插到贴底视口上方会让浏览器逐帧重排 + 重做 scroll anchoring，HiDPI/高刷屏分数像素下整数 `scrollHeight` 与分数布局的舍入误差每帧不同 → 整块内容 ±0.5px 高频抖动（实测抖动帧 66→1）。渲染仍按 40/帧推进（响应不卡），只把"上方插入"压成一帧。注意 `scrollTop` 本身不震荡，故只测 scrollTop 发现不了此 bug。
 
 ### session 探活双重校验（PID + procStart，procStart 可缺）
 `OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE` + 当 sessions/<PID>.json 含 `procStart` 字段时再加 `GetProcessTimes` creation FILETIME 100ms 容差比对。

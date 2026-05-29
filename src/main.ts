@@ -1,3 +1,14 @@
+/**
+ * 前端入口。DOMContentLoaded 后按序：
+ * 1. `loadTheme()` 从 config.json 应用 CSS 变量
+ * 2. 实例化 TabManager / SettingsPanel / HistoryView / TasksPanel
+ * 3. `bindEvents()` 订阅后端事件（jsonl-line / jsonl-batch / session-ended / task-update）
+ * 4. 装全局快捷键 dispatcher（keybindings/）+ 外链 click 代理（openUrl）+ ERROR toast
+ * 5. `emit("frontend-ready")` 通知后端 replay 历史
+ *
+ * 另持有启动 perf 测量（`window.__ccmPerf`，与后端 lib.rs 的 t0 互补看完整启动管线）。
+ * HMR 走 full reload（不引框架，原生 DOM，强制整页重载简化心智模型）。
+ */
 import "./styles.css";
 import { emit } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";

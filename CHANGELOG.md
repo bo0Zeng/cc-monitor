@@ -64,6 +64,18 @@
 
 **修法**：改 `async fn` + `tokio::task::spawn_blocking` 隔离 Win32 调用；HWND 走 `as isize` 跨 windows crate 版本（INVARIANT § 19）。
 
+### 修复 — 启动重放期最新消息整行高频上下微抖
+
+**症状**：刚启动软件、滚动条已贴底显示最新消息，但在其余历史消息加载的那一两秒里，最新消息区域整行高频小幅上下抖动；加载结束即停。HiDPI / 高刷新率屏幕尤其明显。
+
+**根因**：重放"末块先发"，最新一段先到贴底，更老的内容随后逐条（B 重构后的 per-record binary insert）插到**视口上方**，持续约 60 帧。每次上方插入都触发浏览器重排 + 重做原生 scroll anchoring，而分数像素布局下整数 `scrollHeight` 与分数布局的舍入误差**每帧不同** → 整块内容逐帧 ±0.5px 重绘。注意 `scrollTop` 本身单调增长不震荡，故极难定位。
+
+**修法**（三道防线，详 INVARIANT § 21）：(1) `snap()` 改守卫式，只在落后底部 >1px 才贴；(2) 上方插入不手动补偿 scrollTop，交给原生 `overflow-anchor`；(3) `RecordTimeline` 加 deferMode，重放期"视口上方"旧内容延后到 `onBatchEnd` 用 `attachBatch` 一次性挂回。渲染仍按 40/帧推进（首屏不变慢）。
+
+**回归性**：实测抖动帧数 66 → 1；中途同时引入又回退的 `.block-body` 去 containment 改动（会导致 tab 可横向滚动）已还原。
+
+详 [外部 scroll-jitter-investigation.md](../doc/scroll-jitter-investigation.md)（排查复盘）。
+
 ### 内部清理（不影响用户）
 
 - 删 8 处死代码 + 2 死 IPC（`read_session_jsonl` / `list_history_sessions_in_project`，仅留 stream 版）

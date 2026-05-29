@@ -1,3 +1,12 @@
+//! Claude Code `projects/**/*.jsonl` 单行记录的 Rust schema。
+//!
+//! `JsonlRecord` enum 按 `type` 字段反序列化（user / assistant / system / summary /
+//! ai-title / attachment / permission-mode / last-prompt / file-history-snapshot 等），
+//! 未知 type 用 `#[serde(other)] Unknown` 兜底——遵循 INVARIANT § 18「宽容 schema」：
+//! 非核心字段一律 `Option<T>` / `#[serde(default)]`，避免 Claude Code 写法变动导致整行解析失败。
+//!
+//! 这些类型在前端 `cards/index.ts` 有对应的 TS 镜像（ApiMessage / ContentBlock 等）。
+
 use serde::{Deserialize, Serialize};
 
 /// issue #12: jsonl 顶层 `forkedFrom` 字段 —— `/branch` 命令分叉出新 session 时
@@ -262,9 +271,7 @@ mod tests {
         assert!(r.is_displayable(), "attachment 必须 emit 保 parent 链完整");
         match r {
             JsonlRecord::Attachment {
-                uuid,
-                parent_uuid,
-                ..
+                uuid, parent_uuid, ..
             } => {
                 assert_eq!(uuid, "att-1");
                 assert_eq!(parent_uuid.as_deref(), Some("prev-msg-uuid"));
