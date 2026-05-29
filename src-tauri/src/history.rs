@@ -806,7 +806,10 @@ mod tests {
             "\"lastActivity\"",
             "\"hasLive\"",
         ] {
-            assert!(j.contains(camel_key), "HistoryProject wire 缺 {camel_key}: {j}");
+            assert!(
+                j.contains(camel_key),
+                "HistoryProject wire 缺 {camel_key}: {j}"
+            );
         }
         // 反例守护：不应出现任何 snake_case 字段
         for snake_key in [
@@ -819,7 +822,10 @@ mod tests {
             "\"last_activity\"",
             "\"has_live\"",
         ] {
-            assert!(!j.contains(snake_key), "HistoryProject 漏改 {snake_key}: {j}");
+            assert!(
+                !j.contains(snake_key),
+                "HistoryProject 漏改 {snake_key}: {j}"
+            );
         }
     }
 
@@ -858,7 +864,10 @@ mod tests {
             "\"forkedFromSessionId\"",
             "\"forkedFromMessageUuid\"",
         ] {
-            assert!(j.contains(camel_key), "HistorySessionEntry wire 缺 {camel_key}: {j}");
+            assert!(
+                j.contains(camel_key),
+                "HistorySessionEntry wire 缺 {camel_key}: {j}"
+            );
         }
         for snake_key in [
             "\"session_id\"",
@@ -867,7 +876,10 @@ mod tests {
             "\"is_live\"",
             "\"forked_from_session_id\"",
         ] {
-            assert!(!j.contains(snake_key), "HistorySessionEntry 漏改 {snake_key}: {j}");
+            assert!(
+                !j.contains(snake_key),
+                "HistorySessionEntry 漏改 {snake_key}: {j}"
+            );
         }
     }
 

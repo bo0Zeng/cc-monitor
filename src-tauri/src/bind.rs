@@ -448,7 +448,9 @@ pub fn verify_binding(binding: &SidHwndBinding) -> Result<(), String> {
         }
         if binding.owner_proc_start != 0 {
             // 两边都是 FileTime UTC（u64 同零点）→ 直接比 .0 即可
-            let cur_proc_start = process_creation_filetime(cur_owner).map(|ft| ft.0).unwrap_or(0);
+            let cur_proc_start = process_creation_filetime(cur_owner)
+                .map(|ft| ft.0)
+                .unwrap_or(0);
             if cur_proc_start != 0 && cur_proc_start != binding.owner_proc_start {
                 return Err("属主进程 PID 复用（procStart 不一致）".to_string());
             }

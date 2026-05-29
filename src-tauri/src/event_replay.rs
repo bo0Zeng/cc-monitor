@@ -95,10 +95,7 @@ impl EventReplay {
             for p in &payloads {
                 inner.history.push_back(p.clone());
             }
-            (
-                inner.ready,
-                payloads.len() >= INCREMENTAL_BATCH_THRESHOLD,
-            )
+            (inner.ready, payloads.len() >= INCREMENTAL_BATCH_THRESHOLD)
         };
 
         if !ready {
@@ -333,7 +330,11 @@ mod tests {
             }
         }
         for (i, p) in reordered.iter().enumerate() {
-            assert_eq!(idx_of(p), i, "block-reversed order should match input at {i}");
+            assert_eq!(
+                idx_of(p),
+                i,
+                "block-reversed order should match input at {i}"
+            );
         }
     }
 }

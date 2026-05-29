@@ -386,7 +386,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let m: std::collections::HashMap<String, serde_json::Value> =
             scan_dir_jsons(&dir, |v: &serde_json::Value| {
-                v.get("k").and_then(|x| x.as_str()).unwrap_or("").to_string()
+                v.get("k")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string()
             });
         assert!(m.is_empty());
     }
@@ -408,7 +411,10 @@ mod tests {
         std::fs::write(dir.join("broken.json"), "not valid json").unwrap();
         let m: std::collections::HashMap<String, serde_json::Value> =
             scan_dir_jsons(&dir, |v: &serde_json::Value| {
-                v.get("k").and_then(|x| x.as_str()).unwrap_or("").to_string()
+                v.get("k")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string()
             });
         assert_eq!(m.len(), 2);
         assert!(m.contains_key("one"));
@@ -419,7 +425,8 @@ mod tests {
     #[test]
     fn atomic_write_json_no_stray_tmp() {
         // 写完 dst 父目录里不应该有任何 ccm-tmp-* 残留
-        let dir = std::env::temp_dir().join(format!("ccm-utils-test-tmpcheck-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("ccm-utils-test-tmpcheck-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let dst = dir.join("a.json");
         let _ = std::fs::remove_file(&dst);
@@ -427,11 +434,7 @@ mod tests {
         let stray = std::fs::read_dir(&dir)
             .unwrap()
             .filter_map(|e| e.ok())
-            .any(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .contains(".ccm-tmp-")
-            });
+            .any(|e| e.file_name().to_string_lossy().contains(".ccm-tmp-"));
         assert!(!stray, "ccm-tmp- 残留未清理");
         let _ = std::fs::remove_dir_all(&dir);
     }
