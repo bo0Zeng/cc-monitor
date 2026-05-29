@@ -422,10 +422,7 @@ fn ends_with_eol(s: &str) -> bool {
 /// 改用 `split_inclusive('\n')` 保留终止符，新 block 按 detected EOL 重写。
 fn replace_or_append_block(existing: &str, new_block: &str) -> String {
     let eol = detect_eol(existing);
-    let block = rewrite_eol(
-        new_block.trim_end_matches(|c| c == '\r' || c == '\n'),
-        eol,
-    );
+    let block = rewrite_eol(new_block.trim_end_matches(|c| c == '\r' || c == '\n'), eol);
     if let Some((begin, end)) = find_block_range(existing) {
         // split_inclusive('\n') 与 .lines() 索引一致：都按 '\n' 切，索引位置相同；
         // 区别只是 split_inclusive 把 '\n'（及前一个 '\r'）保留在切片内部。
@@ -716,12 +713,17 @@ $PSDefaultParameterValues = @{}
         // Windows 用户 profile 普遍 CRLF（notepad/VSCode/git autocrlf 三大来源）。
         // 早期 .lines().join("\n") 会静默把 CRLF → LF。这里验保留。
         let crlf = "# my profile\r\nSet-Alias g git\r\nfunction prompt { 'PS> ' }\r\n";
-        let new_block =
-            "# === cc-monitor BEGIN v1 ===\nfunction cc {}\n# === cc-monitor END ===";
+        let new_block = "# === cc-monitor BEGIN v1 ===\nfunction cc {}\n# === cc-monitor END ===";
         let out = replace_or_append_block(crlf, new_block);
         // 用户原内容仍带 CRLF
-        assert!(out.contains("# my profile\r\n"), "用户首行 CRLF 丢了：{out:?}");
-        assert!(out.contains("Set-Alias g git\r\n"), "用户 alias CRLF 丢了：{out:?}");
+        assert!(
+            out.contains("# my profile\r\n"),
+            "用户首行 CRLF 丢了：{out:?}"
+        );
+        assert!(
+            out.contains("Set-Alias g git\r\n"),
+            "用户 alias CRLF 丢了：{out:?}"
+        );
         // 新插入的 ccm 块也应是 CRLF
         assert!(
             out.contains("# === cc-monitor BEGIN v1 ===\r\n"),
