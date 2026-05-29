@@ -169,6 +169,8 @@ export class TabManager {
     // 用 this.inBatch 设置。不再依赖 setRenderLazyMode 全局开关。
     for (const t of this.tabs.values()) {
       t.branchFolder.setBatchMode(true);
+      // 重放期"视口上方"的旧消息延后批量挂载，消除逐帧上方插入造成的微抖。
+      t.timeline.setDeferMode(true);
     }
   }
 
@@ -179,6 +181,9 @@ export class TabManager {
   onBatchEnd(): void {
     this.inBatch = false;
     for (const t of this.tabs.values()) {
+      // 先把延后的"视口上方"旧消息批量挂回 DOM —— 必须在 branchFolder.flushPending
+      // 之前（后者要扫完整 DOM 算主线/折叠）。
+      t.timeline.flushDeferred();
       t.branchFolder.flushPending();
       t.branchFolder.setBatchMode(false);
       // 切块场景下，老块的 tool_use 现在已渲染 → 重试匹配早到的 fallback result
@@ -250,9 +255,13 @@ export class TabManager {
 
     const stream = new MessageStream(streamEl);
     const branchFolder = new BranchFolder(stream.contentElement);
+    const timeline = new RecordTimeline(stream);
     // v2.2 issue #12: 重放期创建的新 Tab 也进 batch 模式，避免每条 record 都
     // 触发 O(N) computeMainBranch。批结束时 onBatchEnd 会统一 flush。
-    if (this.inBatch) branchFolder.setBatchMode(true);
+    if (this.inBatch) {
+      branchFolder.setBatchMode(true);
+      timeline.setDeferMode(true);
+    }
 
     // v2.3.0 issue #11: 异步 fetch 初始 task 快照。task-update 事件路径并行更新
     // tasksBySid，两路收敛到同一份数据；若 sid 是 active 同步推给全局 panel。
@@ -273,7 +282,7 @@ export class TabManager {
       stream,
       parentPath: sourcePath,
       unread: 0,
-      timeline: new RecordTimeline(stream),
+      timeline,
       toolUseNames: new Map(),
       toolUseElements: new Map(),
       branchFolder,
@@ -429,6 +438,10 @@ export class TabManager {
    * 通过后调 switchTo(sid, "auto")，可选 invoke bring_monitor_to_front。
    */
   userActive(sessionId: string): void {
+    // v2.6 修回归：B 重构后 render-stream-record 删了 source="live" 过滤参数，
+    // chunked replay batch 期间的历史 user 消息会触发本方法 → 反复自动切 tab。
+    // 在这里加 inBatch 守卫等价 v2.5 的 source==="live" 检查。
+    if (this.inBatch) return;
     if (!this.autoFollowUserActive) return;
     if (Date.now() < this.manualOverrideUntil) return;
     const tab = this.tabs.get(sessionId);

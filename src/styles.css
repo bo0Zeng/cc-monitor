@@ -248,6 +248,10 @@ html, body {
   position: absolute;
   inset: 0;
   overflow-y: auto;
+  /* 保留浏览器原生 overflow-anchor（默认 auto）。启动重放往视口上方插旧消息时，
+     靠原生锚定（亚像素精确）维持底部视觉稳定；stream.ts 的 snap 只在真正落后底部
+     时才贴。不能每帧手动 scrollTop=scrollHeight 重钉 —— HiDPI 分数像素下舍入误差
+     每帧不同会造成整块内容 ±0.5px 高频抖动。 */
   padding: 24px 24px 48px;
   visibility: hidden;
   pointer-events: none;
@@ -602,7 +606,9 @@ html, body {
   overflow-y: auto;
   overflow-x: hidden;
   /* 性能：containment + content-visibility 让浏览器跳过 viewport 外的 layout/paint，
-     内部滚动不要触发外层 reflow。contain-intrinsic-size 给个占位尺寸防止滚动跳跃。 */
+     内部滚动不要触发外层 reflow。contain-intrinsic-size 给个占位尺寸防止滚动跳跃。
+     注意：contain: layout/paint 还把内部溢出（长代码行/宽表格）隔离在本盒，去掉会让
+     溢出冒到外层 .stream 产生横向滚动 —— 别删。 */
   contain: layout style paint;
   content-visibility: auto;
   contain-intrinsic-size: auto 600px;
