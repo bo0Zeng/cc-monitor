@@ -32,6 +32,11 @@ export interface ViewerOptions {
   displayTitle: string;
   /** 子标题：项目名 + cwd */
   subtitle?: string;
+  /**
+   * issue #6：从全文搜索结果跳进来时给定命中消息的 uuid。加载完成后定位到该卡片
+   * （展开所在折叠段）滚动居中 + 临时高亮，而非默认贴底。
+   */
+  scrollToUuid?: string;
 }
 
 export class SessionViewer {
@@ -120,10 +125,40 @@ export class SessionViewer {
         folder.setRecordsAndRebuild(branchRecords);
       }
       this.statusEl.textContent = `${finalCount} 条记录 · 只读历史视图`;
-      this.stream?.scrollToBottom();
+      // issue #6：从搜索结果跳进来 → 定位到命中消息；否则默认贴底。
+      if (opts.scrollToUuid) {
+        this.scrollToMessage(opts.scrollToUuid);
+      } else {
+        this.stream?.scrollToBottom();
+      }
     } catch (e) {
       this.statusEl.textContent = `加载失败：${String(e)}`;
     }
+  }
+
+  /**
+   * issue #6：滚动定位到指定 uuid 的卡片并临时高亮。
+   * 命中卡片可能被折叠在 ESC 回退段（`<details>`）里 → 先展开所有祖先 details 再滚。
+   * 找不到（极少：该 uuid 未渲染成带 data-uuid 的卡）则退化为贴底。
+   */
+  private scrollToMessage(uuid: string): void {
+    // CSS.escape 防 uuid 里有特殊字符破坏选择器
+    const sel = `[data-uuid="${CSS.escape(uuid)}"]`;
+    const el = this.streamEl.querySelector<HTMLElement>(sel);
+    if (!el) {
+      this.stream?.scrollToBottom();
+      return;
+    }
+    // 展开所有折叠祖先，确保目标可见
+    let p: HTMLElement | null = el.parentElement;
+    while (p && p !== this.streamEl) {
+      if (p instanceof HTMLDetailsElement) p.open = true;
+      p = p.parentElement;
+    }
+    el.scrollIntoView({ block: "center" });
+    el.classList.add("search-hit-flash");
+    // 动画结束后移除 class（再次跳同一条还能重放）
+    window.setTimeout(() => el.classList.remove("search-hit-flash"), 2200);
   }
 
   /** 主动释放（HistoryView 卸载本组件时调） */
