@@ -11,8 +11,11 @@
  *   2. 用户展开某个项目组：调 `list_history_sessions_in_project(projectDir)` 拿该项目
  *      下所有会话详情，缓存到 `sessionCache`。下次展开同项目直接读缓存。
  *
- * 搜索：只匹配项目级字段（name / path）+ 已展开项目内的会话内容。
- * 想全文搜索得点"展开/收起"先全展开（触发批量加载）后再搜。
+ * 搜索两种模式（issue #6）：
+ *   - "项目"（默认）：本地即时过滤项目级字段（name / path）+ 已展开项目内的会话标题。
+ *   - "全文"：回车触发后端 `search_history` 全文搜索所有会话**内容**（user 输入 +
+ *     Claude 回复；可勾选"含工具内容"附加 tool_use/result/thinking）。结果按 session
+ *     分组 + snippet <mark> 高亮，点击进 viewer 滚动定位到命中消息。
  *
  * 操作：star / 重命名 / 删除 / 恢复 全部走单条 IPC，本地状态在响应回来后同步。
  *  - star/hide 改变会更新缓存中那条 entry，并同步对应 project 的 starred/hidden_count
@@ -20,7 +23,7 @@
  */
 
 import { invoke, Channel } from "@tauri-apps/api/core";
-import { SessionViewer } from "./session-viewer";
+import { SessionViewer, type ViewerOptions } from "./session-viewer";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
@@ -83,6 +86,44 @@ interface EntryMetadata {
 /** 组内会话排序模式（顶层布局固定按工作目录分组，不是 sort 选项）。 */
 type SortMode = "updated_desc" | "started_desc";
 
+/** issue #6: 全文搜索 —— 单条命中的前/中/后三段（matched 前端包 <mark>）。 */
+interface SearchHit {
+  uuid: string;
+  tsMs: number;
+  /** "user" | "assistant" | "tool" */
+  kind: string;
+  before: string;
+  matched: string;
+  after: string;
+}
+
+/** issue #6: 全文搜索 —— 一个会话的命中组。 */
+interface SearchSessionHits {
+  sessionId: string;
+  projectPath: string;
+  projectName: string;
+  jsonlPath: string;
+  title: string;
+  updatedAt: number;
+  hitCount: number;
+  hits: SearchHit[];
+}
+
+/** issue #6: `search_history` IPC 返回（后端 wire 全 camelCase）。 */
+interface SearchResponse {
+  /** "ready" | "indexing" */
+  status: string;
+  totalHits: number;
+  sessionCount: number;
+  truncated: boolean;
+  indexedSessions: number;
+  indexedMessages: number;
+  sessions: SearchSessionHits[];
+}
+
+/** issue #6: 历史浏览器的两种模式 —— 项目树过滤 vs 内容全文搜索。 */
+type SearchMode = "tree" | "fulltext";
+
 export class HistoryView {
   /** fixed overlay 根；open 时挂 document.body，close 时 remove。 */
   private root: HTMLElement;
@@ -103,12 +144,28 @@ export class HistoryView {
   /** 全量加载并发上限（控制对后端 IPC 的瞬时压力） */
   private static readonly LOAD_ALL_CONCURRENCY = 4;
 
+  // issue #6: 全文搜索状态
+  /** 当前模式：项目树过滤 / 内容全文搜索。默认树。 */
+  private searchMode: SearchMode = "tree";
+  /** 全文搜索是否附带搜 tool 内容（默认否，只搜 user/assistant 文本）。 */
+  private includeTools = false;
+  /** 当前全文搜索请求的代际号，防止旧请求的结果覆盖新请求（竞态）。 */
+  private ftSeq = 0;
+
   // 子元素
   private listEl!: HTMLElement;
   private searchInput!: HTMLInputElement;
   private statusEl!: HTMLElement;
   /** 列表模式的工具条+列表整体（切到查看器时整块隐藏） */
   private listShell!: HTMLElement;
+  /** issue #6: 全文搜索结果容器（fulltext 模式显示，替代项目树） */
+  private resultsEl!: HTMLElement;
+  /** 仅树模式显示的工具条控件（sort / 展开 / 全量 / 隐藏 / 刷新） */
+  private treeOnlyEls: HTMLElement[] = [];
+  /** 仅全文模式显示的工具条控件（含工具内容 / 重新索引） */
+  private fulltextOnlyEls: HTMLElement[] = [];
+  /** 模式切换按钮 ref（更新 is-active） */
+  private modeBtns: Partial<Record<SearchMode, HTMLButtonElement>> = {};
   /** "全量加载" 按钮 ref；加载中要 disable */
   private loadAllBtn!: HTMLButtonElement;
   /** 当前打开的会话查看器（点击条目进入只读视图）；null = 列表模式 */
@@ -133,6 +190,10 @@ export class HistoryView {
     this.isOpen = true;
     this.searchInput.value = "";
     this.filter = "";
+    // issue #6: 每次打开复位到项目树模式（清掉上次的全文结果）
+    this.searchMode = "tree";
+    this.resultsEl.replaceChildren();
+    this.updateModeUI();
     this.closeViewer();
     // 重新打开时清掉旧缓存（避免文件已被外部改动后展示陈旧数据）
     this.sessionCache.clear();
@@ -145,8 +206,13 @@ export class HistoryView {
     this.searchInput.focus();
   }
 
-  /** 根据是否已全量加载更新搜索框 placeholder，告知用户搜索覆盖范围 */
+  /** 根据当前模式 / 是否已全量加载更新搜索框 placeholder，告知用户搜索覆盖范围 */
   private updateSearchPlaceholder(): void {
+    if (this.searchMode === "fulltext") {
+      this.searchInput.placeholder =
+        "全文搜索会话内容（user 输入 + Claude 回复）· 回车搜索";
+      return;
+    }
     if (this.loadedAll) {
       this.searchInput.placeholder = "搜索：项目 + 所有会话内容（ai-title / 首条消息 / sid）";
     } else {
@@ -165,10 +231,6 @@ export class HistoryView {
 
   /** 打开只读查看器，列表 UI 临时隐藏 */
   private openViewer(entry: HistorySessionEntry): void {
-    if (this.viewer) this.viewer.dispose();
-    this.viewer = new SessionViewer(() => this.closeViewer());
-    this.root.appendChild(this.viewer.element);
-    this.listShell.style.display = "none";
     const displayTitle =
       entry.customTitle ??
       entry.aiTitle ??
@@ -179,11 +241,16 @@ export class HistoryView {
       entry.projectPath && entry.projectPath !== proj
         ? `${proj}  ·  ${entry.projectPath}`
         : proj;
-    void this.viewer.load({
-      jsonlPath: entry.jsonlPath,
-      displayTitle,
-      subtitle,
-    });
+    this.openViewerWith({ jsonlPath: entry.jsonlPath, displayTitle, subtitle });
+  }
+
+  /** issue #6: 通用打开查看器（树条目 / 搜索命中共用）。可带 scrollToUuid 定位。 */
+  private openViewerWith(opts: ViewerOptions): void {
+    if (this.viewer) this.viewer.dispose();
+    this.viewer = new SessionViewer(() => this.closeViewer());
+    this.root.appendChild(this.viewer.element);
+    this.listShell.style.display = "none";
+    void this.viewer.load(opts);
   }
 
   private closeViewer(): void {
@@ -296,13 +363,41 @@ export class HistoryView {
     backBtn.addEventListener("click", () => this.close());
     bar.appendChild(backBtn);
 
+    // issue #6: 模式切换（项目 / 全文）
+    const modeToggle = document.createElement("div");
+    modeToggle.className = "history-mode-toggle";
+    const mkModeBtn = (mode: SearchMode, label: string, title: string) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "history-mode-btn";
+      b.textContent = label;
+      b.title = title;
+      b.addEventListener("click", () => this.setMode(mode));
+      this.modeBtns[mode] = b;
+      modeToggle.appendChild(b);
+    };
+    mkModeBtn("tree", "项目", "按项目名 / 标题过滤（本地，即时）");
+    mkModeBtn("fulltext", "全文", "搜索所有会话的消息内容（回车触发）");
+    bar.appendChild(modeToggle);
+
     this.searchInput = document.createElement("input");
     this.searchInput.type = "search";
     this.searchInput.className = "history-search";
-    // placeholder 在 updateSearchPlaceholder 里根据 loadedAll 动态设
+    // placeholder 在 updateSearchPlaceholder 里根据模式 / loadedAll 动态设
     this.searchInput.addEventListener("input", () => {
-      this.filter = this.searchInput.value.trim().toLowerCase();
-      this.renderList();
+      if (this.searchMode === "tree") {
+        this.filter = this.searchInput.value.trim().toLowerCase();
+        this.renderList();
+      } else if (this.searchInput.value.trim() === "") {
+        // 全文模式清空 → 清结果
+        this.runFullTextSearch();
+      }
+    });
+    this.searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && this.searchMode === "fulltext") {
+        e.preventDefault();
+        this.runFullTextSearch();
+      }
     });
     bar.appendChild(this.searchInput);
 
@@ -324,6 +419,7 @@ export class HistoryView {
       this.renderList();
     });
     bar.appendChild(sortSel);
+    this.treeOnlyEls.push(sortSel);
 
     const expandAllBtn = document.createElement("button");
     expandAllBtn.type = "button";
@@ -332,6 +428,7 @@ export class HistoryView {
     expandAllBtn.title = "切换所有项目组的展开状态";
     expandAllBtn.addEventListener("click", () => void this.toggleAll());
     bar.appendChild(expandAllBtn);
+    this.treeOnlyEls.push(expandAllBtn);
 
     // 全量加载：把每个项目的 session 详情都拉到缓存，让搜索可命中 session 内容
     this.loadAllBtn = document.createElement("button");
@@ -342,6 +439,7 @@ export class HistoryView {
       "拉取所有项目的会话详情，加载后搜索可匹配 session 内容（ai-title / 首条消息 / sid）";
     this.loadAllBtn.addEventListener("click", () => void this.loadAllSessions());
     bar.appendChild(this.loadAllBtn);
+    this.treeOnlyEls.push(this.loadAllBtn);
 
     const hiddenLabel = document.createElement("label");
     hiddenLabel.className = "history-toggle";
@@ -356,6 +454,7 @@ export class HistoryView {
     hiddenText.textContent = "显示已隐藏";
     hiddenLabel.appendChild(hiddenText);
     bar.appendChild(hiddenLabel);
+    this.treeOnlyEls.push(hiddenLabel);
 
     const refreshBtn = document.createElement("button");
     refreshBtn.type = "button";
@@ -363,6 +462,34 @@ export class HistoryView {
     refreshBtn.textContent = "刷新";
     refreshBtn.addEventListener("click", () => void this.refresh());
     bar.appendChild(refreshBtn);
+    this.treeOnlyEls.push(refreshBtn);
+
+    // issue #6: 全文模式专属控件 —— "含工具内容" 复选框 + "重新索引"
+    const toolsLabel = document.createElement("label");
+    toolsLabel.className = "history-toggle";
+    toolsLabel.title =
+      "默认只搜 user 输入 + Claude 回复文本；勾选后附加搜索工具调用 / 结果 / thinking";
+    const toolsCheck = document.createElement("input");
+    toolsCheck.type = "checkbox";
+    toolsCheck.addEventListener("change", () => {
+      this.includeTools = toolsCheck.checked;
+      if (this.searchInput.value.trim() !== "") this.runFullTextSearch();
+    });
+    toolsLabel.appendChild(toolsCheck);
+    const toolsText = document.createElement("span");
+    toolsText.textContent = "含工具内容";
+    toolsLabel.appendChild(toolsText);
+    bar.appendChild(toolsLabel);
+    this.fulltextOnlyEls.push(toolsLabel);
+
+    const reindexBtn = document.createElement("button");
+    reindexBtn.type = "button";
+    reindexBtn.className = "history-refresh";
+    reindexBtn.textContent = "重新索引";
+    reindexBtn.title = "重新扫描所有会话内容建立搜索索引（有大量新会话时用）";
+    reindexBtn.addEventListener("click", () => void this.rebuildIndex(reindexBtn));
+    bar.appendChild(reindexBtn);
+    this.fulltextOnlyEls.push(reindexBtn);
 
     this.listShell.appendChild(bar);
 
@@ -374,10 +501,210 @@ export class HistoryView {
     this.listEl.className = "history-list";
     this.listShell.appendChild(this.listEl);
 
+    // issue #6: 全文搜索结果容器（默认隐藏，fulltext 模式显示）
+    this.resultsEl = document.createElement("div");
+    this.resultsEl.className = "history-search-results";
+    this.resultsEl.style.display = "none";
+    this.listShell.appendChild(this.resultsEl);
+
     // 首次构造时给一份合理 placeholder（open() 里会再刷新一次以反映 loadedAll）
     this.updateSearchPlaceholder();
+    this.updateModeUI();
 
     return view;
+  }
+
+  // === issue #6: 全文搜索 ===
+
+  /** 切换 项目树 / 全文 模式。 */
+  private setMode(mode: SearchMode): void {
+    if (this.searchMode === mode) return;
+    this.searchMode = mode;
+    this.updateModeUI();
+    if (mode === "tree") {
+      // 回树模式：用当前输入作过滤词重画
+      this.filter = this.searchInput.value.trim().toLowerCase();
+      this.renderList();
+    } else {
+      // 进全文模式：有词就立刻搜，否则显示索引状态提示
+      if (this.searchInput.value.trim() !== "") {
+        this.runFullTextSearch();
+      } else {
+        void this.showIndexIdleHint();
+      }
+    }
+    this.searchInput.focus();
+  }
+
+  /** 按当前模式更新工具条控件可见性 + 列表/结果容器显隐 + placeholder。 */
+  private updateModeUI(): void {
+    const isTree = this.searchMode === "tree";
+    for (const [m, b] of Object.entries(this.modeBtns)) {
+      b?.classList.toggle("is-active", m === this.searchMode);
+    }
+    for (const el of this.treeOnlyEls) el.style.display = isTree ? "" : "none";
+    for (const el of this.fulltextOnlyEls) el.style.display = isTree ? "none" : "";
+    this.listEl.style.display = isTree ? "" : "none";
+    this.resultsEl.style.display = isTree ? "none" : "";
+    this.updateSearchPlaceholder();
+  }
+
+  /** 全文模式但无关键词时，拉索引状态给个提示。 */
+  private async showIndexIdleHint(): Promise<void> {
+    this.resultsEl.replaceChildren();
+    this.statusEl.textContent = "查询索引状态…";
+    try {
+      const st = await invoke<{
+        ready: boolean;
+        indexedSessions: number;
+        indexedMessages: number;
+      }>("get_search_index_status");
+      if (this.searchMode !== "fulltext") return;
+      this.statusEl.textContent = st.ready
+        ? `输入关键词搜索会话内容（已索引 ${st.indexedSessions} 个会话 / ${st.indexedMessages} 条消息）`
+        : `索引构建中…（已 ${st.indexedSessions} 个会话），稍候再搜`;
+    } catch (e) {
+      this.statusEl.textContent = `索引状态获取失败：${String(e)}`;
+    }
+  }
+
+  /**
+   * 执行全文搜索。竞态防护：每次调用递增 ftSeq，异步结果回来时若 seq 已过期则丢弃。
+   * 索引未就绪（status=indexing）时显示进度并自动重试。
+   */
+  private async runFullTextSearch(): Promise<void> {
+    const query = this.searchInput.value.trim();
+    const seq = ++this.ftSeq;
+    if (query === "") {
+      this.resultsEl.replaceChildren();
+      void this.showIndexIdleHint();
+      return;
+    }
+    this.statusEl.textContent = "搜索中…";
+    try {
+      const resp = await invoke<SearchResponse>("search_history", {
+        query,
+        includeTools: this.includeTools,
+        limit: 300,
+      });
+      if (seq !== this.ftSeq || this.searchMode !== "fulltext") return; // 过期 / 已切模式
+      if (resp.status === "indexing") {
+        this.resultsEl.replaceChildren();
+        this.statusEl.textContent = `索引构建中…（已 ${resp.indexedSessions} 个会话），1 秒后自动重试`;
+        window.setTimeout(() => {
+          if (seq === this.ftSeq && this.searchMode === "fulltext") {
+            void this.runFullTextSearch();
+          }
+        }, 1000);
+        return;
+      }
+      this.renderSearchResults(resp, query);
+    } catch (e) {
+      if (seq !== this.ftSeq) return;
+      this.statusEl.textContent = `搜索失败：${String(e)}`;
+    }
+  }
+
+  private renderSearchResults(resp: SearchResponse, query: string): void {
+    this.resultsEl.replaceChildren();
+    this.statusEl.textContent =
+      `「${query}」匹配 ${resp.totalHits} 条 · ${resp.sessionCount} 个会话` +
+      (resp.truncated ? "（结果较多，仅显示前若干条）" : "");
+    if (resp.sessions.length === 0) {
+      this.resultsEl.appendChild(makeStatusRow("无匹配。试试别的关键词，或勾选「含工具内容」扩大范围。"));
+      return;
+    }
+    for (const s of resp.sessions) {
+      this.resultsEl.appendChild(this.buildSearchSession(s));
+    }
+  }
+
+  private buildSearchSession(s: SearchSessionHits): HTMLElement {
+    const group = document.createElement("div");
+    group.className = "search-session";
+
+    const header = document.createElement("div");
+    header.className = "search-session-header";
+    const title = document.createElement("span");
+    title.className = "search-session-title";
+    title.textContent = s.title || s.sessionId.slice(0, 8);
+    header.appendChild(title);
+    const proj = document.createElement("span");
+    proj.className = "search-session-project";
+    proj.textContent = s.projectName || s.projectPath || "";
+    proj.title = s.projectPath;
+    header.appendChild(proj);
+    const count = document.createElement("span");
+    count.className = "search-session-count";
+    count.textContent = `${s.hitCount} 条命中 · ${formatTimestampSmart(s.updatedAt)}`;
+    header.appendChild(count);
+    group.appendChild(header);
+
+    for (const hit of s.hits) {
+      group.appendChild(this.buildSearchHit(s, hit));
+    }
+    if (s.hitCount > s.hits.length) {
+      const more = document.createElement("div");
+      more.className = "search-hit-more";
+      more.textContent = `…还有 ${s.hitCount - s.hits.length} 条命中（点任意条打开会话查看全部）`;
+      group.appendChild(more);
+    }
+    return group;
+  }
+
+  private buildSearchHit(s: SearchSessionHits, hit: SearchHit): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "search-hit";
+
+    const kind = document.createElement("span");
+    kind.className = `search-hit-kind kind-${hit.kind}`;
+    kind.textContent =
+      hit.kind === "user" ? "你" : hit.kind === "assistant" ? "Claude" : "工具";
+    row.appendChild(kind);
+
+    // snippet：before + <mark>matched</mark> + after。全部用 textContent 防 XSS
+    // （matched 是用户 / Claude 的原始内容，绝不能 innerHTML）。
+    const snip = document.createElement("span");
+    snip.className = "search-hit-snippet";
+    snip.append(document.createTextNode(hit.before));
+    const mark = document.createElement("mark");
+    mark.textContent = hit.matched;
+    snip.appendChild(mark);
+    snip.append(document.createTextNode(hit.after));
+    row.appendChild(snip);
+
+    row.addEventListener("click", () => {
+      this.openViewerWith({
+        jsonlPath: s.jsonlPath,
+        displayTitle: s.title || s.sessionId.slice(0, 8),
+        subtitle: s.projectName
+          ? `${s.projectName}  ·  ${s.projectPath}`
+          : s.projectPath,
+        scrollToUuid: hit.uuid,
+      });
+    });
+    return row;
+  }
+
+  private async rebuildIndex(btn: HTMLButtonElement): Promise<void> {
+    const prev = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "索引中…";
+    this.statusEl.textContent = "重新索引中…";
+    try {
+      await invoke("rebuild_search_index");
+      // 重建完后若有关键词则重搜，否则刷新空闲提示
+      if (this.searchInput.value.trim() !== "") {
+        await this.runFullTextSearch();
+      } else {
+        await this.showIndexIdleHint();
+      }
+    } catch (e) {
+      this.statusEl.textContent = `重新索引失败：${String(e)}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = prev ?? "重新索引";
+    }
   }
 
   // === 列表渲染 ===

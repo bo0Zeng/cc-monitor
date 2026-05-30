@@ -17,6 +17,7 @@ mod messages;
 mod parser;
 mod paths;
 mod profile_installer;
+mod search;
 mod session_map;
 mod subagent;
 mod tasks;
@@ -221,6 +222,26 @@ pub fn run() {
             // 不依赖 SessionMap，独立 watcher。tasks_dir 不存在时函数内部 no-op。
             tasks::spawn_task_watcher(tasks_dir.clone(), app.handle().clone());
 
+            // issue #6：历史全文搜索索引。后台线程扫 projects/**/*.jsonl 建内存索引。
+            // 延迟 1.5s 启动 —— 让首屏 replay 先跑完，不抢磁盘 / CPU；索引就绪前
+            // search_history 返回 status="indexing"，前端显示"索引中"。
+            let search_index = Arc::new(search::SearchIndex::new());
+            {
+                let idx = search_index.clone();
+                let claude_dir_for_index = claude_dir.clone();
+                let spawned = std::thread::Builder::new()
+                    .name("search-index-build".into())
+                    .spawn(move || {
+                        idx.build_blocking(
+                            &claude_dir_for_index,
+                            std::time::Duration::from_millis(1500),
+                        );
+                    });
+                if let Err(e) = spawned {
+                    tracing::error!("failed to spawn search-index-build thread: {e}; 全文搜索不可用");
+                }
+            }
+
             // 前端 ready 事件 → 等 watcher 初始扫完成 → replay all。
             //
             // v2.4 修首次启动乱序：之前 listener 直接调 replay()，但 watcher 是
@@ -282,6 +303,8 @@ pub fn run() {
             app.manage(sid_hwnd_cache.clone());
             // v2.0.0 (issue #4)：logging state 也要 manage，IPC handler 才能拿到
             app.manage(logging_state.clone());
+            // issue #6：全文搜索索引 State（search_history / rebuild / status IPC 用）
+            app.manage(search_index.clone());
 
             tracing::info!(
                 "[perf] T+{}ms setup() completed (watchers spawned, state managed)",
@@ -317,6 +340,10 @@ pub fn run() {
             history::delete_history_session,
             history::update_history_metadata,
             history::resume_history_session,
+            // issue #6: 历史全文搜索
+            search::search_history,
+            search::get_search_index_status,
+            search::rebuild_search_index,
             // v2.3.0 issue #11: task 面板初次拉
             tasks::get_session_tasks,
             // v2.3.0 issue #3 (A 透明化): 设置面板「数据」区列出所有持久路径
