@@ -46,8 +46,8 @@ index.html  ─> /src/main.ts (defer)
 | **settings/collapsible-group.ts** (issue #7) | 通用可折叠分组，localStorage 持久 + grid-rows 平滑动画 | `new CollapsibleGroup({id, title, defaultCollapsed}).appendChild(...)` |
 | **settings/diagnostics-section.ts** (v2.0.0+) | 设置面板「诊断」区：log_enabled toggle / log_level select / error_toast toggle / log 路径 / [打开 log/dir]；支持 `{ headless: true }` 给 CollapsibleGroup 复用 | `DiagnosticsSection.element` |
 | **error-toast.ts** (v2.0.0+) | listen `monitor-error` 事件，右下角垂直堆叠红色 toast，点击直接打开 log 文件 | `bindErrorToast()` |
-| **views/history.ts** | 历史浏览器（项目分组 + 两级懒加载 + 增删改 + v2.2 fork 树形 + 流式 session 列表） | `HistoryView.open() / handleEscape()` |
-| **views/session-viewer.ts** | 只读消息查看器（点击历史条目进入）；v2.2 改用 `stream_read_session_jsonl` + Channel 边收边渲染 | `SessionViewer.load(opts) / dispose()` |
+| **views/history.ts** | 历史浏览器（项目分组 + 两级懒加载 + 增删改 + v2.2 fork 树形 + 流式 session 列表）。**issue #6 加「全文」模式**：调 `search_history` 搜会话内容（默认 user/assistant 文本，可勾选含工具内容）+ 结果 snippet `<mark>` 高亮 + 点击跳 viewer 定位 | `HistoryView.open() / handleEscape()` |
+| **views/session-viewer.ts** | 只读消息查看器（点击历史条目进入）；v2.2 改用 `stream_read_session_jsonl` + Channel 边收边渲染；**issue #6 加 `scrollToUuid`**：从搜索结果跳进来时加载后定位命中消息 + 临时高亮 | `SessionViewer.load(opts) / dispose()` |
 | **tasks-panel.ts** (v2.3.0 issue #11) | Tab stream 顶部 sticky 折叠卡：显示 Claude Code CLI 的 task 列表（`~/.claude/tasks/<sid>/`）。完整 replace 渲染（无 diff），0 task 时整 panel 隐藏。折叠状态 localStorage 全局持久 (`cc-monitor.tasks-panel.collapsed`) | `new TasksPanel().update(tasks) / fetchSessionTasks(sid)` |
 | **settings/data-section.ts** (v2.3.0 issue #3 A) | 设置面板「数据存储」折叠分组：调 `get_data_paths` 拉所有持久路径 + WebView2 UserDataFolder + localStorage keys；每项配 [打开] 按钮调 opener。纯展示，无危险操作 | `new DataSection({ headless }).element / refresh()` |
 | **styles.css** | 全部样式 + token 系统 | — |
