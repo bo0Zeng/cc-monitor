@@ -149,6 +149,10 @@ export class HistoryView {
   private searchMode: SearchMode = "tree";
   /** 全文搜索是否附带搜 tool 内容（默认否，只搜 user/assistant 文本）。 */
   private includeTools = false;
+  /** 全文搜索范围：全部 / 只我的输入(user) / 只 Claude(assistant)。 */
+  private searchScope: "all" | "user" | "assistant" = "all";
+  /** 全文搜索时间范围下界（epoch ms）；null = 不限。 */
+  private searchAfterMs: number | null = null;
   /** 当前全文搜索请求的代际号，防止旧请求的结果覆盖新请求（竞态）。 */
   private ftSeq = 0;
 
@@ -482,6 +486,49 @@ export class HistoryView {
     bar.appendChild(toolsLabel);
     this.fulltextOnlyEls.push(toolsLabel);
 
+    // 搜索范围：全部 / 只我的输入 / 只 Claude
+    const scopeSel = document.createElement("select");
+    scopeSel.className = "history-sort";
+    scopeSel.title = "搜索范围";
+    for (const o of [
+      { value: "all", label: "范围：全部" },
+      { value: "user", label: "范围：只我的输入" },
+      { value: "assistant", label: "范围：只 Claude" },
+    ]) {
+      const opt = document.createElement("option");
+      opt.value = o.value;
+      opt.textContent = o.label;
+      scopeSel.appendChild(opt);
+    }
+    scopeSel.addEventListener("change", () => {
+      this.searchScope = scopeSel.value as "all" | "user" | "assistant";
+      if (this.searchInput.value.trim() !== "") this.runFullTextSearch();
+    });
+    bar.appendChild(scopeSel);
+    this.fulltextOnlyEls.push(scopeSel);
+
+    // 时间范围：全部 / 近 7 天 / 近 30 天
+    const timeSel = document.createElement("select");
+    timeSel.className = "history-sort";
+    timeSel.title = "时间范围";
+    for (const o of [
+      { value: "0", label: "时间：全部" },
+      { value: "7", label: "时间：近 7 天" },
+      { value: "30", label: "时间：近 30 天" },
+    ]) {
+      const opt = document.createElement("option");
+      opt.value = o.value;
+      opt.textContent = o.label;
+      timeSel.appendChild(opt);
+    }
+    timeSel.addEventListener("change", () => {
+      const days = Number(timeSel.value);
+      this.searchAfterMs = days > 0 ? Date.now() - days * 86_400_000 : null;
+      if (this.searchInput.value.trim() !== "") this.runFullTextSearch();
+    });
+    bar.appendChild(timeSel);
+    this.fulltextOnlyEls.push(timeSel);
+
     const reindexBtn = document.createElement("button");
     reindexBtn.type = "button";
     reindexBtn.className = "history-refresh";
@@ -585,6 +632,8 @@ export class HistoryView {
       const resp = await invoke<SearchResponse>("search_history", {
         query,
         includeTools: this.includeTools,
+        scope: this.searchScope,
+        afterMs: this.searchAfterMs,
         limit: 300,
       });
       if (seq !== this.ftSeq || this.searchMode !== "fulltext") return; // 过期 / 已切模式

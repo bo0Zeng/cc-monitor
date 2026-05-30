@@ -13,6 +13,8 @@
 //!   等）按 INVARIANT § 20 的同一意图剥掉 —— 搜索只命中真内容。
 //! - **可选**（`include_tools=true`）：tool_use（名字+入参）/ tool_result（输出）/
 //!   thinking。前端一个复选框控制。
+//! - **范围 / 时间筛选**（v2.7.1）：`scope`（all/user/assistant，按记录类型过滤）+
+//!   `after_ms`（只搜该时刻之后的消息）。两者在扫描时过滤，不影响两级匹配性能。
 //!
 //! ## 性能（off 热路径 + 两级匹配 + 截断）
 //!
@@ -234,7 +236,17 @@ impl SearchIndex {
     }
 
     /// 执行查询。query 已 trim；空 query 返回空结果。
-    fn query(&self, query: &str, include_tools: bool, limit: usize) -> SearchResponse {
+    ///
+    /// - `scope`：None=全部消息；Some(Kind)=只搜该类型记录（只 user / 只 assistant）。
+    /// - `after_ms`：>0 时只搜 ts_ms >= after_ms 的消息（时间范围筛选）；0=不限。
+    fn query(
+        &self,
+        query: &str,
+        include_tools: bool,
+        scope: Option<Kind>,
+        after_ms: i64,
+        limit: usize,
+    ) -> SearchResponse {
         let data = self.inner.read();
         let indexed_sessions = data.sessions.len() as u32;
         let indexed_messages = data.total_messages as u32;
@@ -283,6 +295,16 @@ impl SearchIndex {
             let mut session_hit_count: u32 = 0;
 
             for m in &sd.msgs {
+                // 字段过滤：scope 指定时只搜该类型记录（只 user / 只 Claude）。
+                if let Some(k) = scope {
+                    if m.kind != k {
+                        continue;
+                    }
+                }
+                // 时间范围：after_ms>0 时只搜该时刻之后的消息。
+                if after_ms > 0 && m.ts_ms < after_ms {
+                    continue;
+                }
                 // 粗筛：先看 main，再（可选）看 tool。
                 let in_main = m.main_lc.contains(&q);
                 let in_tool = include_tools && !m.tool_lc.is_empty() && m.tool_lc.contains(&q);
@@ -777,6 +799,8 @@ fn truncate_chars_plain(s: &str, n: usize) -> String {
 /// 全文搜索历史会话。query 大小写不敏感 substring 匹配。
 ///
 /// - `include_tools`：是否附加搜索 tool_use / tool_result / thinking 内容。
+/// - `scope`：搜索范围 `"all"`（默认）/ `"user"`（只我的输入）/ `"assistant"`（只 Claude 回复）。
+/// - `after_ms`：时间范围下界（epoch ms）；只搜该时刻之后的消息，0 / 缺省 = 不限。
 /// - `limit`：返回的命中条数上限（total_hits 仍报全量）。
 ///
 /// 走 spawn_blocking：查询是对内存索引的 CPU 扫描，大索引下可能几十 ms，不占 IPC 派发线程。
@@ -784,12 +808,20 @@ fn truncate_chars_plain(s: &str, n: usize) -> String {
 pub async fn search_history(
     query: String,
     include_tools: bool,
+    scope: Option<String>,
+    after_ms: Option<i64>,
     limit: Option<usize>,
     index: tauri::State<'_, std::sync::Arc<SearchIndex>>,
 ) -> Result<SearchResponse, String> {
     let index = index.inner().clone();
     let limit = limit.unwrap_or(300).clamp(1, 2000);
-    tokio::task::spawn_blocking(move || index.query(&query, include_tools, limit))
+    let scope = match scope.as_deref() {
+        Some("user") => Some(Kind::User),
+        Some("assistant") => Some(Kind::Assistant),
+        _ => None, // "all" / None / 未知值 → 不过滤
+    };
+    let after_ms = after_ms.unwrap_or(0).max(0);
+    tokio::task::spawn_blocking(move || index.query(&query, include_tools, scope, after_ms, limit))
         .await
         .map_err(|e| format!("spawn_blocking join: {e}"))
 }
@@ -891,6 +923,51 @@ mod tests {
         assert_eq!(truncate_chars_plain("hello", 3), "hel");
         assert_eq!(truncate_chars_plain("你好世界", 2), "你好");
         assert_eq!(truncate_chars_plain("hi", 10), "hi");
+    }
+
+    #[test]
+    fn query_scope_and_time_filter() {
+        let idx = SearchIndex::new();
+        {
+            let mut d = idx.inner.write();
+            let mk = |uuid: &str, ts: i64, kind: Kind, main: &str| MsgDoc {
+                uuid: uuid.into(),
+                ts_ms: ts,
+                kind,
+                main: main.into(),
+                main_lc: main.to_lowercase(),
+                tool: String::new(),
+                tool_lc: String::new(),
+            };
+            d.sessions = vec![SessionDoc {
+                session_id: "s1".into(),
+                project_path: "/x".into(),
+                project_name: "x".into(),
+                jsonl_path: "/a.jsonl".into(),
+                title: "t".into(),
+                updated_at: 100,
+                msgs: vec![
+                    mk("u1", 100, Kind::User, "deploy docker now"),
+                    mk("a1", 200, Kind::Assistant, "use docker compose"),
+                ],
+            }];
+            d.total_messages = 2;
+            d.ready = true;
+        }
+        // 全部：两条都命中
+        assert_eq!(idx.query("docker", false, None, 0, 300).total_hits, 2);
+        // 只 user：只 u1
+        let user = idx.query("docker", false, Some(Kind::User), 0, 300);
+        assert_eq!(user.total_hits, 1);
+        assert_eq!(user.sessions[0].hits[0].uuid, "u1");
+        // 只 assistant：只 a1
+        let asst = idx.query("docker", false, Some(Kind::Assistant), 0, 300);
+        assert_eq!(asst.total_hits, 1);
+        assert_eq!(asst.sessions[0].hits[0].uuid, "a1");
+        // 时间 >=150：只 a1（u1 的 ts=100 被滤掉）
+        let recent = idx.query("docker", false, None, 150, 300);
+        assert_eq!(recent.total_hits, 1);
+        assert_eq!(recent.sessions[0].hits[0].uuid, "a1");
     }
 
     /// 契约测试：wire 全 camelCase，前端 TS interface 字段名须一致。
