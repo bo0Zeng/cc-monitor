@@ -17,6 +17,7 @@
 | `Arc<bind::BindRegistry>` | `lib.rs::setup()` `app.manage(bind_registry.clone())` | `BindRegistry::spawn()` | 共享：setup 局部 + `session-changes-emitter` 线程 + `bind-await-watcher` 线程 + `bind-heartbeat` 线程 + State |
 | `Arc<bind::SidHwndCache>` | `lib.rs::setup()` `app.manage(sid_hwnd_cache.clone())` | `SidHwndCache::load()` | 共享：setup 局部 + `session-changes-emitter` 线程 + State |
 | `Arc<logging::LoggingState>` | `lib.rs::setup()` `app.manage(logging_state.clone())` | `logging::init(monitor_data_dir)`（在 `tauri::Builder` 之前） | 共享：`lib.rs::run()` 局部（持有 WorkerGuard 到 setup 结束）+ setup 闭包内 `install_error_emitter` 注入 closure + State |
+| `Arc<search::SearchIndex>` (issue #6) | `lib.rs::setup()` `app.manage(search_index.clone())` | `SearchIndex::new()` | 共享：setup 局部 + `search-index-build` 后台线程（`build_blocking`）+ State |
 
 ---
 
@@ -44,6 +45,11 @@
 - `lib.rs::open_log_file(state: State<'_, Arc<logging::LoggingState>>)`
 - `lib.rs::open_log_dir(state: State<'_, Arc<logging::LoggingState>>)`
 
+### `Arc<SearchIndex>` (issue #6)
+- `search.rs::search_history(query, include_tools, limit, index: State<'_, Arc<SearchIndex>>)`
+- `search.rs::get_search_index_status(index: State<'_, Arc<SearchIndex>>)`
+- `search.rs::rebuild_search_index(index: State<'_, Arc<SearchIndex>>)`
+
 ### 无 State 依赖（自包含 / 用 path 解析）
 - `config::load_config / save_config`（用 `paths::resolve_config_path`）
 - `subagent::load_subagent`
@@ -66,6 +72,7 @@ Arc 不只通过 State 共享，还通过 `.clone()` 喂给 spawn 出去的线�
 | `bind_registry` | (1) `BindRegistry::spawn()` 内部启动的 `bind-await-watcher` + `bind-heartbeat` 两个线程 (2) `session-changes-emitter` 线程 (`bind_for_emitter`) (3) `app.manage` |
 | `sid_hwnd_cache` | (1) `session-changes-emitter` 线程 (`cache_for_emitter`) (2) `app.manage` |
 | `replay` | (1) `app.listen("frontend-ready", ...)` 闭包 (2) spawn 的 jsonl 处理 async task (3) `app.manage` |
+| `search_index` | (1) `search-index-build` 后台线程（构建期持有，构建完成即 drop 该 clone）(2) `app.manage` |
 | `logging_state` | (1) `run()` 局部（持有 WorkerGuard 维持 non_blocking writer thread 存活）(2) setup 闭包内通过 `install_error_emitter` 把 AppHandle wrap 成 closure 存入 state 的 emit_fn 字段 (3) `app.manage` |
 
 **结论**：每个 Arc 都至少有 2 个非 State 消费者。App 退出前 Arc 永不 drop——这是当前架构的隐式契约（无 graceful shutdown 路径）。
