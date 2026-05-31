@@ -1,4 +1,5 @@
-import { listen } from "@tauri-apps/api/event";
+import { listen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { JsonlRecord } from "./cards";
 import type { TaskEntry } from "./tasks-panel";
 
@@ -88,7 +89,40 @@ const BATCH_MS = 8;
  */
 const BATCH_END_GRACE_MS = 300;
 
-export function bindEvents(handlers: EventHandlers): void {
+/** bindEvents 选项。 */
+export interface BindEventsOptions {
+  /**
+   * issue #10：独立 viewer 窗口用 `true` —— 改用 `getCurrentWebviewWindow().listen`
+   * （注册成 `WebviewWindow{label}` 监听）而非模块级 `listen`（注册成 `Any` 监听）。
+   *
+   * 为什么必须：后端 `replay_session_to_window` 用 `emit_to(本窗口)` **定向**发历史
+   * （不广播，否则污染主窗口 timeline）。Tauri 2 事件按 target-kind 匹配：定向发射
+   * 命不中 `Any` 监听，所以模块 `listen` 收不到 → viewer 空白。带标签监听才接得到
+   * 定向事件；而广播 `Any`（live jsonl-line）是通配，带标签监听照样收得到。
+   * 主窗口只收广播（`Any`），保持模块 `listen` 即可，不传此项。
+   */
+  windowScoped?: boolean;
+}
+
+/**
+ * 订阅后端事件。**返回 Promise，resolve 时所有 listener 已在 Rust 侧注册完成**。
+ *
+ * 为什么 async：`listen()` 本身是异步的（内部 invoke 注册），在它 resolve 前 emit 的
+ * 事件会丢。主窗口靠 frontend-ready 往返 + watcher 扫描的天然延迟掩盖了这个竞态；但
+ * issue #10 独立窗口在 bindEvents 后立刻调 replay_session_to_window 定向发历史 —— 不
+ * await 注册就会把 1599 条历史全丢（实测白屏只剩状态栏）。caller 必须 `await bindEvents`
+ * 再触发任何会导致后端 emit 的调用（frontend-ready / replay_session_to_window）。
+ */
+export async function bindEvents(
+  handlers: EventHandlers,
+  opts: BindEventsOptions = {},
+): Promise<void> {
+  // windowScoped 时用窗口作用域监听（详 BindEventsOptions.windowScoped）。
+  // 用泛型 wrapper 而非 .bind —— .bind 会丢失 listen 的泛型，破坏 sub<T> 调用点类型。
+  const wv = opts.windowScoped ? getCurrentWebviewWindow() : null;
+  const sub = <T>(event: string, handler: EventCallback<T>): Promise<UnlistenFn> =>
+    wv ? wv.listen<T>(event, handler) : listen<T>(event, handler);
+
   const queue: QueueItem[] = [];
   let scheduled = false;
 
@@ -194,10 +228,15 @@ export function bindEvents(handlers: EventHandlers): void {
     setTimeout(drain, 0);
   };
 
-  void listen<JsonlLinePayload>("jsonl-line", (e) => {
-    queue.push({ kind: "payload", payload: e.payload });
-    ensureScheduled();
-  });
+  // 收集所有 listen() 注册 promise，函数末尾 await —— 保证返回时监听已就绪。
+  const registrations: Promise<unknown>[] = [];
+
+  registrations.push(
+    sub<JsonlLinePayload>("jsonl-line", (e) => {
+      queue.push({ kind: "payload", payload: e.payload });
+      ensureScheduled();
+    }),
+  );
 
   // v1.7.13: 启动时 replay 用 jsonl-batch 一次性发整个 history（替代之前的
   // N 次单条 jsonl-line emit，省 200-400ms 启动 IPC overhead）。
@@ -206,38 +245,47 @@ export function bindEvents(handlers: EventHandlers): void {
   //
   // P5.2 B 重构：chunkIndex / chunkTotal 元数据仍在后端 payload 里（兼容），
   // 但前端 dispatcher 不再用 —— 所有 payload 走单一路径，前端 timeline 按 seq 排序。
-  void listen<{
-    chunkIndex: number;
-    chunkTotal: number;
-    payloads: JsonlLinePayload[];
-  }>("jsonl-batch", (e) => {
-    if (perf.firstJsonlBatch === undefined) {
-      perf.firstJsonlBatch = performance.now();
-      console.info(
-        `[perf] first jsonl-batch received @ ${perf.firstJsonlBatch.toFixed(0)}ms · chunk ${e.payload.chunkIndex + 1}/${e.payload.chunkTotal} payload=${e.payload.payloads.length}`,
-      );
-    }
-    // 第一块触发 batch-start（后续块在 grace 续期内被视作同一 batch）。
-    if (e.payload.chunkIndex === 0) {
-      queue.push({ kind: "batch-start" });
-    }
-    for (const p of e.payload.payloads) {
-      queue.push({ kind: "payload", payload: p });
-    }
-    // 每块末尾发 batch-end —— 300ms grace 内有新 payload / 新块都续期
-    queue.push({ kind: "batch-end" });
-    ensureScheduled();
-  });
+  registrations.push(
+    sub<{
+      chunkIndex: number;
+      chunkTotal: number;
+      payloads: JsonlLinePayload[];
+    }>("jsonl-batch", (e) => {
+      if (perf.firstJsonlBatch === undefined) {
+        perf.firstJsonlBatch = performance.now();
+        console.info(
+          `[perf] first jsonl-batch received @ ${perf.firstJsonlBatch.toFixed(0)}ms · chunk ${e.payload.chunkIndex + 1}/${e.payload.chunkTotal} payload=${e.payload.payloads.length}`,
+        );
+      }
+      // 第一块触发 batch-start（后续块在 grace 续期内被视作同一 batch）。
+      if (e.payload.chunkIndex === 0) {
+        queue.push({ kind: "batch-start" });
+      }
+      for (const p of e.payload.payloads) {
+        queue.push({ kind: "payload", payload: p });
+      }
+      // 每块末尾发 batch-end —— 300ms grace 内有新 payload / 新块都续期
+      queue.push({ kind: "batch-end" });
+      ensureScheduled();
+    }),
+  );
 
   // session-ended 事件稀疏，直接同步派发
-  void listen<SessionEndedPayload>("session-ended", (e) =>
-    handlers.onSessionEnded(e.payload.session_id),
+  registrations.push(
+    sub<SessionEndedPayload>("session-ended", (e) =>
+      handlers.onSessionEnded(e.payload.session_id),
+    ),
   );
 
   // v2.3.0 issue #11: task-update 同样稀疏，绕过 queue 直接派发
-  void listen<TasksUpdatePayload>("task-update", (e) => {
-    handlers.onTasksUpdate?.(e.payload);
-  });
+  registrations.push(
+    sub<TasksUpdatePayload>("task-update", (e) => {
+      handlers.onTasksUpdate?.(e.payload);
+    }),
+  );
+
+  // 等所有 listener 在 Rust 侧注册完成再返回（防 emit-before-listen 丢事件）。
+  await Promise.all(registrations);
 }
 
 /** 启动管线 perf timeline 输出（onBatchEnd 真正 fire 时调一次） */

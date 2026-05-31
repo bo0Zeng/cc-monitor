@@ -318,6 +318,9 @@ pub fn run() {
             config::save_config,
             subagent::load_subagent,
             forget_session,
+            // issue #10: 独立只读窗口（多窗口 / 双屏）
+            open_session_in_new_window,
+            replay_session_to_window,
             bring_terminal_to_front,
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
@@ -368,6 +371,53 @@ fn forget_session(
     replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
 ) -> Result<(), String> {
     replay.forget(&session_id);
+    Ok(())
+}
+
+/// issue #10：把某 session 在一个独立 WebviewWindow（`viewer-<sid>`）里打开，
+/// 加载 `index.html?viewer=<sid>` —— 前端检测到 `viewer` 参数走精简只读 bootstrap。
+/// 窗口已存在则前置聚焦（不重复开）。双屏 / 并排查看用。
+///
+/// **必须 `async`**：Tauri 2 同步 `fn` 命令在**主线程**执行，而
+/// `WebviewWindowBuilder::build()` 要把窗口创建派发到主线程并阻塞等待 —— 同步命令
+/// 就是在主线程里等主线程 → 死锁（表现：新窗口白屏 + 整个 app 卡死连 X 都点不了）。
+/// async 命令跑在 async runtime（非主线程）→ build() 派发给空闲主线程 → 正常建窗。
+#[tauri::command]
+async fn open_session_in_new_window(
+    app: tauri::AppHandle,
+    session_id: String,
+    title: String,
+) -> Result<(), String> {
+    use tauri::Manager;
+    let label = format!("viewer-{session_id}");
+    if let Some(w) = app.get_webview_window(&label) {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    let url = tauri::WebviewUrl::App(format!("index.html?viewer={session_id}").into());
+    tauri::WebviewWindowBuilder::new(&app, &label, url)
+        .title(if title.is_empty() {
+            "cc-monitor"
+        } else {
+            &title
+        })
+        .inner_size(900.0, 720.0)
+        .build()
+        .map_err(|e| format!("create viewer window failed: {e}"))?;
+    Ok(())
+}
+
+/// issue #10：独立 viewer 窗口加载后调用 —— 后端把该 sid 的历史定向 emit 给本窗口。
+/// `window` 由 Tauri 注入 = 发起调用的窗口（即那个 viewer 窗口）。
+#[tauri::command]
+fn replay_session_to_window(
+    session_id: String,
+    window: tauri::WebviewWindow,
+    replay: tauri::State<'_, Arc<event_replay::EventReplay>>,
+) -> Result<(), String> {
+    replay.replay_session_to_window(&window, &session_id);
     Ok(())
 }
 

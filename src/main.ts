@@ -11,6 +11,7 @@
  */
 import "./styles.css";
 import { emit } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
@@ -74,6 +75,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 主题尽早应用，避免渲染抖动
   await loadTheme();
   window.__ccmPerf.themeLoaded = performance.now();
+
+  // issue #10：独立只读窗口 —— URL 带 ?viewer=<sid> 时走精简 bootstrap 后返回，
+  // 不建设置 / 历史 / 多 tab chrome，只镜像渲染该 session。
+  const viewerSid = new URLSearchParams(location.search).get("viewer");
+  if (viewerSid) {
+    await bootstrapViewer(viewerSid);
+    return;
+  }
 
   const tabBar = document.getElementById("tab-bar");
   const streamRoot = document.getElementById("message-stream");
@@ -156,52 +165,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   document.getElementById("app")?.appendChild(historyTrigger);
 
-  // v2.4.3 issue #13: 外链全局事件代理。render.ts 给 http/https/mailto 链接
-  // 打了 data-external 标记；这里 preventDefault + openUrl 走系统默认浏览器，
-  // 避免 WebView2 把整个 monitor UI 替换成外站。
-  // capture 阶段 + 顶层接管，避免被卡片内部 click handler 抢先 stopPropagation。
-  document.addEventListener(
-    "click",
-    (e) => {
-      const a = (e.target as HTMLElement | null)?.closest?.(
-        "a[data-external]",
-      ) as HTMLAnchorElement | null;
-      if (!a) return;
-      const href = a.getAttribute("href") ?? "";
-      if (!href) return;
-      e.preventDefault();
-      void openUrl(href).catch((err) => {
-        console.warn("[external link] openUrl failed:", href, err);
-      });
-    },
-    true,
-  );
-
-  // 代码块"复制"按钮全局事件代理：marked code renderer 输出 HTML 字符串无法
-  // 在生成时挂 listener，统一在这里 delegate。click 命中 .code-copy 时把所在
-  // .code-block 里 <pre> 的纯文本扔进剪贴板。
-  document.addEventListener("click", (e) => {
-    const btn = (e.target as HTMLElement | null)?.closest?.(".code-copy");
-    if (!btn) return;
-    const block = btn.closest(".code-block");
-    const pre = block?.querySelector("pre");
-    const text = pre?.textContent ?? "";
-    if (!text) return;
-    void navigator.clipboard.writeText(text).then(
-      () => {
-        btn.classList.add("copied");
-        btn.textContent = "已复制";
-        window.setTimeout(() => {
-          btn.classList.remove("copied");
-          btn.textContent = "复制";
-        }, 1200);
-      },
-      () => {
-        btn.textContent = "失败";
-        window.setTimeout(() => (btn.textContent = "复制"), 1200);
-      },
-    );
-  });
+  // 外链 + 代码块复制的全局 click 代理（主窗口 / 独立 viewer 窗口共用）
+  installGlobalClickDelegation();
 
   // 快捷键：issue #5 走 KeybindingDispatcher 统一派发。
   // 各 action 默认 chord 见 keybindings/actions.ts；用户覆盖存 config.json
@@ -214,6 +179,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
   dispatcher.bind("tab.close-archived", () => tabs.closeActiveIfArchived());
   dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
+  dispatcher.bind("tab.pop-out", () => tabs.openActiveInNewWindow());
   dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
   dispatcher.bind("app.open-settings", () => void settingsPanel.open());
   dispatcher.bind("app.toggle-history", () => {
@@ -246,7 +212,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.applyOverrides(await getKeybindings());
   dispatcher.start();
 
-  bindEvents({
+  // await：保证 listener 注册完成再 emit frontend-ready（否则后端 replay 可能早于
+  // 监听就绪而丢事件 —— 主窗口此前靠往返延迟侥幸不触发，显式 await 更稳，也跟
+  // viewer 路径一致）。
+  await bindEvents({
     // P5.2 B 重构：onLine 不再带 source 参数（前端按 seq timeline 排，不分 batch/live）
     onLine: (e) => tabs.onLine(e),
     onSessionEnded: (sessionId) => tabs.archiveTab(sessionId),
@@ -268,3 +237,162 @@ window.addEventListener("DOMContentLoaded", async () => {
   );
   void emit("frontend-ready");
 });
+
+/**
+ * issue #10：独立只读窗口的精简 bootstrap。
+ *
+ * 复用 TabManager（按 confirmed 架构）但只喂该 sid 的事件、隐藏全部 chrome
+ * （tab 栏 / 设置 / 历史，由 `body.viewer-mode` CSS 控制）→ 自动继承分支折叠 /
+ * 启动滚动消抖 / tool-group 合并 等全部渲染能力。
+ *
+ * 数据：实时 `jsonl-line` 广播本就到所有窗口（按 sid 过滤）；历史走定向
+ * `replay_session_to_window`（与实时同 seq 空间）。两者重叠由 `seen` set 按 seq 去重。
+ * **不发 `frontend-ready`** —— 那会触发后端对所有窗口的全量 replay。
+ */
+async function bootstrapViewer(sid: string): Promise<void> {
+  document.body.classList.add("viewer-mode");
+  const tabBar = document.getElementById("tab-bar");
+  const streamRoot = document.getElementById("message-stream");
+  const status = document.getElementById("status-bar");
+  if (!tabBar || !streamRoot || !status) {
+    console.error("viewer: layout containers missing");
+    return;
+  }
+
+  status.innerHTML = "";
+  const statusMsg = document.createElement("span");
+  statusMsg.className = "status-msg";
+  statusMsg.textContent = "独立只读视图";
+  status.appendChild(statusMsg);
+
+  const empty = document.createElement("div");
+  empty.className = "empty-state";
+  empty.textContent = "加载中…";
+  streamRoot.appendChild(empty);
+
+  // 复用 TabManager，过滤到本 sid；tab 栏由 .viewer-mode 隐藏。无 tasksPanel。
+  const tabs = new TabManager(tabBar, streamRoot, ({ total }) => {
+    empty.style.display = total > 0 ? "none" : "";
+  });
+
+  // issue #10：slim 顶栏 —— 标题 + 调出终端 + 打开工作目录。按钮复用 TabManager 的
+  // bringActiveTerminalToFront / openActiveTabCwd（作用于其唯一的 active tab）。
+  const topbar = document.createElement("div");
+  topbar.className = "viewer-topbar";
+  const titleEl = document.createElement("span");
+  titleEl.className = "viewer-topbar-title";
+  titleEl.textContent = sid.slice(0, 8);
+  topbar.appendChild(titleEl);
+  const termBtn = document.createElement("button");
+  termBtn.type = "button";
+  termBtn.className = "viewer-topbar-btn";
+  termBtn.textContent = "↗ 终端";
+  termBtn.title = "调出对应终端窗口 (Ctrl+`)";
+  termBtn.addEventListener("click", () => tabs.bringActiveTerminalToFront());
+  topbar.appendChild(termBtn);
+  const cwdBtn = document.createElement("button");
+  cwdBtn.type = "button";
+  cwdBtn.className = "viewer-topbar-btn";
+  cwdBtn.textContent = "📂 目录";
+  cwdBtn.title = "打开工作目录 (Ctrl+Shift+E)";
+  cwdBtn.addEventListener("click", () => tabs.openActiveTabCwd());
+  topbar.appendChild(cwdBtn);
+  const appEl = document.getElementById("app");
+  appEl?.insertBefore(topbar, appEl.firstChild);
+
+  installGlobalClickDelegation();
+
+  // 快捷键：最小化 + issue #10 调出终端 / 打开 cwd（复用 tabs 的 active-tab 动作）。
+  dispatcher.bind("app.minimize", () => void getCurrentWindow().minimize());
+  dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
+  dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
+  dispatcher.applyOverrides(await getKeybindings());
+  dispatcher.start();
+
+  // 定向 replay 与实时广播可能重叠 → 按 per-file seq 去重。
+  const seen = new Set<number>();
+  let titleCwdSeq = Number.POSITIVE_INFINITY; // 顶栏标题取最早 cwd（项目根），同 tab.cwd 口径
+  // **必须 await**：listener 注册完成前调 replay 会丢事件（实测白屏只剩状态栏）。
+  // **windowScoped:true**：定向 replay 用 emit_to(本窗口)，须用窗口作用域监听才收得到
+  // （模块级 listen 是 Any 监听，命不中定向发射）。详 BindEventsOptions.windowScoped。
+  await bindEvents(
+    {
+      onLine: (e) => {
+        if (e.session_id !== sid) return;
+        if (seen.has(e.seq)) return;
+        seen.add(e.seq);
+        // 顶栏标题：用**最早**记录的 cwd 末段（项目根），跟 tab.cwd 口径一致。
+        if (e.cwd && e.seq < titleCwdSeq) {
+          titleCwdSeq = e.seq;
+          const base = e.cwd.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+          if (base) titleEl.textContent = base;
+        }
+        tabs.onLine(e);
+      },
+      onSessionEnded: (s) => {
+        if (s === sid) tabs.archiveTab(s);
+      },
+      onBatchStart: () => tabs.onBatchStart(),
+      onBatchEnd: () => tabs.onBatchEnd(),
+    },
+    { windowScoped: true },
+  );
+
+  bindErrorToast();
+
+  // 拉本 sid 的历史（定向 emit 到本窗口）。不发 frontend-ready。
+  try {
+    await invoke("replay_session_to_window", { sessionId: sid });
+  } catch (e) {
+    console.error("viewer: replay_session_to_window failed:", e);
+    statusMsg.textContent = `加载失败：${String(e)}`;
+  }
+}
+
+/**
+ * 外链 + 代码块复制的全局 click 代理。主窗口与独立 viewer 窗口共用。
+ * - 外链（render.ts 标 data-external）：preventDefault + openUrl 走系统浏览器，
+ *   避免 WebView2 把 UI 替换成外站。capture 阶段顶层接管防被卡片 handler 抢先。
+ * - 代码块"复制"按钮：marked 输出的 HTML 无法挂 listener，这里 delegate。
+ */
+function installGlobalClickDelegation(): void {
+  document.addEventListener(
+    "click",
+    (e) => {
+      const a = (e.target as HTMLElement | null)?.closest?.(
+        "a[data-external]",
+      ) as HTMLAnchorElement | null;
+      if (!a) return;
+      const href = a.getAttribute("href") ?? "";
+      if (!href) return;
+      e.preventDefault();
+      void openUrl(href).catch((err) => {
+        console.warn("[external link] openUrl failed:", href, err);
+      });
+    },
+    true,
+  );
+
+  document.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement | null)?.closest?.(".code-copy");
+    if (!btn) return;
+    const block = btn.closest(".code-block");
+    const pre = block?.querySelector("pre");
+    const text = pre?.textContent ?? "";
+    if (!text) return;
+    void navigator.clipboard.writeText(text).then(
+      () => {
+        btn.classList.add("copied");
+        btn.textContent = "已复制";
+        window.setTimeout(() => {
+          btn.classList.remove("copied");
+          btn.textContent = "复制";
+        }, 1200);
+      },
+      () => {
+        btn.textContent = "失败";
+        window.setTimeout(() => (btn.textContent = "复制"), 1200);
+      },
+    );
+  });
+}

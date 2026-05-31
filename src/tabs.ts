@@ -32,6 +32,12 @@ export interface Tab {
    */
   title: string;
   cwd: string | null;
+  /**
+   * `cwd` 来源记录的 seq。取**最小 seq（最早记录）**的 cwd = 项目根 / 启动目录。
+   * 会话的 cwd 可能中途漂移到子目录；用最早记录的 cwd 才稳定指向项目根（与历史
+   * 浏览器 quick_extract_cwd 口径一致）。Infinity = 尚未拿到任何带 cwd 的记录。
+   */
+  cwdSeq: number;
   /** Claude 给出的语义标题（JSONL 里 `ai-title` 记录的 aiTitle 字段），出现一次就锁定 */
   aiTitle: string | null;
   status: TabStatus;
@@ -207,7 +213,7 @@ export class TabManager {
    * - 真用户输入走 sink.onRealUserInput → this.userActive
    */
   onLine(payload: JsonlLinePayload): void {
-    const tab = this.ensureTab(payload.session_id, payload.cwd, payload.path);
+    const tab = this.ensureTab(payload.session_id, payload.cwd, payload.path, payload.seq);
 
     const ctx: RenderContext = {
       parentPath: tab.parentPath,
@@ -236,11 +242,16 @@ export class TabManager {
     }
   }
 
-  ensureTab(sessionId: string, cwd: string | null, sourcePath: string): Tab {
+  ensureTab(sessionId: string, cwd: string | null, sourcePath: string, seq: number): Tab {
     let tab = this.tabs.get(sessionId);
     if (tab) {
-      if (!tab.cwd && cwd) {
+      // cwd 取**最早（最小 seq）**那条记录的 —— 即项目根 / 启动目录。
+      // 不能用「第一个到达的」：启动重放末块先发，最先到的是最新记录，而会话的 cwd
+      // 可能在过程中漂移（如工作目录切到子目录）→ 会抓到子目录而非项目根。与历史
+      // 浏览器 quick_extract_cwd（读最早 cwd）口径一致。
+      if (cwd && seq < tab.cwdSeq) {
         tab.cwd = cwd;
+        tab.cwdSeq = seq;
         tab.title = this.computeTitle(tab);
         this.refreshTabBar();
       }
@@ -276,6 +287,8 @@ export class TabManager {
       sessionId,
       title,
       cwd,
+      // 记下当前 cwd 来源的 seq；后续更早（更小 seq）的记录可覆盖（取项目根）。
+      cwdSeq: cwd ? seq : Number.POSITIVE_INFINITY,
       aiTitle: null,
       status: "live",
       streamEl,
@@ -488,6 +501,25 @@ export class TabManager {
     void this.openTabCwd(this.activeId);
   }
 
+  /** issue #10 快捷键 Ctrl+Shift+N：把当前活跃 Tab 在独立只读窗口打开 */
+  openActiveInNewWindow(): void {
+    if (this.activeId) void this.openInNewWindow(this.activeId);
+  }
+
+  /** issue #10：在独立只读窗口打开指定 session（Tab 右键 / 快捷键）。 */
+  private async openInNewWindow(sid: string): Promise<void> {
+    const tab = this.tabs.get(sid);
+    if (!tab) return;
+    try {
+      await invoke("open_session_in_new_window", {
+        sessionId: sid,
+        title: tab.title,
+      });
+    } catch (e) {
+      showActionFailureToast("打开新窗口失败", String(e));
+    }
+  }
+
   /** 打开指定 Tab 的 cwd 到系统文件管理器。无 cwd 静默忽略。 */
   private async openTabCwd(sid: string): Promise<void> {
     const tab = this.tabs.get(sid);
@@ -638,6 +670,13 @@ export class TabManager {
         this.closeTab(sid);
       }
     });
+    // issue #10：右键菜单「在新窗口打开」（双屏 / 并排）
+    root.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      showTabContextMenu(e.clientX, e.clientY, [
+        { label: "在新窗口打开", onClick: () => void this.openInNewWindow(sid) },
+      ]);
+    });
 
     return { root, label, badge, cwdBtn };
   }
@@ -659,6 +698,56 @@ export class TabManager {
       }
     }
   }
+}
+
+/**
+ * issue #10：极简一次性上下文菜单（Tab 右键用）。挂 document.body 作 fixed 浮层，
+ * 点任意项 / 点外部 / Esc 即关。一次只允许一个（开新的前先关旧的）。
+ */
+let activeTabMenu: HTMLElement | null = null;
+function showTabContextMenu(
+  x: number,
+  y: number,
+  items: { label: string; onClick: () => void }[],
+): void {
+  closeTabContextMenu();
+  const menu = document.createElement("div");
+  menu.className = "tab-context-menu";
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+  for (const it of items) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "tab-context-menu-item";
+    btn.textContent = it.label;
+    btn.addEventListener("click", () => {
+      closeTabContextMenu();
+      it.onClick();
+    });
+    menu.appendChild(btn);
+  }
+  document.body.appendChild(menu);
+  activeTabMenu = menu;
+  // 下一拍再挂关闭监听，避免本次右键触发的事件立刻把菜单关掉
+  window.setTimeout(() => {
+    window.addEventListener("pointerdown", onDocPointerForMenu, true);
+    window.addEventListener("keydown", onKeyForMenu, true);
+  }, 0);
+}
+function closeTabContextMenu(): void {
+  if (!activeTabMenu) return;
+  activeTabMenu.remove();
+  activeTabMenu = null;
+  window.removeEventListener("pointerdown", onDocPointerForMenu, true);
+  window.removeEventListener("keydown", onKeyForMenu, true);
+}
+function onDocPointerForMenu(e: PointerEvent): void {
+  if (activeTabMenu && !activeTabMenu.contains(e.target as Node)) {
+    closeTabContextMenu();
+  }
+}
+function onKeyForMenu(e: KeyboardEvent): void {
+  if (e.key === "Escape") closeTabContextMenu();
 }
 
 function projectNameFromCwd(cwd: string): string | null {

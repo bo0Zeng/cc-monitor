@@ -69,6 +69,86 @@ html, body {
   position: relative;
 }
 
+/* issue #10：独立只读窗口 —— 隐藏 tab 栏，消息流占满，保留 slim 状态栏。
+   关键：#tab-bar 用 display:none 会把它**从 grid item 中移除**，剩下两个子元素
+   （#message-stream / #status-bar）自动重排到前两行 —— 所以这里必须只定义**两行**
+   `1fr 24px`，否则 message-stream 会落进多出来的那行被压成 0 高（踩过：实测
+   streamRoot 高度 0，整窗只剩状态栏文字）。
+   设置 / 历史触发按钮在 viewer bootstrap 里压根不创建，这里再兜底隐藏一次。 */
+/* viewer 有 slim 顶栏（.viewer-topbar，bootstrapViewer prepend 进 #app）：
+   #tab-bar display:none 不算 grid item，剩 [topbar, message-stream, status-bar]
+   三个 item → 三行 `auto 1fr 24px`。 */
+body.viewer-mode #app {
+  grid-template-rows: auto 1fr 24px;
+}
+body.viewer-mode #tab-bar,
+body.viewer-mode .settings-trigger,
+body.viewer-mode .history-trigger {
+  display: none;
+}
+
+/* issue #10：独立窗口 slim 顶栏（标题 + 调出终端 + 打开目录） */
+.viewer-topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-strong);
+}
+.viewer-topbar-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.viewer-topbar-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-2);
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-small);
+}
+.viewer-topbar-btn:hover {
+  color: var(--text);
+  background: var(--overlay-hover);
+}
+
+/* issue #10：Tab 右键上下文菜单（极简浮层，挂 body） */
+.tab-context-menu {
+  position: fixed;
+  z-index: 99999;
+  min-width: 140px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.tab-context-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-small);
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.tab-context-menu-item:hover {
+  background: var(--overlay-hover);
+}
+
 /* === Tab Bar === */
 
 #tab-bar {
