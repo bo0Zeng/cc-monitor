@@ -20,7 +20,7 @@
 use crate::bridge::{events, JsonlBatchPayload, JsonlLinePayload};
 use parking_lot::Mutex;
 use std::collections::VecDeque;
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Emitter, Runtime, WebviewWindow};
 
 pub struct EventReplay {
     inner: Mutex<Inner>,
@@ -219,6 +219,56 @@ impl EventReplay {
         tracing::info!(
             "[perf] replayed {n} events to frontend (chunked × {chunk_total}) in {}ms total",
             started.elapsed().as_millis()
+        );
+    }
+
+    /// issue #10：把指定 session 的历史**定向** emit 给某个独立 viewer 窗口（不广播）。
+    ///
+    /// 独立窗口（`viewer-<sid>`）打开后调用：主窗口的全局 replay 早已发过，新窗口错过了，
+    /// 这里从 buffer 里挑该 sid 的历史，按 `build_chunks`（末块先发）只发给这一个窗口。
+    /// **seq 与实时 `jsonl-line` 同空间**（都是 watcher 的 per-file seq），所以新窗口前端把
+    /// 定向历史 + 实时增量混进同一个 RecordTimeline 时顺序天然正确（重叠由前端 seq 去重）。
+    ///
+    /// 仅活跃 session 的历史在 buffer 里（watcher 只 tail 活跃 jsonl）；archived session
+    /// 走前端一次性文件读路径，不经此函数。
+    pub fn replay_session_to_window<R: Runtime>(
+        &self,
+        window: &WebviewWindow<R>,
+        session_id: &str,
+    ) {
+        let history: Vec<JsonlLinePayload> = {
+            let inner = self.inner.lock();
+            inner
+                .history
+                .iter()
+                .filter(|p| p.session_id == session_id)
+                .cloned()
+                .collect()
+        };
+        if history.is_empty() {
+            tracing::info!("replay_session_to_window({session_id}): no buffered history");
+            return;
+        }
+        let n = history.len();
+        let chunks = build_chunks(&history);
+        let chunk_total = chunks.len() as u32;
+        let label = window.label().to_string();
+        // 显式 WebviewWindow 目标定向投递（不广播，避免污染主窗口 timeline）。
+        // 前端 viewer 用 getCurrentWebviewWindow().listen 接（同 WebviewWindow{label} kind）。
+        // 不能用 `&str` 目标（那会变 EventTarget::AnyLabel，命不中前端的窗口作用域监听）。
+        let target = tauri::EventTarget::webview_window(label.clone());
+        for (idx, chunk) in chunks.into_iter().enumerate() {
+            let payload = JsonlBatchPayload {
+                chunk_index: idx as u32,
+                chunk_total,
+                payloads: chunk,
+            };
+            if let Err(e) = window.emit_to(target.clone(), events::JSONL_BATCH, &payload) {
+                tracing::warn!("replay_session_to_window emit chunk {idx} failed: {e}");
+            }
+        }
+        tracing::info!(
+            "replay_session_to_window({session_id}): {n} events in {chunk_total} chunks → {label}"
         );
     }
 

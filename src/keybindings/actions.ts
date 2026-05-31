@@ -67,11 +67,10 @@ export const ACTIONS: ReadonlyArray<Action> = [
   { id: "tab.open-cwd", label: "打开当前 Tab 的工作目录", category: "Tab", default: "Ctrl+Shift+KeyE", available: true },
   {
     id: "tab.pop-out",
-    label: "把当前 Tab 拖出为独立窗口",
+    label: "在新窗口打开当前 Tab",
     category: "Tab",
-    default: null,
-    available: false,
-    comingSoon: "issue #10 还没实现",
+    default: "Ctrl+Shift+KeyN",
+    available: true,
   },
 
   // ===== Terminal =====
@@ -86,7 +85,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
     category: "App",
     default: null,
     available: false,
-    comingSoon: "issue #6 还没实现",
+    comingSoon: "已上线：Ctrl+H 打开历史后切「全文」模式（暂无独立快捷键）",
   },
   { id: "app.minimize", label: "最小化主窗口", category: "App", default: "Ctrl+KeyM", available: true },
   {
