@@ -73,6 +73,8 @@ src-tauri/
 | `save_config` | `{ value: Value }` | `()` | 设置面板保存时 |
 | `load_subagent` | `{ parentJsonlPath, description, toolUseTimestamp }` | `SubagentLoadResult` | 用户展开 Task 折叠卡 |
 | `forget_session` | `{ sessionId }` | `()` | 用户关闭 archived Tab |
+| `open_session_in_new_window` (issue #10) | `{ sessionId, title }` | `()` | Tab 右键「在新窗口打开」/ Ctrl+Shift+N，建 `viewer-<sid>` 独立只读窗口 |
+| `replay_session_to_window` (issue #10) | `{ sessionId }` (window 注入) | `()` | 独立窗口加载后调，把该 sid 历史定向 emit 给本窗口 |
 | `list_history_projects` | — | `HistoryProject[]` | 历史浏览器打开 |
 | `stream_history_sessions_in_project` | `{ projectDir, onEntry }` | `u32` (count) | 项目组展开（流式 Channel；v2.2 取代非流式版） |
 | `stream_read_session_jsonl` | `{ jsonlPath, onChunk }` | `u32` (count) | 点击历史会话进入只读视图（流式 Channel） |
