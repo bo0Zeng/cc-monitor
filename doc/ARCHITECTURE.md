@@ -212,6 +212,21 @@ replay 时一次性发整个 Vec<JsonlLinePayload>，前端 push 进同一 queue
 
 **为什么**：旧内容逐条插到贴底视口上方会让浏览器逐帧重排 + 重做 scroll anchoring，HiDPI/高刷屏分数像素下整数 `scrollHeight` 与分数布局的舍入误差每帧不同 → 整块内容 ±0.5px 高频抖动（实测抖动帧 66→1）。渲染仍按 40/帧推进（响应不卡），只把"上方插入"压成一帧。注意 `scrollTop` 本身不震荡，故只测 scrollTop 发现不了此 bug。
 
+### 独立只读窗口复用主渲染管线 + 定向 replay（issue #10）
+`open_session_in_new_window` 建 `viewer-<sid>` WebviewWindow 加载 `index.html?viewer=<sid>`；前端 `main.ts` 检测参数走精简 bootstrap（`bootstrapViewer`）—— **复用 TabManager**（过滤到该 sid、`body.viewer-mode` 隐藏 tab/设置/历史 chrome），自动继承分支折叠 / 启动滚动消抖 / tool-group 合并。顶部一条 slim 栏：项目名标题 + ↗调出终端 + 📂打开 cwd（复用 TabManager 的 active-tab 动作）。
+
+**为什么不另写 viewer 渲染器**：再写一套渲染会与主管线漂移（SessionViewer 漏 pendingToolResults 是历史教训）。复用 TabManager 零功能差。
+
+**历史 + 实时一致性**：独立窗口订阅 `jsonl-line`（按 sid 过滤）拿实时增量；历史经 `replay_session_to_window` 从 event_replay buffer **定向 emit 给本窗口**——两者都是 watcher 的 **per-file seq 空间**，混进同一 RecordTimeline 顺序天然正确，重叠由前端 `seen` set 去重。**不发 frontend-ready**（那会触发对所有窗口的全量 replay）。仅活跃 session 在 buffer；archived 走前端一次性文件读。capability 必须含 `viewer-*`（见 capabilities/default.json）。
+
+**四个踩过的坑（INVARIANT § 22）**：
+1. **开窗命令必须 `async`**：Tauri 2 同步 `fn` 命令在主线程跑，`WebviewWindowBuilder::build()` 又要派发回主线程并阻塞等 → 自死锁（白屏 + 整窗卡死）。async 命令在 runtime 线程跑才行。
+2. **事件 target-kind 必须对齐**：定向投递要 Rust `emit_to(EventTarget::webview_window(label))` ↔ 前端 `getCurrentWebviewWindow().listen`（窗口作用域，`bindEvents({windowScoped:true})`）。用 `&str` 目标（→`AnyLabel`）配模块级 `listen`（→`Any`）**收不到**（实测白屏只剩状态栏）。live 广播 `Any` 是通配，带标签监听仍能收。
+3. **`bindEvents` 须 await**：`listen()` 异步注册，注册完成前 emit 的事件会丢；viewer 紧接着调 replay，必须先 await。
+4. **viewer-mode grid 行数**：`#tab-bar` `display:none` 会把它从 grid item 移除，剩下的子元素**前移一行** → message-stream 落进多余的 0 高行被压没。只能给剩余 item 定义对应行数（`auto 1fr 24px`）。
+
+详细排查复盘见 `doc/viewer-window-investigation.md`（项目外）。
+
 ### session 探活双重校验（PID + procStart，procStart 可缺）
 `OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE` + 当 sessions/<PID>.json 含 `procStart` 字段时再加 `GetProcessTimes` creation FILETIME 100ms 容差比对。
 

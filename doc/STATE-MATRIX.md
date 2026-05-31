@@ -31,6 +31,7 @@
 
 ### `Arc<EventReplay>`
 - `lib.rs::forget_session(session_id, replay: State<'_, Arc<EventReplay>>)`
+- `lib.rs::replay_session_to_window(session_id, window, replay: State<'_, Arc<EventReplay>>)` (issue #10：把该 sid 历史定向 emit 给独立 viewer 窗口)
 
 ### `Arc<BindRegistry>`
 - `lib.rs::cc_integration_status(command_name, bind_state: State<'_, Arc<BindRegistry>>)`

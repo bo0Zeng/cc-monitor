@@ -309,6 +309,21 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 ---
 
+## 22. 独立 viewer 窗口（issue #10）四条契约
+
+独立只读窗口（`viewer-<sid>`，`bootstrapViewer`）依赖四条，违反任一条都会让窗口白屏 / 卡死 / 收不到数据：
+
+1. **开窗 IPC 必须 `async`**：`open_session_in_new_window` 等创建 `WebviewWindow` 的命令必须是 `async fn`。Tauri 2 同步 `fn` 命令在**主线程**执行，而 `WebviewWindowBuilder::build()` 内部把创建派发到主线程并阻塞等 → 在主线程等主线程 = 死锁（新窗口白屏 + 整个 app 卡死连关闭都点不了）。
+2. **定向事件 target-kind 对齐**：给单个 viewer 窗口定向投递（如 `replay_session_to_window`）用 Rust `emit_to(EventTarget::webview_window(label))` ↔ 前端 `getCurrentWebviewWindow().listen`（`bindEvents({windowScoped:true})`）。**禁止**用 `&str` 目标（→`EventTarget::AnyLabel`）配模块级 `listen`（→`Any`）—— Tauri 2 按 kind 匹配，`Any` 监听命不中 `AnyLabel` 发射，事件静默丢弃。`AppHandle::emit` 广播（`Any`）是通配，带标签监听仍收得到 live 增量。
+3. **`bindEvents` 必须 await 再触发 emit**：`listen()` 异步注册，注册完成前后端 emit 的事件会丢。viewer 在 bindEvents 后立刻调 replay，所以 `bindEvents` 返回 Promise 且 caller 必须 await（主窗口 emit frontend-ready 同理）。
+4. **viewer-mode CSS grid 行数随可见 item 定义**：`#tab-bar` `display:none` 会把它**从 grid item 移除**，剩余子元素自动前移一行。所以 viewer 必须只为剩余 item 定义对应行数（`auto 1fr 24px`），否则 message-stream 落进多余行被压成 0 高（整窗只剩状态栏）。
+
+**为什么不能松动**：四条都是实测踩出来的（详见排查复盘），且都"静默失败"——不报错，只是白屏 / 收不到 / 卡死，极难凭看代码发现。
+
+详 `D:/Sync/文档/claudecode-frontend/doc/viewer-window-investigation.md`（项目外排查复盘）。
+
+---
+
 ## 修改本文档
 
 加新的不变量时：
