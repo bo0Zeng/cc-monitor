@@ -113,17 +113,13 @@
 
 ---
 
-## 9. JSONL 单一时序
+## 9. 排序的硬规则：一律按 `seq`，禁止按到达顺序
 
-链路：`watcher::process_file` 增量读 + 不截断 + 给每行分配 per-file 单调 `seq: u64` →
-`bridge::JsonlLinePayload.seq` wire 字段透传 → 前端 `RecordTimeline.insert(seq, element)`
-按 seq binary insert + DOM insertBefore（详 § 5）→ 前端看到的卡片顺序 = jsonl 行顺序。
+§ 5 描述了 seq + RecordTimeline 的机制（链路与契约不在此重复）。本条是从中派生的一条**强制约束**，单列以便 grep / review 时引用：
 
-跨 snapshot / live / chunked replay 各种边界都成立，因为 seq 不依赖 emit 时机。
+**禁止**任何"按到达顺序排序 / 拼接"的代码——包括前端临时缓冲、后端 chunked emit 假设的 head/older 区分、live 与 batch 路径分别维护顺序等。一切顺序**必须**取自 `seq` 字段。
 
-**为什么不能松动**：jsonl 的行顺序是用户对话的时间顺序。乱序 = 看到 Claude 先回复再有
-user 提问 → 完全没法用。**禁止**任何"按到达顺序排序"的代码（包括前端临时缓冲、后端
-chunked emit 时假设的 head/older 区分等）—— 必须按 seq 字段排序。
+**为什么不能松动**：jsonl 的行顺序就是用户对话的时间顺序。乱序 = 看到 Claude 先回复、再出现 user 提问 → 完全没法用。seq 不依赖 emit 时机，所以跨 snapshot / live / chunked replay 各种边界都成立；任何"按到达顺序"的捷径都会在某个边界破坏时序（历史上多 flag 状态机的相位 bug 根因，详 § 5 + ADR-021/022）。
 
 ---
 
@@ -135,7 +131,7 @@ chunked emit 时假设的 head/older 区分等）—— 必须按 seq 字段排�
 
 - **Win32 同步调用**：`EnumWindows` / `SetForegroundWindow` / `ShellExecuteW` / `OpenProcess` 等（窗口枚举 / 进程查询 / shell execute 可能数十 ms 到秒级）
 - **文件系统 IO**：`history.rs` 全部 IPC（`list_history_projects` / `stream_history_sessions_in_project` / `stream_read_session_jsonl`）也走 spawn_blocking —— 扫几十个项目 / 读几 MB jsonl 都属此类
-- **`std::process::Command::spawn`**：spawn 外部进程（如 cc 集成的 wt.exe / cmd.exe 启 claude --resume）
+- **`std::process::Command::spawn`**：spawn 外部进程（如 resume 的 wt.exe / powershell.exe 跑 `cc`/`claude --resume`，v2.8.1 起）
 
 **为什么不能松动**：Tauri 的 `#[tauri::command] fn`（非 async）跑在 IPC 派发线程上。一个慢命令阻塞期间，其他 IPC 全部排队 → 整个 UI 没反应（切设置 / 拉前 / 切 Tab 全失灵）。即便代码"看起来快"（如 read_dir + stat 几百次），磁盘冷状态下也能轻松超过 100ms 阈值。
 
@@ -321,6 +317,18 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 **为什么不能松动**：四条都是实测踩出来的（详见排查复盘），且都"静默失败"——不报错，只是白屏 / 收不到 / 卡死，极难凭看代码发现。
 
 详 `D:/Sync/文档/claudecode-frontend/doc/viewer-window-investigation.md`（项目外排查复盘）。
+
+---
+
+## 23. 复用 `.stream` 容器的非-Tab 视图必须显式恢复可见
+
+基类 `.stream`（[`src/styles.css`](../src/styles.css)）默认 `visibility: hidden` + `pointer-events: none`，仅 `.stream.active` 才可见——这是**多 Tab 机制**：N 个 tab 各持一个 `.stream`，TabManager 只给当前 tab 加 `.active`。
+
+任何**复用 `.stream` 样式但不归 TabManager 管的视图**（`SessionViewer` 应用内只读查看器、未来别的只读流）**必须在自己的 CSS 里显式 `visibility: visible`**，因为它们的元素永远不会拿到 `.active` 类。
+
+**为什么不能松动**：v2.8.1 的"历史会话点进去空白"就是这个坑——`SessionViewer` 流元素 class 是 `stream session-viewer-stream` 没有 `.active`，命中基类 `visibility: hidden`，2000+ 张卡片全渲染进 DOM 却不可见，而状态栏（不在 `.stream` 内）照常显示记录数 → "有记录却空白"的迷惑现象。独立 viewer 窗口（§ 22）复用 TabManager 所以有 `.active`，不受影响；只有自建流的 `SessionViewer` 中招。**禁止**给非-Tab 视图的流元素只复用 `.stream` 而不补 `visibility: visible`。
+
+详 `D:/Sync/文档/claudecode-frontend/doc/v2.8.1-bugfix-notes.md`（项目外排查复盘）。
 
 ---
 

@@ -2,11 +2,11 @@
 
 > **Read-only output renderer for Claude Code CLI** — Tauri 2 + Vanilla TypeScript, Windows desktop app
 >
-> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 | Current: v2.5.0 (v2.6 B refactor [Unreleased])
+> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 | Current: v2.8.0 (v2.8.1 fixes pending)
 
 Renders the real-time conversation written by Claude Code CLI to `~/.claude/projects/*.jsonl` with a modern UI: Markdown / LaTeX / syntax highlighting / collapsible tool-call cards / auto multi-tab management / history browsing & resume. **Fully read-only, zero intrusion** (does not modify any Claude Code file; the only exception is when the user **explicitly** clicks delete in the history browser).
 
-**Project status**: Stable & in use. 83 cargo unit tests + strict tsc type-check. 6 of 8 feat issues done (#6 history full-text search and #10 Tab pop-out remaining). v2.6 is an internal refactor release (zero user-facing change): replaced the multi-flag coordination state machine with a single seq-sorted RecordTimeline pattern. See [CHANGELOG](CHANGELOG.md) + [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md).
+**Project status**: Stable & in use. 97 cargo unit tests + strict tsc type-check. **All 8 feat issues done** (incl. #6 history full-text search in v2.7.0, #10 Tab in an independent window in v2.8.0). Current release v2.8.0; **v2.8.1 (pending)** fixes two bugs: blank history viewer (read-only stream visibility) and resume now launches via PowerShell + `cc` (loads your profile so proxy/env apply). See [CHANGELOG](CHANGELOG.md) + [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md).
 
 ---
 
@@ -16,6 +16,7 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 - Watches `~/.claude/projects/**/*.jsonl`; new lines appear in window within 200ms
 - Multi-tab: one tab per active Claude session, title `[project] aiTitle`
 - After a session exits, its tab is archived (grayed out), closable via Ctrl+W
+- **Tab in independent window** (issue #10): right-click a tab → "Open in new window" / `Ctrl+Shift+N` mirrors the session into a standalone read-only window (dual-monitor / long-running tasks), synced live with the main window
 
 ### Rich rendering
 - **Markdown**: GFM + tables + task lists (marked.js)
@@ -29,7 +30,8 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 ### History browser
 - Toolbar `◷` button / `Ctrl+H` to toggle; grouped by working directory
 - Project groups **collapsed by default**; expand triggers **lazy load** of all sessions in that project
-- Per-row actions: `★/☆` star, `✎` rename (Chinese supported), `–/+` hide, `↺` resume (`claude --resume` in a new terminal), `✕` delete (confirm twice; jsonl actually removed)
+- **Full-text search** (issue #6): a "full-text" mode searches message content across all sessions; hits highlighted, click to jump into the read-only viewer and locate; optional "include tool content", filter by scope/time
+- Per-row actions: `★/☆` star, `✎` rename (Chinese supported), `–/+` hide, `↺` resume (v2.8.1: `cc --resume` in a new **PowerShell** window, falls back to `claude`; loads your profile so proxy/env apply), `✕` delete (confirm twice; jsonl actually removed)
 - Clicking a session opens a **read-only viewer**
 
 ### Settings panel (Ctrl+,)
@@ -37,7 +39,7 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 Five collapsible groups (only "Behavior" expanded by default):
 
 - **Behavior**: auto-follow which tab the user is typing into; whether to bring monitor window to front on auto-switch
-- **Shortcuts**: built-in editor to customize all 18 available action chords
+- **Shortcuts**: built-in editor to customize all 22 available action chords
 - **Data sources & integration**: configurable Claude data location (three-tier fallback: settings > `$CLAUDE_CONFIG_DIR` > `~/.claude`) + one-click install for the PowerShell `__ccm_bind` helper
 - **Appearance**: 13 tokens (fonts + colors), live preview, persisted to `~/.claude/claudecode-frontend/config.json`
 - **Diagnostics & storage**: tracing level toggle + log file path + transparent listing of every persisted data path
@@ -58,6 +60,7 @@ Five collapsible groups (only "Behavior" expanded by default):
 | `Ctrl+H` | Toggle history browser |
 | `Ctrl+,` | Open settings panel |
 | `Ctrl+M` | Minimize main window |
+| `Ctrl+Shift+N` | Open current tab in an independent window (issue #10) |
 | `Ctrl+T` | Toggle Task panel |
 | `Esc` | Close topmost overlay (read-only viewer → history view → settings panel) |
 
@@ -123,7 +126,7 @@ Skipping this is fine — ↗ / `Ctrl+\`` just won't work; real-time rendering /
 | Tab ↗ / `Ctrl+\`` doesn't raise terminal | PowerShell integration not installed, or wrapper doesn't call `__ccm_bind` |
 | After installing cc integration, `cc` times out | monitor isn't running; start monitor first, or check "Auto-launch monitor" in settings |
 | `Access to the path … is denied` on PS startup | NTFS ACL overwritten by an older version (v1.7.10+ fixes this). Run in admin PS: `icacls "<profile>" /grant "$env:USERDOMAIN\$env:USERNAME:(F)"` |
-| History `↺` resume fails | Ensure `claude` is in your terminal `PATH` |
+| History `↺` resume fails | v2.8.1+ runs `cc`/`claude --resume` inside PowerShell: ensure your PowerShell profile installs `cc` (or `claude` is in PATH); the resume window now loads your profile so proxy/`cc` settings apply |
 | Claude data in a non-default location | Settings → Data → Claude data directory; or set `CLAUDE_CONFIG_DIR` env and restart |
 
 ---

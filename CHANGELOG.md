@@ -8,6 +8,24 @@
 
 ---
 
+## [未发布]
+
+### 修复 — 历史会话点进去空白
+
+**症状**：历史浏览器（Ctrl+H）点开任一会话，顶部状态栏显示「N 条记录 · 只读历史视图」，但消息区一片空白。
+
+**根因**：只读查看器 `SessionViewer` 的消息流元素 class 是 `stream session-viewer-stream`，缺多 Tab 机制用的 `.active` 类。而基类 `.stream` 默认 `visibility: hidden`（只有 `.active` 的 tab 流可见）→ 卡片全部渲染进 DOM 却不可见。
+
+**修法**：给 `.session-viewer-stream` 显式 `visibility: visible`（独立查看器永远是唯一可见流，不该借用 tab 的 `.active` 开关）。另加渲染韧性：逐条 `try/catch`，单条记录渲染失败不再让整个查看器空白，并把首个错误显示在状态栏。
+
+### 改进 — 历史「↺ 恢复」改用 PowerShell + `cc`（读取 profile，代理生效）
+
+**症状**：历史浏览器 ↺ 恢复会话时，启动的是 `cmd /K claude --resume`：(1) 跑的是 `claude` 而非用户的 `cc` wrapper，`cc` 里的代理 / env 设置不生效；(2) 那是 cmd.exe 不是 PowerShell，从没加载用户 profile，退出 claude 后敲 `cc` 也不工作。
+
+**修法**：改用系统自带 `powershell.exe -NoExit -EncodedCommand <base64>`（**加载用户 profile** → 代理生效），命令为 `if (Get-Command cc) { cc --resume <sid> } else { claude --resume <sid> }`——装了 `cc` wrapper 就走 `cc`（含 `__ccm_bind`），没装才回退 `claude`，且回退也在加载了 profile 的真 PowerShell 里。`-NoExit` 让 claude 退出后窗口保留、`cc` 可继续用。命令用 `-EncodedCommand` 透过 wt.exe / cmd 多层 shell（绕开引号 / `;` 转义），并对 `session_id` 做注入校验（仅 `[A-Za-z0-9_-]`）。
+
+---
+
 ## [2.8.0] — 2026-05-31
 
 ### 新增 — Tab 在独立窗口打开（多窗口 / 双屏，issue #10）

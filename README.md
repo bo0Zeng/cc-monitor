@@ -2,11 +2,11 @@
 
 > **Claude Code CLI 的只读输出渲染窗口** — Tauri 2 + Vanilla TypeScript，Windows 桌面应用
 >
-> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 | 当前版本: v2.5.0（v2.6 B 重构 [Unreleased]）
+> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 | 当前版本: v2.8.0（v2.8.1 修复待发布）
 
 把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复。**完全只读、零侵入**（不修改 Claude Code 任何文件，唯一例外是用户在历史浏览器里**显式**点删除）。
 
-**项目状态**：稳定可用。83 个 cargo 单元测试 + tsc 严格类型检查。8 个 feat issue 已完成 6 个（剩 #6 历史全文搜索、#10 Tab 拖出）。v2.6 是一次内部架构重构 release（用户感知零变化），把多 flag 协调状态机替换为按 seq 排序的 RecordTimeline 范式，详 [CHANGELOG](CHANGELOG.md) 和 [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
+**项目状态**：稳定可用。97 个 cargo 单元测试 + tsc 严格类型检查。8 个 feat issue **全部完成**（含 #6 历史全文搜索 v2.7.0、#10 Tab 独立窗口 v2.8.0）。当前发布 v2.8.0；**v2.8.1（待发布）** 修了两个 bug：历史会话点进去空白（只读查看器流可见性）、resume 改用 PowerShell + `cc`（读 profile，代理生效）。详 [CHANGELOG](CHANGELOG.md) 和 [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
 
 ---
 
@@ -16,6 +16,7 @@
 - 自动监听 `~/.claude/projects/**/*.jsonl`，新行 200ms 内出现在窗口
 - 多 Tab：每个活跃 Claude session 一个 Tab，标题 `[项目名] aiTitle`
 - session 退出后 Tab 灰显归档，可手动关闭（Ctrl+W）
+- **Tab 独立窗口**（issue #10）：右键 Tab「在新窗口打开」/ `Ctrl+Shift+N` 把会话拉到独立只读窗口（双屏并排 / 长任务常驻），与主窗口实时同步
 
 ### 富渲染
 - **Markdown**：GFM + 表格 + 任务列表（marked.js）
@@ -29,11 +30,12 @@
 ### 历史浏览器
 - 顶栏 `◷` 按钮 / `Ctrl+H` 切换；按**工作目录分组**展示
 - 项目组**默认折叠**；点击展开**懒加载**该项目的所有会话
+- **全文搜索**（issue #6）：顶栏切「全文」模式，搜所有会话的消息内容，命中片段高亮，点击跳进只读视图并定位；可选「含工具内容」，可按范围（user/assistant）/ 时间筛选
 - 每行操作：
   - `★/☆` 标星
   - `✎` 重命名（支持中文）
   - `–/+` 隐藏 / 取消隐藏（不删 jsonl）
-  - `↺` 恢复（在新终端窗口跑 `claude --resume`）
+  - `↺` 恢复（v2.8.1：新 **PowerShell** 窗口跑 `cc --resume`，无 `cc` 时回退 `claude`；加载 profile 故代理 / env 生效）
   - `✕` 物理删除（二次确认；jsonl 文件被真删）
 - 点击会话条目进入**只读消息查看器**
 
@@ -42,7 +44,7 @@
 5 大折叠分组（除「行为」默认展开）：
 
 - **行为**：自动跟随用户在终端的输入切 Tab、是否拉前 monitor 窗口
-- **快捷键**：打开编辑器自定义全部 18 个可用 action 的 chord
+- **快捷键**：打开编辑器自定义全部 22 个可用 action 的 chord
 - **数据源 & 集成**：Claude 数据目录（三级回退：设置 > `$CLAUDE_CONFIG_DIR` > `~/.claude`）+ PowerShell `__ccm_bind` 一键装
 - **外观**：13 个 token（字体 + 颜色），实时预览，持久化到 `~/.claude/claudecode-frontend/config.json`
 - **诊断 & 存储**：tracing 等级 toggle + log 文件路径 + 所有持久化路径透明展示
@@ -63,6 +65,7 @@
 | `Ctrl+H` | 打开 / 关闭历史浏览器 |
 | `Ctrl+,` | 打开设置面板 |
 | `Ctrl+M` | 最小化主窗口 |
+| `Ctrl+Shift+N` | 把当前 Tab 在独立窗口打开（issue #10） |
 | `Ctrl+T` | Task 面板开 / 关 |
 | `Esc` | 关历史只读视图 → 关历史视图 / 关设置 / 关弹层 |
 
@@ -128,7 +131,7 @@
 | Tab ↗ / `Ctrl+\`` 拉不出终端 | 没装 PowerShell 集成；或装了但 wrapper 里没调 `__ccm_bind` |
 | 装完 cc 集成跑 `cc` 提示绑定超时 | monitor 没在跑：先开 monitor 再开 PS；或设置面板勾选"自动打开 monitor" |
 | 装 cc 集成后 PowerShell 启动报 `Access to the path … is denied` | profile NTFS ACL 在旧版本被覆盖（v1.7.10 已修），用管理员 PS 跑 `icacls "<profile>" /grant "$env:USERDOMAIN\$env:USERNAME:(F)"` |
-| 历史浏览器 `↺` 恢复失败 | 确认终端 PATH 里有 `claude` 命令 |
+| 历史浏览器 `↺` 恢复失败 | v2.8.1 起在 PowerShell 里跑 `cc`/`claude --resume`：确认 PowerShell profile 已装 `cc`（或 `claude` 在 PATH）；恢复窗口现在会加载 profile，代理 / `cc` 设置生效 |
 | Claude 数据装在非默认路径 | 设置面板 → 数据 → Claude 数据目录；或设 `CLAUDE_CONFIG_DIR` 环境变量后重启 |
 
 ---
@@ -206,10 +209,10 @@ cc-monitor/
 
 ## 项目当前状态
 
-- **版本**：v2.5.0（Released）；v2.6 B 重构在 `main` 分支待发布
+- **版本**：v2.8.0（Released）；v2.8.1 两个 bug 修复在 `main` 待发布
 - **平台**：Windows 10 (1809+) / 11
-- **测试**：cargo test 83 passed，0 failed
-- **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~7.5K LOC TS + ~6K LOC Rust）
+- **测试**：cargo test 97 passed，0 failed
+- **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~9K LOC TS + ~8K LOC Rust）
 - **设计原则**：只读零侵入（INVARIANT § 1）/ 可选性 / Windows-first / 长期记忆机制（CHANGELOG + ADR + doc）
 
 ---

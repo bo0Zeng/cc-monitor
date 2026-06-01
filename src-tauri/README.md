@@ -61,7 +61,7 @@ src-tauri/
 | **config.rs** | monitor 自己的 config.json R/W（Windows MoveFileExW 原子） | IPC `load_config / save_config` |
 | **logging.rs** (v2.0.0+) | tracing init（在 `tauri::Builder` 之前）+ 滚动 log 文件 + EnvFilter reload Handle + ErrorEmitterLayer（拦 ERROR emit `monitor-error` 给前端弹 toast）+ DiagnosticsConfig R/W | `init() / install_error_emitter() / update_config() / log_file_info()` + 5 个 IPC |
 | **bridge.rs** | 事件 / payload 常量与 schema。**v2.6 `JsonlLinePayload` 加 `seq: u64`** 字段（watcher per-file 单调，前端 RecordTimeline 按 seq 排到 DOM） | `events::JSONL_LINE / JSONL_BATCH / SESSION_ENDED / TASKS_UPDATE`，`JsonlLinePayload { session_id, cwd, path, seq, message } / SessionEndedPayload / TasksUpdatePayload` |
-| **utils.rs** ⭐ v2.6 大归并 | 跨模块共享 helper：`days_from_civil` (日期换算) / `NetTicks` + `FileTime` newtype (procStart 单位隔离 ADR-024) / `parse_iso8601_ms` + `systime_to_ms` + `now_ms` (时间换算，归并 history/subagent/bind 三处) / `scan_dir_jsons<T, K, F>` (泛型目录扫，归并 session_map+bind 两处) / `atomic_write_json<T>` (Windows ReplaceFileW + dst-not-exist rename fallback) | (pub items 完整列表见模块 doc 注释) |
+| **utils.rs** ⭐ v2.6 大归并 | 跨模块共享 helper：`days_from_civil` (日期换算) / `NetTicks` + `FileTime` newtype (procStart 单位隔离 ADR-024) / `parse_iso8601_ms` + `systime_to_ms` + `now_ms` (时间换算，归并 history/subagent/bind 三处) / `scan_dir_jsons<T, K, F>` (泛型目录扫，归并 session_map+bind 两处) / `atomic_write_json<T>` (Windows ReplaceFileW + dst-not-exist rename fallback) / **v2.8.1** `powershell_encoded_command` (命令 → UTF-16LE base64，给 resume 的 `-EncodedCommand` 用，穿 wt/cmd 不被引号/`;` 切碎，零依赖) | (pub items 完整列表见模块 doc 注释) |
 
 ## IPC 清单
 
@@ -80,7 +80,7 @@ src-tauri/
 | `stream_read_session_jsonl` | `{ jsonlPath, onChunk }` | `u32` (count) | 点击历史会话进入只读视图（流式 Channel） |
 | `delete_history_session` | `{ sessionId, jsonlPath }` | `()` | 物理删除会话（二次确认后） |
 | `update_history_metadata` | `{ sessionId, patch }` | `EntryMetadata` | star / 重命名 / 隐藏 |
-| `resume_history_session` | `{ sessionId, cwd }` | `()` | ↩️ 按钮（拉起 wt.exe / cmd） |
+| `resume_history_session` | `{ sessionId, cwd }` | `()` | ↺ 按钮（v2.8.1：拉起 wt.exe / powershell.exe，读 profile + `cc` 优先回退 `claude`） |
 | `search_history` (issue #6) | `{ query, includeTools, scope?, afterMs?, limit? }` | `SearchResponse` | 历史浏览器「全文」模式回车搜索（scope=all/user/assistant；afterMs=时间下界） |
 | `get_search_index_status` (issue #6) | — | `SearchIndexStatus` | 进入全文模式时显示索引就绪 / 进度 |
 | `rebuild_search_index` (issue #6) | — | `SearchIndexStatus` | 「重新索引」按钮（大量新会话后） |
@@ -131,11 +131,11 @@ src-tauri/
 - § 2 — monitor data dir 永远 `~/.claude/claudecode-frontend/`，不跟 claudeDir
 - § 3 — 跨进程 JSON UTF-8 无 BOM（双向防御）
 - § 4 — profile 写入 `ReplaceFileW` + backup + 校验
-- § 5 — event_replay 持锁完整 emit 保证顺序
+- § 5 — JSONL 单一时序（seq 字段 + RecordTimeline binary insert）
 - § 6 — session 探活双重校验（PID + procStart）
 - § 7 — HWND 拉前三重校验
 - § 8 — Tauri State 必须 `app.manage`
-- § 9 — JSONL 单一时序
+- § 9 — 排序硬规则：一律按 seq，禁止按到达顺序
 - § 10 — Win32 sync 必须 `spawn_blocking`
 - § 11 — 跨平台分裂边界（所有 Win32 调用都在 `#[cfg(windows)]` 块；非 Windows 给 stub）
 
@@ -155,8 +155,10 @@ jsonl 行先于 `sessions/<PID>.json` 落地时，`active_filter` 返 false → 
 ### `profile_installer::atomic_write_string` 用 `ReplaceFileW` 而非 `MoveFileExW`
 `MoveFileExW(tmp, dst)` 用 tmp 的 ACL 覆盖 dst → 用户 explicit ACE 丢失（Documents 重定向到非默认盘的用户读不了自己的 profile）。**ReplaceFileW 专门设计来保留 dst 的 ACL/ADS/创建时间**。这是 Windows 文档明确推荐用于"替换配置文件"的 API。详 [doc/INVARIANTS § 4](../doc/INVARIANTS.md#4-profile-等用户文件写入--replacefilew--backup--写后校验)。
 
-### `history::resume_impl` 用 `cmd /K` 而非 `pwsh /NoExit`
-`pwsh.exe`（PowerShell Core 7+）不是 Windows 自带，需独立安装包。普通用户环境只有 PS 5.1 = `powershell.exe` + cmd.exe。改用 `cmd /K claude --resume <sid>` + `CREATE_NEW_CONSOLE` flag 是兼容性最强的选择。
+### `history::resume_impl` 用 `powershell.exe -NoExit -EncodedCommand`（v2.8.1 修复）
+旧版用 `cmd /K "claude --resume <sid>"`，有两个 bug：(1) cmd.exe 不是 PowerShell、**更不加载用户 profile** → `cc` wrapper / `__ccm_bind` / 代理 env 全不生效，跑的是裸 `claude`；(2) 退出 claude 后那个壳是 cmd，不认 `cc`。旧注释还把 `pwsh.exe`（PS7，需装）和 `powershell.exe`（PS5.1，系统自带）混为一谈才退回 cmd。
+
+改用系统自带 `powershell.exe -NoExit -EncodedCommand <base64>`：**不带 `-NoProfile`** → 加载 profile → 代理 / `cc` 生效；命令体 `if (Get-Command cc) { cc --resume <sid> } else { claude --resume <sid> }`（装了 wrapper 走 `cc`，没装回退 `claude`，回退也在加载了 profile 的真 PowerShell 里）；`-NoExit` 让 claude 退出后窗口保留且 `cc` 可继续用。命令经 `utils::powershell_encoded_command` 编码（UTF-16LE base64）透过 wt.exe / cmd 多层 shell（绕开引号 / `;` 分隔符），并对 `session_id` 做注入校验（仅 `[A-Za-z0-9_-]`，抽成可测试的 `build_resume_ps_command`）。详 `doc/v2.8.1-bugfix-notes.md`。
 
 ### `session_map` 双触发（事件 + 2s 心跳）
 仅靠 notify 文件事件不够：用户强杀 claude.exe 时 `~/.claude/sessions/<PID>.json` 不会被 Claude Code 退出 hook 删 → notify 永不触发 → 死 Tab 永远 live。2s 心跳对当前内存中每个 PID 跑 `is_process_alive`，捕获这种"文件还在但进程死了"的状态。
