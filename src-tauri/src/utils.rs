@@ -265,6 +265,44 @@ where
     out
 }
 
+/// 把命令字符串编码成 PowerShell `-EncodedCommand` 接受的格式：
+/// **UTF-16LE 字节序列的标准 base64**（PowerShell 文档里所谓的 "Unicode" 编码）。
+///
+/// 用途：安全地把含空格 / 括号 / 引号 / `;` 的 PowerShell 命令透过 `wt.exe` →
+/// `powershell.exe` 多层 shell 传递。base64 token 只含 `[A-Za-z0-9+/=]`，**不含**
+/// 任何一层 shell 的引号 / 分隔符（wt 用 `;` 分隔多 tab、cmd 用引号配对），因此
+/// 不会被任何一层误解析——彻底绕开"多层引号转义地狱"。
+pub fn powershell_encoded_command(cmd: &str) -> String {
+    let utf16le: Vec<u8> = cmd.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+    base64_encode(&utf16le)
+}
+
+/// 标准 RFC 4648 base64（含 `=` 填充）。仅 `powershell_encoded_command` 使用，
+/// 故不引第三方 crate（实现 ~15 行，且 RFC 测试向量守护）。
+fn base64_encode(bytes: &[u8]) -> String {
+    const TBL: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TBL[((n >> 18) & 63) as usize] as char);
+        out.push(TBL[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            TBL[((n >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TBL[(n & 63) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -437,5 +475,43 @@ mod tests {
             .any(|e| e.file_name().to_string_lossy().contains(".ccm-tmp-"));
         assert!(!stray, "ccm-tmp- 残留未清理");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn base64_rfc4648_vectors() {
+        // RFC 4648 §10 标准测试向量 —— 守护 base64 算法 + 三种填充情形
+        assert_eq!(base64_encode(b""), "");
+        assert_eq!(base64_encode(b"f"), "Zg==");
+        assert_eq!(base64_encode(b"fo"), "Zm8=");
+        assert_eq!(base64_encode(b"foo"), "Zm9v");
+        assert_eq!(base64_encode(b"foob"), "Zm9vYg==");
+        assert_eq!(base64_encode(b"fooba"), "Zm9vYmE=");
+        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
+        // 经典 base64 教科书向量
+        assert_eq!(base64_encode(b"Man"), "TWFu");
+    }
+
+    #[test]
+    fn powershell_encoded_command_matches_known() {
+        // PowerShell: [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes("echo hi"))
+        // "echo hi" → UTF-16LE → base64。守护"UTF-16LE 而非 UTF-8"这个关键约束。
+        assert_eq!(
+            powershell_encoded_command("echo hi"),
+            "ZQBjAGgAbwAgAGgAaQA="
+        );
+    }
+
+    #[test]
+    fn powershell_encoded_command_is_shell_safe() {
+        // 含空格 / 括号 / `;` / `&` / `$` / 引号的命令编码后必须只剩 base64 字符，
+        // 这是它能安全穿过 wt.exe / cmd 多层 shell 的前提。
+        let nasty = r#"if (Get-Command cc) { cc --resume a; & claude "$x" } else { claude }"#;
+        let enc = powershell_encoded_command(nasty);
+        assert!(
+            enc.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='),
+            "encoded command 含非 base64 字符: {enc}"
+        );
+        assert!(!enc.contains(' ') && !enc.contains(';') && !enc.contains('"'));
     }
 }

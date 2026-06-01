@@ -2217,11 +2217,16 @@ body.viewer-mode .history-trigger {
   text-overflow: ellipsis;
 }
 
-/* 复用 .stream 容器样式（绝对定位 + 滚动） */
+/* 复用 .stream 容器样式（滚动 + padding），但改 flex item 布局。
+   关键：`.stream` 基类默认 `visibility: hidden`（多 Tab 机制：只有 `.active`
+   的那个 tab stream 可见）。SessionViewer 是独立单一 stream，没有 `.active`
+   类，必须在这里显式恢复可见，否则消息全渲染进来却不可见（空白 bug 根因）。 */
 .session-viewer-stream {
   position: relative;
   flex: 1;
   inset: auto;
+  visibility: visible;
+  pointer-events: auto;
 }
 .history-entry:hover {
   background: var(--overlay-hover);

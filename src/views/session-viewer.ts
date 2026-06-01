@@ -97,11 +97,26 @@ export class SessionViewer {
     };
     let totalRecords = 0;
 
+    // 渲染韧性 + 探针：renderStreamRecord 在 Channel 回调里跑，一旦某条记录渲染
+    // 抛错，异常**不会**被下面 load() 的 try/catch 接住（不同事件回合），会导致
+    // totalRecords 卡住 → while 循环空转 → 整个查看器空白（已观察到的 bug）。
+    // 这里逐条 try/catch：单条失败不影响其余，并记录首个错误供定位 / 显示。
+    let renderErrors = 0;
+    let firstError = "";
     const channel = new Channel<JsonlLinePayload[]>();
     channel.onmessage = (chunk) => {
       if (!this.stream) return; // viewer 已 dispose
       for (const p of chunk) {
-        renderStreamRecord(p, ctx, sink);
+        try {
+          renderStreamRecord(p, ctx, sink);
+        } catch (err) {
+          renderErrors += 1;
+          if (!firstError) {
+            const t = (p as { message?: { type?: string } })?.message?.type ?? "?";
+            firstError = `seq=${p?.seq} type=${t}: ${String(err)}`;
+            console.error("[session-viewer] renderStreamRecord 抛错", p, err);
+          }
+        }
       }
       totalRecords += chunk.length;
       this.statusEl.textContent = `加载中 · 已 ${totalRecords} 条…`;
@@ -119,12 +134,22 @@ export class SessionViewer {
         await new Promise((r) => setTimeout(r, 0));
         if (!this.stream) return; // viewer 已 dispose
       }
-      // 全部到齐后一次 BranchFolder 重建（避免 O(N²)）
+      // 全部到齐后一次 BranchFolder 重建（避免 O(N²)）。单独 try/catch：分支折叠
+      // 抛错不应让已渲染的消息全没（旧版整段 catch 会把成功渲染的也吞成"加载失败"）。
       if (this.stream && branchRecords.length > 0) {
-        const folder = new BranchFolder(this.stream.contentElement);
-        folder.setRecordsAndRebuild(branchRecords);
+        try {
+          const folder = new BranchFolder(this.stream.contentElement);
+          folder.setRecordsAndRebuild(branchRecords);
+        } catch (err) {
+          renderErrors += 1;
+          if (!firstError) firstError = `branch-fold: ${String(err)}`;
+          console.error("[session-viewer] BranchFolder.setRecordsAndRebuild 抛错", err);
+        }
       }
-      this.statusEl.textContent = `${finalCount} 条记录 · 只读历史视图`;
+      this.statusEl.textContent =
+        renderErrors > 0
+          ? `${finalCount} 条记录（${renderErrors} 条渲染失败，首个 ${firstError}）`
+          : `${finalCount} 条记录 · 只读历史视图`;
       // issue #6：从搜索结果跳进来 → 定位到命中消息；否则默认贴底。
       if (opts.scrollToUuid) {
         this.scrollToMessage(opts.scrollToUuid);
