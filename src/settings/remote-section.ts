@@ -15,11 +15,34 @@
  *   子对象，其余顶层字段（theme / claudeDir / diagnostics / behavior 等）原样写回。
  * - 改动后需**重启 monitor 才生效**（数据源在 setup() 启动时定型，跟 claudeDir 一样），
  *   保存后用 banner 文字提示用户重启。
- * - Phase 0 **不**做实时「测试连接」按钮（需要一条 Rust IPC 命令，超出本步范围）。
+ *
+ * Tier 1（issue #15，参考 Termius / VSCode Remote-SSH）：
+ * - 顶部「从 ~/.ssh/config 导入」下拉：选一个 host 别名 → `resolve_ssh_host`
+ *   (`ssh -G`) 自动填 host/port/user/keyPath，免手敲。
+ * - 「测试连接」按钮：`test_remote_connection` 实连一次，展示 SSH ✓/✗ + host key 指纹
+ *   + daemon ✓/✗（+ hello）。指纹可一键「保存为严格校验」（TOFU→strict，known_hosts 式）。
  */
 
+import { invoke } from "@tauri-apps/api/core";
 import { loadConfig, saveConfig } from "../config";
 import { makeInfoIcon } from "./info-icon";
+
+/** `resolve_ssh_host` 的返回（Rust ResolvedHost，camelCase）。 */
+interface ResolvedHost {
+  host: string;
+  port: number;
+  user: string;
+  keyPath: string | null;
+}
+
+/** `test_remote_connection` 的返回（Rust ConnTestResult，camelCase）。 */
+interface ConnTestResult {
+  sshOk: boolean;
+  fingerprint: string | null;
+  daemonOk: boolean;
+  daemonHello: string | null;
+  message: string;
+}
 
 /**
  * config.json `remote` 子对象的 TS 形状。**key 必须与 Rust reader 完全一致**。
@@ -75,6 +98,12 @@ export class RemoteSection {
   private fingerprintInput!: HTMLInputElement;
   private banner!: HTMLElement;
 
+  // Tier 1（issue #15）控件
+  private importSelect!: HTMLSelectElement;
+  private importHint!: HTMLElement;
+  private testButton!: HTMLButtonElement;
+  private testResult!: HTMLElement;
+
   constructor(opts: RemoteSectionOptions = {}) {
     this.headless = opts.headless ?? false;
     this.root = this.build();
@@ -90,6 +119,43 @@ export class RemoteSection {
     this.original = await readRemoteConfig();
     this.syncInputs(this.original);
     this.hideBanner();
+    this.clearTestResult();
+    void this.populateAliases();
+  }
+
+  /** 从 ~/.ssh/config 拉别名清单填进导入下拉。空 → 禁用下拉 + 提示。 */
+  private async populateAliases(): Promise<void> {
+    let aliases: string[] = [];
+    try {
+      aliases = await invoke<string[]>("list_ssh_host_aliases");
+    } catch (e) {
+      console.warn("list_ssh_host_aliases failed:", e);
+    }
+
+    // 重置选项：首项为 placeholder。
+    this.importSelect.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "选择一个主机别名…";
+    this.importSelect.appendChild(placeholder);
+
+    if (aliases.length === 0) {
+      this.importSelect.disabled = true;
+      this.importHint.textContent =
+        "未在 ~/.ssh/config 找到可导入的主机别名（也可继续手动填写下方字段）。";
+      this.importHint.style.display = "block";
+      return;
+    }
+
+    for (const a of aliases) {
+      const opt = document.createElement("option");
+      opt.value = a;
+      opt.textContent = a;
+      this.importSelect.appendChild(opt);
+    }
+    this.importSelect.disabled = false;
+    this.importHint.style.display = "none";
+    this.importSelect.value = "";
   }
 
   // === DOM 构建 ===
@@ -110,6 +176,9 @@ export class RemoteSection {
     this.banner = document.createElement("div");
     this.banner.className = "settings-banner";
     group.appendChild(this.banner);
+
+    // 0. 从 ~/.ssh/config 导入（Tier 1 headline）：选别名 → ssh -G 自动填字段。
+    this.buildImportRow(group);
 
     // 1. 启用 toggle
     const enabledRow = document.createElement("label");
@@ -151,9 +220,200 @@ export class RemoteSection {
       "SHA256:…（留空则首连 TOFU）",
     );
 
-    // TODO(S8/S9): 加「测试连接」按钮（需一条 Rust IPC 命令，Phase 0 不做）。
+    // 8. 测试连接（Tier 1）：实连一次，展示 SSH/指纹/daemon 结果 + 指纹固化。
+    this.buildTestSection(group);
 
     return group;
+  }
+
+  /** 顶部「从 ~/.ssh/config 导入」行：label + select + hint。 */
+  private buildImportRow(parent: HTMLElement): void {
+    const row = document.createElement("div");
+    row.className = "settings-row settings-row-stack";
+
+    const labelLine = document.createElement("span");
+    labelLine.className = "settings-label";
+    labelLine.textContent = "从 ~/.ssh/config 导入";
+    labelLine.appendChild(
+      makeInfoIcon(
+        "选一个 ~/.ssh/config 里的主机别名，自动用 `ssh -G` 解析出 host/port/user/私钥\n" +
+          "路径并填入下方字段（免手敲）。仍可手动微调任意字段。",
+      ),
+    );
+    row.appendChild(labelLine);
+
+    this.importSelect = document.createElement("select");
+    this.importSelect.className = "settings-input settings-input-select settings-input-wide";
+    // 初始占位项；真正的别名在 populateAliases() 里填。
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "选择一个主机别名…";
+    this.importSelect.appendChild(placeholder);
+    this.importSelect.disabled = true;
+    this.importSelect.addEventListener("change", () => void this.onImportAlias());
+    row.appendChild(this.importSelect);
+
+    this.importHint = document.createElement("div");
+    this.importHint.className = "settings-hint";
+    this.importHint.style.display = "none";
+    row.appendChild(this.importHint);
+
+    parent.appendChild(row);
+  }
+
+  /** 选了别名 → resolve_ssh_host → 填 host/port/user/keyPath → 保存。 */
+  private async onImportAlias(): Promise<void> {
+    const alias = this.importSelect.value;
+    if (!alias) return;
+    try {
+      const resolved = await invoke<ResolvedHost>("resolve_ssh_host", { alias });
+      this.hostInput.value = resolved.host;
+      this.portInput.value = resolved.port ? String(resolved.port) : "22";
+      this.userInput.value = resolved.user;
+      // keyPath 只在 ssh -G 给出且文件存在时覆盖；null 时清空（留给 agent / 手填）。
+      this.keyPathInput.value = resolved.keyPath ?? "";
+      // daemonPath / enabled 保持原样（导入只动连接四要素）。
+      await this.save();
+      this.showBanner(`已从别名「${alias}」导入连接参数。`);
+    } catch (e) {
+      console.warn("resolve_ssh_host failed:", e);
+      this.showBanner(`导入别名「${alias}」失败：${String(e)}`);
+    } finally {
+      // 复位下拉到 placeholder，便于重复导入同一别名时再次触发 change。
+      this.importSelect.value = "";
+    }
+  }
+
+  /** 「测试连接」按钮 + 结果容器。 */
+  private buildTestSection(parent: HTMLElement): void {
+    const row = document.createElement("div");
+    row.className = "settings-row settings-row-end";
+
+    this.testButton = document.createElement("button");
+    this.testButton.type = "button";
+    this.testButton.className = "settings-btn settings-btn-primary";
+    this.testButton.textContent = "测试连接";
+    this.testButton.addEventListener("click", () => void this.onTestConnection());
+    row.appendChild(this.testButton);
+    parent.appendChild(row);
+
+    this.testResult = document.createElement("div");
+    this.testResult.className = "remote-test-result";
+    this.testResult.style.display = "none";
+    parent.appendChild(this.testResult);
+  }
+
+  /** 点「测试连接」：组当前表单 → test_remote_connection → 渲染结果。 */
+  private async onTestConnection(): Promise<void> {
+    const cfg = this.collect();
+    if (!cfg.host || !cfg.user || !cfg.daemonPath) {
+      this.renderTestResult(null, "请先填好 host / user / daemonPath 再测试。");
+      return;
+    }
+    this.testButton.disabled = true;
+    const prevLabel = this.testButton.textContent;
+    this.testButton.textContent = "测试中…";
+    try {
+      const res = await invoke<ConnTestResult>("test_remote_connection", { cfg });
+      this.renderTestResult(res, null);
+    } catch (e) {
+      console.warn("test_remote_connection failed:", e);
+      this.renderTestResult(null, `测试失败：${String(e)}`);
+    } finally {
+      this.testButton.disabled = false;
+      this.testButton.textContent = prevLabel;
+    }
+  }
+
+  /** 渲染测试结果：SSH ✓/✗、指纹（+可固化）、daemon ✓/✗（+hello）。 */
+  private renderTestResult(res: ConnTestResult | null, hardError: string | null): void {
+    this.testResult.innerHTML = "";
+    this.testResult.style.display = "block";
+
+    if (hardError !== null) {
+      const line = document.createElement("div");
+      line.className = "remote-test-line remote-test-err";
+      line.textContent = hardError;
+      this.testResult.appendChild(line);
+      return;
+    }
+    if (res === null) return;
+
+    // SSH 行
+    this.testResult.appendChild(
+      makeStatusLine(res.sshOk, res.sshOk ? "SSH 连接成功" : "SSH 连接失败"),
+    );
+
+    // 指纹行 + 固化按钮
+    if (res.fingerprint) {
+      const fpLine = document.createElement("div");
+      fpLine.className = "remote-test-line";
+      const fpText = document.createElement("span");
+      fpText.className = "remote-test-fp";
+      fpText.textContent = `主机指纹：${res.fingerprint}`;
+      fpLine.appendChild(fpText);
+
+      const current = this.fingerprintInput.value.trim();
+      if (current !== res.fingerprint) {
+        const saveBtn = document.createElement("button");
+        saveBtn.type = "button";
+        saveBtn.className = "settings-btn";
+        saveBtn.textContent = current ? "更新为该指纹（严格校验）" : "保存为严格校验";
+        const fp = res.fingerprint;
+        saveBtn.addEventListener("click", () => void this.onSaveFingerprint(fp));
+        fpLine.appendChild(saveBtn);
+      } else {
+        const ok = document.createElement("span");
+        ok.className = "remote-test-ok";
+        ok.textContent = "（已固化为严格校验）";
+        fpLine.appendChild(ok);
+      }
+      this.testResult.appendChild(fpLine);
+    }
+
+    // daemon 行
+    const daemonText = res.daemonOk
+      ? `daemon 响应正常${res.daemonHello ? `（${res.daemonHello}）` : ""}`
+      : "daemon 未响应 / 未部署";
+    this.testResult.appendChild(makeStatusLine(res.daemonOk, daemonText));
+
+    // 总体 message
+    if (res.message) {
+      const msg = document.createElement("div");
+      msg.className = "remote-test-line remote-test-msg";
+      msg.textContent = res.message;
+      this.testResult.appendChild(msg);
+    }
+  }
+
+  /** 把测出的指纹写进 hostKeyFingerprint 字段并保存（TOFU→strict 固化）。 */
+  private async onSaveFingerprint(fingerprint: string): Promise<void> {
+    this.fingerprintInput.value = fingerprint;
+    await this.save();
+    this.showBanner("主机指纹已保存为严格校验 —— 重启 monitor 后生效。");
+    // 重渲染结果，把固化按钮换成「已固化」标记。
+    void this.onTestConnectionRerender(fingerprint);
+  }
+
+  /** 固化指纹后就地把结果区里的固化按钮换成「已固化」（不重连）。 */
+  private onTestConnectionRerender(fingerprint: string): void {
+    const fpLine = this.testResult.querySelector(".remote-test-fp");
+    if (!fpLine || !fpLine.parentElement) return;
+    const parent = fpLine.parentElement;
+    const btn = parent.querySelector("button");
+    if (btn) btn.remove();
+    const ok = document.createElement("span");
+    ok.className = "remote-test-ok";
+    ok.textContent = "（已固化为严格校验）";
+    parent.appendChild(ok);
+    void fingerprint;
+  }
+
+  private clearTestResult(): void {
+    if (this.testResult) {
+      this.testResult.innerHTML = "";
+      this.testResult.style.display = "none";
+    }
   }
 
   /** 一行：label（上）+ 宽文本 input（下）。change 即保存（merge）。 */
@@ -269,6 +529,20 @@ export class RemoteSection {
     this.banner.textContent = "";
     this.banner.classList.remove("settings-banner-show");
   }
+}
+
+/** 一行带 ✓/✗ 状态标的测试结果行。 */
+function makeStatusLine(ok: boolean, text: string): HTMLElement {
+  const line = document.createElement("div");
+  line.className = `remote-test-line ${ok ? "remote-test-ok" : "remote-test-err"}`;
+  const mark = document.createElement("span");
+  mark.className = "remote-test-mark";
+  mark.textContent = ok ? "✓" : "✗";
+  line.appendChild(mark);
+  const label = document.createElement("span");
+  label.textContent = text;
+  line.appendChild(label);
+  return line;
 }
 
 /**

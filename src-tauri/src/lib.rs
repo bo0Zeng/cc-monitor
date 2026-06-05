@@ -400,6 +400,10 @@ pub fn run() {
             tasks::get_session_tasks,
             // v2.3.0 issue #3 (A 透明化): 设置面板「数据」区列出所有持久路径
             data_paths::get_data_paths,
+            // issue #15 Tier 1: SSH 连接 UX —— ~/.ssh/config 导入 + 测试连接 + 指纹固化
+            ssh_source::list_ssh_host_aliases,
+            ssh_source::resolve_ssh_host,
+            ssh_source::test_remote_connection,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

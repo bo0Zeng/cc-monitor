@@ -20,37 +20,66 @@
 // 个别仅 S6+ 才读的字段（RemoteConfig 反序列化派生）保留 dead_code 容忍。
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use russh::client;
 use russh::keys::{load_secret_key, HashAlg, PrivateKeyWithHashAlg, PublicKey};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::event_replay::EventReplay;
 use crate::session_map::SessionChange;
 use crate::watcher::JsonlLine;
 
-/// 远端 daemon 的连接配置。S5 会从 monitor 的 config 文件反序列化出来。
-#[derive(Debug, Clone)]
+/// 远端 daemon 的连接配置。S5 会从 monitor 的 config 文件反序列化出来；
+/// Tier 1（issue #15）的「测试连接」命令直接收前端传来的同形对象（camelCase）。
+///
+/// **serde camelCase 必须与前端 RemoteConfig / lib.rs::load_remote_config 严格一致**：
+/// host / port / user / keyPath / daemonPath / hostKeyFingerprint。前端多发的 `enabled`
+/// 字段被忽略（serde 默认丢弃未知字段，测试连接不关心 enabled）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RemoteConfig {
     pub host: String,
+    #[serde(default = "default_ssh_port")]
     pub port: u16,
     pub user: String,
-    /// 私钥文件路径（OpenSSH 格式）。None = 暂不支持（S3 骨架只走 publickey auth）。
+    /// 私钥文件路径（OpenSSH 格式）。None / 空 = 走 ssh-agent（见 connect_session）。
+    #[serde(default, deserialize_with = "empty_string_as_none")]
     pub key_path: Option<String>,
     /// 远端要 exec 的 daemon 命令（含参数前缀由 S5 决定）。
     pub daemon_path: String,
     /// 期望的 server host key 指纹（`SHA256:...` 形式）。
     /// Some = 严格校验（TOFU 之后固化）；None = 首次连接 TOFU 接受并 LOUD warn。
+    #[serde(default, deserialize_with = "empty_string_as_none")]
     pub host_key_fingerprint: Option<String>,
+}
+
+fn default_ssh_port() -> u16 {
+    22
+}
+
+/// 前端可选字段以空字符串下发（见 remote-section.ts 注释）；反序列化时把 `""` 归一成
+/// `None`，与 lib.rs::load_remote_config 的 `.filter(|s| !s.is_empty())` 语义一致。
+fn empty_string_as_none<'de, D>(de: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt: Option<String> = Option::deserialize(de)?;
+    Ok(opt.filter(|s| !s.is_empty()))
 }
 
 /// russh client handler：负责 host key 校验（check_server_key）。
 ///
 /// 持有期望指纹，`check_server_key` 据此决定接受 / 拒绝（见该方法注释）。
+/// 另持有一个共享 cell（`observed_fingerprint`），**无论接受 / 拒绝**都把实际看到的
+/// server key 指纹写进去 —— Tier 1（issue #15）的「测试连接」据此向用户展示指纹、
+/// 供 TOFU→严格校验固化（known_hosts 式）。
 struct ClientHandler {
     expected_fingerprint: Option<String>,
+    /// check_server_key 观察到的实际指纹回传通道（与调用方共享）。
+    observed_fingerprint: Arc<Mutex<Option<String>>>,
 }
 
 impl client::Handler for ClientHandler {
@@ -71,6 +100,10 @@ impl client::Handler for ClientHandler {
         server_public_key: &PublicKey,
     ) -> Result<bool, Self::Error> {
         let actual = server_public_key.fingerprint(HashAlg::Sha256).to_string();
+        // 无论后续接受 / 拒绝，都先把实际指纹写回共享 cell（测试连接据此展示 + 固化）。
+        if let Ok(mut slot) = self.observed_fingerprint.lock() {
+            *slot = Some(actual.clone());
+        }
         match &self.expected_fingerprint {
             Some(expected) => {
                 if &actual == expected {
@@ -95,32 +128,40 @@ impl client::Handler for ClientHandler {
     }
 }
 
-/// 连接远端、publickey 鉴权、开 session channel、exec `cfg.daemon_path`，
-/// 返回 channel 的双向流（`AsyncRead + AsyncWrite`）——读端即 daemon 的 stdout 数据。
+/// `default_ssh_agent_pipe` —— Windows OpenSSH agent 的命名管道路径。
 ///
-/// **S3 状态**：plausible + COMPILING 实现，尚未 runtime-tested（S5/S8 才接真连接）。
-/// 错误统一 map 成 `String`（本 crate 未直接依赖 anyhow，不为骨架引入新依赖）。
-pub async fn connect_and_exec(
-    cfg: &RemoteConfig,
-) -> Result<russh::ChannelStream<client::Msg>, String> {
-    // publickey 是 S3 骨架唯一支持的鉴权方式；缺 key_path 直接拒。
-    let key_path = cfg
-        .key_path
-        .as_ref()
-        .ok_or_else(|| "remote config 缺 key_path（S3 骨架仅支持 publickey 鉴权）".to_string())?;
+/// Win10+/Win11 自带的 OpenSSH agent 监听 `\\.\pipe\openssh-ssh-agent`（SSH_AUTH_SOCK
+/// 在 Windows 上不是标准；OpenSSH-for-Windows 用固定命名管道）。非 Windows 留 `None`
+/// （Tier 1 的 agent 仅在 Windows 上尝试；Unix 走 key_path 即可，本 app 也只发 Windows）。
+#[cfg(windows)]
+fn default_ssh_agent_pipe() -> Option<&'static str> {
+    Some(r"\\.\pipe\openssh-ssh-agent")
+}
 
-    let key_pair =
-        load_secret_key(key_path, None).map_err(|e| format!("加载私钥 {key_path} 失败: {e}"))?;
+/// 连接 + 鉴权的共享实现：被 [`connect_and_exec`]（长连接数据源）和
+/// [`test_remote_connection`]（一次性探活）复用。
+///
+/// 返回已鉴权的 session + 共享的 `observed_fingerprint` cell（握手时 check_server_key 已
+/// 把实际 server key 指纹写进去，调用方可读出展示 / 固化）。
+///
+/// 鉴权策略（Tier 1, issue #15）：
+/// - `cfg.key_path = Some(path)`：publickey 鉴权（既有默认路径，最稳）。
+/// - `cfg.key_path = None`：尝试 ssh-agent（Windows 命名管道），枚举 agent 身份逐个
+///   `authenticate_publickey_with`。agent 不可用 / 无匹配身份 → 返回清晰 Err。
+async fn connect_session(
+    cfg: &RemoteConfig,
+    inactivity_timeout: Option<Duration>,
+) -> Result<(client::Handle<ClientHandler>, Arc<Mutex<Option<String>>>), String> {
+    let observed_fingerprint: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
     let config = Arc::new(client::Config {
-        // 与 jsonl-watcher 不同，daemon 是长连接；给一个保守的 inactivity 上限，
-        // 具体值 S5 再调（这里只要类型正确）。
-        inactivity_timeout: Some(Duration::from_secs(3600)),
+        inactivity_timeout,
         ..Default::default()
     });
 
     let handler = ClientHandler {
         expected_fingerprint: cfg.host_key_fingerprint.clone(),
+        observed_fingerprint: Arc::clone(&observed_fingerprint),
     };
 
     let mut session = client::connect(config, (cfg.host.as_str(), cfg.port), handler)
@@ -134,17 +175,96 @@ pub async fn connect_and_exec(
         .map_err(|e| format!("协商 rsa hash 失败: {e}"))?
         .flatten();
 
-    let authenticated = session
-        .authenticate_publickey(
-            &cfg.user,
-            PrivateKeyWithHashAlg::new(Arc::new(key_pair), best_hash),
-        )
-        .await
-        .map_err(|e| format!("publickey 鉴权失败: {e}"))?;
-
-    if !authenticated.success() {
-        return Err(format!("publickey 鉴权被拒（user={}）", cfg.user));
+    match cfg.key_path.as_ref() {
+        Some(key_path) => {
+            let key_pair = load_secret_key(key_path, None)
+                .map_err(|e| format!("加载私钥 {key_path} 失败: {e}"))?;
+            let authenticated = session
+                .authenticate_publickey(
+                    &cfg.user,
+                    PrivateKeyWithHashAlg::new(Arc::new(key_pair), best_hash),
+                )
+                .await
+                .map_err(|e| format!("publickey 鉴权失败: {e}"))?;
+            if !authenticated.success() {
+                return Err(format!("publickey 鉴权被拒（user={}）", cfg.user));
+            }
+        }
+        None => {
+            authenticate_via_agent(&mut session, &cfg.user, best_hash).await?;
+        }
     }
+
+    Ok((session, observed_fingerprint))
+}
+
+/// ssh-agent 鉴权（Tier 1 便利路径，issue #15 Part 3）。
+///
+/// 连到 Windows OpenSSH agent 命名管道，`request_identities` 枚举身份，逐个
+/// `authenticate_publickey_with`（签名委托给 agent）。任一成功即返回 Ok。
+///
+/// 全程 best-effort：agent 连不上 / 没身份 / 全被拒 → 返回带原因的 Err（测试连接会把它
+/// 映射成可读的 message，不 panic）。
+#[cfg(windows)]
+async fn authenticate_via_agent(
+    session: &mut client::Handle<ClientHandler>,
+    user: &str,
+    best_hash: Option<HashAlg>,
+) -> Result<(), String> {
+    use russh::keys::agent::client::AgentClient;
+
+    let pipe = default_ssh_agent_pipe()
+        .ok_or_else(|| "未配置私钥路径，且本平台无 ssh-agent 支持".to_string())?;
+    let mut agent = AgentClient::connect_named_pipe(pipe).await.map_err(|e| {
+        format!(
+            "未配置私钥路径(keyPath)，尝试 ssh-agent 失败：连不上 {pipe}（agent 未运行？）: {e}"
+        )
+    })?;
+
+    let identities = agent
+        .request_identities()
+        .await
+        .map_err(|e| format!("ssh-agent 枚举身份失败: {e}"))?;
+    if identities.is_empty() {
+        return Err("ssh-agent 没有任何身份（ssh-add 了吗？），且未配置 keyPath".to_string());
+    }
+
+    let mut last_err: Option<String> = None;
+    for id in identities {
+        let pubkey = id.public_key().into_owned();
+        match session
+            .authenticate_publickey_with(user, pubkey, best_hash, &mut agent)
+            .await
+        {
+            Ok(res) if res.success() => return Ok(()),
+            Ok(_) => last_err = Some(format!("agent 身份被拒（user={user}）")),
+            Err(e) => last_err = Some(format!("agent 签名鉴权出错: {e}")),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| "ssh-agent 所有身份均鉴权失败".to_string()))
+}
+
+/// 非 Windows：本 app 只发 Windows，且 Unix 走 key_path 即可。无 agent 时直接报缺 keyPath。
+#[cfg(not(windows))]
+async fn authenticate_via_agent(
+    _session: &mut client::Handle<ClientHandler>,
+    _user: &str,
+    _best_hash: Option<HashAlg>,
+) -> Result<(), String> {
+    // TODO(Phase 1): 非 Windows 的 ssh-agent（SSH_AUTH_SOCK / UnixStream）。
+    Err("未配置私钥路径(keyPath)，且本平台暂不支持 ssh-agent".to_string())
+}
+
+/// 连接远端、鉴权、开 session channel、exec `cfg.daemon_path`，
+/// 返回 channel 的双向流（`AsyncRead + AsyncWrite`）——读端即 daemon 的 stdout 数据。
+///
+/// 鉴权委托给 [`connect_session`]（publickey 或 ssh-agent）。
+/// 错误统一 map 成 `String`（本 crate 未直接依赖 anyhow，不为骨架引入新依赖）。
+pub async fn connect_and_exec(
+    cfg: &RemoteConfig,
+) -> Result<russh::ChannelStream<client::Msg>, String> {
+    // 与 jsonl-watcher 不同，daemon 是长连接；给一个保守的 inactivity 上限。
+    let (session, _fp) = connect_session(cfg, Some(Duration::from_secs(3600))).await?;
 
     let channel = session
         .channel_open_session()
@@ -349,6 +469,298 @@ pub async fn run(
     }
 }
 
+// ============================================================================
+// Tier 1 SSH 连接 UX（issue #15）：~/.ssh/config 导入 + 测试连接 + 指纹固化。
+// 下列 #[tauri::command] 在 lib.rs 的 invoke_handler! 里注册（漏注册=运行时
+// "command not found"，非编译错，已 double-check）。
+// ============================================================================
+
+/// `~/.ssh/config` 解析出的一个 host 的有效连接参数（`resolve_ssh_host` 的产物）。
+///
+/// serde camelCase：host / port / user / keyPath，与前端 fill 逻辑对齐。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedHost {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    /// 第一个**存在**的 IdentityFile（`~` 已展开）。无则 None（用户可改走 agent）。
+    pub key_path: Option<String>,
+}
+
+/// 列出 `~/.ssh/config` 里的 host 别名（供前端「从 config 导入」下拉）。
+///
+/// 解析规则（保守、宽松）：
+/// - 逐行扫，匹配以 `Host`（大小写不敏感）开头的指令行；其后所有 token 都是别名。
+/// - **排除** 含通配符的 pattern：包含 `*` 或 `?` 的 token，以及字面量 `*`。
+/// - 去重、保留首次出现顺序。
+/// - 文件不存在 → 返回空 Vec（不是错误：用户没有 config 是正常的）。
+///
+/// 不展开 `Include`、不解析 `Match`（Tier 1 只要给用户一份「可点的别名清单」，真正的
+/// 参数解析交给 `ssh -G`，它会完整处理 Include/Match/通配）。
+#[tauri::command]
+pub async fn list_ssh_host_aliases() -> Result<Vec<String>, String> {
+    let path = match dirs::home_dir() {
+        Some(h) => h.join(".ssh").join("config"),
+        None => return Ok(Vec::new()),
+    };
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        // 文件不存在 / 读不了 → 空列表（前端据此提示「没有可导入的别名」）。
+        Err(_) => return Ok(Vec::new()),
+    };
+    Ok(parse_host_aliases(&content))
+}
+
+/// 从 `~/.ssh/config` 文本里抽出非通配的 host 别名（纯函数，便于单测）。
+/// 规则见 [`list_ssh_host_aliases`] 文档。
+fn parse_host_aliases(content: &str) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut aliases = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        // `Host` 指令：关键字大小写不敏感，关键字与别名间可用空白或 `=` 分隔。
+        let mut parts = trimmed.splitn(2, |c: char| c.is_whitespace() || c == '=');
+        let keyword = parts.next().unwrap_or("");
+        if !keyword.eq_ignore_ascii_case("host") {
+            continue;
+        }
+        let rest = parts.next().unwrap_or("").trim();
+        for tok in rest.split_whitespace() {
+            // 排除通配 pattern（`*` / `?`）和反向否定 pattern（`!...`）。
+            if tok.contains('*') || tok.contains('?') || tok.starts_with('!') {
+                continue;
+            }
+            if seen.insert(tok.to_string()) {
+                aliases.push(tok.to_string());
+            }
+        }
+    }
+    aliases
+}
+
+/// 别名 allowlist：只允许 host 别名的安全字符，挡住 ssh 选项/参数注入
+/// （别名里不会有空格 / `-` 开头会被下面单独防、`=` 等危险字符直接拒）。
+fn is_safe_alias(alias: &str) -> bool {
+    !alias.is_empty()
+        && alias
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '@' | ':' | '-'))
+}
+
+/// 把以 `~` 开头的路径展开为绝对路径（`~` / `~/...`）。其余原样返回。
+fn expand_tilde(path: &str) -> std::path::PathBuf {
+    if let Some(rest) = path.strip_prefix('~') {
+        if rest.is_empty() || rest.starts_with('/') || rest.starts_with('\\') {
+            if let Some(home) = dirs::home_dir() {
+                let rest = rest.trim_start_matches(['/', '\\']);
+                return if rest.is_empty() {
+                    home
+                } else {
+                    home.join(rest)
+                };
+            }
+        }
+    }
+    std::path::PathBuf::from(path)
+}
+
+/// 用系统 `ssh -G <alias>` 解析一个别名的有效连接参数（OpenSSH client 在 Win10+/Win11
+/// 自带）。`ssh -G` 会完整处理 Include / Match / 通配 / 默认值，比自己解析 config 可靠得多。
+///
+/// **注入防护**：别名先过 [`is_safe_alias`] allowlist（`^[A-Za-z0-9._@:-]+$`），再额外挡掉
+/// 以 `-` 开头的值（否则会被 ssh 当成选项）。参数以独立 arg 传给 Command（不经 shell），
+/// 配合 allowlist 杜绝 arg/option 注入。
+///
+/// 解析 stdout（每行 `key value`，key 小写）：
+/// - `hostname <X>` → host
+/// - `port <N>`     → port（u16）
+/// - `user <U>`     → user
+/// - 第一个**展开后存在**的 `identityfile <path>` → key_path（None = 都不存在）
+#[tauri::command]
+pub async fn resolve_ssh_host(alias: String) -> Result<ResolvedHost, String> {
+    let alias = alias.trim().to_string();
+    if !is_safe_alias(&alias) {
+        return Err(format!("非法的 host 别名（含不安全字符）: {alias}"));
+    }
+    if alias.starts_with('-') {
+        return Err("host 别名不能以 '-' 开头".to_string());
+    }
+
+    let output = std::process::Command::new("ssh")
+        .arg("-G")
+        .arg(&alias)
+        .output()
+        .map_err(|e| format!("运行 ssh -G 失败（OpenSSH client 装了吗？）: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("ssh -G {alias} 退出非 0: {}", stderr.trim()));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut host: Option<String> = None;
+    let mut port: Option<u16> = None;
+    let mut user: Option<String> = None;
+    let mut key_path: Option<String> = None;
+
+    for line in stdout.lines() {
+        let mut it = line.splitn(2, char::is_whitespace);
+        let key = it.next().unwrap_or("").trim().to_ascii_lowercase();
+        let val = it.next().unwrap_or("").trim();
+        if val.is_empty() {
+            continue;
+        }
+        match key.as_str() {
+            "hostname" => host = Some(val.to_string()),
+            "port" => port = val.parse::<u16>().ok(),
+            "user" => user = Some(val.to_string()),
+            "identityfile" if key_path.is_none() => {
+                // 第一个**展开后存在**的 identityfile 才采用。
+                let expanded = expand_tilde(val);
+                if expanded.exists() {
+                    key_path = Some(expanded.to_string_lossy().to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(ResolvedHost {
+        // hostname 缺省回退到别名本身（ssh -G 通常总会给 hostname，但稳妥兜底）。
+        host: host.unwrap_or_else(|| alias.clone()),
+        port: port.unwrap_or(22),
+        user: user.unwrap_or_default(),
+        key_path,
+    })
+}
+
+/// 「测试连接」的结果（issue #15 Part 2）。serde camelCase 与前端渲染对齐。
+///
+/// 偏好「返回 populated 结果 + message」而非 Err：让 UI 能展示部分成功
+/// （如「SSH 连上了，但 daemon 没响应/未部署」）。仅参数级硬错误才返回 Err。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnTestResult {
+    /// SSH 连接 + 鉴权是否成功。
+    pub ssh_ok: bool,
+    /// 握手时观察到的 server host key 指纹（`SHA256:...`）。用于展示 + TOFU 固化。
+    pub fingerprint: Option<String>,
+    /// daemon 是否在 SHORT timeout 内回了可解析的 hello 帧。
+    pub daemon_ok: bool,
+    /// daemon hello 的人读摘要（`v=.. arch=.. claude_dir=..`）。
+    pub daemon_hello: Option<String>,
+    /// 人读的总体状态 / 失败原因。
+    pub message: String,
+}
+
+/// 测试一条远端配置：连 SSH → 读指纹 → exec daemon → 等首行 hello（SHORT timeout）。
+///
+/// 步骤化、每步把结果填进 [`ConnTestResult`]：
+/// 1. `connect_session`（publickey 或 agent）。失败 → ssh_ok=false + message，返回 Ok。
+/// 2. 成功 → ssh_ok=true，从 observed cell 读指纹。
+/// 3. channel_open + exec daemon + 读首行 stdout（`tokio::time::timeout` 8s）。
+///    解析成 hello → daemon_ok=true + 摘要；否则 message 说明 daemon 未响应/未部署。
+///
+/// 只有"无法构造测试"这类硬错才返回 Err；连接/鉴权/daemon 失败都收进结果里，UI 据此分级展示。
+#[tauri::command]
+pub async fn test_remote_connection(cfg: RemoteConfig) -> Result<ConnTestResult, String> {
+    let mut result = ConnTestResult {
+        ssh_ok: false,
+        fingerprint: None,
+        daemon_ok: false,
+        daemon_hello: None,
+        message: String::new(),
+    };
+
+    // 1. 连接 + 鉴权（短 inactivity：测试连接不需要长保活）。
+    let (session, observed) = match connect_session(&cfg, Some(Duration::from_secs(30))).await {
+        Ok(s) => s,
+        Err(e) => {
+            // 握手失败（含 host key 不匹配被拒）。check_server_key 可能已写过指纹，但
+            // connect_session 在 Err 路径不回传 cell，这里只报失败原因即可。
+            result.ssh_ok = false;
+            result.message = format!("SSH 连接/鉴权失败：{e}");
+            return Ok(result);
+        }
+    };
+    result.ssh_ok = true;
+    result.fingerprint = observed.lock().ok().and_then(|g| g.clone());
+
+    // 3. exec daemon 并等首行 hello。
+    let daemon_path = cfg.daemon_path.clone();
+    match probe_daemon(&session, &daemon_path).await {
+        Ok(Some(summary)) => {
+            result.daemon_ok = true;
+            result.daemon_hello = Some(summary);
+            result.message = "SSH 与 daemon 均正常。".to_string();
+        }
+        Ok(None) => {
+            result.message =
+                "SSH 连上了，但 daemon 在超时内未回 hello（未部署 / 路径错 / 启动失败？）。"
+                    .to_string();
+        }
+        Err(e) => {
+            result.message = format!("SSH 连上了，但 daemon 探测失败：{e}");
+        }
+    }
+
+    // 礼貌关闭 session（best-effort，忽略错误）。
+    let _ = session
+        .disconnect(russh::Disconnect::ByApplication, "", "")
+        .await;
+    Ok(result)
+}
+
+/// exec daemon、读首行 stdout（SHORT timeout）、若是 hello 帧返回人读摘要。
+///
+/// 返回：
+/// - `Ok(Some(summary))` —— 读到并解析成 hello。
+/// - `Ok(None)`          —— 超时 / EOF / 非 hello（daemon 未正常响应）。
+/// - `Err(_)`            —— channel/exec/IO 硬错误。
+async fn probe_daemon(
+    session: &client::Handle<ClientHandler>,
+    daemon_path: &str,
+) -> Result<Option<String>, String> {
+    let channel = session
+        .channel_open_session()
+        .await
+        .map_err(|e| format!("打开 session channel 失败: {e}"))?;
+    channel
+        .exec(true, daemon_path.as_bytes())
+        .await
+        .map_err(|e| format!("exec {daemon_path} 失败: {e}"))?;
+
+    let mut reader = BufReader::new(channel.into_stream());
+    let mut line = String::new();
+    let read = tokio::time::timeout(Duration::from_secs(8), reader.read_line(&mut line)).await;
+
+    // 读完后尽量优雅关掉写半边（daemon 看到 EOF 自行退出）。best-effort。
+    let _ = reader.get_mut().shutdown().await;
+
+    match read {
+        Err(_elapsed) => Ok(None), // 超时
+        Ok(Err(e)) => Err(format!("读 daemon stdout 出错: {e}")),
+        Ok(Ok(0)) => Ok(None), // EOF（daemon 立即退出 / 未输出）
+        Ok(Ok(_)) => {
+            let trimmed = line.trim_end_matches(['\n', '\r']);
+            match parse_frame(trimmed) {
+                Some(InboundFrame::Hello {
+                    v,
+                    host_arch,
+                    claude_dir,
+                }) => Ok(Some(format!(
+                    "v={v} arch={host_arch} claude_dir={claude_dir}"
+                ))),
+                _ => Ok(None), // 非 hello 帧 → daemon 未正常握手
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod parse_frame_tests {
     use super::*;
@@ -480,5 +892,126 @@ mod parse_frame_tests {
             parsed[5],
             Some(InboundFrame::SessionRemoved { .. })
         ));
+    }
+}
+
+#[cfg(test)]
+mod tier1_tests {
+    use super::*;
+
+    /// host 别名解析：取 Host 行 token、排除通配 / `!`、去重保序、跳过非 Host 指令。
+    #[test]
+    fn parse_host_aliases_basics() {
+        let cfg = "\
+# comment
+Host pi server1 server2
+    HostName 1.2.3.4
+    User pi
+
+Host=eqsign
+    Port 2222
+
+Host *.internal wild*card prod ?q !neg
+    User admin
+
+Host prod
+    User dup
+";
+        let aliases = parse_host_aliases(cfg);
+        // pi/server1/server2 来自第一块；eqsign 用 `=` 分隔；prod 出现两次只留一次；
+        // `*.internal` / `wild*card` / `?q` / `!neg` 全被通配/否定规则排除。
+        assert_eq!(aliases, vec!["pi", "server1", "server2", "eqsign", "prod"]);
+    }
+
+    /// 排除字面量 `*`（catch-all）。
+    #[test]
+    fn parse_host_aliases_excludes_star() {
+        let aliases = parse_host_aliases("Host *\n    User x\n");
+        assert!(aliases.is_empty());
+    }
+
+    /// 没有任何 Host 指令 → 空。
+    #[test]
+    fn parse_host_aliases_empty_when_no_host() {
+        let aliases = parse_host_aliases("# just comments\nUser nobody\nPort 22\n");
+        assert!(aliases.is_empty());
+    }
+
+    /// allowlist：合法字符通过，含空格 / 选项前缀 / shell 元字符的别名被拒。
+    #[test]
+    fn is_safe_alias_allowlist() {
+        assert!(is_safe_alias("pi"));
+        assert!(is_safe_alias("my-host.example.com"));
+        assert!(is_safe_alias("user@host:22"));
+        assert!(is_safe_alias("a_b.c-1"));
+
+        assert!(!is_safe_alias(""));
+        assert!(!is_safe_alias("has space"));
+        assert!(!is_safe_alias("a;b")); // shell metachar
+        assert!(!is_safe_alias("a$b"));
+        assert!(!is_safe_alias("a/b")); // 路径分隔不在 allowlist
+        assert!(!is_safe_alias("a&b"));
+        // 以 `-` 开头本身在 allowlist 内（`-` 是合法字符），option-injection 由
+        // resolve_ssh_host 里单独的 starts_with('-') 检查兜住，这里只验字符集。
+        assert!(is_safe_alias("-oProxyCommand"));
+    }
+
+    /// `~` 展开：`~` / `~/x` 展开到 home；非 `~` 前缀原样。
+    #[test]
+    fn expand_tilde_basics() {
+        let home = dirs::home_dir().expect("home dir for test");
+        assert_eq!(expand_tilde("~"), home);
+        assert_eq!(
+            expand_tilde("~/.ssh/id_ed25519"),
+            home.join(".ssh/id_ed25519")
+        );
+        // 非 ~ 前缀原样（不是 home-relative）。
+        assert_eq!(
+            expand_tilde("/etc/ssh/key"),
+            std::path::PathBuf::from("/etc/ssh/key")
+        );
+        // `~user` 形式（非 `~/`）不展开（我们只处理自己的 home）。
+        assert_eq!(
+            expand_tilde("~otheruser/key"),
+            std::path::PathBuf::from("~otheruser/key")
+        );
+    }
+
+    /// RemoteConfig 反序列化：camelCase key + 空串可选字段归 None + port 默认 22 + 忽略 enabled。
+    #[test]
+    fn remote_config_deserializes_frontend_shape() {
+        // 前端 collect() 的形状：所有字段都在，可选字段可能是空串，外加 enabled。
+        let json = r#"{
+            "enabled": true,
+            "host": "pi.local",
+            "port": 2200,
+            "user": "pi",
+            "keyPath": "",
+            "daemonPath": "/home/pi/cc-monitor-remote",
+            "hostKeyFingerprint": ""
+        }"#;
+        let cfg: RemoteConfig = serde_json::from_str(json).expect("must deserialize");
+        assert_eq!(cfg.host, "pi.local");
+        assert_eq!(cfg.port, 2200);
+        assert_eq!(cfg.user, "pi");
+        assert_eq!(cfg.key_path, None, "空串 keyPath → None");
+        assert_eq!(cfg.daemon_path, "/home/pi/cc-monitor-remote");
+        assert_eq!(cfg.host_key_fingerprint, None, "空串指纹 → None");
+    }
+
+    /// RemoteConfig：缺 port 时默认 22，非空可选字段保留为 Some。
+    #[test]
+    fn remote_config_defaults_and_some() {
+        let json = r#"{
+            "host": "h",
+            "user": "u",
+            "keyPath": "C:\\k",
+            "daemonPath": "d",
+            "hostKeyFingerprint": "SHA256:abc"
+        }"#;
+        let cfg: RemoteConfig = serde_json::from_str(json).expect("must deserialize");
+        assert_eq!(cfg.port, 22, "缺 port → 默认 22");
+        assert_eq!(cfg.key_path.as_deref(), Some("C:\\k"));
+        assert_eq!(cfg.host_key_fingerprint.as_deref(), Some("SHA256:abc"));
     }
 }
