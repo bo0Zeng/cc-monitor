@@ -248,10 +248,10 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
 /// - `line` → 组 [`JsonlLine`] 走 **与本地 watcher 完全相同的出口**：
 ///   `crate::batch_to_payloads(...)` → `replay.on_line_batch(&app, ...)`。Phase-0 用最简正确
 ///   做法：每帧一条 batch（前端按 seq 自动排序，单条 emit 语义与本地小 batch 一致）。
-/// - `session_added` / `session_removed` → 走**既有** `session_changes` 通道
-///   （`SessionChange{added,removed}`），由 lib.rs 那个 session-changes-emitter 线程消费，
-///   透传 session-ended 给前端（remote 模式下 rescan / SidHwndCache 部分对远端 no-op，
-///   但 session-ended emit 路径复用）。
+/// - `session_added` / `session_removed` → 走**专用** remote `session_changes` 通道
+///   （`SessionChange{added,removed}`），由 lib.rs 那个 remote-session-emitter 线程消费：
+///   removed → emit session-ended（远端 Tab 归档）；added 无操作（远端 Tab 由 line 帧
+///   经前端 ensureTab 创建，无本地 jsonl 可重扫、无本地 HWND 可绑定）。
 /// - 未知 kind / garbage → `tracing::warn!` 跳过，绝不中断流。
 ///
 /// stdout EOF / 读错误 → 返回 `Err`，调用方（S8/S9）据此大声报"connection dropped"，
@@ -270,6 +270,10 @@ pub async fn run(
         cfg.port,
         cfg.daemon_path
     );
+
+    // issue #15：远端行的 origin 标签 = 远端主机名。前端据此给该 Tab 标题加
+    // `[host]` 前缀以区分本地/远端。在进 loop 前 clone 出来（cfg 之后不再用）。
+    let host_label = cfg.host.clone();
 
     let stream = connect_and_exec(&cfg).await?;
     let mut reader = BufReader::new(stream);
@@ -318,7 +322,7 @@ pub async fn run(
                     seq,
                     raw,
                 }];
-                let payloads = crate::batch_to_payloads(lines);
+                let payloads = crate::batch_to_payloads(lines, Some(host_label.clone()));
                 replay.on_line_batch(&app, payloads);
             }
             Some(InboundFrame::SessionAdded { sid }) => {

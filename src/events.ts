@@ -13,6 +13,12 @@ export interface JsonlLinePayload {
    * 同 session 内单调；跨 session 不可比；不跨 monitor 进程持久。
    */
   seq: number;
+  /**
+   * issue #15：数据来源标签。缺省（undefined）= 本地，Tab 标题无前缀（与历史一致）；
+   * 有值（如 "raspberrypi.local"）= 远端 SSH 数据源主机名，Tab 标题加 `[origin]` 前缀
+   * 以区分本地/远端会话。后端仅在远端行序列化此字段（本地行 skip）。
+   */
+  origin?: string;
   message: JsonlRecord;
 }
 
