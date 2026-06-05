@@ -1803,6 +1803,42 @@ body.viewer-mode .history-trigger {
   display: block;
 }
 
+/* 远端「测试连接」结果（issue #15 Tier 1） */
+.remote-test-result {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: var(--font-size-small);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.remote-test-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.remote-test-mark {
+  font-weight: bold;
+}
+.remote-test-ok {
+  color: var(--success);
+}
+.remote-test-err {
+  color: var(--error);
+}
+.remote-test-msg {
+  color: var(--text-faint);
+}
+.remote-test-fp {
+  font-family: var(--font-mono, monospace);
+  color: var(--text);
+  word-break: break-all;
+}
+
 /* === History 视图（接管 #message-stream 区域） === */
 
 .history-view {
