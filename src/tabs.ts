@@ -505,11 +505,12 @@ export class TabManager {
     }
   }
 
-  /** 快捷键 Ctrl+` ：把当前活跃 Tab 对应的终端窗口拉到前台（仅 live） */
+  /** 快捷键 Ctrl+` ：把当前活跃 Tab 对应的终端窗口拉到前台（仅 live 本地 Tab） */
   bringActiveTerminalToFront(): void {
     if (!this.activeId) return;
     const tab = this.tabs.get(this.activeId);
-    if (tab && tab.status !== "archived") {
+    // FIX 5：远端 Tab（origin 非 null）无本地终端可拉前 —— 快捷键对其 no-op。
+    if (tab && tab.status !== "archived" && tab.origin === null) {
       void bringTerminalToFront(this.activeId);
     }
   }
@@ -539,10 +540,12 @@ export class TabManager {
     }
   }
 
-  /** 打开指定 Tab 的 cwd 到系统文件管理器。无 cwd 静默忽略。 */
+  /** 打开指定 Tab 的 cwd 到系统文件管理器。无 cwd / 远端 Tab 静默忽略。 */
   private async openTabCwd(sid: string): Promise<void> {
     const tab = this.tabs.get(sid);
     if (!tab?.cwd) return;
+    // FIX 5：远端 Tab 的 cwd 是 Pi 上的路径，本地 openPath 必然失败 —— 直接 no-op。
+    if (tab.origin !== null) return;
     try {
       await openPath(tab.cwd);
     } catch (e) {
@@ -665,6 +668,8 @@ export class TabManager {
     focusBtn.title = "调出对应终端 (Ctrl+`)";
     focusBtn.addEventListener("click", (e) => {
       e.stopPropagation();
+      // FIX 5：远端 Tab 无本地终端 HWND 可绑定 —— 不尝试拉前（按钮也被 CSS 隐藏，双保险）。
+      if (this.tabs.get(sid)?.origin !== null) return;
       void bringTerminalToFront(sid);
     });
     root.appendChild(focusBtn);
@@ -704,6 +709,10 @@ export class TabManager {
     refs.root.classList.toggle("active", sid === this.activeId);
     refs.root.classList.toggle("archived", tab.status === "archived");
     refs.root.classList.toggle("has-cwd", !!tab.cwd);
+    // FIX 5（issue #15）：远端 Tab（origin 非 null）的 cwd 是 Pi 上的路径，本地不存在；
+    // 「打开工作目录」📂 与「调出终端」↗ 在本地都打不开。加 .remote 类，CSS 隐藏这两个
+    // 本地专用按钮（点击 handler 也在 openTabCwd / bringTerminalToFront 早退兜底）。
+    refs.root.classList.toggle("remote", tab.origin !== null);
     const unread = tab.unread > 0 && sid !== this.activeId;
     refs.root.classList.toggle("has-unread", unread);
 

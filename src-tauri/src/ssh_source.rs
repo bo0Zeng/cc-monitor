@@ -1,9 +1,17 @@
-//! SSH-remote 数据源骨架（issue #15 Phase 0 / S3）。
+//! SSH-remote 数据源（issue #15）。
 //!
-//! 本模块**当前是 dead code**：在 lib.rs 里 `mod ssh_source;` 声明，但**不**从
-//! `setup()` 调用。S3 的唯一目标是证明 russh 能在 windows-msvc 下编译 + LTO 链接，
-//! 并让一个 typed 的 `connect_and_exec` 骨架通过类型检查。运行时连通性留到 S5/S8。
-//! S5 会把 `connect_and_exec` 接进 `setup()`（替代/补充 jsonl-watcher 数据源）。
+//! 本模块是**活代码**：从 lib.rs 的 `setup()` 调用（`remote.enabled=true` 且配置完整时）。
+//! 它提供三块能力：
+//! - **russh client 数据源**：[`run`] 连远端、exec daemon、把 daemon stdout 的
+//!   line-delimited JSON 帧解析后走与本地 watcher 相同的出口（`batch_to_payloads` →
+//!   `on_line_batch`），session 增减走专用 `session_changes` 通道。与本地 jsonl-watcher
+//!   **并行**作为附加数据源（远端行带 origin=host 标签）。
+//! - **ssh-config 导入**：[`list_ssh_host_aliases`] / [`resolve_ssh_host`]（`ssh -G`）
+//!   供前端「从 ~/.ssh/config 导入」自动填连接参数。
+//! - **测试连接**：[`test_remote_connection`] 实连一次，回 SSH ✓/✗ + host key 指纹 +
+//!   daemon ✓/✗（hello），供 UI 分级展示 + TOFU→strict 指纹固化。
+//!
+//! 上述三个 `#[tauri::command]` 在 lib.rs 的 invoke_handler! 里注册。
 //!
 //! ## Crypto backend 选择（S3 的核心风险点）
 //!
@@ -106,7 +114,9 @@ impl client::Handler for ClientHandler {
         }
         match &self.expected_fingerprint {
             Some(expected) => {
-                if &actual == expected {
+                // FIX 7：比对前 trim 掉存储指纹两侧的换行/空白，否则配置里残留的尾随
+                // 空白会让一个本应匹配的指纹永远被拒（误判 MITM）。
+                if actual == expected.trim() {
                     tracing::info!("ssh host key fingerprint verified: {actual}");
                     Ok(true)
                 } else {
@@ -154,8 +164,18 @@ async fn connect_session(
 ) -> Result<(client::Handle<ClientHandler>, Arc<Mutex<Option<String>>>), String> {
     let observed_fingerprint: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
+    // FIX 1（issue #15 review）：长连接数据源**绝不**靠 inactivity_timeout 兜底死链——
+    // russh 0.61 的 inactivity timer 在没有 keepalive 时会在到点直接拆掉一条**健康的**
+    // 空闲连接（idle 1h 的 Claude 会话很常见）。改用 SSH 层 keepalive：每 30s 无收包就
+    // 发一个 keepalive，连发 keepalive_max(默认 3) 次无回应才判死（≈90s 探活）。死链由
+    // keepalive 超时 + daemon EOF 检出，inactivity_timeout 对长连接置 None。
+    // 测试连接（短命探活）仍可传 Some(短超时)，故 keepalive 与 inactivity 同时支持。
+    let keepalive_interval = inactivity_timeout
+        .is_none()
+        .then(|| Duration::from_secs(30));
     let config = Arc::new(client::Config {
         inactivity_timeout,
+        keepalive_interval,
         ..Default::default()
     });
 
@@ -263,8 +283,9 @@ async fn authenticate_via_agent(
 pub async fn connect_and_exec(
     cfg: &RemoteConfig,
 ) -> Result<russh::ChannelStream<client::Msg>, String> {
-    // 与 jsonl-watcher 不同，daemon 是长连接；给一个保守的 inactivity 上限。
-    let (session, _fp) = connect_session(cfg, Some(Duration::from_secs(3600))).await?;
+    // 与 jsonl-watcher 不同，daemon 是长连接：inactivity_timeout=None → connect_session
+    // 自动启用 30s keepalive（见 FIX 1 注释），靠 keepalive + EOF 检死链，不靠定时拆链。
+    let (session, _fp) = connect_session(cfg, None).await?;
 
     let channel = session
         .channel_open_session()
@@ -391,11 +412,58 @@ pub async fn run(
         cfg.daemon_path
     );
 
+    // FIX 2（issue #15 review）：跟踪当前**已向前端宣告**的远端 sid。stream_loop 在每条
+    // SessionAdded forward 时 insert、SessionRemoved forward 时 remove。无论 stream_loop
+    // 因 EOF / 读错误 / connect 失败 / 正常返回哪条路径退出，下面都把 announced 里**仍存活**
+    // 的 sid 一次性当 removed flush 出去 → lib.rs 的 remote-session-emitter emit SESSION_ENDED
+    // → 对应远端 Tab 归档，不再永久卡在虚假 "live"。（完整重连留 Phase 1，这里只做归档。）
+    let mut announced: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    let result = stream_loop(
+        &cfg,
+        &replay,
+        &app,
+        &session_changes,
+        &ready,
+        &mut announced,
+    )
+    .await;
+
+    // 唯一的最终 flush 出口：捕获 stream_loop 的 result 后，无条件归档残留 sid 再返回。
+    if !announced.is_empty() {
+        let removed: Vec<String> = announced.into_iter().collect();
+        tracing::info!(
+            "ssh_source connection ended; archiving {} remote session(s)",
+            removed.len()
+        );
+        if let Err(e) = session_changes.send(SessionChange {
+            added: vec![],
+            removed,
+        }) {
+            tracing::warn!("ssh_source final session archival send failed: {e}");
+        }
+    }
+
+    result
+}
+
+/// [`run`] 的内层流循环：connect → exec daemon → 逐帧 dispatch。**所有**提前返回
+/// （`?` / EOF / 读错误）都把 result 冒泡给 [`run`]，由后者统一做最终 sid 归档 flush
+/// （见 FIX 2 注释），故本函数自身不负责归档。
+#[allow(clippy::too_many_arguments)]
+async fn stream_loop(
+    cfg: &RemoteConfig,
+    replay: &Arc<EventReplay>,
+    app: &tauri::AppHandle,
+    session_changes: &std::sync::mpsc::Sender<SessionChange>,
+    ready: &Arc<AtomicBool>,
+    announced: &mut std::collections::HashSet<String>,
+) -> Result<(), String> {
     // issue #15：远端行的 origin 标签 = 远端主机名。前端据此给该 Tab 标题加
-    // `[host]` 前缀以区分本地/远端。在进 loop 前 clone 出来（cfg 之后不再用）。
+    // `[host]` 前缀以区分本地/远端。在进 loop 前 clone 出来。
     let host_label = cfg.host.clone();
 
-    let stream = connect_and_exec(&cfg).await?;
+    let stream = connect_and_exec(cfg).await?;
     let mut reader = BufReader::new(stream);
     // tokio LinesStream-free：read_line 复用 buffer，按 `\n` 切（协议保证每帧一行、
     // 帧内换行已被 daemon 转义成 `\n` 两字符，见 remote-daemon-proto/src/wire.rs）。
@@ -443,9 +511,11 @@ pub async fn run(
                     raw,
                 }];
                 let payloads = crate::batch_to_payloads(lines, Some(host_label.clone()));
-                replay.on_line_batch(&app, payloads);
+                replay.on_line_batch(app, payloads);
             }
             Some(InboundFrame::SessionAdded { sid }) => {
+                // FIX 2：记下已宣告的 sid，供连接结束时统一归档。
+                announced.insert(sid.clone());
                 if let Err(e) = session_changes.send(SessionChange {
                     added: vec![sid],
                     removed: vec![],
@@ -454,6 +524,8 @@ pub async fn run(
                 }
             }
             Some(InboundFrame::SessionRemoved { sid }) => {
+                // FIX 2：已显式 removed 的 sid 从 announced 摘掉，避免连接结束时重复归档。
+                announced.remove(&sid);
                 if let Err(e) = session_changes.send(SessionChange {
                     added: vec![],
                     removed: vec![sid],
@@ -500,16 +572,20 @@ pub struct ResolvedHost {
 /// 参数解析交给 `ssh -G`，它会完整处理 Include/Match/通配）。
 #[tauri::command]
 pub async fn list_ssh_host_aliases() -> Result<Vec<String>, String> {
-    let path = match dirs::home_dir() {
-        Some(h) => h.join(".ssh").join("config"),
-        None => return Ok(Vec::new()),
-    };
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        // 文件不存在 / 读不了 → 空列表（前端据此提示「没有可导入的别名」）。
-        Err(_) => return Ok(Vec::new()),
-    };
-    Ok(parse_host_aliases(&content))
+    // FIX 3（INVARIANT §10）：同步 fs 读也别卡 runtime 线程——挪进 spawn_blocking。
+    tokio::task::spawn_blocking(|| {
+        let path = match dirs::home_dir() {
+            Some(h) => h.join(".ssh").join("config"),
+            None => return Vec::new(),
+        };
+        match std::fs::read_to_string(&path) {
+            Ok(content) => parse_host_aliases(&content),
+            // 文件不存在 / 读不了 → 空列表（前端据此提示「没有可导入的别名」）。
+            Err(_) => Vec::new(),
+        }
+    })
+    .await
+    .map_err(|e| format!("读取 ~/.ssh/config 任务调度失败: {e}"))
 }
 
 /// 从 `~/.ssh/config` 文本里抽出非通配的 host 别名（纯函数，便于单测）。
@@ -590,11 +666,18 @@ pub async fn resolve_ssh_host(alias: String) -> Result<ResolvedHost, String> {
         return Err("host 别名不能以 '-' 开头".to_string());
     }
 
-    let output = std::process::Command::new("ssh")
-        .arg("-G")
-        .arg(&alias)
-        .output()
-        .map_err(|e| format!("运行 ssh -G 失败（OpenSSH client 装了吗？）: {e}"))?;
+    // FIX 3（INVARIANT §10）：`Command::output()` 是同步阻塞调用，直接在 async fn 里跑会
+    // 卡住 tokio runtime 线程。挪进 spawn_blocking（allowlist 守卫已在上方先过，不进线程池）。
+    let alias_for_exec = alias.clone();
+    let output = tokio::task::spawn_blocking(move || {
+        std::process::Command::new("ssh")
+            .arg("-G")
+            .arg(&alias_for_exec)
+            .output()
+    })
+    .await
+    .map_err(|e| format!("ssh -G 任务调度失败: {e}"))?
+    .map_err(|e| format!("运行 ssh -G 失败（OpenSSH client 装了吗？）: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

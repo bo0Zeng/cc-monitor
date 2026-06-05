@@ -58,8 +58,11 @@ export interface RemoteConfig {
   hostKeyFingerprint: string;
 }
 
-/** daemonPath 建议默认值（仅作 placeholder 提示；用户填绝对路径，原样下发）。 */
-const DAEMON_PATH_PLACEHOLDER = "~/.cc-monitor/bin/cc-monitor-remote";
+/**
+ * daemonPath placeholder：必须是**绝对路径**。SSH exec 不经 shell，`~` 不会被展开，
+ * 故用 `/home/<user>/...` 形式而非 `~/...`（避免误导用户以为 `~` 可用）。
+ */
+const DAEMON_PATH_PLACEHOLDER = "/home/<user>/.cc-monitor/bin/cc-monitor-remote";
 
 const DEFAULTS: RemoteConfig = {
   enabled: false,
@@ -209,6 +212,12 @@ export class RemoteSection {
       "daemon 路径 (daemonPath)",
       DAEMON_PATH_PLACEHOLDER,
     );
+    // FIX 6：SSH exec 无 shell，`~` 不展开 → 必须填绝对路径。明确提示，避免踩坑。
+    const daemonHint = document.createElement("div");
+    daemonHint.className = "settings-hint";
+    daemonHint.textContent =
+      "须为绝对路径（如 /home/pi/.cc-monitor/bin/cc-monitor-remote）；SSH 直接 exec 不经 shell，`~` 不会被展开。";
+    group.appendChild(daemonHint);
     this.keyPathInput = this.buildTextRow(
       group,
       "私钥路径 (keyPath，可选)",
@@ -272,7 +281,12 @@ export class RemoteSection {
       this.userInput.value = resolved.user;
       // keyPath 只在 ssh -G 给出且文件存在时覆盖；null 时清空（留给 agent / 手填）。
       this.keyPathInput.value = resolved.keyPath ?? "";
-      // daemonPath / enabled 保持原样（导入只动连接四要素）。
+      // FIX 6 bonus：daemonPath 为空时按解析出的 user 预填一个绝对路径默认值
+      // （用户仍可改）。非空则尊重已有值（导入不覆盖用户填好的 daemon 路径）。
+      if (!this.daemonPathInput.value.trim() && resolved.user) {
+        this.daemonPathInput.value = `/home/${resolved.user}/.cc-monitor/bin/cc-monitor-remote`;
+      }
+      // enabled 保持原样（导入只动连接参数 + 兜底 daemonPath）。
       await this.save();
       this.showBanner(`已从别名「${alias}」导入连接参数。`);
     } catch (e) {
@@ -362,6 +376,16 @@ export class RemoteSection {
         const fp = res.fingerprint;
         saveBtn.addEventListener("click", () => void this.onSaveFingerprint(fp));
         fpLine.appendChild(saveBtn);
+
+        // FIX 4：首次 / TOFU 捕获（之前没配过任何指纹）时，这个指纹是**未经验证**的，
+        // 首次连接本身可能已被中间人篡改。显眼提示用户先在 Pi 上用 ssh-keyscan 核对。
+        if (!current) {
+          const caution = document.createElement("div");
+          caution.className = "remote-test-line remote-test-caution";
+          caution.textContent =
+            "⚠ 此指纹未经验证 —— 首次连接可能被中间人篡改。建议在 Pi 上用 `ssh-keyscan` 核对（见部署文档 step 6）后再固化。";
+          fpLine.appendChild(caution);
+        }
       } else {
         const ok = document.createElement("span");
         ok.className = "remote-test-ok";
@@ -496,14 +520,26 @@ export class RemoteSection {
 
   /** 任一控件变化 → 组装 RemoteConfig → merge 进 config.json → 提示重启。 */
   private async save(): Promise<void> {
+    // collect() 已对 hostKeyFingerprint 做 trim（FIX 7）：去掉粘贴时混入的换行/空白，
+    // 否则后端比对时尾随空白会让本应匹配的指纹被永久拒（误判 MITM）。
     const next = this.collect();
+    const missingFields = next.enabled && (!next.host || !next.user || !next.daemonPath);
+    // FIX 7：host key 指纹通常形如 `SHA256:...`。不强制（也许将来支持别的 hash），
+    // 但格式不符时软提示（不拦保存），提醒用户大概率粘错了字段。
+    const fingerprintLooksOff =
+      !!next.hostKeyFingerprint && !next.hostKeyFingerprint.startsWith("SHA256:");
 
     // best-effort UI 校验：启用但缺必填字段时只警告，不阻止保存
-    // （Rust 侧已会在缺字段时安全回退到本地模式）。
-    if (next.enabled && (!next.host || !next.user || !next.daemonPath)) {
+    // （Rust 侧已会在缺字段时安全回退到本地模式）。这些告警占用 banner 时，
+    // 下面就不再覆盖常规「需重启」提示。
+    if (missingFields) {
       this.showBanner(
         "已保存，但 host / user / daemonPath 还不完整 —— 后端会回退到本地模式。" +
           "补全后重启 monitor 才会走远端。",
+      );
+    } else if (fingerprintLooksOff) {
+      this.showBanner(
+        "已保存。注意：主机指纹通常以 `SHA256:` 开头，当前值不是该格式 —— 请确认没粘错。",
       );
     }
 
@@ -511,7 +547,7 @@ export class RemoteSection {
       await writeRemoteConfig(next);
       const changed = !sameRemote(next, this.original);
       this.original = next;
-      if (changed && !(next.enabled && (!next.host || !next.user || !next.daemonPath))) {
+      if (changed && !missingFields && !fingerprintLooksOff) {
         this.showBanner("远端设置已更新 —— 需要重启 monitor 才能生效。");
       }
     } catch (e) {
