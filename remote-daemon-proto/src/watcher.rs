@@ -35,7 +35,7 @@
 use crate::wire::{Frame, SeqCounter};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -76,19 +76,16 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>) {
     let projects = claude_dir.join("projects");
     let sessions = claude_dir.join("sessions");
 
-    let mut state = ReaderState::default();
+    let mut state = ReaderState::new(projects.clone());
 
-    // --- Phase 1: synchronous initial scan of already-existing files. ---
-    // Mirrors watcher.rs: pick up already-running sessions on startup so the
-    // client gets a snapshot before any live event arrives.
-    if projects.is_dir() {
-        for entry in WalkDir::new(&projects).into_iter().filter_map(Result::ok) {
-            let p = entry.path();
-            if is_jsonl(p) && !is_subagent_path(p) {
-                process_jsonl(p, &mut state, &tx);
-            }
-        }
-    }
+    // --- Phase 1: synchronous initial scan. ---
+    // Mirror the LOCAL watcher's `active_filter` (`session_map.is_session_active`):
+    // only stream sessions whose PID is alive (sessions/<PID>.json + /proc/<pid>).
+    // We scan sessions/ FIRST to build the active set; process_session_added marks
+    // the sid active and rescans its jsonl so an already-running session snapshots
+    // on startup. We deliberately do NOT walk projects/ unconditionally — pulling
+    // every historical jsonl as a Tab is the bug this fixes; browsing history is
+    // the Ctrl+H history browser's job (Phase 1 for remote).
     if sessions.is_dir() {
         for entry in WalkDir::new(&sessions).into_iter().filter_map(Result::ok) {
             let p = entry.path();
@@ -129,28 +126,48 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>) {
         tracing::warn!("sessions dir does not exist: {}", sessions.display());
     }
 
-    for evt in notify_rx {
-        let events = match evt {
-            Ok(events) => events,
-            Err(errs) => {
-                tracing::warn!("debouncer error: {errs:?}");
-                continue;
-            }
-        };
-        for ev in events {
-            let p = ev.path.as_path();
-            if is_jsonl(p) && !is_subagent_path(p) {
-                process_jsonl(p, &mut state, &tx);
-            } else if is_session_json(p) {
-                // notify-debouncer-mini coalesces to "something happened to this
-                // path". Decide add vs remove by current existence on disk.
-                if p.exists() {
-                    process_session_added(p, &mut state, &tx);
-                } else {
-                    process_session_removed(p, &mut state, &tx);
+    // Live loop with a 2s poll tick. The tick detects a session whose PID died
+    // WITHOUT its sessions/<PID>.json being deleted (Claude Code can leave a
+    // stale file when force-killed) — mirroring the local STILL_ACTIVE check —
+    // and archives that Tab via SessionRemoved.
+    loop {
+        match notify_rx.recv_timeout(Duration::from_secs(2)) {
+            Ok(Ok(events)) => {
+                for ev in events {
+                    let p = ev.path.as_path();
+                    if is_jsonl(p) && !is_subagent_path(p) {
+                        // process_jsonl skips sids not in active_sids.
+                        process_jsonl(p, &mut state, &tx);
+                    } else if is_session_json(p) {
+                        // notify coalesces to "something happened to this path";
+                        // decide add vs remove by current existence on disk.
+                        if p.exists() {
+                            process_session_added(p, &mut state, &tx);
+                        } else {
+                            process_session_removed(p, &mut state, &tx);
+                        }
+                    }
                 }
             }
+            Ok(Err(errs)) => tracing::warn!("debouncer error: {errs:?}"),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
         }
+
+        // Liveness poll: archive sessions whose PID is no longer alive.
+        let dead: Vec<PathBuf> = state
+            .sessions
+            .iter()
+            .filter(|(_, (pid, _))| !pid_alive(*pid))
+            .map(|(k, _)| k.clone())
+            .collect();
+        for k in dead {
+            if let Some((_, sid)) = state.sessions.remove(&k) {
+                state.active_sids.remove(&sid);
+                send_frame(&tx, Frame::SessionRemoved { sid });
+            }
+        }
+
         if tx.is_closed() {
             break;
         }
@@ -161,8 +178,11 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>) {
 ///
 /// Not behind a lock: the reader is single-threaded (one OS thread), so all
 /// access is serialized by construction.
-#[derive(Default)]
 struct ReaderState {
+    /// `<claude_dir>/projects` — used to rescan a session's jsonl when it becomes
+    /// active (so its existing lines stream, mirroring the local watcher's
+    /// force-rescan on session-added).
+    projects: PathBuf,
     /// Per-file consumed byte offset, keyed by [`path_key`]. Reset to 0 on
     /// truncation; the climbing seq lives separately in [`Self::seqs`] so a
     /// truncation never rolls the seq back.
@@ -171,9 +191,28 @@ struct ReaderState {
     /// path (it is never reset), so truncation resetting `offsets` cannot pull
     /// the seq back — exactly the `watcher.rs:243-247` invariant.
     seqs: SeqCounter,
-    /// PID-file path → cached `sessionId`, so a delete (which can no longer
-    /// read the file) can still emit the right `SessionRemoved`.
-    pid_to_sid: HashMap<PathBuf, String>,
+    /// PID-file path → (pid, sessionId) for sessions currently considered ACTIVE
+    /// (announced via `SessionAdded`). The pid lets the liveness poll detect a
+    /// dead process; the cached sid lets a file-delete still emit the right
+    /// `SessionRemoved`.
+    sessions: HashMap<PathBuf, (u32, String)>,
+    /// Fast membership for the active-session filter: sids currently streaming.
+    /// Mirrors the local watcher's `active_filter` — only sessions whose PID is
+    /// alive on this host stream; historical jsonl is NOT pulled (that is the
+    /// Ctrl+H history browser's job).
+    active_sids: HashSet<String>,
+}
+
+impl ReaderState {
+    fn new(projects: PathBuf) -> Self {
+        ReaderState {
+            projects,
+            offsets: HashMap::new(),
+            seqs: SeqCounter::new(),
+            sessions: HashMap::new(),
+            active_sids: HashSet::new(),
+        }
+    }
 }
 
 /// One line read out of a JSONL file, with its assigned per-file seq.
@@ -243,6 +282,11 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, tx: &mpsc::Sender<Frame>)
     let Some(session_id) = file_stem_str(path) else {
         return;
     };
+    // Active-session filter (mirrors the local watcher's `active_filter`): only
+    // stream sessions whose PID is alive. Historical jsonl is never pulled.
+    if !state.active_sids.contains(&session_id) {
+        return;
+    }
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
         Err(_) => return,
@@ -273,22 +317,76 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, tx: &mpsc::Sender<Frame>)
 /// so a debounced modify event does not re-announce an existing session.
 fn process_session_added(path: &Path, state: &mut ReaderState, tx: &mpsc::Sender<Frame>) {
     let key = path_key(path);
+    // PID is the sessions/<PID>.json filename stem.
+    let Some(pid) = file_stem_str(path).and_then(|s| s.parse::<u32>().ok()) else {
+        return;
+    };
     let Some(sid) = read_session_id(path) else {
         return;
     };
-    if state.pid_to_sid.get(&key) == Some(&sid) {
+    // Only ACTIVE if the process is actually alive (mirrors local STILL_ACTIVE).
+    // A stale pidfile for a dead process is NOT an active session.
+    if !pid_alive(pid) {
         return;
     }
-    state.pid_to_sid.insert(key, sid.clone());
-    send_frame(tx, Frame::SessionAdded { sid });
+    // Idempotent: a debounced modify of an already-tracked session re-announces
+    // nothing.
+    if state.sessions.get(&key).map(|(_, s)| s.as_str()) == Some(sid.as_str()) {
+        return;
+    }
+    state.sessions.insert(key, (pid, sid.clone()));
+    state.active_sids.insert(sid.clone());
+    send_frame(tx, Frame::SessionAdded { sid: sid.clone() });
+    // Now that this session is active, stream its existing jsonl (mirrors the
+    // local force-rescan triggered on session-added).
+    let projects = state.projects.clone();
+    rescan_sid_jsonl(&projects, &sid, state, tx);
 }
 
 /// A `sessions/<PID>.json` was deleted: look up the cached sid (the file is
 /// gone, so we cannot read it now) and emit [`Frame::SessionRemoved`].
 fn process_session_removed(path: &Path, state: &mut ReaderState, tx: &mpsc::Sender<Frame>) {
     let key = path_key(path);
-    if let Some(sid) = state.pid_to_sid.remove(&key) {
+    if let Some((_, sid)) = state.sessions.remove(&key) {
+        state.active_sids.remove(&sid);
         send_frame(tx, Frame::SessionRemoved { sid });
+    }
+}
+
+/// Walk `projects/` for this session's jsonl (`<sid>.jsonl`, non-subagent) and
+/// stream its already-present lines. Called when a session becomes active so an
+/// already-running session snapshots on session-added (mirrors local force-rescan).
+fn rescan_sid_jsonl(projects: &Path, sid: &str, state: &mut ReaderState, tx: &mpsc::Sender<Frame>) {
+    if !projects.is_dir() {
+        return;
+    }
+    for entry in WalkDir::new(projects).into_iter().filter_map(Result::ok) {
+        let p = entry.path();
+        if is_jsonl(p)
+            && !is_subagent_path(p)
+            && p.file_stem().and_then(|s| s.to_str()) == Some(sid)
+        {
+            process_jsonl(p, state, tx);
+        }
+    }
+}
+
+/// Whether `pid` is a live process on this host.
+///
+/// Linux (the daemon's real target): `/proc/<pid>` existence. Phase 0 uses
+/// existence only — full PID-reuse defence via procStart (LinuxJiffies) is
+/// Phase 1, matching the local `is_process_alive` procStart check.
+fn pid_alive(pid: u32) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::path::Path::new(&format!("/proc/{pid}")).exists()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        // Non-Linux (Windows compile/smoke only — not the real target): treat as
+        // alive so the cross-platform smoke still exercises the pipeline.
+        let _ = pid;
+        true
     }
 }
 
