@@ -43,6 +43,10 @@ pub struct JsonlLinePayload {
     pub cwd: Option<String>,
     pub path: String,
     pub seq: u64,
+    /// issue #15：数据来源标签。`None` = 本地（不序列化，前端视为本地，Tab 标题无前缀）；
+    /// `Some(host)` = 远端 SSH 数据源的主机名，前端据此给 Tab 标题加 `[host]` 前缀。
+    #[serde(rename = "origin", skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
     pub message: crate::messages::JsonlRecord,
 }
 
