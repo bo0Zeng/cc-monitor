@@ -10,6 +10,16 @@
 
 ## [未发布]
 
+### 新增 — Edit/Write/MultiEdit 工具调用渲染为行级 diff 卡（issue #14）
+
+展开 `Edit` / `Write` / `MultiEdit` 工具折叠条，不再是原始 JSON（两坨转义的 `old_string` / `new_string`），而是**行级 diff**：红色删除行 + 绿色新增行 + 灰色上下文行，一眼看出 claude 改了哪些行。
+
+- **Edit**：`old_string` → `new_string` 行级红删绿增；**Write**：整块内容当新增（全绿）；**MultiEdit**：逐条 diff 叠加，标 `Edit 1 / 2 …`。
+- 超长 diff 自动截断 + 「↕ 显示完整 diff（+N −M）」按钮（点击展开全部）。
+- 颜色复用外观主题的成功 / 错误色（改取色器即同步重染），不新增设置项。
+- 任何异常 / 畸形输入 / `NotebookEdit` 一律**优雅回退**到原 JSON 视图，绝不空白。
+- 纯前端、只读，不改任何 Claude Code 数据；CRLF / 中文 / emoji / 三引号代码均按字面安全渲染。
+
 ### 修复 — 历史会话点进去空白
 
 **症状**：历史浏览器（Ctrl+H）点开任一会话，顶部状态栏显示「N 条记录 · 只读历史视图」，但消息区一片空白。
