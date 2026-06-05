@@ -19,6 +19,9 @@ mod paths;
 mod profile_installer;
 mod search;
 mod session_map;
+// SSH-remote Phase 0 / S3 (issue #15)：仅声明，**不**从 setup() 调用。
+// S5 才把 ssh_source::connect_and_exec 接进 setup()。当前是 dead code。
+mod ssh_source;
 mod subagent;
 mod tasks;
 mod utils;

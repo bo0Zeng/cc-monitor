@@ -32,6 +32,20 @@ notify = "6"
 notify-debouncer-mini = "0.4"
 walkdir = "2"
 
+# SSH-remote Phase 0 (issue #15) S3：先证明 russh 能在 windows-msvc 下编译 + LTO 链接。
+# 默认 crypto backend 是 aws-lc-rs（需 NASM/cmake，windows 上易失败）；
+# 改用 default-features=false + ring 纯 Rust/汇编后端规避（见 ssh_source.rs 顶部注释）。
+# flate2/rsa 是 russh 默认开的非 crypto-backend feature，手动保留以维持等价行为。
+russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }
+# 版本钉死规避 pre-release 解析地雷：russh 的 ECDSA 走 p256/p521 0.14.0-rc.9，
+# 它们要 primefield 0.14.0-rc.9。但 cargo 默认会在 0.14.0-rc.* 区间内取最新
+# = primefield 0.14.0-rc.10（2026-06-04 刚发），rc.10 改了 ff trait 拆分
+# （primefield::ff::Field vs elliptic_curve::Field），与 rc.9 的 p256/p521 不兼容
+# → p256/p521 编译失败（E0277 FieldElement: elliptic_curve::Field not satisfied）。
+# 我们不直接用 primefield，这里仅作为 resolver 杠杆把它钉回 rc.9。
+# 详见 ssh_source.rs 顶部 crypto-backend 注释 + issue #15 S3 报告。
+primefield = "=0.14.0-rc.9"
+
 tokio = { version = "1", features = ["full"] }
 parking_lot = "0.12"
 
