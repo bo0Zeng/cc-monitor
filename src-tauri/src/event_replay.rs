@@ -323,6 +323,7 @@ mod tests {
             cwd: None,
             path: format!("/fake/{sid}/{idx}.jsonl"),
             seq: idx as u64,
+            origin: None,
             message: JsonlRecord::Unknown,
         }
     }

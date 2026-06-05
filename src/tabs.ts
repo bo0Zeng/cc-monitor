@@ -40,6 +40,12 @@ export interface Tab {
   cwdSeq: number;
   /** Claude 给出的语义标题（JSONL 里 `ai-title` 记录的 aiTitle 字段），出现一次就锁定 */
   aiTitle: string | null;
+  /**
+   * issue #15：数据来源主机标签。null = 本地（标题无前缀）；非空（如 "raspberrypi.local"）
+   * = 远端 SSH 主机名，标题加 `[origin]` 前缀以区分本地/远端。首条 line 帧的 origin
+   * 决定，之后不变（同一 sid 只来自一个来源）。
+   */
+  origin: string | null;
   status: TabStatus;
   streamEl: HTMLElement;
   stream: MessageStream;
@@ -213,7 +219,13 @@ export class TabManager {
    * - 真用户输入走 sink.onRealUserInput → this.userActive
    */
   onLine(payload: JsonlLinePayload): void {
-    const tab = this.ensureTab(payload.session_id, payload.cwd, payload.path, payload.seq);
+    const tab = this.ensureTab(
+      payload.session_id,
+      payload.cwd,
+      payload.path,
+      payload.seq,
+      payload.origin ?? null,
+    );
 
     const ctx: RenderContext = {
       parentPath: tab.parentPath,
@@ -242,7 +254,13 @@ export class TabManager {
     }
   }
 
-  ensureTab(sessionId: string, cwd: string | null, sourcePath: string, seq: number): Tab {
+  ensureTab(
+    sessionId: string,
+    cwd: string | null,
+    sourcePath: string,
+    seq: number,
+    origin: string | null = null,
+  ): Tab {
     let tab = this.tabs.get(sessionId);
     if (tab) {
       // cwd 取**最早（最小 seq）**那条记录的 —— 即项目根 / 启动目录。
@@ -258,7 +276,7 @@ export class TabManager {
       return tab;
     }
 
-    const title = computeTitleFor(sessionId, cwd, null);
+    const title = computeTitleFor(sessionId, cwd, null, origin);
 
     const streamEl = document.createElement("div");
     streamEl.className = "stream"; // 默认 .stream 已含 visibility:hidden（见 styles.css）
@@ -290,6 +308,7 @@ export class TabManager {
       // 记下当前 cwd 来源的 seq；后续更早（更小 seq）的记录可覆盖（取项目根）。
       cwdSeq: cwd ? seq : Number.POSITIVE_INFINITY,
       aiTitle: null,
+      origin,
       status: "live",
       streamEl,
       stream,
@@ -322,9 +341,9 @@ export class TabManager {
     this.refreshTabBar();
   }
 
-  /** 根据 tab.cwd + tab.aiTitle + sessionId 算出展示标题 */
+  /** 根据 tab.cwd + tab.aiTitle + sessionId 算出展示标题（远端 Tab 加 `[origin]` 前缀） */
   private computeTitle(tab: Tab): string {
-    return computeTitleFor(tab.sessionId, tab.cwd, tab.aiTitle);
+    return computeTitleFor(tab.sessionId, tab.cwd, tab.aiTitle, tab.origin);
   }
 
   /** session 退出（~/.claude/sessions/<PID>.json 被删）—— 灰显归档，内容保留 */
@@ -486,11 +505,12 @@ export class TabManager {
     }
   }
 
-  /** 快捷键 Ctrl+` ：把当前活跃 Tab 对应的终端窗口拉到前台（仅 live） */
+  /** 快捷键 Ctrl+` ：把当前活跃 Tab 对应的终端窗口拉到前台（仅 live 本地 Tab） */
   bringActiveTerminalToFront(): void {
     if (!this.activeId) return;
     const tab = this.tabs.get(this.activeId);
-    if (tab && tab.status !== "archived") {
+    // FIX 5：远端 Tab（origin 非 null）无本地终端可拉前 —— 快捷键对其 no-op。
+    if (tab && tab.status !== "archived" && tab.origin === null) {
       void bringTerminalToFront(this.activeId);
     }
   }
@@ -520,10 +540,12 @@ export class TabManager {
     }
   }
 
-  /** 打开指定 Tab 的 cwd 到系统文件管理器。无 cwd 静默忽略。 */
+  /** 打开指定 Tab 的 cwd 到系统文件管理器。无 cwd / 远端 Tab 静默忽略。 */
   private async openTabCwd(sid: string): Promise<void> {
     const tab = this.tabs.get(sid);
     if (!tab?.cwd) return;
+    // FIX 5：远端 Tab 的 cwd 是 Pi 上的路径，本地 openPath 必然失败 —— 直接 no-op。
+    if (tab.origin !== null) return;
     try {
       await openPath(tab.cwd);
     } catch (e) {
@@ -646,6 +668,8 @@ export class TabManager {
     focusBtn.title = "调出对应终端 (Ctrl+`)";
     focusBtn.addEventListener("click", (e) => {
       e.stopPropagation();
+      // FIX 5：远端 Tab 无本地终端 HWND 可绑定 —— 不尝试拉前（按钮也被 CSS 隐藏，双保险）。
+      if (this.tabs.get(sid)?.origin !== null) return;
       void bringTerminalToFront(sid);
     });
     root.appendChild(focusBtn);
@@ -685,6 +709,10 @@ export class TabManager {
     refs.root.classList.toggle("active", sid === this.activeId);
     refs.root.classList.toggle("archived", tab.status === "archived");
     refs.root.classList.toggle("has-cwd", !!tab.cwd);
+    // FIX 5（issue #15）：远端 Tab（origin 非 null）的 cwd 是 Pi 上的路径，本地不存在；
+    // 「打开工作目录」📂 与「调出终端」↗ 在本地都打不开。加 .remote 类，CSS 隐藏这两个
+    // 本地专用按钮（点击 handler 也在 openTabCwd / bringTerminalToFront 早退兜底）。
+    refs.root.classList.toggle("remote", tab.origin !== null);
     const unread = tab.unread > 0 && sid !== this.activeId;
     refs.root.classList.toggle("has-unread", unread);
 
@@ -763,19 +791,28 @@ function projectNameFromCwd(cwd: string): string | null {
  *   aiTitle 无 + cwd 有 → `项目`
  *   都没有 → `<sid 前 8 位>`
  *
+ * issue #15：`origin`（远端 SSH 主机名）非空时，在以上结果前再加 `[origin] ` 前缀，
+ * 让用户一眼区分本地 / 远端 Tab（如 `[raspberrypi.local] [proj] aiTitle`）。本地
+ * （origin=null）行为与历史完全一致，不加任何前缀。
+ *
  * Subagent 不再独立 Tab（嵌入到父 session 的 Task 折叠卡），所以没有 `↳` 前缀分支。
  */
 function computeTitleFor(
   sessionId: string,
   cwd: string | null,
   aiTitle: string | null,
+  origin: string | null = null,
 ): string {
   const project = cwd ? projectNameFromCwd(cwd) : null;
+  let base: string;
   if (aiTitle) {
-    return project ? `[${project}] ${aiTitle}` : aiTitle;
+    base = project ? `[${project}] ${aiTitle}` : aiTitle;
+  } else if (project) {
+    base = project;
+  } else {
+    base = sessionId.slice(0, 8);
   }
-  if (project) return project;
-  return sessionId.slice(0, 8);
+  return origin ? `[${origin}] ${base}` : base;
 }
 
 // P5.2 B 重构：markCardUuid + feedBranchFolder 已搬到 render-stream-record.ts

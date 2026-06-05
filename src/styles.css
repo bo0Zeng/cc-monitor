@@ -264,6 +264,10 @@ body.viewer-mode .history-trigger {
 .tab.archived .tab-cwd { display: none; }
 .tab:not(.has-cwd) .tab-cwd { display: none; }
 .tab:not(.archived) .tab-close { display: none; }
+/* FIX 5（issue #15）：远端 Tab 的 cwd 是 Pi 上的路径、无本地终端 HWND ——
+   隐藏「打开工作目录」📂 与「调出终端」↗ 这两个本地专用按钮（click handler 亦有兜底）。 */
+.tab.remote .tab-cwd,
+.tab.remote .tab-focus { display: none; }
 
 .tab-title {
   overflow: hidden;
@@ -1870,6 +1874,49 @@ body.viewer-mode .history-trigger {
 }
 .settings-banner.settings-banner-show {
   display: block;
+}
+
+/* 远端「测试连接」结果（issue #15 Tier 1） */
+.remote-test-result {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: var(--font-size-small);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.remote-test-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.remote-test-mark {
+  font-weight: bold;
+}
+.remote-test-ok {
+  color: var(--success);
+}
+.remote-test-err {
+  color: var(--error);
+}
+.remote-test-msg {
+  color: var(--text-faint);
+}
+.remote-test-fp {
+  font-family: var(--font-mono, monospace);
+  color: var(--text);
+  word-break: break-all;
+}
+/* FIX 4（issue #15）：首次 / TOFU 捕获的指纹未经验证，固化前的安全提醒。 */
+.remote-test-caution {
+  flex-basis: 100%;
+  color: var(--warn);
+  font-size: var(--font-size-small);
+  line-height: 1.4;
 }
 
 /* === History 视图（接管 #message-stream 区域） === */
