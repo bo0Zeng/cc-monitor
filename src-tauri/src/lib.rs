@@ -19,8 +19,10 @@ mod paths;
 mod profile_installer;
 mod search;
 mod session_map;
-// SSH-remote Phase 0 / S3 (issue #15)：仅声明，**不**从 setup() 调用。
-// S5 才把 ssh_source::connect_and_exec 接进 setup()。当前是 dead code。
+// SSH-remote Phase 0 (issue #15)：S5 起从 setup() 调用 —— 当 config.json 的
+// `remote.enabled = true` 时，ssh_source::run 取代本地 jsonl-watcher 作为数据源
+// （走相同的 batch_to_payloads → replay.on_line_batch 出口）。remote off（默认）
+// 时本模块不被调用，本地路径 bit-for-bit 不变。
 mod ssh_source;
 mod subagent;
 mod tasks;
@@ -143,24 +145,87 @@ pub fn run() {
                     replay.on_line_batch(&handle, payloads);
                 })
             };
-            let watcher_handle = watcher::spawn_watcher(projects_dir, active_filter, on_batch);
-            let force_rescan_tx = watcher_handle.force_rescan_tx;
-            let initial_scan_done = watcher_handle.initial_scan_done;
+
+            // SSH-remote Phase 0 / S5 (issue #15)：读 config.json 的 `remote` 对象。
+            // `remote.enabled = true` 且配置完整 → 走 SSH 数据源（ssh_source::run），
+            // **取代**本地 jsonl-watcher；否则（默认 / 无 remote 配置）走本地 watcher，
+            // 路径与历史 bit-for-bit 一致。
+            let remote_cfg = load_remote_config();
+
+            // `force_rescan_tx`（session-added 触发 watcher 重扫的安全网）+
+            // `initial_scan_done`（frontend-ready 等待数据源就绪的 flag）的来源按模式分叉：
+            //   - 本地：来自 watcher_handle（spawn_watcher 的产物），行为不变。
+            //   - 远端：不 spawn 本地 watcher；force_rescan 用一个 keep-alive 占位通道
+            //           （emitter 的 added 分支照常 send 不报错，远端无本地 jsonl 可重扫），
+            //           `ready` AtomicBool 充当 initial_scan_done（daemon hello 时置位）。
+            let (force_rescan_tx, initial_scan_done, mut remote_session_changes_rx);
+
+            if let Some(cfg) = remote_cfg.clone() {
+                tracing::info!(
+                    "remote mode ENABLED: SSH data source → {}@{}:{} (local jsonl-watcher NOT spawned)",
+                    cfg.user, cfg.host, cfg.port
+                );
+                // 占位 rescan 通道：远端无本地 jsonl 可重扫，但 emitter 的 added 分支仍会
+                // `force_rescan_tx.send`。spawn 一个 detached drainer 把它吸干，让 send 始终
+                // 成功（不刷 warn）。receiver 活在 drainer 线程里，与 app 同寿。
+                let (rescan_tx, rescan_rx) = std::sync::mpsc::channel::<String>();
+                force_rescan_tx = rescan_tx;
+                let _ = std::thread::Builder::new()
+                    .name("remote-rescan-drain".into())
+                    .spawn(move || while rescan_rx.recv().is_ok() {});
+                // ready = SSH 版 initial_scan_done：daemon hello 时由 ssh_source::run 置位。
+                initial_scan_done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                // 远端 session_added/removed 走的独立通道：emitter 改 drain 这个 receiver，
+                // ssh_source::run 持 sender。语义与本地 session_changes 完全相同。
+                let (remote_tx, remote_rx) =
+                    std::sync::mpsc::channel::<session_map::SessionChange>();
+                remote_session_changes_rx = Some(remote_rx);
+
+                // spawn SSH 数据源：与本地 watcher 走相同出口（batch_to_payloads →
+                // on_line_batch）；session 变化走 remote_tx → 既有 emitter。
+                let replay_for_ssh = replay.clone();
+                let app_for_ssh = app.handle().clone();
+                let ready_for_ssh = initial_scan_done.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) =
+                        ssh_source::run(cfg, replay_for_ssh, app_for_ssh, remote_tx, ready_for_ssh)
+                            .await
+                    {
+                        // S8/S9 会把"connection dropped"做成显眼的前端提示；S5 先大声 log。
+                        tracing::error!("ssh_source::run exited: {e}");
+                    }
+                });
+            } else {
+                // 本地模式（默认）：与历史完全一致。
+                let watcher_handle =
+                    watcher::spawn_watcher(projects_dir, active_filter, on_batch);
+                force_rescan_tx = watcher_handle.force_rescan_tx;
+                initial_scan_done = watcher_handle.initial_scan_done;
+                remote_session_changes_rx = None;
+            }
 
             // session 集合变化 emitter：
             //   - added：通知 jsonl-watcher 主动重扫该 session（修 Bug 2-A 竞态）
             //             + 调 SidHwndCache.record 把 sid → hwnd 绑定持久化
             //   - removed：透传 session-ended 给前端，Tab 灰显归档
             //              + 调 SidHwndCache.forget 清理过期 sid
+            //
+            // 数据源按模式分叉：本地走 SessionMap 的 session_changes，远端走 ssh_source
+            // 喂入的 remote_session_changes_rx（两者都是 Receiver<SessionChange>，逻辑相同）。
             {
                 let handle = app.handle().clone();
                 let session_map_for_emitter = session_map.clone();
                 let bind_for_emitter = bind_registry.clone();
                 let cache_for_emitter = sid_hwnd_cache.clone();
+                // unwrap_or_else（惰性）：remote 模式下不去 move 本地 session_changes，
+                // 仅在本地模式（None）才取 SessionMap 的 receiver。
+                let changes_rx = remote_session_changes_rx
+                    .take()
+                    .unwrap_or_else(|| session_changes);
                 let spawned = std::thread::Builder::new()
                     .name("session-changes-emitter".into())
                     .spawn(move || {
-                        while let Ok(change) = session_changes.recv() {
+                        while let Ok(change) = changes_rx.recv() {
                             for sid in &change.added {
                                 tracing::info!("session added: {sid}, triggering jsonl rescan");
                                 if let Err(e) = force_rescan_tx.send(sid.clone()) {
@@ -344,12 +409,89 @@ fn extract_cwd(rec: &messages::JsonlRecord) -> Option<String> {
     }
 }
 
+/// SSH-remote Phase 0 / S5 (issue #15)：从 monitor 的 config.json 读 `remote` 对象，
+/// 构造 [`ssh_source::RemoteConfig`]。**默认 disabled**：
+///   - config.json 不存在 / 解析失败 / 无 `remote` 键 / `remote.enabled != true` → `None`
+///     （→ 本地模式，行为与历史 bit-for-bit 一致）
+///   - `remote.enabled == true` 但缺必填字段（host/user/daemon_path）→ `None` + warn
+///     （配置不完整时安全回退到本地，不是 hard error）
+///
+/// config.rs 是 schema-agnostic（只透传 serde_json::Value），所以这里直接读
+/// `paths::resolve_config_path()` 的文件，自己取 `remote` 子对象。读法对齐
+/// `paths.rs::read_user_override`（同一个 config.json，同样的 best-effort 容错）。
+///
+/// remote 对象 schema（S6 的设置 UI 负责写）：
+/// ```json
+/// "remote": {
+///   "enabled": true,
+///   "host": "raspberrypi.local",
+///   "port": 22,                       // 可选，默认 22
+///   "user": "pi",
+///   "keyPath": "C:\\Users\\me\\.ssh\\id_ed25519",   // 可选（缺则 connect 时报错）
+///   "daemonPath": "/home/pi/cc-monitor-remote",
+///   "hostKeyFingerprint": "SHA256:..."              // 可选（缺则首连 TOFU）
+/// }
+/// ```
+fn load_remote_config() -> Option<ssh_source::RemoteConfig> {
+    let cfg_path = paths::resolve_config_path()?;
+    if !cfg_path.exists() {
+        return None;
+    }
+    let raw = std::fs::read_to_string(&cfg_path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let remote = value.get("remote")?.as_object()?;
+
+    // 未显式 enabled=true → 视为关闭（默认本地）。
+    if remote.get("enabled").and_then(|v| v.as_bool()) != Some(true) {
+        return None;
+    }
+
+    let host = remote.get("host").and_then(|v| v.as_str());
+    let user = remote.get("user").and_then(|v| v.as_str());
+    let daemon_path = remote.get("daemonPath").and_then(|v| v.as_str());
+
+    let (host, user, daemon_path) = match (host, user, daemon_path) {
+        (Some(h), Some(u), Some(d)) if !h.is_empty() && !u.is_empty() && !d.is_empty() => {
+            (h.to_string(), u.to_string(), d.to_string())
+        }
+        _ => {
+            tracing::warn!("remote.enabled=true 但缺必填字段(host/user/daemonPath)，回退本地模式");
+            return None;
+        }
+    };
+
+    let port = remote
+        .get("port")
+        .and_then(|v| v.as_u64())
+        .and_then(|p| u16::try_from(p).ok())
+        .unwrap_or(22);
+    let key_path = remote
+        .get("keyPath")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let host_key_fingerprint = remote
+        .get("hostKeyFingerprint")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+
+    Some(ssh_source::RemoteConfig {
+        host,
+        port,
+        user,
+        key_path,
+        daemon_path,
+        host_key_fingerprint,
+    })
+}
+
 /// 把 watcher 读出的一批 `JsonlLine` parse 成可 emit 的 `JsonlLinePayload`。
 ///
 /// v2.4.2 issue #2 抽出的最小 seam：watcher 回调和后续（SSH-remote）数据源都调
 /// 这一个自由函数，保持 parse → is_displayable 过滤 → extract_cwd → 组 payload
 /// 的行为唯一。过滤次序、解析错误 warn-then-continue、`seq` 透传都必须与历史一致。
-fn batch_to_payloads(lines: Vec<watcher::JsonlLine>) -> Vec<bridge::JsonlLinePayload> {
+pub(crate) fn batch_to_payloads(lines: Vec<watcher::JsonlLine>) -> Vec<bridge::JsonlLinePayload> {
     let mut payloads = Vec::with_capacity(lines.len());
     for line in lines {
         match parser::parse_line(&line.raw) {
