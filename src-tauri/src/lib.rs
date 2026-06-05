@@ -19,6 +19,12 @@ mod paths;
 mod profile_installer;
 mod search;
 mod session_map;
+// SSH-remote Phase 0 (issue #15)：从 setup() 调用 —— 当 config.json 的
+// `remote.enabled = true` 时，ssh_source::run 作为**附加**数据源与本地 jsonl-watcher
+// 并行跑（aggregate：本地 + 远端 session 同时显示为 Tab），走相同的
+// batch_to_payloads → replay.on_line_batch 出口；远端行带 origin=host 标签。
+// remote off（默认）时本模块不被调用，本地路径 bit-for-bit 不变。
+mod ssh_source;
 mod subagent;
 mod tasks;
 mod utils;
@@ -136,37 +142,19 @@ pub fn run() {
                 let replay = replay.clone();
                 let handle = app.handle().clone();
                 Arc::new(move |lines: Vec<watcher::JsonlLine>| {
-                    let mut payloads = Vec::with_capacity(lines.len());
-                    for line in lines {
-                        match parser::parse_line(&line.raw) {
-                            Ok(Some(record)) if record.is_displayable() => {
-                                let cwd = extract_cwd(&record);
-                                payloads.push(bridge::JsonlLinePayload {
-                                    session_id: line.session_id.clone(),
-                                    cwd,
-                                    path: line.path.to_string_lossy().into_owned(),
-                                    // P5.1：watcher 给每行单调编号；前端按 seq 排到 timeline
-                                    seq: line.seq,
-                                    message: record,
-                                });
-                            }
-                            Ok(_) => {}
-                            Err(e) => {
-                                tracing::warn!(
-                                    "parse line failed in {}: {e}",
-                                    line.path.display()
-                                );
-                            }
-                        }
-                    }
+                    // 本地行无 origin（None）；远端行由 ssh_source 传 Some(host)。
+                    let payloads = batch_to_payloads(lines, None);
                     replay.on_line_batch(&handle, payloads);
                 })
             };
+
+            // 本地 jsonl-watcher：**始终** spawn（与 SSH-remote 引入前完全一致）。
+            // 远端（如启用）是纯附加数据源（见下方 load_remote_config 块），不影响这里。
             let watcher_handle = watcher::spawn_watcher(projects_dir, active_filter, on_batch);
             let force_rescan_tx = watcher_handle.force_rescan_tx;
             let initial_scan_done = watcher_handle.initial_scan_done;
 
-            // session 集合变化 emitter：
+            // session 集合变化 emitter（本地）：
             //   - added：通知 jsonl-watcher 主动重扫该 session（修 Bug 2-A 竞态）
             //             + 调 SidHwndCache.record 把 sid → hwnd 绑定持久化
             //   - removed：透传 session-ended 给前端，Tab 灰显归档
@@ -211,6 +199,67 @@ pub fn run() {
                          session 增减事件将丢失，Tab 不会自动归档 / 新会话可能丢首屏"
                     );
                 }
+            }
+
+            // SSH-remote Phase 0 (issue #15)：远端是**纯附加**数据源。config.json 的
+            // `remote.enabled = true` 且配置完整 → 在本地 watcher 之外**额外**起一条
+            // ssh_source::run（aggregate：本地 + 远端 session 同时显示）。否则（默认 /
+            // 无 remote 配置）此块不执行，本地路径与历史 bit-for-bit 一致。
+            if let Some(cfg) = load_remote_config() {
+                tracing::info!(
+                    "remote mode ENABLED (additive): SSH data source → {}@{}:{} (local jsonl-watcher still running)",
+                    cfg.user, cfg.host, cfg.port
+                );
+
+                // 远端独立 session 通道：ssh_source::run 持 sender；这里起一条**专用**的
+                // 精简 emitter drain 它。远端无本地资源，故只处理 removed → SESSION_ENDED：
+                //   - removed：emit session-ended，对应远端 Tab 归档。
+                //   - added：**无操作**——远端 Tab 由 line 帧经 ensureTab 创建；不调
+                //     force_rescan_tx（那是本地 jsonl 专用），也不碰 SidHwndCache（远端无本地 HWND）。
+                let (remote_tx, remote_rx) =
+                    std::sync::mpsc::channel::<session_map::SessionChange>();
+                {
+                    let handle = app.handle().clone();
+                    let spawned = std::thread::Builder::new()
+                        .name("remote-session-emitter".into())
+                        .spawn(move || {
+                            while let Ok(change) = remote_rx.recv() {
+                                for sid in change.removed {
+                                    let payload = bridge::SessionEndedPayload {
+                                        session_id: sid.clone(),
+                                    };
+                                    if let Err(e) =
+                                        handle.emit(bridge::events::SESSION_ENDED, &payload)
+                                    {
+                                        tracing::warn!("emit remote session-ended failed: {e}");
+                                    } else {
+                                        tracing::info!("remote session ended: {sid}");
+                                    }
+                                }
+                            }
+                        });
+                    if let Err(e) = spawned {
+                        tracing::error!(
+                            "failed to spawn remote-session-emitter thread: {e}; 远端 Tab 不会自动归档"
+                        );
+                    }
+                }
+
+                // spawn SSH 数据源：与本地 watcher 走相同出口（batch_to_payloads →
+                // on_line_batch）；session 变化走 remote_tx → 上面的 remote-session-emitter。
+                // `ready` 是一次性占位 true——远端**不**门控 frontend-ready（本地 watcher 的
+                // initial_scan_done 才门控 replay；远端是实时流，无"初始扫完成"概念）。
+                let replay_for_ssh = replay.clone();
+                let app_for_ssh = app.handle().clone();
+                let ready = Arc::new(std::sync::atomic::AtomicBool::new(true));
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) =
+                        ssh_source::run(cfg, replay_for_ssh, app_for_ssh, remote_tx, ready).await
+                    {
+                        // S8/S9 会把"connection dropped"做成显眼的前端提示；先大声 log。
+                        tracing::error!("ssh_source::run exited: {e}");
+                    }
+                });
             }
 
             // 焦点同步功能已移除：Windows 11 默认 WT 是单进程多窗口架构，
@@ -351,6 +400,10 @@ pub fn run() {
             tasks::get_session_tasks,
             // v2.3.0 issue #3 (A 透明化): 设置面板「数据」区列出所有持久路径
             data_paths::get_data_paths,
+            // issue #15 Tier 1: SSH 连接 UX —— ~/.ssh/config 导入 + 测试连接 + 指纹固化
+            ssh_source::list_ssh_host_aliases,
+            ssh_source::resolve_ssh_host,
+            ssh_source::test_remote_connection,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -361,6 +414,120 @@ fn extract_cwd(rec: &messages::JsonlRecord) -> Option<String> {
         messages::JsonlRecord::User { cwd, .. } => cwd.clone(),
         _ => None,
     }
+}
+
+/// SSH-remote Phase 0 / S5 (issue #15)：从 monitor 的 config.json 读 `remote` 对象，
+/// 构造 [`ssh_source::RemoteConfig`]。**默认 disabled**：
+///   - config.json 不存在 / 解析失败 / 无 `remote` 键 / `remote.enabled != true` → `None`
+///     （→ 本地模式，行为与历史 bit-for-bit 一致）
+///   - `remote.enabled == true` 但缺必填字段（host/user/daemon_path）→ `None` + warn
+///     （配置不完整时安全回退到本地，不是 hard error）
+///
+/// config.rs 是 schema-agnostic（只透传 serde_json::Value），所以这里直接读
+/// `paths::resolve_config_path()` 的文件，自己取 `remote` 子对象。读法对齐
+/// `paths.rs::read_user_override`（同一个 config.json，同样的 best-effort 容错）。
+///
+/// remote 对象 schema（S6 的设置 UI 负责写）：
+/// ```json
+/// "remote": {
+///   "enabled": true,
+///   "host": "raspberrypi.local",
+///   "port": 22,                       // 可选，默认 22
+///   "user": "pi",
+///   "keyPath": "C:\\Users\\me\\.ssh\\id_ed25519",   // 可选（缺则 connect 时报错）
+///   "daemonPath": "/home/pi/cc-monitor-remote",
+///   "hostKeyFingerprint": "SHA256:..."              // 可选（缺则首连 TOFU）
+/// }
+/// ```
+fn load_remote_config() -> Option<ssh_source::RemoteConfig> {
+    let cfg_path = paths::resolve_config_path()?;
+    if !cfg_path.exists() {
+        return None;
+    }
+    let raw = std::fs::read_to_string(&cfg_path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let remote = value.get("remote")?.as_object()?;
+
+    // 未显式 enabled=true → 视为关闭（默认本地）。
+    if remote.get("enabled").and_then(|v| v.as_bool()) != Some(true) {
+        return None;
+    }
+
+    let host = remote.get("host").and_then(|v| v.as_str());
+    let user = remote.get("user").and_then(|v| v.as_str());
+    let daemon_path = remote.get("daemonPath").and_then(|v| v.as_str());
+
+    let (host, user, daemon_path) = match (host, user, daemon_path) {
+        (Some(h), Some(u), Some(d)) if !h.is_empty() && !u.is_empty() && !d.is_empty() => {
+            (h.to_string(), u.to_string(), d.to_string())
+        }
+        _ => {
+            tracing::warn!("remote.enabled=true 但缺必填字段(host/user/daemonPath)，回退本地模式");
+            return None;
+        }
+    };
+
+    let port = remote
+        .get("port")
+        .and_then(|v| v.as_u64())
+        .and_then(|p| u16::try_from(p).ok())
+        .unwrap_or(22);
+    let key_path = remote
+        .get("keyPath")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let host_key_fingerprint = remote
+        .get("hostKeyFingerprint")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+
+    Some(ssh_source::RemoteConfig {
+        host,
+        port,
+        user,
+        key_path,
+        daemon_path,
+        host_key_fingerprint,
+    })
+}
+
+/// 把 watcher 读出的一批 `JsonlLine` parse 成可 emit 的 `JsonlLinePayload`。
+///
+/// v2.4.2 issue #2 抽出的最小 seam：watcher 回调和后续（SSH-remote）数据源都调
+/// 这一个自由函数，保持 parse → is_displayable 过滤 → extract_cwd → 组 payload
+/// 的行为唯一。过滤次序、解析错误 warn-then-continue、`seq` 透传都必须与历史一致。
+///
+/// `origin`：数据来源标签。`None` = 本地（前端 Tab 标题不加前缀，与历史一致）；
+/// `Some(host)` = 远端（issue #15，前端 Tab 标题加 `[host]` 前缀以区分本地/远端）。
+/// 透传到每条 payload，让前端按 sid 分流时知道该 Tab 是本地还是哪台远端主机。
+pub(crate) fn batch_to_payloads(
+    lines: Vec<watcher::JsonlLine>,
+    origin: Option<String>,
+) -> Vec<bridge::JsonlLinePayload> {
+    let mut payloads = Vec::with_capacity(lines.len());
+    for line in lines {
+        match parser::parse_line(&line.raw) {
+            Ok(Some(record)) if record.is_displayable() => {
+                let cwd = extract_cwd(&record);
+                payloads.push(bridge::JsonlLinePayload {
+                    session_id: line.session_id.clone(),
+                    cwd,
+                    path: line.path.to_string_lossy().into_owned(),
+                    // P5.1：watcher 给每行单调编号；前端按 seq 排到 timeline
+                    seq: line.seq,
+                    origin: origin.clone(),
+                    message: record,
+                });
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!("parse line failed in {}: {e}", line.path.display());
+            }
+        }
+    }
+    payloads
 }
 
 /// 前端关闭 archived Tab 时调用：从 event_replay 历史里抹掉这个 session，
@@ -783,5 +950,78 @@ fn open_with_os(path_or_dir: &str) -> Result<(), String> {
             .spawn()
             .map_err(|e| format!("xdg-open failed: {e}"))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod batch_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn jline(session_id: &str, seq: u64, raw: &str) -> watcher::JsonlLine {
+        watcher::JsonlLine {
+            session_id: session_id.to_string(),
+            path: PathBuf::from("/tmp/projects/proj/s-abc.jsonl"),
+            seq,
+            raw: raw.to_string(),
+        }
+    }
+
+    /// batch_to_payloads 必须：只保留 displayable 行、透传 seq/session_id、
+    /// 在遇到 malformed 行时 warn-then-continue 不 panic，并对非 displayable 行静默丢弃。
+    #[test]
+    fn filters_non_displayable_and_survives_malformed() {
+        // (a) 真实 displayable user 行（copy 自 messages.rs golden sample），seq 5
+        let displayable_user = r#"{
+            "type":"user",
+            "uuid":"u-1",
+            "timestamp":"2026-05-20T01:23:45.678Z",
+            "message":{"role":"user","content":"hi"},
+            "cwd":"/home/me/proj"
+        }"#;
+        // (b) 非 displayable 记录：permission-mode 的 is_displayable() 返回 false
+        let non_displayable = r#"{"type":"permission-mode"}"#;
+        // (c) 无法解析的行 → parse_line 返回 Err，必须被 warn 后跳过、不 panic
+        let malformed = "not json at all";
+
+        let lines = vec![
+            jline("s-abc", 5, displayable_user),
+            jline("s-abc", 6, non_displayable),
+            jline("s-abc", 7, malformed),
+        ];
+
+        let payloads = batch_to_payloads(lines, None);
+
+        // 只有 displayable user 行进 payload
+        assert_eq!(payloads.len(), 1, "只应保留 1 条 displayable 记录");
+        assert_eq!(payloads[0].seq, 5, "seq 必须原样透传");
+        assert_eq!(payloads[0].session_id, "s-abc", "session_id 必须原样透传");
+        assert_eq!(
+            payloads[0].cwd.as_deref(),
+            Some("/home/me/proj"),
+            "extract_cwd 应取出 user.cwd"
+        );
+        // 本地（origin=None）行不带 origin。
+        assert_eq!(payloads[0].origin, None, "本地行 origin 应为 None");
+    }
+
+    /// origin=Some(host) 时每条 payload 都带上该标签（远端 Tab 标题前缀用）。
+    #[test]
+    fn origin_is_propagated_to_payloads() {
+        let displayable_user = r#"{
+            "type":"user",
+            "uuid":"u-1",
+            "timestamp":"2026-05-20T01:23:45.678Z",
+            "message":{"role":"user","content":"hi"},
+            "cwd":"/home/pi/proj"
+        }"#;
+        let lines = vec![jline("s-remote", 0, displayable_user)];
+        let payloads = batch_to_payloads(lines, Some("pi".to_string()));
+        assert_eq!(payloads.len(), 1);
+        assert_eq!(
+            payloads[0].origin.as_deref(),
+            Some("pi"),
+            "远端行 origin 必须透传 host 标签"
+        );
     }
 }

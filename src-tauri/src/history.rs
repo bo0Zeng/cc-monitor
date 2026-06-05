@@ -301,6 +301,8 @@ pub async fn stream_read_session_jsonl(
                 cwd: cwd_seen.clone(),
                 path: path_str.clone(),
                 seq,
+                // 历史浏览器读本地 jsonl，无远端来源标签。
+                origin: None,
                 message: rec,
             });
             total += 1;
