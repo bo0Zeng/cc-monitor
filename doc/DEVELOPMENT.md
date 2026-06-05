@@ -125,6 +125,8 @@ cargo test --lib -- --nocapture       # 看 println! 输出
 
 前端**当前没有自动化测试套件**（v1.7 范围内）；改前端靠 dev mode 手测 + DevTools。
 
+唯一例外：`src/cards/diff.ts` 的纯 diff 逻辑（issue #14）有 `npm run test:diff`——用 `node` 原生跑 `src/cards/diff.test.ts` 断言脚本（零依赖，不引 vitest/tsx）。这是**手动 pre-push 门禁**，**未接 CI**；`tsc --noEmit` 仍会自动类型检查它。动 `diff.ts` 后请跑一遍。
+
 ---
 
 ## 后端日志（dev mode）

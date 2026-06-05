@@ -23,6 +23,7 @@
 - **LaTeX**：`$...$` 行内、`$$...$$` 块级（KaTeX）
 - **代码高亮**：30+ 主流语言（highlight.js/common）
 - **工具调用**：`tool_use` + `tool_result` 合并到同一折叠卡，长输出嵌套二级折叠
+- **代码改动 diff**（issue #14）：`Edit` / `Write` / `MultiEdit` 工具展开为**行级红删绿增 diff**（替代原始 JSON），超长自动折叠 + 「显示完整」；异常一律回退原 JSON
 - **subagent**：`Task` / `Agent` 工具自动嵌入子 JSONL 内容（懒加载）
 - **/compact 摘要**：折叠展示
 - **代码块复制**：每个 code block 右上角"复制"按钮

@@ -26,6 +26,15 @@
   --overlay-deep: #00000040;
   --overlay-shadow: #00000080;
 
+  /* diff 卡（issue #14）：从 --success / --error 派生的**私有**令牌，
+     不进 theme.ts TOKENS / 设置面板（同 --border-* / --overlay-* 的约定）。
+     改 success/error 取色器即可同步重染 diff。底色用 color-mix（暗底上需要够明显
+     才看得见），但**可见性主信号是实色左边框**（不依赖 color-mix，老 WebView2 也稳）。 */
+  --diff-add-bg: color-mix(in srgb, var(--success) 20%, transparent);
+  --diff-add-gutter: color-mix(in srgb, var(--success) 42%, transparent);
+  --diff-del-bg: color-mix(in srgb, var(--error) 20%, transparent);
+  --diff-del-gutter: color-mix(in srgb, var(--error) 42%, transparent);
+
   /* === 字体令牌 === */
   --font-base: Inter, "Segoe UI", system-ui, sans-serif;
   --font-prose: "Source Serif 4", "Source Serif Pro", "Iowan Old Style",
@@ -807,6 +816,66 @@ body.viewer-mode .history-trigger {
 .block-tool-result-inline > pre.block-body {
   margin: 0;
   border-top: none;
+}
+
+/* === Edit/Write/MultiEdit 行级 diff（issue #14） === */
+/* .block-diff 复用 .block-body 的 600px 滚动容器 + mono 字体，只覆盖左右内边距让
+   红绿底色铺满整行（gutter 贴左缘）。 */
+.block-diff {
+  padding: 4px 0;
+}
+.block-diff-line {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  /* 实色左边框是可见性主信号（不依赖 color-mix）；ctx 行用透明同宽边框保持对齐 */
+  border-left: 3px solid transparent;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.block-diff-gutter {
+  padding: 0 8px;
+  text-align: center;
+  color: var(--text-faint);
+  background: var(--bg-2);
+  user-select: none;
+}
+.block-diff-code {
+  padding: 0 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.block-diff-add {
+  background: var(--diff-add-bg);
+  border-left-color: var(--success);
+}
+.block-diff-add .block-diff-gutter {
+  background: var(--diff-add-gutter);
+  color: var(--success);
+}
+.block-diff-del {
+  background: var(--diff-del-bg);
+  border-left-color: var(--error);
+}
+.block-diff-del .block-diff-gutter {
+  background: var(--diff-del-gutter);
+  color: var(--error);
+}
+/* ctx 行：默认前景，无底色 */
+.block-diff-edit-label {
+  padding: 6px 10px 2px 10px;
+  color: var(--text-2);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+}
+/* 截断时的"显示完整 diff"按钮复用 .block-body-show-full（见上）。 */
+/* 防御：未来若给 diff 行加 hljs 高亮，hljs 主题底色不能盖住 per-line diff 底色
+   （.code-block 的 transparent 覆盖不 scope 到 .block-diff）。 */
+.block-diff-line code.hljs {
+  background: transparent;
+  padding: 0;
 }
 
 /* Agent 折叠卡（嵌入 subagent JSONL） */

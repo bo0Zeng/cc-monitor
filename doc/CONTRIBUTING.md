@@ -271,7 +271,7 @@ if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
 
 1. fork → branch（命名 `feat/<short-desc>` / `fix/<short-desc>`）
 2. 改代码 + 测试 + 文档（参照本文档对应 cookbook）
-3. `cargo fmt + cargo clippy + cargo test --lib + npm run build` 全绿
+3. `cargo fmt + cargo clippy + cargo test --lib + npm run build` 全绿（动 `src/cards/diff.ts` 时另跑 `npm run test:diff`）
 4. PR 描述：
    - 解决什么问题（链到 issue）
    - 怎么解决（一句话）

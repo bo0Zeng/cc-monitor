@@ -17,6 +17,7 @@ import { renderMarkdown, renderPlainText } from "../render";
 import { parseSlashCommand, buildSlashCommandCard } from "./slash";
 import { isCompactSummary, buildCompactSummaryCard } from "./compact";
 import { isAgentTool, buildAgentCard } from "./subagent";
+import { isDiffTool, buildDiffBody } from "./diff";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 import { formatTimestampShort } from "../format";
 
@@ -397,11 +398,24 @@ function buildToolUseCard(
   let argsRendered = false;
   d.addEventListener("toggle", () => {
     if (!d.open || argsRendered) return;
-    const pre = document.createElement("pre");
-    pre.className = "block-body block-body-json block-args";
-    pre.textContent = prettyJson(block.input);
-    // args 始终在 result 之前
-    wrap.insertBefore(pre, wrap.firstChild);
+    let bodyEl: HTMLElement | null = null;
+    // issue #14：Edit/Write/MultiEdit → 行级 diff 卡；任何异常 / 畸形 / 未知工具
+    // 回退现有 prettyJson <pre>（双重 try/catch：这里 + buildDiffBody 内部）。
+    if (isDiffTool(block.name)) {
+      try {
+        bodyEl = buildDiffBody(block.name, block.input);
+      } catch {
+        bodyEl = null;
+      }
+    }
+    if (!bodyEl) {
+      const pre = document.createElement("pre");
+      pre.className = "block-body block-body-json block-args";
+      pre.textContent = prettyJson(block.input);
+      bodyEl = pre;
+    }
+    // args/diff 始终在 result 之前（injectOrBuildToolResult 把 result append 到 wrap 末尾）
+    wrap.insertBefore(bodyEl, wrap.firstChild);
     argsRendered = true;
   });
 
