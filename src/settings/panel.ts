@@ -20,6 +20,7 @@ import { CcIntegrationSection } from "./cc_integration";
 import { DiagnosticsSection } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
 import { DataSection } from "./data-section";
+import { RemoteSection } from "./remote-section";
 import { getBehavior, setBehavior, type BehaviorConfig } from "../behavior";
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
@@ -106,6 +107,12 @@ const APPEARANCE_INFO_TEXT =
   "字体（正文 / 等宽 / 字号）+ 颜色（10 个语义 token：背景 / 卡片 / 文字 / user / assistant 等）。" +
   "配一次基本不再动，所以默认收起。";
 
+const REMOTE_INFO_TEXT =
+  "「远端 (SSH)」—— monitor 通过 SSH 连到远端主机，由远端 daemon 取代本地 " +
+  "jsonl-watcher 作为数据源（渲染 / Tab / 分支等行为完全相同）。\n\n" +
+  "关闭（默认）时一切走本地，不受影响。启用 / 修改任意远端设置后需重启 monitor 才生效。" +
+  "配置不完整（缺 host / user / daemonPath）时后端自动回退本地模式。";
+
 const DIAG_STORAGE_INFO_TEXT =
   "「诊断」—— 打开后端 INFO 级别 tracing 到状态栏（开发用；出问题排查时打开）。\n\n" +
   "「数据存储」—— 透明展示 monitor 自身写入的所有持久化路径：config.json / history-metadata.json / " +
@@ -129,6 +136,8 @@ export class SettingsPanel {
   private banner!: HTMLElement;
   /** issue #3 (A): 数据存储展示区。打开面板时 refresh 一次拉最新 stat */
   private dataSection?: DataSection;
+  /** issue #15 (S6): 远端 (SSH) 配置区。打开面板时 refresh 一次拉最新 config */
+  private remoteSection?: RemoteSection;
 
   // v2.4 issue #2: 行为类 toggle
   private autoFollowCheckbox!: HTMLInputElement;
@@ -167,6 +176,8 @@ export class SettingsPanel {
     this.syncInputs();
     // issue #3: 每次打开重拉一次 stat，让"已创建 / 文件大小"是最新的
     this.dataSection?.refresh();
+    // issue #15 (S6): 每次打开重拉 config.json 的 remote 子对象，跟外部改动对齐
+    void this.remoteSection?.refresh();
     // issue #5: 同步快捷键覆盖数 chip（编辑器关闭时也可能改了）
     this.refreshKbChip();
     this.el.classList.add("open");
@@ -350,6 +361,17 @@ export class SettingsPanel {
     this.dataSection = new DataSection({ headless: true });
     diag.appendChild(this.dataSection.element);
     body.appendChild(diag.element);
+
+    // 6. 远端 (SSH) —— SSH-remote Phase 0 (issue #15)：配置 + 启用远端数据源
+    const remote = new CollapsibleGroup({
+      id: "remote",
+      title: "远端 (SSH)",
+      defaultCollapsed: true,
+      infoTooltip: REMOTE_INFO_TEXT,
+    });
+    this.remoteSection = new RemoteSection({ headless: true });
+    remote.appendChild(this.remoteSection.element);
+    body.appendChild(remote.element);
 
     return body;
   }
