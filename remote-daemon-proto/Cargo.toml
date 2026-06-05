@@ -1,0 +1,18 @@
+[package]
+name = "cc-monitor-remote"
+version = "0.0.0"
+edition = "2021"
+
+# Standalone crate, intentionally NOT part of a workspace. There is no root
+# Cargo.toml: a workspace would pull this Linux-only daemon into the Windows
+# CI `cargo test --all` and break the build. Build this natively on the target.
+
+[[bin]]
+name = "cc-monitor-remote"
+path = "src/main.rs"
+
+[dependencies]
+# Pinned to the same versions resolved in ../src-tauri/Cargo.lock so the local
+# cargo cache resolves these offline (serde 1.0.228 / serde_json 1.0.149).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
