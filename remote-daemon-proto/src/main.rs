@@ -1,17 +1,164 @@
-//! Phase-0 SSH-remote daemon prototype (Linux-only at runtime).
+//! Phase-0 SSH-remote daemon prototype.
 //!
-//! Step 1 only scaffolds the wire protocol in [`wire`]. The real tokio runtime
-//! and the inotify watcher land in Step 2.
+//! The remote half of the steel thread: it resolves `~/.claude`, emits a single
+//! `Hello` frame, then tails session JSONL files and streams `line` /
+//! `session_added` / `session_removed` frames as one JSON object per line on
+//! stdout. The client end is the cc-monitor Tauri app over an SSH pipe.
+//!
+//! Runtime target is Linux (inotify); the code is cross-platform and compiles +
+//! runs a basic file-watch smoke on Windows (`notify` is portable).
+//!
+//! ## Two-task design (the §5.4 slow-consumer guard)
+//!
+//! - The **reader** ([`watcher::spawn`]) runs the filesystem watcher on a
+//!   blocking thread and pushes frames into a *bounded* channel with `try_send`
+//!   (never blocking the inotify callback).
+//! - The **writer** (this file's [`writer_task`]) drains the channel and writes
+//!   wire lines to stdout. A slow SSH pipe back-pressures the channel — and the
+//!   bound stops the back-pressure at the channel, so it never reaches the
+//!   inotify reader. This split is the single most-cited Phase-0 accident
+//!   source; keeping it real is the point.
 
-// Step 1 only exercises the wire types from tests; the binary itself does not
-// yet emit frames. Step 2 wires `to_line`/`Frame`/`SeqCounter::next` into the
-// real runtime, at which point this allow can go away.
-#![allow(dead_code)]
-
+mod watcher;
 mod wire;
 
-fn main() {
-    // Touch a `wire` item so the binary keeps the module live until Step 2
-    // wires up the real runtime. Costs nothing and avoids dead-code warnings.
-    let _ = wire::SeqCounter::new();
+use std::path::PathBuf;
+use tokio::io::{AsyncWriteExt, BufWriter};
+use wire::{to_line, Frame};
+
+/// Daemon build id reported in the `Hello` frame.
+const BUILD_ID: &str = "phase0-proto";
+
+#[tokio::main]
+async fn main() {
+    // Log to stderr so it never corrupts the stdout wire stream.
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+
+    let claude_dir = resolve_claude_dir();
+    tracing::info!("claude_dir = {}", claude_dir.display());
+
+    // (b) Emit the Hello handshake FIRST, flushed, before anything else.
+    let mut stdout = BufWriter::new(tokio::io::stdout());
+    let hello = Frame::Hello {
+        v: 1,
+        build_id: BUILD_ID.to_string(),
+        host_arch: std::env::consts::ARCH.to_string(),
+        claude_dir: claude_dir.to_string_lossy().into_owned(),
+    };
+    if let Err(e) = write_frame(&mut stdout, &hello).await {
+        tracing::error!("failed to write hello frame: {e}");
+        return;
+    }
+    if let Err(e) = stdout.flush().await {
+        tracing::error!("failed to flush hello frame: {e}");
+        return;
+    }
+
+    // (c) Start the watcher reader; it returns the receiving half of the
+    // bounded frame channel.
+    let rx = watcher::spawn(claude_dir);
+
+    // (d) Run the stdout writer until the channel closes or a signal fires.
+    tokio::select! {
+        _ = writer_task(stdout, rx) => {
+            tracing::info!("writer task ended (channel closed)");
+        }
+        _ = shutdown_signal() => {
+            tracing::info!("shutdown signal received; exiting");
+        }
+    }
+}
+
+/// The stdout writer half of the §5.4 split: drain frames and write one wire
+/// line each, flushing per frame so a connected client sees them promptly.
+///
+/// Awaiting `recv()` here is what back-pressures the bounded channel when the
+/// SSH pipe is slow; that back-pressure never reaches the inotify reader.
+async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
+    mut out: W,
+    mut rx: tokio::sync::mpsc::Receiver<Frame>,
+) {
+    while let Some(frame) = rx.recv().await {
+        if let Err(e) = write_frame(&mut out, &frame).await {
+            // Broken pipe (client gone) is the normal end-of-life; stop quietly.
+            tracing::warn!("stdout write failed ({e}); stopping writer");
+            return;
+        }
+        if let Err(e) = out.flush().await {
+            tracing::warn!("stdout flush failed ({e}); stopping writer");
+            return;
+        }
+    }
+}
+
+/// Serialize one frame to its wire line and write it (no flush).
+async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
+    out: &mut W,
+    frame: &Frame,
+) -> std::io::Result<()> {
+    let line =
+        to_line(frame).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    out.write_all(line.as_bytes()).await
+}
+
+/// Resolve the Claude config directory:
+/// `$CLAUDE_CONFIG_DIR` if set, else `$HOME/.claude`.
+///
+/// On Windows (compile/smoke only — the real target is Linux) fall back to
+/// `%USERPROFILE%\.claude` when `$HOME` is unset, and finally to `.claude` in
+/// the cwd so the binary still starts for a smoke test.
+fn resolve_claude_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("CLAUDE_CONFIG_DIR") {
+        return PathBuf::from(dir);
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        return PathBuf::from(home).join(".claude");
+    }
+    #[cfg(windows)]
+    if let Some(profile) = std::env::var_os("USERPROFILE") {
+        return PathBuf::from(profile).join(".claude");
+    }
+    PathBuf::from(".claude")
+}
+
+/// Resolve when a SIGTERM or SIGINT (Ctrl-C) is received, for clean shutdown.
+///
+/// On Unix this listens for both SIGTERM and SIGINT; on other platforms it
+/// falls back to Ctrl-C only (sufficient for the Windows smoke).
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut sigterm = match signal(SignalKind::terminate()) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("failed to install SIGTERM handler: {e}");
+                // Fall back to Ctrl-C only so we still shut down on SIGINT.
+                let _ = tokio::signal::ctrl_c().await;
+                return;
+            }
+        };
+        let mut sigint = match signal(SignalKind::interrupt()) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("failed to install SIGINT handler: {e}");
+                let _ = sigterm.recv().await;
+                return;
+            }
+        };
+        tokio::select! {
+            _ = sigterm.recv() => {}
+            _ = sigint.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
 }
