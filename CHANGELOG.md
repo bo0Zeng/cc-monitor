@@ -8,7 +8,16 @@
 
 ---
 
-## [未发布]
+## [2.9.0] — 2026-06-05
+
+### 新增 — SSH 远端模式（实验性 / opt-in）：远端 Linux 跑 claude，本地渲染（issue #15）
+
+让 cc-monitor 连到远端 Linux 主机，把那台机器上 claude 的**活跃会话**实时渲染到本地——本地与远端会话**同屏显示**，远端 Tab 带 `[host]` 前缀区分。
+
+- **聚合**：本地 jsonl-watcher 照常跑，远端是**附加**数据源（不替代本地）；只显示**活跃**会话（远端 `sessions/<PID>.json` + 进程存活，镜像本地判活逻辑），不拉历史会话。
+- **设置 → 远端 (SSH)**：从 `~/.ssh/config` **下拉选主机别名**自动填 host/port/user/key（走 `ssh -G`）；**测试连接**按钮（显示 host key 指纹 + 一键固化为严格校验）；支持 **ssh-agent**（免填私钥路径）。
+- 远端需一个轻量 daemon（在目标机原生 `cargo build`，见 [`doc/REMOTE-PHASE0-DEPLOY.md`](doc/REMOTE-PHASE0-DEPLOY.md)）。**只读、零侵入**，仅 publickey / agent 认证。
+- **实验性边界**：断线不自动重连（断开后远端 Tab 自动归档，需重启重连）；远端的历史浏览 / 全文搜索暂仍读**本地**数据；不支持密码登录。后续版本补齐（见 issue #15 的 Phase 1 backlog）。
 
 ### 新增 — Edit/Write/MultiEdit 工具调用渲染为行级 diff 卡（issue #14）
 
