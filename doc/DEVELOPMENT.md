@@ -50,16 +50,18 @@ powershell -NoProfile -File scripts\run.ps1 build    # 生产构建（详 BUILDI
 
 ## 端口冲突
 
-### 默认 dev 端口 5174
+### 默认 dev 端口 24174
 
-如果启动报：
+如果启动报（端口号是当时的 dev 端口）：
 ```
-Error: listen EACCES: permission denied ::1:5174
+Error: listen EACCES: permission denied ::1:24174
 ```
 
-**原因**：Windows 把这个端口加到了 Hyper-V / WSL2 / WinNAT 动态保留范围，应用层无法 bind。netstat 看不到占用进程但 listen syscall 失败。
+**原因**：Windows 的 Hyper-V / WSL2 / WinNAT 把一段段端口加进**动态保留范围**，应用层无法 bind——netstat 看不到占用进程，但 listen syscall 失败。保留段在重启后会重新分配，所以「昨天能跑今天不行」很正常。
 
-**确认 + 找可用端口**：
+**为什么默认选 24174**：实测保留段集中在较低区间（用 `netsh int ipv4 show excludedportrange protocol=tcp` 可看，通常 ~1000–12500），而系统 ephemeral 段从 49152 起。24174 落在「保留段之上、ephemeral 之下」的冷门高位，最不容易被占。历史上用过的 1420（Tauri 默认，落 1366-1465）、5174（落 5110-5209）都因撞进保留段被坑过。
+
+**确认 + 看保留段**：
 
 ```powershell
 function Test-Port($addr, $port) {
@@ -68,23 +70,23 @@ function Test-Port($addr, $port) {
         $l.Start(); $l.Stop(); "OK"
     } catch { "FAIL: $($_.Exception.Message)" }
 }
-"IPv4 5174 : " + (Test-Port ([System.Net.IPAddress]::Loopback) 5174)
-"IPv4 5400 : " + (Test-Port ([System.Net.IPAddress]::Loopback) 5400)
-"IPv4 3000 : " + (Test-Port ([System.Net.IPAddress]::Loopback) 3000)
+"IPv4 24174 : " + (Test-Port ([System.Net.IPAddress]::Loopback) 24174)
+# 看当前所有 TCP 保留段（你的 dev 端口若落在某段内 = 被保留）：
+netsh int ipv4 show excludedportrange protocol=tcp
 ```
 
-如果 5174 不行换一个端口跑：
+万一 24174 也被占，临时换端口跑（不必改任何提交文件）：
 
 ```powershell
-$env:VITE_PORT = "5400"
-# 临时改 src-tauri/tauri.conf.json 的 devUrl 到同端口
-# **不要 commit 这个改动**，测完改回 5174
-powershell -NoProfile -File scripts\run.ps1 dev
+$env:VITE_PORT = "24500"
+# 写个临时覆盖文件，省得动 tauri.conf.json：
+'{ "build": { "devUrl": "http://localhost:24500" } }' | Set-Content -Encoding utf8 "$env:TEMP\ccm-dev.json"
+powershell -NoProfile -File scripts\run.ps1 dev --config "$env:TEMP\ccm-dev.json"
 ```
 
 **真正的根因解决**：
-- `Restart-Service winnat`（管理员 PS）会释放部分端口，但影响 Docker / WSL 网络，慎用
-- 或者重启电脑
+- 重启电脑（动态保留段会重排，通常就不再压到默认端口）
+- 或 `net stop winnat; net start winnat`（管理员 PS）释放并重导保留段，但影响 Docker / WSL 网络，慎用
 
 vite.config.ts 已支持 `VITE_PORT` env override，HMR 端口自动设为 `VITE_PORT + 1`。
 

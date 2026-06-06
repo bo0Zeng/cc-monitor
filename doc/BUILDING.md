@@ -122,7 +122,7 @@ MSI **企业部署友好**：
 | 卡在 `Compiling cc-monitor` | Rust 首次编译慢 ~5 min | 等。后续增量 < 1 min |
 | NSIS `MakeNSIS exited with code 1` | 图标 `.ico` 损坏 / 路径含中文 | 检查 `src-tauri/icons/icon.ico` |
 | MSI 报 `WiX is not installed` | Tauri 自动下载到 `%LOCALAPPDATA%\tauri\WixTools3`；网络不通时手装 | 检查网络或手装 WiX |
-| `EACCES: permission denied ::1:5174` | dev 端口被 Hyper-V 保留 | 这是 dev 错误不是 build 错误 → [DEVELOPMENT.md § 端口冲突](DEVELOPMENT.md#端口冲突) |
+| `EACCES: permission denied ::1:24174`（或任意 dev 端口） | dev 端口被 Hyper-V 保留 | 这是 dev 错误不是 build 错误 → [DEVELOPMENT.md § 端口冲突](DEVELOPMENT.md#端口冲突) |
 
 ---
 
