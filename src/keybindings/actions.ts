@@ -50,44 +50,48 @@ export interface Action {
  *  2. main.ts 里 `dispatcher.bind("<id>", callback)`
  *  3. （如果是预留）`available: false` + 文案
  */
+// 默认快捷键全部为**单键**（无 Ctrl/Shift）—— cc-monitor 是只读监视窗口，主视图不接受
+// 文本输入，单键导航更顺手。**前提**：dispatcher 在可编辑文本元素聚焦时不触发快捷键
+// （registry.ts::isEditableTarget），否则单键会在历史搜索 / 设置输入 / 重命名框里误触发。
+// 用户仍可在「设置 → 快捷键」编辑器里改成任意组合键。
 export const ACTIONS: ReadonlyArray<Action> = [
   // ===== Tab =====
-  { id: "tab.next", label: "切到下一个 Tab", category: "Tab", default: "Ctrl+Tab", available: true },
-  { id: "tab.prev", label: "切到上一个 Tab", category: "Tab", default: "Ctrl+Shift+Tab", available: true },
-  { id: "tab.jump-1", label: "跳到第 1 个 Tab", category: "Tab", default: "Ctrl+Digit1", available: true },
-  { id: "tab.jump-2", label: "跳到第 2 个 Tab", category: "Tab", default: "Ctrl+Digit2", available: true },
-  { id: "tab.jump-3", label: "跳到第 3 个 Tab", category: "Tab", default: "Ctrl+Digit3", available: true },
-  { id: "tab.jump-4", label: "跳到第 4 个 Tab", category: "Tab", default: "Ctrl+Digit4", available: true },
-  { id: "tab.jump-5", label: "跳到第 5 个 Tab", category: "Tab", default: "Ctrl+Digit5", available: true },
-  { id: "tab.jump-6", label: "跳到第 6 个 Tab", category: "Tab", default: "Ctrl+Digit6", available: true },
-  { id: "tab.jump-7", label: "跳到第 7 个 Tab", category: "Tab", default: "Ctrl+Digit7", available: true },
-  { id: "tab.jump-8", label: "跳到第 8 个 Tab", category: "Tab", default: "Ctrl+Digit8", available: true },
-  { id: "tab.jump-9", label: "跳到第 9 个 Tab", category: "Tab", default: "Ctrl+Digit9", available: true },
-  { id: "tab.close-archived", label: "关闭已归档 Tab", category: "Tab", default: "Ctrl+KeyW", available: true },
-  { id: "tab.open-cwd", label: "打开当前 Tab 的工作目录", category: "Tab", default: "Ctrl+Shift+KeyE", available: true },
+  { id: "tab.next", label: "切到下一个 Tab", category: "Tab", default: "BracketRight", available: true },
+  { id: "tab.prev", label: "切到上一个 Tab", category: "Tab", default: "BracketLeft", available: true },
+  { id: "tab.jump-1", label: "跳到第 1 个 Tab", category: "Tab", default: "Digit1", available: true },
+  { id: "tab.jump-2", label: "跳到第 2 个 Tab", category: "Tab", default: "Digit2", available: true },
+  { id: "tab.jump-3", label: "跳到第 3 个 Tab", category: "Tab", default: "Digit3", available: true },
+  { id: "tab.jump-4", label: "跳到第 4 个 Tab", category: "Tab", default: "Digit4", available: true },
+  { id: "tab.jump-5", label: "跳到第 5 个 Tab", category: "Tab", default: "Digit5", available: true },
+  { id: "tab.jump-6", label: "跳到第 6 个 Tab", category: "Tab", default: "Digit6", available: true },
+  { id: "tab.jump-7", label: "跳到第 7 个 Tab", category: "Tab", default: "Digit7", available: true },
+  { id: "tab.jump-8", label: "跳到第 8 个 Tab", category: "Tab", default: "Digit8", available: true },
+  { id: "tab.jump-9", label: "跳到第 9 个 Tab", category: "Tab", default: "Digit9", available: true },
+  { id: "tab.close-archived", label: "关闭已归档 Tab", category: "Tab", default: "KeyW", available: true },
+  { id: "tab.open-cwd", label: "打开当前 Tab 的工作目录", category: "Tab", default: "KeyE", available: true },
   {
     id: "tab.pop-out",
     label: "在新窗口打开当前 Tab",
     category: "Tab",
-    default: "Ctrl+Shift+KeyN",
+    default: "KeyN",
     available: true,
   },
 
   // ===== Terminal =====
-  { id: "terminal.bring-front", label: "把对应终端窗口拉到前台", category: "Term", default: "Ctrl+Backquote", available: true },
+  { id: "terminal.bring-front", label: "把对应终端窗口拉到前台", category: "Term", default: "Backquote", available: true },
 
   // ===== App =====
-  { id: "app.open-settings", label: "打开设置面板", category: "App", default: "Ctrl+Comma", available: true },
-  { id: "app.toggle-history", label: "打开 / 关闭历史浏览器", category: "App", default: "Ctrl+KeyH", available: true },
+  { id: "app.open-settings", label: "打开设置面板", category: "App", default: "Comma", available: true },
+  { id: "app.toggle-history", label: "打开 / 关闭历史浏览器", category: "App", default: "KeyH", available: true },
   {
     id: "app.search-history",
     label: "历史浏览器全文搜索",
     category: "App",
     default: null,
     available: false,
-    comingSoon: "已上线：Ctrl+H 打开历史后切「全文」模式（暂无独立快捷键）",
+    comingSoon: "已上线：H 打开历史后切「全文」模式（暂无独立快捷键）",
   },
-  { id: "app.minimize", label: "最小化主窗口", category: "App", default: "Ctrl+KeyM", available: true },
+  { id: "app.minimize", label: "最小化主窗口", category: "App", default: "KeyM", available: true },
   {
     id: "overlay.close",
     label: "关闭弹层 / 历史 / 设置",
@@ -101,7 +105,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
   { id: "behavior.toggle-bring-monitor", label: "切换「自动拉前 monitor」", category: "Beh", default: null, available: true },
 
   // ===== Panel =====
-  { id: "panel.toggle-tasks", label: "Task 面板开 / 关", category: "Panel", default: "Ctrl+KeyT", available: true },
+  { id: "panel.toggle-tasks", label: "Task 面板开 / 关", category: "Panel", default: "KeyT", available: true },
 ] as const;
 
 /** 全部已注册 action 的 id 联合类型；调用方 `bind(id, ...)` 时 TS 检查拼写 */

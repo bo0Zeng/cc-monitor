@@ -323,6 +323,41 @@ body.viewer-mode .history-trigger {
   font-size: 12px;
 }
 
+/* === Tab 撕离拖拽（tear-off） === */
+
+/* 拖拽中的源 Tab 变暗，提示"正在被拖出"。 */
+.tab.dragging {
+  opacity: 0.4;
+}
+
+/* 跟随光标的浮动 ghost：小号悬浮 Tab 芯片。position/left/top 由 JS 写内联。 */
+.tab-drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  pointer-events: none;
+  max-width: 240px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 4px 10px;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font: inherit;
+  font-size: var(--font-size-base);
+  box-shadow: 0 4px 16px var(--overlay-shadow);
+}
+
+/* armed（指针落到 tab bar 下方）：强调色边/底，信号"松手即弹独立窗口"。 */
+.tab-drag-ghost.armed {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-2));
+  color: var(--text);
+}
+
 /* === Stream === */
 
 #message-stream {

@@ -147,6 +147,36 @@ export class TabManager {
   /** Manual override 窗口长度（ms）。issue #2 钦定 5s。 */
   private static readonly MANUAL_OVERRIDE_MS = 5000;
 
+  /**
+   * Tab 撕离（tear-off）拖拽状态机。同一时刻只允许一个拖拽，整段存这里。
+   * - mousedown（左键，非子动作按钮）记录起点 → 候选拖拽（dragging=false）
+   * - document mousemove 越过 6px 阈值 → dragging=true，建 ghost、源 Tab 变暗
+   * - 指针落到 tab bar 下方（clientY > barBottom + 16）→ armed=true（松手即弹窗）
+   * - document mouseup：armed → openInNewWindow(落点)；否则取消。两种情况都抑制后续 click
+   * null = 当前无拖拽。
+   */
+  private drag: {
+    sid: string;
+    startX: number;
+    startY: number;
+    barBottom: number;
+    root: HTMLElement;
+    dragging: boolean;
+    armed: boolean;
+    ghost: HTMLElement | null;
+    onMove: (e: MouseEvent) => void;
+    onUp: (e: MouseEvent) => void;
+  } | null = null;
+  /**
+   * 拖拽撕离阈值：指针移动超过此像素才判定为"拖"，否则视为普通点击。
+   */
+  private static readonly DRAG_THRESHOLD_PX = 6;
+  /**
+   * 拖拽结束后需抑制掉紧随 mouseup 的那次 click 的 sid（避免拖完又误切 Tab）。
+   * null = 不抑制。click handler 命中后清零（一次性）。
+   */
+  private suppressClickSid: string | null = null;
+
   constructor(
     private barEl: HTMLElement,
     private streamRootEl: HTMLElement,
@@ -526,17 +556,136 @@ export class TabManager {
     if (this.activeId) void this.openInNewWindow(this.activeId);
   }
 
-  /** issue #10：在独立只读窗口打开指定 session（Tab 右键 / 快捷键）。 */
-  private async openInNewWindow(sid: string): Promise<void> {
+  /**
+   * issue #10：在独立只读窗口打开指定 session（Tab 右键 / 快捷键 / 拖拽撕离）。
+   *
+   * `screenX` / `screenY`（可选）= 拖拽撕离的落点屏幕坐标（来自 mouseup 的
+   * `e.screenX/screenY`）。两者都给出时透传给后端在该处摆放新窗口；右键 / 快捷键
+   * 不传则后端走默认居中。
+   */
+  private async openInNewWindow(
+    sid: string,
+    screenX?: number,
+    screenY?: number,
+  ): Promise<void> {
     const tab = this.tabs.get(sid);
     if (!tab) return;
     try {
       await invoke("open_session_in_new_window", {
         sessionId: sid,
         title: tab.title,
+        ...(screenX !== undefined && screenY !== undefined
+          ? { x: screenX, y: screenY }
+          : {}),
       });
     } catch (e) {
       showActionFailureToast("打开新窗口失败", String(e));
+    }
+  }
+
+  /**
+   * Tab 撕离拖拽起点（左键 mousedown）。只是"候选"：记录起点 + 挂 document 级
+   * mousemove/mouseup，等指针越过阈值才真正进入拖拽。子动作按钮（📂/↗/×）的
+   * mousedown 已 stopPropagation，不会走到这里。
+   */
+  private beginTabDrag(e: MouseEvent, sid: string, root: HTMLElement): void {
+    // 已有拖拽在进行（理论上不会，因 mouseup 会清）—— 防御性忽略。
+    if (this.drag) return;
+    // 新一轮交互开始：清掉可能残留的抑制标记，避免陈旧 flag 误吞下次 click。
+    this.suppressClickSid = null;
+
+    const barBottom = this.barEl.getBoundingClientRect().bottom;
+    const onMove = (ev: MouseEvent): void => this.onDragMove(ev);
+    const onUp = (ev: MouseEvent): void => this.onDragUp(ev);
+    this.drag = {
+      sid,
+      startX: e.clientX,
+      startY: e.clientY,
+      barBottom,
+      root,
+      dragging: false,
+      armed: false,
+      ghost: null,
+      onMove,
+      onUp,
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  /** document mousemove：阈值判定 → 起拖（建 ghost / 变暗），随后跟随 + arm 检测。 */
+  private onDragMove(e: MouseEvent): void {
+    const d = this.drag;
+    if (!d) return;
+
+    // 容错：主键已松开（mouseup 在窗口外丢失，比如拖到别的 app 上释放）→ 收尾取消，
+    // 不弹窗（落点不可信），避免 ghost 残留 + 拖拽状态卡死。下次按下会重新开始。
+    if ((e.buttons & 1) === 0) {
+      const wasDragging = d.dragging;
+      const sid = d.sid;
+      this.teardownDrag();
+      if (wasDragging) this.suppressClickSid = sid;
+      return;
+    }
+
+    if (!d.dragging) {
+      const dx = e.clientX - d.startX;
+      const dy = e.clientY - d.startY;
+      if (Math.hypot(dx, dy) <= TabManager.DRAG_THRESHOLD_PX) return;
+      // 越过阈值 → 正式起拖：阻止文本选区、建 ghost、源 Tab 变暗。
+      e.preventDefault();
+      d.dragging = true;
+      d.root.classList.add("dragging");
+      const ghost = document.createElement("div");
+      ghost.className = "tab-drag-ghost";
+      ghost.textContent = this.tabs.get(d.sid)?.title ?? "";
+      document.body.appendChild(ghost);
+      d.ghost = ghost;
+    }
+
+    // 跟随光标（偏右下避免压在指针正下方）。
+    if (d.ghost) {
+      d.ghost.style.left = `${e.clientX + 8}px`;
+      d.ghost.style.top = `${e.clientY + 8}px`;
+    }
+
+    // arm：指针落到 tab bar 下方一段距离 = 松手即弹独立窗口。
+    const armed = e.clientY > d.barBottom + 16;
+    if (armed !== d.armed) {
+      d.armed = armed;
+      if (d.ghost) {
+        d.ghost.classList.toggle("armed", armed);
+        d.ghost.textContent = armed
+          ? "松开 → 独立窗口"
+          : (this.tabs.get(d.sid)?.title ?? "");
+      }
+    }
+  }
+
+  /** 收尾：拆 document listener、清 ghost / 源 Tab 变暗、清空拖拽状态。 */
+  private teardownDrag(): void {
+    const d = this.drag;
+    if (!d) return;
+    document.removeEventListener("mousemove", d.onMove);
+    document.removeEventListener("mouseup", d.onUp);
+    d.ghost?.remove();
+    d.root.classList.remove("dragging");
+    this.drag = null;
+  }
+
+  /** document mouseup：收尾；armed 则在落点弹独立窗口。 */
+  private onDragUp(e: MouseEvent): void {
+    const d = this.drag;
+    if (!d) return;
+    const { dragging, armed, sid } = d;
+    this.teardownDrag();
+
+    if (!dragging) return; // 没越阈值 = 纯点击，交给 click handler 正常切 Tab。
+
+    // 起过拖（无论 armed 与否）都抑制紧随的 click —— 拖完不该顺带切 Tab。
+    this.suppressClickSid = sid;
+    if (armed) {
+      void this.openInNewWindow(sid, e.screenX, e.screenY);
     }
   }
 
@@ -659,6 +808,8 @@ export class TabManager {
       e.stopPropagation();
       void this.openTabCwd(sid);
     });
+    // 子动作按钮自己处理点击：吞掉 mousedown 避免在它们身上起 Tab 拖拽。
+    cwdBtn.addEventListener("mousedown", (e) => e.stopPropagation());
     root.appendChild(cwdBtn);
 
     // ↗ 拉对应终端窗口（v1.7 用 sid_hwnd_cache）
@@ -672,6 +823,7 @@ export class TabManager {
       if (this.tabs.get(sid)?.origin !== null) return;
       void bringTerminalToFront(sid);
     });
+    focusBtn.addEventListener("mousedown", (e) => e.stopPropagation());
     root.appendChild(focusBtn);
 
     const closeBtn = document.createElement("span");
@@ -682,9 +834,22 @@ export class TabManager {
       e.stopPropagation();
       this.closeTab(sid);
     });
+    closeBtn.addEventListener("mousedown", (e) => e.stopPropagation());
     root.appendChild(closeBtn);
 
-    root.addEventListener("click", () => this.switchTo(sid));
+    root.addEventListener("click", () => {
+      // 拖拽刚结束的那次 click 不切 Tab（drag-then-release ≠ 选中）。一次性消费。
+      if (this.suppressClickSid === sid) {
+        this.suppressClickSid = null;
+        return;
+      }
+      this.switchTo(sid);
+    });
+    // 左键 mousedown：候选 Tab 撕离拖拽（越过阈值才真拖，否则仍是普通 click）。
+    root.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      this.beginTabDrag(e, sid, root);
+    });
     // 中键点击归档 Tab 也关闭（常见 UX）
     root.addEventListener("mousedown", (e) => {
       if (e.button !== 1) return;
