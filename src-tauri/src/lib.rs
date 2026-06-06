@@ -549,11 +549,17 @@ fn forget_session(
 /// `WebviewWindowBuilder::build()` 要把窗口创建派发到主线程并阻塞等待 —— 同步命令
 /// 就是在主线程里等主线程 → 死锁（表现：新窗口白屏 + 整个 app 卡死连 X 都点不了）。
 /// async 命令跑在 async runtime（非主线程）→ build() 派发给空闲主线程 → 正常建窗。
+///
+/// 拖拽撕离（tear-off）：`x` / `y` 为可选的**逻辑屏幕坐标**（CSS px），来自前端
+/// mouseup 的 `e.screenX/screenY`。两者皆 `Some` 时新窗口在该落点打开（双屏拖出体验）；
+/// 任一为 `None`（右键菜单 / Ctrl+Shift+N 老调用方）则维持默认居中行为，不破坏旧路径。
 #[tauri::command]
 async fn open_session_in_new_window(
     app: tauri::AppHandle,
     session_id: String,
     title: String,
+    x: Option<f64>,
+    y: Option<f64>,
 ) -> Result<(), String> {
     use tauri::Manager;
     let label = format!("viewer-{session_id}");
@@ -564,13 +570,18 @@ async fn open_session_in_new_window(
         return Ok(());
     }
     let url = tauri::WebviewUrl::App(format!("index.html?viewer={session_id}").into());
-    tauri::WebviewWindowBuilder::new(&app, &label, url)
+    let mut builder = tauri::WebviewWindowBuilder::new(&app, &label, url)
         .title(if title.is_empty() {
             "cc-monitor"
         } else {
             &title
         })
-        .inner_size(900.0, 720.0)
+        .inner_size(900.0, 720.0);
+    // 落点定位：仅当 x/y 都给出时按逻辑坐标摆放（Tauri 2 builder 取 LogicalPosition）。
+    if let (Some(x), Some(y)) = (x, y) {
+        builder = builder.position(x, y);
+    }
+    builder
         .build()
         .map_err(|e| format!("create viewer window failed: {e}"))?;
     Ok(())

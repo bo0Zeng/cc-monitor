@@ -235,6 +235,11 @@ export class KeybindingDispatcher {
     const id = this.chordToAction.get(chord);
     if (!id) return;
 
+    // 单键快捷键守卫：焦点在**可编辑文本**元素（历史搜索框 / 设置输入 / 重命名 / select 等）
+    // 时，除 overlay.close（Esc，用来关搜索/弹层）外一律不触发——否则默认的单键快捷键
+    // （h/m/t/数字…）会在打字时被误触发。详 isEditableTarget。
+    if (id !== "overlay.close" && isEditableTarget()) return;
+
     // overlay.close 特殊：交给栈顶 overlay 处理
     if (id === "overlay.close") {
       if (this.overlayStack.length === 0) return;
@@ -257,6 +262,31 @@ export class KeybindingDispatcher {
     e.preventDefault();
     cb();
   };
+}
+
+/**
+ * 当前焦点是否在**可编辑文本**元素里（会"打字"的 input/textarea/select/contenteditable）。
+ * 单键快捷键守卫用：这些元素聚焦时不触发快捷键，否则 h/m/t/数字… 会在搜索/设置/重命名里误触发。
+ * **只挡可打字控件**：checkbox/radio/range/color（设置面板的勾选 / 取色器）不算，在它们上
+ * 单键导航仍可用；readonly/disabled 也不算。
+ */
+function isEditableTarget(): boolean {
+  const el = document.activeElement;
+  if (!(el instanceof HTMLElement)) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  if (tag === "TEXTAREA") {
+    const ta = el as HTMLTextAreaElement;
+    return !ta.readOnly && !ta.disabled;
+  }
+  if (tag === "SELECT") return !(el as HTMLSelectElement).disabled;
+  if (tag === "INPUT") {
+    const inp = el as HTMLInputElement;
+    if (inp.readOnly || inp.disabled) return false;
+    const t = (inp.type || "text").toLowerCase();
+    return ["text", "search", "url", "email", "password", "number", "tel"].includes(t);
+  }
+  return false;
 }
 
 /** 全 app 单例 */

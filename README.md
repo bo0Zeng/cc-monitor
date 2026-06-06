@@ -15,8 +15,8 @@
 ### 实时渲染
 - 自动监听 `~/.claude/projects/**/*.jsonl`，新行 200ms 内出现在窗口
 - 多 Tab：每个活跃 Claude session 一个 Tab，标题 `[项目名] aiTitle`
-- session 退出后 Tab 灰显归档，可手动关闭（Ctrl+W）
-- **Tab 独立窗口**（issue #10）：右键 Tab「在新窗口打开」/ `Ctrl+Shift+N` 把会话拉到独立只读窗口（双屏并排 / 长任务常驻），与主窗口实时同步
+- session 退出后 Tab 灰显归档，可手动关闭（W）
+- **Tab 独立窗口**（issue #10）：右键 Tab「在新窗口打开」/ `N`，**或直接把 Tab 往标签栏下方一拖松手**（tear-off），把会话拉到独立只读窗口（双屏并排 / 长任务常驻），与主窗口实时同步
 
 ### 富渲染
 - **Markdown**：GFM + 表格 + 任务列表（marked.js）
@@ -29,7 +29,7 @@
 - **代码块复制**：每个 code block 右上角"复制"按钮
 
 ### 历史浏览器
-- 顶栏 `◷` 按钮 / `Ctrl+H` 切换；按**工作目录分组**展示
+- 顶栏 `◷` 按钮 / `H` 切换；按**工作目录分组**展示
 - 项目组**默认折叠**；点击展开**懒加载**该项目的所有会话
 - **全文搜索**（issue #6）：顶栏切「全文」模式，搜所有会话的消息内容，命中片段高亮，点击跳进只读视图并定位；可选「含工具内容」，可按范围（user/assistant）/ 时间筛选
 - 每行操作：
@@ -40,7 +40,7 @@
   - `✕` 物理删除（二次确认；jsonl 文件被真删）
 - 点击会话条目进入**只读消息查看器**
 
-### 设置面板（Ctrl+,）
+### 设置面板（,）
 
 5 大折叠分组（除「行为」默认展开）：
 
@@ -51,26 +51,26 @@
 - **诊断 & 存储**：tracing 等级 toggle + log 文件路径 + 所有持久化路径透明展示
 
 ### 终端跳焦（可选）
-- 每个 live Tab 有 ↗ 按钮 / `Ctrl+\`` 调出对应终端窗口
+- 每个 live Tab 有 ↗ 按钮 / `反引号` 调出对应终端窗口
 - 需要装 PowerShell 集成（设置面板内一键装），细节见下文「PowerShell 集成（可选）」
 
 ### 快捷键
 
 | 按键 | 作用 |
 |---|---|
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | 切下一个 / 上一个 Tab |
-| `Ctrl+1` .. `Ctrl+9` | 跳到第 N 个 Tab |
-| `Ctrl+W` | 关闭当前 archived Tab |
-| `Ctrl+Shift+E` | 打开当前 Tab 的工作目录（资源管理器） |
-| `Ctrl+\`` | 调出当前 Tab 对应的终端窗口 |
-| `Ctrl+H` | 打开 / 关闭历史浏览器 |
-| `Ctrl+,` | 打开设置面板 |
-| `Ctrl+M` | 最小化主窗口 |
-| `Ctrl+Shift+N` | 把当前 Tab 在独立窗口打开（issue #10） |
-| `Ctrl+T` | Task 面板开 / 关 |
-| `Esc` | 关历史只读视图 → 关历史视图 / 关设置 / 关弹层 |
+| **]** / **[** | 切下一个 / 上一个 Tab |
+| **1** .. **9** | 跳到第 N 个 Tab |
+| **W** | 关闭当前 archived Tab |
+| **E** | 打开当前 Tab 的工作目录（资源管理器） |
+| **`**（反引号） | 调出当前 Tab 对应的终端窗口 |
+| **H** | 打开 / 关闭历史浏览器 |
+| **,** | 打开设置面板 |
+| **M** | 最小化主窗口 |
+| **N** | 把当前 Tab 在独立窗口打开（issue #10；也可把 Tab 往标签栏下方拖出来） |
+| **T** | Task 面板开 / 关 |
+| **Esc** | 关历史只读视图 → 关历史视图 / 关设置 / 关弹层 |
 
-> 全部 chord 可在 设置 → 快捷键 编辑器里改；行为/面板类还有 2 个默认未绑的 toggle 可手动赋键。
+> **默认全为单键**——cc-monitor 是只读监视窗口，无需组合键。在输入框 / 历史搜索 / 重命名等可编辑处聚焦时，快捷键自动让位给打字（不会误触发）。全部 chord 可在 **设置 → 快捷键** 编辑器里改成任意组合键；行为/面板类还有 2 个默认未绑的 toggle 可手动赋键。
 
 ---
 
@@ -101,9 +101,9 @@
 
 ## PowerShell 集成（可选）
 
-为了让 **Tab ↗ / `Ctrl+\`` 跳焦**能精确拉对应终端窗口，需要在你的 PowerShell profile 里装 `__ccm_bind` helper。
+为了让 **Tab ↗ / `反引号` 跳焦**能精确拉对应终端窗口，需要在你的 PowerShell profile 里装 `__ccm_bind` helper。
 
-1. 打开 cc-monitor → `Ctrl+,` 设置面板 → **PowerShell 集成**
+1. 打开 cc-monitor → `,` 设置面板 → **PowerShell 集成**
 2. 选 profile 位置（下拉 5 项）：
    - `PowerShell 5.1 - $PROFILE（默认）` — 装到 `Microsoft.PowerShell_profile.ps1`（CurrentUserCurrentHost），只有 powershell.exe 控制台读
    - **`PowerShell 5.1 - 所有 host（profile.ps1）`** ⭐ 推荐 — VSCode 终端 / ISE / SSH 都生效
@@ -119,7 +119,7 @@
 
 **安全保证**：[安装] 前自动备份原 profile 到 `<profile>.ccm-backup-<时间戳>`，写后回读校验，写入失败自动从备份恢复；用 Win32 `ReplaceFileW` API 保留原 NTFS ACL。设置选择持久化到 localStorage。
 
-不装这个完全 OK，只是 ↗ / `Ctrl+\`` 不工作；实时渲染 / Tab / 历史浏览全都正常。
+不装这个完全 OK，只是 ↗ / `反引号` 不工作；实时渲染 / Tab / 历史浏览全都正常。
 
 ---
 
@@ -129,7 +129,7 @@
 |---|---|
 | 启动报 "WebView2 Runtime not found" | 安装 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) |
 | 跑 claude 后 Tab 不出现 | 检查 `~/.claude/sessions/` 下是否有 `<PID>.json` |
-| Tab ↗ / `Ctrl+\`` 拉不出终端 | 没装 PowerShell 集成；或装了但 wrapper 里没调 `__ccm_bind` |
+| Tab ↗ / `反引号` 拉不出终端 | 没装 PowerShell 集成；或装了但 wrapper 里没调 `__ccm_bind` |
 | 装完 cc 集成跑 `cc` 提示绑定超时 | monitor 没在跑：先开 monitor 再开 PS；或设置面板勾选"自动打开 monitor" |
 | 装 cc 集成后 PowerShell 启动报 `Access to the path … is denied` | profile NTFS ACL 在旧版本被覆盖（v1.7.10 已修），用管理员 PS 跑 `icacls "<profile>" /grant "$env:USERDOMAIN\$env:USERNAME:(F)"` |
 | 历史浏览器 `↺` 恢复失败 | v2.8.1 起在 PowerShell 里跑 `cc`/`claude --resume`：确认 PowerShell profile 已装 `cc`（或 `claude` 在 PATH）；恢复窗口现在会加载 profile，代理 / `cc` 设置生效 |
