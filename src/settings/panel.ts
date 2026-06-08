@@ -206,6 +206,12 @@ export class SettingsPanel {
   }
 
   close(): void {
+    // 关闭前 blur 掉面板内仍聚焦的输入框。本面板是 hide（移除 .open class）而非从 DOM
+    // 移除，元素留着、焦点不会自动释放。若不 blur，document.activeElement 仍是这个隐藏
+    // 输入，单键快捷键守卫（registry.ts::isEditableTarget）会把它当"正在打字"，从而吞掉
+    // 所有单键快捷键（h/w/数字… 全部失效）—— 用户配置完远端/外观关掉设置后最典型。
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && this.el.contains(active)) active.blur();
     this.el.classList.remove("open");
     this.isOpen = false;
     dispatcher.popOverlay(this);

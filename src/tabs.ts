@@ -803,7 +803,7 @@ export class TabManager {
     const cwdBtn = document.createElement("span");
     cwdBtn.className = "tab-cwd";
     cwdBtn.textContent = "📂";
-    cwdBtn.title = "打开工作目录 (Ctrl+Shift+E)";
+    cwdBtn.title = "打开工作目录 (E)";
     cwdBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       void this.openTabCwd(sid);
@@ -816,7 +816,7 @@ export class TabManager {
     const focusBtn = document.createElement("span");
     focusBtn.className = "tab-focus";
     focusBtn.textContent = "↗";
-    focusBtn.title = "调出对应终端 (Ctrl+`)";
+    focusBtn.title = "调出对应终端 (`)";
     focusBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       // FIX 5：远端 Tab 无本地终端 HWND 可绑定 —— 不尝试拉前（按钮也被 CSS 隐藏，双保险）。

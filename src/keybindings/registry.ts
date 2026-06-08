@@ -273,6 +273,10 @@ export class KeybindingDispatcher {
 function isEditableTarget(): boolean {
   const el = document.activeElement;
   if (!(el instanceof HTMLElement)) return false;
+  // 不可见的输入不算"正在打字"：弹层关闭后仍滞留焦点的隐藏输入（display:none / 脱离
+  // 渲染树）若被当成可编辑，会吞掉所有单键快捷键。getClientRects() 为空 = 没有渲染盒；
+  // 可见的 fixed 定位输入仍有 rect，不会误判（历史搜索框聚焦时照常拦截单键）。
+  if (el.getClientRects().length === 0) return false;
   if (el.isContentEditable) return true;
   const tag = el.tagName;
   if (tag === "TEXTAREA") {
