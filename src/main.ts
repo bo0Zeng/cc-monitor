@@ -138,7 +138,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const settingsTrigger = document.createElement("button");
   settingsTrigger.type = "button";
   settingsTrigger.className = "settings-trigger";
-  settingsTrigger.title = "设置 (Ctrl+,)";
+  settingsTrigger.title = "设置 (,)";
   settingsTrigger.setAttribute("aria-label", "打开设置");
   settingsTrigger.textContent = "⚙";
   settingsTrigger.addEventListener("click", () => {
@@ -152,7 +152,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const historyTrigger = document.createElement("button");
   historyTrigger.type = "button";
   historyTrigger.className = "history-trigger";
-  historyTrigger.title = "历史会话浏览器 (Ctrl+H)";
+  historyTrigger.title = "历史会话浏览器 (H)";
   historyTrigger.setAttribute("aria-label", "打开历史会话浏览器");
   // 纯字符的时钟符号（U+25F7），避免 emoji 跨平台/字体差异
   historyTrigger.textContent = "◷";
@@ -287,14 +287,14 @@ async function bootstrapViewer(sid: string): Promise<void> {
   termBtn.type = "button";
   termBtn.className = "viewer-topbar-btn";
   termBtn.textContent = "↗ 终端";
-  termBtn.title = "调出对应终端窗口 (Ctrl+`)";
+  termBtn.title = "调出对应终端窗口 (`)";
   termBtn.addEventListener("click", () => tabs.bringActiveTerminalToFront());
   topbar.appendChild(termBtn);
   const cwdBtn = document.createElement("button");
   cwdBtn.type = "button";
   cwdBtn.className = "viewer-topbar-btn";
   cwdBtn.textContent = "📂 目录";
-  cwdBtn.title = "打开工作目录 (Ctrl+Shift+E)";
+  cwdBtn.title = "打开工作目录 (E)";
   cwdBtn.addEventListener("click", () => tabs.openActiveTabCwd());
   topbar.appendChild(cwdBtn);
   const appEl = document.getElementById("app");
