@@ -58,6 +58,11 @@ export type JsonlRecord =
       sessionId?: string;
       /** issue #8: ESC 回退分支检测用。parentUuid → 上一条 jsonl 记录 uuid。 */
       parentUuid?: string;
+      /**
+       * Claude Code 注入的 meta 消息（skill/command 展开的 prompt、system-reminder、
+       * caveat 等）带 isMeta:true —— 不是用户真正输入，renderMessage 跳过建卡。
+       */
+      isMeta?: boolean;
     }
   | {
       type: "assistant";
@@ -158,6 +163,10 @@ export type RenderResult =
 export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResult {
   switch (rec.type) {
     case "user": {
+      // Claude Code 注入的 meta 消息（skill/command 展开 prompt、system-reminder、
+      // caveat…）带 isMeta —— 不是用户真正输入，别当 user 气泡渲染。记录仍在 timeline
+      // 里保 parent 链（同 attachment），只是不建卡。
+      if (rec.isMeta) return { kind: "skip" };
       const rawText = extractText(rec.message.content);
       if (rawText.trim()) {
         // 先剥 Claude Code CLI 注入的 prompt 包装；剩余文本喂给下游识别 +

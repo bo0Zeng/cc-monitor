@@ -36,6 +36,12 @@ pub enum JsonlRecord {
         session_id: Option<String>,
         #[serde(rename = "isSidechain", default)]
         is_sidechain: bool,
+        // Claude Code 注入的 meta 消息（skill/command 展开的 prompt、system-reminder、
+        // caveat 等）带 isMeta:true —— 不是用户真正输入。仍 emit（它含 uuid+parentUuid，
+        // 是 parent 链一环，漏掉会断链同 attachment #8），但前端据此 flag 跳过建卡
+        // （cards/index.ts renderMessage），否则整段 skill prompt 会当用户气泡渲染。
+        #[serde(rename = "isMeta", default)]
+        is_meta: bool,
         #[serde(rename = "parentUuid", default)]
         parent_uuid: Option<String>,
         // issue #12: fork session 的所有记录都带这个字段；非 fork session 缺失
@@ -215,12 +221,45 @@ mod tests {
             JsonlRecord::User {
                 uuid,
                 is_sidechain,
+                is_meta,
                 forked_from,
                 ..
             } => {
                 assert_eq!(uuid, "u-1");
                 assert!(!is_sidechain, "isSidechain 缺省应 false");
+                assert!(!is_meta, "isMeta 缺省应 false");
                 assert!(forked_from.is_none(), "forkedFrom 缺省应 None");
+            }
+            other => panic!("expected User, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn user_is_meta_flag_parses_and_stays_displayable() {
+        // Claude Code 注入的 meta user 消息（skill/command 展开 prompt、system-reminder、
+        // caveat 等）带 isMeta:true —— 不是用户真输入。必须解析出 is_meta，前端据此跳过
+        // 建卡（否则 /code-review 等 skill 的整段 prompt 会当用户气泡渲染）。仍 displayable：
+        // 它含 uuid+parentUuid 是 parent 链一环，漏 emit 会断链（同 attachment #8）。
+        let line = r#"{
+            "type":"user",
+            "uuid":"u-meta",
+            "timestamp":"2026-06-08T01:00:00Z",
+            "isMeta":true,
+            "parentUuid":"prev-uuid",
+            "message":{"role":"user","content":[{"type":"text","text":"You are reviewing for recall..."}]}
+        }"#;
+        let r = parse(line);
+        assert!(r.is_displayable(), "meta user 仍须 emit 保 parent 链完整");
+        match r {
+            JsonlRecord::User {
+                is_meta,
+                uuid,
+                parent_uuid,
+                ..
+            } => {
+                assert!(is_meta, "isMeta:true 必须解析为 true");
+                assert_eq!(uuid, "u-meta");
+                assert_eq!(parent_uuid.as_deref(), Some("prev-uuid"));
             }
             other => panic!("expected User, got {other:?}"),
         }

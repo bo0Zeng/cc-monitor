@@ -8,6 +8,16 @@
 
 ---
 
+## [未发布]
+
+### 修复 — skill / 命令注入的 prompt 被当成用户消息渲染
+
+Claude Code 会把 skill（如 `/code-review`、`/full-audit`）展开的 prompt、`/` 命令、
+system-reminder、本地命令 caveat 等以 `isMeta:true` 的 user 记录注入对话 —— 这些不是
+用户真正输入。此前 monitor 把它们当普通用户气泡渲染，导致整段 skill 指令混进对话框。
+现在带 `isMeta` 的记录不再建卡（仍保留在时间线里，维持 ESC 回退主线检测的 parent 链
+完整，同 attachment 的处理）。本地 / 远端、历史浏览、独立窗口、subagent 全路径生效。
+
 ## [2.9.2] — 2026-06-06
 
 ### 修复 — 单键快捷键在用过设置面板后全部失效
