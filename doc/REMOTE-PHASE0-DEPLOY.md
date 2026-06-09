@@ -143,12 +143,12 @@ ssh-keyscan -t ed25519 <host> 2>/dev/null | ssh-keygen -lf - | awk '{print $2}'
 - **S9（路径 B，NanoPi 跨网络）**：cc-monitor 连 Pi → Pi 上真跑 `claude` → 本地 Tab 实时渲染、seq 顺序正确；会话结束 → Tab 归档。
 
 ### Phase 0 已知边界（**不是 bug**，是 scope）
-- 断线**不自动重连**、无 catch-up（daemon/网络掉了要手动重启 cc-monitor）。
+- ~~断线不自动重连~~ → 已补：断线**自动重连**（指数退避 2→30s，issue #17）；重连后 daemon 重扫活跃会话重放、客户端按 seq 去重，相当于轻量 catch-up。
 - 慢消费者**无 overflow 信号**回传（daemon 满了丢帧 + warn，客户端不感知）。
 - 远端**历史浏览 / 搜索 / resume / 拉前**未接（Phase 1+）；Phase 0 只做实时渲染。
-- daemon 重启后 seq 从 0 重来——Phase 0 客户端不处理 seq 跨重启续接。
+- ~~daemon 重启后 seq 从 0 重来，客户端不处理~~ → 已补：客户端用 per-Tab `seenSeqs` 去重消化重放（issue #17），不重复、不丢新行。
 
-这些都在 Phase 1 补（auto-deploy / 韧性 reconnect+catch-up / history RPC / bind）。
+其余在 Phase 1 补（auto-deploy / history RPC / bind）。**reconnect + seq 去重已完成（issue #17）。**
 
 ---
 
