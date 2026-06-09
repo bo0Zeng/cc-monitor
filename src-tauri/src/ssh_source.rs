@@ -40,6 +40,16 @@ use crate::event_replay::EventReplay;
 use crate::session_map::SessionChange;
 use crate::watcher::JsonlLine;
 
+/// 重连退避下界：每次连接掉线后至少等这么久再重连（也是连上过之后的快速重连值）。
+const RECONNECT_MIN: Duration = Duration::from_secs(2);
+/// 重连退避上界：指数退避封顶，避免长断网时无意义地拉长重连间隔。
+const RECONNECT_MAX: Duration = Duration::from_secs(30);
+
+/// 纯函数：把当前退避翻倍并封顶到 [`RECONNECT_MAX`]。run() 的重连循环在"仍未连上"时调用。
+fn next_backoff(cur: Duration) -> Duration {
+    (cur * 2).min(RECONNECT_MAX)
+}
+
 /// 远端 daemon 的连接配置。S5 会从 monitor 的 config 文件反序列化出来；
 /// Tier 1（issue #15）的「测试连接」命令直接收前端传来的同形对象（camelCase）。
 ///
@@ -384,8 +394,8 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
 /// SSH-remote 数据源主循环（S5）。
 ///
 /// 连接远端、exec daemon、把 daemon stdout 的 line-delimited JSON 帧逐行解析后分发：
-/// - `hello` → log（证明 daemon runtime 起来了）+ 置 `ready`（SSH 版 `initial_scan_done`，
-///   解锁 frontend-ready 的 replay 等待）。
+/// - `hello` → log（证明 daemon runtime 起来了）+ 置 `connected`（标记本次连接已健康，
+///   供重连循环判定是否重置退避）。
 /// - `line` → 组 [`JsonlLine`] 走 **与本地 watcher 完全相同的出口**：
 ///   `crate::batch_to_payloads(...)` → `replay.on_line_batch(&app, ...)`。Phase-0 用最简正确
 ///   做法：每帧一条 batch（前端按 seq 自动排序，单条 emit 语义与本地小 batch 一致）。
@@ -402,7 +412,7 @@ pub async fn run(
     replay: Arc<EventReplay>,
     app: tauri::AppHandle,
     session_changes: std::sync::mpsc::Sender<SessionChange>,
-    ready: Arc<AtomicBool>,
+    connected: Arc<AtomicBool>,
 ) -> Result<(), String> {
     tracing::info!(
         "ssh_source connecting to {}@{}:{} (daemon={})",
@@ -416,35 +426,55 @@ pub async fn run(
     // SessionAdded forward 时 insert、SessionRemoved forward 时 remove。无论 stream_loop
     // 因 EOF / 读错误 / connect 失败 / 正常返回哪条路径退出，下面都把 announced 里**仍存活**
     // 的 sid 一次性当 removed flush 出去 → lib.rs 的 remote-session-emitter emit SESSION_ENDED
-    // → 对应远端 Tab 归档，不再永久卡在虚假 "live"。（完整重连留 Phase 1，这里只做归档。）
-    let mut announced: std::collections::HashSet<String> = std::collections::HashSet::new();
-
-    let result = stream_loop(
-        &cfg,
-        &replay,
-        &app,
-        &session_changes,
-        &ready,
-        &mut announced,
-    )
-    .await;
-
-    // 唯一的最终 flush 出口：捕获 stream_loop 的 result 后，无条件归档残留 sid 再返回。
-    if !announced.is_empty() {
-        let removed: Vec<String> = announced.into_iter().collect();
-        tracing::info!(
-            "ssh_source connection ended; archiving {} remote session(s)",
-            removed.len()
-        );
-        if let Err(e) = session_changes.send(SessionChange {
-            added: vec![],
-            removed,
-        }) {
-            tracing::warn!("ssh_source final session archival send failed: {e}");
+    // → 对应远端 Tab 归档，不再永久卡在虚假 "live"。announced 每轮重连都新建（fresh per
+    // iteration），故只归档本次连接残留。
+    //
+    // 重连循环：每轮跑一次 stream_loop。失败/掉线后按指数退避（2→4→8→16→30s 封顶）重连；
+    // 本轮**连上过**（收到 daemon hello，connected=true）则下次立即以 MIN 快速重连。
+    // INVARIANT §10：唯一的等待是 tokio::time::sleep（async、非阻塞），绝不 std::thread::sleep。
+    let mut backoff = RECONNECT_MIN;
+    loop {
+        connected.store(false, Ordering::Release);
+        let mut announced: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let result = stream_loop(
+            &cfg,
+            &replay,
+            &app,
+            &session_changes,
+            &connected,
+            &mut announced,
+        )
+        .await;
+        // 每轮都归档本次连接残留的 announced sid（保持原 FIX 2 归档契约）
+        if !announced.is_empty() {
+            let removed: Vec<String> = announced.into_iter().collect();
+            tracing::info!(
+                "ssh_source connection ended; archiving {} remote session(s)",
+                removed.len()
+            );
+            if let Err(e) = session_changes.send(SessionChange {
+                added: vec![],
+                removed,
+            }) {
+                tracing::warn!("ssh_source final session archival send failed: {e}");
+            }
+        }
+        match &result {
+            Ok(()) => tracing::warn!("ssh_source stream returned Ok unexpectedly; reconnecting"),
+            Err(e) => tracing::warn!("ssh_source remote source ended: {e}"),
+        }
+        // 两段式（非冗余）：先按**当前** backoff 睡，再在仍没连上时翻倍。这样首次失败也只等
+        // MIN，退避序列是 2→4→8→16→30；若收成单个 if/else（睡前就翻倍），首次失败会直接等 4s。
+        // sleep 期间 `connected` 不会变（其唯一写者 stream_loop 已返回），故两次 load 读到同值。
+        if connected.load(Ordering::Acquire) {
+            backoff = RECONNECT_MIN; // 本次连上过 → 下次立即快速重连
+        }
+        tracing::info!("ssh_source reconnecting in {:?}", backoff);
+        tokio::time::sleep(backoff).await;
+        if !connected.load(Ordering::Acquire) {
+            backoff = next_backoff(backoff); // 仍没连上 → 指数退避增长
         }
     }
-
-    result
 }
 
 /// [`run`] 的内层流循环：connect → exec daemon → 逐帧 dispatch。**所有**提前返回
@@ -456,7 +486,7 @@ async fn stream_loop(
     replay: &Arc<EventReplay>,
     app: &tauri::AppHandle,
     session_changes: &std::sync::mpsc::Sender<SessionChange>,
-    ready: &Arc<AtomicBool>,
+    connected: &Arc<AtomicBool>,
     announced: &mut std::collections::HashSet<String>,
 ) -> Result<(), String> {
     // issue #15：远端行的 origin 标签 = 远端主机名。前端据此给该 Tab 标题加
@@ -493,8 +523,8 @@ async fn stream_loop(
                 tracing::info!(
                     "ssh_source daemon hello: v={v} host_arch={host_arch} claude_dir={claude_dir}"
                 );
-                // SSH 版 initial_scan_done：daemon 已就绪 → 解锁 frontend-ready 的 replay 等待。
-                ready.store(true, Ordering::Release);
+                // 标记本次连接已健康(收到 daemon hello)，供 run() 重连循环判定是否重置退避。
+                connected.store(true, Ordering::Release);
             }
             Some(InboundFrame::Line {
                 session_id,
@@ -1096,5 +1126,22 @@ Host prod
         assert_eq!(cfg.port, 22, "缺 port → 默认 22");
         assert_eq!(cfg.key_path.as_deref(), Some("C:\\k"));
         assert_eq!(cfg.host_key_fingerprint.as_deref(), Some("SHA256:abc"));
+    }
+
+    /// next_backoff：翻倍直到封顶 RECONNECT_MAX(30s)，封顶后饱和不再增长。
+    #[test]
+    fn next_backoff_doubles_then_caps() {
+        assert_eq!(next_backoff(Duration::from_secs(2)), Duration::from_secs(4));
+        assert_eq!(next_backoff(Duration::from_secs(4)), Duration::from_secs(8));
+        // 16s*2=32s 被封顶到 30s。
+        assert_eq!(
+            next_backoff(Duration::from_secs(16)),
+            Duration::from_secs(30)
+        );
+        // 已在上界 → 翻倍后仍被 min 拉回 30s（饱和）。
+        assert_eq!(
+            next_backoff(Duration::from_secs(30)),
+            Duration::from_secs(30)
+        );
     }
 }

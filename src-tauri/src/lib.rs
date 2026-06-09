@@ -247,14 +247,16 @@ pub fn run() {
 
                 // spawn SSH 数据源：与本地 watcher 走相同出口（batch_to_payloads →
                 // on_line_batch）；session 变化走 remote_tx → 上面的 remote-session-emitter。
-                // `ready` 是一次性占位 true——远端**不**门控 frontend-ready（本地 watcher 的
-                // initial_scan_done 才门控 replay；远端是实时流，无"初始扫完成"概念）。
+                // `connected` 是 connection-healthy signal：stream_loop 收到 daemon hello 时
+                // 置 true，run() 的重连循环据此判定本次是否连上过（连上过→下次立即快速重连，
+                // 否则指数退避）。远端**不**门控 frontend-ready（本地 watcher 的 initial_scan_done
+                // 才门控 replay；远端是实时流，无"初始扫完成"概念）。
                 let replay_for_ssh = replay.clone();
                 let app_for_ssh = app.handle().clone();
-                let ready = Arc::new(std::sync::atomic::AtomicBool::new(true));
+                let connected = Arc::new(std::sync::atomic::AtomicBool::new(true));
                 tauri::async_runtime::spawn(async move {
                     if let Err(e) =
-                        ssh_source::run(cfg, replay_for_ssh, app_for_ssh, remote_tx, ready).await
+                        ssh_source::run(cfg, replay_for_ssh, app_for_ssh, remote_tx, connected).await
                     {
                         // S8/S9 会把"connection dropped"做成显眼的前端提示；先大声 log。
                         tracing::error!("ssh_source::run exited: {e}");

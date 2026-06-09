@@ -87,6 +87,13 @@ export interface Tab {
       element: HTMLElement;
     }
   >;
+  /**
+   * 按 seq 去重集合。一个 Tab == 一个 jsonl path == 一个 seq 空间（本地 watcher 的
+   * per-path seqs / 远端 daemon 的 per-process SeqCounter）。SSH 重连后新 daemon 会从
+   * seq 0 重发整个会话 → 命中即丢，避免 Tab 内容翻倍。本地 seq 全程唯一 → 永不命中（no-op）。
+   * closeTab 时 clear。
+   */
+  seenSeqs: Set<number>;
 }
 
 /** Tab 数量摘要，发给宿主用于状态栏 / empty-state 等外部 UI */
@@ -257,6 +264,12 @@ export class TabManager {
       payload.origin ?? null,
     );
 
+    // SSH 重连后远端 daemon 从 seq 0 重发该 session 整段 jsonl → 按 seq 去重。必须在
+    // renderStreamRecord 之前、且覆盖 skip 记录（attachment/isMeta/空 user 有 seq 但不入
+    // timeline，timeline.has 漏判）。本地 seq 全程唯一 → 此 set 永不命中（本地 no-op）。
+    if (tab.seenSeqs.has(payload.seq)) return;
+    tab.seenSeqs.add(payload.seq);
+
     const ctx: RenderContext = {
       parentPath: tab.parentPath,
       toolUseNames: tab.toolUseNames,
@@ -293,6 +306,14 @@ export class TabManager {
   ): Tab {
     let tab = this.tabs.get(sessionId);
     if (tab) {
+      // SSH 重连：远端会话掉线时被 flush 归档过，现在又收到它的行 = daemon 在重放 = 会话仍
+      // 活着 → 复活成 live。必须放在 ensureTab 里（在 onLine 的 seq 去重 return 之前），否则整段
+      // 重放全被去重时连第一条行都走不到翻转。**仅远端**：本地归档由 PID 判活驱动，不靠「收到行」
+      // 翻转，避免会话退出时尾写把已归档的本地 Tab 误复活（远端掉线归档是连接驱动，无此风险）。
+      if (tab.status === "archived" && tab.origin !== null) {
+        tab.status = "live";
+        this.refreshTabBar();
+      }
       // cwd 取**最早（最小 seq）**那条记录的 —— 即项目根 / 启动目录。
       // 不能用「第一个到达的」：启动重放末块先发，最先到的是最新记录，而会话的 cwd
       // 可能在过程中漂移（如工作目录切到子目录）→ 会抓到子目录而非项目根。与历史
@@ -349,6 +370,7 @@ export class TabManager {
       toolUseElements: new Map(),
       branchFolder,
       pendingToolResults: new Map(),
+      seenSeqs: new Set(),
     };
     this.tabs.set(sessionId, tab);
     this.orderedIds.push(sessionId);
@@ -410,6 +432,7 @@ export class TabManager {
     tab.toolUseNames.clear();
     tab.toolUseElements.clear();
     tab.pendingToolResults.clear();
+    tab.seenSeqs.clear();
     tab.timeline.dispose();
     tab.branchFolder.dispose();
     this.tasksBySid.delete(sessionId);
