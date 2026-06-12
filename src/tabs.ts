@@ -133,6 +133,12 @@ export class TabManager {
    */
   private tasksBySid = new Map<string, TaskEntry[]>();
   /**
+   * issue #19：归档信号（session-ended）可能早于 replay 把该 sid 的 Tab 建出来——
+   * `jsonl-batch` 走异步 queue/drain、`session-ended` 同步派发，跨事件无顺序保证。
+   * archiveTab 时若 Tab 还不存在，记进这里；ensureTab 建 Tab 时回查、落实归档。
+   */
+  private pendingArchive = new Set<string>();
+  /**
    * v2.4 issue #2：用户在终端真敲键 → 自动切到对应 Tab 的开关。
    * 默认 true，从 config.json (autoFollowUserActive) 加载。
    */
@@ -372,6 +378,12 @@ export class TabManager {
       pendingToolResults: new Map(),
       seenSeqs: new Set(),
     };
+    // issue #19：若该 sid 的归档信号先于本次建 Tab 到达（见 archiveTab），落实归档，
+    // 避免重载后已结束会话复活成关不掉的 live Tab。本地 un-archive（上方 origin!==null
+    // 那条）不适用，故归档后续 replay 行也不会把它复活。
+    if (this.pendingArchive.delete(sessionId)) {
+      tab.status = "archived";
+    }
     this.tabs.set(sessionId, tab);
     this.orderedIds.push(sessionId);
 
@@ -401,7 +413,12 @@ export class TabManager {
   /** session 退出（~/.claude/sessions/<PID>.json 被删）—— 灰显归档，内容保留 */
   archiveTab(sessionId: string): void {
     const tab = this.tabs.get(sessionId);
-    if (!tab) return;
+    if (!tab) {
+      // issue #19：Tab 还没被 ensureTab 建出来（归档信号早于 replay 行到达）——
+      // 记下待归档，建 Tab 时落实。否则这里直接 return 会静默丢弃归档 → 僵尸 live Tab。
+      this.pendingArchive.add(sessionId);
+      return;
+    }
     if (tab.status === "archived") return;
     tab.status = "archived";
     // P5.2 B 重构后无 pendingToolGroup —— archive 不需要打断 tool-group 累积

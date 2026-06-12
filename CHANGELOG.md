@@ -18,6 +18,13 @@
 - **兼容 `/resume`**：wrapper 跟踪 claude 当前 sid（`sessions/<PID>.json` 变了就重刷 marker）+ cc-monitor 点 ↗ 时若未绑定则**现扫一次**兜底，故 `cc` 启动后再 `/resume` 切到别的会话也能正确拉前。
 - **限制**：多个 ssh 会话开在同一 Windows Terminal 窗口的不同 tab 时，↗ 只能拉起该窗口、无法切到具体 tab（OS 限制，本地 ↗ 也一样）——建议每会话单独开窗。
 
+### 修复 — F5/HMR 重载后已结束的本地会话残留为关不掉的 live Tab (issue #19)
+
+前端是纯事件增量模型（Tab 见行即建 live，只有一次性的 session-ended 能归档）。F5/HMR 重载后 event_replay 把 buffer 里已结束会话的行重放成 live Tab，而归档信号不在 buffer、不会重发 → 僵尸 live Tab（还因 closeTab 门控 archived 而**关不掉**）。同终端反复 `/resume` 换 sid 会高频放大此问题。
+- **后端**：frontend-ready 重放后按 `session_map` 当前活跃集对账，对已结束的**本地** sid 补发 session-ended（复用前端 archiveTab）。
+- **前端**：加 `pendingArchive` 集合——归档信号若早于 replay 建 Tab 到达就记下、建 Tab 时落实，消除 `jsonl-batch` 异步 drain 与 `session-ended` 同步派发之间的时序竞争。
+- 远端同类缺口（重载后已结束远端 Tab 残留）另行处理。
+
 ## [2.9.4] — 2026-06-09
 
 ### 新增 — 远端 SSH 断线自动重连 + 主窗口按 seq 去重 (issue #17)
