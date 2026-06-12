@@ -7,9 +7,10 @@
  *   指向**回退到的那个历史节点的 parent**（即同一个 parent 下产生第二个 child）
  * - 实测 1297 条记录的真实 jsonl：~3% parent 形成 fork
  *
- * **主线算法详见** `computeMainBranch` —— "只在 fork 点选 latest-descendant 赢家"。
- * 单链 / 多 root / 无分叉的会话整体 on-main 不折叠；只有真正的 fork 才把
- * 被抛弃兄弟子树标 off-main。
+ * **主线算法详见** `computeMainBranch` —— "fork 点选 latest-descendant 赢家" +
+ * "多 root 折叠被 ESC 回撤废弃的首条/重发"（issue #22）。单链 / 无分叉的会话整体
+ * on-main 不折叠；fork 把被抛弃兄弟子树标 off-main；多 root 时只折叠死胡同的 plain
+ * user root（/compact 的 system root、完整对话历史都保留）。
  *
  * **不在这里处理**：
  * - DOM 折叠 UI → branch-fold.ts
@@ -25,22 +26,31 @@ export interface BranchRecord {
   parentUuid?: string;
   /** ISO 8601 字符串。字典序 = 时间序，可直接 string compare */
   timestamp: string;
+  /** issue #22：记录类型（user/assistant/system/attachment）。多 root 分类用。 */
+  type: string;
+  /** issue #22：该 user 记录是否是 "[Request interrupted by user…]" 打断标记（回撤死胡同信号）。 */
+  isInterrupt?: boolean;
 }
 
 /**
  * 返回**主线** uuid 集合。其他记录在调用方应被识别为"被 ESC 回退"。
  *
- * **算法**：「只在 fork 点选赢家」
+ * **算法**：「fork 点选赢家 + 多 root 折叠废弃回撤」
  *  1. 构建 children 索引：parent → [child1, child2, ...]
  *  2. 找出所有 root（parentUuid 为 null 或不在集合里）
- *  3. 从每个 root 往下走：
+ *  3. issue #22：多 root 分类。winner = latestDescTs 最大的 root（当前活跃分支）永远保留；
+ *     其余 root 若是 plain user 且子树死胡同（无 assistant 后代 / 最新会话叶子是 interrupt）
+ *     → 判为被 ESC 回撤废弃的首条/重发，整棵折叠。system root（/compact）、完整对话 root
+ *     （/clear、链断、pre-compact 历史）保留。
+ *  4. 对保留的 root 往下走：
  *     - 单 child：直接进，整路 on-main
  *     - 多 child（fork 点 = ESC 回退处）：算每个 child 子树的 latest-descendant-timestamp，
  *       选最大的那个 child 继续走，其他 child 子树**整体**off-main
  *
- * **为什么不用之前的"全局最新 leaf 倒推"**：那样在 /compact 或多 root 场景会把
- * 整棵 pre-compact 树误标 off-main（因为 latest leaf 在 post-compact 树里）。
- * 现在每个 root 独立处理，"被回退"严格定义为"在同一个 parent 下被其他兄弟抢走"。
+ * **为什么不用"全局最新 leaf 倒推"**：那样在 /compact 场景会把整棵 pre-compact 树误标
+ * off-main（latest leaf 在 post-compact 树里）。现在每个**保留的** root 独立处理；多 root
+ * 的"废弃回撤"判定见步骤 3（首条消息回撤是 root 边界问题：被弃首条是 parentUuid=null 的
+ * root、不是同父兄弟，旧 fork 检测抓不到，故在 root 层单独判）。
  *
  * **复杂度**：O(N)。children 构建 O(N)；latestDescTs 拓扑序累加 O(N)；walk 主线 O(N)。
  *
@@ -76,6 +86,15 @@ export function computeMainBranch(records: ReadonlyArray<BranchRecord>): Set<str
   // 迭代算 latestDescTs：Kahn 风格自底向上 —— 先处理 leaves，再处理它们的 parent
   // remaining[uuid] = 该 uuid 还有几个 child 未处理。0 时它本身可以被处理（child 的 ts 都 ready）。
   const latestDescTs = new Map<string, string>();
+  // issue #22：多 root 分类信号，随 latestDescTs 一趟自底向上算出——
+  //   latestConvTs / latestConvIsInterrupt：子树里**会话记录**（user/assistant）中 ts
+  //     最大那条、及它是不是 interrupt 打断叶子。**只看会话记录**：末尾尾随的 system
+  //     local-command（/model、/config 等）ts 可能更晚，但不代表对话还在继续——判"对话
+  //     是否停在打断处"要忽略这些尾随 meta 记录（audit 实测 dfaf8554 踩过）。
+  //   subtreeHasAssistant：子树里有没有 assistant 记录。
+  const latestConvTs = new Map<string, string>();
+  const latestConvIsInterrupt = new Map<string, boolean>();
+  const subtreeHasAssistant = new Map<string, boolean>();
   const remaining = new Map<string, number>();
   const queue: BranchRecord[] = [];
   for (const r of records) {
@@ -89,14 +108,28 @@ export function computeMainBranch(records: ReadonlyArray<BranchRecord>): Set<str
   while (queue.length > 0) {
     const r = queue.shift()!;
     let max = r.timestamp;
+    const rIsConv = r.type === "user" || r.type === "assistant";
+    // 只统计会话记录（user/assistant）的最新叶子；"" = 自身非会话、暂无会话候选
+    let convTs = rIsConv ? r.timestamp : "";
+    let convIsInterrupt = rIsConv ? (r.isInterrupt ?? false) : false;
+    let hasAssistant = r.type === "assistant";
     const kids = childrenOf.get(r.uuid);
     if (kids) {
       for (const k of kids) {
         const kts = latestDescTs.get(k.uuid);
         if (kts !== undefined && kts > max) max = kts;
+        const kConvTs = latestConvTs.get(k.uuid) ?? "";
+        if (kConvTs > convTs) {
+          convTs = kConvTs;
+          convIsInterrupt = latestConvIsInterrupt.get(k.uuid) ?? false;
+        }
+        if (subtreeHasAssistant.get(k.uuid)) hasAssistant = true;
       }
     }
     latestDescTs.set(r.uuid, max);
+    latestConvTs.set(r.uuid, convTs);
+    latestConvIsInterrupt.set(r.uuid, convIsInterrupt);
+    subtreeHasAssistant.set(r.uuid, hasAssistant);
     // 通知 parent：少一个 pending child
     if (r.parentUuid) {
       const p = byUuid.get(r.parentUuid);
@@ -115,13 +148,41 @@ export function computeMainBranch(records: ReadonlyArray<BranchRecord>): Set<str
   // fallback 用自身 ts，避免后续 walkMain 拿到 undefined
   for (const [uuid] of remaining) {
     const r = byUuid.get(uuid);
-    if (r) latestDescTs.set(uuid, r.timestamp);
+    if (r) {
+      latestDescTs.set(uuid, r.timestamp);
+      const conv = r.type === "user" || r.type === "assistant";
+      latestConvTs.set(uuid, conv ? r.timestamp : "");
+      latestConvIsInterrupt.set(uuid, conv ? (r.isInterrupt ?? false) : false);
+      subtreeHasAssistant.set(uuid, r.type === "assistant");
+    }
   }
 
   // 迭代 walk 主线：原来 walkMain 是 tail-recursive（每次只下钻一条路径），
   // 直接改 while 循环，深度 1 帧。
+  // issue #22：多 root 分类。winner = latestDescTs 最大的 root = 当前活跃分支，永远保留。
+  // 其余 root 中，**plain user** 且子树是死胡同（无 assistant 后代，或**最新会话叶子**是
+  // interrupt 打断；末尾尾随的 /model 等 system 命令不算）→ 判为"被 ESC 回撤废弃的
+  // 首条/重发"，整棵折叠（不进 onMain）。
+  // system root（/compact 边界）、完整对话 root（/clear、链断祖先、pre-compact 历史）保留。
+  let winner: BranchRecord | undefined;
+  let winnerTs = "";
+  for (const root of roots) {
+    const ts = latestDescTs.get(root.uuid) ?? root.timestamp;
+    if (winner === undefined || ts > winnerTs) {
+      winner = root;
+      winnerTs = ts;
+    }
+  }
+
   const onMain = new Set<string>();
   for (const root of roots) {
+    if (root !== winner && root.type === "user") {
+      const hasAssistant = subtreeHasAssistant.get(root.uuid) ?? false;
+      const latestIsInterrupt = latestConvIsInterrupt.get(root.uuid) ?? false;
+      if (!hasAssistant || latestIsInterrupt) {
+        continue; // 废弃 ESC 回撤 root → 整棵折叠
+      }
+    }
     let cursor: BranchRecord | undefined = root;
     while (cursor) {
       if (onMain.has(cursor.uuid)) break; // 环防御
@@ -171,10 +232,32 @@ export function extractBranchRecord(rec: {
   uuid?: string;
   parentUuid?: string;
   timestamp?: string;
+  message?: { content?: unknown };
 }): BranchRecord | null {
   if (rec.type !== "user" && rec.type !== "assistant" && rec.type !== "attachment" && rec.type !== "system") {
     return null;
   }
   if (!rec.uuid || !rec.timestamp) return null;
-  return { uuid: rec.uuid, parentUuid: rec.parentUuid, timestamp: rec.timestamp };
+  return {
+    uuid: rec.uuid,
+    parentUuid: rec.parentUuid,
+    timestamp: rec.timestamp,
+    type: rec.type,
+    // issue #22：只有 user 记录可能是回撤打断叶子；其他类型恒 false。
+    isInterrupt: rec.type === "user" && isInterruptContent(rec.message?.content),
+  };
+}
+
+/** issue #22：user 记录是否是 "[Request interrupted by user…]" 打断标记（多 root 折叠的死胡同信号）。 */
+function isInterruptContent(content: unknown): boolean {
+  let text = "";
+  if (typeof content === "string") {
+    text = content;
+  } else if (Array.isArray(content)) {
+    const block = content.find(
+      (b) => b && typeof b === "object" && typeof (b as { text?: unknown }).text === "string",
+    );
+    text = (block as { text?: string } | undefined)?.text ?? "";
+  }
+  return text.startsWith("[Request interrupted by user");
 }

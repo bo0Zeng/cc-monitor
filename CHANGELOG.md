@@ -8,6 +8,14 @@
 
 ---
 
+## [未发布]
+
+### 修复 — ESC 回撤废弃的「首条消息」不再误显 (issue #22)
+
+新开会话时，第一条消息发出后又 ESC 回撤（claude 回复前回撤、或打断后回撤、连环回撤多次），被回撤的废弃首条/重发**没有被折叠**、照常渲染。根因：首条 user 是 `parentUuid=null` 的 root，回撤产生第二个 root 而非同父兄弟，旧 fork 检测（同 parent 多 child）抓不到。
+- `computeMainBranch` 多 root 时分类：当前活跃分支（latestDescTs 最大的 root）永远保留；其余 plain `user` root 若子树是死胡同（无 assistant 后代，或**最新会话叶子**是 `[Request interrupted by user…]` 打断；忽略末尾尾随的 `/model` 等 system 命令）→ 整棵折叠。
+- `/compact`（system 边界 root）、`/clear`、链断祖先、pre-compact 历史等合法多 root 一律保留，不误折。
+
 ## [2.9.5] — 2026-06-12
 
 ### 新增 — 远端 Tab 终端拉前 ↗ (issue #18)
