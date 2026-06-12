@@ -231,10 +231,20 @@ fn process_file(
 
     // 锁内只读 + 写 offset，文件读循环走在锁外避免阻塞同 watcher 后续事件。
     let last_offset = offsets.lock().get(&key).copied().unwrap_or(0);
-    let start = if len < last_offset { 0 } else { last_offset };
+    let truncated = len < last_offset;
+    let start = if truncated { 0 } else { last_offset };
 
     if start >= len {
         return;
+    }
+    if truncated {
+        // issue #25：截断重读 = 全文件换新 seq 重投（下面 seq 不重置的注释），即
+        // at-least-once 投递的唯一已知本地触发点（doc/INVARIANTS.md § 25）。折叠层
+        // 已按 uuid 幂等（#25），渲染层尚未（#26）。必须留痕——曾因静默无日志导致
+        // 误折叠根因定位极难。warn 放在空文件早退之后：len==0 时无重读发生不喊。
+        tracing::warn!(
+            "jsonl truncated (len {len} < offset {last_offset}), full re-read with new seqs: {path:?}"
+        );
     }
     if file.seek(SeekFrom::Start(start)).is_err() {
         return;

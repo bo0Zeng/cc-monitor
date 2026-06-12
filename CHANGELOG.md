@@ -10,6 +10,13 @@
 
 ## [未发布]
 
+### 修复 — 大段历史被误折成「已被 ESC 回退」 (issue #25)
+
+jsonl 行偶发被重复投递（watcher 截断重读会换新 seq 重投整个文件，此前完全静默）时，**一条**重复记录即可毒化主线折叠算法——最坏整段历史（4000+ 条）被误折成「已被 ESC 回退」，且每次重算都复现、F5 不自愈（实锤两例：尾段 5 条 / 整段 pre-compact 树）。现在：
+- 主线算法对重复输入**幂等**（`computeMainBranch` 入口按 uuid 去重 + `BranchFolder` 拒重双层防御，INVARIANTS 新增 § 25 投递契约），整类重投路径一次消失；
+- watcher 截断重读补 tracing warn、Kahn 异常输入补 console.warn（带嫌疑 uuid）——不再有静默路径，再出问题有第一证人；
+- 渲染层对换 seq 重投的幂等是已知残留，另开 issue #26 跟踪。
+
 ### 新增 — 会话红绿灯 (issue #23)
 
 每个本地 Tab 的状态圆点现在反映 Claude 的实时状态（信号直连 Claude Code 官方
