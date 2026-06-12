@@ -132,6 +132,7 @@
 - **Win32 同步调用**：`EnumWindows` / `SetForegroundWindow` / `ShellExecuteW` / `OpenProcess` 等（窗口枚举 / 进程查询 / shell execute 可能数十 ms 到秒级）
 - **文件系统 IO**：`history.rs` 全部 IPC（`list_history_projects` / `stream_history_sessions_in_project` / `stream_read_session_jsonl`）也走 spawn_blocking —— 扫几十个项目 / 读几 MB jsonl 都属此类
 - **`std::process::Command::spawn`**：spawn 外部进程（如 resume 的 wt.exe / powershell.exe 跑 `cc`/`claude --resume`，v2.8.1 起）
+- **async task 内禁止 `std::thread::sleep` / 同步阻塞**（issue #20 增补）：`tauri::async_runtime::spawn` 的 task 里节流用 `tokio::time::sleep(..).await`，真长阻塞走 spawn_blocking。一次同步 sleep 压住一个 tokio worker，worker 数有限，攒多了饿死全部 async 任务（`replay_and_mark_ready` 为此 async 化；`on_line_batch` 大 batch 路径的同款 sleep 靠"只从本地 watcher std 线程到达"的前提成立，见代码注释）
 
 **为什么不能松动**：Tauri 的 `#[tauri::command] fn`（非 async）跑在 IPC 派发线程上。一个慢命令阻塞期间，其他 IPC 全部排队 → 整个 UI 没反应（切设置 / 拉前 / 切 Tab 全失灵）。即便代码"看起来快"（如 read_dir + stat 几百次），磁盘冷状态下也能轻松超过 100ms 阈值。
 
@@ -329,6 +330,19 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 **为什么不能松动**：v2.8.1 的"历史会话点进去空白"就是这个坑——`SessionViewer` 流元素 class 是 `stream session-viewer-stream` 没有 `.active`，命中基类 `visibility: hidden`，2000+ 张卡片全渲染进 DOM 却不可见，而状态栏（不在 `.stream` 内）照常显示记录数 → "有记录却空白"的迷惑现象。独立 viewer 窗口（§ 22）复用 TabManager 所以有 `.active`，不受影响；只有自建流的 `SessionViewer` 中招。**禁止**给非-Tab 视图的流元素只复用 `.stream` 而不补 `visibility: visible`。
 
 详 `D:/Sync/文档/claudecode-frontend/doc/v2.8.1-bugfix-notes.md`（项目外排查复盘）。
+
+---
+
+## 24. 远端活跃集 `remote_active` 恒等于"前端当前应视为 live 的远端 sid"（issue #20）
+
+`lib.rs` 的 `remote_active`（`Arc<Mutex<HashSet<String>>>`）**唯一写者**是 `remote-session-emitter` 线程：daemon 的 session added/removed 与断连 flush 都经同一 `remote_tx` 通道到达，且**先维护集合、再做 emit 等副作用**。`frontend-ready` 对账用"sid 在 EventReplay buffer 里、但不在集合里"判死、补发 `session-ended`。
+
+两条派生约束：
+
+1. **任何让远端行进入 EventReplay buffer 的路径，其 session-added 必须先于（或同批于）行到达该通道**——目前由 daemon 协议保证（added 帧先于该会话的行帧）。绕过集合注入远端行（多 host 扩展、远端历史 #16、测试灌数据）会让 F5 把活会话误归档。
+2. **前端必须把 `session-ended` 与行事件同序处理**（`events.ts` 的 queue，#20 一并改）。ended 若抢在积压重放行之前执行，归档会被后续远端行的 un-archive（`tabs.ts` ensureTab，仅远端）翻回 live，对账等于无效——这正是 #20 初版后端-only 方案被审计打回的原因。
+
+**为什么不能松动**：对账是把"一次性 ended 信号"在重载后重建出来的唯一机制；集合不准 = 要么僵尸 live Tab 复现（漏归档），要么活会话被误杀且无后续行救活（误归档）。断连窗口期的误归档是**有意取舍**（重连后 daemon 重发 added + 重放行 → un-archive 自愈）。
 
 ---
 

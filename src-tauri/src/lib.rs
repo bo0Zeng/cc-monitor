@@ -221,6 +221,15 @@ pub fn run() {
                 }
             }
 
+            // issue #20：远端当前活跃 sid 集 —— session_map 的远端对应物，专供
+            // frontend-ready 重放后对账（远端 sid 不在 session_map，#19 的本地对账
+            // 覆盖不到）。唯一写者是下面的 remote-session-emitter（daemon 的
+            // added/removed 与断连 flush 走同一 remote_tx 通道，集合恒等于"前端当前
+            // 应视为 live 的远端 sid"）。无远端配置时恒空，对账自然 no-op。
+            // 违反此约束见 doc/INVARIANTS.md § 24。
+            let remote_active: Arc<parking_lot::Mutex<std::collections::HashSet<String>>> =
+                Arc::new(parking_lot::Mutex::new(std::collections::HashSet::new()));
+
             // SSH-remote Phase 0 (issue #15)：远端是**纯附加**数据源。config.json 的
             // `remote.enabled = true` 且配置完整 → 在本地 watcher 之外**额外**起一条
             // ssh_source::run（aggregate：本地 + 远端 session 同时显示）。否则（默认 /
@@ -244,10 +253,23 @@ pub fn run() {
                 {
                     let handle = app.handle().clone();
                     let remote_cache_for_emitter = remote_hwnd_cache.clone();
+                    let remote_active_for_emitter = remote_active.clone();
                     let spawned = std::thread::Builder::new()
                         .name("remote-session-emitter".into())
                         .spawn(move || {
                             while let Ok(change) = remote_rx.recv() {
+                                // issue #20：先维护远端活跃集（再做 emit/扫描等副作用）。
+                                // 断连 flush 的 removed 也从这里清掉 → 断线期间集合为空，
+                                // 与前端"全部已归档"的视图一致。
+                                {
+                                    let mut active = remote_active_for_emitter.lock();
+                                    for sid in &change.added {
+                                        active.insert(sid.clone());
+                                    }
+                                    for sid in &change.removed {
+                                        active.remove(sid);
+                                    }
+                                }
                                 // added 先处理：每个新 sid 起一条**独立** std::thread
                                 // 做带 sleep 的重试扫描。
                                 //
@@ -373,12 +395,14 @@ pub fn run() {
                 let handle = app.handle().clone();
                 let initial_scan_done = initial_scan_done.clone();
                 let session_map = session_map.clone();
+                let remote_active = remote_active.clone();
                 let t0_capture = t0;
                 app.listen("frontend-ready", move |_event| {
                     let replay = replay.clone();
                     let handle = handle.clone();
                     let initial_scan_done = initial_scan_done.clone();
                     let session_map = session_map.clone();
+                    let remote_active = remote_active.clone();
                     let listen_recv_at = t0_capture.elapsed().as_millis();
                     tauri::async_runtime::spawn(async move {
                         tracing::info!(
@@ -404,21 +428,38 @@ pub fn run() {
                             t0_capture.elapsed().as_millis(),
                             wait_started.elapsed().as_millis()
                         );
-                        replay.replay_and_mark_ready(&handle);
+                        replay.replay_and_mark_ready(&handle).await;
 
                         // issue #19：前端是纯事件增量模型——Tab 见行即建 live，只有一次性的
                         // session-ended 能归档。F5/HMR 重载后 replay 把 buffer 里**已结束**
                         // 会话的行也重放成 live Tab，而归档信号不在 buffer、不会重发 → 僵尸
                         // live Tab（还因 closeTab 门控 archived 而关不掉）。这里按当前活跃集
                         // 对账：对已不活跃的**本地** sid 补发 session-ended，复用前端
-                        // archiveTab（幂等）。仅本地：session_map 只认本地，远端 sid 不在其中，
-                        // 一起对账会误归档活的远端 Tab（远端同类缺口另行处理）。
+                        // archiveTab（幂等）。本段仅本地：session_map 只认本地，远端 sid
+                        // 不在其中（远端对账见紧随其后的 issue #20 块）。
                         let stale: Vec<String> = replay
                             .buffered_local_session_ids()
                             .into_iter()
                             .filter(|sid| !session_map.is_session_active(sid))
                             .collect();
-                        for sid in &stale {
+                        // issue #20：#19 的远端版。远端 sid 不在 session_map，活跃集由
+                        // remote-session-emitter 维护（daemon added/removed + 断连 flush
+                        // 同一通道）。断连窗口期 F5 会把其实还活着的远端会话一并归档——
+                        // 重连后 daemon 重发 session-added + 重放行，前端 un-archive
+                        // （tabs.ts ensureTab，仅远端）复活，自愈闭环。
+                        //
+                        // ⚠ 配套前提：前端把 session-ended 与行事件**同序**处理（events.ts
+                        // 的 queue，#20 一并改）。否则这里补发的 ended 会抢在积压重放行
+                        // 之前执行，归档随即被后续远端行 un-archive 翻回 live，补发等于无效。
+                        let remote_stale: Vec<String> = {
+                            let active = remote_active.lock();
+                            replay
+                                .buffered_remote_session_ids()
+                                .into_iter()
+                                .filter(|sid| !active.contains(sid))
+                                .collect()
+                        };
+                        for sid in stale.iter().chain(remote_stale.iter()) {
                             if let Err(e) = handle.emit(
                                 bridge::events::SESSION_ENDED,
                                 &bridge::SessionEndedPayload {
@@ -430,10 +471,11 @@ pub fn run() {
                                 );
                             }
                         }
-                        if !stale.is_empty() {
+                        if !stale.is_empty() || !remote_stale.is_empty() {
                             tracing::info!(
-                                "replay 对账：补发 session-ended 归档 {} 个已结束的本地 Tab",
-                                stale.len()
+                                "replay 对账：补发 session-ended 归档已结束 Tab（本地 {} 个 + 远端 {} 个）",
+                                stale.len(),
+                                remote_stale.len()
                             );
                         }
                     });

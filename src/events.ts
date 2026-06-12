@@ -79,7 +79,8 @@ export interface SessionActivityPayload {
 type QueueItem =
   | { kind: "payload"; payload: JsonlLinePayload }
   | { kind: "batch-start" }
-  | { kind: "batch-end" };
+  | { kind: "batch-end" }
+  | { kind: "ended"; sessionId: string };
 
 /**
  * 批量调度参数：每个事件循环 tick 处理至多 BATCH_SIZE 条或耗时 BATCH_MS 毫秒，
@@ -210,6 +211,8 @@ export async function bindEvents(
         // perf：记录 batch payload 全部 drain 完毕的时刻（不是 onBatchEnd fire）
         perf.batchDrainEnd = performance.now();
         scheduleBatchEnd();
+      } else if (item.kind === "ended") {
+        handlers.onSessionEnded(item.sessionId);
       }
     } catch (e) {
       // v2.1.1: try/catch 防御 —— 单条 record 处理出错不能冻死整个 replay
@@ -289,11 +292,18 @@ export async function bindEvents(
     }),
   );
 
-  // session-ended 事件稀疏，直接同步派发
+  // session-ended 必须进 queue 与行事件同序处理（issue #20）：之前同步派发，会
+  // 抢在积压的 replay 行之前执行 —— 归档刚落实，后续 drain 的远端行就命中
+  // tabs.ts ensureTab 的远端 un-archive（archived + origin!==null 见行即复活），
+  // 重载对账补发的归档被原样吃掉 → 僵尸 live Tab。入队后前端处理顺序 = 后端
+  // emit 顺序（重放块全部在前、补发 ended 在后；实时 ended 也天然晚于该会话的行：
+  // daemon 协议 removed 帧在行帧之后）。tabs.ts 的 pendingArchive 保留为防御层
+  //（§ 17a 双层防御：万一 ended 仍早于建 Tab 的行，建 Tab 时落实归档）。
   registrations.push(
-    sub<SessionEndedPayload>("session-ended", (e) =>
-      handlers.onSessionEnded(e.payload.session_id),
-    ),
+    sub<SessionEndedPayload>("session-ended", (e) => {
+      queue.push({ kind: "ended", sessionId: e.payload.session_id });
+      ensureScheduled();
+    }),
   );
 
   // v2.3.0 issue #11: task-update 同样稀疏，绕过 queue 直接派发

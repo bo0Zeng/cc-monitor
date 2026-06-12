@@ -31,6 +31,13 @@
 - **提问卡**：`AskUserQuestion` 不再折进 🔧 工具组——问题 + 全部选项（label/说明/可多选标记）直接可见；用户答复后卡片降噪、选中项打 ✓ 绿色高亮。`ExitPlanMode` 同理，plan 正文直接以 markdown 展示（📋 计划待批准）。
 - **API 报错可见化**（实测两种真实形态）：重试耗尽/不可重试的**最终失败**（`isApiErrorMessage`）从"被当普通 Claude 回复渲染"改为红色 ⛔ 报错卡（含分类/状态码）；单次失败**将重试**的中间态（`system` `api_error`，此前完全不可见）渲染为 ⚠ 单行细条（含 重试 N/M）。
 
+### 修复 — F5/HMR 重载后已结束的远端会话残留为关不掉的 live Tab (issue #20)
+
+补上 v2.9.5 (#19) 留下的远端缺口：远端 sid 不在 `session_map`，#19 的本地对账覆盖不到。
+- **后端**：维护「远端当前活跃 sid 集」（随 daemon 的 session added/removed 与断连 flush 增删），frontend-ready 重放后按它对账、对已结束的远端 sid 补发 session-ended 归档。
+- **前端**：session-ended 改与行事件**同队列同序**处理——此前同步派发会抢在积压重放行之前执行，归档随即被后续远端行的 un-archive 复活（审计发现，纯后端方案在典型场景必然失效）。
+- 断连窗口期重载会把仍活着的远端会话一并归档，重连重放后自动复活（同 #17 行为）。顺手把启动重放的块间 pause 从 `std::thread::sleep` 改为 `tokio::time::sleep`（不再压住 tokio worker）。
+
 ### 修复 — ESC 回撤废弃的「首条消息」不再误显 (issue #22)
 
 新开会话时，第一条消息发出后又 ESC 回撤（claude 回复前回撤、或打断后回撤、连环回撤多次），被回撤的废弃首条/重发**没有被折叠**、照常渲染。根因：首条 user 是 `parentUuid=null` 的 root，回撤产生第二个 root 而非同父兄弟，旧 fork 检测（同 parent 多 child）抓不到。
