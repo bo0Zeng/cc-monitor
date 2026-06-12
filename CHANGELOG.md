@@ -8,6 +8,16 @@
 
 ---
 
+## [未发布]
+
+### 新增 — 远端 Tab 终端拉前 ↗ (issue #18)
+
+远端 `[host]` Tab 的 ↗ 按钮现在能把对应的本地 ssh 终端窗口拉到前台（对标本地 ↗）。
+- **按 sessionId 精确绑定**：在远端 `.bashrc`/`.zshrc` 加 `ccm` wrapper（设置面板「远端 (SSH)」→「远端 ↗ 拉前」展示片段供复制）、用 `ccm` 代替 `claude` 启动；多个独立 ssh 窗口各拉各的。
+- **opt-in、零远端侵入**：cc-monitor 只扫本地终端窗口标题，不写你的远端机器；marker 走终端标题转义经 ssh 透传到本地。
+- **兼容 `/resume`**：wrapper 跟踪 claude 当前 sid（`sessions/<PID>.json` 变了就重刷 marker）+ cc-monitor 点 ↗ 时若未绑定则**现扫一次**兜底，故 `cc` 启动后再 `/resume` 切到别的会话也能正确拉前。
+- **限制**：多个 ssh 会话开在同一 Windows Terminal 窗口的不同 tab 时，↗ 只能拉起该窗口、无法切到具体 tab（OS 限制，本地 ↗ 也一样）——建议每会话单独开窗。
+
 ## [2.9.4] — 2026-06-09
 
 ### 新增 — 远端 SSH 断线自动重连 + 主窗口按 seq 去重 (issue #17)

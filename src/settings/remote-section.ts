@@ -80,6 +80,31 @@ const REMOTE_INFO_TEXT =
   "⚠ 启用 / 修改任意远端设置后，需重启 monitor 才生效。\n" +
   "配置不完整（缺 host / user / daemonPath）时后端会自动回退到本地模式。";
 
+/**
+ * Feature ②：远端 ↗ 拉前用的 `ccm` wrapper。粘到远端 `.bashrc`/`.zshrc`，用 `ccm`
+ * 代替 `claude` 启动（或让你的 cc/cct 等启动器内部调它）。它用子 shell + `$BASHPID`
+ * 拿到 claude 的精确 PID（exec 后回到调用方 shell、不关 ssh；多窗口各自精确），claude
+ * 存活期间每秒看一眼 `sessions/<PID>.json` 的当前 sid，**变了就重刷**窗口标题成
+ * `ccm-rbind-<当前sid>`——这样 `/resume` 切到别的会话后 marker 会跟着更新。本地 monitor
+ * 扫到该标题即绑定 HWND，↗ 就能 SetForegroundWindow 拉前对应窗口。
+ *
+ * `ccm-rbind-%s` 标记必须与后端 `bind.rs` 的 `format!("ccm-rbind-{sid}")` 完全一致。
+ * `\\033`/`\\007` 双反斜杠：模板字面量里写 `\033`/`\007` 的字面文本（ESC/BEL 的八进制
+ * 转义由远端 shell 的 `printf` 解释），落到用户剪贴板的是字面 `\033`，不是真 ESC 字节。
+ */
+const CCM_WRAPPER_SNIPPET = `ccm() {
+  ( cpid=$BASHPID
+    ( prev=""
+      while kill -0 "$cpid" 2>/dev/null; do
+        sid=$(grep -o '"sessionId":"[^"]*"' ~/.claude/sessions/$cpid.json 2>/dev/null | head -1 | cut -d'"' -f4)
+        [ -n "$sid" ] && [ "$sid" != "$prev" ] && { printf '\\033]0;ccm-rbind-%s\\007' "$sid"; prev="$sid"; }
+        sleep 1
+      done
+    ) &
+    exec claude "$@"
+  )
+}`;
+
 export interface RemoteSectionOptions {
   /** 被 CollapsibleGroup 包起来时传 headless: true，不渲染自己的小标题。 */
   headless?: boolean;
@@ -232,7 +257,63 @@ export class RemoteSection {
     // 8. 测试连接（Tier 1）：实连一次，展示 SSH/指纹/daemon 结果 + 指纹固化。
     this.buildTestSection(group);
 
+    // 9. Feature ②：远端 ↗ 拉前用的只读 ccm wrapper 片段（纯信息，无 config 交互）。
+    this.buildWrapperSnippetRow(group);
+
     return group;
+  }
+
+  /**
+   * Feature ②：远端 ↗ 拉前的只读 `ccm` wrapper 片段。纯 DOM/信息展示，不读写 config。
+   * cc-monitor 只扫本地终端窗口标题；用户自行把这段贴到远端 profile 才能让 ↗ 生效。
+   */
+  private buildWrapperSnippetRow(parent: HTMLElement): void {
+    const row = document.createElement("div");
+    row.className = "settings-row settings-row-stack";
+
+    const label = document.createElement("span");
+    label.className = "settings-label";
+    label.textContent = "远端 ↗ 拉前（可选）";
+    label.appendChild(
+      makeInfoIcon(
+        "cc-monitor 只扫描本地终端窗口标题；它不会触碰 / 写入你的远端机器。\n" +
+          "想让本地 ↗ 拉前对应的 ssh 窗口，在远端 `.bashrc`/`.zshrc` 里加下面的 `ccm`\n" +
+          "函数，并用 `ccm` 代替 `claude` 启动。ccm 会周期性把 ssh 窗口标题设成\n" +
+          "`ccm-rbind-<sid>`，本地 monitor 扫到即绑定该窗口。\n\n" +
+          "⚠ 限制：多个 ssh 会话若开在同一个 Windows Terminal 窗口的不同 tab 里，↗ 只能\n" +
+          "拉起该窗口、无法切到具体 tab（OS 层限制，本地 ↗ 也一样）。建议每个远端会话单独开窗。\n\n" +
+          "下面的片段需你自己复制粘贴到远端 —— cc-monitor 不会写你的远端机器。",
+      ),
+    );
+    row.appendChild(label);
+
+    const pre = document.createElement("pre");
+    pre.className = "remote-wrapper-snippet";
+    pre.textContent = CCM_WRAPPER_SNIPPET;
+    row.appendChild(pre);
+
+    const btnRow = document.createElement("div");
+    btnRow.className = "settings-row settings-row-end";
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "settings-btn settings-btn-secondary";
+    copyBtn.textContent = "复制";
+    copyBtn.addEventListener("click", () => {
+      void navigator.clipboard.writeText(CCM_WRAPPER_SNIPPET).then(
+        () => {
+          const prev = copyBtn.textContent;
+          copyBtn.textContent = "已复制";
+          window.setTimeout(() => {
+            copyBtn.textContent = prev;
+          }, 1500);
+        },
+        (e) => console.warn("copy ccm wrapper failed:", e),
+      );
+    });
+    btnRow.appendChild(copyBtn);
+    row.appendChild(btnRow);
+
+    parent.appendChild(row);
   }
 
   /** 顶部「从 ~/.ssh/config 导入」行：label + select + hint。 */

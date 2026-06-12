@@ -18,6 +18,7 @@
 | `Arc<bind::SidHwndCache>` | `lib.rs::setup()` `app.manage(sid_hwnd_cache.clone())` | `SidHwndCache::load()` | 共享：setup 局部 + `session-changes-emitter` 线程 + State |
 | `Arc<logging::LoggingState>` | `lib.rs::setup()` `app.manage(logging_state.clone())` | `logging::init(monitor_data_dir)`（在 `tauri::Builder` 之前） | 共享：`lib.rs::run()` 局部（持有 WorkerGuard 到 setup 结束）+ setup 闭包内 `install_error_emitter` 注入 closure + State |
 | `Arc<search::SearchIndex>` (issue #6) | `lib.rs::setup()` `app.manage(search_index.clone())` | `SearchIndex::new()` | 共享：setup 局部 + `search-index-build` 后台线程（`build_blocking`）+ State |
+| `Arc<bind::RemoteHwndCache>` (issue #18) | `lib.rs::setup()` `app.manage(remote_hwnd_cache.clone())` | `RemoteHwndCache::new()` | 共享：setup 局部 + `remote-session-emitter` 线程（`remote_cache_for_emitter`：每 sid scan 子线程 `try_bind` / session removed 时 `forget`）+ State |
 
 ---
 
@@ -38,6 +39,9 @@
 
 ### `Arc<SidHwndCache>`
 - `lib.rs::bring_terminal_to_front(session_id, cache: State<'_, Arc<SidHwndCache>>)`
+
+### `Arc<RemoteHwndCache>` (issue #18)
+- `lib.rs::bring_remote_terminal_to_front(session_id, cache: State<'_, Arc<RemoteHwndCache>>)`
 
 ### `Arc<LoggingState>`
 - `lib.rs::get_diagnostics_config(state: State<'_, Arc<logging::LoggingState>>)`

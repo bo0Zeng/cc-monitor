@@ -259,26 +259,35 @@ fn process_await_file(this: &BindRegistry, await_file: &Path) {
     }
 }
 
+/// `find_window_by_marker_substr` 命中的窗口快照（leaf primitive 输出）。
+/// `find_window_for_marker`（本地 ps-bind）和 `RemoteHwndCache::try_bind`（远端
+/// sid-bind）共用这同一个 EnumWindows 扫描，只是后续组的 struct 不同。
 #[cfg(windows)]
-fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
+pub struct MarkerHit {
+    pub hwnd: isize,
+    pub owner_pid: u32,
+    pub title: String,
+}
+
+/// EnumWindows 扫一遍所有可见窗口，返回 **title 子串包含 `marker`** 的第一个窗口。
+///
+/// 这是从 `find_window_for_marker` 抽出的纯 leaf primitive（code-motion，行为
+/// byte-identical）：同样的 thread_local FOUND/MARKER、同样的 512-u16 buffer、
+/// 同样的 `title.contains(marker)` 子串匹配、同样**不过滤 owner=0**（见下方注释）。
+#[cfg(windows)]
+fn find_window_by_marker_substr(marker: &str) -> Option<MarkerHit> {
     use std::cell::RefCell;
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
     };
 
-    struct Match {
-        hwnd: isize,
-        owner_pid: u32,
-        title: String,
-    }
-
     thread_local! {
-        static FOUND: RefCell<Option<Match>> = const { RefCell::new(None) };
+        static FOUND: RefCell<Option<MarkerHit>> = const { RefCell::new(None) };
         static MARKER: RefCell<String> = const { RefCell::new(String::new()) };
     }
 
-    MARKER.with(|m| *m.borrow_mut() = req.marker.clone());
+    MARKER.with(|m| *m.borrow_mut() = marker.to_string());
     FOUND.with(|f| *f.borrow_mut() = None);
 
     // v1.7.5 修：不再过滤 `GetWindow(hwnd, GW_OWNER) != 0` 的窗口。
@@ -319,7 +328,7 @@ fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
         let mut owner_pid: u32 = 0;
         let _ = unsafe { GetWindowThreadProcessId(hwnd, Some(&mut owner_pid)) };
         FOUND.with(|f| {
-            *f.borrow_mut() = Some(Match {
+            *f.borrow_mut() = Some(MarkerHit {
                 hwnd: hwnd.0,
                 owner_pid,
                 title,
@@ -332,7 +341,24 @@ fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
         let _ = EnumWindows(Some(cb), LPARAM(0));
     }
 
-    let m = FOUND.with(|f| f.borrow_mut().take())?;
+    FOUND.with(|f| f.borrow_mut().take())
+}
+
+#[cfg(not(windows))]
+fn find_window_by_marker_substr(_marker: &str) -> Option<MarkerHit> {
+    None
+}
+
+#[cfg(not(windows))]
+pub struct MarkerHit {
+    pub hwnd: isize,
+    pub owner_pid: u32,
+    pub title: String,
+}
+
+#[cfg(windows)]
+fn find_window_for_marker(req: &AwaitRequest) -> Option<HwndEntry> {
+    let m = find_window_by_marker_substr(&req.marker)?;
     // FileTime → u64（HwndEntry.owner_proc_start 仍 wire u64 保兼容；0 表示拿不到）
     let owner_proc_start = process_creation_filetime(m.owner_pid)
         .map(|ft| ft.0)
@@ -564,6 +590,67 @@ impl SidHwndCache {
     }
 }
 
+/// Feature ②（远端 Tab ↗ 拉前）：sid → 拉前所需信息的**纯内存**缓存。
+///
+/// 跟本地 [`SidHwndCache`] 是两套独立机制：本地走 PS 主动握手（ps-await/ps-registry
+/// 加持久化加心跳）；远端走 wrapper 设的窗口标题 `ccm-rbind-<sid>`，monitor 在
+/// session_added 时扫本地窗口找该标题并直接绑 sid。
+///
+/// **无持久化、无 record/get_parent_pid**：远端绑定是瞬时的（窗口标题在远端 shell
+/// 存活期间一直在），monitor 重启后 session_added 会重扫重绑；`verify_binding` 是
+/// 运行时安全网（HWND 复用 / 进程换人都会被它拦下）。
+pub struct RemoteHwndCache {
+    by_sid: Arc<RwLock<HashMap<String, SidHwndBinding>>>,
+}
+
+impl RemoteHwndCache {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            by_sid: Arc::new(RwLock::new(HashMap::new())),
+        })
+    }
+
+    pub fn lookup(&self, sid: &str) -> Option<SidHwndBinding> {
+        self.by_sid.read().get(sid).cloned()
+    }
+
+    pub fn forget(&self, sid: &str) {
+        self.by_sid.write().remove(sid);
+    }
+
+    /// 扫本地窗口找标题含 `ccm-rbind-<sid>` 的窗口并绑定。成功返 true。
+    ///
+    /// 复用本地机制的 leaf primitive（[`find_window_by_marker_substr`]）。组出的
+    /// `SidHwndBinding` 里 `ps_pid`/`ps_proc_start` 留空（0 / ""）——远端无 PS 握手，
+    /// 而 `verify_binding` 只读 hwnd/owner_pid/owner_proc_start，不读这两个字段。
+    #[cfg(windows)]
+    pub fn try_bind(&self, sid: &str) -> bool {
+        let marker = format!("ccm-rbind-{sid}");
+        let Some(hit) = find_window_by_marker_substr(&marker) else {
+            return false;
+        };
+        let owner_proc_start = process_creation_filetime(hit.owner_pid)
+            .map(|ft| ft.0)
+            .unwrap_or(0);
+        let binding = SidHwndBinding {
+            hwnd: hit.hwnd,
+            owner_pid: hit.owner_pid,
+            owner_proc_start,
+            ps_pid: 0,
+            ps_proc_start: String::new(),
+            title_at_bind: hit.title,
+            registered_at: crate::utils::now_ms(),
+        };
+        self.by_sid.write().insert(sid.to_string(), binding);
+        true
+    }
+
+    #[cfg(not(windows))]
+    pub fn try_bind(&self, _sid: &str) -> bool {
+        false
+    }
+}
+
 #[cfg(windows)]
 fn is_pid_alive(pid: u32) -> bool {
     use windows::Win32::Foundation::CloseHandle;
@@ -666,5 +753,34 @@ mod tests {
         assert_eq!(parsed.ps_pid, e.ps_pid);
         assert_eq!(parsed.hwnd, e.hwnd);
         assert_eq!(parsed.title_at_bind, e.title_at_bind);
+    }
+
+    /// RemoteHwndCache 是纯内存映射：直接插入 → lookup 命中 → forget 清除。
+    /// 不依赖 Win32（try_bind 需要真实窗口，单测里只验 map 语义）。
+    #[test]
+    fn remote_hwnd_cache_insert_lookup_forget() {
+        let cache = RemoteHwndCache::new();
+        let binding = SidHwndBinding {
+            hwnd: 0xABCDEF,
+            owner_pid: 1234,
+            owner_proc_start: 132456789012345678,
+            ps_pid: 0,
+            ps_proc_start: String::new(),
+            title_at_bind: "ccm-rbind-sess-42".to_string(),
+            registered_at: 1716393600000,
+        };
+        // 通过内部 map 直接插入（远端绑定正常由 try_bind 写，单测绕过 Win32）。
+        cache
+            .by_sid
+            .write()
+            .insert("sess-42".to_string(), binding.clone());
+
+        let got = cache.lookup("sess-42").expect("lookup should hit");
+        assert_eq!(got.hwnd, binding.hwnd);
+        assert_eq!(got.owner_pid, binding.owner_pid);
+        assert_eq!(got.ps_pid, 0, "远端绑定 ps_pid 应为 0");
+
+        cache.forget("sess-42");
+        assert!(cache.lookup("sess-42").is_none(), "forget 后应查不到");
     }
 }

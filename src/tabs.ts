@@ -558,12 +558,15 @@ export class TabManager {
     }
   }
 
-  /** 快捷键 Ctrl+` ：把当前活跃 Tab 对应的终端窗口拉到前台（仅 live 本地 Tab） */
+  /** 快捷键 Ctrl+` ：把当前活跃 Tab 对应的终端窗口拉到前台（live 本地 / 远端均可） */
   bringActiveTerminalToFront(): void {
     if (!this.activeId) return;
     const tab = this.tabs.get(this.activeId);
-    // FIX 5：远端 Tab（origin 非 null）无本地终端可拉前 —— 快捷键对其 no-op。
-    if (tab && tab.status !== "archived" && tab.origin === null) {
+    if (!tab || tab.status === "archived") return;
+    // Feature ②：远端 Tab → 后端按 ccm-rbind HWND 缓存拉前；本地 Tab → 原 sid_hwnd_cache 路径。
+    if (tab.origin !== null) {
+      void bringRemoteTerminalToFront(this.activeId);
+    } else {
       void bringTerminalToFront(this.activeId);
     }
   }
@@ -842,9 +845,15 @@ export class TabManager {
     focusBtn.title = "调出对应终端 (`)";
     focusBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      // FIX 5：远端 Tab 无本地终端 HWND 可绑定 —— 不尝试拉前（按钮也被 CSS 隐藏，双保险）。
-      if (this.tabs.get(sid)?.origin !== null) return;
-      void bringTerminalToFront(sid);
+      const t = this.tabs.get(sid);
+      if (!t || t.status === "archived") return;
+      // Feature ②：远端 Tab → 走后端按 ccm-rbind 标题缓存的 HWND 拉前（未绑定则 toast no-op）；
+      // 本地 Tab → 走原 sid_hwnd_cache 路径。
+      if (t.origin !== null) {
+        void bringRemoteTerminalToFront(sid);
+      } else {
+        void bringTerminalToFront(sid);
+      }
     });
     focusBtn.addEventListener("mousedown", (e) => e.stopPropagation());
     root.appendChild(focusBtn);
@@ -897,9 +906,9 @@ export class TabManager {
     refs.root.classList.toggle("active", sid === this.activeId);
     refs.root.classList.toggle("archived", tab.status === "archived");
     refs.root.classList.toggle("has-cwd", !!tab.cwd);
-    // FIX 5（issue #15）：远端 Tab（origin 非 null）的 cwd 是 Pi 上的路径，本地不存在；
-    // 「打开工作目录」📂 与「调出终端」↗ 在本地都打不开。加 .remote 类，CSS 隐藏这两个
-    // 本地专用按钮（点击 handler 也在 openTabCwd / bringTerminalToFront 早退兜底）。
+    // FIX 5 / Feature ②（issue #15）：远端 Tab（origin 非 null）的 cwd 是 Pi 上的路径，
+    // 本地不存在，故 .remote 类只隐藏「打开工作目录」📂（CSS）。「调出终端」↗ 现在保留
+    // 给远端 —— 点击走 bringRemoteTerminalToFront（后端按 ccm-rbind 拉本地 ssh 窗口）。
     refs.root.classList.toggle("remote", tab.origin !== null);
     const unread = tab.unread > 0 && sid !== this.activeId;
     refs.root.classList.toggle("has-unread", unread);
@@ -1028,6 +1037,32 @@ function bringTerminalToFront(sessionId: string): Promise<void> {
   ]).catch((e) => {
     console.warn(`bring_terminal_to_front ${sessionId} failed:`, e);
     // P4.5: 改走统一 toast stack（去掉单例 #bring-terminal-toast 的"先到先被覆盖"问题）。
+    showActionFailureToast("拉前失败", String(e?.message ?? e));
+  });
+}
+
+/**
+ * Feature ②：拉远端 Tab 对应的本地 ssh 窗口到前台。后端按 `ccm-rbind-<sid>` 窗口标题
+ * 标记缓存的 HWND + SetForegroundWindow。
+ *
+ * 失败模式（任一都会显示在 toast 上）：
+ *   - "未绑定窗口…"：远端 session 没经过 ccm wrapper 握手（直接跑 claude 而非 ccm），
+ *     后端找不到 ccm-rbind 标记的窗口。设置面板「远端 ↗ 拉前」里有 ccm 函数贴远端。
+ *   - "窗口已不存在"：用户关掉了对应 ssh 窗口
+ *   - "invoke 超时"：极端情况下 Win32 调用卡住
+ */
+function bringRemoteTerminalToFront(sessionId: string): Promise<void> {
+  const timeoutMs = 5000;
+  return Promise.race([
+    invoke<void>("bring_remote_terminal_to_front", { sessionId }),
+    new Promise<never>((_, reject) =>
+      window.setTimeout(
+        () => reject(new Error(`invoke 超时 ${timeoutMs}ms（后端 Win32 调用可能卡住）`)),
+        timeoutMs,
+      ),
+    ),
+  ]).catch((e) => {
+    console.warn(`bring_remote_terminal_to_front ${sessionId} failed:`, e);
     showActionFailureToast("拉前失败", String(e?.message ?? e));
   });
 }
