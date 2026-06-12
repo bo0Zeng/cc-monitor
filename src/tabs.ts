@@ -146,9 +146,13 @@ export class TabManager {
    */
   private tasksBySid = new Map<string, TaskEntry[]>();
   /**
-   * issue #19：归档信号（session-ended）可能早于 replay 把该 sid 的 Tab 建出来——
-   * `jsonl-batch` 走异步 queue/drain、`session-ended` 同步派发，跨事件无顺序保证。
+   * issue #19：归档信号（session-ended）可能早于 replay 把该 sid 的 Tab 建出来。
    * archiveTab 时若 Tab 还不存在，记进这里；ensureTab 建 Tab 时回查、落实归档。
+   *
+   * issue #20 后 session-ended 已改进 events.ts 的 queue 与行同序处理（否则补发
+   * 归档会被后续 drain 的远端行 un-archive 吃掉），正常路径下 ended 不会再早于
+   * 行到达——本集合降级为防御层（§ 17a 双层防御），保留兜“ended 先于该 sid 任何
+   * 行”的异常序。
    */
   private pendingArchive = new Set<string>();
   /**

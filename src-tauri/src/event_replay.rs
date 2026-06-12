@@ -136,6 +136,11 @@ impl EventReplay {
                 chunk_started.elapsed().as_millis()
             );
             if idx as u32 + 1 < chunk_total {
+                // ⚠ std::thread::sleep 的成立前提：大 batch（≥ 阈值）只会从本地 watcher
+                // 的 std 线程到达。ssh_source 虽在 async task 里调 on_line_batch，但
+                // daemon 每帧恒 1 行 → 永走上面的小 batch 路径。若将来远端帧改攒批，
+                // 这里必须随 replay_and_mark_ready（issue #20）一样 async 化，否则
+                // 在 tokio worker 上睡觉（INVARIANT § 10）。
                 std::thread::sleep(std::time::Duration::from_millis(CHUNK_PAUSE_MS));
             }
         }
@@ -159,7 +164,10 @@ impl EventReplay {
     /// v2.2: 改成单次 `emit(JSONL_BATCH, Vec<...>)`，序列化只跑一次。
     /// v2.3.1: 切块 emit，用户感知 ~22s → ~2s（仅渲染最新 100 条立刻可交互）。
     /// P5.4: 删了原 catch-up 路径，前端按 seq 排序使其不再必要。
-    pub fn replay_and_mark_ready<R: Runtime>(&self, handle: &AppHandle<R>) {
+    /// async：块间 pause 用 `tokio::time::sleep`——本函数跑在 tauri::async_runtime
+    /// 的 task 里（lib.rs frontend-ready），原 `std::thread::sleep` 会压住 tokio
+    /// worker（INVARIANT § 10），issue #20 顺手清理。
+    pub async fn replay_and_mark_ready<R: Runtime>(&self, handle: &AppHandle<R>) {
         let started = std::time::Instant::now();
 
         // 阶段 1：拿 snapshot + 立即置 ready
@@ -212,7 +220,7 @@ impl EventReplay {
                 chunk_started.elapsed().as_millis()
             );
             if idx + 1 < chunk_total {
-                std::thread::sleep(std::time::Duration::from_millis(CHUNK_PAUSE_MS));
+                tokio::time::sleep(std::time::Duration::from_millis(CHUNK_PAUSE_MS)).await;
             }
         }
 
@@ -291,13 +299,31 @@ impl EventReplay {
     /// （session-ended）不在 buffer、不会重发 → 僵尸 live Tab（还因 closeTab 门控
     /// archived 而关不掉）。frontend-ready 重放后，用本集合 × session_map 当前活跃集
     /// 对账、对已结束的本地 sid 补发 session-ended（issue #19）。**仅本地**：session_map
-    /// 只认本地，远端 sid 不在其中，一起对账会误归档活的远端 Tab（远端同类缺口另行处理）。
+    /// 只认本地，远端 sid 不在其中。远端版见 [`Self::buffered_remote_session_ids`]（issue #20）。
     pub fn buffered_local_session_ids(&self) -> Vec<String> {
         let inner = self.inner.lock();
         let mut seen = std::collections::HashSet::new();
         let mut out = Vec::new();
         for p in inner.history.iter() {
             if p.origin.is_none() && seen.insert(p.session_id.clone()) {
+                out.push(p.session_id.clone());
+            }
+        }
+        out
+    }
+
+    /// `buffered_local_session_ids` 的远端版（issue #20）：buffer 里所有
+    /// **远端**（`origin == Some(host)`）session 的去重 sid。
+    ///
+    /// 远端 sid 不在 session_map 里，对账要用 lib.rs 维护的远端活跃集
+    /// （remote-session-emitter 随 daemon 的 added/removed 增删）。不区分 host：
+    /// 当前仅支持单远端，sid 是 UUID 不会跨源碰撞。
+    pub fn buffered_remote_session_ids(&self) -> Vec<String> {
+        let inner = self.inner.lock();
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        for p in inner.history.iter() {
+            if p.origin.is_some() && seen.insert(p.session_id.clone()) {
                 out.push(p.session_id.clone());
             }
         }
@@ -370,6 +396,27 @@ mod tests {
         let mut ids = replay.buffered_local_session_ids();
         ids.sort();
         assert_eq!(ids, vec!["s1".to_string(), "s2".to_string()]);
+    }
+
+    #[test]
+    fn buffered_remote_session_ids_dedups_and_skips_local() {
+        let replay = EventReplay::new();
+        {
+            let mut inner = replay.inner.lock();
+            inner.history.push_back(payload("s1", 0)); // 本地 → 跳过
+            let mut r1a = payload("r1", 0);
+            r1a.origin = Some("nanopi".to_string());
+            inner.history.push_back(r1a);
+            let mut r1b = payload("r1", 1); // 同 sid 第二行 → 去重
+            r1b.origin = Some("nanopi".to_string());
+            inner.history.push_back(r1b);
+            let mut r2 = payload("r2", 0);
+            r2.origin = Some("rk3576".to_string()); // 不同 host 也收
+            inner.history.push_back(r2);
+        }
+        let mut ids = replay.buffered_remote_session_ids();
+        ids.sort();
+        assert_eq!(ids, vec!["r1".to_string(), "r2".to_string()]);
     }
 
     #[test]
