@@ -115,6 +115,12 @@ pub fn run() {
             let sid_hwnd_cache =
                 bind::SidHwndCache::load(monitor_data_dir.join("sid-hwnd-cache.json"));
 
+            // Feature ②（远端 Tab ↗ 拉前）：纯内存的 sid → hwnd 缓存。远端 session
+            // 加入时扫本地窗口找 `ccm-rbind-<sid>` 标题（wrapper 在远端设的 OSC 标题，
+            // 经 ssh 透传到本地 Windows Terminal）并绑定。bring_remote_terminal_to_front
+            // IPC 取 State<Arc<RemoteHwndCache>>（INVARIANT § 8：必须 manage，见下方）。
+            let remote_hwnd_cache = bind::RemoteHwndCache::new();
+
             // SessionMap = Claude Code 自己维护的 ~/.claude/sessions/<PID>.json
             let (session_map, session_changes) =
                 session_map::SessionMap::load_with_changes(sessions_dir);
@@ -212,19 +218,65 @@ pub fn run() {
                 );
 
                 // 远端独立 session 通道：ssh_source::run 持 sender；这里起一条**专用**的
-                // 精简 emitter drain 它。远端无本地资源，故只处理 removed → SESSION_ENDED：
-                //   - removed：emit session-ended，对应远端 Tab 归档。
-                //   - added：**无操作**——远端 Tab 由 line 帧经 ensureTab 创建；不调
-                //     force_rescan_tx（那是本地 jsonl 专用），也不碰 SidHwndCache（远端无本地 HWND）。
+                // 精简 emitter drain 它。
+                //   - added（Feature ②）：远端 Tab 由 line 帧经 ensureTab 创建（不调
+                //     force_rescan_tx，那是本地 jsonl 专用）。但要扫本地窗口找
+                //     `ccm-rbind-<sid>` 标题绑定 hwnd，供 ↗ 拉前。wrapper 设标题经 ssh
+                //     透传到本地 WT 有延迟（OSC 序列要等远端 shell 起来 + 透传），故
+                //     +1500/3000/4500/6000ms 重试扫描，首次绑定成功即停。
+                //   - removed：emit session-ended（远端 Tab 归档）+ forget 远端绑定。
                 let (remote_tx, remote_rx) =
                     std::sync::mpsc::channel::<session_map::SessionChange>();
                 {
                     let handle = app.handle().clone();
+                    let remote_cache_for_emitter = remote_hwnd_cache.clone();
                     let spawned = std::thread::Builder::new()
                         .name("remote-session-emitter".into())
                         .spawn(move || {
                             while let Ok(change) = remote_rx.recv() {
+                                // added 先处理：每个新 sid 起一条**独立** std::thread
+                                // 做带 sleep 的重试扫描。
+                                //
+                                // 为何用 std::thread 而非 tauri::async_runtime::spawn：扫描
+                                // 本体是同步 Win32（find_window_by_marker_substr，
+                                // INVARIANT § 10 要求 Win32 同步调用不能压在 IPC/async
+                                // 派发线程上），无任何 .await；用专用 std::thread + sleep
+                                // 最简单且与 async runtime 是否就绪完全解耦（本块身处 std::thread
+                                // 里，调 async_runtime::spawn 虽也可行但平添对全局 runtime 的
+                                // 隐性依赖，无收益）。线程扫完即退，不长驻。
+                                for sid in change.added {
+                                    let cache = remote_cache_for_emitter.clone();
+                                    let spawn_res = std::thread::Builder::new()
+                                        .name("remote-bind-scan".into())
+                                        .spawn(move || {
+                                            // 每 ~0.6s 扫一次、最多 ~9s，命中即停。比固定 4 次更稳健：
+                                            // claude 启动时也会设标题（实测 ~once），wrapper 每 0.3s
+                                            // 重刷整个 ~9s 窗口；多次扫描覆盖该窗口，大幅降低"恰好每次
+                                            // 扫描都撞上 claude 标题而漏绑"的概率（EnumWindows 廉价，命中即停）。
+                                            for _ in 0u32..15 {
+                                                std::thread::sleep(
+                                                    std::time::Duration::from_millis(600),
+                                                );
+                                                if cache.try_bind(&sid) {
+                                                    tracing::info!(
+                                                        "remote bind: sid={sid} → hwnd bound"
+                                                    );
+                                                    break;
+                                                }
+                                            }
+                                        });
+                                    if let Err(e) = spawn_res {
+                                        tracing::warn!(
+                                            "failed to spawn remote-bind-scan thread: {e}; 远端 Tab ↗ 拉前将不可用"
+                                        );
+                                    }
+                                }
                                 for sid in change.removed {
+                                    // 远端会话结束、**或断连**时（ssh_source flush 把仍 announced 的
+                                    // sids 当 removed 冲出，见 ssh_source.rs::run）都走到这里 forget 掉
+                                    // 绑定。重连时新 daemon 重发 session_added → try_bind 重绑；
+                                    // verify_binding 是运行时安全网（死/复用 HWND 不会误拉前）。
+                                    remote_cache_for_emitter.forget(&sid);
                                     let payload = bridge::SessionEndedPayload {
                                         session_id: sid.clone(),
                                     };
@@ -352,6 +404,8 @@ pub fn run() {
             app.manage(replay.clone());
             app.manage(bind_registry.clone());
             app.manage(sid_hwnd_cache.clone());
+            // Feature ②：远端 sid → hwnd 缓存。bring_remote_terminal_to_front 取此 State。
+            app.manage(remote_hwnd_cache.clone());
             // v2.0.0 (issue #4)：logging state 也要 manage，IPC handler 才能拿到
             app.manage(logging_state.clone());
             // issue #6：全文搜索索引 State（search_history / rebuild / status IPC 用）
@@ -373,6 +427,8 @@ pub fn run() {
             open_session_in_new_window,
             replay_session_to_window,
             bring_terminal_to_front,
+            // Feature ②: 远端 Tab ↗ 拉前对应本地终端窗口（ccm wrapper 设标题绑定）
+            bring_remote_terminal_to_front,
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
             cc_integration_status,
@@ -749,6 +805,40 @@ async fn bring_terminal_to_front(
                  cc 集成的安装见设置面板。"
             )
         })?;
+        bind::verify_binding(&binding)?;
+        bind::activate(binding.hwnd)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}
+
+/// Feature ②：拉对应**远端** Tab 的本地终端窗口（远端会话需在远端启用 ccm wrapper，
+/// 由它设 `ccm-rbind-<sid>` 窗口标题让 monitor 绑定本地 HWND）。
+///
+/// 流程：sid → 查 RemoteHwndCache（纯内存，session_added 时扫窗口绑定）→ 校验复合
+/// 指纹（verify_binding：IsWindow + owner_pid + procStart）→ activate。镜像
+/// `bring_terminal_to_front`，但走远端缓存。**必须 async + spawn_blocking** 隔离
+/// Win32 sync 调用（INVARIANT § 10）。
+#[tauri::command]
+async fn bring_remote_terminal_to_front(
+    session_id: String,
+    cache: tauri::State<'_, Arc<bind::RemoteHwndCache>>,
+) -> Result<(), String> {
+    let cache = cache.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        // 先查缓存；没命中就**点击时现扫一次**（marker 还挂在窗口标题上就能即时绑）。
+        // 覆盖：① eager 扫描时机错过；② 用户 /resume 切到别的 sid——wrapper 会把
+        // marker 重刷成当前 sid，这里现扫即可绑上。try_bind 是同步 Win32，已在
+        // spawn_blocking 里（INVARIANT § 10）。
+        let binding = match cache.lookup(&session_id) {
+            Some(b) => b,
+            None => {
+                cache.try_bind(&session_id);
+                cache.lookup(&session_id).ok_or_else(|| {
+                    "未绑定窗口（远端会话需在远端启用 ccm wrapper）".to_string()
+                })?
+            }
+        };
         bind::verify_binding(&binding)?;
         bind::activate(binding.hwnd)
     })

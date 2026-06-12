@@ -145,10 +145,10 @@ ssh-keyscan -t ed25519 <host> 2>/dev/null | ssh-keygen -lf - | awk '{print $2}'
 ### Phase 0 已知边界（**不是 bug**，是 scope）
 - ~~断线不自动重连~~ → 已补：断线**自动重连**（指数退避 2→30s，issue #17）；重连后 daemon 重扫活跃会话重放、客户端按 seq 去重，相当于轻量 catch-up。
 - 慢消费者**无 overflow 信号**回传（daemon 满了丢帧 + warn，客户端不感知）。
-- 远端**历史浏览 / 搜索 / resume / 拉前**未接（Phase 1+）；Phase 0 只做实时渲染。
+- 远端**历史浏览 / 搜索 / resume**未接（Phase 1+）。~~拉前~~ → 已补：远端 Tab 的 ↗ 拉前已实现（issue #18，需在远端启用 `ccm` wrapper——见设置面板「远端 ↗ 拉前」展示的片段）。**WT 多 tab 限制**：多个 ssh 会话开在同一 WT 窗口的不同 tab 时，↗ 只能拉起该窗口、无法切到具体 tab（建议每会话单独开窗）。
 - ~~daemon 重启后 seq 从 0 重来，客户端不处理~~ → 已补：客户端用 per-Tab `seenSeqs` 去重消化重放（issue #17），不重复、不丢新行。
 
-其余在 Phase 1 补（auto-deploy / history RPC / bind）。**reconnect + seq 去重已完成（issue #17）。**
+其余在 Phase 1 补（auto-deploy / history RPC）。**reconnect + seq 去重（#17）+ 远端 ↗ 拉前（#18）已完成。**
 
 ---
 

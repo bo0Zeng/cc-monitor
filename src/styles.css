@@ -264,10 +264,10 @@ body.viewer-mode .history-trigger {
 .tab.archived .tab-cwd { display: none; }
 .tab:not(.has-cwd) .tab-cwd { display: none; }
 .tab:not(.archived) .tab-close { display: none; }
-/* FIX 5（issue #15）：远端 Tab 的 cwd 是 Pi 上的路径、无本地终端 HWND ——
-   隐藏「打开工作目录」📂 与「调出终端」↗ 这两个本地专用按钮（click handler 亦有兜底）。 */
-.tab.remote .tab-cwd,
-.tab.remote .tab-focus { display: none; }
+/* FIX 5 / Feature ②（issue #15）：远端 Tab 的 cwd 是 Pi 上的路径，本地打不开 ——
+   只隐藏「打开工作目录」📂。「调出终端」↗ 保留：点击走 bring_remote_terminal_to_front
+   （后端按 ccm-rbind 标题缓存的 HWND 拉本地 ssh 窗口；未绑定则 toast no-op）。 */
+.tab.remote .tab-cwd { display: none; }
 
 .tab-title {
   overflow: hidden;
@@ -1952,6 +1952,21 @@ body.viewer-mode .history-trigger {
   color: var(--warn);
   font-size: var(--font-size-small);
   line-height: 1.4;
+}
+
+/* Feature ②：远端 ↗ 拉前的只读 ccm wrapper 片段。等宽、保留空白、可横向滚动、带边框。 */
+.remote-wrapper-snippet {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-small);
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: auto;
 }
 
 /* === History 视图（接管 #message-stream 区域） === */
