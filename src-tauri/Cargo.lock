@@ -2685,7 +2685,7 @@ dependencies = [
 
 [[package]]
 name = "monitor"
-version = "2.9.4"
+version = "2.9.5"
 dependencies = [
  "dirs 5.0.1",
  "notify",
