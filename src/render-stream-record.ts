@@ -152,12 +152,19 @@ export function renderStreamRecord(
 
 /**
  * issue #8: 给 user/assistant 卡的 root element 写 data-uuid (+ data-parent-uuid)。
- * BranchFolder 用 data-uuid 扫定位 + 主线判定。其他 message type 不 mark。
+ * BranchFolder 用 data-uuid 扫定位 + 主线判定。
  *
- * 跟原 tabs.ts::markCardUuid 完全等价 —— P5.2c 抽到本文件，三 caller 共用。
+ * issue #21: system 卡（api_error 重试细条——目前唯一会渲染成卡的 system）也要
+ * mark：它有 uuid+parentUuid 参与 jsonl 链，BranchFolder 把无 data-uuid 的顶层
+ * 元素当"断开 run"——不 mark 会把夹着它的 ESC 折叠段劈成两段、细条裸露在折叠外。
+ *
+ * 跟原 tabs.ts::markCardUuid 等价 —— P5.2c 抽到本文件，三 caller 共用。
  */
 function markCardUuid(el: HTMLElement, rec: JsonlRecord): void {
-  if (rec.type !== "user" && rec.type !== "assistant") return;
+  if (rec.type !== "user" && rec.type !== "assistant" && rec.type !== "system") {
+    return;
+  }
+  if (!rec.uuid) return; // system 的 uuid 是 Option，缺失就不 mark
   el.setAttribute("data-uuid", rec.uuid);
   if (rec.parentUuid) {
     el.setAttribute("data-parent-uuid", rec.parentUuid);

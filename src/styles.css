@@ -589,6 +589,135 @@ body.viewer-mode .history-trigger {
   font-size: var(--font-size-xs);
 }
 
+/* === issue #21：交互等待卡（AskUserQuestion / ExitPlanMode）——默认展开可见 === */
+.block-ask,
+.block-plan {
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 6px 0;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.block-ask-title,
+.block-plan-title {
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+/* 已答复 → 降噪（仍可读，但不再像"等待中"那样醒目） */
+.block-ask.is-answered {
+  border-color: var(--border-strong);
+  background: transparent;
+}
+.block-ask.is-answered .block-ask-title {
+  color: var(--text-faint);
+}
+.ask-question {
+  margin: 6px 0;
+}
+.ask-q-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ask-header-chip {
+  flex: none;
+  font-size: var(--font-size-xs);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: 10px;
+  padding: 0 8px;
+}
+.ask-q-text {
+  font-weight: 600;
+  color: var(--text);
+}
+.ask-options {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+.ask-option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+.ask-option-label {
+  flex: none;
+  color: var(--text);
+}
+.ask-option-desc {
+  color: var(--text-2);
+  font-size: var(--font-size-xs);
+}
+.ask-option.is-chosen {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+}
+.ask-option.is-chosen .ask-option-label::before {
+  content: "✓ ";
+  color: var(--success);
+  font-weight: 700;
+}
+.block-plan-body {
+  /* plan 是 markdown 正文，继承 .block-body-md 排版；过长滚动 */
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+/* === issue #21：API 报错可见化 === */
+/* 形态 1：最终失败 → 红色报错卡 */
+.card-api-error {
+  border: 1px solid color-mix(in srgb, var(--error) 55%, transparent);
+  border-left: 3px solid var(--error);
+  background: color-mix(in srgb, var(--error) 8%, transparent);
+  padding: 8px 12px;
+}
+.api-error-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.api-error-label {
+  color: var(--error);
+  font-weight: 700;
+}
+.api-error-chip {
+  font-size: var(--font-size-xs);
+  color: var(--error);
+  border: 1px solid color-mix(in srgb, var(--error) 55%, transparent);
+  border-radius: 10px;
+  padding: 0 8px;
+}
+.api-error-ts {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: var(--font-size-xs);
+}
+.api-error-body {
+  margin-top: 6px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* 形态 2：重试中间态 → 单行细条 */
+.card-api-retry {
+  background: transparent;
+  border-left: 3px solid var(--error);
+  border-radius: 4px;
+  padding: 3px 12px;
+  margin: 4px 0;
+  color: var(--text-2);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* === /compact 摘要折叠卡 === */
 .card-compact {
   background: transparent;

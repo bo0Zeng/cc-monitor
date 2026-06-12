@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test:diff": "node src/cards/diff.test.ts",
-    "test:branching": "node src/branching.test.ts"
+    "test:branching": "node src/branching.test.ts",
+    "test:api-error": "node src/cards/api-error.test.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
