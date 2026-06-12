@@ -299,6 +299,57 @@ body.viewer-mode .history-trigger {
     opacity: 0.35;
   }
 }
+/* issue #23（第二增量）：agents 面板行——外壳复用 tasks-popover 类，行样式自有 */
+.agent-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.agent-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  align-self: center;
+  background: var(--live);
+}
+.agent-row.agent-running .agent-dot {
+  animation: act-waiting-pulse 1.2s ease-in-out infinite;
+}
+.agent-row.agent-done .agent-dot {
+  background: var(--text-faint);
+}
+.agent-row.agent-aborted .agent-dot {
+  background: var(--error);
+}
+.agent-type {
+  flex: none;
+  font-size: var(--font-size-xs);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 10px;
+  padding: 0 7px;
+}
+.agent-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+.agent-row.agent-done .agent-label,
+.agent-row.agent-aborted .agent-label {
+  color: var(--text-faint);
+}
+.agent-state {
+  flex: none;
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  color: var(--text-2);
+}
+.agent-row.agent-running .agent-state {
+  color: var(--live);
+}
 
 .tab-badge {
   background: var(--accent);

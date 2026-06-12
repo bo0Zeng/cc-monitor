@@ -21,6 +21,7 @@ import { SettingsPanel } from "./settings";
 import { HistoryView } from "./views/history";
 import { bindErrorToast } from "./error-toast";
 import { TasksPanel } from "./tasks-panel";
+import { AgentsPanel } from "./agents-panel";
 import { getBehavior, setBehavior } from "./behavior";
 import { dispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
@@ -109,6 +110,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   status.appendChild(tasksPanel.summaryElement);
   document.getElementById("app")?.appendChild(tasksPanel.popoverElement);
 
+  // issue #23: Agents 面板（subagent 列表 + 各自状态灯），同形态挂在 tasks chip 旁
+  const agentsPanel = new AgentsPanel();
+  status.appendChild(agentsPanel.summaryElement);
+  document.getElementById("app")?.appendChild(agentsPanel.popoverElement);
+
   const empty = document.createElement("div");
   empty.className = "empty-state";
   empty.innerHTML = `暂无活跃会话<br><small>打开终端跑 <code>claude</code> 后将自动出现</small>`;
@@ -124,6 +130,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       empty.style.display = total > 0 ? "none" : "";
     },
     tasksPanel,
+    agentsPanel,
   );
 
   // v2.4 issue #2：拉一次 behavior toggle 初值喂给 TabManager。

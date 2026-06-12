@@ -177,6 +177,31 @@ $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 - `stream.ts` 的 `MessageStream` 用 `ResizeObserver` + 守卫式 `snap()` 应对：内容后载长高时若仍贴底则自动跟随到底部
 - 如果贴底失灵，DevTools 看是否触发了 ResizeObserver 回调，以及 `snap()` 的守卫条件（落后底部 >1px 才贴）是否被满足
 
+### 从 claude 内嵌 shell 启动 dev → resume 出的会话不注册、不落盘、无 Tab（未修，issue #24）
+
+**症状**：monitor 历史里点 ↺ resume，claude 窗口正常打开、能对话、能跑工具，但 monitor
+永远不出 Tab；且该会话**写的任何东西都不落盘**（关窗即丢）。同一条 `claude --resume`
+从用户自己开的终端跑则一切正常。
+
+**原理（环境变量继承链 + Claude 的嵌套检测）**：
+1. dev monitor 若是从 Claude Code 会话内的 shell 启动（如让 Claude 跑 `run.ps1 dev`），
+   该 shell 带着 claude 注入的 `CLAUDECODE=1` / `CLAUDE_CODE_CHILD_SESSION=1` /
+   `CLAUDE_CODE_SESSION_ID=<父sid>` / `CLAUDE_CODE_ENTRYPOINT=cli`；
+2. Windows 子进程默认继承全部环境 → monitor → wt.exe → powershell → `claude --resume`
+   原封拿到这些变量；
+3. claude 据此判定自己是**嵌套子会话**（防嵌套实例与父会话互踩的合理设计）→ 不注册
+   `sessions/<PID>.json`、不写会话 jsonl（实测仅启动 +2s 追加过一次 ai-title/mode/
+   permission-mode 元数据，之后零字节；全 `~/.claude` 树 mtime 扫描验证）；
+4. monitor 是纯只读渲染器，active 判定靠 `sessions/<PID>.json`——没注册 = watcher 过滤
+   掉它全部行 = 无 Tab。**monitor 行为正确，无米下锅。**
+
+**判别法**：`sessions/` 里没有该 claude 的 `<PID>.json` + jsonl mtime 冻结 + 用户自己
+终端 resume 正常 → 即此问题。**注意 resume 窗口里写的内容不会被保存。**
+
+**待修**（issue #24）：monitor 启动时 `std::env::remove_var` 清掉上述四个嵌套标记
+（保留 `CLAUDE_CONFIG_DIR`——monitor 自己消费它），所有子进程即干净。完整排查复盘：
+`D:/Sync/文档/2026-06-13-claude嵌套环境变量导致resume会话不落盘-排查总结.md`。
+
 ### 启动重放期最新消息整行高频上下微抖（已修，回归排查）
 - 根因：旧内容逐帧插到贴底视口上方 → 浏览器逐帧重排 + 重做 scroll anchoring，HiDPI/高刷屏分数像素下舍入误差每帧不同 → 整块 ±0.5px 抖（详 INVARIANTS § 21）
 - 检查三道防线是否被破坏：(1) `snap()` 是否还守卫（没被改成无脑 `scrollTop=scrollHeight`）；(2) `.stream` 是否被加了 `overflow-anchor: none`；(3) `RecordTimeline` deferMode 是否仍在 `onBatchStart` 开、`onBatchEnd` 先 `flushDeferred()` 再 `branchFolder.flushPending()`
