@@ -27,8 +27,8 @@ index.html  ─> /src/main.ts (defer)
 | **record-timeline.ts** ⭐ v2.6 | 按 seq 排序的 TimelineEntry 数组 + DOM 挂载：`insert(entry)` binary search 找位置 → `stream.insertNode(element, anchor)`；`peekPrev(seq)` 给 tool-group 后处理用。**消除了** inPrependMode/pendingPrependFragment/chunkIndex 全部状态机。**deferMode（启动重放消抖）**：重放期插到非末尾的"视口上方"旧内容只进数组不挂 DOM，`flushDeferred()` 在 onBatchEnd 一次性批量挂回（详 INVARIANT § 21） | `new RecordTimeline(stream).insert / peekPrev / setDeferMode / flushDeferred / dispose / size` |
 | **render-stream-record.ts** ⭐ v2.6 | 三 caller（TabManager / SessionViewer / Subagent）共享的渲染管线：renderMessage + markCardUuid + feedBranchFolder + tool-group 后处理合并（看 timeline 左邻居）+ userActive 检测。sink 接口抽象 caller 差异 | `renderStreamRecord(payload, ctx, sink: StreamSink)` |
 | **stream.ts** | 单 Tab 的消息流容器，ResizeObserver + **守卫式 `snap()`** 自动贴底；`contentElement` 暴露真实卡片容器给 BranchFolder。`insertNode(node, anchor)` 给 RecordTimeline 按 seq 挂卡；`attachBatch(fragment, anchor)` 给 deferMode 一次性挂延后的上方内容。贴底稳定性三约束见 INVARIANT § 21（守卫 snap + overflow-anchor + 延后批量挂载） | `MessageStream.insertNode() / attachBatch() / scrollToBottom() / dispose()` |
-| **branching.ts** (issue #8/#22) | parentUuid 拓扑分析：识别 ESC 回退主线 vs 被回退分支。`computeMainBranch` = "fork 点选 latest-descendant 赢家" + "多 root 折叠被 ESC 回撤废弃的首条/重发"（#22）。单链全 on-main；多 root 时只折叠死胡同的 plain user root，/compact·/clear·链断·pre-compact 历史保留 | `computeMainBranch(records) / extractBranchRecord(rec)` |
-| **branch-fold.ts** (issue #8) | DOM 重排：把连续的 off-main 卡片包到 `.branch-fold-wrap`，header「已被 ESC 回退（含 N 条）」；策略 = unwrap-then-rewrap 全量重建。v2.2 加 batch mode (`setBatchMode/flushPending`)，重放期延后到 batch 结束才算一次 mainBranch，省 O(N²)。**v2.6 起由 render-stream-record.ts 统一调用 recordAdded**（之前 tabs.ts 直接调） | `new BranchFolder(container).recordAdded / setRecordsAndRebuild / setBatchMode / flushPending` |
+| **branching.ts** (issue #8/#22/#25) | parentUuid 拓扑分析：识别 ESC 回退主线 vs 被回退分支。`computeMainBranch` = "fork 点选 latest-descendant 赢家" + "多 root 折叠被 ESC 回撤废弃的首条/重发"（#22）。单链全 on-main；多 root 时只折叠死胡同的 plain user root，/compact·/clear·链断·pre-compact 历史保留。入口按 uuid 去重对重投幂等（#25，INVARIANTS § 25） | `computeMainBranch(records) / extractBranchRecord(rec)` |
+| **branch-fold.ts** (issue #8) | DOM 重排：把连续的 off-main 卡片包到 `.branch-fold-wrap`，header「已被 ESC 回退（含 N 条）」；策略 = unwrap-then-rewrap 全量重建。v2.2 加 batch mode (`setBatchMode/flushPending`)，重放期延后到 batch 结束才算一次 mainBranch，省 O(N²)。**v2.6 起由 render-stream-record.ts 统一调用 recordAdded**（之前 tabs.ts 直接调）；`seenUuids` 拒重（#25） | `new BranchFolder(container).recordAdded / setRecordsAndRebuild / setBatchMode / flushPending` |
 | **cards/index.ts** | renderMessage 主分发：user 气泡 / assistant 卡 / 工具组合并 / tool_result 注入到 tool_use。**v2.6 RenderContext.pendingToolResults 改必填 + 加 lazy 字段**（透传给 renderMarkdown 控代码块占位） | `renderMessage(rec, ctx) → RenderResult` |
 | **cards/slash.ts** | `/` 命令紧凑卡 | `parseSlashCommand / buildSlashCommandCard` |
 | **cards/compact.ts** | `/compact` 续接消息折叠 | `isCompactSummary / buildCompactSummaryCard` |
@@ -131,6 +131,7 @@ replay 一次性 emit 整个 history Vec，前端用 BATCH_SIZE=40 + BATCH_MS=8 
 - § 13 — portal 浮层（tooltip/modal/dropdown）必须真挂 `document.body`
 - § 14 — localStorage / IndexedDB key 必须前缀 `cc-monitor.`
 - § 21 — 启动重放贴底消抖：守卫式 snap + 不手动补偿（靠 overflow-anchor）+ 延后批量挂载
+- § 25 — 行投递 at-least-once：按 uuid 累积状态/构建拓扑的模块必须入口拒重自行幂等
 - DOMPurify 防 XSS：所有 innerHTML 赋值前必过 `render.ts::renderMarkdown`
 
 ---

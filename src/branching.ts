@@ -12,6 +12,10 @@
  * on-main 不折叠；fork 把被抛弃兄弟子树标 off-main；多 root 时只折叠死胡同的 plain
  * user root（/compact 的 system root、完整对话历史都保留）。
  *
+ * **幂等**（issue #25）：`computeMainBranch` 入口按 uuid 去重（保首见）——行投递是
+ * at-least-once（doc/INVARIANTS.md § 25），重复输入不得毒化 Kahn 拓扑。caller 可以
+ * 依赖这层兜底。
+ *
  * **不在这里处理**：
  * - DOM 折叠 UI → branch-fold.ts
  *
@@ -36,6 +40,7 @@ export interface BranchRecord {
  * 返回**主线** uuid 集合。其他记录在调用方应被识别为"被 ESC 回退"。
  *
  * **算法**：「fork 点选赢家 + 多 root 折叠废弃回撤」
+ *  0. 入口按 uuid 去重（issue #25：对 at-least-once 重复投递幂等）
  *  1. 构建 children 索引：parent → [child1, child2, ...]
  *  2. 找出所有 root（parentUuid 为 null 或不在集合里）
  *  3. issue #22：多 root 分类。winner = latestDescTs 最大的 root（当前活跃分支）永远保留；
@@ -61,8 +66,24 @@ export interface BranchRecord {
  *
  * 空记录集 → 空 Set。
  */
-export function computeMainBranch(records: ReadonlyArray<BranchRecord>): Set<string> {
-  if (records.length === 0) return new Set();
+export function computeMainBranch(rawRecords: ReadonlyArray<BranchRecord>): Set<string> {
+  if (rawRecords.length === 0) return new Set();
+
+  // issue #25：入口按 uuid 去重（保首见）——算法对重复输入必须幂等。
+  // 投递层是 at-least-once（违反此约束见 doc/INVARIANTS.md § 25）：watcher 截断
+  // 重读（watcher.rs::process_file）会把整个文件换新 seq 重投，tab.seenSeqs（#17）
+  // 只防同 seq。重复记录一旦进入下面的 childrenOf，同一 child 被计两次 → Kahn 的
+  // remaining 永远扣不到 0 → 重复点的全部祖先落 leftover fallback（latestDescTs=
+  // 自身、hasAssistant=false 全错）→ fork 赢家/多 root 分类误判，最坏整段历史被当
+  // ESC 回撤折叠（实测 1 条重复 attachment 即可折掉 1541/4331 条）。
+  const seenUuids = new Set<string>();
+  const records: BranchRecord[] = [];
+  for (const r of rawRecords) {
+    if (!seenUuids.has(r.uuid)) {
+      seenUuids.add(r.uuid);
+      records.push(r);
+    }
+  }
 
   const byUuid = new Map<string, BranchRecord>();
   for (const r of records) {
@@ -144,7 +165,17 @@ export function computeMainBranch(records: ReadonlyArray<BranchRecord>): Set<str
       }
     }
   }
-  // remaining 不空 = 环（理论不可能，jsonl append-only 保证 parent 早于 child；防御）
+  // remaining 不空 = 环（理论不可能，jsonl append-only 保证 parent 早于 child；防御）。
+  // 入口已按 uuid 去重，重复输入不会再走到这里——若仍非空，大声留证（issue #25：
+  // leftover 的 fallback 信号是错的，会引发误折叠；这行 warn 是异常输入的第一证人，
+  // 带前几个 uuid 方便指认；live 模式每条新记录都重算，真出环会反复打——刷屏本身
+  // 也是"赶紧来修"的信号，不去抖）。
+  if (remaining.size > 0) {
+    const sample = [...remaining.keys()].slice(0, 3).join(", ");
+    console.warn(
+      `[branching] Kahn leftover=${remaining.size}（输入含环？首批: ${sample}）——折叠信号已退化为自身 ts，可能误折叠`,
+    );
+  }
   // fallback 用自身 ts，避免后续 walkMain 拿到 undefined
   for (const [uuid] of remaining) {
     const r = byUuid.get(uuid);

@@ -1,7 +1,7 @@
 /**
- * branching.ts 主线算法（computeMainBranch）断言脚本。issue #8 + #22。
+ * branching.ts 主线算法（computeMainBranch）断言脚本。issue #8 + #22 + #25。
  *
- * 跑法：`npx tsx src/branching.test.ts` 或 `npm run test:branching`。
+ * 跑法：`npm run test:branching`（node ≥23.6 原生跑 TS；`npx tsx` 也可）。
  * 同 cards/diff.test.ts：零 node 依赖（不 import node:assert / 不用 process），失败
  * throw → 进程非零退出作 pre-push 门禁；`tsc --noEmit` 也会类型检查本文件。
  */
@@ -132,6 +132,62 @@ test("single dead-end root is winner → kept", () => {
 // 9. 空集 → 空
 test("empty → empty", () => {
   eqSet(onMain([]), [], "empty");
+});
+
+// ===== issue #25：重复投递（at-least-once）幂等性 =====
+// 投递层可能换 seq 重投同一记录（watcher 截断重读）。修复前重复记录毒化 Kahn：
+// childrenOf 同一 child 计两次 → remaining 扣不到 0 → 重复点全部祖先 leftover
+// fallback（latestDescTs=自身、hasAssistant=false）→ fork/多 root 误判大段折叠。
+
+// 10. root 级毒化（整段历史误折的最小复现）：pre-compact 完整对话里 1 条 attachment
+//     重投 → 修复前 user root 祖先链 leftover、被当"无 assistant 死胡同"整棵折叠
+test("#25 duplicated attachment in pre-compact tree → result unchanged", () => {
+  const r = [
+    rec("R1", undefined, "t01", "user"), // pre-compact 首条
+    rec("A1", "R1", "t02", "assistant"),
+    rec("ATT", "A1", "t03", "attachment"),
+    rec("U2", "ATT", "t04", "user"),
+    rec("A2", "U2", "t05", "assistant"), // 完整对话，非打断
+    rec("S", undefined, "t06", "system"), // /compact 边界 root
+    rec("CS", "S", "t07", "user"),
+    rec("CA", "CS", "t08", "assistant"), // 全局最新 → S 是 winner root
+  ];
+  const clean = onMain(r);
+  eqSet(clean, ["A1", "A2", "ATT", "CA", "CS", "R1", "S", "U2"], "clean baseline");
+  // 同一条 attachment 重投一次（换 seq 在 BranchRecord 层不可见 = 同对象再来一遍）
+  eqSet(onMain([...r, rec("ATT", "A1", "t03", "attachment")]), clean, "dup attachment");
+});
+
+// 11. fork 级毒化（"尾段 N 条"误折的最小复现）：fork 赢家子树里 1 条 attachment
+//     重投 → 修复前赢家祖先 leftover、latestDescTs 退化为自身 ts、输给早兄弟
+test("#25 duplicated attachment inside fork winner subtree → winner unchanged", () => {
+  const r = [
+    rec("A", undefined, "t01", "user"),
+    rec("B", "A", "t02", "assistant"),
+    rec("C2", "B", "t04", "user"), // 真赢家（子树最新 t08）
+    rec("ATT", "C2", "t06", "attachment"),
+    rec("D2", "ATT", "t08", "assistant"),
+    rec("C1", "B", "t05", "user", true), // 被回退兄弟（自身 ts 晚于 C2 自身 t04，毒化后会反超）
+  ];
+  const clean = onMain(r);
+  eqSet(clean, ["A", "B", "ATT", "C2", "D2"], "clean baseline");
+  eqSet(onMain([...r, rec("ATT", "C2", "t06", "attachment")]), clean, "dup in winner subtree");
+});
+
+// 12. 全文件重投（截断重读的真实形态：整个文件换 seq 再来一遍）→ 结果完全不变。
+//     第二遍用重新构造的对象（真实重投是反序列化出的新对象，不依赖对象同一性）。
+test("#25 full re-delivery (records doubled) → idempotent", () => {
+  const build = () => [
+    rec("R1", undefined, "t01", "user"),
+    rec("A1", "R1", "t02", "assistant"),
+    rec("I1", "A1", "t03", "user", true),
+    rec("R2", undefined, "t04", "user"),
+    rec("A2", "R2", "t05", "assistant"),
+    rec("S", undefined, "t06", "system"),
+    rec("CS", "S", "t07", "user"),
+  ];
+  const r = build();
+  eqSet(onMain([...r, ...build()]), onMain(r), "doubled = single");
 });
 
 if (failed > 0) {

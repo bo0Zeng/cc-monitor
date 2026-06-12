@@ -127,7 +127,13 @@ cargo test --lib -- --nocapture       # 看 println! 输出
 
 前端**当前没有自动化测试套件**（v1.7 范围内）；改前端靠 dev mode 手测 + DevTools。
 
-唯一例外：`src/cards/diff.ts` 的纯 diff 逻辑（issue #14）有 `npm run test:diff`——用 `node` 原生跑 `src/cards/diff.test.ts` 断言脚本（零依赖，不引 vitest/tsx）。这是**手动 pre-push 门禁**，**未接 CI**；`tsc --noEmit` 仍会自动类型检查它。动 `diff.ts` 后请跑一遍。
+例外：三个零依赖断言脚本（用 `node` 原生跑 `.ts`，不引 vitest/tsx；**手动 pre-push 门禁、未接 CI**；`tsc --noEmit` 仍会自动类型检查它们）：
+
+| 脚本 | 覆盖 | 动了哪些文件要跑 |
+|---|---|---|
+| `npm run test:diff` | `src/cards/diff.ts` 纯 diff 逻辑（#14） | `cards/diff.ts` |
+| `npm run test:branching` | `computeMainBranch` 主线/折叠算法（#8/#22/#25 幂等） | `branching.ts` / `branch-fold.ts` |
+| `npm run test:api-error` | API 报错卡纯函数（#21） | `cards/api-error.ts` |
 
 ---
 
@@ -201,6 +207,11 @@ $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 **待修**（issue #24）：monitor 启动时 `std::env::remove_var` 清掉上述四个嵌套标记
 （保留 `CLAUDE_CONFIG_DIR`——monitor 自己消费它），所有子进程即干净。完整排查复盘：
 `D:/Sync/文档/2026-06-13-claude嵌套环境变量导致resume会话不落盘-排查总结.md`。
+
+### 大段消息被误折成「已被 ESC 回退」（已修 issue #25，回归排查）
+- 根因：行投递是 at-least-once（INVARIANTS § 25），重复 uuid 毒化 `computeMainBranch` 的 Kahn 拓扑——`remaining` 计数被多扣、重复点全部祖先 leftover、折叠信号（latestDescTs/hasAssistant）全错 → fork 赢家/多 root 分类误判。重复常是 attachment 等**不渲染**的记录，肉眼看不出输入有重复；实测 1 条重复 attachment 即折 1541/4331 条
+- 检查四道防线：(1) `computeMainBranch` 入口 uuid 去重还在；(2) `BranchFolder.seenUuids` 拒重还在；(3) DevTools console 有无 `[branching] Kahn leftover` warn（出现 = 异常输入新形态，warn 里带嫌疑 uuid）；(4) 后端 log 有无 `jsonl truncated ... full re-read` warn（出现 = 发生过截断重投；频繁出现要查谁在改写 jsonl）
+- 复现/回归：`npm run test:branching`（#25 三用例：root 级毒化 / fork 级毒化 / 全文件 doubled 幂等）。完整排查复盘：`D:/Sync/文档/2026-06-13-重复记录毒化Kahn拓扑导致ESC大段误折叠-排查总结.md`
 
 ### 启动重放期最新消息整行高频上下微抖（已修，回归排查）
 - 根因：旧内容逐帧插到贴底视口上方 → 浏览器逐帧重排 + 重做 scroll anchoring，HiDPI/高刷屏分数像素下舍入误差每帧不同 → 整块 ±0.5px 抖（详 INVARIANTS § 21）

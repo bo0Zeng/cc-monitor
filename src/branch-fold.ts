@@ -38,6 +38,14 @@ export class BranchFolder {
   private container: HTMLElement;
   /** records 集合（caller push 进来，按 jsonl 顺序）。computeMainBranch 用 */
   private records: BranchRecord[] = [];
+  /**
+   * issue #25：已见 uuid 集，recordAdded 拒重。投递层是 at-least-once（watcher
+   * 截断重读会换 seq 重投整个文件，seenSeqs 防不住，违反此约束见
+   * doc/INVARIANTS.md § 25），重复记录会毒化 computeMainBranch 的 Kahn 拓扑 →
+   * 大段误折叠。computeMainBranch 入口也有去重（双层防御）；这里挡住还能避免
+   * records 数组被重投无界增长。
+   */
+  private seenUuids = new Set<string>();
   /** 上次重建用的 mainBranch；判等避免无 diff 时空重排 */
   private lastMainBranch: Set<string> = new Set();
   /** 折叠 ID（每个 fold 的第一条 uuid） → 用户是否手动展开了 */
@@ -68,6 +76,8 @@ export class BranchFolder {
    * live 模式下：立即算主线，如变化 rebuild。
    */
   recordAdded(rec: BranchRecord): void {
+    if (this.seenUuids.has(rec.uuid)) return; // issue #25：重投拒收（见字段注释）
+    this.seenUuids.add(rec.uuid);
     this.records.push(rec);
     if (this.batchMode) return; // batch 模式：延后到 flush
     const next = computeMainBranch(this.records);
@@ -81,7 +91,15 @@ export class BranchFolder {
    * 然后调一次 rebuildAll。比逐条 recordAdded 省一堆中间 rebuild。
    */
   setRecordsAndRebuild(records: ReadonlyArray<BranchRecord>): void {
-    this.records = records.slice();
+    // issue #25：与 recordAdded 同等拒重（去重后存，保首见）
+    this.seenUuids = new Set();
+    this.records = [];
+    for (const r of records) {
+      if (!this.seenUuids.has(r.uuid)) {
+        this.seenUuids.add(r.uuid);
+        this.records.push(r);
+      }
+    }
     this.lastMainBranch = computeMainBranch(this.records);
     this.rebuild();
   }
@@ -108,6 +126,7 @@ export class BranchFolder {
   /** Tab 销毁时调，断 GC 引用 */
   dispose(): void {
     this.records = [];
+    this.seenUuids.clear();
     this.lastMainBranch = new Set();
     this.foldExpanded.clear();
   }

@@ -104,7 +104,11 @@ export interface Tab {
    * 按 seq 去重集合。一个 Tab == 一个 jsonl path == 一个 seq 空间（本地 watcher 的
    * per-path seqs / 远端 daemon 的 per-process SeqCounter）。SSH 重连后新 daemon 会从
    * seq 0 重发整个会话 → 命中即丢，避免 Tab 内容翻倍。本地 seq 全程唯一 → 永不命中（no-op）。
-   * closeTab 时 clear。
+   *
+   * 注意：本集合**只防同 seq 重投**。本地 watcher 截断重读是**换新 seq** 重投整个
+   * 文件、此处放行（at-least-once 投递，INVARIANTS § 25）——uuid 级幂等由
+   * computeMainBranch 入口去重 + BranchFolder.seenUuids 兜（issue #25）；timeline/
+   * 卡片渲染层目前无 uuid 去重（已知残留，issue #26）。closeTab 时 clear。
    */
   seenSeqs: Set<number>;
 }
