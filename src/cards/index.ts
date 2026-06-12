@@ -8,7 +8,8 @@
  * 职责边界：
  * - 本文件持有 Rust `JsonlRecord` 的 TS 镜像类型（ApiMessage / ContentBlock 等）。
  * - 按 record.type + content 形态分发：user 气泡 / assistant 卡 / 纯工具 → tool-group /
- *   tool_result 注入到对应 tool_use 折叠条；slash / compact / agent 子卡委派给 cards/ 同级模块。
+ *   tool_result 注入到对应 tool_use 折叠条；slash / compact / agent / diff / interactive /
+ *   api-error 子卡委派给 cards/ 同级模块。
  * - `stripInternalNoise` 剥 CLI 注入的非真用户输入（含 ESC 中断标记，INVARIANT § 20）。
  * - `pendingToolResults`：tool_result 先于 tool_use 到达时先 fallback 渲染，batch 末
  *   `reconcilePendingToolResults` 重新匹配注入。
@@ -18,6 +19,12 @@ import { parseSlashCommand, buildSlashCommandCard } from "./slash";
 import { isCompactSummary, buildCompactSummaryCard } from "./compact";
 import { isAgentTool, buildAgentCard } from "./subagent";
 import { isDiffTool, buildDiffBody } from "./diff";
+import {
+  isInteractiveTool,
+  buildInteractiveCard,
+  markInteractiveAnswer,
+} from "./interactive";
+import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 import { formatTimestampShort } from "../format";
 
@@ -72,6 +79,17 @@ export type JsonlRecord =
       sessionId?: string;
       /** issue #8: ESC 回退分支检测用 */
       parentUuid?: string;
+      /**
+       * issue #21: API 最终失败时 CLI 写的合成 assistant 消息（重试耗尽/不可重试）。
+       * isApiErrorMessage 是判定主键；error 是机器可读分类（实测皆 string：
+       * authentication_failed / invalid_request / server_error / unknown…勿穷举；
+       * 后端按 §18 透传 Value 防类型漂移 → 这里 unknown、用 typeof 守卫）；
+       * apiErrorStatus 仅 HTTP 类有。报错文本在 message.content[0].text。
+       * 镜像 messages.rs::Assistant。
+       */
+      isApiErrorMessage?: boolean;
+      error?: unknown;
+      apiErrorStatus?: number;
     }
   | { type: "ai-title"; aiTitle: string; sessionId: string }
   // Claude Code v2.1.x 起的新名字。aiTitle / customTitle 语义一致 ——
@@ -86,6 +104,15 @@ export type JsonlRecord =
       /** issue #8: 部分 system 记录有 uuid+parentUuid 参与 jsonl 链跟踪 */
       uuid?: string;
       parentUuid?: string;
+      /**
+       * issue #21: subtype="api_error"（API 调用失败将重试）时有。error 对象两种
+       * shape（新版有 .formatted 现成文案），unknown 透传、渲染侧防御性取字段。
+       * 镜像 messages.rs::System。
+       */
+      level?: string;
+      retryAttempt?: number;
+      maxRetries?: number;
+      error?: unknown;
     }
   | {
       /**
@@ -151,11 +178,15 @@ export interface RenderContext {
 
 export type RenderResult =
   | { kind: "skip" }
-  /** 普通独立卡片（user 或含 text 的 assistant） */
+  /**
+   * 普通独立卡片：user / 含 text 或交互等待工具（issue #21）的 assistant /
+   * API 报错卡 / system api_error 重试细条。
+   */
   | { kind: "card"; element: HTMLElement }
   /**
-   * 工具组成员：assistant 消息全部由 thinking/tool_use/tool_result 构成，没 text。
-   * TabManager 会把连续的 tool-group 合并到同一个外层折叠卡。
+   * 工具组成员：assistant 消息全部由 thinking/tool_use/tool_result 构成，没 text
+   * 也没交互等待工具（issue #21：含 AskUserQuestion/ExitPlanMode 的走 kind:"card"
+   * 保持可见）。TabManager 会把连续的 tool-group 合并到同一个外层折叠卡。
    * `units` 是每个块单独的折叠条元素。
    */
   | { kind: "tool-group"; timestamp: string; units: HTMLElement[] };
@@ -209,6 +240,19 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       };
     }
     case "assistant": {
+      // issue #21：API 最终失败的合成消息 → 红色报错卡（此前被当普通回复渲染，
+      // 用户误以为 LLM 还在跑）。在 meaningful 过滤前判，避免被 synthetic 过滤吞掉。
+      if (rec.isApiErrorMessage) {
+        return {
+          kind: "card",
+          element: buildApiErrorCard({
+            timeLabel: formatTimestampShort(rec.timestamp),
+            text: extractText(rec.message.content).trim(),
+            category: typeof rec.error === "string" ? rec.error : undefined,
+            status: rec.apiErrorStatus,
+          }),
+        };
+      }
       const blocks = normalizeBlocks(rec.message.content);
       const meaningful = blocks.filter((b) => {
         if (b.type === "text") {
@@ -222,7 +266,13 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
       if (meaningful.length === 0) return { kind: "skip" };
 
       const hasText = meaningful.some((b) => b.type === "text");
-      if (hasText) {
+      // issue #21：含交互等待工具（AskUserQuestion / ExitPlanMode）的消息走
+      // kind:"card"——它们要默认可见，不能折进 card-tool-group（进组判定在
+      // message 级，kind:"card" 是唯一的不进组通路）。
+      const hasInteractive = meaningful.some(
+        (b) => b.type === "tool_use" && isInteractiveTool(b.name),
+      );
+      if (hasText || hasInteractive) {
         return {
           kind: "card",
           element: buildAssistantCard(rec, meaningful, ctx),
@@ -239,9 +289,23 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
         units,
       };
     }
+    case "system":
+      // issue #21：API 调用失败将重试的中间态 → 细条提示（此前 system 一律 skip
+      // → 完全不可见，重试风暴时用户只看到"卡住"）。其余 system 仍 skip。
+      if (rec.subtype === "api_error") {
+        return {
+          kind: "card",
+          element: buildApiRetryCard({
+            timeLabel: formatTimestampShort(rec.timestamp),
+            retryAttempt: rec.retryAttempt,
+            maxRetries: rec.maxRetries,
+            error: rec.error,
+          }),
+        };
+      }
+      return { kind: "skip" };
     case "ai-title":
     case "custom-title":
-    case "system":
       return { kind: "skip" };
     default:
       return { kind: "skip" };
@@ -358,6 +422,19 @@ function renderBlock(
           ctx,
           renderMessage,
         );
+      }
+      // issue #21：交互等待工具 → 默认展开的提问卡 / plan 卡（用户在被等着，
+      // 折叠会误以为 LLM 还在输出）。畸形 input throw → 回退通用折叠卡。
+      if (isInteractiveTool(block.name)) {
+        try {
+          const el = buildInteractiveCard(block.name, block.input, {
+            lazy: ctx.lazy,
+          });
+          ctx.toolUseElements.set(block.id, el); // result 回填靶（同 buildToolUseCard）
+          return el;
+        } catch (e) {
+          console.warn("interactive card fallback:", block.name, e);
+        }
       }
       return buildToolUseCard(block, ctx);
     }
@@ -503,6 +580,8 @@ function injectOrBuildToolResult(
         );
         summaryEl.textContent = `${base}${errTag}`;
       }
+      // issue #21：AskUserQuestion 提问卡 → 解析答案、高亮选中项（纯增强，失败无害）
+      markInteractiveAnswer(host, text);
     }
     return null;
   }

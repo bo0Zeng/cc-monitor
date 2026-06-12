@@ -64,6 +64,21 @@ pub enum JsonlRecord {
         // issue #12: 同 User 的 forked_from
         #[serde(rename = "forkedFrom", default)]
         forked_from: Option<ForkedFrom>,
+        // issue #21: API 最终失败时 CLI 写的合成 assistant 消息（重试耗尽 / 不可重试）。
+        // isApiErrorMessage:true 是判定主键；error 是机器可读分类（"authentication_failed"
+        // / "invalid_request" / "server_error" / "unknown" 等，勿穷举）；apiErrorStatus
+        // 仅 HTTP 类错误有。报错文本在 message.content[0].text。前端据此渲染红色报错卡，
+        // 否则会被当普通 assistant 回复（用户误以为 LLM 还在跑）。
+        //
+        // error 用 Value 而非 String：实测 47 条全是 string，但 system 侧同名字段就是
+        // 对象——若某版 CLI 把它写成对象而这里钉死 String，serde 整行失败 → 这条报错
+        // 消息本身被吞（报错可见化 feature 被报错字段漂移杀掉）。§18 宽容 schema。
+        #[serde(rename = "isApiErrorMessage", default)]
+        is_api_error_message: bool,
+        #[serde(default)]
+        error: Option<serde_json::Value>,
+        #[serde(rename = "apiErrorStatus", default)]
+        api_error_status: Option<u32>,
     },
 
     #[serde(rename = "ai-title")]
@@ -100,6 +115,18 @@ pub enum JsonlRecord {
         uuid: Option<String>,
         #[serde(rename = "parentUuid", default)]
         parent_uuid: Option<String>,
+        // issue #21: subtype="api_error"（每次 API 调用失败将重试时写一条）。level
+        // 实测只有 "error"；retryAttempt/maxRetries 给前端渲染「重试中 N/M」；error
+        // 对象有两种 shape（随 CLI 版本变化，新版有现成的 .formatted 一行文案）——
+        // 用 Value 透传，前端防御性取字段。
+        #[serde(default)]
+        level: Option<String>,
+        #[serde(rename = "retryAttempt", default)]
+        retry_attempt: Option<u32>,
+        #[serde(rename = "maxRetries", default)]
+        max_retries: Option<u32>,
+        #[serde(default)]
+        error: Option<serde_json::Value>,
     },
 
     // issue #8: attachment 不渲染卡片，但有 uuid+parentUuid 并夹在 user→assistant
@@ -231,6 +258,109 @@ mod tests {
                 assert!(forked_from.is_none(), "forkedFrom 缺省应 None");
             }
             other => panic!("expected User, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assistant_api_error_message_fields_parse() {
+        // issue #21：API 最终失败的合成 assistant 消息。isApiErrorMessage 是前端
+        // 渲染红色报错卡的判定主键，error/apiErrorStatus 是辅助展示字段。
+        let line = r#"{
+            "type":"assistant",
+            "uuid":"a-err",
+            "timestamp":"2026-06-12T01:00:00Z",
+            "parentUuid":"prev",
+            "isApiErrorMessage":true,
+            "error":"authentication_failed",
+            "apiErrorStatus":403,
+            "message":{"role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"Please run /login · API Error: 403 Request not allowed"}]}
+        }"#;
+        let r = parse(line);
+        assert!(r.is_displayable());
+        match r {
+            JsonlRecord::Assistant {
+                is_api_error_message,
+                error,
+                api_error_status,
+                ..
+            } => {
+                assert!(
+                    is_api_error_message,
+                    "isApiErrorMessage:true 必须解析为 true"
+                );
+                assert_eq!(error, Some(serde_json::json!("authentication_failed")));
+                assert_eq!(api_error_status, Some(403));
+            }
+            other => panic!("expected Assistant, got {other:?}"),
+        }
+        // §18 类型漂移容忍：error 写成对象（同 system 侧 shape）整行仍须可解析——
+        // 钉死 String 会让这条报错消息本身被 serde 吞掉。
+        let drifted = parse(
+            r#"{"type":"assistant","uuid":"a-2","timestamp":"2026-06-12T01:00:00Z","isApiErrorMessage":true,"error":{"status":500},"message":{"role":"assistant","content":[{"type":"text","text":"API Error: 500"}]}}"#,
+        );
+        match drifted {
+            JsonlRecord::Assistant {
+                is_api_error_message,
+                error,
+                ..
+            } => {
+                assert!(is_api_error_message);
+                assert!(error.is_some(), "对象形态的 error 应透传不丢行");
+            }
+            other => panic!("expected Assistant, got {other:?}"),
+        }
+        // 普通 assistant 缺省应 false/None（不误判成报错卡）
+        let normal = parse(
+            r#"{"type":"assistant","uuid":"a-1","timestamp":"2026-06-12T01:00:00Z","message":{"role":"assistant","content":"hi"}}"#,
+        );
+        match normal {
+            JsonlRecord::Assistant {
+                is_api_error_message,
+                error,
+                ..
+            } => {
+                assert!(!is_api_error_message);
+                assert!(error.is_none());
+            }
+            other => panic!("expected Assistant, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn system_api_error_retry_fields_parse() {
+        // issue #21：API 调用失败将重试的中间态。retryAttempt/maxRetries 给前端
+        // 渲染「重试 N/M」，error 对象 shape 随 CLI 版本变化 → Value 透传。
+        let line = r#"{
+            "type":"system",
+            "subtype":"api_error",
+            "level":"error",
+            "retryAttempt":2,
+            "maxRetries":10,
+            "retryInMs":521.4,
+            "timestamp":"2026-06-12T01:00:00Z",
+            "uuid":"sys-err",
+            "parentUuid":"prev",
+            "error":{"formatted":"529 Overloaded","status":529}
+        }"#;
+        let r = parse(line);
+        assert!(r.is_displayable());
+        match r {
+            JsonlRecord::System {
+                subtype,
+                level,
+                retry_attempt,
+                max_retries,
+                error,
+                ..
+            } => {
+                assert_eq!(subtype.as_deref(), Some("api_error"));
+                assert_eq!(level.as_deref(), Some("error"));
+                assert_eq!(retry_attempt, Some(2));
+                assert_eq!(max_retries, Some(10));
+                let e = error.expect("error 对象应透传");
+                assert_eq!(e["formatted"], "529 Overloaded");
+            }
+            other => panic!("expected System, got {other:?}"),
         }
     }
 
