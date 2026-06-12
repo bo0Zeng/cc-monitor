@@ -19,6 +19,12 @@
 - 🔴 **红** = 答完了，等你下一条输入（idle/shell）
 - 旧版 Claude Code（无 status 字段）与远端 Tab 维持原绿点（远端 status 透传另行跟进）。
 
+**Agents 展开区**：status bar 新增 `🤖 N agents (M 运行中)` chip（task 面板同形态，0 agent 隐藏），
+展开后每个 subagent 一行：自己的状态灯（🟢 运行中呼吸 / ✓ 完成 / ✗ 中止）+ [类型] + 描述。
+数据纯前端从 jsonl 流配对 Task/Agent 的 tool_use↔tool_result（零后端改动）；会话变 idle/归档时
+仍在跑的标中止（ESC 打断不留僵尸绿灯）。回答了"agent 在跑时主灯也是绿（官方 busy 不区分）、
+怎么看清单"的问题。
+
 ### 新增 — AskUserQuestion 选项与 API 报错直接可见 (issue #21)
 
 两类"折叠后让用户误以为 LLM 还在输出"的内容改为默认展开、显眼呈现：

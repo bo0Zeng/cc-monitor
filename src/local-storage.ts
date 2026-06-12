@@ -22,6 +22,8 @@ const LS_PREFIX = "cc-monitor." as const;
 /** 集中常量。新加 key 必须在这里登记。 */
 export const LS_KEYS = {
   tasksPanelCollapsed: "cc-monitor.tasks-panel.collapsed",
+  /** issue #23：agents 面板折叠状态（与 tasks 面板同形态的全局单例） */
+  agentsPanelCollapsed: "cc-monitor.agents-panel.collapsed",
   /** v2.1.0 issue #7：每分组的折叠状态。动态生成 key。 */
   settingsCollapsed: (groupId: string) => `cc-monitor.settings.collapsed.${groupId}`,
   /** issue #12：fork 树展开状态（按 sessionId 入集合）。 */

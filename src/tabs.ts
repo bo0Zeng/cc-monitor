@@ -13,6 +13,8 @@ import { showActionFailureToast } from "./error-toast";
 import { RecordTimeline } from "./record-timeline";
 import { renderStreamRecord, type StreamSink } from "./render-stream-record";
 import type { BranchRecord } from "./branching";
+import { isAgentTool } from "./cards/subagent";
+import type { AgentsPanel, AgentEntry } from "./agents-panel";
 
 /**
  * Tab 生命周期：
@@ -52,6 +54,12 @@ export interface Tab {
    * 无 status 字段 / 远端 v1 暂无透传）→ 维持现状绿点。
    */
   activity: { status: string; waitingFor: string | null } | null;
+  /**
+   * issue #23（第二增量）：本会话的 subagent 列表（tool_use id → entry，插入序）。
+   * jsonl 流里配对 Task/Agent 的 tool_use（running）与 tool_result（done）；
+   * 变 idle/归档时把仍 running 的标 aborted。上限 30，超出删最老的非 running。
+   */
+  agents: Map<string, AgentEntry>;
   streamEl: HTMLElement;
   stream: MessageStream;
   /** 父 JSONL 路径（subagent 加载需要） */
@@ -210,6 +218,8 @@ export class TabManager {
     private onTabsChanged?: (summary: TabsSummary) => void,
     /** issue #11: 全局 TasksPanel，切 Tab / 收事件时由 TabManager 喂数据 */
     private tasksPanel?: TasksPanel,
+    /** issue #23: 全局 AgentsPanel（subagent 列表 + 各自状态灯），喂数方式同 tasksPanel */
+    private agentsPanel?: AgentsPanel,
   ) {}
 
   private notifyChanged(): void {
@@ -288,6 +298,9 @@ export class TabManager {
     // timeline，timeline.has 漏判）。本地 seq 全程唯一 → 此 set 永不命中（本地 no-op）。
     if (tab.seenSeqs.has(payload.seq)) return;
     tab.seenSeqs.add(payload.seq);
+
+    // issue #23（第二增量）：配对 agent 工具调用，喂 AgentsPanel
+    this.trackAgents(tab, payload.message);
 
     const ctx: RenderContext = {
       parentPath: tab.parentPath,
@@ -392,6 +405,7 @@ export class TabManager {
       seenSeqs: new Set(),
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
       activity: this.pendingActivity.get(sessionId) ?? null,
+      agents: new Map(),
     };
     this.pendingActivity.delete(sessionId);
     // issue #19：若该 sid 的归档信号先于本次建 Tab 到达（见 archiveTab），落实归档，
@@ -441,6 +455,7 @@ export class TabManager {
     tab.status = "archived";
     // issue #23：会话结束 → 灯灭（CSS 上 archived 本就隐藏 .live-dot，这里保持状态干净）
     tab.activity = null;
+    this.sweepRunningAgents(tab); // 会话死了，running agent 必然中止
     // P5.2 B 重构后无 pendingToolGroup —— archive 不需要打断 tool-group 累积
     // （tool-group 合并改后处理，看 timeline 邻居；archive 后无新 record 入 timeline）。
     this.refreshTabBar();
@@ -473,7 +488,106 @@ export class TabManager {
       return;
     }
     tab.activity = act;
+    // issue #23（第二增量）：turn 结束（idle/shell）→ 没等到 tool_result 的 agent
+    // 必然不会再回来（ESC 打断/异常），标 aborted。waiting 不清——其他 agent 可能
+    // 还在并行跑（waitingFor "worker request" 正是 agent 在要权限）。
+    if (act && (act.status === "idle" || act.status === "shell")) {
+      this.sweepRunningAgents(tab);
+    }
     this.refreshTabBar();
+  }
+
+  /**
+   * issue #23（第二增量）：从 jsonl 流配对 agent 工具调用。
+   * - assistant 的 Task/Agent tool_use → 注册 running（label 取 input.description，
+   *   回退 prompt 首行 / 工具名）
+   * - user 的 tool_result（按 tool_use_id 命中）→ done
+   * 防 spam：只在真有变化时刷新面板。结构防御：message 形态全 unknown 窄化，
+   * 任何不匹配静默跳过（§18 同源精神）。
+   */
+  private trackAgents(tab: Tab, message: unknown): void {
+    const rec = message as {
+      type?: string;
+      message?: { content?: unknown };
+    };
+    const content = rec?.message?.content;
+    if (!Array.isArray(content)) return;
+    let changed = false;
+    if (rec.type === "assistant") {
+      for (const b of content) {
+        const blk = b as {
+          type?: string;
+          id?: string;
+          name?: string;
+          input?: { description?: unknown; prompt?: unknown; subagent_type?: unknown };
+        };
+        if (
+          blk?.type !== "tool_use" ||
+          typeof blk.id !== "string" ||
+          typeof blk.name !== "string" ||
+          !isAgentTool(blk.name)
+        ) {
+          continue;
+        }
+        const desc =
+          typeof blk.input?.description === "string" ? blk.input.description : "";
+        const prompt =
+          typeof blk.input?.prompt === "string" ? blk.input.prompt : "";
+        const label =
+          desc || prompt.split("\n")[0]?.slice(0, 80) || blk.name;
+        const agentType =
+          typeof blk.input?.subagent_type === "string"
+            ? blk.input.subagent_type
+            : null;
+        tab.agents.set(blk.id, {
+          id: blk.id,
+          label,
+          agentType,
+          status: "running",
+        });
+        changed = true;
+      }
+      // 上限 30：超出删最老的非 running（Map 保持插入序）
+      if (tab.agents.size > 30) {
+        for (const [id, a] of tab.agents) {
+          if (tab.agents.size <= 30) break;
+          if (a.status !== "running") tab.agents.delete(id);
+        }
+      }
+    } else if (rec.type === "user") {
+      for (const b of content) {
+        const blk = b as { type?: string; tool_use_id?: string };
+        if (blk?.type !== "tool_result" || typeof blk.tool_use_id !== "string") {
+          continue;
+        }
+        const a = tab.agents.get(blk.tool_use_id);
+        if (a && a.status === "running") {
+          a.status = "done";
+          changed = true;
+        }
+      }
+    }
+    if (changed) this.agentsChanged(tab);
+  }
+
+  /** issue #23：会话不再 busy（idle/shell/归档）→ 仍 running 的 agent 标 aborted
+   *（ESC 打断/崩溃不会有 tool_result，防僵尸"运行中"）。 */
+  private sweepRunningAgents(tab: Tab): void {
+    let changed = false;
+    for (const a of tab.agents.values()) {
+      if (a.status === "running") {
+        a.status = "aborted";
+        changed = true;
+      }
+    }
+    if (changed) this.agentsChanged(tab);
+  }
+
+  /** agents 变化 → 若是 active Tab 同步给全局面板 */
+  private agentsChanged(tab: Tab): void {
+    if (this.activeId === tab.sessionId) {
+      this.agentsPanel?.setSession(tab.sessionId, [...tab.agents.values()]);
+    }
   }
 
   /**
@@ -536,6 +650,7 @@ export class TabManager {
         this.activeId = null;
         // issue #11: 关掉最后一个 Tab → panel 进入 null session 状态
         this.tasksPanel?.setSession(null, []);
+        this.agentsPanel?.setSession(null, []);
         this.refreshTabBar();
       }
     } else {
@@ -842,6 +957,11 @@ export class TabManager {
     }
     // issue #11: 切换 task panel 数据源到新 active Tab 的 sid
     this.tasksPanel?.setSession(sessionId, this.tasksBySid.get(sessionId) ?? []);
+    // issue #23: agents 面板同步切到新 active Tab
+    this.agentsPanel?.setSession(
+      sessionId,
+      [...(this.tabs.get(sessionId)?.agents.values() ?? [])],
+    );
     this.refreshTabBar();
   }
 
