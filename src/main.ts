@@ -225,6 +225,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     onBatchEnd: () => tabs.onBatchEnd(),
     // v2.3.0 issue #11: task watcher 推送的 task 列表更新
     onTasksUpdate: (e) => tabs.updateTasks(e.sessionId, e.tasks),
+    // issue #23: 会话红绿灯（busy=绿 / idle·shell=红 / waiting=黄）
+    onSessionActivity: (e) =>
+      tabs.updateActivity(e.session_id, e.status, e.waiting_for),
   });
 
   // v2.0.0 (issue #4)：后端 ERROR 级别 tracing → 右下角红色 toast
@@ -236,6 +239,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     `[perf] emit frontend-ready @ ${window.__ccmPerf.frontendReadyEmit.toFixed(0)}ms`,
   );
   void emit("frontend-ready");
+
+  // issue #23: 红绿灯初始快照（session-activity 事件不进 replay buffer，F5 会丢；
+  // 快照 + 事件增量双路收敛，同 fetchSessionTasks 模式）。Tab 未建时进 pendingActivity 暂存。
+  void tabs.syncActivitySnapshot();
 });
 
 /**

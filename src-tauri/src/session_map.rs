@@ -16,7 +16,7 @@ use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use parking_lot::RwLock;
 use serde::Deserialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -33,6 +33,21 @@ use std::time::Duration;
 pub struct SessionChange {
     pub added: Vec<String>,
     pub removed: Vec<String>,
+    /// issue #23: 红绿灯——本次重扫中 status/waitingFor 发生变化（含新出现）的会话。
+    /// lib.rs 据此 emit session-activity（变化才发，天然稀疏：CLI 仅在状态转换时
+    /// 重写 sessions/<PID>.json）。
+    pub status_changed: Vec<SessionActivity>,
+}
+
+/// issue #23: 单个会话的红绿灯状态快照（status 直接来自 Claude Code 官方字段）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionActivity {
+    pub session_id: String,
+    /// "busy"（运行中）/ "idle"/"shell"（等输入）/ "waiting"（等弹窗决定）。
+    /// None = 旧版 CC 没写该字段。
+    pub status: Option<String>,
+    /// status=="waiting" 时的细分（"permission prompt" / "dialog open" / "input needed"…）
+    pub waiting_for: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -50,8 +65,15 @@ pub struct SessionInfo {
     /// 复用极小概率误判活跃，但比 "session 完全不出现" 强）。
     #[serde(rename = "procStart", default)]
     pub proc_start: Option<String>,
-    // status 字段（Claude Code 写入 "busy"/"shell"）当前 monitor 不消费；serde 默认
-    // 忽略 JSON 里的额外字段，无需显式声明
+    /// issue #23: Claude Code 官方会话状态（"busy"/"idle"/"waiting"/"shell"），
+    /// CLI **仅在状态转换时**重写本文件（实测与 jsonl turn_duration 同步，差 ~24ms）。
+    /// 红绿灯主信号。Option 兜旧版 CC 无此字段。
+    #[serde(default)]
+    pub status: Option<String>,
+    /// issue #23: status=="waiting" 时的细分原因（"permission prompt" / "dialog open"
+    /// / "input needed" / "worker request" / "sandbox request"）。
+    #[serde(rename = "waitingFor", default)]
+    pub waiting_for: Option<String>,
     /// Claude 给会话起的语义名（aka ai-title）。保留字段以备未来 v1.7 注入式绑定使用。
     #[serde(default)]
     #[allow(dead_code)]
@@ -118,11 +140,67 @@ impl SessionMap {
     pub fn lookup(&self, session_id: &str) -> Option<SessionInfo> {
         self.by_id.read().get(session_id).cloned()
     }
+
+    /// issue #23: 当前全部活跃会话的红绿灯快照。前端启动/F5 后拉一次做初始收敛
+    /// （session-activity 事件不进 replay buffer，刷新会丢——同 get_session_tasks
+    /// 的「快照 + 事件增量」双路收敛模式）。
+    pub fn snapshot_activity(&self) -> Vec<SessionActivity> {
+        self.by_id
+            .read()
+            .iter()
+            .map(|(sid, info)| SessionActivity {
+                session_id: sid.clone(),
+                status: info.status.clone(),
+                waiting_for: info.waiting_for.clone(),
+            })
+            .collect()
+    }
 }
 
 fn scan_dir(dir: &Path) -> HashMap<String, SessionInfo> {
     // P3 归并：走 utils::scan_dir_jsons。
     crate::utils::scan_dir_jsons(dir, |info: &SessionInfo| info.session_id.clone())
+}
+
+/// issue #23: 重扫 diff（纯函数，供单测）。
+///
+/// - removed/added：sid 集合差（与历史 HashSet difference 逻辑等价）。
+/// - status_changed：next 中 status/waitingFor 与 prev 不同的会话；**新出现的也算**
+///   （让前端立即拿到初始灯色）。CLI 状态转换 = 重写 PID.json = 文件事件 = 必走
+///   scan → 本函数，是状态变化的唯一检出点（心跳分支不重读文件、无状态可比）。
+fn diff_sessions(
+    prev: &HashMap<String, SessionInfo>,
+    next: &HashMap<String, SessionInfo>,
+) -> SessionChange {
+    let removed: Vec<String> = prev
+        .keys()
+        .filter(|k| !next.contains_key(*k))
+        .cloned()
+        .collect();
+    let added: Vec<String> = next
+        .keys()
+        .filter(|k| !prev.contains_key(*k))
+        .cloned()
+        .collect();
+    let mut status_changed: Vec<SessionActivity> = Vec::new();
+    for (sid, info) in next {
+        let changed = match prev.get(sid) {
+            Some(p) => p.status != info.status || p.waiting_for != info.waiting_for,
+            None => true,
+        };
+        if changed {
+            status_changed.push(SessionActivity {
+                session_id: sid.clone(),
+                status: info.status.clone(),
+                waiting_for: info.waiting_for.clone(),
+            });
+        }
+    }
+    SessionChange {
+        added,
+        removed,
+        status_changed,
+    }
 }
 
 fn run_watcher(
@@ -167,19 +245,26 @@ fn run_watcher(
         if scan {
             let next = scan_dir(&dir);
             let n = next.len();
-            let next_keys: HashSet<String> = next.keys().cloned().collect();
-            let prev_keys: HashSet<String> = by_id.read().keys().cloned().collect();
-            let removed: Vec<String> = prev_keys.difference(&next_keys).cloned().collect();
-            let added: Vec<String> = next_keys.difference(&prev_keys).cloned().collect();
+            // issue #23: diff 抽纯函数（可单测，"变化才发"契约的唯一实现点）。
+            // 块作用域确保 read guard 在 write 前释放（parking_lot 同线程 read→write 死锁）。
+            let change = {
+                let prev = by_id.read();
+                diff_sessions(&prev, &next)
+            };
             *by_id.write() = next;
-            if !removed.is_empty() || !added.is_empty() {
-                tracing::info!(
-                    "session_map: {n} active (+{} -{})",
-                    added.len(),
-                    removed.len()
-                );
+            if !change.removed.is_empty()
+                || !change.added.is_empty()
+                || !change.status_changed.is_empty()
+            {
+                if !change.removed.is_empty() || !change.added.is_empty() {
+                    tracing::info!(
+                        "session_map: {n} active (+{} -{})",
+                        change.added.len(),
+                        change.removed.len()
+                    );
+                }
                 if let Some(tx) = &change_tx {
-                    let _ = tx.send(SessionChange { added, removed });
+                    let _ = tx.send(change);
                 }
             }
         } else {
@@ -210,6 +295,7 @@ fn run_watcher(
                     let _ = tx.send(SessionChange {
                         added: vec![],
                         removed: dead,
+                        status_changed: vec![],
                     });
                 }
             }
@@ -298,14 +384,101 @@ mod tests {
     #[test]
     fn parse_session_info() {
         // 来自 Claude Code 实际写入的 sessions/<PID>.json 的最小代表样本；
-        // status / startedAt 等 monitor 不消费的字段也带上，确认 serde 默认能
-        // 忽略未声明的字段
+        // startedAt 等 monitor 不消费的字段也带上，确认 serde 默认能忽略未声明字段。
+        // issue #23 起 status 被消费（红绿灯主信号）。
         let raw = r#"{"pid":35776,"sessionId":"5b67f422-52a9-453c-bd64-3288a78a24a0","cwd":"D:\\x","startedAt":1779157297377,"procStart":"639147828963703970","status":"busy"}"#;
         let info: SessionInfo = serde_json::from_str(raw).unwrap();
         assert_eq!(info.pid, 35776);
         assert_eq!(info.session_id, "5b67f422-52a9-453c-bd64-3288a78a24a0");
         assert_eq!(info.proc_start.as_deref(), Some("639147828963703970"));
+        assert_eq!(info.status.as_deref(), Some("busy"));
+        assert_eq!(info.waiting_for, None);
         assert_eq!(info.name, None);
+    }
+
+    // === issue #23: diff_sessions 行为测试（"变化才发"契约的唯一实现点） ===
+
+    fn mk(sid: &str, status: Option<&str>, waiting: Option<&str>) -> SessionInfo {
+        SessionInfo {
+            pid: 1,
+            session_id: sid.to_string(),
+            cwd: "x".into(),
+            proc_start: None,
+            status: status.map(String::from),
+            waiting_for: waiting.map(String::from),
+            name: None,
+        }
+    }
+    fn as_map(items: Vec<SessionInfo>) -> HashMap<String, SessionInfo> {
+        items
+            .into_iter()
+            .map(|i| (i.session_id.clone(), i))
+            .collect()
+    }
+
+    #[test]
+    fn diff_new_session_counts_as_added_and_status_changed() {
+        // 新会话 → added + status_changed（前端立即拿初始灯色）
+        let prev = as_map(vec![]);
+        let next = as_map(vec![mk("s1", Some("busy"), None)]);
+        let c = diff_sessions(&prev, &next);
+        assert_eq!(c.added, vec!["s1".to_string()]);
+        assert!(c.removed.is_empty());
+        assert_eq!(c.status_changed.len(), 1);
+        assert_eq!(c.status_changed[0].status.as_deref(), Some("busy"));
+    }
+
+    #[test]
+    fn diff_status_flip_detected() {
+        // busy → idle 翻转检出，且不误报 added/removed
+        let prev = as_map(vec![mk("s1", Some("busy"), None)]);
+        let next = as_map(vec![mk("s1", Some("idle"), None)]);
+        let c = diff_sessions(&prev, &next);
+        assert!(c.added.is_empty() && c.removed.is_empty());
+        assert_eq!(c.status_changed.len(), 1);
+        assert_eq!(c.status_changed[0].status.as_deref(), Some("idle"));
+    }
+
+    #[test]
+    fn diff_waiting_for_only_change_detected() {
+        // status 同为 waiting、仅 waitingFor 变 → 也算变化（tooltip 细分要跟）
+        let prev = as_map(vec![mk("s1", Some("waiting"), Some("dialog open"))]);
+        let next = as_map(vec![mk("s1", Some("waiting"), Some("permission prompt"))]);
+        let c = diff_sessions(&prev, &next);
+        assert_eq!(c.status_changed.len(), 1);
+        assert_eq!(
+            c.status_changed[0].waiting_for.as_deref(),
+            Some("permission prompt")
+        );
+    }
+
+    #[test]
+    fn diff_no_change_is_all_empty() {
+        // 无变化 → 三个集合全空（watcher 据此不 send，保持稀疏）
+        let prev = as_map(vec![mk("s1", Some("busy"), None), mk("s2", None, None)]);
+        let next = as_map(vec![mk("s1", Some("busy"), None), mk("s2", None, None)]);
+        let c = diff_sessions(&prev, &next);
+        assert!(c.added.is_empty() && c.removed.is_empty() && c.status_changed.is_empty());
+    }
+
+    #[test]
+    fn diff_removed_session_not_in_status_changed() {
+        // 消失的会话只进 removed（灯由 session-ended → archiveTab 收尾）
+        let prev = as_map(vec![mk("s1", Some("busy"), None)]);
+        let next = as_map(vec![]);
+        let c = diff_sessions(&prev, &next);
+        assert_eq!(c.removed, vec!["s1".to_string()]);
+        assert!(c.status_changed.is_empty());
+    }
+
+    /// issue #23：waiting 状态带 waitingFor 细分（CLI v2.1.175 实测字段）。
+    /// 旧版 CC 无 status 字段 → None（parse_session_info_minimal 已覆盖缺省路径）。
+    #[test]
+    fn parse_session_info_waiting_with_reason() {
+        let raw = r#"{"pid":1,"sessionId":"s","cwd":"x","procStart":"100","status":"waiting","waitingFor":"permission prompt","updatedAt":1781280404074,"statusUpdatedAt":1781280404074}"#;
+        let info: SessionInfo = serde_json::from_str(raw).unwrap();
+        assert_eq!(info.status.as_deref(), Some("waiting"));
+        assert_eq!(info.waiting_for.as_deref(), Some("permission prompt"));
     }
 
     #[test]

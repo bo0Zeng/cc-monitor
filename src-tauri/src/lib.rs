@@ -197,6 +197,20 @@ pub fn run() {
                                     tracing::info!("session ended: {sid}");
                                 }
                             }
+                            // issue #23：红绿灯——status/waitingFor 变了才会出现在这里
+                            // （session_map 重扫时逐会话比对），透传给前端改灯色。
+                            for act in change.status_changed {
+                                let payload = bridge::SessionActivityPayload {
+                                    session_id: act.session_id,
+                                    status: act.status,
+                                    waiting_for: act.waiting_for,
+                                };
+                                if let Err(e) =
+                                    handle.emit(bridge::events::SESSION_ACTIVITY, &payload)
+                                {
+                                    tracing::warn!("emit session-activity failed: {e}");
+                                }
+                            }
                         }
                     });
                 if let Err(e) = spawned {
@@ -462,6 +476,8 @@ pub fn run() {
             bring_terminal_to_front,
             // Feature ②: 远端 Tab ↗ 拉前对应本地终端窗口（ccm wrapper 设标题绑定）
             bring_remote_terminal_to_front,
+            // issue #23: 红绿灯快照（启动/F5 初始收敛；增量走 session-activity 事件）
+            list_session_activity,
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
             cc_integration_status,
@@ -817,6 +833,23 @@ async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), String> {
     let _ = win.unminimize();
     let _ = win.show();
     win.set_focus().map_err(|e| format!("set_focus: {e}"))
+}
+
+/// issue #23：当前全部本地活跃会话的红绿灯快照。前端启动/F5 后调一次做初始收敛
+/// （session-activity 是稀疏事件、不进 replay buffer，刷新会丢——同 get_session_tasks
+/// 的「快照 + 事件增量」双路收敛模式）。纯内存读（RwLock clone），无需 spawn_blocking。
+#[tauri::command]
+fn list_session_activity(
+    map: tauri::State<'_, Arc<session_map::SessionMap>>,
+) -> Vec<bridge::SessionActivityPayload> {
+    map.snapshot_activity()
+        .into_iter()
+        .map(|a| bridge::SessionActivityPayload {
+            session_id: a.session_id,
+            status: a.status,
+            waiting_for: a.waiting_for,
+        })
+        .collect()
 }
 
 /// v1.7：拉对应终端窗口。

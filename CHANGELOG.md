@@ -10,6 +10,15 @@
 
 ## [未发布]
 
+### 新增 — 会话红绿灯 (issue #23)
+
+每个本地 Tab 的状态圆点现在反映 Claude 的实时状态（信号直连 Claude Code 官方
+`sessions/<PID>.json` 的 `status` 字段，仅状态转换时更新，延迟 <1s）：
+- 🟢 **绿** = AI 运行中（busy）
+- 🟡 **黄**（呼吸闪烁）= 等你**决定**——权限确认 / 弹窗选择（waiting，悬停 Tab 可见细分原因）
+- 🔴 **红** = 答完了，等你下一条输入（idle/shell）
+- 旧版 Claude Code（无 status 字段）与远端 Tab 维持原绿点（远端 status 透传另行跟进）。
+
 ### 新增 — AskUserQuestion 选项与 API 报错直接可见 (issue #21)
 
 两类"折叠后让用户误以为 LLM 还在输出"的内容改为默认展开、显眼呈现：

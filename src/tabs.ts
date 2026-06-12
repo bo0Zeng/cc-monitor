@@ -47,6 +47,11 @@ export interface Tab {
    */
   origin: string | null;
   status: TabStatus;
+  /**
+   * issue #23：红绿灯（与 TabStatus 正交，不碰 archived 门控）。null=未知（旧版 CC
+   * 无 status 字段 / 远端 v1 暂无透传）→ 维持现状绿点。
+   */
+  activity: { status: string; waitingFor: string | null } | null;
   streamEl: HTMLElement;
   stream: MessageStream;
   /** 父 JSONL 路径（subagent 加载需要） */
@@ -138,6 +143,14 @@ export class TabManager {
    * archiveTab 时若 Tab 还不存在，记进这里；ensureTab 建 Tab 时回查、落实归档。
    */
   private pendingArchive = new Set<string>();
+  /**
+   * issue #23：红绿灯信号早于 Tab 建出来时暂存（同 pendingArchive 的时序竞争模式：
+   * session-activity 同步派发，而建 Tab 的行走异步 queue/drain）。ensureTab 时落实。
+   */
+  private pendingActivity = new Map<
+    string,
+    { status: string; waitingFor: string | null }
+  >();
   /**
    * v2.4 issue #2：用户在终端真敲键 → 自动切到对应 Tab 的开关。
    * 默认 true，从 config.json (autoFollowUserActive) 加载。
@@ -377,12 +390,16 @@ export class TabManager {
       branchFolder,
       pendingToolResults: new Map(),
       seenSeqs: new Set(),
+      // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
+      activity: this.pendingActivity.get(sessionId) ?? null,
     };
+    this.pendingActivity.delete(sessionId);
     // issue #19：若该 sid 的归档信号先于本次建 Tab 到达（见 archiveTab），落实归档，
     // 避免重载后已结束会话复活成关不掉的 live Tab。本地 un-archive（上方 origin!==null
     // 那条）不适用，故归档后续 replay 行也不会把它复活。
     if (this.pendingArchive.delete(sessionId)) {
       tab.status = "archived";
+      tab.activity = null; // 同 archiveTab：死会话不留陈旧灯/tooltip
     }
     this.tabs.set(sessionId, tab);
     this.orderedIds.push(sessionId);
@@ -417,13 +434,64 @@ export class TabManager {
       // issue #19：Tab 还没被 ensureTab 建出来（归档信号早于 replay 行到达）——
       // 记下待归档，建 Tab 时落实。否则这里直接 return 会静默丢弃归档 → 僵尸 live Tab。
       this.pendingArchive.add(sessionId);
+      this.pendingActivity.delete(sessionId); // issue #23：死会话的暂存灯一并清
       return;
     }
     if (tab.status === "archived") return;
     tab.status = "archived";
+    // issue #23：会话结束 → 灯灭（CSS 上 archived 本就隐藏 .live-dot，这里保持状态干净）
+    tab.activity = null;
     // P5.2 B 重构后无 pendingToolGroup —— archive 不需要打断 tool-group 累积
     // （tool-group 合并改后处理，看 timeline 邻居；archive 后无新 record 入 timeline）。
     this.refreshTabBar();
+  }
+
+  /**
+   * issue #23：红绿灯状态更新（session-activity 事件 / 启动快照两路汇入）。
+   * status=null（旧版 CC 无字段）视为未知 → 清空回绿点现状。Tab 还没建则暂存
+   * （pendingActivity，ensureTab 落实）。无变化不重绘。
+   */
+  updateActivity(
+    sessionId: string,
+    status: string | null,
+    waitingFor: string | null,
+  ): void {
+    const act = status === null ? null : { status, waitingFor };
+    const tab = this.tabs.get(sessionId);
+    if (!tab) {
+      if (act) this.pendingActivity.set(sessionId, act);
+      else this.pendingActivity.delete(sessionId);
+      return;
+    }
+    // archived 不更新（审计：心跳清死会话后磁盘残留 PID.json 被重扫会推陈旧
+    // activity，archived tab 会挂上过期的 waiting tooltip——灯本身被 CSS 隐藏）。
+    if (tab.status === "archived") return;
+    if (
+      tab.activity?.status === act?.status &&
+      tab.activity?.waitingFor === act?.waitingFor
+    ) {
+      return;
+    }
+    tab.activity = act;
+    this.refreshTabBar();
+  }
+
+  /**
+   * issue #23：启动/F5 后拉一次红绿灯快照做初始收敛——session-activity 是稀疏
+   * 事件、不进 replay buffer，重载会丢（同 fetchSessionTasks 的双路收敛模式）。
+   * 失败静默（灯保持未知绿，不影响主功能）。
+   */
+  async syncActivitySnapshot(): Promise<void> {
+    try {
+      const list = await invoke<
+        { session_id: string; status: string | null; waiting_for: string | null }[]
+      >("list_session_activity");
+      for (const a of list) {
+        this.updateActivity(a.session_id, a.status, a.waiting_for);
+      }
+    } catch (e) {
+      console.warn("list_session_activity failed:", e);
+    }
   }
 
   /**
@@ -927,6 +995,18 @@ export class TabManager {
     // 本地不存在，故 .remote 类只隐藏「打开工作目录」📂（CSS）。「调出终端」↗ 现在保留
     // 给远端 —— 点击走 bringRemoteTerminalToFront（后端按 ccm-rbind 拉本地 ssh 窗口）。
     refs.root.classList.toggle("remote", tab.origin !== null);
+    // issue #23 红绿灯：busy=绿（.live-dot 默认色）/ idle·shell=红 / waiting=黄。
+    // activity 为 null（旧版 CC / 远端 v1）不加类 → 维持现状绿点。
+    const actStatus = tab.activity?.status ?? null;
+    refs.root.classList.toggle(
+      "act-idle",
+      actStatus === "idle" || actStatus === "shell",
+    );
+    refs.root.classList.toggle("act-waiting", actStatus === "waiting");
+    refs.root.title =
+      actStatus === "waiting" && tab.activity?.waitingFor
+        ? `等待操作：${tab.activity.waitingFor}`
+        : "";
     const unread = tab.unread > 0 && sid !== this.activeId;
     refs.root.classList.toggle("has-unread", unread);
 
