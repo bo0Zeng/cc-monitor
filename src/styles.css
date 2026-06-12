@@ -281,6 +281,24 @@ body.viewer-mode .history-trigger {
   background: var(--live);
   flex-shrink: 0;
 }
+/* issue #23 红绿灯：busy=绿（默认 --live）；idle/shell=红（等输入）；waiting=黄
+   （等权限/弹窗决定，呼吸提醒）。activity 未知（旧版 CC / 远端 v1）不加类保持绿。 */
+.tab.act-idle .live-dot {
+  background: var(--error);
+}
+.tab.act-waiting .live-dot {
+  background: var(--warn); /* 主题 token（同红灯用 --error），用户改主题两灯一起跟 */
+  animation: act-waiting-pulse 1.2s ease-in-out infinite;
+}
+@keyframes act-waiting-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
 
 .tab-badge {
   background: var(--accent);

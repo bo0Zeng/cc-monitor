@@ -60,6 +60,19 @@ export interface EventHandlers {
    * 不进 queue —— task 事件稀疏（人类敲命令级），直接同步派发。
    */
   onTasksUpdate?: (payload: TasksUpdatePayload) => void;
+  /**
+   * issue #23：会话红绿灯。后端仅在 sessions/<PID>.json 的官方 status 变化时
+   * emit（天然稀疏，同 session-ended 直接同步派发）。status: "busy"=运行中 /
+   * "idle"/"shell"=等输入 / "waiting"=等弹窗决定（waiting_for 细分原因）。
+   */
+  onSessionActivity?: (payload: SessionActivityPayload) => void;
+}
+
+/** issue #23：session-activity 事件 payload（镜像 bridge.rs::SessionActivityPayload） */
+export interface SessionActivityPayload {
+  session_id: string;
+  status: string | null;
+  waiting_for: string | null;
 }
 
 /** queue 中的不同事件类型，drain 按 kind 派发 */
@@ -287,6 +300,13 @@ export async function bindEvents(
   registrations.push(
     sub<TasksUpdatePayload>("task-update", (e) => {
       handlers.onTasksUpdate?.(e.payload);
+    }),
+  );
+
+  // issue #23: session-activity 稀疏（CLI 仅在状态转换时写），同步派发
+  registrations.push(
+    sub<SessionActivityPayload>("session-activity", (e) => {
+      handlers.onSessionActivity?.(e.payload);
     }),
   );
 

@@ -455,6 +455,7 @@ pub async fn run(
             if let Err(e) = session_changes.send(SessionChange {
                 added: vec![],
                 removed,
+                status_changed: vec![], // issue #23: 远端暂无 status 透传（v1 本地先行）
             }) {
                 tracing::warn!("ssh_source final session archival send failed: {e}");
             }
@@ -549,6 +550,7 @@ async fn stream_loop(
                 if let Err(e) = session_changes.send(SessionChange {
                     added: vec![sid],
                     removed: vec![],
+                    status_changed: vec![],
                 }) {
                     tracing::warn!("ssh_source session_added send failed: {e}");
                 }
@@ -559,6 +561,7 @@ async fn stream_loop(
                 if let Err(e) = session_changes.send(SessionChange {
                     added: vec![],
                     removed: vec![sid],
+                    status_changed: vec![],
                 }) {
                     tracing::warn!("ssh_source session_removed send failed: {e}");
                 }

@@ -18,6 +18,10 @@ pub mod events {
     /// 后端重读 `<claude_dir>/tasks/<sid>/` 整目录后 emit 该 sid 的完整 task 列表。
     /// 前端按 sid 路由到对应 Tab 的 tasks panel。
     pub const TASKS_UPDATE: &str = "task-update";
+    /// issue #23：会话红绿灯。session_map 检测到 sessions/<PID>.json 的官方 status
+    /// 字段变化时 emit（变化才发——CLI 仅在状态转换时重写文件，天然稀疏）。
+    /// 前端启动/F5 用 `list_session_activity` IPC 拉快照收敛（本事件不进 replay buffer）。
+    pub const SESSION_ACTIVITY: &str = "session-activity";
     // FOCUS_SWITCH 已删除：Win11 默认终端 (WindowsTerminal.exe) 是单进程多窗口架构，
     // OS GetForegroundWindow 只能拿到 WT 主进程 PID，无法区分 tab/window 内跑哪个
     // claude session。在 WT 默认环境下永远不工作；非 WT 终端可工作但不值为少数场景维护。
@@ -70,6 +74,16 @@ pub struct JsonlBatchPayload {
 #[derive(Debug, Serialize, Clone)]
 pub struct SessionEndedPayload {
     pub session_id: String,
+}
+
+/// issue #23：会话红绿灯状态。`status` 直接透传 Claude Code 官方枚举
+/// （"busy" / "idle" / "shell" / "waiting"，None=旧版 CC 无此字段，前端按未知处理）；
+/// `waiting_for` 仅 status=="waiting" 时有（"permission prompt" / "dialog open" …）。
+#[derive(Debug, Serialize, Clone)]
+pub struct SessionActivityPayload {
+    pub session_id: String,
+    pub status: Option<String>,
+    pub waiting_for: Option<String>,
 }
 
 /// v2.3.0 issue #11：单个 session 的最新 task 列表快照。
