@@ -283,6 +283,26 @@ impl EventReplay {
             tracing::info!("event_replay forget {session_id}: dropped {removed} entries");
         }
     }
+
+    /// replay 后对账用：buffer 里所有**本地**（`origin == None`）session 的去重 sid。
+    ///
+    /// 前端是纯事件增量模型：Tab 见行即建 live，只有一次性的 `session-ended` 能归档。
+    /// F5 / HMR 重载后 replay 把 buffer 里已结束会话的行也重放成 live Tab，但归档信号
+    /// （session-ended）不在 buffer、不会重发 → 僵尸 live Tab（还因 closeTab 门控
+    /// archived 而关不掉）。frontend-ready 重放后，用本集合 × session_map 当前活跃集
+    /// 对账、对已结束的本地 sid 补发 session-ended（issue #19）。**仅本地**：session_map
+    /// 只认本地，远端 sid 不在其中，一起对账会误归档活的远端 Tab（远端同类缺口另行处理）。
+    pub fn buffered_local_session_ids(&self) -> Vec<String> {
+        let inner = self.inner.lock();
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        for p in inner.history.iter() {
+            if p.origin.is_none() && seen.insert(p.session_id.clone()) {
+                out.push(p.session_id.clone());
+            }
+        }
+        out
+    }
 }
 
 impl Default for EventReplay {
@@ -332,6 +352,24 @@ mod tests {
         let path = &p.path;
         let last = path.rsplit('/').next().unwrap();
         last.trim_end_matches(".jsonl").parse().unwrap()
+    }
+
+    #[test]
+    fn buffered_local_session_ids_dedups_and_skips_remote() {
+        let replay = EventReplay::new();
+        {
+            // 子模块可直接访问私有 inner。
+            let mut inner = replay.inner.lock();
+            inner.history.push_back(payload("s1", 0));
+            inner.history.push_back(payload("s1", 1)); // 同 sid 第二行 → 去重
+            inner.history.push_back(payload("s2", 0));
+            let mut remote = payload("r1", 0);
+            remote.origin = Some("nanopi".to_string()); // 远端 → 跳过
+            inner.history.push_back(remote);
+        }
+        let mut ids = replay.buffered_local_session_ids();
+        ids.sort();
+        assert_eq!(ids, vec!["s1".to_string(), "s2".to_string()]);
     }
 
     #[test]

@@ -73,7 +73,7 @@ Arc 不只通过 State 共享，还通过 `.clone()` 喂给 spawn 出去的线�
 
 | Arc | 还在哪持有 |
 |---|---|
-| `session_map` | (1) `active_filter` 闭包（喂给 watcher） (2) `session-changes-emitter` 线程 (3) `app.manage` |
+| `session_map` | (1) `active_filter` 闭包（喂给 watcher） (2) `session-changes-emitter` 线程 (3) `frontend-ready` listen 闭包（issue #19：重放后按活跃集对账，归档已结束的本地 Tab） (4) `app.manage` |
 | `bind_registry` | (1) `BindRegistry::spawn()` 内部启动的 `bind-await-watcher` + `bind-heartbeat` 两个线程 (2) `session-changes-emitter` 线程 (`bind_for_emitter`) (3) `app.manage` |
 | `sid_hwnd_cache` | (1) `session-changes-emitter` 线程 (`cache_for_emitter`) (2) `app.manage` |
 | `replay` | (1) `app.listen("frontend-ready", ...)` 闭包 (2) spawn 的 jsonl 处理 async task (3) `app.manage` |

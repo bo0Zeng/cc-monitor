@@ -358,11 +358,13 @@ pub fn run() {
                 let replay = replay.clone();
                 let handle = app.handle().clone();
                 let initial_scan_done = initial_scan_done.clone();
+                let session_map = session_map.clone();
                 let t0_capture = t0;
                 app.listen("frontend-ready", move |_event| {
                     let replay = replay.clone();
                     let handle = handle.clone();
                     let initial_scan_done = initial_scan_done.clone();
+                    let session_map = session_map.clone();
                     let listen_recv_at = t0_capture.elapsed().as_millis();
                     tauri::async_runtime::spawn(async move {
                         tracing::info!(
@@ -389,6 +391,37 @@ pub fn run() {
                             wait_started.elapsed().as_millis()
                         );
                         replay.replay_and_mark_ready(&handle);
+
+                        // issue #19：前端是纯事件增量模型——Tab 见行即建 live，只有一次性的
+                        // session-ended 能归档。F5/HMR 重载后 replay 把 buffer 里**已结束**
+                        // 会话的行也重放成 live Tab，而归档信号不在 buffer、不会重发 → 僵尸
+                        // live Tab（还因 closeTab 门控 archived 而关不掉）。这里按当前活跃集
+                        // 对账：对已不活跃的**本地** sid 补发 session-ended，复用前端
+                        // archiveTab（幂等）。仅本地：session_map 只认本地，远端 sid 不在其中，
+                        // 一起对账会误归档活的远端 Tab（远端同类缺口另行处理）。
+                        let stale: Vec<String> = replay
+                            .buffered_local_session_ids()
+                            .into_iter()
+                            .filter(|sid| !session_map.is_session_active(sid))
+                            .collect();
+                        for sid in &stale {
+                            if let Err(e) = handle.emit(
+                                bridge::events::SESSION_ENDED,
+                                &bridge::SessionEndedPayload {
+                                    session_id: sid.clone(),
+                                },
+                            ) {
+                                tracing::warn!(
+                                    "reconcile emit session-ended failed for {sid}: {e}"
+                                );
+                            }
+                        }
+                        if !stale.is_empty() {
+                            tracing::info!(
+                                "replay 对账：补发 session-ended 归档 {} 个已结束的本地 Tab",
+                                stale.len()
+                            );
+                        }
                     });
                 });
             }
@@ -834,9 +867,9 @@ async fn bring_remote_terminal_to_front(
             Some(b) => b,
             None => {
                 cache.try_bind(&session_id);
-                cache.lookup(&session_id).ok_or_else(|| {
-                    "未绑定窗口（远端会话需在远端启用 ccm wrapper）".to_string()
-                })?
+                cache
+                    .lookup(&session_id)
+                    .ok_or_else(|| "未绑定窗口（远端会话需在远端启用 ccm wrapper）".to_string())?
             }
         };
         bind::verify_binding(&binding)?;
