@@ -295,6 +295,16 @@ pub async fn connect_and_exec(
 ) -> Result<russh::ChannelStream<client::Msg>, String> {
     // 与 jsonl-watcher 不同，daemon 是长连接：inactivity_timeout=None → connect_session
     // 自动启用 30s keepalive（见 FIX 1 注释），靠 keepalive + EOF 检死链，不靠定时拆链。
+    connect_and_exec_cmd(cfg, &cfg.daemon_path).await
+}
+
+/// [`connect_and_exec`] 的通用形态：exec 任意命令行（issue #16：历史查询走
+/// `<daemon_path> --list-projects` 等一次性命令，与流式 daemon 同一连接建立逻辑、
+/// 各自独立连接互不影响）。
+pub async fn connect_and_exec_cmd(
+    cfg: &RemoteConfig,
+    cmd: &str,
+) -> Result<russh::ChannelStream<client::Msg>, String> {
     let (session, _fp) = connect_session(cfg, None).await?;
 
     let channel = session
@@ -304,12 +314,18 @@ pub async fn connect_and_exec(
 
     // want_reply = true：等远端确认 exec 成功再继续。
     channel
-        .exec(true, cfg.daemon_path.as_bytes())
+        .exec(true, cmd.as_bytes())
         .await
-        .map_err(|e| format!("exec {} 失败: {e}", cfg.daemon_path))?;
+        .map_err(|e| format!("exec {cmd} 失败: {e}"))?;
 
     // into_stream 把 channel 变成 AsyncRead+AsyncWrite；读端就是 daemon stdout 流。
     Ok(channel.into_stream())
+}
+
+/// POSIX shell 单引号转义（issue #16：历史查询的路径参数经远端 shell 解析，
+/// 含空格/特殊字符必须包引号；单引号本身按 `'\''` 规则逃逸）。
+pub fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
 }
 
 /// daemon→client 的一帧（解析后的 inbound 表示）。

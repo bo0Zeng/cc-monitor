@@ -17,6 +17,7 @@ mod messages;
 mod parser;
 mod paths;
 mod profile_installer;
+mod remote_history;
 mod search;
 mod session_map;
 // SSH-remote Phase 0 (issue #15)：从 setup() 调用 —— 当 config.json 的
@@ -582,6 +583,9 @@ pub fn run() {
             history::list_history_projects,
             history::stream_history_sessions_in_project,
             history::stream_read_session_jsonl,
+            remote_history::list_remote_history_projects,
+            remote_history::stream_remote_history_sessions,
+            remote_history::stream_read_remote_session,
             history::delete_history_session,
             history::update_history_metadata,
             history::resume_history_session,
@@ -632,7 +636,7 @@ fn extract_cwd(rec: &messages::JsonlRecord) -> Option<String> {
 ///   "hostKeyFingerprint": "SHA256:..."              // 可选（缺则首连 TOFU）
 /// }
 /// ```
-fn load_remote_config() -> Option<ssh_source::RemoteConfig> {
+pub(crate) fn load_remote_config() -> Option<ssh_source::RemoteConfig> {
     let cfg_path = paths::resolve_config_path()?;
     if !cfg_path.exists() {
         return None;
