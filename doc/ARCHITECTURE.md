@@ -142,7 +142,7 @@ src/
 
 ## 3. Tauri State 注册矩阵
 
-`src-tauri/src/lib.rs::run().setup()` 注册 4 个 Arc-shared State：
+`src-tauri/src/lib.rs::run().setup()` 注册 7 个 Arc-shared State：
 
 | State 类型 | 持有者 | 喂给的 IPC 命令 |
 |---|---|---|
@@ -151,6 +151,8 @@ src/
 | `Arc<BindRegistry>` | setup 闭包 + `bind-await-watcher` 线程 + `bind-heartbeat` 线程 + `session-changes-emitter` 线程 + `app.manage` | `cc_integration_status` |
 | `Arc<SidHwndCache>` | setup 闭包 + `session-changes-emitter` 线程 + `app.manage` | `bring_terminal_to_front` |
 | `Arc<LoggingState>` (v2.0.0+) | `run()` 局部（持有 WorkerGuard） + setup 闭包（install_error_emitter 注入 closure） + `app.manage` | `get_diagnostics_config` / `set_diagnostics_config` / `get_log_file_info` / `open_log_file` / `open_log_dir` |
+| `Arc<SearchIndex>` (issue #6) | setup 闭包 + `search-index-build` 后台线程（`build_blocking`） + `app.manage` | `search_history` / `get_search_index_status` / `rebuild_search_index` |
+| `Arc<RemoteHwndCache>` (issue #18) | setup 闭包 + `remote-session-emitter` 线程（每 sid scan 子线程 `try_bind` / removed 时 `forget`） + `app.manage` | `bring_remote_terminal_to_front` |
 
 详细 consumer 矩阵 + 修改规则 → [STATE-MATRIX.md](STATE-MATRIX.md)。
 

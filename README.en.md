@@ -2,11 +2,11 @@
 
 > **Read-only output renderer for Claude Code CLI** — Tauri 2 + Vanilla TypeScript, Windows desktop app
 >
-> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 | Current: v2.8.0 (v2.8.1 fixes pending)
+> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 | Current: v2.9.6
 
 Renders the real-time conversation written by Claude Code CLI to `~/.claude/projects/*.jsonl` with a modern UI: Markdown / LaTeX / syntax highlighting / collapsible tool-call cards / auto multi-tab management / history browsing & resume. **Fully read-only, zero intrusion** (does not modify any Claude Code file; the only exception is when the user **explicitly** clicks delete in the history browser).
 
-**Project status**: Stable & in use. 97 cargo unit tests + strict tsc type-check. **All 8 feat issues done** (incl. #6 history full-text search in v2.7.0, #10 Tab in an independent window in v2.8.0). Current release v2.8.0; **v2.8.1 (pending)** fixes two bugs: blank history viewer (read-only stream visibility) and resume now launches via PowerShell + `cc` (loads your profile so proxy/env apply). See [CHANGELOG](CHANGELOG.md) + [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md).
+**Project status**: Stable & in use. 130 backend + 17 remote-daemon + 3 frontend pure-function tests, strict tsc type-check, CI green. Current release **v2.9.6**, now covering **SSH remote mode** (aggregate local + remote-machine sessions in one window, #15/#17/#18/#20), **session status lights** (live busy/waiting/idle, #23), visible AskUserQuestion options / API errors (#21), single-key shortcuts + tab tear-off, and more. See [CHANGELOG](CHANGELOG.md) + [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md).
 
 ---
 
@@ -15,8 +15,15 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 ### Real-time rendering
 - Watches `~/.claude/projects/**/*.jsonl`; new lines appear in window within 200ms
 - Multi-tab: one tab per active Claude session, title `[project] aiTitle`
-- After a session exits, its tab is archived (grayed out), closable via Ctrl+W
-- **Tab in independent window** (issue #10): right-click a tab → "Open in new window" / `Ctrl+Shift+N` mirrors the session into a standalone read-only window (dual-monitor / long-running tasks), synced live with the main window
+- After a session exits, its tab is archived (grayed out), closable via `W`
+- **Tab in independent window** (issue #10): right-click a tab → "Open in new window" / `N`, **or just drag the tab below the tab bar and drop** (tear-off), mirrors the session into a standalone read-only window (dual-monitor / long-running tasks), synced live with the main window
+- **Session status lights** (issue #23): each local tab's status dot reflects Claude's live state — 🟢 running / 🟡 waiting for your decision (permission / dialog, breathing blink) / 🔴 done, awaiting input; the agents expander gives each subagent its own light
+
+### SSH remote mode (issue #15)
+- Aggregate local + remote-machine (NanoPi / any Linux / WSL) Claude sessions in **one window**; remote tabs are prefixed `[host]`
+- A remote daemon streams sessions back over SSH live; **auto-reconnect** on drop (exponential backoff 2→30s, #17), seq-dedup catch-up on reconnect
+- Remote tabs can also ↗ raise their terminal (#18)
+- Deployment: [doc/REMOTE-PHASE0-DEPLOY.md](doc/REMOTE-PHASE0-DEPLOY.md)
 
 ### Rich rendering
 - **Markdown**: GFM + tables + task lists (marked.js)
@@ -28,13 +35,13 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 - **Code copy**: top-right "copy" button on every code block
 
 ### History browser
-- Toolbar `◷` button / `Ctrl+H` to toggle; grouped by working directory
+- Toolbar `◷` button / `H` to toggle; grouped by working directory
 - Project groups **collapsed by default**; expand triggers **lazy load** of all sessions in that project
 - **Full-text search** (issue #6): a "full-text" mode searches message content across all sessions; hits highlighted, click to jump into the read-only viewer and locate; optional "include tool content", filter by scope/time
 - Per-row actions: `★/☆` star, `✎` rename (Chinese supported), `–/+` hide, `↺` resume (v2.8.1: `cc --resume` in a new **PowerShell** window, falls back to `claude`; loads your profile so proxy/env apply), `✕` delete (confirm twice; jsonl actually removed)
 - Clicking a session opens a **read-only viewer**
 
-### Settings panel (Ctrl+,)
+### Settings panel (,)
 
 Five collapsible groups (only "Behavior" expanded by default):
 
@@ -45,26 +52,26 @@ Five collapsible groups (only "Behavior" expanded by default):
 - **Diagnostics & storage**: tracing level toggle + log file path + transparent listing of every persisted data path
 
 ### Terminal focus (optional)
-- Each live tab has a ↗ button / `Ctrl+\`` to bring the corresponding terminal window to front
+- Each live tab has a ↗ button / backtick key to bring the corresponding terminal window to front
 - Requires installing the PowerShell integration (one-click from settings panel); see "PowerShell Integration" below
 
 ### Shortcuts
 
 | Key | Action |
 |---|---|
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
-| `Ctrl+1` .. `Ctrl+9` | Jump to tab N |
-| `Ctrl+W` | Close current archived tab |
-| `Ctrl+Shift+E` | Open the current tab's working directory in Explorer |
-| `Ctrl+\`` | Bring current tab's terminal to front |
-| `Ctrl+H` | Toggle history browser |
-| `Ctrl+,` | Open settings panel |
-| `Ctrl+M` | Minimize main window |
-| `Ctrl+Shift+N` | Open current tab in an independent window (issue #10) |
-| `Ctrl+T` | Toggle Task panel |
-| `Esc` | Close topmost overlay (read-only viewer → history view → settings panel) |
+| **]** / **[** | Next / previous tab |
+| **1** .. **9** | Jump to tab N |
+| **W** | Close current archived tab |
+| **E** | Open the current tab's working directory in Explorer |
+| **`** (backtick) | Bring current tab's terminal to front |
+| **H** | Toggle history browser |
+| **,** | Open settings panel |
+| **M** | Minimize main window |
+| **N** | Open current tab in an independent window (issue #10; or drag the tab out below the tab bar) |
+| **T** | Toggle Task panel |
+| **Esc** | Close topmost overlay (read-only viewer → history view → settings panel) |
 
-> Every chord is customizable in Settings → Shortcuts; two behavior/panel toggles are unbound by default and can be assigned a key there.
+> **Defaults are all single keys** — cc-monitor is a read-only monitor window, no modifier needed. When an editable field (search / rename input) is focused, shortcuts yield to typing. Every chord is customizable in Settings → Shortcuts; two behavior/panel toggles are unbound by default and can be assigned a key there.
 
 ---
 
@@ -138,7 +145,8 @@ The detailed documentation is in **Chinese**. See [README.md](README.md) for the
 | Doc | Audience | Content |
 |---|---|---|
 | [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) | New contributors | Data flow + module map + design layering |
-| [doc/IPC-PROTOCOL.md](doc/IPC-PROTOCOL.md) | Protocol changers | Cross-process file IPC schemas + handshake timing |
+| [doc/IPC-PROTOCOL.md](doc/IPC-PROTOCOL.md) | Protocol changers | Cross-process file IPC + sessions/status + remote wire schemas + handshake timing |
+| [doc/REMOTE-PHASE0-DEPLOY.md](doc/REMOTE-PHASE0-DEPLOY.md) | Remote deployers | SSH remote daemon manual deploy runbook (issue #15) |
 | [doc/INVARIANTS.md](doc/INVARIANTS.md) | Everyone | Global invariants (zero intrusion / encoding / ACL / ordering) |
 | [doc/CONTRIBUTING.md](doc/CONTRIBUTING.md) | Contributors | Checklists + cookbook (add IPC / jsonl type / setting / hotkey) |
 | [doc/DEVELOPMENT.md](doc/DEVELOPMENT.md) | Developers | Dev environment + port conflict / debugging |

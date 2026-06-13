@@ -289,6 +289,52 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 
 ---
 
+## 9. `<claude_dir>/sessions/<PID>.json`（Claude Code 官方写，monitor 只读）
+
+**不是** cc-monitor 的 IPC 文件——这是 Claude Code CLI 自己维护的活跃会话登记表，monitor 只读不写（INVARIANTS § 1）。在此记录是因为多个核心能力依赖它的字段契约：活跃 session 探测（`session_map.rs`）、PID 探活（§ 6 PID + procStart 双校验）、会话红绿灯（issue #23）。每个活跃会话一个 `<PID>.json`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `pid` | number | 进程 PID（= 文件名 stem） |
+| `sessionId` | string | 会话 UUID（= jsonl 文件名 stem） |
+| `cwd` | string | 工作目录 |
+| `startedAt` | number? | 会话起始时间戳 |
+| `procStart` | string? | .NET `DateTime.ToFileTime()`（FILETIME 100ns 自 1601-01-01 UTC，字符串）。**某些 /resume 启动路径不写此字段** → Option；缺失时 PID 探活退化为只看 `STILL_ACTIVE`（详 § 6 / `session_map.rs`） |
+| `status` | string? | 会话状态枚举：`"busy"`（运行中 → 🟢）/ `"idle"`、`"shell"`（等输入 → 🔴）/ `"waiting"`（等用户决定 → 🟡）。**CLI 仅在状态转换时重写本文件**（信号天然稀疏）。旧版 CC 无此字段 → `null`，前端按未知处理（沿用原绿点） |
+| `waitingFor` | string? | 仅 `status=="waiting"` 时有，细分原因：`"permission prompt"` / `"dialog open"` / `"input needed"` / `"worker request"` / `"sandbox request"` |
+| `name` | string? | Claude 给会话起的语义名（aka aiTitle）；当前保留未用 |
+
+**派生 IPC 事件 `session-activity`**（issue #23 红绿灯）：watcher 每次重扫/心跳后比对，仅对 `status`/`waitingFor` 发生变化（含新出现）的会话 emit `SessionActivityPayload` = `{sessionId, status, waitingFor}`（见 `bridge.rs::SessionActivityPayload`；启动快照走 `list_session_activity`，详 STATE-MATRIX）。
+
+---
+
+## 10. 远端 daemon wire 协议（issue #15 / #16，**流式，非文件 IPC**）
+
+唯一的非文件 IPC：SSH 远端模式下，远端 `cc-monitor-remote` daemon 经 **SSH stdout** 把远端会话流式传回 monitor。在此集中协议契约；部署见 [REMOTE-PHASE0-DEPLOY.md](REMOTE-PHASE0-DEPLOY.md)。
+
+### 实时流（无参数启动 daemon）
+
+线约束：**每行恰好一个 UTF-8 JSON 对象，`\n` 结尾，对象内无裸 `\n`/`\r`**（`serde_json` 紧凑输出把内部换行转义成 `\n` 两字符）。帧用外部 `kind` tag（snake_case）：
+
+| `kind` | 字段 | 说明 |
+|---|---|---|
+| `hello` | `v, build_id, host_arch, claude_dir` | 连接建立时**首帧**发一次（握手）；monitor 据 `build_id` 识别 daemon 能力 |
+| `line` | `session_id, path, seq, raw` | tail 到的一行原始 jsonl（`seq` = per-file 单调，口径同本地 watcher） |
+| `session_added` | `sid` | 远端新会话文件出现 |
+| `session_removed` | `sid` | 远端会话文件消失 |
+
+### 一次性历史查询（带参数启动 daemon，issue #16）
+
+带参数 exec = 一次性查询模式，干完即退、**不进流式协议**：
+
+- `--list-projects` → 每行 `{dirName, projectPath, sessionCount, lastActivityMs}`
+- `--list-sessions <project_dir>` → 每行 `{sessionId, jsonlPath, startedAtMs, updatedAtMs, messageCountApprox, firstUserExcerpt, aiTitle, cwd}`
+- `--read-session <jsonl_path>` → 原样透传该 jsonl 字节（monitor 侧走既有 `parse_line` 管线）
+
+错误写 stderr + 退出码 2。所有路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**旧 daemon 兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
+
+---
+
 ## 跨进程握手时序图（cc 集成）
 
 ```

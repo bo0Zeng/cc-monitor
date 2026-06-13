@@ -78,7 +78,7 @@
 （详 v2.4-active-tab-sync-notes.md + v2.6-b-refactor-notes.md）—— 都在试图修补"多 flag
 状态机相位 bug"。v2.6 B 重构是一次性消除整套机制。
 
-详 [v2.6-b-refactor-notes § 3](../../doc/v2.6-b-refactor-notes.md) + ADR-021/022。
+详 v2.6-b-refactor-notes.md § 3（项目外作者沉淀，同 § 77 行）+ ADR-021/022。
 
 ---
 

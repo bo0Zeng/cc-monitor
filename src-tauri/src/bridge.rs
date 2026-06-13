@@ -54,13 +54,14 @@ pub struct JsonlLinePayload {
     pub message: crate::messages::JsonlRecord,
 }
 
-/// v2.3.1 issue #1 启动加速：jsonl-batch 加 chunk 元数据。
+/// v2.3.1 issue #1 启动加速：jsonl-batch 把一次 replay 切成多块 emit（每块一次），
+/// 避免一次性灌入 N 千行卡死前端渲染管线。
 ///
-/// 切块策略下，单次 replay 会触发多次 emit（每块一次）。前端按 `chunk_index` 区分：
-/// - `chunk_index == 0`（head）：append 到 stream 底部，记 firstChunkAnchor
-/// - `chunk_index > 0`（older）：prepend (insertBefore firstChunkAnchor)
-///
-/// `chunk_total == 1` 时退化到 v2.2 单次 emit 行为（小数据走这条路径无切块开销）。
+/// **v2.6 B 重构起**：前端**不再**用 `chunk_index`/`chunk_total` 做 prepend/append 排序
+/// ——每个 payload 一律按自身 `seq` 二分插入 RecordTimeline（INVARIANTS § 5「seq 单调」/
+/// § 9「禁止按到达顺序排序」）。这两个字段保留仅为兼容/诊断：前端读但不据此决定位置
+/// （见 events.ts「chunkIndex/chunkTotal 元数据仍在 payload，但不再做 prepend/append 决策」）。
+/// `chunk_total == 1` = 不切块（小数据单次 emit，无切块开销）。
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonlBatchPayload {

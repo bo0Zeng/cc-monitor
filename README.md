@@ -2,11 +2,11 @@
 
 > **Claude Code CLI 的只读输出渲染窗口** — Tauri 2 + Vanilla TypeScript，Windows 桌面应用
 >
-> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 | 当前版本: v2.8.0（v2.8.1 修复待发布）
+> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 | 当前版本: v2.9.6
 
 把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复。**完全只读、零侵入**（不修改 Claude Code 任何文件，唯一例外是用户在历史浏览器里**显式**点删除）。
 
-**项目状态**：稳定可用。97 个 cargo 单元测试 + tsc 严格类型检查。8 个 feat issue **全部完成**（含 #6 历史全文搜索 v2.7.0、#10 Tab 独立窗口 v2.8.0）。当前发布 v2.8.0；**v2.8.1（待发布）** 修了两个 bug：历史会话点进去空白（只读查看器流可见性）、resume 改用 PowerShell + `cc`（读 profile，代理生效）。详 [CHANGELOG](CHANGELOG.md) 和 [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
+**项目状态**：稳定可用。后端 130 + 远端 daemon 17 + 前端 3 个纯函数测试，tsc 严格类型检查，CI 全绿。当前发布 **v2.9.6**，能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 远端机器的会话，#15/#17/#18/#20）、**会话红绿灯**（实时 busy/waiting/idle 状态灯，#23）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。少量未发布小修见 [CHANGELOG](CHANGELOG.md)。详 [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
 
 ---
 
@@ -17,6 +17,13 @@
 - 多 Tab：每个活跃 Claude session 一个 Tab，标题 `[项目名] aiTitle`
 - session 退出后 Tab 灰显归档，可手动关闭（W）
 - **Tab 独立窗口**（issue #10）：右键 Tab「在新窗口打开」/ `N`，**或直接把 Tab 往标签栏下方一拖松手**（tear-off），把会话拉到独立只读窗口（双屏并排 / 长任务常驻），与主窗口实时同步
+- **会话红绿灯**（issue #23）：每个本地 Tab 的状态点实时反映 Claude 状态——🟢 运行中 / 🟡 等你决定（权限确认 / 弹窗选择，呼吸闪烁）/ 🔴 答完等输入；Agents 展开区每个 subagent 一行独立状态灯
+
+### SSH 远端模式（issue #15）
+- 在**同一个窗口**聚合本地 + 远端机器（NanoPi / 任意 Linux / WSL）上的 Claude 会话，远端 Tab 标题带 `[host]` 前缀
+- 远端 daemon 经 SSH 实时流式传回会话；**断线自动重连**（指数退避 2→30s，issue #17）、重连后按 seq 去重补放
+- 远端 Tab 也能 ↗ 拉前对应终端（issue #18）
+- 部署见 [doc/REMOTE-PHASE0-DEPLOY.md](doc/REMOTE-PHASE0-DEPLOY.md)
 
 ### 富渲染
 - **Markdown**：GFM + 表格 + 任务列表（marked.js）
@@ -193,9 +200,10 @@ cc-monitor/
 | 文档 | 给谁看 | 内容 |
 |---|---|---|
 | **本 README** | 用户 / 新贡献者第一站 | 安装 / 使用 / 故障排查 / 项目结构 |
-| [CHANGELOG.md](CHANGELOG.md) | 升级用户 | 版本变更历史（v2.6 B 重构 Unreleased） |
+| [CHANGELOG.md](CHANGELOG.md) | 升级用户 | 版本变更历史 |
 | [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) | 新贡献者深入第一站 | 数据流图 + 模块表 + 设计分层 |
-| [doc/IPC-PROTOCOL.md](doc/IPC-PROTOCOL.md) | 改协议的贡献者 | 跨进程文件 IPC 完整 schema + 握手时序 |
+| [doc/IPC-PROTOCOL.md](doc/IPC-PROTOCOL.md) | 改协议的贡献者 | 跨进程文件 IPC + sessions/status + 远端 wire 完整 schema + 握手时序 |
+| [doc/REMOTE-PHASE0-DEPLOY.md](doc/REMOTE-PHASE0-DEPLOY.md) | 部署远端的人 | SSH 远端 daemon 手动部署 runbook（issue #15） |
 | [doc/INVARIANTS.md](doc/INVARIANTS.md) | 全员 | 全局不变量清单（零侵入 / 编码 / ACL / 顺序保证 / seq 单调） |
 | [doc/STATE-MATRIX.md](doc/STATE-MATRIX.md) | 改 IPC 命令的贡献者 | Tauri State 注册矩阵 + 修改规则 |
 | [doc/CONTRIBUTING.md](doc/CONTRIBUTING.md) | 贡献者 | 操作 checklist + cookbook（加 IPC / jsonl 类型 / 设置项 / 快捷键） |
@@ -210,10 +218,10 @@ cc-monitor/
 
 ## 项目当前状态
 
-- **版本**：v2.8.0（Released）；v2.8.1 两个 bug 修复在 `main` 待发布
-- **平台**：Windows 10 (1809+) / 11
-- **测试**：cargo test 97 passed，0 failed
-- **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~9K LOC TS + ~8K LOC Rust）
+- **版本**：v2.9.6（Released）；少量小修在 `main` 待发布（见 CHANGELOG）
+- **平台**：Windows 10 (1809+) / 11（远端 daemon 跑 Linux / aarch64）
+- **测试**：后端 cargo test 130 + 远端 daemon 17 + 前端 3 个纯函数测试，全绿（CI 门禁）
+- **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~12K LOC TS + ~11K LOC Rust，含 ~1.3K 远端 daemon）
 - **设计原则**：只读零侵入（INVARIANT § 1）/ 可选性 / Windows-first / 长期记忆机制（CHANGELOG + ADR + doc）
 
 ---
