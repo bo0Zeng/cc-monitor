@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+﻿import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { MessageStream } from "./stream";
 import {
@@ -106,11 +106,20 @@ export interface Tab {
    * seq 0 重发整个会话 → 命中即丢，避免 Tab 内容翻倍。本地 seq 全程唯一 → 永不命中（no-op）。
    *
    * 注意：本集合**只防同 seq 重投**。本地 watcher 截断重读是**换新 seq** 重投整个
-   * 文件、此处放行（at-least-once 投递，INVARIANTS § 25）——uuid 级幂等由
-   * computeMainBranch 入口去重 + BranchFolder.seenUuids 兜（issue #25）；timeline/
-   * 卡片渲染层目前无 uuid 去重（已知残留，issue #26）。closeTab 时 clear。
+   * 文件、此处放行（at-least-once 投递，INVARIANTS § 25）——uuid 级幂等由下面的
+   * processedUuids（#26）+ computeMainBranch 入口去重 + BranchFolder.seenUuids
+   * （#25）分层兜住。closeTab 时 clear。
    */
   seenSeqs: Set<number>;
+  /**
+   * issue #26：已处理记录的 uuid 集——onLine 入口的 at-least-once 幂等
+   * （违反此约束见 doc/INVARIANTS.md § 25）。截断重读换新 seq 重投时 seenSeqs 放行，
+   * 若不按 uuid 拒掉，每条记录会以更大的 seq 在 timeline 末尾再渲染一遍（整段内容
+   * 翻倍），且 trackAgents/unread 等副作用也会被重投误触发——故在入口整体拒掉。
+   * 无 uuid 的记录（ai-title/mode 等元信息）不占集合、照常处理（它们本身幂等；
+   * 已知微小残留：无 uuid 的 system 细条理论上可翻倍，影响面可忽略）。closeTab 时 clear。
+   */
+  processedUuids: Set<string>;
 }
 
 /** Tab 数量摘要，发给宿主用于状态栏 / empty-state 等外部 UI */
@@ -307,6 +316,16 @@ export class TabManager {
     if (tab.seenSeqs.has(payload.seq)) return;
     tab.seenSeqs.add(payload.seq);
 
+    // issue #26：按 uuid 去重——截断重读换新 seq 重投时上面的 seq 去重放行，这里把
+    // "同一记录再来一遍"整体拒掉（不渲染、不 trackAgents），否则内容在 timeline 末尾
+    // 翻倍（INVARIANTS § 25 的渲染层履约点）。必须放在 ensureTab 之后（远端
+    // un-archive 靠"收到行"翻转，重投行也要触发它）、seq 去重之后。
+    const uuid = (payload.message as { uuid?: unknown }).uuid;
+    if (typeof uuid === "string" && uuid.length > 0) {
+      if (tab.processedUuids.has(uuid)) return;
+      tab.processedUuids.add(uuid);
+    }
+
     // issue #23（第二增量）：配对 agent 工具调用，喂 AgentsPanel
     this.trackAgents(tab, payload.message);
 
@@ -411,6 +430,7 @@ export class TabManager {
       branchFolder,
       pendingToolResults: new Map(),
       seenSeqs: new Set(),
+      processedUuids: new Set(),
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
       activity: this.pendingActivity.get(sessionId) ?? null,
       agents: new Map(),
@@ -640,6 +660,7 @@ export class TabManager {
     tab.toolUseElements.clear();
     tab.pendingToolResults.clear();
     tab.seenSeqs.clear();
+    tab.processedUuids.clear();
     tab.timeline.dispose();
     tab.branchFolder.dispose();
     this.tasksBySid.delete(sessionId);

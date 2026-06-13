@@ -8,6 +8,16 @@
 
 ---
 
+## [未发布]
+
+### 修复 — 从 claude 会话内启动的 monitor，resume 出的会话不注册不落盘 (issue #24)
+
+monitor 若从「Claude Code 会话内的 shell」启动（开发者跑 dev、或任何带 `CLAUDECODE` 等环境变量的宿主），这些嵌套标记会沿 monitor → 终端 → `claude --resume` 一路继承，resume 出的 claude 被嵌套检测判成子会话 → **不注册、不写盘**（对话只活在内存、关窗即丢）→ monitor 永远不出 Tab。现在启动时单点清洗四个嵌套标记（保留 `CLAUDE_CONFIG_DIR`），并在日志留痕；正常启动路径零回归（变量本就不存在时 no-op）。
+
+### 修复 — 会话内容不再在底部整段重复一遍 (issue #26)
+
+jsonl 被截断重读时（watcher 换新 seq 重投整个文件，seq 去重放行），此前每条记录会以更大的 seq 在 timeline 末尾**再渲染一遍**——整段对话翻倍（#25 那次碰巧重复的是不渲染的记录才没看见）。现在 `onLine` 入口按 uuid 整体拒重（INVARIANTS § 25 的渲染层履约点），与折叠层（#25）对齐；顺带消除重投对 agents 面板/未读数的误触发。
+
 ## [2.9.6] — 2026-06-13
 
 ### 修复 — 大段历史被误折成「已被 ESC 回退」 (issue #25)

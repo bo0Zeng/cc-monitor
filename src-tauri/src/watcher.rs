@@ -239,9 +239,9 @@ fn process_file(
     }
     if truncated {
         // issue #25：截断重读 = 全文件换新 seq 重投（下面 seq 不重置的注释），即
-        // at-least-once 投递的唯一已知本地触发点（doc/INVARIANTS.md § 25）。折叠层
-        // 已按 uuid 幂等（#25），渲染层尚未（#26）。必须留痕——曾因静默无日志导致
-        // 误折叠根因定位极难。warn 放在空文件早退之后：len==0 时无重读发生不喊。
+        // at-least-once 投递的唯一已知本地触发点（doc/INVARIANTS.md § 25）。前端
+        // 折叠层（#25）与渲染层（#26）均已按 uuid 幂等。必须留痕——曾因静默无日志
+        // 导致误折叠根因定位极难。warn 放在空文件早退之后：len==0 时无重读发生不喊。
         tracing::warn!(
             "jsonl truncated (len {len} < offset {last_offset}), full re-read with new seqs: {path:?}"
         );
