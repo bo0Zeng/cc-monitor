@@ -16,11 +16,16 @@ use crate::history::{HistoryProject, HistorySessionEntry};
 use crate::messages::JsonlRecord;
 use crate::parser::parse_line;
 use crate::ssh_source::{self, RemoteConfig};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
-/// 查询超时：列举类命令整体限时（远端扫盘 + 传输）。读单会话不设整体限时
-/// （文件可能大），靠连接错误/EOF 终止。
+/// 查询超时：列举类命令整体限时（远端扫盘 + 传输）。
 const LIST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// 读单会话：不设整体超时（会话可能大、流式合法耗时），但 (a) 每次 read_line 加
+/// 单次超时，防"连接活着却永不来数据"卡死；(b) 总字节上限兜底，防无 EOF / 无换行
+/// 的巨型损坏文件吃爆内存。正常会话毫秒级、远小于上限。
+const READ_LINE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+const MAX_SESSION_BYTES: u64 = 256 * 1024 * 1024;
 
 fn require_cfg() -> Result<RemoteConfig, String> {
     crate::load_remote_config().ok_or_else(|| "远端模式未启用".to_string())
@@ -37,7 +42,7 @@ const OLD_DAEMON_MSG: &str =
 
 /// 跑一条列举类查询，收集全部输出行（带整体超时 + 旧版检测）。
 async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec<String>, String> {
-    let cmd = format!("{} {}", cfg.daemon_path, args);
+    let cmd = format!("{} {}", ssh_source::shell_quote(&cfg.daemon_path), args);
     let collect = async {
         let stream = ssh_source::connect_and_exec_cmd(cfg, &cmd).await?;
         let mut reader = BufReader::new(stream);
@@ -206,16 +211,17 @@ pub async fn stream_read_remote_session(
     const CHUNK_SIZE: usize = 100;
     let cfg = require_cfg()?;
     let started = std::time::Instant::now();
-    let session_id = jsonl_path
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or("")
-        .trim_end_matches(".jsonl")
+    // 与本地 history.rs 的 file_stem 口径一致：剥**一个** ".jsonl" 后缀（strip_suffix
+    // 是字面后缀，不是 trim_end_matches 的字符集语义）。
+    let file_name = jsonl_path.rsplit(['/', '\\']).next().unwrap_or("");
+    let session_id = file_name
+        .strip_suffix(".jsonl")
+        .unwrap_or(file_name)
         .to_string();
     let args = format!("--read-session {}", ssh_source::shell_quote(&jsonl_path));
-    let cmd = format!("{} {}", cfg.daemon_path, args);
+    let cmd = format!("{} {}", ssh_source::shell_quote(&cfg.daemon_path), args);
     let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
-    let mut reader = BufReader::new(stream);
+    let mut reader = BufReader::new(stream.take(MAX_SESSION_BYTES));
     let mut buf = String::new();
     let mut cwd_seen: Option<String> = None;
     let mut chunk: Vec<crate::bridge::JsonlLinePayload> = Vec::with_capacity(CHUNK_SIZE);
@@ -224,9 +230,9 @@ pub async fn stream_read_remote_session(
     let mut first_line = true;
     loop {
         buf.clear();
-        let n = reader
-            .read_line(&mut buf)
+        let n = tokio::time::timeout(READ_LINE_TIMEOUT, reader.read_line(&mut buf))
             .await
+            .map_err(|_| "读取远端会话超时（单次读取卡住）".to_string())?
             .map_err(|e| format!("读取远端会话失败: {e}"))?;
         if n == 0 {
             break;
