@@ -1,0 +1,348 @@
+//! issue #16 P1a：一次性历史查询模式。
+//!
+//! cc-monitor 通过**独立 SSH 连接**一次性 exec 本二进制并带参数：
+//!
+//! - `--list-projects`                → 列举 `<claude_dir>/projects/` 下各项目
+//! - `--list-sessions <project_dir>`  → 列举某项目目录下的历史会话（带元数据）
+//! - `--read-session <jsonl_path>`    → 原样透传该 jsonl 文件内容（monitor 侧解析）
+//!
+//! 输出协议：`--list-*` 每行一个 JSON 对象（**不是** wire::Frame——查询模式与流式
+//! 协议互不混用，旧 daemon 不认参数会照常进流模式发 hello，monitor 以"首行是
+//! hello 帧"识别旧版并优雅降级）；`--read-session` 输出原始文件字节。
+//! 错误：stderr 写原因 + 退出码 2。成功退出码 0。
+//!
+//! 安全：所有路径参数严格限制在 `<claude_dir>/projects/` 之内（canonicalize 后
+//! 前缀校验，防 `../` 穿越）；project_dir 参数不允许含路径分隔符。
+//! 只读铁律（cc-monitor 不写远端）在此同样成立：本模块只 read_dir / read。
+
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
+
+/// 查询模式入口。返回进程退出码。
+pub fn run(claude_dir: &Path, args: &[String]) -> i32 {
+    let result = match args.first().map(String::as_str) {
+        Some("--list-projects") => list_projects(claude_dir),
+        Some("--list-sessions") => match args.get(1) {
+            Some(dir) => list_sessions(claude_dir, dir),
+            None => Err("--list-sessions requires <project_dir> argument".into()),
+        },
+        Some("--read-session") => match args.get(1) {
+            Some(p) => read_session(claude_dir, p),
+            None => Err("--read-session requires <jsonl_path> argument".into()),
+        },
+        Some(other) => Err(format!("unknown argument: {other}")),
+        None => Err("no query argument".into()),
+    };
+    match result {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("cc-monitor-remote query error: {e}");
+            2
+        }
+    }
+}
+
+fn projects_root(claude_dir: &Path) -> PathBuf {
+    claude_dir.join("projects")
+}
+
+/// `--list-projects`：每个项目目录一行 JSON：
+/// `{"dirName","projectPath","sessionCount","lastActivityMs"}`
+/// projectPath 从该项目**最新** jsonl 的头部记录提取 cwd（对齐本地口径：真实工作
+/// 目录，而非编码过的目录名）；提取不到则空字符串，monitor 侧回退显示 dirName。
+fn list_projects(claude_dir: &Path) -> Result<(), String> {
+    let root = projects_root(claude_dir);
+    let entries =
+        std::fs::read_dir(&root).map_err(|e| format!("read_dir {} failed: {e}", root.display()))?;
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    for entry in entries.flatten() {
+        let dir = entry.path();
+        if !dir.is_dir() {
+            continue;
+        }
+        let mut session_count = 0u32;
+        let mut last_activity_ms = 0i64;
+        let mut newest_jsonl: Option<(i64, PathBuf)> = None;
+        if let Ok(files) = std::fs::read_dir(&dir) {
+            for f in files.flatten() {
+                let p = f.path();
+                if !p.is_file() || p.extension().is_none_or(|e| e != "jsonl") {
+                    continue;
+                }
+                session_count += 1;
+                let mtime = mtime_ms(&p);
+                if mtime > last_activity_ms {
+                    last_activity_ms = mtime;
+                }
+                if newest_jsonl.as_ref().is_none_or(|(m, _)| mtime > *m) {
+                    newest_jsonl = Some((mtime, p));
+                }
+            }
+        }
+        if session_count == 0 {
+            continue; // 空目录（全删过/只剩 sidecar）不展示
+        }
+        let project_path = newest_jsonl
+            .and_then(|(_, p)| extract_cwd_from_head(&p))
+            .unwrap_or_default();
+        let dir_name = entry.file_name().to_string_lossy().into_owned();
+        let line = serde_json::json!({
+            "dirName": dir_name,
+            "projectPath": project_path,
+            "sessionCount": session_count,
+            "lastActivityMs": last_activity_ms,
+        });
+        writeln!(out, "{line}").map_err(|e| format!("stdout write failed: {e}"))?;
+    }
+    Ok(())
+}
+
+/// `--list-sessions <project_dir>`：该项目每个 jsonl 一行 JSON：
+/// `{"sessionId","jsonlPath","startedAtMs","updatedAtMs","messageCountApprox",
+///   "firstUserExcerpt","aiTitle","cwd"}`
+/// 元数据在远端 CPU 上扫整个文件提取（对齐本地 analyze 口径的精简版）。
+fn list_sessions(claude_dir: &Path, project_dir: &str) -> Result<(), String> {
+    // project_dir 是目录名而非路径：拒绝任何分隔符 / 上跳
+    if project_dir.contains('/') || project_dir.contains('\\') || project_dir.contains("..") {
+        return Err(format!("invalid project dir name: {project_dir}"));
+    }
+    let dir = projects_root(claude_dir).join(project_dir);
+    let entries =
+        std::fs::read_dir(&dir).map_err(|e| format!("read_dir {} failed: {e}", dir.display()))?;
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if !p.is_file() || p.extension().is_none_or(|e| e != "jsonl") {
+            continue;
+        }
+        let meta = analyze_session(&p);
+        writeln!(out, "{meta}").map_err(|e| format!("stdout write failed: {e}"))?;
+    }
+    Ok(())
+}
+
+/// `--read-session <jsonl_path>`：路径校验后原样透传文件内容。
+/// 透传而非逐行解析：monitor 侧本就有完整的 parse_line 管线，daemon 不重复造。
+fn read_session(claude_dir: &Path, jsonl_path: &str) -> Result<(), String> {
+    let root = projects_root(claude_dir)
+        .canonicalize()
+        .map_err(|e| format!("projects root unavailable: {e}"))?;
+    let target = Path::new(jsonl_path)
+        .canonicalize()
+        .map_err(|e| format!("session path unavailable: {e}"))?;
+    if !target.starts_with(&root) {
+        return Err(format!(
+            "refusing to read outside projects dir: {}",
+            target.display()
+        ));
+    }
+    if target.extension().is_none_or(|e| e != "jsonl") {
+        return Err("refusing to read non-jsonl file".into());
+    }
+    let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    std::io::copy(&mut f, &mut out).map_err(|e| format!("stream failed: {e}"))?;
+    Ok(())
+}
+
+fn mtime_ms(p: &Path) -> i64 {
+    std::fs::metadata(p)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+fn created_ms_or_mtime(p: &Path) -> i64 {
+    let meta = match std::fs::metadata(p) {
+        Ok(m) => m,
+        Err(_) => return 0,
+    };
+    let t = meta.created().or_else(|_| meta.modified());
+    t.ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// 从 jsonl 头部（前 40 行）提取首个带 cwd 的记录的 cwd。
+fn extract_cwd_from_head(p: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(p).ok()?;
+    for line in content.lines().take(40) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+            if let Some(cwd) = v.get("cwd").and_then(|c| c.as_str()) {
+                if !cwd.is_empty() {
+                    return Some(cwd.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// 单个会话的元数据提取（整文件扫描，跑在远端 CPU 上）：
+/// - messageCountApprox = 非空行数
+/// - firstUserExcerpt = 首条"真用户输入"的前 120 字符（跳过 isMeta / 工具结果 /
+///   interrupt 标记，对齐本地口径的精简版）
+/// - aiTitle = 最后一条 ai-title 记录（Claude 会多次更新，取最新）
+/// - cwd = 首个带 cwd 的记录
+fn analyze_session(p: &Path) -> serde_json::Value {
+    let session_id = p
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mut count = 0u32;
+    let mut excerpt = String::new();
+    let mut ai_title: Option<String> = None;
+    let mut cwd: Option<String> = None;
+    if let Ok(content) = std::fs::read_to_string(p) {
+        for line in content.lines() {
+            let trimmed = line.trim_start_matches('\u{feff}').trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            count += 1;
+            let v: serde_json::Value = match serde_json::from_str(trimmed) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            if cwd.is_none() {
+                if let Some(c) = v.get("cwd").and_then(|c| c.as_str()) {
+                    if !c.is_empty() {
+                        cwd = Some(c.to_string());
+                    }
+                }
+            }
+            match v.get("type").and_then(|t| t.as_str()) {
+                Some("ai-title") => {
+                    if let Some(t) = v.get("aiTitle").and_then(|t| t.as_str()) {
+                        ai_title = Some(t.to_string()); // 取最新（持续覆盖）
+                    }
+                }
+                Some("user") if excerpt.is_empty() => {
+                    if v.get("isMeta").and_then(|m| m.as_bool()) != Some(true) {
+                        if let Some(text) = user_text(&v) {
+                            if !text.starts_with("[Request interrupted") {
+                                excerpt = truncate_chars(&text, 120);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    serde_json::json!({
+        "sessionId": session_id,
+        "jsonlPath": p.to_string_lossy(),
+        "startedAtMs": created_ms_or_mtime(p),
+        "updatedAtMs": mtime_ms(p),
+        "messageCountApprox": count,
+        "firstUserExcerpt": excerpt,
+        "aiTitle": ai_title,
+        "cwd": cwd,
+    })
+}
+
+/// user 记录的纯文本内容：message.content 为字符串直接用；为数组取首个 text 块。
+/// 工具结果（tool_result 块）返回 None——它不是用户敲的。
+fn user_text(v: &serde_json::Value) -> Option<String> {
+    let content = v.get("message")?.get("content")?;
+    if let Some(s) = content.as_str() {
+        return Some(s.to_string());
+    }
+    if let Some(arr) = content.as_array() {
+        for block in arr {
+            if block.get("type").and_then(|t| t.as_str()) == Some("text") {
+                if let Some(s) = block.get("text").and_then(|t| t.as_str()) {
+                    return Some(s.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// 按字符截断（不劈 UTF-8 码点；中文场景 byte 截断会 panic/乱码）。
+fn truncate_chars(s: &str, max: usize) -> String {
+    s.chars().take(max).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture_project(root: &Path, dir_name: &str) -> PathBuf {
+        let dir = root.join("projects").join(dir_name);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write_jsonl(dir: &Path, name: &str, lines: &[&str]) -> PathBuf {
+        let p = dir.join(name);
+        std::fs::write(&p, lines.join("\n")).unwrap();
+        p
+    }
+
+    #[test]
+    fn analyze_extracts_excerpt_title_cwd_count() {
+        let tmp = std::env::temp_dir().join(format!("ccm-hq-test-{}", std::process::id()));
+        let dir = fixture_project(&tmp, "proj-a");
+        let p = write_jsonl(
+            &dir,
+            "s1.jsonl",
+            &[
+                r#"{"type":"user","cwd":"/home/pi/proj","isMeta":true,"message":{"role":"user","content":"skill 注入不算"}}"#,
+                r#"{"type":"user","message":{"role":"user","content":"真正的首条用户输入，应该成为摘要"}}"#,
+                r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"回复"}]}}"#,
+                r#"{"type":"ai-title","aiTitle":"旧标题"}"#,
+                r#"{"type":"ai-title","aiTitle":"最新标题"}"#,
+            ],
+        );
+        let v = analyze_session(&p);
+        assert_eq!(v["sessionId"], "s1");
+        assert_eq!(v["messageCountApprox"], 5);
+        assert_eq!(v["cwd"], "/home/pi/proj");
+        assert_eq!(v["aiTitle"], "最新标题"); // 取最新
+        assert!(v["firstUserExcerpt"]
+            .as_str()
+            .unwrap()
+            .starts_with("真正的首条用户输入")); // isMeta 跳过
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn truncate_is_char_safe() {
+        assert_eq!(truncate_chars("中文字符串", 3), "中文字");
+        assert_eq!(truncate_chars("ab", 120), "ab");
+    }
+
+    #[test]
+    fn list_sessions_rejects_path_traversal() {
+        let tmp = std::env::temp_dir();
+        assert!(list_sessions(&tmp, "../escape").is_err());
+        assert!(list_sessions(&tmp, "a/b").is_err());
+        assert!(list_sessions(&tmp, r"a\b").is_err());
+    }
+
+    #[test]
+    fn read_session_rejects_outside_projects() {
+        let tmp = std::env::temp_dir().join(format!("ccm-hq-ro-{}", std::process::id()));
+        let dir = fixture_project(&tmp, "proj-b");
+        write_jsonl(&dir, "ok.jsonl", &[r#"{"type":"user"}"#]);
+        // projects 外的真实文件 → 拒绝
+        let outside = tmp.join("secret.jsonl");
+        std::fs::write(&outside, "nope").unwrap();
+        assert!(read_session(&tmp, &outside.to_string_lossy()).is_err());
+        // 非 jsonl → 拒绝
+        let txt = dir.join("note.txt");
+        std::fs::write(&txt, "x").unwrap();
+        assert!(read_session(&tmp, &txt.to_string_lossy()).is_err());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+}

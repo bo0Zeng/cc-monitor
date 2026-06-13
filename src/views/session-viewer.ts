@@ -37,6 +37,11 @@ export interface ViewerOptions {
    * （展开所在折叠段）滚动居中 + 临时高亮，而非默认贴底。
    */
   scrollToUuid?: string;
+  /**
+   * issue #16：远端来源。undefined=本地（走 stream_read_session_jsonl）；
+   * host=远端（走 stream_read_remote_session，经 SSH 拉取，chunk 口径一致）。
+   */
+  origin?: string;
 }
 
 export class SessionViewer {
@@ -123,7 +128,12 @@ export class SessionViewer {
     };
 
     try {
-      const finalCount = await invoke<number>("stream_read_session_jsonl", {
+      // issue #16：远端会话走 stream_read_remote_session（SSH 拉取，payload 带
+      // origin），本地走原 IPC。chunk 结构一致，下游渲染零差异。
+      const ipc = opts.origin
+        ? "stream_read_remote_session"
+        : "stream_read_session_jsonl";
+      const finalCount = await invoke<number>(ipc, {
         jsonlPath: opts.jsonlPath,
         onChunk: channel,
       });

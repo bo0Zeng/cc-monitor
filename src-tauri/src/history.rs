@@ -57,6 +57,10 @@ pub struct HistoryProject {
     pub last_activity: i64,
     /// 该项目下是否有 session 当前 PID 还活着
     pub has_live: bool,
+    /// issue #16：数据来源。None=本地；Some(host)=远端（前端组头显示 [host] 徽标，
+    /// 展开时改调 stream_remote_history_sessions）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -82,6 +86,10 @@ pub struct HistorySessionEntry {
     pub forked_from_session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub forked_from_message_uuid: Option<String>,
+    /// issue #16：数据来源。None=本地；Some(host)=远端（前端据此禁用 resume/delete、
+    /// 查看走 stream_read_remote_session）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
@@ -557,6 +565,7 @@ fn analyze_project_dir(
         hidden_count,
         last_activity,
         has_live,
+        origin: None, // 本地扫描路径恒为本地
     })
 }
 
@@ -712,6 +721,7 @@ fn analyze_jsonl(
         hidden: entry_meta.hidden,
         forked_from_session_id,
         forked_from_message_uuid,
+        origin: None, // 本地扫描路径恒为本地
     })
 }
 
@@ -785,7 +795,7 @@ fn metadata_path() -> Option<PathBuf> {
     Some(paths::resolve_monitor_data_dir()?.join("history-metadata.json"))
 }
 
-fn load_metadata() -> Result<HistoryMetadata, String> {
+pub(crate) fn load_metadata() -> Result<HistoryMetadata, String> {
     let path = metadata_path().ok_or("no monitor data dir")?;
     if !path.exists() {
         return Ok(HistoryMetadata::default());
@@ -833,6 +843,7 @@ mod tests {
             hidden_count: 3,
             last_activity: 1700_000_000_000,
             has_live: true,
+            origin: Some("pi-host".into()), // issue #16：远端来源也走同一 wire 契约
         };
         let j = serde_json::to_string(&p).unwrap();
         for camel_key in [
@@ -886,6 +897,7 @@ mod tests {
             hidden: false,
             forked_from_session_id: Some("p-1".into()),
             forked_from_message_uuid: Some("u-1".into()),
+            origin: Some("pi-host".into()),
         };
         let j = serde_json::to_string(&e).unwrap();
         for camel_key in [

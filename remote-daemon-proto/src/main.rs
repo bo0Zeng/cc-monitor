@@ -19,6 +19,7 @@
 //!   inotify reader. This split is the single most-cited Phase-0 accident
 //!   source; keeping it real is the point.
 
+mod history_query;
 mod watcher;
 mod wire;
 
@@ -27,7 +28,8 @@ use tokio::io::{AsyncWriteExt, BufWriter};
 use wire::{to_line, Frame};
 
 /// Daemon build id reported in the `Hello` frame.
-const BUILD_ID: &str = "phase0-proto";
+/// p1a-history = 新增一次性历史查询模式（issue #16，--list-projects 等）。
+const BUILD_ID: &str = "p1a-history";
 
 #[tokio::main]
 async fn main() {
@@ -42,6 +44,14 @@ async fn main() {
 
     let claude_dir = resolve_claude_dir();
     tracing::info!("claude_dir = {}", claude_dir.display());
+
+    // issue #16：带参数 = 一次性历史查询模式，干完即退，不进流式协议。
+    // 旧 daemon 不认参数会照常发 hello 进流模式——monitor 以"首行是 hello 帧"
+    // 识别旧版并提示升级（优雅降级，无协议版本协商负担）。
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if !args.is_empty() {
+        std::process::exit(history_query::run(&claude_dir, &args));
+    }
 
     // (b) Emit the Hello handshake FIRST, flushed, before anything else.
     let mut stdout = BufWriter::new(tokio::io::stdout());
