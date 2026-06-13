@@ -295,7 +295,7 @@ pub async fn connect_and_exec(
 ) -> Result<russh::ChannelStream<client::Msg>, String> {
     // 与 jsonl-watcher 不同，daemon 是长连接：inactivity_timeout=None → connect_session
     // 自动启用 30s keepalive（见 FIX 1 注释），靠 keepalive + EOF 检死链，不靠定时拆链。
-    connect_and_exec_cmd(cfg, &cfg.daemon_path).await
+    connect_and_exec_cmd(cfg, &shell_quote(&cfg.daemon_path)).await
 }
 
 /// [`connect_and_exec`] 的通用形态：exec 任意命令行（issue #16：历史查询走

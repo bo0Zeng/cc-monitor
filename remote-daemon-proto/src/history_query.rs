@@ -108,7 +108,22 @@ fn list_sessions(claude_dir: &Path, project_dir: &str) -> Result<(), String> {
     if project_dir.contains('/') || project_dir.contains('\\') || project_dir.contains("..") {
         return Err(format!("invalid project dir name: {project_dir}"));
     }
-    let dir = projects_root(claude_dir).join(project_dir);
+    // 与 read_session 对齐（也兑现本文件头部"canonicalize 后前缀校验"的承诺）：名字
+    // 合法但 projects/ 下若有指向外部的 symlink 目录，read_dir 会跟随逃逸出 projects/
+    // ——canonicalize 解析 symlink 后做前缀校验挡住。
+    let root = projects_root(claude_dir)
+        .canonicalize()
+        .map_err(|e| format!("projects root unavailable: {e}"))?;
+    let dir = root
+        .join(project_dir)
+        .canonicalize()
+        .map_err(|e| format!("project dir unavailable: {e}"))?;
+    if !dir.starts_with(&root) {
+        return Err(format!(
+            "refusing to list outside projects dir: {}",
+            dir.display()
+        ));
+    }
     let entries =
         std::fs::read_dir(&dir).map_err(|e| format!("read_dir {} failed: {e}", dir.display()))?;
     let stdout = std::io::stdout();
@@ -224,12 +239,13 @@ fn analyze_session(p: &Path) -> serde_json::Value {
                         ai_title = Some(t.to_string()); // 取最新（持续覆盖）
                     }
                 }
-                Some("user") if excerpt.is_empty() => {
-                    if v.get("isMeta").and_then(|m| m.as_bool()) != Some(true) {
-                        if let Some(text) = user_text(&v) {
-                            if !text.starts_with("[Request interrupted") {
-                                excerpt = truncate_chars(&text, 120);
-                            }
+                Some("user")
+                    if excerpt.is_empty()
+                        && v.get("isMeta").and_then(|m| m.as_bool()) != Some(true) =>
+                {
+                    if let Some(text) = user_text(&v) {
+                        if !text.starts_with("[Request interrupted") {
+                            excerpt = truncate_chars(&text, 120);
                         }
                     }
                 }
@@ -343,6 +359,24 @@ mod tests {
         let txt = dir.join("note.txt");
         std::fs::write(&txt, "x").unwrap();
         assert!(read_session(&tmp, &txt.to_string_lossy()).is_err());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn list_sessions_rejects_symlink_escape() {
+        use std::os::unix::fs::symlink;
+        let tmp = std::env::temp_dir().join(format!("ccm-hq-sym-{}", std::process::id()));
+        let projects = tmp.join("projects");
+        std::fs::create_dir_all(&projects).unwrap();
+        // projects/ 外的目录，放一个 jsonl
+        let outside = tmp.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("leak.jsonl"), r#"{"type":"user"}"#).unwrap();
+        // projects/sneaky -> ../outside（名字合法、无分隔符、无 ..，旧 string 校验放行）
+        symlink(&outside, projects.join("sneaky")).unwrap();
+        // canonicalize 前缀校验解析 symlink 后落在 projects/ 外 → 拒绝
+        assert!(list_sessions(&tmp, "sneaky").is_err());
         std::fs::remove_dir_all(&tmp).ok();
     }
 }
