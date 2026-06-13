@@ -2318,6 +2318,20 @@ body.viewer-mode .history-trigger {
   flex-shrink: 0;
 }
 
+/* issue #16：远端项目组的 [host] 来源徽标。低调 mono chip，与 .history-chip
+   同视觉语言；放在项目名之后、路径之前，一眼区分本地/远端（只读）。 */
+.history-origin-badge {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--overlay-dim);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-2);
+  cursor: help;
+}
+
 .history-group-path {
   color: var(--text-faint);
   font-family: var(--font-mono);
