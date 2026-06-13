@@ -183,7 +183,7 @@ $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 - `stream.ts` 的 `MessageStream` 用 `ResizeObserver` + 守卫式 `snap()` 应对：内容后载长高时若仍贴底则自动跟随到底部
 - 如果贴底失灵，DevTools 看是否触发了 ResizeObserver 回调，以及 `snap()` 的守卫条件（落后底部 >1px 才贴）是否被满足
 
-### 从 claude 内嵌 shell 启动 dev → resume 出的会话不注册、不落盘、无 Tab（未修，issue #24）
+### 从 claude 内嵌 shell 启动 dev → resume 出的会话不注册、不落盘、无 Tab（已修 issue #24，回归排查）
 
 **症状**：monitor 历史里点 ↺ resume，claude 窗口正常打开、能对话、能跑工具，但 monitor
 永远不出 Tab；且该会话**写的任何东西都不落盘**（关窗即丢）。同一条 `claude --resume`
@@ -204,9 +204,20 @@ $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 **判别法**：`sessions/` 里没有该 claude 的 `<PID>.json` + jsonl mtime 冻结 + 用户自己
 终端 resume 正常 → 即此问题。**注意 resume 窗口里写的内容不会被保存。**
 
-**待修**（issue #24）：monitor 启动时 `std::env::remove_var` 清掉上述四个嵌套标记
-（保留 `CLAUDE_CONFIG_DIR`——monitor 自己消费它），所有子进程即干净。完整排查复盘：
+**已修**（issue #24）：`lib.rs::run()` 最前（任何线程 spawn 之前）
+`scrub_env_vars(&NESTED_CLAUDE_ENV_KEYS)` 清掉上述四个嵌套标记（保留
+`CLAUDE_CONFIG_DIR`——monitor 自己消费它），之后 spawn 的一切子进程都干净。
+清洗发生时日志留痕 `scrubbed inherited claude nested-session env markers: ...`。
+**边界**：scrub 只管 monitor 自己 spawn 的进程链；若 Windows Terminal 配置为
+"attach 到已存在窗口"，新 tab 的 shell 继承的是已有 WT server 进程的环境——
+那个 server 若本身从 claude 会话里启动，resume 出的 claude 仍带毒（monitor
+管不到别人的进程树）。完整排查复盘：
 `D:/Sync/文档/2026-06-13-claude嵌套环境变量导致resume会话不落盘-排查总结.md`。
+
+### 会话内容在 timeline 底部整段重复（已修 issue #26，回归排查）
+- 根因：watcher 截断重读换新 seq 重投整个文件（at-least-once，INVARIANTS § 25），seq 去重放行 → 每条记录以更大 seq 在末尾再渲染一遍
+- 检查：`tabs.ts onLine` 的 `processedUuids` 按 uuid 整体拒重还在（ensureTab/seq 去重之后、trackAgents/渲染之前）
+- 复现：对一个被 watch 的活跃 jsonl 手动截短再追加回去 → 后端出 `jsonl truncated ... full re-read` warn → Tab 内容应**不**翻倍
 
 ### 大段消息被误折成「已被 ESC 回退」（已修 issue #25，回归排查）
 - 根因：行投递是 at-least-once（INVARIANTS § 25），重复 uuid 毒化 `computeMainBranch` 的 Kahn 拓扑——`remaining` 计数被多扣、重复点全部祖先 leftover、折叠信号（latestDescTs/hasAssistant）全错 → fork 赢家/多 root 分类误判。重复常是 attachment 等**不渲染**的记录，肉眼看不出输入有重复；实测 1 条重复 attachment 即折 1541/4331 条

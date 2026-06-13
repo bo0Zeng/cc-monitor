@@ -34,10 +34,46 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Emitter, Listener, Manager};
 
+/// issue #24：清掉从宿主 shell 继承的 claude 嵌套标记。
+///
+/// Windows 子进程默认继承全部环境。若 monitor 是从「Claude Code 会话内的 shell」
+/// 启动的（开发者跑 `run.ps1 dev` 很常见），这些标记会沿 monitor → wt.exe →
+/// powershell → `claude --resume` 一路传下去，resume 出的 claude 被嵌套检测判成
+/// **子会话** → 不注册 `sessions/<PID>.json`、不写会话 jsonl（对话只活在内存、
+/// 关窗即丢）→ monitor 永远不出 Tab。启动时单点清洗，之后 spawn 的一切子进程
+/// 都干净。**保留 `CLAUDE_CONFIG_DIR`**（monitor 自己消费它解析数据目录）。
+/// 正常启动路径这些变量本就不存在 → no-op 零回归。
+/// 完整排查：doc/DEVELOPMENT.md 常见问题节。
+///
+/// 返回实际清掉的 key（供 caller 在 logging 就绪后留痕——本函数必须在任何线程
+/// spawn 之前调用，那时 logging 还没初始化、不能直接打 log）。
+fn scrub_env_vars(keys: &[&str]) -> Vec<String> {
+    let mut removed = Vec::new();
+    for &k in keys {
+        if std::env::var_os(k).is_some() {
+            std::env::remove_var(k);
+            removed.push(k.to_string());
+        }
+    }
+    removed
+}
+
+const NESTED_CLAUDE_ENV_KEYS: [&str; 4] = [
+    "CLAUDECODE",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_ENTRYPOINT",
+];
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 启动 perf 测量起点
     let t0 = std::time::Instant::now();
+
+    // issue #24：第一件事就是清嵌套标记——必须在任何线程 spawn 之前
+    // （std::env::remove_var 修改进程级环境，单线程窗口内调用才稳妥；
+    // 下面 logging::init 就会起 non_blocking writer 线程）。
+    let scrubbed_env = scrub_env_vars(&NESTED_CLAUDE_ENV_KEYS);
 
     // v2.0.0 (issue #4)：tracing 初始化提前到 Builder 之前 —— 一旦 init 全局
     // dispatcher 锁死，且我们要捕获 setup() 期间的所有 log。
@@ -56,6 +92,14 @@ pub fn run() {
         monitor_data_dir.display(),
         logging_state.log_dir().display()
     );
+    if !scrubbed_env.is_empty() {
+        // issue #24：留痕——宿主 shell 带嵌套标记（从 claude 会话内启动的）。
+        // 没这行，"清洗是否真的发生过"无法事后验证。
+        tracing::info!(
+            "scrubbed inherited claude nested-session env markers: {}",
+            scrubbed_env.join(", ")
+        );
+    }
 
     // setup 闭包是 FnOnce + 'static，必须 move-capture。把 logging_state shadow 进闭包，
     // 闭包内同时 install_error_emitter（&self 借用）+ app.manage(clone)
@@ -1161,6 +1205,32 @@ fn open_with_os(path_or_dir: &str) -> Result<(), String> {
             .spawn()
             .map_err(|e| format!("xdg-open failed: {e}"))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod env_scrub_tests {
+    use super::scrub_env_vars;
+
+    /// issue #24：清掉存在的、跳过不存在的、不碰未列出的。
+    /// 用本测试专属的假变量名——cargo test 多线程跑，进程级 env 是共享的，
+    /// 绝不能在测试里 set/remove 真实的 CLAUDE_* 变量（会干扰并发测试与宿主环境）。
+    #[test]
+    fn removes_present_keeps_unlisted_skips_absent() {
+        // 正常启动路径：变量全不存在 → 严格 no-op（"零回归"声明的直接对应物）
+        assert!(scrub_env_vars(&["CCM_TEST_SCRUB_NOOP"]).is_empty());
+
+        std::env::set_var("CCM_TEST_SCRUB_A", "1");
+        std::env::set_var("CCM_TEST_SCRUB_KEEP", "keep");
+        let removed = scrub_env_vars(&["CCM_TEST_SCRUB_A", "CCM_TEST_SCRUB_ABSENT"]);
+        assert_eq!(removed, vec!["CCM_TEST_SCRUB_A".to_string()]);
+        assert!(std::env::var_os("CCM_TEST_SCRUB_A").is_none());
+        assert_eq!(
+            std::env::var("CCM_TEST_SCRUB_KEEP").as_deref(),
+            Ok("keep"),
+            "未列出的变量必须原样保留（对应真实场景的 CLAUDE_CONFIG_DIR）"
+        );
+        std::env::remove_var("CCM_TEST_SCRUB_KEEP");
     }
 }
 
