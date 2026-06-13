@@ -46,13 +46,50 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'   # ≥22.18：内置 type-stripping，无需 ts-node 直接跑 .test.ts
           cache: 'npm'
 
       - run: npm ci
       - run: npx tsc --noEmit
 
+      # 纯函数算法测试（zero-dep；node 内置 type-stripping 跑 .test.ts）。守护回归高发区：
+      # branching 主线折叠（#8/#22/#25/#26）、diff 渲染（#14）、API 报错卡（#21）。
+      - name: unit tests (branching / diff / api-error)
+        run: |
+          npm run test:branching
+          npm run test:diff
+          npm run test:api-error
+
       # vite build 验证产物可生成（不打包 exe，那个 5+ 分钟太慢；
       # 完整 tauri build 留给 tag 触发的 release 工作流）
       - name: vite build (dist/)
         run: npm run build
+
+  # 远端 daemon 是这套体系里**唯一以 Linux 为真实目标**的部分（inotify / aarch64），
+  # 故单独跑在 ubuntu。standalone crate（无 root workspace），不被上面 Windows job 触及。
+  daemon:
+    name: Remote daemon (Linux) lint + test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: remote-daemon-proto
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: remote-daemon-proto
+
+      - name: cargo fmt --check
+        run: cargo fmt --check
+
+      # clippy 同后端 job：仅警告，不强制
+      - name: cargo clippy
+        run: cargo clippy --all-targets
+
+      - name: cargo test
+        run: cargo test
