@@ -214,15 +214,13 @@ cc-monitor/
 | [src-tauri/README.md](src-tauri/README.md) | 后端开发 | 后端模块导览 + IPC 清单 |
 | [scripts/README.md](scripts/README.md) | 用脚本的人 | 脚本说明 |
 
-**外部学习向文档**（不在仓库内，作者个人沉淀）：DECISIONS.md（24 条 ADR）/ HISTORY.md（12 大关键转向）/ KNOWLEDGE.md（14 大关键技术点）/ PHILOSOPHY.md / vX.Y-debug-notes.md（含 v2.6 B 重构完整记录）。如需阅读联系作者。
-
 ## 项目当前状态
 
 - **版本**：v2.9.6（Released）；少量小修在 `main` 待发布（见 CHANGELOG）
 - **平台**：Windows 10 (1809+) / 11（远端 daemon 跑 Linux / aarch64）
 - **测试**：后端 cargo test 130 + 远端 daemon 17 + 前端 3 个纯函数测试，全绿（CI 门禁）
 - **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~12K LOC TS + ~11K LOC Rust，含 ~1.3K 远端 daemon）
-- **设计原则**：只读零侵入（INVARIANT § 1）/ 可选性 / Windows-first / 长期记忆机制（CHANGELOG + ADR + doc）
+- **设计原则**：只读零侵入（INVARIANT § 1）/ 可选性 / Windows-first / 长期记忆机制（CHANGELOG + doc/ 专题文档 + 各模块 README）
 
 ---
 
