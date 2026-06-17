@@ -49,7 +49,7 @@ cd ~/cc-monitor-src/remote-daemon-proto
 
 # 方式 2：从 Windows scp 过去（只传那一个目录）
 #   在 Windows 上：
-#   scp -r "D:\Sync\文档\claudecode-frontend\cc-monitor\remote-daemon-proto" user@host:~/remote-daemon-proto
+#   scp -r "<cc-monitor 仓库根>\remote-daemon-proto" user@host:~/remote-daemon-proto
 #   然后目标机：cd ~/remote-daemon-proto
 ```
 

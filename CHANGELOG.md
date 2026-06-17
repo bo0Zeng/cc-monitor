@@ -233,8 +233,6 @@ cc-monitor 是只读监视窗口，主视图不接受文本输入，组合键多
 
 **回归性**：5 个状态字段全删；83 cargo test passed；任何 emit 顺序乱序到达都能自动恢复（不再担心第二批 batch / catch-up live 顺序问题）。
 
-详 [外部 v2.6-b-refactor-notes.md](../doc/v2.6-b-refactor-notes.md) + DECISIONS.md ADR-021..024（仓库外）。
-
 ### 修复 — HistoryView 期间新 session 显示空白
 
 **症状**：打开历史浏览器（Ctrl+H）期间，到一个新终端跑 `claude`，关掉历史后新 session 的 Tab 显示空白不可切换。
@@ -282,8 +280,6 @@ cc-monitor 是只读监视窗口，主视图不接受文本输入，组合键多
 **修法**（三道防线，详 INVARIANT § 21）：(1) `snap()` 改守卫式，只在落后底部 >1px 才贴；(2) 上方插入不手动补偿 scrollTop，交给原生 `overflow-anchor`；(3) `RecordTimeline` 加 deferMode，重放期"视口上方"旧内容延后到 `onBatchEnd` 用 `attachBatch` 一次性挂回。渲染仍按 40/帧推进（首屏不变慢）。
 
 **回归性**：实测抖动帧数 66 → 1；中途同时引入又回退的 `.block-body` 去 containment 改动（会导致 tab 可横向滚动）已还原。
-
-详 [外部 scroll-jitter-investigation.md](../doc/scroll-jitter-investigation.md)（排查复盘）。
 
 ### 内部清理（不影响用户）
 
@@ -992,10 +988,10 @@ v1.7.9 及更早版本在用户**已有内容的 PowerShell profile** 上点 [�
   - 修法：去掉 `GW_OWNER` 过滤。marker 字符串 = `ccm-bind-{PID}-{UUID 8 char}`
     极独特，不需要 owner=0 这个"防 popup 误命中"的保险。
 
-### 诊断脚本（如本次复现）
+### 诊断方法（如本次复现）
 
-附 `ccm-diag.ps1`（本仓库外）可在用户 PS 跑：模拟 cc 握手并对比 PS 端 vs
-monitor 端 `EnumWindows` 看到的窗口差异。本 bug 就是这样定位的——PS 端能找到
+本 bug 用一个诊断脚本定位：在用户 PS 里模拟 cc 握手，并对比 PS 端 vs
+monitor 端 `EnumWindows` 看到的窗口差异——PS 端能找到
 marker，monitor 端找不到 → 一定是过滤条件差异。
 
 ### v1.7.x 教训
@@ -1044,7 +1040,7 @@ v1.7.0-1.7.4 看似都"装上能用"，实际除非用户是从 WT 内开新 tab
   function cc {
       __ccm_bind                    # ← 加这一行
       if ((Get-Location).Path -eq $env:USERPROFILE) {
-          Set-Location 'D:\Sync\文档\claude-conversation'
+          Set-Location 'C:\path\to\your\project'
       }
       # ... 用户自定义代理 / 其他逻辑 ...
       claude @args
@@ -1207,10 +1203,6 @@ v1.7.2 已安装 + 自定义 cc 被覆盖的用户：
 4. 新 session 启动时 PS function 自动跟 monitor 握手（< 100ms，无感知）
 5. 用 `cc` 替代 `claude` 启动会话
 6. 之后 Tab ↗ / Ctrl+\` 直接拉对应 WT 窗口
-
-### 设计文档
-
-`D:/Sync/文档/cc-monitor-v1.7-cc-integration-plan.md`（plan + 时序图 + 数据结构）
 
 ## [1.6.7] — 2026-05-22
 
@@ -1470,5 +1462,3 @@ v1.5.0 的迭代版。首次通过 `release.yml` 自动发布（v1.5.0 tag 指�
 ## v1.5.0 之前 — pre-release dev 阶段（无独立 tag）
 
 第一个公开发布是 v1.5.0（2026-05-20）。在那之前，所有功能（实时渲染 / 多 Tab / SessionMap 进程探活 / LaTeX + 代码高亮 / tool_use 折叠卡 / subagent / 设置面板 GUI / `bring_terminal_to_front` 4 阶段 HWND 启发式 / 撤销 SessionStart hook 路线 / 撤销 U2 焦点同步等）都在 dev 阶段内完成，由一个 Initial scaffold + 数十个 feat/fix commit 累积成 v1.5.0 的初始功能集。
-
-详细的关键转向与设计演化叙事见 [`../doc/HISTORY.md`](../doc/HISTORY.md)（不在 git 仓库的工作目录文档）。

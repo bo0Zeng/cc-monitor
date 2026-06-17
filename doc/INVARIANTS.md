@@ -68,17 +68,14 @@
 
 **为什么不能松动**：
 - 之前用"多 flag 协调"路径（PayloadSource batch/live + inPrependMode + pendingPrependFragment
-  + EventReplay.replaying 等 5 个 flag）反复出 inter-flag 相位 bug（详 ADR-021）。
+  + EventReplay.replaying 等 5 个 flag）反复出 inter-flag 相位 bug。
   v2.6 B 重构把所有 flag 替换为 seq + binary insert。
 - chunked emit 期间 watcher push 的真新行直接走 jsonl-line emit 出去；前端 timeline
   按 seq 把它们放到正确位置——不再需要"replaying 期间 push 等末块后 catch-up"的
   特殊路径。
 
-**演进**：v2.3 加 chunked emit / v2.4 加 PayloadSource / v2.5 加 replaying flag + catch-up tail
-（详 v2.4-active-tab-sync-notes.md + v2.6-b-refactor-notes.md）—— 都在试图修补"多 flag
+**演进**：v2.3 加 chunked emit / v2.4 加 PayloadSource / v2.5 加 replaying flag + catch-up tail —— 都在试图修补"多 flag
 状态机相位 bug"。v2.6 B 重构是一次性消除整套机制。
-
-详 v2.6-b-refactor-notes.md § 3（项目外作者沉淀，同 § 77 行）+ ADR-021/022。
 
 ---
 
@@ -120,7 +117,7 @@
 
 **禁止**任何"按到达顺序排序 / 拼接"的代码——包括前端临时缓冲、后端 chunked emit 假设的 head/older 区分、live 与 batch 路径分别维护顺序等。一切顺序**必须**取自 `seq` 字段。
 
-**为什么不能松动**：jsonl 的行顺序就是用户对话的时间顺序。乱序 = 看到 Claude 先回复、再出现 user 提问 → 完全没法用。seq 不依赖 emit 时机，所以跨 snapshot / live / chunked replay 各种边界都成立；任何"按到达顺序"的捷径都会在某个边界破坏时序（历史上多 flag 状态机的相位 bug 根因，详 § 5 + ADR-021/022）。
+**为什么不能松动**：jsonl 的行顺序就是用户对话的时间顺序。乱序 = 看到 Claude 先回复、再出现 user 提问 → 完全没法用。seq 不依赖 emit 时机，所以跨 snapshot / live / chunked replay 各种边界都成立；任何"按到达顺序"的捷径都会在某个边界破坏时序（历史上多 flag 状态机的相位 bug 根因，详 § 5）。
 
 ---
 
@@ -245,7 +242,7 @@
 v2.4.2 之前 `SessionInfo.proc_start: String` 必填 → serde 直接解析失败 → `read_one` 返 None → 整个 session 被静默忽略 → monitor 漏 Tab。修复 `Option<String>` 后，缺失时 `is_process_alive` 跳过 PID 复用校验只看 STILL_ACTIVE，**代价是极小概率误判活跃但远好过完全看不见 Tab**。
 
 **应用范围**：
-- `sessions/<PID>.json` (`session_map::SessionInfo`) —— procStart 字段在 v2.6 后端按 `Option<String>` 反序列化；调用点用 `utils::NetTicks::parse_str` 转 typed value 比较（详 ADR-024）。同样 wire 字符串可缺，Rust 内部用 newtype 隔离避免跟 `bind.rs::HwndEntry.owner_proc_start` (FILETIME) 单位混用
+- `sessions/<PID>.json` (`session_map::SessionInfo`) —— procStart 字段在 v2.6 后端按 `Option<String>` 反序列化；调用点用 `utils::NetTicks::parse_str` 转 typed value 比较。同样 wire 字符串可缺，Rust 内部用 newtype 隔离避免跟 `bind.rs::HwndEntry.owner_proc_start` (FILETIME) 单位混用
 - `tasks/<sid>/<id>.json` (`tasks::TaskEntry`) — 已经按宽容处理
 - `projects/**/*.jsonl` 的 `messages::JsonlRecord` enum — 用 `#[serde(other)] Unknown` 兜任何未知 type
 - 未来添加任何 Claude Code 数据源读取一律照此办
@@ -303,8 +300,6 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 **为什么不能松动**：根因实测定位 —— 末块先发的重放把旧消息逐条插到"贴底视口的上方"，持续约 60 帧；每次上方插入都触发浏览器重排 + 重做 scroll anchoring，而 HiDPI / 高刷屏分数像素下，整数 `scrollHeight` 与分数布局的舍入误差**每帧不同** → 整块内容逐帧 ±0.5px 高频重绘。压成"一次性批量挂载"后实测抖动帧数 66 → 1。注意：`scrollTop` 本身并不震荡（单调增长），所以**只测 `scrollTop` 发现不了这个 bug**，要测可见元素 `getBoundingClientRect().top` 的逐帧反转。
 
-详 `D:/Sync/文档/claudecode-frontend/doc/scroll-jitter-investigation.md`（项目外排查复盘）。
-
 ---
 
 ## 22. 独立 viewer 窗口（issue #10）四条契约
@@ -316,9 +311,7 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 3. **`bindEvents` 必须 await 再触发 emit**：`listen()` 异步注册，注册完成前后端 emit 的事件会丢。viewer 在 bindEvents 后立刻调 replay，所以 `bindEvents` 返回 Promise 且 caller 必须 await（主窗口 emit frontend-ready 同理）。
 4. **viewer-mode CSS grid 行数随可见 item 定义**：`#tab-bar` `display:none` 会把它**从 grid item 移除**，剩余子元素自动前移一行。所以 viewer 必须只为剩余 item 定义对应行数（`auto 1fr 24px`），否则 message-stream 落进多余行被压成 0 高（整窗只剩状态栏）。
 
-**为什么不能松动**：四条都是实测踩出来的（详见排查复盘），且都"静默失败"——不报错，只是白屏 / 收不到 / 卡死，极难凭看代码发现。
-
-详 `D:/Sync/文档/claudecode-frontend/doc/viewer-window-investigation.md`（项目外排查复盘）。
+**为什么不能松动**：四条都是实测踩出来的，且都"静默失败"——不报错，只是白屏 / 收不到 / 卡死，极难凭看代码发现。
 
 ---
 
@@ -329,8 +322,6 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 任何**复用 `.stream` 样式但不归 TabManager 管的视图**（`SessionViewer` 应用内只读查看器、未来别的只读流）**必须在自己的 CSS 里显式 `visibility: visible`**，因为它们的元素永远不会拿到 `.active` 类。
 
 **为什么不能松动**：v2.8.1 的"历史会话点进去空白"就是这个坑——`SessionViewer` 流元素 class 是 `stream session-viewer-stream` 没有 `.active`，命中基类 `visibility: hidden`，2000+ 张卡片全渲染进 DOM 却不可见，而状态栏（不在 `.stream` 内）照常显示记录数 → "有记录却空白"的迷惑现象。独立 viewer 窗口（§ 22）复用 TabManager 所以有 `.active`，不受影响；只有自建流的 `SessionViewer` 中招。**禁止**给非-Tab 视图的流元素只复用 `.stream` 而不补 `visibility: visible`。
-
-详 `D:/Sync/文档/claudecode-frontend/doc/v2.8.1-bugfix-notes.md`（项目外排查复盘）。
 
 ---
 

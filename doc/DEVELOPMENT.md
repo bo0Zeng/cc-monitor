@@ -211,8 +211,7 @@ $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 **边界**：scrub 只管 monitor 自己 spawn 的进程链；若 Windows Terminal 配置为
 "attach 到已存在窗口"，新 tab 的 shell 继承的是已有 WT server 进程的环境——
 那个 server 若本身从 claude 会话里启动，resume 出的 claude 仍带毒（monitor
-管不到别人的进程树）。完整排查复盘：
-`D:/Sync/文档/2026-06-13-claude嵌套环境变量导致resume会话不落盘-排查总结.md`。
+管不到别人的进程树）。
 
 ### 会话内容在 timeline 底部整段重复（已修 issue #26，回归排查）
 - 根因：watcher 截断重读换新 seq 重投整个文件（at-least-once，INVARIANTS § 25），seq 去重放行 → 每条记录以更大 seq 在末尾再渲染一遍
@@ -222,9 +221,9 @@ $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 ### 大段消息被误折成「已被 ESC 回退」（已修 issue #25，回归排查）
 - 根因：行投递是 at-least-once（INVARIANTS § 25），重复 uuid 毒化 `computeMainBranch` 的 Kahn 拓扑——`remaining` 计数被多扣、重复点全部祖先 leftover、折叠信号（latestDescTs/hasAssistant）全错 → fork 赢家/多 root 分类误判。重复常是 attachment 等**不渲染**的记录，肉眼看不出输入有重复；实测 1 条重复 attachment 即折 1541/4331 条
 - 检查四道防线：(1) `computeMainBranch` 入口 uuid 去重还在；(2) `BranchFolder.seenUuids` 拒重还在；(3) DevTools console 有无 `[branching] Kahn leftover` warn（出现 = 异常输入新形态，warn 里带嫌疑 uuid）；(4) 后端 log 有无 `jsonl truncated ... full re-read` warn（出现 = 发生过截断重投；频繁出现要查谁在改写 jsonl）
-- 复现/回归：`npm run test:branching`（#25 三用例：root 级毒化 / fork 级毒化 / 全文件 doubled 幂等）。完整排查复盘：`D:/Sync/文档/2026-06-13-重复记录毒化Kahn拓扑导致ESC大段误折叠-排查总结.md`
+- 复现/回归：`npm run test:branching`（#25 三用例：root 级毒化 / fork 级毒化 / 全文件 doubled 幂等）。
 
 ### 启动重放期最新消息整行高频上下微抖（已修，回归排查）
 - 根因：旧内容逐帧插到贴底视口上方 → 浏览器逐帧重排 + 重做 scroll anchoring，HiDPI/高刷屏分数像素下舍入误差每帧不同 → 整块 ±0.5px 抖（详 INVARIANTS § 21）
 - 检查三道防线是否被破坏：(1) `snap()` 是否还守卫（没被改成无脑 `scrollTop=scrollHeight`）；(2) `.stream` 是否被加了 `overflow-anchor: none`；(3) `RecordTimeline` deferMode 是否仍在 `onBatchStart` 开、`onBatchEnd` 先 `flushDeferred()` 再 `branchFolder.flushPending()`
-- **关键**：`scrollTop` 本身不震荡（单调增长），只测 scrollTop 发现不了——要测可见元素 `getBoundingClientRect().top` 的逐帧方向反转。完整排查方法见 `D:/Sync/文档/claudecode-frontend/doc/scroll-jitter-investigation.md`
+- **关键**：`scrollTop` 本身不震荡（单调增长），只测 scrollTop 发现不了——要测可见元素 `getBoundingClientRect().top` 的逐帧方向反转。

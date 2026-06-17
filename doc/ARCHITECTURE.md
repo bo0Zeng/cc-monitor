@@ -81,7 +81,7 @@
 - **大小分流 emit**（v2.4.2，v2.6 chunked emit 简化）：`event_replay::on_line_batch` 按 batch 大小分流：
   - `payloads.len() < 50`（用户日常敲键 1~N 行）→ 逐条 `emit("jsonl-line")` live 路径
   - `payloads.len() >= 50`（用户跑 `claude --resume` 灌历史 / 大量追加）→ 切块走 `emit("jsonl-batch")`，前端进入 batch 模式（lazy hljs）。v2.6 简化：删 head/older 区分，统一按 `CHUNK_SIZE=600` 末块先发，前端按 seq 自动排到正确位置
-- **启动重放等扫完**（v2.4 修首次启动乱序）：watcher 线程同步全量扫完成后才置 `initial_scan_done: AtomicBool = true`。frontend-ready listener 在 async task 里 spin-wait（10ms poll，10s timeout）等这个 flag → `replay_and_mark_ready` 切块 `emit("jsonl-batch")` 整个 history → mark ready → **按活跃集对账补发 `session-ended`**（#19 本地用 session_map / #20 远端用 remote_active；前端把 session-ended 与行同队列同序处理，归档落在全部重放行之后，INVARIANTS § 24）。v2.6 简化：**删了 `replaying` flag + catch-up tail 路径**，chunked emit 期间 watcher 真新行直接走 jsonl-line live emit，前端 timeline 按 seq 自动放到正确位置（详 v2.6-b-refactor-notes）
+- **启动重放等扫完**（v2.4 修首次启动乱序）：watcher 线程同步全量扫完成后才置 `initial_scan_done: AtomicBool = true`。frontend-ready listener 在 async task 里 spin-wait（10ms poll，10s timeout）等这个 flag → `replay_and_mark_ready` 切块 `emit("jsonl-batch")` 整个 history → mark ready → **按活跃集对账补发 `session-ended`**（#19 本地用 session_map / #20 远端用 remote_active；前端把 session-ended 与行同队列同序处理，归档落在全部重放行之后，INVARIANTS § 24）。v2.6 简化：**删了 `replaying` flag + catch-up tail 路径**，chunked emit 期间 watcher 真新行直接走 jsonl-line live emit，前端 timeline 按 seq 自动放到正确位置
 - **前端按 seq 排序**（v2.6 B 重构）：`RecordTimeline.insert(seq, element)` 用 binary search 找位置 → `stream.insertNode(element, anchor)` 同步处理 stickToBottom 贴底。**消除了** PayloadSource batch/live / inPrependMode / pendingPrependFragment 等 5 个 flag。tool-group 合并改后处理算法：插入时 `timeline.peekPrev(seq)` 看左邻居，是 tool-group 就 `addToToolGroup`，否则建新 group 入 timeline（详 render-stream-record.ts）
 - **active session 自动同步**（v2.4 issue #2）：tabs.ts `onLine` 透传 payload 给 `renderStreamRecord`；sink.onRealUserInput 仅在 `result.kind === "card" && message.type === "user"` 触发（v2.6 删 source 参数后用 message.type 判定）→ TabManager.userActive 检查 `autoFollowUserActive` toggle + 5s `manualOverrideUntil` → `switchTo(sid, "auto")` + 可选 `invoke("bring_monitor_to_front")`
 - **cc 集成绑定**：PS 跑 `__ccm_bind` 写 `ps-await/<PID>.json` + 改窗口标题为 marker → `bind.rs` 监听 + EnumWindows → 写 `ps-registry/<PID>.json` + 删 await → PS 检测到删除恢复标题
@@ -226,8 +226,6 @@ replay 时一次性发整个 Vec<JsonlLinePayload>，前端 push 进同一 queue
 2. **事件 target-kind 必须对齐**：定向投递要 Rust `emit_to(EventTarget::webview_window(label))` ↔ 前端 `getCurrentWebviewWindow().listen`（窗口作用域，`bindEvents({windowScoped:true})`）。用 `&str` 目标（→`AnyLabel`）配模块级 `listen`（→`Any`）**收不到**（实测白屏只剩状态栏）。live 广播 `Any` 是通配，带标签监听仍能收。
 3. **`bindEvents` 须 await**：`listen()` 异步注册，注册完成前 emit 的事件会丢；viewer 紧接着调 replay，必须先 await。
 4. **viewer-mode grid 行数**：`#tab-bar` `display:none` 会把它从 grid item 移除，剩下的子元素**前移一行** → message-stream 落进多余的 0 高行被压没。只能给剩余 item 定义对应行数（`auto 1fr 24px`）。
-
-详细排查复盘见 `doc/viewer-window-investigation.md`（项目外）。
 
 ### session 探活双重校验（PID + procStart，procStart 可缺）
 `OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE` + 当 sessions/<PID>.json 含 `procStart` 字段时再加 `GetProcessTimes` creation FILETIME 100ms 容差比对。
