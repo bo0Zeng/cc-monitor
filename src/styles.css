@@ -2167,6 +2167,37 @@ body.viewer-mode .history-trigger {
   overflow-x: auto;
 }
 
+/* === 远端机器列表（多机 #30）=== */
+
+.remote-machines {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 6px 0;
+}
+
+.remote-machine {
+  margin: 0;
+  padding: 8px 12px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.remote-machine-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.remote-machine-remove {
+  font-size: var(--font-size-small);
+  padding: 1px 8px;
+}
+
 /* === History 视图（接管 #message-stream 区域） === */
 
 .history-view {
@@ -2273,6 +2304,78 @@ body.viewer-mode .history-trigger {
 }
 
 /* === 项目分组（顶层布局，可折叠） === */
+/* F02 多机 #30：来源大区（本地 / 各远端 host）——比项目组更粗一层的可折叠分组。
+   仅在历史里存在 >1 个来源时出现；纯本地时不渲染（项目组直接平铺，零回归）。 */
+.history-origin-group {
+  border-bottom: 2px solid var(--border-strong);
+}
+.history-origin-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg-2);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.history-origin-header::-webkit-details-marker {
+  display: none;
+}
+.history-origin-header:hover {
+  background: var(--overlay-hover);
+}
+.history-origin-group[open] > .history-origin-header .history-group-indicator {
+  transform: rotate(90deg);
+}
+.history-origin-name {
+  color: var(--text);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.history-origin-body {
+  padding-left: 4px;
+}
+.history-empty-hint {
+  padding: 20px 18px;
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+
+/* F03 多机 #30：来源筛选 chip 行 */
+.history-origin-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.history-origin-filter-label {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+.history-origin-chip {
+  padding: 2px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: background 80ms, color 80ms, border-color 80ms;
+}
+.history-origin-chip:hover {
+  background: var(--overlay-hover);
+}
+.history-origin-chip.active {
+  background: var(--overlay-dim);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
 .history-group {
   margin: 0;
   border-bottom: 1px solid var(--border-strong);

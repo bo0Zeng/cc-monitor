@@ -200,7 +200,7 @@ pub fn run() {
             };
 
             // 本地 jsonl-watcher：**始终** spawn（与 SSH-remote 引入前完全一致）。
-            // 远端（如启用）是纯附加数据源（见下方 load_remote_config 块），不影响这里。
+            // 远端（如启用）是纯附加数据源（见下方 load_remote_configs 块），不影响这里。
             let watcher_handle = watcher::spawn_watcher(projects_dir, active_filter, on_batch);
             let force_rescan_tx = watcher_handle.force_rescan_tx;
             let initial_scan_done = watcher_handle.initial_scan_done;
@@ -279,10 +279,11 @@ pub fn run() {
             // `remote.enabled = true` 且配置完整 → 在本地 watcher 之外**额外**起一条
             // ssh_source::run（aggregate：本地 + 远端 session 同时显示）。否则（默认 /
             // 无 remote 配置）此块不执行，本地路径与历史 bit-for-bit 一致。
-            if let Some(cfg) = load_remote_config() {
+            let remote_cfgs = load_remote_configs();
+            if !remote_cfgs.is_empty() {
                 tracing::info!(
-                    "remote mode ENABLED (additive): SSH data source → {}@{}:{} (local jsonl-watcher still running)",
-                    cfg.user, cfg.host, cfg.port
+                    "remote mode ENABLED (additive): {} SSH data source(s) (local jsonl-watcher still running)",
+                    remote_cfgs.len()
                 );
 
                 // 远端独立 session 通道：ssh_source::run 持 sender；这里起一条**专用**的
@@ -378,23 +379,36 @@ pub fn run() {
                     }
                 }
 
-                // spawn SSH 数据源：与本地 watcher 走相同出口（batch_to_payloads →
-                // on_line_batch）；session 变化走 remote_tx → 上面的 remote-session-emitter。
-                // `connected` 是 connection-healthy signal：stream_loop 收到 daemon hello 时
-                // 置 true，run() 的重连循环据此判定本次是否连上过（连上过→下次立即快速重连，
-                // 否则指数退避）。远端**不**门控 frontend-ready（本地 watcher 的 initial_scan_done
-                // 才门控 replay；远端是实时流，无"初始扫完成"概念）。
-                let replay_for_ssh = replay.clone();
-                let app_for_ssh = app.handle().clone();
-                let connected = Arc::new(std::sync::atomic::AtomicBool::new(true));
-                tauri::async_runtime::spawn(async move {
-                    if let Err(e) =
-                        ssh_source::run(cfg, replay_for_ssh, app_for_ssh, remote_tx, connected).await
-                    {
-                        // S8/S9 会把"connection dropped"做成显眼的前端提示；先大声 log。
-                        tracing::error!("ssh_source::run exited: {e}");
-                    }
-                });
+                // 每台远端各起一条 ssh_source::run（多机 #30），与本地 watcher 走相同出口
+                // （batch_to_payloads → on_line_batch）；session 变化共享 remote_tx → 上面那
+                // 唯一的 remote-session-emitter（session 变化 host 无关，按 sid 维护）。
+                // `connected` 是 connection-healthy signal（每台一份）：stream_loop 收到 daemon
+                // hello 时置 true，run() 的重连循环据此判定本次是否连上过（连上过→下次立即快速
+                // 重连，否则指数退避）。远端**不**门控 frontend-ready（本地 watcher 的
+                // initial_scan_done 才门控 replay；远端是实时流，无"初始扫完成"概念）。
+                for cfg in remote_cfgs {
+                    tracing::info!(
+                        "  remote host [{}]: {}@{}:{}",
+                        cfg.origin_label(),
+                        cfg.user,
+                        cfg.host,
+                        cfg.port
+                    );
+                    let replay_for_ssh = replay.clone();
+                    let app_for_ssh = app.handle().clone();
+                    let tx_for_ssh = remote_tx.clone();
+                    let connected = Arc::new(std::sync::atomic::AtomicBool::new(true));
+                    tauri::async_runtime::spawn(async move {
+                        let label = cfg.origin_label();
+                        if let Err(e) =
+                            ssh_source::run(cfg, replay_for_ssh, app_for_ssh, tx_for_ssh, connected)
+                                .await
+                        {
+                            // S8/S9 会把"connection dropped"做成显眼的前端提示；先大声 log。
+                            tracing::error!("ssh_source::run [{label}] exited: {e}");
+                        }
+                    });
+                }
             }
 
             // 焦点同步功能已移除：Windows 11 默认 WT 是单进程多窗口架构，
@@ -613,74 +627,119 @@ fn extract_cwd(rec: &messages::JsonlRecord) -> Option<String> {
     }
 }
 
-/// SSH-remote Phase 0 / S5 (issue #15)：从 monitor 的 config.json 读 `remote` 对象，
-/// 构造 [`ssh_source::RemoteConfig`]。**默认 disabled**：
-///   - config.json 不存在 / 解析失败 / 无 `remote` 键 / `remote.enabled != true` → `None`
-///     （→ 本地模式，行为与历史 bit-for-bit 一致）
-///   - `remote.enabled == true` 但缺必填字段（host/user/daemon_path）→ `None` + warn
-///     （配置不完整时安全回退到本地，不是 hard error）
+/// SSH-remote（issue #15 / 多机 #30）：从 monitor 的 config.json 读 `remote` 段，构造
+/// **0..N 个** [`ssh_source::RemoteConfig`]。**空 Vec = 本地模式**（与历史 bit-for-bit
+/// 一致）：config.json 不存在 / 解析失败 / 无 `remote` 键 / `enabled != true` / 无任何
+/// 合法 host → 空 Vec。
 ///
 /// config.rs 是 schema-agnostic（只透传 serde_json::Value），所以这里直接读
 /// `paths::resolve_config_path()` 的文件，自己取 `remote` 子对象。读法对齐
 /// `paths.rs::read_user_override`（同一个 config.json，同样的 best-effort 容错）。
 ///
-/// remote 对象 schema（S6 的设置 UI 负责写）：
+/// remote 段 schema（S6/S7 的设置 UI 负责写）：
 /// ```json
 /// "remote": {
 ///   "enabled": true,
-///   "host": "raspberrypi.local",
-///   "port": 22,                       // 可选，默认 22
-///   "user": "pi",
-///   "keyPath": "C:\\Users\\me\\.ssh\\id_ed25519",   // 可选（缺则 connect 时报错）
-///   "daemonPath": "/home/pi/cc-monitor-remote",
-///   "hostKeyFingerprint": "SHA256:..."              // 可选（缺则首连 TOFU）
+///   "hosts": [
+///     { "label": "pi", "host": "raspberrypi.local", "port": 22, "user": "pi",
+///       "keyPath": "C:\\Users\\me\\.ssh\\id_ed25519",
+///       "daemonPath": "/home/pi/cc-monitor-remote",
+///       "hostKeyFingerprint": "SHA256:..." }
+///   ]
 /// }
 /// ```
-pub(crate) fn load_remote_config() -> Option<ssh_source::RemoteConfig> {
-    let cfg_path = paths::resolve_config_path()?;
+/// **向后兼容**：旧单对象形态 `"remote": { "enabled": true, "host": …, … }`（无 `hosts`
+/// 键）归一成 1 元素列表（`label` 默认 = host）。每台缺必填字段(host/user/daemonPath)
+/// 则跳过 + warn；`label` 重复则后缀化 ` (#2)`（保证 by-label 选台 key 唯一）。
+pub(crate) fn load_remote_configs() -> Vec<ssh_source::RemoteConfig> {
+    let Some(cfg_path) = paths::resolve_config_path() else {
+        return Vec::new();
+    };
     if !cfg_path.exists() {
-        return None;
+        return Vec::new();
     }
-    let raw = std::fs::read_to_string(&cfg_path).ok()?;
-    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    let remote = value.get("remote")?.as_object()?;
-
-    // 未显式 enabled=true → 视为关闭（默认本地）。
-    if remote.get("enabled").and_then(|v| v.as_bool()) != Some(true) {
-        return None;
-    }
-
-    let host = remote.get("host").and_then(|v| v.as_str());
-    let user = remote.get("user").and_then(|v| v.as_str());
-    let daemon_path = remote.get("daemonPath").and_then(|v| v.as_str());
-
-    let (host, user, daemon_path) = match (host, user, daemon_path) {
-        (Some(h), Some(u), Some(d)) if !h.is_empty() && !u.is_empty() && !d.is_empty() => {
-            (h.to_string(), u.to_string(), d.to_string())
-        }
-        _ => {
-            tracing::warn!("remote.enabled=true 但缺必填字段(host/user/daemonPath)，回退本地模式");
-            return None;
-        }
+    let Ok(raw) = std::fs::read_to_string(&cfg_path) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return Vec::new();
+    };
+    let Some(remote) = value.get("remote").and_then(|v| v.as_object()) else {
+        return Vec::new();
     };
 
-    let port = remote
+    // 全局 enabled 门控：未显式 true → 关闭（默认本地）。
+    if remote.get("enabled").and_then(|v| v.as_bool()) != Some(true) {
+        return Vec::new();
+    }
+
+    parse_remote_hosts(remote)
+}
+
+/// 把 `remote` 对象解析成 host 列表（抽出供单测直接喂 JSON 对象）。优先读 `hosts`
+/// 数组；无 `hosts` 但有 `host`（旧单对象）→ 当 1 台。重复 label 后缀化去重。
+fn parse_remote_hosts(
+    remote: &serde_json::Map<String, serde_json::Value>,
+) -> Vec<ssh_source::RemoteConfig> {
+    let host_objs: Vec<&serde_json::Map<String, serde_json::Value>> =
+        match remote.get("hosts").and_then(|v| v.as_array()) {
+            Some(arr) => arr.iter().filter_map(|v| v.as_object()).collect(),
+            None => vec![remote], // 向后兼容：旧单对象
+        };
+
+    let mut out: Vec<ssh_source::RemoteConfig> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for obj in host_objs {
+        let Some(mut cfg) = parse_host_obj(obj) else {
+            continue; // parse_host_obj 已 warn
+        };
+        // label 去重：重复则后缀化 " (#2)"、" (#3)"…，保证 by_label 选台唯一。
+        if !seen.insert(cfg.label.clone()) {
+            let base = cfg.label.clone();
+            let mut n = 2u32;
+            let unique = loop {
+                let cand = format!("{base} (#{n})");
+                if seen.insert(cand.clone()) {
+                    break cand;
+                }
+                n += 1;
+            };
+            tracing::warn!("remote label 重复，'{base}' 改为 '{unique}'");
+            cfg.label = unique;
+        }
+        out.push(cfg);
+    }
+    out
+}
+
+/// 解析单个 host JSON 对象 → RemoteConfig；缺必填字段(host/user/daemonPath) → None+warn。
+fn parse_host_obj(
+    obj: &serde_json::Map<String, serde_json::Value>,
+) -> Option<ssh_source::RemoteConfig> {
+    let str_field = |k: &str| obj.get(k).and_then(|v| v.as_str()).filter(|s| !s.is_empty());
+
+    let (host, user, daemon_path) =
+        match (str_field("host"), str_field("user"), str_field("daemonPath")) {
+            (Some(h), Some(u), Some(d)) => (h.to_string(), u.to_string(), d.to_string()),
+            _ => {
+                tracing::warn!("remote host 缺必填字段(host/user/daemonPath)，跳过该台");
+                return None;
+            }
+        };
+
+    let label = str_field("label")
+        .map(str::to_string)
+        .unwrap_or_else(|| host.clone());
+    let port = obj
         .get("port")
         .and_then(|v| v.as_u64())
         .and_then(|p| u16::try_from(p).ok())
         .unwrap_or(22);
-    let key_path = remote
-        .get("keyPath")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(str::to_string);
-    let host_key_fingerprint = remote
-        .get("hostKeyFingerprint")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(str::to_string);
+    let key_path = str_field("keyPath").map(str::to_string);
+    let host_key_fingerprint = str_field("hostKeyFingerprint").map(str::to_string);
 
     Some(ssh_source::RemoteConfig {
+        label,
         host,
         port,
         user,
@@ -688,6 +747,13 @@ pub(crate) fn load_remote_config() -> Option<ssh_source::RemoteConfig> {
         daemon_path,
         host_key_fingerprint,
     })
+}
+
+/// 按 label 选台（`remote_history` 的历史查询据此选连哪台）。无匹配 → None。
+pub(crate) fn load_remote_config_by_label(label: &str) -> Option<ssh_source::RemoteConfig> {
+    load_remote_configs()
+        .into_iter()
+        .find(|c| c.origin_label() == label)
 }
 
 /// 把 watcher 读出的一批 `JsonlLine` parse 成可 emit 的 `JsonlLinePayload`。
@@ -1308,5 +1374,80 @@ mod batch_tests {
             Some("pi"),
             "远端行 origin 必须透传 host 标签"
         );
+    }
+}
+
+#[cfg(test)]
+mod remote_config_tests {
+    use super::parse_remote_hosts;
+    use serde_json::json;
+
+    fn remote_obj(v: serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
+        v.as_object().expect("test json 必须是对象").clone()
+    }
+
+    /// 向后兼容：旧单对象（无 hosts 键）→ 1 台，label 默认 = host，port 默认 22。
+    #[test]
+    fn legacy_single_object_one_host() {
+        let remote = remote_obj(json!({
+            "host": "pi.local", "user": "pi", "daemonPath": "/x"
+        }));
+        let cfgs = parse_remote_hosts(&remote);
+        assert_eq!(cfgs.len(), 1);
+        assert_eq!(cfgs[0].host, "pi.local");
+        assert_eq!(cfgs[0].label, "pi.local", "label 默认 = host");
+        assert_eq!(cfgs[0].port, 22, "port 默认 22");
+    }
+
+    /// hosts 数组多台；缺 label 的台 label 回退 host；port 透传。
+    #[test]
+    fn hosts_array_multi() {
+        let remote = remote_obj(json!({
+            "hosts": [
+                {"label": "pi", "host": "pi.local", "user": "pi", "daemonPath": "/x"},
+                {"host": "nano.local", "user": "u", "daemonPath": "/y", "port": 2222}
+            ]
+        }));
+        let cfgs = parse_remote_hosts(&remote);
+        assert_eq!(cfgs.len(), 2);
+        assert_eq!(cfgs[0].label, "pi");
+        assert_eq!(cfgs[1].label, "nano.local", "缺 label → 默认 host");
+        assert_eq!(cfgs[1].port, 2222);
+    }
+
+    /// 缺必填字段(daemonPath)的台被跳过，不影响其他台。
+    #[test]
+    fn missing_required_field_skipped() {
+        let remote = remote_obj(json!({
+            "hosts": [
+                {"host": "ok.local", "user": "u", "daemonPath": "/x"},
+                {"host": "bad.local", "user": "u"}
+            ]
+        }));
+        let cfgs = parse_remote_hosts(&remote);
+        assert_eq!(cfgs.len(), 1);
+        assert_eq!(cfgs[0].host, "ok.local");
+    }
+
+    /// label 重复 → 第二台后缀化，保证 by_label 选台唯一。
+    #[test]
+    fn duplicate_label_suffixed() {
+        let remote = remote_obj(json!({
+            "hosts": [
+                {"label": "box", "host": "a", "user": "u", "daemonPath": "/x"},
+                {"label": "box", "host": "b", "user": "u", "daemonPath": "/y"}
+            ]
+        }));
+        let cfgs = parse_remote_hosts(&remote);
+        assert_eq!(cfgs.len(), 2);
+        assert_eq!(cfgs[0].label, "box");
+        assert_eq!(cfgs[1].label, "box (#2)");
+    }
+
+    /// 空 hosts 数组 → 空（无可用远端，等同本地）。
+    #[test]
+    fn empty_hosts_array_is_empty() {
+        let remote = remote_obj(json!({ "hosts": [] }));
+        assert!(parse_remote_hosts(&remote).is_empty());
     }
 }
