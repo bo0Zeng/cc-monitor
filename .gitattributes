@@ -1,0 +1,23 @@
+# 统一行尾：仓库与工作树都用 LF，消除 Windows 上每次 commit 的
+# "LF will be replaced by CRLF the next time Git touches it" 警告。
+# 源码（rs / ts / js / css / html / json / md / toml / yml…）全部 text=auto + eol=lf。
+* text=auto eol=lf
+
+# Windows 批处理脚本若存在，必须 CRLF（否则部分 cmd.exe 解析异常）。PowerShell .ps1 用 LF 没问题。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制资源：不做行尾转换、不当文本 diff。
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.icns  binary
+*.ttf   binary
+*.otf   binary
+*.woff  binary
+*.woff2 binary
+*.exe   binary
+*.msi   binary
+*.dll   binary
