@@ -52,13 +52,11 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
 
-      # 纯函数算法测试（zero-dep；node 内置 type-stripping 跑 .test.ts）。守护回归高发区：
-      # branching 主线折叠（#8/#22/#25/#26）、diff 渲染（#14）、API 报错卡（#21）。
-      - name: unit tests (branching / diff / api-error)
-        run: |
-          npm run test:branching
-          npm run test:diff
-          npm run test:api-error
+      # 全部前端单测：① 纯函数 node 测试（branching 主线折叠 #8/#22/#25/#26、diff 渲染 #14、
+      # API 报错卡 #21、remote-health 节流、remote-resume 命令）；② tabs 生命周期 DOM 测试
+      # （vitest+jsdom，守护 resume 复活 / 归档-only 关闭 / origin 门控等本轮 bug 高发区）。
+      - name: unit tests (node pure-fn + vitest DOM)
+        run: npm test
 
       # vite build 验证产物可生成（不打包 exe，那个 5+ 分钟太慢；
       # 完整 tauri build 留给 tag 触发的 release 工作流）
