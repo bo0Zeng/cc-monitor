@@ -22,6 +22,14 @@ pub mod events {
     /// 字段变化时 emit（变化才发——CLI 仅在状态转换时重写文件，天然稀疏）。
     /// 前端启动/F5 用 `list_session_activity` IPC 拉快照收敛（本事件不进 replay buffer）。
     pub const SESSION_ACTIVITY: &str = "session-activity";
+    /// 会话（重新）变活：session_map 重扫发现 sessions/<PID>.json 新增、**且 PID 探活
+    /// 通过** 时 emit（lib.rs 在 `change.added` 分支用 `is_session_active` 门控）。
+    /// session-ended 的对称补全 —— 「结束有信号、复活也有信号」。
+    /// 前端复活对应的**已归档本地 Tab**（resume 场景：崩溃→灰显→`/resume` 后免 F5 回 live）。
+    /// liveness 门必不可少：崩溃残留的旧 PID.json 被后续文件事件重扫也会进 `added`
+    /// （心跳已从 by_id 删过它），但 PID 已死、不发本事件，避免误复活刚归档的死会话 Tab。
+    /// 不进 replay buffer（同 session-activity）——F5 靠 list_session_activity 快照收敛。
+    pub const SESSION_STARTED: &str = "session-started";
     /// **远端健康通道**（SS-F，issue #32 起）：远端数据源把「拥塞丢行 / 版本不符」等
     /// 非致命健康事件回传给用户。前端单一 listener（remote-health.ts）按 origin 节流后
     /// 弹 toast。`kind` 区分类别（"overflow" / "version" / …），payload 见
@@ -79,6 +87,13 @@ pub struct JsonlBatchPayload {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct SessionEndedPayload {
+    pub session_id: String,
+}
+
+/// 会话（重新）变活的 payload（SESSION_STARTED）。前端据 `session_id` 复活已归档本地 Tab。
+/// 形如 [`SessionEndedPayload`] 的对称面（同 `session_id` 单字段）。
+#[derive(Debug, Serialize, Clone)]
+pub struct SessionStartedPayload {
     pub session_id: String,
 }
 

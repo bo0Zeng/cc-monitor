@@ -227,6 +227,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     // P5.2 B 重构：onLine 不再带 source 参数（前端按 seq timeline 排，不分 batch/live）
     onLine: (e) => tabs.onLine(e),
     onSessionEnded: (sessionId) => tabs.archiveTab(sessionId),
+    // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5
+    onSessionStarted: (sessionId) => tabs.reviveTab(sessionId),
     // 启动重放（jsonl-batch）期间走 batch 模式（lazy hljs + BranchFolder.batchMode），
     // 结束时 flush。onChunk 已删 —— B 重构后 chunk 切边界对前端不可见。
     onBatchStart: () => tabs.onBatchStart(),
@@ -348,6 +350,9 @@ async function bootstrapViewer(sid: string): Promise<void> {
       },
       onSessionEnded: (s) => {
         if (s === sid) tabs.archiveTab(s);
+      },
+      onSessionStarted: (s) => {
+        if (s === sid) tabs.reviveTab(s);
       },
       onBatchStart: () => tabs.onBatchStart(),
       onBatchEnd: () => tabs.onBatchEnd(),

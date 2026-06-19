@@ -231,6 +231,24 @@ pub fn run() {
                                     let _ =
                                         cache_for_emitter.record(sid, info.pid, &bind_for_emitter);
                                 }
+                                // 会话（重新）变活 → 通知前端复活已归档的本地 Tab（resume：
+                                // 崩溃→灰显→/resume 后免 F5 即回 live）。**仅在 PID 真探活通过
+                                // 时发**：崩溃残留的旧 sessions/<PID>.json 被后续文件事件重扫也
+                                // 会进 added（心跳已从 by_id 删过它），无 liveness 门会误复活刚
+                                // 归档的死会话。is_session_active 读 by_id（此刻 = 本次重扫的
+                                // next）并 re-probe 进程，门住该竞态。session-ended 的对称补全。
+                                if session_map_for_emitter.is_session_active(sid) {
+                                    let payload = bridge::SessionStartedPayload {
+                                        session_id: sid.clone(),
+                                    };
+                                    if let Err(e) =
+                                        handle.emit(bridge::events::SESSION_STARTED, &payload)
+                                    {
+                                        tracing::warn!("emit session-started failed: {e}");
+                                    } else {
+                                        tracing::info!("session started (revive): {sid}");
+                                    }
+                                }
                             }
                             for sid in change.removed {
                                 cache_for_emitter.forget(&sid);
