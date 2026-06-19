@@ -87,26 +87,32 @@ pub async fn search_remote_all(
     limit: usize,
 ) -> Vec<crate::search::SessionHits> {
     let cfgs = crate::load_remote_configs();
-    let mut out = Vec::new();
-    for cfg in &cfgs {
-        let origin = cfg.origin_label();
-        // 参数经 shell_quote 防注入；daemon 侧再做 projects/ 白名单校验。
-        let mut args = format!("--search {}", ssh_source::shell_quote(query));
-        if include_tools {
-            args.push_str(" --include-tools");
+    if cfgs.is_empty() {
+        return Vec::new();
+    }
+    // 参数对所有台一致（不含 cfg），构建一次。经 shell_quote 防注入；daemon 侧再做 projects/ 白名单校验。
+    let mut args = format!("--search {}", ssh_source::shell_quote(query));
+    if include_tools {
+        args.push_str(" --include-tools");
+    }
+    if let Some(s) = scope {
+        if s == "user" || s == "assistant" {
+            args.push_str(" --scope ");
+            args.push_str(s);
         }
-        if let Some(s) = scope {
-            if s == "user" || s == "assistant" {
-                args.push_str(" --scope ");
-                args.push_str(s);
-            }
-        }
-        if after_ms > 0 {
-            args.push_str(&format!(" --after-ms {after_ms}"));
-        }
-        args.push_str(&format!(" --limit {limit}"));
+    }
+    if after_ms > 0 {
+        args.push_str(&format!(" --after-ms {after_ms}"));
+    }
+    args.push_str(&format!(" --limit {limit}"));
 
-        match run_list_query(cfg, &args).await {
+    // R9：并发 fan-out——各台查询独立、无序要求，join_all 同时查所有台（墙钟从 Σ 降到 max）。
+    // 借用 cfg/args 即可（join_all 在当前任务并发 poll，不需 'static/Send）。逐台错误仍隔离。
+    let results = futures::future::join_all(cfgs.iter().map(|cfg| run_list_query(cfg, &args))).await;
+    let mut out = Vec::new();
+    for (cfg, res) in cfgs.iter().zip(results) {
+        let origin = cfg.origin_label();
+        match res {
             Ok(lines) => {
                 for line in lines {
                     match serde_json::from_str::<crate::search::SessionHits>(&line) {
@@ -139,8 +145,12 @@ pub async fn list_remote_history_projects() -> Result<Vec<HistoryProject>, Strin
     let mut projects = Vec::new();
     let mut any_ok = false;
     let mut last_err = String::new();
-    for cfg in &cfgs {
-        let lines = match run_list_query(cfg, "--list-projects").await {
+    // R9：并发 fan-out 所有台（各台独立、无序要求），墙钟从 Σ(各台) 降到 max(各台)。逐台错误仍隔离。
+    let results =
+        futures::future::join_all(cfgs.iter().map(|cfg| run_list_query(cfg, "--list-projects")))
+            .await;
+    for (cfg, res) in cfgs.iter().zip(results) {
+        let lines = match res {
             Ok(l) => {
                 any_ok = true;
                 l
