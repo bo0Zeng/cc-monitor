@@ -214,14 +214,23 @@ class MachineCard {
   private testButton!: HTMLButtonElement;
   private installButton!: HTMLButtonElement;
   private testResult!: HTMLElement;
+  /** 折叠时隐藏的字段 + 测试/安装区（legend 始终可见）。 */
+  private body!: HTMLElement;
+  /** legend 里承载机器名的 span（label || host）。 */
+  private nameSpan!: HTMLElement;
+  /** legend 左侧折叠指示符（▸ 折叠 / ▾ 展开）。 */
+  private toggleIndicator!: HTMLElement;
+  private collapsed = false;
 
   constructor(
     initial: RemoteHostConfig,
     private hooks: MachineCardHooks,
+    collapsed = false,
   ) {
     this.element = this.build();
     this.syncInputs(initial);
     this.updateLegend();
+    this.setCollapsed(collapsed);
   }
 
   /** 读出本卡片的 RemoteHostConfig（trim；port 兜底 22）。 */
@@ -259,33 +268,59 @@ class MachineCard {
     this.legend = legend;
     card.appendChild(legend);
 
+    // 折叠指示符（▸ 折叠 / ▾ 展开）。点 legend（非删除按钮）切换折叠。
+    this.toggleIndicator = document.createElement("span");
+    this.toggleIndicator.className = "remote-machine-toggle";
+    this.toggleIndicator.textContent = "▾";
+    legend.appendChild(this.toggleIndicator);
+
+    // 机器名（label || host）—— 独立 span（不靠脆弱的 firstChild 文本节点）。flex:1 把删除推到右侧。
+    this.nameSpan = document.createElement("span");
+    this.nameSpan.className = "remote-machine-name";
+    legend.appendChild(this.nameSpan);
+
     // 删除按钮（legend 右侧）
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
     removeBtn.className = "settings-btn settings-btn-secondary remote-machine-remove";
     removeBtn.textContent = "删除";
     removeBtn.title = "从列表移除这台机器";
-    removeBtn.addEventListener("click", () => this.hooks.onRemove(this));
+    removeBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation(); // 别让删除点击冒泡到 legend 触发折叠
+      this.hooks.onRemove(this);
+    });
     legend.appendChild(removeBtn);
+
+    // 点 legend 折叠/展开（删除按钮已 stopPropagation；再防御性排除一次）。
+    legend.addEventListener("click", (ev) => {
+      if ((ev.target as HTMLElement).closest(".remote-machine-remove")) return;
+      this.setCollapsed(!this.collapsed);
+    });
+
+    // body：折叠时整体隐藏（legend 始终在）。所有字段 + 测试/安装区都挂这里。
+    this.body = document.createElement("div");
+    this.body.className = "remote-machine-body";
+    card.appendChild(this.body);
+    const body = this.body;
 
     const onChange = () => {
       this.updateLegend();
       this.hooks.onChange();
     };
 
-    this.labelInput = buildTextRow(card, "名称 (label，可选)", "pi / nano（留空用主机名）", onChange);
-    this.hostInput = buildTextRow(card, "主机 (host)", "raspberrypi.local 或 192.168.1.10", onChange);
-    this.portInput = buildNumberRow(card, "端口 (port)", 22, onChange);
-    this.userInput = buildTextRow(card, "用户 (user)", "pi", onChange);
-    this.daemonPathInput = buildTextRow(card, "daemon 路径 (daemonPath)", DAEMON_PATH_PLACEHOLDER, onChange);
+    this.labelInput = buildTextRow(body, "名称 (label，可选)", "pi / nano（留空用主机名）", onChange);
+    this.hostInput = buildTextRow(body, "主机 (host)", "raspberrypi.local 或 192.168.1.10", onChange);
+    this.portInput = buildNumberRow(body, "端口 (port)", 22, onChange);
+    this.userInput = buildTextRow(body, "用户 (user)", "pi", onChange);
+    this.daemonPathInput = buildTextRow(body, "daemon 路径 (daemonPath)", DAEMON_PATH_PLACEHOLDER, onChange);
     const daemonHint = document.createElement("div");
     daemonHint.className = "settings-hint";
     daemonHint.textContent =
       "须为绝对路径（如 /home/pi/.cc-monitor/bin/cc-monitor-remote）；SSH 直接 exec 不经 shell，`~` 不会被展开。";
-    card.appendChild(daemonHint);
-    this.keyPathInput = buildTextRow(card, "私钥路径 (keyPath，可选)", "C:\\Users\\me\\.ssh\\id_ed25519", onChange);
+    body.appendChild(daemonHint);
+    this.keyPathInput = buildTextRow(body, "私钥路径 (keyPath，可选)", "C:\\Users\\me\\.ssh\\id_ed25519", onChange);
     this.fingerprintInput = buildTextRow(
-      card,
+      body,
       "主机指纹 (hostKeyFingerprint，可选)",
       "SHA256:…（留空则首连 TOFU）",
       onChange,
@@ -309,14 +344,22 @@ class MachineCard {
       "一键把 ccm wrapper 装进这台远端的 ~/.bashrc（用于 ↗ 拉前）；会先备份原文件、幂等可重装";
     this.installButton.addEventListener("click", () => void this.onInstallCcm());
     testRow.appendChild(this.installButton);
-    card.appendChild(testRow);
+    body.appendChild(testRow);
 
     this.testResult = document.createElement("div");
     this.testResult.className = "remote-test-result";
     this.testResult.style.display = "none";
-    card.appendChild(this.testResult);
+    body.appendChild(this.testResult);
 
     return card;
+  }
+
+  /** 折叠/展开本卡片：折叠时只剩 legend（机器名行），隐藏全部字段 + 测试/安装。 */
+  private setCollapsed(next: boolean): void {
+    this.collapsed = next;
+    this.element.classList.toggle("is-collapsed", next);
+    this.toggleIndicator.textContent = next ? "▸" : "▾";
+    this.legend.setAttribute("aria-expanded", next ? "false" : "true");
   }
 
   private syncInputs(cfg: RemoteHostConfig): void {
@@ -331,13 +374,8 @@ class MachineCard {
 
   /** legend 显示 label || host || 占位。 */
   private updateLegend(): void {
-    const name = this.labelInput.value.trim() || this.hostInput.value.trim() || "（未命名机器）";
-    // legend 第一个子节点是文本，删除按钮在后。用 firstChild 文本节点承载名字。
-    if (this.legend.firstChild && this.legend.firstChild.nodeType === Node.TEXT_NODE) {
-      this.legend.firstChild.textContent = `${name} `;
-    } else {
-      this.legend.insertBefore(document.createTextNode(`${name} `), this.legend.firstChild);
-    }
+    this.nameSpan.textContent =
+      this.labelInput.value.trim() || this.hostInput.value.trim() || "（未命名机器）";
   }
 
   /** 点「测试连接」：组本卡片 → test_remote_connection → 渲染结果。 */
@@ -515,16 +553,21 @@ export class RemoteSection {
     this.cards = [];
     this.machinesContainer.innerHTML = "";
     for (const h of hosts) {
-      this.appendCard(h);
+      // 从 config 重建的卡片默认折叠（只显示机器名）——多机时列表整洁；点名称展开编辑。
+      this.appendCard(h, true);
     }
     this.updateEmptyHint();
   }
 
-  private appendCard(initial: RemoteHostConfig): MachineCard {
-    const card = new MachineCard(initial, {
-      onChange: () => void this.save(),
-      onRemove: (c) => this.removeCard(c),
-    });
+  private appendCard(initial: RemoteHostConfig, collapsed = false): MachineCard {
+    const card = new MachineCard(
+      initial,
+      {
+        onChange: () => void this.save(),
+        onRemove: (c) => this.removeCard(c),
+      },
+      collapsed,
+    );
     this.cards.push(card);
     this.machinesContainer.appendChild(card.element);
     this.updateEmptyHint();
