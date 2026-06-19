@@ -53,13 +53,18 @@ fn next_backoff(cur: Duration) -> Duration {
 /// 远端 daemon 的连接配置。S5 会从 monitor 的 config 文件反序列化出来；
 /// Tier 1（issue #15）的「测试连接」命令直接收前端传来的同形对象（camelCase）。
 ///
-/// **serde camelCase 必须与前端 RemoteConfig / lib.rs::load_remote_config 严格一致**：
-/// host / port / user / keyPath / daemonPath / hostKeyFingerprint。前端多发的 `enabled`
+/// **serde camelCase 必须与前端 RemoteHostConfig / lib.rs::load_remote_configs 严格一致**：
+/// host / port / user / keyPath / daemonPath / hostKeyFingerprint / label（多机 #30，
+/// 可选，缺省回退 host）。前端多发的 `enabled`
 /// 字段被忽略（serde 默认丢弃未知字段，测试连接不关心 enabled）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteConfig {
     pub host: String,
+    /// 稳定的机器标识（origin tag，多机 #30）。空 = 回退用 `host`（见 `origin_label`）。
+    /// 用作 Tab 前缀 / 历史分组 / 选台 key。前端可不传（serde default）。
+    #[serde(default)]
+    pub label: String,
     #[serde(default = "default_ssh_port")]
     pub port: u16,
     pub user: String,
@@ -74,12 +79,25 @@ pub struct RemoteConfig {
     pub host_key_fingerprint: Option<String>,
 }
 
+impl RemoteConfig {
+    /// origin 标签 = 稳定身份。`label` 为空时回退用 `host`（向后兼容：旧配置 / 前端
+    /// 未传 label 时与单机时代 `origin = host` 行为一致）。多机 #30 用作 Tab 前缀 /
+    /// 历史分组 / `load_remote_config_by_label` 选台 key。
+    pub fn origin_label(&self) -> String {
+        if self.label.is_empty() {
+            self.host.clone()
+        } else {
+            self.label.clone()
+        }
+    }
+}
+
 fn default_ssh_port() -> u16 {
     22
 }
 
 /// 前端可选字段以空字符串下发（见 remote-section.ts 注释）；反序列化时把 `""` 归一成
-/// `None`，与 lib.rs::load_remote_config 的 `.filter(|s| !s.is_empty())` 语义一致。
+/// `None`，与 lib.rs::parse_host_obj 的 `.filter(|s| !s.is_empty())` 语义一致。
 fn empty_string_as_none<'de, D>(de: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -506,9 +524,9 @@ async fn stream_loop(
     connected: &Arc<AtomicBool>,
     announced: &mut std::collections::HashSet<String>,
 ) -> Result<(), String> {
-    // issue #15：远端行的 origin 标签 = 远端主机名。前端据此给该 Tab 标题加
-    // `[host]` 前缀以区分本地/远端。在进 loop 前 clone 出来。
-    let host_label = cfg.host.clone();
+    // issue #15 / #30：远端行的 origin 标签 = 该机器的稳定身份（label，默认 host）。
+    // 前端据此给该 Tab 标题加 `[label]` 前缀以区分本地/各远端机器。进 loop 前 clone。
+    let host_label = cfg.origin_label();
 
     let stream = connect_and_exec(cfg).await?;
     let mut reader = BufReader::new(stream);

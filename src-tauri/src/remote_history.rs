@@ -27,8 +27,9 @@ const LIST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 const READ_LINE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 const MAX_SESSION_BYTES: u64 = 256 * 1024 * 1024;
 
-fn require_cfg() -> Result<RemoteConfig, String> {
-    crate::load_remote_config().ok_or_else(|| "远端模式未启用".to_string())
+fn require_cfg_by_label(label: &str) -> Result<RemoteConfig, String> {
+    crate::load_remote_config_by_label(label)
+        .ok_or_else(|| format!("远端 '{label}' 未配置或未启用"))
 }
 
 /// 旧 daemon 检测：查询命令的输出行不可能含 wire 的 `"kind":"hello"`（查询模式
@@ -73,57 +74,84 @@ async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec<String>, S
         .map_err(|_| format!("远端查询超时（{}s）: {args}", LIST_TIMEOUT.as_secs()))?
 }
 
-/// 远端项目列表。远端未启用 → 空列表（前端无感合并）；查询失败 → Err（前端 toast）。
+/// 远端项目列表（多机 #30：fan-out 所有已配置远端）。无远端 → 空列表（前端无感合并）；
+/// 单台查询失败 → warn + 跳过该台（不拖垮其余台）。各 project 带 `origin = 该台 label`。
 #[tauri::command]
 pub async fn list_remote_history_projects() -> Result<Vec<HistoryProject>, String> {
-    let cfg = match crate::load_remote_config() {
-        Some(c) => c,
-        None => return Ok(Vec::new()),
-    };
-    let lines = run_list_query(&cfg, "--list-projects").await?;
+    let cfgs = crate::load_remote_configs();
+    if cfgs.is_empty() {
+        return Ok(Vec::new());
+    }
     let mut projects = Vec::new();
-    for line in lines {
-        let v: serde_json::Value = match serde_json::from_str(&line) {
-            Ok(v) => v,
+    let mut any_ok = false;
+    let mut last_err = String::new();
+    for cfg in &cfgs {
+        let lines = match run_list_query(cfg, "--list-projects").await {
+            Ok(l) => {
+                any_ok = true;
+                l
+            }
             Err(e) => {
-                tracing::warn!("remote --list-projects 行解析失败（跳过）: {e}: {line}");
+                // 逐台失败不拖垮整体：该台 warn + 跳过，其余台照常返回。
+                tracing::warn!(
+                    "远端 [{}] --list-projects 失败（跳过该台）: {e}",
+                    cfg.origin_label()
+                );
+                last_err = e;
                 continue;
             }
         };
-        let dir_name = v["dirName"].as_str().unwrap_or_default().to_string();
-        if dir_name.is_empty() {
-            continue;
+        for line in lines {
+            let v: serde_json::Value = match serde_json::from_str(&line) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!("remote --list-projects 行解析失败（跳过）: {e}: {line}");
+                    continue;
+                }
+            };
+            let dir_name = v["dirName"].as_str().unwrap_or_default().to_string();
+            if dir_name.is_empty() {
+                continue;
+            }
+            let project_path = v["projectPath"].as_str().unwrap_or_default().to_string();
+            // 对齐本地口径：projectName = cwd 最后一段；提取不到 cwd 时回退编码目录名
+            let project_name = if project_path.is_empty() {
+                dir_name.clone()
+            } else {
+                project_path
+                    .rsplit(['/', '\\'])
+                    .next()
+                    .unwrap_or(&dir_name)
+                    .to_string()
+            };
+            projects.push(HistoryProject {
+                project_path,
+                project_name,
+                // 远端的"懒加载 key"= 远端编码目录名（前端原样传回 stream_remote_history_sessions）
+                project_dir: dir_name,
+                session_count: v["sessionCount"].as_u64().unwrap_or(0) as u32,
+                // P1a：远端不合并本地元数据计数（列表级开销不值得），条目级照常合并
+                starred_count: 0,
+                hidden_count: 0,
+                last_activity: v["lastActivityMs"].as_i64().unwrap_or(0),
+                // 活跃远端会话已有 [host] live Tab，历史组不重复标 live
+                has_live: false,
+                origin: Some(cfg.origin_label()),
+            });
         }
-        let project_path = v["projectPath"].as_str().unwrap_or_default().to_string();
-        // 对齐本地口径：projectName = cwd 最后一段；提取不到 cwd 时回退编码目录名
-        let project_name = if project_path.is_empty() {
-            dir_name.clone()
-        } else {
-            project_path
-                .rsplit(['/', '\\'])
-                .next()
-                .unwrap_or(&dir_name)
-                .to_string()
-        };
-        projects.push(HistoryProject {
-            project_path,
-            project_name,
-            // 远端的"懒加载 key"= 远端编码目录名（前端原样传回 stream_remote_history_sessions）
-            project_dir: dir_name,
-            session_count: v["sessionCount"].as_u64().unwrap_or(0) as u32,
-            // P1a：远端不合并本地元数据计数（列表级开销不值得），条目级照常合并
-            starred_count: 0,
-            hidden_count: 0,
-            last_activity: v["lastActivityMs"].as_i64().unwrap_or(0),
-            // 活跃远端会话已有 [host] live Tab，历史组不重复标 live
-            has_live: false,
-            origin: Some(cfg.host.clone()),
-        });
+    }
+    // 配了远端但**全部**台查询都失败 → 返回 Err（前端可 toast），避免与"无远端配置"的
+    // 空列表（cfgs.is_empty 早返）混淆，让用户能区分"没配"和"配了但连不上"。
+    if !any_ok {
+        return Err(format!(
+            "所有远端历史查询失败（{} 台），最后一个错误: {last_err}",
+            cfgs.len()
+        ));
     }
     tracing::info!(
-        "list_remote_history_projects: {} projects from {}",
+        "list_remote_history_projects: {} projects from {} host(s)",
         projects.len(),
-        cfg.host
+        cfgs.len()
     );
     Ok(projects)
 }
@@ -133,9 +161,10 @@ pub async fn list_remote_history_projects() -> Result<Vec<HistoryProject>, Strin
 #[tauri::command]
 pub async fn stream_remote_history_sessions(
     project_dir: String,
+    origin: String,
     on_entry: tauri::ipc::Channel<HistorySessionEntry>,
 ) -> Result<u32, String> {
-    let cfg = require_cfg()?;
+    let cfg = require_cfg_by_label(&origin)?;
     // 防穿越：目录名不允许含分隔符（daemon 侧同样校验，双层防御）
     if project_dir.contains('/') || project_dir.contains('\\') || project_dir.contains("..") {
         return Err(format!("非法项目目录名: {project_dir}"));
@@ -189,7 +218,7 @@ pub async fn stream_remote_history_sessions(
             // P1a：daemon 不提取 fork 关系，远端会话在 fork 树上呈平铺
             forked_from_session_id: None,
             forked_from_message_uuid: None,
-            origin: Some(cfg.host.clone()),
+            origin: Some(cfg.origin_label()),
         };
         if on_entry.send(entry).is_err() {
             tracing::info!("stream_remote_history_sessions: 前端取消");
@@ -206,10 +235,11 @@ pub async fn stream_remote_history_sessions(
 #[tauri::command]
 pub async fn stream_read_remote_session(
     jsonl_path: String,
+    origin: String,
     on_chunk: tauri::ipc::Channel<Vec<crate::bridge::JsonlLinePayload>>,
 ) -> Result<u32, String> {
     const CHUNK_SIZE: usize = 100;
-    let cfg = require_cfg()?;
+    let cfg = require_cfg_by_label(&origin)?;
     let started = std::time::Instant::now();
     // 与本地 history.rs 的 file_stem 口径一致：剥**一个** ".jsonl" 后缀（strip_suffix
     // 是字面后缀，不是 trim_end_matches 的字符集语义）。
@@ -264,7 +294,7 @@ pub async fn stream_read_remote_session(
             cwd: cwd_seen.clone(),
             path: jsonl_path.clone(),
             seq,
-            origin: Some(cfg.host.clone()),
+            origin: Some(cfg.origin_label()),
             message: rec,
         });
         total += 1;

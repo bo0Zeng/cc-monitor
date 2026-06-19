@@ -135,6 +135,8 @@ export class SessionViewer {
         : "stream_read_session_jsonl";
       const finalCount = await invoke<number>(ipc, {
         jsonlPath: opts.jsonlPath,
+        // 多机 #30：远端会话带 origin（= 该台 label）按 label 选台；本地 undefined → 省略。
+        origin: opts.origin,
         onChunk: channel,
       });
       // **竞态修复**：Channel 和 invoke 是两条独立 IPC 通道，invoke resolve 时

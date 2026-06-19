@@ -316,8 +316,10 @@ impl EventReplay {
     /// **远端**（`origin == Some(host)`）session 的去重 sid。
     ///
     /// 远端 sid 不在 session_map 里，对账要用 lib.rs 维护的远端活跃集
-    /// （remote-session-emitter 随 daemon 的 added/removed 增删）。不区分 host：
-    /// 当前仅支持单远端，sid 是 UUID 不会跨源碰撞。
+    /// （remote-session-emitter 随 daemon 的 added/removed 增删）。**不区分 host**：
+    /// 多机（#30）下仍依赖「sid 全局唯一」—— Claude sid 是 UUID v4，跨机碰撞概率 ≈ 0，
+    /// 故按裸 sid 去重/对账安全。**若将来 daemon 改用非 UUID sid（PID/自增），必须把
+    /// remote_active / 前端 Tab key / RemoteHwndCache 升为 (origin, sid)**（见 #30 跟进）。
     pub fn buffered_remote_session_ids(&self) -> Vec<String> {
         let inner = self.inner.lock();
         let mut seen = std::collections::HashSet::new();

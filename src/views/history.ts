@@ -189,6 +189,18 @@ export class HistoryView {
   /** project_dir → 用户展开状态。默认折叠；用户主动展开的记下来 */
   private expandedProjects = new Set<string>();
   /**
+   * F02 多机 #30：被折叠的来源大区 key（origin ?? ""，本地为 ""）。**默认全展开**——
+   * 只记用户主动折叠的来源。仅在 >1 个 origin（本地 + 远端 / 多远端）时才有分组大区。
+   */
+  private collapsedOrigins = new Set<string>();
+  /**
+   * F03 多机 #30：被**隐藏**的来源 key（origin ?? ""）。默认空 = 全显示。机器选择器
+   * chip 点掉某来源 → 加入此集 → 该来源项目不渲染。仅在 >1 个 origin 时显示筛选条。
+   */
+  private hiddenOrigins = new Set<string>();
+  /** F03：来源筛选 chip 行（插在 statusEl 与 listEl 间；≤1 来源时 display:none）。 */
+  private originFilterBar!: HTMLElement;
+  /**
    * issue #12: fork 树展开状态。session_id ∈ 集合 = 该 session 的 children 展开。
    * **默认折叠** —— 第一次见到 fork 父节点时它的 children 不显示。从 localStorage 恢复。
    */
@@ -369,7 +381,13 @@ export class HistoryView {
 
     const p = (async () => {
       try {
-        await invoke(ipc, { projectDir: proj.projectDir, onEntry: channel });
+        // 多机 #30：远端项目带 origin（= 该台 label）让后端按 label 选连哪台；
+        // 本地 proj.origin=undefined → JSON 省略，本地命令无感。
+        await invoke(ipc, {
+          projectDir: proj.projectDir,
+          origin: proj.origin,
+          onEntry: channel,
+        });
         // 完成后再画一次（兜底最后一帧没触发 rAF 的边界）
         if (this.isOpen) this.renderList();
       } catch (e) {
@@ -580,6 +598,12 @@ export class HistoryView {
     this.statusEl = document.createElement("div");
     this.statusEl.className = "history-status";
     this.listShell.appendChild(this.statusEl);
+
+    // F03 多机 #30：来源筛选条（仅 >1 来源时显示，由 renderOriginFilter 控制）
+    this.originFilterBar = document.createElement("div");
+    this.originFilterBar.className = "history-origin-filter";
+    this.originFilterBar.style.display = "none";
+    this.listShell.appendChild(this.originFilterBar);
 
     this.listEl = document.createElement("div");
     this.listEl.className = "history-list";
@@ -797,15 +821,16 @@ export class HistoryView {
 
   private renderList(): void {
     this.listEl.replaceChildren();
+    this.renderOriginFilter(); // F03：同步来源筛选 chip 行
     if (this.projects.length === 0) {
       this.statusEl.textContent =
         "尚无历史会话。新会话写入 <claude_dir>/projects/ 后会出现在这里。";
       return;
     }
 
-    // 项目过滤：按项目级字段匹配；若该项目缓存了 sessions，再加上 session 级匹配
-    const filteredProjects = this.projects.filter((p) =>
-      this.matchProject(p),
+    // 项目过滤：搜索匹配（matchProject）+ F03 来源筛选（hiddenOrigins）正交叠加。
+    const filteredProjects = this.projects.filter(
+      (p) => this.matchProject(p) && !this.hiddenOrigins.has(p.origin ?? ""),
     );
 
     // 项目排序：live > starred > last_activity desc（与后端默认一致，前端不改）
@@ -825,14 +850,124 @@ export class HistoryView {
       `${sorted.length} 个项目 · ${filteredTotal} 个会话` +
       (filteredTotal !== total ? ` / 共 ${total}` : "");
 
-    for (const proj of sorted) {
-      // 搜索激活 OR 用户主动展开 → 展开（搜索激活时还要确保数据已加载）
-      const expanded = searchActive || this.expandedProjects.has(projectKey(proj));
-      this.listEl.appendChild(this.buildProjectGroup(proj, expanded));
-      // 搜索激活但尚未加载该项目 → 触发加载
-      if (searchActive && expanded && !this.sessionCache.has(projectKey(proj))) {
-        void this.loadProjectSessions(proj).then(() => this.renderList());
+    // F02 多机 #30：是否分组取决于**存在**几个来源（this.projects），不随 F03 隐藏 / 搜索
+    // 过滤而塌缩——否则隐藏到只剩 1 来源时分组结构会突然变扁平。被隐藏 / 过滤光的来源其
+    // section 为空、跳过不渲染。distinct ≤1（通常纯本地）→ 扁平（零回归）。
+    const allOrigins = [...new Set(this.projects.map((p) => p.origin))];
+    if (allOrigins.length <= 1) {
+      for (const proj of sorted) {
+        this.appendProjectGroup(this.listEl, proj, searchActive);
       }
+    } else {
+      for (const origin of this.orderOrigins(allOrigins)) {
+        const group = sorted.filter((p) => p.origin === origin);
+        if (group.length === 0) continue; // 被 F03 隐藏 / 被搜索过滤光 → 不渲染空区
+        this.listEl.appendChild(this.buildOriginGroup(origin, group, searchActive));
+      }
+    }
+    // 全部被过滤 / 隐藏 → 列表空白，给一行提示（this.projects 非空但 sorted 空）。
+    if (sorted.length === 0) {
+      const hint = document.createElement("div");
+      hint.className = "history-empty-hint";
+      hint.textContent = "无匹配项目 —— 检查上方搜索或来源筛选。";
+      this.listEl.appendChild(hint);
+    }
+  }
+
+  /** F02：把一个项目组（buildProjectGroup）挂到 parent，并在搜索激活时触发懒加载。 */
+  private appendProjectGroup(
+    parent: HTMLElement,
+    proj: HistoryProject,
+    searchActive: boolean,
+  ): void {
+    const expanded = searchActive || this.expandedProjects.has(projectKey(proj));
+    parent.appendChild(this.buildProjectGroup(proj, expanded));
+    if (searchActive && expanded && !this.sessionCache.has(projectKey(proj))) {
+      void this.loadProjectSessions(proj).then(() => this.renderList());
+    }
+  }
+
+  /** F02：来源排序——本地（undefined）优先，远端按 label 字母序。 */
+  private orderOrigins(origins: (string | undefined)[]): (string | undefined)[] {
+    const remotes = origins
+      .filter((o): o is string => o !== undefined)
+      .sort((a, b) => a.localeCompare(b));
+    return origins.some((o) => o === undefined) ? [undefined, ...remotes] : remotes;
+  }
+
+  /** F02 多机 #30：一个来源（本地 / 某远端 host）的可折叠大区，内含其项目组。 */
+  private buildOriginGroup(
+    origin: string | undefined,
+    projects: HistoryProject[],
+    searchActive: boolean,
+  ): HTMLElement {
+    const key = origin ?? "";
+    const details = document.createElement("details");
+    details.className = "history-origin-group";
+    // 搜索激活时强制展开；否则默认展开（除非用户折叠过）。
+    details.open = searchActive || !this.collapsedOrigins.has(key);
+
+    const header = document.createElement("summary");
+    header.className = "history-origin-header";
+    const indicator = document.createElement("span");
+    indicator.className = "history-group-indicator";
+    indicator.textContent = "▸";
+    header.appendChild(indicator);
+    const name = document.createElement("span");
+    name.className = "history-origin-name";
+    name.textContent = origin ? `[${origin}]` : "本地";
+    header.appendChild(name);
+    const stats = document.createElement("span");
+    stats.className = "history-group-stats";
+    const sessionTotal = projects.reduce((n, p) => n + p.sessionCount, 0);
+    stats.textContent = `${projects.length} 个项目 · ${sessionTotal} 个会话`;
+    header.appendChild(stats);
+    details.appendChild(header);
+
+    const body = document.createElement("div");
+    body.className = "history-origin-body";
+    for (const proj of projects) {
+      this.appendProjectGroup(body, proj, searchActive);
+    }
+    details.appendChild(body);
+
+    // 折叠状态持久化（搜索激活时不写，避免污染用户偏好）。
+    details.addEventListener("toggle", () => {
+      if (searchActive) return;
+      if (details.open) this.collapsedOrigins.delete(key);
+      else this.collapsedOrigins.add(key);
+    });
+    return details;
+  }
+
+  /** F03 多机 #30：来源筛选 chip 行。distinct origin ≤1 → 隐藏；否则每来源一个 chip。 */
+  private renderOriginFilter(): void {
+    const origins = [...new Set(this.projects.map((p) => p.origin))];
+    if (origins.length <= 1) {
+      this.originFilterBar.style.display = "none";
+      this.originFilterBar.replaceChildren();
+      return;
+    }
+    this.originFilterBar.style.display = "flex";
+    this.originFilterBar.replaceChildren();
+    const label = document.createElement("span");
+    label.className = "history-origin-filter-label";
+    label.textContent = "来源：";
+    this.originFilterBar.appendChild(label);
+    for (const origin of this.orderOrigins(origins)) {
+      const key = origin ?? "";
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "history-origin-chip";
+      chip.classList.toggle("active", !this.hiddenOrigins.has(key));
+      chip.textContent = origin ? `[${origin}]` : "本地";
+      chip.title = origin ? `远端 ${origin} 的历史` : "本地历史";
+      chip.addEventListener("click", () => {
+        if (this.hiddenOrigins.has(key)) this.hiddenOrigins.delete(key);
+        else this.hiddenOrigins.add(key);
+        this.renderList();
+      });
+      this.originFilterBar.appendChild(chip);
     }
   }
 
