@@ -27,9 +27,19 @@ use std::path::PathBuf;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use wire::{to_line, Frame};
 
-/// Daemon build id reported in the `Hello` frame.
-/// p1a-history = 新增一次性历史查询模式（issue #16，--list-projects 等）。
-const BUILD_ID: &str = "p1a-history";
+/// Streaming wire-protocol major version, reported as `v` in the `Hello` frame.
+/// Bump ONLY on a breaking wire change; additive forward-compatible frame kinds
+/// (e.g. `Overflow`, #32) do NOT bump it — old parsers skip unknown kinds.
+/// The monitor negotiates against its own `EXPECTED_PROTO_V` (#33).
+const PROTO_VERSION: u32 = 1;
+
+/// Daemon build id reported in the `Hello` frame (#33 version negotiation).
+/// Human-readable, monotonic build/feature tag; the monitor compares it against
+/// `EXPECTED_DAEMON_BUILD_ID` and warns the user when a manually-deployed daemon
+/// is stale. Bump when daemon capabilities change.
+/// - p1a-history  = 一次性历史查询模式（#16，--list-projects 等）
+/// - p1b-overflow = + 探活精确化（#34）+ overflow 信号（#32）
+const BUILD_ID: &str = "p1b-overflow";
 
 #[tokio::main]
 async fn main() {
@@ -56,7 +66,7 @@ async fn main() {
     // (b) Emit the Hello handshake FIRST, flushed, before anything else.
     let mut stdout = BufWriter::new(tokio::io::stdout());
     let hello = Frame::Hello {
-        v: 1,
+        v: PROTO_VERSION,
         build_id: BUILD_ID.to_string(),
         host_arch: std::env::consts::ARCH.to_string(),
         claude_dir: claude_dir.to_string_lossy().into_owned(),

@@ -356,10 +356,12 @@ pub fn shell_quote(s: &str) -> String {
 /// 多余字段一律忽略（见 `parse_frame`）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum InboundFrame {
-    /// 握手帧：连接建立后 daemon 发一次。`v` = 协议版本，host_arch / claude_dir 用于 log
-    /// 证明 daemon 真的在远端跑起来了。build_id 等额外字段被忽略（向前兼容）。
+    /// 握手帧：连接建立后 daemon 发一次。`v` = 协议大版本，`build_id` = daemon 构建标识
+    /// （#33 版本协商捕获 + 比对），host_arch / claude_dir 用于 log 证明 daemon 真的在远端
+    /// 跑起来了。多余字段仍忽略（向前兼容）。
     Hello {
         v: u64,
+        build_id: String,
         host_arch: String,
         claude_dir: String,
     },
@@ -396,10 +398,13 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
     match kind {
         "hello" => {
             let v = obj.get("v")?.as_u64()?;
+            // #33：捕获 build_id 做版本协商（既有 daemon 一直在发，故按必需字段解析）。
+            let build_id = obj.get("build_id")?.as_str()?.to_string();
             let host_arch = obj.get("host_arch")?.as_str()?.to_string();
             let claude_dir = obj.get("claude_dir")?.as_str()?.to_string();
             Some(InboundFrame::Hello {
                 v,
+                build_id,
                 host_arch,
                 claude_dir,
             })
@@ -431,6 +436,66 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
         }
         // 未知 kind：向前兼容，跳过（调用方 warn）。绝不 panic。
         _ => None,
+    }
+}
+
+// ============================================================================
+// 版本协商（issue #33）：连接时比对 daemon 的 hello.v / hello.build_id。
+// ============================================================================
+
+/// 本 monitor 期望的流式 wire 协议大版本。与 daemon 的 `PROTO_VERSION` 对齐（语义同值）。
+/// 类型用 `u64` 而非 daemon 侧的 `u32`：JSON 数字无符号宽度之分，`parse_frame` 用
+/// `as_u64()` 读 `v`，这里与之同宽以便直接比较，无需转换。
+const EXPECTED_PROTO_V: u64 = 1;
+
+/// 本 monitor 期望的 daemon build_id。
+///
+/// **SS-B（issue #33/#29）**：必须与 `remote-daemon-proto/src/main.rs::BUILD_ID`
+/// **手工保持一致**——daemon 改了能力 bump 那个常量时，这里同步 bump。F08（自动部署）
+/// 落地后改为「monitor 内嵌的 daemon 二进制的 build_id」编译期单一事实源，消除手工同步。
+const EXPECTED_DAEMON_BUILD_ID: &str = "p1b-overflow";
+
+/// 版本协商结论（纯函数 [`negotiate_version`] 的产物）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VersionVerdict {
+    /// 协议版本 + build_id 都匹配 —— 无需提示。
+    Ok,
+    /// 协议版本相同，但 build_id 不同 —— daemon 偏旧/偏新，建议更新（非阻断，F08 将自动重推）。
+    StaleBuild { reported: String },
+    /// 协议大版本不符 —— 渲染可能异常，醒目提示需更新 daemon（仍不 hard-disconnect：
+    /// 解析器向前兼容，能解析的仍照常呈现）。
+    Incompatible { reported_v: u64 },
+}
+
+/// 纯函数版本协商：协议版本优先于 build_id（协议不兼容是更严重的问题）。
+///
+/// - `reported_v != EXPECTED_PROTO_V` → `Incompatible`（无论 build_id）。
+/// - 协议同、`reported_build_id != EXPECTED_DAEMON_BUILD_ID` → `StaleBuild`。
+/// - 全同 → `Ok`。
+fn negotiate_version(reported_v: u64, reported_build_id: &str) -> VersionVerdict {
+    if reported_v != EXPECTED_PROTO_V {
+        VersionVerdict::Incompatible {
+            reported_v,
+        }
+    } else if reported_build_id != EXPECTED_DAEMON_BUILD_ID {
+        VersionVerdict::StaleBuild {
+            reported: reported_build_id.to_string(),
+        }
+    } else {
+        VersionVerdict::Ok
+    }
+}
+
+/// 把协商结论变成给用户看的提示文案（`None` = 兼容、无需提示）。`label` 是出问题的远端机器。
+fn version_warning(reported_v: u64, reported_build_id: &str, label: &str) -> Option<String> {
+    match negotiate_version(reported_v, reported_build_id) {
+        VersionVerdict::Ok => None,
+        VersionVerdict::StaleBuild { reported } => Some(format!(
+            "远端 [{label}] daemon 版本 {reported} 与本机期望 {EXPECTED_DAEMON_BUILD_ID} 不一致，建议更新 daemon（后续将支持自动部署）。"
+        )),
+        VersionVerdict::Incompatible { reported_v } => Some(format!(
+            "远端 [{label}] daemon 协议版本 v={reported_v} 与本机期望 v={EXPECTED_PROTO_V} 不兼容，渲染可能异常，请更新 daemon。"
+        )),
     }
 }
 
@@ -561,14 +626,28 @@ async fn stream_loop(
         match parse_frame(line) {
             Some(InboundFrame::Hello {
                 v,
+                build_id,
                 host_arch,
                 claude_dir,
             }) => {
                 tracing::info!(
-                    "ssh_source daemon hello: v={v} host_arch={host_arch} claude_dir={claude_dir}"
+                    "ssh_source daemon hello: v={v} build_id={build_id} host_arch={host_arch} claude_dir={claude_dir}"
                 );
                 // 标记本次连接已健康(收到 daemon hello)，供 run() 重连循环判定是否重置退避。
                 connected.store(true, Ordering::Release);
+                // issue #33：版本协商。不兼容/偏旧经 SS-F remote-health 通道醒目提示（前端
+                // headlineFor 已含 version case，零前端改动）。不 hard-disconnect（向前兼容）。
+                if let Some(msg) = version_warning(v, &build_id, &host_label) {
+                    tracing::warn!("ssh_source remote [{host_label}] version: {msg}");
+                    let payload = crate::bridge::RemoteHealthPayload {
+                        origin: Some(host_label.clone()),
+                        kind: "version".to_string(),
+                        message: msg,
+                    };
+                    if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                        tracing::warn!("ssh_source remote-health (version) emit failed: {e}");
+                    }
+                }
             }
             Some(InboundFrame::Line {
                 session_id,
@@ -927,10 +1006,11 @@ async fn probe_daemon(
             match parse_frame(trimmed) {
                 Some(InboundFrame::Hello {
                     v,
+                    build_id,
                     host_arch,
                     claude_dir,
                 }) => Ok(Some(format!(
-                    "v={v} arch={host_arch} claude_dir={claude_dir}"
+                    "v={v} build={build_id} arch={host_arch} claude_dir={claude_dir}"
                 ))),
                 _ => Ok(None), // 非 hello 帧 → daemon 未正常握手
             }
@@ -942,19 +1022,67 @@ async fn probe_daemon(
 mod parse_frame_tests {
     use super::*;
 
-    /// hello 帧解析：取 v / host_arch / claude_dir，daemon 多发的 build_id 等字段被忽略。
+    /// hello 帧解析：取 v / build_id / host_arch / claude_dir（#33 起捕获 build_id）。
     #[test]
-    fn parses_hello_and_ignores_build_id() {
+    fn parses_hello_and_captures_build_id() {
         let line = r#"{"kind":"hello","v":1,"build_id":"abc123","host_arch":"aarch64","claude_dir":"/home/pi/.claude"}"#;
         let frame = parse_frame(line).expect("hello must parse");
         assert_eq!(
             frame,
             InboundFrame::Hello {
                 v: 1,
+                build_id: "abc123".to_string(),
                 host_arch: "aarch64".to_string(),
                 claude_dir: "/home/pi/.claude".to_string(),
             }
         );
+    }
+
+    /// #33：hello 缺 build_id → None（按必需字段，坏帧跳过；既有 daemon 总在发它）。
+    #[test]
+    fn hello_missing_build_id_returns_none() {
+        let line = r#"{"kind":"hello","v":1,"host_arch":"x86_64","claude_dir":"/c"}"#;
+        assert_eq!(parse_frame(line), None);
+    }
+
+    /// #33：版本协商真值表。协议不符优先于 build 差异。
+    #[test]
+    fn negotiate_version_truth_table() {
+        // 全同 → Ok。
+        assert_eq!(
+            negotiate_version(EXPECTED_PROTO_V, EXPECTED_DAEMON_BUILD_ID),
+            VersionVerdict::Ok
+        );
+        // 协议同、build 异 → StaleBuild（带上报值）。
+        assert_eq!(
+            negotiate_version(EXPECTED_PROTO_V, "p1a-history"),
+            VersionVerdict::StaleBuild {
+                reported: "p1a-history".to_string()
+            }
+        );
+        // 协议异 → Incompatible，且即便 build 也不同，协议优先。
+        assert_eq!(
+            negotiate_version(999, "whatever"),
+            VersionVerdict::Incompatible { reported_v: 999 }
+        );
+        assert_eq!(
+            negotiate_version(999, EXPECTED_DAEMON_BUILD_ID),
+            VersionVerdict::Incompatible { reported_v: 999 },
+            "协议不符时即使 build 匹配也算不兼容"
+        );
+    }
+
+    /// #33：version_warning 文案——Ok→None，其余→Some 且含 label。
+    #[test]
+    fn version_warning_messages() {
+        assert_eq!(
+            version_warning(EXPECTED_PROTO_V, EXPECTED_DAEMON_BUILD_ID, "pi"),
+            None
+        );
+        let stale = version_warning(EXPECTED_PROTO_V, "p1a-history", "pi").expect("stale warns");
+        assert!(stale.contains("pi") && stale.contains("p1a-history"));
+        let incompat = version_warning(2, EXPECTED_DAEMON_BUILD_ID, "wsl").expect("incompat warns");
+        assert!(incompat.contains("wsl") && incompat.contains("不兼容"));
     }
 
     /// 两条 line 帧：逐字段断言 session_id / path / seq / raw 都原样取出。
