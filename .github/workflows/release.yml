@@ -1,7 +1,7 @@
 name: Release
 
 # 推 v* tag 时触发：
-#  1. build-daemons (ubuntu)：用 cross 交叉编译 aarch64 / x86_64 musl 远端 daemon，
+#  1. build-daemons (ubuntu)：用 cargo-zigbuild 交叉编译 aarch64 / x86_64 musl 远端 daemon，
 #     作为 artifact 传给 Windows 作业 —— 让发布安装包内嵌 daemon、自动部署 (#29) 可用。
 #  2. build-windows：下载 daemon 放进 src-tauri/embedded-daemons/ → cargo tauri build →
 #     把 NSIS / MSI bundle 作为 GitHub Release 附件上传。
@@ -22,18 +22,26 @@ jobs:
         with:
           targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
 
-      - name: Install cross
+      # zig 作 cross-linker：cargo-zigbuild 在 ubuntu 原生跑（build script 本机执行、不进
+      # 容器）—— 避开 cross 0.2.5 旧镜像 glibc 跑不了新 rustc(1.96) build script 的坑
+      # （libc / crossbeam-utils 的 build script 在容器里执行失败）。版本锁到本地实测能
+      # 编出双 musl 静态二进制的组合：zig 0.16.0 + cargo-zigbuild 0.23.0。
+      - uses: mlugg/setup-zig@v1
+        with:
+          version: 0.16.0
+
+      - name: Install cargo-zigbuild
         uses: taiki-e/install-action@v2
         with:
-          tool: cross
+          tool: cargo-zigbuild@0.23.0
 
-      # cc-monitor-remote 是独立 crate（无 workspace），用 cross 的 musl 镜像静态编译。
+      # cc-monitor-remote 是独立 crate（无 workspace），静态编译成 musl。
       # build_id 由源码 const BUILD_ID 决定（src-tauri/build.rs 同源解析），从源码编译天然版本一致。
       - name: Cross-compile daemon for both musl targets
         working-directory: remote-daemon-proto
         run: |
-          cross build --release --target x86_64-unknown-linux-musl
-          cross build --release --target aarch64-unknown-linux-musl
+          cargo zigbuild --release --target x86_64-unknown-linux-musl
+          cargo zigbuild --release --target aarch64-unknown-linux-musl
 
       # 命名成 src-tauri/build.rs embed_daemons 期望的 cc-monitor-remote-<arch>。
       - name: Stage binaries
