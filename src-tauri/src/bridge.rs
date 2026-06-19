@@ -22,6 +22,11 @@ pub mod events {
     /// 字段变化时 emit（变化才发——CLI 仅在状态转换时重写文件，天然稀疏）。
     /// 前端启动/F5 用 `list_session_activity` IPC 拉快照收敛（本事件不进 replay buffer）。
     pub const SESSION_ACTIVITY: &str = "session-activity";
+    /// **远端健康通道**（SS-F，issue #32 起）：远端数据源把「拥塞丢行 / 版本不符」等
+    /// 非致命健康事件回传给用户。前端单一 listener（remote-health.ts）按 origin 节流后
+    /// 弹 toast。`kind` 区分类别（"overflow" / "version" / …），payload 见
+    /// [`RemoteHealthPayload`]。#33 版本协商复用同通道、只换 kind/message，不另造。
+    pub const REMOTE_HEALTH: &str = "remote-health";
     // FOCUS_SWITCH 已删除：Win11 默认终端 (WindowsTerminal.exe) 是单进程多窗口架构，
     // OS GetForegroundWindow 只能拿到 WT 主进程 PID，无法区分 tab/window 内跑哪个
     // claude session。在 WT 默认环境下永远不工作；非 WT 终端可工作但不值为少数场景维护。
@@ -75,6 +80,18 @@ pub struct JsonlBatchPayload {
 #[derive(Debug, Serialize, Clone)]
 pub struct SessionEndedPayload {
     pub session_id: String,
+}
+
+/// 远端健康事件 payload（SS-F，issue #32 起）。`origin` = 出问题的远端机器 label
+/// （`None` 理论不该出现——远端事件总带 origin；保留 Option 以与其它 payload 一致）；
+/// `kind` = 类别（"overflow" / "version" / …）供前端节流键与图标选择；`message` =
+/// 直接展示给用户的人读说明。
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteHealthPayload {
+    pub origin: Option<String>,
+    pub kind: String,
+    pub message: String,
 }
 
 /// issue #23：会话红绿灯状态。`status` 直接透传 Claude Code 官方枚举

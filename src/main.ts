@@ -20,6 +20,7 @@ import { loadTheme } from "./theme";
 import { SettingsPanel } from "./settings";
 import { HistoryView } from "./views/history";
 import { bindErrorToast } from "./error-toast";
+import { bindRemoteHealthToast } from "./remote-health";
 import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { getBehavior, setBehavior } from "./behavior";
@@ -239,6 +240,8 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // v2.0.0 (issue #4)：后端 ERROR 级别 tracing → 右下角红色 toast
   bindErrorToast();
+  // issue #32 (SS-F)：远端健康事件（拥塞丢行 / 版本不符）→ 右下角 info toast
+  bindRemoteHealthToast();
 
   // 通知后端可以发了 —— 缓冲的 line 会被 flush 过来
   window.__ccmPerf.frontendReadyEmit = performance.now();
