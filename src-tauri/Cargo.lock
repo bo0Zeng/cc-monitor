@@ -2720,6 +2720,7 @@ name = "monitor"
 version = "2.11.0"
 dependencies = [
  "dirs 5.0.1",
+ "futures",
  "notify",
  "notify-debouncer-mini",
  "parking_lot",

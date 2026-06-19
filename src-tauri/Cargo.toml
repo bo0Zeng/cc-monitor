@@ -52,6 +52,9 @@ russh-sftp = "2"
 primefield = "=0.14.0-rc.9"
 
 tokio = { version = "1", features = ["full"] }
+# 远端 fan-out 并发（R9）：join_all 同时查所有已配置远端，借用不需 'static/Send。
+# 已在 lockfile（russh 传递依赖），此处提升为直接依赖。
+futures = "0.3"
 parking_lot = "0.12"
 
 dirs = "5"
