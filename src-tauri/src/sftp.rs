@@ -79,8 +79,15 @@ pub async fn upload_atomic(
     file.write_all(bytes)
         .await
         .map_err(|e| format!("写 {tmp} 失败: {e}"))?;
-    file.sync_all().await.ok();
-    file.shutdown().await.ok();
+    // russh-sftp 的 `write_all` 只把 WRITE 包入队（write_nowait），ack 只在 `flush`/`shutdown`
+    // 的 poll_drain_writes 里 drain。用 `flush()`（**始终** drain，不像 sync_all 在服务器无
+    // `fsync@openssh` 时 noop 不 drain）+ **传播错误**，确保数据真正落服务器、失败不静默。
+    file.flush()
+        .await
+        .map_err(|e| format!("flush {tmp} 失败（写未确认）: {e}"))?;
+    file.shutdown()
+        .await
+        .map_err(|e| format!("关闭 {tmp} 失败: {e}"))?;
     drop(file);
 
     // rename 不覆盖 → 先删旧目标（存在才删）。
@@ -92,16 +99,12 @@ pub async fn upload_atomic(
     sftp.rename(tmp.clone(), remote_path.to_string())
         .await
         .map_err(|e| format!("rename {tmp} → {remote_path} 失败: {e}"))?;
-    // 兜底设权限（best-effort）。
-    let _ = sftp
-        .set_metadata(
-            remote_path.to_string(),
-            FileAttributes {
-                permissions: Some(mode),
-                ..Default::default()
-            },
-        )
-        .await;
+    // **绝不**在这里 `set_metadata(permissions)` 兜底 chmod —— 真机 e2e 诊断确证：在 OpenSSH
+    // sftp-server 上 setstat（即便只设 permissions、size=None）会把刚 rename 好的文件**截断成
+    // 0 字节**（tmp 写后 size 正确、rename 直后 size 正确，唯独 set_metadata 之后变 0）。daemon
+    // 因此变 0 字节不可 exec → 连接 EOF，marker 变空 → 无限重部署。权限已在 open-create 的 attrs
+    // 里设好（OpenSSH 按 SSH_FXP_OPEN attrs 建文件：0o700 可执行 / 0o600）、rename 保留权限，无需
+    // 也不能再 set_metadata。
     Ok(())
 }
 
