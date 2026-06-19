@@ -33,6 +33,12 @@ pub enum Frame {
     SessionAdded { sid: String },
     /// A session file went away.
     SessionRemoved { sid: String },
+    /// The bounded frame channel back-pressured and the reader had to drop
+    /// `dropped` frames (a slow/wedged SSH pipe). Emitted once when the channel
+    /// drains enough to accept it, so the client can warn the user that live
+    /// lines were lost (#32). `dropped` counts frames dropped since the last
+    /// overflow signal.
+    Overflow { dropped: u64 },
 }
 
 /// Serialize a frame to its compact one-line wire form with a trailing `\n`.
@@ -128,12 +134,22 @@ mod tests {
             ),
             (Frame::SessionAdded { sid: "s".into() }, "session_added"),
             (Frame::SessionRemoved { sid: "s".into() }, "session_removed"),
+            (Frame::Overflow { dropped: 7 }, "overflow"),
         ];
 
         for (frame, expected_kind) in cases {
             let line = to_line(&frame).expect("serialize");
             assert_eq!(parse_kind(&line), expected_kind);
         }
+    }
+
+    #[test]
+    fn overflow_frame_serializes_with_dropped_count() {
+        let line = to_line(&Frame::Overflow { dropped: 42 }).expect("serialize");
+        let body = line.strip_suffix('\n').unwrap();
+        let v: Value = serde_json::from_str(body).expect("valid json");
+        assert_eq!(v["kind"], "overflow");
+        assert_eq!(v["dropped"], 42);
     }
 
     #[test]

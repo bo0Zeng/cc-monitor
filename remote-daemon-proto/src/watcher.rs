@@ -9,10 +9,10 @@
 //!
 //! - the **reader** ([`watch_loop`]) owns the `notify-debouncer-mini` watcher,
 //!   does the incremental per-file offset reads, assigns `seq`s, and *sends*
-//!   [`Frame`]s into the channel. It uses `try_send`, so a full channel drops
-//!   the frame with a `tracing::warn!` rather than ever blocking the notify
-//!   callback (the documented Phase-0 no-overflow-signal gap — real overflow
-//!   signalling is Phase 1).
+//!   [`Frame`]s into the channel via [`FrameSink`]. It uses `try_send`, so a full
+//!   channel drops the frame rather than ever blocking the notify callback — but
+//!   it **counts** the dropped frames and emits a [`Frame::Overflow`] signal once
+//!   the channel drains (#32), so the client can warn that live lines were lost.
 //! - the **writer** ([`crate::main`]'s stdout task) drains the channel and
 //!   writes one wire line per frame. A slow SSH pipe back-pressures the channel
 //!   (the writer awaits on a full pipe), and the bound on the channel means
@@ -70,13 +70,18 @@ pub fn spawn(claude_dir: PathBuf) -> mpsc::Receiver<Frame> {
 
 /// The reader half: initial walkdir scan, then the live debouncer loop.
 ///
-/// Runs on its own OS thread. `tx` is the bounded sender; every emitted frame
-/// goes through [`send_frame`] which never blocks the notify callback.
+/// Runs on its own OS thread. `tx` is the bounded sender; it is wrapped in a
+/// [`FrameSink`] whose [`FrameSink::send`] never blocks the notify callback and
+/// turns dropped frames into an [`Frame::Overflow`] signal (#32).
 fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>) {
     let projects = claude_dir.join("projects");
     let sessions = claude_dir.join("sessions");
 
     let mut state = ReaderState::new(projects.clone());
+    // All frames go out through a FrameSink: a bounded-channel sender that counts
+    // frames dropped on a full channel and emits a single `Overflow` signal once
+    // the channel drains enough to accept it (#32). Never blocks this reader.
+    let mut sink = FrameSink::new(tx);
 
     // --- Phase 1: synchronous initial scan. ---
     // Mirror the LOCAL watcher's `active_filter` (`session_map.is_session_active`):
@@ -90,7 +95,7 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>) {
         for entry in WalkDir::new(&sessions).into_iter().filter_map(Result::ok) {
             let p = entry.path();
             if is_session_json(p) {
-                process_session_added(p, &mut state, &tx);
+                process_session_added(p, &mut state, &mut sink);
             }
         }
     }
@@ -137,14 +142,14 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>) {
                     let p = ev.path.as_path();
                     if is_jsonl(p) && !is_subagent_path(p) {
                         // process_jsonl skips sids not in active_sids.
-                        process_jsonl(p, &mut state, &tx);
+                        process_jsonl(p, &mut state, &mut sink);
                     } else if is_session_json(p) {
                         // notify coalesces to "something happened to this path";
                         // decide add vs remove by current existence on disk.
                         if p.exists() {
-                            process_session_added(p, &mut state, &tx);
+                            process_session_added(p, &mut state, &mut sink);
                         } else {
-                            process_session_removed(p, &mut state, &tx);
+                            process_session_removed(p, &mut state, &mut sink);
                         }
                     }
                 }
@@ -165,11 +170,11 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>) {
         for k in dead {
             if let Some(e) = state.sessions.remove(&k) {
                 state.active_sids.remove(&e.sid);
-                send_frame(&tx, Frame::SessionRemoved { sid: e.sid });
+                sink.send(Frame::SessionRemoved { sid: e.sid });
             }
         }
 
-        if tx.is_closed() {
+        if sink.is_closed() {
             break;
         }
     }
@@ -302,7 +307,7 @@ pub fn read_new_lines(
 }
 
 /// Read a JSONL file incrementally and send a [`Frame::Line`] per new line.
-fn process_jsonl(path: &Path, state: &mut ReaderState, tx: &mpsc::Sender<Frame>) {
+fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
     let Some(session_id) = file_stem_str(path) else {
         return;
     };
@@ -322,15 +327,12 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, tx: &mpsc::Sender<Frame>)
     state.offsets.insert(key, new_offset);
     let path_str = path.to_string_lossy().into_owned();
     for line in lines {
-        send_frame(
-            tx,
-            Frame::Line {
-                session_id: session_id.clone(),
-                path: path_str.clone(),
-                seq: line.seq,
-                raw: line.raw,
-            },
-        );
+        sink.send(Frame::Line {
+            session_id: session_id.clone(),
+            path: path_str.clone(),
+            seq: line.seq,
+            raw: line.raw,
+        });
     }
 }
 
@@ -339,7 +341,7 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, tx: &mpsc::Sender<Frame>)
 ///
 /// Idempotent: if we already cached the same sid for this path, skip the emit
 /// so a debounced modify event does not re-announce an existing session.
-fn process_session_added(path: &Path, state: &mut ReaderState, tx: &mpsc::Sender<Frame>) {
+fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
     let key = path_key(path);
     // PID is the sessions/<PID>.json filename stem.
     let Some(pid) = file_stem_str(path).and_then(|s| s.parse::<u32>().ok()) else {
@@ -370,27 +372,27 @@ fn process_session_added(path: &Path, state: &mut ReaderState, tx: &mpsc::Sender
         },
     );
     state.active_sids.insert(sid.clone());
-    send_frame(tx, Frame::SessionAdded { sid: sid.clone() });
+    sink.send(Frame::SessionAdded { sid: sid.clone() });
     // Now that this session is active, stream its existing jsonl (mirrors the
     // local force-rescan triggered on session-added).
     let projects = state.projects.clone();
-    rescan_sid_jsonl(&projects, &sid, state, tx);
+    rescan_sid_jsonl(&projects, &sid, state, sink);
 }
 
 /// A `sessions/<PID>.json` was deleted: look up the cached sid (the file is
 /// gone, so we cannot read it now) and emit [`Frame::SessionRemoved`].
-fn process_session_removed(path: &Path, state: &mut ReaderState, tx: &mpsc::Sender<Frame>) {
+fn process_session_removed(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
     let key = path_key(path);
     if let Some(e) = state.sessions.remove(&key) {
         state.active_sids.remove(&e.sid);
-        send_frame(tx, Frame::SessionRemoved { sid: e.sid });
+        sink.send(Frame::SessionRemoved { sid: e.sid });
     }
 }
 
 /// Walk `projects/` for this session's jsonl (`<sid>.jsonl`, non-subagent) and
 /// stream its already-present lines. Called when a session becomes active so an
 /// already-running session snapshots on session-added (mirrors local force-rescan).
-fn rescan_sid_jsonl(projects: &Path, sid: &str, state: &mut ReaderState, tx: &mpsc::Sender<Frame>) {
+fn rescan_sid_jsonl(projects: &Path, sid: &str, state: &mut ReaderState, sink: &mut FrameSink) {
     if !projects.is_dir() {
         return;
     }
@@ -400,7 +402,7 @@ fn rescan_sid_jsonl(projects: &Path, sid: &str, state: &mut ReaderState, tx: &mp
             && !is_subagent_path(p)
             && p.file_stem().and_then(|s| s.to_str()) == Some(sid)
         {
-            process_jsonl(p, state, tx);
+            process_jsonl(p, state, sink);
         }
     }
 }
@@ -519,23 +521,67 @@ fn parse_session_id(bytes: &[u8]) -> Option<String> {
     v.get("sessionId")?.as_str().map(str::to_string)
 }
 
-/// `try_send` a frame, dropping (with a warning) on a full channel.
+/// The reader's send half: a bounded-channel sender that turns a wedged pipe
+/// into an explicit **overflow signal** (#32) instead of silently losing data.
 ///
-/// **Phase-0 gap (documented):** a full channel means the writer/SSH pipe is
-/// wedged; we drop the frame and warn rather than block the notify reader.
-/// There is no overflow signal to the client — that is Phase 1.
-fn send_frame(tx: &mpsc::Sender<Frame>, frame: Frame) {
-    match tx.try_send(frame) {
-        Ok(()) => {}
-        Err(mpsc::error::TrySendError::Full(_)) => {
-            tracing::warn!(
-                "frame channel full (cap {CHANNEL_CAPACITY}); dropping frame \
-                 (Phase-0 no-overflow-signal gap)"
-            );
+/// A full channel means the writer/SSH pipe is wedged. We still `try_send` (never
+/// blocking the notify reader), but now we **count** the frames we had to drop
+/// and, once the channel drains enough to accept it, emit a single
+/// [`Frame::Overflow`] carrying that count. The client warns the user that live
+/// lines were lost. One signal per congestion burst — naturally throttled.
+struct FrameSink {
+    tx: mpsc::Sender<Frame>,
+    /// Frames dropped since the last successfully-sent `Overflow` signal.
+    dropped: u64,
+}
+
+impl FrameSink {
+    fn new(tx: mpsc::Sender<Frame>) -> Self {
+        FrameSink { tx, dropped: 0 }
+    }
+
+    /// Send `frame`, first flushing any owed overflow signal.
+    ///
+    /// Order matters: we try to emit the pending `Overflow` *before* the real
+    /// frame so the client learns "you lost N frames" no later than the next
+    /// frame it receives. If the channel is still full, we keep owing the count
+    /// (it only ever grows until a send succeeds); a closed channel is a quiet
+    /// shutdown (the loop checks `is_closed`).
+    fn send(&mut self, frame: Frame) {
+        if self.dropped > 0 {
+            match self.tx.try_send(Frame::Overflow {
+                dropped: self.dropped,
+            }) {
+                Ok(()) => {
+                    tracing::warn!(
+                        "recovered from frame-channel overflow; signalled {} dropped frame(s)",
+                        self.dropped
+                    );
+                    self.dropped = 0;
+                }
+                // Still wedged: keep owing the count, retry on the next send.
+                Err(mpsc::error::TrySendError::Full(_)) => {}
+                Err(mpsc::error::TrySendError::Closed(_)) => return,
+            }
         }
-        Err(mpsc::error::TrySendError::Closed(_)) => {
-            // Writer gone (shutdown). Nothing to do; the loop checks is_closed.
+        match self.tx.try_send(frame) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                self.dropped += 1;
+                tracing::warn!(
+                    "frame channel full (cap {CHANNEL_CAPACITY}); dropping frame \
+                     ({} dropped since last overflow signal)",
+                    self.dropped
+                );
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                // Writer gone (shutdown). Nothing to do; the loop checks is_closed.
+            }
         }
+    }
+
+    fn is_closed(&self) -> bool {
+        self.tx.is_closed()
     }
 }
 
@@ -801,6 +847,49 @@ mod tests {
         // Exists, no baseline captured → existence-only degrade = alive.
         assert!(is_same_live_process(true, None, Some(9)));
         assert!(is_same_live_process(true, None, None));
+    }
+
+    // === #32 overflow signal (F05) ===
+
+    /// FrameSink: a full channel drops + counts; once the channel drains, the
+    /// next send emits a single `Overflow{dropped}` before the real frame and
+    /// resets the counter. tokio's `try_send`/`try_recv` are sync, so no runtime.
+    #[test]
+    fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
+        let (tx, mut rx) = mpsc::channel::<Frame>(2);
+        let mut sink = FrameSink::new(tx);
+
+        // Fill both slots — these go through cleanly, no overflow owed.
+        sink.send(Frame::SessionAdded { sid: "a".into() });
+        sink.send(Frame::SessionAdded { sid: "b".into() });
+        assert_eq!(sink.dropped, 0, "nothing dropped while the channel had room");
+
+        // Channel is full now: three sends are dropped and counted.
+        sink.send(Frame::SessionAdded { sid: "c".into() });
+        sink.send(Frame::SessionAdded { sid: "d".into() });
+        sink.send(Frame::SessionAdded { sid: "e".into() });
+        assert_eq!(sink.dropped, 3);
+
+        // Drain both queued frames (they are the first two, not the dropped ones).
+        assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
+        assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
+
+        // Next send (channel now empty, cap 2): emits Overflow{3} into slot 1,
+        // resets the counter, then the real frame into slot 2.
+        sink.send(Frame::SessionRemoved { sid: "f".into() });
+        assert_eq!(sink.dropped, 0, "overflow signal flushed, counter reset");
+        assert!(
+            matches!(rx.try_recv(), Ok(Frame::Overflow { dropped: 3 })),
+            "overflow signal carries the dropped count and arrives first"
+        );
+        assert!(
+            matches!(rx.try_recv(), Ok(Frame::SessionRemoved { .. })),
+            "the real frame follows the overflow signal"
+        );
+
+        // Steady state: no spurious Overflow once recovered.
+        sink.send(Frame::SessionAdded { sid: "g".into() });
+        assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
     }
 
     #[cfg(target_os = "linux")]

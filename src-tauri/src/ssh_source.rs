@@ -34,6 +34,7 @@ use std::time::Duration;
 use russh::client;
 use russh::keys::{load_secret_key, HashAlg, PrivateKeyWithHashAlg, PublicKey};
 use serde::{Deserialize, Serialize};
+use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::event_replay::EventReplay;
@@ -373,6 +374,9 @@ pub enum InboundFrame {
     SessionAdded { sid: String },
     /// 远端一个 session 文件消失。
     SessionRemoved { sid: String },
+    /// issue #32：远端 daemon 发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）。
+    /// monitor 收到后经 SS-F remote-health 通道提示用户可能丢实时行。
+    Overflow { dropped: u64 },
 }
 
 /// 把 daemon 发来的一行（已去掉行尾 `\n`）解析成 [`InboundFrame`]。
@@ -419,6 +423,11 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
         "session_removed" => {
             let sid = obj.get("sid")?.as_str()?.to_string();
             Some(InboundFrame::SessionRemoved { sid })
+        }
+        "overflow" => {
+            // issue #32：dropped 必需且为数字；缺/错则当坏帧跳过（不 panic）。
+            let dropped = obj.get("dropped")?.as_u64()?;
+            Some(InboundFrame::Overflow { dropped })
         }
         // 未知 kind：向前兼容，跳过（调用方 warn）。绝不 panic。
         _ => None,
@@ -598,6 +607,24 @@ async fn stream_loop(
                     status_changed: vec![],
                 }) {
                     tracing::warn!("ssh_source session_removed send failed: {e}");
+                }
+            }
+            Some(InboundFrame::Overflow { dropped }) => {
+                // issue #32：远端管道拥塞丢了 dropped 帧。warn + 经 SS-F remote-health
+                // 通道提示用户（前端按 origin 节流弹 toast）。丢的实时行仍在远端 jsonl
+                // 文件里，重开该会话即可看完整历史（不做实时补齐，见计划 R5）。
+                tracing::warn!(
+                    "ssh_source remote [{host_label}] overflow: daemon dropped {dropped} frame(s)"
+                );
+                let payload = crate::bridge::RemoteHealthPayload {
+                    origin: Some(host_label.clone()),
+                    kind: "overflow".to_string(),
+                    message: format!(
+                        "远端 [{host_label}] 管道拥塞，可能丢失约 {dropped} 条实时行；重开该会话可看完整历史。"
+                    ),
+                };
+                if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                    tracing::warn!("ssh_source remote-health emit failed: {e}");
                 }
             }
             None => {
@@ -1000,6 +1027,17 @@ mod parse_frame_tests {
                 sid: "s-dead".to_string()
             }
         );
+    }
+
+    /// issue #32：overflow 帧解析出 dropped 计数；缺/错 dropped 当坏帧跳过（None）。
+    #[test]
+    fn parses_overflow_and_rejects_bad_dropped() {
+        let frame = parse_frame(r#"{"kind":"overflow","dropped":12}"#).expect("overflow parses");
+        assert_eq!(frame, InboundFrame::Overflow { dropped: 12 });
+        // 缺 dropped → None
+        assert_eq!(parse_frame(r#"{"kind":"overflow"}"#), None);
+        // dropped 类型错（字符串）→ None
+        assert_eq!(parse_frame(r#"{"kind":"overflow","dropped":"12"}"#), None);
     }
 
     /// 已知 kind 但必需字段缺失 / 类型错 → None（坏帧当 garbage 跳过，不 panic）。
