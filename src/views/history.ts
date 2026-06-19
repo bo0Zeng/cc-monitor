@@ -119,6 +119,9 @@ interface SearchSessionHits {
   updatedAt: number;
   hitCount: number;
   hits: SearchHit[];
+  /** issue #28: 数据来源。undefined=本地；远端=该台 label，渲染 `[host]` 前缀 +
+   *  点击走远端只读视图（origin 透传 openViewer → stream_read_remote_session）。 */
+  origin?: string;
 }
 
 /** issue #6: `search_history` IPC 返回（后端 wire 全 camelCase）。 */
@@ -735,6 +738,14 @@ export class HistoryView {
 
     const header = document.createElement("div");
     header.className = "search-session-header";
+    // issue #28：远端命中带 `[host]` 来源标识（本地无前缀）。
+    if (s.origin) {
+      const host = document.createElement("span");
+      host.className = "search-session-host";
+      host.textContent = `[${s.origin}]`;
+      host.title = `远端机器：${s.origin}`;
+      header.appendChild(host);
+    }
     const title = document.createElement("span");
     title.className = "search-session-title";
     title.textContent = s.title || s.sessionId.slice(0, 8);
@@ -791,6 +802,8 @@ export class HistoryView {
           ? `${s.projectName}  ·  ${s.projectPath}`
           : s.projectPath,
         scrollToUuid: hit.uuid,
+        // issue #28：远端命中点击走远端只读视图（origin → stream_read_remote_session）。
+        origin: s.origin,
       });
     });
     return row;

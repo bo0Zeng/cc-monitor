@@ -74,6 +74,60 @@ async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec<String>, S
         .map_err(|_| format!("远端查询超时（{}s）: {args}", LIST_TIMEOUT.as_secs()))?
 }
 
+/// 远端全文搜索 fan-out（issue #28）：对所有已配置远端各 exec 一次 `<daemon> --search`，
+/// 把每行 camelCase `SessionHits` JSON 反序列化、补 `origin = 该台 label`。无远端 → 空；
+/// 逐台失败 warn + 跳过（不拖垮其余台）。复用 `run_list_query`（连接/超时/旧 daemon 检测）。
+///
+/// `scope` 透传原始字符串（"user"/"assistant"/其它=不限）；只对 daemon 认的两值下发。
+pub async fn search_remote_all(
+    query: &str,
+    include_tools: bool,
+    scope: Option<&str>,
+    after_ms: i64,
+    limit: usize,
+) -> Vec<crate::search::SessionHits> {
+    let cfgs = crate::load_remote_configs();
+    let mut out = Vec::new();
+    for cfg in &cfgs {
+        let origin = cfg.origin_label();
+        // 参数经 shell_quote 防注入；daemon 侧再做 projects/ 白名单校验。
+        let mut args = format!("--search {}", ssh_source::shell_quote(query));
+        if include_tools {
+            args.push_str(" --include-tools");
+        }
+        if let Some(s) = scope {
+            if s == "user" || s == "assistant" {
+                args.push_str(" --scope ");
+                args.push_str(s);
+            }
+        }
+        if after_ms > 0 {
+            args.push_str(&format!(" --after-ms {after_ms}"));
+        }
+        args.push_str(&format!(" --limit {limit}"));
+
+        match run_list_query(cfg, &args).await {
+            Ok(lines) => {
+                for line in lines {
+                    match serde_json::from_str::<crate::search::SessionHits>(&line) {
+                        Ok(mut sh) => {
+                            sh.origin = Some(origin.clone());
+                            out.push(sh);
+                        }
+                        Err(e) => {
+                            tracing::warn!("远端 [{origin}] --search 行解析失败（跳过）: {e}");
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("远端 [{origin}] --search 失败（跳过该台）: {e}");
+            }
+        }
+    }
+    out
+}
+
 /// 远端项目列表（多机 #30：fan-out 所有已配置远端）。无远端 → 空列表（前端无感合并）；
 /// 单台查询失败 → warn + 跳过该台（不拖垮其余台）。各 project 带 `origin = 该台 label`。
 #[tauri::command]
