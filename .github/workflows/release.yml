@@ -69,7 +69,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'   # 与 ci.yml 对齐（≥22.18 type-stripping），避免发版与 CI 用不同 node
           cache: 'npm'
 
       - uses: dtolnay/rust-toolchain@stable
@@ -99,7 +99,8 @@ jobs:
       - name: npm install
         run: npm ci
 
-      # 防 v2.4.2 漂移事故复发：tag 与三处版本号必须完全一致，否则 fail step。
+      # 防 v2.4.2 漂移事故复发：tag 与**四处**版本号（package.json / tauri.conf.json /
+      # Cargo.toml / Cargo.lock 的 monitor 包）必须完全一致，否则 fail step。
       - name: Verify version consistency with tag
         shell: pwsh
         run: |
@@ -107,11 +108,14 @@ jobs:
           $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $conf = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
           $cargo = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
-          if ($pkg -ne $tag -or $conf -ne $tag -or $cargo -ne $tag) {
-            Write-Error "Version drift: tag=$tag package.json=$pkg tauri.conf=$conf Cargo.toml=$cargo"
+          # Cargo.lock 里 monitor 包：`name = "monitor"` 紧跟的 version 行
+          $lockRaw = Get-Content src-tauri/Cargo.lock -Raw
+          $lock = if ($lockRaw -match '(?m)^name = "monitor"\r?\nversion = "([^"]+)"') { $Matches[1] } else { '<missing>' }
+          if ($pkg -ne $tag -or $conf -ne $tag -or $cargo -ne $tag -or $lock -ne $tag) {
+            Write-Error "Version drift: tag=$tag package.json=$pkg tauri.conf=$conf Cargo.toml=$cargo Cargo.lock(monitor)=$lock"
             exit 1
           }
-          Write-Host "Version OK: $tag (all four sources agree)"
+          Write-Host "Version OK: $tag (package.json / tauri.conf / Cargo.toml / Cargo.lock all agree)"
 
       # tauri build 会顺序：npm run build (vite) → cargo build --release → bundle (msi + nsis)
       - name: tauri build
