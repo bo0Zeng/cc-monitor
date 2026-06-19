@@ -213,6 +213,9 @@ class MachineCard {
   private fingerprintInput!: HTMLInputElement;
   private testButton!: HTMLButtonElement;
   private installButton!: HTMLButtonElement;
+  private daemonInstallButton!: HTMLButtonElement;
+  private daemonUninstallButton!: HTMLButtonElement;
+  private ccmUninstallButton!: HTMLButtonElement;
   private testResult!: HTMLElement;
   /** 折叠时隐藏的字段 + 测试/安装区（legend 始终可见）。 */
   private body!: HTMLElement;
@@ -326,25 +329,78 @@ class MachineCard {
       onChange,
     );
 
-    // 测试连接
-    const testRow = document.createElement("div");
-    testRow.className = "settings-row settings-row-end";
-    this.testButton = document.createElement("button");
-    this.testButton.type = "button";
-    this.testButton.className = "settings-btn settings-btn-primary";
-    this.testButton.textContent = "测试连接";
-    this.testButton.addEventListener("click", () => void this.onTestConnection());
-    testRow.appendChild(this.testButton);
-    // F10：一键把 ccm 助手装进这台远端的 ~/.bashrc（↗ 拉前用；会备份原文件 + 幂等）。
-    this.installButton = document.createElement("button");
-    this.installButton.type = "button";
-    this.installButton.className = "settings-btn settings-btn-secondary";
-    this.installButton.textContent = "装 ccm 助手";
-    this.installButton.title =
-      "一键把 ccm wrapper 装进这台远端的 ~/.bashrc（用于 ↗ 拉前）；会先备份原文件、幂等可重装";
-    this.installButton.addEventListener("click", () => void this.onInstallCcm());
-    testRow.appendChild(this.installButton);
-    body.appendChild(testRow);
+    // 安装位置提示：明确告诉用户「在哪里装什么」。
+    const installInfo = document.createElement("div");
+    installInfo.className = "settings-hint remote-install-info";
+    installInfo.textContent =
+      "安装位置：① daemon（远端数据源，必需）→ 上方「daemon 路径」填的位置" +
+      "（默认 ~/.cc-monitor/bin/cc-monitor-remote）+ 同目录 .build_id；启用远端后连接时会自动安装，" +
+      "下面按钮供手动装 / 卸。② ccm 助手（↗ 拉前用，可选）→ 远端 ~/.bashrc 里一段带 " +
+      "cc-monitor BEGIN/END 标记的函数（先备份原文件、只动标记块内）。";
+    body.appendChild(installInfo);
+
+    // 动作区：连接测试 + daemon 装/卸 + ccm 装/卸。按钮多，行内可换行。
+    const mkBtn = (
+      label: string,
+      variant: string,
+      title: string,
+      onClick: () => void,
+    ): HTMLButtonElement => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = `settings-btn ${variant}`;
+      b.textContent = label;
+      b.title = title;
+      b.addEventListener("click", onClick);
+      return b;
+    };
+
+    const actionRow = document.createElement("div");
+    actionRow.className = "settings-row settings-row-actions";
+
+    this.testButton = mkBtn(
+      "测试连接",
+      "settings-btn-primary",
+      "测试 SSH 连接 / 主机指纹 / daemon 是否在线",
+      () => void this.onTestConnection(),
+    );
+    actionRow.appendChild(this.testButton);
+
+    // F08c：手动安装 / 卸载 daemon（两个独立按钮）。
+    this.daemonInstallButton = mkBtn(
+      "安装 daemon",
+      "settings-btn-secondary",
+      "把内嵌的 daemon 二进制按远端架构装到 daemonPath（已是最新则跳过）",
+      () => void this.onDeployDaemon(),
+    );
+    actionRow.appendChild(this.daemonInstallButton);
+
+    this.daemonUninstallButton = mkBtn(
+      "卸载 daemon",
+      "settings-btn-secondary",
+      "删除远端 daemon 二进制 + .build_id（若机器仍启用，下次连接会自动装回）",
+      () => void this.onUninstallDaemon(),
+    );
+    actionRow.appendChild(this.daemonUninstallButton);
+
+    // F10：装 / 卸 ccm 助手到 ~/.bashrc（↗ 拉前用）。
+    this.installButton = mkBtn(
+      "装 ccm 助手",
+      "settings-btn-secondary",
+      "把 ccm wrapper 装进远端 ~/.bashrc（↗ 拉前用）；先备份原文件、幂等可重装",
+      () => void this.onInstallCcm(),
+    );
+    actionRow.appendChild(this.installButton);
+
+    this.ccmUninstallButton = mkBtn(
+      "卸载 ccm",
+      "settings-btn-secondary",
+      "从远端 ~/.bashrc 删掉 cc-monitor 的 ccm 块（先备份；块外内容不动）",
+      () => void this.onUninstallCcm(),
+    );
+    actionRow.appendChild(this.ccmUninstallButton);
+
+    body.appendChild(actionRow);
 
     this.testResult = document.createElement("div");
     this.testResult.className = "remote-test-result";
@@ -427,6 +483,84 @@ class MachineCard {
       this.installButton.disabled = false;
       this.installButton.textContent = prev;
     }
+  }
+
+  /** 在结果区显示一行提示（缺字段 / 取消等）。 */
+  private showResultText(text: string): void {
+    this.testResult.style.display = "block";
+    this.testResult.textContent = text;
+  }
+
+  /** 通用远端动作：禁用按钮 + 显示进度 → invoke → 结果写结果区 → 恢复按钮。 */
+  private async runRemoteAction(
+    btn: HTMLButtonElement,
+    busyLabel: string,
+    fn: () => Promise<string>,
+  ): Promise<void> {
+    btn.disabled = true;
+    const prev = btn.textContent;
+    btn.textContent = `${busyLabel}…`;
+    this.testResult.style.display = "block";
+    this.testResult.textContent = `${busyLabel}…`;
+    try {
+      const msg = await fn();
+      this.testResult.textContent = `✓ ${msg}`;
+    } catch (e) {
+      this.testResult.textContent = `✗ ${String(e)}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = prev;
+    }
+  }
+
+  /** F08c：点「安装 daemon」——把内嵌 daemon 按远端架构装到 daemonPath。 */
+  private async onDeployDaemon(): Promise<void> {
+    const cfg = this.collect();
+    if (!cfg.host || !cfg.user || !cfg.daemonPath) {
+      this.showResultText("请先填好 host / user / daemonPath 再安装 daemon。");
+      return;
+    }
+    await this.runRemoteAction(this.daemonInstallButton, "安装 daemon 中", () =>
+      invoke<string>("deploy_remote_daemon", { cfg }),
+    );
+  }
+
+  /** F08c：点「卸载 daemon」——删远端 daemon 二进制 + .build_id（二次确认）。 */
+  private async onUninstallDaemon(): Promise<void> {
+    const cfg = this.collect();
+    if (!cfg.host || !cfg.user || !cfg.daemonPath) {
+      this.showResultText("请先填好 host / user / daemonPath 再卸载 daemon。");
+      return;
+    }
+    if (
+      !window.confirm(
+        `确认从 ${cfg.host} 删除 daemon？\n会删：${cfg.daemonPath} 及同目录 .build_id。\n（若该机器仍勾选启用，下次连接会自动装回。）`,
+      )
+    ) {
+      return;
+    }
+    await this.runRemoteAction(this.daemonUninstallButton, "卸载 daemon 中", () =>
+      invoke<string>("uninstall_remote_daemon", { cfg }),
+    );
+  }
+
+  /** F10：点「卸载 ccm」——从远端 ~/.bashrc 删掉 ccm 块（二次确认）。 */
+  private async onUninstallCcm(): Promise<void> {
+    const cfg = this.collect();
+    if (!cfg.host || !cfg.user) {
+      this.showResultText("请先填好 host / user 再卸载 ccm。");
+      return;
+    }
+    if (
+      !window.confirm(
+        `确认从 ${cfg.host} 的 ~/.bashrc 删除 ccm 块？\n（只删 cc-monitor BEGIN/END 标记块，块外内容不动，会先备份原文件。）`,
+      )
+    ) {
+      return;
+    }
+    await this.runRemoteAction(this.ccmUninstallButton, "卸载 ccm 中", () =>
+      invoke<string>("uninstall_remote_ccm_helper", { cfg, profile: ".bashrc" }),
+    );
   }
 
   /** 渲染测试结果：SSH ✓/✗、指纹（+可固化）、daemon ✓/✗（+hello）。 */

@@ -622,8 +622,12 @@ pub fn run() {
             remote_history::stream_read_remote_session,
             // F11：远端历史删除（SFTP 写，SS-G 用户数据写豁免）
             remote_history::delete_remote_history_session,
-            // F10：一键装远端 ccm 助手到 ~/.bashrc（SFTP 写 profile，SS-H）
+            // F10：一键装 / 卸远端 ccm 助手到 ~/.bashrc（SFTP 写 profile，SS-H）
             sftp::install_remote_ccm_helper,
+            sftp::uninstall_remote_ccm_helper,
+            // F08c：手动安装 / 卸载远端 daemon（SFTP 写 ~/.cc-monitor/bin，SS-G 部署写豁免）
+            sftp::deploy_remote_daemon,
+            sftp::uninstall_remote_daemon,
             history::delete_history_session,
             history::update_history_metadata,
             history::resume_history_session,
