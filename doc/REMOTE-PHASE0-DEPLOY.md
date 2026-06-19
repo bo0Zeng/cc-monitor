@@ -118,11 +118,12 @@ ssh-keyscan -t ed25519 <host> 2>/dev/null | ssh-keygen -lf - | awk '{print $2}'
 
 ## 7. 在 cc-monitor 里配置（设置面板 → 远端模式，S6）
 
-设置面板「远端 (SSH)」分组填（写进 `~/.claude/claudecode-frontend/config.json` 的 `remote` 对象）：
+设置面板「远端 (SSH)」分组里**点「+ 添加机器」**为每台远端各填一组字段（多机 #30，写进 `~/.claude/claudecode-frontend/config.json` 的 `remote.hosts[]` 数组；旧的单 `remote` 对象仍兼容读、保存时自动升级成数组）。下表是**单台**字段，多台就重复填多张卡片：
 
 | 字段 | 例（WSL / 路径 A） | 例（NanoPi / 路径 B） |
 |---|---|---|
-| `enabled` | ✓ | ✓ |
+| `enabled`（全局开关，非每台） | ✓ | ✓ |
+| `label`（可选，每台标识，作 Tab/历史的 `[机器]` 前缀；留空用 host） | `wsl` | `pi` |
 | `host` | `localhost`（或 WSL IP） | `raspberrypi.local` / Pi 的 IP |
 | `port` | 22 | 22 |
 | `user` | 你的 WSL 用户名 | `pi` |
@@ -145,10 +146,10 @@ ssh-keyscan -t ed25519 <host> 2>/dev/null | ssh-keygen -lf - | awk '{print $2}'
 ### Phase 0 已知边界（**不是 bug**，是 scope）
 - ~~断线不自动重连~~ → 已补：断线**自动重连**（指数退避 2→30s，issue #17）；重连后 daemon 重扫活跃会话重放、客户端按 seq 去重，相当于轻量 catch-up。
 - 慢消费者**无 overflow 信号**回传（daemon 满了丢帧 + warn，客户端不感知）。
-- 远端**历史浏览 / 搜索 / resume**未接（Phase 1+）。~~拉前~~ → 已补：远端 Tab 的 ↗ 拉前已实现（issue #18，需在远端启用 `ccm` wrapper——见设置面板「远端 ↗ 拉前」展示的片段）。**WT 多 tab 限制**：多个 ssh 会话开在同一 WT 窗口的不同 tab 时，↗ 只能拉起该窗口、无法切到具体 tab（建议每会话单独开窗）。
+- ~~远端历史浏览未接~~ → 已补：远端**历史浏览**已实现（#16，支持多机**分组 / 来源筛选** #30/#31）。远端**全文搜索（#28）/ resume**仍未接（Phase 1+）。~~拉前~~ → 已补：远端 Tab 的 ↗ 拉前已实现（issue #18，需在远端启用 `ccm` wrapper——见设置面板「远端 ↗ 拉前」展示的片段）。**WT 多 tab 限制**：多个 ssh 会话开在同一 WT 窗口的不同 tab 时，↗ 只能拉起该窗口、无法切到具体 tab（建议每会话单独开窗）。
 - ~~daemon 重启后 seq 从 0 重来，客户端不处理~~ → 已补：客户端用 per-Tab `seenSeqs` 去重消化重放（issue #17），不重复、不丢新行。
 
-其余在 Phase 1 补（auto-deploy / history RPC）。**reconnect + seq 去重（#17）+ 远端 ↗ 拉前（#18）已完成。**
+其余在 Phase 1 补（auto-deploy / 远端全文搜索 #28）。**reconnect + seq 去重（#17）+ 远端 ↗ 拉前（#18）+ 历史浏览（#16）+ 多机聚合/分组/筛选（#30/#31）已完成。**
 
 ---
 

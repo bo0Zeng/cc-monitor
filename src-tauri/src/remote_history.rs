@@ -240,6 +240,12 @@ pub async fn stream_read_remote_session(
 ) -> Result<u32, String> {
     const CHUNK_SIZE: usize = 100;
     let cfg = require_cfg_by_label(&origin)?;
+    // 深度防御（与 stream_remote_history_sessions 的 project_dir 校验对称）：jsonl_path 来自
+    // 前端，monitor 侧先做廉价校验（拒 `..` + 强制 .jsonl 后缀）。真正的越权读由 daemon 侧
+    // canonicalize + projects/ 前缀 + symlink 逃逸校验兜底，这里补齐不对称的防御缺口。
+    if jsonl_path.contains("..") || !jsonl_path.ends_with(".jsonl") {
+        return Err(format!("非法会话路径: {jsonl_path}"));
+    }
     let started = std::time::Instant::now();
     // 与本地 history.rs 的 file_stem 口径一致：剥**一个** ".jsonl" 后缀（strip_suffix
     // 是字面后缀，不是 trim_end_matches 的字符集语义）。

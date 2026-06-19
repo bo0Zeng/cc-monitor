@@ -6,7 +6,7 @@
 
 把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复。**完全只读、零侵入**（不修改 Claude Code 任何文件，唯一例外是用户在历史浏览器里**显式**点删除）。
 
-**项目状态**：稳定可用。后端 130 + 远端 daemon 17 + 前端 3 个纯函数测试，tsc 严格类型检查，CI 全绿。当前发布 **v2.9.6**，能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 远端机器的会话，#15/#17/#18/#20）、**会话红绿灯**（实时 busy/waiting/idle 状态灯，#23）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。少量未发布小修见 [CHANGELOG](CHANGELOG.md)。详 [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
+**项目状态**：稳定可用。后端 135 + 远端 daemon 17 + 前端 3 个纯函数测试，tsc 严格类型检查，CI 全绿。当前发布 **v2.9.6**，能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 远端机器的会话，#15/#17/#18/#20）、**会话红绿灯**（实时 busy/waiting/idle 状态灯，#23）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。少量未发布小修见 [CHANGELOG](CHANGELOG.md)。详 [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
 
 ---
 
@@ -218,7 +218,7 @@ cc-monitor/
 
 - **版本**：v2.9.6（Released）；少量小修在 `main` 待发布（见 CHANGELOG）
 - **平台**：Windows 10 (1809+) / 11（远端 daemon 跑 Linux / aarch64）
-- **测试**：后端 cargo test 130 + 远端 daemon 17 + 前端 3 个纯函数测试，全绿（CI 门禁）
+- **测试**：后端 cargo test 135 + 远端 daemon 17 + 前端 3 个纯函数测试，全绿（CI 门禁）
 - **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~12K LOC TS + ~11K LOC Rust，含 ~1.3K 远端 daemon）
 - **设计原则**：只读零侵入（INVARIANT § 1）/ 可选性 / Windows-first / 长期记忆机制（CHANGELOG + doc/ 专题文档 + 各模块 README）
 
