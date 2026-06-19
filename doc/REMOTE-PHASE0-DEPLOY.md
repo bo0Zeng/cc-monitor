@@ -1,8 +1,49 @@
-# SSH 远端模式 Phase 0 — daemon 手动部署 runbook（issue #15）
+# SSH 远端模式 — daemon 部署 runbook（issue #15 / #29）
 
-Phase 0（walking skeleton）的远端 daemon **不自动分发**——在目标机器上**原生编译**后手动放到固定路径。这刻意绕开了设计稿里"build.rs 交叉编译双 musl 二进制 + SFTP 上传"的整套机制（那是 Phase 1）。本文给出在 **NanoPi(aarch64)** 或任意 Linux 机器（含 **WSL**）上把 `cc-monitor-remote` 跑起来的确切步骤。
+> **更新（issue #29 F08b 已实现自动部署）**：cc-monitor.exe **内嵌**交叉编译好的 aarch64/x86_64
+> musl daemon 二进制；连接远端时**自动**探测远端 arch（`uname -m`）、按 build_id 版本门控经 SFTP
+> 把对应二进制推到 `cfg.daemon_path`（默认 `~/.cc-monitor/bin/cc-monitor-remote`）并 exec——用户**零手动步骤**。
+> 自动部署失败（无内嵌该 arch / daemon_path 含 `~` / SFTP 失败）会优雅降级到下面的手动部署。
+>
+> **daemon_path 必须是绝对路径**（如 `/home/pi/.cc-monitor/bin/cc-monitor-remote`）：SFTP 无 shell、
+> 不展开 `~`，含 `~` 时自动部署会跳过（手动部署仍可用 `~`，因为那走 shell exec）。
+>
+> 下面的**手动部署**仍然有效，作为：① 自动部署不可用时的回退；② Phase 0 钢丝验证的原始步骤。
 
-> **为什么手动**：交叉编译 aarch64-musl 是被低估最严重的一块（Windows 主机上要 zig/cross/docker 工具链）。aarch64 机器自己编 aarch64 = 零交叉编译。Phase 0 先用最薄钢丝验证 russh + 实时渲染端到端可行，再投入自动分发。
+---
+
+## 发版构建：交叉编译 + 内嵌 daemon 二进制（F08b）
+
+打包 cc-monitor.exe 前，需把 daemon 交叉编译成两份 musl 二进制放进 `src-tauri/embedded-daemons/`
+（该目录已 gitignore——是构建产物；缺失时 `build.rs` 优雅降级，自动部署变 no-op，dev/CI 仍可编译）：
+
+```powershell
+# 一次性装工具链（Windows 主机；cross+Docker 在 Windows+Scoop-rustup 下踩坑，用 cargo-zigbuild）
+rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+scoop install zig                 # 或官网下 zig
+cargo install cargo-zigbuild
+
+# 交叉编译（在 remote-daemon-proto/ 下）
+cd remote-daemon-proto
+cargo zigbuild --release --target x86_64-unknown-linux-musl
+cargo zigbuild --release --target aarch64-unknown-linux-musl
+
+# 放进内嵌目录（build.rs 会 include_bytes 进 exe）
+mkdir ..\src-tauri\embedded-daemons
+copy target\x86_64-unknown-linux-musl\release\cc-monitor-remote   ..\src-tauri\embedded-daemons\cc-monitor-remote-x86_64
+copy target\aarch64-unknown-linux-musl\release\cc-monitor-remote  ..\src-tauri\embedded-daemons\cc-monitor-remote-aarch64
+```
+
+> **纪律（build.rs 有 staleness 警告兜底）**：每次改了 daemon（尤其 bump `main.rs::BUILD_ID`）都要**重跑
+> zigbuild + 重新放二进制**，否则内嵌的旧二进制 build_id 与源码/期望不符 → 永不收敛的重复部署。
+> `build.rs` 在内嵌二进制比 daemon 源码旧时会 `cargo:warning` 提示。
+
+---
+
+## 手动部署（自动部署的回退 / Phase 0 原始步骤）
+
+在目标机器上**原生编译**后手动放到固定路径——零交叉编译（aarch64 机器自己编 aarch64）。本文给出在
+**NanoPi(aarch64)** 或任意 Linux 机器（含 **WSL**）上把 `cc-monitor-remote` 跑起来的确切步骤。
 
 ---
 

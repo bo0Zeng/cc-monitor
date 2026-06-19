@@ -168,23 +168,50 @@ fn marker_path(daemon_path: &str) -> String {
     }
 }
 
-/// 连接前确保远端 daemon 已部署到 `cfg.daemon_path`（issue #29）。
+/// 探测远端 CPU 架构（`uname -m`）以选对应的内嵌 daemon 二进制（F08b）。一次性 exec。
+async fn probe_remote_arch(cfg: &RemoteConfig) -> Result<String, String> {
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    let stream = crate::ssh_source::connect_and_exec_cmd(cfg, "uname -m").await?;
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    reader
+        .read_line(&mut line)
+        .await
+        .map_err(|e| format!("读 uname -m 失败: {e}"))?;
+    let arch = line.trim().to_string();
+    if arch.is_empty() {
+        return Err("uname -m 空输出".to_string());
+    }
+    Ok(arch)
+}
+
+/// 连接前确保远端 daemon 已（自动）部署到 `cfg.daemon_path`（issue #29）。
 ///
-/// `binary = None`（F08b 嵌入二进制就位前）→ 优雅 no-op（debug log + Ok）。
-/// `Some` → 开 SFTP、读版本标记、`deploy_decision`、需要则 mkdir -p + 原子上传 + 写标记。
+/// 流程：① S-2 守卫（daemon_path 含 `~` → 跳过，SFTP 不展开 `~`）；② 探测远端 arch 选内嵌
+/// 二进制（[`daemon_binary`]）——无对应 arch 内嵌（F08b 未嵌入该 arch）则**优雅 no-op**；
+/// ③ 开 SFTP、读版本标记、[`deploy_decision`]、需要则 mkdir -p + 原子上传 + 写标记。
 ///
 /// **best-effort**：调用方（ssh_source::run）对 Err 仅 warn 不阻断——手动部署的 daemon 仍可连。
-///
-/// **F08b 前置要求（审计 S-2）**：`cfg.daemon_path` 必须是**绝对路径**。SFTP 无 shell，
-/// 不展开 `~`——而 daemon 的 shell exec 路径（connect_and_exec）**会**展开 `~`。若 daemon_path
-/// 用了 `~`，部署会落到字面 `./~/...`、而 exec 找的是真 home，两边错位。F08b 激活上传前需
-/// 在此 canonicalize 或校验 daemon_path 以绝对路径起头。
-pub async fn ensure_daemon_deployed(
-    cfg: &RemoteConfig,
-    binary: Option<&DaemonBinary>,
-) -> Result<(), String> {
-    let Some(bin) = binary else {
-        tracing::debug!("ensure_daemon_deployed: 无内嵌 daemon 二进制（F08b 待嵌入），跳过自动部署");
+pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<(), String> {
+    // S-2（审计）：SFTP 无 shell 不展开 `~`，而 daemon exec 路径会展开——daemon_path 含 `~`
+    // 会两边错位。含 `~` 直接跳过自动部署（用户应填绝对路径），手动部署的 daemon 仍可连。
+    if cfg.daemon_path.contains('~') {
+        tracing::debug!(
+            "daemon_path 含 ~（SFTP 不展开），跳过自动部署：{}",
+            cfg.daemon_path
+        );
+        return Ok(());
+    }
+    // 探测 arch 选内嵌二进制；探测失败 / 无该 arch 内嵌 → 优雅 no-op（沿用手动部署）。
+    let arch = match probe_remote_arch(cfg).await {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::debug!("远端 arch 探测失败，跳过自动部署: {e}");
+            return Ok(());
+        }
+    };
+    let Some(bin) = daemon_binary(&arch) else {
+        tracing::debug!("无 {arch} 的内嵌 daemon 二进制（F08b 未嵌入该 arch?），跳过自动部署");
         return Ok(());
     };
     let conn = connect_sftp(cfg).await?;
@@ -213,10 +240,32 @@ pub async fn ensure_daemon_deployed(
     Ok(())
 }
 
-/// 当前内嵌的 daemon 二进制（按 host_arch 选）。F08b 由 `include_bytes!` 填充 aarch64/x86_64
-/// musl 二进制；F08a 阶段返回 None（→ ensure_daemon_deployed 优雅跳过，沿用手动部署）。
-pub fn daemon_binary() -> Option<&'static DaemonBinary> {
-    None
+/// 按远端 arch 选内嵌的 daemon 二进制（F08b）。build.rs 把交叉编译的 musl 二进制复制进
+/// OUT_DIR 并置 `embedded_daemons` cfg 时，这里 `include_bytes!` 内嵌并按 arch 返回；二进制
+/// 未就位（无 cfg）→ 返回 None（ensure_daemon_deployed 优雅跳过，沿用手动部署）。
+/// `build_id` 取编译期 env（来自 daemon 源码，SS-B 单源）。
+pub fn daemon_binary(arch: &str) -> Option<&'static DaemonBinary> {
+    #[cfg(embedded_daemons)]
+    {
+        static X86: DaemonBinary = DaemonBinary {
+            build_id: env!("DAEMON_BUILD_ID"),
+            bytes: include_bytes!(concat!(env!("OUT_DIR"), "/daemon-x86_64")),
+        };
+        static ARM: DaemonBinary = DaemonBinary {
+            build_id: env!("DAEMON_BUILD_ID"),
+            bytes: include_bytes!(concat!(env!("OUT_DIR"), "/daemon-aarch64")),
+        };
+        match arch {
+            "x86_64" | "amd64" => Some(&X86),
+            "aarch64" | "arm64" => Some(&ARM),
+            _ => None,
+        }
+    }
+    #[cfg(not(embedded_daemons))]
+    {
+        let _ = arch;
+        None
+    }
 }
 
 // ============================================================================
@@ -480,6 +529,21 @@ mod tests {
         // 纯孤立 BEGIN（截断的安装）→ Err。
         let truncated = format!("user_x\n{CCM_PROFILE_BEGIN}\nhalf");
         assert!(merge_profile_block(&truncated, "ccm() { :; }").is_err());
+    }
+
+    /// F08b：仅当交叉编译产物已放进 embedded-daemons/（build.rs 置了 `embedded_daemons` cfg）
+    /// 才编译/运行——证实内嵌真生效：按 arch 取到 ELF 二进制 + build_id 非空。CI 无二进制时
+    /// 本测试被 cfg 掉，不误报。
+    #[cfg(embedded_daemons)]
+    #[test]
+    fn embedded_daemon_binaries_present_and_valid() {
+        for arch in ["x86_64", "aarch64"] {
+            let bin = daemon_binary(arch).expect("内嵌二进制应存在");
+            assert!(!bin.build_id.is_empty(), "build_id 非空");
+            assert_eq!(&bin.bytes[..4], b"\x7fELF", "{arch} 应是 ELF");
+            assert!(bin.bytes.len() > 100_000, "{arch} 体积应非平凡");
+        }
+        assert!(daemon_binary("riscv64").is_none(), "未知 arch → None");
     }
 
     #[test]

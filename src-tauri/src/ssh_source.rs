@@ -450,10 +450,10 @@ const EXPECTED_PROTO_V: u64 = 1;
 
 /// 本 monitor 期望的 daemon build_id。
 ///
-/// **SS-B（issue #33/#29）**：必须与 `remote-daemon-proto/src/main.rs::BUILD_ID`
-/// **手工保持一致**——daemon 改了能力 bump 那个常量时，这里同步 bump。F08（自动部署）
-/// 落地后改为「monitor 内嵌的 daemon 二进制的 build_id」编译期单一事实源，消除手工同步。
-const EXPECTED_DAEMON_BUILD_ID: &str = "p1b-overflow";
+/// **SS-B（issue #33/#29）已单源**：值来自编译期 env `DAEMON_BUILD_ID`，由 `build.rs` 从
+/// `remote-daemon-proto/src/main.rs::BUILD_ID` 抠出 emit——与 daemon 源码、F08b 内嵌二进制的
+/// build_id **同一事实源**，无需手工同步（F08b 消除了 F06 时的手工同步债）。
+const EXPECTED_DAEMON_BUILD_ID: &str = env!("DAEMON_BUILD_ID");
 
 /// 版本协商结论（纯函数 [`negotiate_version`] 的产物）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -605,9 +605,7 @@ async fn stream_loop(
     // issue #29（F08）：连接前确保远端 daemon 已（自动）部署到 cfg.daemon_path。
     // 嵌入二进制就位前（F08b 未做）daemon_binary() 返回 None → ensure_daemon_deployed
     // 优雅 no-op。**best-effort**：部署失败仅 warn，不阻断——手动部署的 daemon 仍可连。
-    if let Err(e) =
-        crate::sftp::ensure_daemon_deployed(cfg, crate::sftp::daemon_binary()).await
-    {
+    if let Err(e) = crate::sftp::ensure_daemon_deployed(cfg).await {
         tracing::warn!(
             "ssh_source [{host_label}] daemon 自动部署失败（继续尝试连接已有 daemon）: {e}"
         );
