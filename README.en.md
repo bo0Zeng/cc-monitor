@@ -6,7 +6,7 @@
 
 Renders the real-time conversation written by Claude Code CLI to `~/.claude/projects/*.jsonl` with a modern UI: Markdown / LaTeX / syntax highlighting / collapsible tool-call cards / auto multi-tab management / history browsing & resume. **Fully read-only, zero intrusion** (does not modify any Claude Code file; the only exception is when the user **explicitly** clicks delete in the history browser).
 
-**Project status**: Stable & in use. 135 backend + 17 remote-daemon + 3 frontend pure-function tests, strict tsc type-check, CI green. Current release **v2.9.6**, now covering **SSH remote mode** (aggregate local + remote-machine sessions in one window, #15/#17/#18/#20), **session status lights** (live busy/waiting/idle, #23), visible AskUserQuestion options / API errors (#21), single-key shortcuts + tab tear-off, and more. See [CHANGELOG](CHANGELOG.md) + [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md).
+**Project status**: Stable & in use. 151 backend + 30 remote-daemon + 5 frontend pure-function tests, strict tsc type-check, CI green. Current release **v2.9.6**, now covering **SSH remote mode** (aggregate local + multiple remote machines in one window, #15/#17/#18/#20/#30/#31) — incl. **daemon auto-deploy** (embedded musl binaries pushed over SFTP, #29), **remote full-text search** (#28), **remote history delete / resume command helper / one-click ccm install**, **version negotiation + congestion toasts** (#32/#33), **session status lights** (live busy/waiting/idle, #23), visible AskUserQuestion options / API errors (#21), single-key shortcuts + tab tear-off, and more. See [CHANGELOG](CHANGELOG.md) + [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md).
 
 ---
 
@@ -20,10 +20,14 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 - **Session status lights** (issue #23): each local tab's status dot reflects Claude's live state — 🟢 running / 🟡 waiting for your decision (permission / dialog, breathing blink) / 🔴 done, awaiting input; the agents expander gives each subagent its own light
 
 ### SSH remote mode (issue #15)
-- Aggregate local + remote-machine (NanoPi / any Linux / WSL) Claude sessions in **one window**; remote tabs are prefixed `[host]`
+- Aggregate local + **multiple** remote-machine (NanoPi / any Linux / WSL) Claude sessions in **one window**; remote tabs are prefixed `[host]`; history browser groups/filters by machine (#30/#31)
 - A remote daemon streams sessions back over SSH live; **auto-reconnect** on drop (exponential backoff 2→30s, #17), seq-dedup catch-up on reconnect
+- **Daemon auto-deploy** (#29): cc-monitor embeds cross-compiled aarch64/x86_64 musl daemon binaries and pushes the right one over SFTP on connect (build_id version-gated) — zero manual deploy
+- **Remote full-text search** (#28): the top-bar full-text search covers remote session content via a daemon server-side `--search`, hits tagged `[host]`
+- **Remote history delete** (SFTP remove, double-confirm) / **resume** (copies a `claude --resume` command to paste in your remote terminal) / **one-click `ccm` helper install** into the remote `~/.bashrc`
+- **Version negotiation** (#33) + **slow-consumer overflow signal** (#32): a daemon/client build_id mismatch or a congested pipe surfaces a remote-health toast
 - Remote tabs can also ↗ raise their terminal (#18)
-- Deployment: [doc/REMOTE-PHASE0-DEPLOY.md](doc/REMOTE-PHASE0-DEPLOY.md)
+- Deployment: [doc/REMOTE-PHASE0-DEPLOY.md](doc/REMOTE-PHASE0-DEPLOY.md) (auto-deploy + manual fallback)
 
 ### Rich rendering
 - **Markdown**: GFM + tables + task lists (marked.js)
@@ -146,7 +150,7 @@ The detailed documentation is in **Chinese**. See [README.md](README.md) for the
 |---|---|---|
 | [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) | New contributors | Data flow + module map + design layering |
 | [doc/IPC-PROTOCOL.md](doc/IPC-PROTOCOL.md) | Protocol changers | Cross-process file IPC + sessions/status + remote wire schemas + handshake timing |
-| [doc/REMOTE-PHASE0-DEPLOY.md](doc/REMOTE-PHASE0-DEPLOY.md) | Remote deployers | SSH remote daemon manual deploy runbook (issue #15) |
+| [doc/REMOTE-PHASE0-DEPLOY.md](doc/REMOTE-PHASE0-DEPLOY.md) | Remote deployers | SSH remote daemon auto-deploy (#29) + manual deploy runbook (issue #15) |
 | [doc/INVARIANTS.md](doc/INVARIANTS.md) | Everyone | Global invariants (zero intrusion / encoding / ACL / ordering) |
 | [doc/CONTRIBUTING.md](doc/CONTRIBUTING.md) | Contributors | Checklists + cookbook (add IPC / jsonl type / setting / hotkey) |
 | [doc/DEVELOPMENT.md](doc/DEVELOPMENT.md) | Developers | Dev environment + port conflict / debugging |

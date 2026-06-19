@@ -108,6 +108,9 @@ src-tauri/src/
 ├── 集成层      bind.rs       cc 集成绑定核心（ps-await/registry/SidHwndCache）
 │              profile_installer.rs  PowerShell profile 块插入/卸载
 │              auto_launch.rs  auto-launch monitor 开关
+├── 远端层      ssh_source.rs  russh 远端数据源（连接/鉴权/流帧解析 + 版本协商 + 测试连接）
+│              remote_history.rs  远端历史浏览 + 全文搜索查询（一次性 exec daemon 子命令）
+│              sftp.rs       SS-D SFTP 写层（daemon 自动部署 + 远端删除 + ccm 安装）
 └── 持久层      config.rs     monitor config.json R/W（Windows MoveFileExW 原子）
 ```
 
@@ -115,6 +118,7 @@ src-tauri/src/
 src/
 ├── 入口        main.ts       快捷键、HMR full reload、behavior 初始化
 ├── 事件        events.ts     订阅 + 批量调度 + onBatchStart/End 哨兵（v2.6 删 source/onChunk）
+│              remote-health.ts  订阅 remote-health 事件 + 按 origin 节流弹 toast（overflow/version）
 ├── 状态        tabs.ts       TabManager 状态机 + switchTo manual/auto + userActive
 │              stream.ts     MessageStream（insertNode + 守卫式 snap；重放消抖 § 5）
 ├── 渲染        render.ts     marked + KaTeX + hljs + DOMPurify（v2.6 opts.lazy 参数）

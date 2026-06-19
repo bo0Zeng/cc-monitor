@@ -31,7 +31,10 @@ src-tauri/
     ├── subagent.rs    # load_subagent IPC + description 关联
     ├── event_replay.rs # F5 重放（持锁严格按序）
     ├── history.rs     # 历史浏览器：两级懒加载 + 元数据 + 删除 + resume
-    ├── search.rs      # issue #6 历史全文搜索：后台建内存索引 + substring 查询
+    ├── search.rs      # issue #6 历史全文搜索：后台建内存索引 + substring 查询（含远端结果合并）
+    ├── ssh_source.rs  # russh 远端数据源：连接/鉴权/指纹校验 + daemon 流帧解析 + 版本协商 + ssh-config 导入 + 测试连接
+    ├── remote_history.rs # 远端历史浏览 + 远端全文搜索查询（一次性 exec daemon 子命令，多机 fan-out）
+    ├── sftp.rs        # SS-D 统一 SFTP 写层：daemon 自动部署 (#29) + 远端历史删除 (F11) + ccm 安装 (F10)
     ├── tasks.rs       # v2.3.0 (issue #11) Claude task tracker 文件 ~/.claude/tasks/<sid>/ 监听 + IPC
     ├── data_paths.rs  # v2.3.0 (issue #3 A) 透明化：枚举所有持久数据路径 + WebView2 + profile 备份
     ├── config.rs      # load/save_config + Windows 原子写
@@ -56,6 +59,9 @@ src-tauri/
 | **event_replay.rs** (v2.4.2 大小分流，v2.6 状态机简化) | 内存 buffer + frontend-ready 时切块 emit；`on_line_batch` 按 batch 大小分流：< 50 行走 `jsonl-line` 单条 live emit，>= 50 行（如 /resume 灌历史）走 `jsonl-batch` 切块 emit。**v2.6 删了 `replaying` flag + catch-up tail 路径** —— chunked emit 期间 watcher 真新行直接 emit，前端 RecordTimeline 按 seq 自动排到正确位置；切块策略简化为统一 CHUNK_SIZE=600 末块先发（删 head/older 区分）；`replay_and_mark_ready` 自 #20 起 async（块间 pause 用 tokio sleep） | `EventReplay::on_line_batch() / replay_and_mark_ready()（async）/ forget() / buffered_{local,remote}_session_ids()（#19/#20 重放后对账）` |
 | **history.rs** | 历史浏览器后端：两级 IPC + metadata + 物理删除 + resume；v2.2 (issue #12) 全部 async + spawn_blocking + Channel 流式 IPC | IPC `list_history_projects / stream_history_sessions_in_project / stream_read_session_jsonl / delete / update_metadata / resume` |
 | **search.rs** (issue #6) | 历史全文搜索：后台线程扫 projects/**/*.jsonl 建内存索引（按 session 分组 + 原文/小写副本两份）；默认搜 user/assistant 文本，`include_tools` 附加 tool_use/result/thinking；CLI 注入噪声按 INVARIANT § 20 剥掉；两级匹配（lc.contains 粗筛 + find_ci 精定位 snippet）+ 文本截断封顶。`Arc<SearchIndex>` State | IPC `search_history / get_search_index_status / rebuild_search_index` |
+| **ssh_source.rs** (issue #15) | russh 远端数据源：`connect_session` 全套 host-key 指纹校验 + publickey/agent 鉴权；`run` 长连接 exec daemon 把流帧（`InboundFrame`）走与本地 watcher 相同出口；hello 带 `build_id` 做版本协商（#33）；`Overflow` 帧 → remote-health 提示（#32）；ssh-config 导入 + 测试连接 | `run() / connect_session() / connect_and_exec_cmd() / parse_frame()` + IPC `list_ssh_host_aliases / resolve_ssh_host / test_remote_connection` |
+| **remote_history.rs** (issue #16/#28/#30) | 远端历史浏览 + 远端全文搜索：每条查询走独立 SSH 连接一次性 exec `<daemon> --list-projects/--list-sessions/--read-session/--search`，多机 fan-out；旧 daemon（首行 hello）检测降级提示；条目级元数据按 sid 合并本地 | `search_remote_all()` + IPC `list_remote_history_projects / stream_remote_history_sessions / stream_read_remote_session / delete_remote_history_session` |
+| **sftp.rs** (SS-D, issue #29) | 统一 SFTP 写层（复用 ssh_source 鉴权起 sftp 子系统）：F08 daemon 自动部署（arch 探测 + build_id 版本门控 + 原子上传）+ F11 远端历史 jsonl 删除（双重路径白名单 + realpath 防 symlink 逃逸）+ F10 远端 ccm 装进 `~/.bashrc`（BEGIN/END 块 + 备份 + 写后校验）。只读铁律豁免见模块文档 | `ensure_daemon_deployed() / remove_remote_file() / upload_atomic()` + IPC `install_remote_ccm_helper` |
 | **tasks.rs** (v2.3.0 issue #11) | Claude Code CLI 的 task 列表读取 + watcher：扫 `<claude_dir>/tasks/<sid>/<id>.json` 跳过 `.lock`/`.highwatermark`/非数字命名；notify-debouncer 100ms 监听整个 tasks 目录递归；变更 → 反推 sid → 重读整目录 → emit `task-update`。tasks_root 不存在时静默不 spawn；半截 JSON 单条 catch 跳过 | `read_session_tasks() / spawn_task_watcher()` + IPC `get_session_tasks` |
 | **data_paths.rs** (v2.3.0 issue #3 A) | 透明化展示：枚举 monitor 所有持久路径（config / sid-hwnd-cache / auto-launch / history-metadata / ps-await / ps-registry / logs）+ WebView2 UserDataFolder（用 `app_local_data_dir().join("EBWebView")` 推断）+ PowerShell profile 备份目录。stat 不递归算大小，避免大目录卡 IPC | `collect()` + IPC `get_data_paths` |
 | **config.rs** | monitor 自己的 config.json R/W（Windows MoveFileExW 原子） | IPC `load_config / save_config` |
@@ -102,6 +108,14 @@ src-tauri/
 | `open_log_dir` (v2.0.0+) | — | `()` | 用资源管理器打开 log 目录 |
 | `get_session_tasks` (v2.3.0 issue #11) | `{ sessionId }` | `TaskEntry[]` | Tab 创建时拉一次初始 task 列表（之后变更由 `task-update` 事件推） |
 | `get_data_paths` (v2.3.0 issue #3 A) | — | `DataPathsResponse` | 设置面板「数据存储」区打开时调一次，拉所有持久路径 + WebView2 + profile 备份 |
+| `list_remote_history_projects` (issue #16/#30) | — | `HistoryProject[]` | 历史浏览器打开时合并远端项目（多机 fan-out；无远端→空列表） |
+| `stream_remote_history_sessions` (issue #16) | `{ projectDir, origin, onEntry }` | `u32` (count) | 远端项目组展开（流式 Channel，对齐本地版） |
+| `stream_read_remote_session` (issue #16) | `{ jsonlPath, origin, onChunk }` | `u32` (count) | 点击远端历史会话进入只读视图（流式 Channel，每 100 条一发） |
+| `delete_remote_history_session` (F11, SFTP) | `{ origin, jsonlPath }` | `()` | 远端历史会话物理删除（二次确认 + SFTP 双路径守卫 + 清本地元数据） |
+| `install_remote_ccm_helper` (F10, SFTP) | `{ cfg, profile }` | `String` | 一键把 `ccm` wrapper 写进远端 `~/.bashrc`（BEGIN/END 块 + 备份 + 写后校验） |
+| `list_ssh_host_aliases` (issue #15) | — | `String[]` | 设置面板「从 ~/.ssh/config 导入」下拉 |
+| `resolve_ssh_host` (issue #15) | `{ alias }` | `ResolvedHost` | 选中别名后用 `ssh -G` 解析有效连接参数自动填表 |
+| `test_remote_connection` (issue #15) | `{ cfg }` | `ConnTestResult` | 「测试连接」：实连一次回 SSH ✓/✗ + 指纹 + daemon hello |
 
 ## 事件
 
@@ -114,6 +128,7 @@ src-tauri/
 | `SESSION_ENDED` | `session-ended` | `SessionEndedPayload` | sessions/<PID>.json 被删（session 退出） |
 | `TASKS_UPDATE` (v2.3.0 issue #11) | `task-update` | `TasksUpdatePayload {sessionId, tasks}` | tasks/<sid>/ 内任何文件变更（debounce 100ms + dedup by sid） |
 | `SESSION_ACTIVITY` (issue #23) | `session-activity` | `SessionActivityPayload {session_id, status, waiting_for}` | sessions/<PID>.json 的官方 status 字段变化时（CLI 仅状态转换时重写文件，天然稀疏；红绿灯：busy=绿 idle/shell=红 waiting=黄） |
+| `REMOTE_HEALTH` (SS-F, issue #32/#33) | `remote-health` | `RemoteHealthPayload {origin, kind, message}` | 远端健康提示：daemon 管道拥塞丢帧（kind=`overflow`，#32）/ 版本不符（kind=`version`，#33）→ 前端 remote-health.ts 按 origin 节流弹 toast |
 | (logging::ERROR_EVENT) | `monitor-error` (v2.0.0+) | `MonitorErrorPayload {level,target,message,timestamp}` | tracing::error! 触发；前端 error-toast.ts 监听 |
 
 前端 → 后端（`Listener::listen`）：
