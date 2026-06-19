@@ -2,11 +2,11 @@
 
 > **Claude Code CLI 的只读输出渲染窗口** — Tauri 2 + Vanilla TypeScript，Windows 桌面应用
 >
-> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 | 当前版本: v2.9.6
+> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 | 当前版本: v2.12.0
 
 把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复。**完全只读、零侵入**（不修改 Claude Code 任何文件，唯一例外是用户在历史浏览器里**显式**点删除）。
 
-**项目状态**：稳定可用。后端 151 + 远端 daemon 30 + 前端 5 个纯函数测试，tsc 严格类型检查，CI 全绿。当前发布 **v2.9.6**，能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 多台远端机器的会话，#15/#17/#18/#20/#30/#31）——含 **daemon 自动部署**（内嵌 musl 二进制经 SFTP 自动推送，#29）、**远端全文搜索**（#28）、**远端历史删除 / resume 命令助手 / ccm 一键安装**、**版本协商 + 拥塞提示**（#32/#33）、**会话红绿灯**（实时 busy/waiting/idle 状态灯，#23）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。少量未发布更新见 [CHANGELOG](CHANGELOG.md)。详 [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
+**项目状态**：稳定可用。后端 155 + 远端 daemon 30 + 前端 node 纯函数 & vitest+jsdom DOM 单测，tsc 严格类型检查，CI 全绿（`npm test`）。当前发布 **v2.12.0**，能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 多台远端机器的会话，#15/#17/#18/#20/#30/#31）——含 **daemon 自动部署 + 一键安装/卸载**（内嵌 musl 二进制经 SFTP 自动推送 #29；设置面板每台机器卡片可手动装/卸 daemon 与 ccm 助手、附安装位置提示）、**远端全文搜索**（#28）、**远端历史删除 / resume 命令助手**、**历史按机器分组折叠**（#30/#31）、**版本协商 + 拥塞提示**（#32/#33）、**会话红绿灯**（#23）、**本地会话 resume 后 Tab 自动复活**（崩溃/退出→灰显，`/resume` 后免 F5 恢复）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。详 [CHANGELOG](CHANGELOG.md) / [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
 
 ---
 
@@ -15,7 +15,7 @@
 ### 实时渲染
 - 自动监听 `~/.claude/projects/**/*.jsonl`，新行 200ms 内出现在窗口
 - 多 Tab：每个活跃 Claude session 一个 Tab，标题 `[项目名] aiTitle`
-- session 退出后 Tab 灰显归档，可手动关闭（W）
+- session 退出后 Tab 灰显归档，可手动关闭（W / 中键 / ×）；**本地会话 `/resume` 后 Tab 自动复活成 live**（崩溃或退出导致灰显，重新 resume 同一会话即恢复，无需 F5）
 - **Tab 独立窗口**（issue #10）：右键 Tab「在新窗口打开」/ `N`，**或直接把 Tab 往标签栏下方一拖松手**（tear-off），把会话拉到独立只读窗口（双屏并排 / 长任务常驻），与主窗口实时同步
 - **会话红绿灯**（issue #23）：每个本地 Tab 的状态点实时反映 Claude 状态——🟢 运行中 / 🟡 等你决定（权限确认 / 弹窗选择，呼吸闪烁）/ 🔴 答完等输入；Agents 展开区每个 subagent 一行独立状态灯
 
@@ -24,7 +24,8 @@
 - 远端 daemon 经 SSH 实时流式传回会话；**断线自动重连**（指数退避 2→30s，issue #17）、重连后按 seq 去重补放
 - **daemon 自动部署**（#29）：cc-monitor 内嵌交叉编译的 aarch64/x86_64 musl daemon 二进制，连接时按 arch + build_id 版本门控经 SFTP 自动推送——零手动部署
 - **远端全文搜索**（#28）：顶栏「全文」搜索覆盖远端会话内容（daemon 服务端 `--search`），命中带 `[host]`
-- **远端历史删除**（SFTP 移除 + 二次确认）/ **resume**（复制 `claude --resume` 命令到远端终端粘贴）/ **`ccm` 助手一键装**进远端 `~/.bashrc`
+- **远端历史删除**（SFTP 移除 + 二次确认）/ **resume**（复制 `claude --resume` 命令到远端终端粘贴）
+- **设置面板每台机器卡片**：一键 **安装 / 卸载 daemon**、**装 / 卸 ccm 助手**（写进远端 `~/.bashrc`），并有**安装位置提示**告诉你装到哪（daemon→`~/.cc-monitor/bin/`、ccm→`~/.bashrc` 标记块）；卡片可折叠成机器名
 - **版本协商**（#33）+ **慢消费者 overflow 信号**（#32）：daemon/client build_id 不符或管道拥塞 → 远端健康 toast 提示
 - 远端 Tab 也能 ↗ 拉前对应终端（issue #18）
 - 部署见 [doc/REMOTE-PHASE0-DEPLOY.md](doc/REMOTE-PHASE0-DEPLOY.md)（自动部署 + 手动回退）
@@ -82,6 +83,8 @@
 | **Esc** | 关历史只读视图 → 关历史视图 / 关设置 / 关弹层 |
 
 > **默认全为单键**——cc-monitor 是只读监视窗口，无需组合键。在输入框 / 历史搜索 / 重命名等可编辑处聚焦时，快捷键自动让位给打字（不会误触发）。全部 chord 可在 **设置 → 快捷键** 编辑器里改成任意组合键；行为/面板类还有 2 个默认未绑的 toggle 可手动赋键。
+>
+> ⚠ **中文 / 东亚输入法**：处于中文输入模式时，裸字母键（**W / E / H / M / N / T**）会被输入法在 OS 层截走组字、快捷键收不到——按这些键前**先切英文输入法**，或在快捷键编辑器里改绑成带 `Ctrl`/`Alt` 的组合键 / 非字符键（如 `Delete`）。数字键 `1`–`9`、`[` `]`、`` ` ``、`Esc`、鼠标点 `×` 不受影响。
 
 ---
 
@@ -220,9 +223,9 @@ cc-monitor/
 
 ## 项目当前状态
 
-- **版本**：v2.9.6（Released）；少量小修在 `main` 待发布（见 CHANGELOG）
+- **版本**：v2.12.0（Released）
 - **平台**：Windows 10 (1809+) / 11（远端 daemon 跑 Linux / aarch64）
-- **测试**：后端 cargo test 151 + 远端 daemon 30 + 前端 5 个纯函数测试，全绿（CI 门禁）
+- **测试**：后端 cargo test 155 + 远端 daemon 30 + 前端 node 纯函数 + vitest+jsdom DOM 单测，全绿（CI 门禁 `npm test`）
 - **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~12K LOC TS + ~11K LOC Rust，含 ~1.3K 远端 daemon）
 - **设计原则**：只读零侵入（INVARIANT § 1）/ 可选性 / Windows-first / 长期记忆机制（CHANGELOG + doc/ 专题文档 + 各模块 README）
 
