@@ -16,6 +16,8 @@
 //! 故 [`upload_atomic`] 用「写 `<path>.tmp` → 删旧 `<path>` → rename」近似原子（单写者、
 //! 低频部署场景足够；删与 rename 之间的窗口极短且无并发读者）。
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use russh::client;
 use russh_sftp::client::SftpSession;
 use russh_sftp::protocol::{FileAttributes, OpenFlags};
@@ -279,9 +281,206 @@ pub async fn remove_remote_file(cfg: &RemoteConfig, remote_path: &str) -> Result
     Ok(())
 }
 
+// ============================================================================
+// F10：远端 cc/bash 集成——一键把 ccm wrapper 装进远端 ~/.bashrc（SS-H）。
+// 写 ~/.bashrc 不是 Claude 数据（不触 INVARIANT §1），与本地 PowerShell profile 安装同性质。
+// ============================================================================
+
+/// 远端 ccm 块的 BEGIN/END 标记（镜像本地 profile_installer 的 `# === cc-monitor BEGIN/END`）。
+/// 重装时整块替换、卸载时整块删；用户在块外的内容绝不动。
+const CCM_PROFILE_BEGIN: &str = "# === cc-monitor remote ccm BEGIN ===";
+const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
+
+/// 远端 ↗ 拉前用的 `ccm` wrapper（**后端拥有**，install 写它而非前端传入——见审计 S-1：
+/// 写进 ~/.bashrc 的是被 shell **执行**的代码，绝不能让前端注入任意 bash）。
+///
+/// **必须与前端 `remote-section.ts::CCM_WRAPPER_SNIPPET`（面板展示/手动复制用）逐字一致。**
+/// `\033`/`\007` 是 bash `printf` 的八进制转义（ESC/BEL），用 raw string 保留字面反斜杠。
+/// 标记 `ccm-rbind-%s` 必须与 `bind.rs` 的 `format!("ccm-rbind-{sid}")` 一致。
+const CCM_WRAPPER_SNIPPET: &str = r#"ccm() {
+  ( cpid=$BASHPID
+    ( prev=""
+      while kill -0 "$cpid" 2>/dev/null; do
+        sid=$(grep -o '"sessionId":"[^"]*"' ~/.claude/sessions/$cpid.json 2>/dev/null | head -1 | cut -d'"' -f4)
+        [ -n "$sid" ] && [ "$sid" != "$prev" ] && { printf '\033]0;ccm-rbind-%s\007' "$sid"; prev="$sid"; }
+        sleep 1
+      done
+    ) &
+    exec claude "$@"
+  )
+}"#;
+
+/// 纯函数：把 `snippet` 合进 profile 内容的 BEGIN/END 块（可单测）。
+/// - 已有**配对**块（BEGIN 后能找到 END）→ **整块替换**（幂等：`merge(merge(x))==merge(x)`）。
+/// - 无 BEGIN → **追加**（块外内容原样保留）。
+/// - **有 BEGIN 但其后无 END（损坏/截断/上次安装中断）→ `Err` 中止**（审计 B1：绝不用独立
+///   `find` 误配前面的 END 而吞掉用户内容；宁可报错让用户手修，也不破坏文件）。
+pub fn merge_profile_block(existing: &str, snippet: &str) -> Result<String, String> {
+    let block = format!("{CCM_PROFILE_BEGIN}\n{}\n{CCM_PROFILE_END}\n", snippet.trim());
+    match existing.find(CCM_PROFILE_BEGIN) {
+        Some(b) => {
+            // 关键：找 BEGIN **之后**的 END（独立 find 会误配前面的 END → 吞内容）。
+            match existing[b..].find(CCM_PROFILE_END) {
+                Some(rel) => {
+                    let e = b + rel;
+                    let after = existing[e..]
+                        .find('\n')
+                        .map(|n| e + n + 1)
+                        .unwrap_or(existing.len());
+                    Ok(format!("{}{}{}", &existing[..b], block, &existing[after..]))
+                }
+                None => Err(
+                    "远端 profile 里有 cc-monitor BEGIN 标记但缺对应的 END（可能被手动改坏 / \
+                     上次安装中断）。为避免误删你的内容，已中止——请手动修好该文件后重试。"
+                        .to_string(),
+                ),
+            }
+        }
+        None => {
+            // 无块 → 追加（原内容不以换行结尾则补一个，保证块独占起行）。
+            let mut out = existing.to_string();
+            if !out.is_empty() && !out.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str(&block);
+            Ok(out)
+        }
+    }
+}
+
+/// 一键把 `ccm` wrapper 装进远端 bash profile（F10，SS-H）。
+///
+/// `profile` 默认 `.bashrc`（SFTP 相对路径解析到 home；拒 `/`、`\`、`..` 防写 home 外）。
+/// 写入的 snippet 是**后端拥有**的 [`CCM_WRAPPER_SNIPPET`]（审计 S-1：不接受前端传入可执行
+/// bash）。安全范式镜像本地 `profile_installer`：read → `merge_profile_block`（损坏块 → Err
+/// 中止，绝不吞内容）→ 相同则 no-op；否则**先备份**（timestamped `.ccm-backup-<ms>`）→ 写 →
+/// **读回精确比对**（== merged，比仅查 BEGIN 强，兼防传输损坏）→ 失败**回滚**原文件。
+///
+/// 注：profile 统一写 `0o644`（.bashrc 惯例）；若用户原本 `chmod 600`，重装会归一到 644。
+#[tauri::command]
+pub async fn install_remote_ccm_helper(
+    cfg: RemoteConfig,
+    profile: String,
+) -> Result<String, String> {
+    let profile = {
+        let p = profile.trim();
+        if p.is_empty() {
+            ".bashrc".to_string()
+        } else {
+            p.to_string()
+        }
+    };
+    if profile.contains('/') || profile.contains('\\') || profile.contains("..") {
+        return Err("profile 只能是 home 下的文件名（如 .bashrc / .zshrc）".to_string());
+    }
+
+    let conn = connect_sftp(&cfg).await?;
+    let sftp = &conn.sftp;
+
+    let existing = read_optional(sftp, &profile)
+        .await
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_default();
+    // 损坏块（BEGIN 无 END）→ merge 返回 Err，直接中止，不动原文件。
+    let merged = merge_profile_block(&existing, CCM_WRAPPER_SNIPPET)?;
+    if merged == existing {
+        return Ok(format!("远端 {profile} 已是最新（ccm 块已在），无需改动。"));
+    }
+
+    // 备份原文件（非空才备份），失败则不动原文件直接返回。
+    let mut backup_note = String::new();
+    if !existing.is_empty() {
+        let ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let backup = format!("{profile}.ccm-backup-{ms}");
+        upload_atomic(sftp, &backup, existing.as_bytes(), 0o600)
+            .await
+            .map_err(|e| format!("备份远端 {profile} 失败（未改动原文件）: {e}"))?;
+        backup_note = format!("（原文件已备份为 {backup}）");
+    }
+
+    upload_atomic(sftp, &profile, merged.as_bytes(), 0o644)
+        .await
+        .map_err(|e| format!("写远端 {profile} 失败: {e}"))?;
+
+    // 读回**精确比对**：不等于期望内容（写坏 / 传输损坏）→ 回滚原文件。
+    let verify = read_optional(sftp, &profile)
+        .await
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_default();
+    if verify != merged {
+        if !existing.is_empty() {
+            let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
+        }
+        return Err("写后校验失败（读回内容与期望不符），已尝试回滚原文件。".to_string());
+    }
+
+    tracing::info!("远端 [{}] 已装 ccm 助手到 {profile}", cfg.origin_label());
+    Ok(format!(
+        "已装到远端 {profile}{backup_note}。重连远端 ssh 终端后，用 `ccm` 代替 `claude` 启动即可让 ↗ 拉前生效。"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn merge_profile_block_append_replace_idempotent() {
+        let snippet = "ccm() { :; }";
+        // 空 existing → 仅块。
+        let m1 = merge_profile_block("", snippet).unwrap();
+        assert!(m1.contains(CCM_PROFILE_BEGIN));
+        assert!(m1.contains("ccm() { :; }"));
+        assert!(m1.contains(CCM_PROFILE_END));
+
+        // 无块 → 追加，原内容保留在前。
+        let existing = "export PATH=/x\nalias ll='ls -l'\n";
+        let m2 = merge_profile_block(existing, snippet).unwrap();
+        assert!(m2.starts_with(existing), "块外内容保留在前");
+        assert!(m2.contains(CCM_PROFILE_BEGIN));
+
+        // 幂等：同 snippet 再 merge 不变。
+        assert_eq!(merge_profile_block(&m2, snippet).unwrap(), m2, "merge∘merge == merge");
+
+        // 重装（换 snippet 内容）→ 整块替换，只有一个块，块外内容仍保留。
+        let m3 = merge_profile_block(&m2, "ccm() { echo new; }").unwrap();
+        assert!(m3.starts_with(existing), "重装仍保留块外内容");
+        assert!(m3.contains("echo new") && !m3.contains("{ :; }"), "块被整块替换");
+        assert_eq!(m3.matches(CCM_PROFILE_BEGIN).count(), 1, "重装不重复加块");
+    }
+
+    /// 审计 B1 回归：块外内容（含块**后**的用户内容）在替换时绝不丢。
+    #[test]
+    fn merge_profile_block_preserves_content_after_block() {
+        let existing = format!(
+            "head_line\n{CCM_PROFILE_BEGIN}\nold()\n{CCM_PROFILE_END}\ntail_user_line\n"
+        );
+        let m = merge_profile_block(&existing, "ccm() { echo new; }").unwrap();
+        assert!(m.contains("head_line"), "块前内容保留");
+        assert!(m.contains("tail_user_line"), "块后用户内容保留（B1 不能吞掉）");
+        assert!(m.contains("echo new") && !m.contains("old()"), "块整块替换");
+        assert_eq!(m.matches(CCM_PROFILE_BEGIN).count(), 1);
+    }
+
+    /// 审计 B1 核心：BEGIN 存在但其后无 END（损坏/截断）→ Err 中止，**绝不**误配前面的 END
+    /// 而吞掉用户内容。
+    #[test]
+    fn merge_profile_block_aborts_on_orphan_begin() {
+        // END 在前、孤立 BEGIN 在后无配对 END：独立 find 会误配 → 旧实现吞内容。新实现报错。
+        let corrupt = format!(
+            "{CCM_PROFILE_END}\nuser_a\n{CCM_PROFILE_BEGIN}\nuser_b\n"
+        );
+        assert!(
+            merge_profile_block(&corrupt, "ccm() { :; }").is_err(),
+            "孤立 BEGIN（其后无 END）必须中止而非吞内容"
+        );
+        // 纯孤立 BEGIN（截断的安装）→ Err。
+        let truncated = format!("user_x\n{CCM_PROFILE_BEGIN}\nhalf");
+        assert!(merge_profile_block(&truncated, "ccm() { :; }").is_err());
+    }
 
     #[test]
     fn deploy_decision_truth_table() {

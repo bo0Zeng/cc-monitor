@@ -212,6 +212,7 @@ class MachineCard {
   private daemonPathInput!: HTMLInputElement;
   private fingerprintInput!: HTMLInputElement;
   private testButton!: HTMLButtonElement;
+  private installButton!: HTMLButtonElement;
   private testResult!: HTMLElement;
 
   constructor(
@@ -299,6 +300,15 @@ class MachineCard {
     this.testButton.textContent = "测试连接";
     this.testButton.addEventListener("click", () => void this.onTestConnection());
     testRow.appendChild(this.testButton);
+    // F10：一键把 ccm 助手装进这台远端的 ~/.bashrc（↗ 拉前用；会备份原文件 + 幂等）。
+    this.installButton = document.createElement("button");
+    this.installButton.type = "button";
+    this.installButton.className = "settings-btn settings-btn-secondary";
+    this.installButton.textContent = "装 ccm 助手";
+    this.installButton.title =
+      "一键把 ccm wrapper 装进这台远端的 ~/.bashrc（用于 ↗ 拉前）；会先备份原文件、幂等可重装";
+    this.installButton.addEventListener("click", () => void this.onInstallCcm());
+    testRow.appendChild(this.installButton);
     card.appendChild(testRow);
 
     this.testResult = document.createElement("div");
@@ -349,6 +359,35 @@ class MachineCard {
     } finally {
       this.testButton.disabled = false;
       this.testButton.textContent = prevLabel;
+    }
+  }
+
+  /** F10：点「装 ccm 助手」——把 CCM_WRAPPER_SNIPPET 经 SFTP 装进这台远端的 ~/.bashrc。 */
+  private async onInstallCcm(): Promise<void> {
+    const cfg = this.collect();
+    if (!cfg.host || !cfg.user) {
+      this.testResult.style.display = "block";
+      this.testResult.textContent = "请先填好 host / user 再安装 ccm 助手。";
+      return;
+    }
+    this.installButton.disabled = true;
+    const prev = this.installButton.textContent;
+    this.installButton.textContent = "安装中…";
+    this.testResult.style.display = "block";
+    this.testResult.textContent = "安装 ccm 助手中…";
+    try {
+      // snippet 由后端拥有（写进 ~/.bashrc 的是被 shell 执行的代码，不让前端注入）；
+      // 前端 CCM_WRAPPER_SNIPPET 仅用于面板展示/手动复制，须与后端常量逐字一致。
+      const msg = await invoke<string>("install_remote_ccm_helper", {
+        cfg,
+        profile: ".bashrc",
+      });
+      this.testResult.textContent = `✓ ${msg}`;
+    } catch (e) {
+      this.testResult.textContent = `✗ 安装失败：${String(e)}`;
+    } finally {
+      this.installButton.disabled = false;
+      this.installButton.textContent = prev;
     }
   }
 
@@ -676,13 +715,13 @@ export class RemoteSection {
     label.textContent = "远端 ↗ 拉前（可选）";
     label.appendChild(
       makeInfoIcon(
-        "cc-monitor 只扫描本地终端窗口标题；它不会触碰 / 写入你的远端机器。\n" +
-          "想让本地 ↗ 拉前对应的 ssh 窗口，在远端 `.bashrc`/`.zshrc` 里加下面的 `ccm`\n" +
-          "函数，并用 `ccm` 代替 `claude` 启动。ccm 会周期性把 ssh 窗口标题设成\n" +
-          "`ccm-rbind-<sid>`，本地 monitor 扫到即绑定该窗口。\n\n" +
+        "想让本地 ↗ 拉前对应的 ssh 窗口，远端 `.bashrc` 里需要下面的 `ccm` 函数，并用\n" +
+          "`ccm` 代替 `claude` 启动。ccm 会周期性把 ssh 窗口标题设成 `ccm-rbind-<sid>`，\n" +
+          "本地 monitor 扫到即绑定该窗口。\n\n" +
+          "✅ 每台机器卡片上的「装 ccm 助手」按钮可一键装到远端 `~/.bashrc`（先备份原文件、\n" +
+          "幂等可重装）；也可手动复制下面片段（zsh / 自定义 profile 用）。\n\n" +
           "⚠ 限制：多个 ssh 会话若开在同一个 Windows Terminal 窗口的不同 tab 里，↗ 只能\n" +
-          "拉起该窗口、无法切到具体 tab。建议每个远端会话单独开窗。\n\n" +
-          "下面的片段需你自己复制粘贴到远端 —— cc-monitor 不会写你的远端机器。",
+          "拉起该窗口、无法切到具体 tab。建议每个远端会话单独开窗。",
       ),
     );
     row.appendChild(label);
