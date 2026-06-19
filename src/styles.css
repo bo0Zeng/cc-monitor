@@ -2224,6 +2224,24 @@ body.viewer-mode .history-trigger {
   padding: 1px 8px;
 }
 
+/* daemon / ccm 安装位置提示：比普通 hint 略醒目的小框（左边框 + 圆角） */
+.remote-install-info {
+  margin: 8px 0 4px;
+  padding: 7px 10px;
+  border-left: 3px solid var(--border-strong);
+  border-radius: 4px;
+  line-height: 1.55;
+}
+
+/* 动作按钮行（测试 / 装卸 daemon / 装卸 ccm）：按钮多，允许换行、右对齐 */
+.settings-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
 /* === History 视图（接管 #message-stream 区域） === */
 
 .history-view {

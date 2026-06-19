@@ -272,6 +272,105 @@ pub fn daemon_binary(arch: &str) -> Option<&'static DaemonBinary> {
 }
 
 // ============================================================================
+// F08c：手动安装 / 卸载 daemon（设置面板两个按钮）。安装逻辑同自动部署、但返回人读结果；
+// 卸载删 daemon 二进制 + 同目录 .build_id（is_safe_remote_daemon_path 守卫）。
+// ============================================================================
+
+/// 远端 daemon 路径安全守卫（卸载用，纯函数可单测）：绝对、无 `..`、非根、且含 `cc-monitor`
+/// （约定 `~/.cc-monitor/bin/cc-monitor-remote`）—— 杜绝把卸载误用成删任意远端文件。
+pub fn is_safe_remote_daemon_path(path: &str) -> bool {
+    let p = path.trim();
+    !p.is_empty() && p.starts_with('/') && !p.contains("..") && p != "/" && p.contains("cc-monitor")
+}
+
+/// 手动安装 / 更新远端 daemon（设置面板「安装 daemon」按钮）。逻辑同自动部署
+/// [`ensure_daemon_deployed`]，但**返回人读结果**，且把自动部署里「优雅跳过」的几种情况
+/// （路径含 `~` / 探测不到 arch / 无该 arch 内嵌）显式报错——手动触发时用户要反馈。
+#[tauri::command]
+pub async fn deploy_remote_daemon(cfg: RemoteConfig) -> Result<String, String> {
+    let path = cfg.daemon_path.trim().to_string();
+    if path.is_empty() {
+        return Err(
+            "请先填 daemon 路径（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-monitor-remote）".into(),
+        );
+    }
+    if path.contains('~') {
+        return Err("daemon 路径含 ~（SFTP 不展开 ~），请改用绝对路径".into());
+    }
+    let arch = probe_remote_arch(&cfg)
+        .await
+        .map_err(|e| format!("探测远端架构失败（uname -m）: {e}"))?;
+    let Some(bin) = daemon_binary(&arch) else {
+        return Err(format!(
+            "本 monitor 构建未内嵌 {arch} 架构的 daemon，无法一键安装。请用内嵌了该架构的发布版，或手动把 daemon 放到 {path}。"
+        ));
+    };
+    let conn = connect_sftp(&cfg).await?;
+    let sftp = &conn.sftp;
+    let marker = marker_path(&path);
+    let remote_id = read_optional(sftp, &marker)
+        .await
+        .map(|b| String::from_utf8_lossy(&b).trim().to_string());
+    match deploy_decision(remote_id.as_deref(), bin.build_id) {
+        DeployAction::Skip => Ok(format!(
+            "远端已是最新 daemon（{}，{arch}）：{path}，无需重装。",
+            bin.build_id
+        )),
+        DeployAction::Deploy(reason) => {
+            ensure_dir_all(sftp, remote_parent(&path)).await;
+            upload_atomic(sftp, &path, bin.bytes, 0o700).await?;
+            upload_atomic(sftp, &marker, bin.build_id.as_bytes(), 0o600).await?;
+            tracing::info!(
+                "远端 [{}] 手动部署 daemon 完成：{}",
+                cfg.origin_label(),
+                bin.build_id
+            );
+            Ok(format!(
+                "已安装 daemon（{}，{arch}）到 {path}（{reason}）。重连远端即可用。",
+                bin.build_id
+            ))
+        }
+    }
+}
+
+/// 卸载远端 daemon（设置面板「卸载 daemon」按钮）：删 daemon 二进制 + 同目录 `.build_id`。
+/// [`is_safe_remote_daemon_path`] 守卫。只读铁律豁免（SS-G）：用户显式触发的删。
+/// 注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
+#[tauri::command]
+pub async fn uninstall_remote_daemon(cfg: RemoteConfig) -> Result<String, String> {
+    let path = cfg.daemon_path.trim().to_string();
+    if path.contains('~') {
+        return Err("daemon 路径含 ~（SFTP 不展开），请改用绝对路径后再卸载".into());
+    }
+    if !is_safe_remote_daemon_path(&path) {
+        return Err(format!(
+            "拒绝删除可疑 daemon 路径（须为含 cc-monitor 的绝对路径、无 ..）: {path}"
+        ));
+    }
+    let conn = connect_sftp(&cfg).await?;
+    let sftp = &conn.sftp;
+    let marker = marker_path(&path);
+    let mut removed = Vec::new();
+    for f in [path.clone(), marker.clone()] {
+        if sftp.remove_file(f.clone()).await.is_ok() {
+            removed.push(f);
+        }
+    }
+    tracing::info!("远端 [{}] 卸载 daemon：删除 {removed:?}", cfg.origin_label());
+    if removed.is_empty() {
+        Ok(format!(
+            "没有可删的 daemon 文件（{path} 及其 .build_id 都不在，可能已卸载）。"
+        ))
+    } else {
+        Ok(format!(
+            "已删除 {} 个文件：{}。注意：若本机器仍勾选「启用」，自动部署会在下次连接时把 daemon 装回——彻底移除请取消该机器启用 / 删除该机器后重启 monitor。",
+            removed.len(),
+            removed.join("、")
+        ))
+    }
+}
+
+// ============================================================================
 // F11：远端用户数据写（删除远端历史 jsonl）。SS-G item 3 的唯一 SFTP 用户数据写。
 // ============================================================================
 
@@ -398,6 +497,83 @@ pub fn merge_profile_block(existing: &str, snippet: &str) -> Result<String, Stri
             Ok(out)
         }
     }
+}
+
+/// 纯函数：从 profile 内容删掉 cc-monitor 的 BEGIN/END 块（可单测）。
+/// - 有**配对**块（BEGIN 后找得到 END）→ 整块删，块前后用户内容原样保留。
+/// - 无 BEGIN，或 BEGIN 后无 END（损坏）→ **原样返回**（宁可不删也不破坏文件）。
+pub fn strip_profile_block(existing: &str) -> String {
+    let Some(b) = existing.find(CCM_PROFILE_BEGIN) else {
+        return existing.to_string();
+    };
+    // 找 BEGIN **之后**的 END（同 merge：独立 find 会误配前面的 END）。
+    let Some(rel) = existing[b..].find(CCM_PROFILE_END) else {
+        return existing.to_string(); // 损坏块（BEGIN 无 END）→ 不动
+    };
+    let e = b + rel;
+    let after = existing[e..]
+        .find('\n')
+        .map(|n| e + n + 1)
+        .unwrap_or(existing.len());
+    format!("{}{}", &existing[..b], &existing[after..])
+}
+
+/// 卸载远端 ccm 助手（设置面板「卸载 ccm」按钮）：从 profile 删 BEGIN/END 块。
+/// 镜像 [`install_remote_ccm_helper`]：read → `strip_profile_block` → 无变化 no-op；否则
+/// **先备份**（timestamped `.ccm-backup-<ms>`）→ 写 → **读回精确比对**，不符则回滚。
+#[tauri::command]
+pub async fn uninstall_remote_ccm_helper(
+    cfg: RemoteConfig,
+    profile: String,
+) -> Result<String, String> {
+    let profile = {
+        let p = profile.trim();
+        if p.is_empty() {
+            ".bashrc".to_string()
+        } else {
+            p.to_string()
+        }
+    };
+    if profile.contains('/') || profile.contains('\\') || profile.contains("..") {
+        return Err("profile 只能是 home 下的文件名（如 .bashrc / .zshrc）".to_string());
+    }
+
+    let conn = connect_sftp(&cfg).await?;
+    let sftp = &conn.sftp;
+
+    let existing = read_optional(sftp, &profile)
+        .await
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_default();
+    let stripped = strip_profile_block(&existing);
+    if stripped == existing {
+        return Ok(format!("远端 {profile} 里没有 ccm 块，无需卸载。"));
+    }
+
+    let ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let backup = format!("{profile}.ccm-backup-{ms}");
+    upload_atomic(sftp, &backup, existing.as_bytes(), 0o600)
+        .await
+        .map_err(|e| format!("备份远端 {profile} 失败（未改动原文件）: {e}"))?;
+
+    upload_atomic(sftp, &profile, stripped.as_bytes(), 0o644)
+        .await
+        .map_err(|e| format!("写远端 {profile} 失败: {e}"))?;
+
+    let verify = read_optional(sftp, &profile)
+        .await
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_default();
+    if verify != stripped {
+        let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
+        return Err("写后校验失败（读回内容与期望不符），已尝试回滚原文件。".to_string());
+    }
+
+    tracing::info!("远端 [{}] 已卸载 ccm 助手（{profile}）", cfg.origin_label());
+    Ok(format!("已从远端 {profile} 删除 ccm 块（原文件已备份为 {backup}）。"))
 }
 
 /// 一键把 `ccm` wrapper 装进远端 bash profile（F10，SS-H）。
@@ -617,5 +793,42 @@ mod tests {
             "/home/pi/.cc-monitor/bin/.build_id"
         );
         assert_eq!(marker_path("/x"), "/.build_id");
+    }
+
+    #[test]
+    fn strip_removes_paired_block_keeps_surrounding() {
+        let s = format!("head\n{CCM_PROFILE_BEGIN}\nccm() {{ :; }}\n{CCM_PROFILE_END}\ntail\n");
+        let out = strip_profile_block(&s);
+        assert_eq!(out, "head\ntail\n");
+        assert!(!out.contains(CCM_PROFILE_BEGIN));
+        // 幂等：再 strip 不变
+        assert_eq!(strip_profile_block(&out), out);
+    }
+
+    #[test]
+    fn strip_noop_when_no_block() {
+        let s = "just user content\nno block here\n";
+        assert_eq!(strip_profile_block(s), s);
+    }
+
+    #[test]
+    fn strip_noop_on_malformed_begin_without_end() {
+        // BEGIN 无配对 END（损坏）→ 原样返回，绝不吞内容（同 merge 的 B1 守卫精神）。
+        let s = format!("user_a\n{CCM_PROFILE_BEGIN}\nhalf written, no end");
+        assert_eq!(strip_profile_block(&s), s);
+    }
+
+    #[test]
+    fn safe_daemon_path_accepts_convention_rejects_suspicious() {
+        assert!(is_safe_remote_daemon_path(
+            "/home/pi/.cc-monitor/bin/cc-monitor-remote"
+        ));
+        assert!(!is_safe_remote_daemon_path("")); // 空
+        assert!(!is_safe_remote_daemon_path("relative/cc-monitor")); // 非绝对
+        assert!(!is_safe_remote_daemon_path("/")); // 根
+        assert!(!is_safe_remote_daemon_path("/etc/passwd")); // 不含 cc-monitor
+        assert!(!is_safe_remote_daemon_path(
+            "/home/pi/.cc-monitor/../../../etc/x"
+        )); // 含 ..
     }
 }
