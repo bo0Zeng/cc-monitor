@@ -1458,50 +1458,65 @@ export class HistoryView {
     deleteBtn.type = "button";
     deleteBtn.className = "history-action history-action-danger";
     deleteBtn.textContent = "✕"; // ✕ multiplication X
-    if (e.origin) {
-      // issue #16：只读铁律（INVARIANT § 1）——cc-monitor 不写远端文件系统
-      deleteBtn.disabled = true;
-      deleteBtn.title = `远端会话（${e.origin}）不支持删除（只读）`;
-      actions.appendChild(deleteBtn);
-      row.appendChild(actions);
-      return row;
-    }
-    deleteBtn.title = "物理删除 jsonl 文件（不可恢复）";
+    // F11：远端会话删除经 SFTP（SS-G 用户数据写豁免，二次确认）；本地走既有物理删除。
+    deleteBtn.title = e.origin
+      ? `删除远端 [${e.origin}] 的 jsonl（经 SFTP，不可恢复）`
+      : "物理删除 jsonl 文件（不可恢复）";
     deleteBtn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
       const label = e.customTitle ?? e.aiTitle ?? e.sessionId.slice(0, 8);
-      const ok = window.confirm(
-        `物理删除会话「${label}」？\n\njsonl 文件会被直接删除，Claude Code 之后也无法 resume。\n此操作不可恢复。`,
-      );
-      if (!ok) return;
-      try {
-        await invoke("delete_history_session", {
-          sessionId: e.sessionId,
-          jsonlPath: e.jsonlPath,
-        });
-        // 从缓存移除 + 同步 project counts
-        const arr = this.sessionCache.get(projectKey(proj));
-        if (arr) {
-          const idx = arr.findIndex((x) => x.sessionId === e.sessionId);
-          if (idx >= 0) arr.splice(idx, 1);
+      if (e.origin) {
+        // 远端删除更危险（经 SFTP 删远端文件）→ 二次确认。
+        const ok1 = window.confirm(
+          `删除远端会话「${label}」（机器 ${e.origin}）？\n\n将经 SFTP 物理删除远端 jsonl 文件，Claude Code 之后也无法 resume。\n此操作不可恢复。`,
+        );
+        if (!ok1) return;
+        const ok2 = window.confirm(
+          `再次确认：永久删除远端 [${e.origin}] 的「${label}」？`,
+        );
+        if (!ok2) return;
+        try {
+          await invoke("delete_remote_history_session", {
+            origin: e.origin,
+            jsonlPath: e.jsonlPath,
+          });
+        } catch (err) {
+          showActionFailureToast("远端删除失败", String(err));
+          return;
         }
-        proj.sessionCount = Math.max(0, proj.sessionCount - 1);
-        if (e.starred)
-          proj.starredCount = Math.max(0, proj.starredCount - 1);
-        if (e.hidden)
-          proj.hiddenCount = Math.max(0, proj.hiddenCount - 1);
-        // 项目内全部删完了 → 也从 projects 列表移除
-        if (proj.sessionCount === 0) {
-          this.projects = this.projects.filter(
-            (p) => projectKey(p) !== projectKey(proj),
-          );
-          this.sessionCache.delete(projectKey(proj));
-          this.expandedProjects.delete(projectKey(proj));
+      } else {
+        const ok = window.confirm(
+          `物理删除会话「${label}」？\n\njsonl 文件会被直接删除，Claude Code 之后也无法 resume。\n此操作不可恢复。`,
+        );
+        if (!ok) return;
+        try {
+          await invoke("delete_history_session", {
+            sessionId: e.sessionId,
+            jsonlPath: e.jsonlPath,
+          });
+        } catch (err) {
+          showActionFailureToast("删除失败", String(err));
+          return;
         }
-        this.renderList();
-      } catch (err) {
-        showActionFailureToast("删除失败", String(err));
       }
+      // 成功后：从缓存移除 + 同步 project counts（本地 / 远端一致）。
+      const arr = this.sessionCache.get(projectKey(proj));
+      if (arr) {
+        const idx = arr.findIndex((x) => x.sessionId === e.sessionId);
+        if (idx >= 0) arr.splice(idx, 1);
+      }
+      proj.sessionCount = Math.max(0, proj.sessionCount - 1);
+      if (e.starred) proj.starredCount = Math.max(0, proj.starredCount - 1);
+      if (e.hidden) proj.hiddenCount = Math.max(0, proj.hiddenCount - 1);
+      // 项目内全部删完了 → 也从 projects 列表移除
+      if (proj.sessionCount === 0) {
+        this.projects = this.projects.filter(
+          (p) => projectKey(p) !== projectKey(proj),
+        );
+        this.sessionCache.delete(projectKey(proj));
+        this.expandedProjects.delete(projectKey(proj));
+      }
+      this.renderList();
     });
     actions.appendChild(deleteBtn);
 

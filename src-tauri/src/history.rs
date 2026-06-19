@@ -365,11 +365,18 @@ pub fn delete_history_session(session_id: String, jsonl_path: String) -> Result<
     tracing::info!("history: deleted {}", target.display());
 
     // 同步从 metadata 移除条目
+    remove_metadata_entry(&session_id);
+    Ok(())
+}
+
+/// 从本地 history-metadata.json 移除某 sid 的条目（best-effort）。本地删除与远端删除
+/// （issue F11 `delete_remote_history_session`）共用——元数据是 monitor 本地按 sid 的注解，
+/// 无论会话本体在本地还是远端，删除后都该清掉对应注解。
+pub(crate) fn remove_metadata_entry(sid: &str) {
     let mut metadata = load_metadata().unwrap_or_default();
-    if metadata.entries.remove(&session_id).is_some() {
+    if metadata.entries.remove(sid).is_some() {
         let _ = save_metadata(&metadata);
     }
-    Ok(())
 }
 
 #[tauri::command]

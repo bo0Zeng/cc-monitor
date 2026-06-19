@@ -602,6 +602,8 @@ pub fn run() {
             remote_history::list_remote_history_projects,
             remote_history::stream_remote_history_sessions,
             remote_history::stream_read_remote_session,
+            // F11：远端历史删除（SFTP 写，SS-G 用户数据写豁免）
+            remote_history::delete_remote_history_session,
             history::delete_history_session,
             history::update_history_metadata,
             history::resume_history_session,
