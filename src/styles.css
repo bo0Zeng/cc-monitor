@@ -2191,6 +2191,32 @@ body.viewer-mode .history-trigger {
   padding: 0 6px;
   font-weight: 600;
   color: var(--text);
+  cursor: pointer; /* 点 legend 折叠/展开 */
+}
+
+/* 折叠指示符：▸ 折叠 / ▾ 展开 */
+.remote-machine-toggle {
+  display: inline-block;
+  width: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* 机器名占满中段，把删除按钮推到右侧 */
+.remote-machine-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 折叠：只留 legend（机器名行），隐藏全部字段 + 测试/安装区 */
+.remote-machine.is-collapsed {
+  padding-bottom: 6px;
+}
+.remote-machine.is-collapsed .remote-machine-body {
+  display: none;
 }
 
 .remote-machine-remove {
