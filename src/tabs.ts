@@ -490,6 +490,28 @@ export class TabManager {
   }
 
   /**
+   * 会话（重新）变活 → 复活已归档 Tab。archiveTab 的对称面，由后端 SESSION_STARTED
+   * 事件驱动（见 events.ts；后端已用 is_session_active 门控，只在 PID 真活时发）。
+   *
+   * **仅本地**（origin===null）：本地归档/复活由 PID 探活驱动，不靠「收到行」翻转——
+   * 避免会话退出尾写误复活（见 ensureTab 行 372 的远端-only 复活注释）。远端 Tab 复活
+   * 仍走 ensureTab「掉线归档→重连重放见行复活」路径，与本方法正交、互不触发。
+   *
+   * 先撤 pendingArchive：归档信号若还停在那（Tab 尚未由 ensureTab 建出），不撤的话
+   * 随后建 Tab 会按 pendingArchive 落实归档（行 442）→ 复活被吞。Tab 不存在（全新
+   * 会话首启、jsonl 行尚未建 Tab）则 no-op：随后 jsonl-batch 建的新 Tab 默认即 live。
+   */
+  reviveTab(sessionId: string): void {
+    this.pendingArchive.delete(sessionId);
+    const tab = this.tabs.get(sessionId);
+    if (!tab) return;
+    if (tab.origin !== null) return; // 仅本地；远端复活走 ensureTab 见行路径
+    if (tab.status !== "archived") return;
+    tab.status = "live";
+    this.refreshTabBar();
+  }
+
+  /**
    * issue #23：红绿灯状态更新（session-activity 事件 / 启动快照两路汇入）。
    * status=null（旧版 CC 无字段）视为未知 → 清空回绿点现状。Tab 还没建则暂存
    * （pendingActivity，ensureTab 落实）。无变化不重绘。

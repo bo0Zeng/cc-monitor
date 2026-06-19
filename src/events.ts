@@ -26,6 +26,11 @@ export interface SessionEndedPayload {
   session_id: string;
 }
 
+/** 会话（重新）变活事件 payload（镜像 bridge.rs::SessionStartedPayload，同 ended 单字段） */
+export interface SessionStartedPayload {
+  session_id: string;
+}
+
 /** v2.3.0 issue #11: 后端 emit task-update 时的 payload */
 export interface TasksUpdatePayload {
   sessionId: string;
@@ -39,6 +44,13 @@ export interface EventHandlers {
    */
   onLine: (e: JsonlLinePayload) => void;
   onSessionEnded: (sessionId: string) => void;
+  /**
+   * 会话（重新）变活（SESSION_STARTED）。后端在 sessions/<PID>.json 新增**且 PID
+   * 探活通过**时 emit —— resume 场景：崩溃→Tab 灰显→`/resume` 后回 live，无需 F5。
+   * 与 session-ended 同进 queue（保持「结束/复活」相对后端 emit 顺序，见下方 sub 注释）。
+   * 前端复活已归档的本地 Tab（tabs.reviveTab）。
+   */
+  onSessionStarted?: (sessionId: string) => void;
   /**
    * v2.2 (issue #12 性能): 启动重放（jsonl-batch 第一块）到达时调一次。
    * TabManager 在此把所有 tab 的 BranchFolder 切到 batch 模式 + lazy hljs 开关。
@@ -80,7 +92,8 @@ type QueueItem =
   | { kind: "payload"; payload: JsonlLinePayload }
   | { kind: "batch-start" }
   | { kind: "batch-end" }
-  | { kind: "ended"; sessionId: string };
+  | { kind: "ended"; sessionId: string }
+  | { kind: "started"; sessionId: string };
 
 /**
  * 批量调度参数：每个事件循环 tick 处理至多 BATCH_SIZE 条或耗时 BATCH_MS 毫秒，
@@ -213,6 +226,8 @@ export async function bindEvents(
         scheduleBatchEnd();
       } else if (item.kind === "ended") {
         handlers.onSessionEnded(item.sessionId);
+      } else if (item.kind === "started") {
+        handlers.onSessionStarted?.(item.sessionId);
       }
     } catch (e) {
       // v2.1.1: try/catch 防御 —— 单条 record 处理出错不能冻死整个 replay
@@ -302,6 +317,16 @@ export async function bindEvents(
   registrations.push(
     sub<SessionEndedPayload>("session-ended", (e) => {
       queue.push({ kind: "ended", sessionId: e.payload.session_id });
+      ensureScheduled();
+    }),
+  );
+
+  // session-started 与 session-ended 同进 queue：保持「结束/复活」相对后端 emit 顺序，
+  // 避免 started 抢在仍排队的 ended 之前同步执行而错误复活（issue #20 同序原则的对称面）。
+  // 后端已用 is_session_active 门控，只在 PID 真活时发本事件 → 复活安全。
+  registrations.push(
+    sub<SessionStartedPayload>("session-started", (e) => {
+      queue.push({ kind: "started", sessionId: e.payload.session_id });
       ensureScheduled();
     }),
   );
