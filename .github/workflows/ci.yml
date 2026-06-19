@@ -50,6 +50,13 @@ jobs:
           cache: 'npm'
 
       - run: npm ci
+
+      # 供应链门禁：只审**生产依赖**（会打进 bundle 的，如 dompurify/marked/highlight.js/katex）
+      # 的 high 漏洞；dev 依赖（vite/vitest/jsdom 等不进产物）不门禁，避免被它们的 advisory
+      # 误伤发布。修复：本地 `npm audit fix` 后提交 package-lock.json。
+      - name: npm audit (production deps, high)
+        run: npm audit --omit=dev --audit-level=high
+
       - run: npx tsc --noEmit
 
       # 全部前端单测：① 纯函数 node 测试（branching 主线折叠 #8/#22/#25/#26、diff 渲染 #14、
@@ -91,3 +98,20 @@ jobs:
 
       - name: cargo test
         run: cargo test
+
+  # Rust 依赖的 RUSTSEC 漏洞审计（russh / ring / crypto 等）。**信息性、不阻断**——
+  # continue-on-error 让它出现 advisory 时单独红、但不挡 CI/发布；维护者据此人工评估
+  #（如 primefield pre-release pin、上游未修的 transitive advisory）。两个独立 crate 各审其 lock。
+  cargo-audit:
+    name: Cargo advisory audit (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: cargo audit (src-tauri)
+        run: cargo audit --file src-tauri/Cargo.lock
+      - name: cargo audit (remote-daemon-proto)
+        run: cargo audit --file remote-daemon-proto/Cargo.lock
