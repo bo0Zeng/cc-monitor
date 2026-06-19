@@ -24,12 +24,12 @@ jobs:
 
       # zig 作 cross-linker：cargo-zigbuild 在 ubuntu 原生跑（build script 本机执行、不进
       # 容器）—— 避开 cross 0.2.5 旧镜像 glibc 跑不了新 rustc(1.96) build script 的坑。
-      # 本地实测组合 = zig 0.16.0-dev(nightly) + cargo-zigbuild 0.23.0；0.16.0 **无 tagged
-      # release**（ziglang.org 只有 0.16.0-dev.* nightly），故 setup-zig 取 master（最新
-      # nightly，即本地那条线），与 0.23.0 配套。
+      # zig 用 **stable 0.14.0**：永久下载地址、可靠，不像 nightly 那样镜像 404 / 轮换失效
+      #（master 实测连 ziglang.org 官方都 404）。本地实测 zig 0.14.0 + cargo-zigbuild 0.23.0
+      # 能从头编出双 musl 静态二进制。
       - uses: mlugg/setup-zig@v1
         with:
-          version: master
+          version: 0.14.0
 
       - name: Install cargo-zigbuild
         uses: taiki-e/install-action@v2
