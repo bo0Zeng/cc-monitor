@@ -113,6 +113,9 @@ src-tauri/
 | `stream_read_remote_session` (issue #16) | `{ jsonlPath, origin, onChunk }` | `u32` (count) | 点击远端历史会话进入只读视图（流式 Channel，每 100 条一发） |
 | `delete_remote_history_session` (F11, SFTP) | `{ origin, jsonlPath }` | `()` | 远端历史会话物理删除（二次确认 + SFTP 双路径守卫 + 清本地元数据） |
 | `install_remote_ccm_helper` (F10, SFTP) | `{ cfg, profile }` | `String` | 一键把 `ccm` wrapper 写进远端 `~/.bashrc`（BEGIN/END 块 + 备份 + 写后校验） |
+| `uninstall_remote_ccm_helper` (F10, SFTP) | `{ cfg, profile }` | `String` | 从远端 profile 删 `ccm` BEGIN/END 块（备份 + 写后校验回滚；块外内容不动） |
+| `deploy_remote_daemon` (F08c, SFTP) | `{ cfg }` | `String` | 设置面板「安装 daemon」：按远端 arch 选内嵌二进制 + build_id 版本门控 + SFTP 原子上传到 daemonPath（已最新则跳过）；返回人读结果，无 arch/路径含 `~` 等显式报错 |
+| `uninstall_remote_daemon` (F08c, SFTP) | `{ cfg }` | `String` | 设置面板「卸载 daemon」：删远端 daemon 二进制 + 同目录 `.build_id`（`is_safe_remote_daemon_path` 守卫；机器仍启用会自动装回的提示） |
 | `list_ssh_host_aliases` (issue #15) | — | `String[]` | 设置面板「从 ~/.ssh/config 导入」下拉 |
 | `resolve_ssh_host` (issue #15) | `{ alias }` | `ResolvedHost` | 选中别名后用 `ssh -G` 解析有效连接参数自动填表 |
 | `test_remote_connection` (issue #15) | `{ cfg }` | `ConnTestResult` | 「测试连接」：实连一次回 SSH ✓/✗ + 指纹 + daemon hello |
@@ -126,6 +129,7 @@ src-tauri/
 | `JSONL_LINE` | `jsonl-line` | `JsonlLinePayload` | watcher 解析到一行后实时单条 emit |
 | `JSONL_BATCH` | `jsonl-batch` | `Vec<JsonlLinePayload>` | event_replay 启动重放时一次性发整个 history Vec |
 | `SESSION_ENDED` | `session-ended` | `SessionEndedPayload` | sessions/<PID>.json 被删（session 退出） |
+| `SESSION_STARTED` (resume 复活) | `session-started` | `SessionStartedPayload {session_id}` | 本地会话重新变活（sessions/<PID>.json 新增 **且 PID 探活通过**）时 emit——session-ended 的对称面；前端 `tabs.reviveTab` 复活已归档本地 Tab（`/resume` 免 F5）。`is_session_active` 门控避免崩溃残留旧 PID.json 误复活 |
 | `TASKS_UPDATE` (v2.3.0 issue #11) | `task-update` | `TasksUpdatePayload {sessionId, tasks}` | tasks/<sid>/ 内任何文件变更（debounce 100ms + dedup by sid） |
 | `SESSION_ACTIVITY` (issue #23) | `session-activity` | `SessionActivityPayload {session_id, status, waiting_for}` | sessions/<PID>.json 的官方 status 字段变化时（CLI 仅状态转换时重写文件，天然稀疏；红绿灯：busy=绿 idle/shell=红 waiting=黄） |
 | `REMOTE_HEALTH` (SS-F, issue #32/#33) | `remote-health` | `RemoteHealthPayload {origin, kind, message}` | 远端健康提示：daemon 管道拥塞丢帧（kind=`overflow`，#32）/ 版本不符（kind=`version`，#33）→ 前端 remote-health.ts 按 origin 节流弹 toast |

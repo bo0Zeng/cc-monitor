@@ -2,11 +2,11 @@
 
 > **Read-only output renderer for Claude Code CLI** — Tauri 2 + Vanilla TypeScript, Windows desktop app
 >
-> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 | Current: v2.9.6
+> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 | Current: v2.12.0
 
 Renders the real-time conversation written by Claude Code CLI to `~/.claude/projects/*.jsonl` with a modern UI: Markdown / LaTeX / syntax highlighting / collapsible tool-call cards / auto multi-tab management / history browsing & resume. **Fully read-only, zero intrusion** (does not modify any Claude Code file; the only exception is when the user **explicitly** clicks delete in the history browser).
 
-**Project status**: Stable & in use. 151 backend + 30 remote-daemon + 5 frontend pure-function tests, strict tsc type-check, CI green. Current release **v2.9.6**, now covering **SSH remote mode** (aggregate local + multiple remote machines in one window, #15/#17/#18/#20/#30/#31) — incl. **daemon auto-deploy** (embedded musl binaries pushed over SFTP, #29), **remote full-text search** (#28), **remote history delete / resume command helper / one-click ccm install**, **version negotiation + congestion toasts** (#32/#33), **session status lights** (live busy/waiting/idle, #23), visible AskUserQuestion options / API errors (#21), single-key shortcuts + tab tear-off, and more. See [CHANGELOG](CHANGELOG.md) + [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md).
+**Project status**: Stable & in use. 155 backend + 30 remote-daemon tests + frontend node pure-function & vitest+jsdom DOM tests, strict tsc type-check, CI green (`npm test`). Current release **v2.12.0**, now covering **SSH remote mode** (aggregate local + multiple remote machines in one window, #15/#17/#18/#20/#30/#31) — incl. **daemon auto-deploy + one-click install/uninstall** (embedded musl binaries pushed over SFTP #29; per-machine cards install/uninstall the daemon & ccm helper with install-location hints), **remote full-text search** (#28), **remote history delete / resume command helper**, **history grouped/collapsible by machine** (#30/#31), **version negotiation + congestion toasts** (#32/#33), **session status lights** (#23), **local session auto-revive on resume** (crash/exit → archived, `/resume` restores without F5), visible AskUserQuestion options / API errors (#21), single-key shortcuts + tab tear-off, and more. See [CHANGELOG](CHANGELOG.md) + [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md).
 
 ---
 
@@ -15,7 +15,7 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 ### Real-time rendering
 - Watches `~/.claude/projects/**/*.jsonl`; new lines appear in window within 200ms
 - Multi-tab: one tab per active Claude session, title `[project] aiTitle`
-- After a session exits, its tab is archived (grayed out), closable via `W`
+- After a session exits, its tab is archived (grayed out), closable via `W` / middle-click / `×`; a **local session auto-revives to live when you `/resume` it** (no F5 needed)
 - **Tab in independent window** (issue #10): right-click a tab → "Open in new window" / `N`, **or just drag the tab below the tab bar and drop** (tear-off), mirrors the session into a standalone read-only window (dual-monitor / long-running tasks), synced live with the main window
 - **Session status lights** (issue #23): each local tab's status dot reflects Claude's live state — 🟢 running / 🟡 waiting for your decision (permission / dialog, breathing blink) / 🔴 done, awaiting input; the agents expander gives each subagent its own light
 
@@ -24,7 +24,8 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 - A remote daemon streams sessions back over SSH live; **auto-reconnect** on drop (exponential backoff 2→30s, #17), seq-dedup catch-up on reconnect
 - **Daemon auto-deploy** (#29): cc-monitor embeds cross-compiled aarch64/x86_64 musl daemon binaries and pushes the right one over SFTP on connect (build_id version-gated) — zero manual deploy
 - **Remote full-text search** (#28): the top-bar full-text search covers remote session content via a daemon server-side `--search`, hits tagged `[host]`
-- **Remote history delete** (SFTP remove, double-confirm) / **resume** (copies a `claude --resume` command to paste in your remote terminal) / **one-click `ccm` helper install** into the remote `~/.bashrc`
+- **Remote history delete** (SFTP remove, double-confirm) / **resume** (copies a `claude --resume` command to paste in your remote terminal)
+- **Per-machine cards** in settings: one-click **install / uninstall daemon** and **install / uninstall the `ccm` helper** (into the remote `~/.bashrc`), with **install-location hints** (daemon → `~/.cc-monitor/bin/`, ccm → `~/.bashrc` marker block); cards collapse to the machine name
 - **Version negotiation** (#33) + **slow-consumer overflow signal** (#32): a daemon/client build_id mismatch or a congested pipe surfaces a remote-health toast
 - Remote tabs can also ↗ raise their terminal (#18)
 - Deployment: [doc/REMOTE-PHASE0-DEPLOY.md](doc/REMOTE-PHASE0-DEPLOY.md) (auto-deploy + manual fallback)
@@ -76,6 +77,8 @@ Five collapsible groups (only "Behavior" expanded by default):
 | **Esc** | Close topmost overlay (read-only viewer → history view → settings panel) |
 
 > **Defaults are all single keys** — cc-monitor is a read-only monitor window, no modifier needed. When an editable field (search / rename input) is focused, shortcuts yield to typing. Every chord is customizable in Settings → Shortcuts; two behavior/panel toggles are unbound by default and can be assigned a key there.
+>
+> ⚠ **Chinese / East-Asian IME**: in a CJK input mode the bare letter keys (**W / E / H / M / N / T**) are swallowed by the IME at the OS layer before the app sees them — switch to English input first, or rebind them to `Ctrl`/`Alt` combos or non-character keys (e.g. `Delete`) in the shortcut editor. Digits `1`–`9`, `[` `]`, `` ` ``, `Esc`, and the mouse `×` are unaffected.
 
 ---
 
