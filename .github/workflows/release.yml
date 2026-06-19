@@ -1,14 +1,57 @@
 name: Release
 
-# 推 v* tag 时触发：cargo tauri build → 把 NSIS / MSI bundle 作为 GitHub Release 附件上传。
+# 推 v* tag 时触发：
+#  1. build-daemons (ubuntu)：用 cross 交叉编译 aarch64 / x86_64 musl 远端 daemon，
+#     作为 artifact 传给 Windows 作业 —— 让发布安装包内嵌 daemon、自动部署 (#29) 可用。
+#  2. build-windows：下载 daemon 放进 src-tauri/embedded-daemons/ → cargo tauri build →
+#     把 NSIS / MSI bundle 作为 GitHub Release 附件上传。
 # 注意：默认 build 会尝试下载 WiX toolset 来打 MSI，若网络不稳定可临时改 --bundles nsis。
 on:
   push:
     tags: ['v*']
 
 jobs:
+  build-daemons:
+    name: Cross-compile remote daemons (musl)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 安装两个 musl target 的 std（cross 在容器里复用）。
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
+
+      - name: Install cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      # cc-monitor-remote 是独立 crate（无 workspace），用 cross 的 musl 镜像静态编译。
+      # build_id 由源码 const BUILD_ID 决定（src-tauri/build.rs 同源解析），从源码编译天然版本一致。
+      - name: Cross-compile daemon for both musl targets
+        working-directory: remote-daemon-proto
+        run: |
+          cross build --release --target x86_64-unknown-linux-musl
+          cross build --release --target aarch64-unknown-linux-musl
+
+      # 命名成 src-tauri/build.rs embed_daemons 期望的 cc-monitor-remote-<arch>。
+      - name: Stage binaries
+        run: |
+          mkdir -p staged
+          cp remote-daemon-proto/target/x86_64-unknown-linux-musl/release/cc-monitor-remote staged/cc-monitor-remote-x86_64
+          cp remote-daemon-proto/target/aarch64-unknown-linux-musl/release/cc-monitor-remote staged/cc-monitor-remote-aarch64
+          file staged/* || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: embedded-daemons
+          path: staged/cc-monitor-remote-*
+          if-no-files-found: error
+
   build-windows:
     name: Build Windows artifacts
+    needs: build-daemons
     runs-on: windows-latest
     permissions:
       contents: write   # 需要 write 才能上传 release 附件
@@ -25,6 +68,24 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+
+      - name: Download cross-compiled daemons
+        uses: actions/download-artifact@v4
+        with:
+          name: embedded-daemons
+          path: daemon-artifacts
+
+      # 放进 build.rs 期望的位置；缺任一 arch 就 fail——绝不静默发出「自动部署被关」的安装包。
+      - name: Place + verify embedded daemons
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force src-tauri/embedded-daemons | Out-Null
+          foreach ($a in "x86_64","aarch64") {
+            $f = Get-ChildItem -Recurse daemon-artifacts -Filter "cc-monitor-remote-$a" | Select-Object -First 1
+            if (-not $f) { Write-Error "daemon artifact cc-monitor-remote-$a 缺失——内嵌失败，自动部署会被禁用"; exit 1 }
+            Copy-Item $f.FullName "src-tauri/embedded-daemons/cc-monitor-remote-$a" -Force
+            Write-Host ("embedded {0} ({1} bytes)" -f $a, $f.Length)
+          }
 
       - name: npm install
         run: npm ci
