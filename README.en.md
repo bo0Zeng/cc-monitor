@@ -6,7 +6,7 @@
 
 Renders the real-time conversation written by Claude Code CLI to `~/.claude/projects/*.jsonl` with a modern UI: Markdown / LaTeX / syntax highlighting / collapsible tool-call cards / auto multi-tab management / history browsing & resume. **Fully read-only, zero intrusion** (does not modify any Claude Code file; the only exception is when the user **explicitly** clicks delete in the history browser).
 
-**Project status**: Stable & in use. 130 backend + 17 remote-daemon + 3 frontend pure-function tests, strict tsc type-check, CI green. Current release **v2.9.6**, now covering **SSH remote mode** (aggregate local + remote-machine sessions in one window, #15/#17/#18/#20), **session status lights** (live busy/waiting/idle, #23), visible AskUserQuestion options / API errors (#21), single-key shortcuts + tab tear-off, and more. See [CHANGELOG](CHANGELOG.md) + [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md).
+**Project status**: Stable & in use. 135 backend + 17 remote-daemon + 3 frontend pure-function tests, strict tsc type-check, CI green. Current release **v2.9.6**, now covering **SSH remote mode** (aggregate local + remote-machine sessions in one window, #15/#17/#18/#20), **session status lights** (live busy/waiting/idle, #23), visible AskUserQuestion options / API errors (#21), single-key shortcuts + tab tear-off, and more. See [CHANGELOG](CHANGELOG.md) + [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md).
 
 ---
 
