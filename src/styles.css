@@ -2573,6 +2573,13 @@ body.viewer-mode .history-trigger {
   background: var(--bg-2);
   z-index: 1;
 }
+.search-session-host {
+  color: var(--accent, #6aa8ff);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  flex-shrink: 0;
+}
 .search-session-title {
   color: var(--text);
   font-size: var(--font-size-small);

@@ -36,7 +36,7 @@ use crate::parser::parse_line;
 use crate::paths;
 use crate::utils::{parse_iso8601_ms, systime_to_ms};
 use parking_lot::RwLock;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -73,7 +73,7 @@ pub struct SearchResponse {
     pub sessions: Vec<SessionHits>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionHits {
     pub session_id: String,
@@ -86,9 +86,15 @@ pub struct SessionHits {
     /// 本会话命中总数（可能 > 返回的 hits 长度）
     pub hit_count: u32,
     pub hits: Vec<Hit>,
+    /// issue #28：数据来源。`None` = 本地（不序列化，前端无 `[host]` 前缀）；
+    /// `Some(label)` = 远端机器 label，前端据此加 `[host]` 前缀 + 点击走远端 viewer。
+    /// daemon 的 `--search` 输出**不含** origin（远端无身份概念）；由 monitor fan-out
+    /// 反序列化后补上。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Hit {
     /// 消息 uuid，前端打开 viewer 后据此滚动定位 + 高亮
@@ -346,6 +352,7 @@ impl SearchIndex {
                     updated_at: sd.updated_at,
                     hit_count: session_hit_count,
                     hits,
+                    origin: None, // 本地结果无 origin（远端结果由 fan-out 补）
                 });
             }
         }
@@ -803,7 +810,9 @@ fn truncate_chars_plain(s: &str, n: usize) -> String {
 /// - `after_ms`：时间范围下界（epoch ms）；只搜该时刻之后的消息，0 / 缺省 = 不限。
 /// - `limit`：返回的命中条数上限（total_hits 仍报全量）。
 ///
-/// 走 spawn_blocking：查询是对内存索引的 CPU 扫描，大索引下可能几十 ms，不占 IPC 派发线程。
+/// 本地内存索引查询（CPU，spawn_blocking）与远端 fan-out（SSH，async）**并发**，
+/// 合并成一个 `SearchResponse`（issue #28）。本地大索引几十 ms、远端 SSH 几百 ms，
+/// 并发让总延迟≈max 而非和。
 #[tauri::command]
 pub async fn search_history(
     query: String,
@@ -815,15 +824,51 @@ pub async fn search_history(
 ) -> Result<SearchResponse, String> {
     let index = index.inner().clone();
     let limit = limit.unwrap_or(300).clamp(1, 2000);
-    let scope = match scope.as_deref() {
+    let after_ms = after_ms.unwrap_or(0).max(0);
+    let scope_kind = match scope.as_deref() {
         Some("user") => Some(Kind::User),
         Some("assistant") => Some(Kind::Assistant),
         _ => None, // "all" / None / 未知值 → 不过滤
     };
-    let after_ms = after_ms.unwrap_or(0).max(0);
-    tokio::task::spawn_blocking(move || index.query(&query, include_tools, scope, after_ms, limit))
-        .await
-        .map_err(|e| format!("spawn_blocking join: {e}"))
+
+    // 本地（CPU）与远端（SSH）并发跑，再合并。
+    let q_local = query.clone();
+    let local_task = tokio::task::spawn_blocking(move || {
+        index.query(&q_local, include_tools, scope_kind, after_ms, limit)
+    });
+    let remote_task = crate::remote_history::search_remote_all(
+        &query,
+        include_tools,
+        scope.as_deref(),
+        after_ms,
+        limit,
+    );
+    let (local_res, remote) = tokio::join!(local_task, remote_task);
+    let local = local_res.map_err(|e| format!("spawn_blocking join: {e}"))?;
+    Ok(merge_search_results(local, remote))
+}
+
+/// 合并本地索引结果与远端 fan-out 结果（issue #28）：拼接 sessions 后按 updatedAt desc
+/// 重排，`total_hits`/`session_count` 重算。无远端 → 原样返回本地（含 indexing 态）。
+/// 本地 indexing 但有远端结果时 status=ready（不丢远端；本地结果待索引就绪后下次搜索补上）。
+fn merge_search_results(local: SearchResponse, remote: Vec<SessionHits>) -> SearchResponse {
+    if remote.is_empty() {
+        return local;
+    }
+    let remote_hits: u32 = remote.iter().map(|s| s.hit_count).sum();
+    let mut sessions = local.sessions;
+    sessions.extend(remote);
+    sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    SearchResponse {
+        // remote 非空 → 必有结果，status 一律 ready（不让 indexing 吞掉远端结果）。
+        status: "ready".into(),
+        total_hits: local.total_hits + remote_hits,
+        session_count: sessions.len() as u32,
+        truncated: local.truncated,
+        indexed_sessions: local.indexed_sessions,
+        indexed_messages: local.indexed_messages,
+        sessions,
+    }
 }
 
 /// 查索引状态（UI 显示"索引中 / 已就绪"，无需发查询）。
@@ -996,6 +1041,7 @@ mod tests {
                     matched: "m".into(),
                     after: "a".into(),
                 }],
+                origin: None,
             }],
         };
         let j = serde_json::to_string(&resp).unwrap();
@@ -1022,5 +1068,91 @@ mod tests {
         ] {
             assert!(!j.contains(snake), "wire 漏改 {snake}: {j}");
         }
+    }
+
+    // === #28 远端搜索合并 ===
+
+    fn mk_session(sid: &str, updated: i64, hit_count: u32, origin: Option<&str>) -> SessionHits {
+        SessionHits {
+            session_id: sid.into(),
+            project_path: "/p".into(),
+            project_name: "p".into(),
+            jsonl_path: format!("/{sid}.jsonl"),
+            title: sid.into(),
+            updated_at: updated,
+            hit_count,
+            hits: vec![],
+            origin: origin.map(str::to_string),
+        }
+    }
+
+    fn resp(status: &str, total: u32, sessions: Vec<SessionHits>) -> SearchResponse {
+        SearchResponse {
+            status: status.into(),
+            total_hits: total,
+            session_count: sessions.len() as u32,
+            truncated: false,
+            indexed_sessions: 1,
+            indexed_messages: 1,
+            sessions,
+        }
+    }
+
+    /// daemon 的 `--search` 输出（camelCase，无 origin）能反序列化成 SessionHits。
+    #[test]
+    fn session_hits_deserializes_from_daemon_json() {
+        let line = r#"{"sessionId":"s9","projectPath":"/home/pi/p","projectName":"p","jsonlPath":"/home/pi/.claude/projects/p/s9.jsonl","title":"标题","updatedAt":123,"hitCount":2,"hits":[{"uuid":"u1","tsMs":5,"kind":"user","before":"b","matched":"m","after":"a"}]}"#;
+        let sh: SessionHits = serde_json::from_str(line).expect("daemon json deserializes");
+        assert_eq!(sh.session_id, "s9");
+        assert_eq!(sh.hit_count, 2);
+        assert_eq!(sh.hits.len(), 1);
+        assert_eq!(sh.origin, None, "daemon 不发 origin → None（由 fan-out 补）");
+    }
+
+    /// 合并：拼接 + updatedAt desc 重排 + 总数相加；远端 origin 保留。
+    #[test]
+    fn merge_orders_and_sums() {
+        let local = resp(
+            "ready",
+            3,
+            vec![mk_session("local-old", 100, 3, None)],
+        );
+        let remote = vec![
+            mk_session("rem-new", 300, 2, Some("pi")),
+            mk_session("rem-mid", 200, 1, Some("wsl")),
+        ];
+        let merged = merge_search_results(local, remote);
+        assert_eq!(merged.status, "ready");
+        assert_eq!(merged.total_hits, 3 + 2 + 1);
+        assert_eq!(merged.session_count, 3);
+        // updatedAt desc：rem-new(300) > rem-mid(200) > local-old(100)
+        let ids: Vec<&str> = merged
+            .sessions
+            .iter()
+            .map(|s| s.session_id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["rem-new", "rem-mid", "local-old"]);
+        assert_eq!(merged.sessions[0].origin.as_deref(), Some("pi"));
+        assert_eq!(merged.sessions[2].origin, None);
+    }
+
+    /// 无远端 → 原样返回本地（含 indexing 态不被改写）。
+    #[test]
+    fn merge_no_remote_returns_local_verbatim() {
+        let local = resp("indexing", 0, vec![]);
+        let merged = merge_search_results(local, vec![]);
+        assert_eq!(merged.status, "indexing");
+        assert_eq!(merged.session_count, 0);
+    }
+
+    /// 本地 indexing 但有远端结果 → status=ready（不丢远端）。
+    #[test]
+    fn merge_indexing_local_with_remote_is_ready() {
+        let local = resp("indexing", 0, vec![]);
+        let remote = vec![mk_session("rem", 50, 4, Some("pi"))];
+        let merged = merge_search_results(local, remote);
+        assert_eq!(merged.status, "ready");
+        assert_eq!(merged.total_hits, 4);
+        assert_eq!(merged.sessions.len(), 1);
     }
 }

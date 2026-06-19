@@ -20,6 +20,7 @@
 //!   source; keeping it real is the point.
 
 mod history_query;
+mod search_query;
 mod watcher;
 mod wire;
 
@@ -60,7 +61,12 @@ async fn main() {
     // 识别旧版并提示升级（优雅降级，无协议版本协商负担）。
     let args: Vec<String> = std::env::args().skip(1).collect();
     if !args.is_empty() {
-        std::process::exit(history_query::run(&claude_dir, &args));
+        // 一次性查询模式：--search 走全文搜索（#28），其余走历史查询（#16）。
+        let code = match args.first().map(String::as_str) {
+            Some("--search") => search_query::run(&claude_dir, &args),
+            _ => history_query::run(&claude_dir, &args),
+        };
+        std::process::exit(code);
     }
 
     // (b) Emit the Hello handshake FIRST, flushed, before anything else.
