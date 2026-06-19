@@ -376,9 +376,42 @@ pub async fn stream_read_remote_session(
     Ok(total)
 }
 
+/// 删除一个远端历史会话的 jsonl（issue 未拆，F11）。**只读铁律豁免（SS-G）**：用户
+/// 显式删除 + 前端二次确认 + `sftp::remove_remote_file` 双重路径守卫。删除后清本地元数据。
+#[tauri::command]
+pub async fn delete_remote_history_session(
+    origin: String,
+    jsonl_path: String,
+) -> Result<(), String> {
+    let cfg = require_cfg_by_label(&origin)?;
+    crate::sftp::remove_remote_file(&cfg, &jsonl_path).await?;
+    // 清本地元数据（注解按 sid = jsonl 文件名 stem）。
+    if let Some(sid) = jsonl_stem(&jsonl_path) {
+        crate::history::remove_metadata_entry(&sid);
+    }
+    Ok(())
+}
+
+/// 远端 POSIX 路径取文件名 stem（去目录、去 `.jsonl`）。非 jsonl / 无文件名 → None。
+fn jsonl_stem(path: &str) -> Option<String> {
+    let name = path.rsplit('/').next()?;
+    name.strip_suffix(".jsonl").map(str::to_string)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn jsonl_stem_basics() {
+        assert_eq!(
+            jsonl_stem("/home/pi/.claude/projects/p/abc-123.jsonl").as_deref(),
+            Some("abc-123")
+        );
+        assert_eq!(jsonl_stem("abc.jsonl").as_deref(), Some("abc"));
+        assert_eq!(jsonl_stem("/x/y/note.txt"), None);
+        assert_eq!(jsonl_stem(""), None);
+    }
 
     #[test]
     fn old_daemon_hello_detected() {

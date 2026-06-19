@@ -217,6 +217,68 @@ pub fn daemon_binary() -> Option<&'static DaemonBinary> {
     None
 }
 
+// ============================================================================
+// F11：远端用户数据写（删除远端历史 jsonl）。SS-G item 3 的唯一 SFTP 用户数据写。
+// ============================================================================
+
+/// 远端历史 jsonl 删除路径的安全守卫（纯函数，可单测）。
+///
+/// 仅允许删除**远端 claude_dir 下符合会话 jsonl 结构的文件**。会话 jsonl 的真实结构恒为
+/// `<claude_dir>/projects/<encoded_cwd 单层目录>/<sid>.jsonl`，故要求：
+/// - 不含 `..`（防上跳）；
+/// - 最后一个 `/projects/` 之后**正好是 `<一层目录>/<name>.jsonl`**（split 后恰 2 段、
+///   首段非空非 `.`、末段以 `.jsonl` 结尾且不只是 `.jsonl`）。
+///
+/// 这比裸 `contains("/projects/")` 强：挡住 `/tmp/projects/x.jsonl`（projects 下直接放
+/// jsonl）、`/a/projects/b/c/x.jsonl`（层级不符）这类伪造路径；且**不硬编码 `.claude`**，
+/// 兼容 `CLAUDE_CONFIG_DIR` 自定义目录（审计 S-1：`/.claude/projects/` 会误伤自定义目录）。
+///
+/// 残留（审计登记，后续加固）：完全锚定需远端 daemon 上报的 `claude_dir`（一次性删除连接
+/// 无 hello）。但威胁仅「**已被攻陷的 daemon** 喂伪造路径」——而被攻陷 daemon 本就能在远端
+/// 任意删文件，monitor 删一个 `projects/*.jsonl` 不增加其能力（非提权）；叠加用户**二次确认**，
+/// 残留风险为纵深防御层面。
+pub fn is_safe_remote_jsonl(path: &str) -> bool {
+    if path.contains("..") || !path.ends_with(".jsonl") {
+        return false;
+    }
+    let Some(idx) = path.rfind("/projects/") else {
+        return false;
+    };
+    let rest = &path[idx + "/projects/".len()..];
+    let parts: Vec<&str> = rest.split('/').collect();
+    parts.len() == 2
+        && !parts[0].is_empty()
+        && parts[0] != "."
+        && parts[1].len() > ".jsonl".len()
+        && parts[1].ends_with(".jsonl")
+}
+
+/// 删除远端文件（issue 未拆，F11）：**仅**用于用户主动删除远端历史 jsonl。
+///
+/// 双重守卫：① 入参先过 [`is_safe_remote_jsonl`]；② SFTP `canonicalize`（realpath，解 symlink）
+/// 后**再**校验 canonical 仍含 `/projects/` 且以 `.jsonl` 结尾——挡住 projects/ 内指向外部的
+/// symlink 逃逸。只读铁律豁免（SS-G）：仅此一处对远端 `~/.claude/` 的写，且用户显式触发。
+pub async fn remove_remote_file(cfg: &RemoteConfig, remote_path: &str) -> Result<(), String> {
+    if !is_safe_remote_jsonl(remote_path) {
+        return Err(format!("拒绝删除非法远端路径（须为 projects/ 下 .jsonl）: {remote_path}"));
+    }
+    let conn = connect_sftp(cfg).await?;
+    let sftp = &conn.sftp;
+    // realpath 解析 symlink 后二次校验，防 projects/ 内 symlink 指向外部文件。
+    let canon = sftp
+        .canonicalize(remote_path.to_string())
+        .await
+        .map_err(|e| format!("解析远端路径失败: {e}"))?;
+    if !is_safe_remote_jsonl(&canon) {
+        return Err(format!("拒绝删除：canonical 路径越出 projects/ 或非 jsonl: {canon}"));
+    }
+    sftp.remove_file(canon.clone())
+        .await
+        .map_err(|e| format!("删除远端文件失败: {e}"))?;
+    tracing::info!("远端 [{}] 已删除历史会话: {canon}", cfg.origin_label());
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,6 +305,36 @@ mod tests {
             DeployAction::Skip,
             "标记文件可能带尾随换行，trim 后比对"
         );
+    }
+
+    #[test]
+    fn is_safe_remote_jsonl_guard() {
+        // 合法：projects/<单层目录>/<sid>.jsonl
+        assert!(is_safe_remote_jsonl(
+            "/home/pi/.claude/projects/proj/abc-123.jsonl"
+        ));
+        // 兼容 CLAUDE_CONFIG_DIR 自定义目录（不硬编码 .claude）
+        assert!(is_safe_remote_jsonl(
+            "/opt/claude-data/projects/-home-pi-x/sid.jsonl"
+        ));
+        // 非 .jsonl → 拒
+        assert!(!is_safe_remote_jsonl("/home/pi/.claude/projects/proj/note.txt"));
+        assert!(!is_safe_remote_jsonl("/home/pi/.claude/projects/proj/abc.json"));
+        // 不在 projects/ → 拒
+        assert!(!is_safe_remote_jsonl("/home/pi/.ssh/id_ed25519.jsonl"));
+        assert!(!is_safe_remote_jsonl("/etc/passwd.jsonl"));
+        // 含 .. 上跳 → 拒
+        assert!(!is_safe_remote_jsonl(
+            "/home/pi/.claude/projects/../../../etc/x.jsonl"
+        ));
+        // 审计 S-1：projects 下直接放 jsonl（无中间目录层）→ 拒
+        assert!(!is_safe_remote_jsonl("/tmp/projects/x.jsonl"));
+        // 层级过深（≠ <dir>/<sid>.jsonl）→ 拒
+        assert!(!is_safe_remote_jsonl("/a/projects/b/c/x.jsonl"));
+        // 文件名只是 ".jsonl" → 拒
+        assert!(!is_safe_remote_jsonl("/x/projects/dir/.jsonl"));
+        // 空中间目录段 → 拒
+        assert!(!is_safe_remote_jsonl("/x/projects//abc.jsonl"));
     }
 
     #[test]
