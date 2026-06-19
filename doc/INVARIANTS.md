@@ -10,9 +10,12 @@
 
 `monitor` 对 `<claude_dir>/projects/**/*.jsonl` 和 `<claude_dir>/sessions/<PID>.json` **只读**。
 
-**唯一例外**：`history::delete_history_session` —— 用户**显式**点删除二次确认后才执行；路径白名单 `starts_with(<claude_dir>/projects)` 防御越界。
+**例外（穷举，各自路径白名单防越界）**：
+1. **本地删除**：`history::delete_history_session` —— 用户**显式**点删除二次确认后才执行；白名单 `starts_with(<claude_dir>/projects)`。
+2. **远端 daemon 自部署（issue #29，`sftp::ensure_daemon_deployed`）**：经 SFTP 写远端 `~/.cc-monitor/bin/`（daemon 二进制 + `.build_id` 标记）—— **非用户数据、幂等、版本门控**；只写 cc-monitor 自己的 bin 目录，**绝不碰** `~/.claude/`。
+3. **远端用户数据写（issue 未拆，F11，待实现）**：用户**主动**删除 / 改 metadata 经 SFTP 写远端 `~/.claude/`——与本地删除豁免同性质（显式 + 二次确认 + 白名单）。
 
-**为什么不能松动**：cc-monitor 的核心价值主张是 "看 claude 的输出不破坏它"。一旦允许 monitor 写 jsonl，用户对 "数据源 = 我自己的命令痕迹" 的信任就崩了。
+**为什么不能松动**：cc-monitor 的核心价值主张是 "看 claude 的输出不破坏它"。一旦允许 monitor 在用户数据上**非显式**写，用户对 "数据源 = 我自己的命令痕迹" 的信任就崩了。上述豁免要么是**非用户数据**（自部署 bin），要么是**用户显式动作**（删除 / metadata），且各带独立 realpath 白名单。
 
 ---
 
