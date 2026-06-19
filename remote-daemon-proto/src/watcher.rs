@@ -154,17 +154,18 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>) {
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
         }
 
-        // Liveness poll: archive sessions whose PID is no longer alive.
+        // Liveness poll: archive sessions whose PID is no longer alive OR whose
+        // PID was reused by a different process (procStart mismatch, #34).
         let dead: Vec<PathBuf> = state
             .sessions
             .iter()
-            .filter(|(_, (pid, _))| !pid_alive(*pid))
+            .filter(|(_, e)| !session_alive(e.pid, e.start))
             .map(|(k, _)| k.clone())
             .collect();
         for k in dead {
-            if let Some((_, sid)) = state.sessions.remove(&k) {
-                state.active_sids.remove(&sid);
-                send_frame(&tx, Frame::SessionRemoved { sid });
+            if let Some(e) = state.sessions.remove(&k) {
+                state.active_sids.remove(&e.sid);
+                send_frame(&tx, Frame::SessionRemoved { sid: e.sid });
             }
         }
 
@@ -191,11 +192,11 @@ struct ReaderState {
     /// path (it is never reset), so truncation resetting `offsets` cannot pull
     /// the seq back — exactly the `watcher.rs:243-247` invariant.
     seqs: SeqCounter,
-    /// PID-file path → (pid, sessionId) for sessions currently considered ACTIVE
-    /// (announced via `SessionAdded`). The pid lets the liveness poll detect a
-    /// dead process; the cached sid lets a file-delete still emit the right
-    /// `SessionRemoved`.
-    sessions: HashMap<PathBuf, (u32, String)>,
+    /// PID-file path → [`SessionEntry`] for sessions currently considered ACTIVE
+    /// (announced via `SessionAdded`). The pid + captured procStart let the
+    /// liveness poll detect both a dead process AND a **reused PID** (#34); the
+    /// cached sid lets a file-delete still emit the right `SessionRemoved`.
+    sessions: HashMap<PathBuf, SessionEntry>,
     /// Fast membership for the active-session filter: sids currently streaming.
     /// Mirrors the local watcher's `active_filter` — only sessions whose PID is
     /// alive on this host stream; historical jsonl is NOT pulled (that is the
@@ -213,6 +214,29 @@ impl ReaderState {
             active_sids: HashSet::new(),
         }
     }
+}
+
+/// An ACTIVE session tracked by the reader, keyed in [`ReaderState::sessions`]
+/// by its `sessions/<PID>.json` path.
+///
+/// `start` is the PID's procStart captured at session-add time (#34): on Linux
+/// the `/proc/<pid>/stat` starttime (jiffies since boot). The liveness poll
+/// compares the *current* procStart against this captured value so a PID that
+/// the OS reused for an unrelated process is detected as dead (the original
+/// session ended) rather than masquerading as still-live. `None` = procStart
+/// unavailable (non-Linux smoke / read failure) → liveness degrades to plain
+/// `/proc/<pid>` existence, matching the Phase-0 behaviour.
+///
+/// **Residual limitation (#34 §5, by design)**: `start` is captured at add-time
+/// and never persisted. A daemon **restart** re-baselines `start` from the
+/// *current* `/proc` on the next scan, so a PID that was reused *before* the
+/// restart is indistinguishable from the original session. Probability is low
+/// (restart ∧ PID-reuse ∧ reused-proc-still-alive) and this matches the local
+/// watcher's identical non-persisted `proc_start`.
+struct SessionEntry {
+    pid: u32,
+    sid: String,
+    start: Option<u64>,
 }
 
 /// One line read out of a JSONL file, with its assigned per-file seq.
@@ -331,10 +355,20 @@ fn process_session_added(path: &Path, state: &mut ReaderState, tx: &mpsc::Sender
     }
     // Idempotent: a debounced modify of an already-tracked session re-announces
     // nothing.
-    if state.sessions.get(&key).map(|(_, s)| s.as_str()) == Some(sid.as_str()) {
+    if state.sessions.get(&key).map(|e| e.sid.as_str()) == Some(sid.as_str()) {
         return;
     }
-    state.sessions.insert(key, (pid, sid.clone()));
+    // #34: capture the PID's procStart now so the liveness poll can later tell a
+    // still-running session from a PID the OS reused for an unrelated process.
+    let start = proc_starttime(pid);
+    state.sessions.insert(
+        key,
+        SessionEntry {
+            pid,
+            sid: sid.clone(),
+            start,
+        },
+    );
     state.active_sids.insert(sid.clone());
     send_frame(tx, Frame::SessionAdded { sid: sid.clone() });
     // Now that this session is active, stream its existing jsonl (mirrors the
@@ -347,9 +381,9 @@ fn process_session_added(path: &Path, state: &mut ReaderState, tx: &mpsc::Sender
 /// gone, so we cannot read it now) and emit [`Frame::SessionRemoved`].
 fn process_session_removed(path: &Path, state: &mut ReaderState, tx: &mpsc::Sender<Frame>) {
     let key = path_key(path);
-    if let Some((_, sid)) = state.sessions.remove(&key) {
-        state.active_sids.remove(&sid);
-        send_frame(tx, Frame::SessionRemoved { sid });
+    if let Some(e) = state.sessions.remove(&key) {
+        state.active_sids.remove(&e.sid);
+        send_frame(tx, Frame::SessionRemoved { sid: e.sid });
     }
 }
 
@@ -371,11 +405,10 @@ fn rescan_sid_jsonl(projects: &Path, sid: &str, state: &mut ReaderState, tx: &mp
     }
 }
 
-/// Whether `pid` is a live process on this host.
+/// Whether `pid` currently exists as a process on this host (existence only).
 ///
-/// Linux (the daemon's real target): `/proc/<pid>` existence. Phase 0 uses
-/// existence only — full PID-reuse defence via procStart (LinuxJiffies) is
-/// Phase 1, matching the local `is_process_alive` procStart check.
+/// Linux (the daemon's real target): `/proc/<pid>` existence. This is the
+/// add-time gate; the reuse-proof check is [`session_alive`].
 fn pid_alive(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
@@ -387,6 +420,90 @@ fn pid_alive(pid: u32) -> bool {
         // alive so the cross-platform smoke still exercises the pipeline.
         let _ = pid;
         true
+    }
+}
+
+/// The PID's procStart (start time), used to defend against PID reuse (#34).
+///
+/// Linux: the `starttime` field (jiffies since boot) from `/proc/<pid>/stat`.
+/// Non-Linux (Windows smoke): `None` — liveness then degrades to existence only.
+fn proc_starttime(pid: u32) -> Option<u64> {
+    #[cfg(target_os = "linux")]
+    {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        parse_starttime_from_stat(&stat)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        None
+    }
+}
+
+/// Parse the `starttime` (field 22) out of a `/proc/<pid>/stat` line.
+///
+/// **The comm gotcha**: field 2 is `(comm)` and the executable name can contain
+/// spaces and parentheses (e.g. `(my proc)` or `((odd))`). Splitting the whole
+/// line on whitespace is therefore wrong. The robust parse — used by ps/htop —
+/// is to find the **last** `')'`, then count fields in the remainder: the first
+/// token after it is field 3 (`state`), so `starttime` (field 22) is token index
+/// `22 - 3 = 19` (0-based) of the post-`)` whitespace split.
+///
+/// Only called from the Linux branch of [`proc_starttime`] (and by unit tests on
+/// every platform); on a non-Linux build the function body is unreferenced.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
+    /// 0-based index of `starttime` (field 22) within the tokens that follow the
+    /// closing paren of `comm` (field 3 = `state` is token 0).
+    const STARTTIME_IDX_AFTER_COMM: usize = 22 - 3;
+    let after_comm = &stat[stat.rfind(')')? + 1..];
+    after_comm
+        .split_whitespace()
+        .nth(STARTTIME_IDX_AFTER_COMM)?
+        .parse::<u64>()
+        .ok()
+}
+
+/// Reuse-proof liveness for an ACTIVE session (#34): the PID must still exist
+/// **and** (when a procStart was captured at add-time) its current procStart
+/// must match. A mismatch means the OS reused the PID for a different process —
+/// the original session has ended.
+///
+/// Wires the real `/proc` reads into the pure [`is_same_live_process`] decision.
+fn session_alive(pid: u32, expected_start: Option<u64>) -> bool {
+    let exists = pid_alive(pid);
+    // Only read the current start if the PID exists (a read on a vanished PID is
+    // pointless and would just be `None` anyway).
+    let current_start = if exists { proc_starttime(pid) } else { None };
+    is_same_live_process(exists, expected_start, current_start)
+}
+
+/// Pure liveness decision (testable without a real `/proc`), given whether the
+/// PID currently **exists**, the procStart **captured** at add-time, and the
+/// procStart **read now**.
+///
+/// Key correctness rule (#34): a PID reuse only ever shows up as a
+/// *successfully-read, DIFFERENT* current start. So the only case that declares
+/// "dead by reuse" is `(Some(captured), Some(current))` with `captured != current`.
+/// Every other arm where the PID still exists returns alive — in particular a
+/// **transient `/proc/<pid>/stat` read failure** (`current == None`) must NOT
+/// false-archive a process that demonstrably still exists (that would be a
+/// regression vs. the Phase-0 existence-only check). If the process is truly
+/// gone, `exists` is already `false` and we return dead.
+fn is_same_live_process(
+    exists: bool,
+    expected_start: Option<u64>,
+    current_start: Option<u64>,
+) -> bool {
+    if !exists {
+        return false;
+    }
+    match (expected_start, current_start) {
+        // Baseline captured AND current readable: same process iff equal.
+        (Some(captured), Some(current)) => captured == current,
+        // No baseline, or current unreadable right now: existence is all we can
+        // assert. Do not archive a still-existing PID on missing start info.
+        _ => true,
     }
 }
 
@@ -601,5 +718,116 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].raw, r#"{"only":1}"#);
         assert_eq!(offset, buf.len() as u64);
+    }
+
+    // === #34 procStart double-check (F04) ===
+
+    /// A normal `/proc/<pid>/stat` line: starttime is field 22. Sample is a real
+    /// kernel layout with a simple comm `(bash)`.
+    #[test]
+    fn parse_starttime_normal_line() {
+        // pid=1234 comm=(bash) state=S ... field22(starttime)=9876543 ...
+        let stat = "1234 (bash) S 1 1234 1234 0 -1 4194304 1 0 0 0 0 0 0 0 \
+                    20 0 1 0 9876543 12345678 100 18446744073709551615 1 1 0 0";
+        assert_eq!(parse_starttime_from_stat(stat), Some(9876543));
+    }
+
+    /// The comm gotcha: a process named with a space inside the parens must not
+    /// derail field counting (splitting the whole line would shift every field).
+    #[test]
+    fn parse_starttime_comm_with_space() {
+        let stat = "4242 (my proc) R 1 4242 4242 0 -1 0 0 0 0 0 0 0 0 0 \
+                    20 0 1 0 555000 0 0";
+        assert_eq!(parse_starttime_from_stat(stat), Some(555000));
+    }
+
+    /// The hard comm gotcha: parentheses *inside* comm. We must key off the LAST
+    /// `')'`, not the first, or the offset is wrong.
+    #[test]
+    fn parse_starttime_comm_with_inner_parens() {
+        let stat = "7 ((odd) name)) S 1 7 7 0 -1 0 0 0 0 0 0 0 0 0 \
+                    20 0 1 0 424242 0 0";
+        assert_eq!(parse_starttime_from_stat(stat), Some(424242));
+    }
+
+    /// Malformed / too-few-fields stat → None (never panics, no bad starttime).
+    #[test]
+    fn parse_starttime_malformed_returns_none() {
+        assert_eq!(parse_starttime_from_stat(""), None); // no ')'
+        assert_eq!(parse_starttime_from_stat("123 (x) S 1 2 3"), None); // < 22 fields
+        // ')' present but starttime token is non-numeric.
+        let bad = "1 (x) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 notanum 0";
+        assert_eq!(parse_starttime_from_stat(bad), None);
+    }
+
+    /// `session_alive` truth table around the captured procStart.
+    ///
+    /// The existence-dependent assertions only hold on Linux: on non-Linux
+    /// `pid_alive` is a hardcoded `true` smoke stub (and `proc_starttime` is
+    /// `None`), so `session_alive` is `true` for everything there. The
+    /// reuse-detection logic — the whole point of #34 — is Linux-only, matching
+    /// the `/proc` runtime target.
+    #[test]
+    fn session_alive_self_is_alive_in_existence_only_mode() {
+        // Cross-platform: the current process is alive, and with no captured
+        // baseline (`None`) liveness degrades to existence — must read alive.
+        let me = std::process::id();
+        assert!(session_alive(me, None), "self is alive in existence-only mode");
+    }
+
+    /// Full, portable truth table for the pure liveness decision — including the
+    /// transient-read-failure arm (`exists=true, expected=Some, current=None`)
+    /// that must NOT archive a still-existing PID (the regression #34 audit
+    /// flagged). No real `/proc` needed.
+    #[test]
+    fn is_same_live_process_truth_table() {
+        // Process gone → dead regardless of start info.
+        assert!(!is_same_live_process(false, Some(5), Some(5)));
+        assert!(!is_same_live_process(false, None, None));
+
+        // Exists + baseline + current readable: alive iff equal (reuse = differ).
+        assert!(is_same_live_process(true, Some(5), Some(5)), "same start = alive");
+        assert!(
+            !is_same_live_process(true, Some(5), Some(6)),
+            "different read start = reused PID = dead"
+        );
+
+        // Exists but current start unreadable right now → DO NOT false-archive.
+        assert!(
+            is_same_live_process(true, Some(5), None),
+            "transient /proc read failure on a live PID must stay alive"
+        );
+
+        // Exists, no baseline captured → existence-only degrade = alive.
+        assert!(is_same_live_process(true, None, Some(9)));
+        assert!(is_same_live_process(true, None, None));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn session_alive_decision_table_linux() {
+        // A PID that cannot be alive on any sane host → dead regardless of start.
+        let dead_pid = u32::MAX;
+        assert!(
+            !session_alive(dead_pid, Some(123)),
+            "absent PID is dead even with an expected start"
+        );
+        assert!(
+            !session_alive(dead_pid, None),
+            "absent PID is dead in existence-only mode too"
+        );
+
+        // The current process IS alive. Baseline == its real start → alive;
+        // a wrong baseline → dead (the PID-reuse signal).
+        let me = std::process::id();
+        let real = proc_starttime(me).expect("self has a /proc starttime");
+        assert!(
+            session_alive(me, Some(real)),
+            "self is alive when start matches"
+        );
+        assert!(
+            !session_alive(me, Some(real.wrapping_add(1))),
+            "a mismatched start means the PID was reused → dead"
+        );
     }
 }
