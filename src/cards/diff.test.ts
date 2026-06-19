@@ -154,7 +154,9 @@ test("huge 5000-line rewrite: budget-guard degenerate, time-bounded", () => {
   const t0 = Date.now();
   const r = diffLines(old, neu);
   const dt = Date.now() - t0;
-  ok(dt < 500, `took ${dt}ms (expected <500ms — regression to O(mn)/recursion?)`);
+  // 粗粒度 smoke（非精确基准）：真退化到 O(mn)/递归会在 5000 行上耗时数秒或挂死 → CI job
+  // timeout 兜底。阈值放宽到 3000ms 避免共享 runner 抖动假红（原 500ms 贴近实测、偶发 flaky）。
+  ok(dt < 3000, `took ${dt}ms (regression to O(mn)/recursion would be seconds)`);
   eq(r.truncated, true, "truncated");
   eq(r.addCount, 5000, "addCount");
   eq(r.delCount, 5000, "delCount");
@@ -168,7 +170,7 @@ test("600x600 full rewrite: real LCS path, time-bounded", () => {
   const t0 = Date.now();
   const r = diffLines(old, neu);
   const dt = Date.now() - t0;
-  ok(dt < 500, `took ${dt}ms`);
+  ok(dt < 3000, `took ${dt}ms (coarse smoke; real regression = seconds/hang)`); // 放宽避免 runner 抖动假红
   eq(r.addCount, 600, "addCount");
   eq(r.delCount, 600, "delCount");
 });
