@@ -14,7 +14,8 @@
     "test:diff": "node src/cards/diff.test.ts",
     "test:branching": "node src/branching.test.ts",
     "test:api-error": "node src/cards/api-error.test.ts",
-    "test:remote-health": "node src/remote-health.test.ts"
+    "test:remote-health": "node src/remote-health.test.ts",
+    "test:remote-resume": "node src/remote-resume-cmd.test.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
