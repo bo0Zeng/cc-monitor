@@ -113,7 +113,7 @@ where
 /// 另持有一个共享 cell（`observed_fingerprint`），**无论接受 / 拒绝**都把实际看到的
 /// server key 指纹写进去 —— Tier 1（issue #15）的「测试连接」据此向用户展示指纹、
 /// 供 TOFU→严格校验固化（known_hosts 式）。
-struct ClientHandler {
+pub(crate) struct ClientHandler {
     expected_fingerprint: Option<String>,
     /// check_server_key 观察到的实际指纹回传通道（与调用方共享）。
     observed_fingerprint: Arc<Mutex<Option<String>>>,
@@ -187,7 +187,7 @@ fn default_ssh_agent_pipe() -> Option<&'static str> {
 /// - `cfg.key_path = Some(path)`：publickey 鉴权（既有默认路径，最稳）。
 /// - `cfg.key_path = None`：尝试 ssh-agent（Windows 命名管道），枚举 agent 身份逐个
 ///   `authenticate_publickey_with`。agent 不可用 / 无匹配身份 → 返回清晰 Err。
-async fn connect_session(
+pub(crate) async fn connect_session(
     cfg: &RemoteConfig,
     inactivity_timeout: Option<Duration>,
 ) -> Result<(client::Handle<ClientHandler>, Arc<Mutex<Option<String>>>), String> {
@@ -601,6 +601,17 @@ async fn stream_loop(
     // issue #15 / #30：远端行的 origin 标签 = 该机器的稳定身份（label，默认 host）。
     // 前端据此给该 Tab 标题加 `[label]` 前缀以区分本地/各远端机器。进 loop 前 clone。
     let host_label = cfg.origin_label();
+
+    // issue #29（F08）：连接前确保远端 daemon 已（自动）部署到 cfg.daemon_path。
+    // 嵌入二进制就位前（F08b 未做）daemon_binary() 返回 None → ensure_daemon_deployed
+    // 优雅 no-op。**best-effort**：部署失败仅 warn，不阻断——手动部署的 daemon 仍可连。
+    if let Err(e) =
+        crate::sftp::ensure_daemon_deployed(cfg, crate::sftp::daemon_binary()).await
+    {
+        tracing::warn!(
+            "ssh_source [{host_label}] daemon 自动部署失败（继续尝试连接已有 daemon）: {e}"
+        );
+    }
 
     let stream = connect_and_exec(cfg).await?;
     let mut reader = BufReader::new(stream);

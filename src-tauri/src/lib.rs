@@ -20,6 +20,8 @@ mod profile_installer;
 mod remote_history;
 mod search;
 mod session_map;
+// SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
+mod sftp;
 // SSH-remote Phase 0 (issue #15)：从 setup() 调用 —— 当 config.json 的
 // `remote.enabled = true` 时，ssh_source::run 作为**附加**数据源与本地 jsonl-watcher
 // 并行跑（aggregate：本地 + 远端 session 同时显示为 Tab），走相同的

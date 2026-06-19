@@ -37,6 +37,11 @@ walkdir = "2"
 # 改用 default-features=false + ring 纯 Rust/汇编后端规避（见 ssh_source.rs 顶部注释）。
 # flate2/rsa 是 russh 默认开的非 crypto-backend feature，手动保留以维持等价行为。
 russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }
+# SFTP 写（issue #29 自动部署 / #28 后续）：russh-sftp 是 transport-agnostic（吃 channel
+# 的 AsyncRead+AsyncWrite 流），与 russh 版本解耦——只需 request_subsystem("sftp") 后把
+# channel.into_stream() 交给它。注意 v2.3.0 **无** posix-rename@openssh 扩展，故 sftp.rs
+# 的近似原子写走「写 .tmp → 删旧 → rename」（见 sftp.rs 模块文档「原子写」）。
+russh-sftp = "2"
 # 版本钉死规避 pre-release 解析地雷：russh 的 ECDSA 走 p256/p521 0.14.0-rc.9，
 # 它们要 primefield 0.14.0-rc.9。但 cargo 默认会在 0.14.0-rc.* 区间内取最新
 # = primefield 0.14.0-rc.10（2026-06-04 刚发），rc.10 改了 ff trait 拆分
