@@ -117,9 +117,7 @@ fn search(claude_dir: &Path, query: &str, opts: &SearchOpts) -> Result<(), Strin
         .max_depth(2)
         .into_iter()
         .filter_map(Result::ok)
-        .filter(|e| {
-            e.file_type().is_file() && e.path().extension().is_some_and(|x| x == "jsonl")
-        })
+        .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|x| x == "jsonl"))
         .map(|e| e.into_path())
         .collect();
 
@@ -234,7 +232,11 @@ fn build_session_hits(
                         ("tool", &tool)
                     };
                     let (before, matched, after) = make_snippet(text, q_lc);
-                    let uuid = v.get("uuid").and_then(Value::as_str).unwrap_or("").to_string();
+                    let uuid = v
+                        .get("uuid")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
                     hits.push(serde_json::json!({
                         "uuid": uuid,
                         "tsMs": ts_ms,
@@ -413,7 +415,11 @@ fn make_snippet(text: &str, needle_lc: &str) -> (String, String, String) {
             collapse_ws(&text[start..end]),
             head_chars(&text[end..], SNIPPET_CTX),
         ),
-        None => (String::new(), String::new(), head_chars(text, SNIPPET_CTX * 2)),
+        None => (
+            String::new(),
+            String::new(),
+            head_chars(text, SNIPPET_CTX * 2),
+        ),
     }
 }
 
@@ -542,7 +548,11 @@ fn parse_iso8601_ms(s: &str) -> Option<i64> {
     // 小数秒：扫 '.' 之后的数字串，归一到毫秒（取前 3 位、不足右补 0），对齐本地 utils
     // 口径——容忍 1/2/3+ 位小数（真实 Claude 总是 .fffZ，但稳健处理变体）。
     let millis = if s.as_bytes().get(19) == Some(&b'.') {
-        let mut frac: String = s[20..].chars().take_while(char::is_ascii_digit).take(3).collect();
+        let mut frac: String = s[20..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .take(3)
+            .collect();
         while !frac.is_empty() && frac.len() < 3 {
             frac.push('0');
         }
@@ -581,11 +591,11 @@ mod tests {
 
     #[test]
     fn extract_tool_text_assistant_and_user() {
-        let asst = serde_json::json!([{"type":"tool_use","name":"Bash","input":{"command":"ls -la"}}]);
+        let asst =
+            serde_json::json!([{"type":"tool_use","name":"Bash","input":{"command":"ls -la"}}]);
         let t = extract_tool_text(&asst, true);
         assert!(t.contains("Bash") && t.contains("ls -la"));
-        let user =
-            serde_json::json!([{"type":"tool_result","content":[{"type":"text","text":"file out"}]}]);
+        let user = serde_json::json!([{"type":"tool_result","content":[{"type":"text","text":"file out"}]}]);
         assert!(extract_tool_text(&user, false).contains("file out"));
     }
 
@@ -653,7 +663,10 @@ mod tests {
         let hit = build_session_hits(&jsonl, "docker", &opts, &mut kept).expect("must hit");
         assert_eq!(hit["sessionId"], "s1");
         assert_eq!(hit["projectPath"], "/home/pi/proj");
-        assert_eq!(hit["hitCount"], 2, "user + assistant both match 'docker' ci");
+        assert_eq!(
+            hit["hitCount"], 2,
+            "user + assistant both match 'docker' ci"
+        );
         assert!(hit["hits"].as_array().unwrap().len() == 2);
 
         // scope=user → 只 user 命中
