@@ -998,22 +998,27 @@ export class TabManager {
       t.streamEl.classList.toggle("active", sid === sessionId);
     }
     const next = this.tabs.get(sessionId);
-    if (next) {
-      next.unread = 0;
-      next.stream.scrollToBottom();
-    }
+    if (next) next.unread = 0;
     this.activeId = sessionId;
     if (source === "manual") {
       this.manualOverrideUntil = Date.now() + TabManager.MANUAL_OVERRIDE_MS;
     }
-    // issue #11: 切换 task panel 数据源到新 active Tab 的 sid
-    this.tasksPanel?.setSession(sessionId, this.tasksBySid.get(sessionId) ?? []);
-    // issue #23: agents 面板同步切到新 active Tab
-    this.agentsPanel?.setSession(
-      sessionId,
-      [...(this.tabs.get(sessionId)?.agents.values() ?? [])],
-    );
-    this.refreshTabBar();
+    this.refreshTabBar(); // active 高亮 + badge 立即更新（廉价，不阻塞）
+
+    // 切 Tab 卡顿优化：把会**强制同步 reflow** 的 scrollToBottom（读 scrollHeight）+
+    // 面板整表 re-render 推到下一帧——让 .active 的 visibility 切换先绘制出来（切 Tab 即时
+    // 跟手），重活下一帧再做。期间又切走则跳过（不把面板/滚动落到已非 active 的会话上）。
+    requestAnimationFrame(() => {
+      if (this.activeId !== sessionId) return;
+      next?.stream.scrollToBottom();
+      // issue #11: 切换 task panel 数据源到新 active Tab 的 sid
+      this.tasksPanel?.setSession(sessionId, this.tasksBySid.get(sessionId) ?? []);
+      // issue #23: agents 面板同步切到新 active Tab
+      this.agentsPanel?.setSession(
+        sessionId,
+        [...(this.tabs.get(sessionId)?.agents.values() ?? [])],
+      );
+    });
   }
 
   /**
