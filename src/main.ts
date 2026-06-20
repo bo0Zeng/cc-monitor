@@ -263,27 +263,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 快照 + 事件增量双路收敛，同 fetchSessionTasks 模式）。Tab 未建时进 pendingActivity 暂存。
   void tabs.syncActivitySnapshot();
 
-  // WebView2 偶发在 maximize / restore / 全屏切换后停在旧布局/旧表面（内容错位、右侧被裁切，
-  // 需手动交互才恢复）。监听窗口 resize，下一帧强制一次 reflow + 微滚动触发当前可视区重绘，
-  // 把布局拉回当前窗口尺寸。rAF 节流（连续拖拽 resize 每帧至多一次）。
-  {
-    let nudgePending = false;
-    void getCurrentWindow().onResized(() => {
-      if (nudgePending) return;
-      nudgePending = true;
-      requestAnimationFrame(() => {
-        nudgePending = false;
-        void document.documentElement.offsetWidth; // 同步 reflow：按当前视口重算布局
-        const s = document.querySelector<HTMLElement>(".stream.active");
-        if (s) {
-          // 微滚动 +1/-1（净零）触发 WebView2 重绘当前可视区
-          const top = s.scrollTop;
-          s.scrollTop = top + 1;
-          s.scrollTop = top;
-        }
-      });
-    });
-  }
+  // 注：maximize / 全屏后内容错位的修复在 Rust 侧（src-tauri/src/lib.rs on_window_event：
+  // 去抖后微调 webview 尺寸强制 wry 重新 put_Bounds，把 WebView2 合成层钉回左上角）。
+  // 旧版（v2.13.0）在这里做的 onResized + scrollTop 微滚动够不着 DOM 之下的合成层偏移，已删。
 });
 
 /**
