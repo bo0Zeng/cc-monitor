@@ -744,16 +744,23 @@ fn parse_remote_hosts(
 fn parse_host_obj(
     obj: &serde_json::Map<String, serde_json::Value>,
 ) -> Option<ssh_source::RemoteConfig> {
-    let str_field = |k: &str| obj.get(k).and_then(|v| v.as_str()).filter(|s| !s.is_empty());
+    let str_field = |k: &str| {
+        obj.get(k)
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+    };
 
-    let (host, user, daemon_path) =
-        match (str_field("host"), str_field("user"), str_field("daemonPath")) {
-            (Some(h), Some(u), Some(d)) => (h.to_string(), u.to_string(), d.to_string()),
-            _ => {
-                tracing::warn!("remote host 缺必填字段(host/user/daemonPath)，跳过该台");
-                return None;
-            }
-        };
+    let (host, user, daemon_path) = match (
+        str_field("host"),
+        str_field("user"),
+        str_field("daemonPath"),
+    ) {
+        (Some(h), Some(u), Some(d)) => (h.to_string(), u.to_string(), d.to_string()),
+        _ => {
+            tracing::warn!("remote host 缺必填字段(host/user/daemonPath)，跳过该台");
+            return None;
+        }
+    };
 
     let label = str_field("label")
         .map(str::to_string)

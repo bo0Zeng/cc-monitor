@@ -91,7 +91,11 @@ pub async fn upload_atomic(
     drop(file);
 
     // rename 不覆盖 → 先删旧目标（存在才删）。
-    if sftp.try_exists(remote_path.to_string()).await.unwrap_or(false) {
+    if sftp
+        .try_exists(remote_path.to_string())
+        .await
+        .unwrap_or(false)
+    {
         sftp.remove_file(remote_path.to_string())
             .await
             .map_err(|e| format!("删除旧文件 {remote_path} 失败: {e}"))?;
@@ -221,12 +225,17 @@ pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<(), String> {
     let sftp = &conn.sftp;
 
     let marker = marker_path(&cfg.daemon_path);
-    let remote_id =
-        read_optional(sftp, &marker).await.map(|b| String::from_utf8_lossy(&b).trim().to_string());
+    let remote_id = read_optional(sftp, &marker)
+        .await
+        .map(|b| String::from_utf8_lossy(&b).trim().to_string());
 
     match deploy_decision(remote_id.as_deref(), bin.build_id) {
         DeployAction::Skip => {
-            tracing::info!("远端 [{}] daemon 已是 {}，跳过部署", cfg.origin_label(), bin.build_id);
+            tracing::info!(
+                "远端 [{}] daemon 已是 {}，跳过部署",
+                cfg.origin_label(),
+                bin.build_id
+            );
         }
         DeployAction::Deploy(reason) => {
             tracing::info!(
@@ -237,7 +246,11 @@ pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<(), String> {
             ensure_dir_all(sftp, remote_parent(&cfg.daemon_path)).await;
             upload_atomic(sftp, &cfg.daemon_path, bin.bytes, 0o700).await?;
             upload_atomic(sftp, &marker, bin.build_id.as_bytes(), 0o600).await?;
-            tracing::info!("远端 [{}] daemon 部署完成：{}", cfg.origin_label(), bin.build_id);
+            tracing::info!(
+                "远端 [{}] daemon 部署完成：{}",
+                cfg.origin_label(),
+                bin.build_id
+            );
         }
     }
     Ok(())
@@ -291,7 +304,8 @@ pub async fn deploy_remote_daemon(cfg: RemoteConfig) -> Result<String, String> {
     let path = cfg.daemon_path.trim().to_string();
     if path.is_empty() {
         return Err(
-            "请先填 daemon 路径（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-monitor-remote）".into(),
+            "请先填 daemon 路径（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-monitor-remote）"
+                .into(),
         );
     }
     if path.contains('~') {
@@ -356,7 +370,10 @@ pub async fn uninstall_remote_daemon(cfg: RemoteConfig) -> Result<String, String
             removed.push(f);
         }
     }
-    tracing::info!("远端 [{}] 卸载 daemon：删除 {removed:?}", cfg.origin_label());
+    tracing::info!(
+        "远端 [{}] 卸载 daemon：删除 {removed:?}",
+        cfg.origin_label()
+    );
     if removed.is_empty() {
         Ok(format!(
             "没有可删的 daemon 文件（{path} 及其 .build_id 都不在，可能已卸载）。"
@@ -413,7 +430,9 @@ pub fn is_safe_remote_jsonl(path: &str) -> bool {
 /// symlink 逃逸。只读铁律豁免（SS-G）：仅此一处对远端 `~/.claude/` 的写，且用户显式触发。
 pub async fn remove_remote_file(cfg: &RemoteConfig, remote_path: &str) -> Result<(), String> {
     if !is_safe_remote_jsonl(remote_path) {
-        return Err(format!("拒绝删除非法远端路径（须为 projects/ 下 .jsonl）: {remote_path}"));
+        return Err(format!(
+            "拒绝删除非法远端路径（须为 projects/ 下 .jsonl）: {remote_path}"
+        ));
     }
     let conn = connect_sftp(cfg).await?;
     let sftp = &conn.sftp;
@@ -423,7 +442,9 @@ pub async fn remove_remote_file(cfg: &RemoteConfig, remote_path: &str) -> Result
         .await
         .map_err(|e| format!("解析远端路径失败: {e}"))?;
     if !is_safe_remote_jsonl(&canon) {
-        return Err(format!("拒绝删除：canonical 路径越出 projects/ 或非 jsonl: {canon}"));
+        return Err(format!(
+            "拒绝删除：canonical 路径越出 projects/ 或非 jsonl: {canon}"
+        ));
     }
     sftp.remove_file(canon.clone())
         .await
@@ -467,7 +488,10 @@ const CCM_WRAPPER_SNIPPET: &str = r#"ccm() {
 /// - **有 BEGIN 但其后无 END（损坏/截断/上次安装中断）→ `Err` 中止**（审计 B1：绝不用独立
 ///   `find` 误配前面的 END 而吞掉用户内容；宁可报错让用户手修，也不破坏文件）。
 pub fn merge_profile_block(existing: &str, snippet: &str) -> Result<String, String> {
-    let block = format!("{CCM_PROFILE_BEGIN}\n{}\n{CCM_PROFILE_END}\n", snippet.trim());
+    let block = format!(
+        "{CCM_PROFILE_BEGIN}\n{}\n{CCM_PROFILE_END}\n",
+        snippet.trim()
+    );
     match existing.find(CCM_PROFILE_BEGIN) {
         Some(b) => {
             // 关键：找 BEGIN **之后**的 END（独立 find 会误配前面的 END → 吞内容）。
@@ -573,7 +597,9 @@ pub async fn uninstall_remote_ccm_helper(
     }
 
     tracing::info!("远端 [{}] 已卸载 ccm 助手（{profile}）", cfg.origin_label());
-    Ok(format!("已从远端 {profile} 删除 ccm 块（原文件已备份为 {backup}）。"))
+    Ok(format!(
+        "已从远端 {profile} 删除 ccm 块（原文件已备份为 {backup}）。"
+    ))
 }
 
 /// 一键把 `ccm` wrapper 装进远端 bash profile（F10，SS-H）。
@@ -671,24 +697,33 @@ mod tests {
         assert!(m2.contains(CCM_PROFILE_BEGIN));
 
         // 幂等：同 snippet 再 merge 不变。
-        assert_eq!(merge_profile_block(&m2, snippet).unwrap(), m2, "merge∘merge == merge");
+        assert_eq!(
+            merge_profile_block(&m2, snippet).unwrap(),
+            m2,
+            "merge∘merge == merge"
+        );
 
         // 重装（换 snippet 内容）→ 整块替换，只有一个块，块外内容仍保留。
         let m3 = merge_profile_block(&m2, "ccm() { echo new; }").unwrap();
         assert!(m3.starts_with(existing), "重装仍保留块外内容");
-        assert!(m3.contains("echo new") && !m3.contains("{ :; }"), "块被整块替换");
+        assert!(
+            m3.contains("echo new") && !m3.contains("{ :; }"),
+            "块被整块替换"
+        );
         assert_eq!(m3.matches(CCM_PROFILE_BEGIN).count(), 1, "重装不重复加块");
     }
 
     /// 审计 B1 回归：块外内容（含块**后**的用户内容）在替换时绝不丢。
     #[test]
     fn merge_profile_block_preserves_content_after_block() {
-        let existing = format!(
-            "head_line\n{CCM_PROFILE_BEGIN}\nold()\n{CCM_PROFILE_END}\ntail_user_line\n"
-        );
+        let existing =
+            format!("head_line\n{CCM_PROFILE_BEGIN}\nold()\n{CCM_PROFILE_END}\ntail_user_line\n");
         let m = merge_profile_block(&existing, "ccm() { echo new; }").unwrap();
         assert!(m.contains("head_line"), "块前内容保留");
-        assert!(m.contains("tail_user_line"), "块后用户内容保留（B1 不能吞掉）");
+        assert!(
+            m.contains("tail_user_line"),
+            "块后用户内容保留（B1 不能吞掉）"
+        );
         assert!(m.contains("echo new") && !m.contains("old()"), "块整块替换");
         assert_eq!(m.matches(CCM_PROFILE_BEGIN).count(), 1);
     }
@@ -698,9 +733,7 @@ mod tests {
     #[test]
     fn merge_profile_block_aborts_on_orphan_begin() {
         // END 在前、孤立 BEGIN 在后无配对 END：独立 find 会误配 → 旧实现吞内容。新实现报错。
-        let corrupt = format!(
-            "{CCM_PROFILE_END}\nuser_a\n{CCM_PROFILE_BEGIN}\nuser_b\n"
-        );
+        let corrupt = format!("{CCM_PROFILE_END}\nuser_a\n{CCM_PROFILE_BEGIN}\nuser_b\n");
         assert!(
             merge_profile_block(&corrupt, "ccm() { :; }").is_err(),
             "孤立 BEGIN（其后无 END）必须中止而非吞内容"
@@ -760,8 +793,12 @@ mod tests {
             "/opt/claude-data/projects/-home-pi-x/sid.jsonl"
         ));
         // 非 .jsonl → 拒
-        assert!(!is_safe_remote_jsonl("/home/pi/.claude/projects/proj/note.txt"));
-        assert!(!is_safe_remote_jsonl("/home/pi/.claude/projects/proj/abc.json"));
+        assert!(!is_safe_remote_jsonl(
+            "/home/pi/.claude/projects/proj/note.txt"
+        ));
+        assert!(!is_safe_remote_jsonl(
+            "/home/pi/.claude/projects/proj/abc.json"
+        ));
         // 不在 projects/ → 拒
         assert!(!is_safe_remote_jsonl("/home/pi/.ssh/id_ed25519.jsonl"));
         assert!(!is_safe_remote_jsonl("/etc/passwd.jsonl"));

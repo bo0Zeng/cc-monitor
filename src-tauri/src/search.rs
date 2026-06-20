@@ -1106,17 +1106,16 @@ mod tests {
         assert_eq!(sh.session_id, "s9");
         assert_eq!(sh.hit_count, 2);
         assert_eq!(sh.hits.len(), 1);
-        assert_eq!(sh.origin, None, "daemon 不发 origin → None（由 fan-out 补）");
+        assert_eq!(
+            sh.origin, None,
+            "daemon 不发 origin → None（由 fan-out 补）"
+        );
     }
 
     /// 合并：拼接 + updatedAt desc 重排 + 总数相加；远端 origin 保留。
     #[test]
     fn merge_orders_and_sums() {
-        let local = resp(
-            "ready",
-            3,
-            vec![mk_session("local-old", 100, 3, None)],
-        );
+        let local = resp("ready", 3, vec![mk_session("local-old", 100, 3, None)]);
         let remote = vec![
             mk_session("rem-new", 300, 2, Some("pi")),
             mk_session("rem-mid", 200, 1, Some("wsl")),

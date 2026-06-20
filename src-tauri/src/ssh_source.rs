@@ -474,9 +474,7 @@ pub enum VersionVerdict {
 /// - 全同 → `Ok`。
 fn negotiate_version(reported_v: u64, reported_build_id: &str) -> VersionVerdict {
     if reported_v != EXPECTED_PROTO_V {
-        VersionVerdict::Incompatible {
-            reported_v,
-        }
+        VersionVerdict::Incompatible { reported_v }
     } else if reported_build_id != EXPECTED_DAEMON_BUILD_ID {
         VersionVerdict::StaleBuild {
             reported: reported_build_id.to_string(),

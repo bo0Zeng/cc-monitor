@@ -801,7 +801,7 @@ mod tests {
     fn parse_starttime_malformed_returns_none() {
         assert_eq!(parse_starttime_from_stat(""), None); // no ')'
         assert_eq!(parse_starttime_from_stat("123 (x) S 1 2 3"), None); // < 22 fields
-        // ')' present but starttime token is non-numeric.
+                                                                        // ')' present but starttime token is non-numeric.
         let bad = "1 (x) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 notanum 0";
         assert_eq!(parse_starttime_from_stat(bad), None);
     }
@@ -818,7 +818,10 @@ mod tests {
         // Cross-platform: the current process is alive, and with no captured
         // baseline (`None`) liveness degrades to existence — must read alive.
         let me = std::process::id();
-        assert!(session_alive(me, None), "self is alive in existence-only mode");
+        assert!(
+            session_alive(me, None),
+            "self is alive in existence-only mode"
+        );
     }
 
     /// Full, portable truth table for the pure liveness decision — including the
@@ -832,7 +835,10 @@ mod tests {
         assert!(!is_same_live_process(false, None, None));
 
         // Exists + baseline + current readable: alive iff equal (reuse = differ).
-        assert!(is_same_live_process(true, Some(5), Some(5)), "same start = alive");
+        assert!(
+            is_same_live_process(true, Some(5), Some(5)),
+            "same start = alive"
+        );
         assert!(
             !is_same_live_process(true, Some(5), Some(6)),
             "different read start = reused PID = dead"
@@ -862,7 +868,10 @@ mod tests {
         // Fill both slots — these go through cleanly, no overflow owed.
         sink.send(Frame::SessionAdded { sid: "a".into() });
         sink.send(Frame::SessionAdded { sid: "b".into() });
-        assert_eq!(sink.dropped, 0, "nothing dropped while the channel had room");
+        assert_eq!(
+            sink.dropped, 0,
+            "nothing dropped while the channel had room"
+        );
 
         // Channel is full now: three sends are dropped and counted.
         sink.send(Frame::SessionAdded { sid: "c".into() });

@@ -108,7 +108,8 @@ pub async fn search_remote_all(
 
     // R9：并发 fan-out——各台查询独立、无序要求，join_all 同时查所有台（墙钟从 Σ 降到 max）。
     // 借用 cfg/args 即可（join_all 在当前任务并发 poll，不需 'static/Send）。逐台错误仍隔离。
-    let results = futures::future::join_all(cfgs.iter().map(|cfg| run_list_query(cfg, &args))).await;
+    let results =
+        futures::future::join_all(cfgs.iter().map(|cfg| run_list_query(cfg, &args))).await;
     let mut out = Vec::new();
     for (cfg, res) in cfgs.iter().zip(results) {
         let origin = cfg.origin_label();
@@ -146,9 +147,11 @@ pub async fn list_remote_history_projects() -> Result<Vec<HistoryProject>, Strin
     let mut any_ok = false;
     let mut last_err = String::new();
     // R9：并发 fan-out 所有台（各台独立、无序要求），墙钟从 Σ(各台) 降到 max(各台)。逐台错误仍隔离。
-    let results =
-        futures::future::join_all(cfgs.iter().map(|cfg| run_list_query(cfg, "--list-projects")))
-            .await;
+    let results = futures::future::join_all(
+        cfgs.iter()
+            .map(|cfg| run_list_query(cfg, "--list-projects")),
+    )
+    .await;
     for (cfg, res) in cfgs.iter().zip(results) {
         let lines = match res {
             Ok(l) => {
