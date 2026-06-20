@@ -24,5 +24,12 @@ We aim to acknowledge reports within a few days.
 - **Untrusted content** (CLI / model output) is sanitized with DOMPurify before any
   `innerHTML` rendering.
 - **Releases are unsigned.** Verify the published `SHA256SUMS.txt` against your download.
-- Dependency advisories: CI gates `npm audit` on **production** deps (`--omit=dev`) and
-  runs an informational `cargo audit` (RUSTSEC) on both Rust lockfiles.
+- Dependency advisories: CI gates `npm audit` on **production** deps (`--omit=dev`). For
+  Rust, run `cargo audit` locally. Known **accepted residuals** (no actionable upstream fix,
+  low risk for this app):
+  - `rsa` **RUSTSEC-2023-0071** (Marvin Attack — RSA decryption timing sidechannel): pulled
+    transitively by `russh`; no patched `rsa` release exists upstream. Only used for SSH
+    host-key / auth against **user-controlled** hosts in a read-only monitor → minimal exposure.
+  - **gtk-rs** crates (`atk` / `gdk` / `gtk` …) flagged *unmaintained*: these are Tauri's
+    **Linux** GUI bindings — present in `Cargo.lock` but **not compiled or shipped** on this
+    Windows-only build.

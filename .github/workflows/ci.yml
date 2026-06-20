@@ -99,19 +99,9 @@ jobs:
       - name: cargo test
         run: cargo test
 
-  # Rust 依赖的 RUSTSEC 漏洞审计（russh / ring / crypto 等）。**信息性、不阻断**——
-  # continue-on-error 让它出现 advisory 时单独红、但不挡 CI/发布；维护者据此人工评估
-  #（如 primefield pre-release pin、上游未修的 transitive advisory）。两个独立 crate 各审其 lock。
-  cargo-audit:
-    name: Cargo advisory audit (informational)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-audit
-      - name: cargo audit (src-tauri)
-        run: cargo audit --file src-tauri/Cargo.lock
-      - name: cargo audit (remote-daemon-proto)
-        run: cargo audit --file remote-daemon-proto/Cargo.lock
+# 注：曾加过一个 `cargo audit` 信息性 job，但对 Windows-only Tauri 应用而言它**永久红**——
+# Cargo.lock 含大量 Tauri 的 Linux GTK 传递依赖（atk/gdk/gtk-rs，标记 unmaintained，且
+# 在 Windows 根本不编译/不打包），淹没了信号。已移除；已知 Rust 依赖 advisory 残留记入
+# SECURITY.md（rsa RUSTSEC-2023-0071 Marvin timing 侧信道——上游无修复版、本场景低风险；
+# gtk-rs unmaintained）。前端供应链门禁仍保留（上面 `npm audit --omit=dev`，审生产依赖）。
+# 需要时可本地 `cargo audit` 人工查（cargo install cargo-audit）。
