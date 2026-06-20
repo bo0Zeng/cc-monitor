@@ -124,6 +124,69 @@ pub fn run() {
                 let _ = win.set_focus();
             }
         }));
+
+        // WebView2 maximize / 全屏后内容错位修复（v2.14.0，取代 v2.13.0 那个无效的前端
+        // scrollTop nudge）。根因是 WebView2 的合成层（"Intermediate D3D Window"）在
+        // maximize / restore / 全屏切换后被钉到非 (0,0) 坐标（见 WebView2Feedback #4095 /
+        // #5253），整页渲染被横向平移、左侧露出未合成的黑边、右侧裁切。这层偏移在 DOM 之下，
+        // 任何前端 reflow / 重绘都够不着——只有让 wry 用「变化后的 rect」重新 put_Bounds 才能
+        // 把合成层重新钉回左上角（这也是「手动拖一下窗口就好了」的原理）。
+        //
+        // 关键：只能动 *子级 webview* 的 set_size（直达 wry put_Bounds），绝不能动
+        // WebviewWindow/Window 的 set_size —— 后者会改 OS 窗口尺寸从而**取消最大化/全屏**。
+        // webview set_size 不会回触 WindowEvent::Resized，无自激循环。set_position(0,0) 是
+        // tauri #10053 的兜底：WebView2 上 set_size 后内容偶尔停在非 (0,0)，显式钉回左上角。
+        //
+        // 去抖：resize 期间（含拖拽）每个事件 bump 一个 generation；后台线程等到连续 60ms
+        // 没有新事件（= 过渡稳定）再动手，避免拖拽每帧都 nudge。nudge_pending 保证一个突发
+        // resize 只有一个去抖线程在飞。高度 ±1px（而非宽度）触发重 put_Bounds，竖向 1px 抖动
+        // 比横向更不易察觉。
+        builder = builder.on_window_event({
+            use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+            use std::sync::Arc;
+            use std::time::Duration;
+            let resize_gen = Arc::new(AtomicU64::new(0));
+            let nudge_pending = Arc::new(AtomicBool::new(false));
+            move |window, event| {
+                if !matches!(event, tauri::WindowEvent::Resized(_)) {
+                    return;
+                }
+                resize_gen.fetch_add(1, Ordering::SeqCst);
+                // 已有一个去抖线程在飞 → 它会读到新的 gen 自行续等，不再 spawn
+                if nudge_pending.swap(true, Ordering::SeqCst) {
+                    return;
+                }
+                let window = window.clone();
+                let resize_gen = resize_gen.clone();
+                let nudge_pending = nudge_pending.clone();
+                std::thread::spawn(move || {
+                    let mut last = resize_gen.load(Ordering::SeqCst);
+                    loop {
+                        std::thread::sleep(Duration::from_millis(60));
+                        let now = resize_gen.load(Ordering::SeqCst);
+                        if now == last {
+                            break;
+                        }
+                        last = now;
+                    }
+                    nudge_pending.store(false, Ordering::SeqCst);
+                    // 以窗口当前 client 区为权威目标，把 webview 钉满它。
+                    if let Ok(target) = window.inner_size() {
+                        if let Some(webview) = window.webviews().into_iter().next() {
+                            let _ = webview.set_size(tauri::PhysicalSize::new(
+                                target.width,
+                                target.height.saturating_sub(1),
+                            ));
+                            // 隔一帧再还原，保证 wry 看到两次「不同 rect」的 put_Bounds
+                            std::thread::sleep(Duration::from_millis(16));
+                            let _ = webview
+                                .set_size(tauri::PhysicalSize::new(target.width, target.height));
+                            let _ = webview.set_position(tauri::PhysicalPosition::new(0, 0));
+                        }
+                    }
+                });
+            }
+        });
     }
 
     builder

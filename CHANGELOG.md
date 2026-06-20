@@ -8,6 +8,15 @@
 
 ---
 
+## [2.14.0] — 2026-06-20
+
+### 修复 — maximize / 全屏错位（真修）+ F11 真全屏（权限）
+
+v2.13.0 这两件都没真正修好，这版重做：
+
+- **maximize / 全屏后内容错位（真修复）**：根因不在 DOM，而在 **WebView2 合成层**——`Intermediate D3D Window` 在 maximize / restore / 全屏切换后被钉到非 (0,0) 坐标（见 WebView2Feedback #4095 / #5253），整页渲染被横向平移、左侧露黑边、右侧裁切。这层在 DOM 之下，所以 v2.13.0 那个前端 `onResized + scrollTop` nudge 物理上够不着、从来没生效。改到 **Rust 原生层**（`on_window_event`）：resize 稳定后微调**子级 webview** 的尺寸 ±1px，强制 wry 用「变化后的 rect」重新 `put_Bounds`，把合成层重新钉回左上角（即「手动拖一下窗口就好了」的自动化）。只动 webview 不动窗口 → 不会取消最大化/全屏；附带 `set_position(0,0)` 兜底（tauri #10053）。去抖 60ms。
+- **F11 真全屏修复**：v2.13.0 加了 F11 绑定，但 Tauri 2 的 capability `core:window:default` **不含** `set-fullscreen`，调用被静默拒绝 = 「F11 没反应」。本版在 `capabilities/default.json` 显式授予 `allow-set-fullscreen` / `allow-is-fullscreen` / `allow-minimize`（顺带修好了一直被中文输入法掩盖的 KeyM 最小化）。
+
 ## [2.13.0] — 2026-06-20
 
 ### 新增 / 优化 — F11 真全屏 + 切 Tab 跟手 + maximize 错位修复
