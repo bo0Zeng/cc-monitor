@@ -92,6 +92,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
     comingSoon: "已上线：H 打开历史后切「全文」模式（暂无独立快捷键）",
   },
   { id: "app.minimize", label: "最小化主窗口", category: "App", default: "KeyM", available: true },
+  { id: "app.toggle-fullscreen", label: "切换真全屏（borderless 覆盖任务栏）", category: "App", default: "F11", available: true },
   {
     id: "overlay.close",
     label: "关闭弹层 / 历史 / 设置",

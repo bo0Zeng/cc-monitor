@@ -195,6 +195,13 @@ window.addEventListener("DOMContentLoaded", async () => {
     else void historyView.open();
   });
   dispatcher.bind("app.minimize", () => void getCurrentWindow().minimize());
+  dispatcher.bind("app.toggle-fullscreen", () => {
+    const w = getCurrentWindow();
+    void w
+      .isFullscreen()
+      .then((f) => w.setFullscreen(!f))
+      .catch((e) => console.warn("toggle-fullscreen failed:", e));
+  });
   dispatcher.bind("panel.toggle-tasks", () => tasksPanel.toggle());
   dispatcher.bind("behavior.toggle-auto-follow", () => {
     void (async () => {
@@ -255,6 +262,28 @@ window.addEventListener("DOMContentLoaded", async () => {
   // issue #23: 红绿灯初始快照（session-activity 事件不进 replay buffer，F5 会丢；
   // 快照 + 事件增量双路收敛，同 fetchSessionTasks 模式）。Tab 未建时进 pendingActivity 暂存。
   void tabs.syncActivitySnapshot();
+
+  // WebView2 偶发在 maximize / restore / 全屏切换后停在旧布局/旧表面（内容错位、右侧被裁切，
+  // 需手动交互才恢复）。监听窗口 resize，下一帧强制一次 reflow + 微滚动触发当前可视区重绘，
+  // 把布局拉回当前窗口尺寸。rAF 节流（连续拖拽 resize 每帧至多一次）。
+  {
+    let nudgePending = false;
+    void getCurrentWindow().onResized(() => {
+      if (nudgePending) return;
+      nudgePending = true;
+      requestAnimationFrame(() => {
+        nudgePending = false;
+        void document.documentElement.offsetWidth; // 同步 reflow：按当前视口重算布局
+        const s = document.querySelector<HTMLElement>(".stream.active");
+        if (s) {
+          // 微滚动 +1/-1（净零）触发 WebView2 重绘当前可视区
+          const top = s.scrollTop;
+          s.scrollTop = top + 1;
+          s.scrollTop = top;
+        }
+      });
+    });
+  }
 });
 
 /**
@@ -321,8 +350,15 @@ async function bootstrapViewer(sid: string): Promise<void> {
 
   installGlobalClickDelegation();
 
-  // 快捷键：最小化 + issue #10 调出终端 / 打开 cwd（复用 tabs 的 active-tab 动作）。
+  // 快捷键：最小化 + 真全屏 + issue #10 调出终端 / 打开 cwd（复用 tabs 的 active-tab 动作）。
   dispatcher.bind("app.minimize", () => void getCurrentWindow().minimize());
+  dispatcher.bind("app.toggle-fullscreen", () => {
+    const w = getCurrentWindow();
+    void w
+      .isFullscreen()
+      .then((f) => w.setFullscreen(!f))
+      .catch((e) => console.warn("toggle-fullscreen failed:", e));
+  });
   dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
   dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
   dispatcher.applyOverrides(await getKeybindings());
