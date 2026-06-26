@@ -39,7 +39,10 @@ function __ccm_bind {
                         }
                     } catch {}
                     if (-not $running) {
-                        Start-Process -FilePath $monPath -ErrorAction SilentlyContinue | Out-Null
+                        # 传 --background → monitor 启动时不抢前台焦点（窗口仍可见，但不从
+                        # 当前终端偷焦点，用户接着敲 claude 不被打断）。手动双击启动不带此
+                        # 参数，仍正常置前。
+                        Start-Process -FilePath $monPath -ArgumentList '--background' -ErrorAction SilentlyContinue | Out-Null
                         Start-Sleep -Milliseconds 2000
                     }
                 }
