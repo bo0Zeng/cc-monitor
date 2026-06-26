@@ -116,12 +116,17 @@ pub fn run() {
     let mut builder = tauri::Builder::default();
     #[cfg(windows)]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            tracing::info!("second cc-monitor instance detected, bringing main window to front");
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // 第二个实例若带 --background（cc auto-launch 竞态下偶发）→ 只 show 不抢焦点；
+            // 普通双击拉起第二个实例则照常置前（用户显式想看）。
+            let background = args.iter().any(|a| a == "--background");
+            tracing::info!("second cc-monitor instance detected (background={background})");
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.unminimize();
                 let _ = win.show();
-                let _ = win.set_focus();
+                if !background {
+                    let _ = win.set_focus();
+                }
             }
         }));
 
@@ -197,6 +202,15 @@ pub fn run() {
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
                 window.open_devtools();
+            }
+
+            // 窗口 config `focus=false` → 创建时不激活、不抢前台（cc 集成 auto-launch 带
+            // `--background` 启动时正好不打断当前终端）。但**手动**启动（双击 exe，无该参数）
+            // 仍应置前，这里补一次 set_focus 还原默认体验。
+            if !std::env::args().any(|a| a == "--background") {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_focus();
+                }
             }
 
             // Claude 数据目录走三级回退：用户配置 → CLAUDE_CONFIG_DIR → ~/.claude
