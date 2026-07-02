@@ -658,6 +658,81 @@ body.viewer-mode .history-trigger {
   font-size: var(--font-size-xs);
 }
 
+/* === `!` bash 模式卡（Batch4-F16）：布局沿 card-slash 紧凑系 === */
+.card-bash-input {
+  background: transparent;
+  border-left: 3px solid var(--text-2);
+  padding: 6px 14px;
+  margin: 6px 0;
+  border-radius: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+.bash-prompt {
+  color: var(--text-2);
+  font-weight: 600;
+}
+.card-bash-input .bash-cmd {
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
+}
+.bash-ts {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+.card-bash-output {
+  background: transparent;
+  border-left: 3px solid var(--text-faint);
+  padding: 6px 14px;
+  margin: 6px 0;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+.bash-output-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.bash-output-label {
+  color: var(--text-2);
+  font-weight: 600;
+}
+.bash-output-body {
+  margin: 6px 0 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--font-size-mono);
+  line-height: var(--line-height-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 480px;
+  overflow-y: auto;
+}
+.bash-stderr-label {
+  margin-top: 6px;
+  color: var(--error);
+  font-weight: 600;
+  font-size: var(--font-size-xs);
+}
+.bash-stderr-body {
+  color: var(--error);
+}
+.bash-output-empty {
+  margin-top: 4px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
 /* === issue #21：交互等待卡（AskUserQuestion / ExitPlanMode）——默认展开可见 === */
 .block-ask,
 .block-plan {
