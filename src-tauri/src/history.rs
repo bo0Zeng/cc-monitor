@@ -350,6 +350,11 @@ pub async fn stream_read_session_jsonl(
 /// 单边做必然不匹配），扩展名也在 canonical 路径上查（防 symlink 指向非 jsonl）。
 ///
 /// 返回 canonical 后的删除目标；抽成纯函数以便注入 tempdir 直测。
+///
+/// 已接受取舍：canonicalize → remove_file 之间存在理论 TOCTOU 窗口（期间目录
+/// 组件被换成 symlink）。path-based API 固有限制；威胁模型是"前端传错路径"
+/// 而非恶意本地攻击者，与 sftp.rs 远端版（realpath → remove）同级，不做
+/// openat/O_NOFOLLOW 级加固。
 fn validate_delete_target(jsonl_path: &str, projects_dir: &Path) -> Result<PathBuf, String> {
     let target = PathBuf::from(jsonl_path);
     if !target.exists() {

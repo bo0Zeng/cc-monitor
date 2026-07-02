@@ -171,7 +171,7 @@ cc-monitor/
 │   ├── error-toast.ts      v2.0 ERROR 级 tracing 弹 toast + showActionFailureToast
 │   ├── local-storage.ts    ⭐ v2.6 LS_KEYS 集中 + safeGet/safeSet
 │   ├── format.ts           ⭐ v2.6 formatTimestampShort/Smart + formatBytes
-│   ├── cards/              卡片渲染：index, slash, compact, subagent
+│   ├── cards/              卡片渲染：index, slash, bash, compact, subagent
 │   ├── settings/           设置面板 5 大组
 │   ├── keybindings/        issue #5 快捷键编辑器
 │   └── views/              历史浏览器 + SessionViewer

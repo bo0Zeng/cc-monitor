@@ -36,8 +36,10 @@ export function parseSlashCommand(text: string): SlashCommand | null {
   // 三类标签各剥一次（非全局——出现第二份会留残余），剩余必须是纯空白
   const leftover = text.replace(NAME_RE, "").replace(MSG_RE, "").replace(ARGS_RE, "").trim();
   if (leftover.length > 0) return null;
+  const cmdName = unescapeEntities(name[1]).trim();
+  if (!cmdName) return null; // 空 name → 回退原样（与 bash.ts 空命令回退对称）
   return {
-    name: unescapeEntities(name[1]).trim(),
+    name: cmdName,
     args: unescapeEntities(args?.[1] ?? "").trim(),
   };
 }
