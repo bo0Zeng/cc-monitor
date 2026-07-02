@@ -341,25 +341,45 @@ pub async fn stream_read_session_jsonl(
     .map_err(|e| format!("spawn_blocking join: {e}"))?
 }
 
+/// 本地删除的路径守卫（Batch4-F15）：canonicalize 后校验，`..` 与 symlink 穿越都拒。
+///
+/// 旧实现只做 `PathBuf::starts_with`——那是纯组件前缀比较，不解析 `..` 不解
+/// symlink：`<projects>/../../x.jsonl` 能通过校验、由 OS 在 remove_file 时解析。
+/// 对照远端版 `sftp.rs::remove_remote_file`（canonicalize 双重守卫），本地反而
+/// 更弱。现在两边 canonicalize（Windows 上 canonicalize 产生 `\\?\` 前缀，
+/// 单边做必然不匹配），扩展名也在 canonical 路径上查（防 symlink 指向非 jsonl）。
+///
+/// 返回 canonical 后的删除目标；抽成纯函数以便注入 tempdir 直测。
+fn validate_delete_target(jsonl_path: &str, projects_dir: &Path) -> Result<PathBuf, String> {
+    let target = PathBuf::from(jsonl_path);
+    if !target.exists() {
+        return Err(format!("{} does not exist", target.display()));
+    }
+    let canon_target = target
+        .canonicalize()
+        .map_err(|e| format!("canonicalize {}: {e}", target.display()))?;
+    let canon_projects = projects_dir
+        .canonicalize()
+        .map_err(|e| format!("canonicalize {}: {e}", projects_dir.display()))?;
+    if !canon_target.starts_with(&canon_projects) {
+        return Err(format!(
+            "refuse delete: {} is outside {}",
+            canon_target.display(),
+            canon_projects.display()
+        ));
+    }
+    if canon_target.extension().map_or(true, |e| e != "jsonl") {
+        return Err("refuse delete: not a .jsonl file".into());
+    }
+    Ok(canon_target)
+}
+
 #[tauri::command]
 pub fn delete_history_session(session_id: String, jsonl_path: String) -> Result<(), String> {
     // 安全校验：必须在 claude_dir/projects 之下，避免前端传错路径误删别处文件
     let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
     let projects_dir = claude_dir.join("projects");
-    let target = PathBuf::from(&jsonl_path);
-    if !target.starts_with(&projects_dir) {
-        return Err(format!(
-            "refuse delete: {} is outside {}",
-            target.display(),
-            projects_dir.display()
-        ));
-    }
-    if !target.exists() {
-        return Err(format!("{} does not exist", target.display()));
-    }
-    if target.extension().map_or(true, |e| e != "jsonl") {
-        return Err("refuse delete: not a .jsonl file".into());
-    }
+    let target = validate_delete_target(&jsonl_path, &projects_dir)?;
 
     std::fs::remove_file(&target).map_err(|e| format!("remove {}: {e}", target.display()))?;
     tracing::info!("history: deleted {}", target.display());
@@ -835,6 +855,76 @@ fn iso_to_ms(iso: &str) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // === Batch4-F15：validate_delete_target 穿越防护 ===
+
+    /// 独立临时 projects 目录（惯例同 utils.rs / watcher.rs 测试）。
+    fn temp_projects(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("ccm-hist-del-{}-{}", tag, std::process::id()))
+            .join("projects");
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn delete_rejects_dotdot_traversal() {
+        let projects = temp_projects("dotdot");
+        let root = projects.parent().unwrap();
+        // projects 外造一个真实存在的 .jsonl，再用 `..` 从 projects 内指出去
+        let outside = root.join("outside.jsonl");
+        std::fs::write(&outside, "{}\n").unwrap();
+        let sneaky = projects.join("..").join("outside.jsonl");
+        let err = validate_delete_target(sneaky.to_str().unwrap(), &projects).unwrap_err();
+        assert!(err.contains("refuse delete"), "got: {err}");
+        assert!(outside.exists(), "file must survive the refused delete");
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delete_rejects_symlink_escaping_projects() {
+        let projects = temp_projects("symlink");
+        let root = projects.parent().unwrap();
+        let outside = root.join("secret.jsonl");
+        std::fs::write(&outside, "{}\n").unwrap();
+        let link = projects.join("innocent.jsonl");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let err = validate_delete_target(link.to_str().unwrap(), &projects).unwrap_err();
+        assert!(err.contains("refuse delete"), "got: {err}");
+        assert!(outside.exists());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn delete_accepts_normal_jsonl_inside_projects() {
+        let projects = temp_projects("ok");
+        let proj = projects.join("some-project");
+        std::fs::create_dir_all(&proj).unwrap();
+        let f = proj.join("abc-123.jsonl");
+        std::fs::write(&f, "{}\n").unwrap();
+        let canon = validate_delete_target(f.to_str().unwrap(), &projects).unwrap();
+        assert!(canon.ends_with("abc-123.jsonl"));
+        // 命令壳用返回的 canonical 路径删——等价验证
+        std::fs::remove_file(&canon).unwrap();
+        assert!(!f.exists());
+        std::fs::remove_dir_all(projects.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn delete_rejects_non_jsonl_and_missing() {
+        let projects = temp_projects("misc");
+        // 不存在
+        let missing = projects.join("nope.jsonl");
+        let err = validate_delete_target(missing.to_str().unwrap(), &projects).unwrap_err();
+        assert!(err.contains("does not exist"), "got: {err}");
+        // 存在但非 .jsonl
+        let txt = projects.join("note.txt");
+        std::fs::write(&txt, "x").unwrap();
+        let err2 = validate_delete_target(txt.to_str().unwrap(), &projects).unwrap_err();
+        assert!(err2.contains("not a .jsonl"), "got: {err2}");
+        std::fs::remove_dir_all(projects.parent().unwrap()).ok();
+    }
 
     /// P1.2 contract test：守护后端 wire 跟前端 TS interface 字段名一致。
     /// 改字段名必须同步改前端 views/history.ts 的 HistoryProject / HistorySessionEntry interface。
