@@ -38,6 +38,7 @@
 - **代码改动 diff**（issue #14）：`Edit` / `Write` / `MultiEdit` 工具展开为**行级红删绿增 diff**（替代原始 JSON），超长自动折叠 + 「显示完整」；异常一律回退原 JSON
 - **subagent**：`Task` / `Agent` 工具自动嵌入子 JSONL 内容（懒加载）
 - **/compact 摘要**：折叠展示
+- **用户输入前缀卡**：`!cmd` bash 模式渲染成终端风格命令卡 + stdout/stderr 输出卡（stderr 红色调、超长折叠）；`/xxx` 斜杠命令紧凑卡兼容新旧 CLI 标签顺序；识别不了一律原样回退
 - **代码块复制**：每个 code block 右上角"复制"按钮
 
 ### 历史浏览器

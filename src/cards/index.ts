@@ -16,6 +16,12 @@
  */
 import { renderMarkdown, renderPlainText } from "../render";
 import { parseSlashCommand, buildSlashCommandCard } from "./slash";
+import {
+  parseBashInput,
+  parseBashOutput,
+  buildBashInputCard,
+  buildBashOutputCard,
+} from "./bash";
 import { isCompactSummary, buildCompactSummaryCard } from "./compact";
 import { isAgentTool, buildAgentCard } from "./subagent";
 import { isDiffTool, buildDiffBody } from "./diff";
@@ -217,6 +223,22 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
           return {
             kind: "card",
             element: buildSlashCommandCard(slash, rec.timestamp, formatTimestampShort),
+          };
+        }
+        // Batch4-F16：`!` bash 模式的输入/输出各渲染成终端风格卡；
+        // 识别不了一律 fall through 到 user 气泡原样展示（faithful 底线）。
+        const bashIn = parseBashInput(text);
+        if (bashIn) {
+          return {
+            kind: "card",
+            element: buildBashInputCard(bashIn, rec.timestamp, formatTimestampShort),
+          };
+        }
+        const bashOut = parseBashOutput(text);
+        if (bashOut) {
+          return {
+            kind: "card",
+            element: buildBashOutputCard(bashOut, rec.timestamp, formatTimestampShort),
           };
         }
         return { kind: "card", element: buildUserCard(rec, text) };
