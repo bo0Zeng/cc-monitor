@@ -303,6 +303,9 @@ fn process_file(
     //   3. lines() 遇非法 UTF-8 行 Err → map_while 静默截断整个批次。
     // 现在 partial 留在文件里等下次事件补全；撕裂的多字节序列必然整体落在
     // partial 里，对完整行做 lossy 解码不再产生瞬态 U+FFFD。
+    // 已接受取舍（同 daemon 侧 Parity 注释 / INVARIANTS §25）：写端写完整 JSON
+    // 后、写 \n 前被 kill 且文件从此不变 → 该行 live 视图永不投递（历史 viewer
+    // 的独立读取路径仍能读到）；实测 CLI 每条记录以 \n 收尾。
     let mut reader = BufReader::new(&mut file);
     let mut batch: Vec<JsonlLine> = Vec::new();
     let mut consumed: u64 = 0;
@@ -319,7 +322,9 @@ fn process_file(
             }
             Ok(n) => consumed += n as u64,
             Err(e) => {
-                // 已消费的完整行照常发；剩余字节下次从新 offset 续读
+                // 已消费的完整行照常发；剩余字节下次从新 offset 续读——前提是
+                // 还有下一次 FS 事件（文件从此不再变化则这些字节永不投递，与
+                // torn tail 永不补全同属 INVARIANTS §25 登记的已接受取舍）
                 tracing::warn!("read {} failed mid-file: {e}", path.display());
                 tail_bytes = buf.len() as u64;
                 break;

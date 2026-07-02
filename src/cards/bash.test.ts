@@ -158,6 +158,13 @@ test("slash: no name → falls through", () => {
   eq(parseSlashCommand("<command-message>x</command-message>"), null);
 });
 
+test("slash: empty name → falls through (与 bash 空命令对称)", () => {
+  eq(
+    parseSlashCommand("<command-name></command-name><command-message>x</command-message>"),
+    null,
+  );
+});
+
 if (failed > 0) {
   console.error(`\n${failed} bash/slash test(s) failed`);
   // 同 api-error.test.ts：throw 顶层异常让 node 非零退出（不引 @types/node）

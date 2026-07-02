@@ -122,7 +122,7 @@ src/
 ├── 状态        tabs.ts       TabManager 状态机 + switchTo manual/auto + userActive
 │              stream.ts     MessageStream（insertNode + 守卫式 snap；重放消抖 § 5）
 ├── 渲染        render.ts     marked + KaTeX + hljs + DOMPurify（v2.6 opts.lazy 参数）
-│              cards/        折叠卡组件（slash / compact / subagent / tool）
+│              cards/        折叠卡组件（slash / bash / diff / api-error / interactive / compact / subagent / tool）
 │                            cards/index.ts::stripInternalNoise 剥 CLI 注入 + ESC 中断
 │ ⭐ v2.6 新模块  record-timeline.ts  按 seq binary insert + DOM 挂载，消除 inPrependMode
 │              render-stream-record.ts  三 caller 共享渲染管线 + tool-group 后处理合并
@@ -195,7 +195,7 @@ monitor 与外部进程的所有通信都在 `~/.claude/claudecode-frontend/` �
 每条都是踩过坑总结出来的"为什么不能用别的方案"。
 
 ### 零侵入 = 不写 Claude Code 数据源
-watcher / session_map 只读 `~/.claude/projects/` 和 `~/.claude/sessions/`。唯一写入是用户**显式**触发：历史浏览器 `delete_history_session`（双校验路径白名单）+ PowerShell profile [安装]（只动 BEGIN/END **块内**内容，块外用户其他代码完全不动）。
+watcher / session_map 只读 `~/.claude/projects/` 和 `~/.claude/sessions/`。唯一写入是用户**显式**触发：历史浏览器 `delete_history_session`（Batch4-F15 起 exists → 双边 canonicalize → canonical 前缀 + `.jsonl` 扩展名四段守卫，`..`/symlink 穿越拒绝）+ PowerShell profile [安装]（只动 BEGIN/END **块内**内容，块外用户其他代码完全不动）。
 
 **为什么**：cc-monitor 是个监控渲染器，写 jsonl 会破坏用户对"数据源 = 我自己的命令痕迹"的认知；profile 写入则是必要的可选副作用（用户显式 opt-in 装 `__ccm_bind`），仍然走完整的 backup + ACL 保留路径。
 

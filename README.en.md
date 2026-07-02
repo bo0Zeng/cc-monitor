@@ -35,8 +35,10 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 - **LaTeX**: `$...$` inline, `$$...$$` block (KaTeX)
 - **Syntax highlighting**: 30+ common languages (highlight.js/common)
 - **Tool calls**: `tool_use` + `tool_result` merged into one collapsible card; long output gets a nested second-level collapse
+- **Code-change diffs** (issue #14): `Edit` / `Write` / `MultiEdit` tools expand into line-level red/green diffs (instead of raw JSON), long ones auto-collapse with "show full"; any anomaly falls back to the raw JSON
 - **subagent**: `Task` / `Agent` tool calls auto-embed the sub-JSONL (lazy-loaded)
 - **/compact summary**: shown collapsed
+- **User input prefix cards**: `!cmd` bash mode renders as a terminal-style command card plus stdout/stderr output cards (stderr tinted red, long output collapsible); `/xxx` slash commands render as compact cards compatible with both old and new CLI tag orders; anything unrecognized falls through verbatim
 - **Code copy**: top-right "copy" button on every code block
 
 ### History browser

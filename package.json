@@ -6,6 +6,9 @@
   "license": "MIT",
   "author": "cc-monitor contributors",
   "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
