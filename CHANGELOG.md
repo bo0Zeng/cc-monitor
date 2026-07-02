@@ -8,6 +8,26 @@
 
 ---
 
+## [2.16.0] — 2026-07-02
+
+### 修复 — 最小化恢复后数秒无法点击（v2.14 起的回归）
+
+症状：最小化后从任务栏点回来，有数秒整个页面点不了任何东西（只有窗口右上角原生按钮能点），几乎稳定触发。
+根因：v2.14 引入的 resize 稳定化线程（nudge）不过滤最小化——tao 在 WM_SIZE(SIZE_MINIMIZED) 时发 `Resized(0,0)`，nudge 60ms 后把 WebView2 controller bounds 设成 0×0，恰好绕过 wry 自身"跳过 SIZE_MINIMIZED"的保护 → 浏览器进程渲染视口归零挂起；恢复时画面先回（DWM 缓存），输入 hit-test 层需数秒重建。
+修法：入口按 `Resized(0,0)` 早退 + 去抖线程动作前二次守卫（`is_minimized` / 零尺寸），对齐 wry 的保护语义。
+
+### 修复 — maximize / 全屏后内容留白（v2.13/v2.14 两次未修彻底）
+
+症状：启动后直接最大化，内容不铺满、周围留白。
+根因：WebView2 Runtime 内部（浏览器进程）丢失对宿主 bounds 更新的处理（WebView2Feedback #4095 族，微软未修）；v2.14 的 ±1px set_size 抖动手段对 Runtime 内部合成层 bug 不可靠（差值可能被合并/丢弃）。
+修法：resize 稳定后改为 WebView2 controller 级三板斧（`with_webview` 闭包内 COM 直调）：双 rect SetBounds 重钉 + `NotifyParentWindowPositionChanged` + （仅 maximize/全屏时）`SetIsVisible` 翻转强制重挂合成层。nudge 全程加日志（`logs/` 下搜 `nudge`），不再是静默黑盒。
+
+### 改进 — 远端机器 daemonPath 自动预填
+
+手动「+ 添加机器」填完用户名后，daemon 路径若为空自动按约定预填 `/home/<user>/.cc-monitor/bin/cc-monitor-remote`（root 用户预填 `/root/...`；已有值不覆盖），与「从 ~/.ssh/config 导入」的兜底行为一致。
+
+---
+
 ## [2.15.0] — 2026-06-26
 
 ### 改进 — cc 自动拉起 monitor 不再抢前台焦点

@@ -130,22 +130,31 @@ pub fn run() {
             }
         }));
 
-        // WebView2 maximize / 全屏后内容错位修复（v2.14.0，取代 v2.13.0 那个无效的前端
-        // scrollTop nudge）。根因是 WebView2 的合成层（"Intermediate D3D Window"）在
-        // maximize / restore / 全屏切换后被钉到非 (0,0) 坐标（见 WebView2Feedback #4095 /
-        // #5253），整页渲染被横向平移、左侧露出未合成的黑边、右侧裁切。这层偏移在 DOM 之下，
-        // 任何前端 reflow / 重绘都够不着——只有让 wry 用「变化后的 rect」重新 put_Bounds 才能
-        // 把合成层重新钉回左上角（这也是「手动拖一下窗口就好了」的原理）。
+        // WebView2 maximize / 全屏后内容错位修复（v2.14.0 引入，F12 加固重写）。
+        // 根因是 WebView2 Runtime 内部（浏览器进程）在 maximize / restore / 全屏切换后
+        // 丢失/挂起对宿主 bounds 更新的处理（WebView2Feedback #4095 族，微软未修）：
+        // 宿主侧 put_Bounds 成功、容器 HWND 已是全尺寸，但合成层（"Intermediate D3D
+        // Window"）停在旧尺寸 → 内容不铺满、周围留白。DOM 之下，前端 reflow 够不着。
         //
-        // 关键：只能动 *子级 webview* 的 set_size（直达 wry put_Bounds），绝不能动
-        // WebviewWindow/Window 的 set_size —— 后者会改 OS 窗口尺寸从而**取消最大化/全屏**。
-        // webview set_size 不会回触 WindowEvent::Resized，无自激循环。set_position(0,0) 是
-        // tauri #10053 的兜底：WebView2 上 set_size 后内容偶尔停在非 (0,0)，显式钉回左上角。
+        // v2.14 的手段（±1px webview.set_size 抖动）机制上生效但对 Runtime 内部 bug
+        // 不可靠（1px 差值可能被 Runtime 合并/丢弃），F12 升级为 controller 级三板斧
+        // （with_webview 闭包内直接 COM 调用）：
+        //   1. 双 rect SetBounds（h-1 → h）：让 Runtime 看到「变化后的 rect」重新 put_Bounds
+        //   2. NotifyParentWindowPositionChanged：微软文档明示的宿主位置变化通知
+        //   3. SetIsVisible(false→true) 翻转：强制重建/重挂合成 visual，对 #4095 族最有效；
+        //      仅 maximize/fullscreen 时做（普通拖拽 resize 不翻，避免理论上的闪烁）
+        //
+        // ⚠ 最小化守卫（F12，修"restore 后数秒点不了"）：tao 0.35 在 WM_SIZE(SIZE_MINIMIZED)
+        // 时发 Resized(0,0)（不过滤），而 wry 自己的 subclass 明确跳过 SIZE_MINIMIZED——
+        // 最小化时把 controller bounds 打成 0×0 会让 renderer 视口归零、进入挂起态，
+        // restore 后画面先回、输入 hit-test 层数秒才重建。入口按 0×0 早退 + 线程动作前
+        // 二次守卫（去抖 60ms 期间可能又被最小化），对齐 wry 的保护语义。
         //
         // 去抖：resize 期间（含拖拽）每个事件 bump 一个 generation；后台线程等到连续 60ms
-        // 没有新事件（= 过渡稳定）再动手，避免拖拽每帧都 nudge。nudge_pending 保证一个突发
-        // resize 只有一个去抖线程在飞。高度 ±1px（而非宽度）触发重 put_Bounds，竖向 1px 抖动
-        // 比横向更不易察觉。
+        // 没有新事件（= 过渡稳定）再动手。nudge_pending 保证一个突发 resize 只有一个
+        // 去抖线程在飞。with_webview 的闭包由 tauri 派发到主线程执行——闭包内只做 COM
+        // 调用、禁止 sleep（同一闭包内连续两次不同 rect 已满足重钉条件，v2.14 的 16ms
+        // 间隔不再需要）。
         builder = builder.on_window_event({
             use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
             use std::sync::Arc;
@@ -153,7 +162,12 @@ pub fn run() {
             let resize_gen = Arc::new(AtomicU64::new(0));
             let nudge_pending = Arc::new(AtomicBool::new(false));
             move |window, event| {
-                if !matches!(event, tauri::WindowEvent::Resized(_)) {
+                let size = match event {
+                    tauri::WindowEvent::Resized(s) => *s,
+                    _ => return,
+                };
+                // 最小化：绝不动 webview bounds（见块头 ⚠），也不 bump gen
+                if size.width == 0 && size.height == 0 {
                     return;
                 }
                 resize_gen.fetch_add(1, Ordering::SeqCst);
@@ -175,19 +189,70 @@ pub fn run() {
                         last = now;
                     }
                     nudge_pending.store(false, Ordering::SeqCst);
-                    // 以窗口当前 client 区为权威目标，把 webview 钉满它。
-                    if let Ok(target) = window.inner_size() {
-                        if let Some(webview) = window.webviews().into_iter().next() {
-                            let _ = webview.set_size(tauri::PhysicalSize::new(
-                                target.width,
-                                target.height.saturating_sub(1),
-                            ));
-                            // 隔一帧再还原，保证 wry 看到两次「不同 rect」的 put_Bounds
-                            std::thread::sleep(Duration::from_millis(16));
-                            let _ = webview
-                                .set_size(tauri::PhysicalSize::new(target.width, target.height));
-                            let _ = webview.set_position(tauri::PhysicalPosition::new(0, 0));
+                    // 二次守卫：去抖期间窗口可能又被最小化 / 尺寸归零
+                    if window.is_minimized().unwrap_or(false) {
+                        tracing::info!("nudge skip: window minimized during debounce");
+                        return;
+                    }
+                    let target = match window.inner_size() {
+                        Ok(t) if t.width > 0 && t.height > 0 => t,
+                        _ => {
+                            tracing::info!("nudge skip: zero/unknown inner_size");
+                            return;
                         }
+                    };
+                    let maximized = window.is_maximized().unwrap_or(false);
+                    let fullscreen = window.is_fullscreen().unwrap_or(false);
+                    let flip = maximized || fullscreen;
+                    let Some(webview) = window.webviews().into_iter().next() else {
+                        tracing::warn!("nudge skip: no webview on window");
+                        return;
+                    };
+                    tracing::info!(
+                        "nudge settle: target={}x{} maximized={maximized} fullscreen={fullscreen} flip={flip}",
+                        target.width,
+                        target.height
+                    );
+                    let res = webview.with_webview(move |pw| {
+                        // RECT 必须来自 webview2-com 0.38 配对的 windows 0.61
+                        // （windows-wv2 rename，见 Cargo.toml），0.56 的类型不互通
+                        use windows_wv2::Win32::Foundation::RECT;
+                        let controller = pw.controller();
+                        let full = RECT {
+                            left: 0,
+                            top: 0,
+                            right: target.width as i32,
+                            bottom: target.height as i32,
+                        };
+                        let shrunk = RECT {
+                            bottom: target.height.saturating_sub(1) as i32,
+                            ..full
+                        };
+                        // 每个 COM 调用的失败单独 warn（不再静默）：理论上存在不对称失败
+                        // ——如 SetIsVisible(false) 成功而 (true) 失败会让 webview 停在隐藏态，
+                        // 无日志就无从取证。失败不中断后续调用（终态尽量推向可见+正确 bounds）。
+                        unsafe {
+                            if let Err(e) = controller.SetBounds(shrunk) {
+                                tracing::warn!("nudge SetBounds(shrunk) failed: {e}");
+                            }
+                            if let Err(e) = controller.SetBounds(full) {
+                                tracing::warn!("nudge SetBounds(full) failed: {e}");
+                            }
+                            if let Err(e) = controller.NotifyParentWindowPositionChanged() {
+                                tracing::warn!("nudge NotifyParentWindowPositionChanged failed: {e}");
+                            }
+                            if flip {
+                                if let Err(e) = controller.SetIsVisible(false) {
+                                    tracing::warn!("nudge SetIsVisible(false) failed: {e}");
+                                }
+                                if let Err(e) = controller.SetIsVisible(true) {
+                                    tracing::warn!("nudge SetIsVisible(true) failed: {e}");
+                                }
+                            }
+                        }
+                    });
+                    if let Err(e) = res {
+                        tracing::warn!("nudge with_webview failed: {e}");
                     }
                 });
             }

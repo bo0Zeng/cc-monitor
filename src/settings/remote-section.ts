@@ -70,6 +70,16 @@ export interface RemoteConfig {
  */
 const DAEMON_PATH_PLACEHOLDER = "/home/<user>/.cc-monitor/bin/cc-monitor-remote";
 
+/**
+ * 按远端用户名生成 daemonPath 默认值（与自动部署的约定路径一致，
+ * 见 doc/REMOTE-PHASE0-DEPLOY.md）。root 的 home 不在 /home 下，特判。
+ * 只是预填——远端 home 不标准（如 macOS /Users）时用户可改，「测试连接」会暴露问题。
+ */
+function defaultDaemonPathFor(user: string): string {
+  const home = user === "root" ? "/root" : `/home/${user}`;
+  return `${home}/.cc-monitor/bin/cc-monitor-remote`;
+}
+
 const HOST_DEFAULTS: RemoteHostConfig = {
   label: "",
   host: "",
@@ -257,7 +267,7 @@ class MachineCard {
     this.userInput.value = resolved.user;
     this.keyPathInput.value = resolved.keyPath ?? "";
     if (!this.daemonPathInput.value.trim() && resolved.user) {
-      this.daemonPathInput.value = `/home/${resolved.user}/.cc-monitor/bin/cc-monitor-remote`;
+      this.daemonPathInput.value = defaultDaemonPathFor(resolved.user);
     }
     this.updateLegend();
   }
@@ -321,6 +331,15 @@ class MachineCard {
     daemonHint.textContent =
       "须为绝对路径（如 /home/pi/.cc-monitor/bin/cc-monitor-remote）；SSH 直接 exec 不经 shell，`~` 不会被展开。";
     body.appendChild(daemonHint);
+    // F13：手动填完 user（change = 失焦提交，避免逐键拿半截用户名）后，daemonPath
+    // 为空则按约定路径预填——与 ssh config 导入（applyResolved）同一兜底；已有值不覆盖。
+    this.userInput.addEventListener("change", () => {
+      const user = this.userInput.value.trim();
+      if (user && !this.daemonPathInput.value.trim()) {
+        this.daemonPathInput.value = defaultDaemonPathFor(user);
+        onChange();
+      }
+    });
     this.keyPathInput = buildTextRow(body, "私钥路径 (keyPath，可选)", "C:\\Users\\me\\.ssh\\id_ed25519", onChange);
     this.fingerprintInput = buildTextRow(
       body,
