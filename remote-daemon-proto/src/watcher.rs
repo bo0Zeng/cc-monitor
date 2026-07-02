@@ -25,12 +25,21 @@
 //!
 //! # Parity with `../src-tauri/src/watcher.rs`
 //!
-//! The incremental read mirrors `process_file`: a per-file byte offset, read
-//! from `last_offset` to EOF, BOM strip via `trim_start_matches('\u{feff}')`,
-//! skip blank lines, and `is_subagent_path` excludes any path containing a
-//! `subagents` segment. On truncation (`len < last_offset`) the offset resets
-//! to 0 **but the per-file seq keeps climbing** (the seq comes from
-//! [`SeqCounter`], which is never reset) — see [`read_new_lines`].
+//! The incremental read mirrors `process_file`: a per-file [`ReadCursor`],
+//! read from `cursor.consumed` up to the **last `\n`** in the new region — a
+//! torn tail without a trailing `\n` is deferred to the next event, never
+//! emitted half-way (Batch4-F14). BOM strip via
+//! `trim_start_matches('\u{feff}')`, skip blank lines, and `is_subagent_path`
+//! excludes any path containing a `subagents` segment. Truncation is detected
+//! against `cursor.seen_len` (the observed EOF high-water mark, which covers a
+//! deferred torn tail); on truncation the cursor resets to byte 0 **but the
+//! per-file seq keeps climbing** (the seq comes from [`SeqCounter`], which is
+//! never reset) — see [`read_new_lines`].
+//!
+//! Known non-parity (accepted): on a mid-read I/O error the monitor keeps the
+//! complete lines it already consumed and advances the cursor past them, while
+//! this daemon reads via one `fs::read` snapshot and gives up the whole pass
+//! (cursor untouched). Both are at-least-once-safe.
 
 use crate::wire::{Frame, SeqCounter};
 use notify::RecursiveMode;
@@ -192,7 +201,7 @@ struct ReaderState {
     /// Per-file consumed byte offset, keyed by [`path_key`]. Reset to 0 on
     /// truncation; the climbing seq lives separately in [`Self::seqs`] so a
     /// truncation never rolls the seq back.
-    offsets: HashMap<PathBuf, u64>,
+    offsets: HashMap<PathBuf, ReadCursor>,
     /// Per-file monotonic seq source. `SeqCounter` only ever climbs for a given
     /// path (it is never reset), so truncation resetting `offsets` cannot pull
     /// the seq back — exactly the `watcher.rs:243-247` invariant.
@@ -251,20 +260,46 @@ pub struct ReadLine {
     pub raw: String,
 }
 
+/// Per-file read cursor, mirroring the monitor watcher's `FileCursor`
+/// (Batch4-F14 audit fix).
+///
+/// - `consumed`: bytes of **complete lines** already emitted — the next
+///   incremental read starts here. A deferred torn tail is not included.
+/// - `seen_len`: high-water mark of the observed file length. Truncation must
+///   be judged against this, not `consumed`: while a torn tail is pending,
+///   `consumed < real EOF`, so a non-append rewrite whose new length lands in
+///   `[consumed, seen_len)` would slip past a `len < consumed` check and read
+///   garbage from a stale offset — silently, bypassing the truncation warn.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ReadCursor {
+    pub consumed: u64,
+    pub seen_len: u64,
+}
+
 /// Pure bookkeeping core, factored out so it is unit-testable without a real
 /// filesystem watcher.
 ///
-/// Given the file's *full current bytes*, the prior byte `offset`, the file's
+/// Given the file's *full current bytes*, the prior [`ReadCursor`], the file's
 /// `key` and the shared [`SeqCounter`], return the newly-appeared lines (with
-/// seqs assigned) and the new offset. The seq for each kept line comes from
-/// `seqs.next(key)`, so it is per-path monotonic and **never reset**.
+/// seqs assigned) and the updated cursor. The seq for each kept line comes
+/// from `seqs.next(key)`, so it is per-path monotonic and **never reset**.
 ///
-/// Mirrors `../src-tauri/src/watcher.rs` `process_file` (lines 233-274):
+/// Mirrors `../src-tauri/src/watcher.rs` `process_file`:
 ///
-/// - read from `offset` to EOF; the returned offset is the new length;
-/// - **truncation**: if the file is now shorter than `offset`, start over from
-///   byte 0 (`len < last_offset → start = 0`);
-/// - on truncation the byte offset resets but the seq keeps climbing (it comes
+/// - read from `cursor.consumed`, but only consume **complete lines** — bytes
+///   up to and including the last `\n` in the new region. A torn tail without
+///   a trailing `\n` (the CLI caught mid-write) stays in the file: it is
+///   neither emitted nor skipped over, and `consumed` stops right before it,
+///   so the next event re-reads it once completed (Batch4-F14; the old
+///   behaviour emitted the half line — the record was then lost for good after
+///   the JSON parse failure — and a torn multibyte tail decayed into U+FFFD).
+///   Accepted trade-off: a final line that is complete JSON but never gets its
+///   `\n` (writer killed between the two writes) is never emitted if the file
+///   never grows again — real jsonl ends with `\n` (8/8 sampled);
+/// - **truncation**: judged against the high-water mark
+///   (`len < cursor.seen_len`), so a rewrite landing inside a pending torn-tail
+///   window `[consumed, seen_len)` is still caught → start over from byte 0;
+/// - on truncation the byte cursor resets but the seq keeps climbing (it comes
 ///   from `SeqCounter`, which never resets), so a client that already placed
 ///   the old seqs still sorts the new lines after them;
 /// - strip a leading UTF-8 BOM (`\u{feff}`) and skip blank lines;
@@ -272,20 +307,36 @@ pub struct ReadLine {
 ///   `watcher.rs` pushes `line` (not `trimmed`) into the batch.
 pub fn read_new_lines(
     bytes: &[u8],
-    offset: u64,
+    cursor: ReadCursor,
     key: &str,
     seqs: &mut SeqCounter,
-) -> (Vec<ReadLine>, u64) {
+) -> (Vec<ReadLine>, ReadCursor) {
     let len = bytes.len() as u64;
-    // Truncation guard, mirrors `let start = if len < last_offset { 0 } ...`.
-    let start = if len < offset { 0 } else { offset };
+    // Truncation guard against the high-water mark (see ReadCursor docs).
+    let truncated = len < cursor.seen_len;
+    let start = if truncated { 0 } else { cursor.consumed };
+    if truncated && len > 0 {
+        // Parity with the monitor's truncation warn (INVARIANTS §25: re-reads
+        // hand out new seqs — must leave a trace; silence made an old
+        // mis-folding bug near-impossible to diagnose). len == 0 re-reads
+        // nothing, so stay quiet like the monitor.
+        tracing::warn!(
+            "jsonl truncated (len {len} < seen_len {}), full re-read with new seqs: {key}",
+            cursor.seen_len
+        );
+    }
 
     let mut out = Vec::new();
+    let mut consumed: u64 = 0;
     if start < len {
         let slice = &bytes[start as usize..];
-        // Lossily decode so a torn multibyte tail at EOF can't abort the read;
-        // BufReader::lines() in watcher.rs likewise tolerates partial reads.
-        let text = String::from_utf8_lossy(slice);
+        // Only the region ending at the last '\n' is complete; a torn tail
+        // (mid-write, possibly mid-multibyte) is deferred to the next event.
+        let complete_end = slice.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+        consumed = complete_end as u64;
+        // Lossy decode is now safe: a torn multibyte sequence can only live in
+        // the deferred tail, never inside the complete region.
+        let text = String::from_utf8_lossy(&slice[..complete_end]);
         for line in text.lines() {
             let trimmed = line.trim_start_matches('\u{feff}').trim();
             if trimmed.is_empty() {
@@ -302,8 +353,17 @@ pub fn read_new_lines(
             });
         }
     }
-    // Offset always advances to the current EOF (even if start was reset to 0).
-    (out, len)
+    // `consumed` advances only past complete lines (from the possibly
+    // truncation-reset `start`), never past a deferred torn tail; `seen_len`
+    // records the full observed length so a later rewrite inside the torn-tail
+    // window is still detected as truncation.
+    (
+        out,
+        ReadCursor {
+            consumed: start + consumed,
+            seen_len: len,
+        },
+    )
 }
 
 /// Read a JSONL file incrementally and send a [`Frame::Line`] per new line.
@@ -322,9 +382,9 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
     };
     let key = path_key(path);
     let key_str = key.to_string_lossy().into_owned();
-    let prev_offset = state.offsets.get(&key).copied().unwrap_or(0);
-    let (lines, new_offset) = read_new_lines(&bytes, prev_offset, &key_str, &mut state.seqs);
-    state.offsets.insert(key, new_offset);
+    let prev_cursor = state.offsets.get(&key).copied().unwrap_or_default();
+    let (lines, new_cursor) = read_new_lines(&bytes, prev_cursor, &key_str, &mut state.seqs);
+    state.offsets.insert(key, new_cursor);
     let path_str = path.to_string_lossy().into_owned();
     for line in lines {
         sink.send(Frame::Line {
@@ -638,25 +698,23 @@ mod tests {
     #[test]
     fn appending_lines_advances_offset_and_seq_monotonically() {
         let mut seqs = SeqCounter::new();
-        let mut offset = 0u64;
 
         let first = jsonl(&[r#"{"a":1}"#, r#"{"a":2}"#]);
-        let (out, off) = read_new_lines(&first, offset, KEY, &mut seqs);
-        offset = off;
+        let (out, cur) = read_new_lines(&first, ReadCursor::default(), KEY, &mut seqs);
         assert_eq!(out.len(), 2);
         assert_eq!(out[0].seq, 0);
         assert_eq!(out[1].seq, 1);
-        assert_eq!(offset, first.len() as u64);
+        assert_eq!(cur.consumed, first.len() as u64);
+        assert_eq!(cur.seen_len, first.len() as u64);
 
         // Append two more lines (same prefix bytes, longer file).
         let mut second = first.clone();
         second.extend_from_slice(jsonl(&[r#"{"a":3}"#, r#"{"a":4}"#]).as_slice());
-        let (out2, off2) = read_new_lines(&second, offset, KEY, &mut seqs);
-        offset = off2;
+        let (out2, cur2) = read_new_lines(&second, cur, KEY, &mut seqs);
         assert_eq!(out2.len(), 2, "only the newly-appended lines come back");
         assert_eq!(out2[0].seq, 2);
         assert_eq!(out2[1].seq, 3);
-        assert_eq!(offset, second.len() as u64);
+        assert_eq!(cur2.consumed, second.len() as u64);
         assert_eq!(out2[0].raw, r#"{"a":3}"#);
     }
 
@@ -664,14 +722,14 @@ mod tests {
     fn no_new_bytes_yields_nothing_and_does_not_bump_seq() {
         let mut seqs = SeqCounter::new();
         let buf = jsonl(&[r#"{"x":1}"#]);
-        let (_, offset) = read_new_lines(&buf, 0, KEY, &mut seqs);
-        // Re-process identical bytes: offset == len, start >= len, nothing new.
-        let (again, offset2) = read_new_lines(&buf, offset, KEY, &mut seqs);
+        let (_, cur) = read_new_lines(&buf, ReadCursor::default(), KEY, &mut seqs);
+        // Re-process identical bytes: consumed == len, start >= len, nothing new.
+        let (again, cur2) = read_new_lines(&buf, cur, KEY, &mut seqs);
         assert!(again.is_empty());
         // A fresh read of the same key still hands out seq 1 only if a line was
         // produced; here nothing new, so the next live line would be seq 1.
         assert_eq!(seqs.next(KEY), 1, "seq must not have advanced past 1");
-        assert_eq!(offset2, buf.len() as u64);
+        assert_eq!(cur2.consumed, buf.len() as u64);
     }
 
     #[test]
@@ -679,20 +737,103 @@ mod tests {
         let mut seqs = SeqCounter::new();
 
         let big = jsonl(&[r#"{"n":1}"#, r#"{"n":2}"#, r#"{"n":3}"#]);
-        let (out, big_off) = read_new_lines(&big, 0, KEY, &mut seqs);
+        let (out, big_cur) = read_new_lines(&big, ReadCursor::default(), KEY, &mut seqs);
         assert_eq!(out.iter().map(|l| l.seq).collect::<Vec<_>>(), vec![0, 1, 2]);
 
-        // Simulated truncation: file is now SHORTER than the recorded offset.
+        // Simulated truncation: file is now SHORTER than the recorded cursor.
         let small = jsonl(&[r#"{"n":99}"#]);
-        assert!((small.len() as u64) < big_off, "test precondition");
-        let (out2, small_off) = read_new_lines(&small, big_off, KEY, &mut seqs);
+        assert!((small.len() as u64) < big_cur.seen_len, "test precondition");
+        let (out2, small_cur) = read_new_lines(&small, big_cur, KEY, &mut seqs);
 
-        // Offset reset to 0 then re-advanced to the new (smaller) length.
-        assert_eq!(small_off, small.len() as u64);
+        // Cursor reset to 0 then re-advanced to the new (smaller) length.
+        assert_eq!(small_cur.consumed, small.len() as u64);
         // The whole truncated file is re-read from byte 0 ...
         assert_eq!(out2.len(), 1);
         // ... but seq KEEPS CLIMBING (3, not back to 0): the climbing invariant.
         assert_eq!(out2[0].seq, 3, "seq must never reset on truncation");
+    }
+
+    /// F14 audit fix: a rewrite whose new length lands inside the pending
+    /// torn-tail window [consumed, seen_len) must still be detected as
+    /// truncation — no garbage line from a stale offset.
+    #[test]
+    fn rewrite_within_torn_window_detected_as_truncation() {
+        let mut seqs = SeqCounter::new();
+        // 19 bytes: complete line (8) + torn tail (11). consumed=8, seen_len=19.
+        let torn = b"{\"a\":1}\n{\"a\":2,\"tor".to_vec();
+        let (out, cur) = read_new_lines(&torn, ReadCursor::default(), KEY, &mut seqs);
+        assert_eq!(out.len(), 1);
+        assert_eq!(
+            cur,
+            ReadCursor {
+                consumed: 8,
+                seen_len: 19
+            }
+        );
+
+        // Whole-file rewrite to 18 bytes: len >= consumed(8) but < seen_len(19).
+        let rewritten = b"{\"b\":111}\n{\"b\":2}\n".to_vec();
+        let (out2, cur2) = read_new_lines(&rewritten, cur, KEY, &mut seqs);
+        assert_eq!(out2.len(), 2, "rewrite must be detected and re-read fully");
+        assert_eq!(
+            out2[0].raw, r#"{"b":111}"#,
+            "no garbage from a stale offset"
+        );
+        assert_eq!(out2[0].seq, 1, "seq keeps climbing across truncation");
+        assert_eq!(cur2.consumed, rewritten.len() as u64);
+    }
+
+    /// Truncate-to-empty must reset the cursor so a regrown file (even one
+    /// longer than the old consumed offset) is read from byte 0.
+    #[test]
+    fn truncate_to_empty_then_regrow_reads_from_zero() {
+        let mut seqs = SeqCounter::new();
+        let old = jsonl(&[r#"{"n":1}"#, r#"{"n":2}"#]); // 16 bytes
+        let (_, cur) = read_new_lines(&old, ReadCursor::default(), KEY, &mut seqs);
+
+        let (empty_out, cur2) = read_new_lines(&[], cur, KEY, &mut seqs);
+        assert!(empty_out.is_empty());
+        assert_eq!(
+            cur2,
+            ReadCursor {
+                consumed: 0,
+                seen_len: 0
+            }
+        );
+
+        let regrown = jsonl(&[r#"{"m":1}"#, r#"{"m":2}"#, r#"{"m":3}"#]); // 24 > 16
+        let (out, cur3) = read_new_lines(&regrown, cur2, KEY, &mut seqs);
+        assert_eq!(out.len(), 3, "must re-read from byte 0, no lost prefix");
+        assert_eq!(out[0].raw, r#"{"m":1}"#);
+        assert_eq!(out[0].seq, 2, "seq never resets");
+        assert_eq!(cur3.consumed, regrown.len() as u64);
+    }
+
+    /// \r\n endings: raw must match str::lines() semantics (strip \n plus one
+    /// adjacent \r); consumed advances by the byte count including \r\n.
+    #[test]
+    fn crlf_line_endings_are_stripped_like_lines() {
+        let mut seqs = SeqCounter::new();
+        let buf = b"{\"a\":1}\r\n{\"a\":2}\n".to_vec();
+        let (out, cur) = read_new_lines(&buf, ReadCursor::default(), KEY, &mut seqs);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].raw, r#"{"a":1}"#, "\\r must be stripped");
+        assert_eq!(out[1].raw, r#"{"a":2}"#);
+        assert_eq!(cur.consumed, 17);
+    }
+
+    /// Old-bug regression: invalid UTF-8 inside a COMPLETE line is lossy-decoded
+    /// for that line only — it must not abort the rest of the batch.
+    #[test]
+    fn invalid_utf8_in_complete_line_does_not_abort_batch() {
+        let mut seqs = SeqCounter::new();
+        let mut buf = b"{\"a\":1}\n".to_vec();
+        buf.extend_from_slice(b"\xFF\xFEgarbage\n");
+        buf.extend_from_slice(b"{\"a\":3}\n");
+        let (out, _) = read_new_lines(&buf, ReadCursor::default(), KEY, &mut seqs);
+        assert_eq!(out.len(), 3, "batch must not be silently aborted");
+        assert_eq!(out[2].raw, r#"{"a":3}"#, "lines after the bad one survive");
+        assert!(out[1].raw.contains('\u{FFFD}'), "bad line delivered lossy");
     }
 
     #[test]
@@ -700,14 +841,14 @@ mod tests {
         let mut seqs = SeqCounter::new();
         // A line that is ONLY a BOM + whitespace must be treated as empty.
         let only_bom = "\u{feff}   \n".as_bytes().to_vec();
-        let (out, _) = read_new_lines(&only_bom, 0, KEY, &mut seqs);
+        let (out, _) = read_new_lines(&only_bom, ReadCursor::default(), KEY, &mut seqs);
         assert!(out.is_empty(), "BOM-only/blank line is skipped");
         assert_eq!(seqs.next(KEY), 0, "skipped line must not consume a seq");
 
         // A BOM-prefixed real line is kept (and not double counted).
         let mut seqs2 = SeqCounter::new();
         let bom_line = "\u{feff}{\"k\":1}\n".as_bytes().to_vec();
-        let (out2, _) = read_new_lines(&bom_line, 0, KEY, &mut seqs2);
+        let (out2, _) = read_new_lines(&bom_line, ReadCursor::default(), KEY, &mut seqs2);
         assert_eq!(out2.len(), 1);
         assert_eq!(out2[0].seq, 0);
     }
@@ -716,7 +857,7 @@ mod tests {
     fn empty_lines_are_skipped_and_do_not_consume_seq() {
         let mut seqs = SeqCounter::new();
         let buf = jsonl(&[r#"{"a":1}"#, "", "   ", r#"{"a":2}"#, ""]);
-        let (out, _) = read_new_lines(&buf, 0, KEY, &mut seqs);
+        let (out, _) = read_new_lines(&buf, ReadCursor::default(), KEY, &mut seqs);
         assert_eq!(out.len(), 2, "two blank/whitespace lines dropped");
         assert_eq!(out[0].seq, 0);
         assert_eq!(out[1].seq, 1);
@@ -756,14 +897,57 @@ mod tests {
     }
 
     #[test]
-    fn read_line_without_trailing_newline_is_still_emitted() {
-        // str::lines() yields a final line even without a trailing '\n'.
+    fn torn_line_without_trailing_newline_is_deferred() {
+        let mut seqs = SeqCounter::new();
+        // Complete line + torn tail (no trailing \n).
+        let buf = b"{\"a\":1}\n{\"a\":2,\"tex".to_vec();
+        let (out, cur) = read_new_lines(&buf, ReadCursor::default(), KEY, &mut seqs);
+        assert_eq!(out.len(), 1, "torn tail must not be emitted");
+        assert_eq!(out[0].raw, r#"{"a":1}"#);
+        assert_eq!(
+            cur.consumed, 8,
+            "consumed stops after the complete line, not at EOF"
+        );
+        assert_eq!(cur.seen_len, buf.len() as u64, "seen_len covers the tail");
+
+        // The tail completes (plus one more full line) — emitted exactly once,
+        // seq continuous across the deferral.
+        let mut healed = buf.clone();
+        healed.extend_from_slice(b"t\":\"x\"}\n{\"a\":3}\n");
+        let (out2, cur2) = read_new_lines(&healed, cur, KEY, &mut seqs);
+        assert_eq!(out2.len(), 2);
+        assert_eq!(out2[0].raw, r#"{"a":2,"text":"x"}"#);
+        assert_eq!(out2[0].seq, 1);
+        assert_eq!(out2[1].seq, 2);
+        assert_eq!(cur2.consumed, healed.len() as u64);
+    }
+
+    #[test]
+    fn torn_multibyte_tail_does_not_decay_into_replacement_char() {
+        let mut seqs = SeqCounter::new();
+        let full = "{\"t\":\"文\"}\n".as_bytes(); // 文 = E6 96 87
+        let torn = &full[..7]; // cut inside the multibyte sequence
+        let (out, cur) = read_new_lines(torn, ReadCursor::default(), KEY, &mut seqs);
+        assert!(out.is_empty(), "mid-multibyte torn tail must be deferred");
+        assert_eq!(cur.consumed, 0);
+
+        let (out2, cur2) = read_new_lines(full, cur, KEY, &mut seqs);
+        assert_eq!(out2.len(), 1);
+        assert_eq!(out2[0].raw, "{\"t\":\"文\"}", "no U+FFFD after healing");
+        assert_eq!(cur2.consumed, full.len() as u64);
+    }
+
+    #[test]
+    fn fully_unterminated_single_line_is_deferred() {
+        // A file whose only content is a line still being written: nothing is
+        // complete yet, so nothing is emitted and the cursor stays put.
         let mut seqs = SeqCounter::new();
         let buf = br#"{"only":1}"#.to_vec();
-        let (out, offset) = read_new_lines(&buf, 0, KEY, &mut seqs);
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].raw, r#"{"only":1}"#);
-        assert_eq!(offset, buf.len() as u64);
+        let (out, cur) = read_new_lines(&buf, ReadCursor::default(), KEY, &mut seqs);
+        assert!(out.is_empty(), "unterminated line is deferred, not emitted");
+        assert_eq!(cur.consumed, 0, "consumed must not advance past the tail");
+        assert_eq!(cur.seen_len, buf.len() as u64);
+        assert_eq!(seqs.next(KEY), 0, "deferral must not consume a seq");
     }
 
     // === #34 procStart double-check (F04) ===
