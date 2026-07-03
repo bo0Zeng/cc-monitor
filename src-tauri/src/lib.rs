@@ -741,6 +741,7 @@ pub fn run() {
             bring_remote_terminal_to_front,
             // issue #23: 红绿灯快照（启动/F5 初始收敛；增量走 session-activity 事件）
             list_session_activity,
+            list_active_sessions,
             // v2.4 issue #2: 用户在终端输入时可选拉前 monitor 自身
             bring_monitor_to_front,
             cc_integration_status,
@@ -1182,6 +1183,18 @@ fn list_session_activity(
             status: a.status,
             waiting_for: a.waiting_for,
         })
+        .collect()
+}
+
+/// Batch5-F18：本地活跃会话清单（sid + cwd）——前端启动时（frontend-ready 之前）
+/// 调一次，先建全部骨架 Tab。纯内存读（RwLock clone），无需 spawn_blocking。
+#[tauri::command]
+fn list_active_sessions(
+    map: tauri::State<'_, Arc<session_map::SessionMap>>,
+) -> Vec<bridge::ActiveSessionPayload> {
+    map.snapshot_active()
+        .into_iter()
+        .map(|(session_id, cwd)| bridge::ActiveSessionPayload { session_id, cwd })
         .collect()
 }
 

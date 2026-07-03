@@ -92,6 +92,40 @@ describe("TabManager 生命周期", () => {
     expect(tab.origin).toBe("pi");
   });
 
+  // === Batch5-F18：骨架 Tab ===
+
+  it("createSkeletonTab 建骨架；首行到达不重建、cwd/parentPath 回填", () => {
+    tm.createSkeletonTab("sk1", "/root/proj", null);
+    const skeleton = peek(tm).tabs.get("sk1")!;
+    expect(skeleton.status).toBe("live");
+    expect(skeleton.parentPath).toBe("");
+    expect(skeleton.cwd).toBe("/root/proj");
+
+    // 首条真实行：同一 Tab 实例（不重建），parentPath 回填、更小 seq 的 cwd 覆盖
+    const after = tm.ensureTab("sk1", "/root/proj/sub", "/fake/sk1.jsonl", 3, null);
+    expect(after).toBe(skeleton);
+    expect(after.parentPath).toBe("/fake/sk1.jsonl");
+    expect(after.cwd).toBe("/root/proj/sub"); // seq 3 < MAX_SAFE_INTEGER → 覆盖为行内 cwd
+  });
+
+  it("远端骨架（无 cwd）标题用 sid 前缀，重复宣告幂等", () => {
+    tm.createSkeletonTab("deadbeef-1234", null, "pi");
+    const t = peek(tm).tabs.get("deadbeef-1234")!;
+    expect(t.origin).toBe("pi");
+    expect(t.cwd).toBeNull();
+    expect(t.title).toBe("[pi] deadbeef"); // 无 cwd → [host] + sid 前 8
+    const before = peek(tm).tabs.size;
+    tm.createSkeletonTab("deadbeef-1234", null, "pi"); // 重连重发 session_added
+    expect(peek(tm).tabs.size).toBe(before);
+    expect(peek(tm).tabs.get("deadbeef-1234")).toBe(t);
+  });
+
+  it("归档信号早于骨架建立：骨架落实 pendingArchive 为 archived", () => {
+    tm.archiveTab("sk-late");
+    tm.createSkeletonTab("sk-late", null, "pi");
+    expect(peek(tm).tabs.get("sk-late")!.status).toBe("archived");
+  });
+
   it("archiveTab：live → archived，且清空 activity（灯灭）", () => {
     const tab = tm.ensureTab("s3", "/home", "p", 0, null);
     tab.activity = { status: "busy", waitingFor: null } as unknown as Tab["activity"];

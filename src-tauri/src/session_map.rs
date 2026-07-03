@@ -155,6 +155,22 @@ impl SessionMap {
             })
             .collect()
     }
+
+    /// Batch5-F18：活跃会话清单（sid + cwd），供 `list_active_sessions` IPC——
+    /// 前端启动时先建全部骨架 Tab，不等首条内容行。
+    ///
+    /// 按 (cwd, sid) 排序：HashMap 迭代序每进程随机，不排序则 tab 栏顺序每次
+    /// 启动洗牌（F18 审计发现）。cwd 优先 → 同项目的会话相邻，跨启动稳定。
+    pub fn snapshot_active(&self) -> Vec<(String, String)> {
+        let mut v: Vec<(String, String)> = self
+            .by_id
+            .read()
+            .iter()
+            .map(|(sid, info)| (sid.clone(), info.cwd.clone()))
+            .collect();
+        v.sort_by(|a, b| (&a.1, &a.0).cmp(&(&b.1, &b.0)));
+        v
+    }
 }
 
 fn scan_dir(dir: &Path) -> HashMap<String, SessionInfo> {
@@ -397,6 +413,30 @@ mod tests {
     }
 
     // === issue #23: diff_sessions 行为测试（"变化才发"契约的唯一实现点） ===
+
+    /// Batch5-F18：骨架清单排序契约——HashMap 迭代序随机，(cwd, sid) 排序保证
+    /// tab 栏跨启动稳定且同项目相邻。
+    #[test]
+    fn snapshot_active_sorted_by_cwd_then_sid() {
+        let mut a = mk("sid-b", None, None);
+        a.cwd = "/proj/alpha".into();
+        let mut b = mk("sid-a", None, None);
+        b.cwd = "/proj/alpha".into();
+        let mut c = mk("sid-c", None, None);
+        c.cwd = "/proj/beta".into();
+        let map = SessionMap {
+            dir: std::path::PathBuf::new(),
+            by_id: Arc::new(RwLock::new(as_map(vec![a, b, c]))),
+        };
+        assert_eq!(
+            map.snapshot_active(),
+            vec![
+                ("sid-a".to_string(), "/proj/alpha".to_string()),
+                ("sid-b".to_string(), "/proj/alpha".to_string()),
+                ("sid-c".to_string(), "/proj/beta".to_string()),
+            ]
+        );
+    }
 
     fn mk(sid: &str, status: Option<&str>, waiting: Option<&str>) -> SessionInfo {
         SessionInfo {

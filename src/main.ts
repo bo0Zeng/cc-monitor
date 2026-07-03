@@ -245,12 +245,29 @@ window.addEventListener("DOMContentLoaded", async () => {
     // issue #23: 会话红绿灯（busy=绿 / idle·shell=红 / waiting=黄）
     onSessionActivity: (e) =>
       tabs.updateActivity(e.session_id, e.status, e.waiting_for),
+    // Batch5-F18：远端会话宣告 → 骨架 Tab（无 cwd，标题 [host] sid 前缀，首行补全）
+    onRemoteSessionAdded: (sessionId, origin) =>
+      tabs.createSkeletonTab(sessionId, null, origin),
   });
 
   // v2.0.0 (issue #4)：后端 ERROR 级别 tracing → 右下角红色 toast
   bindErrorToast();
   // issue #32 (SS-F)：远端健康事件（拥塞丢行 / 版本不符）→ 右下角 info toast
   bindRemoteHealthToast();
+
+  // Batch5-F18：frontend-ready 之前先拉本地活跃清单建全部骨架 Tab——用户在
+  // 内容重放开始前就看到完整 tab 栏。失败不阻启动（骨架只是体验优化，行
+  // 到达照常 ensureTab 建）。远端骨架走 remote-session-added 事件，不在此列。
+  try {
+    const active = await invoke<{ session_id: string; cwd: string }[]>(
+      "list_active_sessions",
+    );
+    for (const s of active) {
+      tabs.createSkeletonTab(s.session_id, s.cwd || null, null);
+    }
+  } catch (e) {
+    console.warn("[skeleton] list_active_sessions failed:", e);
+  }
 
   // 通知后端可以发了 —— 缓冲的 line 会被 flush 过来
   window.__ccmPerf.frontendReadyEmit = performance.now();

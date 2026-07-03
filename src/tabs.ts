@@ -356,6 +356,17 @@ export class TabManager {
     }
   }
 
+  /**
+   * Batch5-F18：骨架 Tab——活跃清单（本地 IPC / 远端 session_added 事件）一到
+   * 即建，不等首条内容行。复用 ensureTab 全部语义：cwd 以 MAX_SAFE_INTEGER 的
+   * seq 记入 → 任何真实行的 cwd（更小 seq）照常覆盖为项目根；parentPath 空由
+   * 首条行回填；pendingArchive/pendingActivity 落实、batch 模式继承均沿用。
+   * 已存在同 sid Tab 时为 no-op（幂等，重连重发 session_added 无害）。
+   */
+  createSkeletonTab(sessionId: string, cwd: string | null, origin: string | null): void {
+    this.ensureTab(sessionId, cwd, "", Number.MAX_SAFE_INTEGER, origin);
+  }
+
   ensureTab(
     sessionId: string,
     cwd: string | null,
@@ -372,6 +383,11 @@ export class TabManager {
       if (tab.status === "archived" && tab.origin !== null) {
         tab.status = "live";
         this.refreshTabBar();
+      }
+      // Batch5-F18：骨架 Tab（无行创建）的 parentPath 为空——首条带路径的行回填，
+      // 保住「在新窗口打开」等依赖 jsonl 路径的功能。
+      if (!tab.parentPath && sourcePath) {
+        tab.parentPath = sourcePath;
       }
       // cwd 取**最早（最小 seq）**那条记录的 —— 即项目根 / 启动目录。
       // 不能用「第一个到达的」：启动重放末块先发，最先到的是最新记录，而会话的 cwd
