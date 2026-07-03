@@ -98,36 +98,48 @@ const REMOTE_INFO_TEXT =
   "某台配置不完整（缺 host / user / daemonPath）时后端会跳过该台。";
 
 /**
- * Feature ②：远端 ↗ 拉前用的 `ccm` wrapper。粘到远端 `.bashrc`/`.zshrc`，用 `ccm`
- * 代替 `claude` 启动（或让你的 cc/cct 等启动器内部调它）。它用子 shell + `$BASHPID`
- * 拿到 claude 的精确 PID，claude 存活期间每秒看一眼 `sessions/<PID>.json` 的当前 sid，
- * 变了就重刷窗口标题成 `ccm-rbind-<当前sid>`。本地 monitor 扫到该标题即绑定 HWND。
+ * Feature ②：远端 ↗ 拉前的 bashrc 块——**注册原语与启动器分离**（镜像本地
+ * `__ccm_bind` + 可选 `cc` wrapper 的设计；用户设计评审指正：注册不该耦合启动）：
+ *
+ * - `__ccm_rbind`（注册原语）：只做注册——tmux 内对当前 session 开标题直通 +
+ *   给"即将 `exec claude` 的当前 (子)shell PID"挂 marker watcher（每秒读
+ *   `sessions/<PID>.json` 的 sid，变了就刷窗口标题 `ccm-rbind-<sid>`）。
+ *   不设环境、不启动任何东西。**契约**：须与 `exec claude` 同一 (子)shell——
+ *   `( __ccm_rbind; exec claude ... )`，exec 后 shell PID 即 claude PID。
+ * - `ccm`（可选便捷启动器）：一行薄壳，且**不覆盖用户已有的同名函数**（旧版
+ *   曾无条件覆盖，实测清掉过用户自己带代理的 ccm 启动器——防撞守卫由此而来）。
+ *   自有启动器（cc/cct 等）的用户不用 ccm，在自己的函数里调原语即可。
  *
  * `ccm-rbind-%s` 标记必须与后端 `bind.rs` 的 `format!("ccm-rbind-{sid}")` 完全一致。
  *
- * tmux 自适配（Batch7，真机排查实证）：tmux 默认 `set-titles off`——OSC 标题转义
- * 只落到 pane title、**到不了外层 ssh 终端窗口标题**，marker 被截住导致绑定永远
- * 失败，而这恰是远端最常见的使用形态。ccm 在 `$TMUX` 内自动对**当前 session**
- * 开标题直通（session 级选项，不写 tmux.conf、不影响其它 session）。
+ * tmux 自适配（Batch7 真机排查实证）：tmux 默认 `set-titles off`——OSC 标题转义
+ * 只落到 pane title、到不了外层 ssh 终端窗口标题，marker 被截住导致绑定必然
+ * 失败，而 tmux 恰是远端最常见形态。原语内自动对**当前 session** 开直通
+ * （session 级选项，不写 tmux.conf、不影响其它 session）。
  */
-const CCM_WRAPPER_SNIPPET = `ccm() {
+const CCM_WRAPPER_SNIPPET = `# __ccm_rbind：注册原语（只注册，不启动）。与 exec claude 同一 (子)shell 内调用：
+#   ( __ccm_rbind; exec claude "$@" )
+__ccm_rbind() {
   if [ -n "$TMUX" ]; then
     # tmux 默认不把 pane title 传给外层终端窗口标题（marker 会被截住）；
     # 只对当前 session 开直通，不动全局配置
     tmux set set-titles on >/dev/null 2>&1
     tmux set set-titles-string "#T" >/dev/null 2>&1
   fi
-  ( cpid=$BASHPID
-    ( prev=""
-      while kill -0 "$cpid" 2>/dev/null; do
-        sid=$(grep -o '"sessionId":"[^"]*"' ~/.claude/sessions/$cpid.json 2>/dev/null | head -1 | cut -d'"' -f4)
-        [ -n "$sid" ] && [ "$sid" != "$prev" ] && { printf '\\033]0;ccm-rbind-%s\\007' "$sid"; prev="$sid"; }
-        sleep 1
-      done
-    ) &
-    exec claude "$@"
-  )
-}`;
+  local cpid=$BASHPID
+  ( prev=""
+    while kill -0 "$cpid" 2>/dev/null; do
+      sid=$(grep -o '"sessionId":"[^"]*"' ~/.claude/sessions/$cpid.json 2>/dev/null | head -1 | cut -d'"' -f4)
+      [ -n "$sid" ] && [ "$sid" != "$prev" ] && { printf '\\033]0;ccm-rbind-%s\\007' "$sid"; prev="$sid"; }
+      sleep 1
+    done
+  ) &
+}
+# ccm：便捷启动器（可选）。已有同名函数/命令时不覆盖——自有启动器请在
+# 自己的函数里调 __ccm_rbind（见上方契约）。
+if ! declare -f ccm >/dev/null 2>&1; then
+ccm() { ( __ccm_rbind; exec claude "$@" ); }
+fi`;
 
 export interface RemoteSectionOptions {
   /** 被 CollapsibleGroup 包起来时传 headless: true，不渲染自己的小标题。 */
@@ -367,8 +379,9 @@ class MachineCard {
       "（默认 ~/.cc-monitor/bin/cc-monitor-remote）+ 同目录 .build_id；启用远端后连接时会自动安装，" +
       "下面按钮供手动装 / 卸。② ccm 助手（↗ 拉前用，可选）→ 远端 ~/.bashrc 里一段带 " +
       "cc-monitor BEGIN/END 标记的函数（先备份原文件、只动标记块内）。" +
-      "装好后须用 ccm 启动 claude（或让你的启动脚本内部调 ccm）才能被 ↗/反引号拉起；" +
-      "tmux 里也开箱即用（ccm 自动对当前 tmux session 开标题直通，不改你的 tmux.conf）。";
+      "装好后：无自有启动器 → 直接用 ccm 启动 claude；有自有启动器（cc/cct 等）→ " +
+      "在函数里调注册原语 __ccm_rbind（与 exec claude 同一子 shell：( __ccm_rbind; exec claude ... )）。" +
+      "ccm 不会覆盖你已有的同名函数；tmux 里开箱即用（自动对当前 session 开标题直通，不改 tmux.conf）。";
     body.appendChild(installInfo);
 
     // 动作区：连接测试 + daemon 装/卸 + ccm 装/卸。按钮多，行内可换行。
