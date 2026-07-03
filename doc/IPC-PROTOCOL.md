@@ -320,7 +320,7 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 |---|---|---|
 | `hello` | `v, build_id, host_arch, claude_dir` | 连接建立时**首帧**发一次（握手）；monitor 据 `v` + `build_id` 做版本协商（#33：`v` 不符=不兼容、`build_id` 不符=偏旧，均经 `remote-health` 提示但不 hard-disconnect），`build_id` 单源自 daemon 源码（编译期 env 同步） |
 | `line` | `session_id, path, seq, raw` | tail 到的一行原始 jsonl（`seq` = per-file 单调，口径同本地 watcher） |
-| `session_added` | `sid` | 远端新会话文件出现 |
+| `session_added` | `sid` | 远端新会话文件出现（Batch5-F18 起 ssh_source 收到即同步透传前端 `remote-session-added {session_id, origin}` 事件建骨架 Tab，先于该会话的任何行） |
 | `session_removed` | `sid` | 远端会话文件消失 |
 | `overflow` | `dropped: u64` | issue #32：daemon 发送通道被慢/卡的 SSH 管道反压、丢了 `dropped` 帧的哨兵信号（通道排空到能再容纳时发一次）→ monitor 经 SS-F `remote-health` 事件 toast 提示用户可能丢实时行（丢的行仍在远端 jsonl，重开会话可看完整历史） |
 

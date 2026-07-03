@@ -826,6 +826,15 @@ async fn stream_loop(
                 }
             }
             Some(InboundFrame::SessionAdded { sid }) => {
+                // Batch5-F18：透传前端建骨架 Tab——协议序保证本帧先于该会话的
+                // 内容行，这里同步 emit（先于行 flush），骨架必先于内容出现。
+                let payload = crate::bridge::RemoteSessionAddedPayload {
+                    session_id: sid.clone(),
+                    origin: host_label.clone(),
+                };
+                if let Err(e) = app.emit(crate::bridge::events::REMOTE_SESSION_ADDED, payload) {
+                    tracing::warn!("ssh_source remote-session-added emit failed: {e}");
+                }
                 // FIX 2：记下已宣告的 sid，供连接结束时统一归档。
                 announced.insert(sid.clone());
                 if let Err(e) = session_changes.send(SessionChange {

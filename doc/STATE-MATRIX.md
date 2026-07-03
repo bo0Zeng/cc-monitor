@@ -30,6 +30,7 @@
 - `history.rs::list_history_projects(map: State<'_, Arc<SessionMap>>)`
 - `history.rs::stream_history_sessions_in_project(project_dir, on_entry: Channel, map: State<'_, Arc<SessionMap>>)` (v2.2，v2.6 删了非流式版)
 - `lib.rs::list_session_activity(map: State<'_, Arc<SessionMap>>)` (issue #23：红绿灯启动快照)
+- `lib.rs::list_active_sessions(map: State<'_, Arc<SessionMap>>)` (Batch5-F18：启动骨架 Tab 清单，sid+cwd 按 (cwd,sid) 排序)
 
 ### `Arc<EventReplay>`
 - `lib.rs::forget_session(session_id, replay: State<'_, Arc<EventReplay>>)`

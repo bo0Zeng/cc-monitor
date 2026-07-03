@@ -30,6 +30,11 @@ pub mod events {
     /// （心跳已从 by_id 删过它），但 PID 已死、不发本事件，避免误复活刚归档的死会话 Tab。
     /// 不进 replay buffer（同 session-activity）——F5 靠 list_session_activity 快照收敛。
     pub const SESSION_STARTED: &str = "session-started";
+    /// 远端会话宣告（Batch5-F18）：daemon session_added 帧透传，前端建骨架 Tab。
+    /// 不进 replay buffer——F5 只重载 webview（SSH 连接不重建、daemon 不重发），
+    /// 兜底是该会话的行仍在 buffer：重放行经 ensureTab 照建 Tab。已宣告但零行
+    /// 的远端会话 F5 后骨架消失属可接受边角（首行到达即重建）。
+    pub const REMOTE_SESSION_ADDED: &str = "remote-session-added";
     /// **远端健康通道**（SS-F，issue #32 起）：远端数据源把「拥塞丢行 / 版本不符」等
     /// 非致命健康事件回传给用户。前端单一 listener（remote-health.ts）按 origin 节流后
     /// 弹 toast。`kind` 区分类别（"overflow" / "version" / …），payload 见
@@ -95,6 +100,25 @@ pub struct SessionEndedPayload {
 #[derive(Debug, Serialize, Clone)]
 pub struct SessionStartedPayload {
     pub session_id: String,
+}
+
+/// 远端会话宣告 payload（REMOTE_SESSION_ADDED，Batch5-F18）。daemon 的
+/// session_added 帧透传前端——ssh_source 在 dispatch Added 时同步 emit，
+/// **先于该会话的任何内容行**，前端据此建骨架 Tab 不等首行。
+#[derive(Debug, Serialize, Clone)]
+pub struct RemoteSessionAddedPayload {
+    pub session_id: String,
+    /// 机器标签（`[label]` Tab 前缀）；骨架期无 cwd，标题先用 sid 前缀。
+    pub origin: String,
+}
+
+/// `list_active_sessions` IPC 返回项（Batch5-F18）：本地活跃会话清单（含 cwd），
+/// 供前端启动时先建全部骨架 Tab。远端不走此 IPC——连接晚于前端启动，走
+/// [`RemoteSessionAddedPayload`] 事件。
+#[derive(Debug, Serialize, Clone)]
+pub struct ActiveSessionPayload {
+    pub session_id: String,
+    pub cwd: String,
 }
 
 /// 远端健康事件 payload（SS-F，issue #32 起）。`origin` = 出问题的远端机器 label
