@@ -66,13 +66,13 @@ const DEBOUNCE_MS: u64 = 100;
 /// `claude_dir` is the resolved `~/.claude` (or `$CLAUDE_CONFIG_DIR`). The
 /// reader watches `<claude_dir>/projects/` recursively and
 /// `<claude_dir>/sessions/`.
-pub fn spawn(claude_dir: PathBuf, with_bg: bool) -> mpsc::Receiver<Frame> {
+pub fn spawn(claude_dir: PathBuf, with_bg: bool, tail_only: bool) -> mpsc::Receiver<Frame> {
     let (tx, rx) = mpsc::channel::<Frame>(CHANNEL_CAPACITY);
     // notify-debouncer-mini is a synchronous std::sync::mpsc API; run it on a
     // blocking thread and hand frames to the async writer over tokio mpsc.
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
-        .spawn(move || watch_loop(claude_dir, tx, with_bg))
+        .spawn(move || watch_loop(claude_dir, tx, with_bg, tail_only))
         .expect("spawn jsonl-watcher thread");
     rx
 }
@@ -82,11 +82,11 @@ pub fn spawn(claude_dir: PathBuf, with_bg: bool) -> mpsc::Receiver<Frame> {
 /// Runs on its own OS thread. `tx` is the bounded sender; it is wrapped in a
 /// [`FrameSink`] whose [`FrameSink::send`] never blocks the notify callback and
 /// turns dropped frames into an [`Frame::Overflow`] signal (#32).
-fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool) {
+fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool, tail_only: bool) {
     let projects = claude_dir.join("projects");
     let sessions = claude_dir.join("sessions");
 
-    let mut state = ReaderState::new(projects.clone(), with_bg);
+    let mut state = ReaderState::new(projects.clone(), with_bg, tail_only);
     // All frames go out through a FrameSink: a bounded-channel sender that counts
     // frames dropped on a full channel and emits a single `Overflow` signal once
     // the channel drains enough to accept it (#32). Never blocks this reader.
@@ -220,10 +220,15 @@ struct ReaderState {
     /// Batch7-F24：`--with-bg` 时放行 kind:"bg" 会话（宣告+流行，帧带元信息）；
     /// 默认 false = Batch6-F21 行为（bg 不算会话）。
     with_bg: bool,
+    /// Batch8-F25：`--tail-only` 时连接不重放历史——初扫/宣告只推进 cursor 与
+    /// seq 计数器到当前完整行数 L（行号语义，之后新行 seq 从 L 起），零行帧；
+    /// 历史由 monitor 经 `--read-session` 旁路快照拉取（0..L'-1 由 monitor 编号，
+    /// 重叠区被 (sid,seq) 去重吸收）。默认 false = 全量重放（旧 monitor 兼容）。
+    tail_only: bool,
 }
 
 impl ReaderState {
-    fn new(projects: PathBuf, with_bg: bool) -> Self {
+    fn new(projects: PathBuf, with_bg: bool, tail_only: bool) -> Self {
         ReaderState {
             projects,
             offsets: HashMap::new(),
@@ -231,6 +236,7 @@ impl ReaderState {
             sessions: HashMap::new(),
             active_sids: HashSet::new(),
             with_bg,
+            tail_only,
         }
     }
 }
@@ -510,16 +516,39 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             .and_then(|x| x.as_str())
             .map(str::to_string)
     };
+    // Batch8-F25：先定位该 sid 的 jsonl（帧要带 path 供 monitor 旁路快照；
+    // mtime 降序，first=当前活跃文件。会话刚起还没写首行时为空 → path=None，
+    // 此时无历史可拉，后续行天然从 tail 全量到达）。
+    let projects = state.projects.clone();
+    let jsonls = find_sid_jsonls(&projects, &sid);
+    // 历史处理按模式分流（Batch8-F25）：
+    // - tail-only：**先 prime**（推进 cursor/seq 到当前完整行数 L，零行帧）——
+    //   帧要带 first 文件的 L 供 monitor 校验快照完整性（审计 D-I2），prime
+    //   无行帧故"帧先于行"契约不受影响；
+    // - 全量（默认，旧 monitor 兼容）：帧先行，再照旧全量推流（镜像本地
+    //   session-added 触发的 force-rescan）。
+    let mut first_lines: Option<u64> = None;
+    if state.tail_only {
+        for (i, p) in jsonls.iter().enumerate() {
+            let n = prime_file_cursor(p, state);
+            if i == 0 {
+                first_lines = Some(n);
+            }
+        }
+    }
     sink.send(Frame::SessionAdded {
         sid: sid.clone(),
         session_kind: meta_str("kind"),
         cwd: meta_str("cwd"),
         name: meta_str("name"),
+        path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
+        lines: first_lines,
     });
-    // Now that this session is active, stream its existing jsonl (mirrors the
-    // local force-rescan triggered on session-added).
-    let projects = state.projects.clone();
-    rescan_sid_jsonl(&projects, &sid, state, sink);
+    if !state.tail_only {
+        for p in &jsonls {
+            process_jsonl(p, state, sink);
+        }
+    }
 }
 
 /// A `sessions/<PID>.json` was deleted: look up the cached sid (the file is
@@ -550,19 +579,56 @@ fn retire_sid_if_unreferenced(sid: &str, state: &mut ReaderState, sink: &mut Fra
 /// Walk `projects/` for this session's jsonl (`<sid>.jsonl`, non-subagent) and
 /// stream its already-present lines. Called when a session becomes active so an
 /// already-running session snapshots on session-added (mirrors local force-rescan).
-fn rescan_sid_jsonl(projects: &Path, sid: &str, state: &mut ReaderState, sink: &mut FrameSink) {
+fn find_sid_jsonls(projects: &Path, sid: &str) -> Vec<std::path::PathBuf> {
     if !projects.is_dir() {
-        return;
+        return Vec::new();
     }
-    for entry in WalkDir::new(projects).into_iter().filter_map(Result::ok) {
-        let p = entry.path();
-        if is_jsonl(p)
-            && !is_subagent_path(p)
-            && p.file_stem().and_then(|s| s.to_str()) == Some(sid)
-        {
-            process_jsonl(p, state, sink);
-        }
+    let mut v: Vec<std::path::PathBuf> = WalkDir::new(projects)
+        .into_iter()
+        .filter_map(Result::ok)
+        .map(|e| e.into_path())
+        .filter(|p| {
+            is_jsonl(p)
+                && !is_subagent_path(p)
+                && p.file_stem().and_then(|s| s.to_str()) == Some(sid)
+        })
+        .collect();
+    // Batch8 审计（缝合-R4）：同 sid 多 jsonl（项目目录改名后 resume）时
+    // WalkDir 顺序未定义——按 mtime 降序让 first = 当前活跃文件（帧的 path/
+    // lines 取 first，快照拉错陈文件 = 当前历史全缺）。
+    v.sort_by_key(|p| std::cmp::Reverse(std::fs::metadata(p).and_then(|m| m.modified()).ok()));
+    v
+}
+
+/// Batch8-F25：tail-only 的初扫/宣告路径——把 cursor 与 seq 计数器推进到当前
+/// **最后一个完整行**（F14 torn-line 语义：残行不计数、留给 tail 阶段），
+/// 不发任何行帧。之后 notify 到来的新行 seq == 此刻完整行数 L（行号语义），
+/// 与 monitor 快照侧的 0..L'-1 编号同处一个行号空间，重叠区被 (sid,seq)
+/// 去重精确吸收（MASTERPLAN-batch8 §2）。
+fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
+    let Some(session_id) = file_stem_str(path) else {
+        return 0;
+    };
+    if !state.active_sids.contains(&session_id) {
+        return 0;
     }
+    let Ok(bytes) = std::fs::read(path) else {
+        return 0;
+    };
+    let key = path_key(path);
+    let key_str = key.to_string_lossy().into_owned();
+    let prev = state.offsets.get(&key).copied().unwrap_or_default();
+    let (lines, cursor) = read_new_lines(&bytes, prev, &key_str, &mut state.seqs);
+    state.offsets.insert(key, cursor);
+    tracing::debug!(
+        "primed {key_str}: cursor→{} (+{} lines suppressed, tail seq starts here)",
+        cursor.consumed,
+        lines.len()
+    );
+    // Batch8 审计 D-I2：返回 prime 后的行号计数器现值（= 完整行总数 L），
+    // session_added 帧带给 monitor 做快照完整性校验（拉到的行数 < L = 快照
+    // 中途断/daemon 报错——exit status 拿不到，行数校验更强）。
+    state.seqs.peek(&key_str)
 }
 
 /// Whether `pid` currently exists as a process on this host (existence only).
@@ -1291,7 +1357,7 @@ mod tests {
         let ticks = proc_starttime(pid).expect("own starttime");
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
         let mut sink = FrameSink::new(tx);
-        let mut state = ReaderState::new(dir.join("projects"), false);
+        let mut state = ReaderState::new(dir.join("projects"), false, false);
         let path = dir.join(format!("{pid}.json"));
 
         let write = |sid: &str| {
@@ -1330,7 +1396,7 @@ mod tests {
         let ticks = proc_starttime(pid).expect("own starttime");
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
         let mut sink = FrameSink::new(tx);
-        let mut state = ReaderState::new(dir.join("projects"), false);
+        let mut state = ReaderState::new(dir.join("projects"), false, false);
 
         // 两个 pidfile 同 sid（借同一真实存活 pid；path key 不同即两个 entry）
         let p1 = dir.join(format!("{pid}.json"));
@@ -1388,7 +1454,7 @@ mod tests {
         let ticks = proc_starttime(pid).expect("own starttime");
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
         let mut sink = FrameSink::new(tx);
-        let mut state = ReaderState::new(dir.join("projects"), false);
+        let mut state = ReaderState::new(dir.join("projects"), false, false);
         let path = dir.join(format!("{pid}.json"));
         std::fs::write(
             &path,
@@ -1403,6 +1469,135 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    // === Batch8-F25：tail-only 模式 ===
+
+    /// tail-only 初扫：宣告帧带 path、零行帧；随后追加的新行 seq == 初扫时完整
+    /// 行数 L（行号语义）；末尾残行不计数（F14 torn-line 语义）。
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn tail_only_primes_cursor_and_new_line_seq_is_line_number() {
+        let dir = std::env::temp_dir().join(format!("ccm-tailonly-{}", std::process::id()));
+        let proj = dir.join("projects").join("proj-x");
+        std::fs::create_dir_all(&proj).unwrap();
+        let pid = std::process::id();
+        let ticks = proc_starttime(pid).expect("own starttime");
+        // 既有历史：3 个完整行 + 1 个残行（残行不计数 → L=3）
+        let jsonl = proj.join("tail-sid.jsonl");
+        std::fs::write(&jsonl, b"{\"a\":1}\n{\"a\":2}\n{\"a\":3}\n{\"torn").unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(dir.join("projects"), false, true); // --tail-only
+        let pidfile = dir.join(format!("{pid}.json"));
+        std::fs::write(
+            &pidfile,
+            format!(r#"{{"pid":{pid},"sessionId":"tail-sid","cwd":"/p","procStart":"{ticks}"}}"#),
+        )
+        .unwrap();
+        process_session_added(&pidfile, &mut state, &mut sink);
+        // ① 宣告帧带 path
+        match rx.try_recv() {
+            Ok(Frame::SessionAdded {
+                sid, path, lines, ..
+            }) => {
+                assert_eq!(sid, "tail-sid");
+                assert_eq!(path.as_deref(), Some(jsonl.to_string_lossy().as_ref()));
+                assert_eq!(
+                    lines,
+                    Some(3),
+                    "帧应带 prime 时的完整行数 L（快照完整性校验用）"
+                );
+            }
+            other => panic!("expected SessionAdded, got {other:?}"),
+        }
+        // ② 零行帧（历史被 prime 吸收）
+        assert!(rx.try_recv().is_err(), "tail-only 初扫不得发行帧");
+        // ③ 补全残行 + 追加新行 → 唯一行帧 seq==3（残行补全后成为第 3 行，0-based）
+        std::fs::write(
+            &jsonl,
+            b"{\"a\":1}\n{\"a\":2}\n{\"a\":3}\n{\"torn\":true}\n{\"new\":1}\n",
+        )
+        .unwrap();
+        process_jsonl(&jsonl, &mut state, &mut sink);
+        match rx.try_recv() {
+            Ok(Frame::Line { seq, raw, .. }) => {
+                assert_eq!(seq, 3, "残行补全行的 seq 应为初扫完整行数 L=3");
+                assert_eq!(raw, r#"{"torn":true}"#);
+            }
+            other => panic!("expected Line, got {other:?}"),
+        }
+        match rx.try_recv() {
+            Ok(Frame::Line { seq, .. }) => assert_eq!(seq, 4),
+            other => panic!("expected Line, got {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 默认（全量）模式行为不变：初扫把既有行全部推流（旧 monitor 兼容锚点）。
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn full_replay_mode_still_streams_history() {
+        let dir = std::env::temp_dir().join(format!("ccm-fullmode-{}", std::process::id()));
+        let proj = dir.join("projects").join("proj-y");
+        std::fs::create_dir_all(&proj).unwrap();
+        let pid = std::process::id();
+        let ticks = proc_starttime(pid).expect("own starttime");
+        std::fs::write(proj.join("full-sid.jsonl"), b"{\"h\":1}\n{\"h\":2}\n").unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(dir.join("projects"), false, false); // 默认全量
+        let pidfile = dir.join(format!("{pid}.json"));
+        std::fs::write(
+            &pidfile,
+            format!(r#"{{"pid":{pid},"sessionId":"full-sid","cwd":"/p","procStart":"{ticks}"}}"#),
+        )
+        .unwrap();
+        process_session_added(&pidfile, &mut state, &mut sink);
+        assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
+        assert!(matches!(rx.try_recv(), Ok(Frame::Line { seq: 0, .. })));
+        assert!(matches!(rx.try_recv(), Ok(Frame::Line { seq: 1, .. })));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// F25 DoD ④：(with_bg, tail_only) = (true, true) 组合——bg 会话放行且
+    /// tail-only 生效（宣告带元信息+path+lines，历史零行帧）。
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn with_bg_and_tail_only_combined() {
+        let dir = std::env::temp_dir().join(format!("ccm-combo-{}", std::process::id()));
+        let proj = dir.join("projects").join("proj-c");
+        std::fs::create_dir_all(&proj).unwrap();
+        let pid = std::process::id();
+        let ticks = proc_starttime(pid).expect("own starttime");
+        std::fs::write(proj.join("combo-sid.jsonl"), b"{\"h\":1}\n{\"h\":2}\n").unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(dir.join("projects"), true, true); // 双开
+        let pidfile = dir.join(format!("{pid}.json"));
+        std::fs::write(
+            &pidfile,
+            format!(r#"{{"pid":{pid},"sessionId":"combo-sid","cwd":"/p","kind":"bg","name":"任务","procStart":"{ticks}"}}"#),
+        )
+        .unwrap();
+        process_session_added(&pidfile, &mut state, &mut sink);
+        match rx.try_recv() {
+            Ok(Frame::SessionAdded {
+                sid,
+                session_kind,
+                lines,
+                path,
+                ..
+            }) => {
+                assert_eq!(sid, "combo-sid");
+                assert_eq!(session_kind.as_deref(), Some("bg"), "with_bg 放行");
+                assert_eq!(lines, Some(2), "tail-only 带 L");
+                assert!(path.is_some());
+            }
+            other => panic!("expected SessionAdded, got {other:?}"),
+        }
+        assert!(rx.try_recv().is_err(), "tail-only：历史零行帧");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     // === Batch7-F24：--with-bg 放行 + 帧元信息 ===
 
     #[cfg(target_os = "linux")]
@@ -1414,7 +1609,7 @@ mod tests {
         let ticks = proc_starttime(pid).expect("own starttime");
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
         let mut sink = FrameSink::new(tx);
-        let mut state = ReaderState::new(dir.join("projects"), true); // --with-bg
+        let mut state = ReaderState::new(dir.join("projects"), true, false); // --with-bg
         let path = dir.join(format!("{pid}.json"));
         std::fs::write(
             &path,
@@ -1428,6 +1623,7 @@ mod tests {
                 session_kind,
                 cwd,
                 name,
+                ..
             }) => {
                 assert_eq!(sid, "bg-sid");
                 assert_eq!(session_kind.as_deref(), Some("bg"));
@@ -1470,7 +1666,7 @@ mod tests {
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
         let mut sink = FrameSink::new(tx);
-        let mut state = ReaderState::new(dir.join("projects"), false);
+        let mut state = ReaderState::new(dir.join("projects"), false, false);
 
         // bg pidfile：作者活着、procStart 逐位相等——F20 证据全过，但 kind 门拒
         let bg_path = dir.join(format!("{pid}.json"));
@@ -1717,12 +1913,16 @@ mod tests {
             session_kind: None,
             cwd: None,
             name: None,
+            path: None,
+            lines: None,
         });
         sink.send(Frame::SessionAdded {
             sid: "b".into(),
             session_kind: None,
             cwd: None,
             name: None,
+            path: None,
+            lines: None,
         });
         assert_eq!(
             sink.dropped, 0,
@@ -1735,18 +1935,24 @@ mod tests {
             session_kind: None,
             cwd: None,
             name: None,
+            path: None,
+            lines: None,
         });
         sink.send(Frame::SessionAdded {
             sid: "d".into(),
             session_kind: None,
             cwd: None,
             name: None,
+            path: None,
+            lines: None,
         });
         sink.send(Frame::SessionAdded {
             sid: "e".into(),
             session_kind: None,
             cwd: None,
             name: None,
+            path: None,
+            lines: None,
         });
         assert_eq!(sink.dropped, 3);
 
@@ -1773,6 +1979,8 @@ mod tests {
             session_kind: None,
             cwd: None,
             name: None,
+            path: None,
+            lines: None,
         });
         assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
     }

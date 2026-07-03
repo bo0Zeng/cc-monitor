@@ -42,6 +42,18 @@ pub enum Frame {
         cwd: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
+        /// Batch8-F25（additive）：该会话 jsonl 的远端绝对路径（同 sid 多文件时
+        /// 取 mtime 最新者）——monitor 旁路快照（`--read-session`）用。宣告时
+        /// 未找到 jsonl（会话刚起还没写首行）→ None：此时无历史可拉，后续行
+        /// 天然从 tail 的 seq 0 起全量到达，无需快照。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        /// Batch8 审计 D-I2（additive）：tail-only 模式下 prime 时的完整行数 L
+        /// ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/daemon
+        /// 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强）。
+        /// 全量模式 None。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        lines: Option<u64>,
     },
     /// A session file went away.
     SessionRemoved { sid: String },
@@ -81,6 +93,11 @@ impl SeqCounter {
         SeqCounter {
             next: HashMap::new(),
         }
+    }
+
+    /// Batch8：当前计数器值（= 下一个将分配的 seq = 已计完整行数），不推进。
+    pub fn peek(&self, path: &str) -> u64 {
+        self.next.get(path).copied().unwrap_or(0)
     }
 
     /// Return the current seq for `path`, then bump it by one.
@@ -150,6 +167,8 @@ mod tests {
                     session_kind: None,
                     cwd: None,
                     name: None,
+                    path: None,
+                    lines: None,
                 },
                 "session_added",
             ),

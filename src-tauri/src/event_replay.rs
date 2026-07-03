@@ -32,6 +32,9 @@ struct Inner {
     /// P5.4 B 重构：删了 `replaying` flag —— chunked emit 期间 watcher push 直接
     /// emit，前端 timeline 按 seq 自动放到正确位置。
     ready: bool,
+    /// Batch8-F26：frontend-ready 携带的"用户上次所在 tab"（F19 语义）。存下来
+    /// 供远端快照拉取排队（当前 tab 的会话先拉）；None = 无记忆/未就绪。
+    priority_sid: Option<String>,
 }
 
 /// 切块阈值（v2.3.1 issue #1 启动加速 + P5.4 B 重构简化）。
@@ -62,6 +65,7 @@ impl EventReplay {
             inner: Mutex::new(Inner {
                 history: VecDeque::new(),
                 ready: false,
+                priority_sid: None,
             }),
         }
     }
@@ -194,6 +198,8 @@ impl EventReplay {
         priority_sid: Option<&str>,
     ) {
         let started = std::time::Instant::now();
+        // Batch8-F26：留存 priority（远端快照排队用）
+        self.inner.lock().priority_sid = priority_sid.map(str::to_string);
 
         // 阶段 1：拿 snapshot + 立即置 ready
         // P5.4 B 重构：no more replaying flag。chunked emit 期间 watcher 真新行
@@ -317,6 +323,11 @@ impl EventReplay {
         if removed > 0 {
             tracing::info!("event_replay forget {session_id}: dropped {removed} entries");
         }
+    }
+
+    /// Batch8-F26：远端快照排队的优先 sid（F19"上次所在 tab"）。
+    pub fn priority_sid(&self) -> Option<String> {
+        self.inner.lock().priority_sid.clone()
     }
 
     /// replay 后对账用：buffer 里所有**本地**（`origin == None`）session 的去重 sid。

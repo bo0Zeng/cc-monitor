@@ -46,7 +46,60 @@ const PROTO_VERSION: u32 = 1;
 ///   + sid 原地变更 removed + 同 sid 多 PID 引用计数（Batch6-F22）
 /// - p1e-bg-tree = + --with-bg 放行 bg 会话、session_added 帧附 session_kind/cwd/name
 ///   （Batch7-F24，additive 向后兼容）
-const BUILD_ID: &str = "p1e-bg-tree";
+/// - p1f-tail-snapshot = + --tail-only（连接不重放历史，seq=行号语义）、
+///   session_added 帧附 path（Batch8-F25，历史改走 monitor 旁路 --read-session 快照）
+const BUILD_ID: &str = "p1f-tail-snapshot";
+
+/// Batch7-F24/Batch8-F25：从 argv 剥离流模式 flag（`--with-bg` / `--tail-only`），
+/// 返回（剩余参数, with_bg, tail_only）。**必须在一次性查询模式判定之前调用**
+/// （INVARIANT §26：flag 落进 query 分支 → daemon 打印查询结果退出 → monitor
+/// 无 hello 死循环）。
+fn split_stream_flags(mut args: Vec<String>) -> (Vec<String>, bool, bool) {
+    let with_bg = args.iter().any(|a| a == "--with-bg");
+    let tail_only = args.iter().any(|a| a == "--tail-only");
+    args.retain(|a| a != "--with-bg" && a != "--tail-only");
+    (args, with_bg, tail_only)
+}
+
+#[cfg(test)]
+mod stream_flag_tests {
+    use super::split_stream_flags;
+
+    fn v(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// F25 DoD ③：流模式 flag 剥离后不残留（不会误入查询模式判定）。
+    #[test]
+    fn flags_are_stripped_and_detected() {
+        let (rest, bg, tail) = split_stream_flags(v(&["--with-bg", "--tail-only"]));
+        assert!(
+            rest.is_empty(),
+            "剥净 → 流模式（!args.is_empty() 为 false）"
+        );
+        assert!(bg);
+        assert!(tail);
+        let (rest, bg, tail) = split_stream_flags(v(&["--tail-only"]));
+        assert!(rest.is_empty());
+        assert!(!bg);
+        assert!(tail);
+        let (rest, bg, tail) = split_stream_flags(v(&[]));
+        assert!(rest.is_empty());
+        assert!(!bg);
+        assert!(!tail);
+    }
+
+    /// 查询参数与流 flag 互不干扰：查询参数原样保留（顺带守住"flag 混进查询
+    /// 命令行也不会破坏查询"的边角）。
+    #[test]
+    fn query_args_pass_through() {
+        let (rest, bg, tail) =
+            split_stream_flags(v(&["--read-session", "/p/s.jsonl", "--with-bg"]));
+        assert_eq!(rest, v(&["--read-session", "/p/s.jsonl"]));
+        assert!(bg);
+        assert!(!tail);
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -66,9 +119,10 @@ async fn main() {
     // 旧 daemon 不认参数会照常发 hello 进流模式——monitor 以"首行是 hello 帧"
     // 识别旧版并提示升级（优雅降级，无协议版本协商负担）。
     let mut args: Vec<String> = std::env::args().skip(1).collect();
-    // Batch7-F24：流模式 flag，先剥离再判一次性查询模式（否则误入 query 分支）
-    let with_bg = args.iter().any(|a| a == "--with-bg");
-    args.retain(|a| a != "--with-bg");
+    // Batch7-F24/Batch8-F25：流模式 flag 集合，先剥离再判一次性查询模式
+    // （否则误入 query 分支——INVARIANT §26）。纯函数化供单测（审计 D）。
+    let (args_rest, with_bg, tail_only) = split_stream_flags(args);
+    let args = args_rest;
     if !args.is_empty() {
         // 一次性查询模式：--search 走全文搜索（#28），其余走历史查询（#16）。
         let code = match args.first().map(String::as_str) {
@@ -97,7 +151,7 @@ async fn main() {
 
     // (c) Start the watcher reader; it returns the receiving half of the
     // bounded frame channel.
-    let rx = watcher::spawn(claude_dir, with_bg);
+    let rx = watcher::spawn(claude_dir, with_bg, tail_only);
 
     // (d) Run the stdout writer until the channel closes or a signal fires.
     tokio::select! {

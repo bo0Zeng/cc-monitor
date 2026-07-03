@@ -309,19 +309,377 @@ async fn authenticate_via_agent(
 ///
 /// 鉴权委托给 [`connect_session`]（publickey 或 ssh-agent）。
 /// 错误统一 map 成 `String`（本 crate 未直接依赖 anyhow，不为骨架引入新依赖）。
+/// Batch7-F24/Batch8-F26 版本门控决策（纯函数，矩阵单测）：只对**确认为当前
+/// 版本**的 daemon 传流模式 flag——旧 daemon 会把未知参数当一次性查询处理后
+/// 退出（无 hello → 重连死循环），确认不了（手动部署 / ~ 路径 / 无内嵌 arch /
+/// stale 内嵌被拒）一律降级不传：全量推流 = 2.18.0 行为，功能退化但连接正常。
+/// tail_only=true 时历史改走旁路快照（实时通道不再背 64MB 级重放，拥塞根除）。
+fn decide_stream_flags(
+    confirmed_build: Option<&str>,
+    expected: &str,
+    show_bg: bool,
+) -> (bool, bool) {
+    let confirmed = confirmed_build == Some(expected);
+    (show_bg && confirmed, confirmed)
+}
+
+#[cfg(test)]
+mod stream_flag_gate_tests {
+    use super::decide_stream_flags;
+
+    /// F26 DoD：版本门控矩阵——未确认（None/旧版本）恒 (false,false)；
+    /// 确认后 tail_only 恒开、with_bg 随 showBgSessions。
+    #[test]
+    fn version_gate_matrix() {
+        const EXP: &str = "p1f-tail-snapshot";
+        assert_eq!(decide_stream_flags(None, EXP, true), (false, false));
+        assert_eq!(decide_stream_flags(None, EXP, false), (false, false));
+        assert_eq!(
+            decide_stream_flags(Some("p1e-bg-tree"), EXP, true),
+            (false, false),
+            "旧版本确认值 ≠ 期望 → 全降级"
+        );
+        assert_eq!(decide_stream_flags(Some(EXP), EXP, true), (true, true));
+        assert_eq!(
+            decide_stream_flags(Some(EXP), EXP, false),
+            (false, true),
+            "关 showBgSessions 只关 with_bg，tail-only 照开"
+        );
+    }
+}
+
 pub async fn connect_and_exec(
     cfg: &RemoteConfig,
     with_bg: bool,
+    tail_only: bool,
 ) -> Result<russh::ChannelStream<client::Msg>, String> {
     // 与 jsonl-watcher 不同，daemon 是长连接：inactivity_timeout=None → connect_session
     // 自动启用 30s keepalive（见 FIX 1 注释），靠 keepalive + EOF 检死链，不靠定时拆链。
-    // Batch7-F24：with_bg 由调用方决定（run_stream 里绑定"部署确认为当前版本"，
-    // 见该处注释）——bg 会话宣告+流行（帧带元信息）；false = 不流 bg 数据。
+    // Batch7-F24/Batch8-F26：两个流模式 flag 都由调用方决定（run_stream 里绑定
+    // "部署确认为当前版本"，见该处注释）。tail_only=true → daemon 不重放历史
+    // （历史由本侧旁路 --read-session 快照拉取），实时通道流量趋零。
     let mut cmd = shell_quote(&cfg.daemon_path);
     if with_bg {
         cmd.push_str(" --with-bg");
     }
+    if tail_only {
+        cmd.push_str(" --tail-only");
+    }
     connect_and_exec_cmd(cfg, &cmd).await
+}
+
+// === Batch8-F26：旁路快照拉取（"每管道一个对话，完就断"——用户设计） ===
+//
+// tail-only 下 daemon 不再重放历史；每个已宣告会话的完整历史由这里经**独立
+// SSH 连接**跑 `--read-session` 一次性查询拉回，按行号编 seq 灌进与 tail 行
+// 完全相同的管线（flush_lines → on_line_batch_awaited）。两路 seq 同处行号
+// 空间：重叠区是精确重复的 (sid,seq)，被前端既有去重吸收（MASTERPLAN-batch8 §2）。
+// 并发 ≤SNAPSHOT_CONCURRENCY（不抢 tail 通道带宽）；F19 priority sid 优先出队。
+
+const SNAPSHOT_CONCURRENCY: usize = 2;
+/// 单会话快照体量上限（防御：远端超巨文件不无界拉取；超限截断 warn——
+/// 历史浏览器按需查询不受此限）。
+const SNAPSHOT_MAX_BYTES: u64 = 512 * 1024 * 1024;
+const SNAPSHOT_CHUNK_LINES: usize = 500;
+const SNAPSHOT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// 每连接一个：待拉快照队列。sid 幂等（重复宣告不重拉）；`cancel(sid)`
+/// （SessionRemoved 时调）摘除排队项 + 给 inflight 打取消标记 + 从 seen 摘除
+/// （同连接内 removed→re-added 可重拉，审计 D-S4）；close（断连）**立即作废**
+/// 未开拉的排队项——重连会重建队列重拉，断连后继续拉只会把行灌在归档清算
+/// 之后（审计 D-B1 僵尸复活）。
+struct SnapshotQueue {
+    pending: std::sync::Mutex<SnapshotPending>,
+    notify: tokio::sync::Notify,
+    closed: std::sync::atomic::AtomicBool,
+}
+
+struct SnapshotPending {
+    queue: std::collections::VecDeque<SnapshotItem>,
+    seen: std::collections::HashSet<String>,
+    /// 已取消（会话已 removed）的 sid——inflight fetch 每个 chunk 边界查它中止。
+    cancelled: std::collections::HashSet<String>,
+}
+
+#[derive(Clone)]
+struct SnapshotItem {
+    sid: String,
+    path: String,
+    /// daemon prime 时的完整行数 L（p1f 帧 `lines`）——完整性校验：快照行数
+    /// < L = 中途断/daemon 报错 → 判失败重试（审计 D-I2：exit status 拿不到）。
+    expected_lines: Option<u64>,
+}
+
+/// stream_loop 退出（重连/EOF/错误任何路径）时关队列。
+struct SnapshotQueueCloser(std::sync::Arc<SnapshotQueue>);
+impl Drop for SnapshotQueueCloser {
+    fn drop(&mut self) {
+        self.0.close();
+    }
+}
+
+impl SnapshotQueue {
+    fn new() -> std::sync::Arc<Self> {
+        std::sync::Arc::new(SnapshotQueue {
+            pending: std::sync::Mutex::new(SnapshotPending {
+                queue: std::collections::VecDeque::new(),
+                seen: std::collections::HashSet::new(),
+                cancelled: std::collections::HashSet::new(),
+            }),
+            notify: tokio::sync::Notify::new(),
+            closed: std::sync::atomic::AtomicBool::new(false),
+        })
+    }
+
+    fn push(&self, item: SnapshotItem) {
+        {
+            let mut p = self.pending.lock().unwrap();
+            // 重新宣告 = 会话回来了：解除既往取消标记（cancel 时 seen 已摘，
+            // 这里 insert 成功才入队）。
+            p.cancelled.remove(&item.sid);
+            if !p.seen.insert(item.sid.clone()) {
+                return; // 本连接内已拉/在拉
+            }
+            p.queue.push_back(item);
+        }
+        self.notify.notify_one();
+    }
+
+    /// SessionRemoved：摘排队项 + 标记 inflight 取消 + 允许 re-added 重拉。
+    fn cancel(&self, sid: &str) {
+        let mut p = self.pending.lock().unwrap();
+        p.queue.retain(|it| it.sid != sid);
+        p.seen.remove(sid);
+        p.cancelled.insert(sid.to_string());
+    }
+
+    /// inflight fetch 的取消/作废检查（chunk 边界调）：会话已 removed 或连接
+    /// 已断（断连后继续灌行会落在归档清算之后——B1）。
+    fn is_cancelled(&self, sid: &str) -> bool {
+        self.closed.load(std::sync::atomic::Ordering::SeqCst)
+            || self.pending.lock().unwrap().cancelled.contains(sid)
+    }
+
+    fn close(&self) {
+        self.closed.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.notify.notify_waiters();
+    }
+
+    /// 出队：priority sid（若在队中）优先，否则 FIFO。**closed 即 None**（未开
+    /// 拉的排队项作废，重连重拉）。
+    ///
+    /// 丢失唤醒防护（审计 D-I1）：`notify_waiters` 不给未注册者存 permit——
+    /// 必须**先注册**（`enable`）再检查状态，close/push 发生在注册后必被捕获、
+    /// 发生在注册前则状态检查看得到。
+    async fn pop(&self, priority: Option<String>) -> Option<SnapshotItem> {
+        loop {
+            let notified = self.notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if self.closed.load(std::sync::atomic::Ordering::SeqCst) {
+                return None;
+            }
+            {
+                let mut p = self.pending.lock().unwrap();
+                if let Some(pri) = priority.as_deref() {
+                    if let Some(i) = p.queue.iter().position(|it| it.sid == pri) {
+                        return p.queue.remove(i);
+                    }
+                }
+                if let Some(item) = p.queue.pop_front() {
+                    return Some(item);
+                }
+            }
+            notified.await;
+        }
+    }
+}
+
+/// 分发器：每连接一个 task。并发 ≤SNAPSHOT_CONCURRENCY 地把队列里的会话交给
+/// [`fetch_snapshot`]；每项失败重试 1 次（间隔 1s），仍败 → remote-health toast
+/// （该 tab 只有实时行，历史浏览器兜底可看全量）。取消（会话 removed/断连）
+/// 不算失败、不重试不 toast。
+async fn snapshot_dispatcher(
+    q: std::sync::Arc<SnapshotQueue>,
+    cfg: RemoteConfig,
+    replay: Arc<EventReplay>,
+    app: tauri::AppHandle,
+    host_label: String,
+) {
+    let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(SNAPSHOT_CONCURRENCY));
+    loop {
+        let Ok(permit) = sem.clone().acquire_owned().await else {
+            return; // semaphore closed（不可达，防御）
+        };
+        let Some(item) = q.pop(replay.priority_sid()).await else {
+            return; // 队列已关（排队项作废，重连重拉）
+        };
+        let q = q.clone();
+        let cfg = cfg.clone();
+        let replay = replay.clone();
+        let app = app.clone();
+        let host_label = host_label.clone();
+        tauri::async_runtime::spawn(async move {
+            let _permit = permit;
+            let sid_short: String = item.sid.chars().take(8).collect();
+            let mut last_err = String::new();
+            for attempt in 1..=2 {
+                match fetch_snapshot(&q, &cfg, &item, &host_label, &replay, &app).await {
+                    Ok(FetchOutcome::Done(lines)) => {
+                        tracing::info!(
+                            "snapshot [{host_label}] {sid_short}: {lines} 行历史就位（attempt {attempt}）"
+                        );
+                        return;
+                    }
+                    Ok(FetchOutcome::Cancelled) => {
+                        // 会话已 removed / 连接已断：静默中止（补偿归档已在
+                        // fetch 内 emit），不重试不 toast。
+                        tracing::info!(
+                            "snapshot [{host_label}] {sid_short}: 取消（会话结束/断连）"
+                        );
+                        return;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "snapshot [{host_label}] {sid_short} attempt {attempt} 失败: {e}"
+                        );
+                        last_err = e;
+                        if attempt == 1 {
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                        }
+                    }
+                }
+            }
+            let payload = crate::bridge::RemoteHealthPayload {
+                origin: Some(host_label.clone()),
+                kind: "snapshot".to_string(),
+                message: format!(
+                    "会话 {sid_short} 的历史快照拉取失败（{last_err}）——该 Tab 暂只有实时消息，可从历史浏览器查看完整内容。"
+                ),
+            };
+            if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                tracing::warn!("snapshot remote-health emit failed: {e}");
+            }
+        });
+    }
+}
+
+/// fetch 的三态结果：完成（行数）/ 被取消（不重试）。错误走 Err。
+enum FetchOutcome {
+    Done(u64),
+    Cancelled,
+}
+
+/// 判定快照流的一行是否计入行号（**必须与 daemon `read_new_lines` 一字一致**：
+/// BOM + 全空白的行跳过且不消耗 seq——两路 seq 同处行号空间的前提）。
+fn snapshot_line_countable(line: &str) -> bool {
+    !line.trim_start_matches('\u{feff}').trim().is_empty()
+}
+
+/// 拉取单个会话的完整历史快照并灌进既有管线。
+///
+/// 读取是 **fill_buf 字节级**（审计 D-I3/S2/S5）：超时打在"单次底层读无进展"
+/// 而非整行（多 MB 的 base64 图片行在慢链路上不再假超时）；`from_utf8_lossy`
+/// 解码对齐 daemon（坏字节不再让该会话历史永不可得）；EOF 处无 `\n` 的残行
+/// 丢弃不计 seq（与 daemon `read_new_lines` 的 F14 语义一字一致）。
+///
+/// 每个 chunk 边界查取消（会话 removed / 连接断）——中止并**补偿 emit 一次
+/// session-ended**：若某个已 flush 的 chunk 恰把归档 tab"见行复活"，这里把它
+/// 压回 archived（审计 D-B1 僵尸复活的封口；archiveTab 幂等，重复无害）。
+///
+/// 完整性校验（审计 D-I2）：p1f 帧带 prime 时的行数 L——拉到的行数 < L 即
+/// 判失败（daemon exit 2 时 stdout 零字节、512MB take 截断等都会在此兜住）。
+async fn fetch_snapshot(
+    q: &std::sync::Arc<SnapshotQueue>,
+    cfg: &RemoteConfig,
+    item: &SnapshotItem,
+    host_label: &str,
+    replay: &Arc<EventReplay>,
+    app: &tauri::AppHandle,
+) -> Result<FetchOutcome, String> {
+    let sid = &item.sid;
+    let path = &item.path;
+    let cmd = format!(
+        "{} --read-session {}",
+        shell_quote(&cfg.daemon_path),
+        shell_quote(path)
+    );
+    let stream = connect_and_exec_cmd(cfg, &cmd).await?;
+    use tokio::io::AsyncBufReadExt;
+    let mut reader = tokio::io::BufReader::new(stream);
+    let mut acc: Vec<u8> = Vec::new();
+    let mut total_bytes: u64 = 0;
+    let mut seq: u64 = 0;
+    let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
+    let mut cancelled = false;
+    'read: loop {
+        // 无进展超时：计时对象是单次底层读（fill_buf），不是一整行。
+        let n = {
+            let buf = tokio::time::timeout(SNAPSHOT_READ_TIMEOUT, reader.fill_buf())
+                .await
+                .map_err(|_| "快照读取超时（60s 无数据进展）".to_string())?
+                .map_err(|e| format!("快照读取失败: {e}"))?;
+            if buf.is_empty() {
+                break 'read; // EOF；acc 里的无 \n 残行按 F14 语义丢弃
+            }
+            acc.extend_from_slice(buf);
+            buf.len()
+        };
+        reader.consume(n);
+        total_bytes += n as u64;
+        if total_bytes > SNAPSHOT_MAX_BYTES {
+            // 防御上限：不再继续拉（完整性校验会把截断判为失败 → toast）。
+            tracing::warn!(
+                "snapshot [{host_label}] {sid}: 超过 {SNAPSHOT_MAX_BYTES} 字节上限，截断"
+            );
+            break 'read;
+        }
+        // 切出 acc 中所有完整行
+        while let Some(pos) = acc.iter().position(|&b| b == b'\n') {
+            let line_bytes: Vec<u8> = acc.drain(..=pos).collect();
+            let line = String::from_utf8_lossy(&line_bytes[..line_bytes.len() - 1]);
+            let line = line.trim_end_matches('\r');
+            if !snapshot_line_countable(line) {
+                continue;
+            }
+            chunk.push(JsonlLine {
+                session_id: sid.to_string(),
+                path: std::path::PathBuf::from(path),
+                seq,
+                raw: line.to_string(),
+            });
+            seq += 1;
+            if chunk.len() >= SNAPSHOT_CHUNK_LINES {
+                if q.is_cancelled(sid) {
+                    cancelled = true;
+                    break 'read;
+                }
+                flush_lines(replay, app, host_label, std::mem::take(&mut chunk)).await;
+            }
+        }
+    }
+    if cancelled || q.is_cancelled(sid) {
+        // 补偿归档（见 doc comment）；丢弃未 flush 的 chunk。
+        let payload = crate::bridge::SessionEndedPayload {
+            session_id: sid.to_string(),
+        };
+        if let Err(e) = app.emit(crate::bridge::events::SESSION_ENDED, payload) {
+            tracing::warn!("snapshot 补偿归档 emit failed: {e}");
+        }
+        return Ok(FetchOutcome::Cancelled);
+    }
+    if !chunk.is_empty() {
+        flush_lines(replay, app, host_label, chunk).await;
+    }
+    // 完整性校验（p1f 帧带 L；旧帧无 lines → 跳过校验）
+    if let Some(expected) = item.expected_lines {
+        if seq < expected {
+            return Err(format!(
+                "快照不完整：{seq}/{expected} 行（连接中断或 daemon 报错）"
+            ));
+        }
+    }
+    Ok(FetchOutcome::Done(seq))
 }
 
 /// [`connect_and_exec`] 的通用形态：exec 任意命令行（issue #16：历史查询走
@@ -386,6 +744,10 @@ pub enum InboundFrame {
         session_kind: Option<String>,
         cwd: Option<String>,
         name: Option<String>,
+        /// Batch8-F25：远端 jsonl 绝对路径（p1f daemon 起有值）——旁路快照用。
+        path: Option<String>,
+        /// Batch8 D-I2：daemon prime 时的完整行数 L（快照完整性校验）。
+        lines: Option<u64>,
     },
     /// 远端一个 session 文件消失。
     SessionRemoved { sid: String },
@@ -443,6 +805,8 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 session_kind: opt("session_kind"),
                 cwd: opt("cwd"),
                 name: opt("name"),
+                path: opt("path"),
+                lines: obj.get("lines").and_then(|v| v.as_u64()),
             })
         }
         "session_removed" => {
@@ -708,12 +1072,30 @@ async fn stream_loop(
             None
         }
     };
-    // Batch7-F24：只对**确认为当前版本**的 daemon 传 --with-bg——旧 daemon（< p1e）
-    // 会把未知参数当一次性查询处理后退出（无 hello → 重连死循环），确认不了
-    // （手动部署 / ~ 路径 / 无内嵌 arch）一律降级不传（bg 功能不可用但连接正常）。
-    let with_bg = crate::load_show_bg_sessions()
-        && confirmed_build.as_deref() == Some(EXPECTED_DAEMON_BUILD_ID);
-    let stream = connect_and_exec(cfg, with_bg).await?;
+    // Batch7-F24/Batch8-F26：只对**确认为当前版本**的 daemon 传流模式 flag——
+    // 旧 daemon 会把未知参数当一次性查询处理后退出（无 hello → 重连死循环），
+    // 确认不了（手动部署 / ~ 路径 / 无内嵌 arch）一律降级不传（功能退化但连接
+    // 正常：全量推流 = 2.18.0 行为）。
+    let (with_bg, tail_only) = decide_stream_flags(
+        confirmed_build.as_deref(),
+        EXPECTED_DAEMON_BUILD_ID,
+        crate::load_show_bg_sessions(),
+    );
+    let stream = connect_and_exec(cfg, with_bg, tail_only).await?;
+
+    // Batch8-F26：旁路快照基础设施（仅 tail-only 生效；每连接一套，函数任何
+    // 退出路径经 guard 关闭队列——已入队项仍会被分发器拉完，独立连接自灭）。
+    let snapshots = SnapshotQueue::new();
+    let _snapshots_guard = SnapshotQueueCloser(snapshots.clone());
+    if tail_only {
+        tauri::async_runtime::spawn(snapshot_dispatcher(
+            snapshots.clone(),
+            cfg.clone(),
+            replay.clone(),
+            app.clone(),
+            host_label.clone(),
+        ));
+    }
 
     // Batch5-F17：帧读取挪进独立 task、经 channel 交回——攒批需要"带静默窗口
     // 的读"，而 tokio 的 read_line **不是 cancellation-safe**（timeout 取消会
@@ -858,6 +1240,8 @@ async fn stream_loop(
                 session_kind,
                 cwd,
                 name,
+                path,
+                lines,
             }) => {
                 // Batch5-F18：透传前端建骨架 Tab——协议序保证本帧先于该会话的
                 // 内容行，这里同步 emit（先于行 flush），骨架必先于内容出现。
@@ -870,6 +1254,18 @@ async fn stream_loop(
                 };
                 if let Err(e) = app.emit(crate::bridge::events::REMOTE_SESSION_ADDED, payload) {
                     tracing::warn!("ssh_source remote-session-added emit failed: {e}");
+                }
+                // Batch8-F26：tail-only 下历史改走旁路快照——宣告带 path 即入队
+                // （无 path = 会话刚起还没写 jsonl → 无历史可拉，后续行天然从
+                // tail 全量到达，无需快照）。队列按 sid 幂等（重复宣告不重拉）。
+                if tail_only {
+                    if let Some(p) = path {
+                        snapshots.push(SnapshotItem {
+                            sid: sid.clone(),
+                            path: p,
+                            expected_lines: lines,
+                        });
+                    }
                 }
                 // FIX 2：记下已宣告的 sid，供连接结束时统一归档。
                 announced.insert(sid.clone());
@@ -884,6 +1280,9 @@ async fn stream_loop(
             Some(InboundFrame::SessionRemoved { sid }) => {
                 // FIX 2：已显式 removed 的 sid 从 announced 摘掉，避免连接结束时重复归档。
                 announced.remove(&sid);
+                // Batch8 D-B1：摘除排队中的快照 + 标记 inflight 取消——归档后
+                // 迟到的快照行会经"见行复活"造出关不掉的僵尸 live tab。
+                snapshots.cancel(&sid);
                 if let Err(e) = session_changes.send(SessionChange {
                     added: vec![],
                     removed: vec![sid],
@@ -1397,6 +1796,8 @@ mod parse_frame_tests {
                 session_kind: None,
                 cwd: None,
                 name: None,
+                path: None,
+                lines: None,
             }
         );
     }
@@ -1405,7 +1806,7 @@ mod parse_frame_tests {
     /// 旧 daemon 缺字段 → None（上一测试已覆盖）。
     #[test]
     fn session_added_metadata_parses() {
-        let line = r#"{"kind":"session_added","sid":"s-bg","session_kind":"bg","cwd":"/proj/x","name":"评估任务"}"#;
+        let line = r#"{"kind":"session_added","sid":"s-bg","session_kind":"bg","cwd":"/proj/x","name":"评估任务","path":"/home/u/.claude/projects/p/s-bg.jsonl","lines":42}"#;
         let frame = parse_frame(line).expect("must parse");
         assert_eq!(
             frame,
@@ -1414,6 +1815,8 @@ mod parse_frame_tests {
                 session_kind: Some("bg".to_string()),
                 cwd: Some("/proj/x".to_string()),
                 name: Some("评估任务".to_string()),
+                path: Some("/home/u/.claude/projects/p/s-bg.jsonl".to_string()),
+                lines: Some(42),
             }
         );
     }
@@ -1619,6 +2022,74 @@ Host prod
         assert_eq!(
             next_backoff(Duration::from_secs(30)),
             Duration::from_secs(30)
+        );
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    /// 行计数口径必须与 daemon read_new_lines 一字一致：BOM+全空白跳过。
+    #[test]
+    fn snapshot_line_countable_matches_daemon_semantics() {
+        assert!(snapshot_line_countable(r#"{"a":1}"#));
+        assert!(snapshot_line_countable("\u{feff}{\"a\":1}")); // BOM+内容 → 计
+        assert!(!snapshot_line_countable("")); // 空行 → 跳
+        assert!(!snapshot_line_countable("   ")); // 全空白 → 跳
+        assert!(!snapshot_line_countable("\u{feff}")); // 纯 BOM → 跳
+        assert!(!snapshot_line_countable("\u{feff}  \t")); // BOM+空白 → 跳
+    }
+
+    /// 队列语义：sid 幂等、priority 优先出队、close 后清空账再 None。
+    #[tokio::test]
+    async fn snapshot_queue_priority_idempotent_and_close() {
+        fn item(sid: &str, path: &str) -> SnapshotItem {
+            SnapshotItem {
+                sid: sid.into(),
+                path: path.into(),
+                expected_lines: None,
+            }
+        }
+        let q = SnapshotQueue::new();
+        q.push(item("s1", "/p1"));
+        q.push(item("s2", "/p2"));
+        q.push(item("s3", "/p3"));
+        q.push(item("s2", "/p2-dup")); // 幂等：不重拉
+                                       // priority=s2 → 先出 s2
+        let got = q.pop(Some("s2".into())).await.unwrap();
+        assert_eq!((got.sid.as_str(), got.path.as_str()), ("s2", "/p2"));
+        // priority 不在队 → FIFO
+        let got = q.pop(Some("nope".into())).await.unwrap();
+        assert_eq!(got.sid, "s1");
+        // Batch8 审计 D-B1：cancel 摘排队项 + 标记取消 + seen 可重入队
+        q.cancel("s3");
+        assert!(q.is_cancelled("s3"), "cancel 后 inflight 检查命中");
+        q.push(item("s3", "/p3-again")); // removed→re-added：解除取消、重新入队
+        assert!(!q.is_cancelled("s3"), "重新宣告解除取消标记");
+        let got = q.pop(None).await.unwrap();
+        assert_eq!(got.path, "/p3-again");
+        // Batch8 审计 D-B1：close 立即作废排队项（不清账）
+        q.push(item("s4", "/p4"));
+        q.close();
+        assert!(q.pop(None).await.is_none(), "close 后排队项作废");
+        assert!(q.is_cancelled("s4"), "close 后 inflight 检查也命中（作废）");
+    }
+
+    /// close 唤醒等待中的 pop（分发器不悬挂）。
+    #[tokio::test]
+    async fn snapshot_queue_close_wakes_waiting_pop() {
+        let q = SnapshotQueue::new();
+        let q2 = q.clone();
+        let waiter = tokio::spawn(async move { q2.pop(None).await });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        q.close();
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_secs(2), waiter)
+                .await
+                .expect("pop 必须被 close 唤醒")
+                .unwrap()
+                .is_none()
         );
     }
 }

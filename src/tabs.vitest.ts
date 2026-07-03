@@ -161,6 +161,27 @@ describe("TabManager 生命周期", () => {
     expect(peek(tm).tabs.get("bg-remote")!.title).toBe("[pi] ⚙ 远端任务");
   });
 
+  // === Batch8-F26：(sid,seq) 去重（快照/tail 重叠区缝合的前端锚点） ===
+
+  it("同 (tab, seq) 的行第二次到达被 seenSeqs 吞掉（快照与 tail 重叠区）", async () => {
+    const { renderStreamRecord } = await import("./render-stream-record");
+    const spy = renderStreamRecord as unknown as ReturnType<typeof vi.fn>;
+    spy.mockClear();
+    const mkPayload = (seq: number, uuid: string) => ({
+      session_id: "dup-sid",
+      cwd: "/p",
+      path: "/p/dup-sid.jsonl",
+      seq,
+      message: { type: "assistant", uuid } as never,
+    });
+    tm.onLine(mkPayload(7, "u-1") as never);
+    const after1 = spy.mock.calls.length;
+    tm.onLine(mkPayload(7, "u-1") as never); // 同 (sid,seq) 重复 → 去重
+    expect(spy.mock.calls.length).toBe(after1);
+    tm.onLine(mkPayload(8, "u-2") as never); // 新 seq → 放行
+    expect(spy.mock.calls.length).toBeGreaterThan(after1);
+  });
+
   // === Batch5-F19：last-active 写回 ===
 
   it("switchTo 写回 last-active；persistLastActive=false（viewer）不写", () => {
