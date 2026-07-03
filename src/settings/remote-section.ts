@@ -104,8 +104,19 @@ const REMOTE_INFO_TEXT =
  * 变了就重刷窗口标题成 `ccm-rbind-<当前sid>`。本地 monitor 扫到该标题即绑定 HWND。
  *
  * `ccm-rbind-%s` 标记必须与后端 `bind.rs` 的 `format!("ccm-rbind-{sid}")` 完全一致。
+ *
+ * tmux 自适配（Batch7，真机排查实证）：tmux 默认 `set-titles off`——OSC 标题转义
+ * 只落到 pane title、**到不了外层 ssh 终端窗口标题**，marker 被截住导致绑定永远
+ * 失败，而这恰是远端最常见的使用形态。ccm 在 `$TMUX` 内自动对**当前 session**
+ * 开标题直通（session 级选项，不写 tmux.conf、不影响其它 session）。
  */
 const CCM_WRAPPER_SNIPPET = `ccm() {
+  if [ -n "$TMUX" ]; then
+    # tmux 默认不把 pane title 传给外层终端窗口标题（marker 会被截住）；
+    # 只对当前 session 开直通，不动全局配置
+    tmux set set-titles on >/dev/null 2>&1
+    tmux set set-titles-string "#T" >/dev/null 2>&1
+  fi
   ( cpid=$BASHPID
     ( prev=""
       while kill -0 "$cpid" 2>/dev/null; do
@@ -355,7 +366,9 @@ class MachineCard {
       "安装位置：① daemon（远端数据源，必需）→ 上方「daemon 路径」填的位置" +
       "（默认 ~/.cc-monitor/bin/cc-monitor-remote）+ 同目录 .build_id；启用远端后连接时会自动安装，" +
       "下面按钮供手动装 / 卸。② ccm 助手（↗ 拉前用，可选）→ 远端 ~/.bashrc 里一段带 " +
-      "cc-monitor BEGIN/END 标记的函数（先备份原文件、只动标记块内）。";
+      "cc-monitor BEGIN/END 标记的函数（先备份原文件、只动标记块内）。" +
+      "装好后须用 ccm 启动 claude（或让你的启动脚本内部调 ccm）才能被 ↗/反引号拉起；" +
+      "tmux 里也开箱即用（ccm 自动对当前 tmux session 开标题直通，不改你的 tmux.conf）。";
     body.appendChild(installInfo);
 
     // 动作区：连接测试 + daemon 装/卸 + ccm 装/卸。按钮多，行内可换行。
