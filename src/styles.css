@@ -733,6 +733,21 @@ body.viewer-mode .history-trigger {
   font-style: italic;
 }
 
+/* === Batch7-F24：bg 后台任务 tab（⚙ 标题 + 树状缩进） === */
+.tab.tab-bg {
+  font-size: calc(var(--font-size-small) * 0.92);
+  opacity: 0.88;
+  padding-left: 18px;
+  position: relative;
+}
+.tab.tab-bg::before {
+  content: "⌞";
+  position: absolute;
+  left: 5px;
+  color: var(--text-faint);
+}
+
+
 /* === issue #21：交互等待卡（AskUserQuestion / ExitPlanMode）——默认展开可见 === */
 .block-ask,
 .block-plan {

@@ -199,7 +199,12 @@ async fn probe_remote_arch(cfg: &RemoteConfig) -> Result<String, String> {
 /// ③ 开 SFTP、读版本标记、[`deploy_decision`]、需要则 mkdir -p + 原子上传 + 写标记。
 ///
 /// **best-effort**：调用方（ssh_source::run）对 Err 仅 warn 不阻断——手动部署的 daemon 仍可连。
-pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<(), String> {
+/// 返回值（Batch7-F24）：`Ok(Some(build_id))` = 已**确认**远端 daemon 版本
+/// （Deploy 成功或 Skip-版本相符）；`Ok(None)` = 无法确认（`~` 路径 / arch 探测失败 /
+/// 无内嵌二进制等 no-op 路径——手动部署的 daemon，版本未知）。调用方据此决定
+/// 是否传新版才认识的流模式参数（如 `--with-bg`）——未确认一律降级不传，
+/// 避免旧 daemon 把未知参数当一次性查询处理后退出（无 hello 死循环）。
+pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<Option<String>, String> {
     // S-2（审计）：SFTP 无 shell 不展开 `~`，而 daemon exec 路径会展开——daemon_path 含 `~`
     // 会两边错位。含 `~` 直接跳过自动部署（用户应填绝对路径），手动部署的 daemon 仍可连。
     if cfg.daemon_path.contains('~') {
@@ -207,19 +212,19 @@ pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<(), String> {
             "daemon_path 含 ~（SFTP 不展开），跳过自动部署：{}",
             cfg.daemon_path
         );
-        return Ok(());
+        return Ok(None);
     }
     // 探测 arch 选内嵌二进制；探测失败 / 无该 arch 内嵌 → 优雅 no-op（沿用手动部署）。
     let arch = match probe_remote_arch(cfg).await {
         Ok(a) => a,
         Err(e) => {
             tracing::debug!("远端 arch 探测失败，跳过自动部署: {e}");
-            return Ok(());
+            return Ok(None);
         }
     };
     let Some(bin) = daemon_binary(&arch) else {
         tracing::debug!("无 {arch} 的内嵌 daemon 二进制（F08b 未嵌入该 arch?），跳过自动部署");
-        return Ok(());
+        return Ok(None);
     };
     let conn = connect_sftp(cfg).await?;
     let sftp = &conn.sftp;
@@ -253,7 +258,7 @@ pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<(), String> {
             );
         }
     }
-    Ok(())
+    Ok(Some(bin.build_id.to_string()))
 }
 
 /// 按远端 arch 选内嵌的 daemon 二进制（F08b）。build.rs 把交叉编译的 musl 二进制复制进

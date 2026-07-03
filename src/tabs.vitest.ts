@@ -126,6 +126,41 @@ describe("TabManager 生命周期", () => {
     expect(peek(tm).tabs.get("sk-late")!.status).toBe("archived");
   });
 
+  // === Batch7-F24：bg 会话树状 ===
+
+  it("bg tab 挂到同 cwd 交互宿主之后（先宿主后 bg）", () => {
+    tm.createSkeletonTab("host-a", "/proj/a", null, "interactive", null);
+    tm.createSkeletonTab("other", "/proj/b", null, "interactive", null);
+    tm.createSkeletonTab("bg-a1", "/proj/a", null, "bg", "评估任务");
+    const order = peek(tm).orderedIds;
+    expect(order).toEqual(["host-a", "bg-a1", "other"]);
+    const bg = peek(tm).tabs.get("bg-a1")!;
+    expect(bg.title).toBe("⚙ 评估任务");
+  });
+
+  it("孤儿 bg 先到、宿主后到 → 重锚到宿主之后", () => {
+    tm.createSkeletonTab("bg-x1", "/proj/x", null, "bg", "t1");
+    tm.createSkeletonTab("noise", "/proj/n", null, "interactive", null);
+    tm.createSkeletonTab("host-x", "/proj/x", null, "interactive", null);
+    expect(peek(tm).orderedIds).toEqual(["noise", "host-x", "bg-x1"]);
+  });
+
+  it("同 cwd 第二个交互宿主不搬走第一个宿主已挂的 bg 子串（多宿主取第一个）", () => {
+    tm.createSkeletonTab("host-a1", "/proj/a", null, "interactive", null);
+    tm.createSkeletonTab("bg-a1", "/proj/a", null, "bg", "t1");
+    tm.createSkeletonTab("bg-a2", "/proj/a", null, "bg", "t2");
+    tm.createSkeletonTab("host-a2", "/proj/a", null, "interactive", null);
+    expect(peek(tm).orderedIds).toEqual(["host-a1", "bg-a1", "bg-a2", "host-a2"]);
+  });
+
+  it("远端 bg 带 origin 前缀且不跨 origin 认宿主", () => {
+    tm.createSkeletonTab("h-local", "/p", null, "interactive", null);
+    tm.createSkeletonTab("bg-remote", "/p", "pi", "bg", "远端任务");
+    // origin 不同 → 不挂本地宿主，顶层追加
+    expect(peek(tm).orderedIds).toEqual(["h-local", "bg-remote"]);
+    expect(peek(tm).tabs.get("bg-remote")!.title).toBe("[pi] ⚙ 远端任务");
+  });
+
   // === Batch5-F19：last-active 写回 ===
 
   it("switchTo 写回 last-active；persistLastActive=false（viewer）不写", () => {

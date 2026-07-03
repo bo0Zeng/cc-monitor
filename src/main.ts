@@ -245,8 +245,16 @@ window.addEventListener("DOMContentLoaded", async () => {
     // P5.2 B 重构：onLine 不再带 source 参数（前端按 seq timeline 排，不分 batch/live）
     onLine: (e) => tabs.onLine(e),
     onSessionEnded: (sessionId) => tabs.archiveTab(sessionId),
-    // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5
-    onSessionStarted: (sessionId) => tabs.reviveTab(sessionId),
+    // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5。
+    // Batch7-F24：无 Tab（= 运行中途**新出现**的本地会话）→ 建骨架——bg 会话必须
+    // 从这条通道拿 kind/name（首行 onLine→ensureTab 不带 kind，会建成无 ⚙ 普通 tab）。
+    onSessionStarted: (sessionId, meta) => {
+      if (tabs.hasTab(sessionId)) {
+        tabs.reviveTab(sessionId);
+      } else {
+        tabs.createSkeletonTab(sessionId, meta.cwd || null, null, meta.kind, meta.name);
+      }
+    },
     // 启动重放（jsonl-batch）期间走 batch 模式（lazy hljs + BranchFolder.batchMode），
     // 结束时 flush。onChunk 已删 —— B 重构后 chunk 切边界对前端不可见。
     onBatchStart: () => tabs.onBatchStart(),
@@ -256,9 +264,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     // issue #23: 会话红绿灯（busy=绿 / idle·shell=红 / waiting=黄）
     onSessionActivity: (e) =>
       tabs.updateActivity(e.session_id, e.status, e.waiting_for),
-    // Batch5-F18：远端会话宣告 → 骨架 Tab（无 cwd，标题 [host] sid 前缀，首行补全）
-    onRemoteSessionAdded: (sessionId, origin) => {
-      tabs.createSkeletonTab(sessionId, null, origin);
+    // Batch5-F18：远端会话宣告 → 骨架 Tab。Batch7-F24：p1e daemon 附 cwd/kind/name
+    // ——骨架标题即时完整（bg → ⚙ + 树状挂宿主后）；旧 daemon 缺省照旧 sid 前缀。
+    onRemoteSessionAdded: (sessionId, origin, meta) => {
+      tabs.createSkeletonTab(sessionId, meta.cwd || null, origin, meta.kind, meta.name);
       // Batch5-F19：上次所在 tab 是远端会话时在此补切（应用一次即清；超过
       // 30s 启动窗口则放弃——迟到宣告不抢焦点，replay 优先级不受影响）
       if (pendingStartupActive === sessionId) {
@@ -285,11 +294,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 内容重放开始前就看到完整 tab 栏。失败不阻启动（骨架只是体验优化，行
   // 到达照常 ensureTab 建）。远端骨架走 remote-session-added 事件，不在此列。
   try {
-    const active = await invoke<{ session_id: string; cwd: string }[]>(
-      "list_active_sessions",
-    );
+    const active = await invoke<
+      { session_id: string; cwd: string; kind: string | null; name: string | null }[]
+    >("list_active_sessions");
     for (const s of active) {
-      tabs.createSkeletonTab(s.session_id, s.cwd || null, null);
+      tabs.createSkeletonTab(s.session_id, s.cwd || null, null, s.kind ?? null, s.name ?? null);
     }
   } catch (e) {
     console.warn("[skeleton] list_active_sessions failed:", e);

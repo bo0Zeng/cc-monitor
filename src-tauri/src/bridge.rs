@@ -95,11 +95,16 @@ pub struct SessionEndedPayload {
     pub session_id: String,
 }
 
-/// 会话（重新）变活的 payload（SESSION_STARTED）。前端据 `session_id` 复活已归档本地 Tab。
-/// 形如 [`SessionEndedPayload`] 的对称面（同 `session_id` 单字段）。
+/// 会话（重新）变活的 payload（SESSION_STARTED）。前端：已有 Tab → 复活；无 Tab →
+/// 建骨架（Batch7-F24 修复：本地**运行中途**新出现的 bg 会话此前只能等首行经
+/// ensureTab 建成无标注普通 tab——与远端 remote-session-added 对称补上元信息通道）。
 #[derive(Debug, Serialize, Clone)]
 pub struct SessionStartedPayload {
     pub session_id: String,
+    /// Batch7-F24：pidfile 元信息（lookup 不到时 None——纯 revive 场景照旧）。
+    pub cwd: Option<String>,
+    pub kind: Option<String>,
+    pub name: Option<String>,
 }
 
 /// 远端会话宣告 payload（REMOTE_SESSION_ADDED，Batch5-F18）。daemon 的
@@ -114,8 +119,15 @@ pub struct SessionStartedPayload {
 #[derive(Debug, Serialize, Clone)]
 pub struct RemoteSessionAddedPayload {
     pub session_id: String,
-    /// 机器标签（`[label]` Tab 前缀）；骨架期无 cwd，标题先用 sid 前缀。
+    /// 机器标签（`[label]` Tab 前缀）。
     pub origin: String,
+    /// Batch7-F24：pidfile 元信息透传（p1e daemon 起有值；旧 daemon → None）。
+    /// kind = "interactive"/"bg"（bg → ⚙ 标识 + 树状归属）。wire 帧侧因 enum tag
+    /// 占用叫 `session_kind`，bridge 事件 payload 无此约束，与本地 payload 统一叫 `kind`。
+    pub kind: Option<String>,
+    /// 骨架标题不再等首行——cwd 直接可用（偿还 F18 backlog）。
+    pub cwd: Option<String>,
+    pub name: Option<String>,
 }
 
 /// `frontend-ready` 事件的 payload（Batch5-F19）。前端 emit 时携带 localStorage
@@ -134,6 +146,9 @@ pub struct FrontendReadyPayload {
 pub struct ActiveSessionPayload {
     pub session_id: String,
     pub cwd: String,
+    /// Batch7-F24：kind/name（bg → ⚙ 标识 + 树状归属；name 作 bg 标题）。
+    pub kind: Option<String>,
+    pub name: Option<String>,
 }
 
 /// 远端健康事件 payload（SS-F，issue #32 起）。`origin` = 出问题的远端机器 label

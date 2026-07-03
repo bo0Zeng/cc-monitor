@@ -30,7 +30,19 @@ pub enum Frame {
         raw: String,
     },
     /// A new session file appeared.
-    SessionAdded { sid: String },
+    ///
+    /// Batch7-F24（additive，向后兼容）：附带 pidfile 元信息——`session_kind`
+    /// （"interactive"/"bg"；字段名避开 enum tag `kind`）、`cwd`、`name`。
+    /// None 时不上线（旧行为字节不变）；旧 monitor 忽略未知字段。
+    SessionAdded {
+        sid: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        session_kind: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cwd: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
     /// A session file went away.
     SessionRemoved { sid: String },
     /// The bounded frame channel back-pressured and the reader had to drop
@@ -132,7 +144,15 @@ mod tests {
                 },
                 "line",
             ),
-            (Frame::SessionAdded { sid: "s".into() }, "session_added"),
+            (
+                Frame::SessionAdded {
+                    sid: "s".into(),
+                    session_kind: None,
+                    cwd: None,
+                    name: None,
+                },
+                "session_added",
+            ),
             (Frame::SessionRemoved { sid: "s".into() }, "session_removed"),
             (Frame::Overflow { dropped: 7 }, "overflow"),
         ];

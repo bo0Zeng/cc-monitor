@@ -141,6 +141,7 @@ export class SettingsPanel {
 
   // v2.4 issue #2: 行为类 toggle
   private autoFollowCheckbox!: HTMLInputElement;
+  private showBgCheckbox!: HTMLInputElement;
   private bringFrontCheckbox!: HTMLInputElement;
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
 
@@ -170,6 +171,7 @@ export class SettingsPanel {
     const behavior = await getBehavior();
     this.autoFollowCheckbox.checked = behavior.autoFollowUserActive;
     this.bringFrontCheckbox.checked = behavior.bringMonitorToFrontOnUserActive;
+    this.showBgCheckbox.checked = behavior.showBgSessions;
     this.updateBringFrontEnabled();
     this.banner.textContent = "";
     this.banner.classList.remove("settings-banner-show");
@@ -196,6 +198,7 @@ export class SettingsPanel {
     const next: BehaviorConfig = {
       autoFollowUserActive: this.autoFollowCheckbox.checked,
       bringMonitorToFrontOnUserActive: this.bringFrontCheckbox.checked,
+      showBgSessions: this.showBgCheckbox.checked,
     };
     try {
       await setBehavior(next);
@@ -420,6 +423,21 @@ export class SettingsPanel {
     frontLabel.textContent = "自动切 Tab 时同时把 monitor 窗口拉到前台";
     frontRow.appendChild(frontLabel);
     group.appendChild(frontRow);
+
+    // 3. Batch7-F24：显示 bg 后台任务会话
+    const bgRow = document.createElement("label");
+    bgRow.className = "settings-row settings-row-checkbox";
+    this.showBgCheckbox = document.createElement("input");
+    this.showBgCheckbox.type = "checkbox";
+    this.showBgCheckbox.className = "settings-checkbox";
+    this.showBgCheckbox.addEventListener("change", () => void this.onBehaviorToggle());
+    bgRow.appendChild(this.showBgCheckbox);
+    const bgLabel = document.createElement("span");
+    bgLabel.className = "settings-checkbox-label";
+    bgLabel.textContent =
+      "显示后台任务会话（⚙ 标识，挂在同项目会话之后；改动重启生效）";
+    bgRow.appendChild(bgLabel);
+    group.appendChild(bgRow);
 
     return group;
   }

@@ -66,13 +66,13 @@ const DEBOUNCE_MS: u64 = 100;
 /// `claude_dir` is the resolved `~/.claude` (or `$CLAUDE_CONFIG_DIR`). The
 /// reader watches `<claude_dir>/projects/` recursively and
 /// `<claude_dir>/sessions/`.
-pub fn spawn(claude_dir: PathBuf) -> mpsc::Receiver<Frame> {
+pub fn spawn(claude_dir: PathBuf, with_bg: bool) -> mpsc::Receiver<Frame> {
     let (tx, rx) = mpsc::channel::<Frame>(CHANNEL_CAPACITY);
     // notify-debouncer-mini is a synchronous std::sync::mpsc API; run it on a
     // blocking thread and hand frames to the async writer over tokio mpsc.
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
-        .spawn(move || watch_loop(claude_dir, tx))
+        .spawn(move || watch_loop(claude_dir, tx, with_bg))
         .expect("spawn jsonl-watcher thread");
     rx
 }
@@ -82,11 +82,11 @@ pub fn spawn(claude_dir: PathBuf) -> mpsc::Receiver<Frame> {
 /// Runs on its own OS thread. `tx` is the bounded sender; it is wrapped in a
 /// [`FrameSink`] whose [`FrameSink::send`] never blocks the notify callback and
 /// turns dropped frames into an [`Frame::Overflow`] signal (#32).
-fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>) {
+fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool) {
     let projects = claude_dir.join("projects");
     let sessions = claude_dir.join("sessions");
 
-    let mut state = ReaderState::new(projects.clone());
+    let mut state = ReaderState::new(projects.clone(), with_bg);
     // All frames go out through a FrameSink: a bounded-channel sender that counts
     // frames dropped on a full channel and emits a single `Overflow` signal once
     // the channel drains enough to accept it (#32). Never blocks this reader.
@@ -217,16 +217,20 @@ struct ReaderState {
     /// alive on this host stream; historical jsonl is NOT pulled (that is the
     /// Ctrl+H history browser's job).
     active_sids: HashSet<String>,
+    /// Batch7-F24：`--with-bg` 时放行 kind:"bg" 会话（宣告+流行，帧带元信息）；
+    /// 默认 false = Batch6-F21 行为（bg 不算会话）。
+    with_bg: bool,
 }
 
 impl ReaderState {
-    fn new(projects: PathBuf) -> Self {
+    fn new(projects: PathBuf, with_bg: bool) -> Self {
         ReaderState {
             projects,
             offsets: HashMap::new(),
             seqs: SeqCounter::new(),
             sessions: HashMap::new(),
             active_sids: HashSet::new(),
+            with_bg,
         }
     }
 }
@@ -426,7 +430,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // 保守规则（与本地 session_map 一字一致）：kind 字段存在且非 "interactive"
     // 才排除；旧 CC 不写该字段 → 放行。
     if let Some(kind) = parse_kind(&bytes) {
-        if kind != "interactive" {
+        if kind != "interactive" && !state.with_bg {
             // 审计 S1：若该 key 此前以 interactive 身份被 track（原地翻 kind /
             // PID 复用写同路径），对称走退休路径——与 F22-① 一致，免掉 poll 的
             // 2s 窗口，并补齐"同进程翻 kind"这条本地有、远端缺的清理。
@@ -498,7 +502,20 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         },
     );
     state.active_sids.insert(sid.clone());
-    sink.send(Frame::SessionAdded { sid: sid.clone() });
+    // 帧元信息：一次解析取三字段（审计 D：此前 blob 被全量 serde 解析 4 次）
+    let meta: Option<serde_json::Value> = serde_json::from_slice(&bytes).ok();
+    let meta_str = |k: &str| {
+        meta.as_ref()
+            .and_then(|v| v.get(k))
+            .and_then(|x| x.as_str())
+            .map(str::to_string)
+    };
+    sink.send(Frame::SessionAdded {
+        sid: sid.clone(),
+        session_kind: meta_str("kind"),
+        cwd: meta_str("cwd"),
+        name: meta_str("name"),
+    });
     // Now that this session is active, stream its existing jsonl (mirrors the
     // local force-rescan triggered on session-added).
     let projects = state.projects.clone();
@@ -1274,7 +1291,7 @@ mod tests {
         let ticks = proc_starttime(pid).expect("own starttime");
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
         let mut sink = FrameSink::new(tx);
-        let mut state = ReaderState::new(dir.join("projects"));
+        let mut state = ReaderState::new(dir.join("projects"), false);
         let path = dir.join(format!("{pid}.json"));
 
         let write = |sid: &str| {
@@ -1286,7 +1303,7 @@ mod tests {
         };
         write("sid-1");
         process_session_added(&path, &mut state, &mut sink);
-        assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid }) if sid == "sid-1"));
+        assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "sid-1"));
 
         write("sid-2"); // /clear：同文件重写 sessionId
         process_session_added(&path, &mut state, &mut sink);
@@ -1294,7 +1311,7 @@ mod tests {
             matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid }) if sid == "sid-1"),
             "old sid must be retired BEFORE the new announcement"
         );
-        assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid }) if sid == "sid-2"));
+        assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "sid-2"));
         assert!(!state.active_sids.contains("sid-1"));
         assert!(state.active_sids.contains("sid-2"));
         assert_eq!(state.sessions.len(), 1);
@@ -1313,7 +1330,7 @@ mod tests {
         let ticks = proc_starttime(pid).expect("own starttime");
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
         let mut sink = FrameSink::new(tx);
-        let mut state = ReaderState::new(dir.join("projects"));
+        let mut state = ReaderState::new(dir.join("projects"), false);
 
         // 两个 pidfile 同 sid（借同一真实存活 pid；path key 不同即两个 entry）
         let p1 = dir.join(format!("{pid}.json"));
@@ -1327,13 +1344,15 @@ mod tests {
         std::fs::write(&p1, &body).unwrap();
         std::fs::write(&p2, &body).unwrap();
         process_session_added(&p1, &mut state, &mut sink);
-        assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid }) if sid == "shared-sid"));
+        assert!(
+            matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "shared-sid")
+        );
         process_session_added(&p2, &mut state, &mut sink);
         // 第二个 pidfile：幂等检查是 per-key 的 → 恰好再发一条 Added（前端
         // ensureTab 幂等）。断言帧序（审计 S3：吞帧会掩盖"先 Removed 再 Added
         // 闪烁"类回归）。
         assert!(
-            matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid }) if sid == "shared-sid"),
+            matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "shared-sid"),
             "second pidfile re-announces exactly once"
         );
         assert!(
@@ -1369,7 +1388,7 @@ mod tests {
         let ticks = proc_starttime(pid).expect("own starttime");
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
         let mut sink = FrameSink::new(tx);
-        let mut state = ReaderState::new(dir.join("projects"));
+        let mut state = ReaderState::new(dir.join("projects"), false);
         let path = dir.join(format!("{pid}.json"));
         std::fs::write(
             &path,
@@ -1377,10 +1396,47 @@ mod tests {
         )
         .unwrap();
         process_session_added(&path, &mut state, &mut sink);
-        assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid }) if sid == "solo"));
+        assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "solo"));
         process_session_removed(&path, &mut state, &mut sink);
         assert!(matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid }) if sid == "solo"));
         assert!(state.sessions.is_empty() && state.active_sids.is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // === Batch7-F24：--with-bg 放行 + 帧元信息 ===
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn with_bg_announces_bg_with_metadata() {
+        let dir = std::env::temp_dir().join(format!("ccm-withbg-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pid = std::process::id();
+        let ticks = proc_starttime(pid).expect("own starttime");
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(dir.join("projects"), true); // --with-bg
+        let path = dir.join(format!("{pid}.json"));
+        std::fs::write(
+            &path,
+            format!(r#"{{"pid":{pid},"sessionId":"bg-sid","cwd":"/proj/x","kind":"bg","jobId":"j","name":"评估任务","procStart":"{ticks}"}}"#),
+        )
+        .unwrap();
+        process_session_added(&path, &mut state, &mut sink);
+        match rx.try_recv() {
+            Ok(Frame::SessionAdded {
+                sid,
+                session_kind,
+                cwd,
+                name,
+            }) => {
+                assert_eq!(sid, "bg-sid");
+                assert_eq!(session_kind.as_deref(), Some("bg"));
+                assert_eq!(cwd.as_deref(), Some("/proj/x"));
+                assert_eq!(name.as_deref(), Some("评估任务"));
+            }
+            other => panic!("expected SessionAdded with metadata, got {other:?}"),
+        }
+        assert!(state.active_sids.contains("bg-sid"), "bg 行要能流出");
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -1414,7 +1470,7 @@ mod tests {
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
         let mut sink = FrameSink::new(tx);
-        let mut state = ReaderState::new(dir.join("projects"));
+        let mut state = ReaderState::new(dir.join("projects"), false);
 
         // bg pidfile：作者活着、procStart 逐位相等——F20 证据全过，但 kind 门拒
         let bg_path = dir.join(format!("{pid}.json"));
@@ -1437,7 +1493,7 @@ mod tests {
         process_session_added(&bg_path, &mut state, &mut sink);
         assert!(state.active_sids.contains("int-sid"));
         match rx.try_recv() {
-            Ok(Frame::SessionAdded { sid }) => assert_eq!(sid, "int-sid"),
+            Ok(Frame::SessionAdded { sid, .. }) => assert_eq!(sid, "int-sid"),
             other => panic!("expected SessionAdded, got {other:?}"),
         }
 
@@ -1656,17 +1712,42 @@ mod tests {
         let mut sink = FrameSink::new(tx);
 
         // Fill both slots — these go through cleanly, no overflow owed.
-        sink.send(Frame::SessionAdded { sid: "a".into() });
-        sink.send(Frame::SessionAdded { sid: "b".into() });
+        sink.send(Frame::SessionAdded {
+            sid: "a".into(),
+            session_kind: None,
+            cwd: None,
+            name: None,
+        });
+        sink.send(Frame::SessionAdded {
+            sid: "b".into(),
+            session_kind: None,
+            cwd: None,
+            name: None,
+        });
         assert_eq!(
             sink.dropped, 0,
             "nothing dropped while the channel had room"
         );
 
         // Channel is full now: three sends are dropped and counted.
-        sink.send(Frame::SessionAdded { sid: "c".into() });
-        sink.send(Frame::SessionAdded { sid: "d".into() });
-        sink.send(Frame::SessionAdded { sid: "e".into() });
+        sink.send(Frame::SessionAdded {
+            sid: "c".into(),
+            session_kind: None,
+            cwd: None,
+            name: None,
+        });
+        sink.send(Frame::SessionAdded {
+            sid: "d".into(),
+            session_kind: None,
+            cwd: None,
+            name: None,
+        });
+        sink.send(Frame::SessionAdded {
+            sid: "e".into(),
+            session_kind: None,
+            cwd: None,
+            name: None,
+        });
         assert_eq!(sink.dropped, 3);
 
         // Drain both queued frames (they are the first two, not the dropped ones).
@@ -1687,7 +1768,12 @@ mod tests {
         );
 
         // Steady state: no spurious Overflow once recovered.
-        sink.send(Frame::SessionAdded { sid: "g".into() });
+        sink.send(Frame::SessionAdded {
+            sid: "g".into(),
+            session_kind: None,
+            cwd: None,
+            name: None,
+        });
         assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
     }
 

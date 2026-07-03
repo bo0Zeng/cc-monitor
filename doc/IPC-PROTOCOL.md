@@ -303,7 +303,7 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 | `status` | string? | 会话状态枚举：`"busy"`（运行中 → 🟢）/ `"idle"`、`"shell"`（等输入 → 🔴）/ `"waiting"`（等用户决定 → 🟡）。**CLI 仅在状态转换时重写本文件**（信号天然稀疏）。旧版 CC 无此字段 → `null`，前端按未知处理（沿用原绿点） |
 | `waitingFor` | string? | 仅 `status=="waiting"` 时有，细分原因：`"permission prompt"` / `"dialog open"` / `"input needed"` / `"worker request"` / `"sandbox request"` |
 | `name` | string? | Claude 给会话起的语义名（aka aiTitle）；当前保留未用 |
-| `kind` | string? | 会话类型（Batch6-F21 起双端消费）：`"interactive"` = 交互会话；`"bg"` = CC 2.1.x daemon 后台任务（`--fork-session`，另带 `jobId`）——**非 interactive 不算会话**（不建 Tab、不进红绿灯/骨架清单、jsonl 行不流出；历史浏览器仍可看）。**缺失 = 旧 CC = 视为交互**（保守放行），本地 `session_map::scan_dir` 与远端 daemon kind 门规则一字一致 |
+| `kind` | string? | 会话类型（Batch6-F21 起双端消费）：`"interactive"` = 交互会话；`"bg"` = CC 2.1.x daemon 后台任务（`--fork-session`，另带 `jobId`）。**Batch7-F24 起 bg 门是配置门**：`showBgSessions` 开（默认）→ bg 正常算会话（建 Tab 带 ⚙ 标识 + 树状挂同 cwd 宿主后、行流出）；关 → 回 F21 行为（不建 Tab、行不流出；历史浏览器仍可看）。**缺失 = 旧 CC = 视为交互**（保守放行），本地 `session_map::scan_dir`（读启动时配置）与远端 daemon kind 门（`--with-bg` 参数）规则一字一致 |
 | `jobId` | string? | 仅 `kind:"bg"` 时有，后台任务 ID（monitor 不消费，仅留档） |
 
 **派生 IPC 事件 `session-activity`**（issue #23 红绿灯）：watcher 每次重扫/心跳后比对，仅对 `status`/`waitingFor` 发生变化（含新出现）的会话 emit `SessionActivityPayload` = `{sessionId, status, waitingFor}`（见 `bridge.rs::SessionActivityPayload`；启动快照走 `list_session_activity`，详 STATE-MATRIX）。
@@ -322,7 +322,7 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 |---|---|---|
 | `hello` | `v, build_id, host_arch, claude_dir` | 连接建立时**首帧**发一次（握手）；monitor 据 `v` + `build_id` 做版本协商（#33：`v` 不符=不兼容、`build_id` 不符=偏旧，均经 `remote-health` 提示但不 hard-disconnect），`build_id` 单源自 daemon 源码（编译期 env 同步） |
 | `line` | `session_id, path, seq, raw` | tail 到的一行原始 jsonl（`seq` = per-file 单调，口径同本地 watcher） |
-| `session_added` | `sid` | 远端新会话文件出现（Batch5-F18 起 ssh_source 收到即同步透传前端 `remote-session-added {session_id, origin}` 事件建骨架 Tab，先于该会话的任何行） |
+| `session_added` | `sid`, `session_kind?`, `cwd?`, `name?` | 远端新会话文件出现（Batch5-F18 起 ssh_source 收到即同步透传前端 `remote-session-added {session_id, origin, kind, cwd, name}` 事件建骨架 Tab，先于该会话的任何行）。Batch7-F24（p1e）：附加 pidfile 元信息——wire 帧字段叫 `session_kind`（避开帧 tag `kind`），bridge 事件 payload 统一叫 `kind`（与本地 `list_active_sessions`/`session-started` 一致）；**additive 兼容**：None 不序列化（旧行为字节不变）、旧 monitor 忽略未知字段、旧 daemon 缺字段前端视为交互。daemon 默认不宣告 bg（F21）；monitor 仅对 **auto-deploy 确认为当前版本**的 daemon 且 `showBgSessions` 开（默认）时传 `--with-bg`（旧 daemon 会把未知参数当一次性查询→无 hello，确认不了一律降级不传）。本地对称通道：`session-started` payload 扩为 `{session_id, cwd, kind, name}`——前端无 Tab 则建骨架（中途出现的本地 bg 会话由此获得 ⚙/树状） |
 | `session_removed` | `sid` | 远端会话文件消失 |
 | `overflow` | `dropped: u64` | issue #32：daemon 发送通道被慢/卡的 SSH 管道反压、丢了 `dropped` 帧的哨兵信号（通道排空到能再容纳时发一次）→ monitor 经 SS-F `remote-health` 事件 toast 提示用户可能丢实时行（丢的行仍在远端 jsonl，重开会话可看完整历史） |
 

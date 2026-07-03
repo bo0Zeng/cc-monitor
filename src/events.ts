@@ -26,9 +26,13 @@ export interface SessionEndedPayload {
   session_id: string;
 }
 
-/** 会话（重新）变活事件 payload（镜像 bridge.rs::SessionStartedPayload，同 ended 单字段） */
+/** 会话（重新）变活事件 payload（镜像 bridge.rs::SessionStartedPayload）。
+ *  Batch7-F24：附 pidfile 元信息——前端无 Tab 时建骨架（中途出现的本地 bg 会话）。 */
 export interface SessionStartedPayload {
   session_id: string;
+  cwd: string | null;
+  kind: string | null;
+  name: string | null;
 }
 
 /** v2.3.0 issue #11: 后端 emit task-update 时的 payload */
@@ -50,9 +54,17 @@ export interface EventHandlers {
    * 与 session-ended 同进 queue（保持「结束/复活」相对后端 emit 顺序，见下方 sub 注释）。
    * 前端复活已归档的本地 Tab（tabs.reviveTab）。
    */
-  onSessionStarted?: (sessionId: string) => void;
-  /** Batch5-F18：远端会话宣告 → 建骨架 Tab（不等首行） */
-  onRemoteSessionAdded?: (sessionId: string, origin: string) => void;
+  onSessionStarted?: (
+    sessionId: string,
+    meta: { cwd: string | null; kind: string | null; name: string | null },
+  ) => void;
+  /** Batch5-F18：远端会话宣告 → 建骨架 Tab（不等首行）。Batch7-F24：附 pidfile
+   *  元信息（p1e daemon 起有值；旧 daemon → null）。 */
+  onRemoteSessionAdded?: (
+    sessionId: string,
+    origin: string,
+    meta: { kind: string | null; cwd: string | null; name: string | null },
+  ) => void;
   /**
    * v2.2 (issue #12 性能): 启动重放（jsonl-batch 第一块）到达时调一次。
    * TabManager 在此把所有 tab 的 BranchFolder 切到 batch 模式 + lazy hljs 开关。
@@ -95,10 +107,23 @@ type QueueItem =
   | { kind: "batch-start" }
   | { kind: "batch-end" }
   | { kind: "ended"; sessionId: string }
-  | { kind: "started"; sessionId: string }
+  | {
+      kind: "started";
+      sessionId: string;
+      cwd: string | null;
+      sessionKind: string | null;
+      name: string | null;
+    }
   // Batch5-F18：远端会话宣告（daemon session_added 透传）——骨架 Tab 入口。
   // 走同一 queue 与 ended/started/行保序（INVARIANT § 20 / issue #20 教训）。
-  | { kind: "remote-added"; sessionId: string; origin: string };
+  | {
+      kind: "remote-added";
+      sessionId: string;
+      origin: string;
+      sessionKind: string | null;
+      cwd: string | null;
+      name: string | null;
+    };
 
 /**
  * 批量调度参数：每个事件循环 tick 处理至多 BATCH_SIZE 条或耗时 BATCH_MS 毫秒，
@@ -237,9 +262,17 @@ export async function bindEvents(
       } else if (item.kind === "ended") {
         handlers.onSessionEnded(item.sessionId);
       } else if (item.kind === "started") {
-        handlers.onSessionStarted?.(item.sessionId);
+        handlers.onSessionStarted?.(item.sessionId, {
+          cwd: item.cwd,
+          kind: item.sessionKind,
+          name: item.name,
+        });
       } else if (item.kind === "remote-added") {
-        handlers.onRemoteSessionAdded?.(item.sessionId, item.origin);
+        handlers.onRemoteSessionAdded?.(item.sessionId, item.origin, {
+          kind: item.sessionKind,
+          cwd: item.cwd,
+          name: item.name,
+        });
       }
     } catch (e) {
       // v2.1.1: try/catch 防御 —— 单条 record 处理出错不能冻死整个 replay
@@ -352,18 +385,33 @@ export async function bindEvents(
   // 后端已用 is_session_active 门控，只在 PID 真活时发本事件 → 复活安全。
   registrations.push(
     sub<SessionStartedPayload>("session-started", (e) => {
-      queue.push({ kind: "started", sessionId: e.payload.session_id });
+      queue.push({
+        kind: "started",
+        sessionId: e.payload.session_id,
+        cwd: e.payload.cwd ?? null,
+        sessionKind: e.payload.kind ?? null,
+        name: e.payload.name ?? null,
+      });
       ensureScheduled();
     }),
   );
 
   // Batch5-F18：远端会话宣告同进 queue——骨架建 Tab 与该会话的行/ended 保序。
   registrations.push(
-    sub<{ session_id: string; origin: string }>("remote-session-added", (e) => {
+    sub<{
+      session_id: string;
+      origin: string;
+      kind: string | null;
+      cwd: string | null;
+      name: string | null;
+    }>("remote-session-added", (e) => {
       queue.push({
         kind: "remote-added",
         sessionId: e.payload.session_id,
         origin: e.payload.origin,
+        sessionKind: e.payload.kind ?? null,
+        cwd: e.payload.cwd ?? null,
+        name: e.payload.name ?? null,
       });
       ensureScheduled();
     }),
