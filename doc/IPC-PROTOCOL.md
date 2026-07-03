@@ -337,6 +337,48 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 
 错误写 stderr + 退出码 2。所有路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**旧 daemon 兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
 
+## 11. 远端终端拉起（ccm-rbind，issue #18）——注册与拉起全链路
+
+本地 `__ccm_bind`（§2/§3，文件 IPC + PowerShell 握手）的**远端对偶**：远端没有共享
+文件系统，注册信道改走**终端窗口标题**（OSC 转义经 tmux/ssh 透传到本地），monitor
+按标题扫窗口。全部代码：远端 `remote-section.ts::CCM_WRAPPER_SNIPPET`（安装器写进
+`~/.bashrc` 的 shell）+ 本地 `bind.rs::RemoteHwndCache` + `lib.rs::bring_remote_terminal_to_front`。
+
+### 注册流程（远端 shell → 本地 HWND 缓存）
+
+1. **启动**：用户经 `ccm`（或自有启动器内调 `__ccm_rbind`）起 claude——契约是
+   `( __ccm_rbind; exec claude ... )`：exec 后子 shell 进程变身 claude，watcher 记的
+   `$BASHPID` **就是 claude 的 PID**（pidfile `sessions/<PID>.json` 按 PID 命名，这是支点）。
+2. **tmux 直通**：`__ccm_rbind` 在 `$TMUX` 内先 `tmux set set-titles on` +
+   `set-titles-string "#T"`（**当前 session 级、运行时选项**，不写 tmux.conf）——否则
+   OSC 只落 pane title、到不了外层终端窗口标题（Batch7 真机排查的主断链）。
+3. **marker 刷新**：后台 watcher 每 1s 读 `sessions/<PID>.json` 的 `sessionId`，**sid
+   变化时**（首现 / `/clear` / `/resume` 换 sid）发 `\033]0;ccm-rbind-<sid>\007` →
+   tmux pane title → 直通外层终端 → 经 ssh 显示层透传 → **本地 WT 窗口标题**。
+   claude 退出（`kill -0` 失败）watcher 自灭。
+4. **扫描绑定**（`lib.rs` remote-session-emitter）：daemon `session_added` 后对该 sid
+   起独立线程，延迟 **+1500/3000/4500/6000ms 重试扫描**（等远端 shell 起 + OSC 透传），
+   `EnumWindows` + `GetWindowTextW` 找**标题子串含** `ccm-rbind-<sid>` 的首个可见窗口，
+   命中即组 `SidHwndBinding{hwnd, owner_pid, owner_proc_start}` 存入 `RemoteHwndCache`。
+   **无持久化**——monitor 重启靠重连的 session_added 重扫重绑（对比本地 §4 持久化缓存）。
+
+### 拉起流程（backtick / ↗ → 窗口前置）
+
+1. 前端 IPC `bring_remote_terminal_to_front(session_id)` → `spawn_blocking`（Win32 同步，
+   INVARIANT §10）。
+2. 查缓存；未命中 → **点击时现扫一次**（兜住：eager 扫描 4 次全错过；`/resume` 换 sid
+   后 marker 已被 watcher 刷新）。
+3. `verify_binding` 安全网：HWND 的 owner_pid + 进程创建时间须与绑定时一致——**句柄被
+   OS 复用给无关进程时拒绝拉起**。
+4. `ShowWindow(SW_RESTORE)` + `SetForegroundWindow`；OS 拒绝抢焦点 → 返回明确错误。
+
+### 已知边界
+
+- 裸 `claude` 起的会话无 marker，拉起报"未绑定窗口"。
+- 多 ssh 会话共用一个 WT 窗口的多 tab：标题是窗口级的，只能拉起窗口、切不到 tab。
+- marker 与 claude 自设的动态标题（`⠂ 任务名`）在标题上交替——绑定一次命中即缓存，
+  不受影响；扫描窗口期与交替节奏理论上可能错开（低概率），点击现扫兜底。
+
 ---
 
 ## 跨进程握手时序图（cc 集成）
