@@ -46,6 +46,10 @@ use tauri::{Emitter, Listener, Manager};
 /// 关窗即丢）→ monitor 永远不出 Tab。启动时单点清洗，之后 spawn 的一切子进程
 /// 都干净。**保留 `CLAUDE_CONFIG_DIR`**（monitor 自己消费它解析数据目录）。
 /// 正常启动路径这些变量本就不存在 → no-op 零回归。
+///
+/// ⚠ 勿把上面"子会话不注册 pidfile"泛化：CC 2.1.x 的 daemon **后台任务**
+/// (--fork-session) 会写 pidfile（kind:"bg" + jobId）——那类由 session_map /
+/// 远端 daemon 的 kind 交互性过滤处理（Batch6-F21），与本处嵌套环境清洗无关。
 /// 完整排查：doc/DEVELOPMENT.md 常见问题节。
 ///
 /// 返回实际清掉的 key（供 caller 在 logging 就绪后留痕——本函数必须在任何线程

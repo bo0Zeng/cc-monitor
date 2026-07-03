@@ -78,6 +78,11 @@ pub struct SessionInfo {
     #[serde(default)]
     #[allow(dead_code)]
     pub name: Option<String>,
+    /// Batch6-F21：会话类型。CC 2.1.x 起 daemon 后台任务（--fork-session）也写
+    /// pidfile，标 `kind:"bg"`（另带 jobId）；交互会话为 `"interactive"`。
+    /// Option 兜旧版 CC 无此字段（缺失视为交互，保守放行）。
+    #[serde(default)]
+    pub kind: Option<String>,
 }
 
 pub struct SessionMap {
@@ -175,7 +180,20 @@ impl SessionMap {
 
 fn scan_dir(dir: &Path) -> HashMap<String, SessionInfo> {
     // P3 归并：走 utils::scan_dir_jsons。
-    crate::utils::scan_dir_jsons(dir, |info: &SessionInfo| info.session_id.clone())
+    let mut map = crate::utils::scan_dir_jsons(dir, |info: &SessionInfo| info.session_id.clone());
+    // Batch6-F21：交互性过滤。CC 2.1.x 的 daemon 后台任务（--fork-session）也写
+    // pidfile（kind:"bg" + jobId）——是自己文件的真作者，但不是交互会话，不该成
+    // Tab / 进红绿灯 / 进骨架清单。保守规则（与远端 daemon 一字一致）：kind 存在
+    // 且非 "interactive" 才排除，旧 CC 无该字段 → 保留。在 by_id 源头纯净化，
+    // 下游（diff/snapshot/activity/list_active_sessions）自动干净。
+    map.retain(is_interactive);
+    map
+}
+
+/// Batch6-F21：交互性谓词——`scan_dir` 过滤与单测共用（测产线谓词而非测试内
+/// 副本，审计 S2）。签名匹配 `HashMap::retain`。
+fn is_interactive(_sid: &String, info: &mut SessionInfo) -> bool {
+    info.kind.as_deref().map_or(true, |k| k == "interactive")
 }
 
 /// issue #23: 重扫 diff（纯函数，供单测）。
@@ -397,6 +415,34 @@ fn is_process_alive(_pid: u32, _expected_proc_start: Option<&str>) -> bool {
 mod tests {
     use super::*;
 
+    /// Batch6-F21：kind 字段解析 + 交互性过滤契约。
+    #[test]
+    fn kind_field_parses_and_bg_is_filtered() {
+        // 真实 bg 样本形态（本机 732685.json）：kind:"bg" + jobId
+        let bg = r#"{"pid":732685,"sessionId":"6d2d9a38-55a0-4a46-a04e-18cadb0fc9af","cwd":"/x","kind":"bg","jobId":"6d2d9a38"}"#;
+        let info: SessionInfo = serde_json::from_str(bg).unwrap();
+        assert_eq!(info.kind.as_deref(), Some("bg"));
+
+        let interactive = r#"{"pid":1,"sessionId":"s1","cwd":"/x","kind":"interactive"}"#;
+        let legacy = r#"{"pid":2,"sessionId":"s2","cwd":"/x"}"#; // 旧 CC 无 kind
+        let i2: SessionInfo = serde_json::from_str(interactive).unwrap();
+        let i3: SessionInfo = serde_json::from_str(legacy).unwrap();
+
+        // scan_dir 的过滤规则（产线谓词直测，审计 S2）：bg 拒、interactive 放、缺失放
+        let mut info = info;
+        let mut i2 = i2;
+        let mut i3 = i3;
+        assert!(
+            !is_interactive(&String::new(), &mut info),
+            "kind:bg must be filtered"
+        );
+        assert!(is_interactive(&String::new(), &mut i2));
+        assert!(
+            is_interactive(&String::new(), &mut i3),
+            "legacy CC without kind must be kept"
+        );
+    }
+
     #[test]
     fn parse_session_info() {
         // 来自 Claude Code 实际写入的 sessions/<PID>.json 的最小代表样本；
@@ -447,6 +493,7 @@ mod tests {
             status: status.map(String::from),
             waiting_for: waiting.map(String::from),
             name: None,
+            kind: None,
         }
     }
     fn as_map(items: Vec<SessionInfo>) -> HashMap<String, SessionInfo> {
