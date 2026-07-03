@@ -113,41 +113,62 @@ impl EventReplay {
             return;
         }
 
-        // 大 batch：切块 jsonl-batch（前端按 seq 自动排，无 head/older 区分）
+        // 大 batch：切块 jsonl-batch（前端按 seq 自动排，无 head/older 区分）。
+        //
+        // Batch5-F17：块序列 spawn 到 async_runtime、块间 tokio::time::sleep
+        // （原地 std::thread::sleep 会睡 tokio worker，INVARIANT § 10）。
+        //
+        // ⚠ spawn = 本函数返回≠emit 完成：与其他通道（如 session-ended）的相对
+        // 顺序不保证。**顺序敏感的调用方必须用 `on_line_batch_awaited`**——
+        // ssh_source 的边界/断连 flush 若走本入口，迟到的行会把刚归档的远端
+        // Tab 复活成僵尸 live（F17 审计 R1）。本入口仅供本地 watcher std 线程。
         let n = payloads.len();
-        let started = std::time::Instant::now();
         let chunks = build_chunks(&payloads);
         let chunk_total = chunks.len() as u32;
         tracing::info!(
             "[perf] incremental batch chunked: total={n}, chunks={chunk_total} (likely /resume or large append)"
         );
-        for (idx, chunk) in chunks.into_iter().enumerate() {
-            let chunk_started = std::time::Instant::now();
-            let payload = JsonlBatchPayload {
-                chunk_index: idx as u32,
-                chunk_total,
-                payloads: chunk,
-            };
-            if let Err(e) = handle.emit(events::JSONL_BATCH, &payload) {
-                tracing::warn!("emit incremental jsonl-batch chunk {idx} failed: {e}");
-            }
-            tracing::info!(
-                "[perf] incremental chunk {idx}/{chunk_total} emit in {}ms",
-                chunk_started.elapsed().as_millis()
-            );
-            if idx as u32 + 1 < chunk_total {
-                // ⚠ std::thread::sleep 的成立前提：大 batch（≥ 阈值）只会从本地 watcher
-                // 的 std 线程到达。ssh_source 虽在 async task 里调 on_line_batch，但
-                // daemon 每帧恒 1 行 → 永走上面的小 batch 路径。若将来远端帧改攒批，
-                // 这里必须随 replay_and_mark_ready（issue #20）一样 async 化，否则
-                // 在 tokio worker 上睡觉（INVARIANT § 10）。
-                std::thread::sleep(std::time::Duration::from_millis(CHUNK_PAUSE_MS));
-            }
+        let handle = handle.clone();
+        tauri::async_runtime::spawn(async move {
+            emit_chunks(&handle, chunks, chunk_total).await;
+        });
+    }
+
+    /// `on_line_batch` 的 await 变体（Batch5-F17 审计 R1）：大 batch 的块序列
+    /// **在调用方任务内发完才返回**——ssh_source 的攒批 flush 用它，保证行 emit
+    /// 严格先于随后的 SessionRemoved/断连归档（issue #20 / FIX 2 的顺序契约），
+    /// 同时对 daemon 帧流形成天然背压（emit 期间不再收帧）。
+    pub async fn on_line_batch_awaited<R: Runtime>(
+        &self,
+        handle: &AppHandle<R>,
+        payloads: Vec<JsonlLinePayload>,
+    ) {
+        if payloads.is_empty() {
+            return;
         }
-        tracing::info!(
-            "[perf] incremental batch chunked emit done in {}ms total",
-            started.elapsed().as_millis()
-        );
+        let (ready, big_batch) = {
+            let mut inner = self.inner.lock();
+            for p in &payloads {
+                inner.history.push_back(p.clone());
+            }
+            (inner.ready, payloads.len() >= INCREMENTAL_BATCH_THRESHOLD)
+        };
+        if !ready {
+            return;
+        }
+        if !big_batch {
+            for p in payloads {
+                if let Err(e) = handle.emit(events::JSONL_LINE, &p) {
+                    tracing::warn!("emit jsonl-line failed: {e}");
+                }
+            }
+            return;
+        }
+        let n = payloads.len();
+        let chunks = build_chunks(&payloads);
+        let chunk_total = chunks.len() as u32;
+        tracing::info!("[perf] incremental batch chunked (awaited): total={n}, chunks={chunk_total} (remote snapshot)");
+        emit_chunks(handle, chunks, chunk_total).await;
     }
 
     /// frontend-ready 时调一次：切块 emit 整个 history 后置 `ready = true`。
@@ -337,6 +358,38 @@ impl Default for EventReplay {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// 增量大 batch 的块序列 emit（Batch5-F17 抽取，供 spawn 与 awaited 两个入口
+/// 共用）：块间 `tokio::time::sleep` pacing，块内顺序由 for 循环保证。
+async fn emit_chunks<R: Runtime>(
+    handle: &AppHandle<R>,
+    chunks: Vec<Vec<JsonlLinePayload>>,
+    chunk_total: u32,
+) {
+    let started = std::time::Instant::now();
+    for (idx, chunk) in chunks.into_iter().enumerate() {
+        let chunk_started = std::time::Instant::now();
+        let payload = JsonlBatchPayload {
+            chunk_index: idx as u32,
+            chunk_total,
+            payloads: chunk,
+        };
+        if let Err(e) = handle.emit(events::JSONL_BATCH, &payload) {
+            tracing::warn!("emit incremental jsonl-batch chunk {idx} failed: {e}");
+        }
+        tracing::info!(
+            "[perf] incremental chunk {idx}/{chunk_total} emit in {}ms",
+            chunk_started.elapsed().as_millis()
+        );
+        if idx as u32 + 1 < chunk_total {
+            tokio::time::sleep(std::time::Duration::from_millis(CHUNK_PAUSE_MS)).await;
+        }
+    }
+    tracing::info!(
+        "[perf] incremental batch chunked emit done in {}ms total",
+        started.elapsed().as_millis()
+    );
 }
 
 /// 切块策略（P5.4 B 重构简化）：按 CHUNK_SIZE 切块，**末块先发**——最新一段
