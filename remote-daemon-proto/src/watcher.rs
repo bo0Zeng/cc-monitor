@@ -407,7 +407,10 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     let Some(pid) = file_stem_str(path).and_then(|s| s.parse::<u32>().ok()) else {
         return;
     };
-    let Some(sid) = read_session_id(path) else {
+    let Some(bytes) = std::fs::read(path).ok() else {
+        return;
+    };
+    let Some(sid) = parse_session_id(&bytes) else {
         return;
     };
     // Only ACTIVE if the process is actually alive (mirrors local STILL_ACTIVE).
@@ -420,9 +423,42 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     if state.sessions.get(&key).map(|e| e.sid.as_str()) == Some(sid.as_str()) {
         return;
     }
-    // #34: capture the PID's procStart now so the liveness poll can later tell a
-    // still-running session from a PID the OS reused for an unrelated process.
-    let start = proc_starttime(pid);
+    // Batch5-F20: add-time imposter check. `/proc/<pid>` existing is NOT enough:
+    // a stale pidfile (CC force-killed, tmux server killed, power loss — nothing
+    // ever cleans sessions/ up) plus PID reuse by any long-lived process (tmux
+    // server, pane shell, sshd …) used to sail through and stream the whole dead
+    // session's history as a live zombie tab, un-healable because the #34
+    // procStart baseline below was captured FROM the imposter itself.
+    //
+    // Primary evidence: the pidfile's own `procStart` field — on Linux CC writes
+    // the process's /proc starttime ticks verbatim (audit-verified bit-identical
+    // on live sessions), so equality with the CURRENT occupant's starttime is
+    // exact process identity (the same PID+starttime pair #34 uses), immune to
+    // every wall-clock concern. Fallback heuristics (field absent, or mismatch
+    // that could be CC format drift rather than reuse): the real claude wrote
+    // this pidfile while alive, so its start must not be later than the file's
+    // mtime; and its cmdline must look like claude. Missing data degrades to
+    // allow (same philosophy as the local procStart-absent fallback).
+    let current_ticks = proc_starttime(pid);
+    match add_time_verdict(
+        parse_procstart_ticks(&bytes),
+        current_ticks,
+        start_epoch_from_ticks(current_ticks),
+        file_mtime_epoch(path),
+        proc_cmdline(pid).as_deref(),
+    ) {
+        AddTimeVerdict::Imposter(reason) => {
+            tracing::warn!(
+                "stale sessions json ignored ({reason}): {} pid {pid} is not the claude that wrote it",
+                path.display()
+            );
+            return;
+        }
+        AddTimeVerdict::Alive => {}
+    }
+    // #34: the poll baseline. Reuse the very ticks the verdict just examined —
+    // no second /proc read, so no verdict-to-baseline TOCTOU window.
+    let start = current_ticks;
     state.sessions.insert(
         key,
         SessionEntry {
@@ -502,6 +538,145 @@ fn proc_starttime(pid: u32) -> Option<u64> {
     }
 }
 
+/// Add-time verdict on whether the current occupant of a PID is plausibly the
+/// claude process that wrote the `sessions/<PID>.json` pidfile (Batch5-F20).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AddTimeVerdict {
+    Alive,
+    Imposter(&'static str),
+}
+
+/// A process that started noticeably later than the pidfile's last write cannot
+/// be its author. 60s absorbs clock fuzz (mtime granularity, btime rounding,
+/// NTP slew) — real reuse gaps are hours-to-weeks, so the tolerance is safe.
+const ADD_TIME_TOLERANCE_SECS: u64 = 60;
+
+/// Pure decision core (unit-tested on every platform):
+///
+/// - **identity evidence（primary）**: the pidfile's `procStart` field equals
+///   the current occupant's `/proc/<pid>/stat` starttime ticks → the occupant
+///   IS the author (PID + starttime is exact process identity, the same pair
+///   #34 relies on) — Alive, no further checks, immune to every wall-clock
+///   concern (NTP steps, NFS mtime, btime drift). A **mismatch** is NOT
+///   immediately fatal: it is either PID reuse (imposter) or a CC version
+///   writing a different format into `procStart` (a hard reject on format
+///   drift would black out every real session) — fall through, the heuristics
+///   below catch the stale-pidfile case either way.
+/// - **time evidence**: `proc_start_epoch > file_mtime_epoch + tolerance` →
+///   imposter. CC rewrites its pidfile on every state transition, so the file's
+///   mtime is a lower bound on "the real claude was alive at this instant"; a
+///   later-started process is a PID-reuse squatter. Both sides are wall-clock
+///   seconds from the same host clock (btime + starttime/USER_HZ vs mtime), so
+///   there is no timezone concern. This also subsumes the reboot case: after a
+///   reboot every process starts after btime > old mtime.
+/// - **cmdline evidence**: a readable, non-empty cmdline that mentions neither
+///   `claude` nor `node` is not a claude CLI (tmux, bash, sshd …).
+/// - Missing data (absent procStart, unreadable stat/mtime/cmdline) skips that
+///   check — degrade to allow, mirroring the local procStart-absent fallback.
+fn add_time_verdict(
+    pidfile_procstart_ticks: Option<u64>,
+    current_starttime_ticks: Option<u64>,
+    proc_start_epoch: Option<u64>,
+    file_mtime_epoch: Option<u64>,
+    cmdline: Option<&str>,
+) -> AddTimeVerdict {
+    if let (Some(recorded), Some(current)) = (pidfile_procstart_ticks, current_starttime_ticks) {
+        if recorded == current {
+            return AddTimeVerdict::Alive; // exact identity: author confirmed
+        }
+        // mismatch: fall through to the heuristics (see doc comment)
+    }
+    if let (Some(start), Some(mtime)) = (proc_start_epoch, file_mtime_epoch) {
+        if start > mtime + ADD_TIME_TOLERANCE_SECS {
+            return AddTimeVerdict::Imposter("started-after-pidfile");
+        }
+    }
+    if let Some(cmd) = cmdline {
+        let lower = cmd.to_lowercase();
+        if !lower.trim().is_empty() && !lower.contains("claude") && !lower.contains("node") {
+            return AddTimeVerdict::Imposter("cmdline");
+        }
+    }
+    AddTimeVerdict::Alive
+}
+
+/// Parse the pidfile's `procStart` field as starttime ticks. CC writes it as a
+/// decimal string on Linux（audit-verified verbatim /proc starttime ticks）；
+/// accept a bare number too. Anything else → None（fallback heuristics apply）.
+fn parse_procstart_ticks(bytes: &[u8]) -> Option<u64> {
+    let v: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let field = v.get("procStart")?;
+    if let Some(s) = field.as_str() {
+        return s.trim().parse::<u64>().ok();
+    }
+    field.as_u64()
+}
+
+/// Parse the boot time (`btime <epoch-secs>` line) out of `/proc/stat` content.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn parse_btime(proc_stat: &str) -> Option<u64> {
+    proc_stat.lines().find_map(|l| {
+        l.strip_prefix("btime ")
+            .and_then(|v| v.trim().parse::<u64>().ok())
+    })
+}
+
+/// `/proc` time values are exported in USER_HZ ticks, which is a compile-time
+/// constant 100 on every mainstream Linux arch (independent of the kernel's
+/// internal HZ) — hardcoding avoids a libc dependency for sysconf(_SC_CLK_TCK).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const USER_HZ: u64 = 100;
+
+/// Starttime ticks → wall-clock epoch seconds: `/proc/stat` btime + ticks/USER_HZ.
+///
+/// btime is read FRESH on every call, deliberately un-cached: the kernel
+/// computes it per-read as (wall clock − CLOCK_BOOTTIME), so an NTP **step**
+/// moves it. A cached value taken before a backwards step would leave a
+/// constant offset that mis-kills every future real session with no self-heal
+/// (F20 audit I-1). Session-add is rare; one small /proc read is free.
+fn start_epoch_from_ticks(ticks: Option<u64>) -> Option<u64> {
+    #[cfg(target_os = "linux")]
+    {
+        let btime = std::fs::read_to_string("/proc/stat")
+            .ok()
+            .and_then(|s| parse_btime(&s))?;
+        Some(btime + ticks? / USER_HZ)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = ticks;
+        None
+    }
+}
+
+/// The pidfile's mtime as epoch seconds (None on any error → check skipped).
+fn file_mtime_epoch(path: &Path) -> Option<u64> {
+    let mtime = std::fs::metadata(path).ok()?.modified().ok()?;
+    mtime
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs())
+}
+
+/// `/proc/<pid>/cmdline`, NUL separators turned into spaces, lossily decoded.
+/// None when unreadable (vanished PID, permissions) → check skipped.
+fn proc_cmdline(pid: u32) -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        let bytes = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+        let spaced: Vec<u8> = bytes
+            .into_iter()
+            .map(|b| if b == 0 { b' ' } else { b })
+            .collect();
+        Some(String::from_utf8_lossy(&spaced).into_owned())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        None
+    }
+}
+
 /// Parse the `starttime` (field 22) out of a `/proc/<pid>/stat` line.
 ///
 /// **The comm gotcha**: field 2 is `(comm)` and the executable name can contain
@@ -567,12 +742,6 @@ fn is_same_live_process(
         // assert. Do not archive a still-existing PID on missing start info.
         _ => true,
     }
-}
-
-/// Extract the `sessionId` string field from a `sessions/<PID>.json` file.
-fn read_session_id(path: &Path) -> Option<String> {
-    let bytes = std::fs::read(path).ok()?;
-    parse_session_id(&bytes)
 }
 
 /// Pure parse of the `sessionId` field out of a sessions JSON blob.
@@ -948,6 +1117,208 @@ mod tests {
         assert_eq!(cur.consumed, 0, "consumed must not advance past the tail");
         assert_eq!(cur.seen_len, buf.len() as u64);
         assert_eq!(seqs.next(KEY), 0, "deferral must not consume a seq");
+    }
+
+    // === Batch5-F20 add-time imposter check ===
+
+    #[test]
+    fn imposter_when_proc_started_after_pidfile() {
+        // pidfile last written at t=1000, process started at t=2000 (> 1000+60).
+        let v = add_time_verdict(None, None, Some(2000), Some(1000), None);
+        assert_eq!(v, AddTimeVerdict::Imposter("started-after-pidfile"));
+        // Reboot case is the same shape: old mtime, post-boot start.
+        let v2 = add_time_verdict(
+            None,
+            None,
+            Some(1_700_000_000),
+            Some(1_600_000_000),
+            Some("claude"),
+        );
+        assert_eq!(
+            v2,
+            AddTimeVerdict::Imposter("started-after-pidfile"),
+            "time evidence must win even with a claude-looking cmdline (a NEW claude did not write the OLD pidfile)"
+        );
+    }
+
+    #[test]
+    fn alive_within_tolerance() {
+        // Started slightly after mtime but inside the 60s fuzz window.
+        assert_eq!(
+            add_time_verdict(None, None, Some(1030), Some(1000), None),
+            AddTimeVerdict::Alive
+        );
+        // Started before mtime (the normal case: claude starts, then writes).
+        assert_eq!(
+            add_time_verdict(None, None, Some(900), Some(1000), None),
+            AddTimeVerdict::Alive
+        );
+    }
+
+    #[test]
+    fn imposter_by_cmdline() {
+        assert_eq!(
+            add_time_verdict(None, None, None, None, Some("tmux new-session -d")),
+            AddTimeVerdict::Imposter("cmdline")
+        );
+        assert_eq!(
+            add_time_verdict(None, None, Some(900), Some(1000), Some("-bash")),
+            AddTimeVerdict::Imposter("cmdline"),
+            "time check passing must not mask a non-claude cmdline"
+        );
+    }
+
+    #[test]
+    fn claude_like_cmdlines_pass() {
+        for cmd in [
+            "claude --resume abc",
+            "/usr/bin/node /home/u/.local/bin/claude",
+            "NODE_OPTIONS=x node cli.js",
+            "Claude", // case-insensitive
+        ] {
+            assert_eq!(
+                add_time_verdict(None, None, Some(900), Some(1000), Some(cmd)),
+                AddTimeVerdict::Alive,
+                "{cmd}"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_data_degrades_to_allow() {
+        assert_eq!(
+            add_time_verdict(None, None, None, None, None),
+            AddTimeVerdict::Alive
+        );
+        assert_eq!(
+            add_time_verdict(None, None, Some(2000), None, None),
+            AddTimeVerdict::Alive
+        );
+        assert_eq!(
+            add_time_verdict(None, None, None, Some(1000), None),
+            AddTimeVerdict::Alive
+        );
+        // Empty cmdline (kernel threads read as empty) is not evidence.
+        assert_eq!(
+            add_time_verdict(None, None, None, None, Some("")),
+            AddTimeVerdict::Alive
+        );
+        assert_eq!(
+            add_time_verdict(None, None, None, None, Some("   ")),
+            AddTimeVerdict::Alive
+        );
+    }
+
+    #[test]
+    fn procstart_identity_match_short_circuits_all_heuristics() {
+        // Recorded ticks == current ticks → author confirmed, even when the
+        // heuristics would individually scream imposter (stale mtime, bad
+        // cmdline): identity evidence is strictly stronger.
+        assert_eq!(
+            add_time_verdict(
+                Some(12285972),
+                Some(12285972),
+                Some(9_999_999),
+                Some(1000),
+                Some("tmux")
+            ),
+            AddTimeVerdict::Alive
+        );
+    }
+
+    #[test]
+    fn procstart_mismatch_falls_through_to_heuristics() {
+        // Mismatch + stale time evidence → imposter (the tmux reuse case).
+        assert_eq!(
+            add_time_verdict(Some(12285972), Some(99999999), Some(2000), Some(1000), None),
+            AddTimeVerdict::Imposter("started-after-pidfile")
+        );
+        // Mismatch alone with fresh mtime and claude-like cmdline → allow
+        // (defends against CC changing the procStart format: a hard reject
+        // would black out every real session).
+        assert_eq!(
+            add_time_verdict(
+                Some(12285972),
+                Some(99999999),
+                Some(990),
+                Some(1000),
+                Some("claude")
+            ),
+            AddTimeVerdict::Alive
+        );
+    }
+
+    #[test]
+    fn tolerance_exact_boundary() {
+        // start == mtime + 60 → still inside tolerance (uses >, not >=).
+        assert_eq!(
+            add_time_verdict(None, None, Some(1060), Some(1000), None),
+            AddTimeVerdict::Alive
+        );
+        // One second past → imposter.
+        assert_eq!(
+            add_time_verdict(None, None, Some(1061), Some(1000), None),
+            AddTimeVerdict::Imposter("started-after-pidfile")
+        );
+    }
+
+    #[test]
+    fn parse_procstart_ticks_variants() {
+        assert_eq!(
+            parse_procstart_ticks(br#"{"sessionId":"abc","procStart":"12285972"}"#),
+            Some(12285972),
+            "CC's real format: decimal string"
+        );
+        assert_eq!(
+            parse_procstart_ticks(br#"{"procStart":12285972}"#),
+            Some(12285972),
+            "bare number tolerated"
+        );
+        assert_eq!(parse_procstart_ticks(br#"{"sessionId":"abc"}"#), None);
+        assert_eq!(
+            parse_procstart_ticks(br#"{"procStart":"133849906480000000"}"#),
+            Some(133_849_906_480_000_000),
+            "Windows FILETIME magnitude still parses (mismatch then falls to heuristics)"
+        );
+        assert_eq!(parse_procstart_ticks(b"not json"), None);
+    }
+
+    /// Integration sanity on the real /proc (Linux only): our own process's
+    /// start epoch must be between boot and now — catches a broken btime +
+    /// ticks/USER_HZ composition that pure-function tests cannot see.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn own_process_start_epoch_is_sane() {
+        let ticks = proc_starttime(std::process::id());
+        assert!(ticks.is_some(), "own starttime must be readable");
+        let epoch = start_epoch_from_ticks(ticks).expect("own start epoch");
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        assert!(
+            epoch <= now + 2,
+            "start {epoch} must not be in the future (now {now})"
+        );
+        assert!(
+            now - epoch < 24 * 3600,
+            "test process started within a day (got {})",
+            now - epoch
+        );
+    }
+
+    #[test]
+    fn parse_btime_from_realistic_proc_stat() {
+        let stat = "cpu  123 0 456 789 0 0 0 0 0 0\n\
+                    cpu0 61 0 228 394 0 0 0 0 0 0\n\
+                    intr 12345 0 0\n\
+                    ctxt 987654\n\
+                    btime 1719900000\n\
+                    processes 4321\n\
+                    procs_running 2\n";
+        assert_eq!(parse_btime(stat), Some(1_719_900_000));
+        assert_eq!(parse_btime("cpu 1 2 3\n"), None, "no btime line");
+        assert_eq!(parse_btime("btime notanumber\n"), None);
     }
 
     // === #34 procStart double-check (F04) ===

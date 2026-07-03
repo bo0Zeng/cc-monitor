@@ -40,7 +40,9 @@ const PROTO_VERSION: u32 = 1;
 /// is stale. Bump when daemon capabilities change.
 /// - p1a-history  = 一次性历史查询模式（#16，--list-projects 等）
 /// - p1b-overflow = + 探活精确化（#34）+ overflow 信号（#32）
-const BUILD_ID: &str = "p1b-overflow";
+/// - p1c-f20-addtime = + add-time 冒名判定（Batch5-F20：pidfile procStart 身份
+///   比对为主证据，mtime 时间证据 + cmdline 白名单为 fallback，修 tmux 僵尸 tab）
+const BUILD_ID: &str = "p1c-f20-addtime";
 
 #[tokio::main]
 async fn main() {
