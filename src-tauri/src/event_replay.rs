@@ -188,7 +188,11 @@ impl EventReplay {
     /// async：块间 pause 用 `tokio::time::sleep`——本函数跑在 tauri::async_runtime
     /// 的 task 里（lib.rs frontend-ready），原 `std::thread::sleep` 会压住 tokio
     /// worker（INVARIANT § 10），issue #20 顺手清理。
-    pub async fn replay_and_mark_ready<R: Runtime>(&self, handle: &AppHandle<R>) {
+    pub async fn replay_and_mark_ready<R: Runtime>(
+        &self,
+        handle: &AppHandle<R>,
+        priority_sid: Option<&str>,
+    ) {
         let started = std::time::Instant::now();
 
         // 阶段 1：拿 snapshot + 立即置 ready
@@ -219,11 +223,13 @@ impl EventReplay {
             return;
         }
 
-        // N ≥ 阈值 → 切块，末块先发（最新一段先到 → 用户立刻可见）
-        let chunks = build_chunks(&snapshot);
+        // N ≥ 阈值 → 切块。Batch5-F19：priority session（用户上次所在 tab）的
+        // 块在前（组内仍末块先发）——当前 tab 最先可读；其余随后（同样末块先发）。
+        // emit 重排对视觉正确性零影响（前端按 seq 排，INVARIANT § 5/§ 9）。
+        let chunks = build_priority_chunks(snapshot, priority_sid);
         let chunk_total = chunks.len();
         tracing::info!(
-            "[perf] replay切块: total={n}, chunks={chunk_total} (CHUNK_SIZE={CHUNK_SIZE}, 末块先发)"
+            "[perf] replay切块: total={n}, chunks={chunk_total} (CHUNK_SIZE={CHUNK_SIZE}, 末块先发, priority={priority_sid:?})"
         );
 
         for (idx, chunk) in chunks.into_iter().enumerate() {
@@ -360,6 +366,28 @@ impl Default for EventReplay {
     }
 }
 
+/// Batch5-F19：分组切块——priority session（用户上次所在 tab）的块在前，其余
+/// payload 保原序成组随后；两组内部均沿 [`build_chunks`] 的末块先发。所有
+/// payload 不丢不重；`priority_sid` 为 None 或不命中任何 payload 时**逐字节
+/// 等价** `build_chunks(snapshot)`（rest 即全量）。
+fn build_priority_chunks(
+    snapshot: Vec<JsonlLinePayload>,
+    priority_sid: Option<&str>,
+) -> Vec<Vec<JsonlLinePayload>> {
+    let Some(sid) = priority_sid else {
+        return build_chunks(&snapshot);
+    };
+    // 按值 partition：调用方本就拥有 snapshot，白拿这份拷贝（审计 S2）。
+    let (pri, rest): (Vec<JsonlLinePayload>, Vec<JsonlLinePayload>) =
+        snapshot.into_iter().partition(|p| p.session_id == sid);
+    if pri.is_empty() {
+        return build_chunks(&rest);
+    }
+    let mut chunks = build_chunks(&pri);
+    chunks.extend(build_chunks(&rest));
+    chunks
+}
+
 /// 增量大 batch 的块序列 emit（Batch5-F17 抽取，供 spawn 与 awaited 两个入口
 /// 共用）：块间 `tokio::time::sleep` pacing，块内顺序由 for 循环保证。
 async fn emit_chunks<R: Runtime>(
@@ -472,6 +500,62 @@ mod tests {
         let mut ids = replay.buffered_remote_session_ids();
         ids.sort();
         assert_eq!(ids, vec!["r1".to_string(), "r2".to_string()]);
+    }
+
+    // === Batch5-F19：build_priority_chunks ===
+
+    #[test]
+    fn priority_chunks_put_priority_session_first_no_loss_no_dup() {
+        // s1 与 s2 交错各 700 条（> CHUNK_SIZE=600，两组都会切多块）
+        let mut snapshot = Vec::new();
+        for i in 0..700 {
+            snapshot.push(payload("s1", i * 2));
+            snapshot.push(payload("s2", i * 2 + 1));
+        }
+        let chunks = build_priority_chunks(snapshot.clone(), Some("s2"));
+        let flat: Vec<&JsonlLinePayload> = chunks.iter().flatten().collect();
+        assert_eq!(flat.len(), 1400, "no loss");
+        // 前 700 条全是 s2（priority 组整体在前）
+        assert!(flat[..700].iter().all(|p| p.session_id == "s2"));
+        assert!(flat[700..].iter().all(|p| p.session_id == "s1"));
+        // 组内末块先发：priority 组第一块的首元素 idx 大于最后一块的首元素 idx
+        let first_chunk_first = idx_of(&chunks[0][0]);
+        let pri_chunk_count = chunks
+            .iter()
+            .take_while(|c| c[0].session_id == "s2")
+            .count();
+        let last_pri_first = idx_of(&chunks[pri_chunk_count - 1][0]);
+        assert!(
+            first_chunk_first > last_pri_first,
+            "newest-first within priority group"
+        );
+        // rest 组同样末块先发（审计 S3：只验 pri 组会漏掉 rest 组改正序的回归）
+        let first_rest_first = idx_of(&chunks[pri_chunk_count][0]);
+        let last_rest_first = idx_of(&chunks[chunks.len() - 1][0]);
+        assert!(
+            first_rest_first > last_rest_first,
+            "newest-first within rest group"
+        );
+        // 去重校验：uuid 级不重复（用 (sid, seq) 对）
+        let mut seen = std::collections::HashSet::new();
+        for p in &flat {
+            assert!(seen.insert((p.session_id.clone(), p.seq)), "no dup");
+        }
+    }
+
+    #[test]
+    fn priority_none_or_miss_equals_plain_build_chunks() {
+        let snapshot: Vec<JsonlLinePayload> = (0..1500).map(|i| payload("s1", i)).collect();
+        let plain = build_chunks(&snapshot);
+        let none = build_priority_chunks(snapshot.clone(), None);
+        let miss = build_priority_chunks(snapshot.clone(), Some("nope"));
+        let key = |cs: &Vec<Vec<JsonlLinePayload>>| -> Vec<Vec<u64>> {
+            cs.iter()
+                .map(|c| c.iter().map(|p| p.seq).collect())
+                .collect()
+        };
+        assert_eq!(key(&none), key(&plain), "None → 等价 build_chunks");
+        assert_eq!(key(&miss), key(&plain), "sid 不命中 → 退化等价");
     }
 
     #[test]

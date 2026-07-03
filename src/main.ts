@@ -12,6 +12,7 @@
 import "./styles.css";
 import { emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { LS_KEYS, safeGet } from "./local-storage";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
@@ -120,6 +121,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   empty.className = "empty-state";
   empty.innerHTML = `暂无活跃会话<br><small>打开终端跑 <code>claude</code> 后将自动出现</small>`;
   streamRoot.appendChild(empty);
+
+  // Batch5-F19：上次所在 tab 是远端会话时，等它的 remote-session-added 到达再切
+  // （应用一次即清）。带 30s 启动窗口期限（审计 R2）：SSH 慢连/重连可达分钟级，
+  // 用户此时早已在工作，迟到的宣告不该抢焦点。
+  let pendingStartupActive: string | null = null;
+  const startupActiveDeadline = Date.now() + 30_000;
 
   const tabs = new TabManager(
     tabBar,
@@ -246,8 +253,17 @@ window.addEventListener("DOMContentLoaded", async () => {
     onSessionActivity: (e) =>
       tabs.updateActivity(e.session_id, e.status, e.waiting_for),
     // Batch5-F18：远端会话宣告 → 骨架 Tab（无 cwd，标题 [host] sid 前缀，首行补全）
-    onRemoteSessionAdded: (sessionId, origin) =>
-      tabs.createSkeletonTab(sessionId, null, origin),
+    onRemoteSessionAdded: (sessionId, origin) => {
+      tabs.createSkeletonTab(sessionId, null, origin);
+      // Batch5-F19：上次所在 tab 是远端会话时在此补切（应用一次即清；超过
+      // 30s 启动窗口则放弃——迟到宣告不抢焦点，replay 优先级不受影响）
+      if (pendingStartupActive === sessionId) {
+        pendingStartupActive = null;
+        if (Date.now() < startupActiveDeadline) {
+          tabs.switchTo(sessionId, "auto");
+        }
+      }
+    },
   });
 
   // v2.0.0 (issue #4)：后端 ERROR 级别 tracing → 右下角红色 toast
@@ -269,12 +285,24 @@ window.addEventListener("DOMContentLoaded", async () => {
     console.warn("[skeleton] list_active_sessions failed:", e);
   }
 
-  // 通知后端可以发了 —— 缓冲的 line 会被 flush 过来
+  // Batch5-F19：启动 active = 上次所在 tab（localStorage 记忆）。本地骨架里有
+  // 就立即切；是远端会话则挂 pending，等它的 remote-session-added 宣告到达时
+  // 补切（应用一次即清，之后不再抢焦点）。
+  const lastActive = safeGet(LS_KEYS.lastActiveSid);
+  if (lastActive && tabs.hasTab(lastActive)) {
+    tabs.switchTo(lastActive, "auto");
+    pendingStartupActive = null;
+  } else {
+    pendingStartupActive = lastActive;
+  }
+
+  // 通知后端可以发了 —— 缓冲的 line 会被 flush 过来。payload 带上次所在 tab
+  // （Batch5-F19）：后端 replay 按 session 分组、该 tab 的内容块先发。
   window.__ccmPerf.frontendReadyEmit = performance.now();
   console.info(
     `[perf] emit frontend-ready @ ${window.__ccmPerf.frontendReadyEmit.toFixed(0)}ms`,
   );
-  void emit("frontend-ready");
+  void emit("frontend-ready", { prioritySid: lastActive });
 
   // issue #23: 红绿灯初始快照（session-activity 事件不进 replay buffer，F5 会丢；
   // 快照 + 事件增量双路收敛，同 fetchSessionTasks 模式）。Tab 未建时进 pendingActivity 暂存。
@@ -321,6 +349,8 @@ async function bootstrapViewer(sid: string): Promise<void> {
   const tabs = new TabManager(tabBar, streamRoot, ({ total }) => {
     empty.style.display = total > 0 ? "none" : "";
   });
+  // Batch5-F19 R1：viewer 窗口共享 localStorage，禁写 last-active（防污染主窗口记忆）
+  tabs.persistLastActive = false;
 
   // issue #10：slim 顶栏 —— 标题 + 调出终端 + 打开工作目录。按钮复用 TabManager 的
   // bringActiveTerminalToFront / openActiveTabCwd（作用于其唯一的 active tab）。

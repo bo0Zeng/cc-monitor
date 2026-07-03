@@ -618,7 +618,18 @@ pub fn run() {
                 let session_map = session_map.clone();
                 let remote_active = remote_active.clone();
                 let t0_capture = t0;
-                app.listen("frontend-ready", move |_event| {
+                app.listen("frontend-ready", move |event| {
+                    // Batch5-F19：payload 携带用户上次所在 tab（localStorage 记忆），
+                    // replay 按 session 分组、该 tab 的块先发。缺省/解析失败 → None
+                    // （行为同 F19 前；viewer 等旧调用方不带 payload 也安全）。
+                    #[derive(serde::Deserialize)]
+                    struct ReadyPayload {
+                        #[serde(rename = "prioritySid")]
+                        priority_sid: Option<String>,
+                    }
+                    let priority_sid = serde_json::from_str::<ReadyPayload>(event.payload())
+                        .ok()
+                        .and_then(|p| p.priority_sid);
                     let replay = replay.clone();
                     let handle = handle.clone();
                     let initial_scan_done = initial_scan_done.clone();
@@ -649,7 +660,9 @@ pub fn run() {
                             t0_capture.elapsed().as_millis(),
                             wait_started.elapsed().as_millis()
                         );
-                        replay.replay_and_mark_ready(&handle).await;
+                        replay
+                            .replay_and_mark_ready(&handle, priority_sid.as_deref())
+                            .await;
 
                         // issue #19：前端是纯事件增量模型——Tab 见行即建 live，只有一次性的
                         // session-ended 能归档。F5/HMR 重载后 replay 把 buffer 里**已结束**
