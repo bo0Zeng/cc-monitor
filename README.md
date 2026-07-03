@@ -2,11 +2,11 @@
 
 > **Claude Code CLI 的只读输出渲染窗口** — Tauri 2 + Vanilla TypeScript，Windows 桌面应用
 >
-> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 | 当前版本: v2.14.0
+> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 | 当前版本: v2.17.0
 
 把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复。**完全只读、零侵入**（不修改 Claude Code 任何文件，唯一例外是用户在历史浏览器里**显式**点删除）。
 
-**项目状态**：稳定可用。后端 155 + 远端 daemon 30 + 前端 node 纯函数 & vitest+jsdom DOM 单测，tsc 严格类型检查，CI 全绿（`npm test`）。当前发布 **v2.14.0**（修复 **maximize / 全屏内容错位**——改到 WebView2 原生层重钉合成层；修复 **F11 真全屏**——补齐 Tauri 能力权限），能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 多台远端机器的会话，#15/#17/#18/#20/#30/#31）——含 **daemon 自动部署 + 一键安装/卸载**（内嵌 musl 二进制经 SFTP 自动推送 #29；设置面板每台机器卡片可手动装/卸 daemon 与 ccm 助手、附安装位置提示）、**远端全文搜索**（#28）、**远端历史删除 / resume 命令助手**、**历史按机器分组折叠**（#30/#31）、**版本协商 + 拥塞提示**（#32/#33）、**会话红绿灯**（#23）、**本地会话 resume 后 Tab 自动复活**（崩溃/退出→灰显，`/resume` 后免 F5 恢复）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。详 [CHANGELOG](CHANGELOG.md) / [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
+**项目状态**：稳定可用。后端 170 + 远端 daemon 54 + 前端 node 纯函数 & vitest+jsdom DOM 单测，tsc 严格类型检查，CI 全绿（`npm test`）。当前发布 **v2.17.0**（修复**实时视图丢消息**（残行读取）、**tmux 残留假活跃僵尸 tab**、**后台任务成 tab / /clear 旧 tab 假活**等会话生命周期问题；**远端首连历史整块加载**不再逐行刷屏；新增**启动骨架 tab + 记住上次所在 tab**、**`!` bash / `/` 斜杠命令卡片渲染**），能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 多台远端机器的会话，#15/#17/#18/#20/#30/#31）——含 **daemon 自动部署 + 一键安装/卸载**（内嵌 musl 二进制经 SFTP 自动推送 #29；设置面板每台机器卡片可手动装/卸 daemon 与 ccm 助手、附安装位置提示）、**远端全文搜索**（#28）、**远端历史删除 / resume 命令助手**、**历史按机器分组折叠**（#30/#31）、**版本协商 + 拥塞提示**（#32/#33）、**会话红绿灯**（#23）、**本地会话 resume 后 Tab 自动复活**（崩溃/退出→灰显，`/resume` 后免 F5 恢复）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。详 [CHANGELOG](CHANGELOG.md) / [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
 
 ---
 
@@ -225,7 +225,7 @@ cc-monitor/
 
 ## 项目当前状态
 
-- **版本**：v2.14.0（Released）
+- **版本**：v2.17.0（Released）
 - **平台**：Windows 10 (1809+) / 11（远端 daemon 跑 Linux / aarch64）
 - **测试**：后端 cargo test 155 + 远端 daemon 30 + 前端 node 纯函数 + vitest+jsdom DOM 单测，全绿（CI 门禁 `npm test`）
 - **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~12K LOC TS + ~11K LOC Rust，含 ~1.3K 远端 daemon）
