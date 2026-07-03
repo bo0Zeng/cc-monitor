@@ -105,11 +105,26 @@ pub struct SessionStartedPayload {
 /// 远端会话宣告 payload（REMOTE_SESSION_ADDED，Batch5-F18）。daemon 的
 /// session_added 帧透传前端——ssh_source 在 dispatch Added 时同步 emit，
 /// **先于该会话的任何内容行**，前端据此建骨架 Tab 不等首行。
+///
+/// 已知跨通道竞序边角（Batch5 G 验收留档）：本事件由 ssh_source task 直发，
+/// 而 SessionRemoved/断连归档经 session_changes 通道 + emitter 线程 emit——
+/// 重连时旧连接的归档若晚于新连接的 Added 到达，骨架会被 archived；有行的
+/// 会话靠 ensureTab 远端见行复活自愈，**零行 idle 会话会卡 archived 到下一行
+/// 到达**。低频、可自愈补救（F5 对账），暂不为此引入统一 lifecycle 通道。
 #[derive(Debug, Serialize, Clone)]
 pub struct RemoteSessionAddedPayload {
     pub session_id: String,
     /// 机器标签（`[label]` Tab 前缀）；骨架期无 cwd，标题先用 sid 前缀。
     pub origin: String,
+}
+
+/// `frontend-ready` 事件的 payload（Batch5-F19）。前端 emit 时携带 localStorage
+/// 记忆的上次所在 tab；后端 replay 按 session 分组、该 tab 的块先发。缺省 /
+/// 解析失败 → None（旧行为；viewer 窗口不发此事件）。
+#[derive(Debug, serde::Deserialize)]
+pub struct FrontendReadyPayload {
+    #[serde(rename = "prioritySid")]
+    pub priority_sid: Option<String>,
 }
 
 /// `list_active_sessions` IPC 返回项（Batch5-F18）：本地活跃会话清单（含 cwd），

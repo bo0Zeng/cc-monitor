@@ -622,14 +622,11 @@ pub fn run() {
                     // Batch5-F19：payload 携带用户上次所在 tab（localStorage 记忆），
                     // replay 按 session 分组、该 tab 的块先发。缺省/解析失败 → None
                     // （行为同 F19 前；viewer 等旧调用方不带 payload 也安全）。
-                    #[derive(serde::Deserialize)]
-                    struct ReadyPayload {
-                        #[serde(rename = "prioritySid")]
-                        priority_sid: Option<String>,
-                    }
-                    let priority_sid = serde_json::from_str::<ReadyPayload>(event.payload())
-                        .ok()
-                        .and_then(|p| p.priority_sid);
+                    // 契约定义在 bridge.rs（单一来源，G 验收纠偏）。
+                    let priority_sid =
+                        serde_json::from_str::<bridge::FrontendReadyPayload>(event.payload())
+                            .ok()
+                            .and_then(|p| p.priority_sid);
                     let replay = replay.clone();
                     let handle = handle.clone();
                     let initial_scan_done = initial_scan_done.clone();

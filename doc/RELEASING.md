@@ -8,6 +8,7 @@
 - [ ] `Cargo.lock` 提交
 - [ ] [CHANGELOG.md](../CHANGELOG.md) 加新版本段（写法见 § 3）
 - [ ] `cargo fmt --check + cargo check + cargo test --lib + npm run build` 全绿（fmt 不过 CI 会红）
+- [ ] **若本版改过 daemon 源码**（BUILD_ID 应已随改动 bump）：走 tag 发版由 release.yml 的 build-daemons job 从源码重编内嵌二进制（官方渠道恒一致）；**本地手工打包分发**则必须先重跑 zigbuild 更新 `src-tauri/embedded-daemons/`——否则装出去的是旧 daemon，连接后 StaleBuild 警告循环（build.rs 编译期有 staleness warning 兜底，易被刷屏淹没，别只靠它）
 - [ ] [CONTRIBUTING.md § 1.5](CONTRIBUTING.md#15-发版前) 列出的关键 UI 入口手测
 
 ---

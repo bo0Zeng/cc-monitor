@@ -79,6 +79,7 @@ powershell -NoProfile -File scripts\run.ps1 dev
   - `src-tauri/Cargo.toml::[package].version`
   - `src-tauri/tauri.conf.json::version`
 - [ ] `Cargo.lock` 提交（Rust 应用必须锁版本）
+- [ ] 若改过 daemon：`remote-daemon-proto/src/main.rs::BUILD_ID` 已 bump（手工标签非哈希！）+ 内嵌二进制一致（tag 发版 CI 自动重编；本地打包须先 zigbuild）
 - [ ] [CHANGELOG.md](../CHANGELOG.md) 加新版本段（写法见 [RELEASING.md](RELEASING.md)）
 - [ ] `cargo fmt --check + cargo check + cargo test --lib + npm run build` 全绿
       （`.github/workflows/ci.yml` 第一步就是 `cargo fmt --check` 严格 verify；

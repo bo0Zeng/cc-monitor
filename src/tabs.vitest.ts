@@ -139,6 +139,20 @@ describe("TabManager 生命周期", () => {
     tm.persistLastActive = false;
     tm.switchTo("s-a");
     expect(localStorage.getItem("cc-monitor.last-active-sid")).toBe("s-b");
+    localStorage.removeItem("cc-monitor.last-active-sid"); // 防同文件后续测试顺序耦合
+  });
+
+  it("手动 switchTo 触发 onManualSwitch（迟到宣告不抢焦点的清 pending 钩子）", () => {
+    tm.ensureTab("m-a", "/a", "p", 0, null);
+    tm.ensureTab("m-b", "/b", "p", 0, null);
+    let fired = 0;
+    tm.onManualSwitch = () => fired++;
+    tm.switchTo("m-b"); // 默认 manual
+    expect(fired).toBe(1);
+    tm.ensureTab("m-c", "/c", "p", 0, null); // 非首个 tab，不切换
+    tm.switchTo("m-a", "auto"); // auto 不触发
+    expect(fired).toBe(1);
+    localStorage.removeItem("cc-monitor.last-active-sid");
   });
 
   it("archiveTab：live → archived，且清空 activity（灯灭）", () => {

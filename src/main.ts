@@ -140,6 +140,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     tasksPanel,
     agentsPanel,
   );
+  // Batch5-F19（G 验收）：用户手动切过 tab 后，迟到的远端宣告不再补切抢焦点
+  tabs.onManualSwitch = () => {
+    pendingStartupActive = null;
+  };
 
   // v2.4 issue #2：拉一次 behavior toggle 初值喂给 TabManager。
   // 设置面板改了之后会再调 applyBehavior 同步。
@@ -271,6 +275,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   // issue #32 (SS-F)：远端健康事件（拥塞丢行 / 版本不符）→ 右下角 info toast
   bindRemoteHealthToast();
 
+  // Batch5-F19（G 验收 B-1）：**先读记忆再建骨架**——第一个骨架的自动切换会
+  // 经 switchTo 写回 localStorage，读晚了就把用户记忆覆写成清单首个 sid（F19
+  // 主路径在"本地有会话"的常见场景下整体失效）。骨架期同时抑制写回双保险。
+  const lastActive = safeGet(LS_KEYS.lastActiveSid);
+  tabs.persistLastActive = false;
+
   // Batch5-F18：frontend-ready 之前先拉本地活跃清单建全部骨架 Tab——用户在
   // 内容重放开始前就看到完整 tab 栏。失败不阻启动（骨架只是体验优化，行
   // 到达照常 ensureTab 建）。远端骨架走 remote-session-added 事件，不在此列。
@@ -287,14 +297,14 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // Batch5-F19：启动 active = 上次所在 tab（localStorage 记忆）。本地骨架里有
   // 就立即切；是远端会话则挂 pending，等它的 remote-session-added 宣告到达时
-  // 补切（应用一次即清，之后不再抢焦点）。
-  const lastActive = safeGet(LS_KEYS.lastActiveSid);
+  // 补切（应用一次即清，之后不再抢焦点）。选择完成后恢复写回。
   if (lastActive && tabs.hasTab(lastActive)) {
     tabs.switchTo(lastActive, "auto");
     pendingStartupActive = null;
   } else {
     pendingStartupActive = lastActive;
   }
+  tabs.persistLastActive = true;
 
   // 通知后端可以发了 —— 缓冲的 line 会被 flush 过来。payload 带上次所在 tab
   // （Batch5-F19）：后端 replay 按 session 分组、该 tab 的内容块先发。

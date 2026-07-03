@@ -376,6 +376,10 @@ export class TabManager {
   /** Batch5-F19：switchTo 是否写回 last-active（viewer/tear-off 窗口置 false）。 */
   persistLastActive = true;
 
+  /** Batch5-F19（G 验收）：用户手动切 tab 时回调——main.ts 用它清 pendingStartupActive，
+   *  防迟到的远端宣告补切抢走用户已选的焦点。 */
+  onManualSwitch: (() => void) | null = null;
+
   ensureTab(
     sessionId: string,
     cwd: string | null,
@@ -472,7 +476,9 @@ export class TabManager {
     this.orderedIds.push(sessionId);
 
     if (this.activeId === null) {
-      this.switchTo(sessionId);
+      // "auto"：首个 Tab 的激活不是用户手势，不该占用 5s manualOverride 抑制
+      // auto-follow（G5 验收 S-1）
+      this.switchTo(sessionId, "auto");
     } else {
       this.refreshTabBar();
     }
@@ -1033,6 +1039,7 @@ export class TabManager {
     }
     if (source === "manual") {
       this.manualOverrideUntil = Date.now() + TabManager.MANUAL_OVERRIDE_MS;
+      this.onManualSwitch?.();
     }
     this.refreshTabBar(); // active 高亮 + badge 立即更新（廉价，不阻塞）
 

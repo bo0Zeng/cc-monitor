@@ -189,7 +189,7 @@ ssh-keyscan -t ed25519 <host> 2>/dev/null | ssh-keygen -lf - | awk '{print $2}'
 - ~~慢消费者无 overflow 信号~~ → 已补：daemon 管道满时回传 `overflow` 哨兵帧，前端弹拥塞 toast（issue #32）。
 - ~~远端历史浏览未接~~ → 已补：远端**历史浏览**已实现（#16，多机**分组 / 来源筛选** #30/#31）。~~全文搜索~~ → 已补：远端**全文搜索**已实现（#28，daemon `--search`）。~~resume~~ → 已补：远端 `↺` 提供**resume 命令助手**（复制 `claude --resume` 到远端终端粘贴；monitor 无法在远端开交互 TTY）。~~拉前~~ → 已补：远端 ↗ 拉前已实现（#18，需远端 `ccm` wrapper——可在设置面板每台机器卡片「装 ccm 助手」一键装）。**WT 多 tab 限制**：多个 ssh 会话开在同一 WT 窗口的不同 tab 时，↗ 只能拉起该窗口、无法切到具体 tab（建议每会话单独开窗）。
 - ~~daemon 重启后 seq 从 0 重来，客户端不处理~~ → 已补：客户端用 per-Tab `seenSeqs` 去重消化重放（issue #17），不重复、不丢新行。
-- ~~远端探活仅 /proc 存在性~~ → 已补两层：①add-time 冒名判定（Batch5-F20：proc 启动时刻晚于 pidfile mtime+60s 或 cmdline 非 claude/node → 拒，防 daemon 启动前 PID 已被复用的 tmux 残留场景）；②运行期 procStart 双校验（issue #34，基线在 ① 把关后捕获才可信）。
+- ~~远端探活仅 /proc 存在性~~ → 已补两层：①add-time 冒名判定（Batch5-F20）：**主证据 = pidfile 自带的 `procStart` 与当前占用者的 /proc starttime ticks 逐位相等 → 身份确认**（免疫全部时钟域问题）；不等/缺字段时 fallback 启发式——proc 启动时刻晚于 pidfile mtime+60s 或 cmdline 非 claude/node → 拒（防 daemon 启动前 PID 已被复用的 tmux 残留场景）；②运行期 procStart 双校验（issue #34，基线在 ① 把关后捕获才可信）。
 
 **Phase 1/2 远端能力均已完成**：auto-deploy（#29，本文顶部）+ 全文搜索（#28）+ overflow 信号（#32）+ 版本协商（#33）+ 探活精确化（#34）+ 删除/resume/ccm 安装 + reconnect/seq 去重（#17）+ ↗ 拉前（#18）+ 历史浏览（#16）+ 多机聚合/分组/筛选（#30/#31）。剩仅真机 e2e 实测。
 
