@@ -226,6 +226,19 @@ pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<Option<String>
         tracing::debug!("无 {arch} 的内嵌 daemon 二进制（F08b 未嵌入该 arch?），跳过自动部署");
         return Ok(None);
     };
+    // Batch8 审计（符合度-R2）：stale 内嵌防御——build_id 来自**源码**（env!
+    // 单源），字节来自 embedded-daemons/ 文件；两者脱节（源码 bump 后没重跑
+    // zigbuild/CI）时会部署旧字节 + 写新 marker → monitor 传新 flag → 旧 daemon
+    // 落查询分支退出 → 无 hello 死循环，且 marker 已"中毒"永远 Skip 不自愈。
+    // 二进制里必然内嵌自己的 BUILD_ID 字符串——字节内搜不到 = stale，拒部署
+    // 并返回"未确认"（调用方降级不传 flag，连接照常）。
+    if !bytes_contain(bin.bytes, bin.build_id.as_bytes()) {
+        tracing::warn!(
+            "内嵌 daemon 二进制不含 build_id {}（embedded-daemons/ 陈旧，未随源码重编）——             跳过自动部署并按未确认降级（本地 dev 请重跑 zigbuild；发版由 CI 重编）",
+            bin.build_id
+        );
+        return Ok(None);
+    }
     let conn = connect_sftp(cfg).await?;
     let sftp = &conn.sftp;
 
@@ -259,6 +272,11 @@ pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<Option<String>
         }
     }
     Ok(Some(bin.build_id.to_string()))
+}
+
+/// 朴素子串搜索（8MB × 16B 一次性毫秒级；不为此引 memchr 依赖）。
+fn bytes_contain(haystack: &[u8], needle: &[u8]) -> bool {
+    !needle.is_empty() && haystack.windows(needle.len()).any(|w| w == needle)
 }
 
 /// 按远端 arch 选内嵌的 daemon 二进制（F08b）。build.rs 把交叉编译的 musl 二进制复制进

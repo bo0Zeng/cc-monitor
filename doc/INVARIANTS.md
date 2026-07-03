@@ -359,13 +359,25 @@ Batch4-F14 起两端只消费以 `\n` 结尾的**完整行**（torn tail 延迟�
 
 ---
 
+## 25a. 远端 seq 是行号空间（Batch8 起）——重连碰撞在无截断前提下源头已除
+
+Batch8-F25/26 起（p1f daemon + tail-only）：daemon 连接时把各文件 seq 计数器
+初始化为**当前完整行数**、新行 seq=行号；monitor 旁路快照按 0..L'-1 行号编 seq。
+推论：**无截断前提下**重连后新行 seq ≥ 断连前高水位（文件只增长）——§25 留档的
+"重连 seq 从 0 重数 → seenSeqs 碰撞吞行"的**常规形态**源头消失（旧 daemon 全量
+推流路径仍存在，随 daemon 升级自然消亡）。**截断残余**（审计 D 收窄措辞）：
+断连期间 /clear 截断 → 新 daemon prime 到 L_new < 旧高水位；或上一连接内截断
+重读把计数器抬超实际行数——两者仍可短暂吞行，靠快照重拉 + uuid 幂等（§25）
+兜底，属 §25 三条件缺口的收窄而非消除。快照重拉（每次连接重建队列）整体幂等：
+重复 (sid,seq) 行被去重吸收，代价只是带宽（增量协商留 backlog）。
+
 ## 26. bg 会话门是数据层配置门；daemon 流模式 flag 必须先于查询模式判定剥离（Batch7-F24）
 
 `kind:"bg"` 的取舍史：F21 一刀切不算会话 → 用户实测"工作跑在 bg 里但 tab 停住"（可观测性洞）→ F24 反转为**标注而非过滤**。三条子规则：
 
 - **kind 缺失恒视为交互**（旧 CC 兼容），双端一字一致。
 - **bg 门在数据层生效**（本地 scan_dir 过滤 / 远端 daemon `--with-bg` 参数），不是前端隐藏——关掉 = bg 数据完全不流（省带宽与 buffer，bg 历史可达 10MB+）。开（默认）= bg 建 Tab 带 ⚙ + 树状挂同 (cwd, origin) 交互宿主后。
-- **daemon 任何新增流模式 flag 必须在一次性查询模式判定之前从 args 剥离**（`main.rs` 先 `retain` 再判 `!args.is_empty()`）——否则 flag 落进 query 分支，daemon 打印查询结果退出，monitor 无 hello 死循环。同理，**monitor 只对确认 ≥ 该 flag 版本的 daemon 传新 flag**（auto-deploy build_id 确认；确认不了就降级不传）。
+- **daemon 任何新增流模式 flag 必须在一次性查询模式判定之前从 args 剥离**（`main.rs` 先 `retain` 再判 `!args.is_empty()`）——否则 flag 落进 query 分支，daemon 打印查询结果退出，monitor 无 hello 死循环。同理，**monitor 只对确认 ≥ 该 flag 版本的 daemon 传新 flag**（auto-deploy build_id 确认；确认不了就降级不传）。既有实例：`--with-bg`（F24）、`--tail-only`（Batch8-F25）。
 
 ## 修改本文档
 

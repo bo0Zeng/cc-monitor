@@ -314,7 +314,15 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 
 唯一的非文件 IPC：SSH 远端模式下，远端 `cc-monitor-remote` daemon 经 **SSH stdout** 把远端会话流式传回 monitor。在此集中协议契约；部署见 [REMOTE-PHASE0-DEPLOY.md](REMOTE-PHASE0-DEPLOY.md)。
 
-### 实时流（无参数启动 daemon）
+### 实时流（流模式启动 daemon）
+
+流模式 flag（monitor 仅对 auto-deploy **确认为当前版本**的 daemon 传，见 INVARIANTS §26）：
+
+| flag | 起 | 语义 |
+|---|---|---|
+| （无参数） | Phase 0 | 全量重放所有活跃会话历史 + 尾随（旧 monitor / 未确认 daemon 的兼容路径） |
+| `--with-bg` | p1e (F24) | 放行 kind:"bg" 后台任务会话（宣告+流行，帧带元信息） |
+| `--tail-only` | p1f (F25) | 不重放历史：连接时各文件 seq 计数器初始化为当前完整行数（seq=行号），只尾随新行；历史由 monitor 旁路 `--read-session` 快照拉取 |
 
 线约束：**每行恰好一个 UTF-8 JSON 对象，`\n` 结尾，对象内无裸 `\n`/`\r`**（`serde_json` 紧凑输出把内部换行转义成 `\n` 两字符）。帧用外部 `kind` tag（snake_case）：
 
@@ -322,7 +330,7 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 |---|---|---|
 | `hello` | `v, build_id, host_arch, claude_dir` | 连接建立时**首帧**发一次（握手）；monitor 据 `v` + `build_id` 做版本协商（#33：`v` 不符=不兼容、`build_id` 不符=偏旧，均经 `remote-health` 提示但不 hard-disconnect），`build_id` 单源自 daemon 源码（编译期 env 同步） |
 | `line` | `session_id, path, seq, raw` | tail 到的一行原始 jsonl（`seq` = per-file 单调，口径同本地 watcher） |
-| `session_added` | `sid`, `session_kind?`, `cwd?`, `name?` | 远端新会话文件出现（Batch5-F18 起 ssh_source 收到即同步透传前端 `remote-session-added {session_id, origin, kind, cwd, name}` 事件建骨架 Tab，先于该会话的任何行）。Batch7-F24（p1e）：附加 pidfile 元信息——wire 帧字段叫 `session_kind`（避开帧 tag `kind`），bridge 事件 payload 统一叫 `kind`（与本地 `list_active_sessions`/`session-started` 一致）；**additive 兼容**：None 不序列化（旧行为字节不变）、旧 monitor 忽略未知字段、旧 daemon 缺字段前端视为交互。daemon 默认不宣告 bg（F21）；monitor 仅对 **auto-deploy 确认为当前版本**的 daemon 且 `showBgSessions` 开（默认）时传 `--with-bg`（旧 daemon 会把未知参数当一次性查询→无 hello，确认不了一律降级不传）。本地对称通道：`session-started` payload 扩为 `{session_id, cwd, kind, name}`——前端无 Tab 则建骨架（中途出现的本地 bg 会话由此获得 ⚙/树状） |
+| `session_added` | `sid`, `session_kind?`, `cwd?`, `name?`, `path?`, `lines?` | 远端新会话文件出现（Batch5-F18 起 ssh_source 收到即同步透传前端 `remote-session-added {session_id, origin, kind, cwd, name}` 事件建骨架 Tab，先于该会话的任何行）。Batch7-F24（p1e）：附加 pidfile 元信息——wire 帧字段叫 `session_kind`（避开帧 tag `kind`），bridge 事件 payload 统一叫 `kind`（与本地 `list_active_sessions`/`session-started` 一致）；**additive 兼容**：None 不序列化（旧行为字节不变）、旧 monitor 忽略未知字段、旧 daemon 缺字段前端视为交互。daemon 默认不宣告 bg（F21）；monitor 仅对 **auto-deploy 确认为当前版本**的 daemon 且 `showBgSessions` 开（默认）时传 `--with-bg`（旧 daemon 会把未知参数当一次性查询→无 hello，确认不了一律降级不传）。本地对称通道：`session-started` payload 扩为 `{session_id, cwd, kind, name}`——前端无 Tab 则建骨架（中途出现的本地 bg 会话由此获得 ⚙/树状）。**Batch8-F25/26（p1f）**：帧再附 `path`（远端 jsonl 绝对路径）；monitor 确认 p1f 后 exec 追加 `--tail-only`——daemon 不再重放历史（连接时把各文件 seq 计数器初始化为当前完整行数 L，之后新行 seq=行号），历史由 monitor 按 path 经**独立连接**跑 `--read-session` 旁路快照拉回（0..L'-1 行号编 seq、并发 ≤2、F19 priority 先拉、完就断、失败重试 1 次后 remote-health 提示）；两路 seq 同处行号空间，重叠区被 (sid,seq) 去重精确吸收。旧 daemon 未确认 → 不传 flag → 全量推流（=2.18.0）；session_added 无 path（会话尚无 jsonl）→ 不拉快照，后续行从 tail 全量到达 |
 | `session_removed` | `sid` | 远端会话文件消失 |
 | `overflow` | `dropped: u64` | issue #32：daemon 发送通道被慢/卡的 SSH 管道反压、丢了 `dropped` 帧的哨兵信号（通道排空到能再容纳时发一次）→ monitor 经 SS-F `remote-health` 事件 toast 提示用户可能丢实时行（丢的行仍在远端 jsonl，重开会话可看完整历史） |
 
