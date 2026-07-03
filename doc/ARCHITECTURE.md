@@ -78,10 +78,10 @@
 **关键路径**：
 
 - **watcher batch 同步 + seq 分配**（v2.4 重构 + v2.6 加 seq）：`spawn_watcher` 接 `on_batch: BatchHandler` 回调；一次 `process_file` 把读到的所有行收集成 `Vec<JsonlLine>` **同步**调 `on_batch`，**没有 mpsc 中间层、没有 async drain task**。lib.rs 里 closure 在 watcher 线程内 parse + `replay.on_line_batch(handle, payloads)`。v2.6 加 `seqs: HashMap<PathBuf, u64>` 给每行分配 per-file 单调 seq → `JsonlLinePayload.seq` 透传到前端，**前端 RecordTimeline 按 seq 排序，后端 emit 顺序不再影响视觉**。
-- **大小分流 emit**（v2.4.2，v2.6 chunked emit 简化）：`event_replay::on_line_batch` 按 batch 大小分流：
+- **大小分流 emit**（v2.4.2，v2.6 chunked emit 简化，Batch5-F17 async 化）：`event_replay::on_line_batch` 按 batch 大小分流：
   - `payloads.len() < 50`（用户日常敲键 1~N 行）→ 逐条 `emit("jsonl-line")` live 路径
-  - `payloads.len() >= 50`（用户跑 `claude --resume` 灌历史 / 大量追加）→ 切块走 `emit("jsonl-batch")`，前端进入 batch 模式（lazy hljs）。v2.6 简化：删 head/older 区分，统一按 `CHUNK_SIZE=600` 末块先发，前端按 seq 自动排到正确位置
-- **启动重放等扫完**（v2.4 修首次启动乱序）：watcher 线程同步全量扫完成后才置 `initial_scan_done: AtomicBool = true`。frontend-ready listener 在 async task 里 spin-wait（10ms poll，10s timeout）等这个 flag → `replay_and_mark_ready` 切块 `emit("jsonl-batch")` 整个 history → mark ready → **按活跃集对账补发 `session-ended`**（#19 本地用 session_map / #20 远端用 remote_active；前端把 session-ended 与行同队列同序处理，归档落在全部重放行之后，INVARIANTS § 24）。v2.6 简化：**删了 `replaying` flag + catch-up tail 路径**，chunked emit 期间 watcher 真新行直接走 jsonl-line live emit，前端 timeline 按 seq 自动放到正确位置
+  - `payloads.len() >= 50`（`claude --resume` 灌历史 / 远端 snapshot 攒批 / 大量追加）→ 切块走 `emit("jsonl-batch")`，前端进入 batch 模式（lazy hljs）。v2.6 简化：删 head/older 区分，统一按 `CHUNK_SIZE=600` 末块先发，前端按 seq 自动排到正确位置。**Batch5-F17**：大批块序列 spawn 到 async_runtime（块间 tokio sleep）——spawn 返回≠emit 完成，顺序敏感调用方（ssh_source 攒批 flush，行须先于断连归档）用 `on_line_batch_awaited`（INVARIANTS § 10）；前端 events.ts 另有突发检测兜底（jsonl-line 积压 >50 主动进 batch 模式）
+- **启动序**（v2.4 修首次启动乱序；Batch5-F18/F19 骨架+优先级）：前端 DOMContentLoaded 后先 invoke `list_active_sessions` 把本地活跃会话**骨架 tab** 全部建出（远端骨架走 `remote-session-added` 事件），再按 localStorage 记忆选 active（上次所在 tab），然后 `emit("frontend-ready", {prioritySid})`。后端 listener 在 async task 里 spin-wait（10ms poll，10s timeout）等 watcher 同步全量扫置位的 `initial_scan_done` → `replay_and_mark_ready(priority_sid)` **按 session 分组**切块 emit（prioritySid 的块先发、组内末块先发、chunk 全局连续编号保 batch-start 哨兵）→ mark ready → **按活跃集对账补发 `session-ended`**（#19 本地用 session_map / #20 远端用 remote_active；前端把 session-ended 与行同队列同序处理，归档落在全部重放行之后，INVARIANTS § 24）。v2.6 简化：**删了 `replaying` flag + catch-up tail 路径**，chunked emit 期间 watcher 真新行直接走 jsonl-line live emit，前端 timeline 按 seq 自动放到正确位置
 - **前端按 seq 排序**（v2.6 B 重构）：`RecordTimeline.insert(seq, element)` 用 binary search 找位置 → `stream.insertNode(element, anchor)` 同步处理 stickToBottom 贴底。**消除了** PayloadSource batch/live / inPrependMode / pendingPrependFragment 等 5 个 flag。tool-group 合并改后处理算法：插入时 `timeline.peekPrev(seq)` 看左邻居，是 tool-group 就 `addToToolGroup`，否则建新 group 入 timeline（详 render-stream-record.ts）
 - **active session 自动同步**（v2.4 issue #2）：tabs.ts `onLine` 透传 payload 给 `renderStreamRecord`；sink.onRealUserInput 仅在 `result.kind === "card" && message.type === "user"` 触发（v2.6 删 source 参数后用 message.type 判定）→ TabManager.userActive 检查 `autoFollowUserActive` toggle + 5s `manualOverrideUntil` → `switchTo(sid, "auto")` + 可选 `invoke("bring_monitor_to_front")`
 - **cc 集成绑定**：PS 跑 `__ccm_bind` 写 `ps-await/<PID>.json` + 改窗口标题为 marker → `bind.rs` 监听 + EnumWindows → 写 `ps-registry/<PID>.json` + 删 await → PS 检测到删除恢复标题
@@ -108,7 +108,7 @@ src-tauri/src/
 ├── 集成层      bind.rs       cc 集成绑定核心（ps-await/registry/SidHwndCache）
 │              profile_installer.rs  PowerShell profile 块插入/卸载
 │              auto_launch.rs  auto-launch monitor 开关
-├── 远端层      ssh_source.rs  russh 远端数据源（连接/鉴权/流帧解析 + 版本协商 + 测试连接）
+├── 远端层      ssh_source.rs  russh 远端数据源（连接/鉴权/流帧解析 + 版本协商 + 测试连接 + Batch5-F17 Line 帧攒批 Batcher——snapshot 聚批走 chunked 路径）
 │              remote_history.rs  远端历史浏览 + 全文搜索查询（一次性 exec daemon 子命令；多台 join_all 并发 fan-out，墙钟 Σ→max）
 │              sftp.rs       SS-D SFTP 写层（daemon 自动部署 + 手动安装/卸载 + 远端删除 + ccm 安装/卸载）
 └── 持久层      config.rs     monitor config.json R/W（Windows MoveFileExW 原子）
@@ -199,10 +199,10 @@ watcher / session_map 只读 `~/.claude/projects/` 和 `~/.claude/sessions/`。�
 
 **为什么**：cc-monitor 是个监控渲染器，写 jsonl 会破坏用户对"数据源 = 我自己的命令痕迹"的认知；profile 写入则是必要的可选副作用（用户显式 opt-in 装 `__ccm_bind`），仍然走完整的 backup + ACL 保留路径。
 
-### event_replay 持锁完整 emit 保证顺序
-record 期间 watcher 必须排队等锁，前端绝不会先收到 live emit 再收到 snapshot。
+### event_replay 顺序保证 = 前端按 seq 排序（v2.6 起；本节曾描述已废弃的"持锁完整 emit"）
+v2.6 B 重构前顺序靠"持锁完整 emit"（record 排队等锁）；**现行设计**：`replay_and_mark_ready` 持锁只做 snapshot + 置 ready，emit 全在锁外——顺序保证整体转移给 per-file 单调 seq + 前端 RecordTimeline 二分插入（ADR-021/022）。emit 期间并发到达的 live 行先于 snapshot 旧行到达也无碍：前端按 seq 排到正确位置。
 
-**为什么不**用"锁外 emit snapshot + 锁内 push 后 ready 判断 live emit"：emit 期间 record 能并发拿锁，看到 ready=true 走 live emit → 前端先收到新 record 的 live emit、再收到 snapshot 的旧 emit → **顺序错乱、时间线断裂**。持锁完整发是顺序保证的硬性要求。代价是 replay 期间 watcher 阻塞数十毫秒到秒级（取决于 history 大小），可接受。
+**为什么能放弃持锁 emit**：旧方案的代价是 replay 期间 watcher 阻塞数十毫秒到秒级；seq 排序把"后端保序"变"前端排序"后，emit 顺序成为纯性能自由度（Batch5-F19 的 priority 分组正是利用这一自由度）。跨通道顺序（行 vs session-ended）不由 seq 覆盖，由队列同序（INVARIANTS § 20）与 `on_line_batch_awaited`（INVARIANTS § 10）分别兜住。
 
 ### JSONL_BATCH 单次 emit 替代 N 次 JSONL_LINE
 replay 时一次性发整个 Vec<JsonlLinePayload>，前端 push 进同一 queue 走原批量调度。

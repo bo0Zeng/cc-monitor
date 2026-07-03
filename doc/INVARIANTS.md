@@ -175,6 +175,8 @@
 
 **为什么不能松动**：WebView2 的 origin 是 `tauri://localhost`，跟其他可能也用这个 origin 的 Tauri 应用共享存储（理论上）。前缀避免冲突 + 数据透明化展示时容易过滤。
 
+**附带契约（Batch5-F19）**：主窗口/viewer/tear-off 共享同一 origin 的 localStorage——**非主窗视图写共享 key 前必须显式隔离**。现行履约点：`TabManager.persistLastActive`（viewer 置 false，防独立窗口看会话 X 污染主窗口的 `cc-monitor.last-active-sid` 记忆；vitest 钉住）。新加共享 key 的写入方须同样审视多窗口写者问题。
+
 ---
 
 ## 15. logging 子系统失败不能阻塞 monitor 启动

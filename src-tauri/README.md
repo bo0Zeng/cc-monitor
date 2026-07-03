@@ -56,7 +56,7 @@ src-tauri/
 | **profile_installer.rs** | PowerShell profile 解析 + cc-monitor BEGIN/END 块插入 / 卸载 / 扫描 / 冲突检测 | `discover_profiles() / install_to_profile / scan_profile / render_cc_code` |
 | **auto_launch.rs** | "用 cc 启动 claude 时自动开 monitor" 开关持久化（模块级函数，非 impl 方法） | `auto_launch::{load, save, get_config, set_enabled, update_monitor_path_on_startup}` |
 | **subagent.rs** | 父 session 的 Agent tool_use 关联 `<parent>/subagents/agent-*.jsonl` | IPC `load_subagent` |
-| **event_replay.rs** (v2.4.2 大小分流，v2.6 状态机简化) | 内存 buffer + frontend-ready 时切块 emit；`on_line_batch` 按 batch 大小分流：< 50 行走 `jsonl-line` 单条 live emit，>= 50 行（如 /resume 灌历史）走 `jsonl-batch` 切块 emit。**v2.6 删了 `replaying` flag + catch-up tail 路径** —— chunked emit 期间 watcher 真新行直接 emit，前端 RecordTimeline 按 seq 自动排到正确位置；切块策略简化为统一 CHUNK_SIZE=600 末块先发（删 head/older 区分）；`replay_and_mark_ready` 自 #20 起 async（块间 pause 用 tokio sleep） | `EventReplay::on_line_batch() / replay_and_mark_ready()（async）/ forget() / buffered_{local,remote}_session_ids()（#19/#20 重放后对账）` |
+| **event_replay.rs** (v2.4.2 大小分流，v2.6 状态机简化，Batch5 async 化+分组) | 内存 buffer + frontend-ready 时切块 emit；`on_line_batch` 按 batch 大小分流：< 50 行走 `jsonl-line` 单条 live emit，>= 50 行（如 /resume 灌历史、远端 snapshot 攒批）走 `jsonl-batch` 切块 emit——**Batch5-F17 起大批块序列 spawn 到 async_runtime**（spawn 返回≠emit 完成，顺序敏感调用方用 `on_line_batch_awaited`，INVARIANTS §10）。**v2.6 删了 `replaying` flag + catch-up tail 路径** —— chunked emit 期间 watcher 真新行直接 emit，前端 RecordTimeline 按 seq 自动排到正确位置；切块统一 CHUNK_SIZE=600 末块先发；**Batch5-F19：`replay_and_mark_ready(priority_sid)` 按 session 分组、上次所在 tab 的块先发（chunk 全局连续编号保 batch-start 哨兵）** | `EventReplay::on_line_batch() / on_line_batch_awaited() / replay_and_mark_ready(priority_sid)（async）/ forget() / buffered_{local,remote}_session_ids()（#19/#20 重放后对账）` |
 | **history.rs** | 历史浏览器后端：两级 IPC + metadata + 物理删除 + resume；v2.2 (issue #12) 全部 async + spawn_blocking + Channel 流式 IPC | IPC `list_history_projects / stream_history_sessions_in_project / stream_read_session_jsonl / delete / update_metadata / resume` |
 | **search.rs** (issue #6) | 历史全文搜索：后台线程扫 projects/**/*.jsonl 建内存索引（按 session 分组 + 原文/小写副本两份）；默认搜 user/assistant 文本，`include_tools` 附加 tool_use/result/thinking；CLI 注入噪声按 INVARIANT § 20 剥掉；两级匹配（lc.contains 粗筛 + find_ci 精定位 snippet）+ 文本截断封顶。`Arc<SearchIndex>` State | IPC `search_history / get_search_index_status / rebuild_search_index` |
 | **ssh_source.rs** (issue #15) | russh 远端数据源：`connect_session` 全套 host-key 指纹校验 + publickey/agent 鉴权；`run` 长连接 exec daemon 把流帧（`InboundFrame`）走与本地 watcher 相同出口；hello 带 `build_id` 做版本协商（#33）；`Overflow` 帧 → remote-health 提示（#32）；ssh-config 导入 + 测试连接 | `run() / connect_session() / connect_and_exec_cmd() / parse_frame()` + IPC `list_ssh_host_aliases / resolve_ssh_host / test_remote_connection` |
@@ -93,6 +93,7 @@ src-tauri/
 | `bring_terminal_to_front` | `{ sessionId }` | `()` | Tab ↗ / `Ctrl+\`` 跳焦 |
 | `bring_remote_terminal_to_front` (issue #18) | `{ sessionId }` | `()` | 远端 Tab ↗（按 ccm-rbind 标题缓存的 HWND 拉本地 ssh 窗口；未绑定则现扫一次兜底） |
 | `list_session_activity` (issue #23) | — | `SessionActivityPayload[]` | 启动/F5 后拉一次红绿灯快照（增量走 `session-activity` 事件，双路收敛） |
+| `list_active_sessions` (Batch5-F18) | — | `ActiveSessionPayload[] {session_id, cwd}` | frontend-ready 前拉一次本地活跃清单建骨架 Tab（按 (cwd,sid) 排序防 tab 栏洗牌；远端骨架走 `remote-session-added` 事件） |
 | `bring_monitor_to_front` (v2.4.0 issue #2) | — | `()` | watcher 反推用户在终端输入时，可选拉前 monitor 自身窗口（unminimize + show + set_focus） |
 | `cc_integration_status` | `{ commandName }` | `CcStatusResponse` | 设置面板打开 PowerShell 集成区 |
 | `cc_integration_scan_path` | `{ path, commandName }` | `ProfileScan` | 用户改路径 / 重新扫描 |
@@ -133,13 +134,14 @@ src-tauri/
 | `TASKS_UPDATE` (v2.3.0 issue #11) | `task-update` | `TasksUpdatePayload {sessionId, tasks}` | tasks/<sid>/ 内任何文件变更（debounce 100ms + dedup by sid） |
 | `SESSION_ACTIVITY` (issue #23) | `session-activity` | `SessionActivityPayload {session_id, status, waiting_for}` | sessions/<PID>.json 的官方 status 字段变化时（CLI 仅状态转换时重写文件，天然稀疏；红绿灯：busy=绿 idle/shell=红 waiting=黄） |
 | `REMOTE_HEALTH` (SS-F, issue #32/#33) | `remote-health` | `RemoteHealthPayload {origin, kind, message}` | 远端健康提示：daemon 管道拥塞丢帧（kind=`overflow`，#32）/ 版本不符（kind=`version`，#33）→ 前端 remote-health.ts 按 origin 节流弹 toast |
+| `REMOTE_SESSION_ADDED` (Batch5-F18) | `remote-session-added` | `RemoteSessionAddedPayload {session_id, origin}` | daemon session_added 帧透传（ssh_source 同步直发，先于该会话的行）→ 前端建远端骨架 Tab；进 events.ts 同一 queue 保序 |
 | (logging::ERROR_EVENT) | `monitor-error` (v2.0.0+) | `MonitorErrorPayload {level,target,message,timestamp}` | tracing::error! 触发；前端 error-toast.ts 监听 |
 
 前端 → 后端（`Listener::listen`）：
 
 | 事件 | 用途 |
 |---|---|
-| `frontend-ready` | 触发 event_replay 完整回放历史（持锁严格按序） |
+| `frontend-ready` | 触发 event_replay 完整回放历史。Batch5-F19 起 payload 带 `{prioritySid}`（`FrontendReadyPayload`，bridge.rs）——replay 按 session 分组、该 tab 的块先发；缺省 → 不分组。（"持锁严格按序"已废：v2.6 起 snapshot 出锁 emit、前端按 seq 排） |
 
 详 [doc/IPC-PROTOCOL.md](../doc/IPC-PROTOCOL.md)（跨进程文件协议）与 [doc/ARCHITECTURE.md § 5](../doc/ARCHITECTURE.md#5-关键设计选择--理由)（事件设计理由）。
 
