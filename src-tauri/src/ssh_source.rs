@@ -584,6 +584,82 @@ pub async fn run(
     }
 }
 
+/// Line 帧攒批缓冲（Batch5-F17）。
+///
+/// daemon 线协议没有批量帧（一行一帧），首连 snapshot 的几千行历史若逐帧调
+/// `on_line_batch(vec![1条])`，恒 1 < INCREMENTAL_BATCH_THRESHOLD → 全部走
+/// 逐条 jsonl-line live 渲染管线（v2.4.2 给本地修掉的逐行刷屏在远端重现）。
+/// 客户端把**连续到达**的 Line 帧聚合成批再交 on_line_batch：snapshot 密集
+/// 连发天然聚成大批 → 自动跨过阈值复用本地 chunked 回放路径；日常单行增量
+/// 只多一个静默窗口（~30ms）的延迟。时序判定（静默窗口）留在 stream_loop 的
+/// `tokio::time::timeout` 里；本结构只管容量与顺序，纯逻辑可直测。
+struct Batcher {
+    pending: Vec<JsonlLine>,
+    cap: usize,
+    /// 首行入缓冲的时刻——批龄上限用（F17 审计 R3：帧间隔持续 < 静默窗口时
+    /// 永不静默，首行可见延迟无界；批龄到点强制 flush 双保险）。
+    born: Option<std::time::Instant>,
+}
+
+impl Batcher {
+    fn new(cap: usize) -> Self {
+        Self {
+            pending: Vec::new(),
+            cap,
+            born: None,
+        }
+    }
+
+    /// 收一行；达容量上限或批龄超限则返回整批待发（防无界内存/无界延迟）。
+    fn push(&mut self, line: JsonlLine) -> Option<Vec<JsonlLine>> {
+        if self.pending.is_empty() {
+            self.born = Some(std::time::Instant::now());
+        }
+        self.pending.push(line);
+        let over_age = self
+            .born
+            .is_some_and(|b| b.elapsed().as_millis() as u64 >= BATCH_MAX_AGE_MS);
+        if self.pending.len() >= self.cap || over_age {
+            return self.take();
+        }
+        None
+    }
+
+    /// 取走全部待发行（空则 None）。到达顺序 = 发出顺序（daemon per-file seq
+    /// 单调，前端按 seq 排序，跨 session 混流不需要拆分）。
+    fn take(&mut self) -> Option<Vec<JsonlLine>> {
+        self.born = None;
+        if self.pending.is_empty() {
+            None
+        } else {
+            Some(std::mem::take(&mut self.pending))
+        }
+    }
+}
+
+/// 攒批静默窗口：一行到达后最多再等这么久看有没有后续行。首连 snapshot 帧间
+/// 隔远小于此值 → 聚合；live 单行只付一次窗口的延迟（对流式渲染无感）。
+const BATCH_QUIET_MS: u64 = 30;
+/// 单批行数上限（与本地 replay CHUNK_SIZE 同量级，控制单次 IPC 体积）。
+const BATCH_CAP: usize = 600;
+/// 批龄上限：无论帧流多密集，首行入缓冲后最迟这么久必 flush（见 Batcher.born）。
+const BATCH_MAX_AGE_MS: u64 = 200;
+
+/// 攒批出口（Batch5-F17）：与本地 watcher 完全相同（batch_to_payloads →
+/// on_line_batch），但用 **awaited 变体**——大批的块序列发完才返回，保证行
+/// emit 严格先于随后的 SessionRemoved/断连归档（审计 R1：spawn 化的行若晚于
+/// session-ended 到达前端，会把刚归档的远端 Tab 复活成僵尸 live），同时对
+/// daemon 帧流形成天然背压。
+async fn flush_lines(
+    replay: &Arc<EventReplay>,
+    app: &tauri::AppHandle,
+    host_label: &str,
+    lines: Vec<JsonlLine>,
+) {
+    let payloads = crate::batch_to_payloads(lines, Some(host_label.to_string()));
+    replay.on_line_batch_awaited(app, payloads).await;
+}
+
 /// [`run`] 的内层流循环：connect → exec daemon → 逐帧 dispatch。**所有**提前返回
 /// （`?` / EOF / 读错误）都把 result 冒泡给 [`run`]，由后者统一做最终 sid 归档 flush
 /// （见 FIX 2 注释），故本函数自身不负责归档。
@@ -610,27 +686,103 @@ async fn stream_loop(
     }
 
     let stream = connect_and_exec(cfg).await?;
-    let mut reader = BufReader::new(stream);
-    // tokio LinesStream-free：read_line 复用 buffer，按 `\n` 切（协议保证每帧一行、
-    // 帧内换行已被 daemon 转义成 `\n` 两字符，见 remote-daemon-proto/src/wire.rs）。
-    let mut buf = String::new();
+
+    // Batch5-F17：帧读取挪进独立 task、经 channel 交回——攒批需要"带静默窗口
+    // 的读"，而 tokio 的 read_line **不是 cancellation-safe**（timeout 取消会
+    // 丢 buffer 里的半帧）；mpsc::Receiver::recv 是 cancel-safe 的，超时打在
+    // recv 上帧零丢失。reader task 在 EOF/读错时投递 Err 后退出；本函数返回
+    // （重连）时 rx drop → task 的 send 失败 → task 自然退出，不泄漏。
+    let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<Result<String, String>>(1024);
+    tauri::async_runtime::spawn(async move {
+        let mut reader = BufReader::new(stream);
+        // tokio LinesStream-free：read_line 复用 buffer，按 `\n` 切（协议保证每帧
+        // 一行、帧内换行已被 daemon 转义成 `\n` 两字符，见 remote-daemon-proto/src/wire.rs）。
+        let mut buf = String::new();
+        loop {
+            buf.clear();
+            match reader.read_line(&mut buf).await {
+                Ok(0) => {
+                    // EOF：daemon 退出 / channel 关闭。明确报错，不静默冻结。
+                    let _ = frame_tx
+                        .send(Err(
+                            "ssh daemon stdout closed (EOF / connection dropped)".to_string()
+                        ))
+                        .await;
+                    break;
+                }
+                Ok(_) => {
+                    let line = buf.trim_end_matches(['\n', '\r']);
+                    if line.is_empty() {
+                        continue;
+                    }
+                    if frame_tx.send(Ok(line.to_string())).await.is_err() {
+                        break; // 主循环已退出（重连中）
+                    }
+                }
+                Err(e) => {
+                    let _ = frame_tx
+                        .send(Err(format!("ssh daemon stdout read error: {e}")))
+                        .await;
+                    break;
+                }
+            }
+        }
+    });
+
+    let mut batcher = Batcher::new(BATCH_CAP);
 
     loop {
-        buf.clear();
-        let n = reader
-            .read_line(&mut buf)
+        // pending 非空 → 带静默窗口收帧：窗口内没有新帧就先 flush 再回到阻塞收。
+        let msg = if batcher.pending.is_empty() {
+            frame_rx.recv().await
+        } else {
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(BATCH_QUIET_MS),
+                frame_rx.recv(),
+            )
             .await
-            .map_err(|e| format!("ssh daemon stdout read error: {e}"))?;
-        if n == 0 {
-            // EOF：daemon 退出 / channel 关闭。明确报错，不静默冻结。
-            return Err("ssh daemon stdout closed (EOF / connection dropped)".to_string());
-        }
-        let line = buf.trim_end_matches(['\n', '\r']);
-        if line.is_empty() {
-            continue;
-        }
+            {
+                Ok(m) => m,
+                Err(_) => {
+                    if let Some(lines) = batcher.take() {
+                        flush_lines(replay, app, &host_label, lines).await;
+                    }
+                    continue;
+                }
+            }
+        };
+        let Some(msg) = msg else {
+            // reader task 没投 Err 就消失（理论不可达）——同样明确报错走重连。
+            if let Some(lines) = batcher.take() {
+                flush_lines(replay, app, &host_label, lines).await;
+            }
+            return Err("ssh daemon frame channel closed".to_string());
+        };
+        let line = match msg {
+            Ok(l) => l,
+            Err(e) => {
+                // EOF/读错：flush 残余（at-least-once 安全；重连会从 seq 0 重放，
+                // 但没有理由主动丢已收到的行）**并等它发完**再报错——run() 随后的
+                // 断连归档（announced 清算）必须晚于这些行到达前端（审计 R1）。
+                if let Some(lines) = batcher.take() {
+                    flush_lines(replay, app, &host_label, lines).await;
+                }
+                return Err(e);
+            }
+        };
+        let line = line.as_str();
 
-        match parse_frame(line) {
+        let frame = parse_frame(line);
+        // SessionRemoved 是唯一顺序敏感的攒批边界：它的行必须先落前端，否则
+        // 归档后迟到的行把 Tab 复活成僵尸 live（审计 R1/R2）。SessionAdded /
+        // Hello / Overflow / 坏帧**不再**作边界——多小会话的 snapshot 才能聚
+        // 成大批跨过阈值（行先于 Added 到达无妨：前端 ensureTab 见行即建）。
+        if matches!(frame, Some(InboundFrame::SessionRemoved { .. })) {
+            if let Some(lines) = batcher.take() {
+                flush_lines(replay, app, &host_label, lines).await;
+            }
+        }
+        match frame {
             Some(InboundFrame::Hello {
                 v,
                 build_id,
@@ -662,16 +814,16 @@ async fn stream_loop(
                 seq,
                 raw,
             }) => {
-                // 与本地 watcher 完全相同的出口：batch_to_payloads → on_line_batch。
-                // Phase-0 简单正确：一帧一条 batch。前端按 seq 自动排序，无视觉差异。
-                let lines = vec![JsonlLine {
+                // Batch5-F17：进攒批缓冲（达 cap/批龄立即整批出）；静默窗口/
+                // SessionRemoved 边界触发的 flush 在循环头。
+                if let Some(full) = batcher.push(JsonlLine {
                     session_id,
                     path: std::path::PathBuf::from(path),
                     seq,
                     raw,
-                }];
-                let payloads = crate::batch_to_payloads(lines, Some(host_label.clone()));
-                replay.on_line_batch(app, payloads);
+                }) {
+                    flush_lines(replay, app, &host_label, full).await;
+                }
             }
             Some(InboundFrame::SessionAdded { sid }) => {
                 // FIX 2：记下已宣告的 sid，供连接结束时统一归档。
@@ -1022,6 +1174,56 @@ async fn probe_daemon(
                 _ => Ok(None), // 非 hello 帧 → daemon 未正常握手
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod batcher_tests {
+    use super::*;
+
+    fn line(sid: &str, seq: u64) -> JsonlLine {
+        JsonlLine {
+            session_id: sid.to_string(),
+            path: std::path::PathBuf::from(format!("/fake/{sid}.jsonl")),
+            seq,
+            raw: format!("{{\"seq\":{seq}}}"),
+        }
+    }
+
+    #[test]
+    fn push_below_cap_accumulates_take_drains_in_order() {
+        let mut b = Batcher::new(600);
+        assert!(b.push(line("s1", 0)).is_none());
+        assert!(b.push(line("s2", 0)).is_none()); // 跨 session 混流不拆
+        assert!(b.push(line("s1", 1)).is_none());
+        let out = b.take().expect("non-empty");
+        assert_eq!(
+            out.iter()
+                .map(|l| (l.session_id.as_str(), l.seq))
+                .collect::<Vec<_>>(),
+            vec![("s1", 0), ("s2", 0), ("s1", 1)],
+            "到达顺序 = 发出顺序"
+        );
+        assert!(b.take().is_none(), "drained");
+    }
+
+    #[test]
+    fn cap_triggers_immediate_full_flush() {
+        let mut b = Batcher::new(3);
+        assert!(b.push(line("s", 0)).is_none());
+        assert!(b.push(line("s", 1)).is_none());
+        let full = b.push(line("s", 2)).expect("cap reached → full batch out");
+        assert_eq!(full.len(), 3);
+        assert!(b.take().is_none(), "buffer empty after cap flush");
+        // 继续攒下一批不受影响
+        assert!(b.push(line("s", 3)).is_none());
+        assert_eq!(b.take().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn take_on_empty_is_none() {
+        let mut b = Batcher::new(600);
+        assert!(b.take().is_none());
     }
 }
 

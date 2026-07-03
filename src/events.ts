@@ -161,6 +161,10 @@ export async function bindEvents(
 
   // batch-end 延迟状态机
   let inBatchMode = false;
+  // Batch5-F17 突发检测：jsonl-line 积压超过该深度 → 主动进 batch 模式（与后端
+  // INCREMENTAL_BATCH_THRESHOLD=50 同量级）。burstArmed 防哨兵在生效前重复入队。
+  const BURST_ENTER_THRESHOLD = 50;
+  let burstArmed = false;
   let endTimer: number | null = null;
 
   // === perf 测量 ===
@@ -188,6 +192,7 @@ export async function bindEvents(
   };
 
   const enterBatchMode = (): void => {
+    burstArmed = false; // 突发哨兵已生效（或被 jsonl-batch 的哨兵抢先），解除武装
     if (endTimer !== null) {
       clearTimeout(endTimer);
       endTimer = null;
@@ -254,6 +259,12 @@ export async function bindEvents(
       setTimeout(drain, 0);
     } else {
       scheduled = false;
+      // Batch5-F17：突发检测进入的 batch 模式没有 batch-end 哨兵可依赖——
+      // 队列清空且没有已排程的退出 timer 时补排一个（grace 期内新 payload
+      // 照常续期）。对哨兵路径无影响（batch-end 已排 timer → 条件不成立）。
+      if (inBatchMode && endTimer === null) {
+        scheduleBatchEnd();
+      }
     }
   };
 
@@ -271,6 +282,14 @@ export async function bindEvents(
   registrations.push(
     sub<JsonlLinePayload>("jsonl-line", (e) => {
       queue.push({ kind: "payload", payload: e.payload });
+      // Batch5-F17 突发检测兜底：jsonl-line 没有 batch 哨兵包裹，任何突发源
+      // （历史上是远端 snapshot 逐帧，未来任何新源）积压到阈值就主动进 batch
+      // 模式——哨兵插队到队首，让剩余积压走 defer/lazy 路径而不是逐条全量渲染。
+      // 已在 batch 模式或哨兵已入队则不重复；退出走 drain 清空后的 grace 补排。
+      if (!inBatchMode && !burstArmed && queue.length > BURST_ENTER_THRESHOLD) {
+        burstArmed = true;
+        queue.unshift({ kind: "batch-start" });
+      }
       ensureScheduled();
     }),
   );
