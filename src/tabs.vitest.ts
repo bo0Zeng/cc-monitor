@@ -126,6 +126,21 @@ describe("TabManager 生命周期", () => {
     expect(peek(tm).tabs.get("sk-late")!.status).toBe("archived");
   });
 
+  // === Batch5-F19：last-active 写回 ===
+
+  it("switchTo 写回 last-active；persistLastActive=false（viewer）不写", () => {
+    localStorage.removeItem("cc-monitor.last-active-sid");
+    tm.ensureTab("s-a", "/a", "p", 0, null);
+    tm.ensureTab("s-b", "/b", "p", 0, null);
+    tm.switchTo("s-b");
+    expect(localStorage.getItem("cc-monitor.last-active-sid")).toBe("s-b");
+
+    // viewer 模式：禁写（防独立窗口污染主窗口记忆，审计 R1）
+    tm.persistLastActive = false;
+    tm.switchTo("s-a");
+    expect(localStorage.getItem("cc-monitor.last-active-sid")).toBe("s-b");
+  });
+
   it("archiveTab：live → archived，且清空 activity（灯灭）", () => {
     const tab = tm.ensureTab("s3", "/home", "p", 0, null);
     tab.activity = { status: "busy", waitingFor: null } as unknown as Tab["activity"];

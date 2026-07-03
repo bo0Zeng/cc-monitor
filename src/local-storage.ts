@@ -34,6 +34,8 @@ export const LS_KEYS = {
    *  下划线命名保留避免改 key 时丢用户已存数据（迁移成本大于收益）。 */
   profilePreset: "cc-monitor.profile_preset",
   profilePath: "cc-monitor.profile_path",
+  /** Batch5-F19：上次所在 tab 的 sid——启动 active 选择 + replay 优先级。 */
+  lastActiveSid: "cc-monitor.last-active-sid",
 } as const;
 
 export function safeGet(key: string): string | null {

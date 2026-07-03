@@ -15,6 +15,7 @@ import { renderStreamRecord, type StreamSink } from "./render-stream-record";
 import type { BranchRecord } from "./branching";
 import { isAgentTool } from "./cards/subagent";
 import type { AgentsPanel, AgentEntry } from "./agents-panel";
+import { LS_KEYS, safeSet } from "./local-storage";
 
 /**
  * Tab 生命周期：
@@ -366,6 +367,14 @@ export class TabManager {
   createSkeletonTab(sessionId: string, cwd: string | null, origin: string | null): void {
     this.ensureTab(sessionId, cwd, "", Number.MAX_SAFE_INTEGER, origin);
   }
+
+  /** Batch5-F19：启动 active 选择用（last-active 是否已有 tab）。 */
+  hasTab(sessionId: string): boolean {
+    return this.tabs.has(sessionId);
+  }
+
+  /** Batch5-F19：switchTo 是否写回 last-active（viewer/tear-off 窗口置 false）。 */
+  persistLastActive = true;
 
   ensureTab(
     sessionId: string,
@@ -1016,6 +1025,12 @@ export class TabManager {
     const next = this.tabs.get(sessionId);
     if (next) next.unread = 0;
     this.activeId = sessionId;
+    // Batch5-F19：记住所在 tab——下次启动 active 选择 + replay 优先该 session。
+    // viewer/tear-off 窗口共享同 origin 的 localStorage（INVARIANT § 14），它们的
+    // TabManager 置 persistLastActive=false，防独立窗口看会话 X 污染主窗口记忆。
+    if (this.persistLastActive) {
+      safeSet(LS_KEYS.lastActiveSid, sessionId);
+    }
     if (source === "manual") {
       this.manualOverrideUntil = Date.now() + TabManager.MANUAL_OVERRIDE_MS;
     }
