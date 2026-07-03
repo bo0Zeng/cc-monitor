@@ -50,6 +50,16 @@ pub struct SessionActivity {
     pub waiting_for: Option<String>,
 }
 
+/// Batch7-F24：`snapshot_active` 的富化条目（骨架 tab 清单——kind/name 供
+/// ⚙ 标识与树状归属）。
+#[derive(Debug, Clone)]
+pub struct ActiveSession {
+    pub session_id: String,
+    pub cwd: String,
+    pub kind: Option<String>,
+    pub name: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct SessionInfo {
     pub pid: u32,
@@ -74,9 +84,9 @@ pub struct SessionInfo {
     /// / "input needed" / "worker request" / "sandbox request"）。
     #[serde(rename = "waitingFor", default)]
     pub waiting_for: Option<String>,
-    /// Claude 给会话起的语义名（aka ai-title）。保留字段以备未来 v1.7 注入式绑定使用。
+    /// Claude 给会话起的语义名（aka ai-title；bg 任务的任务名）。Batch7-F24 起
+    /// 由骨架清单/树状标题消费。
     #[serde(default)]
-    #[allow(dead_code)]
     pub name: Option<String>,
     /// Batch6-F21：会话类型。CC 2.1.x 起 daemon 后台任务（--fork-session）也写
     /// pidfile，标 `kind:"bg"`（另带 jobId）；交互会话为 `"interactive"`。
@@ -89,18 +99,23 @@ pub struct SessionMap {
     dir: PathBuf,
     /// session_id → SessionInfo
     by_id: Arc<RwLock<HashMap<String, SessionInfo>>>,
+    /// Batch7-F24：显示 bg 会话（config.json showBgSessions，默认 true；重启生效）。
+    show_bg: bool,
 }
 
 impl SessionMap {
     /// 加载 sessions/ 目录的全部活跃 session，并启动 watcher 线程。
     /// 返回一个 channel 接收 session 集合变化（lib.rs 用它推送 session-ended 事件给前端）。
-    pub fn load_with_changes(dir: PathBuf) -> (Arc<Self>, mpsc::Receiver<SessionChange>) {
+    pub fn load_with_changes(
+        dir: PathBuf,
+        show_bg: bool,
+    ) -> (Arc<Self>, mpsc::Receiver<SessionChange>) {
         tracing::info!(
             "session_map scanning {} (exists={})",
             dir.display(),
             dir.exists()
         );
-        let initial = scan_dir(&dir);
+        let initial = scan_dir(&dir, show_bg);
         tracing::info!("session_map loaded {} entries", initial.len());
         for (sid, info) in &initial {
             tracing::info!("  session: {} pid={} cwd={}", sid, info.pid, info.cwd);
@@ -109,6 +124,7 @@ impl SessionMap {
         let me = Arc::new(Self {
             dir: dir.clone(),
             by_id: Arc::new(RwLock::new(initial)),
+            show_bg,
         });
         Self::spawn_watcher(&me, Some(tx));
         (me, rx)
@@ -117,9 +133,10 @@ impl SessionMap {
     fn spawn_watcher(this: &Arc<Self>, change_tx: Option<mpsc::Sender<SessionChange>>) {
         let dir = this.dir.clone();
         let by_id = this.by_id.clone();
+        let show_bg = this.show_bg;
         if let Err(e) = std::thread::Builder::new()
             .name("session-map-watcher".into())
-            .spawn(move || run_watcher(dir, by_id, change_tx))
+            .spawn(move || run_watcher(dir, by_id, change_tx, show_bg))
         {
             tracing::error!(
                 "spawn session-map-watcher failed: {e}; \
@@ -166,21 +183,31 @@ impl SessionMap {
     ///
     /// 按 (cwd, sid) 排序：HashMap 迭代序每进程随机，不排序则 tab 栏顺序每次
     /// 启动洗牌（F18 审计发现）。cwd 优先 → 同项目的会话相邻，跨启动稳定。
-    pub fn snapshot_active(&self) -> Vec<(String, String)> {
-        let mut v: Vec<(String, String)> = self
+    pub fn snapshot_active(&self) -> Vec<ActiveSession> {
+        let mut v: Vec<ActiveSession> = self
             .by_id
             .read()
             .iter()
-            .map(|(sid, info)| (sid.clone(), info.cwd.clone()))
+            .map(|(sid, info)| ActiveSession {
+                session_id: sid.clone(),
+                cwd: info.cwd.clone(),
+                kind: info.kind.clone(),
+                name: info.name.clone(),
+            })
             .collect();
-        v.sort_by(|a, b| (&a.1, &a.0).cmp(&(&b.1, &b.0)));
+        v.sort_by(|a, b| (&a.cwd, &a.session_id).cmp(&(&b.cwd, &b.session_id)));
         v
     }
 }
 
-fn scan_dir(dir: &Path) -> HashMap<String, SessionInfo> {
+fn scan_dir(dir: &Path, show_bg: bool) -> HashMap<String, SessionInfo> {
     // P3 归并：走 utils::scan_dir_jsons。
     let mut map = crate::utils::scan_dir_jsons(dir, |info: &SessionInfo| info.session_id.clone());
+    // Batch7-F24：showBgSessions 开（默认）→ 保留 bg（kind 字段随 info 透传给下游
+    // 做 ⚙ 标识/树状）；关 → 回到 Batch6-F21 行为（bg 不算会话）。
+    if show_bg {
+        return map;
+    }
     // Batch6-F21：交互性过滤。CC 2.1.x 的 daemon 后台任务（--fork-session）也写
     // pidfile（kind:"bg" + jobId）——是自己文件的真作者，但不是交互会话，不该成
     // Tab / 进红绿灯 / 进骨架清单。保守规则（与远端 daemon 一字一致）：kind 存在
@@ -241,6 +268,7 @@ fn run_watcher(
     dir: PathBuf,
     by_id: Arc<RwLock<HashMap<String, SessionInfo>>>,
     change_tx: Option<mpsc::Sender<SessionChange>>,
+    show_bg: bool,
 ) {
     if !dir.exists() {
         if let Err(e) = std::fs::create_dir_all(&dir) {
@@ -277,7 +305,7 @@ fn run_watcher(
         };
 
         if scan {
-            let next = scan_dir(&dir);
+            let next = scan_dir(&dir, show_bg);
             let n = next.len();
             // issue #23: diff 抽纯函数（可单测，"变化才发"契约的唯一实现点）。
             // 块作用域确保 read guard 在 write 前释放（parking_lot 同线程 read→write 死锁）。
@@ -415,7 +443,33 @@ fn is_process_alive(_pid: u32, _expected_proc_start: Option<&str>) -> bool {
 mod tests {
     use super::*;
 
-    /// Batch6-F21：kind 字段解析 + 交互性过滤契约。
+    /// Batch7-F24：scan_dir 的开关双分支——开（默认）保留 bg 且 kind/name 透传；
+    /// 关 = F21 行为（bg 不算会话）。
+    #[test]
+    fn scan_dir_show_bg_switch() {
+        let dir = std::env::temp_dir().join(format!("ccm-scanbg-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("1.json"),
+            r#"{"pid":1,"sessionId":"sid-int","cwd":"/p","kind":"interactive"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("2.json"),
+            r#"{"pid":2,"sessionId":"sid-bg","cwd":"/p","kind":"bg","name":"评估"}"#,
+        )
+        .unwrap();
+        let on = scan_dir(&dir, true);
+        assert_eq!(on.len(), 2, "开 = bg 保留");
+        assert_eq!(on["sid-bg"].kind.as_deref(), Some("bg"), "kind 透传下游");
+        assert_eq!(on["sid-bg"].name.as_deref(), Some("评估"), "name 透传下游");
+        let off = scan_dir(&dir, false);
+        assert_eq!(off.len(), 1, "关 = F21 行为");
+        assert!(off.contains_key("sid-int"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Batch6-F21/Batch7-F24：kind 解析 + 关开关时的过滤契约（开 = 保留带标注）。
     #[test]
     fn kind_field_parses_and_bg_is_filtered() {
         // 真实 bg 样本形态（本机 732685.json）：kind:"bg" + jobId
@@ -473,9 +527,15 @@ mod tests {
         let map = SessionMap {
             dir: std::path::PathBuf::new(),
             by_id: Arc::new(RwLock::new(as_map(vec![a, b, c]))),
+            show_bg: true,
         };
+        let out: Vec<(String, String)> = map
+            .snapshot_active()
+            .into_iter()
+            .map(|e| (e.session_id, e.cwd))
+            .collect();
         assert_eq!(
-            map.snapshot_active(),
+            out,
             vec![
                 ("sid-a".to_string(), "/proj/alpha".to_string()),
                 ("sid-b".to_string(), "/proj/alpha".to_string()),

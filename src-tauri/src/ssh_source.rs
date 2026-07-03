@@ -311,10 +311,17 @@ async fn authenticate_via_agent(
 /// 错误统一 map 成 `String`（本 crate 未直接依赖 anyhow，不为骨架引入新依赖）。
 pub async fn connect_and_exec(
     cfg: &RemoteConfig,
+    with_bg: bool,
 ) -> Result<russh::ChannelStream<client::Msg>, String> {
     // 与 jsonl-watcher 不同，daemon 是长连接：inactivity_timeout=None → connect_session
     // 自动启用 30s keepalive（见 FIX 1 注释），靠 keepalive + EOF 检死链，不靠定时拆链。
-    connect_and_exec_cmd(cfg, &shell_quote(&cfg.daemon_path)).await
+    // Batch7-F24：with_bg 由调用方决定（run_stream 里绑定"部署确认为当前版本"，
+    // 见该处注释）——bg 会话宣告+流行（帧带元信息）；false = 不流 bg 数据。
+    let mut cmd = shell_quote(&cfg.daemon_path);
+    if with_bg {
+        cmd.push_str(" --with-bg");
+    }
+    connect_and_exec_cmd(cfg, &cmd).await
 }
 
 /// [`connect_and_exec`] 的通用形态：exec 任意命令行（issue #16：历史查询走
@@ -372,8 +379,14 @@ pub enum InboundFrame {
         seq: u64,
         raw: String,
     },
-    /// 远端新出现一个 session 文件。
-    SessionAdded { sid: String },
+    /// 远端新出现一个 session 文件。Batch7-F24：p1e daemon 附带 pidfile 元信息
+    /// （additive）；旧 daemon 缺字段 → None（保守视为交互）。
+    SessionAdded {
+        sid: String,
+        session_kind: Option<String>,
+        cwd: Option<String>,
+        name: Option<String>,
+    },
     /// 远端一个 session 文件消失。
     SessionRemoved { sid: String },
     /// issue #32：远端 daemon 发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）。
@@ -423,7 +436,14 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
         }
         "session_added" => {
             let sid = obj.get("sid")?.as_str()?.to_string();
-            Some(InboundFrame::SessionAdded { sid })
+            // Batch7-F24 附加字段（旧 daemon 缺失 → None）
+            let opt = |k: &str| obj.get(k).and_then(|v| v.as_str()).map(str::to_string);
+            Some(InboundFrame::SessionAdded {
+                sid,
+                session_kind: opt("session_kind"),
+                cwd: opt("cwd"),
+                name: opt("name"),
+            })
         }
         "session_removed" => {
             let sid = obj.get("sid")?.as_str()?.to_string();
@@ -679,13 +699,21 @@ async fn stream_loop(
     // issue #29（F08）：连接前确保远端 daemon 已（自动）部署到 cfg.daemon_path。
     // 嵌入二进制就位前（F08b 未做）daemon_binary() 返回 None → ensure_daemon_deployed
     // 优雅 no-op。**best-effort**：部署失败仅 warn，不阻断——手动部署的 daemon 仍可连。
-    if let Err(e) = crate::sftp::ensure_daemon_deployed(cfg).await {
-        tracing::warn!(
-            "ssh_source [{host_label}] daemon 自动部署失败（继续尝试连接已有 daemon）: {e}"
-        );
-    }
-
-    let stream = connect_and_exec(cfg).await?;
+    let confirmed_build = match crate::sftp::ensure_daemon_deployed(cfg).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(
+                "ssh_source [{host_label}] daemon 自动部署失败（继续尝试连接已有 daemon）: {e}"
+            );
+            None
+        }
+    };
+    // Batch7-F24：只对**确认为当前版本**的 daemon 传 --with-bg——旧 daemon（< p1e）
+    // 会把未知参数当一次性查询处理后退出（无 hello → 重连死循环），确认不了
+    // （手动部署 / ~ 路径 / 无内嵌 arch）一律降级不传（bg 功能不可用但连接正常）。
+    let with_bg = crate::load_show_bg_sessions()
+        && confirmed_build.as_deref() == Some(EXPECTED_DAEMON_BUILD_ID);
+    let stream = connect_and_exec(cfg, with_bg).await?;
 
     // Batch5-F17：帧读取挪进独立 task、经 channel 交回——攒批需要"带静默窗口
     // 的读"，而 tokio 的 read_line **不是 cancellation-safe**（timeout 取消会
@@ -825,12 +853,20 @@ async fn stream_loop(
                     flush_lines(replay, app, &host_label, full).await;
                 }
             }
-            Some(InboundFrame::SessionAdded { sid }) => {
+            Some(InboundFrame::SessionAdded {
+                sid,
+                session_kind,
+                cwd,
+                name,
+            }) => {
                 // Batch5-F18：透传前端建骨架 Tab——协议序保证本帧先于该会话的
                 // 内容行，这里同步 emit（先于行 flush），骨架必先于内容出现。
                 let payload = crate::bridge::RemoteSessionAddedPayload {
                     session_id: sid.clone(),
                     origin: host_label.clone(),
+                    kind: session_kind,
+                    cwd,
+                    name,
                 };
                 if let Err(e) = app.emit(crate::bridge::events::REMOTE_SESSION_ADDED, payload) {
                     tracing::warn!("ssh_source remote-session-added emit failed: {e}");
@@ -1357,7 +1393,27 @@ mod parse_frame_tests {
         assert_eq!(
             frame,
             InboundFrame::SessionAdded {
-                sid: "s-9".to_string()
+                sid: "s-9".to_string(),
+                session_kind: None,
+                cwd: None,
+                name: None,
+            }
+        );
+    }
+
+    /// Batch7-F24：p1e daemon 的 session_added 附加元信息正确解析；
+    /// 旧 daemon 缺字段 → None（上一测试已覆盖）。
+    #[test]
+    fn session_added_metadata_parses() {
+        let line = r#"{"kind":"session_added","sid":"s-bg","session_kind":"bg","cwd":"/proj/x","name":"评估任务"}"#;
+        let frame = parse_frame(line).expect("must parse");
+        assert_eq!(
+            frame,
+            InboundFrame::SessionAdded {
+                sid: "s-bg".to_string(),
+                session_kind: Some("bg".to_string()),
+                cwd: Some("/proj/x".to_string()),
+                name: Some("评估任务".to_string()),
             }
         );
     }

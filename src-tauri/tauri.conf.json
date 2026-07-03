@@ -18,7 +18,8 @@
         "height": 800,
         "decorations": true,
         "transparent": false,
-        "focus": false
+        "focus": false,
+        "backgroundColor": "#2b2a27"
       }
     ],
     "security": {

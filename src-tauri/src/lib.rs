@@ -73,6 +73,23 @@ const NESTED_CLAUDE_ENV_KEYS: [&str; 4] = [
 ];
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Batch7-F23A：nudge skip 判定的纯函数对（单测钦定，见 MASTERPLAN §6）。
+///
+/// `pack_nudge_state`：终态物理尺寸 + fullscreen 位打包成一个可比较状态值。
+/// fullscreen 占 bit 63（F11 borderless 全屏与 maximize 在"自动隐藏任务栏"下
+/// inner 尺寸可能相同——状态位保证这类 #4095 高危过渡不被 skip）；宽度截 31 位
+/// （物理像素远小于 2^31，不损失信息）。
+pub(crate) fn pack_nudge_state(w: u32, h: u32, fullscreen: bool) -> u64 {
+    ((fullscreen as u64) << 63) | (((w as u64) & 0x7FFF_FFFF) << 32) | h as u64
+}
+
+/// skip 当且仅当：曾经 nudge 过（last != 0）且 (尺寸+全屏态) 与上次执行完的
+/// nudge 完全一致——典型即"最小化→恢复"。0 是安全哨兵：真实窗口尺寸非零，
+/// pack 结果不可能为 0（0×0 在事件入口与 settle 双重滤除）。
+pub(crate) fn nudge_should_skip(last_nudged: u64, packed: u64) -> bool {
+    last_nudged != 0 && last_nudged == packed
+}
+
 pub fn run() {
     // 启动 perf 测量起点
     let t0 = std::time::Instant::now();
@@ -165,6 +182,18 @@ pub fn run() {
             use std::time::Duration;
             let resize_gen = Arc::new(AtomicU64::new(0));
             let nudge_pending = Arc::new(AtomicBool::new(false));
+            // Batch7-F23A：上次 nudge **闭包执行完毕**时的 (尺寸+全屏态) 打包值
+            // （pack_nudge_state；0=从未）。最小化→恢复回到同状态时合成层没有错位
+            // 理由（#4095 是 resize/maximize **过渡** bug），却会因 is_maximized()
+            // 为 true 走 SetIsVisible 翻转 → 拆挂合成 visual 瞬间露白底（用户实测
+            // 白闪）。同状态直接 skip 全部 COM 动作。两条取舍（审计 D 复核后留档）：
+            // ① store 在 with_webview 闭包尾执行——"执行完"= 闭包跑完，单个 COM
+            //   调用失败仍记录（COM 级失败不重试；派发失败才不记录）；
+            // ② 拖拽一圈回到原尺寸的 settle 也会被 skip（终态==上次已修复态，
+            //   wry 自身的 WM_SIZE 路径已实时跟踪中间态，残余风险接受）。
+            // F11 全屏与 maximize 同 inner 尺寸的角例由打包值里的 fullscreen 位
+            // 区分（状态变了照跑三板斧）。
+            let last_nudged = Arc::new(AtomicU64::new(0));
             move |window, event| {
                 let size = match event {
                     tauri::WindowEvent::Resized(s) => *s,
@@ -182,6 +211,7 @@ pub fn run() {
                 let window = window.clone();
                 let resize_gen = resize_gen.clone();
                 let nudge_pending = nudge_pending.clone();
+                let last_nudged = last_nudged.clone();
                 std::thread::spawn(move || {
                     let mut last = resize_gen.load(Ordering::SeqCst);
                     loop {
@@ -208,6 +238,18 @@ pub fn run() {
                     let maximized = window.is_maximized().unwrap_or(false);
                     let fullscreen = window.is_fullscreen().unwrap_or(false);
                     let flip = maximized || fullscreen;
+                    // Batch7-F23A：同(尺寸+全屏态) skip（典型 = 最小化恢复）。
+                    // 判定与打包是纯函数（单测见 nudge_skip_tests）。
+                    let packed =
+                        pack_nudge_state(target.width, target.height, fullscreen);
+                    if nudge_should_skip(last_nudged.load(Ordering::SeqCst), packed) {
+                        tracing::info!(
+                            "nudge skip: size+state unchanged {}x{} fs={fullscreen} (restore-from-minimize path)",
+                            target.width,
+                            target.height
+                        );
+                        return;
+                    }
                     let Some(webview) = window.webviews().into_iter().next() else {
                         tracing::warn!("nudge skip: no webview on window");
                         return;
@@ -217,6 +259,7 @@ pub fn run() {
                         target.width,
                         target.height
                     );
+                    let last_nudged_in = last_nudged.clone();
                     let res = webview.with_webview(move |pw| {
                         // RECT 必须来自 webview2-com 0.38 配对的 windows 0.61
                         // （windows-wv2 rename，见 Cargo.toml），0.56 的类型不互通
@@ -254,6 +297,9 @@ pub fn run() {
                                 }
                             }
                         }
+                        // 闭包执行完毕才记录（with_webview 的 Ok 只代表"已派发到主
+                        // 线程"——审计 D 修订：在这里 store 才是"执行完"的语义）
+                        last_nudged_in.store(packed, Ordering::SeqCst);
                     });
                     if let Err(e) = res {
                         tracing::warn!("nudge with_webview failed: {e}");
@@ -316,7 +362,10 @@ pub fn run() {
 
             // SessionMap = Claude Code 自己维护的 ~/.claude/sessions/<PID>.json
             let (session_map, session_changes) =
-                session_map::SessionMap::load_with_changes(sessions_dir);
+                session_map::SessionMap::load_with_changes(
+                    sessions_dir,
+                    load_show_bg_sessions(),
+                );
 
             // Watcher: 只对活跃 session 的 jsonl emit
             let active_filter: watcher::ActiveFilter = {
@@ -384,8 +433,14 @@ pub fn run() {
                                 // 归档的死会话。is_session_active 读 by_id（此刻 = 本次重扫的
                                 // next）并 re-probe 进程，门住该竞态。session-ended 的对称补全。
                                 if session_map_for_emitter.is_session_active(sid) {
+                                    // Batch7-F24：带 pidfile 元信息——前端无 Tab 时建
+                                    // 骨架（中途出现的 bg 会话需要 kind 才有 ⚙/树状）。
+                                    let info = session_map_for_emitter.lookup(sid);
                                     let payload = bridge::SessionStartedPayload {
                                         session_id: sid.clone(),
+                                        cwd: info.as_ref().map(|i| i.cwd.clone()),
+                                        kind: info.as_ref().and_then(|i| i.kind.clone()),
+                                        name: info.as_ref().and_then(|i| i.name.clone()),
                                     };
                                     if let Err(e) =
                                         handle.emit(bridge::events::SESSION_STARTED, &payload)
@@ -812,6 +867,19 @@ fn extract_cwd(rec: &messages::JsonlRecord) -> Option<String> {
     }
 }
 
+/// Batch7-F24：读 config.json 顶层 `showBgSessions`（默认 true）。**OnceLock 缓存
+/// 首读**——本地 scan 过滤与远端 exec 参数（含每次重连）拿到同一个值，双端统一
+/// "重启生效"语义（审计 D：不缓存则远端在重连时活切换、与本地/文案不一致）。
+pub(crate) fn load_show_bg_sessions() -> bool {
+    static CACHE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *CACHE.get_or_init(|| {
+        config::load_config()
+            .ok()
+            .and_then(|v| v.get("showBgSessions").and_then(|b| b.as_bool()))
+            .unwrap_or(true)
+    })
+}
+
 /// SSH-remote（issue #15 / 多机 #30）：从 monitor 的 config.json 读 `remote` 段，构造
 /// **0..N 个** [`ssh_source::RemoteConfig`]。**空 Vec = 本地模式**（与历史 bit-for-bit
 /// 一致）：config.json 不存在 / 解析失败 / 无 `remote` 键 / `enabled != true` / 无任何
@@ -1031,7 +1099,10 @@ async fn open_session_in_new_window(
         } else {
             &title
         })
-        .inner_size(900.0, 720.0);
+        .inner_size(900.0, 720.0)
+        // Batch7-F23B：与主窗口 backgroundColor 一致——合成间隙露底为主题深色
+        // 而非 WebView2 默认白（tauri.conf.json 主窗口同款 #2b2a27）
+        .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff));
     // 落点定位：仅当 x/y 都给出时按逻辑坐标摆放（Tauri 2 builder 取 LogicalPosition）。
     if let (Some(x), Some(y)) = (x, y) {
         builder = builder.position(x, y);
@@ -1208,7 +1279,12 @@ fn list_active_sessions(
 ) -> Vec<bridge::ActiveSessionPayload> {
     map.snapshot_active()
         .into_iter()
-        .map(|(session_id, cwd)| bridge::ActiveSessionPayload { session_id, cwd })
+        .map(|e| bridge::ActiveSessionPayload {
+            session_id: e.session_id,
+            cwd: e.cwd,
+            kind: e.kind,
+            name: e.name,
+        })
         .collect()
 }
 
@@ -1479,6 +1555,50 @@ fn open_with_os(path_or_dir: &str) -> Result<(), String> {
             .spawn()
             .map_err(|e| format!("xdg-open failed: {e}"))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod nudge_skip_tests {
+    use super::{nudge_should_skip, pack_nudge_state};
+
+    #[test]
+    fn same_size_same_state_skips() {
+        let a = pack_nudge_state(2560, 1400, false);
+        assert!(nudge_should_skip(a, pack_nudge_state(2560, 1400, false)));
+    }
+
+    #[test]
+    fn first_nudge_never_skips() {
+        assert!(!nudge_should_skip(0, pack_nudge_state(800, 600, false)));
+    }
+
+    #[test]
+    fn size_change_runs() {
+        let a = pack_nudge_state(2560, 1400, false);
+        assert!(!nudge_should_skip(a, pack_nudge_state(2560, 1399, false)));
+        assert!(!nudge_should_skip(a, pack_nudge_state(2559, 1400, false)));
+    }
+
+    #[test]
+    fn fullscreen_bit_distinguishes_same_inner_size() {
+        // F11 无边框全屏与 maximize 在自动隐藏任务栏下 inner 尺寸可能相同——
+        // 全屏态翻转必须照跑三板斧（#4095 高危过渡）
+        let maxed = pack_nudge_state(2560, 1440, false);
+        let fs = pack_nudge_state(2560, 1440, true);
+        assert_ne!(maxed, fs);
+        assert!(!nudge_should_skip(maxed, fs));
+        assert!(!nudge_should_skip(fs, maxed));
+    }
+
+    #[test]
+    fn pack_no_collision_between_dimensions() {
+        // w/h 位域独立：宽高互换、进位不串位
+        assert_ne!(pack_nudge_state(1, 2, false), pack_nudge_state(2, 1, false));
+        assert_ne!(
+            pack_nudge_state(0x10000, 0, false),
+            pack_nudge_state(0, 0x10000, false)
+        );
     }
 }
 

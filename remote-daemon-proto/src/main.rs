@@ -44,7 +44,9 @@ const PROTO_VERSION: u32 = 1;
 ///   比对为主证据，mtime 时间证据 + cmdline 白名单为 fallback，修 tmux 僵尸 tab）
 /// - p1d-lifecycle = + kind 交互性门（Batch6-F21：kind:"bg" 后台任务不成 tab）
 ///   + sid 原地变更 removed + 同 sid 多 PID 引用计数（Batch6-F22）
-const BUILD_ID: &str = "p1d-lifecycle";
+/// - p1e-bg-tree = + --with-bg 放行 bg 会话、session_added 帧附 session_kind/cwd/name
+///   （Batch7-F24，additive 向后兼容）
+const BUILD_ID: &str = "p1e-bg-tree";
 
 #[tokio::main]
 async fn main() {
@@ -63,7 +65,10 @@ async fn main() {
     // issue #16：带参数 = 一次性历史查询模式，干完即退，不进流式协议。
     // 旧 daemon 不认参数会照常发 hello 进流模式——monitor 以"首行是 hello 帧"
     // 识别旧版并提示升级（优雅降级，无协议版本协商负担）。
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // Batch7-F24：流模式 flag，先剥离再判一次性查询模式（否则误入 query 分支）
+    let with_bg = args.iter().any(|a| a == "--with-bg");
+    args.retain(|a| a != "--with-bg");
     if !args.is_empty() {
         // 一次性查询模式：--search 走全文搜索（#28），其余走历史查询（#16）。
         let code = match args.first().map(String::as_str) {
@@ -92,7 +97,7 @@ async fn main() {
 
     // (c) Start the watcher reader; it returns the receiving half of the
     // bounded frame channel.
-    let rx = watcher::spawn(claude_dir);
+    let rx = watcher::spawn(claude_dir, with_bg);
 
     // (d) Run the stdout writer until the channel closes or a signal fires.
     tokio::select! {

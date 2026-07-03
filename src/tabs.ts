@@ -29,6 +29,10 @@ export type TabStatus = "live" | "archived";
 
 export interface Tab {
   sessionId: string;
+  /** Batch7-F24：会话类型（"interactive"/"bg"/null=未知视为交互）。bg → ⚙ 标题 + 树状挂宿主后。 */
+  kind: string | null;
+  /** Batch7-F24：bg 任务名（pidfile name 字段）；bg 标题优先用它。 */
+  bgName: string | null;
   /**
    * Tab 标题。优先级：[项目] aiTitle > 项目名 > session_id 前 8 位。
    * aiTitle 一旦出现就锁住，后续 cwd 不再回退。
@@ -364,8 +368,73 @@ export class TabManager {
    * 首条行回填；pendingArchive/pendingActivity 落实、batch 模式继承均沿用。
    * 已存在同 sid Tab 时为 no-op（幂等，重连重发 session_added 无害）。
    */
-  createSkeletonTab(sessionId: string, cwd: string | null, origin: string | null): void {
-    this.ensureTab(sessionId, cwd, "", Number.MAX_SAFE_INTEGER, origin);
+  /**
+   * Batch7-F24 树状排序：bg tab 插到同 (cwd, origin) 交互宿主（及其既有 bg 子项）
+   * 之后；无宿主则追加末尾。交互 tab 创建时反向重锚——把已存在的同 (cwd, origin)
+   * bg tab 拉到自己身后（骨架清单里 bg 可能先于宿主出现）。父子判定 v1 = cwd
+   * 归属（pidfile 无 parentSessionId 字段，精确父子留 backlog）。
+   */
+  private placeInOrder(tab: Tab): void {
+    const isBg = tab.kind !== null && tab.kind !== "interactive";
+    const sameHost = (t: Tab | undefined): boolean =>
+      !!t && t.cwd !== null && t.cwd === tab.cwd && t.origin === tab.origin;
+    if (isBg && tab.cwd) {
+      // 找宿主（交互 + 同 cwd/origin）——插到宿主连同其已有 bg 子串之后
+      for (let i = 0; i < this.orderedIds.length; i++) {
+        const t = this.tabs.get(this.orderedIds[i]);
+        if (sameHost(t) && (t!.kind === null || t!.kind === "interactive")) {
+          let j = i + 1;
+          while (j < this.orderedIds.length) {
+            const c = this.tabs.get(this.orderedIds[j]);
+            if (sameHost(c) && c!.kind !== null && c!.kind !== "interactive") j++;
+            else break;
+          }
+          this.orderedIds.splice(j, 0, tab.sessionId);
+          return;
+        }
+      }
+      this.orderedIds.push(tab.sessionId);
+      return;
+    }
+    // 交互 tab：追加，再把**真孤儿** bg 子项拉到身后（保持原相对序）。
+    // 已紧跟在先到宿主（同 cwd/origin 交互 tab）之后的 bg 子串不动——
+    // 计划契约"多宿主取第一个"（审计 D-R3：第二个同 cwd 交互会话不许搬走
+    // 第一个宿主已挂好的子树）。
+    this.orderedIds.push(tab.sessionId);
+    if (tab.cwd) {
+      const orphans: string[] = [];
+      let anchored = false; // 当前扫描位置是否处于"sameHost 宿主的 bg 子串"内
+      for (const sid of this.orderedIds) {
+        if (sid === tab.sessionId) continue;
+        const t = this.tabs.get(sid);
+        const isBg = !!t && t.kind !== null && t.kind !== "interactive";
+        if (!isBg) {
+          anchored = sameHost(t) && (t!.kind === null || t!.kind === "interactive");
+          continue;
+        }
+        if (sameHost(t)) {
+          if (!anchored) orphans.push(sid);
+          // anchored 保持——宿主的 bg 子串延续
+        } else {
+          anchored = false; // 异族 bg 打断子串
+        }
+      }
+      if (orphans.length) {
+        this.orderedIds = this.orderedIds.filter((sid) => !orphans.includes(sid));
+        const at = this.orderedIds.indexOf(tab.sessionId) + 1;
+        this.orderedIds.splice(at, 0, ...orphans);
+      }
+    }
+  }
+
+  createSkeletonTab(
+    sessionId: string,
+    cwd: string | null,
+    origin: string | null,
+    kind: string | null = null,
+    name: string | null = null,
+  ): void {
+    this.ensureTab(sessionId, cwd, "", Number.MAX_SAFE_INTEGER, origin, kind, name);
   }
 
   /** Batch5-F19：启动 active 选择用（last-active 是否已有 tab）。 */
@@ -386,6 +455,8 @@ export class TabManager {
     sourcePath: string,
     seq: number,
     origin: string | null = null,
+    kind: string | null = null,
+    bgName: string | null = null,
   ): Tab {
     let tab = this.tabs.get(sessionId);
     if (tab) {
@@ -415,7 +486,7 @@ export class TabManager {
       return tab;
     }
 
-    const title = computeTitleFor(sessionId, cwd, null, origin);
+    const title = computeTitleFor(sessionId, cwd, null, origin, kind, bgName);
 
     const streamEl = document.createElement("div");
     streamEl.className = "stream"; // 默认 .stream 已含 visibility:hidden（见 styles.css）
@@ -442,6 +513,8 @@ export class TabManager {
 
     tab = {
       sessionId,
+      kind,
+      bgName,
       title,
       cwd,
       // 记下当前 cwd 来源的 seq；后续更早（更小 seq）的记录可覆盖（取项目根）。
@@ -473,7 +546,7 @@ export class TabManager {
       tab.activity = null; // 同 archiveTab：死会话不留陈旧灯/tooltip
     }
     this.tabs.set(sessionId, tab);
-    this.orderedIds.push(sessionId);
+    this.placeInOrder(tab);
 
     if (this.activeId === null) {
       // "auto"：首个 Tab 的激活不是用户手势，不该占用 5s manualOverride 抑制
@@ -497,7 +570,7 @@ export class TabManager {
 
   /** 根据 tab.cwd + tab.aiTitle + sessionId 算出展示标题（远端 Tab 加 `[origin]` 前缀） */
   private computeTitle(tab: Tab): string {
-    return computeTitleFor(tab.sessionId, tab.cwd, tab.aiTitle, tab.origin);
+    return computeTitleFor(tab.sessionId, tab.cwd, tab.aiTitle, tab.origin, tab.kind, tab.bgName);
   }
 
   /** session 退出（~/.claude/sessions/<PID>.json 被删）—— 灰显归档，内容保留 */
@@ -1209,6 +1282,8 @@ export class TabManager {
     // 本地不存在，故 .remote 类只隐藏「打开工作目录」📂（CSS）。「调出终端」↗ 现在保留
     // 给远端 —— 点击走 bringRemoteTerminalToFront（后端按 ccm-rbind 拉本地 ssh 窗口）。
     refs.root.classList.toggle("remote", tab.origin !== null);
+    // Batch7-F24：bg 任务 tab——缩进 + ⌞ 前缀由 CSS 承担
+    refs.root.classList.toggle("tab-bg", tab.kind !== null && tab.kind !== "interactive");
     // issue #23 红绿灯：busy=绿（.live-dot 默认色）/ idle·shell=红 / waiting=黄。
     // activity 为 null（旧版 CC / 远端 v1）不加类 → 维持现状绿点。
     const actStatus = tab.activity?.status ?? null;
@@ -1310,8 +1385,15 @@ function computeTitleFor(
   cwd: string | null,
   aiTitle: string | null,
   origin: string | null = null,
+  kind: string | null = null,
+  bgName: string | null = null,
 ): string {
   const project = cwd ? projectNameFromCwd(cwd) : null;
+  // Batch7-F24：bg 任务 → ⚙ + 任务名（缩进/⌞ 由 .tab-bg 样式承担）
+  if (kind !== null && kind !== "interactive") {
+    const base = `⚙ ${bgName ?? aiTitle ?? project ?? sessionId.slice(0, 8)}`;
+    return origin ? `[${origin}] ${base}` : base;
+  }
   let base: string;
   if (aiTitle) {
     base = project ? `[${project}] ${aiTitle}` : aiTitle;
