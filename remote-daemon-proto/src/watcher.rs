@@ -170,6 +170,8 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>) {
 
         // Liveness poll: archive sessions whose PID is no longer alive OR whose
         // PID was reused by a different process (procStart mismatch, #34).
+        // Batch6-F22-②：引用计数感知——同 sid 可能有多个 pidfile（resume 时原
+        // 进程未死），任一 PID 死亡不再误杀整个 sid。
         let dead: Vec<PathBuf> = state
             .sessions
             .iter()
@@ -178,8 +180,7 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>) {
             .collect();
         for k in dead {
             if let Some(e) = state.sessions.remove(&k) {
-                state.active_sids.remove(&e.sid);
-                sink.send(Frame::SessionRemoved { sid: e.sid });
+                retire_sid_if_unreferenced(&e.sid, &mut state, &mut sink);
             }
         }
 
@@ -418,10 +419,39 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     if !pid_alive(pid) {
         return;
     }
+    // Batch6-F21: interactivity gate. CC 2.1.x 的 daemon 后台任务
+    // (--fork-session --resume) **会**写 sessions/<PID>.json（kind:"bg" +
+    // jobId）——"子会话不注册 pidfile"的旧假设已过期。bg 进程是自己 pidfile
+    // 的真作者（F20 身份证据对它们正确地放行），但不是交互会话、不该成 tab。
+    // 保守规则（与本地 session_map 一字一致）：kind 字段存在且非 "interactive"
+    // 才排除；旧 CC 不写该字段 → 放行。
+    if let Some(kind) = parse_kind(&bytes) {
+        if kind != "interactive" {
+            // 审计 S1：若该 key 此前以 interactive 身份被 track（原地翻 kind /
+            // PID 复用写同路径），对称走退休路径——与 F22-① 一致，免掉 poll 的
+            // 2s 窗口，并补齐"同进程翻 kind"这条本地有、远端缺的清理。
+            if let Some(old) = state.sessions.remove(&key) {
+                retire_sid_if_unreferenced(&old.sid, state, sink);
+            }
+            tracing::debug!(
+                "sessions json skipped (kind={kind}): {} pid {pid} is a non-interactive claude (bg task)",
+                path.display()
+            );
+            return;
+        }
+    }
     // Idempotent: a debounced modify of an already-tracked session re-announces
     // nothing.
     if state.sessions.get(&key).map(|e| e.sid.as_str()) == Some(sid.as_str()) {
         return;
+    }
+    // Batch6-F22-①：同 pidfile 原地换 sid（/clear 等重写 sessionId）——旧 sid
+    // 必须走 removed 路径：旧实现 insert 直接覆盖 entry，旧 sid 既不清
+    // active_sids 也永不发 SessionRemoved、还被挤出活性 poll 遍历 → 假 live
+    // 到断连（跨机审计实锤，本地 diff_sessions 按 sid 集合 diff 无此病）。
+    // 引用计数感知：其它 pidfile 仍持旧 sid 时只解绑本 entry、不发帧。
+    if let Some(old) = state.sessions.remove(&key) {
+        retire_sid_if_unreferenced(&old.sid, state, sink);
     }
     // Batch5-F20: add-time imposter check. `/proc/<pid>` existing is NOT enough:
     // a stale pidfile (CC force-killed, tmux server killed, power loss — nothing
@@ -476,13 +506,28 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
 }
 
 /// A `sessions/<PID>.json` was deleted: look up the cached sid (the file is
-/// gone, so we cannot read it now) and emit [`Frame::SessionRemoved`].
+/// gone, so we cannot read it now) and retire the sid if unreferenced.
 fn process_session_removed(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
     let key = path_key(path);
     if let Some(e) = state.sessions.remove(&key) {
-        state.active_sids.remove(&e.sid);
-        sink.send(Frame::SessionRemoved { sid: e.sid });
+        retire_sid_if_unreferenced(&e.sid, state, sink);
     }
+}
+
+/// Batch6-F22：sid 退休的**唯一**出口——`sessions` 表中已无任何存活 entry 持有
+/// 该 sid 时才清 active_sids + 发 [`Frame::SessionRemoved`]。同 sid 多 pidfile
+/// （resume 时原进程未死）场景下，先死的那个只解绑、不误杀整个 tab。
+/// 调用方约定：先从 `state.sessions` remove 掉当事 entry 再调本函数。
+fn retire_sid_if_unreferenced(sid: &str, state: &mut ReaderState, sink: &mut FrameSink) {
+    let still_referenced = state.sessions.values().any(|e| e.sid == sid);
+    if still_referenced {
+        tracing::debug!("sid {sid} still referenced by another pidfile; not retiring");
+        return;
+    }
+    state.active_sids.remove(sid);
+    sink.send(Frame::SessionRemoved {
+        sid: sid.to_string(),
+    });
 }
 
 /// Walk `projects/` for this session's jsonl (`<sid>.jsonl`, non-subagent) and
@@ -598,6 +643,13 @@ fn add_time_verdict(
         }
     }
     AddTimeVerdict::Alive
+}
+
+/// Parse the pidfile's `kind` field ("interactive" / "bg" …，Batch6-F21)。
+/// None = 字段缺失（旧 CC）或不可读 → 调用方放行。
+fn parse_kind(bytes: &[u8]) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    v.get("kind")?.as_str().map(str::to_string)
 }
 
 /// Parse the pidfile's `procStart` field as starttime ticks. CC writes it as a
@@ -1207,6 +1259,189 @@ mod tests {
             add_time_verdict(None, None, None, None, Some("   ")),
             AddTimeVerdict::Alive
         );
+    }
+
+    // === Batch6-F22：远端会话生命周期 ===
+
+    /// 同 pidfile 原地换 sid（/clear）：旧 sid 立即 Removed、新 sid Added，
+    /// active_sids 恰含新 sid（跨机审计实锤的假 live 泄漏回归测试）。
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn sid_change_in_place_retires_old_sid() {
+        let dir = std::env::temp_dir().join(format!("ccm-sidchange-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pid = std::process::id();
+        let ticks = proc_starttime(pid).expect("own starttime");
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(dir.join("projects"));
+        let path = dir.join(format!("{pid}.json"));
+
+        let write = |sid: &str| {
+            std::fs::write(
+                &path,
+                format!(r#"{{"pid":{pid},"sessionId":"{sid}","cwd":"/x","kind":"interactive","procStart":"{ticks}"}}"#),
+            )
+            .unwrap();
+        };
+        write("sid-1");
+        process_session_added(&path, &mut state, &mut sink);
+        assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid }) if sid == "sid-1"));
+
+        write("sid-2"); // /clear：同文件重写 sessionId
+        process_session_added(&path, &mut state, &mut sink);
+        assert!(
+            matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid }) if sid == "sid-1"),
+            "old sid must be retired BEFORE the new announcement"
+        );
+        assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid }) if sid == "sid-2"));
+        assert!(!state.active_sids.contains("sid-1"));
+        assert!(state.active_sids.contains("sid-2"));
+        assert_eq!(state.sessions.len(), 1);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 同 sid 多 pidfile（resume 原进程未死）：删一个不发 Removed（引用计数），
+    /// 删第二个才 Removed 恰一次。
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn same_sid_two_pidfiles_refcount() {
+        let dir = std::env::temp_dir().join(format!("ccm-refcount-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pid = std::process::id();
+        let ticks = proc_starttime(pid).expect("own starttime");
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(dir.join("projects"));
+
+        // 两个 pidfile 同 sid（借同一真实存活 pid；path key 不同即两个 entry）
+        let p1 = dir.join(format!("{pid}.json"));
+        // 第二个 pidfile 放子目录（path key 不同、file_stem 仍是 pid 数字）
+        let sub = dir.join("dup");
+        std::fs::create_dir_all(&sub).unwrap();
+        let p2 = sub.join(format!("{pid}.json"));
+        let body = format!(
+            r#"{{"pid":{pid},"sessionId":"shared-sid","cwd":"/x","kind":"interactive","procStart":"{ticks}"}}"#
+        );
+        std::fs::write(&p1, &body).unwrap();
+        std::fs::write(&p2, &body).unwrap();
+        process_session_added(&p1, &mut state, &mut sink);
+        assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid }) if sid == "shared-sid"));
+        process_session_added(&p2, &mut state, &mut sink);
+        // 第二个 pidfile：幂等检查是 per-key 的 → 恰好再发一条 Added（前端
+        // ensureTab 幂等）。断言帧序（审计 S3：吞帧会掩盖"先 Removed 再 Added
+        // 闪烁"类回归）。
+        assert!(
+            matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid }) if sid == "shared-sid"),
+            "second pidfile re-announces exactly once"
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "and nothing else (no spurious Removed)"
+        );
+        assert_eq!(state.sessions.len(), 2);
+
+        // 删第一个 → 仍被 p2 引用 → 不发 Removed
+        process_session_removed(&p1, &mut state, &mut sink);
+        assert!(
+            rx.try_recv().is_err(),
+            "no Removed while another pidfile holds the sid"
+        );
+        assert!(state.active_sids.contains("shared-sid"));
+
+        // 删第二个 → 归零 → Removed 恰一次
+        process_session_removed(&p2, &mut state, &mut sink);
+        assert!(matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid }) if sid == "shared-sid"));
+        assert!(!state.active_sids.contains("shared-sid"));
+        assert!(rx.try_recv().is_err());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 常规 added/removed 回归：单 pidfile 生命周期行为与 F22 前一致。
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn plain_lifecycle_regression() {
+        let dir = std::env::temp_dir().join(format!("ccm-plainlife-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pid = std::process::id();
+        let ticks = proc_starttime(pid).expect("own starttime");
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(dir.join("projects"));
+        let path = dir.join(format!("{pid}.json"));
+        std::fs::write(
+            &path,
+            format!(r#"{{"pid":{pid},"sessionId":"solo","cwd":"/x","kind":"interactive","procStart":"{ticks}"}}"#),
+        )
+        .unwrap();
+        process_session_added(&path, &mut state, &mut sink);
+        assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid }) if sid == "solo"));
+        process_session_removed(&path, &mut state, &mut sink);
+        assert!(matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid }) if sid == "solo"));
+        assert!(state.sessions.is_empty() && state.active_sids.is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // === Batch6-F21：kind 交互性门 ===
+
+    #[test]
+    fn parse_kind_variants() {
+        assert_eq!(
+            parse_kind(br#"{"sessionId":"s","kind":"bg","jobId":"j"}"#).as_deref(),
+            Some("bg"),
+            "真实 bg 样本形态"
+        );
+        assert_eq!(
+            parse_kind(br#"{"sessionId":"s","kind":"interactive"}"#).as_deref(),
+            Some("interactive")
+        );
+        assert_eq!(parse_kind(br#"{"sessionId":"s"}"#), None, "旧 CC 无 kind");
+        assert_eq!(parse_kind(b"not json"), None);
+    }
+
+    /// 集成：kind:"bg" 的 pidfile（真实存活进程 = 本进程，身份/时间证据全过）
+    /// 在 kind 门被拒——不发 SessionAdded、不进 sessions/active_sids。
+    /// 对照组：同进程 interactive pidfile 正常宣告。
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn bg_pidfile_is_gated_even_when_author_is_alive() {
+        let dir = std::env::temp_dir().join(format!("ccm-kind-gate-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pid = std::process::id();
+        let ticks = proc_starttime(pid).expect("own starttime");
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(dir.join("projects"));
+
+        // bg pidfile：作者活着、procStart 逐位相等——F20 证据全过，但 kind 门拒
+        let bg_path = dir.join(format!("{pid}.json"));
+        std::fs::write(
+            &bg_path,
+            format!(r#"{{"pid":{pid},"sessionId":"bg-sid","cwd":"/x","kind":"bg","jobId":"j","procStart":"{ticks}"}}"#),
+        )
+        .unwrap();
+        process_session_added(&bg_path, &mut state, &mut sink);
+        assert!(state.sessions.is_empty(), "bg must not be tracked");
+        assert!(!state.active_sids.contains("bg-sid"));
+        assert!(rx.try_recv().is_err(), "no SessionAdded frame for bg");
+
+        // 对照：interactive 正常宣告
+        std::fs::write(
+            &bg_path,
+            format!(r#"{{"pid":{pid},"sessionId":"int-sid","cwd":"/x","kind":"interactive","procStart":"{ticks}"}}"#),
+        )
+        .unwrap();
+        process_session_added(&bg_path, &mut state, &mut sink);
+        assert!(state.active_sids.contains("int-sid"));
+        match rx.try_recv() {
+            Ok(Frame::SessionAdded { sid }) => assert_eq!(sid, "int-sid"),
+            other => panic!("expected SessionAdded, got {other:?}"),
+        }
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
