@@ -289,6 +289,7 @@ export class TabManager {
       // 切块场景下，老块的 tool_use 现在已渲染 → 重试匹配早到的 fallback result
       const ctx: RenderContext = {
         parentPath: t.parentPath,
+        origin: t.origin,
         toolUseNames: t.toolUseNames,
         toolUseElements: t.toolUseElements,
         pendingToolResults: t.pendingToolResults,
@@ -336,6 +337,7 @@ export class TabManager {
 
     const ctx: RenderContext = {
       parentPath: tab.parentPath,
+      origin: tab.origin,
       toolUseNames: tab.toolUseNames,
       toolUseElements: tab.toolUseElements,
       pendingToolResults: tab.pendingToolResults,
@@ -1074,8 +1076,16 @@ export class TabManager {
   private async openTabCwd(sid: string): Promise<void> {
     const tab = this.tabs.get(sid);
     if (!tab?.cwd) return;
-    // FIX 5：远端 Tab 的 cwd 是 Pi 上的路径，本地 openPath 必然失败 —— 直接 no-op。
-    if (tab.origin !== null) return;
+    // FIX 5：远端 Tab 的 cwd 是远端路径，本地 openPath 必然失败。Batch9-F29：
+    // 从静默 no-op 改为提示（盘点 #9：用户按 E 没反应像坏了）。
+    if (tab.origin !== null) {
+      showActionFailureToast(
+        "远端目录无法本地打开",
+        `该会话在远端机器 [${tab.origin}]，工作目录 ${tab.cwd} 不在本机。`,
+        { level: "info" },
+      );
+      return;
+    }
     try {
       await openPath(tab.cwd);
     } catch (e) {

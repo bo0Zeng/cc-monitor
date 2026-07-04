@@ -90,6 +90,8 @@ export class SessionViewer {
       toolUseNames: new Map(),
       toolUseElements: new Map(),
       pendingToolResults: new Map(),
+      // Batch9-F29（审计三家共识）：远端会话展开 subagent 需 origin 降级
+      origin: opts.origin ?? null,
     };
     // P5.2 B 重构：SessionViewer 改用 renderStreamRecord（跟 TabManager 共享管线）。
     // BranchFolder 延后 — 流式期间不算，全部到齐后 setRecordsAndRebuild 一次（O(N²)→O(N)）。

@@ -111,7 +111,7 @@ src-tauri/src/
 ├── 远端层      ssh_source.rs  russh 远端数据源（连接/鉴权/流帧解析 + 版本协商 + 测试连接 + Batch5-F17 Line 帧攒批 Batcher——snapshot 聚批走 chunked 路径）
 │              remote_history.rs  远端历史浏览 + 全文搜索查询（一次性 exec daemon 子命令；多台 join_all 并发 fan-out，墙钟 Σ→max）
 │              (Batch8) ssh_source 内快照拉取：SnapshotQueue+dispatcher+fetch——
-│              tail-only 下每会话独立连接 --read-session 旁路拉历史（行号 seq 缝合）
+│              tail-only 下每会话独立连接 --read-session-tail 旁路拉历史（尾部优先+行号 seq 缝合）
 │              sftp.rs       SS-D SFTP 写层（daemon 自动部署 + 手动安装/卸载 + 远端删除 + ccm 安装/卸载）
 └── 持久层      config.rs     monitor config.json R/W（Windows MoveFileExW 原子）
 ```

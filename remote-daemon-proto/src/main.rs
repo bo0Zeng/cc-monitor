@@ -48,7 +48,9 @@ const PROTO_VERSION: u32 = 1;
 ///   （Batch7-F24，additive 向后兼容）
 /// - p1f-tail-snapshot = + --tail-only（连接不重放历史，seq=行号语义）、
 ///   session_added 帧附 path（Batch8-F25，历史改走 monitor 旁路 --read-session 快照）
-const BUILD_ID: &str = "p1f-tail-snapshot";
+/// - p1g-status-tail = + session_status 帧/宣告带初始 status（Batch9-F27 远端红绿灯）、
+///   --read-session-tail 尾部优先查询（Batch9-F30）
+const BUILD_ID: &str = "p1g-status-tail";
 
 /// Batch7-F24/Batch8-F25：从 argv 剥离流模式 flag（`--with-bg` / `--tail-only`），
 /// 返回（剩余参数, with_bg, tail_only）。**必须在一次性查询模式判定之前调用**

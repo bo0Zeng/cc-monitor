@@ -379,6 +379,16 @@ Batch8-F25/26 起（p1f daemon + tail-only）：daemon 连接时把各文件 seq
 - **bg 门在数据层生效**（本地 scan_dir 过滤 / 远端 daemon `--with-bg` 参数），不是前端隐藏——关掉 = bg 数据完全不流（省带宽与 buffer，bg 历史可达 10MB+）。开（默认）= bg 建 Tab 带 ⚙ + 树状挂同 (cwd, origin) 交互宿主后。
 - **daemon 任何新增流模式 flag 必须在一次性查询模式判定之前从 args 剥离**（`main.rs` 先 `retain` 再判 `!args.is_empty()`）——否则 flag 落进 query 分支，daemon 打印查询结果退出，monitor 无 hello 死循环。同理，**monitor 只对确认 ≥ 该 flag 版本的 daemon 传新 flag**（auto-deploy build_id 确认；确认不了就降级不传）。既有实例：`--with-bg`（F24）、`--tail-only`（Batch8-F25）。
 
+## 27. 远端会话生命周期信号的两条载荷型约束（Batch9）
+
+- **F5 重发必须先于 replay**：`remote-session-added` 不进 replay buffer，F5 后远端
+  骨架/bg 元数据/初始灯全靠 frontend-ready 时 `ssh_source::reannounce_all` 重发；
+  "宣告先于该会话的行"契约在 F5 路径的唯一保证是 lib.rs frontend-ready 处理器里
+  reannounce 调用**先于** `replay_and_mark_ready` 的顺序（同一 task 内顺序 emit +
+  前端同 queue FIFO）。改动该顺序 = 破坏骨架先行契约。
+- **status 缺失恒为"未知"**：pidfile 无 `status`（旧 CC）→ 帧不带 → 前端 `act=null`
+  不加灯类——双端一字一致（与 §26 "kind 缺失恒视为交互"同族的保守缺省规则）。
+
 ## 修改本文档
 
 加新的不变量时：

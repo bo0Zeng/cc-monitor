@@ -381,6 +381,8 @@ const SNAPSHOT_CONCURRENCY: usize = 2;
 /// 历史浏览器按需查询不受此限）。
 const SNAPSHOT_MAX_BYTES: u64 = 512 * 1024 * 1024;
 const SNAPSHOT_CHUNK_LINES: usize = 500;
+/// Batch9-F30：尾部优先——最新 N 行先到（第一批 emit 即最新内容），旧历史回填。
+const SNAPSHOT_TAIL_LINES: usize = 500;
 const SNAPSHOT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// 每连接一个：待拉快照队列。sid 幂等（重复宣告不重拉）；`cancel(sid)`
@@ -399,6 +401,64 @@ struct SnapshotPending {
     seen: std::collections::HashSet<String>,
     /// 已取消（会话已 removed）的 sid——inflight fetch 每个 chunk 边界查它中止。
     cancelled: std::collections::HashSet<String>,
+}
+
+/// Batch9：已宣告会话的元数据缓存——归档清算（keys）+ F28 frontend-ready 重发
+/// （payload+最新 status）+ F27 status 写回。
+#[derive(Clone)]
+pub(crate) struct AnnouncedMeta {
+    pub(crate) payload: crate::bridge::RemoteSessionAddedPayload,
+    pub(crate) status: Option<String>,
+    pub(crate) waiting_for: Option<String>,
+}
+
+/// Batch9-F28：全局宣告账本 origin → (sid → meta)。写者 = 各主机 stream_loop
+/// （added/status/removed + 连接退出清本 host）；读者 = frontend-ready 重发
+/// （F5 后重建远端骨架/bg 元数据/初始灯——remote-session-added 不进 replay
+/// buffer，Batch5 I-1 留档的缺口由此补上）。
+static REMOTE_ANNOUNCED: std::sync::OnceLock<
+    std::sync::Mutex<
+        std::collections::HashMap<String, std::collections::HashMap<String, AnnouncedMeta>>,
+    >,
+> = std::sync::OnceLock::new();
+
+fn announced_registry() -> &'static std::sync::Mutex<
+    std::collections::HashMap<String, std::collections::HashMap<String, AnnouncedMeta>>,
+> {
+    REMOTE_ANNOUNCED.get_or_init(Default::default)
+}
+
+/// F28：frontend-ready 时重发所有已宣告远端会话（骨架 + 初始灯）。幂等
+/// （createSkeletonTab/updateActivity 均幂等）；宣告先于该会话 replay 行 emit
+/// 由调用方保证（lib.rs 在 replay 之前调本函数）。
+pub fn reannounce_all(app: &tauri::AppHandle) {
+    // F5 电平同步（先于骨架重发——batch 调度信号越早越好）
+    emit_snapshot_inflight_level(app);
+    let snapshot = {
+        let reg = announced_registry().lock().unwrap();
+        collect_reannounce(&reg)
+    };
+    if snapshot.is_empty() {
+        return;
+    }
+    tracing::info!(
+        "F28 reannounce: {} 个远端会话（F5 骨架/灯重建）",
+        snapshot.len()
+    );
+    for meta in snapshot {
+        let sid = meta.payload.session_id.clone();
+        if let Err(e) = app.emit(crate::bridge::events::REMOTE_SESSION_ADDED, &meta.payload) {
+            tracing::warn!("reannounce remote-session-added emit failed: {e}");
+        }
+        let act = crate::bridge::SessionActivityPayload {
+            session_id: sid,
+            status: meta.status,
+            waiting_for: meta.waiting_for,
+        };
+        if let Err(e) = app.emit(crate::bridge::events::SESSION_ACTIVITY, &act) {
+            tracing::warn!("reannounce session-activity emit failed: {e}");
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -519,8 +579,18 @@ async fn snapshot_dispatcher(
         let replay = replay.clone();
         let app = app.clone();
         let host_label = host_label.clone();
+        // incr 在 spawn 之前（审计 D：上一 task 归零与下一 task 起跑之间的
+        // 瞬时 0 窗口会让 300ms 定时器恰好放行 batch）
+        snapshot_inflight_change(&app, 1);
         tauri::async_runtime::spawn(async move {
             let _permit = permit;
+            struct InflightGuard(tauri::AppHandle);
+            impl Drop for InflightGuard {
+                fn drop(&mut self) {
+                    snapshot_inflight_change(&self.0, -1);
+                }
+            }
+            let _inflight = InflightGuard(app.clone());
             let sid_short: String = item.sid.chars().take(8).collect();
             let mut last_err = String::new();
             for attempt in 1..=2 {
@@ -564,6 +634,55 @@ async fn snapshot_dispatcher(
     }
 }
 
+/// Batch9-F30：全局快照 inflight 计数——前端 batch mode 的事件驱动信号
+/// （回填在途时不提前退出 batch 模式，见 events.ts）。
+/// 计数 + emit 在同一把锁下串行（审计 D：原子操作与 emit 分离时，两个并发
+/// task 收尾的 emit 可乱序——{count:0} 先到、{count:1} 后到 → 前端计数粘在
+/// 非零、batch 被压满 5min 防呆）。低频（每快照 2 次），锁开销可忽略。
+static SNAPSHOT_INFLIGHT: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+
+fn snapshot_inflight_change(app: &tauri::AppHandle, delta: isize) {
+    let mut n = SNAPSHOT_INFLIGHT.lock().unwrap();
+    *n = if delta > 0 {
+        *n + 1
+    } else {
+        n.saturating_sub(1)
+    };
+    let count = *n;
+    // 持锁 emit：保证事件到达序 == 计数变化序（emit 是入队非阻塞，临界区极短）
+    if let Err(e) = app.emit(
+        crate::bridge::events::SNAPSHOT_INFLIGHT,
+        &serde_json::json!({ "count": count }),
+    ) {
+        tracing::warn!("snapshot-inflight emit failed: {e}");
+    }
+    drop(n);
+}
+
+/// F28 重发收集（纯函数，单测锚定）：拍平全部主机的已宣告元数据并按
+/// (origin, sid) 稳定排序——HashMap 迭代序每次 F5 洗牌 tab 栏（审计 D）。
+fn collect_reannounce(
+    reg: &std::collections::HashMap<String, std::collections::HashMap<String, AnnouncedMeta>>,
+) -> Vec<AnnouncedMeta> {
+    let mut v: Vec<AnnouncedMeta> = reg.values().flat_map(|m| m.values().cloned()).collect();
+    v.sort_by(|a, b| {
+        (&a.payload.origin, &a.payload.session_id).cmp(&(&b.payload.origin, &b.payload.session_id))
+    });
+    v
+}
+
+/// F5 电平同步（审计 D）：inflight 是变化沿事件，重载后前端初值 0——回填在途
+/// 时 F5 会退回纯 300ms 启发式。frontend-ready（reannounce）时补发当前电平。
+pub fn emit_snapshot_inflight_level(app: &tauri::AppHandle) {
+    let count = *SNAPSHOT_INFLIGHT.lock().unwrap();
+    if let Err(e) = app.emit(
+        crate::bridge::events::SNAPSHOT_INFLIGHT,
+        &serde_json::json!({ "count": count }),
+    ) {
+        tracing::warn!("snapshot-inflight level emit failed: {e}");
+    }
+}
+
 /// fetch 的三态结果：完成（行数）/ 被取消（不重试）。错误走 Err。
 enum FetchOutcome {
     Done(u64),
@@ -599,8 +718,10 @@ async fn fetch_snapshot(
 ) -> Result<FetchOutcome, String> {
     let sid = &item.sid;
     let path = &item.path;
+    // Batch9-F30：尾部优先变体（p1g；快照仅在 confirmed 时运行故无兼容分支，
+    // meta 解析仍留防御回退）。
     let cmd = format!(
-        "{} --read-session {}",
+        "{} --read-session-tail {} {SNAPSHOT_TAIL_LINES}",
         shell_quote(&cfg.daemon_path),
         shell_quote(path)
     );
@@ -609,7 +730,12 @@ async fn fetch_snapshot(
     let mut reader = tokio::io::BufReader::new(stream);
     let mut acc: Vec<u8> = Vec::new();
     let mut total_bytes: u64 = 0;
-    let mut seq: u64 = 0;
+    // Batch9-F30：arrived = 可计行到达序号；meta 到手后两段映射成行号 seq
+    // （前 total-tail_from 行 = tail_from+i，其余 = i-seg1）。meta 缺失
+    // （防御，理论不可达）→ seq=arrived 旧行为。
+    let mut arrived: u64 = 0;
+    let mut tail_map: Option<(u64, u64)> = None; // (total, tail_from)
+    let mut first_countable = true;
     let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
     let mut cancelled = false;
     'read: loop {
@@ -642,13 +768,24 @@ async fn fetch_snapshot(
             if !snapshot_line_countable(line) {
                 continue;
             }
+            if first_countable {
+                first_countable = false;
+                if let Some(m) = parse_snapshot_meta(line) {
+                    tail_map = Some(m);
+                    continue;
+                }
+            }
+            let seq = match tail_map {
+                Some((total, tail_from)) => tail_seq(arrived, total, tail_from),
+                None => arrived,
+            };
             chunk.push(JsonlLine {
                 session_id: sid.to_string(),
                 path: std::path::PathBuf::from(path),
                 seq,
                 raw: line.to_string(),
             });
-            seq += 1;
+            arrived += 1;
             if chunk.len() >= SNAPSHOT_CHUNK_LINES {
                 if q.is_cancelled(sid) {
                     cancelled = true;
@@ -671,15 +808,50 @@ async fn fetch_snapshot(
     if !chunk.is_empty() {
         flush_lines(replay, app, host_label, chunk).await;
     }
-    // 完整性校验（p1f 帧带 L；旧帧无 lines → 跳过校验）
-    if let Some(expected) = item.expected_lines {
-        if seq < expected {
+    // 完整性校验：meta.total 精确对账（F30）；无 meta 退回帧 lines 下界校验
+    if let Some((total, _)) = tail_map {
+        if arrived != total {
             return Err(format!(
-                "快照不完整：{seq}/{expected} 行（连接中断或 daemon 报错）"
+                "快照不完整：{arrived}/{total} 行（连接中断或 daemon 报错）"
+            ));
+        }
+    } else if let Some(expected) = item.expected_lines {
+        if arrived < expected {
+            return Err(format!(
+                "快照不完整：{arrived}/{expected} 行（连接中断或 daemon 报错）"
             ));
         }
     }
-    Ok(FetchOutcome::Done(seq))
+    Ok(FetchOutcome::Done(arrived))
+}
+
+/// Batch9-F30：解析快照流首行的 meta。非 meta（普通 jsonl 行）/ 关系非法
+/// （tail_from > total——自家 daemon saturating_sub 不可达，但 meta 是远端
+/// 进程输出，防御式拒收退回旧编号，审计 D）→ None。
+fn parse_snapshot_meta(line: &str) -> Option<(u64, u64)> {
+    let v: serde_json::Value = serde_json::from_str(line).ok()?;
+    if v.get("kind")?.as_str()? != "snapshot_meta" {
+        return None;
+    }
+    let total = v.get("total")?.as_u64()?;
+    let tail_from = v.get("tail_from")?.as_u64()?;
+    if tail_from > total {
+        tracing::warn!("snapshot_meta 非法（tail_from {tail_from} > total {total}），按旧格式处理");
+        return None;
+    }
+    Some((total, tail_from))
+}
+
+/// 两段编号映射（纯函数，与测试共用——审计 D：原测试在测试体内重实现映射，
+/// 锤不到生产代码）：到达序 → 行号。前 total-tail_from 行是尾段（最新），
+/// 其余是头段回填。调用方保证 tail_from <= total（parse_snapshot_meta 校验）。
+fn tail_seq(arrived: u64, total: u64, tail_from: u64) -> u64 {
+    let seg1 = total.saturating_sub(tail_from);
+    if arrived < seg1 {
+        tail_from + arrived
+    } else {
+        arrived - seg1
+    }
 }
 
 /// [`connect_and_exec`] 的通用形态：exec 任意命令行（issue #16：历史查询走
@@ -748,6 +920,15 @@ pub enum InboundFrame {
         path: Option<String>,
         /// Batch8 D-I2：daemon prime 时的完整行数 L（快照完整性校验）。
         lines: Option<u64>,
+        /// Batch9-F27：宣告时的初始 status/waitingFor（连接建立灯就对）。
+        status: Option<String>,
+        waiting_for: Option<String>,
+    },
+    /// Batch9-F27：会话 status 变化（p1g daemon；远端红绿灯）。
+    SessionStatus {
+        sid: String,
+        status: Option<String>,
+        waiting_for: Option<String>,
     },
     /// 远端一个 session 文件消失。
     SessionRemoved { sid: String },
@@ -807,6 +988,17 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 name: opt("name"),
                 path: opt("path"),
                 lines: obj.get("lines").and_then(|v| v.as_u64()),
+                status: opt("status"),
+                waiting_for: opt("waiting_for"),
+            })
+        }
+        "session_status" => {
+            let sid = obj.get("sid")?.as_str()?.to_string();
+            let opt = |k: &str| obj.get(k).and_then(|v| v.as_str()).map(str::to_string);
+            Some(InboundFrame::SessionStatus {
+                sid,
+                status: opt("status"),
+                waiting_for: opt("waiting_for"),
             })
         }
         "session_removed" => {
@@ -925,7 +1117,10 @@ pub async fn run(
     let mut backoff = RECONNECT_MIN;
     loop {
         connected.store(false, Ordering::Release);
-        let mut announced: std::collections::HashSet<String> = std::collections::HashSet::new();
+        // Batch9 账本：HashSet → HashMap<sid, AnnouncedMeta>（F27 status 写回 +
+        // F28 frontend-ready 重发的数据源）。归档清算语义不变（keys = 存活 sid）。
+        let mut announced: std::collections::HashMap<String, AnnouncedMeta> =
+            std::collections::HashMap::new();
         let result = stream_loop(
             &cfg,
             &replay,
@@ -935,9 +1130,15 @@ pub async fn run(
             &mut announced,
         )
         .await;
+        // Batch9-F28：连接结束清本 host 的 registry（断连=骨架不该再被 F5 重建；
+        // 重连宣告会重新填充）。
+        announced_registry()
+            .lock()
+            .unwrap()
+            .remove(&cfg.origin_label());
         // 每轮都归档本次连接残留的 announced sid（保持原 FIX 2 归档契约）
         if !announced.is_empty() {
-            let removed: Vec<String> = announced.into_iter().collect();
+            let removed: Vec<String> = announced.into_keys().collect();
             tracing::info!(
                 "ssh_source connection ended; archiving {} remote session(s)",
                 removed.len()
@@ -945,7 +1146,7 @@ pub async fn run(
             if let Err(e) = session_changes.send(SessionChange {
                 added: vec![],
                 removed,
-                status_changed: vec![], // issue #23: 远端暂无 status 透传（v1 本地先行）
+                status_changed: vec![], // 本分支无状态变化（F27 起 status 走 SessionAdded/SessionStatus 臂）
             }) {
                 tracing::warn!("ssh_source final session archival send failed: {e}");
             }
@@ -1054,7 +1255,7 @@ async fn stream_loop(
     app: &tauri::AppHandle,
     session_changes: &std::sync::mpsc::Sender<SessionChange>,
     connected: &Arc<AtomicBool>,
-    announced: &mut std::collections::HashSet<String>,
+    announced: &mut std::collections::HashMap<String, AnnouncedMeta>,
 ) -> Result<(), String> {
     // issue #15 / #30：远端行的 origin 标签 = 该机器的稳定身份（label，默认 host）。
     // 前端据此给该 Tab 标题加 `[label]` 前缀以区分本地/各远端机器。进 loop 前 clone。
@@ -1242,6 +1443,8 @@ async fn stream_loop(
                 name,
                 path,
                 lines,
+                status,
+                waiting_for,
             }) => {
                 // Batch5-F18：透传前端建骨架 Tab——协议序保证本帧先于该会话的
                 // 内容行，这里同步 emit（先于行 flush），骨架必先于内容出现。
@@ -1252,7 +1455,20 @@ async fn stream_loop(
                     cwd,
                     name,
                 };
-                if let Err(e) = app.emit(crate::bridge::events::REMOTE_SESSION_ADDED, payload) {
+                // Batch9 审计 D：先入 registry 再 emit——反序时 F5 恰落在中间
+                // 会直发丢失且 reannounce 读不到（亚毫秒缝，一并闭合）
+                let meta_for_registry = AnnouncedMeta {
+                    payload: payload.clone(),
+                    status: status.clone(),
+                    waiting_for: waiting_for.clone(),
+                };
+                announced_registry()
+                    .lock()
+                    .unwrap()
+                    .entry(host_label.clone())
+                    .or_default()
+                    .insert(sid.clone(), meta_for_registry);
+                if let Err(e) = app.emit(crate::bridge::events::REMOTE_SESSION_ADDED, &payload) {
                     tracing::warn!("ssh_source remote-session-added emit failed: {e}");
                 }
                 // Batch8-F26：tail-only 下历史改走旁路快照——宣告带 path 即入队
@@ -1267,19 +1483,64 @@ async fn stream_loop(
                         });
                     }
                 }
-                // FIX 2：记下已宣告的 sid，供连接结束时统一归档。
-                announced.insert(sid.clone());
+                // FIX 2：记下已宣告的 sid + 元数据（Batch9：连接结束统一归档 +
+                // F28 frontend-ready 重发数据源；F27 status 后续变化写回）。
+                announced.insert(
+                    sid.clone(),
+                    AnnouncedMeta {
+                        payload: payload.clone(),
+                        status: status.clone(),
+                        waiting_for: waiting_for.clone(),
+                    },
+                );
+                // Batch9-F27：初始 status 一并透传（连接建立灯就对；None=旧 CC/
+                // 旧 daemon → 前端"未知不加类"，与本地一字一致）。
                 if let Err(e) = session_changes.send(SessionChange {
-                    added: vec![sid],
+                    added: vec![sid.clone()],
                     removed: vec![],
-                    status_changed: vec![],
+                    status_changed: vec![crate::session_map::SessionActivity {
+                        session_id: sid,
+                        status,
+                        waiting_for,
+                    }],
                 }) {
                     tracing::warn!("ssh_source session_added send failed: {e}");
+                }
+            }
+            Some(InboundFrame::SessionStatus {
+                sid,
+                status,
+                waiting_for,
+            }) => {
+                // Batch9-F27：写回 announced（F28 重发时灯是最新的）+ 透传前端。
+                if let Some(meta) = announced.get_mut(&sid) {
+                    meta.status = status.clone();
+                    meta.waiting_for = waiting_for.clone();
+                }
+                if let Some(hm) = announced_registry().lock().unwrap().get_mut(&host_label) {
+                    if let Some(meta) = hm.get_mut(&sid) {
+                        meta.status = status.clone();
+                        meta.waiting_for = waiting_for.clone();
+                    }
+                }
+                if let Err(e) = session_changes.send(SessionChange {
+                    added: vec![],
+                    removed: vec![],
+                    status_changed: vec![crate::session_map::SessionActivity {
+                        session_id: sid,
+                        status,
+                        waiting_for,
+                    }],
+                }) {
+                    tracing::warn!("ssh_source session_status send failed: {e}");
                 }
             }
             Some(InboundFrame::SessionRemoved { sid }) => {
                 // FIX 2：已显式 removed 的 sid 从 announced 摘掉，避免连接结束时重复归档。
                 announced.remove(&sid);
+                if let Some(hm) = announced_registry().lock().unwrap().get_mut(&host_label) {
+                    hm.remove(&sid);
+                }
                 // Batch8 D-B1：摘除排队中的快照 + 标记 inflight 取消——归档后
                 // 迟到的快照行会经"见行复活"造出关不掉的僵尸 live tab。
                 snapshots.cancel(&sid);
@@ -1798,6 +2059,8 @@ mod parse_frame_tests {
                 name: None,
                 path: None,
                 lines: None,
+                status: None,
+                waiting_for: None,
             }
         );
     }
@@ -1817,7 +2080,33 @@ mod parse_frame_tests {
                 name: Some("评估任务".to_string()),
                 path: Some("/home/u/.claude/projects/p/s-bg.jsonl".to_string()),
                 lines: Some(42),
+                status: None,
+                waiting_for: None,
             }
+        );
+    }
+
+    /// Batch9-F27：session_status 帧解析 + session_added 初始 status。
+    #[test]
+    fn session_status_frame_parses() {
+        let line = r#"{"kind":"session_status","sid":"s-1","status":"waiting","waiting_for":"permission prompt"}"#;
+        assert_eq!(
+            parse_frame(line),
+            Some(InboundFrame::SessionStatus {
+                sid: "s-1".to_string(),
+                status: Some("waiting".to_string()),
+                waiting_for: Some("permission prompt".to_string()),
+            })
+        );
+        // 缺 waiting_for → None
+        let line = r#"{"kind":"session_status","sid":"s-2","status":"busy"}"#;
+        assert_eq!(
+            parse_frame(line),
+            Some(InboundFrame::SessionStatus {
+                sid: "s-2".to_string(),
+                status: Some("busy".to_string()),
+                waiting_for: None,
+            })
         );
     }
 
@@ -2022,6 +2311,103 @@ Host prod
         assert_eq!(
             next_backoff(Duration::from_secs(30)),
             Duration::from_secs(30)
+        );
+    }
+}
+
+#[cfg(test)]
+mod reannounce_tests {
+    use super::{collect_reannounce, AnnouncedMeta};
+    use std::collections::HashMap;
+
+    fn meta(origin: &str, sid: &str, status: Option<&str>) -> AnnouncedMeta {
+        AnnouncedMeta {
+            payload: crate::bridge::RemoteSessionAddedPayload {
+                session_id: sid.into(),
+                origin: origin.into(),
+                kind: None,
+                cwd: Some("/p".into()),
+                name: None,
+            },
+            status: status.map(str::to_string),
+            waiting_for: None,
+        }
+    }
+
+    /// F28 DoD：重发快照收集——拍平 + (origin, sid) 稳定排序 + status 保真。
+    #[test]
+    fn collect_flattens_sorts_and_preserves_status() {
+        let mut reg: HashMap<String, HashMap<String, AnnouncedMeta>> = HashMap::new();
+        reg.entry("pi".into())
+            .or_default()
+            .insert("sid-b".into(), meta("pi", "sid-b", Some("busy")));
+        reg.entry("pi".into())
+            .or_default()
+            .insert("sid-a".into(), meta("pi", "sid-a", None));
+        reg.entry("aya".into())
+            .or_default()
+            .insert("sid-z".into(), meta("aya", "sid-z", Some("waiting")));
+        let out = collect_reannounce(&reg);
+        let keys: Vec<(String, String)> = out
+            .iter()
+            .map(|m| (m.payload.origin.clone(), m.payload.session_id.clone()))
+            .collect();
+        assert_eq!(
+            keys,
+            vec![
+                ("aya".into(), "sid-z".into()),
+                ("pi".into(), "sid-a".into()),
+                ("pi".into(), "sid-b".into()),
+            ],
+            "稳定 (origin, sid) 排序"
+        );
+        assert_eq!(out[0].status.as_deref(), Some("waiting"));
+        assert_eq!(out[2].status.as_deref(), Some("busy"));
+        assert!(collect_reannounce(&HashMap::new()).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tail_tests {
+    use super::parse_snapshot_meta;
+
+    #[test]
+    fn meta_parses_and_content_lines_dont() {
+        assert_eq!(
+            parse_snapshot_meta(r#"{"kind":"snapshot_meta","total":100,"tail_from":95}"#),
+            Some((100, 95))
+        );
+        // 普通 jsonl 行（含 kind 字段的行也不行——kind 值不匹配）
+        assert_eq!(parse_snapshot_meta(r#"{"type":"user","uuid":"u1"}"#), None);
+        assert_eq!(parse_snapshot_meta(r#"{"kind":"line","seq":0}"#), None);
+        assert_eq!(parse_snapshot_meta("not json"), None);
+    }
+
+    /// 两段编号映射（真函数）：到达序 → 行号（尾段先到）。
+    #[test]
+    fn tail_numbering_maps_arrival_to_line_numbers() {
+        use super::tail_seq;
+        // 到达序：尾段 [3,4]，头段 [0,1,2]
+        assert_eq!(
+            (0..5).map(|i| tail_seq(i, 5, 3)).collect::<Vec<_>>(),
+            vec![3, 4, 0, 1, 2],
+            "全部行号恰覆盖 0..total 且顺序=尾部优先"
+        );
+        // 全尾（tail_from=0）与空文件退化
+        assert_eq!(
+            (0..3).map(|i| tail_seq(i, 3, 0)).collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+        assert_eq!(tail_seq(0, 0, 0), 0);
+    }
+
+    /// meta 关系防御：tail_from > total 拒收（防远端损坏输出打乱 seq 空间）。
+    #[test]
+    fn malformed_meta_rejected() {
+        use super::parse_snapshot_meta;
+        assert_eq!(
+            parse_snapshot_meta(r#"{"kind":"snapshot_meta","total":5,"tail_from":10}"#),
+            None
         );
     }
 }

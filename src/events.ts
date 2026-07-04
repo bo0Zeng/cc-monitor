@@ -191,6 +191,14 @@ export async function bindEvents(
 
   // batch-end 延迟状态机
   let inBatchMode = false;
+  // Batch9-F30：远端快照/回填在途计数（后端 snapshot-inflight 事件驱动）。
+  // >0 时 batch 结束定时器只续期不触发——慢链路回填 chunk 间隔 >300ms 不再
+  // 提前退出 batch 模式（退出后旧历史以 live 形态插时间线中段，增量分支
+  // 计算路径没被锤过——审计推演的唯一乱序风险点）。5min 上限防呆（后端
+  // inflight 卡死不至于永久压住 flush）。
+  let snapshotInflight = 0;
+  let batchModeSince = 0;
+  const BATCH_HOLD_MAX_MS = 5 * 60_000;
   // Batch5-F17 突发检测：jsonl-line 积压超过该深度 → 主动进 batch 模式（与后端
   // INCREMENTAL_BATCH_THRESHOLD=50 同量级）。burstArmed 防哨兵在生效前重复入队。
   const BURST_ENTER_THRESHOLD = 50;
@@ -207,6 +215,20 @@ export async function bindEvents(
     }
     endTimer = window.setTimeout(() => {
       endTimer = null;
+      // Batch9-F30：回填在途 → 续期（除非超 5min 防呆上限）
+      if (
+        snapshotInflight > 0 &&
+        performance.now() - batchModeSince < BATCH_HOLD_MAX_MS
+      ) {
+        scheduleBatchEnd();
+        return;
+      }
+      // 防呆上限触发：连带把计数清零（审计 D：若后端计数事件曾乱序粘在非零，
+      // 别让后续每个 batch 都再被拖满 5min——下一次真实事件会重新校准）
+      if (snapshotInflight > 0) {
+        console.warn("[events] snapshot-inflight 卡在非零达上限，强制清零");
+        snapshotInflight = 0;
+      }
       if (inBatchMode) {
         inBatchMode = false;
         try {
@@ -233,6 +255,7 @@ export async function bindEvents(
       return;
     }
     inBatchMode = true;
+    batchModeSince = performance.now();
     try {
       handlers.onBatchStart?.();
     } catch (e) {
@@ -318,6 +341,14 @@ export async function bindEvents(
 
   // 收集所有 listen() 注册 promise，函数末尾 await —— 保证返回时监听已就绪。
   const registrations: Promise<unknown>[] = [];
+
+  // Batch9-F30：快照 inflight（不进 queue——纯 batch 调度信号，无顺序语义）。
+  // 归零时若 batch 模式在续期等待，下一次定时器触发即正常收尾。
+  registrations.push(
+    sub<{ count: number }>("snapshot-inflight", (ev) => {
+      snapshotInflight = ev.payload.count;
+    }),
+  );
 
   registrations.push(
     sub<JsonlLinePayload>("jsonl-line", (e) => {

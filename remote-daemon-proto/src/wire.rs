@@ -54,6 +54,20 @@ pub enum Frame {
         /// 全量模式 None。
         #[serde(skip_serializing_if = "Option::is_none")]
         lines: Option<u64>,
+        /// Batch9-F27（additive）：宣告时的初始 status/waitingFor——连接建立灯就对。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        waiting_for: Option<String>,
+    },
+    /// Batch9-F27：会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，
+    /// 天然稀疏）。远端红绿灯数据源；旧 monitor 未知 kind 忽略（additive）。
+    SessionStatus {
+        sid: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        waiting_for: Option<String>,
     },
     /// A session file went away.
     SessionRemoved { sid: String },
@@ -169,8 +183,18 @@ mod tests {
                     name: None,
                     path: None,
                     lines: None,
+                    status: None,
+                    waiting_for: None,
                 },
                 "session_added",
+            ),
+            (
+                Frame::SessionStatus {
+                    sid: "s".into(),
+                    status: Some("busy".into()),
+                    waiting_for: None,
+                },
+                "session_status",
             ),
             (Frame::SessionRemoved { sid: "s".into() }, "session_removed"),
             (Frame::Overflow { dropped: 7 }, "overflow"),

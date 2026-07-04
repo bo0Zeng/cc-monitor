@@ -591,6 +591,21 @@ pub fn run() {
                                         tracing::info!("remote session ended: {sid}");
                                     }
                                 }
+                                // Batch9-F27：远端红绿灯——daemon session_status 帧/
+                                // 宣告初始值经 status_changed 透传（与本地 emitter
+                                // 同形状，前端 sid-keyed 零改动）。
+                                for act in change.status_changed {
+                                    let payload = bridge::SessionActivityPayload {
+                                        session_id: act.session_id,
+                                        status: act.status,
+                                        waiting_for: act.waiting_for,
+                                    };
+                                    if let Err(e) =
+                                        handle.emit(bridge::events::SESSION_ACTIVITY, &payload)
+                                    {
+                                        tracing::warn!("emit remote session-activity failed: {e}");
+                                    }
+                                }
                             }
                         });
                     if let Err(e) = spawned {
@@ -716,6 +731,11 @@ pub fn run() {
                             t0_capture.elapsed().as_millis(),
                             wait_started.elapsed().as_millis()
                         );
+                        // Batch9-F28：replay 之前先重发全部已宣告远端会话（骨架+
+                        // 初始灯）——remote-session-added 不进 replay buffer，F5 后
+                        // 无行骨架/bg ⚙ 元数据/远端 lastActive 焦点全靠这次重发
+                        // （Batch5 I-1 缺口）。宣告先于行的契约由这里的顺序保证。
+                        ssh_source::reannounce_all(&handle);
                         replay
                             .replay_and_mark_ready(&handle, priority_sid.as_deref())
                             .await;

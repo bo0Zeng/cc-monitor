@@ -27,6 +27,13 @@ pub fn run(claude_dir: &Path, args: &[String]) -> i32 {
             Some(dir) => list_sessions(claude_dir, dir),
             None => Err("--list-sessions requires <project_dir> argument".into()),
         },
+        Some("--read-session-tail") => match (args.get(1), args.get(2)) {
+            (Some(p), Some(n)) => match n.parse::<usize>() {
+                Ok(n) => read_session_tail(claude_dir, p, n),
+                Err(_) => Err("--read-session-tail <jsonl_path> <N>: N must be a number".into()),
+            },
+            _ => Err("--read-session-tail requires <jsonl_path> <N> arguments".into()),
+        },
         Some("--read-session") => match args.get(1) {
             Some(p) => read_session(claude_dir, p),
             None => Err("--read-session requires <jsonl_path> argument".into()),
@@ -141,7 +148,10 @@ fn list_sessions(claude_dir: &Path, project_dir: &str) -> Result<(), String> {
 
 /// `--read-session <jsonl_path>`：路径校验后原样透传文件内容。
 /// 透传而非逐行解析：monitor 侧本就有完整的 parse_line 管线，daemon 不重复造。
-fn read_session(claude_dir: &Path, jsonl_path: &str) -> Result<(), String> {
+fn validate_session_path(
+    claude_dir: &Path,
+    jsonl_path: &str,
+) -> Result<std::path::PathBuf, String> {
     let root = projects_root(claude_dir)
         .canonicalize()
         .map_err(|e| format!("projects root unavailable: {e}"))?;
@@ -157,11 +167,107 @@ fn read_session(claude_dir: &Path, jsonl_path: &str) -> Result<(), String> {
     if target.extension().is_none_or(|e| e != "jsonl") {
         return Err("refusing to read non-jsonl file".into());
     }
+    Ok(target)
+}
+
+fn read_session(claude_dir: &Path, jsonl_path: &str) -> Result<(), String> {
+    let target = validate_session_path(claude_dir, jsonl_path)?;
     let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
     std::io::copy(&mut f, &mut out).map_err(|e| format!("stream failed: {e}"))?;
     Ok(())
+}
+
+/// Batch9-F30：`--read-session-tail <path> <N>`——尾部优先输出：
+/// 首行 meta `{"kind":"snapshot_meta","total":T,"tail_from":F}`（T/F 均按
+/// **可计行**口径：完整（`\n` 收尾）且非 BOM/全空白——与 watcher/monitor 的
+/// 行号空间一字一致），随后原样输出可计行 [F,T)（最新 N 行）、再输出 [0,F)。
+/// monitor 据 meta 编 seq：前 T-F 行 = F+i，其余 = i。空文件 → 仅 meta。
+fn read_session_tail(claude_dir: &Path, jsonl_path: &str, n: usize) -> Result<(), String> {
+    let target = validate_session_path(claude_dir, jsonl_path)?;
+    // 审计 D：整文件 std::fs::read 在 Pi 级设备上对数百 MB 会话有 OOM 风险
+    // （旧 --read-session 是 io::copy 流式）——改单遍流式扫描（环形缓冲只存
+    // 最近 N 个可计行的字节偏移，O(N) 内存）+ 两次 seek 范围拷贝。
+    use std::io::{BufRead, Read, Seek, SeekFrom, Write};
+    let f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
+    let mut reader = std::io::BufReader::new(f);
+    let mut recent: std::collections::VecDeque<u64> = std::collections::VecDeque::new();
+    let keep = n.max(1);
+    let mut total: u64 = 0;
+    let mut pos: u64 = 0;
+    let mut complete_end: u64 = 0;
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        buf.clear();
+        let read = reader
+            .read_until(b'\n', &mut buf)
+            .map_err(|e| format!("scan failed: {e}"))?;
+        if read == 0 {
+            break;
+        }
+        let line_start = pos;
+        pos += read as u64;
+        if *buf.last().unwrap() != b'\n' {
+            break; // torn 残尾不计（F14 口径）
+        }
+        complete_end = pos;
+        let text = String::from_utf8_lossy(&buf[..buf.len() - 1]);
+        if text.trim_start_matches('\u{feff}').trim().is_empty() {
+            continue; // 空行不计（与 watcher/monitor 口径一致）
+        }
+        total += 1;
+        recent.push_back(line_start);
+        if recent.len() > keep {
+            recent.pop_front();
+        }
+    }
+    let tail_from = total - recent.len() as u64;
+    let split_at = recent.front().copied().unwrap_or(complete_end);
+    let meta =
+        format!("{{\"kind\":\"snapshot_meta\",\"total\":{total},\"tail_from\":{tail_from}}}\n");
+    let mut f = reader.into_inner();
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    out.write_all(meta.as_bytes())
+        .map_err(|e| format!("stream failed: {e}"))?;
+    // 尾段 [split_at, complete_end)
+    f.seek(SeekFrom::Start(split_at))
+        .map_err(|e| format!("seek failed: {e}"))?;
+    std::io::copy(&mut (&mut f).take(complete_end - split_at), &mut out)
+        .map_err(|e| format!("stream failed: {e}"))?;
+    // 头段 [0, split_at)
+    f.seek(SeekFrom::Start(0))
+        .map_err(|e| format!("seek failed: {e}"))?;
+    std::io::copy(&mut (&mut f).take(split_at), &mut out)
+        .map_err(|e| format!("stream failed: {e}"))?;
+    Ok(())
+}
+
+/// 纯函数：把文件字节按"最新 N 可计行优先"切成 (meta 行, 尾段, 头段)。
+/// 只处理到最后一个 `\n`（torn 残尾不进任何段——F14 口径）。
+/// 生产路径已流式化（read_session_tail，审计 D 内存修订）；本函数保留为
+/// 口径锚点（tail_tests 锚定语义），流式版与它的等价性由本机行为验证对账
+/// （真实 18MB 会话：meta/字节输出逐段一致，见 Batch9 feature 30 §6 留档）。
+fn split_tail(bytes: &[u8], n: usize) -> (String, &[u8], &[u8]) {
+    let complete_end = bytes.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+    let complete = &bytes[..complete_end];
+    // 收集每个可计行的起始字节偏移（口径 = watcher::read_new_lines：BOM/全空白跳过）
+    let mut starts: Vec<usize> = Vec::new();
+    let mut pos = 0usize;
+    for line in complete.split_inclusive(|&b| b == b'\n') {
+        let text = String::from_utf8_lossy(&line[..line.len() - 1]);
+        if !text.trim_start_matches('\u{feff}').trim().is_empty() {
+            starts.push(pos);
+        }
+        pos += line.len();
+    }
+    let total = starts.len();
+    let tail_from = total.saturating_sub(n.max(1));
+    let meta =
+        format!("{{\"kind\":\"snapshot_meta\",\"total\":{total},\"tail_from\":{tail_from}}}\n");
+    let split_at = starts.get(tail_from).copied().unwrap_or(complete_end);
+    (meta, &complete[split_at..], &complete[..split_at])
 }
 
 fn mtime_ms(p: &Path) -> i64 {
@@ -378,5 +484,55 @@ mod tests {
         // canonicalize 前缀校验解析 symlink 后落在 projects/ 外 → 拒绝
         assert!(list_sessions(&tmp, "sneaky").is_err());
         std::fs::remove_dir_all(&tmp).ok();
+    }
+}
+
+#[cfg(test)]
+mod tail_tests {
+    use super::split_tail;
+
+    fn meta_of(m: &str) -> (u64, u64) {
+        let v: serde_json::Value = serde_json::from_str(m.trim()).unwrap();
+        (
+            v["total"].as_u64().unwrap(),
+            v["tail_from"].as_u64().unwrap(),
+        )
+    }
+
+    #[test]
+    fn tail_splits_and_numbers() {
+        let data = b"{\"a\":0}\n{\"a\":1}\n{\"a\":2}\n{\"a\":3}\n{\"a\":4}\n";
+        let (meta, tail, head) = split_tail(data, 2);
+        assert_eq!(meta_of(&meta), (5, 3));
+        assert_eq!(tail, b"{\"a\":3}\n{\"a\":4}\n");
+        assert_eq!(head, b"{\"a\":0}\n{\"a\":1}\n{\"a\":2}\n");
+    }
+
+    #[test]
+    fn n_bigger_than_total_is_all_tail() {
+        let data = b"{\"a\":0}\n{\"a\":1}\n";
+        let (meta, tail, head) = split_tail(data, 500);
+        assert_eq!(meta_of(&meta), (2, 0));
+        assert_eq!(tail, data.as_slice());
+        assert!(head.is_empty());
+    }
+
+    #[test]
+    fn empty_and_torn_only() {
+        let (meta, tail, head) = split_tail(b"", 500);
+        assert_eq!(meta_of(&meta), (0, 0));
+        assert!(tail.is_empty() && head.is_empty());
+        let (meta, tail, head) = split_tail(b"{\"torn", 500);
+        assert_eq!(meta_of(&meta), (0, 0));
+        assert!(tail.is_empty() && head.is_empty());
+    }
+
+    #[test]
+    fn blank_lines_not_counted_but_bytes_preserved() {
+        let data = b"{\"a\":0}\n\n{\"a\":1}\n{\"a\":2}\n";
+        let (meta, tail, head) = split_tail(data, 1);
+        assert_eq!(meta_of(&meta), (3, 2));
+        assert_eq!(tail, b"{\"a\":2}\n");
+        assert_eq!(head, b"{\"a\":0}\n\n{\"a\":1}\n");
     }
 }
