@@ -54,6 +54,19 @@ fn embed_daemons() {
     for arch in ["x86_64", "aarch64"] {
         let src = dir.join(format!("cc-monitor-remote-{arch}"));
         println!("cargo:rerun-if-changed={}", src.display());
+        // Batch9 E2E 发现：编译器可把 BUILD_ID 优化成立即数指令（字符串在字节里
+        // **不连续**），运行时 bytes_contain 启发式会误拒正品二进制。根治 = 旁挂
+        // `.build_id` 清单文件（构建放置二进制时一并写入，= 字节的真实身份）：
+        // 有清单 → env DAEMON_EMBEDDED_ID_<arch>；无 → 空串（运行时回退启发式）。
+        let manifest = dir.join(format!("cc-monitor-remote-{arch}.build_id"));
+        println!("cargo:rerun-if-changed={}", manifest.display());
+        let embedded_id = std::fs::read_to_string(&manifest)
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+        println!(
+            "cargo:rustc-env=DAEMON_EMBEDDED_ID_{}={embedded_id}",
+            arch.to_uppercase()
+        );
         if src.exists() {
             if let (Ok(bin_mtime), Some(sm)) = (
                 std::fs::metadata(&src).and_then(|m| m.modified()),

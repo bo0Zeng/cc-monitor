@@ -133,6 +133,9 @@ async fn ensure_dir_all(sftp: &SftpSession, dir: &str) {
 /// `ssh_source::EXPECTED_DAEMON_BUILD_ID` 同源（SS-B）。
 pub struct DaemonBinary {
     pub build_id: &'static str,
+    /// Batch9：build_id 是否来自 .build_id 清单（true=字节真实身份可信；
+    /// false=源码回退，需 bytes_contain 启发式兜底且可能误拒——见 daemon_binary doc）。
+    pub id_from_manifest: bool,
     pub bytes: &'static [u8],
 }
 
@@ -226,15 +229,15 @@ pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<Option<String>
         tracing::debug!("无 {arch} 的内嵌 daemon 二进制（F08b 未嵌入该 arch?），跳过自动部署");
         return Ok(None);
     };
-    // Batch8 审计（符合度-R2）：stale 内嵌防御——build_id 来自**源码**（env!
-    // 单源），字节来自 embedded-daemons/ 文件；两者脱节（源码 bump 后没重跑
-    // zigbuild/CI）时会部署旧字节 + 写新 marker → monitor 传新 flag → 旧 daemon
-    // 落查询分支退出 → 无 hello 死循环，且 marker 已"中毒"永远 Skip 不自愈。
-    // 二进制里必然内嵌自己的 BUILD_ID 字符串——字节内搜不到 = stale，拒部署
-    // 并返回"未确认"（调用方降级不传 flag，连接照常）。
-    if !bytes_contain(bin.bytes, bin.build_id.as_bytes()) {
+    // Batch8 stale 防御（Batch9 修订）：首选 .build_id 清单（bin.build_id 即
+    // 字节真实身份，与源码期望的比对在 ssh_source 的 confirmed 判定处自然完成）。
+    // 无清单（旧产物）时才用 bytes_contain 启发式兜底——注意它可能误拒正品
+    // （Batch9 E2E 实证：编译器可把 BUILD_ID 优化成立即数、字节不连续），故仅
+    // 在"启发式也找不到源码 id"且**无清单**时拒。
+    if !bin.id_from_manifest && !bytes_contain(bin.bytes, bin.build_id.as_bytes()) {
+        // 无清单（旧产物）且字节内搜不到源码 id → 无法确认字节身份
         tracing::warn!(
-            "内嵌 daemon 二进制不含 build_id {}（embedded-daemons/ 陈旧，未随源码重编）——             跳过自动部署并按未确认降级（本地 dev 请重跑 zigbuild；发版由 CI 重编）",
+            "内嵌 daemon 无 .build_id 清单且字节内搜不到 {}——按身份未知跳过自动部署             （请在 embedded-daemons/ 旁写 <bin>.build_id 清单，或重跑 zigbuild）",
             bin.build_id
         );
         return Ok(None);
@@ -286,12 +289,27 @@ fn bytes_contain(haystack: &[u8], needle: &[u8]) -> bool {
 pub fn daemon_binary(arch: &str) -> Option<&'static DaemonBinary> {
     #[cfg(embedded_daemons)]
     {
+        // Batch9：build_id = 字节的**真实身份**——优先 .build_id 清单（构建时
+        // 与二进制一并写入）；清单缺失（旧产物）→ 退回源码 id + 运行时
+        // bytes_contain 启发式兜底（见 ensure_daemon_deployed）。
+        // 身份与期望（EXPECTED_DAEMON_BUILD_ID = 源码）分离后：陈旧内嵌 =
+        // 身份 p1f ≠ 期望 p1g → 部署照做（远端至少拿到 p1f）但 confirmed=p1f
+        // → 降级不传新 flag——比"拒部署"更平滑且永不误拒正品。
+        const fn pick(manifest: &'static str) -> &'static str {
+            if manifest.is_empty() {
+                env!("DAEMON_BUILD_ID")
+            } else {
+                manifest
+            }
+        }
         static X86: DaemonBinary = DaemonBinary {
-            build_id: env!("DAEMON_BUILD_ID"),
+            build_id: pick(env!("DAEMON_EMBEDDED_ID_X86_64")),
+            id_from_manifest: !env!("DAEMON_EMBEDDED_ID_X86_64").is_empty(),
             bytes: include_bytes!(concat!(env!("OUT_DIR"), "/daemon-x86_64")),
         };
         static ARM: DaemonBinary = DaemonBinary {
-            build_id: env!("DAEMON_BUILD_ID"),
+            build_id: pick(env!("DAEMON_EMBEDDED_ID_AARCH64")),
+            id_from_manifest: !env!("DAEMON_EMBEDDED_ID_AARCH64").is_empty(),
             bytes: include_bytes!(concat!(env!("OUT_DIR"), "/daemon-aarch64")),
         };
         match arch {
