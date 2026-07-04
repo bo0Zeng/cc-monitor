@@ -143,6 +143,12 @@ export interface RenderContext {
   /** 父 JSONL 路径，subagent 模块用它定位 `<parent>/subagents/` 目录 */
   parentPath: string;
   /**
+   * Batch9-F29：会话来源（null/缺省=本地；string=远端机器 label）。subagent
+   * 懒加载据此降级——远端会话的 subagent 文件在远端机器，本地 load_subagent
+   * 必然失败（此前渲染成报错+永远失败的"重试"按钮，盘点 #2 UX 误导）。
+   */
+  origin?: string | null;
+  /**
    * tool_use_id → tool_name 映射。tool_use 出现在 assistant 消息，tool_result
    * 出现在下一条 user 消息，跨消息不能就地反查；TabManager（或 subagent 嵌套
    * 渲染）持有这张 Map 跨 renderMessage 调用累积。renderBlock 在 tool_use

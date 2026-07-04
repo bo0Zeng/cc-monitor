@@ -262,6 +262,10 @@ struct SessionEntry {
     pid: u32,
     sid: String,
     start: Option<u64>,
+    /// Batch9-F27：pidfile 的官方 status（busy/idle/shell/waiting）与 waitingFor
+    /// ——modify 事件 diff，变了发 session_status 帧（远端红绿灯）。
+    status: Option<String>,
+    waiting_for: Option<String>,
 }
 
 /// One line read out of a JSONL file, with its assigned per-file seq.
@@ -450,9 +454,30 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             return;
         }
     }
+    // Batch9-F27：帧元信息一次解析（status diff 与后面的宣告帧共用）
+    let meta: Option<serde_json::Value> = serde_json::from_slice(&bytes).ok();
+    let meta_str = |k: &str| {
+        meta.as_ref()
+            .and_then(|v| v.get(k))
+            .and_then(|x| x.as_str())
+            .map(str::to_string)
+    };
     // Idempotent: a debounced modify of an already-tracked session re-announces
-    // nothing.
+    // nothing —— Batch9-F27：但 status/waitingFor 变了要发 session_status 帧
+    // （远端红绿灯的唯一数据源；CC 仅在状态转换时重写 pidfile，天然稀疏）。
     if state.sessions.get(&key).map(|e| e.sid.as_str()) == Some(sid.as_str()) {
+        let new_status = meta_str("status");
+        let new_waiting = meta_str("waitingFor");
+        let entry = state.sessions.get_mut(&key).expect("just checked");
+        if entry.status != new_status || entry.waiting_for != new_waiting {
+            entry.status = new_status.clone();
+            entry.waiting_for = new_waiting.clone();
+            sink.send(Frame::SessionStatus {
+                sid: sid.clone(),
+                status: new_status,
+                waiting_for: new_waiting,
+            });
+        }
         return;
     }
     // Batch6-F22-①：同 pidfile 原地换 sid（/clear 等重写 sessionId）——旧 sid
@@ -505,17 +530,11 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             pid,
             sid: sid.clone(),
             start,
+            status: meta_str("status"),
+            waiting_for: meta_str("waitingFor"),
         },
     );
     state.active_sids.insert(sid.clone());
-    // 帧元信息：一次解析取三字段（审计 D：此前 blob 被全量 serde 解析 4 次）
-    let meta: Option<serde_json::Value> = serde_json::from_slice(&bytes).ok();
-    let meta_str = |k: &str| {
-        meta.as_ref()
-            .and_then(|v| v.get(k))
-            .and_then(|x| x.as_str())
-            .map(str::to_string)
-    };
     // Batch8-F25：先定位该 sid 的 jsonl（帧要带 path 供 monitor 旁路快照；
     // mtime 降序，first=当前活跃文件。会话刚起还没写首行时为空 → path=None，
     // 此时无历史可拉，后续行天然从 tail 全量到达）。
@@ -543,6 +562,8 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         name: meta_str("name"),
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
         lines: first_lines,
+        status: meta_str("status"),
+        waiting_for: meta_str("waitingFor"),
     });
     if !state.tail_only {
         for p in &jsonls {
@@ -1469,6 +1490,70 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    // === Batch9-F27：status 透传 ===
+
+    /// 宣告帧带初始 status；同 pidfile modify：status 变 → session_status 帧、
+    /// 不变 → 静默（幂等早退保留）。
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn status_diff_emits_session_status_frame() {
+        let dir = std::env::temp_dir().join(format!("ccm-status-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("projects")).unwrap();
+        let pid = std::process::id();
+        let ticks = proc_starttime(pid).expect("own starttime");
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(dir.join("projects"), false, true);
+        let pidfile = dir.join(format!("{pid}.json"));
+        let write = |status: &str, waiting: Option<&str>| {
+            let w = waiting
+                .map(|x| format!(r#","waitingFor":"{x}""#))
+                .unwrap_or_default();
+            std::fs::write(
+                &pidfile,
+                format!(
+                    r#"{{"pid":{pid},"sessionId":"st-sid","cwd":"/p","procStart":"{ticks}","status":"{status}"{w}}}"#
+                ),
+            )
+            .unwrap();
+        };
+        write("busy", None);
+        process_session_added(&pidfile, &mut state, &mut sink);
+        match rx.try_recv() {
+            Ok(Frame::SessionAdded { sid, status, .. }) => {
+                assert_eq!(sid, "st-sid");
+                assert_eq!(status.as_deref(), Some("busy"), "宣告带初始 status");
+            }
+            other => panic!("expected SessionAdded, got {other:?}"),
+        }
+        // 同内容 modify → 静默
+        process_session_added(&pidfile, &mut state, &mut sink);
+        assert!(rx.try_recv().is_err(), "status 未变不发帧");
+        // status 变 → session_status 帧
+        write("waiting", Some("permission prompt"));
+        process_session_added(&pidfile, &mut state, &mut sink);
+        match rx.try_recv() {
+            Ok(Frame::SessionStatus {
+                sid,
+                status,
+                waiting_for,
+            }) => {
+                assert_eq!(sid, "st-sid");
+                assert_eq!(status.as_deref(), Some("waiting"));
+                assert_eq!(waiting_for.as_deref(), Some("permission prompt"));
+            }
+            other => panic!("expected SessionStatus, got {other:?}"),
+        }
+        // 再变回 → 再发
+        write("idle", None);
+        process_session_added(&pidfile, &mut state, &mut sink);
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(Frame::SessionStatus { status: Some(s), waiting_for: None, .. }) if s == "idle"
+        ));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     // === Batch8-F25：tail-only 模式 ===
 
     /// tail-only 初扫：宣告帧带 path、零行帧；随后追加的新行 seq == 初扫时完整
@@ -1915,6 +2000,8 @@ mod tests {
             name: None,
             path: None,
             lines: None,
+            status: None,
+            waiting_for: None,
         });
         sink.send(Frame::SessionAdded {
             sid: "b".into(),
@@ -1923,6 +2010,8 @@ mod tests {
             name: None,
             path: None,
             lines: None,
+            status: None,
+            waiting_for: None,
         });
         assert_eq!(
             sink.dropped, 0,
@@ -1937,6 +2026,8 @@ mod tests {
             name: None,
             path: None,
             lines: None,
+            status: None,
+            waiting_for: None,
         });
         sink.send(Frame::SessionAdded {
             sid: "d".into(),
@@ -1945,6 +2036,8 @@ mod tests {
             name: None,
             path: None,
             lines: None,
+            status: None,
+            waiting_for: None,
         });
         sink.send(Frame::SessionAdded {
             sid: "e".into(),
@@ -1953,6 +2046,8 @@ mod tests {
             name: None,
             path: None,
             lines: None,
+            status: None,
+            waiting_for: None,
         });
         assert_eq!(sink.dropped, 3);
 
@@ -1981,6 +2076,8 @@ mod tests {
             name: None,
             path: None,
             lines: None,
+            status: None,
+            waiting_for: None,
         });
         assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
     }

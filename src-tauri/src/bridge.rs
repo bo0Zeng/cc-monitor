@@ -40,6 +40,10 @@ pub mod events {
     /// 弹 toast。`kind` 区分类别（"overflow" / "version" / …），payload 见
     /// [`RemoteHealthPayload`]。#33 版本协商复用同通道、只换 kind/message，不另造。
     pub const REMOTE_HEALTH: &str = "remote-health";
+    /// Batch9-F30：远端快照 inflight 计数变化（{count}）。前端 events.ts 据此
+    /// 让 batch mode 事件驱动（回填在途不提前退出），替代纯 300ms 静默启发式。
+    /// 不进 replay buffer。
+    pub const SNAPSHOT_INFLIGHT: &str = "snapshot-inflight";
     // FOCUS_SWITCH 已删除：Win11 默认终端 (WindowsTerminal.exe) 是单进程多窗口架构，
     // OS GetForegroundWindow 只能拿到 WT 主进程 PID，无法区分 tab/window 内跑哪个
     // claude session。在 WT 默认环境下永远不工作；非 WT 终端可工作但不值为少数场景维护。
