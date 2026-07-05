@@ -51,6 +51,8 @@ export interface StreamSink {
    * - SessionViewer：push 进数组，全部 load 完再 setRecordsAndRebuild 一次
    */
   onBranchRecord(rec: BranchRecord): void;
+  /** issue #36：queue-operation enqueue 记录（content）——折叠豁免集合。 */
+  onQueueOperation?(content: string): void;
   /**
    * 收到 ai-title / custom-title 时调（TabManager 用）。
    * SessionViewer / Subagent 不实现 = 标题不更新。
@@ -87,6 +89,15 @@ export function renderStreamRecord(
   }
   if (message.type === "custom-title") {
     sink.onTitleUpdate?.(message.customTitle);
+    return;
+  }
+
+  // 1.5 issue #36：queue-operation 路由——enqueue 的 content 喂给折叠豁免集合，
+  //     不渲染、无 uuid 不进链。
+  if (message.type === "queue-operation") {
+    if (message.operation === "enqueue" && message.content) {
+      sink.onQueueOperation?.(message.content);
+    }
     return;
   }
 

@@ -20,7 +20,7 @@
  * （key = run 的首条 uuid，稳定）；wrap 时按 key 查表恢复。
  */
 
-import { computeMainBranch, setsEqual, type BranchRecord } from "./branching";
+import { computeMainBranch, exemptQueuedLeaves, setsEqual, type BranchRecord } from "./branching";
 
 const FOLD_WRAP_CLASS = "branch-fold-wrap";
 const FOLD_HEADER_CLASS = "branch-fold-header";
@@ -38,6 +38,9 @@ export class BranchFolder {
   private container: HTMLElement;
   /** records 集合（caller push 进来，按 jsonl 顺序）。computeMainBranch 用 */
   private records: BranchRecord[] = [];
+  /** issue #36：本会话 queue-operation enqueue 的 content 集合（trim 后）——
+   *  被消费的队列消息（永久裸 user 叶）豁免折叠用。 */
+  private queuedContents = new Set<string>();
   /**
    * issue #25：已见 uuid 集，recordAdded 拒重。投递层是 at-least-once（watcher
    * 截断重读会换 seq 重投整个文件，seenSeqs 防不住，违反此约束见
@@ -80,7 +83,7 @@ export class BranchFolder {
     this.seenUuids.add(rec.uuid);
     this.records.push(rec);
     if (this.batchMode) return; // batch 模式：延后到 flush
-    const next = computeMainBranch(this.records);
+    const next = this.computeMain();
     if (setsEqual(next, this.lastMainBranch)) return;
     this.lastMainBranch = next;
     this.rebuild();
@@ -100,8 +103,28 @@ export class BranchFolder {
         this.records.push(r);
       }
     }
-    this.lastMainBranch = computeMainBranch(this.records);
+    this.lastMainBranch = this.computeMain();
     this.rebuild();
+  }
+
+  /** issue #36：登记一条进过输入队列的消息内容（enqueue 记录到达时调）。 */
+  addQueuedContent(content: string): void {
+    const t = content.trim();
+    if (!t || this.queuedContents.has(t)) return;
+    this.queuedContents.add(t);
+    // 已渲染状态下追加豁免可能改变折叠结果（queue-operation 行可能晚于 user 行到达）
+    if (!this.batchMode) {
+      const next = this.computeMain();
+      if (!setsEqual(next, this.lastMainBranch)) {
+        this.lastMainBranch = next;
+        this.rebuild();
+      }
+    }
+  }
+
+  /** issue #36：主线计算统一入口——computeMainBranch + 队列消息豁免。 */
+  private computeMain(): Set<string> {
+    return exemptQueuedLeaves(this.records, computeMainBranch(this.records), this.queuedContents);
   }
 
   /**
@@ -117,7 +140,7 @@ export class BranchFolder {
    * 也可在 live 模式手动调（等价于 setRecordsAndRebuild 但保持现有 records）。
    */
   flushPending(): void {
-    const next = computeMainBranch(this.records);
+    const next = this.computeMain();
     if (setsEqual(next, this.lastMainBranch)) return;
     this.lastMainBranch = next;
     this.rebuild();

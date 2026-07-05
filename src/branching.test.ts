@@ -6,7 +6,7 @@
  * throw → 进程非零退出作 pre-push 门禁；`tsc --noEmit` 也会类型检查本文件。
  */
 
-import { computeMainBranch, type BranchRecord } from "./branching.ts";
+import { computeMainBranch, exemptQueuedLeaves, type BranchRecord } from "./branching.ts";
 
 let failed = 0;
 function test(name: string, fn: () => void): void {
@@ -188,6 +188,56 @@ test("#25 full re-delivery (records doubled) → idempotent", () => {
   ];
   const r = build();
   eqSet(onMain([...r, ...build()]), onMain(r), "doubled = single");
+});
+
+
+
+// === issue #36：队列消息豁免（exemptQueuedLeaves）——真实样本双 fixture ===
+
+function urec(uuid: string, parentUuid: string | undefined, ts: string, text?: string, isInterrupt = false): BranchRecord {
+  return { uuid, parentUuid, timestamp: ts, type: "user", isInterrupt, text };
+}
+
+test("#36A 队列形态（0cbbdbae 实样）：命中 enqueue 集合的裸 user 叶被豁免保留", () => {
+  // X(assistant) ├─ b(队列消息, 永久裸叶) └─ tr → int(interrupt) → reply
+  const records: BranchRecord[] = [
+    rec("X", undefined, "T01", "assistant"),
+    urec("b", "X", "T02", "这是登录门户"),
+    urec("tr", "X", "T02"),
+    urec("int", "tr", "T03", undefined, true),
+    rec("reply", "int", "T04", "assistant"),
+  ];
+  const main = new Set(["X", "tr", "int", "reply"]);
+  const out = exemptQueuedLeaves(records, main, new Set(["这是登录门户"]));
+  if (!out.has("b")) throw new Error("b 应被豁免");
+  if (out.size !== 5) throw new Error(`原主线不该受影响, got size=${out.size}`);
+});
+
+test("#36B 重发形态（7196b2f9 实样）：弃稿不在 enqueue 集合照旧折叠 + 空集合零拷贝", () => {
+  const records: BranchRecord[] = [
+    rec("P", undefined, "T01", "system"),
+    urec("a1", "P", "T02", "为什么是这样的?"),
+    urec("a2", "P", "T03", "为什么是这样的?"),
+    urec("win", "P", "T04", "为什么是这样的?"),
+    rec("resp", "win", "T05", "assistant"),
+  ];
+  const main = new Set(["P", "win", "resp"]);
+  const out = exemptQueuedLeaves(records, main, new Set());
+  if (out !== main) throw new Error("空豁免集合应零拷贝返回原 main");
+  const out2 = exemptQueuedLeaves(records, main, new Set(["别的内容"]));
+  if (out2.has("a1") || out2.has("a2")) throw new Error("弃稿不该被豁免");
+});
+
+test("#36C 命中集合但有子女（挂了 interrupt 叶）→ 非裸叶不豁免（真被回退过）", () => {
+  const records: BranchRecord[] = [
+    rec("X", undefined, "T01", "assistant"),
+    urec("q", "X", "T02", "排队过又被中断"),
+    urec("qi", "q", "T03", undefined, true),
+    urec("w", "X", "T04", "其他"),
+    rec("wr", "w", "T05", "assistant"),
+  ];
+  const out = exemptQueuedLeaves(records, new Set(["X", "w", "wr"]), new Set(["排队过又被中断"]));
+  if (out.has("q")) throw new Error("非裸叶不该被豁免");
 });
 
 if (failed > 0) {
