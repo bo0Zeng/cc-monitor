@@ -207,7 +207,7 @@ export class TabManager {
    * Tab 撕离（tear-off）拖拽状态机。同一时刻只允许一个拖拽，整段存这里。
    * - mousedown（左键，非子动作按钮）记录起点 → 候选拖拽（dragging=false）
    * - document mousemove 越过 6px 阈值 → dragging=true，建 ghost、源 Tab 变暗
-   * - 指针落到 tab bar 下方（clientY > barBottom + 16）→ armed=true（松手即弹窗）
+   * - 指针拖离 tab 栏右缘（clientX > barRight + 16，F33 竖栏后为横向判定）→ armed=true（松手即弹窗）
    * - document mouseup：armed → openInNewWindow(落点)；否则取消。两种情况都抑制后续 click
    * null = 当前无拖拽。
    */
@@ -215,7 +215,7 @@ export class TabManager {
     sid: string;
     startX: number;
     startY: number;
-    barBottom: number;
+    barRight: number;
     root: HTMLElement;
     dragging: boolean;
     armed: boolean;
@@ -979,14 +979,14 @@ export class TabManager {
     // 新一轮交互开始：清掉可能残留的抑制标记，避免陈旧 flag 误吞下次 click。
     this.suppressClickSid = null;
 
-    const barBottom = this.barEl.getBoundingClientRect().bottom;
+    const barRight = this.barEl.getBoundingClientRect().right;
     const onMove = (ev: MouseEvent): void => this.onDragMove(ev);
     const onUp = (ev: MouseEvent): void => this.onDragUp(ev);
     this.drag = {
       sid,
       startX: e.clientX,
       startY: e.clientY,
-      barBottom,
+      barRight,
       root,
       dragging: false,
       armed: false,
@@ -1034,8 +1034,8 @@ export class TabManager {
       d.ghost.style.top = `${e.clientY + 8}px`;
     }
 
-    // arm：指针落到 tab bar 下方一段距离 = 松手即弹独立窗口。
-    const armed = e.clientY > d.barBottom + 16;
+    // arm：指针拖离竖栏右缘一段距离 = 松手即弹独立窗口（F33 前是下缘判定）。
+    const armed = e.clientX > d.barRight + 16;
     if (armed !== d.armed) {
       d.armed = armed;
       if (d.ghost) {

@@ -154,6 +154,48 @@ window.addEventListener("DOMContentLoaded", async () => {
   const settingsPanel = new SettingsPanel({
     onBehaviorChange: (cfg) => tabs.applyBehavior(cfg),
   });
+  // Batch11-F33：竖直 tab 栏——右缘拖拽调宽（localStorage 记忆）+ 窄窗折叠图标条。
+  {
+    const appEl = document.getElementById("app");
+    if (appEl) {
+      const KEY = "cc-monitor.tab-bar-w";
+      const clampW = (w: number): number => Math.min(340, Math.max(110, w));
+      const saved = Number(localStorage.getItem(KEY));
+      if (Number.isFinite(saved) && saved > 0) {
+        appEl.style.setProperty("--tab-bar-w", `${clampW(saved)}px`);
+      }
+      const resizer = document.createElement("div");
+      resizer.id = "tab-bar-resizer";
+      resizer.title = "拖拽调整 tab 栏宽度";
+      resizer.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        const startX = e.clientX;
+        const barEl = document.getElementById("tab-bar");
+        const startW = barEl ? barEl.getBoundingClientRect().width : 150;
+        resizer.classList.add("resizing");
+        const onMove = (ev: MouseEvent): void => {
+          appEl.style.setProperty("--tab-bar-w", `${clampW(startW + ev.clientX - startX)}px`);
+        };
+        const onUp = (ev: MouseEvent): void => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          resizer.classList.remove("resizing");
+          localStorage.setItem(KEY, String(clampW(startW + ev.clientX - startX)));
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+      appEl.appendChild(resizer);
+      // 窄窗折叠：内容列 780px + 栏 + 呼吸空间放不下 → 图标条（44px）
+      const applyCollapse = (): void => {
+        document.body.classList.toggle("tabbar-collapsed", window.innerWidth < 980);
+      };
+      window.addEventListener("resize", applyCollapse);
+      applyCollapse();
+    }
+  }
+
   const settingsTrigger = document.createElement("button");
   settingsTrigger.type = "button";
   settingsTrigger.className = "settings-trigger";

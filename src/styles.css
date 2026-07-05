@@ -72,10 +72,23 @@ html, body {
 }
 
 #app {
+  /* Batch11-F33：竖直 tab 栏。原顶部 36px 横栏 tab 多了会滑到右上角 🕐/⚙ 图标
+     底下被压住；改左侧竖栏后 tab 纵向生长永不重叠，消息流列在剩余空间里居中
+     （左右空白自动对称）。宽度由 --tab-bar-w 驱动（拖拽调宽 + localStorage 记忆）。 */
   display: grid;
-  grid-template-rows: 36px 1fr 24px;
+  grid-template-areas:
+    "tabs main"
+    "status status";
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) 24px;
   height: 100vh;
   position: relative;
+}
+#message-stream {
+  grid-area: main;
+}
+#status-bar {
+  grid-area: status;
 }
 
 /* issue #10：独立只读窗口 —— 隐藏 tab 栏，消息流占满，保留 slim 状态栏。
@@ -88,9 +101,18 @@ html, body {
    #tab-bar display:none 不算 grid item，剩 [topbar, message-stream, status-bar]
    三个 item → 三行 `auto 1fr 24px`。 */
 body.viewer-mode #app {
-  grid-template-rows: auto 1fr 24px;
+  grid-template-areas:
+    "top"
+    "main"
+    "status";
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) 24px;
+}
+body.viewer-mode .viewer-topbar {
+  grid-area: top;
 }
 body.viewer-mode #tab-bar,
+body.viewer-mode #tab-bar-resizer,
 body.viewer-mode .settings-trigger,
 body.viewer-mode .history-trigger {
   display: none;
@@ -161,12 +183,63 @@ body.viewer-mode .history-trigger {
 /* === Tab Bar === */
 
 #tab-bar {
+  grid-area: tabs;
+  width: var(--tab-bar-w, 150px);
   background: var(--bg-2);
-  border-bottom: 1px solid var(--border-strong);
+  border-right: 1px solid var(--border-strong);
   display: flex;
+  flex-direction: column;
   align-items: stretch;
-  overflow-x: auto;
-  padding: 0 40px 0 4px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+}
+
+/* F33：竖栏右缘拖拽调宽把手（挂 #app，用 --tab-bar-w 自动跟位；折叠/viewer 隐藏） */
+#tab-bar-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 24px;
+  left: calc(var(--tab-bar-w, 150px) - 3px);
+  width: 6px;
+  cursor: col-resize;
+  z-index: 3;
+}
+#tab-bar-resizer:hover,
+#tab-bar-resizer.resizing {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* F33：窄窗折叠成图标条（JS 按窗宽挂 body 类）——只剩状态灯，悬停有原生 title */
+body.tabbar-collapsed #tab-bar {
+  width: 44px;
+}
+body.tabbar-collapsed #tab-bar-resizer {
+  display: none;
+}
+body.tabbar-collapsed .tab {
+  justify-content: center;
+  padding: 0 4px;
+}
+body.tabbar-collapsed .tab .tab-title,
+body.tabbar-collapsed .tab .tab-badge,
+body.tabbar-collapsed .tab .tab-cwd,
+body.tabbar-collapsed .tab .tab-focus,
+body.tabbar-collapsed .tab .tab-close {
+  display: none !important;
+}
+body.tabbar-collapsed .tab.tab-bg::before {
+  position: static;
+  margin-right: 2px;
+}
+/* 折叠态归档 tab 只剩空行（常态下灯被隐藏、靠斜体标题辨认）→ 给灰点当占位标识 */
+body.tabbar-collapsed .tab.archived .live-dot {
+  display: block;
+  background: var(--text-faint);
+}
+/* 折叠态未读徽标（99+ 数字）没了 → 用灯外圈光环代偿 */
+body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 /* 设置入口 */
@@ -223,11 +296,14 @@ body.viewer-mode .history-trigger {
   background: transparent;
   border: none;
   color: var(--text-2);
-  padding: 0 12px;
+  padding: 0 8px 0 10px;
   font: inherit;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
-  max-width: 220px;
+  border-left: 2px solid transparent;
+  flex: none;
+  height: 30px;
+  width: 100%;
+  text-align: left;
   white-space: nowrap;
 }
 
@@ -238,7 +314,8 @@ body.viewer-mode .history-trigger {
 
 .tab.active {
   color: var(--text);
-  border-bottom-color: var(--accent);
+  border-left-color: var(--accent);
+  background: var(--overlay-hover);
 }
 
 /* 归档 */
@@ -270,6 +347,8 @@ body.viewer-mode .history-trigger {
 .tab.remote .tab-cwd { display: none; }
 
 .tab-title {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
