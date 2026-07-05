@@ -2,11 +2,11 @@
 
 > **Claude Code CLI 的只读输出渲染窗口** — Tauri 2 + Vanilla TypeScript，Windows 桌面应用
 >
-> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 | 当前版本: v2.19.1
+> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 | 当前版本: v2.20.0
 
 把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复。**完全只读、零侵入**（不修改 Claude Code 任何文件，唯一例外是用户在历史浏览器里**显式**点删除）。
 
-**项目状态**：稳定可用。后端 187 + 远端 daemon 65 + 前端 node 纯函数 & vitest+jsdom DOM 单测，tsc 严格类型检查，CI 全绿（`npm test`）。当前发布 **v2.19.1**（+修复队列消息被误判 ESC 回退折叠 #36）；v2.19.0：（**远端拥塞根治**——历史旁路快照+实时独立尾随，46MB≈4.6s 零拥塞（E2E 实证）；**最新消息优先加载**；**远端红绿灯**与本地对齐；F5 后远端骨架/bg/焦点正确重建），能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 多台远端机器的会话，#15/#17/#18/#20/#30/#31）——含 **daemon 自动部署 + 一键安装/卸载**（内嵌 musl 二进制经 SFTP 自动推送 #29；设置面板每台机器卡片可手动装/卸 daemon 与 ccm 助手、附安装位置提示）、**远端全文搜索**（#28）、**远端历史删除 / resume 命令助手**、**历史按机器分组折叠**（#30/#31）、**版本协商 + 拥塞提示**（#32/#33）、**会话红绿灯**（#23）、**本地会话 resume 后 Tab 自动复活**（崩溃/退出→灰显，`/resume` 后免 F5 恢复）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。详 [CHANGELOG](CHANGELOG.md) / [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
+**项目状态**：稳定可用。后端 187 + 远端 daemon 65 + 前端 node 纯函数 & vitest+jsdom DOM 单测，tsc 严格类型检查，CI 全绿（`npm test`）。当前发布 **v2.20.0**（**左侧竖直 tab 栏**——拖拽调宽/窄窗折叠，tab 不再压住右上角图标；**历史标注 CC 后台分身会话** ⚙ 徽标防 resume 选错克隆；+v2.19.1 修复队列消息被误判 ESC 回退折叠 #36）；v2.19.0：（**远端拥塞根治**——历史旁路快照+实时独立尾随，46MB≈4.6s 零拥塞（E2E 实证）；**最新消息优先加载**；**远端红绿灯**与本地对齐；F5 后远端骨架/bg/焦点正确重建），能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 多台远端机器的会话，#15/#17/#18/#20/#30/#31）——含 **daemon 自动部署 + 一键安装/卸载**（内嵌 musl 二进制经 SFTP 自动推送 #29；设置面板每台机器卡片可手动装/卸 daemon 与 ccm 助手、附安装位置提示）、**远端全文搜索**（#28）、**远端历史删除 / resume 命令助手**、**历史按机器分组折叠**（#30/#31）、**版本协商 + 拥塞提示**（#32/#33）、**会话红绿灯**（#23）、**本地会话 resume 后 Tab 自动复活**（崩溃/退出→灰显，`/resume` 后免 F5 恢复）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。详 [CHANGELOG](CHANGELOG.md) / [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
 
 ---
 
@@ -226,7 +226,7 @@ cc-monitor/
 
 ## 项目当前状态
 
-- **版本**：v2.19.1（Released）
+- **版本**：v2.20.0（Released）
 - **平台**：Windows 10 (1809+) / 11（远端 daemon 跑 Linux / aarch64）
 - **测试**：后端 cargo test 155 + 远端 daemon 30 + 前端 node 纯函数 + vitest+jsdom DOM 单测，全绿（CI 门禁 `npm test`）
 - **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~12K LOC TS + ~11K LOC Rust，含 ~1.3K 远端 daemon）
