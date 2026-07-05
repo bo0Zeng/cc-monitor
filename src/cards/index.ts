@@ -63,6 +63,13 @@ export type ContentBlock =
 
 export type JsonlRecord =
   | {
+      /** issue #36：CC 2.1.x 队列操作记录（enqueue 带 content，折叠豁免用） */
+      type: "queue-operation";
+      operation?: string;
+      content?: string;
+      timestamp?: string;
+    }
+  | {
       type: "user";
       uuid: string;
       timestamp: string;

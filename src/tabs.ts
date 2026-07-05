@@ -347,6 +347,8 @@ export class TabManager {
     const sink: StreamSink = {
       timeline: tab.timeline,
       onBranchRecord: (rec: BranchRecord) => tab.branchFolder.recordAdded(rec),
+      // issue #36：队列消息内容 → 折叠豁免集合
+      onQueueOperation: (content: string) => tab.branchFolder.addQueuedContent(content),
       onTitleUpdate: (title: string) => this.applyAiTitle(tab, title),
       onRealUserInput: (sid: string) => this.userActive(sid),
       observeForLazyEnhance: this.inBatch,

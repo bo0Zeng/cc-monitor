@@ -97,9 +97,12 @@ export class SessionViewer {
     // BranchFolder 延后 — 流式期间不算，全部到齐后 setRecordsAndRebuild 一次（O(N²)→O(N)）。
     const timeline = new RecordTimeline(this.stream);
     const branchRecords: BranchRecord[] = [];
+    const queuedContents: string[] = [];
     const sink: StreamSink = {
       timeline,
       onBranchRecord: (rec) => branchRecords.push(rec),
+      // issue #36：viewer 全量加载路径同样收集队列消息内容（folder 建后灌入）
+      onQueueOperation: (content) => queuedContents.push(content),
       // SessionViewer 不更新 tab 标题、不触发 user-active、无 batch lazy
     };
     let totalRecords = 0;
@@ -153,6 +156,9 @@ export class SessionViewer {
       if (this.stream && branchRecords.length > 0) {
         try {
           const folder = new BranchFolder(this.stream.contentElement);
+          // issue #36：先灌豁免集合再重建（batch 之外的 addQueuedContent 会触发
+          // 重算，setRecordsAndRebuild 前 records 为空，安全）
+          for (const c of queuedContents) folder.addQueuedContent(c);
           folder.setRecordsAndRebuild(branchRecords);
         } catch (err) {
           renderErrors += 1;

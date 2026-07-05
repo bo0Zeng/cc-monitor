@@ -34,6 +34,8 @@ export interface BranchRecord {
   type: string;
   /** issue #22：该 user 记录是否是 "[Request interrupted by user…]" 打断标记（回撤死胡同信号）。 */
   isInterrupt?: boolean;
+  /** issue #36：user 记录的文本内容（trim 后）——队列消息豁免匹配用。非 user 恒缺省。 */
+  text?: string;
 }
 
 /**
@@ -269,26 +271,61 @@ export function extractBranchRecord(rec: {
     return null;
   }
   if (!rec.uuid || !rec.timestamp) return null;
+  const userText = rec.type === "user" ? contentText(rec.message?.content) : "";
   return {
     uuid: rec.uuid,
     parentUuid: rec.parentUuid,
     timestamp: rec.timestamp,
     type: rec.type,
     // issue #22：只有 user 记录可能是回撤打断叶子；其他类型恒 false。
-    isInterrupt: rec.type === "user" && isInterruptContent(rec.message?.content),
+    isInterrupt: rec.type === "user" && userText.startsWith("[Request interrupted by user"),
+    // issue #36：队列消息豁免匹配用
+    text: rec.type === "user" && userText ? userText.trim() : undefined,
   };
 }
 
-/** issue #22：user 记录是否是 "[Request interrupted by user…]" 打断标记（多 root 折叠的死胡同信号）。 */
-function isInterruptContent(content: unknown): boolean {
-  let text = "";
-  if (typeof content === "string") {
-    text = content;
-  } else if (Array.isArray(content)) {
+/** user 记录的文本内容提取（string content 或首个 text block）。issue #22/#36 共用。 */
+function contentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
     const block = content.find(
       (b) => b && typeof b === "object" && typeof (b as { text?: unknown }).text === "string",
     );
-    text = (block as { text?: string } | undefined)?.text ?? "";
+    return (block as { text?: string } | undefined)?.text ?? "";
   }
-  return text.startsWith("[Request interrupted by user");
+  return "";
+}
+
+/**
+ * issue #36：队列消息豁免——CC 处理输入队列消息时"内容上消费、链上遗弃"（回复
+ * 链挂在 interrupt 叶下继续，队列消息记录永久裸叶），fork 输家判定会把它误判成
+ * "被 ESC 回退"折叠。CC 自己写的 `queue-operation` enqueue 记录带 content——
+ * 非主线的**裸 user 叶**（无任何子女）且文本命中 enqueue 集合 → 并回 main 集合
+ * （保留显示）。重发弃稿不在 enqueue 集合，既有折叠判据不受影响。
+ * 纯函数；两份真实样本 fixture 见测试（0cbbdbae 队列形态 / 7196b2f9 重发形态）。
+ */
+export function exemptQueuedLeaves(
+  records: ReadonlyArray<BranchRecord>,
+  main: Set<string>,
+  queuedContents: ReadonlySet<string>,
+): Set<string> {
+  if (queuedContents.size === 0) return main;
+  const hasChild = new Set<string>();
+  for (const r of records) {
+    if (r.parentUuid) hasChild.add(r.parentUuid);
+  }
+  let out = main;
+  for (const r of records) {
+    if (
+      r.type === "user" &&
+      !main.has(r.uuid) &&
+      !hasChild.has(r.uuid) &&
+      r.text !== undefined &&
+      queuedContents.has(r.text)
+    ) {
+      if (out === main) out = new Set(main); // copy-on-write
+      out.add(r.uuid);
+    }
+  }
+  return out;
 }

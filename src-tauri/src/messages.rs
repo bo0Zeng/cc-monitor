@@ -140,6 +140,16 @@ pub enum JsonlRecord {
         #[serde(rename = "parentUuid", default)]
         parent_uuid: Option<String>,
     },
+    /// Batch10-F31 (issue #36)：CC 2.1.x 队列操作记录。enqueue 带 content——前端
+    /// 用它豁免"被消费的队列消息"（永久裸 user 叶，CC 的回复链挂在 interrupt 叶
+    /// 下而非队列消息下）不被 ESC 回退折叠。无 uuid/parentUuid，不渲染卡片。
+    #[serde(rename = "queue-operation")]
+    QueueOperation {
+        #[serde(default)]
+        operation: Option<String>,
+        #[serde(default)]
+        content: Option<String>,
+    },
     #[serde(rename = "permission-mode")]
     PermissionMode {},
     #[serde(rename = "last-prompt")]
@@ -218,6 +228,7 @@ impl JsonlRecord {
                 | Self::CustomTitle { .. }
                 | Self::System { .. }
                 | Self::Attachment { .. }
+                | Self::QueueOperation { .. }
         )
     }
 }
@@ -230,6 +241,30 @@ mod tests {
         serde_json::from_str(line).unwrap_or_else(|e| {
             panic!("parse failed for {line}: {e}");
         })
+    }
+
+    /// Batch10-F31 (issue #36)：queue-operation 解析（真实样本行）+ displayable。
+    #[test]
+    fn queue_operation_parses_and_is_displayable() {
+        let r = parse(
+            r#"{"type": "queue-operation", "operation": "enqueue", "timestamp": "2026-07-05T06:12:29.248Z", "sessionId": "0cbbdbae", "content": "这是登录门户"}"#,
+        );
+        match &r {
+            JsonlRecord::QueueOperation { operation, content } => {
+                assert_eq!(operation.as_deref(), Some("enqueue"));
+                assert_eq!(content.as_deref(), Some("这是登录门户"));
+            }
+            other => panic!("expected QueueOperation, got {other:?}"),
+        }
+        assert!(r.is_displayable(), "要 emit 给前端做折叠豁免");
+        // dequeue（无 content）也能安全解析
+        let r = parse(
+            r#"{"type": "queue-operation", "operation": "dequeue", "timestamp": "t", "sessionId": "s"}"#,
+        );
+        assert!(matches!(
+            r,
+            JsonlRecord::QueueOperation { content: None, .. }
+        ));
     }
 
     #[test]
