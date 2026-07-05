@@ -270,6 +270,8 @@ pub async fn stream_remote_history_sessions(
             project_path: cwd,
             project_name,
             ai_title: v["aiTitle"].as_str().map(String::from),
+            // Batch11-F32：p1h daemon 附 isBg；旧 daemon 缺字段 → false 安全降级
+            is_bg: v["isBg"].as_bool().unwrap_or(false),
             first_user_excerpt: v["firstUserExcerpt"]
                 .as_str()
                 .unwrap_or_default()

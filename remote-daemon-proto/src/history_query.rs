@@ -321,6 +321,10 @@ fn analyze_session(p: &Path) -> serde_json::Value {
     let mut excerpt = String::new();
     let mut ai_title: Option<String> = None;
     let mut cwd: Option<String> = None;
+    // Batch11-F32：CC 2.1.x 后台分身会话（←/bg/退出转后台 fork 出的 worker）——
+    // 记录级 sessionKind:"bg" 是官方 resume 选择器同款识别信号（内部字段无兼容
+    // 承诺，缺失=false 安全降级）。历史列表标 ⚙ 徽标防 resume 选错克隆。
+    let mut is_bg = false;
     if let Ok(content) = std::fs::read_to_string(p) {
         for line in content.lines() {
             let trimmed = line.trim_start_matches('\u{feff}').trim();
@@ -332,6 +336,9 @@ fn analyze_session(p: &Path) -> serde_json::Value {
                 Ok(v) => v,
                 Err(_) => continue,
             };
+            if !is_bg && v.get("sessionKind").and_then(|k| k.as_str()) == Some("bg") {
+                is_bg = true;
+            }
             if cwd.is_none() {
                 if let Some(c) = v.get("cwd").and_then(|c| c.as_str()) {
                     if !c.is_empty() {
@@ -368,6 +375,7 @@ fn analyze_session(p: &Path) -> serde_json::Value {
         "firstUserExcerpt": excerpt,
         "aiTitle": ai_title,
         "cwd": cwd,
+        "isBg": is_bg,
     })
 }
 
@@ -442,6 +450,28 @@ mod tests {
     fn truncate_is_char_safe() {
         assert_eq!(truncate_chars("中文字符串", 3), "中文字");
         assert_eq!(truncate_chars("ab", 120), "ab");
+    }
+
+    /// Batch11-F32：sessionKind:"bg" 探测 → isBg。
+    #[test]
+    fn analyze_session_detects_bg_kind() {
+        let tmp = std::env::temp_dir().join(format!("ccm-isbg-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let f = tmp.join("bg-sid.jsonl");
+        std::fs::write(
+            &f,
+            concat!(
+                "{\"type\":\"ai-title\",\"aiTitle\":\"迁移任务\",\"sessionKind\":\"bg\"}\n",
+                "{\"type\":\"user\",\"uuid\":\"u1\",\"sessionKind\":\"bg\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}\n"
+            ),
+        )
+        .unwrap();
+        let v = analyze_session(&f);
+        assert_eq!(v["isBg"], true);
+        let g = tmp.join("normal.jsonl");
+        std::fs::write(&g, "{\"type\":\"user\",\"uuid\":\"u1\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}\n").unwrap();
+        assert_eq!(analyze_session(&g)["isBg"], false);
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
