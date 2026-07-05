@@ -1007,6 +1007,7 @@ mod tests {
             jsonl_path: "/a.jsonl".into(),
             is_live: true,
             message_count_approx: 5,
+            is_bg: true,
             starred: false,
             custom_title: None,
             hidden: false,
@@ -1017,6 +1018,7 @@ mod tests {
         let j = serde_json::to_string(&e).unwrap();
         for camel_key in [
             "\"sessionId\"",
+            "\"isBg\"",
             "\"projectPath\"",
             "\"projectName\"",
             "\"aiTitle\"",
