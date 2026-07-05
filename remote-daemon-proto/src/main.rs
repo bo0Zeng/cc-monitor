@@ -50,7 +50,9 @@ const PROTO_VERSION: u32 = 1;
 ///   session_added 帧附 path（Batch8-F25，历史改走 monitor 旁路 --read-session 快照）
 /// - p1g-status-tail = + session_status 帧/宣告带初始 status（Batch9-F27 远端红绿灯）、
 ///   --read-session-tail 尾部优先查询（Batch9-F30）
-const BUILD_ID: &str = "p1g-status-tail";
+/// - p1h-bg-badge = --list-sessions 输出附 isBg（记录级 sessionKind:"bg" 探测，
+///   Batch11-F32 历史 ⚙ 徽标；additive，查询字段无版本门控问题）
+const BUILD_ID: &str = "p1h-bg-badge";
 
 /// Batch7-F24/Batch8-F25：从 argv 剥离流模式 flag（`--with-bg` / `--tail-only`），
 /// 返回（剩余参数, with_bg, tail_only）。**必须在一次性查询模式判定之前调用**

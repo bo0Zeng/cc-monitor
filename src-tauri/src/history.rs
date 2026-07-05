@@ -76,6 +76,8 @@ pub struct HistorySessionEntry {
     pub jsonl_path: String,
     pub is_live: bool,
     pub message_count_approx: u32,
+    /// Batch11-F32：CC 后台分身会话（⚙ 徽标——防 resume 误选克隆）。
+    pub is_bg: bool,
     // 用户元数据合并进来，前端一次拿全
     pub starred: bool,
     pub custom_title: Option<String>,
@@ -645,12 +647,22 @@ fn analyze_jsonl(
     // issue #12: 第一条带 forkedFrom 的 user/assistant 就锁住（典型整 session 共享）
     let mut forked_from_session_id: Option<String> = None;
     let mut forked_from_message_uuid: Option<String> = None;
+    // Batch11-F32：CC 后台分身会话探测（记录级 sessionKind:"bg"——官方 resume
+    // 选择器同款信号）。JsonlRecord 不透传未知字段，故对原始行做字符串探测
+    // （两种空格形态；仅徽标用途，误报面可忽略）。
+    let mut is_bg = false;
 
     let reader = BufReader::new(file);
     for line in reader.lines().map_while(Result::ok) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
+        }
+        if !is_bg
+            && (trimmed.contains(r#""sessionKind":"bg""#)
+                || trimmed.contains(r#""sessionKind": "bg""#))
+        {
+            is_bg = true;
         }
         let rec = match parse_line(trimmed) {
             Ok(Some(r)) => r,
@@ -743,6 +755,7 @@ fn analyze_jsonl(
         project_name,
         ai_title,
         first_user_excerpt,
+        is_bg,
         started_at,
         updated_at,
         jsonl_path: path.to_string_lossy().into_owned(),

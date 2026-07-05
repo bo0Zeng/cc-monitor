@@ -740,6 +740,14 @@ body.viewer-mode .history-trigger {
   padding-left: 18px;
   position: relative;
 }
+/* Batch11-F32：历史列表 bg 分身徽标 */
+.history-bg-badge {
+  color: var(--text-faint);
+  font-size: 0.9em;
+  margin-right: 2px;
+  cursor: help;
+}
+
 .tab.tab-bg::before {
   content: "⌞";
   position: absolute;

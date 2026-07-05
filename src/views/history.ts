@@ -64,6 +64,8 @@ interface HistorySessionEntry {
   updatedAt: number;
   jsonlPath: string;
   isLive: boolean;
+  /** Batch11-F32：CC 后台分身会话（sessionKind:"bg"）——⚙ 徽标防 resume 误选克隆 */
+  isBg?: boolean;
   messageCountApprox: number;
   starred: boolean;
   customTitle: string | null;
@@ -1316,6 +1318,16 @@ export class HistoryView {
       row.appendChild(orphanMark);
     }
 
+    // Batch11-F32：CC 后台分身会话徽标——resume 请选主会话（克隆与主会话同标题，
+    // 不标必踩；CC 官方 resume 选择器也标 "bg"）
+    if (e.isBg) {
+      const bgMark = document.createElement("span");
+      bgMark.className = "history-bg-badge";
+      bgMark.textContent = "⚙";
+      bgMark.title =
+        "CC 后台分身会话（← / /bg / 退出转后台 fork 出的 worker，历史为主会话克隆）——续对话请 resume 主会话";
+      row.appendChild(bgMark);
+    }
     const starBtn = document.createElement("button");
     starBtn.type = "button";
     starBtn.className = "history-star";
