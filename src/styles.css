@@ -539,6 +539,8 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
      靠原生锚定（亚像素精确）维持底部视觉稳定；stream.ts 的 snap 只在真正落后底部
      时才贴。不能每帧手动 scrollTop=scrollHeight 重钉 —— HiDPI 分数像素下舍入误差
      每帧不同会造成整块内容 ±0.5px 高频抖动。 */
+  /* 宽内容(表格/公式/代码)各自局部滚动,流本身永不横滚 */
+  overflow-x: hidden;
   padding: 24px 24px 48px;
   visibility: hidden;
   pointer-events: none;
@@ -624,6 +626,13 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   font-family: var(--font-prose);
   font-size: var(--font-size-prose);
   line-height: var(--line-height-prose);
+  /* 长无断点串(URL/贴的日志)强制可断,防撑宽(同 .block-body 既有约定) */
+  overflow-wrap: anywhere;
+}
+.card-body .katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .card-body p:first-child {
@@ -640,6 +649,10 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 .card-body table {
   border-collapse: collapse;
   margin: 8px 0;
+  /* 宽表格自滚,不撑破 780px 列(GitHub markdown-body 同款) */
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .card-body th, .card-body td {
