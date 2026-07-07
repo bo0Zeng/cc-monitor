@@ -142,6 +142,9 @@ export class SettingsPanel {
   // v2.4 issue #2: 行为类 toggle
   private autoFollowCheckbox!: HTMLInputElement;
   private showBgCheckbox!: HTMLInputElement;
+  // F34：自定义 resume 命令（本地 / 远端）
+  private resumeLocalInput!: HTMLInputElement;
+  private resumeRemoteInput!: HTMLInputElement;
   private bringFrontCheckbox!: HTMLInputElement;
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
 
@@ -172,6 +175,8 @@ export class SettingsPanel {
     this.autoFollowCheckbox.checked = behavior.autoFollowUserActive;
     this.bringFrontCheckbox.checked = behavior.bringMonitorToFrontOnUserActive;
     this.showBgCheckbox.checked = behavior.showBgSessions;
+    this.resumeLocalInput.value = behavior.resumeCommandLocal;
+    this.resumeRemoteInput.value = behavior.resumeCommandRemote;
     this.updateBringFrontEnabled();
     this.banner.textContent = "";
     this.banner.classList.remove("settings-banner-show");
@@ -199,6 +204,8 @@ export class SettingsPanel {
       autoFollowUserActive: this.autoFollowCheckbox.checked,
       bringMonitorToFrontOnUserActive: this.bringFrontCheckbox.checked,
       showBgSessions: this.showBgCheckbox.checked,
+      resumeCommandLocal: this.resumeLocalInput.value.trim(),
+      resumeCommandRemote: this.resumeRemoteInput.value.trim(),
     };
     try {
       await setBehavior(next);
@@ -438,6 +445,43 @@ export class SettingsPanel {
       "显示后台任务会话（⚙ 标识，挂在同项目会话之后；改动重启生效）";
     bgRow.appendChild(bgLabel);
     group.appendChild(bgRow);
+
+    // 4. F34：自定义 resume 启动命令（历史浏览器 ↺ 用）。change 事件（失焦/回车）保存，
+    //    避免逐键写盘。本地命令后端有防注入校验（仅字母数字 -_. 空格）。
+    const mkResumeRow = (
+      labelText: string,
+      placeholder: string,
+      titleText: string,
+    ): [HTMLElement, HTMLInputElement] => {
+      const row = document.createElement("label");
+      row.className = "settings-row";
+      row.title = titleText;
+      const span = document.createElement("span");
+      span.className = "settings-label";
+      span.textContent = labelText;
+      row.appendChild(span);
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "settings-input";
+      input.placeholder = placeholder;
+      input.addEventListener("change", () => void this.onBehaviorToggle());
+      row.appendChild(input);
+      return [row, input];
+    };
+    const [localRow, localInput] = mkResumeRow(
+      "本地 resume 命令",
+      "默认：检测 cc，回退 claude",
+      "历史浏览器 ↺ 在本机新终端里 resume 会话用的命令（如 cc / cct）。\n留空 = 自动检测 PowerShell 的 cc 函数，没有则用 claude。",
+    );
+    this.resumeLocalInput = localInput;
+    group.appendChild(localRow);
+    const [remoteRow, remoteInput] = mkResumeRow(
+      "远端 resume 命令",
+      "默认：claude",
+      "历史浏览器 ↺ 为远端会话生成的粘贴命令所用的启动器（如 cct）。\n留空 = claude。",
+    );
+    this.resumeRemoteInput = remoteInput;
+    group.appendChild(remoteRow);
 
     return group;
   }

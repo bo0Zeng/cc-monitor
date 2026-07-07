@@ -435,8 +435,30 @@ pub fn update_history_metadata(
 /// profile**）里跑，命令优先用户的 `cc` wrapper、回退 `claude`。详 `resume_impl`。
 /// Windows 上优先 wt.exe，找不到回退独立控制台。其他平台暂不支持。
 #[tauri::command]
-pub fn resume_history_session(session_id: String, cwd: String) -> Result<(), String> {
-    resume_impl(&session_id, &cwd)
+pub fn resume_history_session(
+    session_id: String,
+    cwd: String,
+    launcher: Option<String>,
+) -> Result<(), String> {
+    resume_impl(&session_id, &cwd, launcher.as_deref())
+}
+
+/// F34：用户自定义 resume 启动命令（设置面板「本地 resume 命令」）。
+/// 拼进 shell 前必须校验——只允许命令名+简单参数形态（字母数字 `-_.` 与空格），
+/// 杜绝 `;`/`|`/`$()` 等注入面。空/纯空白视为未设置。
+fn sanitize_launcher(launcher: Option<&str>) -> Result<Option<String>, String> {
+    let Some(l) = launcher.map(str::trim).filter(|l| !l.is_empty()) else {
+        return Ok(None);
+    };
+    let valid = l
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ' '));
+    if !valid {
+        return Err(format!(
+            "refuse resume: 自定义 resume 命令含非法字符（仅允许字母数字、-_.、空格）: {l:?}"
+        ));
+    }
+    Ok(Some(l.to_string()))
 }
 
 /// 构造 resume 用的 PowerShell 命令体（不含 `-EncodedCommand` 编码）。
@@ -451,13 +473,17 @@ pub fn resume_history_session(session_id: String, cwd: String) -> Result<(), Str
 ///
 /// 抽成独立函数是为了单测（不 spawn 进程也能验证防注入 + cc 优先逻辑）。
 #[cfg(windows)]
-fn build_resume_ps_command(session_id: &str) -> Result<String, String> {
+fn build_resume_ps_command(session_id: &str, launcher: Option<&str>) -> Result<String, String> {
     let valid = !session_id.is_empty()
         && session_id
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     if !valid {
         return Err(format!("refuse resume: invalid session_id {session_id:?}"));
+    }
+    // F34：设了自定义命令就直接用（不再 cc 自动检测——用户显式选择优先）
+    if let Some(l) = sanitize_launcher(launcher)? {
+        return Ok(format!("{l} --resume {sid}", sid = session_id));
     }
     Ok(format!(
         "if (Get-Command cc -ErrorAction SilentlyContinue) {{ cc --resume {sid} }} \
@@ -467,7 +493,7 @@ fn build_resume_ps_command(session_id: &str) -> Result<String, String> {
 }
 
 #[cfg(windows)]
-fn resume_impl(session_id: &str, cwd: &str) -> Result<(), String> {
+fn resume_impl(session_id: &str, cwd: &str, launcher: Option<&str>) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     use std::process::Command;
     // CREATE_NEW_CONSOLE：让 Tauri GUI 父进程能创建独立控制台窗口给 powershell。
@@ -475,7 +501,7 @@ fn resume_impl(session_id: &str, cwd: &str) -> Result<(), String> {
 
     let cwd_valid = Path::new(cwd).is_dir();
 
-    let ps_command = build_resume_ps_command(session_id)?;
+    let ps_command = build_resume_ps_command(session_id, launcher)?;
     // -EncodedCommand（base64 of UTF-16LE）：命令含空格 / 括号 / `;`，直接当字符串穿
     // wt.exe（用 `;` 分隔多 tab）会被切碎。编码成 base64 token（只含 [A-Za-z0-9+/=]）后
     // 任何一层 shell 都不会误解析。详 utils::powershell_encoded_command。
@@ -518,7 +544,7 @@ fn resume_impl(session_id: &str, cwd: &str) -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
-fn resume_impl(_session_id: &str, _cwd: &str) -> Result<(), String> {
+fn resume_impl(_session_id: &str, _cwd: &str, _launcher: Option<&str>) -> Result<(), String> {
     Err("resume only supported on Windows (v1)".into())
 }
 
@@ -1075,7 +1101,7 @@ mod tests {
     #[test]
     fn resume_cmd_prefers_cc_with_claude_fallback() {
         let sid = "01998f2a-1234-7abc-9def-0123456789ab";
-        let cmd = build_resume_ps_command(sid).unwrap();
+        let cmd = build_resume_ps_command(sid, None).unwrap();
         // 优先 cc、回退 claude，两者都带正确 sid
         assert!(cmd.contains("Get-Command cc"));
         assert!(cmd.contains(&format!("cc --resume {sid}")));
@@ -1097,9 +1123,38 @@ mod tests {
             "a/../b",
         ] {
             assert!(
-                build_resume_ps_command(bad).is_err(),
+                build_resume_ps_command(bad, None).is_err(),
                 "应拒绝危险 session_id: {bad:?}"
             );
         }
+    }
+
+    /// F34：自定义 launcher——合法形态放行、注入面拒绝、空视为未设置。
+    #[test]
+    fn sanitize_launcher_allows_simple_reject_injection() {
+        assert_eq!(sanitize_launcher(None).unwrap(), None);
+        assert_eq!(sanitize_launcher(Some("")).unwrap(), None);
+        assert_eq!(sanitize_launcher(Some("   ")).unwrap(), None);
+        assert_eq!(
+            sanitize_launcher(Some("cct")).unwrap().as_deref(),
+            Some("cct")
+        );
+        assert_eq!(
+            sanitize_launcher(Some(" cc -p 8 ")).unwrap().as_deref(),
+            Some("cc -p 8")
+        );
+        for bad in ["cc; calc", "cc|id", "cc$(id)", "cc`id`", "cc&&x", "cc\"x"] {
+            assert!(sanitize_launcher(Some(bad)).is_err(), "应拒绝: {bad:?}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resume_cmd_custom_launcher_used_verbatim() {
+        let sid = "abc-123";
+        let cmd = build_resume_ps_command(sid, Some("cct")).unwrap();
+        assert_eq!(cmd, "cct --resume abc-123");
+        // 设了自定义命令就不再出现 cc 自动检测
+        assert!(!cmd.contains("Get-Command"));
     }
 }

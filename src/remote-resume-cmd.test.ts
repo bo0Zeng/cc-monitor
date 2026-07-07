@@ -34,6 +34,13 @@ test("cwd 非空 → cd + resume", () => {
 test("cwd 空 → 仅 resume", () => {
   eq(buildRemoteResumeCmd("abc-123", ""), "claude --resume abc-123");
   eq(buildRemoteResumeCmd("abc-123", "   "), "claude --resume abc-123", "纯空白 trim 后为空");
+  // F34：自定义 launcher
+  eq(
+    buildRemoteResumeCmd("abc-123", "/home/pi/p", "cct"),
+    'cd "/home/pi/p" && cct --resume abc-123',
+    "自定义 launcher 透传",
+  );
+  eq(buildRemoteResumeCmd("abc-123", "", "  "), "claude --resume abc-123", "空白 launcher 回退 claude");
 });
 
 test("cwd 含空格 → 引号包裹", () => {
