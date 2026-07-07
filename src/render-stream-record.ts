@@ -33,6 +33,7 @@
 import { renderMessage, buildToolGroup, addToToolGroup, type JsonlRecord, type RenderContext } from "./cards";
 import { extractBranchRecord, type BranchRecord } from "./branching";
 import { observeForEnhance } from "./render";
+import { applyIntrinsicSize } from "./height-estimate";
 import type { RecordTimeline } from "./record-timeline";
 import type { JsonlLinePayload } from "./events";
 
@@ -116,6 +117,7 @@ export function renderStreamRecord(
     case "card": {
       // 普通卡：直接 markCardUuid + timeline.insert
       markCardUuid(result.element, message);
+      applyIntrinsicSize(result.element); // Batch13-F38：c-v 估高初值
       sink.timeline.insert({
         seq: payload.seq,
         element: result.element,
@@ -149,6 +151,7 @@ export function renderStreamRecord(
       addToToolGroup(group, result.units);
       // tool-group root 也写 data-uuid（首条贡献 uuid）让 BranchFolder 把它当卡识别
       markCardUuid(group.root, message);
+      applyIntrinsicSize(group.root); // Batch13-F38：折叠组 = summary 常数
       sink.timeline.insert({
         seq: payload.seq,
         element: group.root,

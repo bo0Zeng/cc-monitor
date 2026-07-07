@@ -25,6 +25,7 @@
     "test": "npm run test:branching && npm run test:diff && npm run test:api-error && npm run test:bash && npm run test:remote-health && npm run test:remote-resume && npm run test:format && npm run test:dom"
   },
   "dependencies": {
+    "@chenglou/pretext": "0.0.8",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-opener": "^2",
