@@ -117,29 +117,8 @@ const REMOTE_INFO_TEXT =
  * 失败，而 tmux 恰是远端最常见形态。原语内自动对**当前 session** 开直通
  * （session 级选项，不写 tmux.conf、不影响其它 session）。
  */
-const CCM_WRAPPER_SNIPPET = `# __ccm_rbind：注册原语（只注册，不启动）。与 exec claude 同一 (子)shell 内调用：
-#   ( __ccm_rbind; exec claude "$@" )
-__ccm_rbind() {
-  if [ -n "$TMUX" ]; then
-    # tmux 默认不把 pane title 传给外层终端窗口标题（marker 会被截住）；
-    # 只对当前 session 开直通，不动全局配置
-    tmux set set-titles on >/dev/null 2>&1
-    tmux set set-titles-string "#T" >/dev/null 2>&1
-  fi
-  local cpid=$BASHPID
-  ( prev=""
-    while kill -0 "$cpid" 2>/dev/null; do
-      sid=$(grep -o '"sessionId":"[^"]*"' ~/.claude/sessions/$cpid.json 2>/dev/null | head -1 | cut -d'"' -f4)
-      [ -n "$sid" ] && [ "$sid" != "$prev" ] && { printf '\\033]0;ccm-rbind-%s\\007' "$sid"; prev="$sid"; }
-      sleep 1
-    done
-  ) &
-}
-# ccm：便捷启动器（可选）。已有同名函数/命令时不覆盖——自有启动器请在
-# 自己的函数里调 __ccm_rbind（见上方契约）。
-if ! declare -f ccm >/dev/null 2>&1; then
-ccm() { ( __ccm_rbind; exec claude "$@" ); }
-fi`;
+// 单一来源：shared/ccm-wrapper.sh（后端 sftp.rs include_str! 同一文件，杜绝漂移）
+import CCM_WRAPPER_SNIPPET from "../../shared/ccm-wrapper.sh?raw";
 
 export interface RemoteSectionOptions {
   /** 被 CollapsibleGroup 包起来时传 headless: true，不渲染自己的小标题。 */

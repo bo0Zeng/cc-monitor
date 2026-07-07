@@ -510,18 +510,10 @@ const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 /// **必须与前端 `remote-section.ts::CCM_WRAPPER_SNIPPET`（面板展示/手动复制用）逐字一致。**
 /// `\033`/`\007` 是 bash `printf` 的八进制转义（ESC/BEL），用 raw string 保留字面反斜杠。
 /// 标记 `ccm-rbind-%s` 必须与 `bind.rs` 的 `format!("ccm-rbind-{sid}")` 一致。
-const CCM_WRAPPER_SNIPPET: &str = r#"ccm() {
-  ( cpid=$BASHPID
-    ( prev=""
-      while kill -0 "$cpid" 2>/dev/null; do
-        sid=$(grep -o '"sessionId":"[^"]*"' ~/.claude/sessions/$cpid.json 2>/dev/null | head -1 | cut -d'"' -f4)
-        [ -n "$sid" ] && [ "$sid" != "$prev" ] && { printf '\033]0;ccm-rbind-%s\007' "$sid"; prev="$sid"; }
-        sleep 1
-      done
-    ) &
-    exec claude "$@"
-  )
-}"#;
+/// **单一来源**：`shared/ccm-wrapper.sh`——前端 `remote-section.ts` 经 `?raw` import
+/// 同一文件（修复历史漂移：Batch7 重构 __ccm_rbind 时只改了前端展示版，这里装进
+/// 远端的还是老版无 set-titles，tmux 内 ↗ 必然绑不上）。
+const CCM_WRAPPER_SNIPPET: &str = include_str!("../../shared/ccm-wrapper.sh");
 
 /// 纯函数：把 `snippet` 合进 profile 内容的 BEGIN/END 块（可单测）。
 /// - 已有**配对**块（BEGIN 后能找到 END）→ **整块替换**（幂等：`merge(merge(x))==merge(x)`）。
@@ -721,6 +713,23 @@ pub async fn install_remote_ccm_helper(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 单一来源漂移守卫：安装进远端的 snippet 必须含注册原语/树状直通/marker/防覆盖守卫。
+    #[test]
+    fn ccm_snippet_has_required_elements() {
+        for needle in [
+            "__ccm_rbind()",
+            "set-titles on",
+            "ccm-rbind-%s",
+            "declare -f ccm",
+            "exec claude",
+        ] {
+            assert!(
+                CCM_WRAPPER_SNIPPET.contains(needle),
+                "snippet 缺关键要素: {needle}"
+            );
+        }
+    }
 
     #[test]
     fn merge_profile_block_append_replace_idempotent() {
