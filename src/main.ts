@@ -167,24 +167,50 @@ window.addEventListener("DOMContentLoaded", async () => {
       const resizer = document.createElement("div");
       resizer.id = "tab-bar-resizer";
       resizer.title = "拖拽调整 tab 栏宽度";
+      // 拖动期间**不能**实时改 --tab-bar-w：网格列宽一变，消息区整棵布局树重排，
+      // 而切 tab 零卡顿方案让所有 tab 的 DOM 都 visibility 保活在布局树里——每次
+      // mousemove 全量重排 = 拖动巨卡。改为拖动时只画 fixed 参考线（repaint-only），
+      // 松手一次性提交宽度。
       resizer.addEventListener("mousedown", (e) => {
         if (e.button !== 0) return;
         e.preventDefault();
-        const startX = e.clientX;
-        const barEl = document.getElementById("tab-bar");
-        const startW = barEl ? barEl.getBoundingClientRect().width : 150;
-        resizer.classList.add("resizing");
-        const onMove = (ev: MouseEvent): void => {
-          appEl.style.setProperty("--tab-bar-w", `${clampW(startW + ev.clientX - startX)}px`);
+        const barLeft = document.getElementById("tab-bar")?.getBoundingClientRect().left ?? 0;
+        const guide = document.createElement("div");
+        guide.className = "tab-bar-resize-guide";
+        const applyGuide = (clientX: number): number => {
+          const w = clampW(clientX - barLeft);
+          guide.style.left = `${barLeft + w}px`;
+          return w;
         };
-        const onUp = (ev: MouseEvent): void => {
+        let lastW = applyGuide(e.clientX);
+        document.body.appendChild(guide);
+        resizer.classList.add("resizing");
+        const finish = (commit: boolean): void => {
           document.removeEventListener("mousemove", onMove);
           document.removeEventListener("mouseup", onUp);
+          window.removeEventListener("blur", onBlur);
+          guide.remove();
           resizer.classList.remove("resizing");
-          localStorage.setItem(KEY, String(clampW(startW + ev.clientX - startX)));
+          if (commit) {
+            appEl.style.setProperty("--tab-bar-w", `${lastW}px`);
+            localStorage.setItem(KEY, String(lastW));
+          }
         };
+        const onMove = (ev: MouseEvent): void => {
+          // 主键已松开（窗外释放 / 切走时 mouseup 丢失）→ 取消收尾。否则 document
+          // 级 mousemove 监听永久泄漏，之后选中文字都在触发它（同 tab 撕离的容错）。
+          if ((ev.buttons & 1) === 0) {
+            finish(false);
+            return;
+          }
+          lastW = applyGuide(ev.clientX);
+        };
+        const onUp = (): void => finish(true);
+        // alt-tab / 点别的窗口切走 → 落点不可信，直接取消（回来不会带着幽灵拖拽）。
+        const onBlur = (): void => finish(false);
         document.addEventListener("mousemove", onMove);
         document.addEventListener("mouseup", onUp);
+        window.addEventListener("blur", onBlur);
       });
       appEl.appendChild(resizer);
       // 窄窗折叠：内容列 780px + 栏 + 呼吸空间放不下 → 图标条（44px）
