@@ -2717,7 +2717,7 @@ dependencies = [
 
 [[package]]
 name = "monitor"
-version = "2.20.0"
+version = "2.21.0"
 dependencies = [
  "dirs 5.0.1",
  "futures",
