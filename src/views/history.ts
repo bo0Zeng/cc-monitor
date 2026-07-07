@@ -27,6 +27,7 @@ import { SessionViewer, type ViewerOptions } from "./session-viewer";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { buildRemoteResumeCmd } from "../remote-resume-cmd";
+import { getBehavior } from "../behavior";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { formatTimestampSmart } from "../format";
 
@@ -1453,7 +1454,13 @@ export class HistoryView {
       resumeBtn.title = `复制 resume 命令到远端 [${e.origin}] 终端执行`;
       resumeBtn.addEventListener("click", async (ev) => {
         ev.stopPropagation();
-        const cmd = buildRemoteResumeCmd(e.sessionId, e.projectPath ?? "");
+        // F34：用户自定义远端 resume 命令（如 cct）；空 = claude
+        const behavior = await getBehavior();
+        const cmd = buildRemoteResumeCmd(
+          e.sessionId,
+          e.projectPath ?? "",
+          behavior.resumeCommandRemote,
+        );
         try {
           await navigator.clipboard.writeText(cmd);
         } catch {
@@ -1470,9 +1477,12 @@ export class HistoryView {
       resumeBtn.addEventListener("click", async (ev) => {
         ev.stopPropagation();
         try {
+          // F34：用户自定义本地 resume 命令（如 cct）；空 = 后端默认（cc 检测→claude）
+          const behavior = await getBehavior();
           await invoke("resume_history_session", {
             sessionId: e.sessionId,
             cwd: e.projectPath,
+            launcher: behavior.resumeCommandLocal || null,
           });
         } catch (err) {
           showActionFailureToast("恢复失败", String(err));
