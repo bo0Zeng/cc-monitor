@@ -60,6 +60,9 @@ if (import.meta.hot) {
 
 // 全局错误捕获 —— 渲染到 status-bar 便于无 devtools 也能诊断
 window.addEventListener("error", (e) => {
+  // Batch13-F38:c-v 材料化→RO→snap 链路使这条**良性**浏览器提示变频繁
+  // (RO 回调引发布局变化,浏览器推迟到下帧,无功能影响)——不上状态栏不进 console
+  if (e.message.includes("ResizeObserver loop")) return;
   const bar = document.getElementById("status-bar");
   if (bar) bar.textContent = `ERR: ${e.message} @ ${e.filename}:${e.lineno}`;
   console.error("global error:", e.error ?? e.message);

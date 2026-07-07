@@ -194,13 +194,24 @@ export class SessionViewer {
       this.stream?.scrollToBottom();
       return;
     }
-    // 展开所有折叠祖先，确保目标可见
+    // 展开所有折叠祖先，确保目标可见。注:ESC 回退段是 div.branch-fold-wrap
+    // + .expanded 类(非 <details>)——此前只开 details,命中折叠段内的卡会被
+    // 0fr 裁剪、flash 不可见(Batch13 D 审计发现的既有 bug)
     let p: HTMLElement | null = el.parentElement;
     while (p && p !== this.streamEl) {
       if (p instanceof HTMLDetailsElement) p.open = true;
+      if (p.classList.contains("branch-fold-wrap") && !p.classList.contains("expanded")) {
+        p.classList.add("expanded");
+        p.querySelector(".branch-fold-header")?.setAttribute("aria-expanded", "true");
+      }
       p = p.parentElement;
     }
     el.scrollIntoView({ block: "center" });
+    // Batch13-F38:首次落点基于 content-visibility 估值几何;双 rAF 后周边已
+    // 材料化(真实尺寸),幂等重发一次让 block:center 落点精确
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => el.scrollIntoView({ block: "center" })),
+    );
     el.classList.add("search-hit-flash");
     // 动画结束后移除 class（再次跳同一条还能重放）
     window.setTimeout(() => el.classList.remove("search-hit-flash"), 2200);

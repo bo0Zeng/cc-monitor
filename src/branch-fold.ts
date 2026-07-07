@@ -223,6 +223,9 @@ export class BranchFolder {
     const wrap = document.createElement("div");
     wrap.className = FOLD_WRAP_CLASS;
     wrap.setAttribute("data-fold-key", foldKey);
+    // Batch13-F38:折叠态真值≈34px(header 一行);兜底 120px 偏大 3 倍。
+    // 展开后由 content-visibility 的 auto 记忆接管,估值不再参与
+    wrap.style.setProperty("contain-intrinsic-size", "auto 34px");
     if (expanded) wrap.classList.add("expanded");
 
     const header = document.createElement("div");
