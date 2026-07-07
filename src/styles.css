@@ -209,6 +209,17 @@ body.viewer-mode .history-trigger {
 #tab-bar-resizer.resizing {
   background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
+/* 拖宽参考线：fixed 出流（跟手只 repaint 不 reflow——消息区所有 tab 的 DOM 都
+   visibility 保活在布局树里，实时改列宽会全量重排巨卡）；松手才提交真宽度 */
+.tab-bar-resize-guide {
+  position: fixed;
+  top: 0;
+  bottom: 24px;
+  width: 2px;
+  background: var(--accent);
+  z-index: 50;
+  pointer-events: none;
+}
 
 /* F33：窄窗折叠成图标条（JS 按窗宽挂 body 类）——只剩状态灯，悬停有原生 title */
 body.tabbar-collapsed #tab-bar {
