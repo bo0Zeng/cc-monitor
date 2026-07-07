@@ -1352,7 +1352,7 @@ async fn bring_remote_terminal_to_front(
         // 覆盖：① eager 扫描时机错过；② 用户 /resume 切到别的 sid——wrapper 会把
         // marker 重刷成当前 sid，这里现扫即可绑上。try_bind 是同步 Win32，已在
         // spawn_blocking 里（INVARIANT § 10）。
-        let binding = match cache.lookup(&session_id) {
+        let mut binding = match cache.lookup(&session_id) {
             Some(b) => b,
             None => {
                 cache.try_bind(&session_id);
@@ -1361,7 +1361,18 @@ async fn bring_remote_terminal_to_front(
                     .ok_or_else(|| "未绑定窗口（远端会话需在远端启用 ccm wrapper）".to_string())?
             }
         };
-        bind::verify_binding(&binding)?;
+        // 缓存命中但校验失败（终端已关 / HWND 易主）→ forget + 现扫重绑一次再试。
+        // 场景：关掉终端后重新 ssh + tmux attach——新终端标题仍带 marker（tmux 会话级
+        // set-titles 持久，attach 时重推 #T），死缓存不失效重扫的话 ↗ 就永远失灵。
+        if bind::verify_binding(&binding).is_err() {
+            cache.forget(&session_id);
+            cache.try_bind(&session_id);
+            binding = cache.lookup(&session_id).ok_or_else(|| {
+                "原绑定终端已关闭，且未扫到新的 ccm-rbind 窗口（请确认已重新 attach 且终端标题带 marker）"
+                    .to_string()
+            })?;
+            bind::verify_binding(&binding)?;
+        }
         bind::activate(binding.hwnd)
     })
     .await
