@@ -561,8 +561,17 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
    这就是切长会话 Tab 卡/拖侧栏全量重排的根治第一步。
    intrinsic-size 由建卡时 JS 写精确估值（height-estimate.ts），此处只兜底；
    auto 关键字 = 渲染过后浏览器记住真实尺寸，估值只影响首次滚动条精度。
-   已知交互面：原生 overflow-anchor 贴底/向上插旧仍走 stream.ts 既有机制（E2E 锚定）。 */
+   已知交互面：原生 overflow-anchor 贴底/向上插旧仍走 stream.ts 既有机制（E2E 锚定）。
+   平台前提：生产 WebView2/Chromium 两特性齐备；Linux 开发用 WebKitGTK 缺
+   overflow-anchor——上翻时高度校正会顶视口，属开发环境已知差异非回归。 */
 .stream-content > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}
+/* 折叠段内部同享 c-v（D 审计：卡被 reparent 进 fold 后不匹配上一条规则，
+   大回退段会原样保留全量重排成本——这是覆盖空洞不是设计豁免）。
+   卡片自带的 inline contain-intrinsic-size 随 c-v 的 size containment 重新生效 */
+.branch-fold-body-inner > * {
   content-visibility: auto;
   contain-intrinsic-size: auto 120px;
 }
