@@ -16,6 +16,8 @@ import type { BranchRecord } from "./branching";
 import { isAgentTool } from "./cards/subagent";
 import type { AgentsPanel, AgentEntry } from "./agents-panel";
 import { LS_KEYS, safeSet } from "./local-storage";
+import { buildRemoteResumeCmd } from "./remote-resume-cmd";
+import { getBehavior } from "./behavior";
 
 /**
  * Tab 生命周期：
@@ -1074,6 +1076,41 @@ export class TabManager {
     }
   }
 
+  /**
+   * F37：手动 resume 一个已结束（灰）的 Tab。与历史浏览器 ↺ 同一套语义：
+   * 本地 → 新终端窗口跑 resume（尊重 F34 自定义命令，缺省 cc 检测→claude）；
+   * 远端 → 构造 `cd <cwd> && <launcher> --resume <sid>` 复制到剪贴板 + toast。
+   * resume 成功后 CC 续写同一 jsonl，既有「会话复活」路径会自动把灰 Tab 点亮。
+   */
+  private async resumeTab(sid: string): Promise<void> {
+    const tab = this.tabs.get(sid);
+    if (!tab) return;
+    const behavior = await getBehavior();
+    if (tab.origin !== null) {
+      const cmd = buildRemoteResumeCmd(sid, tab.cwd ?? "", behavior.resumeCommandRemote);
+      try {
+        await navigator.clipboard.writeText(cmd);
+      } catch {
+        /* 剪贴板失败也无妨——命令在 toast 里可见 */
+      }
+      showActionFailureToast(
+        "已复制 resume 命令",
+        `到远端 [${tab.origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
+        { level: "info", durationMs: 10000 },
+      );
+      return;
+    }
+    try {
+      await invoke("resume_history_session", {
+        sessionId: sid,
+        cwd: tab.cwd ?? "",
+        launcher: behavior.resumeCommandLocal || null,
+      });
+    } catch (err) {
+      showActionFailureToast("恢复失败", String(err));
+    }
+  }
+
   /** 打开指定 Tab 的 cwd 到系统文件管理器。无 cwd / 远端 Tab 静默忽略。 */
   private async openTabCwd(sid: string): Promise<void> {
     const tab = this.tabs.get(sid);
@@ -1278,9 +1315,19 @@ export class TabManager {
     // issue #10：右键菜单「在新窗口打开」（双屏 / 并排）
     root.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-      showTabContextMenu(e.clientX, e.clientY, [
+      const t = this.tabs.get(sid);
+      const items = [
         { label: "在新窗口打开", onClick: () => void this.openInNewWindow(sid) },
-      ]);
+      ];
+      // F37：灰 tab（会话已结束）右键手动 resume——不用绕去历史浏览器。
+      // 本地开新终端；远端 monitor 开不了远端 TTY，复制命令供粘贴（同历史 ↺ 语义）。
+      if (t?.status === "archived") {
+        items.push({
+          label: t.origin ? "复制 resume 命令" : "在新终端 resume",
+          onClick: () => void this.resumeTab(sid),
+        });
+      }
+      showTabContextMenu(e.clientX, e.clientY, items);
     });
 
     return { root, label, badge, cwdBtn };
