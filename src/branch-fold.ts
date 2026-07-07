@@ -194,6 +194,15 @@ export class BranchFolder {
   }
 
   /** 把所有现存 fold-wrap 解开 */
+  /**
+   * Batch13-F39:viewer 增量渲染需要在"往折叠后的 DOM 里二分插入"前先摊平——
+   * timeline 的邻居引用可能已被搬进 fold wrap(非 container 直接子节点),
+   * insertBefore 会 NotFoundError。公开薄壳,插完由 setRecordsAndRebuild 重折。
+   */
+  unwrapAll(): void {
+    this.unwrapAllFolds();
+  }
+
   private unwrapAllFolds(): void {
     const wraps = Array.from(this.container.querySelectorAll(`:scope > .${FOLD_WRAP_CLASS}`));
     for (const wrap of wraps) {
