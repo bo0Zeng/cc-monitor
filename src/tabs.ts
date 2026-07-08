@@ -475,6 +475,32 @@ export class TabManager {
   }
 
   /**
+   * F40c DEV 探针用:active tab 状态一行 JSON——无 devtools 环境下 E2E 断言的
+   * 唯一出口(经 e2e-probe 热键 → fe_perf 日志)。生产不接线,方法本身无副作用。
+   */
+  debugSnapshot(): string {
+    const tab = this.activeId !== null ? this.tabs.get(this.activeId) : undefined;
+    if (!tab) return JSON.stringify({ active: null });
+    const el = tab.streamEl;
+    const statusText = document.getElementById("status-bar")?.textContent ?? "";
+    return JSON.stringify({
+      sid: tab.sessionId.slice(0, 8),
+      scrollTop: Math.round(el.scrollTop),
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+      distBottom: Math.round(el.scrollHeight - el.scrollTop - el.clientHeight),
+      pending: tab.window.pendingCount,
+      midBuffer: tab.midBatchBuffer.length,
+      timeline: tab.timeline.size,
+      foldWraps: tab.stream.contentElement.querySelectorAll(":scope > .branch-fold-wrap").length,
+      sentinel:
+        tab.stream.contentElement.querySelector(":scope > .stream-more-above")?.textContent ??
+        null,
+      err: statusText.startsWith("ERR") || statusText.startsWith("REJ") ? statusText : null,
+    });
+  }
+
+  /**
    * F40b:顶端哨兵——账本非空时置顶「还有 N 条更早消息」,账尽移除。
    * 非 timeline 实体、无 data-uuid(BranchFolder 视作断 run,天然免疫 fold);
    * 二分插入的 anchor 恒为 timeline 元素,最老卡 insertBefore(首卡) 自然落哨兵后。

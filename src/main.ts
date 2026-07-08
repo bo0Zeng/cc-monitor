@@ -52,6 +52,9 @@ window.__ccmPerf = {
   domContentLoaded: 0,
 };
 
+// F40c:DEV-only E2E 探针句柄(动态 import;生产恒 null,调用点全部可选链)
+let e2eProbe: typeof import("./e2e-probe") | null = null;
+
 // Vite HMR 默认在没显式 `hot.accept` 时对 TS 文件部分热替换，可能让旧模块的
 // 已注册 listener / 已渲染 DOM 与新代码并存。对监控这种长跑+事件密集的应用，
 // 部分热替换会造成视觉错乱、消息重复 listener、event_replay 状态不一致。
@@ -313,6 +316,18 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.applyOverrides(await getKeybindings());
   dispatcher.start();
 
+  // F40c:DEV-only E2E 探针(抖动采样 + Ctrl+Alt+F9 状态快照 → fe_perf 日志)。
+  // 生产构建 DEV 恒 false,整支被 vite 消除;热键不进 keybindings registry,
+  // 不占用户配置面。须在 bindEvents 之前就绪(startup batch 紧随 frontend-ready)。
+  if (import.meta.env.DEV) {
+    try {
+      e2eProbe = await import("./e2e-probe");
+      e2eProbe.registerSnapshotHotkey(() => tabs.debugSnapshot());
+    } catch (e) {
+      console.warn("[e2e-probe] 加载失败(不影响功能):", e);
+    }
+  }
+
   // await：保证 listener 注册完成再 emit frontend-ready（否则后端 replay 可能早于
   // 监听就绪而丢事件 —— 主窗口此前靠往返延迟侥幸不触发，显式 await 更稳，也跟
   // viewer 路径一致）。
@@ -332,8 +347,15 @@ window.addEventListener("DOMContentLoaded", async () => {
     },
     // 启动重放（jsonl-batch）期间走 batch 模式（lazy hljs + BranchFolder.batchMode），
     // 结束时 flush。onChunk 已删 —— B 重构后 chunk 切边界对前端不可见。
-    onBatchStart: () => tabs.onBatchStart(),
-    onBatchEnd: () => tabs.onBatchEnd(),
+    // F40c:DEV 抖动探针跨在 batch 窗口上(生产 probe 恒 null,零开销)。
+    onBatchStart: () => {
+      e2eProbe?.startReplayJitterProbe();
+      tabs.onBatchStart();
+    },
+    onBatchEnd: () => {
+      e2eProbe?.stopReplayJitterProbe();
+      tabs.onBatchEnd();
+    },
     // v2.3.0 issue #11: task watcher 推送的 task 列表更新
     onTasksUpdate: (e) => tabs.updateTasks(e.sessionId, e.tasks),
     // issue #23: 会话红绿灯（busy=绿 / idle·shell=红 / waiting=黄）

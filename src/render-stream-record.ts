@@ -81,6 +81,15 @@ export interface StreamSink {
  */
 
 /**
+ * F40c:meta 路由所需的最小 sink 面——viewer 收集段无 timeline 也能复用
+ * (StreamSink 结构兼容,render 路径原样传入)。
+ */
+export type MetaSink = Pick<
+  StreamSink,
+  "onTitleUpdate" | "onQueueOperation" | "onBranchRecord"
+>;
+
+/**
  * 元数据路由 + branch record 喂送。返回:
  * - "consumed":ai-title / custom-title / queue-operation——无卡可渲,到此为止;
  * - "content":其余记录(含 render 后会 skip 的 attachment/空 user——它们仍占链节点,
@@ -88,7 +97,7 @@ export interface StreamSink {
  */
 export function routeMetaAndBranch(
   payload: JsonlLinePayload,
-  sink: StreamSink,
+  sink: MetaSink,
 ): "consumed" | "content" {
   const message = payload.message;
 
