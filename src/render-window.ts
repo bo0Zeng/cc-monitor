@@ -56,8 +56,14 @@ export class UnrenderedRanges {
     return best;
   }
 
-  /** 全集最低的已渲染下标之前的洞不存在时,返回已渲染的最低下标估算辅助:
-   *  即第一个洞若从 0 开始,最低已渲染下标 = 洞的右边界;否则 0。 */
+  /**
+   * 最低的**已渲染**下标。三分支:
+   * - 首洞从 0 起(如 [0,b))→ 最低已渲染 = b(洞右边界即第一个已渲染);
+   * - 首洞不从 0 起 → 下标 0 已渲染 → 0;
+   * - 无洞(全渲染)→ 0。
+   * 前置条件:至少渲染过一段(全未渲染时返回 total,名不副实——该状态只存在于
+   * 首屏 renderRange 之前,调用点不可达;若未来新增调用点需先渲染再问)。
+   */
   lowestRenderedIdx(): number {
     if (this.ranges.length === 0) return 0;
     const [a, b] = this.ranges[0];

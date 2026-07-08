@@ -37,6 +37,20 @@ describe("UnrenderedRanges", () => {
     expect(r.isEmpty).toBe(true);
     expect(r.gapAbove(10)).toBeNull();
   });
+  it("markRendered 大区间整吞中间已渲染岛:账实一致", () => {
+    const r = new UnrenderedRanges(100);
+    r.markRendered(40, 60); // 先有岛
+    r.markRendered(20, 80); // 大区间覆盖岛
+    expect(r.remaining).toBe(40); // [0,20)+[80,100)
+    expect(r.contains(50)).toBe(false);
+    expect(r.contains(19)).toBe(true);
+  });
+  it("gapAbove 洞起点==idx 时严格排除", () => {
+    const r = new UnrenderedRanges(100);
+    r.markRendered(0, 40); // 洞 [40,100)
+    expect(r.gapAbove(40)).toBeNull();
+    expect(r.gapAbove(41)).toEqual([40, 41]);
+  });
   it("total=0 即空", () => {
     expect(new UnrenderedRanges(0).isEmpty).toBe(true);
   });

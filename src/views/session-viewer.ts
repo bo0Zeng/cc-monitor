@@ -11,12 +11,15 @@
 
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { MessageStream } from "../stream";
-import { type JsonlRecord, type RenderContext } from "../cards";
+import {
+  type JsonlRecord,
+  type RenderContext,
+  reconcilePendingToolResults,
+} from "../cards";
 import { BranchFolder } from "../branch-fold";
-import { type BranchRecord } from "../branching";
+import { type BranchRecord, extractBranchRecord } from "../branching";
 import { RecordTimeline } from "../record-timeline";
 import { renderStreamRecord, type StreamSink } from "../render-stream-record";
-import { extractBranchRecord } from "../branching";
 import { UnrenderedRanges } from "../render-window";
 
 interface JsonlLinePayload {
@@ -46,9 +49,9 @@ export interface ViewerOptions {
   origin?: string;
 }
 
-const TAIL_INITIAL = 150; // 首屏渲染的末尾条数(实测 37MB 全量 65s → 首屏秒级)
-const BATCH_SIZE = 200; // 上翻每批补渲染条数
-const TOP_TRIGGER_PX = 800; // 距顶触发补批阈值
+const TAIL_INITIAL = 150; // 首屏渲染的末尾条数(实测 37MB 全量 65s → 首屏 1.1s)
+const BATCH_SIZE = 200; // 上翻每批补渲染条数(实测 200 条 ≈ 1-2s,肉眼可等的一口)
+const TOP_TRIGGER_PX = 800; // 距顶触发补批阈值(约一屏余量,提前于撞顶)
 
 export class SessionViewer {
   private root: HTMLElement;
@@ -65,6 +68,9 @@ export class SessionViewer {
   private renderingBatch = false;
   private renderErrors = 0;
   private firstError = "";
+  /** D 审计 S1/R 竞态:load 世代号——异步间隙(rAF/Channel)后核对,跨会话残余操作直接丢弃 */
+  private loadGeneration = 0;
+  private lastFirstScreenMs: number | null = null;
   private onScrollFill = (): void => {
     void this.maybeFillAbove();
   };
@@ -84,22 +90,22 @@ export class SessionViewer {
   }
 
   /**
-   * issue #12: 流式加载。
+   * Batch13-F39:两阶段加载(实测 37MB 全量渲染 65.5s → 首屏 1.1s)。
    *
-   * 后端按 100 行一 chunk 通过 Channel 边读边发，前端边收边 renderMessage + append
-   * 到 stream，用户 ~500ms 内看到首屏，不再等整文件读完。
+   * 阶段一(收集):后端按 100 行一 chunk 经 Channel 发,前端只收集 payload +
+   * 预提取 branch/queue 数据,**不渲染**。
+   * 阶段二(增量渲染):收齐后渲染末尾 TAIL_INITIAL 条首屏(+深链岛)→ fold 一次
+   * 重建 → 贴底/定位;此后上翻由 maybeFillAbove 按批补渲染,每批先摊平再插入再重折。
    *
-   * BranchFolder 重建延后到全部加载完才做一次 —— 避免每 chunk 都 O(N) 重建造成
-   * O(N²) 总开销。代价：流式期间 fold 还没应用（用户先看到全部消息，最后才折叠）。
-   *
-   * 取消：dispose() 时 stream = null，后续 chunk append 走 optional chaining no-op；
-   * Channel 在 viewer GC 时随 JS 引用回收，backend 下次 send 返 Err 自然 break。
+   * 取消:dispose() 时 stream = null + loadGeneration 递增,后续 chunk/异步残余
+   * 双守卫丢弃;Channel 随 GC 回收,backend 下次 send 返 Err 自然 break。
    */
   async load(opts: ViewerOptions): Promise<void> {
     this.titleEl.textContent = opts.displayTitle;
     this.subtitleEl.textContent = opts.subtitle ?? "";
 
     this.disposeStream();
+    const gen = ++this.loadGeneration;
     this.streamEl.replaceChildren();
     this.stream = new MessageStream(this.streamEl);
 
@@ -143,23 +149,24 @@ export class SessionViewer {
     // 全量渲染 37MB 实测 65s,渲染延后到「尾段首屏 + 上翻增量」
     const channel = new Channel<JsonlLinePayload[]>();
     channel.onmessage = (chunk) => {
-      if (!this.stream) return; // viewer 已 dispose
+      if (!this.stream || this.loadGeneration !== gen) return; // 已 dispose / 已换会话
       for (const p of chunk) {
-        const m = p.message as {
-          type?: string;
-          operation?: string;
-          content?: string;
-          uuid?: string;
-        };
-        if (m.type === "queue-operation") {
-          // 与 renderStreamRecord 的路由条件保持一致(issue #36)
-          if (m.operation === "enqueue" && m.content) queuedContents.push(m.content);
-        } else {
-          const br = extractBranchRecord(p.message);
-          if (br) this.branchRecords.push(br);
+        // 逐条 try/catch:异形 message 抛错不能丢整 chunk 计数,否则下面
+        // while totalRecords<finalCount 永久空转(旧版就修过这类卡死)
+        try {
+          const m = p.message as { type?: string; operation?: string; content?: string };
+          if (m.type === "queue-operation") {
+            // 与 renderStreamRecord 的路由条件保持一致(issue #36)
+            if (m.operation === "enqueue" && m.content) queuedContents.push(m.content);
+          } else {
+            // ai-title/custom-title 等喂进去也安全:extractBranchRecord 类型门卫返 null
+            const br = extractBranchRecord(p.message);
+            if (br) this.branchRecords.push(br);
+          }
+        } catch (err) {
+          console.warn("[session-viewer] 收集阶段单条异常(跳过):", err);
         }
-        if (m.uuid) this.uuidToIdx.set(m.uuid, this.payloads.length);
-        this.payloads.push(p);
+        this.payloads.push(p); // 占位必须 push:下标与 finalCount 对齐
       }
       totalRecords += chunk.length;
       this.statusEl.textContent = `接收中 · 已 ${totalRecords} 条…`;
@@ -182,7 +189,7 @@ export class SessionViewer {
       // 再切到最终状态文，否则会被晚到的 onmessage 又改回"加载中"。
       while (totalRecords < finalCount) {
         await new Promise((r) => setTimeout(r, 0));
-        if (!this.stream) return; // viewer 已 dispose
+        if (!this.stream || this.loadGeneration !== gen) return; // dispose / 已换会话
       }
       if (!this.stream) return;
       // F39:排序防御(chunk 应有序,二分插入也容乱序,排序让区间账本与 payload 下标对齐)
@@ -207,8 +214,8 @@ export class SessionViewer {
         this.renderRange(Math.max(0, targetIdx - 100), Math.min(total, targetIdx + 100));
       }
       this.rebuildFold();
-      const loadMs = Math.round(performance.now() - t0);
-      this.updateStatus(total, loadMs);
+      this.lastFirstScreenMs = Math.round(performance.now() - t0);
+      this.updateStatus(total);
       // issue #6：从搜索结果跳进来 → 定位到命中消息；否则默认贴底。
       if (opts.scrollToUuid) {
         this.scrollToMessage(opts.scrollToUuid);
@@ -217,6 +224,8 @@ export class SessionViewer {
       }
       // 上翻补批:挂在 .stream 滚动容器上(dispose 时随 streamEl 替换自然解绑)
       this.streamEl.addEventListener("scroll", this.onScrollFill, { passive: true });
+      // R1(D 审计):短会话首屏不足一屏时永远不会有 scroll 事件——主动踢一脚自链
+      requestAnimationFrame(() => void this.maybeFillAbove());
     } catch (e) {
       this.statusEl.textContent = `加载失败：${String(e)}`;
     }
@@ -245,6 +254,10 @@ export class SessionViewer {
       }
     }
     this.unrendered.markRendered(from, to);
+    // R2(D 审计):批缝落在 tool_use/tool_result 配对中间时,result 先渲染成
+    // fallback 孤儿卡;上方批把 tool_use 补出来后必须回填合并(TabManager 每批
+    // onBatchEnd 都做,viewer 此前从未调过——乱序渲染下是确定性视觉回归)
+    if (this.renderCtx) reconcilePendingToolResults(this.renderCtx);
   }
 
   /** F39:增量批后幂等重建 fold(branchRecords 全量;未渲染 uuid 的卡不在 DOM,自然跳过) */
@@ -259,39 +272,63 @@ export class SessionViewer {
     }
   }
 
-  private updateStatus(total: number, firstScreenMs?: number): void {
+  private updateStatus(total: number): void {
     const left = this.unrendered?.remaining ?? 0;
     const shown = total - left;
     const err =
       this.renderErrors > 0 ? `（${this.renderErrors} 条渲染失败，首个 ${this.firstError}）` : "";
-    const ms = firstScreenMs !== undefined ? ` · 首屏 ${firstScreenMs}ms` : "";
+    const ms = this.lastFirstScreenMs !== null ? ` · 首屏 ${this.lastFirstScreenMs}ms` : "";
+    // 顶部还有洞 → "上翻加载";只剩深链岛-尾段之间的内部缝 → 如实说(上翻无洞可补)
+    const fillable = this.unrendered
+      ? this.unrendered.gapAbove(this.unrendered.lowestRenderedIdx()) !== null
+      : false;
     this.statusEl.textContent =
       left > 0
-        ? `已显示 ${shown}/${total} 条${ms} · 上翻加载更早${err}`
+        ? `已显示 ${shown}/${total} 条${ms} · ${fillable ? "上翻加载更早" : "中部有未加载段（搜索跳转缝）"}${err}`
         : `${total} 条记录${ms} · 只读历史视图${err}`;
   }
 
-  /** F39:滚近顶部 → 往上补一批(原生 overflow-anchor 稳视口,F38 已实证该路径) */
+  /** R1:触发判定——不足一屏(无滚动条,事件永远不来)或滚近顶部 */
+  private shouldFill(): boolean {
+    const el = this.streamEl;
+    return el.scrollHeight - el.clientHeight <= 1 || el.scrollTop <= TOP_TRIGGER_PX;
+  }
+
+  /**
+   * F39:滚近顶部/不足一屏 → 往上补一批。
+   * 视口稳定不再依赖原生 overflow-anchor(D 审计 R3:每批 fold 全量重建会销毁
+   * 锚点节点致跳视口;且 scrollTop==0 时规范不做补偿、WebKitGTK 根本没有锚定)
+   * ——改为手动补偿:突变同一任务内完成,临时关原生锚定,按 scrollHeight 差值回写。
+   * 批后自链复检(R1:零高批/短内容场景没有 scroll 事件可依赖)。
+   */
   private async maybeFillAbove(): Promise<void> {
     if (this.renderingBatch || !this.unrendered || this.unrendered.isEmpty) return;
-    if (this.streamEl.scrollTop > TOP_TRIGGER_PX) return;
-    // 最低已渲染下标上方的洞;下标 0 已渲染时为 null(顶部无洞,内部缝由深链岛
-    // 文档化为 v1 限制,不在 scroll 顶触发器职责内)
+    if (!this.shouldFill()) return;
     const gap = this.unrendered.gapAbove(this.unrendered.lowestRenderedIdx());
     if (!gap) return;
+    const gen = this.loadGeneration;
     this.renderingBatch = true;
     this.statusEl.textContent = "加载更早消息…";
     try {
       // 让状态文先绘一帧再做同步渲染批
       await new Promise((r) => requestAnimationFrame(() => r(null)));
-      if (!this.stream) return;
+      // 世代守卫:rAF 间隙里可能已切换会话(旧 gap 套新会话会渲出错乱岛/覆写状态栏)
+      if (!this.stream || this.loadGeneration !== gen) return;
       const [a, b] = gap;
+      const el = this.streamEl;
+      el.style.overflowAnchor = "none";
+      const beforeH = el.scrollHeight;
+      const beforeTop = el.scrollTop;
       this.renderRange(Math.max(a, b - BATCH_SIZE), b);
       this.rebuildFold();
+      el.scrollTop = beforeTop + (el.scrollHeight - beforeH);
+      el.style.overflowAnchor = "";
       this.updateStatus(this.payloads.length);
     } finally {
       this.renderingBatch = false;
     }
+    // 自链:下一帧复检(补批通常把 scrollTop 顶过阈值自然停;零高批/不足一屏则继续)
+    requestAnimationFrame(() => void this.maybeFillAbove());
   }
 
   /**
@@ -356,6 +393,8 @@ export class SessionViewer {
     this.renderSink = null;
     this.folder = null;
     this.branchRecords = [];
+    this.renderingBatch = false;
+    this.lastFirstScreenMs = null;
   }
 
   // (旧的 renderAll 被流式 load 替代，删了 —— v2.2 issue #12)
