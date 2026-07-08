@@ -371,8 +371,9 @@ export async function bindEvents(
   // v2.2 (issue #12): 包裹 batch-start / batch-end 哨兵，让 TabManager 在
   // 重放期把 BranchFolder 切 batch 模式（每条 push 不算），结束后 flush 一次。
   //
-  // P5.2 B 重构：chunkIndex / chunkTotal 元数据仍在后端 payload 里（兼容），
-  // 但前端 dispatcher 不再用 —— 所有 payload 走单一路径，前端 timeline 按 seq 排序。
+  // P5.2 B 重构：chunkIndex / chunkTotal 不再参与**渲染顺序**（所有 payload 走单一
+  // 路径，前端 timeline 按 seq 排序）；但 chunkIndex===0 仍是 batch-start 哨兵的
+  // 触发条件（下方 :389,ARCHITECTURE §1 依赖它）——不是死字段（Phase G 终审勘误）。
   registrations.push(
     sub<{
       chunkIndex: number;

@@ -9,6 +9,14 @@ on:
 
 # Windows-only：cc-monitor v1 不支持 Linux/macOS（核心 Win32 调用）。
 # 跨平台支持是 v2 计划，届时这里再加 matrix.os。
+
+# 显式 bash：GitHub 对显式指定的 bash 注入 `-eo pipefail`（默认 shell 只有 -e）。
+# 防未来某步加 `cargo test | tee` 这类管道时静默吞掉左侧失败（本仓踩过：裸管道
+# 掩盖编译失败误报全绿）。与 job 级 working-directory 默认按属性合并,互不覆盖。
+defaults:
+  run:
+    shell: bash
+
 jobs:
   rust:
     name: Rust lint + test

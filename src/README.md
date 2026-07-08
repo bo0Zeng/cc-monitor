@@ -1,6 +1,6 @@
 # 前端模块导览（`src/`）
 
-Vanilla TypeScript + Vite + Tauri 2 IPC。不引入框架（React/Vue 都没有）—— 这是个 ~3k 行的小应用，原生 DOM 足够。
+Vanilla TypeScript + Vite + Tauri 2 IPC。不引入框架（React/Vue 都没有）—— ~12K 行 TS 的中型应用（根 README 口径），原生 DOM 依旧足够——分层靠模块边界与本导览维持。
 
 本文件做"开发者打开 src/ 后第一眼看到的导航"。后端结构见 [`../src-tauri/README.md`](../src-tauri/README.md)。
 
@@ -26,6 +26,7 @@ index.html  ─> /src/main.ts (defer)
 | **tabs.ts** | TabManager 状态机：Tab 生命周期（live / archived）+ BranchFolder + v2.3 TasksPanel 路由；v2.4 (issue #2) `switchTo(sid, "manual"\|"auto")` + `userActive(sid)` + 5s `manualOverrideUntil`；`applyBehavior(cfg)` 同步设置面板 toggle。**v2.6 B 重构**：删了 inPrependMode / pendingPrependFragment / pendingToolGroup / appendCardOrBuffer / onChunk / markCardUuid / feedBranchFolder；onLine 改调 renderStreamRecord 共享管线。**issue #10**：`tab.cwd` 取最早 seq 记录的 cwd（项目根，防会话 cwd 漂移到子目录）；`openActiveInNewWindow()` + Tab 右键「在新窗口打开」。onLine 入口双层去重：`seenSeqs`（#17 同 seq）+ `processedUuids`（#26 换 seq 重投按 uuid 拒重，INVARIANTS § 25） | `onLine(payload) / onBatchStart() / onBatchEnd() / userActive() / openActiveInNewWindow() / archiveTab() / closeTab() / cycleActive()` |
 | **record-timeline.ts** ⭐ v2.6 | 按 seq 排序的 TimelineEntry 数组 + DOM 挂载：`insert(entry)` binary search 找位置 → `stream.insertNode(element, anchor)`；`peekPrev(seq)` 给 tool-group 后处理用。**消除了** inPrependMode/pendingPrependFragment/chunkIndex 全部状态机。Batch13-F40a：deferMode（启动重放延后挂载）退役——旧记录由 TailWindow 收纳不建卡，本类回归纯「seq 有序 + 邻居查询」 | `new RecordTimeline(stream).insert / peekPrev / dispose / size` |
 | **live-window.ts** ⭐ F40a | live tab 尾部优先窗口账本（单洞后缀不变量）：`floor` 水位 + 惰性排序 pending。启动重放旧块 `defer` 收纳（不建卡）；`takeTail(k)` 弹 seq 最高段供物化/上翻补批（F40b） | `new TailWindow().admit / pinFloor / defer / takeTail / pendingCount / dispose` |
+| **render-window.ts** ⭐ F39 | viewer 未渲染区间账本：有序不相交半开区间集（尾段+深链岛+洞的几何），`markRendered` 区间减法 / `gapAbove` 找最近上方洞——上翻补批的口粮来源 | `new UnrenderedRanges(total).markRendered / gapAbove / lowestRenderedIdx / contains / remaining` |
 | **e2e-probe.ts**（F40c，DEV-only） | E2E 探针，生产构建零包含（main.ts 以 `import.meta.env.DEV` 门控动态 import 接线于 onBatchStart/End）：重放抖动 rAF 采样（密度绊线，标定见头注释）+ 状态快照（Ctrl+Alt+F9 / 中键状态栏 → `TabManager.debugSnapshot()`），经 fe_perf 日志落盘——无 devtools 环境的 E2E 断言出口（详 e2e/README.md） | `startReplayJitterProbe / stopReplayJitterProbe / registerSnapshotHotkey / countReversals` |
 | **render-stream-record.ts** ⭐ v2.6 | 三 caller（TabManager / SessionViewer / Subagent）共享的渲染管线。F40a 拆两段式：`routeMetaAndBranch`（title/queue 路由 + branch 喂送——收纳与渲染路径的单一来源）+ `renderContentRecord`（建卡 / tool-group 合并 / userActive）；`renderStreamRecord` = 组合壳。sink 接口抽象 caller 差异 | `routeMetaAndBranch(payload, sink)` / `renderContentRecord(payload, ctx, sink)` / `renderStreamRecord(...)` |
 | **stream.ts** | 单 Tab 的消息流容器，ResizeObserver + **守卫式 `snap()`** 自动贴底；`contentElement` 暴露真实卡片容器给 BranchFolder。`insertNode(node, anchor)` 给 RecordTimeline 按 seq 挂卡。贴底稳定性三约束见 INVARIANT § 21（守卫 snap + overflow-anchor + 尾部优先收纳） | `MessageStream.insertNode() / scrollToBottom() / dispose()` |
@@ -52,7 +53,7 @@ index.html  ─> /src/main.ts (defer)
 | **settings/diagnostics-section.ts** (v2.0.0+) | 设置面板「诊断」区：log_enabled toggle / log_level select / error_toast toggle / log 路径 / [打开 log/dir]；支持 `{ headless: true }` 给 CollapsibleGroup 复用 | `DiagnosticsSection.element` |
 | **error-toast.ts** (v2.0.0+) | listen `monitor-error` 事件，右下角垂直堆叠红色 toast，点击直接打开 log 文件 | `bindErrorToast()` |
 | **views/history.ts** | 历史浏览器（项目分组 + 两级懒加载 + 增删改 + v2.2 fork 树形 + 流式 session 列表）。**issue #6 加「全文」模式**：调 `search_history` 搜会话内容（默认 user/assistant 文本，可勾选含工具内容）+ 结果 snippet `<mark>` 高亮 + 点击跳 viewer 定位 | `HistoryView.open() / handleEscape()` |
-| **views/session-viewer.ts** | 只读消息查看器（点击历史条目进入）；v2.2 改用 `stream_read_session_jsonl` + Channel 边收边渲染；**issue #6 加 `scrollToUuid`**：从搜索结果跳进来时加载后定位命中消息 + 临时高亮。**v2.8.1 修空白 bug**：流元素 class `stream session-viewer-stream` 没有 `.active`，命中基类 `.stream{visibility:hidden}`（多 Tab 机制：仅 `.active` 流可见）→ 卡片全渲染却不可见；`.session-viewer-stream` 显式 `visibility:visible` 修复（详 INVARIANT § 23）。另逐条 `try/catch` 渲染，单条失败不再整屏空白 | `SessionViewer.load(opts) / dispose()` |
+| **views/session-viewer.ts** | 只读消息查看器（点击历史条目进入）；v2.2 改用 `stream_read_session_jsonl` + Channel 边收边渲染；**issue #6 加 `scrollToUuid`**：从搜索结果跳进来时加载后定位命中消息 + 临时高亮。**v2.8.1 修空白 bug**：流元素 class `stream session-viewer-stream` 没有 `.active`，命中基类 `.stream{visibility:hidden}`（多 Tab 机制：仅 `.active` 流可见）→ 卡片全渲染却不可见；`.session-viewer-stream` 显式 `visibility:visible` 修复（详 INVARIANT § 23）。另逐条 `try/catch` 渲染，单条失败不再整屏空白。**Batch13-F39 尾部优先增量渲染**：Channel 阶段只收集 payload（meta/branch 经 `routeMetaAndBranch`），首屏渲染尾 150 条（深链另渲目标 ±100 岛），上翻自动补批（同步手动补偿视口），`UnrenderedRanges`（render-window.ts）记账未渲染洞——37MB 会话首屏 65.5s→1.1s | `SessionViewer.load(opts) / dispose()` |
 | **tasks-panel.ts** (v2.3.0 issue #11) | Tab stream 顶部 sticky 折叠卡：显示 Claude Code CLI 的 task 列表（`~/.claude/tasks/<sid>/`）。完整 replace 渲染（无 diff），0 task 时整 panel 隐藏。折叠状态 localStorage 全局持久 (`cc-monitor.tasks-panel.collapsed`) | `new TasksPanel().update(tasks) / fetchSessionTasks(sid)` |
 | **settings/data-section.ts** (v2.3.0 issue #3 A) | 设置面板「数据存储」折叠分组：调 `get_data_paths` 拉所有持久路径 + WebView2 UserDataFolder + localStorage keys；每项配 [打开] 按钮调 opener。纯展示，无危险操作 | `new DataSection({ headless }).element / refresh()` |
 | **styles.css** | 全部样式 + token 系统 | — |
@@ -93,13 +94,14 @@ index.html  ─> /src/main.ts (defer)
 点击某个 session 行
   → SessionViewer.load({ jsonlPath, ... })
   → invoke('stream_read_session_jsonl', { jsonlPath, onChunk: Channel })
-  → 每 100 行一 chunk 增量渲染（复用 renderMessage，与实时 Tab 同一套）
+  → Channel 阶段只收集 payload（F39 起**不边收边渲**）；收齐后渲染尾段 150 条
+  → 上翻自动补批 200 条/批（渲染仍复用 renderMessage，与实时 Tab 同一套管线）
 ```
 
 ## 关键设计选择 + 理由
 
 ### 不引入框架（React/Vue）
-~3k 行小应用，原生 DOM 够用；少 100-200KB 依赖体积；HMR 强制 full reload 简化心智模型。
+起步时是 ~3k 行小应用，如今 ~12K 行仍未引框架：原生 DOM + 明确模块边界够用；少 100-200KB 依赖体积；HMR 强制 full reload 简化心智模型。
 
 ### `events.ts` 批量调度让出主线程
 replay 一次性 emit 整个 history Vec，前端用 BATCH_SIZE=40 + BATCH_MS=8 + `setTimeout(0)` 让出主线程。

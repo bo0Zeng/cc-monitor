@@ -65,8 +65,9 @@
    │   record-timeline.ts ⭐ v2.6 按 seq binary insert + DOM insertBefore│
    │       │                                                            │
    │       ▼                                                            │
-   │   stream.ts (MessageStream: insertNode + 守卫式 snap 贴底,           │
-   │             重放期上方插入靠 overflow-anchor + 延后批量挂载)        │
+   │   stream.ts (MessageStream: insertNode + 守卫式 snap 贴底;          │
+   │             重放旧记录经 live-window.ts(TailWindow)收纳不建卡,      │
+   │             上翻补批同步手动补偿——F40a/b,详 §5 与 INVARIANTS §21)   │
    │       │                                                            │
    │       ▼                                                            │
    │   render.ts (marked + KaTeX + hljs + DOMPurify; opts.lazy 参数)    │
@@ -210,6 +211,9 @@ v2.6 B 重构前顺序靠"持锁完整 emit"（record 排队等锁）；**现行
 replay 时一次性发整个 Vec<JsonlLinePayload>，前端 push 进同一 queue 走原批量调度。
 
 **为什么**：Tauri IPC 每次 emit 都有序列化 + 派发 overhead。N=3000 时累计 ~400ms 主线程阻塞，启动可见显著卡顿。BATCH 单次序列化降到 ~50ms。
+
+### 视口外渲染跳过 = content-visibility + 精确估高（#35 F38，虚拟化第一层）
+所有顶层卡片(`.stream-content > *` 与折叠段内 `.branch-fold-body-inner > *`)带 `content-visibility: auto`——视口外与隐藏 tab 的卡片跳过布局/绘制。`contain-intrinsic-size` 初值由 `src/height-estimate.ts` 在建卡时按块类型精确估算(prose 走 @chenglou/pretext canvas 测宽、代码块行数×行高、折叠 details 常数;**估值只是初值**,`auto` 关键字让浏览器渲染过后记住真实尺寸)。约束:估高路径**绝不许抛**(pretext 失败双降级+三振永久禁用);780px 定宽列是估值成立前提;卡片被 reparent 进 fold 后由 inner 规则续保 c-v。这层吃掉了 paint/layout 成本,是后两层(F39/F40 不建 DOM)的地基。
 
 ### 启动重放贴底消抖 = 守卫式 snap + overflow-anchor + 尾部优先收纳（F40a）
 重放"末块先发"。Batch13-F40a 起 `TabManager.onLine` 按 seq 门控（详 INVARIANTS § 21）：
