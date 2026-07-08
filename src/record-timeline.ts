@@ -108,6 +108,24 @@ export class RecordTimeline {
     return this.entries.length;
   }
 
+  /** F40b:最高已渲染 seq(空 timeline = -Infinity)。R-1 中部插入判定用。 */
+  get maxSeq(): number {
+    return this.entries.length > 0
+      ? this.entries[this.entries.length - 1].seq
+      : Number.NEGATIVE_INFINITY;
+  }
+
+  /**
+   * F40b S-6:按 element 删 entry。reconcilePendingToolResults 把孤儿 fallback 卡
+   * 从 DOM remove 后必须同步删账——否则该 entry 之后可能被二分插入选作 anchor
+   * (元素已不在 DOM → insertNode 只能降级尾部追加,顺序错位)。线性扫描(单次
+   * reconcile 移除数 ≤ pending 数,可忽略)。
+   */
+  removeByElement(el: HTMLElement): void {
+    const idx = this.entries.findIndex((e) => e.element === el);
+    if (idx >= 0) this.entries.splice(idx, 1);
+  }
+
   /** Tab 关闭 / SessionViewer dispose 时调，断 GC 引用 */
   dispose(): void {
     this.entries = [];

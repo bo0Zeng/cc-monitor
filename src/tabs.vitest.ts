@@ -31,10 +31,19 @@ vi.mock("./stream", () => ({
 vi.mock("./record-timeline", () => ({
   RecordTimeline: class {
     constructor(_s: unknown) {}
-    insert(): void {}
+    /** 测试可写:R-1 中部插入判定读它(真实现=最高已渲染 seq) */
+    _maxSeq = Number.NEGATIVE_INFINITY;
+    insert(e: { seq: number }): void {
+      // 闭合「直渲推高 maxSeq → 老块落缓冲」反馈链(D 审计 S-4)
+      this._maxSeq = Math.max(this._maxSeq, e.seq);
+    }
+    removeByElement(): void {}
     dispose(): void {}
     get size(): number {
       return 0;
+    }
+    get maxSeq(): number {
+      return this._maxSeq;
     }
   },
 }));
@@ -59,7 +68,7 @@ vi.mock("./render-stream-record", () => ({
   ),
   renderContentRecord: vi.fn(),
 }));
-vi.mock("./cards", () => ({ reconcilePendingToolResults: vi.fn() }));
+vi.mock("./cards", () => ({ reconcilePendingToolResults: vi.fn(() => []) }));
 vi.mock("./cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("./tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
 vi.mock("./error-toast", () => ({ showActionFailureToast: vi.fn() }));
@@ -390,12 +399,13 @@ describe("TabManager 生命周期", () => {
     });
     vi.mocked(reconcilePendingToolResults).mockImplementation(() => {
       order.push("reconcile");
+      return [];
     });
     tm.onBatchEnd();
     tm.switchTo("mat"); // virgin → 同步物化
     expect(order.join(",")).toContain("unwrap,render,render,reconcile,rebuild");
     spy.mockImplementation(() => {});
-    vi.mocked(reconcilePendingToolResults).mockImplementation(() => {});
+    vi.mocked(reconcilePendingToolResults).mockImplementation(() => []);
   });
 
   it("F40a S-5：archived tab 不进后台物化队列", () => {
@@ -410,6 +420,147 @@ describe("TabManager 生命周期", () => {
     // 关键断言:dead 从未入队(队首 shift 的是 idle1)
     expect(peek(tm).materializeQueue).toEqual(["idle2"]);
     expect(peek(tm).tabs.get("dead")!.window.pendingCount).toBe(1); // 未被物化
+  });
+
+  // === Batch13-F40b：R-1 缓冲 / 上翻补批 / 哨兵 ===
+
+  it("F40b R-1：批期窗口内中部插入缓冲不渲,onBatchEnd 排序一次挂载;后台照计 unread", async () => {
+    const spy = await spyRender();
+    tm.onLine(mkContent("r1a", 1, "ra-1")); // active,floor=1
+    tm.onLine(mkContent("r1b", 100, "rb-1")); // 后台?否——第二个 tab 不自动切,live 直渲钉 floor=100
+    const bg = peek(tm).tabs.get("r1b")!;
+    expect(peek(tm).activeId).toBe("r1a");
+    (bg.timeline as unknown as { _maxSeq: number })._maxSeq = 500; // 已渲染到 seq 500
+    tm.onBatchStart();
+    spy.mockClear();
+    tm.onLine(mkContent("r1b", 300, "rb-mid1")); // ≥floor 且 <maxSeq → 缓冲
+    tm.onLine(mkContent("r1b", 200, "rb-mid2"));
+    expect(spy.mock.calls.length).toBe(0);
+    expect(bg.midBatchBuffer.map((p) => p.seq)).toEqual([300, 200]);
+    expect(bg.unread).toBe(2); // 离线期真新消息照计
+    tm.onLine(mkContent("r1b", 600, "rb-tail")); // >maxSeq…但 mock maxSeq 恒 500 → 600≥500?
+    // 600 > maxSeq(500) → 不缓冲,直渲
+    expect(spy.mock.calls.length).toBe(1);
+    tm.onBatchEnd(); // flush:排序后一次挂载
+    const seqs = spy.mock.calls.slice(1).map((c) => (c[0] as { seq: number }).seq);
+    expect(seqs).toEqual([200, 300]);
+    expect(bg.midBatchBuffer.length).toBe(0);
+  });
+
+  it("F40b fill：R-2 切入踢链 + 选区守卫 + 非 active 不触发", async () => {
+    const spy = await spyRender();
+    tm.onLine(mkContent("fillA", 1, "fa-1")); // active
+    tm.onBatchStart();
+    for (let s = 100; s < 800; s++) tm.onLine(mkContent("fills", s, `fs-${s}`)); // 后台收纳 700 条
+    tm.onBatchEnd();
+    const t = peek(tm).tabs.get("fills")!;
+    expect(t.window.pendingCount).toBe(700);
+
+    // 选区进行中切入:virgin 物化照走(4 轮×150=600,物化不看选区);
+    // R-2 踢链(不可滚+账余 100)被选区守卫挡 → 账保 100
+    const selSpy = vi
+      .spyOn(document, "getSelection")
+      .mockReturnValue({ isCollapsed: false } as unknown as Selection);
+    tm.switchTo("fills");
+    expect(t.window.pendingCount).toBe(100);
+    // 选区仍在:scroll 也被挡
+    t.streamEl.dispatchEvent(new Event("scroll"));
+    expect(t.window.pendingCount).toBe(100);
+    // 选区收起:scroll → 补批弹尽
+    selSpy.mockReturnValue({ isCollapsed: true } as unknown as Selection);
+    t.streamEl.dispatchEvent(new Event("scroll"));
+    expect(t.window.pendingCount).toBe(0);
+    selSpy.mockRestore();
+
+    // 非 active:先切走,再给 fills(后台,floor 已钉)造残账——onBatchEnd 的
+    // 「active 不足一屏补物化」只作用于 active(fillA,无账),后台账保留
+    tm.switchTo("fillA");
+    tm.onBatchStart();
+    tm.onLine(mkContent("fills", 50, "fs-old")); // seq<floor → 收纳
+    tm.onBatchEnd();
+    expect(t.window.pendingCount).toBe(1);
+    spy.mockClear();
+    t.streamEl.dispatchEvent(new Event("scroll"));
+    expect(t.window.pendingCount).toBe(1); // 非 active,未补
+    expect(spy.mock.calls.length).toBe(0);
+  });
+
+  it("F40b fill：renderingFill 防重入——补批渲染中同步再触发 scroll 不嵌套", async () => {
+    const spy = await spyRender();
+    tm.onLine(mkContent("reA", 1, "re-1")); // active
+    tm.onBatchStart();
+    for (let s = 1000; s < 1300; s++) tm.onLine(mkContent("reB", s, `re-${s}`)); // 后台 300
+    tm.onBatchEnd();
+    const t = peek(tm).tabs.get("reB")!;
+    tm.switchTo("reB"); // virgin 全物化(300≤600),floor=1000
+    expect(t.window.pendingCount).toBe(0);
+
+    tm.switchTo("reA");
+    tm.onBatchStart();
+    for (let s = 100; s < 400; s++) tm.onLine(mkContent("reB", s, `re-old-${s}`)); // <floor 收纳 300
+    tm.onBatchEnd();
+    expect(t.window.pendingCount).toBe(300);
+
+    // 选区挡住切入时的 R-2 踢链,保住账本
+    const selSpy = vi
+      .spyOn(document, "getSelection")
+      .mockReturnValue({ isCollapsed: false } as unknown as Selection);
+    tm.switchTo("reB");
+    expect(t.window.pendingCount).toBe(300);
+    selSpy.mockReturnValue({ isCollapsed: true } as unknown as Selection);
+    spy.mockImplementation(() => {
+      t.streamEl.dispatchEvent(new Event("scroll")); // 渲染中同步重入
+    });
+    t.streamEl.dispatchEvent(new Event("scroll"));
+    // 只弹一批 200(嵌套触发被 renderingFill 挡;若守卫失效会连弹到 0)
+    expect(t.window.pendingCount).toBe(100);
+    spy.mockImplementation(() => {});
+    selSpy.mockRestore();
+  });
+
+  it("F40b：物化/补批 sink 不接 onRealUserInput(历史 user 卡不自动切 tab)", async () => {
+    const spy = await spyRender();
+    tm.onLine(mkContent("uaA", 1, "ua-1")); // active
+    tm.onBatchStart();
+    for (let s = 10; s < 13; s++) tm.onLine(mkContent("uaB", s, `ub-${s}`));
+    tm.onBatchEnd();
+    spy.mockClear();
+    tm.switchTo("uaB"); // 物化 3 条
+    const materializeCalls = spy.mock.calls.filter((c) => (c[0] as { seq: number }).seq >= 10);
+    expect(materializeCalls.length).toBe(3);
+    for (const c of materializeCalls) {
+      expect((c[2] as { onRealUserInput?: unknown }).onRealUserInput).toBeUndefined();
+    }
+    // 对照:live 路径的 sink 带 onRealUserInput
+    tm.onLine(mkContent("uaB", 99, "ub-live"));
+    const liveCall = spy.mock.calls[spy.mock.calls.length - 1];
+    expect((liveCall[2] as { onRealUserInput?: unknown }).onRealUserInput).toBeTypeOf("function");
+  });
+
+  it("F40b 哨兵：账本非空显示剩余条数,补尽消失", async () => {
+    await spyRender();
+    tm.onLine(mkContent("sentA", 1, "sa-1")); // active
+    tm.onBatchStart();
+    for (let s = 100; s < 300; s++) tm.onLine(mkContent("sentB", s, `sb-${s}`));
+    tm.onBatchEnd();
+    tm.switchTo("sentB"); // 物化(4 轮×150 上限 → 200 全弹尽)
+    const t = peek(tm).tabs.get("sentB")!;
+    expect(t.window.pendingCount).toBe(0);
+    expect(t.stream.contentElement.querySelector(".stream-more-above")).toBeNull();
+
+    // 再造残账(先切走,防 onBatchEnd 的 active 补物化清账):哨兵文本准确
+    tm.switchTo("sentA");
+    tm.onBatchStart();
+    for (let s = 10; s < 15; s++) tm.onLine(mkContent("sentB", s, `sb-old-${s}`)); // <floor 收纳
+    tm.onBatchEnd();
+    // 直接刷哨兵验证文本(不切入——jsdom 恒不可滚,切入会走 R-2 踢链清账)
+    (tm as unknown as { updateSentinel(x: Tab): void }).updateSentinel(t);
+    const sentinel = t.stream.contentElement.querySelector(".stream-more-above");
+    expect(sentinel?.textContent).toContain("5 条更早消息");
+    // 切入:R-2 踢链(不可滚+账本有余)→ 补批到账尽 → 哨兵消失
+    tm.switchTo("sentB");
+    expect(t.window.pendingCount).toBe(0);
+    expect(t.stream.contentElement.querySelector(".stream-more-above")).toBeNull();
   });
 
   it("F40a meta 记录批期被消费不进账本", () => {

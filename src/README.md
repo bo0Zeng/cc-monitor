@@ -74,7 +74,7 @@ index.html  ─> /src/main.ts (defer)
                → stream.insertNode(element, anchor)    // 守卫式 snap 贴底
 ```
 
-启动重放（jsonl-batch，末块先发）走同一管线,但经 F40a 尾部优先门控:active tab 首条 content 钉 `floor`,尾块直渲;更老的块与后台 virgin tab 全部收纳进 `TailWindow`(不建卡,meta/branch 经 `routeMetaAndBranch` 照喂),批后空闲物化尾 150 / switchTo 同步物化(消抖 + 免建卡,INVARIANT § 21)。
+启动重放（jsonl-batch，末块先发）走同一管线,但经 F40a 尾部优先门控:active tab 首条 content 钉 `floor`,尾块直渲;更老的块与后台 virgin tab 全部收纳进 `TailWindow`(不建卡,meta/branch 经 `routeMetaAndBranch` 照喂),批后空闲物化尾 150 / switchTo 同步物化(消抖 + 免建卡,INVARIANT § 21)。F40b:active tab 上翻到顶部 800px 内自动补批(200 条/批,同步手动补偿视口),顶端哨兵显示「还有 N 条更早消息」;批期大增量老块经 `midBatchBuffer` 批末一次挂载。
 
 ### 历史浏览（懒加载）
 

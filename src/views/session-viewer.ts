@@ -256,8 +256,13 @@ export class SessionViewer {
     this.unrendered.markRendered(from, to);
     // R2(D 审计):批缝落在 tool_use/tool_result 配对中间时,result 先渲染成
     // fallback 孤儿卡;上方批把 tool_use 补出来后必须回填合并(TabManager 每批
-    // onBatchEnd 都做,viewer 此前从未调过——乱序渲染下是确定性视觉回归)
-    if (this.renderCtx) reconcilePendingToolResults(this.renderCtx);
+    // onBatchEnd 都做,viewer 此前从未调过——乱序渲染下是确定性视觉回归)。
+    // F40b S-6:孤儿卡出 DOM 的同时出账,防悬空 anchor。
+    if (this.renderCtx) {
+      for (const el of reconcilePendingToolResults(this.renderCtx)) {
+        this.renderSink?.timeline.removeByElement(el);
+      }
+    }
   }
 
   /** F39:增量批后幂等重建 fold(branchRecords 全量;未渲染 uuid 的卡不在 DOM,自然跳过) */

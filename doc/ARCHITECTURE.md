@@ -218,7 +218,9 @@ replay 时一次性发整个 Vec<JsonlLinePayload>，前端 push 进同一 queue
 - **窗口内中部插入交给原生 `overflow-anchor`**：不手动补偿 scrollTop（叠加会 double-shift）。
 - **尾部优先收纳**：active tab 首条 content 记录钉 `floor`，尾块（`seq ≥ floor`）直渲进步式首屏；更老的块与后台 virgin tab 的全部记录**只进 `TailWindow` 账本不建卡**（meta/branch 经 `routeMetaAndBranch` 照喂）。后台 tab 批后 `requestIdleCallback` 逐个物化尾 150 条；`switchTo` 命中 virgin 同步物化。物化 = `unwrapAll` → `renderContentRecord`× → `reconcilePendingToolResults` → `rebuildNow`（无条件重折）。
 
-**为什么**：旧内容逐条插到贴底视口上方会让浏览器逐帧重排 + 重做 scroll anchoring，HiDPI/高刷屏分数像素下 ±0.5px 高频抖动（deferMode 时代实测 66→1 帧）；F40a 让**启动重放**的上方插入为 0，且 9.4k 条重放只建 ~尾块+150×tabs 张卡（建卡是重放期最大成本——markdown/DOMPurify/pretext 全免）。历史方案 deferMode/`flushDeferred`/`attachBatch` 已退役。已知残余：已渲染 tab 上的大增量批（>600 行切块）仍逐条中部插入，F40b 记账（INVARIANTS § 21.3）。
+**为什么**：旧内容逐条插到贴底视口上方会让浏览器逐帧重排 + 重做 scroll anchoring，HiDPI/高刷屏分数像素下 ±0.5px 高频抖动（deferMode 时代实测 66→1 帧）；F40a 让**启动重放**的上方插入为 0，且 9.4k 条重放只建 ~尾块+150×tabs 张卡（建卡是重放期最大成本——markdown/DOMPurify/pretext 全免）。历史方案 deferMode/`flushDeferred`/`attachBatch` 已退役。大增量批（>600 行切块落已渲染 tab）的老块由 F40b `midBatchBuffer` 缓冲、批末一次挂载。
+
+F40b 上翻补批：active tab 滚到顶部 800px 内自动从 `TailWindow` 弹 200 条/批渲染（`unwrapAll`→`batchInsert`→reconcile(空组壳连根摘并出账)→`rebuildNow`→同步手动补偿 scrollTop），顶端 `.stream-more-above` 哨兵显示剩余条数；选区进行中暂缓；不可滚+账本有余的 tab 在 switchTo 时踢一次 fill 自链（INVARIANTS § 21.3）。
 
 ### 独立只读窗口复用主渲染管线 + 定向 replay（issue #10）
 `open_session_in_new_window` 建 `viewer-<sid>` WebviewWindow 加载 `index.html?viewer=<sid>`；前端 `main.ts` 检测参数走精简 bootstrap（`bootstrapViewer`）—— **复用 TabManager**（过滤到该 sid、`body.viewer-mode` 隐藏 tab/设置/历史 chrome），自动继承分支折叠 / 启动滚动消抖 / tool-group 合并。顶部一条 slim 栏：项目名标题 + ↗调出终端 + 📂打开 cwd（复用 TabManager 的 active-tab 动作）。

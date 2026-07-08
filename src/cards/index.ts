@@ -649,22 +649,45 @@ function injectOrBuildToolResult(
  *
  * 不匹配的（真 fallback：tool_use 永远不会来）留着，UI 仍然能看到独立卡。
  */
-export function reconcilePendingToolResults(ctx: RenderContext): void {
-  if (!ctx.pendingToolResults || ctx.pendingToolResults.size === 0) return;
+/**
+ * F40b-D 审计:fallback 孤儿单元是**组内实体**(tool_result-only 渲染恒走 tool-group,
+ * 单元被并进组 body)——timeline entry 的元素是组 root,不是单元本身。单元出 DOM 后
+ * 若组壳已空(该 fallback 是组内唯一单元),连根摘壳并返回 root:root 才是需要
+ * timeline.removeByElement 出账的对象,否则留下空组壳(「1 个工具调用」空 details)
+ * 且账上挂着一个已离场元素。非空组壳照旧(summary 计数滞后属既有化妆性问题,留档)。
+ * 导出仅为单测。
+ */
+export function removeEmptyToolGroupShell(host: HTMLElement | null): HTMLElement | null {
+  if (!host) return null;
+  const body = host.querySelector(":scope > .card-tool-group-body");
+  if (!body || body.childElementCount > 0) return null;
+  host.remove();
+  return host;
+}
+
+export function reconcilePendingToolResults(ctx: RenderContext): HTMLElement[] {
+  if (!ctx.pendingToolResults || ctx.pendingToolResults.size === 0) return [];
   const toDelete: string[] = [];
+  // 返回值语义(F40b):**需要从 timeline 出账的元素**——即被连根摘除的空组壳 root。
+  // fallback 单元本身从不是 timeline entry(见 removeEmptyToolGroupShell 注释)。
+  const removed: HTMLElement[] = [];
   for (const [toolUseId, { block, element }] of ctx.pendingToolResults) {
     if (!ctx.toolUseElements.has(toolUseId)) continue; // 仍然没匹配，保留
     // 已有 host → 重新调注入（injectOrBuildToolResult 走"已 host"分支，返 null）
     const reInjected = injectOrBuildToolResult(block, ctx);
     if (reInjected === null) {
-      // 注入成功 → 删除原 fallback
+      // 注入成功 → 删除原 fallback;宿主组必须在 remove **之前**取(摘除后 closest 断链)
+      const host = element.closest<HTMLElement>(".card-tool-group");
       element.remove();
       toDelete.push(toolUseId);
+      const shell = removeEmptyToolGroupShell(host);
+      if (shell) removed.push(shell);
     }
   }
   for (const id of toDelete) {
     ctx.pendingToolResults.delete(id);
   }
+  return removed;
 }
 
 /**
