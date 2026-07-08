@@ -217,11 +217,26 @@ fn process_await_file(this: &BindRegistry, await_file: &Path) {
         }
     };
 
-    let entry = match find_window_for_marker(&req) {
+    // v2.22 竞态修复:老模板(profile 块 v1)是**先写 await 文件、后设窗口标题**——
+    // notify 在文件落地瞬间触发本函数,首次 EnumWindows 时 marker 大概率还没设上。
+    // 立刻删 await 走失败路径会让 PS 端绑定成败全凭时序运气(实测:每个新 shell
+    // 首次 cc 固定烧满超时)。找不到先短暂重试(≤600ms,50ms 步),给 PS 设标题的
+    // 窗口;新模板(v2)已反转顺序,首次即中,重试是对旧模板/慢标题传播的兜底。
+    let mut found = find_window_for_marker(&req);
+    if found.is_none() {
+        for _ in 0..12 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            found = find_window_for_marker(&req);
+            if found.is_some() {
+                break;
+            }
+        }
+    }
+    let entry = match found {
         Some(e) => e,
         None => {
             tracing::warn!(
-                "bind: no window found with marker={:?} ps_pid={}",
+                "bind: no window found with marker={:?} ps_pid={} (retried 600ms)",
                 req.marker,
                 req.ps_pid
             );

@@ -594,7 +594,7 @@ mod tests {
         assert!(out.contains("function ccm"));
         assert!(out.contains("__ccm_bind"));
         assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
-        assert!(out.contains("BEGIN v1"));
+        assert!(out.contains("BEGIN v2"));
         assert!(out.contains("cc-monitor END"));
     }
 
@@ -605,7 +605,7 @@ mod tests {
         assert!(out.contains("__ccm_bind"));
         assert!(!out.contains("function cc"));
         assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
-        assert!(out.contains("BEGIN v1"));
+        assert!(out.contains("BEGIN v2"));
     }
 
     #[test]
