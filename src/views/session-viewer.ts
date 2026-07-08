@@ -17,9 +17,14 @@ import {
   reconcilePendingToolResults,
 } from "../cards";
 import { BranchFolder } from "../branch-fold";
-import { type BranchRecord, extractBranchRecord } from "../branching";
+import { type BranchRecord } from "../branching";
 import { RecordTimeline } from "../record-timeline";
-import { renderStreamRecord, type StreamSink } from "../render-stream-record";
+import {
+  renderStreamRecord,
+  routeMetaAndBranch,
+  type MetaSink,
+  type StreamSink,
+} from "../render-stream-record";
 import { UnrenderedRanges } from "../render-window";
 
 interface JsonlLinePayload {
@@ -147,6 +152,13 @@ export class SessionViewer {
     // 这里逐条 try/catch：单条失败不影响其余，并记录首个错误供定位 / 显示。
     // F39:Channel 阶段只收集 payload + 预提取 branch/queue 数据,不渲染——
     // 全量渲染 37MB 实测 65s,渲染延后到「尾段首屏 + 上翻增量」
+    // F40c(账本收敛,清偿 F39 parity 欠账):meta/branch 提取与渲染路径共用
+    // routeMetaAndBranch 单一来源——此前手工复刻曾被 D 审计点名为漂移风险。
+    const collectSink: MetaSink = {
+      onBranchRecord: (br) => this.branchRecords.push(br),
+      onQueueOperation: (content) => queuedContents.push(content),
+      onTitleUpdate: () => {}, // viewer 标题静态,不消费 ai-title
+    };
     const channel = new Channel<JsonlLinePayload[]>();
     channel.onmessage = (chunk) => {
       if (!this.stream || this.loadGeneration !== gen) return; // 已 dispose / 已换会话
@@ -154,19 +166,11 @@ export class SessionViewer {
         // 逐条 try/catch:异形 message 抛错不能丢整 chunk 计数,否则下面
         // while totalRecords<finalCount 永久空转(旧版就修过这类卡死)
         try {
-          const m = p.message as { type?: string; operation?: string; content?: string };
-          if (m.type === "queue-operation") {
-            // 与 renderStreamRecord 的路由条件保持一致(issue #36)
-            if (m.operation === "enqueue" && m.content) queuedContents.push(m.content);
-          } else {
-            // ai-title/custom-title 等喂进去也安全:extractBranchRecord 类型门卫返 null
-            const br = extractBranchRecord(p.message);
-            if (br) this.branchRecords.push(br);
-          }
+          routeMetaAndBranch(p, collectSink);
         } catch (err) {
           console.warn("[session-viewer] 收集阶段单条异常(跳过):", err);
         }
-        this.payloads.push(p); // 占位必须 push:下标与 finalCount 对齐
+        this.payloads.push(p); // 占位必须 push:下标与 finalCount 对齐(meta 也占位)
       }
       totalRecords += chunk.length;
       this.statusEl.textContent = `接收中 · 已 ${totalRecords} 条…`;
