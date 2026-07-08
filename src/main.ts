@@ -41,6 +41,10 @@ declare global {
       firstPayloadDrained?: number;
       batchDrainEnd?: number;
       onBatchEndFired?: number;
+      /** Batch13-F40 仪表:content 记录真实建卡数(renderMessage 走到的次数) */
+      recordsRendered?: number;
+      /** Batch13-F40 仪表:被尾部优先门控收纳(不建卡)的 content 记录数 */
+      recordsDeferred?: number;
     };
   }
 }

@@ -225,5 +225,5 @@ $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 
 ### 启动重放期最新消息整行高频上下微抖（已修，回归排查）
 - 根因：旧内容逐帧插到贴底视口上方 → 浏览器逐帧重排 + 重做 scroll anchoring，HiDPI/高刷屏分数像素下舍入误差每帧不同 → 整块 ±0.5px 抖（详 INVARIANTS § 21）
-- 检查三道防线是否被破坏：(1) `snap()` 是否还守卫（没被改成无脑 `scrollTop=scrollHeight`）；(2) `.stream` 是否被加了 `overflow-anchor: none`；(3) `RecordTimeline` deferMode 是否仍在 `onBatchStart` 开、`onBatchEnd` 先 `flushDeferred()` 再 `branchFolder.flushPending()`
+- 检查三道防线是否被破坏：(1) `snap()` 是否还守卫（没被改成无脑 `scrollTop=scrollHeight`）；(2) `.stream` 是否被加了 `overflow-anchor: none`；(3) F40a 尾部优先门控是否仍在——`TabManager.onLine` 对 `seq < floor` 的旧记录收纳进 `TailWindow` 不建卡（INVARIANTS § 21.3；deferMode/flushDeferred 已于 F40a 退役）
 - **关键**：`scrollTop` 本身不震荡（单调增长），只测 scrollTop 发现不了——要测可见元素 `getBoundingClientRect().top` 的逐帧方向反转。

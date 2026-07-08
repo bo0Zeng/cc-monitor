@@ -301,9 +301,9 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 1. **`snap()` 必须守卫**：只在 `scrollHeight - clientHeight - scrollTop > 1`（确实落后底部）时才写 `scrollTop`。**禁止**每帧无脑 `scrollTop = scrollHeight`。
 2. **「视口上方」插入不手动补偿 scrollTop**：`insertNode` 对 anchor≠null（插到中间/上方）的情况不调整 scrollTop，交给浏览器原生 CSS `overflow-anchor`（默认 auto，**禁止**给 `.stream` 设 `overflow-anchor: none`）维持视觉稳定。手动补偿 + anchoring 会 double-shift。
-3. **重放期「视口上方」旧内容延后批量挂载**：`RecordTimeline` 在 deferMode（启动重放）下，插到非末尾的旧消息只进数组不挂 DOM；`flushDeferred()` 在 `onBatchEnd` 一次性挂回，且**必须在 `branchFolder.flushPending()` 之前**（后者要扫完整 DOM 算主线/折叠）。末尾追加（最新内容、用户正看着的）仍立即挂，首屏不受影响。
+3. **重放期「视口上方」旧内容不建 DOM（Batch13-F40a 尾部优先收纳）**：`TabManager.onLine` 按 seq 门控——`seq < tab.window.floorSeq` 的旧记录只进 `TailWindow` 账本（meta/branch 数据经 `routeMetaAndBranch` 照喂），**根本不建卡不挂 DOM**；后台 virgin tab 在 `onBatchEnd` 空闲物化尾段 / `switchTo` 时同步物化。**启动重放**的上方插入从源头消失——严格强于历史方案 deferMode（延后到一帧批量挂载，2026-07 F40a 退役）。**已知残余面（F40b 记账）**：落在已渲染 tab 上的**大增量批**（>600 行 → 后端切块、末块先发）全部 `seq ≥ floor` 直渲，老块仍逐条中部插入（跨帧，WebView2 HiDPI 有抖动风险）——触发场景为 SSH 重连/离线期大量写入，F40b 补批机制落地时一并覆盖。**物化/补批插卡前必须 `branchFolder.unwrapAll()` 摊平、插完 `rebuildNow()` 无条件重折**（`flushPending` 的 setsEqual 短路会把摊平永久化），批间孤儿 tool_result 由 `reconcilePendingToolResults` 回填；`MessageStream.insertNode` 对「anchor 不是 contentEl 直接子节点」有爬升/降级防御（防 NotFoundError 丢记录）。
 
-**为什么不能松动**：根因实测定位 —— 末块先发的重放把旧消息逐条插到"贴底视口的上方"，持续约 60 帧；每次上方插入都触发浏览器重排 + 重做 scroll anchoring，而 HiDPI / 高刷屏分数像素下，整数 `scrollHeight` 与分数布局的舍入误差**每帧不同** → 整块内容逐帧 ±0.5px 高频重绘。压成"一次性批量挂载"后实测抖动帧数 66 → 1。注意：`scrollTop` 本身并不震荡（单调增长），所以**只测 `scrollTop` 发现不了这个 bug**，要测可见元素 `getBoundingClientRect().top` 的逐帧反转。
+**为什么不能松动**：根因实测定位 —— 末块先发的重放把旧消息逐条插到"贴底视口的上方"，持续约 60 帧；每次上方插入都触发浏览器重排 + 重做 scroll anchoring，而 HiDPI / 高刷屏分数像素下，整数 `scrollHeight` 与分数布局的舍入误差**每帧不同** → 整块内容逐帧 ±0.5px 高频重绘。deferMode 时代压成一帧后实测抖动帧数 66 → 1；F40a 后上方插入次数为 0。注意：`scrollTop` 本身并不震荡（单调增长），所以**只测 `scrollTop` 发现不了这个 bug**，要测可见元素 `getBoundingClientRect().top` 的逐帧反转。
 
 ---
 

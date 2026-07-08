@@ -73,24 +73,33 @@ export interface StreamSink {
 }
 
 /**
- * 处理一条 jsonl payload 的完整管线：路由 title / 渲染卡片 / 后处理 tool-group / DOM 挂载 /
- * branch record / userActive。**调用前 ctx 已 setup**（toolUseNames / pendingToolResults 等）。
+ * Batch13-F40(账本 §3 最终形态):collect/render 两段式。
+ * - routeMetaAndBranch:元数据路由 + branch 喂送——**收纳(不建卡)与渲染两条路径
+ *   共用的单一来源**,消灭 F39 时代 viewer 手工复刻收集路由的 parity 风险。
+ * - renderContentRecord:纯渲染段(建卡/tool-group 合并/DOM 挂载)。
+ * - renderStreamRecord:两段组合壳,既有 caller 语义零变化。
  */
-export function renderStreamRecord(
+
+/**
+ * 元数据路由 + branch record 喂送。返回:
+ * - "consumed":ai-title / custom-title / queue-operation——无卡可渲,到此为止;
+ * - "content":其余记录(含 render 后会 skip 的 attachment/空 user——它们仍占链节点,
+ *   branch record 已在本函数喂送,issue #8 链完整性)。
+ */
+export function routeMetaAndBranch(
   payload: JsonlLinePayload,
-  ctx: RenderContext,
   sink: StreamSink,
-): void {
+): "consumed" | "content" {
   const message = payload.message;
 
   // 1. ai-title / custom-title 路由
   if (message.type === "ai-title") {
     sink.onTitleUpdate?.(message.aiTitle);
-    return;
+    return "consumed";
   }
   if (message.type === "custom-title") {
     sink.onTitleUpdate?.(message.customTitle);
-    return;
+    return "consumed";
   }
 
   // 1.5 issue #36：queue-operation 路由——enqueue 的 content 喂给折叠豁免集合，
@@ -99,15 +108,43 @@ export function renderStreamRecord(
     if (message.operation === "enqueue" && message.content) {
       sink.onQueueOperation?.(message.content);
     }
-    return;
+    return "consumed";
   }
 
   // 2. branch record 提取（user/assistant/system/attachment 都喂；不区分 kind）
-  //    issue #8：链完整性 — 即使 result.kind=skip 也要 feed（attachment / 空 user 占链节点）
+  //    issue #8：链完整性 — 即使 render 会 skip 也要 feed（attachment / 空 user 占链节点）
   const branchRec = extractBranchRecord(message);
   if (branchRec) sink.onBranchRecord(branchRec);
+  return "content";
+}
+
+/**
+ * 处理一条 jsonl payload 的完整管线（组合壳）。**调用前 ctx 已 setup**。
+ */
+export function renderStreamRecord(
+  payload: JsonlLinePayload,
+  ctx: RenderContext,
+  sink: StreamSink,
+): void {
+  if (routeMetaAndBranch(payload, sink) === "consumed") return;
+  renderContentRecord(payload, ctx, sink);
+}
+
+/**
+ * 纯渲染段:建卡 / tool-group 后处理合并 / DOM 挂载 / userActive。
+ * 前置:routeMetaAndBranch 已对该 payload 返回 "content"(meta 已消费、branch 已喂)。
+ */
+export function renderContentRecord(
+  payload: JsonlLinePayload,
+  ctx: RenderContext,
+  sink: StreamSink,
+): void {
+  const message = payload.message;
 
   // 3. 渲染
+  // Batch13-F40 仪表:真实建卡计数(与收纳计数对照;emitPerfSummary 落盘取证。
+  // jsdom 单测无 main.ts,须防 undefined)
+  if (window.__ccmPerf) window.__ccmPerf.recordsRendered = (window.__ccmPerf.recordsRendered ?? 0) + 1;
   const result = renderMessage(message, ctx);
 
   switch (result.kind) {

@@ -24,9 +24,10 @@ index.html  ─> /src/main.ts (defer)
 | **main.ts** | 启动 + 全局快捷键 + 错误捕获 + HMR 强制 reload；**issue #10**：URL 带 `?viewer=<sid>` 时走 `bootstrapViewer`（复用 TabManager 过滤到该 sid + 隐藏 chrome + 定向 replay 代替 frontend-ready）| DOMContentLoaded handler |
 | **events.ts** | 订阅后端 `jsonl-line` / `jsonl-batch` / `session-ended` / `task-update`，**批量调度让出主线程**；v2.2 (issue #12) `jsonl-batch` 包 `batch-start`/`batch-end` 哨兵；v2.3.1 (issue #1) 300ms grace 续期。**v2.6 B 重构**：删了 PayloadSource / onChunk callback / BatchChunkMeta；JsonlLinePayload 新增 `seq: u64` 字段（后端 watcher 给的 per-file 单调）。**issue #10**：`bindEvents` 改 async（await listener 注册完成再返回，防 emit-before-listen 丢事件）+ `{windowScoped}` 选项（viewer 用 `getCurrentWebviewWindow().listen` 接定向事件） | `await bindEvents({...}, {windowScoped?})` |
 | **tabs.ts** | TabManager 状态机：Tab 生命周期（live / archived）+ BranchFolder + v2.3 TasksPanel 路由；v2.4 (issue #2) `switchTo(sid, "manual"\|"auto")` + `userActive(sid)` + 5s `manualOverrideUntil`；`applyBehavior(cfg)` 同步设置面板 toggle。**v2.6 B 重构**：删了 inPrependMode / pendingPrependFragment / pendingToolGroup / appendCardOrBuffer / onChunk / markCardUuid / feedBranchFolder；onLine 改调 renderStreamRecord 共享管线。**issue #10**：`tab.cwd` 取最早 seq 记录的 cwd（项目根，防会话 cwd 漂移到子目录）；`openActiveInNewWindow()` + Tab 右键「在新窗口打开」。onLine 入口双层去重：`seenSeqs`（#17 同 seq）+ `processedUuids`（#26 换 seq 重投按 uuid 拒重，INVARIANTS § 25） | `onLine(payload) / onBatchStart() / onBatchEnd() / userActive() / openActiveInNewWindow() / archiveTab() / closeTab() / cycleActive()` |
-| **record-timeline.ts** ⭐ v2.6 | 按 seq 排序的 TimelineEntry 数组 + DOM 挂载：`insert(entry)` binary search 找位置 → `stream.insertNode(element, anchor)`；`peekPrev(seq)` 给 tool-group 后处理用。**消除了** inPrependMode/pendingPrependFragment/chunkIndex 全部状态机。**deferMode（启动重放消抖）**：重放期插到非末尾的"视口上方"旧内容只进数组不挂 DOM，`flushDeferred()` 在 onBatchEnd 一次性批量挂回（详 INVARIANT § 21） | `new RecordTimeline(stream).insert / peekPrev / setDeferMode / flushDeferred / dispose / size` |
-| **render-stream-record.ts** ⭐ v2.6 | 三 caller（TabManager / SessionViewer / Subagent）共享的渲染管线：renderMessage + markCardUuid + feedBranchFolder + tool-group 后处理合并（看 timeline 左邻居）+ userActive 检测。sink 接口抽象 caller 差异 | `renderStreamRecord(payload, ctx, sink: StreamSink)` |
-| **stream.ts** | 单 Tab 的消息流容器，ResizeObserver + **守卫式 `snap()`** 自动贴底；`contentElement` 暴露真实卡片容器给 BranchFolder。`insertNode(node, anchor)` 给 RecordTimeline 按 seq 挂卡；`attachBatch(fragment, anchor)` 给 deferMode 一次性挂延后的上方内容。贴底稳定性三约束见 INVARIANT § 21（守卫 snap + overflow-anchor + 延后批量挂载） | `MessageStream.insertNode() / attachBatch() / scrollToBottom() / dispose()` |
+| **record-timeline.ts** ⭐ v2.6 | 按 seq 排序的 TimelineEntry 数组 + DOM 挂载：`insert(entry)` binary search 找位置 → `stream.insertNode(element, anchor)`；`peekPrev(seq)` 给 tool-group 后处理用。**消除了** inPrependMode/pendingPrependFragment/chunkIndex 全部状态机。Batch13-F40a：deferMode（启动重放延后挂载）退役——旧记录由 TailWindow 收纳不建卡，本类回归纯「seq 有序 + 邻居查询」 | `new RecordTimeline(stream).insert / peekPrev / dispose / size` |
+| **live-window.ts** ⭐ F40a | live tab 尾部优先窗口账本（单洞后缀不变量）：`floor` 水位 + 惰性排序 pending。启动重放旧块 `defer` 收纳（不建卡）；`takeTail(k)` 弹 seq 最高段供物化/上翻补批（F40b） | `new TailWindow().admit / pinFloor / defer / takeTail / pendingCount / dispose` |
+| **render-stream-record.ts** ⭐ v2.6 | 三 caller（TabManager / SessionViewer / Subagent）共享的渲染管线。F40a 拆两段式：`routeMetaAndBranch`（title/queue 路由 + branch 喂送——收纳与渲染路径的单一来源）+ `renderContentRecord`（建卡 / tool-group 合并 / userActive）；`renderStreamRecord` = 组合壳。sink 接口抽象 caller 差异 | `routeMetaAndBranch(payload, sink)` / `renderContentRecord(payload, ctx, sink)` / `renderStreamRecord(...)` |
+| **stream.ts** | 单 Tab 的消息流容器，ResizeObserver + **守卫式 `snap()`** 自动贴底；`contentElement` 暴露真实卡片容器给 BranchFolder。`insertNode(node, anchor)` 给 RecordTimeline 按 seq 挂卡。贴底稳定性三约束见 INVARIANT § 21（守卫 snap + overflow-anchor + 尾部优先收纳） | `MessageStream.insertNode() / scrollToBottom() / dispose()` |
 | **branching.ts** (issue #8/#22/#25) | parentUuid 拓扑分析：识别 ESC 回退主线 vs 被回退分支。`computeMainBranch` = "fork 点选 latest-descendant 赢家" + "多 root 折叠被 ESC 回撤废弃的首条/重发"（#22）。单链全 on-main；多 root 时只折叠死胡同的 plain user root，/compact·/clear·链断·pre-compact 历史保留。入口按 uuid 去重对重投幂等（#25，INVARIANTS § 25） | `computeMainBranch(records) / extractBranchRecord(rec)` |
 | **branch-fold.ts** (issue #8) | DOM 重排：把连续的 off-main 卡片包到 `.branch-fold-wrap`，header「已被 ESC 回退（含 N 条）」；策略 = unwrap-then-rewrap 全量重建。v2.2 加 batch mode (`setBatchMode/flushPending`)，重放期延后到 batch 结束才算一次 mainBranch，省 O(N²)。**v2.6 起由 render-stream-record.ts 统一调用 recordAdded**（之前 tabs.ts 直接调）；`seenUuids` 拒重（#25） | `new BranchFolder(container).recordAdded / setRecordsAndRebuild / setBatchMode / flushPending` |
 | **cards/index.ts** | renderMessage 主分发：user 气泡 / assistant 卡 / 工具组合并 / tool_result 注入到 tool_use。**v2.6 RenderContext.pendingToolResults 改必填 + 加 lazy 字段**（透传给 renderMarkdown 控代码块占位） | `renderMessage(rec, ctx) → RenderResult` |
@@ -73,7 +74,7 @@ index.html  ─> /src/main.ts (defer)
                → stream.insertNode(element, anchor)    // 守卫式 snap 贴底
 ```
 
-启动重放（jsonl-batch，末块先发）走同一管线，但 timeline 处于 deferMode：插到"视口上方"的旧内容只进数组不挂 DOM，onBatchEnd 时 `flushDeferred()` 一次性 `attachBatch` 挂回（消抖，INVARIANT § 21）。
+启动重放（jsonl-batch，末块先发）走同一管线,但经 F40a 尾部优先门控:active tab 首条 content 钉 `floor`,尾块直渲;更老的块与后台 virgin tab 全部收纳进 `TailWindow`(不建卡,meta/branch 经 `routeMetaAndBranch` 照喂),批后空闲物化尾 150 / switchTo 同步物化(消抖 + 免建卡,INVARIANT § 21)。
 
 ### 历史浏览（懒加载）
 
@@ -130,7 +131,7 @@ replay 一次性 emit 整个 history Vec，前端用 BATCH_SIZE=40 + BATCH_MS=8 
 - § 12 — alert 不算错误反馈，关键失败用状态栏 toast
 - § 13 — portal 浮层（tooltip/modal/dropdown）必须真挂 `document.body`
 - § 14 — localStorage / IndexedDB key 必须前缀 `cc-monitor.`
-- § 21 — 启动重放贴底消抖：守卫式 snap + 不手动补偿（靠 overflow-anchor）+ 延后批量挂载
+- § 21 — 启动重放贴底消抖：守卫式 snap + 不手动补偿（靠 overflow-anchor）+ 尾部优先收纳（F40a）
 - § 25 — 行投递 at-least-once：按 uuid 累积状态/构建拓扑的模块必须入口拒重自行幂等（onLine processedUuids #26 / computeMainBranch+BranchFolder #25）
 - DOMPurify 防 XSS：所有 innerHTML 赋值前必过 `render.ts::renderMarkdown`
 

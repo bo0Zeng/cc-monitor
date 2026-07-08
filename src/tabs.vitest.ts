@@ -21,6 +21,9 @@ vi.mock("./stream", () => ({
     contentElement = document.createElement("div");
     constructor(_root: HTMLElement) {}
     insertNode(): void {}
+    batchInsert(fn: () => void): void {
+      fn();
+    }
     scrollToBottom(): void {}
     dispose(): void {}
   },
@@ -28,7 +31,6 @@ vi.mock("./stream", () => ({
 vi.mock("./record-timeline", () => ({
   RecordTimeline: class {
     constructor(_s: unknown) {}
-    setDeferMode(): void {}
     insert(): void {}
     dispose(): void {}
     get size(): number {
@@ -40,13 +42,23 @@ vi.mock("./branch-fold", () => ({
   BranchFolder: class {
     constructor(_el: unknown) {}
     setBatchMode(): void {}
-    setDeferMode(): void {}
     flushPending(): void {}
     recordAdded(): void {}
+    unwrapAll(): void {}
+    rebuildNow(): void {}
     dispose(): void {}
   },
 }));
-vi.mock("./render-stream-record", () => ({ renderStreamRecord: vi.fn() }));
+// F40a:tabs.ts 消费两段式入口(routeMetaAndBranch 判 meta / renderContentRecord 建卡)。
+// mock 按 message.type 粗判 consumed/content,与真实现语义对齐(防未来 meta 用例静默走错路)
+vi.mock("./render-stream-record", () => ({
+  routeMetaAndBranch: vi.fn((payload: { message?: { type?: string } }) =>
+    ["ai-title", "custom-title", "queue-operation"].includes(payload.message?.type ?? "")
+      ? "consumed"
+      : "content",
+  ),
+  renderContentRecord: vi.fn(),
+}));
 vi.mock("./cards", () => ({ reconcilePendingToolResults: vi.fn() }));
 vi.mock("./cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("./tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
@@ -61,6 +73,7 @@ interface TMInternals {
   activeId: string | null;
   orderedIds: string[];
   pendingArchive: Set<string>;
+  materializeQueue: string[];
 }
 const peek = (tm: TabManager): TMInternals => tm as unknown as TMInternals;
 
@@ -164,8 +177,8 @@ describe("TabManager 生命周期", () => {
   // === Batch8-F26：(sid,seq) 去重（快照/tail 重叠区缝合的前端锚点） ===
 
   it("同 (tab, seq) 的行第二次到达被 seenSeqs 吞掉（快照与 tail 重叠区）", async () => {
-    const { renderStreamRecord } = await import("./render-stream-record");
-    const spy = renderStreamRecord as unknown as ReturnType<typeof vi.fn>;
+    const { renderContentRecord } = await import("./render-stream-record");
+    const spy = renderContentRecord as unknown as ReturnType<typeof vi.fn>;
     spy.mockClear();
     const mkPayload = (seq: number, uuid: string) => ({
       session_id: "dup-sid",
@@ -292,5 +305,125 @@ describe("TabManager 生命周期", () => {
     expect(peek(tm).pendingArchive.has("s12")).toBe(false);
     const tab = tm.ensureTab("s12", "/x", "p", 0, null);
     expect(tab.status).toBe("live"); // 未被 pendingArchive 落实归档
+  });
+
+  // === Batch13-F40a：尾部优先门控 / 物化（D 审计 C-3 补测） ===
+
+  const mkContent = (sid: string, seq: number, uuid: string) =>
+    ({
+      session_id: sid,
+      cwd: "/p",
+      path: `/p/${sid}.jsonl`,
+      seq,
+      message: { type: "assistant", uuid } as never,
+    }) as never;
+
+  async function spyRender() {
+    const { renderContentRecord } = await import("./render-stream-record");
+    return renderContentRecord as unknown as ReturnType<typeof vi.fn>;
+  }
+
+  it("F40a 门控矩阵：批期 active 首条钉 floor 直渲；后台恒收纳且不计 unread", async () => {
+    const spy = await spyRender();
+    spy.mockClear();
+    tm.onLine(mkContent("act", 100, "a-1")); // 首个 tab → auto active
+    tm.onBatchStart();
+    tm.onLine(mkContent("act", 101, "a-2")); // active 批期直渲
+    const actCalls = spy.mock.calls.length;
+    expect(actCalls).toBeGreaterThanOrEqual(2);
+    expect(peek(tm).tabs.get("act")!.window.floorSeq).toBe(100);
+
+    tm.onLine(mkContent("bg", 50, "b-1")); // 后台 virgin：收纳
+    tm.onLine(mkContent("bg", 51, "b-2"));
+    const bg = peek(tm).tabs.get("bg")!;
+    expect(spy.mock.calls.length).toBe(actCalls); // 没为后台建卡
+    expect(bg.window.floorSeq).toBeNull();
+    expect(bg.window.pendingCount).toBe(2);
+    expect(bg.unread).toBe(0); // 收纳不计 unread（修 S-2）
+  });
+
+  it("F40a 门控：批后 seq<floor 收纳、seq≥floor 渲染", async () => {
+    const spy = await spyRender();
+    tm.onLine(mkContent("gate", 100, "g-1")); // !inBatch → 直渲并钉 floor=100
+    const t = peek(tm).tabs.get("gate")!;
+    expect(t.window.floorSeq).toBe(100);
+    spy.mockClear();
+    tm.onLine(mkContent("gate", 5, "g-old")); // F30 回填/迟到旧块 → 收纳
+    expect(spy.mock.calls.length).toBe(0);
+    expect(t.window.pendingCount).toBe(1);
+    tm.onLine(mkContent("gate", 101, "g-2")); // live 追加 → 渲染
+    expect(spy.mock.calls.length).toBe(1);
+  });
+
+  it("F40a C-1 竞态：近 virgin tab 的首条 live 行先物化账本再渲染（历史不滞留）", async () => {
+    const spy = await spyRender();
+    tm.onLine(mkContent("act2", 1, "x-1")); // active
+    tm.onBatchStart();
+    for (let s = 10; s < 15; s++) tm.onLine(mkContent("vg", s, `v-${s}`)); // 后台收纳 5 条
+    tm.onBatchEnd();
+    const vg = peek(tm).tabs.get("vg")!;
+    expect(vg.window.pendingCount).toBe(5); // rIC 还没轮到（异步）
+    spy.mockClear();
+    tm.onLine(mkContent("vg", 99, "v-live")); // 真 live 行先到
+    expect(vg.window.pendingCount).toBe(0); // 先物化（takeTail 钉 floor=10）
+    expect(vg.window.floorSeq).toBe(10);
+    expect(spy.mock.calls.length).toBe(6); // 5 条物化 + 1 条 live
+  });
+
+  it("F40a 物化顺序：unwrapAll → 渲染 → reconcile → rebuildNow", async () => {
+    const spy = await spyRender();
+    const { reconcilePendingToolResults } = await import("./cards");
+    tm.onLine(mkContent("act3", 1, "y-1")); // active
+    tm.onBatchStart();
+    tm.onLine(mkContent("mat", 20, "m-1"));
+    tm.onLine(mkContent("mat", 21, "m-2"));
+    const mat = peek(tm).tabs.get("mat")!;
+    const order: string[] = [];
+    vi.spyOn(mat.branchFolder, "unwrapAll").mockImplementation(() => {
+      order.push("unwrap");
+    });
+    vi.spyOn(mat.branchFolder, "rebuildNow").mockImplementation(() => {
+      order.push("rebuild");
+    });
+    spy.mockImplementation(() => {
+      order.push("render");
+    });
+    vi.mocked(reconcilePendingToolResults).mockImplementation(() => {
+      order.push("reconcile");
+    });
+    tm.onBatchEnd();
+    tm.switchTo("mat"); // virgin → 同步物化
+    expect(order.join(",")).toContain("unwrap,render,render,reconcile,rebuild");
+    spy.mockImplementation(() => {});
+    vi.mocked(reconcilePendingToolResults).mockImplementation(() => {});
+  });
+
+  it("F40a S-5：archived tab 不进后台物化队列", () => {
+    tm.onLine(mkContent("act4", 1, "z-1")); // active
+    tm.onBatchStart();
+    tm.onLine(mkContent("dead", 30, "d-1")); // 后台收纳
+    tm.onLine(mkContent("idle1", 40, "i-1")); // 后台收纳 ×2
+    tm.onLine(mkContent("idle2", 41, "i-2"));
+    tm.archiveTab("dead");
+    tm.onBatchEnd();
+    // scheduleIdleMaterialize 同步 shift 队首进定时器闭包 → 队列只剩第二个非归档 tab;
+    // 关键断言:dead 从未入队(队首 shift 的是 idle1)
+    expect(peek(tm).materializeQueue).toEqual(["idle2"]);
+    expect(peek(tm).tabs.get("dead")!.window.pendingCount).toBe(1); // 未被物化
+  });
+
+  it("F40a meta 记录批期被消费不进账本", () => {
+    tm.onLine(mkContent("act5", 1, "w-1")); // active
+    tm.onBatchStart();
+    tm.onLine({
+      session_id: "meta-bg",
+      cwd: "/p",
+      path: "/p/meta-bg.jsonl",
+      seq: 60,
+      message: { type: "ai-title", aiTitle: "标题" } as never,
+    } as never);
+    const t = peek(tm).tabs.get("meta-bg")!;
+    expect(t.window.pendingCount).toBe(0); // consumed,不收纳
+    expect(t.window.floorSeq).toBeNull();
   });
 });
