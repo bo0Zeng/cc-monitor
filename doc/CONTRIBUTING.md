@@ -88,9 +88,9 @@ powershell -NoProfile -File scripts\run.ps1 dev
 - [ ] **手测关键 UI 入口**：
   - [ ] 启动 monitor，Tab 自动出现
   - [ ] 点 Tab ↗ 拉对应终端窗口
-  - [ ] Ctrl+\` 同上
-  - [ ] **Ctrl+H 历史浏览器打开**
-  - [ ] Ctrl+, 设置面板打开，PowerShell 集成区扫描出 profile
+  - [ ] \` 同上（v2.x 起单键，快捷键表见根 README）
+  - [ ] **H 历史浏览器打开**
+  - [ ] , 设置面板打开，PowerShell 集成区扫描出 profile
   - [ ] 设置面板 hover 各个 `?` 图标，tooltip 在 viewport 内可见
   - [ ] 设置面板 [打开 profile]，资源管理器或编辑器弹出
   - [ ] /resume 一个历史会话
@@ -272,7 +272,7 @@ if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
 
 1. fork → branch（命名 `feat/<short-desc>` / `fix/<short-desc>`）
 2. 改代码 + 测试 + 文档（参照本文档对应 cookbook）
-3. `cargo fmt + cargo clippy + cargo test --lib + npm run build` 全绿（动 `src/cards/diff.ts` 另跑 `npm run test:diff`；动 `src/branching.ts` / `branch-fold.ts` 另跑 `npm run test:branching`；动 `cards/api-error.ts` 另跑 `npm run test:api-error`）
+3. `cargo fmt + cargo clippy + cargo test --lib + npm test + npm run build` 全绿（`npm test` = 7 组 node 纯函数 + vitest DOM 84 测，与 CI 同口径；动滚动/渲染管线另跑 `e2e/f40-suite.sh`，见 e2e/README.md）
 4. PR 描述：
    - 解决什么问题（链到 issue）
    - 怎么解决（一句话）

@@ -8,7 +8,9 @@
  * 浏览器记住真实尺寸,估值只影响"从未渲染过的卡片"贡献的滚动条精度,不影响正确性。
  * 所以这里追求"够准 + 绝不抛错",不追求像素级真值。
  *
- * 文本估高用 pretext(@chenglou/pretext,pin 0.0.8):prepare() 一次分词+canvas
+ * 文本估高用 pretext(@chenglou/pretext,**精确钉版 0.0.8**——上游 0.0.x 属
+ * pre-stable,API 与折行语义可能不打招呼地变;本模块的常数是对着该版本的 layout
+ * 行为标定的,解钉升级须重跑估值精度对照再动):prepare() 一次分词+canvas
  * 测宽,layout() 纯算术出高度,不触 DOM 不 reflow。pretext 不可用(canvas 缺失、
  * 字体未就绪等)时降级为字符宽度算术估计——两条路都不许抛。
  *

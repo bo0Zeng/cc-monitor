@@ -237,26 +237,31 @@ export class SessionViewer {
 
   /** F39:渲染 payload 下标区间 [lo,hi)(逐条 renderStreamRecord,二分插入保序) */
   private renderRange(lo: number, hi: number): void {
-    if (!this.renderCtx || !this.renderSink || !this.unrendered) return;
+    if (!this.renderCtx || !this.renderSink || !this.unrendered || !this.stream) return;
     // 不变量:二分插入只发生在**摊平**的 DOM 上——邻居若已被 fold wrap 收编,
     // insertBefore 会 NotFoundError(E2E 实测 58 条失败)。先摊平,批后重折。
     this.folder?.unwrapAll();
     const from = Math.max(0, lo);
     const to = Math.min(this.payloads.length, hi);
-    for (let i = from; i < to; i++) {
-      if (!this.unrendered.contains(i)) continue; // 已渲染(岛重叠)跳过
-      const p = this.payloads[i];
-      try {
-        renderStreamRecord(p, this.renderCtx, this.renderSink);
-      } catch (err) {
-        this.renderErrors += 1;
-        if (!this.firstError) {
-          const t = (p as { message?: { type?: string } })?.message?.type ?? "?";
-          this.firstError = `seq=${p?.seq} type=${t}: ${String(err)}`;
-          console.error("[session-viewer] renderStreamRecord 抛错", p, err);
+    // S-7 对齐(Phase G 终审:同协议修复双向回灌)——批内暂停逐卡守卫 snap:
+    // 首屏 150 卡逐卡 snap 各读一次 scrollHeight = 150 次强制 reflow,直接摊在
+    // 首屏耗时里;批末按粘底状态一次贴底(与 tabs.renderPayloadsBatch 同款)。
+    this.stream.batchInsert(() => {
+      for (let i = from; i < to; i++) {
+        if (!this.unrendered!.contains(i)) continue; // 已渲染(岛重叠)跳过
+        const p = this.payloads[i];
+        try {
+          renderStreamRecord(p, this.renderCtx!, this.renderSink!);
+        } catch (err) {
+          this.renderErrors += 1;
+          if (!this.firstError) {
+            const t = (p as { message?: { type?: string } })?.message?.type ?? "?";
+            this.firstError = `seq=${p?.seq} type=${t}: ${String(err)}`;
+            console.error("[session-viewer] renderStreamRecord 抛错", p, err);
+          }
         }
       }
-    }
+    });
     this.unrendered.markRendered(from, to);
     // R2(D 审计):批缝落在 tool_use/tool_result 配对中间时,result 先渲染成
     // fallback 孤儿卡;上方批把 tool_use 补出来后必须回填合并(TabManager 每批
@@ -313,6 +318,10 @@ export class SessionViewer {
   private async maybeFillAbove(): Promise<void> {
     if (this.renderingBatch || !this.unrendered || this.unrendered.isEmpty) return;
     if (!this.shouldFill()) return;
+    // 选区守卫(Phase G 终审:与 tabs.fillAbove 对齐)——补批的 unwrapAll/rebuildFold
+    // 会杀进行中的选区,等下次 scroll 再试
+    const sel = document.getSelection();
+    if (sel && !sel.isCollapsed) return;
     const gap = this.unrendered.gapAbove(this.unrendered.lowestRenderedIdx());
     if (!gap) return;
     const gen = this.loadGeneration;
@@ -325,13 +334,19 @@ export class SessionViewer {
       if (!this.stream || this.loadGeneration !== gen) return;
       const [a, b] = gap;
       const el = this.streamEl;
-      el.style.overflowAnchor = "none";
       const beforeH = el.scrollHeight;
       const beforeTop = el.scrollTop;
-      this.renderRange(Math.max(a, b - BATCH_SIZE), b);
-      this.rebuildFold();
-      el.scrollTop = beforeTop + (el.scrollHeight - beforeH);
-      el.style.overflowAnchor = "";
+      try {
+        el.style.overflowAnchor = "none";
+        this.renderRange(Math.max(a, b - BATCH_SIZE), b);
+        this.rebuildFold();
+        el.scrollTop = beforeTop + (el.scrollHeight - beforeH);
+      } finally {
+        // 还原必须在 finally(Phase G 终审,三家共识——与 tabs.fillAbove 的
+        // F40b-D 修复对齐):renderRange 的 unwrapAll/reconcile 段抛出会留下
+        // overflow-anchor:none,该 viewer 会话永久失去原生锚定(§21.2)
+        el.style.overflowAnchor = "";
+      }
       this.updateStatus(this.payloads.length);
     } finally {
       this.renderingBatch = false;
