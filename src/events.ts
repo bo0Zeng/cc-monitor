@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { JsonlRecord } from "./cards";
@@ -479,8 +480,10 @@ function emitPerfSummary(
   const drainEnd = p.batchDrainEnd ?? 0;
   const endFired = p.onBatchEndFired ?? performance.now();
 
+  // D 审计 S-2:多窗口(viewer/tear-off)各自触发落盘,带 label 防取证混淆
+  const winLabel = getCurrentWebviewWindow().label;
   const lines = [
-    `[perf] === 启动管线 timeline (前端 performance.now ms) ===`,
+    `[perf] === 启动管线 timeline (前端 performance.now ms · window=${winLabel}) ===`,
     `[perf]   DOMContentLoaded       T+${dom.toFixed(0)}`,
     `[perf]   loadTheme done         T+${theme.toFixed(0)} (+${(theme - dom).toFixed(0)})`,
     `[perf]   emit frontend-ready    T+${ready.toFixed(0)} (+${(ready - theme).toFixed(0)})`,
@@ -488,7 +491,12 @@ function emitPerfSummary(
     `[perf]   first payload dispatch T+${firstDrain.toFixed(0)} (+${(firstDrain - firstBatch).toFixed(0)})`,
     `[perf]   batch payloads drained T+${drainEnd.toFixed(0)} (+${(drainEnd - firstDrain).toFixed(0)}) ← drain 全部 ${payloadCount} 条`,
     `[perf]   onBatchEnd fired       T+${endFired.toFixed(0)} (+${(endFired - drainEnd).toFixed(0)}) ← 300ms grace 后真正切 live`,
+    // Batch13-F40 仪表:建卡 vs 收纳对照(F40a 前 deferred 恒 0 = 基线口径)。
+    // 计数为**页面生命周期累计**(二次 batch 不归零;批后 rIC 物化不在本行内)
+    `[perf]   建卡 rendered=${p.recordsRendered ?? 0} · 收纳 deferred=${p.recordsDeferred ?? 0} · drained=${payloadCount}(累计)`,
     `[perf]   ── 总耗时（DOM → 加载完成）：${(endFired - dom).toFixed(0)}ms ──`,
   ];
   console.info(lines.join("\n"));
+  // Batch13-F40:无 devtools 环境的唯一取证通道——经后端写进 monitor 日志(grep fe_perf)
+  void invoke("frontend_perf_log", { lines: lines.join("\n") }).catch(() => {});
 }

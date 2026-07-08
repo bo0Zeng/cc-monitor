@@ -5,8 +5,7 @@
  *   .stream          — 外层，absolute inset:0，overflow-y:auto（滚动容器）
  *     └ .stream-content — 内层包装，所有卡片挂在这里
  *
- * RecordTimeline 是唯一调用方：`insertNode` 按 seq 把卡插到正确位置，
- * `attachBatch` 在启动重放结束时把延后的"视口上方"旧内容一次性挂回。
+ * RecordTimeline 是唯一调用方：`insertNode` 按 seq 把卡插到正确位置。
  *
  * 用 ResizeObserver 观察 .stream-content 的尺寸变化以维持贴底：
  *   - 卡片插入 / 长高、tool 组追加单元、collapsible 展开、Markdown 字体/图片后载
@@ -22,14 +21,16 @@
  *     `scrollTop = scrollHeight` 会在 HiDPI 分数像素下因舍入误差逐帧 ±0.5px 抖。
  *   - 内容插到「视口上方」时不手动补偿 scrollTop，交给浏览器原生 `overflow-anchor`
  *     维持视觉稳定（两者叠加会 double-shift）。
- *   - 重放期「视口上方」的旧内容由 RecordTimeline 延后、经 `attachBatch` 一次性挂，
- *     把"逐帧上方插入"压成一帧，避免持续重排 + 重锚定的抖动。
+ *   - 重放期「视口上方」的旧内容根本不建 DOM（Batch13-F40a 尾部优先收纳,
+ *     TailWindow 账本）——"逐帧上方插入"从源头消失（INVARIANTS § 21.3）。
  */
 export class MessageStream {
   private scrollEl: HTMLElement;
   private contentEl: HTMLElement;
   /** 是否粘底（用户向上滚动后变 false） */
   private stickToBottom = true;
+  /** F40a S-7:物化大批插卡期间暂停逐卡守卫 snap(见 batchInsert) */
+  private snapSuspended = false;
   private resizeObserver: ResizeObserver;
   private scrollHandler: () => void;
   private disposed = false;
@@ -77,23 +78,39 @@ export class MessageStream {
    * 详见类头注释「贴底稳定性」与 INVARIANTS § 21。
    */
   insertNode(node: HTMLElement, anchor: HTMLElement | null): void {
+    // F40a D 审计 R-2 防御:anchor 可能已被折进 .branch-fold-wrap(增量渲染的洞场景
+    // /F40b 补批),直接 insertBefore 会 NotFoundError → 该记录被 drain 的 try/catch
+    // 吞掉永久丢失。爬到 contentEl 直接子层再插——卡粒度顺序仍正确(落在包含
+    // anchor 的 wrap 之前),折叠归属由下一次 rebuild 自愈;anchor 已不在 DOM 则
+    // 降级末尾追加(保数据,顺序由 seq 账本兜底)。
+    if (anchor && anchor.parentElement !== this.contentEl) {
+      let a: HTMLElement | null = anchor;
+      while (a && a.parentElement !== this.contentEl) {
+        a = a.parentElement;
+      }
+      anchor = a;
+    }
     if (anchor) {
       this.contentEl.insertBefore(node, anchor);
     } else {
       this.contentEl.appendChild(node);
     }
-    if (this.stickToBottom) {
+    if (this.stickToBottom && !this.snapSuspended) {
       this.snap();
     }
   }
 
   /**
-   * 批量挂载：把一段已渲染但未挂载的节点（DocumentFragment）一次性插到 anchor 前，
-   * 然后只做一次 snap。给 RecordTimeline 的 flushDeferred 用 —— 重放期"视口上方"的
-   * 旧内容延后到这里一次性插入，把"逐帧上方插入→每帧重排+重锚定±0.5px 抖"压成一帧。
+   * F40a S-7:物化/补批大批插卡——期间暂停逐卡守卫 snap(每次 snap 读 scrollHeight
+   * 都是一次强制 reflow,150 卡 = 150 次),批末按粘底状态一次贴底。
    */
-  attachBatch(fragment: DocumentFragment, anchor: HTMLElement | null): void {
-    this.contentEl.insertBefore(fragment, anchor);
+  batchInsert(fn: () => void): void {
+    this.snapSuspended = true;
+    try {
+      fn();
+    } finally {
+      this.snapSuspended = false;
+    }
     if (this.stickToBottom) this.snap();
   }
 

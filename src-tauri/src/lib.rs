@@ -843,6 +843,7 @@ pub fn run() {
             cc_get_auto_launch,
             cc_set_auto_launch,
             // v2.0.0 (issue #4): 诊断 / log
+            frontend_perf_log,
             get_diagnostics_config,
             set_diagnostics_config,
             get_log_file_info,
@@ -1398,6 +1399,17 @@ struct CcStatusResponse {
 struct LegacyProfileEntry {
     kind: profile_installer::ProfileKind,
     path: String,
+}
+
+/// Batch13-F40:前端 perf 仪表落盘。webview 无 devtools(生产/CCM_NO_DEVTOOLS)时
+/// console 取证不能,前端把启动管线 timeline/建卡计数经此写进 monitor 日志。
+#[tauri::command]
+fn frontend_perf_log(lines: String) {
+    for line in lines.lines().take(40) {
+        // 行数 + 单行长度双封顶(任意前端字符串进日志,防日志膨胀)
+        let capped: String = line.chars().take(2000).collect();
+        tracing::info!(target: "fe_perf", "{capped}");
+    }
 }
 
 /// 扫描两个 PS profile + 报告当前活跃注册数。前端打开设置面板时调用。

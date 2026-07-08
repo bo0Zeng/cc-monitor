@@ -146,6 +146,16 @@ export class BranchFolder {
     this.rebuild();
   }
 
+  /**
+   * Batch13-F40a:物化/上翻补批后的无条件重折。flushPending 的 setsEqual 短路
+   * 在「unwrapAll 摊平后 mainBranch 未变」时会跳过 rebuild → 折叠段永久摊平;
+   * 增量渲染路径(插卡前必须 unwrapAll)插完一律走这里。
+   */
+  rebuildNow(): void {
+    this.lastMainBranch = this.computeMain();
+    this.rebuild();
+  }
+
   /** Tab 销毁时调，断 GC 引用 */
   dispose(): void {
     this.records = [];

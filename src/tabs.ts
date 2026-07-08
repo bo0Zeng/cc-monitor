@@ -11,7 +11,12 @@ import type { JsonlLinePayload } from "./events";
 import type { BehaviorConfig } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
 import { RecordTimeline } from "./record-timeline";
-import { renderStreamRecord, type StreamSink } from "./render-stream-record";
+import { TailWindow } from "./live-window";
+import {
+  renderContentRecord,
+  routeMetaAndBranch,
+  type StreamSink,
+} from "./render-stream-record";
 import type { BranchRecord } from "./branching";
 import { isAgentTool } from "./cards/subagent";
 import type { AgentsPanel, AgentEntry } from "./agents-panel";
@@ -119,6 +124,12 @@ export interface Tab {
    */
   seenSeqs: Set<number>;
   /**
+   * Batch13-F40a:尾部优先窗口账本(单洞后缀不变量,详 live-window.ts)。
+   * 启动重放的旧记录不建卡、收纳于此(meta/branch 数据已喂);floor=null(virgin)
+   * 的后台 tab 在 onBatchEnd 空闲物化尾段 / switchTo 命中时同步物化。
+   */
+  window: TailWindow;
+  /**
    * issue #26：已处理记录的 uuid 集——onLine 入口的 at-least-once 幂等
    * （违反此约束见 doc/INVARIANTS.md § 25）。截断重读换新 seq 重投时 seenSeqs 放行，
    * 若不按 uuid 拒掉，每条记录会以更大的 seq 在 timeline 末尾再渲染一遍（整段内容
@@ -204,6 +215,8 @@ export class TabManager {
   private manualOverrideUntil: number = 0;
   /** Manual override 窗口长度（ms）。issue #2 钦定 5s。 */
   private static readonly MANUAL_OVERRIDE_MS = 5000;
+  /** Batch13-F40a:物化/后台 tab 尾段条数(与 F39 viewer TAIL_INITIAL 同语义) */
+  private static readonly MATERIALIZE_TAIL_K = 150;
 
   /**
    * Tab 撕离（tear-off）拖拽状态机。同一时刻只允许一个拖拽，整段存这里。
@@ -271,8 +284,8 @@ export class TabManager {
     // 用 this.inBatch 设置。不再依赖 setRenderLazyMode 全局开关。
     for (const t of this.tabs.values()) {
       t.branchFolder.setBatchMode(true);
-      // 重放期"视口上方"的旧消息延后批量挂载，消除逐帧上方插入造成的微抖。
-      t.timeline.setDeferMode(true);
+      // Batch13-F40a:deferMode 已退役——重放期旧记录根本不建卡(收纳进 tab.window),
+      // "视口上方插入"次数为 0,比"延后到一帧"更强(INVARIANTS §21.3)。
     }
   }
 
@@ -283,9 +296,6 @@ export class TabManager {
   onBatchEnd(): void {
     this.inBatch = false;
     for (const t of this.tabs.values()) {
-      // 先把延后的"视口上方"旧消息批量挂回 DOM —— 必须在 branchFolder.flushPending
-      // 之前（后者要扫完整 DOM 算主线/折叠）。
-      t.timeline.flushDeferred();
       t.branchFolder.flushPending();
       t.branchFolder.setBatchMode(false);
       // 切块场景下，老块的 tool_use 现在已渲染 → 重试匹配早到的 fallback result
@@ -297,6 +307,114 @@ export class TabManager {
         pendingToolResults: t.pendingToolResults,
       };
       reconcilePendingToolResults(ctx);
+    }
+    // Batch13-F40a:active tab 不足一屏(或还是 virgin)→ 立即补物化到可见;
+    // 其余 virgin 后台 tab 进空闲物化队列(逐个串行,避免并发建卡风暴)。
+    const active = this.activeId !== null ? this.tabs.get(this.activeId) : undefined;
+    if (active && active.window.pendingCount > 0) {
+      const el = active.streamEl;
+      const notScrollable = el.scrollHeight - el.clientHeight <= 1;
+      if (active.window.floorSeq === null || notScrollable) {
+        this.materializeUntilFilled(active);
+        active.stream.scrollToBottom();
+      }
+    }
+    // D 审计 S-5:archived 死会话不进后台物化队列(纯浪费;switchTo 命中 virgin
+    // 已有同步物化兜底)。
+    this.materializeQueue = [...this.tabs.entries()]
+      .filter(
+        ([sid, t]) =>
+          sid !== this.activeId &&
+          t.status !== "archived" &&
+          t.window.floorSeq === null &&
+          t.window.pendingCount > 0,
+      )
+      .map(([sid]) => sid);
+    this.scheduleIdleMaterialize();
+  }
+
+  /**
+   * D 审计 R-3:一次 150 条 payload 可能只产出几张卡(tool-group 合并成单卡 34px、
+   * skip 记录占配额不产卡)——工具密集会话一轮物化后屏幕仍近空,而 F40a 没有上翻
+   * 补批兜底。有界循环补到可滚动或账本弹尽(≤4 轮防病态会话空转)。
+   */
+  private materializeUntilFilled(tab: Tab): void {
+    for (let round = 0; round < 4; round++) {
+      if (tab.window.pendingCount === 0) return;
+      const el = tab.streamEl;
+      if (round > 0 && el.scrollHeight - el.clientHeight > 1) return;
+      this.materializeTail(tab);
+    }
+  }
+
+  /**
+   * Batch13-F40a:物化 tab 的尾段——从窗口账本弹出 seq 最高的 ≤k 条建卡。
+   * - sink 不接 onRealUserInput(历史 user 卡不得触发自动切 tab)、branch/queue/title
+   *   为 no-op(收纳时 routeMetaAndBranch 已喂过,BranchFolder.seenUuids 双保险);
+   * - 不计 unread(修 backlog S-2:重放历史不是"未读新消息");
+   * - lazy hljs + observe(物化的是历史内容,滚入视口再高亮);
+   * - 插卡前 unwrapAll 摊平(邻居可能在 fold wrap 内,F39 实证的不变量)、插完
+   *   reconcile 孤儿 tool_result、rebuildNow 无条件重折(flushPending 的 setsEqual
+   *   短路会把摊平永久化)。
+   * 物化目标是 virgin/近 virgin tab(无滚动位置可保),不需要滚动补偿——上翻补批
+   * 的手动补偿属 F40b。
+   */
+  private materializeTail(tab: Tab, k = TabManager.MATERIALIZE_TAIL_K): void {
+    const payloads = tab.window.takeTail(k);
+    if (payloads.length === 0) return;
+    const ctx: RenderContext = {
+      parentPath: tab.parentPath,
+      origin: tab.origin,
+      toolUseNames: tab.toolUseNames,
+      toolUseElements: tab.toolUseElements,
+      pendingToolResults: tab.pendingToolResults,
+      lazy: true,
+    };
+    const sink: StreamSink = {
+      timeline: tab.timeline,
+      onBranchRecord: () => {},
+      onQueueOperation: () => {},
+      observeForLazyEnhance: true,
+    };
+    tab.branchFolder.unwrapAll();
+    // S-7:150 次 insert 各触发一次守卫 snap(读 scrollHeight=强制 reflow)——物化期
+    // 暂停逐卡 snap,批末一次贴底。
+    tab.stream.batchInsert(() => {
+      for (const p of payloads) {
+        try {
+          renderContentRecord(p, ctx, sink);
+        } catch (e) {
+          console.error("[tabs] materialize 单条渲染失败,跳过:", p.seq, e);
+        }
+      }
+    });
+    reconcilePendingToolResults(ctx);
+    tab.branchFolder.rebuildNow();
+  }
+
+  /** F40a:virgin 后台 tab 的空闲物化队列(串行;rIC 缺失时 setTimeout 兜底) */
+  private materializeQueue: string[] = [];
+  private materializeScheduled = false;
+
+  private scheduleIdleMaterialize(): void {
+    if (this.materializeScheduled) return;
+    const sid = this.materializeQueue.shift();
+    if (sid === undefined) return;
+    this.materializeScheduled = true;
+    const run = (): void => {
+      this.materializeScheduled = false;
+      const tab = this.tabs.get(sid);
+      // 只物化仍是 virgin 的(switchTo 可能已同步物化过);二次 batch 开始则原样跳过,
+      // 账本继续收纳,批结束会重新排队。
+      if (tab && !this.inBatch && tab.window.floorSeq === null) {
+        this.materializeTail(tab);
+      }
+      this.scheduleIdleMaterialize();
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(run, { timeout: 2000 });
+    } else {
+      window.setTimeout(run, 200);
     }
   }
 
@@ -337,15 +455,6 @@ export class TabManager {
     // issue #23（第二增量）：配对 agent 工具调用，喂 AgentsPanel
     this.trackAgents(tab, payload.message);
 
-    const ctx: RenderContext = {
-      parentPath: tab.parentPath,
-      origin: tab.origin,
-      toolUseNames: tab.toolUseNames,
-      toolUseElements: tab.toolUseElements,
-      pendingToolResults: tab.pendingToolResults,
-      // P5.5：batch 期间走 lazy hljs（代码块占位 + IntersectionObserver 触发再补跑）
-      lazy: this.inBatch,
-    };
     const sink: StreamSink = {
       timeline: tab.timeline,
       onBranchRecord: (rec: BranchRecord) => tab.branchFolder.recordAdded(rec),
@@ -356,8 +465,49 @@ export class TabManager {
       observeForLazyEnhance: this.inBatch,
     };
 
+    // Batch13-F40a:meta/branch 收集与渲染解耦——收纳(不建卡)的记录也要喂
+    // title/queue/branch 数据(routeMetaAndBranch 是两条路径的单一来源,账本 §3)。
+    if (routeMetaAndBranch(payload, sink) === "consumed") return;
+
+    // 门控(单洞后缀不变量,纯 seq 判定):
+    // - virgin + batch:active tab 首条 content 钉 floor(尾块直渲,进步式首屏
+    //   与 deferMode 时代一致);后台 tab 恒收纳(virgin,批后空闲物化)。
+    // - virgin + live:新开 tab 直渲并钉 floor。
+    // - seq >= floor:渲染(live 追加/尾块);seq < floor:收纳(旧块/F30 尾部
+    //   优先回填/迟到块——无论 inBatch,与 batch 哨兵解耦)。
+    // D 审计 C-1(近 virgin 竞态):批后 rIC 队列还没轮到该 tab 就来了真 live 行——
+    // 若直接 pinFloor(新行 seq),账本里整段历史会被钉死滞留(F40a 无再物化入口)。
+    // 先物化尾段(takeTail 顺带钉 floor),live 行(seq 恒更新)再照常 admit。
+    if (tab.window.floorSeq === null && !this.inBatch && tab.window.pendingCount > 0) {
+      this.materializeTail(tab);
+    }
+    const floor = tab.window.floorSeq;
+    let render: boolean;
+    if (floor === null) {
+      render = !this.inBatch || this.activeId === tab.sessionId;
+      if (render) tab.window.pinFloor(payload.seq);
+    } else {
+      render = tab.window.admit(payload.seq);
+    }
+    if (!render) {
+      tab.window.defer(payload);
+      // 仪表(jsdom 单测无 main.ts,须防 undefined)
+      if (window.__ccmPerf) window.__ccmPerf.recordsDeferred = (window.__ccmPerf.recordsDeferred ?? 0) + 1;
+      // 收纳不计 unread——重放历史不是"未读新消息"(修 backlog S-2)
+      return;
+    }
+
+    const ctx: RenderContext = {
+      parentPath: tab.parentPath,
+      origin: tab.origin,
+      toolUseNames: tab.toolUseNames,
+      toolUseElements: tab.toolUseElements,
+      pendingToolResults: tab.pendingToolResults,
+      // P5.5：batch 期间走 lazy hljs（代码块占位 + IntersectionObserver 触发再补跑）
+      lazy: this.inBatch,
+    };
     const beforeSize = tab.timeline.size;
-    renderStreamRecord(payload, ctx, sink);
+    renderContentRecord(payload, ctx, sink);
     const inserted = tab.timeline.size > beforeSize;
 
     // unread 计数：只有真新 entry 入 timeline 才算（tool-group 合并到旧 group 不算）
@@ -505,7 +655,6 @@ export class TabManager {
     // 触发 O(N) computeMainBranch。批结束时 onBatchEnd 会统一 flush。
     if (this.inBatch) {
       branchFolder.setBatchMode(true);
-      timeline.setDeferMode(true);
     }
 
     // v2.3.0 issue #11: 异步 fetch 初始 task 快照。task-update 事件路径并行更新
@@ -538,6 +687,7 @@ export class TabManager {
       branchFolder,
       pendingToolResults: new Map(),
       seenSeqs: new Set(),
+      window: new TailWindow(),
       processedUuids: new Set(),
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
       activity: this.pendingActivity.get(sessionId) ?? null,
@@ -793,6 +943,8 @@ export class TabManager {
     tab.pendingToolResults.clear();
     tab.seenSeqs.clear();
     tab.processedUuids.clear();
+    // F40a:窗口账本持整段历史 payload(大会话数十 MB 级),断引用
+    tab.window.dispose();
     tab.timeline.dispose();
     tab.branchFolder.dispose();
     this.tasksBySid.delete(sessionId);
@@ -1153,6 +1305,12 @@ export class TabManager {
     const next = this.tabs.get(sessionId);
     if (next) next.unread = 0;
     this.activeId = sessionId;
+    // Batch13-F40a:命中 virgin tab(启动重放全收纳,还没建过卡)→ 同步物化尾段,
+    // 避免切过去一片空白(R-3:有界循环补到可滚,防工具密集会话一轮近空屏)。
+    // 非 virgin tab 不动(上翻补批属 F40b)。
+    if (next && next.window.floorSeq === null && next.window.pendingCount > 0) {
+      this.materializeUntilFilled(next);
+    }
     // Batch5-F19：记住所在 tab——下次启动 active 选择 + replay 优先该 session。
     // viewer/tear-off 窗口共享同 origin 的 localStorage（INVARIANT § 14），它们的
     // TabManager 置 persistLastActive=false，防独立窗口看会话 X 污染主窗口记忆。

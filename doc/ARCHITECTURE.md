@@ -211,14 +211,14 @@ replay 时一次性发整个 Vec<JsonlLinePayload>，前端 push 进同一 queue
 
 **为什么**：Tauri IPC 每次 emit 都有序列化 + 派发 overhead。N=3000 时累计 ~400ms 主线程阻塞，启动可见显著卡顿。BATCH 单次序列化降到 ~50ms。
 
-### 启动重放贴底消抖 = 守卫式 snap + overflow-anchor + 延后批量挂载
-重放"末块先发"，最新一段先到并贴底，更老的内容随后**插到视口上方**。三条协同保证贴底时不抖（详 INVARIANTS § 21）：
+### 启动重放贴底消抖 = 守卫式 snap + overflow-anchor + 尾部优先收纳（F40a）
+重放"末块先发"。Batch13-F40a 起 `TabManager.onLine` 按 seq 门控（详 INVARIANTS § 21）：
 
 - **守卫式 `snap()`**：只在落后底部 >1px 时才写 scrollTop，不每帧重钉。
-- **上方插入交给原生 `overflow-anchor`**：不手动补偿 scrollTop（叠加会 double-shift）。
-- **`RecordTimeline` deferMode**：重放期插到非末尾的旧内容**只进数组不挂 DOM**，`onBatchEnd` 用 `attachBatch` 一次性挂回（在 `branchFolder.flushPending` 之前）。
+- **窗口内中部插入交给原生 `overflow-anchor`**：不手动补偿 scrollTop（叠加会 double-shift）。
+- **尾部优先收纳**：active tab 首条 content 记录钉 `floor`，尾块（`seq ≥ floor`）直渲进步式首屏；更老的块与后台 virgin tab 的全部记录**只进 `TailWindow` 账本不建卡**（meta/branch 经 `routeMetaAndBranch` 照喂）。后台 tab 批后 `requestIdleCallback` 逐个物化尾 150 条；`switchTo` 命中 virgin 同步物化。物化 = `unwrapAll` → `renderContentRecord`× → `reconcilePendingToolResults` → `rebuildNow`（无条件重折）。
 
-**为什么**：旧内容逐条插到贴底视口上方会让浏览器逐帧重排 + 重做 scroll anchoring，HiDPI/高刷屏分数像素下整数 `scrollHeight` 与分数布局的舍入误差每帧不同 → 整块内容 ±0.5px 高频抖动（实测抖动帧 66→1）。渲染仍按 40/帧推进（响应不卡），只把"上方插入"压成一帧。注意 `scrollTop` 本身不震荡，故只测 scrollTop 发现不了此 bug。
+**为什么**：旧内容逐条插到贴底视口上方会让浏览器逐帧重排 + 重做 scroll anchoring，HiDPI/高刷屏分数像素下 ±0.5px 高频抖动（deferMode 时代实测 66→1 帧）；F40a 让**启动重放**的上方插入为 0，且 9.4k 条重放只建 ~尾块+150×tabs 张卡（建卡是重放期最大成本——markdown/DOMPurify/pretext 全免）。历史方案 deferMode/`flushDeferred`/`attachBatch` 已退役。已知残余：已渲染 tab 上的大增量批（>600 行切块）仍逐条中部插入，F40b 记账（INVARIANTS § 21.3）。
 
 ### 独立只读窗口复用主渲染管线 + 定向 replay（issue #10）
 `open_session_in_new_window` 建 `viewer-<sid>` WebviewWindow 加载 `index.html?viewer=<sid>`；前端 `main.ts` 检测参数走精简 bootstrap（`bootstrapViewer`）—— **复用 TabManager**（过滤到该 sid、`body.viewer-mode` 隐藏 tab/设置/历史 chrome），自动继承分支折叠 / 启动滚动消抖 / tool-group 合并。顶部一条 slim 栏：项目名标题 + ↗调出终端 + 📂打开 cwd（复用 TabManager 的 active-tab 动作）。
