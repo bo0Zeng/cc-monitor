@@ -130,6 +130,14 @@ export interface Tab {
    */
   window: TailWindow;
   /**
+   * F40b R-1:批期「窗口内中部插入」缓冲——大增量批(>600 行切块,末块先发)落在
+   * 已渲染 tab 上时,老块 seq≥floor 但 <timeline.maxSeq,逐条挂 DOM 会跨帧上方
+   * 插入(§21 病根)。缓冲到 onBatchEnd 一次 batchInsert 挂载。
+   */
+  midBatchBuffer: JsonlLinePayload[];
+  /** F40b:上翻补批 scroll listener 引线(closeTab 摘) */
+  fillHandler: (() => void) | null;
+  /**
    * issue #26：已处理记录的 uuid 集——onLine 入口的 at-least-once 幂等
    * （违反此约束见 doc/INVARIANTS.md § 25）。截断重读换新 seq 重投时 seenSeqs 放行，
    * 若不按 uuid 拒掉，每条记录会以更大的 seq 在 timeline 末尾再渲染一遍（整段内容
@@ -217,6 +225,11 @@ export class TabManager {
   private static readonly MANUAL_OVERRIDE_MS = 5000;
   /** Batch13-F40a:物化/后台 tab 尾段条数(与 F39 viewer TAIL_INITIAL 同语义) */
   private static readonly MATERIALIZE_TAIL_K = 150;
+  /** F40b:上翻补批批量/触发距离(沿用 F39 实测值) */
+  private static readonly FILL_BATCH = 200;
+  private static readonly TOP_TRIGGER_PX = 800;
+  /** F40b:补批防重入(补偿测量期间嵌套触发会算错差值) */
+  private renderingFill = false;
 
   /**
    * Tab 撕离（tear-off）拖拽状态机。同一时刻只允许一个拖拽，整段存这里。
@@ -296,6 +309,9 @@ export class TabManager {
   onBatchEnd(): void {
     this.inBatch = false;
     for (const t of this.tabs.values()) {
+      // F40b R-1:先把批期缓冲的中部插入一次挂载(内含 unwrapAll/rebuildNow),
+      // 再走既有 flushPending/reconcile
+      this.flushMidBatchBuffer(t);
       t.branchFolder.flushPending();
       t.branchFolder.setBatchMode(false);
       // 切块场景下，老块的 tool_use 现在已渲染 → 重试匹配早到的 fallback result
@@ -306,7 +322,8 @@ export class TabManager {
         toolUseElements: t.toolUseElements,
         pendingToolResults: t.pendingToolResults,
       };
-      reconcilePendingToolResults(ctx);
+      // S-6:孤儿卡出 DOM 的同时出账,防悬空 anchor
+      for (const el of reconcilePendingToolResults(ctx)) t.timeline.removeByElement(el);
     }
     // Batch13-F40a:active tab 不足一屏(或还是 virgin)→ 立即补物化到可见;
     // 其余 virgin 后台 tab 进空闲物化队列(逐个串行,避免并发建卡风暴)。
@@ -331,6 +348,8 @@ export class TabManager {
       )
       .map(([sid]) => sid);
     this.scheduleIdleMaterialize();
+    // F40b:active tab 未走物化分支(尾块已可滚)时也要挂哨兵
+    if (active) this.updateSentinel(active);
   }
 
   /**
@@ -348,19 +367,18 @@ export class TabManager {
   }
 
   /**
-   * Batch13-F40a:物化 tab 的尾段——从窗口账本弹出 seq 最高的 ≤k 条建卡。
+   * Batch13-F40a/b:批量渲染内核(物化 / 上翻补批 / R-1 缓冲 flush 共用)。
    * - sink 不接 onRealUserInput(历史 user 卡不得触发自动切 tab)、branch/queue/title
-   *   为 no-op(收纳时 routeMetaAndBranch 已喂过,BranchFolder.seenUuids 双保险);
-   * - 不计 unread(修 backlog S-2:重放历史不是"未读新消息");
-   * - lazy hljs + observe(物化的是历史内容,滚入视口再高亮);
-   * - 插卡前 unwrapAll 摊平(邻居可能在 fold wrap 内,F39 实证的不变量)、插完
-   *   reconcile 孤儿 tool_result、rebuildNow 无条件重折(flushPending 的 setsEqual
-   *   短路会把摊平永久化)。
-   * 物化目标是 virgin/近 virgin tab(无滚动位置可保),不需要滚动补偿——上翻补批
-   * 的手动补偿属 F40b。
+   *   为 no-op(收纳/缓冲时 routeMetaAndBranch 已喂过,BranchFolder.seenUuids 双保险);
+   * - 不计 unread(重放历史不是"未读新消息",修 backlog S-2;R-1 缓冲的 unread
+   *   在缓冲时已计);
+   * - lazy hljs + observe(批量渲染的是历史内容,滚入视口再高亮);
+   * - 插卡前 unwrapAll 摊平(邻居可能在 fold wrap 内,F39 实证的不变量)、批内
+   *   暂停逐卡 snap(S-7,防 150 次强制 reflow)、插完 reconcile 孤儿 tool_result
+   *   (S-6 同步出账)、rebuildNow 无条件重折(flushPending 的 setsEqual 短路会把
+   *   摊平永久化)。
    */
-  private materializeTail(tab: Tab, k = TabManager.MATERIALIZE_TAIL_K): void {
-    const payloads = tab.window.takeTail(k);
+  private renderPayloadsBatch(tab: Tab, payloads: JsonlLinePayload[]): void {
     if (payloads.length === 0) return;
     const ctx: RenderContext = {
       parentPath: tab.parentPath,
@@ -377,19 +395,104 @@ export class TabManager {
       observeForLazyEnhance: true,
     };
     tab.branchFolder.unwrapAll();
-    // S-7:150 次 insert 各触发一次守卫 snap(读 scrollHeight=强制 reflow)——物化期
-    // 暂停逐卡 snap,批末一次贴底。
     tab.stream.batchInsert(() => {
       for (const p of payloads) {
         try {
           renderContentRecord(p, ctx, sink);
         } catch (e) {
-          console.error("[tabs] materialize 单条渲染失败,跳过:", p.seq, e);
+          console.error("[tabs] 批量渲染单条失败,跳过:", p.seq, e);
         }
       }
     });
-    reconcilePendingToolResults(ctx);
+    for (const el of reconcilePendingToolResults(ctx)) tab.timeline.removeByElement(el);
     tab.branchFolder.rebuildNow();
+  }
+
+  /**
+   * Batch13-F40a:物化 tab 的尾段——从窗口账本弹出 seq 最高的 ≤k 条建卡。
+   * 物化目标是 virgin/近 virgin tab(无滚动位置可保),不需要滚动补偿——上翻补批
+   * 的手动补偿在 fillAbove(F40b)。
+   */
+  private materializeTail(tab: Tab, k = TabManager.MATERIALIZE_TAIL_K): void {
+    this.renderPayloadsBatch(tab, tab.window.takeTail(k));
+    this.updateSentinel(tab);
+  }
+
+  /**
+   * F40b R-1:批期缓冲的「窗口内中部插入」(大增量批老块)一次性挂载。
+   * 排序后走渲染内核(含 unwrapAll/rebuildNow——不能依赖随后 flushPending,
+   * 它的 setsEqual 短路会把摊平永久化)。在 onBatchEnd 的 flushPending/reconcile
+   * 之前调。
+   */
+  private flushMidBatchBuffer(tab: Tab): void {
+    if (tab.midBatchBuffer.length === 0) return;
+    const payloads = tab.midBatchBuffer.sort((a, b) => a.seq - b.seq);
+    tab.midBatchBuffer = [];
+    // 已知取舍(D 审计):批末 flush 不做选区守卫——unwrap/rebuild 会杀进行中选区,
+    // 但 flush 不可延迟(数据必须落),且触发面(选中文本时恰逢远端大增量批)极窄。
+    this.renderPayloadsBatch(tab, payloads);
+    this.refreshTabBar(); // 缓冲期攒下的 unread 徽标一次刷新
+  }
+
+  /**
+   * F40b:上翻补批。守卫:防重入 / 账空 / 选区进行中(补批 unwrap/rebuild 会杀
+   * 进行中的选区,等下次 scroll 再试)。补偿:临时关原生锚定(防 WebView2 与手动
+   * 补偿 double-shift;WebKitGTK 本就无锚定),测量→渲染→scrollTop 回写在同一
+   * 同步任务内(不许 await/rAF 打断)。rAF 自链:零高批/不足一屏无 scroll 事件
+   * (F39-R1 场景),补完复检直到离开触发区或账尽。
+   */
+  private fillAbove(tab: Tab): void {
+    if (this.renderingFill) return;
+    if (tab.window.pendingCount === 0) return;
+    const sel = document.getSelection();
+    if (sel && !sel.isCollapsed) return;
+    const el = tab.streamEl;
+    this.renderingFill = true;
+    try {
+      el.style.overflowAnchor = "none";
+      const beforeH = el.scrollHeight;
+      const beforeTop = el.scrollTop;
+      this.renderPayloadsBatch(tab, tab.window.takeTail(TabManager.FILL_BATCH));
+      // 哨兵刷新必须在补偿回写**之前**:账尽移除的 ±30px 计入 Δ 一并吃掉——
+      // 移除若在补偿后,dev(无锚定)会在"会话第一条"处一次性跳 30px(D 审计)。
+      this.updateSentinel(tab);
+      el.scrollTop = beforeTop + (el.scrollHeight - beforeH);
+    } finally {
+      // 还原必须在 finally:渲染内核抛出时留下 overflow-anchor:none = 该 tab 永久
+      // 失去原生锚定,违反 §21.2 且无自愈(D 审计,两家共识)
+      el.style.overflowAnchor = "";
+      this.renderingFill = false;
+    }
+    requestAnimationFrame(() => {
+      if (this.activeId !== tab.sessionId) return;
+      const t = this.tabs.get(tab.sessionId);
+      if (!t || t.window.pendingCount === 0) return;
+      const e = t.streamEl;
+      if (e.scrollTop <= TabManager.TOP_TRIGGER_PX || e.scrollHeight - e.clientHeight <= 1) {
+        this.fillAbove(t);
+      }
+    });
+  }
+
+  /**
+   * F40b:顶端哨兵——账本非空时置顶「还有 N 条更早消息」,账尽移除。
+   * 非 timeline 实体、无 data-uuid(BranchFolder 视作断 run,天然免疫 fold);
+   * 二分插入的 anchor 恒为 timeline 元素,最老卡 insertBefore(首卡) 自然落哨兵后。
+   */
+  private updateSentinel(tab: Tab): void {
+    const content = tab.stream.contentElement;
+    let el = content.querySelector(":scope > .stream-more-above") as HTMLElement | null;
+    const n = tab.window.pendingCount;
+    if (n === 0) {
+      el?.remove();
+      return;
+    }
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "stream-more-above";
+      content.prepend(el);
+    }
+    el.textContent = `↑ 还有 ${n} 条更早消息 · 上翻加载`;
   }
 
   /** F40a:virgin 后台 tab 的空闲物化队列(串行;rIC 缺失时 setTimeout 兜底) */
@@ -488,6 +591,16 @@ export class TabManager {
       if (render) tab.window.pinFloor(payload.seq);
     } else {
       render = tab.window.admit(payload.seq);
+    }
+    // F40b R-1:批期落在渲染窗口内的**中部**插入(seq≥floor 且 <已渲染最高 seq
+    // ——大增量批的老块)→ 缓冲,onBatchEnd 一次挂载,消逐帧上方插入(§21)。
+    // 离线期真新消息:unread 照计(粒度=记录,与逐条渲染的 inserted 判定在
+    // tool-group 合并上略有偏差,99+ 封顶下可接受)。
+    if (render && this.inBatch && payload.seq < tab.timeline.maxSeq) {
+      tab.midBatchBuffer.push(payload);
+      // 徽标刷新攒到批末 flush 一次(D 审计:600 条缓冲 = 600 次全 bar 巡检)
+      if (this.activeId !== tab.sessionId) tab.unread += 1;
+      return;
     }
     if (!render) {
       tab.window.defer(payload);
@@ -688,12 +801,23 @@ export class TabManager {
       pendingToolResults: new Map(),
       seenSeqs: new Set(),
       window: new TailWindow(),
+      midBatchBuffer: [],
+      fillHandler: null,
       processedUuids: new Set(),
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
       activity: this.pendingActivity.get(sessionId) ?? null,
       agents: new Map(),
     };
     this.pendingActivity.delete(sessionId);
+    // F40b:上翻补批触发器(passive 只读滚动位置;handler 内判 active,后台 tab
+    // 的程序化滚动/尺寸变化不触发补批)
+    const fillHandler = (): void => {
+      if (this.activeId !== sessionId) return;
+      const t = this.tabs.get(sessionId);
+      if (t && t.streamEl.scrollTop <= TabManager.TOP_TRIGGER_PX) this.fillAbove(t);
+    };
+    streamEl.addEventListener("scroll", fillHandler, { passive: true });
+    tab.fillHandler = fillHandler;
     // issue #19：若该 sid 的归档信号先于本次建 Tab 到达（见 archiveTab），落实归档，
     // 避免重载后已结束会话复活成关不掉的 live Tab。本地 un-archive（上方 origin!==null
     // 那条）不适用，故归档后续 replay 行也不会把它复活。
@@ -943,8 +1067,10 @@ export class TabManager {
     tab.pendingToolResults.clear();
     tab.seenSeqs.clear();
     tab.processedUuids.clear();
-    // F40a:窗口账本持整段历史 payload(大会话数十 MB 级),断引用
+    // F40a/b:窗口账本与缓冲持整段历史 payload(大会话数十 MB 级),断引用;摘 fill listener
     tab.window.dispose();
+    tab.midBatchBuffer = [];
+    if (tab.fillHandler) tab.streamEl.removeEventListener("scroll", tab.fillHandler);
     tab.timeline.dispose();
     tab.branchFolder.dispose();
     this.tasksBySid.delete(sessionId);
@@ -1310,6 +1436,15 @@ export class TabManager {
     // 非 virgin tab 不动(上翻补批属 F40b)。
     if (next && next.window.floorSeq === null && next.window.pendingCount > 0) {
       this.materializeUntilFilled(next);
+    }
+    // F40b:切入即刷新哨兵(非 virgin 但账本非空的 tab 也要见到「还有 N 条」)
+    if (next) this.updateSentinel(next);
+    // D 审计 R-2:非 virgin + 不可滚 + 账本有余的 tab 没有 fill 入口(不可滚元素
+    // 不产生 scroll 事件,哨兵可见却"上翻物理不可达")——切入时踢一次,rAF 自链
+    // 接管直到可滚或账尽。
+    if (next && next.window.pendingCount > 0) {
+      const el = next.streamEl;
+      if (el.scrollHeight - el.clientHeight <= 1) this.fillAbove(next);
     }
     // Batch5-F19：记住所在 tab——下次启动 active 选择 + replay 优先该 session。
     // viewer/tear-off 窗口共享同 origin 的 localStorage（INVARIANT § 14），它们的
