@@ -313,10 +313,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
-            // Debug build 自动开 DevTools
+            // Debug build 自动开 DevTools(CCM_NO_DEVTOOLS=1 抑制——远程实测/E2E 时省半屏)
             #[cfg(debug_assertions)]
-            if let Some(window) = app.get_webview_window("main") {
-                window.open_devtools();
+            if std::env::var("CCM_NO_DEVTOOLS").is_err() {
+                if let Some(window) = app.get_webview_window("main") {
+                    window.open_devtools();
+                }
             }
 
             // 窗口 config `focus=false` → 创建时不激活、不抢前台（cc 集成 auto-launch 带

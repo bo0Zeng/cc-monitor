@@ -1320,10 +1320,11 @@ export class TabManager {
         { label: "在新窗口打开", onClick: () => void this.openInNewWindow(sid) },
       ];
       // F37：灰 tab（会话已结束）右键手动 resume——不用绕去历史浏览器。
-      // 本地开新终端；远端 monitor 开不了远端 TTY，复制命令供粘贴（同历史 ↺ 语义）。
+      // 统一叫 Resume（用户反馈）：能直接 resume 的直接干（本地=新终端拉起,
+      // 同历史 ↺）；干不了的才退化成复制命令（远端,点击后 toast 说明）。
       if (t?.status === "archived") {
         items.push({
-          label: t.origin ? "复制 resume 命令" : "在新终端 resume",
+          label: "Resume",
           onClick: () => void this.resumeTab(sid),
         });
       }
