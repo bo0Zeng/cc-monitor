@@ -1115,6 +1115,11 @@ pub async fn run(
     // 本轮**连上过**（收到 daemon hello，connected=true）则下次立即以 MIN 快速重连。
     // INVARIANT §10：唯一的等待是 tokio::time::sleep（async、非阻塞），绝不 std::thread::sleep。
     let mut backoff = RECONNECT_MIN;
+    // v2.22.1 hello 自愈账本:上一轮 hello 自证 daemon==当前版本时记账,下一轮以此
+    // 越过「部署侧确认失败」的降级(内嵌清单缺失的 CI 安装包 v2.19-v2.22 全中招)。
+    // 若带 flag 的一轮连 hello 都没收到(真·旧 daemon 把未知参数当一次性查询退出),
+    // 清账回退降级,防止 flagged 重连死循环。
+    let mut hello_confirmed: Option<String> = None;
     loop {
         connected.store(false, Ordering::Release);
         // Batch9 账本：HashSet → HashMap<sid, AnnouncedMeta>（F27 status 写回 +
@@ -1128,8 +1133,13 @@ pub async fn run(
             &session_changes,
             &connected,
             &mut announced,
+            &mut hello_confirmed,
         )
         .await;
+        if hello_confirmed.is_some() && !connected.load(Ordering::Acquire) {
+            tracing::warn!("ssh_source hello 自愈轮未收到 hello,回退降级模式(daemon 可能被换旧)");
+            hello_confirmed = None;
+        }
         // Batch9-F28：连接结束清本 host 的 registry（断连=骨架不该再被 F5 重建；
         // 重连宣告会重新填充）。
         announced_registry()
@@ -1256,6 +1266,7 @@ async fn stream_loop(
     session_changes: &std::sync::mpsc::Sender<SessionChange>,
     connected: &Arc<AtomicBool>,
     announced: &mut std::collections::HashMap<String, AnnouncedMeta>,
+    hello_confirmed: &mut Option<String>,
 ) -> Result<(), String> {
     // issue #15 / #30：远端行的 origin 标签 = 该机器的稳定身份（label，默认 host）。
     // 前端据此给该 Tab 标题加 `[label]` 前缀以区分本地/各远端机器。进 loop 前 clone。
@@ -1277,6 +1288,12 @@ async fn stream_loop(
     // 旧 daemon 会把未知参数当一次性查询处理后退出（无 hello → 重连死循环），
     // 确认不了（手动部署 / ~ 路径 / 无内嵌 arch）一律降级不传（功能退化但连接
     // 正常：全量推流 = 2.18.0 行为）。
+    // v2.22.1 hello 自愈:上一轮 hello 已自证 daemon==当前版本 → 以 hello 为准。
+    // **hello 优先**于部署侧结论:部署侧可能返回 Some(陈旧内嵌的身份)(≠期望,
+    // 会压回降级)——首版用 or_else 只补 None,被 E2E 抓出无限重连循环(部署侧
+    // Some(p1x)≠期望 → hello 账本永不被采纳 → 每轮降级→hello→重连)。
+    // hello_confirmed 只在 ==EXPECTED 时写入,优先采纳恒安全。
+    let confirmed_build = hello_confirmed.clone().or(confirmed_build);
     let (with_bg, tail_only) = decide_stream_flags(
         confirmed_build.as_deref(),
         EXPECTED_DAEMON_BUILD_ID,
@@ -1416,6 +1433,29 @@ async fn stream_loop(
                     };
                     if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
                         tracing::warn!("ssh_source remote-health (version) emit failed: {e}");
+                    }
+                }
+                // v2.22.1:本轮跑在降级模式(未传 --tail-only,部署侧确认失败)时——
+                // ① daemon 自报 == 当前版本 → 记 hello 自愈账,立即重连升级流模式
+                //   (connected 已置 true → 退避重置为 MIN,~2s 内带 flag 回来);
+                // ② 确实是旧 daemon → 降级可见化:此前只写日志,用户看到的是「bg 会话
+                //   消失+拥塞复发」却无从归因(实测连环误诊)——经 remote-health 提示。
+                if !tail_only {
+                    if build_id == EXPECTED_DAEMON_BUILD_ID {
+                        *hello_confirmed = Some(build_id.clone());
+                        return Err(format!(
+                            "daemon hello 自证为当前版本({build_id})——重连升级流模式(tail-only/with-bg)"
+                        ));
+                    }
+                    let payload = crate::bridge::RemoteHealthPayload {
+                        origin: Some(host_label.clone()),
+                        kind: "degraded".to_string(),
+                        message: format!(
+                            "远端 daemon 为旧版本({build_id},当前 {EXPECTED_DAEMON_BUILD_ID}),本连接降级运行:后台(bg)会话不可见、历史全量推流(易拥塞)。请在设置里重装该机器的 daemon。"
+                        ),
+                    };
+                    if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                        tracing::warn!("ssh_source remote-health (degraded) emit failed: {e}");
                     }
                 }
             }

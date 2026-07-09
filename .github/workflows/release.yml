@@ -93,6 +93,10 @@ jobs:
           path: daemon-artifacts
 
       # 放进 build.rs 期望的位置；缺任一 arch 就 fail——绝不静默发出「自动部署被关」的安装包。
+      # v2.22.1 修复：**必须连 .build_id 清单一起拷**。此前只拷二进制不拷清单 →
+      # build.rs 拿不到内嵌身份 → 运行时字节启发式又搜不到被优化的 BUILD_ID 明文 →
+      # 「身份未知跳过自动部署」→ v2.19-v2.22 全部 CI 安装包的远端流模式静默降级
+      # （bg 会话不可见 + 全量推流拥塞）。清单内容再与源码 BUILD_ID 对拍，嵌错比没嵌更糟。
       - name: Place + verify embedded daemons
         shell: pwsh
         run: |
@@ -101,7 +105,16 @@ jobs:
             $f = Get-ChildItem -Recurse daemon-artifacts -Filter "cc-monitor-remote-$a" | Select-Object -First 1
             if (-not $f) { Write-Error "daemon artifact cc-monitor-remote-$a 缺失——内嵌失败，自动部署会被禁用"; exit 1 }
             Copy-Item $f.FullName "src-tauri/embedded-daemons/cc-monitor-remote-$a" -Force
+            $m = Get-ChildItem -Recurse daemon-artifacts -Filter "cc-monitor-remote-$a.build_id" | Select-Object -First 1
+            if (-not $m) { Write-Error ".build_id 清单缺失（$a）——身份未知的内嵌会被运行时拒绝，流模式将降级"; exit 1 }
+            Copy-Item $m.FullName "src-tauri/embedded-daemons/cc-monitor-remote-$a.build_id" -Force
             Write-Host ("embedded {0} ({1} bytes)" -f $a, $f.Length)
+          }
+          $src = (Select-String -Path remote-daemon-proto/src/main.rs -Pattern 'const BUILD_ID: &str = "([^"]+)"').Matches[0].Groups[1].Value
+          foreach ($a in "x86_64","aarch64") {
+            $id = (Get-Content "src-tauri/embedded-daemons/cc-monitor-remote-$a.build_id" -Raw).Trim()
+            if ($id -ne $src) { Write-Error "清单（$a）=$id ≠ 源码 BUILD_ID=$src"; exit 1 }
+            Write-Host "manifest $a = $id (匹配源码)"
           }
 
       - name: npm install

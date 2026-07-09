@@ -32,6 +32,8 @@ function headlineFor(kind: string): string {
       return "⚠ 远端管道拥塞";
     case "version":
       return "⚠ 远端 daemon 版本不符";
+    case "degraded":
+      return "远端降级模式";
     case "snapshot":
       return "⚠ 远端历史快照拉取失败";
     default:
