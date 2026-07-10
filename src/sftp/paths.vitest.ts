@@ -46,3 +46,13 @@ describe("F48 paths", () => {
     expect(newTransferId()).not.toBe(newTransferId());
   });
 });
+
+import { basename } from "./paths";
+describe("F48 basename", () => {
+  it("取最后一段(兼容反斜杠/尾斜杠)", () => {
+    expect(basename("/home/pi/a.txt")).toBe("a.txt");
+    expect(basename("C:\\Users\\me\\b.rs")).toBe("b.rs");
+    expect(basename("/home/pi/")).toBe("pi");
+    expect(basename("solo")).toBe("solo");
+  });
+});
