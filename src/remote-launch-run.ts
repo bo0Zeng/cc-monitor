@@ -7,7 +7,12 @@
  * wt+PowerShell 都 spawn 失败时，用户仍拿得到可粘贴命令，功能永不变砖）。
  */
 import { invoke } from "@tauri-apps/api/core";
-import { buildResumeDirectCmd, buildResumeTmuxCmd, buildAttachCmd } from "./remote-launch";
+import {
+  buildResumeDirectCmd,
+  buildResumeTmuxCmd,
+  buildAttachCmd,
+  buildLauncherCmd,
+} from "./remote-launch";
 import { showActionFailureToast } from "./error-toast";
 
 /** 一键 resume 远端会话：拉起成功 toast 告知；失败回退复制命令。 */
@@ -78,6 +83,42 @@ export async function runRemoteResumeTmux(
     }
     showActionFailureToast(
       copied ? "拉起失败，已复制 tmux resume 命令" : "拉起失败，请手动复制以下命令",
+      `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
+      { level: "info", durationMs: 10000 },
+    );
+  }
+}
+
+/** F53：「在这台机开新 Claude」——在远端 tmux 会话里启动全新 Claude;失败回退复制命令。 */
+export async function runRemoteLauncher(
+  origin: string,
+  cwd: string,
+  tmuxName: string,
+  command: string,
+): Promise<void> {
+  let cmd: string;
+  try {
+    cmd = buildLauncherCmd(cwd, tmuxName, command);
+  } catch (err) {
+    showActionFailureToast("无法构造 launcher 命令", String(err));
+    return;
+  }
+  try {
+    await invoke("launch_remote_terminal", { origin, remoteCmd: cmd });
+    showActionFailureToast(
+      "已拉起「开新 Claude」",
+      `新终端窗口正在连接 [${origin}] 并在 tmux 会话「${tmuxName}」里启动 Claude。`,
+      { level: "info", durationMs: 6000 },
+    );
+  } catch (err) {
+    let copied = true;
+    try {
+      await navigator.clipboard.writeText(cmd);
+    } catch {
+      copied = false;
+    }
+    showActionFailureToast(
+      copied ? "拉起失败，已复制命令" : "拉起失败，请手动复制以下命令",
       `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
       { level: "info", durationMs: 10000 },
     );
