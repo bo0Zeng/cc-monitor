@@ -763,6 +763,20 @@ export class TabManager {
         tab.status = "live";
         this.refreshTabBar();
       }
+      // v2.22.2 kind 冲突消解:同一 sid 可能有多份 pidfile(实证:cc-daemon 的
+      // bg-spare 备用进程复用**父会话的 sid**写 kind=bg)——宣告到达顺序不定,
+      // bg 先到会把真交互会话降格成 ⚙ 且树状挂到别的宿主下(用户截图实锤)。
+      // 规则:**interactive 恒压过 bg**——后到的 interactive 宣告在此升格纠正
+      // (重新按宿主定位 + 把同 cwd 孤儿 bg 拉回身后);反向(bg 后到)绝不降格。
+      if (kind === "interactive" && tab.kind !== null && tab.kind !== "interactive") {
+        tab.kind = "interactive";
+        tab.bgName = null;
+        tab.title = this.computeTitle(tab);
+        const i = this.orderedIds.indexOf(sessionId);
+        if (i >= 0) this.orderedIds.splice(i, 1);
+        this.placeInOrder(tab);
+        this.refreshTabBar();
+      }
       // Batch5-F18：骨架 Tab（无行创建）的 parentPath 为空——首条带路径的行回填，
       // 保住「在新窗口打开」等依赖 jsonl 路径的功能。
       if (!tab.parentPath && sourcePath) {
