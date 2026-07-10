@@ -1039,6 +1039,8 @@ fn parse_host_obj(
         .unwrap_or(22);
     let key_path = str_field("keyPath").map(str::to_string);
     let host_key_fingerprint = str_field("hostKeyFingerprint").map(str::to_string);
+    // Batch14-F56：跳板 label（指向另一台已配置主机的 origin_label）。
+    let jump = str_field("jump").map(str::to_string);
     // Batch14-F45：备用地址。前端下发数组（addresses: string[]）；也容忍换行文本（历史/手填）。
     let addresses: Vec<String> = match obj.get("addresses") {
         Some(serde_json::Value::Array(arr)) => arr
@@ -1066,6 +1068,7 @@ fn parse_host_obj(
         daemon_path,
         host_key_fingerprint,
         addresses,
+        jump,
     })
 }
 
@@ -1803,6 +1806,23 @@ mod remote_config_tests {
         assert_eq!(cfgs[0].host, "pi.local");
         assert_eq!(cfgs[0].label, "pi.local", "label 默认 = host");
         assert_eq!(cfgs[0].port, 22, "port 默认 22");
+    }
+
+    /// F56：jump 字段解析——有值 → Some;缺省/空串 → None（str_field 过滤空）。
+    #[test]
+    fn jump_field_parsed() {
+        let remote = remote_obj(json!({
+            "hosts": [
+                {"host": "internal", "user": "u", "daemonPath": "/x", "jump": "bastion"},
+                {"host": "direct", "user": "u", "daemonPath": "/y"},
+                {"host": "empty", "user": "u", "daemonPath": "/z", "jump": ""}
+            ]
+        }));
+        let cfgs = parse_remote_hosts(&remote);
+        assert_eq!(cfgs.len(), 3);
+        assert_eq!(cfgs[0].jump.as_deref(), Some("bastion"));
+        assert_eq!(cfgs[1].jump, None, "缺省 → None");
+        assert_eq!(cfgs[2].jump, None, "空串 → None");
     }
 
     /// hosts 数组多台；缺 label 的台 label 回退 host；port 透传。

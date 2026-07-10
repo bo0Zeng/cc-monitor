@@ -102,6 +102,11 @@ export interface RemoteHostConfig {
    * `[IPv6]:port` / 裸 IPv6。首选地址仍是 `host` 字段。空数组 = 仅用 host。
    */
   addresses: string[];
+  /**
+   * Batch14-F56：跳板 ProxyJump——填另一台已配置主机的 `label`（空=直连）。经该跳板机隧道连本机
+   * （数据源侧 russh direct-tcpip；拉起侧 ssh `-J`）。fail-closed：跳板缺失/连不上即报错不直连。
+   */
+  jump: string;
 }
 
 /** F45：多行文本 ↔ 地址数组（trim + 去空行）。UI 用 textarea，config/IPC 用数组。 */
@@ -143,6 +148,7 @@ const HOST_DEFAULTS: RemoteHostConfig = {
   daemonPath: "",
   hostKeyFingerprint: "",
   addresses: [],
+  jump: "",
 };
 
 const REMOTE_INFO_TEXT =
@@ -287,6 +293,7 @@ class MachineCard {
   private daemonPathInput!: HTMLInputElement;
   private fingerprintInput!: HTMLInputElement;
   private addressesInput!: HTMLTextAreaElement;
+  private jumpInput!: HTMLInputElement;
   /** 依当前指纹值显隐「重置为 TOFU」按钮（load / 重置后调用）。 */
   private syncResetFpVisibility!: () => void;
   private testButton!: HTMLButtonElement;
@@ -325,6 +332,7 @@ class MachineCard {
       daemonPath: this.daemonPathInput.value.trim(),
       hostKeyFingerprint: this.fingerprintInput.value.trim(),
       addresses: parseAddressLines(this.addressesInput.value),
+      jump: this.jumpInput.value.trim(),
     };
   }
 
@@ -450,6 +458,14 @@ class MachineCard {
     this.addressesInput.addEventListener("change", onChange);
     addrRow.appendChild(this.addressesInput);
     body.appendChild(addrRow);
+
+    // F56：跳板 ProxyJump——填另一台已配置主机的 label（空=直连）。经该跳板机隧道连本机。
+    this.jumpInput = buildTextRow(
+      body,
+      "跳板 (jump，可选)",
+      "另一台已配置主机的 label（空=直连；经该跳板隧道连本机）",
+      onChange,
+    );
 
     // 安装位置提示：明确告诉用户「在哪里装什么」。
     const installInfo = document.createElement("div");
@@ -583,6 +599,7 @@ class MachineCard {
     this.daemonPathInput.value = cfg.daemonPath;
     this.fingerprintInput.value = cfg.hostKeyFingerprint;
     this.addressesInput.value = cfg.addresses.join("\n");
+    this.jumpInput.value = cfg.jump ?? "";
     this.syncResetFpVisibility();
   }
 
@@ -1361,6 +1378,7 @@ function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
     daemonPath: str("daemonPath", HOST_DEFAULTS.daemonPath),
     hostKeyFingerprint: str("hostKeyFingerprint", HOST_DEFAULTS.hostKeyFingerprint),
     addresses: coerceAddresses(obj.addresses),
+    jump: str("jump", HOST_DEFAULTS.jump),
   };
 }
 
@@ -1432,6 +1450,7 @@ export async function writeRemoteConfig(next: RemoteConfig): Promise<void> {
       daemonPath: h.daemonPath,
       hostKeyFingerprint: h.hostKeyFingerprint,
       addresses: h.addresses,
+      jump: h.jump, // F56：跳板 label（D-B1:此前漏写 → 设置卡填的跳板被静默丢弃）
     })),
   };
   await saveConfig(cfg);
@@ -1445,7 +1464,8 @@ function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {
     a.user === b.user &&
     a.keyPath === b.keyPath &&
     a.daemonPath === b.daemonPath &&
-    a.hostKeyFingerprint === b.hostKeyFingerprint
+    a.hostKeyFingerprint === b.hostKeyFingerprint &&
+    a.jump === b.jump // F56（D-I3）:仅改跳板也算变更，触发「需重启生效」提示
   );
 }
 

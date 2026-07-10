@@ -1,11 +1,16 @@
 // F43：指纹重置按钮显隐纯逻辑。remote-section 的 DOM 主体重(拉整卡),这里只钉住
 // 「有固化指纹才显示重置按钮」这条判定,防未来误改成空指纹也显示(重置无意义)。
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+// F56：writeRemoteConfig/readRemoteConfig 走 config.ts；mock 掉以测 jump write→read 往返。
+vi.mock("../config", () => ({ loadConfig: vi.fn(), saveConfig: vi.fn() }));
+import { loadConfig, saveConfig } from "../config";
 import {
   shouldShowResetFingerprint,
   parseAddressLines,
   describeStage,
   findHostByOrigin,
+  writeRemoteConfig,
+  readRemoteConfig,
 } from "./remote-section";
 import type { RemoteHostConfig } from "./remote-section";
 
@@ -44,6 +49,7 @@ describe("F54 findHostByOrigin", () => {
     daemonPath: "",
     hostKeyFingerprint: "",
     addresses: [],
+    jump: "",
   });
   const hosts = [mkHost("aya", "10.0.0.2"), mkHost("", "pi.local")];
   it("命中 label", () => {
@@ -67,5 +73,47 @@ describe("F46 describeStage", () => {
     expect(describeStage({ kind: "auth", ok: true, detail: null }).text).toContain("鉴权通过");
     expect(describeStage({ kind: "established" }).text).toContain("就绪");
     expect(describeStage({ kind: "hostKey", endpoint: "h:22", fingerprint: "SHA256:x" }).text).toContain("SHA256:x");
+  });
+});
+
+describe("F56 jump write→read 往返（D-B1 回归）", () => {
+  const host = (jump: string): RemoteHostConfig => ({
+    label: "aya",
+    host: "10.0.0.2",
+    port: 22,
+    user: "u",
+    keyPath: "",
+    daemonPath: "/d",
+    hostKeyFingerprint: "",
+    addresses: [],
+    jump,
+  });
+
+  it("jump 写入 config 并读回不丢", async () => {
+    vi.mocked(loadConfig).mockResolvedValue({});
+    let saved: Record<string, unknown> = {};
+    vi.mocked(saveConfig).mockImplementation(async (c: unknown) => {
+      saved = c as Record<string, unknown>;
+    });
+    await writeRemoteConfig({ enabled: true, hosts: [host("bastion")] });
+    // 写入的 config 里 hosts[0] 含 jump（修前此处丢字段 → undefined，测试红）
+    const written = (saved.remote as { hosts: Array<{ jump?: string }> }).hosts[0];
+    expect(written.jump).toBe("bastion");
+    // 读回:loadConfig 返回刚写的 → readRemoteConfig → coerceHost 保留 jump
+    vi.mocked(loadConfig).mockResolvedValue(saved);
+    const back = await readRemoteConfig();
+    expect(back.hosts[0].jump).toBe("bastion");
+  });
+
+  it("空 jump 往返 → 空串（直连）", async () => {
+    vi.mocked(loadConfig).mockResolvedValue({});
+    let saved: Record<string, unknown> = {};
+    vi.mocked(saveConfig).mockImplementation(async (c: unknown) => {
+      saved = c as Record<string, unknown>;
+    });
+    await writeRemoteConfig({ enabled: true, hosts: [host("")] });
+    vi.mocked(loadConfig).mockResolvedValue(saved);
+    const back = await readRemoteConfig();
+    expect(back.hosts[0].jump).toBe("");
   });
 });

@@ -50,10 +50,31 @@ fn valid_host(h: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | ':' | '[' | ']'))
 }
 
+/// F56：构造 OpenSSH `-J` 跳板参数（` -J user@host[:port]`，port≠22 才带端口后缀）。
+/// 纯函数便于单测;跳板 user/host 过与主机同款非法字符校验。
+fn build_jump_arg(jump_user: &str, jump_host: &str, jump_port: u16) -> Result<String, String> {
+    if !valid_user(jump_user) {
+        return Err(format!(
+            "refuse launch: 跳板 user 含非法字符: {jump_user:?}"
+        ));
+    }
+    if !valid_host(jump_host) {
+        return Err(format!(
+            "refuse launch: 跳板 host 含非法字符: {jump_host:?}"
+        ));
+    }
+    let port_suffix = if jump_port == 22 {
+        String::new()
+    } else {
+        format!(":{jump_port}")
+    };
+    Ok(format!(" -J {jump_user}@{jump_host}{port_suffix}"))
+}
+
 /// 构造远端拉起的 PowerShell 命令体（不含 `-EncodedCommand` 编码）。
 ///
-/// 形态：`& ssh -t -p <port> [-i '<key>'] <user>@<host> -- '<bash -lic ''…''>'`
-/// （F45 竞发落地后 host 换成连接大脑当前胜者地址——本函数签名不变。）
+/// 形态：`& ssh -t[ -J <跳板>] -p <port> [-i '<key>'] <user>@<host> -- '<bash -lic ''…''>'`
+/// （F45 竞发落地后 host 换成连接大脑当前胜者地址；F56 jump 有值插 `-J`——本函数签名不变。）
 pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Result<String, String> {
     if remote_cmd.trim().is_empty() {
         return Err("refuse launch: 远端命令为空".into());
@@ -95,10 +116,23 @@ pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Resu
         Some(k) if !k.is_empty() => format!(" -i {}", ps_quote(k)),
         _ => String::new(), // ssh-agent（Windows OpenSSH agent），无 -i
     };
+    // F56：跳板 ProxyJump——jump 有值 → 解析跳板 cfg → 插 OpenSSH `-J user@host[:port]`。
+    // fail-closed:跳板配置查无 → Err（绝不静默直连目标）;自引用环 → Err。
+    let jump_part = match cfg.jump.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(jump_label) => {
+            if jump_label == cfg.origin_label() {
+                return Err("refuse launch: 跳板不能指向自己".into());
+            }
+            let jump_cfg = crate::load_remote_config_by_label(jump_label)
+                .ok_or_else(|| format!("refuse launch: 跳板配置未找到: {jump_label:?}"))?;
+            build_jump_arg(&jump_cfg.user, &jump_cfg.host, jump_cfg.port)?
+        }
+        None => String::new(),
+    };
     // 传输包装：交互式 login bash 里执行（见模块文档）。
     let wrapped = format!("bash -lic {}", posix_quote(remote_cmd));
     Ok(format!(
-        "& ssh -t -p {port}{key_part} {user}@{host} -- {cmd}",
+        "& ssh -t{jump_part} -p {port}{key_part} {user}@{host} -- {cmd}",
         port = winner.port,
         user = cfg.user,
         host = winner.host,
@@ -208,6 +242,7 @@ mod tests {
             daemon_path: "d".into(),
             host_key_fingerprint: None,
             addresses: Vec::new(),
+            jump: None,
         }
     }
 
@@ -245,6 +280,21 @@ mod tests {
     fn build_ipv6_host_ok() {
         let c = cfg("[::1]", "u", 22, None);
         assert!(build_remote_ssh_ps_command(&c, "claude --resume s1").is_ok());
+    }
+
+    #[test]
+    fn build_jump_arg_variants() {
+        // F56：默认 port 省 :port,非默认带;非法 user/host 拒。
+        assert_eq!(
+            build_jump_arg("pi", "jump.local", 22).unwrap(),
+            " -J pi@jump.local"
+        );
+        assert_eq!(
+            build_jump_arg("u", "10.0.0.1", 2222).unwrap(),
+            " -J u@10.0.0.1:2222"
+        );
+        assert!(build_jump_arg("bad user", "h", 22).is_err(), "非法 user 拒");
+        assert!(build_jump_arg("u", "h;rm -rf", 22).is_err(), "非法 host 拒");
     }
 
     #[test]
