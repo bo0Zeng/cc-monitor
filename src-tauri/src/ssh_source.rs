@@ -2078,6 +2078,8 @@ pub struct ResolvedHost {
     pub user: String,
     /// 第一个**存在**的 IdentityFile（`~` 已展开）。无则 None（用户可改走 agent）。
     pub key_path: Option<String>,
+    /// Batch14-F57：`ssh -G` 的 `proxyjump`（"none" → None）。批量导入时映射到 RemoteConfig.jump。
+    pub proxy_jump: Option<String>,
 }
 
 /// 列出 `~/.ssh/config` 里的 host 别名（供前端「从 config 导入」下拉）。
@@ -2205,10 +2207,18 @@ pub async fn resolve_ssh_host(alias: String) -> Result<ResolvedHost, String> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(parse_ssh_g_output(&stdout, &alias))
+}
+
+/// F57：解析 `ssh -G <alias>` 的输出为 ResolvedHost（纯逻辑,便于单测）。识别 hostname/port/
+/// user/identityfile（第一个**展开后存在**的）/proxyjump（`none` → None）。hostname 缺省回退别名。
+/// identityfile 的「存在性」检查依赖文件系统,单测里非存在路径 → key_path=None,不影响其余字段判定。
+fn parse_ssh_g_output(stdout: &str, alias: &str) -> ResolvedHost {
     let mut host: Option<String> = None;
     let mut port: Option<u16> = None;
     let mut user: Option<String> = None;
     let mut key_path: Option<String> = None;
+    let mut proxy_jump: Option<String> = None;
 
     for line in stdout.lines() {
         let mut it = line.splitn(2, char::is_whitespace);
@@ -2228,17 +2238,129 @@ pub async fn resolve_ssh_host(alias: String) -> Result<ResolvedHost, String> {
                     key_path = Some(expanded.to_string_lossy().to_string());
                 }
             }
+            // F57：proxyjump 值通常是另一别名（`none` = 无跳板）。
+            "proxyjump" if !val.eq_ignore_ascii_case("none") => {
+                proxy_jump = Some(val.to_string());
+            }
             _ => {}
         }
     }
 
-    Ok(ResolvedHost {
+    ResolvedHost {
         // hostname 缺省回退到别名本身（ssh -G 通常总会给 hostname，但稳妥兜底）。
-        host: host.unwrap_or_else(|| alias.clone()),
+        host: host.unwrap_or_else(|| alias.to_string()),
         port: port.unwrap_or(22),
         user: user.unwrap_or_default(),
         key_path,
-    })
+        proxy_jump,
+    }
+}
+
+/// F57：一个来源别名 + 其 HostName/port/proxyjump（供前端「拆分」精确还原成独立机）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportMember {
+    pub alias: String,
+    pub host: String,
+    pub port: u16,
+    pub proxy_jump: Option<String>,
+}
+
+/// F57：批量导入预览的一组——聚合后的一台建议主机（含多地址与来源成员）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportGroup {
+    pub label: String,
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub key_path: Option<String>,
+    /// F45 备用地址：组内除 host 外的其余 HostName（去重）。单机组为空。
+    pub addresses: Vec<String>,
+    /// F56 跳板：组内首个非空 proxyjump（别名）。
+    pub jump: Option<String>,
+    /// 来源成员（别名+HostName）：预览展示；用户「拆分」时据此建独立机。
+    pub members: Vec<ImportMember>,
+}
+
+/// F57：别名基名前缀——首个 `-`/`_`/`.` 前的段（`aya-lan` → `aya`；`pi` → `pi`）。同机聚合判据之一。
+fn alias_base(alias: &str) -> String {
+    alias
+        .split(|c| c == '-' || c == '_' || c == '.')
+        .next()
+        .unwrap_or(alias)
+        .to_string()
+}
+
+/// F57：智能聚合——同 `(keyPath, user, 基名前缀)` 的多别名判为**同一台机的多地址**，聚合成 1 组
+/// （host=首 HostName、addresses=其余 HostName 去重、label=基名、jump=组内首个 proxyjump）；否则各自
+/// 独立。保序（按别名首次出现）。纯函数便于单测；聚合激进/保守由前端预览「拆分/勾选」兜底。
+pub fn aggregate_ssh_hosts(hosts: Vec<(String, ResolvedHost)>) -> Vec<ImportGroup> {
+    type GKey = (Option<String>, String, String); // (keyPath, user, base)
+    let mut groups: Vec<(GKey, ImportGroup)> = Vec::new();
+    for (alias, r) in hosts {
+        let gkey: GKey = (r.key_path.clone(), r.user.clone(), alias_base(&alias));
+        let member = ImportMember {
+            alias,
+            host: r.host.clone(),
+            port: r.port,
+            proxy_jump: r.proxy_jump.clone(),
+        };
+        if let Some((k, g)) = groups.iter_mut().find(|(k, _)| *k == gkey) {
+            // 副地址：端口与组首端口不同则存 `host:port`（F45 支持），否则裸 host；去重。
+            let addr = if r.port == g.port {
+                r.host.clone()
+            } else {
+                format!("{}:{}", r.host, r.port)
+            };
+            if r.host != g.host && !g.addresses.contains(&addr) {
+                g.addresses.push(addr);
+            }
+            g.members.push(member);
+            if g.jump.is_none() {
+                g.jump = r.proxy_jump.clone();
+            }
+            let _ = k;
+        } else {
+            groups.push((
+                gkey,
+                ImportGroup {
+                    label: alias_base(&member.alias),
+                    host: r.host.clone(),
+                    port: r.port,
+                    user: r.user.clone(),
+                    key_path: r.key_path.clone(),
+                    addresses: Vec::new(),
+                    jump: r.proxy_jump.clone(),
+                    members: vec![member],
+                },
+            ));
+        }
+    }
+    // F57-1（D 修）：单成员组用**完整别名**当 label（否则 `prod-web`/`prod-db` 异 key 拆成两组却都叫
+    // `prod`，前端落卡时同名碰撞会丢一台）；仅真·多地址聚合组用基名前缀。
+    let mut out: Vec<ImportGroup> = groups.into_iter().map(|(_, g)| g).collect();
+    for g in &mut out {
+        if g.members.len() == 1 {
+            g.label = g.members[0].alias.clone();
+        }
+    }
+    out
+}
+
+/// F57：批量从 `~/.ssh/config` 导入——列全部别名、逐个 `ssh -G` 解析（保序）、智能聚合成预览组。
+/// resolve 失败的别名跳过（best-effort）；无 config/无别名 → 空。前端弹预览可拆分/勾选再落。
+#[tauri::command]
+pub async fn import_ssh_hosts() -> Result<Vec<ImportGroup>, String> {
+    let aliases = list_ssh_host_aliases().await?;
+    let mut resolved: Vec<(String, ResolvedHost)> = Vec::new();
+    for alias in aliases {
+        // 顺序 resolve 保序（聚合按别名首次出现）；ssh -G 快（本地 config 解析），别名数通常个位。
+        if let Ok(r) = resolve_ssh_host(alias.clone()).await {
+            resolved.push((alias, r));
+        }
+    }
+    Ok(aggregate_ssh_hosts(resolved))
 }
 
 /// 「测试连接」的结果（issue #15 Part 2）。serde camelCase 与前端渲染对齐。
@@ -2712,6 +2834,100 @@ Host prod
     fn parse_host_aliases_empty_when_no_host() {
         let aliases = parse_host_aliases("# just comments\nUser nobody\nPort 22\n");
         assert!(aliases.is_empty());
+    }
+
+    // === F57：智能聚合 ===
+
+    fn rh(host: &str, key: Option<&str>, user: &str, pj: Option<&str>) -> ResolvedHost {
+        ResolvedHost {
+            host: host.into(),
+            port: 22,
+            user: user.into(),
+            key_path: key.map(String::from),
+            proxy_jump: pj.map(String::from),
+        }
+    }
+
+    #[test]
+    fn alias_base_variants() {
+        assert_eq!(alias_base("aya-lan"), "aya");
+        assert_eq!(alias_base("aya_wan"), "aya");
+        assert_eq!(alias_base("aya.internal"), "aya");
+        assert_eq!(alias_base("pi"), "pi");
+    }
+
+    #[test]
+    fn aggregate_same_machine_multi_address() {
+        // aya-lan / aya-wan 同 key+user+基名 → 聚合成 1 台多地址;pi 基名不同 → 独立。
+        let groups = aggregate_ssh_hosts(vec![
+            ("aya-lan".into(), rh("10.0.0.2", Some("/k"), "zbl", None)),
+            (
+                "aya-wan".into(),
+                rh("aya.example.com", Some("/k"), "zbl", None),
+            ),
+            ("pi".into(), rh("pi.local", Some("/k"), "zbl", None)),
+        ]);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].label, "aya");
+        assert_eq!(groups[0].host, "10.0.0.2");
+        assert_eq!(groups[0].addresses, vec!["aya.example.com".to_string()]);
+        let aliases: Vec<&str> = groups[0].members.iter().map(|m| m.alias.as_str()).collect();
+        assert_eq!(aliases, vec!["aya-lan", "aya-wan"]);
+        assert_eq!(groups[1].label, "pi");
+        assert!(groups[1].addresses.is_empty(), "单机组无备用地址");
+    }
+
+    #[test]
+    fn aggregate_different_key_not_merged() {
+        // 同基名但不同 key → 不聚合(一把 key 一台机)。
+        let groups = aggregate_ssh_hosts(vec![
+            ("web-a".into(), rh("1.1.1.1", Some("/ka"), "u", None)),
+            ("web-b".into(), rh("2.2.2.2", Some("/kb"), "u", None)),
+        ]);
+        assert_eq!(groups.len(), 2, "不同 key → 独立");
+        // F57-1：单成员组用**完整别名**当 label(否则都叫 web → 前端落卡碰撞丢一台)。
+        assert_eq!(groups[0].label, "web-a");
+        assert_eq!(groups[1].label, "web-b");
+    }
+
+    #[test]
+    fn parse_ssh_g_proxyjump_and_fields() {
+        let with = parse_ssh_g_output(
+            "hostname 1.2.3.4\nport 2222\nuser pi\nproxyjump bastion\n",
+            "a",
+        );
+        assert_eq!(with.host, "1.2.3.4");
+        assert_eq!(with.port, 2222);
+        assert_eq!(with.user, "pi");
+        assert_eq!(with.proxy_jump.as_deref(), Some("bastion"));
+        // none(大小写不敏感)→ 无跳板;无 proxyjump 行 → None。
+        assert_eq!(
+            parse_ssh_g_output("hostname h\nproxyjump None\n", "a").proxy_jump,
+            None
+        );
+        assert_eq!(
+            parse_ssh_g_output("hostname h\nuser u\n", "a").proxy_jump,
+            None
+        );
+        // hostname/port 缺 → 回退别名 / 22。
+        let fb = parse_ssh_g_output("user u\n", "myalias");
+        assert_eq!(fb.host, "myalias");
+        assert_eq!(fb.port, 22);
+    }
+
+    #[test]
+    fn aggregate_proxyjump_and_dedup() {
+        // 同 host 去重;jump 取组内首个非空 proxyjump。
+        let groups = aggregate_ssh_hosts(vec![
+            (
+                "aya-lan".into(),
+                rh("10.0.0.2", Some("/k"), "u", Some("bastion")),
+            ),
+            ("aya-wan".into(), rh("10.0.0.2", Some("/k"), "u", None)),
+        ]);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].jump.as_deref(), Some("bastion"));
+        assert!(groups[0].addresses.is_empty(), "同 host → 去重无额外地址");
     }
 
     /// allowlist：合法字符通过，含空格 / 选项前缀 / shell 元字符的别名被拒。

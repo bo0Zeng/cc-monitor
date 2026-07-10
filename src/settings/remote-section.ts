@@ -37,6 +37,25 @@ interface ResolvedHost {
   port: number;
   user: string;
   keyPath: string | null;
+  proxyJump: string | null; // F57
+}
+
+/** F57：批量导入预览的一台（Rust ImportGroup/ImportMember，camelCase）。 */
+interface ImportMember {
+  alias: string;
+  host: string;
+  port: number;
+  proxyJump: string | null;
+}
+interface ImportGroup {
+  label: string;
+  host: string;
+  port: number;
+  user: string;
+  keyPath: string | null;
+  addresses: string[];
+  jump: string | null;
+  members: ImportMember[];
 }
 
 /** F46：连接分阶段事件（Rust ConnectStage，serde tag=kind camelCase）。 */
@@ -343,6 +362,7 @@ class MachineCard {
     this.portInput.value = resolved.port ? String(resolved.port) : "22";
     this.userInput.value = resolved.user;
     this.keyPathInput.value = resolved.keyPath ?? "";
+    if (resolved.proxyJump) this.jumpInput.value = resolved.proxyJump; // F57 S-2:单别名也填跳板
     if (!this.daemonPathInput.value.trim() && resolved.user) {
       this.daemonPathInput.value = defaultDaemonPathFor(resolved.user);
     }
@@ -1215,6 +1235,16 @@ export class RemoteSection {
     this.importSelect.addEventListener("change", () => void this.onImportAlias());
     row.appendChild(this.importSelect);
 
+    // F57：批量导入——一次导入全部主机,智能聚合同机多地址,预览可拆分。
+    const batchBtn = document.createElement("button");
+    batchBtn.type = "button";
+    batchBtn.className = "settings-btn settings-btn-secondary";
+    batchBtn.textContent = "批量导入…";
+    batchBtn.title =
+      "一次导入 ~/.ssh/config 全部主机；同密钥+同用户+同基名前缀的别名智能聚合成一台多地址主机（预览可拆分/勾选）";
+    batchBtn.addEventListener("click", () => void this.onBatchImport());
+    row.appendChild(batchBtn);
+
     this.importHint = document.createElement("div");
     this.importHint.className = "settings-hint";
     this.importHint.style.display = "none";
@@ -1239,6 +1269,188 @@ export class RemoteSection {
     } finally {
       this.importSelect.value = "";
     }
+  }
+
+  /** F57：批量导入——import_ssh_hosts（智能聚合）→ 预览弹框（可拆分/勾选）→ 建卡。 */
+  private async onBatchImport(): Promise<void> {
+    let groups: ImportGroup[];
+    try {
+      groups = await invoke<ImportGroup[]>("import_ssh_hosts");
+    } catch (e) {
+      this.showBanner(`批量导入失败：${String(e)}`);
+      return;
+    }
+    if (groups.length === 0) {
+      this.showBanner("~/.ssh/config 里没有可导入的主机。");
+      return;
+    }
+    this.showImportPreview(groups);
+  }
+
+  /** F57：聚合组 → RemoteHostConfig（label 可被预览编辑覆盖）。 */
+  private groupToCfg(g: ImportGroup, label: string): RemoteHostConfig {
+    return {
+      label: label.trim() || g.label,
+      host: g.host,
+      port: g.port || 22,
+      user: g.user,
+      keyPath: g.keyPath ?? "",
+      daemonPath: g.user ? defaultDaemonPathFor(g.user) : "",
+      hostKeyFingerprint: "",
+      addresses: g.addresses,
+      jump: g.jump ?? "",
+    };
+  }
+
+  /** F57：拆分——组内单个成员 → 一台独立机（label=别名,用成员级 port/proxyJump 精确还原,无备用地址）。 */
+  private memberToCfg(g: ImportGroup, m: ImportMember): RemoteHostConfig {
+    return {
+      label: m.alias,
+      host: m.host,
+      port: m.port || 22,
+      user: g.user,
+      keyPath: g.keyPath ?? "",
+      daemonPath: g.user ? defaultDaemonPathFor(g.user) : "",
+      hostKeyFingerprint: "",
+      addresses: [],
+      jump: m.proxyJump ?? "",
+    };
+  }
+
+  /** F57：批量导入预览弹框——列各聚合组,勾选包含 / 拆分成独立机 / 改 label,确认建卡。 */
+  private showImportPreview(groups: ImportGroup[]): void {
+    type Row = { g: ImportGroup; include: boolean; split: boolean; label: string };
+    const state: Row[] = groups.map((g) => ({ g, include: true, split: false, label: g.label }));
+
+    const back = document.createElement("div");
+    back.className = "import-preview-back";
+    const box = document.createElement("div");
+    box.className = "import-preview-box";
+    const title = document.createElement("div");
+    title.className = "import-preview-title";
+    title.textContent = `从 ~/.ssh/config 导入（检测到 ${groups.length} 台）`;
+    box.appendChild(title);
+
+    const list = document.createElement("div");
+    list.className = "import-preview-list";
+    for (const s of state) {
+      const src = s.g.members.map((m) => m.alias).join(", ");
+      const addrHint = s.g.addresses.length ? ` +${s.g.addresses.length} 备用地址` : "";
+      const jumpHint = s.g.jump ? ` · 跳板 ${s.g.jump}` : "";
+      const aggLine = `${s.g.host}${addrHint} · ${s.g.user || "(无 user)"}${jumpHint} · 来源: ${src}`;
+
+      const item = document.createElement("div");
+      item.className = "import-preview-item";
+      const inc = document.createElement("input");
+      inc.type = "checkbox";
+      inc.checked = true;
+      inc.addEventListener("change", () => (s.include = inc.checked));
+      item.appendChild(inc);
+
+      const body = document.createElement("div");
+      body.className = "import-preview-body";
+      const labelInput = document.createElement("input");
+      labelInput.type = "text";
+      labelInput.className = "import-preview-label";
+      labelInput.value = s.label;
+      labelInput.addEventListener("input", () => (s.label = labelInput.value));
+      body.appendChild(labelInput);
+      const info = document.createElement("div");
+      info.className = "import-preview-info";
+      info.textContent = aggLine;
+      body.appendChild(info);
+      item.appendChild(body);
+
+      if (s.g.members.length > 1) {
+        const splitWrap = document.createElement("label");
+        splitWrap.className = "import-preview-split";
+        const split = document.createElement("input");
+        split.type = "checkbox";
+        split.addEventListener("change", () => {
+          s.split = split.checked;
+          info.textContent = split.checked
+            ? `拆成 ${s.g.members.length} 台独立机: ${src}`
+            : aggLine;
+        });
+        splitWrap.append(split, document.createTextNode("拆分"));
+        item.appendChild(splitWrap);
+      }
+      list.appendChild(item);
+    }
+    box.appendChild(list);
+
+    const foot = document.createElement("div");
+    foot.className = "import-preview-foot";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "settings-btn";
+    cancel.textContent = "取消";
+    cancel.addEventListener("click", () => back.remove());
+    const confirm = document.createElement("button");
+    confirm.type = "button";
+    confirm.className = "settings-btn settings-btn-primary";
+    confirm.textContent = "导入";
+    confirm.addEventListener("click", () => {
+      back.remove();
+      void this.applyImportPreview(state);
+    });
+    foot.append(cancel, confirm);
+    box.appendChild(foot);
+
+    back.addEventListener("click", (e) => {
+      if (e.target === back) back.remove();
+    });
+    back.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        back.remove();
+      }
+    });
+    back.appendChild(box);
+    document.body.appendChild(back);
+    box.querySelector("input")?.focus();
+  }
+
+  /** F57：把预览里勾选的组建成机器卡（拆分组建多台;同名 label 已存在则跳过）。 */
+  private async applyImportPreview(
+    state: Array<{ g: ImportGroup; include: boolean; split: boolean; label: string }>,
+  ): Promise<void> {
+    // 已存在的卡（导入前）→ 撞到就跳过（不重复导入）。批内新机同名 → 加后缀消歧（不丢机,F57-1）。
+    const preExisting = new Set(
+      this.cards.map((c) => {
+        const cfg = c.collect();
+        return cfg.label.trim() || cfg.host;
+      }),
+    );
+    const usedInBatch = new Set<string>();
+    let added = 0;
+    let skipped = 0;
+    const push = (cfg: RemoteHostConfig): void => {
+      const base = cfg.label.trim() || cfg.host;
+      if (preExisting.has(base)) {
+        skipped++;
+        return;
+      }
+      let key = base;
+      let n = 2;
+      while (usedInBatch.has(key)) key = `${base}-${n++}`;
+      if (key !== base) cfg.label = key; // 批内同基名不同机 → 后缀消歧,绝不丢机
+      usedInBatch.add(key);
+      this.appendCard(cfg);
+      added++;
+    };
+    for (const s of state) {
+      if (!s.include) continue;
+      if (s.split) {
+        for (const m of s.g.members) push(this.memberToCfg(s.g, m));
+      } else {
+        push(this.groupToCfg(s.g, s.label));
+      }
+    }
+    if (added > 0) await this.save();
+    this.showBanner(
+      `批量导入完成：新增 ${added} 台${skipped ? `，跳过 ${skipped} 台（同名已存在）` : ""}。`,
+    );
   }
 
   /**
