@@ -201,8 +201,25 @@ impl SessionMap {
 }
 
 fn scan_dir(dir: &Path, show_bg: bool) -> HashMap<String, SessionInfo> {
-    // P3 归并：走 utils::scan_dir_jsons。
-    let mut map = crate::utils::scan_dir_jsons(dir, |info: &SessionInfo| info.session_id.clone());
+    // v2.22.2:先按 pid(文件名,天然唯一)收全量,再按 sid 归并。同 sid 多份
+    // pidfile(实证:cc-daemon 的 bg-spare 备用进程复用父会话 sid、标 kind=bg)
+    // 时 **interactive 恒压过 bg**——此前直接按 sid 建 map = 目录序先到先得,
+    // bg 先扫到会把真交互会话降格成 ⚙、树状挂错宿主(用户截图实锤)。
+    // 同 rank 取更新的(procStart 数值比较,缺失回退 pid 大者),消除任意性。
+    let by_pid = crate::utils::scan_dir_jsons(dir, |info: &SessionInfo| info.pid);
+    let mut map: HashMap<String, SessionInfo> = HashMap::new();
+    for (_, info) in by_pid {
+        let replace = match map.get(&info.session_id) {
+            None => true,
+            Some(prev) => {
+                let (rp, rn) = (kind_rank(prev), kind_rank(&info));
+                rn > rp || (rn == rp && newer_than(&info, prev))
+            }
+        };
+        if replace {
+            map.insert(info.session_id.clone(), info);
+        }
+    }
     // Batch7-F24：showBgSessions 开（默认）→ 保留 bg（kind 字段随 info 透传给下游
     // 做 ⚙ 标识/树状）；关 → 回到 Batch6-F21 行为（bg 不算会话）。
     if show_bg {
@@ -221,6 +238,24 @@ fn scan_dir(dir: &Path, show_bg: bool) -> HashMap<String, SessionInfo> {
 /// 副本，审计 S2）。签名匹配 `HashMap::retain`。
 fn is_interactive(_sid: &String, info: &mut SessionInfo) -> bool {
     info.kind.as_deref().map_or(true, |k| k == "interactive")
+}
+
+/// v2.22.2:kind 优先级——interactive(或缺失,旧 CC 视为交互)= 1,bg 等 = 0。
+fn kind_rank(info: &SessionInfo) -> u8 {
+    if info.kind.as_deref().map_or(true, |k| k == "interactive") {
+        1
+    } else {
+        0
+    }
+}
+
+/// v2.22.2:同 rank 平局判新——procStart(FILETIME 数值)大者新;缺失回退 pid。
+fn newer_than(a: &SessionInfo, b: &SessionInfo) -> bool {
+    let ps = |i: &SessionInfo| i.proc_start.as_deref().and_then(|s| s.parse::<u64>().ok());
+    match (ps(a), ps(b)) {
+        (Some(x), Some(y)) if x != y => x > y,
+        _ => a.pid > b.pid,
+    }
 }
 
 /// issue #23: 重扫 diff（纯函数，供单测）。
@@ -466,6 +501,60 @@ mod tests {
         let off = scan_dir(&dir, false);
         assert_eq!(off.len(), 1, "关 = F21 行为");
         assert!(off.contains_key("sid-int"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// v2.22.2:同 sid 多 pidfile 的 kind 冲突消解——interactive 恒压过 bg,
+    /// 与目录扫描顺序无关(实证形态:cc-daemon bg-spare 复用父会话 sid)。
+    #[test]
+    fn scan_dir_same_sid_interactive_wins_over_bg() {
+        let dir = std::env::temp_dir().join(format!("ccm-kindrace-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // bg 文件名排前(1.json),interactive 排后(2.json)——旧实现目录序先到先得会输
+        std::fs::write(
+            dir.join("1.json"),
+            r#"{"pid":3051720,"sessionId":"sid-parent","cwd":"/p","kind":"bg","name":"迁移服务","jobId":"sid-pare"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("2.json"),
+            r#"{"pid":16609,"sessionId":"sid-parent","cwd":"/p","kind":"interactive","name":"迁移服务"}"#,
+        )
+        .unwrap();
+        let map = scan_dir(&dir, true);
+        assert_eq!(map.len(), 1, "同 sid 归并成一条");
+        assert_eq!(
+            map["sid-parent"].kind.as_deref(),
+            Some("interactive"),
+            "interactive 压过 bg(不论扫描顺序)"
+        );
+        assert_eq!(
+            map["sid-parent"].pid, 16609,
+            "保留的是 interactive 那份 pidfile"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// v2.22.2:同 rank 平局判新——procStart 数值大者胜,缺失回退 pid。
+    #[test]
+    fn scan_dir_same_sid_same_kind_newer_wins() {
+        let dir = std::env::temp_dir().join(format!("ccm-kindtie-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("1.json"),
+            r#"{"pid":100,"sessionId":"s","cwd":"/p","kind":"interactive","procStart":"200"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("2.json"),
+            r#"{"pid":999,"sessionId":"s","cwd":"/p","kind":"interactive","procStart":"100"}"#,
+        )
+        .unwrap();
+        let map = scan_dir(&dir, true);
+        assert_eq!(
+            map["s"].pid, 100,
+            "procStart 更大(更新)者胜,与 pid 大小无关"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 

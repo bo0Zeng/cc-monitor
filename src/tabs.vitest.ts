@@ -563,6 +563,34 @@ describe("TabManager 生命周期", () => {
     expect(t.stream.contentElement.querySelector(".stream-more-above")).toBeNull();
   });
 
+  // === v2.22.2:同 sid kind 冲突消解(bg-spare 谎报父 sid) ===
+
+  it("kind 升格:bg 骨架先到,interactive 宣告后到 → 升格为宿主并重锚孤儿 bg", () => {
+    // 场景还原(用户截图):bg-spare 的宣告先到,父会话被建成 ⚙ 挂到同 cwd 的
+    // 别的交互会话(Excel)之下;interactive 宣告后到必须升格纠正。
+    tm.createSkeletonTab("excel", "/proj/shengwu", null, "interactive", null);
+    tm.createSkeletonTab("parent", "/proj/shengwu", null, "bg", "迁移服务"); // 谎报形态先到
+    tm.createSkeletonTab("fork-empty", "/proj/shengwu", null, "bg", "迁移服务"); // 空克隆
+    expect(peek(tm).orderedIds).toEqual(["excel", "parent", "fork-empty"]);
+    expect(peek(tm).tabs.get("parent")!.title).toContain("⚙");
+
+    tm.createSkeletonTab("parent", "/proj/shengwu", null, "interactive", null); // 真身宣告后到
+    const p = peek(tm).tabs.get("parent")!;
+    expect(p.kind).toBe("interactive");
+    expect(p.title).not.toContain("⚙");
+    // parent 升格为宿主:提出子树位、追加为交互 tab,孤儿 bg(fork-empty 原挂
+    // excel 子串)不被搬走——「多宿主取第一个」契约保持(excel 仍是先到宿主)
+    expect(peek(tm).orderedIds).toEqual(["excel", "fork-empty", "parent"]);
+  });
+
+  it("kind 不降格:interactive tab 后到 bg 宣告(spare 谎报)保持交互形态", () => {
+    tm.createSkeletonTab("host2", "/proj/x", null, "interactive", null);
+    tm.createSkeletonTab("host2", "/proj/x", null, "bg", "spare 噪声");
+    const t = peek(tm).tabs.get("host2")!;
+    expect(t.kind).toBe("interactive");
+    expect(t.title).not.toContain("⚙");
+  });
+
   it("F40a meta 记录批期被消费不进账本", () => {
     tm.onLine(mkContent("act5", 1, "w-1")); // active
     tm.onBatchStart();
