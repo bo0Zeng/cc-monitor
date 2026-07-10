@@ -33,6 +33,7 @@ mod sftp;
 mod ssh_source;
 mod subagent;
 mod tasks;
+mod tmux;
 mod utils;
 mod watcher;
 
@@ -883,6 +884,7 @@ pub fn run() {
             sftp_pool::sftp_read_text_for_edit,
             sftp_pool::sftp_write_text,
             pubkey::push_public_key,
+            tmux::list_remote_tmux,
             // issue #6: 历史全文搜索
             search::search_history,
             search::get_search_index_status,

@@ -75,6 +75,7 @@ vi.mock("./error-toast", () => ({ showActionFailureToast: vi.fn() }));
 // Batch14-F41：resumeTab 远端分支改走一键拉起 runner；behavior 提供 launcher 配置。
 vi.mock("./remote-launch-run", () => ({
   runRemoteResume: vi.fn().mockResolvedValue(undefined),
+  runRemoteAttach: vi.fn().mockResolvedValue(undefined),
 }));
 // Batch14-F42：turn-end 通知与渲染独立,tabs 测试里 mock 成空壳(单独在 turn-notify.vitest 测)。
 vi.mock("./turn-notify", () => ({
@@ -647,5 +648,104 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
       cwd: "/home/u/p",
       launcher: null,
     });
+  });
+});
+
+describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1）", () => {
+  let tm: TabManager;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    tm = makeTM();
+  });
+
+  interface TMButtons {
+    tabButtons: Map<string, { root: HTMLElement }>;
+  }
+  const btnOf = (sid: string): HTMLElement =>
+    (tm as unknown as TMButtons).tabButtons.get(sid)!.root;
+  const rightClick = (sid: string): void => {
+    btnOf(sid).dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }),
+    );
+  };
+  const attachBtn = (): HTMLButtonElement | null => {
+    const menu = document.body.querySelector(".tab-context-menu");
+    const items = [...(menu?.querySelectorAll(".tab-context-menu-item") ?? [])];
+    return (
+      (items as HTMLButtonElement[]).find((b) => b.textContent?.startsWith("Attach")) ?? null
+    );
+  };
+  const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+  it("远端 tab 右键 → 反查命中 claude 会话 → attach 项由禁用占位就绪为可点", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve([
+            { name: "cc-abc", path: "/a", command: "claude", attached: false, windows: 1 },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("A", "/a", "p", 0, "hostA");
+    rightClick("A");
+    expect(attachBtn()?.disabled).toBe(true); // 占位「检测中」
+    await flush();
+    expect(attachBtn()?.textContent).toContain("cc-abc"); // 就绪
+    expect(attachBtn()?.disabled).toBe(false);
+  });
+
+  it("前台命令报 node（claude 是 Node CLI）也认(D-Sug2)", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve([
+            { name: "sess", path: "/a", command: "node", attached: true, windows: 2 },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("A", "/a", "p", 0, "hostA");
+    rightClick("A");
+    await flush();
+    expect(attachBtn()?.textContent).toContain("sess");
+  });
+
+  it("无匹配（cwd 不符）→ 占位移除,不显示 attach", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve([
+            { name: "other", path: "/elsewhere", command: "claude", attached: false, windows: 1 },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("A", "/a", "p", 0, "hostA");
+    rightClick("A");
+    await flush();
+    expect(attachBtn()).toBeNull();
+  });
+
+  it("R-1 守卫:tab A 查询在飞时右键 tab B → A 迟到结果不污染 B 的菜单", async () => {
+    let resolveA!: (v: unknown) => void;
+    const aPending = new Promise((r) => (resolveA = r));
+    vi.mocked(invoke).mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd !== "list_remote_tmux") return Promise.resolve(undefined);
+      const origin = (args as { origin: string }).origin;
+      if (origin === "hostA") return aPending; // 在飞
+      return Promise.resolve([
+        { name: "B-sess", path: "/b", command: "claude", attached: false, windows: 1 },
+      ]);
+    });
+    tm.ensureTab("A", "/a", "p", 0, "hostA");
+    tm.ensureTab("B", "/b", "p", 0, "hostB");
+
+    rightClick("A"); // 菜单 A + A 查询在飞
+    rightClick("B"); // 关 A、开菜单 B（新代次）+ B 查询即刻 resolve
+    await flush();
+    expect(attachBtn()?.textContent).toContain("B-sess"); // B 自身反查就绪
+
+    resolveA([
+      { name: "A-sess", path: "/a", command: "claude", attached: false, windows: 1 },
+    ]);
+    await flush(); // A 迟到:代次不符 → 整体 no-op,不动 B 菜单
+    expect(attachBtn()?.textContent).toContain("B-sess");
+    expect(attachBtn()?.textContent).not.toContain("A-sess");
   });
 });

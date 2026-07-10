@@ -21,7 +21,7 @@ import type { BranchRecord } from "./branching";
 import { isAgentTool } from "./cards/subagent";
 import type { AgentsPanel, AgentEntry } from "./agents-panel";
 import { LS_KEYS, safeSet } from "./local-storage";
-import { runRemoteResume } from "./remote-launch-run";
+import { runRemoteResume, runRemoteAttach } from "./remote-launch-run";
 import { turnEndNotifier } from "./turn-notify";
 import { getBehavior } from "./behavior";
 
@@ -164,8 +164,27 @@ interface TabButtonRefs {
   cwdBtn: HTMLSpanElement;
 }
 
+/** F51：远端 tmux 会话(`list_remote_tmux` 后端返回,反查 attach 用)。 */
+interface TmuxSession {
+  name: string;
+  path: string;
+  command: string;
+  attached: boolean;
+  windows: number;
+}
+/** tmux 反查缓存 TTL:菜单打开按需查,短缓存避免重复右键狂拉 ssh。 */
+const TMUX_CACHE_TTL_MS = 8000;
+/** F51：tmux 前台命令是否算 claude 会话。真机 tmux 多报 `claude`(调研 03 §2c 实测),
+ * 但视启动路径也可能报解释器 `node`(claude 是 Node CLI)——两者都认,叠加 cwd 精确匹配
+ * 收窄误配(D-正确性 Sug2:只认 claude 会在报 node 的环境静默失效)。 */
+function isClaudeTmuxCommand(cmd: string): boolean {
+  return cmd === "claude" || cmd === "node";
+}
+
 export class TabManager {
   private tabs = new Map<string, Tab>();
+  /** F51：per-origin tmux 会话短缓存(反查 attach)。null=该 origin 无 tmux。 */
+  private tmuxCache = new Map<string, { ts: number; sessions: TmuxSession[] | null }>();
   /** 按插入顺序的 sessionId 数组，与 this.tabs.keys() 顺序一致但避免每次 Array.from */
   private orderedIds: string[] = [];
   /** sessionId → button DOM refs，避免 refreshTabBar 每次重建整个 bar */
@@ -1424,6 +1443,37 @@ export class TabManager {
     }
   }
 
+  /**
+   * F51：菜单打开后异步反查 tmux——查该 origin 的会话列表(短缓存),按 `path===cwd &&
+   * command==="claude"` 反查该 tab 的 Claude 所在 tmux 会话。命中 → 把禁用占位「检测中」
+   * 换成可点的 Attach;无 tmux / 无匹配 / 查询失败 → 移除占位。菜单已关则 update/remove no-op。
+   */
+  private async resolveAttachMenuItem(origin: string, cwd: string): Promise<void> {
+    const gen = tabMenuGeneration; // 捕获发起查询的那一代菜单(R-1 守卫)
+    let sessions: TmuxSession[] | null;
+    try {
+      sessions = await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
+      // 只缓存确定结果(成功列表 / NO_TMUX=null);瞬时 ssh 失败不缓存,免 8s 内抑制重试(D-Sug3)。
+      this.tmuxCache.set(origin, { ts: Date.now(), sessions });
+    } catch {
+      // 查询失败(纯 ssh exec 抖动)→ 移除占位,不缓存。
+      if (gen === tabMenuGeneration) removeTabContextMenuItem("attach");
+      return;
+    }
+    // 菜单已换/已关(新代次)→ 别动别的菜单(R-1 跨 tab 串味)。
+    if (gen !== tabMenuGeneration) return;
+    const match = sessions?.find((s) => s.path === cwd && isClaudeTmuxCommand(s.command));
+    if (match) {
+      updateTabContextMenuItem("attach", {
+        id: "attach",
+        label: `Attach（tmux: ${match.name}）`,
+        onClick: () => void runRemoteAttach(origin, match.name),
+      });
+    } else {
+      removeTabContextMenuItem("attach");
+    }
+  }
+
   /** 打开指定 Tab 的 cwd 到系统文件管理器。无 cwd / 远端 Tab 静默忽略。 */
   private async openTabCwd(sid: string): Promise<void> {
     const tab = this.tabs.get(sid);
@@ -1644,7 +1694,7 @@ export class TabManager {
     root.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       const t = this.tabs.get(sid);
-      const items = [
+      const items: TabMenuItem[] = [
         { label: "在新窗口打开", onClick: () => void this.openInNewWindow(sid) },
       ];
       // F37：灰 tab（会话已结束）右键手动 resume——不用绕去历史浏览器。
@@ -1656,7 +1706,38 @@ export class TabManager {
           onClick: () => void this.resumeTab(sid),
         });
       }
+      // F51：远端 tab（有 cwd）——反查该 cwd 正跑 claude 的 tmux 会话 → Attach。
+      // 缓存命中同步定夺(无占位闪烁);未命中先禁用占位「检测中」+ 异步查询就绪。
+      const origin = t?.origin ?? null;
+      const cwd = t?.cwd ?? null;
+      let needAsyncAttach = false;
+      if (origin !== null && cwd) {
+        const cached = this.tmuxCache.get(origin);
+        if (cached && Date.now() - cached.ts < TMUX_CACHE_TTL_MS) {
+          const m = cached.sessions?.find(
+            (s) => s.path === cwd && isClaudeTmuxCommand(s.command),
+          );
+          if (m) {
+            items.push({
+              id: "attach",
+              label: `Attach（tmux: ${m.name}）`,
+              onClick: () => void runRemoteAttach(origin, m.name),
+            });
+          }
+        } else {
+          items.push({
+            id: "attach",
+            label: "Attach（检测 tmux…）",
+            enabled: false,
+            onClick: () => {},
+          });
+          needAsyncAttach = true;
+        }
+      }
       showTabContextMenu(e.clientX, e.clientY, items);
+      if (needAsyncAttach && origin !== null && cwd) {
+        void this.resolveAttachMenuItem(origin, cwd);
+      }
     });
 
     return { root, label, badge, cwdBtn };
@@ -1702,41 +1783,82 @@ export class TabManager {
 /**
  * issue #10：极简一次性上下文菜单（Tab 右键用）。挂 document.body 作 fixed 浮层，
  * 点任意项 / 点外部 / Esc 即关。一次只允许一个（开新的前先关旧的）。
+ *
+ * B14-F51：升级为 action 注册表 lite——项带可选 `id`/`enabled`,并可对**已打开**菜单按 id
+ * `update`/`remove`(承载异步就绪项,如 attach 的 tmux 反查回来才可点）。
  */
+interface TabMenuItem {
+  id?: string;
+  label: string;
+  enabled?: boolean; // 缺省 true;false = 禁用占位
+  onClick: () => void;
+}
 let activeTabMenu: HTMLElement | null = null;
-function showTabContextMenu(
-  x: number,
-  y: number,
-  items: { label: string; onClick: () => void }[],
-): void {
+const activeTabMenuItems = new Map<string, HTMLButtonElement>();
+/** F51：菜单代次令牌——每次开/关菜单自增。在飞的异步就绪(attach 反查)回来时比对代次,
+ * 只作用于发起它的那一代菜单;换/关菜单后旧查询整体 no-op(防 R-1 跨 tab 串味错配)。 */
+let tabMenuGeneration = 0;
+
+function makeTabMenuButton(it: TabMenuItem): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "tab-context-menu-item";
+  btn.textContent = it.label;
+  const enabled = it.enabled !== false;
+  btn.disabled = !enabled;
+  if (enabled) {
+    btn.addEventListener("click", () => {
+      closeTabContextMenu();
+      it.onClick();
+    });
+  }
+  return btn;
+}
+
+function showTabContextMenu(x: number, y: number, items: TabMenuItem[]): void {
   closeTabContextMenu();
   const menu = document.createElement("div");
   menu.className = "tab-context-menu";
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
   for (const it of items) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "tab-context-menu-item";
-    btn.textContent = it.label;
-    btn.addEventListener("click", () => {
-      closeTabContextMenu();
-      it.onClick();
-    });
+    const btn = makeTabMenuButton(it);
+    if (it.id) activeTabMenuItems.set(it.id, btn);
     menu.appendChild(btn);
   }
   document.body.appendChild(menu);
   activeTabMenu = menu;
+  tabMenuGeneration++; // 新一代菜单 → 让上一代在飞的异步就绪回调失效
   // 下一拍再挂关闭监听，避免本次右键触发的事件立刻把菜单关掉
   window.setTimeout(() => {
     window.addEventListener("pointerdown", onDocPointerForMenu, true);
     window.addEventListener("keydown", onKeyForMenu, true);
   }, 0);
 }
+
+/** F51：把已打开菜单里某 id 项替换为新项(异步就绪→可点);菜单已关或无此 id 则 no-op。 */
+function updateTabContextMenuItem(id: string, item: TabMenuItem): void {
+  const old = activeTabMenuItems.get(id);
+  if (!old || !activeTabMenu) return;
+  const btn = makeTabMenuButton(item);
+  activeTabMenuItems.set(item.id ?? id, btn);
+  old.replaceWith(btn);
+}
+
+/** F51：移除已打开菜单里某 id 项(异步查无匹配);无此 id 则 no-op。 */
+function removeTabContextMenuItem(id: string): void {
+  const old = activeTabMenuItems.get(id);
+  if (!old) return;
+  old.remove();
+  activeTabMenuItems.delete(id);
+}
+
 function closeTabContextMenu(): void {
   if (!activeTabMenu) return;
   activeTabMenu.remove();
   activeTabMenu = null;
+  activeTabMenuItems.clear();
+  tabMenuGeneration++; // 关菜单也让在飞的异步就绪回调失效(不改别的菜单)
   window.removeEventListener("pointerdown", onDocPointerForMenu, true);
   window.removeEventListener("keydown", onKeyForMenu, true);
 }

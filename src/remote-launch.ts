@@ -76,3 +76,25 @@ export function buildOpenTerminalCmd(cwd: string): string {
   const shell = "exec ${SHELL:-bash} -l";
   return c ? `cd ${posixQuote(c)} && ${shell}` : shell;
 }
+
+/**
+ * F51:tmux 会话名合法性——非空、无控制字符(含 TAB 0x09 / 换行,防破坏 ls 解析或命令结构)、
+ * ≤128。允许空格等可打印字符(`posixQuote` 会安全包裹)。名来自远端 `tmux ls` 输出(半可信),
+ * 此为拼进命令前的防线;真正的注入边界是 `posixQuote`。
+ */
+export function isValidTmuxName(name: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  return name.length > 0 && name.length <= 128 && !/[\x00-\x1f\x7f]/.test(name);
+}
+
+/**
+ * F51 attach:`tmux attach -t '<name>'`。经 wt.exe `ssh -t … "bash -lic '<此串>'"`(launch.rs
+ * 传输包装)落地,`ssh -t` 提供 attach 必需的 PTY。attach 只进已有会话、不启动 claude → 无需
+ * unset 嵌套 env / launcher / sid。name 非法 → throw(调用方 toast,绝不拼入命令)。
+ */
+export function buildAttachCmd(name: string): string {
+  if (!isValidTmuxName(name)) {
+    throw new Error(`非法 tmux 会话名(拒绝拼入命令): ${JSON.stringify(name)}`);
+  }
+  return `tmux attach -t ${posixQuote(name)}`;
+}
