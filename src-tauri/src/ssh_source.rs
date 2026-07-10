@@ -149,8 +149,14 @@ impl client::Handler for ClientHandler {
                     tracing::info!("ssh host key fingerprint verified: {actual}");
                     Ok(true)
                 } else {
+                    // F43：失配时附上实际 key 的算法——诊断里区分「合法换 key 类型」
+                    // （如 ed25519→rsa，算法不同）与「同类型 key 被换（真 MITM 疑点）」;
+                    // 措辞指向重置入口（服务器合法轮换 host key 后走它解锁，而非误判永锁）。
+                    let alg = server_public_key.algorithm();
                     tracing::error!(
-                        "ssh host key MISMATCH: expected {expected}, got {actual}; rejecting connection"
+                        "ssh host key MISMATCH: expected {expected}, got {actual} (alg={alg}); \
+                         rejecting connection. 若确系服务器合法更换过 host key（重装/轮换），\
+                         请在设置里「重置为 TOFU」后重连;否则可能是中间人攻击。"
                     );
                     Ok(false)
                 }
@@ -2352,6 +2358,68 @@ Host prod
             next_backoff(Duration::from_secs(30)),
             Duration::from_secs(30)
         );
+    }
+
+    // F43：check_server_key 三分支——匹配接受 / 失配拒绝 / 无期望指纹 TOFU 接受，
+    // 且无论哪支都把实际指纹写回 observed cell（测试连接据此展示 + 固化）。
+    use russh::client::Handler as _; // check_server_key 是 trait 方法
+
+    fn handler_with(expected: Option<&str>) -> (ClientHandler, Arc<Mutex<Option<String>>>) {
+        let observed = Arc::new(Mutex::new(None));
+        let h = ClientHandler {
+            expected_fingerprint: expected.map(String::from),
+            observed_fingerprint: Arc::clone(&observed),
+        };
+        (h, observed)
+    }
+
+    /// 固定 ed25519 公钥 + 其 SHA256 指纹（ssh-keygen 一次性生成后固化进测试，
+    /// SAMPLE_FP 可用 `ssh-keygen -lf` 对 SAMPLE_PUB 独立复算核对）。
+    const SAMPLE_PUB: &str =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEwdsNpXeLF3bjmkjNIpFsbGCxLntS8RsfA6BPOv/Ykv f43";
+    const SAMPLE_FP: &str = "SHA256:fPFSH7moeRu2I96lFjdo8lO2iB7KgVLtL4LXvHVZWDk";
+
+    fn sample_key() -> PublicKey {
+        PublicKey::from_openssh(SAMPLE_PUB).expect("parse sample pubkey")
+    }
+
+    #[tokio::test]
+    async fn check_server_key_matching_fingerprint_accepts() {
+        let (mut h, observed) = handler_with(Some(SAMPLE_FP));
+        assert!(h.check_server_key(&sample_key()).await.unwrap());
+        assert_eq!(observed.lock().unwrap().as_deref(), Some(SAMPLE_FP));
+    }
+
+    #[tokio::test]
+    async fn check_server_key_matching_tolerates_trailing_whitespace() {
+        let padded = format!("{SAMPLE_FP}\n  ");
+        let (mut h, _observed) = handler_with(Some(&padded));
+        assert!(
+            h.check_server_key(&sample_key()).await.unwrap(),
+            "尾随空白不应误判 MITM"
+        );
+    }
+
+    #[tokio::test]
+    async fn check_server_key_mismatch_rejects_but_records() {
+        let (mut h, observed) =
+            handler_with(Some("SHA256:deadbeefwrongfingerprintvalueAAAAAAAAAAAA"));
+        assert!(
+            !h.check_server_key(&sample_key()).await.unwrap(),
+            "失配必须拒绝"
+        );
+        // 失配也把实际指纹写回 cell（供「重置为 TOFU / 重新固化」）。
+        assert_eq!(observed.lock().unwrap().as_deref(), Some(SAMPLE_FP));
+    }
+
+    #[tokio::test]
+    async fn check_server_key_no_expected_tofu_accepts() {
+        let (mut h, observed) = handler_with(None);
+        assert!(
+            h.check_server_key(&sample_key()).await.unwrap(),
+            "TOFU 首连接受"
+        );
+        assert_eq!(observed.lock().unwrap().as_deref(), Some(SAMPLE_FP));
     }
 }
 
