@@ -3435,3 +3435,21 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   padding: 1px 8px;
   font-size: 11px;
 }
+
+/* F48 Part 3：行内操作按钮 */
+.sftp-row-acts {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+}
+.sftp-row:hover .sftp-row-acts {
+  opacity: 1;
+}
+.sftp-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.sftp-panel.sftp-dragover {
+  outline: 2px dashed var(--accent, #4a9);
+  outline-offset: -6px;
+}

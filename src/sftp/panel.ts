@@ -3,6 +3,8 @@
  * 消费 F47 的 sftp_* 命令。Part 1 = 浏览(面包屑/列表/导航/排序);传输/写/拖入见后续。
  */
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { formatBytes } from "../format";
 import { showActionFailureToast } from "../error-toast";
@@ -34,6 +36,7 @@ export class SftpPanel {
   private cwd = "/";
   private sortBy: SortBy = "name";
   private entries: SftpEntry[] = [];
+  private dropUnlisten: UnlistenFn | null = null;
 
   constructor() {
     this.el = document.createElement("div");
@@ -80,6 +83,8 @@ export class SftpPanel {
 
     const upload = mkBtn("上传", () => void this.uploadHere());
     header.appendChild(upload);
+    const newDir = mkBtn("新建目录", () => void this.newDir());
+    header.appendChild(newDir);
     const refresh = mkBtn("刷新", () => void this.reload());
     header.appendChild(refresh);
     const closeBtn = mkBtn("关闭", () => this.close());
@@ -109,6 +114,24 @@ export class SftpPanel {
     this.titleEl.textContent = `文件:${cfg.label || cfg.host}`;
     this.el.style.display = "flex";
     this.listEl.textContent = "连接中…";
+    // F48 Part 3：拖入上传——面板打开时监听 webview 拖放,drop 时上传到当前目录。
+    if (!this.dropUnlisten) {
+      try {
+        const panelBody = this.el.querySelector(".sftp-panel");
+        this.dropUnlisten = await getCurrentWebviewWindow().onDragDropEvent((ev) => {
+          if (this.el.style.display === "none") return; // 面板未开不理会
+          const t = ev.payload.type;
+          if (t === "enter" || t === "over") {
+            panelBody?.classList.add("sftp-dragover");
+          } else {
+            panelBody?.classList.remove("sftp-dragover");
+          }
+          if (t === "drop") void this.uploadDropped(ev.payload.paths);
+        });
+      } catch {
+        /* 拖放不可用(如某些平台)→ 忽略,菜单上传仍可用 */
+      }
+    }
     try {
       const home = await invoke<string>("sftp_realpath", { cfg, path: "." });
       this.cwd = home || "/";
@@ -123,6 +146,10 @@ export class SftpPanel {
     this.el.style.display = "none";
     this.entries = [];
     this.listEl.textContent = "";
+    if (this.dropUnlisten) {
+      this.dropUnlisten();
+      this.dropUnlisten = null;
+    }
   }
 
   private async navigate(path: string): Promise<void> {
@@ -259,6 +286,69 @@ export class SftpPanel {
     }
   }
 
+  // === 写(Part 3):新建目录 / 重命名 / 删除 / 拖入上传 ===
+
+  private async newDir(): Promise<void> {
+    if (!this.cfg) return;
+    const name = window.prompt("新建目录名:");
+    if (!name?.trim()) return;
+    await this.doWrite("sftp_mkdir", { cfg: this.cfg, path: joinPath(this.cwd, name.trim()) });
+  }
+
+  private async rename(e: SftpEntry): Promise<void> {
+    if (!this.cfg) return;
+    const to = window.prompt(`重命名 ${e.name} 为:`, e.name);
+    if (!to?.trim() || to.trim() === e.name) return;
+    await this.doWrite("sftp_rename", {
+      cfg: this.cfg,
+      from: joinPath(this.cwd, e.name),
+      to: joinPath(this.cwd, to.trim()),
+    });
+  }
+
+  private async remove(e: SftpEntry): Promise<void> {
+    if (!this.cfg) return;
+    // 二次确认,文案回显真实条目名(aterm 契约:防误删)。
+    const kind = e.isDir ? "目录" : "文件";
+    if (!window.confirm(`删除${kind} ${e.name}?此操作不可撤销。`)) return;
+    await this.doWrite("sftp_delete", {
+      cfg: this.cfg,
+      path: joinPath(this.cwd, e.name),
+      isDir: e.isDir,
+    });
+  }
+
+  /** 拖入的本地文件 → 逐个上传到当前目录(复用 runTransfer)。 */
+  private async uploadDropped(paths: string[]): Promise<void> {
+    if (!this.cfg) return;
+    for (const localPath of paths) {
+      const name = basename(localPath);
+      const remotePath = joinPath(this.cwd, name);
+      let exists = false;
+      try {
+        await invoke("sftp_stat", { cfg: this.cfg, path: remotePath });
+        exists = true;
+      } catch {
+        exists = false;
+      }
+      if (exists && !window.confirm(`远端已存在 ${name},覆盖?`)) continue;
+      await this.runTransfer(`上传 ${name}`, 0, (transferId, onProgress) =>
+        invoke("sftp_upload", { cfg: this.cfg, localPath, remotePath, transferId, onProgress }),
+      );
+    }
+    await this.reload();
+  }
+
+  /** 写命令通用:invoke → 失败 toast → 成功刷新目录。 */
+  private async doWrite(cmd: string, args: Record<string, unknown>): Promise<void> {
+    try {
+      await invoke(cmd, args);
+      await this.reload();
+    } catch (e) {
+      showActionFailureToast("操作失败", String(e));
+    }
+  }
+
   private renderList(): void {
     this.listEl.textContent = "";
     const sorted = sortEntries(this.entries, this.sortBy);
@@ -290,12 +380,17 @@ export class SftpPanel {
       if (e.isDir) {
         row.classList.add("sftp-dir");
         row.addEventListener("dblclick", () => void this.navigate(joinPath(this.cwd, e.name)));
-      } else {
-        // 文件:行内「下载」按钮(Part 3 再加右键改名/删除)。
-        const dl = mkBtn("下载", () => void this.download(e));
-        dl.className = "sftp-btn sftp-row-btn";
-        row.appendChild(dl);
       }
+      // 行内操作:下载(文件)/改名/删除。非 UTF-8 名(lossy)禁所有写+下载(无法寻址真字节)。
+      const acts = document.createElement("span");
+      acts.className = "sftp-row-acts";
+      if (!e.isDir) {
+        const dl = mkRowBtn("下载", e.lossyName, () => void this.download(e));
+        acts.appendChild(dl);
+      }
+      acts.appendChild(mkRowBtn("改名", e.lossyName, () => void this.rename(e)));
+      acts.appendChild(mkRowBtn("删除", e.lossyName, () => void this.remove(e)));
+      row.appendChild(acts);
       if (e.lossyName) row.title = "文件名含非 UTF-8 字节,只读(无法安全写操作)";
       this.listEl.appendChild(row);
     }
@@ -308,6 +403,17 @@ function mkBtn(label: string, onClick: () => void): HTMLButtonElement {
   b.className = "sftp-btn";
   b.textContent = label;
   b.addEventListener("click", onClick);
+  return b;
+}
+
+/** 行内小按钮;disabled=true(非 UTF-8 名)灰置禁点。 */
+function mkRowBtn(label: string, disabled: boolean, onClick: () => void): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "sftp-btn sftp-row-btn";
+  b.textContent = label;
+  b.disabled = disabled;
+  if (!disabled) b.addEventListener("click", onClick);
   return b;
 }
 
