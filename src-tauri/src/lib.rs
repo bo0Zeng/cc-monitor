@@ -21,6 +21,7 @@ mod profile_installer;
 mod remote_history;
 mod search;
 mod session_map;
+mod sftp_pool;
 // SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
 mod sftp;
 // SSH-remote Phase 0 (issue #15)：从 setup() 调用 —— 当 config.json 的
@@ -869,6 +870,9 @@ pub fn run() {
             history::update_history_metadata,
             history::resume_history_session,
             launch::launch_remote_terminal,
+            sftp_pool::sftp_realpath,
+            sftp_pool::sftp_list_dir,
+            sftp_pool::sftp_stat,
             // issue #6: 历史全文搜索
             search::search_history,
             search::get_search_index_status,
