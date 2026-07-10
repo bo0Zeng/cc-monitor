@@ -7,9 +7,15 @@
 //! [`is_protected_claude_data_path`]:SFTP 写命令拒碰 Claude 数据源文件(往正被 Claude
 //! 打开的 jsonl 写会损坏会话)——这是防手滑,不是合规。
 //!
-//! ## 连接分离
+//! ## 连接分离 + 已知取舍
 //! SFTP 面板连接走**独立 utility 池**,与 daemon 数据源流连接(`ssh_source` 长连接)
 //! 分离,不共用——面板操作永不影响会话流。池按 origin 键、取用时校活性、死则重建。
+//! - **per-origin 锁串行化**:每 host 单连接,传输整程持 slot 锁 → 同 host 不能边传边浏览、
+//!   不能并发两个传输(刻意 v1 取舍;F48 若要并发浏览+传输需给池加多连接,属 F47 范围外)。
+//! - **非 UTF-8 文件名**:后端**不拦**对 lossy 名(含 U+FFFD)的写(russh-sftp 已有损解码,
+//!   无法寻址真字节)——靠 F48 UI 灰置这些项;`lossy_name` 字段供前端判定。
+//! - **空闲回收**:池连接空闲不主动回收(一台机一条 SFTP,YAGNI);死连按需重建,
+//!   配置改动经 `drop_pooled` 手动丢弃。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -118,9 +124,21 @@ where
 }
 
 /// 丢弃某 origin 的池连接（设置卡「断开」/配置改动时调；下次操作重建）。
+/// **`origin` 须传 `cfg.origin_label()`**（池按此键建槽,传 host 会静默 no-op）。
+/// D 审计 R3:先克隆出 Arc 释放 `pool()` 全局锁,再锁 slot——否则若该 slot 正被长传输
+/// 持有,会握着全局锁死等,卡住所有 origin 的新操作(每个命令都要 pool().lock())。
 pub async fn drop_pooled(origin: &str) {
-    if let Some(slot) = pool().lock().await.get(origin) {
+    let slot = pool().lock().await.get(origin).cloned();
+    if let Some(slot) = slot {
         *slot.lock().await = None;
+    }
+}
+
+/// D 审计 R1:传输失败若像连接死亡,把该 origin 的池槽置 None,下次传输干净重连
+/// （**不**重启当前这次——部分传输不静默从头来）。修「死连留在槽里→后续传输持续失败」。
+async fn evict_if_dead(origin: &str, err: &str) {
+    if looks_like_dead_conn(err) {
+        drop_pooled(origin).await;
     }
 }
 
@@ -173,13 +191,17 @@ pub async fn sftp_list_dir(cfg: RemoteConfig, path: String) -> Result<Vec<SftpEn
         })
     })
     .await?;
-    // 目录在前,再按名称小写排序（稳定、可读）。
-    out.sort_by(|a, b| {
+    sort_entries(&mut out);
+    Ok(out)
+}
+
+/// 目录在前,再按名称小写排序（aterm 契约;抽出供单测共用生产比较器）。
+fn sort_entries(v: &mut [SftpEntry]) {
+    v.sort_by(|a, b| {
         b.is_dir
             .cmp(&a.is_dir)
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
-    Ok(out)
 }
 
 /// stat 单个路径。
@@ -202,9 +224,364 @@ pub async fn sftp_stat(cfg: RemoteConfig, path: String) -> Result<SftpStat, Stri
     .await
 }
 
+// === 传输(download/upload):chunked + 进度 + 取消 ===
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+/// SFTP 写分块 ≤32KB（SFTP draft 建议;严格 server 拒超大包）。
+const CHUNK: usize = 32 * 1024;
+/// 进度上报节流:每 ≥256KB 报一次（避免刷爆 Channel),外加起止各一次。
+const PROGRESS_EVERY: u64 = 256 * 1024;
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferProgress {
+    pub transferred: u64,
+    /// 总字节;下载时=远端 size,上传时=本地 size。未知(极少)为 0。
+    pub total: u64,
+}
+
+/// 取消令牌注册表:transfer_id → flag。**transfer_id 必须全局唯一(前端用 uuid)**——
+/// 并发复用同 id 会互相覆盖 flag(D 审计 R2)。用 std::sync::Mutex(map ops 无 await,
+/// 可在 [`CancelGuard::drop`] 里同步清理,修 future 被 abort 时的泄漏 = D 审计 S4)。
+fn cancels() -> &'static std::sync::Mutex<HashMap<String, Arc<AtomicBool>>> {
+    static C: std::sync::OnceLock<std::sync::Mutex<HashMap<String, Arc<AtomicBool>>>> =
+        std::sync::OnceLock::new();
+    C.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+/// 注册取消令牌,返回 (flag, guard)。guard 一 drop(命令 future 正常完成 **或被 abort**)
+/// 就按 `Arc::ptr_eq` 从表里摘除本次的 flag——ptr_eq 保证不误删并发同 id 的他人 flag。
+struct CancelGuard {
+    id: String,
+    flag: Arc<AtomicBool>,
+}
+impl Drop for CancelGuard {
+    fn drop(&mut self) {
+        if let Ok(mut m) = cancels().lock() {
+            if m.get(&self.id).is_some_and(|f| Arc::ptr_eq(f, &self.flag)) {
+                m.remove(&self.id);
+            }
+        }
+    }
+}
+
+fn register_cancel(id: &str) -> (Arc<AtomicBool>, CancelGuard) {
+    let flag = Arc::new(AtomicBool::new(false));
+    if let Ok(mut m) = cancels().lock() {
+        m.insert(id.to_string(), flag.clone());
+    }
+    (
+        flag.clone(),
+        CancelGuard {
+            id: id.to_string(),
+            flag,
+        },
+    )
+}
+
+/// 翻转某传输的取消标志（前端「取消」按钮调）。id 未注册(尚未开始/已结束)→ no-op。
+#[tauri::command]
+pub async fn sftp_cancel_transfer(transfer_id: String) {
+    if let Ok(m) = cancels().lock() {
+        if let Some(f) = m.get(&transfer_id) {
+            f.store(true, Ordering::SeqCst);
+        }
+    }
+}
+
+fn report(ch: &tauri::ipc::Channel<TransferProgress>, transferred: u64, total: u64) {
+    let _ = ch.send(TransferProgress { transferred, total });
+}
+
+/// 下载远端文件到本地。chunked 读、进度上报、可取消。**不走 with_sftp 重试**——部分传输
+/// 不该静默从头重启;失败/取消返回 Err。写本地 `<local>.part` 再 rename(半成品不留原名)。
+/// source 是远端(读,不涉写守卫);target 是本地磁盘。
+#[tauri::command]
+pub async fn sftp_download(
+    cfg: RemoteConfig,
+    remote_path: String,
+    local_path: String,
+    transfer_id: String,
+    on_progress: tauri::ipc::Channel<TransferProgress>,
+) -> Result<(), String> {
+    let (cancel, _guard) = register_cancel(&transfer_id); // _guard 摘除注册项(含 abort)
+    let r = download_inner(&cfg, &remote_path, &local_path, &cancel, &on_progress).await;
+    if let Err(e) = &r {
+        evict_if_dead(&cfg.origin_label(), e).await; // R1:死连不留在槽里毒化后续
+    }
+    r
+}
+
+async fn download_inner(
+    cfg: &RemoteConfig,
+    remote_path: &str,
+    local_path: &str,
+    cancel: &Arc<AtomicBool>,
+    on_progress: &tauri::ipc::Channel<TransferProgress>,
+) -> Result<(), String> {
+    let slot = slot_for(&cfg.origin_label()).await;
+    let mut guard = slot.lock().await;
+    if guard.is_none() {
+        *guard = Some(connect_sftp(cfg).await?);
+    }
+    let sftp = &guard.as_ref().unwrap().sftp;
+
+    let total = sftp
+        .metadata(remote_path.to_string())
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
+    let mut rf = sftp
+        .open_with_flags(
+            remote_path.to_string(),
+            russh_sftp::protocol::OpenFlags::READ,
+        )
+        .await
+        .map_err(|e| format!("打开远端 {remote_path} 失败: {e}"))?;
+
+    let tmp = format!("{local_path}.part");
+    let mut lf = tokio::fs::File::create(&tmp)
+        .await
+        .map_err(|e| format!("创建本地 {tmp} 失败: {e}"))?;
+
+    // 传输核心包进一层:任一步失败(含取消)统一清理 `.part`(D 审计 S1,与取消路径对齐)。
+    let core = async {
+        let mut buf = vec![0u8; CHUNK];
+        let mut done: u64 = 0;
+        let mut last_report: u64 = 0;
+        report(on_progress, 0, total);
+        loop {
+            if cancel.load(Ordering::SeqCst) {
+                return Err("已取消".to_string());
+            }
+            let n = rf
+                .read(&mut buf)
+                .await
+                .map_err(|e| format!("读远端失败: {e}"))?;
+            if n == 0 {
+                break;
+            }
+            lf.write_all(&buf[..n])
+                .await
+                .map_err(|e| format!("写本地失败: {e}"))?;
+            done += n as u64;
+            if done - last_report >= PROGRESS_EVERY {
+                last_report = done;
+                report(on_progress, done, total);
+            }
+        }
+        lf.flush()
+            .await
+            .map_err(|e| format!("flush 本地失败: {e}"))?;
+        Ok(done)
+    }
+    .await;
+    drop(lf);
+    let done = match core {
+        Ok(d) => d,
+        Err(e) => {
+            let _ = tokio::fs::remove_file(&tmp).await; // 清半成品 .part
+            return Err(e);
+        }
+    };
+    tokio::fs::rename(&tmp, local_path).await.map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("落地 {local_path} 失败: {e}")
+    })?;
+    report(on_progress, done, total);
+    Ok(())
+}
+
+/// 上传本地文件到远端。chunked 写、进度、可取消。**写守卫**:拒 Claude 数据源路径。
+/// 写远端 `<remote>.tmp` → 删旧 → rename(近似原子,复用 upload_atomic 的 flush/shutdown 纪律)。
+/// 覆盖不静默:前端先 stat 确认存在并二次确认,后端直接原子替换。
+#[tauri::command]
+pub async fn sftp_upload(
+    cfg: RemoteConfig,
+    local_path: String,
+    remote_path: String,
+    transfer_id: String,
+    on_progress: tauri::ipc::Channel<TransferProgress>,
+) -> Result<(), String> {
+    guard_write(&remote_path)?;
+    let (cancel, _guard) = register_cancel(&transfer_id); // _guard 摘除注册项(含 abort)
+    let r = upload_inner(&cfg, &local_path, &remote_path, &cancel, &on_progress).await;
+    if let Err(e) = &r {
+        evict_if_dead(&cfg.origin_label(), e).await; // R1:死连不留在槽里毒化后续
+    }
+    r
+}
+
+async fn upload_inner(
+    cfg: &RemoteConfig,
+    local_path: &str,
+    remote_path: &str,
+    cancel: &Arc<AtomicBool>,
+    on_progress: &tauri::ipc::Channel<TransferProgress>,
+) -> Result<(), String> {
+    let total = tokio::fs::metadata(local_path)
+        .await
+        .map(|m| m.len())
+        .map_err(|e| format!("读本地 {local_path} 失败: {e}"))?;
+    let mut lf = tokio::fs::File::open(local_path)
+        .await
+        .map_err(|e| format!("打开本地 {local_path} 失败: {e}"))?;
+
+    let slot = slot_for(&cfg.origin_label()).await;
+    let mut guard = slot.lock().await;
+    if guard.is_none() {
+        *guard = Some(connect_sftp(cfg).await?);
+    }
+    let sftp = &guard.as_ref().unwrap().sftp;
+
+    let tmp = format!("{remote_path}.tmp");
+    let mut rf = sftp
+        .open_with_flags(
+            tmp.clone(),
+            russh_sftp::protocol::OpenFlags::CREATE
+                | russh_sftp::protocol::OpenFlags::TRUNCATE
+                | russh_sftp::protocol::OpenFlags::WRITE,
+        )
+        .await
+        .map_err(|e| format!("创建远端 {tmp} 失败: {e}"))?;
+
+    // 传输核心包一层:任一步失败(含取消)统一 shutdown+删远端 `.tmp`(S1,与取消路径对齐)。
+    let core = async {
+        let mut buf = vec![0u8; CHUNK];
+        let mut done: u64 = 0;
+        let mut last_report: u64 = 0;
+        report(on_progress, 0, total);
+        loop {
+            if cancel.load(Ordering::SeqCst) {
+                return Err("已取消".to_string());
+            }
+            let n = lf
+                .read(&mut buf)
+                .await
+                .map_err(|e| format!("读本地失败: {e}"))?;
+            if n == 0 {
+                break;
+            }
+            rf.write_all(&buf[..n])
+                .await
+                .map_err(|e| format!("写远端失败: {e}"))?;
+            done += n as u64;
+            if done - last_report >= PROGRESS_EVERY {
+                last_report = done;
+                report(on_progress, done, total);
+            }
+        }
+        // 见 upload_atomic:flush 始终 drain 写队列 + 传播错误,shutdown 关闭。
+        rf.flush()
+            .await
+            .map_err(|e| format!("flush 远端失败（写未确认）: {e}"))?;
+        Ok(done)
+    }
+    .await;
+    let _ = rf.shutdown().await;
+    drop(rf);
+    let done = match core {
+        Ok(d) => d,
+        Err(e) => {
+            let _ = sftp.remove_file(tmp.clone()).await; // 清远端半成品 .tmp
+            return Err(e);
+        }
+    };
+
+    // 原文件在此之前完好无损（失败绝不销毁远端原文件）;此后才删旧+rename(近似原子)。
+    if sftp
+        .try_exists(remote_path.to_string())
+        .await
+        .unwrap_or(false)
+    {
+        sftp.remove_file(remote_path.to_string())
+            .await
+            .map_err(|e| format!("删旧 {remote_path} 失败: {e}"))?;
+    }
+    sftp.rename(tmp.clone(), remote_path.to_string())
+        .await
+        .map_err(|e| format!("rename 到 {remote_path} 失败: {e}"))?;
+    report(on_progress, done, total);
+    Ok(())
+}
+
+// === 写命令:mkdir / rename / delete（走 with_sftp,过写守卫）===
+
+/// 拒 Claude 数据源路径的写守卫(返回 Err 便于 `?`)。
+fn guard_write(path: &str) -> Result<(), String> {
+    if is_protected_claude_data_path(path) {
+        return Err(format!(
+            "拒绝写 Claude 数据源文件({path})——管理会话文件请用历史浏览器"
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn sftp_mkdir(cfg: RemoteConfig, path: String) -> Result<(), String> {
+    guard_write(&path)?;
+    with_sftp(&cfg, move |s| {
+        let path = path.clone();
+        Box::pin(async move {
+            s.create_dir(path)
+                .await
+                .map_err(|e| format!("新建目录失败: {e}"))
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn sftp_rename(cfg: RemoteConfig, from: String, to: String) -> Result<(), String> {
+    // from(源)与 to(目标)都过守卫:既不许把 Claude 文件改走,也不许改成 Claude 数据源名。
+    guard_write(&from)?;
+    guard_write(&to)?;
+    with_sftp(&cfg, move |s| {
+        let from = from.clone();
+        let to = to.clone();
+        Box::pin(async move {
+            s.rename(from, to)
+                .await
+                .map_err(|e| format!("重命名失败: {e}"))
+        })
+    })
+    .await
+}
+
+/// 删除:`is_dir` 区分 rmdir/rm（rmdir 只删空目录,非空由 server 报错上层提示）。
+#[tauri::command]
+pub async fn sftp_delete(cfg: RemoteConfig, path: String, is_dir: bool) -> Result<(), String> {
+    guard_write(&path)?;
+    with_sftp(&cfg, move |s| {
+        let path = path.clone();
+        Box::pin(async move {
+            if is_dir {
+                s.remove_dir(path)
+                    .await
+                    .map_err(|e| format!("删除目录失败（非空?）: {e}"))
+            } else {
+                s.remove_file(path)
+                    .await
+                    .map_err(|e| format!("删除文件失败: {e}"))
+            }
+        })
+    })
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn guard_write_rejects_claude_data_allows_normal() {
+        assert!(guard_write("/home/pi/.claude/projects/-x/s.jsonl").is_err());
+        assert!(guard_write("/home/pi/.claude/sessions/1.json").is_err());
+        assert!(guard_write("/home/pi/proj/main.rs").is_ok());
+        assert!(guard_write("/home/pi/.claude/settings.json").is_ok()); // 非受保护
+    }
 
     #[test]
     fn protected_path_guard() {
@@ -272,14 +649,29 @@ mod tests {
                 lossy_name: false,
             },
         ];
-        v.sort_by(|a, b| {
-            b.is_dir
-                .cmp(&a.is_dir)
-                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-        });
+        sort_entries(&mut v); // 用生产比较器,改它测试即跟着变(不再假信心)
         assert_eq!(
             v.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
             vec!["src", "apple", "Zebra"]
+        );
+    }
+
+    #[test]
+    fn cancel_guard_ptr_eq_no_cross_delete() {
+        // D 审计 R2/S4:同 id 两次注册,第一个 guard drop 用 ptr_eq 不误删第二个的 flag。
+        let (_f1, g1) = register_cancel("dup-id");
+        let (f2, _g2) = register_cancel("dup-id"); // 覆盖 map 里的 flag = f2
+        drop(g1); // g1 的 flag != map 现存(f2)→ ptr_eq 不成立→不删
+        assert!(
+            cancels().lock().unwrap().contains_key("dup-id"),
+            "g1 drop 不该误删 f2 的注册项"
+        );
+        // f2 仍可被取消(标志翻转可达)
+        f2.store(true, std::sync::atomic::Ordering::SeqCst);
+        drop(_g2);
+        assert!(
+            !cancels().lock().unwrap().contains_key("dup-id"),
+            "g2 drop 摘除自己的项"
         );
     }
 }

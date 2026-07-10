@@ -59,6 +59,7 @@ src-tauri/
 | **event_replay.rs** (v2.4.2 大小分流，v2.6 状态机简化，Batch5 async 化+分组) | 内存 buffer + frontend-ready 时切块 emit；`on_line_batch` 按 batch 大小分流：< 50 行走 `jsonl-line` 单条 live emit，>= 50 行（如 /resume 灌历史、远端 snapshot 攒批）走 `jsonl-batch` 切块 emit——**Batch5-F17 起大批块序列 spawn 到 async_runtime**（spawn 返回≠emit 完成，顺序敏感调用方用 `on_line_batch_awaited`，INVARIANTS §10）。**v2.6 删了 `replaying` flag + catch-up tail 路径** —— chunked emit 期间 watcher 真新行直接 emit，前端 RecordTimeline 按 seq 自动排到正确位置；切块统一 CHUNK_SIZE=600 末块先发；**Batch5-F19：`replay_and_mark_ready(priority_sid)` 按 session 分组、上次所在 tab 的块先发（chunk 全局连续编号保 batch-start 哨兵）** | `EventReplay::on_line_batch() / on_line_batch_awaited() / replay_and_mark_ready(priority_sid)（async）/ forget() / buffered_{local,remote}_session_ids()（#19/#20 重放后对账）` |
 | **history.rs** | 历史浏览器后端：两级 IPC + metadata + 物理删除 + resume；v2.2 (issue #12) 全部 async + spawn_blocking + Channel 流式 IPC | IPC `list_history_projects / stream_history_sessions_in_project / stream_read_session_jsonl / delete / update_metadata / resume` |
 | **search.rs** (issue #6) | 历史全文搜索：后台线程扫 projects/**/*.jsonl 建内存索引（按 session 分组 + 原文/小写副本两份）；默认搜 user/assistant 文本，`include_tools` 附加 tool_use/result/thinking；CLI 注入噪声按 INVARIANT § 20 剥掉；两级匹配（lc.contains 粗筛 + find_ci 精定位 snippet）+ 文本截断封顶。`Arc<SearchIndex>` State | IPC `search_history / get_search_index_status / rebuild_search_index` |
+| **sftp_pool.rs** (B14-F47) | SFTP 文件面板后端:per-host utility 连接池(与 daemon 流分离)+ 浏览/传输/写命令;`is_protected_claude_data_path` 防误伤守卫(拒写 Claude 数据源) | `with_sftp() / sftp_list_dir / sftp_download / sftp_upload / ...`(9 命令) |
 | **ssh_source.rs** (issue #15) | russh 远端数据源：`connect_session` 全套 host-key 指纹校验 + publickey/agent 鉴权；`run` 长连接 exec daemon 把流帧（`InboundFrame`）走与本地 watcher 相同出口；hello 带 `build_id` 做版本协商（#33）；`Overflow` 帧 → remote-health 提示（#32）；ssh-config 导入 + 测试连接 | `run() / connect_session() / connect_and_exec_cmd() / parse_frame()` + IPC `list_ssh_host_aliases / resolve_ssh_host / test_remote_connection` |
 | **remote_history.rs** (issue #16/#28/#30) | 远端历史浏览 + 远端全文搜索：每条查询走独立 SSH 连接一次性 exec `<daemon> --list-projects/--list-sessions/--read-session/--search`，多机 fan-out；旧 daemon（首行 hello）检测降级提示；条目级元数据按 sid 合并本地 | `search_remote_all()` + IPC `list_remote_history_projects / stream_remote_history_sessions / stream_read_remote_session / delete_remote_history_session` |
 | **sftp.rs** (SS-D, issue #29) | 统一 SFTP 写层（复用 ssh_source 鉴权起 sftp 子系统）：F08 daemon 自动部署（arch 探测 + build_id 版本门控 + 原子上传）+ F11 远端历史 jsonl 删除（双重路径白名单 + realpath 防 symlink 逃逸）+ F10 远端 ccm 装进 `~/.bashrc`（BEGIN/END 块 + 备份 + 写后校验）。只读铁律豁免见模块文档 | `ensure_daemon_deployed() / remove_remote_file() / upload_atomic()` + IPC `install_remote_ccm_helper` |
@@ -88,6 +89,15 @@ src-tauri/
 | `update_history_metadata` | `{ sessionId, patch }` | `EntryMetadata` | star / 重命名 / 隐藏 |
 | `resume_history_session` | `{ sessionId, cwd }` | `()` | ↺ 按钮（v2.8.1：拉起 wt.exe / powershell.exe，读 profile + `cc` 优先回退 `claude`） |
 | `launch_remote_terminal` (B14-F41) | `{ origin, remoteCmd }` | `()` | 远端一键 resume（tab 右键 / 历史 ↺）：按 origin 取 RemoteConfig，拉起 wt.exe/PowerShell 跑 `ssh -t … "bash -lic '<remoteCmd>'"`；ssh.exe 预检失败/校验拒 → Err（前端回退复制命令）。remote_cmd 双层防线（前端构造校验 + 本侧控制字符/双引号/长度再验） |
+| `sftp_realpath` (B14-F47) | `{ cfg, path }` | `String` | SFTP 面板浏览起点 realpath（走独立 utility 连接池 `sftp_pool`,与 daemon 流分离） |
+| `sftp_list_dir` (B14-F47) | `{ cfg, path }` | `SftpEntry[]` | 列目录（目录在前 + 名称小写排序;非 UTF-8 名标 lossyName） |
+| `sftp_stat` (B14-F47) | `{ cfg, path }` | `SftpStat` | stat 单路径 |
+| `sftp_download` (B14-F47) | `{ cfg, remotePath, localPath, transferId, onProgress }` | `()` | 下载（32KB 分块 + `TransferProgress` Channel + 取消令牌;写 `.part` 再 rename） |
+| `sftp_upload` (B14-F47) | `{ cfg, localPath, remotePath, transferId, onProgress }` | `()` | 上传（写 `.tmp` 删旧 rename 近似原子;过防误伤守卫拒 Claude 数据源路径） |
+| `sftp_cancel_transfer` (B14-F47) | `{ transferId }` | `()` | 翻转某传输取消标志（transferId 须全局唯一） |
+| `sftp_mkdir` (B14-F47) | `{ cfg, path }` | `()` | 新建目录（过守卫） |
+| `sftp_rename` (B14-F47) | `{ cfg, from, to }` | `()` | 重命名（from/to 双守卫） |
+| `sftp_delete` (B14-F47) | `{ cfg, path, isDir }` | `()` | 删除（isDir 分 rmdir/rm;过守卫） |
 | `search_history` (issue #6) | `{ query, includeTools, scope?, afterMs?, limit? }` | `SearchResponse` | 历史浏览器「全文」模式回车搜索（scope=all/user/assistant；afterMs=时间下界） |
 | `get_search_index_status` (issue #6) | — | `SearchIndexStatus` | 进入全文模式时显示索引就绪 / 进度 |
 | `rebuild_search_index` (issue #6) | — | `SearchIndexStatus` | 「重新索引」按钮（大量新会话后） |

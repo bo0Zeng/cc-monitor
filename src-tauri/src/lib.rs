@@ -873,6 +873,12 @@ pub fn run() {
             sftp_pool::sftp_realpath,
             sftp_pool::sftp_list_dir,
             sftp_pool::sftp_stat,
+            sftp_pool::sftp_download,
+            sftp_pool::sftp_upload,
+            sftp_pool::sftp_cancel_transfer,
+            sftp_pool::sftp_mkdir,
+            sftp_pool::sftp_rename,
+            sftp_pool::sftp_delete,
             // issue #6: 历史全文搜索
             search::search_history,
             search::get_search_index_status,
