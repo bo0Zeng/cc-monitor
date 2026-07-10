@@ -11,6 +11,8 @@ import {
   sanitizeRemoteLauncher,
   buildResumeDirectCmd,
   buildOpenTerminalCmd,
+  isValidTmuxName,
+  buildAttachCmd,
 } from "./remote-launch.ts";
 
 let failed = 0;
@@ -123,6 +125,23 @@ test("buildOpenTerminalCmd:cd + login shell / 空 cwd", () => {
   eq(buildOpenTerminalCmd("/home/pi/p"), `cd '/home/pi/p' && ${shell}`);
   eq(buildOpenTerminalCmd("  "), shell);
   eq(buildOpenTerminalCmd("/a b/c"), `cd '/a b/c' && ${shell}`);
+});
+
+test("isValidTmuxName:普通过 / 空·控制字符·超长拒", () => {
+  eq(isValidTmuxName("cc-abc12345"), true);
+  eq(isValidTmuxName("my session"), true, "空格允许(posixQuote 包裹)");
+  eq(isValidTmuxName(""), false, "空拒");
+  eq(isValidTmuxName("a\tb"), false, "含 TAB 拒");
+  eq(isValidTmuxName("a\nb"), false, "含换行拒");
+  eq(isValidTmuxName("a".repeat(129)), false, "超长拒");
+});
+
+test("buildAttachCmd:posixQuote 名 / 空格 / 非法名 throw", () => {
+  eq(buildAttachCmd("cc-abc12345"), "tmux attach -t 'cc-abc12345'");
+  eq(buildAttachCmd("web 1"), "tmux attach -t 'web 1'", "空格名 posixQuote");
+  eq(buildAttachCmd("a'b"), `tmux attach -t 'a'\\''b'`, "单引号逃逸");
+  throws(() => buildAttachCmd(""), "空名 throw");
+  throws(() => buildAttachCmd("x\ny"), "含换行 throw");
 });
 
 if (failed > 0) {
