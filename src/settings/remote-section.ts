@@ -38,6 +38,8 @@ interface ResolvedHost {
 interface ConnTestResult {
   sshOk: boolean;
   fingerprint: string | null;
+  /** F45：竞发胜出的地址（host:port）。多地址 TOFU 首连时告知固化的是哪条路径的指纹。 */
+  endpoint: string | null;
   daemonOk: boolean;
   daemonHello: string | null;
   message: string;
@@ -696,7 +698,14 @@ class MachineCard {
     }
     if (res === null) return;
 
-    this.testResult.appendChild(makeStatusLine(res.sshOk, res.sshOk ? "SSH 连接成功" : "SSH 连接失败"));
+    this.testResult.appendChild(
+      makeStatusLine(
+        res.sshOk,
+        res.sshOk
+          ? `SSH 连接成功${res.endpoint ? `（经 ${res.endpoint}）` : ""}`
+          : "SSH 连接失败",
+      ),
+    );
 
     if (res.fingerprint) {
       const fpLine = document.createElement("div");

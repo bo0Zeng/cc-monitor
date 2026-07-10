@@ -171,6 +171,7 @@ ssh-keyscan -t ed25519 <host> 2>/dev/null | ssh-keygen -lf - | awk '{print $2}'
 | `keyPath` | `C:\Users\<you>\.ssh\id_ed25519` | 同 |
 | `daemonPath` | `/home/<you>/.cc-monitor/bin/cc-monitor-remote` | `/home/pi/.cc-monitor/bin/cc-monitor-remote` |
 | `hostKeyFingerprint` | `SHA256:...`（第 6 步） | 同 |
+| `addresses`（可选，F45 备用地址数组，每项 `host`/`host:port`/`[IPv6]:port`；与 `host` 竞速故障切换，首个成功者胜；设置卡「备用地址」多行输入即写此字段） | `[]` | `["10.0.0.9","pi.公网:2222"]` |
 
 > **认证**：仅支持 publickey（无密码框，anti-pattern）。确保 `keyPath` 对应的公钥在目标机 `~/.ssh/authorized_keys`。
 > **WSL 装 sshd**（路径 A）：`sudo apt-get install -y openssh-server && sudo service ssh start`，并把你的公钥加进 WSL 用户的 `authorized_keys`。

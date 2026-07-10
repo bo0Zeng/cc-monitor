@@ -340,6 +340,11 @@ fn winner_order(endpoints: Vec<Endpoint>, last_good: Option<&Endpoint>) -> Vec<E
 /// 握手+host key 校验,各自独立 handler+cell）,首个握手成功者胜、立即 abort 其余在飞
 /// （drop 关 socket,trap #6/#8）,鉴权留给调用方只对胜者做一次。整体 `deadline` 看门狗兜
 /// 黑洞地址。全部失败 → 聚合各地址错误（trap #3）;被 abort 的输家不计入错误（trap #2）。
+///
+/// aterm F20 陷阱 #1(disconnect 不清 configs/sessions 致 map 无界增长)与 #5(在飞重连
+/// 被 disconnect 后完成的纪元幽灵)对本实现**不适用**:每次 connect 自建一个局部 JoinSet、
+/// 无跨调用持久竞发态或共享 channel(晚到 task 随 set drop 弃),唯一跨调用状态 `last_good_store`
+/// 按 origin 键、有界,既非无界 disconnect map 也无纪元计数器。
 async fn race_connect(
     config: Arc<client::Config>,
     expected_fp: Option<String>,
@@ -391,7 +396,9 @@ async fn race_connect(
                     return Ok(winner);
                 }
                 Ok(Err(e)) => errors.push(e),
-                // 被 abort 的输家 = Cancelled，不算错误（trap #2：别把取消当 ERROR）。
+                // trap #2 的真正实现是「首个 Ok 即 return、根本不收集输家错误」；此分支
+                // 防御性存在(当前控制流下不可达:abort_all 后立即 return,不再 join_next),
+                // 显式声明取消不算错误、防未来重构改动早返回结构时回归。
                 Err(je) if je.is_cancelled() => {}
                 Err(je) => errors.push(format!("拨号任务异常: {je}")),
             }
@@ -441,7 +448,6 @@ pub(crate) async fn connect_session(
         deadline,
     )
     .await?;
-    record_last_good(&origin, &winner);
 
     // RSA key 需要协商出 server 支持的 hash alg；非 RSA key 时 flatten 成 None。
     let best_hash = session
@@ -469,6 +475,11 @@ pub(crate) async fn connect_session(
             authenticate_via_agent(&mut session, &cfg.user, best_hash).await?;
         }
     }
+
+    // D 审计建议-1：last-good = 上次**完整成功**（握手+鉴权）的地址。放在鉴权成功后,
+    // 避免 TOFU×异机误配时「粘住」一个连得上但认证失败的地址（下次仍先拨它、仍失败,
+    // 真机永不被试）。正常固化下 A/B 同机同 key,放前放后等价;此处取更严谨语义。
+    record_last_good(&origin, &winner);
 
     Ok((session, observed_fingerprint))
 }
@@ -2035,6 +2046,9 @@ pub struct ConnTestResult {
     pub ssh_ok: bool,
     /// 握手时观察到的 server host key 指纹（`SHA256:...`）。用于展示 + TOFU 固化。
     pub fingerprint: Option<String>,
+    /// F45 / D 审计重要-1：竞发胜出的地址（`host:port`）。多地址 TOFU 首连时,让用户明确
+    /// 自己正在固化**哪条路径**观察到的指纹（而非盲信「最快那条」）。单地址时即该地址。
+    pub endpoint: Option<String>,
     /// daemon 是否在 SHORT timeout 内回了可解析的 hello 帧。
     pub daemon_ok: bool,
     /// daemon hello 的人读摘要（`v=.. arch=.. claude_dir=..`）。
@@ -2057,6 +2071,7 @@ pub async fn test_remote_connection(cfg: RemoteConfig) -> Result<ConnTestResult,
     let mut result = ConnTestResult {
         ssh_ok: false,
         fingerprint: None,
+        endpoint: None,
         daemon_ok: false,
         daemon_hello: None,
         message: String::new(),
@@ -2075,6 +2090,9 @@ pub async fn test_remote_connection(cfg: RemoteConfig) -> Result<ConnTestResult,
     };
     result.ssh_ok = true;
     result.fingerprint = observed.lock().ok().and_then(|g| g.clone());
+    // 连接成功 → last-good 已记为胜者;回传给前端展示「你正连上/将固化哪个地址」。
+    let win = winner_address(&cfg);
+    result.endpoint = Some(format!("{}:{}", win.host, win.port));
 
     // 3. exec daemon 并等首行 hello。
     let daemon_path = cfg.daemon_path.clone();
@@ -2820,6 +2838,81 @@ Host prod
     async fn race_empty_order_errors_cleanly() {
         let err = race_err(race_connect(test_config(), None, vec![], Duration::from_secs(1)).await);
         assert!(err.contains("无可用地址"), "空 order: {err}");
+    }
+
+    // === F45 / D 审计 R-1：胜者 happy-path（live server 胜、慢地址被弃）===
+    // 起一个 mock russh server（run_stream 自动完成 KEX/握手,握手成功即客户端 Ok——race
+    // 只到握手,不需要真鉴权）。expected_fp=None 走 TOFU 接受该 mock key。
+
+    /// mock server 用的固定 ed25519 host key（ssh-keygen 生成）。
+    const MOCK_SERVER_KEY: &str = "\
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACABVcXnVsSgWL3RAZE1r7ebLdEi510GsSqfaTYYzM26GwAAAJiEWV/KhFlf
+ygAAAAtzc2gtZWQyNTUxOQAAACABVcXnVsSgWL3RAZE1r7ebLdEi510GsSqfaTYYzM26Gw
+AAAEDRp5kloww4Jpr8K56RETPX0tLdId9XD8a+yNz5Tx0XOQFVxedWxKBYvdEBkTWvt5st
+0SLnXQaxKp9pNhjMzbobAAAAD2Y0NS1tb2NrLXNlcnZlcgECAwQFBg==
+-----END OPENSSH PRIVATE KEY-----";
+
+    struct MockServer;
+    impl russh::server::Handler for MockServer {
+        type Error = russh::Error;
+    }
+
+    fn mock_server_config() -> Arc<russh::server::Config> {
+        let key = russh::keys::PrivateKey::from_openssh(MOCK_SERVER_KEY).expect("parse mock key");
+        Arc::new(russh::server::Config {
+            keys: vec![key],
+            ..Default::default()
+        })
+    }
+
+    /// 起一个只接一条连接的 mock SSH server,返回其监听地址。
+    async fn spawn_mock_server() -> Endpoint {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            if let Ok((stream, _)) = listener.accept().await {
+                let _ = russh::server::run_stream(mock_server_config(), stream, MockServer).await;
+            }
+        });
+        ep("127.0.0.1", addr.port())
+    }
+
+    /// 从 race_connect 的 Ok 分支取胜者 Endpoint（Handle 不实现 Debug,丢弃即关连接）。
+    fn race_win(
+        r: Result<
+            (
+                client::Handle<ClientHandler>,
+                Arc<Mutex<Option<String>>>,
+                Endpoint,
+            ),
+            String,
+        >,
+    ) -> Endpoint {
+        match r {
+            Ok((_h, _cell, ep)) => ep,
+            Err(e) => panic!("expected a winner, got Err: {e}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn race_live_server_wins_when_first() {
+        let live = spawn_mock_server().await;
+        // live 排 i=0 立即拨、黑洞 i=1 延迟 → live 握手先成功即胜。
+        let order = vec![live.clone(), ep("10.255.255.1", 22)];
+        let win = race_win(race_connect(test_config(), None, order, Duration::from_secs(5)).await);
+        assert_eq!(win, live, "live server 应胜出");
+    }
+
+    #[tokio::test]
+    async fn race_live_server_wins_when_blackhole_first() {
+        // 黑洞排首(i=0 立即拨但永不完成)、live 排 i=1(250ms 后拨)——慢地址被弃,live 仍胜。
+        // 佐证 trap #8:首地址挂起不吊死整批,后位可达地址照样赢。
+        let live = spawn_mock_server().await;
+        let order = vec![ep("10.255.255.1", 22), live.clone()];
+        let win = race_win(race_connect(test_config(), None, order, Duration::from_secs(5)).await);
+        assert_eq!(win, live, "首地址黑洞时后位 live 仍应胜出");
     }
 
     // === F45：winner_address（喂 remote-launch 的拨号地址）===
