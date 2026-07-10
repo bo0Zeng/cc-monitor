@@ -43,6 +43,8 @@ export class SftpPanel {
   private entries: SftpEntry[] = [];
   private dropUnlisten: UnlistenFn | null = null;
   private registeringDrop = false;
+  /** F54:open(revealPath) 一次性定位——reload 后高亮该 basename 那行并滚入视图,随即清空。 */
+  private revealName: string | null = null;
 
   constructor() {
     this.el = document.createElement("div");
@@ -122,8 +124,11 @@ export class SftpPanel {
     return panel;
   }
 
-  /** 打开面板并浏览该 host(以 realpath('.') 为起点)。 */
-  async open(cfg: RemoteHostConfig): Promise<void> {
+  /**
+   * 打开面板并浏览该 host。默认以 realpath('.') 为起点;F54:传 `revealPath`(远端文件绝对
+   * 路径)则直接定位到其父目录并在列表里高亮该文件(会话工具卡→文件跳转)。
+   */
+  async open(cfg: RemoteHostConfig, revealPath?: string): Promise<void> {
     this.cfg = cfg;
     this.titleEl.textContent = `文件:${cfg.label || cfg.host}`;
     this.el.style.display = "flex";
@@ -150,12 +155,20 @@ export class SftpPanel {
         this.registeringDrop = false;
       }
     }
-    try {
-      const home = await invoke<string>("sftp_realpath", { cfg, path: "." });
-      this.cwd = home || "/";
-    } catch (e) {
-      this.cwd = "/";
-      showActionFailureToast("SFTP 连接失败", String(e));
+    const reveal = revealPath?.trim();
+    if (reveal) {
+      // F54:远端文件绝对路径 → 直接定位父目录 + 记高亮目标(无需 realpath)。
+      this.cwd = parentPath(reveal);
+      this.revealName = basename(reveal);
+    } else {
+      this.revealName = null;
+      try {
+        const home = await invoke<string>("sftp_realpath", { cfg, path: "." });
+        this.cwd = home || "/";
+      } catch (e) {
+        this.cwd = "/";
+        showActionFailureToast("SFTP 连接失败", String(e));
+      }
     }
     await this.reload();
   }
@@ -519,6 +532,9 @@ export class SftpPanel {
 
   private renderList(): void {
     this.listEl.textContent = "";
+    // F54:一次性消费高亮目标(下次 reload/浏览不再高亮)。
+    const reveal = this.revealName;
+    this.revealName = null;
     const sorted = sortEntries(this.entries, this.sortBy);
     if (sorted.length === 0) {
       const empty = document.createElement("div");
@@ -527,10 +543,15 @@ export class SftpPanel {
       this.listEl.appendChild(empty);
       return;
     }
+    let revealRow: HTMLElement | null = null;
     for (const e of sorted) {
       const row = document.createElement("div");
       row.className = "sftp-row";
       row.classList.toggle("sftp-lossy", e.lossyName);
+      if (reveal && e.name === reveal) {
+        row.classList.add("sftp-row-reveal"); // F54:会话工具卡跳来的那个文件
+        revealRow = row;
+      }
       const icon = document.createElement("span");
       icon.className = "sftp-icon";
       icon.textContent = e.isSymlink ? "↳" : e.isDir ? "📁" : "📄";
@@ -564,6 +585,7 @@ export class SftpPanel {
       if (e.lossyName) row.title = "文件名含非 UTF-8 字节,只读(无法安全写操作)";
       this.listEl.appendChild(row);
     }
+    if (revealRow) revealRow.scrollIntoView({ block: "center" });
   }
 }
 
@@ -589,7 +611,8 @@ function mkRowBtn(label: string, disabled: boolean, onClick: () => void): HTMLBu
 
 /** 单例(整个 app 共用一个 overlay 实例)。 */
 let singleton: SftpPanel | null = null;
-export function openSftpPanel(cfg: RemoteHostConfig): void {
+/** 打开 SFTP 面板。F54:传 `revealPath`(远端文件绝对路径)则定位到其父目录并高亮该文件。 */
+export function openSftpPanel(cfg: RemoteHostConfig, revealPath?: string): void {
   singleton ??= new SftpPanel();
-  void singleton.open(cfg);
+  void singleton.open(cfg, revealPath);
 }

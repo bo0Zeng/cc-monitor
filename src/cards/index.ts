@@ -33,6 +33,9 @@ import {
 import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 import { formatTimestampShort } from "../format";
+import { openSftpPanel } from "../sftp/panel";
+import { resolveRemoteConfigByOrigin } from "../settings/remote-section";
+import { showActionFailureToast } from "../error-toast";
 
 // === Rust 端 JsonlRecord 的 TS 镜像 ===
 
@@ -539,11 +542,51 @@ function buildToolUseCard(
     }
     // args/diff 始终在 result 之前（injectOrBuildToolResult 把 result append 到 wrap 末尾）
     wrap.insertBefore(bodyEl, wrap.firstChild);
+    // F54:远端会话 + 有 file_path 的工具(Read/Write/Edit/…)→ body 顶部插「在 SFTP 打开」可点
+    // 链接(会话→文件跳转)。放 body(展开时)而非 summary——summary 会被 tool_result 注入重写。
+    const fp = fileInputPath(block.input);
+    if (ctx.origin && fp) {
+      wrap.insertBefore(buildRemoteFileLink(ctx.origin, fp), wrap.firstChild);
+    }
     argsRendered = true;
   });
 
   ctx.toolUseElements.set(block.id, d);
   return d;
+}
+
+/**
+ * F54:从 tool_use 输入里取可 SFTP 定位的文件路径。Read/Write/Edit/MultiEdit 用 `file_path`,
+ * NotebookEdit 用 `notebook_path`。**只认绝对 POSIX 路径**——相对路径 `parentPath` 会解析到错
+ * 目录(定位落空),不给链接。否则 null。导出便于单测。
+ */
+export function fileInputPath(input: unknown): string | null {
+  if (input && typeof input === "object") {
+    const obj = input as Record<string, unknown>;
+    const fp = obj.file_path ?? obj.notebook_path;
+    if (typeof fp === "string" && fp.startsWith("/")) return fp;
+  }
+  return null;
+}
+
+/** F54:远端文件路径可点元素——点击 → 反查主机 cfg → 打开 SFTP 面板定位该文件。 */
+function buildRemoteFileLink(origin: string, filePath: string): HTMLElement {
+  const el = document.createElement("button");
+  el.type = "button";
+  el.className = "tool-file-link";
+  el.textContent = `📂 在 SFTP 打开：${filePath}`;
+  el.title = "在 SFTP 面板定位该远端文件（可预览/下载）";
+  el.addEventListener("click", () => void openRemoteFileInSftp(origin, filePath));
+  return el;
+}
+
+async function openRemoteFileInSftp(origin: string, filePath: string): Promise<void> {
+  const cfg = await resolveRemoteConfigByOrigin(origin);
+  if (!cfg) {
+    showActionFailureToast("打开文件失败", `未找到远端主机配置：${origin}`);
+    return;
+  }
+  openSftpPanel(cfg, filePath);
 }
 
 /**

@@ -3592,3 +3592,38 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   gap: 8px;
   margin-top: 4px;
 }
+
+/* F54:工具卡里「在 SFTP 打开」远端文件链接(卡片 body 顶部) */
+.tool-file-link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px dashed var(--border, #555);
+  border-radius: 4px;
+  color: var(--link, #6cb6ff);
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.tool-file-link:hover {
+  background: rgba(108, 182, 255, 0.1);
+  border-style: solid;
+}
+
+/* F54:SFTP 面板里被会话工具卡「定位」跳来的那一行的一次性高亮 */
+.sftp-row-reveal {
+  animation: sftp-reveal-flash 2s ease-out 1;
+}
+@keyframes sftp-reveal-flash {
+  0%,
+  40% {
+    background: rgba(108, 182, 255, 0.35);
+  }
+  100% {
+    background: transparent;
+  }
+}

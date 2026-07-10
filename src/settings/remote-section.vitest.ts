@@ -1,7 +1,13 @@
 // F43：指纹重置按钮显隐纯逻辑。remote-section 的 DOM 主体重(拉整卡),这里只钉住
 // 「有固化指纹才显示重置按钮」这条判定,防未来误改成空指纹也显示(重置无意义)。
 import { describe, it, expect } from "vitest";
-import { shouldShowResetFingerprint, parseAddressLines, describeStage } from "./remote-section";
+import {
+  shouldShowResetFingerprint,
+  parseAddressLines,
+  describeStage,
+  findHostByOrigin,
+} from "./remote-section";
+import type { RemoteHostConfig } from "./remote-section";
 
 describe("F43 shouldShowResetFingerprint", () => {
   it("已固化非空指纹 → 显示", () => {
@@ -25,6 +31,30 @@ describe("F45 parseAddressLines", () => {
   it("空文本 → 空数组", () => {
     expect(parseAddressLines("")).toEqual([]);
     expect(parseAddressLines("   \n  ")).toEqual([]);
+  });
+});
+
+describe("F54 findHostByOrigin", () => {
+  const mkHost = (label: string, host: string): RemoteHostConfig => ({
+    label,
+    host,
+    port: 22,
+    user: "u",
+    keyPath: "",
+    daemonPath: "",
+    hostKeyFingerprint: "",
+    addresses: [],
+  });
+  const hosts = [mkHost("aya", "10.0.0.2"), mkHost("", "pi.local")];
+  it("命中 label", () => {
+    expect(findHostByOrigin(hosts, "aya")?.host).toBe("10.0.0.2");
+  });
+  it("label 空 → 回退 host 匹配", () => {
+    expect(findHostByOrigin(hosts, "pi.local")?.host).toBe("pi.local");
+  });
+  it("找不到 / 空列表 → null", () => {
+    expect(findHostByOrigin(hosts, "nope")).toBeNull();
+    expect(findHostByOrigin([], "aya")).toBeNull();
   });
 });
 

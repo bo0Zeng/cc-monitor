@@ -188,3 +188,45 @@ describe("F49 编辑", () => {
     expect(panelEl().style.display).not.toBe("none"); // 面板仍开(Esc 没冒泡到面板级)
   });
 });
+
+describe("F54 open(revealPath) 定位高亮", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    invokeMock.mockReset();
+    localStorage.clear();
+    // jsdom 未实现 scrollIntoView → stub 成空,避免 renderList 高亮时抛错。
+    (HTMLElement.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView =
+      () => {};
+  });
+
+  it("revealPath → 定位父目录(不调 realpath)+ 高亮该文件行", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "sftp_list_dir")
+        return Promise.resolve([ent("a.txt", false), ent("b.txt", false)]);
+      return Promise.resolve();
+    });
+    const p = new SftpPanel();
+    await p.open(CFG, "/home/u/proj/b.txt");
+    // realpath 不该被调(revealPath 直接定位)
+    expect(invokeMock.mock.calls.some((c) => c[0] === "sftp_realpath")).toBe(false);
+    const revealed = panelEl().querySelector(".sftp-row-reveal");
+    expect(revealed).toBeTruthy();
+    expect(revealed?.textContent).toContain("b.txt");
+    // 只高亮命中那行
+    expect(panelEl().querySelectorAll(".sftp-row-reveal").length).toBe(1);
+  });
+
+  it("revealName 一次性:重排(renderList 再跑)不再高亮", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "sftp_list_dir" ? Promise.resolve([ent("b.txt", false)]) : Promise.resolve(),
+    );
+    const p = new SftpPanel();
+    await p.open(CFG, "/home/u/proj/b.txt");
+    expect(panelEl().querySelector(".sftp-row-reveal")).toBeTruthy();
+    // 改排序触发 renderList 重跑 → revealName 已被消费,不再高亮
+    const sortSel = panelEl().querySelector(".sftp-sort") as HTMLSelectElement;
+    sortSel.value = "size";
+    sortSel.dispatchEvent(new Event("change"));
+    expect(panelEl().querySelector(".sftp-row-reveal")).toBeNull();
+  });
+});
