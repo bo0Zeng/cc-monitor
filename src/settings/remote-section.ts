@@ -23,6 +23,7 @@
  */
 
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { openSftpPanel } from "../sftp/panel";
 import { loadConfig, saveConfig } from "../config";
 import { makeInfoIcon } from "./info-icon";
 
@@ -485,6 +486,18 @@ class MachineCard {
       () => void this.onTestConnection(),
     );
     actionRow.appendChild(this.testButton);
+
+    // F48：打开该台的 SFTP 文件面板（独立 overlay）。
+    actionRow.appendChild(
+      mkBtn("文件", "", "打开 SFTP 文件面板（浏览 / 上传 / 下载 / 管理远端文件）", () => {
+        const cfg = this.collect();
+        if (!cfg.host || !cfg.user) {
+          this.renderTestResult(null, "请先填好 host / user 再打开文件面板。");
+          return;
+        }
+        openSftpPanel(cfg);
+      }),
+    );
 
     // F08c：手动安装 / 卸载 daemon（两个独立按钮）。
     this.daemonInstallButton = mkBtn(
