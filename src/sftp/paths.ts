@@ -63,6 +63,13 @@ export function sortEntries(list: SftpEntry[], by: SortBy): SftpEntry[] {
   });
 }
 
+/** 路径的最后一段(basename)。用于上传时从本地路径取文件名。 */
+export function basename(path: string): string {
+  const norm = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  const i = norm.lastIndexOf("/");
+  return i >= 0 ? norm.slice(i + 1) : norm;
+}
+
 /** 传输 id(F47 要求全局唯一,防取消注册表串味)。 */
 export function newTransferId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `t-${Date.now()}-${Math.random().toString(36).slice(2)}`;
