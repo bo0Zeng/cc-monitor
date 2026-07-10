@@ -7,7 +7,7 @@
  * wt+PowerShell 都 spawn 失败时，用户仍拿得到可粘贴命令，功能永不变砖）。
  */
 import { invoke } from "@tauri-apps/api/core";
-import { buildResumeDirectCmd, buildAttachCmd } from "./remote-launch";
+import { buildResumeDirectCmd, buildResumeTmuxCmd, buildAttachCmd } from "./remote-launch";
 import { showActionFailureToast } from "./error-toast";
 
 /** 一键 resume 远端会话：拉起成功 toast 告知；失败回退复制命令。 */
@@ -42,6 +42,42 @@ export async function runRemoteResume(
     }
     showActionFailureToast(
       copied ? "拉起失败，已复制 resume 命令" : "拉起失败，请手动复制以下命令",
+      `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
+      { level: "info", durationMs: 10000 },
+    );
+  }
+}
+
+/** F52：tmux 版 resume——在远端 tmux 会话 `cc-<sid8>` 里幂等 resume Claude;失败回退复制命令。 */
+export async function runRemoteResumeTmux(
+  origin: string,
+  sid: string,
+  cwd: string,
+  launcher: string,
+): Promise<void> {
+  let cmd: string;
+  try {
+    cmd = buildResumeTmuxCmd(sid, cwd, launcher);
+  } catch (err) {
+    showActionFailureToast("无法构造 tmux resume 命令", String(err));
+    return;
+  }
+  try {
+    await invoke("launch_remote_terminal", { origin, remoteCmd: cmd });
+    showActionFailureToast(
+      "已拉起 tmux resume",
+      `新终端窗口正在连接 [${origin}] 并在 tmux 会话里 resume 该会话。`,
+      { level: "info", durationMs: 6000 },
+    );
+  } catch (err) {
+    let copied = true;
+    try {
+      await navigator.clipboard.writeText(cmd);
+    } catch {
+      copied = false;
+    }
+    showActionFailureToast(
+      copied ? "拉起失败，已复制 tmux resume 命令" : "拉起失败，请手动复制以下命令",
       `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
       { level: "info", durationMs: 10000 },
     );
