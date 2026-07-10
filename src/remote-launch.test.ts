@@ -10,6 +10,7 @@ import {
   isValidSessionId,
   sanitizeRemoteLauncher,
   buildResumeDirectCmd,
+  buildResumeTmuxCmd,
   buildOpenTerminalCmd,
   isValidTmuxName,
   buildAttachCmd,
@@ -118,6 +119,65 @@ test("buildResumeDirectCmd：cwd 含空格/单引号 → POSIX 引号", () => {
 test("buildResumeDirectCmd：非法 sid throw", () => {
   throws(() => buildResumeDirectCmd("a; rm -rf /", "/p"));
   throws(() => buildResumeDirectCmd("", "/p"));
+});
+
+test("buildResumeTmuxCmd:完整幂等形态(new-session 2>/dev/null && send-keys; attach)", () => {
+  const payload = `${UNSET}claude --resume abc-123`;
+  eq(
+    buildResumeTmuxCmd("abc-123", "/home/pi/proj"),
+    `tmux new-session -d -s cc-abc-123 -c '/home/pi/proj' 2>/dev/null && ` +
+      `tmux send-keys -t cc-abc-123 '${payload}' Enter; tmux attach -t cc-abc-123`,
+  );
+});
+
+test("buildResumeTmuxCmd:空 cwd 省 -c", () => {
+  const payload = `${UNSET}claude --resume s1`;
+  eq(
+    buildResumeTmuxCmd("s1", ""),
+    `tmux new-session -d -s cc-s1 2>/dev/null && ` +
+      `tmux send-keys -t cc-s1 '${payload}' Enter; tmux attach -t cc-s1`,
+  );
+});
+
+test("buildResumeTmuxCmd:自定义 launcher 透传 / 注入 fail-closed claude", () => {
+  const p1 = `${UNSET}cct --resume s1`;
+  eq(
+    buildResumeTmuxCmd("s1", "", "cct"),
+    `tmux new-session -d -s cc-s1 2>/dev/null && tmux send-keys -t cc-s1 '${p1}' Enter; tmux attach -t cc-s1`,
+  );
+  const p2 = `${UNSET}claude --resume s1`; // 注入 → claude
+  eq(
+    buildResumeTmuxCmd("s1", "", "cct; curl evil"),
+    `tmux new-session -d -s cc-s1 2>/dev/null && tmux send-keys -t cc-s1 '${p2}' Enter; tmux attach -t cc-s1`,
+  );
+});
+
+test("buildResumeTmuxCmd:cwd 含空格/单引号 → posixQuote", () => {
+  const payload = `${UNSET}claude --resume s1`;
+  eq(
+    buildResumeTmuxCmd("s1", "/home/pi/my proj"),
+    `tmux new-session -d -s cc-s1 -c '/home/pi/my proj' 2>/dev/null && ` +
+      `tmux send-keys -t cc-s1 '${payload}' Enter; tmux attach -t cc-s1`,
+  );
+  // cwd 含单引号：-c 段 posixQuote 逃逸
+  eq(
+    buildResumeTmuxCmd("s1", "/a'b").includes(`-c '/a'\\''b'`),
+    true,
+  );
+});
+
+test("buildResumeTmuxCmd:sid>8 位 → 会话名取前 8", () => {
+  eq(
+    buildResumeTmuxCmd("deadbeef-1234-5678", "").startsWith(
+      "tmux new-session -d -s cc-deadbeef ",
+    ),
+    true,
+  );
+});
+
+test("buildResumeTmuxCmd:非法 sid throw", () => {
+  throws(() => buildResumeTmuxCmd("a; rm -rf /", "/p"));
+  throws(() => buildResumeTmuxCmd("", "/p"));
 });
 
 test("buildOpenTerminalCmd:cd + login shell / 空 cwd", () => {

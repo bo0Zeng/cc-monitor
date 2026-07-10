@@ -21,7 +21,7 @@ import type { BranchRecord } from "./branching";
 import { isAgentTool } from "./cards/subagent";
 import type { AgentsPanel, AgentEntry } from "./agents-panel";
 import { LS_KEYS, safeSet } from "./local-storage";
-import { runRemoteResume, runRemoteAttach } from "./remote-launch-run";
+import { runRemoteResume, runRemoteResumeTmux, runRemoteAttach } from "./remote-launch-run";
 import { turnEndNotifier } from "./turn-notify";
 import { getBehavior } from "./behavior";
 
@@ -1444,6 +1444,17 @@ export class TabManager {
   }
 
   /**
+   * F52：tmux 版 resume（远端专用）——在远端 tmux 会话 `cc-<sid8>` 里幂等 resume Claude。
+   * 与 resumeTab 的直连版并列;本地 tab（origin===null）无 tmux 用例,直接 return。
+   */
+  private async resumeTabTmux(sid: string): Promise<void> {
+    const tab = this.tabs.get(sid);
+    if (!tab || tab.origin === null) return;
+    const behavior = await getBehavior();
+    await runRemoteResumeTmux(tab.origin, sid, tab.cwd ?? "", behavior.resumeCommandRemote);
+  }
+
+  /**
    * F51：菜单打开后异步反查 tmux——查该 origin 的会话列表(短缓存),按 `path===cwd &&
    * command==="claude"` 反查该 tab 的 Claude 所在 tmux 会话。命中 → 把禁用占位「检测中」
    * 换成可点的 Attach;无 tmux / 无匹配 / 查询失败 → 移除占位。菜单已关则 update/remove no-op。
@@ -1698,13 +1709,25 @@ export class TabManager {
         { label: "在新窗口打开", onClick: () => void this.openInNewWindow(sid) },
       ];
       // F37：灰 tab（会话已结束）右键手动 resume——不用绕去历史浏览器。
-      // F41 起本地与远端都是一键拉起新终端（远端=wt.exe 跑 ssh -t，失败才
-      // 回退复制命令）；统一叫 Resume（用户反馈）。
+      // F41 起本地与远端都是一键拉起新终端（远端=wt.exe 跑 ssh -t，失败才回退复制命令）。
+      // F52：远端归档 tab 再并列一个「Resume（tmux）」——在远端 tmux 会话里幂等 resume,
+      // resume 完人在 tmux 里(断线可 F51 attach 回来);本地归档仍单「Resume」。
       if (t?.status === "archived") {
-        items.push({
-          label: "Resume",
-          onClick: () => void this.resumeTab(sid),
-        });
+        if (t.origin !== null) {
+          items.push({
+            label: "Resume（直连）",
+            onClick: () => void this.resumeTab(sid),
+          });
+          items.push({
+            label: "Resume（tmux）",
+            onClick: () => void this.resumeTabTmux(sid),
+          });
+        } else {
+          items.push({
+            label: "Resume",
+            onClick: () => void this.resumeTab(sid),
+          });
+        }
       }
       // F51：远端 tab（有 cwd）——反查该 cwd 正跑 claude 的 tmux 会话 → Attach。
       // 缓存命中同步定夺(无占位闪烁);未命中先禁用占位「检测中」+ 异步查询就绪。

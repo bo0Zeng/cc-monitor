@@ -65,6 +65,37 @@ export function buildResumeDirectCmd(sid: string, cwd: string, launcher = "claud
 }
 
 /**
+ * F52：tmux 版 resume。在远端 tmux 会话 `cc-<sid8>` 里幂等 resume Claude,resume 完人在那个
+ * tmux 里(断线可 F51 attach 回来)。命令(调研 03 §2b):
+ *   `tmux new-session -d -s <名>[ -c '<cwd>'] 2>/dev/null && tmux send-keys -t <名> '<载荷>' Enter; tmux attach -t <名>`
+ *
+ * **幂等 + 前台白名单结构性满足**:`new-session -d 2>/dev/null && send-keys`——会话已存在 →
+ * new-session 失败、`2>/dev/null` 吞、`&&` 短路 → **跳过 send-keys**(不重复 resume)→ 只 attach;
+ * 不存在 → 新建 → send-keys 键入 resume → attach。send-keys 只进**新建会话**的交互 shell 提示符,
+ * 绝不打进已在跑 claude 的会话(否则 `claude --resume` 会被当输入)。
+ *
+ * **send-keys 而非直 exec**(§2c):直 exec 常找不到 claude(只在交互 shell PATH/别名)→ 会话立死。
+ * **载荷**含 `unset <嵌套env>;`(tmux server env 可能带毒 issue #24)。**全程只用单引号**(launch.rs
+ * 拒双引号);载荷整体 `posixQuote` 成 send-keys 的单一参数,整条再由 launch.rs `bash -lic` 包装。
+ * sid 非法 → throw。
+ */
+export function buildResumeTmuxCmd(sid: string, cwd: string, launcher = "claude"): string {
+  if (!isValidSessionId(sid)) {
+    throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
+  }
+  // sid 已过白名单 [A-Za-z0-9_-],前 8 位作 tmux 会话名(tmux 名不许 `.`/`:`,此字符集安全)。
+  const name = `cc-${sid.slice(0, 8)}`;
+  const payload = `unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(launcher)} --resume ${sid}`;
+  const c = cwd.trim();
+  const cflag = c ? ` -c ${posixQuote(c)}` : "";
+  return (
+    `tmux new-session -d -s ${name}${cflag} 2>/dev/null && ` +
+    `tmux send-keys -t ${name} ${posixQuote(payload)} Enter; ` +
+    `tmux attach -t ${name}`
+  );
+}
+
+/**
  * F48：「在此打开终端」远端命令——进入指定 cwd 的登录交互 shell。
  * 经 wt.exe 起 `ssh -t … "bash -lic '<此串>'"`(launch.rs 传输包装)落到该目录。
  * cwd 空 → 不 cd(登录默认目录)。POSIX 单引号防路径含空格/特殊字符。

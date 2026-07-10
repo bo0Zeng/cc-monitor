@@ -75,6 +75,7 @@ vi.mock("./error-toast", () => ({ showActionFailureToast: vi.fn() }));
 // Batch14-F41：resumeTab 远端分支改走一键拉起 runner；behavior 提供 launcher 配置。
 vi.mock("./remote-launch-run", () => ({
   runRemoteResume: vi.fn().mockResolvedValue(undefined),
+  runRemoteResumeTmux: vi.fn().mockResolvedValue(undefined),
   runRemoteAttach: vi.fn().mockResolvedValue(undefined),
 }));
 // Batch14-F42：turn-end 通知与渲染独立,tabs 测试里 mock 成空壳(单独在 turn-notify.vitest 测)。
@@ -89,7 +90,7 @@ vi.mock("./behavior", () => ({
 }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { runRemoteResume } from "./remote-launch-run";
+import { runRemoteResume, runRemoteResumeTmux } from "./remote-launch-run";
 import { TabManager, type Tab } from "./tabs";
 
 // 私有字段的只读探针（TS private 仅编译期；运行时可读）。仅测试用。
@@ -749,3 +750,63 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(attachBtn()?.textContent).not.toContain("A-sess");
   });
 });
+
+describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
+  let tm: TabManager;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    tm = makeTM();
+  });
+
+  interface TMButtons {
+    tabButtons: Map<string, { root: HTMLElement }>;
+  }
+  const rightClick = (sid: string): void => {
+    (tm as unknown as TMButtons).tabButtons
+      .get(sid)!
+      .root.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }),
+      );
+  };
+  const menuLabels = (): string[] =>
+    [...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? [])].map(
+      (b) => b.textContent ?? "",
+    );
+  const clickItem = (label: string): void => {
+    const btn = [
+      ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? []),
+    ].find((b) => b.textContent === label) as HTMLButtonElement | undefined;
+    btn?.click();
+  };
+
+  it("归档远端 tab → 「Resume（直连）」+「Resume（tmux）」并列", async () => {
+    tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
+    tm.archiveTab("r1");
+    rightClick("r1");
+    const labels = menuLabels();
+    expect(labels).toContain("Resume（直连）");
+    expect(labels).toContain("Resume（tmux）");
+    // tmux 项 → runRemoteResumeTmux(origin, sid, cwd, launcher)
+    clickItem("Resume（tmux）");
+    await flushMicro();
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct");
+    // 直连项 → runRemoteResume
+    rightClick("r1");
+    clickItem("Resume（直连）");
+    await flushMicro();
+    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct");
+  });
+
+  it("归档本地 tab → 仍单「Resume」(无 tmux 项)", () => {
+    tm.ensureTab("l1", "/home/u/p", "p", 0, null);
+    tm.archiveTab("l1");
+    rightClick("l1");
+    const labels = menuLabels();
+    expect(labels).toContain("Resume");
+    expect(labels).not.toContain("Resume（tmux）");
+    expect(labels).not.toContain("Resume（直连）");
+  });
+});
+
+const flushMicro = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
