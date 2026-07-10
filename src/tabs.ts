@@ -22,6 +22,7 @@ import { isAgentTool } from "./cards/subagent";
 import type { AgentsPanel, AgentEntry } from "./agents-panel";
 import { LS_KEYS, safeSet } from "./local-storage";
 import { runRemoteResume } from "./remote-launch-run";
+import { turnEndNotifier } from "./turn-notify";
 import { getBehavior } from "./behavior";
 
 /**
@@ -580,6 +581,10 @@ export class TabManager {
       if (tab.processedUuids.has(uuid)) return;
       tab.processedUuids.add(uuid);
     }
+
+    // Batch14-F42：turn-end 系统通知。放在双重去重之后（重投行不重报）、
+    // 渲染管线之前（通知与渲染/收纳互相独立）。批量重放由 inBatch 短路。
+    turnEndNotifier.observe(payload.session_id, tab.title, payload, this.inBatch);
 
     // issue #23（第二增量）：配对 agent 工具调用，喂 AgentsPanel
     this.trackAgents(tab, payload.message);
