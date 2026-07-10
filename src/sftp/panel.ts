@@ -8,13 +8,17 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { formatBytes } from "../format";
 import { showActionFailureToast } from "../error-toast";
+import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
+import { buildOpenTerminalCmd } from "../remote-launch";
 import type { RemoteHostConfig } from "../settings/remote-section";
 import {
+  addBookmark,
   basename,
   breadcrumbs,
   joinPath,
   newTransferId,
   parentPath,
+  removeBookmark,
   sortEntries,
   type SftpEntry,
   type SortBy,
@@ -32,11 +36,13 @@ export class SftpPanel {
   private listEl!: HTMLElement;
   private titleEl!: HTMLElement;
   private transfersEl!: HTMLElement;
+  private bookmarkBar!: HTMLElement;
   private cfg: RemoteHostConfig | null = null;
   private cwd = "/";
   private sortBy: SortBy = "name";
   private entries: SftpEntry[] = [];
   private dropUnlisten: UnlistenFn | null = null;
+  private registeringDrop = false;
 
   constructor() {
     this.el = document.createElement("div");
@@ -85,12 +91,20 @@ export class SftpPanel {
     header.appendChild(upload);
     const newDir = mkBtn("新建目录", () => void this.newDir());
     header.appendChild(newDir);
+    const term = mkBtn("在此打开终端", () => this.openTerminalHere());
+    header.appendChild(term);
+    const pin = mkBtn("★ Pin", () => this.toggleBookmark());
+    header.appendChild(pin);
     const refresh = mkBtn("刷新", () => void this.reload());
     header.appendChild(refresh);
     const closeBtn = mkBtn("关闭", () => this.close());
     closeBtn.className = "sftp-btn sftp-close";
     header.appendChild(closeBtn);
     panel.appendChild(header);
+
+    this.bookmarkBar = document.createElement("div");
+    this.bookmarkBar.className = "sftp-bookmarks";
+    panel.appendChild(this.bookmarkBar);
 
     this.crumbBar = document.createElement("div");
     this.crumbBar.className = "sftp-crumbs";
@@ -115,7 +129,9 @@ export class SftpPanel {
     this.el.style.display = "flex";
     this.listEl.textContent = "连接中…";
     // F48 Part 3：拖入上传——面板打开时监听 webview 拖放,drop 时上传到当前目录。
-    if (!this.dropUnlisten) {
+    // D 审计建议-1:先占位 registeringDrop 防快速双开在 await 期间重复注册(泄漏 unlisten)。
+    if (!this.dropUnlisten && !this.registeringDrop) {
+      this.registeringDrop = true;
       try {
         const panelBody = this.el.querySelector(".sftp-panel");
         this.dropUnlisten = await getCurrentWebviewWindow().onDragDropEvent((ev) => {
@@ -130,6 +146,8 @@ export class SftpPanel {
         });
       } catch {
         /* 拖放不可用(如某些平台)→ 忽略,菜单上传仍可用 */
+      } finally {
+        this.registeringDrop = false;
       }
     }
     try {
@@ -146,6 +164,8 @@ export class SftpPanel {
     this.el.style.display = "none";
     this.entries = [];
     this.listEl.textContent = "";
+    this.transfersEl.textContent = ""; // D 审计建议-3:切 host 不残留上一台的进度行
+    this.sortBy = "name";
     if (this.dropUnlisten) {
       this.dropUnlisten();
       this.dropUnlisten = null;
@@ -159,6 +179,7 @@ export class SftpPanel {
 
   private async reload(): Promise<void> {
     if (!this.cfg) return;
+    this.renderBookmarks();
     this.renderCrumbs();
     this.listEl.textContent = "读取中…";
     try {
@@ -258,7 +279,10 @@ export class SftpPanel {
     const pct = document.createElement("span");
     pct.className = "sftp-transfer-pct";
     pct.textContent = knownTotal ? "0%" : "…";
+    // D 审计建议-2:用本地 cancelled flag 判定「是用户取消的」,不靠脆弱的后端错误串匹配。
+    let cancelled = false;
     const cancelBtn = mkBtn("取消", () => {
+      cancelled = true;
       void invoke("sftp_cancel_transfer", { transferId });
     });
     cancelBtn.className = "sftp-btn sftp-cancel-transfer";
@@ -279,8 +303,7 @@ export class SftpPanel {
     try {
       await op(transferId, onProgress);
     } catch (e) {
-      const msg = String(e);
-      if (!msg.includes("已取消")) showActionFailureToast(`${label} 失败`, msg);
+      if (!cancelled) showActionFailureToast(`${label} 失败`, String(e));
     } finally {
       rowEl.remove();
     }
@@ -349,6 +372,68 @@ export class SftpPanel {
     }
   }
 
+  // === 书签 + 在此打开终端(Part 4)===
+
+  private origin(): string {
+    return this.cfg?.label || this.cfg?.host || "?";
+  }
+
+  private loadBookmarks(): string[] {
+    return safeGetJson<string[]>(LS_KEYS.sftpBookmarks(this.origin())) ?? [];
+  }
+
+  private saveBookmarks(list: string[]): void {
+    safeSetJson(LS_KEYS.sftpBookmarks(this.origin()), list);
+    this.renderBookmarks();
+  }
+
+  /** 当前目录 Pin/取消 Pin。 */
+  private toggleBookmark(): void {
+    const list = this.loadBookmarks();
+    const has = list.includes(this.cwd) || list.includes(this.cwd.replace(/\/$/, ""));
+    this.saveBookmarks(has ? removeBookmark(list, this.cwd) : addBookmark(list, this.cwd));
+  }
+
+  private renderBookmarks(): void {
+    this.bookmarkBar.textContent = "";
+    const list = this.loadBookmarks();
+    for (const path of list) {
+      const chip = document.createElement("span");
+      chip.className = "sftp-bookmark";
+      const go = document.createElement("button");
+      go.type = "button";
+      go.className = "sftp-bookmark-go";
+      go.textContent = path;
+      go.title = `跳到 ${path}`;
+      go.addEventListener("click", () => void this.navigate(path));
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "sftp-bookmark-del";
+      del.textContent = "×";
+      del.title = "移除书签";
+      del.addEventListener("click", () => this.saveBookmarks(removeBookmark(this.loadBookmarks(), path)));
+      chip.append(go, del);
+      this.bookmarkBar.appendChild(chip);
+    }
+  }
+
+  /** 在此目录打开终端:wt.exe 起 ssh -t 落到当前 cwd(复用 F41 launch_remote_terminal)。 */
+  private openTerminalHere(): void {
+    if (!this.cfg) return;
+    const remoteCmd = buildOpenTerminalCmd(this.cwd);
+    // D 审计重要-1:launch_remote_terminal 按 origin 从**已保存**配置加载(需完整 host/user/
+    // daemonPath);SFTP 浏览用的是即时 cfg(daemonPath 可空)。配置未存全时给可操作提示。
+    void invoke("launch_remote_terminal", { origin: this.origin(), remoteCmd }).catch((e) => {
+      const msg = String(e);
+      showActionFailureToast(
+        "打开终端失败",
+        msg.includes("未找到远端配置")
+          ? "该主机配置未完整保存——请在设置里填好 daemonPath 等字段(SFTP 浏览不需要,但打开终端需要完整配置)。"
+          : msg,
+      );
+    });
+  }
+
   private renderList(): void {
     this.listEl.textContent = "";
     const sorted = sortEntries(this.entries, this.sortBy);
@@ -384,6 +469,8 @@ export class SftpPanel {
       // 行内操作:下载(文件)/改名/删除。非 UTF-8 名(lossy)禁所有写+下载(无法寻址真字节)。
       const acts = document.createElement("span");
       acts.className = "sftp-row-acts";
+      // D 审计建议-5:按钮区双击不冒泡到行 dblclick(否则双击按钮会连带进目录)。
+      acts.addEventListener("dblclick", (ev) => ev.stopPropagation());
       if (!e.isDir) {
         const dl = mkRowBtn("下载", e.lossyName, () => void this.download(e));
         acts.appendChild(dl);

@@ -63,3 +63,16 @@ export function buildResumeDirectCmd(sid: string, cwd: string, launcher = "claud
   if (!c) return prefix + resume;
   return `${prefix}cd ${posixQuote(c)} && ${resume}`;
 }
+
+/**
+ * F48：「在此打开终端」远端命令——进入指定 cwd 的登录交互 shell。
+ * 经 wt.exe 起 `ssh -t … "bash -lic '<此串>'"`(launch.rs 传输包装)落到该目录。
+ * cwd 空 → 不 cd(登录默认目录)。POSIX 单引号防路径含空格/特殊字符。
+ */
+export function buildOpenTerminalCmd(cwd: string): string {
+  const c = cwd.trim();
+  // exec 一个交互 login shell 保用户默认 shell。**不用双引号**——launch.rs 拒绝含双引号的
+  // remote_cmd(PS native 传参畸变防线);$SHELL 是路径无空格,裸展开即可。
+  const shell = "exec ${SHELL:-bash} -l";
+  return c ? `cd ${posixQuote(c)} && ${shell}` : shell;
+}

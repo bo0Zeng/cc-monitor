@@ -10,6 +10,7 @@ import {
   isValidSessionId,
   sanitizeRemoteLauncher,
   buildResumeDirectCmd,
+  buildOpenTerminalCmd,
 } from "./remote-launch.ts";
 
 let failed = 0;
@@ -115,6 +116,13 @@ test("buildResumeDirectCmd：cwd 含空格/单引号 → POSIX 引号", () => {
 test("buildResumeDirectCmd：非法 sid throw", () => {
   throws(() => buildResumeDirectCmd("a; rm -rf /", "/p"));
   throws(() => buildResumeDirectCmd("", "/p"));
+});
+
+test("buildOpenTerminalCmd:cd + login shell / 空 cwd", () => {
+  const shell = "exec ${SHELL:-bash} -l";
+  eq(buildOpenTerminalCmd("/home/pi/p"), `cd '/home/pi/p' && ${shell}`);
+  eq(buildOpenTerminalCmd("  "), shell);
+  eq(buildOpenTerminalCmd("/a b/c"), `cd '/a b/c' && ${shell}`);
 });
 
 if (failed > 0) {
