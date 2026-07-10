@@ -23,6 +23,8 @@
  */
 
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
+import { homeDir, join } from "@tauri-apps/api/path";
 import { openSftpPanel } from "../sftp/panel";
 import { loadConfig, saveConfig } from "../config";
 import { makeInfoIcon } from "./info-icon";
@@ -499,6 +501,15 @@ class MachineCard {
       }),
     );
 
+    // F50：一键把本地公钥推到远端 authorized_keys（onboarding 免密）。
+    const pushKeyBtn = mkBtn(
+      "推送公钥",
+      "settings-btn-secondary",
+      "把本地公钥追加到远端 ~/.ssh/authorized_keys（免密登录）；已填私钥则取同名 .pub，否则弹框选文件",
+      () => void this.onPushPubkey(pushKeyBtn),
+    );
+    actionRow.appendChild(pushKeyBtn);
+
     // F08c：手动安装 / 卸载 daemon（两个独立按钮）。
     this.daemonInstallButton = mkBtn(
       "安装 daemon",
@@ -669,6 +680,44 @@ class MachineCard {
       this.installButton.disabled = false;
       this.installButton.textContent = prev;
     }
+  }
+
+  /** F50：一键推送本地公钥到远端 authorized_keys。已填私钥 → 取同名 .pub；否则弹框选 .pub。 */
+  private async onPushPubkey(btn: HTMLButtonElement): Promise<void> {
+    const cfg = this.collect();
+    if (!cfg.host || !cfg.user) {
+      this.showResultText("请先填好 host / user 再推送公钥。");
+      return;
+    }
+    let pubKeyPath: string | null = null;
+    if (!cfg.keyPath) {
+      // 没配私钥路径 → 让用户挑一个 .pub（后端无从推断）。默认落在 ~/.ssh
+      // （`~` 不会被 dialog 展开,须经 homeDir() 拼绝对路径;拿不到则不设）。
+      let defaultPath: string | undefined;
+      try {
+        defaultPath = await join(await homeDir(), ".ssh");
+      } catch {
+        /* 拿不到 home → 不设 defaultPath,dialog 用系统默认起点 */
+      }
+      const picked = await open({
+        title: "选择要推送的公钥 (.pub)",
+        multiple: false,
+        directory: false,
+        defaultPath,
+        filters: [{ name: "公钥", extensions: ["pub"] }],
+      });
+      if (typeof picked !== "string") return; // 取消 / 多选保护
+      pubKeyPath = picked;
+    }
+    await this.runRemoteAction(btn, "推送公钥中", async () => {
+      const r = await invoke<{ outcome: string; pubPath: string }>("push_public_key", {
+        cfg,
+        pubKeyPath,
+      });
+      return r.outcome === "added"
+        ? `公钥已推送（ADDED）：${r.pubPath}`
+        : `公钥已存在，无需重复（ALREADY）：${r.pubPath}`;
+    });
   }
 
   /** 在结果区显示一行提示（缺字段 / 取消等）。 */
