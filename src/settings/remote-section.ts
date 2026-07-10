@@ -127,6 +127,14 @@ export interface RemoteSectionOptions {
 
 // === 共享 DOM 小工具 ===
 
+/**
+ * F43：是否显示「重置为 TOFU」按钮——当且仅当当前已固化了非空指纹。
+ * 抽成纯函数便于单测（trim 后非空 = 已固化严格校验）。
+ */
+export function shouldShowResetFingerprint(current: string): boolean {
+  return current.trim().length > 0;
+}
+
 /** 一行：label（上）+ 宽文本 input（下）。change 触发 onChange。 */
 function buildTextRow(
   parent: HTMLElement,
@@ -223,6 +231,8 @@ class MachineCard {
   private keyPathInput!: HTMLInputElement;
   private daemonPathInput!: HTMLInputElement;
   private fingerprintInput!: HTMLInputElement;
+  /** 依当前指纹值显隐「重置为 TOFU」按钮（load / 重置后调用）。 */
+  private syncResetFpVisibility!: () => void;
   private testButton!: HTMLButtonElement;
   private installButton!: HTMLButtonElement;
   private daemonInstallButton!: HTMLButtonElement;
@@ -349,6 +359,23 @@ class MachineCard {
       "SHA256:…（留空则首连 TOFU）",
       onChange,
     );
+    // F43：重置指纹入口——补 aterm 自曝的坑（服务器合法换 host key 后严格校验会永久
+    // 拒连，此前只能手动清空输入框、无风险告知）。仅在已固化指纹时显示。
+    const resetFpBtn = document.createElement("button");
+    resetFpBtn.type = "button";
+    resetFpBtn.className = "settings-btn settings-btn-secondary";
+    resetFpBtn.textContent = "重置为 TOFU";
+    resetFpBtn.title = "清除已固化的主机指纹，下次连接重新捕获（仅在你确知服务器合法换过 host key 时用）";
+    resetFpBtn.addEventListener("click", () => this.onResetFingerprint());
+    this.fingerprintInput.parentElement?.appendChild(resetFpBtn);
+    const syncResetVisibility = (): void => {
+      resetFpBtn.style.display = shouldShowResetFingerprint(this.fingerprintInput.value)
+        ? "inline-block"
+        : "none";
+    };
+    this.fingerprintInput.addEventListener("input", syncResetVisibility);
+    this.syncResetFpVisibility = syncResetVisibility;
+    syncResetVisibility();
 
     // 安装位置提示：明确告诉用户「在哪里装什么」。
     const installInfo = document.createElement("div");
@@ -450,6 +477,40 @@ class MachineCard {
     this.keyPathInput.value = cfg.keyPath;
     this.daemonPathInput.value = cfg.daemonPath;
     this.fingerprintInput.value = cfg.hostKeyFingerprint;
+    this.syncResetFpVisibility();
+  }
+
+  /**
+   * F43：重置主机指纹 → 回到 TOFU（清空固化指纹）。LOUD 二次确认——清除后下次连接会
+   * 接受新主机密钥;若此刻正被中间人攻击,会信任攻击者的密钥。仅当确知服务器合法换过
+   * host key 时才该重置。
+   */
+  private onResetFingerprint(): void {
+    const host = this.hostInput.value.trim() || this.labelInput.value.trim() || "该主机";
+    if (
+      !window.confirm(
+        `确认重置 ${host} 的主机指纹？\n\n` +
+          "清除后下次连接将以 TOFU 重新捕获并接受主机密钥。\n" +
+          "⚠ 若此刻网络正被中间人攻击，重置会让 monitor 信任攻击者的密钥。\n" +
+          "仅在你确知服务器合法更换过 host key（重装系统 / 轮换密钥）时才重置。",
+      )
+    ) {
+      return;
+    }
+    this.fingerprintInput.value = "";
+    this.syncResetFpVisibility();
+    this.hooks.onChange(); // 触发 section 保存（写回 config，指纹置空 = 严格校验解除）
+    this.showResetFeedback();
+  }
+
+  /** 重置后就地反馈（复用测试结果区显示一行提示）。 */
+  private showResetFeedback(): void {
+    this.testResult.innerHTML = "";
+    this.testResult.style.display = "block";
+    const line = document.createElement("div");
+    line.className = "remote-test-line remote-test-caution";
+    line.textContent = "已重置为 TOFU：下次连接将重新捕获主机指纹（记得测试连接后重新固化）。";
+    this.testResult.appendChild(line);
   }
 
   /** legend 显示 label || host || 占位。 */
@@ -655,6 +716,7 @@ class MachineCard {
   /** 把测出的指纹写进字段并保存（TOFU→strict 固化）。 */
   private async onSaveFingerprint(fingerprint: string): Promise<void> {
     this.fingerprintInput.value = fingerprint;
+    this.syncResetFpVisibility(); // F43：程序化赋值不触发 input 事件，手动同步重置按钮显隐
     this.hooks.onChange(); // 触发 section 保存
     // 就地把固化按钮换成「已固化」（不重连）。
     const fpLine = this.testResult.querySelector(".remote-test-fp");
