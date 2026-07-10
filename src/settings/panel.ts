@@ -142,6 +142,7 @@ export class SettingsPanel {
   // v2.4 issue #2: 行为类 toggle
   private autoFollowCheckbox!: HTMLInputElement;
   private showBgCheckbox!: HTMLInputElement;
+  private notifyTurnEndCheckbox!: HTMLInputElement;
   // F34：自定义 resume 命令（本地 / 远端）
   private resumeLocalInput!: HTMLInputElement;
   private resumeRemoteInput!: HTMLInputElement;
@@ -175,6 +176,7 @@ export class SettingsPanel {
     this.autoFollowCheckbox.checked = behavior.autoFollowUserActive;
     this.bringFrontCheckbox.checked = behavior.bringMonitorToFrontOnUserActive;
     this.showBgCheckbox.checked = behavior.showBgSessions;
+    this.notifyTurnEndCheckbox.checked = behavior.notifyTurnEnd;
     this.resumeLocalInput.value = behavior.resumeCommandLocal;
     this.resumeRemoteInput.value = behavior.resumeCommandRemote;
     this.updateBringFrontEnabled();
@@ -206,6 +208,7 @@ export class SettingsPanel {
       showBgSessions: this.showBgCheckbox.checked,
       resumeCommandLocal: this.resumeLocalInput.value.trim(),
       resumeCommandRemote: this.resumeRemoteInput.value.trim(),
+      notifyTurnEnd: this.notifyTurnEndCheckbox.checked,
     };
     try {
       await setBehavior(next);
@@ -446,7 +449,21 @@ export class SettingsPanel {
     bgRow.appendChild(bgLabel);
     group.appendChild(bgRow);
 
-    // 4. F34：自定义 resume 启动命令（历史浏览器 ↺ 用）。change 事件（失焦/回车）保存，
+    // 4. Batch14-F42：turn-end 系统通知
+    const notifyRow = document.createElement("label");
+    notifyRow.className = "settings-row settings-row-checkbox";
+    this.notifyTurnEndCheckbox = document.createElement("input");
+    this.notifyTurnEndCheckbox.type = "checkbox";
+    this.notifyTurnEndCheckbox.className = "settings-checkbox";
+    this.notifyTurnEndCheckbox.addEventListener("change", () => void this.onBehaviorToggle());
+    notifyRow.appendChild(this.notifyTurnEndCheckbox);
+    const notifyLabel = document.createElement("span");
+    notifyLabel.className = "settings-checkbox-label";
+    notifyLabel.textContent = "Claude 完成一轮时发系统通知（仅窗口在后台时）";
+    notifyRow.appendChild(notifyLabel);
+    group.appendChild(notifyRow);
+
+    // 5. F34：自定义 resume 启动命令（历史浏览器 ↺ 用）。change 事件（失焦/回车）保存，
     //    避免逐键写盘。本地命令后端有防注入校验（仅字母数字 -_. 空格）。
     const mkResumeRow = (
       labelText: string,

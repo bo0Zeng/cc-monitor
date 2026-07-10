@@ -21,6 +21,8 @@ const KEY_SHOW_BG = "showBgSessions";
 const KEY_RESUME_LOCAL = "resumeCommandLocal";
 const KEY_RESUME_REMOTE = "resumeCommandRemote";
 
+const KEY_NOTIFY_TURN_END = "notifyTurnEnd";
+
 export interface BehaviorConfig {
   /** 用户在 claude 里敲键发送消息时自动切到对应 monitor tab。默认 true。 */
   autoFollowUserActive: boolean;
@@ -42,6 +44,11 @@ export interface BehaviorConfig {
   resumeCommandLocal: string;
   /** F34：远端 resume 复制命令用的启动命令（如 `cct`）。空 = 默认 `claude`。 */
   resumeCommandRemote: string;
+  /**
+   * Batch14-F42：Claude 完成一轮（stop_reason==end_turn）且窗口在后台时发系统通知。
+   * 默认 true。热更：turn-notify.ts 每次判定读缓存，设置保存时刷新缓存。
+   */
+  notifyTurnEnd: boolean;
 }
 
 const DEFAULTS: BehaviorConfig = {
@@ -50,6 +57,7 @@ const DEFAULTS: BehaviorConfig = {
   showBgSessions: true,
   resumeCommandLocal: "",
   resumeCommandRemote: "",
+  notifyTurnEnd: true,
 };
 
 /** 读行为字段；缺失 / 类型不对走默认值，永不抛。 */
@@ -77,6 +85,10 @@ export async function getBehavior(): Promise<BehaviorConfig> {
         typeof cfg[KEY_RESUME_REMOTE] === "string"
           ? (cfg[KEY_RESUME_REMOTE] as string)
           : DEFAULTS.resumeCommandRemote,
+      notifyTurnEnd:
+        typeof cfg[KEY_NOTIFY_TURN_END] === "boolean"
+          ? (cfg[KEY_NOTIFY_TURN_END] as boolean)
+          : DEFAULTS.notifyTurnEnd,
     };
   } catch (e) {
     console.warn("getBehavior failed:", e);
@@ -92,5 +104,6 @@ export async function setBehavior(next: BehaviorConfig): Promise<void> {
   cfg[KEY_SHOW_BG] = next.showBgSessions;
   cfg[KEY_RESUME_LOCAL] = next.resumeCommandLocal;
   cfg[KEY_RESUME_REMOTE] = next.resumeCommandRemote;
+  cfg[KEY_NOTIFY_TURN_END] = next.notifyTurnEnd;
   await saveConfig(cfg);
 }

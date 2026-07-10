@@ -143,6 +143,7 @@ src/
 │              paths.ts      claudeDir 字段读写
 │              theme.ts      CSS token 应用
 │              behavior.ts   v2.4 autoFollowUserActive / bringMonitorToFront toggles
+├── 通知        turn-notify.ts  turn-end 系统通知（B14-F42；批量/新鲜度/防抖/聚焦四门 + 插件权限懒检查）
 ├── 远端拉起    remote-launch.ts  远端命令构造纯函数（B14-F41；sid 白名单/launcher denylist/POSIX 引号/嵌套 env unset）
 │              remote-launch-run.ts  拉起执行器（invoke launch_remote_terminal → 失败回退复制命令）
 └── 样式        styles.css    全部样式 + token 系统

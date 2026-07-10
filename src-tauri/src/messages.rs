@@ -169,6 +169,10 @@ pub struct ApiMessage {
     pub model: Option<String>,
     #[serde(default)]
     pub usage: Option<Usage>,
+    /// Batch14-F42：一轮结束判定（assistant 终结记录带 `end_turn`；
+    /// aterm/HANDOFF 同判据）。老记录/流式中间记录无此字段 → None 不序列化。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -265,6 +269,37 @@ mod tests {
             r,
             JsonlRecord::QueueOperation { content: None, .. }
         ));
+    }
+
+    /// Batch14-F42：assistant 终结记录的 stop_reason 解析 + 老记录无字段兼容。
+    #[test]
+    fn assistant_stop_reason_roundtrip() {
+        let r = parse(
+            r#"{"type":"assistant","uuid":"a-1","timestamp":"2026-07-09T12:00:00.000Z",
+                "message":{"role":"assistant","content":[],"stop_reason":"end_turn"}}"#,
+        );
+        match &r {
+            JsonlRecord::Assistant { message, .. } => {
+                assert_eq!(message.stop_reason.as_deref(), Some("end_turn"));
+                // 序列化保留字段（前端判定依赖）
+                let out = serde_json::to_string(&r).unwrap();
+                assert!(out.contains(r#""stop_reason":"end_turn""#));
+            }
+            other => panic!("expected Assistant, got {other:?}"),
+        }
+        // 老记录 / 流式中间记录无 stop_reason → None 且不序列化
+        let r = parse(
+            r#"{"type":"assistant","uuid":"a-2","timestamp":"t",
+                "message":{"role":"assistant","content":[]}}"#,
+        );
+        match &r {
+            JsonlRecord::Assistant { message, .. } => {
+                assert!(message.stop_reason.is_none());
+                let out = serde_json::to_string(&r).unwrap();
+                assert!(!out.contains("stop_reason"));
+            }
+            other => panic!("expected Assistant, got {other:?}"),
+        }
     }
 
     #[test]

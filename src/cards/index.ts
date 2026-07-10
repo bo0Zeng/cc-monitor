@@ -41,6 +41,8 @@ interface ApiMessage {
   content: unknown; // string | ContentBlock[]
   model?: string;
   usage?: Usage;
+  /** Batch14-F42：一轮结束判据（assistant 终结记录 = "end_turn"），turn-notify 消费。 */
+  stop_reason?: string | null;
 }
 
 interface Usage {

@@ -27,6 +27,7 @@ import { AgentsPanel } from "./agents-panel";
 import { getBehavior, setBehavior } from "./behavior";
 import { dispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
+import { turnEndNotifier } from "./turn-notify";
 
 // === 启动 perf 测量 ===
 // performance.now() 自页面 navigation start 起；前端各阶段时间点。
@@ -442,6 +443,9 @@ window.addEventListener("DOMContentLoaded", async () => {
  */
 async function bootstrapViewer(sid: string): Promise<void> {
   document.body.classList.add("viewer-mode");
+  // Batch14-F42：viewer 是独立 webview（自带一份 notifier 单例）且广播行照收——
+  // 只让主窗口发通知，否则重复通知 + "用户正聚焦 viewer"时主窗口误发。
+  turnEndNotifier.disable();
   const tabBar = document.getElementById("tab-bar");
   const streamRoot = document.getElementById("message-stream");
   const status = document.getElementById("status-bar");

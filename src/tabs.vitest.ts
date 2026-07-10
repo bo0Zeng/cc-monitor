@@ -76,6 +76,10 @@ vi.mock("./error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("./remote-launch-run", () => ({
   runRemoteResume: vi.fn().mockResolvedValue(undefined),
 }));
+// Batch14-F42：turn-end 通知与渲染独立,tabs 测试里 mock 成空壳(单独在 turn-notify.vitest 测)。
+vi.mock("./turn-notify", () => ({
+  turnEndNotifier: { observe: vi.fn() },
+}));
 vi.mock("./behavior", () => ({
   getBehavior: vi.fn().mockResolvedValue({
     resumeCommandLocal: "",
