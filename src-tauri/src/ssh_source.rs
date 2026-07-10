@@ -83,6 +83,11 @@ pub struct RemoteConfig {
     /// 字段（见 [`RemoteConfig::endpoints`]，host 排首）。
     #[serde(default)]
     pub addresses: Vec<String>,
+    /// Batch14-F56：跳板 ProxyJump——指向另一台已配置主机的 `origin_label`。Some = 经该跳板
+    /// 机 `channel_open_direct_tcpip` 隧道连本机（fail-closed，跳板缺失/连不上即报错不直连）；
+    /// None/空 = 直连。v1 单跳（跳板自身的 jump 忽略）+ 防自引用环。
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    pub jump: Option<String>,
 }
 
 /// Batch14-F45：单个连接目标（host + port）。竞发把 [`RemoteConfig::endpoints`] 的每项
@@ -505,6 +510,83 @@ async fn race_connect(
     }
 }
 
+/// F56：持有跳板机 session,让 direct-tcpip 隧道在目标连接存活期间不被 drop 关闭
+/// （drop 跳板 Handle → russh 关跳板连接 → 隧道 channel 死 → 目标断）。按**目标 origin** 键——
+/// 每次经跳板重连替换旧 holder（drop 旧跳板连接），按配置的被跳板目标数有界。
+fn jump_holders() -> &'static Mutex<std::collections::HashMap<String, client::Handle<ClientHandler>>>
+{
+    static STORE: std::sync::OnceLock<
+        Mutex<std::collections::HashMap<String, client::Handle<ClientHandler>>>,
+    > = std::sync::OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+/// F56：经跳板机隧道连目标。连+鉴权跳板（复用 `connect_session`，白嫖跳板多地址竞速+指纹校验+
+/// 鉴权）→ `channel_open_direct_tcpip` 到目标主地址 → `connect_stream` 在隧道流上跑目标 SSH 握手
+/// （同 `ClientHandler` 验目标指纹）→ 跳板 session 存 `jump_holders` 保活。**fail-closed**：
+/// 环/查无/连不上 → Err（绝不回退直连目标）。v1 单跳（忽略跳板自身的 jump）。
+async fn connect_via_jump(
+    jump_label: &str,
+    target: &RemoteConfig,
+    config: Arc<client::Config>,
+    stage_emitter: Option<tauri::ipc::Channel<ConnectStage>>,
+) -> Result<
+    (
+        client::Handle<ClientHandler>,
+        Arc<Mutex<Option<String>>>,
+        Endpoint,
+    ),
+    String,
+> {
+    if jump_label == target.origin_label() {
+        return Err("跳板配置指向自己（环）".to_string());
+    }
+    let mut jump_cfg = crate::load_remote_config_by_label(jump_label)
+        .ok_or_else(|| format!("跳板配置未找到: {jump_label}"))?;
+    jump_cfg.jump = None; // v1 单跳：忽略跳板自身的 jump，防链式递归/环
+    emit_stage(
+        &stage_emitter,
+        ConnectStage::Dialing {
+            endpoint: format!("跳板 {}", jump_cfg.origin_label()),
+        },
+    );
+    // 复用 connect_session 连+鉴权跳板。Box::pin：递归 async 需装箱定尺寸。
+    let (jump_session, _jump_fp) = Box::pin(connect_session(&jump_cfg, None, None))
+        .await
+        .map_err(|e| format!("跳板 {} 连接失败: {e}", jump_cfg.origin_label()))?;
+    // 经跳板开 direct-tcpip 到目标主地址（v1 单地址，不经跳板对目标多地址竞速）。
+    let channel = jump_session
+        .channel_open_direct_tcpip(
+            target.host.clone(),
+            target.port as u32,
+            "127.0.0.1".to_string(),
+            0,
+        )
+        .await
+        .map_err(|e| format!("经跳板开隧道到 {}:{} 失败: {e}", target.host, target.port))?;
+    let stream = channel.into_stream();
+    // 隧道流上跑目标 SSH 握手（同 ClientHandler 验目标指纹）。
+    let cell: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let handler = ClientHandler {
+        expected_fingerprint: target.host_key_fingerprint.clone(),
+        observed_fingerprint: Arc::clone(&cell),
+        stage_emitter: stage_emitter.clone(),
+        endpoint: Some(format!("{}:{}（经跳板）", target.host, target.port)),
+    };
+    let session = client::connect_stream(config, stream, handler)
+        .await
+        .map_err(|e| format!("目标 SSH 握手失败（经跳板）: {e}"))?;
+    // 跳板 session 保活（否则 drop 关连接 → 隧道死）。按目标 origin 键，替换旧的。
+    if let Ok(mut m) = jump_holders().lock() {
+        m.insert(target.origin_label(), jump_session);
+    }
+    let winner = Endpoint {
+        host: target.host.clone(),
+        port: target.port,
+    };
+    Ok((session, cell, winner))
+}
+
 pub(crate) async fn connect_session(
     cfg: &RemoteConfig,
     inactivity_timeout: Option<Duration>,
@@ -528,17 +610,28 @@ pub(crate) async fn connect_session(
     // F45：多地址 happy-eyeballs 竞发（单地址时退化为一次直连，行为等价老实现）。
     // 竞发只到 TCP+握手+host key 校验；鉴权只对胜者做一次（防 agent 并发 MaxAuthTries）。
     // 同一 host_key_fingerprint 跨地址钉身份：错连别机的 endpoint 因指纹失配自 reject 出局。
+    // F56：cfg.jump 有值 → 经跳板隧道连（fail-closed，不回退直连）；否则 → 多地址竞速直连。
+    // 两路都产出 (session, observed_fingerprint, winner)，汇合到下方同一鉴权块。
     let origin = cfg.origin_label();
-    let order = winner_order(cfg.endpoints(), last_good_for(&origin).as_ref());
-    let deadline = inactivity_timeout.unwrap_or(HANDSHAKE_DEADLINE);
-    let (mut session, observed_fingerprint, winner) = race_connect(
-        Arc::clone(&config),
-        cfg.host_key_fingerprint.clone(),
-        order,
-        deadline,
-        stage_emitter.clone(),
-    )
-    .await?;
+    let (mut session, observed_fingerprint, winner) =
+        match cfg.jump.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            Some(jump_label) => {
+                connect_via_jump(jump_label, cfg, Arc::clone(&config), stage_emitter.clone())
+                    .await?
+            }
+            None => {
+                let order = winner_order(cfg.endpoints(), last_good_for(&origin).as_ref());
+                let deadline = inactivity_timeout.unwrap_or(HANDSHAKE_DEADLINE);
+                race_connect(
+                    Arc::clone(&config),
+                    cfg.host_key_fingerprint.clone(),
+                    order,
+                    deadline,
+                    stage_emitter.clone(),
+                )
+                .await?
+            }
+        };
 
     // RSA key 需要协商出 server 支持的 hash alg；非 RSA key 时 flatten 成 None。
     let best_hash = session
@@ -2835,6 +2928,7 @@ Host prod
                 "pub.example.com:2222".into(),
                 "".into(), // 空行跳过
             ],
+            jump: None,
         };
         assert_eq!(
             cfg.endpoints(),
@@ -2857,6 +2951,7 @@ Host prod
             daemon_path: "d".into(),
             host_key_fingerprint: None,
             addresses: vec![],
+            jump: None,
         };
         assert_eq!(cfg.endpoints(), vec![ep("h", 2200)]);
     }
@@ -3155,6 +3250,7 @@ AAAEDRp5kloww4Jpr8K56RETPX0tLdId9XD8a+yNz5Tx0XOQFVxedWxKBYvdEBkTWvt5st
             daemon_path: "d".into(),
             host_key_fingerprint: None,
             addresses,
+            jump: None,
         }
     }
 

@@ -29,6 +29,7 @@ const CFG = {
   daemonPath: "",
   hostKeyFingerprint: "",
   addresses: [],
+  jump: "",
 };
 
 const ent = (name: string, isDir: boolean): SftpEntry => ({
