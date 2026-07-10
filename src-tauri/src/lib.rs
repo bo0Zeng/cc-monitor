@@ -1023,6 +1023,23 @@ fn parse_host_obj(
         .unwrap_or(22);
     let key_path = str_field("keyPath").map(str::to_string);
     let host_key_fingerprint = str_field("hostKeyFingerprint").map(str::to_string);
+    // Batch14-F45：备用地址。前端下发数组（addresses: string[]）；也容忍换行文本（历史/手填）。
+    let addresses: Vec<String> = match obj.get("addresses") {
+        Some(serde_json::Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect(),
+        Some(serde_json::Value::String(s)) => s
+            .lines()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect(),
+        _ => Vec::new(),
+    };
 
     Some(ssh_source::RemoteConfig {
         label,
@@ -1032,6 +1049,7 @@ fn parse_host_obj(
         key_path,
         daemon_path,
         host_key_fingerprint,
+        addresses,
     })
 }
 

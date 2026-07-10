@@ -78,6 +78,67 @@ pub struct RemoteConfig {
     /// Some = 严格校验（TOFU 之后固化）；None = 首次连接 TOFU 接受并 LOUD warn。
     #[serde(default, deserialize_with = "empty_string_as_none")]
     pub host_key_fingerprint: Option<String>,
+    /// Batch14-F45：备用地址（happy-eyeballs 竞发）。每项 `host` / `host:port` /
+    /// `[IPv6]:port` / 裸 IPv6。空 = 仅用 `host`（老配置零迁移）。首选地址仍是 `host`
+    /// 字段（见 [`RemoteConfig::endpoints`]，host 排首）。
+    #[serde(default)]
+    pub addresses: Vec<String>,
+}
+
+/// Batch14-F45：单个连接目标（host + port）。竞发把 [`RemoteConfig::endpoints`] 的每项
+/// 并发拨号，首个握手成功者胜。
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Endpoint {
+    pub host: String,
+    pub port: u16,
+}
+
+/// 解析一行地址 → [`Endpoint`]。支持四形态（与 android-terminal `parseAddressLine` 同语义）：
+/// - `host`               → default_port
+/// - `host:port`          → 显式端口
+/// - `[IPv6]:port`        → 方括号 IPv6 + 端口
+/// - `[IPv6]` / 裸 `IPv6` → default_port（裸 IPv6 靠「>1 个冒号」判定，不误当 host:port）
+///
+/// 空白/空串 → None；端口非法 → None（拒绝而非静默默认，防配置笔误）。
+pub fn parse_address_line(line: &str, default_port: u16) -> Option<Endpoint> {
+    let s = line.trim();
+    if s.is_empty() {
+        return None;
+    }
+    // 方括号形态：[v6] 或 [v6]:port
+    if let Some(rest) = s.strip_prefix('[') {
+        let (host, after) = rest.split_once(']')?;
+        if host.is_empty() {
+            return None;
+        }
+        let port = match after {
+            "" => default_port,
+            p => p.strip_prefix(':')?.parse().ok()?,
+        };
+        return Some(Endpoint {
+            host: host.to_string(),
+            port,
+        });
+    }
+    // 裸 IPv6（>1 个冒号且无方括号）→ 整体是 host，无端口。
+    if s.matches(':').count() > 1 {
+        return Some(Endpoint {
+            host: s.to_string(),
+            port: default_port,
+        });
+    }
+    // host:port 或 host
+    match s.split_once(':') {
+        Some((host, port)) if !host.is_empty() => Some(Endpoint {
+            host: host.to_string(),
+            port: port.parse().ok()?,
+        }),
+        Some(_) => None, // ":port" 无 host
+        None => Some(Endpoint {
+            host: s.to_string(),
+            port: default_port,
+        }),
+    }
 }
 
 impl RemoteConfig {
@@ -90,6 +151,28 @@ impl RemoteConfig {
         } else {
             self.label.clone()
         }
+    }
+
+    /// Batch14-F45：所有连接目标，`host` 排首，`addresses` 依次追加，按 (host,port) 去重
+    /// 保序。竞发按此顺序（配合 last-good 重排）拨号。空 addresses → `[host]`（老行为）。
+    pub fn endpoints(&self) -> Vec<Endpoint> {
+        let mut out: Vec<Endpoint> = Vec::new();
+        let mut seen: std::collections::HashSet<Endpoint> = std::collections::HashSet::new();
+        let mut push = |ep: Endpoint| {
+            if seen.insert(ep.clone()) {
+                out.push(ep);
+            }
+        };
+        push(Endpoint {
+            host: self.host.clone(),
+            port: self.port,
+        });
+        for line in &self.addresses {
+            if let Some(ep) = parse_address_line(line, self.port) {
+                push(ep);
+            }
+        }
+        out
     }
 }
 
@@ -193,12 +276,143 @@ fn default_ssh_agent_pipe() -> Option<&'static str> {
 /// - `cfg.key_path = Some(path)`：publickey 鉴权（既有默认路径，最稳）。
 /// - `cfg.key_path = None`：尝试 ssh-agent（Windows 命名管道），枚举 agent 身份逐个
 ///   `authenticate_publickey_with`。agent 不可用 / 无匹配身份 → 返回清晰 Err。
+/// Batch14-F45：happy-eyeballs 竞发阶梯（第 i 个地址延迟 i*STAGGER 起拨，首个成功者胜后
+/// 其余在飞连接被 abort）。250ms 是 RFC 8305 常用值。
+const RACE_STAGGER: Duration = Duration::from_millis(250);
+/// 握手看门狗默认上限（长连接 inactivity_timeout=None 时用）——黑洞地址 TCP 连上后
+/// 握手无限阻塞时兜底,到点整批 abort（drop 关 socket）。
+const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(45);
+
+/// F45：per-origin「上次成功地址」——竞发时排首（下次大概率同一条路最快），赢家更新。
+/// 进程内软状态,丢了只是少一次优化,不影响正确性。
+fn last_good_store() -> &'static Mutex<std::collections::HashMap<String, Endpoint>> {
+    static STORE: std::sync::OnceLock<Mutex<std::collections::HashMap<String, Endpoint>>> =
+        std::sync::OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+fn last_good_for(origin: &str) -> Option<Endpoint> {
+    last_good_store().lock().ok()?.get(origin).cloned()
+}
+
+fn record_last_good(origin: &str, ep: &Endpoint) {
+    if let Ok(mut m) = last_good_store().lock() {
+        m.insert(origin.to_string(), ep.clone());
+    }
+}
+
+/// F45：当前应向该 origin 拨号的首选地址（PowerShell resume/attach 命令用它，而非盲取
+/// `cfg.host`）。已连过 → last-good 胜者;否则 → endpoints 首个（= `host`）。永不 None
+/// （endpoints 至少含 host）。
+pub fn winner_address(cfg: &RemoteConfig) -> Endpoint {
+    let origin = cfg.origin_label();
+    if let Some(lg) = last_good_for(&origin) {
+        // last-good 仍在当前配置里才用（配置改过则失效）。
+        if cfg.endpoints().iter().any(|e| e == &lg) {
+            return lg;
+        }
+    }
+    cfg.endpoints().into_iter().next().unwrap_or(Endpoint {
+        host: cfg.host.clone(),
+        port: cfg.port,
+    })
+}
+
+/// F45：竞发拨号顺序 = last-good 排首（若它仍在 endpoints 里），其余保序。纯函数,可测。
+fn winner_order(endpoints: Vec<Endpoint>, last_good: Option<&Endpoint>) -> Vec<Endpoint> {
+    let Some(lg) = last_good else {
+        return endpoints;
+    };
+    if !endpoints.iter().any(|e| e == lg) {
+        return endpoints; // last-good 已从配置移除 → 无视
+    }
+    let mut out = Vec::with_capacity(endpoints.len());
+    out.push(lg.clone());
+    for e in endpoints {
+        if &e != lg {
+            out.push(e);
+        }
+    }
+    out
+}
+
+/// F45：happy-eyeballs 竞发——按 `order` 阶梯并发拨号（每个 `client::connect` = TCP+SSH
+/// 握手+host key 校验,各自独立 handler+cell）,首个握手成功者胜、立即 abort 其余在飞
+/// （drop 关 socket,trap #6/#8）,鉴权留给调用方只对胜者做一次。整体 `deadline` 看门狗兜
+/// 黑洞地址。全部失败 → 聚合各地址错误（trap #3）;被 abort 的输家不计入错误（trap #2）。
+async fn race_connect(
+    config: Arc<client::Config>,
+    expected_fp: Option<String>,
+    order: Vec<Endpoint>,
+    deadline: Duration,
+) -> Result<
+    (
+        client::Handle<ClientHandler>,
+        Arc<Mutex<Option<String>>>,
+        Endpoint,
+    ),
+    String,
+> {
+    use tokio::task::JoinSet;
+
+    let addr_list = order
+        .iter()
+        .map(|e| format!("{}:{}", e.host, e.port))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let race = async move {
+        let mut set: JoinSet<Result<_, String>> = JoinSet::new();
+        for (i, ep) in order.into_iter().enumerate() {
+            let config = Arc::clone(&config);
+            let fp = expected_fp.clone();
+            set.spawn(async move {
+                if i > 0 {
+                    tokio::time::sleep(RACE_STAGGER * i as u32).await;
+                }
+                let cell: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+                let handler = ClientHandler {
+                    expected_fingerprint: fp,
+                    observed_fingerprint: Arc::clone(&cell),
+                };
+                match client::connect(config, (ep.host.as_str(), ep.port), handler).await {
+                    Ok(h) => Ok((h, cell, ep)),
+                    Err(e) => Err(format!("{}:{} {e}", ep.host, ep.port)),
+                }
+            });
+        }
+
+        let mut errors: Vec<String> = Vec::new();
+        while let Some(joined) = set.join_next().await {
+            match joined {
+                Ok(Ok(winner)) => {
+                    // 首个成功者胜；drop set → abort 其余在飞（关 socket，不等死地址超时）。
+                    set.abort_all();
+                    return Ok(winner);
+                }
+                Ok(Err(e)) => errors.push(e),
+                // 被 abort 的输家 = Cancelled，不算错误（trap #2：别把取消当 ERROR）。
+                Err(je) if je.is_cancelled() => {}
+                Err(je) => errors.push(format!("拨号任务异常: {je}")),
+            }
+        }
+        Err(if errors.is_empty() {
+            "无可用地址".to_string()
+        } else {
+            format!("所有地址连接失败: {}", errors.join("; "))
+        })
+    };
+
+    match tokio::time::timeout(deadline, race).await {
+        Ok(r) => r,
+        Err(_) => Err(format!("所有地址握手超时（{addr_list}）")),
+    }
+}
+
 pub(crate) async fn connect_session(
     cfg: &RemoteConfig,
     inactivity_timeout: Option<Duration>,
 ) -> Result<(client::Handle<ClientHandler>, Arc<Mutex<Option<String>>>), String> {
-    let observed_fingerprint: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-
     // FIX 1（issue #15 review）：长连接数据源**绝不**靠 inactivity_timeout 兜底死链——
     // russh 0.61 的 inactivity timer 在没有 keepalive 时会在到点直接拆掉一条**健康的**
     // 空闲连接（idle 1h 的 Claude 会话很常见）。改用 SSH 层 keepalive：每 30s 无收包就
@@ -214,14 +428,20 @@ pub(crate) async fn connect_session(
         ..Default::default()
     });
 
-    let handler = ClientHandler {
-        expected_fingerprint: cfg.host_key_fingerprint.clone(),
-        observed_fingerprint: Arc::clone(&observed_fingerprint),
-    };
-
-    let mut session = client::connect(config, (cfg.host.as_str(), cfg.port), handler)
-        .await
-        .map_err(|e| format!("ssh connect {}:{} 失败: {e}", cfg.host, cfg.port))?;
+    // F45：多地址 happy-eyeballs 竞发（单地址时退化为一次直连，行为等价老实现）。
+    // 竞发只到 TCP+握手+host key 校验；鉴权只对胜者做一次（防 agent 并发 MaxAuthTries）。
+    // 同一 host_key_fingerprint 跨地址钉身份：错连别机的 endpoint 因指纹失配自 reject 出局。
+    let origin = cfg.origin_label();
+    let order = winner_order(cfg.endpoints(), last_good_for(&origin).as_ref());
+    let deadline = inactivity_timeout.unwrap_or(HANDSHAKE_DEADLINE);
+    let (mut session, observed_fingerprint, winner) = race_connect(
+        Arc::clone(&config),
+        cfg.host_key_fingerprint.clone(),
+        order,
+        deadline,
+    )
+    .await?;
+    record_last_good(&origin, &winner);
 
     // RSA key 需要协商出 server 支持的 hash alg；非 RSA key 时 flatten 成 None。
     let best_hash = session
@@ -2420,6 +2640,226 @@ Host prod
             "TOFU 首连接受"
         );
         assert_eq!(observed.lock().unwrap().as_deref(), Some(SAMPLE_FP));
+    }
+
+    // === F45：地址解析 + endpoints ===
+
+    fn ep(host: &str, port: u16) -> Endpoint {
+        Endpoint {
+            host: host.into(),
+            port,
+        }
+    }
+
+    #[test]
+    fn parse_address_line_four_forms() {
+        assert_eq!(parse_address_line("pi.local", 22), Some(ep("pi.local", 22)));
+        assert_eq!(
+            parse_address_line("10.0.0.2:2222", 22),
+            Some(ep("10.0.0.2", 2222))
+        );
+        // [IPv6]:port 与 [IPv6]
+        assert_eq!(
+            parse_address_line("[fe80::1]:2200", 22),
+            Some(ep("fe80::1", 2200))
+        );
+        assert_eq!(parse_address_line("[::1]", 22), Some(ep("::1", 22)));
+        // 裸 IPv6（trap #7：>1 冒号不误当 host:port）
+        assert_eq!(parse_address_line("::1", 22), Some(ep("::1", 22)));
+        assert_eq!(parse_address_line("fe80::1", 22), Some(ep("fe80::1", 22)));
+    }
+
+    #[test]
+    fn parse_address_line_rejects_garbage() {
+        assert_eq!(parse_address_line("", 22), None);
+        assert_eq!(parse_address_line("   ", 22), None);
+        assert_eq!(parse_address_line("h:notaport", 22), None);
+        assert_eq!(parse_address_line(":2222", 22), None); // 无 host
+        assert_eq!(parse_address_line("[", 22), None); // 未闭合方括号
+        assert_eq!(parse_address_line("[]:22", 22), None); // 空 host
+        assert_eq!(parse_address_line("[fe80::1]:bad", 22), None); // 端口非法
+    }
+
+    #[test]
+    fn endpoints_host_first_dedup_preserve_order() {
+        let cfg = RemoteConfig {
+            host: "pi.local".into(),
+            label: "pi".into(),
+            port: 22,
+            user: "pi".into(),
+            key_path: None,
+            daemon_path: "d".into(),
+            host_key_fingerprint: None,
+            addresses: vec![
+                "10.0.0.2".into(),
+                "pi.local".into(),    // 与 host 重复 → 去重
+                "10.0.0.2:22".into(), // 与上面同 (host,port) → 去重
+                "pub.example.com:2222".into(),
+                "".into(), // 空行跳过
+            ],
+        };
+        assert_eq!(
+            cfg.endpoints(),
+            vec![
+                ep("pi.local", 22),
+                ep("10.0.0.2", 22),
+                ep("pub.example.com", 2222),
+            ]
+        );
+    }
+
+    #[test]
+    fn endpoints_empty_addresses_is_just_host() {
+        let cfg = RemoteConfig {
+            host: "h".into(),
+            label: String::new(),
+            port: 2200,
+            user: "u".into(),
+            key_path: None,
+            daemon_path: "d".into(),
+            host_key_fingerprint: None,
+            addresses: vec![],
+        };
+        assert_eq!(cfg.endpoints(), vec![ep("h", 2200)]);
+    }
+
+    // === F45：winner_order（last-good 排首）===
+
+    #[test]
+    fn winner_order_puts_last_good_first() {
+        let eps = vec![ep("a", 22), ep("b", 22), ep("c", 22)];
+        // last-good = b → b 排首，其余保序
+        assert_eq!(
+            winner_order(eps.clone(), Some(&ep("b", 22))),
+            vec![ep("b", 22), ep("a", 22), ep("c", 22)]
+        );
+        // last-good = 已移除的 endpoint → 无视，原序
+        assert_eq!(
+            winner_order(eps.clone(), Some(&ep("gone", 22))),
+            eps.clone()
+        );
+        // 无 last-good → 原序
+        assert_eq!(winner_order(eps.clone(), None), eps);
+        // last-good 已在首位 → 幂等
+        assert_eq!(winner_order(eps.clone(), Some(&ep("a", 22))), eps);
+    }
+
+    // === F45：race_connect 编排（可控 mock，不依赖真 SSH）===
+    // 用一个内存 TCP listener 模拟「快地址」（accept 即断=握手必失败但 TCP 连得上），
+    // 及不存在端口模拟「立即拒绝」；黑洞地址模拟握手挂起。断言编排语义：首个可用者
+    // 决定结果、全失败聚合、看门狗生效。注：这些测走 race_connect 的错误路径（无真
+    // SSH server 故握手都失败），验证的是编排（顺序/聚合/超时/取消），非握手成功路径。
+
+    use tokio::net::TcpListener;
+
+    async fn dead_port() -> u16 {
+        // 绑后立即释放 → 该端口大概率无监听 → connect 立即 RST（快速失败）。
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let p = l.local_addr().unwrap().port();
+        drop(l);
+        p
+    }
+
+    fn test_config() -> Arc<client::Config> {
+        Arc::new(client::Config::default())
+    }
+
+    /// race_connect 的 Ok 分支持有不实现 Debug 的 Handle,不能直接 unwrap_err；
+    /// 这个 helper 压成错误串便于断言错误路径。
+    fn race_err(
+        r: Result<
+            (
+                client::Handle<ClientHandler>,
+                Arc<Mutex<Option<String>>>,
+                Endpoint,
+            ),
+            String,
+        >,
+    ) -> String {
+        match r {
+            Ok(_) => panic!("expected Err, got a live connection"),
+            Err(e) => e,
+        }
+    }
+
+    #[tokio::test]
+    async fn race_all_dead_aggregates_errors() {
+        let p1 = dead_port().await;
+        let p2 = dead_port().await;
+        let order = vec![ep("127.0.0.1", p1), ep("127.0.0.1", p2)];
+        let err = race_err(race_connect(test_config(), None, order, Duration::from_secs(5)).await);
+        // trap #3：聚合报告，含「所有地址连接失败」且提到两个地址（至少首个立即失败）。
+        assert!(err.contains("所有地址连接失败"), "应聚合: {err}");
+        assert!(err.contains(&p1.to_string()), "应含首地址: {err}");
+    }
+
+    #[tokio::test]
+    async fn race_watchdog_times_out_on_blackhole() {
+        // 10.255.255.1 = 保留黑洞地址，TCP connect 挂起 → 看门狗到点整批 abort。
+        let order = vec![ep("10.255.255.1", 22)];
+        let start = std::time::Instant::now();
+        let err =
+            race_err(race_connect(test_config(), None, order, Duration::from_millis(400)).await);
+        assert!(err.contains("握手超时"), "应超时: {err}");
+        assert!(
+            start.elapsed() < Duration::from_secs(3),
+            "看门狗应在 deadline 附近返回,不吊死"
+        );
+    }
+
+    #[tokio::test]
+    async fn race_single_endpoint_dead_reports_that_endpoint() {
+        // 单地址退化路径：错误里报该地址（保留老实现的可诊断性）。
+        let p = dead_port().await;
+        let order = vec![ep("127.0.0.1", p)];
+        let err = race_err(race_connect(test_config(), None, order, Duration::from_secs(5)).await);
+        assert!(err.contains(&p.to_string()), "单地址错误应含该地址: {err}");
+    }
+
+    #[tokio::test]
+    async fn race_empty_order_errors_cleanly() {
+        let err = race_err(race_connect(test_config(), None, vec![], Duration::from_secs(1)).await);
+        assert!(err.contains("无可用地址"), "空 order: {err}");
+    }
+
+    // === F45：winner_address（喂 remote-launch 的拨号地址）===
+
+    fn cfg_with(label: &str, host: &str, port: u16, addresses: Vec<String>) -> RemoteConfig {
+        RemoteConfig {
+            host: host.into(),
+            label: label.into(),
+            port,
+            user: "u".into(),
+            key_path: None,
+            daemon_path: "d".into(),
+            host_key_fingerprint: None,
+            addresses,
+        }
+    }
+
+    #[test]
+    fn winner_address_falls_back_to_host_when_no_last_good() {
+        let cfg = cfg_with("wa-none", "h.example", 2200, vec!["10.0.0.9".into()]);
+        assert_eq!(winner_address(&cfg), ep("h.example", 2200));
+    }
+
+    #[test]
+    fn winner_address_uses_last_good_then_invalidates_on_config_change() {
+        // 用独立 origin 避免与其它测试共享的 last-good store 串味。
+        let cfg = cfg_with("wa-lg", "h.example", 22, vec!["10.0.0.9".into()]);
+        record_last_good("wa-lg", &ep("10.0.0.9", 22));
+        assert_eq!(
+            winner_address(&cfg),
+            ep("10.0.0.9", 22),
+            "已连过 → last-good 胜者"
+        );
+        // 配置改掉备用地址 → 旧 last-good 不在 endpoints 里 → 回退 host。
+        let cfg2 = cfg_with("wa-lg", "h.example", 22, vec![]);
+        assert_eq!(
+            winner_address(&cfg2),
+            ep("h.example", 22),
+            "配置变更失效 last-good"
+        );
     }
 }
 

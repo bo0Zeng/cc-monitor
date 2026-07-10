@@ -77,8 +77,12 @@ pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Resu
     if !valid_user(&cfg.user) {
         return Err(format!("refuse launch: user 含非法字符: {:?}", cfg.user));
     }
-    if !valid_host(&cfg.host) {
-        return Err(format!("refuse launch: host 含非法字符: {:?}", cfg.host));
+    // F45：拨号地址取连接大脑当前胜者（已连过 = last-good 胜者;否则 = host）。让
+    // PowerShell 的 ssh 走与 russh 数据源同一条路,避免 monitor 连内网 IP、终端却盲连
+    // 可能已死的 host 字段。
+    let winner = crate::ssh_source::winner_address(cfg);
+    if !valid_host(&winner.host) {
+        return Err(format!("refuse launch: host 含非法字符: {:?}", winner.host));
     }
 
     // 尾 `\` 剥掉：key 是文件路径不应以 \ 结尾，而 PS<7.3 给含空格参数加壳时
@@ -95,9 +99,9 @@ pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Resu
     let wrapped = format!("bash -lic {}", posix_quote(remote_cmd));
     Ok(format!(
         "& ssh -t -p {port}{key_part} {user}@{host} -- {cmd}",
-        port = cfg.port,
+        port = winner.port,
         user = cfg.user,
-        host = cfg.host,
+        host = winner.host,
         cmd = ps_quote(&wrapped),
     ))
 }
@@ -203,6 +207,7 @@ mod tests {
             key_path: key.map(String::from),
             daemon_path: "d".into(),
             host_key_fingerprint: None,
+            addresses: Vec::new(),
         }
     }
 
