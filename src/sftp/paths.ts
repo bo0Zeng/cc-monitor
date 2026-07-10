@@ -74,3 +74,13 @@ export function basename(path: string): string {
 export function newTransferId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `t-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
+
+/** F48：书签集合的增删(纯逻辑,去重 + 保序;面板存 localStorage)。 */
+export function addBookmark(list: string[], path: string): string[] {
+  const p = normalize(path);
+  return list.includes(p) ? list : [...list, p];
+}
+export function removeBookmark(list: string[], path: string): string[] {
+  const p = normalize(path);
+  return list.filter((x) => x !== p);
+}

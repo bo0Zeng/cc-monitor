@@ -47,7 +47,19 @@ describe("F48 paths", () => {
   });
 });
 
-import { basename } from "./paths";
+import { basename, addBookmark, removeBookmark } from "./paths";
+describe("F48 bookmarks", () => {
+  it("addBookmark 去重 + 归一 + 保序", () => {
+    let l: string[] = [];
+    l = addBookmark(l, "/home/pi");
+    l = addBookmark(l, "/home/pi/");
+    l = addBookmark(l, "/var/log");
+    expect(l).toEqual(["/home/pi", "/var/log"]);
+  });
+  it("removeBookmark 归一匹配", () => {
+    expect(removeBookmark(["/home/pi", "/var"], "/home/pi/")).toEqual(["/var"]);
+  });
+});
 describe("F48 basename", () => {
   it("取最后一段(兼容反斜杠/尾斜杠)", () => {
     expect(basename("/home/pi/a.txt")).toBe("a.txt");

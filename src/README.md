@@ -49,6 +49,8 @@ index.html  ─> /src/main.ts (defer)
 | **settings/panel.ts** | 抽屉式设置面板（数据目录 + 行为 + PowerShell 集成 + 折叠：外观/诊断/数据存储）。v2.4 (issue #2) 新增「行为」分组挂两个 toggle + onBehaviorChange 回调实时同步 TabManager | `new SettingsPanel({ onBehaviorChange }).open() / close()` |
 | **settings/cc_integration.ts** | PowerShell 集成子区（profile 选项 + wrapper toggle + 5 个预设下拉） | `CcIntegrationSection.element` |
 | **settings/info-icon.ts** | `?` 信息图标 portal tooltip 组件 + 路径工具 | `makeInfoIcon(text) / swapFileName(path, newName)` |
+| **sftp/panel.ts** (B14-F48) | SFTP 文件面板 overlay（每 host 从设置卡「文件」入口开）：浏览（面包屑/列表/排序）+ 传输（下载/上传 dialog picker + 进度 Channel + 取消）+ 拖入上传 + 写（新建目录/改名/删除 + 确认）+ 目录书签 + 「在此打开终端」。消费 F47 `sftp_*` 命令，独立 overlay 不碰 TabManager | `openSftpPanel(cfg)` |
+| **sftp/paths.ts** (B14-F48) | 面板纯路径逻辑（面包屑/normalize/join/parent/basename/排序/书签增删/uuid），可单测 | — |
 | **settings/collapsible-group.ts** (issue #7) | 通用可折叠分组，localStorage 持久 + grid-rows 平滑动画 | `new CollapsibleGroup({id, title, defaultCollapsed}).appendChild(...)` |
 | **settings/diagnostics-section.ts** (v2.0.0+) | 设置面板「诊断」区：log_enabled toggle / log_level select / error_toast toggle / log 路径 / [打开 log/dir]；支持 `{ headless: true }` 给 CollapsibleGroup 复用 | `DiagnosticsSection.element` |
 | **error-toast.ts** (v2.0.0+) | listen `monitor-error` 事件，右下角垂直堆叠红色 toast，点击直接打开 log 文件 | `bindErrorToast()` |

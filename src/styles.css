@@ -3453,3 +3453,45 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   outline: 2px dashed var(--accent, #4a9);
   outline-offset: -6px;
 }
+
+/* F48 Part 4：书签横条 */
+.sftp-bookmarks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 12px;
+}
+.sftp-bookmarks:empty {
+  display: none;
+}
+.sftp-bookmark {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border, #555);
+  border-radius: 4px;
+  overflow: hidden;
+  font-size: 11px;
+}
+.sftp-bookmark-go {
+  background: transparent;
+  color: inherit;
+  border: none;
+  padding: 2px 6px;
+  cursor: pointer;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sftp-bookmark-del {
+  background: transparent;
+  color: inherit;
+  border: none;
+  border-left: 1px solid var(--border, #555);
+  padding: 2px 6px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+.sftp-bookmark-del:hover {
+  opacity: 1;
+}

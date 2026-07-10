@@ -36,6 +36,8 @@ export const LS_KEYS = {
   profilePath: "cc-monitor.profile_path",
   /** Batch5-F19：上次所在 tab 的 sid——启动 active 选择 + replay 优先级。 */
   lastActiveSid: "cc-monitor.last-active-sid",
+  /** Batch14-F48：SFTP 面板目录书签(按 origin)。 */
+  sftpBookmarks: (origin: string) => `cc-monitor.sftp.bookmarks.${origin}`,
 } as const;
 
 export function safeGet(key: string): string | null {
