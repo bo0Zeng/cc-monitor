@@ -22,7 +22,7 @@
  * 每台各有「测试连接」（`test_remote_connection`）展示 SSH/指纹/daemon，指纹可一键固化。
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, Channel } from "@tauri-apps/api/core";
 import { loadConfig, saveConfig } from "../config";
 import { makeInfoIcon } from "./info-icon";
 
@@ -32,6 +32,40 @@ interface ResolvedHost {
   port: number;
   user: string;
   keyPath: string | null;
+}
+
+/** F46：连接分阶段事件（Rust ConnectStage，serde tag=kind camelCase）。 */
+export type ConnectStage =
+  | { kind: "dialing"; endpoint: string }
+  | { kind: "hostKey"; endpoint: string; fingerprint: string }
+  | { kind: "failed"; endpoint: string; reason: string }
+  | { kind: "won"; endpoint: string }
+  | { kind: "auth"; ok: boolean; detail: string | null }
+  | { kind: "established" };
+
+/** F46：阶段事件 → 泳道行的图标 + 文案。纯函数便于单测。 */
+export function describeStage(st: ConnectStage): { icon: string; text: string } {
+  switch (st.kind) {
+    case "dialing":
+      return { icon: "→", text: `拨号 ${st.endpoint}` };
+    case "hostKey":
+      return { icon: "🔑", text: `${st.endpoint} 主机指纹 ${st.fingerprint}` };
+    case "failed":
+      return { icon: "✗", text: `${st.endpoint} 失败：${st.reason}` };
+    case "won":
+      return { icon: "✓", text: `${st.endpoint} 胜出（其余地址已取消）` };
+    case "auth":
+      return st.ok
+        ? { icon: "✓", text: "鉴权通过" }
+        : { icon: "✗", text: `鉴权失败：${st.detail ?? ""}` };
+    case "established":
+      return { icon: "●", text: "连接就绪" };
+    default: {
+      // F46 建议 E：穷尽性兜底——未来新增 ConnectStage 变体时编译期(never)即报错。
+      const _never: never = st;
+      return { icon: "·", text: String((_never as { kind?: string }).kind ?? "") };
+    }
+  }
 }
 
 /** `test_remote_connection` 的返回（Rust ConnTestResult，camelCase）。 */
@@ -565,16 +599,34 @@ class MachineCard {
     this.testButton.disabled = true;
     const prevLabel = this.testButton.textContent;
     this.testButton.textContent = "测试中…";
+    // F46：连接分阶段事件泳道——测试开始即清空日志区、随 Channel 事件实时追加。
+    this.testResult.innerHTML = "";
+    this.testResult.style.display = "block";
+    const stageLog = document.createElement("div");
+    stageLog.className = "remote-stage-log";
+    this.testResult.appendChild(stageLog);
+    const onStage = new Channel<ConnectStage>();
+    onStage.onmessage = (st) => this.appendStageLine(stageLog, st);
     try {
-      const res = await invoke<ConnTestResult>("test_remote_connection", { cfg });
-      this.renderTestResult(res, null);
+      const res = await invoke<ConnTestResult>("test_remote_connection", { cfg, onStage });
+      this.renderTestResult(res, null, stageLog);
     } catch (e) {
       console.warn("test_remote_connection failed:", e);
-      this.renderTestResult(null, `测试失败：${String(e)}`);
+      this.renderTestResult(null, `测试失败：${String(e)}`, stageLog);
     } finally {
       this.testButton.disabled = false;
       this.testButton.textContent = prevLabel;
     }
+  }
+
+  /** F46：把一条阶段事件渲染进「连接过程」泳道日志。 */
+  private appendStageLine(log: HTMLElement, st: ConnectStage): void {
+    const line = document.createElement("div");
+    line.className = "remote-stage-line";
+    const { icon, text } = describeStage(st);
+    line.textContent = `${icon} ${text}`;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight; // F46 建议 D：新事件自动滚到底,最新阶段始终可见
   }
 
   /** F10：点「装 ccm 助手」——把 CCM_WRAPPER_SNIPPET 经 SFTP 装进这台远端的 ~/.bashrc。 */
@@ -684,9 +736,17 @@ class MachineCard {
     );
   }
 
-  /** 渲染测试结果：SSH ✓/✗、指纹（+可固化）、daemon ✓/✗（+hello）。 */
-  private renderTestResult(res: ConnTestResult | null, hardError: string | null): void {
-    this.testResult.innerHTML = "";
+  /** 渲染测试结果：SSH ✓/✗、指纹（+可固化）、daemon ✓/✗（+hello）。
+   * F46：`keepLog` 传入时保留其上方的「连接过程」阶段泳道（清空其余旧结果）。 */
+  private renderTestResult(
+    res: ConnTestResult | null,
+    hardError: string | null,
+    keepLog?: HTMLElement,
+  ): void {
+    // 清空旧结果但保留阶段泳道日志（若有）。
+    for (const child of Array.from(this.testResult.children)) {
+      if (child !== keepLog) child.remove();
+    }
     this.testResult.style.display = "block";
 
     if (hardError !== null) {

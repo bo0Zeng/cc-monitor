@@ -35,7 +35,7 @@ pub struct SftpConn {
 
 /// 打开到远端的 SFTP 会话（复用 connect_session 全套指纹/鉴权）。
 pub async fn connect_sftp(cfg: &RemoteConfig) -> Result<SftpConn, String> {
-    let (session, _fp) = connect_session(cfg, None).await?;
+    let (session, _fp) = connect_session(cfg, None, None).await?;
     let channel = session
         .channel_open_session()
         .await
