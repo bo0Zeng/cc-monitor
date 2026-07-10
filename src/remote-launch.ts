@@ -96,6 +96,44 @@ export function buildResumeTmuxCmd(sid: string, cwd: string, launcher = "claude"
 }
 
 /**
+ * F53:从工作目录派生一个默认 tmux 会话名——basename(去尾 `/`)→ 非 `[A-Za-z0-9_-]` 换 `-`、
+ * 折叠连字符、截 32 → `cc-<safe>`;空 → `cc-session`。「开新 Claude」弹框留空会话名时用它。
+ */
+export function deriveTmuxName(cwd: string): string {
+  const base = cwd.trim().replace(/\/+$/, "").split("/").pop() ?? "";
+  const safe = base
+    .replace(/[^A-Za-z0-9_-]/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 32)
+    .replace(/^-+|-+$/g, ""); // 截断后再剥首尾 `-`,避免第 32 位恰为 `-` 留尾
+  return safe ? `cc-${safe}` : "cc-session";
+}
+
+/**
+ * F53:「在这台机开新 Claude」——启动**全新**会话(非 resume/attach)。复用 F52 的 tmux
+ * create-gate 幂等构造,但载荷是启动命令(无 `--resume`):`unset <嵌套env>; <command>`。
+ * 同名会话已存在 → new-session 失败被 `2>/dev/null` 吞 → `&&` 短路跳过 send-keys → 只 attach
+ * (幂等:重复「开新」同名不重开、直接接回)。tmuxName 用户可任意(过 `isValidTmuxName` 拒
+ * 空/控制字符/超长),**posixQuote 嵌入**(允许空格等,区别于 F52 定长 `cc-<sid8>` 裸用)。
+ * command 过 `sanitizeRemoteLauncher`(denylist fail-closed `claude`)。名非法 → throw。
+ */
+export function buildLauncherCmd(cwd: string, tmuxName: string, command = "claude"): string {
+  const name = tmuxName.trim();
+  if (!isValidTmuxName(name)) {
+    throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(name)}`);
+  }
+  const qname = posixQuote(name);
+  const payload = `unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(command)}`;
+  const c = cwd.trim();
+  const cflag = c ? ` -c ${posixQuote(c)}` : "";
+  return (
+    `tmux new-session -d -s ${qname}${cflag} 2>/dev/null && ` +
+    `tmux send-keys -t ${qname} ${posixQuote(payload)} Enter; ` +
+    `tmux attach -t ${qname}`
+  );
+}
+
+/**
  * F48：「在此打开终端」远端命令——进入指定 cwd 的登录交互 shell。
  * 经 wt.exe 起 `ssh -t … "bash -lic '<此串>'"`(launch.rs 传输包装)落到该目录。
  * cwd 空 → 不 cd(登录默认目录)。POSIX 单引号防路径含空格/特殊字符。
@@ -110,12 +148,13 @@ export function buildOpenTerminalCmd(cwd: string): string {
 
 /**
  * F51:tmux 会话名合法性——非空、无控制字符(含 TAB 0x09 / 换行,防破坏 ls 解析或命令结构)、
- * ≤128。允许空格等可打印字符(`posixQuote` 会安全包裹)。名来自远端 `tmux ls` 输出(半可信),
- * 此为拼进命令前的防线;真正的注入边界是 `posixQuote`。
+ * **无 tmux 保留字符 `.`/`:`**(它们是 `session:window.pane` 目标分隔符,new-session 会拒)、≤128。
+ * 允许空格等其余可打印字符(`posixQuote` 会安全包裹)。真正的注入边界是 `posixQuote`;此校验
+ * 兼防运行时 tmux 报错(F53 把会话名开成用户自由输入后,`.`/`:` 会静默失败,故在此拦)。
  */
 export function isValidTmuxName(name: string): boolean {
   // eslint-disable-next-line no-control-regex
-  return name.length > 0 && name.length <= 128 && !/[\x00-\x1f\x7f]/.test(name);
+  return name.length > 0 && name.length <= 128 && !/[.:\x00-\x1f\x7f]/.test(name);
 }
 
 /**

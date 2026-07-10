@@ -3545,3 +3545,50 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+
+/* F53：「开新 Claude」launcher 即席弹框（全屏遮罩 + 居中卡片） */
+.launcher-back {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.launcher-box {
+  width: min(90%, 460px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  background: var(--bg, #1e1e1e);
+  border: 1px solid var(--border, #444);
+  border-radius: 8px;
+}
+.launcher-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.launcher-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+.launcher-field input {
+  padding: 6px 8px;
+  background: var(--input-bg, #2a2a2a);
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+  color: inherit;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+}
+.launcher-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}

@@ -26,6 +26,8 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { openSftpPanel } from "../sftp/panel";
+import { deriveTmuxName } from "../remote-launch";
+import { runRemoteLauncher } from "../remote-launch-run";
 import { loadConfig, saveConfig } from "../config";
 import { makeInfoIcon } from "./info-icon";
 
@@ -510,6 +512,16 @@ class MachineCard {
     );
     actionRow.appendChild(pushKeyBtn);
 
+    // F53：在这台机开新 Claude——填工作目录/tmux 名/命令,在远端 tmux 里启动全新会话。
+    actionRow.appendChild(
+      mkBtn(
+        "开新 Claude",
+        "settings-btn-secondary",
+        "在这台远端机的 tmux 会话里启动一个全新 Claude（填工作目录 + 会话名 + 启动命令）",
+        () => this.openLauncherDialog(),
+      ),
+    );
+
     // F08c：手动安装 / 卸载 daemon（两个独立按钮）。
     this.daemonInstallButton = mkBtn(
       "安装 daemon",
@@ -718,6 +730,87 @@ class MachineCard {
         ? `公钥已推送（ADDED）：${r.pubPath}`
         : `公钥已存在，无需重复（ALREADY）：${r.pubPath}`;
     });
+  }
+
+  /**
+   * F53：「开新 Claude」即席弹框——填工作目录 / tmux 会话名 / 启动命令,在远端 tmux 里启动
+   * 一个全新 Claude 会话。不存预设(不动 config)。origin 用 label(空则 host,后端按 origin_label
+   * 选台);host 未保存时 launch 会失败→runRemoteLauncher 回退复制命令(仍可用)。
+   */
+  private openLauncherDialog(): void {
+    const cfg = this.collect();
+    if (!cfg.host || !cfg.user) {
+      this.showResultText("请先填好 host / user 再开新 Claude。");
+      return;
+    }
+    const origin = cfg.label.trim() || cfg.host;
+
+    const back = document.createElement("div");
+    back.className = "launcher-back";
+    const box = document.createElement("div");
+    box.className = "launcher-box";
+    const title = document.createElement("div");
+    title.className = "launcher-title";
+    title.textContent = `在 ${origin} 开新 Claude`;
+    box.appendChild(title);
+
+    const mkField = (labelText: string, placeholder: string): HTMLInputElement => {
+      const row = document.createElement("label");
+      row.className = "launcher-field";
+      const span = document.createElement("span");
+      span.textContent = labelText;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.placeholder = placeholder;
+      input.spellcheck = false;
+      row.append(span, input);
+      box.appendChild(row);
+      return input;
+    };
+    const cwdInput = mkField("工作目录", "/home/pi/proj（留空=登录默认目录）");
+    const nameInput = mkField("tmux 会话名", "留空则按工作目录名自动生成");
+    const cmdInput = mkField("启动命令", "claude（可自定义，如 claude --model opus）");
+    // 工作目录变化 → 实时预览留空时将用的派生名(placeholder)。
+    cwdInput.addEventListener("input", () => {
+      nameInput.placeholder = cwdInput.value.trim()
+        ? `留空则用 ${deriveTmuxName(cwdInput.value)}`
+        : "留空则按工作目录名自动生成";
+    });
+
+    const foot = document.createElement("div");
+    foot.className = "launcher-foot";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "settings-btn";
+    cancel.textContent = "取消";
+    cancel.addEventListener("click", () => back.remove());
+    const start = document.createElement("button");
+    start.type = "button";
+    start.className = "settings-btn settings-btn-primary";
+    start.textContent = "开始";
+    start.addEventListener("click", () => {
+      const cwd = cwdInput.value.trim();
+      const name = nameInput.value.trim() || deriveTmuxName(cwd);
+      const command = cmdInput.value.trim() || "claude";
+      back.remove();
+      void runRemoteLauncher(origin, cwd, name, command);
+    });
+    foot.append(cancel, start);
+    box.appendChild(foot);
+
+    // 点遮罩空白 / Esc 取消(不冒泡到设置面板)。
+    back.addEventListener("click", (e) => {
+      if (e.target === back) back.remove();
+    });
+    back.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        back.remove();
+      }
+    });
+    back.appendChild(box);
+    document.body.appendChild(back);
+    cwdInput.focus();
   }
 
   /** 在结果区显示一行提示（缺字段 / 取消等）。 */

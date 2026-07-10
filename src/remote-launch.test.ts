@@ -14,6 +14,8 @@ import {
   buildOpenTerminalCmd,
   isValidTmuxName,
   buildAttachCmd,
+  deriveTmuxName,
+  buildLauncherCmd,
 } from "./remote-launch.ts";
 
 let failed = 0;
@@ -187,12 +189,14 @@ test("buildOpenTerminalCmd:cd + login shell / 空 cwd", () => {
   eq(buildOpenTerminalCmd("/a b/c"), `cd '/a b/c' && ${shell}`);
 });
 
-test("isValidTmuxName:普通过 / 空·控制字符·超长拒", () => {
+test("isValidTmuxName:普通过 / 空·控制字符·保留符·超长拒", () => {
   eq(isValidTmuxName("cc-abc12345"), true);
   eq(isValidTmuxName("my session"), true, "空格允许(posixQuote 包裹)");
   eq(isValidTmuxName(""), false, "空拒");
   eq(isValidTmuxName("a\tb"), false, "含 TAB 拒");
   eq(isValidTmuxName("a\nb"), false, "含换行拒");
+  eq(isValidTmuxName("proj.git"), false, ". 拒(tmux 保留:window.pane 分隔)");
+  eq(isValidTmuxName("a:b"), false, ": 拒(tmux 保留:session 分隔)");
   eq(isValidTmuxName("a".repeat(129)), false, "超长拒");
 });
 
@@ -202,6 +206,51 @@ test("buildAttachCmd:posixQuote 名 / 空格 / 非法名 throw", () => {
   eq(buildAttachCmd("a'b"), `tmux attach -t 'a'\\''b'`, "单引号逃逸");
   throws(() => buildAttachCmd(""), "空名 throw");
   throws(() => buildAttachCmd("x\ny"), "含换行 throw");
+});
+
+test("deriveTmuxName:basename / 尾斜杠 / 特殊字符换- / 空→cc-session", () => {
+  eq(deriveTmuxName("/home/pi/proj"), "cc-proj");
+  eq(deriveTmuxName("/home/pi/proj/"), "cc-proj", "去尾斜杠");
+  eq(deriveTmuxName("/home/pi/my proj!"), "cc-my-proj", "空格/! 换- 折叠去尾");
+  eq(deriveTmuxName("/a/b.c"), "cc-b-c", ". 换-");
+  eq(deriveTmuxName(""), "cc-session");
+  eq(deriveTmuxName("/"), "cc-session", "根→空 basename→cc-session");
+});
+
+test("buildLauncherCmd:完整形态(启动新会话,无 --resume)", () => {
+  const payload = `${UNSET}claude`;
+  eq(
+    buildLauncherCmd("/home/pi/proj", "cc-proj"),
+    `tmux new-session -d -s 'cc-proj' -c '/home/pi/proj' 2>/dev/null && ` +
+      `tmux send-keys -t 'cc-proj' '${payload}' Enter; tmux attach -t 'cc-proj'`,
+  );
+  eq(buildLauncherCmd("/p", "cc-proj").includes("--resume"), false, "启动版无 --resume");
+});
+
+test("buildLauncherCmd:空 cwd 省 -c / 自定义命令 / 命令注入 fail-closed", () => {
+  const p1 = `${UNSET}claude`;
+  eq(
+    buildLauncherCmd("", "cc-x"),
+    `tmux new-session -d -s 'cc-x' 2>/dev/null && tmux send-keys -t 'cc-x' '${p1}' Enter; tmux attach -t 'cc-x'`,
+  );
+  const p2 = `${UNSET}claude --model opus`;
+  eq(
+    buildLauncherCmd("", "cc-x", "claude --model opus"),
+    `tmux new-session -d -s 'cc-x' 2>/dev/null && tmux send-keys -t 'cc-x' '${p2}' Enter; tmux attach -t 'cc-x'`,
+  );
+  const p3 = `${UNSET}claude`; // 注入 → claude
+  eq(
+    buildLauncherCmd("", "cc-x", "claude; rm -rf /"),
+    `tmux new-session -d -s 'cc-x' 2>/dev/null && tmux send-keys -t 'cc-x' '${p3}' Enter; tmux attach -t 'cc-x'`,
+  );
+});
+
+test("buildLauncherCmd:名含空格 posixQuote / 非法名(空/TAB/. /:)throw", () => {
+  eq(buildLauncherCmd("", "my sess").startsWith("tmux new-session -d -s 'my sess' "), true);
+  throws(() => buildLauncherCmd("/p", ""), "空名 throw");
+  throws(() => buildLauncherCmd("/p", "a\tb"), "含 TAB throw");
+  throws(() => buildLauncherCmd("/p", "proj.git"), ". 名 throw(tmux 保留)");
+  throws(() => buildLauncherCmd("/p", "a:b"), ": 名 throw(tmux 保留)");
 });
 
 if (failed > 0) {

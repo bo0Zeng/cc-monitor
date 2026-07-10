@@ -11,6 +11,7 @@
 ## [未发布]
 
 ### 新增
+- **「在这台机开新 Claude」(F53)**:远端主机设置卡新增「开新 Claude」按钮——弹框填工作目录 + tmux 会话名(留空按目录名自动生成)+ 启动命令(默认 claude,可自定义如 `claude --model opus`),一键在远端 tmux 会话里启动一个全新 Claude 并接入。同名会话已存在则直接接回不重开(幂等)。启动命令做注入防护(串联/展开/重定向等命中则回退纯 claude)。
 - **Resume 的 tmux 版(F52)**:远端已结束会话 tab 右键,除「Resume(直连)」外并列一个「Resume(tmux)」——在远端 tmux 会话里 resume Claude,resume 完人就在那个 tmux 里(断线后可用 F51 的 attach 重新接回)。幂等:会话已存在则只接回不重复启动;新建则自动键入 resume 命令(用 send-keys 而非直接 exec,避免 claude 只在交互 shell 的 PATH 里而启动失败)。本地会话仍是单一「Resume」。
 - **tab 右键 attach 到 tmux 会话(F51)**:远端会话 tab 右键——若该会话的 Claude 正跑在某个远端 tmux 会话里(按工作目录 + 前台是 claude 反查),菜单出现「Attach(tmux)」,一键拉起新终端 `ssh -t … tmux attach` 直接进那个 tmux 交互。菜单打开时按需查询(短缓存,不常驻轮询),远端没装 tmux 则不显示该项。查询走独立 SSH exec(不干扰前台终端)。
 - **公钥一键推送(F50)**:远端主机设置卡新增「推送公钥」按钮——把本地公钥追加到远端 `~/.ssh/authorized_keys`,推完即免密。已填私钥路径时自动取同名 `.pub`,否则弹框选文件。命令做了注入防护(只接受单一非空行防第二行注入、`grep -qxF` 精确去重不重复追加、`printf '%s\n'` 非 echo、顺带 `mkdir`/`chmod 700`/`chmod 600`),结果告知「已推送(ADDED)/已存在(ALREADY)」。当前基于已有密钥/agent 访问追加新公钥(纯密码冷登录待后续密码鉴权)。
