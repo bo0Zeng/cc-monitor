@@ -1393,6 +1393,28 @@ export async function readRemoteConfig(): Promise<RemoteConfig> {
 }
 
 /**
+ * F54:在主机列表里按 origin 反查(纯函数,便于单测)。origin = 主机 `label` 非空则 label
+ * 否则 host,等价于后端 `origin_label()` / launcher 的 `label||host`(**纯空白 label 除外**:
+ * 这里 `.trim()` 更稳健,后端不 trim——纯空白 label 属退化配置,退化时反查落空→调用方优雅 toast)。
+ * 找不到 → null。
+ */
+export function findHostByOrigin(
+  hosts: RemoteHostConfig[],
+  origin: string,
+): RemoteHostConfig | null {
+  return hosts.find((h) => (h.label.trim() || h.host) === origin) ?? null;
+}
+
+/**
+ * F54:按 origin(会话来源标识)反查完整 RemoteHostConfig。找不到(主机被删/改名)→ null。
+ */
+export async function resolveRemoteConfigByOrigin(
+  origin: string,
+): Promise<RemoteHostConfig | null> {
+  return findHostByOrigin((await readRemoteConfig()).hosts, origin);
+}
+
+/**
  * 把 RemoteConfig MERGE 进 config.json 顶层的 `remote` 键，不动其他字段。
  * 写成 `{ enabled, hosts: [...] }`（升级旧单对象形态）；key 是 camelCase，与 Rust
  * `lib.rs::load_remote_configs` 读的键严格一致。
