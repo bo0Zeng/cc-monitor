@@ -12,6 +12,7 @@ mod config;
 mod data_paths;
 mod event_replay;
 mod history;
+mod launch;
 mod logging;
 mod messages;
 mod parser;
@@ -866,6 +867,7 @@ pub fn run() {
             history::delete_history_session,
             history::update_history_metadata,
             history::resume_history_session,
+            launch::launch_remote_terminal,
             // issue #6: 历史全文搜索
             search::search_history,
             search::get_search_index_status,

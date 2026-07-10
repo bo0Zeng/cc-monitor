@@ -59,6 +59,7 @@
 
 ### 无 State 依赖（自包含 / 用 path 解析）
 - `config::load_config / save_config`（用 `paths::resolve_config_path`）
+- `launch::launch_remote_terminal`（B14-F41；用 `lib::load_remote_config_by_label` 读配置文件）
 - `subagent::load_subagent`
 - `cc_integration_preview / scan_path / install / uninstall`（path 参数直接进）
 - `cc_get_auto_launch / cc_set_auto_launch`（用 `paths::resolve_monitor_data_dir`）

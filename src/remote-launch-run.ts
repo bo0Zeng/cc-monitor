@@ -1,0 +1,49 @@
+/**
+ * F41：远端 resume 拉起执行器（UI 侧）。连接 remote-launch 纯函数与后端
+ * `launch_remote_terminal`（wt.exe/PowerShell 拉起 `ssh -t …`），tabs.ts 与
+ * views/history.ts 共用此单一入口，防两处行为漂移。
+ *
+ * 失败回退 = F09 旧行为：复制命令 + toast 说明（非 Windows dev / 配置缺失 /
+ * wt+PowerShell 都 spawn 失败时，用户仍拿得到可粘贴命令，功能永不变砖）。
+ */
+import { invoke } from "@tauri-apps/api/core";
+import { buildResumeDirectCmd } from "./remote-launch";
+import { showActionFailureToast } from "./error-toast";
+
+/** 一键 resume 远端会话：拉起成功 toast 告知；失败回退复制命令。 */
+export async function runRemoteResume(
+  origin: string,
+  sid: string,
+  cwd: string,
+  launcher: string,
+): Promise<void> {
+  let cmd: string;
+  try {
+    cmd = buildResumeDirectCmd(sid, cwd, launcher);
+  } catch (err) {
+    showActionFailureToast("无法构造 resume 命令", String(err));
+    return;
+  }
+  try {
+    await invoke("launch_remote_terminal", { origin, remoteCmd: cmd });
+    showActionFailureToast(
+      "已拉起远端 resume",
+      `新终端窗口正在连接 [${origin}] 并 resume 该会话。`,
+      { level: "info", durationMs: 6000 },
+    );
+    return;
+  } catch (err) {
+    // 回退：复制命令让用户自己粘贴（保留 F09 语义）。
+    let copied = true;
+    try {
+      await navigator.clipboard.writeText(cmd);
+    } catch {
+      copied = false; // 命令在 toast 里仍可见，可手动复制
+    }
+    showActionFailureToast(
+      copied ? "拉起失败，已复制 resume 命令" : "拉起失败，请手动复制以下命令",
+      `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
+      { level: "info", durationMs: 10000 },
+    );
+  }
+}

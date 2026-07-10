@@ -19,10 +19,10 @@
     "test:api-error": "node src/cards/api-error.test.ts",
     "test:bash": "node src/cards/bash.test.ts",
     "test:remote-health": "node src/remote-health.test.ts",
-    "test:remote-resume": "node src/remote-resume-cmd.test.ts",
+    "test:remote-launch": "node src/remote-launch.test.ts",
     "test:format": "node src/format.test.ts",
     "test:dom": "vitest run",
-    "test": "npm run test:branching && npm run test:diff && npm run test:api-error && npm run test:bash && npm run test:remote-health && npm run test:remote-resume && npm run test:format && npm run test:dom"
+    "test": "npm run test:branching && npm run test:diff && npm run test:api-error && npm run test:bash && npm run test:remote-health && npm run test:remote-launch && npm run test:format && npm run test:dom"
   },
   "dependencies": {
     "@chenglou/pretext": "0.0.8",

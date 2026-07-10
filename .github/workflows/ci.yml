@@ -68,7 +68,7 @@ jobs:
       - run: npx tsc --noEmit
 
       # 全部前端单测：① 纯函数 node 测试（branching 主线折叠 #8/#22/#25/#26、diff 渲染 #14、
-      # API 报错卡 #21、remote-health 节流、remote-resume 命令）；② tabs 生命周期 DOM 测试
+      # API 报错卡 #21、remote-health 节流、remote-launch 命令构造）；② tabs 生命周期 DOM 测试
       # （vitest+jsdom，守护 resume 复活 / 归档-only 关闭 / origin 门控等本轮 bug 高发区）。
       - name: unit tests (node pure-fn + vitest DOM)
         run: npm test

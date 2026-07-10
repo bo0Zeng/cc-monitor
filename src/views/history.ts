@@ -26,7 +26,7 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { SessionViewer, type ViewerOptions } from "./session-viewer";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
-import { buildRemoteResumeCmd } from "../remote-resume-cmd";
+import { runRemoteResume } from "../remote-launch-run";
 import { getBehavior } from "../behavior";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { formatTimestampSmart } from "../format";
@@ -1449,27 +1449,17 @@ export class HistoryView {
     resumeBtn.className = "history-action";
     resumeBtn.textContent = "↺"; // ↺ anticlockwise circle arrow ("replay")
     if (e.origin) {
-      // F09 / R7：monitor 在本地、用户交互终端在远端，无法在远端开可输入的 TTY，
-      // 故远端 resume = 复制 `claude --resume <sid>` 命令，供用户到远端 ssh 终端粘贴执行。
-      resumeBtn.title = `复制 resume 命令到远端 [${e.origin}] 终端执行`;
+      // F41：远端 resume 一键拉起（wt.exe → `ssh -t …`），失败回退 F09 复制命令。
+      resumeBtn.title = `在新终端拉起远端 [${e.origin}] resume（失败则复制命令）`;
       resumeBtn.addEventListener("click", async (ev) => {
         ev.stopPropagation();
         // F34：用户自定义远端 resume 命令（如 cct）；空 = claude
         const behavior = await getBehavior();
-        const cmd = buildRemoteResumeCmd(
+        await runRemoteResume(
+          e.origin!,
           e.sessionId,
           e.projectPath ?? "",
           behavior.resumeCommandRemote,
-        );
-        try {
-          await navigator.clipboard.writeText(cmd);
-        } catch {
-          /* 剪贴板失败也无妨——命令在 toast 里可见 */
-        }
-        showActionFailureToast(
-          "已复制 resume 命令",
-          `到远端 [${e.origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
-          { level: "info", durationMs: 10000 },
         );
       });
     } else {

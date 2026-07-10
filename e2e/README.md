@@ -37,6 +37,15 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 
 ## 人工场景(未脚本化,原因与流程)
 
+**F41 远端一键 resume(Windows 真机)**:触发面 = wt.exe/PowerShell 拉起 + Windows OpenSSH,
+本仓 e2e 跑在 Linux 无法覆盖。人工验证流程(装含 F41 的版本后):
+1. 远端某会话结束(tab 变灰)→ tab 右键「Resume」→ 应弹出新终端窗口自动 ssh 并 resume,
+   cwd 正确、cc-monitor 阅读器随之点亮同一 tab;历史浏览器远端条目 ↺ 同理;
+2. 变体 a(回退路径):临时把该主机配置改错(如 label 拼错的 origin 不存在)→ 右键 Resume
+   应 toast「拉起失败,已复制 resume 命令」且剪贴板有裸命令;
+3. 变体 b(双引号 launcher):设置「远端 resume 命令」为 `cc --allowedTools "Bash(*)"` →
+   一键应主动回退复制(校验拒绝),改成单引号写法后应正常拉起。
+
 **chunked 大增量批(R-1 缓冲)**:触发面 = 远端 SSH 重连 chunked 重放(末块先发)+
 离线期 >600 行增量——本地 watcher 追加是升序到达,按构造不产生中部插入,无法本地
 合成;脚本化需可控地断开/重连 daemon 且不污染真实会话镜像。已由单测钉住路由与

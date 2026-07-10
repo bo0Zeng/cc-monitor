@@ -21,7 +21,7 @@ import type { BranchRecord } from "./branching";
 import { isAgentTool } from "./cards/subagent";
 import type { AgentsPanel, AgentEntry } from "./agents-panel";
 import { LS_KEYS, safeSet } from "./local-storage";
-import { buildRemoteResumeCmd } from "./remote-resume-cmd";
+import { runRemoteResume } from "./remote-launch-run";
 import { getBehavior } from "./behavior";
 
 /**
@@ -1397,7 +1397,7 @@ export class TabManager {
   /**
    * F37：手动 resume 一个已结束（灰）的 Tab。与历史浏览器 ↺ 同一套语义：
    * 本地 → 新终端窗口跑 resume（尊重 F34 自定义命令，缺省 cc 检测→claude）；
-   * 远端 → 构造 `cd <cwd> && <launcher> --resume <sid>` 复制到剪贴板 + toast。
+   * 远端 → F41 一键拉起 wt.exe/PowerShell 跑 `ssh -t …`，失败回退复制命令。
    * resume 成功后 CC 续写同一 jsonl，既有「会话复活」路径会自动把灰 Tab 点亮。
    */
   private async resumeTab(sid: string): Promise<void> {
@@ -1405,17 +1405,7 @@ export class TabManager {
     if (!tab) return;
     const behavior = await getBehavior();
     if (tab.origin !== null) {
-      const cmd = buildRemoteResumeCmd(sid, tab.cwd ?? "", behavior.resumeCommandRemote);
-      try {
-        await navigator.clipboard.writeText(cmd);
-      } catch {
-        /* 剪贴板失败也无妨——命令在 toast 里可见 */
-      }
-      showActionFailureToast(
-        "已复制 resume 命令",
-        `到远端 [${tab.origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
-        { level: "info", durationMs: 10000 },
-      );
+      await runRemoteResume(tab.origin, sid, tab.cwd ?? "", behavior.resumeCommandRemote);
       return;
     }
     try {
@@ -1653,8 +1643,8 @@ export class TabManager {
         { label: "在新窗口打开", onClick: () => void this.openInNewWindow(sid) },
       ];
       // F37：灰 tab（会话已结束）右键手动 resume——不用绕去历史浏览器。
-      // 统一叫 Resume（用户反馈）：能直接 resume 的直接干（本地=新终端拉起,
-      // 同历史 ↺）；干不了的才退化成复制命令（远端,点击后 toast 说明）。
+      // F41 起本地与远端都是一键拉起新终端（远端=wt.exe 跑 ssh -t，失败才
+      // 回退复制命令）；统一叫 Resume（用户反馈）。
       if (t?.status === "archived") {
         items.push({
           label: "Resume",

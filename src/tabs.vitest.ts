@@ -72,8 +72,19 @@ vi.mock("./cards", () => ({ reconcilePendingToolResults: vi.fn(() => []) }));
 vi.mock("./cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("./tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
 vi.mock("./error-toast", () => ({ showActionFailureToast: vi.fn() }));
+// Batch14-F41：resumeTab 远端分支改走一键拉起 runner；behavior 提供 launcher 配置。
+vi.mock("./remote-launch-run", () => ({
+  runRemoteResume: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("./behavior", () => ({
+  getBehavior: vi.fn().mockResolvedValue({
+    resumeCommandLocal: "",
+    resumeCommandRemote: "cct",
+  }),
+}));
 
 import { invoke } from "@tauri-apps/api/core";
+import { runRemoteResume } from "./remote-launch-run";
 import { TabManager, type Tab } from "./tabs";
 
 // 私有字段的只读探针（TS private 仅编译期；运行时可读）。仅测试用。
@@ -604,5 +615,33 @@ describe("TabManager 生命周期", () => {
     const t = peek(tm).tabs.get("meta-bg")!;
     expect(t.window.pendingCount).toBe(0); // consumed,不收纳
     expect(t.window.floorSeq).toBeNull();
+  });
+});
+
+describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
+  let tm: TabManager;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tm = makeTM();
+  });
+
+  it("远端归档 tab → runRemoteResume(origin, sid, cwd, launcher)", async () => {
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    await (tm as unknown as { resumeTab(sid: string): Promise<void> }).resumeTab("r1");
+    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct");
+    expect(invoke).not.toHaveBeenCalledWith("resume_history_session", expect.anything());
+  });
+
+  it("本地归档 tab → 仍走 resume_history_session，不碰远端 runner", async () => {
+    tm.ensureTab("l1", "/home/u/p", "/p/l1.jsonl", 0, null);
+    tm.archiveTab("l1");
+    await (tm as unknown as { resumeTab(sid: string): Promise<void> }).resumeTab("l1");
+    expect(runRemoteResume).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith("resume_history_session", {
+      sessionId: "l1",
+      cwd: "/home/u/p",
+      launcher: null,
+    });
   });
 });

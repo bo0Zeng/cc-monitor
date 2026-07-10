@@ -8,6 +8,11 @@
 
 ---
 
+## [未发布]
+
+### 新增
+- **远端会话一键 resume(F41)**:归档的远端会话 tab 右键「Resume」、历史浏览器远端条目 ↺,不再只是复制命令——直接拉起新终端窗口(wt.exe 优先,PowerShell 独立控制台兜底)跑 `ssh -t … claude --resume`,cwd 自动切换、`cct` 等自定义启动命令(设置里「远端 resume 命令」)继续生效。拉起失败(非 Windows、该主机配置缺失、命令校验拒绝、wt.exe 与 PowerShell 都拉不起来)自动回退老行为:复制命令 + 提示;注:launcher 参数含双引号时一键路径会主动回退复制,改用单引号写法即可一键。安全加固:resume 载荷前防御性 `unset` Claude 嵌套环境标记(否则远端 Claude 自认子会话、静默不写会话文件),sessionId 白名单校验,启动命令注入字符 fail-closed 回退 `claude`。
+
 ## [2.22.2] — 2026-07-09
 
 ### 修复

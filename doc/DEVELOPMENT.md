@@ -129,7 +129,7 @@ cargo test --lib -- --nocapture       # 看 println! 输出
 
 | 层 | 跑法 | 覆盖 |
 |---|---|---|
-| node 纯函数断言(`src/**/*.test.ts`,7 组) | `npm test` 前段(node 原生跑 TS,需 Node ≥22.18) | diff/branching/api-error/bash/format/remote-health/remote-resume-cmd 纯逻辑 |
+| node 纯函数断言(`src/**/*.test.ts`,7 组) | `npm test` 前段(node 原生跑 TS,需 Node ≥22.18) | diff/branching/api-error/bash/format/remote-health/remote-launch 纯逻辑 |
 | vitest + jsdom(`src/**/*.vitest.ts`,84 测) | `npm run test:dom` | DOM/生命周期/mock 协作:tabs 门控与物化、TailWindow、UnrenderedRanges、RecordTimeline、估高、路由表、探针纯函数 |
 | E2E 套件(`e2e/f40-suite.sh`,14 断言) | **手动**,Linux Xvfb + `tauri dev`(前置见 [e2e/README.md](../e2e/README.md)) | 整机行为:启动门控/贴底/上翻补批/fork 折叠/抖动密度绊线 |
 

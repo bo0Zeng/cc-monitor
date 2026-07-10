@@ -105,6 +105,7 @@ src-tauri/src/
 │              subagent.rs   按需加载 subagents/*.meta.json
 ├── 业务层      event_replay.rs  内存 buffer + 持锁 batch emit
 │              history.rs    两级懒加载 + metadata + 物理删除 + resume
+│              launch.rs     终端拉起（wt.exe→PowerShell 单一入口）+ 远端 ssh 拉起（B14-F41）
 │              tasks.rs      v2.3 CLI task tracker 读 + watcher + emit task-update
 ├── 集成层      bind.rs       cc 集成绑定核心（ps-await/registry/SidHwndCache）
 │              profile_installer.rs  PowerShell profile 块插入/卸载
@@ -142,6 +143,8 @@ src/
 │              paths.ts      claudeDir 字段读写
 │              theme.ts      CSS token 应用
 │              behavior.ts   v2.4 autoFollowUserActive / bringMonitorToFront toggles
+├── 远端拉起    remote-launch.ts  远端命令构造纯函数（B14-F41；sid 白名单/launcher denylist/POSIX 引号/嵌套 env unset）
+│              remote-launch-run.ts  拉起执行器（invoke launch_remote_terminal → 失败回退复制命令）
 └── 样式        styles.css    全部样式 + token 系统
 ```
 
