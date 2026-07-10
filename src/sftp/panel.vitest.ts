@@ -91,3 +91,100 @@ describe("F48 SftpPanel jsdom", () => {
     expect(panelEl().querySelector(".sftp-transfers")?.textContent).toBe("");
   });
 });
+
+describe("F49 编辑", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    invokeMock.mockReset();
+    localStorage.clear();
+  });
+
+  it("编辑按钮 → 读到文本弹对话框(textarea 预填)", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "sftp_realpath") return Promise.resolve("/x");
+      if (cmd === "sftp_list_dir") return Promise.resolve([ent("a.txt", false)]);
+      if (cmd === "sftp_read_text_for_edit") return Promise.resolve("hello");
+      return Promise.resolve();
+    });
+    const p = new SftpPanel();
+    await p.open(CFG);
+    const editBtn = [...panelEl().querySelectorAll(".sftp-row-btn")].find(
+      (b) => b.textContent === "编辑",
+    ) as HTMLButtonElement;
+    editBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    const ta = panelEl().querySelector(".sftp-edit-ta") as HTMLTextAreaElement;
+    expect(ta).toBeTruthy();
+    expect(ta.value).toBe("hello");
+  });
+
+  it("read 返 null(过大/二进制)→ 不弹对话框", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "sftp_realpath") return Promise.resolve("/x");
+      if (cmd === "sftp_list_dir") return Promise.resolve([ent("big.bin", false)]);
+      if (cmd === "sftp_read_text_for_edit") return Promise.resolve(null);
+      return Promise.resolve();
+    });
+    const p = new SftpPanel();
+    await p.open(CFG);
+    const editBtn = [...panelEl().querySelectorAll(".sftp-row-btn")].find(
+      (b) => b.textContent === "编辑",
+    ) as HTMLButtonElement;
+    editBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(panelEl().querySelector(".sftp-edit-ta")).toBeNull();
+  });
+
+  it("保存失败 → 保留编辑内容(textarea 仍在)+ 复位保存键(aterm 契约)", async () => {
+    const origConfirm = window.confirm;
+    window.confirm = () => true;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "sftp_realpath") return Promise.resolve("/x");
+      if (cmd === "sftp_list_dir") return Promise.resolve([ent("a.txt", false)]);
+      if (cmd === "sftp_read_text_for_edit") return Promise.resolve("hello");
+      if (cmd === "sftp_write_text") return Promise.reject(new Error("boom"));
+      return Promise.resolve();
+    });
+    const p = new SftpPanel();
+    await p.open(CFG);
+    const editBtn = [...panelEl().querySelectorAll(".sftp-row-btn")].find(
+      (b) => b.textContent === "编辑",
+    ) as HTMLButtonElement;
+    editBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    const saveBtn = [...panelEl().querySelectorAll(".sftp-edit-foot button")].find(
+      (b) => b.textContent === "保存",
+    ) as HTMLButtonElement;
+    saveBtn.click();
+    // saveEdit: confirm(true)→disabled=true→await invoke(reject)→catch→toast+disabled=false
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(panelEl().querySelector(".sftp-edit-ta")).toBeTruthy(); // 对话框未关,内容保留
+    expect(saveBtn.disabled).toBe(false); // 保存键复位,可重试
+    window.confirm = origConfirm;
+  });
+
+  it("编辑态 Esc → 关对话框但不关面板(I1)", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "sftp_realpath") return Promise.resolve("/x");
+      if (cmd === "sftp_list_dir") return Promise.resolve([ent("a.txt", false)]);
+      if (cmd === "sftp_read_text_for_edit") return Promise.resolve("hello");
+      return Promise.resolve();
+    });
+    const p = new SftpPanel();
+    await p.open(CFG);
+    const editBtn = [...panelEl().querySelectorAll(".sftp-row-btn")].find(
+      (b) => b.textContent === "编辑",
+    ) as HTMLButtonElement;
+    editBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    const back = panelEl().querySelector(".sftp-edit-back") as HTMLElement;
+    expect(back).toBeTruthy();
+    back.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(panelEl().querySelector(".sftp-edit-back")).toBeNull(); // 对话框关了
+    expect(panelEl().style.display).not.toBe("none"); // 面板仍开(Esc 没冒泡到面板级)
+  });
+});
