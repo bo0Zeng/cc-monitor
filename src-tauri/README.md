@@ -135,7 +135,8 @@ src-tauri/
 | `deploy_remote_daemon` (F08c, SFTP) | `{ cfg }` | `String` | 设置面板「安装 daemon」：按远端 arch 选内嵌二进制 + build_id 版本门控 + SFTP 原子上传到 daemonPath（已最新则跳过）；返回人读结果，无 arch/路径含 `~` 等显式报错 |
 | `uninstall_remote_daemon` (F08c, SFTP) | `{ cfg }` | `String` | 设置面板「卸载 daemon」：删远端 daemon 二进制 + 同目录 `.build_id`（`is_safe_remote_daemon_path` 守卫；机器仍启用会自动装回的提示） |
 | `list_ssh_host_aliases` (issue #15) | — | `String[]` | 设置面板「从 ~/.ssh/config 导入」下拉 |
-| `resolve_ssh_host` (issue #15) | `{ alias }` | `ResolvedHost` | 选中别名后用 `ssh -G` 解析有效连接参数自动填表 |
+| `resolve_ssh_host` (issue #15) | `{ alias }` | `ResolvedHost` | 选中别名后用 `ssh -G` 解析有效连接参数自动填表（F57 加 proxyJump） |
+| `import_ssh_hosts` (B14-F57) | — | `ImportGroup[]` | 批量导入:list 别名→逐个 `ssh -G`→`aggregate_ssh_hosts` 智能聚合(同 key+user+基名前缀→同机多地址,ProxyJump→jump)→预览组（含 members 供拆分） |
 | `test_remote_connection` (issue #15) | `{ cfg }` | `ConnTestResult` | 「测试连接」：实连一次回 SSH ✓/✗ + 指纹 + daemon hello |
 
 ## 事件
