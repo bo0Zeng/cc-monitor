@@ -507,6 +507,76 @@ async fn upload_inner(
     Ok(())
 }
 
+// === 小文件编辑(F49):read_text_for_edit / write_text ===
+
+/// F49 编辑上限。aterm 契约:超上限**拒编而非截断**(截断标记当编辑源会写坏文件)。
+const MAX_EDIT_BYTES: usize = 256 * 1024;
+
+/// 字节 → 可编辑文本;不可编辑(>256KB / 含 NUL 疑二进制 / 非 UTF-8)→ None。
+/// 纯函数,护栏核心(数据安全红线),便于单测。
+pub fn decode_editable(bytes: &[u8]) -> Option<String> {
+    if bytes.len() > MAX_EDIT_BYTES {
+        return None; // 拒编,不截断
+    }
+    if bytes.contains(&0) {
+        return None; // 含 NUL → 疑二进制
+    }
+    String::from_utf8(bytes.to_vec()).ok() // 非 UTF-8 → None
+}
+
+/// 读远端小文本供编辑;None = 不可编辑(前端灰置/提示)。
+#[tauri::command]
+pub async fn sftp_read_text_for_edit(
+    cfg: RemoteConfig,
+    path: String,
+) -> Result<Option<String>, String> {
+    with_sftp(&cfg, move |s| {
+        let path = path.clone();
+        Box::pin(async move {
+            // 护栏前置:先 stat 大小,超限即拒读(不把 GB 级文件整体缓冲入内存,防 OOM)。
+            // decode_editable 仍是最终护栏(NUL/非 UTF-8;并冗余复核大小,防 stat 与 read 间竞态)。
+            if let Ok(Some(size)) = s.metadata(path.clone()).await.map(|m| m.size) {
+                if size > MAX_EDIT_BYTES as u64 {
+                    return Ok(None);
+                }
+            }
+            let bytes = s
+                .read(path.clone())
+                .await
+                .map_err(|e| format!("读文件失败: {e}"))?;
+            Ok(decode_editable(&bytes))
+        })
+    })
+    .await
+}
+
+/// 写回编辑后的文本。过写守卫;保留原文件权限(stat 取 mode,缺省 0o644);
+/// `upload_atomic` 原子写(.tmp→删旧→rename);失败传播 Err(前端保留编辑框内容)。
+#[tauri::command]
+pub async fn sftp_write_text(
+    cfg: RemoteConfig,
+    path: String,
+    content: String,
+) -> Result<(), String> {
+    guard_write(&path)?;
+    with_sftp(&cfg, move |s| {
+        let path = path.clone();
+        let content = content.clone();
+        Box::pin(async move {
+            // 保留原权限:stat 取 mode(u32),缺省 0o644(新文件)。
+            let mode = s
+                .metadata(path.clone())
+                .await
+                .ok()
+                .and_then(|m| m.permissions)
+                .map(|p| p & 0o7777)
+                .unwrap_or(0o644);
+            crate::sftp::upload_atomic(s, &path, content.as_bytes(), mode).await
+        })
+    })
+    .await
+}
+
 // === 写命令:mkdir / rename / delete（走 with_sftp,过写守卫）===
 
 /// 拒 Claude 数据源路径的写守卫(返回 Err 便于 `?`)。
@@ -581,6 +651,25 @@ mod tests {
         assert!(guard_write("/home/pi/.claude/sessions/1.json").is_err());
         assert!(guard_write("/home/pi/proj/main.rs").is_ok());
         assert!(guard_write("/home/pi/.claude/settings.json").is_ok()); // 非受保护
+    }
+
+    // F49：编辑护栏(数据安全红线)——拒编优于截断/乱码。
+    #[test]
+    fn decode_editable_guards() {
+        assert_eq!(
+            decode_editable(b"hello\nworld"),
+            Some("hello\nworld".into())
+        );
+        assert_eq!(
+            decode_editable("中文 UTF-8".as_bytes()).as_deref(),
+            Some("中文 UTF-8")
+        );
+        assert_eq!(decode_editable(&[]), Some(String::new())); // 空文件可编辑
+        assert_eq!(decode_editable(b"a\0b"), None); // 含 NUL → 疑二进制,拒编
+        assert_eq!(decode_editable(&[0xff, 0xfe]), None); // 非 UTF-8,拒编
+                                                          // >256KB → 拒编(不截断)
+        assert_eq!(decode_editable(&vec![b'x'; MAX_EDIT_BYTES + 1]), None);
+        assert!(decode_editable(&vec![b'x'; MAX_EDIT_BYTES]).is_some()); // 恰好上限可编辑
     }
 
     #[test]

@@ -879,6 +879,8 @@ pub fn run() {
             sftp_pool::sftp_mkdir,
             sftp_pool::sftp_rename,
             sftp_pool::sftp_delete,
+            sftp_pool::sftp_read_text_for_edit,
+            sftp_pool::sftp_write_text,
             // issue #6: 历史全文搜索
             search::search_history,
             search::get_search_index_status,

@@ -165,6 +165,8 @@ export class SftpPanel {
     this.entries = [];
     this.listEl.textContent = "";
     this.transfersEl.textContent = ""; // D 审计建议-3:切 host 不残留上一台的进度行
+    // 兜底:清任何残留的编辑对话框,避免重开/切 host 时旧编辑框(带旧文件内容)浮在最上层。
+    this.el.querySelectorAll(".sftp-edit-back").forEach((n) => n.remove());
     this.sortBy = "name";
     if (this.dropUnlisten) {
       this.dropUnlisten();
@@ -362,6 +364,87 @@ export class SftpPanel {
     await this.reload();
   }
 
+  /** F49：编辑小文本文件——读(护栏)→ 弹编辑对话框 → 保存(原子写,失败保留内容)。 */
+  private async editFile(e: SftpEntry): Promise<void> {
+    if (!this.cfg) return;
+    const path = joinPath(this.cwd, e.name);
+    let text: string | null;
+    try {
+      text = await invoke<string | null>("sftp_read_text_for_edit", { cfg: this.cfg, path });
+    } catch (err) {
+      showActionFailureToast("读取失败", String(err));
+      return;
+    }
+    if (text === null) {
+      showActionFailureToast("不可编辑", `${e.name} 过大(>256KB)或含二进制/非 UTF-8 内容。`);
+      return;
+    }
+    this.openEditDialog(e.name, path, text);
+  }
+
+  /** 编辑对话框(面板内浮层):textarea + 字符/字节数 + 保存(确认)/取消;失败保留内容。 */
+  private openEditDialog(name: string, path: string, initial: string): void {
+    const back = document.createElement("div");
+    back.className = "sftp-edit-back";
+    const box = document.createElement("div");
+    box.className = "sftp-edit-box";
+    const title = document.createElement("div");
+    title.className = "sftp-edit-title";
+    title.textContent = `编辑 ${name}`;
+    const ta = document.createElement("textarea");
+    ta.className = "sftp-edit-ta";
+    ta.value = initial;
+    ta.spellcheck = false;
+    const foot = document.createElement("div");
+    foot.className = "sftp-edit-foot";
+    const stat = document.createElement("span");
+    stat.className = "sftp-edit-stat";
+    const enc = new TextEncoder();
+    const updateStat = () => {
+      stat.textContent = `${[...ta.value].length} 字符 / ${enc.encode(ta.value).length} 字节 UTF-8`;
+    };
+    ta.addEventListener("input", updateStat);
+    updateStat();
+    const cancel = mkBtn("取消", () => back.remove());
+    const save = mkBtn("保存", () => void this.saveEdit(path, ta.value, back, save));
+    foot.append(stat, cancel, save);
+    box.append(title, ta, foot);
+    back.appendChild(box);
+    // Esc 在编辑态 = 取消本对话框,不冒泡到面板级 Esc(否则会关整个面板并丢未保存编辑)。
+    back.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        back.remove();
+      }
+    });
+    this.el.appendChild(back);
+    ta.focus();
+  }
+
+  private async saveEdit(
+    path: string,
+    content: string,
+    back: HTMLElement,
+    saveBtn: HTMLButtonElement,
+  ): Promise<void> {
+    if (!this.cfg) return;
+    // 覆盖前确认(aterm 契约:显示字符/字节数,不可撤销)。
+    const bytes = new TextEncoder().encode(content).length;
+    if (!window.confirm(`保存到 ${path}?\n${[...content].length} 字符 / ${bytes} 字节 UTF-8,覆盖不可撤销。`)) {
+      return;
+    }
+    saveBtn.disabled = true;
+    try {
+      await invoke("sftp_write_text", { cfg: this.cfg, path, content });
+      back.remove(); // 成功才关,刷新目录
+      await this.reload();
+    } catch (e) {
+      // 失败保留编辑框内容不丢(aterm 契约)。
+      showActionFailureToast("保存失败", String(e));
+      saveBtn.disabled = false;
+    }
+  }
+
   /** 写命令通用:invoke → 失败 toast → 成功刷新目录。 */
   private async doWrite(cmd: string, args: Record<string, unknown>): Promise<void> {
     try {
@@ -472,8 +555,8 @@ export class SftpPanel {
       // D 审计建议-5:按钮区双击不冒泡到行 dblclick(否则双击按钮会连带进目录)。
       acts.addEventListener("dblclick", (ev) => ev.stopPropagation());
       if (!e.isDir) {
-        const dl = mkRowBtn("下载", e.lossyName, () => void this.download(e));
-        acts.appendChild(dl);
+        acts.appendChild(mkRowBtn("下载", e.lossyName, () => void this.download(e)));
+        acts.appendChild(mkRowBtn("编辑", e.lossyName, () => void this.editFile(e)));
       }
       acts.appendChild(mkRowBtn("改名", e.lossyName, () => void this.rename(e)));
       acts.appendChild(mkRowBtn("删除", e.lossyName, () => void this.remove(e)));
