@@ -2359,6 +2359,21 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   gap: 8px;
   flex-wrap: wrap;
 }
+/* F46：连接过程分阶段泳道日志 */
+.remote-stage-log {
+  margin: 4px 0 8px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--border, #ccc);
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.9;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.remote-stage-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 .remote-test-mark {
   font-weight: bold;
 }

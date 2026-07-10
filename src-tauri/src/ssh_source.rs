@@ -200,6 +200,10 @@ pub(crate) struct ClientHandler {
     expected_fingerprint: Option<String>,
     /// check_server_key 观察到的实际指纹回传通道（与调用方共享）。
     observed_fingerprint: Arc<Mutex<Option<String>>>,
+    /// F46：分阶段事件 emitter（仅测试连接路径 Some）。check_server_key 命中 emit HostKey。
+    stage_emitter: Option<tauri::ipc::Channel<ConnectStage>>,
+    /// F46：本 handler 对应的拨号地址（`host:port`），emit 时标注泳道。
+    endpoint: Option<String>,
 }
 
 impl client::Handler for ClientHandler {
@@ -223,6 +227,16 @@ impl client::Handler for ClientHandler {
         // 无论后续接受 / 拒绝，都先把实际指纹写回共享 cell（测试连接据此展示 + 固化）。
         if let Ok(mut slot) = self.observed_fingerprint.lock() {
             *slot = Some(actual.clone());
+        }
+        // F46：到 host key 校验 = 该地址 TCP+KEX 已过,emit HostKey 泳道事件。
+        if let Some(ep) = &self.endpoint {
+            emit_stage(
+                &self.stage_emitter,
+                ConnectStage::HostKey {
+                    endpoint: ep.clone(),
+                    fingerprint: actual.clone(),
+                },
+            );
         }
         match &self.expected_fingerprint {
             Some(expected) => {
@@ -282,6 +296,55 @@ const RACE_STAGGER: Duration = Duration::from_millis(250);
 /// 握手看门狗默认上限（长连接 inactivity_timeout=None 时用）——黑洞地址 TCP 连上后
 /// 握手无限阻塞时兜底,到点整批 abort（drop 关 socket）。
 const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(45);
+
+/// Batch14-F46：连接分阶段事件（测试连接时经 Tauri Channel 流给前端做泳道日志）。
+/// 只在 `test_remote_connection` 路径 emit（emitter=Some）;daemon 流/exec/SFTP 传 None,
+/// 零开销零事件。阶段取 russh 能干净观测的粒度——不含 KEX（russh 不暴露 KEX 回调,
+/// HostKey 触发即隐含 TCP+KEX 已过）。
+#[derive(Serialize, Clone, Debug)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ConnectStage {
+    /// 某地址开始拨号（TCP+握手）。
+    Dialing { endpoint: String },
+    /// 某地址握手到 host key 校验（带指纹;隐含 TCP+KEX 已过）。
+    HostKey {
+        endpoint: String,
+        fingerprint: String,
+    },
+    /// 某地址连接失败（reason = 粗分类 + 原始错误）。
+    Failed { endpoint: String, reason: String },
+    /// 竞发胜出地址（其余在飞已 abort）。
+    Won { endpoint: String },
+    /// 鉴权结果。
+    Auth { ok: bool, detail: Option<String> },
+    /// 连接就绪（握手+鉴权全过）。
+    Established,
+}
+
+/// F46：把 russh 连接错误串粗分类成阶段标签（前端泳道用不同图标/文案）。
+/// 保守分类:命中关键词才归类,否则 `other`。
+pub fn classify_stage(err: &str) -> &'static str {
+    let e = err.to_ascii_lowercase();
+    if e.contains("refused") || e.contains("no route") || e.contains("unreachable") {
+        "tcp" // TCP 层拒绝/不可达
+    } else if e.contains("timeout") || e.contains("超时") || e.contains("timed out") {
+        "timeout"
+    } else if e.contains("key") || e.contains("mismatch") || e.contains("指纹") {
+        // host key 校验失败/不匹配（russh 拒绝 host key 报 "Unknown server key"）。
+        "hostkey"
+    } else {
+        "other"
+    }
+}
+
+/// F46：安全 emit（emitter=None 直接 no-op;send 失败仅 warn 不阻断连接）。
+fn emit_stage(emitter: &Option<tauri::ipc::Channel<ConnectStage>>, stage: ConnectStage) {
+    if let Some(ch) = emitter {
+        if let Err(e) = ch.send(stage) {
+            tracing::warn!("connect stage emit failed: {e}");
+        }
+    }
+}
 
 /// F45：per-origin「上次成功地址」——竞发时排首（下次大概率同一条路最快），赢家更新。
 /// 进程内软状态,丢了只是少一次优化,不影响正确性。
@@ -350,6 +413,7 @@ async fn race_connect(
     expected_fp: Option<String>,
     order: Vec<Endpoint>,
     deadline: Duration,
+    stage_emitter: Option<tauri::ipc::Channel<ConnectStage>>,
 ) -> Result<
     (
         client::Handle<ClientHandler>,
@@ -371,18 +435,37 @@ async fn race_connect(
         for (i, ep) in order.into_iter().enumerate() {
             let config = Arc::clone(&config);
             let fp = expected_fp.clone();
+            let emitter = stage_emitter.clone();
             set.spawn(async move {
                 if i > 0 {
                     tokio::time::sleep(RACE_STAGGER * i as u32).await;
                 }
+                let ep_label = format!("{}:{}", ep.host, ep.port);
+                emit_stage(
+                    &emitter,
+                    ConnectStage::Dialing {
+                        endpoint: ep_label.clone(),
+                    },
+                );
                 let cell: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
                 let handler = ClientHandler {
                     expected_fingerprint: fp,
                     observed_fingerprint: Arc::clone(&cell),
+                    stage_emitter: emitter.clone(),
+                    endpoint: Some(ep_label.clone()),
                 };
                 match client::connect(config, (ep.host.as_str(), ep.port), handler).await {
                     Ok(h) => Ok((h, cell, ep)),
-                    Err(e) => Err(format!("{}:{} {e}", ep.host, ep.port)),
+                    Err(e) => {
+                        emit_stage(
+                            &emitter,
+                            ConnectStage::Failed {
+                                endpoint: ep_label.clone(),
+                                reason: format!("[{}] {e}", classify_stage(&e.to_string())),
+                            },
+                        );
+                        Err(format!("{ep_label} {e}"))
+                    }
                 }
             });
         }
@@ -393,6 +476,12 @@ async fn race_connect(
                 Ok(Ok(winner)) => {
                     // 首个成功者胜；drop set → abort 其余在飞（关 socket，不等死地址超时）。
                     set.abort_all();
+                    emit_stage(
+                        &stage_emitter,
+                        ConnectStage::Won {
+                            endpoint: format!("{}:{}", winner.2.host, winner.2.port),
+                        },
+                    );
                     return Ok(winner);
                 }
                 Ok(Err(e)) => errors.push(e),
@@ -419,6 +508,7 @@ async fn race_connect(
 pub(crate) async fn connect_session(
     cfg: &RemoteConfig,
     inactivity_timeout: Option<Duration>,
+    stage_emitter: Option<tauri::ipc::Channel<ConnectStage>>,
 ) -> Result<(client::Handle<ClientHandler>, Arc<Mutex<Option<String>>>), String> {
     // FIX 1（issue #15 review）：长连接数据源**绝不**靠 inactivity_timeout 兜底死链——
     // russh 0.61 的 inactivity timer 在没有 keepalive 时会在到点直接拆掉一条**健康的**
@@ -446,6 +536,7 @@ pub(crate) async fn connect_session(
         cfg.host_key_fingerprint.clone(),
         order,
         deadline,
+        stage_emitter.clone(),
     )
     .await?;
 
@@ -456,30 +547,51 @@ pub(crate) async fn connect_session(
         .map_err(|e| format!("协商 rsa hash 失败: {e}"))?
         .flatten();
 
-    match cfg.key_path.as_ref() {
-        Some(key_path) => {
-            let key_pair = load_secret_key(key_path, None)
-                .map_err(|e| format!("加载私钥 {key_path} 失败: {e}"))?;
-            let authenticated = session
-                .authenticate_publickey(
-                    &cfg.user,
-                    PrivateKeyWithHashAlg::new(Arc::new(key_pair), best_hash),
-                )
-                .await
-                .map_err(|e| format!("publickey 鉴权失败: {e}"))?;
-            if !authenticated.success() {
-                return Err(format!("publickey 鉴权被拒（user={}）", cfg.user));
+    // F46：鉴权阶段——失败时 emit Auth{ok:false}+错误,便于泳道定位「卡在鉴权」。
+    let auth_result: Result<(), String> = async {
+        match cfg.key_path.as_ref() {
+            Some(key_path) => {
+                let key_pair = load_secret_key(key_path, None)
+                    .map_err(|e| format!("加载私钥 {key_path} 失败: {e}"))?;
+                let authenticated = session
+                    .authenticate_publickey(
+                        &cfg.user,
+                        PrivateKeyWithHashAlg::new(Arc::new(key_pair), best_hash),
+                    )
+                    .await
+                    .map_err(|e| format!("publickey 鉴权失败: {e}"))?;
+                if !authenticated.success() {
+                    return Err(format!("publickey 鉴权被拒（user={}）", cfg.user));
+                }
+                Ok(())
             }
-        }
-        None => {
-            authenticate_via_agent(&mut session, &cfg.user, best_hash).await?;
+            None => authenticate_via_agent(&mut session, &cfg.user, best_hash).await,
         }
     }
+    .await;
+    if let Err(e) = auth_result {
+        emit_stage(
+            &stage_emitter,
+            ConnectStage::Auth {
+                ok: false,
+                detail: Some(e.clone()),
+            },
+        );
+        return Err(e);
+    }
+    emit_stage(
+        &stage_emitter,
+        ConnectStage::Auth {
+            ok: true,
+            detail: None,
+        },
+    );
 
     // D 审计建议-1：last-good = 上次**完整成功**（握手+鉴权）的地址。放在鉴权成功后,
     // 避免 TOFU×异机误配时「粘住」一个连得上但认证失败的地址（下次仍先拨它、仍失败,
     // 真机永不被试）。正常固化下 A/B 同机同 key,放前放后等价;此处取更严谨语义。
     record_last_good(&origin, &winner);
+    emit_stage(&stage_emitter, ConnectStage::Established);
 
     Ok((session, observed_fingerprint))
 }
@@ -1098,7 +1210,8 @@ pub async fn connect_and_exec_cmd(
     cfg: &RemoteConfig,
     cmd: &str,
 ) -> Result<russh::ChannelStream<client::Msg>, String> {
-    let (session, _fp) = connect_session(cfg, None).await?;
+    // 长连接/exec 路径不 emit 分阶段事件（F46 仅测试连接路径,避免每次重连刷屏）。
+    let (session, _fp) = connect_session(cfg, None, None).await?;
 
     let channel = session
         .channel_open_session()
@@ -2067,7 +2180,10 @@ pub struct ConnTestResult {
 ///
 /// 只有"无法构造测试"这类硬错才返回 Err；连接/鉴权/daemon 失败都收进结果里，UI 据此分级展示。
 #[tauri::command]
-pub async fn test_remote_connection(cfg: RemoteConfig) -> Result<ConnTestResult, String> {
+pub async fn test_remote_connection(
+    cfg: RemoteConfig,
+    on_stage: tauri::ipc::Channel<ConnectStage>,
+) -> Result<ConnTestResult, String> {
     let mut result = ConnTestResult {
         ssh_ok: false,
         fingerprint: None,
@@ -2077,17 +2193,19 @@ pub async fn test_remote_connection(cfg: RemoteConfig) -> Result<ConnTestResult,
         message: String::new(),
     };
 
-    // 1. 连接 + 鉴权（短 inactivity：测试连接不需要长保活）。
-    let (session, observed) = match connect_session(&cfg, Some(Duration::from_secs(30))).await {
-        Ok(s) => s,
-        Err(e) => {
-            // 握手失败（含 host key 不匹配被拒）。check_server_key 可能已写过指纹，但
-            // connect_session 在 Err 路径不回传 cell，这里只报失败原因即可。
-            result.ssh_ok = false;
-            result.message = format!("SSH 连接/鉴权失败：{e}");
-            return Ok(result);
-        }
-    };
+    // 1. 连接 + 鉴权（短 inactivity：测试连接不需要长保活）。F46：传 Some(on_stage) 让
+    //    竞发/握手/鉴权按地址泳道流式 emit 到前端「连接过程」日志。
+    let (session, observed) =
+        match connect_session(&cfg, Some(Duration::from_secs(30)), Some(on_stage)).await {
+            Ok(s) => s,
+            Err(e) => {
+                // 握手失败（含 host key 不匹配被拒）。check_server_key 可能已写过指纹，但
+                // connect_session 在 Err 路径不回传 cell，这里只报失败原因即可。
+                result.ssh_ok = false;
+                result.message = format!("SSH 连接/鉴权失败：{e}");
+                return Ok(result);
+            }
+        };
     result.ssh_ok = true;
     result.fingerprint = observed.lock().ok().and_then(|g| g.clone());
     // 连接成功 → last-good 已记为胜者;回传给前端展示「你正连上/将固化哪个地址」。
@@ -2607,6 +2725,8 @@ Host prod
         let h = ClientHandler {
             expected_fingerprint: expected.map(String::from),
             observed_fingerprint: Arc::clone(&observed),
+            stage_emitter: None,
+            endpoint: None,
         };
         (h, observed)
     }
@@ -2805,7 +2925,8 @@ Host prod
         let p1 = dead_port().await;
         let p2 = dead_port().await;
         let order = vec![ep("127.0.0.1", p1), ep("127.0.0.1", p2)];
-        let err = race_err(race_connect(test_config(), None, order, Duration::from_secs(5)).await);
+        let err =
+            race_err(race_connect(test_config(), None, order, Duration::from_secs(5), None).await);
         // trap #3：聚合报告，含「所有地址连接失败」且提到两个地址（至少首个立即失败）。
         assert!(err.contains("所有地址连接失败"), "应聚合: {err}");
         assert!(err.contains(&p1.to_string()), "应含首地址: {err}");
@@ -2816,8 +2937,9 @@ Host prod
         // 10.255.255.1 = 保留黑洞地址，TCP connect 挂起 → 看门狗到点整批 abort。
         let order = vec![ep("10.255.255.1", 22)];
         let start = std::time::Instant::now();
-        let err =
-            race_err(race_connect(test_config(), None, order, Duration::from_millis(400)).await);
+        let err = race_err(
+            race_connect(test_config(), None, order, Duration::from_millis(400), None).await,
+        );
         assert!(err.contains("握手超时"), "应超时: {err}");
         assert!(
             start.elapsed() < Duration::from_secs(3),
@@ -2830,13 +2952,15 @@ Host prod
         // 单地址退化路径：错误里报该地址（保留老实现的可诊断性）。
         let p = dead_port().await;
         let order = vec![ep("127.0.0.1", p)];
-        let err = race_err(race_connect(test_config(), None, order, Duration::from_secs(5)).await);
+        let err =
+            race_err(race_connect(test_config(), None, order, Duration::from_secs(5), None).await);
         assert!(err.contains(&p.to_string()), "单地址错误应含该地址: {err}");
     }
 
     #[tokio::test]
     async fn race_empty_order_errors_cleanly() {
-        let err = race_err(race_connect(test_config(), None, vec![], Duration::from_secs(1)).await);
+        let err =
+            race_err(race_connect(test_config(), None, vec![], Duration::from_secs(1), None).await);
         assert!(err.contains("无可用地址"), "空 order: {err}");
     }
 
@@ -2901,7 +3025,8 @@ AAAEDRp5kloww4Jpr8K56RETPX0tLdId9XD8a+yNz5Tx0XOQFVxedWxKBYvdEBkTWvt5st
         let live = spawn_mock_server().await;
         // live 排 i=0 立即拨、黑洞 i=1 延迟 → live 握手先成功即胜。
         let order = vec![live.clone(), ep("10.255.255.1", 22)];
-        let win = race_win(race_connect(test_config(), None, order, Duration::from_secs(5)).await);
+        let win =
+            race_win(race_connect(test_config(), None, order, Duration::from_secs(5), None).await);
         assert_eq!(win, live, "live server 应胜出");
     }
 
@@ -2911,8 +3036,111 @@ AAAEDRp5kloww4Jpr8K56RETPX0tLdId9XD8a+yNz5Tx0XOQFVxedWxKBYvdEBkTWvt5st
         // 佐证 trap #8:首地址挂起不吊死整批,后位可达地址照样赢。
         let live = spawn_mock_server().await;
         let order = vec![ep("10.255.255.1", 22), live.clone()];
-        let win = race_win(race_connect(test_config(), None, order, Duration::from_secs(5)).await);
+        let win =
+            race_win(race_connect(test_config(), None, order, Duration::from_secs(5), None).await);
         assert_eq!(win, live, "首地址黑洞时后位 live 仍应胜出");
+    }
+
+    // === F46：连接分阶段事件 ===
+
+    #[test]
+    fn classify_stage_buckets() {
+        assert_eq!(classify_stage("Connection refused (os error 111)"), "tcp");
+        assert_eq!(classify_stage("No route to host"), "tcp");
+        assert_eq!(classify_stage("operation timed out"), "timeout");
+        assert_eq!(classify_stage("握手超时"), "timeout");
+        assert_eq!(classify_stage("host key mismatch"), "hostkey");
+        assert_eq!(classify_stage("Unknown server key"), "hostkey");
+        assert_eq!(classify_stage("something else entirely"), "other");
+    }
+
+    /// 收集 Channel emit 的阶段 kind（send→on_message(InvokeResponseBody::Json)）。
+    fn collecting_channel() -> (tauri::ipc::Channel<ConnectStage>, Arc<Mutex<Vec<String>>>) {
+        let sink = Arc::new(Mutex::new(Vec::<String>::new()));
+        let s2 = Arc::clone(&sink);
+        let ch = tauri::ipc::Channel::new(move |body: tauri::ipc::InvokeResponseBody| {
+            if let tauri::ipc::InvokeResponseBody::Json(json) = body {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) {
+                    if let Some(k) = v.get("kind").and_then(|k| k.as_str()) {
+                        s2.lock().unwrap().push(k.to_string());
+                    }
+                }
+            }
+            Ok(())
+        });
+        (ch, sink)
+    }
+
+    #[tokio::test]
+    async fn race_emits_dialing_hostkey_won_for_live_server() {
+        let live = spawn_mock_server().await;
+        let (ch, sink) = collecting_channel();
+        let _ = race_win(
+            race_connect(
+                test_config(),
+                None,
+                vec![live],
+                Duration::from_secs(5),
+                Some(ch),
+            )
+            .await,
+        );
+        let kinds = sink.lock().unwrap().clone();
+        assert!(
+            kinds.contains(&"dialing".to_string()),
+            "缺 dialing: {kinds:?}"
+        );
+        assert!(
+            kinds.contains(&"hostKey".to_string()),
+            "缺 hostKey: {kinds:?}"
+        );
+        assert!(kinds.contains(&"won".to_string()), "缺 won: {kinds:?}");
+    }
+
+    #[tokio::test]
+    async fn race_emits_dialing_and_failed_for_dead_address() {
+        let p = dead_port().await;
+        let (ch, sink) = collecting_channel();
+        let _ = race_err(
+            race_connect(
+                test_config(),
+                None,
+                vec![ep("127.0.0.1", p)],
+                Duration::from_secs(3),
+                Some(ch),
+            )
+            .await,
+        );
+        let kinds = sink.lock().unwrap().clone();
+        assert!(
+            kinds.contains(&"dialing".to_string()),
+            "缺 dialing: {kinds:?}"
+        );
+        assert!(
+            kinds.contains(&"failed".to_string()),
+            "缺 failed: {kinds:?}"
+        );
+        assert!(
+            !kinds.contains(&"won".to_string()),
+            "死地址不应 won: {kinds:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn race_emitter_none_still_works() {
+        // emitter=None 路径不 panic、与 F45 行为等价（此处验死地址聚合）。
+        let p = dead_port().await;
+        let err = race_err(
+            race_connect(
+                test_config(),
+                None,
+                vec![ep("127.0.0.1", p)],
+                Duration::from_secs(3),
+                None,
+            )
+            .await,
+        );
+        assert!(err.contains(&p.to_string()));
     }
 
     // === F45：winner_address（喂 remote-launch 的拨号地址）===
