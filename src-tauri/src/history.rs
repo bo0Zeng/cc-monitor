@@ -472,7 +472,7 @@ fn sanitize_launcher(launcher: Option<&str>) -> Result<Option<String>, String> {
 /// 回退 claude，profile 里的 PATH / 代理 env 仍生效。
 ///
 /// 抽成独立函数是为了单测（不 spawn 进程也能验证防注入 + cc 优先逻辑）。
-#[cfg(windows)]
+/// （纯字符串构造，跨平台可编译可测；拉起本身在 launch.rs 按平台门控。）
 fn build_resume_ps_command(session_id: &str, launcher: Option<&str>) -> Result<String, String> {
     let valid = !session_id.is_empty()
         && session_id
@@ -492,60 +492,14 @@ fn build_resume_ps_command(session_id: &str, launcher: Option<&str>) -> Result<S
     ))
 }
 
-#[cfg(windows)]
+/// Batch14-F41：wt.exe/PowerShell 拉起机械抽到 `launch.rs::launch_powershell_window`
+/// （与远端 resume/attach 族共用），本函数只剩「构造本地 resume 命令体 + 委托拉起」。
+/// 非 Windows：launch 层统一报错（仅 Windows 支持，错误文案改为中文）。
 fn resume_impl(session_id: &str, cwd: &str, launcher: Option<&str>) -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
-    use std::process::Command;
-    // CREATE_NEW_CONSOLE：让 Tauri GUI 父进程能创建独立控制台窗口给 powershell。
-    const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
-
-    let cwd_valid = Path::new(cwd).is_dir();
-
     let ps_command = build_resume_ps_command(session_id, launcher)?;
-    // -EncodedCommand（base64 of UTF-16LE）：命令含空格 / 括号 / `;`，直接当字符串穿
-    // wt.exe（用 `;` 分隔多 tab）会被切碎。编码成 base64 token（只含 [A-Za-z0-9+/=]）后
-    // 任何一层 shell 都不会误解析。详 utils::powershell_encoded_command。
-    let encoded = crate::utils::powershell_encoded_command(&ps_command);
-    // 关键：**不带 `-NoProfile`** —— 必须加载用户 PowerShell profile，cc / __ccm_bind /
-    // 代理 env 才会生效（这正是旧版用 `cmd /K claude` 时两个 bug 的根因：cmd 不是
-    // PowerShell、更没加载 profile）。-NoExit：claude 退出后窗口保留，且 cc 已定义可继续敲。
-    // 用系统自带 powershell.exe（PowerShell 5.1），**不是** pwsh.exe（PowerShell 7 需独立装）。
-    let ps_args = ["-NoExit", "-EncodedCommand", encoded.as_str()];
-
-    // Plan A：wt.exe（Windows Terminal）新标签里跑 powershell。
-    let mut wt_args: Vec<String> = Vec::new();
-    if cwd_valid {
-        wt_args.push("-d".into());
-        wt_args.push(cwd.into());
-    }
-    wt_args.push("powershell.exe".into());
-    for a in ps_args {
-        wt_args.push(a.into());
-    }
-
-    if Command::new("wt.exe").args(&wt_args).spawn().is_ok() {
-        tracing::info!("history: resumed via wt.exe powershell sid={session_id}");
-        return Ok(());
-    }
-
-    // Plan B：直接 powershell.exe + CREATE_NEW_CONSOLE 让系统给个新控制台窗口。
-    // 不依赖 wt.exe，conhost 兜底。
-    let mut builder = Command::new("powershell.exe");
-    builder.args(ps_args);
-    builder.creation_flags(CREATE_NEW_CONSOLE);
-    if cwd_valid {
-        builder.current_dir(cwd);
-    }
-    builder
-        .spawn()
-        .map_err(|e| format!("spawn powershell failed: {e}"))?;
-    tracing::info!("history: resumed via powershell fallback sid={session_id}");
+    crate::launch::launch_powershell_window(&ps_command, Some(cwd))?;
+    tracing::info!("history: resumed sid={session_id}");
     Ok(())
-}
-
-#[cfg(not(windows))]
-fn resume_impl(_session_id: &str, _cwd: &str, _launcher: Option<&str>) -> Result<(), String> {
-    Err("resume only supported on Windows (v1)".into())
 }
 
 // === 内部：项目级 / jsonl 级扫描 ===
@@ -1097,7 +1051,6 @@ mod tests {
         assert_eq!(s, "a b c");
     }
 
-    #[cfg(windows)]
     #[test]
     fn resume_cmd_prefers_cc_with_claude_fallback() {
         let sid = "01998f2a-1234-7abc-9def-0123456789ab";
@@ -1108,7 +1061,6 @@ mod tests {
         assert!(cmd.contains(&format!("claude --resume {sid}")));
     }
 
-    #[cfg(windows)]
     #[test]
     fn resume_cmd_rejects_injection() {
         // 含 shell 元字符的 session_id 必须被拒（防命令注入）
@@ -1148,7 +1100,6 @@ mod tests {
         }
     }
 
-    #[cfg(windows)]
     #[test]
     fn resume_cmd_custom_launcher_used_verbatim() {
         let sid = "abc-123";
