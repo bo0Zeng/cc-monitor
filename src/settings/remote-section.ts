@@ -56,6 +56,19 @@ export interface RemoteHostConfig {
   keyPath: string;
   daemonPath: string;
   hostKeyFingerprint: string;
+  /**
+   * Batch14-F45：备用地址（happy-eyeballs 竞发）。每项 `host` / `host:port` /
+   * `[IPv6]:port` / 裸 IPv6。首选地址仍是 `host` 字段。空数组 = 仅用 host。
+   */
+  addresses: string[];
+}
+
+/** F45：多行文本 ↔ 地址数组（trim + 去空行）。UI 用 textarea，config/IPC 用数组。 */
+export function parseAddressLines(text: string): string[] {
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
 }
 
 /** config.json `remote` 段：全局 enabled + 机器列表。 */
@@ -88,6 +101,7 @@ const HOST_DEFAULTS: RemoteHostConfig = {
   keyPath: "",
   daemonPath: "",
   hostKeyFingerprint: "",
+  addresses: [],
 };
 
 const REMOTE_INFO_TEXT =
@@ -231,6 +245,7 @@ class MachineCard {
   private keyPathInput!: HTMLInputElement;
   private daemonPathInput!: HTMLInputElement;
   private fingerprintInput!: HTMLInputElement;
+  private addressesInput!: HTMLTextAreaElement;
   /** 依当前指纹值显隐「重置为 TOFU」按钮（load / 重置后调用）。 */
   private syncResetFpVisibility!: () => void;
   private testButton!: HTMLButtonElement;
@@ -268,6 +283,7 @@ class MachineCard {
       keyPath: this.keyPathInput.value.trim(),
       daemonPath: this.daemonPathInput.value.trim(),
       hostKeyFingerprint: this.fingerprintInput.value.trim(),
+      addresses: parseAddressLines(this.addressesInput.value),
     };
   }
 
@@ -377,6 +393,23 @@ class MachineCard {
     this.syncResetFpVisibility = syncResetVisibility;
     syncResetVisibility();
 
+    // F45：备用地址（多行，每行一个 host / host:port / [IPv6]:port）。竞发时首选 host
+    // 字段、其余并发拨号，首个握手成功者胜——内网 IP 死了公网顶上。
+    const addrRow = document.createElement("div");
+    addrRow.className = "settings-row settings-row-stack";
+    const addrLabel = document.createElement("span");
+    addrLabel.className = "settings-label";
+    addrLabel.textContent = "备用地址 (addresses，可选，每行一个)";
+    addrRow.appendChild(addrLabel);
+    this.addressesInput = document.createElement("textarea");
+    this.addressesInput.className = "settings-input settings-input-wide";
+    this.addressesInput.rows = 2;
+    this.addressesInput.spellcheck = false;
+    this.addressesInput.placeholder = "10.0.0.2\npi.example.com:2222\n[fe80::1]:22（首选地址填上方 host）";
+    this.addressesInput.addEventListener("change", onChange);
+    addrRow.appendChild(this.addressesInput);
+    body.appendChild(addrRow);
+
     // 安装位置提示：明确告诉用户「在哪里装什么」。
     const installInfo = document.createElement("div");
     installInfo.className = "settings-hint remote-install-info";
@@ -477,6 +510,7 @@ class MachineCard {
     this.keyPathInput.value = cfg.keyPath;
     this.daemonPathInput.value = cfg.daemonPath;
     this.fingerprintInput.value = cfg.hostKeyFingerprint;
+    this.addressesInput.value = cfg.addresses.join("\n");
     this.syncResetFpVisibility();
   }
 
@@ -1075,6 +1109,18 @@ export class RemoteSection {
 // === config.json 读写（多机，向后兼容旧单对象）===
 
 /** 把一个任意 JSON 对象规整成 RemoteHostConfig（缺失/类型不对走默认）。 */
+/** F45：容忍 config 里 addresses 为数组 / 换行文本 / 缺失。 */
+function coerceAddresses(v: unknown): string[] {
+  if (Array.isArray(v)) {
+    return v
+      .filter((x): x is string => typeof x === "string")
+      .map((x) => x.trim())
+      .filter(Boolean);
+  }
+  if (typeof v === "string") return parseAddressLines(v);
+  return [];
+}
+
 function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
   const str = (k: string, d: string) => (typeof obj[k] === "string" ? (obj[k] as string) : d);
   const host = str("host", HOST_DEFAULTS.host);
@@ -1090,6 +1136,7 @@ function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
     keyPath: str("keyPath", HOST_DEFAULTS.keyPath),
     daemonPath: str("daemonPath", HOST_DEFAULTS.daemonPath),
     hostKeyFingerprint: str("hostKeyFingerprint", HOST_DEFAULTS.hostKeyFingerprint),
+    addresses: coerceAddresses(obj.addresses),
   };
 }
 
@@ -1138,6 +1185,7 @@ export async function writeRemoteConfig(next: RemoteConfig): Promise<void> {
       keyPath: h.keyPath,
       daemonPath: h.daemonPath,
       hostKeyFingerprint: h.hostKeyFingerprint,
+      addresses: h.addresses,
     })),
   };
   await saveConfig(cfg);
