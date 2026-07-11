@@ -30,6 +30,10 @@ tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Batch15-P0：code-picture 代码全景可视化内核（vendor 进仓,见 vendor/code-picture-core/VENDOR.md）。
+# 只读查询 + tree-sitter 符号索引 + rusqlite(bundled) 侧车索引;引 crate use Engine(不走 MCP)。
+code-picture-core = { path = "vendor/code-picture-core" }
+
 notify = "6"
 notify-debouncer-mini = "0.4"
 walkdir = "2"

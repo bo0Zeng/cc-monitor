@@ -17,6 +17,9 @@ src-tauri/target/
 src-tauri/gen/schemas/
 target/
 
+# Batch15：code-picture 索引任何仓时生成的派生索引侧车（含索引 cc-monitor 自身时）
+.codepicture/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

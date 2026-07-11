@@ -15,6 +15,7 @@ mod history;
 mod launch;
 mod logging;
 mod messages;
+mod panorama;
 mod parser;
 mod paths;
 mod port_forward;
@@ -887,6 +888,8 @@ pub fn run() {
             pubkey::push_public_key,
             tmux::list_remote_tmux,
             tmux::capture_remote_pane,
+            // Batch15-P0：code-picture 代码全景（最小闭环 index+overview,验 Windows 全链编译）
+            panorama::panorama_overview,
             port_forward::start_forward,
             port_forward::stop_forward,
             port_forward::list_forwards,
