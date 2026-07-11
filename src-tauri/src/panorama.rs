@@ -19,7 +19,7 @@
 
 use code_picture_core::{model, Engine, EngineOpts};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// per-repo Engine 池（照 sftp_pool 两级锁）。key = repo 根路径。
@@ -28,34 +28,40 @@ fn pool() -> &'static Mutex<HashMap<PathBuf, Arc<Mutex<Engine>>>> {
     P.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// 取/建某仓的 Engine（`open` 很轻,不索引）。外层 pool 锁只在此**短暂**持有（无 await/无重活）。
+/// 取/建某仓的 Engine（`open` 很轻,不索引）。**pool 全局锁只短暂持有取/回填,绝不跨
+/// `Engine::open`**（照 sftp_pool R3 教训 + 手册 §2:慢活/SQLite 别持全局锁）——只在
+/// `spawn_blocking` 线程里被 `with_engine` 调用（`Engine::open` 的 SQLite 打开也在阻塞线程）。
+/// key 走 `canonicalize` 消化尾斜杠/`.`/相对-绝对差异,**防同仓不同写法建重复 Engine**
+/// （否则两条 rusqlite 连接对同一 index.db 并发写 → SQLITE_BUSY + 缓存不一致,D-建议2）。
 fn engine_for(repo: &str) -> Result<Arc<Mutex<Engine>>, String> {
-    let key = PathBuf::from(repo);
-    let mut p = pool().lock().unwrap();
-    if let Some(e) = p.get(&key) {
+    let key = std::fs::canonicalize(repo).map_err(|e| format!("仓路径无效（{repo}）: {e}"))?;
+    // 快路径:池命中（短暂持锁,无 open）。
+    if let Some(e) = pool().lock().unwrap().get(&key) {
         return Ok(Arc::clone(e));
     }
-    let engine = Engine::open(Path::new(repo), EngineOpts {})
+    // 慢路径:`open` 在池锁**外**（open 期间不持全局锁,别的仓可并发首开）。
+    let engine = Engine::open(&key, EngineOpts {})
         .map_err(|e| format!("打开 code-picture 引擎失败（{repo}）: {e}"))?;
     let arc = Arc::new(Mutex::new(engine));
-    p.insert(key, Arc::clone(&arc));
-    Ok(arc)
+    // 回填 + double-check:open 期间别的线程可能已建同 key → 先到者胜,弃本次多开的（罕见）。
+    Ok(Arc::clone(pool().lock().unwrap().entry(key).or_insert(arc)))
 }
 
-/// 通用：在某仓 Engine 上跑闭包（`spawn_blocking` + 独占锁,不跨 await）。
-/// 闭包收 `&mut Engine`——读（`&self`）/写（`&mut self`）方法都能调。
+/// 通用：在某仓 Engine 上跑闭包（`spawn_blocking` + 独占锁,不跨 await）。闭包收 `&mut Engine`
+/// ——读（`&self`）/写（`&mut self`）方法都能调。**`engine_for`（含 `Engine::open` 的 SQLite/
+/// 建目录）也在 `spawn_blocking` 内跑**,不占 async 执行器线程（手册 §2）。
 async fn with_engine<T, F>(repo: String, f: F) -> Result<T, String>
 where
     T: Send + 'static,
     F: FnOnce(&mut Engine) -> T + Send + 'static,
 {
-    let arc = engine_for(&repo)?;
-    tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || -> Result<T, String> {
+        let arc = engine_for(&repo)?;
         let mut g = arc.lock().unwrap();
-        f(&mut g)
+        Ok(f(&mut g))
     })
     .await
-    .map_err(|e| format!("panorama 任务失败: {e}"))
+    .map_err(|e| format!("panorama 任务失败: {e}"))?
 }
 
 /// 索引状态（cc-monitor 自建 DTO → camelCase;core 直出类型保持 snake_case,见手册 §7.3）。
@@ -73,7 +79,9 @@ pub async fn panorama_index(repo: String) -> Result<model::IndexStats, String> {
     with_engine(repo, |e| e.index().map_err(|e| e.to_string())).await?
 }
 
-/// 重建索引（改代码后刷新;只写 `.codepicture/index.db`,非侵入）。
+/// 重建索引（改代码后刷新;只写 `.codepicture/index.db`,非侵入）。core 里 `reindex()` 当前
+/// 就是 `index()` 全量重建（D-建议3:功能同 `panorama_index`）;两命令名对前端语义更清晰
+/// （index=首建 / reindex=刷新）,保留两个。
 #[tauri::command]
 pub async fn panorama_reindex(repo: String) -> Result<model::IndexStats, String> {
     with_engine(repo, |e| e.reindex().map_err(|e| e.to_string())).await?
