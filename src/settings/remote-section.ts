@@ -1729,7 +1729,11 @@ function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {
     a.daemonPath === b.daemonPath &&
     a.hostKeyFingerprint === b.hostKeyFingerprint &&
     a.jump === b.jump && // F56（D-I3）:仅改跳板也算变更，触发「需重启生效」提示
-    a.daemonless === b.daemonless // F59:仅改 daemonless 开关也算变更（触发「需重启生效」）
+    a.daemonless === b.daemonless && // F59:仅改 daemonless 开关也算变更（触发「需重启生效」）
+    // F45（Phase G 补）:仅改「备用地址」也算变更。此前独漏 addresses（jump/daemonless 都比了）
+    // → 只改多地址、其它不动时「需重启生效」横幅被静默抑制，用户可能不重启、新地址不生效。
+    a.addresses.length === b.addresses.length &&
+    a.addresses.every((x, i) => x === b.addresses[i])
   );
 }
 

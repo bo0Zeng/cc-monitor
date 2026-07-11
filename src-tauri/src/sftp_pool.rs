@@ -14,8 +14,9 @@
 //!   不能并发两个传输(刻意 v1 取舍;F48 若要并发浏览+传输需给池加多连接,属 F47 范围外)。
 //! - **非 UTF-8 文件名**:后端**不拦**对 lossy 名(含 U+FFFD)的写(russh-sftp 已有损解码,
 //!   无法寻址真字节)——靠 F48 UI 灰置这些项;`lossy_name` 字段供前端判定。
-//! - **空闲回收**:池连接空闲不主动回收(一台机一条 SFTP,YAGNI);死连按需重建,
-//!   配置改动经 `drop_pooled` 手动丢弃。
+//! - **空闲回收**:池连接空闲不主动回收(一台机一条 SFTP,YAGNI);死连按需重建
+//!   (`drop_pooled` 现仅由 `evict_if_dead` 死连驱逐调用)。**配置改动未主动丢弃旧池连接**——
+//!   旧连接滞留到自然死亡才用新配置(F47 取舍/backlog,未接线,别声称已接)。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -123,7 +124,7 @@ where
     }
 }
 
-/// 丢弃某 origin 的池连接（设置卡「断开」/配置改动时调；下次操作重建）。
+/// 丢弃某 origin 的池连接（现仅由 `evict_if_dead` 死连驱逐调用；下次操作重建）。
 /// **`origin` 须传 `cfg.origin_label()`**（池按此键建槽,传 host 会静默 no-op）。
 /// D 审计 R3:先克隆出 Arc 释放 `pool()` 全局锁,再锁 slot——否则若该 slot 正被长传输
 /// 持有,会握着全局锁死等,卡住所有 origin 的新操作(每个命令都要 pool().lock())。

@@ -1,4 +1,4 @@
-//! SS-D：统一 SFTP 会话层（issue #29 自动部署 F08；后续 F11 用户数据写 / F10 profile 写复用）。
+//! SS-D：统一 SFTP 会话层（issue #29 自动部署 F08；F11 用户数据写 / F10 profile 写已复用）。
 //!
 //! 复用 `ssh_source::connect_session` 的全套 host-key 指纹校验 + publickey/agent 鉴权，
 //! 在一条已鉴权的 russh 连接上 `request_subsystem("sftp")` 起 SFTP 子系统（russh-sftp，
@@ -7,9 +7,9 @@
 //! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）
 //! cc-monitor 对远端的写入**仅限**两类，各自独立 realpath 白名单、绝不混用：
 //! - **F08**：自部署 daemon 二进制到 `~/.cc-monitor/bin/`（非用户数据、幂等、版本门控）。
-//! - **F11（后续）**：用户**主动**删除 / 改 metadata 到 `~/.claude/`。
+//! - **F11**：用户**主动**删除 / 改 metadata 到 `~/.claude/`。
 //!
-//! 本模块当前只实现 F08 的部署写。
+//! 本模块现实现 F08 部署写 + F11 删除 + F10 profile 写（各自独立白名单）。
 //!
 //! ## 原子写
 //! russh-sftp 无 `posix-rename@openssh.com` 扩展，标准 SFTP `rename` 不覆盖已存在目标。

@@ -2,11 +2,11 @@
 
 > **Claude Code CLI 的只读输出渲染窗口** — Tauri 2 + Vanilla TypeScript，Windows 桌面应用
 >
-> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 | 当前版本: v2.21.0
+> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 | 当前版本: v2.22.2
 
 把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复。**完全只读、零侵入**（不修改 Claude Code 任何文件，唯一例外是用户在历史浏览器里**显式**点删除）。
 
-**项目状态**：稳定可用。后端 189 + 远端 daemon 65 + 前端 node 纯函数 & vitest+jsdom DOM 单测（84）+ e2e 套件，tsc 严格类型检查，CI 全绿（`npm test`）。当前发布 **v2.22.2**（**⚙ 误标修复**——bg-spare 谎报父会话 sid 致交互会话被降格挂错树,kind 冲突改确定性消解;**远端流模式降级修复**——历代安装包漏嵌 daemon 身份清单致 bg 会话不可见/拥塞复发,补清单+hello 自愈+降级可见化;v2.22.0：**消息流虚拟化** #35——长会话不再卡顿（视口外跳过布局/绘制+精确估高）、历史查看器 37MB 会话首屏 65.5s→1.1s、冷启动 24s→4s、live Tab 上翻自动加载更早消息；**灰 Tab 右键 Resume**；`cc` 首次绑定竞态修复——新 shell 不再固定卡 800ms）；v2.21.0：（**resume 命令可自定义**（cc/cct）、拖宽/横滚/远端 ↗ 与 ccm 安装修复；v2.20.0：**左侧竖直 tab 栏**——拖拽调宽/窄窗折叠，tab 不再压住右上角图标；**历史标注 CC 后台分身会话** ⚙ 徽标防 resume 选错克隆；+v2.19.1 修复队列消息被误判 ESC 回退折叠 #36）；v2.19.0：（**远端拥塞根治**——历史旁路快照+实时独立尾随，46MB≈4.6s 零拥塞（E2E 实证）；**最新消息优先加载**；**远端红绿灯**与本地对齐；F5 后远端骨架/bg/焦点正确重建），能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 多台远端机器的会话，#15/#17/#18/#20/#30/#31）——含 **daemon 自动部署 + 一键安装/卸载**（内嵌 musl 二进制经 SFTP 自动推送 #29；设置面板每台机器卡片可手动装/卸 daemon 与 ccm 助手、附安装位置提示）、**远端全文搜索**（#28）、**远端历史删除 / resume 命令助手**、**历史按机器分组折叠**（#30/#31）、**版本协商 + 拥塞提示**（#32/#33）、**会话红绿灯**（#23）、**本地会话 resume 后 Tab 自动复活**（崩溃/退出→灰显，`/resume` 后免 F5 恢复）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。详 [CHANGELOG](CHANGELOG.md) / [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
+**项目状态**：稳定可用。后端 259 + 远端 daemon 66 + 前端 node 纯函数（7 组）& vitest+jsdom DOM 单测（143）+ e2e 套件，tsc 严格类型检查，CI 全绿（`npm test`）。当前发布 **v2.22.2**（**⚙ 误标修复**——bg-spare 谎报父会话 sid 致交互会话被降格挂错树,kind 冲突改确定性消解;**远端流模式降级修复**——历代安装包漏嵌 daemon 身份清单致 bg 会话不可见/拥塞复发,补清单+hello 自愈+降级可见化;v2.22.0：**消息流虚拟化** #35——长会话不再卡顿（视口外跳过布局/绘制+精确估高）、历史查看器 37MB 会话首屏 65.5s→1.1s、冷启动 24s→4s、live Tab 上翻自动加载更早消息；**灰 Tab 右键 Resume**；`cc` 首次绑定竞态修复——新 shell 不再固定卡 800ms）；v2.21.0：（**resume 命令可自定义**（cc/cct）、拖宽/横滚/远端 ↗ 与 ccm 安装修复；v2.20.0：**左侧竖直 tab 栏**——拖拽调宽/窄窗折叠，tab 不再压住右上角图标；**历史标注 CC 后台分身会话** ⚙ 徽标防 resume 选错克隆；+v2.19.1 修复队列消息被误判 ESC 回退折叠 #36）；v2.19.0：（**远端拥塞根治**——历史旁路快照+实时独立尾随，46MB≈4.6s 零拥塞（E2E 实证）；**最新消息优先加载**；**远端红绿灯**与本地对齐；F5 后远端骨架/bg/焦点正确重建），能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 多台远端机器的会话，#15/#17/#18/#20/#30/#31）——含 **daemon 自动部署 + 一键安装/卸载**（内嵌 musl 二进制经 SFTP 自动推送 #29；设置面板每台机器卡片可手动装/卸 daemon 与 ccm 助手、附安装位置提示）、**远端全文搜索**（#28）、**远端历史删除 / resume 命令助手**、**历史按机器分组折叠**（#30/#31）、**版本协商 + 拥塞提示**（#32/#33）、**会话红绿灯**（#23）、**本地会话 resume 后 Tab 自动复活**（崩溃/退出→灰显，`/resume` 后免 F5 恢复）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。详 [CHANGELOG](CHANGELOG.md) / [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
 
 ---
 
@@ -25,11 +25,23 @@
 - 远端 daemon 经 SSH 实时流式传回会话；**断线自动重连**（指数退避 2→30s，issue #17）、重连后按 seq 去重补放
 - **daemon 自动部署**（#29）：cc-monitor 内嵌交叉编译的 aarch64/x86_64 musl daemon 二进制，连接时按 arch + build_id 版本门控经 SFTP 自动推送——零手动部署
 - **远端全文搜索**（#28）：顶栏「全文」搜索覆盖远端会话内容（daemon 服务端 `--search`），命中带 `[host]`
-- **远端历史删除**（SFTP 移除 + 二次确认）/ **resume**（复制 `claude --resume` 命令到远端终端粘贴）
+- **远端历史删除**（SFTP 移除 + 二次确认）/ **一键 resume**：tab 右键 / 历史 `↺` 直接拉起远端终端跑 `claude --resume`（wt.exe 优先，失败才回退复制命令到剪贴板）
 - **设置面板每台机器卡片**：一键 **安装 / 卸载 daemon**、**装 / 卸 ccm 助手**（写进远端 `~/.bashrc`），并有**安装位置提示**告诉你装到哪（daemon→`~/.cc-monitor/bin/`、ccm→`~/.bashrc` 标记块）；卡片可折叠成机器名
 - **版本协商**（#33）+ **慢消费者 overflow 信号**（#32）：daemon/client build_id 不符或管道拥塞 → 远端健康 toast 提示
 - 远端 Tab 也能 ↗ 拉前对应终端（issue #18）
 - 部署见 [doc/REMOTE-PHASE0-DEPLOY.md](doc/REMOTE-PHASE0-DEPLOY.md)（自动部署 + 手动回退）
+
+**Batch 14 远端增强**（F41–F60）：
+
+- **一键 resume / resume-tmux / 开新 Claude**：tab 右键或历史 `↺` 直接在远端拉起终端，无需手动粘贴命令；tmux 场景走 send-keys，也能在选中机器上一键开一个新 Claude 会话
+- **多地址故障切换**（happy-eyeballs）：一台机器配多个地址时并发竞速首个连通者
+- **SFTP 文件面板**：每台机器卡片「文件」入口开浏览 / 上传下载（进度 + 取消）/ 新建·改名·删除 / 目录书签 / 在此打开终端 / 小文件在面板内编辑；工具卡里的远端路径可一键跳到 SFTP 定位
+- **tab attach tmux / 右键预览远端 tmux 画面**：反查 Claude 跑在哪个 tmux 会话一键 attach，或抓当前屏只读快照预览
+- **公钥一键推送**：把本地公钥追加进远端 `~/.ssh/authorized_keys` 免密
+- **跳板 ProxyJump / ssh-config 批量导入**：经跳板机连内网目标；从 `~/.ssh/config` 批量导入并智能聚合同机多地址
+- **本地端口转发管理台**（`-L`）：复用已有 SSH 连接做端口转发，一处启停
+- **daemonless 降级读取**：不装 daemon 也能纯 `tail` 轮询读远端会话（能力子集，如实提示）
+- **完成一轮通知**：远端会话答完一轮弹系统通知；**指纹重置**：远端 host-key 变更时可重置
 
 ### 富渲染
 - **Markdown**：GFM + 表格 + 任务列表（marked.js）
@@ -172,10 +184,15 @@ cc-monitor/
 │   ├── error-toast.ts      v2.0 ERROR 级 tracing 弹 toast + showActionFailureToast
 │   ├── local-storage.ts    ⭐ v2.6 LS_KEYS 集中 + safeGet/safeSet
 │   ├── format.ts           ⭐ v2.6 formatTimestampShort/Smart + formatBytes
-│   ├── cards/              卡片渲染：index, slash, bash, compact, subagent
-│   ├── settings/           设置面板 5 大组
+│   ├── remote-health.ts    远端健康 toast（overflow/version 按 origin 节流）
+│   ├── remote-launch.ts    B14-F41 远端命令构造纯函数（resume/attach/tmux/launcher）
+│   ├── remote-launch-run.ts B14-F41 远端拉起执行器（invoke → 失败回退复制命令）
+│   ├── turn-notify.ts      B14-F42 完成一轮系统通知（四门 + 权限懒检查）
+│   ├── cards/              卡片渲染：index, slash, bash, diff, api-error, interactive, compact, subagent
+│   ├── settings/           设置面板各组（含 B14 remote-section.ts 远端机器卡片）
+│   ├── sftp/               B14-F47/F48/F49 SFTP 文件面板 overlay + 纯路径逻辑
 │   ├── keybindings/        issue #5 快捷键编辑器
-│   └── views/              历史浏览器 + SessionViewer
+│   └── views/              历史浏览器 + SessionViewer + B14 pane-preview（F60 tmux 画面预览）/ port-forward（F58 端口转发台）
 │
 ├── src-tauri/              后端 (Rust + Tauri 2)
 │   └── src/
@@ -188,6 +205,15 @@ cc-monitor/
 │       ├── bind.rs         PowerShell ps-await/ps-registry 握手
 │       ├── tasks.rs        issue #11 tasks watcher
 │       ├── history.rs      历史浏览器 IPC（流式）
+│       ├── launch.rs       B14-F41 终端拉起单一入口（wt.exe→PowerShell）+ 远端 ssh 拉起
+│       ├── search.rs       issue #6 历史全文搜索（内存索引 + 远端合并）
+│       ├── ssh_source.rs   issue #15 russh 远端数据源（连接/鉴权/流帧 + 跳板 + daemonless 降级）
+│       ├── remote_history.rs 远端历史浏览 + 远端全文搜索（exec daemon 子命令，多机 fan-out）
+│       ├── sftp.rs         SS-D 统一 SFTP 写层（#29 daemon 自动部署 + F11 删除 + F10 ccm）
+│       ├── sftp_pool.rs    B14-F47 SFTP 文件面板 utility 连接池 + 浏览/传输/写命令
+│       ├── pubkey.rs       B14-F50 公钥一键推送 authorized_keys
+│       ├── port_forward.rs B14-F58 本地端口转发(-L)管理台
+│       ├── tmux.rs         B14-F51/F60 tmux 反查 attach + 画面预览快照
 │       ├── profile_installer.rs PS profile 安装（ACL 保留）
 │       ├── auto_launch.rs  cc 启动时自动开 monitor
 │       ├── logging.rs      tracing + ErrorEmitter
@@ -229,7 +255,7 @@ cc-monitor/
 
 - **版本**：v2.22.2（Released）
 - **平台**：Windows 10 (1809+) / 11（远端 daemon 跑 Linux / aarch64）
-- **测试**：后端 cargo test 189 + 远端 daemon 65 + 前端 node 纯函数 7 组 + vitest 84（jsdom）+ e2e 套件 14 断言（手动，e2e/README），全绿（CI 门禁 `npm test`）
+- **测试**：后端 cargo test 259 + 远端 daemon 66 + 前端 node 纯函数 7 组 + vitest 143（jsdom）+ e2e 套件 14 断言（手动，e2e/README），全绿（CI 门禁 `npm test`）
 - **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~12K LOC TS + ~11K LOC Rust，含 ~1.3K 远端 daemon）
 - **设计原则**：只读零侵入（INVARIANT § 1）/ 可选性 / Windows-first / 长期记忆机制（CHANGELOG + doc/ 专题文档 + 各模块 README）
 

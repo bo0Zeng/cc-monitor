@@ -6,8 +6,8 @@
 //! `connect_and_exec_cmd` 一次性 exec(账本:exec 通道只消费不改形),key 经 `shell_quote`
 //! 单引号嵌入(与 remote_history 查询同一转义模式)。
 //!
-//! 认证前提:当前 `connect_session` 只做 publickey/agent 鉴权(密码鉴权是波6 F61)。故 v1 =
-//! 已有 key/agent 访问权时追加/轮换新公钥;纯密码冷 onboarding 待 F61(本命令不变)。
+//! 认证前提:当前 `connect_session` 只做 publickey/agent 鉴权(密码鉴权未实现,F61 已取消)。故 v1 =
+//! 已有 key/agent 访问权时追加/轮换新公钥;纯密码冷 onboarding 不支持(F61 已取消)。
 
 use crate::ssh_source::{self, shell_quote, RemoteConfig};
 use serde::Serialize;

@@ -212,20 +212,27 @@ fn ssh_client_available() -> bool {
 /// `remote_cmd` 前端已过 sid 白名单 / launcher denylist / POSIX 引号，本侧再验一层
 /// （控制字符 / 双引号 / 长度）——双层防线。
 #[tauri::command]
-pub fn launch_remote_terminal(origin: String, remote_cmd: String) -> Result<(), String> {
-    let cfg = crate::load_remote_config_by_label(&origin)
-        .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
-    #[cfg(windows)]
-    if !ssh_client_available() {
-        return Err(
-            "本机未检测到 OpenSSH 客户端（ssh.exe）——请安装 Windows 可选功能「OpenSSH 客户端」"
-                .into(),
-        );
-    }
-    let ps_command = build_remote_ssh_ps_command(&cfg, &remote_cmd)?;
-    launch_powershell_window(&ps_command, None)?;
-    tracing::info!("launch: remote terminal via ssh origin={origin}");
-    Ok(())
+pub async fn launch_remote_terminal(origin: String, remote_cmd: String) -> Result<(), String> {
+    // §10（Phase G 对齐）:体含 `where.exe .output()`(阻塞)+ 进程 spawn 等阻塞 OS 调用,
+    // 挪到阻塞线程池,不堵 IPC 派发线程(与本地 resume 命令 issue #12 同处理,批内唯一
+    // 遗留的 sync tauri 命令——F41 从 history.rs 抽 launch.rs 时漏跟)。
+    tokio::task::spawn_blocking(move || {
+        let cfg = crate::load_remote_config_by_label(&origin)
+            .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
+        #[cfg(windows)]
+        if !ssh_client_available() {
+            return Err(
+                "本机未检测到 OpenSSH 客户端（ssh.exe）——请安装 Windows 可选功能「OpenSSH 客户端」"
+                    .into(),
+            );
+        }
+        let ps_command = build_remote_ssh_ps_command(&cfg, &remote_cmd)?;
+        launch_powershell_window(&ps_command, None)?;
+        tracing::info!("launch: remote terminal via ssh origin={origin}");
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("拉起终端任务失败: {e}"))?
 }
 
 #[cfg(test)]
