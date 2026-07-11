@@ -1,4 +1,4 @@
-//! F51 tmux 反查(控制类命令走通道 B = russh exec,不干扰前台 PowerShell 终端)。
+//! F51 tmux 反查 / F60 画面预览(控制类命令走通道 B = russh exec,不干扰前台 PowerShell 终端)。
 //!
 //! tab 右键菜单打开时按需查询远端 tmux 会话列表,前端按 `pane_current_path==cwd +
 //! pane_current_command==claude` 反查该 tab 的 Claude 正跑在哪个 tmux 会话,命中则一键
@@ -6,7 +6,8 @@
 //!
 //! **最隐蔽的重写坑(调研 03 档 §3.1)**:`tmux ls -F` 的格式串**不解释**字面 `\t`——给什么
 //! 字节原样输出。所以分隔符必须是**真 TAB 字节(0x09)**。Rust 里 `"\t"` 是真 TAB(勿写
-//! `\\t`),`parse_tmux_ls` 按真 TAB `split`。F52/F58 的 kill/rename/capture 续挂本模块。
+//! `\\t`),`parse_tmux_ls` 按真 TAB `split`。F60 `capture_remote_pane` 已续挂本模块;kill/rename
+//! 明确不做(见 MASTERPLAN 不做清单),F52 短路门未扩本模块。
 
 use crate::ssh_source;
 use serde::Serialize;
@@ -63,11 +64,13 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
     );
     let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
     let mut reader = BufReader::new(stream);
-    let mut out = String::new();
+    // lossy 解码(对齐全批 exec 输出读取:非 UTF-8 字节不该整体失败)。
+    let mut buf: Vec<u8> = Vec::new();
     reader
-        .read_to_string(&mut out)
+        .read_to_end(&mut buf)
         .await
         .map_err(|e| format!("读 tmux 列表失败: {e}"))?;
+    let out = String::from_utf8_lossy(&buf);
     if out.trim() == "NO_TMUX" {
         return Ok(None);
     }
@@ -99,12 +102,14 @@ pub async fn capture_remote_pane(origin: String, target: String) -> Result<Strin
     );
     let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
     let mut reader = BufReader::new(stream);
-    let mut out = String::new();
+    // lossy 解码:capture-pane 抓任意终端屏,非 UTF-8 字节(CP437 画框 / ANSI art / 二进制)
+    // 常见——严格 UTF-8 会整体失败并被误报「会话刚结束」;有损展示远胜报错(Phase G 对齐)。
+    let mut buf: Vec<u8> = Vec::new();
     reader
-        .read_to_string(&mut out)
+        .read_to_end(&mut buf)
         .await
         .map_err(|e| format!("读 pane 快照失败: {e}"))?;
-    classify_capture_output(&out)
+    classify_capture_output(&String::from_utf8_lossy(&buf))
 }
 
 #[cfg(test)]

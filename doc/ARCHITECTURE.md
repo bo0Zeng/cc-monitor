@@ -115,6 +115,10 @@ src-tauri/src/
 │              (Batch8) ssh_source 内快照拉取：SnapshotQueue+dispatcher+fetch——
 │              tail-only 下每会话独立连接 --read-session-tail 旁路拉历史（尾部优先+行号 seq 缝合）
 │              sftp.rs       SS-D SFTP 写层（daemon 自动部署 + 手动安装/卸载 + 远端删除 + ccm 安装/卸载）
+│              sftp_pool.rs  B14-F47 SFTP 文件面板 utility 连接池 + 浏览/传输/写命令 + 小文件编辑
+│              pubkey.rs     B14-F50 公钥一键推送 authorized_keys（防注入 + 幂等去重）
+│              port_forward.rs  B14-F58 本地端口转发(-L)管理台（复用 SSH 连接隧道 direct-tcpip）
+│              tmux.rs       B14-F51/F60 tmux 反查 attach + capture-pane 画面预览快照
 └── 持久层      config.rs     monitor config.json R/W（Windows MoveFileExW 原子）
 ```
 
@@ -134,6 +138,8 @@ src/
 │              format.ts  formatTimestampShort/Smart + formatBytes 合并
 ├── 视图        views/history.ts  历史浏览器（v2.6 fixed overlay 不替换 streamRoot）
 │              views/session-viewer.ts  只读会话查看器
+│              views/pane-preview.ts  B14-F60 远端 tmux 画面只读预览 overlay（capture-pane 快照）
+│              views/port-forward.ts  B14-F58 本地端口转发(-L)管理台 overlay
 │              tasks-panel.ts  v2.3 Tab stream 顶部 sticky task 折叠卡
 ├── 设置        settings/panel.ts   总控 + onBehaviorChange 回调
 │              settings/cc_integration.ts  PowerShell 集成区
