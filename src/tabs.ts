@@ -762,6 +762,17 @@ export class TabManager {
     return this.tabs.has(sessionId);
   }
 
+  /**
+   * Batch15-P2：活跃 tab 的仓信息（cwd + origin），供全景视图判断索引哪个本地仓。
+   * 无活跃 tab / 活跃 tab 无 cwd → 返 null。origin!==null = 远端会话（代码在远端机，
+   * 本地 code-picture 索引不到，全景侧据此显式提示不索引）。**additive getter，只读，不改既有逻辑。**
+   */
+  activeRepoInfo(): { cwd: string; origin: string | null } | null {
+    const tab = this.activeId !== null ? this.tabs.get(this.activeId) : undefined;
+    if (!tab || !tab.cwd) return null;
+    return { cwd: tab.cwd, origin: tab.origin };
+  }
+
   /** Batch5-F19：switchTo 是否写回 last-active（viewer/tear-off 窗口置 false）。 */
   persistLastActive = true;
 
