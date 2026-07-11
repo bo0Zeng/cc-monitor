@@ -886,6 +886,7 @@ pub fn run() {
             sftp_pool::sftp_write_text,
             pubkey::push_public_key,
             tmux::list_remote_tmux,
+            tmux::capture_remote_pane,
             port_forward::start_forward,
             port_forward::stop_forward,
             port_forward::list_forwards,

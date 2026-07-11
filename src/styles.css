@@ -3617,6 +3617,68 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 
 /* F58:端口转发(-L)管理台 overlay。z-index 须 > 设置面板(100)——本面板从设置里点开,
    设置抽屉(fixed right,360px,z-index 100)不关,低 z-index 会被盖住(D-R1;F53/F57 同修)。 */
+/* F60：远端 tmux 画面预览 overlay（只读快照）。z-index 200 对齐设置内 overlay 约定。 */
+.pane-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.pane-preview-box {
+  width: min(94%, 900px);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg, #1e1e1e);
+  border: 1px solid var(--border-strong, #444);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.pane-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-strong, #444);
+}
+.pane-preview-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: var(--font-size-small, 13px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pane-preview-btn {
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid var(--border-strong, #555);
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  font-size: var(--font-size-small, 13px);
+}
+.pane-preview-btn:hover {
+  background: var(--overlay-hover, rgba(255, 255, 255, 0.06));
+}
+.pane-preview-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.pane-preview-pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  white-space: pre;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-mono, 12px);
+  line-height: var(--line-height-mono, 1.35);
+  color: var(--text, #ddd);
+}
+
 .pf-overlay {
   position: fixed;
   inset: 0;

@@ -74,6 +74,39 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
     Ok(Some(parse_tmux_ls(&out)))
 }
 
+/// F60(纯函数,单测):判定 `capture_remote_pane` 的 stdout——哨兵 `NO_TMUX`(无 tmux)/
+/// `NO_PANE`(会话不存在 / 抓屏失败)→ Err;否则原样返回抓到的屏幕文本。
+/// (理论边角:pane 内容 `trim_end` 后恰等于某哨兵串 → 误判,概率可忽略。)
+fn classify_capture_output(raw: &str) -> Result<String, String> {
+    match raw.trim_end() {
+        "NO_TMUX" => Err("远端未安装 tmux".to_string()),
+        "NO_PANE" => Err("tmux 会话不存在或无法抓屏(可能刚结束)".to_string()),
+        _ => Ok(raw.to_string()),
+    }
+}
+
+/// F60:抓一个远端 tmux 会话当前窗口/pane 的屏幕文本(**只读快照,非 attach**)。
+/// `tmux capture-pane -p -t <target>`(`-p` 打 stdout、`-t` 选会话)。`command -v tmux` 门控
+/// (无 → `NO_TMUX`);会话不存在 / 抓屏失败 → `NO_PANE`(`|| printf`)。target 经 `shell_quote`
+/// (来自 `list_remote_tmux` 的真实会话名,仍防御转义)。通道 B 一次性 exec,不干扰前台终端。
+#[tauri::command]
+pub async fn capture_remote_pane(origin: String, target: String) -> Result<String, String> {
+    let cfg = crate::load_remote_config_by_label(&origin)
+        .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
+    let cmd = format!(
+        "if command -v tmux >/dev/null 2>&1; then tmux capture-pane -p -t {} 2>/dev/null || printf 'NO_PANE\\n'; else printf 'NO_TMUX\\n'; fi",
+        ssh_source::shell_quote(&target)
+    );
+    let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
+    let mut reader = BufReader::new(stream);
+    let mut out = String::new();
+    reader
+        .read_to_string(&mut out)
+        .await
+        .map_err(|e| format!("读 pane 快照失败: {e}"))?;
+    classify_capture_output(&out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,6 +146,23 @@ mod tests {
         let s = parse_tmux_ls("n\t/p\tclaude\t1\tNaN");
         assert_eq!(s.len(), 1);
         assert_eq!(s[0].windows, 0);
+    }
+
+    #[test]
+    fn classify_capture_output_sentinels_and_text() {
+        // 正常屏文本原样返回(含尾换行不误判)。
+        assert_eq!(
+            classify_capture_output("$ ls\nfoo bar\n").unwrap(),
+            "$ ls\nfoo bar\n"
+        );
+        // 哨兵 → Err。
+        assert!(classify_capture_output("NO_TMUX\n").is_err());
+        assert!(classify_capture_output("NO_PANE\n").is_err());
+        assert!(classify_capture_output("NO_TMUX").is_err()); // 无尾换行也判
+                                                              // 屏内容里恰有一行 NO_PANE(但非唯一 trim 内容)→ 不误判,正常返回。
+        assert!(classify_capture_output("foo\nNO_PANE\nbar\n").is_ok());
+        // 空屏 → Ok(空/空白),非哨兵。
+        assert!(classify_capture_output("").is_ok());
     }
 
     #[test]

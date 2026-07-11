@@ -22,6 +22,7 @@ import { isAgentTool } from "./cards/subagent";
 import type { AgentsPanel, AgentEntry } from "./agents-panel";
 import { LS_KEYS, safeSet } from "./local-storage";
 import { runRemoteResume, runRemoteResumeTmux, runRemoteAttach } from "./remote-launch-run";
+import { openPanePreview } from "./views/pane-preview";
 import { turnEndNotifier } from "./turn-notify";
 import { getBehavior } from "./behavior";
 
@@ -1468,7 +1469,10 @@ export class TabManager {
       this.tmuxCache.set(origin, { ts: Date.now(), sessions });
     } catch {
       // 查询失败(纯 ssh exec 抖动)→ 移除占位,不缓存。
-      if (gen === tabMenuGeneration) removeTabContextMenuItem("attach");
+      if (gen === tabMenuGeneration) {
+        removeTabContextMenuItem("attach");
+        removeTabContextMenuItem("preview"); // F60：预览占位一并移除
+      }
       return;
     }
     // 菜单已换/已关(新代次)→ 别动别的菜单(R-1 跨 tab 串味)。
@@ -1480,8 +1484,15 @@ export class TabManager {
         label: `Attach（tmux: ${match.name}）`,
         onClick: () => void runRemoteAttach(origin, match.name),
       });
+      // F60：预览项与 attach 同门(同一 tmux 会话),一并就绪。
+      updateTabContextMenuItem("preview", {
+        id: "preview",
+        label: "预览画面",
+        onClick: () => void openPanePreview(origin, match.name),
+      });
     } else {
       removeTabContextMenuItem("attach");
+      removeTabContextMenuItem("preview");
     }
   }
 
@@ -1746,11 +1757,23 @@ export class TabManager {
               label: `Attach（tmux: ${m.name}）`,
               onClick: () => void runRemoteAttach(origin, m.name),
             });
+            // F60：同一 tmux 会话可只读预览画面（capture-pane 快照，不 attach）。
+            items.push({
+              id: "preview",
+              label: "预览画面",
+              onClick: () => void openPanePreview(origin, m.name),
+            });
           }
         } else {
           items.push({
             id: "attach",
             label: "Attach（检测 tmux…）",
+            enabled: false,
+            onClick: () => {},
+          });
+          items.push({
+            id: "preview",
+            label: "预览画面（检测 tmux…）",
             enabled: false,
             onClick: () => {},
           });
