@@ -243,6 +243,7 @@ mod tests {
             host_key_fingerprint: None,
             addresses: Vec::new(),
             jump: None,
+            daemonless: false,
         }
     }
 

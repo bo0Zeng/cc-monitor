@@ -88,6 +88,12 @@ pub struct RemoteConfig {
     /// None/空 = 直连。v1 单跳（跳板自身的 jump 忽略）+ 防自引用环。
     #[serde(default, deserialize_with = "empty_string_as_none")]
     pub jump: Option<String>,
+    /// Batch14-F59：daemonless 降级读取开关（per-host）。true = 该主机**不部署/不连 daemon**，
+    /// 走纯 SSH exec `find`+`tail -c +offset` 轮询读会话 jsonl（[`daemonless_stream_loop`]，
+    /// 能力子集：无 bg kind/无状态灯/无拥塞信号/仅最近活跃会话）。false（默认）= 现有 daemon
+    /// 流路径（[`stream_loop`]）一行不动。`run()` 顶层据此二选一。
+    #[serde(default)]
+    pub daemonless: bool,
 }
 
 /// Batch14-F45：单个连接目标（host + port）。竞发把 [`RemoteConfig::endpoints`] 的每项
@@ -1572,16 +1578,33 @@ pub async fn run(
         // F28 frontend-ready 重发的数据源）。归档清算语义不变（keys = 存活 sid）。
         let mut announced: std::collections::HashMap<String, AnnouncedMeta> =
             std::collections::HashMap::new();
-        let result = stream_loop(
-            &cfg,
-            &replay,
-            &app,
-            &session_changes,
-            &connected,
-            &mut announced,
-            &mut hello_confirmed,
-        )
-        .await;
+        // Batch14-F59：daemonless 降级读取(per-host 开关)。顶层二选一——default
+        // false 走现有 daemon 流路径(stream_loop,一行不动);true 走纯 exec tail 轮询
+        // (daemonless_stream_loop)。两路共用 run() 的 announced 断连归档(FIX 2)+
+        // announced_registry 清本 host(1597)+ connected 退避语义;hello_confirmed
+        // 自愈账本仅 daemon 路径写(daemonless 恒 None,那段 check 天然跳过)。
+        let result = if cfg.daemonless {
+            daemonless_stream_loop(
+                &cfg,
+                &replay,
+                &app,
+                &session_changes,
+                &connected,
+                &mut announced,
+            )
+            .await
+        } else {
+            stream_loop(
+                &cfg,
+                &replay,
+                &app,
+                &session_changes,
+                &connected,
+                &mut announced,
+                &mut hello_confirmed,
+            )
+            .await
+        };
         if hello_confirmed.is_some() && !connected.load(Ordering::Acquire) {
             tracing::warn!("ssh_source hello 自愈轮未收到 hello,回退降级模式(daemon 可能被换旧)");
             hello_confirmed = None;
@@ -2061,6 +2084,569 @@ async fn stream_loop(
                 tracing::warn!("ssh_source skipping unparseable/unknown frame: {line}");
             }
         }
+    }
+}
+
+// ============================================================================
+// Batch14-F59：daemonless 降级读取——无 daemon 时纯 SSH exec `find`+`tail -c +offset`
+// 轮询读会话 jsonl,复用 flush_lines→batch_to_payloads→emit 下游,绕开 daemon 线协议。
+// 触发 = per-host `cfg.daemonless`(run() 顶层二选一)。能力子集:无 bg kind/无状态灯/
+// 无拥塞信号/仅最近活跃会话(mtime 窗口近似 live)。
+// ============================================================================
+
+/// 轮询间隔(实时性 vs 负载权衡;同 aterm 量级)。
+const DAEMONLESS_POLL_INTERVAL: Duration = Duration::from_secs(2);
+/// 「最近活跃」窗口(**分钟**,喂 find `-mmin`):只发现 mtime 在此窗口内有写入的 jsonl,
+/// 近似 live 会话——避免把该主机**所有历史会话**灌成 Tab(daemon 靠 pidfile 精确判活,
+/// daemonless 无)。
+const DAEMONLESS_ACTIVE_WINDOW_MINUTES: u32 = 30;
+/// 单批行数上限(与 flush 下游 BATCH_CAP 同量级)。
+const DAEMONLESS_CHUNK_LINES: usize = 600;
+/// 单文件单轮读字节上限:超大历史会话切多轮读(下轮从 consumed 续),防一轮拉 GB。
+/// ⚠ **行粒度**:consumed 只在整行 drain 后自增,故单条 >CAP 的巨行仍一轮全读(内存尖峰
+/// ≈ 行长,与 `watcher` 的 `read_until` 同源取舍);CAP 限的是「一轮读多少条完整行的字节」。
+const DAEMONLESS_READ_CAP: u64 = 8 * 1024 * 1024;
+/// 发现命令 stdout 上限(输出很小:每活跃会话一行 `<bytes> <path>`)。
+const DAEMONLESS_DISCOVER_CAP: usize = 4 * 1024 * 1024;
+
+/// F59 增量读游标(= 客户端 `watcher::FileCursor` 同语义)。**刻意本地复刻而非共享**:
+/// `FileCursor` 是 watcher 私有类型,为它跨模块导出会把 watcher 内部实现细节耦合进 ssh_source;
+/// 这里是 2 字段的小 POD + `plan_file_read`/`drain_complete_lines` 已单测,复刻成本可忽略。
+/// `consumed` = 已消费(完整行)字节 offset;`seen_len` = 见过的最大文件长度(截断判定)。
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct DlCursor {
+    consumed: u64,
+    seen_len: u64,
+}
+
+/// F59(纯函数,单测):解析 `wc -c <file>` 一行 → (bytes, path)。形如 `  1234 /a/b.jsonl`
+/// (wc 前导空白对齐);`trim_start` 后按**首个空白** `split_once`,右侧整体是 path(容路径含
+/// 空格)。无数字 / 空路径 → None。
+fn parse_wc_line(line: &str) -> Option<(u64, String)> {
+    let s = line.trim_start();
+    let (num, rest) = s.split_once(char::is_whitespace)?;
+    let bytes: u64 = num.parse().ok()?;
+    let path = rest.trim();
+    if path.is_empty() {
+        return None;
+    }
+    Some((bytes, path.to_string()))
+}
+
+/// F59(纯函数,单测):从远端 jsonl 路径(POSIX `/` 分隔)取 session_id = 文件名去 `.jsonl`。
+fn jsonl_sid(path: &str) -> Option<String> {
+    path.rsplit('/')
+        .next()
+        .and_then(|name| name.strip_suffix(".jsonl"))
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+/// F59(纯函数,单测):给定游标 + 当前文件大小,算增量读起点 + 是否截断(与
+/// `watcher::process_file` 一字一致)。`truncated = size < seen_len` → 从 0 全量重读
+/// (seq **不重置**——前端按更大 seq 排在旧行后、uuid 幂等);否则从 `consumed` 续读。
+fn plan_file_read(cursor: DlCursor, size: u64) -> (u64, bool) {
+    let truncated = size < cursor.seen_len;
+    let start = if truncated { 0 } else { cursor.consumed };
+    (start, truncated)
+}
+
+/// F59(纯函数,单测——头号雷区的可测核心;抽出以对齐 daemon 侧 `read_new_lines` 的纯函数
+/// 设计并直测)。从字节累加器 `acc` 排出所有 `\n` 结尾的**完整行**,每行分配 `*next_seq`
+/// 递增 seq;返回 `(每行 (seq, raw), 本次消费字节)`。
+/// - **torn tail**(末尾无 `\n` 的残字节)**留在 acc、不消费、不产行**(下次 fill 补全 / EOF 丢弃)。
+/// - 完整行(**含空行**)的字节都计入 consumed(推进 offset);但空/BOM/纯空白行
+///   (`!snapshot_line_countable`)**跳过、不产行、不占 seq**(与 `watcher::process_file` 一字一致)。
+/// - 剥行尾 `\n` 及可选 `\r`;`from_utf8_lossy` 解码。
+/// - `next_seq` 以 `&mut` 传入 → 跨多次调用(多次 fill_buf / 多轮 poll)**连续单调、不回退**。
+fn drain_complete_lines(acc: &mut Vec<u8>, next_seq: &mut u64) -> (Vec<(u64, String)>, u64) {
+    let mut out: Vec<(u64, String)> = Vec::new();
+    let mut consumed: u64 = 0;
+    while let Some(pos) = acc.iter().position(|&b| b == b'\n') {
+        let line_bytes: Vec<u8> = acc.drain(..=pos).collect();
+        consumed += line_bytes.len() as u64; // 完整行(含空行)均推进 offset
+        let mut end = line_bytes.len() - 1; // 剥 \n
+        if end > 0 && line_bytes[end - 1] == b'\r' {
+            end -= 1; // 剥 \r
+        }
+        let line = String::from_utf8_lossy(&line_bytes[..end]).into_owned();
+        if !snapshot_line_countable(&line) {
+            continue; // 空/BOM/纯空白:推进 offset 但不占 seq、不产行
+        }
+        out.push((*next_seq, line));
+        *next_seq += 1;
+    }
+    (out, consumed)
+}
+
+/// F59:在**已建立**的持久会话上开一条 channel exec 命令,返回 stdout 流。与
+/// [`connect_and_exec_cmd`] 的区别:后者每次新建 SSH 连接(一次性历史查询用),daemonless
+/// 轮询须复用同一会话省握手 → 只开 channel。
+async fn exec_on_session(
+    session: &SshSession,
+    cmd: &str,
+) -> Result<russh::ChannelStream<client::Msg>, String> {
+    let channel = session
+        .channel_open_session()
+        .await
+        .map_err(|e| format!("打开 session channel 失败: {e}"))?;
+    channel
+        .exec(true, cmd.as_bytes())
+        .await
+        .map_err(|e| format!("exec {cmd} 失败: {e}"))?;
+    Ok(channel.into_stream())
+}
+
+/// F59:exec 命令、读全部 stdout 为 String(带上限防失控)。发现命令输出很小。
+async fn read_to_string_capped(session: &SshSession, cmd: &str) -> Result<String, String> {
+    use tokio::io::AsyncReadExt;
+    let stream = exec_on_session(session, cmd).await?;
+    let mut reader = tokio::io::BufReader::new(stream);
+    let mut buf: Vec<u8> = Vec::new();
+    let mut tmp = [0u8; 8192];
+    loop {
+        // 无进展超时(60s):与快照路径统一,挂起(半死 TCP 无 RST)不干等 SSH keepalive(~90s)。
+        let n = tokio::time::timeout(SNAPSHOT_READ_TIMEOUT, reader.read(&mut tmp))
+            .await
+            .map_err(|_| "daemonless 发现读取超时(60s 无进展)".to_string())?
+            .map_err(|e| format!("读发现输出失败: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        buf.extend_from_slice(&tmp[..n]);
+        if buf.len() > DAEMONLESS_DISCOVER_CAP {
+            return Err(format!("发现输出超过 {DAEMONLESS_DISCOVER_CAP} 字节上限"));
+        }
+    }
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// F59:读一个会话文件从 `start` 字节起的增量内容,组 `JsonlLine` 切块 `flush_lines`。
+/// 返回 `(本次消费完整行字节, torn_tail 字节, 新 next_seq)`。**只消费 `\n` 结尾的完整行**;
+/// torn tail(EOF/cap 处无 `\n` 残行)不消费只计字节;空/BOM/纯空白行跳过不占 seq(与
+/// `watcher`/daemon 一字一致);单轮读满 [`DAEMONLESS_READ_CAP`] 即停(余量下轮续读)。
+#[allow(clippy::too_many_arguments)]
+async fn read_incremental(
+    session: &SshSession,
+    path: &str,
+    start: u64,
+    sid: &str,
+    mut next_seq: u64,
+    replay: &Arc<EventReplay>,
+    app: &tauri::AppHandle,
+    host_label: &str,
+) -> Result<(u64, u64, u64), String> {
+    use tokio::io::AsyncBufReadExt;
+    // `tail -c +N` 是 **1-based 字节**:跳过前 `start` 字节 → `+(start+1)`。off-by-one 头号雷。
+    // `2>/dev/null` 弃 stderr(文件竞态删/权限报错不混入解析;当前 russh `into_stream` 只透
+    // stdout,此为防御未来若合流 stderr)。
+    let cmd = format!("tail -c +{} {} 2>/dev/null", start + 1, shell_quote(path));
+    let stream = exec_on_session(session, &cmd).await?;
+    let mut reader = tokio::io::BufReader::new(stream);
+    let mut acc: Vec<u8> = Vec::new();
+    let mut consumed: u64 = 0;
+    let mut chunk: Vec<JsonlLine> = Vec::with_capacity(DAEMONLESS_CHUNK_LINES);
+    'read: loop {
+        let n = {
+            // 无进展超时(60s):与快照路径统一,挂起不干等 SSH keepalive(~90s)。
+            let buf = tokio::time::timeout(SNAPSHOT_READ_TIMEOUT, reader.fill_buf())
+                .await
+                .map_err(|_| "daemonless tail 读取超时(60s 无进展)".to_string())?
+                .map_err(|e| format!("tail 读取失败: {e}"))?;
+            if buf.is_empty() {
+                break 'read; // EOF
+            }
+            acc.extend_from_slice(buf);
+            buf.len()
+        };
+        reader.consume(n);
+        // 纯函数排出所有完整行 + 推进 seq(torn tail 留 acc);切块 flush 保留在 async 侧。
+        let (lines, c) = drain_complete_lines(&mut acc, &mut next_seq);
+        consumed += c;
+        for (seq, raw) in lines {
+            chunk.push(JsonlLine {
+                session_id: sid.to_string(),
+                path: std::path::PathBuf::from(path),
+                seq,
+                raw,
+            });
+            if chunk.len() >= DAEMONLESS_CHUNK_LINES {
+                flush_lines(replay, app, host_label, std::mem::take(&mut chunk)).await;
+            }
+        }
+        if consumed >= DAEMONLESS_READ_CAP {
+            // 单轮读满:停(下轮从 start+consumed 续读);acc 残留 = torn tail。
+            break 'read;
+        }
+    }
+    let tail_bytes = acc.len() as u64; // EOF/cap 处无 \n 残行:不消费,只计 seen_len
+    if !chunk.is_empty() {
+        flush_lines(replay, app, host_label, chunk).await;
+    }
+    Ok((consumed, tail_bytes, next_seq))
+}
+
+/// F59:每连接 emit 一次 degraded 健康提示(复用 SS-F remote-health 通道;前端
+/// `remote-health.ts` 已有 `case "degraded"`,零前端改动)。诚实列能力缺口。
+fn emit_degraded(app: &tauri::AppHandle, host_label: &str) {
+    let payload = crate::bridge::RemoteHealthPayload {
+        origin: Some(host_label.to_string()),
+        kind: "degraded".to_string(),
+        message: format!(
+            "远端 [{host_label}] daemonless 降级读取:后台会话不可见 / 无运行状态灯 / \
+             无拥塞信号 / 仅显示最近活跃会话(空闲久的暂隐)。会话内容正常。"
+        ),
+    };
+    if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+        tracing::warn!("daemonless [{host_label}] degraded emit failed: {e}");
+    }
+}
+
+/// F59:宣告一个 daemonless 会话骨架(降级:kind/cwd/name 不可知——cwd 前端从后续行
+/// payload 补)。镜像 daemon 路径:emit REMOTE_SESSION_ADDED + 入 announced(FIX 2 断连
+/// 归档源)+ 入全局 announced_registry(F28 F5 重宣告源)+ send SessionChange added。
+fn announce_daemonless(
+    sid: &str,
+    host_label: &str,
+    announced: &mut std::collections::HashMap<String, AnnouncedMeta>,
+    session_changes: &std::sync::mpsc::Sender<SessionChange>,
+    app: &tauri::AppHandle,
+) {
+    let payload = crate::bridge::RemoteSessionAddedPayload {
+        session_id: sid.to_string(),
+        origin: host_label.to_string(),
+        kind: None,
+        cwd: None,
+        name: None,
+    };
+    let meta = AnnouncedMeta {
+        payload: payload.clone(),
+        status: None,
+        waiting_for: None,
+    };
+    // 先入 registry 再 emit(与 daemon 路径同序:反序时 F5 落中间不丢)。
+    announced_registry()
+        .lock()
+        .unwrap()
+        .entry(host_label.to_string())
+        .or_default()
+        .insert(sid.to_string(), meta.clone());
+    if let Err(e) = app.emit(crate::bridge::events::REMOTE_SESSION_ADDED, &payload) {
+        tracing::warn!("daemonless [{host_label}] session-added emit failed: {e}");
+    }
+    announced.insert(sid.to_string(), meta);
+    if let Err(e) = session_changes.send(SessionChange {
+        added: vec![sid.to_string()],
+        removed: vec![],
+        status_changed: vec![],
+    }) {
+        tracing::warn!("daemonless [{host_label}] session_added send failed: {e}");
+    }
+}
+
+/// F59:归档掉出活跃窗口/消失的 daemonless 会话(镜像 SessionRemoved 臂:摘 announced +
+/// registry + send removed)。再有写入 → 下轮重新首见、Tab 回来。
+fn archive_daemonless(
+    sids: Vec<String>,
+    host_label: &str,
+    announced: &mut std::collections::HashMap<String, AnnouncedMeta>,
+    session_changes: &std::sync::mpsc::Sender<SessionChange>,
+) {
+    if sids.is_empty() {
+        return;
+    }
+    for sid in &sids {
+        announced.remove(sid);
+    }
+    if let Some(hm) = announced_registry().lock().unwrap().get_mut(host_label) {
+        for sid in &sids {
+            hm.remove(sid);
+        }
+    }
+    if let Err(e) = session_changes.send(SessionChange {
+        added: vec![],
+        removed: sids,
+        status_changed: vec![],
+    }) {
+        tracing::warn!("daemonless [{host_label}] 归档 send failed: {e}");
+    }
+}
+
+/// [`run`] 的 daemonless 分支:连一次持久 SSH 会话 → 轮询(`find` 发现最近活跃 jsonl +
+/// 对增长文件 `tail -c +offset` 增量读)→ 复用 [`flush_lines`] 下游 → announced/session_changes
+/// 生命周期。exec 错/EOF(会话死)冒泡 Err 交 [`run`] 按退避重连。**所有提前返回都把 result
+/// 交 run() 统一归档 announced 残留**(同 stream_loop 契约,故本函数自身不做最终归档)。
+async fn daemonless_stream_loop(
+    cfg: &RemoteConfig,
+    replay: &Arc<EventReplay>,
+    app: &tauri::AppHandle,
+    session_changes: &std::sync::mpsc::Sender<SessionChange>,
+    connected: &Arc<AtomicBool>,
+    announced: &mut std::collections::HashMap<String, AnnouncedMeta>,
+) -> Result<(), String> {
+    let host_label = cfg.origin_label();
+    // 连一次,持久复用(自动继承 F45 竞速 / F56 跳板)。会话随本函数栈存活;返回即 drop。
+    let (session, _fp) = connect_session(cfg, None, None).await?;
+
+    // 发现命令:最近活跃窗口内的会话 jsonl + 字节数。POSIX `find`+`wc`+`-mmin`(可移植——
+    // daemonless 主机常是装不了 daemon 的异构/BSD/macOS,故不用 GNU `-printf`)。`$HOME`
+    // 由远端登录 shell 展开;固定路径无用户输入注入面。`wc -c … \;`(非 `+`)每文件独立
+    // 调用 → 无 total 汇总行。stderr 弃(无权限目录/竞态删文件不噪)。
+    let discover_cmd = format!(
+        "find \"$HOME/.claude/projects\" -type f -name '*.jsonl' ! -path '*/subagents/*' \
+         -mmin -{DAEMONLESS_ACTIVE_WINDOW_MINUTES} -exec wc -c {{}} \\; 2>/dev/null"
+    );
+
+    // per-sid 跨轮状态。
+    let mut cursors: std::collections::HashMap<String, DlCursor> = std::collections::HashMap::new();
+    let mut seqs: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    let mut first = true;
+
+    loop {
+        // 1. 发现(会话死 → Err 冒泡 → run() 重连)。
+        let listing = read_to_string_capped(&session, &discover_cmd).await?;
+        if first {
+            // 首次成功 exec = 连上(替代 daemon hello 的角色:让 run() 退避重置/最终归档
+            // 语义正常)。绕过 hello 自愈账本(那是 daemon flag 协商专属)。
+            connected.store(true, Ordering::Release);
+            emit_degraded(app, &host_label);
+            first = false;
+        }
+        // 解析活跃集 sid → (size, path)。
+        let mut current: std::collections::HashMap<String, (u64, String)> =
+            std::collections::HashMap::new();
+        for line in listing.lines() {
+            if let Some((size, path)) = parse_wc_line(line) {
+                if let Some(sid) = jsonl_sid(&path) {
+                    current.insert(sid, (size, path));
+                }
+            }
+        }
+        // 2. 归档掉出窗口/消失的(曾 announced 但本轮不在 current)。
+        let gone: Vec<String> = announced
+            .keys()
+            .filter(|sid| !current.contains_key(*sid))
+            .cloned()
+            .collect();
+        for sid in &gone {
+            cursors.remove(sid);
+            seqs.remove(sid);
+        }
+        archive_daemonless(gone, &host_label, announced, session_changes);
+        // 3. 每个活跃会话:新 → 宣告骨架 + 首见全量读;旧 → 增量读。
+        for (sid, (size, path)) in &current {
+            if !announced.contains_key(sid) {
+                announce_daemonless(sid, &host_label, announced, session_changes, app);
+            }
+            let cursor = cursors.get(sid).copied().unwrap_or_default();
+            let (start, truncated) = plan_file_read(cursor, *size);
+            if truncated {
+                tracing::warn!(
+                    "daemonless [{host_label}] {sid} 截断(size {size} < seen {}),全量重读",
+                    cursor.seen_len
+                );
+            }
+            if start >= *size {
+                // 无新字节;截断到空需即时重置游标(否则重新长回 ≥ 旧 consumed 时漏检)。
+                if truncated {
+                    cursors.insert(
+                        sid.clone(),
+                        DlCursor {
+                            consumed: 0,
+                            seen_len: *size,
+                        },
+                    );
+                }
+                continue;
+            }
+            let next_seq = seqs.get(sid).copied().unwrap_or(0);
+            // 单文件读失败不杀整轮(文件可能刚被删/竞态);记日志跳过。真·会话死由下轮
+            // 发现 exec 失败兜住 → Err → 重连。
+            let (read_bytes, tail_bytes, new_seq) = match read_incremental(
+                &session,
+                path,
+                start,
+                sid,
+                next_seq,
+                replay,
+                app,
+                &host_label,
+            )
+            .await
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!("daemonless [{host_label}] {sid} 增量读失败: {e}");
+                    continue;
+                }
+            };
+            seqs.insert(sid.clone(), new_seq);
+            let consumed = start + read_bytes;
+            cursors.insert(
+                sid.clone(),
+                DlCursor {
+                    consumed,
+                    // 高点取 max:size 是 find 快照,可能 < 读中真实增长。
+                    seen_len: (*size).max(consumed + tail_bytes),
+                },
+            );
+        }
+        // 4. 轮询间隔(唯一等待 = async sleep,INVARIANT §10)。
+        tokio::time::sleep(DAEMONLESS_POLL_INTERVAL).await;
+    }
+}
+
+#[cfg(test)]
+mod daemonless_tests {
+    use super::*;
+
+    #[test]
+    fn parse_wc_line_ok() {
+        // 典型:前导空白对齐 + 单空格分隔。
+        assert_eq!(
+            parse_wc_line("  1234 /home/u/.claude/projects/p/abc.jsonl"),
+            Some((1234, "/home/u/.claude/projects/p/abc.jsonl".to_string()))
+        );
+        // 无前导空白。
+        assert_eq!(
+            parse_wc_line("0 /a/b.jsonl"),
+            Some((0, "/a/b.jsonl".to_string()))
+        );
+        // 路径含空格:首个空白 split_once 后右侧整体是 path。
+        assert_eq!(
+            parse_wc_line("  42 /a/dir with space/x.jsonl"),
+            Some((42, "/a/dir with space/x.jsonl".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_wc_line_rejects_garbage() {
+        assert_eq!(parse_wc_line(""), None);
+        assert_eq!(parse_wc_line("   "), None);
+        assert_eq!(parse_wc_line("notanumber /a.jsonl"), None);
+        assert_eq!(parse_wc_line("123"), None); // 无路径
+        assert_eq!(parse_wc_line("123   "), None); // 数字后全空白 → 空路径
+    }
+
+    #[test]
+    fn jsonl_sid_extracts_stem() {
+        assert_eq!(
+            jsonl_sid("/home/u/.claude/projects/p/abc-123.jsonl").as_deref(),
+            Some("abc-123")
+        );
+        assert_eq!(jsonl_sid("abc.jsonl").as_deref(), Some("abc"));
+        assert_eq!(jsonl_sid("/a/b/notjsonl.txt"), None);
+        assert_eq!(jsonl_sid("/a/b/.jsonl"), None); // 空 stem
+        assert_eq!(jsonl_sid("/a/b/"), None);
+    }
+
+    #[test]
+    fn plan_file_read_incremental_vs_truncated() {
+        // 首见(默认游标):从 0 读全量,非截断。
+        let (start, tr) = plan_file_read(DlCursor::default(), 500);
+        assert_eq!((start, tr), (0, false));
+        // 正常增长:从 consumed 续读。
+        let c = DlCursor {
+            consumed: 300,
+            seen_len: 300,
+        };
+        assert_eq!(plan_file_read(c, 800), (300, false));
+        // 无新字节:start==size(下游据 start>=size 跳过)。
+        assert_eq!(plan_file_read(c, 300), (300, false));
+        // 截断(size < seen_len):从 0 全量重读 + truncated 标记。
+        let c2 = DlCursor {
+            consumed: 800,
+            seen_len: 800,
+        };
+        assert_eq!(plan_file_read(c2, 120), (0, true));
+        // 截断到空。
+        assert_eq!(plan_file_read(c2, 0), (0, true));
+    }
+
+    #[test]
+    fn tail_offset_is_one_based() {
+        // 文档化 off-by-one 契约:跳过前 `start` 字节 = `tail -c +(start+1)`。
+        // start=0 → +1(全量);start=300 → +301(跳过前 300 字节)。
+        assert_eq!(format!("tail -c +{}", 0 + 1), "tail -c +1");
+        assert_eq!(format!("tail -c +{}", 300 + 1), "tail -c +301");
+    }
+
+    // ---- drain_complete_lines:头号雷区(torn tail / 只消费完整行 / seq 单调)直测 ----
+
+    fn drain(bytes: &str, seq: &mut u64) -> (Vec<(u64, String)>, u64) {
+        let mut acc = bytes.as_bytes().to_vec();
+        let r = drain_complete_lines(&mut acc, seq);
+        // 断言:未消费的残字节数 = 原长 - consumed(torn tail 留 acc)。
+        assert_eq!(acc.len() as u64, bytes.len() as u64 - r.1);
+        r
+    }
+
+    #[test]
+    fn drain_only_complete_lines_and_consumed_bytes() {
+        let mut seq = 0;
+        // 两条完整行:consumed=4(含两个 \n),残 acc 空。
+        let (lines, consumed) = drain("a\nb\n", &mut seq);
+        assert_eq!(lines, vec![(0, "a".to_string()), (1, "b".to_string())]);
+        assert_eq!(consumed, 4);
+        assert_eq!(seq, 2);
+    }
+
+    #[test]
+    fn drain_torn_tail_stays_and_not_consumed() {
+        let mut seq = 0;
+        // "a\nb":只有 "a\n" 完整 → 消费 2 字节 seq 一条;"b" 是 torn tail 留 acc、不消费。
+        let mut acc = b"a\nb".to_vec();
+        let (lines, consumed) = drain_complete_lines(&mut acc, &mut seq);
+        assert_eq!(lines, vec![(0, "a".to_string())]);
+        assert_eq!(consumed, 2);
+        assert_eq!(acc, b"b"); // torn tail 原样留存
+        assert_eq!(seq, 1);
+        // 下次 fill 把剩余补全:acc 追加 "c\n" → "bc\n" 成完整行,seq 从 1 续(不回退)。
+        acc.extend_from_slice(b"c\n");
+        let (lines2, consumed2) = drain_complete_lines(&mut acc, &mut seq);
+        assert_eq!(lines2, vec![(1, "bc".to_string())]);
+        assert_eq!(consumed2, 3);
+        assert!(acc.is_empty());
+        assert_eq!(seq, 2);
+    }
+
+    #[test]
+    fn drain_strips_crlf() {
+        let mut seq = 0;
+        let (lines, consumed) = drain("a\r\n", &mut seq);
+        assert_eq!(lines, vec![(0, "a".to_string())]); // \r 剥掉
+        assert_eq!(consumed, 3); // 但 \r\n 两字节都计入 offset
+    }
+
+    #[test]
+    fn drain_skips_empty_bom_whitespace_but_consumes_offset() {
+        let mut seq = 0;
+        // 空行 "\n"(1B)+ 纯空白 "  \n"(3B)+ BOM 行 "\u{feff}\n"(4B)均跳过不占 seq;
+        // "x\n"(2B)产一条 seq=0。consumed = 1+3+4+2 = 10,seq 只推进 1。
+        let (lines, consumed) = drain("\n  \n\u{feff}\nx\n", &mut seq);
+        assert_eq!(lines, vec![(0, "x".to_string())]);
+        assert_eq!(consumed, 10);
+        assert_eq!(seq, 1); // 空/空白/BOM 行不占 seq
+    }
+
+    #[test]
+    fn drain_seq_monotonic_across_calls_not_reset() {
+        // 多轮调用共享 &mut seq:seq 连续单调、不因新调用/新 acc 重置(截断重读靠此不冲突)。
+        let mut seq = 5;
+        let (l1, _) = drain("p\nq\n", &mut seq);
+        assert_eq!(l1, vec![(5, "p".to_string()), (6, "q".to_string())]);
+        let (l2, _) = drain("r\n", &mut seq);
+        assert_eq!(l2, vec![(7, "r".to_string())]);
+        assert_eq!(seq, 8);
+    }
+
+    #[test]
+    fn drain_empty_input_noop() {
+        let mut seq = 3;
+        let (lines, consumed) = drain("", &mut seq);
+        assert!(lines.is_empty());
+        assert_eq!(consumed, 0);
+        assert_eq!(seq, 3);
     }
 }
 
@@ -3148,6 +3734,7 @@ Host prod
                 "".into(), // 空行跳过
             ],
             jump: None,
+            daemonless: false,
         };
         assert_eq!(
             cfg.endpoints(),
@@ -3171,6 +3758,7 @@ Host prod
             host_key_fingerprint: None,
             addresses: vec![],
             jump: None,
+            daemonless: false,
         };
         assert_eq!(cfg.endpoints(), vec![ep("h", 2200)]);
     }
@@ -3470,6 +4058,7 @@ AAAEDRp5kloww4Jpr8K56RETPX0tLdId9XD8a+yNz5Tx0XOQFVxedWxKBYvdEBkTWvt5st
             host_key_fingerprint: None,
             addresses,
             jump: None,
+            daemonless: false,
         }
     }
 

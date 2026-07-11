@@ -127,6 +127,12 @@ export interface RemoteHostConfig {
    * （数据源侧 russh direct-tcpip；拉起侧 ssh `-J`）。fail-closed：跳板缺失/连不上即报错不直连。
    */
   jump: string;
+  /**
+   * Batch14-F59：daemonless 降级读取——true 时该主机**不部署/不连 daemon**，走纯 SSH exec
+   * `find`+`tail -c +offset` 轮询读会话 jsonl（能力子集：无 bg kind / 无运行状态灯 / 无拥塞信号 /
+   * 仅显示最近活跃会话）。false（默认）= 正常 daemon 数据源路径。
+   */
+  daemonless: boolean;
 }
 
 /** F45：多行文本 ↔ 地址数组（trim + 去空行）。UI 用 textarea，config/IPC 用数组。 */
@@ -169,6 +175,7 @@ const HOST_DEFAULTS: RemoteHostConfig = {
   hostKeyFingerprint: "",
   addresses: [],
   jump: "",
+  daemonless: false,
 };
 
 const REMOTE_INFO_TEXT =
@@ -314,6 +321,8 @@ class MachineCard {
   private fingerprintInput!: HTMLInputElement;
   private addressesInput!: HTMLTextAreaElement;
   private jumpInput!: HTMLInputElement;
+  /** F59：daemonless 降级读取开关（无 daemon 时纯 tail 轮询读）。 */
+  private daemonlessInput!: HTMLInputElement;
   /** 依当前指纹值显隐「重置为 TOFU」按钮（load / 重置后调用）。 */
   private syncResetFpVisibility!: () => void;
   private testButton!: HTMLButtonElement;
@@ -353,6 +362,7 @@ class MachineCard {
       hostKeyFingerprint: this.fingerprintInput.value.trim(),
       addresses: parseAddressLines(this.addressesInput.value),
       jump: this.jumpInput.value.trim(),
+      daemonless: this.daemonlessInput.checked,
     };
   }
 
@@ -488,6 +498,28 @@ class MachineCard {
       onChange,
     );
 
+    // F59：daemonless 降级读取——该机不部署/不连 daemon，纯 SSH exec tail 轮询读会话 jsonl。
+    const dlRow = document.createElement("label");
+    dlRow.className = "settings-row settings-row-checkbox";
+    this.daemonlessInput = document.createElement("input");
+    this.daemonlessInput.type = "checkbox";
+    this.daemonlessInput.className = "settings-checkbox";
+    this.daemonlessInput.addEventListener("change", onChange);
+    dlRow.appendChild(this.daemonlessInput);
+    const dlLabel = document.createElement("span");
+    dlLabel.className = "settings-checkbox-label";
+    dlLabel.textContent = "daemonless 降级读取（无需 daemon）";
+    dlRow.appendChild(dlLabel);
+    dlRow.appendChild(
+      makeInfoIcon(
+        "勾选后该机**不部署 / 不连 daemon**，改用纯 SSH exec `find`+`tail` 轮询读会话 jsonl。\n" +
+          "适合装不了 daemon 的主机（异构架构 / 无权限 / BSD·macOS）。\n" +
+          "⚠ 能力子集（降级）：无后台会话跟踪 / 无运行状态灯 / 无拥塞信号 / 仅显示最近 30 分钟活跃的会话。\n" +
+          "会话内容照常可读。需重启 monitor 才生效。",
+      ),
+    );
+    body.appendChild(dlRow);
+
     // 安装位置提示：明确告诉用户「在哪里装什么」。
     const installInfo = document.createElement("div");
     installInfo.className = "settings-hint remote-install-info";
@@ -621,6 +653,7 @@ class MachineCard {
     this.fingerprintInput.value = cfg.hostKeyFingerprint;
     this.addressesInput.value = cfg.addresses.join("\n");
     this.jumpInput.value = cfg.jump ?? "";
+    this.daemonlessInput.checked = cfg.daemonless ?? false;
     this.syncResetFpVisibility();
   }
 
@@ -1312,6 +1345,7 @@ export class RemoteSection {
       hostKeyFingerprint: "",
       addresses: g.addresses,
       jump: g.jump ?? "",
+      daemonless: false, // F59：从 ssh config 导入的主机默认走 daemon 路径
     };
   }
 
@@ -1327,6 +1361,7 @@ export class RemoteSection {
       hostKeyFingerprint: "",
       addresses: [],
       jump: m.proxyJump ?? "",
+      daemonless: false, // F59：从 ssh config 导入的主机默认走 daemon 路径
     };
   }
 
@@ -1604,6 +1639,8 @@ function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
     hostKeyFingerprint: str("hostKeyFingerprint", HOST_DEFAULTS.hostKeyFingerprint),
     addresses: coerceAddresses(obj.addresses),
     jump: str("jump", HOST_DEFAULTS.jump),
+    daemonless:
+      typeof obj.daemonless === "boolean" ? obj.daemonless : HOST_DEFAULTS.daemonless,
   };
 }
 
@@ -1676,6 +1713,7 @@ export async function writeRemoteConfig(next: RemoteConfig): Promise<void> {
       hostKeyFingerprint: h.hostKeyFingerprint,
       addresses: h.addresses,
       jump: h.jump, // F56：跳板 label（D-B1:此前漏写 → 设置卡填的跳板被静默丢弃）
+      daemonless: h.daemonless, // F59：daemonless 降级开关（同 D-B1 教训：枚举字段必逐个写全，防静默丢失）
     })),
   };
   await saveConfig(cfg);
@@ -1690,7 +1728,8 @@ function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {
     a.keyPath === b.keyPath &&
     a.daemonPath === b.daemonPath &&
     a.hostKeyFingerprint === b.hostKeyFingerprint &&
-    a.jump === b.jump // F56（D-I3）:仅改跳板也算变更，触发「需重启生效」提示
+    a.jump === b.jump && // F56（D-I3）:仅改跳板也算变更，触发「需重启生效」提示
+    a.daemonless === b.daemonless // F59:仅改 daemonless 开关也算变更（触发「需重启生效」）
   );
 }
 

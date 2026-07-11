@@ -50,6 +50,7 @@ describe("F54 findHostByOrigin", () => {
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",
+    daemonless: false,
   });
   const hosts = [mkHost("aya", "10.0.0.2"), mkHost("", "pi.local")];
   it("命中 label", () => {
@@ -87,6 +88,7 @@ describe("F56 jump write→read 往返（D-B1 回归）", () => {
     hostKeyFingerprint: "",
     addresses: [],
     jump,
+    daemonless: false,
   });
 
   it("jump 写入 config 并读回不丢", async () => {
@@ -115,5 +117,48 @@ describe("F56 jump write→read 往返（D-B1 回归）", () => {
     vi.mocked(loadConfig).mockResolvedValue(saved);
     const back = await readRemoteConfig();
     expect(back.hosts[0].jump).toBe("");
+  });
+});
+
+describe("F59 daemonless write→read 往返（D-B1 同源回归：布尔字段不丢）", () => {
+  const host = (daemonless: boolean): RemoteHostConfig => ({
+    label: "aya",
+    host: "10.0.0.2",
+    port: 22,
+    user: "u",
+    keyPath: "",
+    daemonPath: "/d",
+    hostKeyFingerprint: "",
+    addresses: [],
+    jump: "",
+    daemonless,
+  });
+
+  it("daemonless=true 写入 config 并读回不丢", async () => {
+    vi.mocked(loadConfig).mockResolvedValue({});
+    let saved: Record<string, unknown> = {};
+    vi.mocked(saveConfig).mockImplementation(async (c: unknown) => {
+      saved = c as Record<string, unknown>;
+    });
+    await writeRemoteConfig({ enabled: true, hosts: [host(true)] });
+    // 写入的 config 里 hosts[0] 含 daemonless（漏写 → undefined，测试红，同 F56 D-B1）
+    const written = (saved.remote as { hosts: Array<{ daemonless?: boolean }> }).hosts[0];
+    expect(written.daemonless).toBe(true);
+    // 读回:coerceHost 保留布尔
+    vi.mocked(loadConfig).mockResolvedValue(saved);
+    const back = await readRemoteConfig();
+    expect(back.hosts[0].daemonless).toBe(true);
+  });
+
+  it("缺省 daemonless → false（旧配置零迁移）", async () => {
+    // 旧 config：hosts[0] 无 daemonless 键 → coerceHost 回退 false。
+    vi.mocked(loadConfig).mockResolvedValue({
+      remote: {
+        enabled: true,
+        hosts: [{ host: "10.0.0.2", user: "u", daemonPath: "/d" }],
+      },
+    });
+    const back = await readRemoteConfig();
+    expect(back.hosts[0].daemonless).toBe(false);
   });
 });

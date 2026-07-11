@@ -1046,6 +1046,11 @@ fn parse_host_obj(
     let host_key_fingerprint = str_field("hostKeyFingerprint").map(str::to_string);
     // Batch14-F56：跳板 label（指向另一台已配置主机的 origin_label）。
     let jump = str_field("jump").map(str::to_string);
+    // Batch14-F59：daemonless 降级读取开关（per-host，缺省 false = 走 daemon 流路径）。
+    let daemonless = obj
+        .get("daemonless")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     // Batch14-F45：备用地址。前端下发数组（addresses: string[]）；也容忍换行文本（历史/手填）。
     let addresses: Vec<String> = match obj.get("addresses") {
         Some(serde_json::Value::Array(arr)) => arr
@@ -1074,6 +1079,7 @@ fn parse_host_obj(
         host_key_fingerprint,
         addresses,
         jump,
+        daemonless,
     })
 }
 
