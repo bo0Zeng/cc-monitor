@@ -3546,11 +3546,12 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   font-variant-numeric: tabular-nums;
 }
 
-/* F53：「开新 Claude」launcher 即席弹框（全屏遮罩 + 居中卡片） */
+/* F53：「开新 Claude」launcher 即席弹框（全屏遮罩 + 居中卡片）。z-index > 设置面板(100)——
+   从设置里点开,低值会被右侧 360px 抽屉盖住（F58 D-R1 一并修）。 */
 .launcher-back {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 200;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3614,11 +3615,116 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   border-style: solid;
 }
 
-/* F57:~/.ssh/config 批量导入预览弹框 */
+/* F58:端口转发(-L)管理台 overlay。z-index 须 > 设置面板(100)——本面板从设置里点开,
+   设置抽屉(fixed right,360px,z-index 100)不关,低 z-index 会被盖住(D-R1;F53/F57 同修)。 */
+.pf-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.pf-panel {
+  width: min(92%, 620px);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg, #1e1e1e);
+  border: 1px solid var(--border, #444);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.pf-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border, #444);
+}
+.pf-title {
+  flex: 1;
+  font-weight: 600;
+}
+.pf-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border, #444);
+}
+.pf-arrow {
+  opacity: 0.6;
+}
+.pf-input {
+  padding: 4px 8px;
+  background: var(--bg, #2a2a2a);
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+  color: inherit;
+  font-size: 13px;
+  min-width: 90px;
+  flex: 1;
+}
+.pf-btn {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border, #555);
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+}
+.pf-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.pf-list {
+  overflow-y: auto;
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pf-empty {
+  opacity: 0.6;
+  font-size: 13px;
+  padding: 8px 0;
+}
+.pf-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+}
+.pf-desc {
+  flex: 1;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.pf-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.pf-dot-ok {
+  background: var(--success, #3fb950);
+}
+.pf-dot-err {
+  background: var(--error, #f85149);
+}
+
+/* F57:~/.ssh/config 批量导入预览弹框。z-index > 设置面板(100)——从设置里点开,
+   低值会被右侧 360px 抽屉盖住（F58 D-R1 一并修）。 */
 .import-preview-back {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 200;
   display: flex;
   align-items: center;
   justify-content: center;

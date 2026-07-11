@@ -26,6 +26,7 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { openSftpPanel } from "../sftp/panel";
+import { openPortForwardPanel } from "../views/port-forward";
 import { deriveTmuxName } from "../remote-launch";
 import { runRemoteLauncher } from "../remote-launch-run";
 import { loadConfig, saveConfig } from "../config";
@@ -1156,6 +1157,18 @@ export class RemoteSection {
 
     // 0. 从 ~/.ssh/config 导入（选别名 → 加为新机器）
     this.buildImportRow(group);
+
+    // F58：端口转发管理台入口。
+    const pfRow = document.createElement("div");
+    pfRow.className = "settings-row settings-row-actions";
+    const pfBtn = document.createElement("button");
+    pfBtn.type = "button";
+    pfBtn.className = "settings-btn settings-btn-secondary";
+    pfBtn.textContent = "端口转发…";
+    pfBtn.title = "本地端口转发(-L)管理台:把远端机(或其内网)端口映到本机,经已配置的 SSH 连接隧道";
+    pfBtn.addEventListener("click", () => openPortForwardPanel());
+    pfRow.appendChild(pfBtn);
+    group.appendChild(pfRow);
 
     // 1. 启用 toggle（全局）
     const enabledRow = document.createElement("label");
