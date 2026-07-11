@@ -201,6 +201,9 @@ where
 /// 另持有一个共享 cell（`observed_fingerprint`），**无论接受 / 拒绝**都把实际看到的
 /// server key 指纹写进去 —— Tier 1（issue #15）的「测试连接」据此向用户展示指纹、
 /// 供 TOFU→严格校验固化（known_hosts 式）。
+/// F58：已鉴权的 SSH 客户端会话句柄别名（端口转发把它存注册表保活 + 开 direct-tcpip channel）。
+pub(crate) type SshSession = client::Handle<ClientHandler>;
+
 pub(crate) struct ClientHandler {
     expected_fingerprint: Option<String>,
     /// check_server_key 观察到的实际指纹回传通道（与调用方共享）。

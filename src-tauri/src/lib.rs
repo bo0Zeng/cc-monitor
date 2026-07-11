@@ -17,6 +17,7 @@ mod logging;
 mod messages;
 mod parser;
 mod paths;
+mod port_forward;
 mod profile_installer;
 mod pubkey;
 mod remote_history;
@@ -885,6 +886,9 @@ pub fn run() {
             sftp_pool::sftp_write_text,
             pubkey::push_public_key,
             tmux::list_remote_tmux,
+            port_forward::start_forward,
+            port_forward::stop_forward,
+            port_forward::list_forwards,
             // issue #6: 历史全文搜索
             search::search_history,
             search::get_search_index_status,
