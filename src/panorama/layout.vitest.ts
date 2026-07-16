@@ -15,6 +15,8 @@ import {
   MAX_SCALE,
   type Viewport,
   type FileBubble,
+  touchedFilesFromIds,
+  countShown,
 } from "./layout";
 import type { Overview } from "./types";
 
@@ -231,5 +233,26 @@ describe("computeLayout", () => {
 
   it("确定性：同输入同坐标", () => {
     expect(computeLayout(overview)).toEqual(computeLayout(overview));
+  });
+});
+
+describe("F70 高亮派生（touchedFilesFromIds / countShown）", () => {
+  const bub = (file: string): FileBubble => ({ file }) as FileBubble;
+  it("touchedFilesFromIds：符号 id file#name → 文件段去重", () => {
+    expect([
+      ...touchedFilesFromIds(["a.ts#foo", "a.ts#bar", "b.rs#baz"]),
+    ]).toEqual(["a.ts", "b.rs"]);
+  });
+  it("touchedFilesFromIds：方法 id file#Type::method 也取文件段；空/畸形跳过", () => {
+    expect([...touchedFilesFromIds(["m.ts#T::run", "", "#nofile"])]).toEqual(["m.ts"]);
+  });
+  it("countShown：只数在气泡集里的高亮文件（非脊柱文件不计）", () => {
+    const bubbles = [bub("a.ts"), bub("b.rs"), bub("c.py")];
+    const touched = new Set(["a.ts", "c.py", "z.go"]); // z.go 无气泡
+    expect(countShown(bubbles, touched)).toBe(2);
+  });
+  it("countShown：空集 / 无交集 → 0", () => {
+    expect(countShown([], new Set(["a"]))).toBe(0);
+    expect(countShown([bub("a.ts")], new Set(["b.ts"]))).toBe(0);
   });
 });

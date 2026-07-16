@@ -27,6 +27,8 @@ import {
   zoomAt,
   hitTest,
   coverageBanner,
+  touchedFilesFromIds,
+  countShown,
   type PanoramaLayout,
   type Viewport,
   type FileBubble,
@@ -52,6 +54,9 @@ export class PanoramaView implements OverlayHandle {
   private searchInput!: HTMLInputElement;
   private sidebarEl!: HTMLElement;
   private refreshBtn!: HTMLButtonElement;
+  // F70：会话高亮图例条 + 文本（默认隐藏）。
+  private highlightBarEl!: HTMLElement;
+  private highlightTextEl!: HTMLElement;
 
   // 状态
   private overview: Overview | null = null;
@@ -65,6 +70,14 @@ export class PanoramaView implements OverlayHandle {
   private loadSeq = 0;
   /** 搜索代际号（同上）。 */
   private searchSeq = 0;
+  /** F70：本会话改动集在图上的高亮（仓库相对文件段集；null=不高亮）。 */
+  private touchedFiles: Set<string> | null = null;
+  /** F70：repo 尚未加载完（enable-gate 未索引）时暂存待高亮请求。**带 repo 标签**——消费前校验
+   * 属当前仓，防「暂存 B 的高亮 → 切 C 重开 → 套到 C 上」跨仓泄漏（图例骗人）。 */
+  private pendingHighlight: { repo: string; files: string[] } | null = null;
+  /** F70：高亮独立世代号——**不借 loadSeq**（借了会在 applyOverview 里推进 loadSeq、卡死 refresh
+   * 按钮的 finally 判定）。切仓由 highlightSession 的 `this.repo !== repo` 检查兜。 */
+  private highlightSeq = 0;
 
   // 交互
   private hovered: FileBubble | null = null;
@@ -105,6 +118,8 @@ export class PanoramaView implements OverlayHandle {
     this.root.style.display = "none";
     this.isOpen = false;
     this.hideTooltip();
+    // F70：清暂存的待高亮请求（未消费就关掉 → 别留到下次开别的仓时误消费）。
+    this.pendingHighlight = null;
     dispatcher.popOverlay(this);
   }
 
@@ -158,6 +173,11 @@ export class PanoramaView implements OverlayHandle {
     const seq = ++this.loadSeq;
     this.hideMessage();
     this.closeSidebar();
+    // F70：换仓/重载 → 清旧会话高亮 + 清暂存的待高亮请求（否则上一个仓的文件集/pending 会套到
+    // 新仓气泡上，全压暗、图例骗人）。
+    this.touchedFiles = null;
+    this.pendingHighlight = null;
+    this.updateHighlightLegend(0, 0);
     this.showLoading("检查索引状态…");
     try {
       const st = await api.status(repo);
@@ -234,6 +254,58 @@ export class PanoramaView implements OverlayHandle {
     } else {
       this.hideMessage();
     }
+    this.scheduleDraw();
+    // F70：repo 加载完，若有暂存的待高亮请求（点会话时仓还没索引）→ 校验属当前仓再消费。
+    // **消费或丢弃都清掉**——pending 属别的仓（切仓后残留）则丢弃，绝不套到本仓上（防图例骗人）。
+    if (this.pendingHighlight) {
+      const pending = this.pendingHighlight;
+      this.pendingHighlight = null;
+      if (pending.repo === repo) void this.highlightSession(pending.files);
+    }
+  }
+
+  /**
+   * F70（护城河）：在全景图上高亮「本会话改过哪些代码节点」。`files` = 会话写类工具碰过的
+   * 文件（绝对路径）→ 后端 `panorama_touching` 映射成符号 id → 取文件段 → 命中气泡描环、
+   * 其余压暗。仅本地仓（`this.repo!=null`）；仓未索引（enable-gate）→ 暂存，索引好后补画。
+   */
+  async highlightSession(files: string[]): Promise<void> {
+    if (!this.repo) {
+      showActionFailureToast("无法高亮", "当前不是本地仓库视图，无法高亮会话改动。");
+      return;
+    }
+    if (files.length === 0) {
+      showActionFailureToast("无改动可高亮", "该会话没有用编辑类工具改过文件。");
+      return;
+    }
+    const repo = this.repo;
+    // 仓还没索引好（enable-gate 未建索引 / 正加载）→ 带 repo 标签暂存，applyOverview 校验后消费。
+    if (!this.layout) {
+      this.pendingHighlight = { repo, files };
+      return;
+    }
+    const seq = ++this.highlightSeq; // 独立世代号（不借 loadSeq，免卡 refresh 按钮）
+    try {
+      const ids = await api.touching(repo, files, []);
+      // 三重校验：本次高亮未被更晚的高亮作废 / 仓没变 / 布局还在（切仓由 this.repo!==repo 兜）。
+      if (seq !== this.highlightSeq || this.repo !== repo || !this.layout) return;
+      const touched = touchedFilesFromIds(ids);
+      this.touchedFiles = touched;
+      // 图例用「碰过的文件数」(files.length，含未解析/非脊柱的) vs「图上高亮数」(shown)——诚实
+      // 呈现差值，别让"看着全高亮了"骗人（呼应全景诚实性铁律）。
+      this.updateHighlightLegend(files.length, countShown(this.layout.bubbles, touched));
+      this.scheduleDraw();
+    } catch (e) {
+      if (seq !== this.loadSeq) return;
+      showActionFailureToast("高亮会话改动失败", String(e));
+    }
+  }
+
+  /** F70：清除高亮，恢复常态。 */
+  private clearHighlight(): void {
+    this.touchedFiles = null;
+    this.pendingHighlight = null;
+    this.updateHighlightLegend(0, 0);
     this.scheduleDraw();
   }
 
@@ -334,6 +406,20 @@ export class PanoramaView implements OverlayHandle {
     this.bannerEl.style.display = "none";
     view.appendChild(this.bannerEl);
 
+    // F70：会话高亮图例条（默认隐藏）——碰了几个文件、图上高亮几个 + 清除按钮。
+    this.highlightBarEl = document.createElement("div");
+    this.highlightBarEl.className = "panorama-highlight-bar";
+    this.highlightBarEl.style.display = "none";
+    this.highlightTextEl = document.createElement("span");
+    this.highlightBarEl.appendChild(this.highlightTextEl);
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "panorama-btn panorama-highlight-clear";
+    clearBtn.textContent = "清除高亮";
+    clearBtn.addEventListener("click", () => this.clearHighlight());
+    this.highlightBarEl.appendChild(clearBtn);
+    view.appendChild(this.highlightBarEl);
+
     // 主体：画布 + 侧栏
     const body = document.createElement("div");
     body.className = "panorama-body";
@@ -381,6 +467,20 @@ export class PanoramaView implements OverlayHandle {
     } else {
       this.bannerEl.style.display = "none";
     }
+  }
+
+  /** F70：更新会话高亮图例条。total=会话碰过的文件数；shown=其中图上有气泡（脊柱文件）的数。 */
+  private updateHighlightLegend(total: number, shown: number): void {
+    if (total <= 0) {
+      this.highlightBarEl.style.display = "none";
+      this.highlightTextEl.textContent = "";
+      return;
+    }
+    const extra = total - shown;
+    this.highlightTextEl.textContent =
+      `本会话改了 ${total} 个文件，图上高亮 ${shown} 个` +
+      (extra > 0 ? `（其余 ${extra} 个为非脊柱文件 / 不在本仓，未画）` : "");
+    this.highlightBarEl.style.display = "";
   }
 
   private showLoading(text: string): void {
@@ -516,11 +616,15 @@ export class PanoramaView implements OverlayHandle {
     // 脊柱文件圆
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    const hl = this.touchedFiles; // F70：高亮态（null=不高亮；否则=本会话碰过的文件集）
     for (const b of this.layout.bubbles) {
       const cx = b.x * vp.scale + vp.x;
       const cy = b.y * vp.scale + vp.y;
       const r = b.r * vp.scale;
       if (cx + r < 0 || cy + r < 0 || cx - r > w || cy - r > h) continue; // 剔除
+      // F70：高亮态下压暗未命中气泡，命中气泡满亮（下方再描粗环）。
+      const touched = hl ? hl.has(b.file) : false;
+      ctx.globalAlpha = hl && !touched ? 0.22 : 1;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fillStyle = `hsl(${b.hue} 60% 55% / 0.9)`;
@@ -534,6 +638,18 @@ export class PanoramaView implements OverlayHandle {
         ctx.lineWidth = 1;
         ctx.strokeStyle = `hsl(${b.hue} 40% 30% / 0.7)`;
         ctx.stroke();
+      }
+      // F70：命中「本会话改动」→ 醒目描环 + 外发光。
+      if (hl && touched) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, r + 3, 0, Math.PI * 2);
+        ctx.lineWidth = Math.max(3, r * 0.18);
+        ctx.strokeStyle = accent;
+        ctx.save();
+        ctx.shadowColor = accent;
+        ctx.shadowBlur = 12;
+        ctx.stroke();
+        ctx.restore();
       }
       // hover 高亮环
       if (this.hovered && this.hovered.file === b.file) {
@@ -553,6 +669,7 @@ export class PanoramaView implements OverlayHandle {
         ctx.fillText(truncate(name, maxChars), cx, cy);
       }
     }
+    ctx.globalAlpha = 1; // F70：复位（高亮态压暗过 alpha，别泄漏到下一帧/其它绘制）
   }
 
   // === canvas 交互（pan / zoom / hover / click）===

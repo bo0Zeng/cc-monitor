@@ -267,6 +267,17 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Batch15-P2：代码全景入口 —— 顶栏右侧，紧邻历史按钮左边。自挂 body 作 fixed overlay
   // （照 HistoryView），对活跃**本地**会话的 cwd 建 code-picture 索引画代码库地图。
   const panoramaView = new PanoramaView(() => tabs.activeRepoInfo());
+  // F70（护城河）：右键 tab「在全景高亮本会话改动」→ 切到该会话 → 打开全景 → 高亮它改过的
+  // 节点。TabManager 不直接持有 PanoramaView，走注入回调（同 onManualSwitch 范式）。
+  tabs.requestPanoramaHighlight = (sid) => {
+    const info = tabs.touchedFilesFor(sid); // 远端/无 cwd 已被 getter 挡掉（返 null）
+    if (!info) return;
+    tabs.switchTo(sid); // 置活跃 → activeRepoInfo=该仓 → 全景加载该仓
+    void (async () => {
+      await panoramaView.open(); // 同仓复用；异仓重索引/加载
+      await panoramaView.highlightSession(info.files);
+    })();
+  };
   const panoramaTrigger = document.createElement("button");
   panoramaTrigger.type = "button";
   panoramaTrigger.className = "panorama-trigger";
