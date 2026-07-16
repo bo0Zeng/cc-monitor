@@ -144,3 +144,14 @@ export interface PanoramaStatus {
   indexedAt: number | null;
   symbols: number;
 }
+
+/**
+ * F71：文档漂移项——仓里 `.md` 指向的目标文件/符号已失效（悬空链接）。core 直出 snake_case
+ * （见 §7.3 passthrough）。`reason` ∈ 文件不存在 / 目录不存在 / 符号已不存在 / 符号有多个同名候选。
+ */
+export interface DriftItem {
+  doc_path: string;
+  target_file: string;
+  target_symbol: string | null;
+  reason: string;
+}

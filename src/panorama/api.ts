@@ -19,6 +19,7 @@ import type {
   DocLink,
   IndexStats,
   PanoramaStatus,
+  DriftItem,
 } from "./types";
 
 /** 建索引（重活：tree-sitter 解析全仓 → SQLite）。开面板首次调 + loading。 */
@@ -76,6 +77,14 @@ export const search = (repo: string, query: string, limit?: number) =>
 /** 覆盖某符号的 `.md` 文档链接。 */
 export const docsFor = (repo: string, symbol: string) =>
   invoke<DocLink[]>("panorama_docs_for", { repo, symbol });
+
+/** F71：列某文件的所有符号（点文件气泡 → 展开符号列表 → 点符号进详情）。 */
+export const symbolsInFile = (repo: string, file: string) =>
+  invoke<Symbol[]>("panorama_symbols_in_file", { repo, file });
+
+/** F71：文档漂移（仓里 `.md` 指向的目标文件/符号已失效）。反映上次索引快照，刷新后新鲜。 */
+export const drift = (repo: string) =>
+  invoke<DriftItem[]>("panorama_drift", { repo });
 
 /**
  * ⭐ P3 护城河缝（P2 未接）：一组文件/行 → 命中的符号 id。`ranges` 空 → 整文件所有符号。

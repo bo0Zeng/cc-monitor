@@ -902,6 +902,8 @@ pub fn run() {
             panorama::panorama_search,
             panorama::panorama_docs_for,
             panorama::panorama_touching,
+            panorama::panorama_symbols_in_file,
+            panorama::panorama_drift,
             port_forward::start_forward,
             port_forward::stop_forward,
             port_forward::list_forwards,

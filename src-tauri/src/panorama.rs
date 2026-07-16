@@ -216,6 +216,33 @@ pub async fn panorama_touching(
     .await
 }
 
+/// F71：列某文件的所有符号（点文件气泡 → 展开符号列表 → 点符号进详情，补「点文件不能列符号」
+/// 遗留）。core 无 pub by-file 查询口（`Index::symbols_in_file` 挂在私有 `idx` 上），故走 public
+/// `symbols_touching`（`ranges` 空 = 整文件所有符号 id）+ 逐 id `find_symbol` 取完整 `Symbol`。
+/// 单文件符号量小，N+1 够用（要更快的单条 SQL 得暴露 `Engine::symbols_in_file`=改上游 re-vendor，
+/// 非必需，defer）。
+#[tauri::command]
+pub async fn panorama_symbols_in_file(
+    repo: String,
+    file: String,
+) -> Result<Vec<model::Symbol>, String> {
+    with_engine(repo, move |e| collect_symbols_in_file(e, &file)).await
+}
+
+/// `symbols_in_file` 的核心（抽出以便单测——不 spawn 任务也能在真索引的 Engine 上验证）。
+fn collect_symbols_in_file(e: &Engine, file: &str) -> Vec<model::Symbol> {
+    let ids = e.symbols_touching(&[PathBuf::from(file)], &[]);
+    ids.iter().filter_map(|id| e.find_symbol(id)).collect()
+}
+
+/// F71：文档漂移——仓里 `.md` 指向的目标文件/符号已失效（悬空链接）。core `drift()` 直出
+/// （带缓存，按 index/doc-link 变更时刻快照；用户改了代码但没刷新时反映上次索引，与全景「陈旧
+/// 靠手动刷新」模型一致——前端如实提示）。刷新按钮走 reindex → 重建 doc-links → drift 新鲜。
+#[tauri::command]
+pub async fn panorama_drift(repo: String) -> Result<Vec<model::DriftItem>, String> {
+    with_engine(repo, |e| e.drift()).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,6 +288,34 @@ mod tests {
             store.join(".codepicture").exists(),
             "索引应落到 store_dir 下（core 在其下建 .codepicture/<name>-<hash>/）"
         );
+        std::fs::remove_dir_all(&store).ok();
+    }
+
+    #[test]
+    fn symbols_in_file_lists_that_files_symbols() {
+        // F71：索引一个含两个函数的临时仓 → collect_symbols_in_file 列出该文件的符号。
+        // 显式临时 store（免污染真实数据目录）。走真 tree-sitter（rust grammar）索引。
+        let base = std::env::temp_dir();
+        let repo = base.join("cc-monitor-f71-symfile-repo");
+        let store = base.join("cc-monitor-f71-symfile-store");
+        std::fs::remove_dir_all(&repo).ok();
+        std::fs::remove_dir_all(&store).ok();
+        std::fs::create_dir_all(&repo).ok();
+        std::fs::write(repo.join("lib.rs"), "pub fn alpha() {}\npub fn beta() {}\n").unwrap();
+        let arc = engine_for_with_store(repo.to_str().unwrap(), Some(store.clone())).expect("open");
+        {
+            let mut g = arc.lock().unwrap();
+            g.index().expect("index");
+            let names: std::collections::HashSet<String> = collect_symbols_in_file(&g, "lib.rs")
+                .into_iter()
+                .map(|s| s.name)
+                .collect();
+            assert!(names.contains("alpha"), "应列出 alpha，实得 {names:?}");
+            assert!(names.contains("beta"), "应列出 beta，实得 {names:?}");
+            // 不存在的文件 → 空。
+            assert!(collect_symbols_in_file(&g, "nope.rs").is_empty());
+        }
+        std::fs::remove_dir_all(&repo).ok();
         std::fs::remove_dir_all(&store).ok();
     }
 }

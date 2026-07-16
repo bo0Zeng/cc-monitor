@@ -4179,6 +4179,34 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   display: flex;
   flex-direction: column;
 }
+/* F71：点文件列符号的小标题 + 文档漂移列表。 */
+.panorama-sym-listhead {
+  padding: 6px 14px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+}
+.panorama-drift-list {
+  display: flex;
+  flex-direction: column;
+}
+.panorama-drift-row {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-faint);
+}
+.panorama-drift-doc {
+  color: var(--text);
+  word-break: break-all;
+}
+.panorama-drift-target {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  word-break: break-all;
+}
+.panorama-drift-reason {
+  color: var(--warn);
+  font-size: var(--font-size-small);
+  margin-top: 2px;
+}
 .panorama-sym-row {
   display: flex;
   align-items: baseline;
