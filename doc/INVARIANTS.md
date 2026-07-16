@@ -496,6 +496,30 @@ Claude Code 的 JSONL 会话生命周期解析规则（未知记录抢救、ESC 
 aterm 承诺未落地）；kind 门 / status 红绿灯 / #43 kind 冲突消解 aterm **无对应**（#43 转
 F74）。清单见权威规格 §9 + MASTERPLAN 轨道二护栏五。
 
+## 30. tmux ↔ 会话精确映射靠 `@ccm_sid`，不靠名字/目录反推（F74 / #63 / SS-5 / SS-9）
+
+**后端身份 ≠ 会话身份**：`/branch` 在同一 tmux 后端里把活跃会话从 A 换成 fork 会话 B，
+tmux 名不变（权威规格 `agents/claude-code.md` §4）。同一目录还常有多个 claude tmux（原会话
++ 分支 + cct 同名加后缀的 `<dir>_cc-2/-3`）。**按 `cwd` 取第一个、或按 `cc-<创建时sid>` 幂等
+attach，都会撞进漂移 / 别的会话**（#63「两 tab 内容与 attach 不一致」、「灰会话 resume 进最新
+branch」的同一根因）。
+
+**契约**：`__ccm_rbind`（`shared/ccm-wrapper.sh`，装进远端 `~/.bashrc`）每秒从 pidfile 读当前
+sid，写进 tmux user option **`@ccm_sid`**（随 /branch 实时更新）。选 user option 而非 pane
+title：**title 会被 Claude 自己的活动标题（`⠂ …`）抢写、不可靠；user option Claude 碰不到**
+= 「这个 tmux 此刻在跑哪个 sid」的权威带外信号。后端 `tmux.rs::TMUX_LS_FMT` 末列
+`#{@ccm_sid}` 读它，`TmuxSession.sid` 承载；空串（老 wrapper / 未装）→ `None`。
+
+**铁律**（守 SS-5/SS-9「tab 身份钉在会话身份，找不到就报『不存在』，绝不静默换一个」）：
+- **attach / resume 定位后端，一律先按 `sid===@ccm_sid` 精确匹配**（`tabs.ts::findClaudeTmux`）。
+- **`@ccm_sid` 已知却无一命中 → 判「目标会话不在任何 tmux」，绝不回退按 cwd 抓同目录别的 claude**
+  （那正是撞错会话的老 bug）。只有**整张列表都无 `@ccm_sid`**（老 wrapper）才回退旧 cwd 匹配，
+  向后兼容。
+- **灰会话 resume 找不到活后端 → 起全新 `--resume`，tmux 名用 `pickFreshTmuxName` 挑不撞名**
+  （避免复用被漂移占着的 `cc-<sid8>`），保证落进原会话而非 attach 漂移的别人。
+- **`@ccm_sid` 是阶段② daemon `session.status()` RPC 的先声**（SS-13：tmux 每条能力都是一个
+  daemon RPC 的 shell 仿真）；别把它固化成"只有 tmux 能这样"，它是"后端自报当前 sid"的通用形态。
+
 ## 修改本文档
 
 加新的不变量时：

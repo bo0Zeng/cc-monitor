@@ -721,6 +721,7 @@ mod tests {
             "__ccm_rbind()",
             "set-titles on",
             "ccm-rbind-%s",
+            "@ccm_sid",
             "declare -f ccm",
             "exec claude",
         ] {

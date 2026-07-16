@@ -59,10 +59,11 @@ export async function runRemoteResumeTmux(
   sid: string,
   cwd: string,
   launcher: string,
+  name?: string,
 ): Promise<void> {
   let cmd: string;
   try {
-    cmd = buildResumeTmuxCmd(sid, cwd, launcher);
+    cmd = buildResumeTmuxCmd(sid, cwd, launcher, name);
   } catch (err) {
     showActionFailureToast("无法构造 tmux resume 命令", String(err));
     return;

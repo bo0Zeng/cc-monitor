@@ -22,6 +22,7 @@ import { isAgentTool } from "./cards/subagent";
 import type { AgentsPanel, AgentEntry } from "./agents-panel";
 import { LS_KEYS, safeSet } from "./local-storage";
 import { runRemoteResume, runRemoteResumeTmux, runRemoteAttach } from "./remote-launch-run";
+import { pickFreshTmuxName } from "./remote-launch";
 import { openPanePreview } from "./views/pane-preview";
 import { turnEndNotifier } from "./turn-notify";
 import { getBehavior } from "./behavior";
@@ -172,6 +173,10 @@ interface TmuxSession {
   command: string;
   attached: boolean;
   windows: number;
+  /** F74：`@ccm_sid` user option——此 tmux 当前所跑 CC 会话 sid（`__ccm_rbind` 写，随 /branch
+   * 漂移实时更新）。未设置（老会话 / 未装 wrapper）→ null。用它精确认「哪个 tmux 跑目标 sid」，
+   * 取代按 cwd 取第一个（同目录多 claude 会撞错会话）。 */
+  sid: string | null;
 }
 /** tmux 反查缓存 TTL:菜单打开按需查,短缓存避免重复右键狂拉 ssh。 */
 const TMUX_CACHE_TTL_MS = 8000;
@@ -180,6 +185,31 @@ const TMUX_CACHE_TTL_MS = 8000;
  * 收窄误配(D-正确性 Sug2:只认 claude 会在报 node 的环境静默失效)。 */
 function isClaudeTmuxCommand(cmd: string): boolean {
   return cmd === "claude" || cmd === "node";
+}
+
+/**
+ * F74：在 tmux 会话列表里定位「正跑目标 sid 的活 claude」。**优先 `@ccm_sid` 精确匹配**——
+ * 同目录多个 claude tmux（原会话 + `/branch` 出来的分支…）只有 `@ccm_sid` 能分清哪个是目标
+ * 会话，且不被漂移骗（`__ccm_rbind` 随 /branch 实时更新它）。
+ *
+ * 精确没命中时：**只有当整张列表没有任何会话带 `@ccm_sid`**（老 wrapper / 未装）才回退按
+ * `path===cwd` 猜（向后兼容）。只要有会话带了 sid、却没一个等于目标 sid，就说明目标会话不在
+ * 任何 tmux 里（已结束 / 已漂移到别的 sid）——此时**绝不**按 cwd 抓一个同目录的别的 claude
+ * （那正是撞错会话的老 bug），宁可返 undefined（SS-5/SS-9：找不到就报「不在」，不静默换一个）。
+ * 契约与铁律见 doc/INVARIANTS.md §30。
+ */
+export function findClaudeTmux(
+  sessions: TmuxSession[] | null | undefined,
+  sid: string,
+  cwd: string,
+): TmuxSession | undefined {
+  const byS = sessions?.find((s) => s.sid === sid && isClaudeTmuxCommand(s.command));
+  if (byS) return byS;
+  const anySidKnown = sessions?.some((s) => s.sid != null);
+  if (anySidKnown) return undefined;
+  return cwd
+    ? sessions?.find((s) => s.path === cwd && isClaudeTmuxCommand(s.command))
+    : undefined;
 }
 
 export class TabManager {
@@ -1463,7 +1493,30 @@ export class TabManager {
     const tab = this.tabs.get(sid);
     if (!tab || tab.origin === null) return;
     const behavior = await getBehavior();
-    await runRemoteResumeTmux(tab.origin, sid, tab.cwd ?? "", behavior.resumeCommandRemote);
+    const origin = tab.origin;
+    const cwd = tab.cwd ?? "";
+    // F74：先查该 origin 的 tmux 列表，据 @ccm_sid 分两路。**attach 决策对新鲜度最敏感**——
+    // 8s 缓存里的 @ccm_sid 可能已被 /branch 漂移（快照记 N=A，N 此刻跑 B）→ 据陈旧快照 attach
+    // 又会撞进漂移会话，正是本刀要修的 bug。故这里**总是新查、不读缓存**（用户主动 resume，一次
+    // ssh 可接受；与 resolveAttachMenuItem 的 attach 一律新查对齐），查回来仍写缓存惠及其它路径。
+    let sessions: TmuxSession[] | null = null;
+    try {
+      sessions = await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
+      this.tmuxCache.set(origin, { ts: Date.now(), sessions });
+    } catch {
+      sessions = null; // 查询失败 → 走下面 fresh 分支（沿用旧幂等 resume 名，退化不变砖）
+    }
+    // ① 目标 sid 正活在某 tmux（@ccm_sid 命中）→ 直接 attach 它，回到活的后端，别重开一个。
+    const live = findClaudeTmux(sessions, sid, cwd);
+    if (live && live.sid === sid) {
+      await runRemoteAttach(origin, live.name);
+      return;
+    }
+    // ② 目标会话不在任何 tmux（已结束 / 已漂移到别的 sid）→ 起**全新** resume。tmux 名从现有
+    // 名里挑一个不撞的，避免复用被 /branch 漂移占着的 cc-<sid8>（那正是「resume 进 branch」老 bug）。
+    const existing = new Set((sessions ?? []).map((s) => s.name));
+    const name = pickFreshTmuxName(sid, existing);
+    await runRemoteResumeTmux(origin, sid, cwd, behavior.resumeCommandRemote, name);
   }
 
   /**
@@ -1471,7 +1524,11 @@ export class TabManager {
    * command==="claude"` 反查该 tab 的 Claude 所在 tmux 会话。命中 → 把禁用占位「检测中」
    * 换成可点的 Attach;无 tmux / 无匹配 / 查询失败 → 移除占位。菜单已关则 update/remove no-op。
    */
-  private async resolveAttachMenuItem(origin: string, cwd: string): Promise<void> {
+  private async resolveAttachMenuItem(
+    origin: string,
+    cwd: string,
+    sid: string,
+  ): Promise<void> {
     const gen = tabMenuGeneration; // 捕获发起查询的那一代菜单(R-1 守卫)
     let sessions: TmuxSession[] | null;
     try {
@@ -1488,7 +1545,7 @@ export class TabManager {
     }
     // 菜单已换/已关(新代次)→ 别动别的菜单(R-1 跨 tab 串味)。
     if (gen !== tabMenuGeneration) return;
-    const match = sessions?.find((s) => s.path === cwd && isClaudeTmuxCommand(s.command));
+    const match = findClaudeTmux(sessions, sid, cwd);
     if (match) {
       updateTabContextMenuItem("attach", {
         id: "attach",
@@ -1759,9 +1816,7 @@ export class TabManager {
       if (origin !== null && cwd) {
         const cached = this.tmuxCache.get(origin);
         if (cached && Date.now() - cached.ts < TMUX_CACHE_TTL_MS) {
-          const m = cached.sessions?.find(
-            (s) => s.path === cwd && isClaudeTmuxCommand(s.command),
-          );
+          const m = findClaudeTmux(cached.sessions, sid, cwd);
           if (m) {
             items.push({
               id: "attach",
@@ -1793,7 +1848,7 @@ export class TabManager {
       }
       showTabContextMenu(e.clientX, e.clientY, items);
       if (needAsyncAttach && origin !== null && cwd) {
-        void this.resolveAttachMenuItem(origin, cwd);
+        void this.resolveAttachMenuItem(origin, cwd, sid);
       }
     });
 
