@@ -404,6 +404,50 @@ Batch8-F25/26 起（p1f daemon + tail-only）：daemon 连接时把各文件 seq
 - **status 缺失恒为"未知"**：pidfile 无 `status`（旧 CC）→ 帧不带 → 前端 `act=null`
   不加灯类——双端一字一致（与 §26 "kind 缺失恒视为交互"同族的保守缺省规则）。
 
+## 28. 自造持久身份的护栏（F64 / issue #58 单向门①）
+
+**铁律**：任何会被**持久化（落盘）或跨进程 / 上 wire 协议暴露**的身份标识，必须
+**opaque + 稳定 + 出生一次 + 永不从名字 / 路径 / 位置算**。**想不清就先别发**——用外部
+已有的稳定 id 顶着（Claude Code 的 `sessionId`、或 code-picture 的 uuid）。
+
+**为什么是单向门**：id 一旦被别处引用或落盘就锁死，事后没法把「会变的 key」换成
+「稳定 id」而不断掉所有引用。反例是 Claude Code 自己的 `enc(cwd)`——拿位置相关的
+可读路径当 key，用户一搬目录，历史全对不上。**往模型里加字段永远便宜；把当 key 用
+错的 id 改对极贵**（要迁数据 / 破引用 / 两个前端各改一遍）。这类错误漏到代码外面，
+`serde` 宽容（§18）救不了。
+
+**判据**（照 issue #58）：只有自己代码调、不落盘、不跨 aterm、不进 wire → 可逆，晚点抽。
+占了其中任何反面 → 单向门，现在就得把「形状」定对。
+
+### 现状签收（2026-07-16，F64 全库核查，无违反）
+cc-monitor **没有一个**「自铸 opaque id + 落盘/上 wire + 从路径算」的东西。持久身份
+全挂**外部稳定 id**：
+- 会话表 / 历史 metadata / 窗口句柄缓存 key = Claude Code `sessionId`（`session_map.rs`、`history.rs::HistoryMetadata.entries`、`bind.rs::SidHwndBinding`）。
+- ps-registry key = OS `pid`（`bind.rs`）。
+- 唯一自铸的 opaque token = bind 握手 marker `ccm-bind-{PID}-{随机8字符UUID}`（`bind.rs`）——**瞬时握手、用完即删、不从路径算**，不当持久身份，合规。
+- panorama 进程内选 Engine 的 key 用仓根路径，但**纯内存、绝不落盘**（保持现状，别存盘）。持久的节点身份由 **code-picture-core** 写进侧车 DB、守它自己的 uuid 规矩，cc-monitor 只消费不自铸。
+
+### `origin` 边界（有意的外部稳定 id，别手滑）
+`RemoteConfig.label`（`ssh_source.rs`，空则回退 `host`）是唯一「持久（config.json）+
+上 wire（每条远端行带 `origin`）+ 名字派生」的 key，形态上最接近 `enc(cwd)` 反模式。
+但它**合规**——它是**用户可控的外部稳定 id**（主机名或用户填的 label），正是本约钦定的
+兜底手段「用外部已有稳定 id 顶着」，且**只做结构字段 + 内存 map 的 key，不是任何落盘
+登记表的主键**（history-metadata 主键是 `sessionId`）。**守则**：别哪天把它换成从 IP /
+路径现算的脆弱值，也别把它降格当 cc-monitor 内部的 opaque id。
+
+### 对齐 code-picture（要持久身份就复用，别自造）
+cc-monitor 一旦需要**持久化**「哪个仓 / 哪个节点」，直接复用 code-picture 的 uuid
+（code-picture `decisions.md` **D3** crypto-RNG uuid、**D18** 存中央 journal、**D26**
+惰性激活才发号），**绝不另发一套从路径算的持久 key**。
+
+### 未来约束（F70 / F90 落地那天守本约）
+- **F70**（#51 点会话高亮改动）：当「某会话改过哪些节点」要**跨会话留存/引用**时，节点
+  身份必须用 code-picture uuid，**不许每次从 `file_path` 现算**（否则一改路径高亮全丢）。
+  现状 F70 缝即时返回、不落盘，仍在安全侧。
+- **F90**（#48 daemon 登记表）：会话/后端登记表主键必须 opaque + 稳定，用 Claude Code
+  `sessionId` 顶着，**不许拿 tmux 会话名 / 主机名 / 路径当持久主键**——否则 §SS-12
+  「一端起的会话另一端必须能接」当场崩（换后端 / 换机名字变了就对不上）。
+
 ## 修改本文档
 
 加新的不变量时：
