@@ -160,6 +160,58 @@ pub enum JsonlRecord {
     #[serde(rename = "file-history-snapshot")]
     FileHistorySnapshot {},
 
+    /// F63 (issue #49)：**看不懂的记录 —— 留原文 + 留链上的身份**。
+    ///
+    /// 由 `parser::parse_line` 构造，**绝不从真实 jsonl 反序列化得来**（故 type 名带
+    /// `cc-monitor-` 前缀防撞未来的真类型）。两条来源：
+    /// 1. 未知 `type` —— serde 落到下面的 `Unknown`，`parse_line` 抢救成本变体
+    /// 2. 已知 `type` 但字段解析失败（`from_str` 返回 Err）且原文仍是合法 JSON
+    ///
+    /// **为什么不直接给 `Unknown` 加字段**：`#[serde(other)]` 编译期强制 unit variant
+    /// （实测 `error: #[serde(other)] must be on a unit variant`）。故 `Unknown` 只当
+    /// serde 落点，抢救在 `parse_line` 做——那里手里正好有原始字符串。
+    ///
+    /// **为什么要留 uuid/parentUuid**：`branching.ts:100-106` 判 root 的依据是
+    /// 「parentUuid 不在集合里」。记录一旦丢失，它的 children 就成孤儿 root →
+    /// `branching.ts:48-50` 多 root 时死胡同 plain user root **整棵折叠**。
+    /// `branching.ts:24` 早预警过：「必须 track 它们的 uuid+parentUuid，否则 parent
+    /// 链断成碎片 → 大量误折叠」；同类故障咬过一次（1 条重复 attachment 折掉
+    /// 1541/4331 条，见 2026-06-13 排查总结）。
+    ///
+    /// **实测（2026-07-16，本机 771 会话 / 157,385 行）**：当前 7 个未知 type
+    /// （mode 6472 / agent-name 2020 / file-history-delta 181 / pr-link 58 /
+    /// relocated 19 / worktree-state 19 / frame-link 2，共 8,774 条）**uuid 与
+    /// parentUuid 全为 0** —— 即此刻并没有在误折叠，本变体是**保险 + 诚实**：
+    /// ①不再静默丢 5.6% 的行；②Claude 哪天发一个带链身份的新类型时自动扛住。
+    ///
+    /// 进 `is_displayable()`（照 `Attachment` 先例：**不渲染卡片但进链**）。
+    /// 前端 `cards/index.ts:350` `default => skip` 已能优雅跳过，无需建卡。
+    #[serde(rename = "cc-monitor-unrecognized")]
+    Unrecognized {
+        #[serde(default)]
+        uuid: Option<String>,
+        #[serde(rename = "parentUuid", default)]
+        parent_uuid: Option<String>,
+        #[serde(default)]
+        timestamp: Option<String>,
+        /// 原文里的 `type`（若有）——诊断 / 记账按它分类
+        #[serde(rename = "originalType", default)]
+        original_type: Option<String>,
+        /// 抢救时的原文行（已剥 UTF-8 BOM + `.trim()`，JSON 载荷完整）。
+        /// 诊断 / 未来从这里抽 `pr-link`.prUrl、`agent-name`.agentName 等字段用。
+        raw: String,
+        /// 为什么没认出来：`unknown-type` / `parse-failed: <serde 原文>`
+        reason: String,
+    },
+
+    /// serde 对未知 `type` 的落点。**不出 `parse_line`** —— 它会被抢救成
+    /// `Unrecognized`（带原文与身份）。
+    ///
+    /// 保留它是**设计选择**而非硬性必需：去掉 `#[serde(other)]`，未知 `type` 会走
+    /// `parse_line` 的 `Err → salvage` 路径同样被抢救，只是 `reason` 变成
+    /// `parse-failed: unknown variant …` 而非干净的 `unknown-type`。留着是为了
+    /// **reason 分类清晰**（未知 type vs 已知 type 解析失败，两类诊断意义不同）。
+    /// 「必须是 unit variant」只是 `#[serde(other)]` 的编译期约束，不是"不留就崩"。
     #[serde(other)]
     Unknown,
 }
@@ -223,9 +275,16 @@ impl JsonlRecord {
     ///
     /// 两类记录都返回 true：
     /// 1. 渲染目标：User / Assistant / AiTitle / System —— 前端会建卡 / 改标题等
-    /// 2. 仅链路用：Attachment —— 不渲染，但 issue #8 ESC 回退主线检测
+    /// 2. 仅链路用：Attachment / Unrecognized —— 不渲染，但 issue #8 ESC 回退主线检测
     ///    需要完整 uuid+parentUuid 链，attachment 夹在 user/assistant 之间，
     ///    不 emit 会让前端 parent 链断成碎片 → 主线全错 → 全部消息被错折叠
+    ///
+    /// **返回 false 的两类要分清**（F63/#49「零信息损失」的口径）：
+    /// - `PermissionMode` / `LastPrompt` / `FileHistorySnapshot` = **已知类型的明示
+    ///   决定**（我们认识它、判断它不该显示）→ 不算「丢」。实测 16,121 条。
+    /// - `Unknown` = **不认识**，曾经从这里被静默丢弃（实测 8,774 条 / 5.6%）。
+    ///   F63 起它不再出 `parse_line`（被抢救成 `Unrecognized`），此处 false 只是
+    ///   兜底——真走到说明 `parse_line` 的后处理漏了，属 bug。
     pub fn is_displayable(&self) -> bool {
         matches!(
             self,
@@ -236,6 +295,7 @@ impl JsonlRecord {
                 | Self::System { .. }
                 | Self::Attachment { .. }
                 | Self::QueueOperation { .. }
+                | Self::Unrecognized { .. }
         )
     }
 }
@@ -524,9 +584,44 @@ mod tests {
 
     #[test]
     fn unknown_type_does_not_panic_and_not_displayable() {
+        // 注意：`parse` = 裸 `serde_json::from_str`，测的是 **serde 层**（Unknown 是
+        // serde 落点，此层它确实非 displayable）。**生产走 `parser::parse_line`**，
+        // 那里 Unknown 会被抢救成 `Unrecognized`（F63）—— 见 parser.rs 的护栏测试。
         let r = parse(r#"{"type":"future-unknown-type","x":1}"#);
         assert!(matches!(r, JsonlRecord::Unknown));
         assert!(!r.is_displayable());
+    }
+
+    /// F63 wire 契约：`Unrecognized` 序列化出的 `type` 必须是 `"cc-monitor-unrecognized"`，
+    /// 且身份字段用 camelCase。前端 `branching.ts` 白名单 + `cards/index.ts` 镜像
+    /// **硬编码同一字符串**；改这边的 rename 就得同步改前端，否则 unrecognized
+    /// 全部认不出 → 又开始丢链，且现有测试全绿（漂移无声）。此测试守 Rust 侧，
+    /// 前端侧由 branching.test.ts 的白名单用例守（改前端白名单则那边挂）。
+    #[test]
+    fn unrecognized_wire_type_and_camel_case_contract() {
+        let rec = JsonlRecord::Unrecognized {
+            uuid: Some("u1".into()),
+            parent_uuid: Some("u0".into()),
+            timestamp: Some("t1".into()),
+            original_type: Some("mode".into()),
+            raw: "{\"type\":\"mode\"}".into(),
+            reason: "unknown-type".into(),
+        };
+        let v = serde_json::to_value(&rec).unwrap();
+        assert_eq!(
+            v.get("type").and_then(|t| t.as_str()),
+            Some("cc-monitor-unrecognized"),
+            "改 rename 必须同步前端 branching.ts / cards/index.ts 白名单"
+        );
+        // camelCase：前端镜像按此取（parentUuid / originalType）
+        assert!(v.get("parentUuid").is_some(), "parentUuid 必须 camelCase");
+        assert!(
+            v.get("originalType").is_some(),
+            "originalType 必须 camelCase"
+        );
+        // 回环：抢救出的记录序列化后能被 serde 读回同一变体（不因 rename 撞其他分支）
+        let back: JsonlRecord = serde_json::from_value(v).unwrap();
+        assert!(matches!(back, JsonlRecord::Unrecognized { .. }));
     }
 
     #[test]
