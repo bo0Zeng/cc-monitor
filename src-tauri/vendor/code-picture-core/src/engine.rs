@@ -27,10 +27,45 @@ enum Direction {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct EngineOpts {}
+pub struct EngineOpts {
+    /// F27:整个 `.codepicture`(索引 + 批注)的存放根。
+    /// `None` → `<repo>/.codepicture`(旧行为,兼容);
+    /// `Some(dir)` → `<dir>/.codepicture/<仓名-路径hash>/`(集中存,不污染被分析仓)。
+    pub store_dir: Option<PathBuf>,
+}
+
+/// F27:解析某仓的 `.codepicture` 根。`store_dir`=None → 仓内(旧);Some → 集中到
+/// `<store>/.codepicture/<仓名-路径hash>/`,同一仓(canonical 路径)总落同一目录。
+fn codepicture_root(repo: &Path, opts: &EngineOpts) -> PathBuf {
+    match &opts.store_dir {
+        None => repo.join(".codepicture"),
+        Some(store) => {
+            let canon = std::fs::canonicalize(repo).unwrap_or_else(|_| repo.to_path_buf());
+            let name = repo
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "repo".to_string());
+            let key = format!("{name}-{:016x}", fnv1a(canon.to_string_lossy().as_bytes()));
+            store.join(".codepicture").join(key)
+        }
+    }
+}
+
+/// FNV-1a 64:跨 Rust 版本/平台稳定(不用 DefaultHasher——方案①下批注也存这、需稳定目录名)。
+fn fnv1a(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for &b in bytes {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
 
 pub struct Engine {
     repo: PathBuf,
+    // F27:该仓的 `.codepicture` 根(index.db + annotations/)。默认 `<repo>/.codepicture`,
+    // 或经 `EngineOpts.store_dir` 集中到 `<store>/.codepicture/<仓hash>/`。
+    dot: PathBuf,
     idx: Index,
     // F17 派生态缓存(内部可变,overview/drift 为 &self);按 index/update/doc-link 变更失效。
     // 缓存的 overview 是**未裁剪**的全景(budget 无关);drift 是全量结果。
@@ -40,15 +75,17 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// 打开一个仓库。索引落 `<repo>/.codepicture/index.db`;除此之外不写仓库任何文件。
-    pub fn open(repo: &Path, _opts: EngineOpts) -> Result<Engine, Box<dyn Error>> {
-        let dot = repo.join(".codepicture");
+    /// 打开一个仓库。索引 + 批注落 `.codepicture`(位置见 [`EngineOpts::store_dir`]:默认
+    /// `<repo>/.codepicture`,或集中到 `<store_dir>/.codepicture/<仓hash>/`);除此之外不写仓库任何文件。
+    pub fn open(repo: &Path, opts: EngineOpts) -> Result<Engine, Box<dyn Error>> {
+        let dot = codepicture_root(repo, &opts);
         std::fs::create_dir_all(&dot)?;
-        // 总是写 .codepicture/.gitignore:忽略派生 index.db、保留人写 annotations/
-        annotations::ensure_gitignore(repo)?;
+        // 总是写 `.codepicture/.gitignore`:忽略派生 index.db、保留人写 annotations/
+        annotations::ensure_gitignore(&dot)?;
         let idx = Index::open(&dot.join("index.db"))?;
         Ok(Engine {
             repo: repo.to_path_buf(),
+            dot,
             idx,
             overview_cache: RefCell::new(None),
             drift_cache: RefCell::new(None),
@@ -542,7 +579,7 @@ impl Engine {
             return Err("批注正文不能为空".into());
         }
         let id = annotation_id(file, symbol, body);
-        if let Some(existing) = annotations::get(&self.repo, &id) {
+        if let Some(existing) = annotations::get(&self.dot, &id) {
             if existing.status == AnnotationStatus::Active {
                 return Ok(id); // 已被人批准的同内容 → 不降级
             }
@@ -567,16 +604,16 @@ impl Engine {
             author: author.to_string(),
             status,
         };
-        annotations::write(&self.repo, &ann)?;
+        annotations::write(&self.dot, &ann)?;
         Ok(id)
     }
 
     /// 人审批准:Proposed → Active。返回该 id 是否存在。
     pub fn approve_annotation(&self, id: &str) -> Result<bool, Box<dyn Error>> {
-        match annotations::get(&self.repo, id) {
+        match annotations::get(&self.dot, id) {
             Some(mut a) => {
                 a.status = AnnotationStatus::Active;
-                annotations::write(&self.repo, &a)?;
+                annotations::write(&self.dot, &a)?;
                 Ok(true)
             }
             None => Ok(false),
@@ -584,12 +621,12 @@ impl Engine {
     }
 
     pub fn remove_annotation(&self, id: &str) -> Result<bool, Box<dyn Error>> {
-        Ok(annotations::remove(&self.repo, id)?)
+        Ok(annotations::remove(&self.dot, id)?)
     }
 
     /// 全部批注(含 Proposed;给人看 / 审批队列)。
     pub fn list_annotations(&self) -> Vec<Annotation> {
-        annotations::list(&self.repo)
+        annotations::list(&self.dot)
     }
 
     /// 覆盖某符号的 **Active** 批注(给 agent 消费;Proposed 不可见 = 人审门禁)。
@@ -597,7 +634,7 @@ impl Engine {
     pub fn annotations_for(&self, sym: &SymbolId) -> Vec<Annotation> {
         let (file, seg) = split_sym_id(sym);
         let seg_bare = seg.as_deref().map(bare_name);
-        annotations::list(&self.repo)
+        annotations::list(&self.dot)
             .into_iter()
             .filter(|a| {
                 a.status == AnnotationStatus::Active

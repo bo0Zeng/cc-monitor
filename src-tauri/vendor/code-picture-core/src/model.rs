@@ -15,7 +15,7 @@ pub enum SymKind {
     Module,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub enum Lang {
     Rust,
     Python,
@@ -37,6 +37,10 @@ pub struct Symbol {
     pub lang: Lang,
     pub start_line: usize, // 1-based
     pub end_line: usize,
+    /// F68：符号签名文本（如 `fn foo(a:u32)->String`）——函数定义节点从起始到 body 前的
+    /// 文本，折单行。拿不到（body 字段非标准 / 非可调用符号）= None。传前端做详情面板展示。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
     #[serde(skip)] // 内部内容指纹,非前端数据;u64 经 JSON number 会 >2^53 丢精度,不外传
     pub body_hash: u64,
 }

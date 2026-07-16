@@ -3,8 +3,67 @@ use std::path::Path;
 fn main() {
     emit_daemon_build_id();
     emit_daemon_capabilities();
+    check_vendor_freshness();
     embed_daemons();
     tauri_build::build()
+}
+
+/// F68：vendor 副本过期检查（SS-10「过期看得见」）。从 `VENDOR.md` **单源**抠 pin + 上游
+/// 仓路径，若上游 sibling 仓存在则比对 `pin..HEAD` 有没有未 re-vendor 的 core 改动，非空
+/// 发**可见的 `cargo:warning`**。**上游仓缺席（CI/Windows）→ 静默 no-op，绝不拖垮构建**
+/// （同 `embed_daemons` 二进制缺席 no-op）。软警告非硬失败——开发期上游领先副本是常态。
+fn check_vendor_freshness() {
+    let vendor_md = Path::new("vendor/code-picture-core/VENDOR.md");
+    println!("cargo:rerun-if-changed={}", vendor_md.display());
+    let Ok(text) = std::fs::read_to_string(vendor_md) else {
+        return;
+    };
+    let (Some(pin), Some(up)) = (
+        extract_backtick_after(&text, "vendored commit:"),
+        extract_backtick_after(&text, "上游仓:"),
+    ) else {
+        return;
+    };
+    let up = Path::new(&up);
+    if !up.join(".git").exists() {
+        return; // 上游仓缺席 → no-op
+    }
+    let Ok(out) = std::process::Command::new("git")
+        .arg("-C")
+        .arg(up)
+        .args([
+            "log",
+            "--oneline",
+            &format!("{pin}..HEAD"),
+            "--",
+            // 只比对**真被 vendor 的内容**（src + Cargo.toml）；tests/ 不 vendor，
+            // 上游只改 tests 的提交不该触发"过期"（审计建议收窄）。
+            "crates/code-picture-core/src",
+            "crates/code-picture-core/Cargo.toml",
+        ])
+        .output()
+    else {
+        return;
+    };
+    let n = out
+        .stdout
+        .split(|&b| b == b'\n')
+        .filter(|l| !l.is_empty())
+        .count();
+    if n > 0 {
+        println!(
+            "cargo:warning=vendor code-picture-core 过期:上游 core 有 {n} 个未 re-vendor 的提交(pin={pin})。见 vendor/code-picture-core/VENDOR.md 的 re-vendor 菜谱。"
+        );
+    }
+}
+
+/// 从含 `label` 的行里抠出**第一个反引号包裹**的内容（pin / 上游路径）。
+fn extract_backtick_after(text: &str, label: &str) -> Option<String> {
+    let line = text.lines().find(|l| l.contains(label))?;
+    let after = &line[line.find(label)? + label.len()..];
+    let start = after.find('`')? + 1;
+    let rel_end = after[start..].find('`')?;
+    Some(after[start..start + rel_end].to_string())
 }
 
 /// 从 daemon 源码（`remote-daemon-proto/src/main.rs`）提取 `const BUILD_ID`，emit 成编译期

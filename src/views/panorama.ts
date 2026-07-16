@@ -718,6 +718,8 @@ export class PanoramaView implements OverlayHandle {
     // 元信息
     const meta = document.createElement("div");
     meta.className = "panorama-node-meta";
+    // F68：签名放最前（最有用）；后端拿不到（body 字段非标准/非可调用符号）则不显示这行。
+    if (s.signature) appendMetaRow(meta, "签名", s.signature, true);
     appendMetaRow(meta, "全限定 id", s.id, true);
     appendMetaRow(meta, "位置", `${s.file}:${s.start_line}-${s.end_line}`, true);
     appendMetaRow(meta, "语言", s.lang, false);

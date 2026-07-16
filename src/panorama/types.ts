@@ -38,6 +38,8 @@ export interface Symbol {
   lang: Lang;
   start_line: number; // 1-based
   end_line: number;
+  /** F68：签名文本（如 `fn foo(a:u32)->String`）。后端 `Symbol.signature`，拿不到时缺省。 */
+  signature?: string | null;
 }
 
 /** 一条调用/导入边。`confidence` 是**尽力**标注（非 sound），如实呈现别当完整真相。 */
