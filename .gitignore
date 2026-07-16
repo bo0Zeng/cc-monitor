@@ -27,3 +27,7 @@ target/
 *.njsproj
 *.sln
 *.sw?
+
+# Phase G 收尾：vendor 的 code-picture 副本里 cargo 生成的 Cargo.lock 是游离产物
+# （被 workspace 根 lock 架空、构建不用它），不进版本控制。re-vendor（F68）时别提交它。
+src-tauri/vendor/**/Cargo.lock
