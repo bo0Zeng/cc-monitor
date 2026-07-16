@@ -2,6 +2,7 @@ use std::path::Path;
 
 fn main() {
     emit_daemon_build_id();
+    emit_daemon_capabilities();
     embed_daemons();
     tauri_build::build()
 }
@@ -28,6 +29,44 @@ fn extract_build_id(src: &str) -> Option<String> {
     let start = line.find('"')? + 1;
     let rel_end = line[start..].find('"')?;
     Some(line[start..start + rel_end].to_string())
+}
+
+/// F66（#58③）：从 daemon 源码提取 `const CAPABILITIES`，emit 成编译期 env
+/// `DAEMON_CAPABILITIES`（逗号分隔），让 monitor 的 `embedded_daemon_capabilities()` 与
+/// daemon 声明的能力**单一事实源**——同 build_id 的 SS-B，杜绝手工同步债（审计 B1/S1：
+/// 否则两份手抄常量漂移时，乐观路径可能声明当前 daemon 不剥离的 flag → §26 死循环窄窗）。
+fn emit_daemon_capabilities() {
+    let main_rs = Path::new("..")
+        .join("remote-daemon-proto")
+        .join("src")
+        .join("main.rs");
+    // rerun-if-changed 已由 emit_daemon_build_id 对同一文件登记，无需重复。
+    let caps = std::fs::read_to_string(&main_rs)
+        .ok()
+        .and_then(|s| extract_capabilities(&s))
+        .unwrap_or_default();
+    println!("cargo:rustc-env=DAEMON_CAPABILITIES={caps}");
+}
+
+/// 从源码里抠出 `const CAPABILITIES: &[&str] = &["a", "b"];` 的所有字符串，逗号拼接
+/// （`a,b`）。**取 `=` 右侧再抠数组**——否则 `line.find('[')` 会命中类型标注 `&[&str]`
+/// 的 `[`（里面 `&str` 无引号 → 抠成空，此坑由 `embedded_capabilities_single_source_wired`
+/// 测试抓出）。
+fn extract_capabilities(src: &str) -> Option<String> {
+    let line = src.lines().find(|l| l.contains("const CAPABILITIES"))?;
+    let rhs = &line[line.find('=')? + 1..]; // 跳过 `: &[&str]` 类型标注里的 `[`
+    let inner_start = rhs.find('[')? + 1;
+    let inner_end = rhs[inner_start..].find(']')? + inner_start;
+    let inner = &rhs[inner_start..inner_end];
+    let mut tokens = Vec::new();
+    let mut rest = inner;
+    while let Some(q1) = rest.find('"') {
+        let after = &rest[q1 + 1..];
+        let q2 = after.find('"')?;
+        tokens.push(&after[..q2]);
+        rest = &after[q2 + 1..];
+    }
+    Some(tokens.join(","))
 }
 
 /// 把交叉编译好的 musl daemon 二进制
