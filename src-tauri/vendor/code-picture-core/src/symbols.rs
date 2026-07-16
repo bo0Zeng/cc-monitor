@@ -111,6 +111,8 @@ fn collect(
             lang,
             start_line,
             end_line: node.end_position().row + 1,
+            // F68：签名文本（拿不到=None，如非标准 body 字段或非可调用符号）
+            signature: spec.signature_of(node, src),
             body_hash: hash_bytes(body),
         });
         if is_callable {

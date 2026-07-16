@@ -40,7 +40,9 @@ fn engine_for(repo: &str) -> Result<Arc<Mutex<Engine>>, String> {
         return Ok(Arc::clone(e));
     }
     // 慢路径:`open` 在池锁**外**（open 期间不持全局锁,别的仓可并发首开）。
-    let engine = Engine::open(&key, EngineOpts {})
+    // F68 re-vendor:EngineOpts 从空壳变带 `store_dir`。`None` = 索引落被分析仓
+    // `<repo>/.codepicture`(现状,.gitignore 已忽略);要集中到 cc-monitor 数据目录改 Some。
+    let engine = Engine::open(&key, EngineOpts { store_dir: None })
         .map_err(|e| format!("打开 code-picture 引擎失败（{repo}）: {e}"))?;
     let arc = Arc::new(Mutex::new(engine));
     // 回填 + double-check:open 期间别的线程可能已建同 key → 先到者胜,弃本次多开的（罕见）。

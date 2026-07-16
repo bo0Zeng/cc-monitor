@@ -1,8 +1,13 @@
 //! SQLite 索引(唯一 IO 边界之一)。F01 一次性建全 5 表,后续功能只填不改结构。
 
 use crate::model::{Confidence, DocLink, Edge, EdgeKind, Lang, LinkSource, SymKind, Symbol};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::path::Path;
+
+/// F68：schema 版本。加 `symbols.signature` 列 = v2。旧库（v1，无 signature 列）打开时
+/// 版本不符 → drop 派生表重建（`index.db` 是派生 + gitignore，reindex 便宜；不迁移则
+/// 旧库 `SELECT signature` 爆 "no such column"）。以后改 symbols/edges/doc_links 结构就 bump。
+const SCHEMA_VERSION: &str = "2";
 
 pub struct Index {
     conn: Connection,
@@ -20,6 +25,30 @@ impl Index {
     /// (F07 批注改走 JSON 侧车 `.codepicture/annotations/*.json`——人写可版本化的唯一真相,
     /// 早先预建的 annotations SQLite 表从未读写,已于 Phase G 删除。)
     fn init_schema(&self) -> rusqlite::Result<()> {
+        // F68：schema 版本迁移。先建 meta（判定要读它），再比对版本——不符则 drop 派生表
+        // 重建（旧 v1 库的 symbols 无 signature 列，直接 CREATE IF NOT EXISTS 不会补列 →
+        // SELECT signature 会爆）。index.db 派生 + gitignore，reindex 便宜，drop 重建安全。
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+            [],
+        )?;
+        let current: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT value FROM meta WHERE key = 'schema_version'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if current.as_deref() != Some(SCHEMA_VERSION) {
+            self.conn.execute_batch(
+                "DROP TABLE IF EXISTS symbols;
+                 DROP TABLE IF EXISTS edges;
+                 DROP TABLE IF EXISTS doc_links;
+                 DELETE FROM meta WHERE key LIKE 'fp:%';
+                 DELETE FROM meta WHERE key = 'last_index_time';",
+            )?;
+        }
         self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS symbols (
                 id          TEXT PRIMARY KEY,
@@ -29,7 +58,8 @@ impl Index {
                 lang        TEXT NOT NULL,
                 start_line  INTEGER NOT NULL,
                 end_line    INTEGER NOT NULL,
-                body_hash   TEXT NOT NULL
+                body_hash   TEXT NOT NULL,
+                signature   TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file);
             CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
@@ -56,7 +86,13 @@ impl Index {
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );",
-        )
+        )?;
+        // F68：记录当前 schema 版本（迁移完成标记，幂等——已是 v2 则 no-op 覆盖）。
+        self.conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?1)",
+            params![SCHEMA_VERSION],
+        )?;
+        Ok(())
     }
 
     /// 用一个文件的最新符号覆盖该文件在库里的旧符号(增量的基本操作)。
@@ -66,8 +102,8 @@ impl Index {
         {
             let mut stmt = tx.prepare(
                 "INSERT OR REPLACE INTO symbols
-                 (id, file, name, kind, lang, start_line, end_line, body_hash)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                 (id, file, name, kind, lang, start_line, end_line, body_hash, signature)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             )?;
             for s in syms {
                 stmt.execute(params![
@@ -79,6 +115,7 @@ impl Index {
                     s.start_line as i64,
                     s.end_line as i64,
                     s.body_hash.to_string(),
+                    s.signature, // F68：Option<String> → NULL/TEXT
                 ])?;
             }
         }
@@ -99,7 +136,7 @@ impl Index {
     /// `ORDER BY id` 钉死节点顺序 → 依赖遍历序的社区检测(LPA)跨环境可复现。
     pub fn all_symbols(&self) -> rusqlite::Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, file, name, kind, lang, start_line, end_line, body_hash
+            "SELECT id, file, name, kind, lang, start_line, end_line, body_hash, signature
              FROM symbols ORDER BY id",
         )?;
         let rows = stmt.query_map([], row_to_symbol)?;
@@ -203,7 +240,7 @@ impl Index {
 
     pub fn symbols_in_file(&self, file: &str) -> rusqlite::Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, file, name, kind, lang, start_line, end_line, body_hash
+            "SELECT id, file, name, kind, lang, start_line, end_line, body_hash, signature
              FROM symbols WHERE file = ?1",
         )?;
         let rows = stmt.query_map(params![file], row_to_symbol)?;
@@ -219,7 +256,7 @@ impl Index {
     pub fn symbol_by_id(&self, id: &str) -> Option<Symbol> {
         self.conn
             .query_row(
-                "SELECT id, file, name, kind, lang, start_line, end_line, body_hash
+                "SELECT id, file, name, kind, lang, start_line, end_line, body_hash, signature
                  FROM symbols WHERE id = ?1",
                 params![id],
                 row_to_symbol,
@@ -235,7 +272,7 @@ impl Index {
             .replace('_', "\\_");
         let like = format!("%{}%", esc);
         let mut stmt = self.conn.prepare(
-            "SELECT id, file, name, kind, lang, start_line, end_line, body_hash
+            "SELECT id, file, name, kind, lang, start_line, end_line, body_hash, signature
              FROM symbols WHERE name LIKE ?1 ESCAPE '\\' ORDER BY name, id LIMIT ?2",
         )?;
         let rows = stmt.query_map(params![like, limit as i64], row_to_symbol)?;
@@ -296,6 +333,7 @@ fn row_to_symbol(r: &rusqlite::Row) -> rusqlite::Result<Symbol> {
         start_line: r.get::<_, i64>(5)? as usize,
         end_line: r.get::<_, i64>(6)? as usize,
         body_hash: r.get::<_, String>(7)?.parse().unwrap_or(0),
+        signature: r.get(8)?, // F68：TEXT/NULL → Option<String>
     })
 }
 

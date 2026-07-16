@@ -84,6 +84,51 @@ pub trait LangSupport: Sync {
 
     /// 该节点是否为**调用点**。是则返回 (被调裸名, 类型限定?, 是否方法调用 `recv.m()`)。
     fn call_of(&self, node: Node, src: &[u8]) -> Option<(String, Option<String>, bool)>;
+
+    /// F68：符号的**签名文本**（`fn foo(a:u32)->String` / `def f(a):`）。默认实现取函数
+    /// 定义节点从起始到 `body` 起点之间的文本、折单行（覆盖多数语言的函数定义节点）；
+    /// body 拿不到时返回 None（不硬凑）。**箭头赋值（JS/TS `const f = () => {}`）的 body
+    /// 藏在 `value` 下的 arrow 里，默认 helper 取不到 → 由 `javascript.rs` override**。
+    fn signature_of(&self, node: Node, src: &[u8]) -> Option<String> {
+        signature_before_body(node, src)
+    }
+}
+
+/// F68 共享 helper：取函数定义节点从起始到 body 起点之间的文本，折单行去尾。
+/// body 定位两条路：① `body` 命名字段（多数语言）；② 无字段名时按**子节点 kind**
+/// `function_body` 扫（Kotlin 的 `tree-sitter-kotlin-ng` 函数体是节点 kind 无字段名，
+/// 早先误当字段名 `child_by_field_name("function_body")` 查 → 恒 None，整门签名丢失）。
+pub fn signature_before_body(node: Node, src: &[u8]) -> Option<String> {
+    let body = node
+        .child_by_field_name("body")
+        .or_else(|| child_by_kind(node, "function_body"))?;
+    signature_before(node, body, src)
+}
+
+/// 取 `node.start` 到 `body.start` 之间的文本，折单行 + 去尾 `{`/`=`/空白。
+/// `javascript.rs` 的箭头 override 也复用它（传 arrow 的 body）。
+pub fn signature_before(node: Node, body: Node, src: &[u8]) -> Option<String> {
+    let sig = src.get(node.start_byte()..body.start_byte())?;
+    let text = std::str::from_utf8(sig).ok()?;
+    // split_whitespace().join(" ") 已无首尾空白;trim_end_matches 去尾 `{`/`=`/空格即够。
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let trimmed = collapsed.trim_end_matches(['{', '=', ' ']);
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+/// 按 kind 找第一个直接子节点（tree-sitter 有些语法把结构放在 kind 而非命名字段上）。
+pub fn child_by_kind<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == kind {
+            return Some(child);
+        }
+    }
+    None
 }
 
 /// 分类实现登记表。**语言在此"点亮"**:F11 只有 Rust,F12–F14 增加对应 arm。

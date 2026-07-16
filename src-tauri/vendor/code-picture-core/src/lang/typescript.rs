@@ -20,4 +20,8 @@ impl LangSupport for Typescript {
     fn call_of(&self, node: Node, src: &[u8]) -> Option<(String, Option<String>, bool)> {
         javascript::call_of(node, src)
     }
+    /// F68：TS 沿用 JS 的箭头 override（TS grammar 的箭头赋值/类字段箭头同 JS 形态）。
+    fn signature_of(&self, node: Node, src: &[u8]) -> Option<String> {
+        javascript::JAVASCRIPT.signature_of(node, src)
+    }
 }

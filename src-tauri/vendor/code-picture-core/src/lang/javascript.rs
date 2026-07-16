@@ -85,4 +85,20 @@ impl LangSupport for Javascript {
     fn call_of(&self, node: Node, src: &[u8]) -> Option<(String, Option<String>, bool)> {
         call_of(node, src)
     }
+    /// F68：箭头/函数表达式赋值（`const f = () => {}` / 类字段 `h = () => {}`）的 body 藏在
+    /// `value` 字段下的 arrow/function_expression 里，默认 helper 在顶层节点找不到 body 字段
+    /// → 恒 None。这里剥一层 value → 取内层函数 body 前的文本（含名+参数+`=>`）。TS 委托到此。
+    fn signature_of(&self, node: Node, src: &[u8]) -> Option<String> {
+        if matches!(
+            node.kind(),
+            "variable_declarator" | "field_definition" | "public_field_definition"
+        ) {
+            if let Some(inner) = node.child_by_field_name("value") {
+                if let Some(body) = inner.child_by_field_name("body") {
+                    return super::signature_before(node, body, src);
+                }
+            }
+        }
+        super::signature_before_body(node, src)
+    }
 }
