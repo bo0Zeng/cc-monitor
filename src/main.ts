@@ -20,6 +20,7 @@ import { TabManager } from "./tabs";
 import { loadTheme } from "./theme";
 import { SettingsPanel } from "./settings";
 import { HistoryView } from "./views/history";
+import { PanoramaView } from "./views/panorama";
 import { bindErrorToast } from "./error-toast";
 import { bindRemoteHealthToast } from "./remote-health";
 import { TasksPanel } from "./tasks-panel";
@@ -263,6 +264,21 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   document.getElementById("app")?.appendChild(historyTrigger);
 
+  // Batch15-P2：代码全景入口 —— 顶栏右侧，紧邻历史按钮左边。自挂 body 作 fixed overlay
+  // （照 HistoryView），对活跃**本地**会话的 cwd 建 code-picture 索引画代码库地图。
+  const panoramaView = new PanoramaView(() => tabs.activeRepoInfo());
+  const panoramaTrigger = document.createElement("button");
+  panoramaTrigger.type = "button";
+  panoramaTrigger.className = "panorama-trigger";
+  panoramaTrigger.title = "代码全景 (G)";
+  panoramaTrigger.setAttribute("aria-label", "打开代码全景");
+  panoramaTrigger.textContent = "🗺";
+  panoramaTrigger.addEventListener("click", () => {
+    if (panoramaView.isVisible()) panoramaView.close();
+    else void panoramaView.open();
+  });
+  document.getElementById("app")?.appendChild(panoramaTrigger);
+
   // 外链 + 代码块复制的全局 click 代理（主窗口 / 独立 viewer 窗口共用）
   installGlobalClickDelegation();
 
@@ -283,6 +299,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("app.toggle-history", () => {
     if (historyView.isVisible()) historyView.close();
     else void historyView.open();
+  });
+  dispatcher.bind("app.toggle-panorama", () => {
+    if (panoramaView.isVisible()) panoramaView.close();
+    else void panoramaView.open();
   });
   dispatcher.bind("app.minimize", () => void getCurrentWindow().minimize());
   dispatcher.bind("app.toggle-fullscreen", () => {

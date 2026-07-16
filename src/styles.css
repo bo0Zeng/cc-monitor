@@ -114,7 +114,8 @@ body.viewer-mode .viewer-topbar {
 body.viewer-mode #tab-bar,
 body.viewer-mode #tab-bar-resizer,
 body.viewer-mode .settings-trigger,
-body.viewer-mode .history-trigger {
+body.viewer-mode .history-trigger,
+body.viewer-mode .panorama-trigger {
   display: none;
 }
 
@@ -296,6 +297,30 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   z-index: 2;
 }
 .history-trigger:hover {
+  background: var(--overlay-hover);
+  color: var(--text);
+}
+
+/* Batch15-P2：代码全景入口 —— 紧邻历史按钮左边 */
+.panorama-trigger {
+  position: absolute;
+  top: 4px;
+  right: 72px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 14px;
+  z-index: 2;
+}
+.panorama-trigger:hover {
   background: var(--overlay-hover);
   color: var(--text);
 }
@@ -3906,4 +3931,382 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   100% {
     background: transparent;
   }
+}
+
+/* ============================================================
+   Batch15-P2：代码全景（panorama）—— body-level fixed overlay，
+   与历史浏览器同层（z-index 150）。纯 canvas 地图 + 覆盖 banner +
+   符号搜索 + 节点详情侧栏。主题跟随现有 CSS 变量（light/dark 一致）。
+   ============================================================ */
+.panorama-view {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex; /* open() 切换；构造时 inline display:none */
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/* 顶栏 */
+.panorama-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--bg-2);
+  flex-shrink: 0;
+}
+.panorama-title {
+  font-weight: 600;
+  font-size: var(--font-size-small);
+  color: var(--text);
+  white-space: nowrap;
+}
+.panorama-search {
+  flex: 1;
+  min-width: 120px;
+  padding: 5px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-small);
+}
+.panorama-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.panorama-btn {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+}
+.panorama-btn:hover {
+  background: var(--overlay-hover);
+}
+.panorama-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 覆盖信号 banner（诚实性硬要求）*/
+.panorama-banner {
+  flex-shrink: 0;
+  padding: 6px 16px;
+  font-size: var(--font-size-small);
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, var(--bg-2));
+  border-bottom: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+}
+
+/* 主体：画布 + 侧栏 */
+.panorama-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+}
+.panorama-canvas-wrap {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+}
+.panorama-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+.panorama-canvas.is-panning {
+  cursor: grabbing;
+}
+
+/* hover tooltip */
+.panorama-tooltip {
+  position: absolute;
+  pointer-events: none;
+  max-width: 260px;
+  padding: 6px 9px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  box-shadow: 0 4px 14px var(--overlay-shadow);
+  z-index: 3;
+}
+.panorama-tt-path {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.panorama-tt-meta {
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--text-2);
+}
+
+/* loading / message 居中层 */
+.panorama-loading,
+.panorama-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  z-index: 4;
+}
+.panorama-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: panorama-spin 0.8s linear infinite;
+}
+@keyframes panorama-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.panorama-loading-text {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+}
+.panorama-message-headline {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text);
+}
+.panorama-message-body {
+  max-width: 480px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  line-height: var(--line-height-base);
+}
+
+/* 右侧详情侧栏（默认隐藏；is-open 显示）*/
+.panorama-sidebar {
+  display: none;
+  flex-direction: column;
+  width: 340px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border-strong);
+  background: var(--bg-2);
+  overflow-y: auto;
+}
+.panorama-sidebar.is-open {
+  display: flex;
+}
+.panorama-sidebar-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-strong);
+  position: sticky;
+  top: 0;
+  background: var(--bg-2);
+}
+.panorama-sidebar-titles {
+  flex: 1;
+  min-width: 0;
+}
+.panorama-sidebar-title {
+  font-weight: 600;
+  font-size: var(--font-size-base);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panorama-sidebar-subtitle {
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--text-2);
+}
+.panorama-sidebar-close {
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  padding: 0 4px;
+}
+.panorama-sidebar-close:hover {
+  color: var(--text);
+}
+.panorama-side-note {
+  padding: 14px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  line-height: var(--line-height-base);
+}
+
+/* 搜索结果符号列表 */
+.panorama-sym-list {
+  display: flex;
+  flex-direction: column;
+}
+.panorama-sym-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-faint);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+.panorama-sym-row:hover {
+  background: var(--overlay-hover);
+}
+.panorama-sym-name {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  color: var(--text);
+  flex-shrink: 0;
+}
+.panorama-sym-kind {
+  font-size: var(--font-size-xs);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.panorama-sym-loc {
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* 节点 / 文件详情 */
+.panorama-node-detail {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.panorama-node-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.panorama-meta-row {
+  display: flex;
+  gap: 8px;
+  font-size: var(--font-size-small);
+}
+.panorama-meta-label {
+  flex-shrink: 0;
+  width: 74px;
+  color: var(--text-faint);
+}
+.panorama-meta-value {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.panorama-meta-value.is-mono {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+.panorama-node-section-title {
+  font-size: var(--font-size-small);
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 6px;
+}
+.panorama-edge-empty {
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+}
+.panorama-edge-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 6px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.panorama-edge-row:hover {
+  background: var(--overlay-hover);
+}
+.panorama-edge-id {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+.panorama-edge-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.panorama-conf {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.panorama-conf.conf-exact {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+}
+.panorama-conf.conf-heuristic {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+}
+.panorama-conf.conf-dynamicguess {
+  color: var(--text-faint);
+  border-color: var(--border-strong);
+}
+.panorama-edge-line {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+.panorama-doc-row {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  color: var(--text-2);
+  padding: 3px 0;
+  overflow-wrap: anywhere;
+}
+.panorama-file-note {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  line-height: var(--line-height-base);
+}
+.panorama-file-searchbtn {
+  align-self: flex-start;
 }
