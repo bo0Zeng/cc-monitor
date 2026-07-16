@@ -21,6 +21,14 @@ pub enum Frame {
         build_id: String,
         host_arch: String,
         claude_dir: String,
+        /// F66（#58③，additive）：本 daemon 声明支持的**能力 token 集**（开放字符串，
+        /// 加法式）。monitor 按此声明决定发哪些流模式 flag（`--with-bg`/`--tail-only`），
+        /// **不再靠 build_id 精确匹配**——闭合 2026-07-09 那类「身份确认不了就全降级」事故。
+        /// 旧 monitor 忽略此字段（additive）；空/缺 = 按最小能力集待它。
+        /// **§26 死循环护栏**：只声明本 daemon **会先剥离对应 flag** 的能力（老到不剥离
+        /// 未知 flag 的 daemon 也老到不声明该能力，声明 = 自证认识该 flag）。
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        capabilities: Vec<String>,
     },
     /// One raw JSONL line tailed from a session file.
     Line {
@@ -163,6 +171,7 @@ mod tests {
                     build_id: "b".into(),
                     host_arch: "x86_64".into(),
                     claude_dir: "/home/u/.claude".into(),
+                    capabilities: vec!["bg".into(), "tail-only".into()],
                 },
                 "hello",
             ),
@@ -213,6 +222,36 @@ mod tests {
         let v: Value = serde_json::from_str(body).expect("valid json");
         assert_eq!(v["kind"], "overflow");
         assert_eq!(v["dropped"], 42);
+    }
+
+    /// F66（#58③）wire 契约：hello 的 `capabilities`。
+    /// ① 非空 → 序列化为数组（monitor 据此发 flag）。
+    /// ② 空集 → `skip_serializing_if` 省略字段（additive：等价旧 hello，旧 monitor
+    ///    收到即空集缺省——向后兼容的关键）。
+    fn hello(caps: Vec<String>) -> Frame {
+        Frame::Hello {
+            v: 1,
+            build_id: "b".into(),
+            host_arch: "x86_64".into(),
+            claude_dir: "/c".into(),
+            capabilities: caps,
+        }
+    }
+
+    #[test]
+    fn hello_capabilities_serializes_when_present_and_omits_when_empty() {
+        // ① 非空 → 数组在线上
+        let line = to_line(&hello(vec!["bg".into(), "tail-only".into()])).expect("serialize");
+        let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
+        assert_eq!(v["kind"], "hello");
+        assert_eq!(v["capabilities"], serde_json::json!(["bg", "tail-only"]));
+        // ② 空集 → 字段省略（旧 hello 等价形态，旧 monitor 忽略缺失 = 空集缺省）
+        let line = to_line(&hello(vec![])).expect("serialize");
+        let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
+        assert!(
+            v.get("capabilities").is_none(),
+            "空 capabilities 必须被 skip（additive 向后兼容）"
+        );
     }
 
     #[test]

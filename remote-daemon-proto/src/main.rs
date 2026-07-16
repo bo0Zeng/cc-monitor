@@ -54,6 +54,23 @@ const PROTO_VERSION: u32 = 1;
 ///   Batch11-F32 历史 ⚙ 徽标；additive，查询字段无版本门控问题）
 const BUILD_ID: &str = "p1h-bg-badge";
 
+/// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
+/// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
+/// （闭合 2026-07-09「漏拷身份清单 → 确认不了 → 全降级」事故：能力由 daemon 自己
+/// 声明，即使清单丢失也照开）。
+///
+/// **加法式，两轴正交**：加新能力就往这里加 token（旧 monitor 忽略未知 token）；
+/// **绝不为此 bump `PROTO_VERSION`**（那是破坏性变更专用，会把每台旧 daemon 误判
+/// Incompatible）。build_id 继续管 staleness / 重部署提示，与能力正交。
+///
+/// **§26 死循环护栏（硬约束）**：只声明本 daemon **会在一次性查询判定前剥离对应
+/// flag** 的能力——即每个 token 必须有 `split_stream_flags`（`:76`）里对应的剥离分支。
+/// `bg`→`--with-bg`、`tail-only`→`--tail-only`，二者 `split_stream_flags` 都剥。
+/// 加新能力 token 时，必须同时给它的 flag 加剥离分支，否则声明它 = 埋死循环
+/// （monitor 发对应 flag → 本 daemon 不剥 → 当查询退出 → 无 hello → 重连死循环）。
+/// **此硬约束由 `every_capability_token_is_strippable` 测试代码强制**（不再只是约定）。
+const CAPABILITIES: &[&str] = &["bg", "tail-only"];
+
 /// Batch7-F24/Batch8-F25：从 argv 剥离流模式 flag（`--with-bg` / `--tail-only`），
 /// 返回（剩余参数, with_bg, tail_only）。**必须在一次性查询模式判定之前调用**
 /// （INVARIANT §26：flag 落进 query 分支 → daemon 打印查询结果退出 → monitor
@@ -71,6 +88,33 @@ mod stream_flag_tests {
 
     fn v(a: &[&str]) -> Vec<String> {
         a.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// F66（#58③）★ §26 死循环护栏的**代码强制**：`CAPABILITIES` 里每个能力 token 的
+    /// CLI flag 都必须被 `split_stream_flags` 剥离——否则声明它 = 埋 monitor 侧死循环
+    /// （monitor 发该 flag → 本 daemon 不剥 → 当一次性查询退出 → 无 hello → 重连死循环）。
+    /// 加新能力 token 时，若忘了在此登记它的 flag、或忘了给 `split_stream_flags` 加剥离
+    /// 分支，本测试红。把审计指出的「约定强制」拉回「代码强制」。
+    #[test]
+    fn every_capability_token_is_strippable() {
+        // token → 它对应的 CLI flag（加新能力时同步扩这张表）
+        fn flag_of(token: &str) -> &'static str {
+            match token {
+                "bg" => "--with-bg",
+                "tail-only" => "--tail-only",
+                other => panic!(
+                    "CAPABILITIES 声明了 token `{other}` 但此处无 flag 映射——加新能力必须在此登记它的 flag 并确认 split_stream_flags 剥离它（否则埋 §26 死循环）"
+                ),
+            }
+        }
+        for &token in super::CAPABILITIES {
+            let flag = flag_of(token);
+            let (rest, _, _) = split_stream_flags(v(&[flag]));
+            assert!(
+                rest.is_empty(),
+                "能力 token `{token}` 的 flag `{flag}` 未被 split_stream_flags 剥离 → §26 死循环"
+            );
+        }
     }
 
     /// F25 DoD ③：流模式 flag 剥离后不残留（不会误入查询模式判定）。
@@ -143,6 +187,7 @@ async fn main() {
         build_id: BUILD_ID.to_string(),
         host_arch: std::env::consts::ARCH.to_string(),
         claude_dir: claude_dir.to_string_lossy().into_owned(),
+        capabilities: CAPABILITIES.iter().map(|s| s.to_string()).collect(),
     };
     if let Err(e) = write_frame(&mut stdout, &hello).await {
         tracing::error!("failed to write hello frame: {e}");

@@ -760,41 +760,125 @@ async fn authenticate_via_agent(
 ///
 /// 鉴权委托给 [`connect_session`]（publickey 或 ssh-agent）。
 /// 错误统一 map 成 `String`（本 crate 未直接依赖 anyhow，不为骨架引入新依赖）。
-/// Batch7-F24/Batch8-F26 版本门控决策（纯函数，矩阵单测）：只对**确认为当前
-/// 版本**的 daemon 传流模式 flag——旧 daemon 会把未知参数当一次性查询处理后
-/// 退出（无 hello → 重连死循环），确认不了（手动部署 / ~ 路径 / 无内嵌 arch /
-/// stale 内嵌被拒）一律降级不传：全量推流 = 2.18.0 行为，功能退化但连接正常。
-/// tail_only=true 时历史改走旁路快照（实时通道不再背 64MB 级重放，拥塞根除）。
-fn decide_stream_flags(
-    confirmed_build: Option<&str>,
-    expected: &str,
-    show_bg: bool,
-) -> (bool, bool) {
-    let confirmed = confirmed_build == Some(expected);
-    (show_bg && confirmed, confirmed)
+/// F66（#58③）流模式门控决策（纯函数，矩阵单测）：**从 daemon 声明的能力 token 决定
+/// 发哪些 flag**，不再靠 build_id 精确匹配（Batch7-F24/Batch8-F26 的旧机制）。
+///
+/// - `capabilities` = daemon hello 自报的能力集（旧 daemon 无声明 → 空集）。
+/// - 空集（旧 daemon / 尚未确认）→ `(false, false)`：全降级 = 2.18.0 行为，功能退化但
+///   连接正常。
+/// - `tail_only`（历史改走旁路快照，拥塞根除）需 daemon 声明 `"tail-only"`。
+/// - `with_bg`（放行 bg 会话）需 daemon 声明 `"bg"` **且**用户开了 `show_bg`。
+///
+/// **§26 死循环护栏靠声明本身保住**：旧 daemon 把未知 flag 当一次性查询 → 退出 → 无
+/// hello → 重连死循环。而只有**会先剥离该 flag** 的 daemon 才声明对应能力（见 daemon
+/// `CAPABILITIES` 注释），故「声明了 = 发该 flag 安全」——比 build_id 精确匹配更强更干净，
+/// 且直接闭合 2026-07-09「身份确认不了就全降级」事故（能力由 daemon 自报，不靠脆弱身份链）。
+fn decide_stream_flags(capabilities: &[String], show_bg: bool) -> (bool, bool) {
+    let has = |c: &str| capabilities.iter().any(|t| t == c);
+    (show_bg && has("bg"), has("tail-only"))
+}
+
+/// F66（#58③）★ 防无限重连的收敛判据（纯函数，穷举单测）：收到 daemon 能力声明后，
+/// **是否值得重连一轮升级流模式**。`cur` = 本轮实际发的 `(with_bg, tail_only)`；`next` =
+/// 据 daemon 自报能力算出的下一轮 flag。
+///
+/// **仅当下一轮会开一个本轮关着的 flag** 才重连——每次重连严格增开 flag，flag 数有限（2）
+/// ⟹ 最多 2 轮收敛，绝不无限重连。**关键定理**：一旦记账 `hello_confirmed=Some(D)`，下一轮
+/// `caps=D` ⟹ `next==cur` ⟹ 本函数两项皆自相矛盾（`next_tail && !cur_tail` 与
+/// `next_bg && !cur_bg` 在 next==cur 时恒 false）⟹ 恒 `false`，不再重连。
+///
+/// 两项都写全 `&& !cur_*`（不靠调用点的外层 `!tail_only` guard），使收敛不变式在函数内自洽、
+/// 可独立穷举测试（审计：原 `next_tail` 裸项隐含依赖外层 guard，读者需回连才懂）。
+fn should_upgrade_reconnect(cur: (bool, bool), next: (bool, bool)) -> bool {
+    let ((cur_bg, cur_tail), (next_bg, next_tail)) = (cur, next);
+    (next_tail && !cur_tail) || (next_bg && !cur_bg)
 }
 
 #[cfg(test)]
 mod stream_flag_gate_tests {
     use super::decide_stream_flags;
 
-    /// F26 DoD：版本门控矩阵——未确认（None/旧版本）恒 (false,false)；
-    /// 确认后 tail_only 恒开、with_bg 随 showBgSessions。
+    fn caps(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// F66 DoD：能力门控矩阵——空集（旧 daemon/未确认）恒 (false,false)；
+    /// 声明 bg+tail-only 后 tail_only 恒开、with_bg 随 showBgSessions；
+    /// 部分声明只开对应位；未知 token 忽略。
     #[test]
-    fn version_gate_matrix() {
-        const EXP: &str = "p1f-tail-snapshot";
-        assert_eq!(decide_stream_flags(None, EXP, true), (false, false));
-        assert_eq!(decide_stream_flags(None, EXP, false), (false, false));
+    fn capability_gate_matrix() {
+        // 空集 = 旧 daemon / 尚未收到 hello → 全降级
+        assert_eq!(decide_stream_flags(&caps(&[]), true), (false, false));
+        assert_eq!(decide_stream_flags(&caps(&[]), false), (false, false));
+        // 全能力声明
         assert_eq!(
-            decide_stream_flags(Some("p1e-bg-tree"), EXP, true),
-            (false, false),
-            "旧版本确认值 ≠ 期望 → 全降级"
+            decide_stream_flags(&caps(&["bg", "tail-only"]), true),
+            (true, true)
         );
-        assert_eq!(decide_stream_flags(Some(EXP), EXP, true), (true, true));
         assert_eq!(
-            decide_stream_flags(Some(EXP), EXP, false),
+            decide_stream_flags(&caps(&["bg", "tail-only"]), false),
             (false, true),
             "关 showBgSessions 只关 with_bg，tail-only 照开"
+        );
+        // 部分声明：只有 tail-only → with_bg 恒 false（即便 show_bg）
+        assert_eq!(
+            decide_stream_flags(&caps(&["tail-only"]), true),
+            (false, true),
+            "daemon 没声明 bg → 即便用户想看也不发 --with-bg"
+        );
+        // 部分声明：只有 bg
+        assert_eq!(
+            decide_stream_flags(&caps(&["bg"]), true),
+            (true, false),
+            "daemon 没声明 tail-only → 不发 --tail-only（历史走全量推流）"
+        );
+        // 未知 token 忽略（加法式向前兼容：未来 daemon 声明我们还不认识的能力）
+        assert_eq!(
+            decide_stream_flags(&caps(&["bg", "tail-only", "future-x"]), true),
+            (true, true),
+            "未知能力 token 不影响已知门控"
+        );
+    }
+
+    use super::should_upgrade_reconnect as up;
+
+    /// F66 ★ 防无限重连：`should_upgrade_reconnect` 只在「下一轮严格增开一个本轮关着的
+    /// flag」时才 true——保证收敛。这条测试是收 hello 自愈升级那段的回归护栏
+    /// （审计阻塞：那段防死循环逻辑此前零测试；抽成纯函数后在此穷举）。
+    #[test]
+    fn upgrade_reconnect_converges() {
+        // 升级值得：本轮全关，下一轮能开
+        assert!(up((false, false), (true, true)), "全关→全开 该升级");
+        assert!(up((false, false), (false, true)), "开 tail 该升级");
+        assert!(up((false, false), (true, false)), "开 bg 该升级");
+        // ★ 关键收敛点：记账后本轮 caps=声明集 → next==cur → 恒不再重连
+        assert!(!up((true, true), (true, true)), "记账后 next==cur 不再重连");
+        assert!(
+            !up((true, false), (true, false)),
+            "只 bg：记账后不抖（!cur_bg 挡住）"
+        );
+        assert!(!up((false, true), (false, true)), "只 tail：记账后不抖");
+        // 本轮已开 bg、下一轮又加 tail → tail 项触发升级（严格增开）
+        assert!(
+            up((true, false), (true, true)),
+            "本轮 bg、下一轮加 tail → 升级"
+        );
+        // 下一轮反而关了某 flag（不该发生，但函数须安全）→ 不重连
+        assert!(!up((true, true), (false, false)), "下一轮更弱 → 不重连");
+        // swap 边角（本轮 bg、下一轮只 tail）：tail 项触发（靠 tail latch 后续收敛）
+        assert!(up((true, false), (false, true)), "swap：新开 tail 该升级");
+    }
+
+    /// F66：确认 `EMBEDDED_DAEMON_CAPABILITIES` 的 build.rs 单源管道真的通（非空、含当前
+    /// token）——否则乐观路径静默退化成「第一轮降级 + hello 自愈」（仍正确，只慢一轮）。
+    /// 用 `contains` 而非精确相等：daemon 将来加 token 时本测试仍过，不误红。
+    #[test]
+    fn embedded_capabilities_single_source_wired() {
+        let caps = super::embedded_daemon_capabilities();
+        assert!(caps.contains(&"bg".to_string()), "单源应含 bg：{caps:?}");
+        assert!(
+            caps.contains(&"tail-only".to_string()),
+            "单源应含 tail-only：{caps:?}"
         );
     }
 }
@@ -1353,6 +1437,10 @@ pub enum InboundFrame {
         build_id: String,
         host_arch: String,
         claude_dir: String,
+        /// F66（#58③）：daemon 声明的能力 token 集。旧 daemon 无此字段 → 空集
+        /// （保守：按最小能力集待它，不发流模式 flag）。monitor 按此决定发
+        /// `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配。
+        capabilities: Vec<String>,
     },
     /// 一行从远端 session jsonl 尾随读到的原始行。字段语义与本地 `watcher::JsonlLine` 对齐。
     Line {
@@ -1410,11 +1498,23 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             let build_id = obj.get("build_id")?.as_str()?.to_string();
             let host_arch = obj.get("host_arch")?.as_str()?.to_string();
             let claude_dir = obj.get("claude_dir")?.as_str()?.to_string();
+            // F66（#58③，additive）：旧 daemon 无 `capabilities` 字段 → 空集（保守缺省，
+            // 同 §27「status 缺失恒未知」族）。非数组 / 元素非字符串一律滤掉，绝不 panic。
+            let capabilities = obj
+                .get("capabilities")
+                .and_then(|c| c.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| x.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
             Some(InboundFrame::Hello {
                 v,
                 build_id,
                 host_arch,
                 claude_dir,
+                capabilities,
             })
         }
         "line" => {
@@ -1482,6 +1582,25 @@ const EXPECTED_PROTO_V: u64 = 1;
 /// `remote-daemon-proto/src/main.rs::BUILD_ID` 抠出 emit——与 daemon 源码、F08b 内嵌二进制的
 /// build_id **同一事实源**，无需手工同步（F08b 消除了 F06 时的手工同步债）。
 const EXPECTED_DAEMON_BUILD_ID: &str = env!("DAEMON_BUILD_ID");
+
+/// F66（#58③）：monitor **内嵌** daemon 声明的能力 token（= daemon `main.rs::CAPABILITIES`）。
+///
+/// 用途：部署侧确认「装的是当前内嵌 build」（`confirmed_build == EXPECTED_DAEMON_BUILD_ID`）
+/// 时，第一次连接还没收到 hello，用这份常量预知 daemon 能力、直接发对应 flag——省一轮
+/// 「降级→收 hello→重连升级」的往返（等价旧 build_id 门控的乐观路径，但换成能力粒度）。
+/// 收到真实 hello 后一律以 daemon **自报**的 `capabilities` 为准（见 `hello_confirmed`）。
+///
+/// **单一事实源（SS-B，同 `EXPECTED_DAEMON_BUILD_ID`）**：值来自 `build.rs::emit_daemon_
+/// capabilities` 从 daemon `main.rs::CAPABILITIES` 抠出的编译期 env `DAEMON_CAPABILITIES`
+/// （逗号分隔）——**不再手抄**（审计 B1/S1：手抄副本漂移时乐观路径可能声明当前 daemon
+/// 不剥离的 flag → §26 死循环窄窗；单源杜绝之）。
+fn embedded_daemon_capabilities() -> Vec<String> {
+    env!("DAEMON_CAPABILITIES")
+        .split(',')
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
+}
 
 /// 版本协商结论（纯函数 [`negotiate_version`] 的产物）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1571,7 +1690,10 @@ pub async fn run(
     // 越过「部署侧确认失败」的降级(内嵌清单缺失的 CI 安装包 v2.19-v2.22 全中招)。
     // 若带 flag 的一轮连 hello 都没收到(真·旧 daemon 把未知参数当一次性查询退出),
     // 清账回退降级,防止 flagged 重连死循环。
-    let mut hello_confirmed: Option<String> = None;
+    // F66（#58③）：hello 自愈账本——存上一轮 daemon **自报的能力 token 集**（原为
+    // build_id）。None = 尚未收到能力声明；Some(caps) = 下一轮据此发 flag 升级。
+    // 回退清账语义（`:is_some()` 那段）不变。
+    let mut hello_confirmed: Option<Vec<String>> = None;
     loop {
         connected.store(false, Ordering::Release);
         // Batch9 账本：HashSet → HashMap<sid, AnnouncedMeta>（F27 status 写回 +
@@ -1735,7 +1857,7 @@ async fn stream_loop(
     session_changes: &std::sync::mpsc::Sender<SessionChange>,
     connected: &Arc<AtomicBool>,
     announced: &mut std::collections::HashMap<String, AnnouncedMeta>,
-    hello_confirmed: &mut Option<String>,
+    hello_confirmed: &mut Option<Vec<String>>,
 ) -> Result<(), String> {
     // issue #15 / #30：远端行的 origin 标签 = 该机器的稳定身份（label，默认 host）。
     // 前端据此给该 Tab 标题加 `[label]` 前缀以区分本地/各远端机器。进 loop 前 clone。
@@ -1753,21 +1875,24 @@ async fn stream_loop(
             None
         }
     };
-    // Batch7-F24/Batch8-F26：只对**确认为当前版本**的 daemon 传流模式 flag——
-    // 旧 daemon 会把未知参数当一次性查询处理后退出（无 hello → 重连死循环），
-    // 确认不了（手动部署 / ~ 路径 / 无内嵌 arch）一律降级不传（功能退化但连接
-    // 正常：全量推流 = 2.18.0 行为）。
-    // v2.22.1 hello 自愈:上一轮 hello 已自证 daemon==当前版本 → 以 hello 为准。
-    // **hello 优先**于部署侧结论:部署侧可能返回 Some(陈旧内嵌的身份)(≠期望,
-    // 会压回降级)——首版用 or_else 只补 None,被 E2E 抓出无限重连循环(部署侧
-    // Some(p1x)≠期望 → hello 账本永不被采纳 → 每轮降级→hello→重连)。
-    // hello_confirmed 只在 ==EXPECTED 时写入,优先采纳恒安全。
-    let confirmed_build = hello_confirmed.clone().or(confirmed_build);
-    let (with_bg, tail_only) = decide_stream_flags(
-        confirmed_build.as_deref(),
-        EXPECTED_DAEMON_BUILD_ID,
-        crate::load_show_bg_sessions(),
-    );
+    // F66（#58③）流模式门控：**从 daemon 声明的能力 token 决定发哪些 flag**，不再靠
+    // build_id 精确匹配。旧 daemon 会把未知参数当一次性查询处理后退出（无 hello → 重连
+    // 死循环，§26），故只对**声明了对应能力**的 daemon 发 flag（声明 = 自证会剥离该 flag）。
+    // 能力两条来源，hello 自愈账本优先：
+    //   ① `hello_confirmed`（上一轮 daemon **自报**的能力）—— 最权威，收过真 hello 才有。
+    //   ② 否则部署侧确认了当前内嵌 build（`confirmed_build == EXPECTED`）→ 用内嵌 daemon 的
+    //      能力常量**预知**，省第一轮「降级→收 hello→重连升级」往返（乐观路径）。
+    //   ③ 都没有 → 空集 → 全降级（= 2.18.0 行为，连接正常、功能退化）。
+    // **hello 优先**于部署侧（②可能是陈旧内嵌的身份 ≠ 期望 → 空集 → 靠 hello 自愈救，
+    //  见 v2.22.1 无限重连教训；`hello_confirmed` 只在收到真声明时写入，优先采纳恒安全）。
+    let caps: Vec<String> = hello_confirmed.clone().unwrap_or_else(|| {
+        if confirmed_build.as_deref() == Some(EXPECTED_DAEMON_BUILD_ID) {
+            embedded_daemon_capabilities()
+        } else {
+            Vec::new()
+        }
+    });
+    let (with_bg, tail_only) = decide_stream_flags(&caps, crate::load_show_bg_sessions());
     let stream = connect_and_exec(cfg, with_bg, tail_only).await?;
 
     // Batch8-F26：旁路快照基础设施（仅 tail-only 生效；每连接一套，函数任何
@@ -1885,9 +2010,10 @@ async fn stream_loop(
                 build_id,
                 host_arch,
                 claude_dir,
+                capabilities,
             }) => {
                 tracing::info!(
-                    "ssh_source daemon hello: v={v} build_id={build_id} host_arch={host_arch} claude_dir={claude_dir}"
+                    "ssh_source daemon hello: v={v} build_id={build_id} host_arch={host_arch} claude_dir={claude_dir} caps={capabilities:?}"
                 );
                 // 标记本次连接已健康(收到 daemon hello)，供 run() 重连循环判定是否重置退避。
                 connected.store(true, Ordering::Release);
@@ -1904,27 +2030,34 @@ async fn stream_loop(
                         tracing::warn!("ssh_source remote-health (version) emit failed: {e}");
                     }
                 }
-                // v2.22.1:本轮跑在降级模式(未传 --tail-only,部署侧确认失败)时——
-                // ① daemon 自报 == 当前版本 → 记 hello 自愈账,立即重连升级流模式
-                //   (connected 已置 true → 退避重置为 MIN,~2s 内带 flag 回来);
-                // ② 确实是旧 daemon → 降级可见化:此前只写日志,用户看到的是「bg 会话
-                //   消失+拥塞复发」却无从归因(实测连环误诊)——经 remote-health 提示。
+                // F66（#58③）：本轮若跑在降级模式（未开 tail_only）——用 daemon **自报的
+                // 能力**判断能否升级，不再靠 build_id 精确匹配（闭合 2026-07-09 事故）：
+                // ① daemon 声明了**能开本轮没开的 flag** 的能力 → 记 hello 自愈账（存能力集）,
+                //    立即重连升级（connected 已置 true → 退避重置 MIN,~2s 内带 flag 回来）。
+                //    **防无限循环**：仅当「下一轮据此算出的 flag 严格优于本轮」才重连——flag 数
+                //    有限（2）、每次升级严格增开，最多 2 轮收敛。
+                // ② daemon 无任何能力声明（真旧 daemon）→ 降级可见化（否则用户看到「bg 会话
+                //    消失+拥塞复发」却无从归因，实测连环误诊）——经 remote-health 提示。
                 if !tail_only {
-                    if build_id == EXPECTED_DAEMON_BUILD_ID {
-                        *hello_confirmed = Some(build_id.clone());
+                    let show_bg = crate::load_show_bg_sessions();
+                    let next = decide_stream_flags(&capabilities, show_bg);
+                    if should_upgrade_reconnect((with_bg, tail_only), next) {
+                        *hello_confirmed = Some(capabilities.clone());
                         return Err(format!(
-                            "daemon hello 自证为当前版本({build_id})——重连升级流模式(tail-only/with-bg)"
+                            "daemon hello 声明能力({capabilities:?})——重连升级流模式(tail-only/with-bg)"
                         ));
                     }
-                    let payload = crate::bridge::RemoteHealthPayload {
-                        origin: Some(host_label.clone()),
-                        kind: "degraded".to_string(),
-                        message: format!(
-                            "远端 daemon 为旧版本({build_id},当前 {EXPECTED_DAEMON_BUILD_ID}),本连接降级运行:后台(bg)会话不可见、历史全量推流(易拥塞)。请在设置里重装该机器的 daemon。"
-                        ),
-                    };
-                    if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
-                        tracing::warn!("ssh_source remote-health (degraded) emit failed: {e}");
+                    if capabilities.is_empty() {
+                        let payload = crate::bridge::RemoteHealthPayload {
+                            origin: Some(host_label.clone()),
+                            kind: "degraded".to_string(),
+                            message: format!(
+                                "远端 daemon 为旧版本({build_id},当前 {EXPECTED_DAEMON_BUILD_ID}),本连接降级运行:后台(bg)会话不可见、历史全量推流(易拥塞)。请在设置里重装该机器的 daemon。"
+                            ),
+                        };
+                        if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                            tracing::warn!("ssh_source remote-health (degraded) emit failed: {e}");
+                        }
                     }
                 }
             }
@@ -3079,8 +3212,9 @@ async fn probe_daemon(
                     build_id,
                     host_arch,
                     claude_dir,
+                    capabilities,
                 }) => Ok(Some(format!(
-                    "v={v} build={build_id} arch={host_arch} claude_dir={claude_dir}"
+                    "v={v} build={build_id} arch={host_arch} claude_dir={claude_dir} caps={capabilities:?}"
                 ))),
                 _ => Ok(None), // 非 hello 帧 → daemon 未正常握手
             }
@@ -3154,6 +3288,8 @@ mod parse_frame_tests {
                 build_id: "abc123".to_string(),
                 host_arch: "aarch64".to_string(),
                 claude_dir: "/home/pi/.claude".to_string(),
+                // F66：旧 daemon（本样本无 capabilities 字段）→ 空集（保守缺省）
+                capabilities: Vec::new(),
             }
         );
     }
@@ -3163,6 +3299,53 @@ mod parse_frame_tests {
     fn hello_missing_build_id_returns_none() {
         let line = r#"{"kind":"hello","v":1,"host_arch":"x86_64","claude_dir":"/c"}"#;
         assert_eq!(parse_frame(line), None);
+    }
+
+    /// F66（#58③）wire 契约：hello 的 `capabilities` 字段。
+    /// ① 缺字段（旧 daemon）→ 空集（向后兼容，保守缺省，同 §27 族）。
+    /// ② 声明数组 → 原样解析（monitor 按此决定发哪些 flag）。
+    /// ③ 非数组 / 元素非字符串 → 滤成空集，绝不 panic（宽容解析，§18）。
+    #[test]
+    fn hello_capabilities_backward_compat_and_declared() {
+        // ① 旧 daemon：无 capabilities → 空集
+        let old =
+            r#"{"kind":"hello","v":1,"build_id":"p1e","host_arch":"x86_64","claude_dir":"/c"}"#;
+        match parse_frame(old).unwrap() {
+            InboundFrame::Hello { capabilities, .. } => {
+                assert!(capabilities.is_empty(), "旧 daemon 无声明 → 空集");
+            }
+            _ => panic!("expected Hello"),
+        }
+        // ② 新 daemon：声明能力
+        let new = r#"{"kind":"hello","v":1,"build_id":"p1h","host_arch":"x86_64","claude_dir":"/c","capabilities":["bg","tail-only"]}"#;
+        match parse_frame(new).unwrap() {
+            InboundFrame::Hello { capabilities, .. } => {
+                assert_eq!(
+                    capabilities,
+                    vec!["bg".to_string(), "tail-only".to_string()]
+                );
+            }
+            _ => panic!("expected Hello"),
+        }
+        // ③ 畸形 capabilities（非数组 / 混入非字符串）→ 不 panic，滤成空/仅字符串
+        let bad = r#"{"kind":"hello","v":1,"build_id":"p1x","host_arch":"x86_64","claude_dir":"/c","capabilities":"not-array"}"#;
+        match parse_frame(bad).unwrap() {
+            InboundFrame::Hello { capabilities, .. } => {
+                assert!(capabilities.is_empty(), "非数组 capabilities → 空集，不崩");
+            }
+            _ => panic!("expected Hello"),
+        }
+        let mixed = r#"{"kind":"hello","v":1,"build_id":"p1x","host_arch":"x86_64","claude_dir":"/c","capabilities":["bg",42,null,"tail-only"]}"#;
+        match parse_frame(mixed).unwrap() {
+            InboundFrame::Hello { capabilities, .. } => {
+                assert_eq!(
+                    capabilities,
+                    vec!["bg".to_string(), "tail-only".to_string()],
+                    "非字符串元素被滤掉，字符串保留"
+                );
+            }
+            _ => panic!("expected Hello"),
+        }
     }
 
     /// #33：版本协商真值表。协议不符优先于 build 差异。
