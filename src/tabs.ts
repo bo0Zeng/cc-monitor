@@ -23,6 +23,7 @@ import type { AgentsPanel, AgentEntry } from "./agents-panel";
 import { LS_KEYS, safeSet } from "./local-storage";
 import { runRemoteResume, runRemoteResumeTmux, runRemoteAttach } from "./remote-launch-run";
 import { pickFreshTmuxName } from "./remote-launch";
+import { collectEditedFiles } from "./panorama/session-files";
 import { openPanePreview } from "./views/pane-preview";
 import { turnEndNotifier } from "./turn-notify";
 import { getBehavior } from "./behavior";
@@ -75,6 +76,9 @@ export interface Tab {
    * 变 idle/归档时把仍 running 的标 aborted。上限 30，超出删最老的非 running。
    */
   agents: Map<string, AgentEntry>;
+  /** F70：本会话写类工具（Edit/Write/MultiEdit/NotebookEdit）碰过的文件路径（原样、去重）。
+   * onLine 增量累进，供「点会话 → 全景图高亮它改过的节点」。纯内存、不落盘（守 §28）。 */
+  touchedFiles: Set<string>;
   streamEl: HTMLElement;
   stream: MessageStream;
   /** 父 JSONL 路径（subagent 加载需要） */
@@ -639,6 +643,10 @@ export class TabManager {
     // issue #23（第二增量）：配对 agent 工具调用，喂 AgentsPanel
     this.trackAgents(tab, payload.message);
 
+    // F70：累进本会话改动集（写类工具 file_path）——放在双重去重之后（重投不重复累），
+    // 渲染/收纳门控之前（连"收纳不建卡"的记录也计入）。纯增量、无 DOM。
+    for (const f of collectEditedFiles(payload.message)) tab.touchedFiles.add(f);
+
     const sink: StreamSink = {
       timeline: tab.timeline,
       onBranchRecord: (rec: BranchRecord) => tab.branchFolder.recordAdded(rec),
@@ -803,12 +811,29 @@ export class TabManager {
     return { cwd: tab.cwd, origin: tab.origin };
   }
 
+  /**
+   * F70：某会话在全景图上可高亮的「改动集」——cwd（定仓）+ 它写类工具碰过的文件。
+   * **本地会话专属**：origin!==null（远端）/ 无 cwd → 返 null（远端代码不在本机、code-picture
+   * 索引不到，高亮不可用——门控就地做，呼应 activeRepoInfo）。**只读 getter，不落盘。**
+   */
+  touchedFilesFor(
+    sid: string,
+  ): { cwd: string; origin: null; files: string[] } | null {
+    const tab = this.tabs.get(sid);
+    if (!tab || !tab.cwd || tab.origin !== null) return null;
+    return { cwd: tab.cwd, origin: null, files: [...tab.touchedFiles] };
+  }
+
   /** Batch5-F19：switchTo 是否写回 last-active（viewer/tear-off 窗口置 false）。 */
   persistLastActive = true;
 
   /** Batch5-F19（G 验收）：用户手动切 tab 时回调——main.ts 用它清 pendingStartupActive，
    *  防迟到的远端宣告补切抢走用户已选的焦点。 */
   onManualSwitch: (() => void) | null = null;
+
+  /** F70：右键「在全景高亮本会话改动」回调——main.ts 注入（TabManager 不直接持有
+   *  PanoramaView，走注入回调，同 onManualSwitch 范式）。仅本地会话菜单出现该项。 */
+  requestPanoramaHighlight: ((sid: string) => void) | null = null;
 
   ensureTab(
     sessionId: string,
@@ -913,6 +938,8 @@ export class TabManager {
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
       activity: this.pendingActivity.get(sessionId) ?? null,
       agents: new Map(),
+      touchedFiles: new Set(), // F70：会话改动集，onLine 增量累进
+
     };
     this.pendingActivity.delete(sessionId);
     // F40b:上翻补批触发器(passive 只读滚动位置;handler 内判 active,后台 tab
@@ -1787,6 +1814,14 @@ export class TabManager {
       const items: TabMenuItem[] = [
         { label: "在新窗口打开", onClick: () => void this.openInNewWindow(sid) },
       ];
+      // F70（护城河）：本地会话 + 有改动集 → 「在全景高亮本会话改动」。远端（代码不在本机、
+      // code-picture 索引不到）/ 无改动 都不显示（门控之一，另两道在 touchedFilesFor + highlightSession）。
+      if (t && t.origin === null && t.touchedFiles.size > 0) {
+        items.push({
+          label: "在全景高亮本会话改动",
+          onClick: () => this.requestPanoramaHighlight?.(sid),
+        });
+      }
       // F37：灰 tab（会话已结束）右键手动 resume——不用绕去历史浏览器。
       // F41 起本地与远端都是一键拉起新终端（远端=wt.exe 跑 ssh -t，失败才回退复制命令）。
       // F52：远端归档 tab 再并列一个「Resume（tmux）」——在远端 tmux 会话里幂等 resume,

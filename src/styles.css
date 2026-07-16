@@ -4008,6 +4008,22 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   border-bottom: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
 }
 
+/* F70：会话高亮图例条（碰了几个文件 / 图上高亮几个 + 清除）。 */
+.panorama-highlight-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 16px;
+  font-size: var(--font-size-small);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-2));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.panorama-highlight-bar .panorama-highlight-clear {
+  margin-left: auto;
+}
+
 /* 主体：画布 + 侧栏 */
 .panorama-body {
   flex: 1;

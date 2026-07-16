@@ -427,3 +427,27 @@ export function coverageBanner(o: {
   if (pe > 0) parts.push(`${pe} 文件解析失败`);
   return `覆盖不全：${parts.join("、")}（静态分析已知缺口）`;
 }
+
+/**
+ * F70：把 `panorama_touching` 返回的符号 id（`file#name`）映射回**文件段集合**（去重）。
+ * 全景图画的是文件级气泡，故高亮按文件粒度。与 `computeLayout` 里 entry_points 的 id→file
+ * 派生（`id.split("#")[0]`）同款约定——core 若改 SymbolId 格式两处一起坏，风险已存在非新增。
+ */
+export function touchedFilesFromIds(ids: string[]): Set<string> {
+  const files = new Set<string>();
+  for (const id of ids) {
+    const file = id.split("#")[0];
+    if (file) files.add(file);
+  }
+  return files;
+}
+
+/**
+ * F70：一组高亮文件里有几个在图上真有气泡（脊柱文件）。图例「本会话碰了 total 个文件，
+ * 图上高亮 shown 个（其余非脊柱、未画）」的 shown——诚实呈现，别让"看着全高亮了"骗人。
+ */
+export function countShown(bubbles: FileBubble[], files: Set<string>): number {
+  let n = 0;
+  for (const b of bubbles) if (files.has(b.file)) n += 1;
+  return n;
+}

@@ -910,3 +910,53 @@ describe("F74 findClaudeTmux（精确 tmux↔sid 映射）", () => {
     expect(findClaudeTmux([], "t", "/p")).toBeUndefined();
   });
 });
+
+describe("F70 会话改动集聚合（onLine → touchedFiles / touchedFilesFor 门控）", () => {
+  const editLine = (
+    sid: string,
+    seq: number,
+    uuid: string,
+    filePath: string,
+    origin: string | null,
+    toolName = "Edit",
+  ): unknown => ({
+    session_id: sid,
+    cwd: "/proj",
+    path: `/proj/${sid}.jsonl`,
+    seq,
+    origin,
+    message: {
+      type: "assistant",
+      uuid,
+      // 真实 jsonl 记录：content 在 message.message.content（trackAgents/collectEditedFiles 同款读法）。
+      message: {
+        content: [{ type: "tool_use", name: toolName, input: { file_path: filePath } }],
+      },
+    },
+  });
+
+  it("本地会话：写类工具 file_path 累进 + 去重；touchedFilesFor 返 files", () => {
+    const tm = makeTM();
+    tm.onLine(editLine("s-local", 1, "u1", "/proj/a.ts", null) as never);
+    tm.onLine(editLine("s-local", 2, "u2", "/proj/b.rs", null, "Write") as never);
+    tm.onLine(editLine("s-local", 3, "u3", "/proj/a.ts", null) as never); // 重复文件 → 去重
+    const info = tm.touchedFilesFor("s-local");
+    expect(info).not.toBeNull();
+    expect(info!.origin).toBeNull();
+    expect([...info!.files].sort()).toEqual(["/proj/a.ts", "/proj/b.rs"]);
+  });
+
+  it("远端会话（origin!==null）→ touchedFilesFor 返 null（门控，代码不在本机）", () => {
+    const tm = makeTM();
+    tm.onLine(editLine("s-remote", 1, "r1", "/proj/x.ts", "aya") as never);
+    expect(tm.touchedFilesFor("s-remote")).toBeNull();
+  });
+
+  it("非写类工具不计入；无此会话 → null", () => {
+    const tm = makeTM();
+    tm.onLine(editLine("s-read", 1, "k1", "/proj/r.ts", null, "Read") as never);
+    // Read 不是写类 → 空集，但 tab 存在（本地有 cwd）→ 返 files:[]
+    expect(tm.touchedFilesFor("s-read")?.files).toEqual([]);
+    expect(tm.touchedFilesFor("does-not-exist")).toBeNull();
+  });
+});
