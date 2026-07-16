@@ -14,8 +14,12 @@ use serde::Serialize;
 use tokio::io::{AsyncReadExt, BufReader};
 
 /// `tmux ls -F` 的格式串。字段以**真 TAB**分隔(见模块注释):
-/// name ⇥ pane_current_path ⇥ pane_current_command ⇥ attached(1/0) ⇥ windows。
-const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{?session_attached,1,0}\t#{session_windows}";
+/// name ⇥ pane_current_path ⇥ pane_current_command ⇥ attached(1/0) ⇥ windows ⇥ @ccm_sid。
+/// **F74**:末列 `#{@ccm_sid}` 是 `__ccm_rbind` 写的 tmux user option = 「这个 tmux 此刻在跑
+/// 哪个 CC sid」的权威信号(pane title 被 Claude 活动标题抢写、不可靠;user option Claude 碰
+/// 不到)。**未设置的会话此列为空串**(老会话 / 未装 wrapper)→ 解析成 `sid: None`,消费方回退
+/// 旧的 path/cmd 匹配,向后兼容。
+const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{?session_attached,1,0}\t#{session_windows}\t#{@ccm_sid}";
 
 /// 一个远端 tmux 会话(反查 + 未来管理用)。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -26,10 +30,14 @@ pub struct TmuxSession {
     pub command: String,
     pub attached: bool,
     pub windows: u32,
+    /// F74:`@ccm_sid` user option——此 tmux 当前所跑 CC 会话的 sid(`__ccm_rbind` 写,随
+    /// `/branch` 漂移实时更新)。未设置(空串)→ `None`。cc-monitor 用它精确认「哪个 tmux 跑
+    /// 目标 sid」,取代按目录/名字取第一个(同目录多 claude 会撞错会话)。
+    pub sid: Option<String>,
 }
 
 /// 解析 `tmux ls -F '<TMUX_LS_FMT>'` 输出(真 TAB 分列)。字段数不符 / name 空的行跳过
-/// (半截行、非法行不进结果);windows 非数字回退 0。
+/// (半截行、非法行不进结果);windows 非数字回退 0;末列 `@ccm_sid` 空串→ `None`。
 pub fn parse_tmux_ls(output: &str) -> Vec<TmuxSession> {
     output
         .lines()
@@ -38,7 +46,7 @@ pub fn parse_tmux_ls(output: &str) -> Vec<TmuxSession> {
                 return None;
             }
             let f: Vec<&str> = line.split('\t').collect();
-            if f.len() != 5 || f[0].is_empty() {
+            if f.len() != 6 || f[0].is_empty() {
                 return None;
             }
             Some(TmuxSession {
@@ -47,6 +55,19 @@ pub fn parse_tmux_ls(output: &str) -> Vec<TmuxSession> {
                 command: f[2].to_string(),
                 attached: f[3] == "1",
                 windows: f[4].parse().unwrap_or(0),
+                // 只认合法 sid 字符集 [A-Za-z0-9_-]:空串(未设 @ccm_sid)当 None;含别的字符也当
+                // None——**极老 tmux(<3.0)可能不展开 `#{@ccm_sid}`、原样保留字面 `#{@ccm_sid}`**
+                // (含 `#{}`),若当成 sid 会让 `findClaudeTmux` 的 anySidKnown 恒真 → 老 wrapper 用户
+                // 永远走不到 cwd 回退。字符集校验一并挡掉未展开格式串与任何杂质(§30 见 doc/INVARIANTS.md)。
+                sid: if !f[5].is_empty()
+                    && f[5]
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                {
+                    Some(f[5].to_string())
+                } else {
+                    None
+                },
             })
         })
         .collect()
@@ -118,8 +139,8 @@ mod tests {
 
     #[test]
     fn parse_multi_session() {
-        // 真 TAB 分隔(Rust "\t" = 0x09)。
-        let out = "cc-abc12345\t/home/pi/proj\tclaude\t1\t2\nweb\t/srv/web\tzsh\t0\t1\n";
+        // 真 TAB 分隔(Rust "\t" = 0x09)。6 列,末列 @ccm_sid。
+        let out = "cc-abc12345\t/home/pi/proj\tclaude\t1\t2\tsess-42\nweb\t/srv/web\tzsh\t0\t1\t\n";
         let s = parse_tmux_ls(out);
         assert_eq!(s.len(), 2);
         assert_eq!(s[0].name, "cc-abc12345");
@@ -127,8 +148,11 @@ mod tests {
         assert_eq!(s[0].command, "claude");
         assert!(s[0].attached);
         assert_eq!(s[0].windows, 2);
+        // @ccm_sid 有值 → Some;空串 → None(向后兼容老会话)。
+        assert_eq!(s[0].sid.as_deref(), Some("sess-42"));
         assert!(!s[1].attached);
         assert_eq!(s[1].command, "zsh");
+        assert_eq!(s[1].sid, None);
     }
 
     #[test]
@@ -136,21 +160,36 @@ mod tests {
         // 空输出 → 空。
         assert!(parse_tmux_ls("").is_empty());
         assert!(parse_tmux_ls("\n\n").is_empty());
-        // 字段数不符(无 TAB / 少字段)→ 跳过;name 空 → 跳过。
-        let out = "no tabs here\nn\t/p\tsh\t0\n\t/p\tclaude\t1\t1\ngood\t/home/a b\tclaude\t1\t3";
+        // 字段数不符(无 TAB / 少字段 / 旧 5 列)→ 跳过;name 空 → 跳过。
+        let out = "no tabs here\nn\t/p\tsh\t0\n\t/p\tclaude\t1\t1\told5\t/p\tclaude\t1\t2\ngood\t/home/a b\tclaude\t1\t3\t";
         let s = parse_tmux_ls(out);
-        assert_eq!(s.len(), 1, "只有最后一行合法");
+        assert_eq!(s.len(), 1, "只有最后一行(6 列)合法");
         assert_eq!(s[0].name, "good");
         // 路径含空格(非 TAB)保留。
         assert_eq!(s[0].path, "/home/a b");
         assert_eq!(s[0].windows, 3);
+        // 末列空串 → sid None。
+        assert_eq!(s[0].sid, None);
     }
 
     #[test]
     fn parse_windows_nonnumeric_falls_back_zero() {
-        let s = parse_tmux_ls("n\t/p\tclaude\t1\tNaN");
+        let s = parse_tmux_ls("n\t/p\tclaude\t1\tNaN\tsid-x");
         assert_eq!(s.len(), 1);
         assert_eq!(s[0].windows, 0);
+        assert_eq!(s[0].sid.as_deref(), Some("sid-x"));
+    }
+
+    #[test]
+    fn parse_sid_rejects_unexpanded_format_and_garbage() {
+        // 极老 tmux 不展开 `#{@ccm_sid}` → 原样字面串(含 `#{}`)→ 当 None,否则 findClaudeTmux 的
+        // anySidKnown 恒真、老 wrapper 用户永远走不到 cwd 回退(审计建议)。
+        let s = parse_tmux_ls("n\t/p\tclaude\t1\t1\t#{@ccm_sid}");
+        assert_eq!(s.len(), 1);
+        assert_eq!(s[0].sid, None, "未展开格式串不当 sid");
+        // 合法 sid 字符集(字母数字 + - + _)照收。
+        let s2 = parse_tmux_ls("n\t/p\tclaude\t1\t1\tab_c-12");
+        assert_eq!(s2[0].sid.as_deref(), Some("ab_c-12"));
     }
 
     #[test]

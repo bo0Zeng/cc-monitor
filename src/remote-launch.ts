@@ -79,20 +79,46 @@ export function buildResumeDirectCmd(sid: string, cwd: string, launcher = "claud
  * 拒双引号);载荷整体 `posixQuote` 成 send-keys 的单一参数,整条再由 launch.rs `bash -lic` 包装。
  * sid 非法 → throw。
  */
-export function buildResumeTmuxCmd(sid: string, cwd: string, launcher = "claude"): string {
+export function buildResumeTmuxCmd(
+  sid: string,
+  cwd: string,
+  launcher = "claude",
+  name?: string,
+): string {
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
   }
-  // sid 已过白名单 [A-Za-z0-9_-],前 8 位作 tmux 会话名(tmux 名不许 `.`/`:`,此字符集安全)。
-  const name = `cc-${sid.slice(0, 8)}`;
+  // 默认 `cc-<sid8>`;**F74** 灰会话 resume 传入不撞名(`pickFreshTmuxName`,避免复用被 /branch
+  // 漂移占着的 `cc-<sid8>`)。名裸拼进 tmux 目标(不 posixQuote),必须无 shell/tmux 保留字符——
+  // 只允许 `[A-Za-z0-9_-]`(`cc-<sid8>[-N]` 恒满足;外部传入非法即拒,防注入)。
+  const tmuxName = name ?? `cc-${sid.slice(0, 8)}`;
+  // 首字符不许 `-`(否则 `tmux -t -x` 把名当选项吃掉,arg 混淆;对齐 isValidSessionId 拒前导 -),
+  // 其余 [A-Za-z0-9_-]。`cc-<sid8>[-N]` 恒满足;外部传入非法即拒(防注入 + 防 arg 混淆)。
+  if (!/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(tmuxName)) {
+    throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(tmuxName)}`);
+  }
   const payload = `unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(launcher)} --resume ${sid}`;
   const c = cwd.trim();
   const cflag = c ? ` -c ${posixQuote(c)}` : "";
   return (
-    `tmux new-session -d -s ${name}${cflag} 2>/dev/null && ` +
-    `tmux send-keys -t ${name} ${posixQuote(payload)} Enter; ` +
-    `tmux attach -t ${name}`
+    `tmux new-session -d -s ${tmuxName}${cflag} 2>/dev/null && ` +
+    `tmux send-keys -t ${tmuxName} ${posixQuote(payload)} Enter; ` +
+    `tmux attach -t ${tmuxName}`
   );
+}
+
+/**
+ * F74：给灰会话 resume 挑一个**不撞现有 tmux 名**的会话名。基名 `cc-<sid8>`;被占(多半是
+ * 被 `/branch` 漂移后仍占着原名的会话)→ 加数字后缀 `cc-<sid8>-2/-3/…` 取第一个空位。保证
+ * resume 一定新建自己的 tmux 跑 `--resume <sid>` → 落进原会话,绝不 attach 进漂移的别人。
+ * (纯函数,`existing` = 当前 tmux 会话名集合;sid 合法性由 `buildResumeTmuxCmd` 兜底校验。)
+ */
+export function pickFreshTmuxName(sid: string, existing: Set<string>): string {
+  const base = `cc-${sid.slice(0, 8)}`;
+  if (!existing.has(base)) return base;
+  let i = 2;
+  while (existing.has(`${base}-${i}`)) i += 1;
+  return `${base}-${i}`;
 }
 
 /**

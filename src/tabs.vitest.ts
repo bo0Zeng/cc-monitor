@@ -90,8 +90,8 @@ vi.mock("./behavior", () => ({
 }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { runRemoteResume, runRemoteResumeTmux } from "./remote-launch-run";
-import { TabManager, type Tab } from "./tabs";
+import { runRemoteResume, runRemoteResumeTmux, runRemoteAttach } from "./remote-launch-run";
+import { TabManager, findClaudeTmux, type Tab } from "./tabs";
 
 // 私有字段的只读探针（TS private 仅编译期；运行时可读）。仅测试用。
 interface TMInternals {
@@ -787,15 +787,84 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
     const labels = menuLabels();
     expect(labels).toContain("Resume（直连）");
     expect(labels).toContain("Resume（tmux）");
-    // tmux 项 → runRemoteResumeTmux(origin, sid, cwd, launcher)
+    // tmux 项 → 先查 list_remote_tmux(默认 mock 返 undefined = 无活会话)→ 起全新 resume,
+    // 带第 5 个不撞名 name="cc-r1"(F74:灰会话 resume 不复用可能漂移的名)。
     clickItem("Resume（tmux）");
     await flushMicro();
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct");
+    await flushMicro();
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith(
+      "aya",
+      "r1",
+      "/home/pi/proj",
+      "cct",
+      "cc-r1",
+    );
     // 直连项 → runRemoteResume
     rightClick("r1");
     clickItem("Resume（直连）");
     await flushMicro();
     expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct");
+  });
+
+  it("F74 Resume（tmux）:@ccm_sid 命中活会话 → 精确 attach 它(不撞同目录漂移分支),不重开", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve([
+            // 同目录两个 claude:漂移分支(sid 不符,且列在前)+ 目标原会话(sid 命中)。
+            { name: "proj_cc-2", path: "/home/pi/proj", command: "claude", attached: false, windows: 1, sid: "branch99" },
+            { name: "proj_cc", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "r1" },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
+    tm.archiveTab("r1");
+    rightClick("r1");
+    clickItem("Resume（tmux）");
+    await flushMicro();
+    await flushMicro();
+    // 精确 attach 到 sid 命中的 proj_cc——不是列在前面的漂移分支 proj_cc-2;且不走 resume。
+    expect(runRemoteAttach).toHaveBeenCalledWith("aya", "proj_cc");
+    expect(runRemoteResumeTmux).not.toHaveBeenCalled();
+  });
+
+  it("F74 Resume（tmux）:@ccm_sid 已知但无一命中(原名被漂移会话占着)→ 起全新 resume 挑不撞名", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve([
+            { name: "cc-r1", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "drift77" },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
+    tm.archiveTab("r1");
+    rightClick("r1");
+    clickItem("Resume（tmux）");
+    await flushMicro();
+    await flushMicro();
+    expect(runRemoteAttach).not.toHaveBeenCalled();
+    // cc-r1 被漂移会话占着 → 挑 cc-r1-2 新建,保证 --resume r1 落进原会话。
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "cc-r1-2");
+  });
+
+  it("F74 Resume（tmux）:老 wrapper(整表无 @ccm_sid)→ 起全新 fresh resume,不 attach 不确定会话", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve([
+            // 老 wrapper:同 cwd 有 claude 但无 sid 信息(sid:null)。
+            { name: "proj_cc", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: null },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
+    tm.archiveTab("r1");
+    rightClick("r1");
+    clickItem("Resume（tmux）");
+    await flushMicro();
+    await flushMicro();
+    // findClaudeTmux 按 cwd 兜底命中 proj_cc,但 live.sid(null)!==sid → **不 attach 不确定的会话**,
+    // 起 fresh resume(cc-r1 未被占 → 基名);--resume r1 恒落对会话(§30「找不到就别静默换」)。
+    expect(runRemoteAttach).not.toHaveBeenCalled();
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "cc-r1");
   });
 
   it("归档本地 tab → 仍单「Resume」(无 tmux 项)", () => {
@@ -810,3 +879,34 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
 });
 
 const flushMicro = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+describe("F74 findClaudeTmux（精确 tmux↔sid 映射）", () => {
+  const S = (name: string, path: string, command: string, sid: string | null) => ({
+    name,
+    path,
+    command,
+    attached: false,
+    windows: 1,
+    sid,
+  });
+  it("优先 @ccm_sid 精确匹配（同目录多 claude，命中 sid 的那个，无关列出顺序）", () => {
+    const list = [S("a", "/p", "claude", "branch9"), S("b", "/p", "claude", "target")];
+    expect(findClaudeTmux(list, "target", "/p")?.name).toBe("b");
+  });
+  it("sid 已知但无一命中 → undefined（绝不按 cwd 抓同目录别的 claude，SS-5/SS-9）", () => {
+    const list = [S("a", "/p", "claude", "other")];
+    expect(findClaudeTmux(list, "target", "/p")).toBeUndefined();
+  });
+  it("整张列表无 @ccm_sid（老 wrapper / 未装）→ 回退 path===cwd 匹配（向后兼容）", () => {
+    const list = [S("a", "/p", "claude", null)];
+    expect(findClaudeTmux(list, "target", "/p")?.name).toBe("a");
+  });
+  it("回退分支仍要 claude 命令 + cwd 非空", () => {
+    expect(findClaudeTmux([S("a", "/p", "zsh", null)], "t", "/p")).toBeUndefined();
+    expect(findClaudeTmux([S("a", "/p", "claude", null)], "t", "")).toBeUndefined();
+  });
+  it("null / 空列表 → undefined", () => {
+    expect(findClaudeTmux(null, "t", "/p")).toBeUndefined();
+    expect(findClaudeTmux([], "t", "/p")).toBeUndefined();
+  });
+});

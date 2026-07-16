@@ -11,6 +11,7 @@ import {
   sanitizeRemoteLauncher,
   buildResumeDirectCmd,
   buildResumeTmuxCmd,
+  pickFreshTmuxName,
   buildOpenTerminalCmd,
   isValidTmuxName,
   buildAttachCmd,
@@ -180,6 +181,43 @@ test("buildResumeTmuxCmd:sid>8 位 → 会话名取前 8", () => {
 test("buildResumeTmuxCmd:非法 sid throw", () => {
   throws(() => buildResumeTmuxCmd("a; rm -rf /", "/p"));
   throws(() => buildResumeTmuxCmd("", "/p"));
+});
+
+test("F74 buildResumeTmuxCmd:显式 name → 用它作会话名(灰会话 fresh resume 不撞漂移名)", () => {
+  const payload = `${UNSET}claude --resume s1`;
+  eq(
+    buildResumeTmuxCmd("s1", "", "claude", "cc-s1-2"),
+    `tmux new-session -d -s cc-s1-2 2>/dev/null && ` +
+      `tmux send-keys -t cc-s1-2 '${payload}' Enter; tmux attach -t cc-s1-2`,
+  );
+});
+
+test("F74 buildResumeTmuxCmd:非法显式 name(空格/tmux 保留字符/注入/前导-) throw", () => {
+  throws(() => buildResumeTmuxCmd("s1", "", "claude", "cc s1"), "空格");
+  throws(() => buildResumeTmuxCmd("s1", "", "claude", "cc.s1"), "tmux 保留 .");
+  throws(() => buildResumeTmuxCmd("s1", "", "claude", "cc:s1"), "tmux 保留 :");
+  throws(() => buildResumeTmuxCmd("s1", "", "claude", "a;rm -rf /"), "注入");
+  throws(() => buildResumeTmuxCmd("s1", "", "claude", "-d"), "前导-(tmux getopt arg 混淆)");
+  throws(() => buildResumeTmuxCmd("s1", "", "claude", "-rf"), "前导-");
+});
+
+test("F74 pickFreshTmuxName:基名空闲→基名;被占→加后缀取第一个空位", () => {
+  // 无冲突 → 基名 cc-<sid8>。
+  eq(pickFreshTmuxName("cb3230f3-dead-beef", new Set()), "cc-cb3230f3");
+  // 基名被占(漂移的会话仍占着原名)→ -2,保证新建自己的 tmux 跑 --resume,落进原会话。
+  eq(pickFreshTmuxName("cb3230f3-dead-beef", new Set(["cc-cb3230f3"])), "cc-cb3230f3-2");
+  // -2 也被占 → 顺延到第一个空位。
+  eq(
+    pickFreshTmuxName(
+      "cb3230f3-dead-beef",
+      new Set(["cc-cb3230f3", "cc-cb3230f3-2", "cc-cb3230f3-3"]),
+    ),
+    "cc-cb3230f3-4",
+  );
+  // 生成的名恒能过 buildResumeTmuxCmd 的裸拼校验(闭环:两函数同一命名域)。
+  const picked = pickFreshTmuxName("s1", new Set(["cc-s1"]));
+  eq(picked, "cc-s1-2");
+  eq(buildResumeTmuxCmd("s1", "", "claude", picked).includes(`-s ${picked} `), true);
 });
 
 test("buildOpenTerminalCmd:cd + login shell / 空 cwd", () => {
