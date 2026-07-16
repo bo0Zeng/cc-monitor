@@ -176,6 +176,8 @@ MemoryRecall {
 
 2. **决定是否 displayable**：`impl JsonlRecord::is_displayable()` 加 match arm 返回 true（如果要渲染）或 false（如果只是 metadata 不显示）。
 
+   > ⚠️ **若新类型带 `uuid`+`parentUuid`（参与 parent 链）**：`is_displayable()` **必须**返回 true，且**必须同时**加进前端 `branching.ts::extractBranchRecord` 白名单 + `cards/index.ts` 的 `JsonlRecord` 镜像。否则前端 parent 链断在这条记录处 → 它的后续消息被误判孤儿 root → **整段被错误折叠为「已被 ESC 回退」**（`branching.ts:24` 预警、2026-06-13 咬过一次、F63 补的正是这条）。若只是不带链身份的会话级 metadata（如 `mode`/`pr-link`），可返回 false 不进链——但记住 F63 起未知 type 一律被 `parse_line` 抢救成 `Unrecognized` 保底，**别退回静默丢弃**（见 INVARIANTS § 18.1）。
+
 3. **`parser.rs` 测试**：加一行真实样本断言能 parse 成功。
 
 4. **前端类型** `src/cards/index.ts` 或对应 type 文件加 TS 类型 + dispatch：

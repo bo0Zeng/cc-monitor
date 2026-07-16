@@ -142,6 +142,31 @@ export type JsonlRecord =
       uuid: string;
       timestamp: string;
       parentUuid?: string;
+    }
+  | {
+      /**
+       * F63 (issue #49)：**看不懂的记录**——后端 `parser.rs::salvage` 抢救出的
+       * 原文 + 链上身份。**不是真实 jsonl 里的类型**，是我们自造的信封（故带
+       * `cc-monitor-` 前缀防撞未来真类型）。镜像 `messages.rs::Unrecognized`。
+       *
+       * 同 attachment：**不建卡**（`renderMessage` 落 `default => skip`），但必须
+       * 收到——它可能是链上的一环，缺席会让 children 落 `branching.ts` 的孤儿
+       * root → 整棵误折叠。有 uuid 才进链（`extractBranchRecord` 已守）。
+       *
+       * `raw` 是一字节不改的原文：F63 只做**逃生口**，不认领具体新类型
+       * （SS-1 账本：留逃生口就够，别建完整统一格式）。将来要用 `pr-link` /
+       * `agent-name` / `worktree-state` 这些，从 `raw` 里取，无需再动后端。
+       */
+      type: "cc-monitor-unrecognized";
+      uuid?: string;
+      parentUuid?: string;
+      timestamp?: string;
+      /** 原文里的 `type`（若有）——诊断/记账按它分类 */
+      originalType?: string;
+      /** 原始 JSON 行，一字节不改 */
+      raw: string;
+      /** 为什么没认出来：`unknown-type` / `parse-failed: <serde 原文>` */
+      reason: string;
     };
 
 // === 卡片渲染 ===

@@ -6,7 +6,12 @@
  * throw → 进程非零退出作 pre-push 门禁；`tsc --noEmit` 也会类型检查本文件。
  */
 
-import { computeMainBranch, exemptQueuedLeaves, type BranchRecord } from "./branching.ts";
+import {
+  computeMainBranch,
+  exemptQueuedLeaves,
+  extractBranchRecord,
+  type BranchRecord,
+} from "./branching.ts";
 
 let failed = 0;
 function test(name: string, fn: () => void): void {
@@ -238,6 +243,92 @@ test("#36C 命中集合但有子女（挂了 interrupt 叶）→ 非裸叶不豁
   ];
   const out = exemptQueuedLeaves(records, new Set(["X", "w", "wr"]), new Set(["排队过又被中断"]));
   if (out.has("q")) throw new Error("非裸叶不该被豁免");
+});
+
+// === F63 (issue #49)：看不懂的记录进链 —— 防孤儿化 ===
+
+test("F63 extractBranchRecord 接受 cc-monitor-unrecognized（带身份）", () => {
+  const r = extractBranchRecord({
+    type: "cc-monitor-unrecognized",
+    uuid: "u5",
+    parentUuid: "u4",
+    timestamp: "T05",
+  });
+  if (!r) throw new Error("带 uuid+timestamp 的 unrecognized 必须进链");
+  if (r.uuid !== "u5" || r.parentUuid !== "u4") throw new Error("身份必须原样带出");
+  if (r.isInterrupt) throw new Error("非 user 恒非 interrupt");
+});
+
+test("F63 无身份的 unrecognized 照旧不进链（本机 7 个未知 type 全属此类）", () => {
+  // 实测 mode/agent-name/pr-link/… 8774 条全无 uuid —— 抢救了原文，但不进链，
+  // 因为它们本来就不在 parent 链上。:273 的 !uuid 守卫就是干这个的。
+  const r = extractBranchRecord({ type: "cc-monitor-unrecognized", timestamp: "T01" });
+  if (r !== null) throw new Error("无 uuid 不该进链");
+});
+
+// 真实管线：原始 jsonl 记录 → extractBranchRecord（含 F63 白名单）→ computeMainBranch。
+// 走这条 = 端到端守 F63 的白名单改动（直接构造 BranchRecord 会绕过白名单，测不到）。
+// 形状是 extractBranchRecord 的入参（type/uuid/parentUuid/timestamp）。
+function pipelineOnMain(
+  raw: Array<{ type: string; uuid?: string; parentUuid?: string; timestamp?: string }>,
+): string[] {
+  const branchRecords = raw
+    .map((r) => extractBranchRecord(r))
+    .filter((r): r is BranchRecord => r !== null);
+  return [...computeMainBranch(branchRecords)].sort();
+}
+
+test("F63 unrecognized 经 extractBranchRecord 进链、不断链", () => {
+  // u1(用户提问) → X(看不懂的记录) → a1(assistant 回复)：X 是链上必经的一环。
+  // 走真实管线：白名单认 X → 整条单链全 on-main。
+  const chain = [
+    { type: "user", uuid: "u1", timestamp: "T01" },
+    { type: "cc-monitor-unrecognized", uuid: "X", parentUuid: "u1", timestamp: "T02" },
+    { type: "assistant", uuid: "a1", parentUuid: "X", timestamp: "T03" },
+  ];
+  eqSet(pipelineOnMain(chain), ["X", "a1", "u1"], "X 经白名单进链 → 单链全 on-main");
+});
+
+// ★ F63 真正防的误折叠 —— 有真对照（认 X vs 拒 X 结果不同），且**端到端经白名单**。
+//
+// 拓扑经 scratchpad/verify_topology.ts + mutation test 实证，不是手算：
+//   u1(用户提问) → X(带 uuid/parentUuid 的看不懂记录) → a1(assistant 回复)
+//
+// - 白名单认 X（F63 后）：u1→X→a1 单链，{u1,X,a1} 全 on-main。
+// - 白名单拒 X（= F63 之前 / 把 :283 那行 mutation 掉）：extractBranchRecord(X)=null →
+//   X 不进链 → a1 的 parentUuid="X" 不在集合 → a1 孤儿 root，ts 最新自成 winner 保留；
+//   而 **u1 失去唯一后代通道，退化成无 assistant 后代的 plain user 死胡同 root →
+//   :48-50 判「被 ESC 回撤废弃」→ 折叠**。结果 on-main = {a1}，**用户的提问 u1 消失了**。
+//
+// 关键洞察：缺一条中间记录，受害的是它的 **parent**（失去后代链变死胡同），
+// 不是它的 child（child 孤儿化后常因 ts 最新自成 winner 而保留）。
+//
+// 因为走 pipelineOnMain（经 extractBranchRecord），把 :283 白名单里的
+// "cc-monitor-unrecognized" 去掉，本测试会挂 —— 已用 mutation test 证过它非装饰。
+//
+// 诚实标注：这需要「未知 type 带 uuid/parentUuid」——本机真实数据里这种样本
+// 当前为 0（Phase B 实证：7 个未知 type 的 uuid 全为空），故这是**前瞻护栏**，
+// 对应 Claude 未来发一个带链身份的新记录类型的那天。且只在此精确拓扑（被删节点
+// 是 user→其唯一 assistant 后代的必经中间点）触发 —— 印证了 F63 是保险不是流血伤口。
+test("F63 ★ 白名单拒 unrecognized → 上游用户提问被误折（这就是 F63 要防的）", () => {
+  const raw = [
+    { type: "user", uuid: "u1", timestamp: "T01" },
+    { type: "cc-monitor-unrecognized", uuid: "X", parentUuid: "u1", timestamp: "T02" },
+    { type: "assistant", uuid: "a1", parentUuid: "X", timestamp: "T03" },
+  ];
+  // F63 后：X 经白名单进链，用户提问 u1 保留。
+  eqSet(pipelineOnMain(raw), ["X", "a1", "u1"], "F63 后 u1 提问必须保留");
+
+  // F63 前（模拟白名单没认它 = 去掉 X）：u1 被误折。
+  const withoutX = raw.filter((r) => r.uuid !== "X");
+  const on2 = pipelineOnMain(withoutX);
+  if (on2.includes("u1")) {
+    throw new Error(
+      "对照失效：X 不进链时 u1 本应被误折（若此处 u1 仍在，说明 branching 语义变了，" +
+        "F63 的论据要重估 —— 见 branching.ts:24 的预警注释）",
+    );
+  }
+  eqSet(on2, ["a1"], "X 不进链 → 只剩孤零零的回复 a1，提问 u1 丢失");
 });
 
 if (failed > 0) {

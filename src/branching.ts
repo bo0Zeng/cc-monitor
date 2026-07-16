@@ -22,7 +22,8 @@
  * **链完整性**（详 [[project-branching-algorithm]] 笔记）：
  * - attachment + system 记录不渲染卡片，但夹在 user/assistant 链中间
  * - 必须 track 它们的 uuid+parentUuid，否则 parent 链断成碎片 → 大量误折叠
- * - extractBranchRecord 显式接受这四种类型
+ * - extractBranchRecord 显式接受这五种类型（F63 起含 `cc-monitor-unrecognized`
+ *   —— 看不懂的记录也是链上的环，同理不能缺席；详见该函数头注释）
  */
 
 export interface BranchRecord {
@@ -259,6 +260,13 @@ export function setsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boole
  * 接受 user / assistant / attachment / system —— 这四种在 jsonl 里有 uuid+parentUuid
  * 字段；其他类型（ai-title / file-history-snapshot / last-prompt / permission-mode）
  * 没 uuid 不进链。
+ *
+ * **F63 (issue #49)** 加第五种 `cc-monitor-unrecognized`：后端 `parser.rs::salvage`
+ * 对**看不懂的记录**抢救出的原文 + 身份（不是真实 jsonl 里的类型，是我们自造的
+ * 信封，故带 `cc-monitor-` 前缀防撞）。它必须进链——否则等于没救：一条记录缺席，
+ * 它的 children 的 parentUuid 就指向集合外，落到 `:100-106` 的 roots → `:48-50`
+ * 死胡同 plain user root 整棵折叠。**无身份的自然被下面 `!rec.uuid` 挡掉**，正是
+ * 我们要的（本机实测 7 个未知 type 全无 uuid，故今天这条路一个都不会进链）。
  */
 export function extractBranchRecord(rec: {
   type: string;
@@ -267,7 +275,13 @@ export function extractBranchRecord(rec: {
   timestamp?: string;
   message?: { content?: unknown };
 }): BranchRecord | null {
-  if (rec.type !== "user" && rec.type !== "assistant" && rec.type !== "attachment" && rec.type !== "system") {
+  if (
+    rec.type !== "user" &&
+    rec.type !== "assistant" &&
+    rec.type !== "attachment" &&
+    rec.type !== "system" &&
+    rec.type !== "cc-monitor-unrecognized"
+  ) {
     return null;
   }
   if (!rec.uuid || !rec.timestamp) return null;
