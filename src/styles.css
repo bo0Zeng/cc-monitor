@@ -600,6 +600,45 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   margin: 28px 0;
 }
 
+/* F62：历史查看器里每张 user/assistant 卡右上角的「从这一轮创建分支」按钮。
+   默认隐形，hover 卡片才浮现——不干扰阅读，也不撑高（绝对定位出流，不影响 c-v 估高）。 */
+.has-branch-btn {
+  position: relative;
+}
+.viewer-branch-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-faint);
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.12s ease,
+    color 0.12s ease,
+    background 0.12s ease;
+}
+.has-branch-btn:hover .viewer-branch-btn,
+.viewer-branch-btn:focus-visible {
+  opacity: 0.7;
+}
+.viewer-branch-btn:hover {
+  opacity: 1;
+  color: var(--text);
+  background: var(--overlay-hover);
+}
+
 /* user 气泡：靠右、圆角、有底色 + 细边框增强视觉边界（避免与 assistant 的 serif 段糊在一起） */
 .card-user {
   background: var(--card);

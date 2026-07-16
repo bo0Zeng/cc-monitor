@@ -70,6 +70,12 @@ export interface StreamSink {
    * 默认 = 不调用（lazy 也不需要 observe，反正不是 batch）。
    */
   observeForLazyEnhance?: boolean;
+  /**
+   * F62：一张普通卡（user/assistant/system）建好并 markCardUuid 之后调，传入卡 root
+   * 与其 message。仅 SessionViewer（本地历史查看器）实现——给卡挂「从这一轮建分支」按钮。
+   * live Tab / Subagent 不实现 = 不挂按钮，行为零变化。tool-group 卡不触发（不在会话轮次上分支）。
+   */
+  onCardRendered?: (element: HTMLElement, message: JsonlRecord) => void;
 }
 
 /**
@@ -163,6 +169,7 @@ export function renderContentRecord(
     case "card": {
       // 普通卡：直接 markCardUuid + timeline.insert
       markCardUuid(result.element, message);
+      sink.onCardRendered?.(result.element, message); // F62：viewer 挂分支按钮
       applyIntrinsicSize(result.element); // Batch13-F38：c-v 估高初值
       sink.timeline.insert({
         seq: payload.seq,

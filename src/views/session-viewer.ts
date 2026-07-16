@@ -26,6 +26,8 @@ import {
   type StreamSink,
 } from "../render-stream-record";
 import { UnrenderedRanges } from "../render-window";
+import { getBehavior } from "../behavior";
+import { showActionFailureToast } from "../error-toast";
 
 interface JsonlLinePayload {
   session_id: string;
@@ -34,6 +36,13 @@ interface JsonlLinePayload {
   /** P5.1：per-file 单调 seq。SessionViewer 一次性 load 时按 seq 排到 timeline。 */
   seq: number;
   message: JsonlRecord;
+}
+
+/** F62：`create_branch_session` 返回体的 TS 镜像（后端 `history::BranchResult`，camelCase
+ *  wire；改字段名两侧须同步，后端有 `branch_result_camel_case_contract` 守 Rust 侧）。 */
+interface BranchResult {
+  sessionId: string;
+  jsonlPath: string;
 }
 
 export interface ViewerOptions {
@@ -52,6 +61,11 @@ export interface ViewerOptions {
    * host=远端（走 stream_read_remote_session，经 SSH 拉取，chunk 口径一致）。
    */
   origin?: string;
+  /**
+   * F62：会话工作目录（= 历史条目 projectPath）。本地会话建分支后一键 resume 时作
+   * 新终端起始目录。远端会话不建分支，可缺省。
+   */
+  cwd?: string;
 }
 
 const TAIL_INITIAL = 150; // 首屏渲染的末尾条数(实测 37MB 全量 65s → 首屏 1.1s)
@@ -134,6 +148,10 @@ export class SessionViewer {
       onBranchRecord: () => {},
       onQueueOperation: () => {},
       observeForLazyEnhance: true,
+      // F62：仅本地会话给每张 user/assistant 卡挂「从这一轮建分支」按钮（远端会话不建分支）。
+      onCardRendered: opts.origin
+        ? undefined
+        : (el, msg) => this.attachBranchButton(el, msg, opts.jsonlPath, opts.cwd),
     };
     this.renderCtx = ctx;
     this.renderSink = sink;
@@ -271,6 +289,69 @@ export class SessionViewer {
       for (const el of reconcilePendingToolResults(this.renderCtx)) {
         this.renderSink?.timeline.removeByElement(el);
       }
+    }
+  }
+
+  /**
+   * F62：给一张 user/assistant 卡挂「从这一轮创建分支」按钮（仅本地会话；见 onCardRendered）。
+   * 点击 → 后端 `create_branch_session` 复制 [根…这条] 前缀产出新会话（原生 forkedFrom 格式，
+   * 原会话不改），成功后弹 info toast，点 toast 一键 resume 新分支。增量重渲会重复调本函数，
+   * 靠幂等守卫（已挂过就跳过）避免重复按钮。
+   */
+  private attachBranchButton(
+    cardEl: HTMLElement,
+    message: JsonlRecord,
+    jsonlPath: string,
+    cwd: string | undefined,
+  ): void {
+    if (message.type !== "user" && message.type !== "assistant") return;
+    const uuid = message.uuid;
+    if (!uuid) return;
+    if (cardEl.querySelector(":scope > .viewer-branch-btn")) return; // 幂等
+    cardEl.classList.add("has-branch-btn");
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "viewer-branch-btn";
+    btn.textContent = "⑂";
+    btn.title = "从这一轮创建分支（复制到这条为止 → 新会话，原会话不变，可 resume）";
+    btn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      if (btn.dataset.busy === "1") return;
+      btn.dataset.busy = "1";
+      try {
+        const res = await invoke<BranchResult>("create_branch_session", {
+          sourceJsonlPath: jsonlPath,
+          messageUuid: uuid,
+        });
+        const sid8 = res.sessionId.slice(0, 8);
+        showActionFailureToast("✓ 已从这一轮创建分支", `点此在新终端 resume 分支 ${sid8}`, {
+          level: "info",
+          durationMs: 8000,
+          onClick: () => void this.resumeBranch(res.sessionId, cwd),
+        });
+        btn.textContent = "✓";
+        window.setTimeout(() => (btn.textContent = "⑂"), 2000);
+      } catch (err) {
+        showActionFailureToast("创建分支失败", String(err));
+      } finally {
+        btn.dataset.busy = "0";
+      }
+    });
+    cardEl.appendChild(btn);
+  }
+
+  /** F62：在新终端 resume 刚建的分支（复用本地 resume 命令 + 用户自定义 launcher）。 */
+  private async resumeBranch(sessionId: string, cwd: string | undefined): Promise<void> {
+    try {
+      const behavior = await getBehavior();
+      await invoke("resume_history_session", {
+        sessionId,
+        cwd: cwd ?? "",
+        launcher: behavior.resumeCommandLocal || null,
+      });
+    } catch (err) {
+      showActionFailureToast("恢复分支失败", String(err));
     }
   }
 
