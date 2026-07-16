@@ -104,7 +104,7 @@ src-tauri/src/
 │              session_map.rs  读 sessions/<PID>.json + Win32 进程探活
 │              subagent.rs   按需加载 subagents/*.meta.json
 ├── 业务层      event_replay.rs  内存 buffer + 持锁 batch emit
-│              history.rs    两级懒加载 + metadata + 物理删除 + resume
+│              history.rs    两级懒加载 + metadata + 物理删除 + resume + F62 从某轮建分支
 │              launch.rs     终端拉起（wt.exe→PowerShell 单一入口）+ 远端 ssh 拉起（B14-F41）
 │              tasks.rs      v2.3 CLI task tracker 读 + watcher + emit task-update
 ├── 集成层      bind.rs       cc 集成绑定核心（ps-await/registry/SidHwndCache）
@@ -210,7 +210,7 @@ monitor 与外部进程的所有通信都在 `~/.claude/claudecode-frontend/` �
 每条都是踩过坑总结出来的"为什么不能用别的方案"。
 
 ### 零侵入 = 不写 Claude Code 数据源
-watcher / session_map 只读 `~/.claude/projects/` 和 `~/.claude/sessions/`。唯一写入是用户**显式**触发：历史浏览器 `delete_history_session`（Batch4-F15 起 exists → 双边 canonicalize → canonical 前缀 + `.jsonl` 扩展名四段守卫，`..`/symlink 穿越拒绝）+ PowerShell profile [安装]（只动 BEGIN/END **块内**内容，块外用户其他代码完全不动）。
+watcher / session_map 只读 `~/.claude/projects/` 和 `~/.claude/sessions/`。写入均为用户**显式**触发：①历史浏览器 `delete_history_session`（Batch4-F15 起 exists → 双边 canonicalize → canonical 前缀 + `.jsonl` 扩展名四段守卫，`..`/symlink 穿越拒绝）；②F62 `create_branch_session`（从某轮建分支——**只新增** `<new-sid>.jsonl`，`validate_branch_source` 同源守卫 + `create_new` 原子写**绝不覆盖**，原会话零改动，§1 正交非侵入）；③PowerShell profile [安装]（只动 BEGIN/END **块内**内容，块外用户其他代码完全不动）。
 
 **为什么**：cc-monitor 是个监控渲染器，写 jsonl 会破坏用户对"数据源 = 我自己的命令痕迹"的认知；profile 写入则是必要的可选副作用（用户显式 opt-in 装 `__ccm_bind`），仍然走完整的 backup + ACL 保留路径。
 

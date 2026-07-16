@@ -29,6 +29,9 @@ tauri-plugin-notification = "2"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# F62：从历史某轮创建分支（写 <new-sid>.jsonl）时生成新 sessionId。
+# uuid 1.x 已在 Cargo.lock（tauri 传递依赖）+ 本地 registry 缓存，加 v4 feature 离线可编。
+uuid = { version = "1", features = ["v4"] }
 
 notify = "6"
 notify-debouncer-mini = "0.4"

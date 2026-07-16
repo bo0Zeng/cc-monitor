@@ -4,7 +4,7 @@
 >
 > [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 | 当前版本: v3.0.0
 
-把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复。**完全只读、零侵入**（不修改 Claude Code 任何文件，唯一例外是用户在历史浏览器里**显式**点删除）。
+把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复 / **从历史某轮创建分支**。**完全只读、零侵入**（不**修改** Claude Code 任何现有文件；仅两处**显式**用户写：历史里删除会话、从某轮建分支——后者只**新增**一个会话文件，原会话零改动）。
 
 **项目状态**：稳定可用。后端 259 + 远端 daemon 66 + 前端 node 纯函数（7 组）& vitest+jsdom DOM 单测（143）+ e2e 套件，tsc 严格类型检查，CI 全绿（`npm test`）。当前发布 **v3.0.0**（**Batch 14：SSH/SFTP/tmux 远端集成大批功能（F41-F60）**——远端会话一键 resume（拉起终端）/多地址故障切换（happy-eyeballs 竞速）/SFTP 文件面板（浏览·上传下载·编辑）/公钥一键推送/tmux attach·右键预览画面/跳板 ProxyJump/从 ~/.ssh/config 批量导入聚合/本地端口转发管理台/daemonless 降级读取/「Claude 完成一轮」系统通知/工具卡文件路径→SFTP 定位；v2.22.2：**⚙ 误标修复**——bg-spare 谎报父会话 sid 致交互会话被降格挂错树,kind 冲突改确定性消解;**远端流模式降级修复**——历代安装包漏嵌 daemon 身份清单致 bg 会话不可见/拥塞复发,补清单+hello 自愈+降级可见化;v2.22.0：**消息流虚拟化** #35——长会话不再卡顿（视口外跳过布局/绘制+精确估高）、历史查看器 37MB 会话首屏 65.5s→1.1s、冷启动 24s→4s、live Tab 上翻自动加载更早消息；**灰 Tab 右键 Resume**；`cc` 首次绑定竞态修复——新 shell 不再固定卡 800ms）；v2.21.0：（**resume 命令可自定义**（cc/cct）、拖宽/横滚/远端 ↗ 与 ccm 安装修复；v2.20.0：**左侧竖直 tab 栏**——拖拽调宽/窄窗折叠，tab 不再压住右上角图标；**历史标注 CC 后台分身会话** ⚙ 徽标防 resume 选错克隆；+v2.19.1 修复队列消息被误判 ESC 回退折叠 #36）；v2.19.0：（**远端拥塞根治**——历史旁路快照+实时独立尾随，46MB≈4.6s 零拥塞（E2E 实证）；**最新消息优先加载**；**远端红绿灯**与本地对齐；F5 后远端骨架/bg/焦点正确重建），能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 多台远端机器的会话，#15/#17/#18/#20/#30/#31）——含 **daemon 自动部署 + 一键安装/卸载**（内嵌 musl 二进制经 SFTP 自动推送 #29；设置面板每台机器卡片可手动装/卸 daemon 与 ccm 助手、附安装位置提示）、**远端全文搜索**（#28）、**远端历史删除 / 一键 resume**（F41 起 tab 右键 / 历史 ↺ 直接拉起远端终端，失败回退复制）、**历史按机器分组折叠**（#30/#31）、**版本协商 + 拥塞提示**（#32/#33）、**会话红绿灯**（#23）、**本地会话 resume 后 Tab 自动复活**（崩溃/退出→灰显，`/resume` 后免 F5 恢复）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。详 [CHANGELOG](CHANGELOG.md) / [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
 
@@ -65,6 +65,7 @@
   - `↺` 恢复（v2.8.1：新 **PowerShell** 窗口跑 `cc --resume`，无 `cc` 时回退 `claude`；加载 profile 故代理 / env 生效）
   - `✕` 物理删除（二次确认；jsonl 文件被真删）
 - 点击会话条目进入**只读消息查看器**
+- **从这一轮创建分支（F62）**：只读查看器里 hover 任意一轮（你的提问 / Claude 回复）卡片 → 右上角浮现 `⑂`，点它把「开头 → 这一轮」复制成一个**新会话**（对齐 Claude 原生 `/branch` 的 `forkedFrom` 格式，**原会话零改动**），弹提示可一键在新终端 `resume` 从该轮岔开。补上内置 `/branch` 只能从当前进度分叉的缺口。仅本地会话（远端会话不显示）
 
 ### 设置面板（,）
 
@@ -204,7 +205,7 @@ cc-monitor/
 │       ├── session_map.rs  ~/.claude/sessions/ 监听
 │       ├── bind.rs         PowerShell ps-await/ps-registry 握手
 │       ├── tasks.rs        issue #11 tasks watcher
-│       ├── history.rs      历史浏览器 IPC（流式）
+│       ├── history.rs      历史浏览器 IPC（流式）+ F62 从某轮建分支（原生 forkedFrom 格式）
 │       ├── launch.rs       B14-F41 终端拉起单一入口（wt.exe→PowerShell）+ 远端 ssh 拉起
 │       ├── search.rs       issue #6 历史全文搜索（内存索引 + 远端合并）
 │       ├── ssh_source.rs   issue #15 russh 远端数据源（连接/鉴权/流帧 + 跳板 + daemonless 降级）

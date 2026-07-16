@@ -281,6 +281,7 @@ export class HistoryView {
       displayTitle,
       subtitle,
       origin: entry.origin,
+      cwd: entry.projectPath, // F62：建分支后 resume 用作新终端起始目录
     });
   }
 
@@ -808,6 +809,7 @@ export class HistoryView {
         scrollToUuid: hit.uuid,
         // issue #28：远端命中点击走远端只读视图（origin → stream_read_remote_session）。
         origin: s.origin,
+        cwd: s.projectPath, // F62：本地命中建分支后 resume 用
       });
     });
     return row;

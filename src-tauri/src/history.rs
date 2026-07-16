@@ -1,5 +1,5 @@
 //! 历史会话浏览器后端：扫描 `<claude_dir>/projects/**/*.jsonl`，提供
-//! list / delete / metadata 增删改 / resume IPC 命令。
+//! list / delete / metadata 增删改 / resume / **F62 从某轮建分支** IPC 命令。
 //!
 //! ## 与 watcher 的关系
 //!
@@ -394,6 +394,215 @@ pub fn delete_history_session(session_id: String, jsonl_path: String) -> Result<
     // 同步从 metadata 移除条目
     remove_metadata_entry(&session_id);
     Ok(())
+}
+
+// === F62：从历史某一轮创建分支 ===
+//
+// **§1 只读铁律：不修约、正交（照 F47 先例）**。建分支是「用户显式点某条消息 → 复制
+// `[根 … 该消息]` 前缀产出一个**全新** jsonl」——原会话一字节不改、纯新增，与「monitor
+// 作为监视器不改坏正在监视的会话文件（尤其防自动/后台写）」这条约正交。防误伤守卫：
+// ①源路径白名单（canonicalize + starts_with(projects) + `.jsonl`）；②只写**新生成的
+// sid**、目标已存在则拒（绝不覆盖任何现存会话）。
+//
+// **落盘格式 = Claude 原生 `/branch`**（issue #12 `forkedFrom`，本机 fe4aad07 实证 +
+// `claude --resume` 回读实测）：复制沿 parentUuid 从分叉点回溯到根的**线性前缀**，逐条
+// 保留原 uuid/parentUuid、`sessionId` 改新 id、加 `forkedFrom{sessionId:源, messageUuid:自身}`。
+// 分叉点之后的记录、被 ESC 回退的兄弟子树、sidechain 全部不带过来（前缀只走祖先链）。
+//
+// **用 `serde_json::Value` 原样搬运**（不走有损的 `JsonlRecord` enum，避免丢 gitBranch/
+// version/origin 等 schema 外字段）——除 sessionId/forkedFrom 两处有意改动外逐字段忠实。
+
+/// 建分支的返回体（前端据此提示 / 一键 resume 新分支）。
+#[derive(Debug, Serialize)]
+pub struct BranchResult {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    #[serde(rename = "jsonlPath")]
+    pub jsonl_path: String,
+}
+
+/// 源会话路径守卫（与 `validate_delete_target` 同构，但不改动 delete 那段安全关键代码）。
+/// canonicalize 两边解 `..`/symlink → 必须落在 projects 内 → 扩展名 `.jsonl`。
+fn validate_branch_source(jsonl_path: &str, projects_dir: &Path) -> Result<PathBuf, String> {
+    let target = PathBuf::from(jsonl_path);
+    if !target.exists() {
+        return Err(format!("{} does not exist", target.display()));
+    }
+    let canon_target = target
+        .canonicalize()
+        .map_err(|e| format!("canonicalize {}: {e}", target.display()))?;
+    let canon_projects = projects_dir
+        .canonicalize()
+        .map_err(|e| format!("canonicalize {}: {e}", projects_dir.display()))?;
+    if !canon_target.starts_with(&canon_projects) {
+        return Err(format!(
+            "refuse branch: {} is outside {}",
+            canon_target.display(),
+            canon_projects.display()
+        ));
+    }
+    if canon_target.extension().map_or(true, |e| e != "jsonl") {
+        return Err("refuse branch: not a .jsonl file".into());
+    }
+    Ok(canon_target)
+}
+
+/// 读一个 jsonl 文件为逐行 `serde_json::Value`（剥 BOM、跳空行；解析失败的行**保留原样**
+/// 不了了之——建分支只复制祖先链上的记录，坏行若不在链上自然被忽略）。
+fn read_jsonl_values(path: &Path) -> Result<Vec<serde_json::Value>, String> {
+    let file = File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+    let reader = BufReader::new(file);
+    let mut out = Vec::new();
+    for line in reader.lines() {
+        let line = line.map_err(|e| format!("read {}: {e}", path.display()))?;
+        let trimmed = line.trim_start_matches('\u{feff}').trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            out.push(v);
+        }
+    }
+    Ok(out)
+}
+
+/// **纯函数**（可注入直测）：从解析好的记录里，取分叉点 `message_uuid` 沿 parentUuid 回溯
+/// 到根的线性前缀，逐条改写成原生分支格式。返回按「根 → 分叉点」顺序的输出记录。
+///
+/// - `message_uuid` 不在记录集中 → Err（前端传了不存在的 uuid）。
+/// - 环防御：parentUuid 指回已访问节点即停（append-only jsonl 理论无环，防御性）。
+fn build_branch_records(
+    lines: &[serde_json::Value],
+    message_uuid: &str,
+    src_sid: &str,
+    new_sid: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    use std::collections::{HashMap, HashSet};
+    let mut by_uuid: HashMap<&str, &serde_json::Value> = HashMap::new();
+    for v in lines {
+        if let Some(u) = v.get("uuid").and_then(|x| x.as_str()) {
+            by_uuid.entry(u).or_insert(v); // 保首见（幂等，容 at-least-once 重复行）
+        }
+    }
+    if !by_uuid.contains_key(message_uuid) {
+        return Err(format!(
+            "refuse branch: message_uuid {message_uuid:?} not found in source session"
+        ));
+    }
+    // 沿 parentUuid 回溯到根
+    let mut chain: Vec<&str> = Vec::new();
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut cur = Some(message_uuid);
+    while let Some(u) = cur {
+        if !by_uuid.contains_key(u) || seen.contains(u) {
+            break;
+        }
+        seen.insert(u);
+        chain.push(u);
+        cur = by_uuid[u]
+            .get("parentUuid")
+            .and_then(|x| x.as_str())
+            .filter(|s| !s.is_empty());
+    }
+    chain.reverse(); // 根 → 分叉点
+
+    let mut out = Vec::with_capacity(chain.len());
+    for u in chain {
+        let mut rec = by_uuid[u].clone();
+        let obj = rec
+            .as_object_mut()
+            .ok_or("refuse branch: record is not a JSON object")?;
+        obj.insert(
+            "sessionId".into(),
+            serde_json::Value::String(new_sid.to_string()),
+        );
+        obj.insert(
+            "forkedFrom".into(),
+            serde_json::json!({ "sessionId": src_sid, "messageUuid": u }),
+        );
+        out.push(rec);
+    }
+    // 原生 root 恒 parentUuid=null。回溯若因链断（parentUuid 指向集合外 / 坏行被跳）
+    // 而止，新 root(out[0]) 会残留悬空 parentUuid → 置 null，产出干净自洽的根。
+    if let Some(first) = out.first_mut() {
+        if let Some(obj) = first.as_object_mut() {
+            if obj.get("parentUuid").is_some_and(|p| !p.is_null()) {
+                obj.insert("parentUuid".into(), serde_json::Value::Null);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// F62 IPC：从历史会话的某条消息创建分支。前端点消息卡上的 `⑂` 时调，成功返回新 sid。
+/// 见本段顶部大注释（§1 正交、原生格式、守卫）。薄壳：resolve_claude_dir → 委托 branch_impl。
+#[tauri::command]
+pub fn create_branch_session(
+    source_jsonl_path: String,
+    message_uuid: String,
+) -> Result<BranchResult, String> {
+    let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
+    let projects_dir = claude_dir.join("projects");
+    branch_impl(&source_jsonl_path, &message_uuid, &projects_dir)
+}
+
+/// 建分支核心（可注入 projects_dir 直测，绕开 resolve_claude_dir 全局依赖——同 delete 的
+/// validate_delete_target 测法）。安全承诺全在这层：源零改动、只写新 sid、绝不覆盖。
+fn branch_impl(
+    source_jsonl_path: &str,
+    message_uuid: &str,
+    projects_dir: &Path,
+) -> Result<BranchResult, String> {
+    let source = validate_branch_source(source_jsonl_path, projects_dir)?;
+    let src_sid = source
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or("refuse branch: cannot derive source sid from path")?
+        .to_string();
+
+    let lines = read_jsonl_values(&source)?;
+    let new_sid = uuid::Uuid::new_v4().to_string();
+    let records = build_branch_records(&lines, message_uuid, &src_sid, &new_sid)?;
+
+    // 目标写进源会话同目录（projects 内某项目目录），文件名 = 新 sid。
+    let parent = source
+        .parent()
+        .ok_or("refuse branch: source has no parent dir")?;
+    let out_path = parent.join(format!("{new_sid}.jsonl"));
+    write_branch_file(&out_path, &records)?;
+    tracing::info!(
+        "history: branched sid={new_sid} from {src_sid}@{message_uuid} ({} records)",
+        records.len()
+    );
+
+    Ok(BranchResult {
+        session_id: new_sid,
+        jsonl_path: out_path.to_string_lossy().into_owned(),
+    })
+}
+
+/// 把记录序列化成 JSONL 原子写入 `out_path`。**`create_new`：目标已存在则直接失败**——
+/// 自证「绝不覆盖任何现存会话」契约，消 exists()→write 的 TOCTOU 窗口。抽出便于直测。
+fn write_branch_file(out_path: &Path, records: &[serde_json::Value]) -> Result<(), String> {
+    use std::io::Write as _;
+    let mut body = String::new();
+    for rec in records {
+        body.push_str(&serde_json::to_string(rec).map_err(|e| format!("serialize: {e}"))?);
+        body.push('\n');
+    }
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(out_path)
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                format!("refuse branch: {} already exists", out_path.display())
+            } else {
+                format!("create {}: {e}", out_path.display())
+            }
+        })?;
+    f.write_all(body.as_bytes())
+        .map_err(|e| format!("write {}: {e}", out_path.display()))
 }
 
 /// 从本地 history-metadata.json 移除某 sid 的条目（best-effort）。本地删除与远端删除
@@ -921,6 +1130,216 @@ mod tests {
         std::fs::write(&txt, "x").unwrap();
         let err2 = validate_delete_target(txt.to_str().unwrap(), &projects).unwrap_err();
         assert!(err2.contains("not a .jsonl"), "got: {err2}");
+        std::fs::remove_dir_all(projects.parent().unwrap()).ok();
+    }
+
+    // === F62：create_branch_session 守卫 + 原生分支格式 ===
+
+    /// 一棵含「废弃 ESC 兄弟 + 分叉点后续」的小会话树：
+    /// u1(user) → u2(asst) → u3(system) → u4(user 分叉点) → u5(asst 分叉后)
+    ///                                  └→ u6(user 废弃 ESC 兄弟，parent 同 u3)
+    fn sample_session() -> Vec<serde_json::Value> {
+        vec![
+            serde_json::json!({"type":"user","uuid":"u1","parentUuid":null,"timestamp":"t1","sessionId":"SRC","gitBranch":"main","message":{"role":"user","content":"q1"}}),
+            serde_json::json!({"type":"assistant","uuid":"u2","parentUuid":"u1","timestamp":"t2","sessionId":"SRC","message":{"role":"assistant","content":"a1"}}),
+            serde_json::json!({"type":"system","uuid":"u3","parentUuid":"u2","timestamp":"t3","sessionId":"SRC"}),
+            serde_json::json!({"type":"user","uuid":"u4","parentUuid":"u3","timestamp":"t4","sessionId":"SRC","message":{"role":"user","content":"q2"}}),
+            serde_json::json!({"type":"assistant","uuid":"u5","parentUuid":"u4","timestamp":"t5","sessionId":"SRC","message":{"role":"assistant","content":"a2"}}),
+            serde_json::json!({"type":"user","uuid":"u6","parentUuid":"u3","timestamp":"t6","sessionId":"SRC","message":{"role":"user","content":"q2-alt"}}),
+        ]
+    }
+
+    #[test]
+    fn branch_copies_ancestor_prefix_in_native_format() {
+        let lines = sample_session();
+        // 从分叉点 u4 建分支
+        let out = build_branch_records(&lines, "u4", "SRC", "NEWSID").unwrap();
+        // 只保留祖先链 u1→u4（顺序、根→分叉点），排除分叉后 u5 与废弃兄弟 u6
+        let uuids: Vec<&str> = out
+            .iter()
+            .map(|r| r.get("uuid").unwrap().as_str().unwrap())
+            .collect();
+        assert_eq!(uuids, vec!["u1", "u2", "u3", "u4"], "祖先链顺序不对或漏/多");
+        for r in &out {
+            let u = r.get("uuid").unwrap().as_str().unwrap();
+            // sessionId 改新 id
+            assert_eq!(r.get("sessionId").unwrap(), "NEWSID");
+            // forkedFrom{sessionId:源, messageUuid:自身 uuid}
+            let ff = r.get("forkedFrom").unwrap();
+            assert_eq!(ff.get("sessionId").unwrap(), "SRC");
+            assert_eq!(ff.get("messageUuid").unwrap().as_str().unwrap(), u);
+            // parentUuid 原样保留（链完整）
+        }
+        // 逐字段忠实：schema 外字段 gitBranch 不丢
+        assert_eq!(out[0].get("gitBranch").unwrap(), "main");
+        // 分叉点 u4 的 parentUuid 仍指 u3
+        assert_eq!(out[3].get("parentUuid").unwrap(), "u3");
+    }
+
+    #[test]
+    fn branch_at_leaf_includes_whole_active_path() {
+        let lines = sample_session();
+        // 从活跃叶 u5 建分支 → 整条主干 u1..u5，废弃兄弟 u6 仍排除
+        let out = build_branch_records(&lines, "u5", "SRC", "N2").unwrap();
+        let uuids: Vec<&str> = out
+            .iter()
+            .map(|r| r.get("uuid").unwrap().as_str().unwrap())
+            .collect();
+        assert_eq!(uuids, vec!["u1", "u2", "u3", "u4", "u5"]);
+    }
+
+    #[test]
+    fn branch_rejects_unknown_message_uuid() {
+        let lines = sample_session();
+        let err = build_branch_records(&lines, "does-not-exist", "SRC", "N3").unwrap_err();
+        assert!(err.contains("not found"), "got: {err}");
+    }
+
+    #[test]
+    fn branch_source_guard_rejects_dotdot_traversal() {
+        let projects = temp_projects("branch-dotdot");
+        let root = projects.parent().unwrap();
+        let outside = root.join("outside.jsonl");
+        std::fs::write(&outside, "{}\n").unwrap();
+        let sneaky = projects.join("..").join("outside.jsonl");
+        let err = validate_branch_source(sneaky.to_str().unwrap(), &projects).unwrap_err();
+        assert!(err.contains("refuse branch"), "got: {err}");
+        assert!(outside.exists());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn branch_result_camel_case_contract() {
+        let r = BranchResult {
+            session_id: "new-sid".into(),
+            jsonl_path: "/p/new-sid.jsonl".into(),
+        };
+        let j = serde_json::to_string(&r).unwrap();
+        assert!(j.contains("\"sessionId\""), "缺 sessionId: {j}");
+        assert!(j.contains("\"jsonlPath\""), "缺 jsonlPath: {j}");
+    }
+
+    #[test]
+    fn branch_at_root_yields_single_clean_root() {
+        let out = build_branch_records(&sample_session(), "u1", "SRC", "N").unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].get("uuid").unwrap(), "u1");
+        assert!(
+            out[0].get("parentUuid").unwrap().is_null(),
+            "root parentUuid 应为 null"
+        );
+        assert_eq!(
+            out[0]
+                .get("forkedFrom")
+                .unwrap()
+                .get("messageUuid")
+                .unwrap(),
+            "u1"
+        );
+    }
+
+    #[test]
+    fn branch_nulls_dangling_root_parent() {
+        // 模拟链断：把 u3 的 parentUuid 改成集合外 ghost；从 u4 分叉 → 链 u4→u3→(止)，
+        // 新 root=u3 的悬空 parentUuid 应被置 null（原生 root 恒 null）。
+        let mut lines = sample_session();
+        lines[2]
+            .as_object_mut()
+            .unwrap()
+            .insert("parentUuid".into(), serde_json::json!("ghost-not-here"));
+        let out = build_branch_records(&lines, "u4", "SRC", "N").unwrap();
+        let uuids: Vec<&str> = out
+            .iter()
+            .map(|r| r.get("uuid").unwrap().as_str().unwrap())
+            .collect();
+        assert_eq!(uuids, vec!["u3", "u4"]);
+        assert!(
+            out[0].get("parentUuid").unwrap().is_null(),
+            "链断的新 root parentUuid 应置 null"
+        );
+    }
+
+    #[test]
+    fn write_branch_file_refuses_existing_target() {
+        let dir = temp_projects("branch-write");
+        // create_new：目标已存在 → Err，且既存内容零改动（自证「绝不覆盖」）
+        let f = dir.join("x.jsonl");
+        std::fs::write(&f, "PRE").unwrap();
+        let err = write_branch_file(&f, &[serde_json::json!({"a":1})]).unwrap_err();
+        assert!(err.contains("already exists"), "got: {err}");
+        assert_eq!(
+            std::fs::read_to_string(&f).unwrap(),
+            "PRE",
+            "既存文件被覆盖了"
+        );
+        // 正常写新文件
+        let f2 = dir.join("y.jsonl");
+        write_branch_file(&f2, &[serde_json::json!({"a":1})]).unwrap();
+        assert_eq!(std::fs::read_to_string(&f2).unwrap(), "{\"a\":1}\n");
+        std::fs::remove_dir_all(dir.parent().unwrap()).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn branch_source_guard_rejects_symlink_escape() {
+        let projects = temp_projects("branch-symlink");
+        let root = projects.parent().unwrap();
+        let outside = root.join("secret.jsonl");
+        std::fs::write(&outside, "{}\n").unwrap();
+        let link = projects.join("innocent.jsonl");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let err = validate_branch_source(link.to_str().unwrap(), &projects).unwrap_err();
+        assert!(err.contains("refuse branch"), "got: {err}");
+        assert!(outside.exists());
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    /// 重要（D 审计）：安全关键的写盘壳直测——源零改动 + 新文件原生格式正确。
+    /// 注入 tempdir projects 绕开 resolve_claude_dir（同 delete 测法）。
+    #[test]
+    fn branch_impl_leaves_source_untouched_and_writes_native_branch() {
+        let projects = temp_projects("branch-impl");
+        let proj = projects.join("proj-x");
+        std::fs::create_dir_all(&proj).unwrap();
+        let src = proj.join("srcsid.jsonl");
+        let mut body = String::new();
+        for r in &sample_session() {
+            body.push_str(&serde_json::to_string(r).unwrap());
+            body.push('\n');
+        }
+        std::fs::write(&src, &body).unwrap();
+        let before = std::fs::read(&src).unwrap();
+
+        let res = branch_impl(src.to_str().unwrap(), "u4", &projects).unwrap();
+
+        // 源一字节不改
+        assert_eq!(std::fs::read(&src).unwrap(), before, "源文件被改动了");
+        // 新文件在源同目录、文件名=新 sid
+        let out = PathBuf::from(&res.jsonl_path);
+        assert_eq!(out.parent().unwrap(), proj);
+        assert_eq!(out.file_stem().unwrap().to_str().unwrap(), res.session_id);
+        // 内容 = 原生分支格式（祖先链 + 新 sid + forkedFrom{srcsid@自身}）
+        let out_rows: Vec<serde_json::Value> = std::fs::read_to_string(&out)
+            .unwrap()
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        let uuids: Vec<&str> = out_rows
+            .iter()
+            .map(|r| r.get("uuid").unwrap().as_str().unwrap())
+            .collect();
+        assert_eq!(uuids, vec!["u1", "u2", "u3", "u4"]);
+        for r in &out_rows {
+            assert_eq!(
+                r.get("sessionId").unwrap().as_str().unwrap(),
+                res.session_id
+            );
+            assert_eq!(
+                r.get("forkedFrom").unwrap().get("sessionId").unwrap(),
+                "srcsid"
+            );
+        }
         std::fs::remove_dir_all(projects.parent().unwrap()).ok();
     }
 

@@ -96,8 +96,9 @@ src-tauri/
 | `stream_history_sessions_in_project` | `{ projectDir, onEntry }` | `u32` (count) | 项目组展开（流式 Channel；v2.2 取代非流式版） |
 | `stream_read_session_jsonl` | `{ jsonlPath, onChunk }` | `u32` (count) | 点击历史会话进入只读视图（流式 Channel） |
 | `delete_history_session` | `{ sessionId, jsonlPath }` | `()` | 物理删除会话（二次确认后） |
+| `create_branch_session` (F62) | `{ sourceJsonlPath, messageUuid }` | `BranchResult{ sessionId, jsonlPath }` | 从历史某轮建分支：复制 `[根…该消息]` 前缀成新 `<new-sid>.jsonl`（原生 `forkedFrom` 格式，原会话不改，只写新 sid、已存在则拒）。守卫 `validate_branch_source`（canonicalize+starts_with(projects)+.jsonl）。§1 正交澄清 |
 | `update_history_metadata` | `{ sessionId, patch }` | `EntryMetadata` | star / 重命名 / 隐藏 |
-| `resume_history_session` | `{ sessionId, cwd }` | `()` | ↺ 按钮（v2.8.1：拉起 wt.exe / powershell.exe，读 profile + `cc` 优先回退 `claude`） |
+| `resume_history_session` | `{ sessionId, cwd, launcher? }` | `()` | ↺ 按钮（v2.8.1：拉起 wt.exe / powershell.exe，读 profile + `cc` 优先回退 `claude`；F34 起 `launcher` 自定义启动命令）。F62 建分支后一键 resume 复用此命令 |
 | `launch_remote_terminal` (B14-F41) | `{ origin, remoteCmd }` | `()` | 远端一键 resume（tab 右键 / 历史 ↺）：按 origin 取 RemoteConfig，拉起 wt.exe/PowerShell 跑 `ssh -t … "bash -lic '<remoteCmd>'"`；ssh.exe 预检失败/校验拒 → Err（前端回退复制命令）。remote_cmd 双层防线（前端构造校验 + 本侧控制字符/双引号/长度再验） |
 | `sftp_realpath` (B14-F47) | `{ cfg, path }` | `String` | SFTP 面板浏览起点 realpath（走独立 utility 连接池 `sftp_pool`,与 daemon 流分离） |
 | `sftp_list_dir` (B14-F47) | `{ cfg, path }` | `SftpEntry[]` | 列目录（目录在前 + 名称小写排序;非 UTF-8 名标 lossyName） |

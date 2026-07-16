@@ -19,6 +19,8 @@
 
 **F47 SFTP 文件面板不在本约管辖内（澄清，非例外/非松动）**：Batch14-F47 起 cc-monitor 挂了一个**用户亲自驱动的通用 SFTP 文件传输面板**（浏览/上传/下载/改名/删除任意用户文件）。它是**独立文件传输功能**，与本约「monitor 作为监视器只读 Claude 数据源」**正交**——它写的是用户浏览到的普通文件，不是 Claude 的 jsonl/pidfile，且每次写都是面板内一次直接用户手势（绝无自动/后台写）。**防误伤守卫**（`sftp_pool::is_protected_claude_data_path`）:SFTP 写命令**拒碰** `~/.claude/projects/**/*.jsonl` 与 `~/.claude/sessions/*.json`（往正被 Claude 打开的会话文件写会损坏会话；要管这些用历史浏览器）。SFTP 面板走独立 utility 连接池，与数据源流连接分离。
 
+**F62 从历史某轮建分支不在本约管辖内（澄清，非例外/非松动，用户 2026-07-12 拍板）**：`history::create_branch_session` 在用户**显式**点历史查看器里某条消息的 `⑂` 时，把 `[根…该消息]` 前缀**复制**成一个**全新** `<new-sid>.jsonl`（原生 `/branch` 的 `forkedFrom` 格式）。这与本约**正交**——本约防的是 monitor **改坏/覆盖/后台写**它正在监视的**现存**会话文件；建分支是**纯新增产出**（用户框定："复制产出一个文件，而非侵入式改动"），**原会话一字节不改**，且只写**新生成、collision-check 过的 sid**（`out_path.exists()` 则拒，绝不覆盖任何现存会话）。防越界守卫 `validate_branch_source`（canonicalize + `starts_with(projects)` + `.jsonl`）与 delete 同构。破坏性上它比已放行的「显式删除」更弱（只增不减）。
+
 ---
 
 ## 2. monitor 自己的 data dir 永远是 `~/.claude/claudecode-frontend/`

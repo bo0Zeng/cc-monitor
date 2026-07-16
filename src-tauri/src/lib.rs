@@ -870,6 +870,7 @@ pub fn run() {
             sftp::deploy_remote_daemon,
             sftp::uninstall_remote_daemon,
             history::delete_history_session,
+            history::create_branch_session,
             history::update_history_metadata,
             history::resume_history_session,
             launch::launch_remote_terminal,
