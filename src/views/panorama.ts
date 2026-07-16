@@ -398,6 +398,15 @@ export class PanoramaView implements OverlayHandle {
     this.refreshBtn.addEventListener("click", () => void this.refresh());
     bar.appendChild(this.refreshBtn);
 
+    // F71：文档漂移——列仓里 .md 指向已失效的悬空链接。
+    const driftBtn = document.createElement("button");
+    driftBtn.type = "button";
+    driftBtn.className = "panorama-btn";
+    driftBtn.textContent = "文档漂移";
+    driftBtn.title = "仓里 .md 指向的目标文件/符号已失效（悬空链接）。反映上次索引快照，改了代码请先刷新。";
+    driftBtn.addEventListener("click", () => void this.showDrift());
+    bar.appendChild(driftBtn);
+
     view.appendChild(bar);
 
     // 覆盖信号 banner（默认隐藏）
@@ -805,12 +814,13 @@ export class PanoramaView implements OverlayHandle {
 
   private async runSearch(query: string): Promise<void> {
     if (!this.repo) return;
+    const repo = this.repo;
     const seq = ++this.searchSeq;
     this.openSidebar();
     this.renderSidebarStatus("搜索中…");
     try {
-      const syms = await api.search(this.repo, query, 40);
-      if (seq !== this.searchSeq) return;
+      const syms = await api.search(repo, query, 40);
+      if (seq !== this.searchSeq || this.repo !== repo) return;
       this.renderSearchResults(query, syms);
     } catch (e) {
       if (seq !== this.searchSeq) return;
@@ -828,6 +838,11 @@ export class PanoramaView implements OverlayHandle {
       this.sidebarEl.appendChild(makeSideNote("无匹配符号。裸名不解析，试试函数/方法/类的名字子串。"));
       return;
     }
+    this.sidebarEl.appendChild(this.buildSymbolList(syms));
+  }
+
+  /** F71：符号列表（name/kind/loc 行，点击进节点详情）——搜索结果 + 点文件列符号共用。 */
+  private buildSymbolList(syms: Symbol[]): HTMLElement {
     const list = document.createElement("div");
     list.className = "panorama-sym-list";
     for (const s of syms) {
@@ -850,19 +865,20 @@ export class PanoramaView implements OverlayHandle {
       row.addEventListener("click", () => void this.openNodeDetail(s.id));
       list.appendChild(row);
     }
-    this.sidebarEl.appendChild(list);
+    return list;
   }
 
   // === 节点详情（符号 + callers/callees + docs）===
 
   private async openNodeDetail(id: string): Promise<void> {
     if (!this.repo) return;
+    const repo = this.repo;
     const seq = ++this.searchSeq;
     this.openSidebar();
     this.renderSidebarStatus("加载符号详情…");
     try {
-      const nv = await api.node(this.repo, id);
-      if (seq !== this.searchSeq) return;
+      const nv = await api.node(repo, id);
+      if (seq !== this.searchSeq || this.repo !== repo) return;
       if (!nv) {
         this.renderSidebarStatus(`未找到符号：${id}`);
         return;
@@ -971,6 +987,7 @@ export class PanoramaView implements OverlayHandle {
   // === 文件详情（点气泡）===
 
   private openFileDetail(b: FileBubble): void {
+    if (!this.repo) return; // 远端/无仓无从查符号（纵深防御，正常靠 message 遮罩挡住点击）
     this.openSidebar();
     this.sidebarEl.replaceChildren();
     this.sidebarEl.appendChild(this.sidebarHeader(basename(b.file), b.subsystem));
@@ -985,23 +1002,91 @@ export class PanoramaView implements OverlayHandle {
     appendMetaRow(meta, "子系统", b.subsystem, false);
     if (b.isEntry) appendMetaRow(meta, "入口点", "是（entry point）", false);
     detail.appendChild(meta);
-
-    const note = document.createElement("div");
-    note.className = "panorama-file-note";
-    note.textContent = "查该文件里的某个符号：在上方搜索框输入符号名（子串）→ 点结果看 callers/callees。";
-    detail.appendChild(note);
-
-    const searchBtn = document.createElement("button");
-    searchBtn.type = "button";
-    searchBtn.className = "panorama-btn panorama-file-searchbtn";
-    searchBtn.textContent = "去搜索框查符号";
-    searchBtn.addEventListener("click", () => {
-      this.searchInput.focus();
-      this.searchInput.select();
-    });
-    detail.appendChild(searchBtn);
-
     this.sidebarEl.appendChild(detail);
+
+    // F71（补「点文件不能列符号」遗留）：列该文件的符号 → 点符号进详情看 callers/callees。
+    // 异步拉，占位「加载中」；竞态用 searchSeq 代际（与搜索/节点详情同一侧栏世代）。
+    const symWrap = document.createElement("div");
+    symWrap.className = "panorama-file-symbols";
+    symWrap.appendChild(makeSideNote("加载符号…"));
+    this.sidebarEl.appendChild(symWrap);
+    void this.loadFileSymbols(b.file, symWrap);
+  }
+
+  /** F71：拉某文件的符号列表填进 symWrap。竞态用 searchSeq 代际防串（切文件/搜索作废本次）。 */
+  private async loadFileSymbols(file: string, symWrap: HTMLElement): Promise<void> {
+    if (!this.repo) return;
+    const repo = this.repo;
+    const seq = ++this.searchSeq;
+    try {
+      const syms = await api.symbolsInFile(repo, file);
+      if (seq !== this.searchSeq || this.repo !== repo) return;
+      symWrap.replaceChildren();
+      if (syms.length === 0) {
+        symWrap.appendChild(makeSideNote("该文件无已索引符号（符号太少 / 解析失败 / 非代码文件）。"));
+        return;
+      }
+      const hd = document.createElement("div");
+      hd.className = "panorama-sym-listhead";
+      hd.textContent = `${syms.length} 个符号 · 点击看 callers/callees`;
+      symWrap.appendChild(hd);
+      symWrap.appendChild(this.buildSymbolList(syms));
+    } catch (e) {
+      if (seq !== this.searchSeq) return;
+      symWrap.replaceChildren();
+      symWrap.appendChild(makeSideNote(`加载符号失败：${String(e)}`));
+    }
+  }
+
+  /** F71：文档漂移面板——列仓里 .md 指向已失效的悬空链接（doc → target + reason）。 */
+  private async showDrift(): Promise<void> {
+    if (!this.repo) {
+      showActionFailureToast("无法查漂移", "当前不是本地仓库视图（远端或无仓）。");
+      return;
+    }
+    const repo = this.repo;
+    const seq = ++this.searchSeq;
+    this.openSidebar();
+    this.renderSidebarStatus("检查文档漂移…");
+    try {
+      const items = await api.drift(repo);
+      if (seq !== this.searchSeq || this.repo !== repo) return;
+      this.sidebarEl.replaceChildren();
+      this.sidebarEl.appendChild(this.sidebarHeader("文档漂移", `${items.length} 处悬空链接`));
+      this.sidebarEl.appendChild(
+        makeSideNote("反映上次索引快照——改了代码请先「刷新」再查。"),
+      );
+      if (items.length === 0) {
+        this.sidebarEl.appendChild(makeSideNote("没有悬空文档链接 ✓"));
+        return;
+      }
+      const list = document.createElement("div");
+      list.className = "panorama-drift-list";
+      for (const it of items) {
+        const row = document.createElement("div");
+        row.className = "panorama-drift-row";
+        const doc = document.createElement("div");
+        doc.className = "panorama-drift-doc";
+        doc.textContent = it.doc_path;
+        row.appendChild(doc);
+        const tgt = document.createElement("div");
+        tgt.className = "panorama-drift-target";
+        tgt.textContent = it.target_symbol
+          ? `→ ${it.target_file}#${it.target_symbol}`
+          : `→ ${it.target_file}`;
+        row.appendChild(tgt);
+        const reason = document.createElement("div");
+        reason.className = "panorama-drift-reason";
+        reason.textContent = it.reason;
+        row.appendChild(reason);
+        list.appendChild(row);
+      }
+      this.sidebarEl.appendChild(list);
+    } catch (e) {
+      if (seq !== this.searchSeq) return;
+      this.renderSidebarStatus(`查漂移失败：${String(e)}`);
+      showActionFailureToast("文档漂移查询失败", String(e));
+    }
   }
 
   // === 侧栏基础 ===
