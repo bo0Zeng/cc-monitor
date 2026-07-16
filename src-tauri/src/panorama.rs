@@ -13,9 +13,11 @@
 //! **guard 不跨 await**。`std::MutexGuard` deref 成 `&mut Engine` → 读（`&self`）/写
 //! （`&mut self`:index/reindex）方法无差别都能调。
 //!
-//! **索引时机**：`Engine::open` 加载既存 `.codepicture/index.db`（上次索引持久）或空;
-//! `panorama_index`/`reindex` 显式建/重建（重活,前端开面板时调）。索引写被索引仓的
-//! `.codepicture/` 派生侧车,与 §1 只读铁律无关（cc-monitor 自身被索引生成的已 gitignore）。
+//! **索引时机 + 落点（F69 补 D20）**：`Engine::open` 很轻（建目录 + 空 index.db,**不扫描**);
+//! 真正的扫描（tree-sitter 解析全仓）只在 `panorama_index`/`reindex`——**前端只在用户显式点
+//! 「建立索引」才调**（D20:代码分析每仓手动开启、默认关）。索引落 **cc-monitor 数据目录**
+//! `~/.claude/claudecode-frontend/panorama/`（`panorama_store_dir`）,**不再写进用户仓**——消灭
+//! 「点🗺就在你仓里凭空建 `.codepicture/`」灰区;纯缓存、可删、与 §1 只读铁律正交。
 
 use code_picture_core::{model, Engine, EngineOpts};
 use std::collections::HashMap;
@@ -28,21 +30,39 @@ fn pool() -> &'static Mutex<HashMap<PathBuf, Arc<Mutex<Engine>>>> {
     P.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// 取/建某仓的 Engine（`open` 很轻,不索引）。**pool 全局锁只短暂持有取/回填,绝不跨
-/// `Engine::open`**（照 sftp_pool R3 教训 + 手册 §2:慢活/SQLite 别持全局锁）——只在
-/// `spawn_blocking` 线程里被 `with_engine` 调用（`Engine::open` 的 SQLite 打开也在阻塞线程）。
-/// key 走 `canonicalize` 消化尾斜杠/`.`/相对-绝对差异,**防同仓不同写法建重复 Engine**
-/// （否则两条 rusqlite 连接对同一 index.db 并发写 → SQLITE_BUSY + 缓存不一致,D-建议2）。
+/// **F69（补 D20）**：索引落哪。返回 cc-monitor 数据目录下的 `panorama/`——core 会在其下
+/// 自己按仓 canonical 路径 hash 追加 `.codepicture/<仓名>-<hash>/`（`engine.rs:42-50`），所以
+/// **传父目录即可,别 per-repo 再嵌套**。这样索引**不再落进用户仓**（消灭「点🗺就在你仓里凭空
+/// 建 `.codepicture/`」灰区，SS-7 + D20）；纯缓存、可删、gitignore 无关（不在用户仓了）。
+/// **`None`（`resolve_monitor_data_dir` 失败 = 连 home_dir 都拿不到）→ `Engine::open` 回退落被
+/// 分析仓 = 静默复活 D20 灰区;但那种环境下 config/history（`lib.rs` 靠同一 home_dir）早已不可用、
+/// 根本走不到开全景面板这步,实际不可达——故不为它加门,只在此注明。**
+fn panorama_store_dir() -> Option<PathBuf> {
+    crate::paths::resolve_monitor_data_dir().map(|d| d.join("panorama"))
+}
+
+/// 取/建某仓的 Engine（`open` 很轻,**不扫描**,只建目录 + 空 index.db,见 F69 审计）。生产入口:
+/// store_dir = `panorama_store_dir()`（落 cc-monitor 数据目录,不碰用户仓）。
 fn engine_for(repo: &str) -> Result<Arc<Mutex<Engine>>, String> {
+    engine_for_with_store(repo, panorama_store_dir())
+}
+
+/// 内部:显式 store_dir 版（供测试注入临时目录,免污染真实数据目录）。**pool 全局锁只短暂持有
+/// 取/回填,绝不跨 `Engine::open`**（照 sftp_pool R3 教训 + 手册 §2:慢活/SQLite 别持全局锁）。
+/// key 走 `canonicalize` 消化尾斜杠/`.`/相对-绝对差异,**防同仓不同写法建重复 Engine**（否则两条
+/// rusqlite 连接对同一 index.db 并发写 → SQLITE_BUSY + 缓存不一致,D-建议2）。pool 只按 repo key,
+/// 与 store_dir 无关（同仓恒同 Engine）。
+fn engine_for_with_store(
+    repo: &str,
+    store_dir: Option<PathBuf>,
+) -> Result<Arc<Mutex<Engine>>, String> {
     let key = std::fs::canonicalize(repo).map_err(|e| format!("仓路径无效（{repo}）: {e}"))?;
     // 快路径:池命中（短暂持锁,无 open）。
     if let Some(e) = pool().lock().unwrap().get(&key) {
         return Ok(Arc::clone(e));
     }
     // 慢路径:`open` 在池锁**外**（open 期间不持全局锁,别的仓可并发首开）。
-    // F68 re-vendor:EngineOpts 从空壳变带 `store_dir`。`None` = 索引落被分析仓
-    // `<repo>/.codepicture`(现状,.gitignore 已忽略);要集中到 cc-monitor 数据目录改 Some。
-    let engine = Engine::open(&key, EngineOpts { store_dir: None })
+    let engine = Engine::open(&key, EngineOpts { store_dir })
         .map_err(|e| format!("打开 code-picture 引擎失败（{repo}）: {e}"))?;
     let arc = Arc::new(Mutex::new(engine));
     // 回填 + double-check:open 期间别的线程可能已建同 key → 先到者胜,弃本次多开的（罕见）。
@@ -203,19 +223,44 @@ mod tests {
     #[test]
     fn engine_pool_same_repo_same_arc_distinct_repo_distinct_arc() {
         // 池 get-or-create 语义:同 repo 返同一 Arc（命中,不重复 open）;异 repo 返不同 Arc。
-        // 用临时目录当 repo 根（Engine::open 会在其下建 .codepicture/,临时目录 OS 自清）。
+        // 用显式临时 store（`engine_for_with_store`）——不走 panorama_store_dir 免污染真实数据目录。
         let base = std::env::temp_dir();
         let r1 = base.join("cc-monitor-b15-pool-a");
         let r2 = base.join("cc-monitor-b15-pool-b");
+        let store = base.join("cc-monitor-b15-pool-store");
         std::fs::create_dir_all(&r1).ok();
         std::fs::create_dir_all(&r2).ok();
-        let a1 = engine_for(r1.to_str().unwrap()).expect("open r1");
-        let a1b = engine_for(r1.to_str().unwrap()).expect("open r1 again");
-        let a2 = engine_for(r2.to_str().unwrap()).expect("open r2");
+        let a1 = engine_for_with_store(r1.to_str().unwrap(), Some(store.clone())).expect("open r1");
+        let a1b = engine_for_with_store(r1.to_str().unwrap(), Some(store.clone()))
+            .expect("open r1 again");
+        let a2 = engine_for_with_store(r2.to_str().unwrap(), Some(store.clone())).expect("open r2");
         assert!(
             Arc::ptr_eq(&a1, &a1b),
             "同 repo → 同一 Arc（池命中,不重复 open）"
         );
         assert!(!Arc::ptr_eq(&a1, &a2), "异 repo → 不同 Arc");
+    }
+
+    #[test]
+    fn store_dir_some_writes_to_store_not_user_repo() {
+        // F69/D20 回归防线:store_dir=Some → 索引落 store 目录,**用户仓不被建 .codepicture**
+        // （消灭「点🗺就在你仓里凭空建目录」灰区）。防有人把 panorama.rs 的 store_dir 改回 None。
+        let base = std::env::temp_dir();
+        let repo = base.join("cc-monitor-f69-d20-repo");
+        let store = base.join("cc-monitor-f69-d20-store");
+        std::fs::remove_dir_all(repo.join(".codepicture")).ok(); // 干净起点
+        std::fs::remove_dir_all(&store).ok();
+        std::fs::create_dir_all(&repo).ok();
+        let _e =
+            engine_for_with_store(repo.to_str().unwrap(), Some(store.clone())).expect("open repo");
+        assert!(
+            !repo.join(".codepicture").exists(),
+            "store_dir=Some 时用户仓不该凭空出现 .codepicture（D20）"
+        );
+        assert!(
+            store.join(".codepicture").exists(),
+            "索引应落到 store_dir 下（core 在其下建 .codepicture/<name>-<hash>/）"
+        );
+        std::fs::remove_dir_all(&store).ok();
     }
 }

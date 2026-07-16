@@ -162,10 +162,28 @@ export class PanoramaView implements OverlayHandle {
     try {
       const st = await api.status(repo);
       if (seq !== this.loadSeq) return;
-      if (st.symbols === 0 || st.stale) {
-        this.showLoading(
-          st.symbols === 0 ? "首次建立索引中…（大仓较慢，请稍候）" : "索引已陈旧，重建中…",
+      // F69（补 D20：代码分析默认关、每仓手动开启）：门只卡**首次启用**——从未索引
+      // （symbols===0）= 未启用本仓分析 → **不自动扫描**，给显式「建立索引」手势。
+      if (api.panoramaLoadDecision(st) === "enable-gate") {
+        this.hideLoading();
+        this.showMessage(
+          "尚未为本仓建立代码索引",
+          "全景图需先解析本仓代码（tree-sitter，大仓较慢）。索引是纯缓存，存在 cc-monitor 数据目录、不写进你的仓库。点下方按钮启用本仓代码分析。",
+          {
+            label: "建立索引（启用本仓代码分析）",
+            // 显式一次性 disable，防连点（不依赖 hideMessage 的 display:none 隐式防护）。
+            onClick: (btn) => {
+              btn.disabled = true;
+              void this.enableAndIndex(repo);
+            },
+          },
         );
+        return;
+      }
+      // 已启用（symbols>0）：陈旧则自动重建（用户此前已 opt-in，保持新鲜属正常运行、非新
+      // opt-in——避免静默展示过期图）。非陈旧直接加载。
+      if (st.stale) {
+        this.showLoading("索引已陈旧，重建中…");
         await api.index(repo);
         if (seq !== this.loadSeq) return;
       }
@@ -178,6 +196,26 @@ export class PanoramaView implements OverlayHandle {
       this.hideLoading();
       showActionFailureToast("全景加载失败", String(e));
       this.showMessage("加载失败", String(e));
+    }
+  }
+
+  /** F69（D20 opt-in）：用户显式点「建立索引」才跑扫描（tree-sitter 全仓解析）——默认关。 */
+  private async enableAndIndex(repo: string): Promise<void> {
+    const seq = ++this.loadSeq;
+    this.hideMessage();
+    this.showLoading("首次建立索引中…（大仓较慢，请稍候）");
+    try {
+      await api.index(repo);
+      if (seq !== this.loadSeq) return;
+      this.showLoading("加载全景…");
+      const ov = await api.overview(repo);
+      if (seq !== this.loadSeq) return;
+      this.applyOverview(ov, repo);
+    } catch (e) {
+      if (seq !== this.loadSeq) return;
+      this.hideLoading();
+      showActionFailureToast("建立索引失败", String(e));
+      this.showMessage("建立索引失败", String(e));
     }
   }
 
@@ -360,7 +398,11 @@ export class PanoramaView implements OverlayHandle {
     this.loadingEl.style.display = "none";
   }
 
-  private showMessage(headline: string, body: string): void {
+  private showMessage(
+    headline: string,
+    body: string,
+    action?: { label: string; onClick: (btn: HTMLButtonElement) => void },
+  ): void {
     this.messageEl.replaceChildren();
     const h = document.createElement("div");
     h.className = "panorama-message-headline";
@@ -370,6 +412,15 @@ export class PanoramaView implements OverlayHandle {
     b.className = "panorama-message-body";
     b.textContent = body;
     this.messageEl.appendChild(b);
+    // F69（D20 opt-in）：可选行动按钮（如「建立索引」——把扫描门在显式手势后）。
+    if (action) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "panorama-btn panorama-message-action";
+      btn.textContent = action.label;
+      btn.addEventListener("click", () => action.onClick(btn));
+      this.messageEl.appendChild(btn);
+    }
     this.messageEl.style.display = "";
   }
   private hideMessage(): void {
