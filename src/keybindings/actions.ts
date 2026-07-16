@@ -83,6 +83,7 @@ export const ACTIONS: ReadonlyArray<Action> = [
   // ===== App =====
   { id: "app.open-settings", label: "打开设置面板", category: "App", default: "Comma", available: true },
   { id: "app.toggle-history", label: "打开 / 关闭历史浏览器", category: "App", default: "KeyH", available: true },
+  { id: "app.toggle-panorama", label: "打开 / 关闭代码全景", category: "App", default: "KeyG", available: true },
   {
     id: "app.search-history",
     label: "历史浏览器全文搜索",
