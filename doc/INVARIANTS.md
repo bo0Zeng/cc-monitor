@@ -32,6 +32,25 @@
 - 用户切换 Claude 数据目录后主题 / 字体偏好不丢。
 - profile backup / sid-hwnd-cache / ps-await 等跨进程文件位置稳定，PS 端不需要动态查询。
 
+### 2.1 真相 vs 缓存必须分得清（F65 / issue #58 单向门④）
+
+data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建时不敢下手」：
+
+| 文件 | 类 | 写它的 | 说明 |
+|---|---|---|---|
+| `config.json` | **真相** | `config.rs` | theme/font/claudeDir/keybindings/`remote.hosts[]`(含 label)/resume 命令/诊断开关——全用户手填 |
+| `history-metadata.json` | **真相** | `history.rs::save_metadata` | 按 sid 的 star/重命名/隐藏——用户策展意图 |
+| `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled`=真相；`monitor_exe_path`=派生(每次启动 `current_exe()` 自愈改写) |
+| `sid-hwnd-cache.json` | **缓存** | `bind.rs` | sid→HWND，能从 PS 握手重建 |
+| `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | 跨进程握手，启动重扫 |
+| `logs/` | **缓存/派生** | `logging.rs` | 诊断日志，滚动保留 3 天（§15） |
+
+- **真相** = 用户手写/意图，**删了丢东西、要备份、要迁移友好**。
+- **缓存/派生** = 能从别处重建，**随便删**。
+- **规矩**：**新增任何 data dir 文件，必须在 `data_paths.rs` 的枚举里声明它是哪类**（那里是逐个 data dir 文件的唯一权威枚举点，带 description）。truth 的格式要迁移友好；cache 允许随手删。
+- **两笔边界别误读**：① `auto-launch.json` 同文件混真相+派生，是**良性**的（派生位自愈，整体迁移不坏）；② `ps-registry/`/`ps-await/`/`logs/` 在子目录，那是**按用途/IPC 对端分**的，**不是按真相/缓存分**——`sid-hwnd-cache.json` 这个纯缓存反而在根、跟 `config.json` 平级。
+- **机器强制形态（推荐，F90 落地）**：给 `data_paths.rs::DataPathInfo` 加一个**非可选** `class: truth|cache` 枚举字段，让「新文件必须选类」由类型系统兜住（强过散文规矩），并可在设置面板「数据」区显示。**现在不做**——F90 加 daemon 登记表时正在动 data dir 结构，那时顺手加最自然；提前做是 speculative。
+
 ---
 
 ## 3. 所有跨进程 JSON 文件 = UTF-8 无 BOM

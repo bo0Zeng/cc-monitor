@@ -205,6 +205,7 @@ case "memory_recall":
 - UTF-8 无 BOM
 - 原子写
 - 反序列化容错（`#[serde(default)]` + `#[serde(other)]`）
+- **必须声明它是「真相」还是「缓存」**（INVARIANTS § 2.1）：在 `data_paths.rs` 的枚举里登记 + description 写清。真相（用户手写/意图，删了丢东西）要格式迁移友好；缓存（能重建）允许随手删。**新 data dir 文件一律先答这一问**——身份类 id 另见 § 28。
 
 ### 2.4 添加新外观设置项
 
