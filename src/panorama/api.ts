@@ -37,6 +37,18 @@ export const status = (repo: string) =>
 export const overview = (repo: string, budget?: number) =>
   invoke<Overview>("panorama_overview", { repo, budget });
 
+/**
+ * F69（补 D20：代码分析默认关、每仓手动开启）：据 status 决定开面板时的动作。
+ * `symbols===0` = 从未索引 = 未启用本仓分析 → `"enable-gate"`（显式手势才扫描，绝不自动扫）；
+ * 否则（`symbols>0`，用户此前已启用）→ `"load"`（直接加载现有 overview，stale 靠手动「刷新」）。
+ * 抽成纯函数是为了单测钉死「默认关」不被回归成开面板即自动扫描（D20 违规）。
+ */
+export function panoramaLoadDecision(
+  st: Pick<PanoramaStatus, "symbols">,
+): "enable-gate" | "load" {
+  return st.symbols === 0 ? "enable-gate" : "load";
+}
+
 /** 单符号详情（符号 + 直接 callers/callees + 关联文档）。symbol 用全限定 id。 */
 export const node = (repo: string, symbol: string) =>
   invoke<NodeView | null>("panorama_node", { repo, symbol });
