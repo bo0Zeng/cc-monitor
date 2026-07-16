@@ -37,7 +37,19 @@ const PROTO_VERSION: u32 = 1;
 /// Daemon build id reported in the `Hello` frame (#33 version negotiation).
 /// Human-readable, monotonic build/feature tag; the monitor compares it against
 /// `EXPECTED_DAEMON_BUILD_ID` and warns the user when a manually-deployed daemon
-/// is stale. Bump when daemon capabilities change.
+/// is stale (staleness 提示 + 部署确认)。
+///
+/// **与 F66 `capabilities` 两轴正交（§26）**：`build_id` = daemon 的**身份/构建版本**
+/// （改了 daemon 二进制就该 bump，用于 staleness + 部署确认）；`capabilities` = 该版本
+/// **声明支持什么能力**（用于运行时门控发哪些 flag）。两者不混——bump build_id 是
+/// 「我是新构建」，声明 capability 是「我这个构建支持 X」。
+///
+/// **★ F66 待 bump（发版前一套动作，Phase G 记账）**：F66 给 daemon 加了 `capabilities`
+/// 声明（wire.rs Hello + 下面的 `CAPABILITIES`），是新构建 → **发版前应 bump 到 p1i-xxx**。
+/// 但 bump **必须与 re-zigbuild 内嵌二进制 + 更新 `embedded-daemons/*.build_id` 清单一套做**
+/// （只 bump 源码不 re-embed = 源码 build_id 与内嵌清单不一致的半 bump，更糟）。当前 p1h
+/// 不 bump **良性**：monitor 乐观路径照发 flag、旧内嵌二进制自 F24/F25 起就剥
+/// `--with-bg`/`--tail-only`，不死循环、不降级（Phase G 双 agent 核实）。
 /// - p1a-history  = 一次性历史查询模式（#16，--list-projects 等）
 /// - p1b-overflow = + 探活精确化（#34）+ overflow 信号（#32）
 /// - p1c-f20-addtime = + add-time 冒名判定（Batch5-F20：pidfile procStart 身份

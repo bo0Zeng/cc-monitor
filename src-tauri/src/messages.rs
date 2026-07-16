@@ -1,9 +1,14 @@
 //! Claude Code `projects/**/*.jsonl` 单行记录的 Rust schema。
 //!
 //! `JsonlRecord` enum 按 `type` 字段反序列化（user / assistant / system / summary /
-//! ai-title / attachment / permission-mode / last-prompt / file-history-snapshot 等），
-//! 未知 type 用 `#[serde(other)] Unknown` 兜底——遵循 INVARIANT § 18「宽容 schema」：
-//! 非核心字段一律 `Option<T>` / `#[serde(default)]`，避免 Claude Code 写法变动导致整行解析失败。
+//! ai-title / attachment / permission-mode / last-prompt / file-history-snapshot 等）。
+//! 遵循 INVARIANT § 18「宽容 schema」：非核心字段一律 `Option<T>` / `#[serde(default)]`，
+//! 避免 Claude Code 写法变动导致整行解析失败。
+//!
+//! **F63（issue #49）起看不懂的记录不静默丢**（INVARIANT § 18.1）：未知 `type` 落到
+//! `#[serde(other)] Unknown`（仅 serde 内部落点），但 **`Unknown` 绝不出 `parser::parse_line`**
+//! ——它连同「已知 type 解析失败但仍是合法 JSON」的行一起被抢救成 `Unrecognized`
+//! （留原文 + uuid/parentUuid/timestamp），进链防孤儿化误折叠。详见 `Unrecognized` 变体注释。
 //!
 //! 这些类型在前端 `cards/index.ts` 有对应的 TS 镜像（ApiMessage / ContentBlock 等）。
 
