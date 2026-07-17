@@ -3180,6 +3180,37 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   border-color: var(--error);
 }
 
+/* F96：历史条目右键菜单（镜像 tab-context-menu 视觉语言，不复用其私有 JS）。 */
+.history-context-menu {
+  position: fixed;
+  z-index: 99999;
+  min-width: 160px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.history-context-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-small);
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.history-context-item:hover {
+  background: var(--overlay-hover);
+}
+.history-context-item.is-danger {
+  color: var(--error);
+}
+
 /* === Keybindings Editor (issue #5) ===
    modal overlay 仿小窗口风格：fixed 全屏 backdrop + 居中浮窗。
    z-index 200 > settings(100)，保证从设置里点开能浮在设置之上。 */

@@ -26,7 +26,13 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { SessionViewer, type ViewerOptions } from "./session-viewer";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
-import { runRemoteResume } from "../remote-launch-run";
+import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
+import { AGENT_PROFILE } from "../agent-profile";
+import {
+  actionsFor,
+  type HistoryActionCtx,
+  type HistoryActionId,
+} from "./history-actions";
 import { getBehavior } from "../behavior";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { formatTimestampSmart } from "../format";
@@ -156,6 +162,16 @@ interface SearchResponse {
 /** issue #6: 历史浏览器的两种模式 —— 项目树过滤 vs 内容全文搜索。 */
 type SearchMode = "tree" | "fulltext";
 
+/**
+ * F96：动作 run 的运行时上下文 = 纯判定 ctx（`HistoryActionCtx`）+ **活的 entry/project 引用**。
+ * star/hide/delete 要 mutate 渲染用的同一 `e`/`proj` 对象并同步缓存，故必须是活引用（非拷贝）；
+ * 搜索卡片（F85）无 entry/project → 只 resume/new-session（enabled 由 `hasEntry` 判定）。
+ */
+type RowActionCtx = HistoryActionCtx & {
+  entry?: HistorySessionEntry;
+  project?: HistoryProject;
+};
+
 export class HistoryView {
   /** fixed overlay 根；open 时挂 document.body，close 时 remove。 */
   private root: HTMLElement;
@@ -236,6 +252,8 @@ export class HistoryView {
    * **默认折叠** —— 第一次见到 fork 父节点时它的 children 不显示。从 localStorage 恢复。
    */
   private expandedForks: Set<string> = loadExpandedForks();
+  /** F96：当前打开的条目右键菜单（单例；开新菜单/点空白/Esc 前先关它）。 */
+  private openEntryMenu: HTMLElement | null = null;
 
   constructor() {
     this.root = this.build();
@@ -1333,6 +1351,259 @@ export class HistoryView {
 
   // === 会话行 ===
 
+  // === F96 SS-4 ③块：共享动作表的 run 副作用体（判定在 history-actions.ts） ===
+  // inline 行尾按钮与右键菜单走同一 run 分发 → 天然不漂移。star/rename/hide/delete 需活的
+  // entry+project 引用（缓存/计数同步）；resume/new-session 只用 identity 段（搜索卡片 F85 也能用）。
+
+  /** id → run 方法分发（对齐 actionsFor）。 */
+  private runOf(id: HistoryActionId): (ctx: RowActionCtx) => void | Promise<void> {
+    switch (id) {
+      case "resume":
+        return (c) => this.runResume(c);
+      case "new-session":
+        return (c) => this.runNewSession(c);
+      case "star":
+        return (c) => this.runStar(c);
+      case "rename":
+        return (c) => this.runRename(c);
+      case "hide":
+        return (c) => this.runHide(c);
+      case "delete":
+        return (c) => this.runDelete(c);
+    }
+  }
+
+  private async runStar(ctx: RowActionCtx): Promise<void> {
+    const e = ctx.entry,
+      proj = ctx.project;
+    if (!e || !proj) return;
+    try {
+      const next = await invoke<EntryMetadata>("update_history_metadata", {
+        sessionId: e.sessionId,
+        patch: { starred: !e.starred },
+      });
+      const wasStarred = e.starred;
+      e.starred = next.starred;
+      // 同步 project 的 starred_count
+      if (!wasStarred && next.starred) proj.starredCount += 1;
+      else if (wasStarred && !next.starred)
+        proj.starredCount = Math.max(0, proj.starredCount - 1);
+      this.renderList();
+    } catch (err) {
+      console.warn("star update failed:", err);
+    }
+  }
+
+  private async runRename(ctx: RowActionCtx): Promise<void> {
+    const e = ctx.entry;
+    if (!e) return;
+    const cur = e.customTitle ?? e.aiTitle ?? "";
+    const next = window.prompt("自定义标题（留空恢复默认）", cur);
+    if (next === null) return;
+    try {
+      const updated = await invoke<EntryMetadata>("update_history_metadata", {
+        sessionId: e.sessionId,
+        patch: { customTitle: next.trim() === "" ? null : next.trim() },
+      });
+      e.customTitle = updated.customTitle;
+      this.renderList();
+    } catch (err) {
+      console.warn("rename failed:", err);
+    }
+  }
+
+  private async runHide(ctx: RowActionCtx): Promise<void> {
+    const e = ctx.entry,
+      proj = ctx.project;
+    if (!e || !proj) return;
+    try {
+      const updated = await invoke<EntryMetadata>("update_history_metadata", {
+        sessionId: e.sessionId,
+        patch: { hidden: !e.hidden },
+      });
+      const wasHidden = e.hidden;
+      e.hidden = updated.hidden;
+      if (!wasHidden && updated.hidden) proj.hiddenCount += 1;
+      else if (wasHidden && !updated.hidden)
+        proj.hiddenCount = Math.max(0, proj.hiddenCount - 1);
+      this.renderList();
+    } catch (err) {
+      console.warn("hide toggle failed:", err);
+    }
+  }
+
+  private async runResume(ctx: RowActionCtx): Promise<void> {
+    if (ctx.origin) {
+      // F41：远端 resume 一键拉起（wt.exe → `ssh -t …`），失败回退 F09 复制命令。
+      // F34：用户自定义远端 resume 命令（如 cct）；空 = 后端默认
+      const behavior = await getBehavior();
+      await runRemoteResume(
+        ctx.origin,
+        ctx.sessionId,
+        ctx.cwd,
+        behavior.resumeCommandRemote,
+      );
+    } else {
+      try {
+        // F34：用户自定义本地 resume 命令（如 cct）；空 = 后端默认（cc 检测→默认）
+        const behavior = await getBehavior();
+        await invoke("resume_history_session", {
+          sessionId: ctx.sessionId,
+          cwd: ctx.cwd,
+          launcher: behavior.resumeCommandLocal || null,
+        });
+      } catch (err) {
+        showActionFailureToast("恢复失败", String(err));
+      }
+    }
+  }
+
+  private async runNewSession(ctx: RowActionCtx): Promise<void> {
+    const behavior = await getBehavior();
+    if (ctx.origin) {
+      // 远端：薄封装 F53 拉起（tmux 名派生在 runNewSessionRemote 里，本处不知 tmux）。
+      await runNewSessionRemote(
+        ctx.origin,
+        ctx.cwd,
+        behavior.resumeCommandRemote || AGENT_PROFILE.defaultLauncher,
+      );
+    } else {
+      try {
+        // 本地：后端 new_local_session（cc 优先 + F34 自定义，无 sid/resume flag）。
+        await invoke("new_local_session", {
+          cwd: ctx.cwd,
+          launcher: behavior.resumeCommandLocal || null,
+        });
+        showActionFailureToast(
+          "已在该目录起新会话",
+          `新终端窗口正在 ${ctx.cwd} 启动。`,
+          { level: "info", durationMs: 6000 },
+        );
+      } catch (err) {
+        showActionFailureToast("起新会话失败", String(err));
+      }
+    }
+  }
+
+  private async runDelete(ctx: RowActionCtx): Promise<void> {
+    const e = ctx.entry,
+      proj = ctx.project;
+    if (!e || !proj) return;
+    const label = e.customTitle ?? e.aiTitle ?? e.sessionId.slice(0, 8);
+    if (e.origin) {
+      // 远端删除更危险（经 SFTP 删远端文件）→ 二次确认。
+      const ok1 = window.confirm(
+        `删除远端会话「${label}」（机器 ${e.origin}）？\n\n将经 SFTP 物理删除远端 jsonl 文件，Claude Code 之后也无法 resume。\n此操作不可恢复。`,
+      );
+      if (!ok1) return;
+      const ok2 = window.confirm(
+        `再次确认：永久删除远端 [${e.origin}] 的「${label}」？`,
+      );
+      if (!ok2) return;
+      try {
+        await invoke("delete_remote_history_session", {
+          origin: e.origin,
+          jsonlPath: e.jsonlPath,
+        });
+      } catch (err) {
+        showActionFailureToast("远端删除失败", String(err));
+        return;
+      }
+    } else {
+      const ok = window.confirm(
+        `物理删除会话「${label}」？\n\njsonl 文件会被直接删除，Claude Code 之后也无法 resume。\n此操作不可恢复。`,
+      );
+      if (!ok) return;
+      try {
+        await invoke("delete_history_session", {
+          sessionId: e.sessionId,
+          jsonlPath: e.jsonlPath,
+        });
+      } catch (err) {
+        showActionFailureToast("删除失败", String(err));
+        return;
+      }
+    }
+    // 成功后：从缓存移除 + 同步 project counts（本地 / 远端一致）。
+    const arr = this.sessionCache.get(projectKey(proj));
+    if (arr) {
+      const idx = arr.findIndex((x) => x.sessionId === e.sessionId);
+      if (idx >= 0) arr.splice(idx, 1);
+    }
+    proj.sessionCount = Math.max(0, proj.sessionCount - 1);
+    if (e.starred) proj.starredCount = Math.max(0, proj.starredCount - 1);
+    if (e.hidden) proj.hiddenCount = Math.max(0, proj.hiddenCount - 1);
+    // 项目内全部删完了 → 也从 projects 列表移除
+    if (proj.sessionCount === 0) {
+      this.projects = this.projects.filter(
+        (p) => projectKey(p) !== projectKey(proj),
+      );
+      // F76：远端项目还要从 remoteCache 同步移除，否则 TTL 内重开会把这个 0 会话的幽灵
+      // 项目从陈旧缓存拼回来（`this.projects` 与 `remoteCache.projects` 共享对象引用，
+      // 结构性移除不会自动传导——见 refresh() 顶部承重不变式）。本地项目不在缓存里，no-op。
+      if (this.remoteCache) {
+        this.remoteCache.projects = this.remoteCache.projects.filter(
+          (p) => projectKey(p) !== projectKey(proj),
+        );
+      }
+      this.sessionCache.delete(projectKey(proj));
+      this.expandedProjects.delete(projectKey(proj));
+    }
+    this.renderList();
+  }
+
+  /** F96：条目/搜索卡片右键 → 极简上下文菜单（守 SS-1，不抽共享组件、不复用 tabs 私有函数）。 */
+  private showEntryMenu(x: number, y: number, ctx: RowActionCtx): void {
+    this.closeEntryMenu();
+    const menu = document.createElement("div");
+    menu.className = "history-context-menu";
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+    for (const def of actionsFor(ctx)) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "history-context-item";
+      if (def.danger) item.classList.add("is-danger");
+      item.textContent = def.label(ctx);
+      item.addEventListener("click", () => {
+        this.closeEntryMenu();
+        void this.runOf(def.id)(ctx);
+      });
+      menu.appendChild(item);
+    }
+    document.body.appendChild(menu);
+    this.openEntryMenu = menu;
+    // 下一拍挂关闭监听（避免当前这次 contextmenu/click 立即触发关闭）。
+    setTimeout(() => {
+      const close = (ev: Event) => {
+        if (ev instanceof KeyboardEvent && ev.key !== "Escape") return;
+        if (
+          ev.type === "pointerdown" &&
+          this.openEntryMenu?.contains(ev.target as Node)
+        )
+          return;
+        this.closeEntryMenu();
+      };
+      document.addEventListener("pointerdown", close, { once: true });
+      document.addEventListener("keydown", close, { once: true });
+      // 存到菜单上以便 closeEntryMenu 反注册
+      (menu as unknown as { _close?: (ev: Event) => void })._close = close;
+    }, 0);
+  }
+
+  private closeEntryMenu(): void {
+    if (!this.openEntryMenu) return;
+    const close = (
+      this.openEntryMenu as unknown as { _close?: (ev: Event) => void }
+    )._close;
+    if (close) {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", close);
+    }
+    this.openEntryMenu.remove();
+    this.openEntryMenu = null;
+  }
+
   private buildEntryRow(
     e: HistorySessionEntry,
     proj: HistoryProject,
@@ -1354,6 +1625,25 @@ export class HistoryView {
       if (target?.closest(".history-star, .history-action, .history-fork-toggle"))
         return;
       this.openViewer(e);
+    });
+
+    // F96：条目行动作上下文（inline 按钮与右键菜单共用）。带活的 entry/project 引用，
+    // star/hide/delete 的 run 直接 mutate 它们并同步缓存（与旧 inline 闭包同一对象）。
+    const rowCtx: RowActionCtx = {
+      sessionId: e.sessionId,
+      jsonlPath: e.jsonlPath,
+      cwd: e.projectPath,
+      origin: e.origin,
+      isLive: e.isLive,
+      starred: e.starred,
+      hidden: e.hidden,
+      hasEntry: true,
+      entry: e,
+      project: proj,
+    };
+    row.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      this.showEntryMenu(ev.clientX, ev.clientY, rowCtx);
     });
 
     // issue #12: fork 树展开 / 折叠按钮（只在有 children 时出现）
@@ -1409,23 +1699,9 @@ export class HistoryView {
     starBtn.textContent = e.starred ? "★" : "☆";
     starBtn.title = e.starred ? "取消标星" : "标星";
     if (e.starred) starBtn.classList.add("is-starred");
-    starBtn.addEventListener("click", async (ev) => {
+    starBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      try {
-        const next = await invoke<EntryMetadata>("update_history_metadata", {
-          sessionId: e.sessionId,
-          patch: { starred: !e.starred },
-        });
-        const wasStarred = e.starred;
-        e.starred = next.starred;
-        // 同步 project 的 starred_count
-        if (!wasStarred && next.starred) proj.starredCount += 1;
-        else if (wasStarred && !next.starred)
-          proj.starredCount = Math.max(0, proj.starredCount - 1);
-        this.renderList();
-      } catch (err) {
-        console.warn("star update failed:", err);
-      }
+      void this.runOf("star")(rowCtx);
     });
     row.appendChild(starBtn);
 
@@ -1475,21 +1751,9 @@ export class HistoryView {
     renameBtn.className = "history-action";
     renameBtn.textContent = "✎"; // ✎ pencil（BMP，非 emoji）
     renameBtn.title = "重命名（中文 OK）";
-    renameBtn.addEventListener("click", async (ev) => {
+    renameBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      const cur = e.customTitle ?? e.aiTitle ?? "";
-      const next = window.prompt("自定义标题（留空恢复默认）", cur);
-      if (next === null) return;
-      try {
-        const updated = await invoke<EntryMetadata>("update_history_metadata", {
-          sessionId: e.sessionId,
-          patch: { customTitle: next.trim() === "" ? null : next.trim() },
-        });
-        e.customTitle = updated.customTitle;
-        this.renderList();
-      } catch (err) {
-        console.warn("rename failed:", err);
-      }
+      void this.runOf("rename")(rowCtx);
     });
     actions.appendChild(renameBtn);
 
@@ -1499,22 +1763,9 @@ export class HistoryView {
     // hidden 时按钮指示"恢复显示"用 +；显示时按钮指示"隐藏"用 –（en-dash U+2013）
     hideBtn.textContent = e.hidden ? "+" : "–";
     hideBtn.title = e.hidden ? "取消隐藏" : "隐藏（不删，但默认列表不显示）";
-    hideBtn.addEventListener("click", async (ev) => {
+    hideBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      try {
-        const updated = await invoke<EntryMetadata>("update_history_metadata", {
-          sessionId: e.sessionId,
-          patch: { hidden: !e.hidden },
-        });
-        const wasHidden = e.hidden;
-        e.hidden = updated.hidden;
-        if (!wasHidden && updated.hidden) proj.hiddenCount += 1;
-        else if (wasHidden && !updated.hidden)
-          proj.hiddenCount = Math.max(0, proj.hiddenCount - 1);
-        this.renderList();
-      } catch (err) {
-        console.warn("hide toggle failed:", err);
-      }
+      void this.runOf("hide")(rowCtx);
     });
     actions.appendChild(hideBtn);
 
@@ -1522,37 +1773,14 @@ export class HistoryView {
     resumeBtn.type = "button";
     resumeBtn.className = "history-action";
     resumeBtn.textContent = "↺"; // ↺ anticlockwise circle arrow ("replay")
-    if (e.origin) {
-      // F41：远端 resume 一键拉起（wt.exe → `ssh -t …`），失败回退 F09 复制命令。
-      resumeBtn.title = `在新终端拉起远端 [${e.origin}] resume（失败则复制命令）`;
-      resumeBtn.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        // F34：用户自定义远端 resume 命令（如 cct）；空 = claude
-        const behavior = await getBehavior();
-        await runRemoteResume(
-          e.origin!,
-          e.sessionId,
-          e.projectPath ?? "",
-          behavior.resumeCommandRemote,
-        );
-      });
-    } else {
-      resumeBtn.title = "在新终端窗口里 claude --resume 此会话";
-      resumeBtn.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        try {
-          // F34：用户自定义本地 resume 命令（如 cct）；空 = 后端默认（cc 检测→claude）
-          const behavior = await getBehavior();
-          await invoke("resume_history_session", {
-            sessionId: e.sessionId,
-            cwd: e.projectPath,
-            launcher: behavior.resumeCommandLocal || null,
-          });
-        } catch (err) {
-          showActionFailureToast("恢复失败", String(err));
-        }
-      });
-    }
+    // F41：远端一键拉起（wt.exe → `ssh -t …`），失败回退 F09 复制命令；本地 wt.exe/PowerShell。
+    resumeBtn.title = e.origin
+      ? `在新终端拉起远端 [${e.origin}] resume（失败则复制命令）`
+      : "在新终端 resume 此会话"; // F96：去硬编码启动命令（守「不许知道是哪个 agent」）
+    resumeBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      void this.runOf("resume")(rowCtx);
+    });
     actions.appendChild(resumeBtn);
 
     const deleteBtn = document.createElement("button");
@@ -1563,69 +1791,9 @@ export class HistoryView {
     deleteBtn.title = e.origin
       ? `删除远端 [${e.origin}] 的 jsonl（经 SFTP，不可恢复）`
       : "物理删除 jsonl 文件（不可恢复）";
-    deleteBtn.addEventListener("click", async (ev) => {
+    deleteBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      const label = e.customTitle ?? e.aiTitle ?? e.sessionId.slice(0, 8);
-      if (e.origin) {
-        // 远端删除更危险（经 SFTP 删远端文件）→ 二次确认。
-        const ok1 = window.confirm(
-          `删除远端会话「${label}」（机器 ${e.origin}）？\n\n将经 SFTP 物理删除远端 jsonl 文件，Claude Code 之后也无法 resume。\n此操作不可恢复。`,
-        );
-        if (!ok1) return;
-        const ok2 = window.confirm(
-          `再次确认：永久删除远端 [${e.origin}] 的「${label}」？`,
-        );
-        if (!ok2) return;
-        try {
-          await invoke("delete_remote_history_session", {
-            origin: e.origin,
-            jsonlPath: e.jsonlPath,
-          });
-        } catch (err) {
-          showActionFailureToast("远端删除失败", String(err));
-          return;
-        }
-      } else {
-        const ok = window.confirm(
-          `物理删除会话「${label}」？\n\njsonl 文件会被直接删除，Claude Code 之后也无法 resume。\n此操作不可恢复。`,
-        );
-        if (!ok) return;
-        try {
-          await invoke("delete_history_session", {
-            sessionId: e.sessionId,
-            jsonlPath: e.jsonlPath,
-          });
-        } catch (err) {
-          showActionFailureToast("删除失败", String(err));
-          return;
-        }
-      }
-      // 成功后：从缓存移除 + 同步 project counts（本地 / 远端一致）。
-      const arr = this.sessionCache.get(projectKey(proj));
-      if (arr) {
-        const idx = arr.findIndex((x) => x.sessionId === e.sessionId);
-        if (idx >= 0) arr.splice(idx, 1);
-      }
-      proj.sessionCount = Math.max(0, proj.sessionCount - 1);
-      if (e.starred) proj.starredCount = Math.max(0, proj.starredCount - 1);
-      if (e.hidden) proj.hiddenCount = Math.max(0, proj.hiddenCount - 1);
-      // 项目内全部删完了 → 也从 projects 列表移除
-      if (proj.sessionCount === 0) {
-        this.projects = this.projects.filter(
-          (p) => projectKey(p) !== projectKey(proj),
-        );
-        // F76：远端项目还要从 remoteCache 同步移除，否则 TTL 内重开会把这个 0 会话的幽灵
-        // 项目从陈旧缓存拼回来（`this.projects` 与 `remoteCache.projects` 共享对象引用，
-        // 结构性移除不会自动传导——见 refresh() 顶部承重不变式）。本地项目不在缓存里，no-op。
-        if (this.remoteCache) {
-          this.remoteCache.projects = this.remoteCache.projects.filter(
-            (p) => projectKey(p) !== projectKey(proj),
-          );
-        }
-        this.sessionCache.delete(projectKey(proj));
-        this.expandedProjects.delete(projectKey(proj));
-      }
-      this.renderList();
+      void this.runOf("delete")(rowCtx);
     });
     actions.appendChild(deleteBtn);
 
