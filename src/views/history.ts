@@ -35,6 +35,13 @@ import {
   HISTORY_REMOTE_TTL_MS,
   type RemoteSourceCache,
 } from "./history-cache";
+import {
+  resolveOriginOpen,
+  nextOverrides,
+  normalizeOverrides,
+  normalizeOriginKeys,
+  type OriginOpenOverrides,
+} from "./history-prefs";
 
 /** 项目级元数据，从 `list_history_projects` 拿。不含 session 内容。
  *  P1.2：后端 wire 全 camelCase（`#[serde(rename_all = "camelCase")]`）。 */
@@ -210,15 +217,17 @@ export class HistoryView {
   /** project_dir → 用户展开状态。默认折叠；用户主动展开的记下来 */
   private expandedProjects = new Set<string>();
   /**
-   * F02 多机 #30：被折叠的来源大区 key（origin ?? ""，本地为 ""）。**默认全展开**——
-   * 只记用户主动折叠的来源。仅在 >1 个 origin（本地 + 远端 / 多远端）时才有分组大区。
+   * F02 多机 #30 → F86(#45)：来源大区折叠**偏好覆盖表**（key=origin ?? ""）。**跨重启持久**。
+   * 三态：键缺失 = 无偏好 → 走默认（本地展开 / 远端折叠，见 `defaultOriginOpen`）；键存在 =
+   * 用户显式设过的 open 态。取代原「二态 collapsedOrigins Set」——Set 表达不了「远端默认折叠、但
+   * 这台用户显式展开过」（显式展开与从没表态都=不在集合里）。仅在 >1 origin 时有分组大区。
    */
-  private collapsedOrigins = new Set<string>();
+  private originOpenOverrides: OriginOpenOverrides = loadOriginOpenOverrides();
   /**
-   * F03 多机 #30：被**隐藏**的来源 key（origin ?? ""）。默认空 = 全显示。机器选择器
-   * chip 点掉某来源 → 加入此集 → 该来源项目不渲染。仅在 >1 个 origin 时显示筛选条。
+   * F03 多机 #30 → F86(#45)：被**隐藏**的来源 key（origin ?? ""）。**跨重启持久**（照 expandedForks
+   * 先例）。chip 点掉某来源 → 加入此集并存盘 → 该来源项目不渲染。仅在 >1 origin 时显示筛选条。
    */
-  private hiddenOrigins = new Set<string>();
+  private hiddenOrigins: Set<string> = loadHiddenOrigins();
   /** F03：来源筛选 chip 行（插在 statusEl 与 listEl 间；≤1 来源时 display:none）。 */
   private originFilterBar!: HTMLElement;
   /**
@@ -900,8 +909,13 @@ export class HistoryView {
     }
 
     // 项目过滤：搜索匹配（matchProject）+ F03 来源筛选（hiddenOrigins）正交叠加。
+    // F86：隐藏筛选只在 >1 来源时生效——筛选 chip 行本身也只在 >1 来源时可见（renderOriginFilter）。
+    // 持久化后，若不门控，「隐藏了唯一来源」会从「重启自愈的暂态」变成「无 chip 可复原的永久死锁」。
+    const applyHidden = new Set(this.projects.map((p) => p.origin)).size > 1;
     const filteredProjects = this.projects.filter(
-      (p) => this.matchProject(p) && !this.hiddenOrigins.has(p.origin ?? ""),
+      (p) =>
+        this.matchProject(p) &&
+        (!applyHidden || !this.hiddenOrigins.has(p.origin ?? "")),
     );
 
     // 项目排序：live > starred > last_activity desc（与后端默认一致，前端不改）
@@ -975,8 +989,8 @@ export class HistoryView {
     const key = origin ?? "";
     const details = document.createElement("details");
     details.className = "history-origin-group";
-    // 搜索激活时强制展开；否则默认展开（除非用户折叠过）。
-    details.open = searchActive || !this.collapsedOrigins.has(key);
+    // F86：搜索激活强制展开 > 用户显式偏好 > 首见默认（本地展开 / 远端折叠）。
+    details.open = resolveOriginOpen(this.originOpenOverrides[key], origin, searchActive);
 
     const header = document.createElement("summary");
     header.className = "history-origin-header";
@@ -1002,11 +1016,17 @@ export class HistoryView {
     }
     details.appendChild(body);
 
-    // 折叠状态持久化（搜索激活时不写，避免污染用户偏好）。
+    // F86：折叠偏好持久化（搜索激活时不写，避免污染用户偏好）。nextOverrides 只存偏离默认的项、
+    // 回到默认就删键——故首见默认折叠若触发了这次程序化 toggle（宿主行为不定）也不会污染成偏好。
     details.addEventListener("toggle", () => {
       if (searchActive) return;
-      if (details.open) this.collapsedOrigins.delete(key);
-      else this.collapsedOrigins.add(key);
+      this.originOpenOverrides = nextOverrides(
+        this.originOpenOverrides,
+        key,
+        origin,
+        details.open,
+      );
+      saveOriginOpenOverrides(this.originOpenOverrides);
     });
     return details;
   }
@@ -1036,6 +1056,7 @@ export class HistoryView {
       chip.addEventListener("click", () => {
         if (this.hiddenOrigins.has(key)) this.hiddenOrigins.delete(key);
         else this.hiddenOrigins.add(key);
+        saveHiddenOrigins(this.hiddenOrigins); // F86：来源筛选跨重启保持
         this.renderList();
       });
       this.originFilterBar.appendChild(chip);
@@ -1669,5 +1690,22 @@ function loadExpandedForks(): Set<string> {
 
 function saveExpandedForks(s: Set<string>): void {
   safeSetJson(LS_KEYS.historyExpandedForks, Array.from(s));
+}
+
+// F86(#45)：来源筛选/折叠偏好的 localStorage 持久化（照 expandedForks 先例；判定逻辑在 history-prefs.ts）。
+function loadHiddenOrigins(): Set<string> {
+  return new Set(normalizeOriginKeys(safeGetJson(LS_KEYS.historyHiddenOrigins)));
+}
+
+function saveHiddenOrigins(s: Set<string>): void {
+  safeSetJson(LS_KEYS.historyHiddenOrigins, Array.from(s));
+}
+
+function loadOriginOpenOverrides(): OriginOpenOverrides {
+  return normalizeOverrides(safeGetJson(LS_KEYS.historyOriginOpen));
+}
+
+function saveOriginOpenOverrides(o: OriginOpenOverrides): void {
+  safeSetJson(LS_KEYS.historyOriginOpen, o);
 }
 

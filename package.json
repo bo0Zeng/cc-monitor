@@ -22,8 +22,9 @@
     "test:remote-launch": "node src/remote-launch.test.ts",
     "test:format": "node src/format.test.ts",
     "test:history-cache": "node src/views/history-cache.test.ts",
+    "test:history-prefs": "node src/views/history-prefs.test.ts",
     "test:dom": "vitest run",
-    "test": "npm run test:branching && npm run test:diff && npm run test:api-error && npm run test:bash && npm run test:remote-health && npm run test:remote-launch && npm run test:format && npm run test:history-cache && npm run test:dom"
+    "test": "npm run test:branching && npm run test:diff && npm run test:api-error && npm run test:bash && npm run test:remote-health && npm run test:remote-launch && npm run test:format && npm run test:history-cache && npm run test:history-prefs && npm run test:dom"
   },
   "dependencies": {
     "@chenglou/pretext": "0.0.8",

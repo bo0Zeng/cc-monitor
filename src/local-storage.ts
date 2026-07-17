@@ -38,6 +38,10 @@ export const LS_KEYS = {
   lastActiveSid: "cc-monitor.last-active-sid",
   /** Batch14-F48：SFTP 面板目录书签(按 origin)。 */
   sftpBookmarks: (origin: string) => `cc-monitor.sftp.bookmarks.${origin}`,
+  /** F86(#45)：历史来源筛选——被隐藏的来源 key 列表（origin ?? ""），跨重启保持。 */
+  historyHiddenOrigins: "cc-monitor.history.hidden-origins",
+  /** F86(#45)：历史来源大区折叠偏好覆盖表（key=origin ?? ""，缺键=走默认：本地展开/远端折叠）。 */
+  historyOriginOpen: "cc-monitor.history.origin-open",
 } as const;
 
 export function safeGet(key: string): string | null {
