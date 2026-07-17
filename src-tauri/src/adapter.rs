@@ -9,7 +9,7 @@
 
 pub mod claude_code;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// 文件型 agent 的会话源布局(目录 / 命名约定)。把散落的「知道 CC 目录结构」字面量收这里,
 /// 消除会话发现层(live / history / search / remote 四链)对具体子目录名的硬编码。
@@ -45,4 +45,19 @@ pub trait AgentAdapter: Send + Sync {
 pub fn active() -> &'static dyn AgentAdapter {
     static CLAUDE: claude_code::ClaudeCodeAdapter = claude_code::ClaudeCodeAdapter;
     &CLAUDE
+}
+
+/// F-MA:agent 数据根下的**会话记录**目录(CC = `<root>/projects`)。收敛散落的 `.join("projects")`。
+pub fn records_dir(data_root: &Path) -> PathBuf {
+    data_root.join(active().layout().sessions_subdir)
+}
+
+/// F-MA:agent 数据根下的**活性 pidfile** 目录(CC = `<root>/sessions`)。
+pub fn liveness_dir(data_root: &Path) -> PathBuf {
+    data_root.join(active().layout().liveness_subdir)
+}
+
+/// F-MA:agent 数据根下的**任务追踪**目录(CC = `<root>/tasks`);该 agent 无此概念则 `None`。
+pub fn tasks_dir(data_root: &Path) -> Option<PathBuf> {
+    active().layout().tasks_subdir.map(|s| data_root.join(s))
 }

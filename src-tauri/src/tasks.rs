@@ -200,9 +200,9 @@ pub async fn get_session_tasks(session_id: String) -> Result<Vec<TaskEntry>, Str
         .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
-/// 解析 `<claude_dir>/tasks/` —— 复用 paths::resolve_claude_dir 的三级回退。
+/// 解析 agent 任务追踪目录(CC = `<claude_dir>/tasks/`)——F-MA 走活跃适配器 layout,不硬编码子目录。
 pub fn tasks_root_for_current_claude_dir() -> Option<PathBuf> {
-    Some(crate::paths::resolve_claude_dir()?.join("tasks"))
+    crate::adapter::tasks_dir(&crate::paths::resolve_claude_dir()?)
 }
 
 #[cfg(test)]

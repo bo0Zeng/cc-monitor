@@ -192,7 +192,7 @@ impl SearchIndex {
             std::thread::sleep(startup_delay);
         }
         let started = Instant::now();
-        let projects_dir = claude_dir.join("projects");
+        let projects_dir = crate::adapter::records_dir(claude_dir);
         if !projects_dir.is_dir() {
             let mut data = self.inner.write();
             data.ready = true;
