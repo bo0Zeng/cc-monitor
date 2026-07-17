@@ -53,7 +53,7 @@ export function buildAgentCard(
 
   const s = document.createElement("summary");
   s.className = "block-summary";
-  s.textContent = `🤖 ${subtype}  ·  ${desc || "(no description)"}`;
+  s.textContent = `${subtype}  ·  ${desc || "(no description)"}`; // F80：去纯装饰 🤖
   d.appendChild(s);
 
   let loaded = false;
