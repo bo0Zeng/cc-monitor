@@ -139,7 +139,7 @@ pub async fn list_history_projects(
     tokio::task::spawn_blocking(move || {
         let started = std::time::Instant::now();
         let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-        let projects_dir = claude_dir.join("projects");
+        let projects_dir = crate::adapter::records_dir(&claude_dir);
         if !projects_dir.exists() {
             return Ok(Vec::new());
         }
@@ -199,7 +199,7 @@ pub async fn stream_history_sessions_in_project(
     tokio::task::spawn_blocking(move || {
         let started = std::time::Instant::now();
         let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-        let projects_dir = claude_dir.join("projects");
+        let projects_dir = crate::adapter::records_dir(&claude_dir);
         let target = PathBuf::from(&project_dir);
         if !target.starts_with(&projects_dir) {
             return Err(format!(
@@ -262,7 +262,7 @@ pub async fn stream_read_session_jsonl(
     tokio::task::spawn_blocking(move || {
         let started = std::time::Instant::now();
         let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-        let projects_dir = claude_dir.join("projects");
+        let projects_dir = crate::adapter::records_dir(&claude_dir);
         let target = PathBuf::from(&jsonl_path);
         if !target.starts_with(&projects_dir) {
             return Err(format!(
@@ -385,7 +385,7 @@ fn validate_delete_target(jsonl_path: &str, projects_dir: &Path) -> Result<PathB
 pub fn delete_history_session(session_id: String, jsonl_path: String) -> Result<(), String> {
     // 安全校验：必须在 claude_dir/projects 之下，避免前端传错路径误删别处文件
     let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-    let projects_dir = claude_dir.join("projects");
+    let projects_dir = crate::adapter::records_dir(&claude_dir);
     let target = validate_delete_target(&jsonl_path, &projects_dir)?;
 
     std::fs::remove_file(&target).map_err(|e| format!("remove {}: {e}", target.display()))?;
@@ -542,7 +542,7 @@ pub fn create_branch_session(
     message_uuid: String,
 ) -> Result<BranchResult, String> {
     let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-    let projects_dir = claude_dir.join("projects");
+    let projects_dir = crate::adapter::records_dir(&claude_dir);
     branch_impl(&source_jsonl_path, &message_uuid, &projects_dir)
 }
 
