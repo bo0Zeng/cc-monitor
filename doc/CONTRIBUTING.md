@@ -269,6 +269,21 @@ if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
 
 4. **dev mode 实测**：调用涉及 IPC 不报 `Permission xxx not allowed`。
 
+### 2.7 改远端会话后端命令（tmux attach / new / send-keys）
+
+**目标**：改「在远端起/接会话」的命令（resume/launcher/attach）。守 **INVARIANTS §31（SS-12）**：
+前端**绝不硬编码后端命令字面量**，命令语法一律经 `src/session-backend.ts` 座（`SESSION_BACKEND`）。
+
+**步骤**：
+
+1. **改命令语法** → 只改 `src/session-backend.ts`（`TMUX_BACKEND` 方法）；`remote-launch.ts` 只负责校验/转义/载荷/编排。
+2. **grep 门禁**（remote-launch 正文不许出现可执行的 tmux 命令字面量，只许 doc 注释命中）：
+```bash
+grep -nE "tmux (new-session|send-keys|attach)" src/remote-launch.ts   # 命中的必须全是 ` * ` 注释行
+```
+3. **保形回归** → `node src/remote-launch.test.ts`（改命令串则同步更新其逐串断言）+ `node src/session-backend.test.ts`。
+4. **加后端**（阶段②，daemon 在场）：先过 §31 最终形态第②③条——**abduco/dtach 没有 send-keys，取命令方式转 daemon RPC**，不是往座里再加一个返回 shell 串的 const（见 `session-backend.ts` 顶注）。
+
 ---
 
 ## 3. PR 流程

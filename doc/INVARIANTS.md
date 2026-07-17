@@ -522,6 +522,35 @@ title：**title 会被 Claude 自己的活动标题（`⠂ …`）抢写、不�
 - **`@ccm_sid` 是阶段② daemon `session.status()` RPC 的先声**（SS-13：tmux 每条能力都是一个
   daemon RPC 的 shell 仿真）；别把它固化成"只有 tmux 能这样"，它是"后端自报当前 sid"的通用形态。
 
+## 31. 一端起的会话另一端必须能接——前端绝不硬编码会话后端命令（F90 / #48 / SS-12）
+
+**用户 2026-07-15 原话**：「我不能接受这边产生的会话那边看不到。」
+
+**为什么硬**：**会话后端（多路复用器）是机器的属性，不是界面的属性**。桌面用 abduco 起的会话、手机只会
+tmux → **接不上**，会话池当场劈成两半。而「桌面起、手机接着用」正是要两个界面的全部理由。**注意**：
+路线图把「tmux→abduco」列为「可逆、尽管拖」——那对「哪天整体换」成立，对「两端各用各的」**不成立**；
+后者不是可逆决策，是当场把自己劈开。
+
+**会话后端 vs 后台程序（SS-11）**：会话后端（tmux/abduco/dtach）**扶着**跑着的交互程序、握命脉；后台
+程序（daemon）是**旁观者**，读文件流回来、回答问题、不扶任何东西。**协议可合、进程不能合**。
+
+**最终形态**（三条）：
+1. **前端绝不硬编码后端命令**（不准出现可执行的字面 `tmux attach` / `tmux new-session` / `tmux send-keys`）
+   → **问一层要**（阶段②问 daemon，SS-11 保证它永远在；阶段①问前端座 `src/session-backend.ts`）。
+2. **某机有哪些后端靠能力探测**（阶段②，接 SS-8 能力协商 §26）。
+3. **任何后端变更，动手前必须先答「另一端还接得上吗」，答不上不准做。**
+
+**阶段① 落地（F90，2026-07-17）**：唯一后端 = tmux。命令语法已从 `remote-launch.ts` 收敛进纯座
+`src/session-backend.ts`（`SessionBackend` 接口 + `TMUX_BACKEND` 实现 + `SESSION_BACKEND` 活跃句柄，照
+`agent-profile.ts` 两轴正交范式：agent-profile=哪个 AI、session-backend=哪个多路复用器）。`remote-launch.ts`
+正文**无 tmux 命令字面量**（只留 doc 注释；机械 grep 门禁 `grep -nE "tmux (new-session|send-keys|attach)"
+src/remote-launch.ts` 只命中注释）。**本阶段不做后端探测/协商**（`SESSION_BACKEND` 恒等 `TMUX_BACKEND`、
+无运行时选择）——那是阶段②（§9 轨道二 daemon 在场，才补得了 abduco/dtach 缺的 `send-keys`）。
+
+**阶段② 约束**：加任何第二后端前，先过最终形态第②③条；登记表主键守 §28（用 CC `sessionId`，不许拿
+tmux 会话名/主机名/路径当持久主键，否则本约当场崩）；`@ccm_sid`（§30）是「后端自报当前 sid」的通用形态、
+别固化成只有 tmux 能这样。
+
 ## 修改本文档
 
 加新的不变量时：
