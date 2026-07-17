@@ -24,6 +24,9 @@
 // F-MA：agent 画像是纯常量模块（无 DOM/render/bundler 依赖），不破坏本模块"零 bundler-import
 // 便于 tsx 单测"的性质（同 diff.ts）。resume 相关 CC 常量（嵌套 env / launcher / --resume）在此。
 import { AGENT_PROFILE } from "./agent-profile.ts";
+// F90（#48 / SS-12 / INVARIANTS §31）：会话后端命令语法归 `session-backend.ts` 座——本模块不再
+// 硬编码 `tmux …` 命令字面量，只留校验/转义/载荷/编排，命令语法问 `SESSION_BACKEND` 要。
+import { SESSION_BACKEND } from "./session-backend.ts";
 
 /** Claude 嵌套会话环境标记（空格分隔，喂 `unset`）。CLAUDE_CONFIG_DIR 刻意不含。 */
 export const CLAUDE_NESTED_ENV_VARS = AGENT_PROFILE.nestedEnvVars.join(" ");
@@ -106,12 +109,12 @@ export function buildResumeTmuxCmd(
   }
   const payload = `unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(launcher)} ${AGENT_PROFILE.resumeFlag} ${sid}`;
   const c = cwd.trim();
-  const cflag = c ? ` -c ${posixQuote(c)}` : "";
-  return (
-    `tmux new-session -d -s ${tmuxName}${cflag} 2>/dev/null && ` +
-    `tmux send-keys -t ${tmuxName} ${posixQuote(payload)} Enter; ` +
-    `tmux attach -t ${tmuxName}`
-  );
+  // 命令语法归后端座（SS-12 §31）。target 裸拼（`cc-<sid8>[-N]` 已过 `[A-Za-z0-9_-]` 校验）。
+  return SESSION_BACKEND.createRunAttach({
+    target: tmuxName,
+    quotedCwd: c ? posixQuote(c) : null,
+    quotedPayload: posixQuote(payload),
+  });
 }
 
 /**
@@ -162,12 +165,12 @@ export function buildLauncherCmd(
   const qname = posixQuote(name);
   const payload = `unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(command)}`;
   const c = cwd.trim();
-  const cflag = c ? ` -c ${posixQuote(c)}` : "";
-  return (
-    `tmux new-session -d -s ${qname}${cflag} 2>/dev/null && ` +
-    `tmux send-keys -t ${qname} ${posixQuote(payload)} Enter; ` +
-    `tmux attach -t ${qname}`
-  );
+  // 命令语法归后端座（SS-12 §31）。target 用 posixQuote 名（F53 允许空格等，区别于 F52 定长裸名）。
+  return SESSION_BACKEND.createRunAttach({
+    target: qname,
+    quotedCwd: c ? posixQuote(c) : null,
+    quotedPayload: posixQuote(payload),
+  });
 }
 
 /**
@@ -203,5 +206,6 @@ export function buildAttachCmd(name: string): string {
   if (!isValidTmuxName(name)) {
     throw new Error(`非法 tmux 会话名(拒绝拼入命令): ${JSON.stringify(name)}`);
   }
-  return `tmux attach -t ${posixQuote(name)}`;
+  // 命令语法归后端座（SS-12 §31）；target 用 posixQuote 名。
+  return SESSION_BACKEND.attach(posixQuote(name));
 }
