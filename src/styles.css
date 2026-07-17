@@ -1996,6 +1996,13 @@ body.settings-window-mode .usage-trigger {
   letter-spacing: 0.05em;
   margin-bottom: 8px;
 }
+/* F82b：4 组里「远端」暂无内容的占位文案（留空占位组，后续填充）。 */
+.settings-group-empty {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  font-style: italic;
+  padding: 4px 0;
+}
 
 /* issue #8: ESC 回退分支折叠。
    被回退的连续卡片 wrap 到 .branch-fold-wrap，header 显示"已被 ESC 回退（含 N 条）"。
