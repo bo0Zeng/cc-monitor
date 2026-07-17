@@ -91,15 +91,25 @@ fn collect_entries(
     out
 }
 
-/// 宽容读一个 JSON 文件为 Value（缺 / 坏 → None，不报错）。
+/// 宽容读一个 JSON 文件为 Value（缺 / 坏 → None，不报错）。§3：解析前剥 BOM（Claude 写的
+/// 文件偶带 UTF-8 BOM，全库读端统一剥，见 parser.rs/tasks.rs/history.rs 等）。
 fn read_json_lenient(path: &Path) -> Option<Value> {
     let raw = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&raw).ok()
+    serde_json::from_str(raw.trim_start_matches('\u{feff}')).ok()
 }
 
-/// F87 读命令：跨 scope 展示当前（活跃会话所在）项目的 MCP servers。宽容——缺/坏文件返回空段。
-#[tauri::command]
-pub fn read_mcp_servers(project_dir: Option<String>) -> Result<Vec<McpServerEntry>, String> {
+/// **纯核心**（供单测）：从 `~/.claude.json` Value 抽 `projects` 键（排序）。宽容：非对象 → 空。
+fn project_dirs_from(claude_json: &Value) -> Vec<String> {
+    let mut dirs: Vec<String> = claude_json
+        .get("projects")
+        .and_then(Value::as_object)
+        .map(|o| o.keys().cloned().collect())
+        .unwrap_or_default();
+    dirs.sort();
+    dirs
+}
+
+fn read_mcp_servers_impl(project_dir: Option<String>) -> Vec<McpServerEntry> {
     let claude_path = first_existing(&claude_json_candidates());
     let claude_json = claude_path.as_deref().and_then(read_json_lenient);
     let claude_src = claude_path
@@ -116,13 +126,39 @@ pub fn read_mcp_servers(project_dir: Option<String>) -> Result<Vec<McpServerEntr
         _ => (None, String::new()),
     };
 
-    Ok(collect_entries(
+    collect_entries(
         claude_json.as_ref(),
         &claude_src,
         project_mcp.as_ref(),
         &project_src,
         project_dir.as_deref(),
-    ))
+    )
+}
+
+/// F87 读命令：跨 scope 展示项目的 MCP servers。宽容——缺/坏文件返回空段。
+/// §10：文件 IO（`~/.claude.json` 重度用户可数 MB）走 `spawn_blocking`，不阻塞 IPC 派发线程。
+#[tauri::command]
+pub async fn read_mcp_servers(project_dir: Option<String>) -> Result<Vec<McpServerEntry>, String> {
+    tokio::task::spawn_blocking(move || read_mcp_servers_impl(project_dir))
+        .await
+        .map_err(|e| format!("spawn_blocking: {e}"))
+}
+
+fn list_mcp_project_dirs_impl() -> Vec<String> {
+    first_existing(&claude_json_candidates())
+        .as_deref()
+        .and_then(read_json_lenient)
+        .map(|v| project_dirs_from(&v))
+        .unwrap_or_default()
+}
+
+/// F87 读命令：候选项目目录（`~/.claude.json` 的 `projects` 键，排序）——前端 datalist 自动补全用。
+/// 设置窗独立于主窗口、拿不到活跃会话 cwd，故让用户从「用过的项目」里选/补全。宽容：缺/坏 → 空。§10 spawn_blocking。
+#[tauri::command]
+pub async fn list_mcp_project_dirs() -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(list_mcp_project_dirs_impl)
+        .await
+        .map_err(|e| format!("spawn_blocking: {e}"))
 }
 
 /// **只**返回 `<dir>/.mcp.json` 路径——写侧唯一出口，硬编码 `.mcp.json`，杜绝误写
@@ -135,32 +171,45 @@ fn mcp_json_path(project_dir: &str) -> Result<PathBuf, String> {
     Ok(Path::new(d).join(".mcp.json"))
 }
 
-/// 读 `.mcp.json`（存在则解析，不存在给骨架 `{"mcpServers":{}}`）。
+/// 读 `.mcp.json`（存在则解析，不存在给骨架 `{"mcpServers":{}}`）。§3 剥 BOM。
 fn read_or_skeleton(mcp: &Path) -> Result<Value, String> {
     if mcp.is_file() {
         let raw =
             std::fs::read_to_string(mcp).map_err(|e| format!("read {}: {e}", mcp.display()))?;
-        serde_json::from_str(&raw).map_err(|e| format!("parse {}: {e}", mcp.display()))
+        serde_json::from_str(raw.trim_start_matches('\u{feff}'))
+            .map_err(|e| format!("parse {}: {e}", mcp.display()))
     } else {
         Ok(serde_json::json!({ "mcpServers": {} }))
     }
 }
 
-/// 原子写 JSON（tmp + config::atomic_replace，Windows 安全）。同 INVARIANTS §4 定性。
+/// §4 安全写**用户文件** `.mcp.json`：① 项目目录须**已存在**（真实项目根，不 `create_dir_all` typo
+/// 路径生成垃圾目录树）；② 写前 backup（dst 存在则备到 `.bak`）；③ **ReplaceFileW** 原子替换——
+/// 复用 `profile_installer::atomic_write_string`（保留 dst ACL），**不**用 config 的 `MoveFileExW`
+/// （§4 明令 MoveFileExW 会把 tmp 的 ACL 写到 dst，写用户文件是错的）；④ 写后**回读校验**（确认落盘 + 可解析）。
 fn write_json_atomic(path: &Path, value: &Value) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
+    let parent = path.parent().ok_or_else(|| "bad path".to_string())?;
+    if !parent.is_dir() {
+        return Err(format!(
+            "项目目录不存在：{}（请填已存在的项目根）",
+            parent.display()
+        ));
     }
     let pretty = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, pretty).map_err(|e| format!("write {}: {e}", tmp.display()))?;
-    crate::config::atomic_replace(&tmp, path)
-        .map_err(|e| format!("replace → {}: {e}", path.display()))
+    if path.is_file() {
+        let bak = path.with_extension("json.bak");
+        let _ = std::fs::copy(path, &bak); // best-effort backup
+    }
+    crate::profile_installer::atomic_write_string(&path.to_path_buf(), &pretty)
+        .map_err(|e| format!("write {}: {e}", path.display()))?;
+    let back =
+        std::fs::read_to_string(path).map_err(|e| format!("readback {}: {e}", path.display()))?;
+    serde_json::from_str::<Value>(back.trim_start_matches('\u{feff}'))
+        .map_err(|e| format!("readback parse {}: {e}", path.display()))?;
+    Ok(())
 }
 
-/// F87 写命令：增 / 改项目 `.mcp.json` 里一条 MCP server。**只碰 `<dir>/.mcp.json`。**
-#[tauri::command]
-pub fn write_project_mcp_server(
+fn write_project_mcp_server_impl(
     project_dir: String,
     name: String,
     server: Value,
@@ -183,18 +232,44 @@ pub fn write_project_mcp_server(
     write_json_atomic(&mcp, &root)
 }
 
-/// F87 写命令：删项目 `.mcp.json` 里一条 MCP server。**只碰 `<dir>/.mcp.json`。**
+/// F87 写命令：增 / 改项目 `.mcp.json` 里一条 MCP server。**只碰 `<dir>/.mcp.json`。**§10 spawn_blocking。
 #[tauri::command]
-pub fn remove_project_mcp_server(project_dir: String, name: String) -> Result<(), String> {
+pub async fn write_project_mcp_server(
+    project_dir: String,
+    name: String,
+    server: Value,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || write_project_mcp_server_impl(project_dir, name, server))
+        .await
+        .map_err(|e| format!("spawn_blocking: {e}"))?
+}
+
+fn remove_project_mcp_server_impl(project_dir: String, name: String) -> Result<(), String> {
     let mcp = mcp_json_path(&project_dir)?;
     if !mcp.is_file() {
         return Ok(()); // 无文件即无条目
     }
     let mut root = read_or_skeleton(&mcp)?;
-    if let Some(smap) = root.get_mut("mcpServers").and_then(|m| m.as_object_mut()) {
-        smap.remove(&name);
+    let obj = root
+        .as_object_mut()
+        .ok_or_else(|| ".mcp.json 根不是对象".to_string())?; // 根对象守卫（对齐 write）
+    let removed = obj
+        .get_mut("mcpServers")
+        .and_then(|m| m.as_object_mut())
+        .map(|smap| smap.remove(&name).is_some())
+        .unwrap_or(false);
+    if !removed {
+        return Ok(()); // no-op（条目不存在）→ 不重写、不 churn
     }
     write_json_atomic(&mcp, &root)
+}
+
+/// F87 写命令：删项目 `.mcp.json` 里一条 MCP server。**只碰 `<dir>/.mcp.json`。**§10 spawn_blocking。
+#[tauri::command]
+pub async fn remove_project_mcp_server(project_dir: String, name: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || remove_project_mcp_server_impl(project_dir, name))
+        .await
+        .map_err(|e| format!("spawn_blocking: {e}"))?
 }
 
 #[cfg(test)]
@@ -244,8 +319,9 @@ mod tests {
         let fake_claude = tmp.join(".claude.json");
         std::fs::write(&fake_claude, "{\"mcpServers\":{\"keep\":{}}}").unwrap();
 
-        // 写：建骨架 + 加条目
-        write_project_mcp_server(dir.clone(), "srv".into(), json!({ "command": "c" })).unwrap();
+        // 写：建骨架 + 加条目（测同步 _impl；命令是 async 薄封装）
+        write_project_mcp_server_impl(dir.clone(), "srv".into(), json!({ "command": "c" }))
+            .unwrap();
         let mcp = tmp.join(".mcp.json");
         assert!(mcp.is_file());
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&mcp).unwrap()).unwrap();
@@ -257,7 +333,7 @@ mod tests {
         );
 
         // 删
-        remove_project_mcp_server(dir.clone(), "srv".into()).unwrap();
+        remove_project_mcp_server_impl(dir.clone(), "srv".into()).unwrap();
         let v2: Value = serde_json::from_str(&std::fs::read_to_string(&mcp).unwrap()).unwrap();
         assert!(v2["mcpServers"].get("srv").is_none());
 
@@ -265,8 +341,29 @@ mod tests {
     }
 
     #[test]
-    fn write_rejects_empty_project_dir() {
-        assert!(write_project_mcp_server("  ".into(), "n".into(), json!({})).is_err());
+    fn write_rejects_empty_project_dir_and_nonexistent() {
+        assert!(write_project_mcp_server_impl("  ".into(), "n".into(), json!({})).is_err());
         assert!(mcp_json_path("").is_err());
+        // 项目目录不存在 → 拒写（不 create_dir_all typo 路径）
+        let ghost = std::env::temp_dir().join(format!("ccm-mcp-ghost-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&ghost);
+        let r = write_project_mcp_server_impl(
+            ghost.to_string_lossy().into_owned(),
+            "n".into(),
+            json!({ "command": "c" }),
+        );
+        assert!(r.is_err(), "不存在的项目目录应拒写");
+        assert!(!ghost.exists(), "拒写后不该建出 typo 目录");
+    }
+
+    #[test]
+    fn project_dirs_from_sorted_and_tolerant() {
+        let cj = json!({ "projects": { "/b": {}, "/a": {} } });
+        assert_eq!(
+            project_dirs_from(&cj),
+            vec!["/a".to_string(), "/b".to_string()]
+        );
+        assert!(project_dirs_from(&json!({})).is_empty()); // 缺 projects
+        assert!(project_dirs_from(&json!({ "projects": "bad" })).is_empty()); // 非对象
     }
 }

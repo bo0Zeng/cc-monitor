@@ -23,6 +23,7 @@ import {
 } from "../theme";
 import { getClaudeDirOverride, setClaudeDirOverride } from "../paths";
 import { CcIntegrationSection } from "./cc_integration";
+import { McpSection } from "./mcp-section"; // F87：MCP 管理（集成组）
 import { DiagnosticsSection } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
 import { DataSection } from "./data-section";
@@ -413,7 +414,7 @@ export class SettingsPanel {
     remote.appendChild(remotePlaceholder);
     body.appendChild(remote.element);
 
-    // 4. 集成 —— Claude 数据源 + PowerShell + 诊断 & 存储（MCP F87 后加入）
+    // 4. 集成 —— Claude 数据源 + PowerShell + MCP（F87）+ 诊断 & 存储
     const integration = new CollapsibleGroup({
       id: "integration",
       title: "集成",
@@ -422,6 +423,8 @@ export class SettingsPanel {
     });
     integration.appendChild(this.buildDataGroup());
     integration.appendChild(new CcIntegrationSection().element);
+    // F87（#50+#51）：MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）。
+    integration.appendChild(this.titledSection("MCP", new McpSection().element));
     integration.appendChild(
       this.titledSection("诊断", new DiagnosticsSection({ headless: true }).element),
     );

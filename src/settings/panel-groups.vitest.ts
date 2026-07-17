@@ -34,6 +34,11 @@ vi.mock("./cc_integration", () => ({
     element = document.createElement("div");
   },
 }));
+vi.mock("./mcp-section", () => ({
+  McpSection: class {
+    element = document.createElement("div");
+  },
+}));
 vi.mock("../keybindings/editor", () => ({
   KeybindingsEditor: class {
     element = document.createElement("div");
@@ -116,6 +121,15 @@ describe("F82b 设置 4 组终态", () => {
     for (const t of ["行为", "快捷键", "字体", "颜色"]) {
       expect(subTitles).toContain(t);
     }
+  });
+
+  it("集成组内含 MCP 子分节（SS-3「MCP 进集成」，F87）", () => {
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    const subTitles = [...groupBody("集成").querySelectorAll(".settings-group-title")].map(
+      (e) => e.textContent ?? "",
+    );
+    expect(subTitles).toContain("MCP");
   });
 
   it("open() 刷新到 RemoteSection / DataSection（守 this.remoteSection/dataSection 字段未丢）", async () => {

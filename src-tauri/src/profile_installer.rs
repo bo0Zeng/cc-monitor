@@ -525,7 +525,7 @@ fn sanitize_command_name(name: &str) -> String {
 ///
 /// dst 不存在时 ReplaceFileW 会失败，fallback 到普通 rename（首次安装场景）。
 /// tmp 文件名加 PID + 时间戳避免并行写碰撞。
-fn atomic_write_string(path: &PathBuf, content: &str) -> std::io::Result<()> {
+pub(crate) fn atomic_write_string(path: &PathBuf, content: &str) -> std::io::Result<()> {
     let ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
