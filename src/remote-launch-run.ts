@@ -15,6 +15,7 @@ import {
   deriveTmuxName,
 } from "./remote-launch";
 import { showActionFailureToast } from "./error-toast";
+import { AGENT_PROFILE } from "./agent-profile";
 
 /** 一键 resume 远端会话：拉起成功 toast 告知；失败回退复制命令。 */
 export async function runRemoteResume(
@@ -92,16 +93,23 @@ export async function runRemoteResumeTmux(
 }
 
 /**
- * F96：历史页「在该目录起新会话」——远端分支。tmux 会话名由 cwd 派生，**让调用方
- * （history.ts）不必知道底下用不用 tmux**（用户 2026-07-15 硬约束）。薄封装 F53 的
- * `runRemoteLauncher`，不写第二份拉起逻辑。
+ * F96：历史页「在该目录起新会话」——远端分支。tmux 会话名由 cwd 派生、默认拉起命令由
+ * `AGENT_PROFILE` 兜底，**让调用方（history.ts）既不必知道底下用不用 tmux、也不必知道
+ * 默认拉起是哪个 agent**（用户 2026-07-15 硬约束）——history.ts 只传 F34 配置命令（可空）。
+ * 薄封装 F53 的 `runRemoteLauncher`，不写第二份拉起逻辑。
+ * （`buildLauncherCmd` 只对 `undefined` 套默认、空串不触发，故默认在此显式兜。）
  */
 export async function runNewSessionRemote(
   origin: string,
   cwd: string,
   command: string,
 ): Promise<void> {
-  await runRemoteLauncher(origin, cwd, deriveTmuxName(cwd), command);
+  await runRemoteLauncher(
+    origin,
+    cwd,
+    deriveTmuxName(cwd),
+    command || AGENT_PROFILE.defaultLauncher,
+  );
 }
 
 /** F53：「在这台机开新 Claude」——在远端 tmux 会话里启动全新 Claude;失败回退复制命令。 */

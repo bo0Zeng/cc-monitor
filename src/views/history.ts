@@ -27,7 +27,6 @@ import { SessionViewer, type ViewerOptions } from "./session-viewer";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
-import { AGENT_PROFILE } from "../agent-profile";
 import {
   actionsFor,
   type HistoryActionCtx,
@@ -254,6 +253,8 @@ export class HistoryView {
   private expandedForks: Set<string> = loadExpandedForks();
   /** F96：当前打开的条目右键菜单（单例；开新菜单/点空白/Esc 前先关它）。 */
   private openEntryMenu: HTMLElement | null = null;
+  /** F96：菜单的 document 级关闭监听（pointerdown/keydown 共用一个）；closeEntryMenu 反注册。 */
+  private entryMenuClose: ((ev: Event) => void) | null = null;
 
   constructor() {
     this.root = this.build();
@@ -304,6 +305,7 @@ export class HistoryView {
   close(): void {
     if (!this.isOpen) return;
     this.closeViewer();
+    this.closeEntryMenu(); // F96：菜单挂 document.body（不在 root 内），销毁视图须显式清，防 DOM+监听器泄漏
     this.root.remove();
     this.isOpen = false;
     dispatcher.popOverlay(this);
@@ -1461,12 +1463,9 @@ export class HistoryView {
   private async runNewSession(ctx: RowActionCtx): Promise<void> {
     const behavior = await getBehavior();
     if (ctx.origin) {
-      // 远端：薄封装 F53 拉起（tmux 名派生在 runNewSessionRemote 里，本处不知 tmux）。
-      await runNewSessionRemote(
-        ctx.origin,
-        ctx.cwd,
-        behavior.resumeCommandRemote || AGENT_PROFILE.defaultLauncher,
-      );
+      // 远端：薄封装 F53 拉起（tmux 名派生 + 默认拉起命令兜底都在 runNewSessionRemote 里，
+      // 本处既不知 tmux、也不知默认 agent；只传 F34 配置命令，空则传输层兜默认）。
+      await runNewSessionRemote(ctx.origin, ctx.cwd, behavior.resumeCommandRemote);
     } else {
       try {
         // 本地：后端 new_local_session（cc 优先 + F34 自定义，无 sid/resume flag）。
@@ -1573,35 +1572,33 @@ export class HistoryView {
     }
     document.body.appendChild(menu);
     this.openEntryMenu = menu;
-    // 下一拍挂关闭监听（避免当前这次 contextmenu/click 立即触发关闭）。
+    // 关闭监听：Esc 键 / 菜单外 pointerdown 才关（点菜单内边距/非 Esc 键 → 早退不关）。
+    // ★ 不用 `{once:true}`——它会在早退那次就摘掉监听，导致「按过任意非 Esc 键后 Esc 再关不掉」
+    // 「点 padding 后外部点击再关不掉」。改为常驻监听、由 closeEntryMenu 显式反注册。
+    const close = (ev: Event): void => {
+      if (ev instanceof KeyboardEvent && ev.key !== "Escape") return;
+      if (ev.type === "pointerdown" && menu.contains(ev.target as Node)) return;
+      this.closeEntryMenu();
+    };
+    this.entryMenuClose = close;
+    // 下一拍才挂（避免开菜单这次 contextmenu 自身派发的 pointerdown 立即关掉）。
     setTimeout(() => {
-      const close = (ev: Event) => {
-        if (ev instanceof KeyboardEvent && ev.key !== "Escape") return;
-        if (
-          ev.type === "pointerdown" &&
-          this.openEntryMenu?.contains(ev.target as Node)
-        )
-          return;
-        this.closeEntryMenu();
-      };
-      document.addEventListener("pointerdown", close, { once: true });
-      document.addEventListener("keydown", close, { once: true });
-      // 存到菜单上以便 closeEntryMenu 反注册
-      (menu as unknown as { _close?: (ev: Event) => void })._close = close;
+      if (this.openEntryMenu !== menu) return; // 期间已被新菜单/关闭取代 → 别挂陈旧监听
+      document.addEventListener("pointerdown", close);
+      document.addEventListener("keydown", close);
     }, 0);
   }
 
   private closeEntryMenu(): void {
-    if (!this.openEntryMenu) return;
-    const close = (
-      this.openEntryMenu as unknown as { _close?: (ev: Event) => void }
-    )._close;
-    if (close) {
-      document.removeEventListener("pointerdown", close);
-      document.removeEventListener("keydown", close);
+    if (this.entryMenuClose) {
+      document.removeEventListener("pointerdown", this.entryMenuClose);
+      document.removeEventListener("keydown", this.entryMenuClose);
+      this.entryMenuClose = null;
     }
-    this.openEntryMenu.remove();
-    this.openEntryMenu = null;
+    if (this.openEntryMenu) {
+      this.openEntryMenu.remove();
+      this.openEntryMenu = null;
+    }
   }
 
   private buildEntryRow(
