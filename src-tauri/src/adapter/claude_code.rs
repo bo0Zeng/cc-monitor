@@ -15,6 +15,14 @@ static CLAUDE_LAYOUT: SessionLayout = SessionLayout {
     skip_segments: &["subagents"],
 };
 
+/// CC 的嵌套会话 env(resume 前清洗,否则 CC 自认嵌套子会话不写 JSONL/不注册 pidfile,spec §5)。
+static CLAUDE_NESTED_ENV: &[&str] = &[
+    "CLAUDECODE",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_ENTRYPOINT",
+];
+
 /// Claude Code 适配器(ZST)。
 pub struct ClaudeCodeAdapter;
 
@@ -28,6 +36,9 @@ impl AgentAdapter for ClaudeCodeAdapter {
     }
     fn layout(&self) -> &SessionLayout {
         &CLAUDE_LAYOUT
+    }
+    fn nested_env_to_scrub(&self) -> &'static [&'static str] {
+        CLAUDE_NESTED_ENV
     }
 }
 
