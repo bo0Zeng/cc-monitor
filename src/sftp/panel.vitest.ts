@@ -69,6 +69,22 @@ describe("F48 SftpPanel jsdom", () => {
     expect(crumbs).toContain("u");
   });
 
+  it("F78 open(initialDir) → 直接进入该目录、不 realpath、不高亮", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "sftp_realpath") return Promise.resolve("/home/u"); // 不该被调用
+      if (cmd === "sftp_list_dir") return Promise.resolve([ent("main.rs", false)]);
+      return Promise.resolve();
+    });
+    const p = new SftpPanel();
+    await p.open(CFG, undefined, "/home/u/proj");
+    // 直接进入 /home/u/proj（面包屑含 proj），未走 home realpath 分支
+    const crumbs = [...panelEl().querySelectorAll(".sftp-crumb")].map((c) => c.textContent);
+    expect(crumbs).toContain("proj");
+    expect(invokeMock).not.toHaveBeenCalledWith("sftp_realpath", expect.anything());
+    // 无高亮（initialDir 不设 revealName → 无 .sftp-row-reveal）
+    expect(panelEl().querySelector(".sftp-row-reveal")).toBeNull();
+  });
+
   it("非 UTF-8 名行灰置写按钮", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "sftp_realpath") return Promise.resolve("/x");
