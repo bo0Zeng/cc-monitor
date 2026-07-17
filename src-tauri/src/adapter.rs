@@ -42,6 +42,13 @@ pub trait AgentAdapter: Send + Sync {
     /// resume/拉起前要从进程环境清洗掉的**嵌套会话** env(否则 agent 自认嵌套子会话、不写记录)。
     /// CC = `CLAUDECODE` / `CLAUDE_CODE_*`(spec §5);其它 agent 各不相同,无则空。
     fn nested_env_to_scrub(&self) -> &'static [&'static str];
+    /// resume 一个已存在会话的命令 flag(CC = `--resume`);别的 agent 可能是 `--continue`/`resume` 等。
+    fn resume_flag(&self) -> &'static str;
+    /// 默认拉起二进制名(CC = `claude`)。
+    fn default_launcher(&self) -> &'static str;
+    /// 默认拉起的**别名/wrapper**(CC = `cc`,用户的 shell 集成 wrapper);优先它、检测不到才回退
+    /// `default_launcher`。无别名返 `None`。
+    fn launcher_alias(&self) -> Option<&'static str>;
 }
 
 /// 当前活跃适配器。第一刀写死 Claude Code(ZST,无分配);接第二个 agent 时改成可选/探测。

@@ -21,9 +21,12 @@
  * `cc --allowedTools 'Bash(*)'`）。denylist 放行 `"` 是为了粘贴回退仍合法。
  */
 
+// F-MA：agent 画像是纯常量模块（无 DOM/render/bundler 依赖），不破坏本模块"零 bundler-import
+// 便于 tsx 单测"的性质（同 diff.ts）。resume 相关 CC 常量（嵌套 env / launcher / --resume）在此。
+import { AGENT_PROFILE } from "./agent-profile";
+
 /** Claude 嵌套会话环境标记（空格分隔，喂 `unset`）。CLAUDE_CONFIG_DIR 刻意不含。 */
-export const CLAUDE_NESTED_ENV_VARS =
-  "CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION";
+export const CLAUDE_NESTED_ENV_VARS = AGENT_PROFILE.nestedEnvVars.join(" ");
 
 /** POSIX 单引号 quote：整体 `'…'` 包裹，内部 `'` 断开为 `'\''`。 */
 export function posixQuote(s: string): string {
@@ -42,8 +45,8 @@ export function isValidSessionId(sid: string): boolean {
  */
 export function sanitizeRemoteLauncher(cmd: string | undefined): string {
   const c = (cmd ?? "").trim();
-  if (!c) return "claude";
-  if (/[;|&$`<>\r\n]/.test(c)) return "claude";
+  if (!c) return AGENT_PROFILE.defaultLauncher;
+  if (/[;|&$`<>\r\n]/.test(c)) return AGENT_PROFILE.defaultLauncher;
   return c;
 }
 
@@ -53,11 +56,15 @@ export function sanitizeRemoteLauncher(cmd: string | undefined): string {
  * 拉起失败时的剪贴板回退（粘贴到任何远端终端语义一致）。
  * sid 非法 → throw（调用方 toast 报错，绝不拼进命令）。
  */
-export function buildResumeDirectCmd(sid: string, cwd: string, launcher = "claude"): string {
+export function buildResumeDirectCmd(
+  sid: string,
+  cwd: string,
+  launcher = AGENT_PROFILE.defaultLauncher,
+): string {
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
   }
-  const resume = `${sanitizeRemoteLauncher(launcher)} --resume ${sid}`;
+  const resume = `${sanitizeRemoteLauncher(launcher)} ${AGENT_PROFILE.resumeFlag} ${sid}`;
   const prefix = `unset ${CLAUDE_NESTED_ENV_VARS}; `;
   const c = cwd.trim();
   if (!c) return prefix + resume;
@@ -82,7 +89,7 @@ export function buildResumeDirectCmd(sid: string, cwd: string, launcher = "claud
 export function buildResumeTmuxCmd(
   sid: string,
   cwd: string,
-  launcher = "claude",
+  launcher = AGENT_PROFILE.defaultLauncher,
   name?: string,
 ): string {
   if (!isValidSessionId(sid)) {
@@ -97,7 +104,7 @@ export function buildResumeTmuxCmd(
   if (!/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(tmuxName)) {
     throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(tmuxName)}`);
   }
-  const payload = `unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(launcher)} --resume ${sid}`;
+  const payload = `unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(launcher)} ${AGENT_PROFILE.resumeFlag} ${sid}`;
   const c = cwd.trim();
   const cflag = c ? ` -c ${posixQuote(c)}` : "";
   return (
@@ -143,7 +150,11 @@ export function deriveTmuxName(cwd: string): string {
  * 空/控制字符/超长),**posixQuote 嵌入**(允许空格等,区别于 F52 定长 `cc-<sid8>` 裸用)。
  * command 过 `sanitizeRemoteLauncher`(denylist fail-closed `claude`)。名非法 → throw。
  */
-export function buildLauncherCmd(cwd: string, tmuxName: string, command = "claude"): string {
+export function buildLauncherCmd(
+  cwd: string,
+  tmuxName: string,
+  command = AGENT_PROFILE.defaultLauncher,
+): string {
   const name = tmuxName.trim();
   if (!isValidTmuxName(name)) {
     throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(name)}`);
