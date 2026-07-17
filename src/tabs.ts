@@ -31,6 +31,8 @@ import { getBehavior } from "./behavior";
 // F78：远端会话「打开工作目录」→ 用该机配置开 SFTP 面板进入远端 cwd（而非只提示打不开）。
 import { openSftpPanelDir } from "./sftp/panel";
 import { readRemoteConfig, findHostByOrigin } from "./settings/remote-section";
+import { activityLightClass, type GridSessionSnapshot } from "./session-status";
+import { contextPercent } from "./views/pricing";
 
 /**
  * Tab 生命周期：
@@ -866,6 +868,39 @@ export class TabManager {
     const tab = this.tabs.get(sid);
     if (!tab || !tab.cwd || tab.origin !== null) return null;
     return { cwd: tab.cwd, origin: null, files: [...tab.touchedFiles] };
+  }
+
+  /**
+   * F91（#27）：跨会话监控快照——`GridMonitorView` 消费的**只读派生 DTO 列表**（本地 + 所有远端会话）。
+   * 纯派生：不外泄任何内部 DOM / Map 引用（防外部改到 TabManager 内部状态）。插入序（同 tab-bar）。
+   * context% 复用 pricing.ts `contextPercent`（上限未知 / 无 usage → null）。
+   */
+  snapshotSessions(): GridSessionSnapshot[] {
+    const out: GridSessionSnapshot[] = [];
+    for (const tab of this.tabs.values()) {
+      let running = 0;
+      for (const a of tab.agents.values()) {
+        if (a.status === "running") running += 1;
+      }
+      out.push({
+        sessionId: tab.sessionId,
+        title: tab.title,
+        origin: tab.origin,
+        cwd: tab.cwd,
+        status: tab.status,
+        activityStatus: tab.activity?.status ?? null,
+        waitingFor: tab.activity?.waitingFor ?? null,
+        runningAgents: running,
+        totalAgents: tab.agents.size,
+        contextPct:
+          tab.latestPromptTokens != null
+            ? contextPercent(tab.latestModel, tab.latestPromptTokens)
+            : null,
+        unread: tab.unread,
+        kind: tab.kind,
+      });
+    }
+    return out;
   }
 
   /** Batch5-F19：switchTo 是否写回 last-active（viewer/tear-off 窗口置 false）。 */
@@ -2084,12 +2119,11 @@ export class TabManager {
     refs.root.classList.toggle("tab-bg", tab.kind !== null && tab.kind !== "interactive");
     // issue #23 红绿灯：busy=绿（.live-dot 默认色）/ idle·shell=红 / waiting=黄。
     // activity 为 null（旧版 CC / 远端 v1）不加类 → 维持现状绿点。
+    // F91：语义抽到 session-status.ts 供 tab-bar 与 mission-control grid 共用（逐字节等价）。
     const actStatus = tab.activity?.status ?? null;
-    refs.root.classList.toggle(
-      "act-idle",
-      actStatus === "idle" || actStatus === "shell",
-    );
-    refs.root.classList.toggle("act-waiting", actStatus === "waiting");
+    const lightClass = activityLightClass(actStatus);
+    refs.root.classList.toggle("act-idle", lightClass === "act-idle");
+    refs.root.classList.toggle("act-waiting", lightClass === "act-waiting");
     refs.root.title =
       actStatus === "waiting" && tab.activity?.waitingFor
         ? `等待操作：${tab.activity.waitingFor}`
