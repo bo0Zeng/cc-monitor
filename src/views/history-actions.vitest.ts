@@ -134,6 +134,18 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     confirmSpy.mockRestore();
   });
 
+  it("菜单开着按 Esc（经 handleEscape）→ 只关菜单，不误关整个历史视图", () => {
+    const view = new HistoryView();
+    (view as unknown as { isOpen: boolean }).isOpen = true; // 免全量 open() 的 invoke mock
+    const row = buildRow(view, entry(), proj());
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+    const inner = view as unknown as { openEntryMenu: HTMLElement | null; isOpen: boolean; handleEscape(): void };
+    expect(inner.openEntryMenu).toBeTruthy();
+    inner.handleEscape(); // 模拟 overlay dispatcher 的 Esc
+    expect(inner.openEntryMenu).toBeNull(); // 菜单关了
+    expect(inner.isOpen).toBe(true); // 视图没被误关
+  });
+
   it("删除远端项目最后一个会话 → delete_remote_history_session + remoteCache 同步移除（F76 护栏）", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const view = new HistoryView();
