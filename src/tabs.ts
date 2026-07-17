@@ -28,6 +28,9 @@ import { collectEditedFiles } from "./panorama/session-files";
 import { openPanePreview } from "./views/pane-preview";
 import { turnEndNotifier } from "./turn-notify";
 import { getBehavior } from "./behavior";
+// F78：远端会话「打开工作目录」→ 用该机配置开 SFTP 面板进入远端 cwd（而非只提示打不开）。
+import { openSftpPanelDir } from "./sftp/panel";
+import { readRemoteConfig, findHostByOrigin } from "./settings/remote-section";
 
 /**
  * Tab 生命周期：
@@ -1725,16 +1728,25 @@ export class TabManager {
     })();
   }
 
-  /** 打开指定 Tab 的 cwd 到系统文件管理器。无 cwd / 远端 Tab 静默忽略。 */
+  /** 打开指定 Tab 的 cwd。本地 → 系统文件管理器；远端 → SFTP 面板进入该远端目录（F78）。无 cwd 忽略。 */
   private async openTabCwd(sid: string): Promise<void> {
     const tab = this.tabs.get(sid);
     if (!tab?.cwd) return;
-    // FIX 5：远端 Tab 的 cwd 是远端路径，本地 openPath 必然失败。Batch9-F29：
-    // 从静默 no-op 改为提示（盘点 #9：用户按 E 没反应像坏了）。
+    // F78：远端 Tab 的 cwd 是远端路径，本地 openPath 打不开——改成用该机配置开 SFTP 进入该目录
+    // （Batch9-F29 曾从静默 no-op 改成 info 提示；现进一步真能浏览）。找不到该机配置才回退提示。
     if (tab.origin !== null) {
+      const host = findHostByOrigin((await readRemoteConfig()).hosts, tab.origin);
+      if (host && host.host.trim() !== "" && host.user.trim() !== "") {
+        openSftpPanelDir(host, tab.cwd);
+        return;
+      }
+      // 找到但缺 host/user = 配置不完整；没找到 = 未配置——分开措辞（审计建议）。
+      const why = host
+        ? "该机的远端配置缺 host / user（在设置 → 连接 补全后可用）"
+        : "未找到该机的远端配置（在设置 → 连接 添加后可用）";
       showActionFailureToast(
         "远端目录无法本地打开",
-        `该会话在远端机器 [${tab.origin}]，工作目录 ${tab.cwd} 不在本机。`,
+        `该会话在远端机器 [${tab.origin}]，工作目录 ${tab.cwd} 不在本机；${why}。`,
         { level: "info" },
       );
       return;

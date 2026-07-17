@@ -556,10 +556,9 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 .tab.archived .tab-cwd { display: none; }
 .tab:not(.has-cwd) .tab-cwd { display: none; }
 .tab:not(.archived) .tab-close { display: none; }
-/* FIX 5 / Feature ②（issue #15）：远端 Tab 的 cwd 是 Pi 上的路径，本地打不开 ——
-   只隐藏「打开工作目录」📂。「调出终端」↗ 保留：点击走 bring_remote_terminal_to_front
-   （后端按 ccm-rbind 标题缓存的 HWND 拉本地 ssh 窗口；未绑定则 toast no-op）。 */
-.tab.remote .tab-cwd { display: none; }
+/* F78（#55）：远端 Tab 的 📂「打开工作目录」不再隐藏——点它现在打开 SFTP 面板进入该远端 cwd
+   （openTabCwd 远端分支：按 origin 找该机配置 → openSftpPanelDir）。找不到配置才回退 info 提示。
+   （原 FIX 5/issue #15 因本地打不开而隐藏；F83 起 SFTP 入口就绪，本地打不开的 cwd 改由 SFTP 浏览。） */
 
 .tab-title {
   flex: 1 1 auto;

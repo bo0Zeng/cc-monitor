@@ -145,8 +145,10 @@ export class SftpPanel implements OverlayHandle {
   /**
    * 打开面板并浏览该 host。默认以 realpath('.') 为起点;F54:传 `revealPath`(远端文件绝对
    * 路径)则直接定位到其父目录并在列表里高亮该文件(会话工具卡→文件跳转)。
+   * F78:传 `initialDir`(远端目录绝对路径)则**直接进入该目录**(远端会话「打开工作目录」),
+   * 不高亮、不 realpath——与 revealPath(文件)语义区分。三者优先级 initialDir > revealPath > home。
    */
-  async open(cfg: RemoteHostConfig, revealPath?: string): Promise<void> {
+  async open(cfg: RemoteHostConfig, revealPath?: string, initialDir?: string): Promise<void> {
     this.cfg = cfg;
     this.titleEl.textContent = `文件:${cfg.label || cfg.host}`;
     this.el.style.display = "flex";
@@ -175,8 +177,13 @@ export class SftpPanel implements OverlayHandle {
         this.registeringDrop = false;
       }
     }
+    const dir = initialDir?.trim();
     const reveal = revealPath?.trim();
-    if (reveal) {
+    if (dir) {
+      // F78:直接进入该远端目录(会话工作目录),不高亮、不 realpath(绝对路径)。
+      this.revealName = null;
+      this.cwd = dir;
+    } else if (reveal) {
       // F54:远端文件绝对路径 → 直接定位父目录 + 记高亮目标(无需 realpath)。
       this.cwd = parentPath(reveal);
       this.revealName = basename(reveal);
@@ -631,4 +638,10 @@ let singleton: SftpPanel | null = null;
 export function openSftpPanel(cfg: RemoteHostConfig, revealPath?: string): void {
   singleton ??= new SftpPanel();
   void singleton.open(cfg, revealPath);
+}
+
+/** F78:打开 SFTP 面板并**直接进入**指定远端目录(远端会话「打开工作目录」用；绝对路径)。 */
+export function openSftpPanelDir(cfg: RemoteHostConfig, dir: string): void {
+  singleton ??= new SftpPanel();
+  void singleton.open(cfg, undefined, dir);
 }
