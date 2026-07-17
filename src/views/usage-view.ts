@@ -74,7 +74,7 @@ export class UsageView {
     const note = document.createElement("div");
     note.className = "usage-note";
     note.textContent =
-      "以下为已花费用量（token 数），非配额剩余。「还剩多少」（/usage 的 5h/周窗口）是账号级服务端数据，本地会话文件推不出。";
+      "以下为已花费用量（token 数），非配额剩余。「还剩多少」（/usage 的 5h/周窗口）是账号级服务端数据，本地会话文件推不出。「按天」为 UTC 日期。";
     view.appendChild(note);
 
     this.statusEl = document.createElement("div");
@@ -106,6 +106,7 @@ export class UsageView {
 
   close(): void {
     if (!this.isOpen) return;
+    this.loadSeq++; // 让 pending 扫描的 onmessage/结果/失败 toast 被 seq 守卫丢弃（关闭后不再渲染/弹窗）
     this.root.remove();
     this.isOpen = false;
     dispatcher.popOverlay(this);
@@ -130,9 +131,10 @@ export class UsageView {
     };
     try {
       await invoke("aggregate_usage_all", { onRow: channel });
-      if (seq === this.loadSeq) this.renderList();
+      if (seq === this.loadSeq && this.isOpen) this.renderList();
     } catch (e) {
-      if (seq === this.loadSeq) this.statusEl.textContent = `扫描失败：${String(e)}`;
+      if (seq !== this.loadSeq) return; // 被新 open/close 抢占 → 静默（关闭后不弹 toast）
+      this.statusEl.textContent = `扫描失败：${String(e)}`;
       showActionFailureToast("用量扫描失败", String(e));
     }
   }

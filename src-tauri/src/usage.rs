@@ -10,7 +10,7 @@
 
 use crate::messages::{JsonlRecord, Usage};
 use crate::parser::parse_line;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -62,6 +62,7 @@ pub struct SessionUsageRow {
 /// （首条 user 记录）。抽出便于单测（不落文件）。model 缺失→`"unknown"`；day 取 timestamp 前 10 字符。
 fn accumulate_usage(
     lines: impl Iterator<Item = String>,
+    seen_uuids: &mut HashSet<String>,
 ) -> (HashMap<(String, String), UsageTotals>, Option<String>) {
     let mut buckets: HashMap<(String, String), UsageTotals> = HashMap::new();
     let mut cwd: Option<String> = None;
@@ -83,9 +84,19 @@ fn accumulate_usage(
                 }
             }
             JsonlRecord::Assistant {
-                message, timestamp, ..
+                uuid,
+                message,
+                timestamp,
+                ..
             } => {
                 if let Some(u) = &message.usage {
+                    // F88a 审计修：`/branch` 建分支会把祖先记录（连 message.usage、**保留原 uuid**、只改
+                    // sessionId）逐字段复制进新会话文件（见 history.rs::build_branch_records）。逐会话累加
+                    // 无去重 → 共享前缀的 token 在源会话 + 每个分支各计一次 = 合计虚高。**跨聚合按 assistant
+                    // uuid 去重**（首次遇到的会话计入，后续跳过）。普通 resume 追加同文件不复制、uuid 唯一，无影响。
+                    if !seen_uuids.insert(uuid.clone()) {
+                        continue;
+                    }
                     let model = message
                         .model
                         .clone()
@@ -102,10 +113,16 @@ fn accumulate_usage(
 }
 
 /// 扫一个会话 jsonl → 该会话的用量行。无任何 usage 的会话返 None（不报空行）。
-fn analyze_usage_in_session(path: &Path) -> Option<SessionUsageRow> {
+fn analyze_usage_in_session(
+    path: &Path,
+    seen_uuids: &mut HashSet<String>,
+) -> Option<SessionUsageRow> {
     let session_id = path.file_stem()?.to_str()?.to_string();
     let file = File::open(path).ok()?;
-    let (buckets, cwd) = accumulate_usage(BufReader::new(file).lines().map_while(Result::ok));
+    let (buckets, cwd) = accumulate_usage(
+        BufReader::new(file).lines().map_while(Result::ok),
+        seen_uuids,
+    );
     if buckets.is_empty() {
         return None;
     }
@@ -142,6 +159,8 @@ pub async fn aggregate_usage_all(on_row: Channel<SessionUsageRow>) -> Result<u32
             return Ok(0);
         }
         let mut count = 0u32;
+        // 跨全部会话文件的 assistant uuid 去重集（防分支复制的祖先记录重复计，见 accumulate_usage）。
+        let mut seen_uuids: HashSet<String> = HashSet::new();
         let proj_iter = std::fs::read_dir(&projects_dir)
             .map_err(|e| format!("read {}: {e}", projects_dir.display()))?;
         for proj in proj_iter.flatten() {
@@ -158,7 +177,7 @@ pub async fn aggregate_usage_all(on_row: Channel<SessionUsageRow>) -> Result<u32
                 if !crate::adapter::has_record_ext(&p) {
                     continue;
                 }
-                if let Some(row) = analyze_usage_in_session(&p) {
+                if let Some(row) = analyze_usage_in_session(&p, &mut seen_uuids) {
                     if on_row.send(row).is_err() {
                         tracing::info!("aggregate_usage_all: cancelled at {count} sessions");
                         return Ok(count);
@@ -201,7 +220,7 @@ mod tests {
             assistant("claude-opus-4-8", "2026-07-17", 50, 0, 200, 10),
             assistant("claude-haiku-4-5", "2026-07-18", 5, 0, 0, 3),
         ];
-        let (buckets, cwd) = accumulate_usage(lines.into_iter());
+        let (buckets, cwd) = accumulate_usage(lines.into_iter(), &mut HashSet::new());
         assert_eq!(cwd.as_deref(), Some("/home/u/proj"));
         // opus/17 号两条合并
         let opus = &buckets[&("claude-opus-4-8".into(), "2026-07-17".into())];
@@ -226,7 +245,7 @@ mod tests {
             r#"{"type":"summary","summary":"x"}"#.to_string(), // 其它类型
             assistant("m", "2026-07-17", 1, 0, 0, 1),
         ];
-        let (buckets, _) = accumulate_usage(lines.into_iter());
+        let (buckets, _) = accumulate_usage(lines.into_iter(), &mut HashSet::new());
         assert_eq!(buckets.len(), 1);
         assert_eq!(buckets[&("m".into(), "2026-07-17".into())].msgs, 1);
     }
@@ -236,7 +255,7 @@ mod tests {
         let lines = vec![
             r#"{"type":"assistant","uuid":"a2","timestamp":"2026-07-17T10:00:00Z","message":{"role":"assistant","content":[],"usage":{"input_tokens":7,"output_tokens":2}}}"#.to_string(),
         ];
-        let (buckets, _) = accumulate_usage(lines.into_iter());
+        let (buckets, _) = accumulate_usage(lines.into_iter(), &mut HashSet::new());
         let b = &buckets[&("unknown".into(), "2026-07-17".into())];
         assert_eq!(b.input, 7);
         assert_eq!(b.output, 2);
@@ -245,8 +264,20 @@ mod tests {
 
     #[test]
     fn empty_input_yields_empty() {
-        let (buckets, cwd) = accumulate_usage(std::iter::empty());
+        let (buckets, cwd) = accumulate_usage(std::iter::empty(), &mut HashSet::new());
         assert!(buckets.is_empty());
         assert!(cwd.is_none());
+    }
+
+    #[test]
+    fn dedups_same_uuid_across_sessions() {
+        // F88a 审计修：分支复制——同一 assistant uuid 出现在两个会话文件里，跨聚合共享 seen 集只计一次。
+        let mut seen = HashSet::new();
+        let a = r#"{"type":"assistant","uuid":"shared","timestamp":"2026-07-17T10:00:00Z","message":{"role":"assistant","content":[],"model":"m","usage":{"input_tokens":100,"output_tokens":20}}}"#.to_string();
+        let (b1, _) = accumulate_usage(std::iter::once(a.clone()), &mut seen);
+        assert_eq!(b1[&("m".into(), "2026-07-17".into())].input, 100);
+        // 第二个会话含同 uuid → 跳过（不重复计），合计不虚高。
+        let (b2, _) = accumulate_usage(std::iter::once(a), &mut seen);
+        assert!(b2.is_empty(), "同 uuid 跨会话应去重");
     }
 }
