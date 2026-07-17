@@ -1019,3 +1019,31 @@ describe("F70 会话改动集聚合（onLine → touchedFiles / touchedFilesFor 
     expect(tm.touchedFilesFor("does-not-exist")).toBeNull();
   });
 });
+
+describe("F77 getActiveSubagentContext", () => {
+  it("活跃本地 tab → { parentPath(=sourcePath), origin:null }", () => {
+    const tm = makeTM();
+    tm.ensureTab("s1", "/home/u", "/p/s1.jsonl", 0, null);
+    tm.switchTo("s1");
+    expect(tm.getActiveSubagentContext()).toEqual({
+      parentPath: "/p/s1.jsonl",
+      origin: null,
+    });
+  });
+  it("活跃远端 tab → origin 非空（调用方据此提示不支持）", () => {
+    const tm = makeTM();
+    tm.ensureTab("s2", "/home", "/p/s2.jsonl", 0, "pi");
+    tm.switchTo("s2");
+    expect(tm.getActiveSubagentContext()?.origin).toBe("pi");
+  });
+  it("无活跃 tab → null", () => {
+    const tm = makeTM();
+    expect(tm.getActiveSubagentContext()).toBeNull();
+  });
+  it("活跃 tab 无 parentPath（骨架未回填）→ null", () => {
+    const tm = makeTM();
+    tm.createSkeletonTab("sk", "/root/proj", null); // parentPath 空
+    tm.switchTo("sk");
+    expect(tm.getActiveSubagentContext()).toBeNull();
+  });
+});

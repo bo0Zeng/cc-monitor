@@ -21,6 +21,7 @@ import { loadTheme } from "./theme";
 import { SettingsPanel, SETTINGS_APPLIED_EVENT } from "./settings";
 import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
+import { SessionViewer } from "./views/session-viewer"; // F77：点 agent 看记录复用只读会话查看器
 import { PanoramaView } from "./views/panorama";
 import { UsageView } from "./views/usage-view";
 import { UsageHud } from "./usage-hud";
@@ -177,6 +178,62 @@ window.addEventListener("DOMContentLoaded", async () => {
   // F88b：活跃会话 usage 变化 → 刷新 HUD context% chip（onLine 新 assistant 记录 / switchTo 切会话）
   tabs.onActiveUsageChanged = (model, promptTokens) => {
     usageHud.setActive(model, promptTokens);
+  };
+
+  // F77（#53）：点 agents 面板某行 → load_subagent 拿子 agent jsonl 路径 → SessionViewer 只读展示该
+  // agent 的记录。远端会话不支持（子 agent jsonl 在远端机器，同 subagent 卡片）。
+  let agentViewer: SessionViewer | null = null;
+  let agentViewerMount: HTMLElement | null = null;
+  const closeAgentViewer = (): void => {
+    if (agentViewer) {
+      agentViewer.dispose();
+      agentViewer = null;
+    }
+    if (agentViewerMount) {
+      agentViewerMount.remove();
+      agentViewerMount = null;
+    }
+  };
+  agentsPanel.onAgentOpen = (entry) => {
+    const actx = tabs.getActiveSubagentContext();
+    if (!actx) return;
+    if (actx.origin) {
+      showActionFailureToast(
+        "远端会话暂不支持",
+        `子 agent 的记录在远端机器 [${actx.origin}] 上，暂不支持点开查看。`,
+        { level: "info" },
+      );
+      return;
+    }
+    void (async () => {
+      try {
+        const result = await invoke<{ path: string }>("load_subagent", {
+          parentJsonlPath: actx.parentPath,
+          description: entry.desc, // ★ 用 trim 后的原始 desc（非展示 label）——load_subagent 精确匹配
+          toolUseTimestamp: entry.timestamp,
+        });
+        closeAgentViewer(); // 关掉上一个（单例语义）
+        agentViewerMount = document.createElement("div");
+        agentViewerMount.className = "agent-records-viewer-mount"; // fixed 全屏 + 高 z-index
+        agentViewerMount.tabIndex = -1; // 可聚焦，让 Esc keydown 有落点（子元素 keydown 也冒泡到这）
+        // Esc 关闭（SessionViewer 无自带 Esc；挂载壳上接一个，同返回按钮）。
+        agentViewerMount.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") closeAgentViewer();
+        });
+        agentViewer = new SessionViewer(() => closeAgentViewer());
+        agentViewerMount.appendChild(agentViewer.element);
+        document.body.appendChild(agentViewerMount);
+        // suppressBranch：子 agent 记录不是可分支会话，关掉「建分支」按钮。
+        void agentViewer.load({
+          jsonlPath: result.path,
+          displayTitle: entry.label,
+          suppressBranch: true,
+        });
+        agentViewerMount.focus?.(); // 让 Esc keydown 能落到挂载壳
+      } catch (e) {
+        showActionFailureToast("加载 subagent 记录失败", String(e));
+      }
+    })();
   };
 
   // v2.4 issue #2：拉一次 behavior toggle 初值喂给 TabManager。
