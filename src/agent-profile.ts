@@ -17,4 +17,15 @@ export const AGENT_PROFILE = {
   mdTools: new Set<string>(["Read", "Grep", "WebFetch", "NotebookRead", "TodoWrite"]),
   /** tmux 前台命令算该 agent 的会话(`claude` / `node`——Claude 是 Node CLI,视启动路径也可能报解释器)。 */
   livenessProcessNames: new Set<string>(["claude", "node"]),
+  /** resume/拉起前要 unset 的嵌套会话 env(对应 Rust `adapter.nested_env_to_scrub`;顺序照 unset 命令)。 */
+  nestedEnvVars: [
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_CHILD_SESSION",
+  ],
+  /** 默认拉起二进制名(CC = `claude`)。净化 fail-closed 也回退它。 */
+  defaultLauncher: "claude",
+  /** resume 一个已存在会话的命令 flag(CC = `--resume`)。 */
+  resumeFlag: "--resume",
 };

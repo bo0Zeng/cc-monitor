@@ -690,15 +690,23 @@ fn build_resume_ps_command(session_id: &str, launcher: Option<&str>) -> Result<S
     if !valid {
         return Err(format!("refuse resume: invalid session_id {session_id:?}"));
     }
-    // F34：设了自定义命令就直接用（不再 cc 自动检测——用户显式选择优先）
+    // F-MA：resume flag / 拉起别名 / 默认拉起都走活跃适配器（CC = --resume / cc / claude）。
+    let agent = crate::adapter::active();
+    let flag = agent.resume_flag();
+    // F34：设了自定义命令就直接用（不再别名自动检测——用户显式选择优先）
     if let Some(l) = sanitize_launcher(launcher)? {
-        return Ok(format!("{l} --resume {sid}", sid = session_id));
+        return Ok(format!("{l} {flag} {sid}", sid = session_id));
     }
-    Ok(format!(
-        "if (Get-Command cc -ErrorAction SilentlyContinue) {{ cc --resume {sid} }} \
-         else {{ claude --resume {sid} }}",
-        sid = session_id
-    ))
+    let def = agent.default_launcher();
+    match agent.launcher_alias() {
+        // 有 wrapper 别名（cc）：优先它、检测不到回退 default。
+        Some(alias) => Ok(format!(
+            "if (Get-Command {alias} -ErrorAction SilentlyContinue) {{ {alias} {flag} {sid} }} \
+             else {{ {def} {flag} {sid} }}",
+            sid = session_id
+        )),
+        None => Ok(format!("{def} {flag} {sid}", sid = session_id)),
+    }
 }
 
 /// Batch14-F41：wt.exe/PowerShell 拉起机械抽到 `launch.rs::launch_powershell_window`

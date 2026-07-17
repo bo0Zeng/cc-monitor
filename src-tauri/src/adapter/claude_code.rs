@@ -40,6 +40,15 @@ impl AgentAdapter for ClaudeCodeAdapter {
     fn nested_env_to_scrub(&self) -> &'static [&'static str] {
         CLAUDE_NESTED_ENV
     }
+    fn resume_flag(&self) -> &'static str {
+        "--resume"
+    }
+    fn default_launcher(&self) -> &'static str {
+        "claude"
+    }
+    fn launcher_alias(&self) -> Option<&'static str> {
+        Some("cc") // 用户的 shell 集成 wrapper（含代理/env）;检测不到回退 claude。
+    }
 }
 
 #[cfg(test)]
