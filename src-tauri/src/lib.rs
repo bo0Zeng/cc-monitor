@@ -5,6 +5,7 @@
 //! 并 `app.manage` 所有 Arc-shared State，最后注册 `invoke_handler`（IPC 命令清单）。
 //! State 注册矩阵见 doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
+mod adapter;
 mod auto_launch;
 mod bind;
 mod bridge;
@@ -337,13 +338,16 @@ pub fn run() {
                 }
             }
 
-            // Claude 数据目录走三级回退：用户配置 → CLAUDE_CONFIG_DIR → ~/.claude
-            let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-            tracing::info!("monitor using claude_dir: {}", claude_dir.display());
-            let projects_dir = claude_dir.join("projects");
-            let sessions_dir = claude_dir.join("sessions");
-            // v2.3.0 issue #11：Claude Code CLI 的 task tracker 文件根
-            let tasks_dir = claude_dir.join("tasks");
+            // F-MA：agent 数据目录 + 会话源布局都走活跃适配器（Claude Code = 第一个实例；
+            // data_root 仍是三级回退 用户配置 → CLAUDE_CONFIG_DIR → ~/.claude）。子目录名不再硬编码。
+            let agent = adapter::active();
+            let claude_dir = agent.data_root().ok_or("agent data dir not found")?;
+            let layout = agent.layout();
+            tracing::info!("monitor using agent [{}] data dir: {}", agent.id(), claude_dir.display());
+            let projects_dir = claude_dir.join(layout.sessions_subdir);
+            let sessions_dir = claude_dir.join(layout.liveness_subdir);
+            // v2.3.0 issue #11：任务追踪文件根（CC = tasks）
+            let tasks_dir = claude_dir.join(layout.tasks_subdir.unwrap_or("tasks"));
 
             // monitor 自己的数据目录：~/.claude/claudecode-frontend
             let monitor_data_dir = paths::resolve_monitor_data_dir().ok_or("no data dir")?;
