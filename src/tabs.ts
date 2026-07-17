@@ -1593,6 +1593,7 @@ export class TabManager {
       if (gen === tabMenuGeneration) {
         removeTabContextMenuItem("attach");
         removeTabContextMenuItem("preview"); // F60：预览占位一并移除
+        removeTabContextMenuItem("kill"); // F79：杀会话占位一并移除
       }
       return;
     }
@@ -1615,12 +1616,12 @@ export class TabManager {
         label: "预览画面",
         onClick: () => void openPanePreview(origin, match.name),
       });
-      // F79：杀死会话项与 attach 同门（同一 tmux 会话）。
+      // F79：杀死会话项与 attach 同门（同一 tmux 会话）。回退命中 viaCwd 传入加强 caveat。
       updateTabContextMenuItem("kill", {
         id: "kill",
         label: "杀死会话（kill tmux）",
         danger: true,
-        onClick: () => this.killRemoteTmux(origin, match.name),
+        onClick: () => this.killRemoteTmux(origin, match.name, viaCwd),
       });
     } else {
       removeTabContextMenuItem("attach");
@@ -1629,10 +1630,16 @@ export class TabManager {
     }
   }
 
-  /** F79(#38)：杀死远端 tmux 会话——二次确认后 kill-session。变灰由 #60-A 对账兜（不主动 archive，守 §24）。 */
-  private killRemoteTmux(origin: string, tmuxName: string): void {
+  /** F79(#38)：杀死远端 tmux 会话——二次确认后 kill-session。变灰由 #60-A 对账兜（不主动 archive，守 §24）。
+   *  @param viaCwd findClaudeTmux 是否走了 cwd 回退命中（无 @ccm_sid）——此时会话名是按目录猜的、可能
+   *  不是本 tab 的会话（可能杀到同目录别的 Claude）。破坏性操作，回退命中时在确认框里加强 caveat
+   *  （比 attach 的 toast 更强，因为在用户必须点的确认里）。守 F74c「保留回退+显式提示」的取舍。 */
+  private killRemoteTmux(origin: string, tmuxName: string, viaCwd: boolean): void {
+    const caveat = viaCwd
+      ? `\n\n⚠ 未检测到会话身份标记（@ccm_sid）——「${tmuxName}」是按工作目录猜的，可能不是本 tab 的会话，甚至可能是同目录里另一个正在运行的 Claude。建议在远端重装 ccm 助手后再操作。`
+      : "";
     const ok = window.confirm(
-      `杀死会话「${tmuxName}」（机器 ${origin}）？\n\n将终止远端这个 tmux 会话里正在运行的 Claude，未保存的交互会中断。\n此操作不可恢复。`,
+      `杀死会话「${tmuxName}」（机器 ${origin}）？\n\n将终止远端这个 tmux 会话里正在运行的 Claude，未保存的交互会中断。\n此操作不可恢复。${caveat}`,
     );
     if (!ok) return;
     void (async () => {
@@ -1926,12 +1933,12 @@ export class TabManager {
               label: "预览画面",
               onClick: () => void openPanePreview(origin, m.name),
             });
-            // F79：杀死会话（同一 tmux 会话，破坏性 + 二次确认）。
+            // F79：杀死会话（同一 tmux 会话，破坏性 + 二次确认）。回退命中 viaCwd 传入加强 caveat。
             items.push({
               id: "kill",
               label: "杀死会话（kill tmux）",
               danger: true,
-              onClick: () => this.killRemoteTmux(origin, m.name),
+              onClick: () => this.killRemoteTmux(origin, m.name, viaCwd),
             });
           }
         } else {
