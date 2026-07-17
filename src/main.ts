@@ -21,6 +21,7 @@ import { loadTheme } from "./theme";
 import { SettingsPanel } from "./settings";
 import { HistoryView } from "./views/history";
 import { PanoramaView } from "./views/panorama";
+import { UsageView } from "./views/usage-view";
 import { bindErrorToast } from "./error-toast";
 import { bindRemoteHealthToast } from "./remote-health";
 import { TasksPanel } from "./tasks-panel";
@@ -289,6 +290,21 @@ window.addEventListener("DOMContentLoaded", async () => {
     else void panoramaView.open();
   });
   document.getElementById("app")?.appendChild(panoramaTrigger);
+
+  // F88a：用量视图入口 —— 顶栏右侧，紧邻全景按钮左边。自挂 body 作 fixed overlay。
+  // 只 token 不 $（已花费≠配额，本地推不出配额）。
+  const usageView = new UsageView();
+  const usageTrigger = document.createElement("button");
+  usageTrigger.type = "button";
+  usageTrigger.className = "usage-trigger";
+  usageTrigger.title = "用量（token 已花费）";
+  usageTrigger.setAttribute("aria-label", "打开用量视图");
+  usageTrigger.textContent = "∑";
+  usageTrigger.addEventListener("click", () => {
+    if (usageView.isVisible()) usageView.close();
+    else void usageView.open();
+  });
+  document.getElementById("app")?.appendChild(usageTrigger);
 
   // 外链 + 代码块复制的全局 click 代理（主窗口 / 独立 viewer 窗口共用）
   installGlobalClickDelegation();

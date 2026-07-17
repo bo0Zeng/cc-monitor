@@ -115,7 +115,8 @@ body.viewer-mode #tab-bar,
 body.viewer-mode #tab-bar-resizer,
 body.viewer-mode .settings-trigger,
 body.viewer-mode .history-trigger,
-body.viewer-mode .panorama-trigger {
+body.viewer-mode .panorama-trigger,
+body.viewer-mode .usage-trigger {
   display: none;
 }
 
@@ -334,6 +335,119 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 }
 .panorama-trigger:hover {
   background: var(--overlay-hover);
+  color: var(--text);
+}
+
+/* F88a：用量视图入口——顶栏，全景按钮左边（right 再 +32）。 */
+.usage-trigger {
+  position: absolute;
+  top: 4px;
+  right: 104px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 15px;
+  z-index: 2;
+}
+.usage-trigger:hover {
+  background: var(--overlay-hover);
+  color: var(--text);
+}
+
+/* F88a：用量视图 overlay（照 history-view 的 body-level fixed 范式）。 */
+.usage-view {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.usage-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-strong);
+  flex-shrink: 0;
+}
+.usage-back,
+.usage-dim-btn {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-small);
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+.usage-dim-btn:hover {
+  background: var(--overlay-hover);
+  color: var(--text);
+}
+.usage-dim-btn.active {
+  background: var(--overlay-hover);
+  color: var(--text);
+  border-color: var(--text-2);
+}
+.usage-note {
+  padding: 6px 14px;
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.usage-status {
+  padding: 6px 14px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+.usage-list {
+  flex: 1;
+  overflow: auto;
+  padding: 0 14px 14px;
+}
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-small);
+}
+.usage-table th,
+.usage-table td {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+.usage-table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-2);
+  color: var(--text-2);
+  z-index: 1;
+}
+.usage-table td.usage-key,
+.usage-table th:first-child {
+  text-align: left;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+}
+.usage-table .usage-total-row td {
+  font-weight: 600;
+  border-top: 2px solid var(--border-strong);
   color: var(--text);
 }
 

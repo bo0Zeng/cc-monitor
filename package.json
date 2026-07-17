@@ -24,8 +24,9 @@
     "test:history-cache": "node src/views/history-cache.test.ts",
     "test:history-prefs": "node src/views/history-prefs.test.ts",
     "test:history-actions": "node src/views/history-actions.test.ts",
+    "test:usage-pivot": "node src/views/usage-pivot.test.ts",
     "test:dom": "vitest run",
-    "test": "npm run test:branching && npm run test:diff && npm run test:api-error && npm run test:bash && npm run test:remote-health && npm run test:remote-launch && npm run test:format && npm run test:history-cache && npm run test:history-prefs && npm run test:history-actions && npm run test:dom"
+    "test": "npm run test:branching && npm run test:diff && npm run test:api-error && npm run test:bash && npm run test:remote-health && npm run test:remote-launch && npm run test:format && npm run test:history-cache && npm run test:history-prefs && npm run test:history-actions && npm run test:usage-pivot && npm run test:dom"
   },
   "dependencies": {
     "@chenglou/pretext": "0.0.8",
