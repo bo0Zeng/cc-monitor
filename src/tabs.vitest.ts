@@ -937,11 +937,13 @@ describe("F74c(#60-B) isCwdFallbackMatch（cwd 回退串味提示判定）", () 
 
 describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", () => {
   beforeEach(() => vi.clearAllMocks());
-  type KillTM = { killRemoteTmux(origin: string, tmuxName: string): void };
+  type KillTM = {
+    killRemoteTmux(origin: string, tmuxName: string, viaCwd: boolean): void;
+  };
   it("二次确认通过 → invoke kill_remote_tmux（origin/target 正确，变灰由 #60-A 兜、不主动 archive）", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const tm = makeTM() as unknown as KillTM;
-    tm.killRemoteTmux("hostA", "cc-abc");
+    tm.killRemoteTmux("hostA", "cc-abc", false);
     await Promise.resolve();
     const call = vi.mocked(invoke).mock.calls.find((c) => c[0] === "kill_remote_tmux");
     expect(call).toBeTruthy();
@@ -951,10 +953,19 @@ describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", ()
   it("二次确认取消 → 不 invoke", () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     const tm = makeTM() as unknown as KillTM;
-    tm.killRemoteTmux("hostA", "cc-abc");
+    tm.killRemoteTmux("hostA", "cc-abc", false);
     expect(
       vi.mocked(invoke).mock.calls.some((c) => c[0] === "kill_remote_tmux"),
     ).toBe(false);
+    confirmSpy.mockRestore();
+  });
+  it("F79 审计修复：cwd 回退命中（viaCwd）→ 二次确认加强 caveat（可能杀同目录别的会话）", () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const tm = makeTM() as unknown as KillTM;
+    tm.killRemoteTmux("hostA", "cc-abc", true);
+    const msg = String(confirmSpy.mock.calls[0]?.[0] ?? "");
+    expect(msg).toContain("@ccm_sid"); // 未检测到身份标记
+    expect(msg).toContain("同目录"); // 可能杀同目录别的 Claude
     confirmSpy.mockRestore();
   });
 });
