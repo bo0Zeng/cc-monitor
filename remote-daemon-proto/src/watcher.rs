@@ -729,6 +729,14 @@ fn add_time_verdict(
     file_mtime_epoch: Option<u64>,
     cmdline: Option<&str>,
 ) -> AddTimeVerdict {
+    // F74b(#43「父会话恒绿」总闸)：bg-spare = 守护池停泊的备用进程（cmdline 含 "bg-spare"）。
+    // 它是真 claude 进程、会写合规 pidfile、procStart 自洽——**必须在 exact-identity 之前拦**，
+    // 否则下面的 `recorded == current` 会把它判 Alive 而恒绿。语义上它不是一个运行中的会话。
+    if let Some(cmd) = cmdline {
+        if cmd.to_lowercase().contains("bg-spare") {
+            return AddTimeVerdict::Imposter("bg-spare");
+        }
+    }
     if let (Some(recorded), Some(current)) = (pidfile_procstart_ticks, current_starttime_ticks) {
         if recorded == current {
             return AddTimeVerdict::Alive; // exact identity: author confirmed
@@ -1321,6 +1329,26 @@ mod tests {
             add_time_verdict(None, None, Some(900), Some(1000), Some("-bash")),
             AddTimeVerdict::Imposter("cmdline"),
             "time check passing must not mask a non-claude cmdline"
+        );
+    }
+
+    #[test]
+    fn imposter_by_bg_spare_before_exact_identity() {
+        // F74b(#43)：bg-spare 优先于 exact-identity——即便 procStart 自洽（recorded==current）
+        // 也判 Imposter（否则守护池停泊备用进程恒绿）。
+        assert_eq!(
+            add_time_verdict(Some(555), Some(555), None, None, Some("claude bg-spare")),
+            AddTimeVerdict::Imposter("bg-spare"),
+            "bg-spare 必须在 exact-identity Alive 之前拦下"
+        );
+        assert_eq!(
+            add_time_verdict(None, None, None, None, Some("/usr/bin/claude bg-spare --foo")),
+            AddTimeVerdict::Imposter("bg-spare")
+        );
+        // 普通 claude 会话不受影响（procStart 自洽仍 Alive）。
+        assert_eq!(
+            add_time_verdict(Some(555), Some(555), None, None, Some("claude --resume x")),
+            AddTimeVerdict::Alive
         );
     }
 
