@@ -839,6 +839,7 @@ pub fn run() {
             config::save_config,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             mcp::read_mcp_servers,
+            mcp::list_mcp_project_dirs,
             mcp::write_project_mcp_server,
             mcp::remove_project_mcp_server,
             subagent::load_subagent,
