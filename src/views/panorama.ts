@@ -39,6 +39,18 @@ import { showActionFailureToast } from "../error-toast";
 /** main.ts 注入的活跃仓信息取值器（读活跃 tab 的 cwd/origin）。 */
 type RepoInfoGetter = () => { cwd: string; origin: string | null } | null;
 
+/**
+ * F72：从符号全 id 取「批注用的符号段」——**镜像 core `split_sym_id`**：取 `#` 后、`@行号`消歧
+ * 前的段。core 对同文件同限定名冲突会给 id 追加 `@start_line`（如 `a.rs#f@42`），而 `annotations_for`
+ * 查询时会截掉 `@42`；故写入的 symbol 段也必须截掉 `@`，否则同名多符号写完查不回 = 静默丢失。
+ * 无 `#`（不该发生）→ null（文件级批注）。
+ */
+export function symbolSegForAnnotation(id: string): string | null {
+  const h = id.indexOf("#");
+  if (h < 0) return null;
+  return id.slice(h + 1).split("@")[0];
+}
+
 export class PanoramaView implements OverlayHandle {
   private root: HTMLElement;
   private mounted = false;
@@ -937,7 +949,107 @@ export class PanoramaView implements OverlayHandle {
       detail.appendChild(sec);
     }
 
+    // F72：批注（人写，落被分析仓 <repo>/.codepicture/annotations/、可提交）+ doc-link 写。
+    detail.appendChild(this.annotationSection(nv, s));
+    detail.appendChild(this.docLinkForm(s));
+
     this.sidebarEl.appendChild(detail);
+  }
+
+  /** F72：批注区——列已有批注（Active）+ 每条删除 + 添加表单（人写=Active，落仓可提交）。 */
+  private annotationSection(nv: NodeView, s: Symbol): HTMLElement {
+    const sec = document.createElement("div");
+    sec.className = "panorama-node-section";
+    const h = document.createElement("div");
+    h.className = "panorama-node-section-title";
+    h.textContent = `批注（${nv.annotations.length}）`;
+    sec.appendChild(h);
+    for (const a of nv.annotations) {
+      const row = document.createElement("div");
+      row.className = "panorama-ann-row";
+      const body = document.createElement("div");
+      body.className = "panorama-ann-body";
+      body.textContent = a.body;
+      row.appendChild(body);
+      const foot = document.createElement("div");
+      foot.className = "panorama-ann-foot";
+      const author = document.createElement("span");
+      author.className = "panorama-ann-author";
+      author.textContent = a.author + (a.status === "Proposed" ? " · 待批准" : "");
+      foot.appendChild(author);
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "panorama-btn panorama-ann-del";
+      del.textContent = "删除";
+      del.addEventListener("click", () =>
+        void this.mutateAnnotation(() => api.removeAnnotation(this.repo ?? "", a.id), s.id),
+      );
+      foot.appendChild(del);
+      row.appendChild(foot);
+      sec.appendChild(row);
+    }
+    // 添加表单（人写 = Active）。symbol 段取 s.id 的 `#` 后半（annotations_for 用全 id 查得到）。
+    const form = document.createElement("div");
+    form.className = "panorama-ann-form";
+    const ta = document.createElement("textarea");
+    ta.className = "panorama-ann-input";
+    ta.placeholder = "给这个符号写条批注…（落进仓库、可随代码提交）";
+    form.appendChild(ta);
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "panorama-btn";
+    addBtn.textContent = "添加批注";
+    addBtn.addEventListener("click", () => {
+      const bodyText = ta.value.trim();
+      if (!bodyText) return;
+      void this.mutateAnnotation(
+        () => api.addAnnotation(this.repo ?? "", s.file, symbolSegForAnnotation(s.id), bodyText, "me"),
+        s.id,
+      );
+    });
+    form.appendChild(addBtn);
+    sec.appendChild(form);
+    return sec;
+  }
+
+  /** F72：doc-link 写表单——把某 `.md`（仓库相对）关联到该符号（写进仓 .md 的 frontmatter，可提交）。 */
+  private docLinkForm(s: Symbol): HTMLElement {
+    const sec = document.createElement("div");
+    sec.className = "panorama-node-section";
+    const h = document.createElement("div");
+    h.className = "panorama-node-section-title";
+    h.textContent = "关联文档";
+    sec.appendChild(h);
+    const form = document.createElement("div");
+    form.className = "panorama-ann-form";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "panorama-ann-input";
+    input.placeholder = "把某 .md（仓库相对路径）关联到此符号…";
+    form.appendChild(input);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "panorama-btn";
+    btn.textContent = "关联";
+    btn.addEventListener("click", () => {
+      const doc = input.value.trim();
+      if (!doc) return;
+      void this.mutateAnnotation(() => api.writeDocLink(this.repo ?? "", doc, s.id), s.id);
+    });
+    form.appendChild(btn);
+    sec.appendChild(form);
+    return sec;
+  }
+
+  /** F72：写/删批注或 doc-link 后重取节点详情刷新。竞态由 openNodeDetail 的 searchSeq 兜。 */
+  private async mutateAnnotation(op: () => Promise<unknown>, symbolId: string): Promise<void> {
+    if (!this.repo) return;
+    try {
+      await op();
+      await this.openNodeDetail(symbolId);
+    } catch (e) {
+      showActionFailureToast("批注操作失败", String(e));
+    }
   }
 
   /** callers/callees 一节：每条边显示对端符号 id + confidence + 调用行，可点击钻取。 */

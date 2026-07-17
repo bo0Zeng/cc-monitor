@@ -243,6 +243,92 @@ pub async fn panorama_drift(repo: String) -> Result<Vec<model::DriftItem>, Strin
     with_engine(repo, |e| e.drift()).await
 }
 
+// === F72:批注 + 文档关联写层（只调 core 现成接口，SS-15；写落被分析仓、人手势触发） ===
+
+/// F72:人写批注(直接 Active——人写永远赢)。落被分析仓 `<repo>/.codepicture/annotations/`(可提交、
+/// 随仓走，F72 分家)。`symbol` = 符号段(如 `f`/`Type::method`)，None = 文件级批注。
+#[tauri::command]
+pub async fn panorama_add_annotation(
+    repo: String,
+    file: String,
+    symbol: Option<String>,
+    body: String,
+    author: String,
+) -> Result<String, String> {
+    with_engine(repo, move |e| {
+        e.add_annotation(&file, symbol.as_deref(), &body, &author)
+            .map_err(|e| e.to_string())
+    })
+    .await?
+}
+
+/// F72:agent 提议批注(Proposed，需人 `approve` 才 Active——人审门禁；对消费者不可见直到批准)。
+#[tauri::command]
+pub async fn panorama_propose_annotation(
+    repo: String,
+    file: String,
+    symbol: Option<String>,
+    body: String,
+    author: String,
+) -> Result<String, String> {
+    with_engine(repo, move |e| {
+        e.propose_annotation(&file, symbol.as_deref(), &body, &author)
+            .map_err(|e| e.to_string())
+    })
+    .await?
+}
+
+/// F72:批准一条 Proposed 批注 → Active(人审门禁)。
+#[tauri::command]
+pub async fn panorama_approve_annotation(repo: String, id: String) -> Result<bool, String> {
+    with_engine(repo, move |e| {
+        e.approve_annotation(&id).map_err(|e| e.to_string())
+    })
+    .await?
+}
+
+/// F72:删批注。
+#[tauri::command]
+pub async fn panorama_remove_annotation(repo: String, id: String) -> Result<bool, String> {
+    with_engine(repo, move |e| {
+        e.remove_annotation(&id).map_err(|e| e.to_string())
+    })
+    .await?
+}
+
+/// F72:列全部批注(含 Proposed，给审批队列)。
+#[tauri::command]
+pub async fn panorama_list_annotations(repo: String) -> Result<Vec<model::Annotation>, String> {
+    with_engine(repo, |e| e.list_annotations()).await
+}
+
+/// F72:把某 `.md` 关联到某符号(写 doc 的 frontmatter `covers:`，进仓、可提交)。人手势触发——
+/// 绝不接自动流程(融合手册)。
+#[tauri::command]
+pub async fn panorama_write_doc_link(
+    repo: String,
+    doc: String,
+    target: String,
+) -> Result<(), String> {
+    with_engine(repo, move |e| {
+        e.write_doc_link(&doc, &target).map_err(|e| e.to_string())
+    })
+    .await?
+}
+
+/// F72:删除某 `.md` 对某符号的关联。
+#[tauri::command]
+pub async fn panorama_remove_doc_link(
+    repo: String,
+    doc: String,
+    target: String,
+) -> Result<bool, String> {
+    with_engine(repo, move |e| {
+        e.remove_doc_link(&doc, &target).map_err(|e| e.to_string())
+    })
+    .await?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,6 +402,49 @@ mod tests {
             assert!(collect_symbols_in_file(&g, "nope.rs").is_empty());
         }
         std::fs::remove_dir_all(&repo).ok();
+        std::fs::remove_dir_all(&store).ok();
+    }
+
+    #[test]
+    fn annotation_writes_to_repo_not_store_after_split() {
+        // F72:re-vendor 后批注分家——store_dir=Some 时批注落 <repo>/.codepicture/annotations/、
+        // 不落 store;写批注前 repo 内无 .codepicture(D20:批注 lazy)。验 re-vendor 的 core 行为。
+        let base = std::env::temp_dir();
+        let repo = base.join("cc-monitor-f72-ann-repo");
+        let store = base.join("cc-monitor-f72-ann-store");
+        std::fs::remove_dir_all(repo.join(".codepicture")).ok();
+        std::fs::remove_dir_all(&store).ok();
+        std::fs::create_dir_all(&repo).ok();
+        std::fs::write(repo.join("lib.rs"), "pub fn f() {}\n").unwrap();
+        let arc = engine_for_with_store(repo.to_str().unwrap(), Some(store.clone())).expect("open");
+        {
+            let mut g = arc.lock().unwrap();
+            g.index().expect("index");
+            assert!(
+                !repo.join(".codepicture").exists(),
+                "写批注前 repo 内不该有 .codepicture（D20 lazy）"
+            );
+            let id = g
+                .add_annotation("lib.rs", Some("f"), "note", "me")
+                .expect("add_annotation");
+            assert!(
+                repo.join(".codepicture")
+                    .join("annotations")
+                    .join(format!("{id}.json"))
+                    .is_file(),
+                "批注应落 <repo>/.codepicture/annotations/"
+            );
+            let store_has_ann = std::fs::read_dir(store.join(".codepicture"))
+                .map(|rd| rd.flatten().any(|e| e.path().join("annotations").exists()))
+                .unwrap_or(false);
+            assert!(!store_has_ann, "批注不该落 store（已分家回仓）");
+            assert_eq!(
+                g.annotations_for(&"lib.rs#f".to_string()).len(),
+                1,
+                "应读回批注"
+            );
+        }
+        std::fs::remove_dir_all(repo.join(".codepicture")).ok();
         std::fs::remove_dir_all(&store).ok();
     }
 }

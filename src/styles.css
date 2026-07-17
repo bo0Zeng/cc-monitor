@@ -4207,6 +4207,47 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   font-size: var(--font-size-small);
   margin-top: 2px;
 }
+/* F72：批注 + doc-link 写 UI。 */
+.panorama-ann-row {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-faint);
+}
+.panorama-ann-body {
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.panorama-ann-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.panorama-ann-author {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+.panorama-ann-del {
+  margin-left: auto;
+}
+.panorama-ann-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.panorama-ann-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 2.2em;
+  padding: 6px 8px;
+  background: var(--bg-1);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+  resize: vertical;
+}
 .panorama-sym-row {
   display: flex;
   align-items: baseline;
