@@ -79,3 +79,15 @@ export function normalizeOriginKeys(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((x): x is string => typeof x === "string");
 }
+
+/**
+ * 两张覆盖表内容是否相同（浅比较：同键集 + 同值）。用于 toggle 后**仅当变化才存盘**，
+ * 消除生产宿主（WebView2/Chromium）对默认展开大区 `open=false→true` 异步触发 toggle → 每次
+ * renderList 都对同一张表重复写的写放大（`nextOverrides` 幂等收敛，内容常不变）。
+ */
+export function sameOverrides(a: OriginOpenOverrides, b: OriginOpenOverrides): boolean {
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  return ak.every((k) => a[k] === b[k]);
+}

@@ -13,6 +13,7 @@ import {
   defaultOriginOpen,
   resolveOriginOpen,
   nextOverrides,
+  sameOverrides,
   normalizeOverrides,
   normalizeOriginKeys,
 } from "./history-prefs.ts";
@@ -97,6 +98,24 @@ test("normalizeOriginKeys：非数组→空；只留字符串项", () => {
   deepEq(normalizeOriginKeys(null), []);
   deepEq(normalizeOriginKeys({}), []);
   deepEq(normalizeOriginKeys(["a", 1, "b", null]), ["a", "b"]);
+});
+
+// === sameOverrides（写放大守卫核心）===
+test("sameOverrides：空表 == 空表", () => {
+  eq(sameOverrides({}, {}), true);
+});
+test("sameOverrides：同键同值 → true", () => {
+  eq(sameOverrides({ hostA: true, "": false }, { "": false, hostA: true }), true);
+});
+test("sameOverrides：键数不同 → false", () => {
+  eq(sameOverrides({ hostA: true }, {}), false);
+  eq(sameOverrides({ hostA: true }, { hostA: true, hostB: false }), false);
+});
+test("sameOverrides：同键不同值 → false", () => {
+  eq(sameOverrides({ hostA: true }, { hostA: false }), false);
+});
+test("sameOverrides：键不同（数同）→ false", () => {
+  eq(sameOverrides({ hostA: true }, { hostB: true }), false);
 });
 
 if (failed > 0) {
