@@ -23,6 +23,7 @@ import type { AgentsPanel, AgentEntry } from "./agents-panel";
 import { LS_KEYS, safeSet } from "./local-storage";
 import { runRemoteResume, runRemoteResumeTmux, runRemoteAttach } from "./remote-launch-run";
 import { pickFreshTmuxName } from "./remote-launch";
+import { AGENT_PROFILE } from "./agent-profile";
 import { collectEditedFiles } from "./panorama/session-files";
 import { openPanePreview } from "./views/pane-preview";
 import { turnEndNotifier } from "./turn-notify";
@@ -188,7 +189,7 @@ const TMUX_CACHE_TTL_MS = 8000;
  * 但视启动路径也可能报解释器 `node`(claude 是 Node CLI)——两者都认,叠加 cwd 精确匹配
  * 收窄误配(D-正确性 Sug2:只认 claude 会在报 node 的环境静默失效)。 */
 function isClaudeTmuxCommand(cmd: string): boolean {
-  return cmd === "claude" || cmd === "node";
+  return AGENT_PROFILE.livenessProcessNames.has(cmd);
 }
 
 /**

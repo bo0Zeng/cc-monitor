@@ -15,6 +15,9 @@
  *   字段类型，任何缺失 / 非字符串一律返 `null`，交由调用方回退 prettyJson。
  */
 
+// F-MA：agent-profile 是纯常量模块（无 DOM/render），不破坏本文件"可 tsx 独立单测"的性质。
+import { AGENT_PROFILE } from "../agent-profile";
+
 // === 类型（纯数据，无 DOM） ===
 
 export type DiffRowType = "add" | "del" | "ctx";
@@ -273,7 +276,7 @@ export function normalizeMultiEditInput(input: unknown): OldNew[] | null {
 
 /** 哪些工具走 diff 渲染。NotebookEdit **不在内**（v1 回退 raw JSON，0 真实样本）。 */
 export function isDiffTool(name: string): boolean {
-  return name === "Edit" || name === "Write" || name === "MultiEdit";
+  return AGENT_PROFILE.diffTools.has(name);
 }
 
 /**
