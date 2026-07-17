@@ -375,6 +375,8 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 **为什么不能松动**：对账是把"一次性 ended 信号"在重载后重建出来的唯一机制；集合不准 = 要么僵尸 live Tab 复现（漏归档），要么活会话被误杀且无后续行救活（误归档）。断连窗口期的误归档是**有意取舍**（重连后 daemon 重发 added + 重放行 → un-archive 自愈）。
 
+**F74c(#60-A) 补充——tmux 存活对账是 `remote_tx` 的第三生产者**：`tmux_reconcile.rs` 的 poller（带外杀 tmux 后端 → 变灰）与 daemon 帧、断连 flush **并列**为 `remote_tx` 的生产者，**必须**把 retire 的 sid 当 `SessionChange{removed}` 经该通道下发，**绝不**直接写 `remote_active`、**绝不**让前端直接 archive——唯一写者仍是 `remote-session-emitter`。poller 只**读** `announced_registry`（`snapshot_announced_by_origin`，不加写者，§27/F28 写者仍只有 stream_loop）。误判防线（`ever_bound` 门 + debounce + 漂移靠 announced_live 剔除 + ssh 抖动/NO_TMUX 跳过）在 `reconcile_step`，阈值真机标定。**后人给 poller 接线时不许把它直连前端或直写集合。**
+
 ---
 
 ## 25. 行事件投递是 at-least-once —— 按 uuid 累积状态的前端模块必须自行幂等（issue #25）

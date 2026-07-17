@@ -37,6 +37,7 @@ mod ssh_source;
 mod subagent;
 mod tasks;
 mod tmux;
+mod tmux_reconcile;
 mod utils;
 mod watcher;
 
@@ -653,6 +654,12 @@ pub fn run() {
                         }
                     });
                 }
+                // F74c(#60-A)：tmux 存活对账 poller——带外杀 tmux 后端 → 有界时间内变灰。
+                // retire 的 sid 当 removed 送进 remote_tx（§24 由唯一写者 remote-session-emitter 兜，
+                // 与断连 flush 同一通道）。仅有远端配置时起（在本 if 块内）。
+                tauri::async_runtime::spawn(tmux_reconcile::run_tmux_reconcile_poller(
+                    remote_tx.clone(),
+                ));
             }
 
             // 焦点同步功能已移除：Windows 11 默认 WT 是单进程多窗口架构，
