@@ -116,7 +116,8 @@ body.viewer-mode #tab-bar-resizer,
 body.viewer-mode .settings-trigger,
 body.viewer-mode .history-trigger,
 body.viewer-mode .panorama-trigger,
-body.viewer-mode .usage-trigger {
+body.viewer-mode .usage-trigger,
+body.viewer-mode .sftp-trigger {
   display: none;
 }
 
@@ -360,6 +361,58 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 .usage-trigger:hover {
   background: var(--overlay-hover);
   color: var(--text);
+}
+
+/* F83（#39）：顶栏 SFTP 入口（∑ 左边，同排 32px 间距）。 */
+.sftp-trigger {
+  position: absolute;
+  top: 4px;
+  right: 136px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 15px;
+  z-index: 2;
+}
+.sftp-trigger:hover {
+  background: var(--overlay-hover);
+  color: var(--text);
+}
+/* F83：多台远端时的选主机浮层（body-level fixed，照 history 菜单）。 */
+.sftp-host-picker {
+  position: fixed;
+  z-index: 100001;
+  min-width: 160px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px var(--overlay-shadow);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.sftp-host-picker-item {
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+}
+.sftp-host-picker-item:hover {
+  background: var(--overlay-hover);
 }
 
 /* F88a：用量视图 overlay（照 history-view 的 body-level fixed 范式）。 */
@@ -1954,7 +2007,8 @@ body.settings-window-mode .settings-panel {
 body.settings-window-mode .settings-trigger,
 body.settings-window-mode .history-trigger,
 body.settings-window-mode .panorama-trigger,
-body.settings-window-mode .usage-trigger {
+body.settings-window-mode .usage-trigger,
+body.settings-window-mode .sftp-trigger {
   display: none;
 }
 

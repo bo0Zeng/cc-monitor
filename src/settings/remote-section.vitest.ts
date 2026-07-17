@@ -11,8 +11,9 @@ import {
   findHostByOrigin,
   writeRemoteConfig,
   readRemoteConfig,
+  sftpEligibleHosts,
 } from "./remote-section";
-import type { RemoteHostConfig } from "./remote-section";
+import type { RemoteHostConfig, RemoteConfig } from "./remote-section";
 
 describe("F43 shouldShowResetFingerprint", () => {
   it("已固化非空指纹 → 显示", () => {
@@ -160,5 +161,46 @@ describe("F59 daemonless write→read 往返（D-B1 同源回归：布尔字段�
     });
     const back = await readRemoteConfig();
     expect(back.hosts[0].daemonless).toBe(false);
+  });
+});
+
+describe("F83 sftpEligibleHosts", () => {
+  const mk = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({
+    label: "",
+    host: "",
+    port: 22,
+    user: "",
+    keyPath: "",
+    daemonPath: "",
+    hostKeyFingerprint: "",
+    addresses: [],
+    jump: "",
+    daemonless: false,
+    ...over,
+  });
+  const cfg = (hosts: RemoteHostConfig[]): RemoteConfig => ({ enabled: false, hosts });
+
+  it("空 hosts → []", () => {
+    expect(sftpEligibleHosts(cfg([]))).toEqual([]);
+  });
+  it("缺 host 或缺 user → 排除", () => {
+    const hosts = [
+      mk({ host: "10.0.0.2", user: "u" }), // 全填 → 留
+      mk({ host: "10.0.0.3", user: "" }), // 缺 user → 排
+      mk({ host: "", user: "u" }), // 缺 host → 排
+    ];
+    expect(sftpEligibleHosts(cfg(hosts)).map((h) => h.host)).toEqual(["10.0.0.2"]);
+  });
+  it("纯空白 host/user → 排除（trim）", () => {
+    const hosts = [mk({ host: "  ", user: "u" }), mk({ host: "h", user: "  " })];
+    expect(sftpEligibleHosts(cfg(hosts))).toEqual([]);
+  });
+  it("多台全填 → 全留（保序）", () => {
+    const hosts = [mk({ label: "a", host: "h1", user: "u" }), mk({ label: "b", host: "h2", user: "u" })];
+    expect(sftpEligibleHosts(cfg(hosts)).map((h) => h.label)).toEqual(["a", "b"]);
+  });
+  it("不看 enabled（禁用远端也能纯浏览文件）", () => {
+    const hosts = [mk({ host: "h", user: "u" })];
+    expect(sftpEligibleHosts({ enabled: false, hosts })).toHaveLength(1);
   });
 });
