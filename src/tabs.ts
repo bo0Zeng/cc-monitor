@@ -1615,10 +1615,38 @@ export class TabManager {
         label: "预览画面",
         onClick: () => void openPanePreview(origin, match.name),
       });
+      // F79：杀死会话项与 attach 同门（同一 tmux 会话）。
+      updateTabContextMenuItem("kill", {
+        id: "kill",
+        label: "杀死会话（kill tmux）",
+        danger: true,
+        onClick: () => this.killRemoteTmux(origin, match.name),
+      });
     } else {
       removeTabContextMenuItem("attach");
       removeTabContextMenuItem("preview");
+      removeTabContextMenuItem("kill");
     }
+  }
+
+  /** F79(#38)：杀死远端 tmux 会话——二次确认后 kill-session。变灰由 #60-A 对账兜（不主动 archive，守 §24）。 */
+  private killRemoteTmux(origin: string, tmuxName: string): void {
+    const ok = window.confirm(
+      `杀死会话「${tmuxName}」（机器 ${origin}）？\n\n将终止远端这个 tmux 会话里正在运行的 Claude，未保存的交互会中断。\n此操作不可恢复。`,
+    );
+    if (!ok) return;
+    void (async () => {
+      try {
+        await invoke("kill_remote_tmux", { origin, target: tmuxName });
+        showActionFailureToast(
+          "已杀死会话",
+          `远端 [${origin}] 的 tmux 会话「${tmuxName}」已终止；tab 稍后自动变灰。`,
+          { level: "info", durationMs: 6000 },
+        );
+      } catch (err) {
+        showActionFailureToast("杀死会话失败", String(err));
+      }
+    })();
   }
 
   /** 打开指定 Tab 的 cwd 到系统文件管理器。无 cwd / 远端 Tab 静默忽略。 */
@@ -1898,6 +1926,13 @@ export class TabManager {
               label: "预览画面",
               onClick: () => void openPanePreview(origin, m.name),
             });
+            // F79：杀死会话（同一 tmux 会话，破坏性 + 二次确认）。
+            items.push({
+              id: "kill",
+              label: "杀死会话（kill tmux）",
+              danger: true,
+              onClick: () => this.killRemoteTmux(origin, m.name),
+            });
           }
         } else {
           items.push({
@@ -1910,6 +1945,13 @@ export class TabManager {
             id: "preview",
             label: "预览画面（检测 tmux…）",
             enabled: false,
+            onClick: () => {},
+          });
+          items.push({
+            id: "kill",
+            label: "杀死会话（检测 tmux…）",
+            enabled: false,
+            danger: true,
             onClick: () => {},
           });
           needAsyncAttach = true;
@@ -1972,6 +2014,7 @@ interface TabMenuItem {
   id?: string;
   label: string;
   enabled?: boolean; // 缺省 true;false = 禁用占位
+  danger?: boolean; // F79：破坏性项（杀会话）红色样式
   onClick: () => void;
 }
 let activeTabMenu: HTMLElement | null = null;
@@ -1984,6 +2027,7 @@ function makeTabMenuButton(it: TabMenuItem): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "tab-context-menu-item";
+  if (it.danger) btn.classList.add("is-danger");
   btn.textContent = it.label;
   const enabled = it.enabled !== false;
   btn.disabled = !enabled;

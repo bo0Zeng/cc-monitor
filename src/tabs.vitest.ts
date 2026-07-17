@@ -935,6 +935,30 @@ describe("F74c(#60-B) isCwdFallbackMatch（cwd 回退串味提示判定）", () 
   });
 });
 
+describe("F79 杀死远端 tmux 会话（二次确认 + kill_remote_tmux）", () => {
+  beforeEach(() => vi.clearAllMocks());
+  type KillTM = { killRemoteTmux(origin: string, tmuxName: string): void };
+  it("二次确认通过 → invoke kill_remote_tmux（origin/target 正确，变灰由 #60-A 兜、不主动 archive）", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const tm = makeTM() as unknown as KillTM;
+    tm.killRemoteTmux("hostA", "cc-abc");
+    await Promise.resolve();
+    const call = vi.mocked(invoke).mock.calls.find((c) => c[0] === "kill_remote_tmux");
+    expect(call).toBeTruthy();
+    expect(call![1]).toMatchObject({ origin: "hostA", target: "cc-abc" });
+    confirmSpy.mockRestore();
+  });
+  it("二次确认取消 → 不 invoke", () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const tm = makeTM() as unknown as KillTM;
+    tm.killRemoteTmux("hostA", "cc-abc");
+    expect(
+      vi.mocked(invoke).mock.calls.some((c) => c[0] === "kill_remote_tmux"),
+    ).toBe(false);
+    confirmSpy.mockRestore();
+  });
+});
+
 describe("F70 会话改动集聚合（onLine → touchedFiles / touchedFilesFor 门控）", () => {
   const editLine = (
     sid: string,

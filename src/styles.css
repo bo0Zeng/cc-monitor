@@ -180,6 +180,14 @@ body.viewer-mode .panorama-trigger {
 .tab-context-menu-item:hover {
   background: var(--overlay-hover);
 }
+/* F79：破坏性项（杀死会话）红色。 */
+.tab-context-menu-item.is-danger {
+  color: var(--error);
+}
+.tab-context-menu-item.is-danger:hover:not(:disabled) {
+  background: var(--error);
+  color: var(--bg-2);
+}
 
 /* === Tab Bar === */
 

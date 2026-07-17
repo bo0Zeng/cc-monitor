@@ -133,6 +133,36 @@ pub async fn capture_remote_pane(origin: String, target: String) -> Result<Strin
     classify_capture_output(&String::from_utf8_lossy(&buf))
 }
 
+/// F79(#38)：杀死远端 tmux 会话（`tmux kill-session -t <target>`）。**破坏性操作**——前端二次确认后才调。
+/// `target` 经 `shell_quote`（来自 `list_remote_tmux` 的真实会话名，仍防御转义）。杀完 tab 变灰由 #60-A
+/// 的 tmux 存活对账兜（本命令不主动 archive，守 §24）。成功无输出；失败（会话不存在等）经 `2>&1` 捕获报错。
+#[tauri::command]
+pub async fn kill_remote_tmux(origin: String, target: String) -> Result<(), String> {
+    let cfg = crate::load_remote_config_by_label(&origin)
+        .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
+    let cmd = format!(
+        "if command -v tmux >/dev/null 2>&1; then tmux kill-session -t {} 2>&1; else printf 'NO_TMUX\\n'; fi",
+        ssh_source::shell_quote(&target)
+    );
+    let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
+    let mut reader = BufReader::new(stream);
+    let mut buf: Vec<u8> = Vec::new();
+    reader
+        .read_to_end(&mut buf)
+        .await
+        .map_err(|e| format!("杀 tmux 会话失败: {e}"))?;
+    let out = String::from_utf8_lossy(&buf);
+    let trimmed = out.trim();
+    if trimmed == "NO_TMUX" {
+        return Err("远端未安装 tmux".to_string());
+    }
+    // kill-session 成功无输出；非空 = stderr 里的失败信息（如 "can't find session"）。
+    if !trimmed.is_empty() {
+        return Err(format!("tmux kill-session: {trimmed}"));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
