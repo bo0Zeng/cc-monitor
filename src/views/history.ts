@@ -30,6 +30,11 @@ import { runRemoteResume } from "../remote-launch-run";
 import { getBehavior } from "../behavior";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { formatTimestampSmart } from "../format";
+import {
+  shouldRefetchRemote,
+  HISTORY_REMOTE_TTL_MS,
+  type RemoteSourceCache,
+} from "./history-cache";
 
 /** 项目级元数据，从 `list_history_projects` 拿。不含 session 内容。
  *  P1.2：后端 wire 全 camelCase（`#[serde(rename_all = "camelCase")]`）。 */
@@ -147,8 +152,15 @@ export class HistoryView {
   /** fixed overlay 根；open 时挂 document.body，close 时 remove。 */
   private root: HTMLElement;
 
-  /** 项目级数据，初次 open 拉一次 */
+  /** 项目级数据，初次 open 拉一次（= 本地批 + 远端批缓存合并的派生视图） */
   private projects: HistoryProject[] = [];
+  /**
+   * F76（#46）：远端「来源列表」缓存，跨 close/open 常驻单例。远端 fan-out 贵
+   * （`remote_history.rs` 每台独立 SSH 连接、30s 超时），TTL 内 reopen 复用不重连；
+   * 本地批便宜（<100ms）不缓存、每次 `refresh` 重扫。`null` = 从未成功抓过远端。
+   * 刷新按钮 = 强制失效（`refresh(true)` 清此缓存重 fan-out）。
+   */
+  private remoteCache: RemoteSourceCache<HistoryProject> | null = null;
   /** project_dir → 已加载的会话详情 */
   private sessionCache = new Map<string, HistorySessionEntry[]>();
   /** project_dir → 当前正在加载中的 Promise，防重复触发 */
@@ -230,14 +242,17 @@ export class HistoryView {
     this.resultsEl.replaceChildren();
     this.updateModeUI();
     this.closeViewer();
-    // 重新打开时清掉旧缓存（避免文件已被外部改动后展示陈旧数据）
+    // 重新打开时清掉会话详情缓存（避免文件已被外部改动后展示陈旧数据）。
+    // F76（#46）：**远端「来源列表」缓存 `remoteCache` 刻意不清**——它跨 open 常驻、由
+    // `refresh(false)` 的 TTL 门控复用，正是「不再每次重连所有远端」的关键；刷新按钮走
+    // `refresh(true)` 才强制失效。session 详情层仍每次清（#46 只讲来源列表，非会话详情）。
     this.sessionCache.clear();
     this.loadingProjects.clear();
     this.loadedAll = false;
     this.updateSearchPlaceholder();
     // issue #5: 注册到 dispatcher 弹层栈，Esc 由 dispatcher 派给我
     dispatcher.pushOverlay(this);
-    await this.refresh();
+    await this.refresh(); // F76：默认 force=false → TTL 内复用远端缓存
     this.searchInput.focus();
   }
 
@@ -320,31 +335,43 @@ export class HistoryView {
     this.handleEscape();
   }
 
-  private async refresh(): Promise<void> {
+  /**
+   * F76（#46）：本地「来源」始终重扫（便宜、防陈旧），远端 fan-out 走 TTL 缓存
+   * （`remote_history.rs` 每台独立 SSH、30s 超时，是「每次重新加载」的痛点单点）。
+   * @param force `true`（刷新按钮）= 无视 TTL 清远端缓存、必重 fan-out；
+   *              `false`（open）= TTL 内复用上次远端快照，不重连所有远端。
+   */
+  private async refresh(force = false): Promise<void> {
     this.statusEl.textContent = "加载项目列表…";
     this.listEl.replaceChildren();
     this.sessionCache.clear();
     this.loadingProjects.clear();
+    if (force) this.remoteCache = null; // 强刷：丢弃远端缓存 → 下面 shouldRefetch 必为 true
+    // 本地批：每次重扫。失败即整体失败（本地都读不了没得显示）。
+    let local: HistoryProject[];
     try {
-      const local = await invoke<HistoryProject[]>("list_history_projects");
-      this.projects = local;
-      this.renderList();
+      local = await invoke<HistoryProject[]>("list_history_projects");
     } catch (e) {
       this.statusEl.textContent = `加载失败：${String(e)}`;
       return;
     }
-    // issue #16：远端历史叠加（独立 try——远端连不上/无配置不影响本地浏览）。
-    // 远端未启用时后端返回空数组，无感 no-op。
+    // 先用「本地 + 已有远端缓存」渲染一帧（远端缓存命中时这就是最终态）。
+    this.projects = [...local, ...(this.remoteCache?.projects ?? [])];
+    this.renderList();
+
+    // 远端批：TTL 门控。缓存新鲜（且非强刷）→ 上面那帧已含缓存，直接返回不发 IPC。
+    if (!shouldRefetchRemote(this.remoteCache, Date.now(), HISTORY_REMOTE_TTL_MS)) {
+      return;
+    }
+    // 需 fan-out：独立 try——远端连不上/无配置不影响本地浏览。
+    // 空结果也缓存（无远端配置时避免每次都发这个 IPC）。失败降级复用旧缓存（上面那帧已含）。
     try {
-      const remote = await invoke<HistoryProject[]>(
-        "list_remote_history_projects",
-      );
-      if (remote.length > 0) {
-        this.projects = [...this.projects, ...remote];
-        this.renderList();
-      }
+      const remote = await invoke<HistoryProject[]>("list_remote_history_projects");
+      this.remoteCache = { projects: remote, loadedAt: Date.now() };
+      this.projects = [...local, ...remote];
+      this.renderList();
     } catch (e) {
-      // 远端查询失败只提示，不阻断本地历史
+      // 远端查询失败只提示，不阻断本地历史；有旧缓存则继续显示（此前那帧已渲染），无则本地-only。
       showActionFailureToast("远端历史加载失败", String(e));
     }
   }
@@ -527,7 +554,8 @@ export class HistoryView {
     refreshBtn.type = "button";
     refreshBtn.className = "history-refresh";
     refreshBtn.textContent = "刷新";
-    refreshBtn.addEventListener("click", () => void this.refresh());
+    // F76（#46）：刷新按钮 = 强制失效，无视 TTL 重新 fan-out 所有远端（保留用户主动强刷语义）。
+    refreshBtn.addEventListener("click", () => void this.refresh(true));
     bar.appendChild(refreshBtn);
     this.treeOnlyEls.push(refreshBtn);
 
