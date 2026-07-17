@@ -896,6 +896,7 @@ pub fn run() {
             pubkey::push_public_key,
             tmux::list_remote_tmux,
             tmux::capture_remote_pane,
+            tmux::kill_remote_tmux,
             // Batch15-P1：code-picture 代码全景后端命令族（per-repo Engine 池,只读查询）
             panorama::panorama_index,
             panorama::panorama_reindex,
