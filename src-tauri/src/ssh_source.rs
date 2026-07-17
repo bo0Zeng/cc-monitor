@@ -963,6 +963,16 @@ fn announced_registry() -> &'static std::sync::Mutex<
     REMOTE_ANNOUNCED.get_or_init(Default::default)
 }
 
+/// F74c（#60-A）：快照「origin → 当前宣告活跃的 sid 集」，供 tmux 存活对账 poller 读。
+/// **只读** announced_registry（不加写者，§27/F28 写者不变——写者仍只有 stream_loop）。
+pub fn snapshot_announced_by_origin(
+) -> std::collections::HashMap<String, std::collections::HashSet<String>> {
+    let reg = announced_registry().lock().unwrap();
+    reg.iter()
+        .map(|(origin, sids)| (origin.clone(), sids.keys().cloned().collect()))
+        .collect()
+}
+
 /// F28：frontend-ready 时重发所有已宣告远端会话（骨架 + 初始灯）。幂等
 /// （createSkeletonTab/updateActivity 均幂等）；宣告先于该会话 replay 行 emit
 /// 由调用方保证（lib.rs 在 replay 之前调本函数）。

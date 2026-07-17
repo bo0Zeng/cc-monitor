@@ -1,0 +1,253 @@
+//! F74c（#60-A）：tmux 存活对账——「带外（`Ctrl-b &` / `tmux kill-session` 等）杀掉某会话的
+//! tmux 后端 → 对应 tab 在有界时间内变灰」。
+//!
+//! **背景**：`remote_active`（`lib.rs`）只由 daemon 的 pidfile 事件（SessionAdded/Removed）驱动，
+//! daemon 从不看 tmux。带外杀 tmux 时 claude 进程可能仍被守护托管而不死 → daemon 一直判活 →
+//! tab 恒 live，直到断连 flush 才批量清（issue #60-A）。本模块补一条**独立的 tmux 存活信号**。
+//!
+//! **架构定死（设计 agent 2026-07-17）**：cc-monitor 侧低频 poller（非 daemon 侧、非前端驱动）——
+//! 零 daemon/wire 改动、可 CI 单测、F90 可整段 lift。
+//! - **§24 单写者不破**：poller 绝不碰 `remote_active`、绝不让前端直接 archive；只把 retire 的 sid
+//!   当 `SessionChange{removed}` 送进 `remote_tx` 的一个 clone，由唯一写者 `remote-session-emitter`
+//!   照常处理（forget + emit SESSION_ENDED → 前端 archiveTab）。断连 flush 早已是这样的第二生产者。
+//! - **source-agnostic**：`reconcile_step` 的「某后端自报正在跑的 sid 集」是裸 `HashSet`（**不叫 tmux_***），
+//!   F90 lift 时把来源从 `parse_tmux_ls` 的 `@ccm_sid` 换成 daemon `session.status()` RPC，函数不变
+//!   （守 INVARIANT §30「别固化成只有 tmux 能这样」）。
+//!
+//! **防误判**（假阳性）：① `ever_bound` 门——只对「曾在后端自报里出现过」的 sid 判 retire，
+//! never-bound（bg / 无 wrapper / 直起 claude）永不误判；② debounce——连续缺失够 `RETIRE_MISS_THRESHOLD`
+//! 轮才 retire（挡 wrapper 刚起 `@ccm_sid` 未写的窗口）；③ `/branch` 漂移——daemon 先退旧 sid 宣告新
+//! sid，旧 sid 离开 `announced_live` 即被剔除追踪（不会误 retire 一个还活着只是换了 sid 的会话）；
+//! ④ 观测无效门——ssh 抖动（`Err`）/ 无 tmux（`Ok(None)`）跳过本轮不累计缺失（在 poller 里，不进纯函数）。
+//!
+//! **真机累积项**（Linux/CI 测不了 daemon 活性时序）：带外杀端到端变灰、60-A 触发点确认、
+//! `POLL_INTERVAL`/`RETIRE_MISS_THRESHOLD` 标定（现为占位常量）。
+
+use crate::session_map::SessionChange;
+use std::collections::{HashMap, HashSet};
+use std::sync::mpsc::Sender;
+use std::time::Duration;
+
+/// 对账轮询间隔（真机标定项）。灰延迟 ≈ `POLL_INTERVAL × RETIRE_MISS_THRESHOLD`。
+pub const POLL_INTERVAL: Duration = Duration::from_secs(8);
+/// 连续缺失多少轮才 retire（debounce，真机标定项）。
+pub const RETIRE_MISS_THRESHOLD: u32 = 2;
+
+/// 单个 sid 的对账追踪。
+#[derive(Default, Debug, Clone, PartialEq)]
+struct SidTrack {
+    /// 曾在某后端自报里出现过（= wrapper-in-tmux 会话）。只对这类做 retire 判定。
+    ever_bound: bool,
+    /// 连续缺失轮数。
+    miss: u32,
+    /// 已 retire（幂等：不重复 emit removed）。
+    retired: bool,
+}
+
+/// 每 origin 一份对账状态（跨轮累计缺失计数）。
+#[derive(Default)]
+pub struct ReconcileState {
+    per_sid: HashMap<String, SidTrack>,
+}
+
+/// 纯决策：给定「daemon 仍宣告活跃的 sid 集」+「某后端自报正在跑的 sid 集」+ debounce 阈值，
+/// 返回本轮应 retire（当 removed 冲进 emitter）的 sid。**source-agnostic、可 CI 单测、F90 可 lift。**
+///
+/// 只对「曾自报过（`ever_bound`）、现从所有后端消失、连续够 `retire_threshold` 轮」的 sid retire。
+/// never-bound 永不判（bg/无 wrapper 免疫）；漂移靠「sid 离开 `announced_live` 即剔除追踪」兜；
+/// ssh 抖动/无 tmux 由调用方跳过本轮、不进本函数（观测无效不累计缺失）。
+pub fn reconcile_step(
+    state: &mut ReconcileState,
+    announced_live: &HashSet<String>,
+    backend_reported_sids: &HashSet<String>,
+    retire_threshold: u32,
+) -> Vec<String> {
+    // 1. 剔除已不在 announced_live 的追踪（会话经 daemon 正常结束/漂移，清陈旧账）。
+    state.per_sid.retain(|sid, _| announced_live.contains(sid));
+    let mut retire = Vec::new();
+    // 2. 逐个宣告活跃 sid 更新追踪。
+    for sid in announced_live {
+        let t = state.per_sid.entry(sid.clone()).or_default();
+        if backend_reported_sids.contains(sid) {
+            // 后端自报在跑 → 绑定/复绑，清缺失、清 retired（复活重新计）。
+            t.ever_bound = true;
+            t.miss = 0;
+            t.retired = false;
+        } else if t.ever_bound && !t.retired {
+            // 曾绑定、现缺失 → 累计缺失；够阈值则 retire（幂等：置 retired 不再重发）。
+            t.miss += 1;
+            if t.miss >= retire_threshold {
+                t.retired = true;
+                retire.push(sid.clone());
+            }
+        }
+        // else：从未自报过（never_bound）→ 不判（bg/无 wrapper/直起 claude 免疫误 retire）。
+    }
+    retire
+}
+
+/// 低频 poller：读 `announced_registry`（origin→sids）、逐 origin 查 `list_remote_tmux` 的 `@ccm_sid`
+/// 集、跑 `reconcile_step`、把 retire 的 sid 当 `SessionChange{removed}` 送进 `remote_tx`（§24 由唯一
+/// 写者 emitter 兜底）。仅在有远端配置时由 lib.rs 起。
+pub async fn run_tmux_reconcile_poller(remote_tx: Sender<SessionChange>) {
+    let mut states: HashMap<String, ReconcileState> = HashMap::new();
+    loop {
+        tokio::time::sleep(POLL_INTERVAL).await;
+        let by_origin = crate::ssh_source::snapshot_announced_by_origin();
+        for (origin, announced_live) in &by_origin {
+            match crate::tmux::list_remote_tmux(origin.clone()).await {
+                Ok(Some(sessions)) => {
+                    let backend: HashSet<String> =
+                        sessions.iter().filter_map(|s| s.sid.clone()).collect();
+                    let st = states.entry(origin.clone()).or_default();
+                    let retire =
+                        reconcile_step(st, announced_live, &backend, RETIRE_MISS_THRESHOLD);
+                    if !retire.is_empty() {
+                        tracing::info!(
+                            "tmux-reconcile: [{origin}] retire {} sid(s)（tmux 后端已不在）",
+                            retire.len()
+                        );
+                        // 送进唯一写者通道；发送失败（emitter 线程没起）忽略——退化为旧行为。
+                        let _ = remote_tx.send(SessionChange {
+                            added: Vec::new(),
+                            removed: retire,
+                            status_changed: Vec::new(),
+                        });
+                    }
+                }
+                // Err（ssh 抖动）/ Ok(None)（NO_TMUX）→ 跳过本 origin 本轮，不动追踪（观测无效）。
+                _ => {}
+            }
+        }
+        // 清掉已无任何宣告的 origin 的 state，避免无界增长。
+        states.retain(|o, _| by_origin.contains_key(o));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hs(items: &[&str]) -> HashSet<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn never_bound_sid_never_retires() {
+        // 从未在后端自报里出现（bg/无 wrapper）→ 缺失多少轮都不 retire。
+        let mut st = ReconcileState::default();
+        let announced = hs(&["bg1"]);
+        let backend = hs(&[]); // 后端一直不报它
+        for _ in 0..10 {
+            assert!(reconcile_step(&mut st, &announced, &backend, 2).is_empty());
+        }
+    }
+
+    #[test]
+    fn bound_then_missing_retires_at_threshold_once() {
+        let mut st = ReconcileState::default();
+        let announced = hs(&["s"]);
+        // 第 1 轮：后端自报在跑 → ever_bound。
+        assert!(reconcile_step(&mut st, &announced, &hs(&["s"]), 2).is_empty());
+        // 后端消失：第 1 次缺失（miss=1 < 2）→ 不 retire。
+        assert!(reconcile_step(&mut st, &announced, &hs(&[]), 2).is_empty());
+        // 第 2 次缺失（miss=2 >= 2）→ retire 一次。
+        assert_eq!(
+            reconcile_step(&mut st, &announced, &hs(&[]), 2),
+            vec!["s".to_string()]
+        );
+    }
+
+    #[test]
+    fn retire_is_idempotent() {
+        let mut st = ReconcileState::default();
+        let announced = hs(&["s"]);
+        reconcile_step(&mut st, &announced, &hs(&["s"]), 1); // bound
+        assert_eq!(
+            reconcile_step(&mut st, &announced, &hs(&[]), 1),
+            vec!["s".to_string()]
+        );
+        // 之后继续缺失也不重复 emit（retired 已置）。
+        assert!(reconcile_step(&mut st, &announced, &hs(&[]), 1).is_empty());
+        assert!(reconcile_step(&mut st, &announced, &hs(&[]), 1).is_empty());
+    }
+
+    #[test]
+    fn rebind_resets_miss() {
+        let mut st = ReconcileState::default();
+        let announced = hs(&["s"]);
+        reconcile_step(&mut st, &announced, &hs(&["s"]), 3); // bound
+        reconcile_step(&mut st, &announced, &hs(&[]), 3); // miss=1
+        reconcile_step(&mut st, &announced, &hs(&[]), 3); // miss=2
+        reconcile_step(&mut st, &announced, &hs(&["s"]), 3); // 复绑 → miss=0
+                                                             // 再缺 2 轮仍不到阈值 3。
+        assert!(reconcile_step(&mut st, &announced, &hs(&[]), 3).is_empty());
+        assert!(reconcile_step(&mut st, &announced, &hs(&[]), 3).is_empty());
+    }
+
+    #[test]
+    fn sid_leaving_announced_drops_tracking() {
+        let mut st = ReconcileState::default();
+        reconcile_step(&mut st, &hs(&["s"]), &hs(&["s"]), 1); // bound
+        reconcile_step(&mut st, &hs(&["s"]), &hs(&[]), 1); // retire s（miss>=1）
+                                                           // s 经 daemon 正常结束 → 离开 announced_live → 追踪被剔除。
+        reconcile_step(&mut st, &hs(&[]), &hs(&[]), 1);
+        // s 又出现且后端在跑（复用同名）→ 重新 ever_bound、不带旧 retired 状态。
+        assert!(reconcile_step(&mut st, &hs(&["s"]), &hs(&["s"]), 1).is_empty());
+    }
+
+    #[test]
+    fn branch_drift_does_not_retire_old_sid() {
+        // /branch：daemon 先退旧 A 宣告新 B。对账里 A 离开 announced_live → 不 retire；B 新绑。
+        let mut st = ReconcileState::default();
+        reconcile_step(&mut st, &hs(&["A"]), &hs(&["A"]), 2); // A bound
+                                                              // 漂移后一轮：announced_live 只剩 B（daemon 已退 A），后端自报 B。
+        let retire = reconcile_step(&mut st, &hs(&["B"]), &hs(&["B"]), 2);
+        assert!(
+            retire.is_empty(),
+            "A 不该被 retire（它是正常漂移离开、非带外杀）"
+        );
+    }
+
+    #[test]
+    fn empty_backend_increments_ever_bound_sid() {
+        let mut st = ReconcileState::default();
+        let announced = hs(&["s"]);
+        reconcile_step(&mut st, &announced, &hs(&["s"]), 5); // ever_bound
+                                                             // 后端空集（tmux 全没了但会话还宣告活）→ 累计缺失。
+        for i in 1..5 {
+            assert!(
+                reconcile_step(&mut st, &announced, &hs(&[]), 5).is_empty(),
+                "miss={i} 未到阈值 5"
+            );
+        }
+        assert_eq!(
+            reconcile_step(&mut st, &announced, &hs(&[]), 5),
+            vec!["s".to_string()]
+        );
+    }
+
+    #[test]
+    fn threshold_one_retires_immediately_on_first_miss() {
+        let mut st = ReconcileState::default();
+        let announced = hs(&["s"]);
+        reconcile_step(&mut st, &announced, &hs(&["s"]), 1); // bound
+        assert_eq!(
+            reconcile_step(&mut st, &announced, &hs(&[]), 1),
+            vec!["s".to_string()]
+        );
+    }
+
+    #[test]
+    fn multiple_sids_mixed() {
+        // a: bound→missing 到阈值 retire；b: 一直在跑不动；c: never-bound 不判。
+        let mut st = ReconcileState::default();
+        let announced = hs(&["a", "b", "c"]);
+        reconcile_step(&mut st, &announced, &hs(&["a", "b"]), 2); // a,b bound; c never
+        let retire = reconcile_step(&mut st, &announced, &hs(&["b"]), 2); // a miss=1
+        assert!(retire.is_empty());
+        let mut retire = reconcile_step(&mut st, &announced, &hs(&["b"]), 2); // a miss=2 → retire
+        retire.sort();
+        assert_eq!(retire, vec!["a".to_string()]);
+    }
+}
