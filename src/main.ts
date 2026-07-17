@@ -18,7 +18,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
 import { TabManager } from "./tabs";
 import { loadTheme } from "./theme";
-import { SettingsPanel } from "./settings";
+import { SettingsPanel, SETTINGS_APPLIED_EVENT } from "./settings";
+import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
 import { PanoramaView } from "./views/panorama";
 import { UsageView } from "./views/usage-view";
@@ -101,6 +102,13 @@ window.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
+  // F82a（#56+#47）：独立设置窗口 —— URL 带 ?settings=1 时走精简 bootstrap 只挂设置面板，
+  // 不建 tab / 历史 / 全景等主窗口 chrome。照 viewer §22 范式（async 建窗已在后端规避死锁）。
+  if (new URLSearchParams(location.search).get("settings")) {
+    await bootstrapSettings();
+    return;
+  }
+
   const tabBar = document.getElementById("tab-bar");
   const streamRoot = document.getElementById("message-stream");
   const status = document.getElementById("status-bar");
@@ -172,10 +180,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 设置面板改了之后会再调 applyBehavior 同步。
   void getBehavior().then((b) => tabs.applyBehavior(b));
 
-  // 设置入口 —— 注入到 #app 上（绝对定位到 Tab Bar 右上）
-  // v2.4 issue #2: 行为 toggle 改了立即同步给 TabManager
-  const settingsPanel = new SettingsPanel({
-    onBehaviorChange: (cfg) => tabs.applyBehavior(cfg),
+  // F82a（#56+#47）：设置改由**独立窗口**承载（SS-3 终态），主窗口不再内嵌设置浮层。
+  // 设置窗口保存 / 行为 toggle 后广播 SETTINGS_APPLIED_EVENT → 主窗口重读并应用主题 + 行为
+  // （跨 OS 窗口回调够不到，用广播代替原 onBehaviorChange 直连）。loadTheme 内部 applyTheme。
+  void listen(SETTINGS_APPLIED_EVENT, () => {
+    void loadTheme(); // 主题：loadTheme 内部 applyTheme
+    void getBehavior().then((b) => tabs.applyBehavior(b)); // 行为
+    void getKeybindings().then((kb) => dispatcher.applyOverrides(kb)); // 键位：热应用主窗口 dispatcher
   });
   // Batch11-F33：竖直 tab 栏——右缘拖拽调宽（localStorage 记忆）+ 窄窗折叠图标条。
   {
@@ -252,7 +263,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   settingsTrigger.setAttribute("aria-label", "打开设置");
   settingsTrigger.textContent = "⚙";
   settingsTrigger.addEventListener("click", () => {
-    void settingsPanel.open();
+    void invoke("open_settings_window"); // F82a：开独立设置窗口（非浮层）
   });
   document.getElementById("app")?.appendChild(settingsTrigger);
 
@@ -336,7 +347,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
   dispatcher.bind("tab.pop-out", () => tabs.openActiveInNewWindow());
   dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
-  dispatcher.bind("app.open-settings", () => void settingsPanel.open());
+  dispatcher.bind("app.open-settings", () => void invoke("open_settings_window")); // F82a：开独立设置窗口
   dispatcher.bind("app.toggle-history", () => {
     if (historyView.isVisible()) historyView.close();
     else void historyView.open();
@@ -490,6 +501,27 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 去抖后微调 webview 尺寸强制 wry 重新 put_Bounds，把 WebView2 合成层钉回左上角）。
   // 旧版（v2.13.0）在这里做的 onResized + scrollTop 微滚动够不着 DOM 之下的合成层偏移，已删。
 });
+
+/**
+ * F82a（#56+#47）：独立**设置窗口**的精简 bootstrap —— 只挂 SettingsPanel（windowMode），
+ * 无 tab / 历史 / 全景 chrome。照 viewer §22 范式。设置项经既有 config 命令读写（窗口无关）；
+ * 保存 / 行为 toggle 后 panel 广播 `settings-applied`，主窗口 listen 并重读应用主题+行为（跨窗同步）。
+ * 主题已在 `bootstrap()` 开头 `loadTheme()` 应用（本 fn 在其后），此处不重复。
+ * **窗体渲染/布局本环境无 GUI 不可自测 → 真机验证累积**（照 viewer 已验证脚手架把盲实现风险压最低）。
+ */
+async function bootstrapSettings(): Promise<void> {
+  document.body.classList.add("settings-window-mode");
+  // 同 viewer：外链/代码块复制走全局 click 代理（防未来设置里的外链在本 WebView 打开顶掉 UI）。
+  installGlobalClickDelegation();
+  const panel = new SettingsPanel({ windowMode: true });
+  await panel.open(); // 面板压 overlay 栈底
+  // ★ 设置窗有自己的 dispatcher 实例，必须 applyOverrides + start()（同 viewer bootstrap）——否则
+  //   ① 快捷键编辑器录制收不到键（onKeyDown 未挂）；② Esc 无法经 overlay LIFO 逐层关（编辑器 / SFTP
+  //   面板压栈其上时先关它们，栈底面板 handleEsc→cancel→关窗）。不 bind app 动作（本窗无 tab 等），
+  //   overlay.close(Esc) 与录制都不依赖 bind。（原手搓的 window Esc 监听会双关窗，已删。）
+  dispatcher.applyOverrides(await getKeybindings());
+  dispatcher.start();
+}
 
 /**
  * issue #10：独立只读窗口的精简 bootstrap。

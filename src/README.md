@@ -11,7 +11,8 @@ index.html  ─> /src/main.ts (defer)
                   │
                   ├─ loadTheme()       从 config.json 应用 CSS 变量
                   ├─ new TabManager()  → tabs.ts
-                  ├─ new SettingsPanel() → settings/panel.ts
+                  ├─ 设置改独立窗口（F82a）：⚙/快捷键 invoke("open_settings_window")；
+                  │   ?settings=1 → bootstrapSettings 挂 SettingsPanel(windowMode)
                   ├─ new HistoryView()   → views/history.ts
                   ├─ bindEvents()         → events.ts （订阅后端 jsonl-line / session-ended）
                   └─ emit("frontend-ready")  通知后端 replay 历史
@@ -51,7 +52,7 @@ index.html  ─> /src/main.ts (defer)
 | **paths.ts** | 操作 config.json 里 `claudeDir` 字段（设置面板调） | `getClaudeDirOverride / setClaudeDirOverride` |
 | **behavior.ts** (v2.4 issue #2) | 操作 config.json 顶层两个行为 toggle：`autoFollowUserActive` (默认 true) + `bringMonitorToFrontOnUserActive` (默认 false)。运行时热更（不需要重启 monitor，跟 claudeDir 不同） | `getBehavior() / setBehavior(cfg)` |
 | **theme.ts** | 把 ThemeConfig 应用到 :root CSS 变量 | `loadTheme / applyTheme / saveTheme` |
-| **settings/panel.ts** | 抽屉式设置面板（数据目录 + 行为 + PowerShell 集成 + 折叠：外观/诊断/数据存储）。v2.4 (issue #2) 新增「行为」分组挂两个 toggle + onBehaviorChange 回调实时同步 TabManager | `new SettingsPanel({ onBehaviorChange }).open() / close()` |
+| **settings/panel.ts** | 设置面板（数据目录 + 行为 + 快捷键 + 外观 + 远端 + PowerShell 集成 + 诊断/数据存储）。**F82a 起挂独立 `settings` 窗口**（`windowMode`，SS-3 终态）：保存/行为/键位改动 `emit('settings-applied')` 广播，主窗口 listen 后重读应用 theme+behavior+keybindings（跨窗回调够不到）。`windowMode:false` 抽屉路径保留供回退 | `new SettingsPanel({ windowMode }).open()`；`bootstrapSettings`（main.ts） |
 | **settings/cc_integration.ts** | PowerShell 集成子区（profile 选项 + wrapper toggle + 5 个预设下拉） | `CcIntegrationSection.element` |
 | **settings/info-icon.ts** | `?` 信息图标 portal tooltip 组件 + 路径工具 | `makeInfoIcon(text) / swapFileName(path, newName)` |
 | **sftp/panel.ts** (B14-F48/F49/F54) | SFTP 文件面板 overlay（每 host 从设置卡「文件」入口开）：浏览（面包屑/列表/排序）+ 传输（下载/上传 dialog picker + 进度 Channel + 取消）+ 拖入上传 + 写（新建目录/改名/删除 + 确认）+ 目录书签 + 「在此打开终端」+ 小文件编辑（F49：面板内浮层 textarea + 字符/字节数 + 覆盖确认 + 失败保留）+ F54 `revealPath` 定位高亮（会话工具卡→文件跳转）。消费 F47/F49 `sftp_*` 命令，独立 overlay 不碰 TabManager | `openSftpPanel(cfg, revealPath?)` |

@@ -1,10 +1,16 @@
 /**
- * 设置面板：外观（主题 / 字体）+ 数据目录（Claude 数据位置）。
+ * 设置面板：外观（主题 / 字体）+ 数据目录（Claude 数据位置）+ 行为 / 快捷键 / 远端 / 集成 / 诊断。
  *
  * 解耦：
  *  - 外观：只调 theme.ts 的 applyTheme / loadTheme / saveTheme
  *  - 数据目录：只调 paths.ts 的 getClaudeDirOverride / setClaudeDirOverride
- *  - 不直接 setProperty、不直接 invoke
+ *
+ * F82a（#56+#47）两种承载模式（`windowMode`）：
+ *  - **主窗口浮层**（`windowMode:false`，F82a 后当前无调用方，保留供回退 / 未来复用）：抽屉式，
+ *    close 隐藏 `.open`、行为改动经 `onBehaviorChange` 同窗直连 TabManager。
+ *  - **独立设置窗口**（`windowMode:true`，SS-3 终态）：面板即窗口全部内容；close/cancel 关**窗口**；
+ *    保存 / 行为 toggle / resetAll 后 `emit(SETTINGS_APPLIED_EVENT)`，主窗口 listen 后重读并应用
+ *    theme+behavior+keybindings（跨 OS 窗口回调够不到）。此模式下会 `import` 并调用 tauri window/event。
  */
 
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -24,6 +30,11 @@ import { RemoteSection } from "./remote-section";
 import { getBehavior, setBehavior, type BehaviorConfig } from "../behavior";
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
+// F82a：独立设置窗口——保存后广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为
+// （跨 OS 窗口无法直接回调）；close/cancel 关闭本窗口。事件名在中立模块 events.ts。
+import { emit } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { SETTINGS_APPLIED_EVENT } from "./events";
 
 /**
  * 字段控件类型：
@@ -81,6 +92,10 @@ const FIELDS: ReadonlyArray<FieldSpec> = [
 /** v2.4 issue #2：设置面板回调，行为类 toggle 改变时通知外部（TabManager 同步） */
 export interface SettingsPanelOptions {
   onBehaviorChange?: (cfg: BehaviorConfig) => void;
+  /** F82a：窗口模式——面板作为**独立设置窗口**的全部内容挂载（非主窗口内浮层）。影响：
+   *  不 push overlay 栈（窗口本身就是全部）；close/cancel 关**窗口**而非移除 `.open`；
+   *  保存 / 行为 toggle 后 `emit(SETTINGS_APPLIED_EVENT)` 让主窗口重读同步（跨窗回调够不到）。 */
+  windowMode?: boolean;
 }
 
 // 各模块的 ? 图标 tooltip 文案（原来散在表单里的 .settings-hint 长文本收纳到这里）
@@ -148,6 +163,8 @@ export class SettingsPanel {
   private resumeRemoteInput!: HTMLInputElement;
   private bringFrontCheckbox!: HTMLInputElement;
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
+  /** F82a：见 SettingsPanelOptions.windowMode。 */
+  private readonly windowMode: boolean;
 
   // issue #5: 快捷键编辑器（lazy 构造，首次打开时建 DOM）
   private kbEditor?: KeybindingsEditor;
@@ -155,6 +172,7 @@ export class SettingsPanel {
 
   constructor(opts: SettingsPanelOptions = {}) {
     this.onBehaviorChange = opts.onBehaviorChange;
+    this.windowMode = opts.windowMode ?? false;
     this.el = this.build();
     document.body.appendChild(this.el);
     // issue #5: Esc 由 KeybindingDispatcher 统一调度。本面板 open 时
@@ -191,6 +209,9 @@ export class SettingsPanel {
     this.refreshKbChip();
     this.el.classList.add("open");
     this.isOpen = true;
+    // 面板始终作为 overlay 栈**底**（窗口模式也是）：这样设置窗内的快捷键编辑器 / SFTP 面板
+    // 压栈其上时 Esc 走 dispatcher 的 LIFO 逐层关（先关它们、再 Esc 关面板→关窗），
+    // 与主窗口抽屉行为一致。窗口模式下面板 handleEsc→cancel→close()→关窗（见 close()）。
     dispatcher.pushOverlay(this);
   }
 
@@ -212,7 +233,8 @@ export class SettingsPanel {
     };
     try {
       await setBehavior(next);
-      this.onBehaviorChange?.(next);
+      this.onBehaviorChange?.(next); // 同窗（主窗口浮层）直接同步 TabManager
+      this.broadcastApplied(); // 窗口模式：广播让主窗口 applyBehavior
     } catch (e) {
       console.warn("save behavior failed:", e);
     }
@@ -225,6 +247,11 @@ export class SettingsPanel {
     // 所有单键快捷键（h/w/数字… 全部失效）—— 用户配置完远端/外观关掉设置后最典型。
     const active = document.activeElement;
     if (active instanceof HTMLElement && this.el.contains(active)) active.blur();
+    // 窗口模式：关闭 = 关掉这个独立设置窗口（而非隐藏浮层）。
+    if (this.windowMode) {
+      void getCurrentWindow().close();
+      return;
+    }
     this.el.classList.remove("open");
     this.isOpen = false;
     dispatcher.popOverlay(this);
@@ -235,9 +262,16 @@ export class SettingsPanel {
     this.close();
   }
 
+  /** F82a：窗口模式下广播「设置已应用」，主窗口 listen 后重读并 applyTheme/applyBehavior。
+   *  非窗口模式（主窗口内浮层）走 applyTheme/onBehaviorChange 同窗直接生效，无需广播。 */
+  private broadcastApplied(): void {
+    if (this.windowMode) void emit(SETTINGS_APPLIED_EVENT);
+  }
+
   private async save(): Promise<void> {
     await saveTheme(this.current);
     this.original = { ...this.current };
+    this.broadcastApplied(); // 主窗口重读主题并应用
 
     // claudeDir：与 theme 字段独立保存。变了就提示重启
     const nextDir = this.claudeDirInput.value.trim();
@@ -262,6 +296,7 @@ export class SettingsPanel {
     await saveTheme({});
     this.original = {};
     this.syncInputs();
+    this.broadcastApplied(); // 窗口模式：主窗口也回默认主题（否则停在旧自定义配色）
   }
 
   private async pickClaudeDir(): Promise<void> {

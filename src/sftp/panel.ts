@@ -11,6 +11,10 @@ import { showActionFailureToast } from "../error-toast";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { buildOpenTerminalCmd } from "../remote-launch";
 import type { RemoteHostConfig } from "../settings/remote-section";
+// F82a 修复：接入 dispatcher overlay 栈——SFTP 面板过去用自己的 document keydown 判 Esc，不入栈；
+// 在独立设置窗口里 Esc 会被 dispatcher 路由到栈底的设置面板→关整窗（双关窗）。改为标准 overlay：
+// pushOverlay/popOverlay + handleEsc，Esc 由 dispatcher LIFO 只关最上层（同 KeybindingsEditor 范式）。
+import { dispatcher, type OverlayHandle } from "../keybindings/registry";
 import {
   addBookmark,
   basename,
@@ -30,7 +34,7 @@ interface TransferProgress {
   total: number;
 }
 
-export class SftpPanel {
+export class SftpPanel implements OverlayHandle {
   private el: HTMLElement;
   private crumbBar!: HTMLElement;
   private listEl!: HTMLElement;
@@ -56,9 +60,23 @@ export class SftpPanel {
     this.el.addEventListener("click", (e) => {
       if (e.target === this.el) this.close();
     });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && this.el.style.display !== "none") this.close();
-    });
+    // Esc 关闭改由 dispatcher overlay 栈驱动（见 handleEsc / open 里的 pushOverlay）——不再自挂
+    // document keydown（那会与 dispatcher 的 window-capture Esc 双触发，在独立设置窗里双关窗）。
+  }
+
+  /**
+   * OverlayHandle：Esc 命中且本面板在栈顶时。**编辑对话框（`.sftp-edit-back`）打开时 Esc = 取消它**
+   * （不关整个面板、不丢未保存编辑）；否则关面板。
+   * 为何在此判而非编辑框自挂 keydown：dispatcher 在 window **capture** 相位先于任何 bubble 监听触发，
+   * 编辑框的 `stopPropagation` 拦不住它，故 Esc 分流必须收在这个栈顶 handler 里。
+   */
+  handleEsc(): void {
+    const editBack = this.el.querySelector<HTMLElement>(".sftp-edit-back");
+    if (editBack) {
+      editBack.remove(); // 取消编辑对话框
+      return;
+    }
+    this.close();
   }
 
   private buildChrome(): HTMLElement {
@@ -132,6 +150,8 @@ export class SftpPanel {
     this.cfg = cfg;
     this.titleEl.textContent = `文件:${cfg.label || cfg.host}`;
     this.el.style.display = "flex";
+    dispatcher.pushOverlay(this); // 入栈顶（pushOverlay 自去重；重开则移到栈顶）
+
     this.listEl.textContent = "连接中…";
     // F48 Part 3：拖入上传——面板打开时监听 webview 拖放,drop 时上传到当前目录。
     // D 审计建议-1:先占位 registeringDrop 防快速双开在 await 期间重复注册(泄漏 unlisten)。
@@ -175,6 +195,7 @@ export class SftpPanel {
 
   close(): void {
     this.el.style.display = "none";
+    dispatcher.popOverlay(this); // 出栈（popOverlay 对不在栈者安全无操作）
     this.entries = [];
     this.listEl.textContent = "";
     this.transfersEl.textContent = ""; // D 审计建议-3:切 host 不残留上一台的进度行
@@ -423,13 +444,8 @@ export class SftpPanel {
     foot.append(stat, cancel, save);
     box.append(title, ta, foot);
     back.appendChild(box);
-    // Esc 在编辑态 = 取消本对话框,不冒泡到面板级 Esc(否则会关整个面板并丢未保存编辑)。
-    back.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        back.remove();
-      }
-    });
+    // Esc 在编辑态 = 取消本对话框：改由 SftpPanel.handleEsc（overlay 栈顶）统一分流——dispatcher 是
+    // window capture 相位，早于此处 bubble 监听，编辑框自挂 keydown 拦不住，故 Esc 逻辑收在 handleEsc。
     this.el.appendChild(back);
     ta.focus();
   }

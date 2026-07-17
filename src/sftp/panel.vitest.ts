@@ -168,7 +168,10 @@ describe("F49 编辑", () => {
     window.confirm = origConfirm;
   });
 
-  it("编辑态 Esc → 关对话框但不关面板(I1)", async () => {
+  it("编辑态 handleEsc → 关对话框但不关面板；再次 → 关面板(I1)", async () => {
+    // F82a：Esc 关闭改由 dispatcher overlay 栈驱动 → SftpPanel.handleEsc（编辑态先关对话框、
+    // 否则关面板）。此处直接调 handleEsc（= dispatcher 命中栈顶时调的契约），dispatcher 未 start
+    // 故不能靠真 keydown 事件。
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "sftp_realpath") return Promise.resolve("/x");
       if (cmd === "sftp_list_dir") return Promise.resolve([ent("a.txt", false)]);
@@ -183,11 +186,14 @@ describe("F49 编辑", () => {
     editBtn.click();
     await Promise.resolve();
     await Promise.resolve();
-    const back = panelEl().querySelector(".sftp-edit-back") as HTMLElement;
-    expect(back).toBeTruthy();
-    back.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(panelEl().querySelector(".sftp-edit-back")).toBeTruthy();
+    // 编辑态第一次 Esc = 只关对话框
+    p.handleEsc();
     expect(panelEl().querySelector(".sftp-edit-back")).toBeNull(); // 对话框关了
-    expect(panelEl().style.display).not.toBe("none"); // 面板仍开(Esc 没冒泡到面板级)
+    expect(panelEl().style.display).not.toBe("none"); // 面板仍开
+    // 再一次 Esc = 关面板（无对话框时）
+    p.handleEsc();
+    expect(panelEl().style.display).toBe("none");
   });
 });
 
