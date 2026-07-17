@@ -2245,6 +2245,18 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   color: var(--accent);
 }
 
+/* F88b（#52）：context% HUD chip——活跃会话「最新 prompt token ÷ 模型上限」实时占用。
+   基础外观复用 .status-tasks（className="status-tasks usage-hud-chip"）；这里只叠 delta：
+   数字等宽（% 抖动不跳宽）+ ≥80% 的 .is-high 暖色预警（逼近自动 compact）。 */
+.usage-hud-chip {
+  font-variant-numeric: tabular-nums;
+}
+.usage-hud-chip.is-high {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
+
 /* 2) Popover 浮层：fixed 贴在 status-bar 之上 */
 .tasks-popover {
   position: fixed;

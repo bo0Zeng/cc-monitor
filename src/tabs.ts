@@ -80,6 +80,14 @@ export interface Tab {
   /** F70：本会话写类工具（Edit/Write/MultiEdit/NotebookEdit）碰过的文件路径（原样、去重）。
    * onLine 增量累进，供「点会话 → 全景图高亮它改过的节点」。纯内存、不落盘（守 §28）。 */
   touchedFiles: Set<string>;
+  /** F88b：本会话**最新一条带 usage 的 assistant 记录**的 prompt token（input+cache 合计）与
+   *  model——供 HUD 算 context 占用%。onLine 捕获、纯内存。null=尚无带 usage 的 assistant 记录。 */
+  latestPromptTokens: number | null;
+  latestModel: string | null;
+  /** F88b（审计）：产出上面两值的记录 seq。重放/远端重投的 onLine **投递序不保证升序**
+   *  （timeline 靠 seq 排序而非到达序），故 trackUsage 只在 seq ≥ 此值时覆盖，保证「最新」= 最大 seq
+   *  而非最后到达。init -1（任何 seq≥0 首次即可写）。 */
+  latestUsageSeq: number;
   streamEl: HTMLElement;
   stream: MessageStream;
   /** 父 JSONL 路径（subagent 加载需要） */
@@ -431,6 +439,9 @@ export class TabManager {
     this.scheduleIdleMaterialize();
     // F40b:active tab 未走物化分支(尾块已可滚)时也要挂哨兵
     if (active) this.updateSentinel(active);
+    // F88b：批期 trackUsage 只更了 tab 字段没喂 chip，这里对活跃 tab 单次 flush 到 HUD
+    // （批内多条 assistant 记录只刷一次，消视觉抖动）。
+    this.onActiveUsageChanged?.(active?.latestModel ?? null, active?.latestPromptTokens ?? null);
   }
 
   /**
@@ -669,6 +680,10 @@ export class TabManager {
     // issue #23（第二增量）：配对 agent 工具调用，喂 AgentsPanel
     this.trackAgents(tab, payload.message);
 
+    // F88b：捕获带 usage 的 assistant 记录 → 更新本会话最新 prompt token+model（供 HUD context%）。
+    // 与 trackAgents 同处（双重去重之后，重投不重复累）。活跃会话则即时推给 HUD。
+    this.trackUsage(tab, payload.message, payload.seq);
+
     // F70：累进本会话改动集（写类工具 file_path）——放在双重去重之后（重投不重复累），
     // 渲染/收纳门控之前（连"收纳不建卡"的记录也计入）。纯增量、无 DOM。
     for (const f of collectEditedFiles(payload.message)) tab.touchedFiles.add(f);
@@ -861,6 +876,12 @@ export class TabManager {
    *  PanoramaView，走注入回调，同 onManualSwitch 范式）。仅本地会话菜单出现该项。 */
   requestPanoramaHighlight: ((sid: string) => void) | null = null;
 
+  /** F88b：活跃会话最新 usage 变化回调——main.ts 注入喂 UsageHud（context% chip）。
+   *  两处触发：onLine 捕到活跃会话新 assistant 记录；switchTo 切到别的会话。
+   *  (model=null 或 promptTokens=null → chip 显 `?` 或隐藏)。同 requestPanoramaHighlight 注入范式。 */
+  onActiveUsageChanged: ((model: string | null, promptTokens: number | null) => void) | null =
+    null;
+
   ensureTab(
     sessionId: string,
     cwd: string | null,
@@ -965,7 +986,9 @@ export class TabManager {
       activity: this.pendingActivity.get(sessionId) ?? null,
       agents: new Map(),
       touchedFiles: new Set(), // F70：会话改动集，onLine 增量累进
-
+      latestPromptTokens: null, // F88b：HUD context% 数据；onLine 捕获带 usage 的 assistant 记录
+      latestModel: null,
+      latestUsageSeq: -1,
     };
     this.pendingActivity.delete(sessionId);
     // F40b:上翻补批触发器(passive 只读滚动位置;handler 内判 active,后台 tab
@@ -1098,6 +1121,50 @@ export class TabManager {
    * 防 spam：只在真有变化时刷新面板。结构防御：message 形态全 unknown 窄化，
    * 任何不匹配静默跳过（§18 同源精神）。
    */
+  /**
+   * F88b：从 assistant 记录抽 usage → 更新 tab.latestPromptTokens/latestModel（供 HUD context%）。
+   * prompt token = input + cache_creation + cache_read（本轮喂进模型的总量，即 context 占用近似）。
+   * 只认带 usage 的 assistant 记录（user/system/无 usage 的一律跳过，保留上一次值）。
+   *
+   * 审计加固：
+   * - **seq 单调**：onLine 投递序不保证升序（重放/远端重投），故只在 `seq >= tab.latestUsageSeq`
+   *   时覆盖——「最新」= 最大 seq 而非最后到达，防低 seq 历史记录盖掉高 seq 实时值（会误显低占用%）。
+   * - **批期不刷 chip**：重放/大增量批（inBatch）里逐条 assistant 记录都触发 setActive 会视觉抖动
+   *   （10%→20%→…），故批期只更 tab 字段、不喂回调；onBatchEnd 对活跃 tab 单次 flush。
+   */
+  private trackUsage(tab: Tab, message: unknown, seq: number): void {
+    const rec = message as {
+      type?: string;
+      message?: {
+        model?: unknown;
+        usage?: {
+          input_tokens?: unknown;
+          cache_creation_input_tokens?: unknown;
+          cache_read_input_tokens?: unknown;
+        };
+      };
+    };
+    if (rec?.type !== "assistant") return;
+    const usage = rec.message?.usage;
+    if (!usage || typeof usage !== "object") return;
+    const num = (v: unknown): number => (typeof v === "number" && v >= 0 ? v : 0);
+    const prompt =
+      num(usage.input_tokens) +
+      num(usage.cache_creation_input_tokens) +
+      num(usage.cache_read_input_tokens);
+    // 全 0（无任何 token 字段）→ 视为无效 usage，不覆盖上一次有效值。
+    if (prompt <= 0) return;
+    // seq 回退（更老的记录晚到）→ 不覆盖更新的值。
+    if (seq < tab.latestUsageSeq) return;
+    tab.latestUsageSeq = seq;
+    tab.latestPromptTokens = prompt;
+    tab.latestModel = typeof rec.message?.model === "string" ? rec.message.model : null;
+    // 批期不即时喂 chip（onBatchEnd 单次 flush）；实时流则即时刷活跃会话。
+    if (!this.inBatch && tab.sessionId === this.activeId) {
+      this.onActiveUsageChanged?.(tab.latestModel, tab.latestPromptTokens);
+    }
+  }
+
   private trackAgents(tab: Tab, message: unknown): void {
     const rec = message as {
       type?: string;
@@ -1249,6 +1316,8 @@ export class TabManager {
         // issue #11: 关掉最后一个 Tab → panel 进入 null session 状态
         this.tasksPanel?.setSession(null, []);
         this.agentsPanel?.setSession(null, []);
+        // F88b（审计）：无 fallback 时 switchTo 不会跑 → 手动隐藏 HUD chip，否则残留死会话的 ctx%
+        this.onActiveUsageChanged?.(null, null);
         this.refreshTabBar();
       }
     } else {
@@ -1738,6 +1807,9 @@ export class TabManager {
         sessionId,
         [...(this.tabs.get(sessionId)?.agents.values() ?? [])],
       );
+      // F88b：HUD context% chip 切到新 active 会话的最新 usage（无带 usage 记录 → null → 隐藏）
+      const nt = this.tabs.get(sessionId);
+      this.onActiveUsageChanged?.(nt?.latestModel ?? null, nt?.latestPromptTokens ?? null);
     });
   }
 
