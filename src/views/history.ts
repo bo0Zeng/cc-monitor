@@ -161,6 +161,8 @@ export class HistoryView {
    * 刷新按钮 = 强制失效（`refresh(true)` 清此缓存重 fan-out）。
    */
   private remoteCache: RemoteSourceCache<HistoryProject> | null = null;
+  /** F76：`refresh()` 的代际号，防并发/交叠 refresh 的旧结果覆盖新结果（对齐 ftSeq）。 */
+  private refreshSeq = 0;
   /** project_dir → 已加载的会话详情 */
   private sessionCache = new Map<string, HistorySessionEntry[]>();
   /** project_dir → 当前正在加载中的 Promise，防重复触发 */
@@ -338,40 +340,62 @@ export class HistoryView {
   /**
    * F76（#46）：本地「来源」始终重扫（便宜、防陈旧），远端 fan-out 走 TTL 缓存
    * （`remote_history.rs` 每台独立 SSH、30s 超时，是「每次重新加载」的痛点单点）。
-   * @param force `true`（刷新按钮）= 无视 TTL 清远端缓存、必重 fan-out；
-   *              `false`（open）= TTL 内复用上次远端快照，不重连所有远端。
+   * @param force `true`（刷新按钮）= 无视 TTL 必重 fan-out；`false`（open）= TTL 内复用远端快照。
+   *
+   * ★ 承重不变式：`this.projects` 的远端段元素与 `this.remoteCache.projects` 是**同一批对象引用**
+   *   （浅 spread）。好处：对远端 proj 的**字段** mutation（star/hide/`sessionCount--`）天然同步进缓存、
+   *   与后端持久化一致。代价：**数组结构性移除**（删空项目的 filter）必须两边都做，否则缓存留幽灵——
+   *   见 delete handler。若将来把缓存写成 `remote.map(clone)`/深拷贝，这条隐式同步会静默失效。
    */
   private async refresh(force = false): Promise<void> {
+    // 代际守卫：并发/交叠的 refresh（如 open 的 fan-out 在飞、用户又点刷新）只让最新一次落地，
+    // 避免先发后回的旧结果用更旧数据 + 更小 loadedAt 覆盖新结果（对齐同文件 ftSeq 模式）。
+    const seq = ++this.refreshSeq;
     this.statusEl.textContent = "加载项目列表…";
     this.listEl.replaceChildren();
     this.sessionCache.clear();
     this.loadingProjects.clear();
-    if (force) this.remoteCache = null; // 强刷：丢弃远端缓存 → 下面 shouldRefetch 必为 true
     // 本地批：每次重扫。失败即整体失败（本地都读不了没得显示）。
     let local: HistoryProject[];
     try {
       local = await invoke<HistoryProject[]>("list_history_projects");
     } catch (e) {
-      this.statusEl.textContent = `加载失败：${String(e)}`;
+      if (seq === this.refreshSeq) this.statusEl.textContent = `加载失败：${String(e)}`;
       return;
     }
+    if (seq !== this.refreshSeq) return; // 被更新的 refresh 抢占
     // 先用「本地 + 已有远端缓存」渲染一帧（远端缓存命中时这就是最终态）。
     this.projects = [...local, ...(this.remoteCache?.projects ?? [])];
     this.renderList();
 
-    // 远端批：TTL 门控。缓存新鲜（且非强刷）→ 上面那帧已含缓存，直接返回不发 IPC。
-    if (!shouldRefetchRemote(this.remoteCache, Date.now(), HISTORY_REMOTE_TTL_MS)) {
+    // 远端批：TTL 门控。缓存新鲜且非强刷 → 上面那帧已含缓存，直接返回不发 IPC。
+    if (!force && !shouldRefetchRemote(this.remoteCache, Date.now(), HISTORY_REMOTE_TTL_MS)) {
       return;
     }
     // 需 fan-out：独立 try——远端连不上/无配置不影响本地浏览。
-    // 空结果也缓存（无远端配置时避免每次都发这个 IPC）。失败降级复用旧缓存（上面那帧已含）。
     try {
-      const remote = await invoke<HistoryProject[]>("list_remote_history_projects");
-      this.remoteCache = { projects: remote, loadedAt: Date.now() };
+      const res = await invoke<{ projects: HistoryProject[]; failedHosts: string[] }>(
+        "list_remote_history_projects",
+      );
+      if (seq !== this.refreshSeq) return; // 抢占：丢弃过期结果
+      const remote = res.projects;
+      if (res.failedHosts.length === 0) {
+        // 全部台成功 → 缓存这份完整快照，TTL 内复用（空结果也缓存，无远端配置时省掉每次 IPC）。
+        this.remoteCache = { projects: remote, loadedAt: Date.now() };
+      } else {
+        // 部分台失败（后端语义：任一台成功即 Ok，失败台跳过）→ 这份快照**不完整**，不冻结缓存，
+        // 下次 open 重试失败台（对齐 F76 前「每次 open 重扫、瞬断下次自愈」），仍渲染已拿到的台。
+        this.remoteCache = null;
+        showActionFailureToast(
+          "远端部分来源加载失败",
+          `${res.failedHosts.join("、")}（下次打开将重试）`,
+        );
+      }
       this.projects = [...local, ...remote];
-      this.renderList();
+      if (this.isOpen) this.renderList(); // await 期间可能已关闭，别渲染进游离 DOM
     } catch (e) {
-      // 远端查询失败只提示，不阻断本地历史；有旧缓存则继续显示（此前那帧已渲染），无则本地-only。
+      if (seq !== this.refreshSeq) return;
+      // 全部台失败（Err）→ 保住旧缓存不覆盖（force 也不预清，失败时降级复用更稳）；本地已渲染，仅 toast。
       showActionFailureToast("远端历史加载失败", String(e));
     }
   }
@@ -1570,6 +1594,14 @@ export class HistoryView {
         this.projects = this.projects.filter(
           (p) => projectKey(p) !== projectKey(proj),
         );
+        // F76：远端项目还要从 remoteCache 同步移除，否则 TTL 内重开会把这个 0 会话的幽灵
+        // 项目从陈旧缓存拼回来（`this.projects` 与 `remoteCache.projects` 共享对象引用，
+        // 结构性移除不会自动传导——见 refresh() 顶部承重不变式）。本地项目不在缓存里，no-op。
+        if (this.remoteCache) {
+          this.remoteCache.projects = this.remoteCache.projects.filter(
+            (p) => projectKey(p) !== projectKey(proj),
+          );
+        }
         this.sessionCache.delete(projectKey(proj));
         this.expandedProjects.delete(projectKey(proj));
       }
