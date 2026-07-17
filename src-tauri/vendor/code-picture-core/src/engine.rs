@@ -63,9 +63,12 @@ fn fnv1a(bytes: &[u8]) -> u64 {
 
 pub struct Engine {
     repo: PathBuf,
-    // F27:该仓的 `.codepicture` 根(index.db + annotations/)。默认 `<repo>/.codepicture`,
-    // 或经 `EngineOpts.store_dir` 集中到 `<store>/.codepicture/<仓hash>/`。
-    dot: PathBuf,
+    // F72:批注根,**恒 `<repo>/.codepicture/annotations/`**——与 index 落点(`store_dir`)解耦。批注是
+    // 人写真相、可提交、随仓走(别人 clone 可见、抗仓移动),不该跟着索引缓存集中到仓外。**lazy 建**:
+    // `open` 绝不建它(否则开面板即污染仓 = 消费方 D20 回归),只 `annotations::write` 首写时建。
+    // 默认(`store_dir=None`)下与 index 根的 `annotations/` 子目录物理同址 → 行为逐字节不变。
+    // (index.db 路径 open 时算好存进 `idx`,之后无需再持有 index 根,故不留 `dot` 字段。)
+    annotations_dir: PathBuf,
     idx: Index,
     // F17 派生态缓存(内部可变,overview/drift 为 &self);按 index/update/doc-link 变更失效。
     // 缓存的 overview 是**未裁剪**的全景(budget 无关);drift 是全量结果。
@@ -75,17 +78,22 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// 打开一个仓库。索引 + 批注落 `.codepicture`(位置见 [`EngineOpts::store_dir`]:默认
-    /// `<repo>/.codepicture`,或集中到 `<store_dir>/.codepicture/<仓hash>/`);除此之外不写仓库任何文件。
+    /// 打开一个仓库。**索引**落 `.codepicture`(位置见 [`EngineOpts::store_dir`]:默认
+    /// `<repo>/.codepicture`,或集中到 `<store_dir>/.codepicture/<仓hash>/`);**批注**恒落
+    /// `<repo>/.codepicture/annotations/`(F72,与 store_dir 解耦、可提交)。`open` 只 eager 建
+    /// **index 侧** `dot`——批注目录首写时 lazy 建,`open` 绝不碰它(保消费方 D20:开面板不污染仓)。
     pub fn open(repo: &Path, opts: EngineOpts) -> Result<Engine, Box<dyn Error>> {
         let dot = codepicture_root(repo, &opts);
         std::fs::create_dir_all(&dot)?;
-        // 总是写 `.codepicture/.gitignore`:忽略派生 index.db、保留人写 annotations/
+        // 总是写 index 侧 `.codepicture/.gitignore`:忽略派生 index.db(默认模式下 annotations/ 同
+        // 目录、仍可提交;store_dir 模式下 dot 在仓外、此 gitignore 无关紧要)。
         annotations::ensure_gitignore(&dot)?;
         let idx = Index::open(&dot.join("index.db"))?;
+        // F72:批注恒仓内、与 index 落点解耦。**不** create_dir_all(保 lazy = 消费方 D20 生命线)。
+        let annotations_dir = repo.join(".codepicture").join("annotations");
         Ok(Engine {
             repo: repo.to_path_buf(),
-            dot,
+            annotations_dir,
             idx,
             overview_cache: RefCell::new(None),
             drift_cache: RefCell::new(None),
@@ -579,7 +587,7 @@ impl Engine {
             return Err("批注正文不能为空".into());
         }
         let id = annotation_id(file, symbol, body);
-        if let Some(existing) = annotations::get(&self.dot, &id) {
+        if let Some(existing) = annotations::get(&self.annotations_dir, &id) {
             if existing.status == AnnotationStatus::Active {
                 return Ok(id); // 已被人批准的同内容 → 不降级
             }
@@ -604,16 +612,16 @@ impl Engine {
             author: author.to_string(),
             status,
         };
-        annotations::write(&self.dot, &ann)?;
+        annotations::write(&self.annotations_dir, &ann)?;
         Ok(id)
     }
 
     /// 人审批准:Proposed → Active。返回该 id 是否存在。
     pub fn approve_annotation(&self, id: &str) -> Result<bool, Box<dyn Error>> {
-        match annotations::get(&self.dot, id) {
+        match annotations::get(&self.annotations_dir, id) {
             Some(mut a) => {
                 a.status = AnnotationStatus::Active;
-                annotations::write(&self.dot, &a)?;
+                annotations::write(&self.annotations_dir, &a)?;
                 Ok(true)
             }
             None => Ok(false),
@@ -621,12 +629,12 @@ impl Engine {
     }
 
     pub fn remove_annotation(&self, id: &str) -> Result<bool, Box<dyn Error>> {
-        Ok(annotations::remove(&self.dot, id)?)
+        Ok(annotations::remove(&self.annotations_dir, id)?)
     }
 
     /// 全部批注(含 Proposed;给人看 / 审批队列)。
     pub fn list_annotations(&self) -> Vec<Annotation> {
-        annotations::list(&self.dot)
+        annotations::list(&self.annotations_dir)
     }
 
     /// 覆盖某符号的 **Active** 批注(给 agent 消费;Proposed 不可见 = 人审门禁)。
@@ -634,7 +642,7 @@ impl Engine {
     pub fn annotations_for(&self, sym: &SymbolId) -> Vec<Annotation> {
         let (file, seg) = split_sym_id(sym);
         let seg_bare = seg.as_deref().map(bare_name);
-        annotations::list(&self.dot)
+        annotations::list(&self.annotations_dir)
             .into_iter()
             .filter(|a| {
                 a.status == AnnotationStatus::Active

@@ -20,6 +20,7 @@ import type {
   IndexStats,
   PanoramaStatus,
   DriftItem,
+  Annotation,
 } from "./types";
 
 /** 建索引（重活：tree-sitter 解析全仓 → SQLite）。开面板首次调 + loading。 */
@@ -85,6 +86,46 @@ export const symbolsInFile = (repo: string, file: string) =>
 /** F71：文档漂移（仓里 `.md` 指向的目标文件/符号已失效）。反映上次索引快照，刷新后新鲜。 */
 export const drift = (repo: string) =>
   invoke<DriftItem[]>("panorama_drift", { repo });
+
+// === F72：批注 + 文档关联写（落被分析仓、人手势触发）。core 现成接口，不自造存储（SS-15）。 ===
+
+/** F72：人写批注（直接 Active）。`symbol` = 符号段（如 `f`），null = 文件级。 */
+export const addAnnotation = (
+  repo: string,
+  file: string,
+  symbol: string | null,
+  body: string,
+  author: string,
+) => invoke<string>("panorama_add_annotation", { repo, file, symbol, body, author });
+
+/** F72：agent 提议批注（Proposed，需人 approve 才 Active）。 */
+export const proposeAnnotation = (
+  repo: string,
+  file: string,
+  symbol: string | null,
+  body: string,
+  author: string,
+) => invoke<string>("panorama_propose_annotation", { repo, file, symbol, body, author });
+
+/** F72：批准一条 Proposed 批注 → Active。 */
+export const approveAnnotation = (repo: string, id: string) =>
+  invoke<boolean>("panorama_approve_annotation", { repo, id });
+
+/** F72：删批注。 */
+export const removeAnnotation = (repo: string, id: string) =>
+  invoke<boolean>("panorama_remove_annotation", { repo, id });
+
+/** F72：列全部批注（含 Proposed，审批队列用）。 */
+export const listAnnotations = (repo: string) =>
+  invoke<Annotation[]>("panorama_list_annotations", { repo });
+
+/** F72：把某 `.md` 关联到某符号（写 doc 的 frontmatter covers:，进仓可提交）。 */
+export const writeDocLink = (repo: string, doc: string, target: string) =>
+  invoke<void>("panorama_write_doc_link", { repo, doc, target });
+
+/** F72：删除某 `.md` 对某符号的关联。 */
+export const removeDocLink = (repo: string, doc: string, target: string) =>
+  invoke<boolean>("panorama_remove_doc_link", { repo, doc, target });
 
 /**
  * ⭐ P3 护城河缝（P2 未接）：一组文件/行 → 命中的符号 id。`ranges` 空 → 整文件所有符号。
