@@ -133,4 +133,27 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     expect(call![1]).toMatchObject({ sessionId: "s1", jsonlPath: "/p/s1.jsonl" });
     confirmSpy.mockRestore();
   });
+
+  it("删除远端项目最后一个会话 → delete_remote_history_session + remoteCache 同步移除（F76 护栏）", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const view = new HistoryView();
+    // 远端项目、仅 1 个会话 → 删掉即空 → 触发 this.projects + remoteCache 同步移除
+    const p = proj({ origin: "hostA", sessionCount: 1 });
+    (view as unknown as { remoteCache: { projects: unknown[]; loadedAt: number } }).remoteCache = {
+      projects: [p],
+      loadedAt: 1_000_000,
+    };
+    const row = buildRow(view, entry({ origin: "hostA" }), p);
+    row.querySelector<HTMLButtonElement>(".history-action-danger")!.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    // 远端删除走 SFTP 命令 + 二次确认
+    expect(confirmSpy).toHaveBeenCalledTimes(2);
+    expect(invokeMock.mock.calls.some((c) => c[0] === "delete_remote_history_session")).toBe(true);
+    // F76 承重不变式：删空的远端项目从 remoteCache 同步移除，否则 TTL 内重开会拼回幽灵
+    const cache = (view as unknown as { remoteCache: { projects: unknown[] } }).remoteCache;
+    expect(cache.projects.length).toBe(0);
+    confirmSpy.mockRestore();
+  });
 });

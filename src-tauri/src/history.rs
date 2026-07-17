@@ -743,6 +743,12 @@ fn build_new_session_ps_command(launcher: Option<&str>) -> Result<String, String
 /// `runRemoteLauncher`（复用 F53）。在 `cwd` 起一个全新会话（无 sid、无 resume）。
 #[tauri::command]
 pub fn new_local_session(cwd: String, launcher: Option<String>) -> Result<(), String> {
+    // F96：起新会话**依赖 cwd 定位**（不像 resume 靠 sid）——cwd 非空且不是现存目录（项目被
+    // 移动/删除）就明确报错，别静默在默认目录起会话 + 弹假成功 toast。`launch_powershell_window`
+    // 只把存在的 cwd 作窗口起始目录、失效则回落默认，对 resume 无害、对 new-session 是错目录。
+    if !cwd.is_empty() && !std::path::Path::new(&cwd).is_dir() {
+        return Err(format!("目录不存在，无法在此起新会话：{cwd}"));
+    }
     let ps_command = build_new_session_ps_command(launcher.as_deref())?;
     crate::launch::launch_powershell_window(&ps_command, Some(&cwd))?;
     tracing::info!("history: new local session in {cwd}");
