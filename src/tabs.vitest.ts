@@ -91,7 +91,7 @@ vi.mock("./behavior", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { runRemoteResume, runRemoteResumeTmux, runRemoteAttach } from "./remote-launch-run";
-import { TabManager, findClaudeTmux, type Tab } from "./tabs";
+import { TabManager, findClaudeTmux, isCwdFallbackMatch, type Tab } from "./tabs";
 
 // 私有字段的只读探针（TS private 仅编译期；运行时可读）。仅测试用。
 interface TMInternals {
@@ -908,6 +908,30 @@ describe("F74 findClaudeTmux（精确 tmux↔sid 映射）", () => {
   it("null / 空列表 → undefined", () => {
     expect(findClaudeTmux(null, "t", "/p")).toBeUndefined();
     expect(findClaudeTmux([], "t", "/p")).toBeUndefined();
+  });
+});
+
+describe("F74c(#60-B) isCwdFallbackMatch（cwd 回退串味提示判定）", () => {
+  const S = (name: string, path: string, command: string, sid: string | null) => ({
+    name,
+    path,
+    command,
+    attached: false,
+    windows: 1,
+    sid,
+  });
+  it("精确 @ccm_sid 命中 → false（非回退，不提示）", () => {
+    expect(isCwdFallbackMatch([S("b", "/p", "claude", "target")], "target")).toBe(false);
+  });
+  it("有会话带 sid 但无一命中 → false（findClaudeTmux 返 undefined、不 attach、无串味）", () => {
+    expect(isCwdFallbackMatch([S("a", "/p", "claude", "other")], "target")).toBe(false);
+  });
+  it("整张列表无 @ccm_sid（老 wrapper/未装）→ true（会走 cwd 回退，attach 前提示）", () => {
+    expect(isCwdFallbackMatch([S("a", "/p", "claude", null)], "target")).toBe(true);
+  });
+  it("null / 空列表 → true（无 sid 可依，回退语义）", () => {
+    expect(isCwdFallbackMatch(null, "t")).toBe(true);
+    expect(isCwdFallbackMatch([], "t")).toBe(true);
   });
 });
 

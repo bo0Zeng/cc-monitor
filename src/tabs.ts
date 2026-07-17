@@ -217,6 +217,31 @@ export function findClaudeTmux(
     : undefined;
 }
 
+/**
+ * F74c(#60-B)：`findClaudeTmux` 对给定 sid 是否会走 **cwd 回退**（= 无精确 `@ccm_sid` 命中
+ * **且**整张列表都无任何会话带 sid）。回退命中的会话是「同目录里的某个 claude」，可能不是目标
+ * 会话——未装 / 老 `ccm` wrapper 的向后兼容路径。用户 2026-07-17 拍板：保留回退但**命中时显式提示**
+ * （attach 那一刻 toast，别静默串味）。纯函数（node/jsdom 可测），判据与 `findClaudeTmux` 回退分支对齐。
+ */
+export function isCwdFallbackMatch(
+  sessions: TmuxSession[] | null | undefined,
+  sid: string,
+): boolean {
+  const exact = sessions?.some((s) => s.sid === sid && isClaudeTmuxCommand(s.command));
+  if (exact) return false;
+  const anySidKnown = sessions?.some((s) => s.sid != null);
+  return !anySidKnown; // 无精确命中 + 无任一 sid → findClaudeTmux 会走 cwd 回退
+}
+
+/** F74c(#60-B)：cwd 回退串味风险提示（attach 到可能是同目录别的会话前）。 */
+function warnCwdFallbackAttach(): void {
+  showActionFailureToast(
+    "未检测到会话身份标记",
+    "该 tmux 会话没有 @ccm_sid 标记，可能连到同目录里其它会话；建议在远端重装 ccm 助手以精确匹配。",
+    { level: "info", durationMs: 8000 },
+  );
+}
+
 export class TabManager {
   private tabs = new Map<string, Tab>();
   /** F51：per-origin tmux 会话短缓存(反查 attach)。null=该 origin 无 tmux。 */
@@ -1574,11 +1599,15 @@ export class TabManager {
     // 菜单已换/已关(新代次)→ 别动别的菜单(R-1 跨 tab 串味)。
     if (gen !== tabMenuGeneration) return;
     const match = findClaudeTmux(sessions, sid, cwd);
+    const viaCwd = isCwdFallbackMatch(sessions, sid); // F74c：回退命中 attach 前提示串味风险
     if (match) {
       updateTabContextMenuItem("attach", {
         id: "attach",
         label: `Attach（tmux: ${match.name}）`,
-        onClick: () => void runRemoteAttach(origin, match.name),
+        onClick: () => {
+          if (viaCwd) warnCwdFallbackAttach();
+          void runRemoteAttach(origin, match.name);
+        },
       });
       // F60：预览项与 attach 同门(同一 tmux 会话),一并就绪。
       updateTabContextMenuItem("preview", {
@@ -1853,11 +1882,15 @@ export class TabManager {
         const cached = this.tmuxCache.get(origin);
         if (cached && Date.now() - cached.ts < TMUX_CACHE_TTL_MS) {
           const m = findClaudeTmux(cached.sessions, sid, cwd);
+          const viaCwd = isCwdFallbackMatch(cached.sessions, sid); // F74c：回退命中提示串味
           if (m) {
             items.push({
               id: "attach",
               label: `Attach（tmux: ${m.name}）`,
-              onClick: () => void runRemoteAttach(origin, m.name),
+              onClick: () => {
+                if (viaCwd) warnCwdFallbackAttach();
+                void runRemoteAttach(origin, m.name);
+              },
             });
             // F60：同一 tmux 会话可只读预览画面（capture-pane 快照，不 attach）。
             items.push({
