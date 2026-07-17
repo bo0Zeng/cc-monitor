@@ -135,17 +135,34 @@ pub async fn search_remote_all(
     out
 }
 
+/// F76（#46）：远端来源列表结果 = 项目 + **失败台清单**。
+///
+/// 后端 fan-out 语义是「任一台成功即 `Ok`，失败台 warn+跳过」——前端单看项目列表无从区分
+/// 「某台失败缺项」与「某台真的无项目」。带上 `failed_hosts` 让前端判断「部分失败」：部分失败
+/// 时**不冻结 TTL 缓存**（下次 open 重试失败台），避免瞬断台的项目在缓存里消失整个 TTL 窗口。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteProjectsResult {
+    pub projects: Vec<HistoryProject>,
+    /// 本次 fan-out 中查询失败（已跳过）的台的 origin label。空 = 全部台成功。
+    pub failed_hosts: Vec<String>,
+}
+
 /// 远端项目列表（多机 #30：fan-out 所有已配置远端）。无远端 → 空列表（前端无感合并）；
 /// 单台查询失败 → warn + 跳过该台（不拖垮其余台）。各 project 带 `origin = 该台 label`。
 #[tauri::command]
-pub async fn list_remote_history_projects() -> Result<Vec<HistoryProject>, String> {
+pub async fn list_remote_history_projects() -> Result<RemoteProjectsResult, String> {
     let cfgs = crate::load_remote_configs();
     if cfgs.is_empty() {
-        return Ok(Vec::new());
+        return Ok(RemoteProjectsResult {
+            projects: Vec::new(),
+            failed_hosts: Vec::new(),
+        });
     }
     let mut projects = Vec::new();
     let mut any_ok = false;
     let mut last_err = String::new();
+    let mut failed_hosts: Vec<String> = Vec::new();
     // R9：并发 fan-out 所有台（各台独立、无序要求），墙钟从 Σ(各台) 降到 max(各台)。逐台错误仍隔离。
     let results = futures::future::join_all(
         cfgs.iter()
@@ -159,11 +176,13 @@ pub async fn list_remote_history_projects() -> Result<Vec<HistoryProject>, Strin
                 l
             }
             Err(e) => {
-                // 逐台失败不拖垮整体：该台 warn + 跳过，其余台照常返回。
+                // 逐台失败不拖垮整体：该台 warn + 跳过，其余台照常返回。记进 failed_hosts
+                // 让前端识别「部分失败」（F76：部分失败不冻结缓存、下次 open 重试该台）。
                 tracing::warn!(
                     "远端 [{}] --list-projects 失败（跳过该台）: {e}",
                     cfg.origin_label()
                 );
+                failed_hosts.push(cfg.origin_label());
                 last_err = e;
                 continue;
             }
@@ -216,11 +235,15 @@ pub async fn list_remote_history_projects() -> Result<Vec<HistoryProject>, Strin
         ));
     }
     tracing::info!(
-        "list_remote_history_projects: {} projects from {} host(s)",
+        "list_remote_history_projects: {} projects from {} host(s), {} failed",
         projects.len(),
-        cfgs.len()
+        cfgs.len(),
+        failed_hosts.len()
     );
-    Ok(projects)
+    Ok(RemoteProjectsResult {
+        projects,
+        failed_hosts,
+    })
 }
 
 /// 远端某项目的历史会话列表（流式 Channel，对齐本地 stream_history_sessions_in_project）。

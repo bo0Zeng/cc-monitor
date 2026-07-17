@@ -2,11 +2,11 @@
 //
 // 为什么需要它：history.ts 1613 行零测试，改到 open/refresh 缓存链极易静默回归
 // （某入口绕过缓存 → 又变「每次重连所有远端」，或过期不重连 → 陈旧）。这里在真
-// HistoryView 实例 + 真 history-cache 判定上，锁死 #46 的核心保证：
+// HistoryView 实例 + 真 history-cache 判定上，锁死 #46 的核心保证与 Phase D 审计修复：
 //   - 打开 → 关闭 → TTL 内再打开：list_remote_history_projects **不被二次调用**（复用）；
-//   - 本地 list_history_projects **每次都重扫**（便宜、防陈旧）；
-//   - TTL 过期后再打开 → 远端**重新 fan-out**；
-//   - 强刷（refresh(true)）→ 无视 TTL 重新 fan-out。
+//   - 本地 list_history_projects **每次都重扫**；TTL 过期/强刷 → 远端重新 fan-out；
+//   - 全部台失败（Err）→ 降级**复用旧缓存**（不覆盖）、仅 toast；
+//   - 部分台失败（Ok + failedHosts）→ **不冻结缓存**，下次 open 重试失败台。
 //
 // history.ts 重度依赖 Tauri IPC + 一堆协作模块，照 tabs.vitest.ts 先例把重协作者 mock 成空壳。
 
@@ -14,7 +14,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockResolvedValue([]),
-  // loadProjectSessions 用（本测试不展开项目，给个能 new 的空壳即可）
   Channel: class {
     onmessage: ((v: unknown) => void) | null = null;
   },
@@ -45,14 +44,40 @@ function countCalls(cmd: string): number {
   return invokeMock.mock.calls.filter((c) => c[0] === cmd).length;
 }
 
-function setupInvoke(remote: unknown[] = []): void {
+// 后端 list_remote_history_projects 返回 { projects, failedHosts }（F76）。
+function setupInvoke(
+  projects: unknown[] = [],
+  failedHosts: string[] = [],
+): void {
   invokeMock.mockReset();
   invokeMock.mockImplementation((cmd: string) => {
     if (cmd === "list_history_projects") return Promise.resolve([]);
-    if (cmd === "list_remote_history_projects") return Promise.resolve(remote);
+    if (cmd === "list_remote_history_projects")
+      return Promise.resolve({ projects, failedHosts });
     return Promise.resolve(undefined);
   });
 }
+
+// 一个远端项目样本（origin=host 让它归远端段、进 remoteCache）。
+function remoteProj(dir: string, origin = "hostA"): Record<string, unknown> {
+  return {
+    projectPath: `/r/${dir}`,
+    projectName: dir,
+    projectDir: dir,
+    sessionCount: 3,
+    starredCount: 0,
+    hiddenCount: 0,
+    lastActivity: 1,
+    hasLive: false,
+    origin,
+  };
+}
+
+type ViewInternals = {
+  projects: Array<{ origin?: string }>;
+  remoteCache: { projects: unknown[] } | null;
+  refresh(force: boolean): Promise<void>;
+};
 
 describe("HistoryView 来源列表 TTL 缓存 (F76 #46)", () => {
   let nowSpy: ReturnType<typeof vi.spyOn>;
@@ -101,28 +126,54 @@ describe("HistoryView 来源列表 TTL 缓存 (F76 #46)", () => {
     await view.open();
     expect(countCalls("list_remote_history_projects")).toBe(1);
 
-    // 刷新按钮走 refresh(true)（此处直调等价，时间仍在 TTL 内）
-    now += 1_000;
-    await (view as unknown as { refresh(force: boolean): Promise<void> }).refresh(true);
+    now += 1_000; // 仍在 TTL 内
+    await (view as unknown as ViewInternals).refresh(true);
     expect(countCalls("list_remote_history_projects")).toBe(2);
   });
 
-  it("远端 fan-out 失败：降级复用上次缓存，不再重连，仍提示", async () => {
+  it("全部台失败（Err）：降级复用旧缓存（不覆盖）+ toast，仍显示旧远端项目", async () => {
     const view = new HistoryView();
-    await view.open(); // 成功抓一次，缓存 5 个远端项目
-    setupInvoke(); // reset 计数（但下面手动改实现）
+    // open 1：成功缓存 2 个真实远端项目
+    setupInvoke([remoteProj("p1"), remoteProj("p2")]);
+    await view.open();
+    const inner = view as unknown as ViewInternals;
+    expect(inner.remoteCache?.projects.length).toBe(2);
+    expect(inner.projects.filter((p) => p.origin === "hostA").length).toBe(2);
 
-    // 让远端在过期后再抓时失败
+    // 过期后再抓时全部台失败（reject）
     now += 40_000;
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_history_projects") return Promise.resolve([]);
       if (cmd === "list_remote_history_projects")
-        return Promise.reject(new Error("ssh down"));
+        return Promise.reject(new Error("all hosts down"));
       return Promise.resolve(undefined);
     });
-    await view.close();
+    view.close();
     await view.open();
-    // 失败被 toast、不抛；本地仍成功渲染（不阻断）
+
+    // 失败被 toast、不抛；**旧缓存被保住不覆盖**；首帧仍从缓存渲染出 2 个远端项目
     expect(showActionFailureToast).toHaveBeenCalled();
+    expect(inner.remoteCache?.projects.length).toBe(2);
+    expect(inner.projects.filter((p) => p.origin === "hostA").length).toBe(2);
+  });
+
+  it("部分台失败（Ok + failedHosts）：不冻结缓存，下次 open 重试失败台", async () => {
+    const view = new HistoryView();
+    // open 1：hostA 成功给 1 个项目，hostB 失败
+    setupInvoke([remoteProj("pA", "hostA")], ["hostB"]);
+    await view.open();
+    const inner = view as unknown as ViewInternals;
+
+    // 部分失败 → 缓存**不冻结**（置 null）、toast 提示、但已拿到的 hostA 项目仍渲染
+    expect(showActionFailureToast).toHaveBeenCalled();
+    expect(inner.remoteCache).toBeNull();
+    expect(inner.projects.filter((p) => p.origin === "hostA").length).toBe(1);
+
+    // TTL 内 reopen：因缓存为 null（未冻结）→ 仍重新 fan-out 重试失败台（对齐 F76 前自愈）
+    const before = countCalls("list_remote_history_projects");
+    view.close();
+    now += 5_000; // TTL 内
+    await view.open();
+    expect(countCalls("list_remote_history_projects")).toBe(before + 1);
   });
 });
