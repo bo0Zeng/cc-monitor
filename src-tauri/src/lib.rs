@@ -1433,7 +1433,11 @@ async fn bring_remote_terminal_to_front(
         let mut binding = match cache.lookup(&session_id) {
             Some(b) => b,
             None => {
-                cache.try_bind(&session_id);
+                cache.try_bind_with_retry(
+                    &session_id,
+                    bind::ON_DEMAND_BIND_ATTEMPTS,
+                    bind::ON_DEMAND_BIND_STEP_MS,
+                );
                 cache
                     .lookup(&session_id)
                     .ok_or_else(|| "未绑定窗口（远端会话需在远端启用 ccm wrapper）".to_string())?
