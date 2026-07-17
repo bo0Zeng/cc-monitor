@@ -61,3 +61,29 @@ pub fn liveness_dir(data_root: &Path) -> PathBuf {
 pub fn tasks_dir(data_root: &Path) -> Option<PathBuf> {
     active().layout().tasks_subdir.map(|s| data_root.join(s))
 }
+
+/// F-MA:路径扩展名是不是该 agent 的会话记录扩展(CC = `jsonl`)。
+pub fn has_record_ext(p: &Path) -> bool {
+    p.extension().and_then(|e| e.to_str()) == Some(active().layout().record_ext)
+}
+
+/// F-MA:路径是否落在跳过段下(CC = `subagents`,子会话不当独立会话)。大小写不敏感。
+pub fn is_skipped_path(p: &Path) -> bool {
+    let skip = active().layout().skip_segments;
+    p.components()
+        .any(|c| skip.iter().any(|s| c.as_os_str().eq_ignore_ascii_case(s)))
+}
+
+/// F-MA:一个路径是不是该 agent 的**顶层会话记录文件**(扩展名对 + 不在跳过段下)。
+pub fn is_record_file(p: &Path) -> bool {
+    has_record_ext(p) && !is_skipped_path(p)
+}
+
+/// F-MA:从记录文件路径取 session_id(CC = `file_stem`)。约定不成立则 `None`。
+pub fn session_id_from_path(p: &Path) -> Option<String> {
+    if active().layout().sid_from_stem {
+        p.file_stem().and_then(|s| s.to_str()).map(String::from)
+    } else {
+        None
+    }
+}

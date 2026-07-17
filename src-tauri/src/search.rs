@@ -206,9 +206,7 @@ impl SearchIndex {
             .max_depth(2)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.file_type().is_file() && e.path().extension().is_some_and(|x| x == "jsonl")
-            })
+            .filter(|e| e.file_type().is_file() && crate::adapter::has_record_ext(e.path()))
             .map(|e| e.into_path())
             .collect();
 
@@ -418,7 +416,7 @@ fn build_sessions_parallel(files: Vec<PathBuf>) -> Vec<SessionDoc> {
 
 /// 解析一个 jsonl → SessionDoc。无任何可索引内容时返回 None。
 fn build_one(path: &Path) -> Option<SessionDoc> {
-    let session_id = path.file_stem()?.to_str()?.to_string();
+    let session_id = crate::adapter::session_id_from_path(path)?;
     let file = File::open(path).ok()?;
     let updated_at = file
         .metadata()
