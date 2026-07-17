@@ -38,6 +38,7 @@ mod subagent;
 mod tasks;
 mod tmux;
 mod tmux_reconcile;
+mod usage;
 mod utils;
 mod watcher;
 
@@ -881,6 +882,7 @@ pub fn run() {
             history::update_history_metadata,
             history::resume_history_session,
             history::new_local_session,
+            usage::aggregate_usage_all,
             launch::launch_remote_terminal,
             sftp_pool::sftp_realpath,
             sftp_pool::sftp_list_dir,
