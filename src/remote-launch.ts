@@ -23,7 +23,7 @@
 
 // F-MA：agent 画像是纯常量模块（无 DOM/render/bundler 依赖），不破坏本模块"零 bundler-import
 // 便于 tsx 单测"的性质（同 diff.ts）。resume 相关 CC 常量（嵌套 env / launcher / --resume）在此。
-import { AGENT_PROFILE } from "./agent-profile";
+import { AGENT_PROFILE } from "./agent-profile.ts";
 
 /** Claude 嵌套会话环境标记（空格分隔，喂 `unset`）。CLAUDE_CONFIG_DIR 刻意不含。 */
 export const CLAUDE_NESTED_ENV_VARS = AGENT_PROFILE.nestedEnvVars.join(" ");
