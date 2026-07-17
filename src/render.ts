@@ -146,13 +146,42 @@ export interface RenderMarkdownOptions {
  * 错误共享"（session-viewer 历史 load 期间被 tabs batch 模式污染走 lazy 路径
  * 是已知 bug）。同步调用栈内 try/finally 严格恢复，并发也安全（JS 单线程）。
  */
+/**
+ * F73（issue #42）：多行块级 LaTeX 公式预处理。`marked-katex-extension` 的块规则要求 `$$` **独占
+ * 行**、且块扩展无 `start()` 钩子会被段落**吞并**（块公式前无空行时）、且**完全不认 `\[...\]`**——
+ * 导致「结果是：<换行>$$…多行…$$」这类最常见形态不渲染（单行 `$$x$$` 走行内规则不受影响，故
+ * "单行能、多行不能"的错觉）。在 `marked.parse` 前把块公式规整成扩展唯一能吃的形态（`$$` 独占行
+ * + 前后空行），并把 `\[..\]`→`$$..$$`、`\(..\)`→`$..$`。**先保护代码围栏/行内代码**（别动代码里
+ * 的 `$$`/`\[`）。纯函数、可单测。占位符用不可见 `\u0000` 包裹防与正文串位。
+ * 已知边界：4 空格缩进代码块不保护（Claude 输出几乎只用围栏）；prose 里恰好配对的 `$$…$$`（如
+ * "from $$5 to $$10"）会误判为公式——与既有 `nonStandard:true` 对单 `$` 的误判同源、不新增暴露面。
+ */
+export function preprocessMath(md: string): string {
+  const stash: string[] = [];
+  const stub = (m: string): string => {
+    stash.push(m);
+    return `\u0000M${stash.length - 1}\u0000`;
+  };
+  // 1) 保护代码：围栏（``` / ~~~）+ 行内 `code`——避免动到代码里的 $$ / \[。
+  md = md.replace(/(^|\n)(```|~~~)[\s\S]*?\n\2[^\n]*(?=\n|$)/g, (m) => stub(m));
+  md = md.replace(/`[^`\n]*`/g, (m) => stub(m));
+  // 2) \[ ... \] → 块级 $$；\( ... \) → 行内 $。
+  md = md.replace(/\\\[([\s\S]*?)\\\]/g, (_m, x: string) => `\n\n$$\n${x.trim()}\n$$\n\n`);
+  md = md.replace(/\\\(([\s\S]*?)\\\)/g, (_m, x: string) => `$${x.trim()}$`);
+  // 3) $$ ... $$（单/多行）统一规整成独占行 + 空行包裹。`[^$]` 避开 `$$$$`，非贪婪分开多段公式。
+  md = md.replace(/\$\$([^$][\s\S]*?)\$\$/g, (_m, x: string) => `\n\n$$\n${x.trim()}\n$$\n\n`);
+  // 4) 还原代码。
+  return md.replace(/\u0000M(\d+)\u0000/g, (_m, i: string) => stash[Number(i)]);
+}
+
 export function renderMarkdown(md: string, opts: RenderMarkdownOptions = {}): string {
   const prevLazy = currentLazy;
   // P5.5 B 重构：lazy 必须 caller 显式传（不传默认 false）；同步调用栈 save/restore
   // 防止 marked.use renderer 单例的 closure 看到错误 state。
   currentLazy = opts.lazy ?? false;
   try {
-    const raw = marked.parse(md, { async: false }) as string;
+    // F73：数学预处理（多行块公式规整 + \[..\]/\(..\) 翻译）后再交给 marked。
+    const raw = marked.parse(preprocessMath(md), { async: false }) as string;
     return DOMPurify.sanitize(raw, {
       USE_PROFILES: { html: true, svg: true, mathMl: true },
       ADD_ATTR: ["target", "rel", "data-copy", "data-external"],
