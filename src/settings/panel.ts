@@ -134,6 +134,16 @@ const DIAG_STORAGE_INFO_TEXT =
   "WebView2 UserDataFolder / localStorage keys 等。每项可点 [打开] 直接到文件管理器。" +
   "纯展示，无危险操作。";
 
+// F82b（#56+#47）：4 组终态的合并 tooltip——外观并了 行为/快捷键、集成并了 诊断&存储，
+// group 级 tooltip 把原分组说明拼一起（子分节各带小标题导航）。
+const APPEARANCE_GROUP_INFO_TEXT =
+  APPEARANCE_INFO_TEXT + "\n\n【行为】" + BEHAVIOR_INFO_TEXT + "\n\n【快捷键】" + KEYBINDINGS_INFO_TEXT;
+const INTEGRATION_GROUP_INFO_TEXT =
+  INTEGRATION_INFO_TEXT + "\n\n【诊断 & 存储】" + DIAG_STORAGE_INFO_TEXT;
+const REMOTE_GROUP_INFO_TEXT =
+  "远端会话「连上之后」的行为与历史相关设置。当前尚无独立项（resume 命令等在「外观 → 行为」里），" +
+  "留空占位；后续远端会话行为 / 历史项加入本组。（「连上远端」的 SSH 连接配置在上面的「连接」组。）";
+
 export class SettingsPanel {
   private el: HTMLElement;
   /** 当前编辑中的 theme（实时预览用） */
@@ -357,75 +367,67 @@ export class SettingsPanel {
     this.banner.className = "settings-banner";
     body.appendChild(this.banner);
 
-    // **5 大模块**。除「行为」外全部默认折叠；所有长描述收进 ? 图标 tooltip
-    // （由 CollapsibleGroup 自动渲染）。各 build*Group 方法只产出表单本体
-    // （不带标题 / 不带 hint），由 CollapsibleGroup 接管。
+    // F82b（#56+#47）：**4 组终态**（连接 / 外观 / 远端 / 集成）。用户 2026-07-17 拍板「硬落 4 组，
+    // 连接=SSH、远端留空占位」。原 6 组合并：行为 + 快捷键 → 外观；诊断 & 存储 → 集成。端口转发（F58
+    // 独立视图）/ SSH config 导入（F89）/ 拉前折叠（F81）落地后进「连接」；MCP（F87）进「集成」。
+    // build*Group 只产出表单本体，CollapsibleGroup / titledSection 接管标题与描述。
 
-    // 1. 行为 —— 唯一默认展开
-    const behavior = new CollapsibleGroup({
-      id: "behavior",
-      title: "行为",
-      defaultCollapsed: false,
-      infoTooltip: BEHAVIOR_INFO_TEXT,
-    });
-    behavior.appendChild(this.buildBehaviorGroup());
-    body.appendChild(behavior.element);
-
-    // 2. 快捷键 —— 编辑器入口
-    const kb = new CollapsibleGroup({
-      id: "keybindings",
-      title: "快捷键",
-      defaultCollapsed: true,
-      infoTooltip: KEYBINDINGS_INFO_TEXT,
-    });
-    kb.appendChild(this.buildKeybindingsGroup());
-    body.appendChild(kb.element);
-
-    // 3. 数据源 & 集成 —— "monitor 怎么对接 Claude" 同主题：Claude 目录在哪
-    //    + PowerShell cc 命令安装（v1.7 注入式绑定）
-    const integration = new CollapsibleGroup({
-      id: "integration",
-      title: "数据源 & 集成",
-      defaultCollapsed: true,
-      infoTooltip: INTEGRATION_INFO_TEXT,
-    });
-    integration.appendChild(this.buildDataGroup());
-    integration.appendChild(new CcIntegrationSection().element);
-    body.appendChild(integration.element);
-
-    // 4. 外观 —— 字体 + 颜色
-    const appearance = new CollapsibleGroup({
-      id: "appearance",
-      title: "外观",
-      defaultCollapsed: true,
-      infoTooltip: APPEARANCE_INFO_TEXT,
-    });
-    appearance.appendChild(this.buildGroup("字体", FIELDS.filter((f) => f.group === "font")));
-    appearance.appendChild(this.buildGroup("颜色", FIELDS.filter((f) => f.group === "color")));
-    body.appendChild(appearance.element);
-
-    // 5. 诊断 & 存储 —— 工具型/调试型信息：诊断 toggle + 各路径透明展示
-    const diag = new CollapsibleGroup({
-      id: "diag-storage",
-      title: "诊断 & 存储",
-      defaultCollapsed: true,
-      infoTooltip: DIAG_STORAGE_INFO_TEXT,
-    });
-    diag.appendChild(new DiagnosticsSection({ headless: true }).element);
-    this.dataSection = new DataSection({ headless: true });
-    diag.appendChild(this.dataSection.element);
-    body.appendChild(diag.element);
-
-    // 6. 远端 (SSH) —— SSH-remote Phase 0 (issue #15)：配置 + 启用远端数据源
-    const remote = new CollapsibleGroup({
-      id: "remote",
-      title: "远端 (SSH)",
+    // 1. 连接 —— 怎么连上远端（当前只有 SSH 数据源配置一块；F58/F89/F81 落地后补入本组）
+    const connection = new CollapsibleGroup({
+      id: "connection",
+      title: "连接",
       defaultCollapsed: true,
       infoTooltip: REMOTE_INFO_TEXT,
     });
     this.remoteSection = new RemoteSection({ headless: true });
-    remote.appendChild(this.remoteSection.element);
+    connection.appendChild(this.remoteSection.element);
+    body.appendChild(connection.element);
+
+    // 2. 外观 —— 行为 + 快捷键 + 字体 + 颜色（默认展开，保留「行为」的高可达性）
+    const appearance = new CollapsibleGroup({
+      // F82b：用新 id（旧 `appearance` 只含字体+颜色，且此组现默认展开）——避免返回用户旧的
+      // collapsed 状态套到语义已变的合并组上、抵消「默认展开保『行为』可达」的意图。
+      id: "appearance-4grp",
+      title: "外观",
+      defaultCollapsed: false,
+      infoTooltip: APPEARANCE_GROUP_INFO_TEXT,
+    });
+    appearance.appendChild(this.titledSection("行为", this.buildBehaviorGroup()));
+    appearance.appendChild(this.titledSection("快捷键", this.buildKeybindingsGroup()));
+    appearance.appendChild(this.buildGroup("字体", FIELDS.filter((f) => f.group === "font")));
+    appearance.appendChild(this.buildGroup("颜色", FIELDS.filter((f) => f.group === "color")));
+    body.appendChild(appearance.element);
+
+    // 3. 远端 —— 连上后的行为 & 历史。当前无独立设置（resume 命令等在「外观 → 行为」里），留空占位（用户拍板）。
+    const remote = new CollapsibleGroup({
+      // F82b：用新 id——旧 `remote` 是「远端 (SSH)」表单（现移到「连接」组），若复用，返回用户
+      // 旧的展开状态会让这个**空占位组**默认展开（且 SSH 表单在新 `connection` id 下默认折叠、像被藏了）。
+      id: "remote-placeholder",
+      title: "远端",
+      defaultCollapsed: true,
+      infoTooltip: REMOTE_GROUP_INFO_TEXT,
+    });
+    const remotePlaceholder = document.createElement("div");
+    remotePlaceholder.className = "settings-group settings-group-empty";
+    remotePlaceholder.textContent = "暂无设置——远端会话行为 / 历史相关项后续加入本组。";
+    remote.appendChild(remotePlaceholder);
     body.appendChild(remote.element);
+
+    // 4. 集成 —— Claude 数据源 + PowerShell + 诊断 & 存储（MCP F87 后加入）
+    const integration = new CollapsibleGroup({
+      id: "integration",
+      title: "集成",
+      defaultCollapsed: true,
+      infoTooltip: INTEGRATION_GROUP_INFO_TEXT,
+    });
+    integration.appendChild(this.buildDataGroup());
+    integration.appendChild(new CcIntegrationSection().element);
+    integration.appendChild(
+      this.titledSection("诊断", new DiagnosticsSection({ headless: true }).element),
+    );
+    this.dataSection = new DataSection({ headless: true });
+    integration.appendChild(this.titledSection("数据存储", this.dataSection.element));
+    body.appendChild(integration.element);
 
     return body;
   }
@@ -580,7 +582,7 @@ export class SettingsPanel {
     this.kbOverrideChip.textContent = n > 0 ? `已自定义 ${n} 项` : "全部默认";
   }
 
-  /** "Claude 数据目录" 子表单（嵌在「数据源 & 集成」分组里） */
+  /** "Claude 数据目录" 子表单（F82b 起嵌在「集成」组里） */
   private buildDataGroup(): HTMLElement {
     const group = document.createElement("div");
     group.className = "settings-group";
@@ -637,6 +639,21 @@ export class SettingsPanel {
       group.appendChild(this.buildField(f));
     }
     return group;
+  }
+
+  /**
+   * F82b：把一个既有的「表单本体」`body` 包一层子分节小标题（`.settings-group-title`），供
+   * 合并后的 4 组内部导航（如「外观」里的 行为 / 快捷键，「集成」里的 诊断 / 数据存储）。
+   */
+  private titledSection(title: string, body: HTMLElement): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "settings-group";
+    const heading = document.createElement("div");
+    heading.className = "settings-group-title";
+    heading.textContent = title;
+    wrap.appendChild(heading);
+    wrap.appendChild(body);
+    return wrap;
   }
 
   private buildField(f: FieldSpec): HTMLElement {
