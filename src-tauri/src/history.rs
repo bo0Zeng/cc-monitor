@@ -375,7 +375,7 @@ fn validate_delete_target(jsonl_path: &str, projects_dir: &Path) -> Result<PathB
             canon_projects.display()
         ));
     }
-    if canon_target.extension().map_or(true, |e| e != "jsonl") {
+    if !crate::adapter::has_record_ext(&canon_target) {
         return Err("refuse delete: not a .jsonl file".into());
     }
     Ok(canon_target)
@@ -441,7 +441,7 @@ fn validate_branch_source(jsonl_path: &str, projects_dir: &Path) -> Result<PathB
             canon_projects.display()
         ));
     }
-    if canon_target.extension().map_or(true, |e| e != "jsonl") {
+    if !crate::adapter::has_record_ext(&canon_target) {
         return Err("refuse branch: not a .jsonl file".into());
     }
     Ok(canon_target)
@@ -734,9 +734,11 @@ fn analyze_project_dir(
     let mut jsonls: Vec<(PathBuf, String, i64)> = Vec::new(); // (path, session_id, mtime_ms)
     for e in entries.flatten() {
         let p = e.path();
-        if p.extension().map_or(false, |x| x == "jsonl") {
-            let sid = match p.file_stem().and_then(|s| s.to_str()) {
-                Some(s) => s.to_string(),
+        // F-MA：记录扩展名走 adapter（此处原不排 subagent，故用 has_record_ext 而非 is_record_file，
+        // 保行为零变化）；sid 从路径按 adapter 约定取。
+        if crate::adapter::has_record_ext(&p) {
+            let sid = match crate::adapter::session_id_from_path(&p) {
+                Some(s) => s,
                 None => continue,
             };
             let mtime = p

@@ -23,6 +23,7 @@
  */
 
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { AGENT_PROFILE } from "../agent-profile";
 import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { openSftpPanel } from "../sftp/panel";
@@ -862,7 +863,7 @@ class MachineCard {
     start.addEventListener("click", () => {
       const cwd = cwdInput.value.trim();
       const name = nameInput.value.trim() || deriveTmuxName(cwd);
-      const command = cmdInput.value.trim() || "claude";
+      const command = cmdInput.value.trim() || AGENT_PROFILE.defaultLauncher;
       back.remove();
       void runRemoteLauncher(origin, cwd, name, command);
     });
