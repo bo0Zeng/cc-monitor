@@ -16,7 +16,7 @@
  */
 
 // F-MA：agent-profile 是纯常量模块（无 DOM/render），不破坏本文件"可 tsx 独立单测"的性质。
-import { AGENT_PROFILE } from "../agent-profile";
+import { AGENT_PROFILE } from "../agent-profile.ts";
 
 // === 类型（纯数据，无 DOM） ===
 
