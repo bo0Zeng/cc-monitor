@@ -2,7 +2,7 @@
  * issue #23（第二增量）：当前会话的 subagent 列表 + 每个 agent 自己的状态灯。
  *
  * 用户决策：不在 Tab 圆点上区分 agent，而是与 task 面板同位同形态——status bar
- * 一枚 chip（`🤖 N agents (M 运行中)`，0 agent 隐藏）+ 点击展开 popover，每行
+ * 一枚 chip（`N agents (M 运行中)`，0 agent 隐藏；F80 去纯装饰 🤖）+ 点击展开 popover，每行
  * 一个 agent：灯（🟢 运行中 / ✓ 完成 / ✗ 中止）+ [类型] 描述。
  *
  * 数据纯前端推断（零后端改动）：TabManager 在 jsonl 流里配对 Task/Agent 的
@@ -120,8 +120,8 @@ export class AgentsPanel {
     const running = this.agents.filter((a) => a.status === "running").length;
     this.summaryText.textContent =
       running > 0
-        ? `🤖 ${this.agents.length} agents (${running} 运行中)`
-        : `🤖 ${this.agents.length} agents`;
+        ? `${this.agents.length} agents (${running} 运行中)`
+        : `${this.agents.length} agents`;
 
     // 全量 replace —— per-tab 上限 30 条（TabManager 侧裁剪）
     this.list.replaceChildren();
