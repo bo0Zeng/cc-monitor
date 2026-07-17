@@ -37,7 +37,7 @@ pub fn save_config(value: Value) -> Result<(), String> {
 /// std::fs::rename 在 Windows 上目标文件已存在时会失败（不像 POSIX 原子覆盖），
 /// 所以这里走 MoveFileExW(MOVEFILE_REPLACE_EXISTING)；非 Windows 走 std::fs::rename。
 #[cfg(windows)]
-fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+pub(crate) fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
     use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_REPLACE_EXISTING};
@@ -61,7 +61,7 @@ fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Resu
 }
 
 #[cfg(not(windows))]
-fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+pub(crate) fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
     std::fs::rename(src, dst)
 }
 
