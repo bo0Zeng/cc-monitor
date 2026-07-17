@@ -66,6 +66,11 @@ export interface ViewerOptions {
    * 新终端起始目录。远端会话不建分支，可缺省。
    */
   cwd?: string;
+  /**
+   * F77：抑制「从这一轮建分支」按钮。子 agent 记录（点进 agent 看记录）不是可分支的会话——
+   * 对子 agent jsonl 建分支会产出残缺/无归属会话，故 F77 传 true 关掉该可操作面。
+   */
+  suppressBranch?: boolean;
 }
 
 const TAIL_INITIAL = 150; // 首屏渲染的末尾条数(实测 37MB 全量 65s → 首屏 1.1s)
@@ -149,9 +154,11 @@ export class SessionViewer {
       onQueueOperation: () => {},
       observeForLazyEnhance: true,
       // F62：仅本地会话给每张 user/assistant 卡挂「从这一轮建分支」按钮（远端会话不建分支）。
-      onCardRendered: opts.origin
-        ? undefined
-        : (el, msg) => this.attachBranchButton(el, msg, opts.jsonlPath, opts.cwd),
+      // F77：子 agent 记录 `suppressBranch` 也关掉（子 agent jsonl 不是可分支的会话）。
+      onCardRendered:
+        opts.origin || opts.suppressBranch
+          ? undefined
+          : (el, msg) => this.attachBranchButton(el, msg, opts.jsonlPath, opts.cwd),
     };
     this.renderCtx = ctx;
     this.renderSink = sink;

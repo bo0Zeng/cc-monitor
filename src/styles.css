@@ -598,6 +598,14 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   align-items: baseline;
   gap: 8px;
 }
+/* F77：agent 行可点击（看它的记录）。 */
+.agent-row-clickable {
+  cursor: pointer;
+  border-radius: 4px;
+}
+.agent-row-clickable:hover {
+  background: var(--overlay-hover);
+}
 .agent-dot {
   flex: none;
   width: 8px;
@@ -3287,6 +3295,13 @@ body.settings-window-mode .sftp-trigger {
   display: flex;
   flex-direction: column;
   background: var(--bg);
+}
+/* F77（#53）：agents 面板点开某 agent 记录时，SessionViewer 的 body-level 挂载壳——fixed 全屏 +
+   高 z-index（盖住顶栏触发器 z-index:2 等；.session-viewer 是 absolute inset:0，靠这个定位祖先铺满）。 */
+.agent-records-viewer-mount {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
 }
 
 .session-viewer-bar {

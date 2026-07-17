@@ -23,6 +23,13 @@ export interface AgentEntry {
   /** subagent_type（"Explore" / "general-purpose"…），无则 null */
   agentType: string | null;
   status: "running" | "done" | "aborted";
+  /** F77：产出该 agent 的 tool_use 那条 assistant 记录的 timestamp——`load_subagent` 按
+   *  (parentPath, description, timestamp) 定位子 agent jsonl 需要它（点进看记录用）。缺省空串。 */
+  timestamp: string;
+  /** F77：原始 description（**trim 后**，镜像 subagent 卡片 `input.description?.trim()`）——
+   *  `load_subagent` 按 description **精确串等**匹配，故必须用它而非展示用的 `label`（label 在
+   *  desc 为空时会回退成 prompt 首行/工具名，拿去匹配必失败）。 */
+  desc: string;
 }
 
 function loadCollapsed(): boolean {
@@ -42,6 +49,8 @@ export class AgentsPanel {
   private agents: AgentEntry[] = [];
   private activeSid: string | null = null;
   private collapsed: boolean;
+  /** F77：点某行 agent → 看它的记录。main.ts 注入（load_subagent → SessionViewer）。 */
+  onAgentOpen: ((entry: AgentEntry) => void) | null = null;
 
   constructor() {
     this.collapsed = loadCollapsed();
@@ -127,7 +136,18 @@ export class AgentsPanel {
     this.list.replaceChildren();
     for (const a of this.agents) {
       const row = document.createElement("li");
-      row.className = `tasks-popover-item agent-row agent-${a.status}`;
+      row.className = `tasks-popover-item agent-row agent-${a.status} agent-row-clickable`;
+      // F77：点整行 → 看该 agent 的记录（load_subagent→SessionViewer，main.ts 注入）。键盘可达：
+      // role=button + tabindex + Enter/Space（DoD 要求）。
+      row.setAttribute("role", "button");
+      row.tabIndex = 0;
+      row.addEventListener("click", () => this.onAgentOpen?.(a));
+      row.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          this.onAgentOpen?.(a);
+        }
+      });
 
       const dot = document.createElement("span");
       dot.className = "agent-dot";

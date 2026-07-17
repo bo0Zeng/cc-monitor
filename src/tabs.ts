@@ -1171,10 +1171,13 @@ export class TabManager {
   private trackAgents(tab: Tab, message: unknown): void {
     const rec = message as {
       type?: string;
+      timestamp?: unknown;
       message?: { content?: unknown };
     };
     const content = rec?.message?.content;
     if (!Array.isArray(content)) return;
+    // F77：这条 assistant 记录的 timestamp——存进 AgentEntry 供「点进 agent 看记录」的 load_subagent 定位。
+    const recTimestamp = typeof rec.timestamp === "string" ? rec.timestamp : "";
     let changed = false;
     if (rec.type === "assistant") {
       for (const b of content) {
@@ -1192,8 +1195,10 @@ export class TabManager {
         ) {
           continue;
         }
-        const desc =
-          typeof blk.input?.description === "string" ? blk.input.description : "";
+        // F77：desc **trim 后**（镜像卡片 `input.description?.trim()`），供 load_subagent 精确匹配。
+        const desc = (
+          typeof blk.input?.description === "string" ? blk.input.description : ""
+        ).trim();
         const prompt =
           typeof blk.input?.prompt === "string" ? blk.input.prompt : "";
         const label =
@@ -1207,6 +1212,8 @@ export class TabManager {
           label,
           agentType,
           status: "running",
+          timestamp: recTimestamp, // F77：供 load_subagent 定位子 agent
+          desc, // F77：load_subagent 精确匹配的 description（trim 后，非展示 label）
         });
         changed = true;
       }
@@ -1445,6 +1452,14 @@ export class TabManager {
   openActiveTabCwd(): void {
     if (!this.activeId) return;
     void this.openTabCwd(this.activeId);
+  }
+
+  /** F77：活跃 tab 的子 agent 加载上下文（parentPath + origin）——main.ts 点 agent 行时用它
+   *  调 `load_subagent`。无活跃 tab / 无 parentPath → null；远端会话 origin!==null（不支持，调用方提示）。 */
+  getActiveSubagentContext(): { parentPath: string; origin: string | null } | null {
+    const tab = this.activeId !== null ? this.tabs.get(this.activeId) : undefined;
+    if (!tab || !tab.parentPath) return null;
+    return { parentPath: tab.parentPath, origin: tab.origin };
   }
 
   /** issue #10 快捷键 Ctrl+Shift+N：把当前活跃 Tab 在独立只读窗口打开 */
