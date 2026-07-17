@@ -141,7 +141,7 @@ src/
 │              views/pane-preview.ts  B14-F60 远端 tmux 画面只读预览 overlay（capture-pane 快照）
 │              views/port-forward.ts  B14-F58 本地端口转发(-L)管理台 overlay
 │              tasks-panel.ts  v2.3 Tab stream 顶部 sticky task 折叠卡
-├── 设置        settings/panel.ts   总控 + onBehaviorChange 回调
+├── 设置        settings/panel.ts   总控（F82a 起挂独立 `settings` 窗口，windowMode + 跨窗广播同步）
 │              settings/cc_integration.ts  PowerShell 集成区
 │              settings/info-icon.ts  portal tooltip 组件
 │              settings/data-section.ts  v2.3 数据存储透明化
@@ -245,11 +245,10 @@ F40b 上翻补批：active tab 滚到顶部 800px 内自动从 `TailWindow` 弹 
 
 **历史 + 实时一致性**：独立窗口订阅 `jsonl-line`（按 sid 过滤）拿实时增量；历史经 `replay_session_to_window` 从 event_replay buffer **定向 emit 给本窗口**——两者都是 watcher 的 **per-file seq 空间**，混进同一 RecordTimeline 顺序天然正确，重叠由前端 `seen` set 去重。**不发 frontend-ready**（那会触发对所有窗口的全量 replay）。仅活跃 session 在 buffer；archived 走前端一次性文件读。capability 必须含 `viewer-*`（见 capabilities/default.json）。
 
-**四个踩过的坑（INVARIANT § 22）**：
-1. **开窗命令必须 `async`**：Tauri 2 同步 `fn` 命令在主线程跑，`WebviewWindowBuilder::build()` 又要派发回主线程并阻塞等 → 自死锁（白屏 + 整窗卡死）。async 命令在 runtime 线程跑才行。
-2. **事件 target-kind 必须对齐**：定向投递要 Rust `emit_to(EventTarget::webview_window(label))` ↔ 前端 `getCurrentWebviewWindow().listen`（窗口作用域，`bindEvents({windowScoped:true})`）。用 `&str` 目标（→`AnyLabel`）配模块级 `listen`（→`Any`）**收不到**（实测白屏只剩状态栏）。live 广播 `Any` 是通配，带标签监听仍能收。
-3. **`bindEvents` 须 await**：`listen()` 异步注册，注册完成前 emit 的事件会丢；viewer 紧接着调 replay，必须先 await。
-4. **viewer-mode grid 行数**：`#tab-bar` `display:none` 会把它从 grid item 移除，剩下的子元素**前移一行** → message-stream 落进多余的 0 高行被压没。只能给剩余 item 定义对应行数（`auto 1fr 24px`）。
+**踩过的坑（INVARIANT § 22，含 F82a 新增两条）**：见 §22 全六条。摘要：① 开窗命令必须 `async`（否则主线程自死锁）；② 定向事件 target-kind 对齐（viewer；settings 用广播↔模块级 listen 的 Any↔Any 同步）；③ 异步 listen 先注册再 emit；④ 精简模式别塌 grid 行（viewer 只定义剩余 item 行数；settings 直接隐藏 grid 容器 `#app` 整块）；⑤ **关窗要 `core:window:allow-close` 能力**（`core:window:default` 不含，getCurrentWindow().close() 否则被 ACL 静默拒）；⑥ **复用 dispatcher 的独立窗口必须自调 `dispatcher.start()`+`applyOverrides`**（否则窗内快捷键录制收不到键、Esc 关不了嵌套 overlay；别手搓 window Esc 会双关窗）。
+
+### 独立设置窗口（F82a #56+#47）
+`open_settings_window`（async，单例 `settings` 窗）建 `index.html?settings=1`；`main.ts` 检测参数走 `bootstrapSettings`——`body.settings-window-mode` 隐藏 `#app` 整块、`SettingsPanel({windowMode:true})` 铺满整窗，并自调 `dispatcher.applyOverrides+start`（窗内快捷键编辑器/overlay Esc 需要）。设置项经既有 config 命令读写（窗口无关，无 replay/事件流）。**跨窗同步**：设置窗保存主题 / 行为 toggle / resetAll、以及键位编辑器 persist 后 `emit('settings-applied')`（广播）；主窗口 `listen` 后重读并 `loadTheme`+`applyBehavior`+`applyOverrides`（跨 OS 窗口回调够不到）。cancel 不 emit → 天然 cancel-safe。触发器/`app.open-settings` 快捷键改 `invoke("open_settings_window")`。capability 的 `windows` 含 `settings` 且 `permissions` 含 `core:window:allow-close`。**窗体渲染本环境无 GUI 不可自测 → 真机验证累积。**
 
 ### session 探活双重校验（PID + procStart，procStart 可缺）
 `OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE` + 当 sessions/<PID>.json 含 `procStart` 字段时再加 `GetProcessTimes` creation FILETIME 100ms 容差比对。

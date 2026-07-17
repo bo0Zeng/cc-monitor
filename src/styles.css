@@ -1935,6 +1935,29 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   transform: translateX(0);
 }
 
+/* F82a（#56+#47）：独立设置窗口模式 —— 设置面板占满整窗，隐藏主窗口 chrome。
+   ★ footgun #4（viewer-window-investigation §5）规避：这里隐藏的是 grid **容器** `#app` **整块**
+   （不是它内部某个 grid item），不触发「隐藏一个 item → 剩余 item 重排落进 0 高行」的塌缩；
+   `.settings-panel` 本就是 `position:fixed` 脱流铺满，与 `#app` 无 grid 关系。 */
+body.settings-window-mode #app {
+  display: none;
+}
+body.settings-window-mode .settings-panel {
+  width: 100vw;
+  max-width: 100vw;
+  border-left: none;
+  box-shadow: none;
+  transform: none; /* 无抽屉滑入（脱流铺满，别从右缘滑） */
+  transition: none;
+}
+/* 顶栏触发按钮在设置窗 bootstrap 里根本不创建，这里兜底隐藏一次（同 viewer-mode 惯例）。 */
+body.settings-window-mode .settings-trigger,
+body.settings-window-mode .history-trigger,
+body.settings-window-mode .panorama-trigger,
+body.settings-window-mode .usage-trigger {
+  display: none;
+}
+
 .settings-header {
   display: flex;
   align-items: center;

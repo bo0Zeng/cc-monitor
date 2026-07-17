@@ -841,6 +841,8 @@ pub fn run() {
             // issue #10: 独立只读窗口（多窗口 / 双屏）
             open_session_in_new_window,
             replay_session_to_window,
+            // F82a(#56+#47): 设置独立窗口
+            open_settings_window,
             bring_terminal_to_front,
             // Feature ②: 远端 Tab ↗ 拉前对应本地终端窗口（ccm wrapper 设标题绑定）
             bring_remote_terminal_to_front,
@@ -1219,6 +1221,32 @@ async fn open_session_in_new_window(
     builder
         .build()
         .map_err(|e| format!("create viewer window failed: {e}"))?;
+    Ok(())
+}
+
+/// F82a（#56+#47）：把「设置」开进独立窗口（SS-3 终态：设置搬独立窗）。单例 `settings` 窗，
+/// 已存在则前置聚焦。**必须 `async`**（同 `open_session_in_new_window`：同步命令建窗死锁，见其
+/// doc + `viewer-window-investigation.md` 五坑之一）。设置窗加载 `?settings=1` → 前端 `bootstrapSettings`
+/// 精简挂载 SettingsPanel（windowMode）。设置项经既有 config 命令读写（窗口无关），无需 replay/事件流；
+/// 保存时前端广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为（跨窗同步）。
+#[tauri::command]
+async fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    let label = "settings";
+    if let Some(w) = app.get_webview_window(label) {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    let url = tauri::WebviewUrl::App("index.html?settings=1".into());
+    tauri::WebviewWindowBuilder::new(&app, label, url)
+        .title("cc-monitor 设置")
+        .inner_size(760.0, 820.0)
+        // 与主窗口 backgroundColor 一致，合成间隙露底为主题深色而非 WebView2 默认白（同 viewer）
+        .background_color(tauri::window::Color(0x2b, 0x2a, 0x27, 0xff))
+        .build()
+        .map_err(|e| format!("create settings window failed: {e}"))?;
     Ok(())
 }
 

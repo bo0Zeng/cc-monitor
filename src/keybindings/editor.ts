@@ -37,6 +37,9 @@ import {
 } from "./actions";
 import { dispatcher, KeybindingDispatcher, type OverlayHandle } from "./registry";
 import { setKeybindings } from "./store";
+// F82a：键位改动落盘后广播，主窗口跨窗热应用（事件名在中立模块，避免与 settings/panel 循环）。
+import { emit } from "@tauri-apps/api/event";
+import { SETTINGS_APPLIED_EVENT } from "../settings/events";
 
 export class KeybindingsEditor implements OverlayHandle {
   private overlay: HTMLElement;
@@ -347,6 +350,10 @@ export class KeybindingsEditor implements OverlayHandle {
   private async persist(): Promise<void> {
     try {
       await setKeybindings(dispatcher.exportOverrides());
+      // F82a：编辑器现挂在独立设置窗口里，键位改动落盘后广播，主窗口 listen 后
+      // applyOverrides 热生效（否则跨窗后「改即生效」退化成要重启）。同窗（本编辑器所在
+      // dispatcher）已即时生效，此广播是给**别的**窗口（主窗口）用的。
+      void emit(SETTINGS_APPLIED_EVENT);
     } catch (e) {
       console.warn("[keybindings] persist failed:", e);
     }
