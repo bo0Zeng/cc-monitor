@@ -664,7 +664,42 @@ impl RemoteHwndCache {
     pub fn try_bind(&self, _sid: &str) -> bool {
         false
     }
+
+    /// F75（#41 远端拉前不及时）：**带重试**的现扫绑定，供 on-demand（↗ 点击）路径用。
+    ///
+    /// 单次 [`try_bind`] 对 on-demand 不够：远端标题传播链是「远端 shell → SSH → tmux → 本地
+    /// 终端」**四跳**，且 tmux 默认截标题（wrapper 每 ~0.3s 重刷 `ccm-rbind-<sid>`）——用户在标题
+    /// 传播完成前点 ↗、或 `/resume` 切 sid 后 marker 刚重刷时，单次扫描常错过 → ↗ 报「未绑定」。
+    /// 短暂重试给标题传播/重刷的时间（本地 `handle_await_files` 同款思路 `bind.rs:225`；但远端四跳
+    /// 需更长窗口——本地 600ms 大概率不够）。命中即停（`try_bind`/EnumWindows 廉价）。调用方在
+    /// `spawn_blocking` 里，sleep 不阻塞主线程。
+    ///
+    /// ⚠️ **窗口长度待真机实测调**（四跳 + tmux 截断 + 用户点击后的可接受等待，`ON_DEMAND_BIND_*`）。
+    #[cfg(windows)]
+    pub fn try_bind_with_retry(&self, sid: &str, attempts: u32, step_ms: u64) -> bool {
+        if self.try_bind(sid) {
+            return true;
+        }
+        for _ in 0..attempts {
+            std::thread::sleep(std::time::Duration::from_millis(step_ms));
+            if self.try_bind(sid) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[cfg(not(windows))]
+    pub fn try_bind_with_retry(&self, _sid: &str, _attempts: u32, _step_ms: u64) -> bool {
+        false
+    }
 }
+
+/// F75：on-demand（↗ 点击）现扫绑定的重试窗口——`ON_DEMAND_BIND_ATTEMPTS × ON_DEMAND_BIND_STEP_MS`。
+/// 默认 15 × 100ms = 1.5s：比本地 600ms 长（远端四跳 + tmux 截标题），又不至于让点击久挂。
+/// **待真机实测调**（issue #41 标题「不及时」的新知识：根因是 on-demand 单次扫描 + 四跳传播延迟）。
+pub const ON_DEMAND_BIND_ATTEMPTS: u32 = 15;
+pub const ON_DEMAND_BIND_STEP_MS: u64 = 100;
 
 #[cfg(windows)]
 fn is_pid_alive(pid: u32) -> bool {
