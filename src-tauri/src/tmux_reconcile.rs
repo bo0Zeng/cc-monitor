@@ -32,6 +32,12 @@ use std::time::Duration;
 pub const POLL_INTERVAL: Duration = Duration::from_secs(8);
 /// 连续缺失多少轮才 retire（debounce，真机标定项）。
 pub const RETIRE_MISS_THRESHOLD: u32 = 2;
+/// ★ 承重下限：threshold **必须 ≥ 2**——`/branch` 漂移有 ~1s 竞态窗（daemon 退旧 sid A 晚一拍：
+/// 某轮 A 仍在 `announced_live` 但 backend 已是新 sid B）。threshold=1 会在这单轮把还活着、只是
+/// 换了 sid 的会话 A 误 retire。真机标定绝不能调到 1——编译期兜死（改小于 2 直接编译失败）。
+const _: () = assert!(RETIRE_MISS_THRESHOLD >= 2);
+/// poller 单次 `list_remote_tmux` 超时——防某 origin 远端 hang 住拖垮所有 origin 的串行对账。
+const LIST_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// 单个 sid 的对账追踪。
 #[derive(Default, Debug, Clone, PartialEq)]
@@ -95,28 +101,38 @@ pub async fn run_tmux_reconcile_poller(remote_tx: Sender<SessionChange>) {
         tokio::time::sleep(POLL_INTERVAL).await;
         let by_origin = crate::ssh_source::snapshot_announced_by_origin();
         for (origin, announced_live) in &by_origin {
-            match crate::tmux::list_remote_tmux(origin.clone()).await {
-                Ok(Some(sessions)) => {
-                    let backend: HashSet<String> =
-                        sessions.iter().filter_map(|s| s.sid.clone()).collect();
-                    let st = states.entry(origin.clone()).or_default();
-                    let retire =
-                        reconcile_step(st, announced_live, &backend, RETIRE_MISS_THRESHOLD);
-                    if !retire.is_empty() {
-                        tracing::info!(
-                            "tmux-reconcile: [{origin}] retire {} sid(s)（tmux 后端已不在）",
-                            retire.len()
-                        );
-                        // 送进唯一写者通道；发送失败（emitter 线程没起）忽略——退化为旧行为。
-                        let _ = remote_tx.send(SessionChange {
-                            added: Vec::new(),
-                            removed: retire,
-                            status_changed: Vec::new(),
-                        });
-                    }
-                }
-                // Err（ssh 抖动）/ Ok(None)（NO_TMUX）→ 跳过本 origin 本轮，不动追踪（观测无效）。
-                _ => {}
+            // 超时包裹：某 origin 远端 hang 住不拖垮其余 origin 的串行对账。
+            let listed =
+                tokio::time::timeout(LIST_TIMEOUT, crate::tmux::list_remote_tmux(origin.clone()))
+                    .await;
+            let sessions = match listed {
+                // 只有「SSH 成功 + tmux 存在 + 列表拿到」才进对账。
+                Ok(Ok(Some(sessions))) => sessions,
+                // 超时 / Err（ssh 抖动）/ Ok(None)（NO_TMUX）→ 跳过本 origin 本轮，观测无效不累计缺失。
+                _ => continue,
+            };
+            let backend: HashSet<String> = sessions.iter().filter_map(|s| s.sid.clone()).collect();
+            // ★ 空 backend 保守跳过：`list_remote_tmux` 的 `|| true` 把「tmux ls 瞬时错误」也吞成空，
+            // 无法与「tmux 真全没了/整服务被杀」区分——两者都空。若对空 backend 累计缺失，一次抖动
+            // 就会把该 origin 所有会话批量误灰、且 poller 只发 removed 不发 added → **永久卡灰**
+            // （不像断连窗口靠重连自愈）。主场景「杀单个会话」backend 非空、目标缺失照常 retire；
+            // 「整服务被杀」的变灰交给断连 flush 兜（那本就会断连）。
+            if backend.is_empty() {
+                continue;
+            }
+            let st = states.entry(origin.clone()).or_default();
+            let retire = reconcile_step(st, announced_live, &backend, RETIRE_MISS_THRESHOLD);
+            if !retire.is_empty() {
+                tracing::info!(
+                    "tmux-reconcile: [{origin}] retire {} sid(s)（tmux 后端已不在）",
+                    retire.len()
+                );
+                // 送进唯一写者通道；发送失败（emitter 线程没起）忽略——退化为旧行为。
+                let _ = remote_tx.send(SessionChange {
+                    added: Vec::new(),
+                    removed: retire,
+                    status_changed: Vec::new(),
+                });
             }
         }
         // 清掉已无任何宣告的 origin 的 state，避免无界增长。
@@ -210,7 +226,22 @@ mod tests {
     }
 
     #[test]
+    fn branch_drift_lag_round_does_not_retire_with_threshold_2() {
+        // 审计发现的滞后竞态：daemon 退旧 sid A 晚一拍——某轮 A 仍 announced、backend 已是 B（A 缺失）。
+        // threshold=2 下这单轮 miss=1 < 2 → 不 retire；下一轮 daemon 退 A、A 离开 announced → 剔除。
+        // （这正是 threshold ≥ 2 编译期兜死要保的性质。）
+        let mut st = ReconcileState::default();
+        reconcile_step(&mut st, &hs(&["A"]), &hs(&["A"]), 2); // A bound
+                                                              // 滞后 1 轮：A 仍 announced、backend=B → A miss=1 < 2 → 不 retire。
+        assert!(reconcile_step(&mut st, &hs(&["A", "B"]), &hs(&["B"]), 2).is_empty());
+        // 下一轮 daemon 退 A → A 离开 announced_live → 剔除追踪、不 retire。
+        assert!(reconcile_step(&mut st, &hs(&["B"]), &hs(&["B"]), 2).is_empty());
+    }
+
+    #[test]
     fn empty_backend_increments_ever_bound_sid() {
+        // 注：纯函数对空 backend 会累计缺失（source-agnostic、F90 期或有更好的空 vs 错区分）；
+        // **poller 侧对空 backend 保守跳过**（见 run_tmux_reconcile_poller）——本测只锁纯函数语义。
         let mut st = ReconcileState::default();
         let announced = hs(&["s"]);
         reconcile_step(&mut st, &announced, &hs(&["s"]), 5); // ever_bound
