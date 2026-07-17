@@ -15,6 +15,7 @@
  *   `reconcilePendingToolResults` 重新匹配注入。
  */
 import { renderMarkdown, renderPlainText } from "../render";
+import { AGENT_PROFILE } from "../agent-profile";
 import { parseSlashCommand, buildSlashCommandCard } from "./slash";
 import {
   parseBashInput,
@@ -957,17 +958,9 @@ function stripLineNumberPrefix(text: string): string {
     .join("\n");
 }
 
-/** 偏好：哪些 tool 默认 MD 渲染（产生类 markdown 文本的工具） */
-const DEFAULT_MD_TOOLS = new Set([
-  "Read",
-  "Grep",
-  "WebFetch",
-  "NotebookRead",
-  "TodoWrite",
-]);
-
+/** 偏好：哪些 tool 默认 MD 渲染（产生类 markdown 文本的工具）。F-MA：值在 agent-profile.mdTools。 */
 function defaultModeForTool(toolName: string): "text" | "md" {
-  return DEFAULT_MD_TOOLS.has(toolName) ? "md" : "text";
+  return AGENT_PROFILE.mdTools.has(toolName) ? "md" : "text";
 }
 
 function loadRenderModePreference(toolName: string): "text" | "md" | null {

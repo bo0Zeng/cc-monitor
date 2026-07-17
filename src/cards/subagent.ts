@@ -10,6 +10,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { AGENT_PROFILE } from "../agent-profile";
 import type { JsonlRecord, RenderContext, RenderResult } from "./index";
 
 /** Rust subagent::load_subagent 的返回结构 */
@@ -28,7 +29,7 @@ interface AgentInput {
 
 /** 判断一个工具名是否触发 subagent（v2.1 是 "Agent"，老版本曾是 "Task"） */
 export function isAgentTool(name: string): boolean {
-  return name === "Agent" || name === "Task";
+  return AGENT_PROFILE.agentTools.has(name);
 }
 
 /**

@@ -12,9 +12,10 @@
  * （INVARIANT § 17a/18 双层防御惯例）。
  */
 import { renderMarkdown } from "../render";
+import { AGENT_PROFILE } from "../agent-profile";
 
 export function isInteractiveTool(name: string): boolean {
-  return name === "AskUserQuestion" || name === "ExitPlanMode";
+  return AGENT_PROFILE.interactiveTools.has(name);
 }
 
 /** AskUserQuestion 的 input.questions[]（Claude Code 端 schema，实测 2026-06）。 */
