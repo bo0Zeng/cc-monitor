@@ -138,7 +138,7 @@ fn run_watcher(
     let mut scanned_files = 0usize;
     for entry in WalkDir::new(&root).into_iter().filter_map(Result::ok) {
         let p = entry.path();
-        if p.is_file() && p.extension().map_or(false, |e| e == "jsonl") && !is_subagent_path(p) {
+        if p.is_file() && crate::adapter::is_record_file(p) {
             process_file(p, &offsets, &seqs, &on_batch, &active);
             scanned_files += 1;
         }
@@ -172,9 +172,7 @@ fn run_watcher(
             Ok(evt) => {
                 let Ok(events) = evt else { continue };
                 for ev in events {
-                    if ev.path.extension().map_or(false, |e| e == "jsonl")
-                        && !is_subagent_path(&ev.path)
-                    {
+                    if crate::adapter::is_record_file(&ev.path) {
                         process_file(&ev.path, &offsets, &seqs, &on_batch, &active);
                     }
                 }
@@ -191,22 +189,14 @@ fn run_watcher(
             for entry in WalkDir::new(&root).into_iter().filter_map(Result::ok) {
                 let p = entry.path();
                 if p.is_file()
-                    && p.extension().map_or(false, |e| e == "jsonl")
-                    && !is_subagent_path(p)
-                    && p.file_stem().and_then(|s| s.to_str()) == Some(&sid)
+                    && crate::adapter::is_record_file(p)
+                    && crate::adapter::session_id_from_path(p).as_deref() == Some(sid.as_str())
                 {
                     process_file(p, &offsets, &seqs, &on_batch, &active);
                 }
             }
         }
     }
-}
-
-/// subagent JSONL 不走主流：路径含 `/subagents/` 段。
-/// 这些文件由前端 invoke `load_subagent` 命令在用户展开 Task 卡时按需加载。
-fn is_subagent_path(p: &Path) -> bool {
-    p.components()
-        .any(|c| c.as_os_str().eq_ignore_ascii_case("subagents"))
 }
 
 fn process_file(
@@ -216,11 +206,8 @@ fn process_file(
     on_batch: &BatchHandler,
     active: &ActiveFilter,
 ) {
-    let Some(session_id) = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .map(str::to_string)
-    else {
+    // F-MA:session_id 从记录文件路径按适配器约定取(CC = file_stem)。
+    let Some(session_id) = crate::adapter::session_id_from_path(path) else {
         return;
     };
 

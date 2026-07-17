@@ -220,7 +220,7 @@ pub async fn stream_history_sessions_in_project(
         };
         for f in files.flatten() {
             let p = f.path();
-            if p.extension().is_some_and(|e| e == "jsonl") {
+            if crate::adapter::has_record_ext(&p) {
                 if let Some(entry) = analyze_jsonl(&p, &metadata, &map) {
                     if on_entry.send(entry).is_err() {
                         // 前端 drop channel → 取消
@@ -271,7 +271,7 @@ pub async fn stream_read_session_jsonl(
                 projects_dir.display()
             ));
         }
-        if target.extension().is_none_or(|e| e != "jsonl") {
+        if !crate::adapter::has_record_ext(&target) {
             return Err("not a .jsonl file".into());
         }
 
