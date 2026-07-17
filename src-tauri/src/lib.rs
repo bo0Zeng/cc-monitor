@@ -15,6 +15,7 @@ mod event_replay;
 mod history;
 mod launch;
 mod logging;
+mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
 mod messages;
 mod panorama;
 mod parser;
@@ -836,6 +837,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             config::load_config,
             config::save_config,
+            // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
+            mcp::read_mcp_servers,
+            mcp::write_project_mcp_server,
+            mcp::remove_project_mcp_server,
             subagent::load_subagent,
             forget_session,
             // issue #10: 独立只读窗口（多窗口 / 双屏）
