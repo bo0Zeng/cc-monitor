@@ -2685,6 +2685,26 @@ body.settings-window-mode .sftp-trigger {
 }
 
 /* Feature ②：远端 ↗ 拉前的只读 ccm wrapper 片段。等宽、保留空白、可横向滚动、带边框。 */
+/* F81（#40）：拉前块默认折叠——<summary> 作可点击标题，自定义披露三角（同 .card-compact-summary 范式）。
+   details 保持块流（不加 .settings-row 的 display:flex，否则折叠失效），补 settings-row 的竖向节奏。 */
+.remote-wrapper-details {
+  padding: 6px 0;
+}
+.remote-wrapper-summary {
+  cursor: pointer;
+  list-style: none;
+}
+.remote-wrapper-summary::-webkit-details-marker {
+  display: none;
+}
+.remote-wrapper-summary::before {
+  content: "▸ ";
+  color: var(--text-faint);
+}
+.remote-wrapper-details[open] > .remote-wrapper-summary::before {
+  content: "▾ ";
+}
+
 .remote-wrapper-snippet {
   margin: 8px 0 0;
   padding: 8px 12px;
