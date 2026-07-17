@@ -846,6 +846,26 @@ export class HistoryView {
     count.className = "search-session-count";
     count.textContent = `${s.hitCount} 条命中 · ${formatTimestampSmart(s.updatedAt)}`;
     header.appendChild(count);
+    // F85（#44）：搜索卡片直接 resume——复用 F96 的 `runResume`（hasEntry:false 的 ctx，
+    // 只用 identity 段）。本地走 resume_history_session、远端走 runRemoteResume，尊重 F34 命令。
+    const resume = document.createElement("button");
+    resume.type = "button";
+    resume.className = "search-session-resume";
+    resume.textContent = "↺";
+    resume.title = s.origin
+      ? `在新终端拉起远端 [${s.origin}] resume（失败则复制命令）`
+      : "在新终端 resume 此会话";
+    resume.addEventListener("click", (ev) => {
+      ev.stopPropagation(); // 不冒泡触发卡片/命中的「点开 viewer」
+      void this.runResume({
+        sessionId: s.sessionId,
+        jsonlPath: s.jsonlPath,
+        cwd: s.projectPath,
+        origin: s.origin,
+        hasEntry: false,
+      });
+    });
+    header.appendChild(resume);
     group.appendChild(header);
 
     for (const hit of s.hits) {

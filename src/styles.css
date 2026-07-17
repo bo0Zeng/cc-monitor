@@ -2957,6 +2957,27 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   font-size: var(--font-size-xs);
   flex-shrink: 0;
 }
+/* F85：搜索卡片直接 resume 按钮（复用 .history-action 视觉变量，避免新色板）。 */
+.search-session-resume {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 14px;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  padding: 0;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.search-session-resume:hover {
+  background: var(--overlay-hover);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
 .search-hit {
   display: flex;
   align-items: baseline;
