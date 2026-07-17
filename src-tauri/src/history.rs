@@ -719,6 +719,36 @@ fn resume_impl(session_id: &str, cwd: &str, launcher: Option<&str>) -> Result<()
     Ok(())
 }
 
+/// F96（#62）：本地「在该目录起**新**会话」的 PowerShell 命令体——与 `build_resume_ps_command`
+/// 同一套「F34 自定义命令优先 → cc 别名优先 → 回退默认拉起」逻辑，但**不带 resume flag / sid**
+/// （起全新会话，非 resume）。硬约束（用户 2026-07-15）：agent 名 / resume flag 全走活跃适配器，
+/// 本函数不出现 agent 字面量。抽独立函数为单测（不 spawn 也能验 cc 优先 + 防注入）。
+fn build_new_session_ps_command(launcher: Option<&str>) -> Result<String, String> {
+    let agent = crate::adapter::active();
+    // F34：设了自定义命令就直接用（用户显式选择优先）。
+    if let Some(l) = sanitize_launcher(launcher)? {
+        return Ok(l);
+    }
+    let def = agent.default_launcher();
+    match agent.launcher_alias() {
+        // 有 wrapper 别名（cc）：优先它、检测不到回退 default。
+        Some(alias) => Ok(format!(
+            "if (Get-Command {alias} -ErrorAction SilentlyContinue) {{ {alias} }} else {{ {def} }}"
+        )),
+        None => Ok(def.to_string()),
+    }
+}
+
+/// F96（#62）：历史页右键「在该目录起新会话」——本地分支。远端分支走前端
+/// `runRemoteLauncher`（复用 F53）。在 `cwd` 起一个全新会话（无 sid、无 resume）。
+#[tauri::command]
+pub fn new_local_session(cwd: String, launcher: Option<String>) -> Result<(), String> {
+    let ps_command = build_new_session_ps_command(launcher.as_deref())?;
+    crate::launch::launch_powershell_window(&ps_command, Some(&cwd))?;
+    tracing::info!("history: new local session in {cwd}");
+    Ok(())
+}
+
 // === 内部：项目级 / jsonl 级扫描 ===
 
 /// 项目级元数据 —— 只扫文件 stat + 读单一 jsonl 的第 1 行 cwd，**不读消息内容**。
@@ -1536,5 +1566,37 @@ mod tests {
         assert_eq!(cmd, "cct --resume abc-123");
         // 设了自定义命令就不再出现 cc 自动检测
         assert!(!cmd.contains("Get-Command"));
+    }
+
+    /// F96：本地起新会话命令——同 cc 优先/回退逻辑，但**不带 resume flag / sid**。
+    #[test]
+    fn new_session_cmd_prefers_cc_no_resume_flag() {
+        let cmd = build_new_session_ps_command(None).unwrap();
+        assert!(cmd.contains("Get-Command cc"));
+        assert!(cmd.contains("{ cc }"), "cc 分支: {cmd}");
+        assert!(cmd.contains("{ claude }"), "回退分支: {cmd}");
+        // 起新会话不是 resume：绝不带 --resume / sid
+        assert!(
+            !cmd.contains("--resume"),
+            "起新会话不应带 resume flag: {cmd}"
+        );
+    }
+
+    #[test]
+    fn new_session_cmd_custom_launcher_verbatim() {
+        let cmd = build_new_session_ps_command(Some("cct")).unwrap();
+        assert_eq!(cmd, "cct");
+        assert!(!cmd.contains("Get-Command"));
+        assert!(!cmd.contains("--resume"));
+    }
+
+    #[test]
+    fn new_session_cmd_rejects_injection_launcher() {
+        for bad in ["cc; calc", "cc|id", "cc$(id)", "cc`id`", "cc&&x"] {
+            assert!(
+                build_new_session_ps_command(Some(bad)).is_err(),
+                "应拒绝注入 launcher: {bad:?}"
+            );
+        }
     }
 }

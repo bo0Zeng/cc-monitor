@@ -873,6 +873,7 @@ pub fn run() {
             history::create_branch_session,
             history::update_history_metadata,
             history::resume_history_session,
+            history::new_local_session,
             launch::launch_remote_terminal,
             sftp_pool::sftp_realpath,
             sftp_pool::sftp_list_dir,
