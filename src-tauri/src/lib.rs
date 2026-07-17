@@ -72,12 +72,7 @@ fn scrub_env_vars(keys: &[&str]) -> Vec<String> {
     removed
 }
 
-const NESTED_CLAUDE_ENV_KEYS: [&str; 4] = [
-    "CLAUDECODE",
-    "CLAUDE_CODE_CHILD_SESSION",
-    "CLAUDE_CODE_SESSION_ID",
-    "CLAUDE_CODE_ENTRYPOINT",
-];
+// F-MA:CC 嵌套会话 env 清单移到 adapter/claude_code.rs（走 adapter.nested_env_to_scrub()）。
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Batch7-F23A：nudge skip 判定的纯函数对（单测钦定，见 MASTERPLAN §6）。
@@ -104,7 +99,7 @@ pub fn run() {
     // issue #24：第一件事就是清嵌套标记——必须在任何线程 spawn 之前
     // （std::env::remove_var 修改进程级环境，单线程窗口内调用才稳妥；
     // 下面 logging::init 就会起 non_blocking writer 线程）。
-    let scrubbed_env = scrub_env_vars(&NESTED_CLAUDE_ENV_KEYS);
+    let scrubbed_env = scrub_env_vars(adapter::active().nested_env_to_scrub());
 
     // v2.0.0 (issue #4)：tracing 初始化提前到 Builder 之前 —— 一旦 init 全局
     // dispatcher 锁死，且我们要捕获 setup() 期间的所有 log。

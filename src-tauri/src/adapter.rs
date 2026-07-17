@@ -39,6 +39,9 @@ pub trait AgentAdapter: Send + Sync {
     fn data_root(&self) -> Option<PathBuf>;
     /// 会话源布局。
     fn layout(&self) -> &SessionLayout;
+    /// resume/拉起前要从进程环境清洗掉的**嵌套会话** env(否则 agent 自认嵌套子会话、不写记录)。
+    /// CC = `CLAUDECODE` / `CLAUDE_CODE_*`(spec §5);其它 agent 各不相同,无则空。
+    fn nested_env_to_scrub(&self) -> &'static [&'static str];
 }
 
 /// 当前活跃适配器。第一刀写死 Claude Code(ZST,无分配);接第二个 agent 时改成可选/探测。
