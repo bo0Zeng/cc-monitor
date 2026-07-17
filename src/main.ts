@@ -24,8 +24,11 @@ import { HistoryView } from "./views/history";
 import { PanoramaView } from "./views/panorama";
 import { UsageView } from "./views/usage-view";
 import { UsageHud } from "./usage-hud";
-import { bindErrorToast } from "./error-toast";
+import { bindErrorToast, showActionFailureToast } from "./error-toast";
 import { bindRemoteHealthToast } from "./remote-health";
+// F83（#39）：顶栏 SFTP 入口——按远端主机数 0/1/N 分支打开现有 SFTP 模态。
+import { openSftpPanel } from "./sftp/panel";
+import { readRemoteConfig, sftpEligibleHosts } from "./settings/remote-section";
 import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { getBehavior, setBehavior } from "./behavior";
@@ -331,6 +334,17 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (!usageView.isVisible()) void usageView.open();
   });
 
+  // F83（#39）：顶栏 SFTP 入口 —— 设置搬独立窗后腾出的入口位给 SFTP。点击按远端主机数分支：
+  // 0 台提示 / 1 台直开 / 多台选单（选单见 openSftpFromTopbar）。SFTP 仍用现有模态（抽屉化延后）。
+  const sftpTrigger = document.createElement("button");
+  sftpTrigger.type = "button";
+  sftpTrigger.className = "sftp-trigger";
+  sftpTrigger.title = "SFTP 文件（浏览 / 上传 / 下载远端文件）";
+  sftpTrigger.setAttribute("aria-label", "打开 SFTP 文件面板");
+  sftpTrigger.textContent = "🗂";
+  sftpTrigger.addEventListener("click", () => void openSftpFromTopbar(sftpTrigger));
+  document.getElementById("app")?.appendChild(sftpTrigger);
+
   // 外链 + 代码块复制的全局 click 代理（主窗口 / 独立 viewer 窗口共用）
   installGlobalClickDelegation();
 
@@ -501,6 +515,74 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 去抖后微调 webview 尺寸强制 wry 重新 put_Bounds，把 WebView2 合成层钉回左上角）。
   // 旧版（v2.13.0）在这里做的 onResized + scrollTop 微滚动够不着 DOM 之下的合成层偏移，已删。
 });
+
+// ============ F83（#39）：顶栏 SFTP 入口 ============
+
+/** 多台远端时的选主机浮层（body-level，单例）。照 history F96 菜单关闭范式。 */
+let sftpHostPicker: HTMLElement | null = null;
+let sftpHostPickerClose: ((ev: Event) => void) | null = null;
+
+function closeSftpHostPicker(): void {
+  if (sftpHostPickerClose) {
+    document.removeEventListener("pointerdown", sftpHostPickerClose);
+    document.removeEventListener("keydown", sftpHostPickerClose);
+    sftpHostPickerClose = null;
+  }
+  if (sftpHostPicker) {
+    sftpHostPicker.remove();
+    sftpHostPicker = null;
+  }
+}
+
+/** 顶栏 SFTP 入口点击：0 台提示 / 1 台直开 / 多台选单。 */
+async function openSftpFromTopbar(anchor: HTMLElement): Promise<void> {
+  const cfg = await readRemoteConfig();
+  const hosts = sftpEligibleHosts(cfg);
+  if (hosts.length === 0) {
+    // 这是引导提示不是失败 → info 级（非红色错误）。
+    showActionFailureToast(
+      "无可用远端主机",
+      "先在设置 → 连接 配好 host / user，再打开 SFTP 文件面板。",
+      { level: "info" },
+    );
+    return;
+  }
+  if (hosts.length === 1) {
+    void openSftpPanel(hosts[0]);
+    return;
+  }
+  // ≥2 台：选主机浮层（照 history F96：body-level fixed，Esc / 外部 pointerdown 关，下一拍挂监听防自关）。
+  closeSftpHostPicker();
+  const menu = document.createElement("div");
+  menu.className = "sftp-host-picker";
+  for (const h of hosts) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "sftp-host-picker-item";
+    item.textContent = h.label || h.host;
+    item.addEventListener("click", () => {
+      closeSftpHostPicker();
+      void openSftpPanel(h);
+    });
+    menu.appendChild(item);
+  }
+  const r = anchor.getBoundingClientRect();
+  menu.style.top = `${r.bottom + 4}px`;
+  menu.style.right = `${Math.max(4, window.innerWidth - r.right)}px`;
+  document.body.appendChild(menu);
+  sftpHostPicker = menu;
+  const close = (ev: Event): void => {
+    if (ev instanceof KeyboardEvent && ev.key !== "Escape") return;
+    if (ev.type === "pointerdown" && menu.contains(ev.target as Node)) return;
+    closeSftpHostPicker();
+  };
+  sftpHostPickerClose = close;
+  setTimeout(() => {
+    if (sftpHostPicker !== menu) return; // 期间被新菜单/关闭取代 → 别挂陈旧监听
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+  }, 0);
+}
 
 /**
  * F82a（#56+#47）：独立**设置窗口**的精简 bootstrap —— 只挂 SettingsPanel（windowMode），
