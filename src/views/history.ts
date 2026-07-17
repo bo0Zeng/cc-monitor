@@ -353,9 +353,13 @@ export class HistoryView {
     return this.isOpen;
   }
 
-  /** Esc 优先关查看器，否则关整个历史视图。main.ts 监听后调本方法。 */
+  /** Esc 优先级：F96 右键菜单 > 查看器 > 整个历史视图。main.ts / overlay dispatcher 调本方法。
+   *  ★ 菜单优先必须在这里判——菜单挂 document 冒泡相 keydown，而 overlay dispatcher 挂 window
+   *  捕获相（恒先触发），单靠菜单自己的监听拦不住「Esc 关菜单」，会误关整个历史视图。 */
   handleEscape(): void {
-    if (this.viewer) {
+    if (this.openEntryMenu) {
+      this.closeEntryMenu();
+    } else if (this.viewer) {
       this.closeViewer();
     } else {
       this.close();
