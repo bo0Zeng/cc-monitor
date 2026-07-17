@@ -117,7 +117,8 @@ body.viewer-mode .settings-trigger,
 body.viewer-mode .history-trigger,
 body.viewer-mode .panorama-trigger,
 body.viewer-mode .usage-trigger,
-body.viewer-mode .sftp-trigger {
+body.viewer-mode .sftp-trigger,
+body.viewer-mode .grid-monitor-trigger {
   display: none;
 }
 
@@ -386,6 +387,30 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   background: var(--overlay-hover);
   color: var(--text);
 }
+
+/* F91（#27）：多 agent 监控入口（🗂 左边，同排 32px 间距）。 */
+.grid-monitor-trigger {
+  position: absolute;
+  top: 4px;
+  right: 168px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  cursor: pointer;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 15px;
+  z-index: 2;
+}
+.grid-monitor-trigger:hover {
+  background: var(--overlay-hover);
+  color: var(--text);
+}
 /* F83：多台远端时的选主机浮层（body-level fixed，照 history 菜单）。 */
 .sftp-host-picker {
   position: fixed;
@@ -504,6 +529,149 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   color: var(--text);
 }
 
+/* F91（#27）：多 agent 监控 —— 全屏 overlay（照 usage-view 范式）。 */
+.grid-monitor {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.grid-monitor-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-strong);
+  flex-shrink: 0;
+}
+.grid-monitor-back {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-small);
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+.grid-monitor-back:hover {
+  background: var(--overlay-hover);
+  color: var(--text);
+}
+.grid-monitor-title {
+  font-size: var(--font-size-small);
+  font-weight: 600;
+  color: var(--text);
+}
+.grid-monitor-summary {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+}
+.grid-monitor-note {
+  padding: 6px 14px;
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.grid-monitor-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 8px 14px 20px;
+}
+.grid-monitor-group {
+  margin-top: 14px;
+}
+.grid-monitor-group-title {
+  font-size: var(--font-size-small);
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 6px;
+}
+.grid-monitor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+}
+.grid-monitor-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  background: var(--overlay-hover);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+  overflow: hidden;
+}
+.grid-monitor-cell:hover {
+  border-color: var(--text-2);
+}
+.grid-monitor-cell.archived {
+  opacity: 0.55;
+}
+.grid-monitor-cell-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.grid-monitor-cell.cell-bg .grid-monitor-cell-title::before {
+  content: "⚙ ";
+  color: var(--text-faint);
+}
+.grid-monitor-cell-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-small);
+}
+.grid-monitor-cell-cwd {
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* cwd 太长时省略头部、保留尾部（更可辨） */
+  text-align: left;
+}
+.grid-monitor-cell-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.grid-monitor-badge {
+  font-size: var(--font-size-xs);
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.grid-monitor-badge.badge-ctx.is-high {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.grid-monitor-badge.badge-waiting {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.grid-monitor-empty {
+  padding: 40px 14px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--font-size-small);
+}
+
 .tab {
   display: flex;
   align-items: center;
@@ -581,6 +749,15 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 }
 .tab.act-waiting .live-dot {
   background: var(--warn); /* 主题 token（同红灯用 --error），用户改主题两灯一起跟 */
+  animation: act-waiting-pulse 1.2s ease-in-out infinite;
+}
+/* F91：mission-control grid 的红绿灯点——类直接叠在 .live-dot 上（cell 无 .tab 祖先），
+   语义/配色与 tab-bar 一致（同 var token，用户改主题一起跟）。 */
+.live-dot.act-idle {
+  background: var(--error);
+}
+.live-dot.act-waiting {
+  background: var(--warn);
   animation: act-waiting-pulse 1.2s ease-in-out infinite;
 }
 @keyframes act-waiting-pulse {
@@ -2015,7 +2192,8 @@ body.settings-window-mode .settings-trigger,
 body.settings-window-mode .history-trigger,
 body.settings-window-mode .panorama-trigger,
 body.settings-window-mode .usage-trigger,
-body.settings-window-mode .sftp-trigger {
+body.settings-window-mode .sftp-trigger,
+body.settings-window-mode .grid-monitor-trigger {
   display: none;
 }
 

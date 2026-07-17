@@ -24,6 +24,7 @@ import { HistoryView } from "./views/history";
 import { SessionViewer } from "./views/session-viewer"; // F77：点 agent 看记录复用只读会话查看器
 import { PanoramaView } from "./views/panorama";
 import { UsageView } from "./views/usage-view";
+import { GridMonitorView } from "./views/grid-monitor";
 import { UsageHud } from "./usage-hud";
 import { bindErrorToast, showActionFailureToast } from "./error-toast";
 import { bindRemoteHealthToast } from "./remote-health";
@@ -390,6 +391,21 @@ window.addEventListener("DOMContentLoaded", async () => {
   usageHud.onClick(() => {
     if (!usageView.isVisible()) void usageView.open();
   });
+
+  // F91（#27）：多 agent 并排监控入口 —— 顶栏右侧一排（🗂 左边，right:168px）。跨机器只读
+  // mission-control 状态板（一屏看所有会话实时状态，点卡片跳会话；只读——不派发/不驱动 agent）。
+  const gridMonitorView = new GridMonitorView(tabs);
+  const gridTrigger = document.createElement("button");
+  gridTrigger.type = "button";
+  gridTrigger.className = "grid-monitor-trigger";
+  gridTrigger.title = "多 agent 监控（跨机器只读并排）";
+  gridTrigger.setAttribute("aria-label", "打开多 agent 监控");
+  gridTrigger.textContent = "▦";
+  gridTrigger.addEventListener("click", () => {
+    if (gridMonitorView.isVisible()) gridMonitorView.close();
+    else gridMonitorView.open();
+  });
+  document.getElementById("app")?.appendChild(gridTrigger);
 
   // F83（#39）：顶栏 SFTP 入口 —— 设置搬独立窗后腾出的入口位给 SFTP。点击按远端主机数分支：
   // 0 台提示 / 1 台直开 / 多台选单（选单见 openSftpFromTopbar）。SFTP 仍用现有模态（抽屉化延后）。

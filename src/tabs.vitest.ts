@@ -258,6 +258,24 @@ describe("TabManager 生命周期", () => {
     expect(tab.activity).toBeNull();
   });
 
+  it("F91 红绿灯状态转移清陈旧类（activityLightClass 重构守护：两 toggle 每次都跑）", () => {
+    // 守 F91 把 tab-bar 红绿灯抽到 session-status.ts 后仍逐字节等价：状态转移必须清掉旧的
+    // 对立类（若哪天把两个 classList.toggle 之一改成条件执行，本测会红）。
+    tm.ensureTab("lt", "/x", "p", 0, null);
+    const btn = () => document.querySelector<HTMLElement>(".tab")!;
+    tm.updateActivity("lt", "waiting", "permission prompt");
+    expect(btn().classList.contains("act-waiting")).toBe(true);
+    expect(btn().classList.contains("act-idle")).toBe(false);
+    // waiting → idle：陈旧 act-waiting 必须清、换 act-idle
+    tm.updateActivity("lt", "idle", null);
+    expect(btn().classList.contains("act-waiting")).toBe(false);
+    expect(btn().classList.contains("act-idle")).toBe(true);
+    // idle → busy：两类都清（默认绿点）
+    tm.updateActivity("lt", "busy", null);
+    expect(btn().classList.contains("act-idle")).toBe(false);
+    expect(btn().classList.contains("act-waiting")).toBe(false);
+  });
+
   it("归档信号早于 Tab 建立：进 pendingArchive，ensureTab 时落实归档", () => {
     tm.archiveTab("early");
     expect(peek(tm).pendingArchive.has("early")).toBe(true);
