@@ -1515,11 +1515,14 @@ export class RemoteSection {
    * Feature ②：远端 ↗ 拉前的只读 `ccm` wrapper 片段。纯 DOM/信息展示，不读写 config。
    */
   private buildWrapperSnippetRow(parent: HTMLElement): void {
-    const row = document.createElement("div");
-    row.className = "settings-row settings-row-stack";
+    // F81（#40）：默认折叠——原生 <details> 不带 open 属性即收起；点标题（<summary>）展开看片段。
+    // 片段占位大、多数人配一次不再看，故默认收起。**不加 .settings-row（display:flex）**——flex 的
+    // <details> 在部分浏览器折叠会失效（闭合仍渲染全部子元素）；用块流 + 子元素自身外边距排布。
+    const row = document.createElement("details");
+    row.className = "remote-wrapper-details";
 
-    const label = document.createElement("span");
-    label.className = "settings-label";
+    const label = document.createElement("summary");
+    label.className = "settings-label remote-wrapper-summary";
     label.textContent = "远端 ↗ 拉前（可选）";
     label.appendChild(
       makeInfoIcon(
