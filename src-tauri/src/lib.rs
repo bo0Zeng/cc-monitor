@@ -337,12 +337,12 @@ pub fn run() {
             // data_root 仍是三级回退 用户配置 → CLAUDE_CONFIG_DIR → ~/.claude）。子目录名不再硬编码。
             let agent = adapter::active();
             let claude_dir = agent.data_root().ok_or("agent data dir not found")?;
-            let layout = agent.layout();
             tracing::info!("monitor using agent [{}] data dir: {}", agent.id(), claude_dir.display());
-            let projects_dir = claude_dir.join(layout.sessions_subdir);
-            let sessions_dir = claude_dir.join(layout.liveness_subdir);
+            let projects_dir = adapter::records_dir(&claude_dir);
+            let sessions_dir = adapter::liveness_dir(&claude_dir);
             // v2.3.0 issue #11：任务追踪文件根（CC = tasks）
-            let tasks_dir = claude_dir.join(layout.tasks_subdir.unwrap_or("tasks"));
+            let tasks_dir =
+                adapter::tasks_dir(&claude_dir).unwrap_or_else(|| claude_dir.join("tasks"));
 
             // monitor 自己的数据目录：~/.claude/claudecode-frontend
             let monitor_data_dir = paths::resolve_monitor_data_dir().ok_or("no data dir")?;
