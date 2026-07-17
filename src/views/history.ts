@@ -38,6 +38,7 @@ import {
 import {
   resolveOriginOpen,
   nextOverrides,
+  sameOverrides,
   normalizeOverrides,
   normalizeOriginKeys,
   type OriginOpenOverrides,
@@ -1020,13 +1021,11 @@ export class HistoryView {
     // 回到默认就删键——故首见默认折叠若触发了这次程序化 toggle（宿主行为不定）也不会污染成偏好。
     details.addEventListener("toggle", () => {
       if (searchActive) return;
-      this.originOpenOverrides = nextOverrides(
-        this.originOpenOverrides,
-        key,
-        origin,
-        details.open,
-      );
-      saveOriginOpenOverrides(this.originOpenOverrides);
+      const next = nextOverrides(this.originOpenOverrides, key, origin, details.open);
+      // 仅当内容变化才存盘——挡掉宿主对默认展开大区程序化 open 变更的冗余 toggle 写放大。
+      if (sameOverrides(next, this.originOpenOverrides)) return;
+      this.originOpenOverrides = next;
+      saveOriginOpenOverrides(next);
     });
     return details;
   }
