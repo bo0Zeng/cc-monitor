@@ -22,6 +22,7 @@ import { SettingsPanel } from "./settings";
 import { HistoryView } from "./views/history";
 import { PanoramaView } from "./views/panorama";
 import { UsageView } from "./views/usage-view";
+import { UsageHud } from "./usage-hud";
 import { bindErrorToast } from "./error-toast";
 import { bindRemoteHealthToast } from "./remote-health";
 import { TasksPanel } from "./tasks-panel";
@@ -130,6 +131,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   status.appendChild(agentsPanel.summaryElement);
   document.getElementById("app")?.appendChild(agentsPanel.popoverElement);
 
+  // F88b（#52）：context% HUD chip——活跃会话「最新一轮 prompt token ÷ 模型上限」实时占用。
+  // 挂 agents chip 旁；TabManager.onActiveUsageChanged 喂数据；点击打开用量视图（下方注入）。
+  const usageHud = new UsageHud();
+  status.appendChild(usageHud.summaryElement);
+
   const empty = document.createElement("div");
   empty.className = "empty-state";
   empty.innerHTML = `暂无活跃会话<br><small>打开终端跑 <code>claude</code> 后将自动出现</small>`;
@@ -156,6 +162,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Batch5-F19（G 验收）：用户手动切过 tab 后，迟到的远端宣告不再补切抢焦点
   tabs.onManualSwitch = () => {
     pendingStartupActive = null;
+  };
+  // F88b：活跃会话 usage 变化 → 刷新 HUD context% chip（onLine 新 assistant 记录 / switchTo 切会话）
+  tabs.onActiveUsageChanged = (model, promptTokens) => {
+    usageHud.setActive(model, promptTokens);
   };
 
   // v2.4 issue #2：拉一次 behavior toggle 初值喂给 TabManager。
@@ -305,6 +315,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     else void usageView.open();
   });
   document.getElementById("app")?.appendChild(usageTrigger);
+  // F88b：点 context% HUD chip → 也开用量视图（chip 是活跃会话实时占用，视图是跨会话汇总，互补）
+  usageHud.onClick(() => {
+    if (!usageView.isVisible()) void usageView.open();
+  });
 
   // 外链 + 代码块复制的全局 click 代理（主窗口 / 独立 viewer 窗口共用）
   installGlobalClickDelegation();
