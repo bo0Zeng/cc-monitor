@@ -129,8 +129,8 @@ cargo test --lib -- --nocapture       # 看 println! 输出
 
 | 层 | 跑法 | 覆盖 |
 |---|---|---|
-| node 纯函数断言(`src/**/*.test.ts`,7 组) | `npm test` 前段(node 原生跑 TS,需 Node ≥22.18) | diff/branching/api-error/bash/format/remote-health/remote-launch 纯逻辑 |
-| vitest + jsdom(`src/**/*.vitest.ts`,84 测) | `npm run test:dom` | DOM/生命周期/mock 协作:tabs 门控与物化、TailWindow、UnrenderedRanges、RecordTimeline、估高、路由表、探针纯函数 |
+| node 纯函数断言(`src/**/*.test.ts`,15 组) | `npm test` 前段(node 原生跑 TS,需 Node ≥22.18) | diff/branching/api-error/bash/format/remote-health/remote-launch/history-cache/history-prefs/history-actions/usage-pivot/pricing/session-backend/panorama-session-files 纯逻辑 |
+| vitest + jsdom(`src/**/*.vitest.ts`,308 测) | `npm run test:dom` | DOM/生命周期/mock 协作:tabs 门控与物化、TailWindow、UnrenderedRanges、RecordTimeline、估高、路由表、探针纯函数、settings 面板分组、mcp-section、grid-monitor、command-bar 等 |
 | E2E 套件(`e2e/f40-suite.sh`,14 断言) | **手动**,Linux Xvfb + `tauri dev`(前置见 [e2e/README.md](../e2e/README.md)) | 整机行为:启动门控/贴底/上翻补批/fork 折叠/抖动密度绊线 |
 
 改前端:动纯函数跑对应 node 脚本、动 DOM 行为跑 `npm run test:dom`、动滚动/渲染管线跑一遍 e2e 套件;`tsc --noEmit` 对全部测试文件做类型检查。**WebView2(生产)行为无自动化覆盖**——涉滚动锚定的改动发版前须 Windows 真机复核(e2e/README「人工场景」)。

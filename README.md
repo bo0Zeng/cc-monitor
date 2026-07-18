@@ -6,7 +6,7 @@
 
 把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复 / **从历史某轮创建分支**。**完全只读、零侵入**（不**修改** Claude Code 任何现有文件；仅两处**显式**用户写：历史里删除会话、从某轮建分支——后者只**新增**一个会话文件，原会话零改动）。
 
-**项目状态**：稳定可用。后端 259 + 远端 daemon 66 + 前端 node 纯函数（7 组）& vitest+jsdom DOM 单测（143）+ e2e 套件，tsc 严格类型检查，CI 全绿（`npm test`）。当前发布 **v3.0.0**（**Batch 14：SSH/SFTP/tmux 远端集成大批功能（F41-F60）**——远端会话一键 resume（拉起终端）/多地址故障切换（happy-eyeballs 竞速）/SFTP 文件面板（浏览·上传下载·编辑）/公钥一键推送/tmux attach·右键预览画面/跳板 ProxyJump/从 ~/.ssh/config 批量导入聚合/本地端口转发管理台/daemonless 降级读取/「Claude 完成一轮」系统通知/工具卡文件路径→SFTP 定位；v2.22.2：**⚙ 误标修复**——bg-spare 谎报父会话 sid 致交互会话被降格挂错树,kind 冲突改确定性消解;**远端流模式降级修复**——历代安装包漏嵌 daemon 身份清单致 bg 会话不可见/拥塞复发,补清单+hello 自愈+降级可见化;v2.22.0：**消息流虚拟化** #35——长会话不再卡顿（视口外跳过布局/绘制+精确估高）、历史查看器 37MB 会话首屏 65.5s→1.1s、冷启动 24s→4s、live Tab 上翻自动加载更早消息；**灰 Tab 右键 Resume**；`cc` 首次绑定竞态修复——新 shell 不再固定卡 800ms）；v2.21.0：（**resume 命令可自定义**（cc/cct）、拖宽/横滚/远端 ↗ 与 ccm 安装修复；v2.20.0：**左侧竖直 tab 栏**——拖拽调宽/窄窗折叠，tab 不再压住右上角图标；**历史标注 CC 后台分身会话** ⚙ 徽标防 resume 选错克隆；+v2.19.1 修复队列消息被误判 ESC 回退折叠 #36）；v2.19.0：（**远端拥塞根治**——历史旁路快照+实时独立尾随，46MB≈4.6s 零拥塞（E2E 实证）；**最新消息优先加载**；**远端红绿灯**与本地对齐；F5 后远端骨架/bg/焦点正确重建），能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 多台远端机器的会话，#15/#17/#18/#20/#30/#31）——含 **daemon 自动部署 + 一键安装/卸载**（内嵌 musl 二进制经 SFTP 自动推送 #29；设置面板每台机器卡片可手动装/卸 daemon 与 ccm 助手、附安装位置提示）、**远端全文搜索**（#28）、**远端历史删除 / 一键 resume**（F41 起 tab 右键 / 历史 ↺ 直接拉起远端终端，失败回退复制）、**历史按机器分组折叠**（#30/#31）、**版本协商 + 拥塞提示**（#32/#33）、**会话红绿灯**（#23）、**本地会话 resume 后 Tab 自动复活**（崩溃/退出→灰显，`/resume` 后免 F5 恢复）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。详 [CHANGELOG](CHANGELOG.md) / [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
+**项目状态**：稳定可用。后端 cargo 308 + 远端 daemon 69 + 前端 node 纯函数（15 组）& vitest+jsdom DOM 单测（308）+ e2e 套件，tsc 严格类型检查，**CI 三 job 全绿**（Rust `cargo test` + 前端 `npm test` + 远端 daemon `cargo test`——`npm test` 只门禁前端）。**Batch 15/16 开发中（未发布，见 [CHANGELOG](CHANGELOG.md) 的 [未发布] 段）**；上一发布 **v3.0.0**（**Batch 14：SSH/SFTP/tmux 远端集成大批功能（F41-F60）**——远端会话一键 resume（拉起终端）/多地址故障切换（happy-eyeballs 竞速）/SFTP 文件面板（浏览·上传下载·编辑）/公钥一键推送/tmux attach·右键预览画面/跳板 ProxyJump/从 ~/.ssh/config 批量导入聚合/本地端口转发管理台/daemonless 降级读取/「Claude 完成一轮」系统通知/工具卡文件路径→SFTP 定位；v2.22.2：**⚙ 误标修复**——bg-spare 谎报父会话 sid 致交互会话被降格挂错树,kind 冲突改确定性消解;**远端流模式降级修复**——历代安装包漏嵌 daemon 身份清单致 bg 会话不可见/拥塞复发,补清单+hello 自愈+降级可见化;v2.22.0：**消息流虚拟化** #35——长会话不再卡顿（视口外跳过布局/绘制+精确估高）、历史查看器 37MB 会话首屏 65.5s→1.1s、冷启动 24s→4s、live Tab 上翻自动加载更早消息；**灰 Tab 右键 Resume**；`cc` 首次绑定竞态修复——新 shell 不再固定卡 800ms）；v2.21.0：（**resume 命令可自定义**（cc/cct）、拖宽/横滚/远端 ↗ 与 ccm 安装修复；v2.20.0：**左侧竖直 tab 栏**——拖拽调宽/窄窗折叠，tab 不再压住右上角图标；**历史标注 CC 后台分身会话** ⚙ 徽标防 resume 选错克隆；+v2.19.1 修复队列消息被误判 ESC 回退折叠 #36）；v2.19.0：（**远端拥塞根治**——历史旁路快照+实时独立尾随，46MB≈4.6s 零拥塞（E2E 实证）；**最新消息优先加载**；**远端红绿灯**与本地对齐；F5 后远端骨架/bg/焦点正确重建），能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 多台远端机器的会话，#15/#17/#18/#20/#30/#31）——含 **daemon 自动部署 + 一键安装/卸载**（内嵌 musl 二进制经 SFTP 自动推送 #29；设置面板每台机器卡片可手动装/卸 daemon 与 ccm 助手、附安装位置提示）、**远端全文搜索**（#28）、**远端历史删除 / 一键 resume**（F41 起 tab 右键 / 历史 ↺ 直接拉起远端终端，失败回退复制）、**历史按机器分组折叠**（#30/#31）、**版本协商 + 拥塞提示**（#32/#33）、**会话红绿灯**（#23）、**本地会话 resume 后 Tab 自动复活**（崩溃/退出→灰显，`/resume` 后免 F5 恢复）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。详 [CHANGELOG](CHANGELOG.md) / [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
 
 ---
 
@@ -19,6 +19,7 @@
 - session 退出后 Tab 灰显归档，可手动关闭（W / 中键 / ×）；**本地会话 `/resume` 后 Tab 自动复活成 live**（崩溃或退出导致灰显，重新 resume 同一会话即恢复，无需 F5）
 - **Tab 独立窗口**（issue #10）：右键 Tab「在新窗口打开」/ `N`，**或直接把 Tab 往标签栏下方一拖松手**（tear-off），把会话拉到独立只读窗口（双屏并排 / 长任务常驻），与主窗口实时同步
 - **会话红绿灯**（issue #23）：每个 Tab（**本地与远端**——远端自 v2.19/daemon p1g 起）的状态点实时反映 Claude 状态——🟢 运行中 / 🟡 等你决定（权限确认 / 弹窗选择，呼吸闪烁）/ 🔴 答完等输入；Agents 展开区每个 subagent 一行独立状态灯
+- **多 agent 并排监控**（F91）：顶栏 `▦` 按钮（或命令栏）打开跨机器**只读** mission-control 网格——一屏一格聚合本地 + 所有远端会话的红绿灯 / 标题 / 工作目录 / 运行中 subagent 数 / context 占用% / 未读 / ⚙ 后台标记，点格直接跳到该会话
 
 ### SSH 远端模式（issue #15）
 - 在**同一个窗口**聚合本地 + **多台**远端机器（NanoPi / 任意 Linux / WSL）上的 Claude 会话，远端 Tab 标题带 `[host]` 前缀；历史浏览器按机器**分组 / 筛选**（#30/#31）
@@ -72,8 +73,8 @@
 5 大折叠分组（除「行为」默认展开）：
 
 - **行为**：自动跟随用户在终端的输入切 Tab、是否拉前 monitor 窗口
-- **快捷键**：打开编辑器自定义全部 22 个可用 action 的 chord
-- **数据源 & 集成**：Claude 数据目录（三级回退：设置 > `$CLAUDE_CONFIG_DIR` > `~/.claude`）+ PowerShell `__ccm_bind` 一键装
+- **快捷键**：打开编辑器自定义全部 26 个可用 action 的 chord
+- **数据源 & 集成**：Claude 数据目录（三级回退：设置 > `$CLAUDE_CONFIG_DIR` > `~/.claude`）+ PowerShell `__ccm_bind` 一键装 + **MCP 服务器管理**（F87：跨 scope 查看 user / local / 项目的 MCP server，写只改项目 `.mcp.json`）
 - **外观**：13 个 token（字体 + 颜色），实时预览，持久化到 `~/.claude/claudecode-frontend/config.json`
 - **诊断 & 存储**：tracing 等级 toggle + log 文件路径 + 所有持久化路径透明展示
 
@@ -96,6 +97,7 @@
 | **F11** | 切换**真全屏**（borderless 覆盖任务栏；非字母键，中文输入法下也好用） |
 | **N** | 把当前 Tab 在独立窗口打开（issue #10；也可把 Tab 往标签栏下方拖出来） |
 | **T** | Task 面板开 / 关 |
+| **Ctrl+K** | 打开命令栏（命令面板：子串过滤只读命令 + 回车执行） |
 | **Esc** | 关历史只读视图 → 关历史视图 / 关设置 / 关弹层 |
 
 > **默认全为单键**——cc-monitor 是只读监视窗口，无需组合键。在输入框 / 历史搜索 / 重命名等可编辑处聚焦时，快捷键自动让位给打字（不会误触发）。全部 chord 可在 **设置 → 快捷键** 编辑器里改成任意组合键；行为/面板类还有 2 个默认未绑的 toggle 可手动赋键。
@@ -190,10 +192,10 @@ cc-monitor/
 │   ├── remote-launch-run.ts B14-F41 远端拉起执行器（invoke → 失败回退复制命令）
 │   ├── turn-notify.ts      B14-F42 完成一轮系统通知（四门 + 权限懒检查）
 │   ├── cards/              卡片渲染：index, slash, bash, diff, api-error, interactive, compact, subagent
-│   ├── settings/           设置面板各组（含 B14 remote-section.ts 远端机器卡片）
+│   ├── settings/           设置面板各组（含 B14 remote-section.ts 远端机器卡片 + F87 mcp-section.ts MCP 管理）
 │   ├── sftp/               B14-F47/F48/F49 SFTP 文件面板 overlay + 纯路径逻辑
 │   ├── keybindings/        issue #5 快捷键编辑器
-│   └── views/              历史浏览器 + SessionViewer + B14 pane-preview（F60 tmux 画面预览）/ port-forward（F58 端口转发台）
+│   └── views/              历史浏览器 + SessionViewer + B14 pane-preview（F60 tmux 画面预览）/ port-forward（F58 端口转发台）+ F91 grid-monitor（多 agent 监控）+ F84 command-bar（命令栏）
 │
 ├── src-tauri/              后端 (Rust + Tauri 2)
 │   └── src/
@@ -256,7 +258,7 @@ cc-monitor/
 
 - **版本**：v3.0.0（Released）
 - **平台**：Windows 10 (1809+) / 11（远端 daemon 跑 Linux / aarch64）
-- **测试**：后端 cargo test 259 + 远端 daemon 66 + 前端 node 纯函数 7 组 + vitest 143（jsdom）+ e2e 套件 14 断言（手动，e2e/README），全绿（CI 门禁 `npm test`）
+- **测试**：后端 cargo test 308 + 远端 daemon 69 + 前端 node 纯函数 15 组 + vitest 308（jsdom）+ e2e 套件（手动，e2e/README），CI 三 job 全绿（Rust cargo + 前端 `npm test` + 远端 daemon cargo；`npm test` 只门禁前端）
 - **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~12K LOC TS + ~11K LOC Rust，含 ~1.3K 远端 daemon）
 - **设计原则**：只读零侵入（INVARIANT § 1）/ 可选性 / Windows-first / 长期记忆机制（CHANGELOG + doc/ 专题文档 + 各模块 README）
 

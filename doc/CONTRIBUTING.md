@@ -224,25 +224,26 @@ case "memory_recall":
 
 ### 2.5 添加新全局快捷键
 
-**目标**：加 `Ctrl+P` 打开命令面板（假设）。
+> issue #5 起所有 chord 走 `src/keybindings/` 的 dispatch table（`actions.ts` = 单一真相源 + `registry.ts` = dispatcher）。**别再往 `main.ts` 加 keydown case**（旧写法，已废弃）。
 
-**步骤**：
+**目标**（真实例：F84 命令栏 `Ctrl+K`）：
 
-1. **`src/main.ts` keydown handler** 加 case：
+1. **`src/keybindings/actions.ts`** 的 `ACTIONS` 加一行（id / label / category / default chord / available）：
 
 ```ts
-if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
-  e.preventDefault();
-  commandPalette.toggle();
-  return;
-}
+{ id: "app.open-command-bar", label: "打开命令栏（命令面板）", category: "App", default: "Ctrl+KeyK", available: true },
+```
+（chord 规范：`normalizeChord` 用 `KeyboardEvent.code`、modifier 固定序 `Ctrl+Shift+Alt+Meta+<code>`；预留未上线的 action 设 `available: false` + `comingSoon` 文案。）
+
+2. **`src/main.ts`** `dispatcher.bind("<id>", cb)`：
+
+```ts
+dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 ```
 
-2. **冲突检查**：grep 所有 `keydown` listener 看是否别处也注册了 Ctrl+P。
+3. **冲突检查**：`whoOwns("Ctrl+KeyK")` 应返回 null（`ACTIONS` 里 grep `default:` 确认无占用）；单键 chord 在可编辑目标聚焦时自动失效（`registry.ts::isEditableTarget`，除 `overlay.close`）。
 
-3. **更新文档** [`../README.md`](../README.md) 快捷键表加一行。
-
-4. **已实现**：v2.5 issue #5 落地，所有 chord 走 `src/keybindings/` dispatch table（actions.ts + dispatcher）。新加 action 应该加到 actions.ts 而非 main.ts keydown handler；本节描述的"直接在 main.ts 加 case" 已过时，仅作背景参考。
+4. 编辑器 UI + 持久化 schema 自动从 `ACTIONS` 收敛，无需别处改；用户可在「设置 → 快捷键」改绑。
 
 ### 2.6 添加新 Tauri capability permission
 
@@ -290,7 +291,7 @@ grep -nE "tmux (new-session|send-keys|attach)" src/remote-launch.ts   # 命中�
 
 1. fork → branch（命名 `feat/<short-desc>` / `fix/<short-desc>`）
 2. 改代码 + 测试 + 文档（参照本文档对应 cookbook）
-3. `cargo fmt + cargo clippy + cargo test --lib + npm test + npm run build` 全绿（`npm test` = 7 组 node 纯函数 + vitest DOM 84 测，与 CI 同口径；动滚动/渲染管线另跑 `e2e/f40-suite.sh`，见 e2e/README.md）
+3. `cargo fmt + cargo clippy + cargo test --lib + npm test + npm run build` 全绿（`npm test` = 15 组 node 纯函数 + vitest DOM 308 测 = **前端 CI job**；后端 `cargo test` + 远端 daemon `cargo test` 是**独立的 CI job**，`npm test` 不含它们；动滚动/渲染管线另跑 `e2e/f40-suite.sh`，见 e2e/README.md）
 4. PR 描述：
    - 解决什么问题（链到 issue）
    - 怎么解决（一句话）
