@@ -54,3 +54,31 @@ export function contextPercent(
   if (lim == null || lim <= 0) return null;
   return (latestPromptTokens / lim) * 100;
 }
+
+/**
+ * F88d：token 类型的**相对成本权重**（相对 `input`=1）。**不是绝对 $**——只反映 token 档位的相对贵贱，
+ * 这个**比例结构跨 Claude 模型稳定、不随定价调整过期、不需 API key**。用于把不同价档 token 折成一个可比数，
+ * 让「按项目/模型」比较反映相对成本（而非把价差 10× 的 `cache_read` 与 `output` 直接相加求和）。
+ * 系数（Claude 定价常见比例）：cache 写 ≈1.25×input、cache 读 ≈0.1×input、output ≈5×input。
+ */
+export const RELATIVE_COST = {
+  input: 1,
+  cacheCreation: 1.25,
+  cacheRead: 0.1,
+  output: 5,
+} as const;
+
+/** 折算「等效 input token」= Σ(各档 token × 相对系数)。纯函数，node 可测。**相对量、非绝对 $。** */
+export function equivalentInputTokens(t: {
+  input: number;
+  cacheCreation: number;
+  cacheRead: number;
+  output: number;
+}): number {
+  return Math.round(
+    t.input * RELATIVE_COST.input +
+      t.cacheCreation * RELATIVE_COST.cacheCreation +
+      t.cacheRead * RELATIVE_COST.cacheRead +
+      t.output * RELATIVE_COST.output,
+  );
+}

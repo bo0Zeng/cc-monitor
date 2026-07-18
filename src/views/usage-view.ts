@@ -17,6 +17,7 @@ import {
   type UsageDim,
   type UsageTotals,
 } from "./usage-pivot";
+import { equivalentInputTokens } from "./pricing";
 
 const DIMS: { id: UsageDim; label: string }[] = [
   { id: "day", label: "按天" },
@@ -173,16 +174,23 @@ export class UsageView {
     table.className = "usage-table";
     const head = document.createElement("tr");
     for (const h of [
-      DIMS.find((d) => d.id === this.dim)?.label ?? "",
-      "input",
-      "cache 写",
-      "cache 读",
-      "output",
-      "合计",
-      "回复",
+      { t: DIMS.find((d) => d.id === this.dim)?.label ?? "" },
+      { t: "input" },
+      { t: "cache 写" },
+      { t: "cache 读" },
+      { t: "output" },
+      { t: "合计" },
+      {
+        t: "等效∑",
+        // F88d：相对成本折算，非绝对 $。
+        title:
+          "等效 input token = Σ(各档 × 相对系数：input1 / cache写1.25 / cache读0.1 / output5)。反映相对成本（哪儿最烧），非绝对 $。",
+      },
+      { t: "回复" },
     ]) {
       const th = document.createElement("th");
-      th.textContent = h;
+      th.textContent = h.t;
+      if (h.title) th.title = h.title;
       head.appendChild(th);
     }
     table.appendChild(head);
@@ -193,6 +201,7 @@ export class UsageView {
       t.cacheRead,
       t.output,
       totalTokens(t),
+      equivalentInputTokens(t), // F88d：等效 input token（相对成本折算）
       t.msgs,
     ];
     for (const r of pivot) {
