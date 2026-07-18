@@ -65,7 +65,10 @@ const PROTO_VERSION: u32 = 1;
 ///   --read-session-tail 尾部优先查询（Batch9-F30）
 /// - p1h-bg-badge = --list-sessions 输出附 isBg（记录级 sessionKind:"bg" 探测，
 ///   Batch11-F32 历史 ⚙ 徽标；additive，查询字段无版本门控问题）
-const BUILD_ID: &str = "p1h-bg-badge";
+/// - p1i-line-offset = Line 帧附 `byte_offset`（daemon-01/gap#2，累计原始字节、逐字节对齐 aterm
+///   `LineFramer`：计 CRLF `\r`、含 `\n`、残行不计；给 offset 续拉/截断检测。additive、不 bump
+///   PROTO_VERSION——旧 client 忽略、旧 daemon 缺字段 client 得 0）
+const BUILD_ID: &str = "p1i-line-offset";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜

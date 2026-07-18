@@ -36,6 +36,11 @@ pub enum Frame {
         path: String,
         seq: u64,
         raw: String,
+        /// daemon-01（gap#2，additive 不 bump PROTO_VERSION）：本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——
+        /// 语义**逐字节对齐 aterm `LineFramer.endOffset`**：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒
+        /// `tail -c +(N+1)`。给 offset 续拉/截断检测（`seq` 是 per-stream 序数、非 resume 键）。旧 daemon 无此字段 → 0。
+        #[serde(default)]
+        byte_offset: u64,
     },
     /// A new session file appeared.
     ///
@@ -181,6 +186,7 @@ mod tests {
                     path: "/p".into(),
                     seq: 0,
                     raw: "{}".into(),
+                    byte_offset: 0,
                 },
                 "line",
             ),
@@ -282,6 +288,7 @@ mod tests {
             path: "/some/path.jsonl".into(),
             seq: 42,
             raw: raw.to_string(),
+            byte_offset: 99,
         };
 
         let line = to_line(&frame).expect("serialize");
