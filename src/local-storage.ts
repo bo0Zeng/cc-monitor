@@ -42,6 +42,8 @@ export const LS_KEYS = {
   historyHiddenOrigins: "cc-monitor.history.hidden-origins",
   /** F86(#45)：历史来源大区折叠偏好覆盖表（key=origin ?? ""，缺键=走默认：本地展开/远端折叠）。 */
   historyOriginOpen: "cc-monitor.history.origin-open",
+  /** F84b-fix(batch18)：命令栏可发现 chip 是否已被用户见过——首运行给一次性微高亮，之后不再。 */
+  cmdkHintSeen: "cc-monitor.cmdk-hint.seen",
 } as const;
 
 export function safeGet(key: string): string | null {

@@ -2194,6 +2194,28 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   color: var(--text, #d6cfc6);
   border-color: var(--border-strong, #55493c);
 }
+/* F84b-fix：首运行一次性微高亮——有限次脉冲后自然停，非模态、点一下即消。 */
+.status-cmdk.first-run {
+  animation: cmdk-first-run 1.2s ease-in-out 3;
+}
+@keyframes cmdk-first-run {
+  0%,
+  100% {
+    opacity: 0.75;
+    border-color: var(--border, #3a342e);
+  }
+  50% {
+    opacity: 1;
+    color: var(--text, #d6cfc6);
+    border-color: var(--accent, #7aa2f7);
+    box-shadow: 0 0 6px 1px var(--accent, #7aa2f7);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-cmdk.first-run {
+    animation: none;
+  } /* 尊重减弱动效 */
+}
 .status-cmdk-icon {
   font-size: 0.95em;
   line-height: 1;
