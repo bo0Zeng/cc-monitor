@@ -38,7 +38,9 @@ pub enum Frame {
         raw: String,
         /// daemon-01（gap#2，additive 不 bump PROTO_VERSION）：本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——
         /// 语义**逐字节对齐 aterm `LineFramer.endOffset`**：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒
-        /// `tail -c +(N+1)`。给 offset 续拉/截断检测（`seq` 是 per-stream 序数、非 resume 键）。旧 daemon 无此字段 → 0。
+        /// `tail -c +(N+1)`。给 offset 续拉/截断检测（`seq` 是 per-stream 序数、非 resume 键）。
+        /// 注（审计 quality）：`Frame` 仅 derive `Serialize`，故此 `#[serde(default)]` 在**本 crate 装饰性**——
+        /// 「旧 daemon 缺字段 → client 得 0」的向后兼容实现在 **cc-monitor 反序列化侧**（此处 default 无实效但无害，留作意图标注）。
         #[serde(default)]
         byte_offset: u64,
     },

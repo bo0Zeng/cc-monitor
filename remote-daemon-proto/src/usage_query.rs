@@ -316,4 +316,45 @@ mod tests {
         assert!(analyze_session(&p, &mut seen).is_none());
         let _ = std::fs::remove_dir_all(&tmp);
     }
+
+    /// 审计 quality-重要：多 (model,day) 桶拆分 + 稳定序（此前 4 测全单桶、只查 buckets[0]，
+    /// 排序比较器 `db.cmp(da).then(ma.cmp(mb))`=天降序·同天模型升序 在 >1 桶下无测）。
+    #[test]
+    fn multi_bucket_split_and_stable_sort() {
+        let tmp = std::env::temp_dir().join(format!("ccm-usage-multi-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let rec = |rid: &str, model: &str, day: &str, out: u64| {
+            format!(
+                r#"{{"type":"assistant","uuid":"{rid}","requestId":"{rid}","timestamp":"{day}T10:00:00Z","message":{{"model":"{model}","usage":{{"output_tokens":{out}}}}}}}"#
+            )
+        };
+        // 三桶：17/a、17/b、18/a（各不同 requestId 免去重）。
+        let p = write_session(
+            &tmp,
+            "s.jsonl",
+            &[
+                &rec("r1", "a", "2026-07-17", 10),
+                &rec("r2", "b", "2026-07-17", 20),
+                &rec("r3", "a", "2026-07-18", 30),
+            ],
+        );
+        let mut seen = HashSet::new();
+        let row = analyze_session(&p, &mut seen).expect("has usage");
+        let b = row["buckets"].as_array().unwrap();
+        assert_eq!(b.len(), 3, "三 (model,day) 桶");
+        let key = |i: usize| {
+            (
+                b[i]["day"].as_str().unwrap(),
+                b[i]["model"].as_str().unwrap(),
+            )
+        };
+        // 稳定序：天降序，同天模型升序 → [18/a, 17/a, 17/b]。
+        assert_eq!(key(0), ("2026-07-18", "a"));
+        assert_eq!(key(1), ("2026-07-17", "a"));
+        assert_eq!(key(2), ("2026-07-17", "b"));
+        assert_eq!(b[0]["totals"]["output"].as_u64(), Some(30));
+        assert_eq!(b[0]["totals"]["msgs"].as_u64(), Some(1));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }

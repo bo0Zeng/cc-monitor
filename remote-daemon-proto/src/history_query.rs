@@ -203,19 +203,30 @@ fn read_session_from_offset(
     jsonl_path: &str,
     offset: u64,
 ) -> Result<(), String> {
-    use std::io::Seek;
     let target = validate_session_path(claude_dir, jsonl_path)?;
     let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
-    f.seek(std::io::SeekFrom::Start(offset))
-        .map_err(|e| format!("seek failed: {e}"))?;
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
-    std::io::copy(&mut f, &mut out).map_err(|e| format!("stream failed: {e}"))?;
+    stream_from_offset(&mut f, offset, &mut out).map_err(|e| format!("stream failed: {e}"))?;
     Ok(())
 }
 
-/// 纯：offset 续拉的字节切片语义（**仅供单测**对拍 aterm `tail -c +(offset+1)`；生产
-/// `read_session_from_offset` 走 `File::seek`、不调本函数，故 `#[cfg(test)]` 不进生产二进制）。
+/// 生产 seek+copy 内核（`read_session_from_offset` 与单测共用）——seek 到字节 `offset`（0-based）
+/// 透传 [offset, EOF] = `tail -c +(offset+1)`；offset > 文件长 → seek 过 EOF、copy 空（不 panic）。
+/// **审计 quality/correctness**：抽出泛型 `W` 让单测直接对 `Vec<u8>` 驱动**发货的 seek 路径本身**、
+/// 断言真实续拉字节，闭「只测 `slice_from_offset` 助手、生产 seek 路径无字节断言」的 dup-drift。
+fn stream_from_offset<W: std::io::Write>(
+    f: &mut std::fs::File,
+    offset: u64,
+    out: &mut W,
+) -> std::io::Result<u64> {
+    use std::io::Seek;
+    f.seek(std::io::SeekFrom::Start(offset))?;
+    std::io::copy(f, out)
+}
+
+/// 纯：offset 续拉的字节切片语义（**仅供单测**对拍 aterm `tail -c +(offset+1)`；生产走
+/// `stream_from_offset` 的 `File::seek`、不调本函数，故 `#[cfg(test)]` 不进生产二进制）。
 /// = `bytes[min(offset,len)..]`——offset ≤ len 时取 [offset, EOF]；offset > len
 /// （截断）时取空（与 `File::seek` 过 EOF 后读空一致，不 panic）。
 #[cfg(test)]
@@ -546,8 +557,8 @@ mod tests {
     }
 
     /// daemon-02：offset 续拉的字节语义**逐字节对拍** watcher 发出的 `byte_offset`
-    /// + aterm `tail -c +(offset+1)`。用与 `byte_offset_matches_aterm_lineframer`
-    /// 同一语料 `"你\r\nx\n"`（LineFramer offset=[5,7]）：从续点 N 起 = `bytes[N..]`。
+    /// 与 aterm `tail -c +(offset+1)`。用与 `byte_offset_matches_aterm_lineframer` 同一
+    /// 语料 `"你\r\nx\n"`（LineFramer offset=[5,7]）：从续点 N 起 = `bytes[N..]`。
     #[test]
     fn slice_from_offset_matches_lineframer_resume() {
         // 你=3B + \r\n=2 → line1 endOffset 5；x=1 + \n=1 → line2 endOffset 7；共 7B。
@@ -578,6 +589,28 @@ mod tests {
         // 合法 jsonl + offset 超长 → seek 过 EOF 读空、Ok（不 panic、不报错）。
         let ok = dir.join("ok.jsonl");
         assert!(read_session_from_offset(&tmp, &ok.to_string_lossy(), 9999).is_ok());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// 审计 quality/correctness-重要：**发货的 seek 路径本身**（`stream_from_offset`）的续拉字节
+    /// 直接断言（此前只测 `slice_from_offset` 助手 + path_guard 的 Ok/Err，生产 seek 输出无字节测
+    /// → dup-drift 风险）。用 byte_offset golden 同语料 `"你\r\nx\n"`，逐 offset 对拍 `slice_from_offset`
+    /// （= `tail -c +(offset+1)`），证生产 `File::seek`+`copy` 与助手语义**逐字节一致**。
+    #[test]
+    fn stream_from_offset_production_path_byte_parity() {
+        let tmp = std::env::temp_dir().join(format!("ccm-hq-sfo-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let data = "你\r\nx\n".as_bytes(); // 7B；byte_offset golden 语料
+        let p = tmp.join("s.jsonl");
+        std::fs::write(&p, data).unwrap();
+        for off in [0u64, 4, 5, 7, 100] {
+            let mut f = std::fs::File::open(&p).unwrap();
+            let mut got = Vec::new();
+            let n = stream_from_offset(&mut f, off, &mut got).expect("stream ok");
+            // 对拍纯助手（= 生产 seek 应吐的字节）：逐字节一致 + copy 返回字节数吻合。
+            assert_eq!(got, slice_from_offset(data, off), "off={off} 字节不符");
+            assert_eq!(n as usize, got.len(), "off={off} copy 计数不符");
+        }
         std::fs::remove_dir_all(&tmp).ok();
     }
 
