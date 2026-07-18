@@ -96,8 +96,13 @@ export function summarizeSessions(sessions: GridSessionSnapshot[]): GridSummary 
   return { machines: origins.size, liveSessions, runningAgents };
 }
 
-/** F91b：peek 内容签名——把 peek 渲染依赖的所有字段序列化。相等 = 无需重建 DOM（保选区/滚动）。
- *  纯函数。selected=null → 空串（收起态）。 */
+/** F91b：peek 内容签名——相等 = 无需重建 DOM（保选区/滚动）。纯函数。selected=null → 空串（收起态）。
+ *  F91b-fix(batch18 审计修) 两处：
+ *  ① **排除 contextPct/unread**：这俩是高频 glance 字段（尤其 unread 每来一条消息就涨），纳入会让
+ *     活跃会话每秒重建 peek、清掉用户正在选取/复制的文件路径——memo 恰在最该保选区时失效。代价：peek 里
+ *     显示的 ctx%/未读会略滞后（下次因别的字段变而重建、或重选时刷新），对 triage 快照可接受。
+ *  ② **只签可见 slice(8)+计数**：渲染只画 agents.slice(0,8)/recentFiles.slice(-8)，原签名却 stringify 全量
+ *     数组——改 500 文件的会话每秒序列化 500 条却只画 8 条，签名比它保护的 DOM 还重。改成只签可见集+长度。 */
 function peekSignature(selected: GridSessionSnapshot | null, peek: SessionPeek | null): string {
   if (!selected) return "";
   return JSON.stringify([
@@ -108,11 +113,11 @@ function peekSignature(selected: GridSessionSnapshot | null, peek: SessionPeek |
     selected.status,
     selected.activityStatus,
     selected.waitingFor,
-    selected.contextPct,
-    selected.unread,
     peek?.model ?? null,
-    peek?.agents.map((a) => `${a.label}:${a.status}`) ?? null,
-    peek?.recentFiles ?? null,
+    peek?.agents.length ?? 0,
+    peek?.agents.slice(0, 8).map((a) => `${a.label}:${a.status}`) ?? null,
+    peek?.recentFiles.length ?? 0,
+    peek?.recentFiles.slice(-8) ?? null,
   ]);
 }
 
@@ -214,6 +219,12 @@ export class GridMonitorView {
       : null;
     if (this.selectedId && !selected) this.selectedId = null;
 
+    // F91b-fix(batch18 审计修)：1Hz 重建会销毁聚焦的 cell（button）→ 焦点回落 body → 开板期间键盘
+    // 无法停留/选中 cell。重建前记下聚焦的会话 sid，重建后恢复到同一会话的新 cell。
+    const active = document.activeElement;
+    const focusedSid =
+      active instanceof HTMLElement && this.bodyEl.contains(active) ? active.dataset.sid : undefined;
+
     this.bodyEl.replaceChildren();
     if (sessions.length === 0) {
       const empty = document.createElement("div");
@@ -239,6 +250,16 @@ export class GridMonitorView {
       }
       groupEl.appendChild(grid);
       this.bodyEl.appendChild(groupEl);
+    }
+
+    // F91b-fix：恢复键盘焦点到重建前聚焦的同一会话 cell（若还在）。用 dataset.sid 逐个比对，避免 CSS 选择器注入。
+    if (focusedSid) {
+      for (const c of this.bodyEl.querySelectorAll<HTMLElement>(".grid-monitor-cell")) {
+        if (c.dataset.sid === focusedSid) {
+          c.focus();
+          break;
+        }
+      }
     }
 
     this.renderPeek(selected); // 1Hz 也刷 peek（选中会话内容随之更新）
@@ -384,6 +405,7 @@ export class GridMonitorView {
     const cell = document.createElement("button");
     cell.type = "button";
     cell.className = "grid-monitor-cell";
+    cell.dataset.sid = s.sessionId; // F91b-fix：焦点跨 1Hz 重建恢复用（render 按此比对）
     if (s.status === "archived") cell.classList.add("archived");
     if (s.kind !== null && s.kind !== "interactive") cell.classList.add("cell-bg");
     if (s.sessionId === this.selectedId) cell.classList.add("is-selected"); // F91b 选中高亮

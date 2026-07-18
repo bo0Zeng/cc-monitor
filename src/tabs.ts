@@ -691,7 +691,13 @@ export class TabManager {
 
     // F70：累进本会话改动集（写类工具 file_path）——放在双重去重之后（重投不重复累），
     // 渲染/收纳门控之前（连"收纳不建卡"的记录也计入）。纯增量、无 DOM。
-    for (const f of collectEditedFiles(payload.message)) tab.touchedFiles.add(f);
+    // F91b-fix(batch18 审计修)：re-touch 时 delete+add 把它移到末尾 = **近因序**，让 F91b peek 的
+    // slice(-8) 显「最近改的 8 个」（原 Set 只记首触序，此刻正猛改的老文件被埋）。Set 成员/size 不变，
+    // F70 全景高亮按成员判定、与序无关，安全。O(1)/文件。
+    for (const f of collectEditedFiles(payload.message)) {
+      tab.touchedFiles.delete(f);
+      tab.touchedFiles.add(f);
+    }
 
     const sink: StreamSink = {
       timeline: tab.timeline,
