@@ -25,6 +25,7 @@ import { SessionViewer } from "./views/session-viewer"; // F77：点 agent 看�
 import { PanoramaView } from "./views/panorama";
 import { UsageView } from "./views/usage-view";
 import { GridMonitorView } from "./views/grid-monitor";
+import { CommandBarView, type Command } from "./views/command-bar";
 import { UsageHud } from "./usage-hud";
 import { bindErrorToast, showActionFailureToast } from "./error-toast";
 import { bindRemoteHealthToast } from "./remote-health";
@@ -418,6 +419,39 @@ window.addEventListener("DOMContentLoaded", async () => {
   sftpTrigger.addEventListener("click", () => void openSftpFromTopbar(sftpTrigger));
   document.getElementById("app")?.appendChild(sftpTrigger);
 
+  // F84（#57）：键盘命令栏（Ctrl+K）。只读命令面板——组装既有 view/dispatcher 目标 + F91
+  // snapshotSessions() 的「切到会话…」。写/驱动动作（resume/kill/delete）首刀排除（守北极星）。
+  // 键位唯一入口（palette 惯例，顶栏已拥挤，按钮延后）。commandBar 放 sftpTrigger 之后建，
+  // 使 buildCommands 引用的 sftpTrigger 已声明。
+  const buildCommands = (): Command[] => {
+    const cmds: Command[] = [
+      { id: "open-history", title: "打开历史浏览器", keywords: "history 历史", run: () => { if (!historyView.isVisible()) void historyView.open(); } },
+      { id: "open-panorama", title: "打开代码全景", keywords: "panorama 全景 code", run: () => { if (!panoramaView.isVisible()) void panoramaView.open(); } },
+      { id: "open-usage", title: "打开用量视图", keywords: "usage token 用量", run: () => { if (!usageView.isVisible()) void usageView.open(); } },
+      { id: "open-grid", title: "打开多 agent 监控", keywords: "grid monitor 监控 agent 并排", run: () => { if (!gridMonitorView.isVisible()) gridMonitorView.open(); } },
+      { id: "open-settings", title: "打开设置", keywords: "settings 设置 preferences", run: () => void invoke("open_settings_window") },
+      { id: "open-sftp", title: "打开 SFTP 文件面板", keywords: "sftp file 文件 传输", run: () => void openSftpFromTopbar(sftpTrigger) },
+      { id: "win-minimize", title: "最小化窗口", keywords: "minimize 最小化", run: () => void getCurrentWindow().minimize() },
+      { id: "win-fullscreen", title: "切换全屏", keywords: "fullscreen 全屏", run: () => { const w = getCurrentWindow(); void w.isFullscreen().then((f) => w.setFullscreen(!f)).catch((e) => console.warn("toggle-fullscreen failed:", e)); } },
+      { id: "term-front", title: "把对应终端窗口拉到前台", keywords: "terminal 终端 front", run: () => tabs.bringActiveTerminalToFront() },
+      { id: "toggle-tasks", title: "开 / 关 Task 面板", keywords: "task 任务 panel", run: () => tasksPanel.toggle() },
+      { id: "tab-next", title: "切到下一个 Tab", keywords: "next tab 下一个", run: () => tabs.cycleActive(1) },
+      { id: "tab-prev", title: "切到上一个 Tab", keywords: "prev tab 上一个", run: () => tabs.cycleActive(-1) },
+    ];
+    // 切到会话（来自 F91 只读投影 snapshotSessions）
+    for (const s of tabs.snapshotSessions()) {
+      const originTag = s.origin ? `[${s.origin}] ` : "";
+      cmds.push({
+        id: `switch-${s.sessionId}`,
+        title: `切到会话：${originTag}${s.title}`,
+        keywords: `switch session 切换 会话 ${s.cwd ?? ""} ${s.origin ?? ""}`,
+        run: () => tabs.switchTo(s.sessionId),
+      });
+    }
+    return cmds;
+  };
+  const commandBar = new CommandBarView(buildCommands);
+
   // 外链 + 代码块复制的全局 click 代理（主窗口 / 独立 viewer 窗口共用）
   installGlobalClickDelegation();
 
@@ -443,6 +477,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (panoramaView.isVisible()) panoramaView.close();
     else void panoramaView.open();
   });
+  dispatcher.bind("app.open-command-bar", () => commandBar.toggle()); // F84（#57）Ctrl+K 命令栏
   dispatcher.bind("app.minimize", () => void getCurrentWindow().minimize());
   dispatcher.bind("app.toggle-fullscreen", () => {
     const w = getCurrentWindow();
