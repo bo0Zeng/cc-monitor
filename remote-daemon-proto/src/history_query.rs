@@ -5,6 +5,9 @@
 //! - `--list-projects`                → 列举 `<claude_dir>/projects/` 下各项目
 //! - `--list-sessions <project_dir>`  → 列举某项目目录下的历史会话（带元数据）
 //! - `--read-session <jsonl_path>`    → 原样透传该 jsonl 文件内容（monitor 侧解析）
+//! - `--read-session-from-offset <jsonl_path> <offset>`
+//!                                    → 从字节 `offset`（0-based）透传 [offset, EOF]，
+//!                                      = aterm `tail -c +(offset+1)`（offset 续拉/重连恢复）
 //!
 //! 输出协议：`--list-*` 每行一个 JSON 对象（**不是** wire::Frame——查询模式与流式
 //! 协议互不混用，旧 daemon 不认参数会照常进流模式发 hello，monitor 以"首行是
@@ -37,6 +40,16 @@ pub fn run(claude_dir: &Path, args: &[String]) -> i32 {
         Some("--read-session") => match args.get(1) {
             Some(p) => read_session(claude_dir, p),
             None => Err("--read-session requires <jsonl_path> argument".into()),
+        },
+        Some("--read-session-from-offset") => match (args.get(1), args.get(2)) {
+            (Some(p), Some(o)) => match o.parse::<u64>() {
+                Ok(o) => read_session_from_offset(claude_dir, p, o),
+                Err(_) => Err(
+                    "--read-session-from-offset <jsonl_path> <offset>: offset must be a number"
+                        .into(),
+                ),
+            },
+            _ => Err("--read-session-from-offset requires <jsonl_path> <offset> arguments".into()),
         },
         Some(other) => Err(format!("unknown argument: {other}")),
         None => Err("no query argument".into()),
@@ -177,6 +190,37 @@ fn read_session(claude_dir: &Path, jsonl_path: &str) -> Result<(), String> {
     let mut out = stdout.lock();
     std::io::copy(&mut f, &mut out).map_err(|e| format!("stream failed: {e}"))?;
     Ok(())
+}
+
+/// daemon-02（Phase 1 offset 续拉）：`--read-session-from-offset <path> <offset>`——
+/// seek 到字节 `offset`（0-based）后原样透传 [offset, EOF]，**语义逐字节 = aterm
+/// `tail -c +(offset+1)`**（`TailTransport.kt:33` + `SkeletonScan.windowContentCommand`）。
+/// `offset` = 客户端从 Line 帧 `byte_offset` 持久化的续点（重连/断线后带上）。
+/// 截断/重写（远端 size < offset）**不在此判**——同 aterm 由客户端另经 size 查检测后
+/// 决策 reset（`offsetByPath`），此处 seek 过 EOF → 读空 → 透传空，安全无副作用。
+/// 透传而非逐行：monitor 侧 parse_line 管线已全，daemon 不重复造（同 `read_session`）。
+fn read_session_from_offset(
+    claude_dir: &Path,
+    jsonl_path: &str,
+    offset: u64,
+) -> Result<(), String> {
+    use std::io::Seek;
+    let target = validate_session_path(claude_dir, jsonl_path)?;
+    let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
+    f.seek(std::io::SeekFrom::Start(offset))
+        .map_err(|e| format!("seek failed: {e}"))?;
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    std::io::copy(&mut f, &mut out).map_err(|e| format!("stream failed: {e}"))?;
+    Ok(())
+}
+
+/// 纯：offset 续拉的字节切片语义（供单测对拍 aterm `tail -c +(offset+1)`）。
+/// = `bytes[min(offset,len)..]`——offset ≤ len 时取 [offset, EOF]；offset > len
+/// （截断）时取空（与 `File::seek` 过 EOF 后读空一致，不 panic）。
+fn slice_from_offset(bytes: &[u8], offset: u64) -> &[u8] {
+    let o = (offset as usize).min(bytes.len());
+    &bytes[o..]
 }
 
 /// Batch9-F30：`--read-session-tail <path> <N>`——尾部优先输出：
@@ -495,6 +539,42 @@ mod tests {
         let txt = dir.join("note.txt");
         std::fs::write(&txt, "x").unwrap();
         assert!(read_session(&tmp, &txt.to_string_lossy()).is_err());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// daemon-02：offset 续拉的字节语义**逐字节对拍** watcher 发出的 `byte_offset`
+    /// + aterm `tail -c +(offset+1)`。用与 `byte_offset_matches_aterm_lineframer`
+    /// 同一语料 `"你\r\nx\n"`（LineFramer offset=[5,7]）：从续点 N 起 = `bytes[N..]`。
+    #[test]
+    fn slice_from_offset_matches_lineframer_resume() {
+        // 你=3B + \r\n=2 → line1 endOffset 5；x=1 + \n=1 → line2 endOffset 7；共 7B。
+        let data = "你\r\nx\n".as_bytes();
+        assert_eq!(data.len(), 7);
+        // 从 0 续 = 整个文件（首次全量）。
+        assert_eq!(slice_from_offset(data, 0), data);
+        // 从 line1 的 byte_offset=5 续 = 只剩 line2 "x\n"（不重发 line1，不跳字节）。
+        assert_eq!(slice_from_offset(data, 5), b"x\n");
+        // 从 line2 的 byte_offset=7 续 = EOF、空（无新行）。
+        assert_eq!(slice_from_offset(data, 7), b"");
+        // offset > len（远端截断/重写）→ 空、不 panic（客户端另经 size 查 reset）。
+        assert_eq!(slice_from_offset(data, 100), b"");
+        // 中途续点（非行边界，理论上不该发生，但语义须良定义）：透传该字节起余部。
+        assert_eq!(slice_from_offset(data, 4), b"\nx\n");
+    }
+
+    /// daemon-02：offset 续拉沿用 `read_session` 的路径守卫（projects 外 / 非 jsonl 拒）。
+    #[test]
+    fn read_session_from_offset_path_guard() {
+        let tmp = std::env::temp_dir().join(format!("ccm-hq-off-{}", std::process::id()));
+        let dir = fixture_project(&tmp, "proj-off");
+        write_jsonl(&dir, "ok.jsonl", &[r#"{"type":"user"}"#]);
+        let outside = tmp.join("secret.jsonl");
+        std::fs::write(&outside, "nope").unwrap();
+        // projects 外 → 拒（守卫先于 seek）。
+        assert!(read_session_from_offset(&tmp, &outside.to_string_lossy(), 0).is_err());
+        // 合法 jsonl + offset 超长 → seek 过 EOF 读空、Ok（不 panic、不报错）。
+        let ok = dir.join("ok.jsonl");
+        assert!(read_session_from_offset(&tmp, &ok.to_string_lossy(), 9999).is_ok());
         std::fs::remove_dir_all(&tmp).ok();
     }
 
