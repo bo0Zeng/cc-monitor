@@ -11,7 +11,9 @@
 //! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`（`mcp::write_remote_mcp_server` 等，字符串守卫
 //!   `is_safe_remote_mcp_json`：绝对 + 尾 `/.mcp.json` + 无 `..` + 非裸；经本模块 `upload_atomic` 原子写）。
 //!   **SS-14**：写面**只** `.mcp.json`，非 Claude 会话数据。
-//! - **F10**：本地 profile 写（`~/.bashrc`）——非远端。
+//! - **F10**：cc(m) 助手装/卸——**本模块 `install_remote_ccm_helper`/`uninstall_remote_ccm_helper` 写远端 `~/.bashrc`**
+//!   （BEGIN/END 块 + 备份 + 写后校验回滚）；本机 profile 写在 `profile_installer`。（batch20 审计修：原「非远端」措辞误——本模块确写远端 `~/.bashrc`。）
+//! - **F50**：`pubkey::push_public_key` 经 SSH-exec 追加公钥到远端 `~/.ssh/authorized_keys`（不在本模块，登记于此备查）。
 //!
 //! `upload_atomic`（F89a 审计后加固）：tmp 用 **EXCLUDE** 创建（防 symlink 预置 clobber）+ 旧目标先备份到
 //! `.bak` 再 rename（失败可恢复、成功即清），不留垃圾。

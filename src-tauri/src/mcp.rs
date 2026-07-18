@@ -386,12 +386,29 @@ pub async fn remove_project_mcp_server(project_dir: String, name: String) -> Res
 // 原子 tmp+rename；**已存在但读/解析失败 → 报错拒绝覆盖**（不 skeleton 盖掉现有 server，对齐本机 read_or_skeleton）。
 
 /// SFTP 读远端 `.mcp.json` Value：不存在→骨架；存在但读/解析失败→Err（拒绝后续覆盖丢数据）。
+/// batch20 审计修（两处）：① `try_exists` **Err → Err 拒写**（原 `unwrap_or(false)` 把瞬态 stat 失败当「不存在」→
+/// 会 skeleton 覆盖丢其余 server）；② **崩溃恢复**——path 缺但 `<path>.bak` 在 = 上次写在末段 rename 中断（`upload_atomic`
+/// 备份了旧文件、tmp→path 失败），此时读骨架会让重试丢掉备份里的其余 server → 改为**从 `.bak` 恢复**旧内容。
 async fn read_remote_mcp_value(
     sftp: &russh_sftp::client::SftpSession,
     path: &str,
 ) -> Result<Value, String> {
-    let exists = sftp.try_exists(path.to_string()).await.unwrap_or(false);
+    let exists = sftp
+        .try_exists(path.to_string())
+        .await
+        .map_err(|e| format!("检查远端 {path} 存在性失败（拒绝写以免丢数据）: {e}"))?;
     if !exists {
+        // 崩溃恢复：path 缺但 .bak 在 → 从 .bak 读回上次写中断前的内容（否则重试骨架覆盖丢 server）。
+        let bak = format!("{path}.bak");
+        if sftp.try_exists(bak.clone()).await.unwrap_or(false) {
+            if let Ok(bytes) = sftp.read(bak.clone()).await {
+                if let Ok(v) = serde_json::from_str::<Value>(
+                    String::from_utf8_lossy(&bytes).trim_start_matches('\u{feff}'),
+                ) {
+                    return Ok(v); // 从备份恢复
+                }
+            }
+        }
         return Ok(serde_json::json!({ "mcpServers": {} }));
     }
     let bytes = sftp
