@@ -672,10 +672,12 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   font-size: var(--font-size-small);
 }
 
-/* F91b（batch17）：选中 cell 高亮（去模态——点 cell 不再关板，改高亮 + 底部 peek）。 */
+/* F91b（batch17）：选中 cell 高亮（去模态——点 cell 不再关板，改高亮 + 底部 peek）。
+   F91b-fix(batch18)：增强辨识度——一屏几十个 cell 里 1px 边框太弱，加背景微调 + 2px 环。 */
 .grid-monitor-cell.is-selected {
   border-color: var(--accent, #7aa2f7);
-  box-shadow: 0 0 0 1px var(--accent, #7aa2f7) inset;
+  box-shadow: 0 0 0 2px var(--accent, #7aa2f7) inset;
+  background: var(--overlay-active, rgba(122, 162, 247, 0.12));
 }
 
 /* F91b：底部 peek 面板——选中会话的内容详情（cwd/状态/model/agent/改过的文件）+ 跳转按钮。 */
@@ -684,7 +686,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   border-top: 1px solid var(--border-strong);
   background: var(--bg-2);
   padding: 10px 14px;
-  max-height: 34vh;
+  max-height: min(34vh, 280px); /* F91b-fix：矮窗封顶 280px，不把网格挤没 */
   overflow-y: auto;
   display: flex;
   flex-direction: column;

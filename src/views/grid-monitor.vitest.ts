@@ -262,6 +262,62 @@ describe("F91 GridMonitorView", () => {
     }
   });
 
+  it("F91b-fix 签名排除 unread/contextPct → 后台会话计数跳动不重建 peek（保住选区）", () => {
+    vi.useFakeTimers();
+    try {
+      document.body.replaceChildren();
+      let unread = 0;
+      let contextPct = 40;
+      const source = {
+        snapshotSessions: () => [snap({ sessionId: "l1", title: "a", unread, contextPct })],
+        switchTo: vi.fn(),
+        peekSession: () => ({ model: "m", recentFiles: [] as string[], agents: [] as never[] }),
+      };
+      const view = new GridMonitorView(source);
+      view.open();
+      document.querySelector<HTMLElement>(".grid-monitor-cell")!.click();
+      const titleNode = document.querySelector(".grid-monitor-peek-title");
+      expect(titleNode).not.toBeNull();
+      // 后台会话来新消息 + context 涨 —— 这俩是高频 glance 字段，不该触发 peek 重建（否则清掉用户选区）
+      unread = 7;
+      contextPct = 55;
+      vi.advanceTimersByTime(1000);
+      expect(document.querySelector(".grid-monitor-peek-title")).toBe(titleNode); // 同一节点 = 未重建
+      view.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("F91b-fix 签名只签可见 slice(8)+计数 → 第 9+ 个文件变化不重建（但数量变会重建）", () => {
+    vi.useFakeTimers();
+    try {
+      document.body.replaceChildren();
+      // 12 个文件，只显后 8 个（idx 4..11）。改前 4 个（不可见）不该重建；数量变则重建。
+      let files = Array.from({ length: 12 }, (_, i) => `/f${i}.ts`);
+      const source = {
+        snapshotSessions: () => [snap({ sessionId: "l1", title: "a" })],
+        switchTo: vi.fn(),
+        peekSession: () => ({ model: "m", recentFiles: files, agents: [] as never[] }),
+      };
+      const view = new GridMonitorView(source);
+      view.open();
+      document.querySelector<HTMLElement>(".grid-monitor-cell")!.click();
+      const titleNode = document.querySelector(".grid-monitor-peek-title");
+      // 改不可见的前 4 个（可见 slice(-8) 与计数都不变）→ 不重建
+      files = ["/x0.ts", "/x1.ts", "/x2.ts", "/x3.ts", ...files.slice(4)];
+      vi.advanceTimersByTime(1000);
+      expect(document.querySelector(".grid-monitor-peek-title")).toBe(titleNode);
+      // 数量变（新增一个可见文件）→ 重建
+      files = [...files, "/new.ts"];
+      vi.advanceTimersByTime(1000);
+      expect(document.querySelector(".grid-monitor-peek-title")).not.toBe(titleNode);
+      view.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("空会话 → 空态文案、摘要空", () => {
     document.body.replaceChildren();
     const view = new GridMonitorView(mkSource([]));
