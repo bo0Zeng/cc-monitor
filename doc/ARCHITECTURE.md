@@ -103,10 +103,16 @@ src-tauri/src/
 │              messages.rs   JsonlRecord enum + ApiMessage schema
 │              session_map.rs  读 sessions/<PID>.json + Win32 进程探活
 │              subagent.rs   按需加载 subagents/*.meta.json
+│              adapter.rs    F-MA agent 适配层（会话布局/解析/活性/resume 假设收敛到 AgentAdapter，CC 是第一个实例）
+│              adapter/claude_code.rs  Claude Code 适配器（第一个实例，零行为变化包旧逻辑）
 ├── 业务层      event_replay.rs  内存 buffer + 持锁 batch emit
 │              history.rs    两级懒加载 + metadata + 物理删除 + resume + F62 从某轮建分支
 │              launch.rs     终端拉起（wt.exe→PowerShell 单一入口）+ 远端 ssh 拉起（B14-F41）
 │              tasks.rs      v2.3 CLI task tracker 读 + watcher + emit task-update
+│              search.rs     issue #6 历史全文搜索（后台建内存索引 + substring 两级匹配）
+│              usage.rs      F88a 用量聚合（按会话/模型/天分桶，每 requestId 逐字段 MAX 后累加 token；只算不写）
+│              mcp.rs        F87 MCP 管理（跨 scope 宽容读 / 只写项目 .mcp.json，SS-14 读写分界）
+│              panorama.rs   Batch15 code-picture 代码全景后端（per-repo Engine 池，只读查询）
 ├── 集成层      bind.rs       cc 集成绑定核心（ps-await/registry/SidHwndCache）
 │              profile_installer.rs  PowerShell profile 块插入/卸载
 │              auto_launch.rs  auto-launch monitor 开关
@@ -119,7 +125,9 @@ src-tauri/src/
 │              pubkey.rs     B14-F50 公钥一键推送 authorized_keys（防注入 + 幂等去重）
 │              port_forward.rs  B14-F58 本地端口转发(-L)管理台（复用 SSH 连接隧道 direct-tcpip）
 │              tmux.rs       B14-F51/F60 tmux 反查 attach + capture-pane 画面预览快照
-└── 持久层      config.rs     monitor config.json R/W（Windows MoveFileExW 原子）
+│              tmux_reconcile.rs  F74c(#60-A) tmux 存活对账 poller（带外杀 tmux → tab 有界变灰；retire 送 remote_tx 单写者）
+├── 持久层      config.rs     monitor config.json R/W（Windows MoveFileExW 原子）
+└── 透明化      data_paths.rs  issue #3 枚举 monitor 所有持久数据路径 + WebView2（设置面板「数据」区，只读）
 ```
 
 ```
@@ -129,6 +137,9 @@ src/
 │              remote-health.ts  订阅 remote-health 事件 + 按 origin 节流弹 toast（overflow/version）
 ├── 状态        tabs.ts       TabManager 状态机 + switchTo manual/auto + userActive
 │              stream.ts     MessageStream（insertNode + 守卫式 snap；重放消抖 § 5）
+│              session-status.ts  F91 红绿灯语义共享座（tab-bar 与 grid 共用活动灯纯逻辑）
+│              agents-panel.ts  #23 subagent 面板（status-bar chip + popover，每 agent 独立状态灯）
+│              usage-hud.ts  F88b 用量 HUD chip（活跃会话 context 占用%，≥80% 预警）
 ├── 渲染        render.ts     marked + KaTeX + hljs + DOMPurify（v2.6 opts.lazy 参数）
 │              cards/        折叠卡组件（slash / bash / diff / api-error / interactive / compact / subagent / tool）
 │                            cards/index.ts::stripInternalNoise 剥 CLI 注入 + ESC 中断
@@ -140,11 +151,14 @@ src/
 │              views/session-viewer.ts  只读会话查看器
 │              views/pane-preview.ts  B14-F60 远端 tmux 画面只读预览 overlay（capture-pane 快照）
 │              views/port-forward.ts  B14-F58 本地端口转发(-L)管理台 overlay
+│              views/grid-monitor.ts  F91 多 agent 并排监控（跨机只读 mission-control grid overlay）
+│              views/command-bar.ts  F84 命令栏（Ctrl-K 命令面板 overlay，首刀只列只读命令）
 │              tasks-panel.ts  v2.3 Tab stream 顶部 sticky task 折叠卡
 ├── 设置        settings/panel.ts   总控（F82a 起挂独立 `settings` 窗口，windowMode + 跨窗广播同步）
 │              settings/cc_integration.ts  PowerShell 集成区
 │              settings/info-icon.ts  portal tooltip 组件
 │              settings/data-section.ts  v2.3 数据存储透明化
+│              settings/mcp-section.ts  F87 MCP 段（跨 scope 读 / 只写项目 .mcp.json，SS-14）
 ├── 配置        config.ts     invoke load/save_config
 │              paths.ts      claudeDir 字段读写
 │              theme.ts      CSS token 应用
@@ -154,6 +168,11 @@ src/
 │              remote-launch-run.ts  拉起执行器（invoke launch_remote_terminal → 失败回退复制命令）
 ├── SFTP 面板   sftp/panel.ts  SFTP 文件面板 overlay（B14-F48/F49；浏览/传输/写/书签/在此打开终端/小文件编辑；F54 openSftpPanel(cfg,revealPath) 会话工具卡→文件定位高亮；消费 F47 sftp_* 命令，不碰 TabManager）
 │              sftp/paths.ts  面板纯路径逻辑（面包屑/join/parent/basename/排序/书签，可单测）
+├── 适配        agent-profile.ts  F-MA「哪个 AI」画像（CC 工具名/进程名/嵌套 env 收敛，对应 Rust adapter）
+│              session-backend.ts  F90/SS-12「哪个多路复用器」座（tmux 命令语法收敛；阶段①唯一后端 tmux）
+├── 全景        views/panorama.ts  Batch15 代码全景视图（纯 canvas，子系统聚类气泡 + 脊柱圆 + 入口描环）
+│              panorama/     全景前端纯逻辑：api(invoke 封装)/layout(坐标·命中·打包)/types/session-files(抽本轮改动文件喂高亮)
+├── 快捷键      keybindings/  issue #5 dispatcher(registry)+Action 清单(actions)+编辑器(editor)+持久化(store)
 └── 样式        styles.css    全部样式 + token 系统
 ```
 
