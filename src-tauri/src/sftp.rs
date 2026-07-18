@@ -4,12 +4,17 @@
 //! 在一条已鉴权的 russh 连接上 `request_subsystem("sftp")` 起 SFTP 子系统（russh-sftp，
 //! transport-agnostic，吃 channel 的 AsyncRead+AsyncWrite 流）。
 //!
-//! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）
-//! cc-monitor 对远端的写入**仅限**两类，各自独立 realpath 白名单、绝不混用：
+//! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）—— 穷举登记见 `doc/INVARIANTS.md §1`
+//! cc-monitor 对远端的写入均**用户显式触发**，各自独立路径守卫、绝不混用：
 //! - **F08**：自部署 daemon 二进制到 `~/.cc-monitor/bin/`（非用户数据、幂等、版本门控）。
-//! - **F11**：用户**主动**删除 / 改 metadata 到 `~/.claude/`。
+//! - **F11**：用户**主动**删除远端会话 jsonl（`remove_remote_file`，`is_safe_remote_jsonl` + `canonicalize`）。
+//! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`（`mcp::write_remote_mcp_server` 等，字符串守卫
+//!   `is_safe_remote_mcp_json`：绝对 + 尾 `/.mcp.json` + 无 `..` + 非裸；经本模块 `upload_atomic` 原子写）。
+//!   **SS-14**：写面**只** `.mcp.json`，非 Claude 会话数据。
+//! - **F10**：本地 profile 写（`~/.bashrc`）——非远端。
 //!
-//! 本模块现实现 F08 部署写 + F11 删除 + F10 profile 写（各自独立白名单）。
+//! `upload_atomic`（F89a 审计后加固）：tmp 用 **EXCLUDE** 创建（防 symlink 预置 clobber）+ 旧目标先备份到
+//! `.bak` 再 rename（失败可恢复、成功即清），不留垃圾。
 //!
 //! ## 原子写
 //! russh-sftp 无 `posix-rename@openssh.com` 扩展，标准 SFTP `rename` 不覆盖已存在目标。
@@ -68,10 +73,14 @@ pub async fn upload_atomic(
         permissions: Some(mode),
         ..Default::default()
     };
+    // 安全（F89a 审计·重要）：先删可能残留/被预置的 tmp（remove_file 删链本身、不写穿 target），
+    // 再用 **EXCLUDE**（SSH_FXF_EXCL）创建——若删后被抢先重放 symlink，EXCLUDE 令 open 失败而非跟随，
+    // 杜绝「tmp 是 symlink → CREATE|TRUNCATE 跟随截断、越写到 `.mcp.json` 之外的用户文件」的 clobber 逃逸。
+    let _ = sftp.remove_file(tmp.clone()).await; // best-effort 清残留/预置（不存在则忽略）
     let mut file = sftp
         .open_with_flags_and_attributes(
             tmp.clone(),
-            OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE,
+            OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
             attrs,
         )
         .await
@@ -90,19 +99,29 @@ pub async fn upload_atomic(
         .map_err(|e| format!("关闭 {tmp} 失败: {e}"))?;
     drop(file);
 
-    // rename 不覆盖 → 先删旧目标（存在才删）。
-    if sftp
+    // 数据安全（F89a 审计·重要）：russh-sftp `rename` 不覆盖 → 旧目标**先 rename 成 `.bak`（不 delete）**，
+    // 再 rename tmp→目标；tmp→目标失败时旧内容仍在 `.bak`（可恢复），不像「先删旧」失败即丢原件。
+    // 成功后即删 `.bak`（不留垃圾——大文件如 daemon 二进制不堆备份）。
+    let bak = if sftp
         .try_exists(remote_path.to_string())
         .await
         .unwrap_or(false)
     {
-        sftp.remove_file(remote_path.to_string())
+        let b = format!("{remote_path}.bak");
+        let _ = sftp.remove_file(b.clone()).await; // 清旧 bak（rename 不覆盖）
+        sftp.rename(remote_path.to_string(), b.clone())
             .await
-            .map_err(|e| format!("删除旧文件 {remote_path} 失败: {e}"))?;
-    }
+            .map_err(|e| format!("备份旧文件 {remote_path} → {b} 失败: {e}"))?;
+        Some(b)
+    } else {
+        None
+    };
     sftp.rename(tmp.clone(), remote_path.to_string())
         .await
         .map_err(|e| format!("rename {tmp} → {remote_path} 失败: {e}"))?;
+    if let Some(b) = bak {
+        let _ = sftp.remove_file(b).await; // 成功替换 → 清备份
+    }
     // **绝不**在这里 `set_metadata(permissions)` 兜底 chmod —— 真机 e2e 诊断确证：在 OpenSSH
     // sftp-server 上 setstat（即便只设 permissions、size=None）会把刚 rename 好的文件**截断成
     // 0 字节**（tmp 写后 size 正确、rename 直后 size 正确，唯独 set_metadata 之后变 0）。daemon

@@ -113,9 +113,9 @@ export class McpSection {
     readBtn.type = "button";
     readBtn.className = "settings-btn settings-btn-secondary";
     readBtn.textContent = "读取";
-    readBtn.addEventListener("click", () => void this.reload());
+    readBtn.addEventListener("click", () => void this.refresh());
     this.dirInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") void this.reload();
+      if (e.key === "Enter") void this.refresh();
     });
     row.append(this.dirInput, this.datalist, readBtn);
     root.appendChild(row);
@@ -175,18 +175,83 @@ export class McpSection {
     for (const o of origins) mk(o, o);
   }
 
-  /** F87b③：切机器。本机 → 恢复本地读写；远端 → 隐藏项目目录行、只读跨机读。
-   *  F87b-fix：已是当前机器 → 早退（防误双击同一钮触发并发 SSH；重读走远端头的「重新读取」钮）。 */
+  /** F87b③/F89a：切机器。本机 → 本地读写；远端 → **项目目录行也显**（F89a：填项目=远端项目 .mcp.json 可写；
+   *  空=远端 user scope 只读）。切机器清空目录（本机/远端项目路径不通用）+ 换 datalist 候选。
+   *  F87b-fix：已是当前机器 → 早退（防误双击并发 SSH）。 */
   private async selectMachine(origin: string | null): Promise<void> {
     if (origin === this.origin) return;
     this.origin = origin;
-    this.dirRow.style.display = origin === null ? "" : "none"; // 远端无项目目录概念
+    this.dirRow.style.display = ""; // F89a：远端也显目录行（可填项目管理远端 .mcp.json）
+    this.dirInput.value = ""; // 本机/远端项目路径不通用，切机器清空
     const key = origin ?? "";
     for (const btn of this.machineRow.querySelectorAll<HTMLElement>(".mcp-machine-btn")) {
       btn.classList.toggle("active", (btn.dataset.origin ?? "") === key); // 靠 dataset 身份，非 textContent
     }
-    if (origin === null) await this.reload();
-    else await this.reloadRemote(origin);
+    if (origin === null) void this.loadProjectCandidates();
+    else void this.loadRemoteProjectCandidates(origin);
+    await this.refresh();
+  }
+
+  /** F89a：统一刷新入口，按 (机器, 目录) 三态分发。 */
+  private async refresh(): Promise<void> {
+    if (this.origin === null) return this.reload(); // 本机
+    const dir = this.currentDir();
+    if (dir) return this.reloadRemoteProject(this.origin, dir); // 远端项目（可写）
+    return this.reloadRemote(this.origin); // 远端 user scope（只读）
+  }
+
+  /** F89a：读远端某项目的 datalist 候选（远端 `~/.claude.json` projects 键）。 */
+  private async loadRemoteProjectCandidates(origin: string): Promise<void> {
+    let dirs: string[] = [];
+    try {
+      dirs = await invoke<string[]>("list_remote_mcp_project_dirs", { origin });
+    } catch {
+      /* 拿不到不影响手填 */
+    }
+    if (this.origin !== origin) return; // 期间切走
+    this.datalist.replaceChildren();
+    for (const d of dirs) {
+      const opt = document.createElement("option");
+      opt.value = d;
+      this.datalist.appendChild(opt);
+    }
+  }
+
+  /** F89a：读+管理远端某项目的 `.mcp.json`（project scope 可写）。切走/改目录 → 丢弃。 */
+  private async reloadRemoteProject(origin: string, dir: string): Promise<void> {
+    this.listBox.replaceChildren();
+    const loading = document.createElement("div");
+    loading.className = "settings-hint mcp-loading";
+    loading.textContent = `读取远端 [${origin}] 项目 ${dir} 的 .mcp.json…（SSH）`;
+    this.listBox.appendChild(loading);
+    let entries: McpServerEntry[];
+    try {
+      entries = await invoke<McpServerEntry[]>("read_remote_project_mcp", { origin, projectDir: dir });
+    } catch (e) {
+      if (this.origin !== origin || this.currentDir() !== dir) return;
+      this.listBox.replaceChildren();
+      const box = document.createElement("div");
+      box.className = "mcp-remote-error";
+      const line = document.createElement("div");
+      line.textContent = `读取远端 [${origin}] 项目 .mcp.json 失败：${String(e)}`;
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "settings-btn settings-btn-secondary";
+      retry.textContent = "重试";
+      retry.addEventListener("click", () => void this.reloadRemoteProject(origin, dir));
+      box.append(line, retry);
+      this.listBox.appendChild(box);
+      return;
+    }
+    if (this.origin !== origin || this.currentDir() !== dir) return; // 切走/改目录 → 丢弃
+    this.renderList(entries, dir, true);
+    const head = document.createElement("div");
+    head.className = "mcp-remote-head";
+    const note = document.createElement("span");
+    note.className = "settings-hint";
+    note.textContent = `远端 [${origin}] 项目 ${dir} · 可增/改/删（写远端 .mcp.json，SS-14）。`;
+    this.listBox.prepend(head);
+    head.appendChild(note);
   }
 
   private async reload(): Promise<void> {
@@ -257,7 +322,8 @@ export class McpSection {
     head.className = "mcp-remote-head";
     const note = document.createElement("span");
     note.className = "settings-hint";
-    note.textContent = "跨机只读，仅显机器全局（user scope）MCP；项目/local scope 为 per-项目，不跨机取。";
+    note.textContent =
+      "跨机 user scope（机器全局）MCP · 只读。要管理远端**项目级** .mcp.json：在上方项目目录填/选远端项目路径。";
     const refresh = document.createElement("button");
     refresh.type = "button";
     refresh.className = "settings-btn settings-btn-secondary mcp-remote-refresh";
@@ -267,12 +333,14 @@ export class McpSection {
     return head;
   }
 
-  /** 渲染分组列表。remote=true：全只读、只显有条目的 scope、无加/改表单（跨机 user scope 只读）。 */
+  /** 渲染分组列表。remote 模式跳过空 scope（user scope 只读噪音）——**但可写的远端项目 scope 即使空也渲染**
+   *  （F89a 审计修·阻塞：否则新/空远端项目不出加表单，无法建第一条 server）。 */
   private renderList(entries: McpServerEntry[], dir: string, remote: boolean): void {
     this.listBox.replaceChildren();
     const grouped = groupByScope(entries);
     for (const scope of ["user", "local", "project"] as McpScope[]) {
-      if (remote && grouped[scope].length === 0) continue;
+      const writableProject = scope === "project" && !!dir; // 可写项目 scope 恒渲染（带加表单）
+      if (remote && grouped[scope].length === 0 && !writableProject) continue;
       this.listBox.appendChild(this.renderScope(scope, grouped[scope], dir, remote));
     }
   }
@@ -283,13 +351,14 @@ export class McpSection {
     dir: string,
     remote: boolean,
   ): HTMLElement {
-    // 可写 = 本机 + project scope + 已填目录（远端一律只读，守 SS-14 不跨机写）。
-    const writable = !remote && scope === "project" && !!dir;
+    // F89a：可写 = project scope + 已填目录（**本机或远端**——远端项目写走 SFTP，写面仍只 .mcp.json，SS-14）。
+    // user/local scope 恒只读（SS-14：绝不写 ~/.claude.json）。
+    const writable = scope === "project" && !!dir;
     const box = document.createElement("div");
     box.className = "mcp-scope";
     const title = document.createElement("div");
     title.className = "settings-group-title";
-    const readOnlySuffix = remote ? " · 只读（远端）" : scope === "project" ? "" : " · 只读";
+    const readOnlySuffix = writable ? "" : remote ? " · 只读（远端）" : " · 只读";
     title.textContent = `${SCOPE_LABEL[scope]}（${entries.length}）${readOnlySuffix}`;
     box.appendChild(title);
 
@@ -354,8 +423,8 @@ export class McpSection {
       box.appendChild(item);
     }
 
-    // 项目 scope 加/改表单（名 + server JSON）——**仅本机**（远端只读，不出写表单，SS-14 不跨机写）。
-    if (scope === "project" && !remote) {
+    // F89a：项目 scope 加/改表单——本机恒显（无目录则 save 禁用）；远端仅在已填项目目录（=可写）时显。
+    if (scope === "project" && (this.origin === null || !!dir)) {
       box.appendChild(this.renderAddForm(dir));
     }
     return box;
@@ -438,23 +507,40 @@ export class McpSection {
   }
 
   private async writeEntry(dir: string, name: string, server: unknown): Promise<void> {
+    const startOrigin = this.origin; // 捕获：目标机器在 await 前定死（写入目标不受切机器影响）
     try {
-      await invoke("write_project_mcp_server", { projectDir: dir, name, server });
-      this.dirInput.value = dir; // 同步输入框到刚写的 dir，reload 读同一 dir（防用户中途改输入致列表错位）
-      await this.reload();
+      // F89a：本机 → 本地 FS 写；远端 → SFTP 写远端 .mcp.json（写面仍只 .mcp.json，SS-14；SS-G 用户显式触发）。
+      if (startOrigin === null) {
+        await invoke("write_project_mcp_server", { projectDir: dir, name, server });
+      } else {
+        await invoke("write_remote_mcp_server", { origin: startOrigin, projectDir: dir, name, server });
+      }
     } catch (e) {
-      showActionFailureToast("写入 .mcp.json 失败", String(e));
+      if (this.origin === startOrigin) showActionFailureToast("写入 .mcp.json 失败", String(e));
+      return;
     }
+    // F89a 审计修·重要：await 期间用户已切机器 → 不回填 dirInput、不 refresh（否则拿旧 dir 渲染新机器项目）。
+    if (this.origin !== startOrigin) return;
+    this.dirInput.value = dir;
+    await this.refresh();
   }
 
   private async removeEntry(dir: string, name: string): Promise<void> {
-    if (!window.confirm(`从项目 .mcp.json 删除 MCP server「${name}」？`)) return;
+    const startOrigin = this.origin;
+    const where = startOrigin === null ? "本机" : `远端 [${startOrigin}]`;
+    if (!window.confirm(`从${where}项目 .mcp.json 删除 MCP server「${name}」？`)) return;
     try {
-      await invoke("remove_project_mcp_server", { projectDir: dir, name });
-      this.dirInput.value = dir; // 同上，reload 读同一 dir
-      await this.reload();
+      if (startOrigin === null) {
+        await invoke("remove_project_mcp_server", { projectDir: dir, name });
+      } else {
+        await invoke("remove_remote_mcp_server", { origin: startOrigin, projectDir: dir, name });
+      }
     } catch (e) {
-      showActionFailureToast("删除失败", String(e));
+      if (this.origin === startOrigin) showActionFailureToast("删除失败", String(e));
+      return;
     }
+    if (this.origin !== startOrigin) return; // 期间切机器 → 丢弃回填/刷新
+    this.dirInput.value = dir;
+    await this.refresh();
   }
 }

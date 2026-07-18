@@ -113,3 +113,36 @@ describe("F87b-fix 编辑锁名", () => {
     expect(banner.style.display).toBe("none");
   });
 });
+
+// F89a：远端项目级 MCP——空/新远端项目仍须出加表单（否则无法建第一条 server；审计逮到的阻塞）。
+describe("F89a 远端项目管理", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  it("空远端项目 → 仍渲染 project scope + 加表单（可建首条）", async () => {
+    document.body.replaceChildren();
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["pi"];
+      if (cmd === "read_remote_project_mcp") return []; // 空远端项目 .mcp.json
+      return []; // list_remote_mcp_project_dirs / read_mcp_servers / read_remote_mcp_servers
+    });
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush();
+    // 切到远端 pi
+    section.element
+      .querySelectorAll<HTMLElement>(".mcp-machine-btn")
+      .forEach((b) => b.textContent === "pi" && b.click());
+    await flush();
+    // 填远端项目目录并「读取」→ 走 reloadRemoteProject（空）
+    const dirInput = section.element.querySelector<HTMLInputElement>('input[placeholder^="项目目录"]')!;
+    dirInput.value = "/remote/proj";
+    [...section.element.querySelectorAll("button")].find((b) => b.textContent === "读取")!.click();
+    await flush();
+    // 阻塞修：空远端项目也出加表单（否则建不了第一条）
+    expect(section.element.querySelector(".mcp-add-form")).not.toBeNull();
+    // 且「添加/更新」钮可用（有 dir）
+    const save = [...section.element.querySelectorAll("button")].find(
+      (b) => b.textContent === "添加/更新到 .mcp.json",
+    ) as HTMLButtonElement | undefined;
+    expect(save && !save.disabled).toBe(true);
+  });
+});
