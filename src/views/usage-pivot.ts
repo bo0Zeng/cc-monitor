@@ -5,7 +5,7 @@
  * **只 token 不 $**（用户 2026-07-17 拍板）。硬边界：这是「已花费」，非「配额剩余」——UI 标死。
  */
 
-import { normalizeModel } from "./pricing";
+import { normalizeModel, equivalentInputTokens } from "./pricing";
 
 /** 与后端 `usage.rs::UsageTotals` wire 对齐（camelCase）。 */
 export interface UsageTotals {
@@ -91,7 +91,14 @@ export function pivotUsage(rows: SessionUsageRow[], dim: UsageDim): PivotRow[] {
       addInto(pr.totals, b.totals);
     }
   }
-  return [...map.values()].sort((a, b) => totalTokens(b.totals) - totalTokens(a.totals));
+  // F88d-fix（batch18 审计修）：按**等效成本**降序排——「哪儿最烧」直接排在最上（原按 raw totalTokens
+  // 排，会把狂读 cache（×0.1 便宜）的项目排最上、output 重（×5 贵）的排下面，与列的立意相悖）。
+  // 同权重打平时回退 raw tokens 稳定次序。
+  return [...map.values()].sort(
+    (a, b) =>
+      equivalentInputTokens(b.totals) - equivalentInputTokens(a.totals) ||
+      totalTokens(b.totals) - totalTokens(a.totals),
+  );
 }
 
 /** 全部会话的总用量（视图页脚合计 / HUD 今日过滤后复用）。 */
