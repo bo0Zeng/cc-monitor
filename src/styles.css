@@ -894,6 +894,50 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   align-items: center;
   gap: 6px;
 }
+/* F87b-fix：远端读失败常驻内联错误 + 重试；远端列表头（user-scope 说明 + 重新读取）；编辑态横幅。 */
+.mcp-remote-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--danger, #e06c75);
+  border-radius: 6px;
+  color: var(--danger, #e06c75);
+  font-size: var(--font-size-small);
+}
+.mcp-remote-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.mcp-remote-head .settings-hint {
+  flex: 1;
+  min-width: 0;
+}
+.mcp-loading {
+  opacity: 0.8;
+}
+.mcp-edit-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  border-left: 3px solid var(--accent, #7aa2f7);
+  background: var(--overlay-hover);
+  border-radius: 4px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+}
+.mcp-edit-banner span {
+  flex: 1;
+  min-width: 0;
+}
 .mcp-machine-label {
   color: var(--text-2);
   font-size: var(--font-size-small);
