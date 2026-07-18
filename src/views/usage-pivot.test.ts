@@ -62,8 +62,20 @@ test("按 model pivot：opus 合并两会话，haiku 独立", () => {
   const haiku = p.find((r) => r.key === "haiku")!;
   eq(haiku.totals.input, 5);
   eq(p.length, 2);
-  // 按总 token 降序：opus(880) 在 haiku(8) 前
+  // F88d-fix：按**等效成本**降序（opus 等效 370 > haiku 等效 20）——此例 raw 与等效同序，opus 仍居首
   eq(p[0].key, "opus");
+});
+
+test("F88d-fix 按等效成本降序（raw 与等效不同序时以等效为准）", () => {
+  // A：狂读 cache（便宜，×0.1）raw 大但等效小；B：output 重（贵，×5）raw 小但等效大。
+  const rows2: SessionUsageRow[] = [
+    { sessionId: "a", projectPath: "/a", projectName: "A", buckets: [{ model: "m", day: "d", totals: t(0, 0, 10000, 0) }] }, // raw 10000 / 等效 1000
+    { sessionId: "b", projectPath: "/b", projectName: "B", buckets: [{ model: "m", day: "d", totals: t(0, 0, 0, 1000) }] }, // raw 1000 / 等效 5000
+  ];
+  const p = pivotUsage(rows2, "project");
+  // 按 raw 应 A 先（10000>1000）；按等效应 B 先（5000>1000）→ 修后表以等效为准
+  eq(p[0].key, "/b");
+  eq(p[1].key, "/a");
 });
 
 test("按 day pivot：17 号跨会话合并", () => {
