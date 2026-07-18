@@ -174,17 +174,26 @@ pub async fn list_mcp_project_dirs() -> Result<Vec<String>, String> {
 /// ② 大解析进 spawn_blocking（对齐 §10）。
 #[tauri::command]
 pub async fn read_remote_mcp_servers(origin: String) -> Result<Vec<McpServerEntry>, String> {
-    use tokio::io::AsyncReadExt;
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
-    // 定值命令，无任何用户输入拼接 → 无注入面。多候选：CLAUDE_CONFIG_DIR 位置优先、否则 $HOME；
-    // 2>/dev/null + `|| true`：文件缺失/权限错静默（走空段降级），首个存在且可读的即输出。
+    let claude_json = fetch_remote_claude_json(&cfg).await?;
+    let src = format!("[{}] ~/.claude.json", cfg.origin_label());
+    Ok(collect_entries(claude_json.as_ref(), &src, None, "", None))
+}
+
+/// F87b③ 抽出（F89a 复用）：SSH exec `cat` 远端 `~/.claude.json` → 宽容解析（缺/坏 → None）。**只读**。
+/// 定值命令、无用户输入拼接 → 零注入面；多候选（CLAUDE_CONFIG_DIR 优先、否则 $HOME）；30s 超时 + 32MB 上限；
+/// 大解析进 spawn_blocking（对齐 §10）。
+async fn fetch_remote_claude_json(
+    cfg: &crate::ssh_source::RemoteConfig,
+) -> Result<Option<Value>, String> {
+    use tokio::io::AsyncReadExt;
     const CMD: &str = r#"{ [ -n "$CLAUDE_CONFIG_DIR" ] && cat "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null; } || cat "$HOME/.claude.json" 2>/dev/null || true"#;
     let read = async {
-        let stream = crate::ssh_source::connect_and_exec_cmd(&cfg, CMD).await?;
+        let stream = crate::ssh_source::connect_and_exec_cmd(cfg, CMD).await?;
         let mut buf = Vec::new();
         stream
-            .take(32 * 1024 * 1024) // 上限防远端异常巨输出撑爆内存
+            .take(32 * 1024 * 1024)
             .read_to_end(&mut buf)
             .await
             .map_err(|e| format!("读取远端 ~/.claude.json 失败: {e}"))?;
@@ -192,16 +201,24 @@ pub async fn read_remote_mcp_servers(origin: String) -> Result<Vec<McpServerEntr
     };
     let raw = tokio::time::timeout(std::time::Duration::from_secs(30), read)
         .await
-        .map_err(|_| format!("远端 '{origin}' 读取超时（30s）"))??;
-    // §3 剥 BOM；宽容解析（坏 JSON → None → 空段，不报错）。解析可数 MB → spawn_blocking 不占异步 worker。
-    let claude_json: Option<Value> = tokio::task::spawn_blocking(move || {
+        .map_err(|_| format!("远端 '{}' 读取超时（30s）", cfg.origin_label()))??;
+    tokio::task::spawn_blocking(move || {
         let text = String::from_utf8_lossy(&raw);
         serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}')).ok()
     })
     .await
-    .map_err(|e| format!("spawn_blocking: {e}"))?;
-    let src = format!("[{}] ~/.claude.json", cfg.origin_label());
-    Ok(collect_entries(claude_json.as_ref(), &src, None, "", None))
+    .map_err(|e| format!("spawn_blocking: {e}"))
+}
+
+/// F89a：列远端项目目录（`~/.claude.json` 的 `projects` 键，排序）——前端远端项目选择器 datalist 用。**只读**。
+#[tauri::command]
+pub async fn list_remote_mcp_project_dirs(origin: String) -> Result<Vec<String>, String> {
+    let cfg = crate::load_remote_config_by_label(&origin)
+        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+    let claude_json = fetch_remote_claude_json(&cfg).await?;
+    Ok(claude_json
+        .map(|v| project_dirs_from(&v))
+        .unwrap_or_default())
 }
 
 /// F87b③：机器选择器用——返回**已配置且启用**的远端 origin（**canonical** `origin_label()`，后端口径）。
@@ -242,6 +259,58 @@ fn read_or_skeleton(mcp: &Path) -> Result<Value, String> {
     }
 }
 
+/// **纯核心**（F89a 抽出，本机/远端复用、可测）：把一条 server upsert 进 `.mcp.json` Value。名空拒。
+fn upsert_mcp_server_value(root: &mut Value, name: String, server: Value) -> Result<(), String> {
+    if name.trim().is_empty() {
+        return Err("server 名为空".into());
+    }
+    let obj = root
+        .as_object_mut()
+        .ok_or_else(|| ".mcp.json 根不是对象".to_string())?;
+    let servers = obj
+        .entry("mcpServers")
+        .or_insert_with(|| Value::Object(Map::new()));
+    let smap = servers
+        .as_object_mut()
+        .ok_or_else(|| "mcpServers 不是对象".to_string())?;
+    smap.insert(name, server);
+    Ok(())
+}
+
+/// **纯核心**（F89a 抽出，本机/远端复用、可测）：从 `.mcp.json` Value 删一条 server，返回是否真删。
+fn remove_mcp_server_value(root: &mut Value, name: &str) -> Result<bool, String> {
+    let obj = root
+        .as_object_mut()
+        .ok_or_else(|| ".mcp.json 根不是对象".to_string())?; // 根对象守卫（对齐 write）
+    Ok(obj
+        .get_mut("mcpServers")
+        .and_then(|m| m.as_object_mut())
+        .map(|smap| smap.remove(name).is_some())
+        .unwrap_or(false))
+}
+
+/// F89a：远端 `.mcp.json` 写路径守卫（SS-14 远端对端 + SS-G 用户显式触发）。绝对路径 + 尾 `/.mcp.json` + 无 `..`。
+fn is_safe_remote_mcp_json(path: &str) -> bool {
+    !path.contains("..") && path.starts_with('/') && path.ends_with("/.mcp.json") && {
+        // 尾 `/.mcp.json` 前须有非空项目目录段（不接受裸 `/.mcp.json`）。
+        path.len() > "/.mcp.json".len()
+    }
+}
+
+/// F89a：`<remote_dir>/.mcp.json` 远端路径（**写侧唯一出口**，硬编码 `.mcp.json` + `is_safe_remote_mcp_json` 守卫，
+/// SS-14 远端对端：绝不写 `~/.claude.json`/settings.json）。
+fn remote_mcp_json_path(project_dir: &str) -> Result<String, String> {
+    let d = project_dir.trim().trim_end_matches('/');
+    if d.is_empty() || !d.starts_with('/') {
+        return Err("远端项目目录须为绝对路径".into());
+    }
+    let p = format!("{d}/.mcp.json");
+    if !is_safe_remote_mcp_json(&p) {
+        return Err(format!("拒绝写非法远端路径：{p}"));
+    }
+    Ok(p)
+}
+
 /// §4 安全写**用户文件** `.mcp.json`：① 项目目录须**已存在**（真实项目根，不 `create_dir_all` typo
 /// 路径生成垃圾目录树）；② 写前 backup（dst 存在则备到 `.bak`）；③ **ReplaceFileW** 原子替换——
 /// 复用 `profile_installer::atomic_write_string`（保留 dst ACL），**不**用 config 的 `MoveFileExW`
@@ -273,21 +342,9 @@ fn write_project_mcp_server_impl(
     name: String,
     server: Value,
 ) -> Result<(), String> {
-    if name.trim().is_empty() {
-        return Err("server 名为空".into());
-    }
     let mcp = mcp_json_path(&project_dir)?;
     let mut root = read_or_skeleton(&mcp)?;
-    let obj = root
-        .as_object_mut()
-        .ok_or_else(|| ".mcp.json 根不是对象".to_string())?;
-    let servers = obj
-        .entry("mcpServers")
-        .or_insert_with(|| Value::Object(Map::new()));
-    let smap = servers
-        .as_object_mut()
-        .ok_or_else(|| "mcpServers 不是对象".to_string())?;
-    smap.insert(name, server);
+    upsert_mcp_server_value(&mut root, name, server)?;
     write_json_atomic(&mcp, &root)
 }
 
@@ -309,15 +366,7 @@ fn remove_project_mcp_server_impl(project_dir: String, name: String) -> Result<(
         return Ok(()); // 无文件即无条目
     }
     let mut root = read_or_skeleton(&mcp)?;
-    let obj = root
-        .as_object_mut()
-        .ok_or_else(|| ".mcp.json 根不是对象".to_string())?; // 根对象守卫（对齐 write）
-    let removed = obj
-        .get_mut("mcpServers")
-        .and_then(|m| m.as_object_mut())
-        .map(|smap| smap.remove(&name).is_some())
-        .unwrap_or(false);
-    if !removed {
+    if !remove_mcp_server_value(&mut root, &name)? {
         return Ok(()); // no-op（条目不存在）→ 不重写、不 churn
     }
     write_json_atomic(&mcp, &root)
@@ -329,6 +378,87 @@ pub async fn remove_project_mcp_server(project_dir: String, name: String) -> Res
     tokio::task::spawn_blocking(move || remove_project_mcp_server_impl(project_dir, name))
         .await
         .map_err(|e| format!("spawn_blocking: {e}"))?
+}
+
+// ───────────────────────── F89a：远端项目级 MCP 读写（SFTP） ─────────────────────────
+// 只读铁律边界：读=只读；**写/删仅用户显式触发（SS-G 豁免）**、写面**只** `<dir>/.mcp.json`
+// （`remote_mcp_json_path` 硬编码 + `is_safe_remote_mcp_json` 守卫，SS-14 远端对端）。SFTP `upload_atomic`
+// 原子 tmp+rename；**已存在但读/解析失败 → 报错拒绝覆盖**（不 skeleton 盖掉现有 server，对齐本机 read_or_skeleton）。
+
+/// SFTP 读远端 `.mcp.json` Value：不存在→骨架；存在但读/解析失败→Err（拒绝后续覆盖丢数据）。
+async fn read_remote_mcp_value(
+    sftp: &russh_sftp::client::SftpSession,
+    path: &str,
+) -> Result<Value, String> {
+    let exists = sftp.try_exists(path.to_string()).await.unwrap_or(false);
+    if !exists {
+        return Ok(serde_json::json!({ "mcpServers": {} }));
+    }
+    let bytes = sftp
+        .read(path.to_string())
+        .await
+        .map_err(|e| format!("读远端 {path} 失败: {e}"))?;
+    let text = String::from_utf8_lossy(&bytes);
+    serde_json::from_str(text.trim_start_matches('\u{feff}'))
+        .map_err(|e| format!("远端 {path} 解析失败（拒绝覆盖）: {e}"))
+}
+
+/// F89a：读远端某项目的 `.mcp.json`（project scope 条目）。**只读**。缺/坏 → 空段（宽容，读侧不阻断）。
+#[tauri::command]
+pub async fn read_remote_project_mcp(
+    origin: String,
+    project_dir: String,
+) -> Result<Vec<McpServerEntry>, String> {
+    let cfg = crate::load_remote_config_by_label(&origin)
+        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+    let path = remote_mcp_json_path(&project_dir)?;
+    let conn = crate::sftp::connect_sftp(&cfg).await?;
+    // 读侧宽容：不存在/坏 → 空（不像写侧那样 Err）。
+    let root = read_remote_mcp_value(&conn.sftp, &path)
+        .await
+        .unwrap_or_else(|_| serde_json::json!({ "mcpServers": {} }));
+    let src = format!("[{}] {path}", cfg.origin_label());
+    Ok(collect_entries(None, "", Some(&root), &src, None))
+}
+
+/// F89a：增/改远端项目 `.mcp.json` 一条 server。**SS-G 用户显式触发 + SS-14 只碰 .mcp.json。**SFTP 原子 RMW。
+#[tauri::command]
+pub async fn write_remote_mcp_server(
+    origin: String,
+    project_dir: String,
+    name: String,
+    server: Value,
+) -> Result<(), String> {
+    let cfg = crate::load_remote_config_by_label(&origin)
+        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+    let path = remote_mcp_json_path(&project_dir)?;
+    let conn = crate::sftp::connect_sftp(&cfg).await?;
+    let mut root = read_remote_mcp_value(&conn.sftp, &path).await?; // 已存在坏文件 → Err 拒覆盖
+    upsert_mcp_server_value(&mut root, name, server)?;
+    let pretty = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
+    crate::sftp::upload_atomic(&conn.sftp, &path, pretty.as_bytes(), 0o600).await
+}
+
+/// F89a：删远端项目 `.mcp.json` 一条 server。**SS-G 用户显式触发 + SS-14 只碰 .mcp.json。**SFTP 原子 RMW。
+#[tauri::command]
+pub async fn remove_remote_mcp_server(
+    origin: String,
+    project_dir: String,
+    name: String,
+) -> Result<(), String> {
+    let cfg = crate::load_remote_config_by_label(&origin)
+        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+    let path = remote_mcp_json_path(&project_dir)?;
+    let conn = crate::sftp::connect_sftp(&cfg).await?;
+    if !conn.sftp.try_exists(path.clone()).await.unwrap_or(false) {
+        return Ok(()); // 无文件即无条目
+    }
+    let mut root = read_remote_mcp_value(&conn.sftp, &path).await?;
+    if !remove_mcp_server_value(&mut root, &name)? {
+        return Ok(()); // no-op
+    }
+    let pretty = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
+    crate::sftp::upload_atomic(&conn.sftp, &path, pretty.as_bytes(), 0o600).await
 }
 
 #[cfg(test)]
@@ -442,5 +572,50 @@ mod tests {
         );
         assert!(project_dirs_from(&json!({})).is_empty()); // 缺 projects
         assert!(project_dirs_from(&json!({ "projects": "bad" })).is_empty()); // 非对象
+    }
+
+    #[test]
+    fn remote_mcp_path_guard_rejects_traversal_and_nonabsolute() {
+        // F89a：远端写路径守卫——只接受 绝对 + 尾 /.mcp.json + 无 .. 的非裸路径。
+        assert_eq!(
+            remote_mcp_json_path("/home/pi/proj").unwrap(),
+            "/home/pi/proj/.mcp.json"
+        );
+        assert_eq!(
+            remote_mcp_json_path("/home/pi/proj/").unwrap(), // 尾斜杠归一
+            "/home/pi/proj/.mcp.json"
+        );
+        assert!(remote_mcp_json_path("relative/proj").is_err()); // 非绝对
+        assert!(remote_mcp_json_path("").is_err()); // 空
+        assert!(remote_mcp_json_path("/a/../../etc").is_err()); // 路径穿越 → 拼后含 ..
+        assert!(remote_mcp_json_path("/").is_err()); // 根 → 拼成 /.mcp.json 被守卫拒（裸）
+                                                     // 守卫本体：只 /.mcp.json 结尾、无 .. 、绝对、非裸
+        assert!(is_safe_remote_mcp_json("/x/y/.mcp.json"));
+        assert!(!is_safe_remote_mcp_json("/.mcp.json")); // 裸（无项目段）
+        assert!(!is_safe_remote_mcp_json("/x/.claude.json")); // 非 .mcp.json（SS-14 铁）
+        assert!(!is_safe_remote_mcp_json("/x/settings.json")); // 非 .mcp.json
+        assert!(!is_safe_remote_mcp_json("/x/../y/.mcp.json")); // 穿越
+        assert!(!is_safe_remote_mcp_json("x/.mcp.json")); // 非绝对
+    }
+
+    #[test]
+    fn upsert_and_remove_value_cores() {
+        // F89a：本机/远端复用的纯核心——upsert/remove Value 变换。
+        let mut root = json!({ "mcpServers": { "a": { "command": "x" } } });
+        upsert_mcp_server_value(&mut root, "b".into(), json!({ "type": "http", "url": "u" }))
+            .unwrap();
+        assert_eq!(root["mcpServers"]["a"]["command"], json!("x")); // 原有不动
+        assert_eq!(root["mcpServers"]["b"]["url"], json!("u")); // 新增
+        upsert_mcp_server_value(&mut root, "a".into(), json!({ "command": "y" })).unwrap();
+        assert_eq!(root["mcpServers"]["a"]["command"], json!("y")); // 同名覆盖
+        assert!(upsert_mcp_server_value(&mut root, "  ".into(), json!({})).is_err()); // 名空拒
+                                                                                      // 骨架缺 mcpServers → upsert 自建
+        let mut skel = json!({});
+        upsert_mcp_server_value(&mut skel, "c".into(), json!({})).unwrap();
+        assert!(skel["mcpServers"]["c"].is_object());
+        // remove
+        assert!(remove_mcp_server_value(&mut root, "a").unwrap()); // 真删
+        assert!(root["mcpServers"].get("a").is_none());
+        assert!(!remove_mcp_server_value(&mut root, "nope").unwrap()); // 不存在 → false
     }
 }
