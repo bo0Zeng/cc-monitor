@@ -84,6 +84,9 @@ export const ACTIONS: ReadonlyArray<Action> = [
   { id: "app.open-settings", label: "打开设置面板", category: "App", default: "Comma", available: true },
   { id: "app.toggle-history", label: "打开 / 关闭历史浏览器", category: "App", default: "KeyH", available: true },
   { id: "app.toggle-panorama", label: "打开 / 关闭代码全景", category: "App", default: "KeyG", available: true },
+  // F84（#57）：命令栏。唯一默认带 Ctrl 的 chord（palette 惯例；单键 K 会在只读主视图误触发，
+  // 且 palette 要在任意上下文唤起，故用组合键——经核实 Ctrl+KeyK 全表空闲、零冲突）。
+  { id: "app.open-command-bar", label: "打开命令栏（命令面板）", category: "App", default: "Ctrl+KeyK", available: true },
   {
     id: "app.search-history",
     label: "历史浏览器全文搜索",

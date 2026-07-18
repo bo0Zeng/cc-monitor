@@ -672,6 +672,63 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   font-size: var(--font-size-small);
 }
 
+/* F84（#57）：键盘命令栏（Ctrl+K）—— 半透明遮罩 + 居中偏上命令盒。 */
+.command-bar {
+  position: fixed;
+  inset: 0;
+  /* 全局唤起（Ctrl+K）：须盖过任何可在其上唤起的 overlay——历史/全景(150)、SFTP/预览 modal(10000/10001)，
+     故置于交互 overlay 最顶（10002）；仍在 toast 层(99999+)之下，保通知可见。 */
+  z-index: 10002;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+}
+.command-bar-box {
+  width: min(560px, 92vw);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+.command-bar-input {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size);
+  padding: 12px 14px;
+  outline: none;
+}
+.command-bar-list {
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.command-bar-item {
+  padding: 7px 14px;
+  font-size: var(--font-size-small);
+  color: var(--text);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.command-bar-item.selected {
+  background: var(--overlay-hover);
+}
+.command-bar-empty {
+  padding: 16px 14px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--font-size-small);
+}
+
 .tab {
   display: flex;
   align-items: center;
