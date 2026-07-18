@@ -27,8 +27,9 @@
     "test:usage-pivot": "node src/views/usage-pivot.test.ts",
     "test:pricing": "node src/views/pricing.test.ts",
     "test:session-backend": "node src/session-backend.test.ts",
+    "test:panorama-session-files": "node src/panorama/session-files.test.ts",
     "test:dom": "vitest run",
-    "test": "npm run test:branching && npm run test:diff && npm run test:api-error && npm run test:bash && npm run test:remote-health && npm run test:remote-launch && npm run test:format && npm run test:history-cache && npm run test:history-prefs && npm run test:history-actions && npm run test:usage-pivot && npm run test:pricing && npm run test:session-backend && npm run test:dom"
+    "test": "npm run test:branching && npm run test:diff && npm run test:api-error && npm run test:bash && npm run test:remote-health && npm run test:remote-launch && npm run test:format && npm run test:history-cache && npm run test:history-prefs && npm run test:history-actions && npm run test:usage-pivot && npm run test:pricing && npm run test:session-backend && npm run test:panorama-session-files && npm run test:dom"
   },
   "dependencies": {
     "@chenglou/pretext": "0.0.8",

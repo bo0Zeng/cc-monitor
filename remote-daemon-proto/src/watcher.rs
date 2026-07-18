@@ -1342,7 +1342,13 @@ mod tests {
             "bg-spare 必须在 exact-identity Alive 之前拦下"
         );
         assert_eq!(
-            add_time_verdict(None, None, None, None, Some("/usr/bin/claude bg-spare --foo")),
+            add_time_verdict(
+                None,
+                None,
+                None,
+                None,
+                Some("/usr/bin/claude bg-spare --foo")
+            ),
             AddTimeVerdict::Imposter("bg-spare")
         );
         // 普通 claude 会话不受影响（procStart 自洽仍 Alive）。

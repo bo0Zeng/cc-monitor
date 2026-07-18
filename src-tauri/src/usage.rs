@@ -28,11 +28,24 @@ pub struct UsageTotals {
 }
 
 impl UsageTotals {
-    fn add(&mut self, u: &Usage) {
-        self.input += u.input_tokens as u64;
-        self.cache_creation += u.cache_creation as u64;
-        self.cache_read += u.cache_read as u64;
-        self.output += u.output_tokens as u64;
+    /// 逐字段取 MAX（同一 requestId 的多条流式记录用）：一次 API 请求在 jsonl 落成多条 assistant
+    /// 记录（thinking/text/各 tool_use 各一行），`message.usage` 挂**每一行**——但 `input`/`cache_*`
+    /// 是**请求级、逐行完全相同**，`output` 是**流式**（前几条占位小值、终结记录才是真总量）。故按
+    /// requestId 聚合时逐字段 MAX：prompt 侧近恒定→max 无害；output 单调→max=终结值。**两者皆正确。**
+    /// 不动 `msgs`（msgs 在 flush 时按「每请求 +1」，见 accumulate_usage）。
+    fn max_with(&mut self, u: &Usage) {
+        self.input = self.input.max(u.input_tokens as u64);
+        self.cache_creation = self.cache_creation.max(u.cache_creation as u64);
+        self.cache_read = self.cache_read.max(u.cache_read as u64);
+        self.output = self.output.max(u.output_tokens as u64);
+    }
+
+    /// 把一个「每请求 MAX」结果加进桶：各字段累加 + `msgs += 1`（一次请求算一条 assistant 轮次）。
+    fn add_request(&mut self, req: &UsageTotals) {
+        self.input += req.input;
+        self.cache_creation += req.cache_creation;
+        self.cache_read += req.cache_read;
+        self.output += req.output;
         self.msgs += 1;
     }
 }
@@ -58,14 +71,25 @@ pub struct SessionUsageRow {
     pub origin: Option<String>,
 }
 
-/// 纯累加：逐行过 `parse_line`，把 assistant 记录的 usage 累进 (model, day) 桶，并捕获会话 cwd
-/// （首条 user 记录）。抽出便于单测（不落文件）。model 缺失→`"unknown"`；day 取 timestamp 前 10 字符。
+/// 纯聚合：逐行过 `parse_line`，把 assistant 记录的 usage **按 requestId 聚合**进 (model, day) 桶，
+/// 并捕获会话 cwd（首条 user 记录）。抽出便于单测（不落文件）。model 缺失→`"unknown"`；day 取 timestamp 前 10 字符。
+///
+/// **★ 为什么按 requestId 逐字段 MAX 而非逐条 uuid 加**（P88a 审计修，实测真实 jsonl）：一次 API 请求
+/// （`requestId`）在 jsonl 落成**多条** assistant 记录（thinking/text/各 tool_use 各一行），`message.usage`
+/// 挂**每一行**——`input`/`cache_*` 请求级逐行重复、`output` 流式（前几条占位、终结记录才是真总量）。
+/// - 旧的**逐条 uuid 加** → 每请求算 N 次 → 全机超计 ~2.5×（cache_read 主导）。
+/// - **per-requestId first-wins** → output 抓到占位 → 少计 ~29%（子代理转录尤甚）。
+/// - **正解 = per-requestId 逐字段 MAX**（`max_with`）：prompt 侧近恒定 max 无害、output 单调 max=终结值。
+///   `msgs` 按「每请求 +1」（一次请求 = 一条 assistant 轮次）。requestId 缺失（旧版 CC，实测 0.05%）→ 回退 uuid。
+///   `/branch` 祖先复制保留 requestId → 跨会话按 requestId 去重（`seen_requests`），同旧 uuid 去重的意图。
 fn accumulate_usage(
     lines: impl Iterator<Item = String>,
-    seen_uuids: &mut HashSet<String>,
+    seen_requests: &mut HashSet<String>,
 ) -> (HashMap<(String, String), UsageTotals>, Option<String>) {
     let mut buckets: HashMap<(String, String), UsageTotals> = HashMap::new();
     let mut cwd: Option<String> = None;
+    // 本文件内：requestId(缺→uuid) → (model, day, 逐字段 MAX usage)。见函数 doc 为何 MAX。
+    let mut per_req: HashMap<String, (String, String, UsageTotals)> = HashMap::new();
     for line in lines {
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -85,29 +109,39 @@ fn accumulate_usage(
             }
             JsonlRecord::Assistant {
                 uuid,
+                request_id,
                 message,
                 timestamp,
                 ..
             } => {
                 if let Some(u) = &message.usage {
-                    // F88a 审计修：`/branch` 建分支会把祖先记录（连 message.usage、**保留原 uuid**、只改
-                    // sessionId）逐字段复制进新会话文件（见 history.rs::build_branch_records）。逐会话累加
-                    // 无去重 → 共享前缀的 token 在源会话 + 每个分支各计一次 = 合计虚高。**跨聚合按 assistant
-                    // uuid 去重**（首次遇到的会话计入，后续跳过）。普通 resume 追加同文件不复制、uuid 唯一，无影响。
-                    if !seen_uuids.insert(uuid.clone()) {
-                        continue;
-                    }
+                    let key = request_id.clone().unwrap_or_else(|| uuid.clone());
                     let model = message
                         .model
                         .clone()
                         .filter(|m| !m.is_empty())
                         .unwrap_or_else(|| "unknown".to_string());
                     let day = timestamp.get(0..10).unwrap_or("").to_string();
-                    buckets.entry((model, day)).or_default().add(u);
+                    per_req
+                        .entry(key)
+                        .or_insert_with(|| (model, day, UsageTotals::default()))
+                        .2
+                        .max_with(u);
                 }
             }
             _ => {}
         }
+    }
+    // flush：每个 requestId 跨文件去重（seen_requests，防 /branch 祖先复制同 requestId 重复计），
+    // 其「逐字段 MAX」加进 (model, day) 桶一次（msgs+1/请求）。同一 requestId 的记录 model/day 一致。
+    for (key, (model, day, usage_max)) in per_req {
+        if !seen_requests.insert(key) {
+            continue;
+        }
+        buckets
+            .entry((model, day))
+            .or_default()
+            .add_request(&usage_max);
     }
     (buckets, cwd)
 }
@@ -115,13 +149,13 @@ fn accumulate_usage(
 /// 扫一个会话 jsonl → 该会话的用量行。无任何 usage 的会话返 None（不报空行）。
 fn analyze_usage_in_session(
     path: &Path,
-    seen_uuids: &mut HashSet<String>,
+    seen_requests: &mut HashSet<String>,
 ) -> Option<SessionUsageRow> {
     let session_id = path.file_stem()?.to_str()?.to_string();
     let file = File::open(path).ok()?;
     let (buckets, cwd) = accumulate_usage(
         BufReader::new(file).lines().map_while(Result::ok),
-        seen_uuids,
+        seen_requests,
     );
     if buckets.is_empty() {
         return None;
@@ -159,8 +193,8 @@ pub async fn aggregate_usage_all(on_row: Channel<SessionUsageRow>) -> Result<u32
             return Ok(0);
         }
         let mut count = 0u32;
-        // 跨全部会话文件的 assistant uuid 去重集（防分支复制的祖先记录重复计，见 accumulate_usage）。
-        let mut seen_uuids: HashSet<String> = HashSet::new();
+        // 跨全部会话文件的 requestId(缺→uuid) 去重集（防 /branch 复制的祖先记录重复计，见 accumulate_usage）。
+        let mut seen_requests: HashSet<String> = HashSet::new();
         let proj_iter = std::fs::read_dir(&projects_dir)
             .map_err(|e| format!("read {}: {e}", projects_dir.display()))?;
         for proj in proj_iter.flatten() {
@@ -177,7 +211,7 @@ pub async fn aggregate_usage_all(on_row: Channel<SessionUsageRow>) -> Result<u32
                 if !crate::adapter::has_record_ext(&p) {
                     continue;
                 }
-                if let Some(row) = analyze_usage_in_session(&p, &mut seen_uuids) {
+                if let Some(row) = analyze_usage_in_session(&p, &mut seen_requests) {
                     if on_row.send(row).is_err() {
                         tracing::info!("aggregate_usage_all: cancelled at {count} sessions");
                         return Ok(count);
@@ -210,6 +244,71 @@ mod tests {
         format!(
             r#"{{"type":"user","uuid":"uu","cwd":"{cwd}","timestamp":"2026-07-17T09:00:00Z","message":{{"role":"user","content":"hi"}}}}"#
         )
+    }
+    /// 带 requestId 的 assistant 记录（uuid 逐条唯一，requestId 可复用同请求多条记录）。
+    #[allow(clippy::too_many_arguments)]
+    fn assistant_req(
+        req: &str,
+        n: u32,
+        model: &str,
+        day: &str,
+        i: u32,
+        cc: u32,
+        cr: u32,
+        o: u32,
+    ) -> String {
+        format!(
+            r#"{{"type":"assistant","uuid":"u-{req}-{n}","requestId":"{req}","timestamp":"{day}T10:00:00Z","message":{{"role":"assistant","content":[],"model":"{model}","usage":{{"input_tokens":{i},"cache_creation_input_tokens":{cc},"cache_read_input_tokens":{cr},"output_tokens":{o}}}}}}}"#
+        )
+    }
+
+    #[test]
+    fn same_request_id_takes_field_max_not_sum_or_first() {
+        // 一次 API 请求(requestId=r1)落 3 条记录：input/cache 请求级逐行重复，output 流式
+        // (占位 5 → 占位 5 → 终结 484)。正解=逐字段 MAX(input 2 / cache_read 19059 / output 484)、msgs=1。
+        // 反例：逐条 uuid 加 → input 6 / output 494 / msgs 3(超计)；first-wins → output 5(少计)。
+        let lines = vec![
+            user("/p"),
+            assistant_req("r1", 1, "m", "2026-07-17", 2, 8518, 19059, 5),
+            assistant_req("r1", 2, "m", "2026-07-17", 2, 8518, 19059, 5),
+            assistant_req("r1", 3, "m", "2026-07-17", 2, 8518, 19059, 484),
+        ];
+        let (buckets, _) = accumulate_usage(lines.into_iter(), &mut HashSet::new());
+        let b = &buckets[&("m".into(), "2026-07-17".into())];
+        assert_eq!(b.input, 2, "input 请求级、MAX=2（非逐条加 6）");
+        assert_eq!(b.cache_creation, 8518);
+        assert_eq!(b.cache_read, 19059, "cache_read MAX=19059（非 3×）");
+        assert_eq!(
+            b.output, 484,
+            "output 取终结值 484（非 first-wins 5、非逐条加 494）"
+        );
+        assert_eq!(b.msgs, 1, "一请求算一条 assistant 轮次（非 3 条记录）");
+        assert_eq!(buckets.len(), 1);
+    }
+
+    #[test]
+    fn distinct_request_ids_sum_across_requests() {
+        // 不同 requestId = 不同请求 → 各自 MAX 后跨请求累加。
+        let lines = vec![
+            assistant_req("r1", 1, "m", "2026-07-17", 10, 0, 100, 20),
+            assistant_req("r2", 1, "m", "2026-07-17", 10, 0, 100, 30),
+        ];
+        let (buckets, _) = accumulate_usage(lines.into_iter(), &mut HashSet::new());
+        let b = &buckets[&("m".into(), "2026-07-17".into())];
+        assert_eq!(b.input, 20); // 10+10
+        assert_eq!(b.output, 50); // 20+30
+        assert_eq!(b.msgs, 2);
+    }
+
+    #[test]
+    fn dedups_same_request_id_across_sessions() {
+        // /branch 复制同一 requestId 进另一会话 → 跨聚合按 requestId 去重、只计一次。
+        let mut seen = HashSet::new();
+        let a = assistant_req("rbr", 1, "m", "2026-07-17", 100, 0, 0, 20);
+        let (b1, _) = accumulate_usage(std::iter::once(a.clone()), &mut seen);
+        assert_eq!(b1[&("m".into(), "2026-07-17".into())].input, 100);
+        let (b2, _) = accumulate_usage(std::iter::once(a), &mut seen);
+        assert!(b2.is_empty(), "同 requestId 跨会话去重");
     }
 
     #[test]
