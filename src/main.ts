@@ -12,7 +12,7 @@
 import "./styles.css";
 import { emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { LS_KEYS, safeGet } from "./local-storage";
+import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
@@ -245,10 +245,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   // F82a（#56+#47）：设置改由**独立窗口**承载（SS-3 终态），主窗口不再内嵌设置浮层。
   // 设置窗口保存 / 行为 toggle 后广播 SETTINGS_APPLIED_EVENT → 主窗口重读并应用主题 + 行为
   // （跨 OS 窗口回调够不到，用广播代替原 onBehaviorChange 直连）。loadTheme 内部 applyTheme。
+  // F84b-fix(batch18)：状态栏命令 chip 的键位刷新钩子——改键热应用后同步刷新 chip 显示的 kbd
+  //（原实现只在 bootstrap 算一次，改键后 chip 教死键；chip 创建时把重建函数赋进来）。
+  let refreshCmdkChord: () => void = () => {};
   void listen(SETTINGS_APPLIED_EVENT, () => {
     void loadTheme(); // 主题：loadTheme 内部 applyTheme
     void getBehavior().then((b) => tabs.applyBehavior(b)); // 行为
-    void getKeybindings().then((kb) => dispatcher.applyOverrides(kb)); // 键位：热应用主窗口 dispatcher
+    void getKeybindings().then((kb) => {
+      dispatcher.applyOverrides(kb); // 键位：热应用主窗口 dispatcher
+      refreshCmdkChord(); // 键位变 → 同步刷新命令 chip 的 kbd（兑现「改键即变」）
+    });
   });
   // Batch11-F33：竖直 tab 栏——右缘拖拽调宽（localStorage 记忆）+ 窄窗折叠图标条。
   {
@@ -460,7 +466,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const commandBar = new CommandBarView(buildCommands);
 
   // F84b（batch17）：命令栏可发现性——命令栏原本是纯键位入口（Ctrl+K），无任何可见提示它存在。
-  // 状态栏最右加一个克制的常驻 chip：图标+「命令」+真实键位（跟随 effectiveChord，改键即变）；
+  // 状态栏最右加一个克制的常驻 chip：图标+「命令」+真实键位（跟随 effectiveChord，改键即变——见 refreshCmdkChord）；
   // 本身即点击入口（复用 commandBar.toggle，非新路径）。placement 见 F84b 计划（顶栏已 6 图标拥挤，选状态栏）。
   {
     const cmdkHint = document.createElement("button");
@@ -469,19 +475,33 @@ window.addEventListener("DOMContentLoaded", async () => {
     const icon = document.createElement("span");
     icon.className = "status-cmdk-icon";
     icon.textContent = "⌨"; // U+2328 键盘（默认文本呈现、单色）；不用 ⌘（Mac 专属、本项目 Linux/Win 键位是 Ctrl）
+    icon.setAttribute("aria-hidden", "true"); // F84b-fix：图标纯装饰，屏读器别念 U+2328 字形名
     cmdkHint.appendChild(icon);
     const label = document.createElement("span");
     label.textContent = "命令";
     cmdkHint.appendChild(label);
-    const chord = dispatcher.effectiveChord("app.open-command-bar");
-    if (chord) {
-      const kbd = document.createElement("kbd");
-      kbd.textContent = KeybindingDispatcher.prettyChord(chord);
-      cmdkHint.appendChild(kbd); // 未绑键（chord=null）则不显 kbd，chip 仍作点击入口
-    }
+    // F84b-fix：kbd 抽成可重建——改键热应用后经 refreshCmdkChord 刷新，不再教死键。
+    refreshCmdkChord = (): void => {
+      cmdkHint.querySelector("kbd")?.remove();
+      const chord = dispatcher.effectiveChord("app.open-command-bar");
+      if (chord) {
+        const kbd = document.createElement("kbd");
+        kbd.textContent = KeybindingDispatcher.prettyChord(chord);
+        cmdkHint.appendChild(kbd); // 未绑键（chord=null）则不显 kbd，chip 仍作点击入口
+      }
+    };
+    refreshCmdkChord();
     cmdkHint.title = "打开命令面板：搜索并执行所有操作";
-    cmdkHint.addEventListener("click", () => commandBar.toggle());
+    cmdkHint.addEventListener("click", () => {
+      cmdkHint.classList.remove("first-run"); // 点过即消掉首运行高亮
+      commandBar.toggle();
+    });
     status.appendChild(cmdkHint); // status-msg flex:1 把它顶到最右
+    // F84b-fix：首运行一次性微高亮（非模态），帮新用户注意到这个克制的角落入口；见过即不再。
+    if (!safeGet(LS_KEYS.cmdkHintSeen)) {
+      cmdkHint.classList.add("first-run");
+      safeSet(LS_KEYS.cmdkHintSeen, "1");
+    }
   }
 
   // 外链 + 代码块复制的全局 click 代理（主窗口 / 独立 viewer 窗口共用）
