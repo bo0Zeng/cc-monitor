@@ -68,6 +68,8 @@ export class McpSection {
   constructor() {
     this.element = this.build();
     void this.loadProjectCandidates();
+    // 业务二审 gap#6：打开即读（空 dir 也先显 user/local scope），不再是看似坏掉的空框。
+    void this.reload();
   }
 
   private build(): HTMLElement {

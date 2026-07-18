@@ -711,13 +711,26 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   padding: 4px 0;
 }
 .command-bar-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   padding: 7px 14px;
   font-size: var(--font-size-small);
   color: var(--text);
   cursor: pointer;
+}
+.command-bar-item-title {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.command-bar-item-hint {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
 }
 .command-bar-item.selected {
   background: var(--overlay-hover);
@@ -727,6 +740,56 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   text-align: center;
   color: var(--text-faint);
   font-size: var(--font-size-small);
+}
+
+/* F87（#50+#51）：MCP 管理段样式（原缺、名字与摘要糊在一起——业务二审 gap#7 修）。 */
+.mcp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+.mcp-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mcp-server-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  min-width: 0;
+}
+.mcp-server-name {
+  font-weight: 600;
+  color: var(--text);
+  flex-shrink: 0;
+}
+.mcp-server-summary {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.mcp-del {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.mcp-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.mcp-json-input {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-small);
+  resize: vertical;
 }
 
 .tab {
