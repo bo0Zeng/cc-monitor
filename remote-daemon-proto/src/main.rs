@@ -20,6 +20,7 @@
 //!   source; keeping it real is the point.
 
 mod history_query;
+mod resolve_query;
 mod search_query;
 mod usage_query;
 mod watcher;
@@ -71,7 +72,10 @@ const PROTO_VERSION: u32 = 1;
 /// - p1j-offset-resume = + `--read-session-from-offset <path> <offset>` 一次性查询（daemon-02/
 ///   Phase 1）：从字节 offset 透传 [offset,EOF] = aterm `tail -c +(offset+1)`；配 p1i 的
 ///   `byte_offset` 做重连/断线 offset 续拉。additive 子命令（旧 daemon 报 unknown arg、client 降级）
-const BUILD_ID: &str = "p1j-offset-resume";
+/// - p1k-resolve-rpc = + `--resolve` advisor RPC（daemon-04/Phase 1）：读 stdin ResumeSpec JSON →
+///   出 stdout CommandPlan JSON（camelCase，caps 复用 aterm `SessionCapabilities` 4 名），错误
+///   exit2+stderr `{code,message}`。契约与 aterm cc-bus 对齐定死。additive 子命令、advisory 零 handle
+const BUILD_ID: &str = "p1k-resolve-rpc";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
@@ -191,10 +195,12 @@ async fn main() {
     let (args_rest, with_bg, tail_only) = split_stream_flags(args);
     let args = args_rest;
     if !args.is_empty() {
-        // 一次性查询模式：--search 全文搜索（#28）/ --usage 用量聚合（F88a-remote），其余走历史查询（#16）。
+        // 一次性查询模式：--search 全文搜索（#28）/ --usage 用量聚合（F88a-remote）/
+        // --resolve advisor（daemon-04，读 stdin ResumeSpec→stdout CommandPlan），其余走历史查询（#16）。
         let code = match args.first().map(String::as_str) {
             Some("--search") => search_query::run(&claude_dir, &args),
             Some("--usage") => usage_query::run(&claude_dir, &args),
+            Some("--resolve") => resolve_query::run(&claude_dir, &args),
             _ => history_query::run(&claude_dir, &args),
         };
         std::process::exit(code);
