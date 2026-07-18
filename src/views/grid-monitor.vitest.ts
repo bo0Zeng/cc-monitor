@@ -105,7 +105,7 @@ describe("F91 GridMonitorView", () => {
     switchTo: vi.fn(),
   });
 
-  it("open 渲染分组标题 + 摘要 + cell；点 cell 调 switchTo 并 close", () => {
+  it("open 渲染分组标题 + 摘要 + cell；F91b 点 cell = 高亮不关（不 switchTo、板保持开）", () => {
     document.body.replaceChildren();
     const source = mkSource([
       snap({ sessionId: "l1", title: "本地会话", origin: null, activityStatus: "busy", runningAgents: 2 }),
@@ -122,17 +122,144 @@ describe("F91 GridMonitorView", () => {
     expect(summary).toContain("2 个 agent 运行中");
     const groupTitles = [...document.querySelectorAll(".grid-monitor-group-title")].map((e) => e.textContent);
     expect(groupTitles).toEqual(["本机（1）", "pi（1）"]);
-    const cells = document.querySelectorAll<HTMLElement>(".grid-monitor-cell");
+    let cells = document.querySelectorAll<HTMLElement>(".grid-monitor-cell");
     expect(cells.length).toBe(2);
-    // waiting cell 出「等待」徽标
     expect(document.querySelector(".badge-waiting")?.textContent).toContain("permission prompt");
+    // peek 初始收起
+    expect(document.querySelector(".grid-monitor-peek")?.classList.contains("is-empty")).toBe(true);
 
-    // 点第一个 cell → switchTo(sid) + close
+    // F91b：点第一个 cell → 不 switchTo、不关板；该 cell 高亮 + peek 展开
     cells[0].click();
+    expect(source.switchTo).not.toHaveBeenCalled();
+    expect(view.isVisible()).toBe(true);
+    expect(document.querySelector(".grid-monitor")).not.toBeNull();
+    cells = document.querySelectorAll<HTMLElement>(".grid-monitor-cell");
+    const selected = [...cells].filter((c) => c.classList.contains("is-selected"));
+    expect(selected.length).toBe(1);
+    const peek = document.querySelector(".grid-monitor-peek");
+    expect(peek?.classList.contains("is-empty")).toBe(false);
+    expect(document.querySelector(".grid-monitor-peek-title")?.textContent).toBe("本地会话");
+    view.close();
+  });
+
+  it("F91b peek「跳转到该会话」按钮 → switchTo + close（显式导航）", () => {
+    document.body.replaceChildren();
+    const source = mkSource([snap({ sessionId: "l1", title: "本地会话" })]);
+    const view = new GridMonitorView(source);
+    view.open();
+    document.querySelector<HTMLElement>(".grid-monitor-cell")!.click(); // 选中出 peek
+    document.querySelector<HTMLElement>(".grid-monitor-peek-jump")!.click();
     expect(source.switchTo).toHaveBeenCalledWith("l1");
     expect(view.isVisible()).toBe(false);
     expect(popOverlay).toHaveBeenCalledWith(view);
     expect(document.querySelector(".grid-monitor")).toBeNull();
+  });
+
+  it("F91b 再点已选 cell → 取消选中（peek 收起）", () => {
+    document.body.replaceChildren();
+    const view = new GridMonitorView(mkSource([snap({ sessionId: "l1", title: "a" })]));
+    view.open();
+    const cell = () => document.querySelector<HTMLElement>(".grid-monitor-cell")!;
+    cell().click();
+    expect(document.querySelector(".grid-monitor-peek")?.classList.contains("is-empty")).toBe(false);
+    cell().click(); // toggle off
+    expect(document.querySelector(".grid-monitor-peek")?.classList.contains("is-empty")).toBe(true);
+    expect(cell().classList.contains("is-selected")).toBe(false);
+    view.close();
+  });
+
+  it("F91b 选中会话在下轮快照消失 → 自动清选中、收 peek（1Hz 重渲染驱动）", () => {
+    vi.useFakeTimers();
+    try {
+      document.body.replaceChildren();
+      let sessions = [snap({ sessionId: "l1", title: "a" }), snap({ sessionId: "l2", title: "b" })];
+      const source = { snapshotSessions: () => sessions, switchTo: vi.fn() };
+      const view = new GridMonitorView(source);
+      view.open();
+      // 选中 l1（本机组内 waiting/busy 排序稳定，这里都 idle-null，保输入序 → 第一个是 l1）
+      document.querySelectorAll<HTMLElement>(".grid-monitor-cell")[0].click();
+      expect(document.querySelector(".grid-monitor-peek-title")?.textContent).toBe("a");
+      // l1 消失，下一次 1Hz 渲染
+      sessions = [snap({ sessionId: "l2", title: "b" })];
+      vi.advanceTimersByTime(1000);
+      expect(document.querySelector(".grid-monitor-peek")?.classList.contains("is-empty")).toBe(true);
+      expect([...document.querySelectorAll(".grid-monitor-cell")].some((c) => c.classList.contains("is-selected"))).toBe(false);
+      view.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("F91b peekSession 缺省（旧桩）→ peek 仍显 snapshot 字段、不报错", () => {
+    document.body.replaceChildren();
+    const view = new GridMonitorView(mkSource([snap({ sessionId: "l1", title: "a", cwd: "/x/y", contextPct: 42 })]));
+    view.open();
+    document.querySelector<HTMLElement>(".grid-monitor-cell")!.click();
+    const facts = document.querySelector(".grid-monitor-peek-facts")?.textContent ?? "";
+    expect(facts).toContain("/x/y");
+    expect(facts).toContain("42%");
+    // 无 peekSession → 无 agent/文件区
+    expect(document.querySelector(".grid-monitor-peek-agents")).toBeNull();
+    expect(document.querySelector(".grid-monitor-peek-files")).toBeNull();
+    view.close();
+  });
+
+  it("F91b peekSession 提供 → peek 显示 model / subagent / 改过的文件", () => {
+    document.body.replaceChildren();
+    const source = {
+      snapshotSessions: () => [snap({ sessionId: "l1", title: "a" })],
+      switchTo: vi.fn(),
+      peekSession: (sid: string) =>
+        sid === "l1"
+          ? {
+              model: "claude-opus-4-8",
+              recentFiles: ["/a/b.ts", "/a/c.ts"],
+              agents: [
+                { label: "explorer", status: "running" as const },
+                { label: "planner", status: "done" as const },
+              ],
+            }
+          : null,
+    };
+    const view = new GridMonitorView(source);
+    view.open();
+    document.querySelector<HTMLElement>(".grid-monitor-cell")!.click();
+    expect(document.querySelector(".grid-monitor-peek-facts")?.textContent).toContain("claude-opus-4-8");
+    const agents = [...document.querySelectorAll(".grid-monitor-peek-agent")].map((e) => e.textContent);
+    expect(agents).toContain("explorer");
+    expect(agents).toContain("planner");
+    const files = [...document.querySelectorAll(".grid-monitor-peek-file")].map((e) => e.textContent);
+    expect(files).toEqual(["/a/b.ts", "/a/c.ts"]);
+    view.close();
+  });
+
+  it("F91b peek 1Hz 重渲染下内容未变 → 不重建（保住选区/滚动）；内容变 → 重建", () => {
+    vi.useFakeTimers();
+    try {
+      document.body.replaceChildren();
+      let model = "m1";
+      const source = {
+        snapshotSessions: () => [snap({ sessionId: "l1", title: "a" })],
+        switchTo: vi.fn(),
+        peekSession: () => ({ model, recentFiles: [] as string[], agents: [] as never[] }),
+      };
+      const view = new GridMonitorView(source);
+      view.open();
+      document.querySelector<HTMLElement>(".grid-monitor-cell")!.click();
+      const titleNode = document.querySelector(".grid-monitor-peek-title");
+      expect(titleNode).not.toBeNull();
+      // 无变化 tick：peek 节点原样保留（未被 replaceChildren 清掉）
+      vi.advanceTimersByTime(1000);
+      expect(document.querySelector(".grid-monitor-peek-title")).toBe(titleNode);
+      // 内容变（model）→ 重建：节点换新、显新值
+      model = "m2";
+      vi.advanceTimersByTime(1000);
+      expect(document.querySelector(".grid-monitor-peek-title")).not.toBe(titleNode);
+      expect(document.querySelector(".grid-monitor-peek-facts")?.textContent).toContain("m2");
+      view.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("空会话 → 空态文案、摘要空", () => {

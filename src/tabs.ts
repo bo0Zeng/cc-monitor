@@ -31,7 +31,7 @@ import { getBehavior } from "./behavior";
 // F78：远端会话「打开工作目录」→ 用该机配置开 SFTP 面板进入远端 cwd（而非只提示打不开）。
 import { openSftpPanelDir } from "./sftp/panel";
 import { readRemoteConfig, findHostByOrigin } from "./settings/remote-section";
-import { activityLightClass, type GridSessionSnapshot } from "./session-status";
+import { activityLightClass, type GridSessionSnapshot, type SessionPeek } from "./session-status";
 import { contextPercent } from "./views/pricing";
 
 /**
@@ -901,6 +901,24 @@ export class TabManager {
       });
     }
     return out;
+  }
+
+  /**
+   * F91b（batch17）：监控板选中 cell 的「内容 peek」补充数据（纯读派生，无写/无落盘）。
+   * 只给 `snapshotSessions` 之外的细节：model / 改过的文件 / subagent 名单（运行中优先）。
+   * 未知 sid → null（选中会话恰好消失时调用方据此清选中）。
+   */
+  peekSession(sessionId: string): SessionPeek | null {
+    const tab = this.tabs.get(sessionId);
+    if (!tab) return null;
+    const agents = [...tab.agents.values()]
+      .map((a) => ({ label: a.label, status: a.status }))
+      .sort((x, y) => (x.status === "running" ? 0 : 1) - (y.status === "running" ? 0 : 1));
+    return {
+      model: tab.latestModel,
+      recentFiles: [...tab.touchedFiles],
+      agents,
+    };
   }
 
   /** Batch5-F19：switchTo 是否写回 last-active（viewer/tear-off 窗口置 false）。 */

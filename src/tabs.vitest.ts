@@ -1065,3 +1065,47 @@ describe("F77 getActiveSubagentContext", () => {
     expect(tm.getActiveSubagentContext()).toBeNull();
   });
 });
+
+describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", () => {
+  const agent = (label: string, status: "running" | "done" | "aborted") => ({
+    id: `id-${label}`,
+    label,
+    agentType: null,
+    status,
+    timestamp: "2026-07-17T00:00:00Z",
+    desc: label,
+  });
+
+  it("unknown sid → null", () => {
+    const tm = makeTM();
+    expect(tm.peekSession("nope")).toBeNull();
+  });
+
+  it("运行中 subagent 排在前，同档保插入序；model / 改过的文件透传", () => {
+    const tm = makeTM();
+    const tab = tm.ensureTab("s1", "/proj", "/p/s1.jsonl", 0, null);
+    tab.latestModel = "claude-opus-4-8";
+    tab.touchedFiles.add("/proj/a.ts");
+    tab.touchedFiles.add("/proj/b.ts");
+    // 插入序：done, running, aborted, running —— 期望 running 提前、组内保插入序
+    tab.agents.set("1", agent("done1", "done"));
+    tab.agents.set("2", agent("run1", "running"));
+    tab.agents.set("3", agent("abort1", "aborted"));
+    tab.agents.set("4", agent("run2", "running"));
+
+    const p = tm.peekSession("s1");
+    expect(p).not.toBeNull();
+    expect(p!.model).toBe("claude-opus-4-8");
+    expect(p!.recentFiles).toEqual(["/proj/a.ts", "/proj/b.ts"]);
+    // running 全部提前且组内保序；非 running 组内也保插入序
+    expect(p!.agents.map((a) => a.label)).toEqual(["run1", "run2", "done1", "abort1"]);
+    expect(p!.agents.map((a) => a.status)).toEqual(["running", "running", "done", "aborted"]);
+  });
+
+  it("无 usage / 无 agent / 无改文件 → 字段空但不报错", () => {
+    const tm = makeTM();
+    tm.ensureTab("s2", "/x", "/p/s2.jsonl", 0, null);
+    const p = tm.peekSession("s2");
+    expect(p).toEqual({ model: null, recentFiles: [], agents: [] });
+  });
+});
