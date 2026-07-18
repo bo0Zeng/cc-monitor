@@ -241,6 +241,63 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    /// golden-parity（daemon-03）：aterm `UsageAggregator` 键 = `requestId ?: uuid ?: r`。
+    /// 缺 requestId → 按 **uuid** 归并：同 uuid 逐字段 MAX（一请求），不同 uuid = 不同请求
+    /// （msgs 各 +1、桶内相加）。锁死 fallback 链的第二段（现有测只覆盖 requestId 存在）。
+    #[test]
+    fn uuid_fallback_keying_matches_aterm() {
+        let tmp = std::env::temp_dir().join(format!("ccm-usage-uuid-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        // 无 requestId：u1 两条(output 100→150，MAX=150)、u2 一条(output 200)。同 model/day。
+        let a = |uuid: &str, out: u64| {
+            format!(
+                r#"{{"type":"assistant","uuid":"{uuid}","timestamp":"2026-07-17T10:00:00Z","message":{{"model":"m","usage":{{"input_tokens":1,"output_tokens":{out}}}}}}}"#
+            )
+        };
+        let p = write_session(
+            &tmp,
+            "s1.jsonl",
+            &[&a("u1", 100), &a("u1", 150), &a("u2", 200)],
+        );
+        let mut seen = HashSet::new();
+        let row = analyze_session(&p, &mut seen).expect("has usage");
+        let b = &row["buckets"][0]["totals"];
+        // u1 MAX=150 + u2=200 = 350；两个不同 uuid = 两请求。
+        assert_eq!(b["output"].as_u64(), Some(350), "同 uuid MAX、异 uuid 相加");
+        assert_eq!(b["msgs"].as_u64(), Some(2), "两个 uuid = 两请求");
+        assert_eq!(
+            b["input"].as_u64(),
+            Some(2),
+            "input 也 uuid 分组 MAX 后相加(1+1)"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// golden-parity（daemon-03）：`/branch` 祖先复制保留 requestId → **跨会话按 requestId
+    /// 去重**（同 requestId 在两个 jsonl 只算一次，防分支重复计）。对拍 aterm 跨流去重 +
+    /// 本地 usage.rs。第二个文件的重复 requestId 被 `seen_requests` 挡下 → 该文件无净新增。
+    #[test]
+    fn branch_cross_session_dedup_counts_once() {
+        let tmp = std::env::temp_dir().join(format!("ccm-usage-branch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let rec = r#"{"type":"assistant","uuid":"x","requestId":"r1","timestamp":"2026-07-17T10:00:00Z","message":{"model":"m","usage":{"input_tokens":10,"output_tokens":400}}}"#;
+        let s1 = write_session(&tmp, "s1.jsonl", &[rec]);
+        // s2 = 分支复制：同 requestId r1（uuid 不同也无所谓，键是 requestId）。
+        let s2_rec = r#"{"type":"assistant","uuid":"y","requestId":"r1","timestamp":"2026-07-17T10:00:00Z","message":{"model":"m","usage":{"input_tokens":10,"output_tokens":400}}}"#;
+        let s2 = write_session(&tmp, "s2.jsonl", &[s2_rec]);
+        let mut seen = HashSet::new();
+        // 先 s1：r1 首见 → 计入。
+        let r1 = analyze_session(&s1, &mut seen).expect("s1 has usage");
+        assert_eq!(r1["buckets"][0]["totals"]["output"].as_u64(), Some(400));
+        assert_eq!(r1["buckets"][0]["totals"]["msgs"].as_u64(), Some(1));
+        // 再 s2：r1 已在 seen → 去重 → 该会话无净新增 usage → None（不重复计 400）。
+        let r2 = analyze_session(&s2, &mut seen);
+        assert!(r2.is_none(), "分支重复 requestId 跨会话只算一次");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     #[test]
     fn malformed_line_skipped_and_no_usage_yields_none() {
         let tmp = std::env::temp_dir().join(format!("ccm-usage-test2-{}", std::process::id()));
