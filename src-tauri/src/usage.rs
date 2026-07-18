@@ -17,7 +17,8 @@ use std::path::Path;
 use tauri::ipc::Channel;
 
 /// 一个 (会话/模型/天) 桶的 token 合计。u64 防大历史累加溢出。
-#[derive(serde::Serialize, Clone, Default, PartialEq, Debug)]
+/// `Deserialize` 供 F88a-remote 反序列化 daemon `--usage` 回传的行（`remote_history::aggregate_remote_usage_all`）。
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default, PartialEq, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageTotals {
     pub input: u64,
@@ -51,7 +52,7 @@ impl UsageTotals {
 }
 
 /// 一条会话在某 (模型, 天) 下的用量。
-#[derive(serde::Serialize, Clone, PartialEq, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageBucket {
     pub model: String,
@@ -60,7 +61,9 @@ pub struct UsageBucket {
 }
 
 /// 一个会话的用量行（含项目归属；前端按 会话/天/项目/模型 四维 pivot）。wire camelCase。
-#[derive(serde::Serialize, Clone)]
+/// `Deserialize` 供 F88a-remote 反序列化 daemon `--usage` 回传的行（daemon 侧不带 `origin`，
+/// `#[serde(default)]` 使缺 origin 反序列化为 None，monitor 收到后盖主机 label）。
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionUsageRow {
     pub session_id: String,
@@ -68,6 +71,7 @@ pub struct SessionUsageRow {
     pub project_name: String,
     pub buckets: Vec<UsageBucket>,
     /// None=本地；Some(host)=远端（对齐 HistorySessionEntry.origin）。本地聚合恒 None。
+    #[serde(default)]
     pub origin: Option<String>,
 }
 
@@ -378,5 +382,22 @@ mod tests {
         // 第二个会话含同 uuid → 跳过（不重复计），合计不虚高。
         let (b2, _) = accumulate_usage(std::iter::once(a), &mut seen);
         assert!(b2.is_empty(), "同 uuid 跨会话应去重");
+    }
+
+    #[test]
+    fn deserializes_daemon_usage_row_shape_origin_defaults_none() {
+        // F88a-remote：daemon `--usage` 每会话一行 camelCase JSON（不带 origin）→ 反序列化成
+        // SessionUsageRow、origin 缺省 None，供 remote fan-out 盖主机 label。形状须与
+        // remote-daemon-proto/usage_query.rs 的 json! 输出严格一致（双写点对齐）。
+        let line = r#"{"sessionId":"s1","projectPath":"/home/u/p","projectName":"p","buckets":[{"model":"m","day":"2026-07-17","totals":{"input":2,"cacheCreation":8518,"cacheRead":19059,"output":484,"msgs":1}}]}"#;
+        let row: SessionUsageRow = serde_json::from_str(line).expect("daemon 行应可反序列化");
+        assert_eq!(row.session_id, "s1");
+        assert_eq!(row.project_name, "p");
+        assert!(row.origin.is_none(), "daemon 不带 origin → 缺省 None");
+        assert_eq!(row.buckets.len(), 1);
+        let t = &row.buckets[0].totals;
+        assert_eq!(t.cache_read, 19059);
+        assert_eq!(t.output, 484);
+        assert_eq!(t.msgs, 1);
     }
 }

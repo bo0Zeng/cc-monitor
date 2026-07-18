@@ -891,6 +891,7 @@ pub fn run() {
             history::resume_history_session,
             history::new_local_session,
             usage::aggregate_usage_all,
+            remote_history::aggregate_remote_usage_all, // F88a-remote：远端 daemon 用量 fan-out
             launch::launch_remote_terminal,
             sftp_pool::sftp_realpath,
             sftp_pool::sftp_list_dir,

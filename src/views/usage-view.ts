@@ -129,8 +129,23 @@ export class UsageView {
         if (seq === this.loadSeq && this.isOpen) this.renderList();
       });
     };
+    // F88a-remote：远端 daemon 服务端聚合 fan-out（非流式，一次返 Vec），与本地流式并发；
+    // 各带 origin=host → pivot 按 [origin] 分桶（usage-pivot 已 origin-aware、零改）。远端失败不拖垮本地。
+    const remoteDone = invoke<SessionUsageRow[]>("aggregate_remote_usage_all")
+      .then((rows) => {
+        if (seq !== this.loadSeq) return; // 被新 open/close 抢占
+        if (rows.length) {
+          this.rows.push(...rows);
+          if (this.isOpen) this.renderList();
+        }
+      })
+      .catch((e) => {
+        // 远端用量失败只 warn、不弹 toast、不阻本地（daemonless/旧 daemon/断线均属正常降级）。
+        if (seq === this.loadSeq) console.warn("远端用量聚合失败（跳过）:", e);
+      });
     try {
       await invoke("aggregate_usage_all", { onRow: channel });
+      await remoteDone;
       if (seq === this.loadSeq && this.isOpen) this.renderList();
     } catch (e) {
       if (seq !== this.loadSeq) return; // 被新 open/close 抢占 → 静默（关闭后不弹 toast）

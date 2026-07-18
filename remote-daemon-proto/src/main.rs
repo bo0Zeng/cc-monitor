@@ -21,6 +21,7 @@
 
 mod history_query;
 mod search_query;
+mod usage_query;
 mod watcher;
 mod wire;
 
@@ -178,15 +179,16 @@ async fn main() {
     // issue #16：带参数 = 一次性历史查询模式，干完即退，不进流式协议。
     // 旧 daemon 不认参数会照常发 hello 进流模式——monitor 以"首行是 hello 帧"
     // 识别旧版并提示升级（优雅降级，无协议版本协商负担）。
-    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let args: Vec<String> = std::env::args().skip(1).collect();
     // Batch7-F24/Batch8-F25：流模式 flag 集合，先剥离再判一次性查询模式
     // （否则误入 query 分支——INVARIANT §26）。纯函数化供单测（审计 D）。
     let (args_rest, with_bg, tail_only) = split_stream_flags(args);
     let args = args_rest;
     if !args.is_empty() {
-        // 一次性查询模式：--search 走全文搜索（#28），其余走历史查询（#16）。
+        // 一次性查询模式：--search 全文搜索（#28）/ --usage 用量聚合（F88a-remote），其余走历史查询（#16）。
         let code = match args.first().map(String::as_str) {
             Some("--search") => search_query::run(&claude_dir, &args),
+            Some("--usage") => usage_query::run(&claude_dir, &args),
             _ => history_query::run(&claude_dir, &args),
         };
         std::process::exit(code);
