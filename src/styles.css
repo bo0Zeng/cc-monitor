@@ -912,8 +912,54 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   min-width: 0;
 }
 .mcp-del {
+  flex-shrink: 0;
+}
+/* F87b①②：行内按钮组（JSON 折叠 / 编辑 / 删）——JSON 钮起靠右聚拢；紧凑尺寸不撑高行。 */
+.mcp-server-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.mcp-json-toggle {
   margin-left: auto;
   flex-shrink: 0;
+}
+.mcp-json-toggle,
+.mcp-edit,
+.mcp-del {
+  padding: 1px 8px;
+  font-size: var(--font-size-xs);
+}
+.mcp-json-toggle.active {
+  color: var(--text);
+  border-color: var(--text-2);
+}
+/* F87b①：看完整 JSON 折叠详情——来源路径 + 完整配置，等宽、可横向滚，默认收起。 */
+.mcp-server-detail {
+  margin: 2px 0 6px 12px;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
+.mcp-server-detail.is-collapsed {
+  display: none;
+}
+.mcp-server-src {
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+.mcp-server-json {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  color: var(--text-2);
+  background: var(--bg-1, #1e1a16);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre;
 }
 .mcp-add-form {
   display: flex;
