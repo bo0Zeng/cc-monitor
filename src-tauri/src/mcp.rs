@@ -168,8 +168,10 @@ pub async fn list_mcp_project_dirs() -> Result<Vec<String>, String> {
 /// per-项目、跨机无稳定映射，**不取**（见 F87b 计划）。带 30s 超时 + 32MB 上限（config 重度用户可数 MB）。
 /// 宽容：缺/坏文件 → 空段（cat 失败 stdout 空 → 解析 None → 空 Vec）。
 /// F87b-fix(batch18 审计修)：① **多候选路径**——先试 `$CLAUDE_CONFIG_DIR/.claude.json`、再回退 `$HOME/.claude.json`
-/// （对齐本机 `claude_json_candidates` 的多候选防御；原只试单一 `${CLAUDE_CONFIG_DIR:-$HOME}`，当用户把
-/// CLAUDE_CONFIG_DIR 指向数据目录却把 .claude.json 留在 $HOME 时静默误报空）。② 大解析进 spawn_blocking（对齐 §10）。
+/// （覆盖本机 `claude_json_candidates` 的**两个主候选**；原只试单一 `${CLAUDE_CONFIG_DIR:-$HOME}`，当用户把
+/// CLAUDE_CONFIG_DIR 指向数据目录却把 .claude.json 留在 $HOME 时静默误报空）。**注**：本机还有第三候选
+/// `parent($CLAUDE_CONFIG_DIR)/.claude.json`，跨机侧未覆盖（极罕见：CFGDIR 指子目录、.claude.json 在其父且父≠$HOME）。
+/// ② 大解析进 spawn_blocking（对齐 §10）。
 #[tauri::command]
 pub async fn read_remote_mcp_servers(origin: String) -> Result<Vec<McpServerEntry>, String> {
     use tokio::io::AsyncReadExt;

@@ -1108,4 +1108,31 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
     const p = tm.peekSession("s2");
     expect(p).toEqual({ model: null, recentFiles: [], agents: [] });
   });
+
+  // F91b-fix(batch18)：touchedFiles 近因序——re-touch 的文件经 onLine delete+add 移到末尾，
+  // 使 peek `recentFiles`（= [...touchedFiles]）尾部是「最近改的」。锁住此行为，防重构退回插入序静默显错文件。
+  it("touchedFiles 近因序：onLine 重触文件移到末尾（peek recentFiles 尾=最近改）", () => {
+    const tm = makeTM();
+    // collectEditedFiles 读 payload.message.message.content（外层 type=记录类型，内层 message=API 消息体）
+    const edit = (seq: number, uuid: string, files: string[]) =>
+      ({
+        session_id: "s",
+        cwd: "/p",
+        path: "/p/s.jsonl",
+        seq,
+        message: {
+          type: "assistant",
+          uuid,
+          message: {
+            content: files.map((f) => ({ type: "tool_use", name: "Edit", input: { file_path: f } })),
+          },
+        },
+      }) as never;
+    tm.onLine(edit(1, "e1", ["/a.ts", "/b.ts", "/c.ts"]));
+    expect(tm.peekSession("s")!.recentFiles).toEqual(["/a.ts", "/b.ts", "/c.ts"]);
+    tm.onLine(edit(2, "e2", ["/a.ts"])); // 重触 a → 移到末尾（近因序）
+    expect(tm.peekSession("s")!.recentFiles).toEqual(["/b.ts", "/c.ts", "/a.ts"]);
+    tm.onLine(edit(3, "e3", ["/d.ts", "/b.ts"])); // 新增 d、重触 b → b 也移末尾
+    expect(tm.peekSession("s")!.recentFiles).toEqual(["/c.ts", "/a.ts", "/d.ts", "/b.ts"]);
+  });
 });
