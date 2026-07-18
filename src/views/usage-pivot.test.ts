@@ -62,7 +62,8 @@ test("按 model pivot：opus 合并两会话，haiku 独立", () => {
   const haiku = p.find((r) => r.key === "haiku")!;
   eq(haiku.totals.input, 5);
   eq(p.length, 2);
-  // F88d-fix：按**等效成本**降序（opus 等效 370 > haiku 等效 20）——此例 raw 与等效同序，opus 仍居首
+  // F88d-fix：按**等效成本**降序（opus 等效 383 = 150 + 10×1.25 + 700×0.1 + 30×5 > haiku 等效 20 = 5 + 3×5）
+  // ——此例 raw 与等效同序，opus 仍居首
   eq(p[0].key, "opus");
 });
 
