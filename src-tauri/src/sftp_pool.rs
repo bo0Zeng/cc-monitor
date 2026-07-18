@@ -52,11 +52,24 @@ pub struct SftpStat {
 
 /// F47 防误伤守卫:该远端路径是否 Claude 数据源文件(jsonl / pidfile)。
 /// SFTP 写命令拒碰这些——往正被 Claude 打开的会话文件写会损坏会话;要管这些用历史浏览器
-/// （F11 删除带确认),不走文件面板。纯 substring 判定(与 sftp::is_safe_remote_jsonl 同风格)。
+/// （F11 删除带确认),不走文件面板。**结构判定**(与 sftp::is_safe_remote_jsonl 同风格,batch20 起不靠 `.claude` 字面,闭 CLAUDE_CONFIG_DIR 缺口)。
 pub fn is_protected_claude_data_path(path: &str) -> bool {
     let p = path.replace('\\', "/");
-    (p.contains("/.claude/projects/") && p.ends_with(".jsonl"))
-        || (p.contains("/.claude/sessions/") && p.ends_with(".json"))
+    // batch20 审计修：**结构判定**，不靠 `/.claude/` 字面——Claude 数据文件结构为 `<任意>/projects/<proj>/<sid>.jsonl`
+    // （projects 下恰 2 段）或 `<任意>/sessions/<x>.json`（sessions 下 1 段）。**闭 `CLAUDE_CONFIG_DIR` 重定位缺口**：
+    // 重定位后路径成 `<CFGDIR>/projects/.../*.jsonl`，原字面 `/.claude/` 判定会漏、SFTP 面板可覆写 live jsonl。
+    let jsonl_protected = p.rfind("/projects/").is_some_and(|i| {
+        let parts: Vec<&str> = p[i + "/projects/".len()..].split('/').collect();
+        parts.len() == 2
+            && !parts[0].is_empty()
+            && parts[1].len() > ".jsonl".len()
+            && parts[1].ends_with(".jsonl")
+    });
+    let json_protected = p.rfind("/sessions/").is_some_and(|i| {
+        let rest = &p[i + "/sessions/".len()..];
+        !rest.contains('/') && rest.len() > ".json".len() && rest.ends_with(".json")
+    });
+    jsonl_protected || json_protected
 }
 
 /// 判定文件名是否含非 UTF-8 有损替换字符（russh-sftp 已把无效字节转成 U+FFFD）。
@@ -693,6 +706,19 @@ mod tests {
         assert!(is_protected_claude_data_path(
             "C:\\Users\\me\\.claude\\projects\\p\\s.jsonl"
         ));
+        // batch20 审计修：CLAUDE_CONFIG_DIR 重定位（.claude 挪到 ~/mydata）后仍受保护（结构判定，闭字面缺口）
+        assert!(is_protected_claude_data_path(
+            "/home/pi/mydata/projects/-x/abc.jsonl"
+        ));
+        assert!(is_protected_claude_data_path(
+            "/home/u/mydata/sessions/123.json"
+        ));
+        // 但 projects 下只 1 段（非 <proj>/<sid>.jsonl 结构）不误伤普通文件
+        assert!(!is_protected_claude_data_path(
+            "/home/pi/x/projects/a.jsonl"
+        ));
+        // sessions 下再嵌目录（非 Claude 单层结构）不误伤
+        assert!(!is_protected_claude_data_path("/x/sessions/sub/y.json"));
     }
 
     #[test]
