@@ -64,6 +64,9 @@ export class McpSection {
   private dirInput!: HTMLInputElement;
   private datalist!: HTMLDataListElement;
   private listBox!: HTMLElement;
+  /** F87b②：project scope 加/改表单的输入引用——「编辑」按钮预填用（每次 reload 重建时刷新）。 */
+  private addNameInput: HTMLInputElement | null = null;
+  private addJsonInput: HTMLTextAreaElement | null = null;
 
   constructor() {
     this.element = this.build();
@@ -153,6 +156,8 @@ export class McpSection {
     box.appendChild(title);
 
     for (const e of entries) {
+      const item = document.createElement("div");
+      item.className = "mcp-server-item";
       const rowEl = document.createElement("div");
       rowEl.className = "mcp-server-row";
       const name = document.createElement("span");
@@ -162,7 +167,46 @@ export class McpSection {
       summary.className = "mcp-server-summary";
       summary.textContent = serverSummary(e.server);
       rowEl.append(name, summary);
+
+      // F87b①：看完整 JSON——「JSON」折叠钮切换下方详情（含完整配置 + 来源文件路径，诊断用）。
+      const detail = document.createElement("div");
+      detail.className = "mcp-server-detail is-collapsed";
+      const src = document.createElement("div");
+      src.className = "mcp-server-src";
+      src.textContent = `来源：${e.sourcePath}`;
+      const pre = document.createElement("pre");
+      pre.className = "mcp-server-json";
+      pre.textContent = JSON.stringify(e.server, null, 2);
+      detail.append(src, pre);
+
+      const jsonBtn = document.createElement("button");
+      jsonBtn.type = "button";
+      jsonBtn.className = "settings-btn settings-btn-secondary mcp-json-toggle";
+      jsonBtn.textContent = "JSON";
+      jsonBtn.title = "看完整配置 JSON + 来源文件";
+      jsonBtn.addEventListener("click", () => {
+        const collapsed = detail.classList.toggle("is-collapsed");
+        jsonBtn.classList.toggle("active", !collapsed);
+      });
+      rowEl.appendChild(jsonBtn);
+
+      // F87b②：编辑入口——**仅 project scope**（SS-14 写只 .mcp.json）。预填加/改表单，复用既有写路径（同名覆盖）。
       if (scope === "project" && dir) {
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.className = "settings-btn settings-btn-secondary mcp-edit";
+        edit.textContent = "编辑";
+        edit.title = "把这条填进下方表单编辑后保存（覆盖同名）";
+        edit.addEventListener("click", () => {
+          if (this.addNameInput && this.addJsonInput) {
+            this.addNameInput.value = e.name;
+            this.addJsonInput.value = JSON.stringify(e.server, null, 2);
+            this.addJsonInput.focus();
+            this.addJsonInput.scrollIntoView({ block: "nearest" });
+          }
+        });
+        rowEl.appendChild(edit);
+
         const del = document.createElement("button");
         del.type = "button";
         del.className = "settings-btn settings-btn-danger mcp-del";
@@ -170,7 +214,8 @@ export class McpSection {
         del.addEventListener("click", () => void this.removeEntry(dir, e.name));
         rowEl.appendChild(del);
       }
-      box.appendChild(rowEl);
+      item.append(rowEl, detail);
+      box.appendChild(item);
     }
 
     // 项目 scope：加/改表单（名 + server JSON）。需先填项目目录。
@@ -190,6 +235,9 @@ export class McpSection {
     jsonInput.className = "settings-input mcp-json-input";
     jsonInput.placeholder = '{ "command": "npx", "args": ["-y", "@x/mcp"] }  或  { "type": "http", "url": "https://…" }';
     jsonInput.rows = 3;
+    // F87b②：暴露引用给「编辑」按钮预填（每次 reload 重建表单时刷新）。
+    this.addNameInput = nameInput;
+    this.addJsonInput = jsonInput;
     const saveBtn = document.createElement("button");
     saveBtn.type = "button";
     saveBtn.className = "settings-btn";
