@@ -77,33 +77,42 @@ struct ResolveError {
     message: String,
 }
 
+/// stdin 上限（审计 security-重要②）：ResumeSpec 极小，无界 `read_to_string` 遇超大 stdin →
+/// 无界堆分配（Pi 级设备 OOM 风险）。`.take()` 兜底；超限 → 截断 → 后续 parse 失败 → bad_request。
+const MAX_RESOLVE_STDIN: u64 = 1 << 20; // 1 MiB
+
 /// `--resolve` 入口。stdin 读 ResumeSpec、stdout 写 CommandPlan、exit 0；出错 exit 2 + stderr JSON。
 /// `_claude_dir` 现未用（MVP 不做 pidfile 消解）；留参数与其余 query::run 一致、后续联调用。
 pub fn run(_claude_dir: &Path, _args: &[String]) -> i32 {
     let mut input = String::new();
-    if let Err(e) = std::io::stdin().read_to_string(&mut input) {
+    if let Err(e) = std::io::stdin()
+        .take(MAX_RESOLVE_STDIN)
+        .read_to_string(&mut input)
+    {
         return emit_err("stdin_read_failed", format!("read stdin failed: {e}"));
     }
-    let spec: ResumeSpec = match serde_json::from_str(input.trim()) {
-        Ok(s) => s,
-        Err(e) => return emit_err("bad_request", format!("ResumeSpec JSON parse failed: {e}")),
-    };
-    match resolve(&spec) {
-        Ok(plan) => {
-            // stdout 一行 JSON（同其余 wire——紧凑、无内嵌裸换行）。
-            match serde_json::to_string(&plan) {
-                Ok(s) => {
-                    println!("{s}");
-                    0
-                }
-                Err(e) => emit_err(
-                    "serialize_failed",
-                    format!("CommandPlan serialize failed: {e}"),
-                ),
-            }
+    match resolve_from_json(&input) {
+        Ok(json) => {
+            println!("{json}"); // stdout 一行 JSON（紧凑、无内嵌裸换行）
+            0
         }
         Err((code, message)) => emit_err(code, message),
     }
+}
+
+/// 纯：ResumeSpec JSON 串 → CommandPlan JSON 串（或 `(code,message)`）。`run()` 与单测共用——
+/// 审计 quality-阻塞：让 stdin→响应 的分发逻辑（bad_request / serialize / happy）**可测**，
+/// 不必真接 stdin/stdout（此前 `run()` 零覆盖、commit「端到端 smoke」实为手工一次性验证、无测件）。
+fn resolve_from_json(input: &str) -> Result<String, (&'static str, String)> {
+    let spec: ResumeSpec = serde_json::from_str(input.trim())
+        .map_err(|e| ("bad_request", format!("ResumeSpec JSON parse failed: {e}")))?;
+    let plan = resolve(&spec)?;
+    serde_json::to_string(&plan).map_err(|e| {
+        (
+            "serialize_failed",
+            format!("CommandPlan serialize failed: {e}"),
+        )
+    })
 }
 
 /// 纯：ResumeSpec → CommandPlan（或 (code,message) 错误）。供单测（不碰 stdin/stdout）。
@@ -129,7 +138,17 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
         Some(c) => (c.to_string(), Some(c.to_string())),
         None => ("claude".to_string(), None),
     };
-    // MVP command：`<base> --resume <sid>`（sid 已过 is_valid_session_id、注入安全）。
+    // 审计 security-重要①：B2 纪律**对称化**——`base` 同样进 command 串、由客户端 pty 执行，
+    // 原只校验 sid、base 零校验（端到端两侧都没人查 base：客户端 B2 复校也只覆盖 sid）。补 base
+    // 的 shell-safe 校验，兑现模块 doc 自称的 B2 注入防线（defense-in-depth：advisory 不执行 +
+    // 同信任域下当前不可利用，但污染 ResumeSpec 会被洗成带 daemon 权威的可注入 CommandPlan）。
+    if !is_shell_safe_base(&base) {
+        return Err((
+            "unsafe_launch_candidate",
+            format!("launchCandidate 含 shell 元字符/控制字符、拒入 command：{base:?}"),
+        ));
+    }
+    // MVP command：`<base> --resume <sid>`（sid 过 is_valid_session_id、base 过 is_shell_safe_base）。
     let command = format!("{base} --resume {}", spec.session_id);
     Ok(CommandPlan {
         command,
@@ -155,6 +174,37 @@ fn is_valid_session_id(sid: &str) -> bool {
         && sid
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// base（launchCandidate 或默认 `claude`）会进 `command` 串、由客户端 pty 执行 → 拒 shell 注入。
+/// 允许 launcher 常见形（字母数字/空格/`- _ . / = : ,`，支持带路径与 flag），拒 shell 元字符
+/// `; | & $ ` ( ) < > \ " ' * ? { } !`、换行/控制字符（0x00–0x1f、0x7f）。defense-in-depth——
+/// daemon advisory 不执行，但不应产出一份可注入的 CommandPlan（客户端 pty-inject 它）。
+fn is_shell_safe_base(s: &str) -> bool {
+    !s.is_empty()
+        && !s.bytes().any(|b| {
+            b < 0x20
+                || b == 0x7f
+                || matches!(
+                    b,
+                    b';' | b'|'
+                        | b'&'
+                        | b'$'
+                        | b'`'
+                        | b'('
+                        | b')'
+                        | b'<'
+                        | b'>'
+                        | b'\\'
+                        | b'"'
+                        | b'\''
+                        | b'*'
+                        | b'?'
+                        | b'{'
+                        | b'}'
+                        | b'!'
+                )
+        })
 }
 
 /// aterm 展示约定 `cc-<sid8>`（前 8 字符；不足 8 取全部）。客户端亦自算、daemon 顺带给。
@@ -246,10 +296,60 @@ mod tests {
         assert!(resolve(&spec("abc-DEF_123", vec![Some("cc")])).is_ok());
     }
 
-    /// stdin 畸形 JSON 走 run() 的 bad_request（此处直接测解析失败路径的 shape）。
+    /// 审计 security①：B2 对称化——launchCandidate（base）含 shell 元字符 → unsafe_launch_candidate，
+    /// 不进 command（此前 base 零校验、注入透传：`["cc; rm -rf /"]`→`cc; rm -rf / --resume …`）。
     #[test]
-    fn malformed_resume_spec_is_bad_request() {
-        let parsed: Result<ResumeSpec, _> = serde_json::from_str("{not json");
-        assert!(parsed.is_err(), "畸形 JSON 解析失败 → run() 出 bad_request");
+    fn resolve_rejects_injection_in_launch_candidate() {
+        for bad in [
+            "cc; rm -rf /",
+            "a$(id)",
+            "x`whoami`",
+            "a|b",
+            "a>b",
+            "a\nb",
+            "a&b",
+        ] {
+            let s = spec("abc123", vec![Some(bad)]);
+            let err = resolve(&s).expect_err("must reject base");
+            assert_eq!(err.0, "unsafe_launch_candidate", "拒 base {bad:?}");
+        }
+        // 合法 launcher（带 flag/路径/等号）通过。
+        assert!(resolve(&spec("abc123", vec![Some("/usr/bin/cc --foo=bar")])).is_ok());
+    }
+
+    /// 审计 quality-阻塞：`resolve_from_json`（= `run()` 的分发核）真覆盖 happy 路径——
+    /// stdin JSON 串 → CommandPlan JSON 串（含 aterm caps 名）。此前 `run()` 零覆盖。
+    #[test]
+    fn resolve_from_json_happy_returns_command_plan_json() {
+        let out = resolve_from_json(
+            r#"{"sessionId":"abcd1234-ef","launchCandidates":["cc"],"claudeDir":"/c","fallbackCwd":"/t","alreadyInTmux":false}"#,
+        )
+        .expect("ok");
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["command"], "cc --resume abcd1234-ef");
+        assert_eq!(v["capabilities"]["supportsSendKeys"], true);
+    }
+
+    /// 审计 quality-阻塞：`run()` 的 bad_request 分支真覆盖（此前只测 `serde_json::from_str` 本身、
+    /// 不走分发）。畸形 JSON 经 `resolve_from_json` → `(bad_request, _)`。
+    #[test]
+    fn resolve_from_json_malformed_is_bad_request() {
+        let err = resolve_from_json("{not json").expect_err("must err");
+        assert_eq!(err.0, "bad_request");
+    }
+
+    /// 分发核对非法 sid / 不安全 base 同样短路成对应错误码（端到端错误 taxonomy）。
+    #[test]
+    fn resolve_from_json_propagates_validation_errors() {
+        assert_eq!(
+            resolve_from_json(r#"{"sessionId":"a;b"}"#).unwrap_err().0,
+            "invalid_session_id"
+        );
+        assert_eq!(
+            resolve_from_json(r#"{"sessionId":"ok1","launchCandidates":["c;d"]}"#)
+                .unwrap_err()
+                .0,
+            "unsafe_launch_candidate"
+        );
     }
 }

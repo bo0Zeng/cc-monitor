@@ -75,7 +75,11 @@ const PROTO_VERSION: u32 = 1;
 /// - p1k-resolve-rpc = + `--resolve` advisor RPC（daemon-04/Phase 1）：读 stdin ResumeSpec JSON →
 ///   出 stdout CommandPlan JSON（camelCase，caps 复用 aterm `SessionCapabilities` 4 名），错误
 ///   exit2+stderr `{code,message}`。契约与 aterm cc-bus 对齐定死。additive 子命令、advisory 零 handle
-const BUILD_ID: &str = "p1k-resolve-rpc";
+/// - p1l-audit-fixes = daemon Phase 1 三视角代码审查修复（daemon-05）：一次性查询模式不再向 stderr
+///   打 info（`--resolve` 错误信封 stderr 纯 `{code,message}`）；resolve base(launchCandidate) 补
+///   shell-safe 校验（B2 对称化，新错误码 `unsafe_launch_candidate`）；stdin `.take(1MiB)` 兜 DoS。
+///   纯查询/流协议 wire 不变——非破坏、无 PROTO_VERSION bump。
+const BUILD_ID: &str = "p1l-audit-fixes";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
@@ -105,6 +109,9 @@ fn split_stream_flags(mut args: Vec<String>) -> (Vec<String>, bool, bool) {
     (args, with_bg, tail_only)
 }
 
+// 本测块紧邻被测的 split_stream_flags（就近可读）、不挪文件尾；显式 allow 让 clippy
+// --all-targets 净（审计：门槛此前只跑默认 target、漏 test-target lint）。
+#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod stream_flag_tests {
     use super::split_stream_flags;
@@ -184,7 +191,6 @@ async fn main() {
         .init();
 
     let claude_dir = resolve_claude_dir();
-    tracing::info!("claude_dir = {}", claude_dir.display());
 
     // issue #16：带参数 = 一次性历史查询模式，干完即退，不进流式协议。
     // 旧 daemon 不认参数会照常发 hello 进流模式——monitor 以"首行是 hello 帧"
@@ -205,6 +211,11 @@ async fn main() {
         };
         std::process::exit(code);
     }
+
+    // 一次性查询已 exit；到此必是流模式。claude_dir 日志放此（审计 correctness-重要①：
+    // --resolve/一次性查询模式 stderr 只承载结构化错误/查询结果，不掺 info——兑现协议 v1 §3
+    // 「错误 exit2 + stderr 纯 {code,message} JSON」，客户端可整段 JSON-parse stderr）。
+    tracing::info!("claude_dir = {}", claude_dir.display());
 
     // (b) Emit the Hello handshake FIRST, flushed, before anything else.
     let mut stdout = BufWriter::new(tokio::io::stdout());
