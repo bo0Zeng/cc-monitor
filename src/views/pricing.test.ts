@@ -3,7 +3,13 @@
  * 跑法：`node src/views/pricing.test.ts` 或 `npm run test:pricing`。
  */
 
-import { contextLimit, normalizeModel, contextPercent } from "./pricing.ts";
+import {
+  contextLimit,
+  normalizeModel,
+  contextPercent,
+  equivalentInputTokens,
+  RELATIVE_COST,
+} from "./pricing.ts";
 
 let failed = 0;
 function test(name: string, fn: () => void): void {
@@ -54,6 +60,19 @@ test("contextPercent: input+cache ÷ 上限", () => {
   // 未知模型 → null
   eq(contextPercent("gpt-4", 100_000), null);
   eq(contextPercent(null, 100_000), null);
+});
+
+test("F88d equivalentInputTokens: 各档 × 相对系数求和", () => {
+  // input1 + cache写1.25 + cache读0.1 + output5 —— 与 contextLimit override 全解耦
+  eq(RELATIVE_COST.output, 5);
+  // 纯 input → 恒等
+  eq(equivalentInputTokens({ input: 100, cacheCreation: 0, cacheRead: 0, output: 0 }), 100);
+  // output 权重 5×：100 output = 500 等效
+  eq(equivalentInputTokens({ input: 0, cacheCreation: 0, cacheRead: 0, output: 100 }), 500);
+  // cache 读 0.1×：1000 cache_read = 100 等效（体现 cache_read 便宜，不再与 output 等权直加）
+  eq(equivalentInputTokens({ input: 0, cacheCreation: 0, cacheRead: 1000, output: 0 }), 100);
+  // 混合：input10 + 写8(×1.25=10) + 读1000(×0.1=100) + output20(×5=100) = 220
+  eq(equivalentInputTokens({ input: 10, cacheCreation: 8, cacheRead: 1000, output: 20 }), 220);
 });
 
 if (failed > 0) {
