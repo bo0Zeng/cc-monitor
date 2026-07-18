@@ -459,6 +459,31 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   const commandBar = new CommandBarView(buildCommands);
 
+  // F84b（batch17）：命令栏可发现性——命令栏原本是纯键位入口（Ctrl+K），无任何可见提示它存在。
+  // 状态栏最右加一个克制的常驻 chip：图标+「命令」+真实键位（跟随 effectiveChord，改键即变）；
+  // 本身即点击入口（复用 commandBar.toggle，非新路径）。placement 见 F84b 计划（顶栏已 6 图标拥挤，选状态栏）。
+  {
+    const cmdkHint = document.createElement("button");
+    cmdkHint.type = "button";
+    cmdkHint.className = "status-cmdk";
+    const icon = document.createElement("span");
+    icon.className = "status-cmdk-icon";
+    icon.textContent = "⌨"; // U+2328 键盘（默认文本呈现、单色）；不用 ⌘（Mac 专属、本项目 Linux/Win 键位是 Ctrl）
+    cmdkHint.appendChild(icon);
+    const label = document.createElement("span");
+    label.textContent = "命令";
+    cmdkHint.appendChild(label);
+    const chord = dispatcher.effectiveChord("app.open-command-bar");
+    if (chord) {
+      const kbd = document.createElement("kbd");
+      kbd.textContent = KeybindingDispatcher.prettyChord(chord);
+      cmdkHint.appendChild(kbd); // 未绑键（chord=null）则不显 kbd，chip 仍作点击入口
+    }
+    cmdkHint.title = "打开命令面板：搜索并执行所有操作";
+    cmdkHint.addEventListener("click", () => commandBar.toggle());
+    status.appendChild(cmdkHint); // status-msg flex:1 把它顶到最右
+  }
+
   // 外链 + 代码块复制的全局 click 代理（主窗口 / 独立 viewer 窗口共用）
   installGlobalClickDelegation();
 
