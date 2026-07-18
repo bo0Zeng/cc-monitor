@@ -938,6 +938,46 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   flex: 1;
   min-width: 0;
 }
+/* F89b：统一目录（库）区——列表尾部，可折叠，每条一键注册进当前项目。 */
+.mcp-catalog {
+  border-top: 1px solid var(--border-strong);
+  padding-top: 8px;
+  margin-top: 4px;
+}
+.mcp-catalog-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mcp-catalog-head span {
+  flex: 1;
+  min-width: 0;
+}
+.mcp-catalog-toggle {
+  padding: 0 8px;
+  flex: none;
+}
+.mcp-catalog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+.mcp-catalog-body.is-collapsed {
+  display: none;
+}
+.mcp-catalog-reg {
+  margin-left: auto;
+  flex: none;
+  padding: 1px 8px;
+  font-size: var(--font-size-xs);
+}
+.mcp-catalog-here {
+  margin-left: auto;
+  flex: none;
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+}
 .mcp-machine-label {
   color: var(--text-2);
   font-size: var(--font-size-small);
