@@ -273,6 +273,9 @@ struct SessionEntry {
 pub struct ReadLine {
     pub seq: u64,
     pub raw: String,
+    /// daemon-01（gap#2）：本行末尾（含 `\n`）的累计**原始字节** offset，逐字节对齐 aterm `LineFramer`
+    /// （计 `\r`、含 `\n`、残行不计）。**在原始字节上算**（非解码后串），故非法 UTF-8/CRLF 不错。
+    pub byte_offset: u64,
 }
 
 /// Per-file read cursor, mirroring the monitor watcher's `FileCursor`
@@ -349,23 +352,33 @@ pub fn read_new_lines(
         // (mid-write, possibly mid-multibyte) is deferred to the next event.
         let complete_end = slice.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
         consumed = complete_end as u64;
-        // Lossy decode is now safe: a torn multibyte sequence can only live in
-        // the deferred tail, never inside the complete region.
-        let text = String::from_utf8_lossy(&slice[..complete_end]);
-        for line in text.lines() {
-            let trimmed = line.trim_start_matches('\u{feff}').trim();
-            if trimmed.is_empty() {
-                continue;
+        // daemon-01（gap#2）：**在原始字节上逐行切**（非先解码整段再 `.lines()`）——因为 `byte_offset` 必须是
+        // 累计原始字节（对齐 aterm `LineFramer`：计 `\r`、含 `\n`），而解码后串的字节位在非法 UTF-8（U+FFFD 替换
+        // 3 字节换 1 字节）会漂。每行的原始内容单独 lossy 解码（残行已在 tail 外，故整行 multibyte 完整、安全）。
+        let mut pos = 0usize; // 相对 slice 的原始字节游标
+        while pos < complete_end {
+            // 完整区内必有 '\n'（complete_end 到最后一个 '\n' 之后）。
+            let nl = slice[pos..complete_end]
+                .iter()
+                .position(|&b| b == b'\n')
+                .expect("complete region ends at a '\\n'");
+            let content = &slice[pos..pos + nl]; // 行内容原始字节（不含 '\n'，可能尾随 '\r'）
+            let line_end = pos + nl + 1; // 本行末尾（含 '\n'）在 slice 内的原始字节位
+                                         // raw = 内容解码 + 剥尾随 '\r'（对齐 aterm：raw 无 CRLF/无尾 \n；但 offset **计** `\r`）。
+            let text = String::from_utf8_lossy(content);
+            let raw = text.strip_suffix('\r').unwrap_or(&text);
+            let is_blank = raw.trim_start_matches('\u{feff}').trim().is_empty();
+            if !is_blank {
+                // Seq from the never-reset per-path counter. Blank lines do not
+                // call `next`, so they do not consume a seq.
+                let seq = seqs.next(key);
+                out.push(ReadLine {
+                    seq,
+                    raw: raw.to_string(),
+                    byte_offset: start + line_end as u64,
+                });
             }
-            // Seq from the never-reset per-path counter. A skipped (blank) line
-            // does not call `next`, so blanks do not consume a seq.
-            let seq = seqs.next(key);
-            out.push(ReadLine {
-                seq,
-                // Preserve the original line bytes (post BOM/whitespace only
-                // used for the skip decision), matching watcher.rs `raw: line`.
-                raw: line.to_string(),
-            });
+            pos = line_end;
         }
     }
     // `consumed` advances only past complete lines (from the possibly
@@ -407,6 +420,7 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
             path: path_str.clone(),
             seq: line.seq,
             raw: line.raw,
+            byte_offset: line.byte_offset, // daemon-01 gap#2：累计原始字节（对齐 aterm LineFramer）
         });
     }
 }
@@ -1049,6 +1063,57 @@ mod tests {
         assert_eq!(out2[1].seq, 3);
         assert_eq!(cur2.consumed, second.len() as u64);
         assert_eq!(out2[0].raw, r#"{"a":3}"#);
+    }
+
+    #[test]
+    fn byte_offset_matches_aterm_lineframer() {
+        // daemon-01（gap#2）：Line.byte_offset **逐字节对齐 aterm `LineFramer.endOffset`**——计 CRLF 的 `\r`、
+        // 含 `\n`、残行不计、在**原始字节**上算（非解码后串）。移植自 aterm LineFramerTest 的关键语料。
+        let mut seqs = SeqCounter::new();
+        // aterm feedFramedCountsCrlfAndMultibyteRawBytes: "你\r\nx\n" → endOffset [5,7]
+        // 你=3B + \r + \n = 5；x + \n = 2 → 累计 7。raw 剥 \r/\n。
+        let (out, cur) = read_new_lines(
+            "你\r\nx\n".as_bytes(),
+            ReadCursor::default(),
+            KEY,
+            &mut seqs,
+        );
+        assert_eq!(out.len(), 2);
+        assert_eq!((out[0].raw.as_str(), out[0].byte_offset), ("你", 5));
+        assert_eq!((out[1].raw.as_str(), out[1].byte_offset), ("x", 7));
+        assert_eq!(cur.consumed, 7);
+
+        // 无 CRLF 累计：jsonl(["ab","cde"]) = "ab\ncde\n" → [3, 7]。
+        let mut s2 = SeqCounter::new();
+        let (o2, _) = read_new_lines(&jsonl(&["ab", "cde"]), ReadCursor::default(), KEY, &mut s2);
+        assert_eq!((o2[0].byte_offset, o2[1].byte_offset), (3, 7));
+
+        // 增量续读用**绝对**文件 offset（start + line_end），非本次 slice 相对：
+        let mut s3 = SeqCounter::new();
+        let first = jsonl(&["x"]); // "x\n" = 2B
+        let (_, cur3) = read_new_lines(&first, ReadCursor::default(), KEY, &mut s3);
+        let mut second = first.clone();
+        second.extend_from_slice(&jsonl(&["yy"])); // + "yy\n"
+        let (o3, _) = read_new_lines(&second, cur3, KEY, &mut s3);
+        assert_eq!(o3.len(), 1);
+        assert_eq!(o3[0].byte_offset, 5, "绝对 offset = 2(x\\n) + 3(yy\\n)");
+
+        // 残行（torn tail）不计入 byte_offset：
+        let mut s4 = SeqCounter::new();
+        let (o4, cur4) = read_new_lines(
+            b"done\nhalf-no-newline",
+            ReadCursor::default(),
+            KEY,
+            &mut s4,
+        );
+        assert_eq!(o4.len(), 1);
+        assert_eq!((o4[0].byte_offset, cur4.consumed), (5, 5)); // done\n=5；残行不计
+
+        // 空行跳过、不占 byte_offset 连续性（offset 仍按原始字节累计）：
+        let mut s5 = SeqCounter::new();
+        let (o5, _) = read_new_lines(b"a\n\nb\n", ReadCursor::default(), KEY, &mut s5);
+        assert_eq!(o5.len(), 2); // 空行跳过
+        assert_eq!((o5[0].byte_offset, o5[1].byte_offset), (2, 5)); // a\n=2；空\n 占 1B（→3，跳过）；b\n 到 5
     }
 
     #[test]
