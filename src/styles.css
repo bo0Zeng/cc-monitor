@@ -1967,6 +1967,46 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   white-space: nowrap;
 }
 
+/* F84b（batch17）：命令栏可发现性 chip —— 状态栏最右，克制常驻、点击开命令面板。
+   不抢 live-status chips 眼球：小字、暗色、hover 才微亮。 */
+.status-cmdk {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  padding: 1px 7px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border, #3a342e);
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.75;
+  transition:
+    opacity 0.12s,
+    color 0.12s,
+    border-color 0.12s;
+}
+.status-cmdk:hover {
+  opacity: 1;
+  color: var(--text, #d6cfc6);
+  border-color: var(--border-strong, #55493c);
+}
+.status-cmdk-icon {
+  font-size: 0.95em;
+  line-height: 1;
+}
+.status-cmdk kbd {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85em;
+  padding: 0 4px;
+  border: 1px solid var(--border, #3a342e);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--bg-1, #1e1a16);
+  color: var(--text-2);
+}
+
 /* === 设置面板：PowerShell 集成区 (cc_integration.ts) === */
 .settings-cc-profiles {
   display: flex;
