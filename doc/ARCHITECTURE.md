@@ -105,7 +105,7 @@ src-tauri/src/
 │              subagent.rs   按需加载 subagents/*.meta.json
 │              adapter.rs    F-MA agent 适配层（会话布局/解析/活性/resume 假设收敛到 AgentAdapter，CC 是第一个实例）
 │              adapter/claude_code.rs  Claude Code 适配器（第一个实例，零行为变化包旧逻辑）
-├── 业务层      event_replay.rs  内存 buffer + 持锁 batch emit
+├── 业务层      event_replay.rs  内存 buffer + 出锁 batch emit（v2.6；顺序靠前端 seq，非持锁，见 §event_replay 顺序保证）
 │              history.rs    两级懒加载 + metadata + 物理删除 + resume + F62 从某轮建分支
 │              launch.rs     终端拉起（wt.exe→PowerShell 单一入口）+ 远端 ssh 拉起（B14-F41）
 │              tasks.rs      v2.3 CLI task tracker 读 + watcher + emit task-update

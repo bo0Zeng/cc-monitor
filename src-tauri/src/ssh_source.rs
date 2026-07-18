@@ -2533,10 +2533,12 @@ async fn daemonless_stream_loop(
 
     // 发现命令:最近活跃窗口内的会话 jsonl + 字节数。POSIX `find`+`wc`+`-mmin`(可移植——
     // daemonless 主机常是装不了 daemon 的异构/BSD/macOS,故不用 GNU `-printf`)。`$HOME`
-    // 由远端登录 shell 展开;固定路径无用户输入注入面。`wc -c … \;`(非 `+`)每文件独立
+    // 由远端登录 shell 展开;固定命令无用户输入注入面。`wc -c … \;`(非 `+`)每文件独立
     // 调用 → 无 total 汇总行。stderr 弃(无权限目录/竞态删文件不噪)。
+    // batch20 审计修:尊重 `CLAUDE_CONFIG_DIR`(与 daemon 路径 + `fetch_remote_claude_json` 口径一致)——
+    // 原硬编码 `$HOME/.claude/projects` 会让重定位过 claude 目录的主机在 daemonless 模式下静默零结果。
     let discover_cmd = format!(
-        "find \"$HOME/.claude/projects\" -type f -name '*.jsonl' ! -path '*/subagents/*' \
+        "find \"${{CLAUDE_CONFIG_DIR:-$HOME/.claude}}/projects\" -type f -name '*.jsonl' ! -path '*/subagents/*' \
          -mmin -{DAEMONLESS_ACTIVE_WINDOW_MINUTES} -exec wc -c {{}} \\; 2>/dev/null"
     );
 
