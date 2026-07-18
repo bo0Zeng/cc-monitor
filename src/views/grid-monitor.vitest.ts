@@ -197,7 +197,9 @@ describe("F91 GridMonitorView", () => {
     document.querySelector<HTMLElement>(".grid-monitor-cell")!.click();
     const facts = document.querySelector(".grid-monitor-peek-facts")?.textContent ?? "";
     expect(facts).toContain("/x/y");
-    expect(facts).toContain("42%");
+    // F91b-fix(round2)：ctx%/未读不再进 peek（在 cell 徽标上实时显示，避免与 peek 滞后值矛盾）
+    expect(facts).not.toContain("42%");
+    expect(document.querySelector(".badge-ctx")?.textContent).toContain("42%"); // 仍在 cell 徽标上
     // 无 peekSession → 无 agent/文件区
     expect(document.querySelector(".grid-monitor-peek-agents")).toBeNull();
     expect(document.querySelector(".grid-monitor-peek-files")).toBeNull();

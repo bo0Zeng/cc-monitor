@@ -253,10 +253,12 @@ export class GridMonitorView {
     }
 
     // F91b-fix：恢复键盘焦点到重建前聚焦的同一会话 cell（若还在）。用 dataset.sid 逐个比对，避免 CSS 选择器注入。
+    // round2：preventScroll——1Hz 维护性重聚焦不得把 cell 滚回视口（否则用户滚动浏览别的会话时每秒被弹回）；
+    // 用户主动 Tab 时浏览器自身仍会滚进视口，不受影响。
     if (focusedSid) {
       for (const c of this.bodyEl.querySelectorAll<HTMLElement>(".grid-monitor-cell")) {
         if (c.dataset.sid === focusedSid) {
-          c.focus();
+          c.focus({ preventScroll: true });
           break;
         }
       }
@@ -320,7 +322,9 @@ export class GridMonitorView {
     head.append(jump, closeBtn);
     this.peekEl.appendChild(head);
 
-    // 事实行：cwd 全路径 / 活动态 / model / ctx% / unread
+    // 事实行：cwd 全路径 / 活动态 / model。
+    // F91b-fix(round2)：**不再显 ctx%/未读**——它俩就在选中 cell 的徽标上实时显示（2cm 外），peek 里重复
+    // 只会因签名故意排除这俩而滞后、与同屏 cell 徽标自相矛盾。peek 专注 cell 徽标没有的：全 cwd/model/agent/文件。
     const facts = document.createElement("div");
     facts.className = "grid-monitor-peek-facts";
     const addFact = (label: string, value: string): void => {
@@ -345,8 +349,6 @@ export class GridMonitorView {
           : selected.activityStatus;
     addFact("状态", selected.status === "archived" ? `已归档 · ${act}` : act);
     if (peek?.model) addFact("模型", peek.model);
-    if (selected.contextPct != null) addFact("context", `${Math.round(selected.contextPct)}%`);
-    if (selected.unread > 0) addFact("未读", `${selected.unread}`);
     this.peekEl.appendChild(facts);
 
     // subagent 名单（运行中优先）
