@@ -886,6 +886,25 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   gap: 10px;
   margin-top: 8px;
 }
+/* F87b③：机器选择行（本机 / 各远端 origin）——仅配了远端时显示。 */
+.mcp-machine-row {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.mcp-machine-label {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+.mcp-machine-btn {
+  padding: 2px 10px;
+  font-size: var(--font-size-small);
+}
+.mcp-machine-btn.active {
+  color: var(--text);
+  border-color: var(--accent, #7aa2f7);
+  background: var(--overlay-hover);
+}
 .mcp-scope {
   display: flex;
   flex-direction: column;
