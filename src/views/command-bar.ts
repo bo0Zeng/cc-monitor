@@ -16,6 +16,8 @@ export interface Command {
   title: string;
   /** 附加匹配关键词（空格分隔，不展示）。 */
   keywords?: string;
+  /** 右侧提示（该命令对应的快捷键，如 `H`）——把冗余入口变成快捷键教学卡（业务二审 gap#3）。 */
+  hint?: string;
   /** 执行体（只读命令：开 overlay / 导航 / 窗口操作）。 */
   run: () => void;
 }
@@ -135,7 +137,16 @@ export class CommandBarView {
       const item = document.createElement("div");
       item.className = "command-bar-item";
       if (i === this.selected) item.classList.add("selected");
-      item.textContent = cmd.title;
+      const titleEl = document.createElement("span");
+      titleEl.className = "command-bar-item-title";
+      titleEl.textContent = cmd.title;
+      item.appendChild(titleEl);
+      if (cmd.hint) {
+        const hintEl = document.createElement("span");
+        hintEl.className = "command-bar-item-hint";
+        hintEl.textContent = cmd.hint; // 该命令的快捷键（教学式发现）
+        item.appendChild(hintEl);
+      }
       item.addEventListener("mousedown", (e) => {
         e.preventDefault(); // 别让输入框失焦
         this.run(i);

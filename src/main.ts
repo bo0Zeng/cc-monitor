@@ -35,7 +35,7 @@ import { readRemoteConfig, sftpEligibleHosts } from "./settings/remote-section";
 import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { getBehavior, setBehavior } from "./behavior";
-import { dispatcher } from "./keybindings/registry";
+import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
 import { turnEndNotifier } from "./turn-notify";
 
@@ -424,19 +424,26 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 键位唯一入口（palette 惯例，顶栏已拥挤，按钮延后）。commandBar 放 sftpTrigger 之后建，
   // 使 buildCommands 引用的 sftpTrigger 已声明。
   const buildCommands = (): Command[] => {
+    // 命令项右侧显示对应快捷键（教学式发现，业务二审 gap#3）——取该 action 当前生效 chord 的友好名。
+    const chordHint = (
+      id: Parameters<typeof dispatcher.effectiveChord>[0],
+    ): string | undefined => {
+      const raw = dispatcher.effectiveChord(id);
+      return raw ? KeybindingDispatcher.prettyChord(raw) : undefined;
+    };
     const cmds: Command[] = [
-      { id: "open-history", title: "打开历史浏览器", keywords: "history 历史", run: () => { if (!historyView.isVisible()) void historyView.open(); } },
-      { id: "open-panorama", title: "打开代码全景", keywords: "panorama 全景 code", run: () => { if (!panoramaView.isVisible()) void panoramaView.open(); } },
+      { id: "open-history", title: "打开历史浏览器", keywords: "history 历史", hint: chordHint("app.toggle-history"), run: () => { if (!historyView.isVisible()) void historyView.open(); } },
+      { id: "open-panorama", title: "打开代码全景", keywords: "panorama 全景 code", hint: chordHint("app.toggle-panorama"), run: () => { if (!panoramaView.isVisible()) void panoramaView.open(); } },
       { id: "open-usage", title: "打开用量视图", keywords: "usage token 用量", run: () => { if (!usageView.isVisible()) void usageView.open(); } },
       { id: "open-grid", title: "打开多 agent 监控", keywords: "grid monitor 监控 agent 并排", run: () => { if (!gridMonitorView.isVisible()) gridMonitorView.open(); } },
-      { id: "open-settings", title: "打开设置", keywords: "settings 设置 preferences", run: () => void invoke("open_settings_window") },
+      { id: "open-settings", title: "打开设置", keywords: "settings 设置 preferences", hint: chordHint("app.open-settings"), run: () => void invoke("open_settings_window") },
       { id: "open-sftp", title: "打开 SFTP 文件面板", keywords: "sftp file 文件 传输", run: () => void openSftpFromTopbar(sftpTrigger) },
-      { id: "win-minimize", title: "最小化窗口", keywords: "minimize 最小化", run: () => void getCurrentWindow().minimize() },
-      { id: "win-fullscreen", title: "切换全屏", keywords: "fullscreen 全屏", run: () => { const w = getCurrentWindow(); void w.isFullscreen().then((f) => w.setFullscreen(!f)).catch((e) => console.warn("toggle-fullscreen failed:", e)); } },
-      { id: "term-front", title: "把对应终端窗口拉到前台", keywords: "terminal 终端 front", run: () => tabs.bringActiveTerminalToFront() },
-      { id: "toggle-tasks", title: "开 / 关 Task 面板", keywords: "task 任务 panel", run: () => tasksPanel.toggle() },
-      { id: "tab-next", title: "切到下一个 Tab", keywords: "next tab 下一个", run: () => tabs.cycleActive(1) },
-      { id: "tab-prev", title: "切到上一个 Tab", keywords: "prev tab 上一个", run: () => tabs.cycleActive(-1) },
+      { id: "win-minimize", title: "最小化窗口", keywords: "minimize 最小化", hint: chordHint("app.minimize"), run: () => void getCurrentWindow().minimize() },
+      { id: "win-fullscreen", title: "切换全屏", keywords: "fullscreen 全屏", hint: chordHint("app.toggle-fullscreen"), run: () => { const w = getCurrentWindow(); void w.isFullscreen().then((f) => w.setFullscreen(!f)).catch((e) => console.warn("toggle-fullscreen failed:", e)); } },
+      { id: "term-front", title: "把对应终端窗口拉到前台", keywords: "terminal 终端 front", hint: chordHint("terminal.bring-front"), run: () => tabs.bringActiveTerminalToFront() },
+      { id: "toggle-tasks", title: "开 / 关 Task 面板", keywords: "task 任务 panel", hint: chordHint("panel.toggle-tasks"), run: () => tasksPanel.toggle() },
+      { id: "tab-next", title: "切到下一个 Tab", keywords: "next tab 下一个", hint: chordHint("tab.next"), run: () => tabs.cycleActive(1) },
+      { id: "tab-prev", title: "切到上一个 Tab", keywords: "prev tab 上一个", hint: chordHint("tab.prev"), run: () => tabs.cycleActive(-1) },
     ];
     // 切到会话（来自 F91 只读投影 snapshotSessions）
     for (const s of tabs.snapshotSessions()) {

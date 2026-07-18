@@ -1,9 +1,11 @@
 /**
  * F88a（#52）用量 pivot 的纯逻辑——把后端 `aggregate_usage_all` 流回的 per-(会话,模型,天) token 桶
- * 按 会话/天/项目/模型 四维聚合。抽成**无 import 的纯模块**便于 node 轨断言（视图依赖 Tauri/DOM）。
+ * 按 会话/天/项目/模型 四维聚合。纯逻辑模块（只 import 同为纯模块的 `pricing`，node 轨可断言；视图才依赖 Tauri/DOM）。
  *
  * **只 token 不 $**（用户 2026-07-17 拍板）。硬边界：这是「已花费」，非「配额剩余」——UI 标死。
  */
+
+import { normalizeModel } from "./pricing";
 
 /** 与后端 `usage.rs::UsageTotals` wire 对齐（camelCase）。 */
 export interface UsageTotals {
@@ -76,8 +78,9 @@ export function pivotUsage(rows: SessionUsageRow[], dim: UsageDim): PivotRow[] {
             (row.projectName || row.projectPath || "(未知项目)");
           break;
         case "model":
-          key = b.model;
-          label = b.model;
+          // 业务二审 gap#6：归一化模型串（剥 [1m]/-fast/尾部日期快照），否则同一模型的不同日期快照碎成多行。
+          key = normalizeModel(b.model);
+          label = normalizeModel(b.model);
           break;
       }
       let pr = map.get(key);

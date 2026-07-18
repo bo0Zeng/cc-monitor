@@ -8,15 +8,19 @@
  * 「今日 token」= 后续项（需跨会话聚合，非纯前端；本刀先聚焦 context% 这个最高价值信号）。
  */
 
-import { contextPercent, normalizeModel } from "./views/pricing";
+import { contextPercent, normalizeModel, type ContextLimitOverrides } from "./views/pricing";
+import { loadConfig } from "./config";
 
 export class UsageHud {
   /** 挂 status-bar 的 chip。 */
   readonly summaryElement: HTMLButtonElement;
   private model: string | null = null;
   private promptTokens: number | null = null;
+  /** 模型上限用户覆盖表（config.json `contextLimits`）——纠正标准 1M 模型串被当 200k 的 ctx% 误报。 */
+  private limitOverrides: ContextLimitOverrides = {};
 
   constructor() {
+    void this.loadLimitOverrides();
     const btn = document.createElement("button");
     btn.type = "button";
     // 复用 status-bar chip 基类（同 agents-panel 的 "status-tasks status-agents" 范式），
@@ -24,6 +28,24 @@ export class UsageHud {
     btn.className = "status-tasks usage-hud-chip";
     btn.style.display = "none"; // 无活跃会话/无 usage 时隐藏
     this.summaryElement = btn;
+  }
+
+  /** 读 config.json `contextLimits`（模型子串→上限 tokens）覆盖表，纠正 1M 模型 ctx% 误报。失败静默用默认表。 */
+  private async loadLimitOverrides(): Promise<void> {
+    try {
+      const cfg = (await loadConfig()) as Record<string, unknown>;
+      const raw = cfg["contextLimits"];
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        const out: ContextLimitOverrides = {};
+        for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+          if (typeof v === "number" && v > 0) out[k] = v;
+        }
+        this.limitOverrides = out;
+        this.render(); // 覆盖表迟到 → 重算已显的 chip
+      }
+    } catch {
+      /* 用内置默认上限表 */
+    }
   }
 
   /** 点击 chip 的行为（main.ts 注入：打开用量视图）。 */
@@ -49,7 +71,7 @@ export class UsageHud {
       return;
     }
     btn.style.display = "";
-    const pct = contextPercent(this.model, this.promptTokens);
+    const pct = contextPercent(this.model, this.promptTokens, this.limitOverrides);
     const tok = this.promptTokens.toLocaleString("en-US");
     if (pct == null) {
       btn.textContent = "ctx ?";
