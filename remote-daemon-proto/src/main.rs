@@ -68,7 +68,10 @@ const PROTO_VERSION: u32 = 1;
 /// - p1i-line-offset = Line 帧附 `byte_offset`（daemon-01/gap#2，累计原始字节、逐字节对齐 aterm
 ///   `LineFramer`：计 CRLF `\r`、含 `\n`、残行不计；给 offset 续拉/截断检测。additive、不 bump
 ///   PROTO_VERSION——旧 client 忽略、旧 daemon 缺字段 client 得 0）
-const BUILD_ID: &str = "p1i-line-offset";
+/// - p1j-offset-resume = + `--read-session-from-offset <path> <offset>` 一次性查询（daemon-02/
+///   Phase 1）：从字节 offset 透传 [offset,EOF] = aterm `tail -c +(offset+1)`；配 p1i 的
+///   `byte_offset` 做重连/断线 offset 续拉。additive 子命令（旧 daemon 报 unknown arg、client 降级）
+const BUILD_ID: &str = "p1j-offset-resume";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
