@@ -344,6 +344,7 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 - `--read-session <jsonl_path>` → 原样透传该 jsonl 字节（monitor 侧走既有 `parse_line` 管线）
 - `--read-session-tail <jsonl_path> <N>`（Batch9-F30，p1g）→ **尾部优先**：首行 meta `{"kind":"snapshot_meta","total":T,"tail_from":F}`（可计行口径 = watcher 行号空间），随后原样输出行 [F,T)（最新 N 行）再输出 [0,F)。快照拉取用它——最新内容第一批就位、旧历史回填；monitor 按 meta 两段编 seq（前端 seq 二分插入天然支持乱序），`total` 做精确完整性对账。回填在途经 `snapshot-inflight` 事件驱动前端 batch 模式（替代纯 300ms 静默启发式，5min 防呆上限）
 - `--search <query> [--include-tools] [--scope user|assistant] [--after-ms N] [--limit N]`（issue #28）→ 服务端在远端 CPU 扫 `projects/**/*.jsonl` 做全文搜索（避免拉整库回本地），**每命中会话一行** camelCase `SessionHits` JSON（形状严格对齐 monitor `search::SessionHits`，monitor 补 `origin` 后与本地结果合并）
+- `--usage`（F88a-remote / #52，`remote-daemon-proto/src/usage_query.rs`）→ 服务端在远端聚合用量（**per-requestId 每字段 MAX**，口径对齐 monitor `usage.rs`——有 `per_request_field_max_matches_local_kou_jing` 跨轨对账测），**每会话一行** camelCase 用量行 JSON，monitor 侧 `remote_history::aggregate_remote_usage_all` fan-out 合并（各带 `origin`）。**additive 子命令、未 bump PROTO_VERSION**。
 
 错误写 stderr + 退出码 2。所有路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**旧 daemon 兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
 

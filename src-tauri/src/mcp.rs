@@ -1,10 +1,10 @@
-//! F87（#50+#51）：MCP 管理（项目级）。**SS-14 读写分界**（doc/../plan SS-14）：
-//! - **读**：跨 scope 展示——用户 scope（`~/.claude.json` 顶层 `mcpServers`）+ local scope
-//!   （`~/.claude.json` `projects[<dir>].mcpServers`）+ 项目 scope（`<dir>/.mcp.json`）。**宽容读**
-//!   （INVARIANTS §18）：文件缺 / 坏 JSON / 字段缺一律跳过（空），不崩；server 值**原样保留**。
-//! - **写**：**只** `<dir>/.mcp.json`（增/改/删）。**绝不写 `~/.claude.json` / `settings.json`**——
-//!   写函数经 `mcp_json_path` 硬编码只拼 `.mcp.json`（同 SFTP 编辑：写用户自己项目的文件，铁律正交）。
-//! - **运行时控制 / 活状态 / 跨机 / managed**：首刀不做（记账，见 feature 计划）。
+//! F87（#50+#51）本机 / **F87b+F89a（#52 跨机）** MCP 管理。**SS-14 读写分界**（doc/../plan SS-14 + INVARIANTS §1 例外 #5）：
+//! - **读**：本机跨 scope（用户 `~/.claude.json` 顶层 + local `projects[<dir>]` + 项目 `<dir>/.mcp.json`）+
+//!   **远端** user scope（`read_remote_mcp_servers`：SSH-exec cat 远端 `~/.claude.json`）+ **远端项目**
+//!   （`read_remote_project_mcp`：SFTP 读远端 `<dir>/.mcp.json`）。**宽容读**（INVARIANTS §18）：缺/坏/字段缺跳过、server 原样。
+//! - **写**：**只** `<dir>/.mcp.json`（增/改/删）。**绝不写 `~/.claude.json` / `settings.json`**——本机经 `mcp_json_path`
+//!   硬编码 / **远端**经 `remote_mcp_json_path`+`is_safe_remote_mcp_json` 守卫 + `sftp::upload_atomic`（本文件承载
+//!   `write_remote_mcp_server`/`remove_remote_mcp_server`）。SS-G：远端写仅用户显式触发。
 //!
 //! `~/.claude.json` 路径有变体（`CLAUDE_CONFIG_DIR` vs `$HOME`），故 `claude_json_candidates` 取多候选、
 //! 读第一个存在的——防御式，schema 真机可能变，不硬假设完整。
