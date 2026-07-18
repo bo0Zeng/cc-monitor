@@ -161,6 +161,55 @@ pub async fn list_mcp_project_dirs() -> Result<Vec<String>, String> {
         .map_err(|e| format!("spawn_blocking: {e}"))
 }
 
+/// F87b③：跨机读远端 MCP。**只读**（守 §1：SSH exec `cat` 远端**用户自己**的 `~/.claude.json`，
+/// 不写、不驱动远端 agent；同 daemonless `find`/`tail` 读法）。**不依赖未建的 daemon**。
+/// 远端 shell 展开 `${CLAUDE_CONFIG_DIR:-$HOME}`；命令是**定值、无用户输入插值**（origin 只用于解析 cfg）→ 零注入面。
+/// 复用纯核心 `collect_entries` 取 **user scope**（顶层 mcpServers = 机器全局 MCP）。local/project scope 是
+/// per-项目、跨机无稳定映射，**不取**（见 F87b 计划）。带 30s 超时 + 32MB 上限（config 重度用户可数 MB）。
+/// 宽容：缺/坏文件 → 空段（cat 失败 stdout 空 → 解析 None → 空 Vec）。
+#[tauri::command]
+pub async fn read_remote_mcp_servers(origin: String) -> Result<Vec<McpServerEntry>, String> {
+    use tokio::io::AsyncReadExt;
+    let cfg = crate::load_remote_config_by_label(&origin)
+        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+    // 定值命令，无任何用户输入拼接 → 无注入面。2>/dev/null：文件缺失/权限错静默（走空段降级）。
+    const CMD: &str = r#"cat "${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json" 2>/dev/null"#;
+    let read = async {
+        let stream = crate::ssh_source::connect_and_exec_cmd(&cfg, CMD).await?;
+        let mut buf = Vec::new();
+        stream
+            .take(32 * 1024 * 1024) // 上限防远端异常巨输出撑爆内存
+            .read_to_end(&mut buf)
+            .await
+            .map_err(|e| format!("读取远端 ~/.claude.json 失败: {e}"))?;
+        Ok::<Vec<u8>, String>(buf)
+    };
+    let raw = tokio::time::timeout(std::time::Duration::from_secs(30), read)
+        .await
+        .map_err(|_| format!("远端 '{origin}' 读取超时（30s）"))??;
+    // §3 剥 BOM；宽容解析（坏 JSON → None → 空段，不报错）。
+    let text = String::from_utf8_lossy(&raw);
+    let claude_json: Option<Value> = serde_json::from_str(text.trim_start_matches('\u{feff}')).ok();
+    let src = format!("[{}] ~/.claude.json", cfg.origin_label());
+    Ok(collect_entries(claude_json.as_ref(), &src, None, "", None))
+}
+
+/// F87b③：机器选择器用——返回**已配置且启用**的远端 origin（**canonical** `origin_label()`，后端口径）。
+/// 前端据此直接下发给 `read_remote_mcp_servers`，**不自行从原始 config 重推 origin**——避免与后端解析口径
+/// 漂移：空 label 回退 host / 重名去重（`box`→`box (#2)`）/ 不完整主机丢弃 都由后端 `load_remote_configs`
+/// 统一定义，这里返回的正是 `load_remote_config_by_label` 能解析的那批 label。§10 spawn_blocking（读 config 文件）。
+#[tauri::command]
+pub async fn list_remote_mcp_origins() -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(|| {
+        crate::load_remote_configs()
+            .iter()
+            .map(|c| c.origin_label())
+            .collect()
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking: {e}"))
+}
+
 /// **只**返回 `<dir>/.mcp.json` 路径——写侧唯一出口，硬编码 `.mcp.json`，杜绝误写
 /// `~/.claude.json` / `settings.json`（SS-14 铁律；grep 门禁：本文件写路径只此一处）。
 fn mcp_json_path(project_dir: &str) -> Result<PathBuf, String> {
@@ -293,6 +342,24 @@ mod tests {
         // server 原样保留
         let proj_e = out.iter().find(|e| e.scope == "project").unwrap();
         assert_eq!(proj_e.server["url"], json!("x"));
+    }
+
+    #[test]
+    fn remote_read_takes_user_scope_only() {
+        // F87b③：跨机读的契约——`collect_entries(cj, src, None, "", None)` 只出 user scope
+        // （顶层 mcpServers = 机器全局 MCP）。有 projects（local scope 候选）也不取（project_dir=None）。
+        let remote_claude = json!({
+            "mcpServers": { "global-a": { "command": "a" }, "global-b": { "type": "http", "url": "u" } },
+            "projects": { "/remote/proj": { "mcpServers": { "local-x": { "command": "x" } } } }
+        });
+        let out = collect_entries(Some(&remote_claude), "[pi] ~/.claude.json", None, "", None);
+        assert_eq!(out.len(), 2, "只取 user scope 两条，不含 local/project");
+        assert!(out.iter().all(|e| e.scope == "user"));
+        let names: Vec<&str> = out.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"global-a") && names.contains(&"global-b"));
+        assert!(!names.contains(&"local-x"), "local scope 不该跨机取");
+        // 来源路径标了 origin（前端据此显只读远端来源）
+        assert!(out.iter().all(|e| e.source_path == "[pi] ~/.claude.json"));
     }
 
     #[test]
