@@ -672,6 +672,143 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   font-size: var(--font-size-small);
 }
 
+/* F91b（batch17）：选中 cell 高亮（去模态——点 cell 不再关板，改高亮 + 底部 peek）。 */
+.grid-monitor-cell.is-selected {
+  border-color: var(--accent, #7aa2f7);
+  box-shadow: 0 0 0 1px var(--accent, #7aa2f7) inset;
+}
+
+/* F91b：底部 peek 面板——选中会话的内容详情（cwd/状态/model/agent/改过的文件）+ 跳转按钮。 */
+.grid-monitor-peek {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-strong);
+  background: var(--bg-2);
+  padding: 10px 14px;
+  max-height: 34vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.grid-monitor-peek.is-empty {
+  display: none;
+}
+.grid-monitor-peek-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.grid-monitor-peek-title {
+  font-size: var(--font-size-small);
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid-monitor-peek-origin {
+  font-size: var(--font-size-xs);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 5px;
+  flex-shrink: 0;
+}
+.grid-monitor-peek-spacer {
+  flex: 1;
+}
+.grid-monitor-peek-jump {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--accent, #7aa2f7);
+  color: var(--accent, #7aa2f7);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-small);
+  padding: 3px 10px;
+  border-radius: 4px;
+}
+.grid-monitor-peek-jump:hover {
+  background: var(--overlay-hover);
+}
+.grid-monitor-peek-close {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-small);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+.grid-monitor-peek-close:hover {
+  color: var(--text);
+}
+.grid-monitor-peek-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+}
+.grid-monitor-peek-fact {
+  display: flex;
+  gap: 6px;
+  font-size: var(--font-size-small);
+  min-width: 0;
+}
+.grid-monitor-peek-k {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.grid-monitor-peek-v {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid-monitor-peek-agents,
+.grid-monitor-peek-files {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: var(--font-size-xs);
+}
+.grid-monitor-peek-agent {
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+}
+.grid-monitor-peek-agent.status-running {
+  color: var(--accent, #7aa2f7);
+  border-color: var(--accent, #7aa2f7);
+}
+.grid-monitor-peek-agent.status-aborted {
+  color: var(--warn);
+  border-color: var(--warn);
+  opacity: 0.8;
+}
+.grid-monitor-peek-more {
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  font-style: italic;
+}
+.grid-monitor-peek-filelist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+}
+.grid-monitor-peek-file {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* F84（#57）：键盘命令栏（Ctrl+K）—— 半透明遮罩 + 居中偏上命令盒。 */
 .command-bar {
   position: fixed;

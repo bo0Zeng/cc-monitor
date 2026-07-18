@@ -51,3 +51,16 @@ export interface GridSessionSnapshot {
   /** 会话类型（"bg" → ⚙）；null / "interactive" = 交互。 */
   kind: string | null;
 }
+
+/**
+ * F91b（batch17）：监控板选中 cell 的「内容 peek」补充数据——比 `GridSessionSnapshot`（cell 面上那些）
+ * 更细、只在选中一格时按需取的字段。全来自 TabManager 内存（纯读派生，无后端/无落盘，守 §1/§28）。
+ */
+export interface SessionPeek {
+  /** 最新一轮 assistant 记录的 model 原串（供 peek 显示）；null = 尚无带 usage 记录。 */
+  model: string | null;
+  /** 本会话写类工具（Edit/Write/…）碰过的文件路径（首触序）——「谁跑偏」关键信号。 */
+  recentFiles: string[];
+  /** 本会话 subagent 名单（运行中优先），供 peek 显示「在跑什么」。 */
+  agents: { label: string; status: "running" | "done" | "aborted" }[];
+}
