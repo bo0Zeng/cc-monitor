@@ -69,6 +69,9 @@ export class McpSection {
   /** F87b②：project scope 加/改表单的输入引用——「编辑」按钮预填用（每次 reload 重建时刷新）。 */
   private addNameInput: HTMLInputElement | null = null;
   private addJsonInput: HTMLTextAreaElement | null = null;
+  /** F87b-fix：编辑态横幅（「编辑中 X · 取消」）——编辑时锁名，防改名静默重复。 */
+  private editBanner: HTMLElement | null = null;
+  private editNameLabel: HTMLElement | null = null;
   /** F87b③：当前选中的机器。null = 本机（既有本地读写）；非空 = 远端 origin（只读跨机）。 */
   private origin: string | null = null;
 
@@ -172,8 +175,10 @@ export class McpSection {
     for (const o of origins) mk(o, o);
   }
 
-  /** F87b③：切机器。本机 → 恢复本地读写；远端 → 隐藏项目目录行、只读跨机读。 */
+  /** F87b③：切机器。本机 → 恢复本地读写；远端 → 隐藏项目目录行、只读跨机读。
+   *  F87b-fix：已是当前机器 → 早退（防误双击同一钮触发并发 SSH；重读走远端头的「重新读取」钮）。 */
   private async selectMachine(origin: string | null): Promise<void> {
+    if (origin === this.origin) return;
     this.origin = origin;
     this.dirRow.style.display = origin === null ? "" : "none"; // 远端无项目目录概念
     const key = origin ?? "";
@@ -200,30 +205,66 @@ export class McpSection {
     this.renderList(entries, dir, false);
   }
 
-  /** F87b③：跨机只读读远端 user scope（机器全局 MCP）。失败弹 toast、不改本地。 */
+  /** F87b③：跨机只读读远端 user scope（机器全局 MCP）。切走的旧结果由 origin 守卫丢弃。
+   *  F87b-fix：失败 → **常驻内联错误 + 重试**（原仅 5s toast，消失后留白与「无配置」不可区分）；
+   *  加远端头（user-scope-only 说明 + 「重新读取」，因远端下项目目录行的「读取」钮已隐藏）。 */
   private async reloadRemote(origin: string): Promise<void> {
     this.listBox.replaceChildren();
     const loading = document.createElement("div");
-    loading.className = "settings-hint";
-    loading.textContent = `读取远端 [${origin}] 的 MCP 配置…`;
+    loading.className = "settings-hint mcp-loading";
+    loading.textContent = `读取远端 [${origin}] 的 MCP 配置…（走 SSH，可能数秒）`;
     this.listBox.appendChild(loading);
     let entries: McpServerEntry[];
     try {
       entries = await invoke<McpServerEntry[]>("read_remote_mcp_servers", { origin });
     } catch (e) {
       if (this.origin !== origin) return; // 期间已切走 → 丢弃
-      this.listBox.replaceChildren();
-      showActionFailureToast(`读取远端 [${origin}] MCP 失败`, String(e));
+      this.renderRemoteError(origin, String(e));
       return;
     }
     if (this.origin !== origin) return; // 期间已切走 → 丢弃这次结果
     this.renderList(entries, "", true);
+    this.listBox.prepend(this.buildRemoteHeader(origin)); // 头：仅 user scope 说明 + 重新读取
     if (entries.length === 0) {
       const empty = document.createElement("div");
       empty.className = "settings-hint";
       empty.textContent = `远端 [${origin}] 无 user scope MCP 配置（或 ~/.claude.json 缺失）。`;
       this.listBox.appendChild(empty);
     }
+  }
+
+  /** F87b-fix：远端读失败 → 常驻内联错误 + 重试钮（区分「读失败」vs「远端无配置」）。 */
+  private renderRemoteError(origin: string, msg: string): void {
+    this.listBox.replaceChildren();
+    const box = document.createElement("div");
+    box.className = "mcp-remote-error";
+    const line = document.createElement("div");
+    line.textContent = `读取远端 [${origin}] MCP 失败：${msg}`;
+    box.appendChild(line);
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "settings-btn settings-btn-secondary";
+    retry.textContent = "重试";
+    retry.addEventListener("click", () => void this.reloadRemote(origin));
+    box.appendChild(retry);
+    this.listBox.appendChild(box);
+  }
+
+  /** F87b-fix：远端列表头——标明跨机只取 user scope（项目/local 不跨机取）+ 「重新读取」入口
+   *  （远端下项目目录行的「读取」钮已隐藏，否则重读远端无可见入口）。 */
+  private buildRemoteHeader(origin: string): HTMLElement {
+    const head = document.createElement("div");
+    head.className = "mcp-remote-head";
+    const note = document.createElement("span");
+    note.className = "settings-hint";
+    note.textContent = "跨机只读，仅显机器全局（user scope）MCP；项目/local scope 为 per-项目，不跨机取。";
+    const refresh = document.createElement("button");
+    refresh.type = "button";
+    refresh.className = "settings-btn settings-btn-secondary mcp-remote-refresh";
+    refresh.textContent = "重新读取";
+    refresh.addEventListener("click", () => void this.reloadRemote(origin));
+    head.append(note, refresh);
+    return head;
   }
 
   /** 渲染分组列表。remote=true：全只读、只显有条目的 scope、无加/改表单（跨机 user scope 只读）。 */
@@ -266,6 +307,7 @@ export class McpSection {
       rowEl.append(name, summary);
 
       // F87b①：看完整 JSON——「JSON」折叠钮切换下方详情（含完整配置 + 来源文件路径，诊断用）。
+      // F87b-fix：懒建——`JSON.stringify` 推迟到首次展开（原每行急切 stringify，即便折叠、多 server 时白算）。
       const detail = document.createElement("div");
       detail.className = "mcp-server-detail is-collapsed";
       const src = document.createElement("div");
@@ -273,8 +315,8 @@ export class McpSection {
       src.textContent = `来源：${e.sourcePath}`;
       const pre = document.createElement("pre");
       pre.className = "mcp-server-json";
-      pre.textContent = JSON.stringify(e.server, null, 2);
       detail.append(src, pre);
+      let jsonBuilt = false;
 
       const jsonBtn = document.createElement("button");
       jsonBtn.type = "button";
@@ -283,6 +325,10 @@ export class McpSection {
       jsonBtn.title = "看完整配置 JSON + 来源文件";
       jsonBtn.addEventListener("click", () => {
         const collapsed = detail.classList.toggle("is-collapsed");
+        if (!collapsed && !jsonBuilt) {
+          pre.textContent = JSON.stringify(e.server, null, 2); // 首次展开才算
+          jsonBuilt = true;
+        }
         jsonBtn.classList.toggle("active", !collapsed);
       });
       rowEl.appendChild(jsonBtn);
@@ -293,15 +339,8 @@ export class McpSection {
         edit.type = "button";
         edit.className = "settings-btn settings-btn-secondary mcp-edit";
         edit.textContent = "编辑";
-        edit.title = "把这条填进下方表单编辑后保存（覆盖同名）";
-        edit.addEventListener("click", () => {
-          if (this.addNameInput && this.addJsonInput) {
-            this.addNameInput.value = e.name;
-            this.addJsonInput.value = JSON.stringify(e.server, null, 2);
-            this.addJsonInput.focus();
-            this.addJsonInput.scrollIntoView({ block: "nearest" });
-          }
-        });
+        edit.title = "把这条填进下方表单改配置后保存（覆盖）。改名请删旧新增。";
+        edit.addEventListener("click", () => this.beginEdit(e.name, e.server));
         rowEl.appendChild(edit);
 
         const del = document.createElement("button");
@@ -325,6 +364,20 @@ export class McpSection {
   private renderAddForm(dir: string): HTMLElement {
     const form = document.createElement("div");
     form.className = "mcp-add-form";
+    // F87b-fix：编辑态横幅（默认隐藏）——「编辑中 X · 取消」。编辑时锁名，防「改名再存」静默新增副本。
+    const banner = document.createElement("div");
+    banner.className = "mcp-edit-banner";
+    banner.style.display = "none";
+    const bLabel = document.createElement("span");
+    banner.appendChild(bLabel);
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "settings-btn settings-btn-secondary";
+    cancelBtn.textContent = "取消编辑";
+    cancelBtn.addEventListener("click", () => this.cancelEdit());
+    banner.appendChild(cancelBtn);
+    this.editBanner = banner;
+    this.editNameLabel = bLabel;
     const nameInput = document.createElement("input");
     nameInput.className = "settings-input";
     nameInput.placeholder = "server 名";
@@ -356,8 +409,32 @@ export class McpSection {
       }
       void this.writeEntry(dir, name, parsed.value);
     });
-    form.append(nameInput, jsonInput, saveBtn);
+    form.append(banner, nameInput, jsonInput, saveBtn);
     return form;
+  }
+
+  /** F87b-fix：进入编辑态——预填 + **锁名**（编辑 = 改配置不改名，防改名静默新增副本；改名请删旧新增）。 */
+  private beginEdit(name: string, server: unknown): void {
+    if (!this.addNameInput || !this.addJsonInput) return;
+    this.addNameInput.value = name;
+    this.addNameInput.readOnly = true;
+    this.addJsonInput.value = JSON.stringify(server, null, 2);
+    if (this.editBanner && this.editNameLabel) {
+      this.editNameLabel.textContent = `编辑中：${name}（改配置后保存覆盖；改名请删旧新增）`;
+      this.editBanner.style.display = "";
+    }
+    this.addJsonInput.focus();
+    this.addJsonInput.scrollIntoView({ block: "nearest" });
+  }
+
+  /** F87b-fix：退出编辑态——解锁名、清空、收横幅。 */
+  private cancelEdit(): void {
+    if (this.addNameInput) {
+      this.addNameInput.readOnly = false;
+      this.addNameInput.value = "";
+    }
+    if (this.addJsonInput) this.addJsonInput.value = "";
+    if (this.editBanner) this.editBanner.style.display = "none";
   }
 
   private async writeEntry(dir: string, name: string, server: unknown): Promise<void> {

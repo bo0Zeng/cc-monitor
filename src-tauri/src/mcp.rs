@@ -163,17 +163,21 @@ pub async fn list_mcp_project_dirs() -> Result<Vec<String>, String> {
 
 /// F87b③：跨机读远端 MCP。**只读**（守 §1：SSH exec `cat` 远端**用户自己**的 `~/.claude.json`，
 /// 不写、不驱动远端 agent；同 daemonless `find`/`tail` 读法）。**不依赖未建的 daemon**。
-/// 远端 shell 展开 `${CLAUDE_CONFIG_DIR:-$HOME}`；命令是**定值、无用户输入插值**（origin 只用于解析 cfg）→ 零注入面。
+/// 命令是**定值、无用户输入插值**（origin 只用于解析 cfg）→ 零注入面；远端 shell 展开变量。
 /// 复用纯核心 `collect_entries` 取 **user scope**（顶层 mcpServers = 机器全局 MCP）。local/project scope 是
 /// per-项目、跨机无稳定映射，**不取**（见 F87b 计划）。带 30s 超时 + 32MB 上限（config 重度用户可数 MB）。
 /// 宽容：缺/坏文件 → 空段（cat 失败 stdout 空 → 解析 None → 空 Vec）。
+/// F87b-fix(batch18 审计修)：① **多候选路径**——先试 `$CLAUDE_CONFIG_DIR/.claude.json`、再回退 `$HOME/.claude.json`
+/// （对齐本机 `claude_json_candidates` 的多候选防御；原只试单一 `${CLAUDE_CONFIG_DIR:-$HOME}`，当用户把
+/// CLAUDE_CONFIG_DIR 指向数据目录却把 .claude.json 留在 $HOME 时静默误报空）。② 大解析进 spawn_blocking（对齐 §10）。
 #[tauri::command]
 pub async fn read_remote_mcp_servers(origin: String) -> Result<Vec<McpServerEntry>, String> {
     use tokio::io::AsyncReadExt;
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
-    // 定值命令，无任何用户输入拼接 → 无注入面。2>/dev/null：文件缺失/权限错静默（走空段降级）。
-    const CMD: &str = r#"cat "${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json" 2>/dev/null"#;
+    // 定值命令，无任何用户输入拼接 → 无注入面。多候选：CLAUDE_CONFIG_DIR 位置优先、否则 $HOME；
+    // 2>/dev/null + `|| true`：文件缺失/权限错静默（走空段降级），首个存在且可读的即输出。
+    const CMD: &str = r#"{ [ -n "$CLAUDE_CONFIG_DIR" ] && cat "$CLAUDE_CONFIG_DIR/.claude.json" 2>/dev/null; } || cat "$HOME/.claude.json" 2>/dev/null || true"#;
     let read = async {
         let stream = crate::ssh_source::connect_and_exec_cmd(&cfg, CMD).await?;
         let mut buf = Vec::new();
@@ -187,9 +191,13 @@ pub async fn read_remote_mcp_servers(origin: String) -> Result<Vec<McpServerEntr
     let raw = tokio::time::timeout(std::time::Duration::from_secs(30), read)
         .await
         .map_err(|_| format!("远端 '{origin}' 读取超时（30s）"))??;
-    // §3 剥 BOM；宽容解析（坏 JSON → None → 空段，不报错）。
-    let text = String::from_utf8_lossy(&raw);
-    let claude_json: Option<Value> = serde_json::from_str(text.trim_start_matches('\u{feff}')).ok();
+    // §3 剥 BOM；宽容解析（坏 JSON → None → 空段，不报错）。解析可数 MB → spawn_blocking 不占异步 worker。
+    let claude_json: Option<Value> = tokio::task::spawn_blocking(move || {
+        let text = String::from_utf8_lossy(&raw);
+        serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}')).ok()
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking: {e}"))?;
     let src = format!("[{}] ~/.claude.json", cfg.origin_label());
     Ok(collect_entries(claude_json.as_ref(), &src, None, "", None))
 }
