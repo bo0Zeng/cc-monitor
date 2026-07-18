@@ -5,9 +5,8 @@
 //! - `--list-projects`                → 列举 `<claude_dir>/projects/` 下各项目
 //! - `--list-sessions <project_dir>`  → 列举某项目目录下的历史会话（带元数据）
 //! - `--read-session <jsonl_path>`    → 原样透传该 jsonl 文件内容（monitor 侧解析）
-//! - `--read-session-from-offset <jsonl_path> <offset>`
-//!                                    → 从字节 `offset`（0-based）透传 [offset, EOF]，
-//!                                      = aterm `tail -c +(offset+1)`（offset 续拉/重连恢复）
+//! - `--read-session-from-offset <jsonl_path> <offset>` → 从字节 `offset`（0-based）透传
+//!   [offset, EOF]，= aterm `tail -c +(offset+1)`（offset 续拉/重连恢复）
 //!
 //! 输出协议：`--list-*` 每行一个 JSON 对象（**不是** wire::Frame——查询模式与流式
 //! 协议互不混用，旧 daemon 不认参数会照常进流模式发 hello，monitor 以"首行是
@@ -215,9 +214,11 @@ fn read_session_from_offset(
     Ok(())
 }
 
-/// 纯：offset 续拉的字节切片语义（供单测对拍 aterm `tail -c +(offset+1)`）。
+/// 纯：offset 续拉的字节切片语义（**仅供单测**对拍 aterm `tail -c +(offset+1)`；生产
+/// `read_session_from_offset` 走 `File::seek`、不调本函数，故 `#[cfg(test)]` 不进生产二进制）。
 /// = `bytes[min(offset,len)..]`——offset ≤ len 时取 [offset, EOF]；offset > len
 /// （截断）时取空（与 `File::seek` 过 EOF 后读空一致，不 panic）。
+#[cfg(test)]
 fn slice_from_offset(bytes: &[u8], offset: u64) -> &[u8] {
     let o = (offset as usize).min(bytes.len());
     &bytes[o..]
@@ -293,6 +294,8 @@ fn read_session_tail(claude_dir: &Path, jsonl_path: &str, n: usize) -> Result<()
 /// 生产路径已流式化（read_session_tail，审计 D 内存修订）；本函数保留为
 /// 口径锚点（tail_tests 锚定语义），流式版与它的等价性由本机行为验证对账
 /// （真实 18MB 会话：meta/字节输出逐段一致，见 Batch9 feature 30 §6 留档）。
+/// **仅测**（生产走流式版、不调本函数）→ `#[cfg(test)]` 不进生产二进制。
+#[cfg(test)]
 fn split_tail(bytes: &[u8], n: usize) -> (String, &[u8], &[u8]) {
     let complete_end = bytes.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
     let complete = &bytes[..complete_end];
