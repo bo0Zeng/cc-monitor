@@ -1,5 +1,10 @@
 # STATUS — daemon Codex 泛化（Phase 2D · 与 aterm 联合）
 
+## ⛔ Loop 停在 DG2 判活 gating 点（2026-07-19）——DG5/DG6 完成、DG1+DG2 需协调
+- ✅ **DG6 完成**（`daemon-DG6` 6e27f8d）：`resolve_query.rs` per-kind resume——Codex `<base> resume <uuid>`（子命令、无 --resume/unset、真机核）+ 默认 codex + `cx-` 名，golden-parity aterm CodexInvocation；Claude 字节不变。**低风险 D（1 focused agent）无阻塞**，修补负例测+大小写注；记第 3 divergence（is_shell_safe_base 比 aterm 严）。daemon 108/clippy 0。
+- **DG1 发现 + DG2 判活 = 停点**：DG1（watcher per-kind 发现/tail Codex + SessionAdded 发 codex/heuristic + Hello 翻 kinds + **接 TurnEnd gotcha**）**触核心 watcher（100KB live 循环 + Claude pidfile 判活）**，且 DG1 要「哪些 Codex 会话算活」→ **耦合 DG2**；DG2 的「fd 持开」判活假设**未真机坐实**（需运行中 codex + aterm /proc-fd 同机交叉核）。→ 计划designated stop：**停 loop、协调 aterm 起真 codex 会话做判活实测 + 设计一轮核心 watcher 改法交用户**。
+- **已 cc-send aterm 约 DG2 判活实测协作**（aterm 已应承同机起真 codex 核 /proc/fd + logs_2.sqlite）。
+
 ## 当前阶段
 - ✅ **Phase A masterplan 用户已审批**（2026-07-19「批准，按计划推进」）。
 - ✅ **DG4 完成 + aterm 逐字对拍 verbatim-equivalent**（`daemon-DG4` 679f4c5）：`codex.rs`——Codex turn-end 检测器（is_codex_turn_end/codex_turn_end_uuid，turn_id 缺→envelope timestamp 回退），golden-parity aterm CodexTurnEndDetector（aterm 真读我 codex.rs 对抗核：子型集/uuid 回退链/坏信封/per-kind 隔离一字同）。daemon 99/clippy 0/Claude 零回归。staged（consumer=DG1/DG3）。
