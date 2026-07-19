@@ -36,17 +36,36 @@
 
 - ✅ **F1a-2 · parse 派发 + read-session 多 kind**（`codex-F1a2` f6c6bd5）：`parse_for_kind`（Claude→parse_line/Codex→to_jsonl_record）+ `kind_of_path` + `stream_read_session_jsonl` 多 kind。**Codex 会话内容现可解析+渲染**（read 路 live）；Claude 字节不变。摘 codex_record 模块 staged allow。monitor 331、总 clippy 不增。
 
-## 下一个（下轮 loop 目标）= F1a-3 · list-sessions 枚举多 kind + Codex 元数据
-- **list-sessions/项目列表枚举 `records_roots()`**（`history.rs:135` 项目扫 + `:193` 会话扫）：Claude 走 projects/<cwd> 分组、Codex 走 sessions/日期树。前端拿到 Codex 会话（含 jsonl_path）→ 点开走已接的 read 路渲染。
-- **Codex 会话元数据**（title/cwd/首条摘要）：per-kind 抽——Codex cwd 从 `session_meta.payload.cwd`（非 User.cwd）、title 从首条 message 或 session_meta。可能加 `session_meta` accessor。
-- **注意**：Codex 无 cwd-项目目录概念 → 用 `session_meta.cwd` 内存分组呈现（口径先想清、别硬套 projects/<enc(cwd)>）。真机 ~/.codex 验证列表。
-- 之后 F1a 完 → F3/F5/F7（部分待 aterm 2D）→ F1b+F4 判活（核心 startup，撞大改→停 loop）。
-- 之后：F3 turn-end（daemon 侧 codex_record 镜像 + per-kind turn_detect；需 agent_kind wire@aterm-2D 才跨项目联调）→ F5 用量 → F7 UI（第三条路下渲染基本免费，验证为主）→ F1 发现层重构（post-F2 专设计）+ daemon --agent → F4 判活 → F6 resume。
-- **潜在停点**：F3+ 的 daemon/wire 联调需 agent_kind wire（aterm 2D）——届时可能停 loop 等 aterm/交用户。
+- ✅ **F1a-3a · session_meta accessor**（`codex-F1a3a` d08d339）：`session_meta_cwd`/`session_meta_timestamp`（list cwd-grouping prep）。monitor 332、staged。
 
-## 待协调（不阻塞本地地基）
-- wire 共享面（agent_kind + liveness_confidence + ResumeSpec agent_kind）→ **aterm 2D 联调**。aterm 正推 2A（RecordParser SPI）。
-- F4 判活「fd 持开」假设 → 建到 F4 时起真 codex 会话实测坐实（源码已指向持开）。
+- ✅ **F1a-3b · Codex 枚举 + 项目入 list**（`codex-F1a3b` 6f3a613）：`enumerate_codex_sessions`（walk 日期树 + 读 session_meta cwd）+ `codex_projects_from`（cwd 分组 → HistoryProject，键 `codex:<cwd>`）+ list_history_projects 追加。**真机验证 13 会话→3 合成项目**。monitor 333、clippy 不增、零回归。
+
+- ✅ **F1a-3c · Codex 项目会话列接线**（`codex-F1a3c` 8b896fc）：`stream_history_sessions_in_project` 认 `codex:<cwd>` 键 + `codex_session_entry` + `codex_first_user_excerpt`（跳 env_context 噪音）。
+
+## ✅✅ F1a 完成（Codex 历史会话在 monitor 可浏览：项目分组 → 会话列 → 内容渲染，全 backend、前端零改、Claude 零回归）
+里程碑：F1s1 adapter 地基 + F2 记录层 keystone（第三条路：Codex→JsonlRecord）+ F1a-1/2/3（发现原语/read 路/list 枚举）。monitor 334、总 clippy 31 不增。**F1b（live watcher+判活）推迟**（核心 startup，与 F4 合并、撞大改→停 loop 交用户定范围）。
+
+- ✅ **F5 · monitor 用量 per-kind（Codex）**（`codex-F5` eba6b40）：`usage.rs` 加 Codex 分支——枚举 Codex 会话→逐行 raw JSON→`token_count` 的 `last_token_usage` 增量按 (model,天) SUM 归桶。字段映射 input=input_tokens−cached / cache_read=cached / cache_creation=0 / output=output_tokens（防重复计，input+cache_read=总 prompt）。model 取 turn_context.model。**Phase D 自审**修全零 no-op 事件 ghost 桶。**真机对账**（跨午夜/total 不可靠会话均 SUM last 对上）。monitor 341、clippy 31 不增、Claude 零回归。daemon --usage 的 Codex（远端）属 daemon --agent 片（待 aterm 2D）、本片不含。
+
+- ✅ **F7 · UI 验证 + 注入去噪**（`codex-F7` 2562057）：读前端渲染路坐实 Codex 经第三条路**渲染 largely 免费、零前端改**——消息 blocks 走 renderMessage、event→Unrecognized 命 default→skip(零事件噪音)、空 uuid 优雅跳、usage-pivot 对 Codex model/cache_creation=0 通用不崩。唯一代码改 = **注入上下文去噪**（role=user 正文 `<environment_context>`/`<recommended_plugins>` → isMeta=true 隐藏，对齐 doc §63 + aterm）。monitor 342、clippy 31 不增、Claude 渲染零回归。
+
+## ✅✅✅ 本地可独立完成的未阻塞 slice 全部完成（F1a 历史 / F5 用量 / F7 渲染+去噪）
+Codex 在 monitor **历史可浏览 + 内容正确渲染 + 用量计入**，全 backend·零前端改·Claude 零回归。monitor 342、clippy 31 不增。
+
+## ⛔ Loop 停在计划决策点（2026-07-19）——剩余全部命停点
+- **F1b+F4 判活**（live watcher + Codex 判活，无 pidfile）= **核心 startup 大改** → 计划早定「撞大改停 loop **交用户定范围**」。这是下一步、但需用户决定改造范围。
+- **F3 turn-end / F6 resume / daemon --agent** = 跨项目，**待 aterm 2D `agent_kind` wire** + 两阶段计划的 daemon 联合开发（用户定：aterm 到 daemon 阶段找我共同做）。
+→ 无本地未阻塞 slice 可续，**停 loop 交用户**（符合停止条件①③）。
+
+## ⬇ 传入约束（aterm 2B Phase D 真机审计同步 @00:47，都真机 codex 0.144.6【核】；记此供 F1b/F3 落地）
+1. **F1b 上下文表**：占用用 `last_token_usage.total_tokens`（**别用累计 `total_token_usage.total_tokens`**——单调增会把上下文卡死~100%）；上限直接读 `info.model_context_window`（真机 258400），**别拿 GPT model 套 Anthropic 200K/1M 档**。
+2. **F5 用量 input 语义**：`input_tokens` 含 `cached_input_tokens` → 新鲜输入 = input−cached（否则与 cacheRead 重复计）。**✅ 我 F5 已独立收敛到同解、真机对账无重复计**（互证）。
+3. **F3 turn-end**：`turn_id` 缺（v1 alias 路最可能）→ 回退键 = envelope timestamp（否则 null 被当"非 end"漏报最新完成轮）。我 `turn_id` accessor 现 staged、F3 接线时加回退。
+
+## 待协调（不阻塞已完成的本地地基）
+- wire 共享面（agent_kind + liveness_confidence + ResumeSpec agent_kind）→ **aterm 2D 联调**。aterm 正推 2B 用量 SPI。
+- **渲染去噪集对齐**：我已去噪 `<environment_context>`/`<recommended_plugins>`；`# AGENTS.md instructions`/`You have an MCP server…` 形态模糊、已 cc-send aterm 提议对齐 denoise 集 + 更新 doc §63。
+- F4 判活「fd 持开」假设 → 建到 F1b+F4 时起真 codex 会话实测坐实（源码已指向持开）。
 
 ## 回看
 - 2026-07-18 建 STATUS，Phase A 完，指向 F1。
