@@ -150,6 +150,97 @@ fn accumulate_usage(
     (buckets, cwd)
 }
 
+/// **Codex 会话用量累加**（per-kind：event_msg `token_count` 的 `last_token_usage` 增量，非 Claude
+/// requestId 路）。逐行 raw JSON 解析——**用量轴按「第三条路」直读 rawJson，不经 `JsonlRecord`**（Codex 的
+/// token_count 落 `Unrecognized`、usage 挂 payload.info）。顺序扫描跟踪 `current_model`（turn_context.model），
+/// 每个 token_count 事件把 `last_token_usage` 增量按 (model, 天) 桶累加。
+///
+/// **字段映射**（对齐 Claude `UsageTotals` 语义、防重复计）：Codex `input_tokens` **含** cached →
+/// `input = input_tokens - cached_input_tokens`（未命中缓存部分）、`cache_read = cached_input_tokens`、
+/// `cache_creation = 0`（Codex API 不单列缓存创建）、`output = output_tokens`（已含 reasoning）。于是
+/// `input+cache_read = input_tokens`（总 prompt），与 Claude `input+cache_read+cache_creation` 口径一致。
+///
+/// **为何 SUM last 而非取 final total**：实测 `total_token_usage` 严格单调、`final == Σlast`（本轮增量），
+/// 但取 final 会把整会话记成单个 (model,天) 桶、丢跨天/跨模型粒度；SUM last 逐事件按 (当时 model, 事件当天)
+/// 归桶，与 Claude 逐 request 归桶一致。`msgs += 1`/**非全零** token_count 事件（= 一轮；真机见会话起始
+/// turn_context 前的全零 no-op 事件 → 跳，免造 `("unknown",天)` 全零 ghost 桶）。**无跨会话去重**（Codex
+/// 无 requestId、每 rollout 文件自成一会话、实测无 resume replay：13 文件 session_id 各异、首 token_count
+/// total==last 无历史回放）。
+fn accumulate_codex_usage(
+    lines: impl Iterator<Item = String>,
+) -> HashMap<(String, String), UsageTotals> {
+    use crate::codex_record as cx;
+    let mut buckets: HashMap<(String, String), UsageTotals> = HashMap::new();
+    let mut current_model = "unknown".to_string();
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let v: serde_json::Value = match serde_json::from_str(trimmed) {
+            Ok(v) => v,
+            Err(_) => continue, // 坏行/非 JSON → 跳过不崩
+        };
+        match cx::classify(&v) {
+            cx::CodexRecordKind::TurnContext => {
+                if let Some(m) = cx::turn_context_model(&v).filter(|m| !m.is_empty()) {
+                    current_model = m.to_string();
+                }
+            }
+            cx::CodexRecordKind::TokenCount => {
+                if let Some(u) = cx::token_usage_last(&v) {
+                    let (input_tokens, cached, output) = cx::token_usage_fields(u);
+                    // 全零 token_count（真机见会话起始、turn_context 前的 no-op 事件）→ 跳：非真轮次，
+                    // 否则造 `("unknown",天)` 全零 ghost 桶且虚增 msgs（总量不变但噪音）。
+                    if input_tokens == 0 && cached == 0 && output == 0 {
+                        continue;
+                    }
+                    let day = cx::envelope_ts(&v)
+                        .as_deref()
+                        .and_then(|t| t.get(0..10))
+                        .unwrap_or("")
+                        .to_string();
+                    let b = buckets.entry((current_model.clone(), day)).or_default();
+                    b.input += input_tokens.saturating_sub(cached);
+                    b.cache_read += cached;
+                    b.output += output;
+                    b.msgs += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    buckets
+}
+
+/// 扫一个 Codex 会话 → 用量行（session_id/project 取自枚举的 [`CodexSessionInfo`]，cwd 权威来自 session_meta）。
+/// 无 token_count 的会话返 None（不报空行）。
+fn analyze_codex_usage(info: &crate::history::CodexSessionInfo) -> Option<SessionUsageRow> {
+    let file = File::open(&info.path).ok()?;
+    let buckets = accumulate_codex_usage(BufReader::new(file).lines().map_while(Result::ok));
+    if buckets.is_empty() {
+        return None;
+    }
+    let project_path = info.cwd.clone();
+    let project_name = Path::new(&project_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(&project_path)
+        .to_string();
+    let mut buckets: Vec<UsageBucket> = buckets
+        .into_iter()
+        .map(|((model, day), totals)| UsageBucket { model, day, totals })
+        .collect();
+    buckets.sort_by(|a, b| b.day.cmp(&a.day).then_with(|| a.model.cmp(&b.model)));
+    Some(SessionUsageRow {
+        session_id: info.sid.clone(),
+        project_path,
+        project_name,
+        buckets,
+        origin: None,
+    })
+}
+
 /// 扫一个会话 jsonl → 该会话的用量行。无任何 usage 的会话返 None（不报空行）。
 fn analyze_usage_in_session(
     path: &Path,
@@ -222,6 +313,17 @@ pub async fn aggregate_usage_all(on_row: Channel<SessionUsageRow>) -> Result<u32
                     }
                     count += 1;
                 }
+            }
+        }
+        // Codex 会话用量（per-kind token_count 路；无 `~/.codex/sessions` → 枚举返空、零成本、零回归）。
+        // Claude 侧上面完全不动（用量双写 parity 红线）；Codex 各会话独立、不共享 seen_requests。
+        for info in crate::history::enumerate_codex_sessions() {
+            if let Some(row) = analyze_codex_usage(&info) {
+                if on_row.send(row).is_err() {
+                    tracing::info!("aggregate_usage_all: cancelled at {count} sessions (codex)");
+                    return Ok(count);
+                }
+                count += 1;
             }
         }
         tracing::info!(
@@ -399,5 +501,137 @@ mod tests {
         assert_eq!(t.cache_read, 19059);
         assert_eq!(t.output, 484);
         assert_eq!(t.msgs, 1);
+    }
+
+    // ─── F5：Codex 用量（token_count 路）───
+
+    /// Codex turn_context 信封（携 model）。
+    fn cx_turn_context(model: &str) -> String {
+        format!(
+            r#"{{"timestamp":"2026-07-18T08:00:00Z","type":"turn_context","payload":{{"turn_id":"t","cwd":"/p","model":"{model}"}}}}"#
+        )
+    }
+    /// Codex token_count 事件（last_token_usage 增量，真机字段名）。
+    fn cx_token_count(day: &str, input: u64, cached: u64, output: u64) -> String {
+        format!(
+            r#"{{"timestamp":"{day}T08:00:00Z","type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":{input},"cached_input_tokens":{cached},"output_tokens":{output},"reasoning_output_tokens":0,"total_tokens":0}},"last_token_usage":{{"input_tokens":{input},"cached_input_tokens":{cached},"output_tokens":{output},"reasoning_output_tokens":0,"total_tokens":0}}}}}}}}"#
+        )
+    }
+
+    #[test]
+    fn codex_usage_sums_last_deltas_and_maps_fields() {
+        // 同 (model, 天) 下两 token_count 增量累加；字段映射：input=input_tokens-cached、
+        // cache_read=cached、cache_creation=0、output=output_tokens。msgs=事件数。
+        let lines = vec![
+            cx_turn_context("gpt-5.6-terra"),
+            cx_token_count("2026-07-18", 12599, 10496, 565),
+            cx_token_count("2026-07-18", 2000, 1500, 100),
+        ];
+        let buckets = accumulate_codex_usage(lines.into_iter());
+        assert_eq!(buckets.len(), 1, "同 model+天 归一桶");
+        let b = &buckets[&("gpt-5.6-terra".into(), "2026-07-18".into())];
+        assert_eq!(
+            b.input,
+            (12599 - 10496) + (2000 - 1500),
+            "input=未命中缓存部分累加"
+        );
+        assert_eq!(b.cache_read, 10496 + 1500, "cache_read=cached 累加");
+        assert_eq!(b.cache_creation, 0, "Codex 不单列缓存创建");
+        assert_eq!(b.output, 565 + 100);
+        assert_eq!(b.msgs, 2, "每 token_count 事件 = 一轮");
+    }
+
+    #[test]
+    fn codex_usage_input_plus_cache_read_equals_total_prompt_no_double_count() {
+        // 关键防重复计：input_tokens 含 cached → input+cache_read 必等于 input_tokens（总 prompt），
+        // 不得把 cached 既算进 input 又算进 cache_read。
+        let buckets = accumulate_codex_usage(
+            vec![cx_token_count("2026-07-18", 12599, 10496, 565)].into_iter(),
+        );
+        let b = &buckets[&("unknown".into(), "2026-07-18".into())]; // 无 turn_context → unknown
+        assert_eq!(
+            b.input + b.cache_read,
+            12599,
+            "input+cache_read=input_tokens（总 prompt）"
+        );
+        assert_eq!(b.input, 2103);
+        assert_eq!(b.cache_read, 10496);
+        assert_eq!(b.output, 565);
+    }
+
+    #[test]
+    fn codex_usage_empty_without_token_count() {
+        // 只有 turn_context / session_meta、无 token_count → 空桶（analyze_codex_usage 返 None、不报空行）。
+        let lines = vec![
+            r#"{"timestamp":"2026-07-18T08:00:00Z","type":"session_meta","payload":{"cwd":"/p"}}"#
+                .to_string(),
+            cx_turn_context("gpt-5.6-terra"),
+        ];
+        assert!(accumulate_codex_usage(lines.into_iter()).is_empty());
+    }
+
+    #[test]
+    fn codex_usage_buckets_split_on_model_switch() {
+        // 会话中途换模型（多 turn_context）→ 各 token_count 归当时 model 桶。
+        let lines = vec![
+            cx_turn_context("m1"),
+            cx_token_count("2026-07-18", 100, 0, 10),
+            cx_turn_context("m2"),
+            cx_token_count("2026-07-18", 200, 0, 20),
+        ];
+        let buckets = accumulate_codex_usage(lines.into_iter());
+        assert_eq!(buckets.len(), 2, "两模型两桶");
+        assert_eq!(buckets[&("m1".into(), "2026-07-18".into())].output, 10);
+        assert_eq!(buckets[&("m2".into(), "2026-07-18".into())].output, 20);
+    }
+
+    #[test]
+    fn codex_usage_buckets_split_across_days() {
+        // 跨天（同 model）→ 各 token_count 归事件当天桶（token_count 信封 timestamp 前 10 字符）。
+        let lines = vec![
+            cx_turn_context("m"),
+            cx_token_count("2026-07-18", 100, 0, 10),
+            cx_token_count("2026-07-19", 200, 0, 20),
+        ];
+        let buckets = accumulate_codex_usage(lines.into_iter());
+        assert_eq!(buckets.len(), 2, "两天两桶");
+        assert_eq!(buckets[&("m".into(), "2026-07-18".into())].input, 100);
+        assert_eq!(buckets[&("m".into(), "2026-07-19".into())].input, 200);
+    }
+
+    #[test]
+    fn codex_usage_skips_all_zero_token_count_events() {
+        // 真机坑：会话起始 turn_context 前有全零 last_token_usage 的 no-op token_count →
+        // 须跳，否则造 ("unknown",天) 全零 ghost 桶 + 虚增 msgs。有真用量的事件正常计。
+        let lines = vec![
+            cx_token_count("2026-07-18", 0, 0, 0), // turn_context 前全零 → 跳
+            cx_turn_context("m"),
+            cx_token_count("2026-07-18", 100, 0, 10),
+        ];
+        let buckets = accumulate_codex_usage(lines.into_iter());
+        assert_eq!(buckets.len(), 1, "全零事件不建桶");
+        assert!(
+            !buckets.contains_key(&("unknown".into(), "2026-07-18".into())),
+            "无 unknown ghost 桶"
+        );
+        assert_eq!(
+            buckets[&("m".into(), "2026-07-18".into())].msgs,
+            1,
+            "只计真用量轮"
+        );
+    }
+
+    #[test]
+    fn codex_usage_skips_bad_lines_and_claude_records() {
+        // 坏行/空行/Claude 记录（无信封 type/payload）→ 跳过不崩、不计。
+        let lines = vec![
+            "".to_string(),
+            "not json".to_string(),
+            assistant("m", "2026-07-18", 5, 0, 100, 20), // Claude 形状 → classify=Other → 跳
+            cx_token_count("2026-07-18", 100, 0, 10),
+        ];
+        let buckets = accumulate_codex_usage(lines.into_iter());
+        assert_eq!(buckets.len(), 1);
+        assert_eq!(buckets[&("unknown".into(), "2026-07-18".into())].msgs, 1);
     }
 }
