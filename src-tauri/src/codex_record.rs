@@ -110,9 +110,31 @@ pub fn turn_id(v: &Value) -> Option<&str> {
 }
 
 /// token_count 的 `payload.info.last_token_usage`（本轮增量用量；F5 抽字段）。原样返回 Value。
-#[allow(dead_code)] // F5(用量) consumer 接线前 staged
+/// **实测 total_token_usage 严格单调、final == Σlast**——故 F5 按 (model,天) 累加各事件 last 增量，
+/// 与 Claude 逐 request 归桶一致（取 final total 会丢跨天/跨模型粒度）。
 pub fn token_usage_last(v: &Value) -> Option<&Value> {
     unwrap_envelope(v)?.1.get("info")?.get("last_token_usage")
+}
+
+/// turn_context 的 `payload.model`（F5 用量按模型归桶；一会话可多 turn_context/换模型）。非 turn_context → None。
+pub fn turn_context_model(v: &Value) -> Option<&str> {
+    if classify(v) != CodexRecordKind::TurnContext {
+        return None;
+    }
+    unwrap_envelope(v)?.1.get("model").and_then(Value::as_str)
+}
+
+/// 从 token 用量子对象（last_token_usage/total_token_usage）读 `(input_tokens, cached_input_tokens,
+/// output_tokens)`。缺字段→0。**Codex `input_tokens` 含 cached**——映射进 Claude 口径时须 `input -= cached`
+/// 防重复计（见 usage.rs `accumulate_codex_usage`）。`reasoning_output_tokens` 是 output 子集、`total_tokens`
+/// 冗余 → 不单列。
+pub fn token_usage_fields(usage: &Value) -> (u64, u64, u64) {
+    let g = |k: &str| usage.get(k).and_then(Value::as_u64).unwrap_or(0);
+    (
+        g("input_tokens"),
+        g("cached_input_tokens"),
+        g("output_tokens"),
+    )
 }
 
 /// response_item.message 的 `payload.role`（user/assistant/developer；F7 渲染用）。
@@ -248,7 +270,8 @@ pub fn to_jsonl_record(v: &Value, raw: &str) -> JsonlRecord {
 }
 
 /// 信封 `timestamp`（顶层）。
-fn envelope_ts(v: &Value) -> Option<String> {
+/// 信封顶层 `timestamp`（所有记录种类；F5 用量按事件 timestamp 归天、F2b 渲染排序）。缺 → None。
+pub fn envelope_ts(v: &Value) -> Option<String> {
     v.get("timestamp").and_then(Value::as_str).map(String::from)
 }
 

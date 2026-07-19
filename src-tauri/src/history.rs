@@ -186,18 +186,18 @@ pub async fn list_history_projects(
 // ─── Phase 2 F1a-3：Codex 历史枚举（Codex 无 `projects/<cwd>` 目录 → 按 session_meta.cwd 内存分组成
 // 合成「项目」，塞进现有 HistoryProject shape → 前端零改、Codex 会话入列）───
 
-/// Codex 一个会话的 list 元信息。
-struct CodexSessionInfo {
-    sid: String,
-    path: PathBuf,
+/// Codex 一个会话的 list 元信息。`pub(crate)` 供 usage.rs（F5 用量）复用枚举。
+pub(crate) struct CodexSessionInfo {
+    pub(crate) sid: String,
+    pub(crate) path: PathBuf,
     /// session_meta.cwd（分组键；缺 → "" → 归「(codex)」组）。
-    cwd: String,
+    pub(crate) cwd: String,
     mtime_ms: i64,
 }
 
 /// 枚举本机 Codex 会话：walk `<codex_root>/sessions` 日期树 `rollout-*.jsonl`，读**首行** session_meta
-/// 取 cwd。Codex 未启用（无 `~/.codex/sessions`）→ 空 vec（零回归）。
-fn enumerate_codex_sessions() -> Vec<CodexSessionInfo> {
+/// 取 cwd。Codex 未启用（无 `~/.codex/sessions`）→ 空 vec（零回归）。`pub(crate)` 供 usage.rs（F5）复用。
+pub(crate) fn enumerate_codex_sessions() -> Vec<CodexSessionInfo> {
     use crate::adapter::AgentKind;
     let Some(root) = crate::adapter::for_kind(AgentKind::Codex).data_root() else {
         return Vec::new();
