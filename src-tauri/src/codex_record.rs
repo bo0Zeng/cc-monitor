@@ -118,6 +118,49 @@ pub fn message_role(v: &Value) -> Option<&str> {
     unwrap_envelope(v)?.1.get("role").and_then(Value::as_str)
 }
 
+// ─── F2b：Codex→JsonlRecord 映射的文本抽取助手（trap-critical，口径对齐 aterm CodexRecordParser.kt c03e46f）───
+
+/// **数组文本拍平**——Codex 的 `message.content` 与 `custom_tool_call_output.output` **真机恒数组**
+/// `[{type:input_text|output_text, text}]`（aterm Phase D 审计 9/9 坐实）。当 String 处理会静默丢**全部**
+/// 文本（且 String fixture 绿着骗过）。数组→拼各项 `text`（`input_image` 等无 text 项自然跳过）；
+/// 防御：裸 String→原样；其它→""。**fixture 必用真机数组 shape。**
+pub fn flatten_text(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Array(items) => items
+            .iter()
+            .filter_map(|it| match it {
+                Value::String(s) => Some(s.clone()),
+                _ => it.get("text").and_then(Value::as_str).map(str::to_string),
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
+/// reasoning 的文本：`payload.summary`（array `[{text}]` 或裸串）→ 拍平。**真机 summary 恒 []**
+/// （仅 encrypted_content）→ ""；调用方据此空文本时给**空 blocks**、不产 `Thinking("")` 噪音。
+pub fn reasoning_text(v: &Value) -> String {
+    unwrap_envelope(v)
+        .and_then(|(_, p)| p.get("summary").map(flatten_text))
+        .unwrap_or_default()
+}
+
+/// tool_call 的 `payload.input`：Object→原样、String→包 `{"input": s}`、其它/缺→`Null`（保 name 可见）。
+pub fn tool_input(v: &Value) -> Value {
+    match unwrap_envelope(v).and_then(|(_, p)| p.get("input")) {
+        Some(o) if o.is_object() => o.clone(),
+        Some(Value::String(s)) => serde_json::json!({ "input": s }),
+        _ => Value::Null,
+    }
+}
+
+/// tool 的 `payload.call_id`（ToolUse.id / ToolResult.tool_use_id 配对键）。
+pub fn call_id(v: &Value) -> Option<&str> {
+    unwrap_envelope(v)?.1.get("call_id").and_then(Value::as_str)
+}
+
 #[cfg(test)]
 mod tests {
     use super::CodexRecordKind as K;
@@ -269,6 +312,79 @@ mod tests {
         assert_eq!(
             token_usage_last(&env("event_msg", json!({"type": "token_count"}))),
             None
+        );
+    }
+
+    /// ⚠️ F2b trap #1/#2：`output` 与 `content` **真机恒数组** `[{type,text}]`——flatten_text 拼数组文本。
+    /// **用真机数组 shape、不用 String fixture 自欺**（String 会掩盖「数组落 else→"" 静默丢文本」的 bug）。
+    #[test]
+    fn flatten_text_handles_real_array_shape() {
+        // 工具输出：真机数组（若当 String 处理 → 全丢）。
+        let output = json!([
+            {"type": "input_text", "text": "命令输出第一行"},
+            {"type": "input_text", "text": "第二行"}
+        ]);
+        assert_eq!(flatten_text(&output), "命令输出第一行\n第二行");
+        // message content：数组。
+        assert_eq!(
+            flatten_text(&json!([{"type": "output_text", "text": "hi"}])),
+            "hi"
+        );
+        // input_image 等无 text 项 → 自然跳过（不产空行/不崩）。
+        assert_eq!(
+            flatten_text(
+                &json!([{"type": "input_image", "image_url": "x"}, {"type": "input_text", "text": "cap"}])
+            ),
+            "cap"
+        );
+        // 防御：裸 String→原样；非数组/串→""。
+        assert_eq!(flatten_text(&json!("bare")), "bare");
+        assert_eq!(flatten_text(&json!({"not": "array"})), "");
+        assert_eq!(flatten_text(&json!(null)), "");
+    }
+
+    /// F2b trap #3：reasoning.summary **真机恒 []** → reasoning_text=""（调用方据此给空 blocks、免空 Thinking）。
+    #[test]
+    fn reasoning_text_empty_summary_yields_empty() {
+        // 真机形：summary=[]，仅 encrypted_content。
+        let r = env(
+            "response_item",
+            json!({"type": "reasoning", "summary": [], "encrypted_content": "opaque"}),
+        );
+        assert_eq!(
+            reasoning_text(&r),
+            "",
+            "空 summary → 空文本（调用方给空 blocks）"
+        );
+        // 有 summary text 才产文本。
+        let r2 = env(
+            "response_item",
+            json!({"type": "reasoning", "summary": [{"type": "summary_text", "text": "推理了一步"}]}),
+        );
+        assert_eq!(reasoning_text(&r2), "推理了一步");
+    }
+
+    /// F2b：tool_input（Object 原样 / String 包 {input} / 缺→Null）+ call_id 配对键。
+    #[test]
+    fn tool_input_and_call_id() {
+        let with_obj = env(
+            "response_item",
+            json!({"type": "custom_tool_call", "call_id": "c9", "name": "shell", "input": {"cmd": "ls"}}),
+        );
+        assert_eq!(tool_input(&with_obj), json!({"cmd": "ls"}));
+        assert_eq!(call_id(&with_obj), Some("c9"));
+        let with_str = env(
+            "response_item",
+            json!({"type": "custom_tool_call", "call_id": "c1", "input": "raw string arg"}),
+        );
+        assert_eq!(tool_input(&with_str), json!({"input": "raw string arg"}));
+        // 缺 input → Null（不崩，name 仍可见）。
+        assert_eq!(
+            tool_input(&env(
+                "response_item",
+                json!({"type": "custom_tool_call", "call_id": "c2"})
+            )),
+            json!(null)
         );
     }
 }
