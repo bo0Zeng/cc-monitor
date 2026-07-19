@@ -185,6 +185,18 @@ pub fn call_id(v: &Value) -> Option<&str> {
     unwrap_envelope(v)?.1.get("call_id").and_then(Value::as_str)
 }
 
+/// role=user 但正文是 **CLI 注入的上下文块**（非真用户输入 → 去噪当 meta、渲染隐藏）。判据：trim 后以
+/// 已知注入 wrapper 标签起头。真机实测标签（codex-cli 0.144.6）：`<environment_context>`（cwd/shell/…）、
+/// `<recommended_plugins>`（可用插件清单）。**保守只认明确 XML wrapper 起头**（真用户输入不会以此起头）；
+/// AGENTS.md（`# AGENTS.md instructions`）/ MCP（`You have an MCP server…`）指令注入形态更模糊、待与 aterm
+/// 对齐 denoise 集后再加（事实对照 doc §63：role:user 但正文 `<environment_context>` → 当 meta 去噪）。
+fn is_injected_context(text: &str) -> bool {
+    let t = text.trim_start();
+    ["<environment_context>", "<recommended_plugins>"]
+        .iter()
+        .any(|m| t.starts_with(m))
+}
+
 /// session_meta 的 `payload.cwd`（F1a list：Codex 无 cwd-项目目录 → 用它内存分组成「项目」）。
 /// 非 session_meta / 缺 → None。
 #[allow(dead_code)] // F1a-3（list 枚举）consumer 接线前 staged
@@ -222,14 +234,15 @@ pub fn to_jsonl_record(v: &Value, raw: &str) -> JsonlRecord {
     let id = payload_id(v);
     match classify(v) {
         K::Message => {
-            let content = text_blocks(&flatten_text(
-                payload_field(v, "content").unwrap_or(&Value::Null),
-            ));
+            let text = flatten_text(payload_field(v, "content").unwrap_or(&Value::Null));
+            let content = text_blocks(&text);
             match message_role(v) {
                 Some("assistant") => assistant_rec(id, ts, "assistant", content),
                 // developer=系统指令/元 → User(isMeta=true)（保文本、渲染当 meta 隐藏，同 Claude）。
                 Some("developer") => user_rec(id, ts, "user", content, true),
-                _ => user_rec(id, ts, "user", content, false), // user / 缺 role
+                // role=user：CLI 注入的上下文块（<environment_context>/<recommended_plugins>）当 meta
+                // 去噪（渲染隐藏、非真用户输入；事实对照 doc §63 + aterm 对齐）。真用户输入 → isMeta=false。
+                _ => user_rec(id, ts, "user", content, is_injected_context(&text)),
             }
         }
         K::Reasoning => {
@@ -269,7 +282,6 @@ pub fn to_jsonl_record(v: &Value, raw: &str) -> JsonlRecord {
     }
 }
 
-/// 信封 `timestamp`（顶层）。
 /// 信封顶层 `timestamp`（所有记录种类；F5 用量按事件 timestamp 归天、F2b 渲染排序）。缺 → None。
 pub fn envelope_ts(v: &Value) -> Option<String> {
     v.get("timestamp").and_then(Value::as_str).map(String::from)
@@ -628,6 +640,41 @@ mod tests {
         let r = to_jsonl_record(&u, "r");
         assert!(matches!(&r, JsonlRecord::User { is_meta: false, .. }));
         assert_eq!(content_of(&r), json!([]));
+    }
+
+    /// F7 去噪：role=user 但正文是 CLI 注入的上下文块（<environment_context>/<recommended_plugins>）→
+    /// User isMeta=true（渲染隐藏）；真用户输入 → isMeta=false（正常气泡）。真机实测两标签。
+    #[test]
+    fn denoise_injected_context_user_messages() {
+        let mk = |text: &str| {
+            env(
+                "response_item",
+                json!({"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}),
+            )
+        };
+        // 注入块（含前导空白）→ isMeta=true。
+        for inj in [
+            "<environment_context>\n  <cwd>/home/zbl</cwd>\n</environment_context>",
+            "  <recommended_plugins>\nHere is a list of plugins…",
+        ] {
+            assert!(
+                matches!(
+                    to_jsonl_record(&mk(inj), "r"),
+                    JsonlRecord::User { is_meta: true, .. }
+                ),
+                "注入块应去噪当 meta: {inj:?}"
+            );
+        }
+        // 真用户输入 → isMeta=false（含碰巧提及标签名但非以之起头的）。
+        for real in ["codex怎么换行", "帮我看看 <environment_context> 是什么"] {
+            assert!(
+                matches!(
+                    to_jsonl_record(&mk(real), "r"),
+                    JsonlRecord::User { is_meta: false, .. }
+                ),
+                "真用户输入不应被去噪: {real:?}"
+            );
+        }
     }
 
     /// reasoning：空 summary→Assistant content []（免 Thinking 噪音）；有 text→thinking block。
