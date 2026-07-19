@@ -186,15 +186,23 @@ pub fn call_id(v: &Value) -> Option<&str> {
 }
 
 /// role=user 但正文是 **CLI 注入的上下文块**（非真用户输入 → 去噪当 meta、渲染隐藏）。判据：trim 后以
-/// 已知注入 wrapper 标签起头。真机实测标签（codex-cli 0.144.6）：`<environment_context>`（cwd/shell/…）、
-/// `<recommended_plugins>`（可用插件清单）。**保守只认明确 XML wrapper 起头**（真用户输入不会以此起头）；
-/// AGENTS.md（`# AGENTS.md instructions`）/ MCP（`You have an MCP server…`）指令注入形态更模糊、待与 aterm
-/// 对齐 denoise 集后再加（事实对照 doc §63：role:user 但正文 `<environment_context>` → 当 meta 去噪）。
+/// 已知注入标记起头。**去噪集与 aterm 2C / 事实对照 doc §63 对齐（3 标记）**——真机核（aya `~/.codex`，
+/// 两端同机同数据）47 条 user msg = 34 真输入 + 2 `<environment_context>` + 5 `<recommended_plugins>` +
+/// 6 `# AGENTS.md instructions`，**34 真输入 0 误判**：
+/// - `<environment_context>`（cwd/shell/…）、`<recommended_plugins>`（插件清单）——干净 XML wrapper。
+/// - `# AGENTS.md instructions`——AGENTS.md 注入头，真机恒 `# AGENTS.md instructions\n\n<INSTRUCTIONS>\n…`
+///   （机器生成、结构唯一 = 特征前缀，真用户几乎不以此整串起头；裸 `# xxx` markdown 标题不匹配）。
+///
+/// **不认** `You have an MCP server…`（MCP 指令注入无干净特征前缀、怕误伤正文 → 保守留，两端一致）。
 fn is_injected_context(text: &str) -> bool {
     let t = text.trim_start();
-    ["<environment_context>", "<recommended_plugins>"]
-        .iter()
-        .any(|m| t.starts_with(m))
+    [
+        "<environment_context>",
+        "<recommended_plugins>",
+        "# AGENTS.md instructions",
+    ]
+    .iter()
+    .any(|m| t.starts_with(m))
 }
 
 /// session_meta 的 `payload.cwd`（F1a list：Codex 无 cwd-项目目录 → 用它内存分组成「项目」）。
@@ -642,8 +650,8 @@ mod tests {
         assert_eq!(content_of(&r), json!([]));
     }
 
-    /// F7 去噪：role=user 但正文是 CLI 注入的上下文块（<environment_context>/<recommended_plugins>）→
-    /// User isMeta=true（渲染隐藏）；真用户输入 → isMeta=false（正常气泡）。真机实测两标签。
+    /// F7 去噪：role=user 但正文是 CLI 注入的上下文块（3 标记，aterm 2C/doc §63 对齐）→ User
+    /// isMeta=true（渲染隐藏）；真用户输入（含裸 # 标题/提及标签名）→ isMeta=false（正常气泡）。真机核 0 误判。
     #[test]
     fn denoise_injected_context_user_messages() {
         let mk = |text: &str| {
@@ -652,10 +660,11 @@ mod tests {
                 json!({"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}),
             )
         };
-        // 注入块（含前导空白）→ isMeta=true。
+        // 注入块（含前导空白）→ isMeta=true。3 标记与 aterm 2C / doc §63 对齐。
         for inj in [
             "<environment_context>\n  <cwd>/home/zbl</cwd>\n</environment_context>",
             "  <recommended_plugins>\nHere is a list of plugins…",
+            "# AGENTS.md instructions\n\n<INSTRUCTIONS>\n# AGENTS.md\n本文件…",
         ] {
             assert!(
                 matches!(
@@ -665,8 +674,13 @@ mod tests {
                 "注入块应去噪当 meta: {inj:?}"
             );
         }
-        // 真用户输入 → isMeta=false（含碰巧提及标签名但非以之起头的）。
-        for real in ["codex怎么换行", "帮我看看 <environment_context> 是什么"] {
+        // 真用户输入 → isMeta=false（碰巧提及标签名但非以之起头的、及裸 markdown 标题 → 不误伤）。
+        for real in [
+            "codex怎么换行",
+            "帮我看看 <environment_context> 是什么",
+            "# 我的笔记\n随便写的",  // 裸 # 标题 ≠ `# AGENTS.md instructions`
+            "# AGENTS.md 里写了啥?", // 提及但非机器注入整串前缀
+        ] {
             assert!(
                 matches!(
                     to_jsonl_record(&mk(real), "r"),
