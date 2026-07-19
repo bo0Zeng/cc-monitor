@@ -21,6 +21,15 @@ pub enum Frame {
         build_id: String,
         host_arch: String,
         claude_dir: String,
+        /// DG3（#2D，additive）：对称 `claude_dir`——Codex 记录根（`<codex_dir>/sessions`）。
+        /// skip_if_none：Codex 未启用 / 旧 daemon 省略（旧 client 忽略）。消费侧取路径用。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        codex_dir: Option<String>,
+        /// DG3（#2D，additive）：本 daemon **服务的 agent kind 集**（如 `["claude","codex"]`）——
+        /// 消费侧**显式判支持**（比「codex_dir 存在=支持 codex」推断清晰、可扩展未来第三种 agent）。
+        /// skip_if_empty：旧 daemon 省略 = 只 claude（向后兼容）。
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        kinds: Vec<String>,
         /// F66（#58③，additive）：本 daemon 声明支持的**能力 token 集**（开放字符串，
         /// 加法式）。monitor 按此声明决定发哪些流模式 flag（`--with-bg`/`--tail-only`），
         /// **不再靠 build_id 精确匹配**——闭合 2026-07-09 那类「身份确认不了就全降级」事故。
@@ -58,6 +67,14 @@ pub enum Frame {
     /// None 时不上线（旧行为字节不变）；旧 monitor 忽略未知字段。
     SessionAdded {
         sid: String,
+        /// DG3（#2D，additive）：会话属哪 agent kind——`"codex"`（Codex 会话）。Claude 会话**省略**
+        /// （skip_if_none）→ 消费侧缺=claude（向后兼容、旧 daemon 无此字段）。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        agent_kind: Option<String>,
+        /// DG3（#2D，additive）：判活置信度——`"heuristic"`（Codex 无 pidfile、mtime/proc 启发）。
+        /// Claude（pidfile 权威）**省略**（skip_if_none）→ 消费侧缺=authoritative（向后兼容）。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        liveness_confidence: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         session_kind: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -90,6 +107,9 @@ pub enum Frame {
         status: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
+        /// DG3（#2D，additive）：判活置信度（同 SessionAdded；状态变化时带）。Claude 省→缺=authoritative。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        liveness_confidence: Option<String>,
     },
     /// A session file went away.
     SessionRemoved { sid: String },
@@ -193,6 +213,8 @@ mod tests {
                     build_id: "b".into(),
                     host_arch: "x86_64".into(),
                     claude_dir: "/home/u/.claude".into(),
+                    codex_dir: None,
+                    kinds: vec![],
                     capabilities: vec!["bg".into(), "tail-only".into()],
                     emits: vec!["line".into(), "session_status".into()],
                 },
@@ -211,6 +233,8 @@ mod tests {
             (
                 Frame::SessionAdded {
                     sid: "s".into(),
+                    agent_kind: None,
+                    liveness_confidence: None,
                     session_kind: None,
                     cwd: None,
                     name: None,
@@ -226,6 +250,7 @@ mod tests {
                     sid: "s".into(),
                     status: Some("busy".into()),
                     waiting_for: None,
+                    liveness_confidence: None,
                 },
                 "session_status",
             ),
@@ -285,6 +310,8 @@ mod tests {
             build_id: "b".into(),
             host_arch: "x86_64".into(),
             claude_dir: "/c".into(),
+            codex_dir: None,
+            kinds: vec![],
             capabilities: caps,
             emits,
         }
@@ -378,5 +405,111 @@ mod tests {
         assert_eq!(v["kind"], "line");
         assert_eq!(v["raw"], raw);
         assert_eq!(v["seq"], 42);
+    }
+
+    // ─── DG3（#2D）：Codex wire additive 面 · 序列化 parity（aterm 消费侧 fixture 交叉核点）───
+
+    /// **present 形**（Codex 会话 / 支持 Codex 的 daemon）：新字段在线上、snake_case、值域正确。
+    #[test]
+    fn dg3_codex_fields_serialize_when_present() {
+        let hello = to_line(&Frame::Hello {
+            v: 1,
+            build_id: "b".into(),
+            host_arch: "x86_64".into(),
+            claude_dir: "/c".into(),
+            codex_dir: Some("/home/u/.codex".into()),
+            kinds: vec!["claude".into(), "codex".into()],
+            capabilities: vec![],
+            emits: vec![],
+        })
+        .unwrap();
+        // ★ 精确字节（aterm fixture 交叉核真值）：字段按声明序，codex_dir 在 claude_dir 后、kinds 次之。
+        assert_eq!(
+            hello,
+            "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\",\"codex_dir\":\"/home/u/.codex\",\"kinds\":[\"claude\",\"codex\"]}\n"
+        );
+
+        let sa = to_line(&Frame::SessionAdded {
+            sid: "s".into(),
+            agent_kind: Some("codex".into()),
+            liveness_confidence: Some("heuristic".into()),
+            session_kind: None,
+            cwd: None,
+            name: None,
+            path: None,
+            lines: None,
+            status: None,
+            waiting_for: None,
+        })
+        .unwrap();
+        assert_eq!(
+            sa,
+            "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\"}\n"
+        );
+
+        let ss = to_line(&Frame::SessionStatus {
+            sid: "s".into(),
+            status: Some("busy".into()),
+            waiting_for: None,
+            liveness_confidence: Some("heuristic".into()),
+        })
+        .unwrap();
+        assert_eq!(
+            ss,
+            "{\"kind\":\"session_status\",\"sid\":\"s\",\"status\":\"busy\",\"liveness_confidence\":\"heuristic\"}\n"
+        );
+    }
+
+    /// **absent 形**（Claude 会话 / 旧 daemon）：skip_if_none/empty → 字段**完全省略**，帧对 Claude
+    /// **字节等价旧形**（向后兼容红线）。aterm 消费侧「省=null→缺省 claude/authoritative」据此对齐。
+    /// ★ 精确字节串 = aterm fixture 交叉核的真值。
+    #[test]
+    fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
+        let hello = to_line(&Frame::Hello {
+            v: 1,
+            build_id: "b".into(),
+            host_arch: "x86_64".into(),
+            claude_dir: "/c".into(),
+            codex_dir: None,
+            kinds: vec![],
+            capabilities: vec![],
+            emits: vec![],
+        })
+        .unwrap();
+        assert_eq!(
+            hello,
+            "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\"}\n",
+            "codex_dir/kinds 空 → 省略，Hello 字节等价旧形"
+        );
+
+        let sa = to_line(&Frame::SessionAdded {
+            sid: "s".into(),
+            agent_kind: None,
+            liveness_confidence: None,
+            session_kind: None,
+            cwd: None,
+            name: None,
+            path: None,
+            lines: None,
+            status: None,
+            waiting_for: None,
+        })
+        .unwrap();
+        assert_eq!(
+            sa, "{\"kind\":\"session_added\",\"sid\":\"s\"}\n",
+            "agent_kind(缺=claude)/liveness_confidence(缺=authoritative) 省略，字节等价旧形"
+        );
+
+        let ss = to_line(&Frame::SessionStatus {
+            sid: "s".into(),
+            status: Some("idle".into()),
+            waiting_for: None,
+            liveness_confidence: None,
+        })
+        .unwrap();
+        assert_eq!(
+            ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"status\":\"idle\"}\n",
+            "liveness_confidence 省略，字节等价旧形"
+        );
     }
 }

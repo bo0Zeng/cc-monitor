@@ -504,6 +504,9 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
                 sid: sid.clone(),
                 status: new_status,
                 waiting_for: new_waiting,
+                // Claude pidfile 路 → 判活权威、省略 liveness_confidence（缺=authoritative）。DG2 判活/DG1
+                // Codex 会话时才发 heuristic。
+                liveness_confidence: None,
             });
         }
         return;
@@ -585,6 +588,10 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     }
     sink.send(Frame::SessionAdded {
         sid: sid.clone(),
+        // 本 producer = Claude pidfile 发现路 → agent_kind/liveness_confidence 省略（缺=claude/authoritative）。
+        // DG1 Codex 发现路才发 agent_kind="codex"+liveness_confidence="heuristic"。
+        agent_kind: None,
+        liveness_confidence: None,
         session_kind: meta_str("kind"),
         cwd: meta_str("cwd"),
         name: meta_str("name"),
@@ -1696,6 +1703,7 @@ mod tests {
                 sid,
                 status,
                 waiting_for,
+                ..
             }) => {
                 assert_eq!(sid, "st-sid");
                 assert_eq!(status.as_deref(), Some("waiting"));
@@ -2154,6 +2162,8 @@ mod tests {
         // Fill both slots — these go through cleanly, no overflow owed.
         sink.send(Frame::SessionAdded {
             sid: "a".into(),
+            agent_kind: None,
+            liveness_confidence: None,
             session_kind: None,
             cwd: None,
             name: None,
@@ -2164,6 +2174,8 @@ mod tests {
         });
         sink.send(Frame::SessionAdded {
             sid: "b".into(),
+            agent_kind: None,
+            liveness_confidence: None,
             session_kind: None,
             cwd: None,
             name: None,
@@ -2180,6 +2192,8 @@ mod tests {
         // Channel is full now: three sends are dropped and counted.
         sink.send(Frame::SessionAdded {
             sid: "c".into(),
+            agent_kind: None,
+            liveness_confidence: None,
             session_kind: None,
             cwd: None,
             name: None,
@@ -2190,6 +2204,8 @@ mod tests {
         });
         sink.send(Frame::SessionAdded {
             sid: "d".into(),
+            agent_kind: None,
+            liveness_confidence: None,
             session_kind: None,
             cwd: None,
             name: None,
@@ -2200,6 +2216,8 @@ mod tests {
         });
         sink.send(Frame::SessionAdded {
             sid: "e".into(),
+            agent_kind: None,
+            liveness_confidence: None,
             session_kind: None,
             cwd: None,
             name: None,
@@ -2230,6 +2248,8 @@ mod tests {
         // Steady state: no spurious Overflow once recovered.
         sink.send(Frame::SessionAdded {
             sid: "g".into(),
+            agent_kind: None,
+            liveness_confidence: None,
             session_kind: None,
             cwd: None,
             name: None,

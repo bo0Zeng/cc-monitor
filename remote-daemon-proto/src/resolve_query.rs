@@ -42,6 +42,12 @@ struct ResumeSpec {
     #[allow(dead_code)] // MVP 未据此分支（PtyInject 对 alreadyInTmux 与否一致，留字段兼容）
     #[serde(default)]
     already_in_tmux: bool,
+    /// DG3（#2D，additive）：会话属哪 agent kind → daemon 构 `codex resume <uuid>` vs `claude --resume`。
+    /// camelCase（rename_all）→ wire `agentKind`。缺/`""`/`"claude"`=claude、`"codex"`=codex。
+    /// **consumer = DG6 resume 命令构建**前 staged（同 claude_dir/fallback_cwd 留字段兼容）。
+    #[allow(dead_code)]
+    #[serde(default)]
+    agent_kind: String,
 }
 
 /// stdout 出参 caps（4 名**逐字复用 aterm `SessionCapabilities`**，camelCase 免映射）。
@@ -244,10 +250,23 @@ mod tests {
             claude_dir: String::new(),
             fallback_cwd: String::new(),
             already_in_tmux: false,
+            agent_kind: String::new(),
         }
     }
 
     /// 契约：ResumeSpec → CommandPlan 的 wire 形状 + camelCase + aterm 4 caps 名 + substitutedFrom。
+    /// DG3（#2D）：ResumeSpec 的 `agent_kind` 从 **camelCase** wire `agentKind` 反序列化（resolve I/O 面
+    /// 全 camelCase）；缺省 → `""`（= claude 兼容）。DG6 据此构 codex resume vs claude --resume。
+    #[test]
+    fn resume_spec_parses_camelcase_agent_kind_default_claude() {
+        let spec: ResumeSpec =
+            serde_json::from_str(r#"{"sessionId":"s","agentKind":"codex"}"#).expect("parse");
+        assert_eq!(spec.agent_kind, "codex");
+        // 缺 agentKind → default ""（缺=claude，向后兼容旧 monitor 不发此字段）。
+        let spec2: ResumeSpec = serde_json::from_str(r#"{"sessionId":"s"}"#).expect("parse");
+        assert_eq!(spec2.agent_kind, "");
+    }
+
     #[test]
     fn resolve_builds_plan_with_aterm_field_names() {
         let s = spec(
