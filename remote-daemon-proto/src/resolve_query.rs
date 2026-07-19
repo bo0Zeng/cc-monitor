@@ -42,10 +42,8 @@ struct ResumeSpec {
     #[allow(dead_code)] // MVP 未据此分支（PtyInject 对 alreadyInTmux 与否一致，留字段兼容）
     #[serde(default)]
     already_in_tmux: bool,
-    /// DG3（#2D，additive）：会话属哪 agent kind → daemon 构 `codex resume <uuid>` vs `claude --resume`。
-    /// camelCase（rename_all）→ wire `agentKind`。缺/`""`/`"claude"`=claude、`"codex"`=codex。
-    /// **consumer = DG6 resume 命令构建**前 staged（同 claude_dir/fallback_cwd 留字段兼容）。
-    #[allow(dead_code)]
+    /// DG3（#2D，additive）：会话属哪 agent kind → DG6 据此构 `codex resume <uuid>` vs `claude --resume`。
+    /// camelCase（rename_all）→ wire `agentKind`。缺/`""`/`"claude"`=claude、`"codex"`=codex（DG6 消费）。
     #[serde(default)]
     agent_kind: String,
 }
@@ -133,7 +131,12 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
             ),
         ));
     }
-    // 首个非空 launchCandidate → command 基底；无 → 默认 `claude`（substitutedFrom=None）。
+    // DG6：per-kind——`agent_kind=="codex"` → Codex resume 路（默认基底 `codex`、子命令 `resume`、
+    // 会话名 `cx-`）；否则 Claude（默认 `claude`、`--resume` flag、`cc-`）。缺/`""`/其它 = claude。
+    // **大小写敏感**：wire 值契约定死小写 `"codex"`（doc §agent_kind + 两端锁定）；`"Codex"` 等非规范
+    // 值落 Claude 路（生产方 monitor/aterm 发规范小写故无碍）。`.trim()` 仅容空白、不容大小写。
+    let is_codex = spec.agent_kind.trim() == "codex";
+    // 首个非空 launchCandidate → command 基底；无 → kind 默认（Codex=codex / Claude=claude）。
     let candidate = spec
         .launch_candidates
         .iter()
@@ -142,7 +145,7 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
         .find(|s| !s.is_empty());
     let base = match candidate {
         Some(c) => c.to_string(),
-        None => "claude".to_string(),
+        None => if is_codex { "codex" } else { "claude" }.to_string(),
     };
     // 审计 security-重要①：B2 纪律**对称化**——`base` 同样进 command 串、由客户端 pty 执行，
     // 原只校验 sid、base 零校验（端到端两侧都没人查 base：客户端 B2 复校也只覆盖 sid）。补 base
@@ -154,8 +157,14 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
             format!("launchCandidate 含 shell 元字符/控制字符、拒入 command：{base:?}"),
         ));
     }
-    // MVP command：`<base> --resume <sid>`（sid 过 is_valid_session_id、base 过 is_shell_safe_base）。
-    let command = format!("{base} --resume {}", spec.session_id);
+    // command（sid 过 is_valid_session_id、base 过 is_shell_safe_base）。**golden-parity aterm
+    // CodexInvocation.resumeInvocation**：Codex=`<base> resume <sid>`（子命令、**无 `--resume` flag、
+    // 无 unset**、真机 `codex resume <SESSION_ID>` 核）；Claude=`<base> --resume <sid>`。
+    let command = if is_codex {
+        format!("{base} resume {}", spec.session_id)
+    } else {
+        format!("{base} --resume {}", spec.session_id)
+    };
     Ok(CommandPlan {
         command,
         mode: "PtyInject".to_string(), // MVP 恒 PtyInject（aterm 今隐含亦此）
@@ -166,8 +175,8 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
             supports_multi_client: true,
             supports_multi_window: true,
         },
-        session_name: Some(session_name_for(&spec.session_id)), // cc-<sid8>
-        launch_label: None,                                     // MVP 不产 label（aterm 侧自算）
+        session_name: Some(session_name_for(&spec.session_id, is_codex)), // Codex cx- / Claude cc-
+        launch_label: None, // MVP 不产 label（aterm 侧自算）
         // substitutedFrom：aterm 语义（`TmuxBackend.resume` 核实，2026-07-18 回）=「被替换掉的原命令」
         // = `intended?.takeIf { it != launch }`——仅当解析出的 launch ≠ 用户原意首候选时非空。MVP daemon
         // 不做「解析可能异于原意」的候选消解（直接用首候选/默认，launch==intended），恒无替换 → None（省略）。
@@ -218,10 +227,12 @@ fn is_shell_safe_base(s: &str) -> bool {
         })
 }
 
-/// aterm 展示约定 `cc-<sid8>`（前 8 字符；不足 8 取全部）。客户端亦自算、daemon 顺带给。
-fn session_name_for(sid: &str) -> String {
+/// resume 会话名：Claude `cc-<sid8>` / **Codex `cx-<sid8>`**（前 8 字符；不足 8 取全部）。
+/// golden-parity aterm（Claude `cc-`、Codex CodexInvocation.resumeSessionName `cx-`）。客户端亦自算、daemon 顺带给。
+fn session_name_for(sid: &str, is_codex: bool) -> String {
     let head: String = sid.chars().take(8).collect();
-    format!("cc-{head}")
+    let prefix = if is_codex { "cx" } else { "cc" };
+    format!("{prefix}-{head}")
 }
 
 /// 错误统一出口：stderr 写 `{code,message}` JSON、返 exit code 2。
@@ -298,6 +309,53 @@ mod tests {
         assert!(caps.get("supportsMultiWindow").is_some());
         // 短名不得出现（否则两端要映射）。
         assert!(caps.get("sendKeys").is_none(), "不得用短名 sendKeys");
+    }
+
+    /// DG6：agent_kind="codex" → `<base> resume <uuid>`（**子命令、无 --resume**）+ 会话名 `cx-`；
+    /// 默认基底 `codex`、自定义候选照用。golden-parity aterm CodexInvocation.resumeInvocation/resumeSessionName。
+    #[test]
+    fn resolve_codex_builds_resume_subcommand_and_cx_name() {
+        let uuid = "019f75dd-875c-7c81-9eda-32f866b2c60f";
+        // 无候选 → 默认 codex。
+        let s = ResumeSpec {
+            agent_kind: "codex".into(),
+            ..spec(uuid, vec![])
+        };
+        let v: Value =
+            serde_json::from_str(&serde_json::to_string(&resolve(&s).expect("valid")).unwrap())
+                .unwrap();
+        assert_eq!(v["command"], format!("codex resume {uuid}"));
+        assert_eq!(v["sessionName"], "cx-019f75dd"); // cx-<sid8>（非 cc-）
+        assert_eq!(v["mode"], "PtyInject");
+        // 自定义 codex 启动候选 → `<base> resume <sid>`。
+        let s2 = ResumeSpec {
+            agent_kind: "codex".into(),
+            ..spec(uuid, vec![Some("mycodex")])
+        };
+        let v2: Value =
+            serde_json::from_str(&serde_json::to_string(&resolve(&s2).expect("valid")).unwrap())
+                .unwrap();
+        assert_eq!(v2["command"], format!("mycodex resume {uuid}"));
+    }
+
+    /// DG6 审计补：非规范 agent_kind（大小写/其它值）→ **落 Claude 路**（`--resume`/`cc-`），
+    /// 防 Codex 分支误吞。契约：wire 值定死小写 `"codex"`（大小写敏感）。
+    #[test]
+    fn resolve_non_codex_agent_kind_falls_back_to_claude() {
+        for ak in ["", "claude", "Codex", "CODEX", "foo"] {
+            let s = ResumeSpec {
+                agent_kind: ak.to_string(),
+                ..spec("sid_x", vec![Some("claude")])
+            };
+            let v: Value =
+                serde_json::from_str(&serde_json::to_string(&resolve(&s).expect("valid")).unwrap())
+                    .unwrap();
+            assert_eq!(
+                v["command"], "claude --resume sid_x",
+                "agent_kind={ak:?} 应落 Claude"
+            );
+            assert_eq!(v["sessionName"], "cc-sid_x");
+        }
     }
 
     /// 无候选 → 默认 `claude`、substitutedFrom 省略（None → skip_serializing_if）。
