@@ -67,6 +67,7 @@ Codex 在 monitor **历史可浏览 + 内容正确渲染 + 用量计入**，全 
 - wire 共享面（agent_kind + liveness_confidence + ResumeSpec agent_kind）→ **aterm 2D 联调**。aterm 正推 2B 用量 SPI。
 - ✅ **渲染去噪集对齐（已锁定）**：3 标记 `<environment_context>`/`<recommended_plugins>`/`# AGENTS.md instructions`（严格 starts_with）两端一致；aterm 已更 doc §63（含 4 标记真机计数 + MCP 保守不认）。两端各自真机核 0 误判。
 - F4 判活「fd 持开」假设 → 建到 F1b+F4 时起真 codex 会话实测坐实（源码已指向持开）。
+- **压缩会话 `.zst`（2D 对齐）**：我 F1a `enumerate_codex_sessions` 现只 glob `rollout-*.jsonl`；aterm 2C-3 发现层将处理 `.zst`。**aya 现无 .zst**（13 会话全 .jsonl、无 live gap），属 future-proof——到 **2D 联合发现层**时对齐压缩会话读取（否则 aterm 发现 .zst 而我漏 → 两产品发现面 diff）。
 
 ## 回看
 - 2026-07-18 建 STATUS，Phase A 完，指向 F1。
