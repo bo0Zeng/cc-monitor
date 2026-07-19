@@ -93,6 +93,14 @@ pub enum Frame {
     },
     /// A session file went away.
     SessionRemoved { sid: String },
+    /// phase②（daemon-09）：turn-end 边沿（一轮 assistant 完成）。**方案 C：raw-per-record、daemon
+    /// 不 dedup**——每见一条 turn-end 记录（`end_turn && !isApiError && !isSidechain`，见 `turn_detect`）
+    /// 发一帧；aterm 侧 **rolling-latest + debounce(1200ms) `baselineByPath`** 塌合同 turn 的多记录、
+    /// 首见吞历史不通知、offset 续拉重放 uuid ≤ 基线不通知（**transport-agnostic、与 β 逐字同语义、
+    /// gap#6 闭**；daemon 不猜消息边界）。`uuid` = 完成记录**顶层 uuid** = 客户端 dedup 键。
+    /// **不带 `byte_offset`**（只 Line 带）——α watcher：Line 推 currentOffset、TurnEnd 喂 rolling
+    /// current，结算时 baseline+offset 同段提交。旧 monitor 未知 kind 忽略（additive）。
+    TurnEnd { session_id: String, uuid: String },
     /// The bounded frame channel back-pressured and the reader had to drop
     /// `dropped` frames (a slow/wedged SSH pipe). Emitted once when the channel
     /// drains enough to accept it, so the client can warn the user that live
@@ -222,6 +230,13 @@ mod tests {
                 "session_status",
             ),
             (Frame::SessionRemoved { sid: "s".into() }, "session_removed"),
+            (
+                Frame::TurnEnd {
+                    session_id: "s".into(),
+                    uuid: "u".into(),
+                },
+                "turn_end",
+            ),
             (Frame::Overflow { dropped: 7 }, "overflow"),
         ];
 
@@ -229,6 +244,22 @@ mod tests {
             let line = to_line(&frame).expect("serialize");
             assert_eq!(parse_kind(&line), expected_kind);
         }
+    }
+
+    /// daemon-09：TurnEnd 上线形——`{"kind":"turn_end","session_id","uuid"}`，**无 byte_offset**
+    /// （只 Line 带）。uuid = 客户端 dedup 键。
+    #[test]
+    fn turn_end_frame_serializes_with_session_and_uuid_only() {
+        let line = to_line(&Frame::TurnEnd {
+            session_id: "sid-9".into(),
+            uuid: "u-abc".into(),
+        })
+        .expect("serialize");
+        let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
+        assert_eq!(v["kind"], "turn_end");
+        assert_eq!(v["session_id"], "sid-9");
+        assert_eq!(v["uuid"], "u-abc");
+        assert!(v.get("byte_offset").is_none(), "TurnEnd 不带 byte_offset");
     }
 
     #[test]
