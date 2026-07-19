@@ -3,7 +3,8 @@
 ## 当前阶段
 - ✅ **Phase A masterplan 用户已审批**（2026-07-19「批准，按计划推进」）。
 - ✅ **DG4 完成 + aterm 逐字对拍 verbatim-equivalent**（`daemon-DG4` 679f4c5）：`codex.rs`——Codex turn-end 检测器（is_codex_turn_end/codex_turn_end_uuid，turn_id 缺→envelope timestamp 回退），golden-parity aterm CodexTurnEndDetector（aterm 真读我 codex.rs 对抗核：子型集/uuid 回退链/坏信封/per-kind 隔离一字同）。daemon 99/clippy 0/Claude 零回归。staged（consumer=DG1/DG3）。
-- ✅ **DG3 wire 已与 aterm 对拍锁定**（final spec 见下）——DG3 现**解锁可 build**。
+- ✅✅ **DG3 wire 已 build 完成**（`daemon-DG3` ea8bd99）：Frame Hello+codex_dir/kinds、SessionAdded+agent_kind/liveness_confidence、SessionStatus+liveness_confidence、ResumeSpec+agentKind（camelCase）。3 producer 现发 None/空（Claude 路，DG1 才填 Codex）。**Claude 帧字节零回归**（skip 省略、单测精确串锁）。daemon 102/clippy 0。**已 cc-send aterm 真序列化精确字节**（present/absent 形），aterm 消费侧（0bb21a1，已 build）据此交叉核 fixture。
+- DG3 锁定契约（final spec，全 additive、不 bump PROTO_VERSION）：
   - Hello: +`codex_dir:Option<String>`(skip_if_none) +`kinds:Vec<String>`(skip_if_empty，如 ["claude","codex"])
   - SessionAdded: +`agent_kind:Option<String>`(Codex 发 "codex"；Claude 省→缺=claude) +`liveness_confidence:Option<String>`(Codex 发 "heuristic"；Claude 省→缺=authoritative)
   - SessionStatus: +`liveness_confidence:Option<String>`
@@ -22,10 +23,14 @@
 ## 功能序（详见 MASTERPLAN）
 DG3 wire（keystone·契约先行·对拍锁定）→ DG1 发现+Line → DG4 turn-end → DG5 usage → **DG2 判活（gating 调查·最硬）** → DG6 resume → Phase G。
 
-## 下一个 = DG3 wire build（已锁·解锁）→ 然后 DG5 usage
-- **DG3**：wire.rs 加 Hello.codex_dir/kinds + SessionAdded.agent_kind/liveness_confidence + SessionStatus.liveness_confidence（全 additive skip_if_none/empty）；resolve_query.rs ResumeSpec +agentKind（camelCase）。单测序列化/skip 缺省/旧 client 忽略 parity。**不 bump PROTO_VERSION**。Claude 帧字节不变（Codex 字段省→等价旧帧）。好了 cc-send aterm → 它 build 消费侧。
-- **DG5**：`codex.rs` 加 usage 助手（token_count last_token_usage）+ `usage_query` per-kind（镜像 monitor F5：input−cached/cache_read/cache_creation=0/output，SUM last、跳全零、model 取 turn_context）。golden-parity aterm CodexUsageAggregator(2B)——落了 cc-send aterm 对拍。`--usage` 行加 agent_kind。
-- 之后：DG1 发现（接 DG3 agent_kind：watcher per-kind 走 codex_dir/sessions 日期树 + SessionAdded 发 agent_kind=codex）→ **DG2 判活（gating：真机实测 fd/sqlite/mtime，aterm 同机交叉核已应承、撞不确定停交用户）** → DG6 resume（ResumeSpec.agentKind→codex resume）→ Phase G。
+## 下一个 = DG5 · Codex usage（daemon 侧 · 未阻塞纯解析）
+- `codex.rs` 加 usage 助手（token_count 的 last_token_usage 字段 + turn_context model + 全零跳）+ `usage_query` per-kind（镜像 monitor F5：input=input_tokens−cached / cache_read=cached / cache_creation=0 / output=output_tokens，SUM last、跳全零 no-op、model 取 turn_context）。golden-parity aterm CodexUsageAggregator(2B)——落了 cc-send aterm 对拍。`--usage` 回传行加 agent_kind。
+- 之后：DG1 发现（接 DG3 agent_kind：watcher per-kind 走 codex_dir/sessions 日期树 + SessionAdded 发 agent_kind=codex + Hello 翻 kinds/codex_dir）→ **DG2 判活（gating：真机实测 fd/sqlite/mtime，aterm 同机交叉核已应承、撞不确定停交用户）** → DG6 resume（ResumeSpec.agentKind→codex resume）→ Phase G。
+
+## 进度总览（2D，2026-07-19）
+- ✅ Phase A masterplan（用户批准）· ✅ DG4 turn-end（aterm verbatim 对拍）· ✅ DG3 wire（aterm 消费侧并行 build、真字节已交叉核）
+- ⏭ DG5 usage（next，未阻塞）· DG1 发现（接 DG3）· DG2 判活（真机 gating，aterm 同机核）· DG6 resume
+- aterm 侧：2C β 全完 + DaemonTransport DG3 消费（0bb21a1）+ CodexUsageAggregator(2B) 待我 DG5 对拍。
 
 ## 回看
 - 2026-07-19 建（草案）：monitor-local Codex（../codex-phase2 F1a/F5/F7）完成后，2D 联合起步。
