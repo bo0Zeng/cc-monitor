@@ -96,6 +96,41 @@ pub fn records_dir(data_root: &Path) -> PathBuf {
     data_root.join(active().layout().sessions_subdir)
 }
 
+/// Phase 2 F1a：**按 kind** 的会话记录目录(`<data_root>/<sessions_subdir>`;Claude=projects、Codex=sessions)。
+#[allow(dead_code)] // F1a：consumer = 多 kind 发现层(history/list),下个 slice 接线
+pub fn records_dir_for(kind: AgentKind, data_root: &Path) -> PathBuf {
+    data_root.join(for_kind(kind).layout().sessions_subdir)
+}
+
+/// Phase 2 F1a：本机**启用的 agent 种类**。Claude 恒启用;Codex 仅当其数据根的会话目录存在
+/// (`~/.codex/sessions` 或 `$CODEX_HOME/sessions`)——不装 Codex 的机器上不纳入、零行为变化。
+#[allow(dead_code)] // F1a：consumer = 多 kind 发现层,下个 slice 接线
+pub fn enabled_kinds() -> Vec<AgentKind> {
+    let mut kinds = vec![AgentKind::ClaudeCode];
+    let codex = for_kind(AgentKind::Codex);
+    if let Some(root) = codex.data_root() {
+        if root.join(codex.layout().sessions_subdir).is_dir() {
+            kinds.push(AgentKind::Codex);
+        }
+    }
+    kinds
+}
+
+/// Phase 2 F1a：所有启用 kind 的 `(kind, 会话记录根目录)`。发现层遍历它、按 kind 用对应 layout
+/// 扫 + 解析(`parse_line` for Claude / `codex_record::to_jsonl_record` for Codex)。**显式传 kind**
+/// (发现层枚举时即知 kind、无需按路径反解),per-file op 走 `session_id_from_path_with(for_kind(k).layout())`。
+#[allow(dead_code)] // F1a：consumer = 多 kind 发现层,下个 slice 接线
+pub fn records_roots() -> Vec<(AgentKind, PathBuf)> {
+    enabled_kinds()
+        .into_iter()
+        .filter_map(|k| {
+            for_kind(k)
+                .data_root()
+                .map(|root| (k, records_dir_for(k, &root)))
+        })
+        .collect()
+}
+
 /// F-MA:agent 数据根下的**活性 pidfile** 目录(CC = `<root>/sessions`)。
 pub fn liveness_dir(data_root: &Path) -> PathBuf {
     data_root.join(active().layout().liveness_subdir)
@@ -157,4 +192,39 @@ fn is_uuid(s: &str) -> bool {
             8 | 13 | 18 | 23 => b == b'-',
             _ => b.is_ascii_hexdigit(),
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Phase 2 F1a：records_dir_for 按 kind 派生正确子目录（Claude=projects / Codex=sessions）。
+    #[test]
+    fn records_dir_for_per_kind() {
+        let root = Path::new("/home/u/.claude");
+        assert_eq!(
+            records_dir_for(AgentKind::ClaudeCode, root),
+            Path::new("/home/u/.claude/projects")
+        );
+        let croot = Path::new("/home/u/.codex");
+        assert_eq!(
+            records_dir_for(AgentKind::Codex, croot),
+            Path::new("/home/u/.codex/sessions")
+        );
+    }
+
+    /// enabled_kinds 恒含 Claude（零回归）；Codex 仅当 ~/.codex/sessions 存在时纳入（machine-dependent，
+    /// 此处只锁 Claude 恒在 + records_roots 有对应 projects 根，Codex 分支由装了 Codex 的机器真机验证）。
+    #[test]
+    fn enabled_kinds_always_includes_claude() {
+        assert!(enabled_kinds().contains(&AgentKind::ClaudeCode));
+        let roots = records_roots();
+        let claude = roots.iter().find(|(k, _)| *k == AgentKind::ClaudeCode);
+        assert!(
+            claude
+                .map(|(_, d)| d.ends_with("projects"))
+                .unwrap_or(false),
+            "Claude 根应以 projects 结尾"
+        );
+    }
 }
