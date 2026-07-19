@@ -32,6 +32,14 @@ DG3 wire（keystone·契约先行·对拍锁定）→ DG1 发现+Line → DG4 tu
   - 落了 cc-send aterm 对 CodexUsageAggregator 逐字核（它读我 Rust）。
 - 之后：DG1 发现（接 DG3 agent_kind：watcher per-kind 走 codex_dir/sessions 日期树 + SessionAdded 发 agent_kind=codex + Hello 翻 kinds/codex_dir）→ **DG2 判活（gating：真机实测 fd/sqlite/mtime，aterm 同机交叉核已应承、撞不确定停交用户）** → DG6 resume（ResumeSpec.agentKind→codex resume）→ Phase G。
 
+## ⬇ DG2 判活预备（aterm 零成本核本机 ~/.codex/logs_2.sqlite schema @06:03，供 DG2 用）
+**部分证实**判活链 `thread_id(会话)→process_uuid→PID→/proc/<PID> 存活`：
+- `process_uuid` 格式 = **`pid:<PID>:<uuid>`**（10726/10726 行无例外）→ process_uuid→PID **坐实**。
+- `thread_id` = **会话 UUID**（= rollout sessionId）→ thread_id↔session 映射**坐实**。
+- PID 复用靠 process-uuid 消歧；但 /proc 不暴露 process_uuid → 需 `/proc/<PID>/fd`→rollout 佐证身份。
+- **仍未坐实**：`/proc/<PID>/fd` 是否真指 rollout（本机当前**无运行中 codex 进程**、查不了）。**别当既定** → DG2 到时 aterm 起真 codex 会话**同机交叉核 /proc/fd**（已应承）。
+- DG2 判活算法据此设计：thread_id→查 sqlite process_uuid→抽 PID→/proc/<PID> 存活 + /proc/fd 指 rollout 佐证（消歧 PID 复用）+ mtime 窗兜底。liveness_confidence=heuristic。
+
 ## 进度总览（2D，2026-07-19）
 - ✅ Phase A masterplan（用户批准）· ✅ DG4 turn-end（aterm verbatim 对拍）· ✅ DG3 wire（aterm 消费侧并行 build、真字节已交叉核）
 - ⏭ DG5 usage（next，未阻塞）· DG1 发现（接 DG3）· DG2 判活（真机 gating，aterm 同机核）· DG6 resume
