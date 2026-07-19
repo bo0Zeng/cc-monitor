@@ -56,7 +56,15 @@ Codex 在 monitor **历史可浏览 + 内容正确渲染 + 用量计入**，全 
 - **F1b+F4 判活**（live watcher + Codex 判活，无 pidfile）= **核心 startup 大改** → 计划早定「撞大改停 loop **交用户定范围**」。
   → **用户 2026-07-19 定：推迟 F1b+F4，随 aterm daemon 阶段合并设计**。理由：monitor 本地 live/判活 与 daemon 远端 live/判活概念重叠；等 aterm 到 daemon 阶段与我**联合设计一次判活**（monitor+daemon 对齐），避免设计两遍/返工。现在不动核心 startup。
 - **F3 turn-end / F6 resume / daemon --agent** = 跨项目，**待 aterm 2D `agent_kind` wire** + 两阶段计划的 daemon 联合开发（用户定：aterm 到 daemon 阶段找我共同做）。
-→ 无本地未阻塞 slice 可续，**停 loop**。**现进入「待命」态**：Phase 1 monitor-local Codex 适配（历史/用量/渲染）已完成；待 aterm 到 daemon 阶段找我 → 联合开发 daemon Codex + 判活 + F1b/F3/F6 一并落地。
+→ 无本地未阻塞 slice 可续，**停 loop**。monitor-local Codex 适配（历史/用量/渲染）已完成。
+
+## 🚀 2D 联合起步已触发（2026-07-19 @04:37，aterm 到 daemon 阶段找我）
+aterm 批 2C（β 侧）全完（per-kind 渲染/去噪[与我 F7 锁]/发现 catalog/resume/watcher mtime 判活，Claude 零回归 Phase D 确认），起 2D daemon 联合。**我已读 daemon 现码核实并答 4 问**（cc-send @04:xx）：
+- **daemon α 现状（核）= Claude-only 零 Codex**（daemon-01~09 骨架）：wire.rs Frame(Hello.claude_dir/Line.byte_offset/SessionAdded 带 pidfile 元/SessionStatus/SessionRemoved/TurnEnd/Overflow, PROTO_VERSION=1 全 additive)；watcher.rs 判活=Claude pidfile(sessions/<PID>.json+/proc starttime)；turn_detect=Claude assistant+end_turn(golden-parity aterm)；usage/history/resolve 均 Claude。**daemon↔monitor 不共享代码**（deliberate：Value 上 golden-parity 重实现）→ Codex 逻辑 daemon **独立重镜像** monitor F2/F5。
+- **分工（定）**：daemon Codex 逻辑我主（Rust wire+发现+判活+per-kind 解析/turn-end/usage），aterm 消费 wire 你主（Kotlin DaemonTransport）。判活语义两端对齐：aterm `authoritativeLiveness` ⟺ 我 `liveness_confidence:authoritative(Claude pidfile)|heuristic(Codex mtime)`。
+- **wire 草案（我出，additive）初拟**：Hello 加 codex_dir/kinds；SessionAdded 加 `agent_kind:claude|codex` + `liveness_confidence`；ResumeSpec 加 `agentKind`（→ codex resume <uuid> vs claude --resume）；TurnEnd 不变（Codex uuid=turn_id 缺→envelope timestamp 回退）；**不 bump PROTO_VERSION**。
+- **判活远端读**：daemon 跑会话主机本地。Codex 无 pidfile → 「fd 持开」（/proc/<pid>/fd 指 rollout + logs_2.sqlite process_uuid + mtime 兜底）**仍是源码指向的假设、未真机实测坐实**——F4 必起真 codex 会话一起测再定。
+- **下一步**：我起 daemon Codex Phase B masterplan + Rust wire 正式草案；aterm 带 Kotlin 消费侧草案；下轮对拍字段名/值域/判活接口 → **masterplan 过用户审批门禁** → 批 D 节奏 build+对抗互审。**现待 aterm 下轮草案**。
 
 ## ⬇ 传入约束（aterm 2B Phase D 真机审计同步 @00:47，都真机 codex 0.144.6【核】；记此供 F1b/F3 落地）
 1. **F1b 上下文表**：占用用 `last_token_usage.total_tokens`（**别用累计 `total_token_usage.total_tokens`**——单调增会把上下文卡死~100%）；上限直接读 `info.model_context_window`（真机 258400），**别拿 GPT model 套 Anthropic 200K/1M 档**。
