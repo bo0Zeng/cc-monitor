@@ -11,9 +11,9 @@
 //! **本模块范围（渐进接线）**：DG4 = turn-end 边沿（event_msg task_complete/turn_complete → uuid=turn_id
 //! 缺→envelope timestamp 回退）。DG5（usage：token_count）复用本模块的信封助手，接线时加。
 
-// staged：DG4 detector 已建 + golden-parity 单测，但 **consumer（per-kind process_jsonl 派发 + wire
-// agent_kind）在 DG1 发现层 / DG3 wire 接线**——那前本模块函数在非 test 构建里未被调用。逐函数接线后摘。
-#![allow(dead_code)]
+// DG5 起本模块过半函数已被 usage_query 接线（发现/用量 helpers）；仅 turn-end 4 函数仍 staged（consumer
+// = DG1 per-kind process_jsonl 派发 / DG3 wire），故 blanket 模块 allow 收窄为那 4 个上的 per-fn allow
+// （Phase D 审计建议：blanket 会静默吞掉将来真死代码）。
 
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -33,6 +33,7 @@ fn payload_type(payload: &Value) -> Option<&str> {
 
 /// alias 归一：`turn_started`→`task_started`、`turn_complete`→`task_complete`（EventMsg v1 别名，新旧
 /// 版本都吃）。其它原样。与 monitor `codex_record::normalize_event` 同。
+#[allow(dead_code)] // staged：仅 turn-end（is_codex_turn_end）用；consumer DG1/DG3 接线后摘。
 fn normalize_event(t: &str) -> &str {
     match t {
         "turn_started" => "task_started",
@@ -47,6 +48,7 @@ pub fn envelope_ts(v: &Value) -> Option<&str> {
 }
 
 /// event_msg 的 `payload.turn_id`（turn-end/started/aborted 用）。缺 → None。
+#[allow(dead_code)] // staged：turn-end consumer（DG1/DG3）接线后摘。
 fn turn_id(v: &Value) -> Option<&str> {
     unwrap_envelope(v)?.1.get("turn_id").and_then(Value::as_str)
 }
@@ -54,6 +56,7 @@ fn turn_id(v: &Value) -> Option<&str> {
 /// 一条 Codex 记录是否为 **turn-end 边沿**：event_msg 且 payload.type（alias 归一后）== `task_complete`。
 /// **golden-parity aterm `CodexTurnEndDetector`**。`turn_aborted` 明确**不算**（aterm 决策：中止轮静默
 /// 不发 TurnEnd）。非 event_msg / 其它子型 / 缺失 → false（安全默认，不崩）。
+#[allow(dead_code)] // staged：consumer = DG1 per-kind process_jsonl 派发 / DG3 wire，接线后摘。
 pub fn is_codex_turn_end(v: &Value) -> bool {
     match unwrap_envelope(v) {
         Some(("event_msg", payload)) => {
@@ -69,6 +72,7 @@ pub fn is_codex_turn_end(v: &Value) -> bool {
 /// （2026-07-19 双端逐字对拍 verbatim-equivalent）。
 /// **共同待观察**（两端同步记）：真机 31/31 用 `turn_id`；若某版改字段名（如 `task_id`），两端都只读
 /// `turn_id` → 都安全回退 envelope timestamp（非空键、不漏帧），届时两端同步加新键别名。
+#[allow(dead_code)] // staged：consumer = DG1 per-kind process_jsonl 派发 / DG3 wire，接线后摘。
 pub fn codex_turn_end_uuid(v: &Value) -> Option<&str> {
     if !is_codex_turn_end(v) {
         return None;
@@ -125,14 +129,25 @@ pub fn session_meta_cwd(v: &Value) -> Option<&str> {
     }
 }
 
-/// Codex sid = rollout 文件名**末 36 字符 UUID**（`rollout-<ts>-<uuid>` → `<uuid>`；对齐 monitor
-/// `adapter::codex_sid_from_rollout`，令远端/本地同会话 sid 一致）。stem 短于 36 → 整个 stem 兜底。
+/// Codex sid = rollout 文件名的 UUID（`rollout-<ts>-<uuid>` → `<uuid>`）。**校验强度对齐 monitor
+/// `adapter::codex_sid_from_rollout`（Phase D 审计修 parity 发散）**：须 `rollout-` 前缀 + 末 36 字符
+/// 过 UUID 形校验，否则 `None`（→ 调用方跳过该文件，同 monitor，避免畸形名吐幽灵行）。末 36 用 `get`
+/// （非字节切片）→ 非字符边界安全返 None、不 panic（比 monitor 的 `&rest[..]` 切片更稳）。
 pub fn codex_sid_from_path(path: &Path) -> Option<String> {
     let stem = path.file_stem()?.to_str()?;
-    Some(match stem.char_indices().rev().nth(35) {
-        Some((byte_idx, _)) => stem[byte_idx..].to_string(),
-        None => stem.to_string(),
-    })
+    let rest = stem.strip_prefix("rollout-")?;
+    let uuid = rest.get(rest.len().checked_sub(36)?..)?;
+    is_uuid(uuid).then(|| uuid.to_string())
+}
+
+/// UUID 形校验（`8-4-4-4-12` hex；对齐 monitor `adapter::is_uuid`）。
+fn is_uuid(s: &str) -> bool {
+    let parts: Vec<&str> = s.split('-').collect();
+    parts.len() == 5
+        && parts
+            .iter()
+            .zip([8, 4, 4, 4, 12])
+            .all(|(p, n)| p.len() == n && p.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
 #[cfg(test)]
@@ -227,5 +242,34 @@ mod tests {
             "type": "assistant", "uuid": "u", "message": { "stop_reason": "end_turn" }
         });
         assert!(!is_codex_turn_end(&claude));
+    }
+
+    /// Phase D 审计修：sid 提取校验对齐 monitor（rollout- 前缀 + 末36 UUID 形），畸形名 → None（跳过、
+    /// 不吐幽灵行），合法名 → 末36 UUID。补 daemon 侧此前缺的畸形名覆盖。
+    #[test]
+    fn codex_sid_from_path_validates_like_monitor() {
+        let p = |n: &str| PathBuf::from(n);
+        assert_eq!(
+            codex_sid_from_path(&p(
+                "rollout-2026-07-18T08-00-00-019f75dd-875c-7c81-9eda-32f866b2c60f.jsonl"
+            ))
+            .as_deref(),
+            Some("019f75dd-875c-7c81-9eda-32f866b2c60f")
+        );
+        for bad in [
+            "rollout-garbage.jsonl",                                 // 剥前缀后 <36
+            "notrollout-019f75dd-875c-7c81-9eda-32f866b2c60f.jsonl", // 无 rollout- 前缀
+            "rollout-2026-07-18T08-00-00-zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz.jsonl", // 末36 结构对但非 hex
+        ] {
+            assert!(codex_sid_from_path(&p(bad)).is_none(), "畸形名应跳: {bad}");
+        }
+    }
+
+    #[test]
+    fn is_uuid_matches_8_4_4_4_12_hex() {
+        assert!(is_uuid("019f75dd-875c-7c81-9eda-32f866b2c60f"));
+        assert!(!is_uuid("019f75dd-875c-7c81-9eda-32f866b2c60")); // 末段 11 位
+        assert!(!is_uuid("zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz")); // 非 hex
+        assert!(!is_uuid("019f75dd875c7c819eda32f866b2c60f")); // 无分隔
     }
 }
