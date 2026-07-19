@@ -16,10 +16,12 @@
   `CodexAdapter` shell（~/.codex+$CODEX_HOME）、`for_kind()`、`session_id_from_path` 泛化（Claude 零回归/
   Codex 末36 UUID）。monitor 316 pass（原 312 全绿+4 新）、my 文件 clippy 0、fmt 净。**active() 仍 Claude、未接 discovery**。
 
+## Phase F 再排（2026-07-18，用户批准）
+- **F1 slice 2 调查发现**：monitor 会话发现**不是单一中央扫**——散在核心 startup（`lib.rs:341` 一 agent 一 watcher 一 SessionMap）+ ~20 处 `active()` scan 点。多 kind = 核心 startup 大重构 + 设计岔口（显式传 kind vs 按路径解 kind）。**且早于 F2 premature**（发现了 Codex 会话也无记录模型可解析/渲染）。
+- **再排（用户选「F2 keystone next」）**：**先 F2**（CanonicalRecord + Codex defensive parser，自包含、纯可测、本机 fixture、解锁 turn-end/usage/UI、对齐 aterm 2A）。monitor 发现层大重构**推迟到 F2 后**、专门设计一轮 + 协调。daemon Codex 发现（更自包含）可与之并行/其后。
+
 ## 下一个（下轮 loop 目标）
-- **F1 slice 2**：monitor 多 kind discovery 派发——探 `~/.codex/sessions` 存在则纳入、发现层按会话根传 kind
-  （watcher/history/search/usage 的 `active()` 点改按路径 kind），Codex 日期树扫。仍不碰记录模型（F2）。
-- 之后 F1 slice 3：daemon `--agent` selector（§26 strippable）+ 日期树 discovery + daemonless SSH find。
+- **F2 · CanonicalRecord + Codex defensive parser**（keystone）。先写 `features/02-canonical-record.md`（Phase B），设计中立 `CanonicalRecord`（**cc-bus 与 aterm 对齐 canonical 概念模型 + 互审**，非硬 wire 依赖）；Codex 解码器 maximally defensive（envelope unwrap / alias task↔turn / 全 taxonomy / call_id 配对 / 容缺 world_state / .jsonl.zst）；Claude canonical 投影（parse_line 之上、零回归）。本机 Codex rollout 作 fixture 语料。
 
 ## 待协调（不阻塞本地地基）
 - wire 共享面（agent_kind + liveness_confidence + ResumeSpec agent_kind）→ **aterm 2D 联调**。aterm 正推 2A（RecordParser SPI）。

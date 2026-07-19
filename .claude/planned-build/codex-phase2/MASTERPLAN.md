@@ -54,3 +54,5 @@
 
 ## 变更记录
 - 2026-07-18 建，源自三 agent 全面调研 + 用户直接授权全自动开跑。
+- 2026-07-18 **F1 slice1 完成**（`codex-F1s1` 7578aba）：monitor AgentKind/SidStrategy/CodexAdapter shell/for_kind/session_id_from_path 泛化，active() 仍 Claude 零回归、monitor 316。
+- 2026-07-18 **Phase F 再排（用户批准「F2 keystone next」）**：F1 slice2 调查发现 monitor 多 kind 发现 = 核心 startup 大重构 + 设计岔口、且早于 F2 premature → **先 F2**（CanonicalRecord keystone，自包含可测），monitor 发现层大重构推迟到 F2 后专门设计一轮。功能集不变、仅调序。

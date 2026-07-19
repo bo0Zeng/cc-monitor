@@ -9,6 +9,7 @@ mod adapter;
 mod auto_launch;
 mod bind;
 mod bridge;
+mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（keystone 第一块）
 mod config;
 mod data_paths;
 mod event_replay;
