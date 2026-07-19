@@ -47,7 +47,7 @@
 
 - ✅ **F5 · monitor 用量 per-kind（Codex）**（`codex-F5` eba6b40）：`usage.rs` 加 Codex 分支——枚举 Codex 会话→逐行 raw JSON→`token_count` 的 `last_token_usage` 增量按 (model,天) SUM 归桶。字段映射 input=input_tokens−cached / cache_read=cached / cache_creation=0 / output=output_tokens（防重复计，input+cache_read=总 prompt）。model 取 turn_context.model。**Phase D 自审**修全零 no-op 事件 ghost 桶。**真机对账**（跨午夜/total 不可靠会话均 SUM last 对上）。monitor 341、clippy 31 不增、Claude 零回归。daemon --usage 的 Codex（远端）属 daemon --agent 片（待 aterm 2D）、本片不含。
 
-- ✅ **F7 · UI 验证 + 注入去噪**（`codex-F7` 2562057）：读前端渲染路坐实 Codex 经第三条路**渲染 largely 免费、零前端改**——消息 blocks 走 renderMessage、event→Unrecognized 命 default→skip(零事件噪音)、空 uuid 优雅跳、usage-pivot 对 Codex model/cache_creation=0 通用不崩。唯一代码改 = **注入上下文去噪**（role=user 正文 `<environment_context>`/`<recommended_plugins>` → isMeta=true 隐藏，对齐 doc §63 + aterm）。monitor 342、clippy 31 不增、Claude 渲染零回归。
+- ✅ **F7 · UI 验证 + 注入去噪**（`codex-F7` 2562057，去噪精化 `607d082`）：读前端渲染路坐实 Codex 经第三条路**渲染 largely 免费、零前端改**——消息 blocks 走 renderMessage、event→Unrecognized 命 default→skip(零事件噪音)、空 uuid 优雅跳、usage-pivot 对 Codex model/cache_creation=0 通用不崩。唯一代码改 = **注入上下文去噪**：role=user 正文以 `<environment_context>`/`<recommended_plugins>`/`# AGENTS.md instructions` 起头 → isMeta=true 隐藏。**去噪集 3 标记与 aterm 2C/doc §63 锁定对齐**（两端各自真机核 47 条 user msg、34 真输入 0 误判；MCP 指令注入无干净前缀两端一致不认）。monitor 342、clippy 31 不增、Claude 渲染零回归。
 
 ## ✅✅✅ 本地可独立完成的未阻塞 slice 全部完成（F1a 历史 / F5 用量 / F7 渲染+去噪）
 Codex 在 monitor **历史可浏览 + 内容正确渲染 + 用量计入**，全 backend·零前端改·Claude 零回归。monitor 342、clippy 31 不增。
@@ -65,7 +65,7 @@ Codex 在 monitor **历史可浏览 + 内容正确渲染 + 用量计入**，全 
 
 ## 待协调（不阻塞已完成的本地地基）
 - wire 共享面（agent_kind + liveness_confidence + ResumeSpec agent_kind）→ **aterm 2D 联调**。aterm 正推 2B 用量 SPI。
-- **渲染去噪集对齐**：我已去噪 `<environment_context>`/`<recommended_plugins>`；`# AGENTS.md instructions`/`You have an MCP server…` 形态模糊、已 cc-send aterm 提议对齐 denoise 集 + 更新 doc §63。
+- ✅ **渲染去噪集对齐（已锁定）**：3 标记 `<environment_context>`/`<recommended_plugins>`/`# AGENTS.md instructions`（严格 starts_with）两端一致；aterm 已更 doc §63（含 4 标记真机计数 + MCP 保守不认）。两端各自真机核 0 误判。
 - F4 判活「fd 持开」假设 → 建到 F1b+F4 时起真 codex 会话实测坐实（源码已指向持开）。
 
 ## 回看
