@@ -1,7 +1,7 @@
 //! F-MA:Claude Code 适配器(**第一个实例**)。把现有 CC 专属逻辑原样包进 [`AgentAdapter`],
 //! **零行为变化**——第一刀是纯抽象,现有测试全绿即验收。
 
-use super::{AgentAdapter, SessionLayout};
+use super::{AgentAdapter, SessionLayout, SidStrategy};
 use std::path::PathBuf;
 
 /// CC 会话源布局:`~/.claude/{projects,sessions,tasks}`;记录 `<projects>/<enc(cwd)>/<sid>.jsonl`
@@ -11,7 +11,7 @@ static CLAUDE_LAYOUT: SessionLayout = SessionLayout {
     liveness_subdir: "sessions",
     tasks_subdir: Some("tasks"),
     record_ext: "jsonl",
-    sid_from_stem: true,
+    sid_strategy: SidStrategy::Stem,
     skip_segments: &["subagents"],
 };
 
@@ -65,7 +65,7 @@ mod tests {
         assert_eq!(l.liveness_subdir, "sessions");
         assert_eq!(l.tasks_subdir, Some("tasks"));
         assert_eq!(l.record_ext, "jsonl");
-        assert!(l.sid_from_stem);
+        assert_eq!(l.sid_strategy, SidStrategy::Stem);
         assert_eq!(l.skip_segments, ["subagents"]);
     }
 }

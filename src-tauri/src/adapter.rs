@@ -8,8 +8,32 @@
 //! 增量长 trait:每收敛一类假设(布局→解析→活性→resume)才往 trait 加一个方法,避免未接线的死方法。
 
 pub mod claude_code;
+pub mod codex;
 
 use std::path::{Path, PathBuf};
+
+/// Phase 2（Codex 泛化）：受支持的 agent 种类。Claude Code 是第一个、Codex 是「第二个样本」
+/// （SS-1 说好的第二刀触发点）。monitor 先定义；daemon（`remote-daemon-proto`）与 frontend
+/// 各自镜像（双写 parity，同 `turn_detect`/`usage` 现状）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentKind {
+    ClaudeCode,
+    /// F1 起定义、经 `for_kind` + 单测覆盖；**production 构造点**（discovery 按会话根 `~/.claude` vs
+    /// `~/.codex` per-kind 派发）在后续 slice——在此之前 production 只构造 `ClaudeCode`，故暂
+    /// `#[allow(dead_code)]`（discovery 接 Codex 后摘）。
+    #[allow(dead_code)]
+    Codex,
+}
+
+/// 从记录文件路径取 session_id 的策略（per-kind）。取代原 `sid_from_stem: bool`——Codex 的
+/// `rollout-<ts>-<uuid>.jsonl` 文件名 stem **不等于** sid（sid 是末尾 UUID），bool 表达不了。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SidStrategy {
+    /// 文件名 stem 即 sid（CC：`<sid>.jsonl`）。
+    Stem,
+    /// Codex `rollout-<YYYY-MM-DDThh-mm-ss>-<uuid>.jsonl` → 末 36 字符 UUID。
+    CodexRollout,
+}
 
 /// 文件型 agent 的会话源布局(目录 / 命名约定)。把散落的「知道 CC 目录结构」字面量收这里,
 /// 消除会话发现层(live / history / search / remote 四链)对具体子目录名的硬编码。
@@ -22,8 +46,8 @@ pub struct SessionLayout {
     pub tasks_subdir: Option<&'static str>,
     /// 会话记录扩展名(CC = `"jsonl"`)。
     pub record_ext: &'static str,
-    /// 文件名(去扩展名)是否即 session_id(CC = true;读侧不需 `enc(cwd)` 编码)。
-    pub sid_from_stem: bool,
+    /// 从记录文件路径取 sid 的策略(CC = `Stem`;Codex = `CodexRollout`)。
+    pub sid_strategy: SidStrategy,
     /// 扫描时跳过的路径段(CC = `["subagents"]`,子会话不当独立会话)。
     pub skip_segments: &'static [&'static str],
 }
@@ -51,10 +75,20 @@ pub trait AgentAdapter: Send + Sync {
     fn launcher_alias(&self) -> Option<&'static str>;
 }
 
-/// 当前活跃适配器。第一刀写死 Claude Code(ZST,无分配);接第二个 agent 时改成可选/探测。
-pub fn active() -> &'static dyn AgentAdapter {
+/// Phase 2：按 [`AgentKind`] 取适配器(ZST static,无分配)。
+pub fn for_kind(kind: AgentKind) -> &'static dyn AgentAdapter {
     static CLAUDE: claude_code::ClaudeCodeAdapter = claude_code::ClaudeCodeAdapter;
-    &CLAUDE
+    static CODEX: codex::CodexAdapter = codex::CodexAdapter;
+    match kind {
+        AgentKind::ClaudeCode => &CLAUDE,
+        AgentKind::Codex => &CODEX,
+    }
+}
+
+/// 当前活跃适配器。**F1 仍默认 Claude Code**(零回归——所有现有 caller 走 active() 行为不变);
+/// 后续 slice 起按会话根(`~/.claude` vs `~/.codex`)per-kind 派发,届时发现层改传 kind、不再走全局。
+pub fn active() -> &'static dyn AgentAdapter {
+    for_kind(AgentKind::ClaudeCode)
 }
 
 /// F-MA:agent 数据根下的**会话记录**目录(CC = `<root>/projects`)。收敛散落的 `.join("projects")`。
@@ -90,10 +124,37 @@ pub fn is_record_file(p: &Path) -> bool {
 }
 
 /// F-MA:从记录文件路径取 session_id(CC = `file_stem`)。约定不成立则 `None`。
+/// **F1 仍走 `active()`（=Claude，零回归）**；`_with` 供 per-kind 测 + 后续 multi-kind 派发。
 pub fn session_id_from_path(p: &Path) -> Option<String> {
-    if active().layout().sid_from_stem {
-        p.file_stem().and_then(|s| s.to_str()).map(String::from)
-    } else {
-        None
+    session_id_from_path_with(active().layout(), p)
+}
+
+/// Phase 2：按 layout 的 [`SidStrategy`] 取 sid（供 per-kind 派发/测）。
+pub fn session_id_from_path_with(layout: &SessionLayout, p: &Path) -> Option<String> {
+    match layout.sid_strategy {
+        SidStrategy::Stem => p.file_stem().and_then(|s| s.to_str()).map(String::from),
+        SidStrategy::CodexRollout => codex_sid_from_rollout(p),
     }
+}
+
+/// Codex `rollout-<YYYY-MM-DDThh-mm-ss>-<uuid>.jsonl` → 末尾 36 字符 UUID（= ThreadId =
+/// session_meta.id）。时间戳内也含 `-`，故不能按 `-` 切；取 stem 末 36 字符并校验 UUID 形。
+/// 非 rollout 前缀 / 过短 / 末段非 UUID → `None`（不臆造）。（`.jsonl.zst` 冷会话见 F2。）
+fn codex_sid_from_rollout(p: &Path) -> Option<String> {
+    let stem = p.file_stem().and_then(|s| s.to_str())?;
+    let rest = stem.strip_prefix("rollout-")?;
+    if rest.len() < 36 {
+        return None;
+    }
+    let uuid = &rest[rest.len() - 36..];
+    is_uuid(uuid).then(|| uuid.to_string())
+}
+
+/// UUID 形校验：`8-4-4-4-12` 十六进制 + 固定位 `-`（第 8/13/18/23 字符）。
+fn is_uuid(s: &str) -> bool {
+    s.len() == 36
+        && s.bytes().enumerate().all(|(i, b)| match i {
+            8 | 13 | 18 | 23 => b == b'-',
+            _ => b.is_ascii_hexdigit(),
+        })
 }
