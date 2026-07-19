@@ -22,6 +22,7 @@
 mod history_query;
 mod resolve_query;
 mod search_query;
+mod turn_detect;
 mod usage_query;
 mod watcher;
 mod wire;
