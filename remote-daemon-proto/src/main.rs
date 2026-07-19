@@ -19,6 +19,7 @@
 //!   inotify reader. This split is the single most-cited Phase-0 accident
 //!   source; keeping it real is the point.
 
+mod codex;
 mod history_query;
 mod resolve_query;
 mod search_query;
