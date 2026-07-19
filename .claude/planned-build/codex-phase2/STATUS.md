@@ -53,9 +53,10 @@
 Codex 在 monitor **历史可浏览 + 内容正确渲染 + 用量计入**，全 backend·零前端改·Claude 零回归。monitor 342、clippy 31 不增。
 
 ## ⛔ Loop 停在计划决策点（2026-07-19）——剩余全部命停点
-- **F1b+F4 判活**（live watcher + Codex 判活，无 pidfile）= **核心 startup 大改** → 计划早定「撞大改停 loop **交用户定范围**」。这是下一步、但需用户决定改造范围。
+- **F1b+F4 判活**（live watcher + Codex 判活，无 pidfile）= **核心 startup 大改** → 计划早定「撞大改停 loop **交用户定范围**」。
+  → **用户 2026-07-19 定：推迟 F1b+F4，随 aterm daemon 阶段合并设计**。理由：monitor 本地 live/判活 与 daemon 远端 live/判活概念重叠；等 aterm 到 daemon 阶段与我**联合设计一次判活**（monitor+daemon 对齐），避免设计两遍/返工。现在不动核心 startup。
 - **F3 turn-end / F6 resume / daemon --agent** = 跨项目，**待 aterm 2D `agent_kind` wire** + 两阶段计划的 daemon 联合开发（用户定：aterm 到 daemon 阶段找我共同做）。
-→ 无本地未阻塞 slice 可续，**停 loop 交用户**（符合停止条件①③）。
+→ 无本地未阻塞 slice 可续，**停 loop**。**现进入「待命」态**：Phase 1 monitor-local Codex 适配（历史/用量/渲染）已完成；待 aterm 到 daemon 阶段找我 → 联合开发 daemon Codex + 判活 + F1b/F3/F6 一并落地。
 
 ## ⬇ 传入约束（aterm 2B Phase D 真机审计同步 @00:47，都真机 codex 0.144.6【核】；记此供 F1b/F3 落地）
 1. **F1b 上下文表**：占用用 `last_token_usage.total_tokens`（**别用累计 `total_token_usage.total_tokens`**——单调增会把上下文卡死~100%）；上限直接读 `info.model_context_window`（真机 258400），**别拿 GPT model 套 Anthropic 200K/1M 档**。
