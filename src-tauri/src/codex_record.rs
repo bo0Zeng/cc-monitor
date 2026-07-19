@@ -12,9 +12,8 @@
 //! **本 slice 只落分类 + 关键字段 accessor**（turn-end/usage/UI 各 feature 消费它）。中立 CanonicalRecord
 //! 统一 vs per-kind adapter 方法的取舍，留到接 consumer 时定（见 `features/02-canonical-record.md`）。
 
-// 分类器已就绪 + golden 测覆盖；production consumer 在 F3(turn-end)/F5(usage)/F7(UI) 接线——在此之前
-// 全模块 staged，故 `#![allow(dead_code)]`（接线的 commit 摘掉，同 turn_detect 先例）。
-#![allow(dead_code)]
+// F1a 起 `to_jsonl_record`（→ classify → 助手）经 `parser::parse_for_kind` 被 history 读路调用 = 已接线。
+// 仅 `turn_id`/`token_usage_last`（F3 turn-end / F5 用量 accessor）尚未接 consumer → 各自 targeted staged。
 
 use crate::messages::{ApiMessage, JsonlRecord};
 use serde_json::{json, Value};
@@ -105,11 +104,13 @@ pub fn classify(v: &Value) -> CodexRecordKind {
 }
 
 /// event_msg 的 `payload.turn_id`（TurnStarted/Complete/Aborted 用；F3 turn-end uuid=此）。
+#[allow(dead_code)] // F3(turn-end) consumer 接线前 staged
 pub fn turn_id(v: &Value) -> Option<&str> {
     unwrap_envelope(v)?.1.get("turn_id").and_then(Value::as_str)
 }
 
 /// token_count 的 `payload.info.last_token_usage`（本轮增量用量；F5 抽字段）。原样返回 Value。
+#[allow(dead_code)] // F5(用量) consumer 接线前 staged
 pub fn token_usage_last(v: &Value) -> Option<&Value> {
     unwrap_envelope(v)?.1.get("info")?.get("last_token_usage")
 }
