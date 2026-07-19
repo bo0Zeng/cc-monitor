@@ -134,9 +134,9 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
         .flatten()
         .map(|s| s.trim())
         .find(|s| !s.is_empty());
-    let (base, substituted_from) = match candidate {
-        Some(c) => (c.to_string(), Some(c.to_string())),
-        None => ("claude".to_string(), None),
+    let base = match candidate {
+        Some(c) => c.to_string(),
+        None => "claude".to_string(),
     };
     // 审计 security-重要①：B2 纪律**对称化**——`base` 同样进 command 串、由客户端 pty 执行，
     // 原只校验 sid、base 零校验（端到端两侧都没人查 base：客户端 B2 复校也只覆盖 sid）。补 base
@@ -162,7 +162,12 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
         },
         session_name: Some(session_name_for(&spec.session_id)), // cc-<sid8>
         launch_label: None,                                     // MVP 不产 label（aterm 侧自算）
-        substituted_from,
+        // substitutedFrom：aterm 语义（`TmuxBackend.resume` 核实，2026-07-18 回）=「被替换掉的原命令」
+        // = `intended?.takeIf { it != launch }`——仅当解析出的 launch ≠ 用户原意首候选时非空。MVP daemon
+        // 不做「解析可能异于原意」的候选消解（直接用首候选/默认，launch==intended），恒无替换 → None（省略）。
+        // 待 daemon 有真候选消解（候选不可用回退 / post-/branch sid 变更）再填原值。**修正 daemon-04 此前
+        // 误设为「被用候选」**（反了 aterm 语义、与 command 冗余；审计 flag、aterm 2026-07-18 确认语义）。
+        substituted_from: None,
     })
 }
 
@@ -257,7 +262,12 @@ mod tests {
             v["command"],
             "cct --resume abcd1234-5678-90ab-cdef-1234567890ab"
         );
-        assert_eq!(v["substitutedFrom"], "cct"); // 首个非空候选（None 跳过）
+        // substitutedFrom：MVP 恒省略——daemon 不做候选消解、无「被替换的原命令」（对齐 aterm
+        // 语义：仅解析 launch≠原意首候选时才有；见 resolve() 注 + aterm 2026-07-18 确认）。
+        assert!(
+            v.get("substitutedFrom").is_none(),
+            "MVP 无候选消解 → substitutedFrom 省略（不再误设为被用候选）"
+        );
         assert_eq!(v["sessionName"], "cc-abcd1234"); // cc-<sid8>
         let caps = &v["capabilities"];
         assert!(
