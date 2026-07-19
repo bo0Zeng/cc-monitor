@@ -24,7 +24,12 @@
 DG3 wire（keystone·契约先行·对拍锁定）→ DG1 发现+Line → DG4 turn-end → DG5 usage → **DG2 判活（gating 调查·最硬）** → DG6 resume → Phase G。
 
 ## 下一个 = DG5 · Codex usage（daemon 侧 · 未阻塞纯解析）
-- `codex.rs` 加 usage 助手（token_count 的 last_token_usage 字段 + turn_context model + 全零跳）+ `usage_query` per-kind（镜像 monitor F5：input=input_tokens−cached / cache_read=cached / cache_creation=0 / output=output_tokens，SUM last、跳全零 no-op、model 取 turn_context）。golden-parity aterm CodexUsageAggregator(2B)——落了 cc-send aterm 对拍。`--usage` 回传行加 agent_kind。
+- `codex.rs` 加 usage 助手（token_count 的 last_token_usage 字段 + turn_context model + 全零跳）+ `usage_query` per-kind（镜像 monitor F5：input=input_tokens−cached / cache_read=cached / cache_creation=0 / output=output_tokens，SUM last、跳全零 no-op、model 取 turn_context）。`--usage` 回传行加 agent_kind。
+- **★ DG5 golden-parity 对拍点（aterm CodexUsageAggregator 2B 字段，落 DG5 时核）**：
+  1. **output 含不含 reasoning**：我 monitor F5 `output=output_tokens`（**含** reasoning，OpenAI 语义 output=visible+reasoning）；aterm 单列 `reasoningOutput`。daemon `--usage` 出 `UsageTotals`（无 reasoning 字段、双写 parity）→ **DG5 须与 aterm 核 aterm 的 `output` 是否也含 reasoning**（含=一致；若 aterm output 剔除 reasoning 则总量口径差、需对齐）。
+  2. **context-gauge 字段属 F1b 非 DG5**：aterm `lastContextTokens=last_token_usage.total`(非累计)、`contextWindow=model_context_window` 是**上下文占用**（F1b live 表、trap①），**不进 DG5 用量总量**（DG5 只 SUM last 各字段增量入 UsageTotals）。
+  3. `costPartial=true`：Codex 用量只 token 不定价（同 monitor 硬边界），标记部分/仅 token。
+  - 落了 cc-send aterm 对 CodexUsageAggregator 逐字核（它读我 Rust）。
 - 之后：DG1 发现（接 DG3 agent_kind：watcher per-kind 走 codex_dir/sessions 日期树 + SessionAdded 发 agent_kind=codex + Hello 翻 kinds/codex_dir）→ **DG2 判活（gating：真机实测 fd/sqlite/mtime，aterm 同机交叉核已应承、撞不确定停交用户）** → DG6 resume（ResumeSpec.agentKind→codex resume）→ Phase G。
 
 ## 进度总览（2D，2026-07-19）
