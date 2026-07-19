@@ -163,6 +163,28 @@ pub fn call_id(v: &Value) -> Option<&str> {
     unwrap_envelope(v)?.1.get("call_id").and_then(Value::as_str)
 }
 
+/// session_meta 的 `payload.cwd`（F1a list：Codex 无 cwd-项目目录 → 用它内存分组成「项目」）。
+/// 非 session_meta / 缺 → None。
+#[allow(dead_code)] // F1a-3（list 枚举）consumer 接线前 staged
+pub fn session_meta_cwd(v: &Value) -> Option<&str> {
+    if classify(v) != CodexRecordKind::SessionMeta {
+        return None;
+    }
+    unwrap_envelope(v)?.1.get("cwd").and_then(Value::as_str)
+}
+
+/// session_meta 的 `payload.timestamp`（会话起始，F1a list 的 lastActivity 兜底）。非 session_meta → None。
+#[allow(dead_code)] // F1a-3（list 枚举）consumer 接线前 staged
+pub fn session_meta_timestamp(v: &Value) -> Option<&str> {
+    if classify(v) != CodexRecordKind::SessionMeta {
+        return None;
+    }
+    unwrap_envelope(v)?
+        .1
+        .get("timestamp")
+        .and_then(Value::as_str)
+}
+
 // ─── F2b-2：Codex 记录 → 现有 `JsonlRecord`（第三条路组装。口径对齐 aterm CodexRecordParser.kt c03e46f）───
 
 /// Codex rollout 记录（已解析 `v` + 原始行 `raw`）→ 现有 `JsonlRecord`（复用渲染模型）。
@@ -622,6 +644,23 @@ mod tests {
             content_of(&r),
             json!([{"type": "tool_result", "tool_use_id": "c1", "content": "文件列表"}])
         );
+    }
+
+    /// F1a-3：session_meta cwd/timestamp 抽取（Codex 无 cwd-项目目录 → list 用 cwd 内存分组）。
+    #[test]
+    fn session_meta_cwd_and_timestamp() {
+        let sm = env(
+            "session_meta",
+            json!({"session_id": "s", "cwd": "/home/u/proj", "timestamp": "2026-07-19T03:25:05.382Z"}),
+        );
+        assert_eq!(session_meta_cwd(&sm), Some("/home/u/proj"));
+        assert_eq!(
+            session_meta_timestamp(&sm),
+            Some("2026-07-19T03:25:05.382Z")
+        );
+        // 非 session_meta（如 turn_context 也有 cwd）→ None（只认 session_meta）。
+        let tc = env("turn_context", json!({"cwd": "/other", "turn_id": "t"}));
+        assert_eq!(session_meta_cwd(&tc), None);
     }
 
     /// 事件/元记录 → Unrecognized（保 raw、original_type、reason=codex-event；turn-end/用量 per-kind 从 raw 读）。
