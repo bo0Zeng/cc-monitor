@@ -40,6 +40,17 @@ DG3 wire（keystone·契约先行·对拍锁定）→ DG1 发现+Line → DG4 tu
 - **仍未坐实**：`/proc/<PID>/fd` 是否真指 rollout（本机当前**无运行中 codex 进程**、查不了）。**别当既定** → DG2 到时 aterm 起真 codex 会话**同机交叉核 /proc/fd**（已应承）。
 - DG2 判活算法据此设计：thread_id→查 sqlite process_uuid→抽 PID→/proc/<PID> 存活 + /proc/fd 指 rollout 佐证（消歧 PID 复用）+ mtime 窗兜底。liveness_confidence=heuristic。
 
+## 🔬 跨产品对抗互审（2026-07-19，用户点「你们要互相审查」）
+**我方 Phase D**（3 agent：正确性/parity/零回归）：daemon DG3/DG4/DG5 无阻塞、Claude 字节零回归可证、DG5↔monitor F5 token 数学对真实数据 byte-identical。修 2 项（`e72f5ef`）：sid 校验对齐 monitor（防幽灵行）、收窄 dead_code allow。
+**我审 aterm 消费侧**（只读 UsageAggregator/CodexRecordParser/TurnEndDetector/DaemonTransport 对拍我方）——point-check 漏掉的真分歧：
+- ✅ **reasoning 悬案解决**：aterm output **含** reasoning（reasoningOutput 独立子维不扣）= 我方，**无 parity 破裂**。
+- ✅ turn-end / DG3 wire **对抗核实真一致**（非仅信 aterm 声称）：触发集/turn_aborted 排除/uuid 回退/snake_case/缺=claude+authoritative/值域全对齐。
+- ⚠ **USAGE 3 真分歧（重要非阻塞；session 总量在 final==Σlast 下仍相等，分歧在粒度/计数）**：① aterm 取末条 total_token_usage vs 我 SUM last per (model,天)（我带 per-model/天分桶+更鲁棒弃 total；aterm 单 summary、lastModel=null）② aterm 计全零事件 vs 我跳（requests≠msgs）③ aterm 无 model 维 vs 我有。→ 已 cc-send aterm 提议对齐（它定 UsageAggregator 跟不跟）。
+- flatten_text 空项：我 filter_map 丢无 text 项 vs aterm joinToString 留 ""（渲染低危、登记）。
+
+## ⚠️ DG1 关键 gotcha（互审发现，必办）
+daemon `EMITS` 已含 `"turn_end"`；aterm 若据 `Hello.emits` 门控「依赖 daemon 发 turn_end、不本地兜底」，则 **DG1 接线 Codex 发现时必须同时让 Codex 会话真发 `TurnEnd` 帧**（接 `codex::is_codex_turn_end`/`codex_turn_end_uuid` 进 per-kind `process_jsonl` 派发），否则 Codex 会话会等一个永不到来的帧、turn-end 通知永不触发。
+
 ## 进度总览（2D，2026-07-19）
 - ✅ Phase A masterplan（用户批准）· ✅ DG4 turn-end（aterm verbatim 对拍）· ✅ DG3 wire（aterm 消费侧并行 build、真字节已交叉核）
 - ⏭ DG5 usage（next，未阻塞）· DG1 发现（接 DG3）· DG2 判活（真机 gating，aterm 同机核）· DG6 resume
