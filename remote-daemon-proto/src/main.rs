@@ -83,7 +83,10 @@ const PROTO_VERSION: u32 = 1;
 /// - p1m-hello-emits = phase② 联调（daemon-08）：Hello 加 `emits:[帧 kind]`（additive，与 capabilities
 ///   正交、不受 §26）——aterm 门控消费。现声明 line/session_added/session_status/session_removed/
 ///   overflow；turn_end 待其帧接线后加。additive、无 PROTO_VERSION bump。
-const BUILD_ID: &str = "p1m-hello-emits";
+/// - p1n-turn-end = phase② 联调（daemon-09）：`process_jsonl` 每见 turn-end 记录发 `Frame::TurnEnd
+///   {sid,uuid}`（raw-per-record、方案 C 不 dedup；判词 `turn_detect` 对拍 aterm TurnDetector）；
+///   `turn_end` 加进 EMITS。dedup 视界在 aterm rolling+debounce baselineByPath。additive、无 bump。
+const BUILD_ID: &str = "p1n-turn-end";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
@@ -112,6 +115,7 @@ const EMITS: &[&str] = &[
     "session_status",
     "session_removed",
     "overflow",
+    "turn_end", // daemon-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
 ];
 
 /// Batch7-F24/Batch8-F25：从 argv 剥离流模式 flag（`--with-bg` / `--tail-only`），

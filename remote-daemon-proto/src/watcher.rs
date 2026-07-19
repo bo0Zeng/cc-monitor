@@ -415,6 +415,11 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
     state.offsets.insert(key, new_cursor);
     let path_str = path.to_string_lossy().into_owned();
     for line in lines {
+        // daemon-09（phase②）：turn-end 边沿在 raw **之外**额外算——先解析（畸形→None、不影响 Line）。
+        // 在 raw move 进 Line 帧前抽出（避免 clone raw）。§2.1 不变量并存：Line 逐行照发**每一条**。
+        let turn_uuid: Option<String> = serde_json::from_str::<serde_json::Value>(&line.raw)
+            .ok()
+            .and_then(|v| crate::turn_detect::turn_end_uuid(&v).map(str::to_string));
         sink.send(Frame::Line {
             session_id: session_id.clone(),
             path: path_str.clone(),
@@ -422,6 +427,15 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
             raw: line.raw,
             byte_offset: line.byte_offset, // daemon-01 gap#2：累计原始字节（对齐 aterm LineFramer）
         });
+        // **先 Line 后 TurnEnd**：对齐 aterm β 的按行序处理——TurnEnd 结算时 currentOffset 已含本行。
+        // 方案 C raw-per-record、daemon 不 dedup（aterm rolling-latest+debounce baselineByPath 塌合，
+        // #daemon 2026-07-18 定）。TurnEnd 不带 byte_offset（只 Line 带）。
+        if let Some(uuid) = turn_uuid {
+            sink.send(Frame::TurnEnd {
+                session_id: session_id.clone(),
+                uuid,
+            });
+        }
     }
 }
 
@@ -1502,6 +1516,52 @@ mod tests {
         assert!(state.active_sids.contains("sid-2"));
         assert_eq!(state.sessions.len(), 1);
 
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// daemon-09：`process_jsonl` 对 turn-end 记录发 **Line 后紧跟 TurnEnd**；非 turn-end 只发 Line；
+    /// **畸形行照发 Line、不 panic、无 TurnEnd**（§2.1 逐行转发 + turn-end 是 raw 之外额外边沿）。
+    #[test]
+    fn process_jsonl_emits_turn_end_after_line_raw_per_record() {
+        let dir = std::env::temp_dir().join(format!("ccm-turnend-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
+        let mut sink = FrameSink::new(tx);
+        let mut state = ReaderState::new(dir.join("projects"), false, false);
+        let path = dir.join("sess-1.jsonl");
+        state.active_sids.insert("sess-1".to_string()); // process_jsonl 门控
+                                                        // 三行：非 turn-end user / turn-end assistant / 畸形。
+        let content = concat!(
+            r#"{"type":"user","message":{}}"#,
+            "\n",
+            r#"{"type":"assistant","uuid":"u-2","message":{"stop_reason":"end_turn"}}"#,
+            "\n",
+            "not json at all",
+            "\n",
+        );
+        std::fs::write(&path, content).unwrap();
+        process_jsonl(&path, &mut state, &mut sink);
+        // 帧序：Line(user,seq0) / Line(end_turn,seq1) → TurnEnd(u-2) / Line(畸形,seq2)。
+        assert!(
+            matches!(rx.try_recv(), Ok(Frame::Line { seq: 0, .. })),
+            "user 行 Line"
+        );
+        assert!(
+            matches!(rx.try_recv(), Ok(Frame::Line { seq: 1, .. })),
+            "end_turn 行 Line **先**发"
+        );
+        assert!(
+            matches!(rx.try_recv(), Ok(Frame::TurnEnd { session_id, uuid }) if session_id == "sess-1" && uuid == "u-2"),
+            "Line 后紧跟 TurnEnd(u-2)"
+        );
+        assert!(
+            matches!(rx.try_recv(), Ok(Frame::Line { seq: 2, .. })),
+            "畸形行照发 Line、不 panic"
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "无多余帧（畸形行不产 TurnEnd、user 行不产 TurnEnd）"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 

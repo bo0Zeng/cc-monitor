@@ -5,14 +5,12 @@
 //! 字段坑（master plan §0）：`isApiErrorMessage`→isApiError、`stop_reason` 嵌在 **message** 下、
 //! `isSidechain` 是 **top-level**。在 `serde_json::Value` 上抽取（daemon 无 `parse_line`/typed model）。
 //!
-//! ★ **本轮仅落纯判词 + golden 测**；**帧发射 + dedup 视界**（per-session 末结算 uuid + 客户端重启
-//! 首轮吞历史不通知）待 aterm 加占位 `JsonlFrame.TurnEnd` 变体、两端对齐边沿/去重语义后再接线
-//! （见 cc-bus #daemon）。故 `#[allow(dead_code)]`——判词就绪、等接线那个 commit 摘掉。
+//! **已接线**（daemon-09）：`process_jsonl` 每见一条 turn-end 记录发 `Frame::TurnEnd{sid,uuid}`
+//! （raw-per-record、daemon 不 dedup）；dedup 视界在 aterm 侧 rolling-latest + debounce(1200ms)
+//! `baselineByPath`（首见吞历史不通知、offset 续拉重放 uuid≤基线不通知；transport-agnostic、同 β）。
 //!
 //! §2.1 不变量并存：daemon 仍逐行 raw 转发**每一条** Line（不因分类丢行）；turn-end 是在 raw 之外
 //! **额外**从解析内容算的边沿信号，不替代、不过滤 Line。
-
-#![allow(dead_code)] // 判词已就绪；帧发射接线在后续 commit（待 aterm TurnEnd 变体 + dedup 对齐）
 
 use serde_json::Value;
 
