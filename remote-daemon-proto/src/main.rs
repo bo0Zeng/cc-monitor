@@ -245,6 +245,10 @@ async fn main() {
         build_id: BUILD_ID.to_string(),
         host_arch: std::env::consts::ARCH.to_string(),
         claude_dir: claude_dir.to_string_lossy().into_owned(),
+        // DG3 wire 面已建，但 Codex **发现**（DG1）未接线 → 现只服务 Claude：codex_dir=None、kinds 空
+        // （skip → Hello 帧对 Claude 字节不变）。DG1 落地时翻成 Some(codex_dir)+["claude","codex"]。
+        codex_dir: None,
+        kinds: Vec::new(),
         capabilities: CAPABILITIES.iter().map(|s| s.to_string()).collect(),
         emits: EMITS.iter().map(|s| s.to_string()).collect(),
     };
