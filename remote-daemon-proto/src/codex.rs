@@ -64,7 +64,10 @@ pub fn is_codex_turn_end(v: &Value) -> bool {
 
 /// turn-end 边沿的 **uuid**（= 客户端 dedup 键；喂 `Frame::TurnEnd`）。**Codex：turn_id，缺→envelope
 /// timestamp 回退**（aterm trap③：某版/v1 alias 路径缺 turn_id，null 被当"非 end"会漏报最新完成轮）。
-/// 两者皆缺 → None（无可去重键、不发帧）。非 turn-end → None。**与 aterm CodexTurnEndDetector 一字同。**
+/// 两者皆缺 → None（无可去重键、不发帧）。非 turn-end → None。**与 aterm CodexTurnEndDetector 一字同**
+/// （2026-07-19 双端逐字对拍 verbatim-equivalent）。
+/// **共同待观察**（两端同步记）：真机 31/31 用 `turn_id`；若某版改字段名（如 `task_id`），两端都只读
+/// `turn_id` → 都安全回退 envelope timestamp（非空键、不漏帧），届时两端同步加新键别名。
 pub fn codex_turn_end_uuid(v: &Value) -> Option<&str> {
     if !is_codex_turn_end(v) {
         return None;
