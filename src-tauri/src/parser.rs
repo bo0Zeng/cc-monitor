@@ -54,6 +54,27 @@ pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
     }
 }
 
+/// Phase 2 F1a：**按 agent kind 派发**的单行解析。Claude 走 [`parse_line`]（F63 缝不动、字节不变、
+/// 零回归）；Codex 走 `serde_json` + [`crate::codex_record::to_jsonl_record`]（消息映射进 `JsonlRecord`、
+/// event/token_count 等落 `Unrecognized` 保 raw）。契约同 [`parse_line`]：空行 `Ok(None)`、认识
+/// `Ok(Some)`、连 JSON 都不是 `Err`。发现层枚举时已知 kind（见 `adapter::records_roots`/`kind_of_path`）。
+pub fn parse_for_kind(
+    kind: crate::adapter::AgentKind,
+    raw: &str,
+) -> Result<Option<JsonlRecord>, serde_json::Error> {
+    match kind {
+        crate::adapter::AgentKind::ClaudeCode => parse_line(raw),
+        crate::adapter::AgentKind::Codex => {
+            let trimmed = raw.trim_start_matches('\u{feff}').trim();
+            if trimmed.is_empty() {
+                return Ok(None);
+            }
+            let v: serde_json::Value = serde_json::from_str(trimmed)?;
+            Ok(Some(crate::codex_record::to_jsonl_record(&v, trimmed)))
+        }
+    }
+}
+
 /// F63：从已解析的 `Value` 抢救链上身份 + 原文，组 `Unrecognized`。
 ///
 /// 只取**链需要的**四个字段（uuid / parentUuid / timestamp / type）——其余靠 `raw`
@@ -77,12 +98,40 @@ fn salvage(v: &serde_json::Value, raw: &str, reason: String) -> JsonlRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::adapter::AgentKind;
 
     #[test]
     fn empty_line_returns_none() {
         assert!(parse_line("").unwrap().is_none());
         assert!(parse_line("   ").unwrap().is_none());
         assert!(parse_line("\n").unwrap().is_none());
+    }
+
+    /// Phase 2 F1a：parse_for_kind 派发。Claude=parse_line（不变）；Codex=映射进 JsonlRecord
+    /// （message→Assistant、event→Unrecognized 保 raw）；空行两 kind 都 Ok(None)。
+    #[test]
+    fn parse_for_kind_dispatches_claude_and_codex() {
+        // Claude：走 parse_line，assistant 行 → Assistant（与直调 parse_line 一致）。
+        let claude = r#"{"type":"assistant","uuid":"a","timestamp":"t","message":{"role":"assistant","content":[]}}"#;
+        assert!(matches!(
+            parse_for_kind(AgentKind::ClaudeCode, claude).unwrap(),
+            Some(JsonlRecord::Assistant { .. })
+        ));
+        // Codex：response_item.message → Assistant（经 to_jsonl_record）。
+        let codex_msg = r#"{"timestamp":"t","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]}}"#;
+        assert!(matches!(
+            parse_for_kind(AgentKind::Codex, codex_msg).unwrap(),
+            Some(JsonlRecord::Assistant { .. })
+        ));
+        // Codex：event_msg → Unrecognized（保 raw，turn-end/用量 per-kind 从中读）。
+        let codex_evt = r#"{"timestamp":"t","type":"event_msg","payload":{"type":"task_complete","turn_id":"x"}}"#;
+        assert!(matches!(
+            parse_for_kind(AgentKind::Codex, codex_evt).unwrap(),
+            Some(JsonlRecord::Unrecognized { .. })
+        ));
+        // 空行：两 kind 都 Ok(None)。
+        assert!(parse_for_kind(AgentKind::Codex, "  ").unwrap().is_none());
+        assert!(parse_for_kind(AgentKind::ClaudeCode, "").unwrap().is_none());
     }
 
     #[test]

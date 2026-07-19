@@ -18,10 +18,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentKind {
     ClaudeCode,
-    /// F1 起定义、经 `for_kind` + 单测覆盖；**production 构造点**（discovery 按会话根 `~/.claude` vs
-    /// `~/.codex` per-kind 派发）在后续 slice——在此之前 production 只构造 `ClaudeCode`，故暂
-    /// `#[allow(dead_code)]`（discovery 接 Codex 后摘）。
-    #[allow(dead_code)]
+    /// Codex（F1a 起 production 构造：`enabled_kinds`/`kind_of_path` 按会话根 `~/.codex` 派发）。
     Codex,
 }
 
@@ -97,14 +94,12 @@ pub fn records_dir(data_root: &Path) -> PathBuf {
 }
 
 /// Phase 2 F1a：**按 kind** 的会话记录目录(`<data_root>/<sessions_subdir>`;Claude=projects、Codex=sessions)。
-#[allow(dead_code)] // F1a：consumer = 多 kind 发现层(history/list),下个 slice 接线
 pub fn records_dir_for(kind: AgentKind, data_root: &Path) -> PathBuf {
     data_root.join(for_kind(kind).layout().sessions_subdir)
 }
 
 /// Phase 2 F1a：本机**启用的 agent 种类**。Claude 恒启用;Codex 仅当其数据根的会话目录存在
 /// (`~/.codex/sessions` 或 `$CODEX_HOME/sessions`)——不装 Codex 的机器上不纳入、零行为变化。
-#[allow(dead_code)] // F1a：consumer = 多 kind 发现层,下个 slice 接线
 pub fn enabled_kinds() -> Vec<AgentKind> {
     let mut kinds = vec![AgentKind::ClaudeCode];
     let codex = for_kind(AgentKind::Codex);
@@ -119,7 +114,6 @@ pub fn enabled_kinds() -> Vec<AgentKind> {
 /// Phase 2 F1a：所有启用 kind 的 `(kind, 会话记录根目录)`。发现层遍历它、按 kind 用对应 layout
 /// 扫 + 解析(`parse_line` for Claude / `codex_record::to_jsonl_record` for Codex)。**显式传 kind**
 /// (发现层枚举时即知 kind、无需按路径反解),per-file op 走 `session_id_from_path_with(for_kind(k).layout())`。
-#[allow(dead_code)] // F1a：consumer = 多 kind 发现层,下个 slice 接线
 pub fn records_roots() -> Vec<(AgentKind, PathBuf)> {
     enabled_kinds()
         .into_iter()
@@ -129,6 +123,17 @@ pub fn records_roots() -> Vec<(AgentKind, PathBuf)> {
                 .map(|root| (k, records_dir_for(k, &root)))
         })
         .collect()
+}
+
+/// Phase 2 F1a：按记录文件路径判其 [`AgentKind`]（在哪个启用 kind 的会话根下）。都不在 → 默认
+/// `ClaudeCode`（**零回归**：非 Codex 路径 = 原 Claude 行为；调用方仍会对该 kind 的根做前缀校验）。
+pub fn kind_of_path(p: &Path) -> AgentKind {
+    for (kind, root) in records_roots() {
+        if p.starts_with(&root) {
+            return kind;
+        }
+    }
+    AgentKind::ClaudeCode
 }
 
 /// F-MA:agent 数据根下的**活性 pidfile** 目录(CC = `<root>/sessions`)。
@@ -225,6 +230,16 @@ mod tests {
                 .map(|(_, d)| d.ends_with("projects"))
                 .unwrap_or(false),
             "Claude 根应以 projects 结尾"
+        );
+    }
+
+    /// kind_of_path：不在任何启用 kind 根下的路径 → 默认 `ClaudeCode`（**零回归**：非 Codex 路径
+    /// 走原 Claude 行为；调用方仍会对该根做前缀校验挡非法路径）。真根下派发由真机集成验证。
+    #[test]
+    fn kind_of_path_defaults_to_claude_for_unrooted() {
+        assert_eq!(
+            kind_of_path(Path::new("/tmp/nowhere/x.jsonl")),
+            AgentKind::ClaudeCode
         );
     }
 }

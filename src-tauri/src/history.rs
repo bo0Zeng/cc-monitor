@@ -261,25 +261,30 @@ pub async fn stream_read_session_jsonl(
     const CHUNK_SIZE: usize = 100;
     tokio::task::spawn_blocking(move || {
         let started = std::time::Instant::now();
-        let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-        let projects_dir = crate::adapter::records_dir(&claude_dir);
         let target = PathBuf::from(&jsonl_path);
-        if !target.starts_with(&projects_dir) {
+        // Phase 2 F1a：按路径判 agent kind（Claude `~/.claude/projects` vs Codex `~/.codex/sessions`）。
+        // Claude 路径 kind=ClaudeCode → 根/session_id/解析与原字节一致（零回归）；Codex 走对应根 + 映射。
+        let kind = crate::adapter::kind_of_path(&target);
+        let root = crate::adapter::for_kind(kind)
+            .data_root()
+            .map(|dr| crate::adapter::records_dir_for(kind, &dr))
+            .ok_or("agent data dir not found")?;
+        if !target.starts_with(&root) {
             return Err(format!(
                 "refuse: {} outside {}",
                 target.display(),
-                projects_dir.display()
+                root.display()
             ));
         }
         if !crate::adapter::has_record_ext(&target) {
             return Err("not a .jsonl file".into());
         }
 
-        let session_id = target
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
+        let session_id = crate::adapter::session_id_from_path_with(
+            crate::adapter::for_kind(kind).layout(),
+            &target,
+        )
+        .unwrap_or_default();
         let file = File::open(&target).map_err(|e| format!("open {}: {e}", target.display()))?;
         let reader = BufReader::new(file);
         let path_str = target.to_string_lossy().into_owned();
@@ -295,7 +300,7 @@ pub async fn stream_read_session_jsonl(
             if trimmed.is_empty() {
                 continue;
             }
-            let rec = match parse_line(trimmed) {
+            let rec = match crate::parser::parse_for_kind(kind, trimmed) {
                 Ok(Some(r)) if r.is_displayable() => r,
                 _ => continue,
             };
