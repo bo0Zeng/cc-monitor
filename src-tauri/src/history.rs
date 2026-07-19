@@ -188,10 +188,7 @@ pub async fn list_history_projects(
 
 /// Codex 一个会话的 list 元信息。
 struct CodexSessionInfo {
-    /// F1a-3c（列 Codex 项目下的会话）用；F1a-3b 分组仅用 cwd/mtime → 暂 staged。
-    #[allow(dead_code)]
     sid: String,
-    #[allow(dead_code)]
     path: PathBuf,
     /// session_meta.cwd（分组键；缺 → "" → 归「(codex)」组）。
     cwd: String,
@@ -301,6 +298,71 @@ fn codex_projects_from(sessions: Vec<CodexSessionInfo>) -> Vec<HistoryProject> {
         .collect()
 }
 
+/// F1a-3c：Codex 会话 → `HistorySessionEntry`（点开走已接 read 路）。元数据（starred/title/hidden）
+/// 按 sid 查 `HistoryMetadata`（同 Claude）。started/updated 先 mtime 兜底、count 先 0（F1a MVP）。
+fn codex_session_entry(s: &CodexSessionInfo, metadata: &HistoryMetadata) -> HistorySessionEntry {
+    let meta = metadata.entries.get(&s.sid).cloned().unwrap_or_default();
+    let project_name = if s.cwd.is_empty() {
+        "(codex)".to_string()
+    } else {
+        Path::new(&s.cwd)
+            .file_name()
+            .and_then(|x| x.to_str())
+            .unwrap_or(s.cwd.as_str())
+            .to_string()
+    };
+    HistorySessionEntry {
+        session_id: s.sid.clone(),
+        project_path: s.cwd.clone(),
+        project_name,
+        ai_title: None,
+        first_user_excerpt: codex_first_user_excerpt(&s.path),
+        started_at: s.mtime_ms,
+        updated_at: s.mtime_ms,
+        jsonl_path: s.path.to_string_lossy().into_owned(),
+        is_live: false, // Codex 判活 = F4（无 pidfile）
+        message_count_approx: 0,
+        is_bg: false,
+        starred: meta.starred,
+        custom_title: meta.custom_title,
+        hidden: meta.hidden,
+        forked_from_session_id: None,
+        forked_from_message_uuid: None,
+        origin: None,
+    }
+}
+
+/// Codex 会话首条 user message 文本（列表摘要）。读至多 200 行找首个 role=user 的 message；
+/// 跳 aterm 坑②：`<environment_context>` 注入上下文是 meta 非真用户输入。截 200 字符。空→""。
+fn codex_first_user_excerpt(path: &Path) -> String {
+    use std::io::BufRead;
+    let Ok(f) = File::open(path) else {
+        return String::new();
+    };
+    for line in BufReader::new(f).lines().map_while(Result::ok).take(200) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+            continue;
+        };
+        if crate::codex_record::classify(&v) == crate::codex_record::CodexRecordKind::Message
+            && crate::codex_record::message_role(&v) == Some("user")
+        {
+            let text = crate::codex_record::unwrap_envelope(&v)
+                .and_then(|(_, p)| p.get("content"))
+                .map(crate::codex_record::flatten_text)
+                .unwrap_or_default();
+            let t = text.trim();
+            if !t.is_empty() && !t.starts_with("<environment_context") {
+                return t.chars().take(200).collect();
+            }
+        }
+    }
+    String::new()
+}
+
 /// issue #12: 流式版（取代已删的非流式 `list_history_sessions_in_project`）。
 ///
 /// 用 Tauri 2 `Channel<HistorySessionEntry>` 边解析边发，前端可逐条增量渲染。
@@ -319,6 +381,22 @@ pub async fn stream_history_sessions_in_project(
     let map = map.inner().clone();
     tokio::task::spawn_blocking(move || {
         let started = std::time::Instant::now();
+        // Phase 2 F1a-3c：Codex 合成项目（键 `codex:<cwd>`）→ 枚举 + 过滤该 cwd 列会话；点开走
+        // 已接的 read 路（stream_read_session_jsonl 多 kind）。Claude 项目（非 codex: 前缀）走原路（零回归）。
+        if let Some(cwd) = project_dir.strip_prefix("codex:") {
+            let metadata = load_metadata().unwrap_or_default();
+            let mut count = 0u32;
+            for s in enumerate_codex_sessions()
+                .into_iter()
+                .filter(|s| s.cwd == cwd)
+            {
+                if on_entry.send(codex_session_entry(&s, &metadata)).is_err() {
+                    return Ok(count); // 前端 drop channel → 取消
+                }
+                count += 1;
+            }
+            return Ok(count);
+        }
         let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
         let projects_dir = crate::adapter::records_dir(&claude_dir);
         let target = PathBuf::from(&project_dir);
@@ -1275,6 +1353,26 @@ mod tests {
             .expect("空 cwd 组");
         assert_eq!(unknown.project_name, "(codex)");
         assert_eq!(unknown.project_dir, "codex:");
+    }
+
+    /// F1a-3c：Codex 会话摘要取首个**真** user message，跳 aterm 坑②的 `<environment_context>` 注入。
+    #[test]
+    fn codex_first_user_excerpt_skips_environment_context() {
+        let dir = std::env::temp_dir().join(format!("ccm-codex-exc-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("rollout.jsonl");
+        // 首 user = environment_context 注入（跳）；次 user = 真用户输入（取）。
+        let content = concat!(
+            r#"{"type":"session_meta","payload":{"cwd":"/p"}}"#,
+            "\n",
+            r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>injected</environment_context>"}]}}"#,
+            "\n",
+            r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"真实问题"}]}}"#,
+            "\n",
+        );
+        std::fs::write(&f, content).unwrap();
+        assert_eq!(codex_first_user_excerpt(&f), "真实问题");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     // === Batch4-F15：validate_delete_target 穿越防护 ===
