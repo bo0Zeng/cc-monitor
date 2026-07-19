@@ -16,7 +16,8 @@
 // 全模块 staged，故 `#![allow(dead_code)]`（接线的 commit 摘掉，同 turn_detect 先例）。
 #![allow(dead_code)]
 
-use serde_json::Value;
+use crate::messages::{ApiMessage, JsonlRecord};
+use serde_json::{json, Value};
 
 /// Codex 记录的**语义种类**（防御分类；未知/未来 → `Other*`，不崩）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,6 +160,160 @@ pub fn tool_input(v: &Value) -> Value {
 /// tool 的 `payload.call_id`（ToolUse.id / ToolResult.tool_use_id 配对键）。
 pub fn call_id(v: &Value) -> Option<&str> {
     unwrap_envelope(v)?.1.get("call_id").and_then(Value::as_str)
+}
+
+// ─── F2b-2：Codex 记录 → 现有 `JsonlRecord`（第三条路组装。口径对齐 aterm CodexRecordParser.kt c03e46f）───
+
+/// Codex rollout 记录（已解析 `v` + 原始行 `raw`）→ 现有 `JsonlRecord`（复用渲染模型）。
+/// - message/reasoning/tool → User/Assistant + content（`[{type,text/…}]` Value，喂现有 `renderMessage`）。
+/// - event_msg/token_count/session_meta/turn_context/world_state/未知 → `Unrecognized`（保 `raw`；
+///   turn-end/用量走 per-kind 从 raw 读，见 `turn_id`/`token_usage_last`）。
+///
+/// **cc-monitor 适配 vs aterm**：`JsonlRecord::User/Assistant.uuid` 是必填 `String` → 无 `payload.id`
+/// 时给 `""`（Codex 无 parentUuid 链、`parent_uuid=None`；F7 渲染按文件序+timestamp、不套 Claude 链）。
+pub fn to_jsonl_record(v: &Value, raw: &str) -> JsonlRecord {
+    use CodexRecordKind as K;
+    let ts = envelope_ts(v);
+    let id = payload_id(v);
+    match classify(v) {
+        K::Message => {
+            let content = text_blocks(&flatten_text(
+                payload_field(v, "content").unwrap_or(&Value::Null),
+            ));
+            match message_role(v) {
+                Some("assistant") => assistant_rec(id, ts, "assistant", content),
+                // developer=系统指令/元 → User(isMeta=true)（保文本、渲染当 meta 隐藏，同 Claude）。
+                Some("developer") => user_rec(id, ts, "user", content, true),
+                _ => user_rec(id, ts, "user", content, false), // user / 缺 role
+            }
+        }
+        K::Reasoning => {
+            // 真机 summary 恒 [] → 空文本给空 blocks（免 Thinking("") 噪音）。
+            let t = reasoning_text(v);
+            let content = if t.is_empty() {
+                json!([])
+            } else {
+                json!([{"type": "thinking", "thinking": t}])
+            };
+            assistant_rec(id, ts, "assistant", content)
+        }
+        K::ToolCall => {
+            let name = payload_field(v, "name")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let content = json!([{
+                "type": "tool_use",
+                "id": call_id(v).unwrap_or(""),
+                "name": name,
+                "input": tool_input(v),
+            }]);
+            assistant_rec(id, ts, "assistant", content)
+        }
+        K::ToolResult => {
+            // output 真机恒数组 → flatten（守丢文本坑）。tool_result.content = 文本串。
+            let out = flatten_text(payload_field(v, "output").unwrap_or(&Value::Null));
+            let content = json!([{
+                "type": "tool_result",
+                "tool_use_id": call_id(v).unwrap_or(""),
+                "content": out,
+            }]);
+            user_rec(id, ts, "user", content, false)
+        }
+        // 事件/元记录 → Unrecognized（保 raw；turn-end/用量 per-kind 从 raw 读）。
+        _ => unrecognized(v, ts, raw),
+    }
+}
+
+/// 信封 `timestamp`（顶层）。
+fn envelope_ts(v: &Value) -> Option<String> {
+    v.get("timestamp").and_then(Value::as_str).map(String::from)
+}
+
+/// `payload.id`（记录 uuid；user/developer/tool_output 常无 → ""）。
+fn payload_id(v: &Value) -> String {
+    unwrap_envelope(v)
+        .and_then(|(_, p)| p.get("id").and_then(Value::as_str))
+        .unwrap_or("")
+        .to_string()
+}
+
+/// `payload.<field>`（信封解包后取字段）。
+fn payload_field<'a>(v: &'a Value, field: &str) -> Option<&'a Value> {
+    unwrap_envelope(v)?.1.get(field)
+}
+
+/// 文本 → content 块 Value：空→`[]`（免空气泡）、非空→`[{"type":"text","text":t}]`。
+fn text_blocks(t: &str) -> Value {
+    if t.is_empty() {
+        json!([])
+    } else {
+        json!([{"type": "text", "text": t}])
+    }
+}
+
+fn api_msg(role: &str, content: Value) -> ApiMessage {
+    ApiMessage {
+        role: role.to_string(),
+        content,
+        model: None,
+        usage: None,
+        stop_reason: None,
+    }
+}
+
+fn assistant_rec(uuid: String, ts: Option<String>, role: &str, content: Value) -> JsonlRecord {
+    JsonlRecord::Assistant {
+        uuid,
+        timestamp: ts.unwrap_or_default(),
+        message: api_msg(role, content),
+        session_id: None,
+        is_sidechain: false,
+        request_id: None,
+        parent_uuid: None,
+        forked_from: None,
+        is_api_error_message: false,
+        error: None,
+        api_error_status: None,
+    }
+}
+
+fn user_rec(
+    uuid: String,
+    ts: Option<String>,
+    role: &str,
+    content: Value,
+    is_meta: bool,
+) -> JsonlRecord {
+    JsonlRecord::User {
+        uuid,
+        timestamp: ts.unwrap_or_default(),
+        message: api_msg(role, content),
+        cwd: None,
+        session_id: None,
+        is_sidechain: false,
+        is_meta,
+        parent_uuid: None,
+        forked_from: None,
+    }
+}
+
+/// 非消息记录 → `Unrecognized`（保 raw；`original_type`=`顶层/payload.type` 便于诊断/per-kind 读）。
+fn unrecognized(v: &Value, ts: Option<String>, raw: &str) -> JsonlRecord {
+    let top = v.get("type").and_then(Value::as_str).unwrap_or("");
+    let original = unwrap_envelope(v)
+        .and_then(|(_, p)| payload_type(p))
+        .map(|pt| format!("{top}/{pt}"))
+        .unwrap_or_else(|| top.to_string());
+    JsonlRecord::Unrecognized {
+        uuid: unwrap_envelope(v)
+            .and_then(|(_, p)| p.get("id").and_then(Value::as_str))
+            .map(String::from),
+        parent_uuid: None,
+        timestamp: ts,
+        original_type: Some(original),
+        raw: raw.to_string(),
+        reason: "codex-event".to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -386,5 +541,110 @@ mod tests {
             )),
             json!(null)
         );
+    }
+
+    // ─── F2b-2：to_jsonl_record 组装 ───
+
+    fn content_of(r: &JsonlRecord) -> Value {
+        match r {
+            JsonlRecord::User { message, .. } | JsonlRecord::Assistant { message, .. } => {
+                message.content.clone()
+            }
+            _ => Value::Null,
+        }
+    }
+
+    /// message：assistant→Assistant+text block；developer→User(isMeta)；user 空→User content []。
+    #[test]
+    fn maps_message_to_user_assistant() {
+        let asst = env(
+            "response_item",
+            json!({"type": "message", "role": "assistant", "id": "m1", "content": [{"type": "output_text", "text": "回复"}]}),
+        );
+        let r = to_jsonl_record(&asst, "raw");
+        assert!(matches!(&r, JsonlRecord::Assistant { uuid, .. } if uuid == "m1"));
+        assert_eq!(content_of(&r), json!([{"type": "text", "text": "回复"}]));
+
+        // developer → User isMeta=true、无 id → uuid ""。
+        let dev = env(
+            "response_item",
+            json!({"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "sys"}]}),
+        );
+        assert!(
+            matches!(to_jsonl_record(&dev, "r"), JsonlRecord::User { is_meta: true, uuid, .. } if uuid.is_empty())
+        );
+
+        // user 空 content → User，content []（免空气泡）。
+        let u = env(
+            "response_item",
+            json!({"type": "message", "role": "user", "content": []}),
+        );
+        let r = to_jsonl_record(&u, "r");
+        assert!(matches!(&r, JsonlRecord::User { is_meta: false, .. }));
+        assert_eq!(content_of(&r), json!([]));
+    }
+
+    /// reasoning：空 summary→Assistant content []（免 Thinking 噪音）；有 text→thinking block。
+    #[test]
+    fn maps_reasoning_empty_and_nonempty() {
+        let empty = env("response_item", json!({"type": "reasoning", "summary": []}));
+        assert_eq!(content_of(&to_jsonl_record(&empty, "r")), json!([]));
+        let think = env(
+            "response_item",
+            json!({"type": "reasoning", "summary": [{"text": "想了想"}]}),
+        );
+        assert_eq!(
+            content_of(&to_jsonl_record(&think, "r")),
+            json!([{"type": "thinking", "thinking": "想了想"}])
+        );
+    }
+
+    /// tool_call→Assistant+tool_use；tool_output(数组)→User+tool_result（content=拼接文本、守丢文本坑）。
+    #[test]
+    fn maps_tool_call_and_output() {
+        let call = env(
+            "response_item",
+            json!({"type": "custom_tool_call", "call_id": "c1", "name": "shell", "input": {"cmd": "ls"}}),
+        );
+        assert_eq!(
+            content_of(&to_jsonl_record(&call, "r")),
+            json!([{"type": "tool_use", "id": "c1", "name": "shell", "input": {"cmd": "ls"}}])
+        );
+        // output 真机数组 → tool_result.content 拼接文本（非空！守坑）。
+        let out = env(
+            "response_item",
+            json!({"type": "custom_tool_call_output", "call_id": "c1", "output": [{"type": "input_text", "text": "文件列表"}]}),
+        );
+        let r = to_jsonl_record(&out, "r");
+        assert!(matches!(&r, JsonlRecord::User { .. }));
+        assert_eq!(
+            content_of(&r),
+            json!([{"type": "tool_result", "tool_use_id": "c1", "content": "文件列表"}])
+        );
+    }
+
+    /// 事件/元记录 → Unrecognized（保 raw、original_type、reason=codex-event；turn-end/用量 per-kind 从 raw 读）。
+    #[test]
+    fn maps_events_to_unrecognized_preserving_raw() {
+        let raw = r#"{"type":"event_msg","payload":{"type":"task_complete","turn_id":"t1"}}"#;
+        let v: Value = serde_json::from_str(raw).unwrap();
+        match to_jsonl_record(&v, raw) {
+            JsonlRecord::Unrecognized {
+                raw: r,
+                original_type,
+                reason,
+                ..
+            } => {
+                assert_eq!(r, raw, "raw 原样保留（turn-end 从中读 turn_id）");
+                assert_eq!(original_type.as_deref(), Some("event_msg/task_complete"));
+                assert_eq!(reason, "codex-event");
+            }
+            other => panic!("event 应落 Unrecognized，得 {other:?}"),
+        }
+        // session_meta 也 → Unrecognized。
+        assert!(matches!(
+            to_jsonl_record(&env("session_meta", json!({"id": "s"})), "r"),
+            JsonlRecord::Unrecognized { .. }
+        ));
     }
 }
