@@ -16,6 +16,7 @@
 #![allow(dead_code)]
 
 use serde_json::Value;
+use std::path::{Path, PathBuf};
 
 /// 解包信封 `{type, payload}` → `(顶层 type, payload)`。缺 type / payload 非对象 → `None`。
 /// 与 monitor `codex_record::unwrap_envelope` 同语义。
@@ -73,6 +74,65 @@ pub fn codex_turn_end_uuid(v: &Value) -> Option<&str> {
         return None;
     }
     turn_id(v).or_else(|| envelope_ts(v))
+}
+
+// ─── DG5：usage（event_msg `token_count`）+ 会话定位 helpers（镜像 monitor F5 / adapter Codex 侧）───
+
+/// `$CODEX_HOME`（优先、非空）| `~/.codex`。缺 HOME → None。**daemon 在会话主机本地解**（同 monitor adapter）。
+pub fn resolve_codex_dir() -> Option<PathBuf> {
+    if let Some(h) = std::env::var_os("CODEX_HOME").filter(|h| !h.is_empty()) {
+        return Some(PathBuf::from(h));
+    }
+    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".codex"))
+}
+
+/// Codex 会话记录根 `<codex_dir>/sessions`（日期分区树 `YYYY/MM/DD/rollout-*.jsonl` 在其下）。
+pub fn sessions_root(codex_dir: &Path) -> PathBuf {
+    codex_dir.join("sessions")
+}
+
+/// 一条记录是否 event_msg `token_count`（用量事件）。
+pub fn is_token_count(v: &Value) -> bool {
+    matches!(unwrap_envelope(v), Some(("event_msg", p)) if payload_type(p) == Some("token_count"))
+}
+
+/// token_count 的 `payload.info.last_token_usage` 三元组 `(input_tokens, cached_input_tokens, output_tokens)`。
+/// 缺→None。**Codex `input_tokens` 含 cached**——映射时 `input−cached` 防与 cacheRead 重复计（见 usage_query）。
+/// **实测 total_token_usage 严格单调、final==Σlast**、且偶发不可靠（某会话首事件 total=0）→ SUM last 更稳。
+pub fn last_token_usage_fields(v: &Value) -> Option<(u64, u64, u64)> {
+    let usage = unwrap_envelope(v)?.1.get("info")?.get("last_token_usage")?;
+    let g = |k: &str| usage.get(k).and_then(Value::as_u64).unwrap_or(0);
+    Some((
+        g("input_tokens"),
+        g("cached_input_tokens"),
+        g("output_tokens"),
+    ))
+}
+
+/// turn_context 的 `payload.model`（用量按模型归桶；session_meta 只有 model_provider、model 在 turn_context）。
+pub fn turn_context_model(v: &Value) -> Option<&str> {
+    match unwrap_envelope(v) {
+        Some(("turn_context", p)) => p.get("model").and_then(Value::as_str),
+        _ => None,
+    }
+}
+
+/// session_meta 的 `payload.cwd`（用量行 projectPath；Codex 无 cwd-项目目录）。
+pub fn session_meta_cwd(v: &Value) -> Option<&str> {
+    match unwrap_envelope(v) {
+        Some(("session_meta", p)) => p.get("cwd").and_then(Value::as_str),
+        _ => None,
+    }
+}
+
+/// Codex sid = rollout 文件名**末 36 字符 UUID**（`rollout-<ts>-<uuid>` → `<uuid>`；对齐 monitor
+/// `adapter::codex_sid_from_rollout`，令远端/本地同会话 sid 一致）。stem 短于 36 → 整个 stem 兜底。
+pub fn codex_sid_from_path(path: &Path) -> Option<String> {
+    let stem = path.file_stem()?.to_str()?;
+    Some(match stem.char_indices().rev().nth(35) {
+        Some((byte_idx, _)) => stem[byte_idx..].to_string(),
+        None => stem.to_string(),
+    })
 }
 
 #[cfg(test)]
