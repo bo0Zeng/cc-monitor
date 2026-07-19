@@ -161,6 +161,9 @@ pub async fn list_history_projects(
             }
         }
 
+        // Phase 2 F1a-3：追加 Codex 合成项目（按 session_meta.cwd 内存分组；Codex 未启用 → 空、零回归）。
+        out.extend(codex_projects());
+
         // live → starred → last_activity desc（同 UI 顺序，前端可再排但默认就是这个）
         out.sort_by(|a, b| {
             b.has_live
@@ -178,6 +181,124 @@ pub async fn list_history_projects(
     })
     .await
     .map_err(|e| format!("spawn_blocking join: {e}"))?
+}
+
+// ─── Phase 2 F1a-3：Codex 历史枚举（Codex 无 `projects/<cwd>` 目录 → 按 session_meta.cwd 内存分组成
+// 合成「项目」，塞进现有 HistoryProject shape → 前端零改、Codex 会话入列）───
+
+/// Codex 一个会话的 list 元信息。
+struct CodexSessionInfo {
+    /// F1a-3c（列 Codex 项目下的会话）用；F1a-3b 分组仅用 cwd/mtime → 暂 staged。
+    #[allow(dead_code)]
+    sid: String,
+    #[allow(dead_code)]
+    path: PathBuf,
+    /// session_meta.cwd（分组键；缺 → "" → 归「(codex)」组）。
+    cwd: String,
+    mtime_ms: i64,
+}
+
+/// 枚举本机 Codex 会话：walk `<codex_root>/sessions` 日期树 `rollout-*.jsonl`，读**首行** session_meta
+/// 取 cwd。Codex 未启用（无 `~/.codex/sessions`）→ 空 vec（零回归）。
+fn enumerate_codex_sessions() -> Vec<CodexSessionInfo> {
+    use crate::adapter::AgentKind;
+    let Some(root) = crate::adapter::for_kind(AgentKind::Codex).data_root() else {
+        return Vec::new();
+    };
+    let sessions_dir = crate::adapter::records_dir_for(AgentKind::Codex, &root);
+    if !sessions_dir.is_dir() {
+        return Vec::new();
+    }
+    let layout = crate::adapter::for_kind(AgentKind::Codex).layout();
+    let mut out = Vec::new();
+    for entry in walkdir::WalkDir::new(&sessions_dir)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        let p = entry.path();
+        if !p.is_file() || !crate::adapter::has_record_ext(p) {
+            continue;
+        }
+        // sid 从 `rollout-<ts>-<uuid>` 文件名末 UUID；非此命名 → 跳（非 Codex 会话文件）。
+        let Some(sid) = crate::adapter::session_id_from_path_with(layout, p) else {
+            continue;
+        };
+        out.push(CodexSessionInfo {
+            sid,
+            path: p.to_path_buf(),
+            cwd: read_codex_session_cwd(p),
+            mtime_ms: file_mtime_ms(p),
+        });
+    }
+    out
+}
+
+/// 读 Codex rollout **首行**（session_meta 是首条记录）→ cwd。缺/坏 → ""（归「(codex)」组）。
+fn read_codex_session_cwd(p: &Path) -> String {
+    let Ok(f) = File::open(p) else {
+        return String::new();
+    };
+    let mut line = String::new();
+    use std::io::BufRead;
+    if BufReader::new(f).read_line(&mut line).is_err() {
+        return String::new();
+    }
+    serde_json::from_str::<serde_json::Value>(line.trim())
+        .ok()
+        .and_then(|v| crate::codex_record::session_meta_cwd(&v).map(str::to_string))
+        .unwrap_or_default()
+}
+
+fn file_mtime_ms(p: &Path) -> i64 {
+    std::fs::metadata(p)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// 合成 Codex 项目（枚举 + 分组）。`project_dir` 键 = `codex:<cwd>`——F1a-3c 的
+/// `stream_history_sessions_in_project` 按此前缀识别 Codex 项目 + 还原 cwd。
+fn codex_projects() -> Vec<HistoryProject> {
+    codex_projects_from(enumerate_codex_sessions())
+}
+
+/// 纯：Codex 会话按 cwd 分组 → HistoryProject（供 hermetic 测）。
+fn codex_projects_from(sessions: Vec<CodexSessionInfo>) -> Vec<HistoryProject> {
+    use std::collections::HashMap;
+    let mut groups: HashMap<String, (u32, i64)> = HashMap::new(); // cwd → (count, max_mtime)
+    for s in &sessions {
+        let e = groups.entry(s.cwd.clone()).or_insert((0, 0));
+        e.0 += 1;
+        e.1 = e.1.max(s.mtime_ms);
+    }
+    groups
+        .into_iter()
+        .map(|(cwd, (count, last))| {
+            let project_name = if cwd.is_empty() {
+                "(codex)".to_string()
+            } else {
+                Path::new(&cwd)
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(cwd.as_str())
+                    .to_string()
+            };
+            HistoryProject {
+                project_path: cwd.clone(),
+                project_name,
+                project_dir: format!("codex:{cwd}"),
+                session_count: count,
+                starred_count: 0,
+                hidden_count: 0,
+                last_activity: last,
+                // Codex 无 pidfile 判活 = F4；F1a 先 false（会话仍可读，只是不显示「活着」）。
+                has_live: false,
+                origin: None,
+            }
+        })
+        .collect()
 }
 
 /// issue #12: 流式版（取代已删的非流式 `list_history_sessions_in_project`）。
@@ -1113,6 +1234,48 @@ fn iso_to_ms(iso: &str) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Phase 2 F1a-3：Codex 会话按 cwd 分组成合成 HistoryProject（count/max-mtime/name/键/has_live）。
+    #[test]
+    fn codex_projects_group_by_cwd() {
+        let sessions = vec![
+            CodexSessionInfo {
+                sid: "s1".into(),
+                path: PathBuf::from("/a"),
+                cwd: "/home/u/proj".into(),
+                mtime_ms: 100,
+            },
+            CodexSessionInfo {
+                sid: "s2".into(),
+                path: PathBuf::from("/b"),
+                cwd: "/home/u/proj".into(),
+                mtime_ms: 300,
+            },
+            CodexSessionInfo {
+                sid: "s3".into(),
+                path: PathBuf::from("/c"),
+                cwd: "".into(),
+                mtime_ms: 50,
+            },
+        ];
+        let projects = codex_projects_from(sessions);
+        assert_eq!(projects.len(), 2, "两个 cwd 组");
+        let proj = projects
+            .iter()
+            .find(|p| p.project_path == "/home/u/proj")
+            .expect("proj 组");
+        assert_eq!(proj.session_count, 2);
+        assert_eq!(proj.last_activity, 300, "组内 max mtime");
+        assert_eq!(proj.project_name, "proj", "cwd 末段");
+        assert_eq!(proj.project_dir, "codex:/home/u/proj", "键带 codex: 前缀");
+        assert!(!proj.has_live, "Codex 判活=F4，F1a 先 false");
+        let unknown = projects
+            .iter()
+            .find(|p| p.project_path.is_empty())
+            .expect("空 cwd 组");
+        assert_eq!(unknown.project_name, "(codex)");
+        assert_eq!(unknown.project_dir, "codex:");
+    }
 
     // === Batch4-F15：validate_delete_target 穿越防护 ===
 
