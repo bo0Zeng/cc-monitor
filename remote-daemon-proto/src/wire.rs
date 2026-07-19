@@ -29,6 +29,13 @@ pub enum Frame {
         /// 未知 flag 的 daemon 也老到不声明该能力，声明 = 自证认识该 flag）。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         capabilities: Vec<String>,
+        /// phase②（daemon-08，additive，与 `capabilities` **正交**）：本 daemon **会发射的帧 kind 集**
+        /// （snake_case，如 "session_status"/"turn_end"）。aterm 据此**门控消费**（emits 含该 kind →
+        /// 期待/依赖该帧；不含 → 不依赖、回退 β/watchdog）。**区别于 `capabilities`**（后者=流 flag-strip
+        /// 能力、受 §26 死循环护栏 + `every_capability_token_is_strippable` 强制每 token 有可剥离 flag）——
+        /// `emits` 是纯发射声明、无对应 flag、**不受 §26**。空/缺 → 省略（旧 client 忽略，additive）。
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        emits: Vec<String>,
     },
     /// One raw JSONL line tailed from a session file.
     Line {
@@ -179,6 +186,7 @@ mod tests {
                     host_arch: "x86_64".into(),
                     claude_dir: "/home/u/.claude".into(),
                     capabilities: vec!["bg".into(), "tail-only".into()],
+                    emits: vec!["line".into(), "session_status".into()],
                 },
                 "hello",
             ),
@@ -237,12 +245,17 @@ mod tests {
     /// ② 空集 → `skip_serializing_if` 省略字段（additive：等价旧 hello，旧 monitor
     ///    收到即空集缺省——向后兼容的关键）。
     fn hello(caps: Vec<String>) -> Frame {
+        hello_with(caps, vec![])
+    }
+
+    fn hello_with(caps: Vec<String>, emits: Vec<String>) -> Frame {
         Frame::Hello {
             v: 1,
             build_id: "b".into(),
             host_arch: "x86_64".into(),
             claude_dir: "/c".into(),
             capabilities: caps,
+            emits,
         }
     }
 
@@ -260,6 +273,31 @@ mod tests {
             v.get("capabilities").is_none(),
             "空 capabilities 必须被 skip（additive 向后兼容）"
         );
+    }
+
+    /// phase②：Hello.emits 与 capabilities 同 additive 规律、且**独立正交**（一个非空一个空时
+    /// 各自序列化/省略互不牵连）。aterm 门控读 emits 判「daemon 发不发某帧」。
+    #[test]
+    fn hello_emits_serializes_orthogonally_to_capabilities() {
+        // emits 非空、capabilities 空 → 只 emits 在线上、capabilities 省略。
+        let line = to_line(&hello_with(
+            vec![],
+            vec!["session_status".into(), "turn_end".into()],
+        ))
+        .expect("serialize");
+        let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
+        assert_eq!(
+            v["emits"],
+            serde_json::json!(["session_status", "turn_end"])
+        );
+        assert!(
+            v.get("capabilities").is_none(),
+            "capabilities 空 → 省略（不受 emits 非空牵连）"
+        );
+        // 空 emits → 字段省略（additive：旧 client 忽略缺失 = 不依赖任何 α 专属帧）。
+        let line = to_line(&hello_with(vec!["bg".into()], vec![])).expect("serialize");
+        let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
+        assert!(v.get("emits").is_none(), "空 emits 必须被 skip（additive）");
     }
 
     #[test]

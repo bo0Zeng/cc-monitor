@@ -80,7 +80,10 @@ const PROTO_VERSION: u32 = 1;
 ///   打 info（`--resolve` 错误信封 stderr 纯 `{code,message}`）；resolve base(launchCandidate) 补
 ///   shell-safe 校验（B2 对称化，新错误码 `unsafe_launch_candidate`）；stdin `.take(1MiB)` 兜 DoS。
 ///   纯查询/流协议 wire 不变——非破坏、无 PROTO_VERSION bump。
-const BUILD_ID: &str = "p1l-audit-fixes";
+/// - p1m-hello-emits = phase② 联调（daemon-08）：Hello 加 `emits:[帧 kind]`（additive，与 capabilities
+///   正交、不受 §26）——aterm 门控消费。现声明 line/session_added/session_status/session_removed/
+///   overflow；turn_end 待其帧接线后加。additive、无 PROTO_VERSION bump。
+const BUILD_ID: &str = "p1m-hello-emits";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
@@ -98,6 +101,18 @@ const BUILD_ID: &str = "p1l-audit-fixes";
 /// （monitor 发对应 flag → 本 daemon 不剥 → 当查询退出 → 无 hello → 重连死循环）。
 /// **此硬约束由 `every_capability_token_is_strippable` 测试代码强制**（不再只是约定）。
 const CAPABILITIES: &[&str] = &["bg", "tail-only"];
+
+/// phase②（daemon-08）：本 daemon **会发射的帧 kind 集**（snake_case），填进 `Hello.emits`——
+/// aterm 门控消费（emits 含 kind → 依赖该帧；不含 → 回退 β/watchdog）。**与 `CAPABILITIES` 正交**：
+/// emits 是纯发射声明、无对应流 flag、不受 §26 护栏（见 `wire.rs` Hello.emits）。`turn_end` 待其帧
+/// 发射接线（daemon-08+）后加入——**在此登记 = 承诺 daemon 真发该帧**，勿提前声明未接线的帧。
+const EMITS: &[&str] = &[
+    "line",
+    "session_added",
+    "session_status",
+    "session_removed",
+    "overflow",
+];
 
 /// Batch7-F24/Batch8-F25：从 argv 剥离流模式 flag（`--with-bg` / `--tail-only`），
 /// 返回（剩余参数, with_bg, tail_only）。**必须在一次性查询模式判定之前调用**
@@ -226,6 +241,7 @@ async fn main() {
         host_arch: std::env::consts::ARCH.to_string(),
         claude_dir: claude_dir.to_string_lossy().into_owned(),
         capabilities: CAPABILITIES.iter().map(|s| s.to_string()).collect(),
+        emits: EMITS.iter().map(|s| s.to_string()).collect(),
     };
     if let Err(e) = write_frame(&mut stdout, &hello).await {
         tracing::error!("failed to write hello frame: {e}");
