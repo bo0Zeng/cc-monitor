@@ -1,6 +1,12 @@
 # STATUS — daemon Codex 泛化（Phase 2D · 与 aterm 联合）
 
-## ⛔ Loop 停在 DG2 判活 gating 点（2026-07-19）——DG5/DG6 完成、DG1+DG2 需协调
+## ⏸️ Codex daemon 部分 · 用户暂停（2026-07-19「先暂停 codex 部分」）
+- **daemon Codex DG3/DG4/DG5/DG6 完成**（wire/turn-end/usage/resume），各过审计 + 与 aterm 对抗互审闭合。这是 daemon Codex 的**大头**：远端历史/用量/resume/turn-end 都通。
+- **DG1（live 监视）+ DG2（判活）暂停**：用户在 DG1 设计草案（`features/DG1-discovery.md`，方案 A/B + mtime/fd 实测）审阅点选**暂停**。未选 A/B、未起 DG2 fd 实测。
+- **恢复方式**：用户想要 Codex **实时监视 + 判活**时 → ① 定 DG1 架构（A 平行路/B 泛化）② 起真 codex 会话做 DG2 fd 判活实测（aterm 已应承同机交叉核）→ 接续 DG1+DG2 → Phase G。设计草案已备（`features/DG1-discovery.md`）。
+- **已 cc-send aterm**：Codex daemon 暂停、DG3-6 完成、DG1/DG2 推迟，aterm 无须再等 DG2 协调。
+
+## （历史）Loop 停在 DG2 判活 gating 点（2026-07-19）——DG5/DG6 完成、DG1+DG2 需协调
 - ✅ **DG6 完成**（`daemon-DG6` 6e27f8d）：`resolve_query.rs` per-kind resume——Codex `<base> resume <uuid>`（子命令、无 --resume/unset、真机核）+ 默认 codex + `cx-` 名，golden-parity aterm CodexInvocation；Claude 字节不变。**低风险 D（1 focused agent）无阻塞**，修补负例测+大小写注；记第 3 divergence（is_shell_safe_base 比 aterm 严）。daemon 108/clippy 0。
 - **DG1 发现 + DG2 判活 = 停点**：DG1（watcher per-kind 发现/tail Codex + SessionAdded 发 codex/heuristic + Hello 翻 kinds + **接 TurnEnd gotcha**）**触核心 watcher（100KB live 循环 + Claude pidfile 判活）**，且 DG1 要「哪些 Codex 会话算活」→ **耦合 DG2**；DG2 的「fd 持开」判活假设**未真机坐实**（需运行中 codex + aterm /proc-fd 同机交叉核）。→ 计划designated stop：**停 loop、协调 aterm 起真 codex 会话做判活实测 + 设计一轮核心 watcher 改法交用户**。
 - **已 cc-send aterm 约 DG2 判活实测协作**（aterm 已应承同机起真 codex 核 /proc/fd + logs_2.sqlite）。
