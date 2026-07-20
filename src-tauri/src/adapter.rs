@@ -186,7 +186,10 @@ fn codex_sid_from_rollout(p: &Path) -> Option<String> {
     if rest.len() < 36 {
         return None;
     }
-    let uuid = &rest[rest.len() - 36..];
+    // 末 36 用 `.get()`（非字节切片）→ 非字符边界（畸形多字节名）安全返 None、不 panic。
+    // Phase G 审计修：原 `&rest[..]` 会在含多字节字符的畸形文件名上 panic、挂掉整个历史/用量扫描
+    // （对齐 daemon `codex::codex_sid_from_path` 已加固的 .get 写法，消两端 parity 发散）。
+    let uuid = rest.get(rest.len() - 36..)?;
     is_uuid(uuid).then(|| uuid.to_string())
 }
 

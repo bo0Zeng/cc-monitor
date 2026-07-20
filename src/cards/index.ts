@@ -436,7 +436,11 @@ function buildAssistantCard(
 ): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-assistant";
-  card.appendChild(cardHeader("Claude", rec.timestamp, rec.message.model));
+  // Phase G 审计修：Codex 会话的 jsonl 是 `rollout-*.jsonl`（同后端 `kind_of_path`/`codex_sid_from_rollout`
+  // 的路径判据）；记录本身不带 agent kind，故据会话文件名判 agent 给对的卡头——否则 Codex 的每条文本回复
+  // 都错标成 "Claude"。非 Codex（含 live Claude 会话、子 agent）恒 "Claude"（rollout- 前缀是 Codex 独有）。
+  const agent = /(^|\/)rollout-[^/]*\.jsonl$/.test(ctx.parentPath) ? "Codex" : "Claude";
+  card.appendChild(cardHeader(agent, rec.timestamp, rec.message.model));
 
   const body = document.createElement("div");
   body.className = "card-body";

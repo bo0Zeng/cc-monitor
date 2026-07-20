@@ -355,7 +355,10 @@ fn codex_first_user_excerpt(path: &Path) -> String {
                 .map(crate::codex_record::flatten_text)
                 .unwrap_or_default();
             let t = text.trim();
-            if !t.is_empty() && !t.starts_with("<environment_context") {
+            // Phase G 审计修：列表摘要去噪复用渲染路同一 `is_injected_context`（3 标记：environment_context/
+            // recommended_plugins/# AGENTS.md instructions）——此前只跳 environment_context、与渲染去噪漂移，
+            // 首条是 plugins/AGENTS.md 注入的会话列表预览会露机器注入文本。
+            if !t.is_empty() && !crate::codex_record::is_injected_context(t) {
                 return t.chars().take(200).collect();
             }
         }
@@ -1355,21 +1358,29 @@ mod tests {
         assert_eq!(unknown.project_dir, "codex:");
     }
 
-    /// F1a-3c：Codex 会话摘要取首个**真** user message，跳 aterm 坑②的 `<environment_context>` 注入。
+    /// F1a-3c + Phase G 审计修：Codex 会话摘要取首个**真** user message，跳 CLI 注入块——
+    /// 复用渲染路同一 `is_injected_context`（**3 标记**：environment_context / recommended_plugins /
+    /// # AGENTS.md instructions），与渲染去噪一致（此前只跳 environment_context）。
     #[test]
-    fn codex_first_user_excerpt_skips_environment_context() {
+    fn codex_first_user_excerpt_skips_injected_context() {
         let dir = std::env::temp_dir().join(format!("ccm-codex-exc-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let f = dir.join("rollout.jsonl");
-        // 首 user = environment_context 注入（跳）；次 user = 真用户输入（取）。
-        let content = concat!(
-            r#"{"type":"session_meta","payload":{"cwd":"/p"}}"#,
-            "\n",
-            r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>injected</environment_context>"}]}}"#,
-            "\n",
-            r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"真实问题"}]}}"#,
-            "\n",
-        );
+        let user = |t: &str| {
+            format!(
+                r#"{{"type":"response_item","payload":{{"type":"message","role":"user","content":[{{"type":"input_text","text":{}}}]}}}}"#,
+                serde_json::to_string(t).unwrap()
+            )
+        };
+        // 首 3 条 user = 3 种注入块（全跳）；末 user = 真用户输入（取）。
+        let content = [
+            r#"{"type":"session_meta","payload":{"cwd":"/p"}}"#.to_string(),
+            user("<environment_context>injected</environment_context>"),
+            user("<recommended_plugins>\nplugins…"),
+            user("# AGENTS.md instructions\n\n<INSTRUCTIONS>\n# AGENTS.md\n本文件…"),
+            user("真实问题"),
+        ]
+        .join("\n");
         std::fs::write(&f, content).unwrap();
         assert_eq!(codex_first_user_excerpt(&f), "真实问题");
         std::fs::remove_dir_all(&dir).ok();

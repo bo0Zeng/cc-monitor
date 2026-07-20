@@ -194,7 +194,7 @@ pub fn call_id(v: &Value) -> Option<&str> {
 ///   （机器生成、结构唯一 = 特征前缀，真用户几乎不以此整串起头；裸 `# xxx` markdown 标题不匹配）。
 ///
 /// **不认** `You have an MCP server…`（MCP 指令注入无干净特征前缀、怕误伤正文 → 保守留，两端一致）。
-fn is_injected_context(text: &str) -> bool {
+pub(crate) fn is_injected_context(text: &str) -> bool {
     let t = text.trim_start();
     [
         "<environment_context>",
