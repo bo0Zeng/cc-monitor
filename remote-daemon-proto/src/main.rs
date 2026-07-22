@@ -87,11 +87,13 @@ const PROTO_VERSION: u32 = 1;
 /// - p1n-turn-end = phase② 联调（daemon-09）：`process_jsonl` 每见 turn-end 记录发 `Frame::TurnEnd
 ///   {sid,uuid}`（raw-per-record、方案 C 不 dedup；判词 `turn_detect` 对拍 aterm TurnDetector）；
 ///   `turn_end` 加进 EMITS。dedup 视界在 aterm rolling+debounce baselineByPath。additive、无 bump。
-/// - p1o-codex-dg = Phase 2D Codex 泛化（DG3 wire additive agent_kind/liveness_confidence/codex_dir/kinds
-///   + DG4 turn-end 检测器 + DG5 `--usage` per-kind + DG6 resume）。全 additive、**不 bump PROTO_VERSION**；
+/// - p1o-codex-dg = Phase 2D Codex 泛化（DG3 wire additive agent_kind/liveness_confidence/codex_dir/kinds、
+///   DG4 turn-end 检测器、DG5 `--usage` per-kind、DG6 resume）。全 additive、**不 bump PROTO_VERSION**；
 ///   bump BUILD_ID 给含 DG3-6 的 daemon 独立身份（Phase G 审计 I2：防"同 id 不同内容"静默陈旧）。
 ///   Codex live 监视/判活（DG1/DG2）暂停、未接线。
-const BUILD_ID: &str = "p1o-codex-dg";
+/// - p1p-tmux-frame = B2：watch_loop 周期本机 `tmux ls` 发 `TmuxSessions` 帧（+EMITS "tmux_sessions"），
+///   替 monitor 每 8s 新建 SSH 跑 tmux ls 的对账刷屏。additive、**不 bump PROTO_VERSION**。
+const BUILD_ID: &str = "p1p-tmux-frame";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
@@ -120,7 +122,8 @@ const EMITS: &[&str] = &[
     "session_status",
     "session_removed",
     "overflow",
-    "turn_end", // daemon-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
+    "turn_end",      // daemon-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
+    "tmux_sessions", // B2：watch_loop 周期本地 tmux ls 发 TmuxSessions（登记=承诺真发，已接线）
 ];
 
 /// Batch7-F24/Batch8-F25：从 argv 剥离流模式 flag（`--with-bg` / `--tail-only`），
