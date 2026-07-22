@@ -60,6 +60,38 @@ pub const CHANNEL_CAPACITY: usize = 10_000;
 /// notify-debouncer-mini debounce window, matching `../src-tauri/src/watcher.rs`.
 const DEBOUNCE_MS: u64 = 100;
 
+/// B2：daemon 周期在**本机**跑 `tmux ls` 并经 `TmuxSessions` 帧上报的节流间隔——替掉 monitor 每 8s
+/// 新建 SSH 跑 tmux ls 的刷屏轮询（灰延迟 ≈ 本值 × monitor 对账 threshold）。
+const TMUX_EMIT_INTERVAL: Duration = Duration::from_secs(8);
+
+/// B2：`tmux ls -F` 格式串——**与 monitor `tmux::TMUX_LS_FMT` 逐字对齐**（真 TAB 分列，monitor
+/// `parse_tmux_ls` 靠它解析）。name⇥path⇥cmd⇥attached⇥windows⇥@ccm_sid。**改此须同步 monitor（双写点）。**
+const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{?session_attached,1,0}\t#{session_windows}\t#{@ccm_sid}";
+
+/// B2：在**本机**（daemon 就在远端主机）跑 `tmux ls` 取原文（或哨兵 `NO_TMUX`）。`sh -c` + `command -v`
+/// 门控（同 monitor `list_remote_tmux` 命令）解析 PATH；无 tmux → `NO_TMUX`、无 server → 空。执行失败 →
+/// 空串（monitor 对账侧空 backend 保守跳过、不误灰）。**只读**（tmux ls 不改任何状态）。
+///
+/// **无超时**：`output()` 是无超时阻塞调用，远端 tmux 卡死（D-state/socket 卡住/NFS home）时会永不返回。
+/// 故**只能在一次性后台线程里调用**（见 `watch_loop` 的 `tmux_inflight`），**绝不可**直接跑在 watch_loop
+/// 线程上——否则会冻结整个 reader（Line/notify/判活全停）。
+fn run_tmux_ls() -> String {
+    let script = format!(
+        "if command -v tmux >/dev/null 2>&1; then tmux ls -F '{TMUX_LS_FMT}' 2>/dev/null || true; else printf 'NO_TMUX\\n'; fi"
+    );
+    match std::process::Command::new("sh")
+        .arg("-c")
+        .arg(&script)
+        .output()
+    {
+        Ok(out) => String::from_utf8_lossy(&out.stdout).into_owned(),
+        Err(e) => {
+            tracing::warn!("tmux ls 本地执行失败: {e}");
+            String::new()
+        }
+    }
+}
+
 /// Spawn the watcher reader on a dedicated blocking thread and return the
 /// receiving half of the bounded frame channel for the stdout writer to drain.
 ///
@@ -140,6 +172,13 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool, tail_
         tracing::warn!("sessions dir does not exist: {}", sessions.display());
     }
 
+    // B2：tmux 状态上报节流器。None=从未发 → 首轮立即发（monitor 连上尽快拿到 tmux 状态）。
+    let mut last_tmux_emit: Option<std::time::Instant> = None;
+    // B2 审计（run_tmux_ls 无超时 → 阻塞会冻结整个 reader）：把 `tmux ls` 放到一次性后台线程跑，
+    // watch_loop 只做非阻塞 try_recv。gate 在「无在途探测」上 → 最多同时一个探测线程；即便远端 tmux
+    // 卡死（D-state/socket 卡住/NFS home），也只泄漏这一个后台线程，reader（Line/notify/判活）永不冻结。
+    let mut tmux_inflight: Option<std::sync::mpsc::Receiver<String>> = None;
+
     // Live loop with a 2s poll tick. The tick detects a session whose PID died
     // WITHOUT its sessions/<PID>.json being deleted (Claude Code can leave a
     // stale file when force-killed) — mirroring the local STILL_ACTIVE check —
@@ -182,6 +221,32 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool, tail_
             if let Some(e) = state.sessions.remove(&k) {
                 retire_sid_if_unreferenced(&e.sid, &mut state, &mut sink);
             }
+        }
+
+        // B2：周期在本机跑 tmux ls 发 TmuxSessions 帧（替 monitor 每 8s 新建 SSH 跑 tmux ls 的刷屏）。
+        // 循环每 ≤2s 转一圈（notify 超时），节流到 TMUX_EMIT_INTERVAL；首轮立即发。
+        // run_tmux_ls 无超时 → 必须跑在**独立线程**（见 tmux_inflight 注释），watch_loop 只非阻塞收结果。
+        if let Some(rx) = tmux_inflight.as_ref() {
+            match rx.try_recv() {
+                Ok(raw) => {
+                    sink.send(Frame::TmuxSessions { raw });
+                    tmux_inflight = None;
+                }
+                // 探测仍在跑（含卡死）：不阻塞、下一轮再看。
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                // 线程未发结果就退出（不应发生）：清掉、下个间隔重试。
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => tmux_inflight = None,
+            }
+        }
+        if tmux_inflight.is_none()
+            && last_tmux_emit.is_none_or(|t| t.elapsed() >= TMUX_EMIT_INTERVAL)
+        {
+            let (tmux_tx, tmux_rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tmux_tx.send(run_tmux_ls());
+            });
+            tmux_inflight = Some(tmux_rx);
+            last_tmux_emit = Some(std::time::Instant::now());
         }
 
         if sink.is_closed() {

@@ -963,6 +963,24 @@ fn announced_registry() -> &'static std::sync::Mutex<
     REMOTE_ANNOUNCED.get_or_init(Default::default)
 }
 
+/// B2：全局 tmux 状态账本 origin → 最新 `tmux ls` 原文（daemon `TmuxSessions` 帧推来）。写者 = 各主机
+/// stream_loop（收 TmuxSessions 帧更新 / 连接退出清本 host）；读者 = tmux 对账 poller
+/// （[`snapshot_tmux_by_origin`] 读 + `tmux::parse_tmux_ls` 解析），**替掉每 8s 新建 SSH 的
+/// `list_remote_tmux` 轮询**（B2 治远端 sshd 日志刷屏）。
+static REMOTE_TMUX_RAW: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, String>>,
+> = std::sync::OnceLock::new();
+
+fn tmux_raw_registry() -> &'static std::sync::Mutex<std::collections::HashMap<String, String>> {
+    REMOTE_TMUX_RAW.get_or_init(Default::default)
+}
+
+/// B2：快照「origin → 最新 tmux ls 原文」，供 tmux 对账 poller 读（零 SSH）。缺该 origin = 尚未推来
+/// tmux 状态（daemon 未发 / 连接刚起 / 断连已清）→ poller 本轮跳过该 origin（同「观测无效不累计缺失」）。
+pub fn snapshot_tmux_by_origin() -> std::collections::HashMap<String, String> {
+    tmux_raw_registry().lock().unwrap().clone()
+}
+
 /// F74c（#60-A）：快照「origin → 当前宣告活跃的 sid 集」，供 tmux 存活对账 poller 读。
 /// **只读** announced_registry（不加写者，§27/F28 写者不变——写者仍只有 stream_loop）。
 pub fn snapshot_announced_by_origin(
@@ -1485,6 +1503,9 @@ pub enum InboundFrame {
     /// issue #32：远端 daemon 发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）。
     /// monitor 收到后经 SS-F remote-health 通道提示用户可能丢实时行。
     Overflow { dropped: u64 },
+    /// B2：daemon 在远端本地跑 `tmux ls` 的原始 stdout（或哨兵 `NO_TMUX`）——喂 tmux 对账，
+    /// 替掉每 8s 新建 SSH 的刷屏轮询。`raw` 由 `tmux::parse_tmux_ls` 解析（`NO_TMUX`→无 tmux）。
+    TmuxSessions { raw: String },
 }
 
 /// 把 daemon 发来的一行（已去掉行尾 `\n`）解析成 [`InboundFrame`]。
@@ -1571,6 +1592,11 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             // issue #32：dropped 必需且为数字；缺/错则当坏帧跳过（不 panic）。
             let dropped = obj.get("dropped")?.as_u64()?;
             Some(InboundFrame::Overflow { dropped })
+        }
+        "tmux_sessions" => {
+            // B2：raw = tmux ls 原文（或 NO_TMUX）。缺/非字符串 → 坏帧跳过。
+            let raw = obj.get("raw")?.as_str()?.to_string();
+            Some(InboundFrame::TmuxSessions { raw })
         }
         // 未知 kind：向前兼容，跳过（调用方 warn）。绝不 panic。
         _ => None,
@@ -1744,6 +1770,12 @@ pub async fn run(
         // Batch9-F28：连接结束清本 host 的 registry（断连=骨架不该再被 F5 重建；
         // 重连宣告会重新填充）。
         announced_registry()
+            .lock()
+            .unwrap()
+            .remove(&cfg.origin_label());
+        // B2：断连也清本 host 的 tmux 状态——防重连后、daemon 首个 TmuxSessions 帧到达前，
+        // 对账 poller 读到陈旧 tmux 状态误灰（重连后由新帧重新填充）。
+        tmux_raw_registry()
             .lock()
             .unwrap()
             .remove(&cfg.origin_label());
@@ -2221,6 +2253,14 @@ async fn stream_loop(
                 if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
                     tracing::warn!("ssh_source remote-health emit failed: {e}");
                 }
+            }
+            Some(InboundFrame::TmuxSessions { raw }) => {
+                // B2：存本 origin 最新 tmux ls 原文，供 tmux 对账 poller 读（替掉每 8s 新建 SSH 的
+                // list_remote_tmux 轮询）。仅存最新一份（poller 周期读、无需历史）。
+                tmux_raw_registry()
+                    .lock()
+                    .unwrap()
+                    .insert(host_label.clone(), raw);
             }
             None => {
                 // 未知 kind / 坏帧 / 非 JSON：跳过，绝不 panic、绝不中断流。
@@ -3533,6 +3573,29 @@ mod parse_frame_tests {
         assert_eq!(parse_frame(r#"{"kind":"overflow"}"#), None);
         // dropped 类型错（字符串）→ None
         assert_eq!(parse_frame(r#"{"kind":"overflow","dropped":"12"}"#), None);
+    }
+
+    /// B2：tmux_sessions 帧解析出 raw（tmux ls 原文，含转义 TAB）；缺/错 raw 当坏帧跳过（None）。
+    #[test]
+    fn parses_tmux_sessions_and_rejects_bad_raw() {
+        let frame = parse_frame(
+            "{\"kind\":\"tmux_sessions\",\"raw\":\"s1\\t/p\\tclaude\\t1\\t2\\tsid-a\"}",
+        )
+        .expect("tmux_sessions parses");
+        assert_eq!(
+            frame,
+            InboundFrame::TmuxSessions {
+                raw: "s1\t/p\tclaude\t1\t2\tsid-a".to_string()
+            }
+        );
+        // NO_TMUX 哨兵也是合法 raw。
+        assert!(matches!(
+            parse_frame(r#"{"kind":"tmux_sessions","raw":"NO_TMUX"}"#),
+            Some(InboundFrame::TmuxSessions { .. })
+        ));
+        // 缺 raw / raw 非字符串 → None（坏帧跳过）。
+        assert_eq!(parse_frame(r#"{"kind":"tmux_sessions"}"#), None);
+        assert_eq!(parse_frame(r#"{"kind":"tmux_sessions","raw":5}"#), None);
     }
 
     /// 已知 kind 但必需字段缺失 / 类型错 → None（坏帧当 garbage 跳过，不 panic）。

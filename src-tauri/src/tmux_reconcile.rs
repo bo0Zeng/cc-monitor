@@ -36,8 +36,8 @@ pub const RETIRE_MISS_THRESHOLD: u32 = 2;
 /// 某轮 A 仍在 `announced_live` 但 backend 已是新 sid B）。threshold=1 会在这单轮把还活着、只是
 /// 换了 sid 的会话 A 误 retire。真机标定绝不能调到 1——编译期兜死（改小于 2 直接编译失败）。
 const _: () = assert!(RETIRE_MISS_THRESHOLD >= 2);
-/// poller 单次 `list_remote_tmux` 超时——防某 origin 远端 hang 住拖垮所有 origin 的串行对账。
-const LIST_TIMEOUT: Duration = Duration::from_secs(15);
+// B2 起：对账读 daemon 帧推来的 in-memory tmux 状态（`snapshot_tmux_by_origin`），不再 SSH——
+// 故去掉原 `LIST_TIMEOUT`（SSH 超时保护已无对象）。
 
 /// 单个 sid 的对账追踪。
 #[derive(Default, Debug, Clone, PartialEq)]
@@ -92,27 +92,40 @@ pub fn reconcile_step(
     retire
 }
 
-/// 低频 poller：读 `announced_registry`（origin→sids）、逐 origin 查 `list_remote_tmux` 的 `@ccm_sid`
-/// 集、跑 `reconcile_step`、把 retire 的 sid 当 `SessionChange{removed}` 送进 `remote_tx`（§24 由唯一
-/// 写者 emitter 兜底）。仅在有远端配置时由 lib.rs 起。
+/// 低频 poller：读 `announced_registry`（origin→sids）、逐 origin 查 daemon 经 `TmuxSessions` 帧推来的
+/// `@ccm_sid` 集、跑 `reconcile_step`、把 retire 的 sid 当 `SessionChange{removed}` 送进 `remote_tx`
+/// （§24 由唯一写者 emitter 兜底）。仅在有远端配置时由 lib.rs 起。
+///
+/// **B2 能力前提（审计知情）**：本对账信号依赖 daemon 发 `TmuxSessions` 帧（EMITS `"tmux_sessions"`，
+/// p1p 起）。对**不发该帧**的 origin——① daemonless 模式（无 daemon），② 陈旧手动部署、未升到 p1p 的旧
+/// daemon——`tmux_by_origin` 恒无该 origin → 每轮跳过 → 「带外杀 tmux → 有界变灰」这条加速信号对其**静默
+/// 失效**（非 panic、非误灰，退化为无此信号）。可接受，因：daemonless 会话仍由 mtime 窗口
+/// （`DAEMONLESS_ACTIVE_WINDOW_MINUTES`，最多 ~30min）兜底变灰；陈旧 daemon 本就由 `EXPECTED_DAEMON_BUILD_ID`
+/// 版本协商的 `StaleBuild` 警告提示用户升级（tmux-reconcile 退化是「daemon 过旧」的子集）。正常路径 daemon
+/// 连上即自动部署到 p1p → 恒发该帧，此退化不触及。**未加 tmux 专属 warn**（正确的 warn 需把 daemon `emits`
+/// 也解进 `InboundFrame::Hello` + 每-origin 能力登记；启发式「已宣告但无 tmux 帧」会在 daemonless / 首连窗口
+/// 误报）——留作可选后续。
 pub async fn run_tmux_reconcile_poller(remote_tx: Sender<SessionChange>) {
     let mut states: HashMap<String, ReconcileState> = HashMap::new();
     loop {
         tokio::time::sleep(POLL_INTERVAL).await;
         let by_origin = crate::ssh_source::snapshot_announced_by_origin();
+        // B2：读 daemon 经 `TmuxSessions` 帧推来的每 origin 最新 tmux ls 原文（**零 SSH**——替掉每 8s
+        // 新建 SSH 跑 tmux ls 的刷屏轮询；daemon 在远端本地跑 tmux ls 经常驻流上报）。
+        let tmux_by_origin = crate::ssh_source::snapshot_tmux_by_origin();
         for (origin, announced_live) in &by_origin {
-            // 超时包裹：某 origin 远端 hang 住不拖垮其余 origin 的串行对账。
-            let listed =
-                tokio::time::timeout(LIST_TIMEOUT, crate::tmux::list_remote_tmux(origin.clone()))
-                    .await;
-            let sessions = match listed {
-                // 只有「SSH 成功 + tmux 存在 + 列表拿到」才进对账。
-                Ok(Ok(Some(sessions))) => sessions,
-                // 超时 / Err（ssh 抖动）/ Ok(None)（NO_TMUX）→ 跳过本 origin 本轮，观测无效不累计缺失。
-                _ => continue,
+            // 该 origin 尚无 tmux 状态（daemon 未发 / 连接刚起 / 断连已清）→ 跳过本轮（观测无效不累计缺失）。
+            let raw = match tmux_by_origin.get(origin) {
+                Some(r) => r,
+                None => continue,
             };
+            // 哨兵 `NO_TMUX`（远端无 tmux）→ 跳过（同原 `Ok(None)`），观测无效不累计缺失。
+            if raw.trim() == "NO_TMUX" {
+                continue;
+            }
+            let sessions = crate::tmux::parse_tmux_ls(raw);
             let backend: HashSet<String> = sessions.iter().filter_map(|s| s.sid.clone()).collect();
-            // ★ 空 backend 保守跳过：`list_remote_tmux` 的 `|| true` 把「tmux ls 瞬时错误」也吞成空，
+            // ★ 空 backend 保守跳过：`tmux ls` 的 `|| true` 把「tmux ls 瞬时错误」也吞成空，
             // 无法与「tmux 真全没了/整服务被杀」区分——两者都空。若对空 backend 累计缺失，一次抖动
             // 就会把该 origin 所有会话批量误灰、且 poller 只发 removed 不发 added → **永久卡灰**
             // （不像断连窗口靠重连自愈）。主场景「杀单个会话」backend 非空、目标缺失照常 retire；

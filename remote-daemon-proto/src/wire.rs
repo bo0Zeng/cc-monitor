@@ -121,6 +121,11 @@ pub enum Frame {
     /// **不带 `byte_offset`**（只 Line 带）——α watcher：Line 推 currentOffset、TurnEnd 喂 rolling
     /// current，结算时 baseline+offset 同段提交。旧 monitor 未知 kind 忽略（additive）。
     TurnEnd { session_id: String, uuid: String },
+    /// B2（tmux 对账改 daemon 推送）：daemon 在**远端本地**跑 `tmux ls -F '<TMUX_LS_FMT>'` 的**原始 stdout**
+    /// （或哨兵 `NO_TMUX`），周期性推给 monitor——替掉 monitor 每 8s 新建 SSH 跑 tmux ls 的刷屏轮询。
+    /// **送 raw、client 解析**（照 `Line` 帧哲学，复用 monitor 现有 `tmux::parse_tmux_ls`，零解析重复）。
+    /// **monitor 专属**：aterm DaemonTransport 未知 kind 跳过。旧 monitor 忽略未知 kind（additive）。
+    TmuxSessions { raw: String },
     /// The bounded frame channel back-pressured and the reader had to drop
     /// `dropped` frames (a slow/wedged SSH pipe). Emitted once when the channel
     /// drains enough to accept it, so the client can warn the user that live
@@ -263,6 +268,12 @@ mod tests {
                 "turn_end",
             ),
             (Frame::Overflow { dropped: 7 }, "overflow"),
+            (
+                Frame::TmuxSessions {
+                    raw: "s1\t/p\tclaude\t1\t2\tsid-a".into(),
+                },
+                "tmux_sessions",
+            ),
         ];
 
         for (frame, expected_kind) in cases {
@@ -294,6 +305,20 @@ mod tests {
         let v: Value = serde_json::from_str(body).expect("valid json");
         assert_eq!(v["kind"], "overflow");
         assert_eq!(v["dropped"], 42);
+    }
+
+    /// B2：TmuxSessions 帧带 tmux ls 原文——含**真 TAB**（列分隔）+ **换行**（多会话）→ 必须是**单行**
+    /// wire（TAB/换行经 serde 转义、无裸换行），roundtrip 字节还原（monitor `parse_tmux_ls` 靠真 TAB 分列）。
+    #[test]
+    fn tmux_sessions_frame_ships_raw_as_one_line() {
+        let raw = "s1\t/p\tclaude\t1\t2\tsid-a\ns2\t/q\tnode\t0\t1\t";
+        let line = to_line(&Frame::TmuxSessions { raw: raw.into() }).expect("serialize");
+        assert!(line.ends_with('\n'));
+        let body = line.strip_suffix('\n').unwrap();
+        assert!(!body.contains('\n'), "内嵌换行须被转义、无裸换行: {body:?}");
+        let v: Value = serde_json::from_str(body).expect("json");
+        assert_eq!(v["kind"], "tmux_sessions");
+        assert_eq!(v["raw"], raw); // TAB + 换行逐字还原
     }
 
     /// F66（#58③）wire 契约：hello 的 `capabilities`。
