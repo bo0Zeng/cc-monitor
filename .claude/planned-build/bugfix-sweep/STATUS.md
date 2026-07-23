@@ -5,7 +5,15 @@
 ## 目标
 把 cc-monitor 当前所有 **[bug] 标签 open issue** 全部修掉,**然后**再开新功能。纪律:每 bug **先详细全面诊断**(多 agent、对着代码定位根因 + 复现 + 影响面)→ masterplan 过**用户审批门禁** → `/loop` 自动逐 bug 实现→代码审计(D)→工程审计(E)→回看(F)。**发版对外、用户拍板。**
 
-## 当前阶段:**类1 五个 feature 全部完成 → 进 Phase G(/full-audit 全项目验收)**
+## 当前阶段:**Phase G 验收完成 → sweep 收官,loop 停,交回用户决策**
+
+### Phase G(收官验收)结果
+- **端到端 build 绿**:前端 `tsc && vite build` ✓、monitor `cargo build` ✓(警告皆 pre-existing baseline)。
+- **全套测试绿**:vitest 32 文件 **350 测** + 全部 tsx 套件 + tsc 干净 + 各 daemon/monitor clippy baseline。
+- **无遗留**:改动文件无 TODO/FIXME/半成品;共享面账本落最终形态(render.ts #71+#42 独立、tabs.ts #63①、usage-* #67、history* #46、session-backend/remote-launch/lib.rs/bind.rs #41+#72)。
+- **文档-代码对齐**:CHANGELOG `[未发布]` 已记 7 项修复;各 issue 保留(待发版/真机验后关)。
+- **主计划终账**:类1 五个 feature 全「完成」签收(features/01-05),#43 defer 有据、类2 转真机验。
+- **未跑重量级 /full-audit 全项目多 agent 扫**:5 个聚焦 bugfix 各已过 2 视角 Phase D + 主线程 Phase E(共 10 agent 次)+ 全量测 + 产物 build,按 planned-build「强度裁剪」判为过度——**留作用户可选**(要就单独跑)。
 - masterplan 已批准(#43 defer / #46 做持久化 / loop 连续跑类1 / 类2 补测补文档+用户真机验关)。
 - ✅ **F-remote-pull-identity(#41+#72)** — commit `0d228fd`(本地)。
 - ✅ **F-render(#71+#42)** — 完成 + 本地 commit。Phase D 2 视角:#71 SOLID;**#42 首版有 3 回归(CRLF/开前有字/闭后标点)+ 测试不区分** → 已**重写 #42 正则(行边界规则,离线 harness 实证全过)+ 测试改区分性(preprocess 层)+ #71 注释更正**。gate:tsc / render 22 测 / 全套 333 测 / ReDoS 安全。
