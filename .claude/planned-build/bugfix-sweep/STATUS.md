@@ -5,12 +5,13 @@
 ## 目标
 把 cc-monitor 当前所有 **[bug] 标签 open issue** 全部修掉,**然后**再开新功能。纪律:每 bug **先详细全面诊断**(多 agent、对着代码定位根因 + 复现 + 影响面)→ masterplan 过**用户审批门禁** → `/loop` 自动逐 bug 实现→代码审计(D)→工程审计(E)→回看(F)。**发版对外、用户拍板。**
 
-## 当前阶段:**feature 1 完成(过 D/E/F)→ 进 feature 2(F-render)**
+## 当前阶段:**feature 2 完成(过 D/E/F)→ 进 feature 3(F-usage-sort)**
 - masterplan 已批准(#43 defer / #46 做持久化 / loop 连续跑类1 / 类2 补测补文档+用户真机验关)。
-- ✅ **F-remote-pull-identity(#41+#72)完成 + 本地 commit**(未 push)。Phase D 无阻塞、建议-1 已修;gate 全绿(monitor 343 测/clippy 37/tsc/前端 node 测)。真机验关留用户(app 需重发)。
-- bug 数 9。类1 剩:**F-render(#71+#42)← 下一个** → F-usage-sort(#67)→ F-fork-badge(#63①)→ F-history-persist(#46)。
-- **下一步(feature 2)**:写 `features/02-render.md`(Phase B)→ 实现 #71(marked del tokenizer 只认 `~~`)+ #42(`render.ts:172` `$$` 配对行锚定 + 去 `[^$]` 守卫)→ D/E/F。
-- **carry-forward**:#41 窗口 4s 真机标定;#72 真机验 attach 不再弹警告。
+- ✅ **F-remote-pull-identity(#41+#72)** — commit `0d228fd`(本地)。
+- ✅ **F-render(#71+#42)** — 完成 + 本地 commit。Phase D 2 视角:#71 SOLID;**#42 首版有 3 回归(CRLF/开前有字/闭后标点)+ 测试不区分** → 已**重写 #42 正则(行边界规则,离线 harness 实证全过)+ 测试改区分性(preprocess 层)+ #71 注释更正**。gate:tsc / render 22 测 / 全套 333 测 / ReDoS 安全。
+- bug 数 9。类1 剩:**F-usage-sort(#67)← 下一个** → F-fork-badge(#63①)→ F-history-persist(#46)。
+- **下一步(feature 3)**:`features/03-usage-sort.md` → 实现 #67(`usage-pivot.ts` 比较器 dim-aware/参数化 sortKey+dir,按天默认按日期 + `usage-view.ts` 表头可点排序 ▼/▲)→ D/E/F。
+- **carry-forward**:#41 窗口 4s 真机标定;#72 真机验 attach 不再弹警告。#71 多波浪号中行 cosmetic 偏差(无害)。
 
 ## Bug 清单(8)
 | # | 一句话 | 诊断 | 子系统 |
