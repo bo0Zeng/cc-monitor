@@ -29,7 +29,8 @@
 ## ★共享面账本(最终形态)
 - **`src/render.ts`** ← #71 + #42。最终形态:marked 配置里(a)`del` tokenizer 覆盖只认 `~~`;(b)`preprocessMath` 的 `$$` 配对行锚定 + 去 `[^$]` 守卫。两者互不踩(一个改 tokenizer、一个改预处理),**合成一个 feature(F-render)一次做完**,别两趟。
 - **`src/tabs.ts`** ← #63①(fork 血缘:Tab 加 `forkedFrom`、`computeTitleFor` 加徽标)。若 #43 被拍板做"kill 活会话/supersede",也改 `tabs.ts`(closeTab 门、菜单)→ **那时与 #63① 的 Tab 结构改动协调**;#43 不做则 #63① 隔离。
-- 独立无重叠:`usage-*.ts`(#67)、`lib.rs` 重绑(#41)、`history-cache`(#46)。
+- **`src/styles.css`**(2026-07-23 补记):#67 起进入改动面(表头可点排序样式)。**#63① fork 血缘徽标大概率也要改它** → 两者按最终形态协调(各自作用域前缀 `.usage-table` / tab 徽标类,勿互相覆盖);hover 一律用仓内既有 `var(--overlay-hover)`(`--bg-3` 不存在)。
+- 独立无重叠:`usage-pivot.ts`/`usage-view.ts`(#67)、`lib.rs` 重绑(#41)、`history-cache`(#46)。
 
 ### 类1 追加(2026-07-23 用户真机命中,live)
 | **#72** | cc-monitor 自己 Resume(tmux) 建 `cc-<sid8>` 但**不设 `@ccm_sid`**(只有远端 wrapper `ccm-wrapper.sh:24` 设);`@ccm_sid` 才是 cc-monitor attach/kill 的匹配键(`findClaudeTmux` `tabs.ts:209-231`),故自建会话自己匹配不上→cwd 回退警告/菜单移除 | resume 编排 `tmux new-session` 后加 `tmux set-option @ccm_sid <sid>`(sid 已知);落点 `session-backend.ts` createRunAttach / `remote-launch.ts` buildResumeTmuxCmd+buildLauncherCmd | `session-backend.ts`+`remote-launch.ts` |

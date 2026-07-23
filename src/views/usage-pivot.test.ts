@@ -6,6 +6,8 @@
 
 import {
   pivotUsage,
+  sortPivotRows,
+  defaultSortForDim,
   sumAll,
   totalTokens,
   type SessionUsageRow,
@@ -125,6 +127,69 @@ test("sumAll 全部桶合计", () => {
 test("空 rows → 空 pivot / 零 sum", () => {
   eq(pivotUsage([], "model").length, 0);
   eq(sumAll([]).input, 0);
+});
+
+test("#67 defaultSortForDim：按天=日期降序;其余维度=等效∑降序", () => {
+  eq(defaultSortForDim("day").col, "key");
+  eq(defaultSortForDim("day").dir, "desc");
+  eq(defaultSortForDim("project").col, "equiv");
+  eq(defaultSortForDim("model").col, "equiv");
+  eq(defaultSortForDim("session").col, "equiv");
+});
+
+test("#67 按天 + 默认排序 → 日期降序(最近在上),而非等效∑序(区分修没修)", () => {
+  const p = pivotUsage(rows, "day");
+  // 底座是等效∑降序:07-17 token 远多于 07-18 → 排前。这正是用户看到的「按天却日期乱跳」。
+  eq(p[0].key, "2026-07-17", "底座应是等效∑序");
+  const d = defaultSortForDim("day");
+  const sorted = sortPivotRows(p, d.col, d.dir);
+  // ★区分:按天默认必须按日期降序 → 最近的 07-18 在最上(未修则仍是 07-17)
+  eq(sorted[0].key, "2026-07-18", "按天默认应最近在上");
+  eq(sorted[1].key, "2026-07-17");
+});
+
+test("#67 sortPivotRows：key 升序=日历序 / 数值列升降序 / 不改入参", () => {
+  const p = pivotUsage(rows, "day");
+  eq(sortPivotRows(p, "key", "asc")[0].key, "2026-07-17", "key 升序=最早在上");
+  eq(sortPivotRows(p, "key", "desc")[0].key, "2026-07-18", "key 降序=最近在上");
+  // input:07-17 合计 150 > 07-18 的 5
+  eq(sortPivotRows(p, "input", "desc")[0].key, "2026-07-17");
+  eq(sortPivotRows(p, "input", "asc")[0].key, "2026-07-18");
+  eq(p[0].key, "2026-07-17", "sortPivotRows 必须是纯函数、不改入参顺序");
+});
+
+test("#67 平手回退跟随方向：主键全平手时 asc 与 desc 互为逆序(不再「点了没反应」)", () => {
+  // 三天 msgs 全 = 1(主键全平手)、等效∑各不同 → asc 应恰是 desc 的逆序
+  const tie: SessionUsageRow[] = [
+    { sessionId: "a", projectPath: "/a", projectName: "a", buckets: [{ model: "m", day: "2026-07-01", totals: t(10, 0, 0, 0) }] },
+    { sessionId: "b", projectPath: "/b", projectName: "b", buckets: [{ model: "m", day: "2026-07-02", totals: t(30, 0, 0, 0) }] },
+    { sessionId: "c", projectPath: "/c", projectName: "c", buckets: [{ model: "m", day: "2026-07-03", totals: t(20, 0, 0, 0) }] },
+  ];
+  const p = pivotUsage(tie, "day");
+  const asc = sortPivotRows(p, "msgs", "asc").map((r) => r.key);
+  const desc = sortPivotRows(p, "msgs", "desc").map((r) => r.key);
+  eq(JSON.stringify(asc), JSON.stringify([...desc].reverse()), "asc 必须是 desc 的逆序");
+  // desc 平手时等效∑大的在上(与主排序方向同构)
+  eq(desc[0], "2026-07-02", "desc 平手 → 等效∑最大的(30)在上");
+});
+
+test("#67 边角：空数组 / 单行 / 空 day 串都不崩", () => {
+  eq(sortPivotRows([], "key", "asc").length, 0);
+  const one = pivotUsage(
+    [{ sessionId: "s", projectPath: "/p", projectName: "P", buckets: [{ model: "m", day: "2026-07-01", totals: t(1, 0, 0, 0) }] }],
+    "day",
+  );
+  eq(sortPivotRows(one, "total", "desc").length, 1);
+  const withEmpty = pivotUsage(
+    [
+      { sessionId: "s1", projectPath: "/p", projectName: "P", buckets: [{ model: "m", day: "", totals: t(1, 0, 0, 0) }] },
+      { sessionId: "s2", projectPath: "/p", projectName: "P", buckets: [{ model: "m", day: "2026-07-01", totals: t(2, 0, 0, 0) }] },
+    ],
+    "day",
+  );
+  // 空 day 的 label 是 `(无日期)`;具体落位随 locale 排序规则,这里只钉「不崩、不丢行」
+  eq(sortPivotRows(withEmpty, "key", "asc").length, 2);
+  eq(sortPivotRows(withEmpty, "key", "desc").length, 2);
 });
 
 if (failed > 0) {
