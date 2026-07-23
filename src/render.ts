@@ -134,6 +134,29 @@ marked.use({
   },
 });
 
+// #71：GFM strikethrough 规范允许**单**波浪号(`~x~`),marked 默认据此把成对单 `~` 之间的字划成
+// `<del>`——静默改内容。触发要**闭合 `~` 贴非空白**(GFM flanking):`见 ~/foo~/bar`、`cd ~/a~/b`、
+// `a ~foo~ b` 会被划;而 `~/.claude … ~/.codex` 因第二个 `~` 前是空格、flanking 已挡、**反而不触发**
+// (此前注释举这个例子是错的)。覆盖内建 `del` tokenizer:**只认双波浪号 `~~x~~`**;单 `~` 返回
+// **`undefined`**(★必须 undefined、**不能 `false`**——marked 的 `use()` 包装只在 `=== false` 时回退内建
+// del、会复活单 `~` 把本修复静默还原)→ 词法器把单 `~` 当普通文本。真·删除线 `~~text~~` 仍渲染。
+// (`~~~` 围栏是块级,由 preprocessMath/marked 代码 tokenizer 处理,不进本行内路径。)
+marked.use({
+  tokenizer: {
+    del(src: string) {
+      // 要求 `~~` 紧邻非空白（GFM:定界符不与内容间留空）,内容非贪婪、结尾非空白。
+      const m = /^~~(?=\S)([\s\S]*?\S)~~/.exec(src);
+      if (!m) return undefined; // 单 `~` / 未配对 `~~` → 交回词法器当普通文本
+      return {
+        type: "del",
+        raw: m[0],
+        text: m[1],
+        tokens: this.lexer.inlineTokens(m[1]),
+      };
+    },
+  },
+});
+
 export interface RenderMarkdownOptions {
   /** true = lazy hljs（启动 batch 期间用，避免 N 个代码块同步阻塞主线程） */
   lazy?: boolean;
@@ -157,6 +180,9 @@ export interface RenderMarkdownOptions {
  * "from $$5 to $$10"）会误判为公式——与既有 `nonStandard:true` 对单 `$` 的误判同源、不新增暴露面。
  */
 export function preprocessMath(md: string): string {
+  // #42:先把 CRLF/CR 归一成 LF——preprocessMath 跑在 marked 内部换行归一**之前**,下面所有基于 `\n`
+  // 的块规则/代码保护才对 Windows(`\r\n`)行尾可靠(否则 `$$\r\n…` 的块识别不出、露字面 `$$`)。
+  md = md.replace(/\r\n?/g, "\n");
   const stash: string[] = [];
   const stub = (m: string): string => {
     stash.push(m);
@@ -168,8 +194,18 @@ export function preprocessMath(md: string): string {
   // 2) \[ ... \] → 块级 $$；\( ... \) → 行内 $。
   md = md.replace(/\\\[([\s\S]*?)\\\]/g, (_m, x: string) => `\n\n$$\n${x.trim()}\n$$\n\n`);
   md = md.replace(/\\\(([\s\S]*?)\\\)/g, (_m, x: string) => `$${x.trim()}$`);
-  // 3) $$ ... $$（单/多行）统一规整成独占行 + 空行包裹。`[^$]` 避开 `$$$$`，非贪婪分开多段公式。
-  md = md.replace(/\$\$([^$][\s\S]*?)\$\$/g, (_m, x: string) => `\n\n$$\n${x.trim()}\n$$\n\n`);
+  // 3) 块级 $$ ... $$ 统一规整成独占行 + 空行包裹。#42:一个 `$$` 只有**贴着行边界**才算**块定界符**
+  //    ——开定界符 = 行首(`(^|\n)[ \t]*$$`)**或**其后紧跟换行(`$$[ \t]*\n`);闭定界符 = 行尾
+  //    (`$$[ \t]*(\n|$)`)**或**其前紧接换行(`\n[ \t]*$$`)。据此把散文里游离/未配对的 `$$`(漏闭合、或
+  //    "用 $$ 包裹显示公式"这类元讨论:`$$` 前后都是正文、不贴行边界)排除;否则原全局按数配对器遇**奇数
+  //    `$$`** 会错位、吞掉后一个真公式的开 `$$`、把散文当公式渲染并**丢真公式**(比留字面更糟)。
+  //    "开=行首或后接换行 / 闭=行尾或前接换行"修掉首版"须行首/行尾"过严的回归(CRLF已归一、`文字：$$⏎…`
+  //    开前有字、`…⏎$$。`闭后有标点)。行中 `$$x$$`(前后有正文)不匹配、留 marked-katex 行内。去掉 `[^$]`
+  //    守卫(误伤 `$$$…`)。lookbehind 需 V8/Chromium(WebView2 ✓;Node/vitest ✓)。
+  md = md.replace(
+    /(?:(?<=^|\n)[ \t]*\$\$|\$\$(?=[ \t]*\n))([\s\S]*?)(?:(?<=\n[ \t]{0,32})\$\$|\$\$(?=[ \t]*(?:\n|$)))/g,
+    (_m, x: string) => `\n\n$$\n${x.trim()}\n$$\n\n`,
+  );
   // 4) 还原代码。
   return md.replace(/\u0000M(\d+)\u0000/g, (_m, i: string) => stash[Number(i)]);
 }

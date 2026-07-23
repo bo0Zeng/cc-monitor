@@ -62,3 +62,47 @@ describe("F73 renderMarkdown 端到端（真 katex，jsdom）", () => {
     expect(html).toContain("$$x$$");
   });
 });
+
+describe("#71 单波浪号不当删除线（覆盖 GFM del tokenizer，只认 ~~）", () => {
+  it("闭合 ~ 贴非空白（~/foo~/bar,stock marked 会划）→ 覆盖后不划、路径原样", () => {
+    // ★区分性:第二个 ~ 前是 `o`(非空白),GFM flanking 会把 `/foo` 划成 <del>(未修则失败)。
+    // (`~/.claude … ~/.codex` 因空格 flanking 本就不触发、区分不出——故不用它当断言。)
+    const html = renderMarkdown("见 ~/foo~/bar 目录");
+    expect(html).not.toContain("<del>");
+    expect(html).toContain("~/foo~/bar");
+  });
+  it("成对 a ~foo~ b（stock 会划）→ 覆盖后不划", () => {
+    expect(renderMarkdown("a ~foo~ b")).not.toContain("<del>");
+  });
+  it("真·删除线 ~~text~~ 仍渲染成 <del>（不误伤合法用法）", () => {
+    expect(renderMarkdown("这是 ~~废弃~~ 的").includes("<del>")).toBe(true);
+  });
+});
+
+describe("#42 奇数/游离 $$ 不吞掉真公式 + 行边界回归", () => {
+  const countKatexDisplay = (s: string): number => (s.match(/katex-display/g) ?? []).length;
+  it("两块真公式间的散文 $$（元讨论）:散文不被当块、第三块真公式成块（在 preprocess 层断言——DOMPurify 会剥离 KaTeX annotation,故不在渲染后 HTML 里验区分性）", () => {
+    const md = "$$\na=b\nc=d\n$$\n用 $$ 包裹显示公式。\n$$\ne=f\ng=h\n$$";
+    const pre = preprocessMath(md);
+    // ★区分:散文"用 $$ 包裹显示公式。"原样保留(含字面 $$)——旧全局正则会把它误规整成 $$\n包裹…\n$$
+    expect(pre).toContain("用 $$ 包裹显示公式。");
+    // ★区分:第三块真公式被规整成独立块——旧正则错位配对会丢掉它(得不到 $$\ne=f\ng=h\n$$ 块)
+    expect(pre).toContain("$$\ne=f\ng=h\n$$");
+    // 端到端 sanity:至少两块渲染成 KaTeX display（katex-display 类过 DOMPurify 保留）
+    expect(countKatexDisplay(renderMarkdown(md))).toBeGreaterThanOrEqual(2);
+  });
+  it("尾标点 $$…$$。→ 公式仍渲染（修首版行尾过严回归 重要3）", () => {
+    expect(renderMarkdown("公式\n$$\na=b\n$$。").includes("katex")).toBe(true);
+  });
+  it("开定界前有字 文字：$$⏎…⏎$$ → 公式仍渲染（修首版行首过严回归 重要2）", () => {
+    expect(renderMarkdown("答案是：$$\nE=mc^2\n$$").includes("katex")).toBe(true);
+  });
+  it("CRLF 行尾块公式 → 仍渲染（#42 重要1）", () => {
+    expect(renderMarkdown("结果\r\n$$\r\nE=mc^2\r\n$$").includes("katex")).toBe(true);
+  });
+  it("行中 $$x$$（前后有正文）不被块规则误吞（不 throw、有输出）", () => {
+    const html = renderMarkdown("价格从 $$5 到 $$10 不等");
+    expect(typeof html).toBe("string");
+    expect(html.length).toBeGreaterThan(0);
+  });
+});
