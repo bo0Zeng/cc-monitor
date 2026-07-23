@@ -5,26 +5,29 @@
 ## 目标
 把 cc-monitor 当前所有 **[bug] 标签 open issue** 全部修掉,**然后**再开新功能。纪律:每 bug **先详细全面诊断**(多 agent、对着代码定位根因 + 复现 + 影响面)→ masterplan 过**用户审批门禁** → `/loop` 自动逐 bug 实现→代码审计(D)→工程审计(E)→回看(F)。**发版对外、用户拍板。**
 
-## 当前阶段:**feature 3 完成(过 D/E/F)→ 进 feature 4(F-fork-badge)**
+## 当前阶段:**feature 4 完成(过 D/E/F)→ 进 feature 5(F-history-persist,类1 最后一个)**
 - masterplan 已批准(#43 defer / #46 做持久化 / loop 连续跑类1 / 类2 补测补文档+用户真机验关)。
 - ✅ **F-remote-pull-identity(#41+#72)** — commit `0d228fd`(本地)。
 - ✅ **F-render(#71+#42)** — 完成 + 本地 commit。Phase D 2 视角:#71 SOLID;**#42 首版有 3 回归(CRLF/开前有字/闭后标点)+ 测试不区分** → 已**重写 #42 正则(行边界规则,离线 harness 实证全过)+ 测试改区分性(preprocess 层)+ #71 注释更正**。gate:tsc / render 22 测 / 全套 333 测 / ReDoS 安全。
 - ✅ **F-usage-sort(#67)** — 完成 + 本地 commit。Phase D 2 视角无阻塞;重要项(首列排 key 非 label / 视图层零测 / 流式重渲弹顶)全修 + 补 6 条 DOM 测;并修掉我自己写反的平手符号。gate:tsc / 全套 npm test(vitest 339)。
-- bug 数 9。类1 剩:**F-fork-badge(#63①)← 下一个** → F-history-persist(#46)。
-- **下一步(feature 4)**:`features/04-fork-badge.md` → 实现 #63①(把 `forkedFrom` 传到活 Tab + `computeTitleFor`/tab 按钮加 `↳` 血缘徽标,现只在历史树用)→ D/E/F。**注意共享面**:大概率要改 `styles.css`(见账本)。
+- ✅ **F-fork-badge(#63①)** — 完成 + 本地 commit `a0345e6`。Phase D 2 视角均无阻塞/无重要;采纳建议(applyForkedFrom 前移到 turnEndNotifier 之前)+ 补 3 条 pin 测(单 ↳ / 远端序 / tooltip,共 6 条 #63①)。**未改 styles.css**(账本预测未命中,纯文本前缀无需 CSS)。
+- bug 数 9。类1 剩:**F-history-persist(#46)← 最后一个**。
+- **下一步(feature 5)**:`features/05-history-persist.md` → 实现 #46(把 `remoteCache` 持久化到 localStorage + 构造时 hydrate,让每次启动**首开**也暖、不再只本地;F76 已做 30s 内存缓存,这里补跨启动持久)→ D/E/F。之后 **Phase G**(`/full-audit`)。
+- **carry-forward(+#63①)**:远端 fork 徽标依赖 daemon 实时行是否透传 `forkedFrom`(`remote_history` 对远端历史已不提取 fork 关系)——真机验。
 - **carry-forward**:#41 窗口 4s 真机标定;#72 真机验 attach 不再弹警告。#71 多波浪号中行 cosmetic 偏差(无害)。
 
-## Bug 清单(8)
-| # | 一句话 | 诊断 | 子系统 |
-|---|---|---|---|
-| #41 | 拉前不及时(rbind 标题一次扫、无重试) | agent 跑中 | 远端拉前(Rust 窗口标题扫描) |
-| #42 | 多行 `$$` LaTeX 不渲染(F73 后仍未闭合) | agent 跑中 | 渲染 `render.ts` |
-| #43 | resume 分裂两 tab / 父假绿 / 拉不起 | agent 跑中 | 远端会话生命周期 `tabs.ts`/`ssh_source` |
-| #46 | 历史来源加载延迟(刚进只本地)应缓存 | agent 跑中 | 历史来源加载 |
-| #60 | 带外杀 tmux 不变灰 + attach 错会话 | agent 跑中(核 B2+F74 是否已修) | 远端会话生命周期 |
-| #63 | fork tab 独立显示 + 内容不符 + 尾消息漏 | agent 跑中 | 分支/fork `branching.ts`/history |
-| #67 | 用量排序全按等效∑降序/表头不可点/按天不按日期 | **已诊断** | 用量 `usage-view.ts`/`usage-pivot.ts` |
-| #71 | 单 `~` 被当删除线(marked GFM 单波浪号) | **已诊断** | 渲染 `render.ts` |
+## Bug 清单(9,诊断全部完成)
+| # | 一句话 | 状态 |
+|---|---|---|
+| #41 | 拉前不及时(verify-fail 重绑单发 + 窗口太短) | ✅ 修完(feature 1) · 真机标窗口=carry-forward |
+| #72 | 自建 resume 会话不设 `@ccm_sid` → attach 弹回退警告 | ✅ 修完(feature 1) · 真机验=carry-forward |
+| #71 | 单 `~` 被当删除线(marked GFM 单波浪号) | ✅ 修完(feature 2) |
+| #42 | 奇数/游离 `$$` 吞掉真公式 | ✅ 修完(feature 2,首版有回归已重写) |
+| #67 | 用量排序:全按等效∑降序 / 表头不可点 / 按天不按日期 | ✅ 修完(feature 3) |
+| #63 | fork tab 独立显示 + 内容不符 + 尾消息漏 | ① 待修(feature 4);② F74 已修(需重装 ccm 验);③ 现源码无复现路径(疑旧版) |
+| #46 | 历史来源加载延迟(刚进只本地) | 字面已由 F76 满足;**持久化待做**(feature 5) |
+| #60 | 带外杀 tmux 不变灰 + attach 错会话 | B2+F74 已覆盖 → **待你真机验证后关** |
+| #43 | resume 分裂两 tab / 父假绿 / 清不掉 / 拉不起 | **defer**(大半上游 + 依赖已暂停的 daemon 心跳判活) |
 
 ### 已诊断
 - **#67**:`src/views/usage-pivot.ts:97-101` 单一写死比较器(equivalentInputTokens 降序)对所有分组共用,无 `dim==="day"` 按日期分支;`day` 键是 ISO(可排却没被当排序键)。表头 `src/views/usage-view.ts:176-198` 只设 textContent、无点击。修:比较器 dim-aware/参数化 sortKey+dir + 表头可点。
@@ -36,8 +39,10 @@
 - **用量 `usage-view.ts`/`usage-pivot.ts`** ← 仅 #67。
 - 独立:#41(Rust 拉前扫描)、#46(历史来源加载)、#63(fork/branching)。
 
-## 下一步
-等 4 个诊断 agent 回 → 合成 MASTERPLAN.md(逐 bug:根因/复现/影响/修法/风险 + 依赖顺序 + 账本最终形态)+ features/NN-*.md → **呈用户审批(门禁)** → 用户批准后起 `/loop`。
+## 收尾(类1 全完成后)
+1. **Phase G**:`/full-audit` 一次性全项目验收 + 主计划终账 + 端到端(全量 build/test)。
+2. **类2 交付用户真机验证**:#60(B2+F74)、#63②(需每机重装 ccm 助手)、#63③(≥v3.1.1 是否仍复现)、#46 字面部分 → 验过由用户关 issue。
+3. **发版**:所有修复都要发一版 app 才在用户机器生效(#41/#72 还需远端 daemon 已是 p1p)。**对外动作、用户拍板**,不在 loop 内。
 
 ## 自动模式 / loop 停止条件
 - 用户要:masterplan 批准后 `/loop` 自动逐 bug 跑 C→F,全部完再 Phase G。
