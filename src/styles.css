@@ -515,6 +515,21 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   color: var(--text-2);
   z-index: 1;
 }
+/* #67：表头可点排序——给出可点提示(手型 + hover)，当前排序列高亮(带 ▼/▲)。 */
+.usage-table th.usage-th-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.usage-table th.usage-th-sortable:hover {
+  color: var(--text);
+  /* 审计:原写 var(--bg-3, var(--bg-2)) —— `--bg-3` 全仓未定义、回退值恰等于表头自身底色 → hover 无底色反馈。
+     改用仓内既有的 hover 令牌(与 tab / 列表项等一致)。 */
+  background: var(--overlay-hover);
+}
+.usage-table th.usage-th-sortable.active {
+  color: var(--text);
+  font-weight: 600;
+}
 .usage-table td.usage-key,
 .usage-table th:first-child {
   text-align: left;
