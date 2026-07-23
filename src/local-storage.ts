@@ -42,6 +42,9 @@ export const LS_KEYS = {
   historyHiddenOrigins: "cc-monitor.history.hidden-origins",
   /** F86(#45)：历史来源大区折叠偏好覆盖表（key=origin ?? ""，缺键=走默认：本地展开/远端折叠）。 */
   historyOriginOpen: "cc-monitor.history.origin-open",
+  /** F76b(#46)：历史远端「来源列表」快照持久化（`{projects,loadedAt}`）——跨启动**首开**也暖、不再
+   *  只本地。hydrate 时把 loadedAt 归 0 → 持久快照只作首帧暖绘、首开必刷新一次(不影响新鲜度)。 */
+  historyRemoteSources: "cc-monitor.history.remote-sources",
   /** F84b-fix(batch18)：命令栏可发现 chip 是否已被用户见过——首运行给一次性微高亮，之后不再。 */
   cmdkHintSeen: "cc-monitor.cmdk-hint.seen",
 } as const;

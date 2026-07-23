@@ -33,7 +33,7 @@ import {
   type HistoryActionId,
 } from "./history-actions";
 import { getBehavior } from "../behavior";
-import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
+import { LS_KEYS, safeGetJson, safeSetJson, safeRemove } from "../local-storage";
 import { formatTimestampSmart } from "../format";
 import {
   shouldRefetchRemote,
@@ -258,6 +258,9 @@ export class HistoryView {
 
   constructor() {
     this.root = this.build();
+    // F76b(#46):从 localStorage hydrate 远端来源快照——让每次启动**首开**也暖(不再只本地)。
+    // 逐元素防脏 + loadedAt 归 0(首帧暖绘、首开必刷)见 loadPersistedRemoteCache;会话内 30s 内存 TTL 照旧管 reopen。
+    this.remoteCache = loadPersistedRemoteCache();
   }
 
   async open(): Promise<void> {
@@ -416,10 +419,12 @@ export class HistoryView {
       if (res.failedHosts.length === 0) {
         // 全部台成功 → 缓存这份完整快照，TTL 内复用（空结果也缓存，无远端配置时省掉每次 IPC）。
         this.remoteCache = { projects: remote, loadedAt: Date.now() };
+        safeSetJson(LS_KEYS.historyRemoteSources, this.remoteCache); // F76b(#46):持久化 → 下次启动首开暖绘
       } else {
         // 部分台失败（后端语义：任一台成功即 Ok，失败台跳过）→ 这份快照**不完整**，不冻结缓存，
         // 下次 open 重试失败台（对齐 F76 前「每次 open 重扫、瞬断下次自愈」），仍渲染已拿到的台。
         this.remoteCache = null;
+        safeRemove(LS_KEYS.historyRemoteSources); // F76b(#46):不完整快照不持久(免下次启动暖绘残缺列表)
         showActionFailureToast(
           "远端部分来源加载失败",
           `${res.failedHosts.join("、")}（下次打开将重试）`,
@@ -1895,5 +1900,24 @@ function loadOriginOpenOverrides(): OriginOpenOverrides {
 
 function saveOriginOpenOverrides(o: OriginOpenOverrides): void {
   safeSetJson(LS_KEYS.historyOriginOpen, o);
+}
+
+/**
+ * F76b(#46)：从 localStorage 读远端来源快照，**逐元素防脏**(对齐 loadExpandedForks/normalize* 惯例)。
+ * ★审计:仅校验数组**形状**不够——被篡改/旧 schema 若混入 `null`/基元元素,后续 `renderList` 对它 deref
+ * `p.origin`(`:968`/`renderOriginFilter`)会抛 TypeError,而 `renderList` 在 `refresh`(`:410`)里**未 try 包**
+ * → 冒泡出 `open()`、历史视图打不开直到清 localStorage。故过滤到「非空对象 + 关键 `projectPath` 为 string」。
+ * `loadedAt` 恒归 **0**:持久快照只作首帧暖绘,首开必刷一次(见构造注释),不冒充新鲜、不吃跨启动陈旧。
+ */
+function loadPersistedRemoteCache(): RemoteSourceCache<HistoryProject> | null {
+  const raw = safeGetJson<{ projects?: unknown }>(LS_KEYS.historyRemoteSources);
+  if (!raw || !Array.isArray(raw.projects)) return null;
+  const projects = raw.projects.filter(
+    (p): p is HistoryProject =>
+      p !== null &&
+      typeof p === "object" &&
+      typeof (p as { projectPath?: unknown }).projectPath === "string",
+  );
+  return { projects, loadedAt: 0 };
 }
 
