@@ -2344,7 +2344,9 @@ function bringTerminalToFront(sessionId: string): Promise<void> {
  *   - "invoke 超时"：极端情况下 Win32 调用卡住
  */
 function bringRemoteTerminalToFront(sessionId: string): Promise<void> {
-  const timeoutMs = 5000;
+  // #41:后端现扫重试窗口抬到 4s(ON_DEMAND_BIND_*,覆盖首次 attach 的标题四跳传播),故前端超时须
+  // 抬到其上、留 Win32 activate 余量——5s→8s,否则前端超时会和后端重试撞车(刚要绑上就被判超时)。
+  const timeoutMs = 8000;
   return Promise.race([
     invoke<void>("bring_remote_terminal_to_front", { sessionId }),
     new Promise<never>((_, reject) =>

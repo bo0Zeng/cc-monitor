@@ -696,9 +696,11 @@ impl RemoteHwndCache {
 }
 
 /// F75：on-demand（↗ 点击）现扫绑定的重试窗口——`ON_DEMAND_BIND_ATTEMPTS × ON_DEMAND_BIND_STEP_MS`。
-/// 默认 15 × 100ms = 1.5s：比本地 600ms 长（远端四跳 + tmux 截标题），又不至于让点击久挂。
-/// **待真机实测调**（issue #41 标题「不及时」的新知识：根因是 on-demand 单次扫描 + 四跳传播延迟）。
-pub const ON_DEMAND_BIND_ATTEMPTS: u32 = 15;
+/// #41 真机实证:1.5s **确认不足**——用户 attach 后首点 ↗ 仍弹「未绑定窗口」、几秒后才成(四跳 +
+/// tmux 截标题 + rbind 每秒轮询 的传播 > 1.5s)。故 15×100ms → **40×100ms = 4s**。仅在**失败**时才
+/// 等满窗口(成功即返回),且跑在 `spawn_blocking`(不阻塞主线程);前端 ↗ 超时(`tabs.ts` 8s)已抬到
+/// > 本窗口,不撞车。**仍属 carry-forward 真机微调**(4s 若仍偶发不足,据真机再抬)。
+pub const ON_DEMAND_BIND_ATTEMPTS: u32 = 40;
 pub const ON_DEMAND_BIND_STEP_MS: u64 = 100;
 
 #[cfg(windows)]

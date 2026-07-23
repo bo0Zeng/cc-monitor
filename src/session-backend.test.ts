@@ -61,6 +61,29 @@ test("TMUX_BACKEND.attach：attach -t <target>", () => {
   eq(TMUX_BACKEND.attach("cc-abc"), "tmux attach -t cc-abc");
 });
 
+test("#72 TMUX_BACKEND.createRunAttach：ccmSid → create 分支插 set-option @ccm_sid(new-session 后、send-keys 前)", () => {
+  eq(
+    TMUX_BACKEND.createRunAttach({
+      target: "cc-1234abcd",
+      quotedCwd: null,
+      quotedPayload: "'p'",
+      ccmSid: "1234abcd-full-sid",
+    }),
+    "tmux new-session -d -s cc-1234abcd 2>/dev/null && " +
+      "(tmux set-option -t cc-1234abcd @ccm_sid 1234abcd-full-sid 2>/dev/null || true) && " +
+      "tmux send-keys -t cc-1234abcd 'p' Enter; tmux attach -t cc-1234abcd",
+  );
+});
+
+test("#72 TMUX_BACKEND.createRunAttach：无 ccmSid → 不插 set-option(零回归)", () => {
+  eq(
+    TMUX_BACKEND.createRunAttach({ target: "cc-x", quotedCwd: null, quotedPayload: "'p'" }).includes(
+      "set-option",
+    ),
+    false,
+  );
+});
+
 test("SESSION_BACKEND === TMUX_BACKEND（阶段①唯一活跃后端）", () => {
   eq(SESSION_BACKEND, TMUX_BACKEND);
 });
