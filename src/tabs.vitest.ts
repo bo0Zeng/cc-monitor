@@ -221,6 +221,92 @@ describe("TabManager 生命周期", () => {
     expect(spy.mock.calls.length).toBeGreaterThan(after1);
   });
 
+  // === issue #63①：fork 血缘徽标 ===
+
+  it("#63① fork 会话:首条带 forkedFrom → 标题加 ↳ 徽标 + tab 记录来源 sid", () => {
+    tm.onLine({
+      session_id: "fork-sid",
+      cwd: "/home/u/proj",
+      path: "/home/u/proj/fork-sid.jsonl",
+      seq: 0,
+      message: { type: "user", uuid: "u1", forkedFrom: { sessionId: "parent-abcd1234", messageUuid: "m1" } },
+    } as never);
+    const tab = peek(tm).tabs.get("fork-sid")!;
+    expect(tab.forkedFromSessionId).toBe("parent-abcd1234");
+    expect(tab.title.startsWith("↳ ")).toBe(true); // ★区分:未修则不加徽标
+  });
+
+  it("#63① 非 fork 会话不加徽标(区分性)", () => {
+    tm.onLine({
+      session_id: "plain",
+      cwd: "/home/u/proj",
+      path: "/home/u/proj/plain.jsonl",
+      seq: 0,
+      message: { type: "user", uuid: "u2" },
+    } as never);
+    const tab = peek(tm).tabs.get("plain")!;
+    expect(tab.forkedFromSessionId).toBeNull();
+    expect(tab.title.startsWith("↳")).toBe(false);
+  });
+
+  it("#63① fork + 后到的 aiTitle → 单个 ↳(不重复叠加,pin 掉 doubling)", () => {
+    tm.onLine({
+      session_id: "f3",
+      cwd: "/home/u/proj",
+      path: "/home/u/proj/f3.jsonl",
+      seq: 0,
+      message: { type: "user", uuid: "a", forkedFrom: { sessionId: "parent-x" } },
+    } as never);
+    const tab = peek(tm).tabs.get("f3")!;
+    // 直接驱动私有 applyAiTitle(routeMetaAndBranch 被 mock、不会触发 sink);模拟 ai-title 后到。
+    (tm as unknown as { applyAiTitle(t: Tab, s: string): void }).applyAiTitle(tab, "我的功能");
+    expect(tab.title).toBe("↳ [proj] 我的功能"); // 恰一个 ↳、且 aiTitle 合成正确
+    expect((tab.title.match(/↳/g) ?? []).length).toBe(1);
+  });
+
+  it("#63① 远端 fork:↳ 在 [origin] 之外(↳ [pi] …)", () => {
+    tm.onLine({
+      session_id: "fr",
+      cwd: "/home/u/proj",
+      path: "/home/u/proj/fr.jsonl",
+      seq: 0,
+      origin: "pi",
+      message: { type: "user", uuid: "a", forkedFrom: { sessionId: "parent-remote" } },
+    } as never);
+    expect(peek(tm).tabs.get("fr")!.title.startsWith("↳ [pi] ")).toBe(true);
+  });
+
+  it("#63① tooltip 标出来源 sid(唯一暴露 parent sid 的地方)", () => {
+    tm.onLine({
+      session_id: "ft",
+      cwd: "/home/u/proj",
+      path: "/home/u/proj/ft.jsonl",
+      seq: 0,
+      message: { type: "user", uuid: "a", forkedFrom: { sessionId: "abcd1234-parent" } },
+    } as never);
+    // tab 按钮渲染进 barEl → 其 title 属性含血缘行(前 8 位 sid)
+    const el = document.body.querySelector<HTMLElement>('[title*="从 abcd1234 fork 而来"]');
+    expect(el).not.toBeNull();
+  });
+
+  it("#63① forkedFrom 出现一次即锁定,后续记录不覆盖(同 aiTitle)", () => {
+    tm.onLine({
+      session_id: "f2",
+      cwd: "/p",
+      path: "/p/f2.jsonl",
+      seq: 0,
+      message: { type: "user", uuid: "a", forkedFrom: { sessionId: "first-parent" } },
+    } as never);
+    tm.onLine({
+      session_id: "f2",
+      cwd: "/p",
+      path: "/p/f2.jsonl",
+      seq: 1,
+      message: { type: "user", uuid: "b", forkedFrom: { sessionId: "SHOULD-NOT-WIN" } },
+    } as never);
+    expect(peek(tm).tabs.get("f2")!.forkedFromSessionId).toBe("first-parent");
+  });
+
   // === Batch5-F19：last-active 写回 ===
 
   it("switchTo 写回 last-active；persistLastActive=false（viewer）不写", () => {

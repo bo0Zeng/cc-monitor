@@ -65,6 +65,13 @@ export interface Tab {
   /** Claude 给出的语义标题（JSONL 里 `ai-title` 记录的 aiTitle 字段），出现一次就锁定 */
   aiTitle: string | null;
   /**
+   * issue #63①：本会话是从哪个会话 fork 来的（首条带 `forkedFrom` 的记录的 `forkedFrom.sessionId`，
+   * 出现一次就锁定，同 aiTitle）。null = 非 fork。用于给 tab 标题加 `↳` 血缘徽标 + tooltip——否则 fork
+   * 出来的会话与原会话是**同名独立 tab**、肉眼分不清（活 tab 层原本只按 sessionId keyed、完全不看
+   * `forkedFrom`，它此前只在历史树用）。
+   */
+  forkedFromSessionId: string | null;
+  /**
    * issue #15：数据来源主机标签。null = 本地（标题无前缀）；非空（如 "raspberrypi.local"）
    * = 远端 SSH 主机名，标题加 `[origin]` 前缀以区分本地/远端。首条 line 帧的 origin
    * 决定，之后不变（同一 sid 只来自一个来源）。
@@ -678,6 +685,10 @@ export class TabManager {
       tab.processedUuids.add(uuid);
     }
 
+    // issue #63①：首条带 forkedFrom 的记录 → 锁定血缘、给 tab 标题加 `↳` 徽标(与原会话区分)。
+    // 放在双重去重之后、turnEndNotifier 之前——这样首条即含徽标的标题也进 turn-end 通知(审计 建议)。
+    this.applyForkedFrom(tab, payload.message);
+
     // Batch14-F42：turn-end 系统通知。放在双重去重之后（重投行不重报）、
     // 渲染管线之前（通知与渲染/收纳互相独立）。批量重放由 inBatch 短路。
     turnEndNotifier.observe(payload.session_id, tab.title, payload, this.inBatch);
@@ -1028,6 +1039,7 @@ export class TabManager {
       // 记下当前 cwd 来源的 seq；后续更早（更小 seq）的记录可覆盖（取项目根）。
       cwdSeq: cwd ? seq : Number.POSITIVE_INFINITY,
       aiTitle: null,
+      forkedFromSessionId: null, // issue #63①:onLine 见首条 forkedFrom 记录时锁定
       origin,
       status: "live",
       streamEl,
@@ -1092,9 +1104,32 @@ export class TabManager {
     this.refreshTabBar();
   }
 
+  /**
+   * issue #63①：从记录里取 `forkedFrom.sessionId`，锁定血缘并给标题加 `↳` 徽标（同 aiTitle:出现一次
+   * 就锁,后续记录/重投不覆盖）。fork 会话的首条记录带 `forkedFrom`（Claude 原生 `/branch` 格式,
+   * 后端 history.rs 也读它）——但活 tab 层此前完全不看它,fork 与原会话是同名独立 tab、分不清。
+   */
+  private applyForkedFrom(tab: Tab, message: unknown): void {
+    if (tab.forkedFromSessionId) return; // 已锁定
+    const fk = (message as { forkedFrom?: { sessionId?: unknown } }).forkedFrom;
+    const sid = fk?.sessionId;
+    if (typeof sid !== "string" || sid.length === 0) return;
+    tab.forkedFromSessionId = sid;
+    tab.title = this.computeTitle(tab);
+    this.refreshTabBar();
+  }
+
   /** 根据 tab.cwd + tab.aiTitle + sessionId 算出展示标题（远端 Tab 加 `[origin]` 前缀） */
   private computeTitle(tab: Tab): string {
-    return computeTitleFor(tab.sessionId, tab.cwd, tab.aiTitle, tab.origin, tab.kind, tab.bgName);
+    return computeTitleFor(
+      tab.sessionId,
+      tab.cwd,
+      tab.aiTitle,
+      tab.origin,
+      tab.kind,
+      tab.bgName,
+      tab.forkedFromSessionId,
+    );
   }
 
   /** session 退出（~/.claude/sessions/<PID>.json 被删）—— 灰显归档，内容保留 */
@@ -2148,10 +2183,15 @@ export class TabManager {
     const lightClass = activityLightClass(actStatus);
     refs.root.classList.toggle("act-idle", lightClass === "act-idle");
     refs.root.classList.toggle("act-waiting", lightClass === "act-waiting");
-    refs.root.title =
-      actStatus === "waiting" && tab.activity?.waitingFor
-        ? `等待操作：${tab.activity.waitingFor}`
-        : "";
+    const titleParts: string[] = [];
+    if (actStatus === "waiting" && tab.activity?.waitingFor) {
+      titleParts.push(`等待操作：${tab.activity.waitingFor}`);
+    }
+    // issue #63①：fork 会话在 tooltip 里标出血缘(徽标 `↳` 在标题上、来源 sid 在此)。
+    if (tab.forkedFromSessionId) {
+      titleParts.push(`↳ 从 ${tab.forkedFromSessionId.slice(0, 8)} fork 而来`);
+    }
+    refs.root.title = titleParts.join("\n");
     const unread = tab.unread > 0 && sid !== this.activeId;
     refs.root.classList.toggle("has-unread", unread);
 
@@ -2286,12 +2326,15 @@ function computeTitleFor(
   origin: string | null = null,
   kind: string | null = null,
   bgName: string | null = null,
+  forkedFromSessionId: string | null = null,
 ): string {
+  // issue #63①:fork 会话在最终标题前加 `↳ ` 血缘徽标——与原会话(同名)区分开。
+  const mark = (s: string): string => (forkedFromSessionId ? `↳ ${s}` : s);
   const project = cwd ? projectNameFromCwd(cwd) : null;
   // Batch7-F24：bg 任务 → ⚙ + 任务名（缩进/⌞ 由 .tab-bg 样式承担）
   if (kind !== null && kind !== "interactive") {
     const base = `⚙ ${bgName ?? aiTitle ?? project ?? sessionId.slice(0, 8)}`;
-    return origin ? `[${origin}] ${base}` : base;
+    return mark(origin ? `[${origin}] ${base}` : base);
   }
   let base: string;
   if (aiTitle) {
@@ -2301,7 +2344,7 @@ function computeTitleFor(
   } else {
     base = sessionId.slice(0, 8);
   }
-  return origin ? `[${origin}] ${base}` : base;
+  return mark(origin ? `[${origin}] ${base}` : base);
 }
 
 // P5.2 B 重构：markCardUuid + feedBranchFolder 已搬到 render-stream-record.ts
