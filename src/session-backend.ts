@@ -31,8 +31,16 @@ export interface SessionBackend {
    * 只 attach（不重复启动）。`target` = 后端目标 token（调用方决定裸校验名或 posixQuote 名）；
    * `quotedCwd` = 已 posixQuote 的工作目录，null 则不带目录标志；`quotedPayload` = 已 posixQuote 的
    * 键入载荷（含 unset 嵌套 env + 启动/resume 命令）。
+   * `ccmSid`（#72，可选）= 完整会话 sid：**新建会话后在 create 分支里显式 set `@ccm_sid=<sid>`**，
+   * 让本方自建的 resume 会话带身份标记（供 `findClaudeTmux` 精确匹配、不落 cwd 回退警告）。缺省不设
+   * （新会话 sid 未知时不传）。**调用方须保证 `ccmSid` 为 `[A-Za-z0-9_-]`**（座不做校验、裸拼）。
    */
-  createRunAttach(args: { target: string; quotedCwd: string | null; quotedPayload: string }): string;
+  createRunAttach(args: {
+    target: string;
+    quotedCwd: string | null;
+    quotedPayload: string;
+    ccmSid?: string;
+  }): string;
   /** attach 一个已存在会话。`target` 由调用方预备（posixQuote 名或裸校验名）。 */
   attach(target: string): string;
 }
@@ -44,11 +52,20 @@ export interface SessionBackend {
  * resume/启动）→ 只 attach；不存在 → 建 → 键入 → attach。send-keys 只落**新建会话**的交互 shell。
  */
 export const TMUX_BACKEND: SessionBackend = {
-  createRunAttach: ({ target, quotedCwd, quotedPayload }): string => {
+  createRunAttach: ({ target, quotedCwd, quotedPayload, ccmSid }): string => {
     const cflag = quotedCwd !== null ? ` -c ${quotedCwd}` : ""; // 契约是 string|null，按 null 判而非 truthy
+    // #72：给自建 resume 会话打 `@ccm_sid=<完整 sid>`（session-scoped、`-t` 指名），放在 new-session
+    // 成功的 create 分支里——会话已存在 → new-session 失败 → 短路跳过 set-option（它建时已带,不重设）。
+    // 与 android-terminal §3 契约对齐（key `@ccm_sid` / 完整 sid / `-t` / create 分支）;ccmSid 由调用方
+    // 保证 `[A-Za-z0-9_-]`（isValidSessionId），裸拼安全（同 target 裸名）。缺省不设。
+    // **非阻断**（Phase D 审计 建议-1）:`(set-option 2>/dev/null || true)` 包起——身份标记是**次要**动作,
+    // 绝不能阻断**主要**动作 resume（后续 `&& send-keys`）。古董 tmux(<1.8 无 `@`-option)等 set 失败 →
+    // 降级到"无标记"(= #72 前行为、cc-monitor 回退 cwd 匹配),resume 照跑,而非把用户丢进空 shell。
+    const setSid = ccmSid ? `(tmux set-option -t ${target} @ccm_sid ${ccmSid} 2>/dev/null || true) && ` : "";
 
     return (
       `tmux new-session -d -s ${target}${cflag} 2>/dev/null && ` +
+      setSid +
       `tmux send-keys -t ${target} ${quotedPayload} Enter; ` +
       `tmux attach -t ${target}`
     );

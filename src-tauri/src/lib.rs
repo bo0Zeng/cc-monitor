@@ -1501,7 +1501,14 @@ async fn bring_remote_terminal_to_front(
         // set-titles 持久，attach 时重推 #T），死缓存不失效重扫的话 ↗ 就永远失灵。
         if bind::verify_binding(&binding).is_err() {
             cache.forget(&session_id);
-            cache.try_bind(&session_id);
+            // #41(残):verify-fail 重绑路原是**单发** try_bind——F75 只给上面 cache-miss 路加了重试,
+            // 这条(重新 attach、旧绑定失效)漏了。镜像兄弟路用 try_bind_with_retry,覆盖"刚 attach、
+            // 新窗口 ccm-rbind 标题还没四跳传过来"的窗口期(否则重绑单扫落空 → 弹"未扫到新窗口")。
+            cache.try_bind_with_retry(
+                &session_id,
+                bind::ON_DEMAND_BIND_ATTEMPTS,
+                bind::ON_DEMAND_BIND_STEP_MS,
+            );
             binding = cache.lookup(&session_id).ok_or_else(|| {
                 "原绑定终端已关闭，且未扫到新的 ccm-rbind 窗口（请确认已重新 attach 且终端标题带 marker）"
                     .to_string()

@@ -110,10 +110,13 @@ export function buildResumeTmuxCmd(
   const payload = `unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(launcher)} ${AGENT_PROFILE.resumeFlag} ${sid}`;
   const c = cwd.trim();
   // 命令语法归后端座（SS-12 §31）。target 裸拼（`cc-<sid8>[-N]` 已过 `[A-Za-z0-9_-]` 校验）。
+  // #72：把**完整 sid**当 `@ccm_sid` 传给座——resume 编排自建会话带身份,cc-monitor 之后
+  // `findClaudeTmux` 精确命中(不落 cwd 回退警告)。sid 已过 `isValidSessionId`（[A-Za-z0-9_-]），裸拼安全。
   return SESSION_BACKEND.createRunAttach({
     target: tmuxName,
     quotedCwd: c ? posixQuote(c) : null,
     quotedPayload: posixQuote(payload),
+    ccmSid: sid,
   });
 }
 
