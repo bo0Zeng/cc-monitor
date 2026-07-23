@@ -36,6 +36,7 @@ vi.mock("../format", () => ({ formatTimestampSmart: () => "时间" }));
 
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "./history";
+import { LS_KEYS } from "../local-storage";
 import { showActionFailureToast } from "../error-toast";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -175,5 +176,78 @@ describe("HistoryView 来源列表 TTL 缓存 (F76 #46)", () => {
     now += 5_000; // TTL 内
     await view.open();
     expect(countCalls("list_remote_history_projects")).toBe(before + 1);
+  });
+
+  // === F76b(#46) 跨启动持久化:首开也暖 ===
+
+  it("F76b 全部台成功 → 快照持久化到 localStorage", async () => {
+    const view = new HistoryView();
+    setupInvoke([remoteProj("p1"), remoteProj("p2")]);
+    await view.open();
+    const raw = localStorage.getItem(LS_KEYS.historyRemoteSources);
+    expect(raw).not.toBeNull();
+    expect((JSON.parse(raw!) as { projects: unknown[] }).projects.length).toBe(2);
+  });
+
+  it("F76b 新实例从 localStorage hydrate:首帧暖(远端项目在场)+ loadedAt 归 0 强制首开仍 refetch", async () => {
+    // 预置上次启动存的持久快照(loadedAt 给个不太久以前的值,验证 hydrate 归 0 而非沿用)
+    localStorage.setItem(
+      LS_KEYS.historyRemoteSources,
+      JSON.stringify({ projects: [remoteProj("cached")], loadedAt: now - 5_000 }),
+    );
+    const view = new HistoryView();
+    const inner = view as unknown as ViewInternals;
+    // ★构造即 hydrate:remoteCache 有值(供首帧暖绘),但 loadedAt 归 0(仅作暖绘、不冒充新鲜)
+    expect(inner.remoteCache?.projects.length).toBe(1);
+    expect((inner.remoteCache as unknown as { loadedAt: number }).loadedAt).toBe(0);
+    // ★首开:即便刚 hydrate,loadedAt=0 也强制 refetch 一次(不吃跨启动陈旧)
+    setupInvoke([remoteProj("fresh")]);
+    await view.open();
+    expect(countCalls("list_remote_history_projects")).toBe(1);
+  });
+
+  it("F76b 部分台失败 → 清掉持久快照(免下次启动暖绘残缺列表)", async () => {
+    const view = new HistoryView();
+    setupInvoke([remoteProj("p1")]); // 先成功 → 持久化
+    await view.open();
+    expect(localStorage.getItem(LS_KEYS.historyRemoteSources)).not.toBeNull();
+    now += 40_000; // 过期
+    setupInvoke([remoteProj("pA", "hostA")], ["hostB"]); // 部分失败
+    view.close();
+    await view.open();
+    expect(localStorage.getItem(LS_KEYS.historyRemoteSources)).toBeNull();
+  });
+
+  it("F76b 脏 localStorage(混 null/基元元素)→ 逐元素过滤、不崩、open 正常", async () => {
+    localStorage.setItem(
+      LS_KEYS.historyRemoteSources,
+      JSON.stringify({ projects: [null, "garbage", 42, remoteProj("ok")], loadedAt: now - 1_000 }),
+    );
+    const view = new HistoryView();
+    const inner = view as unknown as ViewInternals;
+    // ★只留形状合法的 1 个(projectPath 为 string);null/基元被过滤(否则首帧 renderList deref 会崩)
+    expect(inner.remoteCache?.projects.length).toBe(1);
+    // ★open 不 reject(修前:首帧 renderList 对 null 元素 deref p.origin 抛 → open() 崩、历史打不开)
+    setupInvoke([]);
+    await expect(view.open()).resolves.toBeUndefined();
+  });
+
+  it("F76b 跨启动 all-fail:持久快照不清、首帧仍暖(Err 分支不动 localStorage)", async () => {
+    localStorage.setItem(
+      LS_KEYS.historyRemoteSources,
+      JSON.stringify({ projects: [remoteProj("cached")], loadedAt: now - 1_000 }),
+    );
+    const view = new HistoryView(); // 新实例 hydrate 上次成功快照
+    invokeMock.mockReset();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_history_projects") return Promise.resolve([]);
+      if (cmd === "list_remote_history_projects") return Promise.reject(new Error("all down"));
+      return Promise.resolve(undefined);
+    });
+    await view.open();
+    const inner = view as unknown as ViewInternals;
+    expect(showActionFailureToast).toHaveBeenCalled();
+    expect(inner.projects.filter((p) => p.origin === "hostA").length).toBe(1); // 暖帧 cached 仍在
+    expect(localStorage.getItem(LS_KEYS.historyRemoteSources)).not.toBeNull(); // Err 分支不清持久
   });
 });

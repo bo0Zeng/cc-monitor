@@ -5,15 +5,16 @@
 ## 目标
 把 cc-monitor 当前所有 **[bug] 标签 open issue** 全部修掉,**然后**再开新功能。纪律:每 bug **先详细全面诊断**(多 agent、对着代码定位根因 + 复现 + 影响面)→ masterplan 过**用户审批门禁** → `/loop` 自动逐 bug 实现→代码审计(D)→工程审计(E)→回看(F)。**发版对外、用户拍板。**
 
-## 当前阶段:**feature 4 完成(过 D/E/F)→ 进 feature 5(F-history-persist,类1 最后一个)**
+## 当前阶段:**类1 五个 feature 全部完成 → 进 Phase G(/full-audit 全项目验收)**
 - masterplan 已批准(#43 defer / #46 做持久化 / loop 连续跑类1 / 类2 补测补文档+用户真机验关)。
 - ✅ **F-remote-pull-identity(#41+#72)** — commit `0d228fd`(本地)。
 - ✅ **F-render(#71+#42)** — 完成 + 本地 commit。Phase D 2 视角:#71 SOLID;**#42 首版有 3 回归(CRLF/开前有字/闭后标点)+ 测试不区分** → 已**重写 #42 正则(行边界规则,离线 harness 实证全过)+ 测试改区分性(preprocess 层)+ #71 注释更正**。gate:tsc / render 22 测 / 全套 333 测 / ReDoS 安全。
 - ✅ **F-usage-sort(#67)** — 完成 + 本地 commit。Phase D 2 视角无阻塞;重要项(首列排 key 非 label / 视图层零测 / 流式重渲弹顶)全修 + 补 6 条 DOM 测;并修掉我自己写反的平手符号。gate:tsc / 全套 npm test(vitest 339)。
-- ✅ **F-fork-badge(#63①)** — 完成 + 本地 commit `a0345e6`。Phase D 2 视角均无阻塞/无重要;采纳建议(applyForkedFrom 前移到 turnEndNotifier 之前)+ 补 3 条 pin 测(单 ↳ / 远端序 / tooltip,共 6 条 #63①)。**未改 styles.css**(账本预测未命中,纯文本前缀无需 CSS)。
-- bug 数 9。类1 剩:**F-history-persist(#46)← 最后一个**。
-- **下一步(feature 5)**:`features/05-history-persist.md` → 实现 #46(把 `remoteCache` 持久化到 localStorage + 构造时 hydrate,让每次启动**首开**也暖、不再只本地;F76 已做 30s 内存缓存,这里补跨启动持久)→ D/E/F。之后 **Phase G**(`/full-audit`)。
-- **carry-forward(+#63①)**:远端 fork 徽标依赖 daemon 实时行是否透传 `forkedFrom`(`remote_history` 对远端历史已不提取 fork 关系)——真机验。
+- ✅ **F-fork-badge(#63①)** — commit `e3eacda`。Phase D 无阻塞/无重要;采纳建议(applyForkedFrom 前移)+ 6 条 #63① 测。
+- ✅ **F-history-persist(#46)** — 完成 + 本地 commit。Phase D:视角2 报**1 重要**(hydrate 不校验元素 → 脏 localStorage 混 null/基元 → renderList deref 抛 → 历史打不开)→ 已修(抽 `loadPersistedRemoteCache` 逐元素过滤,对齐惯例)+ 补 2 测。gate:tsc / 全套 npm test(vitest 350)。
+- **类1 五个 feature 全完(#41 #72 #71 #42 #67 #63① #46)。**
+- **下一步:Phase G** —— `/full-audit` 全项目多视角 + 文档-代码交叉 + 端到端 build/test;主计划终账(账本落最终形态、无遗留);收尾报告。完成后**停 loop**。
+- **carry-forward(真机/用户)**:#41 窗口 4s 标定;#72 attach 无警告;#63① 远端 fork 徽标依赖 daemon 透传 forkedFrom;#46 data-at-rest 透明(data-section 卸载说明补一句,follow-up)。
 - **carry-forward**:#41 窗口 4s 真机标定;#72 真机验 attach 不再弹警告。#71 多波浪号中行 cosmetic 偏差(无害)。
 
 ## Bug 清单(9,诊断全部完成)
