@@ -68,7 +68,19 @@ vi.mock("./render-stream-record", () => ({
   ),
   renderContentRecord: vi.fn(),
 }));
-vi.mock("./cards", () => ({ reconcilePendingToolResults: vi.fn(() => []) }));
+vi.mock("./cards", () => ({
+  reconcilePendingToolResults: vi.fn(() => []),
+  // A5：镜像真 isCompactRecord（真身在 cards/compact.vitest.ts 单测）——role:user + compact 前缀。
+  isCompactRecord: (m: unknown) => {
+    const inner = (m as { message?: { role?: unknown; content?: unknown } } | null)?.message;
+    if (!inner || inner.role !== "user") return false;
+    const c = inner.content;
+    const text = typeof c === "string" ? c : "";
+    return text
+      .trimStart()
+      .startsWith("This session is being continued from a previous conversation");
+  },
+}));
 vi.mock("./cards/subagent", () => ({ isAgentTool: () => false }));
 vi.mock("./tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
 vi.mock("./error-toast", () => ({ showActionFailureToast: vi.fn() }));
@@ -88,10 +100,16 @@ vi.mock("./behavior", () => ({
     resumeCommandRemote: "cct",
   }),
 }));
+// A5：换号重启编排（单测在 account-restart.vitest）——这里 mock 成 spy，只验 tabs 侧守卫是否放行。
+vi.mock("./account-restart", () => ({
+  restartWithAccount: vi.fn().mockResolvedValue(undefined),
+  DEFAULT_EXIT_WAIT_MS: 10_000, // tabs.ts awaitExitFor 默认参用；mock 需导出，否则 undefined
+}));
 
 import { invoke } from "@tauri-apps/api/core";
+import { restartWithAccount } from "./account-restart";
 import { runRemoteResume, runRemoteResumeTmux, runRemoteAttach } from "./remote-launch-run";
-import { TabManager, findClaudeTmux, isCwdFallbackMatch, type Tab } from "./tabs";
+import { TabManager, findClaudeTmux, isCwdFallbackMatch, claudeExited, type Tab } from "./tabs";
 
 // 私有字段的只读探针（TS private 仅编译期；运行时可读）。仅测试用。
 interface TMInternals {
@@ -739,8 +757,21 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
     tm.archiveTab("r1");
     await (tm as unknown as { resumeTab(sid: string): Promise<void> }).resumeTab("r1");
-    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct");
+    // A4：默认 resume（无账号）→ 第 5 参 configDir=undefined（不注入，行为与旧版等价）。
+    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined);
     expect(invoke).not.toHaveBeenCalledWith("resume_history_session", expect.anything());
+  });
+
+  it("A4：resumeTab 带账号名但账号库不可用 → withAccount 退化默认 resume（不注入、不记账）", async () => {
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    // tabs.vitest 的 invoke 默认返 undefined → fetchAccounts 视作不可用 → withAccount 退化默认。
+    // （带账号注入 + 记 lastAccount 的正路在 accounts.vitest 的 withAccount 套件覆盖。）
+    await (
+      tm as unknown as { resumeTab(sid: string, accountName?: string): Promise<void> }
+    ).resumeTab("r1", "z");
+    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined);
+    expect(invoke).not.toHaveBeenCalledWith("update_history_metadata", expect.anything());
   });
 
   it("本地归档 tab → 仍走 resume_history_session，不碰远端 runner", async () => {
@@ -907,7 +938,8 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
     rightClick("r1");
     clickItem("Resume（直连）");
     await flushMicro();
-    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct");
+    // A4：默认 resume（无账号）→ 第 5 参 configDir=undefined（不注入，行为与旧版等价）。
+    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined);
   });
 
   it("F74 Resume（tmux）:@ccm_sid 命中活会话 → 精确 attach 它(不撞同目录漂移分支),不重开", async () => {
@@ -1036,6 +1068,33 @@ describe("F74c(#60-B) isCwdFallbackMatch（cwd 回退串味提示判定）", () 
   it("null / 空列表 → true（无 sid 可依，回退语义）", () => {
     expect(isCwdFallbackMatch(null, "t")).toBe(true);
     expect(isCwdFallbackMatch([], "t")).toBe(true);
+  });
+});
+
+describe("A5+ claudeExited（优雅退出检测：目标 sid 前台是否不再是 claude）", () => {
+  const S = (name: string, path: string, command: string, sid: string | null) => ({
+    name,
+    path,
+    command,
+    attached: false,
+    windows: 1,
+    sid,
+  });
+  it("目标 sid 仍精确命中 claude → 未退出(false)", () => {
+    expect(claudeExited([S("b", "/p", "claude", "target")], "target", "/p")).toBe(false);
+  });
+  it("目标会话前台回到 shell（@ccm_sid 犹在但命令变 zsh）→ 已退出(true)", () => {
+    expect(claudeExited([S("b", "/p", "zsh", "target")], "target", "/p")).toBe(true);
+  });
+  it("目标会话已消失（列表里只剩别的 sid）→ 已退出(true)", () => {
+    expect(claudeExited([S("a", "/p", "claude", "other")], "target", "/p")).toBe(true);
+  });
+  it("空列表 → 已退出(true)", () => {
+    expect(claudeExited([], "target", "/p")).toBe(true);
+  });
+  it("cwd 回退命中的是别的 claude（无任何 @ccm_sid）→ live.sid=null!==target → 已退出(true)", () => {
+    // 与破坏性重启守卫一致：cwd 回退命中 sid=null → 不当成目标会话仍活。
+    expect(claudeExited([S("a", "/p", "claude", null)], "target", "/p")).toBe(true);
   });
 });
 
@@ -1220,5 +1279,123 @@ describe("F91b TabManager.peekSession（监控板内容 peek 纯读派生）", (
     expect(tm.peekSession("s")!.recentFiles).toEqual(["/b.ts", "/c.ts", "/a.ts"]);
     tm.onLine(edit(3, "e3", ["/d.ts", "/b.ts"])); // 新增 d、重触 b → b 也移末尾
     expect(tm.peekSession("s")!.recentFiles).toEqual(["/c.ts", "/a.ts", "/d.ts", "/b.ts"]);
+  });
+});
+
+describe("A5 compact waiter（awaitCompactFor + onLine 检测）", () => {
+  const PREFIX = "This session is being continued from a previous conversation";
+  type Priv = { awaitCompactFor(sid: string, ms?: number): () => Promise<boolean> };
+  let tm: TabManager;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tm = makeTM();
+  });
+  const compactLine = (sid: string) => ({
+    session_id: sid,
+    cwd: "/w",
+    path: `/p/${sid}.jsonl`,
+    seq: 1,
+    message: { type: "user", uuid: `${sid}-u1`, message: { role: "user", content: `${PREFIX}…` } },
+  });
+
+  it("注册后 onLine 见该 sid 的 compact 摘要行 → resolve(true)", async () => {
+    const awaitC = (tm as unknown as Priv).awaitCompactFor("cs1", 60_000);
+    const p = awaitC(); // 注册 waiter
+    tm.onLine(compactLine("cs1") as never);
+    await expect(p).resolves.toBe(true);
+  });
+
+  it("超时 → resolve(false)", async () => {
+    vi.useFakeTimers();
+    try {
+      const awaitC = (tm as unknown as Priv).awaitCompactFor("cs2", 5000);
+      const p = awaitC();
+      vi.advanceTimersByTime(5000);
+      await expect(p).resolves.toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("非 compact 行不 resolve（等待者仍挂着）", async () => {
+    const awaitC = (tm as unknown as Priv).awaitCompactFor("cs3", 60_000);
+    let resolved = false;
+    void awaitC().then(() => {
+      resolved = true;
+    });
+    tm.onLine({
+      session_id: "cs3",
+      cwd: "/w",
+      path: "/p/cs3.jsonl",
+      seq: 1,
+      message: { type: "user", uuid: "cs3-u", message: { role: "user", content: "普通消息" } },
+    } as never);
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+  });
+
+  it("别的 sid 的 compact 行不误 resolve 本 waiter", async () => {
+    const awaitC = (tm as unknown as Priv).awaitCompactFor("cs4", 60_000);
+    let resolved = false;
+    void awaitC().then(() => {
+      resolved = true;
+    });
+    tm.onLine(compactLine("other-sid") as never); // 不同 sid
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+  });
+});
+
+describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动手）", () => {
+  const restartSpy = restartWithAccount as unknown as ReturnType<typeof vi.fn>;
+  type Priv = { restartTabWithAccount(sid: string, name: string, c: boolean): Promise<void> };
+  let tm: TabManager;
+  const sess = (over: Record<string, unknown>) => ({
+    name: "cc-abc12345",
+    path: "/home/pi/proj",
+    command: "claude",
+    attached: false,
+    windows: 1,
+    sid: null,
+    ...over,
+  });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tm = makeTM();
+  });
+
+  it("cwd 回退命中（live.sid !== sid）→ 拒重启、不调编排器（防杀错会话/双进程）", async () => {
+    tm.ensureTab("target-sid", "/home/pi/proj", "/p/t.jsonl", 0, "aya");
+    // 同 cwd 但无 @ccm_sid（sid:null）→ findClaudeTmux 走 cwd 回退 → live.sid=null !== target-sid
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux" ? Promise.resolve([sess({ sid: null })]) : Promise.resolve(undefined),
+    );
+    await (tm as unknown as Priv).restartTabWithAccount("target-sid", "z", false);
+    expect(restartSpy).not.toHaveBeenCalled();
+  });
+
+  it("精确 @ccm_sid 命中 → 放行调编排器（带对的 tmuxName/account）", async () => {
+    tm.ensureTab("target-sid", "/home/pi/proj", "/p/t.jsonl", 0, "aya");
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve([sess({ name: "cc-target01", sid: "target-sid" })])
+        : Promise.resolve(undefined),
+    );
+    await (tm as unknown as Priv).restartTabWithAccount("target-sid", "z", true);
+    expect(restartSpy).toHaveBeenCalledTimes(1);
+    const arg = restartSpy.mock.calls[0][0];
+    expect(arg.tmuxName).toBe("cc-target01");
+    expect(arg.accountName).toBe("z");
+    expect(arg.sessionId).toBe("target-sid");
+    expect(arg.compactFirst).toBe(true);
+  });
+
+  it("会话不在任何 tmux → 拒重启、不调编排器", async () => {
+    tm.ensureTab("target-sid", "/home/pi/proj", "/p/t.jsonl", 0, "aya");
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux" ? Promise.resolve([]) : Promise.resolve(undefined),
+    );
+    await (tm as unknown as Priv).restartTabWithAccount("target-sid", "z", false);
+    expect(restartSpy).not.toHaveBeenCalled();
   });
 });

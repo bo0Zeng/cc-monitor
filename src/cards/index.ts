@@ -1087,6 +1087,17 @@ function stripInternalNoise(text: string): string {
 }
 
 /**
+ * A5：判定一条 jsonl 记录是否是 `/compact` 后的续接摘要（role:user + 剥内部噪后以 compact 前缀
+ * 开头）。与卡片渲染同一套判定（extractText → stripInternalNoise → isCompactSummary），供换号重启
+ * 的 compact 完成检测复用（tabs.onLine）。`message` = JsonlRecord（外层行记录，内含 `.message`）。
+ */
+export function isCompactRecord(message: unknown): boolean {
+  const inner = (message as { message?: { role?: unknown; content?: unknown } } | null)?.message;
+  if (!inner || inner.role !== "user") return false;
+  return isCompactSummary(stripInternalNoise(extractText(inner.content)));
+}
+
+/**
  * 识别 assistant 自动应答（claude 在收到 task-notification 之类时回的 `<synthetic>`
  * 包裹的"无内容应答"），不是真实对话内容。
  */

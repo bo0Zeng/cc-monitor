@@ -31,6 +31,7 @@ const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   contextPct: null,
   unread: 0,
   kind: null,
+  account: null,
   ...over,
 });
 

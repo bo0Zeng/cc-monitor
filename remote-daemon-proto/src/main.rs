@@ -19,6 +19,7 @@
 //!   inotify reader. This split is the single most-cited Phase-0 accident
 //!   source; keeping it real is the point.
 
+mod accounts_query;
 mod codex;
 mod history_query;
 mod resolve_query;
@@ -93,7 +94,12 @@ const PROTO_VERSION: u32 = 1;
 ///   Codex live 监视/判活（DG1/DG2）暂停、未接线。
 /// - p1p-tmux-frame = B2：watch_loop 周期本机 `tmux ls` 发 `TmuxSessions` 帧（+EMITS "tmux_sessions"），
 ///   替 monitor 每 8s 新建 SSH 跑 tmux ls 的对账刷屏。additive、**不 bump PROTO_VERSION**。
-const BUILD_ID: &str = "p1p-tmux-frame";
+/// - p1q-accounts = A2：多账号只读三命令 `--list-accounts` / `--session-accounts` /
+///   `--account-trust`（cc-acct-iso manifest 的消费侧；账号=一个 CLAUDE_CONFIG_DIR）。
+///   纯一次性查询、零写入、不 shell out；**不动** PROTO_VERSION / CAPABILITIES / EMITS。
+///   bump BUILD_ID 只为给"含账号命令"的 daemon 独立身份，旧版遇到新命令会
+///   `unknown argument` exit 2，monitor 侧按"功能不可用"优雅降级。
+const BUILD_ID: &str = "p1q-accounts";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
@@ -235,6 +241,9 @@ async fn main() {
             Some("--search") => search_query::run(&claude_dir, &args),
             Some("--usage") => usage_query::run(&claude_dir, &args),
             Some("--resolve") => resolve_query::run(&claude_dir, &args),
+            Some("--list-accounts") | Some("--session-accounts") | Some("--account-trust") => {
+                accounts_query::run(&claude_dir, &args)
+            }
             _ => history_query::run(&claude_dir, &args),
         };
         std::process::exit(code);

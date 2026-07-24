@@ -5,6 +5,7 @@
 //! 并 `app.manage` 所有 Arc-shared State，最后注册 `invoke_handler`（IPC 命令清单）。
 //! State 注册矩阵见 doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
+mod accounts; // A2：多账号（cc-acct-iso）只读查询——账号=一个 CLAUDE_CONFIG_DIR
 mod adapter;
 mod auto_launch;
 mod bind;
@@ -895,10 +896,16 @@ pub fn run() {
             history::delete_history_session,
             history::create_branch_session,
             history::update_history_metadata,
+            history::list_last_accounts,
             history::resume_history_session,
             history::new_local_session,
             usage::aggregate_usage_all,
             remote_history::aggregate_remote_usage_all, // F88a-remote：远端 daemon 用量 fan-out
+            // A2：多账号只读查询（账号=一个 CLAUDE_CONFIG_DIR）。旧 daemon/daemonless
+            // 台一律回 available:false，前端降级隐藏账号功能而不是弹错。
+            accounts::list_remote_accounts,
+            accounts::list_remote_session_accounts,
+            accounts::check_account_trust,
             launch::launch_remote_terminal,
             sftp_pool::sftp_realpath,
             sftp_pool::sftp_list_dir,
@@ -915,6 +922,7 @@ pub fn run() {
             tmux::list_remote_tmux,
             tmux::capture_remote_pane,
             tmux::kill_remote_tmux,
+            tmux::tmux_send_keys,
             // Batch15-P1：code-picture 代码全景后端命令族（per-repo Engine 池,只读查询）
             panorama::panorama_index,
             panorama::panorama_reindex,

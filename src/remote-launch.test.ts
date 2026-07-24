@@ -17,6 +17,8 @@ import {
   buildAttachCmd,
   deriveTmuxName,
   buildLauncherCmd,
+  buildEnvPrefix,
+  isValidConfigDir,
 } from "./remote-launch.ts";
 
 let failed = 0;
@@ -310,6 +312,67 @@ test("buildLauncherCmd:名含空格 posixQuote / 非法名(空/TAB/. /:)throw", 
   throws(() => buildLauncherCmd("/p", "a\tb"), "含 TAB throw");
   throws(() => buildLauncherCmd("/p", "proj.git"), ". 名 throw(tmux 保留)");
   throws(() => buildLauncherCmd("/p", "a:b"), ": 名 throw(tmux 保留)");
+});
+
+// ───────────────────────── A4：CLAUDE_CONFIG_DIR 账号前缀注入 ─────────────────────────
+const ENV = (d: string) => `export CLAUDE_CONFIG_DIR='${d}'; `;
+
+test("buildEnvPrefix：空/undefined → 空串（无账号 = 旧行为逐字节一致）", () => {
+  eq(buildEnvPrefix(undefined), "");
+  eq(buildEnvPrefix(""), "");
+});
+
+test("buildEnvPrefix：合法 dir → export CLAUDE_CONFIG_DIR='…'; （posixQuote 包裹）", () => {
+  eq(buildEnvPrefix("/home/z/.claude-accts/z"), ENV("/home/z/.claude-accts/z"));
+});
+
+test("buildEnvPrefix：非法 dir throw（拒绝拼入命令）", () => {
+  throws(() => buildEnvPrefix("relative/path"), "相对路径");
+  throws(() => buildEnvPrefix("/a/../b"), ".. 段");
+  throws(() => buildEnvPrefix("/a;rm -rf /"), "分号");
+  throws(() => buildEnvPrefix("/a'b"), "单引号");
+  throws(() => buildEnvPrefix("/a$b"), "美元符");
+  throws(() => buildEnvPrefix("/a`b"), "反引号");
+});
+
+test("isValidConfigDir：绝对合法 true / 相对·根·..·元字符·unicode false", () => {
+  eq(isValidConfigDir("/home/z/.claude-accts/z"), true);
+  eq(isValidConfigDir("/a b/c"), true); // 空格合法（posixQuote 会包）
+  eq(isValidConfigDir("relative"), false);
+  eq(isValidConfigDir("/"), false);
+  eq(isValidConfigDir("/a/../b"), false);
+  eq(isValidConfigDir("/a/.."), false);
+  eq(isValidConfigDir("/a`b"), false);
+  eq(isValidConfigDir("/a​b"), false); // 零宽空格
+  eq(isValidConfigDir("/a‮b"), false); // 双向控制字符
+  // C1 控制区 0x80-0x9f（含 NEL 0x85）——对齐 daemon char::is_control；fromCharCode 避免字面不可见字符。
+  eq(isValidConfigDir("/a" + String.fromCharCode(0x85) + "b"), false); // NEL
+  eq(isValidConfigDir("/a" + String.fromCharCode(0x90) + "b"), false); // C1 中段
+  eq(isValidConfigDir("/a" + String.fromCharCode(0x9f) + "b"), false); // C1 末
+});
+
+test("buildResumeDirectCmd 带 configDir → export 前缀在 unset 之前（精确）", () => {
+  const dir = "/home/z/.claude-accts/z";
+  eq(buildResumeDirectCmd("abc-123", "", "claude", dir), `${ENV(dir)}${UNSET}claude --resume abc-123`);
+  // 无 configDir / 空串 → 逐字节回到旧输出（回归门）
+  eq(buildResumeDirectCmd("abc-123", "", "claude", undefined), `${UNSET}claude --resume abc-123`);
+  eq(buildResumeDirectCmd("abc-123", "", "claude", ""), `${UNSET}claude --resume abc-123`);
+});
+
+test("tmux / launcher 带 configDir → export 前缀在 unset 之前（索引序，抗 posixQuote 转义）", () => {
+  const dir = "/home/z/.claude-accts/z";
+  for (const cmd of [
+    buildResumeTmuxCmd("abc-123", "", "claude", "cc-x", dir),
+    buildLauncherCmd("", "cc-x", "claude", dir),
+  ]) {
+    const iExport = cmd.indexOf("export CLAUDE_CONFIG_DIR=");
+    const iUnset = cmd.indexOf("unset ");
+    eq(iExport >= 0, true, "含 export");
+    eq(iExport < iUnset, true, "export 在 unset 之前");
+  }
+  // 无 configDir → 不含 export（回归）
+  eq(buildResumeTmuxCmd("abc-123", "", "claude", "cc-x").includes("export CLAUDE_CONFIG_DIR="), false);
+  eq(buildLauncherCmd("", "cc-x", "claude").includes("export CLAUDE_CONFIG_DIR="), false);
 });
 
 if (failed > 0) {

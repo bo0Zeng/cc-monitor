@@ -50,6 +50,8 @@ export interface GridSessionSnapshot {
   unread: number;
   /** 会话类型（"bg" → ⚙）；null / "interactive" = 交互。 */
   kind: string | null;
+  /** A3：该会话所属账号名（live 探测）；null = 本地会话 / 未知（不猜）。 */
+  account: string | null;
 }
 
 /**

@@ -42,7 +42,7 @@ const OLD_DAEMON_MSG: &str =
     "远端 daemon 版本过旧（不支持历史查询）——请按 doc/REMOTE-PHASE0-DEPLOY.md 重新构建部署";
 
 /// 跑一条列举类查询，收集全部输出行（带整体超时 + 旧版检测）。
-async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec<String>, String> {
+pub(crate) async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec<String>, String> {
     let cmd = format!("{} {}", ssh_source::shell_quote(&cfg.daemon_path), args);
     let collect = async {
         let stream = ssh_source::connect_and_exec_cmd(cfg, &cmd).await?;

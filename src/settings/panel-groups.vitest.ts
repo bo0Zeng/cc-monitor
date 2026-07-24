@@ -1,5 +1,5 @@
-// F82b（#56+#47）：设置面板 4 组终态结构测试。把各重子分区 stub 成占位 div、保留真
-// CollapsibleGroup，只钉「buildBody 产出 连接/外观/远端/集成 四组（顺序）+ 远端留空占位」。
+// F82b（#56+#47）+ A3：设置面板 4 组终态结构测试。把各重子分区 stub 成占位 div、保留真
+// CollapsibleGroup，只钉「buildBody 产出 连接/外观/账号/集成 四组（顺序）+ 账号组含 AccountsSection」。
 // 构造 SettingsPanel 不调 open()（配置读取在 open 里；本测只验 buildBody 的静态分组结构）。
 import { describe, it, expect, vi } from "vitest";
 
@@ -37,6 +37,16 @@ vi.mock("./cc_integration", () => ({
 vi.mock("./mcp-section", () => ({
   McpSection: class {
     element = document.createElement("div");
+  },
+}));
+// A3：账号组子分区 stub，给个可识别的 class 供断言（原「远端」空占位已被本组取代）。
+vi.mock("./accounts-section", () => ({
+  AccountsSection: class {
+    element = (() => {
+      const d = document.createElement("div");
+      d.className = "accounts-section-stub";
+      return d;
+    })();
   },
 }));
 vi.mock("../keybindings/editor", () => ({
@@ -98,18 +108,18 @@ function groupBody(title: string): HTMLElement {
 }
 
 describe("F82b 设置 4 组终态", () => {
-  it("buildBody 产出 连接 / 外观 / 远端 / 集成 四组（按序）", () => {
+  it("buildBody 产出 连接 / 外观 / 账号 / 集成 四组（按序）", () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
-    expect(groupTitles()).toEqual(["连接", "外观", "远端", "集成"]);
+    expect(groupTitles()).toEqual(["连接", "外观", "账号", "集成"]);
   });
 
-  it("远端组是留空占位（含占位文案）", () => {
+  it("「账号」组占用原「远端」空位、内含 AccountsSection（不再是留空占位）", () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
-    const empty = document.querySelector(".settings-group-empty");
-    expect(empty).toBeTruthy();
-    expect(empty?.textContent).toContain("暂无设置");
+    // A3：原「远端」留空占位组被「账号」组取代（id 沿用 remote-placeholder），内挂 AccountsSection。
+    expect(groupBody("账号").querySelector(".accounts-section-stub")).toBeTruthy();
+    expect(document.querySelector(".settings-group-empty")).toBeNull();
   });
 
   it("外观组**内部**含 行为 / 快捷键 / 字体 / 颜色 子分节小标题（收窄到该组）", () => {
