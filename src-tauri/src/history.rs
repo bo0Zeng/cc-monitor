@@ -1668,7 +1668,14 @@ mod tests {
         assert_eq!(std::fs::read(&src).unwrap(), before, "源文件被改动了");
         // 新文件在源同目录、文件名=新 sid
         let out = PathBuf::from(&res.jsonl_path);
-        assert_eq!(out.parent().unwrap(), proj);
+        // branch_impl 经 validate_branch_source canonicalize 源路径（安全守卫）——
+        // Windows 上会解 8.3 短名(RUNNER~1→runneradmin)并加 `\\?\` 前缀,故 out.parent()
+        // 已是规范形,而 proj 来自 temp_dir() 原样路径。两边都 canonicalize 再比,消除
+        // 平台差异(否则 Windows CI 上 `\\?\…runneradmin…` != `…RUNNER~1…` 恒红)。
+        assert_eq!(
+            std::fs::canonicalize(out.parent().unwrap()).unwrap(),
+            std::fs::canonicalize(&proj).unwrap(),
+        );
         assert_eq!(out.file_stem().unwrap().to_str().unwrap(), res.session_id);
         // 内容 = 原生分支格式（祖先链 + 新 sid + forkedFrom{srcsid@自身}）
         let out_rows: Vec<serde_json::Value> = std::fs::read_to_string(&out)
