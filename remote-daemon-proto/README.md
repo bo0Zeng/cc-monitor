@@ -24,4 +24,5 @@ cc-monitor 的 SSH-远端功能后端 daemon（issue #15 起，已历 F14–F30+
 `overflow`（拥塞丢帧哨兵，#32）。字段细节以 `../doc/IPC-PROTOCOL.md` §10 为准。
 
 一次性历史查询（带参数 exec，干完即退、不进流式协议）：`--list-projects` / `--list-sessions <dir>` /
-`--read-session[-tail] <path>` / `--search`。
+`--read-session[-tail] <path>` / `--search` / `--usage` / `--resolve` /
+`--list-accounts` / `--session-accounts` / `--account-trust <configDir> <cwd>`（A2 多账号，全只读）。

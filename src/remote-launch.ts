@@ -54,6 +54,34 @@ export function sanitizeRemoteLauncher(cmd: string | undefined): string {
 }
 
 /**
+ * A4：CLAUDE_CONFIG_DIR 白名单。必须是绝对路径、无 `..` 段、无任何 shell 元字符/
+ * 控制符/可欺骗 Unicode（与 daemon 侧 `is_safe_config_dir` 对齐）。fail-closed：
+ * 稍有可疑即判非法，绝不拼进远端命令。
+ */
+export function isValidConfigDir(dir: string): boolean {
+  if (!dir.startsWith("/")) return false;
+  if (dir === "/" || dir.includes("/../") || dir.endsWith("/..")) return false;
+  // shell 元字符 / 引号 / 控制符（C0 + DEL + C1，对齐 daemon Rust char::is_control）——一律拒
+  if (/['"\\`$;|&<>*?()!\u0000-\u001f\u007f-\u009f]/.test(dir)) return false;
+  // 可欺骗 Unicode（零宽 / 双向控制 / NBSP / BOM 等；NEL \u0085 已含在上面 C1 区）——一律拒
+  if (/[\u00a0\u200b-\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/.test(dir)) return false;
+  return true;
+}
+
+/**
+ * A4：账号前缀。空 configDir → `""`（与旧载荷逐字节相同，保证"无账号=旧行为"）。
+ * 非空则校验后 `export CLAUDE_CONFIG_DIR='<dir>'; `（posixQuote 包裹，前缀拼在 unset 之前）。
+ * 非法即 throw（调用方 toast 报错，绝不拼进命令）。
+ */
+export function buildEnvPrefix(configDir?: string): string {
+  if (!configDir) return "";
+  if (!isValidConfigDir(configDir)) {
+    throw new Error(`非法 CLAUDE_CONFIG_DIR（拒绝拼入命令）: ${JSON.stringify(configDir)}`);
+  }
+  return `export CLAUDE_CONFIG_DIR=${posixQuote(configDir)}; `;
+}
+
+/**
  * 直连 resume 命令（F41）：`unset <嵌套env>; [cd '<cwd>' && ]<launcher> --resume <sid>`。
  * 经 `ssh -t user@host -- "<此串>"` 在远端登录 shell 里执行；同一文本也用于
  * 拉起失败时的剪贴板回退（粘贴到任何远端终端语义一致）。
@@ -63,12 +91,14 @@ export function buildResumeDirectCmd(
   sid: string,
   cwd: string,
   launcher = AGENT_PROFILE.defaultLauncher,
+  configDir?: string,
 ): string {
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
   }
   const resume = `${sanitizeRemoteLauncher(launcher)} ${AGENT_PROFILE.resumeFlag} ${sid}`;
-  const prefix = `unset ${CLAUDE_NESTED_ENV_VARS}; `;
+  // A4：账号前缀在 unset 之前（空 configDir → "" → 与旧载荷逐字节相同）。
+  const prefix = `${buildEnvPrefix(configDir)}unset ${CLAUDE_NESTED_ENV_VARS}; `;
   const c = cwd.trim();
   if (!c) return prefix + resume;
   return `${prefix}cd ${posixQuote(c)} && ${resume}`;
@@ -94,6 +124,7 @@ export function buildResumeTmuxCmd(
   cwd: string,
   launcher = AGENT_PROFILE.defaultLauncher,
   name?: string,
+  configDir?: string,
 ): string {
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
@@ -107,7 +138,8 @@ export function buildResumeTmuxCmd(
   if (!/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(tmuxName)) {
     throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(tmuxName)}`);
   }
-  const payload = `unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(launcher)} ${AGENT_PROFILE.resumeFlag} ${sid}`;
+  // A4：账号前缀在 unset 之前（空 configDir → "" → 与旧载荷逐字节相同，#72 @ccm_sid 正交不受影响）。
+  const payload = `${buildEnvPrefix(configDir)}unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(launcher)} ${AGENT_PROFILE.resumeFlag} ${sid}`;
   const c = cwd.trim();
   // 命令语法归后端座（SS-12 §31）。target 裸拼（`cc-<sid8>[-N]` 已过 `[A-Za-z0-9_-]` 校验）。
   // #72：把**完整 sid**当 `@ccm_sid` 传给座——resume 编排自建会话带身份,cc-monitor 之后
@@ -160,13 +192,15 @@ export function buildLauncherCmd(
   cwd: string,
   tmuxName: string,
   command = AGENT_PROFILE.defaultLauncher,
+  configDir?: string,
 ): string {
   const name = tmuxName.trim();
   if (!isValidTmuxName(name)) {
     throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(name)}`);
   }
   const qname = posixQuote(name);
-  const payload = `unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(command)}`;
+  // A4：账号前缀在 unset 之前（空 configDir → "" → 与旧载荷逐字节相同）。
+  const payload = `${buildEnvPrefix(configDir)}unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(command)}`;
   const c = cwd.trim();
   // 命令语法归后端座（SS-12 §31）。target 用 posixQuote 名（F53 允许空格等，区别于 F52 定长裸名）。
   return SESSION_BACKEND.createRunAttach({

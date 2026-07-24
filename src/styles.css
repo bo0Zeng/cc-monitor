@@ -4150,6 +4150,12 @@ body.settings-window-mode .grid-monitor-trigger {
 .history-context-item.is-danger {
   color: var(--error);
 }
+/* A4：账号 resume 项与标准项之间的分隔线 */
+.history-context-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border-strong);
+}
 
 /* === Keybindings Editor (issue #5) ===
    modal overlay 仿小窗口风格：fixed 全屏 backdrop + 居中浮窗。
@@ -4613,7 +4619,8 @@ body.settings-window-mode .grid-monitor-trigger {
   font-size: 12px;
   opacity: 0.9;
 }
-.launcher-field input {
+.launcher-field input,
+.launcher-field select {
   padding: 6px 8px;
   background: var(--input-bg, #2a2a2a);
   border: 1px solid var(--border, #444);
@@ -5365,4 +5372,237 @@ body.settings-window-mode .grid-monitor-trigger {
 }
 .panorama-file-searchbtn {
   align-self: flex-start;
+}
+
+/* A3：状态栏「当前账号」chip（照 .status-cmdk 形态）+ 账号选单浮层 */
+.status-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 1px 7px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border, #3a342e);
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.75;
+  transition:
+    opacity 0.12s,
+    color 0.12s,
+    border-color 0.12s;
+}
+.status-account:hover {
+  opacity: 1;
+  color: var(--text, #d6cfc6);
+  border-color: var(--border-strong, #55493c);
+}
+.status-account-icon {
+  font-size: 0.9em;
+  line-height: 1;
+}
+.status-account-label {
+  max-width: 10ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-picker {
+  position: fixed;
+  z-index: 1000;
+  min-width: 220px;
+  max-width: 360px;
+  padding: 4px;
+  background: var(--bg-1, #1c1a17);
+  border: 1px solid var(--border-strong, #55493c);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.account-picker-item,
+.account-picker-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  font-size: var(--font-size-small);
+  color: var(--text, #d6cfc6);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: left;
+}
+.account-picker-item:hover,
+.account-picker-action:hover {
+  background: var(--bg-2, #26231f);
+}
+.account-picker-item.current {
+  color: var(--accent, #7aa2f7);
+}
+.account-picker-item.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.account-picker-item.disabled:hover {
+  background: transparent;
+}
+.account-picker-mark {
+  flex: none;
+  width: 1em;
+}
+.account-picker-name {
+  flex: none;
+  font-weight: 600;
+}
+.account-picker-email {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-size: 0.9em;
+}
+.account-picker-status {
+  flex: none;
+  color: var(--text-2);
+  font-size: 0.85em;
+}
+.account-picker-info {
+  padding: 6px 8px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+}
+.account-picker-sep {
+  height: 1px;
+  margin: 3px 4px;
+  background: var(--border, #3a342e);
+}
+.account-picker-action {
+  color: var(--text-2);
+}
+
+/* A3：tab 行账号徽章（该会话属于哪个账号；未知 .unknown 显 —，弱化） */
+.tab-acct-badge {
+  flex: none;
+  margin-left: 4px;
+  padding: 0 4px;
+  font-size: 0.72em;
+  line-height: 1.4;
+  color: var(--bg-1, #1c1a17);
+  background: var(--accent, #7aa2f7);
+  border-radius: 4px;
+  font-weight: 600;
+}
+.tab-acct-badge.unknown {
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border, #3a342e);
+  font-weight: 400;
+}
+
+/* A6:设置「账号」组的部署/维护向导 */
+.accounts-wizard,
+.accounts-maint {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--border, #3a342e);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+.accounts-maint-title {
+  font-weight: 600;
+  font-size: 12px;
+  opacity: 0.85;
+}
+.accounts-wiz-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.accounts-wiz-name,
+.accounts-maint-name,
+.accounts-maint-cred {
+  padding: 6px 8px;
+  background: var(--input-bg, #2a2a2a);
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+  color: inherit;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+}
+.accounts-wiz-err,
+.accounts-maint-err {
+  min-height: 1em;
+  font-size: 12px;
+  color: var(--danger, #e06c75);
+}
+.accounts-wiz-preview {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--bg-1, #1c1a17);
+  border: 1px solid var(--border, #3a342e);
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+  opacity: 0.9;
+}
+.accounts-wiz-btns,
+.accounts-maint-ops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.accounts-wiz-copyrow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -2px;
+}
+.accounts-maint-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.accounts-wiz-btns button,
+.accounts-wiz-copyrow button,
+.accounts-maint button {
+  padding: 5px 10px;
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+  background: var(--input-bg, #2a2a2a);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.accounts-wiz-btns button:hover:not(:disabled),
+.accounts-wiz-copyrow button:hover:not(:disabled),
+.accounts-maint button:hover:not(:disabled) {
+  border-color: var(--accent, #c96442);
+}
+.accounts-wiz-btns button:disabled,
+.accounts-maint button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.accounts-wiz-btns button.danger,
+.accounts-maint button.danger {
+  border-color: var(--danger, #e06c75);
+  color: var(--danger, #e06c75);
+}
+.accounts-wiz-note {
+  font-size: 12px;
+  opacity: 0.75;
+  line-height: 1.5;
 }

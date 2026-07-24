@@ -23,6 +23,7 @@ import {
 } from "../theme";
 import { getClaudeDirOverride, setClaudeDirOverride } from "../paths";
 import { CcIntegrationSection } from "./cc_integration";
+import { AccountsSection } from "./accounts-section";
 import { McpSection } from "./mcp-section"; // F87：MCP 管理（集成组）
 import { DiagnosticsSection } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
@@ -400,19 +401,16 @@ export class SettingsPanel {
     body.appendChild(appearance.element);
 
     // 3. 远端 —— 连上后的行为 & 历史。当前无独立设置（resume 命令等在「外观 → 行为」里），留空占位（用户拍板）。
-    const remote = new CollapsibleGroup({
-      // F82b：用新 id——旧 `remote` 是「远端 (SSH)」表单（现移到「连接」组），若复用，返回用户
-      // 旧的展开状态会让这个**空占位组**默认展开（且 SSH 表单在新 `connection` id 下默认折叠、像被藏了）。
+    // A3：多账号「账号」组（占用原「远端」空占位组，id 沿用避免影响用户折叠状态）。
+    // 展示远端账号 + 设为本机默认（只读 + 改本机默认账号，不注入/不重启——A4/A5）。
+    const accountsGroup = new CollapsibleGroup({
       id: "remote-placeholder",
-      title: "远端",
+      title: "账号",
       defaultCollapsed: true,
       infoTooltip: REMOTE_GROUP_INFO_TEXT,
     });
-    const remotePlaceholder = document.createElement("div");
-    remotePlaceholder.className = "settings-group settings-group-empty";
-    remotePlaceholder.textContent = "暂无设置——远端会话行为 / 历史相关项后续加入本组。";
-    remote.appendChild(remotePlaceholder);
-    body.appendChild(remote.element);
+    accountsGroup.appendChild(new AccountsSection().element);
+    body.appendChild(accountsGroup.element);
 
     // 4. 集成 —— Claude 数据源 + PowerShell + MCP（F87）+ 诊断 & 存储
     const integration = new CollapsibleGroup({

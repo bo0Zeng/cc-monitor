@@ -3,11 +3,21 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import { MessageStream } from "./stream";
 import {
   reconcilePendingToolResults,
+  isCompactRecord,
   type RenderContext,
 } from "./cards";
 import { BranchFolder } from "./branch-fold";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
+import {
+  sessionBadge,
+  shouldShowAccountBadge,
+  fetchAccounts,
+  isSelectable,
+  withAccount,
+  type SessionAccount,
+} from "./accounts";
+import { restartWithAccount, DEFAULT_EXIT_WAIT_MS } from "./account-restart";
 import type { BehaviorConfig } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
 import { RecordTimeline } from "./record-timeline";
@@ -188,6 +198,8 @@ interface TabButtonRefs {
   root: HTMLButtonElement;
   label: HTMLSpanElement;
   badge: HTMLSpanElement;
+  /** A3：账号徽章（该会话属于哪个账号；本地会话不显示，未知显 —）。 */
+  acctBadge: HTMLSpanElement;
   cwdBtn: HTMLSpanElement;
 }
 
@@ -253,6 +265,21 @@ export function isCwdFallbackMatch(
   return !anySidKnown; // 无精确命中 + 无任一 sid → findClaudeTmux 会走 cwd 回退
 }
 
+/**
+ * A5+ 优雅退出检测：目标 sid 的 claude 是否已**不在**（本工具）tmux 里精确命中——前台回到 shell
+ * （CC 退出）或会话已没。判据与破坏性重启的守卫 `!live || live.sid !== sid` 完全一致：不再精确命中
+ * = 已退出。**注**：`sessions == null`（list 失败）时也返回 true，故轮询方（`awaitExitFor`）**只在
+ * list 成功时**调用它，list 失败当「未知」继续轮询、不误判成已退出。纯函数（node/jsdom 可测）。
+ */
+export function claudeExited(
+  sessions: TmuxSession[] | null | undefined,
+  sid: string,
+  cwd: string,
+): boolean {
+  const live = findClaudeTmux(sessions, sid, cwd);
+  return !live || live.sid !== sid;
+}
+
 /** F74c(#60-B)：cwd 回退串味风险提示（attach 到可能是同目录别的会话前）。 */
 function warnCwdFallbackAttach(): void {
   showActionFailureToast(
@@ -270,6 +297,16 @@ export class TabManager {
   private orderedIds: string[] = [];
   /** sessionId → button DOM refs，避免 refreshTabBar 每次重建整个 bar */
   private tabButtons = new Map<string, TabButtonRefs>();
+  /** A3：远端 live 探测的会话账号归属（sid → 探测行）。main.ts 定期喂。 */
+  private sessionAccountsByS = new Map<string, SessionAccount>();
+  /** A3：账号名 → 邮箱（徽章 tooltip 用）。 */
+  private accountEmailByName = new Map<string, string>();
+  /** A4：sid → lastAccount（history-metadata）。徽章源②：live 探测不到时兜底。main.ts 定期喂。 */
+  private accountLastByS = new Map<string, string>();
+  /** A4/§7：账号可查询的远端 origin 集（available 且非 daemonless）。只有这些 origin 的会话才显徽章。 */
+  private accountReadyOrigins = new Set<string>();
+  /** A5：换号重启时「等旧号 compact 完成」的 per-sid 回调。onLine 见该 sid 的 compact 摘要行即 resolve。 */
+  private compactWaiters = new Map<string, () => void>();
   private activeId: string | null = null;
   /**
    * v2.2 (issue #12): 当前是否在 batch 模式（启动重放 jsonl-batch 期间）。
@@ -685,6 +722,16 @@ export class TabManager {
       tab.processedUuids.add(uuid);
     }
 
+    // A5：换号重启的 compact 完成检测。仅当有该 sid 的等待者才判（常态零开销）：见 compact 摘要
+    // 行即 resolve 该等待者（换号重启编排随即从 compact 步进入 kill 步）。
+    if (this.compactWaiters.size > 0) {
+      const waiter = this.compactWaiters.get(payload.session_id);
+      if (waiter && isCompactRecord(payload.message)) {
+        this.compactWaiters.delete(payload.session_id);
+        waiter();
+      }
+    }
+
     // issue #63①：首条带 forkedFrom 的记录 → 锁定血缘、给 tab 标题加 `↳` 徽标(与原会话区分)。
     // 放在双重去重之后、turnEndNotifier 之前——这样首条即含徽标的标题也进 turn-end 通知(审计 建议)。
     this.applyForkedFrom(tab, payload.message);
@@ -892,6 +939,53 @@ export class TabManager {
    * 纯派生：不外泄任何内部 DOM / Map 引用（防外部改到 TabManager 内部状态）。插入序（同 tab-bar）。
    * context% 复用 pricing.ts `contextPercent`（上限未知 / 无 usage → null）。
    */
+  /**
+   * A3：喂入远端 live 探测的会话账号归属（来自 daemon `--session-accounts`）+ 账号邮箱表。
+   * main.ts 定期聚合各远端调用。喂完刷新所有 tab 的账号徽章。
+   */
+  setSessionAccounts(
+    rows: SessionAccount[],
+    emailByName: Map<string, string>,
+    lastAccountByS: Map<string, string> = new Map(),
+    readyOrigins: Set<string> = new Set(),
+  ): void {
+    this.sessionAccountsByS = new Map();
+    for (const r of rows) {
+      if (r.sessionId) this.sessionAccountsByS.set(r.sessionId, r);
+    }
+    this.accountEmailByName = emailByName;
+    this.accountLastByS = lastAccountByS;
+    this.accountReadyOrigins = readyOrigins;
+    for (const [sid, refs] of this.tabButtons) {
+      const tab = this.tabs.get(sid);
+      if (tab) this.updateAccountBadge(refs, sid, tab);
+    }
+  }
+
+  /** A3/A4：按 sessionBadge 纯函数刷新单个 tab 的账号徽章（源①live→源②lastAccount→未知）。
+   *  §7：只有账号可查询的远端（readyOrigins）才显徽章；本地/daemonless/未迁移一律不显。 */
+  private updateAccountBadge(refs: TabButtonRefs, sid: string, tab: Tab): void {
+    if (!shouldShowAccountBadge(tab.origin, this.accountReadyOrigins)) {
+      refs.acctBadge.style.display = "none";
+      return;
+    }
+    const b = sessionBadge(
+      sid,
+      tab.origin,
+      this.sessionAccountsByS,
+      this.accountEmailByName,
+      this.accountLastByS,
+    );
+    if (!b) {
+      refs.acctBadge.style.display = "none";
+      return;
+    }
+    refs.acctBadge.textContent = b.text;
+    refs.acctBadge.title = b.tooltip;
+    refs.acctBadge.classList.toggle("unknown", !b.known);
+    refs.acctBadge.style.display = "";
+  }
+
   snapshotSessions(): GridSessionSnapshot[] {
     const out: GridSessionSnapshot[] = [];
     for (const tab of this.tabs.values()) {
@@ -915,6 +1009,7 @@ export class TabManager {
             : null,
         unread: tab.unread,
         kind: tab.kind,
+        account: this.sessionAccountsByS.get(tab.sessionId)?.account ?? null,
       });
     }
     return out;
@@ -1700,12 +1795,21 @@ export class TabManager {
    * 远端 → F41 一键拉起 wt.exe/PowerShell 跑 `ssh -t …`，失败回退复制命令。
    * resume 成功后 CC 续写同一 jsonl，既有「会话复活」路径会自动把灰 Tab 点亮。
    */
-  private async resumeTab(sid: string): Promise<void> {
+  private async resumeTab(sid: string, accountName?: string): Promise<void> {
     const tab = this.tabs.get(sid);
     if (!tab) return;
     const behavior = await getBehavior();
     if (tab.origin !== null) {
-      await runRemoteResume(tab.origin, sid, tab.cwd ?? "", behavior.resumeCommandRemote);
+      // A4：带账号统一走 withAccount（点击时重解析 configDir + 记 lastAccount 源②，与 history 同口径）。
+      // 本地账号切换是 A7，此处忽略（withAccount 只在远端调）。
+      const origin = tab.origin;
+      const cwd = tab.cwd ?? "";
+      await withAccount(
+        origin,
+        accountName ?? null,
+        (cd) => runRemoteResume(origin, sid, cwd, behavior.resumeCommandRemote, cd),
+        { sessionId: sid },
+      );
       return;
     }
     try {
@@ -1809,6 +1913,167 @@ export class TabManager {
       removeTabContextMenuItem("preview");
       removeTabContextMenuItem("kill");
     }
+  }
+
+  /** A4/A5：远端 tab 菜单开后**异步追加**账号项——归档 tab → 每可选账号「用账号 X resume」；
+   *  活 tab → 每可选账号「用账号 X 重启…」+「…（先压缩上下文）」(danger，§5)。复用 F51 代次守卫
+   *  （gen !== tabMenuGeneration 则菜单已换/已关，整体 no-op，防 R-1 跨 tab 串味）。账号库不可用（§7
+   *  daemonless/旧/未启用）/ <2 可选 → 不追加（默认 Resume 仍在）。异步 fetch 用新鲜值，无冷缓存分裂。 */
+  private async appendAccountMenuItems(
+    origin: string,
+    sid: string,
+    status: TabStatus,
+  ): Promise<void> {
+    const gen = tabMenuGeneration; // 捕获这一代菜单
+    let state;
+    try {
+      state = await fetchAccounts(origin);
+    } catch {
+      return;
+    }
+    if (gen !== tabMenuGeneration) return; // 菜单已换/已关
+    if (!state.available) return; // §7 降级
+    const selectable = state.accounts.filter(isSelectable);
+    if (selectable.length < 2) return; // 无可切换选择就不加噪
+    for (const a of selectable) {
+      if (!a.configDir) continue;
+      const name = a.name;
+      if (status === "archived") {
+        appendTabContextMenuItem({
+          id: `acct-resume-${name}`,
+          label: `用账号 ${name} resume`,
+          onClick: () => void this.resumeTab(sid, name),
+        });
+      } else {
+        // 活跃会话 → 换号破坏性重启（§5）。两条：直接重启 / 先在旧号压缩上下文再重启。
+        appendTabContextMenuItem({
+          id: `acct-restart-${name}`,
+          label: `用账号 ${name} 重启…`,
+          danger: true,
+          title: `杀掉旧进程，用账号「${name}」resume 同一会话（中断当前回合）`,
+          onClick: () => void this.restartTabWithAccount(sid, name, false),
+        });
+        appendTabContextMenuItem({
+          id: `acct-restart-compact-${name}`,
+          label: `用账号 ${name} 重启（先压缩上下文）`,
+          danger: true,
+          title: `先在【旧账号】上 /compact（命中旧缓存更省）再换号重启——比换号后再压缩便宜`,
+          onClick: () => void this.restartTabWithAccount(sid, name, true),
+        });
+      }
+    }
+  }
+
+  /** A5：造一个「等该 sid compact 完成」的 awaitCompact——注册 waiter 与超时竞速，两路都清理 waiter
+   *  防泄漏。resolve(true)=onLine 检测到 compact 摘要行 / resolve(false)=超时（编排器照 §5.2 不阻断、续 kill）。
+   *  默认 5min（§5）。 */
+  private awaitCompactFor(sid: string, timeoutMs = 300_000): () => Promise<boolean> {
+    return () =>
+      new Promise<boolean>((resolve) => {
+        let settled = false;
+        const finish = (v: boolean): void => {
+          if (settled) return;
+          settled = true;
+          this.compactWaiters.delete(sid);
+          clearTimeout(timer);
+          resolve(v);
+        };
+        this.compactWaiters.set(sid, () => finish(true));
+        const timer = setTimeout(() => finish(false), timeoutMs);
+      });
+  }
+
+  /**
+   * A5+ 优雅退出等待器：轮询该 origin 的 tmux 列表，`claudeExited` 报「目标 sid 前台不再是 claude」
+   * 即 resolve(true)；`timeoutMs`（默认 DEFAULT_EXIT_WAIT_MS=10s）到仍未退出 → resolve(false)（编排器
+   * 据此降级 kill）。list 失败当「未知」跳过本轮（不误判已退出）。注入 `restartWithAccount.awaitExit`。
+   */
+  private awaitExitFor(
+    origin: string,
+    cwd: string,
+    sid: string,
+    timeoutMs = DEFAULT_EXIT_WAIT_MS,
+    pollMs = 1000,
+  ): () => Promise<boolean> {
+    return () =>
+      new Promise<boolean>((resolve) => {
+        let stopped = false;
+        let pollTimer: ReturnType<typeof setTimeout> | undefined;
+        const stop = (v: boolean): void => {
+          if (stopped) return;
+          stopped = true;
+          clearTimeout(timer);
+          if (pollTimer) clearTimeout(pollTimer); // 清掉挂起的下一轮轮询，干净收尾
+          resolve(v);
+        };
+        const timer = setTimeout(() => stop(false), timeoutMs);
+        const tick = async (): Promise<void> => {
+          if (stopped) return;
+          let sessions: TmuxSession[] | null = null;
+          let ok = false;
+          try {
+            sessions = await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
+            ok = true;
+          } catch {
+            ok = false; // list 失败 → 本轮跳过（不误判已退出）
+          }
+          if (stopped) return;
+          if (ok && claudeExited(sessions, sid, cwd)) {
+            stop(true);
+            return;
+          }
+          pollTimer = setTimeout(() => void tick(), pollMs);
+        };
+        void tick();
+      });
+  }
+
+  /** A5：活跃远端会话换号重启——先解析该会话当前所在的 tmux 名（send-keys/kill 目标），再走
+   *  `restartWithAccount` 编排（§5）。会话不在本工具 tmux（非本工具起/已漂移）→ 提示无法重启。 */
+  private async restartTabWithAccount(
+    sid: string,
+    accountName: string,
+    compactFirst: boolean,
+  ): Promise<void> {
+    const tab = this.tabs.get(sid);
+    if (!tab || tab.origin === null) return; // 本地会话 A7 前不支持
+    const origin = tab.origin;
+    const cwd = tab.cwd ?? "";
+    const behavior = await getBehavior();
+    // 解析该会话当前 tmux 名，一律新查（对齐 resumeTabTmux：attach/重启对新鲜度最敏感，防据陈旧快照误伤）。
+    let sessions: TmuxSession[] | null = null;
+    try {
+      sessions = await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
+      this.tmuxCache.set(origin, { ts: Date.now(), sessions });
+    } catch {
+      sessions = null;
+    }
+    const live = findClaudeTmux(sessions, sid, cwd);
+    // A5 阻塞修（D 审计）：破坏性重启**必须**精确命中 @ccm_sid（`live.sid === sid`）。无 @ccm_sid 的
+    // 降级远端会走 findClaudeTmux 的 cwd 回退 → 可能抓到同目录**别的** claude（live.sid=null/异号）→
+    // kill 错会话 + 对目标 sid 起新进程 = 双进程 / jsonl 双写（§5.2 要防的严重态）。对齐 resumeTabTmux
+    // 的 `live.sid === sid` 守卫，回退命中即拒（不猜）——破坏性操作不接受"按目录猜"。
+    if (!live || live.sid !== sid) {
+      showActionFailureToast(
+        "无法换号重启",
+        "该会话不在（本工具的）tmux 里、或无法精确定位（缺 @ccm_sid 会话标记）——可先归档后用「用账号 X resume」。",
+        { level: "info", durationMs: 8000 },
+      );
+      return;
+    }
+    await restartWithAccount({
+      origin,
+      sessionId: sid,
+      cwd,
+      tmuxName: live.name,
+      accountName,
+      launcher: behavior.resumeCommandRemote,
+      compactFirst,
+      // A5 step5：真检测器——onLine 见该 sid 的 compact 摘要行即 resolve，超时（5min）按 §5.2 续 kill。
+      awaitCompact: this.awaitCompactFor(sid),
+      // A5+ 优雅退出：轮询 tmux 前台不再是 claude 即 resolve，10s 超时按 §5.2 ④ 降级 kill。
+      awaitExit: this.awaitExitFor(origin, cwd, sid),
+    });
   }
 
   /** F79(#38)：杀死远端 tmux 会话——二次确认后 kill-session。变灰由 #60-A 对账兜（不主动 archive，守 §24）。
@@ -1995,6 +2260,12 @@ export class TabManager {
     label.className = "tab-title";
     root.appendChild(label);
 
+    // A3：账号徽章（该会话属于哪个账号）。默认隐藏，updateTabButton 按 sessionBadge 填。
+    const acctBadge = document.createElement("span");
+    acctBadge.className = "tab-acct-badge";
+    acctBadge.style.display = "none";
+    root.appendChild(acctBadge);
+
     const badge = document.createElement("span");
     badge.className = "tab-badge";
     root.appendChild(badge);
@@ -2094,6 +2365,8 @@ export class TabManager {
             label: "Resume（tmux）",
             onClick: () => void this.resumeTabTmux(sid),
           });
+          // A4/A5：账号项（归档→「用账号 X resume」）由 showTabContextMenu 后**异步追加**
+          // （appendAccountMenuItems，复用 F51 代次守卫），消除同步 peek 的冷缓存分裂。
         } else {
           items.push({
             label: "Resume",
@@ -2161,9 +2434,13 @@ export class TabManager {
       if (needAsyncAttach && origin !== null && cwd) {
         void this.resolveAttachMenuItem(origin, cwd, sid);
       }
+      // A4/A5：远端 tab → 异步追加账号项（归档=「用账号 X resume」/ 活=「用账号 X 重启…」）。
+      if (origin !== null && t) {
+        void this.appendAccountMenuItems(origin, sid, t.status);
+      }
     });
 
-    return { root, label, badge, cwdBtn };
+    return { root, label, badge, acctBadge, cwdBtn };
   }
 
   private updateTabButton(refs: TabButtonRefs, sid: string, tab: Tab): void {
@@ -2204,6 +2481,7 @@ export class TabManager {
         refs.badge.textContent = text;
       }
     }
+    this.updateAccountBadge(refs, sid, tab); // A3：账号徽章随 tab 更新一并刷新
   }
 }
 
@@ -2219,6 +2497,7 @@ interface TabMenuItem {
   label: string;
   enabled?: boolean; // 缺省 true;false = 禁用占位
   danger?: boolean; // F79：破坏性项（杀会话）红色样式
+  title?: string; // A5：hover tooltip（如 compact 顺序说明）
   onClick: () => void;
 }
 let activeTabMenu: HTMLElement | null = null;
@@ -2233,6 +2512,7 @@ function makeTabMenuButton(it: TabMenuItem): HTMLButtonElement {
   btn.className = "tab-context-menu-item";
   if (it.danger) btn.classList.add("is-danger");
   btn.textContent = it.label;
+  if (it.title) btn.title = it.title;
   const enabled = it.enabled !== false;
   btn.disabled = !enabled;
   if (enabled) {
@@ -2280,6 +2560,14 @@ function removeTabContextMenuItem(id: string): void {
   if (!old) return;
   old.remove();
   activeTabMenuItems.delete(id);
+}
+
+/** A4/A5：往已打开菜单**追加**一项(异步就绪,如账号列表 fetch 回来)。菜单已关则 no-op。 */
+function appendTabContextMenuItem(item: TabMenuItem): void {
+  if (!activeTabMenu) return;
+  const btn = makeTabMenuButton(item);
+  if (item.id) activeTabMenuItems.set(item.id, btn);
+  activeTabMenu.appendChild(btn);
 }
 
 function closeTabContextMenu(): void {

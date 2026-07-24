@@ -30,6 +30,7 @@ import { openSftpPanel } from "../sftp/panel";
 import { openPortForwardPanel } from "../views/port-forward";
 import { deriveTmuxName } from "../remote-launch";
 import { runRemoteLauncher } from "../remote-launch-run";
+import { fetchAccounts, isSelectable, effectiveDefault, withAccount } from "../accounts";
 import { loadConfig, saveConfig } from "../config";
 import { makeInfoIcon } from "./info-icon";
 
@@ -858,6 +859,42 @@ class MachineCard {
         : "留空则按工作目录名自动生成";
     });
 
+    // A4：账号下拉。异步填充——账号库不可用（daemonless / 旧 / 未启用）则整行不显 → 不注入
+    // configDir → 行为与旧版逐字节一致（§7 降级）。选中某账号 = 起会话时注入其 CLAUDE_CONFIG_DIR。
+    const acctRow = document.createElement("label");
+    acctRow.className = "launcher-field";
+    acctRow.style.display = "none";
+    const acctSpan = document.createElement("span");
+    acctSpan.textContent = "账号";
+    const acctSelect = document.createElement("select");
+    acctSelect.className = "launcher-acct-select";
+    acctRow.append(acctSpan, acctSelect);
+    box.appendChild(acctRow);
+    void (async () => {
+      try {
+        const state = await fetchAccounts(origin);
+        if (!state.available) return;
+        const sel = state.accounts.filter(isSelectable);
+        if (sel.length < 1) return;
+        const none = document.createElement("option");
+        none.value = "";
+        none.textContent = "不指定（跟随登录默认）";
+        acctSelect.appendChild(none);
+        for (const a of sel) {
+          const opt = document.createElement("option");
+          opt.value = a.name;
+          opt.textContent = a.email ? `${a.name} · ${a.email}` : a.name;
+          acctSelect.appendChild(opt);
+        }
+        // 预选本机默认账号（若它可选）——反映「当前账号」，用户可改。
+        const def = effectiveDefault(state);
+        if (def && isSelectable(def)) acctSelect.value = def.name;
+        acctRow.style.display = "";
+      } catch {
+        /* 账号库拿不到 → 不显账号行，默认起会话仍可用 */
+      }
+    })();
+
     const foot = document.createElement("div");
     foot.className = "launcher-foot";
     const cancel = document.createElement("button");
@@ -873,8 +910,12 @@ class MachineCard {
       const cwd = cwdInput.value.trim();
       const name = nameInput.value.trim() || deriveTmuxName(cwd);
       const command = cmdInput.value.trim() || AGENT_PROFILE.defaultLauncher;
+      const accName = acctSelect.value; // "" = 不指定
       back.remove();
-      void runRemoteLauncher(origin, cwd, name, command);
+      // A4：新会话无 sid → 不记 lastAccount；withAccount 统一解析注入（不可选则退化默认起）。
+      void withAccount(origin, accName || null, (cd) =>
+        runRemoteLauncher(origin, cwd, name, command, cd),
+      );
     });
     foot.append(cancel, start);
     box.appendChild(foot);

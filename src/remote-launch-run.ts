@@ -23,10 +23,11 @@ export async function runRemoteResume(
   sid: string,
   cwd: string,
   launcher: string,
+  configDir?: string, // A4：非空 → 该会话用指定账号 resume（CLAUDE_CONFIG_DIR 注入）
 ): Promise<void> {
   let cmd: string;
   try {
-    cmd = buildResumeDirectCmd(sid, cwd, launcher);
+    cmd = buildResumeDirectCmd(sid, cwd, launcher, configDir);
   } catch (err) {
     showActionFailureToast("无法构造 resume 命令", String(err));
     return;
@@ -62,10 +63,11 @@ export async function runRemoteResumeTmux(
   cwd: string,
   launcher: string,
   name?: string,
+  configDir?: string, // A4：非空 → 该会话用指定账号 resume（CLAUDE_CONFIG_DIR 注入）
 ): Promise<void> {
   let cmd: string;
   try {
-    cmd = buildResumeTmuxCmd(sid, cwd, launcher, name);
+    cmd = buildResumeTmuxCmd(sid, cwd, launcher, name, configDir);
   } catch (err) {
     showActionFailureToast("无法构造 tmux resume 命令", String(err));
     return;
@@ -103,12 +105,14 @@ export async function runNewSessionRemote(
   origin: string,
   cwd: string,
   command: string,
+  configDir?: string, // A4：非空 → 新会话用指定账号启动
 ): Promise<void> {
   await runRemoteLauncher(
     origin,
     cwd,
     deriveTmuxName(cwd),
     command || AGENT_PROFILE.defaultLauncher,
+    configDir,
   );
 }
 
@@ -118,10 +122,11 @@ export async function runRemoteLauncher(
   cwd: string,
   tmuxName: string,
   command: string,
+  configDir?: string, // A4：非空 → 新会话用指定账号启动（CLAUDE_CONFIG_DIR 注入）
 ): Promise<void> {
   let cmd: string;
   try {
-    cmd = buildLauncherCmd(cwd, tmuxName, command);
+    cmd = buildLauncherCmd(cwd, tmuxName, command, configDir);
   } catch (err) {
     showActionFailureToast("无法构造 launcher 命令", String(err));
     return;

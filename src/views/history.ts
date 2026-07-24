@@ -27,6 +27,7 @@ import { SessionViewer, type ViewerOptions } from "./session-viewer";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
+import { fetchAccounts, isSelectable, withAccount } from "../accounts";
 import {
   actionsFor,
   type HistoryActionCtx,
@@ -115,6 +116,7 @@ interface EntryMetadata {
   customTitle: string | null;
   hidden: boolean;
   updatedAt: number;
+  lastAccount?: string | null; // A4：上次用本工具带账号起该会话时记的账号名（源②）
 }
 
 /** 组内会话排序模式（顶层布局固定按工作目录分组，不是 sort 选项）。 */
@@ -169,6 +171,8 @@ type SearchMode = "tree" | "fulltext";
 type RowActionCtx = HistoryActionCtx & {
   entry?: HistorySessionEntry;
   project?: HistoryProject;
+  /** A4：非空 = 用指定账号 resume/起会话（远端注入其 CLAUDE_CONFIG_DIR + 记 lastAccount）。 */
+  account?: string;
 };
 
 export class HistoryView {
@@ -864,17 +868,24 @@ export class HistoryView {
     resume.title = s.origin
       ? `在新终端拉起远端 [${s.origin}] resume（失败则复制命令）`
       : "在新终端 resume 此会话";
+    // F85 + A4：搜索卡片 ctx（hasEntry:false，只用 identity 段）——resume 按钮与右键菜单共用。
+    const cardCtx: RowActionCtx = {
+      sessionId: s.sessionId,
+      jsonlPath: s.jsonlPath,
+      cwd: s.projectPath,
+      origin: s.origin,
+      hasEntry: false,
+    };
     resume.addEventListener("click", (ev) => {
       ev.stopPropagation(); // 不冒泡触发卡片/命中的「点开 viewer」
-      void this.runResume({
-        sessionId: s.sessionId,
-        jsonlPath: s.jsonlPath,
-        cwd: s.projectPath,
-        origin: s.origin,
-        hasEntry: false,
-      });
+      void this.runResume(cardCtx);
     });
     header.appendChild(resume);
+    // A4：右键搜索卡片 → 同一套动作菜单（含「用账号 X resume」，远端 + 账号库可用时）。
+    header.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      this.showEntryMenu(ev.clientX, ev.clientY, cardCtx);
+    });
     group.appendChild(header);
 
     for (const hit of s.hits) {
@@ -1467,12 +1478,22 @@ export class HistoryView {
     if (ctx.origin) {
       // F41：远端 resume 一键拉起（wt.exe → `ssh -t …`），失败回退 F09 复制命令。
       // F34：用户自定义远端 resume 命令（如 cct）；空 = 后端默认
+      const origin = ctx.origin;
       const behavior = await getBehavior();
-      await runRemoteResume(
-        ctx.origin,
-        ctx.sessionId,
-        ctx.cwd,
-        behavior.resumeCommandRemote,
+      // A4：带账号 resume 统一走 withAccount（resolve configDir → 不可选则 toast 降级默认 → record 源②）。
+      await withAccount(
+        origin,
+        ctx.account ?? null,
+        (cd) => runRemoteResume(origin, ctx.sessionId, ctx.cwd, behavior.resumeCommandRemote, cd),
+        {
+          sessionId: ctx.sessionId,
+          onUnselectable: (n) =>
+            showActionFailureToast(
+              "账号不可用",
+              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用默认账号 resume。`,
+              { level: "info", durationMs: 6000 },
+            ),
+        },
       );
     } else {
       try {
@@ -1601,6 +1622,8 @@ export class HistoryView {
     }
     document.body.appendChild(menu);
     this.openEntryMenu = menu;
+    // A4：远端会话——异步追加「用账号 X resume」项（先显标准项，账号项 fetch 完再挂，缓存暖则几乎无感）。
+    if (ctx.origin) void this.appendAccountResumeItems(menu, ctx);
     // 关闭监听：Esc 键 / 菜单外 pointerdown 才关（点菜单内边距/非 Esc 键 → 早退不关）。
     // ★ 不用 `{once:true}`——它会在早退那次就摘掉监听，导致「按过任意非 Esc 键后 Esc 再关不掉」
     // 「点 padding 后外部点击再关不掉」。改为常驻监听、由 closeEntryMenu 显式反注册。
@@ -1616,6 +1639,40 @@ export class HistoryView {
       document.addEventListener("pointerdown", close);
       document.addEventListener("keydown", close);
     }, 0);
+  }
+
+  /**
+   * A4：给远端会话菜单追加「用账号 X resume」项（每个可选账号一条）。**异步**——不阻塞菜单弹出。
+   * 只在 ≥2 个可选账号时出（<2 无可切换意义）；账号库不可用（daemonless/旧/未启用）安静不加（§7 降级）。
+   * 追加前校验菜单仍是当前打开的那个（防 fetch 期间已换/已关，避免挂到陈旧 DOM）。
+   */
+  private async appendAccountResumeItems(menu: HTMLElement, ctx: RowActionCtx): Promise<void> {
+    if (!ctx.origin) return;
+    let state;
+    try {
+      state = await fetchAccounts(ctx.origin);
+    } catch {
+      return; // fetch 失败 → 就不加账号项，默认 resume 仍可用
+    }
+    if (!state.available) return; // daemonless / 旧 daemon / 未启用 → 安静降级
+    const selectable = state.accounts.filter(isSelectable);
+    if (selectable.length < 2) return; // 无可切换选择就不加噪
+    if (this.openEntryMenu !== menu) return; // fetch 期间菜单已变/已关
+    const sep = document.createElement("div");
+    sep.className = "history-context-sep";
+    menu.appendChild(sep);
+    for (const a of selectable) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "history-context-item";
+      item.textContent = `用账号 ${a.name} resume`;
+      item.title = `以账号「${a.name}」${a.email ? ` · ${a.email}` : ""} 起该会话（注入其 CLAUDE_CONFIG_DIR）`;
+      item.addEventListener("click", () => {
+        this.closeEntryMenu();
+        void this.runResume({ ...ctx, account: a.name });
+      });
+      menu.appendChild(item);
+    }
   }
 
   private closeEntryMenu(): void {

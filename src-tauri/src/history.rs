@@ -112,6 +112,10 @@ pub struct EntryMetadata {
     pub hidden: bool,
     #[serde(default, rename = "updatedAt", alias = "updated_at")]
     pub updated_at: i64,
+    /// A4：上次用本工具（cc-monitor）起该会话时选的账号名（DESIGN §3 源②）。
+    /// live 探测不到时会话徽章回退用它。None = 从未用本工具带账号起过（旧文件缺此字段亦为 None）。
+    #[serde(default, rename = "lastAccount", alias = "last_account")]
+    pub last_account: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -122,6 +126,11 @@ pub struct MetadataPatch {
     pub custom_title: Option<Option<String>>,
     #[serde(default)]
     pub hidden: Option<bool>,
+    // plain serde default（非 double_option）：缺键 / JSON `null` 都 → None（不改）；
+    // 只有给字符串才 → Some(Some(s))。**JSON `null` 到不了 Some(None)**——清空走"空/空白串
+    // → Some(Some("")) → update 里 filter 掉"（见 update_history_metadata），不靠 null。
+    #[serde(default, rename = "lastAccount", alias = "last_account")]
+    pub last_account: Option<Option<String>>,
 }
 
 // === IPC 命令 ===
@@ -839,10 +848,30 @@ pub fn update_history_metadata(
     if let Some(h) = patch.hidden {
         entry.hidden = h;
     }
+    if let Some(a) = patch.last_account {
+        // Some(Some(name)) 设值；空/空白串 → filter 后 None = 清空（JSON null 走不到这，见 struct 注释）
+        entry.last_account = a.filter(|s| !s.trim().is_empty());
+    }
     entry.updated_at = now_ms();
     let result = entry.clone();
     save_metadata(&metadata)?;
     Ok(result)
+}
+
+/// 纯变换：metadata → sid→lastAccount（只含真有 lastAccount 的条目）。抽出便于单测。
+fn last_accounts_of(meta: HistoryMetadata) -> HashMap<String, String> {
+    meta.entries
+        .into_iter()
+        .filter_map(|(sid, e)| e.last_account.map(|a| (sid, a)))
+        .collect()
+}
+
+/// A4：只读——返回 sid → lastAccount（上次用本工具带账号起该会话时记的）。前端账号徽章
+/// 源②（DESIGN §3）：live 探测不到时用它兜底。只含真有 lastAccount 的条目；读失败 → 空表
+/// （降级：徽章退回 live/未知，不报错）。**不写 jsonl、不改任何状态。**
+#[tauri::command]
+pub fn list_last_accounts() -> HashMap<String, String> {
+    last_accounts_of(load_metadata().unwrap_or_default())
 }
 
 /// 在新终端窗口里 resume 一个历史会话。
@@ -1771,6 +1800,91 @@ mod tests {
                 "HistorySessionEntry 漏改 {snake_key}: {j}"
             );
         }
+    }
+
+    /// A4：EntryMetadata / MetadataPatch 的 lastAccount serde 契约 + 向后兼容 + 三态 patch。
+    #[test]
+    fn last_account_serde_and_patch_semantics() {
+        // 1) 向后兼容：旧文件无 lastAccount 字段 → None，不报错。
+        let old: EntryMetadata =
+            serde_json::from_str(r#"{"starred":true,"hidden":false,"updatedAt":9}"#).unwrap();
+        assert_eq!(old.last_account, None);
+
+        // 2) camelCase wire：Some(name) 序列化含 "lastAccount"、不含 snake。
+        let e = EntryMetadata {
+            last_account: Some("z".into()),
+            ..Default::default()
+        };
+        let j = serde_json::to_string(&e).unwrap();
+        assert!(j.contains("\"lastAccount\""), "wire 缺 lastAccount: {j}");
+        assert!(!j.contains("last_account"), "wire 不该含 snake: {j}");
+
+        // 2b) 旧 snake alias 仍可读入（迁移容错）。
+        let via_alias: EntryMetadata = serde_json::from_str(r#"{"last_account":"b"}"#).unwrap();
+        assert_eq!(via_alias.last_account, Some("b".into()));
+
+        // 3) MetadataPatch：缺键 / null 都折叠为 None(不改)——与既有 customTitle 同(plain
+        //    serde default，非 double_option)；清空经"空串 → filter"实现(见 4))，不靠 null。
+        let none: MetadataPatch = serde_json::from_str("{}").unwrap();
+        assert_eq!(none.last_account, None);
+        let via_null: MetadataPatch = serde_json::from_str(r#"{"lastAccount":null}"#).unwrap();
+        assert_eq!(via_null.last_account, None);
+        let set: MetadataPatch = serde_json::from_str(r#"{"lastAccount":"z"}"#).unwrap();
+        assert_eq!(set.last_account, Some(Some("z".into())));
+
+        // 4) apply 语义（镜像 update_history_metadata 分支）：空白账号名按清空处理。
+        fn apply(mut e: EntryMetadata, json: &str) -> EntryMetadata {
+            let p: MetadataPatch = serde_json::from_str(json).unwrap();
+            if let Some(a) = p.last_account {
+                e.last_account = a.filter(|s| !s.trim().is_empty());
+            }
+            e
+        }
+        let base = EntryMetadata {
+            last_account: Some("z".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            apply(EntryMetadata::default(), r#"{"lastAccount":"z"}"#).last_account,
+            Some("z".into())
+        );
+        assert_eq!(
+            apply(base.clone(), r#"{"lastAccount":""}"#).last_account,
+            None
+        ); // 空串=清空
+        assert_eq!(
+            apply(base.clone(), r#"{"lastAccount":null}"#).last_account,
+            Some("z".into()) // null 折叠为"不改"（同 customTitle）
+        );
+        assert_eq!(
+            apply(base.clone(), r#"{"starred":true}"#).last_account,
+            Some("z".into()) // 未提 lastAccount → 不改
+        );
+        assert_eq!(
+            apply(EntryMetadata::default(), r#"{"lastAccount":"   "}"#).last_account,
+            None // 纯空白 = 清空
+        );
+    }
+
+    /// A4：list_last_accounts 的纯变换——只含有 lastAccount 的条目，None 的剔除。
+    #[test]
+    fn last_accounts_of_filters_none() {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "s-has".to_string(),
+            EntryMetadata {
+                last_account: Some("z".into()),
+                ..Default::default()
+            },
+        );
+        entries.insert("s-none".to_string(), EntryMetadata::default()); // 无 lastAccount
+        let out = last_accounts_of(HistoryMetadata {
+            version: 1,
+            entries,
+        });
+        assert_eq!(out.get("s-has"), Some(&"z".to_string()));
+        assert!(!out.contains_key("s-none"));
+        assert_eq!(out.len(), 1);
     }
 
     // P3 归并：iso_parse_* 测试已搬到 utils::tests（函数本身搬到 utils）。

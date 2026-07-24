@@ -163,9 +163,106 @@ pub async fn kill_remote_tmux(origin: String, target: String) -> Result<(), Stri
     Ok(())
 }
 
+/// send-keys 远端命令串（提纯以便单测——补 R1「命令构造测缺」）。`enter=true` 时尾附 `Enter` 键
+/// （如 `/compact`、`/exit` 这类要回车提交的）；`enter=false` 只发裸键（如 `Escape` 打断当前回合，
+/// **不能**带尾回车，否则可能误提交输入框里的队列文本）。target/keys 均经 `shell_quote`。
+fn build_send_keys_remote_cmd(target: &str, keys: &str, enter: bool) -> String {
+    let tail = if enter { " Enter" } else { "" };
+    format!(
+        "if command -v tmux >/dev/null 2>&1; then tmux send-keys -t {} {}{} 2>&1; else printf 'NO_TMUX\\n'; fi",
+        ssh_source::shell_quote(target),
+        ssh_source::shell_quote(keys),
+        tail,
+    )
+}
+
+/// A5：向远端 tmux 会话发按键（headless ssh，如换号重启前在旧号上 send `/compact`、或优雅退出的
+/// `Escape`/`/exit`）。**只发按键、不杀不建**，走一次性 ssh、**daemon 不参与**（守只读边界）。
+/// `keys` 是字面串或 tmux 键名（`/compact` / `/exit` / `Escape`）；`enter`（可选，**默认 true** 向后兼容
+/// A5 旧调用）决定是否尾附 `Enter`——优雅退出的 `Escape` 传 `enter=false`。
+/// 安全：`target` 限**本工具建的 `cc-*` 会话名**（`is_ccm_tmux_name`），防误发到用户别的 tmux；
+/// keys 经 `shell_quote`。成功无输出；失败（会话不存在等）经 `2>&1` 捕获报错。
+#[tauri::command]
+pub async fn tmux_send_keys(
+    origin: String,
+    target: String,
+    keys: String,
+    enter: Option<bool>,
+) -> Result<(), String> {
+    if !is_ccm_tmux_name(&target) {
+        return Err(format!("拒绝 send-keys：非本工具 tmux 会话名: {target:?}"));
+    }
+    let cfg = crate::load_remote_config_by_label(&origin)
+        .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
+    // 缺省（前端旧调用不传）→ true，与 A5 原行为逐字节等价。
+    let cmd = build_send_keys_remote_cmd(&target, &keys, enter.unwrap_or(true));
+    let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
+    let mut reader = BufReader::new(stream);
+    let mut buf: Vec<u8> = Vec::new();
+    reader
+        .read_to_end(&mut buf)
+        .await
+        .map_err(|e| format!("send-keys 失败: {e}"))?;
+    let out = String::from_utf8_lossy(&buf);
+    let trimmed = out.trim();
+    if trimmed == "NO_TMUX" {
+        return Err("远端未安装 tmux".to_string());
+    }
+    if !trimmed.is_empty() {
+        return Err(format!("tmux send-keys: {trimmed}"));
+    }
+    Ok(())
+}
+
+/// 本工具建的 tmux 会话名判定：`cc-` 前缀 + 只含 `[A-Za-z0-9_-]`（`cc-<sid8>[-N]` 恒满足）。
+/// 用于 send-keys 目标白名单——绝不向用户自己的其它 tmux 会话发按键。
+fn is_ccm_tmux_name(name: &str) -> bool {
+    name.starts_with("cc-")
+        && name.len() > 3
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A5：send-keys 目标白名单——只认本工具的 cc-* 会话名，拒用户别的 tmux。
+    #[test]
+    fn ccm_tmux_name_whitelist() {
+        assert!(is_ccm_tmux_name("cc-abc12345"));
+        assert!(is_ccm_tmux_name("cc-abc12345-2")); // pickFreshTmuxName 的 -N 变体
+        assert!(!is_ccm_tmux_name("cc-")); // 只前缀无体
+        assert!(!is_ccm_tmux_name("web")); // 用户自己的会话
+        assert!(!is_ccm_tmux_name("mycc-x")); // 非前缀
+        assert!(!is_ccm_tmux_name("cc-a b")); // 空格（注入面）
+        assert!(!is_ccm_tmux_name("cc-a;rm")); // 分号
+        assert!(!is_ccm_tmux_name("cc-a$x")); // 元字符
+    }
+
+    /// A5+：send-keys 命令构造（补 R1）——enter=true 尾附 ` Enter`，false 不附；target/keys 经 shell_quote。
+    #[test]
+    fn send_keys_cmd_construction() {
+        let with_enter = build_send_keys_remote_cmd("cc-abc12345", "/compact", true);
+        assert!(
+            with_enter.contains("tmux send-keys -t 'cc-abc12345' '/compact' Enter 2>&1"),
+            "enter=true 应尾附 Enter: {with_enter}"
+        );
+        let no_enter = build_send_keys_remote_cmd("cc-abc12345", "Escape", false);
+        assert!(
+            no_enter.contains("tmux send-keys -t 'cc-abc12345' 'Escape' 2>&1"),
+            "enter=false 不应附 Enter: {no_enter}"
+        );
+        assert!(
+            !no_enter.contains(" Enter 2>&1"),
+            "enter=false 命令里不得出现 Enter 键: {no_enter}"
+        );
+        // NO_TMUX 降级分支两者都在。
+        assert!(
+            with_enter.contains("printf 'NO_TMUX\\n'") && no_enter.contains("printf 'NO_TMUX\\n'")
+        );
+    }
 
     #[test]
     fn parse_multi_session() {

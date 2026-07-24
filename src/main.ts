@@ -38,6 +38,8 @@ import { getBehavior, setBehavior } from "./behavior";
 import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
 import { turnEndNotifier } from "./turn-notify";
+import { AccountChip } from "./account-chip";
+import { fetchSessionAccounts, fetchAccounts, isSelectable } from "./accounts";
 
 // === 启动 perf 测量 ===
 // performance.now() 自页面 navigation start 起；前端各阶段时间点。
@@ -150,6 +152,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   const usageHud = new UsageHud();
   status.appendChild(usageHud.summaryElement);
 
+  // A3：状态栏「当前账号」chip（多账号 cc-acct-iso）。绑第一台可用远端的默认账号；
+  // 未连远端 / 未启用多账号 / daemonless 各自安静降级（不报错）。点击弹选单切默认账号。
+  const accountChip = new AccountChip({ openSettings: () => void invoke("open_settings_window") });
+  status.appendChild(accountChip.element);
+  void accountChip.refresh();
+
+
   const empty = document.createElement("div");
   empty.className = "empty-state";
   empty.innerHTML = `暂无活跃会话<br><small>打开终端跑 <code>claude</code> 后将自动出现</small>`;
@@ -173,6 +182,49 @@ window.addEventListener("DOMContentLoaded", async () => {
     tasksPanel,
     agentsPanel,
   );
+
+  // A3：账号徽章数据管道——定期对每台远端拉 session-accounts（哪条会话属于哪个号）+ 账号邮箱，
+  // 聚合喂 tabs（tabs 已在上方构造）。走 accounts store 的 8s TTL 缓存 + available:false 降级，
+  // 未迁移 / 旧 daemon / daemonless 零副作用。
+  const refreshSessionAccounts = async (): Promise<void> => {
+    try {
+      const cfg = await readRemoteConfig();
+      if (!cfg.enabled) {
+        tabs.setSessionAccounts([], new Map());
+        return;
+      }
+      const rows: import("./accounts").SessionAccount[] = [];
+      const emailByName = new Map<string, string>();
+      const readyOrigins = new Set<string>();
+      for (const h of cfg.hosts) {
+        if (h.daemonless) continue;
+        const origin = h.label || h.host;
+        const [sessions, state] = await Promise.all([
+          fetchSessionAccounts(origin),
+          fetchAccounts(origin),
+        ]);
+        rows.push(...sessions);
+        for (const a of state.accounts) if (a.email) emailByName.set(a.name, a.email);
+        // §7：账号确实可查询（available）的 origin 才算 ready——徽章只在这些 origin 上显。
+        if (state.available) readyOrigins.add(origin);
+      }
+      // A4：sid → lastAccount（源②）。本机 history-metadata 读一次（远端会话的 lastAccount 也
+      // 由 cc-monitor 记在本机），live 探测不到时徽章兜底显「上次用本工具起」。失败 → 空表降级。
+      let lastByS = new Map<string, string>();
+      try {
+        const raw = await invoke<Record<string, string>>("list_last_accounts");
+        lastByS = new Map(Object.entries(raw));
+      } catch (e) {
+        console.warn("list_last_accounts failed:", e);
+      }
+      tabs.setSessionAccounts(rows, emailByName, lastByS, readyOrigins);
+    } catch (e) {
+      console.warn("refreshSessionAccounts failed:", e);
+    }
+  };
+  void refreshSessionAccounts();
+  window.setInterval(() => void refreshSessionAccounts(), 10_000);
+
   // Batch5-F19（G 验收）：用户手动切过 tab 后，迟到的远端宣告不再补切抢焦点
   tabs.onManualSwitch = () => {
     pendingStartupActive = null;
@@ -255,6 +307,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       dispatcher.applyOverrides(kb); // 键位：热应用主窗口 dispatcher
       refreshCmdkChord(); // 键位变 → 同步刷新命令 chip 的 kbd（兑现「改键即变」）
     });
+    void accountChip.refresh(true); // A3：远端配置/默认账号可能变了，刷新账号 chip
   });
   // Batch11-F33：竖直 tab 栏——右缘拖拽调宽（localStorage 记忆）+ 窄窗折叠图标条。
   {
@@ -451,6 +504,26 @@ window.addEventListener("DOMContentLoaded", async () => {
       { id: "tab-next", title: "切到下一个 Tab", keywords: "next tab 下一个", hint: chordHint("tab.next"), run: () => tabs.cycleActive(1) },
       { id: "tab-prev", title: "切到上一个 Tab", keywords: "prev tab 上一个", hint: chordHint("tab.prev"), run: () => tabs.cycleActive(-1) },
     ];
+    // A3：账号命令（只读性质——只改本机默认账号，不注入/不重启，守 F11）。切默认为 X + 管理。
+    const acctSnap = accountChip.snapshotReady();
+    if (acctSnap) {
+      for (const a of acctSnap.accounts) {
+        if (!isSelectable(a)) continue; // 单一来源，随 isSelectable 演进（原为内联手抄）
+        const isCur = acctSnap.defaultName === a.name;
+        cmds.push({
+          id: `acct-default-${a.name}`,
+          title: `账号：切默认为 ${a.name}${isCur ? "（当前）" : ""}`,
+          keywords: `account 账号 切换 default 默认 ${a.name} ${a.email}`,
+          run: () => { if (!isCur) void accountChip.applyDefaultByName(a.name); },
+        });
+      }
+    }
+    cmds.push({
+      id: "acct-manage",
+      title: "账号：管理…",
+      keywords: "account 账号 管理 manage 设置",
+      run: () => void invoke("open_settings_window"),
+    });
     // 切到会话（来自 F91 只读投影 snapshotSessions）
     for (const s of tabs.snapshotSessions()) {
       const originTag = s.origin ? `[${s.origin}] ` : "";
