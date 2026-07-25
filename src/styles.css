@@ -5594,6 +5594,276 @@ body.settings-window-mode .grid-monitor-trigger {
   align-items: center;
 }
 
+/* ============================================================
+   account-ux U7：设置「账号」组的 IA + 表格样式。
+   在此之前**账号表这一片**（bar / meta / table / row / hint / info / not-enabled）一条 CSS 都没有,
+   是裸 div 竖排:无列、无对齐、长 configDir 撑爆宽度。（A6 的 .accounts-wizard/.accounts-maint*
+   本来就有样式,见下方;本轮只把维护区整块收进 <details>,不重写其内部。）
+   颜色一律走 token、零硬编码。**但注意**:theme.ts 的 TOKENS 只覆盖 bg/bg-2/card/text/text-2/
+   success/warn/error/live 等;这里还用到 --overlay-hover / --border-* / --text-faint / --accent,
+   它们是 :root 里的固定值、不在换肤范围。本仓也**没有浅色主题**(color-scheme: dark,全文件无
+   prefers-color-scheme)——所以别声称"明暗两套都覆盖了"。若用户把 bg 调成浅色,--overlay-hover
+   (#ffffff06) 与 --border-faint 会近乎消失,行分隔线会变淡:这是全仓既有约定,非本块独有。
+   注意：本文件的注释里别写 "-*" 紧跟斜杠的写法，那会提前闭合 CSS 注释（构建会报
+   css-syntax-error，后半段注释文字会漏进样式表）。
+   ============================================================ */
+
+/* 顶部条：远端选择 + 刷新。单远端时 JS 会把 select 隐掉，只剩「远端：」+ 刷新。 */
+.accounts-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.accounts-bar-label {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  flex: none;
+}
+.accounts-origin-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 260px;
+  padding: 3px 6px;
+  font-size: var(--font-size-small);
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+}
+.accounts-refresh {
+  flex: none;
+  padding: 3px 10px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.accounts-refresh:hover {
+  color: var(--text);
+  background: var(--overlay-hover);
+}
+
+/* U7：「当前工作账号」横幅——把 chip / tab 徽章上那个概念在设置里说清楚（管辖范围）。 */
+.accounts-current-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg-2);
+}
+.accounts-current-main {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.accounts-current-name {
+  font-size: var(--font-size-mono);
+  color: var(--text);
+}
+.accounts-current-email {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.accounts-current-scope {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  margin-left: auto;
+  text-align: right;
+}
+/* 当前账号存在但**不可用**（未登录 / 逃生口 / 目录缺失）→ 用 warn 色示警：此时 U6 的徽章与
+   对齐面整体休眠，横幅必须如实说，否则用户会以为它在生效。 */
+.accounts-current-banner.unusable {
+  border-left-color: var(--warn);
+}
+
+.accounts-meta {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+
+/* 账号表：CSS Grid 定列 —— ★ / 头像 / 名 / 邮箱 / 状态 / 路径 / 操作。
+   路径列吃掉剩余宽度并单行省略（全文在 title 里），操作列右对齐。 */
+/* 列定义放在**表**上、行用 subgrid 继承它 —— 否则每行各自是一个独立 grid，`auto`/`fr` 轨道
+   按各自那一行的内容算宽，列**跨行对不齐**（当前账号那行没有「设为当前账号」按钮、in-place 账号
+   没有「登录终端」，行宽本来就不同 ⇒ 只要有 ≥2 个账号必然错位）。这正是本功能要解决的问题。
+   `overflow-x:auto`：设置窗没有 min_inner_size，用户可以拖到很窄，宁可横向滚也别把最右的按钮裁掉。 */
+.accounts-table {
+  display: grid;
+  /* 邮箱权重 > 路径：isolated 账号的 configDir 就是 <acctsDir>/<name>，行与行之间往往只差最后
+     一个字符，前几十字符逐行重复；而邮箱才是分辨"学校号/私人号"的字段。路径要全文有 title，
+     也有「复制路径」按钮兜着。 */
+  grid-template-columns: 14px 16px minmax(0, auto) minmax(0, 1.2fr) auto minmax(0, 0.8fr) auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.accounts-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-left: 2px solid transparent;
+}
+/* subgrid 不支持时（Chromium <117 / WebKitGTK <2.42）：`grid-template-columns: subgrid` 会被丢弃，
+   行会退化成单列竖排堆叠 —— 那比不对齐还糟。显式退回 flex 行（= U7 之前的观感，仍可读）。 */
+@supports not (grid-template-columns: subgrid) {
+  .accounts-table {
+    display: flex;
+    flex-direction: column;
+  }
+  .accounts-row {
+    display: flex;
+    flex-wrap: wrap;
+  }
+}
+.accounts-row + .accounts-row {
+  border-top: 1px solid var(--border-faint);
+}
+.accounts-row:hover {
+  background: var(--overlay-hover);
+}
+/* 比 hover 更实一档：否则鼠标划过任意一行时，那行和当前行背景一模一样，只剩 ★ 可辨。 */
+.accounts-row.current {
+  border-left-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+.accounts-row-mark {
+  color: var(--accent);
+  font-size: var(--font-size-small);
+  line-height: 1;
+  text-align: center;
+}
+/* 账号名最长可到 64 字符（validateAcctName）——不省略会把 auto 列撑爆、把邮箱/路径两列压没。 */
+.accounts-row-name {
+  font-size: var(--font-size-mono);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.accounts-row-email,
+.accounts-row-dir {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.accounts-row-dir {
+  color: var(--text-faint);
+  font-family: var(--font-mono, monospace);
+}
+/* 「信息才显」(用户决策③) 同源：健康态每行都一样，恒真的信息不携带信息，涂绿只会稀释真正
+   要跳出来的「未登录 / 逃生口」。故健康态走 faint，异常态才上 warn。 */
+.accounts-row-badge {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.accounts-row-badge.warn {
+  color: var(--warn);
+}
+.accounts-row-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+.accounts-row-actions button {
+  padding: 2px 8px;
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.accounts-row-actions button:hover {
+  color: var(--text);
+  background: var(--overlay-hover);
+  border-color: var(--border-medium);
+}
+
+.accounts-hint,
+.accounts-info {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  line-height: 1.5;
+  margin-top: 8px;
+}
+.accounts-info {
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  margin-top: 0;
+}
+
+/* 未启用态（部署向导）的标题/正文。**不给外框**——里面的 .accounts-wizard 自带边框+底色，
+   再套一层就是"框里套框"。 */
+.accounts-not-enabled {
+  padding: 0;
+}
+.accounts-ne-title {
+  font-size: var(--font-size-mono);
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.accounts-ne-body {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+/* U7：维护区收进 <details> 默认折叠——加账号 / 自检 / 补链都低频且带 danger，不该常驻占版面。 */
+.accounts-maint-wrap {
+  margin-top: 10px;
+}
+/* 折叠标记跟随本仓既有范式（.card-compact-summary / .block-summary / .remote-wrapper-summary
+   都是「去掉原生三角 + ::before 自绘 ▸/▾」），别在这里独一份显原生三角。 */
+.accounts-maint-wrap > summary {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+  list-style: none;
+}
+.accounts-maint-wrap > summary::-webkit-details-marker {
+  display: none;
+}
+.accounts-maint-wrap > summary::before {
+  content: "▸ ";
+  color: var(--text-faint);
+}
+.accounts-maint-wrap[open] > summary::before {
+  content: "▾ ";
+}
+.accounts-maint-wrap > summary:hover {
+  color: var(--text);
+}
+/* 折叠容器已给了标题，里面那块就不必再顶一个 margin */
+.accounts-maint-wrap .accounts-maint {
+  margin-top: 6px;
+}
+
 /* A6:设置「账号」组的部署/维护向导 */
 .accounts-wizard,
 .accounts-maint {
@@ -5606,11 +5876,8 @@ body.settings-window-mode .grid-monitor-trigger {
   border-radius: 6px;
   background: color-mix(in srgb, var(--accent) 5%, transparent);
 }
-.accounts-maint-title {
-  font-weight: 600;
-  font-size: 12px;
-  opacity: 0.85;
-}
+/* （U7 删掉了 .accounts-maint-title 的规则：产生它的那个 div 已被 <details> 的 <summary> 取代，
+   全仓无使用者。） */
 .accounts-wiz-field {
   display: flex;
   flex-direction: column;
