@@ -1831,6 +1831,24 @@ export class TabManager {
   }
 
   /**
+   * audit-fixes F01（修 B1，full-audit 阻塞）：resume 前**现读磁盘** pin，不读内存镜像
+   * `accountLastByS`。后者是 tab 徽章的 10s 刷新数据源，在①启动首轮刷新前（空 Map）②
+   * `list_last_accounts` 抛错被 main.ts 无条件覆写成空 ③刚显式钉 pin 后 10s 内还没轮询到，
+   * 这三种窗口里读它 → `withAccount` 的不-clobber 守卫拿到假 priorPin=null → 把磁盘真实
+   * pin 静默覆盖成全局当前工作账号。与 history.ts:1489 的「现读」同口径，三处 resume 一致。
+   * 读不到（无 pin / 查询失败）→ undefined → withAccount 落全局账号/基座，与旧行为一致
+   * （区别只是不再"错误地覆盖"既有 pin）。
+   */
+  private async readSessionPin(sid: string): Promise<string | undefined> {
+    try {
+      const map = await invoke<Record<string, string>>("list_last_accounts");
+      return map?.[sid];
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * F37：手动 resume 一个已结束（灰）的 Tab。与历史浏览器 ↺ 同一套语义：
    * 本地 → 新终端窗口跑 resume（尊重 F34 自定义命令，缺省 cc 检测→claude）；
    * 远端 → F41 一键拉起 wt.exe/PowerShell 跑 `ssh -t …`，失败回退复制命令。
@@ -1852,7 +1870,8 @@ export class TabManager {
         {
           sessionId: sid,
           // account-ux U3:未显式选号 → 跟随(lastAccount sticky → 当前工作账号 → 基座)。显式选号维持 A4。
-          follow: accountName ? undefined : { lastAccount: this.accountLastByS.get(sid) },
+          // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
+          follow: accountName ? undefined : { lastAccount: await this.readSessionPin(sid) },
         },
       );
       return;
@@ -1908,7 +1927,8 @@ export class TabManager {
       async (cd) => {
         await runRemoteResumeTmux(origin, sid, cwd, behavior.resumeCommandRemote, name, cd);
       },
-      { sessionId: sid, follow: { lastAccount: this.accountLastByS.get(sid) } },
+      // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
+      { sessionId: sid, follow: { lastAccount: await this.readSessionPin(sid) } },
     );
   }
 

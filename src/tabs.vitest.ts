@@ -788,6 +788,49 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
   });
 });
 
+// audit-fixes F01（修 B1，full-audit 阻塞）：跟随 resume 的 pin 必须**现读磁盘**
+// (`list_last_accounts`)，不读内存镜像 `accountLastByS`——后者在启动窗口 / 查询失败 /
+// 刚显式钉后 10s 内是陈旧或空的，读它会让 withAccount 的不-clobber 守卫拿到假 priorPin=null，
+// 把磁盘真实 pin 静默覆盖成全局当前工作账号。变异锚点：把 readSessionPin 换回
+// this.accountLastByS.get(sid)，这两条即红（list_last_accounts 不再被 invoke）。
+describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读覆盖）", () => {
+  let tm: TabManager;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tm = makeTM();
+    // 内存镜像里种一个**陈旧**值,证明 resume 不依赖它;磁盘(list_last_accounts)才是真相源。
+    tm.setSessionAccounts([], new Map(), new Map([["r1", "STALE"]]));
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_last_accounts" ? Promise.resolve({ r1: "z" }) : Promise.resolve(undefined),
+    );
+  });
+
+  it("resumeTab（直连，跟随）→ 现读 list_last_accounts，不读内存镜像", async () => {
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    await (tm as unknown as { resumeTab(sid: string): Promise<void> }).resumeTab("r1");
+    expect(invoke).toHaveBeenCalledWith("list_last_accounts");
+  });
+
+  it("resumeTabTmux（tmux，跟随）→ 现读 list_last_accounts，不读内存镜像", async () => {
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    await (
+      tm as unknown as { resumeTabTmux(sid: string): Promise<void> }
+    ).resumeTabTmux("r1");
+    expect(invoke).toHaveBeenCalledWith("list_last_accounts");
+  });
+
+  it("显式选号（带账号名）→ 不进跟随分支、不读 pin（list_last_accounts 不被 invoke）", async () => {
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    await (
+      tm as unknown as { resumeTab(sid: string, accountName?: string): Promise<void> }
+    ).resumeTab("r1", "z");
+    expect(invoke).not.toHaveBeenCalledWith("list_last_accounts");
+  });
+});
+
 describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1）", () => {
   let tm: TabManager;
   beforeEach(() => {
