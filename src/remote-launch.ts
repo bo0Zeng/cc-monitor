@@ -82,6 +82,15 @@ export function buildEnvPrefix(configDir?: string): string {
 }
 
 /**
+ * A4/F03：resume 载荷单一来源（tmux create 版 `buildResumeTmuxCmd` 与 idle 就地复用版
+ * `buildResumeIntoExistingTmuxCmd` 共用，防两处漂移）：`[<账号前缀>]unset <嵌套env>; <launcher> --resume <sid>`。
+ * 账号前缀空 configDir → ""（与旧载荷逐字节相同）。sid 校验由调用方在拼名/拼命令处兜底。
+ */
+function buildResumePayload(sid: string, launcher: string, configDir?: string): string {
+  return `${buildEnvPrefix(configDir)}unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(launcher)} ${AGENT_PROFILE.resumeFlag} ${sid}`;
+}
+
+/**
  * 直连 resume 命令（F41）：`unset <嵌套env>; [cd '<cwd>' && ]<launcher> --resume <sid>`。
  * 经 `ssh -t user@host -- "<此串>"` 在远端登录 shell 里执行；同一文本也用于
  * 拉起失败时的剪贴板回退（粘贴到任何远端终端语义一致）。
@@ -139,7 +148,7 @@ export function buildResumeTmuxCmd(
     throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(tmuxName)}`);
   }
   // A4：账号前缀在 unset 之前（空 configDir → "" → 与旧载荷逐字节相同，#72 @ccm_sid 正交不受影响）。
-  const payload = `${buildEnvPrefix(configDir)}unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(launcher)} ${AGENT_PROFILE.resumeFlag} ${sid}`;
+  const payload = buildResumePayload(sid, launcher, configDir);
   const c = cwd.trim();
   // 命令语法归后端座（SS-12 §31）。target 裸拼（`cc-<sid8>[-N]` 已过 `[A-Za-z0-9_-]` 校验）。
   // #72：把**完整 sid**当 `@ccm_sid` 传给座——resume 编排自建会话带身份,cc-monitor 之后
@@ -150,6 +159,33 @@ export function buildResumeTmuxCmd(
     quotedPayload: posixQuote(payload),
     ccmSid: sid,
   });
+}
+
+/**
+ * F03（idle-tmux 就地复用）：往一个**已存在的空 tmux**（claude 已退、只剩交互 shell 的 `cc-<sid8>`，
+ * `@ccm_sid` 命中但 command≠claude）就地 resume——send-keys 载荷 + attach，**不 new-session**。
+ * 复用原会话名 = 不产 `cc-<sid8>-N` 孤儿（治 #76 根因）；且修 create-gate 在会话已存在时短路跳过
+ * send-keys、把用户 attach 进没起 claude 的空 shell（#75 一条）。载荷与 create 版共用 `buildResumePayload`。
+ * **基座（无 configDir）时前置 `unset CLAUDE_CONFIG_DIR;`**：清掉空 shell 可能残留的旧账号 env
+ * （避免在错账号数据目录 resume——#75 的复用变体）；账号复用则由载荷里的 export 覆盖。
+ * sid / name 非法 → throw（绝不拼进命令）。
+ */
+export function buildResumeIntoExistingTmuxCmd(
+  sid: string,
+  name: string,
+  launcher = AGENT_PROFILE.defaultLauncher,
+  configDir?: string,
+): string {
+  if (!isValidSessionId(sid)) {
+    throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
+  }
+  // 复用现有会话名（来自 list_remote_tmux），仍防御性校验：首字符非 `-`，其余 `[A-Za-z0-9_-]`。
+  if (!/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(name)) {
+    throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(name)}`);
+  }
+  const envReset = configDir ? "" : "unset CLAUDE_CONFIG_DIR; ";
+  const payload = envReset + buildResumePayload(sid, launcher, configDir);
+  return SESSION_BACKEND.runInExistingAttach({ target: name, quotedPayload: posixQuote(payload) });
 }
 
 /**

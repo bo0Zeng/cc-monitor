@@ -88,6 +88,7 @@ vi.mock("./error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("./remote-launch-run", () => ({
   runRemoteResume: vi.fn().mockResolvedValue(undefined),
   runRemoteResumeTmux: vi.fn().mockResolvedValue(undefined),
+  runRemoteResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
   runRemoteAttach: vi.fn().mockResolvedValue(undefined),
 }));
 // Batch14-F42：turn-end 通知与渲染独立,tabs 测试里 mock 成空壳(单独在 turn-notify.vitest 测)。
@@ -109,7 +110,12 @@ vi.mock("./account-restart", () => ({
 import { invoke } from "@tauri-apps/api/core";
 import { restartWithAccount } from "./account-restart";
 import { showActionFailureToast } from "./error-toast";
-import { runRemoteResume, runRemoteResumeTmux, runRemoteAttach } from "./remote-launch-run";
+import {
+  runRemoteResume,
+  runRemoteResumeTmux,
+  runRemoteResumeIntoExistingTmux,
+  runRemoteAttach,
+} from "./remote-launch-run";
 import { TabManager, findClaudeTmux, isCwdFallbackMatch, claudeExited, type Tab } from "./tabs";
 
 // 私有字段的只读探针（TS private 仅编译期；运行时可读）。仅测试用。
@@ -841,6 +847,73 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
     ).resumeTab("r1", undefined, true);
     expect(invoke).not.toHaveBeenCalledWith("list_last_accounts");
     expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined);
+  });
+});
+
+// audit-fixes F03 步骤1（idle-tmux 就地复用，治 #76 根因 + #75 一条）：
+// 目标 sid 的 tmux 还在（@ccm_sid 命中）但 command≠claude（空 shell）→ resumeTabTmux 应**复用原会话名**
+// 就地 resume（runRemoteResumeIntoExistingTmux），而不是 pickFreshTmuxName 起 cc-<sid8>-N 新会话。
+// 变异锚点：删掉 ①.5 idle 分支 → 回落 ② 起新会话 → runRemoteResumeTmux 被调、reuse 没被调 → 红。
+describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
+  let tm: TabManager;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tm = makeTM();
+  });
+
+  it("sid 的空 tmux（@ccm_sid 命中、command=bash）→ 就地复用原名 resume，不起新会话", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve([
+            // claude 已退,只剩交互 shell 的 cc-<sid8>:sid 命中但 command=bash。
+            { name: "cc-r1abcd", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "r1" },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    await (tm as unknown as { resumeTabTmux(sid: string): Promise<void> }).resumeTabTmux("r1");
+    // 就地复用原名(cc-r1abcd),不 attach(不是 live)、不起新会话。
+    expect(runRemoteResumeIntoExistingTmux).toHaveBeenCalledWith(
+      "aya",
+      "r1",
+      "cc-r1abcd",
+      "cct",
+      undefined,
+    );
+    expect(runRemoteResumeTmux).not.toHaveBeenCalled();
+    expect(runRemoteAttach).not.toHaveBeenCalled();
+  });
+
+  it("sid 的 tmux 里 command=claude（活）→ 走 attach，不走就地复用", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve([
+            { name: "cc-r1abcd", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "r1" },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    await (tm as unknown as { resumeTabTmux(sid: string): Promise<void> }).resumeTabTmux("r1");
+    expect(runRemoteAttach).toHaveBeenCalledWith("aya", "cc-r1abcd");
+    expect(runRemoteResumeIntoExistingTmux).not.toHaveBeenCalled();
+  });
+
+  it("sid 无对应 tmux（全新/漂移占名）→ 起全新 resume，不就地复用", async () => {
+    // 列表里只有别的 sid 的会话 → 目标 sid 既非 live 也无 idle → 落 pickFreshTmuxName 新起。
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve([
+            { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other" },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    await (tm as unknown as { resumeTabTmux(sid: string): Promise<void> }).resumeTabTmux("r1");
+    expect(runRemoteResumeTmux).toHaveBeenCalled();
+    expect(runRemoteResumeIntoExistingTmux).not.toHaveBeenCalled();
   });
 });
 

@@ -21,7 +21,7 @@
 |----|------|--------|------|------|--------|
 | F01 | follow-resume 账号安全 + resume 选账号 | pin 现读磁盘(修 B1);resume 入口加账号下拉(含「基座/不隔离」),默认全局当前账号,显式重钉(修 #75) | **完成** | — | 🔴P0 |
 | F02 | kill 白名单 | `kill_remote_tmux` 补 `is_ccm_tmux_name`(与 send-keys 对称)+订正假注释(修 I1) | **完成** | — | 🔴P0 |
-| F03 | 统一 tmux 起会话管线 | 所有 tmux 起同名规则 + 建序列直接设 @ccm_sid + rbind 标题(不进 tmux 敲 ccm) + claude 退出即收(少留孤儿);修 #72残留/#74/#41结构因/命名分叉 | 待规划 | — | 🟠P1 |
+| F03 | 统一 tmux 管线 + 三态生命周期 | 三态(live/**idle-tmux**/archived);idle 就地复用 resume(治 #76)+灰灯+attach-idle+建序列设 rbind 标题(#74/#41)。用户拍板 B 保留(不自动 kill) | **实现中**(步骤1/4 完成) | — | 🟠P1 |
 | F04 | 统一直连起会话管线 | 所有直连一致 + keepalive(失败不闪退) + 每入口提供 tmux/直连后端选择(修 #75 直连腿) | 待规划 | F01 | 🟠P1 |
 | F05 | 手动清理孤儿 | 「清理孤儿会话」按钮:点了才扫 cc-* + 列确认无 claude + 二次确认 kill;不自动(缓解 #76) | 待规划 | F02 | 🟠P1 |
 | F06 | 绑定族验证 + 残留 | 代码层确认 #60②/#63/#43/#72-tmux 的 F74* 完整并补测;新修 #63 尾消息 torn-tail + #43 父子拉不起来 | 待规划 | — | 🟠P1 |
@@ -76,3 +76,4 @@
 - 02 — 重排 — 并入 issue bug 根因（#76/#75/#72 等）+ 用户四决策（resume 选账号/两后端都保留各自一致/孤儿仅手动/identity 建时设不进 tmux 敲 ccm）→ 扩为 F01–F13 + F14 用户自跑；账本加「起会话入口 UI」「载荷命名身份」「pin readSessionPin」三共享面
 - 03 — F01 完成 — 发现 per-account「用账号 X resume」picker A4/A5 已存在（步骤3 大半现成）；步骤2 补「用基座 resume」逃生口即闭合 #75 的选号面。**tmux 版 base + 历史页 base 项显式转 F04**（每入口后端×账号矩阵一处做，防两处各做）→ 账本「resume/起会话入口 UI」最终形态记明由 F04 收口
 - 04 — F02 完成 — kill 守卫与 send-keys 对称（cc-* 放行含 cwd 回退自建会话、非 cc- 拒），修 I1 误杀。**下一站 F03 触及 §6 开放问题「claude 退出即收 vs 保留可 attach」→ loop 停下交用户拍板后再实现**
+- 05 — F03 重塑 + 步骤1 完成 — **用户拍板 B 保留**（杀的是 tmux 不是 claude 会话,不自动 kill）+ 加**第三态 idle-tmux**（灰灯）+ idle 就地复用 resume/attach。§6 开放问题据此关闭（不再"退出即收"）。账本「载荷/命名/身份」最终形态更新：create 与 reuse 共用 `buildResumePayload`，reuse 走新 `runInExistingAttach`（无 new-session）。**F05 手动清理**范围缩为"无对应 tab 的真孤儿"（idle-tmux 现在是复用而非孤儿）。步骤1（idle 就地复用 resume）已交付，剩灰灯/attach-idle/rbind 标题（步骤2-4）
