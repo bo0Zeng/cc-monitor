@@ -138,6 +138,15 @@ pub async fn capture_remote_pane(origin: String, target: String) -> Result<Strin
 /// 的 tmux 存活对账兜（本命令不主动 archive，守 §24）。成功无输出；失败（会话不存在等）经 `2>&1` 捕获报错。
 #[tauri::command]
 pub async fn kill_remote_tmux(origin: String, target: String) -> Result<(), String> {
+    // audit-fixes F02(I1)：与 `tmux_send_keys` 对称——只 kill **本工具的 cc-* 会话**。
+    // 否则 F79 的 cwd 回退可能命中用户自己 `tmux new -s work` 里跑的 claude，
+    // `tmux kill-session -t work` 会端掉该会话的**所有 window/pane**（误杀无关工作）。
+    // cc-* 名（含 cwd 回退命中的自建会话）放行；非 cc-* 一律拒，让用户到那个 tmux 里自行处理。
+    if !is_ccm_tmux_name(&target) {
+        return Err(format!(
+            "拒绝 kill：非本工具 tmux 会话名: {target:?}（避免误杀你自己的 tmux 会话——kill-session 会连它的其它 window 一起端掉；请到该 tmux 里自行处理）"
+        ));
+    }
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
     let cmd = format!(
@@ -239,6 +248,21 @@ mod tests {
         assert!(!is_ccm_tmux_name("cc-a b")); // 空格（注入面）
         assert!(!is_ccm_tmux_name("cc-a;rm")); // 分号
         assert!(!is_ccm_tmux_name("cc-a$x")); // 元字符
+    }
+
+    /// audit-fixes F02(I1)：kill_remote_tmux 必须与 send-keys 对称,拒非 cc-* 名——
+    /// 防 F79 cwd 回退误杀用户自己 `tmux new -s work` 的整个会话。变异锚点:去掉 guard → 此测红
+    /// （非 cc- 名会往下走到 SSH，不再早退 Err「拒绝」）。cc-* 名不在此拦(会继续到 SSH,不在此验)。
+    #[tokio::test]
+    async fn kill_remote_tmux_rejects_non_ccm_name() {
+        for bad in ["work", "web", "0", "my-session", "cc-a b"] {
+            let r = kill_remote_tmux("aya".to_string(), bad.to_string()).await;
+            assert!(r.is_err(), "非 cc-* 名 {bad:?} 应被拒");
+            assert!(
+                r.unwrap_err().contains("拒绝"),
+                "{bad:?} 应是白名单拒绝(而非 SSH/配置错)"
+            );
+        }
     }
 
     /// A5+：send-keys 命令构造（补 R1）——enter=true 尾附 ` Enter`，false 不附；target/keys 经 shell_quote。
