@@ -94,6 +94,17 @@ resume/新会话 各站点接线 ── 徽章"信息才显"(live 实心/last �
      避 TDZ,已改掉;
   ③ `accounts.ts` 增 `alignableCurrentAccount`(current 过 `isSelectable`),兑现 U6 DoD「current 不可选不对齐」;
   ④ 预定 `tabs.ts` 对齐 public API 的最终形态,**U8 的 Ctrl+K/快捷键直接复用、不必再改**(避免下轮打补丁);
-  ⑤ U6 计划口径的两处偏离已记档:`⇄` 回到计划定的 **hover**(兼修布局挤压);「⚠k 汇总浮层」本轮用
+- 2026-07-25 **U7 Phase F 账本回写**:
+  ① `styles.css` 行的「补齐裸奔的 `.accounts-*`」已兑现(**18/20**——`.settings-accounts`/`.accounts-body`
+     是纯容器不需要规则,如实记账不充数);列定义放**表**上、行用 `subgrid`(+`@supports` 退回 flex),
+     **别再把 grid 打在行上**——那样每行各自成 grid,列跨行对不齐;
+  ② **新决定(供 U8 直接用,免得回头改 U7)**:U8 的「徽章色系统仅 ≥2 可选账号 && readyOrigins 才激活」
+     休眠规则**只作用于 chip 与 tab 徽章**;**设置账号表(横幅 + 表格行)是"颜色图例面",恒显豁免** ——
+     它是全应用唯一能学到"色块↔账号↔邮箱"映射的地方,单账号期休眠会导致加第二个号时突然满屏彩块。
+     另:U7 用的 `accounts.length < 2`(维护区默认展开)与 U8 的可选账号计数应抽**同一个纯函数**,别分叉。
+  ③ 记档:本仓**没有浅色主题**(`color-scheme: dark`,无 `prefers-color-scheme`),且 `theme.ts` 的 TOKENS
+     只覆盖 11 个 token,`--accent`/`--border-*`/`--overlay-hover`/`--text-faint` 不可换肤 ——
+     以后功能的 DoD 别再写"明暗主题各扫一眼",改写"零硬编码颜色 + var 全部有定义"。
+- 2026-07-25 U6 记录(续)⑤ U6 计划口径的两处偏离已记档:`⇄` 回到计划定的 **hover**(兼修布局挤压);「⚠k 汇总浮层」本轮用
      两步 confirm 顶替(已逐行列出会话→目标账号),**浮层顺延 U8**;对齐的 `compactFirst` 变体本轮不做
      (右键菜单已有)。

@@ -19,6 +19,7 @@ import {
   type Account,
 } from "../accounts";
 import { pickPrimaryOrigin } from "../account-chip";
+import { accountAvatarEl } from "../account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "./remote-section";
 import { showActionFailureToast } from "../error-toast";
 import { SETTINGS_APPLIED_EVENT } from "./events";
@@ -30,6 +31,8 @@ export class AccountsSection {
   private originSelect: HTMLSelectElement;
   private hosts: RemoteHostConfig[] = [];
   private origin: string | null = null;
+  /** U7：维护区展开态。null=用户还没表态（按账号数给默认）；true/false=用户手动开合过，reload 后保持。 */
+  private maintOpen: boolean | null = null;
 
   constructor() {
     const root = document.createElement("div");
@@ -255,8 +258,51 @@ export class AccountsSection {
     this.body.appendChild(box);
   }
 
+  /**
+   * account-ux U7：顶部「当前工作账号」横幅——把 chip / tab 徽章上那个概念在设置里讲清楚:
+   * 它管什么(新会话 + 没指定过账号的 resume)、不管什么(正在跑的会话)。
+   * 当前账号**不可选**(未登录 / in-place / 目录缺失)时不装作有——那种状态下 U6 的对齐面本来
+   * 就整体休眠(见 accounts.ts alignableCurrentAccount),横幅得如实说,否则用户会以为它在生效。
+   */
+  private renderCurrentBanner(def: Account | null): HTMLElement {
+    const box = document.createElement("div");
+    box.className = "accounts-current-banner";
+    // def 为 null 在 ready 分支下**不可达**（deriveUi 保证 accounts.length ≥ 1，effectiveDefault
+    // 则 find(isDefault) ?? accounts[0]）——这里只是防御，不给它编一套"未设置"的假文案。
+    const usable = def !== null && isSelectable(def);
+    if (!usable) box.classList.add("unusable"); // 语义=当前账号存在但不可用（非"没有当前账号"）
+
+    // 不可用时用 U5 已有的 ghost 态（"软/不作数"的既有视觉词汇），别再造新概念。
+    if (def) box.appendChild(accountAvatarEl(def.name, { size: 18, ghost: !usable }));
+
+    const main = document.createElement("div");
+    main.className = "accounts-current-main";
+    const name = document.createElement("span");
+    name.className = "accounts-current-name";
+    name.textContent = def ? def.name : "未设当前工作账号";
+    main.appendChild(name);
+    if (def?.email) {
+      const email = document.createElement("span");
+      email.className = "accounts-current-email";
+      email.textContent = def.email;
+      main.appendChild(email);
+    }
+    box.appendChild(main);
+
+    const scope = document.createElement("span");
+    scope.className = "accounts-current-scope";
+    scope.textContent = usable
+      ? "新会话 · 没指定过账号的 resume 用它；正在跑的会话不受影响"
+      : def
+        ? "该账号当前不可用（未登录 / 逃生口 / 目录缺失）——先修好它，账号徽章与对齐才会生效"
+        : "下面选一个账号「设为当前账号」";
+    box.appendChild(scope);
+    return box;
+  }
+
   private renderTable(state: AccountsState, accounts: Account[]): void {
     const def = currentWorkingAccount(state);
+    this.body.appendChild(this.renderCurrentBanner(def));
     const meta = state.meta;
     if (meta) {
       const info = document.createElement("div");
@@ -273,21 +319,35 @@ export class AccountsSection {
 
     const hint = document.createElement("div");
     hint.className = "accounts-hint";
+    // 管辖范围那句已由上方横幅说了（U7 前这里是唯一出处）——这里只留横幅**没说**的部分，
+    // 别在同一屏里把同一句话逐字重复两遍。
     hint.textContent =
-      "点某账号「设为当前账号」= 以后新会话、以及没指定过账号的 resume 都用它；正在跑的会话不受影响、不动远端、不碰凭据。未登录的账号可点它那行的「去登录」在终端里 /login。";
+      "切换当前账号只改本机设置：不动远端、不碰凭据、不重启任何东西。未登录的账号可点它那行的「去登录」在终端里 /login。";
     this.body.appendChild(hint);
 
-    this.body.appendChild(this.renderMaintenance());
+    this.body.appendChild(this.renderMaintenance(accounts.length));
   }
 
-  /** A6：已启用态的「维护」区——加账号 / 自检 / 补链，均弹终端。 */
-  private renderMaintenance(): HTMLElement {
+  /** A6：已启用态的「维护」区——加账号 / 自检 / 补链，均弹终端。
+   *  account-ux U7：整块收进 `<details>` **默认折叠**——三项都低频且带 danger（加账号会动远端
+   *  目录、补链会改软链），常驻展开既占版面又把危险操作摆在手边。内部结构一行未改。 */
+  private renderMaintenance(accountCount: number): HTMLElement {
+    const wrap = document.createElement("details");
+    wrap.className = "accounts-maint-wrap";
+    // 默认展开态**按状态给**，不是常量：刚跑完 A6 部署向导回来正好是「ready + 只有 1 个账号」，
+    // 此刻用户唯一该做的下一步就是"加第二个账号"（否则多账号隔离白装了），把唯一的正路藏进
+    // 折叠等于死胡同。稳态（≥2 个账号）仍默认折叠——那三项都低频且带 danger。
+    // 用户手动开合过就以用户的选择为准（reload 会重建 DOM，不记住的话展开态和输入会被吞掉）。
+    wrap.open = this.maintOpen ?? accountCount < 2;
+    wrap.addEventListener("toggle", () => {
+      this.maintOpen = wrap.open;
+    });
+    const summary = document.createElement("summary");
+    summary.textContent = "维护（加账号 / 自检 / 补链）";
+    wrap.appendChild(summary);
+
     const box = document.createElement("div");
     box.className = "accounts-maint";
-    const title = document.createElement("div");
-    title.className = "accounts-maint-title";
-    title.textContent = "维护";
-    box.appendChild(title);
 
     // 加账号：内联小表单（名 + 可选凭据快照路径）→ 弹终端 add --apply。
     const addForm = document.createElement("div");
@@ -341,7 +401,8 @@ export class AccountsSection {
     );
     ops.append(verifyBtn, syncBtn);
     box.appendChild(ops);
-    return box;
+    wrap.appendChild(box);
+    return wrap;
   }
 
   private accountRow(a: Account, isCurrent: boolean): HTMLElement {
@@ -354,6 +415,9 @@ export class AccountsSection {
     mark.textContent = isCurrent ? "★" : "";
     mark.title = isCurrent ? "当前工作账号" : "";
     row.appendChild(mark);
+
+    // account-ux U7：复用 U4 的账号头像——与状态栏 chip、tab 徽章同一套 hash 色，三处肉眼可对应。
+    row.appendChild(accountAvatarEl(a.name, { size: 16 }));
 
     const name = document.createElement("span");
     name.className = "accounts-row-name";
