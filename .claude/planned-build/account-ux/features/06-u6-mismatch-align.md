@@ -11,7 +11,7 @@
 | tab **hover** `⇄`(仅活会话) | ✅ | `.tab:hover .tab-align-btn.is-eligible`(CSS 管露面)+ JS 管够格 |
 | 精确 `@ccm_sid` 才动手 | ✅(点击时守卫) | `restartTabWithAccount` 的 `live.sid === sid`;**显示层不预判**,见「已知取舍」 |
 | chip `⚠k` | ✅ | `.status-account-mismatch`,push 模型 `updateMismatchBadge(count)` |
-| 汇总浮层 | ⏭ **顺延 U8** | 现用两步 `window.confirm`,已逐行列出「会话 → 目标账号」 |
+| 汇总浮层 | ⏭ **未做** | 现用两步 `window.confirm`,已逐行列出「会话 → 目标账号」。**原写"顺延 U8",但 U8 收官时它在任何文件里都没再出现过(承诺断链,Phase G 文档审计揪出)** → 已改登记进 `.claude/planned-build/BACKLOG.md` §A,待用户定"做 / 正式取消" |
 | 批量对齐(空闲/回合中两步确认) | ✅ | `alignAllToCurrentAccount` |
 | 均复用 `restartWithAccount` | ✅ | 零新编排;仅加 `confirm` 透传 + 返回值 |
 | 「current 不可选不对齐」测 | ✅ | 新纯函数 `alignableCurrentAccount` + 5 个 vitest |

@@ -12,7 +12,9 @@
 > · **实测(每步 Read 回盘 + 重定向文件核实,不信内联)**：tsc 0 / npm test **453**(37 文件,+acct-deploy 12 +graceful 3 +claudeExited 5 +前导-1) / cargo test --lib **352**(+send_keys 构造测) / build ✓ / **真机零改动**(A6 自身不落盘,落盘全在用户看着的终端里由用户确认;A5+ 只 send-keys/kill/resume 远端 ssh)。
 
 > **Phase G 收官(2026-07-24)**:1 个聚焦集成审计 agent 独立复核（自己重跑构建测试 + grep 核实"声称做了"的项，不信文档自述）——**零阻塞零重要**。关键：历史「日志谎报」事故**未复现**，features/05 声称项（删 peekSelectableAccounts / `live.sid===sid` 守卫 / tmux_send_keys 白名单 / compact 真检测器）逐条 grep/读码为真。五维度全过:① account store 六消费方一致无漂移(三站点走 withAccount + restartWithAccount 刻意分离);② 共享面账本落最终形态(全族仅 1 条计划内 TODO=优雅退出 V3);③ 文档-代码一致 + §7 四分支齐;④ daemon 只读边界全族守住;⑤ 无回归。**实测（agent 独立重跑 + 我端到端）**:tsc 0 / npm test 433 / cargo test --lib 351 / daemon cargo 124 / build ✓ / 真机零改动(生产代码只写 monitor data dir,不碰用户 ~/.claude)。
-> **交回用户 · 遗留项（均需用户单独决策）**:(1) **发版**=daemon 重 zigbuild+重嵌入+build_id 对拍+版本四处对齐+git tag（注：A6/A5+ 均**不新增 daemon 面**，A6 纯前端、A5+ 只扩 monitor 侧 `tmux_send_keys`，故不额外加发版负担；发版仍是 A2 daemon 那批的既有需求）;(2) **真机迁移**=用户空闲自跑 cc-acct-iso 管线（现也可用 A6 向导在设置里点着跑）+ 删 ~/.bashrc 的 cc-account-block;(3) **A7 本地 Windows 切号**=future，需单独审批;(4) 计划内裁剪/建议(非缺陷,已记账):resolveLiveTmux DRY、DEFAULT_COMPACT_WAIT_MS 90s 准死常量、非 cc-* 会话 compact-skip toast 文案、建议-4 daemon 结构化 reason code(发版前)、A6 未做 rollback 向导化(高危,故意不做);(5) **A2-A6 + A5+ 所有改动尚未 commit**(工作树 ??/M)——是否 commit / 如何拆需用户拍板。**已消项**：~~A6 部署向导~~(已完成)、~~优雅退出 V3~~(已完成)、~~tmux_send_keys 命令测~~(A5+ 补上)。
+> **交回用户 · 遗留项（均需用户单独决策）**:~~(1) **发版**~~ **已完成**：v3.2.0 已发布（commit `b889808` + git tag `v3.2.0`，CI 交叉编译并内嵌两 arch musl daemon）;(2) **真机迁移**=用户空闲自跑 cc-acct-iso 管线（现也可用 A6 向导在设置里点着跑）+ 删 ~/.bashrc 的 cc-account-block;(3) **A7 本地 Windows 切号**=future，需单独审批;(4) 计划内裁剪/建议(非缺陷,已记账):resolveLiveTmux DRY、DEFAULT_COMPACT_WAIT_MS 90s 准死常量、非 cc-* 会话 compact-skip toast 文案、建议-4 daemon 结构化 reason code(发版前)、A6 未做 rollback 向导化(高危,故意不做);~~(5) **尚未 commit**~~ **已完成**：随 `b889808` 一并提交并发版。
+> **真正剩余的用户待办只有两条**：**(2) 真机迁移**（用户空闲自跑 cc-acct-iso 管线，或用 A6 向导在设置里点着跑 + 删 ~/.bashrc 的 cc-account-block）与 **(3) A7 本地 Windows 切号**（future，需单独审批）；(4) 是计划内裁剪/建议、非缺陷。
+> **过期修订(2026-07-25，account-ux Phase G 文档-代码交叉对比)**：本段原写着"发版待办"与"改动尚未 commit"，而写下它的那个 commit 本身就是 v3.2.0 —— 恢复入口自相矛盾，隔周回来的人会以为还没发版。已划掉。**已消项**：~~A6 部署向导~~(已完成)、~~优雅退出 V3~~(已完成)、~~tmux_send_keys 命令测~~(A5+ 补上)。
 
 > **⚠️ 恢复记录(2026-07-24)**:上一段 session 的 "A4 步骤 4-5 done / cargo Finished / 62·54 green" 等日志**是终端污染(vitest --watch)伪造的,磁盘上根本没有那些改动**。核实真相:① `remote-launch.ts` 调 `buildEnvPrefix` 但**没定义**、② `accounts.ts` 用 `SESSION_ACCOUNTS_TTL_MS` 但**没定义** → 整棵树曾 **tsc 4 error 编译不过**;`history.rs last_account` / `remote-launch-run.ts configDir 透传` / `sessionBadge lastAccountByS` / `remote-launch-env.vitest.ts` **全部不在盘上**;`panel-groups.vitest.ts` 2 红(远端→账号改名漏改)。
 > **已修复到真绿基线**:补 `buildEnvPrefix`/`isValidConfigDir` 定义 + `SESSION_ACCOUNTS_TTL_MS`(账号 30s / 会话 8s)+ 修 `panel-groups.vitest.ts`。**实测 `tsc --noEmit` exit 0 / `CI=true npx vitest run` = 34 文件 393 全绿**(此前"405"是伪造数)。
@@ -121,7 +123,7 @@
 - **manifest 加了 `updatedAt`/`mode` 两字段** + 五条消费方规则(见 MASTERPLAN §契约)。A3 的 `accounts.ts` 按此消费。
 - **daemon 三命令的 monitor 包装在 `src-tauri/src/accounts.rs`**:`available:false` 区分了"daemonless"与"版本过旧",A3/A5 据此分支降级。
 - **`--session-accounts` 的账号归属经过 procStart 对拍**:`account:null` = 确实不知道(不猜),A3 徽章遇 null 显示 `—`。
-- **BUILD_ID 已 bump 但内嵌 daemon 未重编**:`cargo check` 会警告"内嵌 daemon 旧"——这是预期,A2–A5 一起发版时解决。本地验证需手工 `cargo zigbuild` 部署 dev daemon。
+- **~~BUILD_ID 已 bump 但内嵌 daemon 未重编~~（**已由 v3.2.0 的 CI 交叉编译解决**）：原文 BUILD_ID 已 bump 但内嵌 daemon 未重编**:`cargo check` 会警告"内嵌 daemon 旧"——这是预期,A2–A5 一起发版时解决。本地验证需手工 `cargo zigbuild` 部署 dev daemon。
 
 ## 关键红线
 - 不擅自改用户 `~/.claude`(迁移由用户跑管线;我只沙盒测)。

@@ -160,9 +160,21 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   }
 
   // ⑤ 用新账号 resume（tmux 版，注入其 configDir）。失败走 runRemoteResumeTmux 既有剪贴板回退。
-  await runRemoteResumeTmux(origin, sessionId, cwd, launcher, tmuxName, configDir);
+  const launched = await runRemoteResumeTmux(origin, sessionId, cwd, launcher, tmuxName, configDir);
 
   // ⑥ 记 lastAccount（源②）+ 提示。
+  // **只有真拉起来了才算成功**（Phase G 审计）：此前无条件记账+报成功,而第⑤步的失败是
+  // 确定性的（F34 launcher 含双引号被 launch.rs 拒 / tmux 名不合白名单 / 缺 OpenSSH）——
+  // 那种情况下会话已被 kill 却没起来,还被钉上"上次用账号 X 起"、被批量对齐计成成功。
+  if (!launched) {
+    showActionFailureToast(
+      "旧会话已结束，但新会话未能自动拉起",
+      `已用「${accountName}」的命令回退到剪贴板——请到远端终端粘贴执行，会话内容不会丢（jsonl 续写）。` +
+        `未记账本次账号归属。`,
+      { level: "error", durationMs: 12000 },
+    );
+    return false;
+  }
   void recordLastAccount(sessionId, accountName);
   showActionFailureToast(
     "已用新账号重启",

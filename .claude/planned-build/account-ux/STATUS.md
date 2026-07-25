@@ -3,7 +3,7 @@
 > 恢复入口。承接 account-isolation A0–A6(v3.2.0)。本轮纯前端 UX/UI 完善,不触发发版。
 > 每轮开头先读本文件 + 当前 feature 文件,从记录阶段接着干。
 
-## 当前阶段:**✅ U1–U8 全部完成 → 进 Phase G 最终验收**
+## 当前阶段:**✅ U1–U8 完成 + Phase G 最终验收收官 → 交回用户拍板**
 
 > **进度(分支 `account-ux`,不 push)**:
 > - U1 ✅ `72c3b1e`:纯函数地基(resolveFollowAccount/currentWorkingAccount/detectAccountMismatch/accountColorSlot/sessionBadge source)。门禁 tsc0 / vitest 475 / remote-launch 回归绿。
@@ -70,7 +70,31 @@
 >   **顺手堵的静默坑**:`editor.ts` 里 category 顺序是手抄数组,TS 不报错,漏加会让整组快捷键在编辑器
 >   里**静默消失** → 提成 `CATEGORY_ORDER` 单一真相源 + 覆盖测。
 >   门禁:tsc0 / **npm test 564**(536→+28)/ build ✓ 0 警告。变异验证 4 个全杀。
-> - **当前 → Phase G 最终验收**(/full-audit + 主计划终账 + 端到端 + 收尾汇报)。
+> - **Phase G 最终验收(2026-07-25)**:端到端门禁 tsc0 / **npm test 564**(U1 基线 475 → +89)/ build ✓ 0 警告。
+>   **红线对比 main 全部核验通过**:零 Rust/daemon 改动、零版本文件(package.json/tauri.conf/Cargo)改动、
+>   9 个 commit 全无 Co-Authored-By、未 push;**`remote-launch.ts` 与 `remote-launch.test.ts` 逐字节零改动**
+>   ⇒ A4/A5 的注入契约硬成立(不是"我觉得没破",是 diff 为空)。
+>   四视角 full-audit(整体设计/文档工程/代码工程/实现细节)+ 文档-代码交叉对比。
+>   **文档审计的关键发现(已处理)**:①U6 承诺「⚠k 汇总浮层顺延 U8」而 U8 收官时**在任何文件里都没再
+>   出现过**——需求无声蒸发;②features/08 写「记进 STATUS 待办」而实际落在 MASTERPLAN,照指引找不到;
+>   ③遗留项散落 12 个文件 5 种标题、无单一入口。→ 建 `.claude/planned-build/BACKLOG.md` 集中登记,
+>   并立规矩:凡写"顺延/future/记进待办"的**同时**在 BACKLOG 登一行。
+>   ④`account-isolation/STATUS.md` 的遗留项已过期到自相矛盾(写着"发版待办""改动尚未 commit",
+>   而写下它的那个 commit 本身就是已发版的 v3.2.0)→ 已修正。
+>   **仍未做(报给用户决定,不擅自扩范围)**:README 停在 v3.0.0 且**零账号功能覆盖**、仓内无账号用户
+>   文档——这些是**已发版 v3.2.0** 的产品文档债,不是 account-ux 的,详见 BACKLOG §D。
+>   **四视角审计(整体设计/文档工程/代码工程/实现细节)另揪出 2 个阻塞,均已修**:
+>   ①`restartWithAccount` 把"走到第⑤步"当成"已 resume"——`runRemoteResumeTmux` 返回 void 且自吞
+>   两条失败路径 ⇒ **会话被 kill、没起来,却照样记 pin、报成功、被批量计成成功**;失败是**确定性**的
+>   (F34 launcher 含双引号被 launch.rs 拒 / tmux 名不合白名单 / 缺 OpenSSH),不是概率事件。
+>   这正是 U6 审计「按发起数报成功」要治的病,当时**只修在计数层、没修在数值来源**。
+>   → 改返回 boolean,未拉起时不记账 + error toast + return false;补返回值契约测 + 变异验证。
+>   ②`mcp-section.ts` 含**裸 NUL 字节**,该 643 行模块(含 4 个写命令调用点)被 `file` 判为 `data`、
+>   **grep 静默跳过**——而本仓的跨切面安全网就是 grep。→ 改转义,行为等价。
+>   其余 20+ 条(daemon 只读无自动化门禁、CSS 零门禁 + 37 个孤儿类名、main.ts 零覆盖、TabManager
+>   上帝类、若干并发/新鲜度窗口)**未修,已全部登记进 BACKLOG §A2 报给用户**——多为既有债或需单独
+>   决策,不在本轮"账号 UX 完善"范围内擅自扩。
+>   **终账门禁**:tsc0 / **npm test 566** / build ✓ 0 警告 / `remote-launch.{ts,test.ts}` 对 main 逐字节零改动。
 
 - **Phase A 产物**:`MASTERPLAN.md`(目标/架构/★共享面账本/U1–U9 拆分)。三视角设计 agent 已交叉收敛。
 - **用户已拍板的 4 决策(全选推荐项,已锁进语义)**:
