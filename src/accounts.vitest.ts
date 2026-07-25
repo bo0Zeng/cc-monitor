@@ -482,4 +482,69 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     expect(run).toHaveBeenCalledWith(undefined);
     expect(onUnsel).toHaveBeenCalledWith("z");
   });
+
+  // ---- account-ux U2：跟随模式（opt-in opts.follow）----
+  it("follow：lastAccount 可选 → run(它的 configDir) + 记 lastAccount（粘性压过 current）", async () => {
+    loadCfg.mockResolvedValue({ accounts: { defaultName: "b" } });
+    invokeMock.mockResolvedValue(
+      okRaw([acct({ name: "z", configDir: "/h/z" }), acct({ name: "b", configDir: "/h/b" })]),
+    );
+    const run = vi.fn().mockResolvedValue(undefined);
+    await withAccount("aya", null, run, { sessionId: "s1", follow: { lastAccount: "z" } });
+    expect(run).toHaveBeenCalledWith("/h/z"); // last=z 压过 current=b
+    expect(invokeMock).toHaveBeenCalledWith("update_history_metadata", {
+      sessionId: "s1",
+      patch: { lastAccount: "z" },
+    });
+  });
+  it("follow：lastAccount 不可选 → 下沉当前工作账号（config defaultName）+ 记 current", async () => {
+    loadCfg.mockResolvedValue({ accounts: { defaultName: "b" } });
+    invokeMock.mockResolvedValue(
+      okRaw([acct({ name: "z", loggedIn: false }), acct({ name: "b", configDir: "/h/b" })]),
+    );
+    const run = vi.fn().mockResolvedValue(undefined);
+    await withAccount("aya", null, run, { sessionId: "s1", follow: { lastAccount: "z" } });
+    expect(run).toHaveBeenCalledWith("/h/b"); // z 不可选 → current=b
+    expect(invokeMock).toHaveBeenCalledWith("update_history_metadata", {
+      sessionId: "s1",
+      patch: { lastAccount: "b" },
+    });
+  });
+  it("follow 迁移守卫：无 lastAccount + 老 config 仅 defaultName → 解析出当前账号", async () => {
+    loadCfg.mockResolvedValue({ accounts: { defaultName: "z" } });
+    invokeMock.mockResolvedValue(
+      okRaw([acct({ name: "z", configDir: "/h/z" }), acct({ name: "b", configDir: "/h/b" })]),
+    );
+    const run = vi.fn().mockResolvedValue(undefined);
+    await withAccount("aya", null, run, { follow: {} });
+    expect(run).toHaveBeenCalledWith("/h/z");
+  });
+  it("follow：last 与 current 都不可选 → run(undefined) 落基座，不 toast、不记账", async () => {
+    loadCfg.mockResolvedValue({}); // 无 defaultName
+    invokeMock.mockResolvedValue(okRaw([acct({ name: "z", loggedIn: false })])); // 唯一账号不可选
+    const run = vi.fn().mockResolvedValue(undefined);
+    const onUnsel = vi.fn();
+    await withAccount("aya", null, run, {
+      sessionId: "s1",
+      follow: { lastAccount: "z" },
+      onUnselectable: onUnsel,
+    });
+    expect(run).toHaveBeenCalledWith(undefined);
+    expect(onUnsel).not.toHaveBeenCalled(); // 跟随下沉不打扰用户
+    expect(invokeMock).not.toHaveBeenCalledWith("update_history_metadata", expect.anything());
+  });
+  it("follow：新会话无 sessionId → run(configDir) 但不记账", async () => {
+    loadCfg.mockResolvedValue({ accounts: { defaultName: "z" } });
+    invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
+    const run = vi.fn().mockResolvedValue(undefined);
+    await withAccount("aya", null, run, { follow: {} });
+    expect(run).toHaveBeenCalledWith("/h/z");
+    expect(invokeMock).not.toHaveBeenCalledWith("update_history_metadata", expect.anything());
+  });
+  it("accountName=null 且无 follow → 仍不 fetch、落基座（A4 逐字节，回归守卫）", async () => {
+    const run = vi.fn().mockResolvedValue(undefined);
+    await withAccount("aya", null, run, { sessionId: "s1" });
+    expect(run).toHaveBeenCalledWith(undefined);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
 });

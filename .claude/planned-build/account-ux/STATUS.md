@@ -3,7 +3,10 @@
 > 恢复入口。承接 account-isolation A0–A6(v3.2.0)。本轮纯前端 UX/UI 完善,不触发发版。
 > 每轮开头先读本文件 + 当前 feature 文件,从记录阶段接着干。
 
-## 当前阶段:**✅ 主计划 + 4 决策已获用户批准(2026-07-24) · 全自动 loop 运行中 · 当前 U1**
+## 当前阶段:**✅ 主计划 + 4 决策已批准 · 全自动 loop 运行中 · U1 完成 → 当前 U2**
+
+> **进度(分支 `account-ux`,不 push)**:
+> - U1 ✅ `72c3b1e`:纯函数地基(resolveFollowAccount/currentWorkingAccount/detectAccountMismatch/accountColorSlot/sessionBadge source)。门禁 tsc0 / vitest 38 文件 475(+22)/ remote-launch 逐字节回归全绿。纯增无调用点,零回归。
 
 - **Phase A 产物**:`MASTERPLAN.md`(目标/架构/★共享面账本/U1–U9 拆分)。三视角设计 agent 已交叉收敛。
 - **用户已拍板的 4 决策(全选推荐项,已锁进语义)**:
@@ -14,7 +17,7 @@
 - **loop 授权**:用户「全自动 loop」= 连续跑 U1→U9 + Phase G;共享面最终形态已在账本预定 ⇒ 功能计划朝最终形态实现、不停每功能门禁;仅阻塞/计划≠现实/≥2 次失败/需新决策/全完成时停。
 
 ## 功能清单(见 MASTERPLAN §Features)
-- [ ] U1 地基纯函数(解析器 + 账号色 + 徽章 source) — 风险低
+- [x] U1 地基纯函数(解析器 + 账号色 + 徽章 source) — ✅ 72c3b1e
 - [ ] U2 withAccount follow 模式 — 风险中(守 A4 零回归)
 - [ ] U3 接线 resume/新会话跟随 — 风险中
 - [ ] U4 当前工作账号语义面 + chip 升级 — 风险低-中

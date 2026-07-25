@@ -400,7 +400,11 @@ export async function recordLastAccount(sessionId: string, account: string): Pro
  * 三站点共用，消除各写一遍 `resolve configDir + record lastAccount` 的漂移（DESIGN §4）。
  * A5「换号重启」是本编排的超集（在 run 前插 checkTrust/compact、run 后同样 record），届时在此扩展。
  *
- *   - `accountName == null` → 默认起：`run(undefined)`（不注入、不记账、不猜）。
+ *   - `accountName == null` **且无 `opts.follow`** → 默认起：`run(undefined)`（不注入、不记账、不 fetch，A4 逐字节旧行为）。
+ *   - `accountName == null` **且有 `opts.follow`**（account-ux U2 opt-in 跟随）→ `fetchAccounts` 后
+ *     经 `resolveFollowAccount`（lastAccount → 当前工作账号 → null）解析：命中则注入其 configDir +（给了
+ *     sessionId 时）记 lastAccount（会话账号 sticky 自增强）；解析不到 → `run(undefined)` 落基座。
+ *     **下沉静默不 `onUnselectable`**（用户没显式点号，不该弹提示）。
  *   - `accountName` 非空 → `fetchAccounts` 解析 configDir：
  *       · 解析不到（不可选 / 账号库不可用）→ `onUnselectable(name)`（调用方 toast）后**退化为默认起**；
  *       · 解析到 → `run(configDir)`；再在**给了 sessionId 时**记 lastAccount（源②，新会话无 sid 不记）。
@@ -410,10 +414,17 @@ export async function withAccount(
   origin: string,
   accountName: string | null,
   run: (configDir?: string) => Promise<void>,
-  opts: { sessionId?: string; onUnselectable?: (name: string) => void } = {},
+  opts: {
+    sessionId?: string;
+    onUnselectable?: (name: string) => void;
+    /** account-ux U2:仅当 accountName===null 时生效——启用「跟随」解析(lastAccount→当前工作账号→基座)。 */
+    follow?: { lastAccount?: string | null };
+  } = {},
 ): Promise<void> {
   let configDir: string | undefined;
+  let recordName: string | null = null; // 成功注入后要记的账号名(显式=accountName / 跟随=解析名)
   if (accountName) {
+    // 显式选号(A4 语义不变)
     try {
       const state = await fetchAccounts(origin);
       configDir = accountConfigDir(state, accountName) ?? undefined;
@@ -421,9 +432,27 @@ export async function withAccount(
       configDir = undefined; // 账号库拿不到 → 退化默认起（fetchAccounts 通常不抛，防御性兜底）
     }
     if (!configDir) opts.onUnselectable?.(accountName);
+    else recordName = accountName;
+  } else if (opts.follow) {
+    // account-ux U2:跟随模式(opt-in)。accountName===null 且**无** follow 的老调用不进此分支,
+    // 逐字节旧行为(不 fetch、落基座)。下沉静默不 toast(用户没显式点号)。
+    try {
+      const state = await fetchAccounts(origin);
+      const current = currentWorkingAccount(state)?.name ?? null;
+      const followName = resolveFollowAccount(state, {
+        lastAccount: opts.follow.lastAccount,
+        current,
+      });
+      if (followName) {
+        configDir = accountConfigDir(state, followName) ?? undefined;
+        if (configDir) recordName = followName;
+      }
+    } catch {
+      configDir = undefined; // 库不可用 → 基座
+    }
   }
   await run(configDir);
-  if (accountName && configDir && opts.sessionId) {
-    void recordLastAccount(opts.sessionId, accountName);
+  if (recordName && configDir && opts.sessionId) {
+    void recordLastAccount(opts.sessionId, recordName);
   }
 }
