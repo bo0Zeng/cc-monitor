@@ -7,7 +7,7 @@
 // 渲染 / Tauri IPC），无法像现有 *.test.ts 那样在裸 node 里测。这里用 jsdom 提供真 DOM、
 // 把重协作者 mock 成空壳，于是能在真 TabManager 实例上断言状态翻转。
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // --- 把重/IPC 协作者 mock 掉，让 TabManager 能在 jsdom 下实例化（避免拉 marked/katex/IPC）---
 vi.mock("@tauri-apps/api/core", () => ({
@@ -108,6 +108,7 @@ vi.mock("./account-restart", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { restartWithAccount } from "./account-restart";
+import { showActionFailureToast } from "./error-toast";
 import { runRemoteResume, runRemoteResumeTmux, runRemoteAttach } from "./remote-launch-run";
 import { TabManager, findClaudeTmux, isCwdFallbackMatch, claudeExited, type Tab } from "./tabs";
 
@@ -1457,5 +1458,292 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
     tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "aya");
     feed([liveRow("r1", "b")], new Map(), new Map()); // 无 current
     expect(badge()?.style.display).toBe("none");
+  });
+});
+
+describe("account-ux U6 不一致检测 + 一键对齐", () => {
+  const restartSpy = restartWithAccount as unknown as ReturnType<typeof vi.fn>;
+  const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
+  type Priv6 = {
+    countAccountMismatches(): number;
+    accountMismatchSids(): string[];
+    alignAllToCurrentAccount(): Promise<void>;
+    alignSessionToCurrentAccount(sid: string): Promise<boolean>;
+  };
+  let tm: TabManager;
+  let confirmSpy: ReturnType<typeof vi.spyOn>;
+  const priv = (): Priv6 => tm as unknown as Priv6;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tm = makeTM();
+    confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    restartSpy.mockResolvedValue(true); // 默认「真的重启成功了」，失败态由用例各自覆写
+    // 所有会话都精确命中 @ccm_sid（否则 restartTabWithAccount 的守卫会拒），tmux 名按 sid 派生。
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve(
+            ["m1", "m2", "m3"].map((s) => ({
+              name: `cc-${s}`,
+              path: "/w",
+              command: "claude",
+              attached: false,
+              windows: 1,
+              sid: s,
+            })),
+          )
+        : Promise.resolve(undefined),
+    );
+  });
+  // mockImplementation 不被 clearAllMocks 清（本仓 vitest.config 也没开 mockReset）——
+  // 不自己收尾就会渗给后面新增的 describe（U3 审计已点名过这个坑）。
+  afterEach(() => {
+    confirmSpy.mockRestore();
+    invokeMock.mockReset();
+    restartSpy.mockReset();
+  });
+
+  const liveRow = (sid: string, account: string, alive = true) => ({
+    pid: 1,
+    sessionId: sid,
+    cwd: "/w",
+    configDir: `/h/${account}`,
+    account,
+    bare: false,
+    alive,
+  });
+  const feed = (rows: ReturnType<typeof liveRow>[]): void =>
+    tm.setSessionAccounts(rows, new Map(), new Map(), new Set(["aya"]), new Map([["aya", "z"]]));
+  const alignBtn = (): HTMLElement | null =>
+    document.body.querySelector<HTMLElement>(".tab-align-btn");
+  /** ⇄ 是否"够格显示"——JS 只打 .is-eligible，真正显隐交给 CSS 的 :hover（jsdom 里测不到 hover）。 */
+  const eligible = (): boolean => alignBtn()?.classList.contains("is-eligible") ?? false;
+  const setActivity = (sid: string, status: string | null): void => {
+    (tm as unknown as { tabs: Map<string, Tab> }).tabs.get(sid)!.activity =
+      status === null ? null : ({ status, waitingFor: null } as never);
+  };
+
+  // ---------------------------------------------------------------- ⇄ 显隐门控
+  it("live 不一致 → ⇄ 够格；一致 → 不够格", () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    feed([liveRow("m1", "b")]);
+    expect(eligible()).toBe(true);
+    feed([liveRow("m1", "z")]); // 切回一致
+    expect(eligible()).toBe(false);
+  });
+
+  it("lastAccount 软来源（幽灵徽章）不给 ⇄，但 tooltip 得指出对齐的路", () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    tm.setSessionAccounts(
+      [],
+      new Map(),
+      new Map([["m1", "b"]]),
+      new Set(["aya"]),
+      new Map([["aya", "z"]]),
+    );
+    expect(document.body.querySelector(".acct-avatar.ghost")).not.toBeNull(); // 徽章在
+    expect(eligible()).toBe(false); // 但无 ⇄（死会话对齐走 resume）
+    expect(document.body.querySelector<HTMLElement>(".tab-acct-badge")?.title).toContain("resume");
+  });
+
+  it("归档 tab 不给 ⇄、也不进批量（用户已停跟随，破坏性动作不该冒出来）", () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    tm.archiveTab("m1");
+    feed([liveRow("m1", "b")]);
+    expect(eligible()).toBe(false);
+    expect(priv().countAccountMismatches()).toBe(0);
+  });
+
+  it("countAccountMismatches 只数「远端 + live 存活 + 账号≠当前」", () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya"); // 不一致 → 数
+    tm.ensureTab("m2", "/w", "/p/m2.jsonl", 0, "aya"); // 一致 → 不数
+    tm.ensureTab("m3", "/w", "/p/m3.jsonl", 0, "aya"); // 不一致但 alive=false → 不数
+    tm.ensureTab("loc", "/w", "/p/loc.jsonl", 0); // 本地 → 不数
+    feed([liveRow("m1", "b"), liveRow("m2", "z"), liveRow("m3", "b", false)]);
+    expect(priv().countAccountMismatches()).toBe(1);
+    expect(priv().accountMismatchSids()).toEqual(["m1"]);
+  });
+
+  it("当前工作账号未知（origin 无 current）→ 不猜、不显 ⇄、不计数", () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    tm.setSessionAccounts([liveRow("m1", "b")], new Map(), new Map(), new Set(["aya"]), new Map());
+    expect(eligible()).toBe(false);
+    expect(priv().countAccountMismatches()).toBe(0);
+  });
+
+  // ------------------------------------------------------- 单会话 ⇄ 的**正路**
+  // （D 审计突变测试证明：只断言显隐时，删掉整个 click 监听 / 对齐到错账号，测试照样全绿。）
+  it("点 ⇄ → 用当前工作账号调编排器，且**不注入 confirm**（保留破坏性二次确认）", async () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    feed([liveRow("m1", "b")]);
+    alignBtn()!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(restartSpy).toHaveBeenCalledTimes(1);
+    const arg = restartSpy.mock.calls[0][0];
+    expect(arg.accountName).toBe("z"); // 对齐到**当前工作账号**，不是别的
+    expect(arg.sessionId).toBe("m1");
+    expect(arg.tmuxName).toBe("cc-m1");
+    expect(arg.compactFirst).toBe(false);
+    expect(arg.confirm).toBeUndefined(); // 单会话必须仍弹 restartWithAccount 自带的确认
+  });
+
+  it("点 ⇄ 不切 tab（stopPropagation）——误点后不会把你的界面跳走", async () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    tm.ensureTab("m2", "/w", "/p/m2.jsonl", 0, "aya");
+    tm.switchTo("m2");
+    feed([liveRow("m1", "b"), liveRow("m2", "b")]);
+    const btn = document.body.querySelectorAll<HTMLElement>(".tab-align-btn")[0];
+    btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect((tm as unknown as { activeId: string | null }).activeId).toBe("m2");
+  });
+
+  it("单会话对齐：不够格（一致/归档/未知 current）时一律不动手", async () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    feed([liveRow("m1", "z")]); // 已一致
+    expect(await priv().alignSessionToCurrentAccount("m1")).toBe(false);
+    expect(restartSpy).not.toHaveBeenCalled();
+  });
+
+  // ------------------------------------------------------------------ 空闲/回合中分桶
+  // 会话状态枚举是 busy/idle/shell/waiting（bridge.rs 透传 CC 官方值），null=旧 CC 未知。
+  // "running" 是 subagent 的状态串，**不是**会话状态——曾误用它做判据，导致 busy 桶恒空。
+  it.each([
+    ["idle", true],
+    ["shell", true],
+    ["busy", false],
+    ["waiting", false],
+    [null, false],
+  ])("activity=%s → 落%s桶（idle 桶=第一步确认）", async (status, isIdle) => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    feed([liveRow("m1", "b")]);
+    setActivity("m1", status as string | null);
+    confirmSpy.mockReturnValue(false); // 两步都拒 → 只看弹的是哪个框
+    await priv().alignAllToCurrentAccount();
+    const msg = String(confirmSpy.mock.calls[0][0]);
+    if (isIdle) {
+      expect(msg).toContain("空闲");
+      expect(msg).not.toContain("正在回合中");
+    } else {
+      expect(msg).toContain("正在回合中");
+    }
+  });
+
+  it("确认文案说真话：会新开终端窗口、旧窗口不自动关、进程内状态会丢", async () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    feed([liveRow("m1", "b")]);
+    setActivity("m1", "idle");
+    confirmSpy.mockReturnValue(false);
+    await priv().alignAllToCurrentAccount();
+    const msg = String(confirmSpy.mock.calls[0][0]);
+    expect(msg).toContain("新开一个终端窗口");
+    expect(msg).toContain("不会自动关闭");
+    expect(msg).toContain("会丢失");
+    // 逐行列出「哪个 tab → 对齐到哪个号」（标题即 tab 上显示的那个，此处是 `[aya] w`）
+    expect(msg).toContain(`· ${(tm as unknown as { tabs: Map<string, Tab> }).tabs.get("m1")!.title} → z`);
+  });
+
+  // ------------------------------------------------------------------ 批量路径
+  it("批量对齐：空闲一次确认 → 串行重启，且不让编排器再逐个弹确认", async () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    tm.ensureTab("m2", "/w", "/p/m2.jsonl", 0, "aya");
+    feed([liveRow("m1", "b"), liveRow("m2", "c")]);
+    setActivity("m1", "idle");
+    setActivity("m2", "idle");
+    await priv().alignAllToCurrentAccount();
+    expect(confirmSpy).toHaveBeenCalledTimes(1); // 只有批量那一次
+    expect(restartSpy).toHaveBeenCalledTimes(2);
+    for (const call of restartSpy.mock.calls) {
+      expect(call[0].accountName).toBe("z"); // 都对齐到当前工作账号
+      expect(call[0].compactFirst).toBe(false);
+      expect(call[0].confirm?.("x")).toBe(true); // 批量层已确认 → 编排器不再弹
+    }
+  });
+
+  it("批量对齐：拒绝第一步确认 → 一个都不动", async () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    feed([liveRow("m1", "b")]);
+    setActivity("m1", "idle");
+    confirmSpy.mockReturnValue(false);
+    await priv().alignAllToCurrentAccount();
+    expect(restartSpy).not.toHaveBeenCalled();
+  });
+
+  it("批量对齐：回合中的会话单独第二步确认，拒了只对齐空闲的", async () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    tm.ensureTab("m2", "/w", "/p/m2.jsonl", 0, "aya");
+    feed([liveRow("m1", "b"), liveRow("m2", "b")]);
+    setActivity("m1", "idle");
+    setActivity("m2", "busy"); // 真值：回合进行中
+    confirmSpy.mockReturnValueOnce(true).mockReturnValueOnce(false); // 空闲同意、回合中拒绝
+    await priv().alignAllToCurrentAccount();
+    expect(confirmSpy).toHaveBeenCalledTimes(2);
+    expect(String(confirmSpy.mock.calls[1][0])).toContain("打断当前回合");
+    expect(restartSpy).toHaveBeenCalledTimes(1);
+    expect(restartSpy.mock.calls[0][0].sessionId).toBe("m1");
+  });
+
+  it("无不一致会话 → 批量对齐直接返回，不弹确认", async () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    feed([liveRow("m1", "z")]);
+    await priv().alignAllToCurrentAccount();
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(restartSpy).not.toHaveBeenCalled();
+  });
+
+  it("批量部分失败：汇总报**真实成功数**，不按发起数谎报", async () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    tm.ensureTab("m2", "/w", "/p/m2.jsonl", 0, "aya");
+    feed([liveRow("m1", "b"), liveRow("m2", "b")]);
+    setActivity("m1", "idle");
+    setActivity("m2", "idle");
+    restartSpy.mockResolvedValueOnce(true).mockResolvedValueOnce(false); // 第二个中止
+    await priv().alignAllToCurrentAccount();
+    const calls = vi.mocked(showActionFailureToast).mock.calls;
+    const toast = calls[calls.length - 1];
+    expect(String(toast[0])).toContain("部分完成");
+    expect(String(toast[1])).toContain("1 个会话");
+    expect(String(toast[1])).toContain("1 个未执行");
+  });
+
+  it("批量中某会话抛异常 → 不中断整批，其余照跑", async () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    tm.ensureTab("m2", "/w", "/p/m2.jsonl", 0, "aya");
+    feed([liveRow("m1", "b"), liveRow("m2", "b")]);
+    setActivity("m1", "idle");
+    setActivity("m2", "idle");
+    restartSpy.mockRejectedValueOnce(new Error("boom")).mockResolvedValueOnce(true);
+    await priv().alignAllToCurrentAccount();
+    expect(restartSpy).toHaveBeenCalledTimes(2); // 第一个炸了，第二个仍然跑
+  });
+
+  // ------------------------------------------------------------------ 重入防护
+  it("同一会话重启中 → ⇄ 立刻不够格、不计数、第二次点击不触发第二条编排", async () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    feed([liveRow("m1", "b")]);
+    let release: (v: boolean) => void = () => {};
+    restartSpy.mockReturnValueOnce(new Promise<boolean>((r) => (release = r)));
+    const first = priv().alignSessionToCurrentAccount("m1");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(eligible()).toBe(false); // in-flight → 按钮不该再邀请点击
+    expect(priv().countAccountMismatches()).toBe(0); // 也不该继续计进 ⚠k
+    expect(await priv().alignSessionToCurrentAccount("m1")).toBe(false); // 并发第二次被拒
+    expect(restartSpy).toHaveBeenCalledTimes(1);
+    release(true);
+    await first;
+  });
+
+  it("批量进行中再点批量 → 拒绝重入，不会拿陈旧列表再杀一遍", async () => {
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    feed([liveRow("m1", "b")]);
+    setActivity("m1", "idle");
+    let release: (v: boolean) => void = () => {};
+    restartSpy.mockReturnValueOnce(new Promise<boolean>((r) => (release = r)));
+    const first = priv().alignAllToCurrentAccount();
+    await new Promise((r) => setTimeout(r, 0));
+    await priv().alignAllToCurrentAccount(); // 第二次：应被 aligningBatch 挡住
+    expect(restartSpy).toHaveBeenCalledTimes(1);
+    release(true);
+    await first;
   });
 });

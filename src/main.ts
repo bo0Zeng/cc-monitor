@@ -39,7 +39,12 @@ import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
 import { turnEndNotifier } from "./turn-notify";
 import { AccountChip } from "./account-chip";
-import { fetchSessionAccounts, fetchAccounts, isSelectable, currentWorkingAccount } from "./accounts";
+import {
+  fetchSessionAccounts,
+  fetchAccounts,
+  isSelectable,
+  alignableCurrentAccount,
+} from "./accounts";
 
 // === 启动 perf 测量 ===
 // performance.now() 自页面 navigation start 起；前端各阶段时间点。
@@ -152,13 +157,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   const usageHud = new UsageHud();
   status.appendChild(usageHud.summaryElement);
 
-  // A3：状态栏「当前账号」chip（多账号 cc-acct-iso）。绑第一台可用远端的默认账号；
-  // 未连远端 / 未启用多账号 / daemonless 各自安静降级（不报错）。点击弹选单切默认账号。
-  const accountChip = new AccountChip({ openSettings: () => void invoke("open_settings_window") });
-  status.appendChild(accountChip.element);
-  void accountChip.refresh();
-
-
   const empty = document.createElement("div");
   empty.className = "empty-state";
   empty.innerHTML = `暂无活跃会话<br><small>打开终端跑 <code>claude</code> 后将自动出现</small>`;
@@ -183,6 +181,21 @@ window.addEventListener("DOMContentLoaded", async () => {
     agentsPanel,
   );
 
+  // A3：状态栏「当前账号」chip（多账号 cc-acct-iso）。绑第一台可用远端的默认账号；
+  // 未连远端 / 未启用多账号 / daemonless 各自安静降级（不报错）。点击弹选单切默认账号。
+  // **构造在 tabs 之后**（D 审计）：alignAll 回调要引用 tabs，放前面就得靠"refresh() 首行即 await、
+  // 中间恰好没有 await"这条隐式不变量兜着——谁在中间插一个 await 就会踩 TDZ 且被 void 吞掉。
+  // ⚠k 计数走**推**模型（与 tabs.onActiveUsageChanged → usageHud.setActive 同惯例），不让 chip 反拉 TabManager。
+  const accountChip = new AccountChip({
+    openSettings: () => void invoke("open_settings_window"),
+    alignAll: () => tabs.alignAllToCurrentAccount(),
+    // 切号后立刻重算一次：currentByOrigin 只由下面这条 10s 轮询喂，不主动刷的话会有最长 10s 的
+    // 反向窗口——chip 已显示新账号，而对齐动作会把会话打回**刚被切走**的旧账号（D 审计重-5）。
+    onDefaultChanged: () => void refreshSessionAccounts(),
+  });
+  status.appendChild(accountChip.element);
+  void accountChip.refresh();
+
   // A3：账号徽章数据管道——定期对每台远端拉 session-accounts（哪条会话属于哪个号）+ 账号邮箱，
   // 聚合喂 tabs（tabs 已在上方构造）。走 accounts store 的 8s TTL 缓存 + available:false 降级，
   // 未迁移 / 旧 daemon / daemonless 零副作用。
@@ -191,6 +204,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       const cfg = await readRemoteConfig();
       if (!cfg.enabled) {
         tabs.setSessionAccounts([], new Map());
+        accountChip.updateMismatchBadge(tabs.countAccountMismatches());
         return;
       }
       const rows: import("./accounts").SessionAccount[] = [];
@@ -209,7 +223,9 @@ window.addEventListener("DOMContentLoaded", async () => {
         for (const a of state.accounts) if (a.email) emailByName.set(a.name, a.email);
         // §7：账号确实可查询（available）的 origin 才算 ready——徽章只在这些 origin 上显。
         if (state.available) readyOrigins.add(origin);
-        const cur = currentWorkingAccount(state);
+        // account-ux U6（D 审计）：过 isSelectable —— 不可选的当前账号对齐必失败，不能拿它判
+        // "不一致"（否则 ⚠k 常亮清不掉、⇄ 是死按钮、批量 N 个全败）。语义与判据见该纯函数。
+        const cur = alignableCurrentAccount(state);
         if (cur) currentByOrigin.set(origin, cur.name);
       }
       // A4：sid → lastAccount（源②）。本机 history-metadata 读一次（远端会话的 lastAccount 也
@@ -222,6 +238,8 @@ window.addEventListener("DOMContentLoaded", async () => {
         console.warn("list_last_accounts failed:", e);
       }
       tabs.setSessionAccounts(rows, emailByName, lastByS, readyOrigins, currentByOrigin);
+      // account-ux U6：徽章刷完立刻把 ⚠k 计数**推**给 chip（同一拍数据，二者不会打架）。
+      accountChip.updateMismatchBadge(tabs.countAccountMismatches());
     } catch (e) {
       console.warn("refreshSessionAccounts failed:", e);
     }

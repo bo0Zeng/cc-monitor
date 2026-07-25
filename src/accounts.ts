@@ -125,6 +125,20 @@ export function isSelectable(a: Account): boolean {
 }
 
 /**
+ * account-ux U6：**能用来对齐**的当前工作账号——`currentWorkingAccount` 再过一道 `isSelectable`。
+ *
+ * `currentWorkingAccount`(=`effectiveDefault`) 只挑"被指定/第一个"，不管它能不能用；而按它对齐
+ * 必然在 `restartWithAccount` 第①步（accountConfigDir 解析）失败。若拿未过滤的值去判"不一致"，
+ * UI 就会指着一个系统自己永远不会 follow 过去的账号说"你不一致"：⚠k 常亮清不掉、⇄ 是死按钮、
+ * 批量 N 个全败。故 mismatch 一路（徽章 / ⚠k / ⇄ / 批量）统一用这个。
+ * 与 U1 `resolveFollowAccount`「每级候选不可选就下沉」同一套语义。
+ */
+export function alignableCurrentAccount(state: AccountsState): Account | null {
+  const cur = currentWorkingAccount(state);
+  return cur && isSelectable(cur) ? cur : null;
+}
+
+/**
  * account-ux U1:普通 resume 的**跟随账号**解析器(纯函数,vitest 锁死)。
  * 优先级(用户拍板:粘性优先):`会话 lastAccount → 当前工作账号 → null(基座)`。
  * 每级候选必须 `isSelectable`(存在的 isolated + 已登录 + 目录在)否则**下沉**下一级;
