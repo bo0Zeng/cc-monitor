@@ -49,6 +49,10 @@ function throws(fn: () => void, msg?: string): void {
 console.log("remote-launch.test.ts");
 
 const UNSET = `unset ${CLAUDE_NESTED_ENV_VARS}; `;
+// F03.4 甲′：createRunAttach 在 @ccm_sid 后、send-keys 前插的两条非阻断 set-titles（从 @ccm_sid 派生外层标题）。
+const TITLE = (t: string): string =>
+  `(tmux set-option -t ${t} set-titles on 2>/dev/null || true) && ` +
+  `(tmux set-option -t ${t} set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && `;
 
 test("嵌套 env 列表：含四个标记、不含 CLAUDE_CONFIG_DIR", () => {
   for (const v of ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION"]) {
@@ -133,6 +137,7 @@ test("buildResumeTmuxCmd:完整幂等形态(new-session && set-option @ccm_sid &
     buildResumeTmuxCmd("abc-123", "/home/pi/proj"),
     `tmux new-session -d -s cc-abc-123 -c '/home/pi/proj' 2>/dev/null && ` +
       `(tmux set-option -t cc-abc-123 @ccm_sid abc-123 2>/dev/null || true) && ` + // #72
+      TITLE("cc-abc-123") + // F03.4 甲′
       `tmux send-keys -t cc-abc-123 '${payload}' Enter; tmux attach -t cc-abc-123`,
   );
 });
@@ -143,6 +148,7 @@ test("buildResumeTmuxCmd:空 cwd 省 -c", () => {
     buildResumeTmuxCmd("s1", ""),
     `tmux new-session -d -s cc-s1 2>/dev/null && ` +
       `(tmux set-option -t cc-s1 @ccm_sid s1 2>/dev/null || true) && ` + // #72
+      TITLE("cc-s1") + // F03.4 甲′
       `tmux send-keys -t cc-s1 '${payload}' Enter; tmux attach -t cc-s1`,
   );
 });
@@ -151,12 +157,12 @@ test("buildResumeTmuxCmd:自定义 launcher 透传 / 注入 fail-closed claude",
   const p1 = `${UNSET}cct --resume s1`;
   eq(
     buildResumeTmuxCmd("s1", "", "cct"),
-    `tmux new-session -d -s cc-s1 2>/dev/null && (tmux set-option -t cc-s1 @ccm_sid s1 2>/dev/null || true) && tmux send-keys -t cc-s1 '${p1}' Enter; tmux attach -t cc-s1`,
+    `tmux new-session -d -s cc-s1 2>/dev/null && (tmux set-option -t cc-s1 @ccm_sid s1 2>/dev/null || true) && ${TITLE("cc-s1")}tmux send-keys -t cc-s1 '${p1}' Enter; tmux attach -t cc-s1`,
   );
   const p2 = `${UNSET}claude --resume s1`; // 注入 → claude
   eq(
     buildResumeTmuxCmd("s1", "", "cct; curl evil"),
-    `tmux new-session -d -s cc-s1 2>/dev/null && (tmux set-option -t cc-s1 @ccm_sid s1 2>/dev/null || true) && tmux send-keys -t cc-s1 '${p2}' Enter; tmux attach -t cc-s1`,
+    `tmux new-session -d -s cc-s1 2>/dev/null && (tmux set-option -t cc-s1 @ccm_sid s1 2>/dev/null || true) && ${TITLE("cc-s1")}tmux send-keys -t cc-s1 '${p2}' Enter; tmux attach -t cc-s1`,
   );
 });
 
@@ -198,6 +204,7 @@ test("buildResumeTmuxCmd:cwd 含空格/单引号 → posixQuote", () => {
     buildResumeTmuxCmd("s1", "/home/pi/my proj"),
     `tmux new-session -d -s cc-s1 -c '/home/pi/my proj' 2>/dev/null && ` +
       `(tmux set-option -t cc-s1 @ccm_sid s1 2>/dev/null || true) && ` + // #72
+      TITLE("cc-s1") + // F03.4 甲′
       `tmux send-keys -t cc-s1 '${payload}' Enter; tmux attach -t cc-s1`,
   );
   // cwd 含单引号：-c 段 posixQuote 逃逸
@@ -216,10 +223,12 @@ test("#72 buildResumeTmuxCmd:@ccm_sid 用**完整 sid**(非会话名前 8),且�
     cmd.includes("(tmux set-option -t cc-deadbeef @ccm_sid deadbeef-1234-5678 2>/dev/null || true) && "),
     true,
   );
+  // F03.4 甲′后：@ccm_sid 与 send-keys 之间多了两条 set-titles，故不再相邻——改断"顺序"：
+  // new-session < @ccm_sid < set-titles < send-keys（都在 create 分支、resume 主动作在最后）。
   eq(
-    cmd.includes(
-      "2>/dev/null && (tmux set-option -t cc-deadbeef @ccm_sid deadbeef-1234-5678 2>/dev/null || true) && tmux send-keys",
-    ),
+    cmd.indexOf("new-session") < cmd.indexOf("@ccm_sid") &&
+      cmd.indexOf("@ccm_sid") < cmd.indexOf("set-titles-string") &&
+      cmd.indexOf("set-titles-string") < cmd.indexOf("send-keys"),
     true,
   );
 });
@@ -244,6 +253,7 @@ test("F74 buildResumeTmuxCmd:显式 name → 用它作会话名(灰会话 fresh 
     buildResumeTmuxCmd("s1", "", "claude", "cc-s1-2"),
     `tmux new-session -d -s cc-s1-2 2>/dev/null && ` +
       `(tmux set-option -t cc-s1-2 @ccm_sid s1 2>/dev/null || true) && ` + // #72:目标显式名 cc-s1-2,@ccm_sid 仍完整 sid s1
+      TITLE("cc-s1-2") + // F03.4 甲′
       `tmux send-keys -t cc-s1-2 '${payload}' Enter; tmux attach -t cc-s1-2`,
   );
 });
