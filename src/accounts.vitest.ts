@@ -9,6 +9,9 @@ import { loadConfig, saveConfig } from "./config";
 import {
   deriveUi,
   effectiveDefault,
+  currentWorkingAccount,
+  resolveFollowAccount,
+  detectAccountMismatch,
   isSelectable,
   accountConfigDir,
   badgeText,
@@ -113,6 +116,88 @@ describe("effectiveDefault", () => {
   });
   it("零账号 → null", () => {
     expect(effectiveDefault(state({ accounts: [] }))).toBeNull();
+  });
+});
+
+describe("currentWorkingAccount（effectiveDefault 语义别名，account-ux U1）", () => {
+  it("与 effectiveDefault 值一致：defaultName 优先", () => {
+    const s = state({ accounts: [acct({ name: "z" }), acct({ name: "b" })], defaultName: "b" });
+    expect(currentWorkingAccount(s)?.name).toBe("b");
+    expect(currentWorkingAccount(s)).toBe(effectiveDefault(s));
+  });
+  it("零账号 → null（与 effectiveDefault 一致）", () => {
+    expect(currentWorkingAccount(state({ accounts: [] }))).toBeNull();
+  });
+});
+
+describe("resolveFollowAccount（跟随解析器，account-ux U1：粘性优先）", () => {
+  const s = state({
+    accounts: [
+      acct({ name: "z" }),
+      acct({ name: "b" }),
+      acct({ name: "x", loggedIn: false }), // 不可选（未登录）
+    ],
+  });
+  it("lastAccount 可选 → 用 lastAccount（粘性优先，压过 current）", () => {
+    expect(resolveFollowAccount(s, { lastAccount: "z", current: "b" })).toBe("z");
+  });
+  it("lastAccount 不可选 → 下沉到 current", () => {
+    expect(resolveFollowAccount(s, { lastAccount: "x", current: "b" })).toBe("b");
+  });
+  it("lastAccount 指向不存在的号 → 下沉 current", () => {
+    expect(resolveFollowAccount(s, { lastAccount: "nope", current: "b" })).toBe("b");
+  });
+  it("无 lastAccount → 用 current", () => {
+    expect(resolveFollowAccount(s, { current: "z" })).toBe("z");
+  });
+  it("current 也不可选 → null（落基座）", () => {
+    expect(resolveFollowAccount(s, { lastAccount: "x", current: "x" })).toBeNull();
+  });
+  it("两者都空 → null", () => {
+    expect(resolveFollowAccount(s, {})).toBeNull();
+  });
+  it("null 值安全 → null", () => {
+    expect(resolveFollowAccount(s, { lastAccount: null, current: null })).toBeNull();
+  });
+});
+
+describe("detectAccountMismatch（account-ux U1）", () => {
+  it("两者都确知且不同 → true", () => {
+    expect(detectAccountMismatch("b", "z")).toBe(true);
+  });
+  it("相同 → false", () => {
+    expect(detectAccountMismatch("z", "z")).toBe(false);
+  });
+  it("live 未知 → false（不误报）", () => {
+    expect(detectAccountMismatch(null, "z")).toBe(false);
+  });
+  it("无当前账号 → false", () => {
+    expect(detectAccountMismatch("b", null)).toBe(false);
+  });
+  it("都 null → false", () => {
+    expect(detectAccountMismatch(null, null)).toBe(false);
+  });
+});
+
+describe("sessionBadge source 字段（account-ux U1/U5）", () => {
+  const emailBy = new Map([["z", "z@x.edu"]]);
+  it("live → source:'live' + account 全名", () => {
+    const m = new Map<string, SessionAccount>([
+      ["s1", { pid: 1, sessionId: "s1", cwd: "/w", configDir: "/h/.claude-accts/z", account: "z", bare: false, alive: true }],
+    ]);
+    const b = sessionBadge("s1", "aya", m, emailBy);
+    expect(b?.source).toBe("live");
+    expect(b?.account).toBe("z");
+  });
+  it("lastAccount 兜底 → source:'last'", () => {
+    const b = sessionBadge("s1", "aya", new Map(), emailBy, new Map([["s1", "b"]]));
+    expect(b?.source).toBe("last");
+    expect(b?.account).toBe("b");
+  });
+  it("未知 → source:'unknown' + account:null", () => {
+    const b = sessionBadge("s1", "aya", new Map(), emailBy);
+    expect(b?.source).toBe("unknown");
+    expect(b?.account).toBeNull();
   });
 });
 
