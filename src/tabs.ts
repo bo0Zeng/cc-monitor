@@ -1854,7 +1854,7 @@ export class TabManager {
    * 远端 → F41 一键拉起 wt.exe/PowerShell 跑 `ssh -t …`，失败回退复制命令。
    * resume 成功后 CC 续写同一 jsonl，既有「会话复活」路径会自动把灰 Tab 点亮。
    */
-  private async resumeTab(sid: string, accountName?: string): Promise<void> {
+  private async resumeTab(sid: string, accountName?: string, useBase = false): Promise<void> {
     const tab = this.tabs.get(sid);
     if (!tab) return;
     const behavior = await getBehavior();
@@ -1871,7 +1871,9 @@ export class TabManager {
           sessionId: sid,
           // account-ux U3:未显式选号 → 跟随(lastAccount sticky → 当前工作账号 → 基座)。显式选号维持 A4。
           // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
-          follow: accountName ? undefined : { lastAccount: await this.readSessionPin(sid) },
+          // F01 步骤2:useBase = 显式「用基座 resume」——不注入、不跟随(老会话住基座,别被 follow
+          //   注入全局当前账号导致 claude --resume 在错数据目录找不到会话，即 #75 主因的逃生口)。
+          follow: accountName || useBase ? undefined : { lastAccount: await this.readSessionPin(sid) },
         },
       );
       return;
@@ -2009,7 +2011,17 @@ export class TabManager {
     if (gen !== tabMenuGeneration) return; // 菜单已换/已关
     if (!state.available) return; // §7 降级
     const selectable = state.accounts.filter(isSelectable);
-    if (selectable.length < 2) return; // 无可切换选择就不加噪
+    // F01 步骤2:有 ≥1 可选账号时,follow 默认会注入某号 → 给归档会话一个显式「用基座 resume」
+    // 逃生口(不隔离/原始 ~/.claude),让装账号前的老会话不被注错号(#75)。<1 账号时默认 Resume 本就走基座。
+    if (status === "archived" && selectable.length >= 1) {
+      appendTabContextMenuItem({
+        id: "acct-resume-base",
+        label: "用基座 resume（不隔离）",
+        title: "不注入任何账号，用原始 ~/.claude resume——装账号功能前的老会话住这里",
+        onClick: () => void this.resumeTab(sid, undefined, true),
+      });
+    }
+    if (selectable.length < 2) return; // 无可切换选择就不加噪（per-account 项）
     for (const a of selectable) {
       if (!a.configDir) continue;
       const name = a.name;
