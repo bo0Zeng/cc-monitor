@@ -113,7 +113,7 @@ per-origin 计算 —— **反而少碰了一个共享面**。一句话规则记
   设置横幅 / 设置表格行)豁免 —— 已写进账本,别留给下轮人考古。
 - **Esc 会同时关 chip 菜单和背后的 overlay**(chip 菜单没走 `pushOverlay`,自 A3 起如此;dispatcher 的
   overlay.close 不 stopPropagation)。U8 的快捷键让这条路径更容易走到,但它是**既有缺陷**、修它要动
-  A3 的菜单生命周期 —— 超出 U8 范围,记进 STATUS 待办。
+  A3 的菜单生命周期 —— 超出 U8 范围,已登记进 `.claude/planned-build/BACKLOG.md` §A。
 - **`acct-align-all` 没有 hint**:`ACTIONS` 里没有 `account.align-all`(批量是破坏性的,不给它键位),
   所以 DoD 3 的"两条都带 hint"改口径为"能对应到 action 的才带";`acct-default-*` 已补上
   `account.switch-default` 的 hint,教学闭环由那条承担。

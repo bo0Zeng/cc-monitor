@@ -56,7 +56,14 @@ export async function runRemoteResume(
   }
 }
 
-/** F52：tmux 版 resume——在远端 tmux 会话 `cc-<sid8>` 里幂等 resume Claude;失败回退复制命令。 */
+/** F52：tmux 版 resume——在远端 tmux 会话 `cc-<sid8>` 里幂等 resume Claude;失败回退复制命令。
+ *
+ *  @returns 是否**真的把终端拉起来了**。false = 命令构造失败 / `launch_remote_terminal` 失败
+ *  （此时已走剪贴板回退，需用户手动粘贴）。
+ *  account-ux Phase G 审计:此前返回 void 且两条失败路径都自己吞掉,于是 `restartWithAccount`
+ *  把"走到了第⑤步"当成"已 resume"——会话被 kill、没起来,却照样记 pin、照样弹「已用新账号重启」、
+ *  照样 return true,批量对齐还把它计成成功。而失败是**确定性**的（如 F34 launcher 含双引号被
+ *  launch.rs 拒、tmux 名不合白名单、缺 OpenSSH），不是概率事件。 */
 export async function runRemoteResumeTmux(
   origin: string,
   sid: string,
@@ -64,13 +71,13 @@ export async function runRemoteResumeTmux(
   launcher: string,
   name?: string,
   configDir?: string, // A4：非空 → 该会话用指定账号 resume（CLAUDE_CONFIG_DIR 注入）
-): Promise<void> {
+): Promise<boolean> {
   let cmd: string;
   try {
     cmd = buildResumeTmuxCmd(sid, cwd, launcher, name, configDir);
   } catch (err) {
     showActionFailureToast("无法构造 tmux resume 命令", String(err));
-    return;
+    return false;
   }
   try {
     await invoke("launch_remote_terminal", { origin, remoteCmd: cmd });
@@ -79,6 +86,7 @@ export async function runRemoteResumeTmux(
       `新终端窗口正在连接 [${origin}] 并在 tmux 会话里 resume 该会话。`,
       { level: "info", durationMs: 6000 },
     );
+    return true;
   } catch (err) {
     let copied = true;
     try {
@@ -91,6 +99,7 @@ export async function runRemoteResumeTmux(
       `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
       { level: "info", durationMs: 10000 },
     );
+    return false;
   }
 }
 

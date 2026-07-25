@@ -1903,7 +1903,11 @@ export class TabManager {
     await withAccount(
       origin,
       null,
-      (cd) => runRemoteResumeTmux(origin, sid, cwd, behavior.resumeCommandRemote, name, cd),
+      // runRemoteResumeTmux 现在返回 boolean（Phase G）；withAccount 的 run 要 Promise<void>，
+      // 这条归档 resume 路径不消费成败（失败已由它自己 toast + 剪贴板回退），故丢弃返回值。
+      async (cd) => {
+        await runRemoteResumeTmux(origin, sid, cwd, behavior.resumeCommandRemote, name, cd);
+      },
       { sessionId: sid, follow: { lastAccount: this.accountLastByS.get(sid) } },
     );
   }
