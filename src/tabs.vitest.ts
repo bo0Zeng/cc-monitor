@@ -829,6 +829,19 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
     ).resumeTab("r1", "z");
     expect(invoke).not.toHaveBeenCalledWith("list_last_accounts");
   });
+
+  // F01 步骤2:显式「用基座 resume」——不跟随、不读 pin、不注入(configDir undefined),
+  // 让装账号前住基座的老会话不被 follow 注入全局当前账号(修 #75 逃生口)。
+  // 变异锚点:follow 条件去掉 `|| useBase` → 基座又去读 pin → list_last_accounts 被 invoke → 红。
+  it("用基座 resume（useBase）→ 不读 pin、不注入（configDir undefined）", async () => {
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    await (
+      tm as unknown as { resumeTab(sid: string, a?: string, useBase?: boolean): Promise<void> }
+    ).resumeTab("r1", undefined, true);
+    expect(invoke).not.toHaveBeenCalledWith("list_last_accounts");
+    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined);
+  });
 });
 
 describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1）", () => {

@@ -4,8 +4,9 @@
 
 ## DoD
 - [x] **步骤 1**：跟随 resume 的 pin **现读磁盘**（`list_last_accounts`），不读内存镜像 `accountLastByS`；回归测 + 变异验证。
-- [ ] **步骤 2**：账号解析瀑布里「基座/不隔离」是可显式选中的一项（老会话能选它 resume）。
-- [ ] **步骤 3**：resume 入口加账号下拉（含基座），默认全局当前工作账号，显式选号重钉。picker 组件为 F03/F04 共享面。
+- [x] **步骤 2**：显式「用基座 resume（不隔离）」逃生口——`resumeTab` 加 `useBase`（不跟随、不注入、不读 pin），归档远端 tab 菜单有 ≥1 可选账号时追加该项；回归测 + 变异验证。
+- [x] **步骤 3**：resume 账号下拉——**per-account「用账号 X resume」项 A4/A5 已存在**（`appendAccountMenuItems`），步骤 2 补齐「基座」项后，归档远端 tab 的 direct-resume 选号矩阵完整。默认仍全局当前工作账号，显式选号重钉（withAccount 既有语义）。
+  - **残留（转 F04）**：tmux 版 base（`resumeTabTmux` 的 useBase）+ 历史页 resume 入口的基座项 → 归入 F04「统一直连/tmux 管线 + 每入口后端×账号矩阵」，避免两处各做一遍。
 
 ## 不做（防蔓延）
 - 不改 withAccount 的解析语义（瀑布不变：显式 > pin > 全局账号 > 基座）。
@@ -30,7 +31,7 @@
 - **工程审计(E)**：readSessionPin 是账本预定共享面，为 F13 铺路，无新增耦合；主计划仍自洽；全量 569 测绿 + build ✓。
 
 ## 签收
-- [x] 步骤 1 过代码审计（D）
-- [x] 步骤 1 过工程审计（E）
-- [x] 主计划已更新（rev 02）
-- [ ] 步骤 2/3 未做（下轮）
+- [x] 过代码审计（D，主线程低风险自审）：step2 变更 = resumeTab 加 useBase 参 + follow 条件加 `|| useBase` + 菜单加 base 项；`useBase` 走 withAccount(null, follow undefined)=不注入=旧默认行为，additive 不改既有路径；tsc 0；变异验证(去 `|| useBase` → base 测红)。
+- [x] 过工程审计（E）：base 项 additive、无新耦合；per-account picker 复用既有 appendAccountMenuItems；主计划自洽；全量 570 测绿 + build ✓。tmux/history 一致性显式转 F04（账本记明，非补丁）。
+- [x] 主计划已更新（rev 03）
+- [x] F01 完成（步骤 1/2/3 全签收）
