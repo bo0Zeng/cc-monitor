@@ -39,10 +39,10 @@ import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
 import { turnEndNotifier } from "./turn-notify";
 import { AccountChip } from "./account-chip";
+import { buildAccountCommands } from "./account-commands";
 import {
   fetchSessionAccounts,
   fetchAccounts,
-  isSelectable,
   alignableCurrentAccount,
 } from "./accounts";
 
@@ -526,26 +526,25 @@ window.addEventListener("DOMContentLoaded", async () => {
       { id: "tab-next", title: "切到下一个 Tab", keywords: "next tab 下一个", hint: chordHint("tab.next"), run: () => tabs.cycleActive(1) },
       { id: "tab-prev", title: "切到上一个 Tab", keywords: "prev tab 上一个", hint: chordHint("tab.prev"), run: () => tabs.cycleActive(-1) },
     ];
-    // A3：账号命令（只读性质——只改本机默认账号，不注入/不重启，守 F11）。切默认为 X + 管理。
-    const acctSnap = accountChip.snapshotReady();
-    if (acctSnap) {
-      for (const a of acctSnap.accounts) {
-        if (!isSelectable(a)) continue; // 单一来源，随 isSelectable 演进（原为内联手抄）
-        const isCur = acctSnap.defaultName === a.name;
-        cmds.push({
-          id: `acct-default-${a.name}`,
-          title: `账号：切默认为 ${a.name}${isCur ? "（当前）" : ""}`,
-          keywords: `account 账号 切换 default 默认 ${a.name} ${a.email}`,
-          run: () => { if (!isCur) void accountChip.applyDefaultByName(a.name); },
-        });
-      }
-    }
-    cmds.push({
-      id: "acct-manage",
-      title: "账号：管理…",
-      keywords: "account 账号 管理 manage 设置",
-      run: () => void invoke("open_settings_window"),
-    });
+    // A3/U8：账号命令。构造逻辑在 account-commands.ts（纯函数，可测——原先长在这个闭包里，
+    // "命令何时出现"完全测不到，把判定改成恒 true 也不会红）。这里只喂快照与动作。
+    cmds.push(
+      ...buildAccountCommands({
+        snapshot: accountChip.snapshotReady(),
+        alignableSids: tabs.accountMismatchSids(),
+        activeSid: tabs.activeSessionId(),
+        chordHint: (id) => chordHint(id as Parameters<typeof chordHint>[0]),
+        setCurrent: (name) => void accountChip.applyDefaultByName(name),
+        // 取 sid 时**重新读**当前会话，不用构造命令那一刻的闭包值：命令面板开着时 tab 可能被
+        // 自动跟随/新会话宣告切走，那样就会对着"打开面板那一刻的会话"动手。
+        alignSession: () => {
+          const sid = tabs.activeSessionId();
+          if (sid) void tabs.alignSessionToCurrentAccount(sid);
+        },
+        alignAll: () => void tabs.alignAllToCurrentAccount(),
+        openSettings: () => void invoke("open_settings_window"),
+      }),
+    );
     // 切到会话（来自 F91 只读投影 snapshotSessions）
     for (const s of tabs.snapshotSessions()) {
       const originTag = s.origin ? `[${s.origin}] ` : "";
@@ -652,6 +651,25 @@ window.addEventListener("DOMContentLoaded", async () => {
       await setBehavior(next);
       tabs.applyBehavior(next);
     })();
+  });
+
+  // account-ux U8：账号相关快捷键（ACTIONS 里 default:null —— 默认不绑，用户想要自己去绑）。
+  dispatcher.bind("account.switch-default", () => {
+    void accountChip.openMenu(); // 显式入口（chip 隐藏时不开菜单），别用合成 click
+  });
+  dispatcher.bind("account.align-active", () => {
+    const sid = tabs.activeSessionId();
+    // 不可对齐时**不动手**，但给一句话——否则用户分不清"已经对齐了"/"这是本地会话"/
+    // "我是不是键绑错了"。判据与 ⇄ 按钮同源（alignableCurrent），破坏性确认在编排层。
+    if (sid && tabs.accountMismatchSids().includes(sid)) {
+      void tabs.alignSessionToCurrentAccount(sid);
+    } else {
+      showActionFailureToast(
+        "无需对齐",
+        "当前会话已在当前工作账号上，或它不支持对齐（本地会话 / 账号未知 / 不在本工具 tmux 里）。",
+        { level: "info", durationMs: 4000 },
+      );
+    }
   });
 
   // 先加载用户覆盖，再 start —— 避免 start 后 1-2ms 内按键走 default 而非用户值

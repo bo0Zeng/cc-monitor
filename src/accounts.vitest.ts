@@ -11,6 +11,8 @@ import {
   effectiveDefault,
   currentWorkingAccount,
   alignableCurrentAccount,
+  accountColorsActive,
+  selectableAccounts,
   resolveFollowAccount,
   detectAccountMismatch,
   isSelectable,
@@ -153,6 +155,35 @@ describe("alignableCurrentAccount（account-ux U6：current 不可选就不对�
   });
   it("零账号 → null", () => {
     expect(alignableCurrentAccount(state({ accounts: [] }))).toBeNull();
+  });
+});
+
+describe("accountColorsActive（account-ux U8：单账号/降级时账号色系统休眠）", () => {
+  const sel = (name: string): Account => acct({ name });
+  it("≥2 个可选账号 → 激活（颜色此时才能区分东西）", () => {
+    expect(accountColorsActive(state({ accounts: [sel("wei"), sel("amy")] }))).toBe(true);
+  });
+  it("只有 1 个可选账号 → 休眠（颜色区分不了任何东西，纯噪音）", () => {
+    expect(accountColorsActive(state({ accounts: [sel("wei")] }))).toBe(false);
+  });
+  it("零账号 → 休眠", () => {
+    expect(accountColorsActive(state({ accounts: [] }))).toBe(false);
+  });
+  it("有 2 个账号但只有 1 个**可选** → 休眠（数的是可选数，不是总数）", () => {
+    const s = state({ accounts: [sel("wei"), acct({ name: "amy", loggedIn: false })] });
+    expect(s.accounts.length).toBe(2); // 总数够
+    expect(accountColorsActive(s)).toBe(false); // 但可选数不够
+  });
+  it("available=false（老 daemon / 查询失败）→ 休眠，哪怕账号数够", () => {
+    expect(
+      accountColorsActive(state({ available: false, accounts: [sel("wei"), sel("amy")] })),
+    ).toBe(false);
+  });
+  it("selectableAccounts 只留 isSelectable 的", () => {
+    const s = state({
+      accounts: [sel("wei"), acct({ name: "amy", mode: "in-place" }), acct({ name: "p", exists: false })],
+    });
+    expect(selectableAccounts(s).map((a) => a.name)).toEqual(["wei"]);
   });
 });
 

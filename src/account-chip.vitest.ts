@@ -1,8 +1,22 @@
 // A3 account-chip 纯函数测试（选主远端 / chip 文本）。
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const readRemoteConfigMock = vi.fn();
+const fetchAccountsMock = vi.fn();
+vi.mock("./settings/remote-section", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
+vi.mock("./error-toast", () => ({ showActionFailureToast: vi.fn() }));
+
 import { pickPrimaryOrigin, chipLabel, AccountChip, type AccountChipDeps } from "./account-chip";
 import type { RemoteHostConfig } from "./settings/remote-section";
 import type { AccountsState, Account } from "./accounts";
+import * as accountsMod from "./accounts";
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+  readRemoteConfigMock.mockReset();
+  fetchAccountsMock.mockReset();
+  vi.spyOn(accountsMod, "fetchAccounts").mockImplementation(() => fetchAccountsMock());
+});
 
 function host(p: Partial<RemoteHostConfig>): RemoteHostConfig {
   return {
@@ -144,5 +158,46 @@ describe("account-ux U6 chip ⚠k 不一致计数", () => {
     seed(chip, null);
     chip.updateMismatchBadge(2);
     expect(badge(chip).style.display).toBe("none");
+  });
+});
+
+// ------------------------------------------------------ U8：chip 头像的休眠（此前零覆盖）
+// D 审计指出：U4 引入头像时没测，U8 加门控也没补 —— 删掉门控不会红。休眠现在**只**作用于
+// 这一处（tab 徽章是「信息才显」，不是颜色噪音，不该睡），所以这里更得锁住。
+// 注意：这里**走真实的 refresh() 路径**（mock 掉两个数据源），不在测试里重抄一遍渲染分支——
+// 抄一遍就等于测自己，删掉实现里的门控也不会红。
+describe("account-ux U8 chip 头像休眠", () => {
+  const icon = (chip: AccountChip): HTMLElement =>
+    chip.element.querySelector<HTMLElement>(".status-account-icon")!;
+
+  async function mountWith(st: AccountsState): Promise<AccountChip> {
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "aya" })] });
+    fetchAccountsMock.mockResolvedValue(st);
+    const chip = new AccountChip({ openSettings: () => {} });
+    await chip.refresh();
+    return chip;
+  }
+
+  it("≥2 可选账号 → 显彩色头像", async () => {
+    const chip = await mountWith(
+      state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "wei" }),
+    );
+    expect(icon(chip).querySelector(".acct-avatar")).not.toBeNull();
+  });
+
+  it("只有 1 个可选账号 → 退回 👤（颜色此时区分不了任何东西）", async () => {
+    const chip = await mountWith(state({ accounts: [acct({ name: "wei" })], defaultName: "wei" }));
+    expect(icon(chip).querySelector(".acct-avatar")).toBeNull();
+    expect(icon(chip).textContent).toBe("👤");
+  });
+
+  it("2 个账号但只有 1 个可选 → 仍休眠（数可选数，不是总数）", async () => {
+    const chip = await mountWith(
+      state({
+        accounts: [acct({ name: "wei" }), acct({ name: "amy", loggedIn: false })],
+        defaultName: "wei",
+      }),
+    );
+    expect(icon(chip).querySelector(".acct-avatar")).toBeNull();
   });
 });

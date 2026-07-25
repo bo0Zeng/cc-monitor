@@ -1459,6 +1459,7 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
     feed([liveRow("r1", "b")], new Map(), new Map()); // 无 current
     expect(badge()?.style.display).toBe("none");
   });
+
 });
 
 describe("account-ux U6 不一致检测 + 一键对齐", () => {
@@ -1513,7 +1514,13 @@ describe("account-ux U6 不一致检测 + 一键对齐", () => {
     alive,
   });
   const feed = (rows: ReturnType<typeof liveRow>[]): void =>
-    tm.setSessionAccounts(rows, new Map(), new Map(), new Set(["aya"]), new Map([["aya", "z"]]));
+    tm.setSessionAccounts(
+      rows,
+      new Map(),
+      new Map(),
+      new Set(["aya"]),
+      new Map([["aya", "z"]]),
+    );
   const alignBtn = (): HTMLElement | null =>
     document.body.querySelector<HTMLElement>(".tab-align-btn");
   /** ⇄ 是否"够格显示"——JS 只打 .is-eligible，真正显隐交给 CSS 的 :hover（jsdom 里测不到 hover）。 */
@@ -1566,7 +1573,13 @@ describe("account-ux U6 不一致检测 + 一键对齐", () => {
 
   it("当前工作账号未知（origin 无 current）→ 不猜、不显 ⇄、不计数", () => {
     tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    tm.setSessionAccounts([liveRow("m1", "b")], new Map(), new Map(), new Set(["aya"]), new Map());
+    tm.setSessionAccounts(
+      [liveRow("m1", "b")],
+      new Map(),
+      new Map(),
+      new Set(["aya"]),
+      new Map(),
+    );
     expect(eligible()).toBe(false);
     expect(priv().countAccountMismatches()).toBe(0);
   });

@@ -19,7 +19,7 @@
  * 对得上 `e.code === "Comma"`，而 `e.key === ","` 在那个布局压根触发不了。
  */
 
-export type Category = "Tab" | "Term" | "App" | "Beh" | "Panel";
+export type Category = "Tab" | "Term" | "App" | "Beh" | "Panel" | "Acct";
 
 export interface Action {
   /** 稳定 id，进 config 的 key */
@@ -105,6 +105,25 @@ export const ACTIONS: ReadonlyArray<Action> = [
     available: true,
   },
 
+  // ===== 账号（account-ux U8）=====
+  // 两条都 **default: null**（默认不绑）：键位表已经很满，而这两件事都不是高频；
+  // 尤其 align-active 是**破坏性**的（重启会话、中断当前回合、丢进程内状态），
+  // 更不该有一个默认单键等着被误触。想要的人自己在「设置 → 快捷键」里绑。
+  {
+    id: "account.switch-default",
+    label: "打开账号菜单（切当前工作账号）",
+    category: "Acct",
+    default: null,
+    available: true,
+  },
+  {
+    id: "account.align-active",
+    label: "把当前 Tab 的会话对齐到当前工作账号（破坏性：会重启该会话）",
+    category: "Acct",
+    default: null,
+    available: true,
+  },
+
   // ===== Behavior toggles =====
   { id: "behavior.toggle-auto-follow", label: "切换「自动跟随用户输入」", category: "Beh", default: null, available: true },
   { id: "behavior.toggle-bring-monitor", label: "切换「自动拉前 monitor」", category: "Beh", default: null, available: true },
@@ -139,4 +158,19 @@ export const CATEGORY_LABEL: Record<Category, string> = {
   App: "应用",
   Beh: "行为",
   Panel: "面板",
+  Acct: "账号",
 };
+
+/**
+ * 编辑器里各分组的**显示顺序**。放这里而不是 editor.ts 里手抄一份数组——漏加一个 Category 会让
+ * 整组 action 在编辑器里**静默消失**（用户既看不到、也没法绑），而 TS 不会因为数组少一个成员报错。
+ * `CATEGORY_LABEL` 是 `Record<Category,…>`（漏加会编译失败），这份用 vitest 锁死覆盖完整。
+ */
+export const CATEGORY_ORDER: ReadonlyArray<Category> = [
+  "Tab",
+  "Term",
+  "App",
+  "Acct",
+  "Beh",
+  "Panel",
+];

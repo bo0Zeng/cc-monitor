@@ -7,6 +7,7 @@ import {
   fetchAccounts,
   deriveUi,
   currentWorkingAccount,
+  accountColorsActive,
   isSelectable,
   setDefaultName,
   invalidateAccountsCache,
@@ -112,9 +113,10 @@ export class AccountChip {
     }
     this.labelSpan.textContent = text;
     // account-ux U4：ready 时把 👤 换成当前工作账号的彩色头像（与 tab 徽章同色系 → 肉眼可对应）。
+    // U8 休眠：只有 1 个可选账号时颜色区分不了任何东西 → 退回 👤，等加了第二个号再点亮。
     const cur = currentWorkingAccount(this.state);
     this.iconEl.textContent = "";
-    if (cur) {
+    if (cur && accountColorsActive(this.state)) {
       this.iconEl.appendChild(accountAvatarEl(cur.name));
     } else {
       this.iconEl.textContent = "👤";
@@ -139,6 +141,14 @@ export class AccountChip {
     } else {
       this.mismatchSpan.style.display = "none";
     }
+  }
+
+  /** account-ux U8：给快捷键用的显式入口。合成 `element.click()` 在 chip 隐藏时照样会派发，
+   *  能开出一个 getBoundingClientRect() 全 0、飘到视口外的菜单（看不见却吞点击）——
+   *  今天靠 pickPrimaryOrigin 过滤 daemonless 才碰不到，那是巧合不是设计。这里显式挡住。 */
+  async openMenu(): Promise<void> {
+    if (this.element.style.display === "none") return;
+    await this.toggleMenu();
   }
 
   private async toggleMenu(): Promise<void> {

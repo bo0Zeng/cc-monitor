@@ -94,6 +94,23 @@ resume/新会话 各站点接线 ── 徽章"信息才显"(live 实心/last �
      避 TDZ,已改掉;
   ③ `accounts.ts` 增 `alignableCurrentAccount`(current 过 `isSelectable`),兑现 U6 DoD「current 不可选不对齐」;
   ④ 预定 `tabs.ts` 对齐 public API 的最终形态,**U8 的 Ctrl+K/快捷键直接复用、不必再改**(避免下轮打补丁);
+- 2026-07-25 **U8 Phase F 账本回写**:
+  ① **休眠规则最终形态(据 D 审计修订)**:`accountColorsActive`(≥2 **可选**账号 && available)
+     **只作用于状态栏 chip 那个常显的身份头像**。全仓 5 个 `accountAvatarEl` 调用点里,
+     **只有 chip 本体接门控**;chip 菜单行 / tab 徽章 / 设置横幅 / 设置表格行**全部豁免**。
+     **规则一句话:颜色可以睡,信息和操作不能睡。** 理由:tab 徽章自 U5 起是「信息才显」——
+     只在 `detectAccountMismatch` 为真时才渲染,所以它不是"单账号时的颜色噪音",而是**唯一的
+     per-session 不一致信号**;在那里休眠会造成 chip 报 ⚠k、Ctrl+K 有对齐命令、而 tab 上一个
+     徽章一个 ⇄ 都没有的鬼影(U6 审计点名过的"信息与操作不同源"裂缝)。
+     ⇒ MASTERPLAN 第 52 行「U6 单一谓词 `alignableCurrent` 统管 ⇄ 显隐 / ⚠k / 批量 / Ctrl+K」
+     **仍然成立、未被并联第二个门**(实现中一度打破,已撤回)。
+  ② `accounts.ts` 纯函数集再增 `selectableAccounts` / `accountColorsActive`;
+     **"你有几个账号"全仓一律数可选数**(U7 维护区默认展开阈值已改接同一函数,不再数总数)。
+  ③ 新共享面 `keybindings/actions.ts`:新增 `Acct` category + `CATEGORY_ORDER` 导出
+     (原为 editor.ts 里手抄的数组——漏加会让整组快捷键在编辑器里**静默消失**且 TS 不报错)。
+  ④ 新模块 `account-commands.ts`(Ctrl+K 账号命令的纯函数构造):原逻辑长在 main.ts 闭包里,
+     "命令何时出现"完全不可测。以后往 Ctrl+K 加账号命令一律加在这里。
+  ⑤ 遗留(不在本轮范围):chip 菜单没走 `pushOverlay`,Esc 会同时关掉它和背后的 overlay(A3 起既有)。
 - 2026-07-25 **U7 Phase F 账本回写**:
   ① `styles.css` 行的「补齐裸奔的 `.accounts-*`」已兑现(**18/20**——`.settings-accounts`/`.accounts-body`
      是纯容器不需要规则,如实记账不充数);列定义放**表**上、行用 `subgrid`(+`@supports` 退回 flex),

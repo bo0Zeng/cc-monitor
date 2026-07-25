@@ -989,6 +989,11 @@ export class TabManager {
       refs.alignBtn.classList.remove("is-eligible");
     };
     if (!shouldShowAccountBadge(tab.origin, this.accountReadyOrigins)) return hide();
+    // U8 休眠**不作用于这里**（D 审计阻塞项）：本徽章是「信息才显」——只有 detectAccountMismatch
+    // 为真才渲染，所以它从来不是"单账号时的颜色噪音"，而是**唯一的 per-session 不一致信号**；
+    // 只有 1 个可选账号时这条信息同样成立、甚至更要紧。若在此休眠，就会出现 chip 报 ⚠k、
+    // Ctrl+K 有对齐命令，而所有 tab 上一个徽章一个 ⇄ 都没有的鬼影。
+    // 规则:**颜色可以睡，信息和操作不能睡** —— 休眠只留给 chip 那个常显的身份头像。
     const b = sessionBadge(
       sid,
       tab.origin,
@@ -2181,6 +2186,11 @@ export class TabManager {
     const current = this.alignableCurrent(sid, tab);
     if (!current) return false;
     return await this.restartTabWithAccount(sid, current, false);
+  }
+
+  /** account-ux U8：当前活跃会话 sid（只读投影，供 Ctrl+K / 快捷键判定"对当前会话做某事"）。 */
+  activeSessionId(): string | null {
+    return this.activeId;
   }
 
   /** account-ux U6：可对齐会话的 sid 列表。⚠k 用 `.length`，U8 的 Ctrl+K/汇总浮层用列表本身。 */

@@ -1502,7 +1502,7 @@ export class HistoryView {
           onUnselectable: (n) =>
             showActionFailureToast(
               "账号不可用",
-              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用默认账号 resume。`,
+              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前工作账号 resume。`,
               { level: "info", durationMs: 6000 },
             ),
           follow: ctx.account ? undefined : { lastAccount: rowLastAccount },
