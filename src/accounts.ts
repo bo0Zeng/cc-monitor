@@ -439,13 +439,16 @@ export async function withAccount(
     try {
       const state = await fetchAccounts(origin);
       const current = currentWorkingAccount(state)?.name ?? null;
-      const followName = resolveFollowAccount(state, {
-        lastAccount: opts.follow.lastAccount,
-        current,
-      });
+      const priorPin = opts.follow.lastAccount ?? null;
+      const followName = resolveFollowAccount(state, { lastAccount: priorPin, current });
       if (followName) {
         configDir = accountConfigDir(state, followName) ?? undefined;
-        if (configDir) recordName = followName;
+        if (configDir) {
+          // U3 审计 重要-1:不 clobber 既有 pin。仅当**无既有 pin**(no-owner → 变 sticky)、或**解析
+          // 结果==既有 pin**(no-op)时才记账;既有 pin 存在但不可选、下沉到 current → **不记账**,保住原
+          // pin(守「粘性优先」不变量,避免 history/tab 默认 resume 把会话账号悄悄翻成当前工作账号)。
+          recordName = !priorPin || followName === priorPin ? followName : null;
+        }
       }
     } catch {
       configDir = undefined; // 库不可用 → 基座
