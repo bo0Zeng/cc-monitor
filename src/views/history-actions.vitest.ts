@@ -102,7 +102,8 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     const row = buildRow(view, entry({ origin: "hostA" }), proj({ origin: "hostA" }));
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
     menuItem("在该目录起新会话")!.click();
-    await Promise.resolve();
+    // account-ux U3：远端新会话现经 withAccount(await fetchAccounts) → 多冲一轮宏任务排空微任务队列。
+    await new Promise((r) => setTimeout(r, 0));
     expect(runNewRemote).toHaveBeenCalledTimes(1);
     expect(runNewRemote.mock.calls[0][0]).toBe("hostA");
     expect(runNewRemote.mock.calls[0][1]).toBe("/p");
