@@ -1480,6 +1480,18 @@ export class HistoryView {
       // F34：用户自定义远端 resume 命令（如 cct）；空 = 后端默认
       const origin = ctx.origin;
       const behavior = await getBehavior();
+      // account-ux U3:无显式选号 → 跟随。先读该会话的 pin(源②,list_last_accounts 只读本地 metadata,
+      // 非远端 SSH)传给 follow,使「粘性优先」在 history 入口也成立——有 pin 走 pin、无 pin 走当前工作账号;
+      // 配合 withAccount 的不-clobber 记账,绝不把既有 pin 翻成当前账号(U3 审计 重要-1)。显式选号维持 A4。
+      let rowLastAccount: string | undefined;
+      if (!ctx.account) {
+        try {
+          const lastMap = await invoke<Record<string, string>>("list_last_accounts");
+          rowLastAccount = lastMap?.[ctx.sessionId];
+        } catch {
+          rowLastAccount = undefined;
+        }
+      }
       // A4：带账号 resume 统一走 withAccount（resolve configDir → 不可选则 toast 降级默认 → record 源②）。
       await withAccount(
         origin,
@@ -1493,9 +1505,7 @@ export class HistoryView {
               `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用默认账号 resume。`,
               { level: "info", durationMs: 6000 },
             ),
-          // account-ux U3:无显式选号 → 跟随当前工作账号（history 行不带 lastAccount，走 current；
-          // 显式选号维持 A4 不给 follow）。比旧的"落基座"是净改进。
-          follow: ctx.account ? undefined : {},
+          follow: ctx.account ? undefined : { lastAccount: rowLastAccount },
         },
       );
     } else {
