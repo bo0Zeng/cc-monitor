@@ -18,7 +18,8 @@ export interface RestartWithAccountOpts {
   origin: string;
   sessionId: string;
   cwd: string;
-  /** 本工具的 `cc-<sid8>` 会话名（send-keys / kill 目标；后端白名单只认 cc-*）。 */
+  /** 本工具的 `cc-<sid8>` 会话名（send-keys / kill 目标；后端 `tmux_send_keys` 与
+   *  `kill_remote_tmux` 白名单都只认 cc-*——audit-fixes F02 后 kill 也对称加了守卫）。 */
   tmuxName: string;
   accountName: string;
   /** F34 远端 resume 命令（空 → 后端默认）。 */
