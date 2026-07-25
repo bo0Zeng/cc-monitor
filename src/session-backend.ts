@@ -70,9 +70,24 @@ export const TMUX_BACKEND: SessionBackend = {
     // 降级到"无标记"(= #72 前行为、cc-monitor 回退 cwd 匹配),resume 照跑,而非把用户丢进空 shell。
     const setSid = ccmSid ? `(tmux set-option -t ${target} @ccm_sid ${ccmSid} 2>/dev/null || true) && ` : "";
 
+    // audit-fixes F03.4 甲′：让**外层终端窗口标题** = `ccm-rbind-<sid>`，供本地 ↗「拉到前台」
+    // （`bind.rs` 扫 wt.exe 标题子串）在**远端跑裸 claude、没经 ccm wrapper** 时也能绑上（修 #74/#41
+    // 结构因）。关键：`set-titles-string` 用 tmux 格式 `#{@ccm_sid}` **从上面刚设的 @ccm_sid option 派生**——
+    // @ccm_sid 是 claude 碰不到的（OSC 只能改 pane_title #T），故外层标题**永远稳定、无需轮询重刷**
+    // （对比 ccm-wrapper 的 `set-titles-string #T` 会被 claude 抢写、要每秒轮询）。aya(tmux 3.6) 已实测：
+    // claude 连刷 30 次 OSC 标题，外层客户端收到的始终只有 `ccm-rbind-<sid>`，零泄漏。
+    // **裸值不带双引号**：`launch.rs` 拒含双引号的 remote_cmd；`ccm-rbind-#{@ccm_sid}` 无空格、`#{}@`
+    // 穿 `bash -lic '<posixQuote>'` 全字面（# 词中非注释、{} 无逗号不展开），已实测无碍。
+    // **非阻断**（同 setSid）：标题是次要动作，老 tmux 上 set 失败也绝不阻断后续 `&& send-keys` 的 resume。
+    const setTitle = ccmSid
+      ? `(tmux set-option -t ${target} set-titles on 2>/dev/null || true) && ` +
+        `(tmux set-option -t ${target} set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && `
+      : "";
+
     return (
       `tmux new-session -d -s ${target}${cflag} 2>/dev/null && ` +
       setSid +
+      setTitle +
       `tmux send-keys -t ${target} ${quotedPayload} Enter; ` +
       `tmux attach -t ${target}`
     );

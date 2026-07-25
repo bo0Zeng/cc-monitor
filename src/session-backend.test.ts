@@ -61,7 +61,7 @@ test("TMUX_BACKEND.attach：attach -t <target>", () => {
   eq(TMUX_BACKEND.attach("cc-abc"), "tmux attach -t cc-abc");
 });
 
-test("#72 TMUX_BACKEND.createRunAttach：ccmSid → create 分支插 set-option @ccm_sid(new-session 后、send-keys 前)", () => {
+test("#72 + F03.4甲′ createRunAttach：ccmSid → create 分支插 @ccm_sid + set-titles(new-session 后、send-keys 前)", () => {
   eq(
     TMUX_BACKEND.createRunAttach({
       target: "cc-1234abcd",
@@ -71,17 +71,28 @@ test("#72 TMUX_BACKEND.createRunAttach：ccmSid → create 分支插 set-option 
     }),
     "tmux new-session -d -s cc-1234abcd 2>/dev/null && " +
       "(tmux set-option -t cc-1234abcd @ccm_sid 1234abcd-full-sid 2>/dev/null || true) && " +
+      "(tmux set-option -t cc-1234abcd set-titles on 2>/dev/null || true) && " +
+      "(tmux set-option -t cc-1234abcd set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && " +
       "tmux send-keys -t cc-1234abcd 'p' Enter; tmux attach -t cc-1234abcd",
   );
 });
 
-test("#72 TMUX_BACKEND.createRunAttach：无 ccmSid → 不插 set-option(零回归)", () => {
-  eq(
-    TMUX_BACKEND.createRunAttach({ target: "cc-x", quotedCwd: null, quotedPayload: "'p'" }).includes(
-      "set-option",
-    ),
-    false,
-  );
+// F03.4 甲′：set-titles-string 从 @ccm_sid 派生（claude 覆盖不了）；**裸值不带双引号**（launch.rs 拒双引号）。
+test("F03.4甲′ createRunAttach：set-titles-string 裸值、不含双引号（穿 launch.rs 的 bash -lic）", () => {
+  const cmd = TMUX_BACKEND.createRunAttach({
+    target: "cc-x",
+    quotedCwd: null,
+    quotedPayload: "'p'",
+    ccmSid: "s1",
+  });
+  eq(cmd.includes("set-titles-string ccm-rbind-#{@ccm_sid}"), true, "从 @ccm_sid 派生");
+  eq(cmd.includes('"'), false, "整条命令不含双引号（launch.rs fail-closed）");
+});
+
+test("#72 + F03.4甲′ createRunAttach：无 ccmSid → 不插 set-option/set-titles(零回归)", () => {
+  const cmd = TMUX_BACKEND.createRunAttach({ target: "cc-x", quotedCwd: null, quotedPayload: "'p'" });
+  eq(cmd.includes("set-option"), false);
+  eq(cmd.includes("set-titles"), false);
 });
 
 test("SESSION_BACKEND === TMUX_BACKEND（阶段①唯一活跃后端）", () => {

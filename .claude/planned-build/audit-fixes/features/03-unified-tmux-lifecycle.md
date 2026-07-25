@@ -19,7 +19,9 @@
 - [x] **步骤 1（idle-tmux 就地复用 resume）**：resumeTabTmux 在 ①live-attach 与 ②new-session 之间加 ①.5——@ccm_sid 精确命中但 command≠claude → 复用原名 send-keys resume（`runRemoteResumeIntoExistingTmux`），不 pickFreshTmuxName 新起。回归测 + 变异验证。
 - [ ] **步骤 2（灰灯 UI）**：把 idle-tmux 态接到活动灯的一个灰状态（经 reconcile / tmux 存活信号）。
 - [x] **步骤 3（attach-into-idle）**：抽 `findIdleTmux(sessions,sid)`（@ccm_sid 命中 + command≠claude，与 findClaudeTmux 互斥）；F03.1 就地复用改用它（去重）；attach 菜单同步(缓存命中)+异步(resolveAttachMenuItem)两路在无活 claude 但有 idle 时提供「Attach（空 tmux …）」。回归测（findIdleTmux 5 例 + DOM idle-attach 1 例）+ 变异验证。**§4 重排下先于步骤 2 做（不依赖灰灯机制）**。
-- [ ] **步骤 4（identity 建时设 rbind 标题，#74/#41 结构因）**：create 序列直接写 `ccm-rbind-<sid>` 标题（不依赖交互 __ccm_rbind）。
+- [~] **步骤 4（rbind 标题 + 拉起即绑，#74/#41）= 甲′ + 丙**：
+  - [x] **4a 甲′（远端，aya 已验）**：`createRunAttach` create 分支（ccmSid 存在时）非阻断加 `set-titles on` + `set-titles-string ccm-rbind-#{@ccm_sid}`（**裸值无双引号**——launch.rs 拒双引号）。从 @ccm_sid 派生外层标题、claude 覆盖不了、无轮询。aya 实测：claude 抢 pane_title 后外层标题仍渲染 `ccm-rbind-<sid>`。测试更新 session-backend.test + remote-launch.test 精确串。
+  - [ ] **4b 丙（本地 Windows，你真机验）**：`launch_remote_terminal` 加 sid 参 → wt `-w new --title ccm-rbind-<sid> --suppressApplicationTitle` → spawn 后 `RemoteHwndCache.try_bind_with_retry` 前向登记 + shrink `ON_DEMAND_BIND_ATTEMPTS`。Windows 侧 aya 验不了 → 真机验证再关 #74/#41。
 
 ## 不做（防蔓延）
 - 不自动 kill 空 tmux（用户拍板：不自动回收；真孤儿靠 F05 手动）。
