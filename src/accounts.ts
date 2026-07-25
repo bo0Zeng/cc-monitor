@@ -109,9 +109,51 @@ export function effectiveDefault(state: AccountsState): Account | null {
   return state.accounts.find((a) => a.isDefault) ?? state.accounts[0];
 }
 
+/**
+ * 「当前工作账号」(account-ux)——`effectiveDefault` 的语义别名,值完全一致。
+ * account-isolation 时期它只用来预选新会话对话框;本轮升格为 resume/新会话的**跟随默认**。
+ * 换名不换存储(仍 config.json `accounts.defaultName`);给别名是让 follow 解析 / mismatch
+ * 比对的调用点读作"当前工作账号"而非"默认",避免理解漂移。
+ */
+export function currentWorkingAccount(state: AccountsState): Account | null {
+  return effectiveDefault(state);
+}
+
 /** 某账号是否可被选为默认 / 用来起会话。 */
 export function isSelectable(a: Account): boolean {
   return a.mode === "isolated" && a.loggedIn && a.exists;
+}
+
+/**
+ * account-ux U1:普通 resume 的**跟随账号**解析器(纯函数,vitest 锁死)。
+ * 优先级(用户拍板:粘性优先):`会话 lastAccount → 当前工作账号 → null(基座)`。
+ * 每级候选必须 `isSelectable`(存在的 isolated + 已登录 + 目录在)否则**下沉**下一级;
+ * 都不可选 → null(=不注入、落基座、逐字节旧行为)。
+ * **显式选号不走此函数**——那条路维持 A4 语义(withAccount 的非空 accountName 分支)。
+ */
+export function resolveFollowAccount(
+  state: AccountsState,
+  opts: { lastAccount?: string | null; current?: string | null },
+): string | null {
+  const pickable = (name: string | null | undefined): name is string => {
+    if (!name) return false;
+    const a = state.accounts.find((x) => x.name === name);
+    return !!a && isSelectable(a);
+  };
+  if (pickable(opts.lastAccount)) return opts.lastAccount;
+  if (pickable(opts.current)) return opts.current;
+  return null;
+}
+
+/**
+ * account-ux U1:活会话账号是否与当前工作账号**不一致**(纯函数)。
+ * 仅当两者都确知且不同才判 true;任一未知(live 探不到 / 无当前账号)→ false(不误报)。
+ */
+export function detectAccountMismatch(
+  liveAccount: string | null,
+  current: string | null,
+): boolean {
+  return liveAccount !== null && current !== null && liveAccount !== current;
 }
 
 /**
@@ -143,6 +185,10 @@ export interface SessionBadge {
   text: string; // 显示文本；"—" = 未知
   known: boolean; // 是否确知账号
   tooltip: string;
+  /** account-ux U5:徽章数据来源。'live'=实时探测(硬真相,实心头像)/ 'last'=上次记录(源②,幽灵头像)/ 'unknown'=不猜。 */
+  source: "live" | "last" | "unknown";
+  /** account-ux U5:确知时的账号名(text 是缩写,这里是全名,供 mismatch 比对/tooltip);未知为 null。 */
+  account: string | null;
 }
 export function sessionBadge(
   sid: string,
@@ -160,6 +206,8 @@ export function sessionBadge(
       text: badgeText(live.account),
       known: true,
       tooltip: `账号 ${live.account}${email ? ` · ${email}` : ""} · 来源：实时探测`,
+      source: "live",
+      account: live.account,
     };
   }
   // 源②：cc-monitor 记的 lastAccount（归档/未在跑的会话探测不到 live，用它兜底）；
@@ -171,6 +219,8 @@ export function sessionBadge(
       text: badgeText(last),
       known: true,
       tooltip: `账号 ${last}${email ? ` · ${email}` : ""} · 来源：上次用本工具起`,
+      source: "last",
+      account: last,
     };
   }
   // 源③：都没有 → 未知，不猜。
@@ -178,6 +228,8 @@ export function sessionBadge(
     text: "—",
     known: false,
     tooltip: "该会话不是本工具启动的，或已停止，无法判定账号",
+    source: "unknown",
+    account: null,
   };
 }
 
