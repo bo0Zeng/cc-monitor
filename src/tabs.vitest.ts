@@ -116,7 +116,14 @@ import {
   runRemoteResumeIntoExistingTmux,
   runRemoteAttach,
 } from "./remote-launch-run";
-import { TabManager, findClaudeTmux, isCwdFallbackMatch, claudeExited, type Tab } from "./tabs";
+import {
+  TabManager,
+  findClaudeTmux,
+  findIdleTmux,
+  isCwdFallbackMatch,
+  claudeExited,
+  type Tab,
+} from "./tabs";
 
 // 私有字段的只读探针（TS private 仅编译期；运行时可读）。仅测试用。
 interface TMInternals {
@@ -988,6 +995,24 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(attachBtn()).toBeNull();
   });
 
+  // audit-fixes F03.3（attach-into-idle）：无活 claude 但目标 sid 的空 tmux（@ccm_sid 命中、
+  // command=bash）还在 → attach 项就绪为「Attach（空 tmux …）」，让用户 attach 进空 shell。
+  // 变异锚点：删 resolveAttachMenuItem else 分支的 idle 处理 → 占位被移除、attachBtn=null → 红。
+  it("无活 claude 但有目标 sid 的空 tmux（idle）→ attach 项就绪为「空 tmux」", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve([
+            { name: "cc-A1", path: "/a", command: "bash", attached: false, windows: 1, sid: "A" },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("A", "/a", "p", 0, "hostA");
+    rightClick("A");
+    await flush();
+    expect(attachBtn()?.textContent).toContain("空 tmux cc-A1");
+    expect(attachBtn()?.disabled).toBe(false);
+  });
+
   it("R-1 守卫:tab A 查询在飞时右键 tab B → A 迟到结果不污染 B 的菜单", async () => {
     let resolveA!: (v: unknown) => void;
     const aPending = new Promise((r) => (resolveA = r));
@@ -1176,6 +1201,36 @@ describe("F74 findClaudeTmux（精确 tmux↔sid 映射）", () => {
   it("null / 空列表 → undefined", () => {
     expect(findClaudeTmux(null, "t", "/p")).toBeUndefined();
     expect(findClaudeTmux([], "t", "/p")).toBeUndefined();
+  });
+});
+
+// audit-fixes F03（idle-tmux）：findIdleTmux 与 findClaudeTmux 互斥——前者要 @ccm_sid 命中且
+// command≠claude（空 shell），后者要 command=claude。F03.1 就地复用 + F03.3 attach-idle 共用。
+describe("audit-fixes F03 findIdleTmux（sid 命中但 command≠claude 的空 tmux）", () => {
+  const S = (name: string, command: string, sid: string | null) => ({
+    name,
+    path: "/p",
+    command,
+    attached: false,
+    windows: 1,
+    sid,
+  });
+  it("@ccm_sid 命中 + command≠claude（bash）→ 命中该空 tmux", () => {
+    expect(findIdleTmux([S("cc-t1", "bash", "target")], "target")?.name).toBe("cc-t1");
+  });
+  it("@ccm_sid 命中但 command=claude（活会话）→ 不算 idle（互斥 findClaudeTmux）", () => {
+    expect(findIdleTmux([S("cc-t1", "claude", "target")], "target")).toBeUndefined();
+  });
+  it("command=node（claude 是 Node CLI）也算活、不算 idle", () => {
+    expect(findIdleTmux([S("cc-t1", "node", "target")], "target")).toBeUndefined();
+  });
+  it("只按 @ccm_sid 精确命中，绝不按 cwd 猜（sid 不符 → 不命中）", () => {
+    expect(findIdleTmux([S("cc-x", "bash", "other")], "target")).toBeUndefined();
+    expect(findIdleTmux([S("cc-x", "bash", null)], "target")).toBeUndefined();
+  });
+  it("null / 空列表 → undefined", () => {
+    expect(findIdleTmux(null, "t")).toBeUndefined();
+    expect(findIdleTmux([], "t")).toBeUndefined();
   });
 });
 
