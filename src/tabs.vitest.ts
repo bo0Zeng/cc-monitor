@@ -927,12 +927,14 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
     clickItem("Resume（tmux）");
     await flushMicro();
     await flushMicro();
+    // account-ux U3：归档 tmux resume 也走 withAccount follow → 第 6 参 configDir（空 mock → undefined）。
     expect(runRemoteResumeTmux).toHaveBeenCalledWith(
       "aya",
       "r1",
       "/home/pi/proj",
       "cct",
       "cc-r1",
+      undefined,
     );
     // 直连项 → runRemoteResume
     rightClick("r1");
@@ -979,7 +981,7 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
     await flushMicro();
     expect(runRemoteAttach).not.toHaveBeenCalled();
     // cc-r1 被漂移会话占着 → 挑 cc-r1-2 新建,保证 --resume r1 落进原会话。
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "cc-r1-2");
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "cc-r1-2", undefined);
   });
 
   it("F74 Resume（tmux）:老 wrapper(整表无 @ccm_sid)→ 起全新 fresh resume,不 attach 不确定会话", async () => {
@@ -1000,7 +1002,7 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
     // findClaudeTmux 按 cwd 兜底命中 proj_cc,但 live.sid(null)!==sid → **不 attach 不确定的会话**,
     // 起 fresh resume(cc-r1 未被占 → 基名);--resume r1 恒落对会话(§30「找不到就别静默换」)。
     expect(runRemoteAttach).not.toHaveBeenCalled();
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "cc-r1");
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "cc-r1", undefined);
   });
 
   it("归档本地 tab → 仍单「Resume」(无 tmux 项)", () => {

@@ -1808,7 +1808,11 @@ export class TabManager {
         origin,
         accountName ?? null,
         (cd) => runRemoteResume(origin, sid, cwd, behavior.resumeCommandRemote, cd),
-        { sessionId: sid },
+        {
+          sessionId: sid,
+          // account-ux U3:未显式选号 → 跟随(lastAccount sticky → 当前工作账号 → 基座)。显式选号维持 A4。
+          follow: accountName ? undefined : { lastAccount: this.accountLastByS.get(sid) },
+        },
       );
       return;
     }
@@ -1854,7 +1858,13 @@ export class TabManager {
     // 名里挑一个不撞的，避免复用被 /branch 漂移占着的 cc-<sid8>（那正是「resume 进 branch」老 bug）。
     const existing = new Set((sessions ?? []).map((s) => s.name));
     const name = pickFreshTmuxName(sid, existing);
-    await runRemoteResumeTmux(origin, sid, cwd, behavior.resumeCommandRemote, name);
+    // account-ux U3:tmux 版归档 resume 也跟随账号(注入 configDir)。① attach 活会话分支不动(账号焊死)。
+    await withAccount(
+      origin,
+      null,
+      (cd) => runRemoteResumeTmux(origin, sid, cwd, behavior.resumeCommandRemote, name, cd),
+      { sessionId: sid, follow: { lastAccount: this.accountLastByS.get(sid) } },
+    );
   }
 
   /**

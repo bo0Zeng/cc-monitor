@@ -6,7 +6,10 @@
 ## 当前阶段:**✅ 主计划 + 4 决策已批准 · 全自动 loop 运行中 · U1 完成 → 当前 U2**
 
 > **进度(分支 `account-ux`,不 push)**:
-> - U1 ✅ `72c3b1e`:纯函数地基(resolveFollowAccount/currentWorkingAccount/detectAccountMismatch/accountColorSlot/sessionBadge source)。门禁 tsc0 / vitest 38 文件 475(+22)/ remote-launch 逐字节回归全绿。纯增无调用点,零回归。
+> - U1 ✅ `72c3b1e`:纯函数地基(resolveFollowAccount/currentWorkingAccount/detectAccountMismatch/accountColorSlot/sessionBadge source)。门禁 tsc0 / vitest 475 / remote-launch 回归绿。
+> - U2 ✅ `59012b5`:withAccount follow 第三态(opt-in)。门禁 tsc0 / vitest 481(+6)/ A4 老 5 用例不改保持绿 / remote-launch 契约绿。尚无调用点。
+> - U3 🔨 实现完成,门禁绿(tsc0 / vitest 481 / remote-launch 回归 / history node 测),**Phase D 对抗审计中**。接线 4 处:tabs.resumeTab(默认 follow)/ tabs.resumeTabTmux 归档分支(+configDir,attach 活会话不动)/ history.runResume(无显式号→follow)/ history.runNewSession 远端(从"无 withAccount"→follow)。remote-section 预选改名挪 U4。history 行不带 lastAccount → 走 current(记为 U3 已知裁剪)。测试契约演进:tabs.vitest 3 条 +undefined、history 2 vitest 多冲宏任务。
+> - **当前 U3 待 Phase D 审计回来签收 → 再 U4**。
 
 - **Phase A 产物**:`MASTERPLAN.md`(目标/架构/★共享面账本/U1–U9 拆分)。三视角设计 agent 已交叉收敛。
 - **用户已拍板的 4 决策(全选推荐项,已锁进语义)**:
@@ -18,7 +21,7 @@
 
 ## 功能清单(见 MASTERPLAN §Features)
 - [x] U1 地基纯函数(解析器 + 账号色 + 徽章 source) — ✅ 72c3b1e
-- [ ] U2 withAccount follow 模式 — 风险中(守 A4 零回归)
+- [x] U2 withAccount follow 模式 — ✅ 59012b5
 - [ ] U3 接线 resume/新会话跟随 — 风险中
 - [ ] U4 当前工作账号语义面 + chip 升级 — 风险低-中
 - [ ] U5 tab 徽章升级(信息才显) — 风险中

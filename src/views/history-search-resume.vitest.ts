@@ -74,7 +74,8 @@ describe("HistoryView 搜索卡片 resume (F85 #44)", () => {
     const view = new HistoryView();
     const card = buildCard(view, searchSession({ origin: "hostA" }));
     card.querySelector<HTMLButtonElement>(".search-session-resume")!.click();
-    await Promise.resolve();
+    // account-ux U3：远端 resume 现经 withAccount(await fetchAccounts) → 多冲一轮宏任务排空微任务队列。
+    await new Promise((r) => setTimeout(r, 0));
     expect(runRemote).toHaveBeenCalledTimes(1);
     expect(runRemote.mock.calls[0].slice(0, 3)).toEqual(["hostA", "s1", "/p"]);
     expect(invokeMock.mock.calls.some((c) => c[0] === "resume_history_session")).toBe(false);

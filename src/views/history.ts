@@ -1493,6 +1493,9 @@ export class HistoryView {
               `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用默认账号 resume。`,
               { level: "info", durationMs: 6000 },
             ),
+          // account-ux U3:无显式选号 → 跟随当前工作账号（history 行不带 lastAccount，走 current；
+          // 显式选号维持 A4 不给 follow）。比旧的"落基座"是净改进。
+          follow: ctx.account ? undefined : {},
         },
       );
     } else {
@@ -1515,7 +1518,14 @@ export class HistoryView {
     if (ctx.origin) {
       // 远端：薄封装 F53 拉起（tmux 名派生 + 默认拉起命令兜底都在 runNewSessionRemote 里，
       // 本处既不知 tmux、也不知默认 agent；只传 F34 配置命令，空则传输层兜默认）。
-      await runNewSessionRemote(ctx.origin, ctx.cwd, behavior.resumeCommandRemote);
+      // account-ux U3:远端新会话跟随当前工作账号（新会话无 sid → 不记账）。
+      const origin = ctx.origin;
+      await withAccount(
+        origin,
+        null,
+        (cd) => runNewSessionRemote(origin, ctx.cwd, behavior.resumeCommandRemote, cd),
+        { follow: {} },
+      );
     } else {
       try {
         // 本地：后端 new_local_session（cc 优先 + F34 自定义，无 sid/resume flag）。
