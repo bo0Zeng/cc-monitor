@@ -1401,3 +1401,61 @@ describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动�
     expect(restartSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("account-ux U5 tab 徽章「信息才显」", () => {
+  let tm: TabManager;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tm = makeTM();
+  });
+  const badge = (): HTMLElement | null =>
+    document.body.querySelector<HTMLElement>(".tab-acct-badge");
+  const liveRow = (sid: string, account: string) => ({
+    pid: 1,
+    sessionId: sid,
+    cwd: "/w",
+    configDir: `/h/${account}`,
+    account,
+    bare: false,
+    alive: true,
+  });
+  // setSessionAccounts(rows, emailByName, lastAccountByS, readyOrigins, currentByOrigin)
+  function feed(
+    rows: ReturnType<typeof liveRow>[],
+    last: Map<string, string>,
+    current: Map<string, string>,
+  ): void {
+    tm.setSessionAccounts(rows, new Map(), last, new Set(["aya"]), current);
+  }
+
+  it("会话账号 != 当前工作账号(live) → 挂实心头像", () => {
+    tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "aya");
+    feed([liveRow("r1", "b")], new Map(), new Map([["aya", "z"]]));
+    const el = badge();
+    expect(el?.style.display).not.toBe("none");
+    expect(el?.querySelector(".acct-avatar")).not.toBeNull();
+    expect(el?.querySelector(".acct-avatar.ghost")).toBeNull(); // live = 实心
+  });
+  it("会话账号 == 当前工作账号 → 不挂徽章", () => {
+    tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "aya");
+    feed([liveRow("r1", "z")], new Map(), new Map([["aya", "z"]]));
+    expect(badge()?.style.display).toBe("none");
+  });
+  it("lastAccount 软来源且 != 当前 → 幽灵头像", () => {
+    tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "aya");
+    feed([], new Map([["r1", "b"]]), new Map([["aya", "z"]]));
+    const av = badge()?.querySelector(".acct-avatar");
+    expect(av).not.toBeNull();
+    expect(av?.classList.contains("ghost")).toBe(true);
+  });
+  it("未知账号(无 live 无 last) → 不挂徽章", () => {
+    tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "aya");
+    feed([], new Map(), new Map([["aya", "z"]]));
+    expect(badge()?.style.display).toBe("none");
+  });
+  it("当前工作账号未就绪(currentByOrigin 无该 origin) → 不猜、不挂", () => {
+    tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "aya");
+    feed([liveRow("r1", "b")], new Map(), new Map()); // 无 current
+    expect(badge()?.style.display).toBe("none");
+  });
+});

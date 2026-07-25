@@ -5540,22 +5540,13 @@ body.settings-window-mode .grid-monitor-trigger {
 .acct-avatar.ghost.acct-c6 { color: var(--acct-c6) !important; }
 .acct-avatar.ghost.acct-c7 { color: var(--acct-c7) !important; }
 
+/* account-ux U5：徽章 span 退化为纯容器（内含 .acct-avatar 头像，仅"不在当前工作账号"时出现）；
+   旧实色药丸 + `—` 未知态已废（信息才显：一致/未知都不挂）。 */
 .tab-acct-badge {
   flex: none;
   margin-left: 4px;
-  padding: 0 4px;
-  font-size: 0.72em;
-  line-height: 1.4;
-  color: var(--bg-1, #1c1a17);
-  background: var(--accent, #7aa2f7);
-  border-radius: 4px;
-  font-weight: 600;
-}
-.tab-acct-badge.unknown {
-  color: var(--text-2);
-  background: transparent;
-  border: 1px solid var(--border, #3a342e);
-  font-weight: 400;
+  display: inline-flex;
+  align-items: center;
 }
 
 /* A6:设置「账号」组的部署/维护向导 */

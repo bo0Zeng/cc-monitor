@@ -12,12 +12,14 @@ import type { JsonlLinePayload } from "./events";
 import {
   sessionBadge,
   shouldShowAccountBadge,
+  detectAccountMismatch,
   fetchAccounts,
   isSelectable,
   withAccount,
   type SessionAccount,
 } from "./accounts";
 import { restartWithAccount, DEFAULT_EXIT_WAIT_MS } from "./account-restart";
+import { accountAvatarEl } from "./account-color";
 import type { BehaviorConfig } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
 import { RecordTimeline } from "./record-timeline";
@@ -305,6 +307,8 @@ export class TabManager {
   private accountLastByS = new Map<string, string>();
   /** A4/§7：账号可查询的远端 origin 集（available 且非 daemonless）。只有这些 origin 的会话才显徽章。 */
   private accountReadyOrigins = new Set<string>();
+  /** account-ux U5：origin → 当前工作账号名。徽章「信息才显」比对：会话账号==它 → 不挂徽章。main.ts 定期喂。 */
+  private currentByOrigin = new Map<string, string>();
   /** A5：换号重启时「等旧号 compact 完成」的 per-sid 回调。onLine 见该 sid 的 compact 摘要行即 resolve。 */
   private compactWaiters = new Map<string, () => void>();
   private activeId: string | null = null;
@@ -948,6 +952,7 @@ export class TabManager {
     emailByName: Map<string, string>,
     lastAccountByS: Map<string, string> = new Map(),
     readyOrigins: Set<string> = new Set(),
+    currentByOrigin: Map<string, string> = new Map(),
   ): void {
     this.sessionAccountsByS = new Map();
     for (const r of rows) {
@@ -956,19 +961,25 @@ export class TabManager {
     this.accountEmailByName = emailByName;
     this.accountLastByS = lastAccountByS;
     this.accountReadyOrigins = readyOrigins;
+    this.currentByOrigin = currentByOrigin;
     for (const [sid, refs] of this.tabButtons) {
       const tab = this.tabs.get(sid);
       if (tab) this.updateAccountBadge(refs, sid, tab);
     }
   }
 
-  /** A3/A4：按 sessionBadge 纯函数刷新单个 tab 的账号徽章（源①live→源②lastAccount→未知）。
-   *  §7：只有账号可查询的远端（readyOrigins）才显徽章；本地/daemonless/未迁移一律不显。 */
+  /**
+   * account-ux U5「信息才显」：只在会话账号**不在当前工作账号**（或未知当前时不猜）时挂徽章——
+   * 一致=不挂（chip 已代言，tab 栏保持干净）；未知(源③)=不挂（退 hover tooltip，消 `—` 墙）；
+   * 不一致→彩色头像：source=live 实心（硬真相）/ source=last 幽灵（软来源）。§7 readyOrigins 门控不变。
+   */
   private updateAccountBadge(refs: TabButtonRefs, sid: string, tab: Tab): void {
-    if (!shouldShowAccountBadge(tab.origin, this.accountReadyOrigins)) {
+    const hide = (): void => {
+      refs.acctBadge.textContent = "";
+      refs.acctBadge.className = "tab-acct-badge";
       refs.acctBadge.style.display = "none";
-      return;
-    }
+    };
+    if (!shouldShowAccountBadge(tab.origin, this.accountReadyOrigins)) return hide();
     const b = sessionBadge(
       sid,
       tab.origin,
@@ -976,13 +987,16 @@ export class TabManager {
       this.accountEmailByName,
       this.accountLastByS,
     );
-    if (!b) {
-      refs.acctBadge.style.display = "none";
-      return;
-    }
-    refs.acctBadge.textContent = b.text;
-    refs.acctBadge.title = b.tooltip;
-    refs.acctBadge.classList.toggle("unknown", !b.known);
+    if (!b || !b.account) return hide(); // 未知账号（源③）→ 退 hover；顺带把 b.account 窄化为 string
+    const current = tab.origin ? this.currentByOrigin.get(tab.origin) ?? null : null;
+    // detectAccountMismatch（U1 纯函数）：当前未就绪 / 二者相等 → 均返 false → 不挂徽章
+    //（信息才显：未知退 hover、一致靠 chip 代言、当前未就绪不猜）。仅确知不一致才挂。
+    if (!detectAccountMismatch(b.account, current)) return hide();
+    // 不一致 → 挂彩色头像（live 实心 / lastAccount 幽灵）。
+    refs.acctBadge.textContent = "";
+    refs.acctBadge.className = "tab-acct-badge";
+    refs.acctBadge.appendChild(accountAvatarEl(b.account, { size: 14, ghost: b.source === "last" }));
+    refs.acctBadge.title = `${b.tooltip} · 与当前工作账号「${current}」不一致（右键可用当前账号重启对齐）`;
     refs.acctBadge.style.display = "";
   }
 

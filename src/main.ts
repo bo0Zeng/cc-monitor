@@ -39,7 +39,7 @@ import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
 import { turnEndNotifier } from "./turn-notify";
 import { AccountChip } from "./account-chip";
-import { fetchSessionAccounts, fetchAccounts, isSelectable } from "./accounts";
+import { fetchSessionAccounts, fetchAccounts, isSelectable, currentWorkingAccount } from "./accounts";
 
 // === 启动 perf 测量 ===
 // performance.now() 自页面 navigation start 起；前端各阶段时间点。
@@ -196,6 +196,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       const rows: import("./accounts").SessionAccount[] = [];
       const emailByName = new Map<string, string>();
       const readyOrigins = new Set<string>();
+      // account-ux U5：origin → 当前工作账号名，供 tab 徽章「信息才显」比对（会话账号==它 → 不挂徽章）。
+      const currentByOrigin = new Map<string, string>();
       for (const h of cfg.hosts) {
         if (h.daemonless) continue;
         const origin = h.label || h.host;
@@ -207,6 +209,8 @@ window.addEventListener("DOMContentLoaded", async () => {
         for (const a of state.accounts) if (a.email) emailByName.set(a.name, a.email);
         // §7：账号确实可查询（available）的 origin 才算 ready——徽章只在这些 origin 上显。
         if (state.available) readyOrigins.add(origin);
+        const cur = currentWorkingAccount(state);
+        if (cur) currentByOrigin.set(origin, cur.name);
       }
       // A4：sid → lastAccount（源②）。本机 history-metadata 读一次（远端会话的 lastAccount 也
       // 由 cc-monitor 记在本机），live 探测不到时徽章兜底显「上次用本工具起」。失败 → 空表降级。
@@ -217,7 +221,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       } catch (e) {
         console.warn("list_last_accounts failed:", e);
       }
-      tabs.setSessionAccounts(rows, emailByName, lastByS, readyOrigins);
+      tabs.setSessionAccounts(rows, emailByName, lastByS, readyOrigins, currentByOrigin);
     } catch (e) {
       console.warn("refreshSessionAccounts failed:", e);
     }
