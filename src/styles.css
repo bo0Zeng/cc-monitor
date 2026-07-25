@@ -14,6 +14,17 @@
   --error: #d96868;
   --live: #6fb074;
 
+  /* === 账号身份色板（account-ux U4）=== 不透明、CVD-safe、主题无关（不随明暗 swap）。
+     每格自带 ink（白/黑）保小字 ≥4.5:1。slot 由 accountColorSlot(name) 定，颜色粘着账号。 */
+  --acct-c0: #256abf; --acct-ink0: #ffffff;
+  --acct-c1: #eb6834; --acct-ink1: #141414;
+  --acct-c2: #1baf7a; --acct-ink2: #141414;
+  --acct-c3: #eda100; --acct-ink3: #141414;
+  --acct-c4: #e87ba4; --acct-ink4: #141414;
+  --acct-c5: #008300; --acct-ink5: #ffffff;
+  --acct-c6: #4a3aa7; --acct-ink6: #ffffff;
+  --acct-c7: #e34948; --acct-ink7: #141414;
+
   /* 边/底色层级 */
   --border-strong: #3d3a35;
   --border-medium: #ffffff20;
@@ -5487,6 +5498,48 @@ body.settings-window-mode .grid-monitor-trigger {
 }
 
 /* A3：tab 行账号徽章（该会话属于哪个账号；未知 .unknown 显 —，弱化） */
+/* 账号头像（account-ux U4/U5）：圆角方块 + 缩写，不透明填充 + 双 hairline 兜任一主题的分隔。 */
+.acct-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  font-variant: small-caps;
+  line-height: 1;
+  flex: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.22),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+/* 幽灵态（U5：lastAccount 软来源）——淡填充 + 描边，弱于实心 live。 */
+.acct-avatar.ghost {
+  background: transparent !important;
+  color: var(--text-2) !important;
+  box-shadow: inset 0 0 0 1px currentColor;
+  opacity: 0.72;
+}
+.acct-c0 { background: var(--acct-c0); color: var(--acct-ink0); }
+.acct-c1 { background: var(--acct-c1); color: var(--acct-ink1); }
+.acct-c2 { background: var(--acct-c2); color: var(--acct-ink2); }
+.acct-c3 { background: var(--acct-c3); color: var(--acct-ink3); }
+.acct-c4 { background: var(--acct-c4); color: var(--acct-ink4); }
+.acct-c5 { background: var(--acct-c5); color: var(--acct-ink5); }
+.acct-c6 { background: var(--acct-c6); color: var(--acct-ink6); }
+.acct-c7 { background: var(--acct-c7); color: var(--acct-ink7); }
+/* 幽灵态描边取该 slot 的填充色（用 color 承载，box-shadow currentColor 引用）。 */
+.acct-avatar.ghost.acct-c0 { color: var(--acct-c0) !important; }
+.acct-avatar.ghost.acct-c1 { color: var(--acct-c1) !important; }
+.acct-avatar.ghost.acct-c2 { color: var(--acct-c2) !important; }
+.acct-avatar.ghost.acct-c3 { color: var(--acct-c3) !important; }
+.acct-avatar.ghost.acct-c4 { color: var(--acct-c4) !important; }
+.acct-avatar.ghost.acct-c5 { color: var(--acct-c5) !important; }
+.acct-avatar.ghost.acct-c6 { color: var(--acct-c6) !important; }
+.acct-avatar.ghost.acct-c7 { color: var(--acct-c7) !important; }
+
 .tab-acct-badge {
   flex: none;
   margin-left: 4px;

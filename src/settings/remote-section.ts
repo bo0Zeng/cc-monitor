@@ -30,7 +30,7 @@ import { openSftpPanel } from "../sftp/panel";
 import { openPortForwardPanel } from "../views/port-forward";
 import { deriveTmuxName } from "../remote-launch";
 import { runRemoteLauncher } from "../remote-launch-run";
-import { fetchAccounts, isSelectable, effectiveDefault, withAccount } from "../accounts";
+import { fetchAccounts, isSelectable, currentWorkingAccount, withAccount } from "../accounts";
 import { loadConfig, saveConfig } from "../config";
 import { makeInfoIcon } from "./info-icon";
 
@@ -865,7 +865,7 @@ class MachineCard {
     acctRow.className = "launcher-field";
     acctRow.style.display = "none";
     const acctSpan = document.createElement("span");
-    acctSpan.textContent = "账号";
+    acctSpan.textContent = "账号（默认＝当前账号）";
     const acctSelect = document.createElement("select");
     acctSelect.className = "launcher-acct-select";
     acctRow.append(acctSpan, acctSelect);
@@ -878,7 +878,7 @@ class MachineCard {
         if (sel.length < 1) return;
         const none = document.createElement("option");
         none.value = "";
-        none.textContent = "不指定（跟随登录默认）";
+        none.textContent = "不指定（用登录默认、不注入账号）";
         acctSelect.appendChild(none);
         for (const a of sel) {
           const opt = document.createElement("option");
@@ -886,8 +886,8 @@ class MachineCard {
           opt.textContent = a.email ? `${a.name} · ${a.email}` : a.name;
           acctSelect.appendChild(opt);
         }
-        // 预选本机默认账号（若它可选）——反映「当前账号」，用户可改。
-        const def = effectiveDefault(state);
+        // 预选当前工作账号（若它可选）——用户可改或选「不指定」。
+        const def = currentWorkingAccount(state);
         if (def && isSelectable(def)) acctSelect.value = def.name;
         acctRow.style.display = "";
       } catch {
