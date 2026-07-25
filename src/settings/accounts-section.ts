@@ -11,7 +11,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   fetchAccounts,
   deriveUi,
-  effectiveDefault,
+  currentWorkingAccount,
   isSelectable,
   setDefaultName,
   invalidateAccountsCache,
@@ -256,7 +256,7 @@ export class AccountsSection {
   }
 
   private renderTable(state: AccountsState, accounts: Account[]): void {
-    const def = effectiveDefault(state);
+    const def = currentWorkingAccount(state);
     const meta = state.meta;
     if (meta) {
       const info = document.createElement("div");
@@ -274,7 +274,7 @@ export class AccountsSection {
     const hint = document.createElement("div");
     hint.className = "accounts-hint";
     hint.textContent =
-      "「设为默认」只改本机新会话用哪个号，不动远端、不影响已有会话。未登录的账号可点它那行的「登录终端」去 /login。";
+      "点某账号「设为当前账号」= 以后新会话、以及没指定过账号的 resume 都用它；正在跑的会话不受影响、不动远端、不碰凭据。未登录的账号可点它那行的「去登录」在终端里 /login。";
     this.body.appendChild(hint);
 
     this.body.appendChild(this.renderMaintenance());
@@ -352,7 +352,7 @@ export class AccountsSection {
     const mark = document.createElement("span");
     mark.className = "accounts-row-mark";
     mark.textContent = isCurrent ? "★" : "";
-    mark.title = isCurrent ? "本机默认账号" : "";
+    mark.title = isCurrent ? "当前工作账号" : "";
     row.appendChild(mark);
 
     const name = document.createElement("span");
@@ -390,7 +390,7 @@ export class AccountsSection {
     if (isSelectable(a) && !isCurrent) {
       const setDef = document.createElement("button");
       setDef.type = "button";
-      setDef.textContent = "设为默认";
+      setDef.textContent = "设为当前账号";
       setDef.addEventListener("click", () => void this.selectDefault(a));
       actions.appendChild(setDef);
     }
@@ -424,12 +424,12 @@ export class AccountsSection {
       await this.reload(true);
       void emit(SETTINGS_APPLIED_EVENT); // 让主窗状态栏 chip 同步
       showActionFailureToast(
-        "已设为默认账号",
-        `新会话将使用 ${a.name}。已有会话不受影响。`,
+        "已设为当前工作账号",
+        `以后新会话 / resume 默认用 ${a.name}；正在跑的会话不受影响。`,
         { level: "info", durationMs: 4000 },
       );
     } catch (e) {
-      showActionFailureToast("设为默认失败", String(e), { level: "error" });
+      showActionFailureToast("设为当前账号失败", String(e), { level: "error" });
     }
   }
 

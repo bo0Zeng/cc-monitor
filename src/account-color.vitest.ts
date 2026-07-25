@@ -1,6 +1,6 @@
 // account-ux U1：账号色 slot 纯函数测试。
 import { describe, it, expect } from "vitest";
-import { accountColorSlot, ACCOUNT_COLOR_SLOTS } from "./account-color";
+import { accountColorSlot, ACCOUNT_COLOR_SLOTS, accountAvatarEl } from "./account-color";
 
 describe("accountColorSlot（FNV-1a % 8）", () => {
   it("确定性：同名恒同 slot", () => {
@@ -29,5 +29,24 @@ describe("accountColorSlot（FNV-1a % 8）", () => {
     const names = ["z", "b", "wei", "amy", "dev", "prod", "test", "main", "alt", "work"];
     const slots = new Set(names.map(accountColorSlot));
     expect(slots.size).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe("accountAvatarEl（U4 头像元素）", () => {
+  it("类含 .acct-avatar + 稳定 slot 类 + 缩写文本 + aria-hidden", () => {
+    const el = accountAvatarEl("zhang");
+    expect(el.classList.contains("acct-avatar")).toBe(true);
+    expect(el.classList.contains(`acct-c${accountColorSlot("zhang")}`)).toBe(true);
+    expect(el.textContent).toBe("zh"); // badgeText：ASCII 取前 2
+    expect(el.getAttribute("aria-hidden")).toBe("true");
+  });
+  it("ghost=true → 加 .ghost（U5 幽灵态）", () => {
+    const el = accountAvatarEl("bob", { ghost: true });
+    expect(el.classList.contains("ghost")).toBe(true);
+  });
+  it("size 覆盖边长", () => {
+    const el = accountAvatarEl("z", { size: 20 });
+    expect(el.style.width).toBe("20px");
+    expect(el.style.height).toBe("20px");
   });
 });

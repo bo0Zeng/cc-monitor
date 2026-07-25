@@ -6,13 +6,14 @@
 import {
   fetchAccounts,
   deriveUi,
-  effectiveDefault,
+  currentWorkingAccount,
   isSelectable,
   setDefaultName,
   invalidateAccountsCache,
   type AccountsState,
   type Account,
 } from "./accounts";
+import { accountAvatarEl } from "./account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "./settings/remote-section";
 import { showActionFailureToast } from "./error-toast";
 
@@ -36,7 +37,7 @@ export function chipLabel(state: AccountsState | null): string {
     case "not-enabled":
       return "未启用";
     case "ready": {
-      const def = effectiveDefault(state);
+      const def = currentWorkingAccount(state);
       return def ? def.name : "未启用";
     }
   }
@@ -52,6 +53,7 @@ export interface AccountChipDeps {
 export class AccountChip {
   readonly element: HTMLButtonElement;
   private labelSpan: HTMLElement;
+  private iconEl: HTMLElement;
   private origin: string | null = null;
   private state: AccountsState | null = null;
   private menu: HTMLElement | null = null;
@@ -61,12 +63,13 @@ export class AccountChip {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "status-account";
-    btn.title = "当前账号（点击切换默认账号 / 管理）";
+    btn.title = "当前工作账号（点击切换 / 管理）";
     const icon = document.createElement("span");
     icon.className = "status-account-icon";
     icon.textContent = "👤";
     icon.setAttribute("aria-hidden", "true");
     btn.appendChild(icon);
+    this.iconEl = icon;
     this.labelSpan = document.createElement("span");
     this.labelSpan.className = "status-account-label";
     btn.appendChild(this.labelSpan);
@@ -95,6 +98,14 @@ export class AccountChip {
       return;
     }
     this.labelSpan.textContent = text;
+    // account-ux U4：ready 时把 👤 换成当前工作账号的彩色头像（与 tab 徽章同色系 → 肉眼可对应）。
+    const cur = currentWorkingAccount(this.state);
+    this.iconEl.textContent = "";
+    if (cur) {
+      this.iconEl.appendChild(accountAvatarEl(cur.name));
+    } else {
+      this.iconEl.textContent = "👤";
+    }
     this.element.style.display = "";
   }
 
@@ -119,7 +130,7 @@ export class AccountChip {
       menu.appendChild(info);
       menu.appendChild(this.menuAction("管理 / 部署…", () => this.deps.openSettings()));
     } else {
-      const def = effectiveDefault(this.state);
+      const def = currentWorkingAccount(this.state);
       for (const a of ui.accounts) {
         menu.appendChild(this.accountRow(a, def?.name === a.name));
       }
@@ -166,6 +177,8 @@ export class AccountChip {
     mark.className = "account-picker-mark";
     mark.textContent = isCurrent ? "●" : "○";
     row.appendChild(mark);
+
+    row.appendChild(accountAvatarEl(a.name, { size: 16 }));
 
     const name = document.createElement("span");
     name.className = "account-picker-name";
@@ -215,7 +228,7 @@ export class AccountChip {
     if (!this.origin || !this.state) return null;
     const ui = deriveUi(this.state);
     if (ui.kind !== "ready") return null;
-    return { origin: this.origin, accounts: ui.accounts, defaultName: effectiveDefault(this.state)?.name ?? null };
+    return { origin: this.origin, accounts: ui.accounts, defaultName: currentWorkingAccount(this.state)?.name ?? null };
   }
 
   /** 按名字切默认账号（供 Ctrl+K 命令；找不到/不可选则忽略）。 */
@@ -232,12 +245,12 @@ export class AccountChip {
       invalidateAccountsCache(this.origin ?? undefined);
       await this.refresh(true);
       showActionFailureToast(
-        "已切默认账号",
-        `新会话将使用 ${a.name}${a.email ? `（${a.email}）` : ""}。已有会话不受影响——需要换号请在会话上选「用 ${a.name} 重启」。`,
-        { level: "info", durationMs: 6000 },
+        "已切当前工作账号",
+        `以后新会话、以及没指定过账号的 resume 都会用 ${a.name}${a.email ? `（${a.email}）` : ""}；正在跑的会话不受影响（切号不重启任何东西）；已归属别的号的会话保持原号，要换到 ${a.name} 就在它的账号徽章/右键选「用 ${a.name} 重启」。`,
+        { level: "info", durationMs: 8000 },
       );
     } catch (e) {
-      showActionFailureToast("切换默认账号失败", String(e), { level: "error" });
+      showActionFailureToast("切换当前账号失败", String(e), { level: "error" });
     }
   }
 
