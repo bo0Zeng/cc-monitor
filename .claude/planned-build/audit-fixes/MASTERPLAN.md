@@ -1,90 +1,89 @@
-# 主计划 / MASTERPLAN — audit-fixes（rev 08 定稿：bug 全清 + 测试/文档/重构）
+# 主计划 / MASTERPLAN — audit-fixes（rev 11 全面制定：bug 全清 + 测试/文档/重构）
 
 > 单一事实来源。动因：`项目审阅报告-2026-07-25.md`（full-audit）+ `issue-bug根因报告-2026-07-25.md`（8 issue 根因）。
-> 用户 2026-07-25 批准：全自动做完剩余 bug + 测试/文档/重构；灰灯走 **A（后端 reconcile 出信号）**；做完的 issue 关闭；F14（碰 ~/.bashrc）用户自跑。
+> 本版把跨多轮的全部决策收敛成一份连贯计划（旧增量见 §7 变更记录）。
 
-## 0. 目标与范围
-- **总体目标**：把所有 OPEN bug 修完（会话/生命周期 cluster + full-audit 的 I4/I5），并补测试门禁 + 修文档漂移 + 低风险重构，让 `account-ux` 分支可干净合入。
-- **范围内**：F03 剩余（步骤 2-4）· F04 · F05 · F06 · F07（bug）+ F08-F13（测试/文档/重构）。做完每个 bug 关对应 GitHub issue。
-- **范围外（红线，每轮核对）**：
-  - **daemon（`remote-daemon-proto/`）零行为改动** —— 灰灯走 A 也只用 daemon 现成的 `TmuxSessions` 帧（已带 `pane_current_command`）；reconcile/emitter 改在 **src-tauri**。**不改 `TMUX_LS_FMT` 双写点任一侧列**。
-  - **不碰用户 `~/.bashrc`** —— F14（zcc/bcc 迁移）单列、用户自跑、我只给脚本/清单。
-  - 不改 `cc-<sid8>` 会话名协议既有语义；不 push / 不发版 / 不 bump；孤儿**不自动 kill**（F05 仅手动）。
-- **整体成功标准**：8 个 open bug 全修（或明确转 F14/真机）+ 对应 issue 关闭；tsc 0 / npm test 全绿 / cargo test（含 vendor）全绿 / build ✓ / 覆盖率门禁过；每个 bug 修复有回归测 + 变异验证。
+## 0. 目标 / 范围 / 红线
+- **总体目标**：修完所有 OPEN bug（会话/生命周期 cluster + full-audit 的 I4/I5），补 TS/CSS 测试与门禁，修文档漂移，低风险重构；让 `account-ux` 分支可干净合入。做完每个 bug 的**代码能确证部分**即关其 GitHub issue。
+- **范围内**：F03 剩余（3.2 灰灯 / 3.4 标题+绑定）· F04 · F05 · F06 · F07（bug）+ F08–F13（测试/文档/重构）。
+- **红线（每轮核对）**：
+  1. **daemon（`remote-daemon-proto/`）零行为改动** —— 只准加只读测试/门禁；灰灯/标题都只用 daemon 现成的 `TmuxSessions` 帧（已带 `@ccm_sid`+`pane_current_command`）。
+  2. **不改 `TMUX_LS_FMT` 双写点**（`src-tauri/src/tmux.rs` ↔ `remote-daemon-proto/src/watcher.rs`）任一侧列。
+  3. **不碰用户 `~/.bashrc`** —— F14（zcc/bcc 迁移 + wrapper 去轮询）单列、用户自跑，我只给脚本/清单。
+  4. 不改 `cc-<sid8>` 会话名协议既有语义；**不 push / 不发版 / 不 bump 版本**；孤儿**不自动 kill**（仅手动 F05）。
+  5. **不新增 cc-monitor 侧轮询**（用户 2026-07-25 拍板"不要轮询"）——状态判定尽量"收 daemon 推帧/事件即算"；唯一周期扫描 = daemon 内部 `tmux ls`（红线外、既有、物理上绕不开）。
+- **成功标准**：8 open bug 全处理（修/明确转真机/转 F14）+ 对应 issue 关；tsc 0 / npm test 全绿 / cargo test（含 vendor）全绿 / build ✓ / 覆盖率门禁过；每个 bug 修复有回归测 + 变异验证。
 
-## 1. 功能清单（rev 06 现状）
-> 状态：完成 / 实现中 / 待规划
+## 1. 功能清单
+| ID | 功能 | 对应 bug/审计 | 状态 |
+|----|------|--------------|------|
+| F01 | follow-resume 账号安全 + resume 选账号（pin 现读磁盘 + 基座逃生口）| B1 + #75(部分) | ✅ 完成 |
+| F02 | `kill_remote_tmux` 补 `is_ccm_tmux_name` 白名单 | I1 | ✅ 完成 |
+| F03.1 | idle-tmux 就地复用 resume（复用原名不产孤儿）| #76 根因 | ✅ 完成 |
+| F03.3 | attach-into-idle（`findIdleTmux` + 两路 attach 菜单）| #76 | ✅ 完成 |
+| **F03.2** | **idle-tmux 灰灯（三态，事件驱动）** | #76 显示 + #60 邻域 | ⬜ **下一批（高风险）** |
+| **F03.4** | **rbind 标题 + 拉起即绑（甲′ + 丙）** | #74 #41 #72残留 | ⬜ **下一个** |
+| F04 | 统一直连管线 + keepalive（失败不闪退）+ 直连身份路由决策 | #75 直连腿 | ⬜ 待做 |
+| F05 | 手动清理真孤儿（仅 `cc-*` 无对应 tab，过 `is_ccm_tmux_name`）| #76 残留 | ⬜ 待做 |
+| F06 | #43「父子拉不起来」残留（代码）+ #60/#43/#63attach 的 F74* 真机验证 | #43 #60 #63(部分) | ⬜ 待做 |
+| F07 | 刷新竞态(I4) + 多远端缓存(I5) + resumeTab onUnselectable | I4 I5 | ⬜ 待做 |
+| F08 | 质量门禁（eslint/prettier/stylelint/覆盖率棘轮/mock 卫生）+ `TMUX_LS_FMT` 双写点 CI 断言 + daemon 只读机器护栏 | I8 I7 | ⬜ 待做 |
+| F09 | 测试补齐（main.ts 盲区可测纯函数 + vendor code-picture-core 进 cargo test + e2e 冒烟进 CI）| I8/G3 | ⬜ 待做 |
+| F10 | README 中英修版本/删悬空/补账号 + RELEASING/CONTRIBUTING checklist 补 README 两条 | I2 I3 | ⬜ 待做 |
+| F11 | 文档漂移（ARCHITECTURE 账号子系统 + STATE-MATRIX 4命令 + INVARIANTS 上移 color-scheme + 子README + 索引 + actions 数）| I7docs/G2 | ⬜ 待做 |
+| F12 | `remote-section.ts` 数据层抽 `remote-config.ts`（治分层倒挂）| I6/G3 | ⬜ 待做 |
+| F13 | 脊柱拆分（tabs 抽 AccountBadgeController；评估 ssh_source）| I6 | ⬜ 待做（最高风险，撞到停）|
+| ~~F14~~ | ~~.bashrc zcc/bcc 迁移 + wrapper 去轮询（inotify 事件驱动版）~~ | — | **用户自跑** |
 
-| ID | 功能 | 对应 bug/审计 | 状态 | 关 issue |
-|----|------|--------------|------|--------|
-| F01 | follow-resume 账号安全 + resume 选账号 | B1 + #75(部分) | ✅ 完成 | #75 待全修后关 |
-| F02 | kill_remote_tmux 白名单 | I1 | ✅ 完成 | （无 issue，审计项）|
-| F03 | 统一 tmux 管线 + 三态生命周期 | #76 #75 #74 #72 #41 | 🟡 步骤1完成 | #76 **只关命名/回收/复用部分**；其「无 @ccm_sid→attach 管不了」子句 = ccm 重装真机前置（同 #60②），不随代码关 |
-| ├ 3.1 | idle-tmux 就地复用 resume | #76 根因 | ✅ 完成 | — |
-| ├ 3.2 | **idle-tmux 灰灯（走 A：reconcile 发 idle 信号）** | #76 显示 / #60 邻域 | ⬜ **下一个（高风险）** | — |
-| ├ 3.3 | attach-into-idle（菜单 attach 进空 tmux） | #76 | ⬜ 待做 | — |
-| └ 3.4 | 建序列直设 `ccm-rbind-<sid>` 标题（tmux 路径，#74/#41 结构因）。**直连无 tmux=天然无 @ccm_sid（非可补 bug，路由决策归 F04）；新会话 sid 建时未知（靠 wrapper 回填）** | #74 #41 #72残留 | ⬜ 待做 | 代码完 + **真机验证**后关 #74/#41；#72 tmux 已修、直连/新会话属天然限制 |
-| F04 | 统一直连管线 + keepalive（失败不闪退）+ **决定直连是否路由进 tmux（决定 #72 直连腿能否有身份）**| #75 直连腿 | ⬜ 待做 | 代码完(keepalive 单测)+ **真机验证窗口不再闪退**后，与 F01 合并关 #75 |
-| F05 | 手动清理真孤儿（**仅 `cc-*` 无对应 tab 的**，过 `is_ccm_tmux_name`）。`<project>_cc`=cc-bus 资产、不归 cc-monitor 清（见 #76「cc-bus 退纯通讯」future）| #76 残留 | ⬜ 待做 | — |
-| F06 | 绑定族：#43「父子拉不起来」残留（代码）+ #60/#43/#63attach 的 F74* **真机验证**。**#63 尾消息(torn-tail)=daemon-bound（根因在 `remote-daemon-proto/src/watcher.rs` `read_new_lines` 扣尾行），红线内不可修 → 转发版/真机，本轮不做不关** | #43 #60 #63(部分) | ⬜ 待做 | 真机验证后关 #60/#43；#63 只关①/attach，torn-tail 留 |
-| F07 | 刷新竞态(I4) + 多远端缓存(I5) + onUnselectable | I4 I5 | ⬜ 待做 | （审计项）|
-| F08 | 质量门禁（eslint/prettier/stylelint/覆盖率棘轮/mock 卫生）+ **`TMUX_LS_FMT` 双写点逐字相等 CI 断言** + **daemon 只读机器化护栏（I7 结构面，非仅文档）** | I8 I7 | ⬜ 待做 | — |
-| F09 | 测试补齐（main.ts 盲区 + vendor crate + e2e CI）| I8/G3 | ⬜ 待做 | — |
-| F10 | README + 发版根因 checklist | I2 I3 | ⬜ 待做 | — |
-| F11 | 文档漂移（ARCHITECTURE/STATE-MATRIX/INVARIANTS/子README/索引）| I7docs/G2 | ⬜ 待做 | — |
-| F12 | remote-section 数据层抽 remote-config.ts | I6/G3 分层倒挂 | ⬜ 待做 | — |
-| F13 | 脊柱拆分（tabs AccountBadgeController；评估 ssh_source）| I6 | ⬜ 待做 | — |
-| ~~F14~~ | ~~.bashrc zcc/bcc 迁移~~ | — | **用户自跑** | — |
-
-**已交付关闭的 issue**：#71 #42 #67 #46（v3.2.0 bugfix-sweep 已修，本轮 full-audit 复核后关闭）。
+**已关 issue**：#71 #42 #67 #46（v3.2.0 已修，full-audit 复核后关）。**剩余 open bug** = [41,43,60,63,72,74,75,76] 全在计划。
 
 ## 2. 架构概览
-- **三层**：TS 前端 `src/` ↔ Tauri Rust `src-tauri/` ↔ 只读 daemon `remote-daemon-proto/`（零行为改动）。
+- **三层**：TS 前端 `src/` ↔ Tauri Rust `src-tauri/` ↔ 只读 daemon `remote-daemon-proto/`（本族零行为改动）。
 - **账号解析瀑布（勿破）**：`resume 显式选号 > 会话 lastAccount(pin 现读磁盘) > 全局当前工作账号 > 基座`。
-- **会话三态（用户拍板）**：`live(claude 跑,绿/黄/红) / idle-tmux(tmux 在但 command≠claude,灰灯) / archived(tmux 没了,灰掉)`。
-- **live-state 单写者（INVARIANTS §24）**：`remote_active` 唯一写者 = remote-session-emitter，收 `SessionChange` 通道（daemon 事件 / 断连 flush / **tmux_reconcile poller**）。**F03.2-A 在此加第三类"idle"信号**（高风险区）。
+- **会话三态（用户拍板）**：`live(claude 跑,活动灯) / idle-tmux(tmux 在但 command≠claude,灰灯) / archived(tmux 没了,灰掉)`。
+- **live-state 单写者（INVARIANTS §24）**：`remote_active` 唯一写者 = remote-session-emitter（`lib.rs:590-606` 是归档唯一执行点），收 `SessionChange` 通道（daemon 事件 / 断连 flush / tmux 帧对账）。
+- **tmux 状态来源**：daemon 内部周期 `tmux ls` → 推 `TmuxSessions` 帧给 cc-monitor（`watcher.rs`）；cc-monitor **不再 SSH 查**（B2 起读 `snapshot_tmux_by_origin`）。**灰灯据此做成"收帧即算"的事件驱动，不加 cc-monitor 侧轮询**（见 §3 F03.2）。
+- **窗口绑定（↗ 拉前）**：本地 PS 会话已是"拉起即绑"（PS 上报 PID→HWND）；远端曾退化成"事后扫可覆写标题"→ #74/#41。F03.4 把远端也拉回"拉起即绑 + 不可覆写标题"（见 §3 F03.4）。
 
-## 3. ★共享面账本（rev 09）
+## 3. ★共享面账本（rev 11，含已定最终形态）
 | 共享面 | 涉及功能 | 最终形态 | 状态 |
 |--------|----------|----------|------|
-| `src/tabs.ts` pin 读取 | F01,F13 | `readSessionPin` 现读磁盘，三处 resume 一致 | ✅ F01 落 |
-| `src/remote-launch.ts`+`session-backend.ts` 载荷/命名/身份 | F03,F04 | create 与 reuse 共用 `buildResumePayload`；reuse 走 `runInExistingAttach`；F03.4 建序列设 rbind 标题（tmux 路径）；直连无 tmux=天然无身份、新会话 sid 建时未知 → 路由决策归 F04 | 🟡 F03.1 落 create/reuse；F03.4 补 rbind 标题 |
-| **`SessionChange`(session_map.rs，本地+远端共用、无 Default) + emitter(§24 单写者，**归档唯一执行点 `lib.rs:590-606`**) + 前端 session 事件 + tabs 渲染** | **F03.2,F06** | **已定 final form**：idle = remote_active **之外**的第三态；emitter 不进 remote_active、发新前端事件；tabs 灰灯 class（不改 TabStatus 枚举）；F03.2 同轮更 §24。<br>**归档唯一落点 = emitter**（`lib.rs:590-606` `for sid in change.removed → emit SESSION_ENDED`）；ssh_source 的 removed 臂（**`:2231`=daemon-removed=唯一 live→idle 触发点** / `:1789`=断连 flush）**只往通道 send、不 emit** ⇒ 「判 idle vs archived」**架构上只能在 emitter 落**。<br>**★以下留 F03.2 Phase B 定（不在主计划硬写，高风险 + 全 D 审计）——两候选都要改 emitter removed 臂**：<br>&nbsp;(1) **idle 产出**：**(i)** 独立 tmux 扫描(不受 announced_live 门控)+ emitter **抑制/推迟** daemon-removed 归档；或 **(ii)** emitter 收 removed 时**同步查 tmux 快照**内联判 idle/archived。<br>&nbsp;(2) **idle→archived 正向产出者（必答）**：候选(ii) **原生无此信号**（sid 已离 announced_live，daemon 与 reconcile 都不再发）→ 不补则「卡灰关不掉」新 bug（#60 区）。谁产？（补扫描 / 扩 reconcile）<br>&nbsp;(3) 「刚 archived 被 idle 复活」反向竞态 + §24 单写者去抖。<br>&nbsp;(4) `SessionChange` **是否加 idle 字段**：**仅候选(i)/隐式方案需要**（要回填全 **9** 个构造点 session_map.rs:295/392、tmux_reconcile.rs:144、ssh_source.rs:1789/2182/2210/2231/2521/2549）；**候选(ii) 不需要加字段**（判断内联 emitter）。<br>**边界**：daemonless/陈旧 daemon 不发 TmuxSessions 帧（tmux_reconcile.rs:99-107、tmux_raw_registry 不填 :980-982）→ 恒 archived、**不进 idle**；`ssh_source.rs:2549`=`archive_daemonless`，**是这条 archived、非 live→idle 源**。 | ⬜ F03.2 落（**最高风险，机制先在其 Phase B 定 + 全视角 D 审计**）|
-| `src-tauri/src/tmux_reconcile.rs` | F03.2,F06 | F03.2 在此加 idle 产出（需携带 `command`，非现在只收 sid，:127）；F06 在此标定 #60 常量（`POLL_INTERVAL` 可调；`RETIRE_MISS_THRESHOLD` 有编译期下限 `assert!(>=2)` :38，只能调到 ≥2）+ 更 10 个单测。两功能同改一文件，改前对齐 | ⬜ F03.2/F06 |
-| `src/tabs.ts` `findClaudeTmux`(:242-254 @ccm_sid 精确匹配) | F03.2,F03.3,F06 | idle 判据（F03.2）、attach-idle（F03.3）、#60②/#63-attach 真机验证（F06）都碰这条核心匹配。改前查这三处对齐、勿各行其是 | ⬜ |
-| `src-tauri/src/tmux.rs` | F02,F05 | kill 与 send-keys 对称过 `is_ccm_tmux_name`；F05 清理孤儿复用同校验 | ✅ F02 落 |
+| `src/tabs.ts` pin 读取 | F01,F13 | `readSessionPin` 现读磁盘，三处 resume 一致 | ✅ F01 |
+| `src/tabs.ts` `findIdleTmux`/`findClaudeTmux`（@ccm_sid 精确匹配） | F03.1,F03.3,F03.2,F06 | idle 判据（@ccm_sid 命中+command≠claude）单一函数，就地复用/attach-idle/灰灯/#60 共用 | ✅ F03.1/3.3 落 findIdleTmux |
+| `src/remote-launch.ts`+`session-backend.ts` 载荷/命名/身份 | F03,F04 | create/reuse 共用 `buildResumePayload`；reuse 走 `runInExistingAttach`；**F03.4-甲′**：createRunAttach create 分支非阻断加 `(set-option -t <t> set-titles on||true) && (set-option -t <t> set-titles-string ccm-rbind-#{@ccm_sid}||true)`（**裸值无双引号**——launch.rs 拒双引号；从 @ccm_sid 派生、claude 覆盖不了、无轮询，aya 已验） | 🟡 F03.1 落 create/reuse；F03.4 加甲′ |
+| **`src-tauri/src/launch.rs` + `bind.rs`（RemoteHwndCache）+ IPC** | **F03.4-丙** | **拉起即绑**：`launch_remote_terminal` 加 `sid` 参 → wt 起 `-w new new-tab --title ccm-rbind-<sid> --suppressApplicationTitle`（本地钉标题、claude 覆盖不了）→ spawn 后立即 `RemoteHwndCache.try_bind_with_retry`（现成，零新增）前向登记 sid→HWND；`ON_DEMAND_BIND_ATTEMPTS` 40→个位、eager 9s 扫可删（拉起即绑无需等四跳）。**Windows 侧行为 aya 验不了 → 用户真机验证再关 #74/#41** | ⬜ F03.4；老 WT/Plan B 回退退化现行为不阻断 |
+| **`SessionChange`(session_map.rs) + emitter(§24) + tmux 帧收帧处(`ssh_source.rs` stream_loop) + tabs 渲染** | **F03.2** | **灰灯 = 事件驱动（甲-evented）**：把 live/idle/archived 判定从 8s 定时器**挪进"收到 daemon `TmuxSessions` 帧"处**（帧到即算），**删 cc-monitor 侧 `POLL_INTERVAL` 定时器**。idle=@ccm_sid 命中+command≠claude；archived=连续 N 帧不见（retire 阈值 ≥2 映射为连续帧）；live→idle 借 daemon SessionRemoved 事件 + 帧内 command。emitter 处理 idle**不进 remote_active**、发新前端事件；tabs 灰灯 class（不改 TabStatus 枚举）；**同轮更 INVARIANTS §24**。边界：daemonless 不发帧→恒 archived 不进 idle | ⬜ F03.2（**最高风险 → 反复评估方案 + 全视角 D 审计，不一把过**）|
+| `src-tauri/src/tmux.rs` | F02,F05 | kill 与 send-keys 对称过 `is_ccm_tmux_name`；F05 清孤儿复用同校验 | ✅ F02 |
 | `src/main.ts` refreshSessionAccounts | F07,F09 | in-flight 序号门 + 可测纯函数 | ⬜ F07 |
 | `src/settings/remote-section.ts` 数据层 | F12,F13 | 纯数据迁 `remote-config.ts` | ⬜ F12 |
-| `.github/workflows/ci.yml` + `package.json` | F08,F09,F13 | 终态 job：rust/frontend(+lint+coverage)/daemon/vendor-crate/e2e-smoke | ⬜ F08 |
+| `.github/workflows/ci.yml` + `package.json` | F08,F09,F13 | 终态 job：rust/frontend(+lint+coverage)/daemon/vendor-crate/e2e-smoke + 双写点断言 | ⬜ F08 |
 | 文档簇 + BACKLOG | F10,F11 | 不漂移；BACKLOG 打删除线 | ⬜ F10/F11 |
 
 ## 4. 依赖与顺序（bug 优先）
-- **bug 段（先）**：F03.3 → F03.4 → F04 → F05 → F07 → **F03.2 + F06（合并，共享 `tmux_reconcile`/live-state 面）**。**调整理由**（据 3 次复审）：F03.2 灰灯需 Phase B 机制决策（最高风险、会停 loop）且其功能核（idle 复用）F03.1 已交付 → 先做不依赖它的清晰项（F03.3 attach-idle / F03.4 rbind / F04 直连 / F05 清孤儿 / F07 竞态），把 F03.2 与 F06（#60 同区、同改 tmux_reconcile）**合并到最后一起做、机制在其联合 Phase B 定**（避免两次动 live-state 脆区）。
-  - **F03.4↔F04 衔接**（审计 重要-5）：F03.4 只做 tmux 路径的 rbind 标题（身份），**不碰直连**；「直连是否路由进 tmux（决定它能否有身份）」的决策**归 F04**，避免直连面被改两遍。F03.4 实现前先确认不越界到直连。
-- **工程段（后）**：F08 → F09（门禁先于补测）→ F10 → F11（文档零码风险）→ F12 → F13（重构最高风险最后，撞到停）。
-- 每个 bug 功能完成 → 若其 issue 可完全关闭则 `gh issue close`（部分修的不关，留残留）。
+- **bug 段**：F03.4 → F04 → F05 → F07 → **F03.2 + F06（合并，共享 tmux 帧/live-state 面）** → 剩余真机验证项。
+  - F03.4 先（甲′ aya 可验、丙 你真机验，修 #74/#41 结构因）；F04 复用 F01 账号选择；F05 复用 F02 白名单；F07 独立小改；**F03.2 灰灯最高风险 + 与 F06(#60) 同改 live-state 面 → 合并最后做、机制反复评估**。
+- **工程段**：F08 → F09（门禁先于补测）→ F10 → F11（文档零码风险）→ F12 → F13（重构最后，撞到停）。
+- 每个 bug 完成 → 代码能确证的部分 `gh issue close`；需真机/daemon 版本的留开并注明。
 
-## 5. 横切关注点与约定
-- **回归纪律**：每个 bug 先写复现失败测试再修 + 变异验证（改坏看测试是否变红）。
-- **审计强度**：F03.2（动 live-state 单写者，高风险）→ **Phase D 全视角并行 agent**；F04/F05/F06/F07 中风险 → 2-3 agent 或聚焦审。
+## 5. 横切约定
+- **回归纪律**：每个 bug 先写复现失败测试 → 修 → 变异验证（改坏看测试是否红）。
+- **无轮询原则**：cc-monitor 侧不新增轮询；状态判定收 daemon 推帧/事件即算；标题/绑定用"拉起即绑 + 不可覆写标题"（无 OSC 重刷轮询）。唯一周期扫描 = daemon 内部 `tmux ls`（红线外、既有）。
+- **审计强度**：**F03.2（动 emitter/§24 单写者，最高风险）→ Phase B 先开设计 agent 论证机制 + 实现后全视角并行 D 审计**；F03.4/F04/F05/F07 中风险 → 2–3 agent 或聚焦审。
 - **测试约定（quality-gates，F08 落地）**：vitest(jsdom)+tsx；eslint(flat)+prettier；stylelint；@vitest/coverage-v8 分支覆盖率棘轮，账号/会话核心模块目标 85%；变异手动/核心模块；CI 云端 GitHub Actions。lint 棘轮基线不追一次清零。
 - **门禁纪律**：结果重定向到文件 + Read/grep 核实 + pipefail；build 才抓 CSS 错。
 
-## 6. 风险与开放问题
-- **#63 尾消息 torn-tail = daemon-bound，本轮不可修**（审计 阻塞-1）：根因在 `remote-daemon-proto/src/watcher.rs` `read_new_lines` 扣尾行，修它破「daemon 零改动」红线 → 转发版时随 daemon bump / 真机做，本轮 F06 **明确不碰不关**。
-- **F03.2-A 高风险**：动 `SessionChange`/emitter/单写者(§24) + 前端新事件 + tabs 渲染，在 #60/#43/#63 历史 bug 高发区；且 `SessionChange` **本地+远端共用**（加字段要回填本地构造点）。撞到状态机冲突/计划≠现实 → 停 loop。真机验证需远端 daemon(≥p1p)+ccm 助手在跑（用户机器动作）。
-- **`TMUX_LS_FMT` 双写点是 F03.2 的 load-bearing 依赖**（审计 重要-6）：区分 live/idle 全靠它的 `pane_current_command` 列；任一侧改列静默丢行 → idle 判据全废。F08 加双写点逐字相等 CI 断言机器化守它。
-- F04「直连 keepalive」形态（`; exec bash` vs `|| read`）实现时定，低风险。
-- F06 #60/#43 残留 + #74/#41 + **#75 直连腿**都需真机确认（代码层修 + 单测，真机验证是用户动作）→ 代码完成后转真机再关。**#60②/#63-attach 关闭硬前置 = 用户远端重装 ccm 助手写 @ccm_sid**（issue 根因报告:41,63）——非纯代码能关。
+## 6. 风险与真机/外部依赖
+- **F03.2 最高风险**：动 `SessionChange`（本地+远端共用）/emitter/§24 单写者，在 #60/#43/#63 历史 bug 高发区。事件驱动改法要处理"收帧即算"与归档的覆盖/去抖、"刚 archived 又被 idle 复活"竞态。撞状态机冲突/计划≠现实 → 停 loop。
+- **F03.4-丙 Windows 侧 aya 验不了**：`wt --title/--suppressApplicationTitle/-w new` + HWND 绑定行为需**用户 Windows 真机验证**再关 #74/#41。甲′ 的 tmux 侧 aya 已验。
+- **#63 尾消息 torn-tail = daemon-bound**：根因在 `remote-daemon-proto/src/watcher.rs read_new_lines` 扣尾行，修它破红线 → 转发版/真机，本轮 F06 不碰不关。
+- **真机/外部前置**（代码改完也不能确证、须用户动作再关）：#74/#41（标题四跳/wt 行为）、#60/#43（真机复现）、#60②/#63-attach（**用户远端重装 ccm 助手写 @ccm_sid** 硬前置）、#75 直连腿（真机看窗口不闪退）。
 - F13 ssh_source.rs(4512) 拆分高危 → 可能降级为只做 tabs controller 抽取。
 
 ## 7. 变更记录
-- 01 — 初版（full-audit 9 功能）
-- 02 — 并入 issue bug 根因 + 用户四决策 → F01–F13 + F14 自跑
-- 03 — F01 完成（pin 现读 + 基座逃生口；per-account picker 已现成；tmux/history base 转 F04）
-- 04 — F02 完成（kill 白名单对称）
-- 05 — F03 重塑三态 + 步骤1（idle 就地复用）完成；§6 开放问题关闭=保留
-- 06 — **重制（用户"重新制定全局计划并审计"）**：灰灯定 **A（reconcile 出 idle 信号）**；bug 优先重排（F03.2→…→F07 先，F08-13 后）；账本加「SessionChange/emitter/session 事件/tabs」高风险共享面；**关 #71/#42/#67/#46**（已修）；剩余 open bug=[41,43,60,63,72,74,75,76] 全在计划；加"做完关 issue"约定
-- 07 — **据第一次计划审计(Plan agent)定稿**：①#63 torn-tail 重分类=daemon-bound、本轮红线内不修不关（F06 只做 #43 残留 + 真机验证）②F05 只清 `cc-*`、`<project>_cc` 归 cc-bus 不清（解 is_ccm_tmux_name 矛盾）③F03.4 只做 tmux rbind 标题、直连身份决策归 F04（解依赖倒置）④账本 F03.2-A 写可执行契约⑤F08 加 TMUX_LS_FMT 双写点 CI 断言 + I7 daemon 只读机器护栏⑥#74/#41 代码完转真机再关
-- 08 — **据第二次独立复审(Plan agent)修正**：⑦**F03.2-A 契约的 idle 产出机制错**（reconcile 的 `announced_live` retain 使它在 daemon removed 后已不认识该 sid，不能产 idle）→ 改成「final form 定死 + 产出机制留 F03.2 Phase B 二选一(独立扫描 / emitter 收 removed 时查快照)」，不在主计划硬写⑧`SessionChange` 回填清单修正为真实构造点、点明 ssh_source removed/flush 臂是真难点⑨账本补两个共享面(tmux_reconcile.rs、tabs.ts findClaudeTmux)⑩idle 对 daemonless 静默退化标边界⑪#75 直连腿标真机再关⑫#60②/#63-attach 关闭硬前置=用户重装 ccm 助手
-- 09 — **据第三次独立复审(Plan agent)定稿**：⑬F03.2-A 账本重写——把「加 SessionChange 字段 + ssh_source 臂判 idle」从"定死"降级为**仅候选(i)需要**（候选(ii) 判断内联 emitter `lib.rs:590-606`=归档唯一执行点、**不需加字段**）⑭**idle→archived 正向产出者**列入 Phase B 必答（候选(ii)原生无→防"卡灰关不掉"）⑮点明**两候选都要改 emitter removed 臂**⑯订正 `:2549`=daemonless archive 非 live→idle 源、构造点"8"→"9"⑰#76 只关命名/回收部分、attach 子句带 ccm 重装前置⑱F06 `RETIRE_MISS_THRESHOLD` 编译期下限 ≥2。三次独立复审除 F03.2-A 账本外全过（完备/红线/归属/排序/可关性 ✓）；F03.2 机制归其 Phase B（loop 到那停下 present）。**据以起 loop**
+- 01–05 — 初版→并入 issue 根因+四决策→F01/F02/F03.1 完成、F03 重塑三态（详见 git 历史）
+- 06 — 重制：灰灯定方案 A；bug 优先重排；关 #71/#42/#67/#46
+- 07 — 第一次计划审计：#63 torn-tail=daemon-bound / F05 只清 cc-* / F03.4 直连归 F04 / F08 加双写点断言+I7护栏
+- 08 — 第二次独立复审：F03.2-A idle 产出机制与 reconcile 门控矛盾 → 机制留 Phase B
+- 09 — 第三次独立复审：账本把候选(i)专属成本当定死前置 / idle→archived 正向无产出者 → 账本重写
+- 10 — 用户拍板：F03.2=甲（高风险→反复评估+审计）；F03.4 开 3 agent 调研更优解
+- **11 — 全面制定（本版）**：三 agent 调研收敛 → **F03.4 = 甲′（远端 set-titles-string 从 @ccm_sid 派生，裸值无双引号，aya 已验无轮询）+ 丙（本地 wt --title + suppressApplicationTitle + 拉起即绑 forward-register，根治 #74+#41，Windows 真机验）**；**F03.2 = 甲-evented（收 daemon 帧即算、删 8s 定时器，cc-monitor 侧零轮询）**；确立**无轮询原则**（§5）；F03.4 shrink bind 重试循环；主体全面重写为连贯计划

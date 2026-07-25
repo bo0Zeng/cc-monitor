@@ -2,9 +2,12 @@
 
 > 工作区 `audit-fixes`。分支 `account-ux`。跨轮靠此文件,不靠记忆。
 
-- **当前阶段**：C 实现推进中（F03.3 完成 + commit）→ 下轮 F03.4
-- **当前功能**：F03 统一 tmux 管线（步骤 1、3 完成；2 灰灯 + 4 rbind 待做）
-- **当前步骤**：F03.3 attach-into-idle 完成；下一步 = **F03.4 rbind 标题建时设**（#74/#41 结构因，tmux create 序列直接写 `ccm-rbind-<sid>` 标题）
+- **当前阶段**：A 主计划**全面制定 rev 11 定稿**（全部决策收敛）→ 起 loop 执行 F03.4
+- **当前功能**：下一个 = **F03.4 rbind 标题 + 拉起即绑（甲′ + 丙）**
+- **当前步骤**：loop 下轮从 F03.4 开始（B→C→D→E→F）
+- **F03.4 已定 = 甲′ + 丙**：甲′=远端 `set-titles-string ccm-rbind-#{@ccm_sid}`（**裸值无双引号**，session-backend createRunAttach 非阻断两行，aya 已验无轮询）；丙=本地 `wt -w new --title ccm-rbind-<sid> --suppressApplicationTitle` + spawn 后 `RemoteHwndCache.try_bind_with_retry` 前向登记（launch.rs/IPC加sid/bind.rs复用/TS传sid）+ shrink 重试循环。**丙 Windows 侧 aya 验不了 → 你真机验再关 #74/#41**；甲′ aya 全验。
+- **F03.2 已定 = 甲-evented**（事件驱动）：收 daemon `TmuxSessions` 帧即算 idle/live/archived、**删 8s 定时器、cc-monitor 侧零轮询**；高风险 → Phase B 先设计 agent 论证 + 实现后全视角 D 审计。
+- **无轮询原则**（用户拍板）：cc-monitor 侧不新增轮询;唯一周期扫描=daemon 内部 tmux ls(红线外既有);wrapper 的 __ccm_rbind 轮询归 F14(用户自跑,给事件驱动版)。
 - **loop 执行顺序（§4 重排）**：F03.3 → F03.4 → F04 → F05 → F07 → **F03.2+F06 合并**（F03.2 灰灯机制在其联合 Phase B 二选一定，高风险、会停下 present 给用户）→ F08→F09→F10→F11→F12→F13 → Phase G
 - **计划审计记录（3 轮独立）**：①Plan agent rev06→3 阻塞+3 重要→rev07。②独立复审 rev07→抓到真阻塞(F03.2-A idle 产出与 reconcile announced_live 门控矛盾)+4 重要→rev08。③独立复审 rev08→再抓 2 阻塞(账本把候选(i)专属成本当定死前置 / idle→archived 正向无产出者)+订正→**rev09 定稿**。三轮除 F03.2-A 账本外全过(完备/红线/归属/排序/可关性 ✓)。
 - **已完成功能**：F01 账号安全(75594ff/3221f26)；F02 kill 白名单(e389410)；**F03 步骤1** idle 就地复用(537077b)。**已关 issue #71/#42/#67/#46**（v3.2.0 已修）
