@@ -11,6 +11,7 @@ import {
   sanitizeRemoteLauncher,
   buildResumeDirectCmd,
   buildResumeTmuxCmd,
+  buildResumeIntoExistingTmuxCmd,
   pickFreshTmuxName,
   buildOpenTerminalCmd,
   isValidTmuxName,
@@ -157,6 +158,38 @@ test("buildResumeTmuxCmd:自定义 launcher 透传 / 注入 fail-closed claude",
     buildResumeTmuxCmd("s1", "", "cct; curl evil"),
     `tmux new-session -d -s cc-s1 2>/dev/null && (tmux set-option -t cc-s1 @ccm_sid s1 2>/dev/null || true) && tmux send-keys -t cc-s1 '${p2}' Enter; tmux attach -t cc-s1`,
   );
+});
+
+// audit-fixes F03（idle-tmux 就地复用，治 #76）：往已存在的空 tmux send-keys resume + attach，
+// **不 new-session、不 set-option**（复用原名不产孤儿）；基座（无 configDir）前置 unset CLAUDE_CONFIG_DIR
+// 清空 shell 残留旧账号 env（#75 复用变体）。
+test("buildResumeIntoExistingTmuxCmd:基座 → send-keys(前置 unset CLAUDE_CONFIG_DIR)+attach，无 new-session/set-option", () => {
+  const payload = `unset CLAUDE_CONFIG_DIR; ${UNSET}claude --resume s1`;
+  eq(
+    buildResumeIntoExistingTmuxCmd("s1", "cc-s1"),
+    `tmux send-keys -t cc-s1 '${payload}' Enter; tmux attach -t cc-s1`,
+  );
+});
+
+test("buildResumeIntoExistingTmuxCmd:复用**传入的**会话名（不按 sid 重派生）", () => {
+  // sid=r1abcdef 但空 tmux 名是 cc-r1abcd-2（撞名后缀变体）→ 必须复用 cc-r1abcd-2，不是 cc-r1abcdef。
+  const cmd = buildResumeIntoExistingTmuxCmd("r1abcdef", "cc-r1abcd-2");
+  eq(cmd.includes("send-keys -t cc-r1abcd-2 "), true, "复用传入名");
+  eq(cmd.includes("attach -t cc-r1abcd-2"), true);
+  eq(cmd.includes("cc-r1abcdef"), false, "不按 sid 重派生名");
+  eq(cmd.includes("new-session"), false, "不 new-session");
+});
+
+test("buildResumeIntoExistingTmuxCmd:带账号 → export CLAUDE_CONFIG_DIR 覆盖，不前置 unset", () => {
+  const cmd = buildResumeIntoExistingTmuxCmd("s1", "cc-s1", "claude", "/h/z");
+  eq(cmd.includes("export CLAUDE_CONFIG_DIR="), true, "账号复用用 export 覆盖");
+  eq(cmd.includes("unset CLAUDE_CONFIG_DIR"), false, "有账号不前置 unset");
+});
+
+test("buildResumeIntoExistingTmuxCmd:非法 sid / 非 cc 名 throw", () => {
+  throws(() => buildResumeIntoExistingTmuxCmd("-bad", "cc-s1"), "非法 sid");
+  throws(() => buildResumeIntoExistingTmuxCmd("s1", "cc-a b"), "含空格名");
+  throws(() => buildResumeIntoExistingTmuxCmd("s1", "-x"), "首字符 -");
 });
 
 test("buildResumeTmuxCmd:cwd 含空格/单引号 → posixQuote", () => {

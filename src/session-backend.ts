@@ -43,6 +43,13 @@ export interface SessionBackend {
   }): string;
   /** attach 一个已存在会话。`target` 由调用方预备（posixQuote 名或裸校验名）。 */
   attach(target: string): string;
+  /**
+   * audit-fixes F03（idle-tmux 就地复用）：往一个**已存在**会话（claude 已退、只剩交互 shell 的
+   * `cc-<sid8>` 空 tmux）键入载荷 + attach——**不 new-session**（区别于 `createRunAttach` 的幂等建闸：
+   * 那个在会话已存在时会短路跳过 send-keys、只 attach，于是空 shell 里永远起不了 claude）。
+   * 复用原会话名 = 不产 `cc-<sid8>-N` 孤儿（治 #76 根因）。`@ccm_sid` 已在建时设过、复用同 sid 不重设。
+   */
+  runInExistingAttach(args: { target: string; quotedPayload: string }): string;
 }
 
 /**
@@ -71,6 +78,10 @@ export const TMUX_BACKEND: SessionBackend = {
     );
   },
   attach: (target): string => `tmux attach -t ${target}`,
+  // F03：会话已存在(空 shell)→ 无条件 send-keys 载荷 + attach。**没有 new-session/短路**——
+  // 因为会话确实在,直接把 resume 载荷打进它的交互 shell 提示符,再 attach 回去。
+  runInExistingAttach: ({ target, quotedPayload }): string =>
+    `tmux send-keys -t ${target} ${quotedPayload} Enter; tmux attach -t ${target}`,
 };
 
 /**

@@ -10,6 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   buildResumeDirectCmd,
   buildResumeTmuxCmd,
+  buildResumeIntoExistingTmuxCmd,
   buildAttachCmd,
   buildLauncherCmd,
   deriveTmuxName,
@@ -96,6 +97,47 @@ export async function runRemoteResumeTmux(
     }
     showActionFailureToast(
       copied ? "拉起失败，已复制 tmux resume 命令" : "拉起失败，请手动复制以下命令",
+      `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
+      { level: "info", durationMs: 10000 },
+    );
+    return false;
+  }
+}
+
+/** F03：往一个**已存在的空 tmux**（idle-tmux：claude 已退、只剩交互 shell 的 `cc-<sid8>`）就地
+ *  resume——send-keys 载荷 + attach，复用原会话名（不产孤儿，治 #76）。签名/返回值与
+ *  `runRemoteResumeTmux` 对齐：true=真拉起来了；false=命令构造失败/拉起失败（已回退剪贴板）。 */
+export async function runRemoteResumeIntoExistingTmux(
+  origin: string,
+  sid: string,
+  name: string,
+  launcher: string,
+  configDir?: string, // A4：非空 → 该会话用指定账号 resume；空 → 基座（builder 会 unset 残留 env）
+): Promise<boolean> {
+  let cmd: string;
+  try {
+    cmd = buildResumeIntoExistingTmuxCmd(sid, name, launcher, configDir);
+  } catch (err) {
+    showActionFailureToast("无法构造就地 resume 命令", String(err));
+    return false;
+  }
+  try {
+    await invoke("launch_remote_terminal", { origin, remoteCmd: cmd });
+    showActionFailureToast(
+      "已在原 tmux 就地 resume",
+      `新终端窗口正在连接 [${origin}] 并在原 tmux 会话「${name}」里 resume 该会话（复用、不新建）。`,
+      { level: "info", durationMs: 6000 },
+    );
+    return true;
+  } catch (err) {
+    let copied = true;
+    try {
+      await navigator.clipboard.writeText(cmd);
+    } catch {
+      copied = false;
+    }
+    showActionFailureToast(
+      copied ? "拉起失败，已复制就地 resume 命令" : "拉起失败，请手动复制以下命令",
       `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
       { level: "info", durationMs: 10000 },
     );

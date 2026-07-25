@@ -33,7 +33,12 @@ import type { BranchRecord } from "./branching";
 import { isAgentTool } from "./cards/subagent";
 import type { AgentsPanel, AgentEntry } from "./agents-panel";
 import { LS_KEYS, safeSet } from "./local-storage";
-import { runRemoteResume, runRemoteResumeTmux, runRemoteAttach } from "./remote-launch-run";
+import {
+  runRemoteResume,
+  runRemoteResumeTmux,
+  runRemoteResumeIntoExistingTmux,
+  runRemoteAttach,
+} from "./remote-launch-run";
 import { pickFreshTmuxName } from "./remote-launch";
 import { AGENT_PROFILE } from "./agent-profile";
 import { collectEditedFiles } from "./panorama/session-files";
@@ -1914,6 +1919,23 @@ export class TabManager {
     const live = findClaudeTmux(sessions, sid, cwd);
     if (live && live.sid === sid) {
       await runRemoteAttach(origin, live.name);
+      return;
+    }
+    // ①.5 audit-fixes F03（idle-tmux 就地复用）：目标 sid 的 tmux 还在（@ccm_sid 精确命中）但
+    // command≠claude —— 即 claude 已退、只剩交互 shell 的**空 cc-<sid8>**。往它**就地** resume
+    // （复用原会话名，不 new-session）→ 不产 `cc-<sid8>-N` 孤儿（治 #76 根因）+ 空 shell 起得了 claude
+    // （治 create-gate 短路只 attach 空 shell 的 #75 一条）。仅 @ccm_sid 精确命中才复用（不按 cwd 猜，
+    // 免撞同目录漂移会话）。
+    const idle = (sessions ?? []).find((s) => s.sid === sid && !isClaudeTmuxCommand(s.command));
+    if (idle) {
+      await withAccount(
+        origin,
+        null,
+        async (cd) => {
+          await runRemoteResumeIntoExistingTmux(origin, sid, idle.name, behavior.resumeCommandRemote, cd);
+        },
+        { sessionId: sid, follow: { lastAccount: await this.readSessionPin(sid) } },
+      );
       return;
     }
     // ② 目标会话不在任何 tmux（已结束 / 已漂移到别的 sid）→ 起**全新** resume。tmux 名从现有
