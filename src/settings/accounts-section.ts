@@ -12,6 +12,7 @@ import {
   fetchAccounts,
   deriveUi,
   currentWorkingAccount,
+  selectableAccounts,
   isSelectable,
   setDefaultName,
   invalidateAccountsCache,
@@ -325,20 +326,22 @@ export class AccountsSection {
       "切换当前账号只改本机设置：不动远端、不碰凭据、不重启任何东西。未登录的账号可点它那行的「去登录」在终端里 /login。";
     this.body.appendChild(hint);
 
-    this.body.appendChild(this.renderMaintenance(accounts.length));
+    // U8：数的是**可选**账号数,不是总数——1 个 isolated + 1 个 in-place 逃生口时总数=2 但
+    // 你其实还只有一个能用的号,此刻"加第二个账号"仍是正路。与 accountColorsActive 同源判据。
+    this.body.appendChild(this.renderMaintenance(selectableAccounts(state).length));
   }
 
   /** A6：已启用态的「维护」区——加账号 / 自检 / 补链，均弹终端。
    *  account-ux U7：整块收进 `<details>` **默认折叠**——三项都低频且带 danger（加账号会动远端
    *  目录、补链会改软链），常驻展开既占版面又把危险操作摆在手边。内部结构一行未改。 */
-  private renderMaintenance(accountCount: number): HTMLElement {
+  private renderMaintenance(selectableCount: number): HTMLElement {
     const wrap = document.createElement("details");
     wrap.className = "accounts-maint-wrap";
     // 默认展开态**按状态给**，不是常量：刚跑完 A6 部署向导回来正好是「ready + 只有 1 个账号」，
     // 此刻用户唯一该做的下一步就是"加第二个账号"（否则多账号隔离白装了），把唯一的正路藏进
     // 折叠等于死胡同。稳态（≥2 个账号）仍默认折叠——那三项都低频且带 danger。
     // 用户手动开合过就以用户的选择为准（reload 会重建 DOM，不记住的话展开态和输入会被吞掉）。
-    wrap.open = this.maintOpen ?? accountCount < 2;
+    wrap.open = this.maintOpen ?? selectableCount < 2;
     wrap.addEventListener("toggle", () => {
       this.maintOpen = wrap.open;
     });

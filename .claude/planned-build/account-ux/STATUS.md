@@ -3,7 +3,7 @@
 > 恢复入口。承接 account-isolation A0–A6(v3.2.0)。本轮纯前端 UX/UI 完善,不触发发版。
 > 每轮开头先读本文件 + 当前 feature 文件,从记录阶段接着干。
 
-## 当前阶段:**✅ 主计划 + 4 决策已批准 · 全自动 loop 运行中 · U1–U7 完成 → 当前 U8**
+## 当前阶段:**✅ U1–U8 全部完成 → 进 Phase G 最终验收**
 
 > **进度(分支 `account-ux`,不 push)**:
 > - U1 ✅ `72c3b1e`:纯函数地基(resolveFollowAccount/currentWorkingAccount/detectAccountMismatch/accountColorSlot/sessionBadge source)。门禁 tsc0 / vitest 475 / remote-launch 回归绿。
@@ -49,9 +49,28 @@
 >   **自查出的真 bug**:CSS 注释里 `-*` 紧跟斜杠**提前闭合注释**,构建 `css-syntax-error` 且注释文字漏进
 >   样式表 —— **tsc 和 vitest 都看不见 CSS,只有 build 抓得到**(所以 build 必须进门禁且警告要清零)。
 >   变异验证 4 个全部被杀。门禁:tsc0 / **npm test 536**(522→+14)/ build ✓ 0 警告。
-> - **当前 → U8(可发现性 + 快捷键 + 降级休眠固化)**,风险低。**开工前先看** MASTERPLAN 变更记录
->   2026-07-25 U7 那条:休眠只作用于 chip 与 tab 徽章,**设置账号表恒显豁免**(已拍板,U8 不必回头改 U7);
->   `< 2` 阈值与 U8 的可选账号计数抽同一个纯函数;别把部署向导里 CLI 语义的「默认账号名」一起改名。
+> - U8 ✅(本 commit):**可发现性 + 快捷键 + 降级休眠固化**。详见 `features/08-u8-discoverability.md`。
+>   实现:`selectableAccounts`/`accountColorsActive` 纯函数;chip 身份头像休眠;`Acct` 快捷键分组
+>   (两条 action **默认不绑**——align 是破坏性的);Ctrl+K 术语统一 + 两条对齐命令(抽成
+>   `account-commands.ts` 纯函数);新会话下拉文案说清后果。
+>   **Phase D 审计 —— 1 阻塞 + 8 重要,全部已修**:
+>   * **阻塞**:休眠**装错了地方**。我加在 tab 徽章上,而 `hide()` 连 U6 的 ⇄ 一起关;可 ⚠k /
+>     Ctrl+K / 快捷键都不睡 ⇒ **鬼影可达**(≥2 账号但只 1 个可选、且有活会话跑在不可选账号上时:
+>     chip 报 ⚠1、Ctrl+K 有对齐命令,而所有 tab 上一个徽章一个 ⇄ 都没有)。更根本的是**理由就不成立**:
+>     tab 徽章自 U5 起「信息才显」,只在确知不一致时才渲染,从来不是颜色噪音,而是唯一的
+>     per-session 不一致信号。→ 休眠**只留给 chip 的常显身份头像**,tab 那侧整个撤掉(连带撤回
+>     `setSessionAccounts` 第 6 形参,**反而少碰一个共享面**)。**规则:颜色可以睡,信息和操作不能睡。**
+>   * 重要:U7 的 `<2` 阈值仍数**总**账号数(正是计划禁止的"两处各数各的",1 isolated + 1 in-place 时
+>     两个组件对"你有几个账号"给出相反判断)→ 接同一纯函数;Ctrl+K 可用性判定**不可测**(长在 main.ts
+>     闭包里,改成恒 true 也不会红)→ 抽 `account-commands.ts` + 11 条测;chord 冲突守卫**留了个洞**
+>     (跳过 available:false,而 dispatcher 不跳 ⇒ 一条未上线 action 能把同键的已上线快捷键彻底打哑)
+>     → 不再跳过;chip 头像休眠零覆盖,且我**补测时第一版在测试里重抄了渲染分支**(=测自己)→ 改成走
+>     真实 refresh();`element.click()` 在 chip 隐藏时会开出飘到视口外的菜单 → 加 `openMenu()`;
+>     快捷键静默拒绝 → 给一句话;`activeSid` 被闭包冻住 → run 里重取;两处术语/语义残留 → 改。
+>   **顺手堵的静默坑**:`editor.ts` 里 category 顺序是手抄数组,TS 不报错,漏加会让整组快捷键在编辑器
+>   里**静默消失** → 提成 `CATEGORY_ORDER` 单一真相源 + 覆盖测。
+>   门禁:tsc0 / **npm test 564**(536→+28)/ build ✓ 0 警告。变异验证 4 个全杀。
+> - **当前 → Phase G 最终验收**(/full-audit + 主计划终账 + 端到端 + 收尾汇报)。
 
 - **Phase A 产物**:`MASTERPLAN.md`(目标/架构/★共享面账本/U1–U9 拆分)。三视角设计 agent 已交叉收敛。
 - **用户已拍板的 4 决策(全选推荐项,已锁进语义)**:
@@ -69,7 +88,7 @@
 - [x] U5 tab 徽章信息才显 — ✅(detectAccountMismatch 判定 + live 实心/last 幽灵头像)
 - [x] U6 不一致检测 + 一键对齐 — ✅(hover ⇄ + ⚠k + 批量两步确认;D 审计 1 阻塞 6 重要全修)
 - [x] U7 设置账号组 IA 重排 + 补 CSS — ✅(横幅 + 网格化表 + 维护区折叠;D 审计 1 阻塞 6 重要全修)
-- [ ] U8 可发现性 + 快捷键 + 降级润色 — 风险低
+- [x] U8 可发现性 + 快捷键 + 降级休眠固化 — ✅(休眠只作用于 chip 头像;D 审计 1 阻塞 8 重要全修)
 - [ ] U9(可选)解钉跟随当前账号 — 风险低
 
 ## 自动模式 / 本轮 loop 目标 / 停止条件

@@ -124,6 +124,25 @@ export function isSelectable(a: Account): boolean {
   return a.mode === "isolated" && a.loggedIn && a.exists;
 }
 
+/** account-ux U8：可选账号列表（`isSelectable` 过滤）。休眠判据 / 计数一律走它，别各处再 filter 一遍。 */
+export function selectableAccounts(state: AccountsState): Account[] {
+  return state.accounts.filter(isSelectable);
+}
+
+/**
+ * account-ux U8：**账号色系统是否该激活**（休眠固化）。
+ *
+ * 只有一个可选账号时，彩色头像不携带任何信息——它区分不了任何东西，纯属噪音；等用户加了
+ * 第二个号，颜色才开始有意义。故 `≥2 个可选账号 && 该 origin 账号确实可查询` 才激活。
+ *
+ * **作用面只有状态栏 chip 与 tab 徽章**。设置里的账号表（U7 的横幅 + 表格行）**恒显豁免**：
+ * 那是全应用唯一能让用户学到「色块 ↔ 账号 ↔ 邮箱」映射的图例面，单账号期把它也休眠掉，
+ * 等加了第二个号就会突然满屏彩块。（MASTERPLAN 变更记录 2026-07-25 已拍板。）
+ */
+export function accountColorsActive(state: AccountsState): boolean {
+  return state.available && selectableAccounts(state).length >= 2;
+}
+
 /**
  * account-ux U6：**能用来对齐**的当前工作账号——`currentWorkingAccount` 再过一道 `isSelectable`。
  *

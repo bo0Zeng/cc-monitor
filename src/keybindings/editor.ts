@@ -29,6 +29,7 @@
 import {
   ACTIONS,
   CATEGORY_LABEL,
+  CATEGORY_ORDER,
   findAction,
   groupByCategory,
   type Action,
@@ -128,7 +129,7 @@ export class KeybindingsEditor implements OverlayHandle {
     win.appendChild(body);
 
     const groups = groupByCategory();
-    const ordered: Category[] = ["Tab", "Term", "App", "Beh", "Panel"];
+    const ordered = CATEGORY_ORDER; // 单一真相源在 actions.ts（漏加会让整组静默消失，那里有测锁）
     for (const cat of ordered) {
       const list = groups.get(cat);
       if (!list || list.length === 0) continue;
