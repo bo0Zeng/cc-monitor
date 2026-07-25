@@ -49,7 +49,12 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<void> {
+/**
+ * @returns 是否真的走完 kill+resume（true=已用新账号 resume；false=任一前置中止：账号不可选 /
+ * 用户取消 / kill 失败）。account-ux U6 的批量对齐据此汇总真实成败——**不改变任何既有语义**，
+ * 老调用点（右键菜单两条）忽略返回值即可。
+ */
+export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<boolean> {
   const { origin, sessionId, cwd, tmuxName, accountName, launcher } = opts;
 
   // ① 预检：解析 configDir（顺带校验可选）。不可选 → 明确提示、不动手（§5.2 ①）。
@@ -61,7 +66,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
       `账号「${accountName}」当前不可选（未登录 / 非隔离 / 目录缺失），无法用它重启。`,
       { level: "info", durationMs: 6000 },
     );
-    return;
+    return false;
   }
   // trust 只警告不阻断（§5 ①）。
   let trustWarn = "";
@@ -84,7 +89,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
       ? "\n将先在【旧账号】上 /compact（命中旧缓存更省），可能耗时数分钟。"
       : "") +
     trustWarn;
-  if (!confirmFn(msg)) return;
+  if (!confirmFn(msg)) return false;
 
   // ③ [可选] 在【旧账号】上 compact（换号前，命中旧缓存——§5.1）。失败/超时不阻断（§5.2）。
   if (opts.compactFirst) {
@@ -151,7 +156,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
       `结束旧会话失败：${String(e)}。未继续 resume（避免新旧两个进程抢同一会话）。`,
       { level: "error", durationMs: 10000 },
     );
-    return;
+    return false;
   }
 
   // ⑤ 用新账号 resume（tmux 版，注入其 configDir）。失败走 runRemoteResumeTmux 既有剪贴板回退。
@@ -164,4 +169,5 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
     `已用「${accountName}」重启此会话；若 CC 询问是否信任该目录，请在弹出的终端里确认。`,
     { level: "info", durationMs: 8000 },
   );
+  return true;
 }

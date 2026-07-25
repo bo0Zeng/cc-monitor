@@ -43,13 +43,16 @@ resume/新会话 各站点接线 ── 徽章"信息才显"(live 实心/last �
 |---|---|---|---|
 | `remote-launch.ts` builder/runner | 4 runner/3 builder 透传 configDir?,空=逐字节旧 | **零改动** | 无(硬保证) |
 | `accounts.ts withAccount` | `(origin, string\|null, run, opts)` null=基座 | additive 增 `opts.follow?:{lastAccount?}`;null/string 两态字节不变 | 新增 follow 第三态 |
-| `accounts.ts` 纯函数集 | effectiveDefault/accountConfigDir/isSelectable/sessionBadge/shouldShowAccountBadge | 新增 `resolveFollowAccount` / `currentWorkingAccount` / `detectAccountMismatch`;`sessionBadge` 返回值加 `source:'live'\|'last'\|'unknown'` | 纯增 + sessionBadge 加字段 |
+| `accounts.ts` 纯函数集 | effectiveDefault/accountConfigDir/isSelectable/sessionBadge/shouldShowAccountBadge | 新增 `resolveFollowAccount` / `currentWorkingAccount` / `detectAccountMismatch` / **`alignableCurrentAccount`**(U6:current 过 isSelectable,mismatch 一路统一用它);`sessionBadge` 返回值加 `source:'live'\|'last'\|'unknown'` | 纯增 + sessionBadge 加字段 |
 | `config.json` schema | `accounts.defaultName`(全局) | **不变**,概念更名"当前工作账号",消费面扩大到 resume/新会话 | 语义/文案,无 schema 变更(per-origin 留 future) |
 | `history.rs` last_account/list_last_accounts | 存/读,仅喂徽章源② | **Rust 零改动**;前端新增消费者(follow 回填 resume)+ follow-resume 成功照旧 recordLastAccount ⇒ 会话账号自动 sticky | 无 Rust 变化 |
 | tabs `setSessionAccounts` | `(rows, emailByName, lastByS, readyOrigins)` | additive 增 `currentByOrigin`(供 mismatch) | 加形参 |
-| `tmux_send_keys`/`kill_remote_tmux`/`restartWithAccount` | A5 已定 | **零改动**,对齐直接复用 | 无 |
+| `tmux_send_keys`/`kill_remote_tmux` | A5 已定 | **零改动**,对齐直接复用 | 无 |
+| `restartWithAccount`(A5 编排) | `Promise<void>`;`confirm?` 早在 A5 首版就是可注入点 | **语义零改动**,仅签名 additive:返回 `Promise<boolean>`(true=真走完 kill+resume)。U6 批量据此报**真实**成败(原按发起数报,最坏"0 成功 + 成功汇总") | 返回值 additive;老调用点忽略即可 |
+| `tabs.ts` 对齐 public API(U8 复用面) | — | `alignSessionToCurrentAccount(sid):Promise<boolean>` / `accountMismatchSids():string[]` / `countAccountMismatches()` / `alignAllToCurrentAccount()`;内部单一谓词 `alignableCurrent(sid,tab)` 统一 ⇄ 显隐 / ⚠k / 批量 / Ctrl+K | **U6 一次定型**,U8 直接用不再改 |
+| `account-chip.ts AccountChipDeps`(★账本外冒出,U6 补记) | A3:`{openSettings}` | `{openSettings, alignAll?, onDefaultChanged?}` + `updateMismatchBadge(count)` **推**模型(照 `tabs.onActiveUsageChanged → usageHud.setActive` 惯例,chip 不反拉 TabManager);chip 构造移到 `tabs` 之后 | 加 2 回调 + 1 推入口 |
 | 新 `src/account-color.ts` | — | 纯函数(FNV-1a%8)+ `.acct-avatar` CSS token | 新增文件 |
-| `styles.css` | `.tab-acct-badge` 实色药丸;`.accounts-*` 表**无 CSS** | `.acct-avatar` 头像 + `--acct-cN/inkN` 8 色 token;补齐裸奔的 `.accounts-*` 网格表 CSS | 新增视觉层 |
+| `styles.css` | `.tab-acct-badge` 实色药丸;`.accounts-*` 表**无 CSS** | `.acct-avatar` 头像 + `--acct-cN/inkN` 8 色 token;`.tab-align-btn`(**hover 才露面**:JS 打 `.is-eligible`、CSS 管显隐——默认 150px tab 栏里固定图标已占 ~132px,常驻会把标题挤没)+ `.status-account-mismatch` + `.account-picker-action.danger`;补齐裸奔的 `.accounts-*` 网格表 CSS | 新增视觉层 |
 | DESIGN §2/§8 | 三种切号语义 / 存储归属 | 补注:①默认账号升格"当前工作账号";②lastAccount 优先级高于① | 文档回写 |
 
 ## Features(拆分 + 顺序 + 依赖)
@@ -84,3 +87,13 @@ resume/新会话 各站点接线 ── 徽章"信息才显"(live 实心/last �
 ## 变更记录
 - 2026-07-24 建 account-ux 主计划(Phase A)。三视角设计 agent(UX/UI/架构)独立产出并交叉收敛。待用户拍板 4 决策 + 主计划 → 授权后 /loop 全自动跑 U1→U9 + Phase G。
 - 2026-07-24 **用户批准主计划 + 4 决策全选推荐项**(粘性优先 / 无主会话跟随 / 徽章信息才显 / 批量对齐两步确认)。授权全自动 loop 连续跑。进 U1。
+- 2026-07-25 **U6 Phase F 账本回写**(3 个对抗审计 agent 的结论):
+  ① `restartWithAccount` 由「零改动」→ 返回值 additive(`Promise<boolean>`),因为批量必须报真实成败;
+  ② 补记**账本外冒出**的共享面 `account-chip.ts AccountChipDeps`,并按本仓既有惯例(`onActiveUsageChanged`)
+     定型为**推**模型 —— 原实现让 chip 反拉 TabManager + 前向引用,靠「中间恰好没有 await」的隐式不变量
+     避 TDZ,已改掉;
+  ③ `accounts.ts` 增 `alignableCurrentAccount`(current 过 `isSelectable`),兑现 U6 DoD「current 不可选不对齐」;
+  ④ 预定 `tabs.ts` 对齐 public API 的最终形态,**U8 的 Ctrl+K/快捷键直接复用、不必再改**(避免下轮打补丁);
+  ⑤ U6 计划口径的两处偏离已记档:`⇄` 回到计划定的 **hover**(兼修布局挤压);「⚠k 汇总浮层」本轮用
+     两步 confirm 顶替(已逐行列出会话→目标账号),**浮层顺延 U8**;对齐的 `compactFirst` 变体本轮不做
+     (右键菜单已有)。

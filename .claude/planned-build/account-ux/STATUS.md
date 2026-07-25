@@ -3,7 +3,7 @@
 > 恢复入口。承接 account-isolation A0–A6(v3.2.0)。本轮纯前端 UX/UI 完善,不触发发版。
 > 每轮开头先读本文件 + 当前 feature 文件,从记录阶段接着干。
 
-## 当前阶段:**✅ 主计划 + 4 决策已批准 · 全自动 loop 运行中 · U1 完成 → 当前 U2**
+## 当前阶段:**✅ 主计划 + 4 决策已批准 · 全自动 loop 运行中 · U1–U6 完成 → 当前 U7**
 
 > **进度(分支 `account-ux`,不 push)**:
 > - U1 ✅ `72c3b1e`:纯函数地基(resolveFollowAccount/currentWorkingAccount/detectAccountMismatch/accountColorSlot/sessionBadge source)。门禁 tsc0 / vitest 475 / remote-launch 回归绿。
@@ -11,7 +11,26 @@
 > - U3 ✅ `4d9140b`(接线)+ 审计修复(本 commit)。**Phase D 对抗审计签收**:无硬阻塞,门禁独立复跑全绿(attach 焊死/daemon 零改/降级落基座/显式零回归/逐字节契约/跨 config-dir 因 projects 共享 symlink 安全,全部证实)。**揪出 重要-1 sticky clobber**(history 默认 resume 用 `follow:{}` 不读该行 pin→落 current **且改写** lastAccount→污染 tab 路径,违反你 #1 决策"粘性优先")→ **已修**:①`withAccount` 不-clobber 记账(既有 pin 存在且解析≠pin 时不记,保住 pin;no-owner 才 become sticky)②`history.runResume` 用 `list_last_accounts` 读该行 pin 传 follow(粘性读在 history 入口也成立)。门禁 tsc0 / vitest **482** / remote-launch / history node 全绿。**遗留 fast-follow(建议级,审计确认核心已覆盖)**:4 处接线的"真注入正路"在调用点层无护栏测(tabs.vitest 加注入测有 mockImplementation/accountsCache 跨测污染风险,暂不塞)。
 > - U4 ✅(本 commit):当前工作账号语义面 + chip 升级。styles.css 加 8 色 --acct-cN/inkN token + .acct-avatar 圆角方块头像(+ghost 态);account-color.ts 加 accountAvatarEl 视图 helper;account-chip.ts chip 显账号彩色头像 + 术语"默认"→"当前工作账号" + 切号 toast 三句式(变/不变);accounts-section.ts + remote-section.ts 术语改名 + 预选谓词 effectiveDefault→currentWorkingAccount。门禁 tsc0 / vitest 485(+3 头像测)。低-中风险主线程复核:改名值不变、头像 additive、CSS 不覆盖既有,零回归。设置表头像/IA 留 U7。
 > - U5 ✅(本 commit):tab 徽章"信息才显"。updateAccountBadge 重写——用 detectAccountMismatch(U1):会话账号==当前工作账号/未知当前/账号未知→不挂徽章;≠当前 live→实心 .acct-avatar / lastAccount→幽灵头像。setSessionAccounts 加 currentByOrigin 形参(additive);main.ts refreshSessionAccounts 传每 origin 的 currentWorkingAccount;.tab-acct-badge 退化为容器(旧实色药丸/`—`未知态废)。门禁 tsc0 / vitest 490(+5 徽章行为测)。纯显示层主线程复核零回归。
-> - **当前 → U6(不一致检测 + 一键对齐:tab hover ⇄ + chip ⚠k 汇总浮层 + 批量两步确认)——破坏性路径,中高风险,Phase D 开对抗审计**。
+> - U6 ✅(本 commit):**不一致检测 + 一键对齐**(破坏性,中高风险)。详见 `features/06-u6-mismatch-align.md`。
+>   实现:tab **hover** `⇄`(JS 打 `.is-eligible`/CSS 管露面)+ chip `⚠k`(**推**模型)+ 批量两步确认;
+>   单一谓词 `alignableCurrent` 统管 ⇄/⚠k/批量/U8-CtrlK;U8-ready public API 一次定型。
+>   **Phase D 三 agent 并行对抗审计 —— 揪出 1 阻塞 + 6 重要 + 1 架构,全部已修**:
+>   * **阻塞**:`idle` 判据误用 `!== "running"`(那是 **subagent** 状态串;会话枚举是
+>     `busy/idle/shell/waiting/null`)⇒ busy 桶恒空 ⇒ 用户决策④「回合中二步确认」**生产中是死代码**,
+>     且把跑着回合的会话文案成「空闲…几乎无感」。三个 agent 独立命中。已改白名单(未知即保守)。
+>     **元教训**:门禁 490 全绿没挡住——我的测试照着实现抄了同一个错枚举。**绿的可能是错的契约。**
+>   * 重要:current 不可选仍显 ⚠k/⇄(死按钮、批量全败还报成功)→ 新纯函数 `alignableCurrentAccount`;
+>     汇总按发起数**谎报成功** → `restartWithAccount` 加布尔返回值报真实成败;批量/单会话**无重入防护**
+>     (第二批可杀掉第一批刚 resume 的新进程,且批量已关逐个确认 ⇒ 全程无拦截)→ 两级守卫;
+>     **切号后 ≤10s 反向窗口**(chip 显新号、对齐却把会话打回刚切走的旧号)→ `onDefaultChanged` 即时重算;
+>     批量循环无 per-iteration catch → 补;确认文案不实(实际每会话**新开终端窗口**、旧窗口不自动关、
+>     进程内状态会丢)→ 照实重写。
+>   * 架构:`AccountChipDeps` 反拉 TabManager + 前向引用(靠「中间恰好没 await」的隐式不变量避 TDZ)
+>     → 改**推**模型 + chip 构造移到 tabs 之后,与 `onActiveUsageChanged` 惯例一致。
+>   **测试重写(D3 变异测试证明原 9 用例是「CSS 显隐外壳」)**:删掉 ⇄ 整个点击监听 / 偷偷取消破坏性
+>   二次确认 / 对齐到 `WRONG-ACCT`,三个突变原本**全绿**;重写后分别被 2/1/1 个用例杀死,退回本次阻塞
+>   bug 也被 4 个用例杀死。门禁:tsc0 / **npm test 522**(490→+32)/ build ✓。
+> - **当前 → U7(设置账号组 IA 重排 + 补表格 CSS)**,风险中,关联 #47。
 
 - **Phase A 产物**:`MASTERPLAN.md`(目标/架构/★共享面账本/U1–U9 拆分)。三视角设计 agent 已交叉收敛。
 - **用户已拍板的 4 决策(全选推荐项,已锁进语义)**:
@@ -27,10 +46,7 @@
 - [x] U3 接线 resume/新会话跟随 — ✅ 4d9140b + 审计修(D 签收,clobber 防护 + history 读 pin)
 - [x] U4 当前工作账号语义面 + chip 升级 — ✅(色 token + 头像 + 术语改名 + toast 三句式)
 - [x] U5 tab 徽章信息才显 — ✅(detectAccountMismatch 判定 + live 实心/last 幽灵头像)
-- [ ] U3 接线 resume/新会话跟随 — 风险中
-- [ ] U4 当前工作账号语义面 + chip 升级 — 风险低-中
-- [ ] U5 tab 徽章升级(信息才显) — 风险中
-- [ ] U6 不一致检测 + 一键对齐 — 风险中高(破坏性)
+- [x] U6 不一致检测 + 一键对齐 — ✅(hover ⇄ + ⚠k + 批量两步确认;D 审计 1 阻塞 6 重要全修)
 - [ ] U7 设置账号组 IA 重排 + 补 CSS — 风险中
 - [ ] U8 可发现性 + 快捷键 + 降级润色 — 风险低
 - [ ] U9(可选)解钉跟随当前账号 — 风险低
@@ -39,7 +55,14 @@
 - **自动度**:用户要「全自动 loop」= 连续跑。批准主计划 + 4 决策后,loop 连续 B→F 逐功能推进(U1→U9),共享面最终形态已在账本预定 ⇒ 功能计划朝最终形态实现、不停每功能门禁;全部完成再 Phase G。
 - **每轮 = 一个功能走 C→F**(实现→代码审计 D→工程审计 E→回看 F),停在干净检查点(STATUS 更新 + 本地 commit 检查点,不加 Co-Authored-By,不 push)。
 - **停止条件(任一即停,省略 ScheduleWakeup 交回用户)**:阻塞 / 计划≠现实需决策 / 同一步 ≥2 次失败 / 需新决策(如冒出账本外新共享面)/ 全部完成(先跑 Phase G 再停)。
-- **兜底延迟**:每轮重(审计并发多 agent)、由真实实现耗时驱动,兜底 ≥1200s,不短间隔空转。
+- **兜底延迟**:用户 2026-07-25 指定 **60s 短间隔**(「不要间隔这么长」)。审计 agent 完成会自动唤醒,
+  等报告期间不重复审计 agent 已在做的事、不提前开下一个功能。
+- **流程欠账(D2 指出)**:U3–U6 未逐个建 feature 文件(偏离「每功能 DoD 硬门」)。U6 已补
+  `features/06-u6-mismatch-align.md`;U3–U5 的结论留在本文件进度行,不回溯补建(收益低于噪音)。
+  **U7 起恢复"先建 feature 文件再动手"。**
+- **教训(写给后续轮次)**:U6 的阻塞 bug 是"照着实现抄测试"——判据用了个生产不存在的枚举值,
+  测试跟着用同一个值,490 个用例全绿而分支从未被覆盖。**断言要锚在契约的真值上**(枚举去
+  `bridge.rs`/`session-status.ts` 对),**并对关键安全属性做一次变异验证**(故意改坏,看测试会不会红)。
 
 ## 关键红线(沿用 account-isolation)
 - daemon 只读铁律:不新增任何 daemon/Rust 写命令(本轮判定纯前端零 daemon 面 ⇒ 不 bump BUILD_ID、不发版)。

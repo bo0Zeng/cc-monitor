@@ -202,6 +202,8 @@ interface TabButtonRefs {
   badge: HTMLSpanElement;
   /** A3：账号徽章（该会话属于哪个账号；本地会话不显示，未知显 —）。 */
   acctBadge: HTMLSpanElement;
+  /** account-ux U6：⇄ 换号对齐按钮（仅活跃 && 账号≠当前工作账号时显，点=用当前账号重启对齐）。 */
+  alignBtn: HTMLSpanElement;
   cwdBtn: HTMLSpanElement;
 }
 
@@ -307,8 +309,14 @@ export class TabManager {
   private accountLastByS = new Map<string, string>();
   /** A4/§7：账号可查询的远端 origin 集（available 且非 daemonless）。只有这些 origin 的会话才显徽章。 */
   private accountReadyOrigins = new Set<string>();
-  /** account-ux U5：origin → 当前工作账号名。徽章「信息才显」比对：会话账号==它 → 不挂徽章。main.ts 定期喂。 */
+  /** account-ux U5：origin → 当前工作账号名。徽章「信息才显」比对：会话账号==它 → 不挂徽章。main.ts 定期喂。
+   *  **只放 isSelectable 的账号**（main.ts 侧过滤）：不可选的当前账号对齐必失败，指着它说"你不一致"
+   *  是假信息，且与 U1 `resolveFollowAccount`「不可选就下沉」的语义保持一致。 */
   private currentByOrigin = new Map<string, string>();
+  /** account-ux U6：正在换号重启中的 sid（防同一会话并发重启：新起的进程被后一条编排杀掉）。 */
+  private restartingSids = new Set<string>();
+  /** account-ux U6：批量对齐进行中（防重入：⚠k 要等下一拍轮询才降，用户很容易再点一次）。 */
+  private aligningBatch = false;
   /** A5：换号重启时「等旧号 compact 完成」的 per-sid 回调。onLine 见该 sid 的 compact 摘要行即 resolve。 */
   private compactWaiters = new Map<string, () => void>();
   private activeId: string | null = null;
@@ -978,6 +986,7 @@ export class TabManager {
       refs.acctBadge.textContent = "";
       refs.acctBadge.className = "tab-acct-badge";
       refs.acctBadge.style.display = "none";
+      refs.alignBtn.classList.remove("is-eligible");
     };
     if (!shouldShowAccountBadge(tab.origin, this.accountReadyOrigins)) return hide();
     const b = sessionBadge(
@@ -996,8 +1005,21 @@ export class TabManager {
     refs.acctBadge.textContent = "";
     refs.acctBadge.className = "tab-acct-badge";
     refs.acctBadge.appendChild(accountAvatarEl(b.account, { size: 14, ghost: b.source === "last" }));
-    refs.acctBadge.title = `${b.tooltip} · 与当前工作账号「${current}」不一致（右键可用当前账号重启对齐）`;
+    // live（活会话）→ ⇄ 一键对齐（重启）；last（死会话/归档）→ 无 ⇄，但 tooltip 得指出路，
+    //（D 审计：曾把这句指路删了，幽灵徽章就再无任何地方说明怎么对齐）。
+    const alignable = this.alignableCurrent(sid, tab);
+    refs.acctBadge.title =
+      `${b.tooltip} · 与当前工作账号「${current}」不一致` +
+      (alignable ? "" : b.source === "last" ? "（右键「用账号 … resume」可对齐）" : "");
     refs.acctBadge.style.display = "";
+    // 够格与否由 JS 打 .is-eligible；**何时露面**（hover）交给 CSS，见 styles.css。
+    if (alignable) {
+      refs.alignBtn.title = `用当前工作账号「${current}」重启对齐此会话（中断当前回合、丢进程内状态）`;
+      refs.alignBtn.setAttribute("aria-label", `用当前工作账号 ${current} 重启对齐此会话`);
+      refs.alignBtn.classList.add("is-eligible");
+    } else {
+      refs.alignBtn.classList.remove("is-eligible");
+    }
   }
 
   snapshotSessions(): GridSessionSnapshot[] {
@@ -2058,9 +2080,40 @@ export class TabManager {
     sid: string,
     accountName: string,
     compactFirst: boolean,
-  ): Promise<void> {
+    confirmFn?: (msg: string) => boolean,
+  ): Promise<boolean> {
     const tab = this.tabs.get(sid);
-    if (!tab || tab.origin === null) return; // 本地会话 A7 前不支持
+    if (!tab || tab.origin === null) return false; // 本地会话 A7 前不支持
+    // D 审计（重要）：同一 sid 的并发重启会互相打架——A 已 kill+resume 起了新 claude，B 的
+    // awaitExit 看到新 claude 仍在 → 超时降级 kill → 把刚起来的新会话又杀了再 resume 一遍
+    // （还多弹一个终端窗口）。点击到弹确认之间有多个 await（getBehavior/list_remote_tmux/
+    // fetchAccounts/checkTrust）且无反馈，双击很自然 → 在**所有**入口（⇄/右键/批量）上游拦住。
+    if (this.restartingSids.has(sid)) return false;
+    this.restartingSids.add(sid);
+    this.refreshAccountBadgeFor(sid); // ⇄ 立刻隐去，别让用户对着可点的按钮再点
+    try {
+      return await this.restartTabWithAccountInner(sid, tab, accountName, compactFirst, confirmFn);
+    } finally {
+      this.restartingSids.delete(sid);
+      this.refreshAccountBadgeFor(sid);
+    }
+  }
+
+  /** 单个 tab 的账号徽章/⇄ 就地重刷（in-flight 状态变化时用；tab 已没了就静默跳过）。 */
+  private refreshAccountBadgeFor(sid: string): void {
+    const refs = this.tabButtons.get(sid);
+    const tab = this.tabs.get(sid);
+    if (refs && tab) this.updateAccountBadge(refs, sid, tab);
+  }
+
+  private async restartTabWithAccountInner(
+    sid: string,
+    tab: Tab,
+    accountName: string,
+    compactFirst: boolean,
+    confirmFn?: (msg: string) => boolean,
+  ): Promise<boolean> {
+    if (tab.origin === null) return false;
     const origin = tab.origin;
     const cwd = tab.cwd ?? "";
     const behavior = await getBehavior();
@@ -2083,9 +2136,9 @@ export class TabManager {
         "该会话不在（本工具的）tmux 里、或无法精确定位（缺 @ccm_sid 会话标记）——可先归档后用「用账号 X resume」。",
         { level: "info", durationMs: 8000 },
       );
-      return;
+      return false;
     }
-    await restartWithAccount({
+    return await restartWithAccount({
       origin,
       sessionId: sid,
       cwd,
@@ -2093,11 +2146,148 @@ export class TabManager {
       accountName,
       launcher: behavior.resumeCommandRemote,
       compactFirst,
+      // account-ux U6：批量对齐已在批量层两步确认过 → 传 `() => true` 免得逐会话再弹 N 次；
+      // 单会话入口（右键菜单 / tab ⇄）不传 → 仍走 restartWithAccount 自带的破坏性二次确认。
+      confirm: confirmFn,
       // A5 step5：真检测器——onLine 见该 sid 的 compact 摘要行即 resolve，超时（5min）按 §5.2 续 kill。
       awaitCompact: this.awaitCompactFor(sid),
       // A5+ 优雅退出：轮询 tmux 前台不再是 claude 即 resolve，10s 超时按 §5.2 ④ 降级 kill。
       awaitExit: this.awaitExitFor(origin, cwd, sid),
     });
+  }
+
+  /** account-ux U6：**唯一**的「这个会话现在可否一键对齐」谓词——⇄ 显隐、⚠k 计数、批量枚举、
+   *  Ctrl+K 命令(U8) 全走它，避免同一条件写多遍后漂移（D 审计：曾写了两遍半）。
+   *  返回可对齐时的目标账号名，否则 null。in-flight（正在重启）也算不可对齐 → ⇄ 置灰、不重复计数。 */
+  private alignableCurrent(sid: string, tab: Tab): string | null {
+    if (tab.origin === null) return null; // 远端优先：本地会话 A7 前不支持
+    if (tab.status === "archived") return null; // 用户已停跟随 → 不弹破坏性动作
+    if (this.restartingSids.has(sid)) return null; // 正在重启 → 防重入
+    if (!shouldShowAccountBadge(tab.origin, this.accountReadyOrigins)) return null;
+    const current = this.currentByOrigin.get(tab.origin) ?? null;
+    if (!current) return null; // 当前工作账号未知/不可选（main.ts 已过 isSelectable）→ 不猜
+    const live = this.sessionAccountsByS.get(sid);
+    if (!live || !live.alive || !live.account) return null; // 仅活跃 live（死会话走 resume）
+    if (!detectAccountMismatch(live.account, current)) return null;
+    return current;
+  }
+
+  /** account-ux U6：单会话「用当前工作账号重启对齐」——tab ⇄ 按钮 / U8 的 Ctrl+K 命令共用入口。
+   *  复用 restartTabWithAccount（含 @ccm_sid 精确守卫 + §5.2 失败语义），不新增编排。
+   *  @returns 是否真的走到了 resume（false=被守卫拒/账号不可用/用户取消/kill 失败）。 */
+  async alignSessionToCurrentAccount(sid: string): Promise<boolean> {
+    const tab = this.tabs.get(sid);
+    if (!tab) return false;
+    const current = this.alignableCurrent(sid, tab);
+    if (!current) return false;
+    return await this.restartTabWithAccount(sid, current, false);
+  }
+
+  /** account-ux U6：可对齐会话的 sid 列表。⚠k 用 `.length`，U8 的 Ctrl+K/汇总浮层用列表本身。 */
+  accountMismatchSids(): string[] {
+    const out: string[] = [];
+    for (const [sid, tab] of this.tabs) {
+      if (this.alignableCurrent(sid, tab)) out.push(sid);
+    }
+    return out;
+  }
+
+  /** account-ux U6：枚举可对齐会话 + 各自目标账号 + 是否空闲（批量分桶用）。 */
+  private accountMismatches(): { sid: string; current: string; idle: boolean }[] {
+    const out: { sid: string; current: string; idle: boolean }[] = [];
+    for (const [sid, tab] of this.tabs) {
+      const current = this.alignableCurrent(sid, tab);
+      if (!current) continue;
+      // 「空闲」用**白名单**判定：会话状态枚举是 busy/idle/shell/waiting（bridge.rs
+      // SessionActivityPayload 透传 CC 官方值，null=旧 CC/远端 v1 无该字段）——只有 idle/shell
+      // （都在等输入）才算"几乎无感"；busy（跑回合中）/ waiting（等权限对话框，重启会丢掉待决策
+      // 弹窗）/ null（未知）一律落第二步确认。破坏性动作上未知即保守。
+      // 注意：`"running"` 是 **subagent** 的状态串（AgentEntry），不是会话状态，别混用。
+      const st = tab.activity?.status ?? null;
+      out.push({ sid, current, idle: st === "idle" || st === "shell" });
+    }
+    return out;
+  }
+
+  /** account-ux U6：不一致活会话数（状态栏 chip ⚠k 计数用）。in-flight 的已被谓词扣掉。 */
+  countAccountMismatches(): number {
+    return this.accountMismatchSids().length;
+  }
+
+  /** account-ux U6：批量把不一致活会话按各自 origin 的当前工作账号重启对齐。两步确认：先空闲（几乎
+   *  无感），回合进行中的单独第二步确认（默认不含、会打断）。逐会话串行走 restartTabWithAccount
+   *  （继承 §5.2：某会话 kill 失败只中止那一个；@ccm_sid 精确守卫防杀错）。破坏性——不新增语义。 */
+  async alignAllToCurrentAccount(): Promise<void> {
+    // D 审计（重要）：批量可跑数分钟，而 ⚠k 要等下一拍 10s 轮询才降 → 用户很容易再点一次，
+    // 第二批拿着同一份陈旧列表并发 kill/resume，可能把第一批刚 resume 出来的新进程又杀掉。
+    // 且批量传了 confirm:()=>true，第二批全程无人工拦截 → 这里必须自己挡住重入。
+    if (this.aligningBatch) {
+      showActionFailureToast("批量对齐进行中", "上一批还没跑完，等它结束再来。", {
+        level: "info",
+        durationMs: 4000,
+      });
+      return;
+    }
+    const all = this.accountMismatches();
+    if (all.length === 0) return;
+    const label = (m: { sid: string; current: string }): string =>
+      `· ${this.tabs.get(m.sid)?.title ?? m.sid} → ${m.current}`;
+    const idle = all.filter((m) => m.idle);
+    const busy = all.filter((m) => !m.idle);
+    const targets: { sid: string; current: string }[] = [];
+    // 文案必须说真话（D 审计重-2）：对齐 = kill tmux + 重新拉起，**每个会话都会新开一个终端窗口**，
+    // 被 kill 的旧窗口不会自动关（-NoExit）；对话内容从 jsonl 续写，但进程内存态（队列里的输入、
+    // plan 模式、/model、MCP 连接、后台 bash 任务）会丢；正 attach 着的终端会断开。
+    const COST =
+      `\n\n代价：每个会话会新开一个终端窗口（旧窗口被结束但不会自动关闭）；对话内容从 jsonl 续写，` +
+      `但队列里的输入、后台任务、/model 等进程内状态会丢失。批量模式不再逐个确认；` +
+      `若某账号未信任该目录，会在弹出的终端里询问。`;
+    if (idle.length > 0) {
+      const ok = window.confirm(
+        `将按各自的当前工作账号重启这 ${idle.length} 个**空闲**会话（它们当前在等输入）：\n` +
+          idle.map(label).join("\n") +
+          COST +
+          `\n\n继续？`,
+      );
+      if (!ok) return;
+      targets.push(...idle);
+    }
+    if (busy.length > 0) {
+      const ok2 = window.confirm(
+        `${idle.length > 0 ? "另有 " : ""}${busy.length} 个会话正在回合中或等待弹窗决策，` +
+          `重启会打断当前回合、丢掉待决策的对话框。${idle.length > 0 ? "也" : ""}一起对齐吗？\n` +
+          busy.map(label).join("\n") +
+          (idle.length > 0 ? "" : COST),
+      );
+      if (ok2) targets.push(...busy);
+    }
+    if (targets.length === 0) return;
+    // 串行对齐（重启是重操作，避免同时轰远端；各自成功/失败由 restartTabWithAccount 自身 toast）。
+    // confirm 传 `() => true`：批量层已两步确认，不让 restartWithAccount 再弹 N 个框。
+    this.aligningBatch = true;
+    let done = 0;
+    try {
+      for (const m of targets) {
+        // per-iteration catch：决策④「逐会话独立」目前靠被调方各自 catch，无结构保证；
+        // 将来链上任一步改成抛，整批不该从中间静默断掉。
+        try {
+          if (await this.restartTabWithAccount(m.sid, m.current, false, () => true)) done += 1;
+        } catch (e) {
+          console.warn("alignAll: 会话对齐失败", m.sid, e);
+        }
+      }
+    } finally {
+      this.aligningBatch = false;
+    }
+    // 只报**真结果**：守卫拒绝 / 账号不可用 / kill 失败中止都不算成功（D 审计：曾按发起数报成功，
+    // 最坏是"0 成功 + 一句成功汇总"）。
+    const failed = targets.length - done;
+    showActionFailureToast(
+      failed === 0 ? "批量对齐完成" : "批量对齐部分完成",
+      `已重启对齐 ${done} 个会话` +
+        (failed > 0 ? `；${failed} 个未执行（原因见各自提示）。` : "。"),
+      { level: failed === 0 ? "info" : "error", durationMs: failed === 0 ? 5000 : 8000 },
+    );
   }
 
   /** F79(#38)：杀死远端 tmux 会话——二次确认后 kill-session。变灰由 #60-A 对账兜（不主动 archive，守 §24）。
@@ -2290,6 +2480,18 @@ export class TabManager {
     acctBadge.style.display = "none";
     root.appendChild(acctBadge);
 
+    // account-ux U6：⇄ 换号对齐按钮。默认隐藏，updateAccountBadge 仅对"活跃 live && 账号≠当前工作账号"显。
+    const alignBtn = document.createElement("span");
+    alignBtn.className = "tab-align-btn";
+    alignBtn.textContent = "⇄";
+    alignBtn.setAttribute("role", "button");
+    alignBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void this.alignSessionToCurrentAccount(sid);
+    });
+    alignBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+    root.appendChild(alignBtn);
+
     const badge = document.createElement("span");
     badge.className = "tab-badge";
     root.appendChild(badge);
@@ -2464,7 +2666,7 @@ export class TabManager {
       }
     });
 
-    return { root, label, badge, acctBadge, cwdBtn };
+    return { root, label, badge, acctBadge, alignBtn, cwdBtn };
   }
 
   private updateTabButton(refs: TabButtonRefs, sid: string, tab: Tab): void {
