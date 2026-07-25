@@ -259,6 +259,20 @@ export function findClaudeTmux(
 }
 
 /**
+ * audit-fixes F03（idle-tmux）：找目标 sid 的**空 tmux**——`@ccm_sid` 精确命中该 sid、但当前
+ * 前台命令**不是** claude（交互 shell，claude 已退出）。即三态里的 idle-tmux：会话还在、可 attach/
+ * 就地 resume，但没在跑 claude。**只按 @ccm_sid 精确命中**（绝不按 cwd 猜，免撞同目录别的会话）。
+ * F03.1 的就地复用 resume 与 F03.3 的 attach-into-idle 共用此判据（与 `findClaudeTmux` 互斥：
+ * 后者要 command=claude，本函数要 command≠claude）。纯函数（node/jsdom 可测）。
+ */
+export function findIdleTmux(
+  sessions: TmuxSession[] | null | undefined,
+  sid: string,
+): TmuxSession | undefined {
+  return sessions?.find((s) => s.sid === sid && !isClaudeTmuxCommand(s.command));
+}
+
+/**
  * F74c(#60-B)：`findClaudeTmux` 对给定 sid 是否会走 **cwd 回退**（= 无精确 `@ccm_sid` 命中
  * **且**整张列表都无任何会话带 sid）。回退命中的会话是「同目录里的某个 claude」，可能不是目标
  * 会话——未装 / 老 `ccm` wrapper 的向后兼容路径。用户 2026-07-17 拍板：保留回退但**命中时显式提示**
@@ -1926,7 +1940,7 @@ export class TabManager {
     // （复用原会话名，不 new-session）→ 不产 `cc-<sid8>-N` 孤儿（治 #76 根因）+ 空 shell 起得了 claude
     // （治 create-gate 短路只 attach 空 shell 的 #75 一条）。仅 @ccm_sid 精确命中才复用（不按 cwd 猜，
     // 免撞同目录漂移会话）。
-    const idle = (sessions ?? []).find((s) => s.sid === sid && !isClaudeTmuxCommand(s.command));
+    const idle = findIdleTmux(sessions, sid);
     if (idle) {
       await withAccount(
         origin,
@@ -2008,9 +2022,22 @@ export class TabManager {
         onClick: () => this.killRemoteTmux(origin, match.name, viaCwd),
       });
     } else {
-      removeTabContextMenuItem("attach");
-      removeTabContextMenuItem("preview");
-      removeTabContextMenuItem("kill");
+      // audit-fixes F03.3（attach-into-idle）：无活 claude，但目标 sid 的**空 tmux**（@ccm_sid 命中、
+      // command≠claude）还在 → 提供 attach 进那个空 shell（用户可在里面自己敲/看，或就地 resume）。
+      const idle = findIdleTmux(sessions, sid);
+      if (idle) {
+        updateTabContextMenuItem("attach", {
+          id: "attach",
+          label: `Attach（空 tmux ${idle.name}，无 claude）`,
+          onClick: () => void runRemoteAttach(origin, idle.name),
+        });
+        removeTabContextMenuItem("preview"); // 空 shell 无 claude 画面可预览
+        removeTabContextMenuItem("kill");
+      } else {
+        removeTabContextMenuItem("attach");
+        removeTabContextMenuItem("preview");
+        removeTabContextMenuItem("kill");
+      }
     }
   }
 
@@ -2700,6 +2727,16 @@ export class TabManager {
               danger: true,
               onClick: () => this.killRemoteTmux(origin, m.name, viaCwd),
             });
+          } else {
+            // audit-fixes F03.3：缓存命中、无活 claude，但有目标 sid 的空 tmux（idle-tmux）→ 同步给 attach。
+            const idle = findIdleTmux(cached.sessions, sid);
+            if (idle) {
+              items.push({
+                id: "attach",
+                label: `Attach（空 tmux ${idle.name}，无 claude）`,
+                onClick: () => void runRemoteAttach(origin, idle.name),
+              });
+            }
           }
         } else {
           items.push({
