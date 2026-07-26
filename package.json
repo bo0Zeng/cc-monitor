@@ -29,6 +29,9 @@
     "test:session-backend": "tsx src/session-backend.test.ts",
     "test:panorama-session-files": "tsx src/panorama/session-files.test.ts",
     "test:dom": "vitest run",
+    "lint": "eslint src",
+    "lint:css": "stylelint \"src/**/*.css\"",
+    "coverage": "vitest run --coverage",
     "test": "npm run test:branching && npm run test:diff && npm run test:api-error && npm run test:bash && npm run test:remote-health && npm run test:remote-launch && npm run test:format && npm run test:history-cache && npm run test:history-prefs && npm run test:history-actions && npm run test:usage-pivot && npm run test:pricing && npm run test:session-backend && npm run test:panorama-session-files && npm run test:dom"
   },
   "dependencies": {
@@ -44,10 +47,17 @@
     "marked-katex-extension": "^5.1.8"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@tauri-apps/cli": "^2",
+    "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^9.39.5",
+    "globals": "^17.7.0",
     "jsdom": "^29.1.1",
+    "stylelint": "^17.14.1",
+    "stylelint-config-standard": "^40.0.0",
     "tsx": "^4.19.2",
     "typescript": "~5.6.2",
+    "typescript-eslint": "^8.65.0",
     "vite": "^6.0.3",
     "vitest": "^4.1.9"
   }
