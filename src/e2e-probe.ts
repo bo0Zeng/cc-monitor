@@ -111,16 +111,36 @@ export function stopReplayJitterProbe(report = true): void {
  * 状态快照触发器:①Ctrl+Alt+F9(真桌面调试用);②**中键点状态栏**——xdotool 的
  * XTEST 合成键盘事件进不了 WebKitGTK webview(Xvfb 实测),鼠标事件畅通,headless
  * 套件走这条。getSnapshot 由 main.ts 提供(读 TabManager)。
+ *
+ * auto-e2e F-E0:第二出口 `getSessionsSnapshot`(全会话 status/tmuxIdle/origin/account/mismatch)——
+ * Ctrl+Alt+F10(真桌面/Tier2 WebDriver 键盘可达)或**中键点账号 chip**(`.status-account`,headless
+ * 走鼠标)触发,emit `[e2e] sessions …`。中键落在 `.status-account` 上不触发 #status-bar 的 per-tab
+ * 快照(closest 命中更内层元素即可,但两 handler 各判各的;套件按 `[e2e] sessions` / `[e2e] snapshot`
+ * 前缀区分,互不干扰)。gray-light 全链的主断言是自动落地的 `[e2e] tab-state` 行,本快照为补充核对。
  */
-export function registerSnapshotHotkey(getSnapshot: () => string): void {
+export function registerSnapshotHotkey(
+  getSnapshot: () => string,
+  getSessionsSnapshot?: () => string,
+): void {
   window.addEventListener("keydown", (e) => {
     if (e.ctrlKey && e.altKey && e.key === "F9") {
       e.preventDefault();
       log(`[e2e] snapshot ${getSnapshot()}`);
     }
+    if (getSessionsSnapshot && e.ctrlKey && e.altKey && e.key === "F10") {
+      e.preventDefault();
+      log(`[e2e] sessions ${getSessionsSnapshot()}`);
+    }
   });
   window.addEventListener("auxclick", (e) => {
-    if (e.button === 1 && (e.target as Element | null)?.closest?.("#status-bar")) {
+    if (e.button !== 1) return;
+    const el = e.target as Element | null;
+    if (getSessionsSnapshot && el?.closest?.(".status-account")) {
+      e.preventDefault();
+      log(`[e2e] sessions ${getSessionsSnapshot()}`);
+      return;
+    }
+    if (el?.closest?.("#status-bar")) {
       e.preventDefault();
       log(`[e2e] snapshot ${getSnapshot()}`);
     }

@@ -52,6 +52,18 @@ import { activityLightClass, type GridSessionSnapshot, type SessionPeek } from "
 import { contextPercent } from "./views/pricing";
 
 /**
+ * auto-e2e F-E0:DEV-only 断言出口。同 e2e-probe.ts 的 `log()`——把状态转移写成可 grep 的
+ * `[e2e]` 行(console.info + frontend_perf_log → monitor 日志)。**`import.meta.env.DEV` 门控**:
+ * 生产构建 DEV 恒 false,整支被 vite 静态消除(zero prod 包含,同 e2e-probe 范式)。
+ */
+function e2eLog(line: string): void {
+  if (import.meta.env.DEV) {
+    console.info(line);
+    void invoke("frontend_perf_log", { lines: line }).catch(() => {});
+  }
+}
+
+/**
  * Tab 生命周期：
  * - `live`：session 进程还在跑（`~/.claude/sessions/<PID>.json` 存在且 PID 探活通过）
  * - `archived`：session 进程退出，Tab 灰显但保留内容；用户可主动关
@@ -1116,6 +1128,27 @@ export class TabManager {
   }
 
   /**
+   * auto-e2e F-E0:全会话状态一行 JSON——Tier1/Tier2 断言出口(经 e2e-probe Ctrl+Alt+F10 触发 →
+   * fe_perf 日志)。复用 `snapshotSessions`(已含 status/tmuxIdle/origin/account),派生 `mismatch`
+   * (detectAccountMismatch:活会话账号与该 origin 当前工作账号确知且不一致)。**不动 `debugSnapshot`
+   * 形状**(f40-suite 依赖它),这是并列的第二个探针出口。生产不接线,方法本身无副作用/无落盘。
+   */
+  debugSessionsSnapshot(): string {
+    const sessions = this.snapshotSessions().map((s) => ({
+      sid: s.sessionId.slice(0, 8),
+      status: s.status,
+      tmuxIdle: s.tmuxIdle,
+      origin: s.origin,
+      account: s.account,
+      mismatch: detectAccountMismatch(
+        s.account,
+        s.origin ? this.currentByOrigin.get(s.origin) ?? null : null,
+      ),
+    }));
+    return JSON.stringify(sessions);
+  }
+
+  /**
    * F91b（batch17）：监控板选中 cell 的「内容 peek」补充数据（纯读派生，无写/无落盘）。
    * 只给 `snapshotSessions` 之外的细节：model / 改过的文件 / subagent 名单（运行中优先）。
    * 未知 sid → null（选中会话恰好消失时调用方据此清选中）。
@@ -1177,6 +1210,7 @@ export class TabManager {
       if (tab.tmuxIdle) {
         tab.tmuxIdle = false;
         this.refreshTabBar();
+        this.emitTabStateProbe(tab); // F-E1:远端复活清灰(idle→live)
       }
       // v2.22.2 kind 冲突消解:同一 sid 可能有多份 pidfile(实证:cc-daemon 的
       // bg-spare 备用进程复用**父会话的 sid**写 kind=bg)——宣告到达顺序不定,
@@ -1341,6 +1375,21 @@ export class TabManager {
     );
   }
 
+  /**
+   * auto-e2e F-E1:tab 生命周期状态转移探针。在**真值点**(markTmuxIdle 置灰 / archiveTab 归档 /
+   * reviveTab 复活 / ensureTab 远端复活清灰)emit 可 grep 的 `[e2e] tab-state` 行,gray-light 全链
+   * 套件按它断言 live→tmuxIdle=1(灰)→archived 序列(跨进程整链,单测碰不到)。self-gate
+   * `import.meta.env.DEV`:生产构建整支(含模板串)被 vite 消除。
+   */
+  private emitTabStateProbe(tab: Tab): void {
+    if (!import.meta.env.DEV) return;
+    e2eLog(
+      `[e2e] tab-state sid=${tab.sessionId.slice(0, 8)} status=${tab.status} tmuxIdle=${
+        tab.tmuxIdle ? 1 : 0
+      } origin=${tab.origin ?? "local"}`,
+    );
+  }
+
   /** session 退出（~/.claude/sessions/<PID>.json 被删）—— 灰显归档，内容保留 */
   archiveTab(sessionId: string): void {
     const tab = this.tabs.get(sessionId);
@@ -1361,6 +1410,7 @@ export class TabManager {
     // P5.2 B 重构后无 pendingToolGroup —— archive 不需要打断 tool-group 累积
     // （tool-group 合并改后处理，看 timeline 邻居；archive 后无新 record 入 timeline）。
     this.refreshTabBar();
+    this.emitTabStateProbe(tab); // F-E1:归档(tmux 也没了 → archived)
   }
 
   /**
@@ -1384,6 +1434,7 @@ export class TabManager {
     if (tab.status !== "archived") return;
     tab.status = "live";
     this.refreshTabBar();
+    this.emitTabStateProbe(tab); // F-E1:本地复活(archived→live)
   }
 
   /**
@@ -1404,6 +1455,7 @@ export class TabManager {
     if (tab.tmuxIdle) return; // 无变化不重绘
     tab.tmuxIdle = true;
     this.refreshTabBar();
+    this.emitTabStateProbe(tab); // F-E1:灰灯(claude 退但 tmux 在,status 仍 live)
   }
 
   /**

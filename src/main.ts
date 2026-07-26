@@ -691,7 +691,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (import.meta.env.DEV) {
     try {
       e2eProbe = await import("./e2e-probe");
-      e2eProbe.registerSnapshotHotkey(() => tabs.debugSnapshot());
+      e2eProbe.registerSnapshotHotkey(
+        () => tabs.debugSnapshot(),
+        () => tabs.debugSessionsSnapshot(), // F-E0:全会话状态出口(Ctrl+Alt+F10 / 中键账号 chip)
+      );
     } catch (e) {
       console.warn("[e2e-probe] 加载失败(不影响功能):", e);
     }

@@ -5,7 +5,12 @@
 > 纯逻辑单测 + F40 渲染 e2e，真机流零 e2e 埋点）。用户 2026-07-26 定：装 Windows VM，要「给真机功能补 e2e 埋点(全自动)」。
 
 ## 当前
-- **阶段**：**Phase C 进行中——aya-core（F-E0+F-E1）委托独立 agent 实现+实跑**（用户 2026-07-26：先开能在 aya 跑的 + 让第三方 agent 去测试）。独立 agent 在 worktree 里建探针+fixture 并**实跑 gray-light 生命周期、如实回报真结果**（不由主线程自报绿；对齐仓库反伪造纪律）。
+- **阶段**：**Phase C——F-E0 基建 + F-E1 gray-light 已由独立 agent 实现 + 在 aya 实跑通过（2026-07-26，真结果）**。下接 F-E2/E3/E4（resume/换号/孤儿，同 fixture 基座）+ Tier2/3 待 Windows VM。
+- **F-E0 交付**（DEV 探针,`import.meta.env.DEV` 门控,vite 生产已实测剥离 `[e2e]` 串）：`tabs.ts` 加 `e2eLog` + `debugSessionsSnapshot()` + `emitTabStateProbe`(markTmuxIdle/archiveTab/reviveTab/ensureTab 清灰四真值点 emit `[e2e] tab-state`);`e2e-probe.ts`+`main.ts` 加 Ctrl+Alt+F10/中键账号 chip → `[e2e] sessions`。fixtures:`e2e/fake-claude`、`gen-idle-tmux.sh`、`daemon-wrapper.sh`。**门禁绿**:tsc 0、vitest 595/595(无回归,f40 断言未破)。
+- **F-E1 实跑真结果（两级都过）**：
+  - **daemon-frame 级** `e2e/graylight-daemon-frames.sh` = **5 过/0 败**:`session_added` → kill fake-claude → `session_removed` + `tmux_sessions.raw` 仍含 `@ccm_sid`(灰/Idle 后端条件) → kill-session → `tmux_sessions` 不再含 sid(归档触发)。
+  - **全链级** `e2e/graylight-suite.sh`(Xvfb + `tauri dev` + loopback SSH → daemon-wrapper 隔离 /tmp/e2e-remote-claude)= **3 过/0 败**:live → `[e2e] tab-state sid=… status=live tmuxIdle=1 origin=aya-e2e`(灰)→ `… status=archived`。
+  - **踩坑记录**:①app 会自动部署 daemon 覆盖 daemonPath → 需同目录放 `.build_id`=app 内嵌 daemon build_id(见 sftp.rs::deploy_decision);②杀 claude 前须等 >8s 让 app 先收到含 @ccm_sid 的 TmuxSessions 帧,否则 removed 到达时 tmux 账本空 → 判 Archive 丢灰;③预置的 `target/debug/monitor` 是 Jul-23 构建、**早于 F03.2 灰灯 emitter(Jul-25)**,必须从当前源重建(dep 复用 24s)才跑出灰。
 - **aya GUI 可行性**：webkit2gtk-4.1 在 aya 存在 → 全链 GUI e2e（Xvfb+tauri dev+loopback remote）可能可跑；agent 先试全链，不行退 daemon-frame 级（直跑 daemon 二进制断言 wire 帧）。
 - **Windows SSH 那套（Tier2/3）**：待用户 VM 的 OpenSSH+工具链就位 → 先跑 WebDriver-over-SSH spike 再铺。SSH-驱动架构 + Tier-C 交互会话 recipe 已在 MASTERPLAN。
 - **原 Phase A 摘要**（下方）保留供恢复参考。
