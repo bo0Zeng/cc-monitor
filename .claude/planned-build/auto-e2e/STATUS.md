@@ -5,7 +5,10 @@
 > 纯逻辑单测 + F40 渲染 e2e，真机流零 e2e 埋点）。用户 2026-07-26 定：装 Windows VM，要「给真机功能补 e2e 埋点(全自动)」。
 
 ## 当前
-- **阶段**：**Phase A 主规划已成 → 待用户批准主计划**（MASTERPLAN.md）。未动任何代码。
+- **阶段**：**Phase C 进行中——aya-core（F-E0+F-E1）委托独立 agent 实现+实跑**（用户 2026-07-26：先开能在 aya 跑的 + 让第三方 agent 去测试）。独立 agent 在 worktree 里建探针+fixture 并**实跑 gray-light 生命周期、如实回报真结果**（不由主线程自报绿；对齐仓库反伪造纪律）。
+- **aya GUI 可行性**：webkit2gtk-4.1 在 aya 存在 → 全链 GUI e2e（Xvfb+tauri dev+loopback remote）可能可跑；agent 先试全链，不行退 daemon-frame 级（直跑 daemon 二进制断言 wire 帧）。
+- **Windows SSH 那套（Tier2/3）**：待用户 VM 的 OpenSSH+工具链就位 → 先跑 WebDriver-over-SSH spike 再铺。SSH-驱动架构 + Tier-C 交互会话 recipe 已在 MASTERPLAN。
+- **原 Phase A 摘要**（下方）保留供恢复参考。
 - **2 agent 评估结论**：驱动=WebdriverIO(@wdio/tauri-service，DOM 层，windows CI)+ 少量 OS-input(↗，交互式 VM);断言=`[e2e]` 日志;fixture=loopback SSH 到本机 + daemon(CLAUDE_CONFIG_DIR 隔离)+fake-claude shim。**★关键：gray-light/resume/换号/孤儿 是后端+SSH+tmux 驱动、可在 Linux(aya/ubuntu CI 自环)全自动跑，不需 Windows VM**；Windows VM 只剩 Win32 层(↗)手动。
 - **三层架构**：Tier1 会话生命周期 e2e(Linux 自环,最高 ROI)/ Tier2 Windows DOM 冒烟(WebDriver CI,薄)/ Tier3 Win32/native(手动清单)。
 - **待批**：MASTERPLAN 的功能清单(F-E0 基建→F-E1 gray-light→F-E2 resume→F-E3 换号→F-E4 孤儿→F-E5 DOM 冒烟→F-E6 搭车) + 唯一动生产码处(可注入 confirm) + 「↗/真终端/SFTP 留手动」的范围裁定。**批准后按 F-E0 起步。**
