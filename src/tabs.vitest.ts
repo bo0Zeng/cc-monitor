@@ -855,6 +855,26 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
     expect(invoke).not.toHaveBeenCalledWith("list_last_accounts");
     expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined);
   });
+
+  // F04：tmux 后端的基座逃生口，与直连对称（两后端一致）。useBase → 不跟随、不读 pin、不注入。
+  // 变异锚点：resumeTabTmux 的 follow 去掉 `useBase ?` → 又读 pin → list_last_accounts 被 invoke → 红。
+  it("用基座 resume（tmux，useBase）→ 不读 pin、不注入（起全新 tmux resume，cd undefined）", async () => {
+    // 默认 invoke 返 undefined → list_remote_tmux 无活会话/无 idle → 走 ② 全新 resume。
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    await (
+      tm as unknown as { resumeTabTmux(sid: string, useBase?: boolean): Promise<void> }
+    ).resumeTabTmux("r1", true);
+    expect(invoke).not.toHaveBeenCalledWith("list_last_accounts");
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith(
+      "aya",
+      "r1",
+      "/home/pi/proj",
+      "cct",
+      "cc-r1",
+      undefined,
+    );
+  });
 });
 
 // audit-fixes F03 步骤1（idle-tmux 就地复用，治 #76 根因 + #75 一条）：

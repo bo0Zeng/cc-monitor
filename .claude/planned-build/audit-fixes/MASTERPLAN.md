@@ -23,7 +23,7 @@
 | F03.3 | attach-into-idle（`findIdleTmux` + 两路 attach 菜单）| #76 | ✅ 完成 |
 | **F03.2** | **idle-tmux 灰灯（三态，事件驱动）** | #76 显示 + #60 邻域 | ⬜ **下一批（高风险）** |
 | **F03.4** | **rbind 标题 + 拉起即绑**：甲′ ✅（远端从 @ccm_sid 派生标题，aya 验通、无轮询——**主体修 #74**）；**丙 延期 Windows 真机批次**（aya 无 Windows cross-target，cfg(windows) 核心连编译都验不了 → 不盲提交；等有 Windows 环境边写边编边验）| #74 #41 #72残留 | 🟡 甲′完成/丙延期 |
-| F04 | 统一直连管线 + keepalive（失败不闪退）+ 直连身份路由决策 | #75 直连腿 | ⬜ 待做 |
+| F04 | 统一直连管线（keepalive **核实为非-bug**：-NoExit 已保留窗口）+ tmux 后端基座逃生口（两后端对称） | #75 直连腿 | ✅ 完成 |
 | F05 | 手动清理真孤儿（仅 `cc-*` 无对应 tab，过 `is_ccm_tmux_name`）| #76 残留 | ⬜ 待做 |
 | F06 | #43「父子拉不起来」残留（代码）+ #60/#43/#63attach 的 F74* 真机验证 | #43 #60 #63(部分) | ⬜ 待做 |
 | F07 | 刷新竞态(I4) + 多远端缓存(I5) + resumeTab onUnselectable | I4 I5 | ⬜ 待做 |

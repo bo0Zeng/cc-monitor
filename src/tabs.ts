@@ -1912,7 +1912,7 @@ export class TabManager {
    * F52：tmux 版 resume（远端专用）——在远端 tmux 会话 `cc-<sid8>` 里幂等 resume Claude。
    * 与 resumeTab 的直连版并列;本地 tab（origin===null）无 tmux 用例,直接 return。
    */
-  private async resumeTabTmux(sid: string): Promise<void> {
+  private async resumeTabTmux(sid: string, useBase = false): Promise<void> {
     const tab = this.tabs.get(sid);
     if (!tab || tab.origin === null) return;
     const behavior = await getBehavior();
@@ -1948,7 +1948,11 @@ export class TabManager {
         async (cd) => {
           await runRemoteResumeIntoExistingTmux(origin, sid, idle.name, behavior.resumeCommandRemote, cd);
         },
-        { sessionId: sid, follow: { lastAccount: await this.readSessionPin(sid) } },
+        // F04:useBase = 显式「用基座 resume（tmux）」——不跟随、不注入（与直连版 resumeTab 的基座逃生口
+      // 对称，两后端一致；老会话住基座、别被 follow 注入全局账号 → #75）。
+      // F04:useBase = 显式「用基座 resume（tmux）」——不跟随、不注入（与直连版 resumeTab 的基座逃生口
+      // 对称，两后端一致；老会话住基座、别被 follow 注入全局账号 → #75）。
+      { sessionId: sid, follow: useBase ? undefined : { lastAccount: await this.readSessionPin(sid) } },
       );
       return;
     }
@@ -1966,7 +1970,11 @@ export class TabManager {
         await runRemoteResumeTmux(origin, sid, cwd, behavior.resumeCommandRemote, name, cd);
       },
       // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
-      { sessionId: sid, follow: { lastAccount: await this.readSessionPin(sid) } },
+      // F04:useBase = 显式「用基座 resume（tmux）」——不跟随、不注入（与直连版 resumeTab 的基座逃生口
+      // 对称，两后端一致；老会话住基座、别被 follow 注入全局账号 → #75）。
+      // F04:useBase = 显式「用基座 resume（tmux）」——不跟随、不注入（与直连版 resumeTab 的基座逃生口
+      // 对称，两后端一致；老会话住基座、别被 follow 注入全局账号 → #75）。
+      { sessionId: sid, follow: useBase ? undefined : { lastAccount: await this.readSessionPin(sid) } },
     );
   }
 
@@ -2065,9 +2073,16 @@ export class TabManager {
     if (status === "archived" && selectable.length >= 1) {
       appendTabContextMenuItem({
         id: "acct-resume-base",
-        label: "用基座 resume（不隔离）",
-        title: "不注入任何账号，用原始 ~/.claude resume——装账号功能前的老会话住这里",
+        label: "用基座 resume（直连，不隔离）",
+        title: "不注入任何账号，用原始 ~/.claude 直连 resume——装账号功能前的老会话住这里",
         onClick: () => void this.resumeTab(sid, undefined, true),
+      });
+      // F04：tmux 后端也给基座逃生口（与直连对称，两后端一致）。
+      appendTabContextMenuItem({
+        id: "acct-resume-base-tmux",
+        label: "用基座 resume（tmux，不隔离）",
+        title: "不注入任何账号，用原始 ~/.claude 在 tmux 里 resume",
+        onClick: () => void this.resumeTabTmux(sid, true),
       });
     }
     if (selectable.length < 2) return; // 无可切换选择就不加噪（per-account 项）
