@@ -153,6 +153,20 @@ describe("F91 GridMonitorView", () => {
     view.close();
   });
 
+  it("audit-fixes F03.2：idle-tmux cell 的 .live-dot 加 .tmux-idle 灰类（覆写红绿黄）", () => {
+    document.body.replaceChildren();
+    const source = mkSource([
+      // activityStatus=busy（会加 act 类）但 tmuxIdle=true → 灰类必须叠上、CSS 源序覆写。
+      snap({ sessionId: "gi", title: "灰会话", origin: "pi", tmuxIdle: true, activityStatus: "busy" }),
+    ]);
+    const view = new GridMonitorView(source);
+    view.open();
+    const dot = document.querySelector<HTMLElement>(".grid-monitor-cell .live-dot")!;
+    // 删 renderCell 的 `if (s.tmuxIdle) dot.classList.add("tmux-idle")` 则此断言红。
+    expect(dot.classList.contains("tmux-idle")).toBe(true);
+    view.close();
+  });
+
   it("F91b peek「跳转到该会话」按钮 → switchTo + close（显式导航）", () => {
     document.body.replaceChildren();
     const source = mkSource([snap({ sessionId: "l1", title: "本地会话" })]);

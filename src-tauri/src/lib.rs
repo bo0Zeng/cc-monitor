@@ -599,8 +599,10 @@ pub fn run() {
                                     // 瞬间 command 列可能仍是 claude，故用 daemon-removed 判"claude 死"、@ccm_sid
                                     // present 判"tmux 在"。**§24**：removed sid 已在上方从 remote_active 移出，idle 天然
                                     // 在集合外；idle 只写独立 REMOTE_IDLE（唯一写者=本 emitter），**不新增 remote_active 写点**。
-                                    match ssh_source::find_tmux_origin_for_sid(&sid) {
-                                        Some(origin) => {
+                                    match ssh_source::classify_removed(
+                                        ssh_source::find_tmux_origin_for_sid(&sid),
+                                    ) {
+                                        ssh_source::RemovedDisposition::Idle { origin } => {
                                             ssh_source::mark_idle(&origin, &sid);
                                             let payload = bridge::SessionIdlePayload {
                                                 session_id: sid.clone(),
@@ -613,7 +615,7 @@ pub fn run() {
                                                 tracing::info!("remote session idle-tmux: {sid}");
                                             }
                                         }
-                                        None => {
+                                        ssh_source::RemovedDisposition::Archive => {
                                             ssh_source::clear_idle(&sid);
                                             remote_cache_for_emitter.forget(&sid);
                                             let payload = bridge::SessionEndedPayload {

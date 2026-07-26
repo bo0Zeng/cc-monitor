@@ -1169,6 +1169,15 @@ export class TabManager {
         tab.status = "live";
         this.refreshTabBar();
       }
+      // audit-fixes F03.2（D 审计修）：远端 idle-tmux tab 又收到 daemon 重宣告 / jsonl 行 = claude
+      // 复活（daemon 只对活 pidfile 重宣告并推行；真 idle 会话已从 remote_active 移出、不重宣告也不
+      // 推行）→ 清灰。这是清灰的**主**信号（queue 内、与行保序，SESSION_IDLE 恒排在会话末行之后，
+      // 故复活行/重宣告严格晚于 idle）。不能只靠 session-activity 清灰：那是非 queue 同步派发、且
+      // null-activity 的 daemon（远端 v1 无 status 字段）下永不清 → 活跃流式会话永久卡灰。
+      if (tab.tmuxIdle) {
+        tab.tmuxIdle = false;
+        this.refreshTabBar();
+      }
       // v2.22.2 kind 冲突消解:同一 sid 可能有多份 pidfile(实证:cc-daemon 的
       // bg-spare 备用进程复用**父会话的 sid**写 kind=bg)——宣告到达顺序不定,
       // bg 先到会把真交互会话降格成 ⚙ 且树状挂到别的宿主下(用户截图实锤)。
@@ -1381,8 +1390,9 @@ export class TabManager {
    * audit-fixes F03.2：远端 claude 退出但 tmux 会话仍在 → 灰灯（idle-tmux 第三态）。
    * 后端 emitter 收 daemon removed 且 `@ccm_sid` present 时 emit `session-idle` 驱动（**不**
    * 归档、不 forget，故 status 仍 live，仅灯变灰）。Tab 未建（F5 重放乱序）则暂存待 ensureTab
-   * 落实。archived 的 Tab 不置灰（真 tmux 没了才归档，归档优先）。无变化不重绘。清灰在
-   * updateActivity（claude 再产活动=活了）/ reviveTab / archiveTab（tmux 真没了）三处。
+   * 落实。archived 的 Tab 不置灰（真 tmux 没了才归档，归档优先）。无变化不重绘。清灰四处：
+   * ensureTab（**主**：远端 tab 又收 daemon 重宣告/行 = 复活，queue 内保序）/ updateActivity
+   * （claude 再产活动，非 queue 的次要信号）/ reviveTab（本地）/ archiveTab（tmux 真没了）。
    */
   markTmuxIdle(sessionId: string): void {
     const tab = this.tabs.get(sessionId);

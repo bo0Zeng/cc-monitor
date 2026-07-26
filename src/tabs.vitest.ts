@@ -443,6 +443,18 @@ describe("TabManager 生命周期", () => {
     expect(btn().classList.contains("tmux-idle")).toBe(false);
   });
 
+  it("F03.2 远端复活清灰（主信号）：idle-tmux tab 又收 daemon 重宣告/行 → ensureTab 清灰", () => {
+    // D 审计修：清灰不能只靠 session-activity（非 queue、null-activity daemon 下永不清 →
+    // 活跃流式会话永久卡灰）。ensureTab（远端重宣告/行 = claude 复活，queue 内保序）是主信号。
+    const tab = tm.ensureTab("gr1", "/x", "p", 0, "pi");
+    tm.markTmuxIdle("gr1");
+    expect(tab.tmuxIdle).toBe(true);
+    // 复活：daemon 重放该会话的行（或重宣告）→ 同 sid ensureTab
+    tm.ensureTab("gr1", "/x", "p", 1, "pi");
+    expect(tab.tmuxIdle).toBe(false); // 删 ensureTab 里的清灰块则此断言红
+    expect(tab.status).toBe("live");
+  });
+
   it("F03.2 归档优先：archiveTab 清灰（tmux 真没了）", () => {
     const tab = tm.ensureTab("gi3", "/x", "p", 0, "pi");
     tm.markTmuxIdle("gi3");
