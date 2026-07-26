@@ -3,10 +3,12 @@
 > 工作区 `audit-fixes`。分支 `account-ux`。跨轮靠此文件，不靠记忆。主计划见 MASTERPLAN.md（rev 11）。
 
 ## 当前
-- **阶段**：C 实现推进（F07 完成 + commit）→ 下一个 **F03.2 + F06**（灰灯事件驱动 + #60，最高风险）
-- **下一个功能**：**F03.2 灰灯（甲-evented 事件驱动）+ F06（#60/#43 真机验证 + #43 父子拉不起来残留）合并** —— 最高风险，带全视角 D 审计
-  - F03.2 灰灯 = 甲-evented：收 daemon TmuxSessions 帧即算 idle/live/archived、删 8s 定时器、零轮询。Phase B 先开设计 agent 论证 emitter/§24 协调，实现后全视角并行 D 审计。**机制已定=甲-evented，别停下问；只在撞真状态机冲突/计划≠现实时停。**
-  - F06：#43「父子拉不起来」残留（代码，若可复现）；#60/#43/#63-attach 的 F74* 真机验证项归纳（用户侧）。
+- **阶段**：F03.2 **Phase B 设计已定并 commit** → 下一步 **F03.2a 实现（Rust 后端）**
+- **F03.2 灰灯设计（features/03 步骤2，勿再问机制）**：候选 ii（emitter 收 removed 时 `find_tmux_origin_for_sid` 内联判 idle）+ 收帧驱动收割器复用 reconcile_step（删 8s poller=零轮询）+ **command-agnostic 判据**（claude 死用 daemon-removed、tmux 在用 @ccm_sid present，不信 ≤8s 陈旧 command）+ 独立 `REMOTE_IDLE` 账本(唯一写者=emitter,SessionChange 不加字段)。§24 逐条保全已论证。
+  - **F03.2a（下一轮，Rust 后端 cargo 可验）**：bridge.rs SESSION_IDLE 事件 + ssh_source REMOTE_IDLE 账本/`tmux_origin_for_sid` 纯函数/收帧收割器/断连并 idle + tmux_reconcile 删 8s poller 保 reconcile_step + lib.rs emitter 分流/删 poller spawn/F5。Rust 单测 + 变异 + cargo fmt/test 绿。
+  - **F03.2b（再下轮，前端）**：tabs `tmuxIdle` + markTmuxIdle + 清灰生命周期 + `tmux-idle` class；events.ts session-idle 同 queue；main.ts wire；styles.css 灰点。tsc/vitest。
+  - **合并全视角 D 审计**（正确性/§24 单写者不变量/计划符合度）后签收。
+  - F06：#43「父子拉不起来」残留（代码可复现则修，否则归真机）；#60/#43/#63-attach F74* 真机验证归"你侧待办"；#60① 靠本步事件驱动改善、真机验。
 - **之后**：F08→F09→F10→F11→F12→F13 → Phase G。
 
 ## 已完成（commit）

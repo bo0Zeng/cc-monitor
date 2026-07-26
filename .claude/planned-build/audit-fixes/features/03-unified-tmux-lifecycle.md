@@ -17,7 +17,24 @@
 
 ## DoD（分步）
 - [x] **步骤 1（idle-tmux 就地复用 resume）**：resumeTabTmux 在 ①live-attach 与 ②new-session 之间加 ①.5——@ccm_sid 精确命中但 command≠claude → 复用原名 send-keys resume（`runRemoteResumeIntoExistingTmux`），不 pickFreshTmuxName 新起。回归测 + 变异验证。
-- [ ] **步骤 2（灰灯 UI）**：把 idle-tmux 态接到活动灯的一个灰状态（经 reconcile / tmux 存活信号）。
+- [~] **步骤 2（灰灯，甲-evented 事件驱动）Phase B 设计已定（聚焦设计 agent + aya 实测承重假设）**：
+  ### 机制定案（候选 ii：emitter 收 removed 时查 tmux 快照；已证可行、无阻断硬伤）
+  - **(a) idle 在哪算 = emitter**（`lib.rs:590-606` removed 臂）。每个 removed sid：`find_tmux_origin_for_sid(sid)` → Some(origin)→**IDLE**（`mark_idle` + emit `SESSION_IDLE` + **不 forget** 绑定）；None→**ARCHIVED**（`clear_idle` + forget + `SESSION_ENDED`，原逻辑）。落 emitter 因红线①（ssh_source removed/flush 臂只 send、唯一 emit=emitter）+ 红线②（现 reconcile `retain(announced_live)` 已不认识退出的 sid）。
+  - **★判据 = command-agnostic（有据偏离 ledger 的「command≠claude」）**：`TmuxSessions` 帧最长 8s 陈旧，退出瞬间 command 可能仍是 claude → 卡 command≠claude 会正常退出高频误判 archived。改用：「claude 没了」用 **daemon-removed（权威边沿）**判、「tmux 在」用 **@ccm_sid present in 帧** 判（claude 退出后 wrapper watcher 停写但不 unset，@ccm_sid 恒 present——aya 已实测 `ccm-wrapper.sh` + session 级 option + 登录 shell 存活）。**代码注释 + §24 显式写清此取舍。**
+  - **(b) 覆盖/去抖**：emitter 单线程 FIFO 消费，同一 sid removed 顺序处理，idle/archived 互斥，无并发竞争。daemon-removed 是 idle **唯一触发边沿**；tmux 帧**永不产 idle**（只收割）。
+  - **(c) idle→archived 产出者 = 收帧驱动收割器**（`ssh_source.rs:2257` TmuxSessions 臂，**替掉已删的 8s poller** = 甲-evented）：存 raw 后 `tracked = announced.keys() ∪ snapshot_idle_for_origin(host)`；`reconcile_step(&state, &tracked, &backend, THRESHOLD)` → retire → `session_changes.send(removed)` → emitter 重判（缺 backend→None→archived）。**reconcile_step 零改**，只把 announced 换成 announced∪idle。灰延迟 ≈ 8s×2 ≈ 16s（同旧 poller 量级）。
+  - **(d) SessionChange 加字段？= 不加**。候选 ii 只需 `Vec<String> removed`；新增独立全局账本 `REMOTE_IDLE`(origin→idle sids)，`session_map.rs:33` 一字不动、9 构造点免回填。
+  - **(e) 复活竞态**：idle 边沿单一（只 daemon-removed 在 emitter 产），帧只收割永不产 idle → 陈旧 @ccm_sid 不复活 archived。archived 后 IDLE 已清、sid 离 announced → 收割器 tracked 不含它。
+  ### 逐文件改动（file:line，实现照此）
+  - **bridge.rs**：`SESSION_IDLE="session-idle"` 常量 + `SessionIdlePayload{session_id}`。
+  - **ssh_source.rs**：`REMOTE_IDLE` 静态(origin→HashSet<sid>) + `mark_idle/clear_idle/snapshot_idle_for_origin/snapshot_idle_by_origin`（**唯一写者=emitter**）；纯函数 `tmux_origin_for_sid(by_origin, sid)`(逐 origin parse_tmux_ls 找 @ccm_sid==sid) + `find_tmux_origin_for_sid` 包装；stream_loop `loop` 前 `let mut reconcile_state`；TmuxSessions 臂加收割块；断连 run() 把 `snapshot_idle_for_origin`(只读) 并入 removed；删 `snapshot_announced_by_origin`。
+  - **tmux_reconcile.rs**：删 `POLL_INTERVAL`+`run_tmux_reconcile_poller`(8s)；保留 `reconcile_step`/`ReconcileState`/`RETIRE_MISS_THRESHOLD`(assert≥2)+纯函数测；模块头改「收帧驱动」。
+  - **lib.rs**：emitter added 臂 `clear_idle`；removed 臂改 (a) 分流；删 poller spawn `:664-666`；F5 对账 `:783-790` 排除 idle sid + 重 emit SESSION_IDLE。
+  - **前端 tabs.ts**：`Tab.tmuxIdle:boolean`（**不改 TabStatus 枚举**）+ `pendingTmuxIdle` + `markTmuxIdle` + archiveTab/updateActivity/reviveTab/ensureTab 复活处清灰 + `updateTabButton` toggle `tmux-idle` class(且 status!==archived)。**events.ts** `session-idle` 进**同一 queue**与行同序 + `onSessionIdle`。**main.ts** `onSessionIdle:(sid)=>tabs.markTmuxIdle(sid)`。**styles.css** `.tab.tmux-idle .live-dot{灰}`。
+  - **INVARIANTS §24**：补 F03.2 段（idle 是 remote_active 之外第三态、REMOTE_IDLE 唯一写者=emitter、idle 边沿单一、F5 idle 对称）。
+  ### §24 不变量保全：remote_active 唯一写者/写点零新增；idle 只写 REMOTE_IDLE(唯一写者 emitter)；收割器/断连/daemonless 只经 remote_tx send removed，不直写 remote_active。
+  ### 实现拆分：**F03.2a=Rust 后端**(bridge/ssh_source/tmux_reconcile/lib，cargo 可验)先 → **F03.2b=前端**(tabs/events/main/css)→ 合并全视角 D 审计。
+  - [ ] F03.2a 实现（下一轮）· [ ] F03.2b 实现 · [ ] 全视角 D 审计
 - [x] **步骤 3（attach-into-idle）**：抽 `findIdleTmux(sessions,sid)`（@ccm_sid 命中 + command≠claude，与 findClaudeTmux 互斥）；F03.1 就地复用改用它（去重）；attach 菜单同步(缓存命中)+异步(resolveAttachMenuItem)两路在无活 claude 但有 idle 时提供「Attach（空 tmux …）」。回归测（findIdleTmux 5 例 + DOM idle-attach 1 例）+ 变异验证。**§4 重排下先于步骤 2 做（不依赖灰灯机制）**。
 - [~] **步骤 4（rbind 标题 + 拉起即绑，#74/#41）= 甲′ + 丙**：
   - [x] **4a 甲′（远端，aya 已验）**：`createRunAttach` create 分支（ccmSid 存在时）非阻断加 `set-titles on` + `set-titles-string ccm-rbind-#{@ccm_sid}`（**裸值无双引号**——launch.rs 拒双引号）。从 @ccm_sid 派生外层标题、claude 覆盖不了、无轮询。aya 实测：claude 抢 pane_title 后外层标题仍渲染 `ccm-rbind-<sid>`。测试更新 session-backend.test + remote-launch.test 精确串。
