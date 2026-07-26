@@ -199,7 +199,7 @@ export class AccountChip {
       if (this.deps.cleanupOrphans && this.origin) {
         const origin = this.origin;
         menu.appendChild(
-          this.menuAction("🧹 清理孤儿会话…", () => void this.deps.cleanupOrphans?.(origin)),
+          this.menuAction("清理孤儿会话…", () => void this.deps.cleanupOrphans?.(origin)),
         );
       }
       menu.appendChild(
