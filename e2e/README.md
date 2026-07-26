@@ -67,6 +67,36 @@ fixtures:
    app 会用内嵌二进制覆盖写 daemonPath(把 wrapper 冲掉)。杀 fake-claude **前须等 > 一个 8s 发帧周期**,
    让 app 先收到含 @ccm_sid 的 `TmuxSessions` 帧,否则 removed 到达时 tmux 账本无此 sid → 判 Archive 丢灰。
 
+## auto-e2e:resume idle 就地复用(F-E2,#75/#76)
+
+跨进程验 resume:远端 archived/idle-tmux 会话 resume 时**复用原会话名 `cc-<sid8>`、不产 `cc-<sid8>-N`
+孤儿**(治 #76),且账号注入正确的 `CLAUDE_CONFIG_DIR`(治 #75)。复用 F-E0 的 fake-claude/gen-idle-tmux。
+
+**★ 诚实分层(硬结构限)**:Linux headless 的 GUI resume **结构性不可执行**——一键拉起走
+`launch.rs::launch_powershell_window`,该函数 `#[cfg(not(windows))]` 直接 `Err("拉起终端窗口仅支持
+Windows")`,故 app 里点 resume 在 Linux 必回退剪贴板、**绝不真执行**命令。因此 argv/孤儿断言的诚实天花板
+= **命令级**:直接驱**真源** builder(`remote-launch.ts` 的 `buildResumeIntoExistingTmuxCmd` 等,经
+`resume-cmd-driver.ts` import,不重写)拿到 app **真正会跑**的命令串,再把该串真跑到真 tmux + fake-claude,
+断言 argv.log(`--resume <sid>` + `CLAUDE_CONFIG_DIR`)与 `tmux ls` 孤儿数。复活(灰→live)的**检测**由
+daemon 判活边沿断言(后端半场)。本地 resume(`resume_history_session`)同为 Windows-only,Linux 不可执行。
+
+fixtures / 驱动:
+- `resume-cmd-driver.ts`——tsx 驱动器,import 真实 `remote-launch.ts`/`accounts.ts`,打印 app 真会跑的
+  resume 命令串 / 账号解析结果(#75/#76 的修复活在这些函数里,套件据其 stdout 断言并真跑到 tmux)。
+- `fake-claude` 必须可执行(`chmod +x`;直接被 `gen-idle-tmux` 内联 exec)——F-E0 提交时误落 100644,已修 100755。
+
+两级跑法(都无需 GUI,全自动):
+
+1. **命令级整合(最全,主套件)**:`bash e2e/resume-suite.sh`。逐边界:①`resume-cmd-driver.ts` 取真源命令串,
+   ②断言命令形状(复用名/无 new-session/无 -N/`CLAUDE_CONFIG_DIR` 前缀),③真 send-keys 进 idle pane 的 sh,
+   ④断言 argv.log(sid 命中行的 `CLAUDE_CONFIG_DIR` + `--resume`)与 `tmux list-sessions` 孤儿计数。覆盖:idle
+   就地复用无孤儿 / 无 tmux 新建注账号 / 带 pin 落 X 目录(两隔离账号) / 不带 pin 走基座 + `resolveFollowAccount`
+   落当前工作账号 / 重复 resume 幂等(create-gate 短路) / tmux 消失回退 / 会话仍 live 守卫不误动。
+2. **daemon-frame 复活清灰(后端半场)**:`bash e2e/resume-daemon-frames.sh`(需仓内 debug daemon;缺则
+   `CCM_E2E_DAEMON=<某 p1p+ 的 cc-monitor-remote>`)。序列 `SessionAdded`(live)→(kill fake-claude)
+   `SessionRemoved` + tmux 帧仍含 @ccm_sid(灰)→(真源就地 resume 命令复用原名)`SessionAdded` **再现**
+   = 后端灰→live 复活边沿;全程 tmux 单会话无 `-N` 孤儿。
+
 ## 人工场景(未脚本化,原因与流程)
 
 **F47+F48 SFTP 文件面板(Windows 真机)**:传输/拖入/打开终端是平台交互,Linux e2e 无法覆盖。
