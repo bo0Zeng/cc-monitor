@@ -273,6 +273,30 @@ export function findIdleTmux(
 }
 
 /**
+ * audit-fixes F05：前端版「本工具 tmux 会话名」判定（镜像后端 `tmux.rs::is_ccm_tmux_name`：
+ * `cc-` 前缀 + 长度 >3 + 只含 `[A-Za-z0-9_-]`）。清理孤儿只认 `cc-*`——`<project>_cc`（cc-bus 资产）
+ * 天然排除，且与 F02 的 kill 白名单同一判据（kill 会拒非 cc-*）。纯函数（node/jsdom 可测）。
+ */
+export function isCcmTmuxName(name: string): boolean {
+  return name.startsWith("cc-") && name.length > 3 && /^[A-Za-z0-9_-]+$/.test(name);
+}
+
+/**
+ * audit-fixes F05：**真孤儿** = 本工具命名（`cc-*`）、带 `@ccm_sid` 身份、但该 sid **无对应活 tab**
+ * 的 tmux 会话（tab 已关但 tmux 会话残留：关了 tab 的 `cc-<sid8>` / resume 撞名产的 `cc-<sid8>-N`）。
+ * **保守**：只认**带 @ccm_sid 的**（身份确凿，绝不误杀有 tab 的会话或用户别的会话）；无标记的 cc-*
+ * 不误判为孤儿。`<project>_cc`（cc-bus）经 `isCcmTmuxName` 天然排除。纯函数（node/jsdom 可测）。
+ */
+export function findOrphanTmux(
+  sessions: TmuxSession[] | null | undefined,
+  tabSids: ReadonlySet<string>,
+): TmuxSession[] {
+  return (sessions ?? []).filter(
+    (s) => isCcmTmuxName(s.name) && s.sid != null && !tabSids.has(s.sid),
+  );
+}
+
+/**
  * F74c(#60-B)：`findClaudeTmux` 对给定 sid 是否会走 **cwd 回退**（= 无精确 `@ccm_sid` 命中
  * **且**整张列表都无任何会话带 sid）。回退命中的会话是「同目录里的某个 claude」，可能不是目标
  * 会话——未装 / 老 `ccm` wrapper 的向后兼容路径。用户 2026-07-17 拍板：保留回退但**命中时显式提示**
@@ -2424,6 +2448,50 @@ export class TabManager {
         showActionFailureToast("杀死会话失败", String(err));
       }
     })();
+  }
+
+  /**
+   * audit-fixes F05：手动清理**真孤儿**会话——点击才查该 origin 的 tmux 列表，筛出无对应活 tab 的
+   * `cc-*`(带 @ccm_sid)会话，列出 + 二次确认后逐个 `kill_remote_tmux`。**不自动**(用户拍板孤儿仅手动)。
+   * 判据见 `findOrphanTmux`(保守：只杀身份确凿、且当前无 tab 的；绝不碰有 tab 的会话或非 cc-* 的用户会话)。
+   */
+  async cleanupOrphanTmux(origin: string): Promise<void> {
+    let sessions: TmuxSession[] | null;
+    try {
+      sessions = await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
+    } catch (e) {
+      showActionFailureToast("清理孤儿失败", `查询远端 [${origin}] 的 tmux 列表失败：${String(e)}`);
+      return;
+    }
+    const orphans = findOrphanTmux(sessions, new Set(this.tabs.keys()));
+    if (orphans.length === 0) {
+      showActionFailureToast("没有孤儿会话", `[${origin}] 上没有需要清理的残留 cc-* 会话。`, {
+        level: "info",
+        durationMs: 5000,
+      });
+      return;
+    }
+    const list = orphans.map((s) => `  · ${s.name}（${s.command}）`).join("\n");
+    const ok = window.confirm(
+      `在 [${origin}] 上发现 ${orphans.length} 个孤儿 tmux 会话（tab 已关、tmux 会话残留）：\n\n${list}\n\n` +
+        `逐个 kill 掉？不可恢复——**只影响这些无 tab 的残留会话**，不碰你还有 tab 的会话、也不碰非本工具的会话。`,
+    );
+    if (!ok) return;
+    let killed = 0;
+    const failed: string[] = [];
+    for (const s of orphans) {
+      try {
+        await invoke("kill_remote_tmux", { origin, target: s.name });
+        killed += 1;
+      } catch (e) {
+        failed.push(`${s.name}: ${String(e)}`);
+      }
+    }
+    showActionFailureToast(
+      "清理孤儿完成",
+      `已 kill ${killed}/${orphans.length} 个残留会话${failed.length ? `；失败：\n${failed.join("\n")}` : "。"}`,
+      { level: failed.length ? "error" : "info", durationMs: 8000 },
+    );
   }
 
   /** 打开指定 Tab 的 cwd。本地 → 系统文件管理器；远端 → SFTP 面板进入该远端目录（F78）。无 cwd 忽略。 */

@@ -2,9 +2,9 @@
 
 > 工作区 `audit-fixes`。分支 `account-ux`。跨轮靠此文件,不靠记忆。
 
-- **当前阶段**：C 实现推进（F04 完成 + commit）→ 下一个 F05
-- **当前功能**：下一个 = **F05 手动清理真孤儿**（仅 cc-* 无对应 tab，过 is_ccm_tmux_name）
-- **当前步骤**：F04 完成（keepalive 核实为非-bug：-NoExit 已保留窗口；加 tmux 后端基座逃生口，两后端对称）。#75 账号侧因已修(F01+F03.1+F04)，留开待真机验 resume 真拉起。
+- **当前阶段**：C 实现推进（F05 完成 + commit）→ 下一个 F07
+- **当前功能**：下一个 = **F07 刷新竞态(I4)+多远端缓存(I5)+onUnselectable**
+- **当前步骤**：F05 完成（findOrphanTmux/isCcmTmuxName 纯函数 + cleanupOrphanTmux + chip「🧹 清理孤儿会话」入口，手动/不自动，复用 F02 白名单）。
 - **⚡ 停顿门槛调高（用户 2026-07-25「不要再停loop了」）**：只在真·阻塞 / 计划≠现实无法自解 / 同一步失败≥2 / 确实推断不出且必须用户拍的地方停；其余(含已定机制的 F03.2、常规实现)自主推进,不再逐步确认。
 - **F03.4 已定 = 甲′ + 丙**：甲′=远端 `set-titles-string ccm-rbind-#{@ccm_sid}`（**裸值无双引号**，session-backend createRunAttach 非阻断两行，aya 已验无轮询）；丙=本地 `wt -w new --title ccm-rbind-<sid> --suppressApplicationTitle` + spawn 后 `RemoteHwndCache.try_bind_with_retry` 前向登记（launch.rs/IPC加sid/bind.rs复用/TS传sid）+ shrink 重试循环。**丙 Windows 侧 aya 验不了 → 你真机验再关 #74/#41**；甲′ aya 全验。
 - **F03.2 已定 = 甲-evented**（事件驱动）：收 daemon `TmuxSessions` 帧即算 idle/live/archived、**删 8s 定时器、cc-monitor 侧零轮询**；高风险 → Phase B 先设计 agent 论证 + 实现后全视角 D 审计。

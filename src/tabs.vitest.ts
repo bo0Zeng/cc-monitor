@@ -120,6 +120,8 @@ import {
   TabManager,
   findClaudeTmux,
   findIdleTmux,
+  findOrphanTmux,
+  isCcmTmuxName,
   isCwdFallbackMatch,
   claudeExited,
   type Tab,
@@ -1251,6 +1253,45 @@ describe("audit-fixes F03 findIdleTmux（sid 命中但 command≠claude 的空 t
   it("null / 空列表 → undefined", () => {
     expect(findIdleTmux(null, "t")).toBeUndefined();
     expect(findIdleTmux([], "t")).toBeUndefined();
+  });
+});
+
+// audit-fixes F05：真孤儿 = cc-*(过 isCcmTmuxName)、带 @ccm_sid、且 sid 无对应活 tab。保守：只认
+// 带 @ccm_sid 的（绝不误杀有 tab 的会话或非本工具会话）；<project>_cc 天然排除。
+describe("audit-fixes F05 findOrphanTmux / isCcmTmuxName（清理真孤儿判据）", () => {
+  const S = (name: string, command: string, sid: string | null) => ({
+    name,
+    path: "/p",
+    command,
+    attached: false,
+    windows: 1,
+    sid,
+  });
+  it("isCcmTmuxName：cc- 前缀 + [A-Za-z0-9_-]；拒 <project>_cc / 空格 / 纯 cc-", () => {
+    expect(isCcmTmuxName("cc-abc12345")).toBe(true);
+    expect(isCcmTmuxName("cc-abc12345-2")).toBe(true);
+    expect(isCcmTmuxName("cc-")).toBe(false); // 只前缀
+    expect(isCcmTmuxName("claudecode-frontend_cc")).toBe(false); // cc-bus 资产
+    expect(isCcmTmuxName("web")).toBe(false);
+    expect(isCcmTmuxName("cc-a b")).toBe(false); // 空格
+  });
+  it("cc-* + @ccm_sid + sid 无对应活 tab → 孤儿", () => {
+    const list = [S("cc-dead1234", "bash", "dead1234-full")];
+    expect(findOrphanTmux(list, new Set(["other-sid"])).map((s) => s.name)).toEqual(["cc-dead1234"]);
+  });
+  it("cc-* + @ccm_sid 但 sid **有**活 tab → 不算孤儿（idle-tmux 也不误杀）", () => {
+    const list = [S("cc-live1234", "bash", "live1234-full")];
+    expect(findOrphanTmux(list, new Set(["live1234-full"]))).toEqual([]);
+  });
+  it("cc-* 但**无 @ccm_sid** → 不算孤儿（保守，身份不确凿不误杀）", () => {
+    expect(findOrphanTmux([S("cc-noid1234", "bash", null)], new Set())).toEqual([]);
+  });
+  it("<project>_cc（cc-bus，无 cc- 前缀）→ 不算孤儿（天然排除）", () => {
+    expect(findOrphanTmux([S("claudecode-frontend_cc", "claude", "x")], new Set())).toEqual([]);
+  });
+  it("null / 空列表 → []", () => {
+    expect(findOrphanTmux(null, new Set())).toEqual([]);
+    expect(findOrphanTmux([], new Set())).toEqual([]);
   });
 });
 
