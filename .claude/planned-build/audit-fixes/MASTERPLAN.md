@@ -27,7 +27,7 @@
 | F05 | 手动清理真孤儿（仅 `cc-*` 无对应 tab，过 `is_ccm_tmux_name`）| #76 残留 | ✅ 完成（14dff16） |
 | F06 | #43「父子拉不起来」残留（代码）+ #60/#43/#63attach 的 F74* 真机验证 | #43 #60 #63(部分) | 🟡 无 aya-代码：机制(父恒绿/分裂)已修+已测；残留(拉不起来/Ctrl-X)真机 |
 | F07 | 刷新竞态(I4 序号门) + 多远端缓存(I5 切号清全 origin) + resumeTab onUnselectable | I4 I5 | ✅ 完成 |
-| F08 | 质量门禁（eslint/prettier/stylelint/覆盖率棘轮/mock 卫生）+ `TMUX_LS_FMT` 双写点 CI 断言 + daemon 只读机器护栏 | I8 I7 | ⬜ 待做 |
+| F08 | 质量门禁（eslint/prettier/stylelint/覆盖率棘轮/mock 卫生）+ `TMUX_LS_FMT` 双写点 CI 断言 + daemon 只读机器护栏 | I8 I7 | 🟡 F08a 完成（两护栏=cargo 测）；F08b 前端 lint/coverage 待做 |
 | F09 | 测试补齐（main.ts 盲区可测纯函数 + vendor code-picture-core 进 cargo test + e2e 冒烟进 CI）| I8/G3 | ⬜ 待做 |
 | F10 | README 中英修版本/删悬空/补账号 + RELEASING/CONTRIBUTING checklist 补 README 两条 | I2 I3 | ⬜ 待做 |
 | F11 | 文档漂移（ARCHITECTURE 账号子系统 + STATE-MATRIX 4命令 + INVARIANTS 上移 color-scheme + 子README + 索引 + actions 数）| I7docs/G2 | ⬜ 待做 |
@@ -56,7 +56,7 @@
 | `src-tauri/src/tmux.rs` | F02,F05 | kill 与 send-keys 对称过 `is_ccm_tmux_name`；F05 清孤儿复用同校验 | ✅ F02 |
 | `src/main.ts` refreshSessionAccounts | F07,F09 | in-flight 序号门 + 可测纯函数 | ⬜ F07 |
 | `src/settings/remote-section.ts` 数据层 | F12,F13 | 纯数据迁 `remote-config.ts` | ⬜ F12 |
-| `.github/workflows/ci.yml` + `package.json` | F08,F09,F13 | 终态 job：rust/frontend(+lint+coverage)/daemon/vendor-crate/e2e-smoke + 双写点断言 | ⬜ F08 |
+| `.github/workflows/ci.yml` + `package.json` | F08,F09,F13 | 终态 job：rust/frontend(+lint+coverage)/daemon/vendor-crate/e2e-smoke + 双写点断言 | 🟡 F08a：双写点断言 + daemon 只读护栏落成 **cargo 测**（跑既有 rust/daemon job，比 CI 步骤更稳）；F08b 补 lint/coverage npm+CI |
 | 文档簇 + BACKLOG | F10,F11 | 不漂移；BACKLOG 打删除线 | ⬜ F10/F11 |
 
 ## 4. 依赖与顺序（bug 优先）
@@ -88,3 +88,4 @@
 - 10 — 用户拍板：F03.2=甲（高风险→反复评估+审计）；F03.4 开 3 agent 调研更优解
 - **11 — 全面制定（本版）**：三 agent 调研收敛 → **F03.4 = 甲′（远端 set-titles-string 从 @ccm_sid 派生，裸值无双引号，aya 已验无轮询）+ 丙（本地 wt --title + suppressApplicationTitle + 拉起即绑 forward-register，根治 #74+#41，Windows 真机验）**；**F03.2 = 甲-evented（收 daemon 帧即算、删 8s 定时器，cc-monitor 侧零轮询）**；确立**无轮询原则**（§5）；F03.4 shrink bind 重试循环；主体全面重写为连贯计划
 - **12 — F03.2（灰灯）实现 + 全视角 D 审计闭环**：a-core(0934e7d)→a-wire(0451065)→b 前端(d00703c)→3 并行 D agent（Rust/§24·计划红线·前端）**零阻塞**→D 审计修(a487d2c)。**共享面账本落最终形态**：`tabs.ts`(Tab.tmuxIdle 正交布尔、非 TabStatus 枚举；updateTabButton toggle)、`events.ts`(session-idle 入同 queue，镜像 ended)、`main.ts`(wire) 均按既有 archived/activity 模式实现、**无补丁叠加**。**新增独立面**：`REMOTE_IDLE` 账本（唯一写者=emitter，与 remote_active 正交）+ `reconcile_step` 加 `pre_bound`（消卡灰竞态）+ `classify_removed` 纯枚举。grid-monitor 灰点=同源一致性延伸（防 tab-bar/grid 灯不一致的后续补丁）。INVARIANTS §24bis 补 + F74c 悬空引用修。**工程审计(E)结论**：F03.2 自洽、§24 不破、无拖累后续功能的耦合/技术债（F06/F08-F13 与之正交）；主计划仍自洽。残留均记档（TOCTOU 短命会话误归档=非回归、真机标定项）。cargo 363 / tsc 0 / vitest 595 / build ✓
+- **13 — F06 定性 + F08a 红线机器护栏**：F06 无 aya-代码（#43 机制已修+已测、残留真机）。**F08a**（低风险主线程自审 + 双变异验证）：`TMUX_LS_FMT` 双写点断言（src-tauri tmux.rs，`include_str!` daemon 源、锚定 const 定义行、双向）+ **daemon 只读机器护栏**（remote-daemon-proto/readonly_guard.rs，`#[cfg(test)]` 内 strip cfg(test) 块后断言生产代码无 FS 变更）。**关键决策**：两护栏落成 **cargo 测**而非 CI YAML 步骤——跑在既有 rust/daemon job 且本地即验、无 YAML 脆弱性（比账本原措辞更优）。红线 I7（daemon 只读，只加只读测试）/I8（TMUX_LS_FMT 只断言不改）机器化守护到位。src-tauri 365 / daemon 全绿。F08b（前端 eslint/stylelint/coverage，warn-only 基线不追清零；prettier 不做避 churn）待下轮。

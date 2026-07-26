@@ -22,6 +22,7 @@
 mod accounts_query;
 mod codex;
 mod history_query;
+mod readonly_guard; // F08a：daemon 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 mod resolve_query;
 mod search_query;
 mod turn_detect;
