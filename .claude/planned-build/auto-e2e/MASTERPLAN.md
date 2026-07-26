@@ -62,4 +62,79 @@ SSH 默认落非交互会话（无桌面/前台）→ GUI 自动化要跑进**�
 - 版本脆：`@wdio/tauri-service`(next) + msedgedriver 精确匹配 → 锁版本、可接受升级返工。
 
 ## 测试约定
-Tier1 = bash 套件（仿 f40-suite）跑 Linux dev app（xvfb）+ 断言 `[e2e]` 日志；能进 ubuntu-latest CI（自环）。Tier2 = wdio 跑 windows-latest CI。每步 tsc+vitest 绿；探针改动不破 f40-suite 既有断言。
+Tier1 = bash 套件（仿 f40-suite）跑 Linux dev app（xvfb）+ 断言 `[e2e]` 日志；能进 ubuntu-latest CI（自环）。Tier2 = wdio 跑 windows-latest CI 或 VM session-1 hop。每步 tsc+vitest 绿；探针改动不破 f40-suite 既有断言。
+
+---
+
+# ★综合测试主计划（2026-07-26 用户定「都搞·自动全做·第三方测·全边界」）
+
+## 三条硬要求（本轮驱动）
+1. **planned-build 自动全做**：一个功能走 B→C→D→E→F，全部做完 Phase G，遇硬阻塞才停回问。
+2. **第三方测（非主线程一直自测）**：每个功能的**建测试+实跑**委托独立 worktree agent；**主线程只做编排 + 独立复核 + 集成**（审 diff、回盘看真结果、ff 并入、D/E/F 签收）。这满足"独立验证"——建者与验者分离。
+3. **全边界**：每功能列**边界矩阵**，逐条覆盖（不只 happy-path）。
+
+## 委托可靠性纪律（从两次 agent 夭折学的）
+两次 F-Vwin 委托死于**外因**（①账号 session limit；②sandbox flag `cd`+管道），非任务本身。故每个委托 agent prompt 必含：
+- **STEP 0 先 `git merge --ff-only account-ux`**（worktree 起点是 stale 祖先，缺计划文件+当前源）→ 确认能读到 `features/<NN>.md` 再动手。
+- **禁 `cd`+管道**：用绝对路径 + `--manifest-path` + 结果重定向到文件（sandbox 会拦 cd+pipe）。
+- **VM 测试走 session-1 hop**（`schtasks /it`）：session-0 建不出可见窗口 / 某些 GUI 不可驱；compile 可在 session-0 `--no-run` 先查错。
+- **撞 rate-limit / API-limit → 立即停+如实报，别 thrash**。
+- **如实回报真结果**（对齐仓库反伪造纪律）：贴 `test result:` 原行，不自报绿。
+- 红线全含（daemon 零改 / 不 push·bump / 不碰 ~/.bashrc / 无 emoji）。
+
+## 执行模型（自动 loop）
+主线程编排：`委托 agent 建+跑一个功能 → 收 → 独立复核（审 diff + 回盘核实真结果 + 门禁）→ ff 并入 account-ux → D/E/F 签收 → 委托下一个`。**串行**（共享面：fixture、tabs.ts、session-1 hop runner——并行 worktree 会撞）。全部完 → Phase G（/full-audit + 端到端 + 汇报）。
+
+## 已完成
+- **F-E0 基建** + **F-E1 gray-light 全链**（Linux 自环，daemon-frame 5/0 + 全链 3/0）✅ 并入。
+- **F-Vwin #74/#41 真 Windows 验证**（bind.rs native 测试，VM session-1：1 passed + 全套 363 passed/0 failed）✅ 并入 9ac0615。
+
+## ★功能边界矩阵（本轮待委托实现的）
+### F-E2 resume idle 就地复用（#75/#76）— Linux 自环 fixture
+| 边界 | 断言 |
+|---|---|
+| 远端 archived + idle-tmux(灰) → Resume（tmux）| `mode=idle-reuse name=cc-<sid8>`（**无 `-N` 孤儿**，治 #76）+ argv.log + 复活清灰 + `tmux has-session` 孤儿数=0 |
+| 远端 archived（无 tmux）→ Resume（直连）| 新 session + argv 正确 CLAUDE_CONFIG_DIR |
+| 带账号 pin「用账号 X resume」| argv `CLAUDE_CONFIG_DIR` = X 的目录 |
+| 不带 pin | 默认全局当前账号目录（治 #75 主因） |
+| 本地 archived Resume | 复活 archived→live，`[e2e] tab-state` |
+| 重复 resume / tmux 已消失 / 会话仍 live | 幂等/回退/守卫不误动 |
+
+### F-E3 换号重启编排（#68/#69）— Linux 自环
+| 边界 | 断言 |
+|---|---|
+| restart 账号 X + compactFirst | jsonl compact 记录驱动 compact→exit→kill→resume 序列 + argv 新 `CLAUDE_CONFIG_DIR` |
+| restart 无 compact | 直接 exit→kill→resume |
+| 检测到 mismatch（账号 chip ⚠k）| restart 后 mismatch 清零 |
+| 批量对齐 alignAll：idle vs busy 会话 | 可注入 confirm 分别处理，busy 走确认 |
+| 取消 confirm | no-op 不动 |
+
+### F-E4 孤儿清理（F05）— Linux 自环，**前置=可注入 confirm seam（唯一动生产码，行为等价）**
+| 边界 | 断言 |
+|---|---|
+| 无 tab 的 `cc-*` tmux | scan 计入 + cleanup 真删（`has-session` 消失）|
+| 非 `cc-*` 用户会话 | **不误伤**（存活）|
+| `<project>_cc`（cc-bus 资产）| **不误伤** |
+| confirm 接受 vs 拒绝 | 接受才删；拒绝 no-op |
+| 零孤儿 / 混合 | 计数准确、no-op |
+
+### F-E5 Tier2 Windows DOM（session-1 hop，wdio）
+| 边界 | 断言 |
+|---|---|
+| 裸壳（无 fixture）| `#app`/`#tab-bar`/`#status-bar` 存在；`.status-msg`("等待活跃")/`.status-count`("活跃 0")/`.empty-state`；6 顶栏钮+`.status-cmdk` 可点 |
+| overlay 快捷键（物理码）| `KeyH`→历史、`KeyG`→全景、`Ctrl+KeyK`→命令栏、`KeyT`→Tasks 各开；`Escape` 关 |
+| 会话相关（E5b，VM app 连 aya + F-E1 fixture）| `.tab`/`.tab-title`/`.live-dot` 状态类；右键 `.tab-context-menu` 项随状态；archived 有 resume 项；`.status-account` chip |
+| confirm 阻塞 | spec 内 `window.confirm` 桩掉（不动生产码）|
+
+### F-E1 灰灯边界补（搭车，已有基座）
+| 边界 | 断言 |
+|---|---|
+| 多会话各自独立变灰 | 每 sid 独立 `[e2e] tab-state tmuxIdle` |
+| 空 backend 最后会话卡灰（已知残留）| 断言这个**已知行为**（daemon 哨兵，红线外）|
+| 复活只清对应 tab 的灰 | 不误清别的 |
+
+## 不做（Tier3 手动 / 边界外）
+↗ `SetForegroundWindow` 真拉前（前台锁，肉眼/`GetForegroundWindow==hwnd` smoke）· 真终端/PowerShell/SFTP/系统通知 · 真 claude 真出内容（hard-to-fixture）。灰灯 WebView2 渲染看一眼并进 F-E5。
+
+## 执行序（ROI）
+F-E4 confirm seam（前置，其余搭 seam）→ F-E2 resume → F-E3 换号 → F-E1 灰灯边界补 → F-E5 Tier2（含 E5b）→ Phase G。

@@ -22,7 +22,16 @@
   - **中断原因**：委托的 worktree agent af2fa259 撞**账号 session limit**（8:10am PT reset，**非代码错**）。
   - **★关键发现（已核源码）**：F-Vwin 的 native 测试**不能走 session-0 SSH `cargo test`**——session-0 window station 无法让新建窗口 `IsWindowVisible=true`（agent 实证 force `WS_VISIBLE` 也不翻），而 `find_window_by_marker_substr` 在 `bind.rs:319` `if !IsWindowVisible(hwnd) return` 过滤掉不可见窗口 → 测试窗口找不到。**修正：F-Vwin 的 `cargo test` 也走 session-1 hop（schtasks /it）在交互会话跑**（同 wdio 那套）。
   - **salvage**：agent worktree 起点 stale `b5f523a`（未 ff 到 account-ux）+ WIP 未提交 → 不 salvage；quota 恢复后在**主 checkout 正确基线**上重写 native 测试，经 session-1 hop 跑。worktree `agent-af2fa259506a53180` 待清理。
-  - **resume 计划**：limit reset（8:10am PT）后续 F-Vwin（native 测试 A：假窗口 `ccm-rbind-<sid>` 经 session-1 hop `cargo test bind` → find/try_bind/verify_binding 断言；B：VM 全量 cargo test）→ 再 F-E5。发版判断：代码门禁现测全绿(tsc0/vitest595/src-tauri365/daemon125/prod build✓/埋点不漏)，但 #74/#41 从没在真 Windows 验过——F-Vwin 正是补这一环，验过才好 bump（红线仍：不 push/发版/bump 由用户拍）。
+  - **resume 计划**：limit reset（8:10am PT）后续 F-Vwin（native 测试 A：假窗口 `ccm-rbind-<sid>` 经 session-1 hop `cargo test bind` → find/try_bind/verify_binding 断言；B：VM 全量 cargo test）→ 再 F-E5。
+- **★F-Vwin 完成（2026-07-26，主线程亲跑，commit 9ac0615）**：两次委托 agent 都因外因夭折（①账号 session limit ②sandbox flag cd+pipe），改主线程直接做。`bind.rs` 加 `#[cfg(windows)]` native 测试 `remote_bind_finds_real_ccm_rbind_window`（预注册 `Static` 类建真可见顶层窗口，标题 `ccm-rbind-<sid>`）。
+  - **实跑真结果（VM session-1 via schtasks /it）**：A = `test remote_bind_finds_real_ccm_rbind_window ... ok`（1 passed/0 failed）；B = 全量 `363 passed; 0 failed; 1 ignored`（CARGO_EXIT=0）——**首证整个 src-tauri 套件在真 Windows msvc target 通过**。Linux `cargo test bind` = 4 passed（win 测试 cfg 排除，不破 Linux）；本地 `cargo check --tests` = 0。
+  - **踩坑/机制**：session-0 SSH `cargo test` 跑不了此测试（session-0 window station 无法 `IsWindowVisible=true`，而 `find_window_by_marker_substr` bind.rs:319 过滤不可见窗）→ **必须经 session-1 hop 跑 cargo test**（同 wdio）；compile 可在 session-0（`--no-run`）先查错。windows 0.56 `CreateWindowExW` 返 `HWND` 非 `Result`（去掉 `.expect`）。scratchpad/vwin/ 有 runner+driver ps1；VM 留 `vwin-test`/`vwin-full` /it 任务。
+  - **coverage 诚实边界**：覆盖 find/bind/verify（#74/#41 的"窗口按 ccm-rbind 标题可找+可绑+可验"）；**不覆盖** `SetForegroundWindow` 真把窗口拉前（前台锁，半自动 smoke=步骤 C，可留肉眼/`GetForegroundWindow==hwnd` 探针）。灰灯 Windows 逻辑无需验（平台无关，Linux 已覆盖），只差 WebView2 渲染看一眼（并入 F-E5）。
+  - **签收**：D 代码审计=test-only、无生产逻辑改、daemon 零改、行为等价（自评，81 行测试）；E 工程=填补 find/try_bind/verify_binding 的 native 测试空白、永久回归覆盖；F 本条即回看。
+- **★2026-07-26 用户定「都搞·自动全做·第三方测·全边界」+「同时起 UX 审计 agent」**：MASTERPLAN 末尾加「综合测试主计划」（第三方委托模型 + 每功能边界矩阵 + 委托可靠性纪律：sync-first / 禁 cd+pipe / VM 走 session-1 hop / rate-limit 即停 / 如实回报）。**两条并行第三方流**：
+  - **① e2e boundary loop**（worktree agent 逐个建+实跑；主线程只编排+独立复核+ff 并入+D/E/F 签收）：F-E2 resume(#75/#76)→F-E3 换号(#68/#69)→F-E4 孤儿(+可注入 confirm seam)→F-E1 灰灯边界补→F-E5 Tier2 DOM。features/E2-resume.md 已写。
+  - **② 功能&UX 审计 agent**（只读，与 ① 并行）：审真功能正确性+UX 交互（右键菜单/按钮/快捷键/dialog/状态栏/账号 chip/空态/错误处理）边界与一致性，出分级 findings（不改码）。
+  - 当前=委托 F-E2（worktree）+ UX 审计（只读）同时起跑。发版判断：代码门禁现测全绿(tsc0/vitest595/src-tauri365/daemon125/prod build✓/埋点不漏)，但 #74/#41 从没在真 Windows 验过——F-Vwin 正是补这一环，验过才好 bump（红线仍：不 push/发版/bump 由用户拍）。
 
 ## 摸底结论（待 agent 深化）
 - **无任何 Windows e2e 工具**（package.json 零 webdriver/tauri-driver/playwright）——要从零搭。
