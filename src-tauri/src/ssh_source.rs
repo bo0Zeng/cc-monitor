@@ -2902,6 +2902,97 @@ mod f032_idle_tests {
     }
 
     #[test]
+    fn remote_idle_single_writer_guard() {
+        // §24bis 机器护栏（Phase G / full-audit Agent1「重要」结构化）：REMOTE_IDLE 唯一写者 =
+        // lib.rs 的 remote-session-emitter。`mark_idle`/`clear_idle` 是 pub fn、全 crate 可达——
+        // 单写者此前靠注释约定、`cargo check` 抓不住（同 §8「漏 manage 带病 5 版本」失败类）。本测把
+        // 约定机器化：扫 src-tauri 生产源码（剥 cfg(test) 块 + 跳注释/定义行），断言对 mark_idle/
+        // clear_idle 的**调用**只出现在 lib.rs。emitter 之外新增写者 → 本测红。
+        fn strip_cfg_test(src: &str) -> String {
+            // 括号配平剥掉 `#[cfg(test)]` 修饰的块（同 daemon readonly_guard 的证明过的做法）。
+            let mut out = String::new();
+            let mut rest = src;
+            while let Some(pos) = rest.find("#[cfg(test)]") {
+                out.push_str(&rest[..pos]);
+                let after = &rest[pos..];
+                match after.find('{') {
+                    Some(brace) => {
+                        let b = after.as_bytes();
+                        let (mut depth, mut end) = (0i32, brace);
+                        while end < after.len() {
+                            match b[end] {
+                                b'{' => depth += 1,
+                                b'}' => {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        end += 1;
+                                        break;
+                                    }
+                                }
+                                _ => {}
+                            }
+                            end += 1;
+                        }
+                        rest = &after[end..];
+                    }
+                    None => rest = &after["#[cfg(test)]".len()..],
+                }
+            }
+            out.push_str(rest);
+            out
+        }
+        fn is_comment(l: &str) -> bool {
+            let t = l.trim_start();
+            t.starts_with("//") || t.starts_with('*') || t.starts_with("/*")
+        }
+        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut stack = vec![src_dir];
+        let mut offenders: Vec<String> = Vec::new();
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read src dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                let fname = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                let prod = strip_cfg_test(&std::fs::read_to_string(&path).expect("read rs"));
+                for line in prod.lines() {
+                    if is_comment(line) {
+                        continue;
+                    }
+                    let t = line.trim_start();
+                    // 跳过定义行（mark_idle/clear_idle 定义在 ssh_source.rs）。
+                    if t.starts_with("pub fn mark_idle")
+                        || t.starts_with("fn mark_idle")
+                        || t.starts_with("pub fn clear_idle")
+                        || t.starts_with("fn clear_idle")
+                    {
+                        continue;
+                    }
+                    if (line.contains("mark_idle(") || line.contains("clear_idle("))
+                        && fname != "lib.rs"
+                    {
+                        offenders.push(format!("{fname}: {}", t.trim_end()));
+                    }
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "§24bis 违规：REMOTE_IDLE 写者 mark_idle/clear_idle 只准 lib.rs 的 remote-session-emitter 调用；\
+             发现 emitter 之外的调用点（如确需，先想清楚是否破坏单写者不变量）：{offenders:?}"
+        );
+    }
+
+    #[test]
     fn reaper_tracked_unions_announced_and_idle() {
         let announced = ["live-a".to_string(), "live-b".to_string()].into_iter();
         let idle = std::collections::HashSet::from(["idle-c".to_string()]);

@@ -8,9 +8,10 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["src/**/*.vitest.ts"],
-    // F08b：覆盖率**只出报告 + 记基线**，不设 thresholds。原因：覆盖只统计本 vitest(jsdom)
-    // 套件，`*.test.ts`（tsx node 纯函数测）不计入 → 85% 全局不现实（会误红）。地板棘轮/
-    // per-file 目标留后续按核心 DOM 模块收紧。`npm run coverage` 本地看，CI advisory。
+    // F08b：覆盖率**设地板阈值（下方 thresholds）**——`npm run coverage` 与 CI 的 `coverage floor`
+    // 步骤（ci.yml，**无 `|| true`=真·阻断门禁**）都吃它，低于地板即红。**不是** advisory、不是只报告。
+    // 只设「地板」不追「85% 全局」：覆盖只统计本 vitest(jsdom) 套件，`*.test.ts`(tsx node) 不计入，
+    // 全局高目标会误红——故用「当前值下方 ~2-3% 的地板」只挡明显回归。收紧留后续按核心 DOM 模块 per-file。
     coverage: {
       provider: "v8",
       reporter: ["text-summary", "json-summary"],

@@ -291,7 +291,7 @@ grep -nE "tmux (new-session|send-keys|attach)" src/remote-launch.ts   # 命中�
 
 1. fork → branch（命名 `feat/<short-desc>` / `fix/<short-desc>`）
 2. 改代码 + 测试 + 文档（参照本文档对应 cookbook）
-3. `cargo fmt + cargo clippy + cargo test --lib + npm test + npm run build` 全绿（`npm test` = 15 组 node 纯函数 + vitest DOM 308 测 = **前端 CI job**；后端 `cargo test` + 远端 daemon `cargo test` 是**独立的 CI job**，`npm test` 不含它们；动滚动/渲染管线另跑 `e2e/f40-suite.sh`，见 e2e/README.md）
+3. `cargo fmt + cargo clippy + cargo test --all + cargo test -p code-picture-core + npm test + npm run coverage + npm run build` 全绿（`npm test` = 14 组 node 纯函数 + vitest DOM 595 测 = **前端 CI job**；后端 `cargo test --all`〔+ vendor `-p code-picture-core`〕 + 远端 daemon `cargo test` + e2e 脚本冒烟是**独立 CI job**，`npm test` 不含它们；CI 共 4 job；动滚动/渲染管线另跑 `e2e/f40-suite.sh`，见 e2e/README.md）
 4. PR 描述：
    - 解决什么问题（链到 issue）
    - 怎么解决（一句话）

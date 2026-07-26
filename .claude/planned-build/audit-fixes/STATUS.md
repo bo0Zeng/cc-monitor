@@ -3,10 +3,13 @@
 > 工作区 `audit-fixes`。分支 `account-ux`。跨轮靠此文件，不靠记忆。主计划见 MASTERPLAN.md（rev 11）。
 
 ## 当前
-- **阶段**：**进 Phase G 最终验收**（F01-F12 全交付；F13 评估后 dispose=不拆，见 spine-split/MASTERPLAN）。
-  - F13 定论：脊柱拆分**不做**——拆分由具体架构病证成非行数，两 god file 拆分负收益 + 引入 §24/可见性/测试分区风险；唯一真架构病 F12（分层倒挂）已修。
-  - **Phase G 步骤**：① 端到端验证（全量 build+test+coverage）② /full-audit 全项目多视角审 + 文档-代码交叉 ③ 主计划终账 ④ 收尾汇报。
-- **已完成**：F01-F12 + F03.2 灰灯全链；F06 无 aya-代码。剩余 open bug（#72/#74/#75/#76）真机/daemon-bound。
+- **阶段**：**Phase G 最终验收完成 → audit-fixes 计划闭环收官**。
+  - ① 端到端全绿：tsc0 / vitest595 / src-tauri365(+1ignored) / code-picture-core25 / daemon125 / build✓ / CI 4 job。
+  - ② /full-audit 4 并行 agent + 交叉对比：**0 阻塞**；重要项=本轮文档半更新残留（已修）+ 1 已知 daemon-bound 残留（记档）。报告落 `项目审阅报告-PhaseG-2026-07-26.md`。
+  - ③ **Phase G 已修**：README 中英数字统一 + 删悬空指针 + README.en 参差 + doc 索引/CONTRIBUTING/RELEASING/DEVELOPMENT 同步 + ARCHITECTURE Codex 轨道 + vitest 注释门禁语义 + 两报告归位 + **§24bis 单写者机器护栏（变异验证）** + INVARIANTS 记档。
+  - ④ 终账：F01-F12 全交付签收；F13 dispose（不拆，spine-split 留档）；F06 无 aya-代码。
+- **剩余（你侧真机/daemon 版本）**：open bug #72/#74/#75/#76 + 空 backend 最后会话卡灰（daemon 哨兵）+ 丙(F03.4b Windows) + F14(.bashrc 迁移)。均已记档、非本分支代码可确证。
+- **分支状态**：`account-ux` 可干净合入（此轮所有改动行为等价/加门禁/修文档，未 push/未发版）。
   - 提交链：a-core(0934e7d)→a-wire(0451065)→b 前端(d00703c)→**D 审计修(a487d2c)**；文档 F 回看（INVARIANTS §24bis + MASTERPLAN rev12 + features/03 签收）待本轮 commit。
   - **D 审计（3 并行 agent）零阻塞**：§24 单写者/全红线/机制符合度确认。修了：① ever_bound×idle 卡灰竞态（reconcile_step 加 pre_bound 播种）② 远端复活不清灰（ensureTab 主清灰）③ emitter 分流零测（classify_removed 纯枚举）④ grid 灰点 DOM 无测。4 处均变异验证。
   - **残留记档**（非阻塞、真机/后续）：TOCTOU 短命会话误归档=非回归、session-activity 误清极窄竞态=自愈、带外杀端到端变灰+RETIRE_MISS_THRESHOLD 标定=真机。
