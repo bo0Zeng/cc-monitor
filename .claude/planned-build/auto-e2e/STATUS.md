@@ -5,9 +5,10 @@
 > 纯逻辑单测 + F40 渲染 e2e，真机流零 e2e 埋点）。用户 2026-07-26 定：装 Windows VM，要「给真机功能补 e2e 埋点(全自动)」。
 
 ## 当前
-- **阶段**：**Phase A 主规划（深度可行性评估中）** —— 未动任何代码。
-- **评估方式**：2 并行 agent（① Windows Tauri GUI 驱动可行性：tauri-driver/wdio vs OS-input+log-probe，逐层功能可驱动性 ② 逐功能 probe+fixture 埋点方案 + 在 aya 上造确定性远端 fixture）。收齐 → 综合 MASTERPLAN。
-- **门禁**：Phase A 主计划**须过用户确认**（planned-build 铁律 #7）才进 B/C。
+- **阶段**：**Phase A 主规划已成 → 待用户批准主计划**（MASTERPLAN.md）。未动任何代码。
+- **2 agent 评估结论**：驱动=WebdriverIO(@wdio/tauri-service，DOM 层，windows CI)+ 少量 OS-input(↗，交互式 VM);断言=`[e2e]` 日志;fixture=loopback SSH 到本机 + daemon(CLAUDE_CONFIG_DIR 隔离)+fake-claude shim。**★关键：gray-light/resume/换号/孤儿 是后端+SSH+tmux 驱动、可在 Linux(aya/ubuntu CI 自环)全自动跑，不需 Windows VM**；Windows VM 只剩 Win32 层(↗)手动。
+- **三层架构**：Tier1 会话生命周期 e2e(Linux 自环,最高 ROI)/ Tier2 Windows DOM 冒烟(WebDriver CI,薄)/ Tier3 Win32/native(手动清单)。
+- **待批**：MASTERPLAN 的功能清单(F-E0 基建→F-E1 gray-light→F-E2 resume→F-E3 换号→F-E4 孤儿→F-E5 DOM 冒烟→F-E6 搭车) + 唯一动生产码处(可注入 confirm) + 「↗/真终端/SFTP 留手动」的范围裁定。**批准后按 F-E0 起步。**
 
 ## 摸底结论（待 agent 深化）
 - **无任何 Windows e2e 工具**（package.json 零 webdriver/tauri-driver/playwright）——要从零搭。
