@@ -36,3 +36,6 @@ target/
 # （被 workspace 根 lock 架空、构建不用它），不进版本控制。re-vendor（F68）时别提交它。
 src-tauri/vendor/**/Cargo.lock
 __pycache__/
+
+# planned-build agent worktrees (transient, never commit)
+.claude/worktrees/
