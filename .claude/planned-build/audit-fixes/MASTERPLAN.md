@@ -32,7 +32,7 @@
 | F10 | README 中英修版本/删悬空/补账号 + RELEASING/CONTRIBUTING checklist 补 README 两条 | I2 I3 | ✅ 完成（7bf412a：版本 3.2.0 + CI 四 job 同步 + 多账号小节 + RELEASING 链接） |
 | F11 | 文档漂移（ARCHITECTURE 账号子系统 + STATE-MATRIX 4命令 + INVARIANTS 上移 color-scheme + 子README + 索引 + actions 数）| I7docs/G2 | ✅ 完成：ARCHITECTURE 账号子系统 + 双子 README + INVARIANTS §32 暗色事实 + README action 26→28/加G + planned-build 索引；**STATE-MATRIX §2 = 审计过标不动**（账号命令 stateless）；**移草案不做**（草案已实现=历史设计文档非 proposal） |
 | F12 | `remote-section.ts` 数据层抽 `remote-config.ts`（治分层倒挂）| I6/G3 | ✅ 完成：数据层→`src/remote-config.ts`（180 行）、8 importer 迁移、行为等价（tsc0/npm595/build0）、无环；remote-section 1801→1640 |
-| F13 | 脊柱拆分（tabs 抽 AccountBadgeController；评估 ssh_source）| I6 | 🛑 评估完成→停交回用户：账号族经 `alignableCurrent` 三域纠缠、拆分净值有限风险高（最高风险文件）→别硬拆；ssh_source 更高危本轮不做。见 features/13 |
+| F13 | 脊柱拆分（tabs 抽 AccountBadgeController；评估 ssh_source）| I6 | ➡️ **单独拆出到 `spine-split/` 工作区做深**（用户 2026-07-26：先全面评估再拆）。摸底结论转交。见 `.claude/planned-build/spine-split/` |
 | ~~F14~~ | ~~.bashrc zcc/bcc 迁移 + wrapper 去轮询（inotify 事件驱动版）~~ | — | **用户自跑** |
 
 **已关 issue**：#71 #42 #67 #46（v3.2.0 已修，full-audit 复核后关）。**剩余 open bug** = [41,43,60,63,72,74,75,76] 全在计划。

@@ -3,10 +3,10 @@
 > 工作区 `audit-fixes`。分支 `account-ux`。跨轮靠此文件，不靠记忆。主计划见 MASTERPLAN.md（rev 11）。
 
 ## 当前
-- **阶段**：**F13 评估完成 → 停 loop 交回用户**（撞到明定的「拆不干净→交回用户」停止条件）。未动代码。
-  - **F13 判定（features/13-spine-split.md）**：`tabs.ts` 账号族经**核心纠缠点 `alignableCurrent`** 横跨三状态域（账号 5 map + tab 状态 + 重启执行态 `restartingSids`/onLine compact 回调），被徽章渲染/不一致查询/重启执行三类共用。可拆的只有「账号态 + 徽章视图」（单向 Controller），但净值有限（移 ~80 行、增 ~6 getter）而**徽章「信息才显」逻辑极微妙、回归风险落最高风险文件**。**建议不在无人值守 loop 硬拆**；选项=①接受现状(默认)②你在场交互式拆③极小状态袋。ssh_source(4512) 分模块本轮不做（更高危，记档）。
-  - **等用户决策**：F13 走①/②/③ 哪条，或直接进 Phase G（视 F13 为「评估后合理收尾」）。
-- **已完成**：F01-F12 + F03.2 灰灯全链；F06 无 aya-代码。**Phase G（全量 /full-audit + 端到端 + 收尾）待 F13 决策后做**。
+- **阶段**：F01-F12 全交付；**F13 脊柱拆分已单独拆出到 `spine-split/` 工作区**（用户 2026-07-26 定：单独开 planned-build、先全面评估再拆、做深）。audit-fixes 本身剩 **Phase G**（可在 spine-split 有阶段性成果后、或用户示意时做）。
+  - F13 不在 audit-fixes 里做了 → 见 `.claude/planned-build/spine-split/{STATUS,MASTERPLAN}.md`。原摸底结论（alignableCurrent 三域纠缠、tmux-match 是最安全 cut）已转交 spine-split 作起点。
+- **已完成**：F01-F12 + F03.2 灰灯全链；F06 无 aya-代码。
+- **Phase G**（全量 /full-audit + 端到端 + 收尾汇报）：待用户示意（或 spine-split 告一段落后一起收）。
   - 提交链：a-core(0934e7d)→a-wire(0451065)→b 前端(d00703c)→**D 审计修(a487d2c)**；文档 F 回看（INVARIANTS §24bis + MASTERPLAN rev12 + features/03 签收）待本轮 commit。
   - **D 审计（3 并行 agent）零阻塞**：§24 单写者/全红线/机制符合度确认。修了：① ever_bound×idle 卡灰竞态（reconcile_step 加 pre_bound 播种）② 远端复活不清灰（ensureTab 主清灰）③ emitter 分流零测（classify_removed 纯枚举）④ grid 灰点 DOM 无测。4 处均变异验证。
   - **残留记档**（非阻塞、真机/后续）：TOCTOU 短命会话误归档=非回归、session-activity 误清极窄竞态=自愈、带外杀端到端变灰+RETIRE_MISS_THRESHOLD 标定=真机。
