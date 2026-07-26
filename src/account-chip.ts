@@ -306,7 +306,10 @@ export class AccountChip {
     this.closeMenu();
     try {
       await setDefaultName(a.name);
-      invalidateAccountsCache(this.origin ?? undefined);
+      // audit-fixes I5：`defaultName` 是**全局单值**（config.json accounts.defaultName），切它要清
+      // **所有 origin** 的缓存——否则多远端下非当前 origin 最长 30s(ACCOUNTS_TTL) 仍用旧默认账号判
+      // "不一致"/对齐目标错，且 follow 会按旧账号持久化 pin。
+      invalidateAccountsCache();
       await this.refresh(true);
       // 立刻重算会话账号/⚠k（否则 currentByOrigin 要等下一拍 10s 轮询，期间"对齐"会把会话
       // 打回刚被切走的旧账号——与用户意图正好相反）。

@@ -26,7 +26,7 @@
 | F04 | 统一直连管线（keepalive **核实为非-bug**：-NoExit 已保留窗口）+ tmux 后端基座逃生口（两后端对称） | #75 直连腿 | ✅ 完成 |
 | F05 | 手动清理真孤儿（仅 `cc-*` 无对应 tab，过 `is_ccm_tmux_name`）| #76 残留 | ⬜ 待做 |
 | F06 | #43「父子拉不起来」残留（代码）+ #60/#43/#63attach 的 F74* 真机验证 | #43 #60 #63(部分) | ⬜ 待做 |
-| F07 | 刷新竞态(I4) + 多远端缓存(I5) + resumeTab onUnselectable | I4 I5 | ⬜ 待做 |
+| F07 | 刷新竞态(I4 序号门) + 多远端缓存(I5 切号清全 origin) + resumeTab onUnselectable | I4 I5 | ✅ 完成 |
 | F08 | 质量门禁（eslint/prettier/stylelint/覆盖率棘轮/mock 卫生）+ `TMUX_LS_FMT` 双写点 CI 断言 + daemon 只读机器护栏 | I8 I7 | ⬜ 待做 |
 | F09 | 测试补齐（main.ts 盲区可测纯函数 + vendor code-picture-core 进 cargo test + e2e 冒烟进 CI）| I8/G3 | ⬜ 待做 |
 | F10 | README 中英修版本/删悬空/补账号 + RELEASING/CONTRIBUTING checklist 补 README 两条 | I2 I3 | ⬜ 待做 |

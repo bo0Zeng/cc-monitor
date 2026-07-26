@@ -487,7 +487,8 @@ export class AccountsSection {
   private async selectDefault(a: Account): Promise<void> {
     try {
       await setDefaultName(a.name);
-      if (this.origin) invalidateAccountsCache(this.origin);
+      // audit-fixes I5：`defaultName` 全局单值 → 切它清**所有 origin** 缓存（非当前 origin 否则 ≤30s 用旧账号）。
+      invalidateAccountsCache();
       await this.reload(true);
       void emit(SETTINGS_APPLIED_EVENT); // 让主窗状态栏 chip 同步
       showActionFailureToast(
