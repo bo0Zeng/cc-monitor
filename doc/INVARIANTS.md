@@ -390,7 +390,18 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 **为什么不能松动**：对账是把"一次性 ended 信号"在重载后重建出来的唯一机制；集合不准 = 要么僵尸 live Tab 复现（漏归档），要么活会话被误杀且无后续行救活（误归档）。断连窗口期的误归档是**有意取舍**（重连后 daemon 重发 added + 重放行 → un-archive 自愈）。
 
-**F74c(#60-A) 补充——tmux 存活对账是 `remote_tx` 的第三生产者**：`tmux_reconcile.rs` 的 poller（带外杀 tmux 后端 → 变灰）与 daemon 帧、断连 flush **并列**为 `remote_tx` 的生产者，**必须**把 retire 的 sid 当 `SessionChange{removed}` 经该通道下发，**绝不**直接写 `remote_active`、**绝不**让前端直接 archive——唯一写者仍是 `remote-session-emitter`。poller 只**读** `announced_registry`（`snapshot_announced_by_origin`，不加写者，§27/F28 写者仍只有 stream_loop）。误判防线（`ever_bound` 门 + debounce + 漂移靠 announced_live 剔除 + ssh 抖动/NO_TMUX 跳过）在 `reconcile_step`，阈值真机标定。**后人给 poller 接线时不许把它直连前端或直写集合。**
+**F74c(#60-A) 补充——tmux 存活对账是 `remote_tx` 的第三生产者**：tmux 存活收割器（带外杀 tmux 后端 → 变灰）与 daemon 帧、断连 flush **并列**为 `remote_tx` 的生产者，**必须**把 retire 的 sid 当 `SessionChange{removed}` 经该通道下发，**绝不**直接写 `remote_active`、**绝不**让前端直接 archive——唯一写者仍是 `remote-session-emitter`。误判防线（`ever_bound` 门 + debounce + 漂移靠 announced_live 剔除 + 空 backend/NO_TMUX 跳过）在 `tmux_reconcile::reconcile_step`（纯函数、source-agnostic），阈值真机标定。**后人给收割器接线时不许把它直连前端或直写集合。**
+
+> **audit-fixes F03.2 更新——收割器已从 8s poller 改为「收帧驱动」**：原 `tmux_reconcile.rs::run_tmux_reconcile_poller`（8s 定时轮询 + `snapshot_announced_by_origin`）**已删**——cc-monitor 侧零轮询（唯一周期=daemon 内部 tmux ls）。收割逻辑现内联在 `ssh_source.rs::stream_loop` 的 `InboundFrame::TmuxSessions` 帧臂：daemon 每 ~8s 推该 origin 的 `tmux ls` 原文即对账一次，`tracked = 本连接 announced（keys=live sids）∪ 本 origin idle 会话`，调 `reconcile_step` 去抖 retire → 送 `removed` 给 emitter。`reconcile_step` 与 `ReconcileState` 保留为纯决策（F90 可 lift）。
+
+## 24bis. 远端 idle-tmux 灰灯（audit-fixes F03.2）：`REMOTE_IDLE` 与 `remote_active` 正交、同一 emitter 单写
+
+远端会话三态：**live**（claude 在跑）/ **idle-tmux**（claude 退出但 tmux 会话仍在 → 灰灯、可 attach 复用）/ **archived**（tmux 也没了）。承接 §24 单写者不变量，落地约束：
+
+1. **`REMOTE_IDLE` 是独立账本，唯一写者仍是 emitter**：`ssh_source.rs` 的 `REMOTE_IDLE`（origin → idle sid 集）与 `remote_active` **正交**——`mark_idle`/`clear_idle` 只由 `remote-session-emitter` 调（`run()` 的 removed/added 臂），其余路径（收割器、F5 对账）只 `snapshot_idle_*` 读。**绝不**给 `SessionChange` 加字段承载 idle（收割器仍只发 `{removed}`）。
+2. **emitter removed 臂据 tmux 存活分流**（`classify_removed` 纯函数 + `find_tmux_origin_for_sid`）：`Some(origin)`=tmux 会话尚在 → `mark_idle` + emit `SESSION_IDLE` + **不 forget**（不进归档、`remote_active` 早已在上方移出该 sid，idle 天然在集合外，**不新增 `remote_active` 写点**）；`None`=tmux 也没了 → `clear_idle` + `forget` + emit `SESSION_ENDED`（原归档路径）。判据 **command-agnostic**：`TmuxSessions` 帧最长 8s 陈旧，退出瞬间 command 列可能仍是 claude，故「claude 死」由 daemon-removed 边沿判、「tmux 在」由 `@ccm_sid` present 判（见 `tmux_origin_for_sid`）。
+3. **idle→archived 的产出者 = 收帧收割器**：idle sid 并入收割器 `tracked`；且因 `@ccm_sid` 铁证其绑过 tmux，作 `reconcile_step` 的 `pre_bound` 直接播种 `ever_bound`——否则「SessionRemoved 删 announced」与「emitter mark_idle」之间的跨线程缝里那帧会漏置 `ever_bound`，令 idle sid 永不累计缺失 = 连接内卡灰关不掉。tmux 真消失 → 收割器去抖后 retire → emitter 走 `None` 归档。
+4. **前端灰灯与 §24 第 2 条同源**：`session-idle` 与 `session-ended` 同进 `events.ts` 的 queue（对同一 sid 二者互斥、emitter 择一）。`Tab.tmuxIdle` 与 `TabStatus` **正交**（status 仍 live、仅灯变灰，不碰任何 archived 门控）。清灰**主**信号 = `ensureTab`（远端 tab 又收 daemon 重宣告/行 = claude 复活，queue 内与行保序）；`session-activity` 为次要（非 queue、null-activity daemon 下不可靠，**不可**作唯一清灰路径）。
 
 ---
 

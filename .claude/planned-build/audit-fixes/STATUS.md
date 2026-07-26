@@ -3,7 +3,11 @@
 > 工作区 `audit-fixes`。分支 `account-ux`。跨轮靠此文件，不靠记忆。主计划见 MASTERPLAN.md（rev 11）。
 
 ## 当前
-- **阶段**：F03.2 **Phase B 设计已定并 commit** → 下一步 **F03.2a 实现（Rust 后端）**
+- **阶段**：F03.2（灰灯）**全流程闭环完成**（B→C→D→E→F 全过）→ 下一步 **F06 或 F08（按 §4 顺序）**
+  - 提交链：a-core(0934e7d)→a-wire(0451065)→b 前端(d00703c)→**D 审计修(a487d2c)**；文档 F 回看（INVARIANTS §24bis + MASTERPLAN rev12 + features/03 签收）待本轮 commit。
+  - **D 审计（3 并行 agent）零阻塞**：§24 单写者/全红线/机制符合度确认。修了：① ever_bound×idle 卡灰竞态（reconcile_step 加 pre_bound 播种）② 远端复活不清灰（ensureTab 主清灰）③ emitter 分流零测（classify_removed 纯枚举）④ grid 灰点 DOM 无测。4 处均变异验证。
+  - **残留记档**（非阻塞、真机/后续）：TOCTOU 短命会话误归档=非回归、session-activity 误清极窄竞态=自愈、带外杀端到端变灰+RETIRE_MISS_THRESHOLD 标定=真机。
+- **下一步**：按 §4 顺序推进剩余功能。F06（#43 父子拉不起来残留：可复现则修否则真机）→ F08-F13（质量门禁/测试回填/文档/重构）→ Phase G。
 - **F03.2 灰灯设计（features/03 步骤2，勿再问机制）**：候选 ii（emitter 收 removed 时 `find_tmux_origin_for_sid` 内联判 idle）+ 收帧驱动收割器复用 reconcile_step（删 8s poller=零轮询）+ **command-agnostic 判据**（claude 死用 daemon-removed、tmux 在用 @ccm_sid present，不信 ≤8s 陈旧 command）+ 独立 `REMOTE_IDLE` 账本(唯一写者=emitter,SessionChange 不加字段)。§24 逐条保全已论证。
   - **F03.2a-core 完成**（零行为改动、cargo 绿）：bridge.rs SESSION_IDLE 常量+SessionIdlePayload；ssh_source REMOTE_IDLE 账本 + mark/clear/snapshot_idle_* + `tmux_origin_for_sid` 纯函数（command-agnostic）+ find_tmux_origin_for_sid 包装 + 5 Rust 测。**尚无人调=临时,行为不变。**
   - **F03.2a-wire（下一轮，Rust 行为改动）**：lib.rs emitter removed 臂改 `find_tmux_origin_for_sid` 分流(Some→mark_idle+emit SESSION_IDLE+不 forget;None→clear_idle+forget+SESSION_ENDED)、added 臂 clear_idle、删 poller spawn、F5 排除 idle+重发；ssh_source stream_loop TmuxSessions 臂加收帧收割器(reconcile_state+tracked=announced∪idle+reconcile_step→send removed)、断连并 idle、删 snapshot_announced_by_origin；tmux_reconcile 删 POLL_INTERVAL+poller 保 reconcile_step。cargo fmt/test 绿。
@@ -13,7 +17,8 @@
 - **之后**：F08→F09→F10→F11→F12→F13 → Phase G。
 
 ## 已完成（commit）
-- F01 账号安全(75594ff/3221f26) · F02 kill 白名单(e389410) · F03.1 idle 复用(537077b) · F03.3 attach-idle(5fd77b8) · F03.4a 甲′(85f1a0d) · F04(5494293) · F05(14dff16)。
+- F01 账号安全(75594ff/3221f26) · F02 kill 白名单(e389410) · F03.1 idle 复用(537077b) · F03.3 attach-idle(5fd77b8) · F03.4a 甲′(85f1a0d) · F04(5494293) · F05(14dff16) · F07(8aac094)。
+- **F03.2 灰灯 idle-tmux 三态（全链过 D+E+F）**：a-core(0934e7d)+a-wire(0451065)+b(d00703c)+D审计修(a487d2c)。甲-evented 零轮询、command-agnostic、REMOTE_IDLE 正交单写、pre_bound 消卡灰、ensureTab 主清灰、classify_removed 纯枚举、grid 同源灰点；INVARIANTS §24bis。
 - **已关 issue**：#71 #42 #67 #46。剩余 open bug=[41,43,60,63,72,74,75,76] 全在计划。
 
 ## 已定决策（勿再问）
@@ -33,4 +38,4 @@ daemon 零行为改动 · 不改 TMUX_LS_FMT 双写点 · 不碰 ~/.bashrc(F14 �
 丙(F03.4b) · #74/#41 · #60/#43(真机复现) · #75(resume 真拉起) · #60②/#63-attach(**须远端重装 ccm 助手写 @ccm_sid**) · #63 torn-tail(daemon-bound，本轮不修) · F14(.bashrc 迁移 + wrapper 去轮询)。
 
 ## 基线
-tsc 0 / npm test 586 / cargo 353(Rust 自 F02 未动) / build ✓。
+tsc 0 / npm test 595 / cargo 363 / build ✓（F03.2 全链后：Rust +10 测=idle/reaper/pre_bound/classify；前端 +9 测=灰灯生命周期/grid）。

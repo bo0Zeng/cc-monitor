@@ -34,7 +34,7 @@
   - **INVARIANTS §24**：补 F03.2 段（idle 是 remote_active 之外第三态、REMOTE_IDLE 唯一写者=emitter、idle 边沿单一、F5 idle 对称）。
   ### §24 不变量保全：remote_active 唯一写者/写点零新增；idle 只写 REMOTE_IDLE(唯一写者 emitter)；收割器/断连/daemonless 只经 remote_tx send removed，不直写 remote_active。
   ### 实现拆分：**F03.2a=Rust 后端**(bridge/ssh_source/tmux_reconcile/lib，cargo 可验)先 → **F03.2b=前端**(tabs/events/main/css)→ 合并全视角 D 审计。
-  - [ ] F03.2a 实现（下一轮）· [ ] F03.2b 实现 · [ ] 全视角 D 审计
+  - [x] F03.2a 实现（core 0934e7d + wire 0451065）· [x] F03.2b 实现（d00703c）· [x] 全视角 D 审计（3 并行 agent，见下「代码审计(D)：F03.2」）· [x] D 审计修（a487d2c）· [x] INVARIANTS §24 补 F03.2 段（24bis）+ 修 F74c 悬空引用
 - [x] **步骤 3（attach-into-idle）**：抽 `findIdleTmux(sessions,sid)`（@ccm_sid 命中 + command≠claude，与 findClaudeTmux 互斥）；F03.1 就地复用改用它（去重）；attach 菜单同步(缓存命中)+异步(resolveAttachMenuItem)两路在无活 claude 但有 idle 时提供「Attach（空 tmux …）」。回归测（findIdleTmux 5 例 + DOM idle-attach 1 例）+ 变异验证。**§4 重排下先于步骤 2 做（不依赖灰灯机制）**。
 - [~] **步骤 4（rbind 标题 + 拉起即绑，#74/#41）= 甲′ + 丙**：
   - [x] **4a 甲′（远端，aya 已验）**：`createRunAttach` create 分支（ccmSid 存在时）非阻断加 `set-titles on` + `set-titles-string ccm-rbind-#{@ccm_sid}`（**裸值无双引号**——launch.rs 拒双引号）。从 @ccm_sid 派生外层标题、claude 覆盖不了、无轮询。aya 实测：claude 抢 pane_title 后外层标题仍渲染 `ccm-rbind-<sid>`。测试更新 session-backend.test + remote-launch.test 精确串。
@@ -63,9 +63,16 @@
 ## 审计结果
 - **代码审计(D)**（中风险主线程自审 + LSP 级核对）：新载荷经 posixQuote/name 校验、复用 `buildResumePayload` 单一源（create 版逐字节不变，remote-launch.test.ts 既有断言未破）；idle 判据仅 @ccm_sid 精确命中（不按 cwd 猜，免撞漂移会话）；基座复用前置 unset CLAUDE_CONFIG_DIR 防旧账号残留（#75 复用变体）；无 daemon/双写点/bashrc 触碰。
 - **工程审计(E)**：`buildResumePayload` 收敛载荷防 create/reuse 漂移（账本一致）；runInExistingAttach 走后端座（不硬编码 tmux）；主计划自洽；tsc 0 / npm test 573 / build ✓。
+- **代码审计(D)：F03.2（灰灯，高风险 → 3 并行全视角 agent）**：
+  - *Rust 正确性/§24*：无阻塞；`remote_active` 单写者/单一归档点保住（emitter；grep 确认无第二写点）；REMOTE_IDLE 正交独立账本、写者仅 emitter。发现①**ever_bound×idle 卡灰竞态**（跨线程缝漏置 ever_bound → idle→archived 无产出者）；②emitter 分流接线零测。
+  - *计划符合度/红线*：无阻塞；7 条红线逐条 PASS（daemon 零改/TMUX_LS_FMT 不动/bashrc 不碰/cc-sid8 语义/不发版/孤儿仅手动/**零新增轮询**——8s poller 已删且无替代 timer）；机制符合（甲-evented/candidate ii/command-agnostic/单写者/复用 reconcile_step）；无 emoji。grid-monitor 扩展判为「合理同源一致性延伸、非蔓延」。指出 INVARIANTS §24 悬空引用（poller/snapshot_announced_by_origin 已删）。
+  - *前端正确性/queue 保序*：无阻塞；idle 入队/派发/注册与 ended 同构、FIFO 保序成立。发现①**远端复活不清灰**（清灰原本只靠非 queue 的 session-activity，null-activity daemon 下永久卡灰）；②清灰依赖非 queue 事件的根因。覆盖缺口：grid DOM 灰点、复活清灰未测。
+  - **D 审计修（a487d2c，均变异验证）**：① reconcile_step 加 `pre_bound` 播种 ever_bound（idle sid @ccm_sid 铁证绑过）+2 测；② ensureTab 远端复活即清灰作**主**信号 +1 测 + markTmuxIdle 文档更正；③ 抽 `classify_removed` 纯枚举 +1 测锁分支；④ grid renderCell 灰点 +1 测。cargo 363 / vitest 595。
+  - **残留（记档，非阻塞）**：TOCTOU「短命会话(<帧间隔~8s)tmux 从未进帧 → removed 时误归档」（pre-F03.2 同行为、非回归，孤儿留 F05 手动清）；session-activity 误清「已死会话」灰的极窄竞态（daemon removed 后不再推 status + 现以 ensureTab 为主清灰 → 概率极低、自愈到 archived）。真机累积项：带外杀端到端变灰、`RETIRE_MISS_THRESHOLD` 标定。
 
 ## 签收
 - [x] 步骤 1（idle 就地复用）过 D+E（rev05）
 - [x] **步骤 3（attach-into-idle）过 D+E**（低风险主线程自审）：`findIdleTmux` 纯函数、只按 @ccm_sid 精确命中（不按 cwd 猜）；两路 attach（同步缓存 + 异步）一致；F03.1 内联去重复用同一函数（账本"单一判据"最终形态）；空 tmux 不提供 preview/kill（无 claude 画面）；无 daemon/双写点/bashrc 触碰。tsc 0 / npm test 579 / build ✓。
 - [x] 主计划已更新（rev 09；§4 重排 F03.3 先于 F03.2）
-- [ ] 步骤 2（灰灯，机制留 Phase B）/ 步骤 4（rbind 标题）未做
+- [x] **步骤 2（灰灯 idle-tmux 第三态）过 D+E**（高风险 3 并行 agent 全视角）：a-core(0934e7d)+a-wire(0451065)+b(d00703c)+D审计修(a487d2c)；甲-evented 零轮询、command-agnostic、REMOTE_IDLE 正交单写、pre_bound 消卡灰竞态、ensureTab 主清灰；INVARIANTS §24bis 补 + F74c 悬空引用修。cargo 363 / tsc 0 / vitest 595 / build ✓；4 处修均变异验证。
+- [ ] 步骤 4（rbind 标题）：4a 甲′ 完（aya 验，85f1a0d）；4b 丙留 Windows 真机
