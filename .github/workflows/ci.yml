@@ -46,6 +46,12 @@ jobs:
       - name: cargo test
         run: cargo test --all
 
+      # F09：vendor code-picture-core 是 path 依赖、**非** workspace 成员 → `--all` 测不到它。
+      # 显式 `-p` 把它的 25 个测试跑起来（tree-sitter 符号索引 + git 锚点 + SQLite 内核）。
+      # 不动 vendor crate 源码/Cargo.toml（红线：别误伤 vendor）。
+      - name: cargo test (vendor code-picture-core)
+        run: cargo test -p code-picture-core
+
   frontend:
     name: Frontend typecheck + build
     runs-on: windows-latest
@@ -121,6 +127,20 @@ jobs:
 
       - name: cargo test
         run: cargo test
+
+  # F09：e2e 脚本**健康冒烟**（非真 e2e）。真 e2e（Xvfb + tauri dev 全量 app + xdotool，见
+  # e2e/README.md）需 Linux GUI runner + 5min+ app 构建，且 app 生产仅 Windows → 大投入低 ROI，
+  # 留 v2/真机。这里只防脚本**腐烂**：shellcheck 只挡 error 级（忽略 info/style 噪音，f40-suite
+  # 有意用 ls/eval 等）+ python 语法编译。ubuntu-latest 预装 shellcheck，零安装、秒级。
+  e2e-smoke:
+    name: E2E scripts health (shellcheck + py compile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck (errors only)
+        run: shellcheck --severity=error e2e/*.sh
+      - name: python syntax compile
+        run: python3 -m py_compile e2e/*.py
 
 # 注：曾加过一个 `cargo audit` 信息性 job，但对 Windows-only Tauri 应用而言它**永久红**——
 # Cargo.lock 含大量 Tauri 的 Linux GTK 传递依赖（atk/gdk/gtk-rs，标记 unmaintained，且
