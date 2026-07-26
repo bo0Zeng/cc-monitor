@@ -3,10 +3,10 @@
 > 工作区 `audit-fixes`。分支 `account-ux`。跨轮靠此文件，不靠记忆。主计划见 MASTERPLAN.md（rev 11）。
 
 ## 当前
-- **阶段**：F01-F12 全交付；**F13 脊柱拆分已单独拆出到 `spine-split/` 工作区**（用户 2026-07-26 定：单独开 planned-build、先全面评估再拆、做深）。audit-fixes 本身剩 **Phase G**（可在 spine-split 有阶段性成果后、或用户示意时做）。
-  - F13 不在 audit-fixes 里做了 → 见 `.claude/planned-build/spine-split/{STATUS,MASTERPLAN}.md`。原摸底结论（alignableCurrent 三域纠缠、tmux-match 是最安全 cut）已转交 spine-split 作起点。
-- **已完成**：F01-F12 + F03.2 灰灯全链；F06 无 aya-代码。
-- **Phase G**（全量 /full-audit + 端到端 + 收尾汇报）：待用户示意（或 spine-split 告一段落后一起收）。
+- **阶段**：**进 Phase G 最终验收**（F01-F12 全交付；F13 评估后 dispose=不拆，见 spine-split/MASTERPLAN）。
+  - F13 定论：脊柱拆分**不做**——拆分由具体架构病证成非行数，两 god file 拆分负收益 + 引入 §24/可见性/测试分区风险；唯一真架构病 F12（分层倒挂）已修。
+  - **Phase G 步骤**：① 端到端验证（全量 build+test+coverage）② /full-audit 全项目多视角审 + 文档-代码交叉 ③ 主计划终账 ④ 收尾汇报。
+- **已完成**：F01-F12 + F03.2 灰灯全链；F06 无 aya-代码。剩余 open bug（#72/#74/#75/#76）真机/daemon-bound。
   - 提交链：a-core(0934e7d)→a-wire(0451065)→b 前端(d00703c)→**D 审计修(a487d2c)**；文档 F 回看（INVARIANTS §24bis + MASTERPLAN rev12 + features/03 签收）待本轮 commit。
   - **D 审计（3 并行 agent）零阻塞**：§24 单写者/全红线/机制符合度确认。修了：① ever_bound×idle 卡灰竞态（reconcile_step 加 pre_bound 播种）② 远端复活不清灰（ensureTab 主清灰）③ emitter 分流零测（classify_removed 纯枚举）④ grid 灰点 DOM 无测。4 处均变异验证。
   - **残留记档**（非阻塞、真机/后续）：TOCTOU 短命会话误归档=非回归、session-activity 误清极窄竞态=自愈、带外杀端到端变灰+RETIRE_MISS_THRESHOLD 标定=真机。

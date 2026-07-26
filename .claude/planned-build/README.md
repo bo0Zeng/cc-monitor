@@ -6,7 +6,7 @@
 | 工作区 | 主题 | 状态（约） |
 |---|---|---|
 | **audit-fixes/** | full-audit + open issue bug 全修 + 测试/门禁/文档/重构（`account-ux` 分支可干净合入） | F01-F12 完成；F13 脊柱拆分**单独拆出 → spine-split/**；剩 Phase G |
-| **spine-split/** | 脊柱拆分：tabs.ts(3178)/ssh_source.rs(4512) 两个上帝文件安全分解为小模块 | Phase A 深度评估中（3 并行 agent，先评估再拆，待用户批主计划） |
+| **spine-split/** | 脊柱拆分评估：tabs.ts(3178)/ssh_source.rs(4756) 是否分解为小模块 | **关闭——评估后决定不拆**（判据=具体架构病非行数；两文件拆分负收益+引入 §24/可见性风险；唯一真架构病 F12 已在 audit-fixes 修）。未动代码 |
 | **account-ux/** | 多账号 UX（切号菜单 / 按会话选号 / 换号优雅重启 / app 内部署向导，#68/#69） | 已交付（v3.2.0） |
 | **account-isolation/** | 多账号隔离又同步内核（`cc-acct-iso`：各 `CLAUDE_CONFIG_DIR` + symlink 共享） | 已交付（v3.2.0） |
 | **bugfix-sweep/** | 会话/生命周期一批 bug 清扫 | 归档（成果已并入主线） |
