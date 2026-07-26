@@ -835,4 +835,85 @@ mod tests {
         cache.forget("sess-42");
         assert!(cache.lookup("sess-42").is_none(), "forget 后应查不到");
     }
+
+    /// F-Vwin：真 Windows 验证 #74/#41（远端 ↗ HWND 绑定层）。
+    ///
+    /// 建一个标题含 `ccm-rbind-<sid>` 的**真可见顶层窗口**（用预注册系统类 `Static`，
+    /// 免 RegisterClass/WNDPROC 样板），走完整绑定链断言：
+    /// ① `find_window_by_marker_substr` 扫到该窗口（hwnd/owner_pid 对得上）；
+    /// ② `RemoteHwndCache::try_bind`（内部拼 `ccm-rbind-<sid>` marker）绑上；
+    /// ③ 窗口存活时 `verify_binding` 通过；④ `DestroyWindow` 后 `verify_binding`
+    /// 失效（`IsWindow` 假）。这是 #74/#41「窗口按 ccm-rbind 标题可找到+可绑+可验」
+    /// 的直接自动证据——填补此前 `find_window_by_marker_substr`/`try_bind`/`verify_binding`
+    /// 无 native 测试的空白。**不覆盖** `SetForegroundWindow` 是否真把窗口拉到前台
+    /// （前台锁 + 无头会话下不可靠，属半自动 smoke）。
+    ///
+    /// ⚠️ **必须在 session 1（交互窗口站）跑**：session 0（services）无法让窗口
+    /// `IsWindowVisible=true`（即便置 WS_VISIBLE 也不翻），而 `find_window_by_marker_substr`
+    /// 在 `bind.rs:319` 过滤掉不可见窗口 → session 0 里本测试会找不到窗口而失败。
+    /// 跑法：经 `schtasks /it` 把 `cargo test` 投进已登录的 session 1。
+    #[cfg(windows)]
+    #[test]
+    fn remote_bind_finds_real_ccm_rbind_window() {
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+        use windows::core::{w, PCWSTR};
+        use windows::Win32::Foundation::{HINSTANCE, HWND};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, DestroyWindow, ShowWindow, CW_USEDEFAULT, HMENU, SW_SHOW,
+            WINDOW_EX_STYLE, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+        };
+
+        let pid = std::process::id();
+        let sid = format!("vwin-{pid}");
+        let title = format!("ccm-rbind-{sid}");
+        let title_w: Vec<u16> = OsStr::new(&title)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+
+        unsafe {
+            // 顶层可见窗口（父=null → EnumWindows 可枚举；WS_VISIBLE + SW_SHOW → session 1 里 IsWindowVisible 真）
+            let hwnd = CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                w!("Static"),
+                PCWSTR(title_w.as_ptr()),
+                WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                220,
+                140,
+                HWND::default(),
+                HMENU::default(),
+                HINSTANCE::default(),
+                None,
+            );
+            assert!(hwnd.0 != 0, "CreateWindowExW 应返回非空 HWND");
+            let _ = ShowWindow(hwnd, SW_SHOW);
+
+            // ① leaf primitive 扫到
+            let hit = find_window_by_marker_substr(&title)
+                .expect("find_window_by_marker_substr 应扫到 ccm-rbind 窗口（须在 session 1 跑）");
+            assert_eq!(hit.hwnd, hwnd.0, "命中的 hwnd 应为我们建的窗口");
+            assert_eq!(hit.owner_pid, pid, "owner_pid 应为本测试进程");
+            assert!(hit.title.contains(&title), "title 应含 marker");
+
+            // ② RemoteHwndCache.try_bind 绑上（内部拼 ccm-rbind-<sid>）
+            let cache = RemoteHwndCache::new();
+            assert!(cache.try_bind(&sid), "try_bind 应成功");
+            let binding = cache.lookup(&sid).expect("绑定后 lookup 应命中");
+            assert_eq!(binding.hwnd, hwnd.0);
+            assert_eq!(binding.owner_pid, pid);
+
+            // ③ 窗口存活 → verify_binding 通过
+            verify_binding(&binding).expect("窗口存活时 verify_binding 应通过");
+
+            // ④ 关窗 → verify_binding 失效（IsWindow 假）
+            let _ = DestroyWindow(hwnd);
+            assert!(
+                verify_binding(&binding).is_err(),
+                "窗口销毁后 verify_binding 应报错（IsWindow=false）"
+            );
+        }
+    }
 }
