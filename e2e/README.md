@@ -35,6 +35,38 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 ⑥trap 清理(pidfile/宿主进程/项目目录)。
 无 WM 注意:主窗必须先 `xdotool windowraise`(tear-off 浮窗会按 z 序吃掉指针事件)。
 
+## auto-e2e:gray-light 会话生命周期(F-E0 基建 + F-E1)
+
+跨进程整链(daemon→帧→emitter→前端灯)的 `[e2e] tab-state` 断言,单测碰不到。**红线:daemon
+零行为改动**——只加下列 `e2e/` fixture(外部 wrapper/shim)+ 前端 DEV 探针(`import.meta.env.DEV`
+门控,生产零包含)。探针出口:`tabs.emitTabStateProbe`(markTmuxIdle/archiveTab/reviveTab/ensureTab
+清灰四真值点)+ `tabs.debugSessionsSnapshot()`(Ctrl+Alt+F10 / 中键账号 chip → `[e2e] sessions`)。
+
+fixtures:
+- `fake-claude`——确定性 claude shim:记 argv+env → `$CLAUDE_CONFIG_DIR/argv.log`;写自身
+  `sessions/<PID>.json` pidfile(procStart 喂 daemon 判活)+ 一条 `projects/.../<sid>.jsonl`;前台
+  `sleep` 常驻(kill 本 PID → daemon 判 claude 死)。**默认落 /tmp/e2e-remote-claude,绝不写真 ~/.claude**。
+- `gen-idle-tmux.sh <sid>`——`tmux new-session -d -s cc-<sid8> "…fake-claude…; exec sh"` + `set-option
+  @ccm_sid <sid>`。`exec sh` 让 kill fake-claude 后 pane 落回 shell(tmux 会话+@ccm_sid 仍在=灰灯态)。
+  **CLAUDE_CONFIG_DIR 必须内联进 tmux 命令串**(new-session 不继承本 shell env,老坑)。
+- `daemon-wrapper.sh`——`exec env CLAUDE_CONFIG_DIR=/tmp/e2e-remote-claude <daemon> "$@"`,隔离远端
+  读的目录(防本地会话双 tab)。
+
+两级跑法(先建 daemon,或全链跑 app):
+
+1. **daemon-frame 级(无 GUI,最稳,后端半场)**:`bash e2e/graylight-daemon-frames.sh`
+   (需仓内 debug daemon;缺则 `CCM_E2E_DAEMON=<某个 p1p+ 的 cc-monitor-remote>`)。断言 daemon stdout 帧:
+   `session_added` → (kill fake-claude) `session_removed` **且** `tmux_sessions.raw` 仍含 `@ccm_sid`
+   (=灰,Idle 非 Archive) → (kill-session) `tmux_sessions` 不再含 sid(=归档触发边沿)。
+
+2. **全链级(GUI + loopback SSH)**:前置同 f40(Xvfb + dev 实例)+ config.json 配一个 loopback 远端,
+   `daemonPath` 指向 `daemon-wrapper.sh`。然后 `E2E_DISPLAY=:80 bash e2e/graylight-suite.sh`。断言 monitor
+   日志:`[e2e] tab-state … status=live tmuxIdle=1`(灰,该行 status=live 同时证明变灰前是 live)→
+   `… status=archived`。**★ app 会自动部署 daemon**:daemonPath 同目录须放一个 `.build_id`(内容=app
+   **内嵌** daemon 的 build_id,见 `sftp.rs::deploy_decision`——不是 `EXPECTED_DAEMON_BUILD_ID`),否则
+   app 会用内嵌二进制覆盖写 daemonPath(把 wrapper 冲掉)。杀 fake-claude **前须等 > 一个 8s 发帧周期**,
+   让 app 先收到含 @ccm_sid 的 `TmuxSessions` 帧,否则 removed 到达时 tmux 账本无此 sid → 判 Archive 丢灰。
+
 ## 人工场景(未脚本化,原因与流程)
 
 **F47+F48 SFTP 文件面板(Windows 真机)**:传输/拖入/打开终端是平台交互,Linux e2e 无法覆盖。

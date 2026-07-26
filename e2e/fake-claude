@@ -1,0 +1,58 @@
+#!/bin/sh
+# auto-e2e F-E0:确定性 `claude` shim(测试 fixture,**非** daemon 改动——红线:daemon
+# 零行为改动,只加 e2e/ 外部 wrapper/shim)。职责:
+#   1. 把 argv + $CLAUDE_CONFIG_DIR 追加进 argv.log(F-E2/F-E3 验 resume/换号命令用;F-E1 只登记);
+#   2. 写自身 $CLAUDE_CONFIG_DIR/sessions/<PID>.json pidfile(pid/sessionId/procStart/kind/status)
+#      ——喂 daemon 判活(procStart=/proc/<pid>/stat 第 22 字段=starttime ticks,add-time 判活主证据);
+#   3. 追一条 jsonl 记录(projects/<enc-cwd>/<sid>.jsonl);
+#   4. 前台常驻 `sleep`(tmux pane_current_command 读得到;kill 本 PID → daemon 判活失败 → SessionRemoved)。
+# **pidfile 先落、jsonl 后落**:watcher 只 emit 活跃会话,jsonl 先落会被判非活跃整文件跳过(实测,见 e2e/README)。
+set -eu
+
+# 安全默认:CLAUDE_CONFIG_DIR 未设时落到一次性测试目录,**绝不**默认写真 ~/.claude(测试
+# fixture 红线——tmux new-session 不传 env 的老坑曾污染真 ~/.claude)。
+CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-/tmp/e2e-remote-claude}"
+SESS_DIR="$CLAUDE_DIR/sessions"
+
+# sid:CCM_FAKE_SID 环境 > 首个非 flag 参数 > 随机 UUID
+SID="${CCM_FAKE_SID:-}"
+if [ -z "$SID" ]; then
+  for a in "$@"; do
+    case "$a" in
+      -*) ;;
+      *) SID="$a"; break ;;
+    esac
+  done
+fi
+[ -n "$SID" ] || SID="$(cat /proc/sys/kernel/random/uuid)"
+CWD="${CCM_FAKE_CWD:-/tmp/e2e-remote}"
+
+mkdir -p "$SESS_DIR"
+
+# argv + env 审计日志(换行分隔一行一次调用)
+{
+  printf 'ts=%s pid=%s CLAUDE_CONFIG_DIR=%s sid=%s argv=' \
+    "$(date +%s%3N)" "$$" "$CLAUDE_DIR" "$SID"
+  for a in "$@"; do printf '%s ' "$a"; done
+  printf '\n'
+} >>"$CLAUDE_DIR/argv.log"
+
+# procStart:/proc/<pid>/stat 第 22 字段(comm 无空格 → 定位稳,同 e2e/f40-suite.sh)
+PROC_START="$(awk '{print $22}' "/proc/$$/stat")"
+
+# (2) pidfile 先落
+PIDFILE="$SESS_DIR/$$.json"
+printf '{"pid":%s,"sessionId":"%s","cwd":"%s","startedAt":%s,"procStart":"%s","kind":"interactive","entrypoint":"cli","status":"idle"}\n' \
+  "$$" "$SID" "$CWD" "$(date +%s%3N)" "$PROC_START" >"$PIDFILE"
+
+# (3) jsonl 后落(projects/<enc-cwd>/<sid>.jsonl;cwd 的 / → -,同 Claude 目录编码)
+ENC="$(printf '%s' "$CWD" | sed 's:/:-:g')"
+PROJ_DIR="$CLAUDE_DIR/projects/$ENC"
+mkdir -p "$PROJ_DIR"
+printf '{"type":"user","uuid":"%s","parentUuid":null,"timestamp":"%s","sessionId":"%s","cwd":"%s","message":{"role":"user","content":"e2e-graylight:live"}}\n' \
+  "$(cat /proc/sys/kernel/random/uuid)" "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" "$SID" "$CWD" \
+  >>"$PROJ_DIR/$SID.jsonl"
+
+# (4) 前台常驻。exec:保持同一 PID(pidfile pid=$$ 仍有效,exec 不改 starttime),
+# kill 该 PID → daemon 判活失败 → SessionRemoved(claude 退出)。CCM_FAKE_SLEEP 可覆盖(默认近乎无限)。
+exec sleep "${CCM_FAKE_SLEEP:-2147483647}"
