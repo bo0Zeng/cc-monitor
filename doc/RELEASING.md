@@ -7,7 +7,7 @@
 - [ ] 改 **版本号三处对齐**（package.json + src-tauri/Cargo.toml + src-tauri/tauri.conf.json）
 - [ ] `Cargo.lock` 提交
 - [ ] [CHANGELOG.md](../CHANGELOG.md) 加新版本段（写法见 § 3）
-- [ ] `cargo fmt --check + cargo check + cargo test --lib + npm test + npm run build` 全绿（fmt 不过 CI 会红；`npm test` 含 15 组 node 纯函数 + vitest DOM 308 测 = 前端 job；后端 `cargo test` + 远端 daemon `cargo test`（`remote-daemon-proto/`，含 `cargo fmt --check`）是独立 CI job，别漏跑）
+- [ ] `cargo fmt --check + cargo check + cargo test --all + cargo test -p code-picture-core + npm test + npm run coverage + npm run build` 全绿（fmt 不过 CI 会红；`npm test` 含 14 组 node 纯函数 + vitest DOM 595 测 = 前端 job；后端 `cargo test --all`〔+ vendor `-p code-picture-core`〕 + 远端 daemon `cargo test`（`remote-daemon-proto/`，含 `cargo fmt --check`）+ e2e 脚本冒烟是**独立 CI job**，别漏跑；CI 共 4 job）
 - [ ] **若本版动过滚动/渲染管线**（stream/tabs/session-viewer/branch-fold/render-*）：跑一遍 `e2e/f40-suite.sh`（Linux Xvfb，见 e2e/README）+ Windows 真机把 e2e/README「人工场景」的 WebView2 复核过一遍（WebKitGTK 无 overflow-anchor，两端补批语义不同）
 - [ ] **若本版改过 daemon 源码**（BUILD_ID 应已随改动 bump）：走 tag 发版由 release.yml 的 build-daemons job 从源码重编内嵌二进制（官方渠道恒一致）；**本地手工打包分发**则必须先重跑 zigbuild 更新 `src-tauri/embedded-daemons/`——否则装出去的是旧 daemon，连接后 StaleBuild 警告循环（build.rs 编译期有 staleness warning 兜底，易被刷屏淹没，别只靠它）
 - [ ] [CONTRIBUTING.md § 1.5](CONTRIBUTING.md#15-发版前) 列出的关键 UI 入口手测

@@ -403,6 +403,10 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 3. **idle→archived 的产出者 = 收帧收割器**：idle sid 并入收割器 `tracked`；且因 `@ccm_sid` 铁证其绑过 tmux，作 `reconcile_step` 的 `pre_bound` 直接播种 `ever_bound`——否则「SessionRemoved 删 announced」与「emitter mark_idle」之间的跨线程缝里那帧会漏置 `ever_bound`，令 idle sid 永不累计缺失 = 连接内卡灰关不掉。tmux 真消失 → 收割器去抖后 retire → emitter 走 `None` 归档。
 4. **前端灰灯与 §24 第 2 条同源**：`session-idle` 与 `session-ended` 同进 `events.ts` 的 queue（对同一 sid 二者互斥、emitter 择一）。`Tab.tmuxIdle` 与 `TabStatus` **正交**（status 仍 live、仅灯变灰，不碰任何 archived 门控）。清灰**主**信号 = `ensureTab`（远端 tab 又收 daemon 重宣告/行 = claude 复活，queue 内与行保序）；`session-activity` 为次要（非 queue、null-activity daemon 下不可靠，**不可**作唯一清灰路径）。
 
+**单写者已机器化**（Phase G）：第 1 条「`mark_idle`/`clear_idle` 唯一写者=emitter」原靠注释约定、`cargo check` 抓不住；现有 `ssh_source.rs::f032_idle_tests::remote_idle_single_writer_guard` 扫源码断言这两个写函数**只被 lib.rs 调用**，emitter 之外新增写者即测红（同 F08 daemon 只读护栏的机器化思路）。
+
+**已知残留（daemon-bound，记档待版本批次）**：收帧收割器对**空 backend 保守跳过**（`ssh_source.rs` `!backend.is_empty()` 门），是为挡 `tmux ls` 瞬时抖动批量误灰。代价：当**被杀的是该 origin 最后一个 tmux 会话**时，tmux server 退出→daemon `run_tmux_ls` 回空串→收割器整段跳过→该 idle-tmux 灰灯**卡到断连 flush 才清**（多会话场景不中招；断连自愈）。干净修法=daemon 对「命令成功但零会话」回确定性哨兵（如 `NO_SESSIONS`）区分于「exec 失败」，monitor 即可安全 retire——**但这要动 daemon（红线：daemon 零行为改动），留 daemon 版本批次**。
+
 ---
 
 ## 25. 行事件投递是 at-least-once —— 按 uuid 累积状态的前端模块必须自行幂等（issue #25）

@@ -103,8 +103,9 @@ src-tauri/src/
 │              messages.rs   JsonlRecord enum + ApiMessage schema
 │              session_map.rs  读 sessions/<PID>.json + Win32 进程探活
 │              subagent.rs   按需加载 subagents/*.meta.json
-│              adapter.rs    F-MA agent 适配层（会话布局/解析/活性/resume 假设收敛到 AgentAdapter，CC 是第一个实例）
+│              adapter.rs    F-MA agent 适配层（会话布局/解析/活性/resume 假设收敛到 AgentAdapter，CC 是第一个实例；`enabled_kinds()` 按 `~/.codex/sessions` 存在性 dark-launch 门控 Codex）
 │              adapter/claude_code.rs  Claude Code 适配器（第一个实例，零行为变化包旧逻辑）
+│              adapter/codex.rs + codex_record.rs  Codex 适配器（AgentKind::Codex，第二个实例；~/.codex/sessions 存在才启用，零回归门控）
 ├── 业务层      event_replay.rs  内存 buffer + 出锁 batch emit（v2.6；顺序靠前端 seq，非持锁，见 §event_replay 顺序保证）
 │              history.rs    两级懒加载 + metadata + 物理删除 + resume + F62 从某轮建分支
 │              launch.rs     终端拉起（wt.exe→PowerShell 单一入口）+ 远端 ssh 拉起（B14-F41）
