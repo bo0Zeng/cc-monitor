@@ -3,10 +3,11 @@
 > 工作区 `audit-fixes`。分支 `account-ux`。跨轮靠此文件，不靠记忆。主计划见 MASTERPLAN.md（rev 11）。
 
 ## 当前
-- **阶段**：**F10 README 文档修完成**（B→F 过，低风险自审，7bf412a）→ 下一步 **F11 doc/ 子系统漂移**
-  - F10（本轮）：README 中英 v3.0.0→3.2.0（**未 bump**，只文档匹配既有）+ CI 三→四 job & eslint/stylelint/coverage/vendor/e2e-smoke 门禁描述同步 + 补「多账号（#68/#69）」小节 + README.en 补 RELEASING 链接；无悬空。
-  - **F11（下轮，doc/ 漂移）——已摸底出精确清单**（features/10-docs.md F11 段）：ARCHITECTURE 补账号子系统（0 提及，需读账号代码流写）；src/README + src-tauri/README 补账号；INVARIANTS 上移仓库级事实（无浅色主题/color-scheme:dark/TOKENS 11）；README action 数 26→精确重数（~23，实现时核）+ 快捷键补 Acct/G；doc/ 两份草案移 proposals/；.claude/planned-build/ 加索引 README。**STATE-MATRIX §2 = 非问题（审计过标：账号命令全 stateless、§2 只收 State 消费者→正确排除，不动）**。
-- **F08/F09 质量门禁+测试补齐、F03.2 灰灯全链、F06 无 aya-代码**。之后 F12(remote-config 抽层)→F13(脊柱拆分)→Phase G。
+- **阶段**：**F10+F11 文档全完成**（B→F 过，低风险自审 + 交叉核对代码）→ 下一步 **F12 remote-config 抽层**
+  - F10（7bf412a）：README 中英 v3.0.0→3.2.0（未 bump）+ CI 三→四 job/门禁同步 + 多账号小节 + RELEASING 链接。
+  - F11（本轮）：ARCHITECTURE 补账号子系统（0→11：backend/frontend §2 树 + §5「隔离又同步 A2-A6」小节）；src/README + src-tauri/README 补账号；INVARIANTS §32「本仓只有暗色主题」（color-scheme:dark/TOKENS 15）；README action 26→28 + 加 G(panorama) + 未绑 2→6；建 planned-build 索引 README。**修正审计数字**（TOKENS 15≠11、action 28≠26）。**⑤移草案不做**（已实现=历史设计文档）+ **STATE-MATRIX §2 不动**（账号命令 stateless）。无悬空、无代码改动。
+- **F12（下轮）**：`remote-section.ts` 数据层抽 `remote-config.ts`（治分层倒挂，账本 I6/G3）。之后 F13(脊柱拆分,最高风险撞到停)→Phase G。
+- **F01-F11 + F03.2 全链完成；F06 无 aya-代码**。
   - 提交链：a-core(0934e7d)→a-wire(0451065)→b 前端(d00703c)→**D 审计修(a487d2c)**；文档 F 回看（INVARIANTS §24bis + MASTERPLAN rev12 + features/03 签收）待本轮 commit。
   - **D 审计（3 并行 agent）零阻塞**：§24 单写者/全红线/机制符合度确认。修了：① ever_bound×idle 卡灰竞态（reconcile_step 加 pre_bound 播种）② 远端复活不清灰（ensureTab 主清灰）③ emitter 分流零测（classify_removed 纯枚举）④ grid 灰点 DOM 无测。4 处均变异验证。
   - **残留记档**（非阻塞、真机/后续）：TOCTOU 短命会话误归档=非回归、session-activity 误清极窄竞态=自愈、带外杀端到端变灰+RETIRE_MISS_THRESHOLD 标定=真机。

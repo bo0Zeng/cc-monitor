@@ -17,14 +17,14 @@
 - [x] README.en.md docs 表补 RELEASING 链接（.md 已有）。
 - [x] 核：无悬空链接、版本处处 3.2.0。**未 bump 版本**（只文档匹配既有 3.2.0，红线守）。
 
-### F11（doc/ 漂移，下轮）——已摸底，精确清单如下
-- [ ] **ARCHITECTURE.md 补账号子系统**（现 0 处 account 提及）：account=一个 CLAUDE_CONFIG_DIR；lib.rs 注册 4 命令（见下）；前端 account-*.ts + account-restart.ts（换号优雅退出重编排）；daemon accounts_query.rs 纯只读。需读账号代码流写一段像样的子系统说明。
-- [ ] **src/README.md + src-tauri/README.md 补账号**（各 0 处提及）：account-*.ts 前端族 + accounts.rs 后端命令。
-- [ ] **INVARIANTS.md 上移仓库级事实**：从 `.claude/planned-build/account-ux/MASTERPLAN.md:122` 移入——本仓**无浅色主题**（`color-scheme: dark`、无 `prefers-color-scheme`）、`theme.ts` TOKENS 11 token。
-- [ ] **README 快捷键**：action 数「26」需按 `src/keybindings/` registry 精确重数（初步 grep ~23 `{id:`，含未绑 toggle 口径不定——**实现时精确核**再改）；快捷键表补 `Acct`/`G`（若确有）。
-- [ ] **doc/ 两份设计草案移 `proposals/`**：`doc/账号用量-usage抓取方案.md` + `doc/远端支持方案-agent查看器与代码全景图.md`（未写码草案）→ 建 `doc/proposals/` 移入 + 修引用。
-- [ ] **.claude/planned-build/ 加索引 README**（列各工作区状态）。
-- **STATE-MATRIX §2 = 非问题（审计过标）**：§2 明确「只收签名含 `State<...>` 的 IPC 命令」，4 个账号命令**全无 State**（`list_remote_accounts(origin: String)` 等 stateless）→ 按 §2 自身定义**正确排除**、无需登记。F11 不动 §2；在此记档缘由。
+### F11（doc/ 漂移，本轮完成）
+- [x] **ARCHITECTURE.md 补账号子系统**（0→11 提及）：backend §2 树加 `accounts.rs`；frontend §2 树加账号层（account-chip/commands/restart/color + acct-deploy）；§5 加「账号子系统：隔离又同步（A2–A6）」小节（模型/只读边界/前端族/withAccount vs restart 分离 + 失败语义）。
+- [x] **src/README + src-tauri/README 补账号**：src 模块分工加 account-*.ts 行；src-tauri IPC 清单加 3 账号只读命令行（标注 stateless）。
+- [x] **INVARIANTS.md §32**：仓库级事实「本仓只有暗色主题」（`color-scheme: dark`、无 `prefers-color-scheme`、TOKENS 固定暗色调色板；**实际 TOKENS=15 项非审计说的 11**），从 account-ux MASTERPLAN 上移沉淀。
+- [x] **README 快捷键**：action 数 **26→28**（精确重数 actions.ts ACTIONS：28 个 id）；加 **G**（打开/关闭代码全景，`app.toggle-panorama` default KeyG，原缺表）；未绑数「2」→「6」（含 **Acct** 账号切号/对齐——align 破坏性故意 default:null）。
+- [x] **.claude/planned-build/README.md** 建工作区索引（7 区一句话状态）。
+- [~] **doc/ 两份草案移 `proposals/` = 不做**（审计建议不成立）：`账号用量-usage抓取方案` 已实现（`usage_query.rs`/usage-pivot）、`远端支持方案-agent查看器与代码全景图` 已实现（SSH 远端 + vendor code-picture）——是**已落地的历史设计文档**、非未建 proposal；移入「proposals/」会误标 + 断 `account-isolation/STATUS.md` 引用。记档不动。
+- **STATE-MATRIX §2 = 非问题（审计过标，未动）**：§2 明确「只收签名含 `State<...>` 的 IPC 命令」，账号命令**全 stateless**（`list_remote_accounts(origin: String)` 等）→ 按 §2 自身定义正确排除。
 
 ## 不做什么
 - **不 bump 版本、不发版**（红线）——只把 README 版本改到与既有 3.2.0 一致。
@@ -37,4 +37,4 @@
 
 ## 签收
 - [x] **F10（README）过 D+E+F**（低风险自审）：版本 3.2.0 一致 + CI 四 job/门禁同步 + 多账号小节 + RELEASING 链接；无悬空、未 bump。
-- [ ] F11（doc/ 漂移）过 D+E+F
+- [x] **F11（doc/ 漂移）过 D+E+F**（低风险自审 + 文档交叉核对代码）：ARCHITECTURE 账号子系统（0→11）+ 双子 README 补账号 + INVARIANTS §32 暗色主题事实 + README action 26→28/加 G/未绑 2→6 + planned-build 索引 README。**修正审计数字**（TOKENS 15≠11、action 28≠26/30）。**⑤ 移草案不做**（草案已实现=历史设计文档非 proposal）+ **STATE-MATRIX §2 不动**（账号命令 stateless）。全无悬空链接、无代码改动。

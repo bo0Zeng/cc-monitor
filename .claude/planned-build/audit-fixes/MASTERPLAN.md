@@ -30,7 +30,7 @@
 | F08 | 质量门禁（eslint/prettier/stylelint/覆盖率棘轮/mock 卫生）+ `TMUX_LS_FMT` 双写点 CI 断言 + daemon 只读机器护栏 | I8 I7 | ✅ 完成（F08a 两护栏=cargo 测 + F08b eslint/stylelint advisory + coverage 地板；prettier 不做避 churn） |
 | F09 | 测试补齐（main.ts 盲区可测纯函数 + vendor code-picture-core 进 cargo test + e2e 冒烟进 CI）| I8/G3 | ✅ 完成（code-picture-core 25 测进 CI + e2e 脚本健康冒烟 + main.ts basename 去重到已测；真 e2e 待 v2/真机） |
 | F10 | README 中英修版本/删悬空/补账号 + RELEASING/CONTRIBUTING checklist 补 README 两条 | I2 I3 | ✅ 完成（7bf412a：版本 3.2.0 + CI 四 job 同步 + 多账号小节 + RELEASING 链接） |
-| F11 | 文档漂移（ARCHITECTURE 账号子系统 + STATE-MATRIX 4命令 + INVARIANTS 上移 color-scheme + 子README + 索引 + actions 数）| I7docs/G2 | 🟡 已摸底（features/10-docs F11 段精确清单）；**STATE-MATRIX §2 = 非问题**（账号命令全 stateless、§2 只收 State 消费者）；下轮做 ARCHITECTURE/子README/INVARIANTS/action数/移草案/索引 |
+| F11 | 文档漂移（ARCHITECTURE 账号子系统 + STATE-MATRIX 4命令 + INVARIANTS 上移 color-scheme + 子README + 索引 + actions 数）| I7docs/G2 | ✅ 完成：ARCHITECTURE 账号子系统 + 双子 README + INVARIANTS §32 暗色事实 + README action 26→28/加G + planned-build 索引；**STATE-MATRIX §2 = 审计过标不动**（账号命令 stateless）；**移草案不做**（草案已实现=历史设计文档非 proposal） |
 | F12 | `remote-section.ts` 数据层抽 `remote-config.ts`（治分层倒挂）| I6/G3 | ⬜ 待做 |
 | F13 | 脊柱拆分（tabs 抽 AccountBadgeController；评估 ssh_source）| I6 | ⬜ 待做（最高风险，撞到停）|
 | ~~F14~~ | ~~.bashrc zcc/bcc 迁移 + wrapper 去轮询（inotify 事件驱动版）~~ | — | **用户自跑** |
@@ -57,7 +57,7 @@
 | `src/main.ts` refreshSessionAccounts | F07,F09 | in-flight 序号门 + 可测纯函数 | ⬜ F07 |
 | `src/settings/remote-section.ts` 数据层 | F12,F13 | 纯数据迁 `remote-config.ts` | ⬜ F12 |
 | `.github/workflows/ci.yml` + `package.json` | F08,F09,F13 | 终态 job：rust/frontend(+lint+coverage)/daemon/vendor-crate/e2e-smoke + 双写点断言 | ✅ F08+F09 落成全终态：双写点断言+daemon 只读护栏=cargo 测；frontend eslint/stylelint(advisory)+coverage 地板；rust job 加 `-p code-picture-core`（vendor 25 测）；新 e2e-smoke job（shellcheck --severity=error + py_compile） |
-| 文档簇 + BACKLOG | F10,F11 | 不漂移；BACKLOG 打删除线 | ⬜ F10/F11 |
+| 文档簇 + BACKLOG | F10,F11 | 不漂移；BACKLOG 打删除线 | ✅ F10（README 版本/CI/账号/RELEASING）+ F11（ARCHITECTURE 账号子系统/双子 README/INVARIANTS §32/action 数/索引）；无悬空 |
 
 ## 4. 依赖与顺序（bug 优先）
 - **bug 段**：F03.4 → F04 → F05 → F07 → **F03.2 + F06（合并，共享 tmux 帧/live-state 面）** → 剩余真机验证项。
@@ -88,6 +88,7 @@
 - 10 — 用户拍板：F03.2=甲（高风险→反复评估+审计）；F03.4 开 3 agent 调研更优解
 - **11 — 全面制定（本版）**：三 agent 调研收敛 → **F03.4 = 甲′（远端 set-titles-string 从 @ccm_sid 派生，裸值无双引号，aya 已验无轮询）+ 丙（本地 wt --title + suppressApplicationTitle + 拉起即绑 forward-register，根治 #74+#41，Windows 真机验）**；**F03.2 = 甲-evented（收 daemon 帧即算、删 8s 定时器，cc-monitor 侧零轮询）**；确立**无轮询原则**（§5）；F03.4 shrink bind 重试循环；主体全面重写为连贯计划
 - **12 — F03.2（灰灯）实现 + 全视角 D 审计闭环**：a-core(0934e7d)→a-wire(0451065)→b 前端(d00703c)→3 并行 D agent（Rust/§24·计划红线·前端）**零阻塞**→D 审计修(a487d2c)。**共享面账本落最终形态**：`tabs.ts`(Tab.tmuxIdle 正交布尔、非 TabStatus 枚举；updateTabButton toggle)、`events.ts`(session-idle 入同 queue，镜像 ended)、`main.ts`(wire) 均按既有 archived/activity 模式实现、**无补丁叠加**。**新增独立面**：`REMOTE_IDLE` 账本（唯一写者=emitter，与 remote_active 正交）+ `reconcile_step` 加 `pre_bound`（消卡灰竞态）+ `classify_removed` 纯枚举。grid-monitor 灰点=同源一致性延伸（防 tab-bar/grid 灯不一致的后续补丁）。INVARIANTS §24bis 补 + F74c 悬空引用修。**工程审计(E)结论**：F03.2 自洽、§24 不破、无拖累后续功能的耦合/技术债（F06/F08-F13 与之正交）；主计划仍自洽。残留均记档（TOCTOU 短命会话误归档=非回归、真机标定项）。cargo 363 / tsc 0 / vitest 595 / build ✓
+- **17 — F11 doc/ 子系统漂移修**：ARCHITECTURE 补账号子系统（0→11 提及：backend/frontend §2 树 + §5「隔离又同步 A2-A6」小节，含 withAccount vs restart 分离裁定 + 失败语义）；src/README + src-tauri/README 补账号（前端族 + 3 只读命令）；INVARIANTS §32 沉淀「本仓只有暗色主题（color-scheme:dark、无 prefers-color-scheme、TOKENS 15）」；README action 26→28 + 加 G(panorama) + 未绑 2→6（含 Acct）；建 .claude/planned-build/README 索引（7 区）。**修正审计数字**（TOKENS 15≠11、action 28≠26/30）。**⑤ 移草案不做**（两草案已实现=历史设计文档、非未建 proposal、移动会误标+断引用）；**STATE-MATRIX §2 不动**（账号命令 stateless、§2 只收 State 消费者=审计过标）。无悬空链接、无代码改动。
 - **16 — F10 README 文档修（+F11 摸底）**：README 中英 v3.0.0→3.2.0（头/脚，无残留；**未 bump 版本**只文档匹配既有 3.2.0）+ CI「三 job」→「四 job」+ eslint/stylelint/coverage/vendor-crate/e2e-smoke 门禁描述同步 + 补「多账号（#68/#69）」功能小节（对齐 CHANGELOG v3.2.0）+ README.en 补 RELEASING 链接；无悬空链接。F11（doc/ 子系统漂移）已摸底出精确清单（features/10-docs F11 段）——**发现 STATE-MATRIX §2「4 账号命令未登记」是审计过标**：账号命令全 stateless、§2 只收 State 消费者→正确排除、不动。低风险主线程自审。
 - **15 — F09 测试补齐**：① vendor `code-picture-core`（path 依赖非 workspace 成员，`--all` 测不到其 25 测）→ CI rust job 加 `cargo test -p code-picture-core`（不动 vendor 源，红线守）；② e2e 真跑需 Xvfb+tauri dev+xdotool（大 GUI runner、app 仅 Windows→低 ROI）→ 改**脚本健康冒烟** e2e-smoke ubuntu job（shellcheck --severity=error 忽略 style 噪音 + py_compile），真 e2e 记档待 v2/真机；③ main.ts:989 内联 basename 盲区 → 复用**已测** `sftp/paths.basename`（行为等价、纯 leaf 无环；panorama 第三份留 F12）。低风险主线程自审。tsc0/npm595/code-picture-core25/shellcheck+py0。
 - **14 — F08b 前端 lint/coverage 门禁**：装 eslint@9(flat)+typescript-eslint@8 + stylelint@17 + @vitest/coverage-v8@4。**eslint/stylelint 顾问式**（CI `|| true` 不阻断，同 clippy；基线 lint 7/css 57、不追清零、不 --fix 避 churn；`_`-约定对齐是配置正确性非改代码）；**覆盖率地板棘轮**（S40/B34/F36/L41，当前值下方 ~2-3%，阻断但只挡明显回归；**不设 85% 全局**因 tsx `*.test.ts` 不计入 vitest 覆盖）。**prettier 不做**（避 styles/ts 全量 churn，风格已一致靠 review）。npm 脚本 lint/lint:css/coverage + ci.yml frontend job 三步。**F08 完结**。低风险主线程自审。tsc0/npm595/build✓/coverage floor✓。
