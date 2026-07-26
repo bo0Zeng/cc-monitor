@@ -7,7 +7,8 @@
   - 提交链：a-core(0934e7d)→a-wire(0451065)→b 前端(d00703c)→**D 审计修(a487d2c)**；文档 F 回看（INVARIANTS §24bis + MASTERPLAN rev12 + features/03 签收）待本轮 commit。
   - **D 审计（3 并行 agent）零阻塞**：§24 单写者/全红线/机制符合度确认。修了：① ever_bound×idle 卡灰竞态（reconcile_step 加 pre_bound 播种）② 远端复活不清灰（ensureTab 主清灰）③ emitter 分流零测（classify_removed 纯枚举）④ grid 灰点 DOM 无测。4 处均变异验证。
   - **残留记档**（非阻塞、真机/后续）：TOCTOU 短命会话误归档=非回归、session-activity 误清极窄竞态=自愈、带外杀端到端变灰+RETIRE_MISS_THRESHOLD 标定=真机。
-- **下一步**：按 §4 顺序推进剩余功能。F06（#43 父子拉不起来残留：可复现则修否则真机）→ F08-F13（质量门禁/测试回填/文档/重构）→ Phase G。
+- **F06 Phase B 结论（无 aya-代码可做）**：#43 机制（父恒绿/分裂父子）已在本分支修好三处**且已测**——backend `scan_dir` 归并（`scan_dir_same_sid_interactive_wins_over_bg` + `_same_kind_newer_wins`，覆盖 kind_rank/newer_than）+ frontend interactive 升格/降格（tabs.vitest:793/811）。真残留「父子拉不起来 / Ctrl-X 未合并」= **须真机复现**（aya 驱动不了 Windows GUI 起会话流），归你侧待办。F06 无新实现，不走 D/E。
+- **下一步 = F08**（质量门禁：eslint/prettier/stylelint/覆盖率棘轮 + `TMUX_LS_FMT` 双写点 CI 断言 + daemon 只读护栏——真代码工作）→ F09-F13 → Phase G。
 - **F03.2 灰灯设计（features/03 步骤2，勿再问机制）**：候选 ii（emitter 收 removed 时 `find_tmux_origin_for_sid` 内联判 idle）+ 收帧驱动收割器复用 reconcile_step（删 8s poller=零轮询）+ **command-agnostic 判据**（claude 死用 daemon-removed、tmux 在用 @ccm_sid present，不信 ≤8s 陈旧 command）+ 独立 `REMOTE_IDLE` 账本(唯一写者=emitter,SessionChange 不加字段)。§24 逐条保全已论证。
   - **F03.2a-core 完成**（零行为改动、cargo 绿）：bridge.rs SESSION_IDLE 常量+SessionIdlePayload；ssh_source REMOTE_IDLE 账本 + mark/clear/snapshot_idle_* + `tmux_origin_for_sid` 纯函数（command-agnostic）+ find_tmux_origin_for_sid 包装 + 5 Rust 测。**尚无人调=临时,行为不变。**
   - **F03.2a-wire（下一轮，Rust 行为改动）**：lib.rs emitter removed 臂改 `find_tmux_origin_for_sid` 分流(Some→mark_idle+emit SESSION_IDLE+不 forget;None→clear_idle+forget+SESSION_ENDED)、added 臂 clear_idle、删 poller spawn、F5 排除 idle+重发；ssh_source stream_loop TmuxSessions 臂加收帧收割器(reconcile_state+tracked=announced∪idle+reconcile_step→send removed)、断连并 idle、删 snapshot_announced_by_origin；tmux_reconcile 删 POLL_INTERVAL+poller 保 reconcile_step。cargo fmt/test 绿。
