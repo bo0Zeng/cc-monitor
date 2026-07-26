@@ -17,8 +17,14 @@
 - [x] README.en.md docs 表补 RELEASING 链接（.md 已有）。
 - [x] 核：无悬空链接、版本处处 3.2.0。**未 bump 版本**（只文档匹配既有 3.2.0，红线守）。
 
-### F11（doc/ 漂移，下轮）
-- [ ] ARCHITECTURE 补账号子系统；STATE-MATRIX 4 命令；INVARIANTS color-scheme 上移；子 README（src/scripts/src-tauri/remote-daemon-proto）核漂移；文档索引；CI actions 数（doc 里描述 job 数/门禁与 ci.yml 对齐）。
+### F11（doc/ 漂移，下轮）——已摸底，精确清单如下
+- [ ] **ARCHITECTURE.md 补账号子系统**（现 0 处 account 提及）：account=一个 CLAUDE_CONFIG_DIR；lib.rs 注册 4 命令（见下）；前端 account-*.ts + account-restart.ts（换号优雅退出重编排）；daemon accounts_query.rs 纯只读。需读账号代码流写一段像样的子系统说明。
+- [ ] **src/README.md + src-tauri/README.md 补账号**（各 0 处提及）：account-*.ts 前端族 + accounts.rs 后端命令。
+- [ ] **INVARIANTS.md 上移仓库级事实**：从 `.claude/planned-build/account-ux/MASTERPLAN.md:122` 移入——本仓**无浅色主题**（`color-scheme: dark`、无 `prefers-color-scheme`）、`theme.ts` TOKENS 11 token。
+- [ ] **README 快捷键**：action 数「26」需按 `src/keybindings/` registry 精确重数（初步 grep ~23 `{id:`，含未绑 toggle 口径不定——**实现时精确核**再改）；快捷键表补 `Acct`/`G`（若确有）。
+- [ ] **doc/ 两份设计草案移 `proposals/`**：`doc/账号用量-usage抓取方案.md` + `doc/远端支持方案-agent查看器与代码全景图.md`（未写码草案）→ 建 `doc/proposals/` 移入 + 修引用。
+- [ ] **.claude/planned-build/ 加索引 README**（列各工作区状态）。
+- **STATE-MATRIX §2 = 非问题（审计过标）**：§2 明确「只收签名含 `State<...>` 的 IPC 命令」，4 个账号命令**全无 State**（`list_remote_accounts(origin: String)` 等 stateless）→ 按 §2 自身定义**正确排除**、无需登记。F11 不动 §2；在此记档缘由。
 
 ## 不做什么
 - **不 bump 版本、不发版**（红线）——只把 README 版本改到与既有 3.2.0 一致。
