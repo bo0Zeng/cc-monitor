@@ -36,6 +36,9 @@ export interface GridSessionSnapshot {
   /** 项目根 / 启动目录（最早记录的 cwd）；null = 尚未拿到。 */
   cwd: string | null;
   status: "live" | "archived";
+  /** audit-fixes F03.2：idle-tmux（claude 退但 tmux 会话仍在，可 attach 复用）。与 status 正交
+   *  （status 仍 live），驱动 cell 灰灯，与 tab-bar 一致。 */
+  tmuxIdle: boolean;
   /** Claude 的 status 字段原值（busy/idle/shell/waiting）；null = 未知。 */
   activityStatus: string | null;
   /** waiting 时的子类（permission prompt / dialog open …）；否则 null。 */

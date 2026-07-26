@@ -24,6 +24,7 @@ const snap = (over: Partial<GridSessionSnapshot>): GridSessionSnapshot => ({
   origin: null,
   cwd: null,
   status: "live",
+  tmuxIdle: false,
   activityStatus: null,
   waitingFor: null,
   runningAgents: 0,
@@ -82,6 +83,15 @@ describe("F91 sortSessionsInGroup", () => {
     const before = input.map((s) => s.sessionId);
     sortSessionsInGroup(input);
     expect(input.map((s) => s.sessionId)).toEqual(before);
+  });
+  it("audit-fixes F03.2：idle-tmux 排在所有活会话之后、归档之前", () => {
+    const sorted = sortSessionsInGroup([
+      snap({ sessionId: "arch", status: "archived" }),
+      // idle-tmux：status 仍 live、activityStatus 可为任意陈旧值——tmuxIdle 优先降到 8
+      snap({ sessionId: "tidle", tmuxIdle: true, activityStatus: "busy" }),
+      snap({ sessionId: "busy", activityStatus: "busy" }),
+    ]);
+    expect(sorted.map((s) => s.sessionId)).toEqual(["busy", "tidle", "arch"]);
   });
 });
 

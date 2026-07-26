@@ -101,6 +101,15 @@ export interface Tab {
    */
   activity: { status: string; waitingFor: string | null } | null;
   /**
+   * audit-fixes F03.2（灰灯 / 第三态渲染）：远端 tmux 会话「claude 已退但 tmux 会话还在」
+   * = idle-tmux。**与 TabStatus/activity 都正交**：不是 archived（内容仍在、可 attach 复用），
+   * 也不是 live（claude 进程没了）；仅驱动 `.tab.tmux-idle` 灰点渲染。后端 emitter 收 daemon
+   * `removed` 时若 `@ccm_sid` 仍在则 emit `session-idle`（见 ssh_source F03.2a-wire），前端
+   * markTmuxIdle 置 true；复活（session-change added）/ 归档（真 tmux 没了 → session-ended）/
+   * 本会话再有活动（onActivity）时清回 false。默认 false。
+   */
+  tmuxIdle: boolean;
+  /**
    * issue #23（第二增量）：本会话的 subagent 列表（tool_use id → entry，插入序）。
    * jsonl 流里配对 Task/Agent 的 tool_use（running）与 tool_result（done）；
    * 变 idle/归档时把仍 running 的标 aborted。上限 30，超出删最老的非 running。
@@ -387,6 +396,12 @@ export class TabManager {
    * 行”的异常序。
    */
   private pendingArchive = new Set<string>();
+  /**
+   * audit-fixes F03.2：灰灯（idle-tmux）信号早于 Tab 建出时暂存（同 pendingArchive 模式）。
+   * F5 frontend-ready 重放会重发 SESSION_IDLE，可能早于骨架 remote-added 建 Tab——不暂存则
+   * markTmuxIdle no-op、灰灯丢。ensureTab 建 Tab 时落实（除非同时 pendingArchive→归档优先）。
+   */
+  private pendingTmuxIdle = new Set<string>();
   /**
    * issue #23：红绿灯信号早于 Tab 建出来时暂存（同 pendingArchive 的时序竞争模式：
    * session-activity 同步派发，而建 Tab 的行走异步 queue/drain）。ensureTab 时落实。
@@ -1083,6 +1098,7 @@ export class TabManager {
         origin: tab.origin,
         cwd: tab.cwd,
         status: tab.status,
+        tmuxIdle: tab.tmuxIdle, // audit-fixes F03.2：cell 灰灯与 tab-bar 同源
         activityStatus: tab.activity?.status ?? null,
         waitingFor: tab.activity?.waitingFor ?? null,
         runningAgents: running,
@@ -1237,6 +1253,7 @@ export class TabManager {
       processedUuids: new Set(),
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
       activity: this.pendingActivity.get(sessionId) ?? null,
+      tmuxIdle: false, // audit-fixes F03.2：默认非灰；pendingTmuxIdle 在下方落实
       agents: new Map(),
       touchedFiles: new Set(), // F70：会话改动集，onLine 增量累进
       latestPromptTokens: null, // F88b：HUD context% 数据；onLine 捕获带 usage 的 assistant 记录
@@ -1259,6 +1276,10 @@ export class TabManager {
     if (this.pendingArchive.delete(sessionId)) {
       tab.status = "archived";
       tab.activity = null; // 同 archiveTab：死会话不留陈旧灯/tooltip
+      this.pendingTmuxIdle.delete(sessionId); // 归档优先：真 tmux 没了，灰灯作废
+    } else if (this.pendingTmuxIdle.delete(sessionId)) {
+      // audit-fixes F03.2：灰灯信号早于建 Tab（F5 重放乱序）→ 落实为 idle-tmux 灰点。
+      tab.tmuxIdle = true;
     }
     this.tabs.set(sessionId, tab);
     this.placeInOrder(tab);
@@ -1319,12 +1340,14 @@ export class TabManager {
       // 记下待归档，建 Tab 时落实。否则这里直接 return 会静默丢弃归档 → 僵尸 live Tab。
       this.pendingArchive.add(sessionId);
       this.pendingActivity.delete(sessionId); // issue #23：死会话的暂存灯一并清
+      this.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：归档优先，清暂存灰灯
       return;
     }
     if (tab.status === "archived") return;
     tab.status = "archived";
     // issue #23：会话结束 → 灯灭（CSS 上 archived 本就隐藏 .live-dot，这里保持状态干净）
     tab.activity = null;
+    tab.tmuxIdle = false; // audit-fixes F03.2：归档优先——tmux 真没了，清灰点保持状态干净
     this.sweepRunningAgents(tab); // 会话死了，running agent 必然中止
     // P5.2 B 重构后无 pendingToolGroup —— archive 不需要打断 tool-group 累积
     // （tool-group 合并改后处理，看 timeline 邻居；archive 后无新 record 入 timeline）。
@@ -1345,11 +1368,31 @@ export class TabManager {
    */
   reviveTab(sessionId: string): void {
     this.pendingArchive.delete(sessionId);
+    this.pendingTmuxIdle.delete(sessionId); // audit-fixes F03.2：复活即清暂存灰灯
     const tab = this.tabs.get(sessionId);
     if (!tab) return;
     if (tab.origin !== null) return; // 仅本地；远端复活走 ensureTab 见行路径
     if (tab.status !== "archived") return;
     tab.status = "live";
+    this.refreshTabBar();
+  }
+
+  /**
+   * audit-fixes F03.2：远端 claude 退出但 tmux 会话仍在 → 灰灯（idle-tmux 第三态）。
+   * 后端 emitter 收 daemon removed 且 `@ccm_sid` present 时 emit `session-idle` 驱动（**不**
+   * 归档、不 forget，故 status 仍 live，仅灯变灰）。Tab 未建（F5 重放乱序）则暂存待 ensureTab
+   * 落实。archived 的 Tab 不置灰（真 tmux 没了才归档，归档优先）。无变化不重绘。清灰在
+   * updateActivity（claude 再产活动=活了）/ reviveTab / archiveTab（tmux 真没了）三处。
+   */
+  markTmuxIdle(sessionId: string): void {
+    const tab = this.tabs.get(sessionId);
+    if (!tab) {
+      this.pendingTmuxIdle.add(sessionId);
+      return;
+    }
+    if (tab.status === "archived") return; // 归档优先，不回置灰
+    if (tab.tmuxIdle) return; // 无变化不重绘
+    tab.tmuxIdle = true;
     this.refreshTabBar();
   }
 
@@ -1373,10 +1416,16 @@ export class TabManager {
     // archived 不更新（审计：心跳清死会话后磁盘残留 PID.json 被重扫会推陈旧
     // activity，archived tab 会挂上过期的 waiting tooltip——灯本身被 CSS 隐藏）。
     if (tab.status === "archived") return;
+    // audit-fixes F03.2：收到活动信号 = claude 活着（远端 activity 仅在 claude 存活时由
+    // daemon 推）→ 清灰灯。必须放在下方「无变化早退」之前：复活后首个 activity 未必与灰前
+    // 的陈旧 activity 值不同，否则灰点被早退跳过、清不掉。清了灰即使 activity 没变也要重绘。
+    const clearedIdle = tab.tmuxIdle && act !== null;
+    if (clearedIdle) tab.tmuxIdle = false;
     if (
       tab.activity?.status === act?.status &&
       tab.activity?.waitingFor === act?.waitingFor
     ) {
+      if (clearedIdle) this.refreshTabBar();
       return;
     }
     tab.activity = act;
@@ -2882,6 +2931,9 @@ export class TabManager {
     const lightClass = activityLightClass(actStatus);
     refs.root.classList.toggle("act-idle", lightClass === "act-idle");
     refs.root.classList.toggle("act-waiting", lightClass === "act-waiting");
+    // audit-fixes F03.2：idle-tmux 灰灯（claude 退但 tmux 会话仍在）。与 archived 正交——
+    // status 仍 live（灯不被 archived 隐藏），tmux-idle 把 .live-dot 覆写为灰、压过红绿黄。
+    refs.root.classList.toggle("tmux-idle", tab.tmuxIdle);
     const titleParts: string[] = [];
     if (actStatus === "waiting" && tab.activity?.waitingFor) {
       titleParts.push(`等待操作：${tab.activity.waitingFor}`);

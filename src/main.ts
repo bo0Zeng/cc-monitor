@@ -703,6 +703,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     // P5.2 B 重构：onLine 不再带 source 参数（前端按 seq timeline 排，不分 batch/live）
     onLine: (e) => tabs.onLine(e),
     onSessionEnded: (sessionId) => tabs.archiveTab(sessionId),
+    // audit-fixes F03.2：远端 claude 退但 tmux 会话仍在 → 灰灯（idle-tmux 第三态，非归档）。
+    onSessionIdle: (sessionId) => tabs.markTmuxIdle(sessionId),
     // 会话复活（resume）：后端 liveness 门控后才发，复活已归档的本地 Tab，免 F5。
     // Batch7-F24：无 Tab（= 运行中途**新出现**的本地会话）→ 建骨架——bg 会话必须
     // 从这条通道拿 kind/name（首行 onLine→ensureTab 不带 kind，会建成无 ⚙ 普通 tab）。
@@ -991,6 +993,10 @@ async function bootstrapViewer(sid: string): Promise<void> {
       },
       onSessionEnded: (s) => {
         if (s === sid) tabs.archiveTab(s);
+      },
+      // audit-fixes F03.2：本 sid 的 idle-tmux 灰灯，与主窗一致（免视图窗停留陈旧绿灯）。
+      onSessionIdle: (s) => {
+        if (s === sid) tabs.markTmuxIdle(s);
       },
       onSessionStarted: (s) => {
         if (s === sid) tabs.reviveTab(s);

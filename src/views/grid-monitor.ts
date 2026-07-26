@@ -59,6 +59,8 @@ export function groupSessionsByOrigin(sessions: GridSessionSnapshot[]): OriginGr
 export function sortSessionsInGroup(sessions: GridSessionSnapshot[]): GridSessionSnapshot[] {
   const rank = (s: GridSessionSnapshot): number => {
     if (s.status === "archived") return 9;
+    // audit-fixes F03.2：idle-tmux（claude 退但 tmux 在）休眠但可复用——排活会话之后、归档之前。
+    if (s.tmuxIdle) return 8;
     switch (s.activityStatus) {
       case "waiting":
         return 0;
@@ -419,6 +421,8 @@ export class GridMonitorView {
     dot.className = "live-dot";
     const light = activityLightClass(s.activityStatus);
     if (light) dot.classList.add(light);
+    // audit-fixes F03.2：idle-tmux 灰灯覆写红绿黄（.live-dot.tmux-idle，同 tab-bar 语义）。
+    if (s.tmuxIdle) dot.classList.add("tmux-idle");
     const name = document.createElement("span");
     name.className = "grid-monitor-cell-title";
     name.textContent = s.title;
