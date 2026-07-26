@@ -10,7 +10,7 @@ import { formatBytes } from "../format";
 import { showActionFailureToast } from "../error-toast";
 import { LS_KEYS, safeGetJson, safeSetJson } from "../local-storage";
 import { buildOpenTerminalCmd } from "../remote-launch";
-import type { RemoteHostConfig } from "../settings/remote-section";
+import type { RemoteHostConfig } from "../remote-config";
 // F82a 修复：接入 dispatcher overlay 栈——SFTP 面板过去用自己的 document keydown 判 Esc，不入栈；
 // 在独立设置窗口里 Esc 会被 dispatcher 路由到栈底的设置面板→关整窗（双关窗）。改为标准 overlay：
 // pushOverlay/popOverlay + handleEsc，Esc 由 dispatcher LIFO 只关最上层（同 KeybindingsEditor 范式）。

@@ -15,7 +15,7 @@ import {
   type Account,
 } from "./accounts";
 import { accountAvatarEl } from "./account-color";
-import { readRemoteConfig, type RemoteHostConfig } from "./settings/remote-section";
+import { readRemoteConfig, type RemoteHostConfig } from "./remote-config";
 import { showActionFailureToast } from "./error-toast";
 
 // ------------------------------------------------------------ 纯函数（可测）

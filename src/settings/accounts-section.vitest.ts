@@ -12,7 +12,7 @@ const fetchAccountsMock = vi.fn();
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("../error-toast", () => ({ showActionFailureToast: vi.fn() }));
-vi.mock("./remote-section", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
+vi.mock("../remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
 
 import { AccountsSection } from "./accounts-section";
 import * as accounts from "../accounts";
