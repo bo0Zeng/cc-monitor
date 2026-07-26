@@ -1371,6 +1371,107 @@ describe("audit-fixes F05 findOrphanTmux / isCcmTmuxName（清理真孤儿判据
   });
 });
 
+// auto-e2e F-E4：可注入 confirm seam（cleanupOrphanTmux / killRemoteTmux）——**行为等价**验证。
+// 默认（不传 opts）**必须**仍调 window.confirm、消息串不变（默认交互零变化，这是 seam 非行为改动）；
+// 注入 confirm 才旁路（headless e2e / DEV）。DOM(jsdom) 层是这两个 TabManager 方法的诚实天花板
+// （真 tmux kill 效果在 e2e/orphan-suite.sh 命令级验；GUI 触发菜单在 Linux 不可达）。
+describe("auto-e2e F-E4 可注入 confirm seam（cleanupOrphanTmux / killRemoteTmux 行为等价）", () => {
+  let tm: TabManager;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tm = makeTM();
+  });
+  const microFlush = async (): Promise<void> => {
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+  // 孤儿：cc-* + @ccm_sid + sid 无对应活 tab（fresh tm 的 tabs 为空 → 恒孤儿）。
+  const orphanList = [
+    { name: "cc-orph1234", path: "/p", command: "sleep", attached: false, windows: 1, sid: "orph1234-full" },
+  ];
+  const mockList = (list: unknown[]): void => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux" ? Promise.resolve(list) : Promise.resolve(undefined),
+    );
+  };
+  const killCalls = (): unknown[] =>
+    vi.mocked(invoke).mock.calls.filter((c) => c[0] === "kill_remote_tmux");
+
+  it("cleanupOrphanTmux 默认（不传 opts）→ 仍调 window.confirm，消息含孤儿名（默认交互零变化）", async () => {
+    mockList(orphanList);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await tm.cleanupOrphanTmux("hostA");
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(String(confirmSpy.mock.calls[0]?.[0] ?? "")).toContain("cc-orph1234");
+    expect(killCalls()).toHaveLength(0); // 默认 spy 返 false → 拒绝 → 不 kill
+    confirmSpy.mockRestore();
+  });
+
+  it("cleanupOrphanTmux 注入 confirm=()=>true → 不碰 window.confirm、逐个 kill 孤儿", async () => {
+    mockList(orphanList);
+    const confirmSpy = vi.spyOn(window, "confirm");
+    await tm.cleanupOrphanTmux("hostA", { confirm: () => true });
+    expect(confirmSpy).not.toHaveBeenCalled(); // seam 旁路默认交互
+    expect(killCalls()).toHaveLength(1);
+    expect((killCalls()[0] as unknown[])[1]).toMatchObject({ origin: "hostA", target: "cc-orph1234" });
+    confirmSpy.mockRestore();
+  });
+
+  it("cleanupOrphanTmux 注入 confirm=()=>false → no-op，不 kill（拒绝）", async () => {
+    mockList(orphanList);
+    const confirmSpy = vi.spyOn(window, "confirm");
+    await tm.cleanupOrphanTmux("hostA", { confirm: () => false });
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(killCalls()).toHaveLength(0);
+    confirmSpy.mockRestore();
+  });
+
+  it("cleanupOrphanTmux 零孤儿（sid 有活 tab）→ 提前 return，不问确认、不 kill", async () => {
+    tm.ensureTab("live1234-full", "/p", "p", 0, "hostA"); // 该 sid 有活 tab → 非孤儿
+    mockList([
+      { name: "cc-live1234", path: "/p", command: "claude", attached: false, windows: 1, sid: "live1234-full" },
+    ]);
+    const injected = vi.fn(() => true);
+    await tm.cleanupOrphanTmux("hostA", { confirm: injected });
+    expect(injected).not.toHaveBeenCalled(); // 无孤儿分支在 confirm 之前 return
+    expect(killCalls()).toHaveLength(0);
+  });
+
+  type KillTM = {
+    killRemoteTmux(
+      origin: string,
+      tmuxName: string,
+      viaCwd: boolean,
+      opts?: { confirm?: (message: string) => boolean },
+    ): void;
+  };
+  it("killRemoteTmux 默认（不传 opts）→ 仍调 window.confirm（默认交互零变化）", () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    (tm as unknown as KillTM).killRemoteTmux("hostA", "cc-abc", false);
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    confirmSpy.mockRestore();
+  });
+
+  it("killRemoteTmux 注入 confirm=()=>true → 不碰 window.confirm、invoke kill_remote_tmux", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm");
+    (tm as unknown as KillTM).killRemoteTmux("hostA", "cc-abc", false, { confirm: () => true });
+    await microFlush();
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(killCalls()).toHaveLength(1);
+    expect((killCalls()[0] as unknown[])[1]).toMatchObject({ origin: "hostA", target: "cc-abc" });
+    confirmSpy.mockRestore();
+  });
+
+  it("killRemoteTmux 注入 confirm=()=>false → no-op，不 invoke", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm");
+    (tm as unknown as KillTM).killRemoteTmux("hostA", "cc-abc", false, { confirm: () => false });
+    await microFlush();
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(killCalls()).toHaveLength(0);
+    confirmSpy.mockRestore();
+  });
+});
+
 describe("F74c(#60-B) isCwdFallbackMatch（cwd 回退串味提示判定）", () => {
   const S = (name: string, path: string, command: string, sid: string | null) => ({
     name,

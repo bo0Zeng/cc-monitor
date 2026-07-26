@@ -2547,11 +2547,19 @@ export class TabManager {
    *  @param viaCwd findClaudeTmux 是否走了 cwd 回退命中（无 @ccm_sid）——此时会话名是按目录猜的、可能
    *  不是本 tab 的会话（可能杀到同目录别的 Claude）。破坏性操作，回退命中时在确认框里加强 caveat
    *  （比 attach 的 toast 更强，因为在用户必须点的确认里）。守 F74c「保留回退+显式提示」的取舍。 */
-  private killRemoteTmux(origin: string, tmuxName: string, viaCwd: boolean): void {
+  private killRemoteTmux(
+    origin: string,
+    tmuxName: string,
+    viaCwd: boolean,
+    opts?: { confirm?: (message: string) => boolean },
+  ): void {
     const caveat = viaCwd
       ? `\n\n⚠ 未检测到会话身份标记（@ccm_sid）——「${tmuxName}」是按工作目录猜的，可能不是本 tab 的会话，甚至可能是同目录里另一个正在运行的 Claude。建议在远端重装 ccm 助手后再操作。`
       : "";
-    const ok = window.confirm(
+    // auto-e2e F-E4：可注入 confirm seam（对齐 account-restart.ts 的 `opts.confirm ?? window.confirm`）。
+    // 默认（不传 opts）走 `window.confirm`，交互零变化——headless e2e/DEV 才注入 ()=>true/false。
+    const confirmFn = opts?.confirm ?? ((m: string) => window.confirm(m));
+    const ok = confirmFn(
       `杀死会话「${tmuxName}」（机器 ${origin}）？\n\n将终止远端这个 tmux 会话里正在运行的 Claude，未保存的交互会中断。\n此操作不可恢复。${caveat}`,
     );
     if (!ok) return;
@@ -2574,7 +2582,10 @@ export class TabManager {
    * `cc-*`(带 @ccm_sid)会话，列出 + 二次确认后逐个 `kill_remote_tmux`。**不自动**(用户拍板孤儿仅手动)。
    * 判据见 `findOrphanTmux`(保守：只杀身份确凿、且当前无 tab 的；绝不碰有 tab 的会话或非 cc-* 的用户会话)。
    */
-  async cleanupOrphanTmux(origin: string): Promise<void> {
+  async cleanupOrphanTmux(
+    origin: string,
+    opts?: { confirm?: (message: string) => boolean },
+  ): Promise<void> {
     let sessions: TmuxSession[] | null;
     try {
       sessions = await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
@@ -2591,7 +2602,10 @@ export class TabManager {
       return;
     }
     const list = orphans.map((s) => `  · ${s.name}（${s.command}）`).join("\n");
-    const ok = window.confirm(
+    // auto-e2e F-E4：可注入 confirm seam（对齐 account-restart.ts 的 `opts.confirm ?? window.confirm`）。
+    // 默认（不传 opts）走 `window.confirm`，交互零变化——headless e2e/DEV 才注入 ()=>true/false。
+    const confirmFn = opts?.confirm ?? ((m: string) => window.confirm(m));
+    const ok = confirmFn(
       `在 [${origin}] 上发现 ${orphans.length} 个孤儿 tmux 会话（tab 已关、tmux 会话残留）：\n\n${list}\n\n` +
         `逐个 kill 掉？不可恢复——**只影响这些无 tab 的残留会话**，不碰你还有 tab 的会话、也不碰非本工具的会话。`,
     );
