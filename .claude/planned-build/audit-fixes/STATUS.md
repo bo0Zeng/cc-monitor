@@ -3,11 +3,10 @@
 > 工作区 `audit-fixes`。分支 `account-ux`。跨轮靠此文件，不靠记忆。主计划见 MASTERPLAN.md（rev 11）。
 
 ## 当前
-- **阶段**：**F09 测试补齐完成**（B→F 过，低风险自审）→ 下一步 **F10/F11 文档**
-  - F09（本轮）：① code-picture-core 25 测进 CI（rust job 加 `-p`，不动 vendor）；② e2e 脚本健康冒烟（新 e2e-smoke ubuntu job：shellcheck --severity=error + py_compile；真 e2e 需 Xvfb+app+xdotool→大投入低 ROI，待 v2/真机）；③ main.ts:989 内联 basename 盲区去重到已测 `sftp/paths.basename`（panorama 第三份留 F12）。tsc0/npm595/code-picture-core25/build✓。
-  - **覆盖率地板未变**（F09 补 Rust 测 + 路由到已覆盖代码，vitest 覆盖不涨）→ 收紧 F08b 地板仍待更多 TS 侧补测。
-  - **F10/F11（下轮，文档）**：F10 README 中英修版本/删悬空/补账号 + RELEASING/CONTRIBUTING；F11 文档漂移（ARCHITECTURE 账号子系统 + STATE-MATRIX 4命令 + INVARIANTS color-scheme + 子 README + 索引 + actions 数）。
-- **F08 质量门禁**：F08a 红线护栏 + F08b lint/coverage 全完成。**F03.2（灰灯）**：全链闭环。F06 无 aya-代码。
+- **阶段**：**F10 README 文档修完成**（B→F 过，低风险自审，7bf412a）→ 下一步 **F11 doc/ 子系统漂移**
+  - F10（本轮）：README 中英 v3.0.0→3.2.0（**未 bump**，只文档匹配既有）+ CI 三→四 job & eslint/stylelint/coverage/vendor/e2e-smoke 门禁描述同步 + 补「多账号（#68/#69）」小节 + README.en 补 RELEASING 链接；无悬空。
+  - **F11（下轮，doc/ 漂移）——已摸底出精确清单**（features/10-docs.md F11 段）：ARCHITECTURE 补账号子系统（0 提及，需读账号代码流写）；src/README + src-tauri/README 补账号；INVARIANTS 上移仓库级事实（无浅色主题/color-scheme:dark/TOKENS 11）；README action 数 26→精确重数（~23，实现时核）+ 快捷键补 Acct/G；doc/ 两份草案移 proposals/；.claude/planned-build/ 加索引 README。**STATE-MATRIX §2 = 非问题（审计过标：账号命令全 stateless、§2 只收 State 消费者→正确排除，不动）**。
+- **F08/F09 质量门禁+测试补齐、F03.2 灰灯全链、F06 无 aya-代码**。之后 F12(remote-config 抽层)→F13(脊柱拆分)→Phase G。
   - 提交链：a-core(0934e7d)→a-wire(0451065)→b 前端(d00703c)→**D 审计修(a487d2c)**；文档 F 回看（INVARIANTS §24bis + MASTERPLAN rev12 + features/03 签收）待本轮 commit。
   - **D 审计（3 并行 agent）零阻塞**：§24 单写者/全红线/机制符合度确认。修了：① ever_bound×idle 卡灰竞态（reconcile_step 加 pre_bound 播种）② 远端复活不清灰（ensureTab 主清灰）③ emitter 分流零测（classify_removed 纯枚举）④ grid 灰点 DOM 无测。4 处均变异验证。
   - **残留记档**（非阻塞、真机/后续）：TOCTOU 短命会话误归档=非回归、session-activity 误清极窄竞态=自愈、带外杀端到端变灰+RETIRE_MISS_THRESHOLD 标定=真机。
