@@ -1056,6 +1056,25 @@ pub fn find_tmux_origin_for_sid(sid: &str) -> Option<String> {
     tmux_origin_for_sid(&snapshot_tmux_by_origin(), sid)
 }
 
+/// audit-fixes F03.2（D 审计②覆盖缺口）：daemon-removed 到达时的分流决策。emitter 收 removed 后
+/// 据「该 sid 的 tmux 是否仍在」（`find_tmux_origin_for_sid` 的 Option）择一：
+/// `Idle{origin}`=tmux 会话尚在 → 灰灯（mark_idle + emit SESSION_IDLE + **不 forget**）；
+/// `Archive`=tmux 也没了 → 归档（clear_idle + forget + emit SESSION_ENDED）。
+#[derive(Debug, PartialEq, Eq)]
+pub enum RemovedDisposition {
+    Idle { origin: String },
+    Archive,
+}
+
+/// **纯决策**（可单测，锁住「Some/None 不写反」——emitter 里的实际接线在 run() 闭包内无法单测，
+/// 抽出映射层给最易犯的分支互换上变异锚点）。Some(origin)→Idle；None→Archive。
+pub fn classify_removed(tmux_origin: Option<String>) -> RemovedDisposition {
+    match tmux_origin {
+        Some(origin) => RemovedDisposition::Idle { origin },
+        None => RemovedDisposition::Archive,
+    }
+}
+
 // audit-fixes F03.2：`snapshot_announced_by_origin` 已删——其唯一读者是已删的 8s poller。
 // 收帧收割器直接用 stream_loop 本连接的 `announced` 局部（keys=live sids），不需全局快照。
 
@@ -1065,10 +1084,10 @@ pub fn find_tmux_origin_for_sid(sid: &str) -> Option<String> {
 /// 卡死关不掉（三轮独立复审的红线④）。抽成纯函数即为给这条不变量上单测（变异：只 announced 不并 idle→红）。
 fn reaper_tracked(
     announced_sids: impl Iterator<Item = String>,
-    idle: std::collections::HashSet<String>,
+    idle: &std::collections::HashSet<String>,
 ) -> std::collections::HashSet<String> {
     let mut tracked: std::collections::HashSet<String> = announced_sids.collect();
-    tracked.extend(idle);
+    tracked.extend(idle.iter().cloned());
     tracked
 }
 
@@ -2357,14 +2376,15 @@ async fn stream_loop(
                             .filter_map(|s| s.sid.clone())
                             .collect();
                     if !backend.is_empty() {
-                        let tracked = reaper_tracked(
-                            announced.keys().cloned(),
-                            snapshot_idle_for_origin(&host_label),
-                        );
+                        let idle = snapshot_idle_for_origin(&host_label);
+                        let tracked = reaper_tracked(announced.keys().cloned(), &idle);
+                        // idle 集当 pre_bound 传入：@ccm_sid 证明绑过 tmux，播种 ever_bound，免跨线程
+                        // 缝漏置导致 idle→archived 无产出者（D 审计②修，见 reconcile_step 注释）。
                         let retire = crate::tmux_reconcile::reconcile_step(
                             &mut reconcile_state,
                             &tracked,
                             &backend,
+                            &idle,
                             crate::tmux_reconcile::RETIRE_MISS_THRESHOLD,
                         );
                         if !retire.is_empty() {
@@ -2860,6 +2880,18 @@ mod f032_idle_tests {
     }
 
     #[test]
+    fn classify_removed_some_is_idle_none_is_archive() {
+        // audit-fixes F03.2（D 审计②）：分流映射的变异锚点——把 Some/None 两臂写反则本测红。
+        assert_eq!(
+            classify_removed(Some("pi".to_string())),
+            RemovedDisposition::Idle {
+                origin: "pi".to_string()
+            }
+        );
+        assert_eq!(classify_removed(None), RemovedDisposition::Archive);
+    }
+
+    #[test]
     fn idle_registry_mark_clear_snapshot() {
         mark_idle("f032_origX", "f032_sidX");
         assert!(snapshot_idle_for_origin("f032_origX").contains("f032_sidX"));
@@ -2873,7 +2905,7 @@ mod f032_idle_tests {
     fn reaper_tracked_unions_announced_and_idle() {
         let announced = ["live-a".to_string(), "live-b".to_string()].into_iter();
         let idle = std::collections::HashSet::from(["idle-c".to_string()]);
-        let tracked = reaper_tracked(announced, idle);
+        let tracked = reaper_tracked(announced, &idle);
         assert!(tracked.contains("live-a"));
         assert!(tracked.contains("live-b"));
         // **变异锚点**：idle sid 必须在 tracked 里——否则 idle→archived 无产出者=灰灯卡死。
@@ -2885,7 +2917,7 @@ mod f032_idle_tests {
     #[test]
     fn reaper_tracked_empty_idle_is_just_announced() {
         let announced = ["live-a".to_string()].into_iter();
-        let tracked = reaper_tracked(announced, std::collections::HashSet::new());
+        let tracked = reaper_tracked(announced, &std::collections::HashSet::new());
         assert_eq!(
             tracked,
             std::collections::HashSet::from(["live-a".to_string()])
