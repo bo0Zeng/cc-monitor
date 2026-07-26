@@ -5,18 +5,18 @@
 > 纯逻辑单测 + F40 渲染 e2e，真机流零 e2e 埋点）。用户 2026-07-26 定：装 Windows VM，要「给真机功能补 e2e 埋点(全自动)」。
 
 ## 当前
-- **阶段**：**Phase C——F-E0 基建 + F-E1 gray-light 已由独立 agent 实现 + 在 aya 实跑通过（2026-07-26，真结果）**。下接 F-E2/E3/E4（resume/换号/孤儿，同 fixture 基座）+ Tier2/3 待 Windows VM。
+- **阶段**：**Phase C——F-E0 基建 + F-E1 gray-light 已由独立 agent 实现 + 在 aya 实跑通过（2026-07-26，真结果），已 ff 并入 account-ux（HEAD 2a51a3e）**。主线程独立复核（非仅信 agent 自报）：worktree 重跑 tsc 0 / vitest 595、审 diff 确认全 DEV 门控·行为等价·daemon 零改·debugSnapshot 形状未动(f40 保真)。下接 F-E2/E3/E4（resume/换号/孤儿，同 fixture 基座）+ Tier2/3 待 Windows VM。
 - **F-E0 交付**（DEV 探针,`import.meta.env.DEV` 门控,vite 生产已实测剥离 `[e2e]` 串）：`tabs.ts` 加 `e2eLog` + `debugSessionsSnapshot()` + `emitTabStateProbe`(markTmuxIdle/archiveTab/reviveTab/ensureTab 清灰四真值点 emit `[e2e] tab-state`);`e2e-probe.ts`+`main.ts` 加 Ctrl+Alt+F10/中键账号 chip → `[e2e] sessions`。fixtures:`e2e/fake-claude`、`gen-idle-tmux.sh`、`daemon-wrapper.sh`。**门禁绿**:tsc 0、vitest 595/595(无回归,f40 断言未破)。
 - **F-E1 实跑真结果（两级都过）**：
   - **daemon-frame 级** `e2e/graylight-daemon-frames.sh` = **5 过/0 败**:`session_added` → kill fake-claude → `session_removed` + `tmux_sessions.raw` 仍含 `@ccm_sid`(灰/Idle 后端条件) → kill-session → `tmux_sessions` 不再含 sid(归档触发)。
   - **全链级** `e2e/graylight-suite.sh`(Xvfb + `tauri dev` + loopback SSH → daemon-wrapper 隔离 /tmp/e2e-remote-claude)= **3 过/0 败**:live → `[e2e] tab-state sid=… status=live tmuxIdle=1 origin=aya-e2e`(灰)→ `… status=archived`。
   - **踩坑记录**:①app 会自动部署 daemon 覆盖 daemonPath → 需同目录放 `.build_id`=app 内嵌 daemon build_id(见 sftp.rs::deploy_decision);②杀 claude 前须等 >8s 让 app 先收到含 @ccm_sid 的 TmuxSessions 帧,否则 removed 到达时 tmux 账本空 → 判 Archive 丢灰;③预置的 `target/debug/monitor` 是 Jul-23 构建、**早于 F03.2 灰灯 emitter(Jul-25)**,必须从当前源重建(dep 复用 24s)才跑出灰。
 - **aya GUI 可行性**：webkit2gtk-4.1 在 aya 存在 → 全链 GUI e2e（Xvfb+tauri dev+loopback remote）可能可跑；agent 先试全链，不行退 daemon-frame 级（直跑 daemon 二进制断言 wire 帧）。
-- **Windows SSH 那套（Tier2/3）**：待用户 VM 的 OpenSSH+工具链就位 → 先跑 WebDriver-over-SSH spike 再铺。SSH-驱动架构 + Tier-C 交互会话 recipe 已在 MASTERPLAN。
+- **Windows SSH 那套（Tier2/3）**：SSH-驱动架构 + Tier-C 交互会话 recipe 在 MASTERPLAN。**2026-07-26 进展**：VM(win11 192.168.122.149 vm260726) 系统已装；`ssh win11` 从 aya 已通(id_ed25519_win11)。经 cc-bus 与 KVM_cc 协调，**用户拍板装 B(构建链)+C(WebDriver 系统工具 tauri-driver+msedgedriver)+E(b VM→aya 单向 key)，D 整块跳过**(不做自动登录/免UAC/松前台锁/交互会话；↗ 留手动 smoke)。GO+逐项清单已发 KVM_cc（KVM_cc 按 cc-bus 纪律先向用户取直连确认再动手）；account-ux git bundle(2.7M,HEAD 2a51a3e)已 stage 在 scratchpad，待 KVM_cc 装好 Git+确认路径(C:\Users\vm260726\cc-monitor.bundle)即 scp 进 VM。**待 KVM_cc 回报 B build 通没通 + Edge/WebView2 版本(定 msedgedriver)**，再跑 WebDriver-over-SSH spike。wdio node 包 spike 阶段 `npm i -D --no-save` 临时装、通了才写进 package.json+lock(别 spike 前 bloat)。
 - **原 Phase A 摘要**（下方）保留供恢复参考。
 - **2 agent 评估结论**：驱动=WebdriverIO(@wdio/tauri-service，DOM 层，windows CI)+ 少量 OS-input(↗，交互式 VM);断言=`[e2e]` 日志;fixture=loopback SSH 到本机 + daemon(CLAUDE_CONFIG_DIR 隔离)+fake-claude shim。**★关键：gray-light/resume/换号/孤儿 是后端+SSH+tmux 驱动、可在 Linux(aya/ubuntu CI 自环)全自动跑，不需 Windows VM**；Windows VM 只剩 Win32 层(↗)手动。
 - **三层架构**：Tier1 会话生命周期 e2e(Linux 自环,最高 ROI)/ Tier2 Windows DOM 冒烟(WebDriver CI,薄)/ Tier3 Win32/native(手动清单)。
-- **待批**：MASTERPLAN 的功能清单(F-E0 基建→F-E1 gray-light→F-E2 resume→F-E3 换号→F-E4 孤儿→F-E5 DOM 冒烟→F-E6 搭车) + 唯一动生产码处(可注入 confirm) + 「↗/真终端/SFTP 留手动」的范围裁定。**批准后按 F-E0 起步。**
+- **进度/待办**：F-E0/F-E1 已交付+并入。剩 F-E2 resume→F-E3 换号→F-E4 孤儿（同 Linux 自环 fixture 基座，可续委托 agent，最高 ROI 且不依赖 VM）→F-E5 Windows DOM 冒烟（待 VM 工具链）→F-E6 搭车。F-E4 需「可注入 confirm」seam（唯一动生产码处，行为等价）。「↗/真终端/SFTP 留手动」范围裁定不变。
 
 ## 摸底结论（待 agent 深化）
 - **无任何 Windows e2e 工具**（package.json 零 webdriver/tauri-driver/playwright）——要从零搭。
