@@ -13,6 +13,7 @@ import "./styles.css";
 import { emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
+import { basename } from "./sftp/paths"; // F09：复用已测纯函数（去 main.ts 内联 basename 盲区）
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { bindEvents } from "./events";
@@ -986,7 +987,7 @@ async function bootstrapViewer(sid: string): Promise<void> {
         // 顶栏标题：用**最早**记录的 cwd 末段（项目根），跟 tab.cwd 口径一致。
         if (e.cwd && e.seq < titleCwdSeq) {
           titleCwdSeq = e.seq;
-          const base = e.cwd.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+          const base = basename(e.cwd); // F09：已测 helper（行为等价：`if (base)` 守卫下 ""/undefined 同效）
           if (base) titleEl.textContent = base;
         }
         tabs.onLine(e);
