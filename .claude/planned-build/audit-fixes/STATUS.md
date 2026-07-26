@@ -3,11 +3,10 @@
 > 工作区 `audit-fixes`。分支 `account-ux`。跨轮靠此文件，不靠记忆。主计划见 MASTERPLAN.md（rev 11）。
 
 ## 当前
-- **阶段**：**F12 remote-config 抽层完成**（B→F 过，中风险主线程自审 + 三重网）→ 下一步 **F13 脊柱拆分（最高风险，撞到停）**
-  - F12（本轮）：config 数据层从 1801 行 UI 文件 `settings/remote-section.ts` **逐字节**抽到 `src/remote-config.ts`（180 行，仅依赖 config、无 UI/无环）；**8 个非 UI importer**（tabs/account-chip/cards/main/port-forward + tsc 兜出的 accounts-section/sftp-panel）改依赖数据模块；UI 类零改。tsc0/npm595(不减)/build0。remote-section 1801→1640。
-  - **F13（下轮，最高风险）**：脊柱拆分——`tabs.ts`(2934 行 god object) 抽 `AccountBadgeController`（把账号徽章/mismatch/align 状态判定移出 TabManager）；`ssh_source.rs`(4512 行) **评估**分模块（audit 说「可能降级为只做 tabs controller 抽取」）。**撞到状态机冲突/计划≠现实立即停**交回用户。
-- **F13 后 → Phase G**（全量 /full-audit + 端到端 + 收尾汇报）。
-- **F01-F12 + F03.2 全链完成；F06 无 aya-代码**。
+- **阶段**：**F13 评估完成 → 停 loop 交回用户**（撞到明定的「拆不干净→交回用户」停止条件）。未动代码。
+  - **F13 判定（features/13-spine-split.md）**：`tabs.ts` 账号族经**核心纠缠点 `alignableCurrent`** 横跨三状态域（账号 5 map + tab 状态 + 重启执行态 `restartingSids`/onLine compact 回调），被徽章渲染/不一致查询/重启执行三类共用。可拆的只有「账号态 + 徽章视图」（单向 Controller），但净值有限（移 ~80 行、增 ~6 getter）而**徽章「信息才显」逻辑极微妙、回归风险落最高风险文件**。**建议不在无人值守 loop 硬拆**；选项=①接受现状(默认)②你在场交互式拆③极小状态袋。ssh_source(4512) 分模块本轮不做（更高危，记档）。
+  - **等用户决策**：F13 走①/②/③ 哪条，或直接进 Phase G（视 F13 为「评估后合理收尾」）。
+- **已完成**：F01-F12 + F03.2 灰灯全链；F06 无 aya-代码。**Phase G（全量 /full-audit + 端到端 + 收尾）待 F13 决策后做**。
   - 提交链：a-core(0934e7d)→a-wire(0451065)→b 前端(d00703c)→**D 审计修(a487d2c)**；文档 F 回看（INVARIANTS §24bis + MASTERPLAN rev12 + features/03 签收）待本轮 commit。
   - **D 审计（3 并行 agent）零阻塞**：§24 单写者/全红线/机制符合度确认。修了：① ever_bound×idle 卡灰竞态（reconcile_step 加 pre_bound 播种）② 远端复活不清灰（ensureTab 主清灰）③ emitter 分流零测（classify_removed 纯枚举）④ grid 灰点 DOM 无测。4 处均变异验证。
   - **残留记档**（非阻塞、真机/后续）：TOCTOU 短命会话误归档=非回归、session-activity 误清极窄竞态=自愈、带外杀端到端变灰+RETIRE_MISS_THRESHOLD 标定=真机。
