@@ -3,11 +3,11 @@
 > 工作区 `audit-fixes`。分支 `account-ux`。跨轮靠此文件，不靠记忆。主计划见 MASTERPLAN.md（rev 11）。
 
 ## 当前
-- **阶段**：**F10+F11 文档全完成**（B→F 过，低风险自审 + 交叉核对代码）→ 下一步 **F12 remote-config 抽层**
-  - F10（7bf412a）：README 中英 v3.0.0→3.2.0（未 bump）+ CI 三→四 job/门禁同步 + 多账号小节 + RELEASING 链接。
-  - F11（本轮）：ARCHITECTURE 补账号子系统（0→11：backend/frontend §2 树 + §5「隔离又同步 A2-A6」小节）；src/README + src-tauri/README 补账号；INVARIANTS §32「本仓只有暗色主题」（color-scheme:dark/TOKENS 15）；README action 26→28 + 加 G(panorama) + 未绑 2→6；建 planned-build 索引 README。**修正审计数字**（TOKENS 15≠11、action 28≠26）。**⑤移草案不做**（已实现=历史设计文档）+ **STATE-MATRIX §2 不动**（账号命令 stateless）。无悬空、无代码改动。
-- **F12（下轮）**：`remote-section.ts` 数据层抽 `remote-config.ts`（治分层倒挂，账本 I6/G3）。之后 F13(脊柱拆分,最高风险撞到停)→Phase G。
-- **F01-F11 + F03.2 全链完成；F06 无 aya-代码**。
+- **阶段**：**F12 remote-config 抽层完成**（B→F 过，中风险主线程自审 + 三重网）→ 下一步 **F13 脊柱拆分（最高风险，撞到停）**
+  - F12（本轮）：config 数据层从 1801 行 UI 文件 `settings/remote-section.ts` **逐字节**抽到 `src/remote-config.ts`（180 行，仅依赖 config、无 UI/无环）；**8 个非 UI importer**（tabs/account-chip/cards/main/port-forward + tsc 兜出的 accounts-section/sftp-panel）改依赖数据模块；UI 类零改。tsc0/npm595(不减)/build0。remote-section 1801→1640。
+  - **F13（下轮，最高风险）**：脊柱拆分——`tabs.ts`(2934 行 god object) 抽 `AccountBadgeController`（把账号徽章/mismatch/align 状态判定移出 TabManager）；`ssh_source.rs`(4512 行) **评估**分模块（audit 说「可能降级为只做 tabs controller 抽取」）。**撞到状态机冲突/计划≠现实立即停**交回用户。
+- **F13 后 → Phase G**（全量 /full-audit + 端到端 + 收尾汇报）。
+- **F01-F12 + F03.2 全链完成；F06 无 aya-代码**。
   - 提交链：a-core(0934e7d)→a-wire(0451065)→b 前端(d00703c)→**D 审计修(a487d2c)**；文档 F 回看（INVARIANTS §24bis + MASTERPLAN rev12 + features/03 签收）待本轮 commit。
   - **D 审计（3 并行 agent）零阻塞**：§24 单写者/全红线/机制符合度确认。修了：① ever_bound×idle 卡灰竞态（reconcile_step 加 pre_bound 播种）② 远端复活不清灰（ensureTab 主清灰）③ emitter 分流零测（classify_removed 纯枚举）④ grid 灰点 DOM 无测。4 处均变异验证。
   - **残留记档**（非阻塞、真机/后续）：TOCTOU 短命会话误归档=非回归、session-activity 误清极窄竞态=自愈、带外杀端到端变灰+RETIRE_MISS_THRESHOLD 标定=真机。

@@ -5,7 +5,7 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { showActionFailureToast } from "../error-toast";
-import { readRemoteConfig } from "../settings/remote-section";
+import { readRemoteConfig } from "../remote-config";
 
 /** 后端 ForwardStatus（camelCase）。 */
 interface ForwardStatus {

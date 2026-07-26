@@ -47,7 +47,7 @@ import { turnEndNotifier } from "./turn-notify";
 import { getBehavior } from "./behavior";
 // F78：远端会话「打开工作目录」→ 用该机配置开 SFTP 面板进入远端 cwd（而非只提示打不开）。
 import { openSftpPanelDir } from "./sftp/panel";
-import { readRemoteConfig, findHostByOrigin } from "./settings/remote-section";
+import { readRemoteConfig, findHostByOrigin } from "./remote-config";
 import { activityLightClass, type GridSessionSnapshot, type SessionPeek } from "./session-status";
 import { contextPercent } from "./views/pricing";
 

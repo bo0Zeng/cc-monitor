@@ -4,16 +4,16 @@ import { describe, it, expect, vi } from "vitest";
 // F56：writeRemoteConfig/readRemoteConfig 走 config.ts；mock 掉以测 jump write→read 往返。
 vi.mock("../config", () => ({ loadConfig: vi.fn(), saveConfig: vi.fn() }));
 import { loadConfig, saveConfig } from "../config";
+import { shouldShowResetFingerprint, describeStage } from "./remote-section";
+// F12：数据层已抽到 src/remote-config.ts——数据函数/类型从那里 import。
 import {
-  shouldShowResetFingerprint,
   parseAddressLines,
-  describeStage,
   findHostByOrigin,
   writeRemoteConfig,
   readRemoteConfig,
   sftpEligibleHosts,
-} from "./remote-section";
-import type { RemoteHostConfig, RemoteConfig } from "./remote-section";
+} from "../remote-config";
+import type { RemoteHostConfig, RemoteConfig } from "../remote-config";
 
 describe("F43 shouldShowResetFingerprint", () => {
   it("已固化非空指纹 → 显示", () => {

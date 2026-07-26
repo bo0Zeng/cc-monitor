@@ -21,7 +21,7 @@ import {
 } from "../accounts";
 import { pickPrimaryOrigin } from "../account-chip";
 import { accountAvatarEl } from "../account-color";
-import { readRemoteConfig, type RemoteHostConfig } from "./remote-section";
+import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
 import { SETTINGS_APPLIED_EVENT } from "./events";
 import { buildAcctIsoCmd, validateAcctName, type AcctIsoStep } from "./acct-deploy";

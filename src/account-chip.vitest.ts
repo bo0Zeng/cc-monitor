@@ -3,11 +3,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const readRemoteConfigMock = vi.fn();
 const fetchAccountsMock = vi.fn();
-vi.mock("./settings/remote-section", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
+vi.mock("./remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
 vi.mock("./error-toast", () => ({ showActionFailureToast: vi.fn() }));
 
 import { pickPrimaryOrigin, chipLabel, AccountChip, type AccountChipDeps } from "./account-chip";
-import type { RemoteHostConfig } from "./settings/remote-section";
+import type { RemoteHostConfig } from "./remote-config";
 import type { AccountsState, Account } from "./accounts";
 import * as accountsMod from "./accounts";
 

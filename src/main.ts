@@ -32,7 +32,7 @@ import { bindErrorToast, showActionFailureToast } from "./error-toast";
 import { bindRemoteHealthToast } from "./remote-health";
 // F83（#39）：顶栏 SFTP 入口——按远端主机数 0/1/N 分支打开现有 SFTP 模态。
 import { openSftpPanel } from "./sftp/panel";
-import { readRemoteConfig, sftpEligibleHosts } from "./settings/remote-section";
+import { readRemoteConfig, sftpEligibleHosts } from "./remote-config";
 import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { getBehavior, setBehavior } from "./behavior";

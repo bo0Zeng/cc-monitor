@@ -35,7 +35,7 @@ import { buildApiErrorCard, buildApiRetryCard } from "./api-error";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 import { formatTimestampShort } from "../format";
 import { openSftpPanel } from "../sftp/panel";
-import { resolveRemoteConfigByOrigin } from "../settings/remote-section";
+import { resolveRemoteConfigByOrigin } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
 
 // === Rust 端 JsonlRecord 的 TS 镜像 ===
