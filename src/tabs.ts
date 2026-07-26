@@ -2541,7 +2541,7 @@ export class TabManager {
     // idle-tmux（灰 tab）：claude 已退、只剩空 shell，文案别再说"正在运行的 Claude"；
     // 杀掉这个残留 tmux → tab 转归档（archived）→ 即可 Resume（给灰态一个出口，治 UX 审计 #1）。
     const body = opts?.idle
-      ? "该会话里 Claude 已退出（只剩空 tmux shell）；kill 掉这个残留会话。杀掉后 tab 变归档、可 Resume。"
+      ? "该会话里 Claude 已退出（只剩空 tmux shell）；kill 掉这个残留会话。杀掉后 tab 转归档、可 Resume（若是该机唯一会话，可能要等下次重连对账才归档）。"
       : "将终止远端这个 tmux 会话里正在运行的 Claude，未保存的交互会中断。";
     // auto-e2e F-E4：可注入 confirm seam（对齐 account-restart.ts 的 `opts.confirm ?? window.confirm`）。
     // 默认（不传 opts）走 `window.confirm`，交互零变化——headless e2e/DEV 才注入 ()=>true/false。
@@ -2555,7 +2555,9 @@ export class TabManager {
         await invoke("kill_remote_tmux", { origin, target: tmuxName });
         showActionFailureToast(
           "已杀死会话",
-          `远端 [${origin}] 的 tmux 会话「${tmuxName}」已终止；tab 稍后自动变灰。`,
+          opts?.idle
+            ? `远端 [${origin}] 的 tmux 会话「${tmuxName}」已终止；tab 随后转归档、可 Resume（唯一会话时可能要等下次对账）。`
+            : `远端 [${origin}] 的 tmux 会话「${tmuxName}」已终止；tab 稍后自动变灰。`,
           { level: "info", durationMs: 6000 },
         );
       } catch (err) {

@@ -1397,6 +1397,19 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
     expect(killCalls()).toHaveLength(1);
     expect((killCalls()[0] as unknown[])[1]).toMatchObject({ origin: "hostA", target: "cc-idle1234" });
   });
+
+  // 护栏：live（非 idle）文案必须仍含"正在运行的 Claude"——防日后误改 live 文案不被测出。
+  it("killRemoteTmux 非 idle → 文案含'正在运行的 Claude'（live 路径护栏）", () => {
+    const msgs: string[] = [];
+    (tm as unknown as KillTM).killRemoteTmux("hostA", "cc-live1234", false, {
+      confirm: (m: string) => {
+        msgs.push(m);
+        return false;
+      },
+    });
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toContain("正在运行的 Claude");
+  });
 });
 
 describe("F74c(#60-B) isCwdFallbackMatch（cwd 回退串味提示判定）", () => {
