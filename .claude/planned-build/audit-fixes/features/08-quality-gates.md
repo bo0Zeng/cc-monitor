@@ -15,10 +15,11 @@
 - [x] **步骤 2（daemon 只读机器护栏）**：`remote-daemon-proto/src/readonly_guard.rs`（整体 `#[cfg(test)]`，生产构建为空）——`read_dir(CARGO_MANIFEST_DIR/src)` 遍历 `*.rs`，`strip_cfg_test`（花括号配平剥所有 cfg(test) 块，因 main.rs 测试块在文件中部）后断言生产代码不含 FS 变更（`fs::write`/`create_dir`/`remove_*`/`rename`/`copy`/`hard_link`/`soft_link`/`File::create`/`File::options`/`OpenOptions`）。stdout `write_all` 非 `fs::`、放行。跳过护栏文件自身（其模式数组含这些子串）。变异验证过（生产 fn 插 `fs::write`→红、还原→绿）。**已知局限**（记档于源）：括号配平不识别字符串内花括号，偏保守=假阳性 fail-closed。
 - [x] **验证**：src-tauri（365 测）+ remote-daemon-proto 全绿 + fmt --check 0 + daemon 非测试 build 0；两护栏各自变异验证。
 
-### F08b（下轮）——前端 lint/覆盖率
-- [ ] **步骤 3（eslint flat，warn-only 基线）**：`eslint.config.js`(flat) + typescript-eslint；`npm run lint`；CI 加步骤但 **warn-only / --max-warnings 基线**（同 clippy 不强制，**不追一次清零**）。
-- [ ] **步骤 4（stylelint）**：`styles.css` 单文件；`stylelint-config-standard`；基线化（现有告警设 baseline、不强制清零）。
-- [ ] **步骤 5（覆盖率 reporting + 温和地板）**：装 `@vitest/coverage-v8`；`npm run test:dom -- --coverage`；**不设 85% 全局**（现实：`*.test.ts` 的 tsx node 测不计入 vitest 覆盖，只计 `*.vitest.ts`），改设「当前值地板棘轮」+ 核心 DOM 模块 per-file 目标。CI 出报告。
+### F08b（本轮）——前端 lint/覆盖率
+- [x] **步骤 3（eslint flat，advisory 基线）**：`eslint.config.js`（flat + typescript-eslint recommended，非 type-checked=快）。`npm run lint`。CI `npm run lint || true` **顾问式不阻断**（同 clippy）。**配置正确性修**（非改代码）：`@typescript-eslint/no-unused-vars` 加 `^_` ignore 对齐既有「`_`-前缀有意不用」约定 → 基线 14→**7**（2 no-control-regex=终端控制符正则、4 no-empty=有意 catch、1 unused `passed`）。不追清零、不改既有代码。
+- [x] **步骤 4（stylelint）**：`.stylelintrc.json`（extends standard + 关掉噪音大非缺陷项）。`npm run lint:css`。CI `|| true` 顾问式。**57 项基线不 `--fix`**（避 styles.css 全量 churn）。
+- [x] **步骤 5（覆盖率地板棘轮）**：装 `@vitest/coverage-v8`；`npm run coverage`（=`vitest run --coverage`）。`vitest.config.ts` 设 **地板阈值**（S40/B34/F36/L41，当前值 S41.85/B36.48/F38.07/L42.98 下方 ~2-3% 余量）——**阻断但只挡明显回归**、不追高。**不设 85% 全局**（`*.test.ts` tsx node 测不计入 vitest 覆盖）。CI 加 blocking 步骤。`coverage/` 进 .gitignore。
+- **验证**：tsc 0 / npm test 595 / build 0 / coverage floor 通过 / lint 7(advisory) / css 57(advisory)。
 
 ## 不做什么（防蔓延）
 - **prettier 不做（或仅 advisory）**：全量重排会对既有刻意风格造成巨大 churn，违「不追一次清零」；风格靠 review 保持。若加也只 `--check` 不写。
@@ -38,6 +39,13 @@
   - *架构/红线*：daemon 只加 `#[cfg(test)]` 只读测试（红线 I7 明确允许「只准加只读测试/门禁」）；TMUX_LS_FMT 只**断言**不改（红线 I8）；无 bashrc/发版/轮询。跨 crate `include_str!` 是**有意的**编译期耦合——把双写点契约显式化（daemon 源移位则 monitor 测编译失败，正是要的信号）。
 - **工程审计(E)**：两护栏落成 **cargo 测**（跑在既有 rust + daemon CI job **且** 本地），比账本原「CI 步骤断言」措辞**更优**（无 YAML 脆弱性、本地即验）。无耦合债；主计划自洽。账本 CI 行终态微调（F08a 部分以 cargo 测落地，F08b 补 lint/coverage 的 npm+CI 步骤）。
 
+## 审计结果（F08b）
+- **代码审计(D)：F08b（低风险主线程自审——纯工具/配置、无生产代码改动，仅 eslint 配置对齐既有 `_`-约定）**：
+  - *正确性*：coverage 地板确定性 + 余量（不误红）；eslint 非 type-checked（快、不因文件不在 tsconfig 报错）；`_`-ignore 是配置正确性非追清零。
+  - *计划符合度*：步骤 3-5 全做；prettier 不做（如计划）；不设 85% 全局改地板；lint advisory。
+  - *架构/红线*：eslint ignores src-tauri + remote-daemon-proto（daemon 零改）；无 TMUX_LS_FMT/bashrc/cc-sid8/发版/轮询/孤儿改动；配置注释无 emoji。
+- **工程审计(E)**：F08b 落成账本 CI/package.json 共享面**终态**（lint+coverage + F08a 的双护栏 cargo 测）。无耦合债；F09 测试补齐可自然抬高覆盖、届时收紧地板。主计划自洽。
+
 ## 签收
 - [x] **F08a（两护栏）过 D+E+F**（低风险主线程自审 + 双变异验证）：TMUX_LS_FMT 双写点断言（锚定 const 行）+ daemon 只读护栏（strip cfg(test) + FS 变更模式）。src-tauri 365 / daemon 全绿 / fmt 0 / build 0。红线 I7/I8 机器化守护到位。
-- [ ] F08b（前端 lint/coverage）过 D+E+F
+- [x] **F08b（前端 lint/coverage）过 D+E+F**（低风险主线程自审）：eslint(flat,advisory,基线7) + stylelint(advisory,基线57) + @vitest/coverage-v8(地板棘轮 S40/B34/F36/L41)。npm 脚本 lint/lint:css/coverage + CI 步骤(eslint/stylelint `|| true` 顾问、coverage 阻断)。tsc 0 / npm test 595 / build 0 / coverage floor ✓。prettier 不做（避 churn）。

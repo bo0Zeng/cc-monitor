@@ -3,10 +3,11 @@
 > 工作区 `audit-fixes`。分支 `account-ux`。跨轮靠此文件，不靠记忆。主计划见 MASTERPLAN.md（rev 11）。
 
 ## 当前
-- **阶段**：**F08a 红线机器护栏完成**（B→C→D→E→F 全过，低风险自审+双变异验证）→ 下一步 **F08b 前端 lint/coverage**
-  - F08a：`TMUX_LS_FMT` 双写点断言（src-tauri tmux.rs，`include_str!` daemon 源锚定 const 行、双向）+ **daemon 只读机器护栏**（remote-daemon-proto/readonly_guard.rs，strip cfg(test) 后断言生产无 FS 变更）。**两护栏=cargo 测**（跑既有 rust/daemon CI job 且本地，无 YAML 脆弱）。红线 I7/I8 机器化守护。src-tauri 365 / daemon 全绿 / fmt 0 / build 0。features/08.md 有全计划。
-  - **F08b（下轮）**：eslint(flat) + stylelint + @vitest/coverage-v8——全 **warn-only/基线棘轮、不追一次清零**；**prettier 不做**（避全量 churn，风格已一致）；覆盖率不设 85% 全局（tsx `*.test.ts` 不计入 vitest 覆盖）改「当前值地板」。见 features/08.md F08b 步骤 3-5。
-- **F03.2（灰灯）**：全流程闭环完成（提交 0451065→0b01462）。F06 无 aya-代码（机制已修+已测，残留真机）。
+- **阶段**：**F08 质量门禁全完成**（F08a 红线护栏 + F08b 前端 lint/coverage，均 B→F 过）→ 下一步 **F09 测试补齐**
+  - F08a（027ae89）：TMUX_LS_FMT 双写点断言 + daemon 只读护栏（两 cargo 测，机器化守护 I7/I8）。
+  - F08b（本轮）：eslint@9(flat)+tseslint + stylelint@17 + @vitest/coverage-v8@4。eslint/stylelint **顾问式**（CI `|| true`，基线 lint7/css57，不追清零/不 --fix）；**覆盖率地板棘轮**（vitest.config.ts thresholds S40/B34/F36/L41，阻断但只挡明显回归）；**prettier 不做**。npm 脚本 lint/lint:css/coverage + ci.yml frontend 三步；coverage/ 进 .gitignore。tsc0/npm595/build✓/coverage floor✓。
+  - **F09（下轮）**：测试补齐——main.ts 盲区可测纯函数 + vendor code-picture-core 进 cargo test + e2e 冒烟进 CI（账本 I8/G3）。补测可自然抬高覆盖、届时收紧 F08b 地板。
+- **F03.2（灰灯）**：全链闭环（0451065→0b01462）。F06 无 aya-代码。
   - 提交链：a-core(0934e7d)→a-wire(0451065)→b 前端(d00703c)→**D 审计修(a487d2c)**；文档 F 回看（INVARIANTS §24bis + MASTERPLAN rev12 + features/03 签收）待本轮 commit。
   - **D 审计（3 并行 agent）零阻塞**：§24 单写者/全红线/机制符合度确认。修了：① ever_bound×idle 卡灰竞态（reconcile_step 加 pre_bound 播种）② 远端复活不清灰（ensureTab 主清灰）③ emitter 分流零测（classify_removed 纯枚举）④ grid 灰点 DOM 无测。4 处均变异验证。
   - **残留记档**（非阻塞、真机/后续）：TOCTOU 短命会话误归档=非回归、session-activity 误清极窄竞态=自愈、带外杀端到端变灰+RETIRE_MISS_THRESHOLD 标定=真机。
@@ -23,7 +24,7 @@
 ## 已完成（commit）
 - F01 账号安全(75594ff/3221f26) · F02 kill 白名单(e389410) · F03.1 idle 复用(537077b) · F03.3 attach-idle(5fd77b8) · F03.4a 甲′(85f1a0d) · F04(5494293) · F05(14dff16) · F07(8aac094)。
 - **F03.2 灰灯 idle-tmux 三态（全链过 D+E+F）**：a-core(0934e7d)+a-wire(0451065)+b(d00703c)+D审计修(a487d2c)。甲-evented 零轮询、command-agnostic、REMOTE_IDLE 正交单写、pre_bound 消卡灰、ensureTab 主清灰、classify_removed 纯枚举、grid 同源灰点；INVARIANTS §24bis。
-- **F08a 红线机器护栏**：TMUX_LS_FMT 双写点断言 + daemon 只读护栏（两 cargo 测，机器化守护 I7/I8）。
+- **F08 质量门禁**：F08a 红线护栏（TMUX_LS_FMT 双写点断言 + daemon 只读护栏，cargo 测，027ae89）+ F08b 前端 eslint/stylelint(advisory)+coverage 地板。
 - **已关 issue**：#71 #42 #67 #46。剩余 open bug=[41,43,60,63,72,74,75,76] 全在计划。
 
 ## 已定决策（勿再问）

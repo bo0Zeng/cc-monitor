@@ -67,11 +67,26 @@ jobs:
 
       - run: npx tsc --noEmit
 
+      # F08b：ESLint（flat config + typescript-eslint）。**顾问式/不阻断**——同 Rust job 的
+      # clippy 仅报告不强制：既有告警作基线（7 项，见 features/08）、不追一次清零。`|| true`
+      # 让告警可见但不红 CI；新代码作者本地 `npm run lint` 自查。
+      - name: eslint (advisory, baseline)
+        run: npm run lint || true
+
+      # F08b：Stylelint（styles.css 单文件）。同上顾问式（57 项基线，不 --fix 避免全量 churn）。
+      - name: stylelint (advisory, baseline)
+        run: npm run lint:css || true
+
       # 全部前端单测：① 纯函数 node 测试（branching 主线折叠 #8/#22/#25/#26、diff 渲染 #14、
       # API 报错卡 #21、remote-health 节流、remote-launch 命令构造）；② tabs 生命周期 DOM 测试
       # （vitest+jsdom，守护 resume 复活 / 归档-only 关闭 / origin 门控等本轮 bug 高发区）。
       - name: unit tests (node pure-fn + vitest DOM)
         run: npm test
+
+      # F08b：覆盖率**地板棘轮（阻断）**——阈值设在当前值下方（见 vitest.config.ts），只挡明显
+      # 回归（新增大块无测代码），不追高。确定性套件 + 余量，正常不会误红。
+      - name: coverage floor (vitest jsdom)
+        run: npm run coverage
 
       # vite build 验证产物可生成（不打包 exe，那个 5+ 分钟太慢；
       # 完整 tauri build 留给 tag 触发的 release 工作流）
