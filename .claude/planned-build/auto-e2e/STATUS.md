@@ -44,6 +44,7 @@
     - **主计划终账**：MASTERPLAN 功能清单全交付、共享面（fixture/session-1 hop/confirm seam）到最终形态、无半成品/TODO。
     - **待用户**：两阻塞 UX 发现（#1 灰态死角/#2 孤儿误列活会话，功能 bug、超测试授权，不自动修）+ 发版（bump/push 未动，红线）+ F-E1 边界补 optional + F-E5 E5b。
   - **loop 状态：Phase G 完 → 终止，停回用户。**
+  - **★后续：砍掉「清理孤儿会话」功能（用户 2026-07-26 定，commit bdfb8ef）**——用途（清 #76 的 `-N` 堆）随 #76 修复过时 + 带 UX 审计 #2 footgun → 直接删。删 `cleanupOrphanTmux`/`findOrphanTmux`/`isCcmTmuxName`（仅服务孤儿）+ 账号菜单「清理孤儿会话…」入口 + main.ts wiring + F-E4 orphan e2e（orphan-suite/cmd-driver/shims/gen-live-claude）+ F05/orphan 单测。**保留**：单会话右键「杀死会话」`killRemoteTmux`（含 confirm seam）、账号 chip/切号/对齐/管理/刷新、灰灯、attach、`findClaudeTmux`/`findIdleTmux`。**验证**：tsc 0 / vitest 592（602−10 orphan 测）/ 无悬空引用 / daemon 零改。**UX 审计 #2 就此解决**（不再有误列活会话的入口）。features/remove-orphan-cleanup.md 签收；待第三方 D 审。
   - **UX 审计已回**（报告 `ux-audit-2026-07-26.md`）：12 findings（2 阻塞 / 4 重要 / 6 建议）+ 6 良性设计。主线程复核 **#1 确认真**（gray/idle-tmux Tab 死角：关不掉[closeTab tabs.ts:1673 非 archived return] + 无 resume 项[gated archived tabs.ts:2881] + 账号菜单给必失败的重启）；#2（孤儿判据不看 command → 误列活 claude 会话待复核）。**这些是功能/UX 缺陷，超"补测试"授权 → 交用户定夺修不修**；e2e 边界测试可把其固化成回归断言。
   - **授权升级（用户 2026-07-26）**：主计划**免审批**、接下来测试**全权自动**，我全权负责。
   - **本会话 loop 调度（cron，session-only）**：10:11 续做（8c5ea80d）· 11:21 暂停+报告（0a22e6d7）· 12:11 起此后一直全自动（c1cbcf14）。**规则**：在途 agent（F-E2/UX 审计）完成**随时处理**（独立复核+ff 并入+签收+报 findings，不受 loop 限）；**新功能委托按调度**（10:11 起）。撞硬阻塞才停。发版判断：代码门禁现测全绿(tsc0/vitest595/src-tauri365/daemon125/prod build✓/埋点不漏)，但 #74/#41 从没在真 Windows 验过——F-Vwin 正是补这一环，验过才好 bump（红线仍：不 push/发版/bump 由用户拍）。
