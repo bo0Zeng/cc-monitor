@@ -200,9 +200,15 @@ window.addEventListener("DOMContentLoaded", async () => {
   // A3：账号徽章数据管道——定期对每台远端拉 session-accounts（哪条会话属于哪个号）+ 账号邮箱，
   // 聚合喂 tabs（tabs 已在上方构造）。走 accounts store 的 8s TTL 缓存 + available:false 降级，
   // 未迁移 / 旧 daemon / daemonless 零副作用。
+  // audit-fixes I4：refreshSessionAccounts 无重入/顺序保护 → 慢的旧快照可覆盖新快照（把切号后刚
+  // 关上的"反向窗口"从并发侧重开）。加 in-flight 递增序号门：每次进入 ++refreshSeq 取本地 mySeq，
+  // 写 setSessionAccounts 前若 refreshSeq 已被更晚一次进入推大（mySeq !== refreshSeq）→ 丢弃本次。
+  let refreshSeq = 0;
   const refreshSessionAccounts = async (): Promise<void> => {
+    const mySeq = ++refreshSeq;
     try {
       const cfg = await readRemoteConfig();
+      if (mySeq !== refreshSeq) return; // 有更晚的刷新已开始 → 本次作废，别覆盖它
       if (!cfg.enabled) {
         tabs.setSessionAccounts([], new Map());
         accountChip.updateMismatchBadge(tabs.countAccountMismatches());
@@ -238,6 +244,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       } catch (e) {
         console.warn("list_last_accounts failed:", e);
       }
+      if (mySeq !== refreshSeq) return; // I4：晚到的旧快照不覆盖新快照
       tabs.setSessionAccounts(rows, emailByName, lastByS, readyOrigins, currentByOrigin);
       // account-ux U6：徽章刷完立刻把 ⚠k 计数**推**给 chip（同一拍数据，二者不会打架）。
       accountChip.updateMismatchBadge(tabs.countAccountMismatches());

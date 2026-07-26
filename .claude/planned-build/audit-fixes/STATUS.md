@@ -3,12 +3,11 @@
 > 工作区 `audit-fixes`。分支 `account-ux`。跨轮靠此文件，不靠记忆。主计划见 MASTERPLAN.md（rev 11）。
 
 ## 当前
-- **阶段**：C 实现推进（F05 完成 + commit）→ 下一个 **F07**
-- **下一个功能**：**F07 刷新竞态(I4) + 多远端缓存(I5) + resumeTab onUnselectable**
-  - I4：`main.ts refreshSessionAccounts` 无重入门 → 加 in-flight 递增序号门（晚快照不覆盖新的）。
-  - I5：切默认账号只 `invalidateAccountsCache(this.origin)` → 失效**全 origin** 缓存（account-chip/accounts-section）。
-  - onUnselectable：`resumeTab` 显式选号缺 `onUnselectable` → 补 toast（对齐 history.ts）。
-- **之后**：**F03.2 + F06 合并**（灰灯事件驱动 + #60/#43，最高风险）→ F08→F09→F10→F11→F12→F13 → Phase G。
+- **阶段**：C 实现推进（F07 完成 + commit）→ 下一个 **F03.2 + F06**（灰灯事件驱动 + #60，最高风险）
+- **下一个功能**：**F03.2 灰灯（甲-evented 事件驱动）+ F06（#60/#43 真机验证 + #43 父子拉不起来残留）合并** —— 最高风险，带全视角 D 审计
+  - F03.2 灰灯 = 甲-evented：收 daemon TmuxSessions 帧即算 idle/live/archived、删 8s 定时器、零轮询。Phase B 先开设计 agent 论证 emitter/§24 协调，实现后全视角并行 D 审计。**机制已定=甲-evented，别停下问；只在撞真状态机冲突/计划≠现实时停。**
+  - F06：#43「父子拉不起来」残留（代码，若可复现）；#60/#43/#63-attach 的 F74* 真机验证项归纳（用户侧）。
+- **之后**：F08→F09→F10→F11→F12→F13 → Phase G。
 
 ## 已完成（commit）
 - F01 账号安全(75594ff/3221f26) · F02 kill 白名单(e389410) · F03.1 idle 复用(537077b) · F03.3 attach-idle(5fd77b8) · F03.4a 甲′(85f1a0d) · F04(5494293) · F05(14dff16)。

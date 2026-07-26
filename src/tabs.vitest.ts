@@ -778,7 +778,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     expect(invoke).not.toHaveBeenCalledWith("resume_history_session", expect.anything());
   });
 
-  it("A4：resumeTab 带账号名但账号库不可用 → withAccount 退化默认 resume（不注入、不记账）", async () => {
+  it("A4/F07：resumeTab 带账号名但账号库不可用 → 退化默认 + **onUnselectable toast（不静默吞）**", async () => {
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
     tm.archiveTab("r1");
     // tabs.vitest 的 invoke 默认返 undefined → fetchAccounts 视作不可用 → withAccount 退化默认。
@@ -788,6 +788,12 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     ).resumeTab("r1", "z");
     expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined);
     expect(invoke).not.toHaveBeenCalledWith("update_history_metadata", expect.anything());
+    // F07：显式选号解析不到 → 提示，别静默落基座（对齐 history.ts）。变异锚点：删 onUnselectable 回调 → 此测红。
+    expect(showActionFailureToast).toHaveBeenCalledWith(
+      "账号不可用",
+      expect.stringContaining("账号「z」当前不可选"),
+      expect.anything(),
+    );
   });
 
   it("本地归档 tab → 仍走 resume_history_session，不碰远端 runner", async () => {
