@@ -54,8 +54,6 @@ export interface AccountChipDeps {
   /** account-ux U6：切完当前工作账号后回调——让 main.ts 立刻重算会话账号/⚠k，
    *  否则会有最长 10s 的反向窗口（chip 已显新账号，对齐却把会话打回旧账号）。 */
   onDefaultChanged?: () => void;
-  /** audit-fixes F05：手动清理该 origin 上的真孤儿 tmux 会话（TabManager 提供，含二次确认）。 */
-  cleanupOrphans?: (origin: string) => void | Promise<void>;
 }
 
 export class AccountChip {
@@ -195,13 +193,6 @@ export class AccountChip {
       sep.className = "account-picker-sep";
       menu.appendChild(sep);
       menu.appendChild(this.menuAction("管理账号…", () => this.deps.openSettings()));
-      // audit-fixes F05：手动清理该远端的真孤儿 tmux 会话（tab 已关、会话残留的 cc-*）。
-      if (this.deps.cleanupOrphans && this.origin) {
-        const origin = this.origin;
-        menu.appendChild(
-          this.menuAction("清理孤儿会话…", () => void this.deps.cleanupOrphans?.(origin)),
-        );
-      }
       menu.appendChild(
         this.menuAction("刷新", () => {
           invalidateAccountsCache(this.origin ?? undefined);

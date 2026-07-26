@@ -193,7 +193,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 切号后立刻重算一次：currentByOrigin 只由下面这条 10s 轮询喂，不主动刷的话会有最长 10s 的
     // 反向窗口——chip 已显示新账号，而对齐动作会把会话打回**刚被切走**的旧账号（D 审计重-5）。
     onDefaultChanged: () => void refreshSessionAccounts(),
-    cleanupOrphans: (origin) => void tabs.cleanupOrphanTmux(origin), // F05
   });
   status.appendChild(accountChip.element);
   void accountChip.refresh();

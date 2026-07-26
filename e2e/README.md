@@ -103,12 +103,6 @@ fixtures / 驱动:
 - `restart-cmd-driver.ts` + `restart-shims/`(ESM loader 只重定向 Tauri IPC 边界到真 tmux+fake-claude,其余全真源;含 kill/resume 失败注入)。
 - 跑:`bash e2e/restart-suite.sh`(命令级 24/0) + `bash e2e/restart-daemon-frames.sh`(5/0:旧号 `SessionRemoved`→新号 `SessionAdded` 迁移、无孤儿)。批量对齐 idle/busy 另由 `tabs.vitest.ts`「account-ux U6」覆盖。
 
-## auto-e2e:孤儿 tmux 清理(F-E4,F05)
-
-命令级 + 真 tmux 验孤儿清理 + **可注入 confirm seam**(行为等价:`opts?.confirm ?? window.confirm`,默认不传即走原 `window.confirm`;仅测试注入)。
-- 跑:`bash e2e/orphan-suite.sh`(15/0:无 tab 的 `cc-*` 真删 / 非 `cc-*`、`*_cc`、有 tab 的活会话**不误伤** / confirm 接受删·拒绝 no-op / 计数)。`orphan-cmd-driver.ts` + `orphan-shims/` 驱真 `findOrphanTmux`/`cleanupOrphanTmux`。
-- **UX 审计 #2 固化(B6)**:无 tab 的**活 claude** `cc-*` 当前**会**被 `findOrphanTmux` 误列孤儿(判据不看 command)——套件钉住此现状(修不修待用户定,不在测试轮内改判据)。
-
 ## auto-e2e:Tier2 Windows DOM 冒烟(F-E5)
 
 真 WebView2 DOM 冒烟(WebDriver + session-1 hop),独立文档见 `e2e/tier2/README.md`。E5a 裸壳 6/6(壳元素/状态文案/6 顶栏钮可点/H·G·Ctrl+K overlay 开+Escape 关);E5b 会话相关未做、路径已记档。
