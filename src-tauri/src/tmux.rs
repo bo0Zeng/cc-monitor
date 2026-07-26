@@ -366,4 +366,23 @@ mod tests {
         assert!(TMUX_LS_FMT.contains('\t'), "格式串须含真 TAB");
         assert!(!TMUX_LS_FMT.contains("\\t"), "格式串不得含字面反斜杠-t");
     }
+
+    #[test]
+    fn tmux_ls_fmt_double_write_point_stays_in_sync() {
+        // F08a：TMUX_LS_FMT 双写点断言（红线 I8 的机器化护栏）。monitor(本 const) 与 daemon
+        // (`remote-daemon-proto/src/watcher.rs`) 分属两个独立 crate、不能共享 const，但两侧
+        // `tmux ls -F` 格式串**必须逐字一致**（否则 daemon 推的列 monitor 解错位）。编译期
+        // include_str! 读 daemon 源，把本 const 的真 TAB 折回源码里的 `\t` 转义再断言 daemon 源
+        // 含该带引号字面量——**双向**：改 monitor 或 daemon 任一侧忘同步，本测即红。
+        let daemon_src = include_str!("../../remote-daemon-proto/src/watcher.rs");
+        let source_literal = TMUX_LS_FMT.replace('\t', "\\t");
+        // 锚定到 const 定义行（非裸字面量）——否则该字面量若也出现在某条注释里，会掩盖真 const 漂移
+        // （假阴性）。daemon 侧常量名同为 TMUX_LS_FMT（红线 I8 不许改），故按定义行精确比对。
+        let expected_def = format!("const TMUX_LS_FMT: &str = \"{source_literal}\";");
+        assert!(
+            daemon_src.contains(&expected_def),
+            "TMUX_LS_FMT 双写点漂移：daemon watcher.rs 不含与 monitor 侧一致的定义 {expected_def:?}\n\
+             （改了 tmux ls 格式串就得两侧同步——红线 I8）"
+        );
+    }
 }
