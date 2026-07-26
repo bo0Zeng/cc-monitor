@@ -113,6 +113,7 @@ src-tauri/src/
 │              usage.rs      F88a 用量聚合（按会话/模型/天分桶，每 requestId 逐字段 MAX 后累加 token；只算不写）
 │              mcp.rs        F87 MCP 管理（跨 scope 宽容读 / 只写项目 .mcp.json，SS-14 读写分界）
 │              panorama.rs   Batch15 code-picture 代码全景后端（per-repo Engine 池，只读查询）
+│              accounts.rs   A2 多账号只读查询（list_remote_accounts / list_remote_session_accounts / check_account_trust；账号=一个 CLAUDE_CONFIG_DIR，纯只读经 daemon，#68/#69）
 ├── 集成层      bind.rs       cc 集成绑定核心（ps-await/registry/SidHwndCache）
 │              profile_installer.rs  PowerShell profile 块插入/卸载
 │              auto_launch.rs  auto-launch monitor 开关
@@ -172,6 +173,11 @@ src/
 │              session-backend.ts  F90/SS-12「哪个多路复用器」座（tmux 命令语法收敛；阶段①唯一后端 tmux）
 ├── 全景        views/panorama.ts  Batch15 代码全景视图（纯 canvas，子系统聚类气泡 + 脊柱圆 + 入口描环）
 │              panorama/     全景前端纯逻辑：api(invoke 封装)/layout(坐标·命中·打包)/types/session-files(抽本轮改动文件喂高亮)
+├── 账号        account-chip.ts  A3 账号徽章 + 切号菜单（chip + mismatch/align 状态判定）
+│              account-commands.ts  A4 按会话选账号起 / Resume（withAccount：账号解析 + lastAccount 记账）
+│              account-restart.ts  A5 换号**破坏性**重启编排（[compact]→kill→resume 同 sid，失败语义严格照 DESIGN §5.2：compact 失败不阻断 / kill 失败必中止）
+│              account-color.ts  账号色板（名→稳定色 slot，CVD-safe）
+│              settings/acct-deploy.ts  A6 app 内账号部署向导（分步跑 cc-acct-iso 隔离/同步管线）
 ├── 快捷键      keybindings/  issue #5 dispatcher(registry)+Action 清单(actions)+编辑器(editor)+持久化(store)
 └── 样式        styles.css    全部样式 + token 系统
 ```
@@ -268,6 +274,15 @@ F40b 上翻补批：active tab 滚到顶部 800px 内自动从 `TailWindow` 弹 
 
 ### 独立设置窗口（F82a #56+#47）
 `open_settings_window`（async，单例 `settings` 窗）建 `index.html?settings=1`；`main.ts` 检测参数走 `bootstrapSettings`——`body.settings-window-mode` 隐藏 `#app` 整块、`SettingsPanel({windowMode:true})` 铺满整窗，并自调 `dispatcher.applyOverrides+start`（窗内快捷键编辑器/overlay Esc 需要）。设置项经既有 config 命令读写（窗口无关，无 replay/事件流）。**跨窗同步**：设置窗保存主题 / 行为 toggle / resetAll、以及键位编辑器 persist 后 `emit('settings-applied')`（广播）；主窗口 `listen` 后重读并 `loadTheme`+`applyBehavior`+`applyOverrides`（跨 OS 窗口回调够不到）。cancel 不 emit → 天然 cancel-safe。触发器/`app.open-settings` 快捷键改 `invoke("open_settings_window")`。capability 的 `windows` 含 `settings` 且 `permissions` 含 `core:window:allow-close`。**窗体渲染本环境无 GUI 不可自测 → 真机验证累积。**
+
+### 账号子系统：隔离又同步（A2–A6 / #68/#69）
+**模型**：一个「账号」= 一个 `CLAUDE_CONFIG_DIR`（各自 `.credentials.json`，两号可同时跑、不互踢），而 skills/memory/history/settings/plugins 经 symlink 共享到同一库——**凭据隔离、其余同步**。隔离/同步管线是远端脚本 `cc-acct-iso`（app 内向导 `settings/acct-deploy.ts` 分步驱动）。
+
+**只读边界**：cc-monitor 侧对账号只**读**——后端 `accounts.rs` 三命令（`list_remote_accounts` / `list_remote_session_accounts` / `check_account_trust`，全 `async(origin: String)`、**无 State**）经 daemon 纯只读查（名/邮箱/是否登录 / 某会话属哪个账号 / 目录是否可信）。动凭据（登录/同步/`--apply`）一律走**真实终端窗口**，不由 monitor 直接改。
+
+**前端族**（`src/account-*.ts` + `settings/acct-deploy.ts`）：`account-chip.ts` 徽章 + 切号菜单（mismatch/align 状态）；`account-commands.ts`(A4) 「按会话选账号起/Resume」的 `withAccount`（账号解析 + `lastAccount` 记账）；`account-restart.ts`(A5) 「换号对齐当前会话」的**破坏性**重启编排。
+
+**A4 `withAccount` 与 A5 restart 为何分离**（架构审计裁定，防重新纠结）：语义天然不兼容——① 不可选账号时 withAccount **降级默认起**、restart **中止**（破坏性重启绝不退化用默认号）；② withAccount run 后**无条件**记 lastAccount、restart **仅 kill+resume 全成后**才记。硬合需给 withAccount 加三个开关、复杂度净增。二者已共用 `accounts.ts` 同一批原语（`fetchAccounts`/`accountConfigDir`/`recordLastAccount`），无逻辑漂移。**失败语义**严格照 DESIGN §5.2：换号重启先请求优雅退出（`Escape` 打断当前轮 → `/exit` → 有界等待 → 兜底 kill）；compact 失败/超时**不阻断**、kill 失败**必须中止**（绝不续 resume，否则新旧两进程抢同一会话）。
 
 ### session 探活双重校验（PID + procStart，procStart 可缺）
 `OpenProcess(QUERY_LIMITED) + GetExitCodeProcess == STILL_ACTIVE` + 当 sessions/<PID>.json 含 `procStart` 字段时再加 `GetProcessTimes` creation FILETIME 100ms 容差比对。

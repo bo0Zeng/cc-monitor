@@ -108,6 +108,7 @@ src-tauri/
 | `read_remote_project_mcp` (F89a) | `{ origin, projectDir }` | `McpServerEntry[]` | 只读远端某项目 `.mcp.json`（SFTP） |
 | `list_remote_mcp_origins / list_remote_mcp_project_dirs` (F87b/F89a) | `{}` / `{ origin }` | `String[]` | 远端机器选择器 / 远端项目 datalist 候选 |
 | `write_remote_mcp_server / remove_remote_mcp_server` (F89a) | `{ origin, projectDir, name, server? }` | `()` | 增/改/删**远端项目** `.mcp.json`（SFTP 原子 RMW，`is_safe_remote_mcp_json` 守卫，SS-14/SS-G） |
+| `list_remote_accounts / list_remote_session_accounts / check_account_trust` (A2 #68/#69) | `{ origin }` / `{ origin }` / `{ origin, dir }` | `AccountsResult / SessionAccountsResult / bool` | 多账号**只读**查询（各账号名/邮箱/登录态 · 某会话属哪个账号 · 目录是否可信）——账号=一个 `CLAUDE_CONFIG_DIR`，经 daemon 纯只读（`accounts.rs`，全 stateless） |
 | `load_subagent` | `{ parentJsonlPath, description, toolUseTimestamp }` | `SubagentLoadResult` | 用户展开 Task 折叠卡 |
 | `forget_session` | `{ sessionId }` | `()` | 用户关闭 archived Tab |
 | `open_session_in_new_window` (issue #10) | `{ sessionId, title }` | `()` | Tab 右键「在新窗口打开」/ Ctrl+Shift+N，建 `viewer-<sid>` 独立只读窗口 |
