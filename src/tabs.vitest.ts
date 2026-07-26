@@ -120,8 +120,6 @@ import {
   TabManager,
   findClaudeTmux,
   findIdleTmux,
-  findOrphanTmux,
-  isCcmTmuxName,
   isCwdFallbackMatch,
   claudeExited,
   type Tab,
@@ -1332,50 +1330,10 @@ describe("audit-fixes F03 findIdleTmux（sid 命中但 command≠claude 的空 t
   });
 });
 
-// audit-fixes F05：真孤儿 = cc-*(过 isCcmTmuxName)、带 @ccm_sid、且 sid 无对应活 tab。保守：只认
-// 带 @ccm_sid 的（绝不误杀有 tab 的会话或非本工具会话）；<project>_cc 天然排除。
-describe("audit-fixes F05 findOrphanTmux / isCcmTmuxName（清理真孤儿判据）", () => {
-  const S = (name: string, command: string, sid: string | null) => ({
-    name,
-    path: "/p",
-    command,
-    attached: false,
-    windows: 1,
-    sid,
-  });
-  it("isCcmTmuxName：cc- 前缀 + [A-Za-z0-9_-]；拒 <project>_cc / 空格 / 纯 cc-", () => {
-    expect(isCcmTmuxName("cc-abc12345")).toBe(true);
-    expect(isCcmTmuxName("cc-abc12345-2")).toBe(true);
-    expect(isCcmTmuxName("cc-")).toBe(false); // 只前缀
-    expect(isCcmTmuxName("claudecode-frontend_cc")).toBe(false); // cc-bus 资产
-    expect(isCcmTmuxName("web")).toBe(false);
-    expect(isCcmTmuxName("cc-a b")).toBe(false); // 空格
-  });
-  it("cc-* + @ccm_sid + sid 无对应活 tab → 孤儿", () => {
-    const list = [S("cc-dead1234", "bash", "dead1234-full")];
-    expect(findOrphanTmux(list, new Set(["other-sid"])).map((s) => s.name)).toEqual(["cc-dead1234"]);
-  });
-  it("cc-* + @ccm_sid 但 sid **有**活 tab → 不算孤儿（idle-tmux 也不误杀）", () => {
-    const list = [S("cc-live1234", "bash", "live1234-full")];
-    expect(findOrphanTmux(list, new Set(["live1234-full"]))).toEqual([]);
-  });
-  it("cc-* 但**无 @ccm_sid** → 不算孤儿（保守，身份不确凿不误杀）", () => {
-    expect(findOrphanTmux([S("cc-noid1234", "bash", null)], new Set())).toEqual([]);
-  });
-  it("<project>_cc（cc-bus，无 cc- 前缀）→ 不算孤儿（天然排除）", () => {
-    expect(findOrphanTmux([S("claudecode-frontend_cc", "claude", "x")], new Set())).toEqual([]);
-  });
-  it("null / 空列表 → []", () => {
-    expect(findOrphanTmux(null, new Set())).toEqual([]);
-    expect(findOrphanTmux([], new Set())).toEqual([]);
-  });
-});
-
-// auto-e2e F-E4：可注入 confirm seam（cleanupOrphanTmux / killRemoteTmux）——**行为等价**验证。
-// 默认（不传 opts）**必须**仍调 window.confirm、消息串不变（默认交互零变化，这是 seam 非行为改动）；
-// 注入 confirm 才旁路（headless e2e / DEV）。DOM(jsdom) 层是这两个 TabManager 方法的诚实天花板
-// （真 tmux kill 效果在 e2e/orphan-suite.sh 命令级验；GUI 触发菜单在 Linux 不可达）。
-describe("auto-e2e F-E4 可注入 confirm seam（cleanupOrphanTmux / killRemoteTmux 行为等价）", () => {
+// auto-e2e F-E4：可注入 confirm seam（killRemoteTmux）——**行为等价**验证。默认（不传 opts）**必须**
+// 仍调 window.confirm、消息串不变（默认交互零变化，这是 seam 非行为改动）；注入 confirm 才旁路
+// （headless e2e / DEV）。DOM(jsdom) 层是该 TabManager 方法的诚实天花板。
+describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）", () => {
   let tm: TabManager;
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1385,57 +1343,8 @@ describe("auto-e2e F-E4 可注入 confirm seam（cleanupOrphanTmux / killRemoteT
     await Promise.resolve();
     await Promise.resolve();
   };
-  // 孤儿：cc-* + @ccm_sid + sid 无对应活 tab（fresh tm 的 tabs 为空 → 恒孤儿）。
-  const orphanList = [
-    { name: "cc-orph1234", path: "/p", command: "sleep", attached: false, windows: 1, sid: "orph1234-full" },
-  ];
-  const mockList = (list: unknown[]): void => {
-    vi.mocked(invoke).mockImplementation((cmd: string) =>
-      cmd === "list_remote_tmux" ? Promise.resolve(list) : Promise.resolve(undefined),
-    );
-  };
   const killCalls = (): unknown[] =>
     vi.mocked(invoke).mock.calls.filter((c) => c[0] === "kill_remote_tmux");
-
-  it("cleanupOrphanTmux 默认（不传 opts）→ 仍调 window.confirm，消息含孤儿名（默认交互零变化）", async () => {
-    mockList(orphanList);
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
-    await tm.cleanupOrphanTmux("hostA");
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(String(confirmSpy.mock.calls[0]?.[0] ?? "")).toContain("cc-orph1234");
-    expect(killCalls()).toHaveLength(0); // 默认 spy 返 false → 拒绝 → 不 kill
-    confirmSpy.mockRestore();
-  });
-
-  it("cleanupOrphanTmux 注入 confirm=()=>true → 不碰 window.confirm、逐个 kill 孤儿", async () => {
-    mockList(orphanList);
-    const confirmSpy = vi.spyOn(window, "confirm");
-    await tm.cleanupOrphanTmux("hostA", { confirm: () => true });
-    expect(confirmSpy).not.toHaveBeenCalled(); // seam 旁路默认交互
-    expect(killCalls()).toHaveLength(1);
-    expect((killCalls()[0] as unknown[])[1]).toMatchObject({ origin: "hostA", target: "cc-orph1234" });
-    confirmSpy.mockRestore();
-  });
-
-  it("cleanupOrphanTmux 注入 confirm=()=>false → no-op，不 kill（拒绝）", async () => {
-    mockList(orphanList);
-    const confirmSpy = vi.spyOn(window, "confirm");
-    await tm.cleanupOrphanTmux("hostA", { confirm: () => false });
-    expect(confirmSpy).not.toHaveBeenCalled();
-    expect(killCalls()).toHaveLength(0);
-    confirmSpy.mockRestore();
-  });
-
-  it("cleanupOrphanTmux 零孤儿（sid 有活 tab）→ 提前 return，不问确认、不 kill", async () => {
-    tm.ensureTab("live1234-full", "/p", "p", 0, "hostA"); // 该 sid 有活 tab → 非孤儿
-    mockList([
-      { name: "cc-live1234", path: "/p", command: "claude", attached: false, windows: 1, sid: "live1234-full" },
-    ]);
-    const injected = vi.fn(() => true);
-    await tm.cleanupOrphanTmux("hostA", { confirm: injected });
-    expect(injected).not.toHaveBeenCalled(); // 无孤儿分支在 confirm 之前 return
-    expect(killCalls()).toHaveLength(0);
-  });
 
   type KillTM = {
     killRemoteTmux(
