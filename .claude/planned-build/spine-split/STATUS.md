@@ -16,7 +16,7 @@
 - **安全先行**：最安全的 cut（纯函数 verbatim move）先做；interface-extraction 高风险的先补 characterization 测再拆；entangled 的评估后可判「不拆」。
 
 ## 已知起点（audit-fixes F13 摸底结论，待 agent 复核）
-- **tabs.ts 最安全 cut**：模块级 tmux 匹配纯函数（`findClaudeTmux`/`findIdleTmux`/`isCcmTmuxName`/`findOrphanTmux`/`isCwdFallbackMatch`/`claudeExited` + `TmuxSession` 类型，~L240-345）→ `src/tmux-match.ts`。verbatim move、有测、零 `this` 耦合。
+- **tabs.ts 最安全 cut**：模块级 tmux 匹配纯函数（`findClaudeTmux`/`findIdleTmux`/`isCwdFallbackMatch`/`claudeExited` + `TmuxSession` 类型；注：`isCcmTmuxName`/`findOrphanTmux` 已随 bdfb8ef 移除）→ `src/tmux-match.ts`。verbatim move、有测、零 `this` 耦合。
 - **账号子系统**：疑 entangled（`alignableCurrent` 横跨账号态+tab 态+重启执行态，被徽章/mismatch/restart 三类共用）——待 agent 定性。
 - **ssh_source.rs**：审计早标「高危、可能延后」——待 agent 裁决。
 

@@ -1351,7 +1351,7 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
       origin: string,
       tmuxName: string,
       viaCwd: boolean,
-      opts?: { confirm?: (message: string) => boolean },
+      opts?: { confirm?: (message: string) => boolean; idle?: boolean },
     ): void;
   };
   it("killRemoteTmux 默认（不传 opts）→ 仍调 window.confirm（默认交互零变化）", () => {
@@ -1378,6 +1378,24 @@ describe("auto-e2e F-E4 可注入 confirm seam（killRemoteTmux 行为等价）"
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(killCalls()).toHaveLength(0);
     confirmSpy.mockRestore();
+  });
+
+  // UX 审计 #1：灰态(idle-tmux) tab 也能 kill——opts.idle 走"Claude 已退出"文案（非"正在运行"），照常 kill。
+  it("killRemoteTmux { idle:true } → 文案说 Claude 已退出、非'正在运行'，仍 kill 空 tmux", async () => {
+    const msgs: string[] = [];
+    (tm as unknown as KillTM).killRemoteTmux("hostA", "cc-idle1234", false, {
+      idle: true,
+      confirm: (m: string) => {
+        msgs.push(m);
+        return true;
+      },
+    });
+    await microFlush();
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toContain("Claude 已退出");
+    expect(msgs[0]).not.toContain("正在运行的 Claude");
+    expect(killCalls()).toHaveLength(1);
+    expect((killCalls()[0] as unknown[])[1]).toMatchObject({ origin: "hostA", target: "cc-idle1234" });
   });
 });
 

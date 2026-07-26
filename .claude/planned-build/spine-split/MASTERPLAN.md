@@ -23,7 +23,7 @@
 - 剩下的（tmux-match 纯函数、右键菜单、标题计算…）内聚已好，抽出=**纯导航性 reorg**，同 ssh_source 的弱收益/引入风险画像。账号子系统更是经 `alignableCurrent` 三域纠缠（早先 F13 摸底已定「别硬拆」）。→ 为「大」而拆不划算，**维持现状**。
 
 ## 3 agent 评估报告摘要（留档）
-- **tabs 可拆清单**：15 单元、3 波（安全→中→纠缠）。最安全 cut=tmux-match 纯函数（verbatim move、全测）；最纠缠=account-alignment(~550 行，`alignableCurrent`+`compactWaiters↔onLine`+`updateAccountBadge`↔tab-bar 三向结）。零测盲区：snapshotSessions/trackUsage/cleanupOrphanTmux/拖拽。
+- **tabs 可拆清单**：15 单元、3 波（安全→中→纠缠）。最安全 cut=tmux-match 纯函数（verbatim move、全测）；最纠缠=account-alignment(~550 行，`alignableCurrent`+`compactWaiters↔onLine`+`updateAccountBadge`↔tab-bar 三向结）。零测盲区：snapshotSessions/trackUsage/拖拽（注：cleanupOrphanTmux 已随 bdfb8ef 移除，不再是拆分候选）。
 - **拆后安全**：tsc strict+noUnusedLocals 兜机械错，**兜不住**运行期 DOM 接线 / 模块单例语义 / **import 环（无 no-cycle 门禁）**。account 子系统有 29 测可作金标准。
 - **ssh_source 可行性**：build 基线绿；6 个 static 是耦合骨干；stream_loop 是蛛网；§24 纯 reorg 不受威胁但**拆分手误复制 static 会静默破坏单账本**。裁决：叶子簇可拆但收益薄、core 区延后——综合权衡后**整体不拆**。
 
