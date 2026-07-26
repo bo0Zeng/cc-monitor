@@ -22,7 +22,7 @@
 | F03.1 | idle-tmux 就地复用 resume（复用原名不产孤儿）| #76 根因 | ✅ 完成 |
 | F03.3 | attach-into-idle（`findIdleTmux` + 两路 attach 菜单）| #76 | ✅ 完成 |
 | **F03.2** | **idle-tmux 灰灯（三态，事件驱动）** | #76 显示 + #60 邻域 | ⬜ **下一批（高风险）** |
-| **F03.4** | **rbind 标题 + 拉起即绑（甲′ + 丙）** | #74 #41 #72残留 | ⬜ **下一个** |
+| **F03.4** | **rbind 标题 + 拉起即绑**：甲′ ✅（远端从 @ccm_sid 派生标题，aya 验通、无轮询——**主体修 #74**）；**丙 延期 Windows 真机批次**（aya 无 Windows cross-target，cfg(windows) 核心连编译都验不了 → 不盲提交；等有 Windows 环境边写边编边验）| #74 #41 #72残留 | 🟡 甲′完成/丙延期 |
 | F04 | 统一直连管线 + keepalive（失败不闪退）+ 直连身份路由决策 | #75 直连腿 | ⬜ 待做 |
 | F05 | 手动清理真孤儿（仅 `cc-*` 无对应 tab，过 `is_ccm_tmux_name`）| #76 残留 | ⬜ 待做 |
 | F06 | #43「父子拉不起来」残留（代码）+ #60/#43/#63attach 的 F74* 真机验证 | #43 #60 #63(部分) | ⬜ 待做 |
@@ -74,7 +74,7 @@
 
 ## 6. 风险与真机/外部依赖
 - **F03.2 最高风险**：动 `SessionChange`（本地+远端共用）/emitter/§24 单写者，在 #60/#43/#63 历史 bug 高发区。事件驱动改法要处理"收帧即算"与归档的覆盖/去抖、"刚 archived 又被 idle 复活"竞态。撞状态机冲突/计划≠现实 → 停 loop。
-- **F03.4-丙 Windows 侧 aya 验不了**：`wt --title/--suppressApplicationTitle/-w new` + HWND 绑定行为需**用户 Windows 真机验证**再关 #74/#41。甲′ 的 tmux 侧 aya 已验。
+- **F03.4-丙 延期 Windows 真机批次**：aya 无 Windows cross-target（只 `x86_64-unknown-linux-gnu`）→ 丙 的 cfg(windows) 核心（wt `--title/--suppressApplicationTitle/-w new` + spawn + 前向登记）**连编译都验不了**，不在 loop 里盲提交；等有 Windows 环境边写边编边验。甲′ 已把 **#74 主体修好**（cc-monitor resume 会话现有可靠标题）；丙 增量 = 消 #41 四跳时序 + 去扫描。#74/#41 留开待 Windows 验。
 - **#63 尾消息 torn-tail = daemon-bound**：根因在 `remote-daemon-proto/src/watcher.rs read_new_lines` 扣尾行，修它破红线 → 转发版/真机，本轮 F06 不碰不关。
 - **真机/外部前置**（代码改完也不能确证、须用户动作再关）：#74/#41（标题四跳/wt 行为）、#60/#43（真机复现）、#60②/#63-attach（**用户远端重装 ccm 助手写 @ccm_sid** 硬前置）、#75 直连腿（真机看窗口不闪退）。
 - F13 ssh_source.rs(4512) 拆分高危 → 可能降级为只做 tabs controller 抽取。

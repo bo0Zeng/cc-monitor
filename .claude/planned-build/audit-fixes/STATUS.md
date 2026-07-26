@@ -2,9 +2,10 @@
 
 > 工作区 `audit-fixes`。分支 `account-ux`。跨轮靠此文件,不靠记忆。
 
-- **当前阶段**：C 实现推进（F03.4a 甲′ 完成 + commit）→ 下轮 F03.4b 丙
-- **当前功能**：F03.4（4a 甲′ 完成；4b 丙 待做）
-- **当前步骤**：F03.4a 甲′（远端 set-titles-string 从 @ccm_sid 派生，aya 端到端验通、无轮询）完成；下一步 = **F03.4b 丙**（本地 wt --title + 拉起即绑，Windows 你真机验）
+- **当前阶段**：C 实现推进（F03.4 收口：甲′ 完成、丙 延期）→ 下一个 F04
+- **当前功能**：下一个 = **F04 统一直连管线 + keepalive**（#75 直连腿；aya 可全绿门禁验证）
+- **当前步骤**：F03.4a 甲′ 完成（aya 验通）；F03.4b 丙 **延期 Windows 真机批次**（aya 无 Windows cross-target、cfg(windows) 核心编译都验不了，不盲提交）。#74 主体已被甲′ 修；#74/#41 留开待 Windows。
+- **⚡ 停顿门槛调高（用户 2026-07-25「不要再停loop了」）**：只在真·阻塞 / 计划≠现实无法自解 / 同一步失败≥2 / 确实推断不出且必须用户拍的地方停；其余(含已定机制的 F03.2、常规实现)自主推进,不再逐步确认。
 - **F03.4 已定 = 甲′ + 丙**：甲′=远端 `set-titles-string ccm-rbind-#{@ccm_sid}`（**裸值无双引号**，session-backend createRunAttach 非阻断两行，aya 已验无轮询）；丙=本地 `wt -w new --title ccm-rbind-<sid> --suppressApplicationTitle` + spawn 后 `RemoteHwndCache.try_bind_with_retry` 前向登记（launch.rs/IPC加sid/bind.rs复用/TS传sid）+ shrink 重试循环。**丙 Windows 侧 aya 验不了 → 你真机验再关 #74/#41**；甲′ aya 全验。
 - **F03.2 已定 = 甲-evented**（事件驱动）：收 daemon `TmuxSessions` 帧即算 idle/live/archived、**删 8s 定时器、cc-monitor 侧零轮询**；高风险 → Phase B 先设计 agent 论证 + 实现后全视角 D 审计。
 - **无轮询原则**（用户拍板）：cc-monitor 侧不新增轮询;唯一周期扫描=daemon 内部 tmux ls(红线外既有);wrapper 的 __ccm_rbind 轮询归 F14(用户自跑,给事件驱动版)。
