@@ -30,6 +30,11 @@ pub mod events {
     /// （心跳已从 by_id 删过它），但 PID 已死、不发本事件，避免误复活刚归档的死会话 Tab。
     /// 不进 replay buffer（同 session-activity）——F5 靠 list_session_activity 快照收敛。
     pub const SESSION_STARTED: &str = "session-started";
+    /// audit-fixes F03.2：远端 claude 退出但 tmux 会话尚在（idle-tmux 第三态）→ 前端渲**灰灯**、
+    /// **不归档**。**唯一由 remote-session-emitter emit**（emitter 收 daemon-removed 时，若 sid 的
+    /// `@ccm_sid` 仍出现在某 origin 的 `TmuxSessions` 帧里→判 idle）。不进 replay buffer（同
+    /// session-activity/started）——F5 由 emitter 对账重发。idle 是 `remote_active` **之外**的态。
+    pub const SESSION_IDLE: &str = "session-idle";
     /// 远端会话宣告（Batch5-F18）：daemon session_added 帧透传，前端建骨架 Tab。
     /// 不进 replay buffer——F5 只重载 webview（SSH 连接不重建、daemon 不重发），
     /// 兜底是该会话的行仍在 buffer：重放行经 ensureTab 照建 Tab。已宣告但零行
@@ -96,6 +101,13 @@ pub struct JsonlBatchPayload {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct SessionEndedPayload {
+    pub session_id: String,
+}
+
+/// audit-fixes F03.2：idle-tmux 灰灯事件（SESSION_IDLE）payload。独立命名（非复用
+/// `SessionEndedPayload`）便于 grep 与语义分离——idle ≠ ended。
+#[derive(Debug, Serialize, Clone)]
+pub struct SessionIdlePayload {
     pub session_id: String,
 }
 
