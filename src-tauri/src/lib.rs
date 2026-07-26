@@ -561,6 +561,8 @@ pub fn run() {
                                 // 里，调 async_runtime::spawn 虽也可行但平添对全局 runtime 的
                                 // 隐性依赖，无收益）。线程扫完即退，不长驻。
                                 for sid in change.added {
+                                    // audit-fixes F03.2：会话（重新）变活 → 清 idle 灰灯标记（resume/新会话）。
+                                    ssh_source::clear_idle(&sid);
                                     let cache = remote_cache_for_emitter.clone();
                                     let spawn_res = std::thread::Builder::new()
                                         .name("remote-bind-scan".into())
@@ -588,20 +590,43 @@ pub fn run() {
                                     }
                                 }
                                 for sid in change.removed {
-                                    // 远端会话结束、**或断连**时（ssh_source flush 把仍 announced 的
-                                    // sids 当 removed 冲出，见 ssh_source.rs::run）都走到这里 forget 掉
-                                    // 绑定。重连时新 daemon 重发 session_added → try_bind 重绑；
-                                    // verify_binding 是运行时安全网（死/复用 HWND 不会误拉前）。
-                                    remote_cache_for_emitter.forget(&sid);
-                                    let payload = bridge::SessionEndedPayload {
-                                        session_id: sid.clone(),
-                                    };
-                                    if let Err(e) =
-                                        handle.emit(bridge::events::SESSION_ENDED, &payload)
-                                    {
-                                        tracing::warn!("emit remote session-ended failed: {e}");
-                                    } else {
-                                        tracing::info!("remote session ended: {sid}");
+                                    // audit-fixes F03.2（灰灯三态分流）：daemon-removed（claude 进程没了，权威）
+                                    // 到达时，看该 sid 的 `@ccm_sid` 是否仍出现在某 origin 的 TmuxSessions 帧里：
+                                    //   - Some(origin)=tmux 会话尚在（空 shell）→ **idle-tmux 灰灯**：mark_idle +
+                                    //     emit SESSION_IDLE + **不 forget 绑定**（登录 shell 的 ssh 窗仍活、↗ 拉前有效）。
+                                    //   - None=tmux 也没了 → **archived**（原逻辑）：clear_idle + forget + SESSION_ENDED。
+                                    // 判据 command-agnostic（见 ssh_source::tmux_origin_for_sid）：帧 ≤8s 陈旧，退出
+                                    // 瞬间 command 列可能仍是 claude，故用 daemon-removed 判"claude 死"、@ccm_sid
+                                    // present 判"tmux 在"。**§24**：removed sid 已在上方从 remote_active 移出，idle 天然
+                                    // 在集合外；idle 只写独立 REMOTE_IDLE（唯一写者=本 emitter），**不新增 remote_active 写点**。
+                                    match ssh_source::find_tmux_origin_for_sid(&sid) {
+                                        Some(origin) => {
+                                            ssh_source::mark_idle(&origin, &sid);
+                                            let payload = bridge::SessionIdlePayload {
+                                                session_id: sid.clone(),
+                                            };
+                                            if let Err(e) =
+                                                handle.emit(bridge::events::SESSION_IDLE, &payload)
+                                            {
+                                                tracing::warn!("emit remote session-idle failed: {e}");
+                                            } else {
+                                                tracing::info!("remote session idle-tmux: {sid}");
+                                            }
+                                        }
+                                        None => {
+                                            ssh_source::clear_idle(&sid);
+                                            remote_cache_for_emitter.forget(&sid);
+                                            let payload = bridge::SessionEndedPayload {
+                                                session_id: sid.clone(),
+                                            };
+                                            if let Err(e) =
+                                                handle.emit(bridge::events::SESSION_ENDED, &payload)
+                                            {
+                                                tracing::warn!("emit remote session-ended failed: {e}");
+                                            } else {
+                                                tracing::info!("remote session ended: {sid}");
+                                            }
+                                        }
                                     }
                                 }
                                 // Batch9-F27：远端红绿灯——daemon session_status 帧/
@@ -658,12 +683,9 @@ pub fn run() {
                         }
                     });
                 }
-                // F74c(#60-A)：tmux 存活对账 poller——带外杀 tmux 后端 → 有界时间内变灰。
-                // retire 的 sid 当 removed 送进 remote_tx（§24 由唯一写者 remote-session-emitter 兜，
-                // 与断连 flush 同一通道）。仅有远端配置时起（在本 if 块内）。
-                tauri::async_runtime::spawn(tmux_reconcile::run_tmux_reconcile_poller(
-                    remote_tx.clone(),
-                ));
+                // audit-fixes F03.2：tmux 存活对账**从 8s poller 改为收帧驱动**（甲-evented，零轮询）——
+                // 收割器现落在 `ssh_source::stream_loop` 的 `TmuxSessions` 帧臂（daemon 每 ~8s 推帧即算），
+                // 复用 `tmux_reconcile::reconcile_step`。故此处不再 spawn poller（`run_tmux_reconcile_poller` 已删）。
             }
 
             // 焦点同步功能已移除：Windows 11 默认 WT 是单进程多窗口架构，
@@ -780,14 +802,30 @@ pub fn run() {
                         // ⚠ 配套前提：前端把 session-ended 与行事件**同序**处理（events.ts
                         // 的 queue，#20 一并改）。否则这里补发的 ended 会抢在积压重放行
                         // 之前执行，归档随即被后续远端行 un-archive 翻回 live，补发等于无效。
+                        // audit-fixes F03.2：idle-tmux sid 不在 remote_active（变 idle 时已移出），若不排除
+                        // 会被当"死"补 SESSION_ENDED、F5 后灰灯塌成 archived。故排除 idle sid + 下面重发 SESSION_IDLE。
+                        let idle_all: std::collections::HashSet<String> =
+                            ssh_source::snapshot_idle_by_origin()
+                                .into_values()
+                                .flatten()
+                                .collect();
                         let remote_stale: Vec<String> = {
                             let active = remote_active.lock();
                             replay
                                 .buffered_remote_session_ids()
                                 .into_iter()
-                                .filter(|sid| !active.contains(sid))
+                                .filter(|sid| !active.contains(sid) && !idle_all.contains(sid))
                                 .collect()
                         };
+                        // F03.2：F5 后把 idle sid 的灰灯盖回（行重放会把其 tab 建成 live，这次重发再变灰）。
+                        for sid in &idle_all {
+                            let _ = handle.emit(
+                                bridge::events::SESSION_IDLE,
+                                &bridge::SessionIdlePayload {
+                                    session_id: sid.clone(),
+                                },
+                            );
+                        }
                         for sid in stale.iter().chain(remote_stale.iter()) {
                             if let Err(e) = handle.emit(
                                 bridge::events::SESSION_ENDED,
