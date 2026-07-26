@@ -1186,6 +1186,13 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   background: var(--warn); /* 主题 token（同红灯用 --error），用户改主题两灯一起跟 */
   animation: act-waiting-pulse 1.2s ease-in-out infinite;
 }
+/* audit-fixes F03.2：idle-tmux 第三态灰灯——claude 退出但 tmux 会话仍在（可 attach 复用）。
+   status 仍 live（不被 .archived 隐藏），此规则覆写 .live-dot 为灰、压过红绿黄。放在 act-* 之后
+   =同特异性靠源序取胜；animation:none 停掉 waiting 呼吸。 */
+.tab.tmux-idle .live-dot {
+  background: var(--text-faint);
+  animation: none;
+}
 /* F91：mission-control grid 的红绿灯点——类直接叠在 .live-dot 上（cell 无 .tab 祖先），
    语义/配色与 tab-bar 一致（同 var token，用户改主题一起跟）。 */
 .live-dot.act-idle {
@@ -1194,6 +1201,11 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 .live-dot.act-waiting {
   background: var(--warn);
   animation: act-waiting-pulse 1.2s ease-in-out infinite;
+}
+/* audit-fixes F03.2：grid cell 的 idle-tmux 灰灯（同 tab-bar，覆写红绿黄、停呼吸）。 */
+.live-dot.tmux-idle {
+  background: var(--text-faint);
+  animation: none;
 }
 @keyframes act-waiting-pulse {
   0%,

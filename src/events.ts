@@ -27,6 +27,12 @@ export interface SessionEndedPayload {
   session_id: string;
 }
 
+/** audit-fixes F03.2：灰灯事件 payload（镜像 bridge.rs::SessionIdlePayload）。
+ *  远端 claude 退出但 tmux 会话仍在（idle-tmux 第三态）时后端 emit——非归档、仅置灰点。 */
+export interface SessionIdlePayload {
+  session_id: string;
+}
+
 /** 会话（重新）变活事件 payload（镜像 bridge.rs::SessionStartedPayload）。
  *  Batch7-F24：附 pidfile 元信息——前端无 Tab 时建骨架（中途出现的本地 bg 会话）。 */
 export interface SessionStartedPayload {
@@ -49,6 +55,14 @@ export interface EventHandlers {
    */
   onLine: (e: JsonlLinePayload) => void;
   onSessionEnded: (sessionId: string) => void;
+  /**
+   * audit-fixes F03.2：远端 claude 退出但 tmux 会话仍在 → 灰灯（idle-tmux）。后端 emitter
+   * 收 daemon removed 且 `@ccm_sid` present 时 emit `session-idle`（**不** emit session-ended，
+   * 故不归档）。与 session-ended 同进 queue：二者对同一 sid 互斥（emitter removed 臂择一），
+   * 但需相对该会话的行/后续 remote-added 保序（idle 在行之后、复活 remote-added 之前）。
+   * 前端 tabs.markTmuxIdle 置灰点。
+   */
+  onSessionIdle?: (sessionId: string) => void;
   /**
    * 会话（重新）变活（SESSION_STARTED）。后端在 sessions/<PID>.json 新增**且 PID
    * 探活通过**时 emit —— resume 场景：崩溃→Tab 灰显→`/resume` 后回 live，无需 F5。
@@ -108,6 +122,8 @@ type QueueItem =
   | { kind: "batch-start" }
   | { kind: "batch-end" }
   | { kind: "ended"; sessionId: string }
+  // audit-fixes F03.2：灰灯（idle-tmux）——与 ended 同 queue 保序，见 onSessionIdle。
+  | { kind: "idle"; sessionId: string }
   | {
       kind: "started";
       sessionId: string;
@@ -285,6 +301,8 @@ export async function bindEvents(
         scheduleBatchEnd();
       } else if (item.kind === "ended") {
         handlers.onSessionEnded(item.sessionId);
+      } else if (item.kind === "idle") {
+        handlers.onSessionIdle?.(item.sessionId);
       } else if (item.kind === "started") {
         handlers.onSessionStarted?.(item.sessionId, {
           cwd: item.cwd,
@@ -409,6 +427,15 @@ export async function bindEvents(
   registrations.push(
     sub<SessionEndedPayload>("session-ended", (e) => {
       queue.push({ kind: "ended", sessionId: e.payload.session_id });
+      ensureScheduled();
+    }),
+  );
+
+  // audit-fixes F03.2：session-idle 同进 queue，与 ended/行保序（灰灯落在会话末行之后、
+  // 复活 remote-added 之前）。emitter 对同一 sid 只发 idle 或 ended 之一，故二者不冲突。
+  registrations.push(
+    sub<SessionIdlePayload>("session-idle", (e) => {
+      queue.push({ kind: "idle", sessionId: e.payload.session_id });
       ensureScheduled();
     }),
   );

@@ -133,6 +133,7 @@ interface TMInternals {
   activeId: string | null;
   orderedIds: string[];
   pendingArchive: Set<string>;
+  pendingTmuxIdle: Set<string>;
   materializeQueue: string[];
 }
 const peek = (tm: TabManager): TMInternals => tm as unknown as TMInternals;
@@ -417,6 +418,63 @@ describe("TabManager 生命周期", () => {
     tm.archiveTab("s5");
     tm.reviveTab("s5");
     expect(tab.status).toBe("archived");
+  });
+
+  // ── audit-fixes F03.2：idle-tmux 灰灯生命周期 ──
+  it("F03.2 markTmuxIdle：置灰点，status 仍 live（第三态、非归档）", () => {
+    const tab = tm.ensureTab("gi1", "/x", "p", 0, "pi");
+    const btn = () => document.querySelector<HTMLElement>(".tab")!;
+    tm.markTmuxIdle("gi1");
+    expect(tab.tmuxIdle).toBe(true);
+    expect(tab.status).toBe("live"); // 不归档
+    expect(btn().classList.contains("tmux-idle")).toBe(true);
+    expect(btn().classList.contains("archived")).toBe(false);
+  });
+
+  it("F03.2 收到活动信号清灰（claude 复活）——activity 值不变也清且重绘", () => {
+    const tab = tm.ensureTab("gi2", "/x", "p", 0, "pi");
+    tm.updateActivity("gi2", "busy", null); // 先有一次 busy
+    tm.markTmuxIdle("gi2");
+    expect(tab.tmuxIdle).toBe(true);
+    const btn = () => document.querySelector<HTMLElement>(".tab")!;
+    // 同值 busy 再来一次（activity 无变化）——灰灯仍须清、类须去掉（早退前清灰的守护）
+    tm.updateActivity("gi2", "busy", null);
+    expect(tab.tmuxIdle).toBe(false);
+    expect(btn().classList.contains("tmux-idle")).toBe(false);
+  });
+
+  it("F03.2 归档优先：archiveTab 清灰（tmux 真没了）", () => {
+    const tab = tm.ensureTab("gi3", "/x", "p", 0, "pi");
+    tm.markTmuxIdle("gi3");
+    expect(tab.tmuxIdle).toBe(true);
+    tm.archiveTab("gi3");
+    expect(tab.status).toBe("archived");
+    expect(tab.tmuxIdle).toBe(false);
+  });
+
+  it("F03.2 archived 的 Tab 不被 markTmuxIdle 回置灰", () => {
+    const tab = tm.ensureTab("gi4", "/x", "p", 0, "pi");
+    tm.archiveTab("gi4");
+    tm.markTmuxIdle("gi4"); // 归档后迟到的 idle 信号——忽略
+    expect(tab.tmuxIdle).toBe(false);
+    expect(tab.status).toBe("archived");
+  });
+
+  it("F03.2 灰灯信号早于 Tab：进 pendingTmuxIdle，ensureTab 落实为灰", () => {
+    tm.markTmuxIdle("gi5"); // Tab 尚未建
+    expect(peek(tm).pendingTmuxIdle.has("gi5")).toBe(true);
+    const tab = tm.ensureTab("gi5", "/x", "p", 0, "pi");
+    expect(tab.tmuxIdle).toBe(true);
+    expect(peek(tm).pendingTmuxIdle.has("gi5")).toBe(false);
+  });
+
+  it("F03.2 归档优先于暂存灰灯：pendingArchive + pendingTmuxIdle 同在时建成 archived", () => {
+    tm.markTmuxIdle("gi6");
+    tm.archiveTab("gi6"); // 二者都在暂存
+    expect(peek(tm).pendingTmuxIdle.has("gi6")).toBe(false); // archive 清掉暂存灰
+    const tab = tm.ensureTab("gi6", "/x", "p", 0, "pi");
+    expect(tab.status).toBe("archived");
+    expect(tab.tmuxIdle).toBe(false);
   });
 
   it("远端 Tab 掉线归档后再收到行（ensureTab）→ 见行复活成 live", () => {
