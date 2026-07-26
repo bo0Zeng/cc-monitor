@@ -17,7 +17,12 @@
 - **原 Phase A 摘要**（下方）保留供恢复参考。
 - **2 agent 评估结论**：驱动=WebdriverIO(@wdio/tauri-service，DOM 层，windows CI)+ 少量 OS-input(↗，交互式 VM);断言=`[e2e]` 日志;fixture=loopback SSH 到本机 + daemon(CLAUDE_CONFIG_DIR 隔离)+fake-claude shim。**★关键：gray-light/resume/换号/孤儿 是后端+SSH+tmux 驱动、可在 Linux(aya/ubuntu CI 自环)全自动跑，不需 Windows VM**；Windows VM 只剩 Win32 层(↗)手动。
 - **三层架构**：Tier1 会话生命周期 e2e(Linux 自环,最高 ROI)/ Tier2 Windows DOM 冒烟(WebDriver CI,薄)/ Tier3 Win32/native(手动清单)。
-- **进度/待办**：F-E0/F-E1 已交付+并入。剩 F-E2 resume→F-E3 换号→F-E4 孤儿（同 Linux 自环 fixture 基座，可续委托 agent，最高 ROI 且不依赖 VM）→F-E5 Windows DOM 冒烟（待 VM 工具链）→F-E6 搭车。F-E4 需「可注入 confirm」seam（唯一动生产码处，行为等价）。「↗/真终端/SFTP 留手动」范围裁定不变。
+- **进度/待办**：F-E0/F-E1 已交付+并入。剩 F-E2 resume→F-E3 换号→F-E4 孤儿（同 Linux 自环 fixture 基座，可续委托 agent，最高 ROI 且不依赖 VM）→F-E5 Windows DOM 冒烟（VM 工具链+hop 已就绪）→F-E6 搭车。F-E4 需「可注入 confirm」seam（唯一动生产码处，行为等价）。「↗/真终端/SFTP 留手动」范围裁定不变。
+- **★2026-07-26 用户定「都搞·开 planned-build 两个都做」**：并行推 ①**F-E5 Tier2 Windows DOM 套件**（复用已验的 session-1 hop，真 GUI happy-path：tab 渲染/右键菜单/resume/快捷键/账号 chip）②**F-Vwin 真 Windows 验证**（#74/#41 rbind/HWND 前台绑定 + 灰灯在真 Windows；发版前的真机冒烟，Tier3-adjacent）。recon 已回，`features/E5-tier2-dom.md`+`features/Vwin-real-windows-verify.md` 已写（file:line 已核）。**执行序=F-Vwin 先（发版关，核心=bind.rs 加 `#[cfg(windows)]` native 测试：假窗口标题 `ccm-rbind-<sid>`→断言 find/try_bind/verify_binding，VM `cargo test` 跑）→ F-E5（Tier2 DOM，E5a 裸壳核心 wdio 经 hop + E5b 会话相关争取）**。当前=**Phase C 进行中（F-Vwin 首轮中断于 quota）**。
+  - **中断原因**：委托的 worktree agent af2fa259 撞**账号 session limit**（8:10am PT reset，**非代码错**）。
+  - **★关键发现（已核源码）**：F-Vwin 的 native 测试**不能走 session-0 SSH `cargo test`**——session-0 window station 无法让新建窗口 `IsWindowVisible=true`（agent 实证 force `WS_VISIBLE` 也不翻），而 `find_window_by_marker_substr` 在 `bind.rs:319` `if !IsWindowVisible(hwnd) return` 过滤掉不可见窗口 → 测试窗口找不到。**修正：F-Vwin 的 `cargo test` 也走 session-1 hop（schtasks /it）在交互会话跑**（同 wdio 那套）。
+  - **salvage**：agent worktree 起点 stale `b5f523a`（未 ff 到 account-ux）+ WIP 未提交 → 不 salvage；quota 恢复后在**主 checkout 正确基线**上重写 native 测试，经 session-1 hop 跑。worktree `agent-af2fa259506a53180` 待清理。
+  - **resume 计划**：limit reset（8:10am PT）后续 F-Vwin（native 测试 A：假窗口 `ccm-rbind-<sid>` 经 session-1 hop `cargo test bind` → find/try_bind/verify_binding 断言；B：VM 全量 cargo test）→ 再 F-E5。发版判断：代码门禁现测全绿(tsc0/vitest595/src-tauri365/daemon125/prod build✓/埋点不漏)，但 #74/#41 从没在真 Windows 验过——F-Vwin 正是补这一环，验过才好 bump（红线仍：不 push/发版/bump 由用户拍）。
 
 ## 摸底结论（待 agent 深化）
 - **无任何 Windows e2e 工具**（package.json 零 webdriver/tauri-driver/playwright）——要从零搭。
