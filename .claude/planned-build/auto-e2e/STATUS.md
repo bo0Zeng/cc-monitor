@@ -31,7 +31,10 @@
 - **★2026-07-26 用户定「都搞·自动全做·第三方测·全边界」+「同时起 UX 审计 agent」**：MASTERPLAN 末尾加「综合测试主计划」（第三方委托模型 + 每功能边界矩阵 + 委托可靠性纪律：sync-first / 禁 cd+pipe / VM 走 session-1 hop / rate-limit 即停 / 如实回报）。**两条并行第三方流**：
   - **① e2e boundary loop**（worktree agent 逐个建+实跑；主线程只编排+独立复核+ff 并入+D/E/F 签收）：F-E2 resume(#75/#76)→F-E3 换号(#68/#69)→F-E4 孤儿(+可注入 confirm seam)→F-E1 灰灯边界补→F-E5 Tier2 DOM。features/E2-resume.md 已写。
   - **② 功能&UX 审计 agent**（只读，与 ① 并行）：审真功能正确性+UX 交互（右键菜单/按钮/快捷键/dialog/状态栏/账号 chip/空态/错误处理）边界与一致性，出分级 findings（不改码）。
-  - 当前=委托 F-E2（worktree）+ UX 审计（只读）同时起跑。发版判断：代码门禁现测全绿(tsc0/vitest595/src-tauri365/daemon125/prod build✓/埋点不漏)，但 #74/#41 从没在真 Windows 验过——F-Vwin 正是补这一环，验过才好 bump（红线仍：不 push/发版/bump 由用户拍）。
+  - 当前=委托 F-E2（worktree agent a30faa0e，**仍在跑**）+ 功能&UX 审计（只读 agent aa191a2b，**已完成**）。
+  - **UX 审计已回**（报告 `ux-audit-2026-07-26.md`）：12 findings（2 阻塞 / 4 重要 / 6 建议）+ 6 良性设计。主线程复核 **#1 确认真**（gray/idle-tmux Tab 死角：关不掉[closeTab tabs.ts:1673 非 archived return] + 无 resume 项[gated archived tabs.ts:2881] + 账号菜单给必失败的重启）；#2（孤儿判据不看 command → 误列活 claude 会话待复核）。**这些是功能/UX 缺陷，超"补测试"授权 → 交用户定夺修不修**；e2e 边界测试可把其固化成回归断言。
+  - **授权升级（用户 2026-07-26）**：主计划**免审批**、接下来测试**全权自动**，我全权负责。
+  - **本会话 loop 调度（cron，session-only）**：10:11 续做（8c5ea80d）· 11:21 暂停+报告（0a22e6d7）· 12:11 起此后一直全自动（c1cbcf14）。**规则**：在途 agent（F-E2/UX 审计）完成**随时处理**（独立复核+ff 并入+签收+报 findings，不受 loop 限）；**新功能委托按调度**（10:11 起）。撞硬阻塞才停。发版判断：代码门禁现测全绿(tsc0/vitest595/src-tauri365/daemon125/prod build✓/埋点不漏)，但 #74/#41 从没在真 Windows 验过——F-Vwin 正是补这一环，验过才好 bump（红线仍：不 push/发版/bump 由用户拍）。
 
 ## 摸底结论（待 agent 深化）
 - **无任何 Windows e2e 工具**（package.json 零 webdriver/tauri-driver/playwright）——要从零搭。
