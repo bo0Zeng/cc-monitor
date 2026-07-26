@@ -981,6 +981,81 @@ pub fn snapshot_tmux_by_origin() -> std::collections::HashMap<String, String> {
     tmux_raw_registry().lock().unwrap().clone()
 }
 
+/// audit-fixes F03.2：idle-tmux 账本 origin → idle sids（claude 退出但 tmux 会话尚在）。
+/// **唯一写者 = remote-session-emitter**（`mark_idle`/`clear_idle` 只在 lib.rs emitter 调）；读者 =
+/// 收帧收割器（`snapshot_idle_for_origin`）、断连 flush、F5 对账（`snapshot_idle_by_origin`）均**只读**。
+/// 守 §24：idle 是 `remote_active` **之外**的第三态，此账本与 remote_active 正交、不互写。
+static REMOTE_IDLE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, std::collections::HashSet<String>>>,
+> = std::sync::OnceLock::new();
+
+fn idle_registry(
+) -> &'static std::sync::Mutex<std::collections::HashMap<String, std::collections::HashSet<String>>>
+{
+    REMOTE_IDLE.get_or_init(Default::default)
+}
+
+/// F03.2：标记 sid 在 origin 上进入 idle-tmux。**只由 emitter 调**（唯一写者）。
+pub fn mark_idle(origin: &str, sid: &str) {
+    idle_registry()
+        .lock()
+        .unwrap()
+        .entry(origin.to_string())
+        .or_default()
+        .insert(sid.to_string());
+}
+
+/// F03.2：清 sid 的 idle 标记（跨 origin，sid 全局唯一）。**只由 emitter 调**（added / archived 时）。幂等。
+pub fn clear_idle(sid: &str) {
+    let mut reg = idle_registry().lock().unwrap();
+    for sids in reg.values_mut() {
+        sids.remove(sid);
+    }
+    reg.retain(|_, sids| !sids.is_empty());
+}
+
+/// F03.2：读某 origin 的 idle sid 集（收帧收割器把 idle 并入 tracked，使其能被去抖归档）。只读。
+pub fn snapshot_idle_for_origin(origin: &str) -> std::collections::HashSet<String> {
+    idle_registry()
+        .lock()
+        .unwrap()
+        .get(origin)
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// F03.2：读全部 idle 账本（F5 对账：把 idle sid 排除出"死"判据 + 重发 SESSION_IDLE）。只读。
+pub fn snapshot_idle_by_origin(
+) -> std::collections::HashMap<String, std::collections::HashSet<String>> {
+    idle_registry().lock().unwrap().clone()
+}
+
+/// audit-fixes F03.2（**纯函数**，idle 判定核心，Linux 可单测）：给「origin → tmux ls 原文」账本，
+/// 找 `@ccm_sid == sid` 出现在哪个 origin 的帧里。**只认 @ccm_sid 列**（`parse_tmux_ls` 的 `sid`
+/// 字段），**不看 command**——command-agnostic：`TmuxSessions` 帧最长 8s 陈旧，claude 退出瞬间那帧
+/// 的 command 列可能仍是 claude，卡 `command!=claude` 会正常退出高频误判 archived、丢灰灯。故改用
+/// 「claude 死」由 daemon-removed（emitter 触发边沿）判、「tmux 在」由 `@ccm_sid` present 判（claude
+/// 退出后 wrapper watcher 停写但**不 unset**，session 级 option 恒 present——aya 已实测）。`NO_TMUX`/空跳过。
+fn tmux_origin_for_sid(
+    by_origin: &std::collections::HashMap<String, String>,
+    sid: &str,
+) -> Option<String> {
+    for (origin, raw) in by_origin {
+        if crate::tmux::parse_tmux_ls(raw)
+            .iter()
+            .any(|s| s.sid.as_deref() == Some(sid))
+        {
+            return Some(origin.clone());
+        }
+    }
+    None
+}
+
+/// F03.2：`tmux_origin_for_sid` 的公开包装——读当前 tmux 快照后调纯函数。emitter 判 idle vs archived 用。
+pub fn find_tmux_origin_for_sid(sid: &str) -> Option<String> {
+    tmux_origin_for_sid(&snapshot_tmux_by_origin(), sid)
+}
+
 /// F74c（#60-A）：快照「origin → 当前宣告活跃的 sid 集」，供 tmux 存活对账 poller 读。
 /// **只读** announced_registry（不加写者，§27/F28 写者不变——写者仍只有 stream_loop）。
 pub fn snapshot_announced_by_origin(
@@ -2678,6 +2753,69 @@ async fn daemonless_stream_loop(
         }
         // 4. 轮询间隔(唯一等待 = async sleep,INVARIANT §10)。
         tokio::time::sleep(DAEMONLESS_POLL_INTERVAL).await;
+    }
+}
+
+#[cfg(test)]
+mod f032_idle_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    // TMUX_LS_FMT: name\tpath\tcommand\tattached\twindows\t@ccm_sid（6 列真 TAB 分隔）
+    fn raw(name: &str, cmd: &str, sid: &str) -> String {
+        format!("{name}\t/p\t{cmd}\t0\t1\t{sid}")
+    }
+
+    #[test]
+    fn tmux_origin_for_sid_matches_ccm_sid_column_command_agnostic() {
+        // @ccm_sid==目标 + command=bash（claude 已退）→ 命中 origin
+        let by = HashMap::from([("A".to_string(), raw("cc-x", "bash", "target-full"))]);
+        assert_eq!(
+            tmux_origin_for_sid(&by, "target-full"),
+            Some("A".to_string())
+        );
+        // command-agnostic：command 仍是 claude（帧陈旧）也命中——**变异锚点**：改看 command 则此断言红
+        let by2 = HashMap::from([("A".to_string(), raw("cc-x", "claude", "target-full"))]);
+        assert_eq!(
+            tmux_origin_for_sid(&by2, "target-full"),
+            Some("A".to_string())
+        );
+    }
+
+    #[test]
+    fn tmux_origin_for_sid_only_ccm_sid_column_not_name_or_command() {
+        // sid 只作 name/command 出现、@ccm_sid 列是别的 → 不命中（不误把 name/command 当 sid）
+        let by = HashMap::from([("A".to_string(), raw("target", "target", "other-sid"))]);
+        assert_eq!(tmux_origin_for_sid(&by, "target"), None);
+    }
+
+    #[test]
+    fn tmux_origin_for_sid_no_tmux_empty_missing() {
+        let by = HashMap::from([
+            ("A".to_string(), "NO_TMUX".to_string()),
+            ("B".to_string(), String::new()),
+        ]);
+        assert_eq!(tmux_origin_for_sid(&by, "x"), None);
+    }
+
+    #[test]
+    fn tmux_origin_for_sid_multi_origin_routes() {
+        let by = HashMap::from([
+            ("A".to_string(), raw("cc-a", "bash", "sid-a")),
+            ("B".to_string(), raw("cc-b", "bash", "sid-b")),
+        ]);
+        assert_eq!(tmux_origin_for_sid(&by, "sid-b"), Some("B".to_string()));
+        assert_eq!(tmux_origin_for_sid(&by, "sid-z"), None);
+    }
+
+    #[test]
+    fn idle_registry_mark_clear_snapshot() {
+        mark_idle("f032_origX", "f032_sidX");
+        assert!(snapshot_idle_for_origin("f032_origX").contains("f032_sidX"));
+        assert!(snapshot_idle_by_origin().get("f032_origX").is_some());
+        clear_idle("f032_sidX"); // 幂等 + 跨 origin
+        assert!(!snapshot_idle_for_origin("f032_origX").contains("f032_sidX"));
+        clear_idle("f032_sidX"); // 再清一次不报错
     }
 }
 

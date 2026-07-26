@@ -5,7 +5,8 @@
 ## 当前
 - **阶段**：F03.2 **Phase B 设计已定并 commit** → 下一步 **F03.2a 实现（Rust 后端）**
 - **F03.2 灰灯设计（features/03 步骤2，勿再问机制）**：候选 ii（emitter 收 removed 时 `find_tmux_origin_for_sid` 内联判 idle）+ 收帧驱动收割器复用 reconcile_step（删 8s poller=零轮询）+ **command-agnostic 判据**（claude 死用 daemon-removed、tmux 在用 @ccm_sid present，不信 ≤8s 陈旧 command）+ 独立 `REMOTE_IDLE` 账本(唯一写者=emitter,SessionChange 不加字段)。§24 逐条保全已论证。
-  - **F03.2a（下一轮，Rust 后端 cargo 可验）**：bridge.rs SESSION_IDLE 事件 + ssh_source REMOTE_IDLE 账本/`tmux_origin_for_sid` 纯函数/收帧收割器/断连并 idle + tmux_reconcile 删 8s poller 保 reconcile_step + lib.rs emitter 分流/删 poller spawn/F5。Rust 单测 + 变异 + cargo fmt/test 绿。
+  - **F03.2a-core 完成**（零行为改动、cargo 绿）：bridge.rs SESSION_IDLE 常量+SessionIdlePayload；ssh_source REMOTE_IDLE 账本 + mark/clear/snapshot_idle_* + `tmux_origin_for_sid` 纯函数（command-agnostic）+ find_tmux_origin_for_sid 包装 + 5 Rust 测。**尚无人调=临时,行为不变。**
+  - **F03.2a-wire（下一轮，Rust 行为改动）**：lib.rs emitter removed 臂改 `find_tmux_origin_for_sid` 分流(Some→mark_idle+emit SESSION_IDLE+不 forget;None→clear_idle+forget+SESSION_ENDED)、added 臂 clear_idle、删 poller spawn、F5 排除 idle+重发；ssh_source stream_loop TmuxSessions 臂加收帧收割器(reconcile_state+tracked=announced∪idle+reconcile_step→send removed)、断连并 idle、删 snapshot_announced_by_origin；tmux_reconcile 删 POLL_INTERVAL+poller 保 reconcile_step。cargo fmt/test 绿。
   - **F03.2b（再下轮，前端）**：tabs `tmuxIdle` + markTmuxIdle + 清灰生命周期 + `tmux-idle` class；events.ts session-idle 同 queue；main.ts wire；styles.css 灰点。tsc/vitest。
   - **合并全视角 D 审计**（正确性/§24 单写者不变量/计划符合度）后签收。
   - F06：#43「父子拉不起来」残留（代码可复现则修，否则归真机）；#60/#43/#63-attach F74* 真机验证归"你侧待办"；#60① 靠本步事件驱动改善、真机验。
