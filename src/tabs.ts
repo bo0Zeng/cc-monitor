@@ -2159,7 +2159,13 @@ export class TabManager {
           onClick: () => void runRemoteAttach(origin, idle.name),
         });
         removeTabContextMenuItem("preview"); // 空 shell 无 claude 画面可预览
-        removeTabContextMenuItem("kill");
+        // UX 审计 #1：灰态(idle-tmux)也给 kill——杀空 tmux → tab 转归档 → 可 Resume（给死角一个出口）。
+        updateTabContextMenuItem("kill", {
+          id: "kill",
+          label: `杀死会话（kill 空 tmux ${idle.name}）`,
+          danger: true,
+          onClick: () => this.killRemoteTmux(origin, idle.name, false, { idle: true }),
+        });
       } else {
         removeTabContextMenuItem("attach");
         removeTabContextMenuItem("preview");
@@ -2527,16 +2533,21 @@ export class TabManager {
     origin: string,
     tmuxName: string,
     viaCwd: boolean,
-    opts?: { confirm?: (message: string) => boolean },
+    opts?: { confirm?: (message: string) => boolean; idle?: boolean },
   ): void {
     const caveat = viaCwd
       ? `\n\n⚠ 未检测到会话身份标记（@ccm_sid）——「${tmuxName}」是按工作目录猜的，可能不是本 tab 的会话，甚至可能是同目录里另一个正在运行的 Claude。建议在远端重装 ccm 助手后再操作。`
       : "";
+    // idle-tmux（灰 tab）：claude 已退、只剩空 shell，文案别再说"正在运行的 Claude"；
+    // 杀掉这个残留 tmux → tab 转归档（archived）→ 即可 Resume（给灰态一个出口，治 UX 审计 #1）。
+    const body = opts?.idle
+      ? "该会话里 Claude 已退出（只剩空 tmux shell）；kill 掉这个残留会话。杀掉后 tab 变归档、可 Resume。"
+      : "将终止远端这个 tmux 会话里正在运行的 Claude，未保存的交互会中断。";
     // auto-e2e F-E4：可注入 confirm seam（对齐 account-restart.ts 的 `opts.confirm ?? window.confirm`）。
     // 默认（不传 opts）走 `window.confirm`，交互零变化——headless e2e/DEV 才注入 ()=>true/false。
     const confirmFn = opts?.confirm ?? ((m: string) => window.confirm(m));
     const ok = confirmFn(
-      `杀死会话「${tmuxName}」（机器 ${origin}）？\n\n将终止远端这个 tmux 会话里正在运行的 Claude，未保存的交互会中断。\n此操作不可恢复。${caveat}`,
+      `杀死会话「${tmuxName}」（机器 ${origin}）？\n\n${body}\n此操作不可恢复。${caveat}`,
     );
     if (!ok) return;
     void (async () => {
@@ -2877,6 +2888,13 @@ export class TabManager {
                 id: "attach",
                 label: `Attach（空 tmux ${idle.name}，无 claude）`,
                 onClick: () => void runRemoteAttach(origin, idle.name),
+              });
+              // UX 审计 #1：灰态(idle-tmux)也给 kill——杀空 tmux → tab 转归档 → 可 Resume（给死角一个出口）。
+              items.push({
+                id: "kill",
+                label: `杀死会话（kill 空 tmux ${idle.name}）`,
+                danger: true,
+                onClick: () => this.killRemoteTmux(origin, idle.name, false, { idle: true }),
               });
             }
           }
