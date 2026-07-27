@@ -28,6 +28,7 @@ import {
 import { UnrenderedRanges } from "../render-window";
 import { getBehavior } from "../behavior";
 import { showActionFailureToast } from "../error-toast";
+import { planLocal } from "../launch-requests";
 
 interface JsonlLinePayload {
   session_id: string;
@@ -350,6 +351,14 @@ export class SessionViewer {
 
   /** F62：在新终端 resume 刚建的分支（复用本地 resume 命令 + 用户自定义 launcher）。 */
   private async resumeBranch(sessionId: string, cwd: string | undefined): Promise<void> {
+    // F06：走一遍本地 IR 构造，sid 校验先于任何 IPC 往返；构造失败与拉起失败分两个 catch，
+    // headline 对齐远端 `runRemoteResume` 的"无法构造 resume 命令"/执行失败两分。
+    try {
+      planLocal({ kind: "resume", sid: sessionId }, cwd ?? "");
+    } catch (err) {
+      showActionFailureToast("无法构造 resume 命令", String(err));
+      return;
+    }
     try {
       const behavior = await getBehavior();
       await invoke("resume_history_session", {

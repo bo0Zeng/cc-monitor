@@ -1,15 +1,37 @@
 # 状态 / STATUS — unify-launch（恢复工作的入口，每次先读这里）
 
-- **当前阶段**：F05 已完成签收（Phase B→F 全过，commit 待落）
-- **当前功能**：无——F05 收尾完成，下一步进 F06/F07
-- **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）
-- **下一个功能**：F06/F07（正交、互不阻塞，都只依赖 F03）→ F08/F09/F11 → F10 → Phase G
+- **当前阶段**：F06 已完成签收（Phase B→F 全过，commit 待落），F07 Phase B 已完成、待进 Phase C
+- **当前功能**：F07（每账号默认模型，`features/F07-per-account-model.md`）——F06 收尾完成后
+  的下一个功能
+- **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）
+- **下一个功能**：F07（本轮）→ F08/F09/F11 → F10 → Phase G
 - **阻塞 / 待用户确认**：无
-- **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 10）
+- **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 11）
 - **自动模式（/loop）**：**全自动**（连续 B→G）。用户 2026-07-27 追加授权：**具体设计决策由本席开
   agent 讨论分析后自行决定，不必逐项停下来问**——除非真遇到阻塞或用户主动打断
-- **本轮 loop 目标**：commit F05 → 开 F06 或 F07（Phase B 规划）
+- **本轮 loop 目标**：commit F06 → F07 走完 C→D→E→F 并 commit
 - **loop 停止条件**：计划≠现实 / 同一步≥2 失败 / 全部完成→Phase G / 用户打断
+
+## F06 结果摘要
+
+- `history.rs` 的 `build_resume_ps_command`/`build_new_session_ps_command`（曾逐字符重复的
+  `Get-Command` 探测-回退分支）收拢成 `build_local_ps_command`（`LocalPsAction` 枚举驱动，同构
+  TS `LaunchAction`），旧两个函数降级成薄委托，新增 2 条黄金串对拍测试锁死重构前后逐字节同输出。
+  `src/launch-requests.ts` 新增 `planLocal`，让本地 resume/新建两条路径首次真正构造
+  `LaunchContext`（`transport:{kind:"local"}`——F03 起就有的类型分支，此前从未被任何调用点
+  实例化过）并跑一遍 `LAUNCH_DIMENSIONS`；4 个调用点（`history.ts`×2/`tabs.ts`/`session-viewer.ts`）
+  接入。实现期自己发现并修一个一致性缺口：本地路径此前唯一缺失 `isValidSessionId` 校验（同其余
+  4 个 `planXxx` 早有的模式），已补齐。`plan.env` 因 `NESTED_ENV_RESET_DIMENSION`（不看 transport）
+  对本地场景恒非空，判定**故意不消费**——本地场景的嵌套 env 污染保护已经在
+  `lib.rs::scrub_env_vars`（进程启动期一次性清洗）做完，已记 `doc/INVARIANTS.md` §36。
+- 双 agent 审（后端架构 + UX）各揪出 2 条重要发现，全部修复：Rust/TS 两处 sid 字符集校验方向
+  安全但不完全相同（措辞订正，未改代码）；`launch-render-cli.test.ts` 一处过期测试标题漏改；
+  本地 sid 校验失败的错误 toast headline 与远端同类失败不一致（4 个调用点统一改成两阶段 catch，
+  对齐远端"无法构造 resume 命令"措辞）；`planLocal`/`getBehavior()` 相对顺序在 4 个调用点不统一
+  导致一处注释不准确（已订正）。Phase D 一份初次汇报误判"计划 checkbox 未勾"为阻塞（复核后
+  判定只是 Phase F 文档收尾尚未进行）；另排除一条误报（`nestedEnvVars` 顺序差异，内容实际相同）。
+- 门禁：tsc 0 / npm test 631 / cargo test 379 / 全部既有 e2e 套件不变（本功能不碰远端/tmux 路径）
+  全绿；`remote-launch.test.ts`/两个 e2e driver 全程零 diff。
 
 ## F05 结果摘要
 

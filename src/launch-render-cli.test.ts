@@ -51,7 +51,7 @@ test("canRenderCli：装了 + create-or-attach + 无账号 → true", () => {
   const ctx = ctxOf({});
   eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), true);
 });
-test("canRenderCli：local transport → false（F06 未实现）", () => {
+test("canRenderCli：local transport → false（设计上恒不走这条渲染器，见 F06）", () => {
   const ctx = ctxOf({ transport: { kind: "local" } });
   eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), false);
 });
