@@ -19,6 +19,7 @@ import {
   type SessionAccount,
 } from "./accounts";
 import { restartWithAccount, DEFAULT_EXIT_WAIT_MS } from "./account-restart";
+import { planLocal } from "./launch-requests";
 import { accountAvatarEl } from "./account-color";
 import type { BehaviorConfig } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
@@ -2033,6 +2034,15 @@ export class TabManager {
           follow: accountName || useBase ? undefined : { lastAccount: await this.readSessionPin(sid) },
         },
       );
+      return;
+    }
+    try {
+      // F06：走一遍本地 IR 构造，sid 校验先于 resume_history_session 这次 invoke（不代表本函数
+      // 此前完全没有过 IPC——上面 `getBehavior()` 已经读过一次 config；构造失败与拉起失败分两个
+      // catch，headline 对齐远端 `runRemoteResume` 的"无法构造 resume 命令"/"拉起失败"两分）。
+      planLocal({ kind: "resume", sid }, tab.cwd ?? "");
+    } catch (err) {
+      showActionFailureToast("无法构造 resume 命令", String(err));
       return;
     }
     try {

@@ -906,43 +906,63 @@ fn sanitize_launcher(launcher: Option<&str>) -> Result<Option<String>, String> {
     Ok(Some(l.to_string()))
 }
 
-/// 构造 resume 用的 PowerShell 命令体（不含 `-EncodedCommand` 编码）。
+/// F06（unify-launch）：本地路径的动作枚举——与 TS `LaunchAction` 同构（无 `attach` 变体：
+/// 本地会话从无 attach 概念）。
+enum LocalPsAction {
+    New,
+    Resume(String),
+}
+
+/// 构造本地 PowerShell 命令体（不含 `-EncodedCommand` 编码）——`build_resume_ps_command`/
+/// `build_new_session_ps_command` 曾各自逐字符重复的「F34 自定义命令优先 → cc 别名探测优先 →
+/// 回退默认拉起」分支在此收拢成一处（F06：两套 builder 收进同一意图模型）。
 ///
-/// 防注入：`session_id` 来自前端历史条目，理论上是 UUID，但作为拼进 shell 命令的
+/// 防注入：resume 场景的 sid 来自前端历史条目，理论上是 UUID，但作为拼进 shell 命令的
 /// 不可信输入必须校验——只允许 `[A-Za-z0-9_-]`，否则拒绝（杜绝 `; rm -rf` 之类）。
 ///
 /// 优先 `cc`：检测到用户的 `cc` 函数（PowerShell 集成 wrapper，内部含 `__ccm_bind` +
-/// 用户自己的代理 / env 设置）就用 `cc --resume`；检测不到才回退 `claude --resume`。
-/// 命令在 profile 已加载的 PowerShell 里跑（见 resume_impl 不带 -NoProfile），所以即使
-/// 回退 claude，profile 里的 PATH / 代理 env 仍生效。
+/// 用户自己的代理 / env 设置）就用它；检测不到才回退默认拉起器。命令在 profile 已加载的
+/// PowerShell 里跑（见 resume_impl 不带 -NoProfile），所以即使回退，profile 里的 PATH /
+/// 代理 env 仍生效。
 ///
 /// 抽成独立函数是为了单测（不 spawn 进程也能验证防注入 + cc 优先逻辑）。
 /// （纯字符串构造，跨平台可编译可测；拉起本身在 launch.rs 按平台门控。）
-fn build_resume_ps_command(session_id: &str, launcher: Option<&str>) -> Result<String, String> {
-    let valid = !session_id.is_empty()
-        && session_id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    if !valid {
-        return Err(format!("refuse resume: invalid session_id {session_id:?}"));
+fn build_local_ps_command(action: &LocalPsAction, launcher: Option<&str>) -> Result<String, String> {
+    if let LocalPsAction::Resume(sid) = action {
+        let valid = !sid.is_empty()
+            && sid.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+        if !valid {
+            return Err(format!("refuse resume: invalid session_id {sid:?}"));
+        }
     }
     // F-MA：resume flag / 拉起别名 / 默认拉起都走活跃适配器（CC = --resume / cc / claude）。
     let agent = crate::adapter::active();
-    let flag = agent.resume_flag();
+    let suffix = |bin: &str| -> String {
+        match action {
+            LocalPsAction::Resume(sid) => format!("{bin} {} {sid}", agent.resume_flag()),
+            LocalPsAction::New => bin.to_string(),
+        }
+    };
     // F34：设了自定义命令就直接用（不再别名自动检测——用户显式选择优先）
     if let Some(l) = sanitize_launcher(launcher)? {
-        return Ok(format!("{l} {flag} {sid}", sid = session_id));
+        return Ok(suffix(&l));
     }
     let def = agent.default_launcher();
-    match agent.launcher_alias() {
+    Ok(match agent.launcher_alias() {
         // 有 wrapper 别名（cc）：优先它、检测不到回退 default。
-        Some(alias) => Ok(format!(
-            "if (Get-Command {alias} -ErrorAction SilentlyContinue) {{ {alias} {flag} {sid} }} \
-             else {{ {def} {flag} {sid} }}",
-            sid = session_id
-        )),
-        None => Ok(format!("{def} {flag} {sid}", sid = session_id)),
-    }
+        Some(alias) => format!(
+            "if (Get-Command {alias} -ErrorAction SilentlyContinue) {{ {} }} else {{ {} }}",
+            suffix(alias),
+            suffix(def),
+        ),
+        None => suffix(def),
+    })
+}
+
+/// 薄委托——保留旧函数名与调用点不变（`resume_impl` 只改内部实现，DoD 要求两个
+/// `#[tauri::command]` 的签名/行为/错误文案逐字节不变）。
+fn build_resume_ps_command(session_id: &str, launcher: Option<&str>) -> Result<String, String> {
+    build_local_ps_command(&LocalPsAction::Resume(session_id.to_string()), launcher)
 }
 
 /// Batch14-F41：wt.exe/PowerShell 拉起机械抽到 `launch.rs::launch_powershell_window`
@@ -955,24 +975,11 @@ fn resume_impl(session_id: &str, cwd: &str, launcher: Option<&str>) -> Result<()
     Ok(())
 }
 
-/// F96（#62）：本地「在该目录起**新**会话」的 PowerShell 命令体——与 `build_resume_ps_command`
-/// 同一套「F34 自定义命令优先 → cc 别名优先 → 回退默认拉起」逻辑，但**不带 resume flag / sid**
-/// （起全新会话，非 resume）。硬约束（用户 2026-07-15）：agent 名 / resume flag 全走活跃适配器，
-/// 本函数不出现 agent 字面量。抽独立函数为单测（不 spawn 也能验 cc 优先 + 防注入）。
+/// F96（#62）：本地「在该目录起**新**会话」的 PowerShell 命令体——薄委托（同上，DoD 要求
+/// 行为逐字节不变）。硬约束（用户 2026-07-15）：agent 名 / resume flag 全走活跃适配器，
+/// 本函数不出现 agent 字面量。
 fn build_new_session_ps_command(launcher: Option<&str>) -> Result<String, String> {
-    let agent = crate::adapter::active();
-    // F34：设了自定义命令就直接用（用户显式选择优先）。
-    if let Some(l) = sanitize_launcher(launcher)? {
-        return Ok(l);
-    }
-    let def = agent.default_launcher();
-    match agent.launcher_alias() {
-        // 有 wrapper 别名（cc）：优先它、检测不到回退 default。
-        Some(alias) => Ok(format!(
-            "if (Get-Command {alias} -ErrorAction SilentlyContinue) {{ {alias} }} else {{ {def} }}"
-        )),
-        None => Ok(def.to_string()),
-    }
+    build_local_ps_command(&LocalPsAction::New, launcher)
 }
 
 /// F96（#62）：历史页右键「在该目录起新会话」——本地分支。远端分支走前端
@@ -2002,5 +2009,31 @@ mod tests {
                 "应拒绝注入 launcher: {bad:?}"
             );
         }
+    }
+
+    /// F06：`build_resume_ps_command`/`build_new_session_ps_command` 收拢成
+    /// `build_local_ps_command` 后必须逐字节保持——把重构前两个函数曾经产出的具体字符串
+    /// 内联成期望值（而非依赖上面 6 条测试的"包含子串"断言，那些不足以证明完全同构）。
+    #[test]
+    fn unified_builder_byte_identical_to_pre_f06_resume_output() {
+        let sid = "01998f2a-1234-7abc-9def-0123456789ab";
+        let expected = "if (Get-Command cc -ErrorAction SilentlyContinue) \
+             { cc --resume 01998f2a-1234-7abc-9def-0123456789ab } \
+             else { claude --resume 01998f2a-1234-7abc-9def-0123456789ab }";
+        assert_eq!(build_resume_ps_command(sid, None).unwrap(), expected);
+        assert_eq!(
+            build_local_ps_command(&LocalPsAction::Resume(sid.to_string()), None).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn unified_builder_byte_identical_to_pre_f06_new_session_output() {
+        let expected = "if (Get-Command cc -ErrorAction SilentlyContinue) { cc } else { claude }";
+        assert_eq!(build_new_session_ps_command(None).unwrap(), expected);
+        assert_eq!(
+            build_local_ps_command(&LocalPsAction::New, None).unwrap(),
+            expected
+        );
     }
 }

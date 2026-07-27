@@ -6,7 +6,7 @@
 import { AGENT_PROFILE } from "./agent-profile.ts";
 import { isValidSessionId, isValidTmuxName, isValidNewTmuxName } from "./shell-quote.ts";
 import { buildLaunchPlan } from "./launch-plan.ts";
-import type { LaunchAccount, LaunchContext, LaunchPlan } from "./launch-plan.ts";
+import type { LaunchAccount, LaunchAction, LaunchContext, LaunchPlan } from "./launch-plan.ts";
 
 export interface LaunchPlanBuild {
   ctx: LaunchContext;
@@ -119,6 +119,35 @@ export function planLauncher(
     account: accountOf(configDir, accountName),
     launcherOverride: command,
     ccmSid: undefined, // 今天就不设——已知 F04 缺口，本次原样保留、不顺手"修一半"
+  };
+  return { ctx, plan: buildLaunchPlan(ctx) };
+}
+
+/** F06：本地（Windows）路径的 `LaunchContext` 构造——本地会话无账号隔离/tmux 概念，
+ *  `container`/`account` 恒定；`launcher` 不经这层（本地路径的 launcher 是裸字符串直传 Rust，
+ *  由 Rust 自己校验/拼接 PowerShell 命令，不是本 IR 的渲染对象）。
+ *
+ *  校验 `sid`（`action.kind==="resume"` 时）——同其余 4 个 `planXxx` 早就有的
+ *  `isValidSessionId` 检查，本地路径此前唯一缺失这一层，只靠 Rust 侧 `build_local_ps_command`
+ *  兜底校验。补齐后本地/远端 resume 在"sid 校验早于任何 IPC 往返"这条规矩上一致（见
+ *  `features/F06-local-path-ir.md` §3.2 实现期修正）。
+ *
+ *  `plan.env` 会因 `NESTED_ENV_RESET_DIMENSION` 恒非空（action 是 new/resume 就触发）——
+ *  **故意不消费**：本地场景的嵌套 env 污染保护已经在 `lib.rs::scrub_env_vars`（进程启动期
+ *  一次性清洗）做完，调用方不应该、也不需要再从这里的 `plan.env` 拼 PowerShell env-unset 语句
+ *  （见同一节 §0 的证据链）。 */
+export function planLocal(action: LaunchAction, cwd: string | null): LaunchPlanBuild {
+  if (action.kind === "resume" && !isValidSessionId(action.sid)) {
+    throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(action.sid)}`);
+  }
+  const ctx: LaunchContext = {
+    transport: { kind: "local" },
+    action,
+    container: { kind: "none" },
+    cwd,
+    account: { kind: "base" },
+    launcherOverride: undefined,
+    ccmSid: undefined,
   };
   return { ctx, plan: buildLaunchPlan(ctx) };
 }

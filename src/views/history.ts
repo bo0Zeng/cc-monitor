@@ -27,6 +27,7 @@ import { SessionViewer, type ViewerOptions } from "./session-viewer";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
+import { planLocal } from "../launch-requests";
 import { fetchAccounts, isSelectable, withAccount } from "../accounts";
 import {
   actionsFor,
@@ -1509,6 +1510,15 @@ export class HistoryView {
         },
       );
     } else {
+      // F06：走一遍本地 IR 构造，sid 校验先于任何 IPC 往返（同其余 planXxx 早有的
+      // isValidSessionId 检查）；构造失败与拉起失败分两个 catch，headline 对齐远端
+      // `runRemoteResume` 的"无法构造 resume 命令"/"拉起失败"两分，不再共用一个"恢复失败"。
+      try {
+        planLocal({ kind: "resume", sid: ctx.sessionId }, ctx.cwd);
+      } catch (err) {
+        showActionFailureToast("无法构造 resume 命令", String(err));
+        return;
+      }
       try {
         // F34：用户自定义本地 resume 命令（如 cct）；空 = 后端默认（cc 检测→默认）
         const behavior = await getBehavior();
@@ -1539,6 +1549,12 @@ export class HistoryView {
     } else {
       try {
         // 本地：后端 new_local_session（cc 优先 + F34 自定义，无 sid/resume flag）。
+        // F06：走一遍本地 IR 构造（new 动作无 sid 可校验、恒不 throw，主要是让 transport:local
+        // 是真活过的路径，不是纯类型层面的死分支）。上面的 `getBehavior()` 排在此调用之前——
+        // 与 resume 分支「校验先于 IPC」的顺序考虑不同（那里 planLocal 真的可能 throw，值得抢在
+        // 任何 IPC 之前跑），new 分支没有 sid 需要拦截，`getBehavior()` 是 remote 分支也要用的
+        // 共享读取，不为这里的顺序特意重排。
+        planLocal({ kind: "new" }, ctx.cwd);
         await invoke("new_local_session", {
           cwd: ctx.cwd,
           launcher: behavior.resumeCommandLocal || null,

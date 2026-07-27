@@ -63,8 +63,8 @@
 | F03 | LaunchPlan IR + 双渲染器 + 维度注册表 | 结构化启动意图；主渲染器 → CLI，兜底渲染器 → 今天的裸 shell | **完成** | F02 | P1 |
 | F04 | 会话身份统一（@ccm_sid） | 本工具/CLI 起的会话必有身份；三道门取代名前缀白名单；**须根治「一个 sid 匹配多个活会话」**（见下） | **完成** | F02,F03 | P1 |
 | F05 | AccountResolver | 账号解析收敛成判别联合，注入源过 `isSelectable` | **完成** | F03 | P1 |
-| F06 | 本地路径并入 IR | Rust 两套 PowerShell builder 收进同一意图模型 | 待规划 | F03 | P2 |
-| F07 | 每账号默认模型 | 维度注册表的**架构验收**（第一个真实新维度） | 待规划 | F03 | P2 |
+| F06 | 本地路径并入 IR | Rust 两套 PowerShell builder 收进同一意图模型 | 完成 | F03 | P2 |
+| F07 | 每账号默认模型 | 维度注册表的**架构验收**（第一个真实新维度） | Phase B 完成 | F03 | P2 |
 | F08 | 终端集成收尾 | CLI 安装向导 + 别名生成 + 越层启动器诊断 + 旧 swap 退役 | 待规划 | F02,F04 | P2 |
 | F09 | UI 收敛：动作 × 修饰 | 10 个 resume 入口 → 1 动作 + 修饰 flyout；徽章常显；删对齐全套 | 待规划 | F05 | P2 |
 | F10 | 剩余账号 UX | 面板砍卡片 / 加号一键化 / 用量（plan 窗口 %） | 待规划 | F09 | P3 |
@@ -248,7 +248,7 @@ Modifier = account=X | base | container=tmux|none | 未来任意   ← 二级 fl
 | `src/remote-launch.ts` | F02,F03,F04,F05 | 7 个 builder → 薄适配器，**保持位置参数签名**（e2e driver 直接 import，审计 §五.4）；内部构 `LaunchPlan` 后交渲染器 | **F03 已落地**：7 个导出全改薄适配器（一行调 `planXxx(...).plan` 再 `renderFallback`），15 个符号 import 面对 `remote-launch.test.ts` 零改动、断言零编辑仍全绿；`posixQuote`/`isValidSessionId`/等移到叶子模块 `src/shell-quote.ts`，本文件 re-export | `sanitizeRemoteLauncher` 只作用于用户串，`wrap` 必须在其**后**（审计 D3）。校验谓词已两分：创建 vs attach，别再合回一个 |
 | `e2e/tmux-target-*`（F01 新增） | F01,F02,F04 | **常设真机行为验收 harness**：`tmux-target-emit.mts` 从真 builder 取生产串 → `tmux-target-acceptance.sh` 在隔离 `-L` socket 上验「命令干了什么」 | F01 建成，26 项 | 凡改 tmux/shell 命令构造的功能都要过它（§5.2）。**别手搓等价命令**——必须从真 builder 取 |
 | `src/remote-launch-run.ts` | F03,F05,F06 | 6 个 executor → 单一 `runLaunch(plan)`；剪贴板回退集中一处；返回值统一为 boolean | **F03 已落地「剪贴板回退集中一处」**（`invokeLaunchOrCopyFallback` 唯一实现，6 处调用点只传文案）+「挑渲染器」集中在 `renderLaunchCommand`；**保留 6 个具名 executor（未合并成单一 `runLaunch(plan)`）且返回值仍是 void/boolean 混合**——F03 的硬约束「executor 位置参数签名逐字不变」（`account-restart.ts` 按名调用 `runRemoteResumeTmux`，经 `restart-cmd-driver.ts` 传递性锁死）与「合并成单一入口 + 统一返回类型」互斥，本轮取前者、后半段暂不做 | 若 F05/F06/F09 要真做「单一 `runLaunch`」，须先解决 `account-restart.ts`/`tabs.ts`/`history.ts`/两个 e2e driver 的联动改动——那是比 F03 大得多的一次性重构，不建议顺手做 |
-| `src-tauri/src/history.rs` | F06 | 两套 PowerShell builder 收进同一意图模型（F06 的 Phase B 先定「IR 前端构造下发」vs「Rust 侧同构 renderer」） | 两套独立逻辑，零账号维度 | 「同一个 Resume 按钮的 else 分支」 |
+| `src-tauri/src/history.rs` | F06 | 两套 PowerShell builder 收进同一意图模型（F06 的 Phase B 先定「IR 前端构造下发」vs「Rust 侧同构 renderer」） | **F06 已落地**：`build_resume_ps_command`/`build_new_session_ps_command` 收拢成 `build_local_ps_command`（`LocalPsAction` 枚举驱动，同构 TS `LaunchAction`），两个 `#[tauri::command]` 降级成薄委托；前端 `src/launch-requests.ts::planLocal` 构造真 `LaunchContext`（`transport:{kind:"local"}`，F03 起就有但从未实例化过的类型分支）走一遍 `LAUNCH_DIMENSIONS`，`plan.env` 故意算出来不消费（等价保护已在 `lib.rs::scrub_env_vars` 做完，见 INVARIANTS §36） | 采用「Rust 侧同构 renderer」而非「IR 前端构造下发」——`Get-Command` 探测是 render-time 决策，只能在目标机器上做，TS 无法预先渲染。本地路径不接账号维度（`account:{kind:"base"}` 恒定，Windows 本地无 `CLAUDE_CONFIG_DIR` 隔离概念）。为 F09「同一个 Resume 按钮」的统一动作模型铺路——F09 落地时本地/远端已共享同一套 `LaunchContext`/`LaunchAction` |
 | `src/behavior.ts` | F02,F03,F08 | launcher 字段仍存**裸字符串**（向下兼容）；新增「CLI 已装/版本」探测缓存 | 探测缓存在 `src/ccm-probe.ts`（按 origin、非 `behavior.ts` 字段）；**F03 加 `forceLegacyLaunchRenderer: boolean`**（默认 `false`，无 UI，手改 config.json 的逃生口，MASTERPLAN R2）——`settings/panel.ts` 的 `onBehaviorToggle` 手搓字面量构造 `BehaviorConfig`，加字段时 tsc 揪出「面板会把它悄悄重置成默认值」的真实回归，已修（面板缓存 open() 读到的值原样带回） | 绝不改 config schema；面板以后再加新的无 UI 字段，切记同一模式（缓存 + 带回），别重蹈 |
 | `src/accounts.ts` | F05,F07,F09 | `AccountResolver` 返回判别联合 `{kind:"account"\|"base"\|"unavailable"}`；注入源过 `isSelectable`；保留 `useBase` | **F05 已落地**：`resolveAccount`（纯函数，判别联合）+ `withAccount`（内部改用它，`run` 回调扩成 `(configDir?, accountName?)`）。`account-restart.ts` 的独立解析路径**有意不合并**（失败语义故意不同：`withAccount` 退化基座、`account-restart.ts` 中止），只补传了已知的 `accountName` | `accountColorsActive` **只有一个消费者**（审计 C6 纠正 v2 事实错误）；徽章门是 `shouldShowAccountBadge`，**不得**把 ≥2 门恢复上去。账号名已线通进 `LaunchAccount`（`name?: string`，可选——见 F05 §3.3 实现期修正），F07/F09 可直接消费 |
 | `src/tabs.ts` | F04,F09 | 菜单支持二级 flyout；徽章多账号即常显；对齐全套（⇄/⚠k/alignAll/countAccountMismatches）删除 | **F04 已落地其中的身份统一部分**：`findClaudeTmuxMatches`（不折叠成第一个）+ 三个调用点按严重度分级（resume 警告继续/restart 拒绝/菜单 kill 项禁用）+ `resumingSids` 互斥；**菜单 flyout/徽章/对齐删除仍是 F09 范围，未动** | F09 删前核 `e2e/restart-cmd-driver.ts` 的 import（审计 §五.6） |
@@ -375,6 +375,30 @@ F02 ──┴─► F03 ─┬─► F04 ─┬─► F08
 
 ## 7. 变更记录
 
+- 11 — 2026-07-27 — **F06 完成签收**（Phase B→F 全过，未开 Plan agent fanout——Explore fork 用
+  平台约束（`Get-Command` 探测只能在目标机器现场跑）单向决定了"Rust 侧同构 renderer"这条路，
+  不是两个旗鼓相当需要比较的方案；双 agent 架构/UX 审无阻塞项、2+2 条重要发现全修）。实现：
+  `history.rs` 的 `build_resume_ps_command`/`build_new_session_ps_command` 收拢成
+  `build_local_ps_command`（`LocalPsAction` 枚举驱动，`Get-Command` 探测-回退分支只写一次），
+  两个 `#[tauri::command]` 降级成薄委托，新增 2 条黄金串对拍测试锁死重构前后逐字节同输出；
+  `src/launch-requests.ts` 新增 `planLocal`，把本地 resume/新建两条路径从"直拼
+  `{sessionId,cwd,launcher}`"改成"构造真 `LaunchContext`（`transport:{kind:"local"}`，F03 起
+  就有但从未被任何调用点实例化过的类型分支）→ 跑 `LAUNCH_DIMENSIONS`"，4 个调用点
+  （`history.ts`×2/`tabs.ts`/`session-viewer.ts`）接入；实现期自己发现并修一个一致性缺口：
+  本地路径此前唯一缺失 `isValidSessionId` 校验（同其余 4 个 `planXxx` 早有的模式），已补齐（防御
+  性收紧，不改变任何合法输入下的行为）。`plan.env` 因 `NESTED_ENV_RESET_DIMENSION`（不看
+  transport）对本地场景恒非空，判定**故意不消费**——本地场景的嵌套 env 污染保护已经在
+  `lib.rs::scrub_env_vars`（进程启动期一次性清洗 cc-monitor.exe 自己的环境，`launch_powershell_window`
+  spawn 的子进程默认继承这份已清洗过的环境）做完，补渲染期重复清洗只会引入未经真机验证的新
+  PowerShell 代码，不增加安全收益（已记 INVARIANTS §36）。双 agent 审计发现并修复：①
+  Rust/TS 两处 sid 字符集校验方向安全但不完全相同（措辞订正，未改代码）；②
+  `launch-render-cli.test.ts` 一处过期测试标题漏改；③ 本地 sid 校验失败的错误 toast headline
+  与远端同类失败不一致（已把 4 个调用点统一改成两阶段 catch，对齐远端"无法构造 resume 命令"
+  措辞）；④ `planLocal`/`getBehavior()` 相对顺序在 4 个调用点不统一、一处注释因此不准确（已
+  订正）。Phase D 一份初次汇报误判"计划 checkbox 未勾"为阻塞项（复核后判定这只是 Phase F 文档
+  收尾尚未进行，非功能性阻塞）；另排除一条误报（`nestedEnvVars` 顺序差异被误读为字段缺失，两份
+  列表实际内容相同）。门禁全绿：tsc 0/npm test 631/cargo test 379/全部 e2e 套件不变（本功能不碰
+  远端/tmux 路径）；`remote-launch.test.ts`/两个 e2e driver 全程零 diff。
 - 10 — 2026-07-27 — **F05 完成签收**（Phase B→F 全过，未开 Plan agent fanout——目标形态已由
   账本给定，直接规划；双 agent 架构/UX 审无阻塞项、2+1 条重要发现全修）。实现：`accounts.ts`
   新增 `AccountResolution` 判别联合 + `resolveAccount` 纯函数（`withAccount` 内部改用，行为

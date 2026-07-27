@@ -43,7 +43,10 @@ const CLI_REQUIRED_CAPS = [
 
 export function canRenderCli(plan: LaunchPlan, ctx: LaunchContext, probe: CcmProbeResult): boolean {
   if (!probe.installed) return false;
-  if (plan.transport.kind !== "ssh") return false; // local = F06，未实现
+  // local 恒不走这条渲染器（F06 落地）：不是"未实现"，是设计上的分工——本地路径有自己独立的
+  // Rust 侧 renderer（history.rs::build_local_ps_command），因为它要问的问题（本机是否有 `cc`
+  // PowerShell 函数）只能在目标机器上现场探测，TS 无法预先渲染好交给它。
+  if (plan.transport.kind !== "ssh") return false;
   if (!CLI_REQUIRED_CAPS.every((c) => probe.capabilities.has(c))) return false;
   if (plan.container.kind === "tmux" && plan.container.mode === "send-into") return false; // #76 防线：仅挡 idle-tmux 就地复用（attach-only 与 create-or-attach 都安全）
   for (const dim of LAUNCH_DIMENSIONS) {
