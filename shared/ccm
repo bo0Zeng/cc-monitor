@@ -271,7 +271,13 @@ config_dir=""
 if [ -n "$account" ]; then
   config_dir="$(account_config_dir "$account")"
   [ -n "$config_dir" ] || die "账号 '$account' 不可用（不在 $CCM_ACCTS_MANIFEST，或其目录不存在）。可用: $(list_account_names)"
-elif [ "$use_base" != 1 ]; then
+elif [ "$use_base" != 1 ] && [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then
+  # **只在调用方没有已选定账号时才落默认号**（真机复现过的 bug：cc-monitor 把
+  # `resumeCommandRemote` 配成 ccm 时，是「外层已 export 好账号 X 的 CLAUDE_CONFIG_DIR，
+  # 再 exec ccm --resume <sid>（不带任何账号 flag）」——这条路径下，若无脑落默认号，会把
+  # cc-monitor 精心选中的账号 X **静默覆盖**成 manifest 的 isDefault，等于账号选择完全失效。
+  # 加 `-z "${CLAUDE_CONFIG_DIR:-}"` 这道闸：已有继承来的账号 → 尊重它、不覆盖；
+  # 真正的"空白终端裸敲 cc/cct"（无继承）才落默认号——两个场景用同一条 if 天然区分。
   _def="$(default_account_name)"
   if [ -n "$_def" ]; then
     config_dir="$(account_config_dir "$_def")"
