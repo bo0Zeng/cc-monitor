@@ -880,7 +880,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
 // audit-fixes F01（修 B1，full-audit 阻塞）：跟随 resume 的 pin 必须**现读磁盘**
 // (`list_last_accounts`)，不读内存镜像 `accountLastByS`——后者在启动窗口 / 查询失败 /
 // 刚显式钉后 10s 内是陈旧或空的，读它会让 withAccount 的不-clobber 守卫拿到假 priorPin=null，
-// 把磁盘真实 pin 静默覆盖成全局当前工作账号。变异锚点：把 readSessionPin 换回
+// 把磁盘真实 pin 静默覆盖成全局当前账号。变异锚点：把 readSessionPin 换回
 // this.accountLastByS.get(sid)，这两条即红（list_last_accounts 不再被 invoke）。
 describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读覆盖）", () => {
   let tm: TabManager;
@@ -1791,7 +1791,7 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
     tm.setSessionAccounts(rows, new Map(), last, new Set(["aya"]), current);
   }
 
-  it("会话账号 != 当前工作账号(live) → 挂实心头像", () => {
+  it("会话账号 != 当前账号(live) → 挂实心头像", () => {
     tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "aya");
     feed([liveRow("r1", "b")], new Map(), new Map([["aya", "z"]]));
     const el = badge();
@@ -1799,7 +1799,7 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
     expect(el?.querySelector(".acct-avatar")).not.toBeNull();
     expect(el?.querySelector(".acct-avatar.ghost")).toBeNull(); // live = 实心
   });
-  it("会话账号 == 当前工作账号 → 不挂徽章", () => {
+  it("会话账号 == 当前账号 → 不挂徽章", () => {
     tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "aya");
     feed([liveRow("r1", "z")], new Map(), new Map([["aya", "z"]]));
     expect(badge()?.style.display).toBe("none");
@@ -1816,7 +1816,7 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
     feed([], new Map(), new Map([["aya", "z"]]));
     expect(badge()?.style.display).toBe("none");
   });
-  it("当前工作账号未就绪(currentByOrigin 无该 origin) → 不猜、不挂", () => {
+  it("当前账号未就绪(currentByOrigin 无该 origin) → 不猜、不挂", () => {
     tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "aya");
     feed([liveRow("r1", "b")], new Map(), new Map()); // 无 current
     expect(badge()?.style.display).toBe("none");
@@ -1911,8 +1911,10 @@ describe("account-ux U6 不一致检测 + 一键对齐", () => {
       new Map([["aya", "z"]]),
     );
     expect(document.body.querySelector(".acct-avatar.ghost")).not.toBeNull(); // 徽章在
-    expect(eligible()).toBe(false); // 但无 ⇄（死会话对齐走 resume）
-    expect(document.body.querySelector<HTMLElement>(".tab-acct-badge")?.title).toContain("resume");
+    expect(eligible()).toBe(false); // 但无 ⇄（死会话对齐走右键「切到账号 X」→ resume）
+    expect(document.body.querySelector<HTMLElement>(".tab-acct-badge")?.title).toContain(
+      "把此会话切到账号",
+    );
   });
 
   it("归档 tab 不给 ⇄、也不进批量（用户已停跟随，破坏性动作不该冒出来）", () => {
@@ -1933,7 +1935,7 @@ describe("account-ux U6 不一致检测 + 一键对齐", () => {
     expect(priv().accountMismatchSids()).toEqual(["m1"]);
   });
 
-  it("当前工作账号未知（origin 无 current）→ 不猜、不显 ⇄、不计数", () => {
+  it("当前账号未知（origin 无 current）→ 不猜、不显 ⇄、不计数", () => {
     tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
     tm.setSessionAccounts(
       [liveRow("m1", "b")],
@@ -1948,14 +1950,14 @@ describe("account-ux U6 不一致检测 + 一键对齐", () => {
 
   // ------------------------------------------------------- 单会话 ⇄ 的**正路**
   // （D 审计突变测试证明：只断言显隐时，删掉整个 click 监听 / 对齐到错账号，测试照样全绿。）
-  it("点 ⇄ → 用当前工作账号调编排器，且**不注入 confirm**（保留破坏性二次确认）", async () => {
+  it("点 ⇄ → 用当前账号调编排器，且**不注入 confirm**（保留破坏性二次确认）", async () => {
     tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
     feed([liveRow("m1", "b")]);
     alignBtn()!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await new Promise((r) => setTimeout(r, 0));
     expect(restartSpy).toHaveBeenCalledTimes(1);
     const arg = restartSpy.mock.calls[0][0];
-    expect(arg.accountName).toBe("z"); // 对齐到**当前工作账号**，不是别的
+    expect(arg.accountName).toBe("z"); // 对齐到**当前账号**，不是别的
     expect(arg.sessionId).toBe("m1");
     expect(arg.tmuxName).toBe("cc-m1");
     expect(arg.compactFirst).toBe(false);
@@ -2029,7 +2031,7 @@ describe("account-ux U6 不一致检测 + 一键对齐", () => {
     expect(confirmSpy).toHaveBeenCalledTimes(1); // 只有批量那一次
     expect(restartSpy).toHaveBeenCalledTimes(2);
     for (const call of restartSpy.mock.calls) {
-      expect(call[0].accountName).toBe("z"); // 都对齐到当前工作账号
+      expect(call[0].accountName).toBe("z"); // 都对齐到当前账号
       expect(call[0].compactFirst).toBe(false);
       expect(call[0].confirm?.("x")).toBe(true); // 批量层已确认 → 编排器不再弹
     }

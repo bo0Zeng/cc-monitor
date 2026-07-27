@@ -1317,8 +1317,8 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   font-size: 12px;
 }
 
-/* account-ux U6：tab 上的「⇄ 用当前工作账号重启对齐」按钮。**是否够格**由 JS 决定
-   （updateAccountBadge 写 inline display：远端 + 活会话 + 账号≠当前工作账号 + 非归档 +
+/* account-ux U6：tab 上的「⇄ 用当前账号重启对齐」按钮。**是否够格**由 JS 决定
+   （updateAccountBadge 写 inline display：远端 + 活会话 + 账号≠当前账号 + 非归档 +
    不在重启中）；**何时露面**由下面这条 CSS 决定 —— 照 MASTERPLAN 定的「tab hover ⇄」，
    只在指针停在该 tab（或键盘焦点落进去）时显示。
    两个理由：① tab 栏默认才 150px，而 live-dot+头像+📂+↗ 等固定图标已占掉大半，常驻再加 18px
@@ -5464,15 +5464,8 @@ body.settings-window-mode .grid-monitor-trigger {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* account-ux U6：chip 上的 ⚠k 不一致计数（k 个活会话不在当前工作账号）。仅信息，点 chip
+/* account-ux U6：chip 上的 ⚠k 不一致计数（k 个活会话不在当前账号）。仅信息，点 chip
    进菜单才有对齐入口 → 不做成按钮、不抢眼，只用 warn 色示意。 */
-.status-account-mismatch {
-  flex: none;
-  margin-left: 2px;
-  font-size: var(--font-size-small);
-  line-height: 1;
-  color: var(--warn, #d4a04a);
-}
 .account-picker-action.danger {
   color: var(--warn, #d4a04a);
 }
@@ -5597,7 +5590,7 @@ body.settings-window-mode .grid-monitor-trigger {
 .acct-avatar.ghost.acct-c6 { color: var(--acct-c6) !important; }
 .acct-avatar.ghost.acct-c7 { color: var(--acct-c7) !important; }
 
-/* account-ux U5：徽章 span 退化为纯容器（内含 .acct-avatar 头像，仅"不在当前工作账号"时出现）；
+/* account-ux U5：徽章 span 退化为纯容器（内含 .acct-avatar 头像，仅"不在当前账号"时出现）；
    旧实色药丸 + `—` 未知态已废（信息才显：一致/未知都不挂）。 */
 .tab-acct-badge {
   flex: none;
@@ -5658,7 +5651,7 @@ body.settings-window-mode .grid-monitor-trigger {
   background: var(--overlay-hover);
 }
 
-/* U7：「当前工作账号」横幅——把 chip / tab 徽章上那个概念在设置里说清楚（管辖范围）。 */
+/* U7：「当前账号」横幅——把 chip / tab 徽章上那个概念在设置里说清楚（管辖范围）。 */
 .accounts-current-banner {
   display: flex;
   align-items: center;

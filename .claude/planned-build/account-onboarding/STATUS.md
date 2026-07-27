@@ -2,7 +2,9 @@
 
 ## 当前阶段
 Phase A **已审批** + 三开放设计点已拍板 + 两执行决策：**F5 走 vendor 内嵌**、**全自动 planned-build loop 一口气跑**（连续 B→G，只在真阻塞/计划≠现实/需新决策停）。
-**F5 完成签收（B→F 全过）**：vendor 内嵌 + deploy/check IPC + 前端检测→一键部署。D 审计无阻塞（I1 install 死锁 + S1/S2/S4/S5 已修复验），E 与 F3 正交无耦合债。门禁 tsc0/vitest600/cargo check0/cargo test368。commit 落盘。**下一个：F1**（切号入口：状态栏 chip 全局下拉 + tab 右键 per-session「此会话切到 X」；「当前工作账号」文案统一「当前账号」）。
+**F5 完成签收（B→F 全过）**：vendor 内嵌 + deploy/check IPC + 前端检测→一键部署。D 审计无阻塞（I1 install 死锁 + S1/S2/S4/S5 已修复验），E 与 F3 正交无耦合债。门禁 tsc0/vitest600/cargo check0/cargo test368。commit 落盘。**F1 完成签收（B→F 全过）**：chip 去 ⚠k 成纯全局切换器 + tab 右键 relabel「把此会话切到账号 X」+ 全局 rename 当前账号。D 审计无阻塞（I1 文案一致/S3 补正路覆盖等已修）。门禁 tsc0/vitest598。commit 落盘。
+**下一个：F2**（撤对齐主 UI：删 tab 徽章 ⇄ + mismatch 主 UI + **清 F1 移交的 countAccountMismatches 死代码**；保留命令面板 alignAll/alignableSids；主 UI 换诚实提示）。相关：tabs.ts(⇄/updateAccountBadge/countAccountMismatches)、tabs.vitest。
+（已 commit：F5 9d3a7e6、F1 待本轮 commit。）
 
 ## 恢复入口
 读本文件 + MASTERPLAN.md。功能顺序：F5（部署地基）→ F1（切号入口）→ F2（撤对齐）→ F3（面板砍卡片）→ F4（加号一键）→ F6（终端起号）→ F7（用量）。

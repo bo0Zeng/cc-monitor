@@ -809,7 +809,7 @@ class MachineCard {
     acctRow.className = "launcher-field";
     acctRow.style.display = "none";
     const acctSpan = document.createElement("span");
-    acctSpan.textContent = "账号（默认＝当前工作账号）";
+    acctSpan.textContent = "账号（默认＝当前账号）";
     const acctSelect = document.createElement("select");
     acctSelect.className = "launcher-acct-select";
     acctRow.append(acctSpan, acctSelect);
@@ -822,7 +822,7 @@ class MachineCard {
         if (sel.length < 1) return;
         const none = document.createElement("option");
         none.value = "";
-        // U8：说清后果——「不指定」= 用远端 ~/.claude 那套基座凭据，**不受当前工作账号影响**。
+        // U8：说清后果——「不指定」= 用远端 ~/.claude 那套基座凭据，**不受当前账号影响**。
         none.textContent = "不指定（用远端登录的基座账号，不注入 CLAUDE_CONFIG_DIR）";
         acctSelect.appendChild(none);
         for (const a of sel) {
@@ -831,7 +831,7 @@ class MachineCard {
           opt.textContent = a.email ? `${a.name} · ${a.email}` : a.name;
           acctSelect.appendChild(opt);
         }
-        // 预选当前工作账号（若它可选）——用户可改或选「不指定」。
+        // 预选当前账号（若它可选）——用户可改或选「不指定」。
         const def = currentWorkingAccount(state);
         if (def && isSelectable(def)) acctSelect.value = def.name;
         acctRow.style.display = "";

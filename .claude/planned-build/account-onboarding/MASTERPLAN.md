@@ -96,4 +96,5 @@
 ## 变更记录
 - 2026-07-27 建 Phase A 主计划（三路调研勘定现状 + 用户三决策：对齐降级命令面板 / verify·sync 收排障 / 先审批）。
 - 2026-07-27 用户拍板三开放设计点：F1 全局(chip 下拉)/局部(tab 右键)拆开、F7 一步到位窗口%、chip 保留极简下拉。主计划**已审批**，进 Phase B（F5 起）。
-- 2026-07-27 **F5 完成签收**（B→F）：vendor 内嵌 cc-acct-iso + deploy_remote_acct_iso/check_remote_acct_iso IPC + 前端检测→一键部署。D 审计两 agent 无阻塞、同报 I1（install 静默失败死锁）已修 + S1/S2/S4/S5 修。门禁 tsc0/vitest600/cargo check0/cargo test368。账本「新 IPC」项落最终形态，与 F3 正交。commit 落盘。下一个：F1。
+- 2026-07-27 **F5 完成签收**（B→F）：vendor 内嵌 cc-acct-iso + deploy_remote_acct_iso/check_remote_acct_iso IPC + 前端检测→一键部署。D 审计两 agent 无阻塞、同报 I1（install 静默失败死锁）已修 + S1/S2/S4/S5 修。门禁 tsc0/vitest600/cargo check0/cargo test368。账本「新 IPC」项落最终形态，与 F3 正交。commit 落盘（9d3a7e6）。下一个：F1。
+- 2026-07-27 **F1 完成签收**（B→F）：chip 去 ⚠k 成纯全局切换器（CCSwitcher 式下拉）+ tab 右键 relabel「把此会话切到账号 X」per-session 切号 + 全局 rename 当前工作账号→当前账号（13 文件）。D 审计无阻塞（I1 文案一致/S2 注释/S3 补正路覆盖/S4 平行 已修）。门禁 tsc0/vitest598。**移交 F2**：`countAccountMismatches` 成死代码（随 chip ⚠k 删除），F2 撤 mismatch 主 UI 时一并清。commit 落盘。下一个：F2。

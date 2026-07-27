@@ -228,7 +228,7 @@ interface TabButtonRefs {
   badge: HTMLSpanElement;
   /** A3：账号徽章（该会话属于哪个账号；本地会话不显示，未知显 —）。 */
   acctBadge: HTMLSpanElement;
-  /** account-ux U6：⇄ 换号对齐按钮（仅活跃 && 账号≠当前工作账号时显，点=用当前账号重启对齐）。 */
+  /** account-ux U6：⇄ 换号对齐按钮（仅活跃 && 账号≠当前账号时显，点=用当前账号重启对齐）。 */
   alignBtn: HTMLSpanElement;
   cwdBtn: HTMLSpanElement;
 }
@@ -349,7 +349,7 @@ export class TabManager {
   private accountLastByS = new Map<string, string>();
   /** A4/§7：账号可查询的远端 origin 集（available 且非 daemonless）。只有这些 origin 的会话才显徽章。 */
   private accountReadyOrigins = new Set<string>();
-  /** account-ux U5：origin → 当前工作账号名。徽章「信息才显」比对：会话账号==它 → 不挂徽章。main.ts 定期喂。
+  /** account-ux U5：origin → 当前账号名。徽章「信息才显」比对：会话账号==它 → 不挂徽章。main.ts 定期喂。
    *  **只放 isSelectable 的账号**（main.ts 侧过滤）：不可选的当前账号对齐必失败，指着它说"你不一致"
    *  是假信息，且与 U1 `resolveFollowAccount`「不可选就下沉」的语义保持一致。 */
   private currentByOrigin = new Map<string, string>();
@@ -1023,7 +1023,7 @@ export class TabManager {
   }
 
   /**
-   * account-ux U5「信息才显」：只在会话账号**不在当前工作账号**（或未知当前时不猜）时挂徽章——
+   * account-ux U5「信息才显」：只在会话账号**不在当前账号**（或未知当前时不猜）时挂徽章——
    * 一致=不挂（chip 已代言，tab 栏保持干净）；未知(源③)=不挂（退 hover tooltip，消 `—` 墙）；
    * 不一致→彩色头像：source=live 实心（硬真相）/ source=last 幽灵（软来源）。§7 readyOrigins 门控不变。
    */
@@ -1060,13 +1060,13 @@ export class TabManager {
     //（D 审计：曾把这句指路删了，幽灵徽章就再无任何地方说明怎么对齐）。
     const alignable = this.alignableCurrent(sid, tab);
     refs.acctBadge.title =
-      `${b.tooltip} · 与当前工作账号「${current}」不一致` +
-      (alignable ? "" : b.source === "last" ? "（右键「用账号 … resume」可对齐）" : "");
+      `${b.tooltip} · 与当前账号「${current}」不一致` +
+      (alignable ? "" : b.source === "last" ? "（右键「把此会话切到账号 …」可对齐）" : "");
     refs.acctBadge.style.display = "";
     // 够格与否由 JS 打 .is-eligible；**何时露面**（hover）交给 CSS，见 styles.css。
     if (alignable) {
-      refs.alignBtn.title = `用当前工作账号「${current}」重启对齐此会话（中断当前回合、丢进程内状态）`;
-      refs.alignBtn.setAttribute("aria-label", `用当前工作账号 ${current} 重启对齐此会话`);
+      refs.alignBtn.title = `用当前账号「${current}」重启对齐此会话（中断当前回合、丢进程内状态）`;
+      refs.alignBtn.setAttribute("aria-label", `用当前账号 ${current} 重启对齐此会话`);
       refs.alignBtn.classList.add("is-eligible");
     } else {
       refs.alignBtn.classList.remove("is-eligible");
@@ -1106,7 +1106,7 @@ export class TabManager {
   /**
    * auto-e2e F-E0:全会话状态一行 JSON——Tier1/Tier2 断言出口(经 e2e-probe Ctrl+Alt+F10 触发 →
    * fe_perf 日志)。复用 `snapshotSessions`(已含 status/tmuxIdle/origin/account),派生 `mismatch`
-   * (detectAccountMismatch:活会话账号与该 origin 当前工作账号确知且不一致)。**不动 `debugSnapshot`
+   * (detectAccountMismatch:活会话账号与该 origin 当前账号确知且不一致)。**不动 `debugSnapshot`
    * 形状**(f40-suite 依赖它),这是并列的第二个探针出口。生产不接线,方法本身无副作用/无落盘。
    */
   debugSessionsSnapshot(): string {
@@ -1965,7 +1965,7 @@ export class TabManager {
    * `accountLastByS`。后者是 tab 徽章的 10s 刷新数据源，在①启动首轮刷新前（空 Map）②
    * `list_last_accounts` 抛错被 main.ts 无条件覆写成空 ③刚显式钉 pin 后 10s 内还没轮询到，
    * 这三种窗口里读它 → `withAccount` 的不-clobber 守卫拿到假 priorPin=null → 把磁盘真实
-   * pin 静默覆盖成全局当前工作账号。与 history.ts:1489 的「现读」同口径，三处 resume 一致。
+   * pin 静默覆盖成全局当前账号。与 history.ts:1489 的「现读」同口径，三处 resume 一致。
    * 读不到（无 pin / 查询失败）→ undefined → withAccount 落全局账号/基座，与旧行为一致
    * （区别只是不再"错误地覆盖"既有 pin）。
    */
@@ -2004,10 +2004,10 @@ export class TabManager {
           onUnselectable: (n) =>
             showActionFailureToast(
               "账号不可用",
-              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前工作账号 resume。`,
+              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前账号 resume。`,
               { level: "info", durationMs: 6000 },
             ),
-          // account-ux U3:未显式选号 → 跟随(lastAccount sticky → 当前工作账号 → 基座)。显式选号维持 A4。
+          // account-ux U3:未显式选号 → 跟随(lastAccount sticky → 当前账号 → 基座)。显式选号维持 A4。
           // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
           // F01 步骤2:useBase = 显式「用基座 resume」——不注入、不跟随(老会话住基座,别被 follow
           //   注入全局当前账号导致 claude --resume 在错数据目录找不到会话，即 #75 主因的逃生口)。
@@ -2174,8 +2174,8 @@ export class TabManager {
     }
   }
 
-  /** A4/A5：远端 tab 菜单开后**异步追加**账号项——归档 tab → 每可选账号「用账号 X resume」；
-   *  活 tab → 每可选账号「用账号 X 重启…」+「…（先压缩上下文）」(danger，§5)。复用 F51 代次守卫
+  /** A4/A5：远端 tab 菜单开后**异步追加**账号项——归档 tab → 每可选账号「把此会话切到账号 X（resume）」；
+   *  活 tab → 每可选账号「把此会话切到账号 X（重启）」+「…（先压缩上下文再重启）」(danger，§5)。复用 F51 代次守卫
    *  （gen !== tabMenuGeneration 则菜单已换/已关，整体 no-op，防 R-1 跨 tab 串味）。账号库不可用（§7
    *  daemonless/旧/未启用）/ <2 可选 → 不追加（默认 Resume 仍在）。异步 fetch 用新鲜值，无冷缓存分裂。 */
   private async appendAccountMenuItems(
@@ -2217,21 +2217,21 @@ export class TabManager {
       if (status === "archived") {
         appendTabContextMenuItem({
           id: `acct-resume-${name}`,
-          label: `用账号 ${name} resume`,
+          label: `把此会话切到账号 ${name}（resume）`,
           onClick: () => void this.resumeTab(sid, name),
         });
       } else {
-        // 活跃会话 → 换号破坏性重启（§5）。两条：直接重启 / 先在旧号压缩上下文再重启。
+        // F1：单会话切号（局部）——用目标账号破坏性重启同一会话（§5）。两条：直接切 / 先在旧号压缩再切。
         appendTabContextMenuItem({
           id: `acct-restart-${name}`,
-          label: `用账号 ${name} 重启…`,
+          label: `把此会话切到账号 ${name}（重启）`,
           danger: true,
-          title: `杀掉旧进程，用账号「${name}」resume 同一会话（中断当前回合）`,
+          title: `杀掉旧进程，用账号「${name}」resume 同一会话（中断当前回合、丢进程内状态）`,
           onClick: () => void this.restartTabWithAccount(sid, name, false),
         });
         appendTabContextMenuItem({
           id: `acct-restart-compact-${name}`,
-          label: `用账号 ${name} 重启（先压缩上下文）`,
+          label: `把此会话切到账号 ${name}（先压缩上下文再重启）`,
           danger: true,
           title: `先在【旧账号】上 /compact（命中旧缓存更省）再换号重启——比换号后再压缩便宜`,
           onClick: () => void this.restartTabWithAccount(sid, name, true),
@@ -2363,7 +2363,7 @@ export class TabManager {
     if (!live || live.sid !== sid) {
       showActionFailureToast(
         "无法换号重启",
-        "该会话不在（本工具的）tmux 里、或无法精确定位（缺 @ccm_sid 会话标记）——可先归档后用「用账号 X resume」。",
+        "该会话不在（本工具的）tmux 里、或无法精确定位（缺 @ccm_sid 会话标记）——可先归档后用右键「把此会话切到账号 X」。",
         { level: "info", durationMs: 8000 },
       );
       return false;
@@ -2395,14 +2395,14 @@ export class TabManager {
     if (this.restartingSids.has(sid)) return null; // 正在重启 → 防重入
     if (!shouldShowAccountBadge(tab.origin, this.accountReadyOrigins)) return null;
     const current = this.currentByOrigin.get(tab.origin) ?? null;
-    if (!current) return null; // 当前工作账号未知/不可选（main.ts 已过 isSelectable）→ 不猜
+    if (!current) return null; // 当前账号未知/不可选（main.ts 已过 isSelectable）→ 不猜
     const live = this.sessionAccountsByS.get(sid);
     if (!live || !live.alive || !live.account) return null; // 仅活跃 live（死会话走 resume）
     if (!detectAccountMismatch(live.account, current)) return null;
     return current;
   }
 
-  /** account-ux U6：单会话「用当前工作账号重启对齐」——tab ⇄ 按钮 / U8 的 Ctrl+K 命令共用入口。
+  /** account-ux U6：单会话「用当前账号重启对齐」——tab ⇄ 按钮 / U8 的 Ctrl+K 命令共用入口。
    *  复用 restartTabWithAccount（含 @ccm_sid 精确守卫 + §5.2 失败语义），不新增编排。
    *  @returns 是否真的走到了 resume（false=被守卫拒/账号不可用/用户取消/kill 失败）。 */
   async alignSessionToCurrentAccount(sid: string): Promise<boolean> {
@@ -2449,7 +2449,7 @@ export class TabManager {
     return this.accountMismatchSids().length;
   }
 
-  /** account-ux U6：批量把不一致活会话按各自 origin 的当前工作账号重启对齐。两步确认：先空闲（几乎
+  /** account-ux U6：批量把不一致活会话按各自 origin 的当前账号重启对齐。两步确认：先空闲（几乎
    *  无感），回合进行中的单独第二步确认（默认不含、会打断）。逐会话串行走 restartTabWithAccount
    *  （继承 §5.2：某会话 kill 失败只中止那一个；@ccm_sid 精确守卫防杀错）。破坏性——不新增语义。 */
   async alignAllToCurrentAccount(): Promise<void> {
@@ -2479,7 +2479,7 @@ export class TabManager {
       `若某账号未信任该目录，会在弹出的终端里询问。`;
     if (idle.length > 0) {
       const ok = window.confirm(
-        `将按各自的当前工作账号重启这 ${idle.length} 个**空闲**会话（它们当前在等输入）：\n` +
+        `将按各自的当前账号重启这 ${idle.length} 个**空闲**会话（它们当前在等输入）：\n` +
           idle.map(label).join("\n") +
           COST +
           `\n\n继续？`,
@@ -2730,7 +2730,7 @@ export class TabManager {
     acctBadge.style.display = "none";
     root.appendChild(acctBadge);
 
-    // account-ux U6：⇄ 换号对齐按钮。默认隐藏，updateAccountBadge 仅对"活跃 live && 账号≠当前工作账号"显。
+    // account-ux U6：⇄ 换号对齐按钮。默认隐藏，updateAccountBadge 仅对"活跃 live && 账号≠当前账号"显。
     const alignBtn = document.createElement("span");
     alignBtn.className = "tab-align-btn";
     alignBtn.textContent = "⇄";
@@ -2927,7 +2927,7 @@ export class TabManager {
       if (needAsyncAttach && origin !== null && cwd) {
         void this.resolveAttachMenuItem(origin, cwd, sid);
       }
-      // A4/A5：远端 tab → 异步追加账号项（归档=「用账号 X resume」/ 活=「用账号 X 重启…」）。
+      // A4/A5：远端 tab → 异步追加账号项（归档=「把此会话切到账号 X（resume）」/ 活=「…（重启）」）。
       if (origin !== null && t) {
         void this.appendAccountMenuItems(origin, sid, t.status);
       }

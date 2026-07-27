@@ -110,10 +110,10 @@ export function effectiveDefault(state: AccountsState): Account | null {
 }
 
 /**
- * 「当前工作账号」(account-ux)——`effectiveDefault` 的语义别名,值完全一致。
+ * 「当前账号」(account-ux)——`effectiveDefault` 的语义别名,值完全一致。
  * account-isolation 时期它只用来预选新会话对话框;本轮升格为 resume/新会话的**跟随默认**。
  * 换名不换存储(仍 config.json `accounts.defaultName`);给别名是让 follow 解析 / mismatch
- * 比对的调用点读作"当前工作账号"而非"默认",避免理解漂移。
+ * 比对的调用点读作"当前账号"而非"默认",避免理解漂移。
  */
 export function currentWorkingAccount(state: AccountsState): Account | null {
   return effectiveDefault(state);
@@ -144,7 +144,7 @@ export function accountColorsActive(state: AccountsState): boolean {
 }
 
 /**
- * account-ux U6：**能用来对齐**的当前工作账号——`currentWorkingAccount` 再过一道 `isSelectable`。
+ * account-ux U6：**能用来对齐**的当前账号——`currentWorkingAccount` 再过一道 `isSelectable`。
  *
  * `currentWorkingAccount`(=`effectiveDefault`) 只挑"被指定/第一个"，不管它能不能用；而按它对齐
  * 必然在 `restartWithAccount` 第①步（accountConfigDir 解析）失败。若拿未过滤的值去判"不一致"，
@@ -159,7 +159,7 @@ export function alignableCurrentAccount(state: AccountsState): Account | null {
 
 /**
  * account-ux U1:普通 resume 的**跟随账号**解析器(纯函数,vitest 锁死)。
- * 优先级(用户拍板:粘性优先):`会话 lastAccount → 当前工作账号 → null(基座)`。
+ * 优先级(用户拍板:粘性优先):`会话 lastAccount → 当前账号 → null(基座)`。
  * 每级候选必须 `isSelectable`(存在的 isolated + 已登录 + 目录在)否则**下沉**下一级;
  * 都不可选 → null(=不注入、落基座、逐字节旧行为)。
  * **显式选号不走此函数**——那条路维持 A4 语义(withAccount 的非空 accountName 分支)。
@@ -179,7 +179,7 @@ export function resolveFollowAccount(
 }
 
 /**
- * account-ux U1:活会话账号是否与当前工作账号**不一致**(纯函数)。
+ * account-ux U1:活会话账号是否与当前账号**不一致**(纯函数)。
  * 仅当两者都确知且不同才判 true;任一未知(live 探不到 / 无当前账号)→ false(不误报)。
  */
 export function detectAccountMismatch(
@@ -435,7 +435,7 @@ export async function recordLastAccount(sessionId: string, account: string): Pro
  *
  *   - `accountName == null` **且无 `opts.follow`** → 默认起：`run(undefined)`（不注入、不记账、不 fetch，A4 逐字节旧行为）。
  *   - `accountName == null` **且有 `opts.follow`**（account-ux U2 opt-in 跟随）→ `fetchAccounts` 后
- *     经 `resolveFollowAccount`（lastAccount → 当前工作账号 → null）解析：命中则注入其 configDir +（给了
+ *     经 `resolveFollowAccount`（lastAccount → 当前账号 → null）解析：命中则注入其 configDir +（给了
  *     sessionId 时）记 lastAccount（会话账号 sticky 自增强）；解析不到 → `run(undefined)` 落基座。
  *     **下沉静默不 `onUnselectable`**（用户没显式点号，不该弹提示）。
  *   - `accountName` 非空 → `fetchAccounts` 解析 configDir：
@@ -450,7 +450,7 @@ export async function withAccount(
   opts: {
     sessionId?: string;
     onUnselectable?: (name: string) => void;
-    /** account-ux U2:仅当 accountName===null 时生效——启用「跟随」解析(lastAccount→当前工作账号→基座)。 */
+    /** account-ux U2:仅当 accountName===null 时生效——启用「跟随」解析(lastAccount→当前账号→基座)。 */
     follow?: { lastAccount?: string | null };
   } = {},
 ): Promise<void> {
@@ -479,7 +479,7 @@ export async function withAccount(
         if (configDir) {
           // U3 审计 重要-1:不 clobber 既有 pin。仅当**无既有 pin**(no-owner → 变 sticky)、或**解析
           // 结果==既有 pin**(no-op)时才记账;既有 pin 存在但不可选、下沉到 current → **不记账**,保住原
-          // pin(守「粘性优先」不变量,避免 history/tab 默认 resume 把会话账号悄悄翻成当前工作账号)。
+          // pin(守「粘性优先」不变量,避免 history/tab 默认 resume 把会话账号悄悄翻成当前账号)。
           recordName = !priorPin || followName === priorPin ? followName : null;
         }
       }

@@ -111,14 +111,14 @@ export const ACTIONS: ReadonlyArray<Action> = [
   // 更不该有一个默认单键等着被误触。想要的人自己在「设置 → 快捷键」里绑。
   {
     id: "account.switch-default",
-    label: "打开账号菜单（切当前工作账号）",
+    label: "打开账号菜单（切当前账号）",
     category: "Acct",
     default: null,
     available: true,
   },
   {
     id: "account.align-active",
-    label: "把当前 Tab 的会话对齐到当前工作账号（破坏性：会重启该会话）",
+    label: "把当前 Tab 的会话对齐到当前账号（破坏性：会重启该会话）",
     category: "Acct",
     default: null,
     available: true,
