@@ -529,12 +529,22 @@ const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 /// 写进 ~/.bashrc 的是被 shell **执行**的代码，绝不能让前端注入任意 bash）。
 ///
 /// **必须与前端 `remote-section.ts::CCM_WRAPPER_SNIPPET`（面板展示/手动复制用）逐字一致。**
-/// `\033`/`\007` 是 bash `printf` 的八进制转义（ESC/BEL），用 raw string 保留字面反斜杠。
-/// 标记 `ccm-rbind-%s` 必须与 `bind.rs` 的 `format!("ccm-rbind-{sid}")` 一致。
-/// **单一来源**：`shared/ccm-wrapper.sh`——前端 `remote-section.ts` 经 `?raw` import
-/// 同一文件（修复历史漂移：Batch7 重构 __ccm_rbind 时只改了前端展示版，这里装进
-/// 远端的还是老版无 set-titles，tmux 内 ↗ 必然绑不上）。
-const CCM_WRAPPER_SNIPPET: &str = include_str!("../../shared/ccm-wrapper.sh");
+/// **单一来源**：`shared/ccm-aliases.sh`——前端 `remote-section.ts` 经 `?raw` import
+/// 同一文件（修复历史漂移：Batch7 重构时只改了前端展示版，装进远端的还是老版）。
+///
+/// **F02 起本块只剩「别名层」**：唯一实现搬进 [`CCM_CLI_SCRIPT`]（部署为可执行文件）。
+/// 理由：shell 函数**优先于 PATH**，装成函数则与用户已有同名函数硬冲突且必然被遮蔽（实测）；
+/// 且远端是 zsh/fish 时 `.bashrc` 根本不被 source，函数形态拿不到（审计 D2）。
+const CCM_WRAPPER_SNIPPET: &str = include_str!("../../shared/ccm-aliases.sh");
+
+/// F02：统一启动 CLI 本体，部署为远端 `~/.local/bin/ccm`（0755 可执行文件）。
+/// 它独占 L1 容器 / L2 环境 / L5 身份的实现——**环境必须在最终 exec 的那个 shell 里设**，
+/// 否则会像旧 `cct` 那样被 tmux 的进程边界吃掉（`update-environment` 默认列表不含
+/// `CLAUDE_CONFIG_DIR`，实测有对照组：`e2e/ccm-acceptance.sh`）。
+const CCM_CLI_SCRIPT: &str = include_str!("../../shared/ccm");
+
+/// CLI 在远端的落点（SFTP 相对路径 = home 相对）。
+const CCM_CLI_REMOTE_PATH: &str = ".local/bin/ccm";
 
 /// 纯函数：把 `snippet` 合进 profile 内容的 BEGIN/END 块（可单测）。
 /// - 已有**配对**块（BEGIN 后能找到 END）→ **整块替换**（幂等：`merge(merge(x))==merge(x)`）。
@@ -685,6 +695,37 @@ pub async fn install_remote_ccm_helper(
     let conn = connect_sftp(&cfg).await?;
     let sftp = &conn.sftp;
 
+    // ① 先部署 CLI 本体（0755 可执行文件）。**先于写 profile**——别名块引用 `ccm`，
+    //    若先写块再部署失败，用户会拿到一堆指向不存在命令的别名。
+    //    逐级建目录（相对 home；`ensure_dir_all` 走绝对路径，这里用相对，故手动逐级）。
+    //    已存在时 create_dir 失败——容忍，真正的失败由下面的 upload 报出来。
+    {
+        let mut cur = String::new();
+        for comp in CCM_CLI_REMOTE_PATH.split('/').filter(|c| !c.is_empty()).take(
+            CCM_CLI_REMOTE_PATH.split('/').filter(|c| !c.is_empty()).count() - 1,
+        ) {
+            if !cur.is_empty() {
+                cur.push('/');
+            }
+            cur.push_str(comp);
+            let _ = sftp.create_dir(cur.clone()).await;
+        }
+    }
+    upload_atomic(sftp, CCM_CLI_REMOTE_PATH, CCM_CLI_SCRIPT.as_bytes(), 0o755)
+        .await
+        .map_err(|e| format!("部署 ccm CLI 到远端 ~/{CCM_CLI_REMOTE_PATH} 失败: {e}"))?;
+    // 读回精确比对（兼防传输损坏）——CLI 是可执行文件，写坏比 profile 写坏更危险。
+    let cli_back = read_optional(sftp, CCM_CLI_REMOTE_PATH)
+        .await
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_default();
+    if cli_back != CCM_CLI_SCRIPT {
+        return Err(format!(
+            "ccm CLI 写后校验失败（读回内容与期望不符）：~/{CCM_CLI_REMOTE_PATH}。未改动 {profile}。"
+        ));
+    }
+
+    // ② 再把别名块合进 profile。
     let existing = read_optional(sftp, &profile)
         .await
         .map(|b| String::from_utf8_lossy(&b).into_owned())
@@ -692,7 +733,9 @@ pub async fn install_remote_ccm_helper(
     // 损坏块（BEGIN 无 END）→ merge 返回 Err，直接中止，不动原文件。
     let merged = merge_profile_block(&existing, CCM_WRAPPER_SNIPPET)?;
     if merged == existing {
-        return Ok(format!("远端 {profile} 已是最新（ccm 块已在），无需改动。"));
+        return Ok(format!(
+            "ccm CLI 已部署到远端 ~/{CCM_CLI_REMOTE_PATH}；{profile} 的别名块已是最新，无需改动。"
+        ));
     }
 
     // 备份原文件（非空才备份），失败则不动原文件直接返回。
@@ -725,9 +768,11 @@ pub async fn install_remote_ccm_helper(
         return Err("写后校验失败（读回内容与期望不符），已尝试回滚原文件。".to_string());
     }
 
-    tracing::info!("远端 [{}] 已装 ccm 助手到 {profile}", cfg.origin_label());
+    tracing::info!("远端 [{}] 已装 ccm CLI + 别名块到 {profile}", cfg.origin_label());
     Ok(format!(
-        "已装到远端 {profile}{backup_note}。重连远端 ssh 终端后，用 `ccm` 代替 `claude` 启动即可让 ↗ 拉前生效。"
+        "已部署 ccm CLI 到 ~/{CCM_CLI_REMOTE_PATH}，别名块已写入 {profile}{backup_note}。\
+         重连远端 ssh 终端后可用：`ccm`（起会话）/ `ccm --tmux`（tmux 里起）/ \
+         `ccm --account <名>`（指定账号）。`ccm --help` 看全部修饰。"
     ))
 }
 
@@ -735,22 +780,102 @@ pub async fn install_remote_ccm_helper(
 mod tests {
     use super::*;
 
-    /// 单一来源漂移守卫：安装进远端的 snippet 必须含注册原语/树状直通/marker/防覆盖守卫。
+    /// 单一来源漂移守卫①：写进远端 profile 的**别名块**。
+    /// F02 起本块只剩组合层别名——实现搬进 `CCM_CLI_SCRIPT`（见守卫②）。
     #[test]
-    fn ccm_snippet_has_required_elements() {
+    fn ccm_aliases_snippet_has_required_elements() {
         for needle in [
-            "__ccm_rbind()",
-            "set-titles on",
-            "ccm-rbind-%s",
-            "@ccm_sid",
-            "declare -f ccm",
-            "exec claude",
+            ".local/bin",     // CLI 落点必须进 PATH，否则别名全指向不存在的命令
+            "cc()",           // 智能选目录
+            "cct()",          // tmux 版
+            "ccm --tmux",     // 别名只做组合，不自己建容器
+            "declare -f",     // 防覆盖用户已有同名函数
         ] {
             assert!(
                 CCM_WRAPPER_SNIPPET.contains(needle),
-                "snippet 缺关键要素: {needle}"
+                "别名块缺关键要素: {needle}"
             );
         }
+        // 别名块**不得**再含实现（那是 CLI 的事；混回来就又变成两套实现）。
+        for forbidden in ["__ccm_rbind()", "exec claude", "tmux new-session"] {
+            assert!(
+                !CCM_WRAPPER_SNIPPET.contains(forbidden),
+                "别名块不该含实现细节 {forbidden}——实现属于 ~/.local/bin/ccm"
+            );
+        }
+    }
+
+    /// 单一来源漂移守卫②：部署为远端 `~/.local/bin/ccm` 的 **CLI 本体**。
+    ///
+    /// 这些不是"要素清单"而是**血的教训清单**，每条对应一个真实踩过的坑：
+    ///  - `=%s:` / `=$` ：tmux `-t` 必须精确匹配（INVARIANTS §31a）。裸目标会杀错/打错兄弟会话；
+    ///    `=名` 无尾冒号则在 send-keys/capture-pane/set-option 上 rc=1 完全失效。
+    ///  - `exec` ：不能省——身份 poller 读 `sessions/$PID.json`，不 exec 则 PID 对不上。
+    ///  - `@ccm_sid` / `@ccm_agent` ：身份随行，cc-monitor 靠它精确认会话。
+    ///  - `CLAUDE_CONFIG_DIR` ：账号注入必须在**最终 exec 的那个 shell 里**设。
+    ///  - `--print` / `--ccm-probe` ：F03 的渲染等价断言 + 安装自检/降级判据依赖它们。
+    #[test]
+    fn ccm_cli_has_required_elements() {
+        for needle in [
+            "--ccm-probe",
+            "--print",
+            "--tmux",
+            "--account",
+            "--agent",
+            "--ccm-sid",
+            "CLAUDE_CONFIG_DIR",
+            "@ccm_sid",
+            "@ccm_agent",
+            "exec",
+        ] {
+            assert!(CCM_CLI_SCRIPT.contains(needle), "ccm CLI 缺关键要素: {needle}");
+        }
+        // tmux 目标精确形态（INVARIANTS §31a）：**结构性扫描**——扫出 CLI 里每一个 `-t ` 的
+        // 目标 token，逐个断言含 `=` 且以 `:`（或 `:` + 引号）收尾。
+        //
+        // 刻意不用固定 needle：D 审计实测过，固定 needle 版本是**空转的**——把 CLI 里的
+        // `=名:` 全改回裸目标，`cargo test` 依旧全绿（正向 needle 恰好都还命中，反向 needle
+        // 引用的是 CLI 里根本不存在的代码）。而这正是 F01 修掉的「杀错/打错兄弟会话」生产事故。
+        // 结构性扫描对**新增**的 `-t` 也自动生效，这是固定 needle 永远做不到的。
+        // 唯一允许的间接目标变量：`$t`，其定义在此**逐字钉死**（否则它可以被改成裸值绕过扫描）。
+        const EXACT_T_DEF: &str = r#"t="$(sq "=$tmux_name:")""#;
+        assert!(
+            CCM_CLI_SCRIPT.contains(EXACT_T_DEF),
+            "间接目标变量 $t 的定义必须逐字是 {EXACT_T_DEF}（它是 tmux 序列里所有 -t 的来源）"
+        );
+
+        let mut checked = 0usize;
+        for line in CCM_CLI_SCRIPT.lines() {
+            if line.trim_start().starts_with('#') {
+                continue; // 注释里的用法示例不算
+            }
+            for (i, _) in line.match_indices("-t ") {
+                let rest = &line[i + 3..];
+                // `$t` 是上面已钉死定义的间接变量，放行。
+                if rest.starts_with("$t ") || rest.starts_with("$t\"") {
+                    checked += 1;
+                    continue;
+                }
+                // 其余一律要求「窗口内先出现 `=` 再出现 `:`」——裸目标（`"$name"` / `$name`）
+                // 两者皆无，必然被抓；`$(sq "=$x:")` / `"=$x:"` / `'=x:'` 都能通过。
+                let win: String = rest.chars().take(48).collect();
+                let eq = win.find('=');
+                let colon = win.find(':');
+                assert!(
+                    eq.is_some() && colon.is_some() && eq < colon,
+                    "CLI 的 tmux 目标必须是 `=名:` 精确形态（=在前、:在后）。\
+                     裸目标会「精确→名字开头→glob」三级解析、打错兄弟会话；\
+                     `=名`（无尾冒号）在 send-keys/capture-pane/set-option 上 rc=1 完全失效。\
+                     实得窗口 {win:?}（行: {line}）"
+                );
+                checked += 1;
+            }
+        }
+        assert!(
+            checked >= 4,
+            "只扫到 {checked} 个 `-t` 目标，CLI 至少该有 attach/set-option/send-keys/查询 四类——\
+             扫描器可能失效了"
+        );
     }
 
     #[test]

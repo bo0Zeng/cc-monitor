@@ -536,11 +536,13 @@ tmux 名不变（权威规格 `agents/claude-code.md` §4）。同一目录还�
 attach，都会撞进漂移 / 别的会话**（#63「两 tab 内容与 attach 不一致」、「灰会话 resume 进最新
 branch」的同一根因）。
 
-**契约**：`__ccm_rbind`（`shared/ccm-wrapper.sh`，装进远端 `~/.bashrc`）每秒从 pidfile 读当前
-sid，写进 tmux user option **`@ccm_sid`**（随 /branch 实时更新）。选 user option 而非 pane
-title：**title 会被 Claude 自己的活动标题（`⠂ …`）抢写、不可靠；user option Claude 碰不到**
-= 「这个 tmux 此刻在跑哪个 sid」的权威带外信号。后端 `tmux.rs::TMUX_LS_FMT` 末列
-`#{@ccm_sid}` 读它，`TmuxSession.sid` 承载；空串（老 wrapper / 未装）→ `None`。
+**契约**：身份回填 poller（F02 起住 `shared/ccm` 内部，取代已删除的 `shared/ccm-wrapper.sh`/
+`__ccm_rbind`）每秒从 pidfile 读当前 sid，写进 tmux user option **`@ccm_sid`**（随 /branch 实时
+更新）。选 user option 而非 pane title：**title 会被 Claude 自己的活动标题（`⠂ …`）抢写、不可靠；
+user option Claude 碰不到** = 「这个 tmux 此刻在跑哪个 sid」的权威带外信号。后端
+`tmux.rs::TMUX_LS_FMT` 末列 `#{@ccm_sid}` 读它，`TmuxSession.sid` 承载；空串（未装 ccm CLI /
+未经它启动）→ `None`。poller 读 `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions/`（账号感知；
+默认布局下与 `$HOME/.claude/sessions/` 同一 inode，故行为不变——D7 已证伪其为独立改造点）。
 
 **铁律**（守 SS-5/SS-9「tab 身份钉在会话身份，找不到就报『不存在』，绝不静默换一个」）：
 - **attach / resume 定位后端，一律先按 `sid===@ccm_sid` 精确匹配**（`tabs.ts::findClaudeTmux`）。
@@ -602,11 +604,14 @@ set-option / show-options / kill-session / has-session / attach **全部**动词
 
 **`new-session -s <名>` 收的是名字不是目标，绝不加 `=`/`:`。**
 
-**三处同源（照 §I8 `TMUX_LS_FMT` 双写范式立条）**：
+**四处同源**（F02 新增第四处，照 §I8 `TMUX_LS_FMT` 双写范式立条）：
 1. `src/session-backend.ts` 的 `exactTarget()` —— 前端 shell 渲染面
 2. `src-tauri/src/tmux.rs` 的 `exact_target()` —— IPC 控制面
 3. `e2e/restart-shims/core.mjs` —— Tauri IPC 边界的 mock，**结构上无法 import Rust，去重不可能**；
    必须**与生产同构**，否则 e2e 对这条假绿
+4. `shared/ccm`（F02 统一启动 CLI）—— 独立的 tmux 命令构造器（不复用前三处，语言/执行环境不同）；
+   守卫见 `src-tauri/src/sftp.rs` 的 `ccm_cli_has_required_elements`：**结构性扫描**每个 `-t ` 目标
+   （不是固定 needle——固定 needle 版本实测空转，把 `=名:` 全改回裸目标三门禁仍全绿）
 
 e2e 的 shell 探针（`has-session` / `set-option` / `kill-session`）同样要用 `=名:`——**探针本身前缀匹配会说谎**
 （只剩 `X-2` 时 `has-session -t X` 返 0，"会话还在"假阳；`set-option -t $S` 会把 `@ccm_sid` 写到错的会话上、
