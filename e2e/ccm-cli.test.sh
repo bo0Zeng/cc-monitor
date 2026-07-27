@@ -17,7 +17,10 @@ ck() { # ck <描述> <期望> <实得>
 }
 # **必须同时隔离 CCM_ACCTS_MANIFEST**：不隔离的话本机 manifest 的 isDefault 账号会被注入
 # 每条黄金串（"零修饰 = 今天的 ccm()" 是**基座**语义，不带账号）。默认号注入另有专测。
-ccm() { CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent bash "$CCM" "$@" 2>&1; }
+# **全文件恒隔离 CLAUDE_CONFIG_DIR**：本机开发者本人就可能正跑在某个隔离账号下（这里真的
+# 踩过——CLAUDE_CONFIG_DIR=/home/zbl/.claude-accts/z 是本次开发时的真实环境）。account-reset
+# 修复后 ccm 会真的读这个变量，不隔离会让测试结果随"是谁在跑测试"而漂移。
+ccm() { env -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent bash "$CCM" "$@" 2>&1; }
 
 UNSET="unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION"
 
@@ -70,7 +73,7 @@ cat > "$ACCTMP/m.json" <<JSON
   { "name": "z", "configDir": "$ACCTMP/z", "isDefault": true },
   { "name": "b", "configDir": "$ACCTMP/b", "isDefault": false } ] }
 JSON
-acct() { CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/m.json" bash "$CCM" "$@" 2>&1; }
+acct() { env -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/m.json" bash "$CCM" "$@" 2>&1; }
 ck "显式 --account 注入其 configDir" \
    "export CLAUDE_CONFIG_DIR='$ACCTMP/b'; $UNSET; cd '/p' && exec claude" \
    "$(acct --cwd /p --account b --print)"
@@ -103,6 +106,25 @@ ck "resume 后跟 flag → 报错（别把 --tmux 当 sid）" \
 ck "attach 后跟 flag → 报错" \
    "ccm: attach 需要 <会话名>" \
    "$(ccm attach --print)"
+
+echo
+echo "===== 账号继承（F03 综合设计时发现的 bug 回归）====="
+# 真机复现过：cc-monitor 把「远端 resume 命令」配成 ccm 时，实际调用形态是
+#「外层已 export 好账号 X 的 CLAUDE_CONFIG_DIR，再 exec ccm --resume <sid>（不带任何账号 flag）」。
+# 若 ccm 无脑落 manifest 默认号，会把 cc-monitor 精心选中的账号**静默覆盖**——账号选择完全失效，
+# 且正是这轮建议用户使用的配置会踩中的场景。
+inherit_acct() { CLAUDE_CONFIG_DIR="$ACCTMP/b" env CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/m.json" bash "$CCM" "$@" 2>&1; }
+ACCTMP="$(mktemp -d)"; mkdir -p "$ACCTMP/z" "$ACCTMP/b"
+cat > "$ACCTMP/m.json" <<JSON
+{ "version": 1, "accounts": [
+  { "name": "z", "configDir": "$ACCTMP/z", "isDefault": true },
+  { "name": "b", "configDir": "$ACCTMP/b", "isDefault": false } ] }
+JSON
+ck "外层已继承账号 b（无 --account/--base）→ 保留 b，不被默认号 z 静默覆盖"    "$UNSET; cd '/p' && exec claude"    "$(inherit_acct --cwd /p --print)"
+ck "裸终端（无继承）仍落 manifest 默认号 z"    "export CLAUDE_CONFIG_DIR='$ACCTMP/z'; $UNSET; cd '/p' && exec claude"    "$(env -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/m.json" bash "$CCM" --cwd /p --print 2>&1)"
+ck "--base 显式清空，不受继承影响"    "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec claude"    "$(inherit_acct --cwd /p --base --print)"
+ck "--account 显式指定，优先级最高（覆盖继承的 b）"    "export CLAUDE_CONFIG_DIR='$ACCTMP/z'; $UNSET; cd '/p' && exec claude"    "$(inherit_acct --cwd /p --account z --print)"
+rm -rf "$ACCTMP"
 
 echo
 echo "===== --cwd auto 与旧 _cc_resolve_target 对拍（5 种布局）====="
