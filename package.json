@@ -36,6 +36,7 @@
     "coverage": "vitest run --coverage",
     "test": "npm run test:branching && npm run test:diff && npm run test:api-error && npm run test:bash && npm run test:remote-health && npm run test:remote-launch && npm run test:format && npm run test:history-cache && npm run test:history-prefs && npm run test:history-actions && npm run test:usage-pivot && npm run test:pricing && npm run test:session-backend && npm run test:panorama-session-files && npm run test:launch-dimensions && npm run test:launch-render-cli && npm run test:dom",
     "test:tmux-target": "bash e2e/tmux-target-acceptance.sh",
+    "test:tmux-guarded": "bash e2e/tmux-guarded-acceptance.sh",
     "test:ccm-cli": "bash e2e/ccm-cli.test.sh",
     "test:ccm-acceptance": "bash e2e/ccm-acceptance.sh",
     "test:ccm-print-parity": "bash e2e/ccm-print-parity.sh"

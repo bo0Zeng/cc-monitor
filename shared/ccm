@@ -366,7 +366,10 @@ if [ "$use_tmux" = 1 ]; then
   # 幂等建闸：会话已存在 → new-session 失败被吞、`&&` 短路跳过后续 → 只 attach（不重复起）。
   seq="tmux new-session -d -s $(sq "$tmux_name") -c $(sq "$cwd") 2>/dev/null"
   seq="$seq && (tmux set-option -t $t @ccm_agent $(sq "$agent") 2>/dev/null || true)"
-  [ -n "$ccm_sid" ] && seq="$seq && (tmux set-option -t $t @ccm_sid $(sq "$ccm_sid") 2>/dev/null || true)"
+  # F04：通道A（意图）写 @ccm_sid_expect，不写 @ccm_sid——只有通道B（poller 独立读会话文件
+  # 后确认）才写 @ccm_sid，破坏性动作（kill 等）只认 @ccm_sid，不被"声明了但从未真正跑起来"
+  # 的会话骗过（见 doc/INVARIANTS.md 对应条目 / MASTERPLAN R10）。
+  [ -n "$ccm_sid" ] && seq="$seq && (tmux set-option -t $t @ccm_sid_expect $(sq "$ccm_sid") 2>/dev/null || true)"
   seq="$seq && tmux send-keys -t $t $(sq "$payload") Enter"
   seq="$seq; tmux attach -t $t"
 
@@ -405,9 +408,12 @@ fi
 [ -n "$cwd" ] && { cd "$cwd" || die "无法进入目录: $cwd"; }
 
 # ===== L5 身份 =====
-# 通道A：已知 sid（cc-monitor 传的）→ 在容器内立刻打标。
+# 通道A：已知 sid（cc-monitor 传的）→ 在容器内立刻打标**意图**（@ccm_sid_expect，非 @ccm_sid）。
+# F04：这是声明"即将/正在尝试跑这个 sid"，不是"确认跑起来了"——resume 可能瞬间失败（会话已不存
+# 在/网络抖动），若直接写 @ccm_sid 会让这个从未真正运行过的声明永久冒充"事实"（旧 D6 审计的坑）。
+# 只有下面通道B（poller 独立读会话文件后才写）才算数，破坏性动作只认 @ccm_sid。
 if [ -n "$ccm_sid" ] && [ -n "${TMUX:-}" ]; then
-  tmux set-option @ccm_sid "$ccm_sid" >/dev/null 2>&1 || true
+  tmux set-option @ccm_sid_expect "$ccm_sid" >/dev/null 2>&1 || true
 fi
 # 通道B：未知 sid（new，且随 /branch 漂移）→ 后台 poller 回填。exec 后 PID 不变，故用 $$。
 if agent_has_identity "$agent"; then

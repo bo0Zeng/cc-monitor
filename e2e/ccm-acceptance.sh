@@ -25,9 +25,11 @@ trap 'rm -rf "$TMP"; "$TMUX_BIN" -L "$SOCK" kill-server 2>/dev/null' EXIT
 BIN="$TMP/bin"; mkdir -p "$BIN"
 printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$TMUX_BIN" "$SOCK" > "$BIN/tmux"; chmod +x "$BIN/tmux"
 # 假 launcher：不起真 agent（真 claude 会清屏 → 探针假 PASS，F01 踩过），
-# 只把「我看到的环境」落盘，供断言。
-printf '#!/bin/sh\nprintf "CFG=%%s\\nPWD=%%s\\nNESTED=%%s\\n" "${CLAUDE_CONFIG_DIR:-<unset>}" "$PWD" "${CLAUDECODE:-<unset>}" >> %s/probe.log\nsleep 5\n' \
-  "$TMP" > "$BIN/CCMPROBE"; chmod +x "$BIN/CCMPROBE"
+# 只把「我看到的环境」落盘，供断言。**F04 场景3b 需要它自己的 PID**（供测试往
+# `sessions/$PID.json` 里合成一个假会话文件，验证通道B poller 确实会把它读出来）——
+# `exec` 保 PID 不变，故 CCMPROBE 里的 `$$` 就是 ccm 脚本里 poller 记的 `$ccm_pid`。
+printf '#!/bin/sh\necho $$ > %s/ccmprobe.pid\nprintf "CFG=%%s\\nPWD=%%s\\nNESTED=%%s\\n" "${CLAUDE_CONFIG_DIR:-<unset>}" "$PWD" "${CLAUDECODE:-<unset>}" >> %s/probe.log\nsleep 5\n' \
+  "$TMP" "$TMP" > "$BIN/CCMPROBE"; chmod +x "$BIN/CCMPROBE"
 export PATH="$BIN:$PATH"
 # **测试自身必须干净**：本脚本可能跑在一个已经带 CLAUDE_CONFIG_DIR 的进程里
 # （例如 cc-monitor 的开发者本人正用某个隔离账号跑 Claude Code）。不清掉的话，
@@ -91,11 +93,27 @@ ck "update-environment 默认列表确实不含 CLAUDE_CONFIG_DIR" "" \
    "$(T show-options -g update-environment 2>/dev/null | grep -c CLAUDE_CONFIG_DIR | sed 's/^0$//')"
 
 echo
-echo "===== 场景 3：身份 @ccm_sid ====="
+echo "===== 场景 3a：身份——通道A（意图）打 @ccm_sid_expect，不是 @ccm_sid ====="
 reset
 ( cd "$TMP/proj" && bash "$CCM" --tmux --ccm-sid deadbeef-1234 --launcher CCMPROBE >/dev/null 2>&1 & )
 sleep 3
-ck "通道A：已知 sid 建时即打标" "deadbeef-1234" "$(opt cc-proj @ccm_sid)"
+ck "通道A：已知 sid 建时立刻打 @ccm_sid_expect" "deadbeef-1234" "$(opt cc-proj @ccm_sid_expect)"
+ck "F04：@ccm_sid（事实）此时仍未设——CCMPROBE 从未写 sessions/*.json，通道B无可确认之物" \
+   "" "$(opt cc-proj @ccm_sid)"
+
+echo
+echo "===== 场景 3b：身份——通道B（poller）独立确认后才把 @ccm_sid_expect 提升为 @ccm_sid ====="
+reset
+( cd "$TMP/proj" && bash "$CCM" --tmux --account z --ccm-sid deadbeef-3b --launcher CCMPROBE >/dev/null 2>&1 & )
+sleep 1.5
+# CCMPROBE 落盘了自己的 PID（= ccm 脚本 poller 记的 $ccm_pid，exec 保 PID 不变）；
+# 合成一份 Claude Code 会话文件，模拟"agent 真的确认在跑这个 sid"。
+CCMPROBE_PID="$(cat "$TMP/ccmprobe.pid" 2>/dev/null)"
+mkdir -p "$ACCTS/z/sessions"
+[ -n "$CCMPROBE_PID" ] && printf '{"sessionId":"deadbeef-3b"}' > "$ACCTS/z/sessions/$CCMPROBE_PID.json"
+sleep 2
+ck "通道B：poller 读到会话文件后，把 @ccm_sid（事实）提升为确认值" "deadbeef-3b" "$(opt cc-proj @ccm_sid)"
+ck "@ccm_sid_expect（意图）仍保留，两个 key 独立共存" "deadbeef-3b" "$(opt cc-proj @ccm_sid_expect)"
 
 echo
 echo "===== 场景 4：agent 轴 ====="

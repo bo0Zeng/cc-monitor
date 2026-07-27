@@ -265,13 +265,27 @@ function isClaudeTmuxCommand(cmd: string): boolean {
  * （那正是撞错会话的老 bug），宁可返 undefined（SS-5/SS-9：找不到就报「不在」，不静默换一个）。
  * 契约与铁律见 doc/INVARIANTS.md §30。
  */
+/**
+ * F04（R10 根治）：`@ccm_sid` 精确命中该 sid 的**全部**活 claude 会话（不折叠成第一个）。
+ * `findClaudeTmux` 用它重实现——`.filter(pred)[0]` 与旧版 `.find(pred)` 同一遍历顺序、同一
+ * 结果，故 `findClaudeTmux` 的既有调用点/断言零改动。多数调用方仍只关心"有没有、是哪一个"，
+ * 三处真正需要"是否命中 ≥2 个"的调用点（resume-attach 警告 / restart 拒绝 / 菜单 kill 项禁用）
+ * 才用本函数，见各自调用点注释。
+ */
+export function findClaudeTmuxMatches(
+  sessions: TmuxSession[] | null | undefined,
+  sid: string,
+): TmuxSession[] {
+  return sessions?.filter((s) => s.sid === sid && isClaudeTmuxCommand(s.command)) ?? [];
+}
+
 export function findClaudeTmux(
   sessions: TmuxSession[] | null | undefined,
   sid: string,
   cwd: string,
 ): TmuxSession | undefined {
-  const byS = sessions?.find((s) => s.sid === sid && isClaudeTmuxCommand(s.command));
-  if (byS) return byS;
+  const matches = findClaudeTmuxMatches(sessions, sid);
+  if (matches.length > 0) return matches[0];
   const anySidKnown = sessions?.some((s) => s.sid != null);
   if (anySidKnown) return undefined;
   return cwd
@@ -355,6 +369,11 @@ export class TabManager {
   private currentByOrigin = new Map<string, string>();
   /** account-ux U6：正在换号重启中的 sid（防同一会话并发重启：新起的进程被后一条编排杀掉）。 */
   private restartingSids = new Set<string>();
+  /** F04：正在 resumeTabTmux 中的 sid（对称 `restartingSids`）——双击"Resume（tmux）"之间没有
+   *  互斥时，两次并发调用各自查一次陈旧的 `list_remote_tmux` 快照、各自算出"该建哪个名字"，
+   *  可能算出两个不同名字、真建出两个都声称同一 sid 的 tmux 容器（R10 的一个具体、可关闭的成因，
+   *  见 F04 计划 §2 综合来源方案 A §7.4）。 */
+  private resumingSids = new Set<string>();
   /** account-ux U6：批量对齐进行中（防重入：⚠k 要等下一拍轮询才降，用户很容易再点一次）。 */
   private aligningBatch = false;
   /** A5：换号重启时「等旧号 compact 完成」的 per-sid 回调。onLine 见该 sid 的 compact 摘要行即 resolve。 */
@@ -2030,8 +2049,22 @@ export class TabManager {
   /**
    * F52：tmux 版 resume（远端专用）——在远端 tmux 会话 `cc-<sid8>` 里幂等 resume Claude。
    * 与 resumeTab 的直连版并列;本地 tab（origin===null）无 tmux 用例,直接 return。
+   *
+   * F04：`resumingSids` 互斥（对称 `restartingSids`）——双击之间没有互斥时，两次并发调用各自
+   * 查一次陈旧快照、各自可能算出不同的 fresh tmux 名，真建出两个都声称同一 sid 的容器（R10 的
+   * 一个具体、可关闭的成因）。
    */
   private async resumeTabTmux(sid: string, useBase = false): Promise<void> {
+    if (this.resumingSids.has(sid)) return;
+    this.resumingSids.add(sid);
+    try {
+      await this.resumeTabTmuxInner(sid, useBase);
+    } finally {
+      this.resumingSids.delete(sid);
+    }
+  }
+
+  private async resumeTabTmuxInner(sid: string, useBase: boolean): Promise<void> {
     const tab = this.tabs.get(sid);
     if (!tab || tab.origin === null) return;
     const behavior = await getBehavior();
@@ -2049,9 +2082,19 @@ export class TabManager {
       sessions = null; // 查询失败 → 走下面 fresh 分支（沿用旧幂等 resume 名，退化不变砖）
     }
     // ① 目标 sid 正活在某 tmux（@ccm_sid 命中）→ 直接 attach 它，回到活的后端，别重开一个。
-    const live = findClaudeTmux(sessions, sid, cwd);
-    if (live && live.sid === sid) {
-      await runRemoteAttach(origin, live.name);
+    // F04（R10）：命中 ≥2 个时**仍 attach 到第一个**（resume 非破坏性、可撤销：重新点一次就能换
+    // 目标，不像 kill 一旦选错代价不可逆），但诚实告知——不静默假装只有一个。分级理由见 F04
+    // 计划 §2 取舍④。
+    const matches = findClaudeTmuxMatches(sessions, sid);
+    if (matches.length > 0) {
+      if (matches.length > 1) {
+        showActionFailureToast(
+          "检测到多个同身份会话",
+          `该会话身份（sid）同时活在 ${matches.length} 个 tmux 里，本次接入其中一个（${matches[0].name}）；建议手动到终端核实其余会话是否需要清理。`,
+          { level: "info", durationMs: 8000 },
+        );
+      }
+      await runRemoteAttach(origin, matches[0].name);
       return;
     }
     // ①.5 audit-fixes F03（idle-tmux 就地复用）：目标 sid 的 tmux 还在（@ccm_sid 精确命中）但
@@ -2126,28 +2169,51 @@ export class TabManager {
     if (gen !== tabMenuGeneration) return;
     const match = findClaudeTmux(sessions, sid, cwd);
     const viaCwd = isCwdFallbackMatch(sessions, sid); // F74c：回退命中 attach 前提示串味风险
+    // F04（R10）：命中 ≥2 个精确同 sid 的活会话时——`matches.length>1` 与 `viaCwd` 互斥（后者只在
+    // "整张列表无任何会话带 sid"时才可能真，见 `findClaudeTmux`/`isCwdFallbackMatch` 判据），
+    // 故两条 caveat 不会同时触发。attach/preview 沿用 resume 的"警告+继续"（非破坏性、可撤销）；
+    // kill 沿用 restart 的"拒绝"（破坏性、代价不可逆）——分级理由见 F04 计划 §2 取舍④。
+    const matches = findClaudeTmuxMatches(sessions, sid);
+    const ambiguous = matches.length > 1;
     if (match) {
       updateTabContextMenuItem("attach", {
         id: "attach",
-        label: `Attach（tmux: ${match.name}）`,
+        label: ambiguous ? `Attach（tmux: ${match.name}，⚠还有 ${matches.length - 1} 个同身份会话）` : `Attach（tmux: ${match.name}）`,
         onClick: () => {
           if (viaCwd) warnCwdFallbackAttach();
+          if (ambiguous) {
+            showActionFailureToast(
+              "检测到多个同身份会话",
+              `该会话身份（sid）同时活在 ${matches.length} 个 tmux 里，本次接入其中一个（${match.name}）；建议手动到终端核实其余会话是否需要清理。`,
+              { level: "info", durationMs: 8000 },
+            );
+          }
           void runRemoteAttach(origin, match.name);
         },
       });
-      // F60：预览项与 attach 同门(同一 tmux 会话),一并就绪。
+      // F60：预览项与 attach 同门(同一 tmux 会话),一并就绪——只读，不受"命中多个"影响。
       updateTabContextMenuItem("preview", {
         id: "preview",
         label: "预览画面",
         onClick: () => void openPanePreview(origin, match.name),
       });
-      // F79：杀死会话项与 attach 同门（同一 tmux 会话）。回退命中 viaCwd 传入加强 caveat。
-      updateTabContextMenuItem("kill", {
-        id: "kill",
-        label: "杀死会话（kill tmux）",
-        danger: true,
-        onClick: () => this.killRemoteTmux(origin, match.name, viaCwd),
-      });
+      // F79：杀死会话——命中 ≥2 个时拒绝提供（破坏性操作，选错的代价不可逆，不像 attach 可撤销）。
+      if (ambiguous) {
+        updateTabContextMenuItem("kill", {
+          id: "kill",
+          label: `杀死会话（检测到 ${matches.length} 个同身份会话，请到终端手动处理）`,
+          danger: true,
+          enabled: false,
+          onClick: () => {},
+        });
+      } else {
+        updateTabContextMenuItem("kill", {
+          id: "kill",
+          label: "杀死会话（kill tmux）",
+          danger: true,
+          onClick: () => this.killRemoteTmux(origin, match.name, viaCwd),
+        });
+      }
     } else {
       // audit-fixes F03.3（attach-into-idle）：无活 claude，但目标 sid 的**空 tmux**（@ccm_sid 命中、
       // command≠claude）还在 → 提供 attach 进那个空 shell（用户可在里面自己敲/看，或就地 resume）。
@@ -2355,12 +2421,25 @@ export class TabManager {
     } catch {
       sessions = null;
     }
-    const live = findClaudeTmux(sessions, sid, cwd);
-    // A5 阻塞修（D 审计）：破坏性重启**必须**精确命中 @ccm_sid（`live.sid === sid`）。无 @ccm_sid 的
-    // 降级远端会走 findClaudeTmux 的 cwd 回退 → 可能抓到同目录**别的** claude（live.sid=null/异号）→
-    // kill 错会话 + 对目标 sid 起新进程 = 双进程 / jsonl 双写（§5.2 要防的严重态）。对齐 resumeTabTmux
-    // 的 `live.sid === sid` 守卫，回退命中即拒（不猜）——破坏性操作不接受"按目录猜"。
-    if (!live || live.sid !== sid) {
+    // F04（R10）：破坏性重启必须精确命中**恰好一个**同 sid 的活会话——`findClaudeTmuxMatches`
+    // 不折叠成第一个。`matches.length===0` 沿用旧"无法定位"文案；`matches.length>1` 是新增的
+    // 拒绝分支：错误的那次操作代价不可逆（可能杀掉了对的那个、留下错的那个继续跑），与
+    // resumeTabTmux"警告+继续"的分级不同——分级理由见 F04 计划 §2 取舍④。
+    const matches = findClaudeTmuxMatches(sessions, sid);
+    if (matches.length > 1) {
+      showActionFailureToast(
+        "换号重启拒绝",
+        `该会话身份（sid）同时活在 ${matches.length} 个 tmux 里，无法安全判定该重启哪一个——请到终端手动核实后再试。`,
+        { level: "info", durationMs: 8000 },
+      );
+      return false;
+    }
+    const live = matches[0];
+    // A5 阻塞修（D 审计）：破坏性重启**必须**精确命中 @ccm_sid。无 @ccm_sid 的降级远端此前会走
+    // `findClaudeTmux` 的 cwd 回退（可能抓到同目录**别的** claude）→ kill 错会话 + 对目标 sid 起
+    // 新进程 = 双进程 / jsonl 双写（§5.2 要防的严重态）。`findClaudeTmuxMatches` 只精确匹配、
+    // 不含 cwd 回退，故 `matches` 为空即代表"未精确命中"，天然对齐这条守卫（不猜）。
+    if (!live) {
       showActionFailureToast(
         "无法换号重启",
         "该会话不在（本工具的）tmux 里、或无法精确定位（缺 @ccm_sid 会话标记）——可先归档后用右键「把此会话切到账号 X」。",
@@ -2860,28 +2939,50 @@ export class TabManager {
         if (cached && Date.now() - cached.ts < TMUX_CACHE_TTL_MS) {
           const m = findClaudeTmux(cached.sessions, sid, cwd);
           const viaCwd = isCwdFallbackMatch(cached.sessions, sid); // F74c：回退命中提示串味
+          // F04（R10）：同 `resolveAttachMenuItem` 的分级——attach/preview 警告+继续，kill 拒绝。
+          const cachedMatches = findClaudeTmuxMatches(cached.sessions, sid);
+          const cachedAmbiguous = cachedMatches.length > 1;
           if (m) {
             items.push({
               id: "attach",
-              label: `Attach（tmux: ${m.name}）`,
+              label: cachedAmbiguous
+                ? `Attach（tmux: ${m.name}，⚠还有 ${cachedMatches.length - 1} 个同身份会话）`
+                : `Attach（tmux: ${m.name}）`,
               onClick: () => {
                 if (viaCwd) warnCwdFallbackAttach();
+                if (cachedAmbiguous) {
+                  showActionFailureToast(
+                    "检测到多个同身份会话",
+                    `该会话身份（sid）同时活在 ${cachedMatches.length} 个 tmux 里，本次接入其中一个（${m.name}）；建议手动到终端核实其余会话是否需要清理。`,
+                    { level: "info", durationMs: 8000 },
+                  );
+                }
                 void runRemoteAttach(origin, m.name);
               },
             });
-            // F60：同一 tmux 会话可只读预览画面（capture-pane 快照，不 attach）。
+            // F60：同一 tmux 会话可只读预览画面（capture-pane 快照，不 attach）——只读，不受影响。
             items.push({
               id: "preview",
               label: "预览画面",
               onClick: () => void openPanePreview(origin, m.name),
             });
-            // F79：杀死会话（同一 tmux 会话，破坏性 + 二次确认）。回退命中 viaCwd 传入加强 caveat。
-            items.push({
-              id: "kill",
-              label: "杀死会话（kill tmux）",
-              danger: true,
-              onClick: () => this.killRemoteTmux(origin, m.name, viaCwd),
-            });
+            // F79：杀死会话——命中 ≥2 个时拒绝提供（破坏性，选错代价不可逆）。
+            if (cachedAmbiguous) {
+              items.push({
+                id: "kill",
+                label: `杀死会话（检测到 ${cachedMatches.length} 个同身份会话，请到终端手动处理）`,
+                danger: true,
+                enabled: false,
+                onClick: () => {},
+              });
+            } else {
+              items.push({
+                id: "kill",
+                label: "杀死会话（kill tmux）",
+                danger: true,
+                onClick: () => this.killRemoteTmux(origin, m.name, viaCwd),
+              });
+            }
           } else {
             // audit-fixes F03.3：缓存命中、无活 claude，但有目标 sid 的空 tmux（idle-tmux）→ 同步给 attach。
             const idle = findIdleTmux(cached.sessions, sid);

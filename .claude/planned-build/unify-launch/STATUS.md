@@ -1,15 +1,41 @@
 # 状态 / STATUS — unify-launch（恢复工作的入口，每次先读这里）
 
-- **当前阶段**：F03 已完成签收（C→D→E→F 全过，双 agent 审无阻塞项），待 commit 后进 F04
-- **当前功能**：F03（计划见 `features/F03-launch-plan-ir.md`）——步骤 1-9 全部完成，§6/§7/§8 已填，签收全勾
-- **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）
-- **下一个功能**：按依赖图 F04/F05/F06/F07（可并列，正交、互不阻塞）→ F08/F09/F11 → F10 → Phase G
+- **当前阶段**：F04 已完成签收（C→D→E→F 全过，双 agent 审无阻塞项），待 commit 后进 F05/F06/F07
+- **当前功能**：F04（计划见 `features/F04-session-identity.md`）——步骤 1-6 全部完成，§6/§7/§8 已填，签收全勾，R10 已在 MASTERPLAN §6 标记「已修复」
+- **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）
+- **下一个功能**：按依赖图 F05/F06/F07（可并列，正交、互不阻塞，都只依赖 F03）→ F08/F09/F11 → F10 → Phase G
 - **阻塞 / 待用户确认**：无
-- **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 08）
+- **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 09）
 - **自动模式（/loop）**：**全自动**（连续 B→G）。用户 2026-07-27 追加授权：**具体设计决策由本席开
   agent 讨论分析后自行决定，不必逐项停下来问**——除非真遇到阻塞或用户主动打断
-- **本轮 loop 目标**：F03 已 commit（本地，不 push），下一轮起 F04 Phase B（会话身份统一，须含 R10 根治）
+- **本轮 loop 目标**：F04 已 commit（本地，不 push），下一轮起 F05/F06/F07 中的一个
 - **loop 停止条件**：计划≠现实 / 同一步≥2 失败 / 全部完成→Phase G / 用户打断
+
+## F04 结果摘要
+
+- `tmux.rs` 三道门（Gate1 空 target 恒拒/Gate2 `@ccm_sid`∪`cc-*` union/Gate3 仅 kill 要求
+  `windows==1`）+ `build_guarded_tmux_cmd` 原子 verify+act（`display-message` 单次 round-trip，
+  新增真机验收 `e2e/tmux-guarded-acceptance.sh` 14 项证明 TOCTOU 真的消除，非仅字符串断言）；
+  `shared/ccm` 的 `@ccm_sid_expect`（意图，通道A）/`@ccm_sid`（事实，poller 通道B 唯一写者）
+  拆分，`sftp.rs` 结构性锚点防回归；`tabs.ts::findClaudeTmuxMatches`（不折叠成第一个）+ 三个
+  真正需要分级的调用点全部升级（resume-attach 警告继续/restart-kill 拒绝/菜单 kill 项禁用）+
+  `resumingSids` 互斥（对称既有 `restartingSids`）。
+- 双 agent 审（后端架构 + UX）各揪出 2 条重要发现，全部修复：`CCM_GUARD_REJECTED` 拒绝消息曾
+  恒带无关的 `windows=` 字段（send-keys 不受 Gate3 约束）；真机验收脚本缺 cargo-失败前置检查与
+  结束时的 tmux server 清理；措辞漂移（"远端"vs"终端"统一）；3 处新增 toast 时长偏离本文件既有
+  8000ms 惯例且方向拧了（已对齐）。
+- 门禁：tsc 0 / npm test 615 / cargo test 377 / test:tmux-target 26 / test:ccm-cli 36 /
+  test:ccm-acceptance 15 / test:ccm-print-parity 9 / test:tmux-guarded 14（新增）/ resume-suite 17 /
+  restart-suite 24，全绿；`account-restart.ts`/两个 e2e driver 全程零 diff。
+
+## F04 Phase B：两版 Plan agent 方案综合（存档）
+
+方案 A（原子性优先）给出 `tmux.rs` 三道门的具体 `display-message` 原子命令构造（4 种渲染形态）+
+发现 `session-backend.ts:113` 兜底渲染器的 `@ccm_sid` 直写不应跟着改名（无 poller 无提升机制）+
+`resumingSids` 互斥新提案。方案 B（身份模型优先）核心洞见是 R10 本质是类型层面错误，逐一分析了
+6 个 `findClaudeTmux` 调用点谁真需要富类型；给出 `@ccm_sid_expect`（意图）/`@ccm_sid`（事实）的
+精确定义。综合结论见 `features/F04-session-identity.md` §2，四处取舍均已写明理由，其中「resume
+命中多个警告继续 vs restart/kill 命中多个拒绝」这条严重度分级取舍已被双 agent 审确认合理。
 
 ## F03 结果摘要
 
