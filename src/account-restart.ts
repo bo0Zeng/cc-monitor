@@ -11,7 +11,7 @@
 //      **同一批原语**（fetchAccounts / accountConfigDir / recordLastAccount），无逻辑漂移。故维持分离。
 import { invoke } from "@tauri-apps/api/core";
 import { runRemoteResumeTmux } from "./remote-launch-run";
-import { fetchAccounts, accountConfigDir, recordLastAccount, checkTrust } from "./accounts";
+import { fetchAccounts, accountConfigDir, recordLastAccount, checkTrust, getModelForAccount } from "./accounts";
 import { showActionFailureToast } from "./error-toast";
 
 export interface RestartWithAccountOpts {
@@ -164,7 +164,19 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   // F05：顺带把 accountName 传给它——本函数本来就已知这个名字（opts.accountName），线通进
   // LaunchContext 供 CLI 渲染器吐 --account <名>（不改本文件的 accountConfigDir 解析逻辑本身，
   // 见 F05 计划 §2 第2条：account-restart.ts 与 withAccount 是并列路径，不强行合并）。
-  const launched = await runRemoteResumeTmux(origin, sessionId, cwd, launcher, tmuxName, configDir, accountName);
+  // F07：同样补查一次该账号的模型偏好（withAccount 内部也做同一次查询——两条并列路径各自补
+  // 一次，同 F05 对 accountName 的处理模式）。
+  const modelOverride = await getModelForAccount(accountName);
+  const launched = await runRemoteResumeTmux(
+    origin,
+    sessionId,
+    cwd,
+    launcher,
+    tmuxName,
+    configDir,
+    accountName,
+    modelOverride,
+  );
 
   // ⑥ 记 lastAccount（源②）+ 提示。
   // **只有真拉起来了才算成功**（Phase G 审计）：此前无条件记账+报成功,而第⑤步的失败是

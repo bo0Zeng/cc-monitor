@@ -5805,6 +5805,20 @@ body.settings-window-mode .grid-monitor-trigger {
   background: var(--overlay-hover);
   border-color: var(--border-medium);
 }
+/* F07：每账号默认模型输入——尺寸/边框对齐同一行的按钮，别让它看起来像另一套控件。 */
+.accounts-row-model {
+  width: 84px;
+  padding: 2px 6px;
+  font-size: var(--font-size-small);
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+}
+.accounts-row-model:focus {
+  border-color: var(--border-medium);
+  outline: none;
+}
 
 .accounts-hint,
 .accounts-info {

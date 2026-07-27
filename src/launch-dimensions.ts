@@ -11,7 +11,7 @@
  * 是**静默账号被抹掉**，所以钉成模块加载即崩的断言（下方 `assertDimensionOrderInvariants`），
  * 而非留作注释纪律。
  */
-import { isValidConfigDir, isValidSessionId } from "./shell-quote.ts";
+import { isValidConfigDir, isValidModelName, isValidSessionId } from "./shell-quote.ts";
 import { AGENT_PROFILE } from "./agent-profile.ts";
 import type { LaunchDimension } from "./launch-plan.ts";
 
@@ -76,6 +76,37 @@ export const ACCOUNT_DIMENSION: LaunchDimension = {
   },
 };
 
+/** model（F07）：注入该账号配置的默认模型偏好（`ANTHROPIC_MODEL`）——**架构验收**：第一个真实
+ *  新维度，验证「加一个新维度 = 注册一条 + `LaunchContext` 加一个可选字段，零改 `buildLaunchPlan`/
+ *  两个渲染器主体结构」这条 MASTERPLAN §0.1 成功标准②的承诺。order 卡在 `account`(20) 与
+ *  `nested-env-reset`(30) 之间——语义上"模型是账号的一个细化"，导出顺序上"账号目录先、模型
+ *  偏好次、嵌套清理最后"。
+ *
+ *  `applies` 是**条件式**（`!!ctx.modelOverride`），不是像 `ACCOUNT_DIMENSION` 那样恒真——这两
+ *  者看似同构（都是"账号相关的维度"）但问题结构不同，不能机械照搬 F05 的教训：F05 的坑是"最
+ *  常见场景（未选账号=base）静默不表态，导致远端 `ccm` 落到 manifest 默认账号——一个和用户
+ *  期望不同的身份"，危险在于"沉默 = 意外身份切换"。模型偏好没有这个坑：`applies` 为 `false`
+ *  （没配偏好）时，远端 `claude` 直接用它自己已经配置好的默认模型——这**正是**用户没配置
+ *  override 时应该发生的事，不是"意外切换成了别的模型"。一个维度该不该恒真，取决于"这个维度
+ *  的默认态（不触发）是否等价于用户的期望"，不是"这个维度是不是账号相关"。 */
+export const MODEL_DIMENSION: LaunchDimension = {
+  id: "model",
+  order: 25, // account(20) < model(25) < nested-env-reset(30)
+  applies: (ctx) => !!ctx.modelOverride,
+  apply: (plan, ctx) => {
+    if (!ctx.modelOverride) return;
+    if (!isValidModelName(ctx.modelOverride)) {
+      throw new Error(`非法模型名（拒绝拼入命令）: ${JSON.stringify(ctx.modelOverride)}`);
+    }
+    plan.env.push({ kind: "export-model", value: ctx.modelOverride });
+  },
+  // ccm 今天没有 --model；诚实强制走兜底渲染器——不是遗漏，是 shared/ccm 缺这个能力的诚实反映
+  // （教 ccm 认识 --model 是 F08 的范围）。这与 F05 修的坑不同：这里 applies 会在配了偏好时
+  // 正确变真，canRenderCli 的 null 检查确实会跑到并正确返回 false——是"检测到了、诚实报告
+  // 降级"，不是"检测不到、悄悄放过"。
+  cliFlags: () => null,
+};
+
 /** nested-env-reset：resume/new 前清 Claude 嵌套会话标记（tmux server env 可能带毒，issue #24）。
  *  attach 不需要（不启动 agent）。order 必须 > `ACCOUNT_DIMENSION.order`（今天 export 恒在这条
  *  unset 之前，`buildResumePayload`/`buildLauncherCmd` 逐字如此）。 */
@@ -95,6 +126,7 @@ export const LAUNCH_DIMENSIONS: LaunchDimension[] = [
   IDENTITY_DIMENSION,
   ENV_RESET_DIMENSION,
   ACCOUNT_DIMENSION,
+  MODEL_DIMENSION,
   NESTED_ENV_RESET_DIMENSION,
 ].sort((a, b) => a.order - b.order);
 
@@ -112,6 +144,13 @@ function assertDimensionOrderInvariants(dims: LaunchDimension[]): void {
   }
   if (idx("account") >= idx("nested-env-reset")) {
     throw new Error("不变式违反：account 必须排在 nested-env-reset 之前");
+  }
+  // F07：model 卡在 account 与 nested-env-reset 之间。
+  if (idx("account") >= idx("model")) {
+    throw new Error("不变式违反：account 必须排在 model 之前");
+  }
+  if (idx("model") >= idx("nested-env-reset")) {
+    throw new Error("不变式违反：model 必须排在 nested-env-reset 之前");
   }
 }
 assertDimensionOrderInvariants(LAUNCH_DIMENSIONS);

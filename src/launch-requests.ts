@@ -29,6 +29,7 @@ export function planResumeDirect(
   launcher = AGENT_PROFILE.defaultLauncher,
   configDir?: string,
   accountName?: string,
+  modelOverride?: string,
 ): LaunchPlanBuild {
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
@@ -41,6 +42,7 @@ export function planResumeDirect(
     account: accountOf(configDir, accountName),
     launcherOverride: launcher,
     ccmSid: undefined,
+    modelOverride,
   };
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
@@ -53,6 +55,7 @@ export function planResumeTmux(
   name?: string,
   configDir?: string,
   accountName?: string,
+  modelOverride?: string,
 ): LaunchPlanBuild {
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
@@ -69,6 +72,7 @@ export function planResumeTmux(
     account: accountOf(configDir, accountName),
     launcherOverride: launcher,
     ccmSid: sid, // #72：自建 resume 会话打完整 sid，供 findClaudeTmux 精确命中
+    modelOverride,
   };
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
@@ -80,6 +84,7 @@ export function planResumeIntoExistingTmux(
   launcher = AGENT_PROFILE.defaultLauncher,
   configDir?: string,
   accountName?: string,
+  modelOverride?: string,
 ): LaunchPlanBuild {
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
@@ -95,6 +100,7 @@ export function planResumeIntoExistingTmux(
     account: accountOf(configDir, accountName),
     launcherOverride: launcher,
     ccmSid: undefined, // 复用会话已在建时打过标，不重设（同今天行为）
+    modelOverride,
   };
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
@@ -106,6 +112,7 @@ export function planLauncher(
   command = AGENT_PROFILE.defaultLauncher,
   configDir?: string,
   accountName?: string,
+  modelOverride?: string,
 ): LaunchPlanBuild {
   const name = tmuxName.trim();
   if (!isValidNewTmuxName(name)) {
@@ -119,6 +126,7 @@ export function planLauncher(
     account: accountOf(configDir, accountName),
     launcherOverride: command,
     ccmSid: undefined, // 今天就不设——已知 F04 缺口，本次原样保留、不顺手"修一半"
+    modelOverride,
   };
   return { ctx, plan: buildLaunchPlan(ctx) };
 }

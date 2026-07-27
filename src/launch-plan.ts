@@ -52,6 +52,7 @@ export type LaunchAccount =
  */
 export type EnvOp =
   | { kind: "export-config-dir"; value: string }
+  | { kind: "export-model"; value: string } // F07：每账号默认模型（ANTHROPIC_MODEL）
   | { kind: "unset"; keys: string[] };
 
 /** `(inner) => string`：包裹而非片段追加——`( setup; exec cmd )` 这类闭括号结构，扁平的
@@ -85,6 +86,11 @@ export interface LaunchContext {
   account: LaunchAccount;
   launcherOverride: string | undefined;
   ccmSid: string | undefined;
+  /** F07：该账号配置的默认模型（本机 `config.json` 偏好，见 `accounts.ts::getModelForAccount`）。
+   *  未设置 = `undefined`，`MODEL_DIMENSION.applies` 据此判断是否要注入——不是恒真，见
+   *  `features/F07-per-account-model.md` §2 第1条：这个维度的默认态（不触发）就是用户的期望
+   *  （该账号自身已配置好的默认模型），不是 F05 修的那种"沉默=意外身份切换"。 */
+  modelOverride?: string;
 }
 
 /**
