@@ -1481,7 +1481,7 @@ export class HistoryView {
       const origin = ctx.origin;
       const behavior = await getBehavior();
       // account-ux U3:无显式选号 → 跟随。先读该会话的 pin(源②,list_last_accounts 只读本地 metadata,
-      // 非远端 SSH)传给 follow,使「粘性优先」在 history 入口也成立——有 pin 走 pin、无 pin 走当前工作账号;
+      // 非远端 SSH)传给 follow,使「粘性优先」在 history 入口也成立——有 pin 走 pin、无 pin 走当前账号;
       // 配合 withAccount 的不-clobber 记账,绝不把既有 pin 翻成当前账号(U3 审计 重要-1)。显式选号维持 A4。
       let rowLastAccount: string | undefined;
       if (!ctx.account) {
@@ -1502,7 +1502,7 @@ export class HistoryView {
           onUnselectable: (n) =>
             showActionFailureToast(
               "账号不可用",
-              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前工作账号 resume。`,
+              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前账号 resume。`,
               { level: "info", durationMs: 6000 },
             ),
           follow: ctx.account ? undefined : { lastAccount: rowLastAccount },
@@ -1528,7 +1528,7 @@ export class HistoryView {
     if (ctx.origin) {
       // 远端：薄封装 F53 拉起（tmux 名派生 + 默认拉起命令兜底都在 runNewSessionRemote 里，
       // 本处既不知 tmux、也不知默认 agent；只传 F34 配置命令，空则传输层兜默认）。
-      // account-ux U3:远端新会话跟随当前工作账号（新会话无 sid → 不记账）。
+      // account-ux U3:远端新会话跟随当前账号（新会话无 sid → 不记账）。
       const origin = ctx.origin;
       await withAccount(
         origin,

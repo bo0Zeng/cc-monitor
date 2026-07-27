@@ -354,7 +354,7 @@ export class AccountsSection {
   }
 
   /**
-   * account-ux U7：顶部「当前工作账号」横幅——把 chip / tab 徽章上那个概念在设置里讲清楚:
+   * account-ux U7：顶部「当前账号」横幅——把 chip / tab 徽章上那个概念在设置里讲清楚:
    * 它管什么(新会话 + 没指定过账号的 resume)、不管什么(正在跑的会话)。
    * 当前账号**不可选**(未登录 / in-place / 目录缺失)时不装作有——那种状态下 U6 的对齐面本来
    * 就整体休眠(见 accounts.ts alignableCurrentAccount),横幅得如实说,否则用户会以为它在生效。
@@ -374,7 +374,7 @@ export class AccountsSection {
     main.className = "accounts-current-main";
     const name = document.createElement("span");
     name.className = "accounts-current-name";
-    name.textContent = def ? def.name : "未设当前工作账号";
+    name.textContent = def ? def.name : "未设当前账号";
     main.appendChild(name);
     if (def?.email) {
       const email = document.createElement("span");
@@ -510,7 +510,7 @@ export class AccountsSection {
     const mark = document.createElement("span");
     mark.className = "accounts-row-mark";
     mark.textContent = isCurrent ? "★" : "";
-    mark.title = isCurrent ? "当前工作账号" : "";
+    mark.title = isCurrent ? "当前账号" : "";
     row.appendChild(mark);
 
     // account-ux U7：复用 U4 的账号头像——与状态栏 chip、tab 徽章同一套 hash 色，三处肉眼可对应。
@@ -586,7 +586,7 @@ export class AccountsSection {
       await this.reload(true);
       void emit(SETTINGS_APPLIED_EVENT); // 让主窗状态栏 chip 同步
       showActionFailureToast(
-        "已设为当前工作账号",
+        "已设为当前账号",
         `以后新会话 / resume 默认用 ${a.name}；正在跑的会话不受影响。`,
         { level: "info", durationMs: 4000 },
       );

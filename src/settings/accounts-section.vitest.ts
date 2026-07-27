@@ -167,7 +167,7 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
     expect(accountColorSlotFor(A)).not.toBe(accountColorSlotFor(B));
   });
 
-  it("横幅显当前工作账号 + 实心头像 + 管辖范围", async () => {
+  it("横幅显当前账号 + 实心头像 + 管辖范围", async () => {
     fetchAccountsMock.mockResolvedValue(ready());
     const el = await mount();
     const banner = el.querySelector(".accounts-current-banner")!;

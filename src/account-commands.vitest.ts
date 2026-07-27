@@ -35,10 +35,10 @@ function input(over: Partial<AccountCommandsInput> = {}): AccountCommandsInput {
 const ids = (i: AccountCommandsInput): string[] => buildAccountCommands(i).map((c) => c.id);
 
 describe("account-ux U8：Ctrl+K 账号命令", () => {
-  it("术语用「当前工作账号」，不再说「切默认为」", () => {
+  it("术语用「当前账号」，不再说「切默认为」", () => {
     const cmds = buildAccountCommands(input());
     const t = cmds.find((c) => c.id === "acct-default-amy")!.title;
-    expect(t).toContain("当前工作账号");
+    expect(t).toContain("当前账号");
     expect(t).not.toContain("切默认为");
   });
 

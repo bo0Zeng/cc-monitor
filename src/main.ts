@@ -189,7 +189,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   // ⚠k 计数走**推**模型（与 tabs.onActiveUsageChanged → usageHud.setActive 同惯例），不让 chip 反拉 TabManager。
   const accountChip = new AccountChip({
     openSettings: () => void invoke("open_settings_window"),
-    alignAll: () => tabs.alignAllToCurrentAccount(),
     // 切号后立刻重算一次：currentByOrigin 只由下面这条 10s 轮询喂，不主动刷的话会有最长 10s 的
     // 反向窗口——chip 已显示新账号，而对齐动作会把会话打回**刚被切走**的旧账号（D 审计重-5）。
     onDefaultChanged: () => void refreshSessionAccounts(),
@@ -211,13 +210,12 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (mySeq !== refreshSeq) return; // 有更晚的刷新已开始 → 本次作废，别覆盖它
       if (!cfg.enabled) {
         tabs.setSessionAccounts([], new Map());
-        accountChip.updateMismatchBadge(tabs.countAccountMismatches());
         return;
       }
       const rows: import("./accounts").SessionAccount[] = [];
       const emailByName = new Map<string, string>();
       const readyOrigins = new Set<string>();
-      // account-ux U5：origin → 当前工作账号名，供 tab 徽章「信息才显」比对（会话账号==它 → 不挂徽章）。
+      // account-ux U5：origin → 当前账号名，供 tab 徽章「信息才显」比对（会话账号==它 → 不挂徽章）。
       const currentByOrigin = new Map<string, string>();
       for (const h of cfg.hosts) {
         if (h.daemonless) continue;
@@ -246,8 +244,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       }
       if (mySeq !== refreshSeq) return; // I4：晚到的旧快照不覆盖新快照
       tabs.setSessionAccounts(rows, emailByName, lastByS, readyOrigins, currentByOrigin);
-      // account-ux U6：徽章刷完立刻把 ⚠k 计数**推**给 chip（同一拍数据，二者不会打架）。
-      accountChip.updateMismatchBadge(tabs.countAccountMismatches());
     } catch (e) {
       console.warn("refreshSessionAccounts failed:", e);
     }
@@ -674,7 +670,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     } else {
       showActionFailureToast(
         "无需对齐",
-        "当前会话已在当前工作账号上，或它不支持对齐（本地会话 / 账号未知 / 不在本工具 tmux 里）。",
+        "当前会话已在当前账号上，或它不支持对齐（本地会话 / 账号未知 / 不在本工具 tmux 里）。",
         { level: "info", durationMs: 4000 },
       );
     }

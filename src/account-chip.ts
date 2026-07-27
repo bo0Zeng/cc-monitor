@@ -49,10 +49,8 @@ export function chipLabel(state: AccountsState | null): string {
 export interface AccountChipDeps {
   /** 打开设置窗口的账号组（A3 设置组落地后接线；先给个跳设置的回调）。 */
   openSettings: () => void;
-  /** account-ux U6：批量把不一致活会话按当前工作账号重启对齐（TabManager 提供，含两步确认）。 */
-  alignAll?: () => void | Promise<void>;
-  /** account-ux U6：切完当前工作账号后回调——让 main.ts 立刻重算会话账号/⚠k，
-   *  否则会有最长 10s 的反向窗口（chip 已显新账号，对齐却把会话打回旧账号）。 */
+  /** F1：切完当前账号后回调——让 main.ts 立刻重算会话账号归属，否则会有最长 10s 的反向窗口。
+   *  （批量对齐已移出 chip，走命令面板；chip 是纯全局切换器。） */
   onDefaultChanged?: () => void;
 }
 
@@ -60,9 +58,6 @@ export class AccountChip {
   readonly element: HTMLButtonElement;
   private labelSpan: HTMLElement;
   private iconEl: HTMLElement;
-  private mismatchSpan: HTMLElement;
-  /** account-ux U6：最近一次推进来的不一致数（菜单入口据它显隐）。 */
-  private mismatchCount = 0;
   private origin: string | null = null;
   private state: AccountsState | null = null;
   private menu: HTMLElement | null = null;
@@ -72,7 +67,7 @@ export class AccountChip {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "status-account";
-    btn.title = "当前工作账号（点击切换 / 管理）";
+    btn.title = "当前账号（点击切换 / 管理）";
     const icon = document.createElement("span");
     icon.className = "status-account-icon";
     icon.textContent = "👤";
@@ -82,11 +77,6 @@ export class AccountChip {
     this.labelSpan = document.createElement("span");
     this.labelSpan.className = "status-account-label";
     btn.appendChild(this.labelSpan);
-    // account-ux U6：⚠k 不一致计数（有活会话不在当前工作账号时显）。
-    this.mismatchSpan = document.createElement("span");
-    this.mismatchSpan.className = "status-account-mismatch";
-    this.mismatchSpan.style.display = "none";
-    btn.appendChild(this.mismatchSpan);
     btn.addEventListener("click", () => void this.toggleMenu());
     this.element = btn;
     this.element.style.display = "none"; // 拿到数据前先藏
@@ -112,7 +102,7 @@ export class AccountChip {
       return;
     }
     this.labelSpan.textContent = text;
-    // account-ux U4：ready 时把 👤 换成当前工作账号的彩色头像（与 tab 徽章同色系 → 肉眼可对应）。
+    // account-ux U4：ready 时把 👤 换成当前账号的彩色头像（与 tab 徽章同色系 → 肉眼可对应）。
     // U8 休眠：只有 1 个可选账号时颜色区分不了任何东西 → 退回 👤，等加了第二个号再点亮。
     const cur = currentWorkingAccount(this.state);
     this.iconEl.textContent = "";
@@ -122,25 +112,6 @@ export class AccountChip {
       this.iconEl.textContent = "👤";
     }
     this.element.style.display = "";
-    this.updateMismatchBadge(this.mismatchCount); // 用最近一次推进来的值重判（ready/可见性可能变了）
-  }
-
-  /** account-ux U6：把 ⚠k 不一致计数**推**进 chip（main.ts 在 setSessionAccounts 后同拍调，
-   *  与 tab 徽章同源）。缓存下来给 toggleMenu 用，避免菜单再去反拉 TabManager。
-   *  只在 chip 可见**且** ui 为 ready 时显：非 ready（未启用/需更新/daemonless）时菜单里根本没有
-   *  对齐入口，显个"点开菜单可一键对齐"的计数就是死胡同（D 审计）。 */
-  updateMismatchBadge(count: number): void {
-    this.mismatchCount = count;
-    const ready = this.state ? deriveUi(this.state).kind === "ready" : false;
-    if (count > 0 && ready && this.element.style.display !== "none") {
-      this.mismatchSpan.textContent = `⚠${count}`;
-      const msg = `${count} 个正在跑的会话不在当前工作账号——点开菜单可一键对齐`;
-      this.mismatchSpan.title = msg;
-      this.mismatchSpan.setAttribute("aria-label", msg);
-      this.mismatchSpan.style.display = "";
-    } else {
-      this.mismatchSpan.style.display = "none";
-    }
   }
 
   /** account-ux U8：给快捷键用的显式入口。合成 `element.click()` 在 chip 隐藏时照样会派发，
@@ -173,19 +144,7 @@ export class AccountChip {
       menu.appendChild(this.menuAction("管理 / 部署…", () => this.deps.openSettings()));
     } else {
       const def = currentWorkingAccount(this.state);
-      // account-ux U6：有不一致的活会话时，菜单顶部给一条批量对齐入口（破坏性 → 走 TabManager 的两步确认）。
-      // 文案不说"当前账号"（单数）：多远端时计数是跨 origin 的、各按各自远端的当前账号对齐。
-      const mismatch = this.mismatchCount;
-      if (mismatch > 0 && this.deps.alignAll) {
-        const align = this.menuAction(`⚠ 对齐 ${mismatch} 个账号不一致的会话…`, () => {
-          void this.deps.alignAll?.();
-        });
-        align.classList.add("danger");
-        menu.appendChild(align);
-        const sepTop = document.createElement("div");
-        sepTop.className = "account-picker-sep";
-        menu.appendChild(sepTop);
-      }
+      // F1：chip 是纯全局切换器——只列账号点选切当前账号；批量对齐已移出（走命令面板）。
       for (const a of ui.accounts) {
         menu.appendChild(this.accountRow(a, def?.name === a.name));
       }
@@ -306,8 +265,8 @@ export class AccountChip {
       // 打回刚被切走的旧账号——与用户意图正好相反）。
       this.deps.onDefaultChanged?.();
       showActionFailureToast(
-        "已切当前工作账号",
-        `以后新会话、以及没指定过账号的 resume 都会用 ${a.name}${a.email ? `（${a.email}）` : ""}；正在跑的会话不受影响（切号不重启任何东西）；已归属别的号的会话保持原号，要换到 ${a.name} 就在它的账号徽章/右键选「用 ${a.name} 重启」。`,
+        "已切当前账号",
+        `以后新会话、以及没指定过账号的 resume 都会用 ${a.name}${a.email ? `（${a.email}）` : ""}；正在跑的会话不受影响（切号不重启任何东西）；已归属别的号的会话保持原号，要换到 ${a.name} 就在那个 tab 上右键选「把此会话切到账号 ${a.name}」。`,
         { level: "info", durationMs: 8000 },
       );
     } catch (e) {

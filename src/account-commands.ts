@@ -35,7 +35,7 @@ export interface AccountCommandsInput {
 
 /**
  * 造账号相关命令。规则：
- * - 术语统一「当前工作账号」（U4 起的全 UI 口径；keywords 仍保留"默认"做搜索别名）。
+ * - 术语统一「当前账号」（U4 起的全 UI 口径；keywords 仍保留"默认"做搜索别名）。
  * - 对齐类命令**只在真的可用时才出现**，不做灰着的死命令：
  *   单会话对齐要求 `activeSid` 确实在 `alignableSids` 里；批量要求列表非空。
  * - 破坏性确认不在这里做——单会话走 `restartWithAccount` 自带确认，批量走 TabManager 的两步确认。
@@ -50,8 +50,8 @@ export function buildAccountCommands(input: AccountCommandsInput): AccountComman
       const isCur = snapshot.defaultName === a.name;
       cmds.push({
         id: `acct-default-${a.name}`,
-        title: `账号：设 ${a.name} 为当前工作账号${isCur ? "（已是当前）" : ""}`,
-        keywords: `account 账号 切换 default 默认 当前工作账号 ${a.name} ${a.email}`,
+        title: `账号：设 ${a.name} 为当前账号${isCur ? "（已是当前）" : ""}`,
+        keywords: `account 账号 切换 default 默认 当前账号 ${a.name} ${a.email}`,
         // 教学式发现：把「打开账号菜单」的键位露在这里（用户若绑过）。
         hint: chordHint("account.switch-default"),
         run: () => {
@@ -64,7 +64,7 @@ export function buildAccountCommands(input: AccountCommandsInput): AccountComman
   if (activeSid && alignableSids.includes(activeSid)) {
     cmds.push({
       id: "acct-align-active",
-      title: "账号：把当前会话对齐到当前工作账号…（会重启该会话）",
+      title: "账号：把当前会话对齐到当前账号…（会重启该会话）",
       keywords: "account 账号 对齐 align 重启 当前会话 current",
       hint: chordHint("account.align-active"),
       run: () => input.alignSession(activeSid),
