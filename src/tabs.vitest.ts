@@ -119,6 +119,7 @@ import {
 import {
   TabManager,
   findClaudeTmux,
+  findClaudeTmuxMatches,
   findIdleTmux,
   isCwdFallbackMatch,
   claudeExited,
@@ -1018,6 +1019,28 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
     expect(runRemoteResumeTmux).toHaveBeenCalled();
     expect(runRemoteResumeIntoExistingTmux).not.toHaveBeenCalled();
   });
+
+  // F04（R10）：命中 ≥2 个精确同 sid 的活会话——attach 非破坏性、可撤销，故"警告+继续"而非拒绝
+  // （与破坏性的 restartTabWithAccount 分级不同，见 F04 计划 §2 取舍④）。
+  it("sid 同时活在 2 个 tmux（命中 ≥2 个）→ 仍 attach 到第一个 + 警告 toast，不静默假装只有一个", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve([
+            { name: "cc-r1abcd", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "r1" },
+            { name: "cc-r1efgh", path: "/other", command: "claude", attached: false, windows: 1, sid: "r1" },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    await (tm as unknown as { resumeTabTmux(sid: string): Promise<void> }).resumeTabTmux("r1");
+    expect(runRemoteAttach).toHaveBeenCalledWith("aya", "cc-r1abcd"); // 仍接入第一个，不拒绝
+    expect(showActionFailureToast).toHaveBeenCalledWith(
+      "检测到多个同身份会话",
+      expect.stringContaining("2"),
+      expect.objectContaining({ level: "info" }),
+    );
+  });
 });
 
 describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1）", () => {
@@ -1043,6 +1066,13 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     const items = [...(menu?.querySelectorAll(".tab-context-menu-item") ?? [])];
     return (
       (items as HTMLButtonElement[]).find((b) => b.textContent?.startsWith("Attach")) ?? null
+    );
+  };
+  const killBtn = (): HTMLButtonElement | null => {
+    const menu = document.body.querySelector(".tab-context-menu");
+    const items = [...(menu?.querySelectorAll(".tab-context-menu-item") ?? [])];
+    return (
+      (items as HTMLButtonElement[]).find((b) => b.textContent?.includes("杀死会话")) ?? null
     );
   };
   const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
@@ -1107,6 +1137,26 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     await flush();
     expect(attachBtn()?.textContent).toContain("空 tmux cc-A1");
     expect(attachBtn()?.disabled).toBe(false);
+  });
+
+  // F04（R10）：命中 ≥2 个精确同 sid 的活会话——attach 仍就绪（非破坏性，警告即可），
+  // kill 项禁用 + 诊断文案（破坏性，选错代价不可逆，须到终端手动处理）。preview 不受影响。
+  it("目标 sid 同时活在 2 个 tmux（命中 ≥2 个）→ attach 仍就绪，kill 项禁用+诊断文案", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve([
+            { name: "cc-A1", path: "/a", command: "claude", attached: false, windows: 1, sid: "A" },
+            { name: "cc-A2", path: "/other", command: "claude", attached: false, windows: 1, sid: "A" },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("A", "/a", "p", 0, "hostA");
+    rightClick("A");
+    await flush();
+    expect(attachBtn()?.disabled).toBe(false);
+    expect(attachBtn()?.textContent).toContain("cc-A1");
+    expect(killBtn()?.disabled).toBe(true);
+    expect(killBtn()?.textContent).toContain("2 个同身份会话");
   });
 
   it("R-1 守卫:tab A 查询在飞时右键 tab B → A 迟到结果不污染 B 的菜单", async () => {
@@ -1300,6 +1350,43 @@ describe("F74 findClaudeTmux（精确 tmux↔sid 映射）", () => {
   });
 });
 
+// F04（R10 根治）：findClaudeTmuxMatches 不折叠成第一个——findClaudeTmux 用它重实现，
+// 这组测试锁住"两者在单/零命中场景下逐字节同结果"这条 F04 步骤4 的核心不变量，并新增
+// 之前完全没有覆盖过的"命中 ≥2 个"场景（R10 的字面定义）。
+describe("F04 findClaudeTmuxMatches（不折叠成第一个，R10 根治的类型基础）", () => {
+  const S = (name: string, path: string, command: string, sid: string | null) => ({
+    name,
+    path,
+    command,
+    attached: false,
+    windows: 1,
+    sid,
+  });
+  it("同一 sid 命中 2 个活 claude 会话 → 返回全部 2 个，不丢任何一个（R10 的字面场景）", () => {
+    const list = [S("cc-a", "/p", "claude", "target"), S("cc-b", "/q", "claude", "target")];
+    const matches = findClaudeTmuxMatches(list, "target");
+    expect(matches.length).toBe(2);
+    expect(matches.map((m) => m.name).sort()).toEqual(["cc-a", "cc-b"]);
+  });
+  it("findClaudeTmux 在命中 2 个时只返回 matches[0]（.find 与 .filter[0] 同一遍历顺序，逐字节同结果）", () => {
+    const list = [S("cc-a", "/p", "claude", "target"), S("cc-b", "/q", "claude", "target")];
+    expect(findClaudeTmux(list, "target", "/p")?.name).toBe(
+      findClaudeTmuxMatches(list, "target")[0].name,
+    );
+  });
+  it("恰好 1 个命中 → 数组长度 1（对齐 findClaudeTmux 的单值语义）", () => {
+    const list = [S("cc-a", "/p", "claude", "target")];
+    expect(findClaudeTmuxMatches(list, "target").length).toBe(1);
+  });
+  it("0 个命中 → 空数组（不是 undefined）", () => {
+    expect(findClaudeTmuxMatches([S("cc-a", "/p", "claude", "other")], "target")).toEqual([]);
+    expect(findClaudeTmuxMatches(null, "target")).toEqual([]);
+  });
+  it("command≠claude 的不算命中（与 findClaudeTmux 的 command 门槛一致）", () => {
+    expect(findClaudeTmuxMatches([S("cc-a", "/p", "bash", "target")], "target")).toEqual([]);
+  });
+});
+
 // audit-fixes F03（idle-tmux）：findIdleTmux 与 findClaudeTmux 互斥——前者要 @ccm_sid 命中且
 // command≠claude（空 shell），后者要 command=claude。F03.1 就地复用 + F03.3 attach-idle 共用。
 describe("audit-fixes F03 findIdleTmux（sid 命中但 command≠claude 的空 tmux）", () => {
@@ -1433,6 +1520,26 @@ describe("F74c(#60-B) isCwdFallbackMatch（cwd 回退串味提示判定）", () 
   it("null / 空列表 → true（无 sid 可依，回退语义）", () => {
     expect(isCwdFallbackMatch(null, "t")).toBe(true);
     expect(isCwdFallbackMatch([], "t")).toBe(true);
+  });
+
+  // F04 Phase D 审计：`resolveAttachMenuItem`/缓存菜单构建的代码注释断言"matches.length>1"
+  // （F04 的多命中告警）与 `viaCwd`（F74c 的 cwd 回退告警）互斥、不会同时触发——此前只靠人工
+  // 读代码证明（`viaCwd` 要求"整张列表无任何 @ccm_sid"，`matches.length>1` 要求至少两条精确
+  // sid 命中，两个前提不可能同时满足）。这条测试把该不变量钉死，未来重构悄悄破坏它会立刻转红。
+  it("F04：matches.length>1（多命中告警）与 viaCwd（cwd 回退告警）不会同时为真", () => {
+    const scenarios: Array<{ label: string; sessions: ReturnType<typeof S>[] }> = [
+      { label: "整张列表无 sid（走 cwd 回退）", sessions: [S("a", "/p", "claude", null)] },
+      {
+        label: "恰好 2 个精确命中同 sid",
+        sessions: [S("a", "/p", "claude", "target"), S("b", "/q", "claude", "target")],
+      },
+      { label: "混合：部分会话有 sid 但都不是目标", sessions: [S("a", "/p", "claude", "other")] },
+    ];
+    for (const { label, sessions } of scenarios) {
+      const ambiguous = findClaudeTmuxMatches(sessions, "target").length > 1;
+      const viaCwd = isCwdFallbackMatch(sessions, "target");
+      expect(ambiguous && viaCwd, label).toBe(false);
+    }
   });
 });
 
@@ -1762,6 +1869,27 @@ describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动�
     );
     await (tm as unknown as Priv).restartTabWithAccount("target-sid", "z", false);
     expect(restartSpy).not.toHaveBeenCalled();
+  });
+
+  // F04（R10）：命中 ≥2 个精确同 sid 的活会话——重启是破坏性操作（kill+relaunch），选错的代价
+  // 不可逆，故**拒绝**而非"警告+继续"（与非破坏性的 resumeTabTmux 分级不同，见 F04 计划 §2 取舍④）。
+  it("目标 sid 同时活在 2 个 tmux（命中 ≥2 个）→ 拒重启、不调编排器（防杀错留活）", async () => {
+    tm.ensureTab("target-sid", "/home/pi/proj", "/p/t.jsonl", 0, "aya");
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux"
+        ? Promise.resolve([
+            sess({ name: "cc-target01", sid: "target-sid" }),
+            sess({ name: "cc-target02", path: "/other", sid: "target-sid" }),
+          ])
+        : Promise.resolve(undefined),
+    );
+    await (tm as unknown as Priv).restartTabWithAccount("target-sid", "z", false);
+    expect(restartSpy).not.toHaveBeenCalled();
+    expect(showActionFailureToast).toHaveBeenCalledWith(
+      "换号重启拒绝",
+      expect.stringContaining("2"),
+      expect.objectContaining({ level: "info" }),
+    );
   });
 });
 

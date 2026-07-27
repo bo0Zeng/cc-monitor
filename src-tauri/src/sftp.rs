@@ -812,6 +812,9 @@ mod tests {
     ///    `=名` 无尾冒号则在 send-keys/capture-pane/set-option 上 rc=1 完全失效。
     ///  - `exec` ：不能省——身份 poller 读 `sessions/$PID.json`，不 exec 则 PID 对不上。
     ///  - `@ccm_sid` / `@ccm_agent` ：身份随行，cc-monitor 靠它精确认会话。
+    ///  - `@ccm_sid_expect` ：F04——通道A（建时/exec 时立即声明"打算跑这个 sid"）写这个 key，
+    ///    与通道B（poller 独立读会话文件确认后才写的 `@ccm_sid`）分离。破坏性动作只认 `@ccm_sid`，
+    ///    不被"声明了但从未真正跑起来"的会话骗过（旧审计 D6 的坑）。
     ///  - `CLAUDE_CONFIG_DIR` ：账号注入必须在**最终 exec 的那个 shell 里**设。
     ///  - `--print` / `--ccm-probe` ：F03 的渲染等价断言 + 安装自检/降级判据依赖它们。
     #[test]
@@ -825,10 +828,23 @@ mod tests {
             "--ccm-sid",
             "CLAUDE_CONFIG_DIR",
             "@ccm_sid",
+            "@ccm_sid_expect",
             "@ccm_agent",
             "exec",
         ] {
             assert!(CCM_CLI_SCRIPT.contains(needle), "ccm CLI 缺关键要素: {needle}");
+        }
+        // F04（结构性，防 D6 复发）：两处"通道A立刻打标"必须写 `@ccm_sid_expect`，**不得**写裸
+        // `@ccm_sid`——否则一个从未被确认过的意图声明会永久冒充"事实"。用带引号的完整
+        // `set-option ... @ccm_sid_expect` 片段做锚点，防未来改动悄悄把它改回 `@ccm_sid`。
+        for needle in [
+            "tmux set-option -t $t @ccm_sid_expect $(sq \"$ccm_sid\")",
+            "tmux set-option @ccm_sid_expect \"$ccm_sid\"",
+        ] {
+            assert!(
+                CCM_CLI_SCRIPT.contains(needle),
+                "通道A（意图声明）必须写 @ccm_sid_expect（而非裸 @ccm_sid），缺: {needle}"
+            );
         }
         // tmux 目标精确形态（INVARIANTS §31a）：**结构性扫描**——扫出 CLI 里每一个 `-t ` 的
         // 目标 token，逐个断言含 `=` 且以 `:`（或 `:` + 引号）收尾。

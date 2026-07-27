@@ -126,26 +126,104 @@ fn classify_capture_output(raw: &str) -> Result<String, String> {
 /// `=name:` 是唯一在全部动词上都既通用又精确的形式。矩阵见 `.claude/planned-build/unify-launch/MASTERPLAN.md` §5.3。
 ///
 /// 删掉它会让换号重启把 `/exit` 敲进**兄弟会话里还活着的 claude** 并 kill 它，而 UI 报告「已重启」。
-fn exact_target(target: &str) -> String {
-    ssh_source::shell_quote(&format!("={target}:"))
+///
+/// F04 Gate 1（恒强制）：**空 target 必须被拒**——`=:` 会被 tmux 解析成「当前会话」，是本模块
+/// 唯一真正的危险默认值（今天 `capture_remote_pane` 是唯一无门的入口，见其函数头注）。
+///
+/// **只查空串，不额外收紧字符集**——glob/元字符（`*`/`;`/`$`/空格）不在这里挡：`shell_quote`
+/// 已经把任意内容安全引号化（不会脱出 shell），字符集层面的收紧是**另一层职责**（TS 侧
+/// `isValidNewTmuxName` 只在**创建路径**禁 glob，`isValidTmuxName` 对 attach 到已有会话故意
+/// 宽松——见 INVARIANTS §31a"第二道防线"）。这里若也收紧字符集会让 `si*` 这类合法 attach 目标
+/// （已有会话名里含 glob 字符）在 Gate 1 就被拒，与既有 `tmux_targets_use_exact_match` 测试
+/// 钉死的"glob 名被引号原样包住、不脱出"这一既定行为冲突——**空** 是唯一需要在这一层拦的语义
+/// 陷阱（`=:` 落到当前会话），其余交给引号化 + 上层校验。
+fn is_safe_tmux_target(target: &str) -> bool {
+    !target.is_empty()
+}
+
+/// F04：`exact_target` 现在是 fallible——Gate 1 折进这一个函数本身，任何未来新增的 tmux 命令
+/// 构造点都**结构性不可能**绕过它（不是"记得检查"，是没有第二条路可走）。
+fn exact_target(target: &str) -> Result<String, String> {
+    if !is_safe_tmux_target(target) {
+        return Err(format!("非法 tmux 目标（空）：{target:?}"));
+    }
+    Ok(ssh_source::shell_quote(&format!("={target}:")))
 }
 
 /// `capture-pane` 远端命令串（提纯以便单测——D 审计：内联 `format!` 让 3 个 `-t` 位点里 2 个
 /// 无测试覆盖，把 `exact_target` 改回裸目标 `cargo test` 依旧全绿）。
-fn build_capture_pane_cmd(target: &str) -> String {
-    format!(
-        "if command -v tmux >/dev/null 2>&1; then tmux capture-pane -p -t {} 2>/dev/null || printf 'NO_PANE\\n'; else printf 'NO_TMUX\\n'; fi",
-        exact_target(target)
-    )
+/// 只过 Gate 1（空/非法字符）——**只读快照**，MASTERPLAN 明确不为它加身份门（F04 计划 §1）。
+fn build_capture_pane_cmd(target: &str) -> Result<String, String> {
+    let t = exact_target(target)?;
+    Ok(format!(
+        "if command -v tmux >/dev/null 2>&1; then tmux capture-pane -p -t {t} 2>/dev/null || printf 'NO_PANE\\n'; else printf 'NO_TMUX\\n'; fi"
+    ))
 }
 
-/// `kill-session` 远端命令串（提纯以便单测，理由同上）。**破坏性动作**——正是「杀错会话」
-/// 那条生产 bug 的一端，必须被回归测试钉死。
-fn build_kill_session_cmd(target: &str) -> String {
-    format!(
-        "if command -v tmux >/dev/null 2>&1; then tmux kill-session -t {} 2>&1; else printf 'NO_TMUX\\n'; fi",
-        exact_target(target)
-    )
+/// F04：三道门里 Gate 2 远端半支（`@ccm_sid` 已设）+ Gate 3（仅破坏性动作，`windows==1`）折进
+/// **一条原子远端命令**——同一 round-trip 里"查完再判再动"，不给中间留可被抢跑的窗口（TOCTOU
+/// 教训，见 MASTERPLAN §5.2）。
+///
+/// `need_sid`：Gate 2 的远端半支是否需要——`is_ccm_tmux_name`（本地、零 IO）命中时不需要，
+/// 因为名字前缀本身已经是"这是我们的会话"的证明（Gate 2 = `@ccm_sid` ∪ `cc-*`，OR 的另一支
+/// 已经在调用方满足）。`need_windows`：Gate 3 是否需要——只有 kill 需要，send-keys 不需要。
+///
+/// 用 `tmux display-message -p -t <target> '<fmt>'` 而非 `show-options`——后者对未设置的
+/// option 是 `rc=1` + stderr、需要脆弱的 rc/stderr 联合判断；`display-message` 走这个仓库已经
+/// 在生产验证过的格式串插值惯例（`TMUX_LS_FMT` 本身、`shared/ccm` 的 cwd 探测同款），未设置的
+/// option 静默展开成空串。**总是**在格式串里带 `#{session_windows}`（哪怕 `need_windows=false`
+/// 也不检查它）——它对一个存在的会话恒为正整数，用来当"目标是否存在"的判据：目标不存在时
+/// `display-message` 连这个字段都取不到、整条捕获串为空；目标存在但 `@ccm_sid` 未设时，
+/// 捕获串因为 `session_windows` 非空而不为空，两种情况因此被同一个 `[ -z "$info" ]` 干净分开。
+///
+/// `need_sid=false && need_windows=false` 时退化成今天的精确原样一行（零改动、零额外 round
+/// trip）——覆盖 100% 的现有真实流量（`cc-*` 命名的 send-keys）。
+fn build_guarded_tmux_cmd(
+    target: &str,
+    need_sid: bool,
+    need_windows: bool,
+    build_action: impl Fn(&str) -> String,
+) -> Result<String, String> {
+    let t = exact_target(target)?;
+    let action = build_action(&t);
+    if !need_sid && !need_windows {
+        return Ok(format!(
+            "if command -v tmux >/dev/null 2>&1; then {action}; else printf 'NO_TMUX\\n'; fi"
+        ));
+    }
+    let fmt = if need_sid {
+        "#{session_windows}\t#{@ccm_sid}"
+    } else {
+        "#{session_windows}"
+    };
+    let extract = if need_sid {
+        "w=\"$(printf '%s' \"$info\" | cut -f1)\"; sid=\"$(printf '%s' \"$info\" | cut -f2)\";"
+    } else {
+        "w=\"$info\";"
+    };
+    let guard = match (need_sid, need_windows) {
+        (true, true) => "[ -n \"$sid\" ] && [ \"$w\" = \"1\" ]",
+        (true, false) => "[ -n \"$sid\" ]",
+        (false, true) => "[ \"$w\" = \"1\" ]",
+        (false, false) => unreachable!("已在上面的退化分支处理"),
+    };
+    // F04 Phase D 审计发现：`reject_msg` 曾恒带 `windows=%s`（只要 `need_sid`），即便 send-keys
+    // （`need_windows=false`）根本不受 Gate 3 约束——`$w` 只是existence-marker、从未参与 guard
+    // 判断，混进拒绝消息会让用户误以为 windows 数也影响了 send-keys 的拒绝判断。按
+    // `(need_sid, need_windows)` 组合精确匹配 guard 实际用了哪些字段，消息只报告真正参与判断的。
+    let reject_msg = match (need_sid, need_windows) {
+        (true, true) => "printf 'CCM_GUARD_REJECTED sid=%s windows=%s\\n' \"$sid\" \"$w\"",
+        (true, false) => "printf 'CCM_GUARD_REJECTED sid=%s\\n' \"$sid\"",
+        (false, true) => "printf 'CCM_GUARD_REJECTED windows=%s\\n' \"$w\"",
+        (false, false) => unreachable!("已在上面的退化分支处理"),
+    };
+    Ok(format!(
+        "if command -v tmux >/dev/null 2>&1; then \
+info=\"$(tmux display-message -p -t {t} '{fmt}' 2>/dev/null)\"; \
+if [ -z \"$info\" ]; then printf 'CCM_NO_SESSION\\n'; else {extract} \
+if {guard}; then {action}; else {reject_msg}; fi; fi; \
+else printf 'NO_TMUX\\n'; fi"
+    ))
 }
 
 /// F60:抓一个远端 tmux 会话当前窗口/pane 的屏幕文本(**只读快照,非 attach**)。
@@ -154,9 +232,9 @@ fn build_kill_session_cmd(target: &str) -> String {
 /// (来自 `list_remote_tmux` 的真实会话名,仍防御转义)。通道 B 一次性 exec,不干扰前台终端。
 #[tauri::command]
 pub async fn capture_remote_pane(origin: String, target: String) -> Result<String, String> {
+    let cmd = build_capture_pane_cmd(&target)?;
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
-    let cmd = build_capture_pane_cmd(&target);
     let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
     let mut reader = BufReader::new(stream);
     // lossy 解码:capture-pane 抓任意终端屏,非 UTF-8 字节(CP437 画框 / ANSI art / 二进制)
@@ -169,23 +247,29 @@ pub async fn capture_remote_pane(origin: String, target: String) -> Result<Strin
     classify_capture_output(&String::from_utf8_lossy(&buf))
 }
 
+/// `kill-session` 远端命令串（提纯以便单测，理由同 `build_capture_pane_cmd`）。**破坏性动作**——
+/// 正是「杀错会话」那条生产 bug 的一端，必须被回归测试钉死。
+///
+/// F04 三道门：Gate 1（`exact_target` 内部）恒强制；Gate 2 = 本地 `is_ccm_tmux_name` 命中 **或**
+/// 远端 `@ccm_sid` 已设（union，不删除前缀检查——旧无 `@ccm_sid` 的 `cc-*` 会话仍必须可杀，
+/// 否则是向后兼容回归）；Gate 3（仅 kill）= 远端 `windows==1`。Gate 2 远端半支 + Gate 3 折进
+/// `build_guarded_tmux_cmd` 的一条原子命令，不给"查完再杀"之间留竞态窗口。
+fn build_kill_session_cmd(target: &str) -> Result<String, String> {
+    let name_owned = is_ccm_tmux_name(target);
+    build_guarded_tmux_cmd(target, !name_owned, true, |t| {
+        format!("tmux kill-session -t {t} 2>&1")
+    })
+}
+
 /// F79(#38)：杀死远端 tmux 会话（`tmux kill-session -t <target>`）。**破坏性操作**——前端二次确认后才调。
 /// `target` 经 `shell_quote`（来自 `list_remote_tmux` 的真实会话名，仍防御转义）。杀完 tab 变灰由 #60-A
 /// 的 tmux 存活对账兜（本命令不主动 archive，守 §24）。成功无输出；失败（会话不存在等）经 `2>&1` 捕获报错。
 #[tauri::command]
 pub async fn kill_remote_tmux(origin: String, target: String) -> Result<(), String> {
-    // audit-fixes F02(I1)：与 `tmux_send_keys` 对称——只 kill **本工具的 cc-* 会话**。
-    // 否则 F79 的 cwd 回退可能命中用户自己 `tmux new -s work` 里跑的 claude，
-    // `tmux kill-session -t work` 会端掉该会话的**所有 window/pane**（误杀无关工作）。
-    // cc-* 名（含 cwd 回退命中的自建会话）放行；非 cc-* 一律拒，让用户到那个 tmux 里自行处理。
-    if !is_ccm_tmux_name(&target) {
-        return Err(format!(
-            "拒绝 kill：非本工具 tmux 会话名: {target:?}（避免误杀你自己的 tmux 会话——kill-session 会连它的其它 window 一起端掉；请到该 tmux 里自行处理）"
-        ));
-    }
+    // 命令构造（含 Gate 1/2 本地半支）先于配置查找——本地校验失败不该先花一次配置查找。
+    let cmd = build_kill_session_cmd(&target)?;
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
-    let cmd = build_kill_session_cmd(&target);
     let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
     let mut reader = BufReader::new(stream);
     let mut buf: Vec<u8> = Vec::new();
@@ -198,6 +282,14 @@ pub async fn kill_remote_tmux(origin: String, target: String) -> Result<(), Stri
     if trimmed == "NO_TMUX" {
         return Err("远端未安装 tmux".to_string());
     }
+    if trimmed == "CCM_NO_SESSION" {
+        return Err("远端会话已不存在（可能已被终止）".to_string());
+    }
+    if let Some(rest) = trimmed.strip_prefix("CCM_GUARD_REJECTED ") {
+        return Err(format!(
+            "拒绝 kill：目标未通过身份/窗口守卫（{rest}）——可能不是本工具管理的会话，或已被扩展出额外窗口（避免误杀你自己的 tmux 会话；请到该 tmux 里自行处理）"
+        ));
+    }
     // kill-session 成功无输出；非空 = stderr 里的失败信息（如 "can't find session"）。
     if !trimmed.is_empty() {
         return Err(format!("tmux kill-session: {trimmed}"));
@@ -208,22 +300,29 @@ pub async fn kill_remote_tmux(origin: String, target: String) -> Result<(), Stri
 /// send-keys 远端命令串（提纯以便单测——补 R1「命令构造测缺」）。`enter=true` 时尾附 `Enter` 键
 /// （如 `/compact`、`/exit` 这类要回车提交的）；`enter=false` 只发裸键（如 `Escape` 打断当前回合，
 /// **不能**带尾回车，否则可能误提交输入框里的队列文本）。target/keys 均经 `shell_quote`。
-fn build_send_keys_remote_cmd(target: &str, keys: &str, enter: bool) -> String {
+///
+/// F04：Gate 2 远端半支——`is_ccm_tmux_name` 本地命中时跳过（零额外 round trip，覆盖今天 100%
+/// 的真实流量：`cc-*` 命名目标）；未命中时原子核验远端 `@ccm_sid` 已设才发送。无 Gate 3——
+/// send-keys 不删除任何东西，`windows` 数量与它无关。
+fn build_send_keys_remote_cmd(target: &str, keys: &str, enter: bool) -> Result<String, String> {
     let tail = if enter { " Enter" } else { "" };
-    format!(
-        "if command -v tmux >/dev/null 2>&1; then tmux send-keys -t {} {}{} 2>&1; else printf 'NO_TMUX\\n'; fi",
-        exact_target(target),
-        ssh_source::shell_quote(keys),
-        tail,
-    )
+    let keys_q = ssh_source::shell_quote(keys);
+    let name_owned = is_ccm_tmux_name(target);
+    build_guarded_tmux_cmd(target, !name_owned, false, |t| {
+        format!("tmux send-keys -t {t} {keys_q}{tail} 2>&1")
+    })
 }
 
 /// A5：向远端 tmux 会话发按键（headless ssh，如换号重启前在旧号上 send `/compact`、或优雅退出的
 /// `Escape`/`/exit`）。**只发按键、不杀不建**，走一次性 ssh、**daemon 不参与**（守只读边界）。
 /// `keys` 是字面串或 tmux 键名（`/compact` / `/exit` / `Escape`）；`enter`（可选，**默认 true** 向后兼容
 /// A5 旧调用）决定是否尾附 `Enter`——优雅退出的 `Escape` 传 `enter=false`。
-/// 安全：`target` 限**本工具建的 `cc-*` 会话名**（`is_ccm_tmux_name`），防误发到用户别的 tmux；
 /// keys 经 `shell_quote`。成功无输出；失败（会话不存在等）经 `2>&1` 捕获报错。
+///
+/// F04：安全判据从"只认 `is_ccm_tmux_name`"改为 Gate 2 union（`cc-*` 前缀本地命中 **或** 远端
+/// `@ccm_sid` 已设）——`build_send_keys_remote_cmd` 内部处理；非 `cc-*` 名不再在客户端提前拒绝
+/// （F02 允许 `--tmux=<自定义名>`，这类会话是 `ccm` 拥有的、只是名字不含前缀，必须走远端核验
+/// 而非按名字形状一刀切拒绝，否则是新引入的向后不兼容）。
 #[tauri::command]
 pub async fn tmux_send_keys(
     origin: String,
@@ -231,13 +330,10 @@ pub async fn tmux_send_keys(
     keys: String,
     enter: Option<bool>,
 ) -> Result<(), String> {
-    if !is_ccm_tmux_name(&target) {
-        return Err(format!("拒绝 send-keys：非本工具 tmux 会话名: {target:?}"));
-    }
+    // 缺省（前端旧调用不传）→ true，与 A5 原行为逐字节等价。命令构造先于配置查找（同 kill）。
+    let cmd = build_send_keys_remote_cmd(&target, &keys, enter.unwrap_or(true))?;
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
-    // 缺省（前端旧调用不传）→ true，与 A5 原行为逐字节等价。
-    let cmd = build_send_keys_remote_cmd(&target, &keys, enter.unwrap_or(true));
     let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
     let mut reader = BufReader::new(stream);
     let mut buf: Vec<u8> = Vec::new();
@@ -250,6 +346,14 @@ pub async fn tmux_send_keys(
     if trimmed == "NO_TMUX" {
         return Err("远端未安装 tmux".to_string());
     }
+    if trimmed == "CCM_NO_SESSION" {
+        return Err("远端会话已不存在（可能已被终止）".to_string());
+    }
+    if let Some(rest) = trimmed.strip_prefix("CCM_GUARD_REJECTED ") {
+        return Err(format!(
+            "拒绝 send-keys：目标未通过身份守卫（{rest}）——可能不是本工具管理的会话"
+        ));
+    }
     if !trimmed.is_empty() {
         return Err(format!("tmux send-keys: {trimmed}"));
     }
@@ -257,7 +361,11 @@ pub async fn tmux_send_keys(
 }
 
 /// 本工具建的 tmux 会话名判定：`cc-` 前缀 + 只含 `[A-Za-z0-9_-]`（`cc-<sid8>[-N]` 恒满足）。
-/// 用于 send-keys 目标白名单——绝不向用户自己的其它 tmux 会话发按键。
+///
+/// F04：**不再是唯一身份判据**，降级为 Gate 2（identity）union 的本地半支——`@ccm_sid` 已设
+/// 是远端半支（`build_guarded_tmux_cmd` 里核验）。命中此判据即可跳过远端核验（零 IO，覆盖今天
+/// 100% 的真实流量）；未命中不代表拒绝，只代表"需要问远端 `@ccm_sid`"。**不删除**——F02 之前的
+/// 老 `cc-*` 会话没有 `@ccm_sid`，只靠这条前缀判据仍必须可 kill/send-keys，否则是向后兼容回归。
 fn is_ccm_tmux_name(name: &str) -> bool {
     name.starts_with("cc-")
         && name.len() > 3
@@ -283,31 +391,112 @@ mod tests {
         assert!(!is_ccm_tmux_name("cc-a$x")); // 元字符
     }
 
-    /// audit-fixes F02(I1)：kill_remote_tmux 必须与 send-keys 对称,拒非 cc-* 名——
-    /// 防 F79 cwd 回退误杀用户自己 `tmux new -s work` 的整个会话。变异锚点:去掉 guard → 此测红
-    /// （非 cc- 名会往下走到 SSH，不再早退 Err「拒绝」）。cc-* 名不在此拦(会继续到 SSH,不在此验)。
-    #[tokio::test]
-    async fn kill_remote_tmux_rejects_non_ccm_name() {
-        for bad in ["work", "web", "0", "my-session", "cc-a b"] {
-            let r = kill_remote_tmux("aya".to_string(), bad.to_string()).await;
-            assert!(r.is_err(), "非 cc-* 名 {bad:?} 应被拒");
+    /// F04 Gate 1：**只有空 target** 恒被拒——`=:` 会解析成「当前会话」，是唯一真正危险的默认值。
+    /// 在本地就地失败，不发起任何 SSH 连接（此测直接调纯函数，不依赖任何 origin 配置存在）。
+    /// 含 glob/元字符但非空的 target **不**在这一层被拒（`shell_quote` 已安全引号化，字符集收紧
+    /// 是 TS 侧 `isValidNewTmuxName`/`isValidTmuxName` 的职责，见 `is_safe_tmux_target` 头注）。
+    #[test]
+    fn gate1_rejects_only_empty_target() {
+        assert!(build_kill_session_cmd("").is_err(), "空 target 应被 Gate 1 拒绝（kill）");
+        assert!(
+            build_send_keys_remote_cmd("", "/exit", true).is_err(),
+            "空 target 应被 Gate 1 拒绝（send-keys）"
+        );
+        assert!(
+            build_capture_pane_cmd("").is_err(),
+            "空 target 应被 Gate 1 拒绝（capture-pane，今天唯一无门的入口）"
+        );
+        // 非空、含元字符/glob 的 target 不被 Gate 1 拒——shell_quote 已使其安全，字符集收紧是
+        // 另一层（TS 侧）职责，见 `gate2_non_prefixed_safe_name_builds_remote_check_not_instant_reject`
+        // 与 `tmux_targets_use_exact_match` 里 `si*`/`a'b` 的既定通过行为。
+        for safe_nonempty in ["cc-a b", "cc-a;rm", "cc-a$x", "si*", "a'b"] {
             assert!(
-                r.unwrap_err().contains("拒绝"),
-                "{bad:?} 应是白名单拒绝(而非 SSH/配置错)"
+                build_capture_pane_cmd(safe_nonempty).is_ok(),
+                "非空 target {safe_nonempty:?} 不该被 Gate 1 拒绝: {:?}",
+                build_capture_pane_cmd(safe_nonempty)
             );
         }
     }
 
+    /// audit-fixes F02(I1) → F04 更新：非 `cc-*` 但**字符安全**的名字（如 F02 `--tmux=<自定义名>`
+    /// 建的会话）**不再在客户端被一刀切拒绝**——Gate 2 是 union，未命中本地前缀判据时改为构造
+    /// 一条原子远端核验 `@ccm_sid` 的命令，而不是立即 Err。这是本次 F04 的核心行为变化：
+    /// 变异锚点——如果 Gate 2 退化回"只认前缀"，下面的命令就不会含 `@ccm_sid` 查询。
+    #[test]
+    fn gate2_non_prefixed_safe_name_builds_remote_check_not_instant_reject() {
+        for safe_non_ccm in ["work", "web", "my-session", "0"] {
+            let kill = build_kill_session_cmd(safe_non_ccm)
+                .unwrap_or_else(|e| panic!("{safe_non_ccm:?} 是安全字符集,不该被 Gate 1 拒: {e}"));
+            assert!(
+                kill.contains("@ccm_sid"),
+                "非 cc-* 安全名 {safe_non_ccm:?} 的 kill 命令必须核验远端 @ccm_sid（Gate 2 union）: {kill}"
+            );
+            let sk = build_send_keys_remote_cmd(safe_non_ccm, "/exit", true)
+                .unwrap_or_else(|e| panic!("{safe_non_ccm:?} 是安全字符集,不该被 Gate 1 拒: {e}"));
+            assert!(
+                sk.contains("@ccm_sid"),
+                "非 cc-* 安全名 {safe_non_ccm:?} 的 send-keys 命令必须核验远端 @ccm_sid: {sk}"
+            );
+        }
+        // 对照组：cc-* 前缀命中 → 本地已判定"是我们的"，kill 命令不含 @ccm_sid 查询（覆盖 Gate 3
+        // 仍然核验 windows，但不必再查 sid）；send-keys 更进一步，完全退化成今天的一行（零 Gate）。
+        let kill_owned = build_kill_session_cmd("cc-abc12345").unwrap();
+        assert!(
+            !kill_owned.contains("@ccm_sid"),
+            "cc-* 前缀命中不该再问远端 @ccm_sid: {kill_owned}"
+        );
+        assert!(
+            kill_owned.contains("session_windows"),
+            "kill 恒需要 Gate 3 的 windows 核验（即便 Gate 2 本地已过）: {kill_owned}"
+        );
+        let sk_owned = build_send_keys_remote_cmd("cc-abc12345", "/exit", true).unwrap();
+        assert!(
+            !sk_owned.contains("@ccm_sid") && !sk_owned.contains("display-message"),
+            "cc-* 前缀命中的 send-keys 应退化成今天的一行、零额外 round trip: {sk_owned}"
+        );
+    }
+
+    /// F04：Gate 3（仅 kill）——`windows` 门槛只出现在 kill 的命令构造里，send-keys 恒不含。
+    #[test]
+    fn gate3_only_applies_to_kill_not_send_keys() {
+        let kill = build_kill_session_cmd("cc-abc12345").unwrap();
+        assert!(kill.contains("windows"), "kill 必须核验 windows: {kill}");
+        let sk = build_send_keys_remote_cmd("cc-abc12345", "/exit", true).unwrap();
+        assert!(
+            !sk.contains("windows"),
+            "send-keys 不删东西，不该有 Gate 3: {sk}"
+        );
+    }
+
+    /// F04 Phase D 审计发现并修：非前缀名的 send-keys（`need_sid=true, need_windows=false`）
+    /// 之前的拒绝消息恒带 `windows=%s`——`$w` 只是 existence-marker、从未参与 guard 判断，混进
+    /// 消息会让用户误以为 windows 数也影响了 send-keys 的拒绝判断。拒绝消息现在按
+    /// `(need_sid, need_windows)` 精确匹配 guard 实际用到的字段。
+    #[test]
+    fn reject_message_only_reports_fields_actually_gated_on() {
+        let kill_custom = build_kill_session_cmd("e2e-custom").unwrap();
+        assert!(
+            kill_custom.contains("CCM_GUARD_REJECTED sid=%s windows=%s"),
+            "kill（need_sid+need_windows 都真）拒绝消息应同时报 sid 和 windows: {kill_custom}"
+        );
+        let sk_custom = build_send_keys_remote_cmd("e2e-custom", "/exit", true).unwrap();
+        assert!(
+            sk_custom.contains("CCM_GUARD_REJECTED sid=%s\\n") && !sk_custom.contains("windows=%s"),
+            "send-keys（仅 need_sid 真）拒绝消息只该报 sid，不该混入未参与判断的 windows: {sk_custom}"
+        );
+    }
+
     /// A5+：send-keys 命令构造（补 R1）——enter=true 尾附 ` Enter`，false 不附；target/keys 经 shell_quote。
-    /// F01：target 形态为 `'=<名>:'`（精确匹配，见 `exact_target`）。
+    /// F01：target 形态为 `'=<名>:'`（精确匹配，见 `exact_target`）。用 cc-* 名走零 Gate 的退化路径，
+    /// 命令形状与今天逐字节相同（F04 对 100% 真实流量零改动的验证点）。
     #[test]
     fn send_keys_cmd_construction() {
-        let with_enter = build_send_keys_remote_cmd("cc-abc12345", "/compact", true);
+        let with_enter = build_send_keys_remote_cmd("cc-abc12345", "/compact", true).unwrap();
         assert!(
             with_enter.contains("tmux send-keys -t '=cc-abc12345:' '/compact' Enter 2>&1"),
             "enter=true 应尾附 Enter: {with_enter}"
         );
-        let no_enter = build_send_keys_remote_cmd("cc-abc12345", "Escape", false);
+        let no_enter = build_send_keys_remote_cmd("cc-abc12345", "Escape", false).unwrap();
         assert!(
             no_enter.contains("tmux send-keys -t '=cc-abc12345:' 'Escape' 2>&1"),
             "enter=false 不应附 Enter: {no_enter}"
@@ -335,9 +524,9 @@ mod tests {
     #[test]
     fn tmux_targets_use_exact_match() {
         // **三个命令构造点全钉死**（D 审计：此前只钉了 send-keys，另两处改回裸目标测试仍全绿）。
-        let sk = build_send_keys_remote_cmd("cc-abc12345", "/exit", true);
-        let cap = build_capture_pane_cmd("cc-abc12345");
-        let kill = build_kill_session_cmd("cc-abc12345");
+        let sk = build_send_keys_remote_cmd("cc-abc12345", "/exit", true).unwrap();
+        let cap = build_capture_pane_cmd("cc-abc12345").unwrap();
+        let kill = build_kill_session_cmd("cc-abc12345").unwrap();
         for (label, cmd) in [("send-keys", &sk), ("capture-pane", &cap), ("kill-session", &kill)] {
             assert!(
                 cmd.contains("-t '=cc-abc12345:'"),
@@ -350,14 +539,16 @@ mod tests {
         }
 
         // exact_target 本身：`=` 与 `:` 都落在引号内，且不吃掉原名。
-        assert_eq!(exact_target("cc-x"), "'=cc-x:'");
-        assert_eq!(exact_target("proj_cc-2"), "'=proj_cc-2:'");
+        assert_eq!(exact_target("cc-x").unwrap(), "'=cc-x:'");
+        assert_eq!(exact_target("proj_cc-2").unwrap(), "'=proj_cc-2:'");
         // glob 名即便漏进来也被引号原样包住（不脱出成 shell glob）；名字层另有
         // `isValidTmuxName` 禁 `*`/`?` 作第二道防线。
-        assert_eq!(exact_target("si*"), "'=si*:'");
+        assert_eq!(exact_target("si*").unwrap(), "'=si*:'");
         // 含单引号的名字仍被正确转义（shell_quote 的 '\'' 形态）。
-        assert!(exact_target("a'b").starts_with("'=a"));
-        assert!(exact_target("a'b").ends_with("b:'"));
+        assert!(exact_target("a'b").unwrap().starts_with("'=a"));
+        assert!(exact_target("a'b").unwrap().ends_with("b:'"));
+        // Gate 1：空 target 必须被拒——`=:` 会被 tmux 解析成「当前会话」，是唯一真正危险的默认值。
+        assert!(exact_target("").is_err(), "空 target 必须被 Gate 1 拒绝");
     }
 
     #[test]
@@ -455,6 +646,35 @@ mod tests {
             daemon_src.contains(&expected_def),
             "TMUX_LS_FMT 双写点漂移：daemon watcher.rs 不含与 monitor 侧一致的定义 {expected_def:?}\n\
              （改了 tmux ls 格式串就得两侧同步——红线 I8）"
+        );
+    }
+
+    /// F04 真机验收的**输入源**（同 `e2e/tmux-target-emit.mts` 对 TS 侧的模式：从真 builder 取
+    /// 生产命令串，不手搓等价命令）。`#[ignore]`——不在常规 `cargo test` 里跑，只由
+    /// `e2e/tmux-guarded-acceptance.sh` 用 `cargo test --lib -- --ignored --nocapture` 触发，
+    /// 把三道门的**真实**构造命令打到 stdout（`<key>\t<命令串>`），喂给隔离 `-L` socket 验证
+    /// "这条命令在 tmux 上真的干了什么"——门禁只锁字符串形状不锁行为是 R1 的教训，本模块新增的
+    /// 三道门原子命令构造有真实的 shell 语法复杂度（嵌套 if/then/else、`cut -f1/-f2`），必须过
+    /// 真机而非只信 Rust 单测的字符串断言。
+    #[test]
+    #[ignore]
+    fn emit_guarded_commands_for_e2e() {
+        let emit = |key: &str, r: Result<String, String>| {
+            println!("{key}\t{}", r.unwrap_or_else(|e| format!("ERR:{e}")));
+        };
+        // kill：cc-* 前缀命中（本地已过 Gate2）→ 只需远端 windows 核验（Gate 3）。
+        emit("kill_owned", build_kill_session_cmd("cc-e2e-owned"));
+        // kill：非前缀但字符安全 → 远端核验 @ccm_sid（Gate 2 远端半支）+ windows（Gate 3）。
+        emit("kill_custom", build_kill_session_cmd("e2e-custom"));
+        // send-keys：cc-* 前缀命中 → 退化成今天的零 Gate 一行。
+        emit(
+            "send_keys_owned",
+            build_send_keys_remote_cmd("cc-e2e-owned", "CCMPROBE", true),
+        );
+        // send-keys：非前缀但字符安全 → 远端核验 @ccm_sid（无 Gate 3，不删东西）。
+        emit(
+            "send_keys_custom",
+            build_send_keys_remote_cmd("e2e-custom", "CCMPROBE", true),
         );
     }
 }

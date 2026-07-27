@@ -554,6 +554,29 @@ user option Claude 碰不到** = 「这个 tmux 此刻在跑哪个 sid」的权�
 - **`@ccm_sid` 是阶段② daemon `session.status()` RPC 的先声**（SS-13：tmux 每条能力都是一个
   daemon RPC 的 shell 仿真）；别把它固化成"只有 tmux 能这样"，它是"后端自报当前 sid"的通用形态。
 
+**F04 扩展（R10 根治）——命中 >1 时同样不许静默换一个**：`@ccm_sid` 只写不清（见上，`__ccm_rbind`
+明写"不 unset"），resume 前"是否已存活"的判断只在点击瞬间查一次远端、终端手动 resume 与 app 内
+resume 之间也没有互斥，故一个 sid 可能同时活在 ≥2 个 tmux 容器里。SS-5/SS-9 原文只讲了「零命中」
+这一半（找不到就报不存在），F04 把同一条准则对称扩展到「多命中」：
+
+- **`tabs.ts::findClaudeTmuxMatches`** 返回**全部**精确命中（不折叠成第一个）——`findClaudeTmux`
+  只是它的单值投影（`matches[0]`），供不关心"是否有重复"的调用方沿用。
+- **命中数决定后续动作的严重度分级，不是一刀切**：非破坏性操作（attach/resume）命中 ≥2 个时**警告
+  并按第一个继续**（可撤销：重新点一次就能换目标）；破坏性操作（kill/换号重启）命中 ≥2 个时**拒绝**
+  （代价不可逆——选错的那次可能杀掉了对的那个、留下错的那个继续跑/计费）。**绝不**在破坏性操作上
+  静默挑一个了事。
+- 这条分级本身（哪些动作该警告继续、哪些该拒绝）是产品判断，不是纯粹的正确性问题——加新的
+  "命中多个"消费方时，先问「这个动作选错了目标，后果能否撤销」，而不是照搬某个已有先例。
+
+**F04 扩展——`@ccm_sid_expect`（意图）与 `@ccm_sid`（事实）是两个独立的 key，不是同义词**：
+`shared/ccm` 建会话/exec 时刻会**立即**声明"打算跑这个 sid"（通道A，写 `@ccm_sid_expect`）——
+这只是声明，resume 可能瞬间失败（会话已不存在/网络抖动），从未被独立确认过。只有后台 poller
+独立读到 Claude Code 自己的会话文件、确认这个 sid 真的在跑之后，才写 `@ccm_sid`（通道B，唯一
+写者）。**任何破坏性判断（Gate 2 远端半支、kill/send-keys 的身份核验）只认 `@ccm_sid`，绝不认
+`@ccm_sid_expect`**——否则一个从未真正跑起来过的声明会永久冒充"事实"，被后续的身份核验采信。
+两个 key 都遵循"只写不清"的既有约定（见上）；`_expect` 不进 `TMUX_LS_FMT`（守 daemon 零改动的
+范围排除），只在窄场景（idle-tmux 置信度判断，F04 本轮未做，留待以后按需评估）按需惰性查。
+
 ## 31. 一端起的会话另一端必须能接——前端绝不硬编码会话后端命令（F90 / #48 / SS-12）
 
 **用户 2026-07-15 原话**：「我不能接受这边产生的会话那边看不到。」
@@ -664,6 +687,45 @@ attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建�
 
 **验证**：`src/launch-render-cli.test.ts` 的 #76 防线测试组——通过临时删除 `canRenderCli` 里的
 `mode !== "create-or-attach"` 判断、确认恰好 2 条测试转红，证明该判断不是摆设（见测试文件头注）。
+
+## 34. tmux 破坏性/半破坏性命令三道门 + 原子 verify+act（F04 / unify-launch / R10）
+
+**背景**：F04 根治 R10——过去 `kill_remote_tmux`/`tmux_send_keys` 只有一道门（`is_ccm_tmux_name`
+名字前缀判据），且"查一次状态、再发一条动作命令"是两次独立远端往返，中间留 TOCTOU 窗口。
+
+**三道门**（`src-tauri/src/tmux.rs`）：
+1. **Gate 1（恒强制）**：`is_safe_tmux_target`——只拒**空** target（`=:` 会被 tmux 解析成「当前
+   会话」，是唯一真正危险的默认值）。**不额外收紧字符集**——glob/元字符交给 `shell_quote` 安全
+   引号化，字符集收紧是 TS 侧 `isValidNewTmuxName`（仅创建路径）/`isValidTmuxName`（attach 故意
+   宽松）的职责，见 §31a「第二道防线」。折进 `exact_target` 本身（fallible），任何未来新增的
+   tmux 命令构造点结构性不可能绕过它。
+2. **Gate 2（identity，union）**：`is_ccm_tmux_name`（本地、零 IO，前缀命中）**或** `@ccm_sid`
+   已设（远端核验）。**`is_ccm_tmux_name` 不删除**——F02 之前的老 `cc-*` 会话没有 `@ccm_sid`，
+   仍必须可 kill/send-keys，否则是向后兼容回归；F02 之后 `--tmux=<自定义名>` 建的会话没有前缀，
+   必须靠远端 `@ccm_sid` 核验才放行，不能被一刀切拒绝（那本身是 F02 引入的真实网开一面缺口）。
+3. **Gate 3（仅破坏性动作，即 kill）**：远端 `session_windows==1`——拒绝 kill 一个已长出额外
+   window 的会话（signal：有独立于本工具的用户活动，不该被这一个 kill 动作连坐端掉）。send-keys
+   不删任何东西，不受此门。
+
+**原子 verify+act**：Gate 2 远端半支 + Gate 3 折进**一条**远端命令（`build_guarded_tmux_cmd`），
+用 `tmux display-message -p -t <target> '<fmt>'` 一次性取 `session_windows`/`@ccm_sid`，同一
+round-trip 内判断后再执行动作——不是"先查一次、再另发一条动作命令"（那正是 R10/#76 的共同根因：
+两次远端往返之间的窗口可被抢跑）。用 `display-message` 而非 `show-options`：后者对未设置的
+option 是 `rc=1` + stderr、需要脆弱的 rc/stderr 联合判断；`display-message` 走这个仓库已验证的
+格式串插值惯例（`TMUX_LS_FMT` 同款），未设置的 option 静默展开成空串，`session_windows` 恒为
+存在会话的正整数、天然当"目标是否存在"的判据（空捕获串 = 目标不存在）。
+
+**性能纪律**：`Gate 2` 本地命中（`cc-*` 前缀）时**完全跳过**远端半支——kill 仍需 Gate 3 的
+`windows` 核验（不能跳），但 send-keys 在这种情形下退化成今天的零 Gate 一行，**零额外 round
+trip**，覆盖 100% 的既有真实流量。别为了"统一形态"让不需要远端核验的路径也走一趟——这不是过早
+优化，是"新增门禁不该让最常见路径变慢"这条纪律的具体应用。
+
+**验证**：`e2e/tmux-guarded-acceptance.sh`（真机验收，隔离 `-L` socket，14 项）——输入来自
+`cargo test --lib -- --ignored --nocapture emit_guarded_commands_for_e2e`（真 builder 产出，不
+手搓等价命令），验证 2-window 真会话真的拒绝 kill 且存活、1-window 真的被 kill、无 `@ccm_sid`
+的自定义名会话被挡（kill 存活/send-keys 不污染 pane）、有 `@ccm_sid` 时真的放行。Rust 单测只锁
+字符串形状，真机验收锁"这条嵌套 if/cut 的 shell 语法真的按预期分支执行"（R1 教训：门禁全绿过仍
+放行过一个让 send-keys 完全失效的改动，字符串断言测不出真实行为）。
 
 ## 修改本文档
 
