@@ -38,8 +38,8 @@ cleanup() {
   [ -n "${DAEMON_PID:-}" ] && kill "$DAEMON_PID" 2>/dev/null
   # fixture pane 的 fake-claude(若还活)+ 两个 tmux 会话
   if [ -n "${FAKE_PID:-}" ]; then kill "$FAKE_PID" 2>/dev/null; fi
-  tmux kill-session -t "$SESSION" 2>/dev/null
-  tmux kill-session -t "$KEEP" 2>/dev/null
+  tmux kill-session -t "=$SESSION:" 2>/dev/null
+  tmux kill-session -t "=$KEEP:" 2>/dev/null
   rm -rf "$CLAUDE_DIR" "$WORK"
 }
 trap cleanup EXIT
@@ -111,7 +111,7 @@ fi
 
 # ── 3. ARCHIVE:tmux kill-session → 新 tmux 帧不再含 sid ───────────────────────
 echo "-- tmux kill-session $SESSION(@ccm_sid 消失 → 归档触发)--"
-tmux kill-session -t "$SESSION" 2>/dev/null || true
+tmux kill-session -t "=$SESSION:" 2>/dev/null || true
 MARK_KS="$(wc -l <"$FRAMES")"
 TS_ARCH="$(wait_line "$MARK_KS" "\"kind\":\"tmux_sessions\"" 14 'tmux frame post-kill-session')"
 if [ -n "$TS_ARCH" ]; then

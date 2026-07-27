@@ -27,7 +27,7 @@ SESSIONS=()  # 建过的 tmux 会话名,cleanup 兜底
 
 cleanup() {
   set +e
-  for s in "${SESSIONS[@]:-}"; do [ -n "$s" ] && tmux kill-session -t "$s" 2>/dev/null; done
+  for s in "${SESSIONS[@]:-}"; do [ -n "$s" ] && tmux kill-session -t "=$s:" 2>/dev/null; done
   # 兜底:kill 掉可能残留的 fake-claude(隔离目录里的 pidfile)
   for d in "$REMOTE_DIR" "$ACCT_A" "$ACCT_B" "/tmp/e2e-remote-claude"; do
     for pf in "$d"/sessions/*.json; do
@@ -80,7 +80,7 @@ orphan_count() {  # <base>
   n="$(tmux list-sessions -F '#{session_name}' 2>/dev/null | { grep -cE "^$1-[0-9]+$" || true; })"
   echo "${n:-0}"
 }
-session_exists() { tmux has-session -t "$1" 2>/dev/null && echo 1 || echo 0; }
+session_exists() { tmux has-session -t "=$1:" 2>/dev/null && echo 1 || echo 0; }
 
 # 基座(不带 pin / unset CLAUDE_CONFIG_DIR)resume 时 fake-claude 落回它自身默认目录
 # (模拟真 claude 落 ~/.claude);pin 账号则落 export 指定目录。cwd 目录须真实存在(tmux -c / cd &&)。
@@ -98,7 +98,7 @@ SID1="$(cat /proc/sys/kernel/random/uuid)"; S1="cc-${SID1:0:8}"
 make_idle "$SID1" "$REMOTE_DIR" >/dev/null
 CMD1="$(drv into-existing "$SID1" "$S1" "$FAKE" -)"
 echo "   cmd: $CMD1"
-if echo "$CMD1" | grep -q "send-keys -t $S1 " && ! echo "$CMD1" | grep -q "new-session"; then
+if echo "$CMD1" | grep -q "send-keys -t =$S1: " && ! echo "$CMD1" | grep -q "new-session"; then
   ok "B1 命令复用原名 $S1、无 new-session(就地 resume,治 #76 根因)"
 else bad "B1 命令未就地复用(含 new-session 或名不符)"; fi
 BEFORE1="$(session_exists "$S1")"

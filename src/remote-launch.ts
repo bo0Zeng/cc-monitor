@@ -231,7 +231,9 @@ export function buildLauncherCmd(
   configDir?: string,
 ): string {
   const name = tmuxName.trim();
-  if (!isValidTmuxName(name)) {
+  // F01：**创建**路径用 `isValidNewTmuxName`（额外禁 glob `*`/`?`）——本工具永远不把 glob 字符建进
+  // 会话名。attach 已有会话走宽松的 `isValidTmuxName`（那些名字不是我们建的，禁它是回归）。
+  if (!isValidNewTmuxName(name)) {
     throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(name)}`);
   }
   const qname = posixQuote(name);
@@ -261,13 +263,36 @@ export function buildOpenTerminalCmd(cwd: string): string {
 
 /**
  * F51:tmux 会话名合法性——非空、无控制字符(含 TAB 0x09 / 换行,防破坏 ls 解析或命令结构)、
- * **无 tmux 保留字符 `.`/`:`**(它们是 `session:window.pane` 目标分隔符,new-session 会拒)、≤128。
+ * **无 tmux 保留字符 `.`/`:`**(它们是 `session:window.pane` 目标分隔符,new-session 会拒)、
+ * **无 glob 元字符 `*`/`?`**(见下)、≤128。
  * 允许空格等其余可打印字符(`posixQuote` 会安全包裹)。真正的注入边界是 `posixQuote`;此校验
  * 兼防运行时 tmux 报错(F53 把会话名开成用户自由输入后,`.`/`:` 会静默失败,故在此拦)。
+ *
+ * **本函数刻意不禁 glob 字符**(`*`/`?`)——见 `isValidNewTmuxName`。它同时把守 `buildAttachCmd`,
+ * 而那条路径的输入是 `list_remote_tmux` 列出的**用户自己已存在的会话名**(tabs.ts 的 attach 项)。
+ * tmux 允许 `st*ar` 这类名字;在此禁掉只会把「attach 到这类已存在会话」从可用变成 throw,
+ * 而**挡不住任何东西**——`exactTarget` 的 `=name:` 已经把 glob 这一级彻底关闭(实测
+ * `-t '=st*ar:'` rc=0 且精确命中)。D 审计判定为行为回归,故拆成两个谓词。
  */
 export function isValidTmuxName(name: string): boolean {
   // eslint-disable-next-line no-control-regex
   return name.length > 0 && name.length <= 128 && !/[.:\x00-\x1f\x7f]/.test(name);
+}
+
+/**
+ * F01 第二道防线:**创建**新会话时额外禁 glob 元字符 `*`/`?`。
+ *
+ * tmux 的 `-t` 解析含 **glob** 一级——实测(tmux 3.6)`kill-session -t 'a*a'` 会命中并杀掉 `alpha`。
+ * 第一道防线是 `session-backend.ts` 的 `exactTarget()`(`=name:` 强制精确);此处是第二道:
+ * **本工具永远不把 glob 字符建进会话名**,于是即便将来某条路径漏了精确前缀也炸不出 glob 误伤。
+ *
+ * **只用在创建路径**(`buildLauncherCmd`)。attach 已有会话走 `isValidTmuxName`——那些名字不是我们
+ * 建的,禁它既无收益又是回归(见上)。二者独立、职责不同。
+ * (Rust 侧 `is_ccm_tmux_name` 的字符集今天顺带挡住这一面,但那是**身份**白名单、F04 会重构它,
+ * 不能依赖它兼职做字符集防线。)
+ */
+export function isValidNewTmuxName(name: string): boolean {
+  return isValidTmuxName(name) && !/[*?]/.test(name);
 }
 
 /**

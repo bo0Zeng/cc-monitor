@@ -581,6 +581,44 @@ src/remote-launch.ts` 只命中注释）。**本阶段不做后端探测/协商*
 tmux 会话名/主机名/路径当持久主键，否则本约当场崩）；`@ccm_sid`（§30）是「后端自报当前 sid」的通用形态、
 别固化成只有 tmux 能这样。
 
+## 31a. tmux `-t` 目标恒用 `=<名>:` 精确形态——三处同源，禁止任一处退回裸目标（F01 / unify-launch）
+
+**事实（tmux 3.6 实测，隔离 `-L` socket）**：裸 `-t <名>` 不是精确匹配，tmux 依次按
+「精确名 → **名字开头** → **glob**」解析。只有 `sib-2` 存在时：`kill-session -t sib` **杀掉 `sib-2` 且 rc=0**
+（当成功回报）、`send-keys -t sib` 投进 `sib-2`、`capture-pane -p -t sib` 抓的是 `sib-2`、
+`kill-session -t 'si*'` glob 命中。本仓**必然踩**：`pickFreshTmuxName` 刻意造 `cc-<sid8>-2/-3`，
+终端 `cct` 造 `<dir>_cc-2/-3`。
+
+**造成过的真实损坏**：`restartWithAccount` 第④步向上一次快照的会话名发 `Escape`+`/exit`。目标已自然结束时
+前缀命中兄弟 `cc-<sid8>-2` → **把 `/exit` 敲进另一个还活着的 claude**，④c 的 kill 再销毁它，输出为空 →
+判定成功 → 继续 resume + 写 pin。**净结果：无关会话被静默销毁 + pin 写错，而 UI 报告「已重启」。**
+
+**为什么是 `=<名>:` 而不是 `=<名>`（尾冒号不能省）**：`=` 前缀只在 target-**session** 解析路径上被识别。
+`send-keys` / `capture-pane` 收的是 target-**pane**，`set-option` / `show-options` 走 pane 解析后上溯——
+这些动词上 `=名`（无冒号）直接 `can't find pane`、**rc=1 完全失效**。尾冒号把串强制成 `session:` 形态
+（当前 window、活动 pane），`=` 才落在会话名段上被正确识别。`=名:` 是唯一在 send-keys / capture-pane /
+set-option / show-options / kill-session / has-session / attach **全部**动词上都既通用又精确的形式。
+（此坑真实踩过：第一版修复写成 `=名` 无冒号，三门禁全绿而 send-keys 实际一个键都发不出去。）
+
+**`new-session -s <名>` 收的是名字不是目标，绝不加 `=`/`:`。**
+
+**三处同源（照 §I8 `TMUX_LS_FMT` 双写范式立条）**：
+1. `src/session-backend.ts` 的 `exactTarget()` —— 前端 shell 渲染面
+2. `src-tauri/src/tmux.rs` 的 `exact_target()` —— IPC 控制面
+3. `e2e/restart-shims/core.mjs` —— Tauri IPC 边界的 mock，**结构上无法 import Rust，去重不可能**；
+   必须**与生产同构**，否则 e2e 对这条假绿
+
+e2e 的 shell 探针（`has-session` / `set-option` / `kill-session`）同样要用 `=名:`——**探针本身前缀匹配会说谎**
+（只剩 `X-2` 时 `has-session -t X` 返 0，"会话还在"假阳；`set-option -t $S` 会把 `@ccm_sid` 写到错的会话上、
+直接污染 fixture）。F01 的整个论点就是"前缀匹配会说谎"，探针不能例外。
+
+**漂移守卫**：`session-backend.test.ts` 有一条读 `e2e/restart-shims/core.mjs` 的断言把 shim 形态与座钉在一起；
+Rust 侧 `tmux_targets_use_exact_match` 钉死三个命令构造点（且显式断言**不含**裸目标，防被"简化"回去）。
+
+**第二道防线**：`isValidNewTmuxName`（**仅创建路径**）禁 glob 字符 `*`/`?` —— 本工具永远不把 glob 建进名字。
+attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建的，禁它既无收益（`=名:` 已关闭 glob 这一级，
+实测 `-t '=st*ar:'` rc=0 且精确）又是行为回归。
+
 ## 32. 本仓只有暗色主题——别声称"明暗两套都覆盖了"（仓库级事实）
 
 **事实**：`styles.css` `:root` 设 `color-scheme: dark`，**全仓无 `prefers-color-scheme`**；`theme.ts` 的

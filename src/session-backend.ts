@@ -53,10 +53,36 @@ export interface SessionBackend {
 }
 
 /**
+ * F01：tmux `-t <target>` 的**精确匹配**包装。
+ *
+ * **裸 `-t <名>` 不是精确匹配**：tmux 依次按「精确名 → **名字开头** → **glob**」解析。
+ * 实测（tmux 3.6，隔离 `-L` socket）：只有 `sib-2` 存在时 `kill-session -t sib` **杀掉 `sib-2` 且 rc=0**；
+ * `send-keys -t sib` 投进 `sib-2`；`capture-pane -p -t sib` 抓的是 `sib-2`；`kill-session -t 'si*'` glob 命中。
+ * 本仓必然踩：`pickFreshTmuxName` 刻意造 `cc-<sid8>-2/-3`，终端 `cct` 造 `<dir>_cc-2/-3`。
+ *
+ * **为什么是 `=name:` 而不是 `=name`**（别"简化"掉尾冒号）：`=` 前缀只在 target-**session**
+ * 解析路径上被识别。`send-keys`/`capture-pane` 收的是 target-**pane**，`set-option`/`show-options`
+ * 走 pane 解析后上溯——这些路径上 `=name` 直接 `can't find pane`、**rc=1 完全失效**（实测）。
+ * 尾冒号把串强制成 `session:` 形态（当前 window、活动 pane），`=` 才落在会话名段上被正确识别。
+ * `=name:` 是唯一在 send-keys / capture-pane / set-option / show-options / kill-session /
+ * has-session / attach **全部**动词上都既通用又精确的形式。矩阵见 MASTERPLAN §5.3。
+ *
+ * `target` 可能是**裸名**（`buildResumeTmuxCmd`）或**已 posixQuote**（`buildLauncherCmd` 的 `'cc-x'`）
+ * → `=` 与 `:` 必须落在引号**内**，否则会被当成名字的一部分或脱出引号保护。
+ * **`new-session -s <名>` 收的是名字不是 target，不加。**
+ */
+function exactTarget(target: string): string {
+  return target.startsWith("'") && target.endsWith("'") && target.length >= 2
+    ? `'=${target.slice(1, -1)}:'` // 'cc-x' → '=cc-x:'（含转义的 'a'\''b' → '=a'\''b:' → =a'b:）
+    : `=${target}:`; // cc-s1 → =cc-s1:
+}
+
+/**
  * tmux 后端——独占所有 `tmux <动词>` 命令字面量。幂等结构（调研 03 §2b）：
  *   `tmux new-session -d -s <target>[ -c <cwd>] 2>/dev/null && tmux send-keys -t <target> <载荷> Enter; tmux attach -t <target>`
  * `new-session -d 2>/dev/null && send-keys`：会话已存在 → 建失败被吞、短路跳过 send-keys（不重复
  * resume/启动）→ 只 attach；不存在 → 建 → 键入 → attach。send-keys 只落**新建会话**的交互 shell。
+ * F01：除 `new-session -s`（那是**名字**）外，所有 `-t` 一律经 `exactTarget()`。
  */
 export const TMUX_BACKEND: SessionBackend = {
   createRunAttach: ({ target, quotedCwd, quotedPayload, ccmSid }): string => {
@@ -68,7 +94,8 @@ export const TMUX_BACKEND: SessionBackend = {
     // **非阻断**（Phase D 审计 建议-1）:`(set-option 2>/dev/null || true)` 包起——身份标记是**次要**动作,
     // 绝不能阻断**主要**动作 resume（后续 `&& send-keys`）。古董 tmux(<1.8 无 `@`-option)等 set 失败 →
     // 降级到"无标记"(= #72 前行为、cc-monitor 回退 cwd 匹配),resume 照跑,而非把用户丢进空 shell。
-    const setSid = ccmSid ? `(tmux set-option -t ${target} @ccm_sid ${ccmSid} 2>/dev/null || true) && ` : "";
+    const t = exactTarget(target); // F01：`-t` 一律精确匹配；下方 `new-session -s` 仍用裸 target
+    const setSid = ccmSid ? `(tmux set-option -t ${t} @ccm_sid ${ccmSid} 2>/dev/null || true) && ` : "";
 
     // audit-fixes F03.4 甲′：让**外层终端窗口标题** = `ccm-rbind-<sid>`，供本地 ↗「拉到前台」
     // （`bind.rs` 扫 wt.exe 标题子串）在**远端跑裸 claude、没经 ccm wrapper** 时也能绑上（修 #74/#41
@@ -80,23 +107,25 @@ export const TMUX_BACKEND: SessionBackend = {
     // 穿 `bash -lic '<posixQuote>'` 全字面（# 词中非注释、{} 无逗号不展开），已实测无碍。
     // **非阻断**（同 setSid）：标题是次要动作，老 tmux 上 set 失败也绝不阻断后续 `&& send-keys` 的 resume。
     const setTitle = ccmSid
-      ? `(tmux set-option -t ${target} set-titles on 2>/dev/null || true) && ` +
-        `(tmux set-option -t ${target} set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && `
+      ? `(tmux set-option -t ${t} set-titles on 2>/dev/null || true) && ` +
+        `(tmux set-option -t ${t} set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && `
       : "";
 
     return (
-      `tmux new-session -d -s ${target}${cflag} 2>/dev/null && ` +
+      `tmux new-session -d -s ${target}${cflag} 2>/dev/null && ` + // `-s` 是名字，不加 `=`/`:`
       setSid +
       setTitle +
-      `tmux send-keys -t ${target} ${quotedPayload} Enter; ` +
-      `tmux attach -t ${target}`
+      `tmux send-keys -t ${t} ${quotedPayload} Enter; ` +
+      `tmux attach -t ${t}`
     );
   },
-  attach: (target): string => `tmux attach -t ${target}`,
+  attach: (target): string => `tmux attach -t ${exactTarget(target)}`,
   // F03：会话已存在(空 shell)→ 无条件 send-keys 载荷 + attach。**没有 new-session/短路**——
   // 因为会话确实在,直接把 resume 载荷打进它的交互 shell 提示符,再 attach 回去。
-  runInExistingAttach: ({ target, quotedPayload }): string =>
-    `tmux send-keys -t ${target} ${quotedPayload} Enter; tmux attach -t ${target}`,
+  runInExistingAttach: ({ target, quotedPayload }): string => {
+    const t = exactTarget(target);
+    return `tmux send-keys -t ${t} ${quotedPayload} Enter; tmux attach -t ${t}`;
+  },
 };
 
 /**

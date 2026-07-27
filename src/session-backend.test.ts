@@ -3,6 +3,7 @@
  * 跑法：`node src/session-backend.test.ts` 或 `npm run test:session-backend`。
  */
 
+import { readFileSync } from "node:fs";
 import { TMUX_BACKEND, SESSION_BACKEND } from "./session-backend.ts";
 
 let failed = 0;
@@ -29,8 +30,8 @@ test("TMUX_BACKEND.createRunAttach：带 cwd → new-session -c + send-keys + at
       quotedPayload: "'unset X; claude --resume abc'",
     }),
     "tmux new-session -d -s cc-1234abcd -c '/home/u/proj' 2>/dev/null && " +
-      "tmux send-keys -t cc-1234abcd 'unset X; claude --resume abc' Enter; " +
-      "tmux attach -t cc-1234abcd",
+      "tmux send-keys -t =cc-1234abcd: 'unset X; claude --resume abc' Enter; " +
+      "tmux attach -t =cc-1234abcd:",
   );
 });
 
@@ -41,7 +42,7 @@ test("TMUX_BACKEND.createRunAttach：quotedCwd=null → 省 -c 标志", () => {
       quotedCwd: null,
       quotedPayload: "'p'",
     }),
-    "tmux new-session -d -s cc-x 2>/dev/null && tmux send-keys -t cc-x 'p' Enter; tmux attach -t cc-x",
+    "tmux new-session -d -s cc-x 2>/dev/null && tmux send-keys -t =cc-x: 'p' Enter; tmux attach -t =cc-x:",
   );
 });
 
@@ -52,13 +53,13 @@ test("TMUX_BACKEND.createRunAttach：target 可为 posixQuote 名（F53 含空�
       quotedCwd: null,
       quotedPayload: "'p'",
     }),
-    "tmux new-session -d -s 'my sess' 2>/dev/null && tmux send-keys -t 'my sess' 'p' Enter; tmux attach -t 'my sess'",
+    "tmux new-session -d -s 'my sess' 2>/dev/null && tmux send-keys -t '=my sess:' 'p' Enter; tmux attach -t '=my sess:'",
   );
 });
 
 test("TMUX_BACKEND.attach：attach -t <target>", () => {
-  eq(TMUX_BACKEND.attach("'my sess'"), "tmux attach -t 'my sess'");
-  eq(TMUX_BACKEND.attach("cc-abc"), "tmux attach -t cc-abc");
+  eq(TMUX_BACKEND.attach("'my sess'"), "tmux attach -t '=my sess:'");
+  eq(TMUX_BACKEND.attach("cc-abc"), "tmux attach -t =cc-abc:");
 });
 
 test("#72 + F03.4甲′ createRunAttach：ccmSid → create 分支插 @ccm_sid + set-titles(new-session 后、send-keys 前)", () => {
@@ -70,10 +71,10 @@ test("#72 + F03.4甲′ createRunAttach：ccmSid → create 分支插 @ccm_sid +
       ccmSid: "1234abcd-full-sid",
     }),
     "tmux new-session -d -s cc-1234abcd 2>/dev/null && " +
-      "(tmux set-option -t cc-1234abcd @ccm_sid 1234abcd-full-sid 2>/dev/null || true) && " +
-      "(tmux set-option -t cc-1234abcd set-titles on 2>/dev/null || true) && " +
-      "(tmux set-option -t cc-1234abcd set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && " +
-      "tmux send-keys -t cc-1234abcd 'p' Enter; tmux attach -t cc-1234abcd",
+      "(tmux set-option -t =cc-1234abcd: @ccm_sid 1234abcd-full-sid 2>/dev/null || true) && " +
+      "(tmux set-option -t =cc-1234abcd: set-titles on 2>/dev/null || true) && " +
+      "(tmux set-option -t =cc-1234abcd: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && " +
+      "tmux send-keys -t =cc-1234abcd: 'p' Enter; tmux attach -t =cc-1234abcd:",
   );
 });
 
@@ -97,6 +98,25 @@ test("#72 + F03.4甲′ createRunAttach：无 ccmSid → 不插 set-option/set-t
 
 test("SESSION_BACKEND === TMUX_BACKEND（阶段①唯一活跃后端）", () => {
   eq(SESSION_BACKEND, TMUX_BACKEND);
+});
+
+// F01 漂移守卫（INVARIANTS §31a）：`=名:` 精确目标形态编码在三处——本座、`src-tauri/src/tmux.rs`
+// 的 `exact_target()`、以及 `e2e/restart-shims/core.mjs`。shim 是 Tauri IPC 边界的 mock，
+// **结构上无法 import Rust，去重不可能**，只能靠守卫钉住：它一旦退回裸目标，e2e 会对
+// 「杀错会话 / 按键投错会话」这条整类 bug 假绿（生产已精确、探针仍前缀匹配 → 测不出差异）。
+test("F01 漂移守卫：e2e shim 的 tmux 目标与本座同构（=名: 形态）", () => {
+  const shim = readFileSync(new URL("../e2e/restart-shims/core.mjs", import.meta.url), "utf8");
+  eq(shim.includes("`=${target}:`"), true, "shim 必须用 =名: 精确形态（见 INVARIANTS §31a）");
+  eq(
+    /\[\s*"send-keys",\s*"-t",\s*target\b/.test(shim),
+    false,
+    "shim 不得把裸 target 直接当 -t 目标",
+  );
+  eq(
+    /\[\s*"kill-session",\s*"-t",\s*target\s*\]/.test(shim),
+    false,
+    "kill-session 同上（破坏性动作，前缀命中会杀掉兄弟会话）",
+  );
 });
 
 if (failed > 0) {

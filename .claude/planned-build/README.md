@@ -5,6 +5,8 @@
 
 | 工作区 | 主题 | 状态（约） |
 |---|---|---|
+| **unify-launch/** | 统一整个软件的会话启动架构（15 套实现 → 一条路径；层所有权 + LaunchPlan IR + 账号/身份/终端调和） | **Phase A 已落盘，等审批**。含 `INVENTORY.md`（全部起会话入口 + 失效根因索引） |
+| **account-onboarding/** | 账号体验重做（新用户一站式无歧义） | F5(9d3a7e6)/F1(7680a43) 已交付；余下**已被 unify-launch 接管**（其 MASTERPLAN-v2 经四视角 full-audit 判定不可执行，审计结论仍在本区 `AUDIT-v2-FINDINGS.md`） |
 | **audit-fixes/** | full-audit + open issue bug 全修 + 测试/门禁/文档/重构（`account-ux` 分支可干净合入） | F01-F12 完成；F13 脊柱拆分**单独拆出 → spine-split/**；剩 Phase G |
 | **spine-split/** | 脊柱拆分评估：tabs.ts(3178)/ssh_source.rs(4756) 是否分解为小模块 | **关闭——评估后决定不拆**（判据=具体架构病非行数；两文件拆分负收益+引入 §24/可见性风险；唯一真架构病 F12 已在 audit-fixes 修）。未动代码 |
 | **auto-e2e/** | 给真机功能（灰灯/resume/attach/换号/账号）补 e2e 埋点 + Windows 全自动测试 harness | Phase A 深度可行性评估中（2 并行 agent：Windows GUI 驱动 + probe/fixture 方案；待用户批主计划） |

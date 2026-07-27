@@ -1,0 +1,358 @@
+# 主计划 / MASTERPLAN — 统一会话启动架构（unify-launch）
+
+> 所有功能宏观设计的**单一事实来源**。跨功能的任何决策以此为准。
+> 每次修订都在末尾「§7 变更记录」追加一行。
+>
+> **前身**：`account-onboarding/`（F5 部署 9d3a7e6、F1 切号入口 7680a43 已交付并保留）。
+> 其 `MASTERPLAN-v2.md` 经四视角 full-audit 判定**不可直接执行**（见 `account-onboarding/AUDIT-v2-FINDINGS.md`，
+> 其编号 C1-C7 / D1-D9 / E1-E9 / P1-P3 在本文件中反复引用，仍是权威依据）。
+
+---
+
+## 0. 核心思想（先读这一节）
+
+> **把「起一个会话」从一堆写死的命令，变成「一个动作 + 若干正交修饰」；
+> 并让这个模型在 IR、CLI、UI 三处是同一个——
+> app 的菜单项、终端的命令行参数、代码里的 IR 字段，是同一模型的三种投影。**
+
+五条推论（任何设计决策与它们冲突，就是设计错了）：
+
+1. **正交，不是笛卡尔积。** 今天 15 套实现、10 个 resume 菜单项，根源是把 N 个正交维度
+   （直连/tmux × 账号/基座 × 本地/远端 × 新建/恢复）做成了组合展开。
+   改成「动作 + 修饰」后，加第 N+1 个维度是 **+1 而不是 ×2**。
+2. **单一渲染目标。** cc-monitor 不直接渲染裸 shell，而是渲染成对同一个 CLI 的调用。
+   终端用户敲的和 app 发出去的是**同一条命令**——「app 行为 = 终端行为」是结构保证，不是同步纪律。
+3. **自定义在组合层，不在实现层。** 用户自定义 = 给一个组合起别名（`cct = ccm --tmux`），
+   而不是自己写一个新实现。便利完全保留，但不再产生新的越层实现。
+4. **向下兼容 = 少传几个参数**，不是第二条代码路径。单账号 = 不传 `--account`；
+   CLI 未装 = 兜底渲染器输出与今天**逐字节相同**的载荷。
+5. **身份随行。** `@ccm_sid` 由 CLI 统一负责，无论从 app 起还是从终端起，cc-monitor 都能无缝识别。
+   这直接消灭「本工具起的会话自己认不出」这个最致命的根因。
+
+---
+
+## 0.1 目标与范围
+
+- **总体目标**：把「起一个会话」在整个软件里收敛成一条路径，并把这条路径**同时暴露给终端**。
+- **范围内**：
+  - 远端会话 启动 / 恢复 / attach / 换号重启 的全部路径（前端 `remote-launch*` + Rust `tmux.rs`）。
+  - 本地会话 启动 / 恢复 路径（Rust `history.rs` 的 PowerShell 两套）。
+  - **统一启动 CLI（`ccm`）**：终端侧与 app 侧共享的唯一实现。
+  - 账号维度（`CLAUDE_CONFIG_DIR`）在上述所有路径上的一致注入。
+  - 会话身份（`@ccm_sid`）的产生、回填、仲裁与消费。
+  - 上述统一之后的 UI 收敛（动作 × 修饰）。
+- **范围外**：
+  - daemon 侧协议/实现改动（审计 P3 已逐条判定本轮零改；`TMUX_LS_FMT` 双写点不动）。
+  - 代替用户修改 `~/.bashrc`（只检测 + 生成 + 引导；删用户自己写的块需显式确认）。
+  - 新增任何轮询。发版 / bump / push。
+- **整体成功标准**：
+  1. `INVENTORY.md` 表里每个「起会话」入口都能带账号、带 tmux、带未来参数，且**行为一致**。
+  2. 加一个新启动维度 = 注册一个 dimension + CLI 加一个 flag + UI 加一个修饰项，
+     **零改** builder / renderer / 调用点。
+  3. 单账号（不传 `--account`）载荷与今天**逐字节相同**（P0 的 tmux 目标修正是唯一有意变更）。
+  4. 终端敲 `ccm --tmux --account z` 起的会话，cc-monitor **无缝识别**（有 `@ccm_sid`、可 attach、可重启）。
+
+---
+
+## 1. 功能清单（Feature Inventory）
+
+| ID | 功能 | 一句话目标 | 状态 | 依赖 | 优先级 |
+|----|------|-----------|------|------|--------|
+| F01 | tmux 目标精确匹配 | 所有 `-t` 用 `=name:`，修今天正在杀错会话的生产 bug | **完成** | — | P0 |
+| F02 | 统一启动 CLI `ccm` | 「一个动作 + 正交修饰」在 shell 侧的实现；app 与终端的共同渲染目标 | 待规划 | — | P0 |
+| F03 | LaunchPlan IR + 双渲染器 + 维度注册表 | 结构化启动意图；主渲染器 → CLI，兜底渲染器 → 今天的裸 shell | 待规划 | F02 | P1 |
+| F04 | 会话身份统一（@ccm_sid） | 本工具/CLI 起的会话必有身份；三道门取代名前缀白名单 | 待规划 | F02,F03 | P1 |
+| F05 | AccountResolver | 账号解析收敛成判别联合，注入源过 `isSelectable` | 待规划 | F03 | P1 |
+| F06 | 本地路径并入 IR | Rust 两套 PowerShell builder 收进同一意图模型 | 待规划 | F03 | P2 |
+| F07 | 每账号默认模型 | 维度注册表的**架构验收**（第一个真实新维度） | 待规划 | F03 | P2 |
+| F08 | 终端集成收尾 | CLI 安装向导 + 别名生成 + 越层启动器诊断 + 旧 swap 退役 | 待规划 | F02,F04 | P2 |
+| F09 | UI 收敛：动作 × 修饰 | 10 个 resume 入口 → 1 动作 + 修饰 flyout；徽章常显；删对齐全套 | 待规划 | F05 | P2 |
+| F10 | 剩余账号 UX | 面板砍卡片 / 加号一键化 / 用量（plan 窗口 %） | 待规划 | F09 | P3 |
+
+---
+
+## 2. 架构概览（Architecture Map）
+
+### 2.1 病因：正交维度被做成了组合展开
+
+「启动一个会话」实际是六层的合成，今天被**压平成一个字符串**：
+
+```
+L0 传输    本地 wt.exe/PowerShell        远端 ssh -t host "bash -lic '<payload>'"
+L1 容器    none | tmux(建/接入/送入)      ← 会话名、attach 语义
+L2 环境    cwd + 会话级 env + unset 嵌套env
+L3 启动器  claude | cc | ccm | cct | 用户自定义
+L4 参数    --resume <sid> | 未来任意
+L5 身份    @ccm_sid 打标 / rbind 回填
+```
+
+**决定性证据（2026-07-27 真机实测）**：用户配 `resumeCommandRemote = cct`。cc-monitor 发出
+
+```
+export CLAUDE_CONFIG_DIR='/home/zbl/.claude-accts/z'; unset <嵌套env>; cct --resume <sid>
+```
+
+而 `cct` 内部 `tmux new-session -d -s <sess>` + `send-keys "ccm --resume <sid>"`。
+send-keys 打进的是 **tmux server fork 出来的全新 shell**，环境来自 tmux server 全局环境。
+实测 `update-environment` 默认列表为
+`DISPLAY KRB5CCNAME MSYSTEM SSH_ASKPASS SSH_AUTH_SOCK SSH_AGENT_PID SSH_CONNECTION WINDOWID XAUTHORITY`
+——**不含 `CLAUDE_CONFIG_DIR`**。那句 export 在 L1 边界上被整个吃掉。
+
+> **账号注入的成败，只取决于 `export` 落在 tmux 进程边界的哪一侧。**
+> 这解释了为什么全 app 九个「选账号」入口只有两个生效：
+> 「设置→开新 Claude」（cc-monitor 自建 tmux，export 写在 send-keys 载荷**内**）
+> 与「设置→账号→登录」（`cc-acct-iso run <名>` 在同一 shell 内设好 env 再 exec）。
+
+**但根治办法不是"禁止用户越层"**，而是让 L1/L2 **本来就是参数**——见 2.2。
+
+### 2.2 解法：统一启动 CLI（`ccm`）= 模型的 shell 侧投影
+
+单一契约，app 与终端共用：
+
+```
+ccm [动作] [修饰…] [-- 透传给 agent 的参数]
+
+动作   （缺省 = new）
+  new                       起新会话
+  resume <sid>              恢复会话
+修饰   （全部正交、可任意组合、可缺省）
+  --tmux[=<name>]           在 tmux 里起（缺省名由 cwd/sid 派生）
+  --account <名>|--base     账号维度（--base = 显式不隔离，issue #75 逃生口）
+  --cwd <dir>               工作目录（不给则用当前目录，绝不自作主张 resolve）
+  --launcher <cmd>          实际 exec 的 agent 命令（默认取 AGENT_PROFILE）
+  --ccm-sid <sid>           身份打标（cc-monitor 已知 sid 时传）
+  <未来维度>                 --model X / --proxy Y / …
+```
+
+用户自定义 = **给组合起别名**，不是写新实现：
+
+```bash
+cc()   { ccm "$@"; }                    # 短名
+cct()  { ccm --tmux "$@"; }             # tmux 版
+zcct() { ccm --tmux --account z "$@"; } # 账号 + tmux
+```
+
+> **命名说明**：规范命令名取 `ccm` 而非 `cc`。理由：`cc` 在 Linux 上是 C 编译器（`/usr/bin/cc`），
+> `exec cc --resume <sid>` 会起一个编译器（审计 D4 已指出）；而 cc-monitor 本来就拥有并安装
+> `ccm` 这个名字（`install_remote_ccm_helper`）。用户想要 `cc` 就由安装器生成别名，意图不变。
+
+**CLI 独占实现 L1/L2/L5**（建 tmux、设 env、打 `@ccm_sid`、exec agent），于是：
+
+- **终端**：用户敲 `ccm --tmux --account z` → 环境在 tmux **内**设好 → 账号生效 → 身份打好 → cc-monitor 无缝识别。
+- **app**：cc-monitor 把 `LaunchPlan` 渲染成同一条 `ccm …` 命令 → 与终端**逐字符同源**。
+- 层所有权冲突**消失**：启动器不再"拥有"容器，而是**接受**容器作为参数。
+
+### 2.3 双渲染器（向下兼容的落点）
+
+```
+                        ┌── CLI 渲染器（主）→  ccm resume <sid> --tmux=cc-ab12 --account z
+LaunchPlan IR ──────────┤
+                        └── 裸 shell 渲染器（兜底）→ 今天逐字节相同的载荷
+```
+
+- 远端探到 `ccm` 已装（且版本兼容）→ 走 CLI 渲染器。
+- 未装 / 版本旧 / 探测失败 → 走兜底渲染器，行为与今天**逐字节相同**。
+- 兜底渲染器**本来就必须存在**（它就是 §0.1 成功标准 3 的实现），所以"两个渲染器"不是重复实现，
+  而是「新路径 + 兼容路径」，且共用同一份 IR 与同一套维度。
+
+### 2.4 三条正交轴
+
+沿用仓库既有范式（`session-backend.ts:6-9` 已有 agent × backend 两轴），本计划补第三条：
+
+- **agent 轴**（哪个 AI）：`AGENT_PROFILE` / `adapter::active()` — resume flag、默认启动器、嵌套 env。
+- **backend 轴**（哪个容器）：tmux / none。
+- **environment 轴**（哪套环境）：**本计划新增** — account / model / 未来维度。
+
+### 2.5 关键接口
+
+```ts
+// —— 启动意图 IR ——
+interface LaunchPlan {
+  transport: { kind: "local" } | { kind: "ssh"; origin: string };
+  action: { kind: "new" } | { kind: "resume"; sid: string }
+        | { kind: "attach"; name: string } | { kind: "restart"; sid: string };
+  container:
+    | { kind: "none" }
+    | { kind: "tmux"; name: string; mode: "create-or-attach" | "send-into" | "attach-only" };
+  cwd: string | null;
+  env: Record<string, string>;   // 会话级；key 过白名单 + denylist（审计 D7）
+  unsetEnv: string[];
+  launcher: string;              // 用户可配；经 sanitize，wrap 必须在 sanitize 之后（审计 D3）
+  args: string[];                // 未来维度往这里加
+  identity?: { ccmSid: string };
+  wrap: WrapSpec[];              // 有序**嵌套**（order = 嵌套深度），表达 `( … ; exec X )`
+}
+
+// —— 维度注册表（可扩展性的唯一落点）——
+interface LaunchDimension {
+  id: string;                    // "account" | "model" | "nested-env-reset" | "identity" | …
+  order: number;
+  applies(ctx: LaunchContext): boolean;
+  apply(plan: LaunchPlan, ctx: LaunchContext): void;   // 就地改 IR，绝不拼字符串
+  cliFlags?(ctx: LaunchContext): string[];             // CLI 渲染器用
+}
+```
+
+**为什么 `wrap` 是有序嵌套而不是字符串片段**：审计 C1（三方独立指出）——`( __ccm_rbind; exec claude --resume S )`
+是**包裹**不是追加，扁平的 `fragment: string` 没有闭括号槽位；且 `exec` 不能省（wrapper 用 `$BASHPID`
+读 `sessions/$cpid.json`，不 exec 则 PID 对不上）。`wrap: (inner) => string` + order = 嵌套深度，
+把「rbind 必须与 exec 同一子 shell」变成**结构保证**而非注释约定。
+（CLI 路径下 wrap 由 CLI 内部负责，IR 的 wrap 只在兜底渲染器生效。）
+
+### 2.6 UI 侧：动作 × 修饰
+
+今天「Resume」这一个意图散成 10 个菜单项，因为「直连/tmux/基座/账号」这四条**正交**维度被摊平成
+并列条目做排列组合，于是同一级菜单里同时出现「Resume（tmux）」和「用基座 resume（tmux，不隔离）」。收敛为：
+
+```
+Action   = resume | new | attach | restart          ← 一级菜单
+Modifier = account=X | base | container=tmux|none | 未来任意   ← 二级 flyout
+```
+
+一级列动作、二级 flyout 列修饰（R4 已定：悬停 + 点击都可触发）。
+**与 CLI 一一对应**：一级 = 动作参数，二级 = 修饰 flag。新维度 = 多一个修饰项，不多一条一级菜单。
+
+---
+
+## 3. ★共享面账本（Shared Surface Ledger）
+
+| 共享面 | 涉及功能 | 最终形态 | 当前状态 | 备注 |
+|---|---|---|---|---|
+| `shared/ccm-wrapper.sh` → **新 CLI 本体** | F02,F04,F08 | 从「一个 rbind 函数 + 一个裸 ccm 壳」升格为**参数化启动 CLI**；独占 L1/L2/L5 实现；vendored 可部署（照 `cc-acct-iso` 的 vendor 范式） | 硬编码 `~/.claude/sessions/`，`ccm() { ( __ccm_rbind; exec claude "$@" ); }` | **D7 已证伪**：`~/.claude-accts/*/{sessions,projects}` 均 symlink 回 `~/.claude`，同一 inode → 账号感知改造是 no-op，**从计划删除**，省一处四点 lockstep |
+| `src/session-backend.ts` | F01,F03,F04 | tmux 动词唯一来源；所有 `-t` 走 `exactTarget()` 产出 `=name:`；**IR 渲染器经 `SessionBackend` 接口取命令**（不导出 `exactTarget` 直呼——那会破 INVARIANTS §31①「前端绝不硬编码后端命令」） | **F01 已落地**（`exactTarget`，8 处 `-t`） | F03 把 `exactTarget` 入参改**判别式**（`{kind:"raw"\|"quoted"}`），别留「首尾恰为 `'`」的形状嗅探——渲染器接管后会静默打错目标 |
+| `src-tauri/src/tmux.rs` | F01,F04 | `exact_target()` 产出 `=name:`；三道独立门（`is_safe_tmux_target` 恒强制 / 身份 = `@ccm_sid` ∪ `cc-*` / 破坏性额外要求 `windows==1`）；verify+act 单条原子命令 | **F01 已落地第一条**（`exact_target` + 3 个命令构造点提纯为纯函数并全部钉死） | `is_ccm_tmux_name` 不删除，降级为身份判据**之一**。F04 的 `is_safe_tmux_target` 须涵盖**空 target**——`-t '=:'` 落到「当前会话」，今天 `capture_remote_pane` 是唯一无门的入口（只读，故非阻塞） |
+| `src/remote-launch.ts` | F02,F03,F04,F05 | 7 个 builder → 薄适配器，**保持位置参数签名**（e2e driver 直接 import，审计 §五.4）；内部构 `LaunchPlan` 后交渲染器 | 7 个独立实现；**F01 拆出 `isValidNewTmuxName`**（仅创建路径禁 glob） | `sanitizeRemoteLauncher` 只作用于用户串，`wrap` 必须在其**后**（审计 D3）。校验谓词已两分：创建 vs attach，别再合回一个 |
+| `e2e/tmux-target-*`（F01 新增） | F01,F02,F04 | **常设真机行为验收 harness**：`tmux-target-emit.mts` 从真 builder 取生产串 → `tmux-target-acceptance.sh` 在隔离 `-L` socket 上验「命令干了什么」 | F01 建成，26 项 | 凡改 tmux/shell 命令构造的功能都要过它（§5.2）。**别手搓等价命令**——必须从真 builder 取 |
+| `src/remote-launch-run.ts` | F03,F05,F06 | 6 个 executor → 单一 `runLaunch(plan)`；剪贴板回退集中一处；返回值统一为 boolean | 6 份近似复制 | — |
+| `src-tauri/src/history.rs` | F06 | 两套 PowerShell builder 收进同一意图模型（F06 的 Phase B 先定「IR 前端构造下发」vs「Rust 侧同构 renderer」） | 两套独立逻辑，零账号维度 | 「同一个 Resume 按钮的 else 分支」 |
+| `src/behavior.ts` | F02,F08 | launcher 字段仍存**裸字符串**（向下兼容）；新增「CLI 已装/版本」探测缓存 | 裸字符串直传 | 绝不改 config schema |
+| `src/accounts.ts` | F05,F07,F09 | `AccountResolver` 返回判别联合 `{kind:"account"\|"base"\|"unavailable"}`；注入源过 `isSelectable`；保留 `useBase` | `withAccount` + 5 个谓词散落 | `accountColorsActive` **只有一个消费者**（审计 C6 纠正 v2 事实错误）；徽章门是 `shouldShowAccountBadge`，**不得**把 ≥2 门恢复上去 |
+| `src/tabs.ts` | F04,F09 | 菜单支持二级 flyout；徽章多账号即常显；对齐全套（⇄/⚠k/alignAll/countAccountMismatches）删除 | 平铺 per-account 项 | 删前核 `e2e/restart-cmd-driver.ts` 的 import（审计 §五.6） |
+| `src/agent-profile.ts` | F02,F03 | agent 轴保持独立；IR 与 CLI 都从它取 resume flag / 默认 launcher | 已是单一来源 | 不与 environment 轴混 |
+| `e2e/*-cmd-driver.ts` | F03,F09 | 位置参数签名不变；新增真机行为断言层 | 直接 import builder | **F03 硬验收条件** |
+
+---
+
+## 4. 依赖图与实现顺序
+
+```
+F01 ──┐
+F02 ──┴─► F03 ─┬─► F04 ─┬─► F08
+               ├─► F05 ─┴─► F09 ─► F10
+               ├─► F06
+               └─► F07  (架构验收)
+```
+
+1. **F01 先做**：修**今天正在损坏数据**的 bug（`kill-session -t cc-abc12345` 会杀掉 `cc-abc12345-2` 且 rc=0 当成功回报）。
+2. **F02 第二**：CLI 是「核心思想」的载体，也是 F03 唯一的主渲染目标。先有契约与实现，IR 才知道该渲染成什么。
+   F02 独立于前端重构，落地即修好当下最痛的「用账号 X resume 无效」。
+3. **F03 地基**：其余全部依赖。
+4. **F04/F05/F06/F07 并列**：IR 之上的维度与消费者，互相正交。
+   F07 刻意排在此当**架构验收**——加「每账号模型」若做不到零改 builder/CLI 主体，说明 F03/F02 没做到位，回炉。
+5. **F08 需要 F02（CLI 本体）+ F04（身份）**才有意义。
+6. **F09/F10 UI 最后**：依赖 F05 的解析层稳定。
+
+---
+
+## 5. 横切关注点与约定
+
+### 5.1 向下兼容硬约束（每个功能的 DoD 都要复核）
+
+1. **不传 `--account` = 今天的行为**，载荷逐字节相同。多账号是同一条路径上的参数，不是第二套代码（R7）。
+2. **CLI 未装 → 兜底渲染器**，逐字节等于今天。CLI 是增强，不是硬依赖。
+3. **老 tmux 会话仍可控**：无 `@ccm_sid` 但名为 `cc-*` 的会话必须继续能 kill/send-keys（审计 C3③：替换白名单会让它们变得**不可杀**）。
+4. **老 config 不迁移**：`resumeCommandRemote` 存的仍是裸字符串。
+5. **e2e driver 的位置参数签名不变**（`resume-cmd-driver.ts` ~20 断言 + `restart-cmd-driver.ts` ~24 断言）。
+6. **`useBase` 逃生口保留**（issue #75）。
+7. **不替用户改 bashrc**：越层启动器（`cct`/`oot`/`<n>cct`）**只诊断 + 引导迁移**，不自动降格、不偷改配置。
+
+### 5.2 门禁纪律
+
+- 所有门禁命令用 `set -o pipefail`，结果**重定向到文件后 Read/grep 核实**，绝不信内联回显。
+- `npm test`（tsx 黄金串 + vitest）/ `cargo test` / `tsc` 三者全绿。
+  **`vitest` 的 `include` 只收 `src/**/*.vitest.ts`，黄金串在 `*.test.ts` 由 tsx 跑——只跑 `npx vitest run` 会假绿，必须 `npm test`。**
+- **新增硬门禁：真机行为验收 `npm run test:tmux-target`**（F01 建成，26 项）。凡改动 tmux/shell 命令
+  构造的功能，DoD 必须含一张「在隔离 `-L` socket 上验证命令**干了什么**」的表，不能只有黄金串。
+  > 实证理由：`cargo test` 369 + `npm test` 全绿 + `tsc` 0，仍放行了一个让 `send-keys` 完全失效的改动
+  > ——它们只断言「我写出了打算写的字符串」，从不断言「这条命令在 tmux 上的效果」。
+
+  两条来自 F01 的踩坑纪律：
+  1. **验收输入必须从真 builder 取**（`e2e/tmux-target-emit.mts`），手搓等价命令会重蹈覆辙。
+  2. **探针载荷不能用真 `claude`**——它会启动并重绘/清屏，把打进去的内容盖掉，让「兄弟会话未被污染」
+     的 grep 给出**假 PASS**。用 `CCMPROBE` 这类纯字母词（过 `sanitizeRemoteLauncher`，报 command not
+     found 后留在屏幕上）。
+- **e2e 的 shell 探针也必须与生产同构**（`has-session` / `set-option` / `kill-session` 一律 `=名:`）。
+  探针前缀匹配会说谎：只剩 `X-2` 时 `has-session -t X` 返 0（存活断言假阳）、`set-option -t $S` 会把
+  `@ccm_sid` 写到错的会话上（污染 fixture）。见 INVARIANTS §31a。
+- **新增：每个功能必须过两个独立 agent 审（用户 2026-07-27 指定）**——
+  **后端架构 agent**（把握核心思想、审后端架构是否被破坏）+ **UX agent**（把握核心思想、审交互是否真的收敛）。
+  两者 prompt 必须自包含且**带上 §0 核心思想全文**。这是 Phase D 之外的附加关卡，不可省。
+- 修 bug 走回归纪律：先写复现的失败测试再修。
+
+### 5.3 tmux 目标语法（F01 产出，全局约定）
+
+真机实测（tmux 3.6）结论，写死为约定：
+
+| 动词 | 目标类型 | `name` | `=name` | `=name:` |
+|---|---|---|---|---|
+| `send-keys` | pane | 送达但**前缀误伤** | **rc=1 全失败** | 送达且精确 |
+| `capture-pane` | pane | 前缀误伤 | **rc=1 全失败** | 精确 |
+| `set-option` / `show-options` | pane 解析后上溯 | 前缀误伤 | **rc=1 全失败** | 精确 |
+| `kill-session` / `has-session` / `attach` | session | 前缀误伤 | 精确 | 精确 |
+
+→ **统一用 `=name:`**（唯一通用且精确的形式）。`new-session -s <名>` 收的是**名字不是目标**，不加。
+→ `show-options -v` 读未设置的 option 是 **rc=1 + stderr `invalid option`**，不是空串（F04 的原子命令必须对此 fail-closed）。
+→ 第二道防线：`isValidTmuxName` 禁 glob 字符 `*`/`?`（实测 `kill-session -t 'si*'` 会 glob 命中）。
+
+### 5.4 其他
+
+- 不用 emoji（回复、代码 UI 文案、文档）。
+- git commit 不加 `Co-Authored-By`；仅在用户要求时提交。
+- 不静默改 `~/.bashrc`；删用户自己写的块（如 `_cc_acct`）需显式确认——`strip_profile_block` 只认
+  cc-monitor 自己的围栏，删用户块是**全新能力**，风险等级不同（审计 E9）。
+- 不新增轮询；daemon 零改。
+
+---
+
+## 6. 风险与开放问题
+
+| # | 风险 | 缓解 |
+|---|---|---|
+| R1 | **门禁只锁字符串形状、不锁行为**——本轮已翻车一次 | §5.2 真机行为验收表列为 DoD 硬项 |
+| R2 | CLI 成为新的单点：它若有 bug，所有路径一起坏 | 兜底渲染器恒在（可一键切回）；CLI 本体有独立的 shell 级测试；版本探测 + 不兼容即降级 |
+| R3 | 远端 shell 是 zsh/fish 时 `.bashrc` 不被 source（审计 D2） | CLI 装成**可执行文件**（`~/.local/bin/ccm`）而非 shell 函数，与 shell 无关；别名才进 rc |
+| R4 | F06 跨语言（IR 在 TS、本地路径在 Rust） | F06 的 Phase B 先定「IR 前端构造下发」vs「Rust 侧同构 renderer」，不在 F03 预设 |
+| R5 | rbind 的 `( … ; exec … )` 含 `;`，会被 `sanitizeRemoteLauncher` denylist fail-closed 成裸 `claude` | 钉死顺序：sanitize 只作用于用户串，wrap 在其后（审计 D3）。CLI 路径下此风险消失（wrap 在 CLI 内部） |
+| R6 | `exec <launcher>` 展开不了别名/函数，且 `cc` 在 Linux 上是 C 编译器 | CLI 用 `ccm` 名；`--launcher` 显式区分外部命令与 shell 函数，函数型走间接层 |
+| R7 | 「徽章从不一致信号 → 身份标识」是**语义反转** | F09 必须说明「不一致」这个信息迁到哪，不能悄悄消失 |
+| R8 | 删对齐全套会断 `e2e/restart-cmd-driver.ts` 的 import | F09 Phase B 先核 import 面 |
+| R9 | 改动面大，e2e 会大面积变红 | 每功能 Phase B 预先列「预期会红清单」，区分「是 bug」与「须 re-baseline」 |
+
+### 已由本轮证据关闭的旧风险
+
+- **D7 / 根因2（wrapper 账号感知）**：证伪。`~/.claude-accts/{z,b}/{sessions,projects}` 均 symlink 回 `~/.claude`，同一 inode → 改造是纯 no-op，**删除**。
+- **rbind 门控「未部署会话立死」**：证伪（审计 D1 实测 `( __ccm_rbind_missing; exec … )` 打一行 stderr、rc=0 继续）。改运行时自适应，去门控。
+
+### 已拍板的决策（2026-07-27）
+
+| 决策 | 结论 |
+|---|---|
+| 坏 P0 工作区 | **整体 revert 回干净基线**（已执行） |
+| 越层启动器调和 | **只诊断，不自动降格**。根治靠 F02 的参数化 CLI：不再用 `cct` 这类单命令，改用 `ccm [动作] [修饰]` + 用户别名组合 |
+| 本地路径 | **纳入本轮**（F06） |
+| 自动度 | **全自动**（连续 B→G），但每个重要架构必须过**后端架构 agent + UX agent** 两道独立审 |
+
+---
+
+## 7. 变更记录
+
+- 01 — 2026-07-27 — 初版：从 `account-onboarding/MASTERPLAN-v2` + `AUDIT-v2-FINDINGS` §八 + 本轮真机证据重写 — v2 被四视角审计判定不可执行；且本轮查明「层所有权混乱」是真病根
+- 03 — 2026-07-27 — **F01 完成签收**（Phase B→F 全过，双 agent 审计无阻塞、7 项重要发现全修）。计划侧改动：
+  ① §3 账本 `session-backend.ts` 最终形态措辞改为「渲染器**经 `SessionBackend` 接口**取命令」——原措辞
+  「由 IR 渲染器调用 `exactTarget()`」若字面执行会破 INVARIANTS §31①；② 账本给 F03 接一条「`exactTarget`
+  改判别式入参，别留形状嗅探」、给 F04 接一条「`is_safe_tmux_target` 须涵盖空 target」；③ 账本新增
+  `e2e/tmux-target-*` 行（真机验收 harness 由 scratchpad 一次性脚本**升为常设门禁**，理由=铁律 6，F02/F04
+  马上要用）；④ §5.2 增两条踩坑纪律（验收输入取自真 builder / 探针载荷不能用真 claude 否则假 PASS）
+  + e2e shell 探针同构要求；⑤ 新立 `doc/INVARIANTS.md §31a`（`=名:` 三处同源 + 尾冒号不可省的原因）。
+  另：F01 计划里「`session-backend.ts` 7 处 `-t`」实为 8 处（多出的是 F03.4 甲′ 第二条 set-titles），已订正。
+- 02 — 2026-07-27 — **架构重定向**：核心从「cc-monitor 独占 L1/L2、用户不得越层」改为「**L1/L2 本来就是参数**——统一启动 CLI `ccm [动作] [修饰]`，用户自定义 = 给组合起别名」 — 用户指出不该被现有 bashrc 约束，cc-monitor 的目的是**把终端行为与 app 行为统一**，让终端也拿到 app 的便利（短命令、tmux 内启动、被 cc-monitor 无缝识别、方便切号且可叠加）。新增 §0 核心思想；F02 由「LauncherProfile 降格」改为「统一启动 CLI」；F08 改为终端集成收尾；§5.2 增「后端架构 + UX 双 agent 审」硬门禁

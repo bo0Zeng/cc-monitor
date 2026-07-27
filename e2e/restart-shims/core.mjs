@@ -50,7 +50,9 @@ export async function invoke(cmd, args = {}) {
               ? "exit"
               : "sendkeys:" + keys;
       seq(label);
-      const a = ["send-keys", "-t", target, keys];
+      // F01：与 Rust 侧 `exact_target` 同构——`=<名>:` 精确匹配。裸目标是「精确→名字开头→glob」
+      // 三级解析，会把按键投进兄弟会话（`cc-<sid8>-2`）。shim 必须与生产同构，否则 e2e 对这条假绿。
+      const a = ["send-keys", "-t", `=${target}:`, keys];
       if (enter) a.push("Enter");
       const r = tmux(a);
       // 会话不在（已被杀/漂移）→ tmux 报错 → 抛,由真源 ④a 的 try/catch 兜（降级 kill）。
@@ -64,7 +66,7 @@ export async function invoke(cmd, args = {}) {
         seq("kill-fail");
         throw new Error("kill_remote_tmux rejected (injected IPC failure)");
       }
-      const r = tmux(["kill-session", "-t", target]);
+      const r = tmux(["kill-session", "-t", `=${target}:`]); // F01：同上，精确匹配
       if (r.status !== 0) {
         seq("kill-fail");
         throw new Error("tmux kill-session failed: " + String(r.stderr || "").trim());

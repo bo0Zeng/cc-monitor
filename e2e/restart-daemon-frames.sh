@@ -45,7 +45,7 @@ ok()  { echo "  PASS $1"; pass=$((pass+1)); }
 bad() { echo "  FAIL $1"; fail=$((fail+1)); }
 
 # fresh sid,守卫不撞真 cc-* 会话
-for _ in 1 2 3 4 5; do SID="$(cat /proc/sys/kernel/random/uuid)"; S="cc-${SID:0:8}"; tmux has-session -t "$S" 2>/dev/null || break; done
+for _ in 1 2 3 4 5; do SID="$(cat /proc/sys/kernel/random/uuid)"; S="cc-${SID:0:8}"; tmux has-session -t "=$S:" 2>/dev/null || break; done
 
 cleanup() {
   set +e
@@ -53,8 +53,8 @@ cleanup() {
   [ -n "${DP_NEW:-}" ] && kill "$DP_NEW" 2>/dev/null
   for d in "$OLD" "$NEW"; do for pf in "$d"/sessions/*.json; do [ -f "$pf" ] || continue
     p="$(awk -F'[:,]' '{for(i=1;i<=NF;i++) if($i ~ /"pid"/){print $(i+1); exit}}' "$pf" 2>/dev/null)"; [ -n "$p" ] && kill "$p" 2>/dev/null; done; done
-  tmux kill-session -t "$S" 2>/dev/null
-  tmux kill-session -t "$KEEP" 2>/dev/null
+  tmux kill-session -t "=$S:" 2>/dev/null
+  tmux kill-session -t "=$KEEP:" 2>/dev/null
   rm -rf "$WORK"
 }
 trap cleanup EXIT

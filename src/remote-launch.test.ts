@@ -15,6 +15,7 @@ import {
   pickFreshTmuxName,
   buildOpenTerminalCmd,
   isValidTmuxName,
+  isValidNewTmuxName,
   buildAttachCmd,
   deriveTmuxName,
   buildLauncherCmd,
@@ -51,8 +52,8 @@ console.log("remote-launch.test.ts");
 const UNSET = `unset ${CLAUDE_NESTED_ENV_VARS}; `;
 // F03.4 甲′：createRunAttach 在 @ccm_sid 后、send-keys 前插的两条非阻断 set-titles（从 @ccm_sid 派生外层标题）。
 const TITLE = (t: string): string =>
-  `(tmux set-option -t ${t} set-titles on 2>/dev/null || true) && ` +
-  `(tmux set-option -t ${t} set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && `;
+  `(tmux set-option -t =${t}: set-titles on 2>/dev/null || true) && ` +
+  `(tmux set-option -t =${t}: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && `;
 
 test("嵌套 env 列表：含四个标记、不含 CLAUDE_CONFIG_DIR", () => {
   for (const v of ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION"]) {
@@ -136,9 +137,9 @@ test("buildResumeTmuxCmd:完整幂等形态(new-session && set-option @ccm_sid &
   eq(
     buildResumeTmuxCmd("abc-123", "/home/pi/proj"),
     `tmux new-session -d -s cc-abc-123 -c '/home/pi/proj' 2>/dev/null && ` +
-      `(tmux set-option -t cc-abc-123 @ccm_sid abc-123 2>/dev/null || true) && ` + // #72
+      `(tmux set-option -t =cc-abc-123: @ccm_sid abc-123 2>/dev/null || true) && ` + // #72
       TITLE("cc-abc-123") + // F03.4 甲′
-      `tmux send-keys -t cc-abc-123 '${payload}' Enter; tmux attach -t cc-abc-123`,
+      `tmux send-keys -t =cc-abc-123: '${payload}' Enter; tmux attach -t =cc-abc-123:`,
   );
 });
 
@@ -147,9 +148,9 @@ test("buildResumeTmuxCmd:空 cwd 省 -c", () => {
   eq(
     buildResumeTmuxCmd("s1", ""),
     `tmux new-session -d -s cc-s1 2>/dev/null && ` +
-      `(tmux set-option -t cc-s1 @ccm_sid s1 2>/dev/null || true) && ` + // #72
+      `(tmux set-option -t =cc-s1: @ccm_sid s1 2>/dev/null || true) && ` + // #72
       TITLE("cc-s1") + // F03.4 甲′
-      `tmux send-keys -t cc-s1 '${payload}' Enter; tmux attach -t cc-s1`,
+      `tmux send-keys -t =cc-s1: '${payload}' Enter; tmux attach -t =cc-s1:`,
   );
 });
 
@@ -157,12 +158,12 @@ test("buildResumeTmuxCmd:自定义 launcher 透传 / 注入 fail-closed claude",
   const p1 = `${UNSET}cct --resume s1`;
   eq(
     buildResumeTmuxCmd("s1", "", "cct"),
-    `tmux new-session -d -s cc-s1 2>/dev/null && (tmux set-option -t cc-s1 @ccm_sid s1 2>/dev/null || true) && ${TITLE("cc-s1")}tmux send-keys -t cc-s1 '${p1}' Enter; tmux attach -t cc-s1`,
+    `tmux new-session -d -s cc-s1 2>/dev/null && (tmux set-option -t =cc-s1: @ccm_sid s1 2>/dev/null || true) && ${TITLE("cc-s1")}tmux send-keys -t =cc-s1: '${p1}' Enter; tmux attach -t =cc-s1:`,
   );
   const p2 = `${UNSET}claude --resume s1`; // 注入 → claude
   eq(
     buildResumeTmuxCmd("s1", "", "cct; curl evil"),
-    `tmux new-session -d -s cc-s1 2>/dev/null && (tmux set-option -t cc-s1 @ccm_sid s1 2>/dev/null || true) && ${TITLE("cc-s1")}tmux send-keys -t cc-s1 '${p2}' Enter; tmux attach -t cc-s1`,
+    `tmux new-session -d -s cc-s1 2>/dev/null && (tmux set-option -t =cc-s1: @ccm_sid s1 2>/dev/null || true) && ${TITLE("cc-s1")}tmux send-keys -t =cc-s1: '${p2}' Enter; tmux attach -t =cc-s1:`,
   );
 });
 
@@ -173,15 +174,15 @@ test("buildResumeIntoExistingTmuxCmd:基座 → send-keys(前置 unset CLAUDE_CO
   const payload = `unset CLAUDE_CONFIG_DIR; ${UNSET}claude --resume s1`;
   eq(
     buildResumeIntoExistingTmuxCmd("s1", "cc-s1"),
-    `tmux send-keys -t cc-s1 '${payload}' Enter; tmux attach -t cc-s1`,
+    `tmux send-keys -t =cc-s1: '${payload}' Enter; tmux attach -t =cc-s1:`,
   );
 });
 
 test("buildResumeIntoExistingTmuxCmd:复用**传入的**会话名（不按 sid 重派生）", () => {
   // sid=r1abcdef 但空 tmux 名是 cc-r1abcd-2（撞名后缀变体）→ 必须复用 cc-r1abcd-2，不是 cc-r1abcdef。
   const cmd = buildResumeIntoExistingTmuxCmd("r1abcdef", "cc-r1abcd-2");
-  eq(cmd.includes("send-keys -t cc-r1abcd-2 "), true, "复用传入名");
-  eq(cmd.includes("attach -t cc-r1abcd-2"), true);
+  eq(cmd.includes("send-keys -t =cc-r1abcd-2: "), true, "复用传入名");
+  eq(cmd.includes("attach -t =cc-r1abcd-2:"), true);
   eq(cmd.includes("cc-r1abcdef"), false, "不按 sid 重派生名");
   eq(cmd.includes("new-session"), false, "不 new-session");
 });
@@ -203,9 +204,9 @@ test("buildResumeTmuxCmd:cwd 含空格/单引号 → posixQuote", () => {
   eq(
     buildResumeTmuxCmd("s1", "/home/pi/my proj"),
     `tmux new-session -d -s cc-s1 -c '/home/pi/my proj' 2>/dev/null && ` +
-      `(tmux set-option -t cc-s1 @ccm_sid s1 2>/dev/null || true) && ` + // #72
+      `(tmux set-option -t =cc-s1: @ccm_sid s1 2>/dev/null || true) && ` + // #72
       TITLE("cc-s1") + // F03.4 甲′
-      `tmux send-keys -t cc-s1 '${payload}' Enter; tmux attach -t cc-s1`,
+      `tmux send-keys -t =cc-s1: '${payload}' Enter; tmux attach -t =cc-s1:`,
   );
   // cwd 含单引号：-c 段 posixQuote 逃逸
   eq(
@@ -220,7 +221,7 @@ test("#72 buildResumeTmuxCmd:@ccm_sid 用**完整 sid**(非会话名前 8),且�
   // 非阻断包裹 `(… 2>/dev/null || true)`(审计 建议-1:身份标记不得阻断 resume);在 create 分支
   // (new-session 后、send-keys 前) → 会话已存在时随 `&&` 短路一并跳过(不重设)。
   eq(
-    cmd.includes("(tmux set-option -t cc-deadbeef @ccm_sid deadbeef-1234-5678 2>/dev/null || true) && "),
+    cmd.includes("(tmux set-option -t =cc-deadbeef: @ccm_sid deadbeef-1234-5678 2>/dev/null || true) && "),
     true,
   );
   // F03.4 甲′后：@ccm_sid 与 send-keys 之间多了两条 set-titles，故不再相邻——改断"顺序"：
@@ -252,9 +253,9 @@ test("F74 buildResumeTmuxCmd:显式 name → 用它作会话名(灰会话 fresh 
   eq(
     buildResumeTmuxCmd("s1", "", "claude", "cc-s1-2"),
     `tmux new-session -d -s cc-s1-2 2>/dev/null && ` +
-      `(tmux set-option -t cc-s1-2 @ccm_sid s1 2>/dev/null || true) && ` + // #72:目标显式名 cc-s1-2,@ccm_sid 仍完整 sid s1
+      `(tmux set-option -t =cc-s1-2: @ccm_sid s1 2>/dev/null || true) && ` + // #72:目标显式名 cc-s1-2,@ccm_sid 仍完整 sid s1
       TITLE("cc-s1-2") + // F03.4 甲′
-      `tmux send-keys -t cc-s1-2 '${payload}' Enter; tmux attach -t cc-s1-2`,
+      `tmux send-keys -t =cc-s1-2: '${payload}' Enter; tmux attach -t =cc-s1-2:`,
   );
 });
 
@@ -302,12 +303,34 @@ test("isValidTmuxName:普通过 / 空·控制字符·保留符·超长拒", () =
   eq(isValidTmuxName("proj.git"), false, ". 拒(tmux 保留:window.pane 分隔)");
   eq(isValidTmuxName("a:b"), false, ": 拒(tmux 保留:session 分隔)");
   eq(isValidTmuxName("a".repeat(129)), false, "超长拒");
+  // F01：本谓词**刻意不禁 glob**——它把守 attach 已有会话（名字是用户建的、tmux 允许 glob 字符），
+  // 禁掉是行为回归且挡不住任何东西（`=名:` 已关闭 glob 这一级）。禁 glob 在创建路径，见下条。
+  eq(isValidTmuxName("st*ar"), true, "attach 路径允许 glob 字符（用户已存在的会话名）");
+  eq(isValidTmuxName("q?mark"), true, "同上");
+});
+
+test("F01 isValidNewTmuxName:创建路径额外禁 glob 元字符（第二道防线）", () => {
+  eq(isValidNewTmuxName("cc-abc12345"), true);
+  eq(isValidNewTmuxName("my session"), true, "空格仍允许");
+  eq(isValidNewTmuxName("a*b"), false, "* 拒（本工具永不把 glob 建进会话名）");
+  eq(isValidNewTmuxName("a?b"), false, "? 拒");
+  // 继承 isValidTmuxName 的全部拒绝面。
+  eq(isValidNewTmuxName(""), false);
+  eq(isValidNewTmuxName("a:b"), false);
+  eq(isValidNewTmuxName("proj.git"), false);
+});
+
+test("F01 buildLauncherCmd:glob 名 throw（创建路径用 isValidNewTmuxName）/ buildAttachCmd 放行", () => {
+  throws(() => buildLauncherCmd("", "a*b", "claude"), "创建路径拒 glob 名");
+  throws(() => buildLauncherCmd("", "a?b", "claude"), "创建路径拒 glob 名");
+  // attach 已有会话不拒——那是用户自己建的名，且 `=名:` 已保证精确。
+  eq(buildAttachCmd("st*ar"), "tmux attach -t '=st*ar:'", "attach 放行 glob 名且精确包装");
 });
 
 test("buildAttachCmd:posixQuote 名 / 空格 / 非法名 throw", () => {
-  eq(buildAttachCmd("cc-abc12345"), "tmux attach -t 'cc-abc12345'");
-  eq(buildAttachCmd("web 1"), "tmux attach -t 'web 1'", "空格名 posixQuote");
-  eq(buildAttachCmd("a'b"), `tmux attach -t 'a'\\''b'`, "单引号逃逸");
+  eq(buildAttachCmd("cc-abc12345"), "tmux attach -t '=cc-abc12345:'");
+  eq(buildAttachCmd("web 1"), "tmux attach -t '=web 1:'", "空格名 posixQuote");
+  eq(buildAttachCmd("a'b"), `tmux attach -t '=a'\\''b:'`, "单引号逃逸");
   throws(() => buildAttachCmd(""), "空名 throw");
   throws(() => buildAttachCmd("x\ny"), "含换行 throw");
 });
@@ -326,7 +349,7 @@ test("buildLauncherCmd:完整形态(启动新会话,无 --resume)", () => {
   eq(
     buildLauncherCmd("/home/pi/proj", "cc-proj"),
     `tmux new-session -d -s 'cc-proj' -c '/home/pi/proj' 2>/dev/null && ` +
-      `tmux send-keys -t 'cc-proj' '${payload}' Enter; tmux attach -t 'cc-proj'`,
+      `tmux send-keys -t '=cc-proj:' '${payload}' Enter; tmux attach -t '=cc-proj:'`,
   );
   eq(buildLauncherCmd("/p", "cc-proj").includes("--resume"), false, "启动版无 --resume");
 });
@@ -335,17 +358,17 @@ test("buildLauncherCmd:空 cwd 省 -c / 自定义命令 / 命令注入 fail-clos
   const p1 = `${UNSET}claude`;
   eq(
     buildLauncherCmd("", "cc-x"),
-    `tmux new-session -d -s 'cc-x' 2>/dev/null && tmux send-keys -t 'cc-x' '${p1}' Enter; tmux attach -t 'cc-x'`,
+    `tmux new-session -d -s 'cc-x' 2>/dev/null && tmux send-keys -t '=cc-x:' '${p1}' Enter; tmux attach -t '=cc-x:'`,
   );
   const p2 = `${UNSET}claude --model opus`;
   eq(
     buildLauncherCmd("", "cc-x", "claude --model opus"),
-    `tmux new-session -d -s 'cc-x' 2>/dev/null && tmux send-keys -t 'cc-x' '${p2}' Enter; tmux attach -t 'cc-x'`,
+    `tmux new-session -d -s 'cc-x' 2>/dev/null && tmux send-keys -t '=cc-x:' '${p2}' Enter; tmux attach -t '=cc-x:'`,
   );
   const p3 = `${UNSET}claude`; // 注入 → claude
   eq(
     buildLauncherCmd("", "cc-x", "claude; rm -rf /"),
-    `tmux new-session -d -s 'cc-x' 2>/dev/null && tmux send-keys -t 'cc-x' '${p3}' Enter; tmux attach -t 'cc-x'`,
+    `tmux new-session -d -s 'cc-x' 2>/dev/null && tmux send-keys -t '=cc-x:' '${p3}' Enter; tmux attach -t '=cc-x:'`,
   );
 });
 

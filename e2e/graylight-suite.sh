@@ -33,8 +33,8 @@ bad() { echo "  FAIL $1"; fail=$((fail+1)); }
 cleanup() {
   set +e
   if [ -n "${FAKE_PID:-}" ]; then kill "$FAKE_PID" 2>/dev/null; fi
-  tmux kill-session -t "$SESSION" 2>/dev/null
-  tmux kill-session -t "$KEEP" 2>/dev/null
+  tmux kill-session -t "=$SESSION:" 2>/dev/null
+  tmux kill-session -t "=$KEEP:" 2>/dev/null
 }
 trap cleanup EXIT
 
@@ -95,7 +95,7 @@ GRAY="$(wait_log "$MARK" "\[e2e\] tab-state sid=$SID8 status=live tmuxIdle=1" "$
 
 # ── ARCHIVE:tmux kill-session → archived tab-state ───────────────────────────
 echo "-- tmux kill-session $SESSION(@ccm_sid 消失 → 归档)--"
-tmux kill-session -t "$SESSION" 2>/dev/null || true
+tmux kill-session -t "=$SESSION:" 2>/dev/null || true
 ARCH="$(wait_log "$MARK" "\[e2e\] tab-state sid=$SID8 status=archived" "$ARCH_WAIT")" \
   && ok "归档(gray→archived):$ARCH" \
   || bad "${ARCH_WAIT}s 内未见归档 tab-state(sid=$SID8 status=archived)"
