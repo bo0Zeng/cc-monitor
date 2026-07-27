@@ -8,9 +8,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const readRemoteConfigMock = vi.fn();
 const fetchAccountsMock = vi.fn();
+const invokeMock = vi.fn();
 
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
 vi.mock("../error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("../remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
 
@@ -76,6 +77,7 @@ async function mount(): Promise<HTMLElement> {
 beforeEach(() => {
   vi.restoreAllMocks();
   readRemoteConfigMock.mockReset().mockResolvedValue({ enabled: true, hosts: [host()] });
+  invokeMock.mockReset().mockResolvedValue(undefined);
   fetchAccountsMock.mockReset();
   vi.spyOn(accounts, "fetchAccounts").mockImplementation(() => fetchAccountsMock());
   vi.spyOn(accounts, "invalidateAccountsCache").mockImplementation(() => {});
@@ -112,12 +114,33 @@ describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", (
     expectNoReadyChrome(el);
   });
 
-  it("未启用多账号 → 走部署向导，不渲染表", async () => {
+  it("未启用多账号 + cc-acct-iso 已装 → 走部署向导，不渲染表", async () => {
     fetchAccountsMock.mockResolvedValue(state({ accounts: [] }));
+    invokeMock.mockResolvedValue({ installed: true }); // check_remote_acct_iso：已装
     const el = await mount();
     expect(el.querySelector(".accounts-not-enabled")).not.toBeNull();
     expect(el.querySelector(".accounts-wizard")).not.toBeNull();
+    expect(el.querySelector(".accounts-needs-deploy")).toBeNull();
     expectNoReadyChrome(el);
+  });
+
+  it("F5：未启用 + cc-acct-iso 未装 → 显一键部署（而非直接甩 init 向导）", async () => {
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [] }));
+    invokeMock.mockResolvedValue({ installed: false }); // check_remote_acct_iso：没装
+    const el = await mount();
+    const deploy = el.querySelector(".accounts-needs-deploy");
+    expect(deploy).not.toBeNull();
+    expect(deploy?.textContent).toContain("一键部署 cc-acct-iso");
+    expect(el.querySelector(".accounts-wizard")).toBeNull(); // 没装时不该甩 init 向导
+    expectNoReadyChrome(el);
+  });
+
+  it("F5：探测 cc-acct-iso 失败 → 不堵死用户，回退 init 向导", async () => {
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [] }));
+    invokeMock.mockRejectedValue(new Error("ssh down")); // check 抛错
+    const el = await mount();
+    expect(el.querySelector(".accounts-wizard")).not.toBeNull();
+    expect(el.querySelector(".accounts-needs-deploy")).toBeNull();
   });
 
   it("拉账号抛错 → 一句失败说明，不炸", async () => {

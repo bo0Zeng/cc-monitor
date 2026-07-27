@@ -1,0 +1,33 @@
+# cc-acct-iso 配置示例 —— 复制到 ~/.cc-acct-iso/config 后按需改。
+# 语法:sourceable 的 KEY=VAL(会被 bash source,别写命令)。
+# 优先级:CLI 选项 > 本文件 > 内置默认。全部可省略,省略即用默认。
+
+# 共享库:所有账号共用的实体文件都在这(skills/projects/settings.json/plugins/…)
+#SHARED_STORE="$HOME/.claude"
+
+# 账号库:每个账号一个 config-dir + manifest(accounts.json)+ 备份(.backup-*)
+# 注意:不能放在 SHARED_STORE 内部。
+#ACCTS_DIR="$HOME/.claude-accts"
+
+# 隔离集:各账号私有的实体文件/目录(不建 symlink)。
+#   .credentials.json  凭据(必须隔离,否则谈不上多账号)
+#   .claude.json       含 oauthAccount(共享会串号)+ 高频写的大文件
+#   backups            CC 给 .claude.json 做的备份,跟着 .claude.json 走
+#   policy-limits.json / stats-cache.json  账号级限速/用量
+#ISOLATE_SET=".credentials.json .claude.json backups policy-limits.json stats-cache.json"
+
+# 共享集:默认 @auto = 共享库顶层 − ISOLATE_SET − SHARE_EXCLUDE。
+# 也可写成显式白名单(只共享这些),例如:SHARE_SET="skills projects settings.json CLAUDE.md"
+#SHARE_SET="@auto"
+
+# 排除集:@auto 模式下既不共享也不隔离、直接不管的项(支持 glob)。
+#   accounts = 旧的顺序切换方案留下的凭据快照目录,不该进新账号目录
+#SHARE_EXCLUDE="accounts *.bak *.bak-*"
+
+# 「无 CLAUDE_CONFIG_DIR 时住 $HOME/<项>,有则住 <config-dir>/<项>」的项。
+# 迁移时源路径取 LEGACY_HOME_DIR/<项>。除非 CC 改了布局,否则别动。
+#LEGACY_HOME_ITEMS=".claude.json"
+#LEGACY_HOME_DIR="$HOME"
+
+# 启动器:run 子命令实际 exec 的命令。
+#LAUNCHER="claude"

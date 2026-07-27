@@ -1,6 +1,6 @@
 // A6：cc-acct-iso 部署命令纯构建器单测——校验白名单 + 各 step 命令串精确 + 引号/拒双引号。
 import { describe, it, expect } from "vitest";
-import { validateAcctName, buildAcctIsoCmd } from "./acct-deploy";
+import { validateAcctName, buildAcctIsoCmd, deriveAcctIsoDir } from "./acct-deploy";
 
 describe("validateAcctName", () => {
   it("合法名放行", () => {
@@ -90,5 +90,26 @@ describe("buildAcctIsoCmd", () => {
       expect(r.cmd).toContain("'/p/it'\\''s/x.json'");
       expect(r.cmd).not.toContain('"');
     }
+  });
+});
+
+describe("deriveAcctIsoDir (F5 部署目录推导)", () => {
+  it("从 daemonPath 的 .cc-monitor 根推导（与 daemon 同根）", () => {
+    expect(deriveAcctIsoDir("/home/z/.cc-monitor/bin/cc-monitor-remote")).toBe(
+      "/home/z/.cc-monitor/cc-acct-iso",
+    );
+  });
+  it("daemonPath 以 /.cc-monitor 结尾也处理", () => {
+    expect(deriveAcctIsoDir("/opt/app/.cc-monitor")).toBe("/opt/app/.cc-monitor/cc-acct-iso");
+  });
+  it("无 daemonPath → 回退 /home/<user>/.cc-monitor/cc-acct-iso", () => {
+    expect(deriveAcctIsoDir("", "zbl")).toBe("/home/zbl/.cc-monitor/cc-acct-iso");
+    expect(deriveAcctIsoDir(undefined, "a_b-c.1")).toBe("/home/a_b-c.1/.cc-monitor/cc-acct-iso");
+  });
+  it("daemonPath 与 user 都拿不到 / user 非法 → null", () => {
+    expect(deriveAcctIsoDir("", "")).toBeNull();
+    expect(deriveAcctIsoDir(undefined, undefined)).toBeNull();
+    expect(deriveAcctIsoDir("/some/other/path", "bad user")).toBeNull(); // 空格非法
+    expect(deriveAcctIsoDir("", "a;rm")).toBeNull(); // 元字符非法
   });
 });
