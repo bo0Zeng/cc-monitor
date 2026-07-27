@@ -44,7 +44,7 @@ const baseCtx: LaunchContext = {
   action: { kind: "resume", sid: "abc-123" },
   container: { kind: "tmux", name: "cc-abc12345", nameQuoting: "raw", mode: "create-or-attach" },
   cwd: "/p",
-  account: { kind: "none" },
+  account: { kind: "base" },
   launcherOverride: "claude",
   ccmSid: undefined,
 };
@@ -70,7 +70,7 @@ test("env-reset：仅在 tmux send-into 且无账号时生效", () => {
   eq(ENV_RESET_DIMENSION.applies(baseCtx), false, "create-or-attach 不生效");
   const sendInto: LaunchContext = { ...baseCtx, container: { kind: "tmux", name: "cc-x", nameQuoting: "raw", mode: "send-into" } };
   eq(ENV_RESET_DIMENSION.applies(sendInto), true);
-  const withAccount: LaunchContext = { ...sendInto, account: { kind: "account", configDir: "/home/u/.claude-accts/z" } };
+  const withAccount: LaunchContext = { ...sendInto, account: { kind: "account", name: "z", configDir: "/home/u/.claude-accts/z" } };
   eq(ENV_RESET_DIMENSION.applies(withAccount), false, "有账号时不生效（account 维度接管）");
 });
 test("env-reset：apply 追加 unset CLAUDE_CONFIG_DIR", () => {
@@ -81,20 +81,28 @@ test("env-reset：apply 追加 unset CLAUDE_CONFIG_DIR", () => {
 });
 
 test("account：注入合法 configDir", () => {
-  const ctx: LaunchContext = { ...baseCtx, account: { kind: "account", configDir: "/home/u/.claude-accts/z" } };
+  const ctx: LaunchContext = { ...baseCtx, account: { kind: "account", name: "z", configDir: "/home/u/.claude-accts/z" } };
   eq(ACCOUNT_DIMENSION.applies(ctx), true);
   const plan: LaunchPlan = { transport: ctx.transport, action: ctx.action, container: ctx.container, cwd: ctx.cwd, env: [], launcher: "", args: [], wrap: [] };
   ACCOUNT_DIMENSION.apply(plan, ctx);
   eq(plan.env, [{ kind: "export-config-dir", value: "/home/u/.claude-accts/z" }]);
 });
 test("account：非法 configDir → throw", () => {
-  const ctx: LaunchContext = { ...baseCtx, account: { kind: "account", configDir: "not-absolute" } };
+  const ctx: LaunchContext = { ...baseCtx, account: { kind: "account", name: "z", configDir: "not-absolute" } };
   const plan: LaunchPlan = { transport: ctx.transport, action: ctx.action, container: ctx.container, cwd: ctx.cwd, env: [], launcher: "", args: [], wrap: [] };
   throws(() => ACCOUNT_DIMENSION.apply(plan, ctx));
 });
-test("account：cliFlags 恒 null（F05 移交点，不是遗漏）", () => {
-  const ctx: LaunchContext = { ...baseCtx, account: { kind: "account", configDir: "/x" } };
-  eq(ACCOUNT_DIMENSION.cliFlags!(ctx), null);
+// F05：applies 恒真（base 态也要在 CLI 语境下显式表态，不再只在 kind==="account" 时触发——
+// 这条修的是 F03 遗留的一个真实 bug，见 launch-dimensions.ts 头注/F05 计划 §2 第3条）。
+test("account：applies 恒真（base 态也生效，不再「只在具名账号时才触发」）", () => {
+  eq(ACCOUNT_DIMENSION.applies(baseCtx), true, "base 态也要 applies=true");
+});
+test("account：cliFlags 对具名账号吐 --account <名>", () => {
+  const ctx: LaunchContext = { ...baseCtx, account: { kind: "account", name: "z", configDir: "/x" } };
+  eq(ACCOUNT_DIMENSION.cliFlags!(ctx), ["--account", "z"]);
+});
+test("account：cliFlags 对 base 态吐 --base（不再返回 null——R11 同型 bug 修复）", () => {
+  eq(ACCOUNT_DIMENSION.cliFlags!(baseCtx), ["--base"]);
 });
 
 test("nested-env-reset：new/resume 生效，attach 不生效", () => {
@@ -121,7 +129,7 @@ test("buildLaunchPlan：账号 + 就地复用（env-reset 不生效，因为有�
     action: { kind: "resume", sid: "s1" },
     container: { kind: "tmux", name: "cc-s1", nameQuoting: "raw", mode: "send-into" },
     cwd: null,
-    account: { kind: "account", configDir: "/home/u/.claude-accts/z" },
+    account: { kind: "account", name: "z", configDir: "/home/u/.claude-accts/z" },
     launcherOverride: "claude",
     ccmSid: undefined,
   };
@@ -137,7 +145,7 @@ test("buildLaunchPlan：无账号 + 就地复用 → env-reset 的 unset 排在 
     action: { kind: "resume", sid: "s1" },
     container: { kind: "tmux", name: "cc-s1", nameQuoting: "raw", mode: "send-into" },
     cwd: null,
-    account: { kind: "none" },
+    account: { kind: "base" },
     launcherOverride: "claude",
     ccmSid: undefined,
   };
@@ -153,7 +161,7 @@ test("buildLaunchPlan：新建 + 已知 sid → identity 生效", () => {
     action: { kind: "resume", sid: "s1" },
     container: { kind: "tmux", name: "cc-s1", nameQuoting: "raw", mode: "create-or-attach" },
     cwd: "/p",
-    account: { kind: "none" },
+    account: { kind: "base" },
     launcherOverride: "claude",
     ccmSid: "s1",
   };

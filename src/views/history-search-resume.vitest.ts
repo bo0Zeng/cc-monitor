@@ -35,6 +35,7 @@ vi.mock("../format", () => ({ formatTimestampSmart: () => "时间" }));
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "./history";
 import { runRemoteResume } from "../remote-launch-run";
+import { invalidateAccountsCache } from "../accounts";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const runRemote = runRemoteResume as unknown as ReturnType<typeof vi.fn>;
@@ -79,5 +80,31 @@ describe("HistoryView 搜索卡片 resume (F85 #44)", () => {
     expect(runRemote).toHaveBeenCalledTimes(1);
     expect(runRemote.mock.calls[0].slice(0, 3)).toEqual(["hostA", "s1", "/p"]);
     expect(invokeMock.mock.calls.some((c) => c[0] === "resume_history_session")).toBe(false);
+  });
+
+  // F05 Phase D 审计：本文件此前只用 `.slice(0,3)` 断言前三个参数，从未验证过
+  // history.ts::runResume 的 `(cd, an) => runRemoteResume(..., cd, an)` 接线本身。搜索卡片的
+  // resume 按钮不带显式账号（`cardCtx.account` 恒 undefined，见 `buildSearchSession`），故这里
+  // 走的是"跟随解析"分支——补一条"跟随解析真命中当前账号时 accountName 真的转传"的集成测试。
+  it("远端搜索卡片 resume（跟随解析命中当前账号）→ runRemoteResume 收到真实 configDir + accountName", async () => {
+    invalidateAccountsCache(); // fetchAccounts 有模块级缓存，防陈旧缓存挡住下面的自定义 mock
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_remote_accounts") {
+        return Promise.resolve({
+          available: true,
+          error: null,
+          meta: { enabled: true, acctsDir: "/h/.claude-accts", manifestPath: "/h/.claude-accts/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
+          accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true }],
+        });
+      }
+      if (cmd === "list_last_accounts") return Promise.resolve({}); // 无既有 pin → 落 current
+      return Promise.resolve(undefined);
+    });
+    const view = new HistoryView();
+    const card = buildCard(view, searchSession({ origin: "hostA" }));
+    card.querySelector<HTMLButtonElement>(".search-session-resume")!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(runRemote).toHaveBeenCalledWith("hostA", "s1", "/p", "", "/h/.claude-accts/z", "z");
+    invalidateAccountsCache(); // fetchAccounts 有模块级缓存,别泄漏进同文件/同 worker 的其它测试
   });
 });

@@ -83,7 +83,7 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
       enter: true,
     });
     expect(invokeMock).toHaveBeenCalledWith("kill_remote_tmux", { origin: "aya", target: "cc-s1abcdef" });
-    expect(resumeTmux).toHaveBeenCalledWith("aya", "s1", "/w", "cct", "cc-s1abcdef", "/h/z");
+    expect(resumeTmux).toHaveBeenCalledWith("aya", "s1", "/w", "cct", "cc-s1abcdef", "/h/z", "z");
     expect(recordLast).toHaveBeenCalledWith("s1", "z");
     // 未勾选 compact → 绝不发 /compact（Esc/exit 是优雅退出，不是 compact）。
     expect(invokeMock).not.toHaveBeenCalledWith(

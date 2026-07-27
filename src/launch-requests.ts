@@ -13,8 +13,13 @@ export interface LaunchPlanBuild {
   plan: LaunchPlan;
 }
 
-function accountOf(configDir?: string): LaunchAccount {
-  return configDir ? { kind: "account", configDir } : { kind: "none" };
+/** F05：触发条件仍是 `configDir` 单独非空（同 F03 原行为，`remote-launch.test.ts` 的老式
+ *  直调路径只传 `configDir` 不传名字，必须继续正确触发兜底渲染器的 env 注入）；`name` 是
+ *  可选增强——传了就线通进 IR 供 CLI 渲染器用，没传时 `LaunchAccount.name` 是 `undefined`，
+ *  `ACCOUNT_DIMENSION.cliFlags` 会诚实地对这种情形返回 `null`（强制走兜底），而不是把整个
+ *  账号状态错误地降级成 `base`（那会连兜底渲染器的 env 注入也漏掉，是真回归）。 */
+function accountOf(configDir?: string, name?: string): LaunchAccount {
+  return configDir ? { kind: "account", name, configDir } : { kind: "base" };
 }
 
 /** 对应 `buildResumeDirectCmd`：无容器（直连），resume 到当前登录 shell。 */
@@ -23,6 +28,7 @@ export function planResumeDirect(
   cwd: string,
   launcher = AGENT_PROFILE.defaultLauncher,
   configDir?: string,
+  accountName?: string,
 ): LaunchPlanBuild {
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
@@ -32,7 +38,7 @@ export function planResumeDirect(
     action: { kind: "resume", sid },
     container: { kind: "none" },
     cwd: cwd.trim() || null,
-    account: accountOf(configDir),
+    account: accountOf(configDir, accountName),
     launcherOverride: launcher,
     ccmSid: undefined,
   };
@@ -46,6 +52,7 @@ export function planResumeTmux(
   launcher = AGENT_PROFILE.defaultLauncher,
   name?: string,
   configDir?: string,
+  accountName?: string,
 ): LaunchPlanBuild {
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
@@ -59,7 +66,7 @@ export function planResumeTmux(
     action: { kind: "resume", sid },
     container: { kind: "tmux", name: tmuxName, nameQuoting: "raw", mode: "create-or-attach" },
     cwd: cwd.trim() || null,
-    account: accountOf(configDir),
+    account: accountOf(configDir, accountName),
     launcherOverride: launcher,
     ccmSid: sid, // #72：自建 resume 会话打完整 sid，供 findClaudeTmux 精确命中
   };
@@ -72,6 +79,7 @@ export function planResumeIntoExistingTmux(
   name: string,
   launcher = AGENT_PROFILE.defaultLauncher,
   configDir?: string,
+  accountName?: string,
 ): LaunchPlanBuild {
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
@@ -84,7 +92,7 @@ export function planResumeIntoExistingTmux(
     action: { kind: "resume", sid },
     container: { kind: "tmux", name, nameQuoting: "raw", mode: "send-into" },
     cwd: null,
-    account: accountOf(configDir),
+    account: accountOf(configDir, accountName),
     launcherOverride: launcher,
     ccmSid: undefined, // 复用会话已在建时打过标，不重设（同今天行为）
   };
@@ -97,6 +105,7 @@ export function planLauncher(
   tmuxName: string,
   command = AGENT_PROFILE.defaultLauncher,
   configDir?: string,
+  accountName?: string,
 ): LaunchPlanBuild {
   const name = tmuxName.trim();
   if (!isValidNewTmuxName(name)) {
@@ -107,7 +116,7 @@ export function planLauncher(
     action: { kind: "new" },
     container: { kind: "tmux", name, nameQuoting: "quoted", mode: "create-or-attach" },
     cwd: cwd.trim() || null,
-    account: accountOf(configDir),
+    account: accountOf(configDir, accountName),
     launcherOverride: command,
     ccmSid: undefined, // 今天就不设——已知 F04 缺口，本次原样保留、不顺手"修一半"
   };
@@ -124,7 +133,7 @@ export function planAttach(name: string): LaunchPlanBuild {
     action: { kind: "attach", name },
     container: { kind: "tmux", name, nameQuoting: "quoted", mode: "attach-only" },
     cwd: null,
-    account: { kind: "none" },
+    account: { kind: "base" },
     launcherOverride: undefined,
     ccmSid: undefined,
   };

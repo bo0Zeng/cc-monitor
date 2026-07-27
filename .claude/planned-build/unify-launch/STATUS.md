@@ -1,15 +1,42 @@
 # 状态 / STATUS — unify-launch（恢复工作的入口，每次先读这里）
 
-- **当前阶段**：F04 已完成签收（C→D→E→F 全过，双 agent 审无阻塞项），待 commit 后进 F05/F06/F07
-- **当前功能**：F04（计划见 `features/F04-session-identity.md`）——步骤 1-6 全部完成，§6/§7/§8 已填，签收全勾，R10 已在 MASTERPLAN §6 标记「已修复」
-- **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）
-- **下一个功能**：按依赖图 F05/F06/F07（可并列，正交、互不阻塞，都只依赖 F03）→ F08/F09/F11 → F10 → Phase G
+- **当前阶段**：F05 已完成签收（Phase B→F 全过，commit 待落）
+- **当前功能**：无——F05 收尾完成，下一步进 F06/F07
+- **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）
+- **下一个功能**：F06/F07（正交、互不阻塞，都只依赖 F03）→ F08/F09/F11 → F10 → Phase G
 - **阻塞 / 待用户确认**：无
-- **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 09）
+- **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 10）
 - **自动模式（/loop）**：**全自动**（连续 B→G）。用户 2026-07-27 追加授权：**具体设计决策由本席开
   agent 讨论分析后自行决定，不必逐项停下来问**——除非真遇到阻塞或用户主动打断
-- **本轮 loop 目标**：F04 已 commit（本地，不 push），下一轮起 F05/F06/F07 中的一个
+- **本轮 loop 目标**：commit F05 → 开 F06 或 F07（Phase B 规划）
 - **loop 停止条件**：计划≠现实 / 同一步≥2 失败 / 全部完成→Phase G / 用户打断
+
+## F05 结果摘要
+
+- `src/accounts.ts` 新增 `AccountResolution` 判别联合（`{kind:"account",name,configDir}` |
+  `{kind:"base"}` | `{kind:"unavailable",requestedName?}`）+ 纯函数 `resolveAccount(state,opts)`；
+  `withAccount` 内部改用它，`run` 回调扩成 `(configDir?, accountName?) => Promise<void>`（行为
+  逐字节保持，6 个既有调用点全部核对）。`LaunchAccount`（`launch-plan.ts`）account 变体加可选
+  `name` 字段；`ACCOUNT_DIMENSION.applies` 从"仅选中账号时为真"改**恒真**，`cliFlags` 三分支
+  （有名字→`--account <name>`／base→`--base`／无名字→`null` 强制降级），把 F03 遗留的移交点
+  接上。**顺带发现并修复一个 R11 同型潜在 bug**：`applies` 原先只在选中账号态为真，导致最常见
+  的"未选账号（base）"场景从未过 `cliFlags` 的 null 安全网检查——CLI 渲染器可能吐出既不带
+  `--account` 也不带 `--base` 的命令，让远端会话静默继承 `ccm` 自己的默认账号。
+- 双 agent 审（后端架构 + UX）各揪出发现，全部修复：`doc/INVARIANTS.md` 计划里承诺的新不变量
+  最初只留源码注释未落文档——已补新增 §35；6 个 `withAccount` 调用点此前测试只覆盖
+  `accountName` 恒 `undefined` 场景，接线本身从未被验证——已补 4 条集成测试（含发现并修复
+  `fetchAccounts` 模块级缓存的测试污染 bug，双向：向后泄漏+被更早测试的陈旧缓存挡住）；UX 审
+  发现 `shared/ccm` 的 `--base` 是无条件 `unset CLAUDE_CONFIG_DIR`（非无害透传），F05 让每次
+  未选账号的调用都携带它，对手动管理该环境变量的边缘配置用户是新的静默覆盖——判定为可接受
+  代价，登记 **R13**（非阻塞，`forceLegacyLaunchRenderer` 逃生口可退避），不回退设计。
+- 实现期自己踩了一次坑又自己修：`LaunchAccount.name` 最初误设计成必需字段，导致
+  `remote-launch.test.ts`（F03 就定的"零编辑"硬约束）出现 3 个真回归——已改 `name` 为可选、
+  `configDir` 单独触发 `account` 态（同 F03 原行为），`cliFlags` 对"有 configDir 无 name"这个
+  合法但不可 CLI 化的状态诚实返回 `null`（强制降级），而非静默改变行为。
+- 门禁：tsc 0 / npm test 625 / cargo test 377 / test:tmux-target 26 / test:ccm-cli 36 /
+  test:ccm-acceptance 15 / test:ccm-print-parity 10 / test:tmux-guarded 14 / resume-suite 17 /
+  restart-suite 24，全绿；`e2e/resume-cmd-driver.ts`/`restart-cmd-driver.ts`/`remote-launch.ts`
+  全程零 diff。
 
 ## F04 结果摘要
 

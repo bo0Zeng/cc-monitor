@@ -38,6 +38,7 @@ vi.mock("../format", () => ({ formatTimestampSmart: () => "时间" }));
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "./history";
 import { runNewSessionRemote } from "../remote-launch-run";
+import { invalidateAccountsCache } from "../accounts";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const runNewRemote = runNewSessionRemote as unknown as ReturnType<typeof vi.fn>;
@@ -108,6 +109,33 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     expect(runNewRemote.mock.calls[0][0]).toBe("hostA");
     expect(runNewRemote.mock.calls[0][1]).toBe("/p");
     expect(invokeMock.mock.calls.some((c) => c[0] === "new_local_session")).toBe(false);
+  });
+
+  // F05 Phase D 审计：runNewSession 走 `withAccount(origin, null, ..., {follow:{}})`——恒跟随
+  // 解析（新会话无显式账号入口）。此前本文件从未验证过跟随解析真命中账号时，
+  // `(cd, an) => runNewSessionRemote(..., cd, an)` 是否真把 an 转传。
+  it("菜单「在该目录起新会话」远端（跟随解析命中当前账号）→ runNewSessionRemote 收到真实 configDir + accountName", async () => {
+    // fetchAccounts 有模块级缓存(30s TTL)——上一条用例已经用默认 mock 值给 "hostA" 缓存过一次
+    // (不含 available 字段的错误响应)，不清掉这里会命中陈旧缓存、永远走不到下面的自定义 mock。
+    invalidateAccountsCache();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_remote_accounts") {
+        return Promise.resolve({
+          available: true,
+          error: null,
+          meta: { enabled: true, acctsDir: "/h/.claude-accts", manifestPath: "/h/.claude-accts/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
+          accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true }],
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    const view = new HistoryView();
+    const row = buildRow(view, entry({ origin: "hostA" }), proj({ origin: "hostA" }));
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+    menuItem("在该目录起新会话")!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(runNewRemote).toHaveBeenCalledWith("hostA", "/p", "", "/h/.claude-accts/z", "z");
+    invalidateAccountsCache(); // fetchAccounts 有模块级缓存,别泄漏进同文件其它测试
   });
 
   it("菜单 star 与 inline star 走同一 run（都触发 update_history_metadata）", async () => {

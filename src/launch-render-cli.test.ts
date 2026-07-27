@@ -36,7 +36,7 @@ function ctxOf(overrides: Partial<LaunchContext>): LaunchContext {
     action: { kind: "resume", sid: "abc-123" },
     container: { kind: "tmux", name: "cc-abc12345", nameQuoting: "raw", mode: "create-or-attach" },
     cwd: "/p",
-    account: { kind: "none" },
+    account: { kind: "base" },
     launcherOverride: "claude",
     ccmSid: undefined,
     ...overrides,
@@ -55,9 +55,20 @@ test("canRenderCli：local transport → false（F06 未实现）", () => {
   const ctx = ctxOf({ transport: { kind: "local" } });
   eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), false);
 });
-test("canRenderCli：账号维度存在 → false（cliFlags 恒 null，F05 移交点）", () => {
-  const ctx = ctxOf({ account: { kind: "account", configDir: "/home/u/.claude-accts/z" } });
-  eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), false);
+// F05：账号名已线通——canRenderCli 不再对"有账号"一律降级，account/base 两态都能安全走 CLI
+// （前提是 ccm 声明支持 "account" 能力）。
+test("canRenderCli：账号维度存在（具名账号）+ ccm 支持 account 能力 → true", () => {
+  const ctx = ctxOf({ account: { kind: "account", name: "z", configDir: "/home/u/.claude-accts/z" } });
+  eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), true);
+});
+test("canRenderCli：ccm 不支持 account 能力（旧版本）→ false，即便只是 base 态也强制降级", () => {
+  const noAccountCap: CcmProbeResult = {
+    installed: true,
+    version: "0.9",
+    capabilities: new Set(["new", "resume", "attach", "tmux", "cwd", "agent", "launcher", "ccm-sid", "print"]),
+  };
+  const ctx = ctxOf({}); // 默认 base
+  eq(canRenderCli(buildLaunchPlan(ctx), ctx, noAccountCap), false);
 });
 
 // **#76 防线——本组测试的核心价值**：shared/ccm 的 --tmux 只有幂等 create-or-attach 一种形态，
@@ -85,12 +96,12 @@ test("canRenderCli：attach-only 但探测未装 → false（探测失败/未装
 test("renderCli：resume + tmux 基本形态", () => {
   const ctx = ctxOf({});
   const plan = buildLaunchPlan(ctx);
-  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --cwd /p");
+  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --base --cwd /p");
 });
 test("renderCli：new 动作不带 sid", () => {
   const ctx = ctxOf({ action: { kind: "new" }, ccmSid: undefined });
   const plan = buildLaunchPlan(ctx);
-  eq(renderCli(plan, ctx), "ccm new --tmux=cc-abc12345 --cwd /p");
+  eq(renderCli(plan, ctx), "ccm new --tmux=cc-abc12345 --base --cwd /p");
 });
 test("renderCli：attach 只带名字，不读其余修饰", () => {
   const ctx = ctxOf({ action: { kind: "attach", name: "cc-s1" }, container: { kind: "tmux", name: "cc-s1", nameQuoting: "quoted", mode: "attach-only" } });
@@ -100,23 +111,31 @@ test("renderCli：attach 只带名字，不读其余修饰", () => {
 test("renderCli：ccmSid → --ccm-sid flag", () => {
   const ctx = ctxOf({ ccmSid: "abc-123" });
   const plan = buildLaunchPlan(ctx);
-  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --ccm-sid=abc-123 --cwd /p");
+  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --ccm-sid=abc-123 --base --cwd /p");
 });
 test("renderCli：自定义 launcher（非默认才带 flag）", () => {
   const ctx = ctxOf({ launcherOverride: "cct" });
   const plan = buildLaunchPlan(ctx);
-  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --cwd /p --launcher cct");
+  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --base --cwd /p --launcher cct");
 });
 test("renderCli：透传参数在 -- 之后", () => {
   const ctx = ctxOf({});
   const plan = buildLaunchPlan(ctx);
   plan.args.push("--model", "opus");
-  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --cwd /p -- --model opus");
+  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --base --cwd /p -- --model opus");
 });
 test("renderCli：cwd 含空格 → 正确 quote", () => {
   const ctx = ctxOf({ cwd: "/home/pi/my proj" });
   const plan = buildLaunchPlan(ctx);
-  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --cwd '/home/pi/my proj'");
+  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --base --cwd '/home/pi/my proj'");
+});
+// F05：具名账号 → 吐 --account <名>，不是 --base。这条同时是 R11 同型 bug 修复的直接验证：
+// 以前 kind==="account" 时 canRenderCli 恒 false（永远走不到这里），F05 后要能安全走 CLI 且
+// 带对 flag，不能悄悄丢账号信息。
+test("renderCli：具名账号 → --account <名>", () => {
+  const ctx = ctxOf({ account: { kind: "account", name: "z", configDir: "/home/u/.claude-accts/z" } });
+  const plan = buildLaunchPlan(ctx);
+  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --account z --cwd /p");
 });
 
 if (failed > 0) {

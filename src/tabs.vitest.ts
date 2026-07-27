@@ -109,6 +109,7 @@ vi.mock("./account-restart", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { restartWithAccount } from "./account-restart";
+import { invalidateAccountsCache } from "./accounts";
 import { showActionFailureToast } from "./error-toast";
 import {
   runRemoteResume,
@@ -843,7 +844,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     tm.archiveTab("r1");
     await (tm as unknown as { resumeTab(sid: string): Promise<void> }).resumeTab("r1");
     // A4：默认 resume（无账号）→ 第 5 参 configDir=undefined（不注入，行为与旧版等价）。
-    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined);
+    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined, undefined);
     expect(invoke).not.toHaveBeenCalledWith("resume_history_session", expect.anything());
   });
 
@@ -851,11 +852,13 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
     tm.archiveTab("r1");
     // tabs.vitest 的 invoke 默认返 undefined → fetchAccounts 视作不可用 → withAccount 退化默认。
-    // （带账号注入 + 记 lastAccount 的正路在 accounts.vitest 的 withAccount 套件覆盖。）
+    // （accounts.vitest 的 withAccount 套件覆盖了"resolveAccount 自己的决策逻辑"，
+    // 但不覆盖"tabs.ts 的 run 回调是否真把 accountName 转传给了 runRemoteResume"这条
+    // 集成层接线——F05 Phase D 审计发现的真实覆盖缺口，下面新增一条测试补上。）
     await (
       tm as unknown as { resumeTab(sid: string, accountName?: string): Promise<void> }
     ).resumeTab("r1", "z");
-    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined);
+    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined, undefined);
     expect(invoke).not.toHaveBeenCalledWith("update_history_metadata", expect.anything());
     // F07：显式选号解析不到 → 提示，别静默落基座（对齐 history.ts）。变异锚点：删 onUnselectable 回调 → 此测红。
     expect(showActionFailureToast).toHaveBeenCalledWith(
@@ -863,6 +866,36 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
       expect.stringContaining("账号「z」当前不可选"),
       expect.anything(),
     );
+  });
+
+  // F05 Phase D 审计：补齐"账号真的可选时，accountName 是否真的转传到了 runRemoteResume"这条
+  // 集成层断言——此前所有 tabs.vitest 用例都只覆盖"账号库不可用/未选账号"这两种 accountName
+  // 恒为 undefined 的场景，`resumeTab` 里 `(cd, an) => runRemoteResume(..., cd, an)` 这一行接线
+  // 本身从未被验证过（哪怕写反成 `(cd) => runRemoteResume(..., cd)` 也会全绿）。
+  it("A4：resumeTab 带账号名且账号可选 → runRemoteResume 收到真实 configDir + accountName", async () => {
+    // fetchAccounts 有模块级缓存(30s TTL)——早前用例可能已用默认 mock 给 "aya" 缓存过一次，
+    // 不清掉可能命中陈旧缓存、走不到下面的自定义 mock。
+    invalidateAccountsCache();
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_accounts"
+        ? Promise.resolve({
+            available: true,
+            error: null,
+            meta: { enabled: true, acctsDir: "/h/.claude-accts", manifestPath: "/h/.claude-accts/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
+            accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true }],
+          })
+        : Promise.resolve(undefined),
+    );
+    await (
+      tm as unknown as { resumeTab(sid: string, accountName?: string): Promise<void> }
+    ).resumeTab("r1", "z");
+    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "/h/.claude-accts/z", "z");
+    expect(showActionFailureToast).not.toHaveBeenCalledWith("账号不可用", expect.anything(), expect.anything());
+    // fetchAccounts 有 30s TTL 模块级缓存——本测试是文件里第一个真填充"可选账号"数据的用例，
+    // 不清掉会让缓存值泄漏进后续测试（它们期望账号库不可用/未选账号）。
+    invalidateAccountsCache();
   });
 
   it("本地归档 tab → 仍走 resume_history_session，不碰远端 runner", async () => {
@@ -930,7 +963,7 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
       tm as unknown as { resumeTab(sid: string, a?: string, useBase?: boolean): Promise<void> }
     ).resumeTab("r1", undefined, true);
     expect(invoke).not.toHaveBeenCalledWith("list_last_accounts");
-    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined);
+    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined, undefined);
   });
 
   // F04：tmux 后端的基座逃生口，与直连对称（两后端一致）。useBase → 不跟随、不读 pin、不注入。
@@ -949,6 +982,7 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
       "/home/pi/proj",
       "cct",
       "cc-r1",
+      undefined,
       undefined,
     );
   });
@@ -984,6 +1018,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
       "cc-r1abcd",
       "cct",
       undefined,
+      undefined,
     );
     expect(runRemoteResumeTmux).not.toHaveBeenCalled();
     expect(runRemoteAttach).not.toHaveBeenCalled();
@@ -1018,6 +1053,37 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
     await (tm as unknown as { resumeTabTmux(sid: string): Promise<void> }).resumeTabTmux("r1");
     expect(runRemoteResumeTmux).toHaveBeenCalled();
     expect(runRemoteResumeIntoExistingTmux).not.toHaveBeenCalled();
+  });
+
+  // F05 Phase D 审计：resumeTabTmux 走的是 follow 解析（不是显式 accountName 参数），接线是
+  // `(cd, an) => runRemoteResumeTmux(..., cd, an)`——补一条"跟随解析真命中账号"的集成测试，
+  // 证明 an 真的被转传，不只是 accounts.vitest 单独测过 resolveAccount 自己的决策逻辑。
+  it("跟随解析命中当前账号 → runRemoteResumeTmux 收到真实 configDir + accountName", async () => {
+    invalidateAccountsCache(); // 同上：防陈旧缓存命中挡住下面的自定义 mock
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "list_remote_tmux") {
+        return Promise.resolve([
+          { name: "cc-other12", path: "/home/pi/proj", command: "bash", attached: false, windows: 1, sid: "other" },
+        ]);
+      }
+      if (cmd === "list_remote_accounts") {
+        return Promise.resolve({
+          available: true,
+          error: null,
+          meta: { enabled: true, acctsDir: "/h/.claude-accts", manifestPath: "/h/.claude-accts/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
+          accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true }],
+        });
+      }
+      if (cmd === "list_last_accounts") return Promise.resolve({}); // 无既有 pin → 落 current
+      return Promise.resolve(undefined);
+    });
+    tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
+    tm.archiveTab("r1");
+    await (tm as unknown as { resumeTabTmux(sid: string): Promise<void> }).resumeTabTmux("r1");
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith(
+      "aya", "r1", "/home/pi/proj", "cct", "cc-r1", "/h/.claude-accts/z", "z",
+    );
+    invalidateAccountsCache(); // 同上：清掉本测试填充的账号缓存，别泄漏进后续测试
   });
 
   // F04（R10）：命中 ≥2 个精确同 sid 的活会话——attach 非破坏性、可撤销，故"警告+继续"而非拒绝
@@ -1236,13 +1302,14 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
       "cct",
       "cc-r1",
       undefined,
+      undefined,
     );
     // 直连项 → runRemoteResume
     rightClick("r1");
     clickItem("Resume（直连）");
     await flushMicro();
     // A4：默认 resume（无账号）→ 第 5 参 configDir=undefined（不注入，行为与旧版等价）。
-    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined);
+    expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined, undefined);
   });
 
   it("F74 Resume（tmux）:@ccm_sid 命中活会话 → 精确 attach 它(不撞同目录漂移分支),不重开", async () => {
@@ -1282,7 +1349,7 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
     await flushMicro();
     expect(runRemoteAttach).not.toHaveBeenCalled();
     // cc-r1 被漂移会话占着 → 挑 cc-r1-2 新建,保证 --resume r1 落进原会话。
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "cc-r1-2", undefined);
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "cc-r1-2", undefined, undefined);
   });
 
   it("F74 Resume（tmux）:老 wrapper(整表无 @ccm_sid)→ 起全新 fresh resume,不 attach 不确定会话", async () => {
@@ -1303,7 +1370,7 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
     // findClaudeTmux 按 cwd 兜底命中 proj_cc,但 live.sid(null)!==sid → **不 attach 不确定的会话**,
     // 起 fresh resume(cc-r1 未被占 → 基名);--resume r1 恒落对会话(§30「找不到就别静默换」)。
     expect(runRemoteAttach).not.toHaveBeenCalled();
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "cc-r1", undefined);
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "cc-r1", undefined, undefined);
   });
 
   it("归档本地 tab → 仍单「Resume」(无 tmux 项)", () => {
