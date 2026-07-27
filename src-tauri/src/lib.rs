@@ -6,6 +6,7 @@
 //! State 注册矩阵见 doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
 mod accounts; // A2：多账号（cc-acct-iso）只读查询——账号=一个 CLAUDE_CONFIG_DIR
+mod acct_iso_deploy; // F5：一键部署 vendored cc-acct-iso 到远端 + 存在性检测
 mod adapter;
 mod auto_launch;
 mod bind;
@@ -933,6 +934,8 @@ pub fn run() {
             // F08c：手动安装 / 卸载远端 daemon（SFTP 写 ~/.cc-monitor/bin，SS-G 部署写豁免）
             sftp::deploy_remote_daemon,
             sftp::uninstall_remote_daemon,
+            acct_iso_deploy::deploy_remote_acct_iso,
+            acct_iso_deploy::check_remote_acct_iso,
             history::delete_history_session,
             history::create_branch_session,
             history::update_history_metadata,

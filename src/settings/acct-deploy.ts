@@ -7,6 +7,21 @@
 
 const TOOL = "cc-acct-iso";
 
+/**
+ * F5：从 daemonPath / user 推导 cc-acct-iso 的远端部署目录（绝对路径，供一键部署）。纯函数、可单测。
+ * 约定与 daemon 同根：`<...>/.cc-monitor/cc-acct-iso`。daemonPath 含 `.cc-monitor` 则取其根；
+ * 否则回退 `/home/<user>/.cc-monitor/cc-acct-iso`。都拿不到（无 daemonPath 且 user 非法）→ null。
+ */
+export function deriveAcctIsoDir(daemonPath?: string, user?: string): string | null {
+  const p = (daemonPath ?? "").trim();
+  const idx = p.indexOf("/.cc-monitor/");
+  if (idx >= 0) return `${p.slice(0, idx)}/.cc-monitor/cc-acct-iso`;
+  if (p.endsWith("/.cc-monitor")) return `${p}/cc-acct-iso`;
+  const u = (user ?? "").trim();
+  if (u && /^[A-Za-z0-9._-]+$/.test(u)) return `/home/${u}/.cc-monitor/cc-acct-iso`;
+  return null;
+}
+
 /** POSIX 单引号（同 Rust `ssh_source::shell_quote`）：`'` → `'\''`，其余原样，结果不含双引号。 */
 function sq(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;

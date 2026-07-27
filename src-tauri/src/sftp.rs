@@ -134,12 +134,12 @@ pub async fn upload_atomic(
 }
 
 /// 读远端文件，不存在 / 读失败 → None。
-async fn read_optional(sftp: &SftpSession, path: &str) -> Option<Vec<u8>> {
+pub(crate) async fn read_optional(sftp: &SftpSession, path: &str) -> Option<Vec<u8>> {
     sftp.read(path.to_string()).await.ok()
 }
 
 /// mkdir -p：逐级创建 `dir`（绝对或相对），已存在则跳过，创建失败容忍（并发/权限留给上传报错）。
-async fn ensure_dir_all(sftp: &SftpSession, dir: &str) {
+pub(crate) async fn ensure_dir_all(sftp: &SftpSession, dir: &str) {
     let mut cur = String::new();
     for comp in dir.split('/').filter(|c| !c.is_empty()) {
         cur.push('/');

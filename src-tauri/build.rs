@@ -4,8 +4,90 @@ fn main() {
     emit_daemon_build_id();
     emit_daemon_capabilities();
     check_vendor_freshness();
+    check_acct_iso_vendor_freshness();
     embed_daemons();
     tauri_build::build()
+}
+
+/// F5：vendored cc-acct-iso 过期软检查（SS-10「过期看得见」）。从 `VENDOR.md` 抠上游仓路径
+/// （`~` 展开为 $HOME），若上游存在则比对三个脚本与 vendored 副本，不一致则 `cargo:warning`。
+/// 上游缺席 → no-op（同 `check_vendor_freshness`：开发期上游领先副本是常态，软警告非硬失败）。
+fn check_acct_iso_vendor_freshness() {
+    let vendor_dir = Path::new("vendor/cc-acct-iso");
+    let vendor_md = vendor_dir.join("VENDOR.md");
+    println!("cargo:rerun-if-changed={}", vendor_md.display());
+    println!("cargo:rerun-if-changed={}", vendor_dir.join(".vendor_id").display());
+    // D 审计 S1/S5：指纹须覆盖**全部被部署文件**，故过期检查也逐个比这 6 个（不只 3 脚本）。
+    // 顺序须与 VENDOR.md 菜谱 / `.vendor_id` 计算一致（自洽校验按同一顺序拼接）。
+    const DEPLOYED: [&str; 6] = [
+        "scripts/cc-acct-iso",
+        "scripts/lib.sh",
+        "scripts/cc-acct-iso-install.sh",
+        "scripts/test/run-tests.sh",
+        "SKILL.md",
+        "examples/config",
+    ];
+    for f in DEPLOYED {
+        println!("cargo:rerun-if-changed={}", vendor_dir.join(f).display());
+    }
+
+    // (a) 自洽校验：vendored 6 文件的 sha256 前 16 位是否等于 `.vendor_id`（防「改了 vendored
+    //     脚本却忘了重算指纹」→ 远端 Skip 不更新而 build 期无声）。用 sha256sum shell-out（同
+    //     VENDOR.md 菜谱），缺 sha256sum 则跳过该项。
+    if let Ok(recorded) = std::fs::read_to_string(vendor_dir.join(".vendor_id")) {
+        let recorded = recorded.trim();
+        let cat_cmd = format!(
+            "cat {} | sha256sum | cut -c1-16",
+            DEPLOYED
+                .iter()
+                .map(|f| format!("'{}'", vendor_dir.join(f).display()))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        if let Ok(out) = std::process::Command::new("sh").arg("-c").arg(&cat_cmd).output() {
+            let computed = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !computed.is_empty() && computed != recorded {
+                println!(
+                    "cargo:warning=vendor cc-acct-iso 指纹不自洽:.vendor_id={recorded} 但脚本实际 sha={computed}。改了 vendored 文件后请按 VENDOR.md 菜谱重算 .vendor_id。"
+                );
+            }
+        }
+    }
+
+    // (b) 与上游比对（上游缺席 → no-op）。
+    let Ok(text) = std::fs::read_to_string(&vendor_md) else {
+        return;
+    };
+    let Some(up_raw) = extract_backtick_after(&text, "上游仓:") else {
+        return;
+    };
+    let up = if let Some(rest) = up_raw.strip_prefix("~/") {
+        match std::env::var_os("HOME") {
+            Some(home) => Path::new(&home).join(rest),
+            None => return,
+        }
+    } else {
+        Path::new(&up_raw).to_path_buf()
+    };
+    if !up.exists() {
+        return; // 上游缺席 → no-op
+    }
+    // 上游布局：脚本在 scripts/、test 在 scripts/test/、SKILL.md 在根、config 在 examples/。
+    let mut stale = 0usize;
+    for f in DEPLOYED {
+        let vb = std::fs::read(vendor_dir.join(f)).ok();
+        let ub = std::fs::read(up.join(f)).ok();
+        if let (Some(vb), Some(ub)) = (vb, ub) {
+            if vb != ub {
+                stale += 1;
+            }
+        }
+    }
+    if stale > 0 {
+        println!(
+            "cargo:warning=vendor cc-acct-iso 过期:上游有 {stale} 个文件与 vendored 副本不一致。见 src-tauri/vendor/cc-acct-iso/VENDOR.md 的 re-vendor 菜谱。"
+        );
+    }
 }
 
 /// F68：vendor 副本过期检查（SS-10「过期看得见」）。从 `VENDOR.md` **单源**抠 pin + 上游

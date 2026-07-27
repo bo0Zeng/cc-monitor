@@ -24,7 +24,12 @@ import { accountAvatarEl } from "../account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
 import { SETTINGS_APPLIED_EVENT } from "./events";
-import { buildAcctIsoCmd, validateAcctName, type AcctIsoStep } from "./acct-deploy";
+import {
+  buildAcctIsoCmd,
+  validateAcctName,
+  deriveAcctIsoDir,
+  type AcctIsoStep,
+} from "./acct-deploy";
 
 export class AccountsSection {
   readonly element: HTMLElement;
@@ -116,7 +121,7 @@ export class AccountsSection {
         this.info(`远端 daemon 需要更新才能用多账号：${ui.reason}`);
         return;
       case "not-enabled":
-        this.renderNotEnabled(ui.manifestPath, ui.reason);
+        void this.renderNotEnabledFlow(ui.manifestPath, ui.reason);
         return;
       case "ready":
         this.renderTable(state, ui.accounts);
@@ -154,6 +159,95 @@ export class AccountsSection {
     } catch (e) {
       showActionFailureToast("拉起终端失败", String(e), { level: "error" });
     }
+  }
+
+  /** 当前选中远端对应的 host 配置（多账号 IPC 要传 cfg=RemoteHostConfig）。 */
+  private currentHost(): RemoteHostConfig | null {
+    if (!this.origin) return null;
+    return (
+      this.hosts.find((h) => (h.label || h.host) === this.origin) ?? this.hosts[0] ?? null
+    );
+  }
+
+  /**
+   * F5：未启用态先探测远端有没有装 cc-acct-iso。没装 → 显「一键部署」（而非直接甩 init 命令让它
+   * command not found）；装了（或探测失败，别把用户堵死）→ 走现有 init 向导。
+   */
+  private async renderNotEnabledFlow(
+    manifestPath: string | null,
+    reason: string,
+  ): Promise<void> {
+    const host = this.currentHost();
+    if (host) {
+      try {
+        // 探测不依赖 dest（D 审计 S2/S5：只 command -v 一次 exec，任何配置下都能判 installed）。
+        const status = await invoke<{ installed: boolean }>("check_remote_acct_iso", {
+          cfg: host,
+        });
+        if (!status.installed) {
+          const dest = deriveAcctIsoDir(host.daemonPath, host.user);
+          this.renderNeedsDeploy(host, dest);
+          return;
+        }
+      } catch (e) {
+        console.warn("check_remote_acct_iso failed, fall through to wizard:", e);
+      }
+    }
+    this.renderNotEnabled(manifestPath, reason);
+  }
+
+  /** F5：远端没装 cc-acct-iso → 一键部署（vendored 内嵌 → sftp 推 → 装软链，不碰 rc）。 */
+  private renderNeedsDeploy(host: RemoteHostConfig, dest: string | null): void {
+    const box = document.createElement("div");
+    box.className = "accounts-needs-deploy";
+
+    const h = document.createElement("div");
+    h.className = "accounts-ne-title";
+    h.textContent = "该远端还没装多账号管线（cc-acct-iso）";
+    box.appendChild(h);
+
+    // dest 推不出（缺 daemonPath 且 user 缺失/非法）→ 给不出一键部署落点，退回文字指引，不留死角。
+    if (!dest) {
+      const p = document.createElement("div");
+      p.className = "accounts-ne-desc";
+      p.textContent =
+        "多账号靠 cc-acct-iso（每账号一个隔离配置目录、数据共享）。这台远端缺 daemonPath / 用户名，" +
+        "自动推不出部署目录——请先在「连接」组填好远端 user / daemonPath，再回来一键部署。";
+      box.appendChild(p);
+      this.body.appendChild(box);
+      return;
+    }
+
+    const p = document.createElement("div");
+    p.className = "accounts-ne-desc";
+    p.textContent =
+      `多账号靠 cc-acct-iso（每账号一个隔离配置目录、数据共享）。点下面一键把它部署到远端 ` +
+      `${dest}（只软链到 ~/.local/bin，不改你的 ~/.bashrc）。装完再回来启用。`;
+    box.appendChild(p);
+
+    const btn = mkBtn("一键部署 cc-acct-iso");
+    btn.addEventListener("click", () => {
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = "部署中…";
+      void invoke<string>("deploy_remote_acct_iso", { cfg: host, destDir: dest })
+        .then(
+          (msg) => {
+            showActionFailureToast("已部署 cc-acct-iso", msg, {
+              level: "info",
+              durationMs: 6000,
+            });
+            void this.reload(true);
+          },
+          (e) => {
+            showActionFailureToast("部署 cc-acct-iso 失败", String(e), { level: "error" });
+            btn.disabled = false;
+            btn.textContent = prev;
+          },
+        );
+    });
+    box.appendChild(btn);
+    this.body.appendChild(box);
   }
 
   /** A6：未启用 → 内联「启用多账号」向导（无 modal）：填默认账号名 → 预览命令 → 分步弹终端。 */
