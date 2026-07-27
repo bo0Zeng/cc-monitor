@@ -87,10 +87,11 @@ export async function runRemoteResume(
   cwd: string,
   launcher: string,
   configDir?: string, // A4：非空 → 该会话用指定账号 resume（CLAUDE_CONFIG_DIR 注入）
+  accountName?: string, // F05：与 configDir 成对——线通进 LaunchContext，供 CLI 渲染器吐 --account <名>
 ): Promise<void> {
   let cmd: string;
   try {
-    const { ctx, plan } = planResumeDirect(sid, cwd, launcher, configDir);
+    const { ctx, plan } = planResumeDirect(sid, cwd, launcher, configDir, accountName);
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 resume 命令", String(err));
@@ -119,10 +120,11 @@ export async function runRemoteResumeTmux(
   launcher: string,
   name?: string,
   configDir?: string, // A4：非空 → 该会话用指定账号 resume（CLAUDE_CONFIG_DIR 注入）
+  accountName?: string, // F05：与 configDir 成对——线通进 LaunchContext，供 CLI 渲染器吐 --account <名>
 ): Promise<boolean> {
   let cmd: string;
   try {
-    const { ctx, plan } = planResumeTmux(sid, cwd, launcher, name, configDir);
+    const { ctx, plan } = planResumeTmux(sid, cwd, launcher, name, configDir, accountName);
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 tmux resume 命令", String(err));
@@ -147,10 +149,11 @@ export async function runRemoteResumeIntoExistingTmux(
   name: string,
   launcher: string,
   configDir?: string, // A4：非空 → 该会话用指定账号 resume；空 → 基座（builder 会 unset 残留 env）
+  accountName?: string, // F05：与 configDir 成对——线通进 LaunchContext，供 CLI 渲染器吐 --account <名>
 ): Promise<boolean> {
   let cmd: string;
   try {
-    const { ctx, plan } = planResumeIntoExistingTmux(sid, name, launcher, configDir);
+    const { ctx, plan } = planResumeIntoExistingTmux(sid, name, launcher, configDir, accountName);
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造就地 resume 命令", String(err));
@@ -176,6 +179,7 @@ export async function runNewSessionRemote(
   cwd: string,
   command: string,
   configDir?: string, // A4：非空 → 新会话用指定账号启动
+  accountName?: string, // F05：与 configDir 成对——线通进 LaunchContext，供 CLI 渲染器吐 --account <名>
 ): Promise<void> {
   await runRemoteLauncher(
     origin,
@@ -183,6 +187,7 @@ export async function runNewSessionRemote(
     deriveTmuxName(cwd),
     command || AGENT_PROFILE.defaultLauncher,
     configDir,
+    accountName,
   );
 }
 
@@ -193,10 +198,11 @@ export async function runRemoteLauncher(
   tmuxName: string,
   command: string,
   configDir?: string, // A4：非空 → 新会话用指定账号启动（CLAUDE_CONFIG_DIR 注入）
+  accountName?: string, // F05：与 configDir 成对——线通进 LaunchContext，供 CLI 渲染器吐 --account <名>
 ): Promise<void> {
   let cmd: string;
   try {
-    const { ctx, plan } = planLauncher(cwd, tmuxName, command, configDir);
+    const { ctx, plan } = planLauncher(cwd, tmuxName, command, configDir, accountName);
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 launcher 命令", String(err));

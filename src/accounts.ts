@@ -429,24 +429,68 @@ export async function recordLastAccount(sessionId: string, account: string): Pro
 }
 
 /**
+ * F05：判别联合形态的账号解析结果——`AccountResolver` 目标（MASTERPLAN §3 账本）。取代
+ * "只吐 configDir、名字在解析完就被丢弃"的旧口径：`kind==="account"` 时同时带 `name` 和
+ * `configDir`——线通给调用方后，`name` 才能继续往下传进 `LaunchContext`（F05 的核心交付：
+ * 让 `ACCOUNT_DIMENSION.cliFlags` 吐得出 `--account <名>`）。
+ */
+export type AccountResolution =
+  | { kind: "account"; name: string; configDir: string }
+  | { kind: "base" }
+  | { kind: "unavailable"; requestedName?: string };
+
+/**
+ * F05：纯函数——从 `withAccount` 原内联逻辑抽出（显式选号 / 跟随解析两分支），决策逻辑本身
+ * 逐字节不变，只是从"直接算出 configDir 就地用"变成"先返回一个自描述的判别联合"。
+ * `opts.explicit` 非空 → 显式选号；命中 `isSelectable` → `account`，否则 → `unavailable`。
+ * 否则若 `opts.follow` 存在 → `resolveFollowAccount`（lastAccount→当前账号→都不可选）解析：
+ * 命中 → `account`；都不可选 → `base`（跟随下沉是静默语义，不是"不可用"，故不用 `unavailable`）。
+ * 两者都不满足（无 accountName 也无 follow）→ `base`（今天的"默认起"逐字节旧行为）。
+ */
+export function resolveAccount(
+  state: AccountsState,
+  opts: { explicit?: string | null; follow?: { lastAccount?: string | null } },
+): AccountResolution {
+  if (opts.explicit) {
+    const configDir = accountConfigDir(state, opts.explicit);
+    return configDir
+      ? { kind: "account", name: opts.explicit, configDir }
+      : { kind: "unavailable", requestedName: opts.explicit };
+  }
+  if (opts.follow) {
+    const current = currentWorkingAccount(state)?.name ?? null;
+    const priorPin = opts.follow.lastAccount ?? null;
+    const followName = resolveFollowAccount(state, { lastAccount: priorPin, current });
+    if (followName) {
+      const configDir = accountConfigDir(state, followName);
+      if (configDir) return { kind: "account", name: followName, configDir };
+    }
+    return { kind: "base" };
+  }
+  return { kind: "base" };
+}
+
+/**
  * A4：**统一「带账号起会话」编排**——history resume / tabs resume / 「开新 Claude」对话框
  * 三站点共用，消除各写一遍 `resolve configDir + record lastAccount` 的漂移（DESIGN §4）。
  * A5「换号重启」是本编排的超集（在 run 前插 checkTrust/compact、run 后同样 record），届时在此扩展。
+ * F05：内部改用 `resolveAccount` 求解（行为逐字节不变，见其头注）；`run` 回调新增第二参数
+ * `accountName`——命中账号时非空，否则 `undefined`，供调用方线通进 `LaunchContext`（F05 交付）。
  *
- *   - `accountName == null` **且无 `opts.follow`** → 默认起：`run(undefined)`（不注入、不记账、不 fetch，A4 逐字节旧行为）。
+ *   - `accountName == null` **且无 `opts.follow`** → 默认起：`run(undefined, undefined)`（不注入、不记账、不 fetch，A4 逐字节旧行为）。
  *   - `accountName == null` **且有 `opts.follow`**（account-ux U2 opt-in 跟随）→ `fetchAccounts` 后
  *     经 `resolveFollowAccount`（lastAccount → 当前账号 → null）解析：命中则注入其 configDir +（给了
- *     sessionId 时）记 lastAccount（会话账号 sticky 自增强）；解析不到 → `run(undefined)` 落基座。
+ *     sessionId 时）记 lastAccount（会话账号 sticky 自增强）；解析不到 → `run(undefined, undefined)` 落基座。
  *     **下沉静默不 `onUnselectable`**（用户没显式点号，不该弹提示）。
  *   - `accountName` 非空 → `fetchAccounts` 解析 configDir：
  *       · 解析不到（不可选 / 账号库不可用）→ `onUnselectable(name)`（调用方 toast）后**退化为默认起**；
- *       · 解析到 → `run(configDir)`；再在**给了 sessionId 时**记 lastAccount（源②，新会话无 sid 不记）。
+ *       · 解析到 → `run(configDir, accountName)`；再在**给了 sessionId 时**记 lastAccount（源②，新会话无 sid 不记）。
  * `run` 内部的拉起失败由 run 自己处理（runRemote* 有复制命令回退）；本编排只统一 resolve/record 口径。
  */
 export async function withAccount(
   origin: string,
   accountName: string | null,
-  run: (configDir?: string) => Promise<void>,
+  run: (configDir?: string, accountName?: string) => Promise<void>,
   opts: {
     sessionId?: string;
     onUnselectable?: (name: string) => void;
@@ -454,40 +498,39 @@ export async function withAccount(
     follow?: { lastAccount?: string | null };
   } = {},
 ): Promise<void> {
-  let configDir: string | undefined;
-  let recordName: string | null = null; // 成功注入后要记的账号名(显式=accountName / 跟随=解析名)
-  if (accountName) {
-    // 显式选号(A4 语义不变)
+  let state: AccountsState | undefined;
+  if (accountName || opts.follow) {
     try {
-      const state = await fetchAccounts(origin);
-      configDir = accountConfigDir(state, accountName) ?? undefined;
+      state = await fetchAccounts(origin);
     } catch {
-      configDir = undefined; // 账号库拿不到 → 退化默认起（fetchAccounts 通常不抛，防御性兜底）
-    }
-    if (!configDir) opts.onUnselectable?.(accountName);
-    else recordName = accountName;
-  } else if (opts.follow) {
-    // account-ux U2:跟随模式(opt-in)。accountName===null 且**无** follow 的老调用不进此分支,
-    // 逐字节旧行为(不 fetch、落基座)。下沉静默不 toast(用户没显式点号)。
-    try {
-      const state = await fetchAccounts(origin);
-      const current = currentWorkingAccount(state)?.name ?? null;
-      const priorPin = opts.follow.lastAccount ?? null;
-      const followName = resolveFollowAccount(state, { lastAccount: priorPin, current });
-      if (followName) {
-        configDir = accountConfigDir(state, followName) ?? undefined;
-        if (configDir) {
-          // U3 审计 重要-1:不 clobber 既有 pin。仅当**无既有 pin**(no-owner → 变 sticky)、或**解析
-          // 结果==既有 pin**(no-op)时才记账;既有 pin 存在但不可选、下沉到 current → **不记账**,保住原
-          // pin(守「粘性优先」不变量,避免 history/tab 默认 resume 把会话账号悄悄翻成当前账号)。
-          recordName = !priorPin || followName === priorPin ? followName : null;
-        }
-      }
-    } catch {
-      configDir = undefined; // 库不可用 → 基座
+      state = undefined; // 账号库拿不到 → 落 base（fetchAccounts 通常不抛，防御性兜底）
     }
   }
-  await run(configDir);
+  const resolution: AccountResolution = state
+    ? resolveAccount(state, { explicit: accountName, follow: opts.follow })
+    : accountName
+      ? { kind: "unavailable", requestedName: accountName }
+      : { kind: "base" };
+
+  let configDir: string | undefined;
+  let recordName: string | null = null; // 成功注入后要记的账号名(显式=accountName / 跟随=解析名)
+  if (resolution.kind === "account") {
+    configDir = resolution.configDir;
+    if (accountName) {
+      // 显式选号(A4 语义不变)
+      recordName = resolution.name;
+    } else {
+      // 跟随解析命中——U3 审计 重要-1:不 clobber 既有 pin。仅当**无既有 pin**(no-owner → 变
+      // sticky)、或**解析结果==既有 pin**(no-op)时才记账;既有 pin 存在但不可选、下沉到
+      // current → **不记账**,保住原 pin(守「粘性优先」不变量,避免 history/tab 默认 resume
+      // 把会话账号悄悄翻成当前账号)。
+      const priorPin = opts.follow?.lastAccount ?? null;
+      recordName = !priorPin || resolution.name === priorPin ? resolution.name : null;
+    }
+  } else if (resolution.kind === "unavailable" && accountName) {
+    opts.onUnselectable?.(accountName);
+  }
+  await run(configDir, resolution.kind === "account" ? resolution.name : undefined);
   if (recordName && configDir && opts.sessionId) {
     void recordLastAccount(opts.sessionId, recordName);
   }

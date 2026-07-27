@@ -30,10 +30,20 @@ export type LaunchAction =
   | { kind: "resume"; sid: string }
   | { kind: "attach"; name: string };
 
-/** F03 阶段调用方只有 `configDir`（目录路径），没有账号「名字」——`ACCOUNT_DIMENSION.cliFlags`
- *  因此恒返回 `null`（CLI 的 `--account <名>` 要名字，此处给不出）。账号名线通进来是 F05 的
- *  移交点，不在本功能内提前假装解决。 */
-export type LaunchAccount = { kind: "account"; configDir: string } | { kind: "none" };
+/** F05：账号名已线通——`kind==="account"` 带 `configDir`（供兜底渲染器 `export
+ *  CLAUDE_CONFIG_DIR=<dir>`，这个字段自 F03 起就有）与**可选**的 `name`（供
+ *  `ACCOUNT_DIMENSION.cliFlags` 吐 `--account <名>`）。`name` 可选而非必需——
+ *  `remote-launch.ts` 保留的老式 builder 直调路径（`remote-launch.test.ts` 的 15 个符号，
+ *  只传 `configDir` 不传名字）必须继续能触发账号注入，不能因为"不知道名字"就整个降级成
+ *  `base`（那会让兜底渲染器也漏注入，是真回归，不是诚实降级）。`name` 缺失时
+ *  `cliFlags` 对这一路 `null`（无法说出 `--account`，老实强制走兜底），`apply()`（兜底渲染器
+ *  路径）不受影响，因为它只需要 `configDir`。**只有两态**（`account`/`base`），不存在"未决定"
+ *  的第三态——上游 `resolveAccount`/`accountConfigDir` 已经替调用方做过这个决定（F05 计划
+ *  §2 第3条：CLI 语境下账号维度必须恒显式表态，不能有"两者都不传"的沉默态，否则重蹈
+ *  R11——`ccm` 会静默落 manifest 默认账号）。 */
+export type LaunchAccount =
+  | { kind: "account"; name?: string; configDir: string }
+  | { kind: "base" };
 
 /**
  * 有序、渲染时逐项原样吐出（不合并/不去重）——合并会破坏「与今天逐字节相同」：今天

@@ -47,13 +47,19 @@ export const ENV_RESET_DIMENSION: LaunchDimension = {
 };
 
 /** account：注入选中账号的 `CLAUDE_CONFIG_DIR`。order 必须 > `ENV_RESET_DIMENSION.order`。
- *  `cliFlags` 恒 `null`——F03 阶段调用方只有 `configDir`、没有账号「名字」，而 `ccm --account`
- *  收的是名字（远端按 manifest 查 configDir）。这是显式的、有记录的范围边界（F05 移交点），
- *  不是遗漏——见 F03 计划 §1"明确不做什么"。 */
+ *
+ *  F05：`applies` 恒 `true`（不再只在 `kind==="account"` 时触发）——账号维度必须在 CLI 语境下
+ *  **永远显式表态**，`base` 态也要吐 `--base`，绝不能让这个维度对"未选账号"这个最常见场景
+ *  沉默。**这条不是品味问题，是 F03 遗留的一个真实 bug**：`applies` 若只在 `kind==="account"`
+ *  时为真，`canRenderCli` 的"任一维度 `cliFlags` 返回 `null` 就降级"检查根本不会跑到这个维度
+ *  （`applies` 已是 `false`，循环直接跳过）——于是一个解析成"基座"的 plan，只要满足其余 CLI
+ *  渲染条件，就会被 `renderCli` 吐成一条**既不带 `--account` 也不带 `--base` 的 `ccm resume …`**，
+ *  R11 的病灶原样复现（远端 shell 若没有继承 `CLAUDE_CONFIG_DIR`，`ccm` 会静默落 manifest 默认
+ *  账号，可能不是用户想要的那个）。`apply()` 内部逻辑不变（`base` 态仍无 env op，字节不变）。 */
 export const ACCOUNT_DIMENSION: LaunchDimension = {
   id: "account",
   order: 20,
-  applies: (ctx) => ctx.account.kind === "account",
+  applies: () => true,
   apply: (plan, ctx) => {
     if (ctx.account.kind !== "account") return;
     if (!isValidConfigDir(ctx.account.configDir)) {
@@ -61,7 +67,13 @@ export const ACCOUNT_DIMENSION: LaunchDimension = {
     }
     plan.env.push({ kind: "export-config-dir", value: ctx.account.configDir });
   },
-  cliFlags: () => null,
+  // name 缺失（老式 remote-launch.ts 直调路径，只给 configDir 没给名字）→ null：老实说
+  // "这个 plan 里我说不出 --account"，强制走兜底——不是遗漏，是 accountOf 的 name 参数
+  // 本就是可选增强（见 LaunchAccount 类型头注）。
+  cliFlags: (ctx) => {
+    if (ctx.account.kind !== "account") return ["--base"];
+    return ctx.account.name ? ["--account", ctx.account.name] : null;
+  },
 };
 
 /** nested-env-reset：resume/new 前清 Claude 嵌套会话标记（tmux server env 可能带毒，issue #24）。

@@ -35,11 +35,16 @@ OUT="$(run_print "$LINE")"
 NEEDLE_TMUX_NAME="-s 'cc-p1'"
 NEEDLE_CWD="-c '/tmp'"
 NEEDLE_SID_TAG="@ccm_sid_expect 'p1'"
+NEEDLE_BASE="'--base'"
 ck "resume 动作被内层 ccm 收到（positional，非 flag——shared/ccm 内部约定）" yes "$(contains "resume" "$OUT")"
 ck "sid p1 出现在内层调用里" yes "$(contains "p1" "$OUT")"
 ck "tmux 名 cc-p1 出现在 new-session" yes "$(contains "$NEEDLE_TMUX_NAME" "$OUT")"
 ck "cwd /tmp 出现在 -c" yes "$(contains "$NEEDLE_CWD" "$OUT")"
 ck "@ccm_sid_expect 打标用了 p1（F04：通道A写意图，非事实 @ccm_sid）" yes "$(contains "$NEEDLE_SID_TAG" "$OUT")"
+# F05：账号维度恒显式表态——base 态真的把 --base 传进内层调用（R11 同型 bug 修复的端到端验证：
+# 以前账号维度触发即强制降级、CLI 渲染器测不到这条路径；现在 base 态本身就走 CLI，必须验证
+# 真 ccm 收到了 --base，不是被悄悄吞掉/漏传）。
+ck "--base 真的传进了内层调用（F05：账号维度恒显式表态）" yes "$(contains "$NEEDLE_BASE" "$OUT")"
 
 echo
 echo "===== 场景 newTmuxCustomLauncher ====="

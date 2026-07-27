@@ -668,8 +668,10 @@ attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建�
 让更多场景走上"看起来更先进"的 CLI 路径而近似渲染：
 
 1. **任一已触发维度的 `cliFlags(ctx)` 返回 `null`**——这是维度作者的显式声明"我在当前 `ctx` 下
-   无法用 CLI 语法表达"（今天只有 `account` 维度会，因为调用方只有 `configDir` 目录路径、没有
-   账号「名字」，`ccm --account` 要名字，这是 F05 的移交点）。
+   无法用 CLI 语法表达"。F05 之前 `account` 维度恒如此（调用方只有 `configDir` 没有账号
+   「名字」）；**F05 后账号名已线通**，`cliFlags` 对 `account`（有名字时）/`base` 两态都吐实际
+   flag——只有"账号存在但名字缺失"（`remote-launch.ts` 保留的老式直调路径）这一种情形才继续
+   返回 `null`，见 §35 的完整讨论。
 2. **`container.kind==="tmux"` 且 `mode==="send-into"`**（往已存在的 idle tmux 就地复用，不新建）——
    `shared/ccm` 的 `--tmux` 只有幂等 create-or-attach 一种形态，没有这个能力。硬套会让 #76（claude
    已退出但 tmux 还在，短路跳过 send-keys，用户 attach 进空 shell）以 CLI 路径的新形式复发，且现有
@@ -726,6 +728,37 @@ trip**，覆盖 100% 的既有真实流量。别为了"统一形态"让不需要
 的自定义名会话被挡（kill 存活/send-keys 不污染 pane）、有 `@ccm_sid` 时真的放行。Rust 单测只锁
 字符串形状，真机验收锁"这条嵌套 if/cut 的 shell 语法真的按预期分支执行"（R1 教训：门禁全绿过仍
 放行过一个让 send-keys 完全失效的改动，字符串断言测不出真实行为）。
+
+## 35. 维度的 `applies` 绝不能条件性跳过 `cliFlags` 的 `null` 安全网（F05 / unify-launch）
+
+**背景**：§33 铁律①依赖一个隐藏前提——"任一已触发维度的 `cliFlags` 返回 `null` 就强制降级"这条
+检查（`canRenderCli` 循环里的 `if (dim.applies(ctx) && dim.cliFlags && dim.cliFlags(ctx) === null)
+return false;`）**只在 `dim.applies(ctx)` 为真时才会跑**。F03 刚落地时，`ACCOUNT_DIMENSION.applies`
+写成 `ctx.account.kind === "account"`——也就是说，对**没有选中账号**这个最常见场景（`kind==="base"`），
+`applies` 恒 `false`，整条安全网连问都没问过这个维度就被循环跳过了。后果：一个解析成"基座"的
+plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**既不带 `--account` 也不带 `--base`**
+的 `ccm resume …`——R11（`ccm` 在两者都不传时静默落 manifest 默认账号）的病灶以新形式复发，且
+影响的是多数用户（单账号/未装账号库）而非少数（F05 才发现并修复，见 MASTERPLAN §6 R11/R13）。
+
+**铁律**：**一个维度是否要在 CLI 语境下"发声"，不能靠 `applies` 的条件性真假来决定它是否接受
+`null` 检查的审视**——`applies` 只应该回答"这个维度在当前 `ctx` 下有没有效果要摊平进
+`LaunchPlan`"（兜底渲染器视角），不能被拿来当"这个维度要不要在 CLI 语境下老实交代能不能说清楚"
+的代理判据（CLI 渲染器视角）。两件事分属两个不同渲染器的问题，混在一个布尔值里，任何一个
+维度只覆盖了"发声"的部分状态（如 F03 的 `account` 只在选中账号时发声），另一部分状态
+（未选账号）就会被循环结构性跳过、永远问不到 `cliFlags`。
+
+**实践准则**：新增/修改一个维度时，若它在 CLI 语境下**理应对某个状态有话可说**（哪怕这句话是
+"什么都不做"，也要用 `[]`——空数组不是 `null`，`if (flags)` 对空数组仍真值判断成立、循环仍会
+`tokens.push(...[])`（no-op）而不会误触发降级），就不能让 `applies` 对那个状态返回 `false`。
+`ACCOUNT_DIMENSION` 修复后的形态（`applies` 恒 `true`；`cliFlags` 对 `account` 有名字/`base`
+两态吐真实 flag，只对"账号存在但名字未知"这一种情形吐 `null`）是这条准则的落地范例：`null`
+只用来表达"这个具体状态我说不出来"，不是被 `applies` 的疏忽间接代出来的。
+
+**验证**：F05 Phase D 审计逐一核对了 `IDENTITY_DIMENSION`/`ENV_RESET_DIMENSION`/
+`NESTED_ENV_RESET_DIMENSION`——三者的 `cliFlags` 无论 `applies` 真假都从不返回 `null`（恒
+`[]` 或非空数组），结构上不可能重蹈这个坑；当前代码库里只有 `ACCOUNT_DIMENSION` 踩过、且已修。
+未来加新维度（如 F07 的 `model`）时，若 `cliFlags` 可能对某状态返回 `null`，必须同时检查
+`applies` 是否会在那个状态下把循环挡在门外——这条不是"记得检查"，是加维度时的强制 checklist 项。
 
 ## 修改本文档
 
