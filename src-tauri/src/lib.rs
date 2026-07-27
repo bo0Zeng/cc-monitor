@@ -37,6 +37,7 @@ mod sftp;
 // 并行跑（aggregate：本地 + 远端 session 同时显示为 Tab），走相同的
 // batch_to_payloads → replay.on_line_batch 出口；远端行带 origin=host 标签。
 // remote off（默认）时本模块不被调用，本地路径 bit-for-bit 不变。
+mod ccm_probe;
 mod ssh_source;
 mod subagent;
 mod tasks;
@@ -966,6 +967,7 @@ pub fn run() {
             tmux::capture_remote_pane,
             tmux::kill_remote_tmux,
             tmux::tmux_send_keys,
+            ccm_probe::probe_ccm_cli,
             // Batch15-P1：code-picture 代码全景后端命令族（per-repo Engine 池,只读查询）
             panorama::panorama_index,
             panorama::panorama_reindex,

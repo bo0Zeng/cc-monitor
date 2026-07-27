@@ -174,6 +174,10 @@ export class SettingsPanel {
   private resumeLocalInput!: HTMLInputElement;
   private resumeRemoteInput!: HTMLInputElement;
   private bringFrontCheckbox!: HTMLInputElement;
+  /** F03（unify-launch）：`forceLegacyLaunchRenderer` 无 UI 暴露（手改 config.json 的逃生口），
+   *  但 `onBehaviorToggle` 每次都要交一份完整 `BehaviorConfig`——缓存 open() 时读到的值原样带回，
+   *  防止面板任何一个勾选框变动都把它悄悄重置成 DEFAULTS 里的 false。 */
+  private forceLegacyLaunchRenderer = false;
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
   /** F82a：见 SettingsPanelOptions.windowMode。 */
   private readonly windowMode: boolean;
@@ -209,6 +213,7 @@ export class SettingsPanel {
     this.notifyTurnEndCheckbox.checked = behavior.notifyTurnEnd;
     this.resumeLocalInput.value = behavior.resumeCommandLocal;
     this.resumeRemoteInput.value = behavior.resumeCommandRemote;
+    this.forceLegacyLaunchRenderer = behavior.forceLegacyLaunchRenderer;
     this.updateBringFrontEnabled();
     this.banner.textContent = "";
     this.banner.classList.remove("settings-banner-show");
@@ -242,6 +247,7 @@ export class SettingsPanel {
       resumeCommandLocal: this.resumeLocalInput.value.trim(),
       resumeCommandRemote: this.resumeRemoteInput.value.trim(),
       notifyTurnEnd: this.notifyTurnEndCheckbox.checked,
+      forceLegacyLaunchRenderer: this.forceLegacyLaunchRenderer,
     };
     try {
       await setBehavior(next);

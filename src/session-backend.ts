@@ -24,11 +24,29 @@
  * remote-launch，其后端耦合移动延后阶段②。
  */
 
+import { posixQuote } from "./shell-quote.ts";
+
+/**
+ * F03：tmux 目标——**判别式入参**，取代此前靠字符串形状（首尾是否恰为 `'`）猜测「这个名字
+ * 有没有被 posixQuote 过」的嗅探写法。`value` 恒是**明文名字**（两个 variant 都不预先加引号），
+ * `kind` 声明这个名字来自哪条校验路径：
+ *   - `"raw"`：已证明只含 `[A-Za-z0-9_-]`（如 `cc-<sid8>`）——渲染时裸拼安全。
+ *   - `"quoted"`：校验时允许空格等自由字符（如「开新 Claude」的自定义会话名）——渲染时须
+ *     `posixQuote` 包裹。
+ * 调用方（`remote-launch.ts` 的 builder）在**构造时**就知道走的是哪条校验路径，直接声明
+ * `kind`，本座只按声明渲染、不反推、不猜——嗅探因此从结构上被消灭，不是"更小心地嗅探"。
+ */
+export type TmuxTarget = { kind: "raw" | "quoted"; value: string };
+
+function targetToken(t: TmuxTarget): string {
+  return t.kind === "quoted" ? posixQuote(t.value) : t.value;
+}
+
 /** 一个会话后端（多路复用器）的命令构造契约。阶段②可加第二实现（abduco/dtach），靠能力探测选。 */
 export interface SessionBackend {
   /**
    * 幂等「建 detached 会话 → 键入载荷 → attach」。会话已存在 → 建失败被吞、`&&` 短路跳过键入 →
-   * 只 attach（不重复启动）。`target` = 后端目标 token（调用方决定裸校验名或 posixQuote 名）；
+   * 只 attach（不重复启动）。`target` = 后端目标（判别式，见 `TmuxTarget`）；
    * `quotedCwd` = 已 posixQuote 的工作目录，null 则不带目录标志；`quotedPayload` = 已 posixQuote 的
    * 键入载荷（含 unset 嵌套 env + 启动/resume 命令）。
    * `ccmSid`（#72，可选）= 完整会话 sid：**新建会话后在 create 分支里显式 set `@ccm_sid=<sid>`**，
@@ -36,20 +54,20 @@ export interface SessionBackend {
    * （新会话 sid 未知时不传）。**调用方须保证 `ccmSid` 为 `[A-Za-z0-9_-]`**（座不做校验、裸拼）。
    */
   createRunAttach(args: {
-    target: string;
+    target: TmuxTarget;
     quotedCwd: string | null;
     quotedPayload: string;
     ccmSid?: string;
   }): string;
-  /** attach 一个已存在会话。`target` 由调用方预备（posixQuote 名或裸校验名）。 */
-  attach(target: string): string;
+  /** attach 一个已存在会话。 */
+  attach(target: TmuxTarget): string;
   /**
    * audit-fixes F03（idle-tmux 就地复用）：往一个**已存在**会话（claude 已退、只剩交互 shell 的
    * `cc-<sid8>` 空 tmux）键入载荷 + attach——**不 new-session**（区别于 `createRunAttach` 的幂等建闸：
    * 那个在会话已存在时会短路跳过 send-keys、只 attach，于是空 shell 里永远起不了 claude）。
    * 复用原会话名 = 不产 `cc-<sid8>-N` 孤儿（治 #76 根因）。`@ccm_sid` 已在建时设过、复用同 sid 不重设。
    */
-  runInExistingAttach(args: { target: string; quotedPayload: string }): string;
+  runInExistingAttach(args: { target: TmuxTarget; quotedPayload: string }): string;
 }
 
 /**
@@ -67,14 +85,11 @@ export interface SessionBackend {
  * `=name:` 是唯一在 send-keys / capture-pane / set-option / show-options / kill-session /
  * has-session / attach **全部**动词上都既通用又精确的形式。矩阵见 MASTERPLAN §5.3。
  *
- * `target` 可能是**裸名**（`buildResumeTmuxCmd`）或**已 posixQuote**（`buildLauncherCmd` 的 `'cc-x'`）
- * → `=` 与 `:` 必须落在引号**内**，否则会被当成名字的一部分或脱出引号保护。
+ * `target` 的 `kind` 决定 `=`/`:` 落在引号**内**还是裸拼——两者都不会把它们暴露到引号外。
  * **`new-session -s <名>` 收的是名字不是 target，不加。**
  */
-function exactTarget(target: string): string {
-  return target.startsWith("'") && target.endsWith("'") && target.length >= 2
-    ? `'=${target.slice(1, -1)}:'` // 'cc-x' → '=cc-x:'（含转义的 'a'\''b' → '=a'\''b:' → =a'b:）
-    : `=${target}:`; // cc-s1 → =cc-s1:
+function exactTarget(target: TmuxTarget): string {
+  return targetToken({ kind: target.kind, value: `=${target.value}:` });
 }
 
 /**
@@ -112,7 +127,7 @@ export const TMUX_BACKEND: SessionBackend = {
       : "";
 
     return (
-      `tmux new-session -d -s ${target}${cflag} 2>/dev/null && ` + // `-s` 是名字，不加 `=`/`:`
+      `tmux new-session -d -s ${targetToken(target)}${cflag} 2>/dev/null && ` + // `-s` 是名字，不加 `=`/`:`
       setSid +
       setTitle +
       `tmux send-keys -t ${t} ${quotedPayload} Enter; ` +

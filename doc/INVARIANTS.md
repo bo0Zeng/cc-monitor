@@ -634,6 +634,37 @@ attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建�
 等固定叠加值不会跟着反相 → 观感崩。改动涉及主题 / 配色断言前先认这条事实：**只有暗色**，别在文档/宣传里
 声称覆盖了浅色。（本条 audit-fixes F11 从 `account-ux/MASTERPLAN.md` 上移至此，作仓库级事实沉淀。）
 
+## 33. LaunchPlan 双渲染器——CLI 渲染器对无法诚实表达的维度/容器形态必须放弃，不得近似（F03 / unify-launch）
+
+**背景**：F03 把 7 个 builder 收敛成 `LaunchPlan` IR（`src/launch-plan.ts`）+ 维度注册表
+（`src/launch-dimensions.ts`）+ 两个渲染器：`renderFallback`（`src/launch-render-fallback.ts`，
+编译 IR 成裸 shell 串，逐字节等于 F03 之前的输出）与 `renderCli`（`src/launch-render-cli.ts`，
+翻译成对 `ccm`（F02）的一次调用）。`canRenderCli` 是两者之间的**唯一分流点**。
+
+**铁律**：`canRenderCli` 对以下两类情形必须返回 `false`（强制走 `renderFallback`），**不得**为了
+让更多场景走上"看起来更先进"的 CLI 路径而近似渲染：
+
+1. **任一已触发维度的 `cliFlags(ctx)` 返回 `null`**——这是维度作者的显式声明"我在当前 `ctx` 下
+   无法用 CLI 语法表达"（今天只有 `account` 维度会，因为调用方只有 `configDir` 目录路径、没有
+   账号「名字」，`ccm --account` 要名字，这是 F05 的移交点）。
+2. **`container.kind==="tmux"` 且 `mode==="send-into"`**（往已存在的 idle tmux 就地复用，不新建）——
+   `shared/ccm` 的 `--tmux` 只有幂等 create-or-attach 一种形态，没有这个能力。硬套会让 #76（claude
+   已退出但 tmux 还在，短路跳过 send-keys，用户 attach 进空 shell）以 CLI 路径的新形式复发，且现有
+   回归测试测不到（它们测的是兜底路径的 builder，不测 `renderCli`）。**`mode==="attach-only"` 不受此
+   限**——`ccm attach <名>` 与 `shared/ccm` 源码核对就是 `exec tmux attach -t "=$名:"`，与兜底渲染器
+   的 `SESSION_BACKEND.attach()` 逐字同构，没有 create-or-attach vs 就地复用那种歧义，可安全走 CLI
+   渲染器（F03 Phase D 架构审计发现：早期实现把两种模式并入同一把闸门，导致 `renderCli` 的 attach
+   分支在生产路径上永不可达——已收窄为只挡 `send-into`）。
+
+**为什么钉成不变量而非留作注释**：未来任何人加新维度或新容器形态，若忘记正确实现 `cliFlags`
+（或忘记声明某形态 CLI 表达不了），`canRenderCli` 会**默认放行**（`cliFlags` 未定义时视为
+"这维度不影响 CLI 可行性"），静默把一个 CLI 表达不了的 plan 送进 `renderCli`，产出一条**语法正确
+但语义错误**的命令——这类 bug 不会在类型检查或黄金串测试里现形，只会在真机上表现为诡异的会话
+行为。加新维度/新容器形态时，必须显式想清楚它在 `cliFlags` 下的行为，而不是留给默认值蒙混过关。
+
+**验证**：`src/launch-render-cli.test.ts` 的 #76 防线测试组——通过临时删除 `canRenderCli` 里的
+`mode !== "create-or-attach"` 判断、确认恰好 2 条测试转红，证明该判断不是摆设（见测试文件头注）。
+
 ## 修改本文档
 
 加新的不变量时：
