@@ -37,7 +37,7 @@ SESSIONS=()
 
 cleanup() {
   set +e
-  for s in "${SESSIONS[@]:-}"; do [ -n "$s" ] && tmux kill-session -t "$s" 2>/dev/null; done
+  for s in "${SESSIONS[@]:-}"; do [ -n "$s" ] && tmux kill-session -t "=$s:" 2>/dev/null; done
   for d in "$OLD" "$NEW"; do
     for pf in "$d"/sessions/*.json; do
       [ -f "$pf" ] || continue
@@ -56,7 +56,7 @@ new_sid() {
   local sid s
   for _ in 1 2 3 4 5; do
     sid="$(cat /proc/sys/kernel/random/uuid)"; s="cc-${sid:0:8}"
-    tmux has-session -t "$s" 2>/dev/null || { echo "$sid"; return 0; }
+    tmux has-session -t "=$s:" 2>/dev/null || { echo "$sid"; return 0; }
   done
   echo "new_sid: 连续撞名(不该)" >&2; return 1
 }
@@ -82,7 +82,7 @@ wait_argv() {  # <dir> <sid> <timeout-s>
   done
   return 1
 }
-session_alive() { tmux has-session -t "$1" 2>/dev/null && echo 1 || echo 0; }
+session_alive() { tmux has-session -t "=$1:" 2>/dev/null && echo 1 || echo 0; }
 
 # drive_restart <sid> <session> <account> <compactFirst> <confirm> <seqfile> <toastfile> [extra env...]
 drive_restart() {

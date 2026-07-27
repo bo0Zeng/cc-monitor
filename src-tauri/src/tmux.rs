@@ -109,6 +109,45 @@ fn classify_capture_output(raw: &str) -> Result<String, String> {
     }
 }
 
+/// F01：tmux `-t <target>` 的**精确匹配**包装。
+///
+/// **裸 `-t <名>` 不是精确匹配**：tmux 依次按「精确名 → **名字开头** → **glob**」解析。
+/// 实测（tmux 3.6，隔离 `-L` socket）——只有 `sib-2` 存在时：
+///   - `kill-session -t sib` → **杀掉 `sib-2` 且 rc=0**（当成功回报）
+///   - `send-keys -t sib 'HELLO' Enter` → 投进 `sib-2`
+///   - `capture-pane -p -t sib` → 抓的是 `sib-2`
+///   - `kill-session -t 'si*'` → glob 命中并杀掉
+/// 本仓必然踩：`pickFreshTmuxName` 刻意造 `cc-<sid8>-2/-3`，终端 `cct` 造 `<dir>_cc-2/-3`。
+///
+/// **为什么是 `=name:` 而不是 `=name`**（别"简化"掉尾冒号）：`=` 前缀只在 target-**session**
+/// 解析路径上被识别。`send-keys`/`capture-pane` 收的是 target-**pane**，`set-option`/`show-options`
+/// 走 pane 解析后上溯——这些路径上 `=name` 直接 `can't find pane`、**rc=1 完全失效**（实测）。
+/// 尾冒号把串强制成 `session:` 形态（当前 window、活动 pane），`=` 才落在会话名段上被正确识别。
+/// `=name:` 是唯一在全部动词上都既通用又精确的形式。矩阵见 `.claude/planned-build/unify-launch/MASTERPLAN.md` §5.3。
+///
+/// 删掉它会让换号重启把 `/exit` 敲进**兄弟会话里还活着的 claude** 并 kill 它，而 UI 报告「已重启」。
+fn exact_target(target: &str) -> String {
+    ssh_source::shell_quote(&format!("={target}:"))
+}
+
+/// `capture-pane` 远端命令串（提纯以便单测——D 审计：内联 `format!` 让 3 个 `-t` 位点里 2 个
+/// 无测试覆盖，把 `exact_target` 改回裸目标 `cargo test` 依旧全绿）。
+fn build_capture_pane_cmd(target: &str) -> String {
+    format!(
+        "if command -v tmux >/dev/null 2>&1; then tmux capture-pane -p -t {} 2>/dev/null || printf 'NO_PANE\\n'; else printf 'NO_TMUX\\n'; fi",
+        exact_target(target)
+    )
+}
+
+/// `kill-session` 远端命令串（提纯以便单测，理由同上）。**破坏性动作**——正是「杀错会话」
+/// 那条生产 bug 的一端，必须被回归测试钉死。
+fn build_kill_session_cmd(target: &str) -> String {
+    format!(
+        "if command -v tmux >/dev/null 2>&1; then tmux kill-session -t {} 2>&1; else printf 'NO_TMUX\\n'; fi",
+        exact_target(target)
+    )
+}
+
 /// F60:抓一个远端 tmux 会话当前窗口/pane 的屏幕文本(**只读快照,非 attach**)。
 /// `tmux capture-pane -p -t <target>`(`-p` 打 stdout、`-t` 选会话)。`command -v tmux` 门控
 /// (无 → `NO_TMUX`);会话不存在 / 抓屏失败 → `NO_PANE`(`|| printf`)。target 经 `shell_quote`
@@ -117,10 +156,7 @@ fn classify_capture_output(raw: &str) -> Result<String, String> {
 pub async fn capture_remote_pane(origin: String, target: String) -> Result<String, String> {
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
-    let cmd = format!(
-        "if command -v tmux >/dev/null 2>&1; then tmux capture-pane -p -t {} 2>/dev/null || printf 'NO_PANE\\n'; else printf 'NO_TMUX\\n'; fi",
-        ssh_source::shell_quote(&target)
-    );
+    let cmd = build_capture_pane_cmd(&target);
     let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
     let mut reader = BufReader::new(stream);
     // lossy 解码:capture-pane 抓任意终端屏,非 UTF-8 字节(CP437 画框 / ANSI art / 二进制)
@@ -149,10 +185,7 @@ pub async fn kill_remote_tmux(origin: String, target: String) -> Result<(), Stri
     }
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
-    let cmd = format!(
-        "if command -v tmux >/dev/null 2>&1; then tmux kill-session -t {} 2>&1; else printf 'NO_TMUX\\n'; fi",
-        ssh_source::shell_quote(&target)
-    );
+    let cmd = build_kill_session_cmd(&target);
     let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
     let mut reader = BufReader::new(stream);
     let mut buf: Vec<u8> = Vec::new();
@@ -179,7 +212,7 @@ fn build_send_keys_remote_cmd(target: &str, keys: &str, enter: bool) -> String {
     let tail = if enter { " Enter" } else { "" };
     format!(
         "if command -v tmux >/dev/null 2>&1; then tmux send-keys -t {} {}{} 2>&1; else printf 'NO_TMUX\\n'; fi",
-        ssh_source::shell_quote(target),
+        exact_target(target),
         ssh_source::shell_quote(keys),
         tail,
     )
@@ -266,16 +299,17 @@ mod tests {
     }
 
     /// A5+：send-keys 命令构造（补 R1）——enter=true 尾附 ` Enter`，false 不附；target/keys 经 shell_quote。
+    /// F01：target 形态为 `'=<名>:'`（精确匹配，见 `exact_target`）。
     #[test]
     fn send_keys_cmd_construction() {
         let with_enter = build_send_keys_remote_cmd("cc-abc12345", "/compact", true);
         assert!(
-            with_enter.contains("tmux send-keys -t 'cc-abc12345' '/compact' Enter 2>&1"),
+            with_enter.contains("tmux send-keys -t '=cc-abc12345:' '/compact' Enter 2>&1"),
             "enter=true 应尾附 Enter: {with_enter}"
         );
         let no_enter = build_send_keys_remote_cmd("cc-abc12345", "Escape", false);
         assert!(
-            no_enter.contains("tmux send-keys -t 'cc-abc12345' 'Escape' 2>&1"),
+            no_enter.contains("tmux send-keys -t '=cc-abc12345:' 'Escape' 2>&1"),
             "enter=false 不应附 Enter: {no_enter}"
         );
         assert!(
@@ -286,6 +320,44 @@ mod tests {
         assert!(
             with_enter.contains("printf 'NO_TMUX\\n'") && no_enter.contains("printf 'NO_TMUX\\n'")
         );
+    }
+
+    /// F01 回归：tmux `-t` 目标**必须**精确匹配（`'=<名>:'`），绝不留裸目标。
+    ///
+    /// 裸 `-t <名>` 是「精确 → 名字开头 → glob」三级解析。实测(tmux 3.6)只有 `sib-2` 存在时
+    /// `kill-session -t sib` 杀掉 `sib-2` 且 **rc=0**、`send-keys -t sib` 投进 `sib-2`、
+    /// `kill-session -t 'si*'` glob 命中。本仓必然踩（`pickFreshTmuxName` 造 `cc-<sid8>-2/-3`、
+    /// 终端 `cct` 造 `<dir>_cc-2/-3`）。
+    ///
+    /// 删掉 `exact_target` 会让换号重启把 `/exit` 敲进**兄弟会话里还活着的 claude** 并 kill 它，
+    /// 而 UI 报告「已重启」。**尾冒号不能省**：`send-keys`/`capture-pane` 收 target-pane，
+    /// `=名`（无冒号）在那条路径上 rc=1 完全失效。
+    #[test]
+    fn tmux_targets_use_exact_match() {
+        // **三个命令构造点全钉死**（D 审计：此前只钉了 send-keys，另两处改回裸目标测试仍全绿）。
+        let sk = build_send_keys_remote_cmd("cc-abc12345", "/exit", true);
+        let cap = build_capture_pane_cmd("cc-abc12345");
+        let kill = build_kill_session_cmd("cc-abc12345");
+        for (label, cmd) in [("send-keys", &sk), ("capture-pane", &cap), ("kill-session", &kill)] {
+            assert!(
+                cmd.contains("-t '=cc-abc12345:'"),
+                "{label} 目标必须是 '=<名>:' 精确形态: {cmd}"
+            );
+            assert!(
+                !cmd.contains("-t 'cc-abc12345'"),
+                "{label} 不得留裸目标（会前缀命中 cc-abc12345-2）: {cmd}"
+            );
+        }
+
+        // exact_target 本身：`=` 与 `:` 都落在引号内，且不吃掉原名。
+        assert_eq!(exact_target("cc-x"), "'=cc-x:'");
+        assert_eq!(exact_target("proj_cc-2"), "'=proj_cc-2:'");
+        // glob 名即便漏进来也被引号原样包住（不脱出成 shell glob）；名字层另有
+        // `isValidTmuxName` 禁 `*`/`?` 作第二道防线。
+        assert_eq!(exact_target("si*"), "'=si*:'");
+        // 含单引号的名字仍被正确转义（shell_quote 的 '\'' 形态）。
+        assert!(exact_target("a'b").starts_with("'=a"));
+        assert!(exact_target("a'b").ends_with("b:'"));
     }
 
     #[test]

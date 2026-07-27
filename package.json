@@ -32,7 +32,8 @@
     "lint": "eslint src",
     "lint:css": "stylelint \"src/**/*.css\"",
     "coverage": "vitest run --coverage",
-    "test": "npm run test:branching && npm run test:diff && npm run test:api-error && npm run test:bash && npm run test:remote-health && npm run test:remote-launch && npm run test:format && npm run test:history-cache && npm run test:history-prefs && npm run test:history-actions && npm run test:usage-pivot && npm run test:pricing && npm run test:session-backend && npm run test:panorama-session-files && npm run test:dom"
+    "test": "npm run test:branching && npm run test:diff && npm run test:api-error && npm run test:bash && npm run test:remote-health && npm run test:remote-launch && npm run test:format && npm run test:history-cache && npm run test:history-prefs && npm run test:history-actions && npm run test:usage-pivot && npm run test:pricing && npm run test:session-backend && npm run test:panorama-session-files && npm run test:dom",
+    "test:tmux-target": "bash e2e/tmux-target-acceptance.sh"
   },
   "dependencies": {
     "@chenglou/pretext": "0.0.8",

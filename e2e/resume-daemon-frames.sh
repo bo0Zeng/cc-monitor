@@ -47,8 +47,8 @@ cleanup() {
     p="$(awk -F'[:,]' '{for(i=1;i<=NF;i++) if($i ~ /"pid"/){print $(i+1); exit}}' "$pf" 2>/dev/null)"
     [ -n "$p" ] && kill "$p" 2>/dev/null
   done
-  tmux kill-session -t "$SESSION" 2>/dev/null
-  tmux kill-session -t "$KEEP" 2>/dev/null
+  tmux kill-session -t "=$SESSION:" 2>/dev/null
+  tmux kill-session -t "=$KEEP:" 2>/dev/null
   rm -rf "$CLAUDE_DIR" "$WORK"
 }
 trap cleanup EXIT
@@ -112,7 +112,7 @@ echo "-- 就地 resume(真源 buildResumeIntoExistingTmuxCmd,复用 $SESSION,注
 # configDir = daemon 监视目录 → 复活的 fake-claude pidfile 落这里,daemon 判活得到 = 后端复活。
 CMD="$(npx tsx "$DRIVER" into-existing "$SID" "$SESSION" "$FAKE" "$CLAUDE_DIR")"
 echo "   cmd: $CMD"
-echo "$CMD" | grep -q "send-keys -t $SESSION " && ! echo "$CMD" | grep -q "new-session" \
+echo "$CMD" | grep -q "send-keys -t =$SESSION: " && ! echo "$CMD" | grep -q "new-session" \
   && ok "resume 命令就地复用 $SESSION、无 new-session(#76)" \
   || bad "resume 命令未就地复用"
 MARK_REVIVE="$(wc -l <"$FRAMES")"
