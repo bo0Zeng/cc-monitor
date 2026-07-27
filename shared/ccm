@@ -1,0 +1,430 @@
+#!/usr/bin/env bash
+# ccm — cc-monitor 统一启动器（unify-launch F02）
+#
+# 核心思想（MASTERPLAN §0）：把「起一个会话」从一堆写死的命令，变成
+# **一个动作 + 若干正交修饰**；并让这个模型在 IR、CLI、UI 三处是同一个。
+# 本文件是它在 shell 侧的投影，也是 app 与终端的**唯一共同实现**。
+#
+# 用法：ccm [动作] [修饰…] [-- 透传给 agent 的参数]
+#   动作（缺省 = new）
+#     new                     起新会话
+#     resume <sid>            恢复会话（`--resume <sid>` 是等价别名）
+#     attach <名>             接回已有 tmux 会话
+#   修饰（全部正交、可任意组合、可缺省；缺省即旧 cc/ccm 的行为）
+#     --tmux[=<名>]           容器。缺省名 = cc-<safe-basename>（同目录**幂等接回**同一会话；
+#                             同名但**异目录**会退让到 -2/-3。已在 tmux 里则就地起，不建嵌套）
+#     --account <名>          注入该账号的 CLAUDE_CONFIG_DIR
+#     --base                  显式不注入（issue #75 逃生口）
+#     --cwd auto|<dir>        默认 auto = 旧 _cc_resolve_target 语义
+#     --agent claude|codex    默认 claude
+#     --launcher <cmd>        覆盖该 agent 的默认启动命令
+#     --ccm-sid <sid>         身份打标（cc-monitor 已知 sid 时传）
+#   自省
+#     --print                 打印将要执行的命令，不执行
+#     --ccm-probe             打印 name/version/capabilities
+#     --version / --help
+#
+# **为什么必须是这个结构**（别"简化"掉，每条都有血）：
+#  1. 环境（cwd / CLAUDE_CONFIG_DIR / 代理 / unset 嵌套 env）**必须在最终 exec 的那个 shell 里设**。
+#     旧 `cct` 的做法是外层 export + 自建 tmux + send-keys，而 tmux 的 `update-environment`
+#     默认列表不含 CLAUDE_CONFIG_DIR → export 在 tmux 进程边界上被整个吃掉，账号注入 100% 失效。
+#     本 CLI 的 --tmux 因此**不在外层设 env**，而是把「同一条 ccm 命令、去掉 --tmux」送进 tmux 内部。
+#  2. `exec` 不能省：身份回填 poller 读 `~/.claude/sessions/$PID.json`，不 exec 则 PID 对不上。
+#  3. 所有 tmux `-t` 目标用 `=<名>:` 精确形态（见 doc/INVARIANTS.md §31a）。裸目标是
+#     「精确→名字开头→glob」三级解析，会杀错/打错兄弟会话。尾冒号不能省。
+#  4. 身份注册用**运行时自适应**而非编译期门控：装了就用，没装逐字节退化成裸 launcher。
+
+set -u
+
+CCM_VERSION="1"
+
+# —— 自身绝对路径（--tmux 时要把自己送进容器；不依赖 PATH）——
+if [ -z "${CCM_SELF:-}" ]; then
+  _self="$0"
+  case "$_self" in
+    /*) : ;;
+    *) _self="$(cd "$(dirname "$_self")" 2>/dev/null && pwd)/$(basename "$_self")" ;;
+  esac
+  CCM_SELF="$_self"
+fi
+
+# —— 配置。优先级：**环境变量 > 配置文件 > 内置默认**。
+# 三个默认值必须先存下继承来的环境变量再赋值——否则会把 env 覆盖掉，
+# 导致 `CCM_ACCTS_MANIFEST=/x ccm …` 这类隔离调用无效（测试与远端排障都要靠它）。
+CCM_CONFIG="${CCM_CONFIG:-$HOME/.config/ccm/config}"
+_env_ws="${CCM_WORKSPACE:-}"; _env_am="${CCM_ACCTS_MANIFEST:-}"; _env_ev="${CCM_ENV:-}"
+# 内置默认刻意用**中性路径**：本文件会被 `include_str!` 原样部署到任意远端，
+# 不能把某台机器的本地化目录（如 `$HOME/文档/...`）烧进去。要改走配置文件。
+CCM_WORKSPACE="$HOME/claude-conversation"
+CCM_ENV=""                                   # 起 agent 前 eval 的 env（旧 CC_ENV 迁移到这）
+CCM_ACCTS_MANIFEST="$HOME/.claude-accts/accounts.json"
+# shellcheck source=/dev/null
+[ -f "$CCM_CONFIG" ] && . "$CCM_CONFIG"
+[ -n "$_env_ws" ] && CCM_WORKSPACE="$_env_ws"
+[ -n "$_env_am" ] && CCM_ACCTS_MANIFEST="$_env_am"
+[ -n "$_env_ev" ] && CCM_ENV="$_env_ev"
+unset _env_ws _env_am _env_ev
+
+die() { printf 'ccm: %s\n' "$*" >&2; exit 2; }
+
+# 带值 flag 的取值守卫。**盲取下一个 token 会把后面的 flag 当成值吃掉**——真机踩过：
+# `ccm --tmux --account --print` 里 `--account` 吞掉了 `--print`，账号名变成字面量 "--print"，
+# 会话照建、claude 照起，用户只在一闪而过的一行里看到报错。凡是要值的 flag 都过这道门。
+need_val() { # need_val <flag名> <下一个token(可空)>
+  [ -n "${2:-}" ] || die "$1 需要一个值"
+  case "$2" in -*) die "$1 需要一个值，但拿到的是 '$2'（像是漏了参数）" ;; esac
+}
+
+# POSIX 单引号 quote（与前端 posixQuote 同算法）。**构造真正要执行的命令时一律用它。**
+sq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+
+# 仅在必要时加引号 —— **只给 `--print` 的展示/等价断言用**。
+# 目的：零修饰调用的输出与今天 `ccm()` 的 `exec claude` **逐字节一致**（`exec 'claude'` 虽等价但不逐字节）。
+qarg() {
+  case "$1" in
+    ''|*[!A-Za-z0-9_@%+=:,./-]*) sq "$1" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+# ===== agent 轴（哪个 AI）——CLI 主体零分支，全部查表 =====
+# 与 src/agent-profile.ts 的 AGENT_PROFILE 对位；改这里要同步那边。
+agent_default_launcher() { case "$1" in claude) echo claude ;; codex) echo codex ;; esac; }
+agent_resume_flag()      { case "$1" in claude) printf '%s' "--resume" ;; codex) printf '' ;; esac; }
+# 顺序照 unset 命令，与 AGENT_PROFILE.nestedEnvVars 逐字一致。
+agent_nested_env()       {
+  case "$1" in
+    claude) echo "CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION" ;;
+    codex)  echo "" ;;
+  esac
+}
+# 该 agent 有没有 per-PID session 文件（决定要不要起身份回填 poller）。
+agent_has_identity()     { case "$1" in claude) return 0 ;; *) return 1 ;; esac; }
+# 该 agent 需不需要把 tmux 会话名注入 CC_BUS_ID（cc-bus 多实例身份）。
+#   codex：**需要**——它的模型-shell 沙箱(Landlock/seccomp)够不着 tmux 服务端 socket，
+#     `cc-whoami` 在那里没法靠 tmux 解析身份；`CC_BUS_ID` 是它最高优先级且唯一不依赖
+#     tmux 的来源（`cc-whoami:10`），且环境变量能透进沙箱。不注入 → cc-send 的 FROM = unknown。
+#   claude：**不要**——它的 shell 工具能用 tmux，强设会盖掉用来细分「同会话多 CC」的 `@cc_id`
+#     （见 `cc-spawn:104-109` 的同一判断）。
+agent_needs_bus_id()     { case "$1" in codex) return 0 ;; *) return 1 ;; esac; }
+
+# ===== 默认值 =====
+action=new
+sid=""
+attach_name=""
+use_tmux=0
+tmux_name=""
+account=""
+use_base=0
+cwd_spec=auto
+agent=claude
+launcher=""
+ccm_sid=""
+do_print=0
+passthru=()
+
+# ===== 参数解析 =====
+# 动作可以是位置参数（new/resume/attach），其余一律 flag。`--` 之后全部透传给 agent。
+if [ $# -gt 0 ]; then
+  case "$1" in
+    new)    action=new; shift ;;
+    # 下一个 token 以 `-` 开头 → 用户漏了参数（`ccm resume --tmux` 会静默把 --tmux 当 sid）
+    resume) action=resume; shift
+            { [ $# -gt 0 ] && case "$1" in -*) false ;; *) true ;; esac; } || die "resume 需要 <sid>"
+            sid="$1"; shift ;;
+    attach) action=attach; shift
+            { [ $# -gt 0 ] && case "$1" in -*) false ;; *) true ;; esac; } || die "attach 需要 <会话名>"
+            attach_name="$1"; shift ;;
+  esac
+fi
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --) shift; passthru+=("$@"); break ;;
+    # `--resume <sid>` 与 `resume <sid>` 等价 —— cc-monitor 今天就是这么拼的，
+    # 于是 F02 一落地、前端零改动就已经正确（MASTERPLAN §0 推论④）。
+    --resume)      shift; need_val "--resume" "${1:-}"; action=resume; sid="$1" ;;
+    --resume=*)    action=resume; sid="${1#*=}" ;;
+    --tmux)        use_tmux=1 ;;
+    --tmux=*)      use_tmux=1; tmux_name="${1#*=}" ;;
+    --account)     shift; need_val "--account" "${1:-}"; account="$1" ;;
+    --account=*)   account="${1#*=}" ;;
+    --base)        use_base=1 ;;
+    --cwd)         shift; need_val "--cwd" "${1:-}"; cwd_spec="$1" ;;
+    --cwd=*)       cwd_spec="${1#*=}" ;;
+    --agent)       shift; need_val "--agent" "${1:-}"; agent="$1" ;;
+    --agent=*)     agent="${1#*=}" ;;
+    --launcher)    shift; need_val "--launcher" "${1:-}"; launcher="$1" ;;
+    --launcher=*)  launcher="${1#*=}" ;;
+    --ccm-sid)     shift; need_val "--ccm-sid" "${1:-}"; ccm_sid="$1" ;;
+    --ccm-sid=*)   ccm_sid="${1#*=}" ;;
+    --print)       do_print=1 ;;
+    --ccm-probe)
+      printf 'name=ccm\nversion=%s\nself=%s\ncapabilities=new,resume,attach,tmux,account,cwd,agent,launcher,ccm-sid,print\nagents=claude,codex\n' \
+        "$CCM_VERSION" "$CCM_SELF"
+      exit 0 ;;
+    --version)     printf 'ccm %s\n' "$CCM_VERSION"; exit 0 ;;
+    -h|--help)     sed -n '/^# 用法：/,/^# \*\*为什么/p' "$CCM_SELF" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*)            die "未知选项: $1（用 --help 看用法）" ;;
+    *)             die "多余的位置参数: $1（动作只能是 new/resume/attach 且必须在最前）" ;;
+  esac
+  shift
+done
+
+case "$agent" in claude|codex) : ;; *) die "未知 agent: $agent（支持 claude|codex）" ;; esac
+[ -n "$account" ] && [ "$use_base" = 1 ] && die "--account 与 --base 互斥"
+if [ "$action" = resume ] && [ -z "$(agent_resume_flag "$agent")" ]; then
+  die "agent=$agent 不支持 resume（无 resume flag）"
+fi
+
+# ===== L2 环境：cwd =====
+# `auto` 逐字复刻旧 `_cc_resolve_target`：在 $HOME 用工作区；在 git 仓用其父目录；否则当前目录。
+resolve_cwd() {
+  if [ "$cwd_spec" != auto ]; then printf '%s' "$cwd_spec"; return; fi
+  # **auto 只对 `new` 生效**。resume/attach 的目标目录由 sid/会话决定、调用方已经定位好
+  # （cc-monitor 发的是 `cd '<会话cwd>' && ccm --resume <sid>`）；再 auto 解析一次会把
+  # 工作目录换成 git 仓的**父目录** → Claude 按 `projects/<enc(cwd)>/<sid>.jsonl` 找不到会话。
+  # 实测踩过：在任何 git 仓里 `ccm --resume <sid>` 都会跑偏。
+  if [ "$action" != new ]; then printf '%s' "$PWD"; return; fi
+  local r
+  if [ "$PWD" = "$HOME" ]; then
+    r="$CCM_WORKSPACE"
+  else
+    local g
+    g="$(git rev-parse --show-toplevel 2>/dev/null)"
+    if [ -n "$g" ]; then r="$(dirname "$g")"; else r="$PWD"; fi
+  fi
+  # 旧 `_cc_resolve_target` 结尾有 `mkdir -p "$REPLY"` —— 保住它：在 $HOME 首次敲 `cc` 时
+  # 工作区可能还不存在，没有这句会直接报"无法进入目录"。**只在 auto 路径建**（显式
+  # `--cwd <dir>` 不代建：cc-monitor 传的是已存在的会话目录，代建会掩盖"目录被删/移走"）。
+  [ "$do_print" = 1 ] || mkdir -p "$r" 2>/dev/null || true
+  printf '%s' "$r"
+}
+cwd="$(resolve_cwd)"
+
+# ===== L1 容器：会话名派生 =====
+# 与前端 `deriveTmuxName` 同规则（basename → 非 [A-Za-z0-9_-] 换 `-` → 折叠 → 截 32 → 剥首尾 `-`）。
+# 同规则 = 终端 `cct` 与 app「开新 Claude」在同一目录造出**同一个名字** → 幂等接回同一会话。
+derive_tmux_name() {
+  local b s
+  b="$(printf '%s' "$1" | sed 's:/*$::')"   # 去掉全部尾斜杠（对齐 TS 的 /\/+$/）
+  b="${b##*/}"
+  s="$(printf '%s' "$b" | sed 's/[^A-Za-z0-9_-]/-/g; s/--*/-/g' | cut -c1-32 | sed 's/^-*//; s/-*$//')"
+  if [ -n "$s" ]; then printf 'cc-%s' "$s"; else printf 'cc-session'; fi
+}
+
+# **不做撞名避让** —— 这是有意的，别"顺手"加回来：
+#   `--tmux` 无显式名 = 「在这个目录起会话」→ 期望**幂等接回**同一会话
+#   （对齐前端 `buildLauncherCmd`：用 `deriveTmuxName` 不避让，靠 new-session 短路）。
+# 避让语义（`pickFreshTmuxName`，产 `cc-<sid8>-2/-3`）只属于「灰会话 fresh resume，
+# 不能撞上被 /branch 漂移占着的原名」那一条路径——那时 cc-monitor 会算好名字用
+# `--tmux=<名>` 显式传进来。CLI 自己避让会把「同目录再开一次」变成产孤儿（实测踩过）。
+
+# ===== L2 环境：账号 =====
+# 从 cc-acct-iso 的 manifest 解析 configDir。解析不到 → 报错退出（显式选号绝不静默降级）。
+# **只回显值、绝不 die** —— 本函数在 `$(...)` 里被调用，`die`(exit 2) 只会杀掉子 shell，
+# 主流程照跑 → 用户打错账号名会**静默落到继承来的账号上**（rc=0）。实测踩过，性质比
+# 「换号不生效」更坏。所有失败一律回空串，由**顶层**判空后中止。
+account_config_dir() {
+  local name="$1" dir=""
+  [ -f "$CCM_ACCTS_MANIFEST" ] || { printf ''; return; }
+  if command -v jq >/dev/null 2>&1; then
+    dir="$(jq -r --arg n "$name" '.accounts[] | select(.name==$n) | .configDir // empty' "$CCM_ACCTS_MANIFEST" 2>/dev/null)"
+  else
+    # 无 jq 的兜底：按 name 定位同一对象里的 configDir（manifest 是每账号一行的紧凑格式）。
+    dir="$(grep -o "\"name\"[[:space:]]*:[[:space:]]*\"$name\"[^}]*\"configDir\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" \
+            "$CCM_ACCTS_MANIFEST" 2>/dev/null | sed 's/.*"configDir"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+  fi
+  [ -n "$dir" ] && [ -d "$dir" ] || { printf ''; return; }
+  printf '%s' "$dir"
+}
+
+# manifest 里的账号名列表（给错误信息用——报"不可用"必须同时告诉用户有哪些可用）。
+list_account_names() {
+  [ -f "$CCM_ACCTS_MANIFEST" ] || { printf '(无账号库)'; return; }
+  if command -v jq >/dev/null 2>&1; then
+    jq -r '[.accounts[].name] | join(" ")' "$CCM_ACCTS_MANIFEST" 2>/dev/null
+  else
+    grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' "$CCM_ACCTS_MANIFEST" 2>/dev/null \
+      | sed 's/.*"\([^"]*\)"$/\1/' | tr '\n' ' '
+  fi
+}
+
+# manifest 里的默认账号（`isDefault: true`）。
+default_account_name() {
+  [ -f "$CCM_ACCTS_MANIFEST" ] || { printf ''; return; }
+  if command -v jq >/dev/null 2>&1; then
+    jq -r '.accounts[] | select(.isDefault==true) | .name' "$CCM_ACCTS_MANIFEST" 2>/dev/null | head -1
+  else
+    grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"[^}]*"isDefault"[[:space:]]*:[[:space:]]*true' \
+      "$CCM_ACCTS_MANIFEST" 2>/dev/null | head -1 | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
+  fi
+}
+
+# 账号解析。三态：
+#   显式 --account X  → 必须解析成功，否则**中止**（显式选号绝不静默降级到别的号）
+#   显式 --base       → 不注入（issue #75 逃生口：装账号功能前的老会话住基座）
+#   都不传            → 落 manifest 的 isDefault（复刻旧 `_cc_acct_last` 的粘滞体验）。
+#     **这条必须有**：cc-acct-iso 把凭据搬进各账号目录后，基座 `~/.claude/.credentials.json`
+#     通常已不存在 —— 不落默认号的话，最常敲的 `cc`/`cct` 会掉进一个没登录的 config dir。
+config_dir=""
+if [ -n "$account" ]; then
+  config_dir="$(account_config_dir "$account")"
+  [ -n "$config_dir" ] || die "账号 '$account' 不可用（不在 $CCM_ACCTS_MANIFEST，或其目录不存在）。可用: $(list_account_names)"
+elif [ "$use_base" != 1 ]; then
+  _def="$(default_account_name)"
+  if [ -n "$_def" ]; then
+    config_dir="$(account_config_dir "$_def")"
+    [ -n "$config_dir" ] || die "默认账号 '$_def' 目录不存在（manifest 说它是 isDefault）。用 --base 起基座，或 --account <名> 指定。"
+    account="$_def"
+  fi
+fi
+
+# ===== L3/L4：启动器与参数 =====
+[ -n "$launcher" ] || launcher="$(agent_default_launcher "$agent")"
+nested="$(agent_nested_env "$agent")"
+
+argv=("$launcher")
+if [ "$action" = resume ]; then
+  rf="$(agent_resume_flag "$agent")"
+  argv+=("$rf" "$sid")
+fi
+[ ${#passthru[@]} -gt 0 ] && argv+=("${passthru[@]}")
+
+# ===== attach：不起 agent，直接接回 =====
+if [ "$action" = attach ]; then
+  cmd="tmux attach -t $(sq "=$attach_name:")"
+  if [ "$do_print" = 1 ]; then printf '%s\n' "$cmd"; exit 0; fi
+  exec tmux attach -t "=$attach_name:"
+fi
+
+# ===== --tmux：把「同一条 ccm 命令、去掉 --tmux」送进容器内部 =====
+# 关键：**外层一个 env 都不设**。env 由容器内部那次 ccm 调用自己设 —— 这样它落在最终 exec 的
+# 那个 shell 里，穿得过 tmux 的进程边界（旧 cct 正是死在这一步）。
+# **已经在 tmux 里 → 就地起**（旧 `cct` 有这条分支：`if [ -n "$TMUX" ]; then … return; fi`）。
+# 不然会另建一个 detached 会话、agent 跑在用户看不见的地方，而 `tmux attach` 报
+# "sessions should be nested with care" rc=1 → 用户原地不动、什么也没拿到（实测）。
+# cc-monitor / cc-bus 用户基本常驻 tmux，这条必须有。
+if [ "$use_tmux" = 1 ] && [ -n "${TMUX:-}" ] && [ -z "$tmux_name" ]; then
+  use_tmux=0
+fi
+
+if [ "$use_tmux" = 1 ]; then
+  command -v tmux >/dev/null 2>&1 || die "未安装 tmux"
+  if [ -n "$tmux_name" ]; then
+    # 显式 `--tmux=<名>` 是一条**创建**路径 → 过 INVARIANTS §31a 的第二道防线：
+    # 禁 glob `*`/`?`（`kill-session -t 'a*a'` 实测会命中并杀掉 `alpha`）、禁 tmux 保留字
+    # `.`/`:`（session:window.pane 分隔符）、禁前导 `-`（会被当成选项）、禁控制字符与空串。
+    # 与前端 `isValidNewTmuxName` 同一套判据（`src/remote-launch.ts`）。
+    case "$tmux_name" in
+      ""|-*)        die "非法 tmux 会话名（空或以 - 开头）: '$tmux_name'" ;;
+      *[*?.:]*)     die "非法 tmux 会话名（含 glob 或 tmux 保留字 * ? . :）: '$tmux_name'" ;;
+      *[[:cntrl:]]*) die "非法 tmux 会话名（含控制字符）: '$tmux_name'" ;;
+    esac
+    # 显式名到此为止 —— **不做派生、不做避让**。调用方（cc-monitor）传显式名正是因为它
+    # 自己算好了要哪个会话（如灰会话 fresh resume 的 `cc-<sid8>-2`），CLI 再改一次就错了。
+  else
+    tmux_name="$(derive_tmux_name "$cwd")"
+    # **幂等接回只在同一目录才成立**。派生规则（与前端 `deriveTmuxName` 同源）会把 basename
+    # 全非 ASCII 的目录一律塌成 `cc-session`——`~/文档` 与 `~/下载/测试` 同名。若不校验，
+    # 在后者敲 `cct` 会**接回前者里那个 claude**。同名但目录不同 → 退让到 `-2/-3`。
+    # **只在真建会话时查**：`--print` 必须是**纯的**（F03 要拿它做渲染等价断言），
+    # 不能依赖实时 tmux 状态。`--print` 展示基名；真跑时同名异目录会退让到 `-N`。
+    _existing_path=""
+    [ "$do_print" = 1 ] || _existing_path="$(tmux display-message -p -t "=$tmux_name:" '#{pane_current_path}' 2>/dev/null || true)"
+    if [ -n "$_existing_path" ] && [ "$_existing_path" != "$cwd" ]; then
+      _n=2
+      while tmux has-session -t "=$tmux_name-$_n:" 2>/dev/null; do
+        _p="$(tmux display-message -p -t "=$tmux_name-$_n:" '#{pane_current_path}' 2>/dev/null || true)"
+        [ "$_p" = "$cwd" ] && break
+        _n=$((_n+1))
+      done
+      tmux_name="$tmux_name-$_n"
+    fi
+  fi
+
+  # 内层命令 = 自己 + 全部修饰（去掉 --tmux，cwd 固化为已解析值，避免容器内重新 resolve）
+  inner=("$CCM_SELF")
+  [ "$action" = resume ] && inner+=(resume "$sid")
+  inner+=(--cwd "$cwd" --agent "$agent")
+  [ -n "$account" ] && inner+=(--account "$account")
+  [ "$use_base" = 1 ] && inner+=(--base)
+  [ -n "$launcher" ] && inner+=(--launcher "$launcher")
+  [ -n "$ccm_sid" ] && inner+=(--ccm-sid "$ccm_sid")
+  [ ${#passthru[@]} -gt 0 ] && inner+=(-- "${passthru[@]}")
+
+  payload=""
+  for a in "${inner[@]}"; do payload="$payload${payload:+ }$(sq "$a")"; done
+
+  t="$(sq "=$tmux_name:")"
+  # 幂等建闸：会话已存在 → new-session 失败被吞、`&&` 短路跳过后续 → 只 attach（不重复起）。
+  seq="tmux new-session -d -s $(sq "$tmux_name") -c $(sq "$cwd") 2>/dev/null"
+  seq="$seq && (tmux set-option -t $t @ccm_agent $(sq "$agent") 2>/dev/null || true)"
+  [ -n "$ccm_sid" ] && seq="$seq && (tmux set-option -t $t @ccm_sid $(sq "$ccm_sid") 2>/dev/null || true)"
+  seq="$seq && tmux send-keys -t $t $(sq "$payload") Enter"
+  seq="$seq; tmux attach -t $t"
+
+  if [ "$do_print" = 1 ]; then printf '%s\n' "$seq"; exit 0; fi
+  exec bash -c "$seq"
+fi
+
+# ===== 非容器路径：在**本进程**里设好环境，然后 exec =====
+# 到这里就是最终 shell。exec 之后 PID 不变（$$），身份 poller 据此读 session 文件。
+
+# --print：吐出等价的一行 shell（供 cc-monitor 等价断言 / 调试）。
+if [ "$do_print" = 1 ]; then
+  line=""
+  [ -n "$CCM_ENV" ] && line="$line$CCM_ENV; "
+  [ -n "$config_dir" ] && line="${line}export CLAUDE_CONFIG_DIR=$(sq "$config_dir"); "
+  [ "$use_base" = 1 ] && line="${line}unset CLAUDE_CONFIG_DIR; "
+  [ -n "$nested" ] && line="${line}unset $nested; "
+  [ -n "$cwd" ] && line="${line}cd $(sq "$cwd") && "
+  line="${line}exec"
+  for a in "${argv[@]}"; do line="$line $(qarg "$a")"; done
+  printf '%s\n' "$line"
+  exit 0
+fi
+
+# 机器级 env（代理等）——旧 `eval "$CC_ENV"` 的搬家，语义不变。
+[ -n "$CCM_ENV" ] && eval "$CCM_ENV"
+# cc-bus 身份：codex 沙箱够不着 tmux socket，须把会话名经 env 透进去（见 agent_needs_bus_id）。
+if agent_needs_bus_id "$agent" && [ -n "${TMUX:-}" ]; then
+  export CC_BUS_ID="${CC_BUS_ID:-$(tmux display-message -p '#S' 2>/dev/null)}"
+fi
+# 会话级 env。--base 显式清残留（就地复用已存在 shell 时必需，见 issue #75）。
+[ -n "$config_dir" ] && export CLAUDE_CONFIG_DIR="$config_dir"
+[ "$use_base" = 1 ] && unset CLAUDE_CONFIG_DIR
+# 嵌套会话标记：tmux server env 可能带毒（issue #24），起前一律清。
+[ -n "$nested" ] && unset $nested
+[ -n "$cwd" ] && { cd "$cwd" || die "无法进入目录: $cwd"; }
+
+# ===== L5 身份 =====
+# 通道A：已知 sid（cc-monitor 传的）→ 在容器内立刻打标。
+if [ -n "$ccm_sid" ] && [ -n "${TMUX:-}" ]; then
+  tmux set-option @ccm_sid "$ccm_sid" >/dev/null 2>&1 || true
+fi
+# 通道B：未知 sid（new，且随 /branch 漂移）→ 后台 poller 回填。exec 后 PID 不变，故用 $$。
+if agent_has_identity "$agent"; then
+  ccm_pid=$$
+  sessions_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"
+  if [ -n "${TMUX:-}" ]; then
+    tmux set-option set-titles on >/dev/null 2>&1 || true
+    tmux set-option set-titles-string "#T" >/dev/null 2>&1 || true
+  fi
+  (
+    prev="" n=0
+    while kill -0 "$ccm_pid" 2>/dev/null; do
+      s="$(grep -o '"sessionId":"[^"]*"' "$sessions_dir/$ccm_pid.json" 2>/dev/null | head -1 | cut -d'"' -f4)"
+      n=$((n+1))
+      # sid 变了立即刷；每 20 秒重打一次自愈（外层标题可能被 PS1 转义/切窗覆写）。
+      if [ -n "$s" ] && { [ "$s" != "$prev" ] || [ $((n % 20)) -eq 0 ]; }; then
+        printf '\033]0;ccm-rbind-%s\007' "$s"
+        [ -n "${TMUX:-}" ] && tmux set-option @ccm_sid "$s" >/dev/null 2>&1
+        prev="$s"
+      fi
+      sleep 1
+    done
+  ) &
+fi
+
+exec "${argv[@]}"

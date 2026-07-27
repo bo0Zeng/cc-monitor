@@ -59,15 +59,16 @@
 | ID | 功能 | 一句话目标 | 状态 | 依赖 | 优先级 |
 |----|------|-----------|------|------|--------|
 | F01 | tmux 目标精确匹配 | 所有 `-t` 用 `=name:`，修今天正在杀错会话的生产 bug | **完成** | — | P0 |
-| F02 | 统一启动 CLI `ccm` | 「一个动作 + 正交修饰」在 shell 侧的实现；app 与终端的共同渲染目标 | 待规划 | — | P0 |
+| F02 | 统一启动 CLI `ccm` + 重构 bashrc | 「一个动作 + 正交修饰」在 shell 侧的实现；app 与终端的共同渲染目标；**旧 4 个 block（187 行）整体取代** | **完成** | — | P0 |
 | F03 | LaunchPlan IR + 双渲染器 + 维度注册表 | 结构化启动意图；主渲染器 → CLI，兜底渲染器 → 今天的裸 shell | 待规划 | F02 | P1 |
-| F04 | 会话身份统一（@ccm_sid） | 本工具/CLI 起的会话必有身份；三道门取代名前缀白名单 | 待规划 | F02,F03 | P1 |
+| F04 | 会话身份统一（@ccm_sid） | 本工具/CLI 起的会话必有身份；三道门取代名前缀白名单；**须根治「一个 sid 匹配多个活会话」**（见下） | 待规划 | F02,F03 | P1 |
 | F05 | AccountResolver | 账号解析收敛成判别联合，注入源过 `isSelectable` | 待规划 | F03 | P1 |
 | F06 | 本地路径并入 IR | Rust 两套 PowerShell builder 收进同一意图模型 | 待规划 | F03 | P2 |
 | F07 | 每账号默认模型 | 维度注册表的**架构验收**（第一个真实新维度） | 待规划 | F03 | P2 |
 | F08 | 终端集成收尾 | CLI 安装向导 + 别名生成 + 越层启动器诊断 + 旧 swap 退役 | 待规划 | F02,F04 | P2 |
 | F09 | UI 收敛：动作 × 修饰 | 10 个 resume 入口 → 1 动作 + 修饰 flyout；徽章常显；删对齐全套 | 待规划 | F05 | P2 |
 | F10 | 剩余账号 UX | 面板砍卡片 / 加号一键化 / 用量（plan 窗口 %） | 待规划 | F09 | P3 |
+| F11 | cc-bus 集成（`cc-spawn` 并入 `ccm`） | `~/.local/bin/cc-spawn` 是第三套独立 tmux 启动实现，收编；预信任能力**上提**进 `ccm` 核心 | 待规划 | F02 | P2 |
 
 ---
 
@@ -114,27 +115,47 @@ ccm [动作] [修饰…] [-- 透传给 agent 的参数]
 
 动作   （缺省 = new）
   new                       起新会话
-  resume <sid>              恢复会话
-修饰   （全部正交、可任意组合、可缺省）
-  --tmux[=<name>]           在 tmux 里起（缺省名由 cwd/sid 派生）
-  --account <名>|--base     账号维度（--base = 显式不隔离，issue #75 逃生口）
-  --cwd <dir>               工作目录（不给则用当前目录，绝不自作主张 resolve）
-  --launcher <cmd>          实际 exec 的 agent 命令（默认取 AGENT_PROFILE）
+  resume <sid>              恢复会话（`--resume <sid>` 是等价别名，见下）
+  attach <名>               接回已有会话
+修饰   （全部正交、可任意组合、可缺省；缺省即今天的行为）
+  --tmux[=<名>]             容器维度。缺省名 = `cc-<safe-basename>`；**同目录幂等接回**同一会话，
+                            不做撞名避让（避让属于「灰会话 fresh resume」，由调用方显式传名）
+  --account <名> | --base   账号维度（--base = 显式不隔离，issue #75 逃生口）
+  --cwd auto|<dir>          工作目录。**auto = 复刻 `_cc_resolve_target`**（$HOME→工作区 /
+                            git 仓→父目录 / 否则当前目录），默认 auto，行为逐字节保持
+  --agent claude|codex      agent 轴（resume flag / 默认启动器 / 嵌套 env / 身份回填能力）
+  --launcher <cmd>          覆盖该 agent 的默认启动命令
   --ccm-sid <sid>           身份打标（cc-monitor 已知 sid 时传）
   <未来维度>                 --model X / --proxy Y / …
+自省   （给 cc-monitor 与调试）
+  --print                   只打印将要执行的命令，不执行
+  --ccm-probe               打印 name/version/capabilities（安装自检 + 降级判据）
 ```
+
+**`--resume <sid>` 必须与 `resume <sid>` 等价**——这样 F02 一落地，用户把设置里的
+「远端 resume 命令」填成 `ccm`，**cc-monitor 前端零改动**就已经正确（它自己会在后面拼
+`--resume <sid>`）。这是 §0 推论④「向下兼容 = 少传参数」的具体兑现，也让 F02 独立可验。
 
 用户自定义 = **给组合起别名**，不是写新实现：
 
 ```bash
-cc()   { ccm "$@"; }                    # 短名
-cct()  { ccm --tmux "$@"; }             # tmux 版
-zcct() { ccm --tmux --account z "$@"; } # 账号 + tmux
+cc()   { ccm "$@"; }
+cct()  { ccm --tmux "$@"; }
+zcct() { ccm --tmux --account z "$@"; }
+oot()  { ccm --tmux --agent codex "$@"; }
 ```
 
-> **命名说明**：规范命令名取 `ccm` 而非 `cc`。理由：`cc` 在 Linux 上是 C 编译器（`/usr/bin/cc`），
-> `exec cc --resume <sid>` 会起一个编译器（审计 D4 已指出）；而 cc-monitor 本来就拥有并安装
-> `ccm` 这个名字（`install_remote_ccm_helper`）。用户想要 `cc` 就由安装器生成别名，意图不变。
+> **命名说明**：规范命令名取 `ccm` 而非 `cc`——`cc` 在 Linux 上是 C 编译器（`/usr/bin/cc`），
+> `exec cc --resume <sid>` 会起一个编译器（审计 D4 已指出）。旧的 `ccm()` bashrc 函数**被本 CLI
+> 整体取代**（不共存），故无遮蔽问题（实测：shell 函数优先于 PATH，若共存则新 CLI 一次都跑不到）。
+> 装成 `~/.local/bin/ccm` **可执行文件**而非 shell 函数：与 shell 无关，zsh/fish 用户同样可用
+> （审计 D2 指出远端是 zsh/fish 时 `.bashrc` 根本不被 source）。
+
+**会话命名统一**（顺带消灭 INVENTORY 记的「4 套命名规则」）：CLI 与 cc-monitor 的
+`deriveTmuxName` 同规则产出 `cc-<safe-basename>`。于是终端 `cct` 与 app「开新 Claude」在同一目录
+**造出同一个名字** → 幂等短路 = 接回同一个会话（这正是期望行为）。agent 类别写进 tmux option
+`@ccm_agent`，不进名字——名字不承担身份职责（F04）。前缀仍是 `cc-` 以过今天的
+`is_ccm_tmux_name`，使 F02 在 F04 之前就能被控制面接受。
 
 **CLI 独占实现 L1/L2/L5**（建 tmux、设 env、打 `@ccm_sid`、exec agent），于是：
 
@@ -218,7 +239,8 @@ Modifier = account=X | base | container=tmux|none | 未来任意   ← 二级 fl
 
 | 共享面 | 涉及功能 | 最终形态 | 当前状态 | 备注 |
 |---|---|---|---|---|
-| `shared/ccm-wrapper.sh` → **新 CLI 本体** | F02,F04,F08 | 从「一个 rbind 函数 + 一个裸 ccm 壳」升格为**参数化启动 CLI**；独占 L1/L2/L5 实现；vendored 可部署（照 `cc-acct-iso` 的 vendor 范式） | 硬编码 `~/.claude/sessions/`，`ccm() { ( __ccm_rbind; exec claude "$@" ); }` | **D7 已证伪**：`~/.claude-accts/*/{sessions,projects}` 均 symlink 回 `~/.claude`，同一 inode → 账号感知改造是 no-op，**从计划删除**，省一处四点 lockstep |
+| `shared/ccm-wrapper.sh` → **新 CLI 本体** | F02,F04,F08 | 从「一个 rbind 函数 + 一个裸 ccm 壳」升格为**参数化启动 CLI**（`~/.local/bin/ccm` 可执行文件）；独占 L1/L2/L5 实现；vendored 可部署（照 F5 的 `cc-acct-iso` vendor 范式） | 硬编码 `~/.claude/sessions/`，`ccm() { ( __ccm_rbind; exec claude "$@" ); }` | **D7 已证伪**：`~/.claude-accts/*/{sessions,projects}` 均 symlink 回 `~/.claude`，同一 inode → 账号感知改造是 no-op，**从计划删除**，省一处四点 lockstep |
+| **用户 `~/.bashrc` 的 4 个 block**（119-168 cc-block / 169-205 ccm / 210-236 oo-block / 238-305 account-block，共 187 行） | F02,F08 | **整体取代**为一个 block：只剩别名（`cc`/`cct`/`zcc`/`zcct`/`bcc`/`bcct`/`oo`/`oot`），实现全在 CLI。用户 2026-07-27 显式授权「直接重构」 | 4 套并存实现 + 凭据 swap | **能力不能丢**：`_cc_resolve_target` → `--cwd auto`（逐字节保持）、`CC_ENV` 代理 → CLI 内部注入（配置一次性迁到 `~/.config/ccm/config`）、`__ccm_rbind` → CLI 内部。**真删**：`_cc_acct`/`_cc_acct_last`/`cc-acct` 凭据 swap 全套（已被 cc-acct-iso 取代，`~/.claude/accounts/*.json` 快照已无用）。`proxy-on/off/status` 与 claude 无关，**不动**。落盘前须先出完整 diff + 备份 |
 | `src/session-backend.ts` | F01,F03,F04 | tmux 动词唯一来源；所有 `-t` 走 `exactTarget()` 产出 `=name:`；**IR 渲染器经 `SessionBackend` 接口取命令**（不导出 `exactTarget` 直呼——那会破 INVARIANTS §31①「前端绝不硬编码后端命令」） | **F01 已落地**（`exactTarget`，8 处 `-t`） | F03 把 `exactTarget` 入参改**判别式**（`{kind:"raw"\|"quoted"}`），别留「首尾恰为 `'`」的形状嗅探——渲染器接管后会静默打错目标 |
 | `src-tauri/src/tmux.rs` | F01,F04 | `exact_target()` 产出 `=name:`；三道独立门（`is_safe_tmux_target` 恒强制 / 身份 = `@ccm_sid` ∪ `cc-*` / 破坏性额外要求 `windows==1`）；verify+act 单条原子命令 | **F01 已落地第一条**（`exact_target` + 3 个命令构造点提纯为纯函数并全部钉死） | `is_ccm_tmux_name` 不删除，降级为身份判据**之一**。F04 的 `is_safe_tmux_target` 须涵盖**空 target**——`-t '=:'` 落到「当前会话」，今天 `capture_remote_pane` 是唯一无门的入口（只读，故非阻塞） |
 | `src/remote-launch.ts` | F02,F03,F04,F05 | 7 个 builder → 薄适配器，**保持位置参数签名**（e2e driver 直接 import，审计 §五.4）；内部构 `LaunchPlan` 后交渲染器 | 7 个独立实现；**F01 拆出 `isValidNewTmuxName`**（仅创建路径禁 glob） | `sanitizeRemoteLauncher` 只作用于用户串，`wrap` 必须在其**后**（审计 D3）。校验谓词已两分：创建 vs attach，别再合回一个 |
@@ -230,6 +252,7 @@ Modifier = account=X | base | container=tmux|none | 未来任意   ← 二级 fl
 | `src/tabs.ts` | F04,F09 | 菜单支持二级 flyout；徽章多账号即常显；对齐全套（⇄/⚠k/alignAll/countAccountMismatches）删除 | 平铺 per-account 项 | 删前核 `e2e/restart-cmd-driver.ts` 的 import（审计 §五.6） |
 | `src/agent-profile.ts` | F02,F03 | agent 轴保持独立；IR 与 CLI 都从它取 resume flag / 默认 launcher | 已是单一来源 | 不与 environment 轴混 |
 | `e2e/*-cmd-driver.ts` | F03,F09 | 位置参数签名不变；新增真机行为断言层 | 直接 import builder | **F03 硬验收条件** |
+| `~/.local/bin/cc-spawn` | F11 | **第三套独立 tmux 启动实现**并入 `ccm`：`cc-spawn` 保留 cc-bus 专属部分（总线登记 `cc-register`、台账 `spawned.tsv`、复用判定），但**建会话/送环境/送任务改经 `ccm`** | 独立实现：自建 tmux（`<basename>_cc` 命名，过不了 `is_ccm_tmux_name` 的 `cc-*` 白名单——根因5 同款）、自己的 CC_BUS_ID 注入（与 `ccm` 的 `agent_needs_bus_id` 重复）、自己的 exact-match 处理（`has-session -t "=$base"`，session 级正确、已合规 §31a） | **预信任能力（写 `~/.claude.json`/`~/.codex/config.toml`）应上提进 `ccm` 核心**，不只留给 cc-spawn——它直接解决了 F04 调研中发现的真实现象（claude 卡在信任确认页数小时、从不生成 sessionId、`@ccm_sid` 永不写入，见本轮 R10 调研）。上提后 `ccm --tmux` 与 `cc-spawn` 共享同一条防卡死路径 |
 
 ---
 
@@ -327,6 +350,7 @@ F02 ──┴─► F03 ─┬─► F04 ─┬─► F08
 | R7 | 「徽章从不一致信号 → 身份标识」是**语义反转** | F09 必须说明「不一致」这个信息迁到哪，不能悄悄消失 |
 | R8 | 删对齐全套会断 `e2e/restart-cmd-driver.ts` 的 import | F09 Phase B 先核 import 面 |
 | R9 | 改动面大，e2e 会大面积变红 | 每功能 Phase B 预先列「预期会红清单」，区分「是 bug」与「须 re-baseline」 |
+| R10 | **一个 sid 可同时活在 ≥2 个 tmux 会话里，`findClaudeTmux` 静默只挑第一个**（用户 2026-07-27 观察触发核实）：`@ccm_sid` 只写不清（wrapper 明写「不 unset」），resume 前「是否已存活」的判断只在点击瞬间查一次远端，无锁；终端手动 resume 与 app 内 resume 之间没有互斥。命中重复时另一个活会话对 app **完全不可见、也够不着**（继续跑、继续计费），直到用户自己去终端发现。核实当时：现存活会话无重复（`tmux ls` 按 sid 去重后为空），机制是**结构性风险**而非已发作的现存 bug | **F04 必须根治**：三道门 + `@ccm_sid_expect`/`@ccm_sid`（意图 vs 事实）仲裁（审计 D6）之外，须补：① resume 前的「已存活」检查与「创建」必须是**一条原子远端命令**（verify+act 合一，见 §5.2 TOCTOU 教训）而不是「查一次、再另发一条建会话命令」；② `findClaudeTmux` 命中 >1 时不得静默挑第一个——至少要让调用方能拿到全部候选（UI 层如何呈现留 F09）。**不在 F02/F03 单独打补丁**（用户 2026-07-27 拍板：留给 F04 一起做，避免先垫一个后面还要拆的半吊子） |
 
 ### 已由本轮证据关闭的旧风险
 
@@ -346,7 +370,25 @@ F02 ──┴─► F03 ─┬─► F04 ─┬─► F08
 
 ## 7. 变更记录
 
+- 06 — 2026-07-27 — **F02 完成签收**（Phase C→F 全过，两阻塞项+若干真机发现全修，双 agent 架构/UX
+  审通过）。计划侧改动：① 账本新增 F11「cc-bus 集成（cc-spawn 并入 ccm）」——`cc-spawn` 是第三套独立
+  tmux 启动实现，且其"预信任写入"能力应上提进 `ccm` 核心（直接解决 R10 调研中发现的"卡信任确认页
+  数小时、@ccm_sid 永不写入"现象）；② §6 新增 R10：一个 sid 可同时活在 ≥2 个 tmux 会话里，
+  `findClaudeTmux` 静默只挑第一个，用户 2026-07-27 观察触发核实，根治指派给 F04（不单独打补丁，
+  用户明确拍板）；③ F02 遗留六条按功能分派进 F03/F04/F06/F07/F08 的账本/风险表，无遗留孤儿债务；
+  ④ INVARIANTS §30/§31a 同步过期引用（`ccm-wrapper.sh` 已删、"三处同源"更正为四处）
+- 05 — 2026-07-27 — 用户拍板：R10（sid 匹配多个会话）留给 F04 一起根治，不在 F02/F03 单独打补丁
 - 01 — 2026-07-27 — 初版：从 `account-onboarding/MASTERPLAN-v2` + `AUDIT-v2-FINDINGS` §八 + 本轮真机证据重写 — v2 被四视角审计判定不可执行；且本轮查明「层所有权混乱」是真病根
+- 04 — 2026-07-27 — **F02 定形（用户三次澄清后）**：① 用户指出「旧的本来就该全部抛弃，为什么还考虑冲突」——
+  `ccm` 名字冲突是个**不该存在的问题**，旧 4 个 block 整体取代、不共存，故沿用 `ccm` 名；
+  实测佐证：shell 函数优先于 PATH，若共存则新 CLI 一次都跑不到（静默）→ 故装成
+  `~/.local/bin/ccm` **可执行文件**而非函数（顺带解决审计 D2 的 zsh/fish 问题）。
+  ② **codex 收编**：`--agent claude|codex` 成为 agent 轴的第二个值，`oo/oom/oot` 变别名，CLI 主体零分支。
+  ③ 新增 `--resume <sid>` 与 `resume <sid>` 等价——使 F02 一落地、前端零改动就正确（把设置里的
+  「远端 resume 命令」填 `ccm` 即可），F02 因此独立可验。④ 新增 `--print` / `--ccm-probe` 自省接口
+  （黄金串等价断言 + 安装自检 + 降级判据）。⑤ 会话命名统一为 `cc-<safe-basename>`，消灭 INVENTORY 记的
+  「4 套命名规则」；agent 类别进 `@ccm_agent` option 不进名字。⑥ 账本新增「用户 `~/.bashrc` 4 个 block」一行，
+  明确「命令可全废、**能力必须迁移**」（`--cwd auto` / 代理 / rbind）与「真删」（凭据 swap 全套）的分界
 - 03 — 2026-07-27 — **F01 完成签收**（Phase B→F 全过，双 agent 审计无阻塞、7 项重要发现全修）。计划侧改动：
   ① §3 账本 `session-backend.ts` 最终形态措辞改为「渲染器**经 `SessionBackend` 接口**取命令」——原措辞
   「由 IR 渲染器调用 `exactTarget()`」若字面执行会破 INVARIANTS §31①；② 账本给 F03 接一条「`exactTarget`

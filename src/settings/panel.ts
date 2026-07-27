@@ -526,14 +526,18 @@ export class SettingsPanel {
     const [localRow, localInput] = mkResumeRow(
       "本地 resume 命令",
       "默认：检测 cc，回退 claude",
-      "历史浏览器 ↺ 在本机新终端里 resume 会话用的命令（如 cc / cct）。\n留空 = 自动检测 PowerShell 的 cc 函数，没有则用 claude。",
+      "历史浏览器 ↺ 在本机新终端里 resume 会话用的命令。\n留空 = 自动检测 PowerShell 的 cc 函数，没有则用 claude。",
     );
     this.resumeLocalInput = localInput;
     group.appendChild(localRow);
     const [remoteRow, remoteInput] = mkResumeRow(
       "远端 resume 命令",
       "默认：claude",
-      "历史浏览器 ↺ 为远端会话生成的粘贴命令所用的启动器（如 cct）。\n留空 = claude。",
+      "远端 resume / 起会话时实际敲的启动器。\n"
+        + "推荐填 `ccm`（装了「ccm 启动器」后可用）——tmux 与账号由 cc-monitor 经参数控制。\n"
+        + "**别填 cct 这类自己建 tmux 的命令**：它会另起一个 tmux，cc-monitor 设的账号 env\n"
+        + "落在那个 tmux 进程边界之外、被整个吃掉，「用账号 X resume」就不生效。\n"
+        + "留空 = claude。",
     );
     this.resumeRemoteInput = remoteInput;
     group.appendChild(remoteRow);

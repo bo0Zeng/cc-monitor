@@ -145,13 +145,11 @@ const REMOTE_INFO_TEXT =
  * `__ccm_bind` + 可选 `cc` wrapper 的设计；用户设计评审指正：注册不该耦合启动）：
  *
  * - `__ccm_rbind`（注册原语）：只做注册——tmux 内对当前 session 开标题直通 +
- *   给"即将 `exec claude` 的当前 (子)shell PID"挂 marker watcher（每秒读
- *   `sessions/<PID>.json` 的 sid，变了就刷窗口标题 `ccm-rbind-<sid>`）。
- *   不设环境、不启动任何东西。**契约**：须与 `exec claude` 同一 (子)shell——
- *   `( __ccm_rbind; exec claude ... )`，exec 后 shell PID 即 claude PID。
- * - `ccm`（可选便捷启动器）：一行薄壳，且**不覆盖用户已有的同名函数**（旧版
- *   曾无条件覆盖，实测清掉过用户自己带代理的 ccm 启动器——防撞守卫由此而来）。
- *   自有启动器（cc/cct 等）的用户不用 ccm，在自己的函数里调原语即可。
+ *   **F02 起这些实现搬进了 `~/.local/bin/ccm`（可执行文件）**，本文件只 import 别名块。
+ *   为什么不再装成 shell 函数：函数**优先于 PATH**，与用户已有同名函数硬冲突且必然遮蔽
+ *   （实测：共存时新 CLI 一次都跑不到，且是静默的）；且远端是 zsh/fish 时 `.bashrc`
+ *   根本不被 source，函数形态拿不到。别名块只做**组合**（`cct() { ccm --tmux "$@"; }`），
+ *   不含任何实现——自定义在组合层，不在实现层。
  *
  * `ccm-rbind-%s` 标记必须与后端 `bind.rs` 的 `format!("ccm-rbind-{sid}")` 完全一致。
  *
@@ -160,8 +158,8 @@ const REMOTE_INFO_TEXT =
  * 失败，而 tmux 恰是远端最常见形态。原语内自动对**当前 session** 开直通
  * （session 级选项，不写 tmux.conf、不影响其它 session）。
  */
-// 单一来源：shared/ccm-wrapper.sh（后端 sftp.rs include_str! 同一文件，杜绝漂移）
-import CCM_WRAPPER_SNIPPET from "../../shared/ccm-wrapper.sh?raw";
+// 单一来源：shared/ccm-aliases.sh（后端 sftp.rs include_str! 同一文件，杜绝漂移）
+import CCM_WRAPPER_SNIPPET from "../../shared/ccm-aliases.sh?raw";
 
 export interface RemoteSectionOptions {
   /** 被 CollapsibleGroup 包起来时传 headless: true，不渲染自己的小标题。 */
@@ -481,11 +479,12 @@ class MachineCard {
     installInfo.textContent =
       "安装位置：① daemon（远端数据源，必需）→ 上方「daemon 路径」填的位置" +
       "（默认 ~/.cc-monitor/bin/cc-monitor-remote）+ 同目录 .build_id；启用远端后连接时会自动安装，" +
-      "下面按钮供手动装 / 卸。② ccm 助手（↗ 拉前用，可选）→ 远端 ~/.bashrc 里一段带 " +
-      "cc-monitor BEGIN/END 标记的函数（先备份原文件、只动标记块内）。" +
-      "装好后：无自有启动器 → 直接用 ccm 启动 claude；有自有启动器（cc/cct 等）→ " +
-      "在函数里调注册原语 __ccm_rbind（与 exec claude 同一子 shell：( __ccm_rbind; exec claude ... )）。" +
-      "ccm 不会覆盖你已有的同名函数；tmux 里开箱即用（自动对当前 session 开标题直通，不改 tmux.conf）。";
+      "下面按钮供手动装 / 卸。② ccm 启动器（可选）→ 两部分：CLI 本体装到远端 " +
+      "~/.local/bin/ccm（可执行文件），别名块写进 ~/.bashrc 的 cc-monitor BEGIN/END 标记块" +
+      "（先备份原文件、只动标记块内）。装好后终端可用：ccm（起会话）/ ccm --tmux（tmux 里起）/ " +
+      "ccm --account <名>（指定账号），`ccm --help` 看全部修饰。别名（cc / cct / cch）不覆盖你" +
+      "已有的同名函数。这条路径与 cc-monitor 自己起会话**是同一套实现**——终端起的会话 app 认得出、" +
+      "能 attach、能换号重启。";
     body.appendChild(installInfo);
 
     // 动作区：连接测试 + daemon 装/卸 + ccm 装/卸。按钮多，行内可换行。
@@ -565,9 +564,9 @@ class MachineCard {
 
     // F10：装 / 卸 ccm 助手到 ~/.bashrc（↗ 拉前用）。
     this.installButton = mkBtn(
-      "装 ccm 助手",
+      "装 ccm 启动器",
       "settings-btn-secondary",
-      "把 ccm wrapper 装进远端 ~/.bashrc（↗ 拉前用）；先备份原文件、幂等可重装",
+      "部署 ccm CLI 到远端 ~/.local/bin 并把别名块写进 ~/.bashrc；先备份原文件、幂等可重装",
       () => void this.onInstallCcm(),
     );
     actionRow.appendChild(this.installButton);
@@ -575,7 +574,7 @@ class MachineCard {
     this.ccmUninstallButton = mkBtn(
       "卸载 ccm",
       "settings-btn-secondary",
-      "从远端 ~/.bashrc 删掉 cc-monitor 的 ccm 块（先备份；块外内容不动）",
+      "从远端 ~/.bashrc 删掉 cc-monitor 的别名块（先备份；块外内容不动。CLI 本体 ~/.local/bin/ccm 需手动删）",
       () => void this.onUninstallCcm(),
     );
     actionRow.appendChild(this.ccmUninstallButton);
@@ -696,14 +695,14 @@ class MachineCard {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user) {
       this.testResult.style.display = "block";
-      this.testResult.textContent = "请先填好 host / user 再安装 ccm 助手。";
+      this.testResult.textContent = "请先填好 host / user 再安装 ccm 启动器。";
       return;
     }
     this.installButton.disabled = true;
     const prev = this.installButton.textContent;
     this.installButton.textContent = "安装中…";
     this.testResult.style.display = "block";
-    this.testResult.textContent = "安装 ccm 助手中…";
+    this.testResult.textContent = "安装 ccm 启动器中…";
     try {
       // snippet 由后端拥有（写进 ~/.bashrc 的是被 shell 执行的代码，不让前端注入）；
       // 前端 CCM_WRAPPER_SNIPPET 仅用于面板展示/手动复制，须与后端常量逐字一致。
@@ -1512,11 +1511,12 @@ export class RemoteSection {
     label.textContent = "远端 ↗ 拉前（可选）";
     label.appendChild(
       makeInfoIcon(
-        "想让本地 ↗ 拉前对应的 ssh 窗口，远端 `.bashrc` 里需要下面的 `ccm` 函数，并用\n" +
-          "`ccm` 代替 `claude` 启动。ccm 会周期性把 ssh 窗口标题设成 `ccm-rbind-<sid>`，\n" +
-          "本地 monitor 扫到即绑定该窗口。\n\n" +
-          "✅ 每台机器卡片上的「装 ccm 助手」按钮可一键装到远端 `~/.bashrc`（先备份原文件、\n" +
-          "幂等可重装）；也可手动复制下面片段（zsh / 自定义 profile 用）。\n\n" +
+        "用 `ccm` 起会话（而非直接 `claude`），远端会周期性把 ssh 窗口标题设成\n" +
+          "`ccm-rbind-<sid>`，本地 monitor 扫到即绑定该窗口；同时给 tmux 打上 @ccm_sid，\n" +
+          "于是终端起的会话 app 也认得出、能 attach、能换号重启。\n\n" +
+          "✅ 每台机器卡片上的「装 ccm 启动器」按钮一键装好（CLI 到 ~/.local/bin/ccm，\n" +
+          "别名块到 ~/.bashrc，先备份、幂等可重装）；下面片段是别名块，可手动复制\n" +
+          "（zsh / 自定义 profile 用；CLI 本体仍需用按钮部署）。\n\n" +
           "⚠ 限制：多个 ssh 会话若开在同一个 Windows Terminal 窗口的不同 tab 里，↗ 只能\n" +
           "拉起该窗口、无法切到具体 tab。建议每个远端会话单独开窗。",
       ),
@@ -1543,7 +1543,7 @@ export class RemoteSection {
             copyBtn.textContent = prev;
           }, 1500);
         },
-        (e) => console.warn("copy ccm wrapper failed:", e),
+        (e) => console.warn("copy ccm aliases failed:", e),
       );
     });
     btnRow.appendChild(copyBtn);
