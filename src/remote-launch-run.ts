@@ -5,18 +5,80 @@
  *
  * 失败回退 = F09 旧行为：复制命令 + toast 说明（非 Windows dev / 配置缺失 /
  * wt+PowerShell 都 spawn 失败时，用户仍拿得到可粘贴命令，功能永不变砖）。
+ *
+ * F03：6 个 executor 收敛为「构造 {ctx,plan} → `renderLaunchCommand` 挑渲染器 → 执行」。
+ * **对外签名/返回值语义逐字不变**——`account-restart.ts`/`tabs.ts`/`views/history.ts` 零改动
+ * （`runRemoteResumeTmux` 的位置参数签名被 `e2e/restart-cmd-driver.ts` 经 `account-restart.ts`
+ * 传递性锁死）。
  */
 import { invoke } from "@tauri-apps/api/core";
 import {
-  buildResumeDirectCmd,
-  buildResumeTmuxCmd,
-  buildResumeIntoExistingTmuxCmd,
-  buildAttachCmd,
-  buildLauncherCmd,
-  deriveTmuxName,
-} from "./remote-launch";
+  planResumeDirect,
+  planResumeTmux,
+  planResumeIntoExistingTmux,
+  planLauncher,
+  planAttach,
+} from "./launch-requests";
+import { renderFallback } from "./launch-render-fallback";
+import { canRenderCli, renderCli } from "./launch-render-cli";
+import { probeCcm } from "./ccm-probe";
+import { getBehavior } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
 import { AGENT_PROFILE } from "./agent-profile";
+import { deriveTmuxName } from "./remote-launch";
+import type { LaunchContext, LaunchPlan } from "./launch-plan";
+
+/** 挑渲染器：`forceLegacyLaunchRenderer` 手动逃生口（MASTERPLAN R2）短路到兜底；否则探测到 ccm
+ *  且该 plan 的全部维度都能表达成 CLI 语法 → 走 CLI；探测失败/未装/能力不足/含 CLI 表达不了的
+ *  维度（如账号、idle-tmux 复用）→ 安全降级，绝不因为渲染器选择本身而让启动失败。 */
+async function renderLaunchCommand(
+  origin: string,
+  ctx: LaunchContext,
+  plan: LaunchPlan,
+): Promise<string> {
+  const behavior = await getBehavior();
+  if (!behavior.forceLegacyLaunchRenderer && ctx.transport.kind === "ssh") {
+    const probe = await probeCcm(origin);
+    if (canRenderCli(plan, ctx, probe)) return renderCli(plan, ctx);
+  }
+  return renderFallback(plan);
+}
+
+interface LaunchToasts {
+  success: string;
+  successDetail: string;
+  failureCopied: string;
+  failureNotCopied: string;
+}
+
+/** MASTERPLAN §3 账本对 `remote-launch-run.ts` 的既定最终形态之一：「剪贴板回退集中一处」。
+ *  6 个 executor 的 invoke→toast/剪贴板回退骨架逐字相同，只有文案与 `origin` 不同——收敛成
+ *  这一个函数，返回「IPC 是否真的被接受」（true=拉起成功；false=已走剪贴板回退）。 */
+async function invokeLaunchOrCopyFallback(
+  origin: string,
+  cmd: string,
+  toasts: LaunchToasts,
+): Promise<boolean> {
+  try {
+    await invoke("launch_remote_terminal", { origin, remoteCmd: cmd });
+    showActionFailureToast(toasts.success, toasts.successDetail, { level: "info", durationMs: 6000 });
+    return true;
+  } catch (err) {
+    // 回退：复制命令让用户自己粘贴（保留 F09 语义）。
+    let copied = true;
+    try {
+      await navigator.clipboard.writeText(cmd);
+    } catch {
+      copied = false; // 命令在 toast 里仍可见，可手动复制
+    }
+    showActionFailureToast(
+      copied ? toasts.failureCopied : toasts.failureNotCopied,
+      `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
+      { level: "info", durationMs: 10000 },
+    );
+    return false;
+  }
+}
 
 /** 一键 resume 远端会话：拉起成功 toast 告知；失败回退复制命令。 */
 export async function runRemoteResume(
@@ -28,33 +90,18 @@ export async function runRemoteResume(
 ): Promise<void> {
   let cmd: string;
   try {
-    cmd = buildResumeDirectCmd(sid, cwd, launcher, configDir);
+    const { ctx, plan } = planResumeDirect(sid, cwd, launcher, configDir);
+    cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 resume 命令", String(err));
     return;
   }
-  try {
-    await invoke("launch_remote_terminal", { origin, remoteCmd: cmd });
-    showActionFailureToast(
-      "已拉起远端 resume",
-      `新终端窗口正在连接 [${origin}] 并 resume 该会话。`,
-      { level: "info", durationMs: 6000 },
-    );
-    return;
-  } catch (err) {
-    // 回退：复制命令让用户自己粘贴（保留 F09 语义）。
-    let copied = true;
-    try {
-      await navigator.clipboard.writeText(cmd);
-    } catch {
-      copied = false; // 命令在 toast 里仍可见，可手动复制
-    }
-    showActionFailureToast(
-      copied ? "拉起失败，已复制 resume 命令" : "拉起失败，请手动复制以下命令",
-      `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
-      { level: "info", durationMs: 10000 },
-    );
-  }
+  await invokeLaunchOrCopyFallback(origin, cmd, {
+    success: "已拉起远端 resume",
+    successDetail: `新终端窗口正在连接 [${origin}] 并 resume 该会话。`,
+    failureCopied: "拉起失败，已复制 resume 命令",
+    failureNotCopied: "拉起失败，请手动复制以下命令",
+  });
 }
 
 /** F52：tmux 版 resume——在远端 tmux 会话 `cc-<sid8>` 里幂等 resume Claude;失败回退复制命令。
@@ -75,38 +122,25 @@ export async function runRemoteResumeTmux(
 ): Promise<boolean> {
   let cmd: string;
   try {
-    cmd = buildResumeTmuxCmd(sid, cwd, launcher, name, configDir);
+    const { ctx, plan } = planResumeTmux(sid, cwd, launcher, name, configDir);
+    cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 tmux resume 命令", String(err));
     return false;
   }
-  try {
-    await invoke("launch_remote_terminal", { origin, remoteCmd: cmd });
-    showActionFailureToast(
-      "已拉起 tmux resume",
-      `新终端窗口正在连接 [${origin}] 并在 tmux 会话里 resume 该会话。`,
-      { level: "info", durationMs: 6000 },
-    );
-    return true;
-  } catch (err) {
-    let copied = true;
-    try {
-      await navigator.clipboard.writeText(cmd);
-    } catch {
-      copied = false;
-    }
-    showActionFailureToast(
-      copied ? "拉起失败，已复制 tmux resume 命令" : "拉起失败，请手动复制以下命令",
-      `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
-      { level: "info", durationMs: 10000 },
-    );
-    return false;
-  }
+  return invokeLaunchOrCopyFallback(origin, cmd, {
+    success: "已拉起 tmux resume",
+    successDetail: `新终端窗口正在连接 [${origin}] 并在 tmux 会话里 resume 该会话。`,
+    failureCopied: "拉起失败，已复制 tmux resume 命令",
+    failureNotCopied: "拉起失败，请手动复制以下命令",
+  });
 }
 
 /** F03：往一个**已存在的空 tmux**（idle-tmux：claude 已退、只剩交互 shell 的 `cc-<sid8>`）就地
  *  resume——send-keys 载荷 + attach，复用原会话名（不产孤儿，治 #76）。签名/返回值与
- *  `runRemoteResumeTmux` 对齐：true=真拉起来了；false=命令构造失败/拉起失败（已回退剪贴板）。 */
+ *  `runRemoteResumeTmux` 对齐：true=真拉起来了；false=命令构造失败/拉起失败（已回退剪贴板）。
+ *  **`canRenderCli` 对这类 plan（`mode==="send-into"`）恒返回 false**——shared/ccm 没有就地
+ *  复用能力，本函数因此恒走兜底渲染器（诚实放弃，见 F03 计划 §2「#76 防线」）。 */
 export async function runRemoteResumeIntoExistingTmux(
   origin: string,
   sid: string,
@@ -116,33 +150,18 @@ export async function runRemoteResumeIntoExistingTmux(
 ): Promise<boolean> {
   let cmd: string;
   try {
-    cmd = buildResumeIntoExistingTmuxCmd(sid, name, launcher, configDir);
+    const { ctx, plan } = planResumeIntoExistingTmux(sid, name, launcher, configDir);
+    cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造就地 resume 命令", String(err));
     return false;
   }
-  try {
-    await invoke("launch_remote_terminal", { origin, remoteCmd: cmd });
-    showActionFailureToast(
-      "已在原 tmux 就地 resume",
-      `新终端窗口正在连接 [${origin}] 并在原 tmux 会话「${name}」里 resume 该会话（复用、不新建）。`,
-      { level: "info", durationMs: 6000 },
-    );
-    return true;
-  } catch (err) {
-    let copied = true;
-    try {
-      await navigator.clipboard.writeText(cmd);
-    } catch {
-      copied = false;
-    }
-    showActionFailureToast(
-      copied ? "拉起失败，已复制就地 resume 命令" : "拉起失败，请手动复制以下命令",
-      `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
-      { level: "info", durationMs: 10000 },
-    );
-    return false;
-  }
+  return invokeLaunchOrCopyFallback(origin, cmd, {
+    success: "已在原 tmux 就地 resume",
+    successDetail: `新终端窗口正在连接 [${origin}] 并在原 tmux 会话「${name}」里 resume 该会话（复用、不新建）。`,
+    failureCopied: "拉起失败，已复制就地 resume 命令",
+    failureNotCopied: "拉起失败，请手动复制以下命令",
+  });
 }
 
 /**
@@ -177,60 +196,35 @@ export async function runRemoteLauncher(
 ): Promise<void> {
   let cmd: string;
   try {
-    cmd = buildLauncherCmd(cwd, tmuxName, command, configDir);
+    const { ctx, plan } = planLauncher(cwd, tmuxName, command, configDir);
+    cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 launcher 命令", String(err));
     return;
   }
-  try {
-    await invoke("launch_remote_terminal", { origin, remoteCmd: cmd });
-    showActionFailureToast(
-      "已拉起「开新 Claude」",
-      `新终端窗口正在连接 [${origin}] 并在 tmux 会话「${tmuxName}」里启动 Claude。`,
-      { level: "info", durationMs: 6000 },
-    );
-  } catch (err) {
-    let copied = true;
-    try {
-      await navigator.clipboard.writeText(cmd);
-    } catch {
-      copied = false;
-    }
-    showActionFailureToast(
-      copied ? "拉起失败，已复制命令" : "拉起失败，请手动复制以下命令",
-      `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
-      { level: "info", durationMs: 10000 },
-    );
-  }
+  await invokeLaunchOrCopyFallback(origin, cmd, {
+    success: "已拉起「开新 Claude」",
+    successDetail: `新终端窗口正在连接 [${origin}] 并在 tmux 会话「${tmuxName}」里启动 Claude。`,
+    failureCopied: "拉起失败，已复制命令",
+    failureNotCopied: "拉起失败，请手动复制以下命令",
+  });
 }
 
-/** F51：一键 attach 到远端 tmux 会话:拉起 `ssh -t … tmux attach -t <名>`;失败回退复制命令。 */
+/** F51：一键 attach 到远端 tmux 会话:拉起 `ssh -t … tmux attach -t <名>`;失败回退复制命令。
+ *  ccm 已装且能力齐全时走 CLI 渲染器（`ccm attach <名>`，与兜底输出逐字同构，无 #76 歧义）。 */
 export async function runRemoteAttach(origin: string, name: string): Promise<void> {
   let cmd: string;
   try {
-    cmd = buildAttachCmd(name);
+    const { ctx, plan } = planAttach(name);
+    cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 attach 命令", String(err));
     return;
   }
-  try {
-    await invoke("launch_remote_terminal", { origin, remoteCmd: cmd });
-    showActionFailureToast(
-      "已拉起 tmux attach",
-      `新终端窗口正在连接 [${origin}] 并 attach 到 tmux 会话「${name}」。`,
-      { level: "info", durationMs: 6000 },
-    );
-  } catch (err) {
-    let copied = true;
-    try {
-      await navigator.clipboard.writeText(cmd);
-    } catch {
-      copied = false;
-    }
-    showActionFailureToast(
-      copied ? "拉起失败，已复制 attach 命令" : "拉起失败，请手动复制以下命令",
-      `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
-      { level: "info", durationMs: 10000 },
-    );
-  }
+  await invokeLaunchOrCopyFallback(origin, cmd, {
+    success: "已拉起 tmux attach",
+    successDetail: `新终端窗口正在连接 [${origin}] 并 attach 到 tmux 会话「${name}」。`,
+    failureCopied: "拉起失败，已复制 attach 命令",
+    failureNotCopied: "拉起失败，请手动复制以下命令",
+  });
 }

@@ -1,0 +1,126 @@
+/**
+ * launch-render-cli.ts 纯函数断言：canRenderCli 的诚实边界 + renderCli 的 token 产出。
+ * 跑法：`tsx src/launch-render-cli.test.ts`。
+ */
+import { canRenderCli, renderCli } from "./launch-render-cli.ts";
+import { buildLaunchPlan } from "./launch-plan.ts";
+import type { CcmProbeResult } from "./ccm-probe.ts";
+import type { LaunchContext } from "./launch-plan.ts";
+
+let failed = 0;
+function test(name: string, fn: () => void): void {
+  try {
+    fn();
+    console.log(`  ✓ ${name}`);
+  } catch (e) {
+    failed++;
+    console.error(`  ✗ ${name}\n      ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+function eq(a: unknown, b: unknown, msg?: string): void {
+  if (a !== b) throw new Error(`${msg ?? "eq"}: expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
+}
+
+console.log("launch-render-cli.test.ts");
+
+const FULL_CAPS: CcmProbeResult = {
+  installed: true,
+  version: "1",
+  capabilities: new Set(["new", "resume", "attach", "tmux", "account", "cwd", "agent", "launcher", "ccm-sid", "print"]),
+};
+const NOT_INSTALLED: CcmProbeResult = { installed: false, version: null, capabilities: new Set() };
+
+function ctxOf(overrides: Partial<LaunchContext>): LaunchContext {
+  return {
+    transport: { kind: "ssh" },
+    action: { kind: "resume", sid: "abc-123" },
+    container: { kind: "tmux", name: "cc-abc12345", nameQuoting: "raw", mode: "create-or-attach" },
+    cwd: "/p",
+    account: { kind: "none" },
+    launcherOverride: "claude",
+    ccmSid: undefined,
+    ...overrides,
+  };
+}
+
+test("canRenderCli：未探测到 ccm → false", () => {
+  const ctx = ctxOf({});
+  eq(canRenderCli(buildLaunchPlan(ctx), ctx, NOT_INSTALLED), false);
+});
+test("canRenderCli：装了 + create-or-attach + 无账号 → true", () => {
+  const ctx = ctxOf({});
+  eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), true);
+});
+test("canRenderCli：local transport → false（F06 未实现）", () => {
+  const ctx = ctxOf({ transport: { kind: "local" } });
+  eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), false);
+});
+test("canRenderCli：账号维度存在 → false（cliFlags 恒 null，F05 移交点）", () => {
+  const ctx = ctxOf({ account: { kind: "account", configDir: "/home/u/.claude-accts/z" } });
+  eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), false);
+});
+
+// **#76 防线——本组测试的核心价值**：shared/ccm 的 --tmux 只有幂等 create-or-attach 一种形态，
+// 没有「就地复用已存在 idle tmux、不新建」的能力。`mode==="send-into"` 的 plan 必须强制走兜底
+// 渲染器，否则会让 #76（claude 已退但 tmux 还在，短路跳过 send-keys，用户 attach 进空 shell）
+// 以 CLI 路径的新形式复发——且现有回归测试测不到它（它们测的是 buildResumeIntoExistingTmuxCmd
+// 这个 builder 的兜底路径，不测 renderCli）。
+test("canRenderCli：send-into（idle-tmux 就地复用）→ 恒 false，即便装了 ccm 且能力齐全", () => {
+  const ctx = ctxOf({ container: { kind: "tmux", name: "cc-s1", nameQuoting: "raw", mode: "send-into" } });
+  eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), false, "#76 防线：诚实放弃，不近似渲染");
+});
+// attach-only 不受 #76 防线约束：`ccm attach <名>` 与 `shared/ccm` 源码核对就是
+// `exec tmux attach -t "=$名:"`，与兜底渲染器的 SESSION_BACKEND.attach() 逐字同构，没有
+// create-or-attach vs 就地复用那种歧义（Phase D 架构审计发现：早期实现把它也挡在闸门外，
+// 导致 renderCli 的 attach 分支永不可达，已收窄——见 launch-render-cli.ts 头注）。
+test("canRenderCli：attach-only + 装了 ccm 且能力齐全 → true（与 create-or-attach 同等安全）", () => {
+  const ctx = ctxOf({ action: { kind: "attach", name: "cc-s1" }, container: { kind: "tmux", name: "cc-s1", nameQuoting: "quoted", mode: "attach-only" } });
+  eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), true);
+});
+test("canRenderCli：attach-only 但探测未装 → false（探测失败/未装的普通降级，与 #76 防线无关）", () => {
+  const ctx = ctxOf({ action: { kind: "attach", name: "cc-s1" }, container: { kind: "tmux", name: "cc-s1", nameQuoting: "quoted", mode: "attach-only" } });
+  eq(canRenderCli(buildLaunchPlan(ctx), ctx, NOT_INSTALLED), false);
+});
+
+test("renderCli：resume + tmux 基本形态", () => {
+  const ctx = ctxOf({});
+  const plan = buildLaunchPlan(ctx);
+  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --cwd /p");
+});
+test("renderCli：new 动作不带 sid", () => {
+  const ctx = ctxOf({ action: { kind: "new" }, ccmSid: undefined });
+  const plan = buildLaunchPlan(ctx);
+  eq(renderCli(plan, ctx), "ccm new --tmux=cc-abc12345 --cwd /p");
+});
+test("renderCli：attach 只带名字，不读其余修饰", () => {
+  const ctx = ctxOf({ action: { kind: "attach", name: "cc-s1" }, container: { kind: "tmux", name: "cc-s1", nameQuoting: "quoted", mode: "attach-only" } });
+  const plan = buildLaunchPlan(ctx);
+  eq(renderCli(plan, ctx), "ccm attach cc-s1");
+});
+test("renderCli：ccmSid → --ccm-sid flag", () => {
+  const ctx = ctxOf({ ccmSid: "abc-123" });
+  const plan = buildLaunchPlan(ctx);
+  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --ccm-sid=abc-123 --cwd /p");
+});
+test("renderCli：自定义 launcher（非默认才带 flag）", () => {
+  const ctx = ctxOf({ launcherOverride: "cct" });
+  const plan = buildLaunchPlan(ctx);
+  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --cwd /p --launcher cct");
+});
+test("renderCli：透传参数在 -- 之后", () => {
+  const ctx = ctxOf({});
+  const plan = buildLaunchPlan(ctx);
+  plan.args.push("--model", "opus");
+  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --cwd /p -- --model opus");
+});
+test("renderCli：cwd 含空格 → 正确 quote", () => {
+  const ctx = ctxOf({ cwd: "/home/pi/my proj" });
+  const plan = buildLaunchPlan(ctx);
+  eq(renderCli(plan, ctx), "ccm resume abc-123 --tmux=cc-abc12345 --cwd '/home/pi/my proj'");
+});
+
+if (failed > 0) {
+  console.error(`\n${failed} launch-render-cli test(s) failed`);
+  throw new Error(`launch-render-cli.test.ts: ${failed} failed`);
+}
+console.log("\nall launch-render-cli tests passed");

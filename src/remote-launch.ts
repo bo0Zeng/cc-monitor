@@ -24,71 +24,41 @@
 // F-MA：agent 画像是纯常量模块（无 DOM/render/bundler 依赖），不破坏本模块"零 bundler-import
 // 便于 tsx 单测"的性质（同 diff.ts）。resume 相关 CC 常量（嵌套 env / launcher / --resume）在此。
 import { AGENT_PROFILE } from "./agent-profile.ts";
-// F90（#48 / SS-12 / INVARIANTS §31）：会话后端命令语法归 `session-backend.ts` 座——本模块不再
-// 硬编码 `tmux …` 命令字面量，只留校验/转义/载荷/编排，命令语法问 `SESSION_BACKEND` 要。
-import { SESSION_BACKEND } from "./session-backend.ts";
+// F03：shell 转义/校验原语搬进零依赖叶子模块（防 remote-launch.ts ↔ launch-render-fallback.ts
+// 运行时循环 import）。原样重新导出——本文件既有 import 面（remote-launch.test.ts 等）零改动。
+import {
+  posixQuote,
+  isValidSessionId,
+  sanitizeRemoteLauncher,
+  isValidConfigDir,
+  buildEnvPrefix,
+  isValidTmuxName,
+  isValidNewTmuxName,
+} from "./shell-quote.ts";
+export {
+  posixQuote,
+  isValidSessionId,
+  sanitizeRemoteLauncher,
+  isValidConfigDir,
+  buildEnvPrefix,
+  isValidTmuxName,
+  isValidNewTmuxName,
+};
+// F03：7 个 builder 的意图构造 + 校验逐字搬进 launch-requests.ts（LaunchContext/LaunchPlan
+// 翻译层）；本文件的每个导出现在只是「调那边 + 交渲染器」的薄适配器，位置参数签名逐字不变
+// （e2e/resume-cmd-driver.ts 直接 import 这几个符号，e2e/restart-cmd-driver.ts 经
+// account-restart.ts 传递性锁死 runRemoteResumeTmux 的签名）。
+import { renderFallback } from "./launch-render-fallback.ts";
+import {
+  planResumeDirect,
+  planResumeTmux,
+  planResumeIntoExistingTmux,
+  planLauncher,
+  planAttach,
+} from "./launch-requests.ts";
 
 /** Claude 嵌套会话环境标记（空格分隔，喂 `unset`）。CLAUDE_CONFIG_DIR 刻意不含。 */
 export const CLAUDE_NESTED_ENV_VARS = AGENT_PROFILE.nestedEnvVars.join(" ");
-
-/** POSIX 单引号 quote：整体 `'…'` 包裹，内部 `'` 断开为 `'\''`。 */
-export function posixQuote(s: string): string {
-  return `'${s.replace(/'/g, `'\\''`)}'`;
-}
-
-/** sessionId 白名单（UUID 及其变体形态）。拒前导 `-`：防伪造 sid 注入选项
- * （如 `--dangerously-skip-permissions` 会被 claude 当参数吃掉）。 */
-export function isValidSessionId(sid: string): boolean {
-  return /^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}$/.test(sid);
-}
-
-/**
- * launcher 净化：空白 → `claude`；含注入向量字符 → fail-closed 回退 `claude`
- * （放行引号/括号/星号/方括号等合法参数字符）。
- */
-export function sanitizeRemoteLauncher(cmd: string | undefined): string {
-  const c = (cmd ?? "").trim();
-  if (!c) return AGENT_PROFILE.defaultLauncher;
-  if (/[;|&$`<>\r\n]/.test(c)) return AGENT_PROFILE.defaultLauncher;
-  return c;
-}
-
-/**
- * A4：CLAUDE_CONFIG_DIR 白名单。必须是绝对路径、无 `..` 段、无任何 shell 元字符/
- * 控制符/可欺骗 Unicode（与 daemon 侧 `is_safe_config_dir` 对齐）。fail-closed：
- * 稍有可疑即判非法，绝不拼进远端命令。
- */
-export function isValidConfigDir(dir: string): boolean {
-  if (!dir.startsWith("/")) return false;
-  if (dir === "/" || dir.includes("/../") || dir.endsWith("/..")) return false;
-  // shell 元字符 / 引号 / 控制符（C0 + DEL + C1，对齐 daemon Rust char::is_control）——一律拒
-  if (/['"\\`$;|&<>*?()!\u0000-\u001f\u007f-\u009f]/.test(dir)) return false;
-  // 可欺骗 Unicode（零宽 / 双向控制 / NBSP / BOM 等；NEL \u0085 已含在上面 C1 区）——一律拒
-  if (/[\u00a0\u200b-\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/.test(dir)) return false;
-  return true;
-}
-
-/**
- * A4：账号前缀。空 configDir → `""`（与旧载荷逐字节相同，保证"无账号=旧行为"）。
- * 非空则校验后 `export CLAUDE_CONFIG_DIR='<dir>'; `（posixQuote 包裹，前缀拼在 unset 之前）。
- * 非法即 throw（调用方 toast 报错，绝不拼进命令）。
- */
-export function buildEnvPrefix(configDir?: string): string {
-  if (!configDir) return "";
-  if (!isValidConfigDir(configDir)) {
-    throw new Error(`非法 CLAUDE_CONFIG_DIR（拒绝拼入命令）: ${JSON.stringify(configDir)}`);
-  }
-  return `export CLAUDE_CONFIG_DIR=${posixQuote(configDir)}; `;
-}
-
-/**
- * A4/F03：resume 载荷单一来源（tmux create 版 `buildResumeTmuxCmd` 与 idle 就地复用版
- * `buildResumeIntoExistingTmuxCmd` 共用，防两处漂移）：`[<账号前缀>]unset <嵌套env>; <launcher> --resume <sid>`。
- * 账号前缀空 configDir → ""（与旧载荷逐字节相同）。sid 校验由调用方在拼名/拼命令处兜底。
- */
-function buildResumePayload(sid: string, launcher: string, configDir?: string): string {
-  return `${buildEnvPrefix(configDir)}unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(launcher)} ${AGENT_PROFILE.resumeFlag} ${sid}`;
-}
 
 /**
  * 直连 resume 命令（F41）：`unset <嵌套env>; [cd '<cwd>' && ]<launcher> --resume <sid>`。
@@ -102,15 +72,7 @@ export function buildResumeDirectCmd(
   launcher = AGENT_PROFILE.defaultLauncher,
   configDir?: string,
 ): string {
-  if (!isValidSessionId(sid)) {
-    throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
-  }
-  const resume = `${sanitizeRemoteLauncher(launcher)} ${AGENT_PROFILE.resumeFlag} ${sid}`;
-  // A4：账号前缀在 unset 之前（空 configDir → "" → 与旧载荷逐字节相同）。
-  const prefix = `${buildEnvPrefix(configDir)}unset ${CLAUDE_NESTED_ENV_VARS}; `;
-  const c = cwd.trim();
-  if (!c) return prefix + resume;
-  return `${prefix}cd ${posixQuote(c)} && ${resume}`;
+  return renderFallback(planResumeDirect(sid, cwd, launcher, configDir).plan);
 }
 
 /**
@@ -124,8 +86,6 @@ export function buildResumeDirectCmd(
  * 绝不打进已在跑 claude 的会话(否则 `claude --resume` 会被当输入)。
  *
  * **send-keys 而非直 exec**(§2c):直 exec 常找不到 claude(只在交互 shell PATH/别名)→ 会话立死。
- * **载荷**含 `unset <嵌套env>;`(tmux server env 可能带毒 issue #24)。**全程只用单引号**(launch.rs
- * 拒双引号);载荷整体 `posixQuote` 成 send-keys 的单一参数,整条再由 launch.rs `bash -lic` 包装。
  * sid 非法 → throw。
  */
 export function buildResumeTmuxCmd(
@@ -135,37 +95,14 @@ export function buildResumeTmuxCmd(
   name?: string,
   configDir?: string,
 ): string {
-  if (!isValidSessionId(sid)) {
-    throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
-  }
-  // 默认 `cc-<sid8>`;**F74** 灰会话 resume 传入不撞名(`pickFreshTmuxName`,避免复用被 /branch
-  // 漂移占着的 `cc-<sid8>`)。名裸拼进 tmux 目标(不 posixQuote),必须无 shell/tmux 保留字符——
-  // 只允许 `[A-Za-z0-9_-]`(`cc-<sid8>[-N]` 恒满足;外部传入非法即拒,防注入)。
-  const tmuxName = name ?? `cc-${sid.slice(0, 8)}`;
-  // 首字符不许 `-`(否则 `tmux -t -x` 把名当选项吃掉,arg 混淆;对齐 isValidSessionId 拒前导 -),
-  // 其余 [A-Za-z0-9_-]。`cc-<sid8>[-N]` 恒满足;外部传入非法即拒(防注入 + 防 arg 混淆)。
-  if (!/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(tmuxName)) {
-    throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(tmuxName)}`);
-  }
-  // A4：账号前缀在 unset 之前（空 configDir → "" → 与旧载荷逐字节相同，#72 @ccm_sid 正交不受影响）。
-  const payload = buildResumePayload(sid, launcher, configDir);
-  const c = cwd.trim();
-  // 命令语法归后端座（SS-12 §31）。target 裸拼（`cc-<sid8>[-N]` 已过 `[A-Za-z0-9_-]` 校验）。
-  // #72：把**完整 sid**当 `@ccm_sid` 传给座——resume 编排自建会话带身份,cc-monitor 之后
-  // `findClaudeTmux` 精确命中(不落 cwd 回退警告)。sid 已过 `isValidSessionId`（[A-Za-z0-9_-]），裸拼安全。
-  return SESSION_BACKEND.createRunAttach({
-    target: tmuxName,
-    quotedCwd: c ? posixQuote(c) : null,
-    quotedPayload: posixQuote(payload),
-    ccmSid: sid,
-  });
+  return renderFallback(planResumeTmux(sid, cwd, launcher, name, configDir).plan);
 }
 
 /**
  * F03（idle-tmux 就地复用）：往一个**已存在的空 tmux**（claude 已退、只剩交互 shell 的 `cc-<sid8>`，
  * `@ccm_sid` 命中但 command≠claude）就地 resume——send-keys 载荷 + attach，**不 new-session**。
  * 复用原会话名 = 不产 `cc-<sid8>-N` 孤儿（治 #76 根因）；且修 create-gate 在会话已存在时短路跳过
- * send-keys、把用户 attach 进没起 claude 的空 shell（#75 一条）。载荷与 create 版共用 `buildResumePayload`。
+ * send-keys、把用户 attach 进没起 claude 的空 shell（#75 一条）。
  * **基座（无 configDir）时前置 `unset CLAUDE_CONFIG_DIR;`**：清掉空 shell 可能残留的旧账号 env
  * （避免在错账号数据目录 resume——#75 的复用变体）；账号复用则由载荷里的 export 覆盖。
  * sid / name 非法 → throw（绝不拼进命令）。
@@ -176,16 +113,7 @@ export function buildResumeIntoExistingTmuxCmd(
   launcher = AGENT_PROFILE.defaultLauncher,
   configDir?: string,
 ): string {
-  if (!isValidSessionId(sid)) {
-    throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
-  }
-  // 复用现有会话名（来自 list_remote_tmux），仍防御性校验：首字符非 `-`，其余 `[A-Za-z0-9_-]`。
-  if (!/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(name)) {
-    throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(name)}`);
-  }
-  const envReset = configDir ? "" : "unset CLAUDE_CONFIG_DIR; ";
-  const payload = envReset + buildResumePayload(sid, launcher, configDir);
-  return SESSION_BACKEND.runInExistingAttach({ target: name, quotedPayload: posixQuote(payload) });
+  return renderFallback(planResumeIntoExistingTmux(sid, name, launcher, configDir).plan);
 }
 
 /**
@@ -230,22 +158,7 @@ export function buildLauncherCmd(
   command = AGENT_PROFILE.defaultLauncher,
   configDir?: string,
 ): string {
-  const name = tmuxName.trim();
-  // F01：**创建**路径用 `isValidNewTmuxName`（额外禁 glob `*`/`?`）——本工具永远不把 glob 字符建进
-  // 会话名。attach 已有会话走宽松的 `isValidTmuxName`（那些名字不是我们建的，禁它是回归）。
-  if (!isValidNewTmuxName(name)) {
-    throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(name)}`);
-  }
-  const qname = posixQuote(name);
-  // A4：账号前缀在 unset 之前（空 configDir → "" → 与旧载荷逐字节相同）。
-  const payload = `${buildEnvPrefix(configDir)}unset ${CLAUDE_NESTED_ENV_VARS}; ${sanitizeRemoteLauncher(command)}`;
-  const c = cwd.trim();
-  // 命令语法归后端座（SS-12 §31）。target 用 posixQuote 名（F53 允许空格等，区别于 F52 定长裸名）。
-  return SESSION_BACKEND.createRunAttach({
-    target: qname,
-    quotedCwd: c ? posixQuote(c) : null,
-    quotedPayload: posixQuote(payload),
-  });
+  return renderFallback(planLauncher(cwd, tmuxName, command, configDir).plan);
 }
 
 /**
@@ -262,48 +175,10 @@ export function buildOpenTerminalCmd(cwd: string): string {
 }
 
 /**
- * F51:tmux 会话名合法性——非空、无控制字符(含 TAB 0x09 / 换行,防破坏 ls 解析或命令结构)、
- * **无 tmux 保留字符 `.`/`:`**(它们是 `session:window.pane` 目标分隔符,new-session 会拒)、
- * **无 glob 元字符 `*`/`?`**(见下)、≤128。
- * 允许空格等其余可打印字符(`posixQuote` 会安全包裹)。真正的注入边界是 `posixQuote`;此校验
- * 兼防运行时 tmux 报错(F53 把会话名开成用户自由输入后,`.`/`:` 会静默失败,故在此拦)。
- *
- * **本函数刻意不禁 glob 字符**(`*`/`?`)——见 `isValidNewTmuxName`。它同时把守 `buildAttachCmd`,
- * 而那条路径的输入是 `list_remote_tmux` 列出的**用户自己已存在的会话名**(tabs.ts 的 attach 项)。
- * tmux 允许 `st*ar` 这类名字;在此禁掉只会把「attach 到这类已存在会话」从可用变成 throw,
- * 而**挡不住任何东西**——`exactTarget` 的 `=name:` 已经把 glob 这一级彻底关闭(实测
- * `-t '=st*ar:'` rc=0 且精确命中)。D 审计判定为行为回归,故拆成两个谓词。
- */
-export function isValidTmuxName(name: string): boolean {
-  // eslint-disable-next-line no-control-regex
-  return name.length > 0 && name.length <= 128 && !/[.:\x00-\x1f\x7f]/.test(name);
-}
-
-/**
- * F01 第二道防线:**创建**新会话时额外禁 glob 元字符 `*`/`?`。
- *
- * tmux 的 `-t` 解析含 **glob** 一级——实测(tmux 3.6)`kill-session -t 'a*a'` 会命中并杀掉 `alpha`。
- * 第一道防线是 `session-backend.ts` 的 `exactTarget()`(`=name:` 强制精确);此处是第二道:
- * **本工具永远不把 glob 字符建进会话名**,于是即便将来某条路径漏了精确前缀也炸不出 glob 误伤。
- *
- * **只用在创建路径**(`buildLauncherCmd`)。attach 已有会话走 `isValidTmuxName`——那些名字不是我们
- * 建的,禁它既无收益又是回归(见上)。二者独立、职责不同。
- * (Rust 侧 `is_ccm_tmux_name` 的字符集今天顺带挡住这一面,但那是**身份**白名单、F04 会重构它,
- * 不能依赖它兼职做字符集防线。)
- */
-export function isValidNewTmuxName(name: string): boolean {
-  return isValidTmuxName(name) && !/[*?]/.test(name);
-}
-
-/**
  * F51 attach:`tmux attach -t '<name>'`。经 wt.exe `ssh -t … "bash -lic '<此串>'"`(launch.rs
  * 传输包装)落地,`ssh -t` 提供 attach 必需的 PTY。attach 只进已有会话、不启动 claude → 无需
  * unset 嵌套 env / launcher / sid。name 非法 → throw(调用方 toast,绝不拼入命令)。
  */
 export function buildAttachCmd(name: string): string {
-  if (!isValidTmuxName(name)) {
-    throw new Error(`非法 tmux 会话名(拒绝拼入命令): ${JSON.stringify(name)}`);
-  }
-  // 命令语法归后端座（SS-12 §31）；target 用 posixQuote 名。
-  return SESSION_BACKEND.attach(posixQuote(name));
+  return renderFallback(planAttach(name).plan);
 }

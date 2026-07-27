@@ -23,6 +23,8 @@ const KEY_RESUME_REMOTE = "resumeCommandRemote";
 
 const KEY_NOTIFY_TURN_END = "notifyTurnEnd";
 
+const KEY_FORCE_LEGACY_LAUNCH_RENDERER = "forceLegacyLaunchRenderer";
+
 export interface BehaviorConfig {
   /** 用户在 claude 里敲键发送消息时自动切到对应 monitor tab。默认 true。 */
   autoFollowUserActive: boolean;
@@ -49,6 +51,12 @@ export interface BehaviorConfig {
    * 默认 true。热更：turn-notify.ts 每次判定读缓存，设置保存时刷新缓存。
    */
   notifyTurnEnd: boolean;
+  /**
+   * F03（unify-launch）：手动兜底开关——强制远端启动走裸 shell 兜底渲染器，绕开 ccm CLI 探测/
+   * 渲染路径。默认 false（自动探测：探测失败/未装/能力不足已自动 fail-open 到兜底，本开关只是
+   * "even if 探测说能，我也不想走" 的人工逃生口，见 MASTERPLAN R2）。无 UI 暴露，需手改 config.json。
+   */
+  forceLegacyLaunchRenderer: boolean;
 }
 
 const DEFAULTS: BehaviorConfig = {
@@ -58,6 +66,7 @@ const DEFAULTS: BehaviorConfig = {
   resumeCommandLocal: "",
   resumeCommandRemote: "",
   notifyTurnEnd: true,
+  forceLegacyLaunchRenderer: false,
 };
 
 /** 读行为字段；缺失 / 类型不对走默认值，永不抛。 */
@@ -89,6 +98,10 @@ export async function getBehavior(): Promise<BehaviorConfig> {
         typeof cfg[KEY_NOTIFY_TURN_END] === "boolean"
           ? (cfg[KEY_NOTIFY_TURN_END] as boolean)
           : DEFAULTS.notifyTurnEnd,
+      forceLegacyLaunchRenderer:
+        typeof cfg[KEY_FORCE_LEGACY_LAUNCH_RENDERER] === "boolean"
+          ? (cfg[KEY_FORCE_LEGACY_LAUNCH_RENDERER] as boolean)
+          : DEFAULTS.forceLegacyLaunchRenderer,
     };
   } catch (e) {
     console.warn("getBehavior failed:", e);
@@ -105,5 +118,6 @@ export async function setBehavior(next: BehaviorConfig): Promise<void> {
   cfg[KEY_RESUME_LOCAL] = next.resumeCommandLocal;
   cfg[KEY_RESUME_REMOTE] = next.resumeCommandRemote;
   cfg[KEY_NOTIFY_TURN_END] = next.notifyTurnEnd;
+  cfg[KEY_FORCE_LEGACY_LAUNCH_RENDERER] = next.forceLegacyLaunchRenderer;
   await saveConfig(cfg);
 }

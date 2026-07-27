@@ -1,0 +1,108 @@
+/**
+ * F03（unify-launch）：environment 轴的维度注册表。
+ *
+ * 只治理**第三条正交轴**（MASTERPLAN §2.4 的 environment 轴）——agent（哪个 AI）与 container
+ * （哪个容器）已经是 `LaunchPlan` 的一等字段，不注册成维度。加一个新维度（如 F07 的 `model`）=
+ * 往 `LAUNCH_DIMENSIONS` 数组追加一条注册 + `LaunchContext` 加一个可选字段，零改
+ * `buildLaunchPlan`、零改两个渲染器主体结构（MASTERPLAN §0.1 成功标准②的落点）。
+ *
+ * **顺序即契约**：`env-reset`(10) < `account`(20) < `nested-env-reset`(30)。这条顺序对应
+ * 今天代码里"账号前缀在 unset 之前"的既有事实（`buildResumePayload` 逐字如此）——错序的后果
+ * 是**静默账号被抹掉**，所以钉成模块加载即崩的断言（下方 `assertDimensionOrderInvariants`），
+ * 而非留作注释纪律。
+ */
+import { isValidConfigDir, isValidSessionId } from "./shell-quote.ts";
+import { AGENT_PROFILE } from "./agent-profile.ts";
+import type { LaunchDimension } from "./launch-plan.ts";
+
+/** identity：身份打标。只在调用方已知道 sid 时才生效（今天只有 tmux-create-resume 这条路径
+ *  设；"开新 Claude"从不设，是已知 F04 缺口，本次原样保留、不顺手"修一半"）。 */
+export const IDENTITY_DIMENSION: LaunchDimension = {
+  id: "identity",
+  order: 5,
+  applies: (ctx) => ctx.ccmSid !== undefined,
+  apply: (plan, ctx) => {
+    if (!isValidSessionId(ctx.ccmSid!)) {
+      throw new Error(`非法 ccmSid（拒绝拼入命令）: ${JSON.stringify(ctx.ccmSid)}`);
+    }
+    plan.identity = { ccmSid: ctx.ccmSid! };
+  },
+  cliFlags: (ctx) => (ctx.ccmSid ? [`--ccm-sid=${ctx.ccmSid}`] : []),
+};
+
+/** env-reset：往「已存在的 idle tmux」send-keys 复用、且未选中账号时，先清残留
+ *  `CLAUDE_CONFIG_DIR`（issue #75 复用变体逃生口，今天 = `buildResumeIntoExistingTmuxCmd` 的
+ *  `envReset` 局部变量）。order 必须 < `ACCOUNT_DIMENSION.order`——纵使今天两者的 `applies`
+ *  互斥（永不同时触发），这条顺序是"即便未来某次改动让二者同时 applies，也不会把刚 export 的
+ *  账号被后到的 unset 抹掉"的结构性保险。 */
+export const ENV_RESET_DIMENSION: LaunchDimension = {
+  id: "env-reset",
+  order: 10,
+  applies: (ctx) =>
+    ctx.container.kind === "tmux" && ctx.container.mode === "send-into" && ctx.account.kind !== "account",
+  apply: (plan) => {
+    plan.env.push({ kind: "unset", keys: ["CLAUDE_CONFIG_DIR"] });
+  },
+  cliFlags: () => [], // ccm 内部按 --base/无--account 自行处理，无需专属 flag
+};
+
+/** account：注入选中账号的 `CLAUDE_CONFIG_DIR`。order 必须 > `ENV_RESET_DIMENSION.order`。
+ *  `cliFlags` 恒 `null`——F03 阶段调用方只有 `configDir`、没有账号「名字」，而 `ccm --account`
+ *  收的是名字（远端按 manifest 查 configDir）。这是显式的、有记录的范围边界（F05 移交点），
+ *  不是遗漏——见 F03 计划 §1"明确不做什么"。 */
+export const ACCOUNT_DIMENSION: LaunchDimension = {
+  id: "account",
+  order: 20,
+  applies: (ctx) => ctx.account.kind === "account",
+  apply: (plan, ctx) => {
+    if (ctx.account.kind !== "account") return;
+    if (!isValidConfigDir(ctx.account.configDir)) {
+      throw new Error(`非法 CLAUDE_CONFIG_DIR（拒绝拼入命令）: ${JSON.stringify(ctx.account.configDir)}`);
+    }
+    plan.env.push({ kind: "export-config-dir", value: ctx.account.configDir });
+  },
+  cliFlags: () => null,
+};
+
+/** nested-env-reset：resume/new 前清 Claude 嵌套会话标记（tmux server env 可能带毒，issue #24）。
+ *  attach 不需要（不启动 agent）。order 必须 > `ACCOUNT_DIMENSION.order`（今天 export 恒在这条
+ *  unset 之前，`buildResumePayload`/`buildLauncherCmd` 逐字如此）。 */
+export const NESTED_ENV_RESET_DIMENSION: LaunchDimension = {
+  id: "nested-env-reset",
+  order: 30,
+  applies: (ctx) => ctx.action.kind === "new" || ctx.action.kind === "resume",
+  apply: (plan) => {
+    if (AGENT_PROFILE.nestedEnvVars.length > 0) {
+      plan.env.push({ kind: "unset", keys: [...AGENT_PROFILE.nestedEnvVars] });
+    }
+  },
+  cliFlags: () => [], // ccm 内部恒清（agent_nested_env 按 agent 查表），无需专属 flag
+};
+
+export const LAUNCH_DIMENSIONS: LaunchDimension[] = [
+  IDENTITY_DIMENSION,
+  ENV_RESET_DIMENSION,
+  ACCOUNT_DIMENSION,
+  NESTED_ENV_RESET_DIMENSION,
+].sort((a, b) => a.order - b.order);
+
+/** 顺序不变量——模块加载即跑一次。顺序错了直接让进程/测试启动崩溃，不必等到某次真机 resume
+ *  才发现账号被静默抹掉。 */
+function assertDimensionOrderInvariants(dims: LaunchDimension[]): void {
+  const seen = new Set<number>();
+  for (const d of dims) {
+    if (seen.has(d.order)) throw new Error(`LaunchDimension order 冲突: ${d.id} order=${d.order}`);
+    seen.add(d.order);
+  }
+  const idx = (id: string): number => dims.findIndex((d) => d.id === id);
+  if (idx("env-reset") >= idx("account")) {
+    throw new Error("不变式违反：env-reset 必须排在 account 之前（防静默账号覆盖）");
+  }
+  if (idx("account") >= idx("nested-env-reset")) {
+    throw new Error("不变式违反：account 必须排在 nested-env-reset 之前");
+  }
+}
+assertDimensionOrderInvariants(LAUNCH_DIMENSIONS);
+
+// 仅供测试注入错序数组验证断言真的会 throw（见 launch-dimensions.test.ts）。
+export const __testOnlyAssertDimensionOrderInvariants = assertDimensionOrderInvariants;

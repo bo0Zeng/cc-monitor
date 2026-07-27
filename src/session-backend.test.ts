@@ -25,7 +25,7 @@ console.log("session-backend.test.ts");
 test("TMUX_BACKEND.createRunAttach：带 cwd → new-session -c + send-keys + attach", () => {
   eq(
     TMUX_BACKEND.createRunAttach({
-      target: "cc-1234abcd",
+      target: { kind: "raw", value: "cc-1234abcd" },
       quotedCwd: "'/home/u/proj'",
       quotedPayload: "'unset X; claude --resume abc'",
     }),
@@ -38,7 +38,7 @@ test("TMUX_BACKEND.createRunAttach：带 cwd → new-session -c + send-keys + at
 test("TMUX_BACKEND.createRunAttach：quotedCwd=null → 省 -c 标志", () => {
   eq(
     TMUX_BACKEND.createRunAttach({
-      target: "cc-x",
+      target: { kind: "raw", value: "cc-x" },
       quotedCwd: null,
       quotedPayload: "'p'",
     }),
@@ -49,7 +49,7 @@ test("TMUX_BACKEND.createRunAttach：quotedCwd=null → 省 -c 标志", () => {
 test("TMUX_BACKEND.createRunAttach：target 可为 posixQuote 名（F53 含空格）", () => {
   eq(
     TMUX_BACKEND.createRunAttach({
-      target: "'my sess'",
+      target: { kind: "quoted", value: "my sess" },
       quotedCwd: null,
       quotedPayload: "'p'",
     }),
@@ -58,14 +58,14 @@ test("TMUX_BACKEND.createRunAttach：target 可为 posixQuote 名（F53 含空�
 });
 
 test("TMUX_BACKEND.attach：attach -t <target>", () => {
-  eq(TMUX_BACKEND.attach("'my sess'"), "tmux attach -t '=my sess:'");
-  eq(TMUX_BACKEND.attach("cc-abc"), "tmux attach -t =cc-abc:");
+  eq(TMUX_BACKEND.attach({ kind: "quoted", value: "my sess" }), "tmux attach -t '=my sess:'");
+  eq(TMUX_BACKEND.attach({ kind: "raw", value: "cc-abc" }), "tmux attach -t =cc-abc:");
 });
 
 test("#72 + F03.4甲′ createRunAttach：ccmSid → create 分支插 @ccm_sid + set-titles(new-session 后、send-keys 前)", () => {
   eq(
     TMUX_BACKEND.createRunAttach({
-      target: "cc-1234abcd",
+      target: { kind: "raw", value: "cc-1234abcd" },
       quotedCwd: null,
       quotedPayload: "'p'",
       ccmSid: "1234abcd-full-sid",
@@ -81,7 +81,7 @@ test("#72 + F03.4甲′ createRunAttach：ccmSid → create 分支插 @ccm_sid +
 // F03.4 甲′：set-titles-string 从 @ccm_sid 派生（claude 覆盖不了）；**裸值不带双引号**（launch.rs 拒双引号）。
 test("F03.4甲′ createRunAttach：set-titles-string 裸值、不含双引号（穿 launch.rs 的 bash -lic）", () => {
   const cmd = TMUX_BACKEND.createRunAttach({
-    target: "cc-x",
+    target: { kind: "raw", value: "cc-x" },
     quotedCwd: null,
     quotedPayload: "'p'",
     ccmSid: "s1",
@@ -91,7 +91,7 @@ test("F03.4甲′ createRunAttach：set-titles-string 裸值、不含双引号�
 });
 
 test("#72 + F03.4甲′ createRunAttach：无 ccmSid → 不插 set-option/set-titles(零回归)", () => {
-  const cmd = TMUX_BACKEND.createRunAttach({ target: "cc-x", quotedCwd: null, quotedPayload: "'p'" });
+  const cmd = TMUX_BACKEND.createRunAttach({ target: { kind: "raw", value: "cc-x" }, quotedCwd: null, quotedPayload: "'p'" });
   eq(cmd.includes("set-option"), false);
   eq(cmd.includes("set-titles"), false);
 });
