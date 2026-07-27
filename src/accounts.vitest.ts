@@ -25,6 +25,8 @@ import {
   withAccount,
   getDefaultName,
   setDefaultName,
+  getModelForAccount,
+  setModelForAccount,
   fetchAccounts,
   fetchSessionAccounts,
   invalidateAccountsCache,
@@ -348,6 +350,50 @@ describe("defaultName config 读写", () => {
   });
 });
 
+// F07：每账号模型偏好 config 读写——结构上是 defaultName（单值）的复数版，同一套模式。
+describe("modelByAccount config 读写（F07）", () => {
+  it("无 accounts 键 → undefined", async () => {
+    loadCfg.mockResolvedValue({});
+    expect(await getModelForAccount("z")).toBeUndefined();
+  });
+  it("有 modelByAccount[z] → 读回；未设置的账号名 → undefined", async () => {
+    loadCfg.mockResolvedValue({ accounts: { modelByAccount: { z: "opus" } } });
+    expect(await getModelForAccount("z")).toBe("opus");
+    expect(await getModelForAccount("b")).toBeUndefined();
+  });
+  it("写入保留其它键（不丢字段）+ 多账号互不影响", async () => {
+    loadCfg.mockResolvedValue({ theme: "dark", accounts: { defaultName: "b", modelByAccount: { b: "sonnet" } } });
+    await setModelForAccount("z", "opus");
+    const written = saveCfg.mock.calls[0][0] as Record<string, unknown>;
+    expect(written.theme).toBe("dark");
+    const a = written.accounts as Record<string, unknown>;
+    expect(a.defaultName).toBe("b"); // 其它 accounts 内键不丢
+    const map = a.modelByAccount as Record<string, string>;
+    expect(map.z).toBe("opus");
+    expect(map.b).toBe("sonnet"); // 既有账号的偏好不受影响
+  });
+  it("清除（null）→ 只删该账号这一条，其余账号保留", async () => {
+    loadCfg.mockResolvedValue({ accounts: { modelByAccount: { z: "opus", b: "sonnet" } } });
+    await setModelForAccount("z", null);
+    const map = (saveCfg.mock.calls[0][0] as Record<string, unknown>).accounts as Record<string, unknown>;
+    const modelMap = map.modelByAccount as Record<string, string>;
+    expect(modelMap.z).toBeUndefined();
+    expect(modelMap.b).toBe("sonnet");
+  });
+  // Phase D 审计（阻塞项修复）：非法模型名必须在写入点被拒绝，不能只留给起会话时的
+  // MODEL_DIMENSION.apply() 才发现——那样会让该账号往后每一次会话拉起都统一失败。
+  it("非法模型名（含 shell 元字符/空格）→ throw，不落盘", async () => {
+    loadCfg.mockResolvedValue({ accounts: {} });
+    await expect(setModelForAccount("z", "opus; rm -rf /")).rejects.toThrow(/非法模型名/);
+    await expect(setModelForAccount("z", "Claude Opus 4.5")).rejects.toThrow(/非法模型名/); // 空格非法
+    expect(saveCfg).not.toHaveBeenCalled();
+  });
+  it("清除（null）不受校验约束——恒允许", async () => {
+    loadCfg.mockResolvedValue({ accounts: { modelByAccount: { z: "opus" } } });
+    await expect(setModelForAccount("z", null)).resolves.toBeUndefined();
+  });
+});
+
 describe("fetchAccounts TTL 缓存", () => {
   it("首次 fetch 命中 invoke，TTL 内不重发", async () => {
     loadCfg.mockResolvedValue({});
@@ -548,7 +594,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
   it("accountName=null → run(undefined)，不 fetch、不记账", async () => {
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { sessionId: "s1" });
-    expect(run).toHaveBeenCalledWith(undefined, undefined);
+    expect(run).toHaveBeenCalledWith(undefined, undefined, undefined);
     expect(invokeMock).not.toHaveBeenCalled();
   });
   it("可选账号 + sessionId → run(configDir, accountName) + 记 lastAccount", async () => {
@@ -556,7 +602,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", "z", run, { sessionId: "s1" });
-    expect(run).toHaveBeenCalledWith("/h/z", "z");
+    expect(run).toHaveBeenCalledWith("/h/z", "z", undefined);
     expect(invokeMock).toHaveBeenCalledWith("update_history_metadata", {
       sessionId: "s1",
       patch: { lastAccount: "z" },
@@ -567,7 +613,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", "z", run, {});
-    expect(run).toHaveBeenCalledWith("/h/z", "z");
+    expect(run).toHaveBeenCalledWith("/h/z", "z", undefined);
     expect(invokeMock).not.toHaveBeenCalledWith("update_history_metadata", expect.anything());
   });
   it("不可选账号 → onUnselectable + run(undefined, undefined)（退化默认）、不记账", async () => {
@@ -577,7 +623,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     const onUnsel = vi.fn();
     await withAccount("aya", "z", run, { sessionId: "s1", onUnselectable: onUnsel });
     expect(onUnsel).toHaveBeenCalledWith("z");
-    expect(run).toHaveBeenCalledWith(undefined, undefined);
+    expect(run).toHaveBeenCalledWith(undefined, undefined, undefined);
     expect(invokeMock).not.toHaveBeenCalledWith("update_history_metadata", expect.anything());
   });
   it("账号库不可用（fetch reject）→ 退化默认 run(undefined, undefined) + onUnselectable", async () => {
@@ -586,7 +632,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     const run = vi.fn().mockResolvedValue(undefined);
     const onUnsel = vi.fn();
     await withAccount("aya", "z", run, { onUnselectable: onUnsel });
-    expect(run).toHaveBeenCalledWith(undefined, undefined);
+    expect(run).toHaveBeenCalledWith(undefined, undefined, undefined);
     expect(onUnsel).toHaveBeenCalledWith("z");
   });
 
@@ -598,7 +644,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     );
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { sessionId: "s1", follow: { lastAccount: "z" } });
-    expect(run).toHaveBeenCalledWith("/h/z", "z"); // last=z 压过 current=b
+    expect(run).toHaveBeenCalledWith("/h/z", "z", undefined); // last=z 压过 current=b
     expect(invokeMock).toHaveBeenCalledWith("update_history_metadata", {
       sessionId: "s1",
       patch: { lastAccount: "z" },
@@ -611,7 +657,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     );
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { sessionId: "s1", follow: { lastAccount: "z" } });
-    expect(run).toHaveBeenCalledWith("/h/b", "b"); // z 不可选 → 用 current=b 起
+    expect(run).toHaveBeenCalledWith("/h/b", "b", undefined); // z 不可选 → 用 current=b 起
     // 既有 pin=z 存在且解析结果(b)≠pin → **不 clobber**，绝不把粘性从 z 翻成 b。
     expect(invokeMock).not.toHaveBeenCalledWith("update_history_metadata", expect.anything());
   });
@@ -620,7 +666,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { sessionId: "s1", follow: {} }); // 无 pin
-    expect(run).toHaveBeenCalledWith("/h/z", "z");
+    expect(run).toHaveBeenCalledWith("/h/z", "z", undefined);
     expect(invokeMock).toHaveBeenCalledWith("update_history_metadata", {
       sessionId: "s1",
       patch: { lastAccount: "z" },
@@ -633,7 +679,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     );
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { follow: {} });
-    expect(run).toHaveBeenCalledWith("/h/z", "z");
+    expect(run).toHaveBeenCalledWith("/h/z", "z", undefined);
   });
   it("follow：last 与 current 都不可选 → run(undefined, undefined) 落基座，不 toast、不记账", async () => {
     loadCfg.mockResolvedValue({}); // 无 defaultName
@@ -645,7 +691,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
       follow: { lastAccount: "z" },
       onUnselectable: onUnsel,
     });
-    expect(run).toHaveBeenCalledWith(undefined, undefined);
+    expect(run).toHaveBeenCalledWith(undefined, undefined, undefined);
     expect(onUnsel).not.toHaveBeenCalled(); // 跟随下沉不打扰用户
     expect(invokeMock).not.toHaveBeenCalledWith("update_history_metadata", expect.anything());
   });
@@ -654,13 +700,30 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { follow: {} });
-    expect(run).toHaveBeenCalledWith("/h/z", "z");
+    expect(run).toHaveBeenCalledWith("/h/z", "z", undefined);
     expect(invokeMock).not.toHaveBeenCalledWith("update_history_metadata", expect.anything());
   });
   it("accountName=null 且无 follow → 仍不 fetch、落基座（A4 逐字节，回归守卫）", async () => {
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { sessionId: "s1" });
-    expect(run).toHaveBeenCalledWith(undefined, undefined);
+    expect(run).toHaveBeenCalledWith(undefined, undefined, undefined);
     expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  // F07：命中账号时补一次 getModelForAccount 查询，供 run 的第三参数使用——证明接线本身
+  // （不是只测过 getModelForAccount/setModelForAccount 自己的存取逻辑）。
+  it("F07：可选账号 + 配了模型偏好 → run 收到真实 modelOverride", async () => {
+    loadCfg.mockResolvedValue({ accounts: { modelByAccount: { z: "opus" } } });
+    invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
+    const run = vi.fn().mockResolvedValue(undefined);
+    await withAccount("aya", "z", run, {});
+    expect(run).toHaveBeenCalledWith("/h/z", "z", "opus");
+  });
+  it("F07：可选账号但未配模型偏好 → run 收到 undefined（不是空串/不是 throw）", async () => {
+    loadCfg.mockResolvedValue({ accounts: { modelByAccount: { b: "sonnet" } } }); // 只有 b 有偏好
+    invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
+    const run = vi.fn().mockResolvedValue(undefined);
+    await withAccount("aya", "z", run, {});
+    expect(run).toHaveBeenCalledWith("/h/z", "z", undefined);
   });
 });

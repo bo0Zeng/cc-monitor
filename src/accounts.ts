@@ -10,6 +10,7 @@
 // available:false 降级：未迁移 / 旧 daemon / daemonless 一律安静隐藏账号 UI，不报错。
 import { invoke } from "@tauri-apps/api/core";
 import { loadConfig, saveConfig } from "./config";
+import { isValidModelName } from "./shell-quote";
 
 // ---- 对齐 A2（src-tauri/src/accounts.rs）的返回结构 ----
 export interface Account {
@@ -314,6 +315,54 @@ export async function setDefaultName(name: string | null): Promise<void> {
   await saveConfig(cfg);
 }
 
+const MODEL_MAP_KEY = "modelByAccount";
+
+/** F07：读某账号配置的默认模型偏好（config.json accounts.modelByAccount[name]）。无则 undefined。
+ *  结构上是 `defaultName`（单值）的复数版——按账号名索引，同样是本机、不跨机器同步的偏好。 */
+export async function getModelForAccount(name: string): Promise<string | undefined> {
+  try {
+    const cfg = (await loadConfig()) as Record<string, unknown>;
+    const a = cfg[CFG_KEY];
+    if (a && typeof a === "object") {
+      const map = (a as Record<string, unknown>)[MODEL_MAP_KEY];
+      if (map && typeof map === "object") {
+        const v = (map as Record<string, unknown>)[name];
+        if (typeof v === "string" && v) return v;
+      }
+    }
+  } catch (e) {
+    console.warn("getModelForAccount failed:", e);
+  }
+  return undefined;
+}
+
+/** 写某账号的模型偏好。`model === null` 清除该账号这一条（其余账号不受影响）。
+ *
+ *  Phase D 审计发现的阻塞项：校验必须在**写入点**做，不能只留给
+ *  `MODEL_DIMENSION.apply()`（起会话时）——那样一个非法值一旦落盘，会让该账号**此后每一次**
+ *  resume/新建/tmux resume 在 `buildLaunchPlan` 里统一 throw，用户只看到一堆"无法构造 resume
+ *  命令"的 toast，且设置面板的输入框不会标出"当前值非法"，很难把两者联系起来。fail-closed：
+ *  非法即 throw，调用方（UI）负责 catch 并提示，绝不静默落盘。 */
+export async function setModelForAccount(name: string, model: string | null): Promise<void> {
+  if (model && !isValidModelName(model)) {
+    throw new Error(`非法模型名（拒绝保存）: ${JSON.stringify(model)}`);
+  }
+  const cfg = (await loadConfig()) as Record<string, unknown>;
+  const prev =
+    cfg[CFG_KEY] && typeof cfg[CFG_KEY] === "object"
+      ? (cfg[CFG_KEY] as Record<string, unknown>)
+      : {};
+  const prevMap =
+    prev[MODEL_MAP_KEY] && typeof prev[MODEL_MAP_KEY] === "object"
+      ? (prev[MODEL_MAP_KEY] as Record<string, string>)
+      : {};
+  const nextMap = { ...prevMap };
+  if (model) nextMap[name] = model;
+  else delete nextMap[name];
+  cfg[CFG_KEY] = { ...prev, [MODEL_MAP_KEY]: nextMap };
+  await saveConfig(cfg);
+}
+
 // ------------------------------------------------------------ 带缓存的取数
 
 const ACCOUNTS_TTL_MS = 30_000; // 账号列表极少变（迁移/登录才变），缓存久一点省 SSH
@@ -476,6 +525,8 @@ export function resolveAccount(
  * A5「换号重启」是本编排的超集（在 run 前插 checkTrust/compact、run 后同样 record），届时在此扩展。
  * F05：内部改用 `resolveAccount` 求解（行为逐字节不变，见其头注）；`run` 回调新增第二参数
  * `accountName`——命中账号时非空，否则 `undefined`，供调用方线通进 `LaunchContext`（F05 交付）。
+ * F07：`run` 再加第三参数 `modelOverride`——命中账号时查一次 `getModelForAccount`（本机
+ * config.json 偏好，未设置则 `undefined`），供调用方线通进 `LaunchContext.modelOverride`。
  *
  *   - `accountName == null` **且无 `opts.follow`** → 默认起：`run(undefined, undefined)`（不注入、不记账、不 fetch，A4 逐字节旧行为）。
  *   - `accountName == null` **且有 `opts.follow`**（account-ux U2 opt-in 跟随）→ `fetchAccounts` 后
@@ -490,7 +541,7 @@ export function resolveAccount(
 export async function withAccount(
   origin: string,
   accountName: string | null,
-  run: (configDir?: string, accountName?: string) => Promise<void>,
+  run: (configDir?: string, accountName?: string, modelOverride?: string) => Promise<void>,
   opts: {
     sessionId?: string;
     onUnselectable?: (name: string) => void;
@@ -530,7 +581,9 @@ export async function withAccount(
   } else if (resolution.kind === "unavailable" && accountName) {
     opts.onUnselectable?.(accountName);
   }
-  await run(configDir, resolution.kind === "account" ? resolution.name : undefined);
+  const modelOverride =
+    resolution.kind === "account" ? await getModelForAccount(resolution.name) : undefined;
+  await run(configDir, resolution.kind === "account" ? resolution.name : undefined, modelOverride);
   if (recordName && configDir && opts.sessionId) {
     void recordLastAccount(opts.sessionId, recordName);
   }

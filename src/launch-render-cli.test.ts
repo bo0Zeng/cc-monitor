@@ -71,6 +71,20 @@ test("canRenderCli：ccm 不支持 account 能力（旧版本）→ false，即�
   eq(canRenderCli(buildLaunchPlan(ctx), ctx, noAccountCap), false);
 });
 
+// F07 Phase D 审计：MODEL_DIMENSION.cliFlags 恒 null 这条决策的说服力全系于 canRenderCli
+// 真的会因此降级——launch-dimensions.test.ts 只孤立测过 cliFlags() 的返回值，从未有端到端的
+// canRenderCli 断言。补齐：即便 ccm 已装且能力齐全（包括 account），配了 modelOverride 也必须
+// 强制走兜底；未配置的会话必须完全不受影响（applies 为假，循环压根不问这个维度）。
+test("canRenderCli：配了 modelOverride → 强制 false（ccm 无 --model，即便其余能力齐全）", () => {
+  const ctx = ctxOf({ modelOverride: "opus" });
+  eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), false);
+});
+test("canRenderCli：未配 modelOverride → 不受影响，仍 true", () => {
+  const ctx = ctxOf({});
+  eq(ctx.modelOverride, undefined);
+  eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), true);
+});
+
 // **#76 防线——本组测试的核心价值**：shared/ccm 的 --tmux 只有幂等 create-or-attach 一种形态，
 // 没有「就地复用已存在 idle tmux、不新建」的能力。`mode==="send-into"` 的 plan 必须强制走兜底
 // 渲染器，否则会让 #76（claude 已退但 tmux 还在，短路跳过 send-keys，用户 attach 进空 shell）

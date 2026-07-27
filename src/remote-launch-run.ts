@@ -88,10 +88,11 @@ export async function runRemoteResume(
   launcher: string,
   configDir?: string, // A4：非空 → 该会话用指定账号 resume（CLAUDE_CONFIG_DIR 注入）
   accountName?: string, // F05：与 configDir 成对——线通进 LaunchContext，供 CLI 渲染器吐 --account <名>
+  modelOverride?: string, // F07：该账号配置的默认模型偏好——线通进 LaunchContext.modelOverride
 ): Promise<void> {
   let cmd: string;
   try {
-    const { ctx, plan } = planResumeDirect(sid, cwd, launcher, configDir, accountName);
+    const { ctx, plan } = planResumeDirect(sid, cwd, launcher, configDir, accountName, modelOverride);
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 resume 命令", String(err));
@@ -121,10 +122,11 @@ export async function runRemoteResumeTmux(
   name?: string,
   configDir?: string, // A4：非空 → 该会话用指定账号 resume（CLAUDE_CONFIG_DIR 注入）
   accountName?: string, // F05：与 configDir 成对——线通进 LaunchContext，供 CLI 渲染器吐 --account <名>
+  modelOverride?: string, // F07：该账号配置的默认模型偏好——线通进 LaunchContext.modelOverride
 ): Promise<boolean> {
   let cmd: string;
   try {
-    const { ctx, plan } = planResumeTmux(sid, cwd, launcher, name, configDir, accountName);
+    const { ctx, plan } = planResumeTmux(sid, cwd, launcher, name, configDir, accountName, modelOverride);
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 tmux resume 命令", String(err));
@@ -150,10 +152,11 @@ export async function runRemoteResumeIntoExistingTmux(
   launcher: string,
   configDir?: string, // A4：非空 → 该会话用指定账号 resume；空 → 基座（builder 会 unset 残留 env）
   accountName?: string, // F05：与 configDir 成对——线通进 LaunchContext，供 CLI 渲染器吐 --account <名>
+  modelOverride?: string, // F07：该账号配置的默认模型偏好——线通进 LaunchContext.modelOverride
 ): Promise<boolean> {
   let cmd: string;
   try {
-    const { ctx, plan } = planResumeIntoExistingTmux(sid, name, launcher, configDir, accountName);
+    const { ctx, plan } = planResumeIntoExistingTmux(sid, name, launcher, configDir, accountName, modelOverride);
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造就地 resume 命令", String(err));
@@ -180,6 +183,7 @@ export async function runNewSessionRemote(
   command: string,
   configDir?: string, // A4：非空 → 新会话用指定账号启动
   accountName?: string, // F05：与 configDir 成对——线通进 LaunchContext，供 CLI 渲染器吐 --account <名>
+  modelOverride?: string, // F07：该账号配置的默认模型偏好——线通进 LaunchContext.modelOverride
 ): Promise<void> {
   await runRemoteLauncher(
     origin,
@@ -188,6 +192,7 @@ export async function runNewSessionRemote(
     command || AGENT_PROFILE.defaultLauncher,
     configDir,
     accountName,
+    modelOverride,
   );
 }
 
@@ -199,10 +204,11 @@ export async function runRemoteLauncher(
   command: string,
   configDir?: string, // A4：非空 → 新会话用指定账号启动（CLAUDE_CONFIG_DIR 注入）
   accountName?: string, // F05：与 configDir 成对——线通进 LaunchContext，供 CLI 渲染器吐 --account <名>
+  modelOverride?: string, // F07：该账号配置的默认模型偏好——线通进 LaunchContext.modelOverride
 ): Promise<void> {
   let cmd: string;
   try {
-    const { ctx, plan } = planLauncher(cwd, tmuxName, command, configDir, accountName);
+    const { ctx, plan } = planLauncher(cwd, tmuxName, command, configDir, accountName, modelOverride);
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 launcher 命令", String(err));

@@ -62,6 +62,15 @@ export function buildEnvPrefix(configDir?: string): string {
 }
 
 /**
+ * F07（unify-launch）：模型名白名单——覆盖"claude-opus-4-5-20260101"这类完整 ID 与"opus"这类
+ * 简写别名，拒一切 shell 元字符。只做注入安全校验，不做"这是不是真实存在的模型"的语义校验
+ * （远端 `claude` 自己会在模型名不存在时报错，那是它的职责）。
+ */
+export function isValidModelName(name: string): boolean {
+  return /^[A-Za-z0-9._-]{1,128}$/.test(name);
+}
+
+/**
  * F51:tmux 会话名合法性——非空、无控制字符(含 TAB 0x09 / 换行,防破坏 ls 解析或命令结构)、
  * **无 tmux 保留字符 `.`/`:`**(它们是 `session:window.pane` 目标分隔符,new-session 会拒)、
  * **无 glob 元字符 `*`/`?`**(见下)、≤128。

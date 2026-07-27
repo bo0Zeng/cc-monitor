@@ -15,6 +15,8 @@ import {
   selectableAccounts,
   isSelectable,
   setDefaultName,
+  getModelForAccount,
+  setModelForAccount,
   invalidateAccountsCache,
   type AccountsState,
   type Account,
@@ -124,7 +126,7 @@ export class AccountsSection {
         void this.renderNotEnabledFlow(ui.manifestPath, ui.reason);
         return;
       case "ready":
-        this.renderTable(state, ui.accounts);
+        await this.renderTable(state, ui.accounts);
         return;
     }
   }
@@ -395,7 +397,7 @@ export class AccountsSection {
     return box;
   }
 
-  private renderTable(state: AccountsState, accounts: Account[]): void {
+  private async renderTable(state: AccountsState, accounts: Account[]): Promise<void> {
     const def = currentWorkingAccount(state);
     this.body.appendChild(this.renderCurrentBanner(def));
     const meta = state.meta;
@@ -408,7 +410,7 @@ export class AccountsSection {
     const table = document.createElement("div");
     table.className = "accounts-table";
     for (const a of accounts) {
-      table.appendChild(this.accountRow(a, def?.name === a.name));
+      table.appendChild(await this.accountRow(a, def?.name === a.name));
     }
     this.body.appendChild(table);
 
@@ -502,7 +504,8 @@ export class AccountsSection {
     return wrap;
   }
 
-  private accountRow(a: Account, isCurrent: boolean): HTMLElement {
+  private async accountRow(a: Account, isCurrent: boolean): Promise<HTMLElement> {
+    const model = await getModelForAccount(a.name); // F07：每账号默认模型偏好
     const row = document.createElement("div");
     row.className = "accounts-row";
     if (isCurrent) row.classList.add("current");
@@ -548,6 +551,44 @@ export class AccountsSection {
 
     const actions = document.createElement("span");
     actions.className = "accounts-row-actions";
+    // F07：每账号默认模型偏好——自由文本（模型 ID 会随时间变化，不硬编码枚举）；空 = 跟随该
+    // 账号自身默认，不下发 override。保存写本机 config.json，不碰远端/manifest（同 defaultName）。
+    // Phase D 审计（UX）：此前保存无任何反馈（同文件其余动作都有 toast，这里是唯一的例外）+
+    // 保存失败会真正无声消失（设置窗口没有主窗那个全局 unhandledrejection 兜底，见 main.ts）。
+    // 已按 selectDefault 的既有模式补齐 try/catch + toast，且失败时保留原值只提示不落盘（配合
+    // `setModelForAccount` 的写入点校验，防止非法值落盘后拖垮该账号往后**所有**会话拉起）。
+    const modelInput = document.createElement("input");
+    modelInput.type = "text";
+    modelInput.className = "accounts-row-model";
+    modelInput.placeholder = "默认模型";
+    modelInput.title =
+      "该账号起会话时默认使用的模型（如 opus/sonnet），留空则跟随账号自身默认。" +
+      "仅对本 app 发起的会话生效——终端里手敲 ccm 暂不识别这条偏好（见 unify-launch F08）。";
+    modelInput.value = model ?? "";
+    let lastSaved = model ?? "";
+    const saveModel = async (): Promise<void> => {
+      const next = modelInput.value.trim();
+      if (next === lastSaved) return; // 值未变，别在每次失焦都弹一次噪音 toast
+      try {
+        await setModelForAccount(a.name, next || null);
+        lastSaved = next;
+        showActionFailureToast(
+          next ? "已保存默认模型" : "已清除默认模型",
+          next ? `${a.name} 起会话默认用 ${next}。` : `${a.name} 恢复跟随账号自身默认模型。`,
+          { level: "info", durationMs: 3000 },
+        );
+      } catch (e) {
+        // 校验失败（非法字符集）等——不落盘，保留用户已输入的文本以便就地修正。
+        showActionFailureToast("保存模型偏好失败", String(e), { level: "error" });
+      }
+    };
+    modelInput.addEventListener("blur", () => void saveModel());
+    modelInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        modelInput.blur(); // 触发上面的 blur 保存，行为统一（不重复实现一遍保存逻辑）
+      }
+    });
+    actions.appendChild(modelInput);
     if (isSelectable(a) && !isCurrent) {
       const setDef = document.createElement("button");
       setDef.type = "button";

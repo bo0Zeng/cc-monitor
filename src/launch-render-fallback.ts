@@ -15,11 +15,11 @@ import type { EnvOp, LaunchContainer, LaunchPlan, WrapSpec } from "./launch-plan
 
 function renderEnvOps(ops: EnvOp[]): string {
   return ops
-    .map((op) =>
-      op.kind === "export-config-dir"
-        ? buildEnvPrefix(op.value) // 复用既有校验 + 既有格式（"export CLAUDE_CONFIG_DIR='…'; "）
-        : `unset ${op.keys.join(" ")}; `,
-    )
+    .map((op) => {
+      if (op.kind === "export-config-dir") return buildEnvPrefix(op.value); // "export CLAUDE_CONFIG_DIR='…'; "
+      if (op.kind === "export-model") return `export ANTHROPIC_MODEL=${posixQuote(op.value)}; `; // F07
+      return `unset ${op.keys.join(" ")}; `;
+    })
     .join("");
 }
 

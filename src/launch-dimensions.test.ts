@@ -6,11 +6,13 @@ import {
   IDENTITY_DIMENSION,
   ENV_RESET_DIMENSION,
   ACCOUNT_DIMENSION,
+  MODEL_DIMENSION,
   NESTED_ENV_RESET_DIMENSION,
   LAUNCH_DIMENSIONS,
   __testOnlyAssertDimensionOrderInvariants,
 } from "./launch-dimensions.ts";
 import { buildLaunchPlan } from "./launch-plan.ts";
+import { renderFallback } from "./launch-render-fallback.ts";
 import type { LaunchContext, LaunchDimension, LaunchPlan } from "./launch-plan.ts";
 
 let failed = 0;
@@ -105,22 +107,79 @@ test("account：cliFlags 对 base 态吐 --base（不再返回 null——R11 同
   eq(ACCOUNT_DIMENSION.cliFlags!(baseCtx), ["--base"]);
 });
 
+// F07：模型偏好维度——applies 是条件式（不是恒真，见 launch-dimensions.ts 头注对比 F05 的教训）。
+test("model：applies 恒假当无 modelOverride", () => {
+  eq(MODEL_DIMENSION.applies(baseCtx), false);
+});
+test("model：applies 真当有 modelOverride", () => {
+  const ctx: LaunchContext = { ...baseCtx, modelOverride: "opus" };
+  eq(MODEL_DIMENSION.applies(ctx), true);
+});
+test("model：apply 对合法模型名推入 export-model", () => {
+  const ctx: LaunchContext = { ...baseCtx, modelOverride: "claude-opus-4-5-20260101" };
+  const plan: LaunchPlan = { transport: ctx.transport, action: ctx.action, container: ctx.container, cwd: ctx.cwd, env: [], launcher: "", args: [], wrap: [] };
+  MODEL_DIMENSION.apply(plan, ctx);
+  eq(plan.env, [{ kind: "export-model", value: "claude-opus-4-5-20260101" }]);
+});
+test("model：非法模型名 → throw（拒绝拼入命令）", () => {
+  const ctx: LaunchContext = { ...baseCtx, modelOverride: "opus; rm -rf /" };
+  const plan: LaunchPlan = { transport: ctx.transport, action: ctx.action, container: ctx.container, cwd: ctx.cwd, env: [], launcher: "", args: [], wrap: [] };
+  throws(() => MODEL_DIMENSION.apply(plan, ctx));
+});
+test("model：cliFlags 恒 null（ccm 无 --model，诚实强制走兜底）", () => {
+  const ctx: LaunchContext = { ...baseCtx, modelOverride: "opus" };
+  eq(MODEL_DIMENSION.cliFlags!(ctx), null);
+});
+// F07 §4 步骤2：renderFallback 整体黄金串——不只锁孤立的 apply() 输出，锁 order=25 在真实渲染
+// 管线里的实际效果（子串位置在 export CLAUDE_CONFIG_DIR 之后、启动命令之前）。
+test("renderFallback：账号 + 模型偏好 → 渲染出的字符串精确含 export ANTHROPIC_MODEL='opus'; ", () => {
+  const ctx: LaunchContext = {
+    transport: { kind: "ssh" },
+    action: { kind: "resume", sid: "s1" },
+    container: { kind: "none" },
+    cwd: null,
+    account: { kind: "account", name: "z", configDir: "/home/u/.claude-accts/z" },
+    launcherOverride: "claude",
+    ccmSid: undefined,
+    modelOverride: "opus",
+  };
+  const plan = buildLaunchPlan(ctx);
+  const rendered = renderFallback(plan);
+  eq(rendered.includes("export ANTHROPIC_MODEL='opus'; "), true, `rendered=${rendered}`);
+  const configDirIdx = rendered.indexOf("export CLAUDE_CONFIG_DIR");
+  const modelIdx = rendered.indexOf("export ANTHROPIC_MODEL");
+  // 用 "; claude --resume" 精确锚定启动命令本身——不能只找子串 "claude"（configDir 的路径
+  // "/home/u/.claude-accts/z" 本身就含小写 "claude"，会假命中）。
+  const argvIdx = rendered.indexOf("; claude --resume");
+  eq(configDirIdx >= 0 && modelIdx > configDirIdx && argvIdx > modelIdx, true, `order wrong: ${rendered}`);
+});
+
 test("nested-env-reset：new/resume 生效，attach 不生效", () => {
   eq(NESTED_ENV_RESET_DIMENSION.applies(baseCtx), true);
   eq(NESTED_ENV_RESET_DIMENSION.applies({ ...baseCtx, action: { kind: "attach", name: "cc-x" } }), false);
   eq(NESTED_ENV_RESET_DIMENSION.applies({ ...baseCtx, action: { kind: "new" } }), true);
 });
 
-test("顺序不变量：env-reset < account < nested-env-reset（真实注册表）", () => {
+test("顺序不变量：env-reset < account < model < nested-env-reset（真实注册表）", () => {
   const idx = (id: string): number => LAUNCH_DIMENSIONS.findIndex((d) => d.id === id);
   eq(idx("env-reset") < idx("account"), true);
-  eq(idx("account") < idx("nested-env-reset"), true);
+  eq(idx("account") < idx("model"), true);
+  eq(idx("model") < idx("nested-env-reset"), true);
 });
 test("顺序不变量：故意错序 → 断言真的 throw（证明它不是摆设）", () => {
-  const bad: LaunchDimension[] = [ACCOUNT_DIMENSION, ENV_RESET_DIMENSION, NESTED_ENV_RESET_DIMENSION];
+  const bad: LaunchDimension[] = [ACCOUNT_DIMENSION, ENV_RESET_DIMENSION, MODEL_DIMENSION, NESTED_ENV_RESET_DIMENSION];
   throws(() => __testOnlyAssertDimensionOrderInvariants(bad), "错序（account 排在 env-reset 前）必须 throw");
   const dup: LaunchDimension[] = [ENV_RESET_DIMENSION, { ...ACCOUNT_DIMENSION, order: ENV_RESET_DIMENSION.order }];
   throws(() => __testOnlyAssertDimensionOrderInvariants(dup), "order 冲突必须 throw");
+});
+// F07：新增两条顺序不变量（account < model < nested-env-reset）各自故意错序验证真 throw。
+test("顺序不变量：model 排在 account 之前 → throw", () => {
+  const bad: LaunchDimension[] = [MODEL_DIMENSION, IDENTITY_DIMENSION, ENV_RESET_DIMENSION, ACCOUNT_DIMENSION, NESTED_ENV_RESET_DIMENSION];
+  throws(() => __testOnlyAssertDimensionOrderInvariants(bad), "model 排在 account 前必须 throw");
+});
+test("顺序不变量：model 排在 nested-env-reset 之后 → throw", () => {
+  const bad: LaunchDimension[] = [IDENTITY_DIMENSION, ENV_RESET_DIMENSION, ACCOUNT_DIMENSION, NESTED_ENV_RESET_DIMENSION, MODEL_DIMENSION];
+  throws(() => __testOnlyAssertDimensionOrderInvariants(bad), "model 排在 nested-env-reset 后必须 throw");
 });
 
 test("buildLaunchPlan：账号 + 就地复用（env-reset 不生效，因为有账号）→ 只有 account 的 export + nested unset", () => {
@@ -152,6 +211,24 @@ test("buildLaunchPlan：无账号 + 就地复用 → env-reset 的 unset 排在 
   const plan = buildLaunchPlan(ctx);
   eq(plan.env, [
     { kind: "unset", keys: ["CLAUDE_CONFIG_DIR"] },
+    { kind: "unset", keys: ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION"] },
+  ]);
+});
+test("buildLaunchPlan：账号 + 模型偏好 → env 顺序是 export-config-dir → export-model → nested unset", () => {
+  const ctx: LaunchContext = {
+    transport: { kind: "ssh" },
+    action: { kind: "resume", sid: "s1" },
+    container: { kind: "tmux", name: "cc-s1", nameQuoting: "raw", mode: "create-or-attach" },
+    cwd: null,
+    account: { kind: "account", name: "z", configDir: "/home/u/.claude-accts/z" },
+    launcherOverride: "claude",
+    ccmSid: undefined,
+    modelOverride: "opus",
+  };
+  const plan = buildLaunchPlan(ctx);
+  eq(plan.env, [
+    { kind: "export-config-dir", value: "/home/u/.claude-accts/z" },
+    { kind: "export-model", value: "opus" },
     { kind: "unset", keys: ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION"] },
   ]);
 });

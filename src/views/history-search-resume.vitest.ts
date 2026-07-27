@@ -104,7 +104,7 @@ describe("HistoryView 搜索卡片 resume (F85 #44)", () => {
     const card = buildCard(view, searchSession({ origin: "hostA" }));
     card.querySelector<HTMLButtonElement>(".search-session-resume")!.click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(runRemote).toHaveBeenCalledWith("hostA", "s1", "/p", "", "/h/.claude-accts/z", "z");
+    expect(runRemote).toHaveBeenCalledWith("hostA", "s1", "/p", "", "/h/.claude-accts/z", "z", undefined);
     invalidateAccountsCache(); // fetchAccounts 有模块级缓存,别泄漏进同文件/同 worker 的其它测试
   });
 });

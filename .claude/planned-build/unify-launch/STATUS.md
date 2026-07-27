@@ -1,16 +1,42 @@
 # 状态 / STATUS — unify-launch（恢复工作的入口，每次先读这里）
 
-- **当前阶段**：F06 已完成签收（Phase B→F 全过，commit 待落），F07 Phase B 已完成、待进 Phase C
-- **当前功能**：F07（每账号默认模型，`features/F07-per-account-model.md`）——F06 收尾完成后
-  的下一个功能
-- **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）
-- **下一个功能**：F07（本轮）→ F08/F09/F11 → F10 → Phase G
+- **当前阶段**：F07 已完成签收（Phase B→F 全过，架构验收通过，commit 待落）
+- **当前功能**：无——F07 收尾完成，下一步进 F08/F09/F11
+- **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）
+- **下一个功能**：F08/F09/F11（互相正交，都只依赖已完成功能）→ F10 → Phase G
 - **阻塞 / 待用户确认**：无
-- **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 11）
+- **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 12）
 - **自动模式（/loop）**：**全自动**（连续 B→G）。用户 2026-07-27 追加授权：**具体设计决策由本席开
   agent 讨论分析后自行决定，不必逐项停下来问**——除非真遇到阻塞或用户主动打断
-- **本轮 loop 目标**：commit F06 → F07 走完 C→D→E→F 并 commit
+- **本轮 loop 目标**：commit F07 → 开 F08/F09/F11 中的一个（Phase B 规划）
 - **loop 停止条件**：计划≠现实 / 同一步≥2 失败 / 全部完成→Phase G / 用户打断
+
+## F07 结果摘要（架构验收通过）
+
+- `launch-dimensions.ts` 新增第 5 个维度 `MODEL_DIMENSION`（order 25，卡在 `account`(20) 与
+  `nested-env-reset`(30) 之间）——落地后核对 `buildLaunchPlan`/`renderCli`/`canRenderCli`/
+  `renderFallback` 既有分支结构 diff 为零，唯一改动是 `renderEnvOps` 的 switch 加一个成比例的
+  `"export-model"` 分支，**兑现了 MASTERPLAN §0.1 成功标准②"加一个新维度零改渲染器主体"的
+  承诺**。`applies:!!ctx.modelOverride` 是**条件式**而非像 `ACCOUNT_DIMENSION` 那样恒真——判断
+  依据记入新增 `doc/INVARIANTS.md` §37（"这个维度不触发时的沉默，是否等价于用户期望"，不是
+  "是不是账号相关"），防未来维度作者机械照抄 F05 的"恒真"教训。`cliFlags` 恒 `null`（`ccm` 无
+  `--model`，诚实降级，留给 F08 关闭）。`accounts.ts` 新增 `getModelForAccount`/
+  `setModelForAccount`（本机 `config.json` 的 `modelByAccount` 映射，`defaultName` 单值模式的
+  复数版），`withAccount` 的 `run` 回调再扩一参 `(configDir?, accountName?, modelOverride?)`；
+  4 个 `planXxx`/5 个 executor 各加末尾可选参数；`settings/accounts-section.ts` 加每账号"默认
+  模型"输入框。
+- 双 agent 审（后端架构 + UX）各揪出重要发现，全部修复，含 1 条**阻塞项**：模型输入框保存路径
+  最初不校验，非法值（如带空格/shell 元字符）会静默落盘，之后该账号**每一次**会话拉起都会在
+  `MODEL_DIMENSION.apply` 里统一 throw、用户难以联想到根因——已把 `isValidModelName` 校验移到
+  `setModelForAccount` 写入点（fail-closed，同其余账号写入点校验的既有惯例）。另修：保存无 toast
+  反馈+失败真无声消失（设置窗口没有主窗那个全局 unhandledrejection 兜底）——已按 `selectDefault`
+  既有模式补齐；`cliFlags` 恒 `null` 的隐藏 CLI 降级 + 终端 `ccm` 不识别此偏好，处置力度未达 F05
+  R13 先例——已登记 **R14**（已接受，非阻塞）+ 输入框 tooltip 补边界提示；`canRenderCli` 的模型
+  降级此前零端到端测试覆盖——已补 2 条；`modelOverride` 在集成层（`tabs.ts` 等）的真值转传此前
+  从未被验证——已补 1 条真实字符串集成测试（同 F05 曾堵过的同一类缺口）；`doc/INVARIANTS.md`
+  计划承诺的新维度落地样例最初漏写——已补 §37。
+- 门禁：tsc 0 / npm test 640 / cargo test 379 / 全部既有 e2e 套件不变（本功能不碰 Rust/远端
+  tmux 路径）全绿；`remote-launch.test.ts`/两个 e2e driver 全程零 diff。
 
 ## F06 结果摘要
 

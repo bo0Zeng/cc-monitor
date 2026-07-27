@@ -770,6 +770,46 @@ plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**�
 
 **验证**：`src/launch-requests.vitest.ts` 锁死 `planLocal` 产出的 `plan.env` 对 new/resume 两个动作恒非空（证明维度确实触发了），且 `history.rs` 侧未新增任何消费 `plan.env`/`unset`/`Remove-Item` 的代码路径（Phase D 审计已核对 `scrub_env_vars` 的调用时点严格早于任何窗口 spawn，且全仓无绕开它的自重启路径）。
 
+## 37. 新维度的 `applies` 该不该恒真，看这个维度的"沉默"是否等价于用户期望——不是看它是不是账号相关（F07 / unify-launch）
+
+**背景**：F07（每账号默认模型，`MODEL_DIMENSION`）是维度注册表落地以来第一个真实的新维度，是
+MASTERPLAN §0.1 成功标准②（"加一个新启动维度 = 注册一个 dimension + CLI 加一个 flag + UI 加
+一个修饰项，零改 builder / renderer / 调用点"）的架构验收点。落地后核对：`buildLaunchPlan`/
+`renderCli`/`canRenderCli`/`renderFallback` 的既有分支结构 diff 为零，唯一改动是
+`renderEnvOps`（`launch-render-fallback.ts`）的 `switch` 加一个 `"export-model"` 分支——这是
+成比例的既定触点，不是"渲染器主体"。承诺兑现。
+
+**§35 的教训不能被机械照搬**：`ACCOUNT_DIMENSION.applies` 在 F05 被改成恒 `true`，因为 F03
+遗留的 bug 是"最常见场景（未选账号）静默不表态，导致 `canRenderCli` 的 null 安全网检查根本
+问不到这个维度，`ccm` 会静默落到 manifest 默认账号——一个和用户期望不同的身份"。如果看到
+"这也是个账号相关的维度"就照抄"`applies` 必须恒真"，`MODEL_DIMENSION` 会变成：`applies:
+() => true`，`cliFlags` 对"未配置模型偏好"这个最常见状态返回 `null`——把**几乎所有会话**强制
+拖进兜底渲染器，纯属自伤，且完全不必要。
+
+**铁律**：一个维度的 `applies` 该不该恒真，取决于**这个维度在"不触发"时的行为，是否等价于
+用户的期望**，不是"这个维度是不是账号相关"或任何其它表面相似性：
+
+- `ACCOUNT_DIMENSION`：不触发 = "不表态"，而 `ccm` 对"不表态"的解读是"落 manifest 默认账号"
+  ——一个可能与用户期望不同的身份。**沉默 ≠ 用户的期望**，必须恒 `true`、强制显式表态。
+- `MODEL_DIMENSION`：不触发 = "不下发 `ANTHROPIC_MODEL` 覆盖"，远端 `claude` 就用它自己已经
+  配置好的默认模型——这**正是**用户没配置 override 时应该发生的事。**沉默 = 用户的期望**，
+  `applies` 应该是条件式（`!!ctx.modelOverride`），恒真反而是错的。
+
+**判断步骤**（加新维度时的强制 checklist，配合 §35 一起过）：
+1. 这个维度不触发时，下游（`ccm`/远端 shell）会怎么解读"没有这个信号"？
+2. 那个解读，是不是用户没配置这个维度时**本来就期望**发生的事？
+3. 是 → `applies` 可以是条件式，`cliFlags` 对"不触发"这个状态不需要操心（循环压根不会问）。
+4. 否（下游会做出某种和用户期望不同的默认选择）→ `applies` 必须恒真，`cliFlags` 必须对
+   "不触发"这个状态也给出诚实的显式表达（`null` 或真实 flag，绝不能让循环跳过去问都不问）。
+
+**`cliFlags` 恒 `null`（配了模型偏好时）是另一个独立决策，不要和上面混为一谈**：`ccm` 今天没有
+`--model` flag，`MODEL_DIMENSION.cliFlags` 对"配了偏好"这个状态诚实返回 `null`，强制走兜底
+渲染器——这与 §35 修的坑**外观相似但机制不同**：F05 的坑是"`applies` 恒假导致 null 检查
+根本跑不到"（结构性检测不到）；这里 `applies` 会在配了偏好时正确变真，null 检查确实跑到并
+正确返回 `false`——是"检测到了、诚实报告降级"，不是"检测不到、悄悄放过"。`canRenderCli` 对
+这条降级有专门的端到端测试锁定（`launch-render-cli.test.ts` 的两条 `modelOverride` 用例），
+不只是孤立测 `cliFlags()` 的返回值。
+
 ## 修改本文档
 
 加新的不变量时：
