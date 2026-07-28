@@ -16,6 +16,16 @@ ck() { if [ "$2" = "$3" ]; then printf 'PASS | %s\n' "$1"; PASS=$((PASS+1))
        else printf 'FAIL | %s\n      期望含: %s\n      实得: %s\n' "$1" "$2" "$3"; FAIL=$((FAIL+1)); fi; }
 contains() { case "$2" in *"$1"*) echo yes ;; *) echo no ;; esac; }
 
+# renderCli 产出的命令行以裸 `ccm` 开头（那正是它该产出的东西），所以下面 `bash -c` 执行它时
+# `ccm` 要经 PATH 解析。**必须把 PATH 指向仓内 shared/ccm**，否则解析到的是开发者本机
+# `~/.local/bin/ccm` 那份装机版——于是这套「平价预言机」验的就不是本仓代码，而是碰巧装在
+# 机器上的某个版本（可能比仓内旧/新）。CI 上根本没装 ccm，12 条断言全红，正是靠这个才暴露出来。
+# 教训清单第 5 条的同型问题：不显式隔离，开发者本机状态就会污染测试断言。
+BIN="$(mktemp -d)"; trap 'rm -rf "$BIN"' EXIT
+printf '#!/bin/sh\nexec bash %s "$@"\n' "$REPO/shared/ccm" > "$BIN/ccm"
+chmod +x "$BIN/ccm"
+export PATH="$BIN:$PATH"
+
 echo "===== 生产命令行（来自真 renderCli，不手搓）====="
 TSV="$(cd "$REPO" && npx tsx e2e/ccm-print-parity-emit.mts)"
 echo "$TSV" | sed 's/^/  /'
