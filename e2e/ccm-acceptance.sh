@@ -83,8 +83,23 @@ wait_opt() { # wait_opt <会话名> <option> [超时秒，默认20]
   done
   return 1
 }
+# 超时时把每个会话的 pane 文本打出来。**没有这个，超时是一条无信息的死路**：
+# 载荷是「send-keys 一条内层 ccm 调用进去」，它失败的原因（命令没找到 / 内层 ccm 自己报错 /
+# shell 不对）全都只写在那个 pane 里，测试进程看不见。首次接进 CI 时就吃了这个亏：
+# 只知道 probe.log 是空的，不知道为什么空。
+dump_panes() {
+  echo "      ---- 诊断：pane 内容 ----"
+  local s
+  for s in $(T ls -F '#{session_name}' 2>/dev/null); do
+    echo "      [会话 $s]"
+    T capture-pane -t "=$s:" -p 2>/dev/null | sed 's/^/        /' | grep -v '^\s*$'
+  done
+  echo "      ---- PATH=$PATH"
+  echo "      ---- SHELL=${SHELL:-<unset>} tmux default-shell=$(T show-options -gv default-shell 2>/dev/null)"
+  echo "      ------------------------"
+}
 # CCMPROBE 的三个字段由**同一条 printf** 写出，故等最后一个字段 NESTED= 到位即代表整条记录已落盘。
-wait_probe() { wait_grep '^NESTED=' "$TMP/probe.log" "${1:-20}"; }
+wait_probe() { wait_grep '^NESTED=' "$TMP/probe.log" "${1:-20}" || { dump_panes; return 1; }; }
 
 PASS=0; FAIL=0
 ck() { if [ "$2" = "$3" ]; then printf 'PASS | %-52s | %s\n' "$1" "$3"; PASS=$((PASS+1))
@@ -137,7 +152,7 @@ echo
 echo "===== 场景 3b：身份——通道B（poller）独立确认后才把 @ccm_sid_expect 提升为 @ccm_sid ====="
 reset
 ( cd "$TMP/proj" && bash "$CCM" --tmux --account z --ccm-sid deadbeef-3b --launcher CCMPROBE >/dev/null 2>&1 & )
-wait_grep . "$TMP/ccmprobe.pid" || echo "      (注：等 CCMPROBE 落 PID 超时)"
+wait_grep . "$TMP/ccmprobe.pid" || { echo "      (注：等 CCMPROBE 落 PID 超时)"; dump_panes; }
 # CCMPROBE 落盘了自己的 PID（= ccm 脚本 poller 记的 $ccm_pid，exec 保 PID 不变）；
 # 合成一份 Claude Code 会话文件，模拟"agent 真的确认在跑这个 sid"。
 CCMPROBE_PID="$(cat "$TMP/ccmprobe.pid" 2>/dev/null)"
