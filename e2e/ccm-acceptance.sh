@@ -58,8 +58,33 @@ export CCM_CONFIG="$CFG" CCM_SELF="$CCM"
 export CCM_CLAUDEJSON="$TMP/claude.json" CCM_CODEXTOML="$TMP/config.toml"
 
 T() { "$TMUX_BIN" -L "$SOCK" "$@"; }
-reset() { T kill-server 2>/dev/null; : > "$TMP/probe.log"; sleep 0.3; }
+reset() { T kill-server 2>/dev/null; : > "$TMP/probe.log"; rm -f "$TMP/ccmprobe.pid"; sleep 0.3; }
 opt() { T show-options -v -t "=$1:" "$2" 2>/dev/null; }
+
+# 固定 `sleep N` 等异步副作用是**机器速度的赌注**：本机 3s 够，2 核 CI runner 上不够
+# （建会话 → send-keys → tmux fork 新 shell → 跑 CCMPROBE → 写 probe.log 这条链更慢），
+# 于是断言读到空串、报成"账号没穿过 tmux 边界"这种**假失败**——首次把本套接进 CI 时实测到
+# （PASS=10 FAIL=5，5 条全是 `实得=` 空）。改成轮询等待：慢机器上等够，快机器上第一次就命中，
+# 本机总耗时反而比固定 sleep 更短。超时才算真失败。
+wait_grep() { # wait_grep <正则> <文件> [超时秒，默认20]
+  local pat="$1" f="$2" t="${3:-20}" n=0
+  while [ "$n" -lt $((t * 10)) ]; do
+    grep -q "$pat" "$f" 2>/dev/null && return 0
+    sleep 0.1; n=$((n + 1))
+  done
+  return 1
+}
+# 等某个 tmux option 变非空（用于身份打标这类异步写入）。
+wait_opt() { # wait_opt <会话名> <option> [超时秒，默认20]
+  local s="$1" o="$2" t="${3:-20}" n=0
+  while [ "$n" -lt $((t * 10)) ]; do
+    [ -n "$(opt "$s" "$o")" ] && return 0
+    sleep 0.1; n=$((n + 1))
+  done
+  return 1
+}
+# CCMPROBE 的三个字段由**同一条 printf** 写出，故等最后一个字段 NESTED= 到位即代表整条记录已落盘。
+wait_probe() { wait_grep '^NESTED=' "$TMP/probe.log" "${1:-20}"; }
 
 PASS=0; FAIL=0
 ck() { if [ "$2" = "$3" ]; then printf 'PASS | %-52s | %s\n' "$1" "$3"; PASS=$((PASS+1))
@@ -68,7 +93,7 @@ ck() { if [ "$2" = "$3" ]; then printf 'PASS | %-52s | %s\n' "$1" "$3"; PASS=$((
 echo "===== 场景 1：ccm --tmux --account z —— 账号必须穿过 tmux 边界 ====="
 reset
 ( cd "$TMP/proj" && bash "$CCM" --tmux --account z --launcher CCMPROBE >/dev/null 2>&1 & )
-sleep 3
+wait_probe || echo "      (注：等 probe 记录超时，下面断言会如实报空)"
 ck "会话 cc-proj 被建出" "yes" "$(T has-session -t '=cc-proj:' 2>/dev/null && echo yes || echo no)"
 ck "@ccm_agent 打上" "claude" "$(opt cc-proj @ccm_agent)"
 ck "**CLAUDE_CONFIG_DIR 穿过了 tmux 边界**" "$ACCTS/z" \
@@ -92,7 +117,7 @@ sleep 0.5
   T new-session -d -s old_cc -c "$TMP/proj"
   T send-keys -t '=old_cc:' 'CCMPROBE' Enter
 ) >/dev/null 2>&1
-sleep 3
+wait_probe || echo "      (注：等 probe 记录超时，下面断言会如实报空)"
 ck "对照组：server 已在跑时，外层 export 被 tmux 边界吃掉" "<unset>" \
    "$(grep -m1 '^CFG=' "$TMP/probe.log" 2>/dev/null | cut -d= -f2-)"
 ck "update-environment 默认列表确实不含 CLAUDE_CONFIG_DIR" "" \
@@ -102,7 +127,8 @@ echo
 echo "===== 场景 3a：身份——通道A（意图）打 @ccm_sid_expect，不是 @ccm_sid ====="
 reset
 ( cd "$TMP/proj" && bash "$CCM" --tmux --ccm-sid deadbeef-1234 --launcher CCMPROBE >/dev/null 2>&1 & )
-sleep 3
+wait_opt cc-proj @ccm_sid_expect || echo "      (注：等 @ccm_sid_expect 超时)"
+sleep 2   # 留给 poller 的真实窗口——下一条是负向断言，必须让它"有机会却不该"提升
 ck "通道A：已知 sid 建时立刻打 @ccm_sid_expect" "deadbeef-1234" "$(opt cc-proj @ccm_sid_expect)"
 ck "F04：@ccm_sid（事实）此时仍未设——CCMPROBE 从未写 sessions/*.json，通道B无可确认之物" \
    "" "$(opt cc-proj @ccm_sid)"
@@ -111,13 +137,13 @@ echo
 echo "===== 场景 3b：身份——通道B（poller）独立确认后才把 @ccm_sid_expect 提升为 @ccm_sid ====="
 reset
 ( cd "$TMP/proj" && bash "$CCM" --tmux --account z --ccm-sid deadbeef-3b --launcher CCMPROBE >/dev/null 2>&1 & )
-sleep 1.5
+wait_grep . "$TMP/ccmprobe.pid" || echo "      (注：等 CCMPROBE 落 PID 超时)"
 # CCMPROBE 落盘了自己的 PID（= ccm 脚本 poller 记的 $ccm_pid，exec 保 PID 不变）；
 # 合成一份 Claude Code 会话文件，模拟"agent 真的确认在跑这个 sid"。
 CCMPROBE_PID="$(cat "$TMP/ccmprobe.pid" 2>/dev/null)"
 mkdir -p "$ACCTS/z/sessions"
 [ -n "$CCMPROBE_PID" ] && printf '{"sessionId":"deadbeef-3b"}' > "$ACCTS/z/sessions/$CCMPROBE_PID.json"
-sleep 2
+wait_opt cc-proj @ccm_sid || echo "      (注：等通道B提升 @ccm_sid 超时)"
 ck "通道B：poller 读到会话文件后，把 @ccm_sid（事实）提升为确认值" "deadbeef-3b" "$(opt cc-proj @ccm_sid)"
 ck "@ccm_sid_expect（意图）仍保留，两个 key 独立共存" "deadbeef-3b" "$(opt cc-proj @ccm_sid_expect)"
 
@@ -126,13 +152,13 @@ echo "===== 场景 4：agent 轴 ====="
 # 外层先带毒（模拟 issue #24 的 tmux server env 污染），验两个 agent 的清理差异。
 reset
 ( cd "$TMP/proj" && CLAUDECODE=1 bash "$CCM" --tmux --agent codex --launcher CCMPROBE >/dev/null 2>&1 & )
-sleep 3
+wait_probe || echo "      (注：等 probe 记录超时，下面断言会如实报空)"
 ck "@ccm_agent = codex" "codex" "$(opt cc-proj @ccm_agent)"
 ck "codex 无嵌套 env 概念 → CLAUDECODE 保留" "1" \
    "$(grep -m1 '^NESTED=' "$TMP/probe.log" 2>/dev/null | cut -d= -f2-)"
 reset
 ( cd "$TMP/proj" && CLAUDECODE=1 bash "$CCM" --tmux --launcher CCMPROBE >/dev/null 2>&1 & )
-sleep 3
+wait_probe || echo "      (注：等 probe 记录超时，下面断言会如实报空)"
 ck "claude 起前清嵌套 env（治 issue #24 带毒）" "<unset>" \
    "$(grep -m1 '^NESTED=' "$TMP/probe.log" 2>/dev/null | cut -d= -f2-)"
 
@@ -140,9 +166,9 @@ echo
 echo "===== 场景 5：幂等 —— 同目录连开两次接回同一会话，不产孤儿 ====="
 reset
 ( cd "$TMP/proj" && bash "$CCM" --tmux --launcher CCMPROBE >/dev/null 2>&1 & )
-sleep 2.5
+wait_probe || echo "      (注：等首个会话 probe 记录超时)"
 ( cd "$TMP/proj" && bash "$CCM" --tmux --launcher CCMPROBE >/dev/null 2>&1 & )
-sleep 2.5
+sleep 2.5   # 第二次是幂等接回、不再跑 CCMPROBE（无新记录可等），保留固定 grace
 ck "只有一个 cc-proj，无 cc-proj-2 孤儿" "cc-proj" "$(T ls -F '#{session_name}' 2>/dev/null | sort | tr '\n' ' ' | sed 's/ $//')"
 
 echo
