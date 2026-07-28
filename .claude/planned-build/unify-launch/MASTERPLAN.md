@@ -597,3 +597,23 @@ F02 ──┴─► F03 ─┬─► F04 ─┬─► F08
   （`shared/ccm` poller + 兜底渲染器 `session-backend.ts` 直写），但那是 F04 Phase B 的明确取舍
   （兜底路径无 poller，写 `_expect` 将永不被提升 → 会话不可 kill）。两侧反向断言各自已被钉住
   （变异验证过）。成功标准④ 不受影响。唯一真问题是「通道B 是唯一写者」少了作用域限定，已订正。
+- 18 — 2026-07-28 — **R04 完成签收**（`fb81fe1`）：IR 内核四处结构性收紧
+  （`tryRenderCli` 返回 Result / `requiredCaps` 下放维度 / `EnvOp` unset 侧收窄 /
+  `WrapSpec` 闭包改纯数据），共性是「把只写在注释里的纪律变成类型或结构上做不到的事」。
+  账本双渲染器那一行据此更新：`canRenderCli`/`renderCli` 已合成单一 `tryRenderCli`，
+  且 **attach 分支有显式豁免**（不收集 `requiredCaps`、不受 §33 铁律#1 约束，
+  理由：`ccm attach <名>` 不接受任何修饰 flag；豁免范围与撤销条件见 INVARIANTS §33）。
+  Phase D 独立对抗性 agent 1 阻塞 + 5 重要全修，**推翻本席三处声称**：
+  ① 新加的三条测试落在测试文件失败聚合点**之后** → 双向死区、CI 上零守护
+  （**这是伪测试失效模式的第四种**，已并入 STATUS 纪律清单，连同审计自己踩到的第五种
+  「变异未落在代码行上」）；② `WrapSpec.prelude` 声称"覆盖已知唯一用例"是假的——
+  `applyWraps` 套整条 payload 导致 `exec` 落在 env 前缀前，实测 `rc=127` launcher 起不来，
+  而新测试**断言的正是这个坏形态**（已修 call-site 为只包 `renderArgv`，wrap 零生产者故零风险）；
+  ③ `unset` 收窄丢掉了编译期穷尽性（旧末支读 `op.keys` 会**逼**编译器穷尽，新末支把一切兜住，
+  加第 4 个变体 tsc 静默通过并静默渲染成嵌套 env unset）——已补 `never` 守卫，
+  并接受审计判定：③ 的安全收益是**纸面**的，加守卫后才值得做。
+  另：`launch-dimensions.ts` 的"语义不变"表述错误、计划 §3.1 曾写"已补测试"而实际没补
+  （attach 一次放宽了**三**道闸门，其中 model 那道真实可达）——已补 attach 豁免组三条测试。
+  **顺带关掉 tsc 盲区**：`tsconfig.json` 的 `include` 加 `"e2e"`，
+  R04 实现期漏过的那个 import 错误现在是编译期错误。
+  审计独立验证推论④ 零破坏（720 场景×5 探针，`renderFallback` 差异 0 条）。

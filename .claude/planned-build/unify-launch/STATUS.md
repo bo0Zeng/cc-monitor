@@ -9,14 +9,14 @@
 ## 当前状态
 
 - **当前阶段**：R 段（重构 Sonnet 产出 + 信号修复）—— **当前重心**
-- **当前功能**：R00/R01/R02/R03/R06/R08/R09 **已完成（7/9）** → 下一个 **R04**（IR 内核结构性收紧四处）→ R05
+- **当前功能**：R00/R01/R02/R03/R04/R06/R08/R09 **已完成（8/9）** → 下一个 **R05**（UI 删死代码，计划已就绪）→ R07
 - **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）、**F11**（预信任能力上提进 `ccm`：`shared/ccm` 的 `--tmux` 建会话路径新增预信任 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out；范围收窄不碰仓库外的 `cc-spawn` 本体；双 agent 审各自独立复现真实阻塞项，含修复既有 `e2e/ccm-acceptance.sh` 污染真实全局配置的回归）、**F08**（终端集成收尾：`ccm --model` 闭合 R14；`canRenderCli` 针对性特判而非机械塞进 `CLI_REQUIRED_CAPS`；别名生成器+越层启动器诊断合并落点，紧邻彼此、不再按主机重复渲染；commit `06a9c76`）、**F09**（UI 收敛：动作×修饰——R12 降级为已归档设计决策；归档 tab 收敛成 `Resume`+账号×容器 3 级级联 flyout；存活 tab 收敛成 `Restart`+账号 flyout；徽章恒显身份（R7 语义反转）；对齐全套全仓删除；双 agent 审 1 阻塞+5 重要全部修复）
-- **下一个功能**：**R04**（IR 内核收紧）→ **R05**（UI 删死代码+收敛，摸底已完成）→ **R07**（planLocal 改名）→ B 段 → P 段 → Phase G
+- **下一个功能**：**R05**（UI 删死代码，`features/R05-*.md` 已就绪）→ **R07**（`planLocal` 改名，计划已就绪）→ **B 段**（`features/B01-B02-*.md` 已就绪）→ P 段 → Phase G
 - **阻塞 / 待用户确认**：无
 - **最近一次计划回看时间**：2026-07-28（MASTERPLAN 变更记录 16）
 - **自动模式（/loop）**：**全自动**（连续 B→G）。用户 2026-07-27 追加授权：**具体设计决策由本席开
   agent 讨论分析后自行决定，不必逐项停下来问**——除非真遇到阻塞或用户主动打断
-- **本轮 loop 目标**：R 段 7/9 已收口 → next R04 → R05 → R07 → 进 B 段
+- **本轮 loop 目标**：R 段 8/9 已收口 → next R05 → R07 → R 段满 → 进 B 段
 - **loop 停止条件**：计划≠现实 / 同一步≥2 失败 / 全部完成→Phase G / 用户打断
 
 ## §0 工作约定（跨 compact 必须保留 —— 恢复工作时先读这一节）
@@ -78,7 +78,7 @@ commit `bb71172`。收口时补的最后一条是 `launchPayload` 内容断言�
 | R01 | F10 收口 commit | 工作区已改完大半 | **已完成**（commit `bb71172`） |
 | R02 | 伪测试扫荡：对每个功能挑 1-2 条「声称验证核心防线」的测试做**变异检查**（改坏实现确认转红） | 已确认 3 条（F10 内，全部已修） | **已完成**（11 条变异检查全 RED，见下「R02 结果」） |
 | R03 | 位置参数长列车 → `LaunchModifiers` | 三方独立证伪账本「e2e 锁死签名」之说 | **已完成**（commit `4f6c313`）。**只达成「零改调用点」那一半**（32 行透传编辑归零），「零改 builder」未达成（4 个 planXxx 仍各 2 行）——原声称过度，已订正。扩围到 `withAccount` 回调（车头在那里）。审计 0 阻塞+4 重要全修 |
-| R04 | 结构性收紧四处：① `canRenderCli`+`renderCli` 合成返回 Result 的 `tryRenderCli`（现在 `if (flags)` 对 `null` 静默跳过，诚实降级只是**约定**）② 能力要求下放到维度 `requiredCaps?(ctx)`，删渲染器里的 model 特判 ③ `EnvOp` unset 侧收窄（export 侧当初专门收窄过、同样理由从未应用到 unset 侧）④ `WrapSpec` 闭包改纯数据（**趁 `plan.wrap` 恒空、此刻成本为零**，F04 rbind 落地后就不是） | IR 内核独立重设计对拍 §2.2 | 待做 |
+| R04 | 结构性收紧四处：`tryRenderCli` Result / `requiredCaps` 下放维度 / `EnvOp` unset 收窄 / `WrapSpec` 纯数据 | IR 内核独立重设计对拍 §2.2 | **已完成**（commit `fb81fe1`）。审计 **1 阻塞+5 重要**全修，推翻我三处声称（测试落在失败聚合点后=零守护；`prelude` 表达不出唯一用例、实测 rc=127；`unset` 收窄丢了编译期穷尽性）。顺带把 `tsconfig` 的 `include` 加上 `e2e` 关掉 tsc 盲区 |
 | R05 | UI 层收敛：删 `launch-menu.ts` **从未被渲染过**的 container 组（`enumerateModifierGroups` 第二参全仓恒传 `"tmux"`，返回值被丢弃，而 `tabs.ts:2264` 自己硬编码了逐字相同的一份）；5 处独立账号菜单实现收敛；`"__base__"` 魔法串类型化 | 波及面计数 + 对抗审计 | 待做 |
 | R06 | **成功标准① 首次可验收**：重写 `INVENTORY.md` | 已逐条核实失效 | **已完成**（改用符号名+可复跑 grep 锚点；11 条锚点逐条验证，首轮即抓到 1 条空锚点——`renderLaunchCommand` 实为模块私有非导出，正是「锚点自己会报错」的设计意图） |
 | R07 | `planLocal` 的假声明处置：三个生产调用点**全部丢弃返回值**，真命令仍由 Rust 独立构造，而 `launch-requests.vitest.ts` 头注写着"证明本地路径真的在用同一套维度注册表（不是套了个壳）"——**这句是假的**。要么真接上，要么改名 `validateLocalLaunch` 并把注释改成实话 | IR 内核对拍 §2.2 第 6 条 | 待做 |
@@ -134,6 +134,12 @@ runner 上 sleep 不够，其实 20s 轮询照样超时）、第三轮改成「�
    **非空**判别联合（无"未决定"第三态）→ 恒真，等于没改。差点误报 F05 是伪测试。
 3. **门禁太窄** —— 用 `npx vitest run src/` 当门禁，漏掉 tsx 跑的黄金串（`*.test.ts`）。
    差点误报 #76 闸门是伪测试（实际由 `test:launch-render-cli` 精确抓住）。
+4. **断言写在失败聚合点之后**（R04 Phase D 新发现）—— tsx 手写测试文件里
+   `if (failed > 0) throw` 若不在文件末尾，之后追加的测试就落进**双向死区**：
+   全绿时跑但不设门禁，有红时根本不执行。R04 的三条新测试就踩了这个，
+   删掉被测防线的全部要害后 `npm test` 仍 exit=0 / 701 passed。
+5. **变异未落在代码行上**（R04 审计自己踩到并记下）—— `replace(..., 1)` 可能命中注释里的
+   同一串。纪律：**变异后先 `diff` 打出实际改动行再判色**。
 → 结论：**报"伪测试"之前，必须先证明变异真的生效、且门禁真的覆盖到那条测试。**
    一次性审计脚本不进仓（sed 锚点会随代码漂移）。
 
