@@ -133,6 +133,34 @@ ck "外层已继承账号 b（无 --account/--base）→ 保留 b，不被默认
 ck "裸终端（无继承）仍落 manifest 默认号 z"    "export CLAUDE_CONFIG_DIR='$ACCTMP/z'; $UNSET; cd '/p' && exec claude"    "$(env -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/m.json" bash "$CCM" --cwd /p --print 2>&1)"
 ck "--base 显式清空，不受继承影响"    "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec claude"    "$(inherit_acct --cwd /p --base --print)"
 ck "--account 显式指定，优先级最高（覆盖继承的 b）"    "export CLAUDE_CONFIG_DIR='$ACCTMP/z'; $UNSET; cd '/p' && exec claude"    "$(inherit_acct --cwd /p --account z --print)"
+
+# R08（2026-07-28 实测复现）：R11 的修法在**容器路径上留了个洞**。
+# 上面那条注释说"两个场景用同一条 if 天然区分"，**只对非容器路径成立**——
+# 非容器路径下 `exec` 保留进程环境，"尊重继承值"= 什么都不做就已经对了；
+# 但容器路径下 send-keys 打进的是 **tmux server fork 的新 shell**，
+# `update-environment` 默认列表不含 CLAUDE_CONFIG_DIR（这正是本项目要治的那个病），
+# 于是继承值在 L1 边界被吃掉，内层 ccm 看到空值 + 无账号 flag → 落 manifest 默认号 z。
+# 症状与 R11 同型且同样隐蔽：**看起来生效了，只是换成了错的号。**
+# 命中条件：启动器自己建容器（cct = ccm --tmux）+ 账号只靠继承环境变量传递。
+# 载荷在 --print 里是 `'\''` 转义形态（外层再被单引号包一层），直接 grep 裸引号模式会全部落空
+# ——我第一版就写错成这样，三条里两条假红。先反转义 `'\''` → `'` 再匹配。
+# （R02 记的第三个失效模式的同型：断言模式与被测输出的真实形态不符 = 假信号。）
+unesc() { sed "s/'\\\\''/'/g"; }
+ck "R08：容器路径 + 继承账号 b → 内层载荷必须显式带上 b（不能靠继承穿 tmux 边界）" \
+   "yes" \
+   "$(inherit_acct --tmux --cwd /p --print | unesc | grep -qF "$ACCTMP/b" && echo yes || echo no)"
+ck "R08：容器路径 + 继承账号 b → 内层绝不能落到默认号 z" \
+   "yes" \
+   "$(inherit_acct --tmux --cwd /p --print | unesc | grep -qF "$ACCTMP/z" && echo no || echo yes)"
+ck "R08：容器路径 + --base → 内层显式 --base（不受继承影响，issue #75 逃生口不被削弱）" \
+   "yes" \
+   "$(inherit_acct --tmux --cwd /p --base --print | unesc | grep -qF -- '--base' && echo yes || echo no)"
+ck "R08：容器路径 + 显式 --account z → 内层带 --account z（优先级不变）" \
+   "yes" \
+   "$(inherit_acct --tmux --cwd /p --account z --print | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
+ck "R08：容器路径 + 裸终端（无继承）→ 内层仍落默认号 z（粘滞体验不回退）" \
+   "yes" \
+   "$(env -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/m.json" bash "$CCM" --tmux --cwd /p --print 2>&1 | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
 rm -rf "$ACCTMP"
 
 echo

@@ -449,6 +449,30 @@ if [ "$use_tmux" = 1 ]; then
   payload=""
   for a in "${inner[@]}"; do payload="$payload${payload:+ }$(sq "$a")"; done
 
+  # R08（2026-07-28 实测复现并修复）：**继承来的账号必须在这里被显式化**，否则会在容器边界丢掉。
+  #
+  # 账号解析（见上方 `config_dir=` 那段）有一条刻意的沉默分支：既没传 --account/--base、
+  # 但 CLAUDE_CONFIG_DIR 已有继承值时，`account` 与 `config_dir` **都留空**——因为
+  # "尊重继承值"在非容器路径下等于"什么都不做"（`exec` 保留进程环境，天然正确，这正是 R11 的修法）。
+  #
+  # 但容器路径不成立：send-keys 打进的是 **tmux server fork 出来的新 shell**，
+  # 其环境来自 tmux server 全局环境，而 `update-environment` 默认列表**不含** CLAUDE_CONFIG_DIR
+  # （MASTERPLAN §2.1 实测的那份列表）——继承值在 L1 边界被整个吃掉。内层 ccm 于是看到
+  # "空的 CLAUDE_CONFIG_DIR + 没有账号 flag" → 落 manifest 默认号，把调用方选中的号静默换掉。
+  # 症状与 R11 同型且同样隐蔽：**看起来生效了，只是换成了错的号。**
+  #
+  # 修法：把继承值写进载荷**内侧**（export 在 tmux 边界的里面，故穿得过去）。
+  # 为什么不反查 manifest 换成 `--account <名>`：① 继承值可能指向 manifest 外的目录
+  # （用户自己维护 CLAUDE_CONFIG_DIR 的边缘配置，见 R13），反查不到就没法表达；
+  # ② 逐字节转发继承值语义最保真，不引入 名→目录 的二次解析。
+  # 内层 ccm 收到后会命中它自己的 `-z "$CLAUDE_CONFIG_DIR"` 闸 → 尊重、不覆盖（复用 R11 的机制）。
+  #
+  # 三条不受影响：`--account` / 默认号回退（两者 `account` 非空 → 上面已发 --account）
+  # 与 `--base`（已发 --base）；本分支只在"三者皆无、仅有继承值"时触发。
+  if [ -z "$account" ] && [ "$use_base" != 1 ] && [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
+    payload="export CLAUDE_CONFIG_DIR=$(sq "$CLAUDE_CONFIG_DIR"); $payload"
+  fi
+
   t="$(sq "=$tmux_name:")"
   # 幂等建闸：会话已存在 → new-session 失败被吞、`&&` 短路跳过后续 → 只 attach（不重复起）。
   seq="tmux new-session -d -s $(sq "$tmux_name") -c $(sq "$cwd") 2>/dev/null"
