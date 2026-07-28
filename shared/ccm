@@ -20,6 +20,12 @@
 #     --agent claude|codex    默认 claude
 #     --launcher <cmd>        覆盖该 agent 的默认启动命令
 #     --ccm-sid <sid>         身份打标（cc-monitor 已知 sid 时传）
+#     --detach                只建会话并返回，**不** attach（配合 --tmux；给脚本化调用方用，
+#                             如 cc-spawn：建完还要拿 pane id 去登记总线、写台账、打印提示）
+#     --tmux-size <W>x<H>     新建 tmux 会话的窗口尺寸（如 220x50）。detached 会话默认 80x24，
+#                             太窄会把 agent 输出折行；仅对**新建**生效，幂等接回既有会话时无效
+#   （**没有 --bus-id**：cc-bus 身份无需调用方传——见 `agent_needs_bus_id`，codex 下 ccm 自己
+#     从 tmux 会话名派生 CC_BUS_ID，与 cc-spawn 原先手动注入的值逐字相同。实测确认。）
 #   自省
 #     --print                 打印将要执行的命令，不执行
 #     --ccm-probe             打印 name/version/capabilities
@@ -138,6 +144,8 @@ model=""
 launcher=""
 ccm_sid=""
 do_print=0
+detach=0
+tmux_size=""
 passthru=()
 
 # ===== 参数解析 =====
@@ -177,9 +185,12 @@ while [ $# -gt 0 ]; do
     --launcher=*)  launcher="${1#*=}" ;;
     --ccm-sid)     shift; need_val "--ccm-sid" "${1:-}"; ccm_sid="$1" ;;
     --ccm-sid=*)   ccm_sid="${1#*=}" ;;
+    --detach)      detach=1 ;;
+    --tmux-size)   shift; need_val "--tmux-size" "${1:-}"; tmux_size="$1" ;;
+    --tmux-size=*) tmux_size="${1#*=}" ;;
     --print)       do_print=1 ;;
     --ccm-probe)
-      printf 'name=ccm\nversion=%s\nself=%s\ncapabilities=new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print\nagents=claude,codex\n' \
+      printf 'name=ccm\nversion=%s\nself=%s\ncapabilities=new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print,detach,tmux-size\nagents=claude,codex\n' \
         "$CCM_VERSION" "$CCM_SELF"
       exit 0 ;;
     --version)     printf 'ccm %s\n' "$CCM_VERSION"; exit 0 ;;
@@ -192,6 +203,20 @@ done
 
 case "$agent" in claude|codex) : ;; *) die "未知 agent: $agent（支持 claude|codex）" ;; esac
 [ -n "$account" ] && [ "$use_base" = 1 ] && die "--account 与 --base 互斥"
+
+# `--detach` / `--tmux-size` 只在容器路径有意义。**不静默忽略**——静默忽略正是本工作区
+# 反复消灭的那类病（写了个修饰、看起来生效了、实际被吃掉）。
+[ "$detach" = 1 ] && [ "$use_tmux" != 1 ] && die "--detach 需要配合 --tmux（非容器路径没有会话可 detach）"
+[ -n "$tmux_size" ] && [ "$use_tmux" != 1 ] && die "--tmux-size 需要配合 --tmux"
+# 尺寸会被拼进 `tmux new-session -x W -y H`，**必须**只允许纯数字，否则就是一条注入面。
+if [ -n "$tmux_size" ]; then
+  # 不用 extglob（本脚本没开 shopt，且要保持可移植）：逐条排除法等价于「<数字>x<数字>」
+  # ——只含数字与 x、不以 x 开头/结尾、有且仅有一个 x。
+  case "$tmux_size" in
+    *[!0-9x]* | x* | *x | *x*x* | '')
+      die "非法 --tmux-size: '$tmux_size'（要 <宽>x<高>，如 220x50，且均为正整数）" ;;
+  esac
+fi
 if [ "$action" = resume ] && [ -z "$(agent_resume_flag "$agent")" ]; then
   die "agent=$agent 不支持 resume（无 resume flag）"
 fi
@@ -444,6 +469,8 @@ if [ "$use_tmux" = 1 ]; then
   [ -n "$model" ] && inner+=(--model "$model")
   [ -n "$launcher" ] && inner+=(--launcher "$launcher")
   [ -n "$ccm_sid" ] && inner+=(--ccm-sid "$ccm_sid")
+  # `--detach` / `--tmux-size` **不**转发：它们是外层容器自身的属性（要不要 attach、
+  # 新建窗口多大），内层没有 --tmux，转发过去只会撞上「--detach 需要配合 --tmux」。
   [ ${#passthru[@]} -gt 0 ] && inner+=(-- "${passthru[@]}")
 
   payload=""
@@ -474,8 +501,14 @@ if [ "$use_tmux" = 1 ]; then
   fi
 
   t="$(sq "=$tmux_name:")"
+  # `--tmux-size`：detached 会话默认 80x24，太窄会把 agent 输出折行（cc-spawn 一直用 220x50）。
+  # 只对**新建**生效——幂等接回既有会话时 new-session 失败短路，尺寸自然不动，这是对的：
+  # 已有会话的尺寸归它自己（可能有人正 attach 着），不该被后来的调用方改掉。
+  # 已在上方校验过只含数字与单个 x，故此处直接拆开拼入无注入面。
+  size_opt=""
+  [ -n "$tmux_size" ] && size_opt=" -x ${tmux_size%x*} -y ${tmux_size#*x}"
   # 幂等建闸：会话已存在 → new-session 失败被吞、`&&` 短路跳过后续 → 只 attach（不重复起）。
-  seq="tmux new-session -d -s $(sq "$tmux_name") -c $(sq "$cwd") 2>/dev/null"
+  seq="tmux new-session -d -s $(sq "$tmux_name") -c $(sq "$cwd")$size_opt 2>/dev/null"
   seq="$seq && (tmux set-option -t $t @ccm_agent $(sq "$agent") 2>/dev/null || true)"
   # F04：通道A（意图）写 @ccm_sid_expect，不写 @ccm_sid——只有通道B（poller 独立读会话文件
   # 后确认）才写 @ccm_sid，破坏性动作（kill 等）只认 @ccm_sid，不被"声明了但从未真正跑起来"
@@ -493,7 +526,14 @@ if [ "$use_tmux" = 1 ]; then
   if [ "$agent" = claude ] && [ "$pretrusted" != 1 ] && [ "${CCM_NO_PRETRUST:-}" != 1 ]; then
     seq="$seq && (for _i in 1 2 3 4 5 6; do sleep 0.5; tmux capture-pane -t $t -p 2>/dev/null | grep -q 'Yes, I trust this folder' && { tmux send-keys -t $t Enter; break; }; done)"
   fi
-  seq="$seq; tmux attach -t $t"
+  # `--detach`：只建会话就返回，不 attach。
+  # **为什么这是拆开而非新增**：`--tmux` 至此一直同时承担两件正交的事——「起一个容器」与
+  # 「把当前终端 attach 进去」。cc-monitor 的 UI 两件都要（它开一个终端窗口给用户看），
+  # 于是二者被焊在了一起；而 cc-spawn 只要前者：它建完还得拿 pane id 去 `cc-register`
+  # 登记总线、写 `spawned.tsv` 台账、打印用法提示——attach 会当场夺走控制流，这些都做不成。
+  # 焊在一起就是 MASTERPLAN §0 说的那个病（「一个动作 + 若干正交修饰」被写死成一套实现），
+  # `--detach` 把「要不要 attach」还原成一个独立修饰。**默认仍 attach，既有调用方零感知。**
+  [ "$detach" = 1 ] || seq="$seq; tmux attach -t $t"
 
   if [ "$do_print" = 1 ]; then printf '%s\n' "$seq"; exit 0; fi
   exec bash -c "$seq"

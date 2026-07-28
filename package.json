@@ -40,6 +40,7 @@
     "test:ccm-cli": "bash e2e/ccm-cli.test.sh",
     "test:ccm-acceptance": "bash e2e/ccm-acceptance.sh",
     "test:ccm-pretrust": "bash e2e/ccm-pretrust-acceptance.sh",
+    "test:cc-spawn-uplift": "bash e2e/cc-spawn-uplift.sh",
     "test:ccm-print-parity": "bash e2e/ccm-print-parity.sh",
     "test:usage-probe": "bash e2e/usage-probe-acceptance.sh",
     "test:exec-bits": "bash e2e/exec-bit-guard.sh"
