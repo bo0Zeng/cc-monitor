@@ -133,33 +133,37 @@ export function planLauncher(
   return { ctx, plan: buildLaunchPlan(ctx) };
 }
 
-/** F06：本地（Windows）路径的 `LaunchContext` 构造——本地会话无账号隔离/tmux 概念，
- *  `container`/`account` 恒定；`launcher` 不经这层（本地路径的 launcher 是裸字符串直传 Rust，
- *  由 Rust 自己校验/拼接 PowerShell 命令，不是本 IR 的渲染对象）。
+/**
+ * 本地（Windows）路径在发起 IPC 之前的**前置校验**。**只做校验，不构造任何 IR。**
  *
- *  校验 `sid`（`action.kind==="resume"` 时）——同其余 4 个 `planXxx` 早就有的
- *  `isValidSessionId` 检查，本地路径此前唯一缺失这一层，只靠 Rust 侧 `build_local_ps_command`
- *  兜底校验。补齐后本地/远端 resume 在"sid 校验早于任何 IPC 往返"这条规矩上一致（见
- *  `features/F06-local-path-ir.md` §3.2 实现期修正）。
+ * **R07（原 `planLocal`，原返回 `LaunchPlanBuild`，原内部还跑一遍 `buildLaunchPlan`）。**
+ * 原名 + 原返回值合起来暗示"本地路径也经这套 IR 产出命令"，而事实是：4 个生产调用点
+ * （`views/history.ts` ×2、`views/session-viewer.ts`、`tabs.ts`）**全部把返回值当语句丢弃**，
+ * 真命令由 Rust 独立构造（`invoke("resume_history_session")` / `invoke("new_local_session")`
+ * → `history.rs::build_local_ps_command`，三个实参无一来自 plan）。
  *
- *  `plan.env` 会因 `NESTED_ENV_RESET_DIMENSION` 恒非空（action 是 new/resume 就触发）——
- *  **故意不消费**：本地场景的嵌套 env 污染保护已经在 `lib.rs::scrub_env_vars`（进程启动期
- *  一次性清洗）做完，调用方不应该、也不需要再从这里的 `plan.env` 拼 PowerShell env-unset 语句
- *  （见同一节 §0 的证据链）。 */
-export function planLocal(action: LaunchAction, cwd: string | null): LaunchPlanBuild {
+ * **为什么连 `buildLaunchPlan` 那一遍也删掉**（Phase D 审计发现，初稿保留了它并声称是
+ * "一道便宜的一致性检查"）：那个声称**零门禁守护**——审计实测把整段 ctx 构造 + 调用删掉、
+ * 只留一句 `void cwd;`，`tsc` 与 `npm test` **705 全绿**（改造前同一变异红 5 条，
+ * 因为那时返回类型让这次调用在**类型层**是承重的；改成 `void` 恰恰把类型层强制降级成了
+ * 一句谁都能顺手删的裸语句）。而它想验的东西**别处已经在验**：
+ * `launch-render-cli.test.ts` 有 `ctxOf({ transport: { kind: "local" } })` → `buildLaunchPlan` 的用例。
+ * 生产侧它纯属浪费，且是 **fail-closed 风险**——将来任何对 `transport:local` 抛异常的新维度，
+ * 都会让本地 resume 彻底拉不起来，而收益是零。
+ *
+ * **为什么不"真接上"**（R07 明确否决的选项，**理由经 Phase D 审计订正**）：
+ * 初稿引的是 F06 的 `Get-Command` 论证——那条**真实存在**（`F06-local-path-ir.md:27-30`），
+ * 但它排除的是"**TS 全量渲染好字符串、Rust 只管 exec**"这一形态，**并不排除**
+ * "TS 构造 IR、Rust 只做 `Get-Command` 那一步补全"。真正支撑否决的是 F06 §3.2 实现期修正：
+ * **`plan.action`/`plan.cwd` 在当前维度注册表下恒等于输入，取回来没有信息增量**
+ * （`plan.launcher` 更是恒 `""`，因为本地不传 `launcherOverride`）。
+ * 即"不接"是因为**接了也拿不到新东西**，不是因为技术上不可能。见 `doc/INVARIANTS.md` §36。
+ */
+export function validateLocalLaunch(action: LaunchAction, cwd: string | null): void {
+  void cwd; // 保留在签名里：调用点按「动作 + 目录」成对传，未来若加 cwd 校验就落在这
   if (action.kind === "resume" && !isValidSessionId(action.sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(action.sid)}`);
   }
-  const ctx: LaunchContext = {
-    transport: { kind: "local" },
-    action,
-    container: { kind: "none" },
-    cwd,
-    account: { kind: "base" },
-    launcherOverride: undefined,
-    ccmSid: undefined,
-  };
-  return { ctx, plan: buildLaunchPlan(ctx) };
 }
 
 /** 对应 `buildAttachCmd`：接回一个已存在的 tmux 会话，不启动任何东西。 */

@@ -69,6 +69,10 @@
         签名不变**：仍是 `invoke("resume_history_session",{sessionId,cwd,launcher})`/
         `invoke("new_local_session",{cwd,launcher})`——只是这三个值现在来自 `LaunchPlan` 而不是
         直接手传）
+        **【R07 订正：这条从未实现，且已在本文件 §3.2 实现期修正里被撤回】**——4 个调用点
+        全部手传，返回值一律丢弃。撤回理由是「`plan.action`/`plan.cwd` 恒等于输入、没有信息
+        增量可取回」（不是 Get-Command 那条）。R07 已据此把 `planLocal` 改名
+        `validateLocalLaunch`、返回 `void`、并删掉内部那遍 `buildLaunchPlan`。见 INVARIANTS §36。
   - [x] `src/views/history.ts`（本地 resume 分支 + 本地新建分支）、`src/tabs.ts:2039`
         （本地 resume 调用点）、`src/views/session-viewer.ts:355`（本地 resume 调用点）改用上面的
         新函数——四个调用点行为逐字节不变（仍传同样的 sessionId/cwd/launcher，只是经过了 IR 这一
