@@ -1,15 +1,36 @@
 # 状态 / STATUS — unify-launch（恢复工作的入口，每次先读这里）
 
-- **当前阶段**：F07 已完成签收（Phase B→F 全过，架构验收通过，commit 待落）
-- **当前功能**：无——F07 收尾完成，下一步进 F08/F09/F11
-- **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）
-- **下一个功能**：F08/F09/F11（互相正交，都只依赖已完成功能）→ F10 → Phase G
+- **当前阶段**：F11 已完成签收（Phase B→F 全过，commit 待落），F08 Phase B 已完成、待进 Phase C
+- **当前功能**：F08（终端集成收尾，`features/F08-terminal-integration.md`，含 `ccm --model`
+  闭合 R14）——F11 收尾完成后的下一个功能
+- **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）、**F11**（预信任能力上提进 `ccm`：`shared/ccm` 的 `--tmux` 建会话路径新增预信任 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out；范围收窄不碰仓库外的 `cc-spawn` 本体；双 agent 审各自独立复现真实阻塞项，含修复既有 `e2e/ccm-acceptance.sh` 污染真实全局配置的回归）
+- **下一个功能**：F08（本轮）→ F09（UI 收敛，须解决 R12）→ F10 → Phase G
 - **阻塞 / 待用户确认**：无
-- **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 12）
+- **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 13）
 - **自动模式（/loop）**：**全自动**（连续 B→G）。用户 2026-07-27 追加授权：**具体设计决策由本席开
   agent 讨论分析后自行决定，不必逐项停下来问**——除非真遇到阻塞或用户主动打断
-- **本轮 loop 目标**：commit F07 → 开 F08/F09/F11 中的一个（Phase B 规划）
+- **本轮 loop 目标**：commit F11 → F08 走完 C→D→E→F 并 commit
 - **loop 停止条件**：计划≠现实 / 同一步≥2 失败 / 全部完成→Phase G / 用户打断
+
+## F11 结果摘要
+
+- `shared/ccm` 的 `--tmux` 建会话路径新增预信任逻辑（照抄 `~/.claude/skills/cc-bus/scripts/
+  cc-spawn` 的 `~/.claude.json`/`~/.codex/config.toml` 写入，逐行对齐不重新设计）。范围收窄为
+  **只上提进 `ccm`，不改 `cc-spawn` 本体**——`cc-spawn` 物理上不在这个仓库，是跨项目共享的
+  cc-bus 基础设施，改动需要用户另行明确授权，不该被"全部自动做"隐式覆盖（这条决策经两位
+  审计 agent 独立评估认可）。
+- 双 agent 审各自独立发现并**实测复现**真实阻塞项（本功能是迄今审计命中率最高的一次，因为
+  它是唯一"写用户真实全局配置文件"的功能）：① `--cwd <相对路径>` 场景下 `$cwd` 非绝对路径
+  导致预信任写出字面量野 key（如"proj1"），对真实信任表零效果、还污染用户真实配置文件、
+  `jq` 校验照样通过不报错——已修（专用 `cwd_abs` 规范化）；② 完全丢失了 cc-spawn 真正的
+  安全网（`pretrusted` 追踪 + 写入未成功时轮询抓 pane 文本自动按 Enter），而 cc-monitor 前端
+  对本地 tmux 会话零可见性——没有这层兜底信任框会静默卡死无人发现，已补齐并用真实假 launcher
+  端到端验证轮询确实生效；③ 本功能让**既有**（非新增）`e2e/ccm-acceptance.sh` 从"纯净沙盒"
+  变成真实污染开发机 `~/.claude.json`/`~/.codex/config.toml` 的测试——已实测复现两次、清理
+  本机污染、给该脚本补齐隔离。另修：计划承诺的 stderr 诊断补齐；受众从 cc-spawn 窄众变宽后
+  加 `CCM_NO_PRETRUST` opt-out；e2e 测试从 6 场景扩到 9 场景。
+- 门禁：tsc 0 / npm test 640 / cargo test 379 / 全部既有 e2e 套件（含新增
+  `test:ccm-pretrust` 13/13）全绿；真实全局配置文件复测确认干净。
 
 ## F07 结果摘要（架构验收通过）
 

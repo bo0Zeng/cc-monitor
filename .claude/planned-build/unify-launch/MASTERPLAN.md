@@ -65,10 +65,10 @@
 | F05 | AccountResolver | 账号解析收敛成判别联合，注入源过 `isSelectable` | **完成** | F03 | P1 |
 | F06 | 本地路径并入 IR | Rust 两套 PowerShell builder 收进同一意图模型 | 完成 | F03 | P2 |
 | F07 | 每账号默认模型 | 维度注册表的**架构验收**（第一个真实新维度） | 完成 | F03 | P2 |
-| F08 | 终端集成收尾 | CLI 安装向导 + 别名生成 + 越层启动器诊断 + 旧 swap 退役 | 待规划 | F02,F04 | P2 |
+| F08 | 终端集成收尾 | CLI 安装向导 + 别名生成 + 越层启动器诊断 + 旧 swap 退役 | Phase B 完成 | F02,F04 | P2 |
 | F09 | UI 收敛：动作 × 修饰 | 10 个 resume 入口 → 1 动作 + 修饰 flyout；徽章常显；删对齐全套 | 待规划 | F05 | P2 |
 | F10 | 剩余账号 UX | 面板砍卡片 / 加号一键化 / 用量（plan 窗口 %） | 待规划 | F09 | P3 |
-| F11 | cc-bus 集成（`cc-spawn` 并入 `ccm`） | `~/.local/bin/cc-spawn` 是第三套独立 tmux 启动实现，收编；预信任能力**上提**进 `ccm` 核心 | 待规划 | F02 | P2 |
+| F11 | cc-bus 集成（`cc-spawn` 并入 `ccm`） | `~/.local/bin/cc-spawn` 是第三套独立 tmux 启动实现，收编；预信任能力**上提**进 `ccm` 核心 | 完成（范围收窄——只上提，不改 cc-spawn 本体，见 F11 计划 §1） | F02 | P2 |
 
 ---
 
@@ -254,7 +254,7 @@ Modifier = account=X | base | container=tmux|none | 未来任意   ← 二级 fl
 | `src/tabs.ts` | F04,F09 | 菜单支持二级 flyout；徽章多账号即常显；对齐全套（⇄/⚠k/alignAll/countAccountMismatches）删除 | **F04 已落地其中的身份统一部分**：`findClaudeTmuxMatches`（不折叠成第一个）+ 三个调用点按严重度分级（resume 警告继续/restart 拒绝/菜单 kill 项禁用）+ `resumingSids` 互斥；**菜单 flyout/徽章/对齐删除仍是 F09 范围，未动** | F09 删前核 `e2e/restart-cmd-driver.ts` 的 import（审计 §五.6） |
 | `src/agent-profile.ts` | F02,F03 | agent 轴保持独立；IR 与 CLI 都从它取 resume flag / 默认 launcher | 已是单一来源 | 不与 environment 轴混 |
 | `e2e/*-cmd-driver.ts` | F03,F09 | 位置参数签名不变；新增真机行为断言层 | 直接 import builder | **F03 硬验收条件** |
-| `~/.local/bin/cc-spawn` | F11 | **第三套独立 tmux 启动实现**并入 `ccm`：`cc-spawn` 保留 cc-bus 专属部分（总线登记 `cc-register`、台账 `spawned.tsv`、复用判定），但**建会话/送环境/送任务改经 `ccm`** | 独立实现：自建 tmux（`<basename>_cc` 命名，过不了 `is_ccm_tmux_name` 的 `cc-*` 白名单——根因5 同款）、自己的 CC_BUS_ID 注入（与 `ccm` 的 `agent_needs_bus_id` 重复）、自己的 exact-match 处理（`has-session -t "=$base"`，session 级正确、已合规 §31a） | **预信任能力（写 `~/.claude.json`/`~/.codex/config.toml`）应上提进 `ccm` 核心**，不只留给 cc-spawn——它直接解决了 F04 调研中发现的真实现象（claude 卡在信任确认页数小时、从不生成 sessionId、`@ccm_sid` 永不写入，见本轮 R10 调研）。上提后 `ccm --tmux` 与 `cc-spawn` 共享同一条防卡死路径 |
+| `~/.local/bin/cc-spawn` | F11 | **第三套独立 tmux 启动实现**并入 `ccm`：`cc-spawn` 保留 cc-bus 专属部分（总线登记 `cc-register`、台账 `spawned.tsv`、复用判定），但**建会话/送环境/送任务改经 `ccm`** | **F11 已落地预信任能力上提**（`shared/ccm` 的 `--tmux` 建会话路径新增预信任 `~/.claude.json`/`~/.codex/config.toml`，逻辑与 `cc-spawn` 逐行对齐 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out）；**范围收窄**——`cc-spawn` 本体（建会话/送环境/送任务改经 `ccm`）未动，物理上不在这个仓库，改动需要用户另行明确授权，见 F11 计划 §1 | `cc-spawn` 本体的改造（三步改经 `ccm`，只留 cc-bus 专属部分）仍是本行"最终形态"里未完成的一半，留给用户明确要求时再做，非遗漏；`CC_BUS_ID`/`agent_needs_bus_id` 的重复也保持现状不去重（同一理由） |
 
 ---
 
@@ -376,6 +376,26 @@ F02 ──┴─► F03 ─┬─► F04 ─┬─► F08
 
 ## 7. 变更记录
 
+- 13 — 2026-07-27 — **F11 完成签收**（Phase B→F 全过，未开 Plan agent fanout——关键决策是
+  范围边界而非技术方案；双 agent 审各发现真实阻塞项，是本轮迄今审计"命中率"最高的一次功能，
+  因为这是唯一一个"写用户真实全局配置文件"的功能，风险面客观更高）。实现：`shared/ccm` 的
+  `--tmux` 建会话路径新增预信任逻辑（照抄 `~/.claude/skills/cc-bus/scripts/cc-spawn` 的
+  `~/.claude.json`/`~/.codex/config.toml` 写入，逐行对齐不重新设计）；范围收窄为**只上提进
+  `ccm`，不改 `cc-spawn` 本体**（cc-spawn 物理上不在这个仓库，是跨项目共享的 cc-bus 基础
+  设施，改动需要用户另行明确授权，不该被"全部自动做"隐式覆盖——这条决策经审计独立评估
+  认可）。双 agent 审计各自独立发现并实测复现真实 bug：① `--cwd <相对路径>` 场景下 `$cwd`
+  非绝对路径导致预信任写出字面量野 key（如 `"proj1"`），对真实信任表零效果还污染用户真实
+  配置文件、`jq` 校验照样通过不报错——修法是预信任专用 `cwd_abs="$(cd "$cwd" && pwd)"`
+  规范化；② 完全丢失了 cc-spawn 真正的安全网——`pretrusted` 追踪 + 写入未成功时轮询抓 pane
+  文本自动按 Enter，而 cc-monitor 前端对本地 tmux 会话零可见性（`capture-pane` 预览只对
+  远端开放），没有这层兜底信任框会静默卡死无人发现——已补齐并用真实假 launcher 端到端验证
+  轮询确实生效；③ 本功能让**既有**（非新增）`e2e/ccm-acceptance.sh` 从"纯净沙盒"变成真实
+  污染开发机 `~/.claude.json`/`~/.codex/config.toml` 的测试（该脚本从未设隔离钩子，因为
+  F11 之前 `--tmux` 无此副作用）——**已实测复现两次**、清理本机污染、给该脚本补齐隔离。另修：
+  计划承诺的 stderr 诊断补齐；受众从 cc-spawn 窄众变宽后加 `CCM_NO_PRETRUST` opt-out（同时
+  关闭写入与轮询两条路径）；e2e 测试从 6 场景扩到 9 场景（新增相对路径回归/opt-out/真失败/
+  轮询兜底端到端验证）。门禁全绿：tsc 0/npm test 640/cargo test 379/全部既有 e2e 套件（含
+  新增 `test:ccm-pretrust` 13/13）；真实全局配置文件复测确认干净。
 - 12 — 2026-07-27 — **F07 完成签收（架构验收通过）**（Phase B→F 全过，未开 Plan agent
   fanout——`account-onboarding/MASTERPLAN-v2.md` 的既有先例收窄了设计空间；双 agent 架构/UX
   审无阻塞项、1+3 条重要发现全修）。实现：`launch-dimensions.ts` 新增第 5 个维度

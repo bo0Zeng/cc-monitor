@@ -39,6 +39,7 @@
     "test:tmux-guarded": "bash e2e/tmux-guarded-acceptance.sh",
     "test:ccm-cli": "bash e2e/ccm-cli.test.sh",
     "test:ccm-acceptance": "bash e2e/ccm-acceptance.sh",
+    "test:ccm-pretrust": "bash e2e/ccm-pretrust-acceptance.sh",
     "test:ccm-print-parity": "bash e2e/ccm-print-parity.sh"
   },
   "dependencies": {
