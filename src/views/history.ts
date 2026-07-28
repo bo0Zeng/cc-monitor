@@ -1497,7 +1497,7 @@ export class HistoryView {
       await withAccount(
         origin,
         ctx.account ?? null,
-        (cd, an, mo) => runRemoteResume(origin, ctx.sessionId, ctx.cwd, behavior.resumeCommandRemote, cd, an, mo),
+        (mods) => runRemoteResume(origin, ctx.sessionId, ctx.cwd, behavior.resumeCommandRemote, mods),
         {
           sessionId: ctx.sessionId,
           onUnselectable: (n) =>
@@ -1543,7 +1543,7 @@ export class HistoryView {
       await withAccount(
         origin,
         null,
-        (cd, an, mo) => runNewSessionRemote(origin, ctx.cwd, behavior.resumeCommandRemote, cd, an, mo),
+        (mods) => runNewSessionRemote(origin, ctx.cwd, behavior.resumeCommandRemote, mods),
         { follow: {} },
       );
     } else {

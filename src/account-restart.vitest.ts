@@ -17,7 +17,7 @@ vi.mock("./accounts", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { runRemoteResumeTmux } from "./remote-launch-run";
-import { accountConfigDir, recordLastAccount, checkTrust } from "./accounts";
+import { accountConfigDir, recordLastAccount, checkTrust, getModelForAccount } from "./accounts";
 import { restartWithAccount, type RestartWithAccountOpts } from "./account-restart";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -84,7 +84,7 @@ describe("restartWithAccount（A5 换号重启编排 · §5）", () => {
       enter: true,
     });
     expect(invokeMock).toHaveBeenCalledWith("kill_remote_tmux", { origin: "aya", target: "cc-s1abcdef" });
-    expect(resumeTmux).toHaveBeenCalledWith("aya", "s1", "/w", "cct", "cc-s1abcdef", "/h/z", "z", undefined);
+    expect(resumeTmux).toHaveBeenCalledWith("aya", "s1", "/w", "cct", "cc-s1abcdef", { configDir: "/h/z", accountName: "z", modelOverride: undefined });
     expect(recordLast).toHaveBeenCalledWith("s1", "z");
     // 未勾选 compact → 绝不发 /compact（Esc/exit 是优雅退出，不是 compact）。
     expect(invokeMock).not.toHaveBeenCalledWith(
@@ -181,5 +181,26 @@ describe("A5/Phase G：resume 真失败时不得上报成功", () => {
     const ok = await restartWithAccount(baseOpts({ confirm: () => true }));
     expect(ok).toBe(false); // ← 变异锚点：退回 `return true` 这里就红
     expect(recordLast).not.toHaveBeenCalled(); // 没起来就别钉账号归属
+  });
+
+  // R03 Phase D 对抗审计发现（重要，实测复现）：位置参数改 options bag 后，
+  // vitest 的 `toHaveBeenCalledWith` 对**对象**会忽略"值为 undefined 的键"，
+  // 但对**位置参数**是严格比 arity 的。本文件 :15 把 `getModelForAccount` 恒 mock 成
+  // `undefined`，于是全文件唯一那条 resumeTmux 断言只能钉 `modelOverride: undefined`
+  // ——审计实做变异：删掉 `account-restart.ts` bag 里的 `modelOverride,` → 本套件仍 12/12 全绿
+  // （改造前同一变异会因 arity 7≠8 转红）。**这是本次改造唯一真实的断言强度损失。**
+  // 补这条把 `modelOverride` 钉成非 undefined，让"并列路径漏传模型偏好"重新可被测试抓到
+  // （tsc 的 noUnusedLocals 也能抓，但那是另一道门，不该让测试这道门空着）。
+  it("R03：模型偏好经并列路径（account-restart 自己查、不走 withAccount）真的传进 resumeTmux", async () => {
+    acctConfigDir.mockReturnValue("/h/z");
+    vi.mocked(getModelForAccount).mockResolvedValue("opus");
+    invokeMock.mockResolvedValue(undefined);
+    await restartWithAccount(baseOpts({ confirm: () => true }));
+    expect(resumeTmux).toHaveBeenCalledWith("aya", "s1", "/w", "cct", "cc-s1abcdef", {
+      configDir: "/h/z",
+      accountName: "z",
+      modelOverride: "opus",
+    });
+    vi.mocked(getModelForAccount).mockResolvedValue(undefined); // 复位，别泄漏给后续用例
   });
 });

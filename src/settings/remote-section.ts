@@ -861,8 +861,8 @@ class MachineCard {
       const accName = acctSelect.value; // "" = 不指定
       back.remove();
       // A4：新会话无 sid → 不记 lastAccount；withAccount 统一解析注入（不可选则退化默认起）。
-      void withAccount(origin, accName || null, (cd, an, mo) =>
-        runRemoteLauncher(origin, cwd, name, command, cd, an, mo),
+      void withAccount(origin, accName || null, (mods) =>
+        runRemoteLauncher(origin, cwd, name, command, mods),
       );
     });
     foot.append(cancel, start);

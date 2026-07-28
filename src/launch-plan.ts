@@ -77,6 +77,52 @@ export interface LaunchPlan {
   wrap: WrapSpec[];
 }
 
+/**
+ * R03：**正交修饰的传递载体**。
+ *
+ * 这三个字段是同一族东西——都是"修饰"（account 维度 + model 维度），此前却被摊成三个平级
+ * 位置参数、在 4 个 `planXxx` + 5 个 `runXxx` 的**尾部逐字重复**。三个后果：
+ *
+ * 1. **MASTERPLAN §0.1 成功标准② 的"零改调用点"这一半**。那条标准要求"加一个新维度 =
+ *    注册 dimension + CLI 加 flag + UI 加修饰项，零改 builder/renderer/调用点"。F07 做架构
+ *    验收时渲染器主体确实零改，但 `modelOverride` 要从 UI 一路手动透传下来，于是 9 处签名
+ *    同时改动（F07 的 commit message 自己记了这件事）。收进 bag 后，**其余 8 个函数签名与
+ *    全部透传调用点零改**——实测口径：拿"加第 4 个维度"当尺子，
+ *    `remote-launch-run.ts`(14 行)/`tabs.ts`(10)/`views/history.ts`(4)/`settings/remote-section.ts`(4)
+ *    这 4 个文件共 32 行纯透传编辑归零。
+ *
+ *    **但"零改 builder"那一半没达成，别把这里读成"只需三处"**（R03 Phase D 对抗审计指出，
+ *    此前本注释确实这么写过）：`launch-requests.ts` 的 4 个 `planXxx` 仍要各改 2 行
+ *    （解构 + ctx 字面量），`LaunchContext` 也要同步加字段；若新维度需要新的 `EnvOp` 种类，
+ *    `launch-render-fallback.ts` 还要加一个 switch 分支。真要闭合这一半，得让 `LaunchContext`
+ *    持有一个**纯透传子集**（只搬不需要解析的字段——绝不能把 `configDir`/`accountName` 也搬进去，
+ *    那会让"未解析的原始字段"与"已解析的 `account` 判别联合"并存，未来某个维度读了原始字段
+ *    就绕过 `accountOf` 的解析，正是 R11 那一族病）。未做，登记在案。
+ * 2. 消掉了"三个同类型可选尾参"这种签名形状。（**订正**：此前本注释说生产调用点"已经出现
+ *    `undefined, undefined, "opus"` 这种占位实参"——审计核实 HEAD 上生产代码里**一个都没有**，
+ *    只在测试代码里有。这条理由只对测试成立，不该拿来给方案抬价。）
+ * 3. **最要紧的一条**：三个字段类型全是 `string | undefined` 且相邻，**传错顺序 tsc 抓不到**。
+ *    `configDir` 与 `accountName` 互换编译照过，运行时行为却是"账号选择静默失效"——
+ *    正是 R11/R08 那一族"看起来生效了，只是用了错的号"的形状。改成命名字段后，
+ *    这一整类错误在编译期不可表达。
+ *
+ * 与 `LaunchContext` 不是重复：本接口是**解析前**的原始形态（调用方手上的一个目录 / 一个名字 /
+ * 一个模型串），`LaunchContext.account` 是**解析后**的判别联合（`{kind:"account"|"base"}`）。
+ * `planXxx` 正是这个转换发生的地方。
+ *
+ * 刻意**不**收 `name`（tmux 会话名）：容器轴按 R12 已决策维持为一等硬编码字段、不进维度注册表
+ * （`doc/INVARIANTS.md` §38），混进"修饰 bag"会与那条决策矛盾。
+ */
+export interface LaunchModifiers {
+  /** A4：账号目录，兜底渲染器据此 `export CLAUDE_CONFIG_DIR`。 */
+  configDir?: string;
+  /** F05：与 `configDir` 成对——CLI 渲染器据此吐 `--account <名>`；只有 `configDir` 没有名字时
+   *  `ACCOUNT_DIMENSION.cliFlags` 诚实返回 `null` 强制降级（见 `LaunchAccount` 头注）。 */
+  accountName?: string;
+  /** F07：该账号配置的默认模型偏好（本机 `config.json`）。 */
+  modelOverride?: string;
+}
+
 /** `buildLaunchPlan` 的输入——调用方已解析好的具体意图，维度据此派生 `env`/`args`/`identity`。 */
 export interface LaunchContext {
   transport: { kind: "local" } | { kind: "ssh" };

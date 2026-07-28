@@ -134,7 +134,7 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
     menuItem("在该目录起新会话")!.click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(runNewRemote).toHaveBeenCalledWith("hostA", "/p", "", "/h/.claude-accts/z", "z", undefined);
+    expect(runNewRemote).toHaveBeenCalledWith("hostA", "/p", "", { configDir: "/h/.claude-accts/z", accountName: "z", modelOverride: undefined });
     invalidateAccountsCache(); // fetchAccounts 有模块级缓存,别泄漏进同文件其它测试
   });
 

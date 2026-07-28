@@ -1993,7 +1993,7 @@ export class TabManager {
       await withAccount(
         origin,
         accountName ?? null,
-        (cd, an, mo) => runRemoteResume(origin, sid, cwd, behavior.resumeCommandRemote, cd, an, mo),
+        (mods) => runRemoteResume(origin, sid, cwd, behavior.resumeCommandRemote, mods),
         {
           sessionId: sid,
           // audit-fixes F07（I 建议）：显式选号解析不到（登出/目录消失且缓存恰过期）→ 提示而非静默
@@ -2104,8 +2104,8 @@ export class TabManager {
       await withAccount(
         origin,
         accountName ?? null,
-        async (cd, an, mo) => {
-          await runRemoteResumeIntoExistingTmux(origin, sid, idle.name, behavior.resumeCommandRemote, cd, an, mo);
+        async (mods) => {
+          await runRemoteResumeIntoExistingTmux(origin, sid, idle.name, behavior.resumeCommandRemote, mods);
         },
         {
           sessionId: sid,
@@ -2133,8 +2133,8 @@ export class TabManager {
       accountName ?? null,
       // runRemoteResumeTmux 现在返回 boolean（Phase G）；withAccount 的 run 要 Promise<void>，
       // 这条归档 resume 路径不消费成败（失败已由它自己 toast + 剪贴板回退），故丢弃返回值。
-      async (cd, an, mo) => {
-        await runRemoteResumeTmux(origin, sid, cwd, behavior.resumeCommandRemote, name, cd, an, mo);
+      async (mods) => {
+        await runRemoteResumeTmux(origin, sid, cwd, behavior.resumeCommandRemote, name, mods);
       },
       {
         sessionId: sid,

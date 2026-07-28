@@ -19,6 +19,7 @@ import {
   planLauncher,
   planAttach,
 } from "./launch-requests";
+import type { LaunchModifiers } from "./launch-plan";
 import { renderFallback } from "./launch-render-fallback";
 import { canRenderCli, renderCli } from "./launch-render-cli";
 import { probeCcm } from "./ccm-probe";
@@ -86,13 +87,11 @@ export async function runRemoteResume(
   sid: string,
   cwd: string,
   launcher: string,
-  configDir?: string, // A4：非空 → 该会话用指定账号 resume（CLAUDE_CONFIG_DIR 注入）
-  accountName?: string, // F05：与 configDir 成对——线通进 LaunchContext，供 CLI 渲染器吐 --account <名>
-  modelOverride?: string, // F07：该账号配置的默认模型偏好——线通进 LaunchContext.modelOverride
+  mods: LaunchModifiers = {}, // R03：正交修饰 bag（configDir/accountName/modelOverride），见 launch-plan.ts
 ): Promise<void> {
   let cmd: string;
   try {
-    const { ctx, plan } = planResumeDirect(sid, cwd, launcher, configDir, accountName, modelOverride);
+    const { ctx, plan } = planResumeDirect(sid, cwd, launcher, mods);
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 resume 命令", String(err));
@@ -120,13 +119,11 @@ export async function runRemoteResumeTmux(
   cwd: string,
   launcher: string,
   name?: string,
-  configDir?: string, // A4：非空 → 该会话用指定账号 resume（CLAUDE_CONFIG_DIR 注入）
-  accountName?: string, // F05：与 configDir 成对——线通进 LaunchContext，供 CLI 渲染器吐 --account <名>
-  modelOverride?: string, // F07：该账号配置的默认模型偏好——线通进 LaunchContext.modelOverride
+  mods: LaunchModifiers = {}, // R03：正交修饰 bag（configDir/accountName/modelOverride），见 launch-plan.ts
 ): Promise<boolean> {
   let cmd: string;
   try {
-    const { ctx, plan } = planResumeTmux(sid, cwd, launcher, name, configDir, accountName, modelOverride);
+    const { ctx, plan } = planResumeTmux(sid, cwd, launcher, name, mods);
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 tmux resume 命令", String(err));
@@ -150,13 +147,11 @@ export async function runRemoteResumeIntoExistingTmux(
   sid: string,
   name: string,
   launcher: string,
-  configDir?: string, // A4：非空 → 该会话用指定账号 resume；空 → 基座（builder 会 unset 残留 env）
-  accountName?: string, // F05：与 configDir 成对——线通进 LaunchContext，供 CLI 渲染器吐 --account <名>
-  modelOverride?: string, // F07：该账号配置的默认模型偏好——线通进 LaunchContext.modelOverride
+  mods: LaunchModifiers = {}, // R03：正交修饰 bag（configDir/accountName/modelOverride），见 launch-plan.ts
 ): Promise<boolean> {
   let cmd: string;
   try {
-    const { ctx, plan } = planResumeIntoExistingTmux(sid, name, launcher, configDir, accountName, modelOverride);
+    const { ctx, plan } = planResumeIntoExistingTmux(sid, name, launcher, mods);
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造就地 resume 命令", String(err));
@@ -181,18 +176,14 @@ export async function runNewSessionRemote(
   origin: string,
   cwd: string,
   command: string,
-  configDir?: string, // A4：非空 → 新会话用指定账号启动
-  accountName?: string, // F05：与 configDir 成对——线通进 LaunchContext，供 CLI 渲染器吐 --account <名>
-  modelOverride?: string, // F07：该账号配置的默认模型偏好——线通进 LaunchContext.modelOverride
+  mods: LaunchModifiers = {}, // R03：正交修饰 bag（configDir/accountName/modelOverride），见 launch-plan.ts
 ): Promise<void> {
   await runRemoteLauncher(
     origin,
     cwd,
     deriveTmuxName(cwd),
     command || AGENT_PROFILE.defaultLauncher,
-    configDir,
-    accountName,
-    modelOverride,
+    mods,
   );
 }
 
@@ -202,13 +193,11 @@ export async function runRemoteLauncher(
   cwd: string,
   tmuxName: string,
   command: string,
-  configDir?: string, // A4：非空 → 新会话用指定账号启动（CLAUDE_CONFIG_DIR 注入）
-  accountName?: string, // F05：与 configDir 成对——线通进 LaunchContext，供 CLI 渲染器吐 --account <名>
-  modelOverride?: string, // F07：该账号配置的默认模型偏好——线通进 LaunchContext.modelOverride
+  mods: LaunchModifiers = {}, // R03：正交修饰 bag（configDir/accountName/modelOverride），见 launch-plan.ts
 ): Promise<void> {
   let cmd: string;
   try {
-    const { ctx, plan } = planLauncher(cwd, tmuxName, command, configDir, accountName, modelOverride);
+    const { ctx, plan } = planLauncher(cwd, tmuxName, command, mods);
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 launcher 命令", String(err));

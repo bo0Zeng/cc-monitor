@@ -88,7 +88,7 @@ export function buildResumeDirectCmd(
   launcher = AGENT_PROFILE.defaultLauncher,
   configDir?: string,
 ): string {
-  return renderFallback(planResumeDirect(sid, cwd, launcher, configDir).plan);
+  return renderFallback(planResumeDirect(sid, cwd, launcher, { configDir }).plan);
 }
 
 /**
@@ -111,7 +111,7 @@ export function buildResumeTmuxCmd(
   name?: string,
   configDir?: string,
 ): string {
-  return renderFallback(planResumeTmux(sid, cwd, launcher, name, configDir).plan);
+  return renderFallback(planResumeTmux(sid, cwd, launcher, name, { configDir }).plan);
 }
 
 /**
@@ -129,7 +129,7 @@ export function buildResumeIntoExistingTmuxCmd(
   launcher = AGENT_PROFILE.defaultLauncher,
   configDir?: string,
 ): string {
-  return renderFallback(planResumeIntoExistingTmux(sid, name, launcher, configDir).plan);
+  return renderFallback(planResumeIntoExistingTmux(sid, name, launcher, { configDir }).plan);
 }
 
 /**
@@ -174,7 +174,7 @@ export function buildLauncherCmd(
   command = AGENT_PROFILE.defaultLauncher,
   configDir?: string,
 ): string {
-  return renderFallback(planLauncher(cwd, tmuxName, command, configDir).plan);
+  return renderFallback(planLauncher(cwd, tmuxName, command, { configDir }).plan);
 }
 
 /**

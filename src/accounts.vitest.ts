@@ -591,48 +591,48 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     meta: { enabled: true, acctsDir: "/a", manifestPath: "/a/x.json", updatedAt: null, sharedStore: null, count: accounts.length, error: null },
     accounts,
   });
-  it("accountName=null → run(undefined)，不 fetch、不记账", async () => {
+  it("accountName=null → run({} 三字段皆 undefined)，不 fetch、不记账", async () => {
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { sessionId: "s1" });
-    expect(run).toHaveBeenCalledWith(undefined, undefined, undefined);
+    expect(run).toHaveBeenCalledWith({ configDir: undefined, accountName: undefined, modelOverride: undefined });
     expect(invokeMock).not.toHaveBeenCalled();
   });
-  it("可选账号 + sessionId → run(configDir, accountName) + 记 lastAccount", async () => {
+  it("可选账号 + sessionId → run({configDir, accountName}) + 记 lastAccount", async () => {
     loadCfg.mockResolvedValue({});
     invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", "z", run, { sessionId: "s1" });
-    expect(run).toHaveBeenCalledWith("/h/z", "z", undefined);
+    expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
     expect(invokeMock).toHaveBeenCalledWith("update_history_metadata", {
       sessionId: "s1",
       patch: { lastAccount: "z" },
     });
   });
-  it("可选账号但无 sessionId（新会话）→ run(configDir, accountName)，不记账", async () => {
+  it("可选账号但无 sessionId（新会话）→ run({configDir, accountName})，不记账", async () => {
     loadCfg.mockResolvedValue({});
     invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", "z", run, {});
-    expect(run).toHaveBeenCalledWith("/h/z", "z", undefined);
+    expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
     expect(invokeMock).not.toHaveBeenCalledWith("update_history_metadata", expect.anything());
   });
-  it("不可选账号 → onUnselectable + run(undefined, undefined)（退化默认）、不记账", async () => {
+  it("不可选账号 → onUnselectable + run({} 三字段皆 undefined)（退化默认）、不记账", async () => {
     loadCfg.mockResolvedValue({});
     invokeMock.mockResolvedValue(okRaw([acct({ name: "z", loggedIn: false })]));
     const run = vi.fn().mockResolvedValue(undefined);
     const onUnsel = vi.fn();
     await withAccount("aya", "z", run, { sessionId: "s1", onUnselectable: onUnsel });
     expect(onUnsel).toHaveBeenCalledWith("z");
-    expect(run).toHaveBeenCalledWith(undefined, undefined, undefined);
+    expect(run).toHaveBeenCalledWith({ configDir: undefined, accountName: undefined, modelOverride: undefined });
     expect(invokeMock).not.toHaveBeenCalledWith("update_history_metadata", expect.anything());
   });
-  it("账号库不可用（fetch reject）→ 退化默认 run(undefined, undefined) + onUnselectable", async () => {
+  it("账号库不可用（fetch reject）→ 退化默认 run({} 三字段皆 undefined) + onUnselectable", async () => {
     loadCfg.mockResolvedValue({});
     invokeMock.mockRejectedValue(new Error("boom"));
     const run = vi.fn().mockResolvedValue(undefined);
     const onUnsel = vi.fn();
     await withAccount("aya", "z", run, { onUnselectable: onUnsel });
-    expect(run).toHaveBeenCalledWith(undefined, undefined, undefined);
+    expect(run).toHaveBeenCalledWith({ configDir: undefined, accountName: undefined, modelOverride: undefined });
     expect(onUnsel).toHaveBeenCalledWith("z");
   });
 
@@ -644,7 +644,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     );
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { sessionId: "s1", follow: { lastAccount: "z" } });
-    expect(run).toHaveBeenCalledWith("/h/z", "z", undefined); // last=z 压过 current=b
+    expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined }); // last=z 压过 current=b
     expect(invokeMock).toHaveBeenCalledWith("update_history_metadata", {
       sessionId: "s1",
       patch: { lastAccount: "z" },
@@ -657,7 +657,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     );
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { sessionId: "s1", follow: { lastAccount: "z" } });
-    expect(run).toHaveBeenCalledWith("/h/b", "b", undefined); // z 不可选 → 用 current=b 起
+    expect(run).toHaveBeenCalledWith({ configDir: "/h/b", accountName: "b", modelOverride: undefined }); // z 不可选 → 用 current=b 起
     // 既有 pin=z 存在且解析结果(b)≠pin → **不 clobber**，绝不把粘性从 z 翻成 b。
     expect(invokeMock).not.toHaveBeenCalledWith("update_history_metadata", expect.anything());
   });
@@ -666,7 +666,7 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { sessionId: "s1", follow: {} }); // 无 pin
-    expect(run).toHaveBeenCalledWith("/h/z", "z", undefined);
+    expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
     expect(invokeMock).toHaveBeenCalledWith("update_history_metadata", {
       sessionId: "s1",
       patch: { lastAccount: "z" },
@@ -679,9 +679,9 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     );
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { follow: {} });
-    expect(run).toHaveBeenCalledWith("/h/z", "z", undefined);
+    expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
   });
-  it("follow：last 与 current 都不可选 → run(undefined, undefined) 落基座，不 toast、不记账", async () => {
+  it("follow：last 与 current 都不可选 → run({} 三字段皆 undefined) 落基座，不 toast、不记账", async () => {
     loadCfg.mockResolvedValue({}); // 无 defaultName
     invokeMock.mockResolvedValue(okRaw([acct({ name: "z", loggedIn: false })])); // 唯一账号不可选
     const run = vi.fn().mockResolvedValue(undefined);
@@ -691,22 +691,22 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
       follow: { lastAccount: "z" },
       onUnselectable: onUnsel,
     });
-    expect(run).toHaveBeenCalledWith(undefined, undefined, undefined);
+    expect(run).toHaveBeenCalledWith({ configDir: undefined, accountName: undefined, modelOverride: undefined });
     expect(onUnsel).not.toHaveBeenCalled(); // 跟随下沉不打扰用户
     expect(invokeMock).not.toHaveBeenCalledWith("update_history_metadata", expect.anything());
   });
-  it("follow：新会话无 sessionId → run(configDir, accountName) 但不记账", async () => {
+  it("follow：新会话无 sessionId → run({configDir, accountName}) 但不记账", async () => {
     loadCfg.mockResolvedValue({ accounts: { defaultName: "z" } });
     invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { follow: {} });
-    expect(run).toHaveBeenCalledWith("/h/z", "z", undefined);
+    expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
     expect(invokeMock).not.toHaveBeenCalledWith("update_history_metadata", expect.anything());
   });
   it("accountName=null 且无 follow → 仍不 fetch、落基座（A4 逐字节，回归守卫）", async () => {
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", null, run, { sessionId: "s1" });
-    expect(run).toHaveBeenCalledWith(undefined, undefined, undefined);
+    expect(run).toHaveBeenCalledWith({ configDir: undefined, accountName: undefined, modelOverride: undefined });
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
@@ -717,13 +717,13 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", "z", run, {});
-    expect(run).toHaveBeenCalledWith("/h/z", "z", "opus");
+    expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: "opus" });
   });
   it("F07：可选账号但未配模型偏好 → run 收到 undefined（不是空串/不是 throw）", async () => {
     loadCfg.mockResolvedValue({ accounts: { modelByAccount: { b: "sonnet" } } }); // 只有 b 有偏好
     invokeMock.mockResolvedValue(okRaw([acct({ name: "z", configDir: "/h/z" })]));
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", "z", run, {});
-    expect(run).toHaveBeenCalledWith("/h/z", "z", undefined);
+    expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
   });
 });
