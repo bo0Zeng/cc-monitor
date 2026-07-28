@@ -6,7 +6,13 @@
 import { AGENT_PROFILE } from "./agent-profile.ts";
 import { isValidSessionId, isValidTmuxName, isValidNewTmuxName } from "./shell-quote.ts";
 import { buildLaunchPlan } from "./launch-plan.ts";
-import type { LaunchAccount, LaunchAction, LaunchContext, LaunchPlan } from "./launch-plan.ts";
+import type {
+  LaunchAccount,
+  LaunchAction,
+  LaunchContext,
+  LaunchModifiers,
+  LaunchPlan,
+} from "./launch-plan.ts";
 
 export interface LaunchPlanBuild {
   ctx: LaunchContext;
@@ -27,10 +33,9 @@ export function planResumeDirect(
   sid: string,
   cwd: string,
   launcher = AGENT_PROFILE.defaultLauncher,
-  configDir?: string,
-  accountName?: string,
-  modelOverride?: string,
+  mods: LaunchModifiers = {},
 ): LaunchPlanBuild {
+  const { configDir, accountName, modelOverride } = mods;
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
   }
@@ -53,10 +58,9 @@ export function planResumeTmux(
   cwd: string,
   launcher = AGENT_PROFILE.defaultLauncher,
   name?: string,
-  configDir?: string,
-  accountName?: string,
-  modelOverride?: string,
+  mods: LaunchModifiers = {},
 ): LaunchPlanBuild {
+  const { configDir, accountName, modelOverride } = mods;
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
   }
@@ -82,10 +86,9 @@ export function planResumeIntoExistingTmux(
   sid: string,
   name: string,
   launcher = AGENT_PROFILE.defaultLauncher,
-  configDir?: string,
-  accountName?: string,
-  modelOverride?: string,
+  mods: LaunchModifiers = {},
 ): LaunchPlanBuild {
+  const { configDir, accountName, modelOverride } = mods;
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
   }
@@ -110,10 +113,9 @@ export function planLauncher(
   cwd: string,
   tmuxName: string,
   command = AGENT_PROFILE.defaultLauncher,
-  configDir?: string,
-  accountName?: string,
-  modelOverride?: string,
+  mods: LaunchModifiers = {},
 ): LaunchPlanBuild {
+  const { configDir, accountName, modelOverride } = mods;
   const name = tmuxName.trim();
   if (!isValidNewTmuxName(name)) {
     throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(name)}`);

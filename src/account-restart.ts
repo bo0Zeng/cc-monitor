@@ -167,16 +167,11 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   // F07：同样补查一次该账号的模型偏好（withAccount 内部也做同一次查询——两条并列路径各自补
   // 一次，同 F05 对 accountName 的处理模式）。
   const modelOverride = await getModelForAccount(accountName);
-  const launched = await runRemoteResumeTmux(
-    origin,
-    sessionId,
-    cwd,
-    launcher,
-    tmuxName,
+  const launched = await runRemoteResumeTmux(origin, sessionId, cwd, launcher, tmuxName, {
     configDir,
     accountName,
     modelOverride,
-  );
+  });
 
   // ⑥ 记 lastAccount（源②）+ 提示。
   // **只有真拉起来了才算成功**（Phase G 审计）：此前无条件记账+报成功,而第⑤步的失败是

@@ -11,6 +11,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { loadConfig, saveConfig } from "./config";
 import { isValidModelName } from "./shell-quote";
+import type { LaunchModifiers } from "./launch-plan";
 
 // ---- 对齐 A2（src-tauri/src/accounts.rs）的返回结构 ----
 export interface Account {
@@ -524,24 +525,32 @@ export function resolveAccount(
  * 三站点共用，消除各写一遍 `resolve configDir + record lastAccount` 的漂移（DESIGN §4）。
  * A5「换号重启」是本编排的超集（在 run 前插 checkTrust/compact、run 后同样 record），届时在此扩展。
  * F05：内部改用 `resolveAccount` 求解（行为逐字节不变，见其头注）；`run` 回调新增第二参数
- * `accountName`——命中账号时非空，否则 `undefined`，供调用方线通进 `LaunchContext`（F05 交付）。
- * F07：`run` 再加第三参数 `modelOverride`——命中账号时查一次 `getModelForAccount`（本机
- * config.json 偏好，未设置则 `undefined`），供调用方线通进 `LaunchContext.modelOverride`。
+ * `accountName`——命中账号时非空，否则 `undefined`（F05 交付）。
+ * F07：模型偏好 `modelOverride`——命中账号时查一次 `getModelForAccount`（本机 config.json 偏好）。
+ * **R03**：这三者不再是三个位置参数，统一收进 `LaunchModifiers` 一次交给 `run`。
  *
- *   - `accountName == null` **且无 `opts.follow`** → 默认起：`run(undefined, undefined)`（不注入、不记账、不 fetch，A4 逐字节旧行为）。
+ *   - `accountName == null` **且无 `opts.follow`** → 默认起：`run({ 三字段皆 undefined })`（不注入、不记账、不 fetch，A4 逐字节旧行为）。
  *   - `accountName == null` **且有 `opts.follow`**（account-ux U2 opt-in 跟随）→ `fetchAccounts` 后
  *     经 `resolveFollowAccount`（lastAccount → 当前账号 → null）解析：命中则注入其 configDir +（给了
- *     sessionId 时）记 lastAccount（会话账号 sticky 自增强）；解析不到 → `run(undefined, undefined)` 落基座。
+ *     sessionId 时）记 lastAccount（会话账号 sticky 自增强）；解析不到 → `run({ 三字段皆 undefined })` 落基座。
  *     **下沉静默不 `onUnselectable`**（用户没显式点号，不该弹提示）。
  *   - `accountName` 非空 → `fetchAccounts` 解析 configDir：
  *       · 解析不到（不可选 / 账号库不可用）→ `onUnselectable(name)`（调用方 toast）后**退化为默认起**；
- *       · 解析到 → `run(configDir, accountName)`；再在**给了 sessionId 时**记 lastAccount（源②，新会话无 sid 不记）。
+ *       · 解析到 → `run({ configDir, accountName, modelOverride })`；再在**给了 sessionId 时**记 lastAccount（源②，新会话无 sid 不记）。
  * `run` 内部的拉起失败由 run 自己处理（runRemote* 有复制命令回退）；本编排只统一 resolve/record 口径。
  */
 export async function withAccount(
   origin: string,
   accountName: string | null,
-  run: (configDir?: string, accountName?: string, modelOverride?: string) => Promise<void>,
+  /** R03：收 `LaunchModifiers` 而非三个位置参数。这里曾是**整条位置参数长列车的车头**——
+   *  F05 加 `accountName`、F07 再加 `modelOverride`，每次都要同时改这个签名与全部调用点，
+   *  于是 MASTERPLAN §0.1 成功标准②（加维度零改调用点）永远差最后一层。收成 bag 后，
+   *  加第 4 个维度只需本函数内部往 `mods` 里多塞一个字段，**6 个**调用点一个字符都不用改
+   *  （审计核实是 6 不是 7：`remote-section.ts` 1 + `views/history.ts` 2 + `tabs.ts` 3）。
+   *  注意这只对"值能由本函数自己推出"的维度成立；若是用户在 UI 现场勾选的维度
+   *  （如 `--dangerously-skip-permissions`），本函数推不出来，届时需给 `opts` 加
+   *  `extraModifiers?: LaunchModifiers` 让调用方注入并在内部 merge，那时 lambda 才真的零改。 */
+  run: (mods: LaunchModifiers) => Promise<void>,
   opts: {
     sessionId?: string;
     onUnselectable?: (name: string) => void;
@@ -583,7 +592,11 @@ export async function withAccount(
   }
   const modelOverride =
     resolution.kind === "account" ? await getModelForAccount(resolution.name) : undefined;
-  await run(configDir, resolution.kind === "account" ? resolution.name : undefined, modelOverride);
+  await run({
+    configDir,
+    accountName: resolution.kind === "account" ? resolution.name : undefined,
+    modelOverride,
+  });
   if (recordName && configDir && opts.sessionId) {
     void recordLastAccount(opts.sessionId, recordName);
   }
