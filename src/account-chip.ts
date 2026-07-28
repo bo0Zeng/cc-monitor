@@ -14,6 +14,7 @@ import {
   type AccountsState,
   type Account,
 } from "./accounts";
+import { fetchAccountUsage, OK_USAGE_UNVERIFIED_CAVEAT, type AccountUsageOutcome } from "./account-usage";
 import { accountAvatarEl } from "./account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "./remote-config";
 import { showActionFailureToast } from "./error-toast";
@@ -24,6 +25,31 @@ import { showActionFailureToast } from "./error-toast";
 export function pickPrimaryOrigin(hosts: RemoteHostConfig[]): string | null {
   const h = hosts.find((x) => !x.daemonless && (x.label || x.host));
   return h ? h.label || h.host : null;
+}
+
+/** F10：把 `AccountUsageOutcome` 压成**折叠态 chip**（`status-account-usage`，`10ch` 宽的
+ *  label 旁边）能放下的极短摘要——"38%"（单窗口）、"38/71/12%"（多窗口,省重复的 % 符号）；
+ *  失败态一律空串（不占地方——折叠态空间真的挤不下任何失败短句，"没查过"和"查了但失败"在
+ *  这里视觉相同，是空间约束下的取舍，不是遗漏；想看失败原因走 `formatUsageSummaryForMenu`
+ *  的菜单行，那里有富余空间）。 */
+export function formatUsageSummaryCompact(outcome: AccountUsageOutcome): string {
+  if (outcome.status !== "ok" || outcome.buckets.length === 0) return "";
+  if (outcome.buckets.length === 1) return `${outcome.buckets[0].usedPercent}%`;
+  return `${outcome.buckets.map((b) => b.usedPercent).join("/")}%`;
+}
+
+/** F10 Phase D 审计（UX，重要）：**菜单里当前账号那一行**的用量摘要——跟折叠态 chip 不一样,
+ *  这一行本来就已经在展示名字/邮箱/登录态,富余空间放得下几个字的失败短句,不该跟"没查过"
+ *  一样空白。 */
+export function formatUsageSummaryForMenu(outcome: AccountUsageOutcome): string {
+  if (outcome.status === "ok") return formatUsageSummaryCompact(outcome);
+  const short: Record<Exclude<AccountUsageOutcome["status"], "ok">, string> = {
+    "not-logged-in": "未登录",
+    "cli-missing": "无 claude",
+    unrecognized: "读不到",
+    "probe-failed": "探测失败",
+  };
+  return short[outcome.status];
 }
 
 /** chip 文本（不含图标）。纯函数，据 UI 状态 + 当前默认账号算。 */
@@ -57,11 +83,17 @@ export interface AccountChipDeps {
 export class AccountChip {
   readonly element: HTMLButtonElement;
   private labelSpan: HTMLElement;
+  /** F10：折叠态紧邻 label 的用量摘要（如 "62%"）——只在菜单展开、懒加载完当前账号用量后才
+   *  填，默认空（不自动探测,较重操作）。 */
+  private usageSpan: HTMLElement;
   private iconEl: HTMLElement;
   private origin: string | null = null;
   private state: AccountsState | null = null;
   private menu: HTMLElement | null = null;
   private menuClose: ((e: Event) => void) | null = null;
+  /** 菜单里"当前账号那一行"的用量展示节点——`loadCurrentAccountUsage` 懒加载完成后回填。
+   *  菜单每次开合都是全新 DOM,这个引用只在菜单开着的这段时间有效。 */
+  private menuCurrentUsageEl: HTMLElement | null = null;
 
   constructor(private deps: AccountChipDeps) {
     const btn = document.createElement("button");
@@ -77,13 +109,20 @@ export class AccountChip {
     this.labelSpan = document.createElement("span");
     this.labelSpan.className = "status-account-label";
     btn.appendChild(this.labelSpan);
+    this.usageSpan = document.createElement("span");
+    this.usageSpan.className = "status-account-usage";
+    btn.appendChild(this.usageSpan);
     btn.addEventListener("click", () => void this.toggleMenu());
     this.element = btn;
     this.element.style.display = "none"; // 拿到数据前先藏
   }
 
-  /** 拉数据刷新 chip（初始 / 设置变更 / 手动）。force 透传给缓存。 */
+  /** 拉数据刷新 chip（初始 / 设置变更 / 手动）。force 透传给缓存。
+   *  F10：每次刷新都清空折叠态用量摘要——账号可能已经变了（切号/换远端），旧用量数字对新
+   *  账号是错的；用量本身**不**在这里重新懒加载（较重操作，见类头注），等用户下次展开菜单。 */
   async refresh(force = false): Promise<void> {
+    this.usageSpan.textContent = "";
+    this.usageSpan.title = "";
     try {
       const cfg = await readRemoteConfig();
       this.origin = cfg.enabled ? pickPrimaryOrigin(cfg.hosts) : null;
@@ -144,6 +183,7 @@ export class AccountChip {
       menu.appendChild(this.menuAction("管理 / 部署…", () => this.deps.openSettings()));
     } else {
       const def = currentWorkingAccount(this.state);
+      this.menuCurrentUsageEl = null;
       // F1：chip 是纯全局切换器——只列账号点选切当前账号；批量对齐随 F09 一并删除。
       for (const a of ui.accounts) {
         menu.appendChild(this.accountRow(a, def?.name === a.name));
@@ -158,6 +198,14 @@ export class AccountChip {
           void this.refresh(true);
         }),
       );
+      // F10：与"刷新"（账号列表本身）语义分开——只重查当前账号的用量,不连带重拉整份账号
+      // 列表(那是"刷新"的事,两者混在一起会让用户以为点了刷新账号列表也会顺带重新探测用量)。
+      // F10 Phase D 审计（UX，重要）：menuAction 点击会立刻关闭菜单,用户看不到刷新过程——
+      // 补一条完成 toast（同 selectDefault 既有惯例），不然用户只能凭空猜"刚才点了有没有生效"。
+      menu.appendChild(this.menuAction("刷新用量", () => this.loadCurrentAccountUsage(def, true, true)));
+      // 菜单展开时才懒加载当前账号用量(不是 app 启动/`refresh()` 时——那是轻量调用,不该
+      // 背上几秒的探针成本)。
+      if (def) this.loadCurrentAccountUsage(def, false);
     }
 
     const r = this.element.getBoundingClientRect();
@@ -217,12 +265,74 @@ export class AccountChip {
     }
     row.appendChild(status);
 
+    // F10：只有当前账号那一行才懒加载用量摘要（其余账号不主动拉，除非用户切过去变成当前）。
+    if (isCurrent) {
+      const usage = document.createElement("span");
+      usage.className = "account-picker-usage";
+      row.appendChild(usage);
+      this.menuCurrentUsageEl = usage;
+    }
+
     if (selectable && !isCurrent) {
       row.addEventListener("click", () => void this.selectDefault(a));
     } else if (!selectable) {
       row.addEventListener("click", (e) => e.preventDefault());
     }
     return row;
+  }
+
+  /** F10：懒加载当前账号的 plan 用量窗口%，同时回填折叠态 chip（`usageSpan`，跨菜单开合存活）
+   *  与菜单里当前账号行（`menuCurrentUsageEl`，菜单一关就失效——"刷新用量"点击时菜单已经
+   *  被 `menuAction` 关掉了，这条更新是无害的 no-op，折叠态仍会正确更新）。`force=false`
+   *  时走 `fetchAccountUsage` 的去抖缓存——菜单短时间内反复展开不会重复戳网络。
+   *  `notify=true`（"刷新用量"按钮用）：`menuAction` 点击会立刻关闭菜单，用户看不到刷新
+   *  过程——补一条完成 toast（同 `selectDefault` 既有惯例），不然只能凭空猜"刚才点了有没有
+   *  生效"。 */
+  private loadCurrentAccountUsage(def: Account | null | undefined, force: boolean, notify = false): void {
+    if (!def || !this.origin) return;
+    const origin = this.origin;
+    const accountName = def.name;
+    // F10 Phase D 审计（UX，重要）：菜单展开期间当前账号那一行此前完全空白,跟"探测失败"/
+    // "没查过"视觉上无法区分——探测开始就先给一个占位,resolve 后再换成真实结果/失败短句。
+    if (this.menuCurrentUsageEl) this.menuCurrentUsageEl.textContent = "…";
+    void fetchAccountUsage(origin, accountName, def.configDir, { force }).then((outcome) => {
+      // F10 Phase D 审计（UX，阻塞）：探测耗时可达数秒到 25s,期间用户可能已经切到另一个账号
+      // （selectDefault → refresh 会同步清空/重填 usageSpan）——不加这道身份校验,姗姗来迟的
+      // 结果会把"账号名已经是新账号,百分比却是旧账号的"这种静默误标写进折叠态 chip,用户毫无
+      // 办法察觉。`menuCurrentUsageEl` 分支目前"意外地"安全（菜单关闭后节点已从 DOM 摘除,
+      // 写入是无效操作）,但这是巧合不是设计,同样加上校验防重构后复发。
+      if ((this.state && currentWorkingAccount(this.state)?.name) !== accountName) {
+        if (notify) {
+          showActionFailureToast("用量刷新已过期", "刷新期间当前账号已切换，结果不再适用，已丢弃。", {
+            level: "info",
+            durationMs: 4000,
+          });
+        }
+        return;
+      }
+      // F10 Phase D 审计（后端架构+UX 均指出，重要）：与 accounts-section.ts 共享同一句
+      // "格式未经真机验证"提示（`OK_USAGE_UNVERIFIED_CAVEAT`）——ok 状态看起来是确定的数字，
+      // 但解析成功不代表百分比方向/数值本身已验证过。
+      const okTitle = outcome.status === "ok" ? OK_USAGE_UNVERIFIED_CAVEAT : "";
+      this.usageSpan.textContent = formatUsageSummaryCompact(outcome);
+      this.usageSpan.title = okTitle;
+      if (this.menuCurrentUsageEl) {
+        this.menuCurrentUsageEl.textContent = formatUsageSummaryForMenu(outcome);
+        this.menuCurrentUsageEl.title = okTitle;
+      }
+      if (notify) {
+        const ok = outcome.status === "ok";
+        showActionFailureToast(
+          ok ? "用量已刷新" : "用量刷新：读不到",
+          ok
+            ? outcome.buckets
+                .map((b) => `${b.label} ${b.usedPercent}%${b.resetIn ? ` · 重置${b.resetIn}` : ""}`)
+                .join("；")
+            : formatUsageSummaryForMenu(outcome),
+          { level: ok ? "info" : "error", durationMs: 5000 },
+        );
+      }
+    });
   }
 
   private menuAction(label: string, onClick: () => void): HTMLElement {

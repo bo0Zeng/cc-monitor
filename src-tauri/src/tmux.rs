@@ -73,8 +73,23 @@ pub fn parse_tmux_ls(output: &str) -> Vec<TmuxSession> {
         .collect()
 }
 
+/// F10：一次性用量探针会话的命名前缀（`src-tauri/src/account_usage.rs` 唯一使用这个前缀建
+/// 会话）。**不**用新 tmux user-option 打标——`TMUX_LS_FMT` 是机器化锁死的"双写点"（红线 I8，
+/// 见本文件 `tmux_ls_fmt_double_write_point_stays_in_sync` 测试：daemon 的 `watcher.rs` 也用
+/// 这个格式串做自己的 idle-tmux 对账轮询，两侧必须逐字节一致），改格式串代价和风险都不成
+/// 比例。探针会话名完全由本功能自己控制，前缀足够独特，用它做识别零风险、不碰任何双写点。
+const USAGE_PROBE_NAME_PREFIX: &str = "ccm-usage-";
+
+/// F10：判定一个 tmux 会话名是否是本功能建的一次性用量探针——纯字符串前缀匹配，不涉及 IO。
+pub(crate) fn is_usage_probe_session(name: &str) -> bool {
+    name.starts_with(USAGE_PROBE_NAME_PREFIX)
+}
+
 /// 列远端 tmux 会话(通道 B,一次性 exec)。`command -v tmux` 门控:无 tmux → 哨兵 `NO_TMUX`
 /// → 返 `None`(前端隐藏 attach 项);有 tmux 但无会话 → `Some(空)`。
+///
+/// F10：过滤掉 `is_usage_probe_session` 命中的一次性用量探针会话——见
+/// `parse_visible_tmux_sessions`。
 #[tauri::command]
 pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>, String> {
     let cfg = crate::load_remote_config_by_label(&origin)
@@ -95,7 +110,23 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
     if out.trim() == "NO_TMUX" {
         return Ok(None);
     }
-    Ok(Some(parse_tmux_ls(&out)))
+    Ok(Some(parse_visible_tmux_sessions(&out)))
+}
+
+/// `tmux ls` 原始输出 → **前端可见**的会话列表：解析 + 滤掉一次性用量探针会话（F10）。
+///
+/// 探针会话对 `findClaudeTmux`/tab 徽章/kill 授权判据等全部下游消费者应当不可见——它们寿命
+/// 以秒计、用完即清，混进正牌列表只会让 tab 右键菜单短暂冒出一个不属于任何 tab 的幽灵条目。
+///
+/// **为什么单独提一个函数**（F10 Phase D 审计）：原先「解析 + 过滤」内联在 `list_remote_tmux`
+/// 里，而 `#[tauri::command]` 需要真实远端连接、单测碰不到；于是那条测试把过滤表达式在测试体里
+/// **又抄了一遍**——删掉生产侧的 `.filter(...)` 它照样绿，是典型的伪测试。提成纯函数后，
+/// 生产与测试走的是同一条代码路径，删过滤会立刻红。
+pub(crate) fn parse_visible_tmux_sessions(raw: &str) -> Vec<TmuxSession> {
+    parse_tmux_ls(raw)
+        .into_iter()
+        .filter(|s| !is_usage_probe_session(&s.name))
+        .collect()
 }
 
 /// F60(纯函数,单测):判定 `capture_remote_pane` 的 stdout——哨兵 `NO_TMUX`(无 tmux)/
@@ -143,7 +174,11 @@ fn is_safe_tmux_target(target: &str) -> bool {
 
 /// F04：`exact_target` 现在是 fallible——Gate 1 折进这一个函数本身，任何未来新增的 tmux 命令
 /// 构造点都**结构性不可能**绕过它（不是"记得检查"，是没有第二条路可走）。
-fn exact_target(target: &str) -> Result<String, String> {
+///
+/// `pub(crate)`（F10 Phase D 后端审计）：`account_usage.rs` 的探针会话曾手抄
+/// `shell_quote(&format!("={session}:"))`——那正是本函数头注声称"结构性不可能"的绕过。
+/// 开放给 crate 内复用，让"新增 tmux 命令构造点"这件事只有一条路可走，不是靠自觉。
+pub(crate) fn exact_target(target: &str) -> Result<String, String> {
     if !is_safe_tmux_target(target) {
         return Err(format!("非法 tmux 目标（空）：{target:?}"));
     }
@@ -397,7 +432,10 @@ mod tests {
     /// 是 TS 侧 `isValidNewTmuxName`/`isValidTmuxName` 的职责，见 `is_safe_tmux_target` 头注）。
     #[test]
     fn gate1_rejects_only_empty_target() {
-        assert!(build_kill_session_cmd("").is_err(), "空 target 应被 Gate 1 拒绝（kill）");
+        assert!(
+            build_kill_session_cmd("").is_err(),
+            "空 target 应被 Gate 1 拒绝（kill）"
+        );
         assert!(
             build_send_keys_remote_cmd("", "/exit", true).is_err(),
             "空 target 应被 Gate 1 拒绝（send-keys）"
@@ -527,7 +565,11 @@ mod tests {
         let sk = build_send_keys_remote_cmd("cc-abc12345", "/exit", true).unwrap();
         let cap = build_capture_pane_cmd("cc-abc12345").unwrap();
         let kill = build_kill_session_cmd("cc-abc12345").unwrap();
-        for (label, cmd) in [("send-keys", &sk), ("capture-pane", &cap), ("kill-session", &kill)] {
+        for (label, cmd) in [
+            ("send-keys", &sk),
+            ("capture-pane", &cap),
+            ("kill-session", &kill),
+        ] {
             assert!(
                 cmd.contains("-t '=cc-abc12345:'"),
                 "{label} 目标必须是 '=<名>:' 精确形态: {cmd}"
@@ -567,6 +609,33 @@ mod tests {
         assert!(!s[1].attached);
         assert_eq!(s[1].command, "zsh");
         assert_eq!(s[1].sid, None);
+    }
+
+    /// F10：一次性用量探针会话的识别——纯前缀匹配，不涉及新 tmux user-option（不碰
+    /// `TMUX_LS_FMT` 双写点，见 `USAGE_PROBE_NAME_PREFIX` 头注）。
+    #[test]
+    fn usage_probe_session_name_prefix() {
+        assert!(is_usage_probe_session("ccm-usage-z"));
+        assert!(is_usage_probe_session("ccm-usage-z-2")); // 撞名重试的 -N 变体
+        assert!(!is_usage_probe_session("cc-abc12345")); // 正牌会话前缀，不该被误判
+        assert!(!is_usage_probe_session("web")); // 用户自己的会话
+        assert!(!is_usage_probe_session("ccm-usage")); // 无尾随连字符，不是前缀本身
+        assert!(!is_usage_probe_session("")); // 空
+    }
+
+    /// F10：`list_remote_tmux` 对探针会话的过滤逻辑——`parse_tmux_ls` 之后接一次
+    /// `is_usage_probe_session` 过滤，验证两者组合后正牌会话保留、探针会话消失（不需要真的
+    /// 发起 SSH 连接，`list_remote_tmux` 内部这段处理是纯数据变换，抽取同样的组合方式单测）。
+    #[test]
+    fn list_remote_tmux_filters_out_usage_probe_sessions() {
+        let out = "cc-abc12345\t/home/pi/proj\tclaude\t1\t1\tsess-1\nccm-usage-z\t/home/z\tclaude\t1\t1\t\nweb\t/srv/web\tzsh\t0\t1\t\n";
+        // 走**生产同一条**代码路径（`list_remote_tmux` 内联调的就是它）——此前这里把过滤表达式
+        // 在测试体里抄了一遍，删掉生产侧的 filter 照样绿，是伪测试（F10 Phase D 审计发现）。
+        let filtered = parse_visible_tmux_sessions(out);
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().any(|s| s.name == "cc-abc12345"));
+        assert!(filtered.iter().any(|s| s.name == "web"));
+        assert!(!filtered.iter().any(|s| s.name == "ccm-usage-z"));
     }
 
     #[test]
