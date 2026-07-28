@@ -205,6 +205,14 @@ jobs:
       - name: ccm 预信任（F11，13 项）
         run: npm run test:ccm-pretrust
 
+      # B02：`cc-spawn` 收编进 `ccm` 的行为等价验收。**本套件自带起飞前自检**——
+      # 它经 PATH 上的 tmux shim 强制 `-L <隔离socket>`（cc-spawn/ccm/cc-register 内部都是
+      # 裸调 tmux，塞不进 -L，只能这样拦），并断言 shim 看不到默认 socket 上的任何会话，
+      # 不过就 exit 9 中止。开发机上有正在运行的 tmux 会话与真实 ~/.cc-bus/，
+      # 这条自检是为了那里；CI 上是干净 runner，自检自然通过。
+      - name: cc-spawn 收编等价（B02，12 项）
+        run: npm run test:cc-spawn-uplift
+
   e2e-tmux-rust:
     name: E2E real-machine (tmux + Rust builder emit)
     runs-on: ubuntu-latest

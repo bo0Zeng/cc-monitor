@@ -9,7 +9,7 @@
 ## 当前状态
 
 - **当前阶段**：R 段（重构 Sonnet 产出 + 信号修复）—— **当前重心**
-- **当前功能**：**B01 完成并 push（`33bad12`）** → **B02 在 Phase B 卡住：撞计划≠现实，等用户决策**（见 §B 段第 4 条：`ccm --tmux` 恒 attach，cc-spawn 需 detached 返回 → ccm 必须先长出 `--detach`，落在共享面上）
+- **当前功能**：**B02 完成**（`cc-spawn` 收编进 `ccm`；ccm 新增 `--detach`/`--tmux-size`）→ 下一个 **B03**（驾驶舱，批一只读可先做）
 - **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）、**F11**（预信任能力上提进 `ccm`：`shared/ccm` 的 `--tmux` 建会话路径新增预信任 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out；范围收窄不碰仓库外的 `cc-spawn` 本体；双 agent 审各自独立复现真实阻塞项，含修复既有 `e2e/ccm-acceptance.sh` 污染真实全局配置的回归）、**F08**（终端集成收尾：`ccm --model` 闭合 R14；`canRenderCli` 针对性特判而非机械塞进 `CLI_REQUIRED_CAPS`；别名生成器+越层启动器诊断合并落点，紧邻彼此、不再按主机重复渲染；commit `06a9c76`）、**F09**（UI 收敛：动作×修饰——R12 降级为已归档设计决策；归档 tab 收敛成 `Resume`+账号×容器 3 级级联 flyout；存活 tab 收敛成 `Restart`+账号 flyout；徽章恒显身份（R7 语义反转）；对齐全套全仓删除；双 agent 审 1 阻塞+5 重要全部修复）
 - **下一个功能**：**B01**（cc-bus 逐字节原样搬进 `shared/cc-bus/`）→ B02（`cc-spawn` 收编，成功标准② 第二次架构验收）→ B03/B04 → P 段 → Phase G
 - **阻塞 / 待用户确认**：无
@@ -252,7 +252,7 @@ tmux 命令、export 在载荷内故安全。
 | ID | 内容 | 状态 |
 |----|------|------|
 | B01 | cc-bus 搬进本仓：`~/.claude/skills/cc-bus/`（13 脚本 **951 行** bash / SKILL.md / examples 3 个，17 文件合计 1107 行）**原样固化为仓内基线，不趁搬家重构**（盘上有 2 个 `scripts.bak-*` + 2 个脚本各一份 `.bak`，说明一直手改）；部署走「备份→写→读回比对→回滚」 | **完成**（`1a3debf` 搬家 + 审计修复 commit；已过独立对抗性审计，无阻塞） |
-| B02 | **`cc-spawn` 收编**：建会话/送环境/送任务改经 `ccm`，只保留 cc-bus 专属部分（`cc-register` 总线登记 / `spawned.tsv` 台账 / 复用判定）。**闭合账本未达成行** | 待做 |
+| B02 | **`cc-spawn` 收编**：建会话/送环境/送任务改经 `ccm`，只保留 cc-bus 专属部分（`cc-register` 总线登记 / `spawned.tsv` 台账 / 复用判定）。**闭合账本未达成行** | **完成**（136→95 行；ccm 新增 `--detach`/`--tmux-size`；新增 `e2e/cc-spawn-uplift.sh` 12 项，3 条变异验收） |
 | B03 | 驾驶舱：cc-monitor 看见/管理 bus 上的 agent、派活、读 inbox、`cc-spawn` 图形化 | 待做 |
 | B04 | settings.json 钩子的「读+诊断+生成待贴文本」（**不写**——用户定调；cc-bus 自己的安装脚本第 3 行同样拒绝改它） | 待做 |
 
@@ -306,7 +306,7 @@ cc-monitor 在 Windows 侧只能经 SSH 看。默认取**按需刷新**（同 F1
    → **TS 维度与成功标准② 的第二次验收挪到 B03 批二**（cc-monitor 图形化 spawn，
    那时才有**真实的 UI 调用点**，验收才有意义）。这不是把验收往后拖，是挪到唯一能证明东西的地方。
 
-4. **【计划≠现实，2026-07-28 B02 动手前实测发现，需用户决策后才继续】`ccm --tmux` 恒 attach，
+4. **【已解决，2026-07-28 用户拍板「ccm 为最高统一标准」→ 给 ccm 加 `--detach`】原始发现：`ccm --tmux` 恒 attach，
    而 cc-spawn 要的是「建 detached 会话后立刻返回」——ccm 今天没有这个能力。**
    `shared/ccm:496` 无条件把 `; tmux attach -t $t` 接在序列尾，然后 `:499` `exec bash -c "$seq"`。
    `--print` 实测输出确认（结尾就是 `; tmux attach -t '=b02probe:'`）。
@@ -578,3 +578,33 @@ IR 一次到位）并行出架构方案，综合成 `features/F03-launch-plan-ir
   `npx vitest run` 会假绿，必须 `npm test`。
 - 命名偏离说明：规范 CLI 名取 `ccm` 而非用户举例的 `cc`（`cc` 是 Linux 的 C 编译器；`ccm` 本就由
   cc-monitor 拥有并安装）。`cc` 作为用户别名由安装器生成，设计意图不变。
+
+## B02 落地记录（2026-07-28）
+
+**用户决策**：「ccm 为最高统一标准，之前说过要预留参数方便后面接入新功能」→ 给 ccm 加 `--detach`。
+
+**ccm 侧新增两个正交修饰**（照 `--model` 的既有触点模式）：
+- `--detach`：只建会话不 attach。**这是拆开一个焊点而非新增特性**——`--tmux` 此前同时承担
+  「起容器」与「attach 进去」，cc-monitor 的 UI 两件都要于是被焊在一起；cc-spawn 只要前者
+  （建完还得拿 pane id 去登记总线、写台账、打印提示，attach 会当场夺走控制流）。
+  **默认仍 attach，既有调用方零感知**。
+- `--tmux-size <W>x<H>`：原 cc-spawn 的 `-x 220 -y 50` 不能默默丢，改由它表达。只对**新建**
+  生效（幂等接回时会话尺寸归它自己，可能有人正 attach 着）。校验只允许 `<数字>x<数字>`。
+- 两者都**不静默忽略**：不配 `--tmux` 直接 `die`（静默忽略正是本工作区反复消灭的病）。
+
+**`--bus-id` 加了又删**：实测发现 `ccm:131` 的 `agent_needs_bus_id` 已经在 codex 下从 tmux
+会话名自动派生 `CC_BUS_ID`，与 cc-spawn 原先手动注入的 `$name` **逐字相同**（隔离 socket 实测
+`CC_BUS_ID=busprobe_cc`）。再加一个 flag 就是**为假想消费者建抽象**（R12/R15 同型错误）。
+→ **成功标准② 的第二次架构验收仍挪到 B03 批二**（那时 TS 侧才第一次有真实 UI 调用点）。
+
+**cc-spawn 136 → 95 行**，删掉的三块逐条对拍过不是回归：预信任 46 行（ccm F11 已上提且多修了
+绝对路径规范化 + 多一个 `CCM_NO_PRETRUST` 逃生口——**收编后 cc-spawn 用户顺带获得**）、信任框
+轮询 12 行（ccm 同款六轮 0.5s 且额外尊重 `CCM_NO_PRETRUST`）、`CC_BUS_ID` 手动注入（同上）。
+保留：`--new`/复用判定/命名避让/`cc-register`/`spawned.tsv`/启动后 `sleep 1.5`（显式保留原时序）。
+
+**测试隔离纪律（本轮踩过真实事故，必须写下来）**：我用 `TMUX_TMPDIR` 做隔离而非用户早已
+定下的 `-L`，隔离没生效，一条 `tmux kill-server` 打在**默认 socket** 上，杀掉了开发机上正在
+运行的 `cc-claudecode-frontend` 会话。教训固化为 `e2e/cc-spawn-uplift.sh` 的两条硬约束：
+① 经 PATH 上的 `tmux` shim 强制 `-L`（cc-spawn/ccm/cc-register 内部都裸调 tmux，塞不进 `-L`）；
+② **起飞前自检**——断言 shim 看不到默认 socket 上的任何会话，不过就 `exit 9` 中止。
+**光"设了隔离"不算数，必须证明它生效了才允许往下跑。** 裸 `tmux kill-server` 列为禁用词。

@@ -27,6 +27,16 @@ case "$tool" in claude|codex) ;; *) echo "cc-spawn: 未知 --tool '$tool'(应为
 # 启动器:CCSPAWN_LAUNCH 覆盖;否则按 tool 取默认。(可测性钩子:测试时设 mock 命令免起真 CLI)
 LAUNCH="${CCSPAWN_LAUNCH:-$tool}"
 
+# ccm 位置(unify-launch B02):同仓相对路径优先——B01 之后 cc-bus 与 ccm 同住 shared/,
+# `shared/cc-bus/scripts/cc-spawn` 的 ../../ 就是 `shared/`。装到 ~/.local/bin 的部署形态下
+# 该相对路径不存在,回落 PATH。CCM_BIN 可显式覆盖(测试钩子)。
+CCM_BIN="${CCM_BIN:-}"
+if [ -z "$CCM_BIN" ]; then
+  if [ -x "$SELFDIR/../../ccm" ]; then CCM_BIN="$SELFDIR/../../ccm"
+  elif command -v ccm >/dev/null 2>&1; then CCM_BIN=$(command -v ccm)
+  else echo "cc-spawn: 找不到 ccm(既不在 $SELFDIR/../../ccm,也不在 PATH)" >&2; exit 2; fi
+fi
+
 # 1. 绝对路径 + 校验目录存在
 absdir=$(cd "$dir" 2>/dev/null && pwd) || { echo "cc-spawn: 目录不存在: $dir" >&2; exit 2; }
 
@@ -48,89 +58,38 @@ fi
 name="$base"; k=2
 while tmux has-session -t "=$name" 2>/dev/null; do name="$base-$k"; k=$((k+1)); done
 
-# 3. 预信任派生目录,免启动器卡在信任框(仅当尚未信任才写)。
-pretrusted=0
-if [ "$tool" = claude ]; then
-  cj="${CCSPAWN_CLAUDEJSON:-$HOME/.claude.json}"   # 可测性钩子:测试指副本,不碰真主配置
-  if [ -f "$cj" ] && command -v jq >/dev/null 2>&1; then
-    if jq -e --arg d "$absdir" '.projects[$d].hasTrustDialogAccepted == true' "$cj" >/dev/null 2>&1; then
-      pretrusted=1
-    else
-      cp -p "$cj" "$cj.bak-ccspawn.$$" 2>/dev/null || true
-      tmpj="$cj.tmp.ccspawn.$$"
-      if jq --arg d "$absdir" '(.projects[$d].hasTrustDialogAccepted) = true' "$cj" > "$tmpj" 2>/dev/null \
-         && jq -e . "$tmpj" >/dev/null 2>&1; then
-        mv "$tmpj" "$cj"; pretrusted=1; rm -f "$cj.bak-ccspawn.$$"
-      else
-        rm -f "$tmpj"; echo "cc-spawn: 预信任写入失败(claude 起来可能弹信任框,已备兜底)" >&2
-      fi
-    fi
-  fi
-else
-  # codex:把该 worktree 标记为 trusted 写进 ~/.codex/config.toml(幂等、原子、并发安全;Codex 信任按 worktree)。
-  # 注意:cc-bus 钩子装在【用户级】,即使不预信任也能登记上总线——预信任只是免启动时弹信任框。
-  ct="${CCSPAWN_CODEXTOML:-$HOME/.codex/config.toml}"   # 可测性钩子:测试指副本
-  mkdir -p "$(dirname "$ct")" 2>/dev/null || true
-  [ -f "$ct" ] || : > "$ct"
-  # 路径含控制字符(换行/制表…)无法表示成 TOML basic-string key、会破坏这份共享文件 → 对这类
-  # 病态路径跳过预信任(codex 起来可能弹信任框,但 config.toml 保持合法)。正常路径(空格/unicode/"/\ )无碍。
-  if [[ "$absdir" == *[[:cntrl:]]* ]]; then   # bash 能匹配内嵌控制字符(用 printf|grep 会把换行当行分隔符吃掉)
-    echo "cc-spawn: codex 预信任跳过——目录路径含控制字符(会破坏 config.toml)" >&2
-  else
-    # 把 absdir 转义成 TOML basic-string(双引号)key:先反斜杠再双引号,
-    # 使含 " 或 \ 的路径不会破坏这份共享文件。防重复的 grep 用【同一】转义形式。
-    cesc=${absdir//\\/\\\\}; cesc=${cesc//\"/\\\"}
-    ( flock 9
-      if ! grep -qF "[projects.\"$cesc\"]" "$ct" 2>/dev/null; then   # 该目录已有 stanza 就跳过(不重复写表头 → 保持 TOML 合法)
-        cp -p "$ct" "$ct.bak-ccspawn.$$" 2>/dev/null || true
-        if printf '\n[projects."%s"]\ntrust_level = "trusted"\n' "$cesc" >> "$ct" 2>/dev/null; then
-          rm -f "$ct.bak-ccspawn.$$"
-        else
-          [ -f "$ct.bak-ccspawn.$$" ] && mv -f "$ct.bak-ccspawn.$$" "$ct"   # 半写失败则回滚
-          echo "cc-spawn: codex 预信任写入失败(codex 起来可能弹信任框)" >&2
-        fi
-      fi
-    ) 9>>"$ct.lock"
-    grep -qF "[projects.\"$cesc\"]" "$ct" 2>/dev/null && pretrusted=1   # 信任 stanza 现已存在(原有或刚追加)
-  fi
-fi
-
+# 3. 建 detached 会话 + 送任务 —— **全部经 ccm**(unify-launch B02,闭合账本"起会话被写死成
+#    N 套实现"那一行)。ccm 现在负责:建会话(--detach 只建不 attach)、窗口尺寸、预信任、
+#    账号/env 注入、信任框轮询兜底、codex 的 CC_BUS_ID。
+#    cc-spawn 只保留 cc-bus 专属的部分:命名避让、总线登记、台账、复用判定。
+#
+#    删掉的原实现,逐条说明为什么不是回归:
+#      · 预信任 46 行 → ccm F11 已上提,且比这里多修了绝对路径规范化(cwd_abs)与
+#        CCM_NO_PRETRUST 逃生口(本脚本原先没有,收编后 cc-spawn 用户顺带获得)。
+#      · 信任框轮询 12 行 → ccm 同款六轮 0.5s capture-pane,且额外尊重 CCM_NO_PRETRUST。
+#      · CC_BUS_ID 手动注入 → ccm 的 agent_needs_bus_id 只对 codex 生效(同一判断、同一理由),
+#        且它从 tmux 会话名自动派生,与这里原先注入的 $name 逐字相同(隔离 socket 实测确认)。
+#      · `-x 220 -y 50` → 未丢,改由 `--tmux-size 220x50` 表达。
 mkdir -p "$BUS"
-# 4. 建 detached 会话,并立刻取【pane id】(刚建精确会话存在,此处裸 -t 安全;之后一律用 pane id,免前缀撞会话)
-tmux new-session -d -s "$name" -c "$absdir" -x 220 -y 50
-pane=$(tmux list-panes -t "$name" -F '#{pane_id}' 2>/dev/null | head -1)
-[ -n "$pane" ] || { echo "cc-spawn: 建会话失败" >&2; exit 1; }
-# 起 LAUNCH[+任务](任务用 %q 安全转义,防注入)。
-# codex 路径注入 CC_BUS_ID=<会话名> 进启动环境:模型的沙箱 shell 工具够不着 tmux 服务端 socket
-#(Landlock/seccomp),那里 cc-whoami 没法靠 tmux 解析身份——但 CC_BUS_ID 是它最高优先级、不依赖 tmux
-# 的来源,且环境变量能透进沙箱。(Claude 的 shell 工具能用 tmux,强设 CC_BUS_ID 会盖掉用来细分同会话多 CC 的
-# @cc_id 标签,所以只对 codex。)用 env 前缀式,这样 CCSPAWN_LAUNCH 覆盖成 wrapper(如 env CODEX_HOME=... codex)时也生效。
-inj=""
-[ "$tool" = codex ] && inj="CC_BUS_ID=$(printf '%q' "$name") "
-if [ -n "$task" ]; then
-  tmux send-keys -t "$pane" "${inj}$LAUNCH $(printf '%q' "$task")" Enter
-else
-  tmux send-keys -t "$pane" "${inj}$LAUNCH" Enter
-fi
+ccm_args=(--tmux="$name" --detach --tmux-size 220x50 --cwd "$absdir" --agent "$tool" --launcher "$LAUNCH")
+# 初始任务作为**位置参数**传给启动器(`exec <launcher> '<任务>'`),与原先
+# `send-keys "$LAUNCH $(printf %q "$task")"` 逐字等价——ccm 的 `--` 透传即是此语义。
+[ -n "$task" ] && ccm_args+=(-- "$task")
+"$CCM_BIN" "${ccm_args[@]}" || { echo "cc-spawn: 经 ccm 建会话失败" >&2; exit 1; }
 
-# 5. spawn 自己登记(不靠 SessionStart 钩子,保证上总线)
+pane=$(tmux list-panes -t "=$name" -F '#{pane_id}' 2>/dev/null | head -1)
+[ -n "$pane" ] || { echo "cc-spawn: 建会话失败(取不到 pane)" >&2; exit 1; }
+
+# 4. spawn 自己登记(不靠 SessionStart 钩子,保证上总线)
 TMUX_PANE="$pane" "$SELFDIR/cc-register" "$name" >/dev/null 2>&1 || true
 
-# 6. 台账(加锁)
+# 5. 台账(加锁)
 ( flock 9; printf '%s\t%s\t%s\t%s\n' "$name" "$absdir" "$(date -Iseconds)" "${task:-}" >> "$BUS/spawned.tsv" ) 9>>"$BUS/spawned.tsv.lock"
 
-# 7. 信任框兜底(Claude 专有提示文本):仅当预信任【没成功】且启动的是 claude 时才检测信任框回车。
-#    Codex 已由 config.toml 预信任(且其 cc-bus 钩子是用户级),这里无需处理信任框。
-if [ "$pretrusted" != 1 ] && [ "$tool" = claude ]; then
-  for _i in 1 2 3 4 5 6; do
-    sleep 0.5
-    if tmux capture-pane -t "$pane" -p 2>/dev/null | grep -q 'Yes, I trust this folder'; then
-      tmux send-keys -t "$pane" Enter; break
-    fi
-  done
-else
-  sleep 1.5   # 给启动器一点启动时间(消息落 inbox 不丢,这只是让紧接着的 cc-send 更可能即时被处理)
-fi
+# 6. 给启动器一点启动时间。**不是**信任框兜底(那条已归 ccm),而是保留原脚本的既有时序:
+#    紧接着用户敲的 cc-send 更可能被即时处理(消息落 inbox 不丢,这只影响即时性)。
+#    显式保留而非默默删掉——原先 pretrusted 成功路径上就是 sleep 1.5。
+sleep 1.5
 
 echo "已 spawn: $name   (目录: $absdir${task:+  初始任务: $task})"
 echo "  跟它聊: cc-send $name \"...\"    看它: tmux attach -t $name    收掉: cc-kill $name"
