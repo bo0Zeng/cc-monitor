@@ -1,45 +1,77 @@
-// F06（unify-launch）：`planLocal` 单测——证明本地路径真的在用同一套维度注册表（不是套了个
-// 类型皮的假装），并锁死实现期修正加的 sid 校验。纯函数，零 tauri/config 依赖，无需 mock。
+// `validateLocalLaunch`（F06 引入，R07 改名）单测——锁死本地路径的**前置校验**：sid 字符集，
+// 以及 `transport:{kind:"local"}` 走一遍维度注册表不抛异常。纯函数，零 tauri/config 依赖，无需 mock。
+//
+// **R07 订正**：这段头注原写"证明本地路径真的在用同一套维度注册表（不是套了个类型皮的假装）"
+// ——**那句是假的**。4 个生产调用点全部把返回值当语句丢弃，真命令由 Rust 独立构造
+// （`history.rs::build_local_ps_command`）。本地路径**借** IR 做校验，但**不消费**它的输出，
+// 而且这是 F06 论证过的设计（`Get-Command` 探测是 render-time 决策、只能在目标机做），
+// 不是半成品。函数已随之改名并返回 `void`，见 `doc/INVARIANTS.md` §36。
 import { describe, it, expect } from "vitest";
-import { planLocal, planResumeDirect, planResumeTmux } from "./launch-requests";
+import { validateLocalLaunch, planResumeDirect, planResumeTmux } from "./launch-requests";
+import { buildLaunchPlan } from "./launch-plan.ts";
+import type { LaunchAction, LaunchContext } from "./launch-plan.ts";
 
-describe("planLocal（F06：本地路径的 LaunchContext/LaunchPlan 构造）", () => {
-  it("resume 动作 → ctx/plan 字段与输入一致（transport:local, container:none, account:base）", () => {
-    const { ctx, plan } = planLocal({ kind: "resume", sid: "abc-123" }, "/home/p");
-    expect(ctx.transport).toEqual({ kind: "local" });
-    expect(ctx.container).toEqual({ kind: "none" });
-    expect(ctx.account).toEqual({ kind: "base" });
-    expect(ctx.cwd).toBe("/home/p");
-    expect(plan.action).toEqual({ kind: "resume", sid: "abc-123" });
-    expect(plan.cwd).toBe("/home/p");
+describe("validateLocalLaunch（本地路径的前置校验；F06 引入、R07 改名并收成纯校验）", () => {
+  it("非法 sid（含 shell 元字符 / 空串）→ throw，且抢在任何 IPC 之前（同其余 planXxx 的既有校验模式）", () => {
+    expect(() => validateLocalLaunch({ kind: "resume", sid: "a; rm -rf /" }, "/p")).toThrow(
+      /非法 sessionId/,
+    );
+    expect(() => validateLocalLaunch({ kind: "resume", sid: "" }, "/p")).toThrow(/非法 sessionId/);
   });
 
-  it("new 动作 → plan.action 与输入一致", () => {
-    const { plan } = planLocal({ kind: "new" }, "/home/p");
-    expect(plan.action).toEqual({ kind: "new" });
+  // **这条是文档不是门禁**（Phase D 审计指出）：把 throw 整个删掉它照样绿，
+  // 结构上不存在能让它红的变异。留着是为了说明"合法输入不该被拦"，别把它算进守护。
+  it("合法输入不被拦（new 无 sid / resume 合法 sid / cwd 允许为 null）", () => {
+    expect(() => validateLocalLaunch({ kind: "resume", sid: "abc-123" }, "/home/p")).not.toThrow();
+    expect(() => validateLocalLaunch({ kind: "new" }, "/home/p")).not.toThrow();
+    expect(() => validateLocalLaunch({ kind: "new" }, null)).not.toThrow();
   });
+});
 
-  it("cwd 为 null → ctx/plan.cwd 原样透传（不强行转空字符串）", () => {
-    const { plan } = planLocal({ kind: "new" }, null);
-    expect(plan.cwd).toBeNull();
-  });
-
-  it("非法 sid（含 shell 元字符）→ throw，不构造 ctx/plan（同其余 planXxx 的既有校验模式）", () => {
-    expect(() => planLocal({ kind: "resume", sid: "a; rm -rf /" }, "/p")).toThrow(/非法 sessionId/);
-    expect(() => planLocal({ kind: "resume", sid: "" }, "/p")).toThrow(/非法 sessionId/);
+// R07：这一组的被测对象**不是** `validateLocalLaunch`，是**维度注册表在 `transport:local` 下的行为**
+// ——它是 `doc/INVARIANTS.md` §36 那两条主张的证据。
+//
+// 为什么单独成组：`validateLocalLaunch` 现在**根本不构造 IR**（R07 Phase D 审计发现它内部那遍
+// `buildLaunchPlan` 零门禁守护、且与生产无关，已删）。所以这些断言必须直接冲着 `buildLaunchPlan` 去，
+// 不能借道那个函数——否则就是"通过一个已经不做这件事的函数去测这件事"。
+describe("维度注册表在 transport:local 下的行为（INVARIANTS §36 的证据）", () => {
+  const localCtx = (action: LaunchAction, cwd: string | null = "/p"): LaunchContext => ({
+    transport: { kind: "local" },
+    action,
+    container: { kind: "none" },
+    cwd,
+    account: { kind: "base" },
+    launcherOverride: undefined,
+    ccmSid: undefined,
   });
 
   it("plan.env 因 nested-env-reset 维度恒非空（resume/new 都触发）——本地路径故意不消费它" +
      "（等价保护已在 lib.rs::scrub_env_vars 做完，见 features/F06-local-path-ir.md §0/§2）", () => {
-    const { plan: resumePlan } = planLocal({ kind: "resume", sid: "abc" }, "/p");
-    const { plan: newPlan } = planLocal({ kind: "new" }, "/p");
-    expect(resumePlan.env.length).toBeGreaterThan(0);
-    expect(newPlan.env.length).toBeGreaterThan(0);
+    expect(buildLaunchPlan(localCtx({ kind: "resume", sid: "abc" })).env.length).toBeGreaterThan(0);
+    expect(buildLaunchPlan(localCtx({ kind: "new" })).env.length).toBeGreaterThan(0);
   });
 
   it("account 维度对本地 base 态是无 env op 的 no-op（不因 F05 的 applies 恒真而误注入）", () => {
-    const { plan } = planLocal({ kind: "new" }, "/p");
+    const plan = buildLaunchPlan(localCtx({ kind: "new" }));
     expect(plan.env.some((op) => op.kind === "export-config-dir")).toBe(false);
+  });
+
+  it("本地 ctx 的其余字段照原样进 plan（transport/container/action/cwd）", () => {
+    const plan = buildLaunchPlan(localCtx({ kind: "resume", sid: "abc-123" }));
+    expect(plan.transport).toEqual({ kind: "local" });
+    expect(plan.container).toEqual({ kind: "none" });
+    expect(plan.action).toEqual({ kind: "resume", sid: "abc-123" });
+    expect(plan.cwd).toBe("/p");
+  });
+
+  // Phase D 审计发现的**真覆盖丢失**：拆分前有一条钉 `cwd: null` 原样透传（不被转成 `""`），
+  // 拆分后 `localCtx` 把 cwd 钉死成 `"/p"`，那条覆盖没了。审计实测：给 `buildLaunchPlan` 塞
+  // `cwd: ctx.cwd ?? ""` 这个变异，改造前红、改造后**全仓 705 全绿**。
+  // **这是共享代码**（`buildLaunchPlan` 远端路径也吃），不是本地专属，所以这条必须补回来。
+  // （诚实标注：三个 `plan.cwd` 消费者今天都用真值判断，`""` 与 `null` 行为相同 → 当前是等价变异、
+  // 低危；但哪天有人写 `plan.cwd !== null` 它就变成真缺口，钉住的成本近零。）
+  it("cwd 为 null 时原样透传进 plan（不被悄悄转成空串）", () => {
+    expect(buildLaunchPlan(localCtx({ kind: "new" }, null)).cwd).toBeNull();
   });
 });
 

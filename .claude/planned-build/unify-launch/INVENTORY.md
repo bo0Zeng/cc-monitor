@@ -76,15 +76,17 @@ grep -n 'launchStep\|buildAcctIsoCmd' src/settings/accounts-section.ts
 复核锚点：
 ```
 grep -n 'fn resume_history_session\|fn new_local_session\|fn build_local_ps_command\|enum LocalPsAction' src-tauri/src/history.rs
-grep -n 'export function planLocal' src/launch-requests.ts
+grep -n 'export function validateLocalLaunch' src/launch-requests.ts
 ```
 
 **本地无账号维度是平台事实，不是未完成项**：Windows 本地没有 `CLAUDE_CONFIG_DIR` 隔离这套
-账号模型（那是 `cc-acct-iso` 在 Linux 远端做的事），`planLocal` 因此恒 `account:{kind:"base"}`。
+账号模型（那是 `cc-acct-iso` 在 Linux 远端做的事）。
 F06 已把两套逐字符重复的 PowerShell builder 收成一个 `LocalPsAction` 枚举驱动的
 `build_local_ps_command`（黄金串对拍锁死重构前后逐字节同输出）。
-**注意** `planLocal` 的返回值目前被三个生产调用点全部丢弃（真命令仍由 Rust 独立构造）——
-这是 R07 处理的事，见 §E。
+**R07 已收尾**：原 `planLocal` 返回 `LaunchPlanBuild`、内部还跑一遍 `buildLaunchPlan`，
+但**4 个**（不是 3 个）生产调用点全部丢弃返回值，真命令始终由 Rust 独立构造。
+现已改名 `validateLocalLaunch`、返回 `void`、并删掉那遍构造——它是**纯前置校验**（sid 字符集）。
+见 `doc/INVARIANTS.md` §36 与 `features/R07-plan-local-honest-name.md`。
 
 ---
 
@@ -142,7 +144,7 @@ grep -rn 'alignAll\|countAccountMismatches\|account\.align-active' src/ --includ
 | SFTP 开终端（#7）/ 账号 step（#8）不带账号 | **有意在范围外**，见 §A 注 |
 | 本地两条（#9/#10）无账号维度 | **达成——平台事实**，见 §B 注 |
 | 终端侧（#11/#12）与 app 同源 | **达成**（F02，`ccm-print-parity` 12 条外部预言机守着） |
-| **遗留**：`planLocal` 返回值被全部丢弃，本地路径只是"跑了一遍维度注册表"但不消费结果 | **R07 处理** |
+| ~~遗留：`planLocal` 返回值被全部丢弃~~ → **R07 已收尾**：改名 `validateLocalLaunch`、返回 `void`、删掉那遍 `buildLaunchPlan`（纯前置校验） | **已完成** |
 | **遗留**：`@ccm_sid`（事实）vs `@ccm_sid_expect`（意图）语义分叉是否伤到标准④ | **R09 复核** |
 
 ---

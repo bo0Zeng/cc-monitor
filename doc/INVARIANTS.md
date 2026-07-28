@@ -791,15 +791,17 @@ plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**�
 未来加新维度（如 F07 的 `model`）时，若 `cliFlags` 可能对某状态返回 `null`，必须同时检查
 `applies` 是否会在那个状态下把循环挡在门外——这条不是"记得检查"，是加维度时的强制 checklist 项。
 
-## 36. 本地（Windows）路径的 `plan.env` 故意算出来但不消费——嵌套 env 污染保护已在进程启动期做完，别在本地渲染器里重复实现（F06 / unify-launch）
+## 36. 本地（Windows）路径不经 IR 产出命令——嵌套 env 污染保护已在进程启动期做完，别在本地渲染器里重复实现（F06 / unify-launch；R07 收紧）
 
-**背景**：F06 把本地 resume/新建两条路径折进 `LaunchContext`/`LaunchPlan` IR（`src/launch-requests.ts::validateLocalLaunch`，R07 前叫 `planLocal`），跑一遍 `LAUNCH_DIMENSIONS` 注册表。`NESTED_ENV_RESET_DIMENSION`（issue #24：清 Claude 自己的嵌套会话标记 `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID` 等）的 `applies` 只看 `ctx.action.kind==="new"||"resume"`，不看 `transport`——local 场景走到这里恒真，`plan.env` 会真的被塞进一条 `unset` `EnvOp`。**本地渲染器（`src-tauri/src/history.rs::build_local_ps_command`）故意完全不读 `plan.env`**——这不是遗漏。
+**背景**：F06 曾把本地 resume/新建两条路径折进 `LaunchContext`/`LaunchPlan` IR（`src/launch-requests.ts::planLocal`），跑一遍 `LAUNCH_DIMENSIONS` 注册表。**R07 已把这一遍删掉**（理由见下方 R07 段），该函数现名 `validateLocalLaunch`、只做 sid 校验、不构造任何 IR。下面这段描述的是"当时为什么算了却不消费"，其结论（**别给本地渲染器补一段读 env 的代码**）在 R07 之后依然是铁律，只是理由更直接了：本地路径压根不产出 `plan.env`。
+
+（**当时**的机制：`NESTED_ENV_RESET_DIMENSION`（issue #24：清 Claude 自己的嵌套会话标记 `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID` 等）的 `applies` 只看 `ctx.action.kind==="new"||"resume"`、不看 `transport`——local 场景走到这里恒真，`plan.env` 会真的被塞进一条 `unset` `EnvOp`，而本地渲染器 `src-tauri/src/history.rs::build_local_ps_command` **故意完全不读**它。这条"注册表对 local 也会产出 env op"的事实**今天依然成立**，只是本地路径不再去调它了——证据见 `src/launch-requests.vitest.ts` 的「维度注册表在 transport:local 下的行为」那组测试，它直接冲 `buildLaunchPlan` 去验，不借道任何生产函数。）
 
 **为什么不消费是对的**：`NESTED_ENV_RESET_DIMENSION` 保护的攻击面是"tmux **持久 server** 进程的环境表跨多次 resume 累积污染"——远端场景里，同一个 tmux server 可能存活很久，每次新 resume 进去的 shell 都从 server 环境继承，之前一次 `claude` 进程留下的 `CLAUDECODE=1` 等标记会一直挂在那，必须每次显式 `unset`。本地 Windows 场景没有这个"持久 server"概念——`launch_powershell_window`（`src-tauri/src/launch.rs`）每次都是全新 `Command::new("wt.exe"/"powershell.exe").spawn()`，唯一可能的污染源是"cc-monitor.exe 自己被某个带毒环境启动"（如从一个嵌套的 Claude 会话终端里启动 cc-monitor 自身）——这条攻击面已经在**进程启动阶段一次性堵死**：`src-tauri/src/lib.rs::run()` 里 `scrub_env_vars(adapter::active().nested_env_to_scrub())` 是 Tauri `Builder` 构造之前就跑的第一批实质语句，直接 `std::env::remove_var` 清掉 cc-monitor.exe 自己进程的环境；`Command::new(...)` 默认继承（已清洗过的）父进程环境，无需每次 launch 前再清一次。
 
 **铁律**：**给本地渲染器补一段读 `plan.env`、把 `unset` 翻成 PowerShell `Remove-Item Env:\X` 的代码，是错的"修复"**——两层保护本来就分工不同（远端：渲染期逐次清；本地：启动期一次清），本地补一层不会更安全，只会引入一段从未有真机（Windows/`pwsh`）验证过的新 PowerShell 语法，纯增加风险不增加收益。若未来真的发现本地场景存在启动期清洗覆盖不到的污染路径（例如 cc-monitor 在自己生命周期内某处被重新 exec、绕开了 `run()` 的这次清洗），应该去修**启动期清洗本身的覆盖面**，而不是在本地渲染器里加一段渗透式的补丁。
 
-**验证**：`src/launch-requests.vitest.ts` 锁死本地 `LaunchContext` 经 `buildLaunchPlan` 产出的 `plan.env` 对 new/resume 两个动作恒非空（证明维度确实触发了），且 `history.rs` 侧未新增任何消费 `plan.env`/`unset`/`Remove-Item` 的代码路径（Phase D 审计已核对 `scrub_env_vars` 的调用时点严格早于任何窗口 spawn，且全仓无绕开它的自重启路径）。
+**验证**：`src/launch-requests.vitest.ts` 的「维度注册表在 transport:local 下的行为」组锁死本地 `LaunchContext` 经 `buildLaunchPlan` 产出的 `plan.env` 对 new/resume 两个动作恒非空（证明维度确实触发了）、account 维度对 base 态是 no-op、`cwd: null` 原样透传（R07 Phase D 审计发现拆分中丢过这条，已补回；它是**共享代码**，远端路径也吃），且 `history.rs` 侧未新增任何消费 `plan.env`/`unset`/`Remove-Item` 的代码路径（Phase D 审计已核对 `scrub_env_vars` 的调用时点严格早于任何窗口 spawn，且全仓无绕开它的自重启路径）。
 
 **R07 补充（2026-07-28）：本地路径是「借 IR 做校验、不消费其输出」，这是设计不是半成品。**
 上面说的"`plan.env` 算出来不消费"其实是更大一件事的一个切面——**整个 `LaunchPlan` 都不被消费**。
@@ -809,14 +811,25 @@ plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**�
 假装）"——**那句话是假的**：跑了注册表，但结果没人要。已改名 `validateLocalLaunch` + 返回 `void`，
 让名字与事实一致。
 
-**为什么不"真接上"**（R07 明确否决的选项）：F06 已论证并落地「Rust 侧同构 renderer」而非
-「IR 前端构造下发」——`Get-Command`（探测本机有没有 `cc` PowerShell 函数）是
-**render-time 决策、只能在目标机器上做**，TS 无法预先渲染好交给它。见共享面账本
-`src-tauri/src/history.rs` 那一行。真接上等于推翻 F06 已落地的决策，而 R 段的定位是收紧既有产出。
+**为什么不"真接上"（理由经 R07 Phase D 审计订正——我原先引错了论据）**：
+初稿引的是 F06 的 `Get-Command` 论证（`features/F06-local-path-ir.md:27-30`）。那条**真实存在**，
+但它排除的是"**TS 全量渲染好字符串、Rust 只管 exec**"这一形态，**并不排除**
+"TS 构造 IR、Rust 只补 `Get-Command` 那一步"。**真正支撑否决的是 F06 §3.2 实现期修正**：
+`plan.action`/`plan.cwd` 在当前维度注册表下**恒等于输入**，取回来**没有信息增量**；
+`plan.launcher` 更是恒 `""`（本地不传 `launcherOverride`）。
+即"不接"是因为**接了也拿不到新东西**，不是因为技术上不可能——这两个理由的强度与适用范围完全不同，
+别再把 `Get-Command` 当成万能挡箭牌。
 
-**那它为什么还要走一遍 `buildLaunchPlan`**：因为这一遍**顺带**验证了 `transport:{kind:"local"}`
-这条类型分支在维度注册表下不抛异常（F03 起就有的分支，F06 之前从未被任何调用点实例化过）。
-这是一道便宜的一致性检查，不是"为了用上 IR 而用 IR"。
+**另注（同一审计发现）**：`F06-local-path-ir.md` §1 有一条**已勾 `[x]`** 的 DoD 逐字要求
+"从产出的 `LaunchPlan` 取 `action`/`cwd`/`launcher` 三个字段映射回现有 Tauri 调用参数"
+——**它从未实现**，且已在同文件 §3.2 被撤回（理由即上述"无信息增量"）。那条勾已就地标注撤回。
+
+**R07 为什么连 `buildLaunchPlan` 那一遍也删了**：初稿保留它并声称是"一道便宜的一致性检查"，
+但审计实测该声称**零门禁守护**（删掉整段 ctx 构造 + 调用、只留 `void cwd;` → `tsc` 与
+`npm test` 705 全绿；改造前同一变异红 5 条，因为那时返回类型让它在**类型层**承重）。
+而它想验的东西 `launch-render-cli.test.ts` 已在验（`ctxOf({transport:{kind:"local"}})` → `buildLaunchPlan`）。
+生产侧它纯属浪费，且是 **fail-closed 风险**：将来任何对 `transport:local` 抛异常的新维度，
+都会让本地 resume 彻底拉不起来而收益为零。
 
 ## 37. 新维度的 `applies` 该不该恒真，看这个维度的"沉默"是否等价于用户期望——不是看它是不是账号相关（F07 / unify-launch）
 
