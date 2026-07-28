@@ -11,9 +11,9 @@
 - **当前阶段**：R 段（重构 Sonnet 产出 + 信号修复）—— **当前重心**
 - **当前功能**：R00 / R01 / R02 **已完成**（CI 6 job 全绿，draft PR #83）→ 下一个 **R08**（真 bug）
 - **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）、**F11**（预信任能力上提进 `ccm`：`shared/ccm` 的 `--tmux` 建会话路径新增预信任 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out；范围收窄不碰仓库外的 `cc-spawn` 本体；双 agent 审各自独立复现真实阻塞项，含修复既有 `e2e/ccm-acceptance.sh` 污染真实全局配置的回归）、**F08**（终端集成收尾：`ccm --model` 闭合 R14；`canRenderCli` 针对性特判而非机械塞进 `CLI_REQUIRED_CAPS`；别名生成器+越层启动器诊断合并落点，紧邻彼此、不再按主机重复渲染；commit `06a9c76`）、**F09**（UI 收敛：动作×修饰——R12 降级为已归档设计决策；归档 tab 收敛成 `Resume`+账号×容器 3 级级联 flyout；存活 tab 收敛成 `Restart`+账号 flyout；徽章恒显身份（R7 语义反转）；对齐全套全仓删除；双 agent 审 1 阻塞+5 重要全部修复）
-- **下一个功能**：F10（剩余账号 UX：面板砍卡片/加号一键化/用量）→ Phase G
+- **下一个功能**：**R08**（容器路径丢失继承账号，真 bug）→ R03/R04/R05/R06/R07/R09 → B 段 → P 段 → Phase G
 - **阻塞 / 待用户确认**：无
-- **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 15）
+- **最近一次计划回看时间**：2026-07-28（MASTERPLAN 变更记录 16）
 - **自动模式（/loop）**：**全自动**（连续 B→G）。用户 2026-07-27 追加授权：**具体设计决策由本席开
   agent 讨论分析后自行决定，不必逐项停下来问**——除非真遇到阻塞或用户主动打断
 - **本轮 loop 目标**：R00/R01/R02 已收口 → R08（容器路径丢账号，先写复现测试再修）→ R03-R07/R09
@@ -43,33 +43,34 @@ cc-monitor 侧不新增轮询 · 不用 emoji · **不启动真实已认证的 `
 
 ### 已独立复核为真绿的基线（2026-07-28，不要重复怀疑/重跑）
 
-`tsc` 0 · `npm test` 691 · `cargo test --all` 389 + daemon 125 + vendor `code-picture-core` 25 ·
-覆盖率地板 / `npm audit --omit=dev` / `vite build` / `shellcheck e2e/*.sh` / daemon `cargo fmt` 全过 ·
+`tsc` 0 · `npm test` **697** · `cargo test --all` **390** + daemon 125 + vendor `code-picture-core` 25 ·
+覆盖率地板 / `npm audit --omit=dev --audit-level=high` / `vite build` /
+`shellcheck --severity=error e2e/*.sh` / `py_compile` / daemon `cargo fmt` 全过
+（**注意用 CI 的原样命令**：不带 `--audit-level=high` 会被一条 low 级 dompurify advisory 判红、
+不带 `--severity=error` 会被 357 行 info/style 判红——两者 CI 都不门禁，我一度误报成红）·
 **7 套真机 e2e 共 126 条断言全绿**（tmux-target 26 / tmux-guarded 14 / ccm-cli 39 /
 ccm-print-parity 12 / ccm-acceptance 15 / ccm-pretrust 13 / usage-probe 7），
 且跑完真实 `~/.claude.json`、`~/.codex/config.toml` 的 md5 未变（沙盒未污染）·
 四条红线逐条核实干净 · 文档引用的 INVARIANTS 章节号全部真实存在、无悬空。
 
-**唯一的红**：`cargo fmt --check` 28 处（R00 修）。
+~~唯一的红：`cargo fmt --check` 28 处~~ → **R00 已修（实为 29 处 hunk / 7 文件），现全绿。**
+**且已在 CI 上真跑过**：draft PR #83，6 个 job 全 success。
 
-### F10 未 commit 改动的当前状态（R01）
+### F10 已 commit（R01 完成）
 
-工作区已改完的：两条伪测试改成真验证 · 「复制诊断文本」放宽到所有带 raw 的状态 ·
-ok 状态加共享的「格式未经真机验证」title 提示 · 跨账号竞态阻塞项修复 ·
-`disown` 移除（非 POSIX 且 `setsid` 之后多余；内层 `bash -c` 改 `sh -c`）·
-改走真 `tmux::exact_target`（`pub(crate)`，连带 `build_usage_probe_cmd` 变 fallible）·
-第三条伪测试修复（抽出 `parse_visible_tmux_sessions`，**已做变异验证**：删生产侧 filter 会红）。
-**还欠**：`launchPayload` 内容断言（字面量已算出：
-`export CLAUDE_CONFIG_DIR='<dir>'; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; claude`）·
-`account_usage.rs` 11 处 `cargo fmt`（`tmux.rs` 那 2 处不在 F10 改动区间、属更早轮次）·
-Phase E/F 文档 · commit。
+commit `bb71172`。收口时补的最后一条是 `launchPayload` 内容断言——本功能里唯一真正被送到
+远端 shell 执行的字符串，此前只被 `objectContaining` 查了 origin/accountName、**内容从未被断言**。
+已补逐字节断言 + 5 条 fail-closed 边界（引号/`;`/`$()`/相对路径/路径穿越），
+并做两次变异验证：去掉账号隔离前缀 → 6 条转红；去掉嵌套 env 清理 → 1 条转红。
+（第一条变异模拟的正是"探针探到错账号的用量、界面却完全正常"这类静默错误，R11 那一族的形状。）
 
 ## §R 段 — 重构 Sonnet 产出 + 信号修复（当前重心）
 
-**为什么先修信号**：`account-ux` 领先 main 15 commit / 13204 插入行、**从未跑过任何 CI**；
-7 套真机 e2e 共 126 条断言**既不在 CI 也不在 `npm test`**；`cargo fmt --check`（CI 唯一阻断性
-Rust 门）红 28 处，已用 `git archive` 验证 merge-base(v3.3.0) 时全干净 → 全部本分支引入；
-已确认 3 条伪测试。**信号失效时做重构 = 蒙眼开刀。**
+**为什么先修信号**（R00 已完成，此段保留为决策依据）：`account-ux` 曾领先 main 15 commit /
+13204 插入行且**从未跑过任何 CI**；7 套真机 e2e 共 126 条断言**既不在 CI 也不在 `npm test`**；
+`cargo fmt --check`（CI 唯一阻断性 Rust 门）红 29 处（`git archive` 验证 merge-base(v3.3.0)
+时全干净 → 全部本分支引入）；已确认 3 条伪测试。**信号失效时做重构 = 蒙眼开刀。**
+→ 现已全部修完并在 CI 上真跑过（PR #83，6 job 全绿）。**后续 R 段各项都是在可信信号下动刀。**
 
 | ID | 内容 | 依据 | 状态 |
 |----|------|------|------|
