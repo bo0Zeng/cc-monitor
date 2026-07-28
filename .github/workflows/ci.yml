@@ -142,6 +142,83 @@ jobs:
       - name: python syntax compile
         run: python3 -m py_compile e2e/*.py
 
+  # R00③：**真机行为验收进 CI**。这 7 套（共 126 条断言）此前既不在 CI 也不在 `npm test`，
+  # 只靠开发者本地手动跑——而它们恰恰是本仓唯一能回答「这条命令在 tmux 上到底干了什么」的门禁
+  # （§5.2 实证：cargo test 369 + npm test 全绿 + tsc 0，仍放行过一个让 send-keys 完全失效的改动，
+  # 因为那些门禁只断言「我写出了打算写的字符串」）。
+  #
+  # 上面 e2e-smoke 的注释说真 e2e 需要 GUI runner + 5min app 构建——**那说的是 DOM e2e**
+  # （Xvfb + tauri dev 全量 app + xdotool）。下面这 7 套只需要 tmux：全部在隔离 `-L` socket 上
+  # 起自己的 tmux server，用假 launcher（`PROBE`/`CCMPROBE` 这类纯字母词）而**不是真 claude**
+  # （真 claude 会重绘/清屏，把打进去的内容盖掉，让「兄弟会话未被污染」的 grep 假 PASS）。
+  # 写用户配置的两套（ccm-acceptance / ccm-pretrust）经 CCM_CLAUDEJSON / CCM_CODEXTOML
+  # 重定向到 mktemp 目录，不碰 runner 的 $HOME（F11 Phase D 审计发现并修的真实污染）。
+  #
+  # 按「要不要 Rust 工具链」拆两个 job：多数套件只要 tmux+node，秒级；只有 2 套要从真 builder
+  # 取命令串（教训清单第 2 条：验收输入必须从真 builder 取，绝不手搓等价命令），
+  # 它们得编译 src-tauri，而 src-tauri 依赖 tauri v2 → Linux 上需要 webkit2gtk 一套系统库。
+  # 拆开的好处：快的那个先给信号，不被慢的 Linux Tauri 构建挡住。
+  e2e-tmux:
+    name: E2E real-machine (tmux, no Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # tmux 是这些套件的被测对象本身；jq 供 ccm-pretrust 读回写入结果做断言。
+      # script(1)（util-linux，预装）供 tmux-target 的 pty attach 正例，缺了它那条自动 SKIP。
+      - name: install tmux + jq
+        run: sudo apt-get update && sudo apt-get install -y tmux jq
+
+      - name: tmux 目标精确匹配（F01，26 项）
+        run: npm run test:tmux-target
+
+      - name: ccm CLI 契约（F02，39 项）
+        run: npm run test:ccm-cli
+
+      - name: ccm --print 平价预言机（F03，12 项）
+        run: npm run test:ccm-print-parity
+
+      - name: ccm 端到端验收（F02，15 项）
+        run: npm run test:ccm-acceptance
+
+      - name: ccm 预信任（F11，13 项）
+        run: npm run test:ccm-pretrust
+
+  e2e-tmux-rust:
+    name: E2E real-machine (tmux + Rust builder emit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # src-tauri 依赖 tauri v2；Linux 上编译它需要 webkit2gtk/soup 一套开发库
+      # （Windows job 不需要，故只在这里装）。这两套只从 Rust 侧取命令串、不跑前端，无需 node。
+      - name: install tmux + Tauri Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tmux \
+            libwebkit2gtk-4.1-dev libsoup-3.0-dev build-essential \
+            curl wget file libxdo-dev libssl-dev librsvg2-dev \
+            libayatana-appindicator3-dev
+
+      - name: tmux 三道门 + 原子 verify+act（F04，14 项）
+        run: npm run test:tmux-guarded
+
+      - name: 用量探针（F10，7 项）
+        run: npm run test:usage-probe
+
 # 注：曾加过一个 `cargo audit` 信息性 job，但对 Windows-only Tauri 应用而言它**永久红**——
 # Cargo.lock 含大量 Tauri 的 Linux GTK 传递依赖（atk/gdk/gtk-rs，标记 unmaintained，且
 # 在 Windows 根本不编译/不打包），淹没了信号。已移除；已知 Rust 依赖 advisory 残留记入
