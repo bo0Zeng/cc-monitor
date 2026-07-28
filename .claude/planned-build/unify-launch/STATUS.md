@@ -9,7 +9,7 @@
 ## 当前状态
 
 - **当前阶段**：R 段（重构 Sonnet 产出 + 信号修复）—— **当前重心**
-- **当前功能**：**R 段 9/9 全部完成并 commit** → 下一个 **B 段**（B01 cc-bus 搬进仓，四份计划均已就绪且前提实测核实）
+- **当前功能**：**B01 完成并 push（`33bad12`）** → **B02 在 Phase B 卡住：撞计划≠现实，等用户决策**（见 §B 段第 4 条：`ccm --tmux` 恒 attach，cc-spawn 需 detached 返回 → ccm 必须先长出 `--detach`，落在共享面上）
 - **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）、**F11**（预信任能力上提进 `ccm`：`shared/ccm` 的 `--tmux` 建会话路径新增预信任 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out；范围收窄不碰仓库外的 `cc-spawn` 本体；双 agent 审各自独立复现真实阻塞项，含修复既有 `e2e/ccm-acceptance.sh` 污染真实全局配置的回归）、**F08**（终端集成收尾：`ccm --model` 闭合 R14；`canRenderCli` 针对性特判而非机械塞进 `CLI_REQUIRED_CAPS`；别名生成器+越层启动器诊断合并落点，紧邻彼此、不再按主机重复渲染；commit `06a9c76`）、**F09**（UI 收敛：动作×修饰——R12 降级为已归档设计决策；归档 tab 收敛成 `Resume`+账号×容器 3 级级联 flyout；存活 tab 收敛成 `Restart`+账号 flyout；徽章恒显身份（R7 语义反转）；对齐全套全仓删除；双 agent 审 1 阻塞+5 重要全部修复）
 - **下一个功能**：**B01**（cc-bus 逐字节原样搬进 `shared/cc-bus/`）→ B02（`cc-spawn` 收编，成功标准② 第二次架构验收）→ B03/B04 → P 段 → Phase G
 - **阻塞 / 待用户确认**：无
@@ -306,7 +306,22 @@ cc-monitor 在 Windows 侧只能经 SSH 看。默认取**按需刷新**（同 F1
    → **TS 维度与成功标准② 的第二次验收挪到 B03 批二**（cc-monitor 图形化 spawn，
    那时才有**真实的 UI 调用点**，验收才有意义）。这不是把验收往后拖，是挪到唯一能证明东西的地方。
 
-3. **`ccm` 不设窗口尺寸，`cc-spawn` 设了 `-x 220 -y 50`。**
+4. **【计划≠现实，2026-07-28 B02 动手前实测发现，需用户决策后才继续】`ccm --tmux` 恒 attach，
+   而 cc-spawn 要的是「建 detached 会话后立刻返回」——ccm 今天没有这个能力。**
+   `shared/ccm:496` 无条件把 `; tmux attach -t $t` 接在序列尾，然后 `:499` `exec bash -c "$seq"`。
+   `--print` 实测输出确认（结尾就是 `; tmux attach -t '=b02probe:'`）。
+   而 cc-spawn 建完会话**必须返回**，去做 `cc-register`（要 pane id）、写 `spawned.tsv`、打印用法提示。
+   → **B02 原计划「cc-spawn 改为调 ccm」不成立**：不是 cc-spawn 适配 ccm，而是 **ccm 必须先长出
+   `--detach`**。这是计划从未预见的一项，且落在**共享面**上（`shared/ccm` 被 `sftp.rs:538`
+   `include_str!` 进二进制、是 cc-monitor 主 UI 的启动器、有 `--print` 平价预言机守着）。
+   **架构观察**：这其实是 §0 那个病的又一处——`--tmux` 今天同时承担「建容器」与「attach 进去」
+   两件事，把两个正交修饰焊在了一起。`--detach` 是**拆开**它，不是新加特性。
+   **顺带订正 `--bus-id` 的设计**：不该在 ccm 里做「只 codex 才注入」的条件判断——那是 cc-bus 的
+   身份解析策略（`cc-whoami` 的优先级链、claude 下会盖掉 `@cc_id`），ccm 对此一无所知。
+   正确切分是 **ccm 提供机制**（给了 `--bus-id=X` 就 export `CC_BUS_ID=X`），**cc-spawn 决定策略**
+   （只在 `tool=codex` 时传）。这样也不需要任何条件式 `applies`/`requiredCaps` 机制。
+
+5. **`ccm` 不设窗口尺寸，`cc-spawn` 设了 `-x 220 -y 50`。**
    detached tmux 会话默认 80x24，cc-spawn 刻意放宽免得 agent 输出被窄折。
    → B02 要么给 ccm 加上（属容器轴细节，不是新维度），要么显式接受行为变化。
    **不能默默丢掉**——这类"看起来无害的细节"正是 F02 真机测试揪出净退化的那一类。
