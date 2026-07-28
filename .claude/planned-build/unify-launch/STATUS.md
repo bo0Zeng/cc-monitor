@@ -9,14 +9,14 @@
 ## 当前状态
 
 - **当前阶段**：R 段（重构 Sonnet 产出 + 信号修复）—— **当前重心**
-- **当前功能**：R00 / R01 / R02 **已完成**（CI 6 job 全绿，draft PR #83）→ 下一个 **R08**（真 bug）
+- **当前功能**：R00 / R01 / R02 / **R08 已完成**（每次都 CI 6 job 全绿，draft PR #83）→ 下一个 **R03**（成功标准②）
 - **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）、**F11**（预信任能力上提进 `ccm`：`shared/ccm` 的 `--tmux` 建会话路径新增预信任 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out；范围收窄不碰仓库外的 `cc-spawn` 本体；双 agent 审各自独立复现真实阻塞项，含修复既有 `e2e/ccm-acceptance.sh` 污染真实全局配置的回归）、**F08**（终端集成收尾：`ccm --model` 闭合 R14；`canRenderCli` 针对性特判而非机械塞进 `CLI_REQUIRED_CAPS`；别名生成器+越层启动器诊断合并落点，紧邻彼此、不再按主机重复渲染；commit `06a9c76`）、**F09**（UI 收敛：动作×修饰——R12 降级为已归档设计决策；归档 tab 收敛成 `Resume`+账号×容器 3 级级联 flyout；存活 tab 收敛成 `Restart`+账号 flyout；徽章恒显身份（R7 语义反转）；对齐全套全仓删除；双 agent 审 1 阻塞+5 重要全部修复）
-- **下一个功能**：**R08**（容器路径丢失继承账号，真 bug）→ R03/R04/R05/R06/R07/R09 → B 段 → P 段 → Phase G
+- **下一个功能**：**R03**（位置参数→options bag，成功标准②）→ R04/R05/R06/R07/R09 → B 段 → P 段 → Phase G
 - **阻塞 / 待用户确认**：无
 - **最近一次计划回看时间**：2026-07-28（MASTERPLAN 变更记录 16）
 - **自动模式（/loop）**：**全自动**（连续 B→G）。用户 2026-07-27 追加授权：**具体设计决策由本席开
   agent 讨论分析后自行决定，不必逐项停下来问**——除非真遇到阻塞或用户主动打断
-- **本轮 loop 目标**：R00/R01/R02 已收口 → R08（容器路径丢账号，先写复现测试再修）→ R03-R07/R09
+- **本轮 loop 目标**：R00/R01/R02/R08 已收口（4/9）→ next R03（options bag）→ R04/R05/R06/R07/R09
 - **loop 停止条件**：计划≠现实 / 同一步≥2 失败 / 全部完成→Phase G / 用户打断
 
 ## §0 工作约定（跨 compact 必须保留 —— 恢复工作时先读这一节）
@@ -82,7 +82,7 @@ commit `bb71172`。收口时补的最后一条是 `launchPayload` 内容断言�
 | R05 | UI 层收敛：删 `launch-menu.ts` **从未被渲染过**的 container 组（`enumerateModifierGroups` 第二参全仓恒传 `"tmux"`，返回值被丢弃，而 `tabs.ts:2264` 自己硬编码了逐字相同的一份）；5 处独立账号菜单实现收敛；`"__base__"` 魔法串类型化 | 波及面计数 + 对抗审计 | 待做 |
 | R06 | **成功标准① 首次可验收**：重写 `INVENTORY.md`（冻结在 F01，之后 10 个功能从未回改；行号全部失效、§D.3 描述的 ⇄ 已被 F09 全仓删除）。行号换成**符号名 + grep 锚点** | 已逐条核实失效 | 待做 |
 | R07 | `planLocal` 的假声明处置：三个生产调用点**全部丢弃返回值**，真命令仍由 Rust 独立构造，而 `launch-requests.vitest.ts` 头注写着"证明本地路径真的在用同一套维度注册表（不是套了个壳）"——**这句是假的**。要么真接上，要么改名 `validateLocalLaunch` 并把注释改成实话 | IR 内核对拍 §2.2 第 6 条 | 待做 |
-| R08 | **查证并修复：容器路径丢失继承账号**（实测复现，见下「新发现的真 bug」） | 本席 2026-07-28 `ccm --print` 实测 | 待做 |
+| R08 | **查证并修复：容器路径丢失继承账号**（实测复现，见下「新发现的真 bug」） | 本席 2026-07-28 `ccm --print` 实测 | **已完成**（commit `9dc0aad`，e2e 断言 126→131，CI 全绿） |
 | R09 | 查证 `@ccm_sid`（兜底路，事实）vs `@ccm_sid_expect`（CLI 路，意图）语义分叉——`sftp.rs` 的结构性扫描只覆盖 ccm 脚本、不覆盖 TS 侧。**压在成功标准④上** | IR 内核对拍 §2.2 第 9 条，标注为需核实 | 待做 |
 
 ### R00 结果（2026-07-28，全部 6 个 CI job 绿）
@@ -137,7 +137,7 @@ runner 上 sleep 不够，其实 20s 轮询照样超时）、第三轮改成「�
 → 结论：**报"伪测试"之前，必须先证明变异真的生效、且门禁真的覆盖到那条测试。**
    一次性审计脚本不进仓（sed 锚点会随代码漂移）。
 
-### 新发现的真 bug（R08，已实测复现）
+### 新发现的真 bug（R08，已实测复现 → **已修，commit `9dc0aad`**）
 
 `ccm --print` 实测：外层已 `export CLAUDE_CONFIG_DIR=<账号b>` + 走容器路径（`--tmux`）时，
 内层 send-keys 载荷是 `ccm resume SID --cwd … --agent claude --launcher claude`
