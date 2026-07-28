@@ -109,10 +109,11 @@ describe("chipLabel", () => {
 });
 
 // ------------------------------------------------------------ F1：chip = 纯全局切换器（去 ⚠k）
-// F1 把 chip 收敛成 CCSwitcher 式纯全局切换器：⚠k 不一致计数 + 批量对齐入口都移出（批量对齐走
-// 命令面板）。这里锁住「chip 不再长出 ⚠k 徽章」——防有人把它加回来。
+// F1 把 chip 收敛成 CCSwitcher 式纯全局切换器：⚠k 不一致计数入口移出 chip（当时走命令面板；
+// 批量对齐/命令面板对齐命令随 F09 一并删除，现在两者都不在了）。这里锁住「chip 不再长出
+// ⚠k 徽章」——防有人把它加回来。
 describe("F1 chip 纯全局切换器（无 ⚠k）", () => {
-  it("chip 结构里不含 ⚠k 计数 span（已移出，批量对齐走命令面板）", () => {
+  it("chip 结构里不含 ⚠k 计数 span（已移出，F09 后批量对齐整体删除）", () => {
     const chip = new AccountChip({ openSettings: () => {} });
     expect(chip.element.querySelector(".status-account-mismatch")).toBeNull();
   });

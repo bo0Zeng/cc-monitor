@@ -22,12 +22,8 @@ function acct(p: Partial<Account>): Account {
 function input(over: Partial<AccountCommandsInput> = {}): AccountCommandsInput {
   return {
     snapshot: { accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "wei" },
-    alignableSids: [],
-    activeSid: null,
     chordHint: () => undefined,
     setCurrent: vi.fn(),
-    alignSession: vi.fn(),
-    alignAll: vi.fn(),
     openSettings: vi.fn(),
     ...over,
   };
@@ -71,46 +67,17 @@ describe("account-ux U8：Ctrl+K 账号命令", () => {
     expect(ids(input({ snapshot: null }))).toEqual(["acct-manage"]);
   });
 
-  // ↓↓ 这两条就是"计划要求但原先不可能做到"的变异锚点
-  it("当前会话不在可对齐列表里 → **不出**单会话对齐命令", () => {
-    const i = input({ alignableSids: ["other"], activeSid: "s1" });
-    expect(ids(i)).not.toContain("acct-align-active");
-  });
-
-  it("当前会话确实可对齐 → 出命令，且 run 会去对齐", () => {
-    const alignSession = vi.fn();
-    const i = input({ alignableSids: ["s1"], activeSid: "s1", alignSession });
-    const c = buildAccountCommands(i).find((x) => x.id === "acct-align-active")!;
-    expect(c.title).toContain("重启"); // 破坏性后果写在脸上
-    c.run();
-    expect(alignSession).toHaveBeenCalledTimes(1);
-  });
-
-  it("没有不一致会话 → **不出**批量对齐命令", () => {
-    expect(ids(input({ alignableSids: [] }))).not.toContain("acct-align-all");
-  });
-
-  it("有 k 个不一致 → 批量命令标题带上 k", () => {
-    const c = buildAccountCommands(input({ alignableSids: ["a", "b", "c"] })).find(
-      (x) => x.id === "acct-align-all",
-    )!;
-    expect(c.title).toContain("（3）");
-  });
-
-  it("activeSid 为 null（无活跃 tab）→ 不出单会话对齐命令，但批量照出", () => {
-    const i = input({ alignableSids: ["a"], activeSid: null });
-    expect(ids(i)).not.toContain("acct-align-active");
-    expect(ids(i)).toContain("acct-align-all");
+  // F09：对齐类命令（acct-align-active/acct-align-all）随对齐全套一并删除——批量/一键对齐是
+  // 组合层便利，不做等价替代，用户改走 tab 右键的 Restart flyout 逐会话操作。
+  it("对齐类命令已不存在（旧扁平命令，随对齐全套删除）", () => {
+    const cmds = ids(input());
+    expect(cmds).not.toContain("acct-align-active");
+    expect(cmds).not.toContain("acct-align-all");
   });
 
   it("快捷键提示透传（教学式发现）", () => {
-    const i = input({
-      alignableSids: ["s1"],
-      activeSid: "s1",
-      chordHint: (id) => (id === "account.align-active" ? "Ctrl+Shift+A" : "Ctrl+Shift+K"),
-    });
+    const i = input({ chordHint: (id) => (id === "account.switch-default" ? "Ctrl+Shift+K" : undefined) });
     const cmds = buildAccountCommands(i);
-    expect(cmds.find((c) => c.id === "acct-align-active")!.hint).toBe("Ctrl+Shift+A");
     expect(cmds.find((c) => c.id === "acct-default-amy")!.hint).toBe("Ctrl+Shift+K");
   });
 });

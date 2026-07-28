@@ -1,15 +1,35 @@
 # 状态 / STATUS — unify-launch（恢复工作的入口，每次先读这里）
 
-- **当前阶段**：F08 已完成签收（Phase B→F 全过，R14 已关闭，commit 待落）
-- **当前功能**：无——F08 收尾完成，下一步进 F09（UI 收敛，规模最大，须解决 R12）
-- **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）、**F11**（预信任能力上提进 `ccm`：`shared/ccm` 的 `--tmux` 建会话路径新增预信任 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out；范围收窄不碰仓库外的 `cc-spawn` 本体；双 agent 审各自独立复现真实阻塞项，含修复既有 `e2e/ccm-acceptance.sh` 污染真实全局配置的回归）、**F08**（终端集成收尾：`ccm --model` 闭合 R14；`canRenderCli` 针对性特判而非机械塞进 `CLI_REQUIRED_CAPS`；别名生成器+越层启动器诊断合并落点，紧邻彼此、不再按主机重复渲染）
-- **下一个功能**：F09（UI 收敛，须解决 R12，可能需要开 Plan agent 比较架构方案）→ F10 → Phase G
+- **当前阶段**：F09 已完成签收（Phase B→F 全过，commit 待落）
+- **当前功能**：无——F09 收尾完成，下一步进 F10（剩余账号 UX）
+- **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）、**F11**（预信任能力上提进 `ccm`：`shared/ccm` 的 `--tmux` 建会话路径新增预信任 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out；范围收窄不碰仓库外的 `cc-spawn` 本体；双 agent 审各自独立复现真实阻塞项，含修复既有 `e2e/ccm-acceptance.sh` 污染真实全局配置的回归）、**F08**（终端集成收尾：`ccm --model` 闭合 R14；`canRenderCli` 针对性特判而非机械塞进 `CLI_REQUIRED_CAPS`；别名生成器+越层启动器诊断合并落点，紧邻彼此、不再按主机重复渲染；commit `06a9c76`）、**F09**（UI 收敛：动作×修饰——R12 降级为已归档设计决策；归档 tab 收敛成 `Resume`+账号×容器 3 级级联 flyout；存活 tab 收敛成 `Restart`+账号 flyout；徽章恒显身份（R7 语义反转）；对齐全套全仓删除；双 agent 审 1 阻塞+5 重要全部修复）
+- **下一个功能**：F10（剩余账号 UX：面板砍卡片/加号一键化/用量）→ Phase G
 - **阻塞 / 待用户确认**：无
-- **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 14）
+- **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 15）
 - **自动模式（/loop）**：**全自动**（连续 B→G）。用户 2026-07-27 追加授权：**具体设计决策由本席开
   agent 讨论分析后自行决定，不必逐项停下来问**——除非真遇到阻塞或用户主动打断
-- **本轮 loop 目标**：commit F08 → 开 F09（Phase B 规划，须解决 R12）
+- **本轮 loop 目标**：commit F09 → 开 F10（Phase A/B 规划）
 - **loop 停止条件**：计划≠现实 / 同一步≥2 失败 / 全部完成→Phase G / 用户打断
+
+## F09 结果摘要（R12 降级为已归档设计决策，R7 已落地关闭）
+
+- Phase B：两个独立 Plan agent 论证 R12（container/agent 要不要收进 `LAUNCH_DIMENSIONS`）对立
+  方向，综合后采纳"维持三轴三机制，只在 UI 层收敛"——`src/launch-menu.ts`（新，`enumerateModifierGroups`）
+  是独立于 `LaunchDimension` 的 UI 发现层；判断准则记入 `doc/INVARIANTS.md` §38。
+- Phase C：归档远端 tab 的 8-10 个扁平 resume 菜单项收敛成 1 个 `Resume` 一级项 + 账号×容器
+  3 级级联 flyout（`resumeTabTmux` 补齐此前不支持显式选号的实现缺口，账号×容器真正正交）；
+  存活远端 tab 收敛成 1 个 `Restart` 一级项 + 账号 flyout（无容器轴，restart 仍是编排、不进
+  `LaunchAction`）；`updateAccountBadge` 从"仅不一致才显"改"账号已知即恒显"（R7 语义反转）；
+  对齐全套（⇄/`alignAll`/`countAccountMismatches`/`account.align-active`）全仓删除（R8 落地前
+  核实 e2e driver 零 import `tabs.ts`，安全）。
+- Phase D 双 agent 审：后端架构 0 阻塞+2 重要（`openTimer` 未清理/`configDir` 过滤行为分歧，
+  均已处置）；UX 审计 1 阻塞（`updateTabContextMenuItem` 替换 DOM 丢失 flyout 展开态，命中 R4
+  "悬停+点击都可触发"契约）+4 重要（safe-triangle 悬停收起零延迟/三级级联无视口边缘碰撞检测/
+  `restartingSids` 守卫对用户不可见/6 处过时注释），全部修复；另指出 §1"不做什么"对批量对齐
+  删除的原始论证误用 MASTERPLAN 推论③，已改写为诚实的范围/复杂度取舍说明。
+- 门禁：tsc 0 / npm test 648 / cargo test 379 / 全部既有 e2e 套件（含 `resume-suite.sh` 17/
+  `restart-suite.sh` 24 真机回归）全绿；`remote-launch.test.ts`/两个 e2e driver/`src-tauri/`
+  全程零 diff。
 
 ## F08 结果摘要（R14 已关闭）
 

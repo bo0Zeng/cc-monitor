@@ -50,24 +50,15 @@ describe("ACTIONS 清单结构性守卫", () => {
 describe("account-ux U8：账号快捷键", () => {
   const acctActions = ACTIONS.filter((a) => a.category === "Acct");
 
-  it("两条账号 action 都在清单里且已上线", () => {
-    expect(acctActions.map((a) => a.id).sort()).toEqual([
-      "account.align-active",
-      "account.switch-default",
-    ]);
+  // F09：account.align-active 随对齐全套一并删除——批量/一键对齐是组合层便利，不做等价替代。
+  it("账号 action 清单里只剩 switch-default 且已上线", () => {
+    expect(acctActions.map((a) => a.id).sort()).toEqual(["account.switch-default"]);
     for (const a of acctActions) expect(a.available).toBe(true);
   });
 
-  // 破坏性动作（重启会话、中断当前回合、丢进程内状态）不该有默认单键等着被误触；
-  // 键位表也已经很满。用户想要自己去「设置 → 快捷键」绑。
-  it("默认都**不绑**键位", () => {
+  it("默认不绑键位（键位表已经很满，用户想要自己去「设置 → 快捷键」绑）", () => {
     for (const a of acctActions) {
       expect(a.default, `${a.id} 不该有默认 chord`).toBeNull();
     }
-  });
-
-  it("破坏性那条的 label 要把后果写在脸上", () => {
-    const align = ACTIONS.find((a) => a.id === "account.align-active")!;
-    expect(align.label).toContain("重启");
   });
 });

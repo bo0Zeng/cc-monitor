@@ -106,19 +106,12 @@ export const ACTIONS: ReadonlyArray<Action> = [
   },
 
   // ===== 账号（account-ux U8）=====
-  // 两条都 **default: null**（默认不绑）：键位表已经很满，而这两件事都不是高频；
-  // 尤其 align-active 是**破坏性**的（重启会话、中断当前回合、丢进程内状态），
-  // 更不该有一个默认单键等着被误触。想要的人自己在「设置 → 快捷键」里绑。
+  // default: null（默认不绑）：键位表已经很满，这不是高频操作。想要的人自己在「设置 → 快捷键」里绑。
+  // F09：align-active（对齐当前会话到当前账号）随对齐全套一并删除——批量/一键对齐是组合层便利，
+  // 不做等价替代，用户改走 tab 右键的 Restart flyout 逐会话操作。
   {
     id: "account.switch-default",
     label: "打开账号菜单（切当前账号）",
-    category: "Acct",
-    default: null,
-    available: true,
-  },
-  {
-    id: "account.align-active",
-    label: "把当前 Tab 的会话对齐到当前账号（破坏性：会重启该会话）",
     category: "Acct",
     default: null,
     available: true,

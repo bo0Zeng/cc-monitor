@@ -44,7 +44,7 @@ import { buildAccountCommands } from "./account-commands";
 import {
   fetchSessionAccounts,
   fetchAccounts,
-  alignableCurrentAccount,
+  currentAccountForBadge,
 } from "./accounts";
 
 // === 启动 perf 测量 ===
@@ -184,9 +184,11 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // A3：状态栏「当前账号」chip（多账号 cc-acct-iso）。绑第一台可用远端的默认账号；
   // 未连远端 / 未启用多账号 / daemonless 各自安静降级（不报错）。点击弹选单切默认账号。
-  // **构造在 tabs 之后**（D 审计）：alignAll 回调要引用 tabs，放前面就得靠"refresh() 首行即 await、
-  // 中间恰好没有 await"这条隐式不变量兜着——谁在中间插一个 await 就会踩 TDZ 且被 void 吞掉。
-  // ⚠k 计数走**推**模型（与 tabs.onActiveUsageChanged → usageHud.setActive 同惯例），不让 chip 反拉 TabManager。
+  // **构造在 `refreshSessionAccounts` 定义之前**（D 审计）：`onDefaultChanged` 回调间接调用
+  // `refreshSessionAccounts`（下方 `const` 声明，函数体里会调 `tabs.setSessionAccounts`）——
+  // 回调本身只在用户切号时才真正执行，届时 `refreshSessionAccounts` 早已初始化完毕，不会踩
+  // TDZ；但这条"届时早已初始化"的保证依赖"这中间没有 await 会提前执行到回调"这条隐式不变量，
+  // 谁在中间插一个真会被调用的 await 就有踩 TDZ 的风险，需要留意。
   const accountChip = new AccountChip({
     openSettings: () => void invoke("open_settings_window"),
     // 切号后立刻重算一次：currentByOrigin 只由下面这条 10s 轮询喂，不主动刷的话会有最长 10s 的
@@ -228,9 +230,9 @@ window.addEventListener("DOMContentLoaded", async () => {
         for (const a of state.accounts) if (a.email) emailByName.set(a.name, a.email);
         // §7：账号确实可查询（available）的 origin 才算 ready——徽章只在这些 origin 上显。
         if (state.available) readyOrigins.add(origin);
-        // account-ux U6（D 审计）：过 isSelectable —— 不可选的当前账号对齐必失败，不能拿它判
-        // "不一致"（否则 ⚠k 常亮清不掉、⇄ 是死按钮、批量 N 个全败）。语义与判据见该纯函数。
-        const cur = alignableCurrentAccount(state);
+        // account-ux U6（D 审计）：过 isSelectable —— 不可选的当前账号不能拿去判定徽章的
+        // "不一致"（否则会指着一个系统永远不会 follow 过去的账号说"你不一致"）。语义见该纯函数。
+        const cur = currentAccountForBadge(state);
         if (cur) currentByOrigin.set(origin, cur.name);
       }
       // A4：sid → lastAccount（源②）。本机 history-metadata 读一次（远端会话的 lastAccount 也
@@ -535,17 +537,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     cmds.push(
       ...buildAccountCommands({
         snapshot: accountChip.snapshotReady(),
-        alignableSids: tabs.accountMismatchSids(),
-        activeSid: tabs.activeSessionId(),
         chordHint: (id) => chordHint(id as Parameters<typeof chordHint>[0]),
         setCurrent: (name) => void accountChip.applyDefaultByName(name),
-        // 取 sid 时**重新读**当前会话，不用构造命令那一刻的闭包值：命令面板开着时 tab 可能被
-        // 自动跟随/新会话宣告切走，那样就会对着"打开面板那一刻的会话"动手。
-        alignSession: () => {
-          const sid = tabs.activeSessionId();
-          if (sid) void tabs.alignSessionToCurrentAccount(sid);
-        },
-        alignAll: () => void tabs.alignAllToCurrentAccount(),
         openSettings: () => void invoke("open_settings_window"),
       }),
     );
@@ -660,20 +653,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   // account-ux U8：账号相关快捷键（ACTIONS 里 default:null —— 默认不绑，用户想要自己去绑）。
   dispatcher.bind("account.switch-default", () => {
     void accountChip.openMenu(); // 显式入口（chip 隐藏时不开菜单），别用合成 click
-  });
-  dispatcher.bind("account.align-active", () => {
-    const sid = tabs.activeSessionId();
-    // 不可对齐时**不动手**，但给一句话——否则用户分不清"已经对齐了"/"这是本地会话"/
-    // "我是不是键绑错了"。判据与 ⇄ 按钮同源（alignableCurrent），破坏性确认在编排层。
-    if (sid && tabs.accountMismatchSids().includes(sid)) {
-      void tabs.alignSessionToCurrentAccount(sid);
-    } else {
-      showActionFailureToast(
-        "无需对齐",
-        "当前会话已在当前账号上，或它不支持对齐（本地会话 / 账号未知 / 不在本工具 tmux 里）。",
-        { level: "info", durationMs: 4000 },
-      );
-    }
   });
 
   // 先加载用户覆盖，再 start —— 避免 start 后 1-2ms 内按键走 default 而非用户值

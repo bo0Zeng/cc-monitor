@@ -206,6 +206,43 @@ body.viewer-mode .grid-monitor-trigger {
   opacity: 0.5;
   cursor: default;
 }
+/* F09：二级 flyout（动作 × 修饰）——悬停/点击展开，见 tabs.ts::makeTabMenuButton。 */
+.tab-context-menu-item-wrap {
+  position: relative;
+}
+.tab-context-menu-item.has-submenu {
+  position: relative;
+  padding-right: 22px;
+}
+.tab-context-menu-item.has-submenu::after {
+  content: "\25b8";
+  position: absolute;
+  right: 8px;
+}
+.tab-context-submenu {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: -4px;
+  margin-left: 2px;
+}
+/* F09 Phase D 审计（UX，重要）：窄窗口/宽 tab-bar 组合下右侧放不下时，tabs.ts::
+   flipSubmenuIfOverflowing 加这个 class，改成向左展开，避免级联 flyout 跑出视口变死菜单。 */
+.tab-context-submenu.flip-left {
+  left: auto;
+  right: 100%;
+  margin-left: 0;
+  margin-right: 2px;
+}
+.tab-context-menu-item-wrap.is-open > .tab-context-submenu {
+  display: block;
+}
+/* F09 Phase D 审计（UX，建议）：Resume flyout 里"跟随默认账号"与"换账号"两组的纯展示性分隔线。 */
+.tab-context-menu-divider {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border-strong);
+}
 
 /* === Tab Bar === */
 
@@ -262,7 +299,6 @@ body.tabbar-collapsed .tab {
 body.tabbar-collapsed .tab .tab-title,
 body.tabbar-collapsed .tab .tab-badge,
 body.tabbar-collapsed .tab .tab-cwd,
-body.tabbar-collapsed .tab .tab-align-btn,
 body.tabbar-collapsed .tab .tab-focus,
 body.tabbar-collapsed .tab .tab-close {
   display: none !important;
@@ -1315,38 +1351,6 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 .tab-cwd {
   /* emoji 字号略小，跟 ↗ 视觉权重一致 */
   font-size: 12px;
-}
-
-/* account-ux U6：tab 上的「⇄ 用当前账号重启对齐」按钮。**是否够格**由 JS 决定
-   （updateAccountBadge 写 inline display：远端 + 活会话 + 账号≠当前账号 + 非归档 +
-   不在重启中）；**何时露面**由下面这条 CSS 决定 —— 照 MASTERPLAN 定的「tab hover ⇄」，
-   只在指针停在该 tab（或键盘焦点落进去）时显示。
-   两个理由：① tab 栏默认才 150px，而 live-dot+头像+📂+↗ 等固定图标已占掉大半，常驻再加 18px
-   会把标题挤到一两个字（标题是唯一可收缩项）；② 这是破坏性动作（重启中断回合），不该常年
-   摆在一次单击可及处。hover 后仍低调，指到它本身才提权到 warn 色。 */
-.tab-align-btn {
-  display: none; /* 默认不占位；够格(.is-eligible) + hover 才显 */
-  align-items: center;
-  justify-content: center;
-  margin-left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 3px;
-  color: var(--text-2);
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-  flex-shrink: 0;
-  opacity: 0.6;
-}
-.tab:hover .tab-align-btn.is-eligible,
-.tab:focus-within .tab-align-btn.is-eligible {
-  display: inline-flex;
-}
-.tab-align-btn:hover {
-  opacity: 1;
-  background: var(--overlay-hover);
-  color: var(--warn);
 }
 
 /* === Tab 撕离拖拽（tear-off） === */
