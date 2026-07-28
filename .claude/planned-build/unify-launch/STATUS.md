@@ -9,14 +9,14 @@
 ## 当前状态
 
 - **当前阶段**：R 段（重构 Sonnet 产出 + 信号修复）—— **当前重心**
-- **当前功能**：R00 / R01 / R02 / **R08 已完成**（每次都 CI 6 job 全绿，draft PR #83）→ 下一个 **R03**（成功标准②）
+- **当前功能**：R00/R01/R02/R03/R06/R08/R09 **已完成（7/9）** → 下一个 **R04**（IR 内核结构性收紧四处）→ R05
 - **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）、**F11**（预信任能力上提进 `ccm`：`shared/ccm` 的 `--tmux` 建会话路径新增预信任 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out；范围收窄不碰仓库外的 `cc-spawn` 本体；双 agent 审各自独立复现真实阻塞项，含修复既有 `e2e/ccm-acceptance.sh` 污染真实全局配置的回归）、**F08**（终端集成收尾：`ccm --model` 闭合 R14；`canRenderCli` 针对性特判而非机械塞进 `CLI_REQUIRED_CAPS`；别名生成器+越层启动器诊断合并落点，紧邻彼此、不再按主机重复渲染；commit `06a9c76`）、**F09**（UI 收敛：动作×修饰——R12 降级为已归档设计决策；归档 tab 收敛成 `Resume`+账号×容器 3 级级联 flyout；存活 tab 收敛成 `Restart`+账号 flyout；徽章恒显身份（R7 语义反转）；对齐全套全仓删除；双 agent 审 1 阻塞+5 重要全部修复）
-- **下一个功能**：**R03**（位置参数→options bag，成功标准②）→ R04/R05/R06/R07/R09 → B 段 → P 段 → Phase G
+- **下一个功能**：**R04**（IR 内核收紧）→ **R05**（UI 删死代码+收敛，摸底已完成）→ **R07**（planLocal 改名）→ B 段 → P 段 → Phase G
 - **阻塞 / 待用户确认**：无
 - **最近一次计划回看时间**：2026-07-28（MASTERPLAN 变更记录 16）
 - **自动模式（/loop）**：**全自动**（连续 B→G）。用户 2026-07-27 追加授权：**具体设计决策由本席开
   agent 讨论分析后自行决定，不必逐项停下来问**——除非真遇到阻塞或用户主动打断
-- **本轮 loop 目标**：R00/R01/R02/R08 已收口（4/9）→ next R03（options bag）→ R04/R05/R06/R07/R09
+- **本轮 loop 目标**：R 段 7/9 已收口 → next R04 → R05 → R07 → 进 B 段
 - **loop 停止条件**：计划≠现实 / 同一步≥2 失败 / 全部完成→Phase G / 用户打断
 
 ## §0 工作约定（跨 compact 必须保留 —— 恢复工作时先读这一节）
@@ -77,13 +77,13 @@ commit `bb71172`。收口时补的最后一条是 `launchPayload` 内容断言�
 | R00 | 信号修复：`cargo fmt` 29 处 / 分支首次跑 CI（draft PR #83）/ 7 套 e2e 进 ubuntu CI job | 四视角审计共同结论 | **已完成**（见下「R00 结果」） |
 | R01 | F10 收口 commit | 工作区已改完大半 | **已完成**（commit `bb71172`） |
 | R02 | 伪测试扫荡：对每个功能挑 1-2 条「声称验证核心防线」的测试做**变异检查**（改坏实现确认转红） | 已确认 3 条（F10 内，全部已修） | **已完成**（11 条变异检查全 RED，见下「R02 结果」） |
-| R03 | **成功标准② 达成**：`planXxx`/`runXxx` 位置参数长列车 → options bag | 三方独立证伪账本「e2e 锁死签名」之说；实际约 100 行 / 7 个生产调用点 / **两个 e2e driver 零改动** | 待做 |
+| R03 | 位置参数长列车 → `LaunchModifiers` | 三方独立证伪账本「e2e 锁死签名」之说 | **已完成**（commit `4f6c313`）。**只达成「零改调用点」那一半**（32 行透传编辑归零），「零改 builder」未达成（4 个 planXxx 仍各 2 行）——原声称过度，已订正。扩围到 `withAccount` 回调（车头在那里）。审计 0 阻塞+4 重要全修 |
 | R04 | 结构性收紧四处：① `canRenderCli`+`renderCli` 合成返回 Result 的 `tryRenderCli`（现在 `if (flags)` 对 `null` 静默跳过，诚实降级只是**约定**）② 能力要求下放到维度 `requiredCaps?(ctx)`，删渲染器里的 model 特判 ③ `EnvOp` unset 侧收窄（export 侧当初专门收窄过、同样理由从未应用到 unset 侧）④ `WrapSpec` 闭包改纯数据（**趁 `plan.wrap` 恒空、此刻成本为零**，F04 rbind 落地后就不是） | IR 内核独立重设计对拍 §2.2 | 待做 |
 | R05 | UI 层收敛：删 `launch-menu.ts` **从未被渲染过**的 container 组（`enumerateModifierGroups` 第二参全仓恒传 `"tmux"`，返回值被丢弃，而 `tabs.ts:2264` 自己硬编码了逐字相同的一份）；5 处独立账号菜单实现收敛；`"__base__"` 魔法串类型化 | 波及面计数 + 对抗审计 | 待做 |
-| R06 | **成功标准① 首次可验收**：重写 `INVENTORY.md`（冻结在 F01，之后 10 个功能从未回改；行号全部失效、§D.3 描述的 ⇄ 已被 F09 全仓删除）。行号换成**符号名 + grep 锚点** | 已逐条核实失效 | 待做 |
+| R06 | **成功标准① 首次可验收**：重写 `INVENTORY.md` | 已逐条核实失效 | **已完成**（改用符号名+可复跑 grep 锚点；11 条锚点逐条验证，首轮即抓到 1 条空锚点——`renderLaunchCommand` 实为模块私有非导出，正是「锚点自己会报错」的设计意图） |
 | R07 | `planLocal` 的假声明处置：三个生产调用点**全部丢弃返回值**，真命令仍由 Rust 独立构造，而 `launch-requests.vitest.ts` 头注写着"证明本地路径真的在用同一套维度注册表（不是套了个壳）"——**这句是假的**。要么真接上，要么改名 `validateLocalLaunch` 并把注释改成实话 | IR 内核对拍 §2.2 第 6 条 | 待做 |
 | R08 | **查证并修复：容器路径丢失继承账号**（实测复现，见下「新发现的真 bug」） | 本席 2026-07-28 `ccm --print` 实测 | **已完成**（commit `9dc0aad`，e2e 断言 126→131，CI 全绿） |
-| R09 | 查证 `@ccm_sid`（兜底路，事实）vs `@ccm_sid_expect`（CLI 路，意图）语义分叉——`sftp.rs` 的结构性扫描只覆盖 ccm 脚本、不覆盖 TS 侧。**压在成功标准④上** | IR 内核对拍 §2.2 第 9 条，标注为需核实 | 待做 |
+| R09 | 查证 `@ccm_sid` vs `@ccm_sid_expect` 语义分叉 | IR 内核对拍 §2.2 第 9 条 | **已完成——判定为「设计正确，只有一句文档不准确」，不改代码**（见下「R09 结论」） |
 
 ### R00 结果（2026-07-28，全部 6 个 CI job 绿）
 
@@ -137,6 +137,49 @@ runner 上 sleep 不够，其实 20s 轮询照样超时）、第三轮改成「�
 → 结论：**报"伪测试"之前，必须先证明变异真的生效、且门禁真的覆盖到那条测试。**
    一次性审计脚本不进仓（sed 锚点会随代码漂移）。
 
+### R05 摸底：账本三条声明**逐条核实为真**（2026-07-28，R03 等审计期间查的）
+
+1. **`enumerateModifierGroups` 的 container 组是死代码**（造出来、生产侧从不读）。
+   全仓生产调用点**只有一个**：`tabs.ts:2325`，第二参硬编码 `"tmux"`；
+   紧接着 `:2327` 只做 `groups.find(g => g.id === "account")`——**container 组从未被消费**。
+   其余调用点全在 `launch-menu.vitest.ts`，且只有它（`:47`）跑过 `"none"` 分支——
+   即那条分支**只被测试驱动过，生产从未走到**。
+   连带效应：因第二参恒 `"tmux"`，container 组里的 `selected` 标志也恒定退化。
+2. **`tabs.ts` 自己硬编码了逐字相同的一份**：`:2265-2266` 的
+   `{ label: "tmux" }` / `{ label: "直连（不建 tmux）" }` 与 `launch-menu.ts:72-73` 的
+   label **逐字相同**，两处各写一遍。
+3. **`"__base__"` 是跨文件的裸魔法串**：`launch-menu.ts:61` 产出，
+   `tabs.ts:2275` / `:2338` 各自 `=== "__base__"` 消费，无类型约束——
+   拼错一个字符 tsc 抓不到，行为是"基座选项静默变成一个普通账号名"。
+
+→ R05 三项都有据可依，可直接动手：删 container 组（连带那条只被测试驱动的 `"none"` 分支）、
+把两处 label 收敛到单一来源、`"__base__"` 类型化。
+
+### R09 结论（2026-07-28）：分离是对的，但「唯一写者」这句话是错的
+
+**查证结果：`@ccm_sid` 全仓有两个写者，不是一个。**
+1. `shared/ccm` 的 poller（通道B，读到会话文件确认后才写）——文档描述的那个。
+2. `src/session-backend.ts::TMUX_BACKEND.createRunAttach`——**兜底渲染器**自己拼 tmux 命令时，
+   在 create 分支**直写裸 `@ccm_sid`**。
+
+**这不是漏改，是 F04 Phase B 方案A 的明确取舍**（账本 `shared/ccm-wrapper.sh` 那行就记着
+「`session-backend.ts:113` 兜底渲染器的 `@ccm_sid` 直写不应跟着改名（无 poller 无提升机制）」）：
+兜底路径没有 poller → 没有「意图→事实」的提升机制 → 若那里改写 `@ccm_sid_expect`，
+这个 key **永远不会被提升**，Gate 2 的 `@ccm_sid` 半支永久判不出它，**该会话变得不可 kill**
+（正是 §5.1 第 3 条要防的向后兼容回归）。所以两侧**故意写不同的 key**。
+
+**两个方向相反的断言各自都已被钉住**（本轮实测确认，非纸面推断）：
+- `sftp.rs` 的 needle 扫描：`shared/ccm` **必须**写 `@ccm_sid_expect`；
+- `session-backend.test.ts`（「#72 + F03.4甲′」黄金串）：兜底渲染器**必须**写裸 `@ccm_sid`。
+  变异验证：把兜底侧改成 `_expect` → 该测试转红（实测 1 failed）。
+
+**对成功标准④ 无影响**（这是 R09 被登记时最担心的一点）：终端起会话那条路径全程在
+`shared/ccm` 内（写 expect → poller 提升 → cc-monitor 认得），与兜底渲染器的例外无交集。
+
+**唯一的真问题是一句不准确的文档**：多处写作「通道B 是 `@ccm_sid` **唯一**写者」——少了作用域限定。
+已改为「在 `shared/ccm` 内部，通道B 是唯一写者」，并在 `sftp.rs` 的教训清单里补上这个例外的
+完整理由 + 指向两条反向断言的交叉引用，免得后来者看到不一致就顺手改成一致、把会话改成不可 kill。
+
 ### 新发现的真 bug（R08，已实测复现 → **已修，commit `9dc0aad`**）
 
 `ccm --print` 实测：外层已 `export CLAUDE_CONFIG_DIR=<账号b>` + 走容器路径（`--tmux`）时，
@@ -185,6 +228,43 @@ cc-monitor 在 Windows 侧只能经 SSH 看。默认取**按需刷新**（同 F1
 除非能论证复用 daemon 既有 inotify watcher 且不破 daemon 零改红线。
 ② `cc-spawn` 图形化**必须建立在 B02 之上**，否则等于在 cc-monitor 侧再造第四套起会话实现——
 亲手制造本工作区刚消灭的病。
+
+
+### B 段摸底结论（2026-07-28，R 段进行中顺带查的，非猜测）
+
+盘面事实（`~/.claude/skills/cc-bus/`）：13 个脚本 / **1118 行** / `cc-spawn` 136 行；
+备份是 **2 个 `scripts.bak-*` 目录 + 2 个 `.bak` 文件**（`cc-whoami.bak-*` / `cc-spawn.bak-*`）
+——账本原记"3 个目录"，实为 2 个，已订正；结论不变（确实一直手改、无版本管理，故 B01 原样固化）。
+
+**B02 的三段靶心已定位到行**（`cc-spawn`）：
+- `:100` 建会话 `tmux new-session -d -s "$name" -c "$absdir" **-x 220 -y 50**`
+- `:108-109` 送环境 `inj=""`；**仅 codex** 时 `inj="CC_BUS_ID=<name> "`
+- `:111/:113` 送任务 `send-keys "${inj}$LAUNCH $(printf '%q' "$task")"`
+- `:56-86` 预信任 + `:128` 轮询按 Enter —— **F11 已上提进 ccm**，B02 不必重做，删即可
+
+**三条实测发现，直接改写 B02 的工作量估计：**
+
+1. **`ccm` 已经支持 `--` 透传，B02 不需要新增"送任务"能力。**
+   实测 `ccm --tmux --cwd /p --print -- "分析这个项目的架构"` 的内层载荷确实带
+   `'--' '分析这个项目的架构'`，且 `e2e/ccm-cli.test.sh:58` 早有覆盖
+   （"-- 之后透传给 agent，含特殊字符正确 quote"）。
+   → **订正我此前的决策**：我曾把"给 ccm 加透传能力"列为 B02 的一项，那是错的，F02 就做了。
+   B02 因此比原估更小。
+
+2. **`CC_BUS_ID` 会在 tmux 边界被吃掉——同一个病，换了个变量。**
+   `cc-spawn` 今天靠 `send-keys` 载荷里的 `inj=` 前缀把 `CC_BUS_ID` 送进容器内侧，所以现在是对的。
+   但若 B02 天真地把建会话换成 `ccm --tmux`，`CC_BUS_ID` 就只能靠环境继承——
+   而 `update-environment` 默认列表同样不含它，**会被整个吃掉**（R08 刚踩过的完全同型问题）。
+   → **B02 必须把 `CC_BUS_ID` 显式化**。这恰好是**成功标准② 的第二次真实架构验收**：
+   给 `ccm` 加一个新维度（如 `--bus-id`），验证"注册一个 dimension + CLI 加一个 flag，
+   零改 9 个函数签名与 7 个调用点"。R03 刚做完的 `LaunchModifiers` 正好在这里兑现。
+   **暴露面窄**：`inj` 只在 `tool=codex` 时非空；claude 路径下 cc-bus 身份来自 tmux 会话名
+   （`cc-whoami` 优先级：`$CC_BUS_ID` → pane 标签 `@cc_id` → 会话名），无需携带。
+
+3. **`ccm` 不设窗口尺寸，`cc-spawn` 设了 `-x 220 -y 50`。**
+   detached tmux 会话默认 80x24，cc-spawn 刻意放宽免得 agent 输出被窄折。
+   → B02 要么给 ccm 加上（属容器轴细节，不是新维度），要么显式接受行为变化。
+   **不能默默丢掉**——这类"看起来无害的细节"正是 F02 真机测试揪出净退化的那一类。
 
 ## §P 段 — code-picture（B 段之后，见 `../integrate-toolchain/`）
 
