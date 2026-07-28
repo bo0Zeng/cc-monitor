@@ -10,7 +10,7 @@ import {
   deriveUi,
   effectiveDefault,
   currentWorkingAccount,
-  alignableCurrentAccount,
+  currentAccountForBadge,
   accountColorsActive,
   selectableAccounts,
   resolveFollowAccount,
@@ -136,28 +136,28 @@ describe("currentWorkingAccount（effectiveDefault 语义别名，account-ux U1�
   });
 });
 
-describe("alignableCurrentAccount（account-ux U6：current 不可选就不对齐）", () => {
+describe("currentAccountForBadge（account-ux U6：current 不可选就不能拿去判「不一致」）", () => {
   it("当前账号可选 → 返回它（与 currentWorkingAccount 同值）", () => {
     const s = state({ accounts: [acct({ name: "z" }), acct({ name: "b" })], defaultName: "b" });
-    expect(alignableCurrentAccount(s)?.name).toBe("b");
+    expect(currentAccountForBadge(s)?.name).toBe("b");
   });
-  // 下面三条 = MASTERPLAN U6 DoD 明列的「current 不可选不对齐」。不过滤的话：⚠k 常亮清不掉、
-  // ⇄ 是死按钮、批量 N 个全在 restartWithAccount ① 处失败。
+  // 下面三条 = MASTERPLAN U6 DoD 明列的「current 不可选不对齐」。不过滤的话：账号徽章
+  // （F09 后唯一消费者）会指着一个系统自己永远不会 follow 过去的账号说"你不一致"。
   it("当前账号未登录 → null（对齐必失败，不能拿它判「不一致」）", () => {
     const s = state({ accounts: [acct({ name: "b", loggedIn: false })], defaultName: "b" });
     expect(currentWorkingAccount(s)?.name).toBe("b"); // effectiveDefault 照样给
-    expect(alignableCurrentAccount(s)).toBeNull(); // 但对齐面必须拒
+    expect(currentAccountForBadge(s)).toBeNull(); // 但对齐面必须拒
   });
   it("当前账号是 in-place（逃生口，不支持按会话切号）→ null", () => {
     const s = state({ accounts: [acct({ name: "b", mode: "in-place" })], defaultName: "b" });
-    expect(alignableCurrentAccount(s)).toBeNull();
+    expect(currentAccountForBadge(s)).toBeNull();
   });
   it("当前账号目录缺失 → null", () => {
     const s = state({ accounts: [acct({ name: "b", exists: false })], defaultName: "b" });
-    expect(alignableCurrentAccount(s)).toBeNull();
+    expect(currentAccountForBadge(s)).toBeNull();
   });
   it("零账号 → null", () => {
-    expect(alignableCurrentAccount(state({ accounts: [] }))).toBeNull();
+    expect(currentAccountForBadge(state({ accounts: [] }))).toBeNull();
   });
 });
 

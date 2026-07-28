@@ -145,15 +145,15 @@ export function accountColorsActive(state: AccountsState): boolean {
 }
 
 /**
- * account-ux U6：**能用来对齐**的当前账号——`currentWorkingAccount` 再过一道 `isSelectable`。
+ * account-ux U6：**真正可用**的当前账号——`currentWorkingAccount` 再过一道 `isSelectable`。
  *
- * `currentWorkingAccount`(=`effectiveDefault`) 只挑"被指定/第一个"，不管它能不能用；而按它对齐
- * 必然在 `restartWithAccount` 第①步（accountConfigDir 解析）失败。若拿未过滤的值去判"不一致"，
- * UI 就会指着一个系统自己永远不会 follow 过去的账号说"你不一致"：⚠k 常亮清不掉、⇄ 是死按钮、
- * 批量 N 个全败。故 mismatch 一路（徽章 / ⚠k / ⇄ / 批量）统一用这个。
- * 与 U1 `resolveFollowAccount`「每级候选不可选就下沉」同一套语义。
+ * `currentWorkingAccount`(=`effectiveDefault`) 只挑"被指定/第一个"，不管它能不能用；而拿未过滤
+ * 的值去判"不一致"，会让徽章指着一个系统自己永远不会 follow 过去的账号说"你不一致"。故账号
+ * 徽章的 mismatch 判定统一用这个（F09 后：⚠k/⇄/批量对齐已删除，本函数现在只喂徽章
+ * `tabs.ts::updateAccountBadge` 一处消费者）。与 U1 `resolveFollowAccount`「每级候选不可选就
+ * 下沉」同一套语义。
  */
-export function alignableCurrentAccount(state: AccountsState): Account | null {
+export function currentAccountForBadge(state: AccountsState): Account | null {
   const cur = currentWorkingAccount(state);
   return cur && isSelectable(cur) ? cur : null;
 }

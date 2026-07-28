@@ -50,7 +50,7 @@ export interface AccountChipDeps {
   /** 打开设置窗口的账号组（A3 设置组落地后接线；先给个跳设置的回调）。 */
   openSettings: () => void;
   /** F1：切完当前账号后回调——让 main.ts 立刻重算会话账号归属，否则会有最长 10s 的反向窗口。
-   *  （批量对齐已移出 chip，走命令面板；chip 是纯全局切换器。） */
+   *  （chip 是纯全局切换器，只列账号点选切当前账号；批量对齐随 F09 一并删除，不在任何地方。） */
   onDefaultChanged?: () => void;
 }
 
@@ -144,7 +144,7 @@ export class AccountChip {
       menu.appendChild(this.menuAction("管理 / 部署…", () => this.deps.openSettings()));
     } else {
       const def = currentWorkingAccount(this.state);
-      // F1：chip 是纯全局切换器——只列账号点选切当前账号；批量对齐已移出（走命令面板）。
+      // F1：chip 是纯全局切换器——只列账号点选切当前账号；批量对齐随 F09 一并删除。
       for (const a of ui.accounts) {
         menu.appendChild(this.accountRow(a, def?.name === a.name));
       }

@@ -810,6 +810,61 @@ MASTERPLAN §0.1 成功标准②（"加一个新启动维度 = 注册一个 dime
 这条降级有专门的端到端测试锁定（`launch-render-cli.test.ts` 的两条 `modelOverride` 用例），
 不只是孤立测 `cliFlags()` 的返回值。
 
+## 38. 一条新正交轴该进 `LAUNCH_DIMENSIONS` 注册表，还是该做 `LaunchPlan`/`LaunchContext` 的硬编码一等字段——三条 checklist（F09 / unify-launch，R12）
+
+**背景**：F09（UI 收敛：动作 × 修饰）设计阶段要处理 R12——`container`（tmux/none，及
+`create-or-attach`/`send-into`/`attach-only` 三种 mode）与 `agent`（claude/codex）两条正交轴,
+至今仍是 `LaunchPlan`/`LaunchContext` 的硬编码一等字段,不像 `account`/`model` 那样注册进
+`LAUNCH_DIMENSIONS`、有 `applies`/`apply`/`cliFlags` 接口。F09 Phase B 开了两个独立 Plan agent
+论证"该不该扩大注册表覆盖面"，结论是**维持三轴三机制，只在 UI 层收敛**——理由与判断准则记在此处，
+供未来任何新轴（不止 container/agent）参考，防止"看起来不统一"被当成 bug 顺手"修掉"。
+
+**判断准则**（三条都满足才该进注册表；任一条不满足就该继续硬编码）：
+
+1. **它的效果能不能完全表达成"追加/修改 `plan.env`/`plan.args`/`plan.identity`"，不需要两个
+   渲染器的主体控制流（`action`/`container` 分支结构）本身长出新分支？**——`account`/`model`
+   满足（`renderEnvOps` 的 `switch` 加一个成比例分支）；`container` 不满足：`plan.container`
+   从 `buildLaunchPlan` 起就是直接透传定型的载体字段（两个渲染器读它决定该调
+   `SESSION_BACKEND` 哪个方法），不是"追加一段 env/args"的效果。
+2. **它"不触发"时的默认行为，能不能用 §37 的判据（沉默=用户期望 or 沉默=意外）干净地归入
+   `applies` 恒真/条件式二选一？**——`container`/`agent` 都不是"触发与否"的二元问题，而是
+   "选哪一个值"的多选问题，这条判据对它们本身就不太适用，是又一个信号：它们的形状和
+   environment 轴不同类。
+3. **它的影响半径是不是仅限于"这一条要渲染的命令"，不会跨到消息解析/liveness/工具分类等
+   其它子系统？**——`agent` 明确不满足：`AGENT_PROFILE` 被 12 个文件直接消费，其中至少 7 个
+   跟"启动"无关（`cards/*` 的工具名分类、`tabs.ts` 的 liveness 判定、`shell-quote.ts` 的
+   fail-closed 回退）——参数化它是"把一个单例常量变成按 agent 查表"的独立工程，波及面远超
+   "给 F09 加一个 UI 修饰项"。
+
+**`container` 的具体结论**：`kind`（tmux/none）是用户在 UI 上真正选的值,但 `mode`
+（`create-or-attach`/`send-into`/`attach-only`）**不是**——它是点击那一刻现查远端 tmux 状态
+派生出来的值（`tabs.ts::resumeTabTmuxInner` 的探测-派发逻辑：命中活会话→`attach-only`，命中
+空 tmux→`send-into`，都不命中→`create-or-attach`），用户从未也不该在 flyout 里选它。即便只
+收编 `kind` 部分，也换不来真实简化——`canRenderCli` 的 `mode==="send-into"` 强制降级检查（防
+#76 复发）挪进某个维度的 `cliFlags` 后,判断逻辑和验证方式（临时删除、确认恰好 2 条测试转红）
+完全不变，只是换了个位置。**维持 `container` 完全硬编码是零风险、零多余改动的选择**。
+
+**`agent` 的具体结论**：现在不该收编，不是"工作量大"，是"收了也是假的"——前端对 codex 零消费
+能力，`AGENT_PROFILE` 是单例常量非查找表；且 resume/attach 对已存在会话没有"换 agent"的自由度
+（sid 对应特定 agent 的 JSONL 格式），参数化后也只有 `new` 动作能真的用上，打破"修饰对任意
+动作正交"的故事。这件事已经有独立计划轨道负责（`src/agent-profile.ts` 头注的
+MA-multi-agent-adapter；另有独立的 `codex-phase2` 计划，其架构结论是 Codex 的 resume 走
+`remote-daemon-proto` 的 `--resolve` RPC，完全不经过 `LaunchPlan`/`ccm` 管线——agent 轴未来
+真正的落点很可能根本不在 `LaunchDimension` 这个接口体系里，现在塞进去是给自己挖了一个将来要
+迁移出去的坑）。
+
+**R12 风险登记状态**：本轮决策**不是**"root cause fixed"，而是"open → accepted with
+documented rationale"——三条轴两种机制的不对称依然存在，但现在有据可查，不再是每次重新审视
+的开放问题。MASTERPLAN §6 R12 行照此措辞。
+
+**给 UI 层"枚举可用修饰"的启示**：即便 `account`/`model` 已注册进 `LAUNCH_DIMENSIONS`，
+`LaunchDimension` 接口本身也从未回答过"这个维度当前有哪些可选值"——`ACCOUNT_DIMENSION`
+能在 UI 上显示成列表，靠的是 `src/accounts.ts::fetchAccounts`/`isSelectable` 现查，不是遍历
+`LAUNCH_DIMENSIONS`。F09 的 `enumerateModifierGroups`（`src/launch-menu.ts`）因此是一个独立于
+`LaunchDimension` 的新发现层，account 组手写调 `fetchAccounts`，container 组手写两个硬编码值——
+两者形式不同，但这不是"该注册就注册"没做完，是两条轴本来就该用不同方式回答"有哪些可选值"这个
+问题。
+
 ## 修改本文档
 
 加新的不变量时：

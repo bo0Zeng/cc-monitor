@@ -13,13 +13,12 @@ import {
   sessionBadge,
   shouldShowAccountBadge,
   detectAccountMismatch,
-  fetchAccounts,
-  isSelectable,
   withAccount,
   type SessionAccount,
 } from "./accounts";
 import { restartWithAccount, DEFAULT_EXIT_WAIT_MS } from "./account-restart";
 import { planLocal } from "./launch-requests";
+import { enumerateModifierGroups, type ModifierGroup } from "./launch-menu";
 import { accountAvatarEl } from "./account-color";
 import type { BehaviorConfig } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
@@ -229,8 +228,6 @@ interface TabButtonRefs {
   badge: HTMLSpanElement;
   /** A3：账号徽章（该会话属于哪个账号；本地会话不显示，未知显 —）。 */
   acctBadge: HTMLSpanElement;
-  /** account-ux U6：⇄ 换号对齐按钮（仅活跃 && 账号≠当前账号时显，点=用当前账号重启对齐）。 */
-  alignBtn: HTMLSpanElement;
   cwdBtn: HTMLSpanElement;
 }
 
@@ -375,8 +372,6 @@ export class TabManager {
    *  可能算出两个不同名字、真建出两个都声称同一 sid 的 tmux 容器（R10 的一个具体、可关闭的成因，
    *  见 F04 计划 §2 综合来源方案 A §7.4）。 */
   private resumingSids = new Set<string>();
-  /** account-ux U6：批量对齐进行中（防重入：⚠k 要等下一拍轮询才降，用户很容易再点一次）。 */
-  private aligningBatch = false;
   /** A5：换号重启时「等旧号 compact 完成」的 per-sid 回调。onLine 见该 sid 的 compact 摘要行即 resolve。 */
   private compactWaiters = new Map<string, () => void>();
   private activeId: string | null = null;
@@ -1043,23 +1038,21 @@ export class TabManager {
   }
 
   /**
-   * account-ux U5「信息才显」：只在会话账号**不在当前账号**（或未知当前时不猜）时挂徽章——
-   * 一致=不挂（chip 已代言，tab 栏保持干净）；未知(源③)=不挂（退 hover tooltip，消 `—` 墙）；
-   * 不一致→彩色头像：source=live 实心（硬真相）/ source=last 幽灵（软来源）。§7 readyOrigins 门控不变。
+   * F09（R7 语义反转）：账号徽章从"仅不一致时才显示的警示信号"改为"账号已知即恒显示的身份
+   * 标识"——门（`shouldShowAccountBadge`）通过 + 账号已知（源③已知除外）就显示，不再要求
+   * `detectAccountMismatch` 为真。旧版"不一致才显示"这条信息没有消失，只是从"触发显示的唯一
+   * 条件"降级为"视觉区分的一个维度"：一致态也显示头像（用户能一眼看出这个会话归属哪个账号），
+   * 不一致态仍用 tooltip 追加"与当前账号不一致"提示，且沿用既有 live 实心/last 幽灵区分
+   * （不新增视觉语言）。⇄ 一键对齐按钮随对齐全套一并删除（见 features/F09-ui-convergence.md
+   * §1"不做什么"——批量/一键对齐是组合层便利,不做等价替代,用户改走 flyout 逐会话操作）。
    */
   private updateAccountBadge(refs: TabButtonRefs, sid: string, tab: Tab): void {
     const hide = (): void => {
       refs.acctBadge.textContent = "";
       refs.acctBadge.className = "tab-acct-badge";
       refs.acctBadge.style.display = "none";
-      refs.alignBtn.classList.remove("is-eligible");
     };
     if (!shouldShowAccountBadge(tab.origin, this.accountReadyOrigins)) return hide();
-    // U8 休眠**不作用于这里**（D 审计阻塞项）：本徽章是「信息才显」——只有 detectAccountMismatch
-    // 为真才渲染，所以它从来不是"单账号时的颜色噪音"，而是**唯一的 per-session 不一致信号**；
-    // 只有 1 个可选账号时这条信息同样成立、甚至更要紧。若在此休眠，就会出现 chip 报 ⚠k、
-    // Ctrl+K 有对齐命令，而所有 tab 上一个徽章一个 ⇄ 都没有的鬼影。
-    // 规则:**颜色可以睡，信息和操作不能睡** —— 休眠只留给 chip 那个常显的身份头像。
     const b = sessionBadge(
       sid,
       tab.origin,
@@ -1068,29 +1061,13 @@ export class TabManager {
       this.accountLastByS,
     );
     if (!b || !b.account) return hide(); // 未知账号（源③）→ 退 hover；顺带把 b.account 窄化为 string
-    const current = tab.origin ? this.currentByOrigin.get(tab.origin) ?? null : null;
-    // detectAccountMismatch（U1 纯函数）：当前未就绪 / 二者相等 → 均返 false → 不挂徽章
-    //（信息才显：未知退 hover、一致靠 chip 代言、当前未就绪不猜）。仅确知不一致才挂。
-    if (!detectAccountMismatch(b.account, current)) return hide();
-    // 不一致 → 挂彩色头像（live 实心 / lastAccount 幽灵）。
     refs.acctBadge.textContent = "";
     refs.acctBadge.className = "tab-acct-badge";
     refs.acctBadge.appendChild(accountAvatarEl(b.account, { size: 14, ghost: b.source === "last" }));
-    // live（活会话）→ ⇄ 一键对齐（重启）；last（死会话/归档）→ 无 ⇄，但 tooltip 得指出路，
-    //（D 审计：曾把这句指路删了，幽灵徽章就再无任何地方说明怎么对齐）。
-    const alignable = this.alignableCurrent(sid, tab);
-    refs.acctBadge.title =
-      `${b.tooltip} · 与当前账号「${current}」不一致` +
-      (alignable ? "" : b.source === "last" ? "（右键「把此会话切到账号 …」可对齐）" : "");
+    const current = tab.origin ? this.currentByOrigin.get(tab.origin) ?? null : null;
+    const mismatch = detectAccountMismatch(b.account, current);
+    refs.acctBadge.title = mismatch ? `${b.tooltip} · 与当前账号「${current}」不一致` : b.tooltip;
     refs.acctBadge.style.display = "";
-    // 够格与否由 JS 打 .is-eligible；**何时露面**（hover）交给 CSS，见 styles.css。
-    if (alignable) {
-      refs.alignBtn.title = `用当前账号「${current}」重启对齐此会话（中断当前回合、丢进程内状态）`;
-      refs.alignBtn.setAttribute("aria-label", `用当前账号 ${current} 重启对齐此会话`);
-      refs.alignBtn.classList.add("is-eligible");
-    } else {
-      refs.alignBtn.classList.remove("is-eligible");
-    }
   }
 
   snapshotSessions(): GridSessionSnapshot[] {
@@ -2063,18 +2040,28 @@ export class TabManager {
    * F04：`resumingSids` 互斥（对称 `restartingSids`）——双击之间没有互斥时，两次并发调用各自
    * 查一次陈旧快照、各自可能算出不同的 fresh tmux 名，真建出两个都声称同一 sid 的容器（R10 的
    * 一个具体、可关闭的成因）。
+   *
+   * F09：`accountName` 与 `resumeTab`（直连版）的参数顺序/语义对齐——此前本方法完全没有显式选号
+   * 能力（`withAccount` 恒传 `null`），是 account×container 没做到真正正交的一个实现缺口
+   * （旧扁平菜单从未提供"把此归档会话切到账号 X（tmux）"这一项，反映的正是这个缺口）；flyout
+   * 把 account 组与 container 组做成正交修饰后，这个缺口必须补上，否则"账号=X + 容器=tmux"
+   * 这个组合在 UI 上可选却在实现上是假的。
    */
-  private async resumeTabTmux(sid: string, useBase = false): Promise<void> {
+  private async resumeTabTmux(sid: string, accountName?: string, useBase = false): Promise<void> {
     if (this.resumingSids.has(sid)) return;
     this.resumingSids.add(sid);
     try {
-      await this.resumeTabTmuxInner(sid, useBase);
+      await this.resumeTabTmuxInner(sid, accountName, useBase);
     } finally {
       this.resumingSids.delete(sid);
     }
   }
 
-  private async resumeTabTmuxInner(sid: string, useBase: boolean): Promise<void> {
+  private async resumeTabTmuxInner(
+    sid: string,
+    accountName: string | undefined,
+    useBase: boolean,
+  ): Promise<void> {
     const tab = this.tabs.get(sid);
     if (!tab || tab.origin === null) return;
     const behavior = await getBehavior();
@@ -2116,15 +2103,23 @@ export class TabManager {
     if (idle) {
       await withAccount(
         origin,
-        null,
+        accountName ?? null,
         async (cd, an, mo) => {
           await runRemoteResumeIntoExistingTmux(origin, sid, idle.name, behavior.resumeCommandRemote, cd, an, mo);
         },
-        // F04:useBase = 显式「用基座 resume（tmux）」——不跟随、不注入（与直连版 resumeTab 的基座逃生口
-      // 对称，两后端一致；老会话住基座、别被 follow 注入全局账号 → #75）。
-      // F04:useBase = 显式「用基座 resume（tmux）」——不跟随、不注入（与直连版 resumeTab 的基座逃生口
-      // 对称，两后端一致；老会话住基座、别被 follow 注入全局账号 → #75）。
-      { sessionId: sid, follow: useBase ? undefined : { lastAccount: await this.readSessionPin(sid) } },
+        {
+          sessionId: sid,
+          // F09：显式选号解析不到 → 提示而非静默落基座（对齐 resumeTab 的同类回调）。
+          onUnselectable: (n) =>
+            showActionFailureToast(
+              "账号不可用",
+              `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前账号 resume。`,
+              { level: "info", durationMs: 6000 },
+            ),
+          // F04:useBase/显式选号 = 不跟随、不注入（与直连版 resumeTab 的基座逃生口对称，两后端
+          // 一致；老会话住基座、别被 follow 注入全局账号 → #75）。
+          follow: accountName || useBase ? undefined : { lastAccount: await this.readSessionPin(sid) },
+        },
       );
       return;
     }
@@ -2135,18 +2130,26 @@ export class TabManager {
     // account-ux U3:tmux 版归档 resume 也跟随账号(注入 configDir)。① attach 活会话分支不动(账号焊死)。
     await withAccount(
       origin,
-      null,
+      accountName ?? null,
       // runRemoteResumeTmux 现在返回 boolean（Phase G）；withAccount 的 run 要 Promise<void>，
       // 这条归档 resume 路径不消费成败（失败已由它自己 toast + 剪贴板回退），故丢弃返回值。
       async (cd, an, mo) => {
         await runRemoteResumeTmux(origin, sid, cwd, behavior.resumeCommandRemote, name, cd, an, mo);
       },
-      // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
-      // F04:useBase = 显式「用基座 resume（tmux）」——不跟随、不注入（与直连版 resumeTab 的基座逃生口
-      // 对称，两后端一致；老会话住基座、别被 follow 注入全局账号 → #75）。
-      // F04:useBase = 显式「用基座 resume（tmux）」——不跟随、不注入（与直连版 resumeTab 的基座逃生口
-      // 对称，两后端一致；老会话住基座、别被 follow 注入全局账号 → #75）。
-      { sessionId: sid, follow: useBase ? undefined : { lastAccount: await this.readSessionPin(sid) } },
+      {
+        sessionId: sid,
+        // F09：同上——显式选号解析不到时提示而非静默落基座。
+        onUnselectable: (n) =>
+          showActionFailureToast(
+            "账号不可用",
+            `账号「${n}」当前不可选（未登录 / 非隔离 / 目录缺失），改用该会话上次的账号 / 当前账号 resume。`,
+            { level: "info", durationMs: 6000 },
+          ),
+        // audit-fixes F01(修 B1):pin 现读磁盘,不读内存镜像 accountLastByS（见 readSessionPin）。
+        // F04:useBase/显式选号 = 不跟随、不注入（与直连版 resumeTab 的基座逃生口对称，两后端
+        // 一致；老会话住基座、别被 follow 注入全局账号 → #75）。
+        follow: accountName || useBase ? undefined : { lastAccount: await this.readSessionPin(sid) },
+      },
     );
   }
 
@@ -2250,70 +2253,101 @@ export class TabManager {
     }
   }
 
-  /** A4/A5：远端 tab 菜单开后**异步追加**账号项——归档 tab → 每可选账号「把此会话切到账号 X（resume）」；
-   *  活 tab → 每可选账号「把此会话切到账号 X（重启）」+「…（先压缩上下文再重启）」(danger，§5)。复用 F51 代次守卫
-   *  （gen !== tabMenuGeneration 则菜单已换/已关，整体 no-op，防 R-1 跨 tab 串味）。账号库不可用（§7
-   *  daemonless/旧/未启用）/ <2 可选 → 不追加（默认 Resume 仍在）。异步 fetch 用新鲜值，无冷缓存分裂。 */
+  /**
+   * F09：给「Resume」一级菜单项造 flyout——顶层 tmux/直连两项跟随默认账号（sticky pin，同旧版
+   * plain「Resume（tmux/直连）」逐字节保持）；若传入 `accountGroup`（异步账号数据已就绪），
+   * 追加基座与每个可选账号入口，各自再嵌一层 tmux/直连子选择——账号×容器真正正交（此前
+   * `resumeTabTmux` 不支持显式账号，是本功能顺带补上的实现缺口，见 §0/features/
+   * F09-ui-convergence.md「实现期修正」）。
+   */
+  private buildResumeSubmenu(sid: string, accountGroup: ModifierGroup | undefined): TabMenuItem[] {
+    const containerLeaves = (accountName: string | undefined, useBase: boolean): TabMenuItem[] => [
+      { label: "tmux", onClick: () => void this.resumeTabTmux(sid, accountName, useBase) },
+      { label: "直连（不建 tmux）", onClick: () => void this.resumeTab(sid, accountName, useBase) },
+    ];
+    const items: TabMenuItem[] = [...containerLeaves(undefined, false)];
+    if (accountGroup && accountGroup.options.length > 0) {
+      // F09 Phase D 审计（UX，建议）：纯展示性分隔线——把上面"跟随默认账号"两项和下面"换账号"
+      // 一组视觉分开，降低扫描成本（不增加点击次数，审计原话："综合任务时间…新版很可能相当
+      // 甚至更快，不建议再加独立一级项，折中是加视觉分组"）。
+      items.push({ label: "", divider: true });
+      for (const opt of accountGroup.options) {
+        const isBase = opt.id === "__base__";
+        items.push({ label: opt.label, submenu: containerLeaves(isBase ? undefined : opt.id, isBase) });
+      }
+    }
+    return items;
+  }
+
+  /** F09：给「Restart」一级菜单项造 flyout——重启没有容器轴（对齐 §0 Plan agent 共识：restart
+   *  是 kill+resume 编排，作用于会话现有的后端，不经 `LaunchAction`/两个渲染器），只有账号轴，
+   *  每个账号再嵌一层「直接重启/先压缩再重启」（danger，§5）。`accounts` 已排除 `__base__`——
+   *  重启从不提供基座逃生口（旧版行为，restart 面对的是已在某账号下运行的活会话，不是老会话）。 */
+  private buildRestartSubmenu(sid: string, accounts: { id: string; label: string }[]): TabMenuItem[] {
+    return accounts.map((a) => ({
+      label: a.label,
+      danger: true,
+      // F09 Phase D 审计（UX，建议）：这里没有「基座」选项——不是遗漏，是有意为之（restart 面对
+      // 的是已在某账号下运行的活会话，不是待迁移的老会话）；hover 到账号名这一层就能看到解释，
+      // 不用先读设计文档才知道这不是 bug。
+      title: `重启到「${a.label}」——不提供「基座」选项：重启作用于已在某账号下运行的活会话，不是待迁移的老会话`,
+      submenu: [
+        {
+          label: "直接重启",
+          danger: true,
+          title: `杀掉旧进程，用账号「${a.id}」resume 同一会话（中断当前回合、丢进程内状态）`,
+          onClick: () => void this.restartTabWithAccount(sid, a.id, false),
+        },
+        {
+          label: "先压缩上下文再重启",
+          danger: true,
+          title: `先在【旧账号】上 /compact（命中旧缓存更省）再换号重启——比换号后再压缩便宜`,
+          onClick: () => void this.restartTabWithAccount(sid, a.id, true),
+        },
+      ],
+    }));
+  }
+
+  /** A4/A5：远端 tab 菜单开后**异步追加/更新**账号相关 flyout——归档 tab → 更新「Resume」项的
+   *  submenu（补基座+具名账号入口）；活 tab → 账号数 ≥2 时追加一个「Restart」一级项 + flyout
+   *  （旧版从不给活会话基座逃生口，见 buildRestartSubmenu）。复用 F51 代次守卫（gen !==
+   *  tabMenuGeneration 则菜单已换/已关，整体 no-op，防 R-1 跨 tab 串味）。账号库不可用（§7
+   *  daemonless/旧/未启用）→ `enumerateModifierGroups` 内部已容错返回不含 account 组，本方法
+   *  据此自然不追加任何东西（默认 Resume 仍在）。异步 fetch 用新鲜值，无冷缓存分裂。 */
   private async appendAccountMenuItems(
     origin: string,
     sid: string,
     status: TabStatus,
   ): Promise<void> {
     const gen = tabMenuGeneration; // 捕获这一代菜单
-    let state;
-    try {
-      state = await fetchAccounts(origin);
-    } catch {
+    // container 组这里不消费（归档 resume 已有独立的 tmux/直连子选择；重启没有容器轴）——
+    // `currentContainerKind` 传恒定值即可，不影响 account 组的取值。
+    const groups = await enumerateModifierGroups(origin, "tmux");
+    if (gen !== tabMenuGeneration) return; // 菜单已换/已关
+    const accountGroup = groups.find((g) => g.id === "account");
+    if (status === "archived") {
+      updateTabContextMenuItem("resume", {
+        id: "resume",
+        label: "Resume",
+        submenu: this.buildResumeSubmenu(sid, accountGroup),
+      });
       return;
     }
-    if (gen !== tabMenuGeneration) return; // 菜单已换/已关
-    if (!state.available) return; // §7 降级
-    const selectable = state.accounts.filter(isSelectable);
-    // F01 步骤2:有 ≥1 可选账号时,follow 默认会注入某号 → 给归档会话一个显式「用基座 resume」
-    // 逃生口(不隔离/原始 ~/.claude),让装账号前的老会话不被注错号(#75)。<1 账号时默认 Resume 本就走基座。
-    if (status === "archived" && selectable.length >= 1) {
-      appendTabContextMenuItem({
-        id: "acct-resume-base",
-        label: "用基座 resume（直连，不隔离）",
-        title: "不注入任何账号，用原始 ~/.claude 直连 resume——装账号功能前的老会话住这里",
-        onClick: () => void this.resumeTab(sid, undefined, true),
-      });
-      // F04：tmux 后端也给基座逃生口（与直连对称，两后端一致）。
-      appendTabContextMenuItem({
-        id: "acct-resume-base-tmux",
-        label: "用基座 resume（tmux，不隔离）",
-        title: "不注入任何账号，用原始 ~/.claude 在 tmux 里 resume",
-        onClick: () => void this.resumeTabTmux(sid, true),
-      });
-    }
-    if (selectable.length < 2) return; // 无可切换选择就不加噪（per-account 项）
-    for (const a of selectable) {
-      if (!a.configDir) continue;
-      const name = a.name;
-      if (status === "archived") {
-        appendTabContextMenuItem({
-          id: `acct-resume-${name}`,
-          label: `把此会话切到账号 ${name}（resume）`,
-          onClick: () => void this.resumeTab(sid, name),
-        });
-      } else {
-        // F1：单会话切号（局部）——用目标账号破坏性重启同一会话（§5）。两条：直接切 / 先在旧号压缩再切。
-        appendTabContextMenuItem({
-          id: `acct-restart-${name}`,
-          label: `把此会话切到账号 ${name}（重启）`,
-          danger: true,
-          title: `杀掉旧进程，用账号「${name}」resume 同一会话（中断当前回合、丢进程内状态）`,
-          onClick: () => void this.restartTabWithAccount(sid, name, false),
-        });
-        appendTabContextMenuItem({
-          id: `acct-restart-compact-${name}`,
-          label: `把此会话切到账号 ${name}（先压缩上下文再重启）`,
-          danger: true,
-          title: `先在【旧账号】上 /compact（命中旧缓存更省）再换号重启——比换号后再压缩便宜`,
-          onClick: () => void this.restartTabWithAccount(sid, name, true),
-        });
-      }
-    }
+    // 活会话重启：旧版阈值——只在 ≥2 个可选账号（即排除 __base__ 后还剩 ≥2 项）时才提供，
+    // 从不给基座（restart 面对的是已在某账号下运行的活会话，不是待迁移的老会话）。
+    const realAccounts = (accountGroup?.options ?? []).filter((o) => o.id !== "__base__");
+    if (realAccounts.length < 2) return;
+    // F09 Phase D 审计（UX，重要）：⇄ 按钮删除前，重启中的会话至少有"⇄ 立刻置灰"这个视觉信号；
+    // 现在这是唯一入口，若不禁用，点了会静默命中 restartTabWithAccount 的 in-flight 守卫、
+    // 什么反应都没有——菜单直接呈现"当前不可点"，而不是点了才知道（守卫本身仍在，这里只是让
+    // UI 提前说实话）。
+    appendTabContextMenuItem({
+      id: "restart",
+      label: "Restart（换号重启）",
+      danger: true,
+      enabled: !this.restartingSids.has(sid),
+      submenu: this.buildRestartSubmenu(sid, realAccounts),
+    });
   }
 
   /** A5：造一个「等该 sid compact 完成」的 awaitCompact——注册 waiter 与超时竞速，两路都清理 waiter
@@ -2393,10 +2427,22 @@ export class TabManager {
     // D 审计（重要）：同一 sid 的并发重启会互相打架——A 已 kill+resume 起了新 claude，B 的
     // awaitExit 看到新 claude 仍在 → 超时降级 kill → 把刚起来的新会话又杀了再 resume 一遍
     // （还多弹一个终端窗口）。点击到弹确认之间有多个 await（getBehavior/list_remote_tmux/
-    // fetchAccounts/checkTrust）且无反馈，双击很自然 → 在**所有**入口（⇄/右键/批量）上游拦住。
-    if (this.restartingSids.has(sid)) return false;
+    // fetchAccounts/checkTrust）且无反馈，双击很自然 → 在唯一入口（右键菜单的 Restart flyout；
+    // ⇄ 按钮/批量对齐已随 F09 删除）上游拦住。
+    if (this.restartingSids.has(sid)) {
+      // F09 Phase D 审计（UX，重要）：⇄ 按钮删除前，命中这条守卫时 UI 上至少有"⇄ 立刻置灰"这个
+      // 间接信号；现在右键菜单是唯一入口，点了却什么反应都没有（含最长 5 分钟的 compact 等待+
+      // 10 秒退出等待窗口），用户大概率以为没点中、再点一次——给个明确提示，别让破坏性操作的
+      // in-flight 防抖对用户完全不可见。
+      showActionFailureToast(
+        "正在重启中",
+        "该会话上一次换号重启还没完成，请稍候再试。",
+        { level: "info", durationMs: 4000 },
+      );
+      return false;
+    }
     this.restartingSids.add(sid);
-    this.refreshAccountBadgeFor(sid); // ⇄ 立刻隐去，别让用户对着可点的按钮再点
+    this.refreshAccountBadgeFor(sid);
     try {
       return await this.restartTabWithAccountInner(sid, tab, accountName, compactFirst, confirmFn);
     } finally {
@@ -2405,7 +2451,7 @@ export class TabManager {
     }
   }
 
-  /** 单个 tab 的账号徽章/⇄ 就地重刷（in-flight 状态变化时用；tab 已没了就静默跳过）。 */
+  /** 单个 tab 的账号徽章就地重刷（in-flight 状态变化时用；tab 已没了就静默跳过）。 */
   private refreshAccountBadgeFor(sid: string): void {
     const refs = this.tabButtons.get(sid);
     const tab = this.tabs.get(sid);
@@ -2465,8 +2511,8 @@ export class TabManager {
       accountName,
       launcher: behavior.resumeCommandRemote,
       compactFirst,
-      // account-ux U6：批量对齐已在批量层两步确认过 → 传 `() => true` 免得逐会话再弹 N 次；
-      // 单会话入口（右键菜单 / tab ⇄）不传 → 仍走 restartWithAccount 自带的破坏性二次确认。
+      // `confirmFn` 保留为可选参数（批量对齐曾用 `() => true` 跳过逐会话确认，随 F09 一并删除）；
+      // 唯一现存调用点（右键菜单的 Restart flyout）不传 → 仍走 restartWithAccount 自带的破坏性二次确认。
       confirm: confirmFn,
       // A5 step5：真检测器——onLine 见该 sid 的 compact 摘要行即 resolve，超时（5min）按 §5.2 续 kill。
       awaitCompact: this.awaitCompactFor(sid),
@@ -2475,143 +2521,9 @@ export class TabManager {
     });
   }
 
-  /** account-ux U6：**唯一**的「这个会话现在可否一键对齐」谓词——⇄ 显隐、⚠k 计数、批量枚举、
-   *  Ctrl+K 命令(U8) 全走它，避免同一条件写多遍后漂移（D 审计：曾写了两遍半）。
-   *  返回可对齐时的目标账号名，否则 null。in-flight（正在重启）也算不可对齐 → ⇄ 置灰、不重复计数。 */
-  private alignableCurrent(sid: string, tab: Tab): string | null {
-    if (tab.origin === null) return null; // 远端优先：本地会话 A7 前不支持
-    if (tab.status === "archived") return null; // 用户已停跟随 → 不弹破坏性动作
-    if (this.restartingSids.has(sid)) return null; // 正在重启 → 防重入
-    if (!shouldShowAccountBadge(tab.origin, this.accountReadyOrigins)) return null;
-    const current = this.currentByOrigin.get(tab.origin) ?? null;
-    if (!current) return null; // 当前账号未知/不可选（main.ts 已过 isSelectable）→ 不猜
-    const live = this.sessionAccountsByS.get(sid);
-    if (!live || !live.alive || !live.account) return null; // 仅活跃 live（死会话走 resume）
-    if (!detectAccountMismatch(live.account, current)) return null;
-    return current;
-  }
-
-  /** account-ux U6：单会话「用当前账号重启对齐」——tab ⇄ 按钮 / U8 的 Ctrl+K 命令共用入口。
-   *  复用 restartTabWithAccount（含 @ccm_sid 精确守卫 + §5.2 失败语义），不新增编排。
-   *  @returns 是否真的走到了 resume（false=被守卫拒/账号不可用/用户取消/kill 失败）。 */
-  async alignSessionToCurrentAccount(sid: string): Promise<boolean> {
-    const tab = this.tabs.get(sid);
-    if (!tab) return false;
-    const current = this.alignableCurrent(sid, tab);
-    if (!current) return false;
-    return await this.restartTabWithAccount(sid, current, false);
-  }
-
   /** account-ux U8：当前活跃会话 sid（只读投影，供 Ctrl+K / 快捷键判定"对当前会话做某事"）。 */
   activeSessionId(): string | null {
     return this.activeId;
-  }
-
-  /** account-ux U6：可对齐会话的 sid 列表。⚠k 用 `.length`，U8 的 Ctrl+K/汇总浮层用列表本身。 */
-  accountMismatchSids(): string[] {
-    const out: string[] = [];
-    for (const [sid, tab] of this.tabs) {
-      if (this.alignableCurrent(sid, tab)) out.push(sid);
-    }
-    return out;
-  }
-
-  /** account-ux U6：枚举可对齐会话 + 各自目标账号 + 是否空闲（批量分桶用）。 */
-  private accountMismatches(): { sid: string; current: string; idle: boolean }[] {
-    const out: { sid: string; current: string; idle: boolean }[] = [];
-    for (const [sid, tab] of this.tabs) {
-      const current = this.alignableCurrent(sid, tab);
-      if (!current) continue;
-      // 「空闲」用**白名单**判定：会话状态枚举是 busy/idle/shell/waiting（bridge.rs
-      // SessionActivityPayload 透传 CC 官方值，null=旧 CC/远端 v1 无该字段）——只有 idle/shell
-      // （都在等输入）才算"几乎无感"；busy（跑回合中）/ waiting（等权限对话框，重启会丢掉待决策
-      // 弹窗）/ null（未知）一律落第二步确认。破坏性动作上未知即保守。
-      // 注意：`"running"` 是 **subagent** 的状态串（AgentEntry），不是会话状态，别混用。
-      const st = tab.activity?.status ?? null;
-      out.push({ sid, current, idle: st === "idle" || st === "shell" });
-    }
-    return out;
-  }
-
-  /** account-ux U6：不一致活会话数（状态栏 chip ⚠k 计数用）。in-flight 的已被谓词扣掉。 */
-  countAccountMismatches(): number {
-    return this.accountMismatchSids().length;
-  }
-
-  /** account-ux U6：批量把不一致活会话按各自 origin 的当前账号重启对齐。两步确认：先空闲（几乎
-   *  无感），回合进行中的单独第二步确认（默认不含、会打断）。逐会话串行走 restartTabWithAccount
-   *  （继承 §5.2：某会话 kill 失败只中止那一个；@ccm_sid 精确守卫防杀错）。破坏性——不新增语义。 */
-  async alignAllToCurrentAccount(): Promise<void> {
-    // D 审计（重要）：批量可跑数分钟，而 ⚠k 要等下一拍 10s 轮询才降 → 用户很容易再点一次，
-    // 第二批拿着同一份陈旧列表并发 kill/resume，可能把第一批刚 resume 出来的新进程又杀掉。
-    // 且批量传了 confirm:()=>true，第二批全程无人工拦截 → 这里必须自己挡住重入。
-    if (this.aligningBatch) {
-      showActionFailureToast("批量对齐进行中", "上一批还没跑完，等它结束再来。", {
-        level: "info",
-        durationMs: 4000,
-      });
-      return;
-    }
-    const all = this.accountMismatches();
-    if (all.length === 0) return;
-    const label = (m: { sid: string; current: string }): string =>
-      `· ${this.tabs.get(m.sid)?.title ?? m.sid} → ${m.current}`;
-    const idle = all.filter((m) => m.idle);
-    const busy = all.filter((m) => !m.idle);
-    const targets: { sid: string; current: string }[] = [];
-    // 文案必须说真话（D 审计重-2）：对齐 = kill tmux + 重新拉起，**每个会话都会新开一个终端窗口**，
-    // 被 kill 的旧窗口不会自动关（-NoExit）；对话内容从 jsonl 续写，但进程内存态（队列里的输入、
-    // plan 模式、/model、MCP 连接、后台 bash 任务）会丢；正 attach 着的终端会断开。
-    const COST =
-      `\n\n代价：每个会话会新开一个终端窗口（旧窗口被结束但不会自动关闭）；对话内容从 jsonl 续写，` +
-      `但队列里的输入、后台任务、/model 等进程内状态会丢失。批量模式不再逐个确认；` +
-      `若某账号未信任该目录，会在弹出的终端里询问。`;
-    if (idle.length > 0) {
-      const ok = window.confirm(
-        `将按各自的当前账号重启这 ${idle.length} 个**空闲**会话（它们当前在等输入）：\n` +
-          idle.map(label).join("\n") +
-          COST +
-          `\n\n继续？`,
-      );
-      if (!ok) return;
-      targets.push(...idle);
-    }
-    if (busy.length > 0) {
-      const ok2 = window.confirm(
-        `${idle.length > 0 ? "另有 " : ""}${busy.length} 个会话正在回合中或等待弹窗决策，` +
-          `重启会打断当前回合、丢掉待决策的对话框。${idle.length > 0 ? "也" : ""}一起对齐吗？\n` +
-          busy.map(label).join("\n") +
-          (idle.length > 0 ? "" : COST),
-      );
-      if (ok2) targets.push(...busy);
-    }
-    if (targets.length === 0) return;
-    // 串行对齐（重启是重操作，避免同时轰远端；各自成功/失败由 restartTabWithAccount 自身 toast）。
-    // confirm 传 `() => true`：批量层已两步确认，不让 restartWithAccount 再弹 N 个框。
-    this.aligningBatch = true;
-    let done = 0;
-    try {
-      for (const m of targets) {
-        // per-iteration catch：决策④「逐会话独立」目前靠被调方各自 catch，无结构保证；
-        // 将来链上任一步改成抛，整批不该从中间静默断掉。
-        try {
-          if (await this.restartTabWithAccount(m.sid, m.current, false, () => true)) done += 1;
-        } catch (e) {
-          console.warn("alignAll: 会话对齐失败", m.sid, e);
-        }
-      }
-    } finally {
-      this.aligningBatch = false;
-    }
-    // 只报**真结果**：守卫拒绝 / 账号不可用 / kill 失败中止都不算成功（D 审计：曾按发起数报成功，
-    // 最坏是"0 成功 + 一句成功汇总"）。
-    const failed = targets.length - done;
-    showActionFailureToast(
-      failed === 0 ? "批量对齐完成" : "批量对齐部分完成",
-      `已重启对齐 ${done} 个会话` +
-        (failed > 0 ? `；${failed} 个未执行（原因见各自提示）。` : "。"),
-      { level: failed === 0 ? "info" : "error", durationMs: failed === 0 ? 5000 : 8000 },
-    );
   }
 
   /** F79(#38)：杀死远端 tmux 会话——二次确认后 kill-session。变灰由 #60-A 对账兜（不主动 archive，守 §24）。
@@ -2819,18 +2731,6 @@ export class TabManager {
     acctBadge.style.display = "none";
     root.appendChild(acctBadge);
 
-    // account-ux U6：⇄ 换号对齐按钮。默认隐藏，updateAccountBadge 仅对"活跃 live && 账号≠当前账号"显。
-    const alignBtn = document.createElement("span");
-    alignBtn.className = "tab-align-btn";
-    alignBtn.textContent = "⇄";
-    alignBtn.setAttribute("role", "button");
-    alignBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      void this.alignSessionToCurrentAccount(sid);
-    });
-    alignBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-    root.appendChild(alignBtn);
-
     const badge = document.createElement("span");
     badge.className = "tab-badge";
     root.appendChild(badge);
@@ -2918,20 +2818,18 @@ export class TabManager {
       }
       // F37：灰 tab（会话已结束）右键手动 resume——不用绕去历史浏览器。
       // F41 起本地与远端都是一键拉起新终端（远端=wt.exe 跑 ssh -t，失败才回退复制命令）。
-      // F52：远端归档 tab 再并列一个「Resume（tmux）」——在远端 tmux 会话里幂等 resume,
-      // resume 完人在 tmux 里(断线可 F51 attach 回来);本地归档仍单「Resume」。
+      // F09：远端归档 tab 收敛成 1 个「Resume」一级项 + 二级 flyout（容器×账号，MASTERPLAN
+      // §2.6）——顶层 tmux/直连两项跟随默认账号（sticky pin，同旧版 plain「Resume（tmux/直连）」
+      // 行为逐字节保持）；账号项（基座/具名账号，各自再嵌一层容器子选择）由 showTabContextMenu
+      // 后**异步追加**（appendAccountMenuItems→updateTabContextMenuItem，复用 F51 代次守卫），
+      // 消除同步 peek 的冷缓存分裂。本地归档仍单「Resume」（无容器/账号轴）。
       if (t?.status === "archived") {
         if (t.origin !== null) {
           items.push({
-            label: "Resume（直连）",
-            onClick: () => void this.resumeTab(sid),
+            id: "resume",
+            label: "Resume",
+            submenu: this.buildResumeSubmenu(sid, undefined),
           });
-          items.push({
-            label: "Resume（tmux）",
-            onClick: () => void this.resumeTabTmux(sid),
-          });
-          // A4/A5：账号项（归档→「用账号 X resume」）由 showTabContextMenu 后**异步追加**
-          // （appendAccountMenuItems，复用 F51 代次守卫），消除同步 peek 的冷缓存分裂。
         } else {
           items.push({
             label: "Resume",
@@ -3044,7 +2942,7 @@ export class TabManager {
       }
     });
 
-    return { root, label, badge, acctBadge, alignBtn, cwdBtn };
+    return { root, label, badge, acctBadge, cwdBtn };
   }
 
   private updateTabButton(refs: TabButtonRefs, sid: string, tab: Tab): void {
@@ -3105,15 +3003,40 @@ interface TabMenuItem {
   enabled?: boolean; // 缺省 true;false = 禁用占位
   danger?: boolean; // F79：破坏性项（杀会话）红色样式
   title?: string; // A5：hover tooltip（如 compact 顺序说明）
-  onClick: () => void;
+  onClick?: () => void; // 有 submenu 时不需要——点击/悬停展开子菜单而非执行动作
+  /** F09：二级 flyout（MASTERPLAN §2.6"动作 × 修饰"，R4 悬停+点击都可触发展开）。
+   *  有 submenu 时 `onClick` 被忽略——这一级只负责展开，不执行动作；真正的动作在叶子项上。 */
+  submenu?: TabMenuItem[];
+  /** F09 Phase D 审计（UX，建议）：纯展示性分隔线——不可点、不响应悬停，只用来在 flyout 里把
+   *  "跟随默认账号"的顶层选项和"换账号"的具名列表视觉分组，降低扫描成本（不增加点击次数）。
+   *  为真时其余字段（onClick/submenu/danger 等）都被忽略。 */
+  divider?: boolean;
 }
 let activeTabMenu: HTMLElement | null = null;
-const activeTabMenuItems = new Map<string, HTMLButtonElement>();
+const activeTabMenuItems = new Map<string, HTMLElement>();
 /** F51：菜单代次令牌——每次开/关菜单自增。在飞的异步就绪(attach 反查)回来时比对代次,
  * 只作用于发起它的那一代菜单;换/关菜单后旧查询整体 no-op(防 R-1 跨 tab 串味错配)。 */
 let tabMenuGeneration = 0;
+/** F09 Phase D 审计（后端架构，重要）：本代菜单存活期间所有 submenu 的展开/收起定时器——
+ *  `closeTabContextMenu` 统一清空，防止用户点外部/Esc 关掉整个菜单后，某个 pending 定时器
+ *  仍在 150-250ms 后对已从文档树摘除的 wrap 执行 `classList` 操作（功能上是良性 no-op，
+ *  但属未清理的悬空定时器）。 */
+let pendingMenuTimers: number[] = [];
 
-function makeTabMenuButton(it: TabMenuItem): HTMLButtonElement {
+/** F09：带 submenu 的项渲染成 `.tab-context-menu-item-wrap`（按钮 + 侧边 flyout 面板），
+ *  悬停延迟 150ms 展开、点击也可切换展开（R4）；离开延迟 250ms 收起（不对称是有意的——
+ *  Phase D 审计（UX，重要）指出零延迟收起会命中经典"safe triangle"问题：账号数≥2 时
+ *  Resume flyout 是一列都带 submenu 的项，用户从某账号项斜向移动鼠标去够它自己 submenu
+ *  里的选项，路径中途经过下一个账号项就会被判定"已离开"、submenu 瞬间关闭。给收起也一个
+ *  可取消的宽限期，鼠标真落进目标区域后被新一轮 `mouseenter` 清掉，不会误关）。
+ *  叶子项（无 submenu）行为不变——仍是裸 `<button class="tab-context-menu-item">`，
+ *  点击执行 `onClick` 并关闭整个菜单。 */
+function makeTabMenuButton(it: TabMenuItem): HTMLElement {
+  if (it.divider) {
+    const sep = document.createElement("div");
+    sep.className = "tab-context-menu-divider";
+    return sep;
+  }
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "tab-context-menu-item";
@@ -3122,13 +3045,74 @@ function makeTabMenuButton(it: TabMenuItem): HTMLButtonElement {
   if (it.title) btn.title = it.title;
   const enabled = it.enabled !== false;
   btn.disabled = !enabled;
+
+  if (it.submenu && it.submenu.length > 0) {
+    btn.classList.add("has-submenu");
+    const wrap = document.createElement("div");
+    wrap.className = "tab-context-menu-item-wrap";
+    wrap.appendChild(btn);
+    const flyout = document.createElement("div");
+    flyout.className = "tab-context-menu tab-context-submenu";
+    for (const sub of it.submenu) flyout.appendChild(makeTabMenuButton(sub));
+    wrap.appendChild(flyout);
+    if (enabled) {
+      let openTimer: number | null = null;
+      let closeTimer: number | null = null;
+      const clearPending = (t: number | null): void => {
+        if (t == null) return;
+        window.clearTimeout(t);
+        pendingMenuTimers = pendingMenuTimers.filter((id) => id !== t);
+      };
+      const open = (): void => {
+        flipSubmenuIfOverflowing(wrap, flyout);
+        wrap.classList.add("is-open");
+      };
+      wrap.addEventListener("mouseenter", () => {
+        clearPending(openTimer);
+        clearPending(closeTimer);
+        closeTimer = null;
+        openTimer = window.setTimeout(open, 150);
+        pendingMenuTimers.push(openTimer);
+      });
+      wrap.addEventListener("mouseleave", () => {
+        clearPending(openTimer);
+        openTimer = null;
+        closeTimer = window.setTimeout(() => wrap.classList.remove("is-open"), 250);
+        pendingMenuTimers.push(closeTimer);
+      });
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation(); // 别冒泡到 onDocPointerForMenu 把整个菜单关掉
+        if (wrap.classList.contains("is-open")) {
+          wrap.classList.remove("is-open");
+        } else {
+          open();
+        }
+      });
+    }
+    return wrap;
+  }
+
   if (enabled) {
     btn.addEventListener("click", () => {
       closeTabContextMenu();
-      it.onClick();
+      it.onClick?.();
     });
   }
   return btn;
+}
+
+/** F09 Phase D 审计（UX，重要）：级联 flyout 没有视口边缘碰撞检测——tab-bar 可拖到 340px 宽
+ *  （`main.ts::clampW` 的硬上限），三级级联（一级菜单+Resume flyout+账号自身 submenu）从
+ *  x≈340px 起算需要窗口宽度 ≳790px 才保证不溢出右边界，窄窗口/宽 tab-bar 这两个正常操作
+ *  组合起来就会让最深一级 flyout 部分或整体跑出屏幕、变成死菜单。每次展开前（不是持续轮询）
+ *  实测一次 `getBoundingClientRect()`，右侧放不下就加 `.flip-left`（CSS 改成向左展开）。 */
+function flipSubmenuIfOverflowing(wrap: HTMLElement, flyout: HTMLElement): void {
+  flyout.classList.remove("flip-left"); // 先复位，按当前真实位置重新判断（tab-bar 宽度可变）
+  const wrapRect = wrap.getBoundingClientRect();
+  const flyoutWidth = flyout.getBoundingClientRect().width || 150; // 未展开时宽度可能是 0，给合理估计
+  if (wrapRect.right + flyoutWidth > window.innerWidth) {
+    flyout.classList.add("flip-left");
+  }
 }
 
 function showTabContextMenu(x: number, y: number, items: TabMenuItem[]): void {
@@ -3152,11 +3136,17 @@ function showTabContextMenu(x: number, y: number, items: TabMenuItem[]): void {
   }, 0);
 }
 
-/** F51：把已打开菜单里某 id 项替换为新项(异步就绪→可点);菜单已关或无此 id 则 no-op。 */
+/** F51：把已打开菜单里某 id 项替换为新项(异步就绪→可点);菜单已关或无此 id 则 no-op。
+ *  F09 Phase D 审计（UX，阻塞）：若旧项当前正展开着 flyout（用户已 hover/点开），替换后的新
+ *  元素默认是关闭态——鼠标没动但 flyout 会无预警"啪"地收起（浏览器不会因 DOM 被替换重新
+ *  派发 mouseenter）。直接命中 R4"悬停+点击都可触发"这条契约，且越熟练的用户越容易踩中
+ *  （账号数据还没到就已经手快点开了）。替换前记下展开态，替换后原样带回去。 */
 function updateTabContextMenuItem(id: string, item: TabMenuItem): void {
   const old = activeTabMenuItems.get(id);
   if (!old || !activeTabMenu) return;
+  const wasOpen = old.classList.contains("is-open");
   const btn = makeTabMenuButton(item);
+  if (wasOpen) btn.classList.add("is-open");
   activeTabMenuItems.set(item.id ?? id, btn);
   old.replaceWith(btn);
 }
@@ -3182,6 +3172,10 @@ function closeTabContextMenu(): void {
   activeTabMenu.remove();
   activeTabMenu = null;
   activeTabMenuItems.clear();
+  // F09 Phase D 审计（后端架构，重要）：清掉本代菜单存活期间所有 submenu 的展开/收起定时器，
+  // 防止用户点外部/Esc 关掉整个菜单后，某个 pending 定时器仍在之后对已摘除的 wrap 操作。
+  for (const t of pendingMenuTimers) window.clearTimeout(t);
+  pendingMenuTimers = [];
   tabMenuGeneration++; // 关菜单也让在飞的异步就绪回调失效(不改别的菜单)
   window.removeEventListener("pointerdown", onDocPointerForMenu, true);
   window.removeEventListener("keydown", onKeyForMenu, true);

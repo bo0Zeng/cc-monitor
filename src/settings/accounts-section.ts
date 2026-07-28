@@ -358,8 +358,9 @@ export class AccountsSection {
   /**
    * account-ux U7：顶部「当前账号」横幅——把 chip / tab 徽章上那个概念在设置里讲清楚:
    * 它管什么(新会话 + 没指定过账号的 resume)、不管什么(正在跑的会话)。
-   * 当前账号**不可选**(未登录 / in-place / 目录缺失)时不装作有——那种状态下 U6 的对齐面本来
-   * 就整体休眠(见 accounts.ts alignableCurrentAccount),横幅得如实说,否则用户会以为它在生效。
+   * 当前账号**不可选**(未登录 / in-place / 目录缺失)时不装作有——那种状态下账号徽章的
+   * "不一致"判定本来就不生效(见 accounts.ts currentAccountForBadge),横幅得如实说,否则用户
+   * 会以为它在生效。
    */
   private renderCurrentBanner(def: Account | null): HTMLElement {
     const box = document.createElement("div");
@@ -421,6 +422,15 @@ export class AccountsSection {
     hint.textContent =
       "切换当前账号只改本机设置：不动远端、不碰凭据、不重启任何东西。未登录的账号可点它那行的「去登录」在终端里 /login。";
     this.body.appendChild(hint);
+
+    // F09 Phase D 审计（UX，建议）：本仓库没有任何 changelog/首次运行提示机制，批量对齐这个
+    // 能力随 F09 整体删除后没有任何地方告诉老用户它去哪了——用户在 Ctrl+K 里搜不到会以为是
+    // bug。加一行最低成本的静态提示，别为这一件事新建一整套提示基础设施。
+    const removedHint = document.createElement("div");
+    removedHint.className = "accounts-hint";
+    removedHint.textContent =
+      "提示：批量对齐（曾经的「⚠k」「⇄」和命令面板里的对齐命令）已下线，请在会话右键菜单的「Restart」里逐个切换账号。";
+    this.body.appendChild(removedHint);
 
     // U8：数的是**可选**账号数,不是总数——1 个 isolated + 1 个 in-place 逃生口时总数=2 但
     // 你其实还只有一个能用的号,此刻"加第二个账号"仍是正路。与 accountColorsActive 同源判据。

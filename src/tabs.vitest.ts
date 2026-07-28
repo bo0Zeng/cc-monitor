@@ -7,7 +7,7 @@
 // 渲染 / Tauri IPC），无法像现有 *.test.ts 那样在裸 node 里测。这里用 jsdom 提供真 DOM、
 // 把重协作者 mock 成空壳，于是能在真 TabManager 实例上断言状态翻转。
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // --- 把重/IPC 协作者 mock 掉，让 TabManager 能在 jsdom 下实例化（避免拉 marked/katex/IPC）---
 vi.mock("@tauri-apps/api/core", () => ({
@@ -1288,7 +1288,7 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
   });
 });
 
-describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
+describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（tmux/直连）", () => {
   let tm: TabManager;
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1306,6 +1306,9 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
         new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }),
       );
   };
+  // F09：querySelectorAll 会连带找到嵌套 flyout 里的叶子项（jsdom 不管 CSS display:none，
+  // 结构上它们本来就在 DOM 里）——这正是测试想要的：不用先模拟 hover/click 展开就能直接
+  // 断言/点击叶子，同今天真实用户"点开 Resume 再点 tmux"最终触达的是同一个按钮。
   const menuLabels = (): string[] =>
     [...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? [])].map(
       (b) => b.textContent ?? "",
@@ -1317,16 +1320,19 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
     btn?.click();
   };
 
-  it("归档远端 tab → 「Resume（直连）」+「Resume（tmux）」并列", async () => {
+  it("归档远端 tab → 收敛成 1 个「Resume」一级项 + flyout（tmux/直连），旧扁平字符串消失", async () => {
     tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
     tm.archiveTab("r1");
     rightClick("r1");
     const labels = menuLabels();
-    expect(labels).toContain("Resume（直连）");
-    expect(labels).toContain("Resume（tmux）");
-    // tmux 项 → 先查 list_remote_tmux(默认 mock 返 undefined = 无活会话)→ 起全新 resume,
+    expect(labels).toContain("Resume");
+    expect(labels).toContain("tmux");
+    expect(labels).toContain("直连（不建 tmux）");
+    expect(labels).not.toContain("Resume（直连）");
+    expect(labels).not.toContain("Resume（tmux）");
+    // tmux 叶子 → 先查 list_remote_tmux(默认 mock 返 undefined = 无活会话)→ 起全新 resume,
     // 带第 5 个不撞名 name="cc-r1"(F74:灰会话 resume 不复用可能漂移的名)。
-    clickItem("Resume（tmux）");
+    clickItem("tmux");
     await flushMicro();
     await flushMicro();
     // account-ux U3：归档 tmux resume 也走 withAccount follow → 第 6 参 configDir（空 mock → undefined）。
@@ -1340,15 +1346,15 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
       undefined,
       undefined,
     );
-    // 直连项 → runRemoteResume
+    // 直连叶子 → runRemoteResume
     rightClick("r1");
-    clickItem("Resume（直连）");
+    clickItem("直连（不建 tmux）");
     await flushMicro();
     // A4：默认 resume（无账号）→ 第 5 参 configDir=undefined（不注入，行为与旧版等价）。
     expect(runRemoteResume).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", undefined, undefined, undefined);
   });
 
-  it("F74 Resume（tmux）:@ccm_sid 命中活会话 → 精确 attach 它(不撞同目录漂移分支),不重开", async () => {
+  it("F74 tmux 叶子:@ccm_sid 命中活会话 → 精确 attach 它(不撞同目录漂移分支),不重开", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
@@ -1361,7 +1367,7 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
     tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
     tm.archiveTab("r1");
     rightClick("r1");
-    clickItem("Resume（tmux）");
+    clickItem("tmux");
     await flushMicro();
     await flushMicro();
     // 精确 attach 到 sid 命中的 proj_cc——不是列在前面的漂移分支 proj_cc-2;且不走 resume。
@@ -1369,7 +1375,7 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
     expect(runRemoteResumeTmux).not.toHaveBeenCalled();
   });
 
-  it("F74 Resume（tmux）:@ccm_sid 已知但无一命中(原名被漂移会话占着)→ 起全新 resume 挑不撞名", async () => {
+  it("F74 tmux 叶子:@ccm_sid 已知但无一命中(原名被漂移会话占着)→ 起全新 resume 挑不撞名", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
@@ -1380,7 +1386,7 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
     tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
     tm.archiveTab("r1");
     rightClick("r1");
-    clickItem("Resume（tmux）");
+    clickItem("tmux");
     await flushMicro();
     await flushMicro();
     expect(runRemoteAttach).not.toHaveBeenCalled();
@@ -1388,7 +1394,7 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
     expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "cc-r1-2", undefined, undefined, undefined);
   });
 
-  it("F74 Resume（tmux）:老 wrapper(整表无 @ccm_sid)→ 起全新 fresh resume,不 attach 不确定会话", async () => {
+  it("F74 tmux 叶子:老 wrapper(整表无 @ccm_sid)→ 起全新 fresh resume,不 attach 不确定会话", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
@@ -1400,7 +1406,7 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
     tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
     tm.archiveTab("r1");
     rightClick("r1");
-    clickItem("Resume（tmux）");
+    clickItem("tmux");
     await flushMicro();
     await flushMicro();
     // findClaudeTmux 按 cwd 兜底命中 proj_cc,但 live.sid(null)!==sid → **不 attach 不确定的会话**,
@@ -1409,14 +1415,280 @@ describe("F52 归档远端 tab 右键：Resume 直连 + tmux 并列", () => {
     expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "cc-r1", undefined, undefined, undefined);
   });
 
-  it("归档本地 tab → 仍单「Resume」(无 tmux 项)", () => {
+  it("归档本地 tab → 仍单「Resume」(无 flyout，无 tmux/直连叶子)", () => {
     tm.ensureTab("l1", "/home/u/p", "p", 0, null);
     tm.archiveTab("l1");
     rightClick("l1");
     const labels = menuLabels();
     expect(labels).toContain("Resume");
-    expect(labels).not.toContain("Resume（tmux）");
-    expect(labels).not.toContain("Resume（直连）");
+    expect(labels).not.toContain("tmux");
+    expect(labels).not.toContain("直连（不建 tmux）");
+  });
+
+  it("F09：账号数据就绪后（恰好 1 个可选账号）→ Resume flyout 追加「基座（不隔离）」，不追加具名账号", async () => {
+    invalidateAccountsCache(); // 防陈旧缓存命中挡住下面的自定义 mock
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_accounts"
+        ? Promise.resolve({
+            available: true,
+            error: null,
+            meta: { enabled: true, acctsDir: "/h/.claude-accts", manifestPath: "/h/.claude-accts/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
+            accounts: [{ name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true }],
+          })
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
+    tm.archiveTab("r1");
+    rightClick("r1");
+    await flushMicro();
+    await flushMicro();
+    const labels = menuLabels();
+    expect(labels).toContain("基座（不隔离）");
+    // 只有 1 个可选账号 → 不追加具名账号项（同旧版阈值，见 launch-menu.ts）。
+    expect(labels).not.toContain("z");
+    clickItem("基座（不隔离）");
+    // 基座项本身也带 submenu（tmux/直连），点它只展开/切换，不直接执行——不该调用任何 resume。
+    expect(runRemoteResumeTmux).not.toHaveBeenCalled();
+    expect(runRemoteResume).not.toHaveBeenCalled();
+    invalidateAccountsCache(); // 别泄漏进后续测试
+  });
+
+  it("F09：≥2 可选账号 → Resume flyout 含每个具名账号，账号×容器真正正交（此前实现缺口已补）", async () => {
+    invalidateAccountsCache();
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_accounts"
+        ? Promise.resolve({
+            available: true,
+            error: null,
+            meta: { enabled: true, acctsDir: "/h/.claude-accts", manifestPath: "/h/.claude-accts/accounts.json", updatedAt: null, sharedStore: null, count: 2, error: null },
+            accounts: [
+              { name: "z", email: "z@x.edu", configDir: "/h/.claude-accts/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true },
+              { name: "b", email: "b@x.edu", configDir: "/h/.claude-accts/b", isDefault: false, mode: "isolated", exists: true, loggedIn: true },
+            ],
+          })
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
+    tm.archiveTab("r1");
+    rightClick("r1");
+    await flushMicro();
+    await flushMicro();
+    const labels = menuLabels();
+    expect(labels).toContain("z");
+    expect(labels).toContain("b");
+    // 具名账号项各自也带 tmux/直连子选择——用 querySelectorAll 能拿到的叶子总数量佐证（顶层
+    // tmux/直连 2 个 + 基座下 2 个 + z 下 2 个 + b 下 2 个 = 8 个 container 叶子）。
+    const containerLeafCount = labels.filter((l) => l === "tmux" || l === "直连（不建 tmux）").length;
+    expect(containerLeafCount).toBe(8);
+    invalidateAccountsCache();
+  });
+
+  // F09 Phase D 审计（UX，阻塞）：用户手快，右键后账号数据（异步 fetchAccounts）还没回来就已经
+  // hover 展开了 Resume 的顶层 flyout（此时只有 tmux/直连两项）；账号数据一到，
+  // appendAccountMenuItems 用 updateTabContextMenuItem 整体替换 Resume 这个 DOM 节点，新节点
+  // 默认无 is-open——flyout 会在鼠标没动的情况下无预警"啪"地收起。直接命中 R4"悬停+点击都可
+  // 触发"这条契约。用假计时器复现"先 hover 展开、后台数据才到达"这个时序。
+  it("F09：账号数据到达前已 hover 展开 Resume flyout → 数据到达后 flyout 仍保持展开（不无故收起）", async () => {
+    invalidateAccountsCache();
+    vi.useFakeTimers();
+    try {
+      let resolveAccounts!: (v: unknown) => void;
+      const pending = new Promise((r) => (resolveAccounts = r));
+      vi.mocked(invoke).mockImplementation((cmd: string) =>
+        cmd === "list_remote_accounts" ? pending : Promise.resolve(undefined),
+      );
+      tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
+      tm.archiveTab("r1");
+      rightClick("r1");
+      const resumeWrap = document.body.querySelector<HTMLElement>(
+        ".tab-context-menu > .tab-context-menu-item-wrap",
+      );
+      expect(resumeWrap).not.toBeNull();
+      resumeWrap!.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false }));
+      await vi.advanceTimersByTimeAsync(150); // 展开延迟
+      expect(resumeWrap!.classList.contains("is-open")).toBe(true);
+      // 账号数据这时才到达（fetchAccounts resolve）→ appendAccountMenuItems 换掉 Resume 节点。
+      resolveAccounts({
+        available: true,
+        error: null,
+        meta: { enabled: true, acctsDir: "/h", manifestPath: "/h/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
+        accounts: [{ name: "z", email: "z@x", configDir: "/h/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true }],
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(0);
+      const newWrap = document.body.querySelector<HTMLElement>(
+        ".tab-context-menu > .tab-context-menu-item-wrap",
+      );
+      expect(newWrap).not.toBeNull();
+      expect(newWrap!.classList.contains("is-open")).toBe(true); // 没有无故收起
+    } finally {
+      vi.useRealTimers();
+      invalidateAccountsCache();
+    }
+  });
+
+  // F09 Phase D 审计（UX，重要）：tab-bar 可拖到 340px 宽（main.ts::clampW 硬上限），三级级联
+  // 从这个位置起算，窄窗口下最深一级 flyout 会溢出右边界变死菜单。用 stub 过的
+  // getBoundingClientRect 模拟"右侧放不下"/"放得下"两种视口几何，锁定 flipSubmenuIfOverflowing
+  // 的判断逻辑（不是测真实像素渲染，是测这个函数会不会在该加 flip-left 时加、不该加时不加）。
+  it("F09：右侧空间不够时 Resume flyout 加 flip-left，够用时不加", async () => {
+    invalidateAccountsCache();
+    const origInnerWidth = window.innerWidth;
+    const origGBCR = HTMLElement.prototype.getBoundingClientRect;
+    try {
+      Object.defineProperty(window, "innerWidth", { value: 400, configurable: true });
+      tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
+      tm.archiveTab("r1");
+      rightClick("r1");
+      const resumeWrap = document.body.querySelector<HTMLElement>(
+        ".tab-context-menu > .tab-context-menu-item-wrap",
+      );
+      const resumeBtn = resumeWrap!.querySelector<HTMLButtonElement>(":scope > button")!;
+      const flyout = resumeWrap!.querySelector<HTMLElement>(".tab-context-submenu")!;
+
+      // 场景①：wrap 贴着右边界（right=380），flyout 估宽 150 → 380+150=530 > innerWidth(400) → 该 flip。
+      HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+        if (this === resumeWrap) return { right: 380 } as DOMRect;
+        if (this === flyout) return { width: 0 } as DOMRect; // 未展开时宽度未知，函数内部兜底成 150
+        return origGBCR.call(this);
+      };
+      resumeBtn.click();
+      expect(flyout.classList.contains("flip-left")).toBe(true);
+      resumeBtn.click(); // 收起，复位状态
+
+      // 场景②：wrap 靠左（right=50），同样估宽 150 → 50+150=200 < innerWidth(400) → 不该 flip。
+      HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+        if (this === resumeWrap) return { right: 50 } as DOMRect;
+        if (this === flyout) return { width: 0 } as DOMRect;
+        return origGBCR.call(this);
+      };
+      resumeBtn.click();
+      expect(flyout.classList.contains("flip-left")).toBe(false);
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = origGBCR;
+      Object.defineProperty(window, "innerWidth", { value: origInnerWidth, configurable: true });
+      invalidateAccountsCache();
+    }
+  });
+});
+
+describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无容器轴）", () => {
+  let tm: TabManager;
+  const sess = (over: Record<string, unknown> = {}) => ({
+    name: "cc-m1",
+    path: "/w",
+    command: "claude",
+    attached: false,
+    windows: 1,
+    sid: "m1",
+    ...over,
+  });
+  const rightClick = (sid: string): void => {
+    (tm as unknown as { tabButtons: Map<string, { root: HTMLElement }> }).tabButtons
+      .get(sid)!
+      .root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+  };
+  const menuLabels = (): string[] =>
+    [...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? [])].map(
+      (b) => b.textContent ?? "",
+    );
+  const clickItem = (label: string): void => {
+    const btn = [
+      ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? []),
+    ].find((b) => b.textContent === label) as HTMLButtonElement | undefined;
+    btn?.click();
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    invalidateAccountsCache();
+    tm = makeTM();
+  });
+
+  it("<2 可选账号 → 不出现「Restart」（同旧版阈值，不加噪）", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_accounts"
+        ? Promise.resolve({
+            available: true,
+            error: null,
+            meta: { enabled: true, acctsDir: "/h", manifestPath: "/h/accounts.json", updatedAt: null, sharedStore: null, count: 1, error: null },
+            accounts: [{ name: "z", email: "z@x", configDir: "/h/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true }],
+          })
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    rightClick("m1");
+    await flushMicro();
+    await flushMicro();
+    expect(menuLabels()).not.toContain("Restart（换号重启）");
+  });
+
+  it("≥2 可选账号 → 「Restart」一级项 + 每账号 flyout（直接重启/先压缩再重启），无 tmux/直连子选择", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "list_remote_accounts") {
+        return Promise.resolve({
+          available: true,
+          error: null,
+          meta: { enabled: true, acctsDir: "/h", manifestPath: "/h/accounts.json", updatedAt: null, sharedStore: null, count: 2, error: null },
+          accounts: [
+            { name: "z", email: "z@x", configDir: "/h/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true },
+            { name: "b", email: "b@x", configDir: "/h/b", isDefault: false, mode: "isolated", exists: true, loggedIn: true },
+          ],
+        });
+      }
+      if (cmd === "list_remote_tmux") return Promise.resolve([sess()]);
+      return Promise.resolve(undefined);
+    });
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    rightClick("m1");
+    await flushMicro();
+    await flushMicro();
+    const labels = menuLabels();
+    expect(labels).toContain("Restart（换号重启）");
+    expect(labels).toContain("z");
+    expect(labels).toContain("b");
+    expect(labels).not.toContain("tmux");
+    expect(labels).not.toContain("直连（不建 tmux）");
+    expect(labels).not.toContain("基座（不隔离）"); // restart 从不给基座逃生口（旧版行为）
+    expect(labels).toContain("直接重启");
+    expect(labels).toContain("先压缩上下文再重启");
+
+    clickItem("直接重启");
+    await flushMicro();
+    expect(restartWithAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ origin: "aya", sessionId: "m1", accountName: "z", compactFirst: false }),
+    );
+  });
+
+  // F09 Phase D 审计（UX，重要）：⇄ 按钮删除前，重启中的会话至少有"⇄ 立刻置灰"这个视觉信号；
+  // 现在菜单是唯一入口，若不禁用，点了会静默命中 in-flight 守卫——菜单应提前呈现"当前不可点"。
+  it("该会话正在重启中 → Restart 一级项禁用（不是点了才知道不可用）", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "list_remote_accounts") {
+        return Promise.resolve({
+          available: true,
+          error: null,
+          meta: { enabled: true, acctsDir: "/h", manifestPath: "/h/accounts.json", updatedAt: null, sharedStore: null, count: 2, error: null },
+          accounts: [
+            { name: "z", email: "z@x", configDir: "/h/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true },
+            { name: "b", email: "b@x", configDir: "/h/b", isDefault: false, mode: "isolated", exists: true, loggedIn: true },
+          ],
+        });
+      }
+      if (cmd === "list_remote_tmux") return Promise.resolve([sess()]);
+      return Promise.resolve(undefined);
+    });
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    (tm as unknown as { restartingSids: Set<string> }).restartingSids.add("m1");
+    rightClick("m1");
+    await flushMicro();
+    await flushMicro();
+    const restartBtn = [
+      ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? []),
+    ].find((b) => b.textContent === "Restart（换号重启）") as HTMLButtonElement | undefined;
+    expect(restartBtn).not.toBeUndefined();
+    expect(restartBtn?.disabled).toBe(true);
   });
 });
 
@@ -1994,6 +2266,29 @@ describe("A5 restartTabWithAccount 阻塞守卫（精确 @ccm_sid 命中才动�
       expect.objectContaining({ level: "info" }),
     );
   });
+
+  // F09 Phase D 审计（UX，重要）：⇄ 按钮删除后，命中 in-flight 守卫曾经完全静默——右键菜单是
+  // 唯一入口，点了却毫无反应（含最长 5 分钟 compact 等待窗口），用户大概率以为没点中、再点
+  // 一次。已修：给个明确 toast。
+  it("同一 sid 重启进行中时再次调用 → 拒绝且给出明确 toast（不再静默无反应）", async () => {
+    let resolveTmux!: (v: unknown) => void;
+    const pending = new Promise((r) => (resolveTmux = r));
+    tm.ensureTab("target-sid", "/home/pi/proj", "/p/t.jsonl", 0, "aya");
+    (invoke as unknown as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) =>
+      cmd === "list_remote_tmux" ? pending : Promise.resolve(undefined),
+    );
+    const first = (tm as unknown as Priv).restartTabWithAccount("target-sid", "z", false);
+    const second = await (tm as unknown as Priv).restartTabWithAccount("target-sid", "z", false);
+    expect(second).toBe(false);
+    expect(showActionFailureToast).toHaveBeenCalledWith(
+      "正在重启中",
+      expect.stringContaining("还没完成"),
+      expect.objectContaining({ level: "info" }),
+    );
+    expect(restartSpy).not.toHaveBeenCalled(); // 第二次调用不该触发编排器
+    resolveTmux([]);
+    await first;
+  });
 });
 
 describe("account-ux U5 tab 徽章「信息才显」", () => {
@@ -2030,10 +2325,15 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
     expect(el?.querySelector(".acct-avatar")).not.toBeNull();
     expect(el?.querySelector(".acct-avatar.ghost")).toBeNull(); // live = 实心
   });
-  it("会话账号 == 当前账号 → 不挂徽章", () => {
+  // F09（R7 语义反转）：徽章从"仅不一致才挂"变成"账号已知即恒显示身份"——一致态也挂头像，
+  // 只是 tooltip 不带"不一致"后缀（视觉区分靠 live 实心/last 幽灵，不是挂/不挂本身）。
+  it("会话账号 == 当前账号 → 仍挂徽章（恒显身份），tooltip 不含「不一致」", () => {
     tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "aya");
     feed([liveRow("r1", "z")], new Map(), new Map([["aya", "z"]]));
-    expect(badge()?.style.display).toBe("none");
+    const el = badge();
+    expect(el?.style.display).not.toBe("none");
+    expect(el?.querySelector(".acct-avatar")).not.toBeNull();
+    expect(el?.title).not.toContain("不一致");
   });
   it("lastAccount 软来源且 != 当前 → 幽灵头像", () => {
     tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "aya");
@@ -2047,311 +2347,12 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
     feed([], new Map(), new Map([["aya", "z"]]));
     expect(badge()?.style.display).toBe("none");
   });
-  it("当前账号未就绪(currentByOrigin 无该 origin) → 不猜、不挂", () => {
+  it("当前账号未就绪(currentByOrigin 无该 origin) → 仍挂徽章（会话自己的账号已知，身份展示不需要先知道 current），但不判定为不一致（不猜）", () => {
     tm.ensureTab("r1", "/w", "/p/r1.jsonl", 0, "aya");
     feed([liveRow("r1", "b")], new Map(), new Map()); // 无 current
-    expect(badge()?.style.display).toBe("none");
+    const el = badge();
+    expect(el?.style.display).not.toBe("none");
+    expect(el?.title).not.toContain("不一致");
   });
 
-});
-
-describe("account-ux U6 不一致检测 + 一键对齐", () => {
-  const restartSpy = restartWithAccount as unknown as ReturnType<typeof vi.fn>;
-  const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
-  type Priv6 = {
-    countAccountMismatches(): number;
-    accountMismatchSids(): string[];
-    alignAllToCurrentAccount(): Promise<void>;
-    alignSessionToCurrentAccount(sid: string): Promise<boolean>;
-  };
-  let tm: TabManager;
-  let confirmSpy: ReturnType<typeof vi.spyOn>;
-  const priv = (): Priv6 => tm as unknown as Priv6;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    tm = makeTM();
-    confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    restartSpy.mockResolvedValue(true); // 默认「真的重启成功了」，失败态由用例各自覆写
-    // 所有会话都精确命中 @ccm_sid（否则 restartTabWithAccount 的守卫会拒），tmux 名按 sid 派生。
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "list_remote_tmux"
-        ? Promise.resolve(
-            ["m1", "m2", "m3"].map((s) => ({
-              name: `cc-${s}`,
-              path: "/w",
-              command: "claude",
-              attached: false,
-              windows: 1,
-              sid: s,
-            })),
-          )
-        : Promise.resolve(undefined),
-    );
-  });
-  // mockImplementation 不被 clearAllMocks 清（本仓 vitest.config 也没开 mockReset）——
-  // 不自己收尾就会渗给后面新增的 describe（U3 审计已点名过这个坑）。
-  afterEach(() => {
-    confirmSpy.mockRestore();
-    invokeMock.mockReset();
-    restartSpy.mockReset();
-  });
-
-  const liveRow = (sid: string, account: string, alive = true) => ({
-    pid: 1,
-    sessionId: sid,
-    cwd: "/w",
-    configDir: `/h/${account}`,
-    account,
-    bare: false,
-    alive,
-  });
-  const feed = (rows: ReturnType<typeof liveRow>[]): void =>
-    tm.setSessionAccounts(
-      rows,
-      new Map(),
-      new Map(),
-      new Set(["aya"]),
-      new Map([["aya", "z"]]),
-    );
-  const alignBtn = (): HTMLElement | null =>
-    document.body.querySelector<HTMLElement>(".tab-align-btn");
-  /** ⇄ 是否"够格显示"——JS 只打 .is-eligible，真正显隐交给 CSS 的 :hover（jsdom 里测不到 hover）。 */
-  const eligible = (): boolean => alignBtn()?.classList.contains("is-eligible") ?? false;
-  const setActivity = (sid: string, status: string | null): void => {
-    (tm as unknown as { tabs: Map<string, Tab> }).tabs.get(sid)!.activity =
-      status === null ? null : ({ status, waitingFor: null } as never);
-  };
-
-  // ---------------------------------------------------------------- ⇄ 显隐门控
-  it("live 不一致 → ⇄ 够格；一致 → 不够格", () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    feed([liveRow("m1", "b")]);
-    expect(eligible()).toBe(true);
-    feed([liveRow("m1", "z")]); // 切回一致
-    expect(eligible()).toBe(false);
-  });
-
-  it("lastAccount 软来源（幽灵徽章）不给 ⇄，但 tooltip 得指出对齐的路", () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    tm.setSessionAccounts(
-      [],
-      new Map(),
-      new Map([["m1", "b"]]),
-      new Set(["aya"]),
-      new Map([["aya", "z"]]),
-    );
-    expect(document.body.querySelector(".acct-avatar.ghost")).not.toBeNull(); // 徽章在
-    expect(eligible()).toBe(false); // 但无 ⇄（死会话对齐走右键「切到账号 X」→ resume）
-    expect(document.body.querySelector<HTMLElement>(".tab-acct-badge")?.title).toContain(
-      "把此会话切到账号",
-    );
-  });
-
-  it("归档 tab 不给 ⇄、也不进批量（用户已停跟随，破坏性动作不该冒出来）", () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    tm.archiveTab("m1");
-    feed([liveRow("m1", "b")]);
-    expect(eligible()).toBe(false);
-    expect(priv().countAccountMismatches()).toBe(0);
-  });
-
-  it("countAccountMismatches 只数「远端 + live 存活 + 账号≠当前」", () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya"); // 不一致 → 数
-    tm.ensureTab("m2", "/w", "/p/m2.jsonl", 0, "aya"); // 一致 → 不数
-    tm.ensureTab("m3", "/w", "/p/m3.jsonl", 0, "aya"); // 不一致但 alive=false → 不数
-    tm.ensureTab("loc", "/w", "/p/loc.jsonl", 0); // 本地 → 不数
-    feed([liveRow("m1", "b"), liveRow("m2", "z"), liveRow("m3", "b", false)]);
-    expect(priv().countAccountMismatches()).toBe(1);
-    expect(priv().accountMismatchSids()).toEqual(["m1"]);
-  });
-
-  it("当前账号未知（origin 无 current）→ 不猜、不显 ⇄、不计数", () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    tm.setSessionAccounts(
-      [liveRow("m1", "b")],
-      new Map(),
-      new Map(),
-      new Set(["aya"]),
-      new Map(),
-    );
-    expect(eligible()).toBe(false);
-    expect(priv().countAccountMismatches()).toBe(0);
-  });
-
-  // ------------------------------------------------------- 单会话 ⇄ 的**正路**
-  // （D 审计突变测试证明：只断言显隐时，删掉整个 click 监听 / 对齐到错账号，测试照样全绿。）
-  it("点 ⇄ → 用当前账号调编排器，且**不注入 confirm**（保留破坏性二次确认）", async () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    feed([liveRow("m1", "b")]);
-    alignBtn()!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(restartSpy).toHaveBeenCalledTimes(1);
-    const arg = restartSpy.mock.calls[0][0];
-    expect(arg.accountName).toBe("z"); // 对齐到**当前账号**，不是别的
-    expect(arg.sessionId).toBe("m1");
-    expect(arg.tmuxName).toBe("cc-m1");
-    expect(arg.compactFirst).toBe(false);
-    expect(arg.confirm).toBeUndefined(); // 单会话必须仍弹 restartWithAccount 自带的确认
-  });
-
-  it("点 ⇄ 不切 tab（stopPropagation）——误点后不会把你的界面跳走", async () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    tm.ensureTab("m2", "/w", "/p/m2.jsonl", 0, "aya");
-    tm.switchTo("m2");
-    feed([liveRow("m1", "b"), liveRow("m2", "b")]);
-    const btn = document.body.querySelectorAll<HTMLElement>(".tab-align-btn")[0];
-    btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await new Promise((r) => setTimeout(r, 0));
-    expect((tm as unknown as { activeId: string | null }).activeId).toBe("m2");
-  });
-
-  it("单会话对齐：不够格（一致/归档/未知 current）时一律不动手", async () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    feed([liveRow("m1", "z")]); // 已一致
-    expect(await priv().alignSessionToCurrentAccount("m1")).toBe(false);
-    expect(restartSpy).not.toHaveBeenCalled();
-  });
-
-  // ------------------------------------------------------------------ 空闲/回合中分桶
-  // 会话状态枚举是 busy/idle/shell/waiting（bridge.rs 透传 CC 官方值），null=旧 CC 未知。
-  // "running" 是 subagent 的状态串，**不是**会话状态——曾误用它做判据，导致 busy 桶恒空。
-  it.each([
-    ["idle", true],
-    ["shell", true],
-    ["busy", false],
-    ["waiting", false],
-    [null, false],
-  ])("activity=%s → 落%s桶（idle 桶=第一步确认）", async (status, isIdle) => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    feed([liveRow("m1", "b")]);
-    setActivity("m1", status as string | null);
-    confirmSpy.mockReturnValue(false); // 两步都拒 → 只看弹的是哪个框
-    await priv().alignAllToCurrentAccount();
-    const msg = String(confirmSpy.mock.calls[0][0]);
-    if (isIdle) {
-      expect(msg).toContain("空闲");
-      expect(msg).not.toContain("正在回合中");
-    } else {
-      expect(msg).toContain("正在回合中");
-    }
-  });
-
-  it("确认文案说真话：会新开终端窗口、旧窗口不自动关、进程内状态会丢", async () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    feed([liveRow("m1", "b")]);
-    setActivity("m1", "idle");
-    confirmSpy.mockReturnValue(false);
-    await priv().alignAllToCurrentAccount();
-    const msg = String(confirmSpy.mock.calls[0][0]);
-    expect(msg).toContain("新开一个终端窗口");
-    expect(msg).toContain("不会自动关闭");
-    expect(msg).toContain("会丢失");
-    // 逐行列出「哪个 tab → 对齐到哪个号」（标题即 tab 上显示的那个，此处是 `[aya] w`）
-    expect(msg).toContain(`· ${(tm as unknown as { tabs: Map<string, Tab> }).tabs.get("m1")!.title} → z`);
-  });
-
-  // ------------------------------------------------------------------ 批量路径
-  it("批量对齐：空闲一次确认 → 串行重启，且不让编排器再逐个弹确认", async () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    tm.ensureTab("m2", "/w", "/p/m2.jsonl", 0, "aya");
-    feed([liveRow("m1", "b"), liveRow("m2", "c")]);
-    setActivity("m1", "idle");
-    setActivity("m2", "idle");
-    await priv().alignAllToCurrentAccount();
-    expect(confirmSpy).toHaveBeenCalledTimes(1); // 只有批量那一次
-    expect(restartSpy).toHaveBeenCalledTimes(2);
-    for (const call of restartSpy.mock.calls) {
-      expect(call[0].accountName).toBe("z"); // 都对齐到当前账号
-      expect(call[0].compactFirst).toBe(false);
-      expect(call[0].confirm?.("x")).toBe(true); // 批量层已确认 → 编排器不再弹
-    }
-  });
-
-  it("批量对齐：拒绝第一步确认 → 一个都不动", async () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    feed([liveRow("m1", "b")]);
-    setActivity("m1", "idle");
-    confirmSpy.mockReturnValue(false);
-    await priv().alignAllToCurrentAccount();
-    expect(restartSpy).not.toHaveBeenCalled();
-  });
-
-  it("批量对齐：回合中的会话单独第二步确认，拒了只对齐空闲的", async () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    tm.ensureTab("m2", "/w", "/p/m2.jsonl", 0, "aya");
-    feed([liveRow("m1", "b"), liveRow("m2", "b")]);
-    setActivity("m1", "idle");
-    setActivity("m2", "busy"); // 真值：回合进行中
-    confirmSpy.mockReturnValueOnce(true).mockReturnValueOnce(false); // 空闲同意、回合中拒绝
-    await priv().alignAllToCurrentAccount();
-    expect(confirmSpy).toHaveBeenCalledTimes(2);
-    expect(String(confirmSpy.mock.calls[1][0])).toContain("打断当前回合");
-    expect(restartSpy).toHaveBeenCalledTimes(1);
-    expect(restartSpy.mock.calls[0][0].sessionId).toBe("m1");
-  });
-
-  it("无不一致会话 → 批量对齐直接返回，不弹确认", async () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    feed([liveRow("m1", "z")]);
-    await priv().alignAllToCurrentAccount();
-    expect(confirmSpy).not.toHaveBeenCalled();
-    expect(restartSpy).not.toHaveBeenCalled();
-  });
-
-  it("批量部分失败：汇总报**真实成功数**，不按发起数谎报", async () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    tm.ensureTab("m2", "/w", "/p/m2.jsonl", 0, "aya");
-    feed([liveRow("m1", "b"), liveRow("m2", "b")]);
-    setActivity("m1", "idle");
-    setActivity("m2", "idle");
-    restartSpy.mockResolvedValueOnce(true).mockResolvedValueOnce(false); // 第二个中止
-    await priv().alignAllToCurrentAccount();
-    const calls = vi.mocked(showActionFailureToast).mock.calls;
-    const toast = calls[calls.length - 1];
-    expect(String(toast[0])).toContain("部分完成");
-    expect(String(toast[1])).toContain("1 个会话");
-    expect(String(toast[1])).toContain("1 个未执行");
-  });
-
-  it("批量中某会话抛异常 → 不中断整批，其余照跑", async () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    tm.ensureTab("m2", "/w", "/p/m2.jsonl", 0, "aya");
-    feed([liveRow("m1", "b"), liveRow("m2", "b")]);
-    setActivity("m1", "idle");
-    setActivity("m2", "idle");
-    restartSpy.mockRejectedValueOnce(new Error("boom")).mockResolvedValueOnce(true);
-    await priv().alignAllToCurrentAccount();
-    expect(restartSpy).toHaveBeenCalledTimes(2); // 第一个炸了，第二个仍然跑
-  });
-
-  // ------------------------------------------------------------------ 重入防护
-  it("同一会话重启中 → ⇄ 立刻不够格、不计数、第二次点击不触发第二条编排", async () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    feed([liveRow("m1", "b")]);
-    let release: (v: boolean) => void = () => {};
-    restartSpy.mockReturnValueOnce(new Promise<boolean>((r) => (release = r)));
-    const first = priv().alignSessionToCurrentAccount("m1");
-    await new Promise((r) => setTimeout(r, 0));
-    expect(eligible()).toBe(false); // in-flight → 按钮不该再邀请点击
-    expect(priv().countAccountMismatches()).toBe(0); // 也不该继续计进 ⚠k
-    expect(await priv().alignSessionToCurrentAccount("m1")).toBe(false); // 并发第二次被拒
-    expect(restartSpy).toHaveBeenCalledTimes(1);
-    release(true);
-    await first;
-  });
-
-  it("批量进行中再点批量 → 拒绝重入，不会拿陈旧列表再杀一遍", async () => {
-    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
-    feed([liveRow("m1", "b")]);
-    setActivity("m1", "idle");
-    let release: (v: boolean) => void = () => {};
-    restartSpy.mockReturnValueOnce(new Promise<boolean>((r) => (release = r)));
-    const first = priv().alignAllToCurrentAccount();
-    await new Promise((r) => setTimeout(r, 0));
-    await priv().alignAllToCurrentAccount(); // 第二次：应被 aligningBatch 挡住
-    expect(restartSpy).toHaveBeenCalledTimes(1);
-    release(true);
-    await first;
-  });
 });

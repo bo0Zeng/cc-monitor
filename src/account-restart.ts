@@ -52,8 +52,8 @@ function delay(ms: number): Promise<void> {
 
 /**
  * @returns 是否真的走完 kill+resume（true=已用新账号 resume；false=任一前置中止：账号不可选 /
- * 用户取消 / kill 失败）。account-ux U6 的批量对齐据此汇总真实成败——**不改变任何既有语义**，
- * 老调用点（右键菜单两条）忽略返回值即可。
+ * 用户取消 / kill 失败）。account-ux U6 的批量对齐（随 F09 一并删除）曾据此汇总真实成败——
+ * 唯一现存调用点（tabs.ts 右键菜单的 Restart flyout）忽略返回值，语义不受影响。
  */
 export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<boolean> {
   const { origin, sessionId, cwd, tmuxName, accountName, launcher } = opts;
