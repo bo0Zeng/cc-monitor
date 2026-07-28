@@ -56,6 +56,10 @@
 - **验收标准**（可验证、可勾选）：
   - [x] `doc/INVARIANTS.md` 新增 §38（注册表 vs 硬编码轴的判断准则）
   - [x] 新文件 `src/launch-menu.ts`：`ModifierOption`/`ModifierGroup`/`enumerateModifierGroups`
+        **（R05 更新：其中 `container` 组已判定为死代码并删除——唯一生产调用点从不读它；
+        函数改名 `enumerateAccountModifiers` 并直接返回选项数组；`ModifierGroup` 随之取消。
+        本条 DoD 里"容器组恒 2 项 / `selected` 标记正确"那半条已由 R05 撤销，见
+        `features/R05-ui-dead-code-and-magic-string.md`。）**
         纯函数 + 配套 vitest（账号组 <2 可选账号不出现；容器组恒 2 项；`selected` 标记正确）
   - [x] `TabMenuItem` 支持二级 flyout（`submenu?: TabMenuItem[]`），`showTabContextMenu`/
         `makeTabMenuButton` 支持悬停+点击展开（MASTERPLAN §2.6 已拍板的交互方式）

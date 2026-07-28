@@ -793,13 +793,30 @@ plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**�
 
 ## 36. 本地（Windows）路径的 `plan.env` 故意算出来但不消费——嵌套 env 污染保护已在进程启动期做完，别在本地渲染器里重复实现（F06 / unify-launch）
 
-**背景**：F06 把本地 resume/新建两条路径折进 `LaunchContext`/`LaunchPlan` IR（`src/launch-requests.ts::planLocal`），跑一遍 `LAUNCH_DIMENSIONS` 注册表。`NESTED_ENV_RESET_DIMENSION`（issue #24：清 Claude 自己的嵌套会话标记 `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID` 等）的 `applies` 只看 `ctx.action.kind==="new"||"resume"`，不看 `transport`——local 场景走到这里恒真，`plan.env` 会真的被塞进一条 `unset` `EnvOp`。**本地渲染器（`src-tauri/src/history.rs::build_local_ps_command`）故意完全不读 `plan.env`**——这不是遗漏。
+**背景**：F06 把本地 resume/新建两条路径折进 `LaunchContext`/`LaunchPlan` IR（`src/launch-requests.ts::validateLocalLaunch`，R07 前叫 `planLocal`），跑一遍 `LAUNCH_DIMENSIONS` 注册表。`NESTED_ENV_RESET_DIMENSION`（issue #24：清 Claude 自己的嵌套会话标记 `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID` 等）的 `applies` 只看 `ctx.action.kind==="new"||"resume"`，不看 `transport`——local 场景走到这里恒真，`plan.env` 会真的被塞进一条 `unset` `EnvOp`。**本地渲染器（`src-tauri/src/history.rs::build_local_ps_command`）故意完全不读 `plan.env`**——这不是遗漏。
 
 **为什么不消费是对的**：`NESTED_ENV_RESET_DIMENSION` 保护的攻击面是"tmux **持久 server** 进程的环境表跨多次 resume 累积污染"——远端场景里，同一个 tmux server 可能存活很久，每次新 resume 进去的 shell 都从 server 环境继承，之前一次 `claude` 进程留下的 `CLAUDECODE=1` 等标记会一直挂在那，必须每次显式 `unset`。本地 Windows 场景没有这个"持久 server"概念——`launch_powershell_window`（`src-tauri/src/launch.rs`）每次都是全新 `Command::new("wt.exe"/"powershell.exe").spawn()`，唯一可能的污染源是"cc-monitor.exe 自己被某个带毒环境启动"（如从一个嵌套的 Claude 会话终端里启动 cc-monitor 自身）——这条攻击面已经在**进程启动阶段一次性堵死**：`src-tauri/src/lib.rs::run()` 里 `scrub_env_vars(adapter::active().nested_env_to_scrub())` 是 Tauri `Builder` 构造之前就跑的第一批实质语句，直接 `std::env::remove_var` 清掉 cc-monitor.exe 自己进程的环境；`Command::new(...)` 默认继承（已清洗过的）父进程环境，无需每次 launch 前再清一次。
 
 **铁律**：**给本地渲染器补一段读 `plan.env`、把 `unset` 翻成 PowerShell `Remove-Item Env:\X` 的代码，是错的"修复"**——两层保护本来就分工不同（远端：渲染期逐次清；本地：启动期一次清），本地补一层不会更安全，只会引入一段从未有真机（Windows/`pwsh`）验证过的新 PowerShell 语法，纯增加风险不增加收益。若未来真的发现本地场景存在启动期清洗覆盖不到的污染路径（例如 cc-monitor 在自己生命周期内某处被重新 exec、绕开了 `run()` 的这次清洗），应该去修**启动期清洗本身的覆盖面**，而不是在本地渲染器里加一段渗透式的补丁。
 
-**验证**：`src/launch-requests.vitest.ts` 锁死 `planLocal` 产出的 `plan.env` 对 new/resume 两个动作恒非空（证明维度确实触发了），且 `history.rs` 侧未新增任何消费 `plan.env`/`unset`/`Remove-Item` 的代码路径（Phase D 审计已核对 `scrub_env_vars` 的调用时点严格早于任何窗口 spawn，且全仓无绕开它的自重启路径）。
+**验证**：`src/launch-requests.vitest.ts` 锁死本地 `LaunchContext` 经 `buildLaunchPlan` 产出的 `plan.env` 对 new/resume 两个动作恒非空（证明维度确实触发了），且 `history.rs` 侧未新增任何消费 `plan.env`/`unset`/`Remove-Item` 的代码路径（Phase D 审计已核对 `scrub_env_vars` 的调用时点严格早于任何窗口 spawn，且全仓无绕开它的自重启路径）。
+
+**R07 补充（2026-07-28）：本地路径是「借 IR 做校验、不消费其输出」，这是设计不是半成品。**
+上面说的"`plan.env` 算出来不消费"其实是更大一件事的一个切面——**整个 `LaunchPlan` 都不被消费**。
+`validateLocalLaunch` 的 4 个生产调用点（`views/history.ts` ×2、`views/session-viewer.ts`、`tabs.ts`）
+**全部把返回值当语句丢弃**，真命令由 Rust 独立构造。R07 之前这个函数叫 `planLocal` 且返回
+`LaunchPlanBuild`，其单测头注还写着"证明本地路径真的在用同一套维度注册表（不是套了个类型皮的
+假装）"——**那句话是假的**：跑了注册表，但结果没人要。已改名 `validateLocalLaunch` + 返回 `void`，
+让名字与事实一致。
+
+**为什么不"真接上"**（R07 明确否决的选项）：F06 已论证并落地「Rust 侧同构 renderer」而非
+「IR 前端构造下发」——`Get-Command`（探测本机有没有 `cc` PowerShell 函数）是
+**render-time 决策、只能在目标机器上做**，TS 无法预先渲染好交给它。见共享面账本
+`src-tauri/src/history.rs` 那一行。真接上等于推翻 F06 已落地的决策，而 R 段的定位是收紧既有产出。
+
+**那它为什么还要走一遍 `buildLaunchPlan`**：因为这一遍**顺带**验证了 `transport:{kind:"local"}`
+这条类型分支在维度注册表下不抛异常（F03 起就有的分支，F06 之前从未被任何调用点实例化过）。
+这是一道便宜的一致性检查，不是"为了用上 IR 而用 IR"。
 
 ## 37. 新维度的 `applies` 该不该恒真，看这个维度的"沉默"是否等价于用户期望——不是看它是不是账号相关（F07 / unify-launch）
 
@@ -891,10 +908,18 @@ documented rationale"——三条轴两种机制的不对称依然存在，但�
 **给 UI 层"枚举可用修饰"的启示**：即便 `account`/`model` 已注册进 `LAUNCH_DIMENSIONS`，
 `LaunchDimension` 接口本身也从未回答过"这个维度当前有哪些可选值"——`ACCOUNT_DIMENSION`
 能在 UI 上显示成列表，靠的是 `src/accounts.ts::fetchAccounts`/`isSelectable` 现查，不是遍历
-`LAUNCH_DIMENSIONS`。F09 的 `enumerateModifierGroups`（`src/launch-menu.ts`）因此是一个独立于
-`LaunchDimension` 的新发现层，account 组手写调 `fetchAccounts`，container 组手写两个硬编码值——
-两者形式不同，但这不是"该注册就注册"没做完，是两条轴本来就该用不同方式回答"有哪些可选值"这个
-问题。
+`LAUNCH_DIMENSIONS`。F09 的 `src/launch-menu.ts` 因此是一个独立于 `LaunchDimension`
+的新发现层，account 组手写调 `fetchAccounts`/`selectableAccounts`——这不是"该注册就注册"没做完，
+是这条轴本来就该用另一种方式回答"有哪些可选值"这个问题。
+
+**R05 更新（2026-07-28）**：本段原写「account 组手写调 `fetchAccounts`，**container 组手写两个
+硬编码值**——两者形式不同」。那个对比现在不成立了：`enumerateModifierGroups` 已改名
+`enumerateAccountModifiers`，**container 组已作为死代码删除**（全仓唯一生产调用点从不读它，
+第二参恒传 `"tmux"`，`"none"` 分支只被测试驱动过）。容器那两项的 UI 渲染现在住在
+`tabs.ts::containerLeaves`，是全仓唯一来源。
+**论证本身不受影响、反而更强**：container 轴的可选值本就固定为两个字面量、不需要"现查"，
+所以它根本不需要一个发现层——这恰恰印证了本节的结论（两条轴该用不同方式回答，
+而 container 那条的"方式"简单到不配拥有一个函数）。
 
 ## 39. `WrapSpec` 是纯数据 `{ id, order, prelude }`，不是闭包——且 rbind 走不走 wrap 这件事必须先定（R04④ / unify-launch）
 

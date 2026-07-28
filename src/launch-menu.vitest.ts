@@ -8,7 +8,7 @@ vi.mock("./accounts.ts", async (importOriginal) => {
   return { ...actual, fetchAccounts: (origin: string) => fetchAccountsMock(origin) };
 });
 
-import { enumerateModifierGroups } from "./launch-menu.ts";
+import { enumerateAccountModifiers } from "./launch-menu.ts";
 
 function acct(name: string, opts: Partial<Account> = {}): Account {
   return {
@@ -27,49 +27,47 @@ function state(accounts: Account[], available = true): AccountsState {
   return { origin: "host", available, error: null, meta: null, accounts, defaultName: null };
 }
 
-describe("enumerateModifierGroups", () => {
+describe("enumerateAccountModifiers", () => {
   beforeEach(() => {
     fetchAccountsMock.mockReset();
   });
 
-  it("container 组恒 2 项，selected 标记对应当前 kind", async () => {
-    fetchAccountsMock.mockResolvedValue(state([]));
-    const groups = await enumerateModifierGroups("host", "tmux");
-    const container = groups.find((g) => g.id === "container");
-    expect(container?.options).toEqual([
-      { id: "tmux", label: "tmux", selected: true },
-      { id: "none", label: "直连（不建 tmux）", selected: false },
-    ]);
-  });
-
-  it("container 组 selected 跟随 currentContainerKind=none", async () => {
-    fetchAccountsMock.mockResolvedValue(state([]));
-    const groups = await enumerateModifierGroups("host", "none");
-    const container = groups.find((g) => g.id === "container");
-    expect(container?.options.find((o) => o.id === "none")?.selected).toBe(true);
-    expect(container?.options.find((o) => o.id === "tmux")?.selected).toBe(false);
-  });
-
-  it("恰好 1 个可选账号 → account 组出现但只含基座逃生口（无需切到唯一账号）", async () => {
+  // R05：原先有两条纯测 container 组的用例 + 一条测"account 组恒排在 container 组之前"的用例
+  // ——container 组已作为死代码删除（全仓唯一生产调用点从不读它），那三条随之删除：
+  // 它们测的是从未被渲染过的东西。另有三条原先用"groups 只剩 container"来表达"account 组不出现"，
+  // 现改为直接断言空数组——**断言的行为没变，只是不再借一个死组来表达**。
+  it("恰好 1 个可选账号 → 只含基座逃生口（无需切到唯一账号）", async () => {
     fetchAccountsMock.mockResolvedValue(state([acct("z")]));
-    const groups = await enumerateModifierGroups("host", "tmux");
-    const account = groups.find((g) => g.id === "account");
-    expect(account?.options.map((o) => o.id)).toEqual(["__base__"]);
+    expect(await enumerateAccountModifiers("host")).toEqual([{ kind: "base", label: "基座（不隔离）" }]);
   });
 
-  it("0 可选账号（无账号/全不可选）→ account 组不出现", async () => {
+  it("0 可选账号（无账号/全不可选）→ 空数组", async () => {
     fetchAccountsMock.mockResolvedValue(state([acct("z", { loggedIn: false })]));
-    const groups = await enumerateModifierGroups("host", "tmux");
-    expect(groups.map((g) => g.id)).toEqual(["container"]);
+    expect(await enumerateAccountModifiers("host")).toEqual([]);
   });
 
-  it("≥2 可选账号 → account 组出现，含基座 + 每个可选账号，过滤掉不可选的", async () => {
+  it("≥2 可选账号 → 基座 + 每个可选账号，过滤掉不可选的", async () => {
     fetchAccountsMock.mockResolvedValue(
       state([acct("z"), acct("b"), acct("dead", { loggedIn: false })]),
     );
-    const groups = await enumerateModifierGroups("host", "tmux");
-    const account = groups.find((g) => g.id === "account");
-    expect(account?.options.map((o) => o.id)).toEqual(["__base__", "z", "b"]);
+    expect(await enumerateAccountModifiers("host")).toEqual([
+      { kind: "base", label: "基座（不隔离）" },
+      { kind: "account", name: "z", label: "z" },
+      { kind: "account", name: "b", label: "b" },
+    ]);
+  });
+
+  // R05：判别联合取代裸魔法串 `"__base__"` 之后，"哪一项是基座"由 `kind` 回答。
+  // 这条钉住的是**类型化本身的收益**：基座项在类型上没有 `name` 字段，
+  // 所以"把基座当成一个名叫 __base__ 的账号"这类错误不再可表达。
+  it("基座项用 kind:\"base\" 标识，且不带账号名（不再是裸字符串 __base__）", async () => {
+    fetchAccountsMock.mockResolvedValue(state([acct("z"), acct("b")]));
+    const opts = await enumerateAccountModifiers("host");
+    expect(opts[0].kind).toBe("base");
+    expect("name" in opts[0]).toBe(false);
+    expect(opts.filter((o) => o.kind === "account").map((o) => o.label)).toEqual(["z", "b"]);
+    // 全仓不该再出现这个魔法串（本断言只覆盖返回值形状，跨文件由类型系统保证）
+    expect(JSON.stringify(opts)).not.toContain("__base__");
   });
 
   // F09 Phase D 审计（后端架构，重要）：`isSelectable` 通过但 `configDir` 落空的账号——旧版
@@ -77,29 +75,22 @@ describe("enumerateModifierGroups", () => {
   // 当前行为（显示、留给点击后的 `onUnselectable` 反馈），防止以后有人"顺手"补回那条 filter
   // 当成 bug 修。
   it("isSelectable 但 configDir 落空的账号仍出现在选项里（不静默隐藏，交给点击后的反馈）", async () => {
-    fetchAccountsMock.mockResolvedValue(
-      state([acct("z"), acct("weird", { configDir: "" })]),
-    );
-    const groups = await enumerateModifierGroups("host", "tmux");
-    const account = groups.find((g) => g.id === "account");
-    expect(account?.options.map((o) => o.id)).toEqual(["__base__", "z", "weird"]);
+    fetchAccountsMock.mockResolvedValue(state([acct("z"), acct("weird", { configDir: "" })]));
+    const opts = await enumerateAccountModifiers("host");
+    expect(opts.map((o) => (o.kind === "base" ? "__BASE__" : o.name))).toEqual([
+      "__BASE__",
+      "z",
+      "weird",
+    ]);
   });
 
-  it("account 组恒排在 container 组之前", async () => {
-    fetchAccountsMock.mockResolvedValue(state([acct("z"), acct("b")]));
-    const groups = await enumerateModifierGroups("host", "tmux");
-    expect(groups.map((g) => g.id)).toEqual(["account", "container"]);
-  });
-
-  it("账号功能不可用（available:false）→ account 组不出现,不抛异常", async () => {
+  it("账号功能不可用（available:false）→ 空数组，不抛异常", async () => {
     fetchAccountsMock.mockResolvedValue(state([acct("z"), acct("b")], false));
-    const groups = await enumerateModifierGroups("host", "tmux");
-    expect(groups.map((g) => g.id)).toEqual(["container"]);
+    expect(await enumerateAccountModifiers("host")).toEqual([]);
   });
 
-  it("fetchAccounts 抛异常 → account 组不出现,不向上抛（容错降级同 appendAccountMenuItems 既有模式）", async () => {
+  it("fetchAccounts 抛异常 → 空数组，不向上抛（容错降级同 appendAccountMenuItems 既有模式）", async () => {
     fetchAccountsMock.mockRejectedValue(new Error("network"));
-    const groups = await enumerateModifierGroups("host", "tmux");
-    expect(groups.map((g) => g.id)).toEqual(["container"]);
+    expect(await enumerateAccountModifiers("host")).toEqual([]);
   });
 });

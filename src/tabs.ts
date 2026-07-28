@@ -18,7 +18,11 @@ import {
 } from "./accounts";
 import { restartWithAccount, DEFAULT_EXIT_WAIT_MS } from "./account-restart";
 import { planLocal } from "./launch-requests";
-import { enumerateModifierGroups, type ModifierGroup } from "./launch-menu";
+import {
+  enumerateAccountModifiers,
+  type AccountModifierOption,
+  type NamedAccountModifier,
+} from "./launch-menu";
 import { accountAvatarEl } from "./account-color";
 import type { BehaviorConfig } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
@@ -2260,20 +2264,24 @@ export class TabManager {
    * `resumeTabTmux` 不支持显式账号，是本功能顺带补上的实现缺口，见 §0/features/
    * F09-ui-convergence.md「实现期修正」）。
    */
-  private buildResumeSubmenu(sid: string, accountGroup: ModifierGroup | undefined): TabMenuItem[] {
+  private buildResumeSubmenu(sid: string, accountOptions: AccountModifierOption[]): TabMenuItem[] {
     const containerLeaves = (accountName: string | undefined, useBase: boolean): TabMenuItem[] => [
       { label: "tmux", onClick: () => void this.resumeTabTmux(sid, accountName, useBase) },
       { label: "直连（不建 tmux）", onClick: () => void this.resumeTab(sid, accountName, useBase) },
     ];
     const items: TabMenuItem[] = [...containerLeaves(undefined, false)];
-    if (accountGroup && accountGroup.options.length > 0) {
+    if (accountOptions.length > 0) {
       // F09 Phase D 审计（UX，建议）：纯展示性分隔线——把上面"跟随默认账号"两项和下面"换账号"
       // 一组视觉分开，降低扫描成本（不增加点击次数，审计原话："综合任务时间…新版很可能相当
       // 甚至更快，不建议再加独立一级项，折中是加视觉分组"）。
       items.push({ label: "", divider: true });
-      for (const opt of accountGroup.options) {
-        const isBase = opt.id === "__base__";
-        items.push({ label: opt.label, submenu: containerLeaves(isBase ? undefined : opt.id, isBase) });
+      // R05：判别联合取代了 `opt.id === "__base__"` 这个跨文件字符串比较。
+      for (const opt of accountOptions) {
+        items.push({
+          label: opt.label,
+          submenu:
+            opt.kind === "base" ? containerLeaves(undefined, true) : containerLeaves(opt.name, false),
+        });
       }
     }
     return items;
@@ -2281,9 +2289,10 @@ export class TabManager {
 
   /** F09：给「Restart」一级菜单项造 flyout——重启没有容器轴（对齐 §0 Plan agent 共识：restart
    *  是 kill+resume 编排，作用于会话现有的后端，不经 `LaunchAction`/两个渲染器），只有账号轴，
-   *  每个账号再嵌一层「直接重启/先压缩再重启」（danger，§5）。`accounts` 已排除 `__base__`——
+   *  每个账号再嵌一层「直接重启/先压缩再重启」（danger，§5）。入参已收窄成 `NamedAccountModifier[]`
+   *  （`kind === "account"` 那一支），基座在类型上就进不来——
    *  重启从不提供基座逃生口（旧版行为，restart 面对的是已在某账号下运行的活会话，不是老会话）。 */
-  private buildRestartSubmenu(sid: string, accounts: { id: string; label: string }[]): TabMenuItem[] {
+  private buildRestartSubmenu(sid: string, accounts: NamedAccountModifier[]): TabMenuItem[] {
     return accounts.map((a) => ({
       label: a.label,
       danger: true,
@@ -2295,14 +2304,14 @@ export class TabManager {
         {
           label: "直接重启",
           danger: true,
-          title: `杀掉旧进程，用账号「${a.id}」resume 同一会话（中断当前回合、丢进程内状态）`,
-          onClick: () => void this.restartTabWithAccount(sid, a.id, false),
+          title: `杀掉旧进程，用账号「${a.name}」resume 同一会话（中断当前回合、丢进程内状态）`,
+          onClick: () => void this.restartTabWithAccount(sid, a.name, false),
         },
         {
           label: "先压缩上下文再重启",
           danger: true,
           title: `先在【旧账号】上 /compact（命中旧缓存更省）再换号重启——比换号后再压缩便宜`,
-          onClick: () => void this.restartTabWithAccount(sid, a.id, true),
+          onClick: () => void this.restartTabWithAccount(sid, a.name, true),
         },
       ],
     }));
@@ -2312,7 +2321,7 @@ export class TabManager {
    *  submenu（补基座+具名账号入口）；活 tab → 账号数 ≥2 时追加一个「Restart」一级项 + flyout
    *  （旧版从不给活会话基座逃生口，见 buildRestartSubmenu）。复用 F51 代次守卫（gen !==
    *  tabMenuGeneration 则菜单已换/已关，整体 no-op，防 R-1 跨 tab 串味）。账号库不可用（§7
-   *  daemonless/旧/未启用）→ `enumerateModifierGroups` 内部已容错返回不含 account 组，本方法
+   *  daemonless/旧/未启用）→ `enumerateAccountModifiers` 内部已容错返回空数组，本方法
    *  据此自然不追加任何东西（默认 Resume 仍在）。异步 fetch 用新鲜值，无冷缓存分裂。 */
   private async appendAccountMenuItems(
     origin: string,
@@ -2320,22 +2329,27 @@ export class TabManager {
     status: TabStatus,
   ): Promise<void> {
     const gen = tabMenuGeneration; // 捕获这一代菜单
-    // container 组这里不消费（归档 resume 已有独立的 tmux/直连子选择；重启没有容器轴）——
-    // `currentContainerKind` 传恒定值即可，不影响 account 组的取值。
-    const groups = await enumerateModifierGroups(origin, "tmux");
+    const accountOptions = await enumerateAccountModifiers(origin);
     if (gen !== tabMenuGeneration) return; // 菜单已换/已关
-    const accountGroup = groups.find((g) => g.id === "account");
     if (status === "archived") {
       updateTabContextMenuItem("resume", {
         id: "resume",
         label: "Resume",
-        submenu: this.buildResumeSubmenu(sid, accountGroup),
+        submenu: this.buildResumeSubmenu(sid, accountOptions),
       });
       return;
     }
-    // 活会话重启：旧版阈值——只在 ≥2 个可选账号（即排除 __base__ 后还剩 ≥2 项）时才提供，
+    // 活会话重启：旧版阈值——只在 ≥2 个可选具名账号（`kind === "account"`）时才提供，
     // 从不给基座（restart 面对的是已在某账号下运行的活会话，不是待迁移的老会话）。
-    const realAccounts = (accountGroup?.options ?? []).filter((o) => o.id !== "__base__");
+    // R05：判别联合让"排除基座"变成类型收窄，`realAccounts` 因此是 `NamedAccountModifier[]`
+    // ——`a.name` 在类型上可见，不再需要把 `id` 当账号名用。
+    const realAccounts = accountOptions.filter(
+      (o): o is NamedAccountModifier => o.kind === "account",
+    );
+    // **这条实际不可达**（R05 Phase D 审计变异 M8 实测存活）：`realAccounts` 来自
+    // `enumerateAccountModifiers`，而具名账号只在 `selectable.length >= 2` 时被**整批** push
+    // （`launch-menu.ts`），故 `realAccounts.length ∈ {0} ∪ [2, ∞)`，永远不可能是 1。
+    // 保留作 belt-and-braces（阈值真正的执行方在 launch-menu 侧），但别以为这里在独立执行阈值。
     if (realAccounts.length < 2) return;
     // F09 Phase D 审计（UX，重要）：⇄ 按钮删除前，重启中的会话至少有"⇄ 立刻置灰"这个视觉信号；
     // 现在这是唯一入口，若不禁用，点了会静默命中 restartTabWithAccount 的 in-flight 守卫、
@@ -2828,7 +2842,7 @@ export class TabManager {
           items.push({
             id: "resume",
             label: "Resume",
-            submenu: this.buildResumeSubmenu(sid, undefined),
+            submenu: this.buildResumeSubmenu(sid, []),
           });
         } else {
           items.push({
