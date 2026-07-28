@@ -5,6 +5,7 @@
 //! 并 `app.manage` 所有 Arc-shared State，最后注册 `invoke_handler`（IPC 命令清单）。
 //! State 注册矩阵见 doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
+mod account_usage; // F10：per-account Claude 订阅计划用量窗口%（一次性探针会话 + capture-pane）
 mod accounts; // A2：多账号（cc-acct-iso）只读查询——账号=一个 CLAUDE_CONFIG_DIR
 mod acct_iso_deploy; // F5：一键部署 vendored cc-acct-iso 到远端 + 存在性检测
 mod adapter;
@@ -967,6 +968,7 @@ pub fn run() {
             tmux::capture_remote_pane,
             tmux::kill_remote_tmux,
             tmux::tmux_send_keys,
+            account_usage::account_usage,
             ccm_probe::probe_ccm_cli,
             // Batch15-P1：code-picture 代码全景后端命令族（per-repo Engine 池,只读查询）
             panorama::panorama_index,

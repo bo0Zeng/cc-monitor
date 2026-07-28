@@ -3,19 +3,43 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const readRemoteConfigMock = vi.fn();
 const fetchAccountsMock = vi.fn();
+const invokeMock = vi.fn();
 vi.mock("./remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
 vi.mock("./error-toast", () => ({ showActionFailureToast: vi.fn() }));
+// F10：account-usage.ts 走 invoke("account_usage",...)——这个文件之前不需要 mock
+// @tauri-apps/api/core（chip 自己不直接调 invoke，只经 fetchAccounts），现在新增用量
+// 懒加载路径需要它。
+vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
 
-import { pickPrimaryOrigin, chipLabel, AccountChip } from "./account-chip";
+import {
+  pickPrimaryOrigin,
+  chipLabel,
+  formatUsageSummaryCompact,
+  formatUsageSummaryForMenu,
+  AccountChip,
+} from "./account-chip";
 import type { RemoteHostConfig } from "./remote-config";
 import type { AccountsState, Account } from "./accounts";
 import * as accountsMod from "./accounts";
+import { invalidateAccountUsageCache } from "./account-usage";
+import { showActionFailureToast } from "./error-toast";
 
 beforeEach(() => {
   vi.restoreAllMocks();
   readRemoteConfigMock.mockReset();
   fetchAccountsMock.mockReset();
+  invokeMock.mockReset().mockResolvedValue(undefined);
   vi.spyOn(accountsMod, "fetchAccounts").mockImplementation(() => fetchAccountsMock());
+  // F10：account-usage.ts 的去抖缓存是模块级单例，跨测试文件全程存活——每个测试用例开始前
+  // 清空，否则某条测试（如触发 chip.openMenu() 却没显式 mock account_usage）留下的
+  // probe-failed 缓存条目会让后面用同一 origin/账号名的测试误判"缓存命中,不该重新 invoke"。
+  invalidateAccountUsageCache();
+  // F10 Phase D 审计排障发现：多条既有测试打开 chip 菜单后从不显式关闭（`toggleMenu` 把菜单
+  // append 到 `document.body`，不像 tabs.ts 的上下文菜单那样每次开新的前先关旧的）——留下的
+  // 陈旧 `.account-picker` 菜单会一直挂在全局 DOM 里，后面用 `document.querySelector(...)`
+  // 全局查询的测试可能命中的是上一条测试遗留的菜单而不是本次刚开的（同 `tabs.vitest.ts` 的
+  // `.tab-context-menu` 清理惯例，这里补一份）。
+  document.querySelectorAll(".account-picker").forEach((n) => n.remove());
 });
 
 function host(p: Partial<RemoteHostConfig>): RemoteHostConfig {
@@ -182,5 +206,191 @@ describe("account-ux U8 chip 头像休眠", () => {
       }),
     );
     expect(icon(chip).querySelector(".acct-avatar")).toBeNull();
+  });
+});
+
+describe("formatUsageSummaryCompact", () => {
+  it("单窗口 → 纯百分比", () => {
+    expect(formatUsageSummaryCompact({ status: "ok", buckets: [{ label: "会话", usedPercent: 38 }] })).toBe("38%");
+  });
+  it("多窗口 → 斜杠分隔，只带一个尾随 %", () => {
+    expect(
+      formatUsageSummaryCompact({
+        status: "ok",
+        buckets: [
+          { label: "会话", usedPercent: 38 },
+          { label: "每周", usedPercent: 71 },
+        ],
+      }),
+    ).toBe("38/71%");
+  });
+  it("非 ok 态一律空串（不占地方，不是每次都要展示失败原因）", () => {
+    expect(formatUsageSummaryCompact({ status: "not-logged-in" })).toBe("");
+    expect(formatUsageSummaryCompact({ status: "cli-missing" })).toBe("");
+    expect(formatUsageSummaryCompact({ status: "unrecognized", reason: "x" })).toBe("");
+    expect(formatUsageSummaryCompact({ status: "probe-failed", error: "x" })).toBe("");
+  });
+  it("ok 但零桶（理论不可达，纵深防御）→ 空串", () => {
+    expect(formatUsageSummaryCompact({ status: "ok", buckets: [] })).toBe("");
+  });
+});
+
+// F10 Phase D 审计（UX，重要）：菜单里当前账号那一行富余空间放得下失败短句，不该跟"没查过"
+// 一样空白——`formatUsageSummaryForMenu` 是与折叠态 `formatUsageSummaryCompact` 分开的格式化，
+// 只有 ok 态两者一致，其余四态菜单版本给出可读短句。
+describe("formatUsageSummaryForMenu", () => {
+  it("ok 态与 formatUsageSummaryCompact 一致", () => {
+    const outcome = { status: "ok" as const, buckets: [{ label: "会话", usedPercent: 38 }] };
+    expect(formatUsageSummaryForMenu(outcome)).toBe(formatUsageSummaryCompact(outcome));
+  });
+  it("四种失败态各给可读短句（不是空串）", () => {
+    expect(formatUsageSummaryForMenu({ status: "not-logged-in" })).toBe("未登录");
+    expect(formatUsageSummaryForMenu({ status: "cli-missing" })).toBe("无 claude");
+    expect(formatUsageSummaryForMenu({ status: "unrecognized", reason: "x" })).toBe("读不到");
+    expect(formatUsageSummaryForMenu({ status: "probe-failed", error: "x" })).toBe("探测失败");
+  });
+});
+
+// F10：菜单展开懒加载当前账号用量——只在展开时探测（不是 refresh()/app 启动时），回填折叠态
+// chip 摘要 + 菜单当前账号行；"刷新用量"与"刷新"（账号列表）语义分开。
+describe("F10 chip 用量摘要：菜单展开懒加载", () => {
+  function mockUsageInvoke(resp: { captured: boolean; raw?: string | null; error?: string | null }): void {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "account_usage"
+        ? Promise.resolve({ captured: resp.captured, raw: resp.raw ?? null, error: resp.error ?? null })
+        : Promise.resolve(undefined),
+    );
+  }
+  const flush = async (): Promise<void> => {
+    for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+
+  async function mountReady(): Promise<AccountChip> {
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "aya" })] });
+    fetchAccountsMock.mockResolvedValue(
+      state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "wei" }),
+    );
+    const chip = new AccountChip({ openSettings: () => {} });
+    await chip.refresh();
+    return chip;
+  }
+
+  it("刷新态（refresh）不触发用量探测——较重操作不该背在轻量调用上", async () => {
+    mockUsageInvoke({ captured: true, raw: "50%" });
+    await mountReady();
+    expect(invokeMock.mock.calls.some(([cmd]) => cmd === "account_usage")).toBe(false);
+  });
+
+  it("展开菜单 → 懒加载当前账号用量，回填折叠态 chip 与菜单当前账号行", async () => {
+    mockUsageInvoke({ captured: true, raw: "Current session\n  38%\nResets in 2h" });
+    const chip = await mountReady();
+    await chip.openMenu();
+    await flush();
+    expect(chip.element.querySelector(".status-account-usage")?.textContent).toBe("38%");
+    const currentRow = document.querySelector(".account-picker-item.current");
+    expect(currentRow?.querySelector(".account-picker-usage")?.textContent).toBe("38%");
+  });
+
+  it("非当前账号行不懒加载用量（只有当前账号那行探测）", async () => {
+    mockUsageInvoke({ captured: true, raw: "38%" });
+    const chip = await mountReady();
+    await chip.openMenu();
+    await flush();
+    const items = document.querySelectorAll(".account-picker-item");
+    const nonCurrent = [...items].find((el) => !el.classList.contains("current"))!;
+    expect(nonCurrent.querySelector(".account-picker-usage")).toBeNull();
+    // 只对当前账号（wei）探测了一次，不是每个账号各探一次。
+    expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "account_usage")).toHaveLength(1);
+  });
+
+  it("失败态（如未安装 tmux）→ 折叠态摘要保持空（不占地方，不强行显示错误文案）", async () => {
+    mockUsageInvoke({ captured: false, error: "远端未安装 tmux" });
+    const chip = await mountReady();
+    await chip.openMenu();
+    await flush();
+    expect(chip.element.querySelector(".status-account-usage")?.textContent).toBe("");
+  });
+
+  it("「刷新用量」动作存在且与「刷新」（账号列表）分开", async () => {
+    mockUsageInvoke({ captured: true, raw: "50%" });
+    const chip = await mountReady();
+    await chip.openMenu();
+    await flush();
+    const actions = [...document.querySelectorAll(".account-picker-action")].map((b) => b.textContent);
+    expect(actions).toContain("刷新");
+    expect(actions).toContain("刷新用量");
+  });
+
+  it("点击「刷新用量」忽略去抖缓存，重新 invoke（force）", async () => {
+    mockUsageInvoke({ captured: true, raw: "50%" });
+    const chip = await mountReady();
+    await chip.openMenu();
+    await flush();
+    const before = invokeMock.mock.calls.filter(([cmd]) => cmd === "account_usage").length;
+    const refreshUsageBtn = [...document.querySelectorAll<HTMLButtonElement>(".account-picker-action")].find(
+      (b) => b.textContent === "刷新用量",
+    )!;
+    refreshUsageBtn.click();
+    await flush();
+    const after = invokeMock.mock.calls.filter(([cmd]) => cmd === "account_usage").length;
+    expect(after).toBe(before + 1);
+  });
+
+  it("点击「刷新用量」完成后给出 toast（menuAction 会立刻关闭菜单，用户看不到过程，靠 toast 反馈）", async () => {
+    mockUsageInvoke({ captured: true, raw: "Current session\n  50%\nResets in 1h" });
+    const chip = await mountReady();
+    await chip.openMenu();
+    await flush();
+    const refreshUsageBtn = [...document.querySelectorAll<HTMLButtonElement>(".account-picker-action")].find(
+      (b) => b.textContent === "刷新用量",
+    )!;
+    refreshUsageBtn.click();
+    await flush();
+    expect(showActionFailureToast).toHaveBeenCalledWith(
+      "用量已刷新",
+      expect.stringContaining("50%"),
+      expect.objectContaining({ level: "info" }),
+    );
+  });
+
+  it("菜单展开后当前账号行先显示占位「…」，resolve 后才换成真实结果（此前完全空白,跟探测失败/没查过无法区分）", async () => {
+    let resolveInvoke!: (v: unknown) => void;
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "account_usage" ? new Promise((r) => (resolveInvoke = r)) : Promise.resolve(undefined),
+    );
+    const chip = await mountReady();
+    await chip.openMenu();
+    const currentRow = document.querySelector(".account-picker-item.current");
+    expect(currentRow?.querySelector(".account-picker-usage")?.textContent).toBe("…");
+    resolveInvoke({ captured: true, raw: "50%" });
+    await flush();
+    expect(currentRow?.querySelector(".account-picker-usage")?.textContent).not.toBe("…");
+  });
+
+  it("F10 Phase D 审计（UX，阻塞）：探测期间切换当前账号 → 姗姗来迟的结果不会误标到新账号的折叠态 chip 上", async () => {
+    let resolveWeiProbe!: (v: unknown) => void;
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "account_usage" ? new Promise((r) => (resolveWeiProbe = r)) : Promise.resolve(undefined),
+    );
+    const setDef = vi.spyOn(accountsMod, "setDefaultName").mockResolvedValue(undefined);
+    vi.spyOn(accountsMod, "invalidateAccountsCache").mockImplementation(() => {});
+    const chip = await mountReady(); // 当前账号 = wei
+    await chip.openMenu(); // 对 wei 发起探测（挂起，尚未 resolve）
+
+    // 切到 amy——selectDefault 内部会 closeMenu + refresh(true)，refresh 会先清空 usageSpan。
+    fetchAccountsMock.mockResolvedValue(
+      state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "amy" }),
+    );
+    const items = document.querySelectorAll<HTMLButtonElement>(".account-picker-item");
+    const amyRow = [...items].find((b) => b.textContent?.includes("amy"))!;
+    amyRow.click();
+    await flush();
+    expect(setDef).toHaveBeenCalledWith("amy");
+    expect(chip.element.querySelector(".status-account-usage")?.textContent).toBe(""); // 切号后先清空
+
+    // wei 那次挂起的探测这时才姗姗来迟地 resolve——不该覆盖折叠态（当前账号已经是 amy）。
+    resolveWeiProbe({ captured: true, raw: "Current session\n  99%\nResets in 1h" });
+    await flush();
+    expect(chip.element.querySelector(".status-account-usage")?.textContent).not.toBe("99%");
   });
 });

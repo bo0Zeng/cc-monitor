@@ -201,13 +201,14 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
     }
   });
 
-  // 布局契约：styles.css 的 .accounts-table 定了 **7** 条列轨道，行用 subgrid 继承。
-  // 往 accountRow 里多 append 一个元素而不改 CSS，列就整体错位——jsdom 测不了布局，但能测这个数。
-  it("每行子元素数 == grid 列数(7)：改一处必须改另一处", async () => {
+  // 布局契约：styles.css 的 .accounts-table 定了 **8** 条列轨道（F10 加了用量列），行用
+  // subgrid 继承。往 accountRow 里多 append 一个元素而不改 CSS，列就整体错位——jsdom 测不了
+  // 布局，但能测这个数。
+  it("每行子元素数 == grid 列数(8)：改一处必须改另一处", async () => {
     fetchAccountsMock.mockResolvedValue(ready());
     const el = await mount();
     for (const row of el.querySelectorAll(".accounts-row")) {
-      expect(row.children.length).toBe(7);
+      expect(row.children.length).toBe(8);
     }
   });
 
@@ -249,6 +250,98 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
     const dir = el.querySelector<HTMLElement>(".accounts-row-dir")!;
     expect(dir.textContent).toBe(long);
     expect(dir.title).toBe(long);
+  });
+});
+
+describe("F10：账号行用量单元格（懒加载 + 五种状态）", () => {
+  const ready = (): AccountsState =>
+    state({ accounts: [acct({ name: "z" })], defaultName: "z" });
+
+  /** `account_usage` 走 invoke，与本文件其余 IPC（如 `check_remote_acct_iso`）共用同一个
+   *  invokeMock——按命令名分流，别互相污染。 */
+  function mockUsageInvoke(resp: { captured: boolean; raw?: string | null; error?: string | null }): void {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "account_usage"
+        ? Promise.resolve({ captured: resp.captured, raw: resp.raw ?? null, error: resp.error ?? null })
+        : Promise.resolve(undefined),
+    );
+  }
+  const usageBtn = (el: HTMLElement): HTMLButtonElement | null =>
+    el.querySelector<HTMLButtonElement>(".accounts-usage-btn");
+  const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+  it("初始态是「查看用量」按钮，不自动探测", async () => {
+    fetchAccountsMock.mockResolvedValue(ready());
+    invokeMock.mockResolvedValue(undefined);
+    const el = await mount();
+    expect(usageBtn(el)?.textContent).toBe("查看用量");
+    // invoke 只应有 check_remote_acct_iso 这类既有调用被间接触发过（本组件 init 时可能调用），
+    // 断言的重点是 account_usage 这个命令名从未被叫到——不自动探测。
+    expect(invokeMock.mock.calls.some(([cmd]) => cmd === "account_usage")).toBe(false);
+  });
+
+  it("点击后：查询中 → ok（含百分比+重置文案）", async () => {
+    fetchAccountsMock.mockResolvedValue(ready());
+    mockUsageInvoke({ captured: true, raw: "Current session\n  38%\nResets in 2h 14m" });
+    const el = await mount();
+    usageBtn(el)?.click();
+    expect(el.querySelector(".accounts-usage-pending")?.textContent).toBe("查询中…");
+    await flush();
+    const outcome = el.querySelector(".accounts-usage-outcome");
+    expect(outcome?.textContent).toContain("38%");
+    expect(outcome?.textContent).toContain("重置");
+  });
+
+  it("not-logged-in → 明确短句 + 复制诊断文本按钮（判定基于猜测正则，可能误判）", async () => {
+    fetchAccountsMock.mockResolvedValue(ready());
+    mockUsageInvoke({ captured: true, raw: "Please sign in at console.anthropic.com" });
+    const el = await mount();
+    usageBtn(el)?.click();
+    await flush();
+    expect(el.querySelector(".accounts-usage-outcome")?.textContent).toContain("未登录");
+    expect(el.querySelector(".accounts-usage-copy-raw")).not.toBeNull();
+  });
+
+  it("cli-missing → 明确短句 + 复制诊断文本按钮（判定基于猜测正则，可能误判）", async () => {
+    fetchAccountsMock.mockResolvedValue(ready());
+    mockUsageInvoke({ captured: true, raw: "bash: claude: command not found" });
+    const el = await mount();
+    usageBtn(el)?.click();
+    await flush();
+    expect(el.querySelector(".accounts-usage-outcome")?.textContent).toContain("没有 claude 命令");
+    expect(el.querySelector(".accounts-usage-copy-raw")).not.toBeNull();
+  });
+
+  it("unrecognized → 短句 + 复制诊断文本按钮（不是空白）", async () => {
+    fetchAccountsMock.mockResolvedValue(ready());
+    mockUsageInvoke({ captured: true, raw: "╭─ 全新界面 ─╮" });
+    const el = await mount();
+    usageBtn(el)?.click();
+    await flush();
+    expect(el.querySelector(".accounts-usage-outcome")?.textContent).toContain("暂时读不到");
+    expect(el.querySelector(".accounts-usage-copy-raw")).not.toBeNull();
+  });
+
+  it("probe-failed（Rust 层报错，如无 tmux）→ 显示原始错误文案", async () => {
+    fetchAccountsMock.mockResolvedValue(ready());
+    mockUsageInvoke({ captured: false, error: "远端未安装 tmux" });
+    const el = await mount();
+    usageBtn(el)?.click();
+    await flush();
+    expect(el.querySelector(".accounts-usage-outcome")?.textContent).toContain("远端未安装 tmux");
+  });
+
+  it("「刷新」按钮重新触发探测（force，不走缓存）", async () => {
+    fetchAccountsMock.mockResolvedValue(ready());
+    mockUsageInvoke({ captured: true, raw: "50%\nResets in 1h" });
+    const el = await mount();
+    usageBtn(el)?.click();
+    await flush();
+    const before = invokeMock.mock.calls.filter(([cmd]) => cmd === "account_usage").length;
+    el.querySelector<HTMLButtonElement>(".accounts-usage-refresh")?.click();
+    await flush();
+    const after = invokeMock.mock.calls.filter(([cmd]) => cmd === "account_usage").length;
+    expect(after).toBe(before + 1);
   });
 });
 

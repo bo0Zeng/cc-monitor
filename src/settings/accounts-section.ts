@@ -21,6 +21,7 @@ import {
   type AccountsState,
   type Account,
 } from "../accounts";
+import { fetchAccountUsage, OK_USAGE_UNVERIFIED_CAVEAT, type AccountUsageOutcome } from "../account-usage";
 import { pickPrimaryOrigin } from "../account-chip";
 import { accountAvatarEl } from "../account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
@@ -553,6 +554,14 @@ export class AccountsSection {
     }
     row.appendChild(badge);
 
+    // F10：plan 用量窗口%——懒加载（点击才探测,不是面板打开就对全部账号并发起隐藏会话,
+    // 那是较重操作:起会话+网络查询）。与登录态放一起（都是"状态类"信息），机械操作
+    // （复制路径/登录终端）留在 actions 里靠后。
+    const usage = document.createElement("span");
+    usage.className = "accounts-row-usage";
+    this.renderUsageCell(usage, a);
+    row.appendChild(usage);
+
     const dir = document.createElement("span");
     dir.className = "accounts-row-dir";
     dir.textContent = a.configDir;
@@ -627,6 +636,107 @@ export class AccountsSection {
     }
     row.appendChild(actions);
     return row;
+  }
+
+  /**
+   * F10：用量单元格渲染——初始态是一个"查看用量"按钮（不自动探测）；点击后走五种状态之一
+   * （查询中 / ok / unrecognized / not-logged-in / cli-missing / probe-failed），每种都是
+   * 明确的短句，不是空白（DoD"诚实留白+说明为何"）。`force` 为真时忽略去抖缓存重新探测
+   * （"刷新用量"用）。
+   */
+  private renderUsageCell(container: HTMLElement, a: Account, force = false): void {
+    container.innerHTML = "";
+    if (!force) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "accounts-usage-btn";
+      btn.textContent = "查看用量";
+      btn.title = "起一次隐藏会话跑 /usage 读取该账号的 plan 额度窗口（较重操作，几秒钟）";
+      btn.addEventListener("click", () => this.renderUsageCell(container, a, true));
+      container.appendChild(btn);
+      return;
+    }
+    const pending = document.createElement("span");
+    pending.className = "accounts-usage-pending";
+    pending.textContent = "查询中…";
+    container.appendChild(pending);
+    if (!this.origin) return; // 理论不可达（accountRow 只在 origin 非空时被调），防御性早退
+    void fetchAccountUsage(this.origin, a.name, a.configDir, { force: true }).then((outcome) => {
+      container.innerHTML = "";
+      container.appendChild(this.buildUsageOutcomeEl(a, outcome));
+    });
+  }
+
+  /** F10：把 `AccountUsageOutcome` 渲染成一个短句 span（+ 未识别态附一个"复制诊断文本"链接，
+   *  方便用户报告；+ 一个"刷新"小按钮，复用 `renderUsageCell(force=true)`）。 */
+  private buildUsageOutcomeEl(a: Account, outcome: AccountUsageOutcome): HTMLElement {
+    const wrap = document.createElement("span");
+    wrap.className = "accounts-usage-outcome";
+    const text = document.createElement("span");
+    switch (outcome.status) {
+      case "ok":
+        text.textContent = outcome.buckets
+          .map((b) => `${b.label} ${b.usedPercent}%${b.resetIn ? ` · 重置${b.resetIn}` : ""}`)
+          .join("；");
+        // F10 Phase D 审计（后端架构+UX 均指出，重要）：解析成功≠格式已验证——这条 UI 分支是
+        // "parse 成功但语义假设未验证"的隐蔽伪装成功（跟 unrecognized/not-logged-in 等诚实
+        // 降级分支不是一回事）：真机验证前，"已用%"这个方向本身也是训练知识猜测，可能整体
+        // 颠倒。hover 提示这一点，不新增视觉噪音（不影响默认可读性），真机验证完成后可摘掉。
+        text.title = OK_USAGE_UNVERIFIED_CAVEAT;
+        break;
+      case "unrecognized":
+        text.textContent = `暂时读不到（${outcome.reason}）`;
+        text.title = outcome.raw ?? "";
+        break;
+      case "not-logged-in":
+        text.textContent = "该账号未登录，无法读取用量";
+        break;
+      case "cli-missing":
+        text.textContent = "该账号环境里没有 claude 命令";
+        break;
+      case "probe-failed":
+        text.textContent = outcome.error;
+        break;
+    }
+    wrap.appendChild(text);
+    // F10 Phase D 审计（UX，重要）：此前只有 unrecognized 分支给"复制诊断文本"，但
+    // not-logged-in/cli-missing 的判定同样基于训练知识猜测的正则（`NOT_LOGGED_IN_RE`/
+    // `CLI_MISSING_RE`），误判风险不比 unrecognized 低——真机上完全可能出现"其实已登录，但
+    // 屏幕上恰好有个欢迎语含 sign in 字样"这类误判，用户应该有办法把当时抓到的原始文本导出
+    // 来自证/求助。放宽成"任意分支只要带 raw 就给"，不再局限于 unrecognized 这一支。
+    if ("raw" in outcome && outcome.raw) {
+      const copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "accounts-usage-copy-raw";
+      copyBtn.textContent = "复制诊断文本";
+      copyBtn.title =
+        "复制这次抓到的原始屏幕文字（可能含界面画框符号，不好看但对排查有用）——如果这个功能" +
+        "读不出你的用量，可以把这段贴到项目的 GitHub issue 里帮忙定位。";
+      copyBtn.addEventListener("click", () => {
+        void navigator.clipboard?.writeText(outcome.raw ?? "").then(
+          () =>
+            showActionFailureToast(
+              "已复制诊断文本",
+              "这是探测抓到的原始屏幕内容（非隐私信息，只是终端画面文字）。如果这个功能一直读不出" +
+                "用量，可以把它贴到 cc-monitor 的 GitHub issue 里，帮助定位是不是 Claude Code 改了" +
+                " /usage 的显示格式。",
+              { level: "info", durationMs: 4000 },
+            ),
+          () => showActionFailureToast("复制失败", "剪贴板不可用", { level: "error" }),
+        );
+      });
+      wrap.appendChild(copyBtn);
+    }
+    const refreshBtn = document.createElement("button");
+    refreshBtn.type = "button";
+    refreshBtn.className = "accounts-usage-refresh";
+    refreshBtn.textContent = "刷新";
+    refreshBtn.addEventListener("click", () => {
+      const container = wrap.parentElement;
+      if (container) this.renderUsageCell(container, a, true);
+    });
+    wrap.appendChild(refreshBtn);
+    return wrap;
   }
 
   private async selectDefault(a: Account): Promise<void> {

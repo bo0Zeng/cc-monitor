@@ -40,7 +40,8 @@
     "test:ccm-cli": "bash e2e/ccm-cli.test.sh",
     "test:ccm-acceptance": "bash e2e/ccm-acceptance.sh",
     "test:ccm-pretrust": "bash e2e/ccm-pretrust-acceptance.sh",
-    "test:ccm-print-parity": "bash e2e/ccm-print-parity.sh"
+    "test:ccm-print-parity": "bash e2e/ccm-print-parity.sh",
+    "test:usage-probe": "bash e2e/usage-probe-acceptance.sh"
   },
   "dependencies": {
     "@chenglou/pretext": "0.0.8",

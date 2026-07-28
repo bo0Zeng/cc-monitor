@@ -5475,6 +5475,12 @@ body.settings-window-mode .grid-monitor-trigger {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* F10：折叠态用量摘要——菜单展开懒加载完当前账号用量后才有内容，空串时不占视觉重量。 */
+.status-account-usage {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
 /* account-ux U6：chip 上的 ⚠k 不一致计数（k 个活会话不在当前账号）。仅信息，点 chip
    进菜单才有对齐入口 → 不做成按钮、不抢眼，只用 warn 色示意。 */
 .account-picker-action.danger {
@@ -5542,6 +5548,12 @@ body.settings-window-mode .grid-monitor-trigger {
 .account-picker-status {
   flex: none;
   color: var(--text-2);
+  font-size: 0.85em;
+}
+/* F10：菜单里当前账号行的用量摘要——只在懒加载完成后才有内容。 */
+.account-picker-usage {
+  flex: none;
+  color: var(--text-faint);
   font-size: 0.85em;
 }
 .account-picker-info {
@@ -5710,7 +5722,7 @@ body.settings-window-mode .grid-monitor-trigger {
   overflow-wrap: anywhere;
 }
 
-/* 账号表：CSS Grid 定列 —— ★ / 头像 / 名 / 邮箱 / 状态 / 路径 / 操作。
+/* 账号表：CSS Grid 定列 —— ★ / 头像 / 名 / 邮箱 / 状态 / 用量(F10) / 路径 / 操作。
    路径列吃掉剩余宽度并单行省略（全文在 title 里），操作列右对齐。 */
 /* 列定义放在**表**上、行用 subgrid 继承它 —— 否则每行各自是一个独立 grid，`auto`/`fr` 轨道
    按各自那一行的内容算宽，列**跨行对不齐**（当前账号那行没有「设为当前账号」按钮、in-place 账号
@@ -5720,8 +5732,9 @@ body.settings-window-mode .grid-monitor-trigger {
   display: grid;
   /* 邮箱权重 > 路径：isolated 账号的 configDir 就是 <acctsDir>/<name>，行与行之间往往只差最后
      一个字符，前几十字符逐行重复；而邮箱才是分辨"学校号/私人号"的字段。路径要全文有 title，
-     也有「复制路径」按钮兜着。 */
-  grid-template-columns: 14px 16px minmax(0, auto) minmax(0, 1.2fr) auto minmax(0, 0.8fr) auto;
+     也有「复制路径」按钮兜着。F10：用量列（懒加载"查看用量"按钮/结果短句）权重给 1fr——
+     结果文案长度不定（"会话窗口 38%·重置2h14m"这类），比路径列更需要弹性空间。 */
+  grid-template-columns: 14px 16px minmax(0, auto) minmax(0, 1.2fr) auto minmax(0, 1fr) minmax(0, 0.8fr) auto;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   overflow-x: auto;
@@ -5795,6 +5808,29 @@ body.settings-window-mode .grid-monitor-trigger {
 }
 .accounts-row-badge.warn {
   color: var(--warn);
+}
+/* F10：用量单元格——懒加载按钮/结果短句，字号与其余状态类列（badge/dir）一致，不额外抢眼。 */
+.accounts-row-usage {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.accounts-usage-btn,
+.accounts-usage-refresh,
+.accounts-usage-copy-raw {
+  font-size: var(--font-size-small);
+  padding: 1px 6px;
+}
+.accounts-usage-pending {
+  color: var(--text-faint);
+  font-style: italic;
+}
+.accounts-usage-outcome {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 .accounts-row-actions {
   display: flex;

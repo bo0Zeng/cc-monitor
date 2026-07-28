@@ -61,6 +61,22 @@ import {
 export const CLAUDE_NESTED_ENV_VARS = AGENT_PROFILE.nestedEnvVars.join(" ");
 
 /**
+ * F10（剩余账号 UX）：给 `account_usage` IPC 的一次性用量探针会话构造启动 payload——
+ * `export CLAUDE_CONFIG_DIR='<dir>'; unset <嵌套env>; claude`。这一行会被 Rust 侧原样
+ * `tmux send-keys` 敲进探针会话（Rust 只管执行，不理解语义，见 `account_usage.rs` 头注）。
+ * `configDir` 非法（`isValidConfigDir` 未过）时 throw——同 `buildEnvPrefix` 既有 fail-closed
+ * 纪律，绝不把未经校验的路径拼进命令。
+ */
+export function buildUsageProbePayload(configDir: string): string {
+  // 用量探针恒是 per-account 的——不像 resume/新建路径存在"未选账号=基座"这个合法沉默态，
+  // 空 configDir 在这里没有意义（探不出"哪个账号"的用量），直接拒绝而非静默退化成裸 `claude`。
+  if (!configDir) {
+    throw new Error("用量探针需要显式 configDir（不支持基座/无账号场景）");
+  }
+  return `${buildEnvPrefix(configDir)}unset ${CLAUDE_NESTED_ENV_VARS}; ${AGENT_PROFILE.defaultLauncher}`;
+}
+
+/**
  * 直连 resume 命令（F41）：`unset <嵌套env>; [cd '<cwd>' && ]<launcher> --resume <sid>`。
  * 经 `ssh -t user@host -- "<此串>"` 在远端登录 shell 里执行；同一文本也用于
  * 拉起失败时的剪贴板回退（粘贴到任何远端终端语义一致）。
