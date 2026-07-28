@@ -617,3 +617,26 @@ F02 ──┴─► F03 ─┬─► F04 ─┬─► F08
   **顺带关掉 tsc 盲区**：`tsconfig.json` 的 `include` 加 `"e2e"`，
   R04 实现期漏过的那个 import 错误现在是编译期错误。
   审计独立验证推论④ 零破坏（720 场景×5 探针，`renderFallback` 差异 0 条）。
+- 19 — 2026-07-28 — **R05 + R07 完成签收，R 段 9/9 全部收口**。
+  **R05**（`fb20c03`）：删 `launch-menu.ts` 的 container 死代码（唯一生产调用点从不读它）、
+  函数收成 `enumerateAccountModifiers` 直接返回数组、`"__base__"` 裸魔法串换判别联合。
+  **③ 顺带修了一个真 bug**：`validateAcctName` 放行下划线，真实账号可以叫 `__base__`，
+  改造前会被判成基座 → 静默落基座丢号 + Restart 入口凭空消失（R11/R08 同族）。
+  审计 0 阻塞 + 5 重要：**我唯一实质重写的那行零测试覆盖、三个变异全存活**（已补 6 条行为测试
+  并复跑转红）；`doc/INVARIANTS.md` §38 作为**规范性**章节指着已删符号讲道理（已同步，
+  论证反而更强：container 值域固定为两字面量、不需要"现查"，故不需要发现层）。
+  **否决账本「5 处账号菜单收敛」**（五处早共用 `fetchAccounts`+`isSelectable`，
+  不同的只有渲染载体，强行收敛=新增抽象），但审计指出核实不完整——实为 **7 处**，
+  且漏掉的 `views/history.ts` **缺基座逃生口**，已登记 **R16**。
+  **R07**（`2c365a4`）：`planLocal` → `validateLocalLaunch`，返回 `void`，
+  **并删掉内部那遍 `buildLaunchPlan`**。审计 1 阻塞 + 5 重要，**推翻了本席最核心的论证**：
+  ① 否决「真接上」引的是**错误论据**——`Get-Command` 只排除"TS 全量渲染好字符串、Rust 只管 exec"，
+  **不排除**"TS 构造 IR、Rust 只补 Get-Command"；真正理由是 F06 §3.2 的
+  **「`plan.action`/`plan.cwd` 恒等于输入、没有信息增量可取回」**（F06 §1 那条已勾 `[x]` 的
+  "从 LaunchPlan 取 action/cwd/launcher"DoD 从未实现、已在 §3.2 撤回，现已就地标注）；
+  ② 「走一遍 `buildLaunchPlan` 是便宜的一致性检查」**零门禁守护**（删掉后 705 全绿；
+  改 `void` 把类型层强制降级成了可随手删的裸语句）且是 **fail-closed 风险**，已删。
+  **INVARIANTS §36 标题重写**为「本地路径不经 IR 产出命令」（原题的 `plan.env` 前提已不成立）。
+  另修一个**坏 commit**：R05 曾把 R07 的 tabs.ts 改名卷入，导致该 commit 单独不可编译且
+  **本地 tab resume 功能性损坏**；核实未 push 后 amend 修复（未改写已发布历史）。
+  **纪律新增**：审计 agent 在跑时只做新文件与只读核实，绝不改下一个功能将要改的源文件。
