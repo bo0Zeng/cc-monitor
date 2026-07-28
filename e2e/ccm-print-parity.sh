@@ -64,5 +64,16 @@ NEEDLE_ATTACH="attach -t '=cc-p1:'"
 ck "attach 到 cc-p1" yes "$(contains "$NEEDLE_ATTACH" "$OUT")"
 
 echo
+echo "===== 场景 resumeTmuxWithModel（F08：--model 闭合 R14①）====="
+LINE="$(get_line resumeTmuxWithModel)"
+OUT="$(run_print "$LINE")"
+# --tmux 场景的 --print 只展示外层 tmux 编排命令（真正的 export ANTHROPIC_MODEL 只会在内层
+# ccm 调用真的执行时才展开，不在这次静态 --print 里）——同既有 NEEDLE_BASE 的验证口径：
+# 验证 flag 真的被转传进了 send-keys 送进去的内层调用负载里。两个 token 分开断言——负载整体
+# 又被外层单引号包一层，token 之间的空格实际是 `'\'' '\''` 这种嵌套转义，不是裸空格。
+ck "--model flag 真的传进了内层调用" yes "$(contains "'--model'" "$OUT")"
+ck "opus 值真的传进了内层调用" yes "$(contains "'opus'" "$OUT")"
+
+echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
 [ "$FAIL" -eq 0 ]

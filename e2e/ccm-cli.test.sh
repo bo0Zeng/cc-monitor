@@ -49,6 +49,12 @@ ck "--launcher 覆盖默认启动器" \
 ck "--base：显式 unset CLAUDE_CONFIG_DIR（#75 逃生口）" \
    "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec claude" \
    "$(ccm --cwd /p --base --print)"
+ck "--model：export ANTHROPIC_MODEL（F08，闭合 R14）" \
+   "export ANTHROPIC_MODEL='opus'; $UNSET; cd '/p' && exec claude --resume s1" \
+   "$(ccm resume s1 --cwd /p --model opus --print)"
+ck "--model=<名> 等号形式" \
+   "$(ccm resume s1 --cwd /p --model opus --print)" \
+   "$(ccm resume s1 --cwd /p --model=opus --print)"
 ck "-- 之后透传给 agent，含特殊字符正确 quote" \
    "$UNSET; cd '/p' && exec claude 'a b' 'x'\''y'" \
    "$(ccm --cwd /p --print -- "a b" "x'y")"
@@ -93,6 +99,9 @@ ck "--base → 显式不注入（#75 逃生口，压过默认号）" \
 ck "无账号库 → 退化为基座（不报错）" \
    "$UNSET; cd '/p' && exec claude" \
    "$(ccm --cwd /p --print)"
+ck "--account 与 --model 组合：账号目录先、模型偏好次（顺序即契约，见 launch-dimensions.ts order）" \
+   "export CLAUDE_CONFIG_DIR='$ACCTMP/b'; export ANTHROPIC_MODEL='sonnet'; $UNSET; cd '/p' && exec claude" \
+   "$(acct --cwd /p --account b --model sonnet --print)"
 rm -rf "$ACCTMP"
 
 echo

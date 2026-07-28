@@ -3255,6 +3255,13 @@ body.settings-window-mode .grid-monitor-trigger {
   padding: 0;
   cursor: pointer;
 }
+/* F08：越层启动器诊断——只读提示，不是错误（用户的自定义命令本身没有"错"，只是没享受到
+   账号/模型偏好的好处），用 warn 色但不用 error 色，同 accounts-row-badge.warn 的既有克制。 */
+.settings-launcher-warning {
+  margin-top: 4px;
+  font-size: var(--font-size-small);
+  color: var(--warn);
+}
 .settings-input[type="number"] {
   width: 70px;
 }
@@ -5897,6 +5904,55 @@ body.settings-window-mode .grid-monitor-trigger {
 }
 /* （U7 删掉了 .accounts-maint-title 的规则：产生它的那个 div 已被 <details> 的 <summary> 取代，
    全仓无使用者。） */
+
+/* F08：别名生成器——折叠标记同 .accounts-maint-wrap 的既有范式（自绘 ▸/▾，不用原生三角）。 */
+.ccm-alias-gen {
+  margin-top: 10px;
+}
+.ccm-alias-gen > summary {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+  list-style: none;
+}
+.ccm-alias-gen > summary::-webkit-details-marker {
+  display: none;
+}
+.ccm-alias-gen > summary::before {
+  content: "▸ ";
+  color: var(--text-faint);
+}
+.ccm-alias-gen[open] > summary::before {
+  content: "▾ ";
+}
+.ccm-alias-gen-hint {
+  margin: 4px 0 0;
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+}
+.ccm-alias-gen-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  align-items: center;
+}
+.ccm-alias-gen-grid input[type="text"],
+.ccm-alias-gen-grid select {
+  padding: 3px 6px;
+  font-size: var(--font-size-small);
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+}
+.ccm-alias-gen-out {
+  flex-basis: 100%;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-2);
+}
 .accounts-wiz-field {
   display: flex;
   flex-direction: column;

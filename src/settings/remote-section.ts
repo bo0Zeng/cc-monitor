@@ -30,6 +30,7 @@ import { openSftpPanel } from "../sftp/panel";
 import { openPortForwardPanel } from "../views/port-forward";
 import { deriveTmuxName } from "../remote-launch";
 import { runRemoteLauncher } from "../remote-launch-run";
+import { invalidateCcmProbeCache } from "../ccm-probe";
 import { fetchAccounts, isSelectable, currentWorkingAccount, withAccount } from "../accounts";
 // F12：配置数据层已抽到 src/remote-config.ts（治分层倒挂）——UI 从数据模块 import，不再自持 CRUD。
 import {
@@ -710,6 +711,9 @@ class MachineCard {
         cfg,
         profile: ".bashrc",
       });
+      // F08：安装成功后立即失效探测缓存——免得用户装完还要等最多 5 分钟 TTL 才切到 CLI
+      // 渲染器（`ccm-probe.ts` 早就为这一步预留了 `invalidateCcmProbeCache`，只是从未被调用）。
+      invalidateCcmProbeCache(cfg.label);
       this.testResult.textContent = `✓ ${msg}`;
     } catch (e) {
       this.testResult.textContent = `✗ 安装失败：${String(e)}`;

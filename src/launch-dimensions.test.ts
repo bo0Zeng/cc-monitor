@@ -126,9 +126,13 @@ test("model：非法模型名 → throw（拒绝拼入命令）", () => {
   const plan: LaunchPlan = { transport: ctx.transport, action: ctx.action, container: ctx.container, cwd: ctx.cwd, env: [], launcher: "", args: [], wrap: [] };
   throws(() => MODEL_DIMENSION.apply(plan, ctx));
 });
-test("model：cliFlags 恒 null（ccm 无 --model，诚实强制走兜底）", () => {
+// F08：ccm 学会了 --model，关闭 R14①——cliFlags 从恒 null 改成真吐 flag。
+test("model：cliFlags 对配了偏好的会话吐 --model <名>", () => {
   const ctx: LaunchContext = { ...baseCtx, modelOverride: "opus" };
-  eq(MODEL_DIMENSION.cliFlags!(ctx), null);
+  eq(MODEL_DIMENSION.cliFlags!(ctx), ["--model", "opus"]);
+});
+test("model：applies 恒假时 cliFlags 不会被问到（无偏好场景不受影响）", () => {
+  eq(MODEL_DIMENSION.applies(baseCtx), false);
 });
 // F07 §4 步骤2：renderFallback 整体黄金串——不只锁孤立的 apply() 输出，锁 order=25 在真实渲染
 // 管线里的实际效果（子串位置在 export CLAUDE_CONFIG_DIR 之后、启动命令之前）。

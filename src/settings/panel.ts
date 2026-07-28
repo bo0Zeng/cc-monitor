@@ -30,6 +30,7 @@ import { CollapsibleGroup } from "./collapsible-group";
 import { DataSection } from "./data-section";
 import { RemoteSection } from "./remote-section";
 import { getBehavior, setBehavior, type BehaviorConfig } from "../behavior";
+import { diagnoseRemoteLauncher, buildAliasGeneratorSection } from "../launcher-diagnostics";
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
 // F82a：独立设置窗口——保存后广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为
@@ -173,6 +174,7 @@ export class SettingsPanel {
   // F34：自定义 resume 命令（本地 / 远端）
   private resumeLocalInput!: HTMLInputElement;
   private resumeRemoteInput!: HTMLInputElement;
+  private remoteLauncherWarning!: HTMLElement; // F08：越层启动器诊断提示（只诊断，不代改）
   private bringFrontCheckbox!: HTMLInputElement;
   /** F03（unify-launch）：`forceLegacyLaunchRenderer` 无 UI 暴露（手改 config.json 的逃生口），
    *  但 `onBehaviorToggle` 每次都要交一份完整 `BehaviorConfig`——缓存 open() 时读到的值原样带回，
@@ -213,6 +215,7 @@ export class SettingsPanel {
     this.notifyTurnEndCheckbox.checked = behavior.notifyTurnEnd;
     this.resumeLocalInput.value = behavior.resumeCommandLocal;
     this.resumeRemoteInput.value = behavior.resumeCommandRemote;
+    this.updateRemoteLauncherWarning();
     this.forceLegacyLaunchRenderer = behavior.forceLegacyLaunchRenderer;
     this.updateBringFrontEnabled();
     this.banner.textContent = "";
@@ -235,6 +238,14 @@ export class SettingsPanel {
   /** v2.4 issue #2: autoFollow 关 → bringFront 灰显（依赖前者，无意义） */
   private updateBringFrontEnabled(): void {
     this.bringFrontCheckbox.disabled = !this.autoFollowCheckbox.checked;
+  }
+
+  /** F08：越层启动器诊断——只读提示，不碰 `resumeRemoteInput.value` 本身（MASTERPLAN 设计
+   *  原则#7：只诊断+引导迁移，不自动降级、不偷改配置）。 */
+  private updateRemoteLauncherWarning(): void {
+    const msg = diagnoseRemoteLauncher(this.resumeRemoteInput.value);
+    this.remoteLauncherWarning.textContent = msg ?? "";
+    this.remoteLauncherWarning.style.display = msg ? "block" : "none";
   }
 
   /** v2.4 issue #2: 任一行为 toggle 改 → 立即 save + 通知 TabManager 同步 */
@@ -547,6 +558,16 @@ export class SettingsPanel {
     );
     this.resumeRemoteInput = remoteInput;
     group.appendChild(remoteRow);
+    // F08：越层启动器诊断——只诊断+引导，不自动改这个输入框的值（MASTERPLAN 设计原则#7）。
+    this.remoteLauncherWarning = document.createElement("div");
+    this.remoteLauncherWarning.className = "settings-launcher-warning";
+    this.remoteLauncherWarning.style.display = "none";
+    group.appendChild(this.remoteLauncherWarning);
+    remoteInput.addEventListener("input", () => this.updateRemoteLauncherWarning());
+    // F08 Phase D 审计（重要项修复）：别名生成器紧挨着诊断放在同一处——此前生成器藏在
+    // "远端 (SSH)"每台主机卡片的三层折叠里、且按主机重复渲染（内容与选中哪台机器无关），
+    // 诊断提示也从未指向它。两者是同一段用户旅程的两半，理应彼此相邻。
+    group.appendChild(buildAliasGeneratorSection());
 
     return group;
   }

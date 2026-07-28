@@ -26,6 +26,10 @@ describe("F43 shouldShowResetFingerprint", () => {
   });
 });
 
+// F08 Phase D 审计：buildAliasLine/别名生成器 UI 已迁到 src/launcher-diagnostics.ts（与它
+// 诊断的对象——远端 resume 命令输入框——放在同一处设置分组，紧挨着，不再按主机重复渲染）；
+// 相关单测随之搬到 src/launcher-diagnostics.vitest.ts。
+
 describe("F45 parseAddressLines", () => {
   it("按行 trim + 去空行", () => {
     expect(parseAddressLines("10.0.0.2\n  pi:2222 \n\n[::1]:22\n   ")).toEqual([
