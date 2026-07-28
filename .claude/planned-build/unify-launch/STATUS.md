@@ -9,14 +9,14 @@
 ## 当前状态
 
 - **当前阶段**：R 段（重构 Sonnet 产出 + 信号修复）—— **当前重心**
-- **当前功能**：R00（信号修复）待启动
+- **当前功能**：R00 / R01 / R02 **已完成**（CI 6 job 全绿，draft PR #83）→ 下一个 **R08**（真 bug）
 - **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）、**F11**（预信任能力上提进 `ccm`：`shared/ccm` 的 `--tmux` 建会话路径新增预信任 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out；范围收窄不碰仓库外的 `cc-spawn` 本体；双 agent 审各自独立复现真实阻塞项，含修复既有 `e2e/ccm-acceptance.sh` 污染真实全局配置的回归）、**F08**（终端集成收尾：`ccm --model` 闭合 R14；`canRenderCli` 针对性特判而非机械塞进 `CLI_REQUIRED_CAPS`；别名生成器+越层启动器诊断合并落点，紧邻彼此、不再按主机重复渲染；commit `06a9c76`）、**F09**（UI 收敛：动作×修饰——R12 降级为已归档设计决策；归档 tab 收敛成 `Resume`+账号×容器 3 级级联 flyout；存活 tab 收敛成 `Restart`+账号 flyout；徽章恒显身份（R7 语义反转）；对齐全套全仓删除；双 agent 审 1 阻塞+5 重要全部修复）
 - **下一个功能**：F10（剩余账号 UX：面板砍卡片/加号一键化/用量）→ Phase G
 - **阻塞 / 待用户确认**：无
 - **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 15）
 - **自动模式（/loop）**：**全自动**（连续 B→G）。用户 2026-07-27 追加授权：**具体设计决策由本席开
   agent 讨论分析后自行决定，不必逐项停下来问**——除非真遇到阻塞或用户主动打断
-- **本轮 loop 目标**：commit F09 → 开 F10（Phase A/B 规划）
+- **本轮 loop 目标**：R00/R01/R02 已收口 → R08（容器路径丢账号，先写复现测试再修）→ R03-R07/R09
 - **loop 停止条件**：计划≠现实 / 同一步≥2 失败 / 全部完成→Phase G / 用户打断
 
 ## §0 工作约定（跨 compact 必须保留 —— 恢复工作时先读这一节）
@@ -73,9 +73,9 @@ Rust 门）红 28 处，已用 `git archive` 验证 merge-base(v3.3.0) 时全干
 
 | ID | 内容 | 依据 | 状态 |
 |----|------|------|------|
-| R00 | 信号修复：`cargo fmt` 28 处 / 分支首次跑 CI（draft PR）/ 7 套 e2e 进 ubuntu CI job（约 25 行 YAML，只需装 tmux，全部用隔离 `-L` socket） | 四视角审计共同结论 | 待做 |
-| R01 | F10 收口 commit | 工作区已改完大半，见「未 commit 改动」 | 进行中 |
-| R02 | 伪测试扫荡：对每个功能挑 1-2 条「声称验证核心防线」的测试做**变异检查**（改坏实现确认转红） | 已确认 3 条（2 条已修 + 1 条 F10 内已修并做过变异验证） | 待做 |
+| R00 | 信号修复：`cargo fmt` 29 处 / 分支首次跑 CI（draft PR #83）/ 7 套 e2e 进 ubuntu CI job | 四视角审计共同结论 | **已完成**（见下「R00 结果」） |
+| R01 | F10 收口 commit | 工作区已改完大半 | **已完成**（commit `bb71172`） |
+| R02 | 伪测试扫荡：对每个功能挑 1-2 条「声称验证核心防线」的测试做**变异检查**（改坏实现确认转红） | 已确认 3 条（F10 内，全部已修） | **已完成**（11 条变异检查全 RED，见下「R02 结果」） |
 | R03 | **成功标准② 达成**：`planXxx`/`runXxx` 位置参数长列车 → options bag | 三方独立证伪账本「e2e 锁死签名」之说；实际约 100 行 / 7 个生产调用点 / **两个 e2e driver 零改动** | 待做 |
 | R04 | 结构性收紧四处：① `canRenderCli`+`renderCli` 合成返回 Result 的 `tryRenderCli`（现在 `if (flags)` 对 `null` 静默跳过，诚实降级只是**约定**）② 能力要求下放到维度 `requiredCaps?(ctx)`，删渲染器里的 model 特判 ③ `EnvOp` unset 侧收窄（export 侧当初专门收窄过、同样理由从未应用到 unset 侧）④ `WrapSpec` 闭包改纯数据（**趁 `plan.wrap` 恒空、此刻成本为零**，F04 rbind 落地后就不是） | IR 内核独立重设计对拍 §2.2 | 待做 |
 | R05 | UI 层收敛：删 `launch-menu.ts` **从未被渲染过**的 container 组（`enumerateModifierGroups` 第二参全仓恒传 `"tmux"`，返回值被丢弃，而 `tabs.ts:2264` 自己硬编码了逐字相同的一份）；5 处独立账号菜单实现收敛；`"__base__"` 魔法串类型化 | 波及面计数 + 对抗审计 | 待做 |
@@ -83,6 +83,58 @@ Rust 门）红 28 处，已用 `git archive` 验证 merge-base(v3.3.0) 时全干
 | R07 | `planLocal` 的假声明处置：三个生产调用点**全部丢弃返回值**，真命令仍由 Rust 独立构造，而 `launch-requests.vitest.ts` 头注写着"证明本地路径真的在用同一套维度注册表（不是套了个壳）"——**这句是假的**。要么真接上，要么改名 `validateLocalLaunch` 并把注释改成实话 | IR 内核对拍 §2.2 第 6 条 | 待做 |
 | R08 | **查证并修复：容器路径丢失继承账号**（实测复现，见下「新发现的真 bug」） | 本席 2026-07-28 `ccm --print` 实测 | 待做 |
 | R09 | 查证 `@ccm_sid`（兜底路，事实）vs `@ccm_sid_expect`（CLI 路，意图）语义分叉——`sftp.rs` 的结构性扫描只覆盖 ccm 脚本、不覆盖 TS 侧。**压在成功标准④上** | IR 内核对拍 §2.2 第 9 条，标注为需核实 | 待做 |
+
+### R00 结果（2026-07-28，全部 6 个 CI job 绿）
+
+commit：`c6bbe32` 计划重排 · `bb71172` F10 · `bcf2005` fmt · `3a5d286` CI e2e job ·
+`754674f`/`ac874a9`/`5f3788e`/`29bdda4` 四轮修 e2e。draft PR **#83**（不 merge，仅为跑 CI）。
+
+**开这个 PR 的价值被立刻兑现——分支首次 CI 揪出 2 个本地永远看不见的真缺陷**：
+
+1. **`ccm-print-parity` 一直在验开发者装机版 ccm，不是仓内 `shared/ccm`。**
+   `renderCli` 产出的命令行以裸 `ccm` 开头（本该如此），脚本 `bash -c` 执行时经 PATH 解析
+   → 本机解析到 `~/.local/bin/ccm`。今天两份内容恰好相同，但那是巧合：改了仓内 ccm 忘了重装，
+   这套「平价预言机」会继续绿。已改成 mktemp bin 指向 `$REPO/shared/ccm`，两次变异验证。
+2. **`shared/ccm` 在 git 里没有可执行位**（100644，本机 775）。干净 checkout 拿到的 ccm
+   不可执行，而容器路径 send-keys 的载荷按绝对路径直接执行它。已 `--chmod=+x`。
+   **生产不受影响**（`sftp.rs` 用 `include_str!` + `upload_atomic(0o755)` 显式给权限），
+   受影响的是干净 checkout 与任何 `./shared/ccm` 用法；MASTERPLAN §2.2 要求它是可执行文件，
+   仓里记 644 与设计意图矛盾。
+
+另修 2 处测试健壮性（非 CI 也受益）：`ccm-acceptance` 与 `ccm-pretrust` 原用固定 `sleep`
+等异步副作用，改轮询等待（本地 25s→10s / 24s→5s，断言数不变）。`ccm-pretrust` 的等待条件
+选得有依据：预信任块（`shared/ccm:386-432`）**先于** `new-session`（:454），故「socket 上
+出现会话」充分证明预信任已走完——连幂等/负向场景也不必回退固定 sleep。
+
+**CI 结构**：按「要不要 Rust 工具链」拆两个 ubuntu job——`e2e-tmux`（105 条，秒级）
++ `e2e-tmux-rust`（21 条，需 webkit2gtk 一套 Linux Tauri 构建依赖）。
+
+**方法学教训（写给以后的自己）**：`send-keys` 进 tmux 的载荷失败时，错误信息**只存在于那个
+pane 里**，测试进程只看到"结果是空的"。三轮 CI 里我第一轮修对、第二轮判错（误以为是慢
+runner 上 sleep 不够，其实 20s 轮询照样超时）、第三轮改成「让被测对象自己说话」（超时即
+`dump_panes`：pane 文本 + PATH + SHELL + default-shell）才一发命中真因。
+**猜的代价是每轮一次 CI；加诊断的代价是一次。** `dump_panes` 已留在脚本里。
+
+### R02 结果（2026-07-28，11 条变异检查全部 RED）
+
+对 F01-F11 的核心防线逐条做变异检查（改坏生产代码 → 门禁必须转红）。**全部 RED = 全部真有
+测试守护**，没有新增伪测试。此前确认的 3 条伪测试全在 F10 内、已随 `bb71172` 修完。
+
+覆盖：F01 `exact_target` 的 `=name:` · F03 维度顺序不变量 · F03 #76 闸门（send-into 强制降级）
+· F04 Gate2 身份 union · F05 `ACCOUNT_DIMENSION.applies` 恒真（R11 族）· F08 model 能力特判
+· F09 徽章门控 · F02 带值 flag 取值校验 · F11 `cwd_abs` 规范化 · F10 探针会话过滤 · R11 继承闸。
+
+其中 F05 那条被**两层独立守护**（单测「applies 恒真」+ e2e 经真 `shared/ccm` 断言 `--base`
+真的传进内层调用），是 R11 教训落地得最扎实的一处。
+
+**变异检查本身的三个失效模式（我在这一轮里全踩了一遍，故记下）**：
+1. **变异不可达** —— `exit 7` 追加在文件末尾，而脚本先 `exec` 了 → 永不执行，套件照绿。
+2. **变异语义无效** —— 把 `applies: () => true` 改成 `!!ctx.account`，而 `ctx.account` 是
+   **非空**判别联合（无"未决定"第三态）→ 恒真，等于没改。差点误报 F05 是伪测试。
+3. **门禁太窄** —— 用 `npx vitest run src/` 当门禁，漏掉 tsx 跑的黄金串（`*.test.ts`）。
+   差点误报 #76 闸门是伪测试（实际由 `test:launch-render-cli` 精确抓住）。
+→ 结论：**报"伪测试"之前，必须先证明变异真的生效、且门禁真的覆盖到那条测试。**
+   一次性审计脚本不进仓（sed 锚点会随代码漂移）。
 
 ### 新发现的真 bug（R08，已实测复现）
 
