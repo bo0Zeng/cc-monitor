@@ -18,17 +18,29 @@ pub struct CcmProbeResult {
 fn parse_probe_output(out: &str) -> CcmProbeResult {
     let mut lines = out.lines();
     if lines.next() != Some("name=ccm") {
-        return CcmProbeResult { installed: false, version: None, capabilities: vec![] };
+        return CcmProbeResult {
+            installed: false,
+            version: None,
+            capabilities: vec![],
+        };
     }
     let (mut version, mut capabilities) = (None, vec![]);
     for line in lines {
         if let Some(v) = line.strip_prefix("version=") {
             version = Some(v.to_string());
         } else if let Some(c) = line.strip_prefix("capabilities=") {
-            capabilities = c.split(',').filter(|s| !s.is_empty()).map(str::to_string).collect();
+            capabilities = c
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect();
         }
     }
-    CcmProbeResult { installed: true, version, capabilities }
+    CcmProbeResult {
+        installed: true,
+        version,
+        capabilities,
+    }
 }
 
 /// 探测远端 `ccm` 是否已装 + 能力集。`command -v` 找不到 → 走 `NO_CCM` 哨兵分支，不报错

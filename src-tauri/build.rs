@@ -16,7 +16,10 @@ fn check_acct_iso_vendor_freshness() {
     let vendor_dir = Path::new("vendor/cc-acct-iso");
     let vendor_md = vendor_dir.join("VENDOR.md");
     println!("cargo:rerun-if-changed={}", vendor_md.display());
-    println!("cargo:rerun-if-changed={}", vendor_dir.join(".vendor_id").display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        vendor_dir.join(".vendor_id").display()
+    );
     // D 审计 S1/S5：指纹须覆盖**全部被部署文件**，故过期检查也逐个比这 6 个（不只 3 脚本）。
     // 顺序须与 VENDOR.md 菜谱 / `.vendor_id` 计算一致（自洽校验按同一顺序拼接）。
     const DEPLOYED: [&str; 6] = [
@@ -44,7 +47,11 @@ fn check_acct_iso_vendor_freshness() {
                 .collect::<Vec<_>>()
                 .join(" ")
         );
-        if let Ok(out) = std::process::Command::new("sh").arg("-c").arg(&cat_cmd).output() {
+        if let Ok(out) = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&cat_cmd)
+            .output()
+        {
             let computed = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if !computed.is_empty() && computed != recorded {
                 println!(
