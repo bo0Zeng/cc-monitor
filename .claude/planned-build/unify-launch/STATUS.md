@@ -1,7 +1,15 @@
 # 状态 / STATUS — unify-launch（恢复工作的入口，每次先读这里）
 
-- **当前阶段**：F09 已完成签收（Phase B→F 全过，commit 待落）
-- **当前功能**：无——F09 收尾完成，下一步进 F10（剩余账号 UX）
+> **2026-07-28 重大更新**：用户对 F02 Phase E/F 之后（即 F03-F10 全部）的产出**失去信心**
+> （那一段由能力较弱的模型执行），要求推倒重看。已完成一次四视角独立复核（整体设计 / 文档 /
+> 代码工程+伪测试专项 / 实现细节 / 波及面精确计数 / IR 内核独立重设计对拍）。
+> **结论：IR 内核保留**（一个自由设计的独立方案撞回了 R11 与 fail-soft 两个坑，见下），
+> **该重构的是它上面两层 + 验证信号本身**。本轮工作重排为 R 段 + B 段，见「§R/§B」。
+
+## 当前状态
+
+- **当前阶段**：R 段（重构 Sonnet 产出 + 信号修复）—— **当前重心**
+- **当前功能**：R00（信号修复）待启动
 - **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）、**F11**（预信任能力上提进 `ccm`：`shared/ccm` 的 `--tmux` 建会话路径新增预信任 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out；范围收窄不碰仓库外的 `cc-spawn` 本体；双 agent 审各自独立复现真实阻塞项，含修复既有 `e2e/ccm-acceptance.sh` 污染真实全局配置的回归）、**F08**（终端集成收尾：`ccm --model` 闭合 R14；`canRenderCli` 针对性特判而非机械塞进 `CLI_REQUIRED_CAPS`；别名生成器+越层启动器诊断合并落点，紧邻彼此、不再按主机重复渲染；commit `06a9c76`）、**F09**（UI 收敛：动作×修饰——R12 降级为已归档设计决策；归档 tab 收敛成 `Resume`+账号×容器 3 级级联 flyout；存活 tab 收敛成 `Restart`+账号 flyout；徽章恒显身份（R7 语义反转）；对齐全套全仓删除；双 agent 审 1 阻塞+5 重要全部修复）
 - **下一个功能**：F10（剩余账号 UX：面板砍卡片/加号一键化/用量）→ Phase G
 - **阻塞 / 待用户确认**：无
@@ -10,6 +18,122 @@
   agent 讨论分析后自行决定，不必逐项停下来问**——除非真遇到阻塞或用户主动打断
 - **本轮 loop 目标**：commit F09 → 开 F10（Phase A/B 规划）
 - **loop 停止条件**：计划≠现实 / 同一步≥2 失败 / 全部完成→Phase G / 用户打断
+
+## §0 工作约定（跨 compact 必须保留 —— 恢复工作时先读这一节）
+
+**自动度**：全自动连续跑 planned-build 的 B→F 循环。具体设计决策自行判断，不逐项问。
+**每个功能的 Phase D 必须开一个独立的对抗性 agent**——任务是论证「这个功能不该这么做 / 不该做」，
+不是复核实现；prompt 自包含 + 带 §0 核心思想全文 + 明确要求「不要为了对抗而对抗，核实后若认同
+就说认同并给证据」。**UX 视角与实现视角都要覆盖。**
+**停止条件**：真阻塞 / 计划≠现实 / 同一步连续 2 次失败 / 全部完成 → Phase G。
+
+**commit 约定**：本地 commit，**不加 `Co-Authored-By`**，一功能一 commit，
+`git add` 用显式文件清单（绝不 `git add -A`）。
+**推送授权（2026-07-28，唯一一次对外动作）**：R00 允许开一个 **draft PR → main** 以触发全套 CI。
+**不 merge、不发版、不 bump、不改 workflow 触发条件。**
+
+**门禁纪律**：所有门禁命令 `set -o pipefail`，输出**重定向到文件后 Read/grep 核实**，
+绝不信内联回显（本仓踩过：裸管道掩盖 cargo 编译失败、误报全绿）。
+
+**红线**：daemon 零改 · `TMUX_LS_FMT` 与 `remote-daemon-proto/src/watcher.rs` 逐字节一致 ·
+不代替用户改 `~/.bashrc` / `~/.claude/settings.json` / user scope MCP（只读+诊断+生成待贴文本）·
+cc-monitor 侧不新增轮询 · 不用 emoji · **不启动真实已认证的 `claude` 子进程**
+（会烧真实额度且交互不可控；F10 的 `/usage` 解析因此全部基于训练知识猜测、未经真机验证，
+真机验证清单见 `features/F10-remaining-account-ux.md` §7，留给用户上线前跑）。
+
+### 已独立复核为真绿的基线（2026-07-28，不要重复怀疑/重跑）
+
+`tsc` 0 · `npm test` 691 · `cargo test --all` 389 + daemon 125 + vendor `code-picture-core` 25 ·
+覆盖率地板 / `npm audit --omit=dev` / `vite build` / `shellcheck e2e/*.sh` / daemon `cargo fmt` 全过 ·
+**7 套真机 e2e 共 126 条断言全绿**（tmux-target 26 / tmux-guarded 14 / ccm-cli 39 /
+ccm-print-parity 12 / ccm-acceptance 15 / ccm-pretrust 13 / usage-probe 7），
+且跑完真实 `~/.claude.json`、`~/.codex/config.toml` 的 md5 未变（沙盒未污染）·
+四条红线逐条核实干净 · 文档引用的 INVARIANTS 章节号全部真实存在、无悬空。
+
+**唯一的红**：`cargo fmt --check` 28 处（R00 修）。
+
+### F10 未 commit 改动的当前状态（R01）
+
+工作区已改完的：两条伪测试改成真验证 · 「复制诊断文本」放宽到所有带 raw 的状态 ·
+ok 状态加共享的「格式未经真机验证」title 提示 · 跨账号竞态阻塞项修复 ·
+`disown` 移除（非 POSIX 且 `setsid` 之后多余；内层 `bash -c` 改 `sh -c`）·
+改走真 `tmux::exact_target`（`pub(crate)`，连带 `build_usage_probe_cmd` 变 fallible）·
+第三条伪测试修复（抽出 `parse_visible_tmux_sessions`，**已做变异验证**：删生产侧 filter 会红）。
+**还欠**：`launchPayload` 内容断言（字面量已算出：
+`export CLAUDE_CONFIG_DIR='<dir>'; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; claude`）·
+`account_usage.rs` 11 处 `cargo fmt`（`tmux.rs` 那 2 处不在 F10 改动区间、属更早轮次）·
+Phase E/F 文档 · commit。
+
+## §R 段 — 重构 Sonnet 产出 + 信号修复（当前重心）
+
+**为什么先修信号**：`account-ux` 领先 main 15 commit / 13204 插入行、**从未跑过任何 CI**；
+7 套真机 e2e 共 126 条断言**既不在 CI 也不在 `npm test`**；`cargo fmt --check`（CI 唯一阻断性
+Rust 门）红 28 处，已用 `git archive` 验证 merge-base(v3.3.0) 时全干净 → 全部本分支引入；
+已确认 3 条伪测试。**信号失效时做重构 = 蒙眼开刀。**
+
+| ID | 内容 | 依据 | 状态 |
+|----|------|------|------|
+| R00 | 信号修复：`cargo fmt` 28 处 / 分支首次跑 CI（draft PR）/ 7 套 e2e 进 ubuntu CI job（约 25 行 YAML，只需装 tmux，全部用隔离 `-L` socket） | 四视角审计共同结论 | 待做 |
+| R01 | F10 收口 commit | 工作区已改完大半，见「未 commit 改动」 | 进行中 |
+| R02 | 伪测试扫荡：对每个功能挑 1-2 条「声称验证核心防线」的测试做**变异检查**（改坏实现确认转红） | 已确认 3 条（2 条已修 + 1 条 F10 内已修并做过变异验证） | 待做 |
+| R03 | **成功标准② 达成**：`planXxx`/`runXxx` 位置参数长列车 → options bag | 三方独立证伪账本「e2e 锁死签名」之说；实际约 100 行 / 7 个生产调用点 / **两个 e2e driver 零改动** | 待做 |
+| R04 | 结构性收紧四处：① `canRenderCli`+`renderCli` 合成返回 Result 的 `tryRenderCli`（现在 `if (flags)` 对 `null` 静默跳过，诚实降级只是**约定**）② 能力要求下放到维度 `requiredCaps?(ctx)`，删渲染器里的 model 特判 ③ `EnvOp` unset 侧收窄（export 侧当初专门收窄过、同样理由从未应用到 unset 侧）④ `WrapSpec` 闭包改纯数据（**趁 `plan.wrap` 恒空、此刻成本为零**，F04 rbind 落地后就不是） | IR 内核独立重设计对拍 §2.2 | 待做 |
+| R05 | UI 层收敛：删 `launch-menu.ts` **从未被渲染过**的 container 组（`enumerateModifierGroups` 第二参全仓恒传 `"tmux"`，返回值被丢弃，而 `tabs.ts:2264` 自己硬编码了逐字相同的一份）；5 处独立账号菜单实现收敛；`"__base__"` 魔法串类型化 | 波及面计数 + 对抗审计 | 待做 |
+| R06 | **成功标准① 首次可验收**：重写 `INVENTORY.md`（冻结在 F01，之后 10 个功能从未回改；行号全部失效、§D.3 描述的 ⇄ 已被 F09 全仓删除）。行号换成**符号名 + grep 锚点** | 已逐条核实失效 | 待做 |
+| R07 | `planLocal` 的假声明处置：三个生产调用点**全部丢弃返回值**，真命令仍由 Rust 独立构造，而 `launch-requests.vitest.ts` 头注写着"证明本地路径真的在用同一套维度注册表（不是套了个壳）"——**这句是假的**。要么真接上，要么改名 `validateLocalLaunch` 并把注释改成实话 | IR 内核对拍 §2.2 第 6 条 | 待做 |
+| R08 | **查证并修复：容器路径丢失继承账号**（实测复现，见下「新发现的真 bug」） | 本席 2026-07-28 `ccm --print` 实测 | 待做 |
+| R09 | 查证 `@ccm_sid`（兜底路，事实）vs `@ccm_sid_expect`（CLI 路，意图）语义分叉——`sftp.rs` 的结构性扫描只覆盖 ccm 脚本、不覆盖 TS 侧。**压在成功标准④上** | IR 内核对拍 §2.2 第 9 条，标注为需核实 | 待做 |
+
+### 新发现的真 bug（R08，已实测复现）
+
+`ccm --print` 实测：外层已 `export CLAUDE_CONFIG_DIR=<账号b>` + 走容器路径（`--tmux`）时，
+内层 send-keys 载荷是 `ccm resume SID --cwd … --agent claude --launcher claude`
+——**没有 `--account`、没有 `--base`、没有 export**。内层 ccm 在 tmux fork 的新 shell 里
+`CLAUDE_CONFIG_DIR` 为空、又无账号 flag → 按账号解析的 `elif` **落 manifest 默认号**。
+即 R11 的症状（看起来生效了，只是换成了错的号）在容器路径上残留。
+R11 那条注释说「两个场景用同一条 if 天然区分」，**只对非容器路径成立**——
+容器路径上"尊重继承值"只做到了"在这个 shell 里不覆盖"，没做到"带过容器边界"。
+命中条件：启动器自己建容器（`cct` = `ccm --tmux`）+ 账号只靠继承环境变量传递。
+app 自己的 CLI 渲染器恒吐 `--account`/`--base`（`applies` 恒真）故安全；兜底渲染器自己拼
+tmux 命令、export 在载荷内故安全。
+
+### 四视角复核的关键结论（决定"重构什么、不重构什么"）
+
+- **IR 内核保留。** 让一个 agent **先独立设计、后读实现**，它的方案会**重新引入 R11**
+  （"轴有值就贡献、无值就跳过"的 `Option<V>` 语义 = 账号沉默 → 落默认号），且缺"次要动作
+  允许失败"这一维（`(tmux set-option … || true) &&`，老 tmux 上 set 失败不能挡住 send-keys）。
+  它列了 11 条"现有实现做对了而我没想到"。**这是不重写内核的最强证据。**
+- **账本「e2e driver 传递性锁死 executor 签名」是假的**（三方独立证伪）：
+  `restart-cmd-driver.ts` 只 import 已是对象参数的 `restartWithAccount`，shim 在 Tauri IPC
+  边界拦截。→ R03 的代价远小于账本描述。
+- **不建通用"取值目录"契约**：真正需要异步取值的只有 account 一条轴；container 是两个固定
+  字面量、agent 只有一个元素。IR 设计者**独立地**也怀疑"一个注册表统治所有轴"在 agent 轴上
+  站不住（`AGENT_PROFILE` 被 15 个文件消费、5 个与启动无关）。→ R05 只做删死代码 + 收敛重复。
+- **不动 `shared/ccm` 本体**（R08 除外，那是修 bug）：12 条 print-parity + 39 条 ccm-cli 是
+  外部预言机，动它风险最高、可观测性最低。
+
+## §B 段 — cc-bus（仍是「起会话」主线，R 段之后）
+
+用户 2026-07-28 定性：**cc-bus 不是"又一个要集成的工具"，它是"起会话被写死成 N 套实现"的
+又一个病灶**——`cc-spawn`（136 行）内部自己 `tmux new-session` + 送环境 + 送任务。
+这正是本工作区账本里**未达成的那一行**，当时因"文件在仓外、需用户另行授权"收窄；
+用户现已授权 + 要求搬进仓。
+
+| ID | 内容 | 状态 |
+|----|------|------|
+| B01 | cc-bus 搬进本仓：`~/.claude/skills/cc-bus/`（1118 行 bash / 12 命令 / SKILL.md / examples）**原样固化为仓内基线，不趁搬家重构**（盘上有 3 个 `scripts.bak-*` + 2 个脚本各一份 `.bak`，说明一直手改）；部署走「备份→写→读回比对→回滚」 | 待做 |
+| B02 | **`cc-spawn` 收编**：建会话/送环境/送任务改经 `ccm`，只保留 cc-bus 专属部分（`cc-register` 总线登记 / `spawned.tsv` 台账 / 复用判定）。**闭合账本未达成行** | 待做 |
+| B03 | 驾驶舱：cc-monitor 看见/管理 bus 上的 agent、派活、读 inbox、`cc-spawn` 图形化 | 待做 |
+| B04 | settings.json 钩子的「读+诊断+生成待贴文本」（**不写**——用户定调；cc-bus 自己的安装脚本第 3 行同样拒绝改它） | 待做 |
+
+**B03 的两条已知张力**（Phase B 必须先解决）：
+① 与「不新增轮询」红线冲突——`~/.cc-bus/{agents.tsv,inbox/,spawned.tsv}` 是 aya 本机文件，
+cc-monitor 在 Windows 侧只能经 SSH 看。默认取**按需刷新**（同 F10 用量探针的懒加载），
+除非能论证复用 daemon 既有 inotify watcher 且不破 daemon 零改红线。
+② `cc-spawn` 图形化**必须建立在 B02 之上**，否则等于在 cc-monitor 侧再造第四套起会话实现——
+亲手制造本工作区刚消灭的病。
+
+## §P 段 — code-picture（B 段之后，见 `../integrate-toolchain/`）
 
 ## F09 结果摘要（R12 降级为已归档设计决策，R7 已落地关闭）
 
