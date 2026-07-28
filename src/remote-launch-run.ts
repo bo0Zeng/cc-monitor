@@ -21,7 +21,7 @@ import {
 } from "./launch-requests";
 import type { LaunchModifiers } from "./launch-plan";
 import { renderFallback } from "./launch-render-fallback";
-import { canRenderCli, renderCli } from "./launch-render-cli";
+import { tryRenderCli } from "./launch-render-cli";
 import { probeCcm } from "./ccm-probe";
 import { getBehavior } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
@@ -40,7 +40,17 @@ async function renderLaunchCommand(
   const behavior = await getBehavior();
   if (!behavior.forceLegacyLaunchRenderer && ctx.transport.kind === "ssh") {
     const probe = await probeCcm(origin);
-    if (canRenderCli(plan, ctx, probe)) return renderCli(plan, ctx);
+    // R04①：一次调用同时回答"能不能"与"渲染成什么"。拿不到 `ok:true` 就走兜底——
+    // 不存在"渲染出来了但悄悄丢了某个修饰"这个中间态（改造前 `renderCli` 对 `cliFlags` 返回
+    // `null` 是静默跳过的，安全性全靠调用方记得先问 `canRenderCli`）。
+    const r = tryRenderCli(plan, ctx, probe);
+    if (r.ok) return r.cmd;
+    // R04① 的第二条收益（Phase D 审计指出它此前"只活在测试里"，生产侧零消费者）：
+    // 把**为什么**降级说出来。刻意用 `console.debug` 而非 toast/`console.warn`——
+    // 走兜底渲染器是**正常且预期**的路径（没装 ccm 的用户每次拉起都会走它），
+    // 弹 toast 或 warn 等于对着正常行为报警，是净噪音。要查"为什么这台机没走 CLI 路径"时，
+    // 这一行是唯一线索；不查的时候它不打扰任何人。
+    console.debug(`[launch] CLI 渲染器降级 → 兜底渲染器（origin=${origin}）: ${r.reason}`);
   }
   return renderFallback(plan);
 }
@@ -140,7 +150,7 @@ export async function runRemoteResumeTmux(
 /** F03：往一个**已存在的空 tmux**（idle-tmux：claude 已退、只剩交互 shell 的 `cc-<sid8>`）就地
  *  resume——send-keys 载荷 + attach，复用原会话名（不产孤儿，治 #76）。签名/返回值与
  *  `runRemoteResumeTmux` 对齐：true=真拉起来了；false=命令构造失败/拉起失败（已回退剪贴板）。
- *  **`canRenderCli` 对这类 plan（`mode==="send-into"`）恒返回 false**——shared/ccm 没有就地
+ *  **`tryRenderCli` 对这类 plan（`mode==="send-into"`）恒返回 `ok:false`**——shared/ccm 没有就地
  *  复用能力，本函数因此恒走兜底渲染器（诚实放弃，见 F03 计划 §2「#76 防线」）。 */
 export async function runRemoteResumeIntoExistingTmux(
   origin: string,

@@ -681,6 +681,20 @@ attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建�
    渲染器（F03 Phase D 架构审计发现：早期实现把两种模式并入同一把闸门，导致 `renderCli` 的 attach
    分支在生产路径上永不可达——已收窄为只挡 `send-into`）。
 
+**attach 分支的显式豁免（R04 Phase D 审计要求补写）**：上面铁律#1、以及 R04② 引入的
+`requiredCaps` 收集，**都不适用于 `action.kind === "attach"`**——`tryRenderCli` 的 attach 分支
+在维度循环**之前**就 return（沿用"attach 不读其余修饰"的既有结构）。这是**刻意放宽**：
+`ccm attach <名>` 不接受 `--account`/`--base`/`--model` 任何修饰 flag，
+对一次纯 attach 要求远端 ccm 支持这些能力是过度收紧；且 attach 是接回一个**已经在跑**的进程，
+它的账号在创建时就定了，此刻注入任何 env 都不改变那个已存在进程的身份
+（`INVENTORY.md` §A #6 已把这件事写成设计而非缺口）。
+改造前静态 `CLI_REQUIRED_CAPS` 是无条件检查的，故 attach 一次放宽了**三**道闸门：
+`account` 能力、`model` 能力、以及铁律#1 本身。**`model` 那道的放宽是真实可达的**——
+`model` 能力是 `06a9c76`（F08）才加进 `shared/ccm` 的 `capabilities=`，
+所以装了 F02～F08 之间任一版 ccm 的远端就处在"缺 model"状态。
+豁免由 `launch-render-cli.test.ts` 的「attach 豁免组」三条测试钉住（各对应一道闸门），
+**不是"碰巧没人测到"**。若将来 `ccm attach` 学会接受修饰 flag，这条豁免必须同时撤销。
+
 **为什么钉成不变量而非留作注释**：未来任何人加新维度或新容器形态，若忘记正确实现 `cliFlags`
 （或忘记声明某形态 CLI 表达不了），`canRenderCli` 会**默认放行**（`cliFlags` 未定义时视为
 "这维度不影响 CLI 可行性"），静默把一个 CLI 表达不了的 plan 送进 `renderCli`，产出一条**语法正确
@@ -689,6 +703,23 @@ attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建�
 
 **验证**：`src/launch-render-cli.test.ts` 的 #76 防线测试组——通过临时删除 `canRenderCli` 里的
 `mode !== "create-or-attach"` 判断、确认恰好 2 条测试转红，证明该判断不是摆设（见测试文件头注）。
+
+
+### R04① 更新（2026-07-28）：这条从「调用约定」升级为「结构保证」
+
+原文说"`canRenderCli` 是两者之间的**唯一分流点**"——那是**意图**，不是当时的事实。
+当时是两个独立导出：`canRenderCli` 检查 `null` 并返回 `false`，而 `renderCli` 里那句
+`if (flags) tokens.push(...flags)` 对 `null` **静默跳过**、继续渲染。
+即：只要有人直接调 `renderCli`（不先问 `canRenderCli`），就会产出一条**丢了那个修饰**的命令，
+而丢的恰好是账号这类东西——症状即 R11/R08 那族"看起来生效了，只是用了错的号"。
+
+现已合成单一导出 `tryRenderCli(plan, ctx, probe) → { ok:true; cmd } | { ok:false; reason }`：
+`null` 在同一次遍历里直接变成 `ok:false`，**拿不到命令**。上面那段"默认放行"的担忧因此从
+"靠加维度的人自觉"变成了"结构上做不到"。`reason` 同时把"为什么降级"这个此前丢掉的信息带出来。
+
+**验证**：`src/launch-render-cli.test.ts` 的 R04① 两条测试——用真实可达的
+"账号有 configDir 但无名字"（老式直调路径，见 `launch-requests.ts::accountOf` 头注）
+断言 `ok:false` 且**结果里没有 `cmd` 字段**。
 
 ## 34. tmux 破坏性/半破坏性命令三道门 + 原子 verify+act（F04 / unify-launch / R10）
 
@@ -864,6 +895,38 @@ documented rationale"——三条轴两种机制的不对称依然存在，但�
 `LaunchDimension` 的新发现层，account 组手写调 `fetchAccounts`，container 组手写两个硬编码值——
 两者形式不同，但这不是"该注册就注册"没做完，是两条轴本来就该用不同方式回答"有哪些可选值"这个
 问题。
+
+## 39. `WrapSpec` 是纯数据 `{ id, order, prelude }`，不是闭包——且 rbind 走不走 wrap 这件事必须先定（R04④ / unify-launch）
+
+**背景**：`LaunchPlan.wrap` 表达 `( <prelude>; exec <inner> )` 这类**包裹**（不是片段追加——
+扁平字符串没有闭括号槽位，审计 C1 三方独立指出；`exec` 不可省，wrapper 用 `$BASHPID` 读
+`sessions/$cpid.json`，不 exec 则 PID 对不上）。F03 起它就是空数组，结构留给 F04 的 rbind。
+
+**铁律一：`WrapSpec` 只能是纯数据。** 不得回退成 `wrap: (inner) => string` 闭包。三条理由：
+① 闭包让 `LaunchPlan` 不可序列化、不可结构比较——黄金串测试只能断言"渲染出来的字符串"，
+无法断言"这个 plan 的 wrap 意图是什么"，也就无法对拍；
+② 闭包能做任意事，等于在 IR 里开一个"绕过渲染器自己拼字符串"的后门，
+与 `launch-plan.ts` 头注"绝不拼字符串——字符串化是渲染器的事"直接冲突；
+③ 折叠逻辑（`( prelude; exec inner )`、`order` = 嵌套深度）属于渲染器职责，本就不该住在 IR 里。
+
+R04④ 之所以**现在**做：`plan.wrap` 今天恒为 `[]`（全仓唯一赋值点是 `buildLaunchPlan` 的
+`wrap: []`，零生产者），改造成本为零；等 rbind 真落进来就不是零了。
+
+**铁律二：`prelude` 单字段是刻意收窄，不是能力不足。** 它只能表达
+`( <prelude>; exec <inner> )` 这一种形态——这正好是已知的唯一用例（rbind）。
+**若将来出现表达不了的包裹形态，那是"该重新设计这个契约"的信号，不是"该把闭包加回来"的理由。**
+
+**开放问题（R04④ 顺带暴露，必须在 rbind 落地前定）**：`__ccm_rbind` 到底走不走 `plan.wrap`？
+今天这是**悬空设计**——`wrap` 为它预留了结构，但 rbind 实际并未使用它：
+- **CLI 路径**不需要：`shared/ccm` 内部自己负责 rbind（`ccm` 是最终 exec 的那一层），
+  IR 的 `wrap` 对它完全无效。
+- **兜底路径**理论上需要，但今天兜底渲染器也没有产出任何 wrap；
+  身份是靠 `session-backend.ts` 直写 `@ccm_sid` + poller 回填达成的（见本文档 §33 上方与
+  `sftp.rs` 里 R09 那段关于"两个写者"的记录）。
+
+→ 结论：`wrap` 目前是**为一个尚未发生的需求预留的结构**。保留它（成本已经付过、且纯数据后
+几乎为零），但**任何人要用它之前**必须先回答"这条路径的身份/setup 到底该由 `ccm` 负责还是由
+IR 的 wrap 负责"，别两边都做（那会 rbind 两次）。
 
 ## 修改本文档
 

@@ -5,7 +5,7 @@
  * 因为它要向每个已触发的维度**重新问一次**"这在 CLI 词汇里怎么说"（`cliFlags`），而不是编译
  * 已经摊平的文本。
  *
- * **`canRenderCli` 的诚实边界**（MASTERPLAN §2 已写明，这里是落地）：
+ * **诚实边界**（MASTERPLAN §2 已写明，这里是落地；R04① 后由单一入口 `tryRenderCli` 承载）：
  *  - 任一已触发维度的 `cliFlags(ctx)` 返回 `null` → 强制走兜底。F05 前 `account` 维度恒如此
  *    （调用方只有 `configDir` 没有账号「名字」）；F05 后账号名已线通，`cliFlags` 对 `account`/
  *    `base` 两态都吐实际 flag、不再返回 `null`——这条规则本身留给未来任何"半成品"维度当安全网。
@@ -32,58 +32,88 @@ function argv(token: string): string {
   return /^[A-Za-z0-9_@%+=:,./-]+$/.test(token) ? token : `'${token.replace(/'/g, `'\\''`)}'`;
 }
 
-/** CLI 语法覆盖面（对齐 `shared/ccm` 的 `--ccm-probe` 输出 `capabilities=`）。**F05 新增
- *  "account"**——账号维度现在恒生效（`applies` 恒真）且恒吐 `--account`/`--base` 之一，每次
- *  真实调用都依赖 ccm 支持这两个 flag，探测门槛必须同步收紧（F03 时代故意不列，因为那时
- *  账号维度触发即强制降级，列不列都不影响判定；F05 后不列会漏掉"ccm 版本太旧不支持
- *  --account/--base"这种真实降级场景）。 */
-const CLI_REQUIRED_CAPS = [
-  "new", "resume", "attach", "tmux", "cwd", "launcher", "ccm-sid", "account",
-] as const;
+/** CLI 语法覆盖面（对齐 `shared/ccm` 的 `--ccm-probe` 输出 `capabilities=`）——
+ *  **只放"与具体维度无关的动作/容器语法"**。
+ *
+ *  R04② 后 `account` 与 `model` **已从这里移出**，改由各自维度的 `requiredCaps` 声明
+ *  （F05 曾把 `account` 加进本列表，那条注释已随之删除——留着会与第 40 行的实际内容矛盾）。
+ *  **这里仍是"每次调用都无条件要求"**，所以只适合放动作/容器这类按 R12 属一等字段、
+ *  不进维度注册表的东西。**残留的双机制是有边界的、不是没解决**（R04 Phase D 审计建议 7）：
+ *  `new`/`resume`/`attach` 三个动作能力今天被**全部**要求，而一次调用只用其中一个——
+ *  这是已知的过度收紧，代价是"装了只支持部分动作的 ccm"会整体降级；
+ *  因 `shared/ccm` 从 F02 首版就三个动作齐全，实际不可达，故不额外收窄。 */
+const CLI_REQUIRED_CAPS = ["new", "resume", "attach", "tmux", "cwd", "launcher", "ccm-sid"] as const;
 
-export function canRenderCli(plan: LaunchPlan, ctx: LaunchContext, probe: CcmProbeResult): boolean {
-  if (!probe.installed) return false;
+/** R04①：把"能不能渲染"与"渲染出什么"合成一次遍历、一个返回值。
+ *  `ok:false` 时带 `reason`，供调试/日志说明**为什么**降级（此前这个信息是丢掉的）。 */
+export type CliRenderResult = { ok: true; cmd: string } | { ok: false; reason: string };
+
+/**
+ * **R04①：`canRenderCli` + `renderCli` 合成 `tryRenderCli`。**
+ *
+ * 改造前是两个独立导出：调用方先问 `canRenderCli`，为真再调 `renderCli`。两者**各自**遍历
+ * `LAUNCH_DIMENSIONS` 并各自调一遍 `cliFlags`。问题不在重复遍历，在于 `renderCli` 里那句
+ * `if (flags) tokens.push(...flags)` —— `cliFlags` 返回 `null`（= "这个维度我没法用 CLI 说"）
+ * 时它**静默跳过**，于是渲染出一条**丢了这个修饰**的命令。
+ *
+ * 也就是说"诚实降级"此前只是**调用约定**（必须先问 `canRenderCli`），不是结构保证：
+ * 任何直接调 `renderCli` 的新代码路径都会静默丢修饰，而丢的恰好是账号这类东西——
+ * 症状就是 R11/R08 那族"看起来生效了，只是用了错的号"。
+ *
+ * 合成之后，`null` 在**同一次遍历里**直接变成 `{ ok: false }`：**拿不到命令**。
+ * 想绕过这条闸门就必须绕过唯一的入口，而那是显式的、可被 review 看见的动作。
+ */
+export function tryRenderCli(
+  plan: LaunchPlan,
+  ctx: LaunchContext,
+  probe: CcmProbeResult,
+  ccmPath = "ccm",
+): CliRenderResult {
+  if (!probe.installed) return { ok: false, reason: "远端未装 ccm" };
   // local 恒不走这条渲染器（F06 落地）：不是"未实现"，是设计上的分工——本地路径有自己独立的
   // Rust 侧 renderer（history.rs::build_local_ps_command），因为它要问的问题（本机是否有 `cc`
   // PowerShell 函数）只能在目标机器上现场探测，TS 无法预先渲染好交给它。
-  if (plan.transport.kind !== "ssh") return false;
-  if (!CLI_REQUIRED_CAPS.every((c) => probe.capabilities.has(c))) return false;
-  if (plan.container.kind === "tmux" && plan.container.mode === "send-into") return false; // #76 防线：仅挡 idle-tmux 就地复用（attach-only 与 create-or-attach 都安全）
-  // F08：`model` 不能像 F05 的 `account` 那样直接塞进 CLI_REQUIRED_CAPS（那个列表的语义是
-  // "每一次调用都要求"——account 之所以能这样做，是因为 ACCOUNT_DIMENSION.applies 恒真，
-  // 每次调用都真的用得到；MODEL_DIMENSION.applies 是条件式（只在配了模型偏好时才为真，见
-  // doc/INVARIANTS.md §37），塞进静态列表会让**所有**未配模型偏好的会话也被迫要求远端 ccm
-  // 支持这个能力，过度收紧、误伤多数用户）。同 #76 防线一样，用针对具体场景的显式特判——
-  // 只在这次会话真的配了模型偏好时才要求 ccm 报告支持 "model"，未配置的会话完全不受影响。
-  if (ctx.modelOverride && !probe.capabilities.has("model")) return false;
-  for (const dim of LAUNCH_DIMENSIONS) {
-    if (dim.applies(ctx) && dim.cliFlags && dim.cliFlags(ctx) === null) return false;
+  if (plan.transport.kind !== "ssh") return { ok: false, reason: "本地路径不走 CLI 渲染器" };
+  for (const c of CLI_REQUIRED_CAPS) {
+    if (!probe.capabilities.has(c)) return { ok: false, reason: `远端 ccm 缺能力 ${c}` };
   }
-  return true;
-}
+  // #76 防线：仅挡 idle-tmux 就地复用（attach-only 与 create-or-attach 都安全，见文件头注）。
+  if (plan.container.kind === "tmux" && plan.container.mode === "send-into") {
+    return { ok: false, reason: "send-into（idle-tmux 就地复用）无 CLI 等价语法，诚实降级" };
+  }
 
-export function renderCli(plan: LaunchPlan, ctx: LaunchContext, ccmPath = "ccm"): string {
   const tokens: string[] = [ccmPath];
 
   if (plan.action.kind === "attach") {
-    if (plan.container.kind !== "tmux") throw new Error("attach 必须是 tmux 容器");
+    if (plan.container.kind !== "tmux") return { ok: false, reason: "attach 必须是 tmux 容器" };
     tokens.push("attach", plan.container.name);
-    return tokens.map(argv).join(" "); // attach 分支不读其余修饰
+    return { ok: true, cmd: tokens.map(argv).join(" ") }; // attach 分支不读其余修饰
   }
 
   tokens.push(plan.action.kind === "resume" ? "resume" : "new");
   if (plan.action.kind === "resume") tokens.push(plan.action.sid);
-
   if (plan.container.kind === "tmux") tokens.push(`--tmux=${plan.container.name}`);
+
   for (const dim of LAUNCH_DIMENSIONS) {
     if (!dim.applies(ctx)) continue;
+    // R04②：能力要求由维度自己声明，且**只向已触发的维度收集**——于是"条件式 applies 的维度
+    // 只在真触发时才要求这个能力"是结构保证，不再需要渲染器里给 model 开特判（F08 那条已删）。
+    for (const cap of dim.requiredCaps?.(ctx) ?? []) {
+      if (!probe.capabilities.has(cap)) {
+        return { ok: false, reason: `维度 ${dim.id} 需要远端 ccm 能力 ${cap}，但它不支持` };
+      }
+    }
     const flags = dim.cliFlags?.(ctx);
+    // R04① 的要害：`null` 在这里就是**放弃**，不是"跳过这个维度继续渲染"。
+    if (flags === null) {
+      return { ok: false, reason: `维度 ${dim.id} 无法用 CLI 语法表达（cliFlags 返回 null）` };
+    }
     if (flags) tokens.push(...flags);
   }
-  if (plan.cwd) tokens.push("--cwd", plan.cwd);
 
+  if (plan.cwd) tokens.push("--cwd", plan.cwd);
   const safeLauncher = sanitizeRemoteLauncher(plan.launcher); // 与兜底渲染器同一函数、同一时机
   if (safeLauncher !== AGENT_PROFILE.defaultLauncher) tokens.push("--launcher", safeLauncher);
   if (plan.args.length > 0) tokens.push("--", ...plan.args);
-  return tokens.map(argv).join(" ");
+  return { ok: true, cmd: tokens.map(argv).join(" ") };
 }

@@ -41,7 +41,7 @@ export const ENV_RESET_DIMENSION: LaunchDimension = {
   applies: (ctx) =>
     ctx.container.kind === "tmux" && ctx.container.mode === "send-into" && ctx.account.kind !== "account",
   apply: (plan) => {
-    plan.env.push({ kind: "unset", keys: ["CLAUDE_CONFIG_DIR"] });
+    plan.env.push({ kind: "unset-config-dir" }); // R04③：清哪个变量由 kind 决定，不再传自由 keys
   },
   cliFlags: () => [], // ccm 内部按 --base/无--account 自行处理，无需专属 flag
 };
@@ -51,9 +51,9 @@ export const ENV_RESET_DIMENSION: LaunchDimension = {
  *  F05：`applies` 恒 `true`（不再只在 `kind==="account"` 时触发）——账号维度必须在 CLI 语境下
  *  **永远显式表态**，`base` 态也要吐 `--base`，绝不能让这个维度对"未选账号"这个最常见场景
  *  沉默。**这条不是品味问题，是 F03 遗留的一个真实 bug**：`applies` 若只在 `kind==="account"`
- *  时为真，`canRenderCli` 的"任一维度 `cliFlags` 返回 `null` 就降级"检查根本不会跑到这个维度
+ *  时为真，`tryRenderCli` 的"任一维度 `cliFlags` 返回 `null` 就降级"检查根本不会跑到这个维度
  *  （`applies` 已是 `false`，循环直接跳过）——于是一个解析成"基座"的 plan，只要满足其余 CLI
- *  渲染条件，就会被 `renderCli` 吐成一条**既不带 `--account` 也不带 `--base` 的 `ccm resume …`**，
+ *  渲染条件，就会被 CLI 渲染器吐成一条**既不带 `--account` 也不带 `--base` 的 `ccm resume …`**，
  *  R11 的病灶原样复现（远端 shell 若没有继承 `CLAUDE_CONFIG_DIR`，`ccm` 会静默落 manifest 默认
  *  账号，可能不是用户想要的那个）。`apply()` 内部逻辑不变（`base` 态仍无 env op，字节不变）。 */
 export const ACCOUNT_DIMENSION: LaunchDimension = {
@@ -74,6 +74,17 @@ export const ACCOUNT_DIMENSION: LaunchDimension = {
     if (ctx.account.kind !== "account") return ["--base"];
     return ctx.account.name ? ["--account", ctx.account.name] : null;
   },
+  // R04②：本维度 `applies` 恒真、且恒吐 `--account`/`--base` 之一，故 CLI 渲染依赖远端 ccm
+  // 认识这两个 flag。此前这条要求写在渲染器的静态 `CLI_REQUIRED_CAPS` 里，现在由维度自己声明。
+  //
+  // **语义不是完全不变**（R04 Phase D 审计订正——初稿这里写"语义不变（恒真维度 ⇒ 每次都要求）"，
+  // 那句是错的）：`tryRenderCli` 的 **attach 分支在维度循环之前就 return**（沿用"attach 不读
+  // 其余修饰"的既有结构），所以 attach 路径**不再收集**本维度的 `requiredCaps`；
+  // 而改造前的静态列表是无条件检查的。**这是刻意放宽、不是回退**——`ccm attach <名>` 不接受
+  // `--account`/`--base`/`--model` 任何修饰 flag，对一次纯 attach 要求这些能力是过度收紧
+  // （`INVENTORY.md` §A #6 已把"attach 不带账号"写成设计而非缺口）。豁免范围与理由见
+  // `doc/INVARIANTS.md` §33，测试见 `launch-render-cli.test.ts` 的 attach 豁免组。
+  requiredCaps: () => ["account"],
 };
 
 /** model（F07）：注入该账号配置的默认模型偏好（`ANTHROPIC_MODEL`）——**架构验收**：第一个真实
@@ -103,6 +114,11 @@ export const MODEL_DIMENSION: LaunchDimension = {
   // F08：ccm 学会了 --model，关闭 R14①——不再恒 null。applies 已保证只有 modelOverride
   // truthy 时才会问到这里，`[]` 分支理论不可达，保留是防御性写法（同其余维度的既有风格）。
   cliFlags: (ctx) => (ctx.modelOverride ? ["--model", ctx.modelOverride] : []),
+  // R04②：取代原 `canRenderCli`（今 `tryRenderCli`）里那条给 model 的针对性特判。因为本维度 `applies` 是**条件式**
+  // （只在配了模型偏好时为真，INVARIANTS §37），渲染器只向已触发的维度收集 requiredCaps，
+  // 未配模型偏好的会话根本不会走到这里——F08 当初要靠特判才能避免的"误伤多数用户"，
+  // 现在由"只问已触发的维度"这条机制天然保证。
+  requiredCaps: () => ["model"],
 };
 
 /** nested-env-reset：resume/new 前清 Claude 嵌套会话标记（tmux server env 可能带毒，issue #24）。
@@ -114,7 +130,7 @@ export const NESTED_ENV_RESET_DIMENSION: LaunchDimension = {
   applies: (ctx) => ctx.action.kind === "new" || ctx.action.kind === "resume",
   apply: (plan) => {
     if (AGENT_PROFILE.nestedEnvVars.length > 0) {
-      plan.env.push({ kind: "unset", keys: [...AGENT_PROFILE.nestedEnvVars] });
+      plan.env.push({ kind: "unset-nested-env" }); // R04③：键表由 AGENT_PROFILE.nestedEnvVars 定，渲染器查
     }
   },
   cliFlags: () => [], // ccm 内部恒清（agent_nested_env 按 agent 查表），无需专属 flag
