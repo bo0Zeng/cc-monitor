@@ -142,6 +142,14 @@ jobs:
       - name: python syntax compile
         run: python3 -m py_compile e2e/*.py
 
+      # B01：`shared/**` 里带 shebang 的文件在 **git 里**必须是 100755。
+      # 本仓 `core.fileMode=false` → git 忽略文件系统的可执行位，于是"盘上 755 但 git 记 644"
+      # 在本地**永远看不出来**（本地跑的是盘上那份），只有干净 checkout 才炸。已踩过两次：
+      # R00 的 `shared/ccm`（CI 上 Permission denied，e2e 连红三轮）与 B01 的 13 个 cc-bus 脚本。
+      # 直接 bash 调用：本 job 没有 setup-node 步骤，不该为一条纯 shell 检查引入 npm 依赖。
+      - name: exec-bit guard (shared/** shebang files must be 100755 in git)
+        run: bash e2e/exec-bit-guard.sh
+
   # R00③：**真机行为验收进 CI**。这 7 套（共 126 条断言）此前既不在 CI 也不在 `npm test`，
   # 只靠开发者本地手动跑——而它们恰恰是本仓唯一能回答「这条命令在 tmux 上到底干了什么」的门禁
   # （§5.2 实证：cargo test 369 + npm test 全绿 + tsc 0，仍放行过一个让 send-keys 完全失效的改动，

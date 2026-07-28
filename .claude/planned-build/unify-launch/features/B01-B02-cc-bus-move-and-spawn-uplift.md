@@ -41,15 +41,36 @@ SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
    B02 的 e2e 正好用它们把副作用关进临时目录。
 
 ### DoD
-- [ ] 落 `shared/cc-bus/`（与 `shared/ccm` 并列——两者同类：都是"部署到本机/远端的 shell 产物"）
-- [ ] **逐字节原样搬**：`git add` 后 `diff -r` 盘上版本与仓内版本必须零差异
+- [x] 落 `shared/cc-bus/`（与 `shared/ccm` 并列——两者同类：都是"部署到本机/远端的 shell 产物"）
+- [x] **逐字节原样搬**：`git add` 后 `diff -r` 盘上版本与仓内版本必须零差异
       （**不趁搬家重构、不改一个空格**。理由：这份代码一直手改无版本管理，
       搬家 diff 与重构 diff 混在一起将无法审——而它是会 `send-keys` 进别人 CC 的东西）
-- [ ] **不搬** `scripts.bak-*` / `*.bak`（那是手改的历史残留，进 git 之后 git 本身就是备份）
+- [x] **不搬** `scripts.bak-*` / `*.bak`（那是手改的历史残留，进 git 之后 git 本身就是备份）
 - [ ] 部署路径走「备份→写→读回比对→回滚」（同 `acct_iso_deploy.rs` 既有范式，显式 `0o755`）
-- [ ] **`shared/cc-bus/scripts/*` 必须带可执行位进 git**——R00 刚踩过 `shared/ccm` 记成 644
+- [x] **`shared/cc-bus/scripts/*` 必须带可执行位进 git**——R00 刚踩过 `shared/ccm` 记成 644
       的坑（干净 checkout 上不可执行）。搬完立刻 `git ls-files -s` 核对模式为 `100755`
 - [ ] 覆盖用户盘上那份需要**用户显式点一次**，不在安装期静默覆盖（守红线）
+
+### 1.2 B01 实施记录（2026-07-28）
+
+**验收三条全过**：
+1. `diff -r`（排除备份物）盘上 vs 仓内 **零差异** —— 逐字节原样，未改一个空格。
+2. `git ls-files -s shared/cc-bus/scripts` **全部 100755**；`examples/*` 与 `SKILL.md` 保持 644（正确，它们不是可执行文件）。
+3. 干净 checkout 实测：脚本可执行，`cc-spawn` 无参调用正确报用法。
+
+**根因坐实并结构化防住**：`git config core.fileMode` = **`false`** ——git **忽略文件系统的可执行位**。
+所以 13 个脚本盘上是 755、`git add` 之后**全部被记成 100644**。
+这与 R00 那次 `shared/ccm` 记成 644 是**同一个根因**，不是两次巧合。
+最恶劣的地方在于**本地永远看不出来**（本地跑的是盘上那份），只有干净 checkout 才炸——
+R00 那次为此让 e2e 在 CI 上连红三轮，最后靠 pane dump 才定位到。
+
+→ 新增 `e2e/exec-bit-guard.sh` + CI `e2e-smoke` job 一步：
+**`shared/**` 下任何带 shebang 的文件，在 git 里必须是 100755**。
+变异验证：把 `cc-spawn` 退回 644 → 守卫 exit 1 并指名道姓给出修法；还原 → exit 0。
+它同时覆盖了 `shared/ccm`（现为 100755）。**从此这条不再依赖"记得 `git update-index --chmod=+x`"。**
+
+**未搬的**：2 个 `scripts.bak-*` 目录 + 2 个 `.bak` 文件（手改历史残留，进 git 后 git 本身就是备份）。
+**未做的**：部署机制（cc-monitor 侧覆盖用户盘上那份）留给 B02 之后——B01 只固化基线。
 
 ## 2. B02：`cc-spawn` 收编——**这是成功标准② 的第二次真实架构验收**
 

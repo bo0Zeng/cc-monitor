@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# cc-whoami  打印本 agent 的总线身份(自动从 tmux 认领,无需手动设 id)。
+# 优先级:$CC_BUS_ID(可选覆盖) → pane 标签 @cc_id(同会话多 CC 时细分) → tmux 会话名。
+# 全部消毒成 [A-Za-z0-9_-](要当文件名);取不到则报错退出(不在 tmux 且没设 CC_BUS_ID)。
+set -uo pipefail
+
+resolve(){ printf '%s' "${1:-}" | sed 's/[^A-Za-z0-9_-]/-/g; s/^-*//; s/-*$//'; }
+
+id=""
+[ -n "${CC_BUS_ID:-}" ] && id=$(resolve "$CC_BUS_ID")
+if [ -z "$id" ] && [ -n "${TMUX_PANE:-}" ]; then
+  tag=$(tmux show-options -pqv -t "$TMUX_PANE" @cc_id 2>/dev/null || true)
+  id=$(resolve "$tag")
+fi
+if [ -z "$id" ] && [ -n "${TMUX_PANE:-}" ]; then
+  sess=$(tmux display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null || true)
+  id=$(resolve "$sess")
+fi
+# 兜底1(主兜底,给【不继承 $TMUX_PANE】的子进程——尤其 Codex 的 shell 工具命令:模型的 cc-send
+# 跑起来没有 TMUX_PANE → FROM=unknown)。靠 $TMUX 反查:$TMUX = <socket>,<server_pid>,<session_id>;
+# 用 session_id($N)在该 socket 上匹配会话名。不依赖 TMUX_PANE、不依赖 /proc。
+if [ -z "$id" ] && [ -n "${TMUX:-}" ] && command -v tmux >/dev/null 2>&1; then
+  sock=${TMUX%%,*}; sid=${TMUX##*,}
+  if [ -n "$sock" ] && [ -n "$sid" ]; then
+    sess=$(tmux -S "$sock" list-sessions -F '#{session_id} #{session_name}' 2>/dev/null \
+           | awk -v s="\$$sid" '$1==s{print $2; exit}')
+    id=$(resolve "$sess")
+  fi
+fi
+# 兜底2(再下一层):沿进程树上溯到某个 tmux pane 的 pid(pane_pid 是 pane 的 shell;codex/claude
+# 与本进程都是它后代)。若沙箱切断了 /proc ancestry 则可能失败。
+if [ -z "$id" ] && [ -n "${TMUX:-}" ] && command -v tmux >/dev/null 2>&1; then
+  panes=$(tmux list-panes -a -F '#{pane_pid} #{session_name}' 2>/dev/null || true)
+  if [ -n "$panes" ]; then
+    p=$$
+    for _i in $(seq 1 40); do
+      [[ "$p" =~ ^[0-9]+$ ]] && [ "$p" -gt 1 ] || break
+      sess=$(awk -v pid="$p" '$1==pid{print $2; exit}' <<< "$panes")
+      [ -n "$sess" ] && { id=$(resolve "$sess"); break; }
+      p=$(sed 's/.*) //' "/proc/$p/stat" 2>/dev/null | awk '{print $2}')   # ppid(去掉可能含空格/括号的 comm)
+    done
+  fi
+fi
+
+if [ -n "$id" ]; then printf '%s\n' "$id"; exit 0; fi
+# 仍解析不出 → 先记录本子进程实际看到什么(给 Codex 沙箱情形免费诊断)再报错退出。
+{ printf '%s cc-whoami UNRESOLVED tmux=[%s] tmuxval=[%s] pane=[%s] tty=[%s] cc_bus_id=[%s]\n' \
+    "$(date -Iseconds 2>/dev/null)" "${TMUX:+set}" "${TMUX:-}" "${TMUX_PANE:+set}" "$(tty 2>/dev/null | tr -d '\n')" "${CC_BUS_ID:+set}" \
+    >> "${CC_BUS_HOME:-$HOME/.cc-bus}/whoami-debug.log"; } 2>/dev/null || true
+echo "cc-whoami: 不在 tmux 且未设 CC_BUS_ID,无法确定身份" >&2
+exit 1
