@@ -927,10 +927,15 @@ enum LocalPsAction {
 ///
 /// 抽成独立函数是为了单测（不 spawn 进程也能验证防注入 + cc 优先逻辑）。
 /// （纯字符串构造，跨平台可编译可测；拉起本身在 launch.rs 按平台门控。）
-fn build_local_ps_command(action: &LocalPsAction, launcher: Option<&str>) -> Result<String, String> {
+fn build_local_ps_command(
+    action: &LocalPsAction,
+    launcher: Option<&str>,
+) -> Result<String, String> {
     if let LocalPsAction::Resume(sid) = action {
         let valid = !sid.is_empty()
-            && sid.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+            && sid
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
         if !valid {
             return Err(format!("refuse resume: invalid session_id {sid:?}"));
         }

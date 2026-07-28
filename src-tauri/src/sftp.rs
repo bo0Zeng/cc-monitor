@@ -701,9 +701,17 @@ pub async fn install_remote_ccm_helper(
     //    已存在时 create_dir 失败——容忍，真正的失败由下面的 upload 报出来。
     {
         let mut cur = String::new();
-        for comp in CCM_CLI_REMOTE_PATH.split('/').filter(|c| !c.is_empty()).take(
-            CCM_CLI_REMOTE_PATH.split('/').filter(|c| !c.is_empty()).count() - 1,
-        ) {
+        for comp in CCM_CLI_REMOTE_PATH
+            .split('/')
+            .filter(|c| !c.is_empty())
+            .take(
+                CCM_CLI_REMOTE_PATH
+                    .split('/')
+                    .filter(|c| !c.is_empty())
+                    .count()
+                    - 1,
+            )
+        {
             if !cur.is_empty() {
                 cur.push('/');
             }
@@ -768,7 +776,10 @@ pub async fn install_remote_ccm_helper(
         return Err("写后校验失败（读回内容与期望不符），已尝试回滚原文件。".to_string());
     }
 
-    tracing::info!("远端 [{}] 已装 ccm CLI + 别名块到 {profile}", cfg.origin_label());
+    tracing::info!(
+        "远端 [{}] 已装 ccm CLI + 别名块到 {profile}",
+        cfg.origin_label()
+    );
     Ok(format!(
         "已部署 ccm CLI 到 ~/{CCM_CLI_REMOTE_PATH}，别名块已写入 {profile}{backup_note}。\
          重连远端 ssh 终端后可用：`ccm`（起会话）/ `ccm --tmux`（tmux 里起）/ \
@@ -785,11 +796,11 @@ mod tests {
     #[test]
     fn ccm_aliases_snippet_has_required_elements() {
         for needle in [
-            ".local/bin",     // CLI 落点必须进 PATH，否则别名全指向不存在的命令
-            "cc()",           // 智能选目录
-            "cct()",          // tmux 版
-            "ccm --tmux",     // 别名只做组合，不自己建容器
-            "declare -f",     // 防覆盖用户已有同名函数
+            ".local/bin", // CLI 落点必须进 PATH，否则别名全指向不存在的命令
+            "cc()",       // 智能选目录
+            "cct()",      // tmux 版
+            "ccm --tmux", // 别名只做组合，不自己建容器
+            "declare -f", // 防覆盖用户已有同名函数
         ] {
             assert!(
                 CCM_WRAPPER_SNIPPET.contains(needle),
@@ -832,7 +843,10 @@ mod tests {
             "@ccm_agent",
             "exec",
         ] {
-            assert!(CCM_CLI_SCRIPT.contains(needle), "ccm CLI 缺关键要素: {needle}");
+            assert!(
+                CCM_CLI_SCRIPT.contains(needle),
+                "ccm CLI 缺关键要素: {needle}"
+            );
         }
         // F04（结构性，防 D6 复发）：两处"通道A立刻打标"必须写 `@ccm_sid_expect`，**不得**写裸
         // `@ccm_sid`——否则一个从未被确认过的意图声明会永久冒充"事实"。用带引号的完整

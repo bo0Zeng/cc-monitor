@@ -23,7 +23,8 @@ const EXEC_TIMEOUT: Duration = Duration::from_secs(45);
 // ---- 内嵌 vendored 脚本（single source = src-tauri/vendor/cc-acct-iso/）----
 const SCRIPT_MAIN: &[u8] = include_bytes!("../vendor/cc-acct-iso/scripts/cc-acct-iso");
 const SCRIPT_LIB: &[u8] = include_bytes!("../vendor/cc-acct-iso/scripts/lib.sh");
-const SCRIPT_INSTALL: &[u8] = include_bytes!("../vendor/cc-acct-iso/scripts/cc-acct-iso-install.sh");
+const SCRIPT_INSTALL: &[u8] =
+    include_bytes!("../vendor/cc-acct-iso/scripts/cc-acct-iso-install.sh");
 const SCRIPT_TEST: &[u8] = include_bytes!("../vendor/cc-acct-iso/scripts/test/run-tests.sh");
 const SKILL_MD: &[u8] = include_bytes!("../vendor/cc-acct-iso/SKILL.md");
 const EXAMPLE_CONFIG: &[u8] = include_bytes!("../vendor/cc-acct-iso/examples/config");
@@ -91,7 +92,11 @@ pub async fn check_remote_acct_iso(cfg: RemoteConfig) -> Result<AcctIsoStatus, S
         "PATH=\"$HOME/.local/bin:$PATH\" command -v cc-acct-iso 2>/dev/null || true",
     )
     .await?;
-    let path = probe.lines().next().map(str::trim).filter(|s| !s.is_empty());
+    let path = probe
+        .lines()
+        .next()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
     Ok(AcctIsoStatus {
         installed: path.is_some(),
         path: path.map(str::to_string),
@@ -105,9 +110,7 @@ pub async fn check_remote_acct_iso(cfg: RemoteConfig) -> Result<AcctIsoStatus, S
 pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Result<String, String> {
     let dest = dest_dir.trim().trim_end_matches('/').to_string();
     if dest.is_empty() {
-        return Err(
-            "请先填部署目录（绝对路径，如 /home/<user>/.cc-monitor/cc-acct-iso）".into(),
-        );
+        return Err("请先填部署目录（绝对路径，如 /home/<user>/.cc-monitor/cc-acct-iso）".into());
     }
     if dest.contains('~') {
         return Err("部署目录含 ~（SFTP 不展开 ~），请改用绝对路径".into());
@@ -137,7 +140,13 @@ pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Resu
 
             // 上传脚本（可执行 0o755）与文档/示例（0o644）。
             let scripts_dir = format!("{dest}/scripts");
-            upload_atomic(sftp, &format!("{scripts_dir}/cc-acct-iso"), SCRIPT_MAIN, 0o755).await?;
+            upload_atomic(
+                sftp,
+                &format!("{scripts_dir}/cc-acct-iso"),
+                SCRIPT_MAIN,
+                0o755,
+            )
+            .await?;
             upload_atomic(sftp, &format!("{scripts_dir}/lib.sh"), SCRIPT_LIB, 0o755).await?;
             upload_atomic(
                 sftp,
@@ -154,7 +163,13 @@ pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Resu
             )
             .await?;
             upload_atomic(sftp, &format!("{dest}/SKILL.md"), SKILL_MD, 0o644).await?;
-            upload_atomic(sftp, &format!("{dest}/examples/config"), EXAMPLE_CONFIG, 0o644).await?;
+            upload_atomic(
+                sftp,
+                &format!("{dest}/examples/config"),
+                EXAMPLE_CONFIG,
+                0o644,
+            )
+            .await?;
 
             // 跑 install 脚本建软链（BIN_DIR 默认 ~/.local/bin；脚本刻意不碰 rc）。install.sh
             // `set -euo pipefail`，成功才跑到我们追加的 sentinel。D 审计 I1：**不能** `|| true` 吞
@@ -214,7 +229,9 @@ mod tests {
 
     #[test]
     fn safe_dir_accepts_conventional_paths() {
-        assert!(is_safe_remote_acct_iso_dir("/home/z/.cc-monitor/cc-acct-iso"));
+        assert!(is_safe_remote_acct_iso_dir(
+            "/home/z/.cc-monitor/cc-acct-iso"
+        ));
         assert!(is_safe_remote_acct_iso_dir("/opt/cc-acct-iso"));
         assert!(is_safe_remote_acct_iso_dir("/home/z/.cc-monitor/x")); // 含 .cc-monitor
     }
