@@ -369,14 +369,14 @@ if [ "$use_tmux" = 1 ]; then
   fi
 
   # F11（unify-launch）：预信任 $cwd，免 claude/codex 起来卡在信任确认框数小时（detached
-  # 会话没人盯着按 Enter）。逻辑原样搬自 cc-bus 的 cc-spawn（~/.claude/skills/cc-bus/scripts/
-  # cc-spawn，已生产验证过，照抄不重新设计），测试钩子改名 CCM_CLAUDEJSON/CCM_CODEXTOML
-  # （对齐 CCSPAWN_* 的既有命名模式）。**`--print` 跳过**——预信任是写文件的副作用，`--print`
-  # 必须纯（同上方 tmux 状态查询的既有纪律）。
-  # **维护提示**：这段逻辑与 cc-spawn 里的同名实现是**有意的代码重复**——两者分属不同仓库
-  # （cc-spawn 是 cc-bus 这个用户级基础设施的一部分，不在这个仓库里），没有共享源可抽。若未来
-  # 在 cc-spawn 那边修了这段逻辑的 bug（如 TOML 转义漏了什么字符、jq 校验逻辑改了），这里要
-  # 手动跟着补一遍——不会自动同步，也没有测试能跨仓库检测这种漂移。**例外**：`CCM_NO_PRETRUST`
+  # 会话没人盯着按 Enter）。逻辑原样搬自 cc-bus 的 cc-spawn（已生产验证过，照抄不重新设计），
+  # 测试钩子改名 CCM_CLAUDEJSON/CCM_CODEXTOML（对齐 CCSPAWN_* 的既有命名模式）。
+  # **`--print` 跳过**——预信任是写文件的副作用，`--print` 必须纯（同上方 tmux 状态查询的既有纪律）。
+  # **维护提示**：这段逻辑与 cc-spawn 里的同名实现目前仍是重复实现，但 **B01 之后两者已同仓**
+  # （`shared/cc-bus/scripts/cc-spawn`，不再是"分属不同仓库、没有共享源可抽"）。**B02 的任务
+  # 正是消除这处重复**：cc-spawn 改为经 `ccm` 起会话，届时这段就是唯一实现、本提示可删。
+  # 在 B02 落地之前，改动这里仍需手动对拍 `shared/cc-bus/scripts/cc-spawn` 的同名逻辑
+  # （如 TOML 转义字符集、jq 校验），差别在于**现在同仓可写测试检测漂移了**。**例外**：`CCM_NO_PRETRUST`
   # 逃生口是 `ccm` 独有的、cc-spawn 没有对应机制——这处差异是有意的（受众判断不同，见下方
   # opt-out 处的说明），对拍 cc-spawn 时不要把这条误判成"漏同步"。
   pretrusted=0

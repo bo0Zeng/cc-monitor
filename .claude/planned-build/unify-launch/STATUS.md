@@ -251,7 +251,7 @@ tmux 命令、export 在载荷内故安全。
 
 | ID | 内容 | 状态 |
 |----|------|------|
-| B01 | cc-bus 搬进本仓：`~/.claude/skills/cc-bus/`（1118 行 bash / 12 命令 / SKILL.md / examples）**原样固化为仓内基线，不趁搬家重构**（盘上有 3 个 `scripts.bak-*` + 2 个脚本各一份 `.bak`，说明一直手改）；部署走「备份→写→读回比对→回滚」 | 待做 |
+| B01 | cc-bus 搬进本仓：`~/.claude/skills/cc-bus/`（13 脚本 **951 行** bash / SKILL.md / examples 3 个，17 文件合计 1107 行）**原样固化为仓内基线，不趁搬家重构**（盘上有 2 个 `scripts.bak-*` + 2 个脚本各一份 `.bak`，说明一直手改）；部署走「备份→写→读回比对→回滚」 | **完成**（`1a3debf` 搬家 + 审计修复 commit；已过独立对抗性审计，无阻塞） |
 | B02 | **`cc-spawn` 收编**：建会话/送环境/送任务改经 `ccm`，只保留 cc-bus 专属部分（`cc-register` 总线登记 / `spawned.tsv` 台账 / 复用判定）。**闭合账本未达成行** | 待做 |
 | B03 | 驾驶舱：cc-monitor 看见/管理 bus 上的 agent、派活、读 inbox、`cc-spawn` 图形化 | 待做 |
 | B04 | settings.json 钩子的「读+诊断+生成待贴文本」（**不写**——用户定调；cc-bus 自己的安装脚本第 3 行同样拒绝改它） | 待做 |
@@ -289,11 +289,22 @@ cc-monitor 在 Windows 侧只能经 SSH 看。默认取**按需刷新**（同 F1
    `cc-spawn` 今天靠 `send-keys` 载荷里的 `inj=` 前缀把 `CC_BUS_ID` 送进容器内侧，所以现在是对的。
    但若 B02 天真地把建会话换成 `ccm --tmux`，`CC_BUS_ID` 就只能靠环境继承——
    而 `update-environment` 默认列表同样不含它，**会被整个吃掉**（R08 刚踩过的完全同型问题）。
-   → **B02 必须把 `CC_BUS_ID` 显式化**。这恰好是**成功标准② 的第二次真实架构验收**：
-   给 `ccm` 加一个新维度（如 `--bus-id`），验证"注册一个 dimension + CLI 加一个 flag，
-   零改 9 个函数签名与 7 个调用点"。R03 刚做完的 `LaunchModifiers` 正好在这里兑现。
+   → **B02 必须把 `CC_BUS_ID` 显式化**：给 `shared/ccm` 加 `--bus-id`。
    **暴露面窄**：`inj` 只在 `tool=codex` 时非空；claude 路径下 cc-bus 身份来自 tmux 会话名
    （`cc-whoami` 优先级：`$CC_BUS_ID` → pane 标签 `@cc_id` → 会话名），无需携带。
+
+   **范围订正（2026-07-28，B01 收尾时发现，推翻本条原先的说法）**：这里原写
+   "这恰好是成功标准② 的第二次真实架构验收，给 ccm 加一个新维度……R03 的 `LaunchModifiers`
+   正好在这里兑现"——**那是错的**。B02 是 **cc-spawn(bash) → ccm(bash)**，**全程不经 TS**
+   （实测 `grep -rn "CC_BUS_ID\|busId" src/ --include=*.ts` **零命中**，TS 侧当前完全不涉及 cc-bus）。
+   而 `LaunchDimension` 是 **TS 侧**的东西。在 B02 里加 TS 维度 = **为一个假想消费者建抽象**，
+   正是 R12/R15 反复拒绝的那类错误；更糟的是它会让"成功标准② 验收"变成**自己给自己出的空题**
+   ——B02 里本就没有 TS 调用点需要改，"零改"是必然的，证明不了任何事。
+   → **B02 只改 shell**：照 `--model` 的 7 个触点给 `shared/ccm` 加 `--bus-id`
+   （help 文档 `:18` + 示例 `:30` / 变量初始化 `:137` / 参数解析两形态 `:174-175` 带 `need_val` /
+   `capabilities=` `:182` / 容器路径内层转发 `:444` / `--print` 行 `:511` / 非容器路径 export `:529`）。
+   → **TS 维度与成功标准② 的第二次验收挪到 B03 批二**（cc-monitor 图形化 spawn，
+   那时才有**真实的 UI 调用点**，验收才有意义）。这不是把验收往后拖，是挪到唯一能证明东西的地方。
 
 3. **`ccm` 不设窗口尺寸，`cc-spawn` 设了 `-x 220 -y 50`。**
    detached tmux 会话默认 80x24，cc-spawn 刻意放宽免得 agent 输出被窄折。
