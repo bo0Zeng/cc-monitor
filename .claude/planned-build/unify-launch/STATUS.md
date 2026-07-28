@@ -9,14 +9,14 @@
 ## 当前状态
 
 - **当前阶段**：R 段（重构 Sonnet 产出 + 信号修复）—— **当前重心**
-- **当前功能**：R00/R01/R02/R03/R04/R06/R08/R09 **已完成（8/9）** → 下一个 **R05**（UI 删死代码，计划已就绪）→ R07
+- **当前功能**：**R 段 9/9 全部完成并 commit** → 下一个 **B 段**（B01 cc-bus 搬进仓，四份计划均已就绪且前提实测核实）
 - **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）、**F11**（预信任能力上提进 `ccm`：`shared/ccm` 的 `--tmux` 建会话路径新增预信任 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out；范围收窄不碰仓库外的 `cc-spawn` 本体；双 agent 审各自独立复现真实阻塞项，含修复既有 `e2e/ccm-acceptance.sh` 污染真实全局配置的回归）、**F08**（终端集成收尾：`ccm --model` 闭合 R14；`canRenderCli` 针对性特判而非机械塞进 `CLI_REQUIRED_CAPS`；别名生成器+越层启动器诊断合并落点，紧邻彼此、不再按主机重复渲染；commit `06a9c76`）、**F09**（UI 收敛：动作×修饰——R12 降级为已归档设计决策；归档 tab 收敛成 `Resume`+账号×容器 3 级级联 flyout；存活 tab 收敛成 `Restart`+账号 flyout；徽章恒显身份（R7 语义反转）；对齐全套全仓删除；双 agent 审 1 阻塞+5 重要全部修复）
-- **下一个功能**：**R05**（UI 删死代码，`features/R05-*.md` 已就绪）→ **R07**（`planLocal` 改名，计划已就绪）→ **B 段**（`features/B01-B02-*.md` 已就绪）→ P 段 → Phase G
+- **下一个功能**：**B01**（cc-bus 逐字节原样搬进 `shared/cc-bus/`）→ B02（`cc-spawn` 收编，成功标准② 第二次架构验收）→ B03/B04 → P 段 → Phase G
 - **阻塞 / 待用户确认**：无
 - **最近一次计划回看时间**：2026-07-28（MASTERPLAN 变更记录 16）
 - **自动模式（/loop）**：**全自动**（连续 B→G）。用户 2026-07-27 追加授权：**具体设计决策由本席开
   agent 讨论分析后自行决定，不必逐项停下来问**——除非真遇到阻塞或用户主动打断
-- **本轮 loop 目标**：R 段 8/9 已收口 → next R05 → R07 → R 段满 → 进 B 段
+- **本轮 loop 目标**：**R 段已满（9/9）** → 进 B 段：B01 → B02 → B03 → B04
 - **loop 停止条件**：计划≠现实 / 同一步≥2 失败 / 全部完成→Phase G / 用户打断
 
 ## §0 工作约定（跨 compact 必须保留 —— 恢复工作时先读这一节）
@@ -79,11 +79,39 @@ commit `bb71172`。收口时补的最后一条是 `launchPayload` 内容断言�
 | R02 | 伪测试扫荡：对每个功能挑 1-2 条「声称验证核心防线」的测试做**变异检查**（改坏实现确认转红） | 已确认 3 条（F10 内，全部已修） | **已完成**（11 条变异检查全 RED，见下「R02 结果」） |
 | R03 | 位置参数长列车 → `LaunchModifiers` | 三方独立证伪账本「e2e 锁死签名」之说 | **已完成**（commit `4f6c313`）。**只达成「零改调用点」那一半**（32 行透传编辑归零），「零改 builder」未达成（4 个 planXxx 仍各 2 行）——原声称过度，已订正。扩围到 `withAccount` 回调（车头在那里）。审计 0 阻塞+4 重要全修 |
 | R04 | 结构性收紧四处：`tryRenderCli` Result / `requiredCaps` 下放维度 / `EnvOp` unset 收窄 / `WrapSpec` 纯数据 | IR 内核独立重设计对拍 §2.2 | **已完成**（commit `fb81fe1`）。审计 **1 阻塞+5 重要**全修，推翻我三处声称（测试落在失败聚合点后=零守护；`prelude` 表达不出唯一用例、实测 rc=127；`unset` 收窄丢了编译期穷尽性）。顺带把 `tsconfig` 的 `include` 加上 `e2e` 关掉 tsc 盲区 |
-| R05 | UI 层收敛：删 `launch-menu.ts` **从未被渲染过**的 container 组（`enumerateModifierGroups` 第二参全仓恒传 `"tmux"`，返回值被丢弃，而 `tabs.ts:2264` 自己硬编码了逐字相同的一份）；5 处独立账号菜单实现收敛；`"__base__"` 魔法串类型化 | 波及面计数 + 对抗审计 | 待做 |
+| R05 | UI 层：删死代码 + 收敛真重复 + `"__base__"` 类型化 | 波及面计数 + 对抗审计 | **已完成**（`fb20c03`）。判别联合**顺带修了一个真 bug**：账号名可含下划线，真实账号叫 `__base__` 时改造前会被判成基座、静默丢号且 Restart 入口消失。审计 0 阻塞+5 重要全修（最要紧：我唯一实质重写的那行零覆盖、三个变异全存活，已补 6 条行为测试）。**否决账本「5 处账号菜单收敛」**，但核实后实为 7 处并登记 R16 |
 | R06 | **成功标准① 首次可验收**：重写 `INVENTORY.md` | 已逐条核实失效 | **已完成**（改用符号名+可复跑 grep 锚点；11 条锚点逐条验证，首轮即抓到 1 条空锚点——`renderLaunchCommand` 实为模块私有非导出，正是「锚点自己会报错」的设计意图） |
-| R07 | `planLocal` 的假声明处置：三个生产调用点**全部丢弃返回值**，真命令仍由 Rust 独立构造，而 `launch-requests.vitest.ts` 头注写着"证明本地路径真的在用同一套维度注册表（不是套了个壳）"——**这句是假的**。要么真接上，要么改名 `validateLocalLaunch` 并把注释改成实话 | IR 内核对拍 §2.2 第 6 条 | 待做 |
+| R07 | `planLocal` → `validateLocalLaunch`（纯校验，不再构造 IR） | IR 内核对拍 §2.2 第 6 条 | **已完成**（`2c365a4`）。审计 1 阻塞+5 重要全修，**推翻了本计划最核心的论证**：否决「真接上」引的是错误论据（Get-Command 只排除"TS 全量渲染"，真正理由是 F06 §3.2「无信息增量」）；「走一遍 buildLaunchPlan」零门禁守护且是 fail-closed 风险，已删 |
 | R08 | **查证并修复：容器路径丢失继承账号**（实测复现，见下「新发现的真 bug」） | 本席 2026-07-28 `ccm --print` 实测 | **已完成**（commit `9dc0aad`，e2e 断言 126→131，CI 全绿） |
 | R09 | 查证 `@ccm_sid` vs `@ccm_sid_expect` 语义分叉 | IR 内核对拍 §2.2 第 9 条 | **已完成——判定为「设计正确，只有一句文档不准确」，不改代码**（见下「R09 结论」） |
+
+### commit 卫生瑕疵：`77d1486`（R05）单独不可编译（已如实记录，选择向前修而非改写历史）
+
+**事实**：我在 commit R05 **之前**就把 `tabs.ts` 里的 `planLocal` 改成了 `validateLocalLaunch`
+（那是 R07 的活），而 R05 的 `git add` 显式列了 `src/tabs.ts` → 那一行被卷进了 R05 的 commit。
+后果：`git show 77d1486:src/tabs.ts` 引用 `validateLocalLaunch`，
+而 `git show 77d1486:src/launch-requests.ts` 仍导出 `planLocal`——**该 commit 单独 checkout 不可编译**。
+
+**为什么 CI 没抓到**：CI 跑的是 PR 的分支尖端，不是逐 commit。分支尖端一直是自洽的
+（R07 的改动都在工作区，下一个 commit 就补上）。
+
+**处置：向前修，不改写已推送的历史。**
+- 影响面：`git bisect` 跨过这一个 commit 会构建失败（`bisect skip` 可绕过）。窗口只有一个 commit。
+- 不 force-push 的理由：改写已发布历史是对外可见、较难撤销的动作，而这个 draft PR 本就只为跑 CI、
+  不会 merge；为一个可 `skip` 的 bisect 断点去重写历史不划算。**若用户要求，可随时 rebase 修掉。**
+
+**教训（已并入门禁纪律）**：一次只做一个功能时，**动手改文件之前先确认上一个功能已经 commit 完**。
+本轮为了"等审计期间不闲着"提前做了 R07 的改名，就是在这里出的岔子——
+"不闲着"不能以"把两个功能的改动混进同一个工作区"为代价。
+更稳的做法：审计期间只做**新文件**（计划文档）与**只读核实**，不碰将被下一个功能改到的源文件。
+
+### R 段收尾时登记的遗留条目（都**有意不在 R 段做**，各自需要自己的 DoD）
+
+| ID | 内容 | 为什么现在不做 |
+|----|------|---------------|
+| **R15** | `LaunchContext.passThrough` 纯透传子集，可闭合成功标准②「零改 builder」那一半 | 今天纯透传只有 `modelOverride` **一个**元素（`configDir`/`accountName` 都要经 `accountOf` 解析），一个元素撑不起抽象——同 R12「提前建等于为假想需求设计」。等 B02 的 `--bus-id` 进来有第二个元素再抽。**硬约束**：绝不能把 `configDir`/`accountName` 也搬进 ctx，那会让未解析的原始字段与已解析的 `account` 判别联合并存，未来某维度读了原始字段就绕过解析——正是 R11 那族病 |
+| **R16** | `views/history.ts::appendAccountResumeItems` **缺基座逃生口**（`grep "基座" src/views/` 零命中），而其默认 resume 走 `follow`——正是 #75 场景。tabs 有、设置页新会话对话框有，**只有 history 没有**；计划文里查无决策记录，疑为遗漏 | 加一个菜单项是**行为变化**，该走自己的 DoD 与 UX 判断，不该塞进一个"删死代码"的功能里 |
+| （轻）| 「≥2 可选账号」阈值写在三处（`launch-menu.ts` / `tabs.ts` / `views/history.ts`）；同一"基座"概念三处三种文案 | 这才是账号菜单**真正该收敛**的东西——收的是**规则与文案**，不是渲染器 |
 
 ### R00 结果（2026-07-28，全部 6 个 CI job 绿）
 
