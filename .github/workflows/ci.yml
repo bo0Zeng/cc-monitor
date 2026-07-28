@@ -137,8 +137,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # B01 审计 I5：搬进来的 `shared/cc-bus/` 有 1107 行 shell，此前**零 lint 覆盖**——
+      # 唯一门禁是下面那条 exec-bit 守卫。扩进来实测今天就是绿的（severity=error 零告警），
+      # 零成本。`shared/ccm` 一并纳入：它被 `sftp.rs:538` include_str! 进二进制，是生产件。
+      # **刻意不含 `shared/ccm-aliases.sh`**：那是个供 source 的片段、无 shebang，
+      # SC2148 是它的构造性属性；而它会被写进用户 shell profile、并在 UI 面板里展示供手动复制，
+      # 为过 lint 往里塞 `# shellcheck shell=bash` 等于往用户配置和界面文案里掺 lint 噪音。
       - name: shellcheck (errors only)
-        run: shellcheck --severity=error e2e/*.sh
+        run: shellcheck --severity=error e2e/*.sh shared/cc-bus/scripts/* shared/ccm
       - name: python syntax compile
         run: python3 -m py_compile e2e/*.py
 
