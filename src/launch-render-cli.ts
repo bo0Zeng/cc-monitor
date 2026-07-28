@@ -49,6 +49,13 @@ export function canRenderCli(plan: LaunchPlan, ctx: LaunchContext, probe: CcmPro
   if (plan.transport.kind !== "ssh") return false;
   if (!CLI_REQUIRED_CAPS.every((c) => probe.capabilities.has(c))) return false;
   if (plan.container.kind === "tmux" && plan.container.mode === "send-into") return false; // #76 防线：仅挡 idle-tmux 就地复用（attach-only 与 create-or-attach 都安全）
+  // F08：`model` 不能像 F05 的 `account` 那样直接塞进 CLI_REQUIRED_CAPS（那个列表的语义是
+  // "每一次调用都要求"——account 之所以能这样做，是因为 ACCOUNT_DIMENSION.applies 恒真，
+  // 每次调用都真的用得到；MODEL_DIMENSION.applies 是条件式（只在配了模型偏好时才为真，见
+  // doc/INVARIANTS.md §37），塞进静态列表会让**所有**未配模型偏好的会话也被迫要求远端 ccm
+  // 支持这个能力，过度收紧、误伤多数用户）。同 #76 防线一样，用针对具体场景的显式特判——
+  // 只在这次会话真的配了模型偏好时才要求 ccm 报告支持 "model"，未配置的会话完全不受影响。
+  if (ctx.modelOverride && !probe.capabilities.has("model")) return false;
   for (const dim of LAUNCH_DIMENSIONS) {
     if (dim.applies(ctx) && dim.cliFlags && dim.cliFlags(ctx) === null) return false;
   }

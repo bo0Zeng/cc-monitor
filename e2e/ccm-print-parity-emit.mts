@@ -36,6 +36,18 @@ const scenarios: Record<string, LaunchContext> = {
     launcherOverride: undefined,
     ccmSid: undefined,
   },
+  // F08：ccm 学会了 --model，闭合 R14①——验证真 ccm 收到 --model 后真的 export ANTHROPIC_MODEL。
+  // account 用 base（同其余场景，避免这里额外牵扯账号 manifest 解析——组合测试见 ccm-cli.test.sh）。
+  resumeTmuxWithModel: {
+    transport: { kind: "ssh" },
+    action: { kind: "resume", sid: "p1" },
+    container: { kind: "tmux", name: "cc-p1", nameQuoting: "raw", mode: "create-or-attach" },
+    cwd: "/tmp",
+    account: { kind: "base" },
+    launcherOverride: "claude",
+    ccmSid: "p1",
+    modelOverride: "opus",
+  },
 };
 
 for (const [label, ctx] of Object.entries(scenarios)) {

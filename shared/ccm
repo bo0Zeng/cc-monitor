@@ -15,6 +15,7 @@
 #                             同名但**异目录**会退让到 -2/-3。已在 tmux 里则就地起，不建嵌套）
 #     --account <名>          注入该账号的 CLAUDE_CONFIG_DIR
 #     --base                  显式不注入（issue #75 逃生口）
+#     --model <名>            该次会话的 ANTHROPIC_MODEL（如 opus/sonnet，或完整模型 ID）
 #     --cwd auto|<dir>        默认 auto = 旧 _cc_resolve_target 语义
 #     --agent claude|codex    默认 claude
 #     --launcher <cmd>        覆盖该 agent 的默认启动命令
@@ -23,6 +24,17 @@
 #     --print                 打印将要执行的命令，不执行
 #     --ccm-probe             打印 name/version/capabilities
 #     --version / --help
+#
+# 示例：
+#   ccm --tmux --account z                      # 用账号 z、tmux 幂等接回，起/接回默认新会话
+#   ccm resume abc-123 --tmux --model opus      # 恢复会话 abc-123，这次用 opus 模型
+#   ccm --tmux=my-session --agent codex         # 显式会话名、codex agent
+#
+# 想固定一个常用组合？存成 shell 别名即可（cc-monitor 设置面板有生成器，拼好直接复制）：
+#   alias cct='ccm --tmux --account z'
+#
+# 想看这台机器上配置了哪些账号？那是 cc-monitor 自己管的数据（不是 ccm 的职责），去
+# cc-monitor 的设置面板「账号」组看，ccm 本身不提供列账号的子命令。
 #
 # `--tmux` 建**新**会话时会顺带把该目录标记为已信任（写 ~/.claude.json 或
 # ~/.codex/config.toml），免得 claude/codex 在无人盯着的 detached 会话里卡在信任确认框——
@@ -122,6 +134,7 @@ account=""
 use_base=0
 cwd_spec=auto
 agent=claude
+model=""
 launcher=""
 ccm_sid=""
 do_print=0
@@ -158,13 +171,15 @@ while [ $# -gt 0 ]; do
     --cwd=*)       cwd_spec="${1#*=}" ;;
     --agent)       shift; need_val "--agent" "${1:-}"; agent="$1" ;;
     --agent=*)     agent="${1#*=}" ;;
+    --model)       shift; need_val "--model" "${1:-}"; model="$1" ;;
+    --model=*)     model="${1#*=}" ;;
     --launcher)    shift; need_val "--launcher" "${1:-}"; launcher="$1" ;;
     --launcher=*)  launcher="${1#*=}" ;;
     --ccm-sid)     shift; need_val "--ccm-sid" "${1:-}"; ccm_sid="$1" ;;
     --ccm-sid=*)   ccm_sid="${1#*=}" ;;
     --print)       do_print=1 ;;
     --ccm-probe)
-      printf 'name=ccm\nversion=%s\nself=%s\ncapabilities=new,resume,attach,tmux,account,cwd,agent,launcher,ccm-sid,print\nagents=claude,codex\n' \
+      printf 'name=ccm\nversion=%s\nself=%s\ncapabilities=new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print\nagents=claude,codex\n' \
         "$CCM_VERSION" "$CCM_SELF"
       exit 0 ;;
     --version)     printf 'ccm %s\n' "$CCM_VERSION"; exit 0 ;;
@@ -426,6 +441,7 @@ if [ "$use_tmux" = 1 ]; then
   inner+=(--cwd "$cwd" --agent "$agent")
   [ -n "$account" ] && inner+=(--account "$account")
   [ "$use_base" = 1 ] && inner+=(--base)
+  [ -n "$model" ] && inner+=(--model "$model")
   [ -n "$launcher" ] && inner+=(--launcher "$launcher")
   [ -n "$ccm_sid" ] && inner+=(--ccm-sid "$ccm_sid")
   [ ${#passthru[@]} -gt 0 ] && inner+=(-- "${passthru[@]}")
@@ -468,6 +484,7 @@ if [ "$do_print" = 1 ]; then
   [ -n "$CCM_ENV" ] && line="$line$CCM_ENV; "
   [ -n "$config_dir" ] && line="${line}export CLAUDE_CONFIG_DIR=$(sq "$config_dir"); "
   [ "$use_base" = 1 ] && line="${line}unset CLAUDE_CONFIG_DIR; "
+  [ -n "$model" ] && line="${line}export ANTHROPIC_MODEL=$(sq "$model"); "
   [ -n "$nested" ] && line="${line}unset $nested; "
   [ -n "$cwd" ] && line="${line}cd $(sq "$cwd") && "
   line="${line}exec"
@@ -485,6 +502,7 @@ fi
 # 会话级 env。--base 显式清残留（就地复用已存在 shell 时必需，见 issue #75）。
 [ -n "$config_dir" ] && export CLAUDE_CONFIG_DIR="$config_dir"
 [ "$use_base" = 1 ] && unset CLAUDE_CONFIG_DIR
+[ -n "$model" ] && export ANTHROPIC_MODEL="$model"
 # 嵌套会话标记：tmux server env 可能带毒（issue #24），起前一律清。
 [ -n "$nested" ] && unset $nested
 [ -n "$cwd" ] && { cd "$cwd" || die "无法进入目录: $cwd"; }

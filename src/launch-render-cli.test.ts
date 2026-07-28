@@ -26,7 +26,7 @@ console.log("launch-render-cli.test.ts");
 const FULL_CAPS: CcmProbeResult = {
   installed: true,
   version: "1",
-  capabilities: new Set(["new", "resume", "attach", "tmux", "account", "cwd", "agent", "launcher", "ccm-sid", "print"]),
+  capabilities: new Set(["new", "resume", "attach", "tmux", "account", "model", "cwd", "agent", "launcher", "ccm-sid", "print"]),
 };
 const NOT_INSTALLED: CcmProbeResult = { installed: false, version: null, capabilities: new Set() };
 
@@ -71,18 +71,36 @@ test("canRenderCli：ccm 不支持 account 能力（旧版本）→ false，即�
   eq(canRenderCli(buildLaunchPlan(ctx), ctx, noAccountCap), false);
 });
 
-// F07 Phase D 审计：MODEL_DIMENSION.cliFlags 恒 null 这条决策的说服力全系于 canRenderCli
-// 真的会因此降级——launch-dimensions.test.ts 只孤立测过 cliFlags() 的返回值，从未有端到端的
-// canRenderCli 断言。补齐：即便 ccm 已装且能力齐全（包括 account），配了 modelOverride 也必须
-// 强制走兜底；未配置的会话必须完全不受影响（applies 为假，循环压根不问这个维度）。
-test("canRenderCli：配了 modelOverride → 强制 false（ccm 无 --model，即便其余能力齐全）", () => {
+// F08：ccm 学会了 --model，关闭 R14①——cliFlags 不再恒 null。canRenderCli 现在靠一条针对性
+// 特判（不是塞进 CLI_REQUIRED_CAPS：那会让所有未配模型偏好的会话也被迫要求 ccm 支持 model
+// 能力，过度收紧）：只在这次会话真配了模型偏好时才要求 ccm 报告支持 "model"。
+test("canRenderCli：配了 modelOverride 且 ccm 支持 model 能力 → true", () => {
   const ctx = ctxOf({ modelOverride: "opus" });
-  eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), false);
+  eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), true);
 });
-test("canRenderCli：未配 modelOverride → 不受影响，仍 true", () => {
+test("canRenderCli：配了 modelOverride 但 ccm 不支持 model 能力（旧版本）→ false", () => {
+  const noModelCap: CcmProbeResult = {
+    installed: true,
+    version: "1",
+    capabilities: new Set(["new", "resume", "attach", "tmux", "account", "cwd", "agent", "launcher", "ccm-sid", "print"]),
+  };
+  const ctx = ctxOf({ modelOverride: "opus" });
+  eq(canRenderCli(buildLaunchPlan(ctx), ctx, noModelCap), false);
+});
+test("canRenderCli：未配 modelOverride → 不受影响，仍 true（即便 ccm 不支持 model 能力）", () => {
+  const noModelCap: CcmProbeResult = {
+    installed: true,
+    version: "1",
+    capabilities: new Set(["new", "resume", "attach", "tmux", "account", "cwd", "agent", "launcher", "ccm-sid", "print"]),
+  };
   const ctx = ctxOf({});
   eq(ctx.modelOverride, undefined);
-  eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), true);
+  eq(canRenderCli(buildLaunchPlan(ctx), ctx, noModelCap), true);
+});
+test("renderCli：配了模型偏好 → --model <名>", () => {
+  const ctx = ctxOf({ modelOverride: "opus" });
+  const rendered = renderCli(buildLaunchPlan(ctx), ctx);
+  eq(rendered.includes("--model opus"), true, rendered);
 });
 
 // **#76 防线——本组测试的核心价值**：shared/ccm 的 --tmux 只有幂等 create-or-attach 一种形态，

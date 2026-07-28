@@ -100,11 +100,9 @@ export const MODEL_DIMENSION: LaunchDimension = {
     }
     plan.env.push({ kind: "export-model", value: ctx.modelOverride });
   },
-  // ccm 今天没有 --model；诚实强制走兜底渲染器——不是遗漏，是 shared/ccm 缺这个能力的诚实反映
-  // （教 ccm 认识 --model 是 F08 的范围）。这与 F05 修的坑不同：这里 applies 会在配了偏好时
-  // 正确变真，canRenderCli 的 null 检查确实会跑到并正确返回 false——是"检测到了、诚实报告
-  // 降级"，不是"检测不到、悄悄放过"。
-  cliFlags: () => null,
+  // F08：ccm 学会了 --model，关闭 R14①——不再恒 null。applies 已保证只有 modelOverride
+  // truthy 时才会问到这里，`[]` 分支理论不可达，保留是防御性写法（同其余维度的既有风格）。
+  cliFlags: (ctx) => (ctx.modelOverride ? ["--model", ctx.modelOverride] : []),
 };
 
 /** nested-env-reset：resume/new 前清 Claude 嵌套会话标记（tmux server env 可能带毒，issue #24）。

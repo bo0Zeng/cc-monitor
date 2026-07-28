@@ -1,16 +1,38 @@
 # 状态 / STATUS — unify-launch（恢复工作的入口，每次先读这里）
 
-- **当前阶段**：F11 已完成签收（Phase B→F 全过，commit 待落），F08 Phase B 已完成、待进 Phase C
-- **当前功能**：F08（终端集成收尾，`features/F08-terminal-integration.md`，含 `ccm --model`
-  闭合 R14）——F11 收尾完成后的下一个功能
-- **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）、**F11**（预信任能力上提进 `ccm`：`shared/ccm` 的 `--tmux` 建会话路径新增预信任 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out；范围收窄不碰仓库外的 `cc-spawn` 本体；双 agent 审各自独立复现真实阻塞项，含修复既有 `e2e/ccm-acceptance.sh` 污染真实全局配置的回归）
-- **下一个功能**：F08（本轮）→ F09（UI 收敛，须解决 R12）→ F10 → Phase G
+- **当前阶段**：F08 已完成签收（Phase B→F 全过，R14 已关闭，commit 待落）
+- **当前功能**：无——F08 收尾完成，下一步进 F09（UI 收敛，规模最大，须解决 R12）
+- **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）、**F11**（预信任能力上提进 `ccm`：`shared/ccm` 的 `--tmux` 建会话路径新增预信任 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out；范围收窄不碰仓库外的 `cc-spawn` 本体；双 agent 审各自独立复现真实阻塞项，含修复既有 `e2e/ccm-acceptance.sh` 污染真实全局配置的回归）、**F08**（终端集成收尾：`ccm --model` 闭合 R14；`canRenderCli` 针对性特判而非机械塞进 `CLI_REQUIRED_CAPS`；别名生成器+越层启动器诊断合并落点，紧邻彼此、不再按主机重复渲染）
+- **下一个功能**：F09（UI 收敛，须解决 R12，可能需要开 Plan agent 比较架构方案）→ F10 → Phase G
 - **阻塞 / 待用户确认**：无
-- **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 13）
+- **最近一次计划回看时间**：2026-07-27（MASTERPLAN 变更记录 14）
 - **自动模式（/loop）**：**全自动**（连续 B→G）。用户 2026-07-27 追加授权：**具体设计决策由本席开
   agent 讨论分析后自行决定，不必逐项停下来问**——除非真遇到阻塞或用户主动打断
-- **本轮 loop 目标**：commit F11 → F08 走完 C→D→E→F 并 commit
+- **本轮 loop 目标**：commit F08 → 开 F09（Phase B 规划，须解决 R12）
 - **loop 停止条件**：计划≠现实 / 同一步≥2 失败 / 全部完成→Phase G / 用户打断
+
+## F08 结果摘要（R14 已关闭）
+
+- 5 个子项：①`invalidateCcmProbeCache` 接进安装成功分支（函数早就写好，此前从未被调用）；
+  ②`ccm` 学会 `--model`（参数解析/tmux 内层命令/`--print`/非容器 env 导出四处 +
+  `--ccm-probe` 能力位）；③`MODEL_DIMENSION.cliFlags` 从恒 `null` 改成真吐 flag，关闭 R14①，
+  R14②随之自动关闭（终端 `ccm --model` 与 app 现在同一条命令）；④别名生成器 + 越层启动器
+  诊断；⑤旧 swap 退役确认已关闭（F02 落地，无需代码）；⑥`--help` 内容补齐。
+- **实现期修正**：`canRenderCli` 的能力探测没有照计划把 `"model"` 塞进
+  `CLI_REQUIRED_CAPS`（那个列表语义是"每次调用都要求"，只对 `applies` 恒真的维度成立——
+  `account` 能进去是因为 F05 后 `ACCOUNT_DIMENSION.applies` 恒真；`MODEL_DIMENSION.applies`
+  是条件式，机械照抄会误伤未配模型偏好的多数会话），改用针对性特判
+  `ctx.modelOverride && !probe.capabilities.has("model")`。
+- 双 agent 审：后端架构审计因安全护栏两次误判被打断（讨论 shell 转义/注入防护的常规防御性
+  代码审查被误判成攻击性安全测试）——本席直接接手核实剩余项（`CLI_REQUIRED_CAPS` 设计决策/
+  两个渲染器的 flag 顺序/`shared/ccm` 四处 `--model` 触点/`buildAliasLine` 转义逻辑/重跑
+  e2e 用例），UX 审计由自动化 agent 完整跑完，发现 1 阻塞（别名名字零校验可拼出语法错误的
+  shell 代码，实测复现：`bash -n <<< 'my alias() { ccm "$@"; }'` 真报语法错误——已修）+
+  多条重要（生成器与诊断分居两处且按主机重复渲染，已合并进同一设置分组、紧邻彼此；
+  `--base`/`--account` 从静默优先级改成控件级主动互斥；复制 toast 补齐 source/新终端提示；
+  诊断正则语义订正）。
+- 门禁：tsc 0 / npm test 658 / cargo test 379 / 全部既有 e2e 套件（`test:ccm-cli` 39/
+  `test:ccm-print-parity` 12/其余不变）全绿；真实全局配置文件复测确认干净。
 
 ## F11 结果摘要
 
