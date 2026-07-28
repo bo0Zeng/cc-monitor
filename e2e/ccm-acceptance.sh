@@ -50,6 +50,12 @@ CFG="$TMP/ccm-config"
 printf 'CCM_ACCTS_MANIFEST=%s\nCCM_WORKSPACE=%s\n' "$ACCTS/accounts.json" "$TMP/ws" > "$CFG"
 mkdir -p "$TMP/ws" "$TMP/proj"
 export CCM_CONFIG="$CFG" CCM_SELF="$CCM"
+# F11 Phase D 审计（阻塞项修复）：`--tmux` 建新会话现在会预信任 $cwd（写 ~/.claude.json /
+# ~/.codex/config.toml）——本脚本每个场景默认 --agent claude、cwd 是 $TMP 下的隔离临时目录，
+# 不隔离的话会真的往开发者/CI 机器的真实全局配置文件里永久写入一堆 /tmp/tmp.XXXXXXXX 垃圾
+# trust 条目（已实测复现：连跑两次会分别新增两条不同的垃圾 key）。同 e2e/ccm-pretrust-
+# acceptance.sh 的既有隔离手法，指向本次隔离 $TMP 下的副本，不碰真实文件。
+export CCM_CLAUDEJSON="$TMP/claude.json" CCM_CODEXTOML="$TMP/config.toml"
 
 T() { "$TMUX_BIN" -L "$SOCK" "$@"; }
 reset() { T kill-server 2>/dev/null; : > "$TMP/probe.log"; sleep 0.3; }

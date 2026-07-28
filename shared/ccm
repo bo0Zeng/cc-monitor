@@ -24,6 +24,10 @@
 #     --ccm-probe             打印 name/version/capabilities
 #     --version / --help
 #
+# `--tmux` 建**新**会话时会顺带把该目录标记为已信任（写 ~/.claude.json 或
+# ~/.codex/config.toml），免得 claude/codex 在无人盯着的 detached 会话里卡在信任确认框——
+# 设 CCM_NO_PRETRUST=1 可关闭这个行为（如你想自己手动确认每个新目录的信任）。
+#
 # **为什么必须是这个结构**（别"简化"掉，每条都有血）：
 #  1. 环境（cwd / CLAUDE_CONFIG_DIR / 代理 / unset 嵌套 env）**必须在最终 exec 的那个 shell 里设**。
 #     旧 `cct` 的做法是外层 export + 自建 tmux + send-keys，而 tmux 的 `update-environment`
@@ -349,6 +353,73 @@ if [ "$use_tmux" = 1 ]; then
     fi
   fi
 
+  # F11（unify-launch）：预信任 $cwd，免 claude/codex 起来卡在信任确认框数小时（detached
+  # 会话没人盯着按 Enter）。逻辑原样搬自 cc-bus 的 cc-spawn（~/.claude/skills/cc-bus/scripts/
+  # cc-spawn，已生产验证过，照抄不重新设计），测试钩子改名 CCM_CLAUDEJSON/CCM_CODEXTOML
+  # （对齐 CCSPAWN_* 的既有命名模式）。**`--print` 跳过**——预信任是写文件的副作用，`--print`
+  # 必须纯（同上方 tmux 状态查询的既有纪律）。
+  # **维护提示**：这段逻辑与 cc-spawn 里的同名实现是**有意的代码重复**——两者分属不同仓库
+  # （cc-spawn 是 cc-bus 这个用户级基础设施的一部分，不在这个仓库里），没有共享源可抽。若未来
+  # 在 cc-spawn 那边修了这段逻辑的 bug（如 TOML 转义漏了什么字符、jq 校验逻辑改了），这里要
+  # 手动跟着补一遍——不会自动同步，也没有测试能跨仓库检测这种漂移。**例外**：`CCM_NO_PRETRUST`
+  # 逃生口是 `ccm` 独有的、cc-spawn 没有对应机制——这处差异是有意的（受众判断不同，见下方
+  # opt-out 处的说明），对拍 cc-spawn 时不要把这条误判成"漏同步"。
+  pretrusted=0
+  # Phase D 审计（重要项修复）：ccm --tmux 是 cc-monitor 主 UI 的默认统一实现（受众比 cc-spawn
+  # 这类窄众协作工具宽得多），照搬一个无退出口的行为不合适——加 CCM_NO_PRETRUST=1 逃生口
+  # （已写进 --help 文本）。
+  if [ "$do_print" != 1 ] && [ "${CCM_NO_PRETRUST:-}" != 1 ]; then
+    # Phase D 审计（阻塞项修复）：cc-spawn 的 $absdir 恒经 `cd && pwd` 规范化，本脚本的 $cwd
+    # 在 `--cwd <相对路径>` 时**不**保证是绝对路径（`resolve_cwd` 对非 auto 值原样透传）——
+    # 若直接拿 $cwd 当 JSON/TOML key，会写出字面量 "."/"../foo" 这种野 key：① 对真实的
+    # Claude/Codex 信任表毫无意义（它们用真绝对路径查），预信任完全零效果；② 还会往用户
+    # 真实的 ~/.claude.json/~/.codex/config.toml 里永久塞一条垃圾条目，且 `jq -e .` 校验照样
+    # 通过、不报任何错——已实测复现。修法：预信任专用一份规范化路径 $cwd_abs，解析失败
+    # （目录已消失等极端情况）就放弃预信任而非拿一个可能错误的相对路径瞎写。
+    cwd_abs="$(cd "$cwd" 2>/dev/null && pwd)" || cwd_abs=""
+    if [ -n "$cwd_abs" ]; then
+      if [ "$agent" = claude ]; then
+        cj="${CCM_CLAUDEJSON:-$HOME/.claude.json}"
+        if [ -f "$cj" ] && command -v jq >/dev/null 2>&1; then
+          if jq -e --arg d "$cwd_abs" '.projects[$d].hasTrustDialogAccepted == true' "$cj" >/dev/null 2>&1; then
+            pretrusted=1
+          else
+            cp -p "$cj" "$cj.bak-ccm.$$" 2>/dev/null || true
+            tmpj="$cj.tmp.ccm.$$"
+            if jq --arg d "$cwd_abs" '(.projects[$d].hasTrustDialogAccepted) = true' "$cj" > "$tmpj" 2>/dev/null \
+               && jq -e . "$tmpj" >/dev/null 2>&1; then
+              mv "$tmpj" "$cj"; pretrusted=1; rm -f "$cj.bak-ccm.$$"
+            else
+              rm -f "$tmpj"; echo "ccm: 预信任写入失败（claude 起来可能弹信任框，已备兜底）" >&2
+            fi
+          fi
+        fi
+      elif [ "$agent" = codex ]; then
+        ct="${CCM_CODEXTOML:-$HOME/.codex/config.toml}"
+        mkdir -p "$(dirname "$ct")" 2>/dev/null || true
+        [ -f "$ct" ] || : > "$ct"
+        # 路径含控制字符会破坏 TOML → 跳过预信任（同 cc-spawn；正常路径含空格/unicode/"/\ 无碍）。
+        if [[ "$cwd_abs" == *[[:cntrl:]]* ]]; then
+          echo "ccm: codex 预信任跳过——目录路径含控制字符（会破坏 config.toml）" >&2
+        else
+          cesc=${cwd_abs//\\/\\\\}; cesc=${cesc//\"/\\\"}
+          ( flock 9
+            if ! grep -qF "[projects.\"$cesc\"]" "$ct" 2>/dev/null; then
+              cp -p "$ct" "$ct.bak-ccm.$$" 2>/dev/null || true
+              if printf '\n[projects."%s"]\ntrust_level = "trusted"\n' "$cesc" >> "$ct" 2>/dev/null; then
+                rm -f "$ct.bak-ccm.$$"
+              else
+                [ -f "$ct.bak-ccm.$$" ] && mv -f "$ct.bak-ccm.$$" "$ct"
+                echo "ccm: codex 预信任写入失败（codex 起来可能弹信任框）" >&2
+              fi
+            fi
+          ) 9>>"$ct.lock"
+          grep -qF "[projects.\"$cesc\"]" "$ct" 2>/dev/null && pretrusted=1
+        fi
+      fi
+    fi
+  fi
+
   # 内层命令 = 自己 + 全部修饰（去掉 --tmux，cwd 固化为已解析值，避免容器内重新 resolve）
   inner=("$CCM_SELF")
   [ "$action" = resume ] && inner+=(resume "$sid")
@@ -371,6 +442,17 @@ if [ "$use_tmux" = 1 ]; then
   # 的会话骗过（见 doc/INVARIANTS.md 对应条目 / MASTERPLAN R10）。
   [ -n "$ccm_sid" ] && seq="$seq && (tmux set-option -t $t @ccm_sid_expect $(sq "$ccm_sid") 2>/dev/null || true)"
   seq="$seq && tmux send-keys -t $t $(sq "$payload") Enter"
+  # Phase D 审计（阻塞项修复）：预信任只搬了"写入"，没搬 cc-spawn 真正的安全网——写入没成功
+  # 时（jq/文件缺失/写失败，任何原因）轮询抓 pane 文本找信任框、自动按 Enter（同 cc-spawn
+  # cc-spawn:122-133）。detached 会话没人盯着，且本地 tmux 会话在 cc-monitor 前端完全不可见
+  # （capture-pane 预览只对远端 origin 开放）——没有这层兜底，信任框会静默卡死且没人发现。
+  # 只对 claude 做（同 cc-spawn：codex 已由 config.toml 预信任生效，不弹这个交互框）；
+  # `&&` 挂在 send-keys 之后，幂等接回既有会话时（new-session 失败短路）不会误触发轮询。
+  # CCM_NO_PRETRUST=1 也关掉这条自动按 Enter 兜底——选择不自动管理信任的用户不该被这条
+  # 换了个机制（每次自动按而非持久化写入）的路径悄悄绕过。
+  if [ "$agent" = claude ] && [ "$pretrusted" != 1 ] && [ "${CCM_NO_PRETRUST:-}" != 1 ]; then
+    seq="$seq && (for _i in 1 2 3 4 5 6; do sleep 0.5; tmux capture-pane -t $t -p 2>/dev/null | grep -q 'Yes, I trust this folder' && { tmux send-keys -t $t Enter; break; }; done)"
+  fi
   seq="$seq; tmux attach -t $t"
 
   if [ "$do_print" = 1 ]; then printf '%s\n' "$seq"; exit 0; fi
