@@ -79,7 +79,7 @@ test("env-reset：apply 追加 unset CLAUDE_CONFIG_DIR", () => {
   const ctx: LaunchContext = { ...baseCtx, container: { kind: "tmux", name: "cc-x", nameQuoting: "raw", mode: "send-into" } };
   const plan: LaunchPlan = { transport: ctx.transport, action: ctx.action, container: ctx.container, cwd: ctx.cwd, env: [], launcher: "", args: [], wrap: [] };
   ENV_RESET_DIMENSION.apply(plan, ctx);
-  eq(plan.env, [{ kind: "unset", keys: ["CLAUDE_CONFIG_DIR"] }]);
+  eq(plan.env, [{ kind: "unset-config-dir" }]); // R04③：收窄为无参变体
 });
 
 test("account：注入合法 configDir", () => {
@@ -199,7 +199,7 @@ test("buildLaunchPlan：账号 + 就地复用（env-reset 不生效，因为有�
   const plan = buildLaunchPlan(ctx);
   eq(plan.env, [
     { kind: "export-config-dir", value: "/home/u/.claude-accts/z" },
-    { kind: "unset", keys: ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION"] },
+    { kind: "unset-nested-env" },
   ]);
 });
 test("buildLaunchPlan：无账号 + 就地复用 → env-reset 的 unset 排在 nested unset 之前", () => {
@@ -214,8 +214,8 @@ test("buildLaunchPlan：无账号 + 就地复用 → env-reset 的 unset 排在 
   };
   const plan = buildLaunchPlan(ctx);
   eq(plan.env, [
-    { kind: "unset", keys: ["CLAUDE_CONFIG_DIR"] },
-    { kind: "unset", keys: ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION"] },
+    { kind: "unset-config-dir" },
+    { kind: "unset-nested-env" },
   ]);
 });
 test("buildLaunchPlan：账号 + 模型偏好 → env 顺序是 export-config-dir → export-model → nested unset", () => {
@@ -233,7 +233,7 @@ test("buildLaunchPlan：账号 + 模型偏好 → env 顺序是 export-config-di
   eq(plan.env, [
     { kind: "export-config-dir", value: "/home/u/.claude-accts/z" },
     { kind: "export-model", value: "opus" },
-    { kind: "unset", keys: ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION"] },
+    { kind: "unset-nested-env" },
   ]);
 });
 test("buildLaunchPlan：新建 + 已知 sid → identity 生效", () => {
@@ -248,6 +248,81 @@ test("buildLaunchPlan：新建 + 已知 sid → identity 生效", () => {
   };
   const plan = buildLaunchPlan(ctx);
   eq(plan.identity, { ccmSid: "s1" });
+});
+
+
+// ---- R04③：`unset` 侧收窄为无参变体后，渲染输出必须逐字节不变 ----
+test("R04③：unset-config-dir / unset-nested-env 渲染出的字符串与收窄前逐字节相同", () => {
+  // base 态 + resume 动作 → 两个 unset 都会触发（env-reset 清 CLAUDE_CONFIG_DIR、
+  // nested-env-reset 清嵌套 env 全套）。收窄前是维度递 `keys: string[]`，现在由 kind 查表。
+  const ctx: LaunchContext = {
+    transport: { kind: "ssh" },
+    action: { kind: "resume", sid: "abc-123" },
+    // env-reset 只在「send-into 复用 idle tmux + 未选账号」时触发（见 ENV_RESET_DIMENSION.applies）
+    // ——我初稿用 container:none 写错了前提，测试如实报红，据实修正。
+    container: { kind: "tmux", name: "cc-x", nameQuoting: "raw", mode: "send-into" },
+    cwd: null,
+    account: { kind: "base" },
+    launcherOverride: "claude",
+    ccmSid: undefined,
+  };
+  const rendered = renderFallback(buildLaunchPlan(ctx));
+  eq(
+    rendered.includes(
+      "unset CLAUDE_CONFIG_DIR; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; ",
+    ),
+    true,
+    `两个 unset 的字面输出与顺序都不该变: ${rendered}`,
+  );
+  // 类型层：EnvOp 的 unset 侧已无自由 keys 字段——任何维度都无法再往里塞任意变量名。
+  const ops = buildLaunchPlan(ctx).env.filter((o) => o.kind.startsWith("unset"));
+  eq(ops.length, 2);
+  // 注：这条是**文档性断言，不计入守护**（R04 Phase D 审计建议 8）——给 `EnvOp` 加 `keys`
+  // 会被 TS 的 excess property check 拦在编译期，构造不出任何类型安全的变异让它转红。
+  eq(
+    ops.every((o) => !("keys" in o)),
+    true,
+    "unset 变体不该再带自由 keys 字段",
+  );
+});
+
+// ---- R04④：`WrapSpec` 改纯数据后，折叠仍产出 `( <prelude>; exec <inner> )`，order = 嵌套深度 ----
+// `plan.wrap` 今天恒空（零生产者），所以这条是**给 F04 rbind 落地前先把契约钉住**：
+// 它同时证明「改成纯数据没有丢掉表达能力」——唯一已知用例（rbind + exec 同子 shell）能表达。
+test("R04④：wrap 纯数据折叠——order 升序由内向外，exec 不丢", () => {
+  const ctx: LaunchContext = {
+    transport: { kind: "ssh" },
+    action: { kind: "resume", sid: "s1" },
+    container: { kind: "none" },
+    cwd: null,
+    account: { kind: "base" },
+    launcherOverride: "claude",
+    ccmSid: undefined,
+  };
+  const plan = buildLaunchPlan(ctx);
+  eq(plan.wrap.length, 0, "生产路径今天恒空——这条前提变了就该重新评估 R04④ 的成本");
+  plan.wrap = [
+    { id: "outer", order: 20, prelude: "OUTER" },
+    { id: "rbind", order: 10, prelude: "__ccm_rbind" },
+  ];
+  const rendered = renderFallback(plan);
+  // order 10 先折（最内），20 后折（最外）；`exec` 在每一层都保留（审计 C1：不 exec 则 PID 对不上）。
+  //
+  // **`exec` 后面必须直接跟可执行文件**（R04④ Phase D 审计发现，初稿断言的是坏形态）：
+  // 初稿把整条 payload（含 `unset …` 前缀）一起包，折叠出 `( …; exec unset A B; claude … )`
+  // ——实测 `bash -c '( echo RB; exec unset A B; echo REACHED )'` 是 `exec: unset: 未找到` / rc=127，
+  // launcher 根本起不来。那个断言等于把一个**跑不通的形态**钉进回归。已修 call-site + 本断言。
+  eq(
+    rendered.includes("( OUTER; exec ( __ccm_rbind; exec claude --resume s1 ) )"),
+    true,
+    `exec 必须直接接 launcher、env 前缀须留在包裹外: ${rendered}`,
+  );
+  // env 前缀留在包裹**外**（不被 exec 吃掉）
+  eq(
+    rendered.startsWith("unset "),
+    true,
+    `env 前缀应在包裹外: ${rendered}`,
+  );
 });
 
 if (failed > 0) {

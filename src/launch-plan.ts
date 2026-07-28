@@ -50,17 +50,47 @@ export type LaunchAccount =
  * `unset CLAUDE_CONFIG_DIR;` 与 `unset <嵌套env>;` 是两条独立语句，e2e 探针用
  * `grep -q "unset CLAUDE_CONFIG_DIR;"` 断言这个精确子串。
  */
+/**
+ * **R04③：`unset` 侧收窄到无参变体。**
+ *
+ * export 侧当初就刻意用了窄变体（`export-config-dir` 而非通用 `{op:"export";key;value}`），
+ * 理由写在本文件头注第 3 条：防任何维度绕开 `isValidConfigDir` 往命令里塞任意变量名
+ * （账号隔离审计 D7 的 extraEnv key 无校验风险）。**但同一条理由从未被应用到 unset 侧**
+ * ——`{ kind:"unset"; keys: string[] }` 是个自由字符串数组，任何维度都能往里塞任意 token，
+ * 而渲染器直接 `unset ${keys.join(" ")}` 拼进命令。
+ *
+ * 实际产出者只有两个、且两边的 key 集合都是**代码里写死的**（不是用户输入）：
+ * `ENV_RESET_DIMENSION` → `CLAUDE_CONFIG_DIR`；`NESTED_ENV_RESET_DIMENSION` → `AGENT_PROFILE.nestedEnvVars`。
+ * 既然如此就没必要保留自由字段——把"清哪些变量"从**数据**移进**变体名**，
+ * 渲染器按 kind 查表。于是"往 unset 里塞任意变量名"在类型层就不可表达。
+ */
 export type EnvOp =
   | { kind: "export-config-dir"; value: string }
   | { kind: "export-model"; value: string } // F07：每账号默认模型（ANTHROPIC_MODEL）
-  | { kind: "unset"; keys: string[] };
+  | { kind: "unset-config-dir" } // 账号维度的"显式基座"：清 CLAUDE_CONFIG_DIR
+  | { kind: "unset-nested-env" }; // 嵌套会话标记全套（键表由 AGENT_PROFILE.nestedEnvVars 定）
 
-/** `(inner) => string`：包裹而非片段追加——`( setup; exec cmd )` 这类闭括号结构，扁平的
- *  字符串追加没有槽位表达。F03 恒空数组，结构留给 F04（rbind 在兜底渲染器路径的落点）。 */
+/**
+ * 包裹而非片段追加——`( <prelude>; exec <inner> )` 这类闭括号结构，扁平的字符串追加没有
+ * 槽位表达（审计 C1 三方独立指出）。`exec` 不能省：wrapper 用 `$BASHPID` 读
+ * `sessions/$cpid.json`，不 exec 则 PID 对不上。`order` = 嵌套深度。
+ *
+ * **R04④：从 `(inner) => string` 闭包改成纯数据。** 趁 `plan.wrap` 今天恒为 `[]`
+ * （全仓唯一赋值点是 `buildLaunchPlan` 的 `wrap: []`，零生产者）做这件事，此刻成本为零；
+ * 等 rbind 真落进来就不是了。闭包的三个代价：① 让 `LaunchPlan` 不可序列化、不可结构比较，
+ * 黄金串测试只能断言"渲染出来的字符串"、无法断言"这个 plan 的 wrap 意图是什么"；
+ * ② 闭包能做任意事，等于在 IR 里开了一个"绕过渲染器自己拼字符串"的后门，
+ * 与本文件头注"绝不拼字符串——字符串化是渲染器的事"直接冲突；③ 不可比较也就不可对拍。
+ *
+ * **刻意收窄成 `prelude` 一个字段**：它只能表达 `( <prelude>; exec <inner> )`。
+ * 这不是能力不足，是**把已知的唯一用例钉死**——若将来出现表达不了的包裹形态，
+ * 那是"该重新设计这个契约"的信号，**不是**"该把闭包加回来"的理由。
+ */
 export interface WrapSpec {
   id: string;
   order: number;
-  wrap: (inner: string) => string;
+  /** 插在 `( … ; exec <inner> )` 前半段的 setup 语句（如 F04 的 `__ccm_rbind`）。 */
+  prelude: string;
 }
 
 export interface LaunchPlan {
@@ -142,7 +172,7 @@ export interface LaunchContext {
 /**
  * 维度注册表的唯一契约。`apply` 就地改 `plan`（`env`/`args`/`identity` 等派生字段），
  * 绝不拼字符串——字符串化是渲染器的事。`cliFlags` 返回 `null` = 该维度在当前 `ctx` 下无法
- * 用 CLI 语法表达 → 强制整条 plan 降级走兜底渲染器（`canRenderCli` 消费这个信号）。
+ * 用 CLI 语法表达 → 强制整条 plan 降级走兜底渲染器（`tryRenderCli` 消费这个信号，返回 `ok:false`）。
  */
 export interface LaunchDimension {
   id: string;
@@ -150,6 +180,20 @@ export interface LaunchDimension {
   applies(ctx: LaunchContext): boolean;
   apply(plan: LaunchPlan, ctx: LaunchContext): void;
   cliFlags?(ctx: LaunchContext): string[] | null;
+  /**
+   * **R04②：能力要求下放到维度本身。**
+   *
+   * 此前 CLI 渲染器里有两套并存的机制：一个静态的 `CLI_REQUIRED_CAPS` 列表（语义是
+   * "每一次调用都要求"，只对 `applies` 恒真的维度成立），外加一条给 `model` 的**针对性特判**
+   * （因为 `MODEL_DIMENSION.applies` 是条件式，塞进静态列表会误伤所有未配模型偏好的会话，
+   * 见 F08 计划 §3.2 与 `doc/INVARIANTS.md` §37）。
+   *
+   * 那条特判本身是对的，但它把"这个维度需要远端 ccm 支持什么"这件知识放在了**渲染器里**
+   * ——离维度定义很远，且下一个条件式维度的作者不会知道要去那里加一行。
+   * 改成由维度自己声明：渲染器只对**已触发**的维度收集 `requiredCaps`，
+   * 于是"条件式维度只在真触发时才要求能力"这件事变成**结构保证**而非渲染器里的特判。
+   */
+  requiredCaps?(ctx: LaunchContext): readonly string[];
 }
 
 export function buildLaunchPlan(ctx: LaunchContext): LaunchPlan {
