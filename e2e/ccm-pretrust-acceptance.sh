@@ -36,6 +36,30 @@ export CCM_CONFIG="$CFG" CCM_SELF="$CCM"
 T() { "$TMUX_BIN" -L "$SOCK" "$@"; }
 reset() { T kill-server 2>/dev/null; sleep 0.3; }
 
+# 原先每个场景用固定 `sleep 2` 等后台 ccm 完成预信任写入。这比 ccm-acceptance 那次在 CI 上
+# 翻车的 `sleep 3` 还紧，本轮 CI 只是侥幸过关——它等的链更短（预信任发生在 exec launcher
+# **之前**，见 shared/ccm:386-432 在 new-session:454 之前），余量确实更大，但仍是运气。
+#
+# 关键洞见：既然预信任块**先于** new-session 执行，那么「隔离 socket 上出现了会话」
+# 就**充分证明**预信任阶段已经走完。于是幂等/负向场景（文件本该无变化、无内容可轮询）
+# 也有了语义正确的等待条件，不必回退到固定 sleep。
+wait_any_session() { # 等隔离 socket 上出现任意会话（每个场景 reset 后 socket 是空的）
+  local t="${1:-20}" n=0
+  while [ "$n" -lt $((t * 10)) ]; do
+    [ -n "$(T ls -F '#{session_name}' 2>/dev/null)" ] && return 0
+    sleep 0.1; n=$((n + 1))
+  done
+  return 1
+}
+wait_file() { # 等文件出现且非空
+  local f="$1" t="${2:-20}" n=0
+  while [ "$n" -lt $((t * 10)) ]; do
+    [ -s "$f" ] && return 0
+    sleep 0.1; n=$((n + 1))
+  done
+  return 1
+}
+
 PASS=0; FAIL=0
 ck() { if [ "$2" = "$3" ]; then printf 'PASS | %-52s | %s\n' "$1" "$3"; PASS=$((PASS+1))
        else printf 'FAIL | %-52s | 期望=%s 实得=%s\n' "$1" "$2" "$3"; FAIL=$((FAIL+1)); fi; }
@@ -46,7 +70,7 @@ echo "===== 场景 1：claude 未信任的目录 —— 建会话后 hasTrustDia
 reset
 echo '{"projects":{}}' > "$TMP/claude.json"
 ( cd "$TMP/proj1" && CCM_CLAUDEJSON="$TMP/claude.json" bash "$CCM" --tmux --agent claude --launcher PROBE >/dev/null 2>&1 & )
-sleep 2
+wait_any_session || echo "      (注：等会话创建超时——预信任阶段可能未走完)"
 ck "该目录 hasTrustDialogAccepted=true" "true" \
   "$(jq -r --arg d "$TMP/proj1" '.projects[$d].hasTrustDialogAccepted // "missing"' "$TMP/claude.json" 2>/dev/null)"
 ck "claude.json 仍是合法 JSON" "ok" "$(jq -e . "$TMP/claude.json" >/dev/null 2>&1 && echo ok || echo bad)"
@@ -59,7 +83,7 @@ echo "===== 场景 1b：--cwd <相对路径> —— 必须用规范化绝对路�
 reset
 echo '{"projects":{}}' > "$TMP/claude.json"
 ( cd "$TMP" && CCM_CLAUDEJSON="$TMP/claude.json" bash "$CCM" --tmux=cc-relcwd --agent claude --cwd proj1 --launcher PROBE >/dev/null 2>&1 & )
-sleep 2
+wait_any_session || echo "      (注：等会话创建超时——预信任阶段可能未走完)"
 ck "写入的 key 是规范化绝对路径（非字面量相对串）" "true" \
   "$(jq -r --arg d "$TMP/proj1" '.projects[$d].hasTrustDialogAccepted // "missing"' "$TMP/claude.json" 2>/dev/null)"
 ck "没有写出字面量 'proj1' 这个错误 key" "missing" \
@@ -70,7 +94,7 @@ echo "===== 场景 2：claude 已信任的目录 —— 幂等，不重复改写
 reset
 echo '{"projects":{"'"$TMP"'/proj1":{"hasTrustDialogAccepted":true,"otherField":"keep-me"}}}' > "$TMP/claude.json"
 ( cd "$TMP/proj1" && CCM_CLAUDEJSON="$TMP/claude.json" bash "$CCM" --tmux=cc-proj1b --agent claude --launcher PROBE >/dev/null 2>&1 & )
-sleep 2
+wait_any_session || echo "      (注：等会话创建超时——预信任阶段可能未走完)"
 ck "已信任目录的其它字段不受影响（未被整段覆盖）" "keep-me" \
   "$(jq -r --arg d "$TMP/proj1" '.projects[$d].otherField // "missing"' "$TMP/claude.json" 2>/dev/null)"
 
@@ -79,7 +103,7 @@ echo "===== 场景 3：codex 未信任的目录 —— config.toml 新增 trust_
 reset
 : > "$TMP/config.toml"
 ( cd "$TMP/proj2" && CCM_CODEXTOML="$TMP/config.toml" bash "$CCM" --tmux --agent codex --launcher PROBE >/dev/null 2>&1 & )
-sleep 2
+wait_any_session || echo "      (注：等会话创建超时——预信任阶段可能未走完)"
 ck "config.toml 含该目录的 trust_level stanza" "yes" \
   "$(grep -qF "[projects.\"$TMP/proj2\"]" "$TMP/config.toml" 2>/dev/null && grep -qF 'trust_level = "trusted"' "$TMP/config.toml" && echo yes || echo no)"
 
@@ -89,7 +113,7 @@ reset
 printf '[projects."%s"]\ntrust_level = "trusted"\n' "$TMP/proj2" > "$TMP/config.toml"
 before="$(wc -l < "$TMP/config.toml")"
 ( cd "$TMP/proj2" && CCM_CODEXTOML="$TMP/config.toml" bash "$CCM" --tmux=cc-proj2b --agent codex --launcher PROBE >/dev/null 2>&1 & )
-sleep 2
+wait_any_session || echo "      (注：等会话创建超时——预信任阶段可能未走完)"
 after="$(wc -l < "$TMP/config.toml")"
 ck "重复目录不追加第二份 stanza（行数不变）" "$before" "$after"
 
@@ -100,7 +124,7 @@ weird="$TMP/proj-with-\"quote"
 mkdir -p "$weird"
 : > "$TMP/config.toml"
 ( cd "$weird" && CCM_CODEXTOML="$TMP/config.toml" bash "$CCM" --tmux --agent codex --launcher PROBE >/dev/null 2>&1 & )
-sleep 2
+wait_any_session || echo "      (注：等会话创建超时——预信任阶段可能未走完)"
 # 转义规则：先 \ 再 "（同脚本内 cesc=${cwd//\\/\\\\}; cesc=${cesc//\"/\\\"}）
 esc_quote='\"'
 ck "含引号的路径被正确转义写入" "yes" \
@@ -116,7 +140,7 @@ reset
 echo '{"projects":{}}' > "$TMP/claude-readonly.json"
 chmod 400 "$TMP/claude-readonly.json"
 ( cd "$TMP/proj1" && CCM_CLAUDEJSON="$TMP/claude-readonly.json" bash "$CCM" --tmux=cc-ro --agent claude --launcher PROBE >/dev/null 2>&1 & )
-sleep 2
+wait_any_session || echo "      (注：等会话创建超时——预信任阶段可能未走完)"
 ck "只读预信任文件不阻断会话创建" "yes" "$(T has-session -t '=cc-ro:' 2>/dev/null && echo yes || echo no)"
 chmod 600 "$TMP/claude-readonly.json"
 
@@ -130,7 +154,7 @@ mkdir -p "$TMP/ro-dir"
 echo '{"projects":{}}' > "$TMP/ro-dir/claude.json"
 chmod 500 "$TMP/ro-dir"   # 目录本身不可写：无法在其中新建 .tmp/.bak 文件
 ( cd "$TMP/proj1" && CCM_CLAUDEJSON="$TMP/ro-dir/claude.json" bash "$CCM" --tmux=cc-ro2 --agent claude --launcher PROBE 2>"$TMP/ro-stderr.log" & )
-sleep 2
+wait_any_session || echo "      (注：等会话创建超时——预信任阶段可能未走完)"
 ck "目录不可写时 stderr 报预信任写入失败" "yes" \
   "$(grep -qF '预信任写入失败' "$TMP/ro-stderr.log" 2>/dev/null && echo yes || echo no)"
 ck "写入真失败仍不阻断会话创建" "yes" "$(T has-session -t '=cc-ro2:' 2>/dev/null && echo yes || echo no)"
@@ -141,7 +165,7 @@ echo "===== 场景 8：CCM_NO_PRETRUST=1 —— 完全关闭预信任写入 ====
 reset
 echo '{"projects":{}}' > "$TMP/claude.json"
 ( cd "$TMP/proj1" && CCM_NO_PRETRUST=1 CCM_CLAUDEJSON="$TMP/claude.json" bash "$CCM" --tmux=cc-noopt --agent claude --launcher PROBE >/dev/null 2>&1 & )
-sleep 2
+wait_any_session || echo "      (注：等会话创建超时——预信任阶段可能未走完)"
 ck "opt-out 时该目录未被标记为已信任" "missing" \
   "$(jq -r --arg d "$TMP/proj1" '.projects[$d].hasTrustDialogAccepted // "missing"' "$TMP/claude.json" 2>/dev/null)"
 
@@ -152,7 +176,7 @@ echo "===== 场景 9：预信任没生效（无 claude.json）—— 轮询兜�
 reset
 rm -f "$TMP/poll-result"
 ( cd "$TMP/proj1" && CCM_CLAUDEJSON="$TMP/nonexistent.json" bash "$CCM" --tmux=cc-polltest --agent claude --launcher TRUSTPROMPT >/dev/null 2>&1 & )
-sleep 4
+wait_file "$TMP/poll-result" 30 || echo "      (注：等轮询兜底写 poll-result 超时)"
 ck "轮询兜底检测到信任框文本并自动按 Enter" "GOT_ENTER" "$(cat "$TMP/poll-result" 2>/dev/null || echo missing)"
 
 echo
