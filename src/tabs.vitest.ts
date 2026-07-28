@@ -1473,6 +1473,132 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     invalidateAccountsCache();
   });
 
+  // ---- R05 Phase D 审计（重要）：本功能唯一实质重写的那一行 `tabs.ts` 的三元表达式
+  // （`opt.kind === "base" ? containerLeaves(undefined, true) : containerLeaves(opt.name, false)`）
+  // **此前零测试覆盖**。审计做了三个变异全部存活：把基座分支的 useBase 改 false（= #75 逃生口
+  // 退化成 follow 注入）、把具名账号分支的 opt.name 改 undefined（= 点「用 b resume」实际跟随
+  // 默认号）、把具名账号分支的 useBase 改 true —— `npm test` 全绿。
+  // 既有断言只查 label 集合与叶子**数量**，从不点开某个账号的叶子看真实调用参数；tsc 也帮不上忙
+  // （两个分支都类型正确）。下面这组补的就是"点了哪个账号，就真的用哪个账号起"。
+  /** 在某个父项的 flyout 里点某个叶子 label。 */
+  const clickLeafUnder = (parent: string, leaf: string): void => {
+    const wrap = [...document.body.querySelectorAll(".tab-context-menu-item-wrap")].find(
+      (w) => (w.children[0] as HTMLElement)?.textContent === parent,
+    );
+    expect(wrap, `找不到父项 ${parent}`).toBeTruthy();
+    const btn = [
+      ...wrap!.querySelectorAll(":scope > .tab-context-submenu > .tab-context-menu-item"),
+    ].find((b) => b.textContent === leaf) as HTMLButtonElement | undefined;
+    expect(btn, `父项 ${parent} 下找不到叶子 ${leaf}`).toBeTruthy();
+    btn!.click();
+  };
+
+  const twoAccounts = (extraName?: string) =>
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_accounts"
+        ? Promise.resolve({
+            available: true,
+            error: null,
+            meta: { enabled: true, acctsDir: "/h", manifestPath: "/h/accounts.json", updatedAt: null, sharedStore: null, count: 2, error: null },
+            accounts: [
+              { name: "z", email: "z@x", configDir: "/h/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true },
+              { name: extraName ?? "b", email: "b@x", configDir: `/h/${extraName ?? "b"}`, isDefault: false, mode: "isolated", exists: true, loggedIn: true },
+            ],
+          })
+        : Promise.resolve(undefined),
+    );
+
+  const openArchivedMenu = async (): Promise<void> => {
+    tm.ensureTab("r1", "/home/pi/proj", "p", 0, "aya");
+    tm.archiveTab("r1");
+    rightClick("r1");
+    await flushMicro();
+    await flushMicro();
+  };
+
+  it("R05：点「基座（不隔离）」下的直连 → useBase 生效（configDir 为空），#75 逃生口不退化", async () => {
+    invalidateAccountsCache();
+    twoAccounts();
+    await openArchivedMenu();
+    clickLeafUnder("基座（不隔离）", "直连（不建 tmux）");
+    await flushMicro();
+    expect(runRemoteResume).toHaveBeenCalledWith(
+      "aya", "r1", "/home/pi/proj", "cct",
+      { configDir: undefined, accountName: undefined, modelOverride: undefined },
+    );
+    invalidateAccountsCache();
+  });
+
+  it("R05：点具名账号「b」下的直连 → 真的用 b 起（不是跟随默认号）", async () => {
+    invalidateAccountsCache();
+    twoAccounts();
+    await openArchivedMenu();
+    clickLeafUnder("b", "直连（不建 tmux）");
+    await flushMicro();
+    expect(runRemoteResume).toHaveBeenCalledWith(
+      "aya", "r1", "/home/pi/proj", "cct",
+      expect.objectContaining({ configDir: "/h/b", accountName: "b" }),
+    );
+    invalidateAccountsCache();
+  });
+
+  it("R05：点具名账号「z」下的 tmux → 走 tmux 路径且带 z", async () => {
+    invalidateAccountsCache();
+    twoAccounts();
+    await openArchivedMenu();
+    clickLeafUnder("z", "tmux");
+    await flushMicro();
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith(
+      "aya", "r1", "/home/pi/proj", "cct", expect.any(String),
+      expect.objectContaining({ configDir: "/h/z", accountName: "z" }),
+    );
+    invalidateAccountsCache();
+  });
+
+  // R05 Phase D 审计（第 4 题，**实测修了一个真 bug**）：账号名允许下划线
+  // （`settings/acct-deploy.ts::validateAcctName` 放行 `[A-Za-z0-9._-]`、只禁首字符 `-`/`.`），
+  // 故一个**真实账号**完全可以叫 `__base__`；何况账号也能由 cc-acct-iso 在 app 之外直接建、
+  // 根本不过这道校验。改造前 `isBase = opt.id === "__base__"` 会把它判成基座：
+  // 点它 → 静默落基座、用户选的号被吞掉（R11/R08 那族「看起来生效了，只是用了错的号」），
+  // 且 `filter(o => o.id !== "__base__")` 连带把它从 realAccounts 里滤掉 → Restart 入口凭空消失。
+  // 审计双向实测过：改动前这两条红、改动后绿。判别联合把"是基座"从**值域内的保留名**
+  // 变成**类型上的另一支**，从根上消掉了碰撞。
+  it("R05：真实账号恰好叫 __base__ → 当成账号而非基座（保留名碰撞已从类型上消除）", async () => {
+    invalidateAccountsCache();
+    twoAccounts("__base__");
+    await openArchivedMenu();
+    clickLeafUnder("__base__", "直连（不建 tmux）");
+    await flushMicro();
+    expect(runRemoteResume).toHaveBeenCalledWith(
+      "aya", "r1", "/home/pi/proj", "cct",
+      expect.objectContaining({ configDir: "/h/__base__", accountName: "__base__" }),
+    );
+    invalidateAccountsCache();
+  });
+
+  it("R05：账号名为 __base__ 时不吞掉 Restart 入口（改造前 realAccounts 会误过滤它）", async () => {
+    invalidateAccountsCache();
+    twoAccounts("__base__");
+    tm.ensureTab("r2", "/home/pi/proj", "p", 0, "aya");
+    rightClick("r2");
+    await flushMicro();
+    await flushMicro();
+    expect(menuLabels()).toContain("Restart（换号重启）");
+    invalidateAccountsCache();
+  });
+
+  it("R05：0 可选账号 → 不渲染分隔线（`length > 0` 那道闸；审计变异 M7 曾存活）", async () => {
+    invalidateAccountsCache();
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_remote_accounts"
+        ? Promise.resolve({ available: false, error: null, meta: null, accounts: [] })
+        : Promise.resolve(undefined),
+    );
+    await openArchivedMenu();
+    expect(document.body.querySelectorAll(".tab-context-menu-divider").length).toBe(0);
+    invalidateAccountsCache();
+  });
+
   // F09 Phase D 审计（UX，阻塞）：用户手快，右键后账号数据（异步 fetchAccounts）还没回来就已经
   // hover 展开了 Resume 的顶层 flyout（此时只有 tmux/直连两项）；账号数据一到，
   // appendAccountMenuItems 用 updateTabContextMenuItem 整体替换 Resume 这个 DOM 节点，新节点
