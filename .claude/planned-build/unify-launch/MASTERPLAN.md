@@ -575,3 +575,25 @@ F02 ──┴─► F03 ─┬─► F04 ─┬─► F08
   并加 `dump_panes` 超时诊断——`send-keys` 载荷失败的信息只存在于 pane 里，没有它就只能靠猜。
   **R02 伪测试扫荡**：11 条核心防线变异检查全部 RED，无新增伪测试；同时记录变异检查自身的
   三个失效模式（变异不可达 / 变异语义无效 / 门禁太窄），报伪测试前必须先排除这三条。
+- 17 — 2026-07-28 — **R03/R06/R09 完成签收**。**R03**（`4f6c313`）：尾部三元组
+  `(configDir?, accountName?, modelOverride?)` 收进 `LaunchModifiers`；实现期发现**列车车头是
+  `accounts.ts::withAccount` 的 run 回调**而非 planXxx（6 个调用点全是逐字转发），按铁律 4 扩围。
+  **诚实结论：只达成成功标准②「零改调用点」那一半**（32 行透传编辑归零），「零改 builder」
+  未达成（4 个 planXxx 仍各 2 行解构+ctx，`LaunchContext` 也要加字段）——`launch-plan.ts` 头注
+  原写「只需三处」属过度声称，已订正。最值钱的收益是三个相邻 `string|undefined` 消失
+  （传反 tsc 抓不到、后果是 R11/R08 那族「用了错的号」），用 `@ts-expect-error` 钉死。
+  Phase D 独立对抗性 agent 0 阻塞 + 4 重要全修：① `toHaveBeenCalledWith` 对对象忽略
+  undefined 值的键 → `account-restart.vitest.ts` 断言真的变松（已补 `"opus"` 用例）；
+  ② `planXxx` 的 bag→ctx 解包层全仓零覆盖，变异后 tsc/测试/print-parity 三道门全瞎（已补）；
+  ③ §38 引用用错（那条谈注册表 vs IR 一等字段，不管入参形状）已换真理由；
+  ④「占位实参已出现」在 HEAD 生产代码里为 0，属抬价，已订正。审计另用独立预言机
+  （HEAD 快照 + 81 条修饰矩阵组合 diff）确认行为**零字节差异**。
+  **新登记 R15**：`LaunchContext.passThrough` 纯透传子集可闭合「零改 builder」那一半，
+  但今天纯透传只有 `modelOverride` 一个元素，一个元素撑不起抽象（同 R12 教训），
+  等 B02 的 `--bus-id` 进来有第二个元素再抽。
+  **R06**：`INVENTORY.md` 重写为符号名 + 可复跑 grep 锚点（行号是十个功能里最先腐烂的东西；
+  符号锚点腐烂时 grep 返回空、自己会报错）。11 条锚点逐条验证，首轮即抓到 1 条空锚点。
+  §E 首次给出成功标准① 的逐条判定。**R09**：查证 `@ccm_sid` 全仓有**两个**写者
+  （`shared/ccm` poller + 兜底渲染器 `session-backend.ts` 直写），但那是 F04 Phase B 的明确取舍
+  （兜底路径无 poller，写 `_expect` 将永不被提升 → 会话不可 kill）。两侧反向断言各自已被钉住
+  （变异验证过）。成功标准④ 不受影响。唯一真问题是「通道B 是唯一写者」少了作用域限定，已订正。
