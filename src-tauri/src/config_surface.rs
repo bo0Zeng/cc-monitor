@@ -1203,6 +1203,35 @@ mod tests {
         );
     }
 
+    /// **Phase G：保留 `Client`/`ProjectDir` 的理由是"合并会说假话"，这条把它钉住。**
+    ///
+    /// 它们各只有 1 个使用者、零行为影响（都落 `project_onto_host` 的 `(_, other)`）
+    /// ——按 ≥2 尺子本该砍掉。保留的唯一理由是 `host_label` 是**用户可见事实**：
+    /// `$PROFILE` 确定在客户端、`.mcp.json` 确定在项目目录，合进 `Either` 后标签变成
+    /// 「本机或远端」，对这两条都是**假的**。
+    #[test]
+    fn host_labels_are_distinct_and_truthful() {
+        use HostScope::*;
+        let all = [Client, Remote, Either, ProjectDir];
+        let labels: Vec<&str> = all.iter().map(|h| host_label(*h)).collect();
+        // 四个标签互不相同——相同就说明该合并了
+        let uniq: std::collections::HashSet<_> = labels.iter().collect();
+        assert_eq!(uniq.len(), 4, "四个 host 标签必须互不相同，实得 {labels:?}");
+        // **确定在客户端 / 确定在项目目录的，标签里不许出现"远端"**
+        assert!(
+            !host_label(Client).contains("远端"),
+            "$PROFILE 确定在客户端，标签不许含「远端」：{}",
+            host_label(Client)
+        );
+        assert!(
+            !host_label(ProjectDir).contains("远端"),
+            ".mcp.json 确定在项目目录，标签不许含「远端」：{}",
+            host_label(ProjectDir)
+        );
+        // 而 Either 必须**明说**两端皆可（那是它存在的理由）
+        assert!(host_label(Either).contains("本机") && host_label(Either).contains("远端"));
+    }
+
     /// `host` 的四个变体都得有真实使用者。
     ///
     /// **如实登记一处尺子不一致**（T04 审计重要 4）：这条用 **≥1**，而同文件

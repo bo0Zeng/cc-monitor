@@ -122,6 +122,28 @@ pub enum ToolDestination {
 /// 于是 Windows 用户打开「配置面审计」会看到那三行写着**「不存在」**，
 /// 而同一个 app 的驾驶舱正从远端把 inbox 读得好好的。
 /// **这正是 T02 专门要防的那类假警报，出现在那一页上格外讽刺。**
+/// ## Phase G 用 ≥2 尺子重新论证 `Client` / `ProjectDir`（本会话第 12 次用这把尺子）
+///
+/// 事实先摆清，两条都不利于保留：
+/// - `Client` **1 个使用者**（`$PROFILE`）· `ProjectDir` **1 个**（`.mcp.json`）
+/// - 两者在 `config_surface::project_onto_host` 里都落 `(_, other)`，**零行为影响**；
+///   而且它们的 `destination` 臂（`UserShellProfile → WindowsProfile`、
+///   `ProjectRelative → NeedsProjectDir`）已经独立于 host 决定了解析结果
+///   ——**连合并进 `Either` 都不会改变任何解析行为**。
+///
+/// **结论仍是保留，但理由不是"用了 ≥2 次"（它们没有）。** 理由是：
+/// **合并会让屏幕上的话变成假的。** `host_label` 是用户可见事实：
+/// `$PROFILE` **确定在客户端**、`.mcp.json` **确定在项目目录**。合进 `Either` 后标签变成
+/// 「本机或远端」——对这两条都是**错的**。而这一页的全部价值就是可信告知
+/// （T02 立项时那个「Windows 上说不存在而驾驶舱正从远端读」的假警报就是同一件事）。
+///
+/// **≥2 那把尺子量的是「字段与抽象」，不是「描述型 enum 的变体」** —— T01 已经立过这条界：
+/// `ToolSource` 5 个变体里 4 个单用户、`TouchEffect` 的门禁只要求 ≥3 种被用到，
+/// 都保留了，因为**变体差异是数据的本性**。把 `HostScope` 按前一把尺子砍掉，
+/// 反而是尺子用错了地方。
+///
+/// 下面 `host_labels_are_distinct_and_truthful` 把这条钉住：四个标签必须互不相同，
+/// 且 `Client`/`ProjectDir` 的标签不许含「远端」二字（含了就是在说假话）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
 pub enum HostScope {
     /// cc-monitor 自己跑的那台（Windows 客户端）。
