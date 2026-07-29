@@ -7,9 +7,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const invokeMock = vi.fn();
-vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (...a: unknown[]) => invokeMock(...a),
+}));
 const toastMock = vi.fn();
-vi.mock("../error-toast", () => ({ showActionFailureToast: (...a: unknown[]) => toastMock(...a) }));
+vi.mock("../error-toast", () => ({
+  showActionFailureToast: (...a: unknown[]) => toastMock(...a),
+}));
 
 import {
   ConfigSurfaceSection,
@@ -72,14 +76,19 @@ afterEach(() => {
 
 describe("describeSurfaceState", () => {
   it("undetermined 是中性语气且必须带出理由——不许借 absent 的红", () => {
-    const d = describeSurfaceState({ kind: "undetermined", why: "远端路径，要 SSH" });
+    const d = describeSurfaceState({
+      kind: "undetermined",
+      why: "远端路径，要 SSH",
+    });
     expect(d.tone).toBe("unknown");
     expect(d.tone).not.toBe("bad");
     expect(d.text).toContain("远端路径，要 SSH");
   });
 
   it("present / absent 各归各的语气", () => {
-    expect(describeSurfaceState({ kind: "present", detail: "文件，3 字节" })).toEqual({
+    expect(
+      describeSurfaceState({ kind: "present", detail: "文件，3 字节" }),
+    ).toEqual({
       text: "文件，3 字节",
       tone: "ok",
     });
@@ -104,9 +113,9 @@ describe("describeUndo", () => {
     expect(t).toContain("手动");
   });
   it("连部署都没实现的，直说无所谓撤销", () => {
-    expect(describeUndo(row({ uninstallable: false, installable: false }))).toContain(
-      "尚未支持部署",
-    );
+    expect(
+      describeUndo(row({ uninstallable: false, installable: false })),
+    ).toContain("尚未支持部署");
   });
   it("可卸载的才给撤销说法", () => {
     expect(describeUndo(row({ uninstallable: true }))).toContain("可按围栏");
@@ -126,7 +135,9 @@ describe("formatReportText", () => {
   });
 
   it("note 会被带进文本（否则用户看不懂 cc-* 是什么）", () => {
-    const txt = formatReportText(report({ rows: [row({ note: "12 条软链" })] }));
+    const txt = formatReportText(
+      report({ rows: [row({ note: "12 条软链" })] }),
+    );
     expect(txt).toContain("（12 条软链）");
   });
 });
@@ -150,8 +161,12 @@ describe("ConfigSurfaceSection", () => {
     expect(s.element.querySelectorAll(".config-surface-row").length).toBe(2);
     // 同一个工具只出一次标题
     expect(s.element.querySelectorAll(".config-surface-tool").length).toBe(1);
-    expect(s.element.textContent).toContain("或用户在部署向导里选的其它 profile");
-    expect(s.element.querySelector(".config-surface-meta")?.textContent).toContain("/h/.claude");
+    expect(s.element.textContent).toContain(
+      "或用户在部署向导里选的其它 profile",
+    );
+    expect(
+      s.element.querySelector(".config-surface-meta")?.textContent,
+    ).toContain("/h/.claude");
   });
 
   it("未确定的行用 tone-unknown，不用 tone-bad", async () => {
@@ -180,7 +195,11 @@ describe("ConfigSurfaceSection", () => {
     invokeMock.mockResolvedValue(undefined);
     const s = new ConfigSurfaceSection();
     await expect(s.refresh()).resolves.toBeUndefined();
-    expect(s.element.textContent).toContain("扫描失败");
+    // **必须断言是形状校验拦下的**，不能只断言"报了个失败"（T02 审计重要 4）。
+    // 实测：删掉那段 `Array.isArray` 校验后，`render(undefined)` 抛 TypeError 被同一个
+    // try/catch 吞掉，产生**一模一样**的"扫描失败"+toast，这条测试照样绿——
+    // 也就是说它守的是 catch 存在，不是形状校验存在。现在改成断言那句专属错误文案。
+    expect(s.element.textContent).toContain("形状不对");
     expect(toastMock).toHaveBeenCalled();
   });
 
@@ -219,6 +238,29 @@ describe("ConfigSurfaceSection", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(writeText).toHaveBeenCalledWith(formatReportText(rep));
+  });
+
+  it("「我们做什么」和「能否撤」必须真上屏（不是只有纯函数被断言）", async () => {
+    // T02 审计重要 5：把这两段渲染整体删掉，15 条测试**全绿**——
+    // `effect_label` / `describeUndo` 只作为纯函数被断言过，没人管它们有没有进 DOM。
+    // 这一页的两个核心列可以静默消失。
+    invokeMock.mockResolvedValue(
+      report({
+        rows: [
+          row({ note: "12 条软链", uninstallable: false, installable: false }),
+        ],
+      }),
+    );
+    const s = new ConfigSurfaceSection();
+    await s.refresh();
+    const r = s.element.querySelector(".config-surface-row")!;
+    const eff = r.querySelector(".config-surface-effect");
+    const undo = r.querySelector(".config-surface-undo");
+    expect(eff, "「我们做什么」列必须在 DOM 里").not.toBeNull();
+    expect(undo, "「能否撤」列必须在 DOM 里").not.toBeNull();
+    // 且内容真的是后端给的措辞 / describeUndo 的结论，不是空 div
+    expect(eff!.textContent).toBe("整个文件由 cc-monitor 拥有，部署时整体覆盖");
+    expect(undo!.textContent).toContain("尚未支持部署");
   });
 
   it("只读：本 section 不得出现任何写入用的 invoke", async () => {

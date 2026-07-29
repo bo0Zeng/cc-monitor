@@ -88,6 +88,25 @@ pub enum ToolDestination {
     UserShellProfile,
     /// 项目目录内的文件（`<dir>/.mcp.json`）。
     ProjectRelative(&'static str),
+    /// **路径由用户配置决定，不是常量。**
+    ///
+    /// T02 审计追问「注册表与真写入方零耦合」时查出来的（比审计报的更严重）：
+    /// - `remote-daemon` 原先声明 `RemoteHomeRelative(".local/bin/ccm-daemon")`，
+    ///   而这个字符串**全仓只出现在注册表自己里**；真实路径是 `RemoteConfig.daemon_path`，
+    ///   每个远端各自配置（`remote_history.rs:46` 直接 `shell_quote(&cfg.daemon_path)`）。
+    /// - `cc-acct-iso` 原先声明 `LocalHomeRelative(".claude/skills/cc-acct-iso")`，
+    ///   而 `acct_iso_deploy::deploy_remote_acct_iso(cfg, dest_dir)` 是**远端**部署、
+    ///   落点还是**前端传进来的** `dest_dir`。
+    ///
+    /// 两处都是我凭印象写的常量。**声明一个不存在的常量比不声明更坏**——审计页会拿它去
+    /// 查一个没人写的路径，然后言之凿凿地报"缺失"。所以这里显式承认"这是配置项"。
+    ///
+    /// `token` 是申报路径里用的占位符（形如 `$DAEMON_PATH`，与 `$PROFILE` 同一套写法，
+    /// 因此仍满足 `path` 的 ASCII-graphic 判据）；`what` 是给用户看的「去哪儿改」。
+    UserConfiguredPath {
+        token: &'static str,
+        what: &'static str,
+    },
 }
 
 /// 这个工具会碰用户的哪个文件，以及**碰它意味着什么**。
@@ -101,19 +120,28 @@ pub enum ToolDestination {
 /// 那些散文进不了 `Path`——于是拆成机器可解析的 `path` + 给人看的 `note`。
 ///
 /// 「本机还是远端」**没有新增字段**：从 [`ToolSpec::destination`] 推导
-/// （`RemoteHomeRelative` → 远端），并由 `config_surface` 的测试把这条推导钉住。
-/// 哪天出现"本机工具却碰远端文件"的组合，那条测试会红，届时再加字段——
-/// 现在 6 个工具没有一个是那样，提前加就是为假想需求设计。
+/// （`RemoteHomeRelative` → 远端）。
+///
+/// **上一版这里说"由 `config_surface` 的测试把这条推导钉住"——那条测试是同义反复，
+/// 已删**（T02 审计重要 1；审计实测把 `ccm` 的 destination 翻成本机，492 项照样全绿）。
+/// 如实登记：**远端性没有门禁**，它只是 `resolve_touched_path` 的实现约定 + 这段文档。
+/// 真要门禁得加 `host` 字段，而它已经有一个真实的第二消费者在等：`~/.cc-bus/` 被本页
+/// 解析成**本机**，可 `cc_bus.rs` 是按 `origin` 在**可能是远端**的主机上读它——
+/// 一个 `const destination` 表达不了"按运行期 origin 跨主机"。留给 T04 连 origin 模型一起做。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct TouchedFile {
     /// **机器可解析**的路径：可含 `~/` 前缀、可含**最后一段**的 glob（`cc-*`）、
     /// 可以是 `$PROFILE` 这种由外部决定的占位。**不放散文**——那是 `note` 的事。
     pub path: &'static str,
-    /// 给人看的补充说明（"或用户所选的其它 profile"、"12 条软链"）。没有就 `None`。
+    /// 给人看的补充说明（"或用户所选的其它 profile"、"11 条软链"）。没有就 `None`。
     ///
-    /// **如实写明**：T01 的字段纪律扫描只枚举 `ToolSpec` 的字段，**不覆盖 `TouchedFile`**。
-    /// 所以 `note` 的 ≥2 判据是人工数的（ccm 1 处 + cc-bus 3 处 + cc-acct-iso 1 处 + …），
-    /// 不谎称有门禁守着。
+    /// **更正上一版这段话**（T02 审计重要 3）：原文写「字段纪律扫描不覆盖 `TouchedFile`，
+    /// 所以 `note` 的 ≥2 判据是人工数的」——说反了两头。`note` 当时**已经有**一条机器门禁
+    /// （`config_surface` 的 `rows_cover_…` 里 `with_note.len() >= 2`）；
+    /// 真正一条门禁都没有的是 `path` / `effect` 和**将来新增的字段**，
+    /// 而审计正是从那个口子进来的（塞 `pub needs_sudo: bool`，492 全绿零 warning）。
+    /// 现在 `declared_fields_of` 参数化了，`TouchedFile` 与 `ToolSpec` 走同一条纪律
+    /// （`touched_file_fields_follow_the_same_discipline`）。
     pub note: Option<&'static str>,
     /// 我们对它做什么。**这决定了 T02 审计页里那一行的措辞与危险程度。**
     pub effect: TouchEffect,
@@ -131,6 +159,17 @@ pub enum TouchEffect {
     /// （`~/.claude/settings.json` 的 cc-bus 钩子走这条：用户定调 + cc-bus 安装脚本
     ///  第 3 行同样拒绝改它。）
     GenerateOnly,
+    /// **我们不直接写这个文件，但用户在 cc-monitor 里的动作会导致它被写。**
+    ///
+    /// 这一档是 T02 审计的阻塞项逼出来的：`~/.cc-bus/` 原先声明成 [`Self::ReadOnly`]，
+    /// 于是审计页渲染出「只读（诊断用），我们不写」——**假话**。
+    /// cc-monitor 的 cc-bus 驾驶舱有两个按钮走的是
+    /// `cc_bus::cc_bus_send`（远端跑 `cc-send`）与 `cc_bus::cc_bus_spawn`（跑 `cc-spawn`），
+    /// 而 `cc-bus-lib.sh:221` 是 `printf '%s\n' "$line" >> "$inbox"`、
+    /// `cc-spawn:141` 追加 `spawned.tsv`、`cc-register:25` 换掉 `agents.tsv`。
+    /// 「我们只是调了别人的命令」不改变**用户的文件因为在我们这儿点了一下而变了**这件事。
+    /// 这一页的全部价值是可信告知，在自己的主张上失信比不做这一页更坏。
+    IndirectWrite,
 }
 
 /// 一个受管工具的完整声明。
@@ -194,13 +233,17 @@ pub const TOOLS: &[ToolSpec] = &[
             },
             TouchedFile {
                 path: "~/.local/bin/cc-*",
-                note: Some("12 条软链"),
-                effect: TouchEffect::OwnedFile,
+                note: Some(
+                    "cc-bus 自己的安装脚本软链的 11 条命令——**不是 cc-monitor 建的**，                     我们只在钩子诊断时查 cc-register / cc-bus-stop-hook 存不存在。                     注意本页这个 glob 还会数到 cc-acct-iso 的同前缀软链，所以计数偏大 1",
+                ),
+                effect: TouchEffect::ReadOnly,
             },
             TouchedFile {
                 path: "~/.cc-bus/",
-                note: Some("运行期状态：inbox / 名册 / 队列 / 日志"),
-                effect: TouchEffect::ReadOnly,
+                note: Some(
+                    "运行期状态：inbox / 名册 / 队列 / 日志。                     驾驶舱读它；但你在驾驶舱点「发消息」/「派活」会让 cc-send / cc-spawn 往这里追加",
+                ),
+                effect: TouchEffect::IndirectWrite,
             },
         ],
     },
@@ -211,13 +254,18 @@ pub const TOOLS: &[ToolSpec] = &[
             repo_path: "src-tauri/vendor/cc-acct-iso",
             fingerprint_file: ".vendor_id",
         },
-        destination: ToolDestination::LocalHomeRelative(".claude/skills/cc-acct-iso"),
+        destination: ToolDestination::UserConfiguredPath {
+            token: "$ACCT_ISO_DEST",
+            what: "部署时在账号页填的「部署目录」",
+        },
         installable: true,
         uninstallable: false,
         touches: &[
             TouchedFile {
-                path: "~/.claude/skills/cc-acct-iso",
-                note: None,
+                path: "$ACCT_ISO_DEST",
+                note: Some(
+                    "远端，部署目录由你在账号页填的那个值决定（deploy_remote_acct_iso 的 dest_dir）",
+                ),
                 effect: TouchEffect::OwnedFile,
             },
             TouchedFile {
@@ -233,12 +281,17 @@ pub const TOOLS: &[ToolSpec] = &[
         source: ToolSource::EmbeddedBinary {
             repo_path: "embedded-daemons",
         },
-        destination: ToolDestination::RemoteHomeRelative(".local/bin/ccm-daemon"),
+        destination: ToolDestination::UserConfiguredPath {
+            token: "$DAEMON_PATH",
+            what: "每个远端连接的「daemon 路径」配置项",
+        },
         installable: true,
         uninstallable: false,
         touches: &[TouchedFile {
-            path: "~/.local/bin/ccm-daemon",
-            note: Some("远端（本页查不到现状，要 SSH）"),
+            path: "$DAEMON_PATH",
+            note: Some(
+                "远端，路径由该连接的「daemon 路径」配置项决定——**不是**固定的 ~/.local/bin/ccm-daemon",
+            ),
             effect: TouchEffect::OwnedFile,
         }],
     },
@@ -342,10 +395,16 @@ mod tests {
         None
     }
 
-    /// `ToolSpec` 声明的字段：`(名, 类型)`，**按源码里实际写的枚举**。
-    fn declared_fields(code: &str) -> Vec<(String, String)> {
-        let (a, b) = matched_span(code, "pub struct ToolSpec {", 0)
-            .expect("取不到 ToolSpec 的声明体——扫描器失效了");
+    /// 某个结构声明的字段：`(名, 类型)`，**按源码里实际写的枚举**。
+    ///
+    /// `struct_name` 是参数而不是硬编码 needle（T02 审计重要 3）：原先只扫 `ToolSpec`，
+    /// 于是**同一套审计手法下移一层仍然有效**——审计给 `TouchedFile` 加一个
+    /// `pub needs_sudo: bool`（10 个字面量里 1 真 9 假）→ **492 全绿、零 warning**
+    /// （`pub` 字段在 lib crate 里连 `dead_code` 都不报，连 T01 依赖的"clippy 存根"都没有）。
+    /// 参数化之后 `TouchedFile` 与 `ToolSpec` 走同一条纪律。
+    fn declared_fields_of(code: &str, struct_name: &str) -> Vec<(String, String)> {
+        let (a, b) = matched_span(code, &format!("pub struct {struct_name} {{"), 0)
+            .unwrap_or_else(|| panic!("取不到 {struct_name} 的声明体——扫描器失效了"));
         code[a..b]
             .lines()
             .map(|l| l.trim())
@@ -365,19 +424,29 @@ mod tests {
             .collect()
     }
 
+    fn declared_fields(code: &str) -> Vec<(String, String)> {
+        declared_fields_of(code, "ToolSpec")
+    }
+
     /// `TOOLS` 里每一个 `ToolSpec { … }` 字面量的**体**文本。
-    fn tool_literals(code: &str) -> Vec<&str> {
+    fn literals_of<'a>(code: &'a str, type_name: &str) -> Vec<&'a str> {
         let (a, b) = matched_span(code, "pub const TOOLS: &[ToolSpec] = &[", 0)
             .expect("取不到 TOOLS 常量体——扫描器失效了");
         let body = &code[a..b];
         let mut out = Vec::new();
         let mut off = 0usize;
-        // 配对之后从**本块结束处**继续找，嵌套的 TouchedFile 块不会被重复计入
-        while let Some((s, e)) = matched_span(body, "ToolSpec {", off) {
+        // 配对之后从**本块结束处**继续找：找 `ToolSpec {` 时嵌套的 `TouchedFile` 块
+        // 不会被重复计入；找 `TouchedFile {` 时则是逐个取那些嵌套块本身。
+        let opener = format!("{type_name} {{");
+        while let Some((s, e)) = matched_span(body, &opener, off) {
             out.push(&body[s..e]);
             off = e;
         }
         out
+    }
+
+    fn tool_literals(code: &str) -> Vec<&str> {
+        literals_of(code, "ToolSpec")
     }
 
     /// 取字面量里 `field:` 在**顶层**（相对本字面量体）的取值文本。
@@ -425,16 +494,16 @@ mod tests {
     }
 
     /// **字段纪律扫描**：枚举声明的每个字段 → 数 `TOOLS` 里的实质取值 → <2 判违规。
-    fn field_discipline(code: &str) -> ScanReport {
-        let fields = declared_fields(code);
-        let lits = tool_literals(code);
+    fn field_discipline_of(code: &str, struct_name: &str, literal_name: &str) -> ScanReport {
+        let fields = declared_fields_of(code, struct_name);
+        let lits = literals_of(code, literal_name);
         let mut r = ScanReport {
             checked: 0,
             violations: Vec::new(),
         };
         if lits.len() < 2 {
             r.violations
-                .push(format!("只找到 {} 个 ToolSpec 字面量", lits.len()));
+                .push(format!("只找到 {} 个 {literal_name} 字面量", lits.len()));
             return r;
         }
         for (name, ty) in &fields {
@@ -446,19 +515,23 @@ mod tests {
                 .collect();
             if users.len() < 2 {
                 r.violations.push(format!(
-                    "字段 `{name}: {ty}` 只被 {} 个工具实质实例化（{users:?}）\
-                     ——只有一套需要的东西不进 ToolSpec",
+                    "字段 `{name}: {ty}` 只被 {} 个 {struct_name} 字面量实质实例化（{users:?}）\
+                     ——只有一套需要的东西不进 {struct_name}",
                     users.len()
                 ));
             }
             if ty == "bool" && users.len() == lits.len() {
                 r.violations.push(format!(
-                    "字段 `{name}: bool` 在全部 {} 个工具上都为真，没有区分力",
+                    "字段 `{name}: bool` 在全部 {} 个 {struct_name} 上都为真，没有区分力",
                     lits.len()
                 ));
             }
         }
         r
+    }
+
+    fn field_discipline(code: &str) -> ScanReport {
+        field_discipline_of(code, "ToolSpec", "ToolSpec")
     }
 
     /// **声明式数据**扫描：枚举字段类型，白名单放行；行为（函数指针/`dyn`/需分配的容器）判违规。
@@ -545,6 +618,61 @@ mod tests {
         field_discipline(&code)
             .require(5, "ToolSpec 字段纪律")
             .unwrap();
+    }
+
+    /// **同一条纪律也管 `TouchedFile`**（T02 审计重要 3）。
+    ///
+    /// 原先字段纪律只扫 `ToolSpec`，于是 T01 那条审计手法**下移一层仍然有效**——
+    /// 审计给 `TouchedFile` 加 `pub needs_sudo: bool`（10 个字面量里 1 真 9 假）→
+    /// **492 全绿、零 warning**。`pub` 字段在 lib crate 里连 `dead_code` 都不报，
+    /// 所以连 T01 依赖的"clippy 存根"这条兜底都没有。
+    ///
+    /// 顺带**更正我自己文档里说反的一句**：`TouchedFile` 的文档写着「`note` 的 ≥2 判据是
+    /// 人工数的，不谎称有门禁」——低估了。`note` 其实有一条机器门禁
+    /// （`config_surface` 的 `rows_cover_…` 里 `with_note.len() >= 2`），
+    /// 真正一条门禁都没有的是 `path` / `effect` 和**将来新增的字段**。现在这条补上了。
+    #[test]
+    fn touched_file_fields_follow_the_same_discipline() {
+        let code = production_code(include_str!("tool_registry.rs"));
+        field_discipline_of(&code, "TouchedFile", "TouchedFile")
+            .require(3, "TouchedFile 字段纪律")
+            .unwrap();
+    }
+
+    /// 用审计那条**下移一层**的手法验证上一条：给 `TouchedFile` 塞一个单实例化字段必须红。
+    #[test]
+    fn the_scan_catches_a_single_use_field_on_touched_file_too() {
+        let code = production_code(include_str!("tool_registry.rs"));
+        let lit_count = code.matches("            TouchedFile {").count()
+            + code.matches("        touches: &[TouchedFile {").count();
+        assert!(lit_count >= 6, "字面量锚点数不对：{lit_count}");
+        let mutated = code
+            .replace(
+                "    pub effect: TouchEffect,\n}",
+                "    pub effect: TouchEffect,\n    pub needs_sudo: bool,\n}",
+            )
+            .replace(
+                "                effect: TouchEffect::",
+                "                needs_sudo: false,\n                effect: TouchEffect::",
+            )
+            .replace(
+                "            effect: TouchEffect::",
+                "            needs_sudo: false,\n            effect: TouchEffect::",
+            )
+            .replacen("needs_sudo: false", "needs_sudo: true", 1);
+        // **先确认变异真落位**（本会话两次"全绿"其实是变异没写进文件）
+        let n = mutated.matches("needs_sudo").count();
+        assert!(
+            n >= 1 + 10,
+            "变异没落到位：声明 1 处 + 每个 TouchedFile 一处，实得 {n}"
+        );
+        assert_eq!(mutated.matches("needs_sudo: true").count(), 1);
+        let r = field_discipline_of(&mutated, "TouchedFile", "TouchedFile");
+        assert!(
+            r.violations.iter().any(|v| v.contains("needs_sudo")),
+            "TouchedFile 上的单实例化字段必须被抓，实得 {:?}",
+            r.violations
+        );
     }
 
     /// **审计那条手法，钉成常驻测试**：直接变异**真文件**，塞一个中性命名的单实例化
@@ -693,6 +821,62 @@ mod tests {
             TouchEffect::GenerateOnly,
             "settings.json 是共享全局配置，只能生成待贴文本"
         );
+    }
+
+    /// **声明「整个文件由我们拥有」就必须真的装得了它**（T02 审计阻塞 2）。
+    ///
+    /// 原先 cc-bus 的 `~/.local/bin/cc-*` 是 `OwnedFile` 而 `installable: false`
+    /// ——审计页于是同时显示「12 项匹配」+「由 cc-monitor 拥有、部署时整体覆盖」+
+    /// 「尚未支持部署，也就无所谓撤销」。用户读到的是：cc-monitor 宣称拥有 12 个
+    /// 它没建、装不了也撤不了的文件。真机核实：那 12 条软链是用户自己的安装脚本
+    /// 于 7/17 与 7/26 建的，cc-monitor 侧**一行创建代码都没有**。
+    #[test]
+    fn owned_file_implies_installable() {
+        for t in TOOLS {
+            if t.touches.iter().any(|f| f.effect == TouchEffect::OwnedFile) {
+                assert!(
+                    t.installable,
+                    "{} 声称拥有某个文件却装不了它——那这个「拥有」是假的",
+                    t.id
+                );
+            }
+        }
+    }
+
+    /// **装得了，就必须申报装到哪**（替换掉那条同义反复的测试，见下）。
+    ///
+    /// 这一条替代原先的 `locality_is_derivable_from_destination_today`。审计实测那条是
+    /// **同义反复**：`PathResolution::Remote` 只由 `RemoteHomeRelative` 臂产生且必然产生，
+    /// 所以断言恒真——把 `ccm` 的 `destination` 翻成 `LocalHomeRelative`（会让两行从
+    /// "远端未确定"变成去 stat 本机 `~/.bashrc`）**492 项照样全绿**。
+    /// 而它承诺守的那件事（"本机落点却申报远端文件"）在类型上根本表达不出来，
+    /// 永远不会红。**不留永远不会红的钉子。**
+    ///
+    /// 换成这条有牙的跨字段一致性：`installable` 的工具，其 `destination` 指的那个路径
+    /// 必须出现在 `touches` 里。改任一边就会红。
+    /// （`installable: false` 的 cc-bus 豁免——它的 `destination` 目前是**愿景**，
+    ///  部署还没实现，硬要它出现在 touches 里就得给一个假的 effect，那正是阻塞 2 的病。）
+    #[test]
+    fn installable_tools_declare_where_they_land() {
+        for t in TOOLS {
+            if !t.installable {
+                continue;
+            }
+            let want: String = match &t.destination {
+                ToolDestination::RemoteHomeRelative(p) | ToolDestination::LocalHomeRelative(p) => {
+                    format!("~/{p}")
+                }
+                ToolDestination::ProjectRelative(p) => (*p).to_string(),
+                ToolDestination::UserShellProfile => "$PROFILE".to_string(),
+                ToolDestination::UserConfiguredPath { token, .. } => (*token).to_string(),
+            };
+            assert!(
+                t.touches.iter().any(|f| f.path == want),
+                "{} 可安装，但 touches 里没有它的落点 {want:?}（实得 {:?}）",
+                t.id,
+                t.touches.iter().map(|f| f.path).collect::<Vec<_>>()
+            );
+        }
     }
 
     /// 有围栏的块必须可卸载——否则用户没法干净地退出。

@@ -1,13 +1,13 @@
 :root {
   /* === 颜色令牌（Anthropic warm gray-brown，参照 claude.ai 暗色） === */
-  --bg: #2b2a27;                /* warm dark，主背景 */
-  --bg-2: #1f1e1b;              /* 比主背景更深，用于 tab bar / status bar / code block / composer */
-  --card: #393937;              /* user 气泡 / 折叠卡展开后 summary bg */
+  --bg: #2b2a27; /* warm dark，主背景 */
+  --bg-2: #1f1e1b; /* 比主背景更深，用于 tab bar / status bar / code block / composer */
+  --card: #393937; /* user 气泡 / 折叠卡展开后 summary bg */
   --text: #e8e6e1;
   --text-2: #a8a39a;
   --text-faint: #6b665e;
-  --accent: #c96442;            /* Anthropic terracotta orange，单一强调色 */
-  --user: var(--accent);        /* 兼容，仍可用于 slash 卡左条等 */
+  --accent: #c96442; /* Anthropic terracotta orange，单一强调色 */
+  --user: var(--accent); /* 兼容，仍可用于 slash 卡左条等 */
   --assistant: var(--accent);
   --success: #6fb074;
   --warn: #d4a04a;
@@ -16,14 +16,22 @@
 
   /* === 账号身份色板（account-ux U4）=== 不透明、CVD-safe、主题无关（不随明暗 swap）。
      每格自带 ink（白/黑）保小字 ≥4.5:1。slot 由 accountColorSlot(name) 定，颜色粘着账号。 */
-  --acct-c0: #256abf; --acct-ink0: #ffffff;
-  --acct-c1: #eb6834; --acct-ink1: #141414;
-  --acct-c2: #1baf7a; --acct-ink2: #141414;
-  --acct-c3: #eda100; --acct-ink3: #141414;
-  --acct-c4: #e87ba4; --acct-ink4: #141414;
-  --acct-c5: #008300; --acct-ink5: #ffffff;
-  --acct-c6: #4a3aa7; --acct-ink6: #ffffff;
-  --acct-c7: #e34948; --acct-ink7: #141414;
+  --acct-c0: #256abf;
+  --acct-ink0: #ffffff;
+  --acct-c1: #eb6834;
+  --acct-ink1: #141414;
+  --acct-c2: #1baf7a;
+  --acct-ink2: #141414;
+  --acct-c3: #eda100;
+  --acct-ink3: #141414;
+  --acct-c4: #e87ba4;
+  --acct-ink4: #141414;
+  --acct-c5: #008300;
+  --acct-ink5: #ffffff;
+  --acct-c6: #4a3aa7;
+  --acct-ink6: #ffffff;
+  --acct-c7: #e34948;
+  --acct-ink7: #141414;
 
   /* 边/底色层级 */
   --border-strong: #3d3a35;
@@ -48,8 +56,9 @@
 
   /* === 字体令牌 === */
   --font-base: Inter, "Segoe UI", system-ui, sans-serif;
-  --font-prose: "Source Serif 4", "Source Serif Pro", "Iowan Old Style",
-                "PingFang SC", "Microsoft YaHei", Georgia, serif;
+  --font-prose:
+    "Source Serif 4", "Source Serif Pro", "Iowan Old Style", "PingFang SC",
+    "Microsoft YaHei", Georgia, serif;
   --font-mono: "JetBrains Mono", Consolas, monospace;
   --font-size-base: 14px;
   --font-size-prose: 15px;
@@ -75,7 +84,8 @@
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   height: 100vh;
@@ -1188,13 +1198,23 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 
 /* refreshTabBar 局部更新（v1.6）：所有 5 个子元素一次性 append，visibility 由 class 控制
  * 避免每次 ondLine/状态变化时 replaceChildren 重建按钮（长会话每秒数十次重绘开销大） */
-.tab .tab-badge { display: none; }
-.tab.has-unread:not(.active) .tab-badge { display: inline-flex; }
+.tab .tab-badge {
+  display: none;
+}
+.tab.has-unread:not(.active) .tab-badge {
+  display: inline-flex;
+}
 .tab.archived .live-dot,
 .tab.archived .tab-focus,
-.tab.archived .tab-cwd { display: none; }
-.tab:not(.has-cwd) .tab-cwd { display: none; }
-.tab:not(.archived) .tab-close { display: none; }
+.tab.archived .tab-cwd {
+  display: none;
+}
+.tab:not(.has-cwd) .tab-cwd {
+  display: none;
+}
+.tab:not(.archived) .tab-close {
+  display: none;
+}
 /* F78（#55）：远端 Tab 的 📂「打开工作目录」不再隐藏——点它现在打开 SFTP 面板进入该远端 cwd
    （openTabCwd 远端分支：按 origin 找该机配置 → openSftpPanelDir）。找不到配置才回退 info 提示。
    （原 FIX 5/issue #15 因本地打不开而隐藏；F83 起 SFTP 入口就绪，本地打不开的 cwd 改由 SFTP 浏览。） */
@@ -1219,7 +1239,9 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   background: var(--error);
 }
 .tab.act-waiting .live-dot {
-  background: var(--warn); /* 主题 token（同红灯用 --error），用户改主题两灯一起跟 */
+  background: var(
+    --warn
+  ); /* 主题 token（同红灯用 --error），用户改主题两灯一起跟 */
   animation: act-waiting-pulse 1.2s ease-in-out infinite;
 }
 /* audit-fixes F03.2：idle-tmux 第三态灰灯——claude 退出但 tmux 会话仍在（可 attach 复用）。
@@ -1596,7 +1618,8 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   overflow-x: auto;
 }
 
-.card-body th, .card-body td {
+.card-body th,
+.card-body td {
   border: 1px solid var(--border-strong);
   padding: 4px 10px;
 }
@@ -1643,7 +1666,9 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   font-size: var(--font-size-xs);
   padding: 2px 8px;
   border-radius: 4px;
-  transition: color 120ms, background 120ms;
+  transition:
+    color 120ms,
+    background 120ms;
 }
 .code-copy:hover {
   color: var(--text);
@@ -1798,7 +1823,6 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   left: 5px;
   color: var(--text-faint);
 }
-
 
 /* === issue #21：交互等待卡（AskUserQuestion / ExitPlanMode）——默认展开可见 === */
 .block-ask,
@@ -1998,14 +2022,18 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   color: var(--text-2);
   user-select: none;
 }
-.card-tool-group-summary::-webkit-details-marker { display: none; }
+.card-tool-group-summary::-webkit-details-marker {
+  display: none;
+}
 .card-tool-group-summary::before {
   content: "▸ ";
   display: inline-block;
   width: 14px;
   color: var(--text-2);
 }
-.card-tool-group[open] > .card-tool-group-summary::before { content: "▾ "; }
+.card-tool-group[open] > .card-tool-group-summary::before {
+  content: "▾ ";
+}
 .card-tool-group-summary:hover {
   background: var(--overlay-hover);
   color: var(--text);
@@ -2042,14 +2070,18 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.block-collapsible .block-summary::-webkit-details-marker { display: none; }
+.block-collapsible .block-summary::-webkit-details-marker {
+  display: none;
+}
 .block-collapsible .block-summary::before {
   content: "▸ ";
   display: inline-block;
   width: 14px;
   color: var(--text-2);
 }
-.block-collapsible[open] > .block-summary::before { content: "▾ "; }
+.block-collapsible[open] > .block-summary::before {
+  content: "▾ ";
+}
 .block-collapsible .block-summary:hover {
   background: var(--overlay-hover);
   color: var(--text);
@@ -2447,7 +2479,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   color: var(--text-2, #bcb5a8);
 }
 .settings-cc-profile-warn {
-  background: rgba(200, 130, 80, 0.10);
+  background: rgba(200, 130, 80, 0.1);
   border-left: 3px solid var(--accent, #c25b3b);
   padding: 6px 10px;
   margin: 8px 0;
@@ -2539,7 +2571,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 
 /* v1.7.2 legacy profile (profile.ps1) 遗留警告 */
 .settings-cc-legacy-warn {
-  background: rgba(200, 130, 80, 0.10);
+  background: rgba(200, 130, 80, 0.1);
   border-left: 3px solid var(--accent, #c25b3b);
   padding: 10px 12px;
   margin: 12px 0;
@@ -2675,7 +2707,6 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 .ccm-toast-body {
   color: var(--text, #d6cfc6);
 }
-
 
 .status-count {
   font-family: var(--font-mono);
@@ -3291,7 +3322,10 @@ body.settings-window-mode .grid-monitor-trigger {
   border-radius: 4px;
   padding: 0;
   margin-left: 4px;
-  transition: color 120ms, background 120ms, border-color 120ms;
+  transition:
+    color 120ms,
+    background 120ms,
+    border-color 120ms;
 }
 .settings-field-reset:hover {
   color: var(--text);
@@ -3699,7 +3733,10 @@ body.settings-window-mode .grid-monitor-trigger {
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   cursor: pointer;
-  transition: background 80ms, color 80ms, border-color 80ms;
+  transition:
+    background 80ms,
+    color 80ms,
+    border-color 80ms;
 }
 .history-origin-chip:hover {
   background: var(--overlay-hover);
@@ -4002,8 +4039,12 @@ body.settings-window-mode .grid-monitor-trigger {
 
 /* 从搜索结果跳进 viewer 后命中卡片的临时高亮 */
 @keyframes search-hit-flash {
-  0% { background: color-mix(in srgb, var(--accent) 38%, transparent); }
-  100% { background: transparent; }
+  0% {
+    background: color-mix(in srgb, var(--accent) 38%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
 }
 .search-hit-flash {
   animation: search-hit-flash 2.2s ease-out;
@@ -5595,23 +5636,63 @@ body.settings-window-mode .grid-monitor-trigger {
   box-shadow: inset 0 0 0 1px currentColor;
   opacity: 0.72;
 }
-.acct-c0 { background: var(--acct-c0); color: var(--acct-ink0); }
-.acct-c1 { background: var(--acct-c1); color: var(--acct-ink1); }
-.acct-c2 { background: var(--acct-c2); color: var(--acct-ink2); }
-.acct-c3 { background: var(--acct-c3); color: var(--acct-ink3); }
-.acct-c4 { background: var(--acct-c4); color: var(--acct-ink4); }
-.acct-c5 { background: var(--acct-c5); color: var(--acct-ink5); }
-.acct-c6 { background: var(--acct-c6); color: var(--acct-ink6); }
-.acct-c7 { background: var(--acct-c7); color: var(--acct-ink7); }
+.acct-c0 {
+  background: var(--acct-c0);
+  color: var(--acct-ink0);
+}
+.acct-c1 {
+  background: var(--acct-c1);
+  color: var(--acct-ink1);
+}
+.acct-c2 {
+  background: var(--acct-c2);
+  color: var(--acct-ink2);
+}
+.acct-c3 {
+  background: var(--acct-c3);
+  color: var(--acct-ink3);
+}
+.acct-c4 {
+  background: var(--acct-c4);
+  color: var(--acct-ink4);
+}
+.acct-c5 {
+  background: var(--acct-c5);
+  color: var(--acct-ink5);
+}
+.acct-c6 {
+  background: var(--acct-c6);
+  color: var(--acct-ink6);
+}
+.acct-c7 {
+  background: var(--acct-c7);
+  color: var(--acct-ink7);
+}
 /* 幽灵态描边取该 slot 的填充色（用 color 承载，box-shadow currentColor 引用）。 */
-.acct-avatar.ghost.acct-c0 { color: var(--acct-c0) !important; }
-.acct-avatar.ghost.acct-c1 { color: var(--acct-c1) !important; }
-.acct-avatar.ghost.acct-c2 { color: var(--acct-c2) !important; }
-.acct-avatar.ghost.acct-c3 { color: var(--acct-c3) !important; }
-.acct-avatar.ghost.acct-c4 { color: var(--acct-c4) !important; }
-.acct-avatar.ghost.acct-c5 { color: var(--acct-c5) !important; }
-.acct-avatar.ghost.acct-c6 { color: var(--acct-c6) !important; }
-.acct-avatar.ghost.acct-c7 { color: var(--acct-c7) !important; }
+.acct-avatar.ghost.acct-c0 {
+  color: var(--acct-c0) !important;
+}
+.acct-avatar.ghost.acct-c1 {
+  color: var(--acct-c1) !important;
+}
+.acct-avatar.ghost.acct-c2 {
+  color: var(--acct-c2) !important;
+}
+.acct-avatar.ghost.acct-c3 {
+  color: var(--acct-c3) !important;
+}
+.acct-avatar.ghost.acct-c4 {
+  color: var(--acct-c4) !important;
+}
+.acct-avatar.ghost.acct-c5 {
+  color: var(--acct-c5) !important;
+}
+.acct-avatar.ghost.acct-c6 {
+  color: var(--acct-c6) !important;
+}
+.acct-avatar.ghost.acct-c7 {
+  color: var(--acct-c7) !important;
+}
 
 /* account-ux U5：徽章 span 退化为纯容器（内含 .acct-avatar 头像，仅"不在当前账号"时出现）；
    旧实色药丸 + `—` 未知态已废（信息才显：一致/未知都不挂）。 */
@@ -5734,7 +5815,10 @@ body.settings-window-mode .grid-monitor-trigger {
      一个字符，前几十字符逐行重复；而邮箱才是分辨"学校号/私人号"的字段。路径要全文有 title，
      也有「复制路径」按钮兜着。F10：用量列（懒加载"查看用量"按钮/结果短句）权重给 1fr——
      结果文案长度不定（"会话窗口 38%·重置2h14m"这类），比路径列更需要弹性空间。 */
-  grid-template-columns: 14px 16px minmax(0, auto) minmax(0, 1.2fr) auto minmax(0, 1fr) minmax(0, 0.8fr) auto;
+  grid-template-columns: 14px 16px minmax(0, auto) minmax(0, 1.2fr) auto minmax(
+      0,
+      1fr
+    ) minmax(0, 0.8fr) auto;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   overflow-x: auto;
@@ -6076,4 +6160,70 @@ body.settings-window-mode .grid-monitor-trigger {
   font-size: 12px;
   opacity: 0.75;
   line-height: 1.5;
+}
+
+/* === T02 配置面审计视图 ===
+   审计指出：`config-surface-*` 与 `tone-*` 在 CSS 里一处定义都没有，于是
+   「不存在」和「未确定 —— …」在屏幕上大概没有区别——15 条测试守的 `tone-unknown`
+   ≠ `tone-bad` 只落在 class 名上。这一页的全部价值是**可信告知**，三档语气必须真看得出来：
+   - ok（绿）= 查到了
+   - bad（红）= 真的不存在
+   - unknown（黄）= 查不了，**不是**"坏"。混色就等于把假警报画成警报。
+   （同类的 `cc-bus-*` / `hooks-*` 也缺 CSS，那是 B03/B04 的既有欠账，另账登记，不在本轮扩面。） */
+.config-surface-tool {
+  margin: 12px 0 4px;
+  font-weight: 600;
+  color: var(--text);
+}
+.config-surface-source {
+  font-weight: 400;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+.config-surface-row,
+.config-surface-scope {
+  border-left: 3px solid var(--text-faint);
+  padding: 6px 10px;
+  margin: 4px 0 4px 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.config-surface-row.tone-ok,
+.config-surface-scope.tone-ok {
+  border-left-color: var(--success);
+}
+.config-surface-row.tone-bad,
+.config-surface-scope.tone-bad {
+  border-left-color: var(--error);
+}
+/* 未确定用 warn 而**不是** error：它不是坏消息，只是我们查不了 */
+.config-surface-row.tone-unknown,
+.config-surface-scope.tone-unknown {
+  border-left-color: var(--warn);
+}
+.config-surface-path,
+.config-surface-scope-head {
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  color: var(--text);
+}
+.config-surface-note {
+  font-family: inherit;
+  color: var(--text-faint);
+}
+.config-surface-resolved,
+.config-surface-effect,
+.config-surface-undo,
+.config-surface-scope-detail {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.config-surface-state {
+  font-size: 12px;
+  color: var(--text-dim, var(--text));
+}
+.config-surface-row.tone-bad .config-surface-state {
+  color: var(--error);
+}
+.config-surface-row.tone-unknown .config-surface-state {
+  color: var(--warn);
 }

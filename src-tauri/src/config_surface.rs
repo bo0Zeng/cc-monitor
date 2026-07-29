@@ -44,6 +44,8 @@ pub enum PathResolution {
     NeedsProjectDir(String),
     /// Windows 侧 `$PROFILE`，路径由 PowerShell 决定。
     WindowsProfile,
+    /// 路径由**用户配置**决定，本页查不到——`what` 告诉用户去哪儿看那个值。
+    NeedsUserConfig { what: &'static str },
 }
 
 /// 现状。**没有"疑似缺失"这一档**（见模块文档）。
@@ -118,48 +120,70 @@ pub fn resolve_touched_path(
             }
             Ok(PathResolution::NeedsProjectDir(declared.to_string()))
         }
+        // **占位符只对应"落点"那一条，别的 touches 照常解析。**
+        // 第一版这条臂要求**每条** touches 都等于占位符，于是 cc-acct-iso 的
+        // `~/.claude-accts/`（本机账号库，账号页真的在读它）被判违规——
+        // 落点只是这个工具碰的文件之一，不是全部。测试当场红在这里。
+        ToolDestination::UserConfiguredPath { token, what } => {
+            if declared == *token {
+                Ok(PathResolution::NeedsUserConfig { what })
+            } else {
+                resolve_local_home(declared, home, cfg_dir_env, is_dir)
+            }
+        }
         ToolDestination::RemoteHomeRelative(_) => Ok(PathResolution::Remote(declared.to_string())),
         ToolDestination::LocalHomeRelative(_) => {
-            let rest = declared
-                .strip_prefix("~/")
-                .ok_or_else(|| format!("本机路径必须以 `~/` 开头，实得 {declared:?}"))?;
-            // `~/.claude/…` 的真实基准目录是 `CLAUDE_CONFIG_DIR`（若它确实是个目录）
-            let (base, rel) = match rest.strip_prefix(".claude/") {
-                Some(r) => (
-                    crate::hooks_diag::claude_config_dir(cfg_dir_env, home, is_dir),
-                    r.to_string(),
-                ),
-                None => (home.to_path_buf(), rest.to_string()),
-            };
-            let rel = rel.trim_end_matches('/');
-            if rel.is_empty() {
-                return Err(format!("申报路径解析后为空：{declared:?}"));
-            }
-            // glob 只允许出现在**最后一段**，且只允许一个 `*`
-            let (dir_part, last) = match rel.rsplit_once('/') {
-                Some((d, l)) => (Some(d), l),
-                None => (None, rel),
-            };
-            if dir_part.is_some_and(|d| d.contains('*')) {
-                return Err(format!("glob 只允许在最后一段，实得 {declared:?}"));
-            }
-            if let Some((prefix, suffix)) = last.split_once('*') {
-                if suffix.contains('*') {
-                    return Err(format!("只支持一个 `*`，实得 {declared:?}"));
-                }
-                let dir = match dir_part {
-                    Some(d) => base.join(d),
-                    None => base,
-                };
-                return Ok(PathResolution::LocalGlob {
-                    dir,
-                    prefix: prefix.to_string(),
-                    suffix: suffix.to_string(),
-                });
-            }
-            Ok(PathResolution::Local(base.join(rel)))
+            resolve_local_home(declared, home, cfg_dir_env, is_dir)
         }
     }
+}
+
+/// 解析一个 `~/…` 形态的**本机**路径。抽出来是因为两条臂共用它
+/// （`LocalHomeRelative`，以及 `UserConfiguredPath` 里那些**不是**落点占位符的 touches）。
+fn resolve_local_home(
+    declared: &str,
+    home: &Path,
+    cfg_dir_env: Option<&Path>,
+    is_dir: &dyn Fn(&Path) -> bool,
+) -> Result<PathResolution, String> {
+    let rest = declared
+        .strip_prefix("~/")
+        .ok_or_else(|| format!("本机路径必须以 `~/` 开头，实得 {declared:?}"))?;
+    // `~/.claude/…` 的真实基准目录是 `CLAUDE_CONFIG_DIR`（若它确实是个目录）
+    let (base, rel) = match rest.strip_prefix(".claude/") {
+        Some(r) => (
+            crate::hooks_diag::claude_config_dir(cfg_dir_env, home, is_dir),
+            r.to_string(),
+        ),
+        None => (home.to_path_buf(), rest.to_string()),
+    };
+    let rel = rel.trim_end_matches('/');
+    if rel.is_empty() {
+        return Err(format!("申报路径解析后为空：{declared:?}"));
+    }
+    // glob 只允许出现在**最后一段**，且只允许一个 `*`
+    let (dir_part, last) = match rel.rsplit_once('/') {
+        Some((d, l)) => (Some(d), l),
+        None => (None, rel),
+    };
+    if dir_part.is_some_and(|d| d.contains('*')) {
+        return Err(format!("glob 只允许在最后一段，实得 {declared:?}"));
+    }
+    if let Some((prefix, suffix)) = last.split_once('*') {
+        if suffix.contains('*') {
+            return Err(format!("只支持一个 `*`，实得 {declared:?}"));
+        }
+        let dir = match dir_part {
+            Some(d) => base.join(d),
+            None => base,
+        };
+        return Ok(PathResolution::LocalGlob {
+            dir,
+            prefix: prefix.to_string(),
+            suffix: suffix.to_string(),
+        });
+    }
+    Ok(PathResolution::Local(base.join(rel)))
 }
 
 /// 观测一条已解析的路径。
@@ -206,14 +230,27 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
                 }
             }
         },
+        PathResolution::NeedsUserConfig { what } => SurfaceState::Undetermined {
+            why: format!("路径由配置决定（{what}）——本页不猜它当前是什么值"),
+        },
         PathResolution::Remote(p) => SurfaceState::Undetermined {
             why: format!("远端路径（{p}）——本页不连 SSH，请到部署向导里查"),
         },
         PathResolution::NeedsProjectDir(p) => SurfaceState::Undetermined {
             why: format!("相对项目目录（{p}）——要先选定项目才知道查哪里"),
         },
+        // **「不适用」和「查不到」不是一回事**（T02 审计重要 7）。原文一律说
+        // 「Windows 侧 $PROFILE，本机无从解析」，在 Linux 上这暗示"可能有东西、只是查不到"
+        // ——实际是**这一项根本不适用**。而在 Windows 上仓里已经有能力查它
+        // （`profile_installer::scan_path` 给出 path/exists/has_ccm_block/size），
+        // 所以那边该指路而不是耸肩。
         PathResolution::WindowsProfile => SurfaceState::Undetermined {
-            why: "Windows 侧 $PROFILE，路径由 PowerShell 决定，本机无从解析".into(),
+            why: if cfg!(target_os = "windows") {
+                "路径由 PowerShell 决定；准确状态见「终端集成」页（那里会读 $PROFILE 并查围栏块）"
+                    .into()
+            } else {
+                "不适用：本机不是 Windows，没有 PowerShell $PROFILE 这个东西".to_string()
+            },
         },
     }
 }
@@ -239,6 +276,10 @@ pub fn effect_label(e: TouchEffect) -> &'static str {
         TouchEffect::FencedBlock => "插入/更新一个有围栏的块；卸载时按围栏精确剥离",
         TouchEffect::OwnedFile => "整个文件由 cc-monitor 拥有，部署时整体覆盖",
         TouchEffect::GenerateOnly => "只生成待贴文本，由你自己粘贴——我们不写这个文件",
+        // 措辞必须把「谁动的手」说清：不是 cc-monitor 直接写，但**是你在 cc-monitor 里点的**
+        TouchEffect::IndirectWrite => {
+            "我们不直接写它；但你在 cc-monitor 里的操作会让它被写（由被调用的命令追加内容）"
+        }
     }
 }
 
@@ -332,8 +373,15 @@ pub struct SettingsScope {
     pub precedence_note: &'static str,
 }
 
-/// cc-bus 钩子在 settings 里的两个程序名。只用来做**存在性提示**，不替代
-/// `hooks_diag::diagnose` 的正经解析。
+/// cc-bus 钩子在 settings 里的两个程序名。**这是全文粗匹配，不是解析**——
+/// `permissions.allow` 里一条 `Bash(cc-register)`、被改了事件名的钩子、
+/// 甚至一句 `"description": "装 cc-register 用"` 都会命中。
+///
+/// 所以本模块**只回答「文件里有没有这个字样」**，绝不声称"装上了"；
+/// 准确判定是 `hooks_diag::diagnose_event` 的事（它按 `hooks.<事件>.command` 走）。
+/// 两页对同一文件给出不同话是**设计如此**：一页说"有字样"，一页说"装没装"。
+/// 真机核实过当前两页不矛盾（`~/.claude/settings.json` 里 2 处命中都在
+/// `hooks.*.command` 里），但假阳性面是真实的，措辞必须先把这一点讲明。
 const HOOK_PROGRAMS: [&str; 2] = ["cc-register", "cc-bus-stop-hook"];
 
 fn scope_row(
@@ -369,7 +417,7 @@ pub fn build_settings_scopes(
         scope_row(
             "用户级",
             cfg.join("settings.json"),
-            "钩子诊断读的就是这一份",
+            "钩子诊断读的就是这一份；本页只做字样粗匹配，装没装看「cc-bus 钩子」页",
             read,
             fs,
         ),
@@ -756,31 +804,100 @@ mod tests {
         assert!(every_declared_path_resolves().violations.is_empty());
     }
 
-    /// **`TouchedFile` 的远端性从 `destination` 推导**这条假设要被钉住：
-    /// 哪天出现「本机落点却申报远端文件」的组合，这里会红，届时才该给 `TouchedFile` 加字段。
+    // 原先这里有一条 `locality_is_derivable_from_destination_today`，**删了**（T02 审计重要 1）。
+    // 审计实测它是**同义反复**：`PathResolution::Remote` 只由 `RemoteHomeRelative` 臂产生、
+    // 且必然产生，所以 `matches!(res, Remote(_)) == remote` 对任意输入恒真——把 `ccm` 的
+    // `destination` 翻成 `LocalHomeRelative`（会让两行从"远端未确定"变成去 stat 本机 `~/.bashrc`）
+    // **492 项照样全绿**。而它自称守的那件事（"本机落点却申报远端文件"）在类型上根本
+    // 表达不出来（`TouchedFile` 没有 host 字段），永远不会红。
+    //
+    // **如实登记：远端性没有门禁。** 它现在只是 `resolve_touched_path` 的一条实现约定 +
+    // 文档。真要门禁得给 `TouchedFile` 加 `host`，而那件事有个真实的第二消费者在等着：
+    // `~/.cc-bus/` 被本页解析成**本机**，可 `cc_bus.rs` 是按 `origin` 在**可能是远端**的
+    // 主机上读它——一个 `const destination` 表达不了"按运行期 origin 跨主机"。
+    // 这条留给 T04（五套机制收编）时连着 origin 模型一起做，不在 T02 硬塞。
+    // 替代的有牙测试放在 `tool_registry.rs`：`installable_tools_declare_where_they_land`
+    // 与 `owned_file_implies_installable`（两条都是跨字段一致性，改任一边就红）。
+
+    // ===== 注册表 ↔ 真写入方对齐（T02 审计重要 6：此前零耦合） =====
+
+    /// **申报的落点必须与真正执行写入的那段代码逐字一致。**
+    ///
+    /// 审计说得对：此前没有一条测试把 `TOOLS` 的申报与 `sftp.rs` / `mcp.rs` /
+    /// `acct_iso_deploy` 对齐，所以这张告知页可以自信地说错而门禁不会红。
+    /// 追查下去比审计报的更严重——**六条声明里三条没有任何代码支撑**：
+    /// `remote-daemon` 的 `.local/bin/ccm-daemon` 全仓只出现在注册表自己里
+    /// （真实是 `RemoteConfig.daemon_path`）、`cc-acct-iso` 声明成本机而实际是远端 +
+    /// 前端传的 `dest_dir`、`cc-bus` 的落点是未实现的愿景。
+    /// 前两条已改成 `ToolDestination::UserConfiguredPath`（承认"这是配置项"），
+    /// 剩下**真有常量**的两条在这里用 `pin_definition` 钉死。
     #[test]
-    fn locality_is_derivable_from_destination_today() {
+    fn declared_destinations_are_pinned_to_the_real_writers() {
+        use crate::structural_scan::pin_definition;
+
+        // ① ccm：`sftp.rs` 里那个常量就是真落点
+        let sftp = include_str!("sftp.rs");
+        pin_definition(
+            sftp,
+            r#"const CCM_CLI_REMOTE_PATH: &str = ".local/bin/ccm";"#,
+            "const CCM_CLI_REMOTE_PATH",
+            "ccm 远端落点",
+        )
+        .unwrap();
+        let ccm = TOOLS.iter().find(|t| t.id == "ccm").unwrap();
+        assert_eq!(
+            ccm.destination,
+            ToolDestination::RemoteHomeRelative(".local/bin/ccm"),
+            "注册表声明的 ccm 落点与 sftp.rs 的 CCM_CLI_REMOTE_PATH 不一致"
+        );
+
+        // ② 项目 MCP：`mcp.rs` 真正 join 的就是这个文件名
+        let mcp = include_str!("mcp.rs");
+        let joins = mcp.matches(r#"join(".mcp.json")"#).count();
+        assert!(
+            joins >= 1,
+            "mcp.rs 里找不到 join(\".mcp.json\")——落点变了还是扫描器失效了？"
+        );
+        let pm = TOOLS.iter().find(|t| t.id == "project-mcp").unwrap();
+        assert_eq!(
+            pm.destination,
+            ToolDestination::ProjectRelative(".mcp.json")
+        );
+
+        // ③ 反向自检：确认上面读到的是真源码，不是空串
+        assert!(
+            sftp.len() > 10_000 && mcp.len() > 5_000,
+            "include_str! 读空了"
+        );
+    }
+
+    /// **配置项型落点不许再冒充常量**：`UserConfiguredPath` 的申报路径必须是占位符
+    /// （`$` 开头），否则就是又一次"凭印象写个常量"。
+    #[test]
+    fn user_configured_destinations_declare_a_placeholder_not_a_guess() {
+        let mut n = 0;
         for t in TOOLS {
-            let remote = matches!(t.destination, ToolDestination::RemoteHomeRelative(_));
-            for f in t.touches {
-                // 申报路径里不许再自己写"远端"——那是 destination 的职责
+            if let ToolDestination::UserConfiguredPath { token, what } = &t.destination {
+                n += 1;
+                assert!(token.starts_with('$'), "{}: {token:?} 不像占位符", t.id);
                 assert!(
-                    !f.path.contains("远端"),
-                    "{}：远端性该由 destination 表达，不该编进 path {:?}",
-                    t.id,
-                    f.path
+                    !what.trim().is_empty(),
+                    "{}: 得告诉用户去哪儿看这个值",
+                    t.id
                 );
-                let res =
-                    resolve_touched_path(f.path, &t.destination, &home(), None, &no_dir).unwrap();
-                assert_eq!(
-                    matches!(res, PathResolution::Remote(_)),
-                    remote,
-                    "{}/{:?} 的远端判定与 destination 不一致",
-                    t.id,
-                    f.path
+                // 这个占位符必须真出现在 touches 里，否则表格上那一行会显示别的东西
+                assert!(
+                    t.touches.iter().any(|f| f.path == *token),
+                    "{}: touches 里没有 {token:?}",
+                    t.id
                 );
             }
         }
+        // 计数自检：≥2 个使用者才配有这个变体（本工作区的 ≥2 判据）
+        assert!(
+            n >= 2,
+            "UserConfiguredPath 只有 {n} 个使用者——不够 2 个就不该是一个变体"
+        );
     }
 
     // ===== 建表：七个字段都真被用上（T01 审计 I2 的验收点） =====
@@ -896,28 +1013,48 @@ mod tests {
             stripped.contains("pub fn resolve_touched_path"),
             "剥过头了，守卫在空转"
         );
-        let mut uses: Vec<&str> = Vec::new();
-        for (i, _) in stripped.match_indices("std::fs::") {
-            let rest = &stripped[i + "std::fs::".len()..];
+        // **扫任意前缀的 `fs::`，不只 `std::fs::`**（T02 审计重要 2 实测可绕）：
+        // 注入 `use std::fs;` + `fs::write(...)` 后旧守卫 17/17 全绿，因为它只找字面
+        // `std::fs::` 前缀、而 `write` 也不在那 4 个禁用词里。同类绕法还有
+        // `tokio::fs::write`、`std::os::unix::fs::symlink`。
+        let mut uses: Vec<String> = Vec::new();
+        for (i, _) in stripped.match_indices("fs::") {
+            let rest = &stripped[i + "fs::".len()..];
             let name: String = rest
                 .chars()
                 .take_while(|c| c.is_alphanumeric() || *c == '_')
                 .collect();
-            let idx = stripped[i..].find(&name).map(|k| i + k).unwrap_or(i);
-            uses.push(&stripped[idx..idx + name.len()]);
+            if !name.is_empty() {
+                uses.push(name);
+            }
         }
         // 允许集合就这三个，全部只读
         for u in &uses {
             assert!(
-                matches!(*u, "metadata" | "read_dir" | "read_to_string"),
-                "本模块只准只读的 fs 调用，发现 std::fs::{u}"
+                matches!(u.as_str(), "metadata" | "read_dir" | "read_to_string"),
+                "本模块只准只读的 fs 调用，发现 fs::{u}"
             );
         }
         // 计数自检（要件 3）：一处都没扫到 = 守卫失效了，而不是代码变干净了
         assert!(
             uses.len() >= 3,
-            "只扫到 {} 处 std::fs:: 用法——守卫可能失效了（期望 metadata/read_dir/read_to_string 各至少一处）",
+            "只扫到 {} 处 fs:: 用法——守卫可能失效了（期望 metadata/read_dir/read_to_string 各至少一处）",
             uses.len()
+        );
+        // **钉死 `use` 列表**（要件 4：逃生口的定义必须逐字钉住）。不钉的话
+        // `use tokio::fs as fs;` 之类能把上面的白名单整体架空。
+        let uses_lines: Vec<&str> = stripped
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| l.starts_with("use "))
+            .collect();
+        assert_eq!(
+            uses_lines,
+            vec![
+                "use crate::tool_registry::{",
+                "use std::path::{Path, PathBuf};",
+            ],
+            "本模块的 use 列表被改了——它是上面那条 fs:: 白名单的前提，改了要重新论证"
         );
         // 且明确不许出现这些（即便将来换成别的前缀写法，上面的白名单也已经兜住 std::fs::）
         for bad in [
