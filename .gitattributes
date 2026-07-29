@@ -22,6 +22,10 @@
 *.msi   binary
 *.dll   binary
 
-# C01（rust-ts-boundary）：ts-rs 生成物，diff 默认折叠。**不许手改**——
-# 源是 src-tauri/src/**.rs 的 #[derive(ts_rs::TS)]，改了会被 generated-boundary-guard 抓到。
+# C01（rust-ts-boundary）：ts-rs 生成物，diff 默认折叠。源是 src-tauri/src/**.rs 的
+# #[cfg_attr(test, derive(ts_rs::TS))]，重新生成走 `npm run gen:types`。
+#
+# **不要在这里写「改了会被守卫抓到」——那是假保证**（Phase D 审计 B2 实测：手改生成物、
+# 甚至插一个 Rust 侧根本不存在的字段，5 条守卫 + tsc **全绿**）。
+# 手改**目前只靠人工纪律**；真正的检查是 C05 的「重新生成 + git diff --exit-code」，尚未落地。
 src/generated/** linguist-generated=true

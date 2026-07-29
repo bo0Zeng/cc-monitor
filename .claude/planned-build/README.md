@@ -38,9 +38,9 @@
 | # | 功能 | 区 | 需要外部授权？ |
 |---|---|---|---|
 | 1 | **C01** 边界样板（一条命令走通，**变异验收**：删一个 Rust 字段 tsc 必须报错） | rust-ts-boundary | 否 |
-| 2 | **C02** 事件半边（已是单一枢纽，改动面最小） | rust-ts-boundary | 否 |
-| 3 | **C03** 大整数策略（必须在 C04 之前，否则把已知数据损失批量固化） | rust-ts-boundary | 否 |
-| 4 | **C05** 门禁（生成物必须最新） | rust-ts-boundary | 否 |
+| 2 | **C05** 门禁（生成物必须最新）—— **2026-07-29 由 #4 提到这里**，理由见下 | rust-ts-boundary | 否 |
+| 3 | **C02** 事件半边（已是单一枢纽，改动面最小） | rust-ts-boundary | 否 |
+| 4 | **C03** 大整数策略（必须在 C04 之前，否则把已知数据损失批量固化） | rust-ts-boundary | 否 |
 | 5 | **C04** 命令半边全量（分批，每批一 commit + 全门禁） | rust-ts-boundary | 否 |
 | 6 | **G-B** vendored bash 进 shellcheck + `run-tests.sh` 进 CI | gate-integrity | 否 |
 | 7 | **Z01** 账号 0 登记 + 可见 | account-zero | **是：动 `~/.claude/skills/cc-acct-iso/`** |
@@ -57,6 +57,14 @@
 | 18 | **L3a** 本地账号枚举（只读，Rust 读 manifest） | local-as-remote | 否 |
 | 19 | **L4** Linux 打包进 CI/release | local-as-remote | 否 |
 | 20 | **L3b** 本地账号管理（写） | local-as-remote | 依赖 account-zero 全部落地 |
+
+**为什么 C05 从 #4 提到 #2**（C01 的 Phase D 审计 I1 实测）：CI 的 `rust` job（跑 `cargo test`）
+与 `frontend` job（跑 `tsc`）是**两次独立 checkout**——重新生成的产物在前者里被丢掉，
+后者对着**已提交的**生成物做类型检查。审计变异实测：serde-rename 一个字段而**不重新生成**
+⇒ `cargo` 绿、`tsc` 绿、5 条守卫绿、`npm` 819 全绿，**而生产里 UI 标签会变空**。
+也就是说「改了 Rust 忘了重新生成」这个洞**让每一道现有门禁都保持绿色**。
+C01 已加 `npm run check:types`（同一棵树里 regen → tsc → `git diff --exit-code`）作为可脚本化的
+兜底，但**它还没进 CI**。若先做 C02/C03/C04，这个洞会被复制到 127 个 struct。
 
 **为什么 G-B 插在 Z01 之前**：Z01 要改 `vendor/cc-acct-iso/scripts/`，而那 1348 行今天在
 shellcheck 门禁之外、它自己的 424 行测试从没跑过。**没有网不能改那个工具。**

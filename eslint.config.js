@@ -9,6 +9,8 @@ export default tseslint.config(
   {
     // Rust、产物、依赖、覆盖率报告、各类 config 自身不 lint。
     ignores: [
+      // C01：ts-rs 生成物，没人该手动去修它（Phase D 审计 S5）
+      "src/generated/**",
       "dist/**",
       "node_modules/**",
       "src-tauri/**",
