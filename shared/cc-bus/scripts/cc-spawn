@@ -28,14 +28,42 @@ case "$tool" in claude|codex) ;; *) echo "cc-spawn: 未知 --tool '$tool'(应为
 LAUNCH="${CCSPAWN_LAUNCH:-$tool}"
 
 # ccm 位置(unify-launch B02):同仓相对路径优先——B01 之后 cc-bus 与 ccm 同住 shared/,
-# `shared/cc-bus/scripts/cc-spawn` 的 ../../ 就是 `shared/`。装到 ~/.local/bin 的部署形态下
-# 该相对路径不存在,回落 PATH。CCM_BIN 可显式覆盖(测试钩子)。
+# `shared/cc-bus/scripts/cc-spawn` 的 ../../ 就是 `shared/`。CCM_BIN 可显式覆盖(测试钩子)。
+#
+# **真实部署形态下 ../../ 落在哪**(B02 审计重要-7 实测纠正了我原先的注释):软链
+# `~/.local/bin/cc-spawn` 经 `readlink -f` 之后 SELFDIR = `~/.claude/skills/cc-bus/scripts`,
+# 于是 `../../ccm` = **`~/.claude/skills/ccm`** ——碰撞面是 skills 目录,不是 ~/.local/bin。
+# **必须 `-f` 而不能只 `-x`**:`[ -x <目录> ]` 为真,而 `~/.claude/skills/` 下全是目录,
+# 哪天有人装个名叫 `ccm` 的 skill 就会劫持解析(实测报 `是一个目录` 然后整体失败)。
 CCM_BIN="${CCM_BIN:-}"
 if [ -z "$CCM_BIN" ]; then
-  if [ -x "$SELFDIR/../../ccm" ]; then CCM_BIN="$SELFDIR/../../ccm"
+  if [ -f "$SELFDIR/../../ccm" ] && [ -x "$SELFDIR/../../ccm" ]; then CCM_BIN="$SELFDIR/../../ccm"
   elif command -v ccm >/dev/null 2>&1; then CCM_BIN=$(command -v ccm)
   else echo "cc-spawn: 找不到 ccm(既不在 $SELFDIR/../../ccm,也不在 PATH)" >&2; exit 2; fi
 fi
+
+# **能力协商**(B02 审计重要-7):cc-spawn 现在硬依赖 ccm 的 `--detach`,而用户盘上的
+# `~/.local/bin/ccm` 完全可能是旧版(实测:这台机器上那份就没有 --detach)。不检查的话
+# 报出来的是 `ccm: 未知选项: --detach` + `建会话失败`,把"版本太旧"说成"建会话失败"。
+# 仓里本就有现成的协商机制(`--ccm-probe` 吐 `capabilities=`,TS 侧 `CLI_REQUIRED_CAPS` 在用),
+# 新的 shell 消费者没理由不用。
+_caps=$("$CCM_BIN" --ccm-probe 2>/dev/null | sed -n 's/^capabilities=//p')
+for _c in detach tmux-size; do
+  case ",$_caps," in
+    *",$_c,"*) ;;
+    *) echo "cc-spawn: ccm 版本太旧,缺能力 '$_c'($CCM_BIN)。" >&2
+       echo "  cc-spawn 收编进 ccm 之后依赖它;请把 shared/ccm 同步到 ~/.local/bin/ccm。" >&2
+       exit 2 ;;
+  esac
+done
+unset _caps _c
+
+# 向后兼容:预信任的可测性钩子改名了(cc-spawn 的 CCSPAWN_* → ccm 的 CCM_*)。
+# 收编后若不映射,任何还在设 CCSPAWN_CLAUDEJSON 来**保护真实 ~/.claude.json** 的外部
+# 测试/脚本会静默失效并**直接写真文件**——静默丢失一个安全钩子比丢功能更坏。
+# 只在对应的 CCM_* 未设时映射,不覆盖显式设置。
+[ -n "${CCSPAWN_CLAUDEJSON:-}" ] && [ -z "${CCM_CLAUDEJSON:-}" ] && export CCM_CLAUDEJSON="$CCSPAWN_CLAUDEJSON"
+[ -n "${CCSPAWN_CODEXTOML:-}" ] && [ -z "${CCM_CODEXTOML:-}" ] && export CCM_CODEXTOML="$CCSPAWN_CODEXTOML"
 
 # 1. 绝对路径 + 校验目录存在
 absdir=$(cd "$dir" 2>/dev/null && pwd) || { echo "cc-spawn: 目录不存在: $dir" >&2; exit 2; }
@@ -71,10 +99,25 @@ while tmux has-session -t "=$name" 2>/dev/null; do name="$base-$k"; k=$((k+1)); 
 #        且它从 tmux 会话名自动派生,与这里原先注入的 $name 逐字相同(隔离 socket 实测确认)。
 #      · `-x 220 -y 50` → 未丢,改由 `--tmux-size 220x50` 表达。
 mkdir -p "$BUS"
-ccm_args=(--tmux="$name" --detach --tmux-size 220x50 --cwd "$absdir" --agent "$tool" --launcher "$LAUNCH")
-# 初始任务作为**位置参数**传给启动器(`exec <launcher> '<任务>'`),与原先
-# `send-keys "$LAUNCH $(printf %q "$task")"` 逐字等价——ccm 的 `--` 透传即是此语义。
-[ -n "$task" ] && ccm_args+=(-- "$task")
+# **$LAUNCH 可能是多词命令行,必须分词**(B02 审计阻塞-2,实测复现)。
+# 旧实现走 `send-keys "$LAUNCH ..."`,pane 里的 shell 会对 $LAUNCH **重新分词**,所以
+# wrapper 形式一直可用——`cc-bus-install.sh:96` 就明文教用户
+# `CCSPAWN_LAUNCH="codex --dangerously-bypass-hook-trust"` 做无人值守的钩子信任,
+# 本脚本 :24 也还在按多词字符串推断 tool。而 ccm 的 `--launcher` 收的是**单个 argv[0]**
+# (`argv=("$launcher")` → `exec "${argv[@]}"`),整串塞进去会被当成一个含空格的文件名,
+# 结果是 `没有那个文件或目录` + 会话退回裸 bash,而 cc-spawn 却 rc=0、还把这个僵尸登上总线
+# ——假成功比失败更坏(`cc-list` 显示在线,`cc-send` 石沉大海)。
+#
+# 等价还原:首词 → `--launcher`,余词 → `--` 透传的**最前面**,任务排在余词之后。
+# `exec env VAR=x codex '<任务>'` 与旧的 `send-keys "env VAR=x codex '<任务>'"` 逐字同义。
+# shellcheck disable=SC2206  # 这里的分词是**有意的**,正是要复刻旧 shell 的行为
+launch_argv=($LAUNCH)
+[ ${#launch_argv[@]} -gt 0 ] || { echo "cc-spawn: 启动器为空(CCSPAWN_LAUNCH?)" >&2; exit 2; }
+ccm_args=(--tmux="$name" --detach --tmux-size 220x50 --cwd "$absdir" --agent "$tool" --launcher "${launch_argv[0]}")
+# 初始任务作为**位置参数**传给启动器(`exec <launcher> [启动器余下的词] '<任务>'`)。
+passthru=("${launch_argv[@]:1}")
+[ -n "$task" ] && passthru+=("$task")
+[ ${#passthru[@]} -gt 0 ] && ccm_args+=(-- "${passthru[@]}")
 "$CCM_BIN" "${ccm_args[@]}" || { echo "cc-spawn: 经 ccm 建会话失败" >&2; exit 1; }
 
 pane=$(tmux list-panes -t "=$name" -F '#{pane_id}' 2>/dev/null | head -1)
