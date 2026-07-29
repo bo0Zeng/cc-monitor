@@ -43,6 +43,7 @@ mod sftp;
 // remote off（默认）时本模块不被调用，本地路径 bit-for-bit 不变。
 mod ccm_probe;
 mod ssh_source;
+mod structural_scan; // T01：结构性扫描的可复用形式（枚举+逐个断言+计数自检+钉死逃生口）
 mod subagent;
 mod tasks;
 mod tmux;

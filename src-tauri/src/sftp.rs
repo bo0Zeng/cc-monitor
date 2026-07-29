@@ -915,44 +915,37 @@ mod tests {
         // 引用的是 CLI 里根本不存在的代码）。而这正是 F01 修掉的「杀错/打错兄弟会话」生产事故。
         // 结构性扫描对**新增**的 `-t` 也自动生效，这是固定 needle 永远做不到的。
         // 唯一允许的间接目标变量：`$t`，其定义在此**逐字钉死**（否则它可以被改成裸值绕过扫描）。
+        // T01 第 6 步：改走可复用的 `structural_scan`。**四个要件一个不少**，
+        // 而且它们现在由那个模块内建（计数自检写在 `require` 里，调用方忘不掉）。
+        // 这里是它的**第一个真实调用点**——抽了不接上就是 B03 阻塞-2 那个病
+        // （我抽了 `build_online_cmd` 却没接，让它成了零调用点死代码、真校验零覆盖）。
         const EXACT_T_DEF: &str = r#"t="$(sq "=$tmux_name:")""#;
-        assert!(
-            CCM_CLI_SCRIPT.contains(EXACT_T_DEF),
-            "间接目标变量 $t 的定义必须逐字是 {EXACT_T_DEF}（它是 tmux 序列里所有 -t 的来源）"
-        );
+        crate::structural_scan::pin_definition(CCM_CLI_SCRIPT, EXACT_T_DEF, "间接目标变量 $t")
+            .expect("$t 的定义被改动 —— 它是 tmux 序列里所有 -t 的来源，改了就能绕过扫描");
 
-        let mut checked = 0usize;
-        for line in CCM_CLI_SCRIPT.lines() {
-            if line.trim_start().starts_with('#') {
-                continue; // 注释里的用法示例不算
-            }
-            for (i, _) in line.match_indices("-t ") {
-                let rest = &line[i + 3..];
-                // `$t` 是上面已钉死定义的间接变量，放行。
-                if rest.starts_with("$t ") || rest.starts_with("$t\"") {
-                    checked += 1;
-                    continue;
-                }
-                // 其余一律要求「窗口内先出现 `=` 再出现 `:`」——裸目标（`"$name"` / `$name`）
-                // 两者皆无，必然被抓；`$(sq "=$x:")` / `"=$x:"` / `'=x:'` 都能通过。
-                let win: String = rest.chars().take(48).collect();
+        let report = crate::structural_scan::scan_after_marker(
+            CCM_CLI_SCRIPT,
+            "-t ",
+            Some("#"),
+            48,
+            // `$t` 是上面已钉死定义的间接变量，放行（但仍计数）。
+            &|rest: &str| rest.starts_with("$t ") || rest.starts_with("$t\""),
+            &|win: &str| {
                 let eq = win.find('=');
                 let colon = win.find(':');
-                assert!(
-                    eq.is_some() && colon.is_some() && eq < colon,
-                    "CLI 的 tmux 目标必须是 `=名:` 精确形态（=在前、:在后）。\
-                     裸目标会「精确→名字开头→glob」三级解析、打错兄弟会话；\
-                     `=名`（无尾冒号）在 send-keys/capture-pane/set-option 上 rc=1 完全失效。\
-                     实得窗口 {win:?}（行: {line}）"
-                );
-                checked += 1;
-            }
-        }
-        assert!(
-            checked >= 4,
-            "只扫到 {checked} 个 `-t` 目标，CLI 至少该有 attach/set-option/send-keys/查询 四类——\
-             扫描器可能失效了"
+                if eq.is_some() && colon.is_some() && eq < colon {
+                    Ok(())
+                } else {
+                    Err("tmux 目标必须是 `=名:` 精确形态（= 在前、: 在后）。\
+                         裸目标会「精确→名字开头→glob」三级解析、打错兄弟会话；\
+                         `=名`（无尾冒号）在 send-keys/capture-pane/set-option 上 rc=1 完全失效"
+                        .to_string())
+                }
+            },
         );
+        report
+            .require(4, "CLI 的 tmux 目标（INVARIANTS §31a）")
+            .expect("结构性扫描不通过");
     }
 
     #[test]
