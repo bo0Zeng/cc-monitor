@@ -1640,7 +1640,9 @@ export class RemoteSection {
         activation: "source 它，或在该远端开一个新的登录 shell。",
         multiline: true,
         rows: 10,
-        className: "remote-wrapper-snippet-paste",
+        // 指回已有规则的那个 class（迁移时改名成 `-paste` 让 styles.css:3480
+        // 那条规则失去了宿主，而新名字一条规则都没有）
+        className: "remote-wrapper-snippet",
       }).element,
     );
 

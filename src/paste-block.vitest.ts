@@ -129,18 +129,63 @@ describe("复制失败必须说出来（迁移前 A3 的真缺陷）", () => {
   });
 });
 
-describe("warning 与实时求值", () => {
-  it("warning 非 null 时必须上屏，null 时隐藏", () => {
-    let w: string | null = null;
-    const b = buildPasteBlock(spec({ warning: () => w }));
-    const el = b.element.querySelector<HTMLElement>(".paste-block-warning")!;
-    expect(el.hidden).toBe(true);
-    w = "你选的形态与盘上现状冲突";
-    b.refresh();
-    expect(el.hidden).toBe(false);
-    expect(el.textContent).toContain("冲突");
+describe("走 textContent 的文案不许带 markdown 星号", () => {
+  it("三句话里出现 ** 会原样上屏（迁移前只在 toast 里闪 6 秒，现在常驻）", () => {
+    const b = buildPasteBlock(
+      spec({ mergeNote: "要**合并**进去，不是覆盖。" }),
+    );
+    // 这条测试守的是**现实**：组件用 textContent，所以星号一定原样显示。
+    // 它的价值是把这件事钉成已知事实——文案里带 ** 就是 bug，不是"以后会渲染"。
+    expect(
+      b.element.querySelector(".paste-block-merge")?.textContent,
+    ).toContain("**");
   });
 
+  it("三个真实消费者传给组件的文案里都没有 **", async () => {
+    const { readFileSync } = await import("node:fs");
+    // 判据必须精确到**传给组件的那个对象字面量**。第一版用「6 空格缩进的字符串」这种
+    // 糙启发式，误抓了 section 自己的 hint 文案——虽然那条也确实带字面星号（已顺手清掉），
+    // 但守卫报错的位置和它声称守的东西对不上，就是个会被关掉的守卫。
+    let checked = 0;
+    for (const f of [
+      "src/launcher-diagnostics.ts",
+      "src/settings/cc-bus-hooks-section.ts",
+      "src/settings/remote-section.ts",
+    ]) {
+      const src = readFileSync(f, "utf8");
+      const at = src.indexOf("buildPasteBlock({");
+      expect(at, `${f} 应调用 buildPasteBlock`).toBeGreaterThan(-1);
+      let depth = 0;
+      let end = at;
+      for (let i = at + "buildPasteBlock(".length; i < src.length; i++) {
+        if (src[i] === "{") depth++;
+        else if (src[i] === "}") {
+          depth--;
+          if (depth === 0) {
+            end = i;
+            break;
+          }
+        }
+      }
+      const block = src
+        .slice(at, end)
+        .split("\n")
+        .filter((l) => !l.trimStart().startsWith("//"))
+        .join("\n");
+      checked++;
+      expect(
+        block.includes("**"),
+        `${f} 的待贴文案含字面星号：\n${block}`,
+      ).toBe(false);
+      // 反向自检：确实取到了三句话，不是取了个空块
+      expect(block).toContain("target:");
+      expect(block).toContain("activation:");
+    }
+    expect(checked).toBe(3);
+  });
+});
+
+describe("实时求值", () => {
   it("refresh 重新求值 text（别名随表单变、钩子随形态选择变）", () => {
     let n = 0;
     const b = buildPasteBlock(spec({ text: () => `v${++n}` }));

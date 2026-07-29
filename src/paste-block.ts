@@ -22,6 +22,15 @@
 // **共享的是「必须说一句合并语义」这个槽，不是那句话本身。**（同 T01 拒绝「探测机制」：
 // 机制留各家，位置统一。）
 //
+// ## 原先这里有个 `warning` 槽，T03 审计后**移回消费者自己那儿**
+//
+// 逐字段数消费者：`text` / 三句话 3 个、`invalidReason` 2 个、`multiline` 2 个、
+// **`warning` 只有 1 个**（钩子片段那一处）。而同一个 commit 里我用"只有 1 个用户"
+// 否掉了 `MergeIntoKey` 枚举变体——**尺子不能一边松一边紧**。
+// 它已经搬去 `cc-bus-hooks-section.ts` 自己渲染（那里也才是它该被测试钉住的地方：
+// 审计实测删掉 A2 的 warning 接线，56 项全绿，而我在 commit message 里写的
+// 「UI 侧另有测试钉住它真的上屏」**是假的**）。
+//
 // ## 本文件没有、也不得有任何写入路径
 //
 // 只产出待贴文本 + 复制到剪贴板。写用户的 `~/.bashrc` / `~/.claude/settings.json`
@@ -41,8 +50,6 @@ export interface PasteSpec {
   invalidReason?: (text: string) => string | null;
   /** 多行输出用 `textarea`，单行用 `input`。 */
   multiline?: boolean;
-  /** 额外警示（如"你选的形态与盘上现状冲突"）。实时求值，`null` = 无。 */
-  warning?: () => string | null;
   /** 输出面行数（仅 `multiline`）。 */
   rows?: number;
   /** 附加 class，便于各消费者保留自己原有的样式钩子。 */
@@ -91,11 +98,6 @@ export function buildPasteBlock(spec: PasteSpec): PasteBlock {
   else (out as HTMLInputElement).type = "text";
   root.appendChild(out);
 
-  const warn = document.createElement("div");
-  warn.className = "paste-block-warning";
-  warn.hidden = true;
-  root.appendChild(warn);
-
   // 三句话**必须上屏**，不是只在 toast 里出现一次就算说过了
   // （T02 教训：纯函数被断言 ≠ 它上了屏——两个核心列删掉，15 条测试全绿）。
   const where = document.createElement("div");
@@ -124,9 +126,6 @@ export function buildPasteBlock(spec: PasteSpec): PasteBlock {
 
   const refresh = (): void => {
     out.value = spec.text();
-    const w = spec.warning?.() ?? null;
-    warn.hidden = w === null;
-    warn.textContent = w ?? "";
   };
 
   copyBtn.addEventListener("click", () => {
