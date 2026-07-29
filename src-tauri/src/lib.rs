@@ -887,6 +887,9 @@ pub fn run() {
             // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
             cc_bus::read_cc_bus_state,
             cc_bus::check_cc_bus_agent_online,
+            cc_bus::read_cc_bus_inbox,
+            cc_bus::cc_bus_send,
+            cc_bus::cc_bus_spawn,
             mcp::read_mcp_servers,
             mcp::read_remote_mcp_servers,
             mcp::list_remote_mcp_origins,

@@ -1,4 +1,4 @@
-// B03 批一：cc-bus 驾驶舱（**只读**）。
+// B03：cc-bus 驾驶舱（批一只读 + 批二派活/收信/图形化 spawn）。
 //
 // 三条硬约束决定了这个形状：
 //  ① **不新增轮询**（红线）。cc-bus 的状态全在远端本机 `~/.cc-bus/`，cc-monitor 跑在
@@ -11,9 +11,13 @@
 //     后端解析器跳过并计数，这里**如实显示「N 条无法解析」**，不假装干净。
 //
 // **与计划措辞的一处偏离（更严格，非放宽）**：计划写「打开分节时才 invoke 一次」。
-// `CollapsibleGroup` today 没有展开回调，而为一个消费者去改这个共享 UI 原语，正是
+// `CollapsibleGroup` 没有展开回调，而为一个消费者去改这个共享 UI 原语，正是
 // R12/R15 反复拒绝的"为假想需求建抽象"。这里改成**用户点「读取」才发请求**——一次 30s
 // 超时的远端往返，显式触发比"展开即偷偷发"更诚实，也天然满足"启动时不预取"。
+//
+// **批二不重写起会话**：图形化 spawn 调的是收编后的 `cc-spawn`（它内部已改经 `ccm`），
+// cc-monitor 侧不碰建会话逻辑——那正是本工作区消灭的病（账本 K8：再造第 N 套实现）。
+// 也因此本文件**零引用 launch IR 模块**：spawn 是 fire-and-forget 的远端 exec，不开标签页。
 import { invoke } from "@tauri-apps/api/core";
 
 interface CcBusAgent {
@@ -32,6 +36,12 @@ interface CcBusState {
   spawned: CcBusSpawned[];
   skipped: number;
 }
+interface CcBusMessage {
+  from: string;
+  ts: string;
+  text: string;
+  class: string;
+}
 
 export class CcBusSection {
   readonly element: HTMLElement;
@@ -39,12 +49,19 @@ export class CcBusSection {
   private readBtn!: HTMLButtonElement;
   private statusEl!: HTMLElement;
   private listBox!: HTMLElement;
+  private spawnDir!: HTMLInputElement;
+  private spawnTask!: HTMLInputElement;
+  private spawnTool!: HTMLSelectElement;
+  private spawnBtn!: HTMLButtonElement;
+  private spawnOut!: HTMLElement;
+  /** spawn 二次确认：起一个真 agent 会消耗额度，不能一键就走。 */
+  private spawnArmed = false;
   /** 已加载过的状态；null = 还没读过（**不在构造时预取**）。 */
   private state: CcBusState | null = null;
 
   constructor() {
     this.element = this.build();
-    // **刻意不在这里 invoke**。见文件头「与计划措辞的一处偏离」。
+    // **刻意不在这里 invoke** 读状态。见文件头「与计划措辞的一处偏离」。
     void this.loadOrigins();
   }
 
@@ -55,7 +72,7 @@ export class CcBusSection {
     const hint = document.createElement("div");
     hint.className = "settings-hint";
     hint.textContent =
-      "只读查看远端 cc-bus 上登记过的 agent（~/.cc-bus/agents.tsv + spawned.tsv）。" +
+      "只读查看远端 cc-bus 上登记过的 agent（~/.cc-bus/agents.tsv + spawned.tsv），可给某个 agent 发消息、看它的收件箱。" +
       "「登记」不等于「在线」——名单只说明它曾经登记过，要确认某个还活着请点那一行的「检查」。" +
       "本面板不做后台轮询，只在你点「读取」时发一次请求。";
     root.appendChild(hint);
@@ -90,7 +107,61 @@ export class CcBusSection {
     this.listBox.className = "cc-bus-list";
     root.appendChild(this.listBox);
 
+    root.appendChild(this.buildSpawnForm());
     return root;
+  }
+
+  /** 批二：图形化 spawn。**调收编后的 cc-spawn，不在这里重写起会话。** */
+  private buildSpawnForm(): HTMLElement {
+    const box = document.createElement("div");
+    box.className = "cc-bus-spawn";
+
+    const t = document.createElement("div");
+    t.className = "settings-label";
+    t.textContent = "派生新 agent";
+    box.appendChild(t);
+
+    const h = document.createElement("div");
+    h.className = "settings-hint";
+    h.textContent =
+      "在远端某个目录开一个独立 agent（走远端的 cc-spawn：同目录已有活会话就复用，没有才新建）。" +
+      "注意这会起一个真实的 agent 进程并消耗账号额度，所以要点两次确认。";
+    box.appendChild(h);
+
+    this.spawnDir = document.createElement("input");
+    this.spawnDir.type = "text";
+    this.spawnDir.className = "settings-input cc-bus-spawn-dir";
+    this.spawnDir.placeholder = "工作目录（远端绝对路径）";
+    box.appendChild(this.spawnDir);
+
+    this.spawnTask = document.createElement("input");
+    this.spawnTask.type = "text";
+    this.spawnTask.className = "settings-input cc-bus-spawn-task";
+    this.spawnTask.placeholder = "初始任务（可留空）";
+    box.appendChild(this.spawnTask);
+
+    this.spawnTool = document.createElement("select");
+    this.spawnTool.className = "settings-input cc-bus-spawn-tool";
+    for (const v of ["claude", "codex"]) {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = v;
+      this.spawnTool.appendChild(o);
+    }
+    box.appendChild(this.spawnTool);
+
+    this.spawnBtn = document.createElement("button");
+    this.spawnBtn.type = "button";
+    this.spawnBtn.className = "settings-btn settings-btn-secondary cc-bus-spawn-go";
+    this.spawnBtn.textContent = "派生";
+    this.spawnBtn.addEventListener("click", () => void this.doSpawn());
+    box.appendChild(this.spawnBtn);
+
+    this.spawnOut = document.createElement("div");
+    this.spawnOut.className = "settings-hint cc-bus-spawn-out";
+    box.appendChild(this.spawnOut);
+
+    return box;
   }
 
   /** 列远端。复用既有 `list_remote_mcp_origins`——它其实是通用的「列远端配置标签」，
@@ -110,6 +181,7 @@ export class CcBusSection {
       this.originSel.appendChild(opt);
       this.originSel.disabled = true;
       this.readBtn.disabled = true;
+      this.spawnBtn.disabled = true;
       this.statusEl.textContent = "未配置远端。cc-bus 跑在远端机器上，先在「远端」分节配一台。";
       return;
     }
@@ -197,6 +269,31 @@ export class CcBusSection {
     btn.addEventListener("click", () => void this.checkOne(a.id, stateEl, btn));
     row.appendChild(btn);
 
+    // 批二：收信 + 发消息。两者都是按需一次往返，不订阅、不轮询。
+    const detail = document.createElement("div");
+    detail.className = "cc-bus-detail";
+    row.appendChild(detail);
+
+    const inboxBtn = document.createElement("button");
+    inboxBtn.type = "button";
+    inboxBtn.className = "settings-btn settings-btn-secondary cc-bus-inbox";
+    inboxBtn.textContent = "收件箱";
+    inboxBtn.addEventListener("click", () => void this.loadInbox(a.id, detail, inboxBtn));
+    row.appendChild(inboxBtn);
+
+    const msg = document.createElement("input");
+    msg.type = "text";
+    msg.className = "settings-input cc-bus-msg";
+    msg.placeholder = "发给它一条消息…";
+    row.appendChild(msg);
+
+    const sendBtn = document.createElement("button");
+    sendBtn.type = "button";
+    sendBtn.className = "settings-btn settings-btn-secondary cc-bus-send";
+    sendBtn.textContent = "发送";
+    sendBtn.addEventListener("click", () => void this.sendTo(a.id, msg, detail, sendBtn));
+    row.appendChild(sendBtn);
+
     return row;
   }
 
@@ -220,6 +317,92 @@ export class CcBusSection {
       stateEl.textContent = `查不到（${String(e)}）`;
     } finally {
       btn.disabled = false;
+    }
+  }
+
+  private async loadInbox(id: string, box: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+    const origin = this.originSel.value;
+    if (!origin) return;
+    btn.disabled = true;
+    box.replaceChildren();
+    box.textContent = "读取中…";
+    try {
+      const msgs = await invoke<CcBusMessage[]>("read_cc_bus_inbox", { origin, id });
+      box.replaceChildren();
+      if (msgs.length === 0) {
+        box.textContent = "收件箱是空的。";
+        return;
+      }
+      // 只渲染尾部若干条：后端已限 200 行，这里再收一次，面板不该被一屏刷爆
+      for (const m of msgs.slice(-20)) {
+        const line = document.createElement("div");
+        line.className = "cc-bus-msg-line";
+        line.textContent = `[${m.ts || "?"}] ${m.from || "?"}${m.class ? `(${m.class})` : ""}: ${m.text}`;
+        box.appendChild(line);
+      }
+    } catch (e) {
+      box.textContent = `读收件箱失败：${String(e)}`;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  private async sendTo(
+    id: string,
+    input: HTMLInputElement,
+    box: HTMLElement,
+    btn: HTMLButtonElement,
+  ): Promise<void> {
+    const origin = this.originSel.value;
+    const text = input.value;
+    if (!origin || !text.trim()) return;
+    btn.disabled = true;
+    try {
+      await invoke<string>("cc_bus_send", { origin, id, text });
+      input.value = "";
+      box.textContent = "已发送（对方空闲会被敲门，在忙则靠它的 Stop 钩子兜底）。";
+    } catch (e) {
+      box.textContent = `发送失败：${String(e)}`;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  /** 两步确认：起一个真 agent 会消耗额度，一键就走太危险。 */
+  private async doSpawn(): Promise<void> {
+    const origin = this.originSel.value;
+    if (!origin) return;
+    const dir = this.spawnDir.value.trim();
+    if (!dir) {
+      this.spawnOut.textContent = "请先填工作目录。";
+      return;
+    }
+    if (!this.spawnArmed) {
+      this.spawnArmed = true;
+      this.spawnBtn.textContent = "确认派生";
+      this.spawnOut.textContent =
+        `将在 ${origin} 的 ${dir} 上派生一个 ${this.spawnTool.value}——` +
+        "这会起一个真实 agent 进程并**消耗额度**。再点一次「确认派生」执行，点别处不算。";
+      return;
+    }
+    this.spawnArmed = false;
+    this.spawnBtn.textContent = "派生";
+    this.spawnBtn.disabled = true;
+    this.spawnOut.textContent = "派生中…";
+    try {
+      const out = await invoke<string>("cc_bus_spawn", {
+        origin,
+        dir,
+        task: this.spawnTask.value,
+        tool: this.spawnTool.value,
+      });
+      this.spawnOut.textContent = out || "已派生。";
+      // 派生完顺手刷新名单——这是**用户动作触发**的一次读，不是后台轮询
+      await this.reload();
+    } catch (e) {
+      this.spawnOut.textContent = `派生失败：${String(e)}`;
+    } finally {
+      this.spawnBtn.disabled = false;
     }
   }
 }
