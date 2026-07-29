@@ -18,6 +18,7 @@ mod config;
 mod config_surface; // T02：配置面审计视图（遍历 tool_registry，只读、不轮询）
 mod data_paths;
 mod event_replay;
+mod fenced_block; // T04 第二步：围栏块配对判定（本机+远端 profile 共用最强那一档）
 mod history;
 mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生成待贴文本（绝不写入）
 mod launch;

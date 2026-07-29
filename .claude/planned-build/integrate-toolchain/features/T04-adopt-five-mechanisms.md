@@ -327,3 +327,92 @@ tmux 走强制 `-L` 的 shim + canary 双向自检，跑完默认 socket 三个�
   未命中只说不确定"是第二个。部署器按这两条办，别再让本机替远端作答。
 - **`(Client,*)` / `(ProjectDir,*)` 今天纯是标签**——第二步若它们仍不改变任何行为，
   要重新论证是否该合并进 `Remote`/`Either`（现在留着的理由只是上屏措辞）。
+
+---
+
+## 11. 第二步：**计划 ≠ 现实 —— 统一部署器不该建**（2026-07-29）
+
+计划 §2「不做」那一栏原写「五套机制的**装/升/卸**真正走注册表 = T04 第二步」。
+按铁律 4 先数清真实共同结构，**结论是那个抽象不该建**，记录在此而不是默默照做：
+
+| 范式 | 真实使用者 | 现状 |
+|---|---|---|
+| 指纹判过期 → 装/升/跳过 | daemon（`sftp.rs:274,390`）+ cc-acct-iso（`acct_iso_deploy.rs:131`）= **2** | **早就共享**：`sftp::deploy_decision` |
+| 备份 → 写 → 读回比对 → 回滚 | **5 处** | **早就共享**：`verified_write::verify_readback`（T01 建的） |
+| 围栏块插入/替换/剥离 | ccm 远端 profile + PowerShell 本机 profile = **2** | **两套独立实现** ← 本轮做这个 |
+| 整份 JSON 覆写 | 项目 MCP = **1** | 单例，不抽 |
+
+**三个范式里两个早就共享了，第四个只有一个使用者。** 再套一层 `install(tool_id, ctx)`
+分派器只会把五件形状不同的事装进一个盒子——正是本工作区已九次拒绝的形状。
+真正剩下的重复只有围栏块这一族。
+
+## 12. 而围栏块这一族藏着一个**会吃掉用户内容**的 bug
+
+两侧对「有 BEGIN 但其后找不到配对的 END」（上次安装中断 / 用户手改坏）处置**不一致**：
+
+- **远端**（`sftp::merge_profile_block`）：**Err 中止**。F10 审计 B1 专门加的，原话
+  「绝不用独立 `find` 误配前面的 END 而吞掉用户内容；宁可报错让用户手修，也不破坏文件」。
+- **本机**（`profile_installer::find_block_range`）：返回 `None` → 走**追加**分支。
+
+本机那条的后果我写了复现测试、**跑出真实输出**：
+
+```text
+原始：   # my stuff
+         # === cc-monitor BEGIN v1 ===      ← 损坏（无 END）
+         function cc { }                     ← 用户自己的代码
+
+装一次： # my stuff / …BEGIN… / function cc { } / (空行) / …BEGIN… / NEW / …END…
+         ← 追加了第二个块，用户代码还在
+
+装两次： # my stuff / …BEGIN… / NEW / …END…
+         ← **function cc { } 没了**
+```
+
+第二次安装时，**损坏的那个 BEGIN 与新块的 END 配上了对**，两者之间的东西被整段替换。
+写的是用户的 PowerShell `$PROFILE`，和远端 `.bashrc` 同性质——写坏了下次开终端就炸。
+**远端侧当初被要求防的正是这一幕，本机侧漏了。**
+
+（过程记录：我第一版复现测试断言的是"块会累积"，跑出来 `BEGIN 计数=1` 判错方向——
+真实后果比我猜的严重。**断言打在错的地方会让人以为没事**，改成断言用户内容才看清。）
+
+### 修法：抽出配对判定，取两者中最强的那一档
+
+新增 `fenced_block::find_pair(text, begin, end, what) -> Result<Option<(usize,usize)>, String>`，
+**2 个生产消费者**：
+- `profile_installer::find_block_range`（本机）— 连带 `replace_or_append_block` 与
+  `strip_block` 都改成 `Result`；**卸载路径也走同一判定**（原先围栏损坏时"当作没有块、
+  原样返回"，看着无害，实则让用户以为卸载干净了，而那个悬空 BEGIN 还在，
+  下次安装就吃掉它下面的内容）。
+- `sftp::merge_profile_block`（远端）— 判定本身没变（它一直是对的），
+  但改走同一函数后**两侧不可能再漂移**。
+
+这与 T01 对 `verified_write` 的做法同型：四处实现里本机侧只比长度，统一到内容级比对。
+**取最强那一档，不是取交集。**
+
+### 变异验证
+
+把共用判定退回「有 BEGIN 无 END 就当没有」→ **4 条红，横跨三个模块**：
+`fenced_block::begin_without_end_is_an_error_not_an_append` ·
+`fenced_block::end_before_begin_does_not_pair` ·
+`profile_installer::damaged_fence_aborts_instead_of_eating_user_content` ·
+`sftp::merge_profile_block_aborts_on_orphan_begin`
+——**跨模块同时红，正是"两侧真的共用"的证据**。
+
+（过程记录：第一次变异写成了编译错误，`grep FAILED` 得 0。**编译失败不等于测试有牙**，
+当场识别并重做成干净变异。这条加进纪律。）
+
+### 第二步**没做**的、如实登记
+
+- **T01 的 P6（远端写入路径缺失败注入测试）与「ccm CLI 写坏不回滚」仍未收。**
+  它们要给 `sftp.rs` 的三处 async 写入注入可失败的 SFTP 桩，那是一套 fixture 工程，
+  不是本轮"抽一条判定"能顺手带的。**不假称已收。**
+- `(Client,*)` / `(ProjectDir,*)` 仍纯是标签（Phase E 第二条问的那个）——本轮没有引入
+  依赖它们的行为，所以**问题原样保留**：若 T06/T07 结束时它们仍不改变任何行为，
+  该重新论证是否合并进 `Remote`/`Either`。
+
+### 本轮门禁
+
+cargo test **522**（+7）· cargo fmt 0 · clippy 0 error · tsc 0 · npm test **804** ·
+shellcheck 0 · exec-bit guard 过 · **七套真机套件全绿**（26/44/12/15/13/14/11）·
+`git diff --stat HEAD -- e2e/` **0 行**（行为等价的直接证据）。
+tmux 走强制 `-L` 的 shim + canary 双向自检，跑完默认 socket 三个会话逐字未变。
