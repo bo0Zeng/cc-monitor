@@ -6,7 +6,8 @@
 ## 1. 为什么先迁事件半边
 
 主计划 §0.0 的判断：事件半边的纪律比命令半边好，改动面最小、信噪比最高。
-**Phase B 实测确认了这一点，但也修正了两处**（见 §2）。
+**Phase B 实测确认了「纪律好」这一点，但把范围修正了四处**（见 §2）——
+其中两处是主计划写错了机制，两处是我对 TS 侧形态的估计过于乐观。
 
 ## 2. 实测盘点（2026-07-29 Phase B）
 
@@ -15,7 +16,7 @@
 | 项 | 实测 |
 |---|---|
 | 事件名常量 | **10 个** `pub const`：`jsonl-line` · `jsonl-batch` · `session-ended` · `task-update` · `session-activity` · `session-started` · `session-idle` · `remote-session-added` · `remote-health` · `snapshot-inflight` |
-| payload struct | **11 个**（比事件名多一个）：`JsonlLine` · `JsonlBatch` · `SessionEnded` · `SessionIdle` · `SessionStarted` · `RemoteSessionAdded` · **`FrontendReady`（`Deserialize`，方向相反）** · `ActiveSession` · `RemoteHealth` · `SessionActivity` · `TasksUpdate` |
+| payload struct | 文件里 **11 个**，但**属于事件半边的只有 10 个**：`JsonlLine` · `JsonlBatch` · `SessionEnded` · `SessionIdle` · `SessionStarted` · `RemoteSessionAdded` · **`FrontendReady`（`Deserialize`，方向相反）** · `RemoteHealth` · `SessionActivity` · `TasksUpdate`。第 11 个 `ActiveSession` **是命令返回类型，归 C04**（见下方 ①） |
 | `rename_all = "camelCase"` | **只有 3 个**有：`JsonlBatch` · `RemoteHealth` · `TasksUpdate`。**另外 8 个没有** |
 
 ### TS 侧的对应物
@@ -23,9 +24,35 @@
 | Rust payload | TS 侧在哪 | 备注 |
 |---|---|---|
 | `JsonlLine` / `SessionEnded` / `SessionIdle` / `SessionStarted` / `TasksUpdate` / `SessionActivity` | `src/events.ts`，**6 个手写 `export interface`** | 主要替换目标 |
-| `JsonlBatch` / `RemoteSessionAdded` | `src/events.ts` + `src/main.ts` | 需查是内联还是复用 |
+| `JsonlBatch` / `RemoteSessionAdded` | `src/events.ts`，**内联字面量类型**（`:396` / `:465`） | **最危险的一种形态**，见下方 ② |
 | `RemoteHealth` | `src/remote-health.ts` | 不在 `events.ts`，**主计划共享面 1 只写了 `events.ts`，漏了这个文件** |
-| `ActiveSession` / `FrontendReady` / `SnapshotInflight` | **TS 侧无对应类型** | 生成它们仍有价值（边界的一部分），但没有手写版可替换 |
+| `FrontendReady` | **TS 侧从来没有过类型**（`main.ts:769` 直接 `emit("frontend-ready", { prioritySid })`） | 生成它是**净新增能力**，不是替换 |
+| `ActiveSession` | 不属事件半边 —— 命令返回类型 | **移出 C02，归 C04** |
+| `snapshot-inflight` | 该事件**没有专属 payload struct** | 事件名守卫仍覆盖它；但别断言「每个事件名都有一个类型」 |
+
+### 步骤 1 实测（read-only，趁 C01 审计在跑时做）——**又改了两处范围**
+
+**① `ActiveSessionPayload` 根本不是事件 payload，是命令返回类型 ⇒ 移出 C02、归 C04。**
+`bridge.rs:167` 自己的 doc comment 就写着「`list_active_sessions` IPC 返回项」，
+而 `lib.rs:1507` 的签名是 `-> Vec<bridge::ActiveSessionPayload>`。
+它只是**住在 `bridge.rs` 里**，不属于事件半边。
+⇒ **C02 覆盖 10 个 payload，不是 11 个。**
+
+**② TS 侧的手写形态有四种，不是一种。** 这决定了「替换」的工作量与风险：
+
+| 形态 | 哪些 | 风险 |
+|---|---|---|
+| **具名 `export interface`**（6 个） | `JsonlLine` · `SessionEnded` · `SessionIdle` · `SessionStarted` · `TasksUpdate` · `SessionActivity`（全在 `src/events.ts`） | 最好办，直接换 import |
+| **具名类型，但在另一个文件** | `RemoteHealth`（`src/remote-health.ts`） | 主计划原先漏了这个文件 |
+| **内联字面量类型**（2 个） | `sub<{ chunkIndex; chunkTotal; payloads }>("jsonl-batch", …)`（`events.ts:396`）· `sub<{ … cwd; name }>("remote-session-added", …)`（`events.ts:465`） | **最危险的一种**——它没有名字，漂移时没有任何东西会红，人也很难在 review 里看见 |
+| **完全无类型** | `frontend-ready`：`main.ts:769` `void emit("frontend-ready", { prioritySid: lastActive })`，TS 侧**从来没有过这个类型** | 生成它是**净新增能力**，不是替换 |
+
+**`FrontendReadyPayload` 还是唯一用「字段级 `rename`」的**（`#[serde(rename = "prioritySid")]`
+在 `priority_sid` 上，而不是容器级 `rename_all`）。C01 的变异 B 已经实证 `ts-rs` 认这个形态。
+
+**③ `snapshot-inflight` 这个事件没有专属 payload struct**（11 个 struct 里没有它）。
+事件名守卫仍覆盖全部 10 个名字；但「每个事件名都有一个 payload 类型」这条**不成立**，
+别把它写成断言。
 
 ### 两处需要修正主计划的地方
 
@@ -51,11 +78,12 @@
 
 ## 4. DoD
 
-- [ ] 11 个 payload struct 全部派生 `TS` + 导到 `src/generated/`
+- [ ] **10 个** payload struct 派生 `TS` + 导到 `src/generated/`（`ActiveSessionPayload` 移出，归 C04）
       （含 `FrontendReadyPayload`——它是 `Deserialize`，TS 侧构造它时同样需要类型）
 - [ ] `src/events.ts` 的 6 个手写 `interface` 删除，改成 import 生成物
 - [ ] `src/remote-health.ts` 的 `RemoteHealth` 手写类型同样替换
-- [ ] `JsonlBatch` / `RemoteSessionAdded` 在 `events.ts`/`main.ts` 的表达查清并替换
+- [ ] **两处内联字面量类型**（`events.ts:396` jsonl-batch · `:465` remote-session-added）换成生成物
+- [ ] **`frontend-ready` 的 TS 侧首次拿到类型**（今天是无类型的内联对象 `{ prioritySid }`）
 - [ ] **生成物忠实复现混合的线上格式**：3 个 camelCase、8 个 snake_case，**一个都不改**
 - [ ] **10 个事件名由结构性守卫钉死**（`bridge.rs` 的 const ↔ TS 字面量），计数自检 `== 10`
 - [ ] **变异验收**：① 删掉某个 payload 的一个字段 → `tsc` 报错；
@@ -70,10 +98,10 @@
 
 ## 5. 实现步骤
 
-1. **先查清 `JsonlBatch`/`RemoteSessionAdded` 在 `events.ts`/`main.ts` 里到底是手写 interface
-   还是内联字面量类型**——决定它们算不算"替换目标"。
-2. 11 个 struct 加派生（`FrontendReady` 用 `#[ts(export)]` 但注意它只有 `Deserialize`，
-   确认 `ts-rs` 对纯 `Deserialize` 的结构是否照样生成）。
+1. ~~查清 `JsonlBatch`/`RemoteSessionAdded` 的形态~~ **已完成**（见 §2 ②：两者都是**内联字面量类型**，
+   位于 `events.ts:396` / `:465`）。
+2. **10 个** struct 加派生（`FrontendReady` 只有 `Deserialize` —— **先确认 `ts-rs` 对纯 `Deserialize`
+   的结构照样生成**；若不生成，那是一个要单独处置的发现，不是绕过理由）。
 3. **逐个核对生成物字段名与线上格式一致**（3 camelCase / 8 snake_case）。
    任何一个对不上就停下——那说明 `ts-rs` 对某个 serde 形态的处理与我预期不符。
 4. 替换 `events.ts` 的 6 个 + `remote-health.ts` 的 1 个。
