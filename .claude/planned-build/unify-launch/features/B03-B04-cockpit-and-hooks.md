@@ -397,3 +397,36 @@ TS 的 IR 反而稳定了。**IR 稳定是好事，不该记成"验收失败"。
 **测试隔离**：`fetchAccounts` 带 TTL 缓存会跨测试泄漏（实测第一条的账号列表被后面
 "取不到账号"那条读到），故 UI 测试 mock 掉 `../accounts` 模块——它自己有测试，
 这里不该顺带重测它的缓存。
+
+## 19. B04 登记项收掉一条：尊重 `CLAUDE_CONFIG_DIR`
+
+**登记时的说法**：诊断只看 `~/.claude/settings.json` 一处，而本机在用 `CLAUDE_CONFIG_DIR`
+（恰好软链所以对得上），换个没软链的账号库会诊断错文件、而 `source` 还会报出错误路径。
+
+**实测核实**（只读）：
+```
+CLAUDE_CONFIG_DIR=/home/zbl/.claude-accts/z
+账号 b: settings.json 是软链 → /home/zbl/.claude/settings.json
+账号 z: settings.json 是软链 → /home/zbl/.claude/settings.json
+~/.claude/settings.local.json: 不存在
+```
+→ 本机确实**恰好**对得上（cc-acct-iso 把 settings 软链回共享库是它的设计）。
+**但那是巧合而非保证**：某个账号库没做软链、或用户手工维护 `CLAUDE_CONFIG_DIR`（R13 提过
+这种边缘配置）时，旧写法会读错文件，**而 `source` 字段还会言之凿凿地报出那个没被读的路径
+——诊断错了还给出一个看着很确定的来源，比说不知道更坏**。
+cc-monitor 自己就出多账号隔离这套东西，不该假设只有一个 config dir。
+
+**改法**：抽出纯函数 `settings_path(cfg_dir_env, home, is_dir)`——
+`CLAUDE_CONFIG_DIR` 存在**且确实是个目录** → 用它；否则回落 `~/.claude`。
+「确实是个目录」这道判定不能省：环境变量里留一个已删目录或一个文件路径都真实会发生，
+那时回落比读一个不存在的路径更有用。
+
+**为什么抽成纯函数**：这段逻辑原本写在 async 命令里，`cargo test` 19 项**没有一条走得到**。
+本会话反复吃过这个亏（B03 阻塞-2：抽了 `build_online_cmd` 却没接上，真校验零覆盖）。
+抽出来 + 注入 `is_dir` 之后它有了门禁，且已确认**调用点真的走了它**（`:294`）。
+
+**变异验收**：忽略 `CLAUDE_CONFIG_DIR`（退回旧写法）→ 红 · 不校验它真是目录 → 红。
+
+**仍未收的三条**（B04 登记）：`settings.local.json` 与项目级 `.claude/settings.json`
+（本机前者不存在，后者要先定「诊断哪个项目」的语义，留 T02/T07）· `snippet()` 不接收诊断
+结果故闭环测不到"片段指向不存在的路径" · `program_of` 的 `trim_matches` 剥两端所有引号。

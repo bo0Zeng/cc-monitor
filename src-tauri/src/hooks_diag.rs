@@ -237,6 +237,24 @@ pub fn snippet(home: bool) -> String {
 // **本模块没有任何写路径**——下方 `this_module_never_writes` 那条测试把它变成门禁，
 // 而不是只靠我记得。
 
+/// 该读哪个 `settings.json`。纯函数（`is_dir` 注入），因为**这段逻辑必须有门禁**——
+/// 它决定诊断读的是不是用户真正在用的那个文件，读错了还会在 `source` 里报出错误路径。
+///
+/// 规则：`CLAUDE_CONFIG_DIR` 存在**且确实是个目录** → 用它；否则回落 `~/.claude`。
+/// 「确实是个目录」这道判定不能省：环境变量里留一个已删目录或一个文件路径都是真实会发生的，
+/// 那种情况下回落到 `~/.claude` 比读一个不存在的路径更有用。
+pub fn settings_path(
+    cfg_dir_env: Option<&std::path::Path>,
+    home: &std::path::Path,
+    is_dir: &dyn Fn(&std::path::Path) -> bool,
+) -> std::path::PathBuf {
+    let base = match cfg_dir_env {
+        Some(d) if is_dir(d) => d.to_path_buf(),
+        _ => home.join(".claude"),
+    };
+    base.join("settings.json")
+}
+
 /// 一次诊断的完整回报（含用于展示的两种待贴片段）。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct HooksReport {
@@ -265,7 +283,21 @@ pub async fn diagnose_local_cc_bus_hooks() -> Result<HooksReport, String> {
         let Some(home) = dirs::home_dir() else {
             return report(diagnose(None, &|_| false), "（取不到 HOME）".to_string());
         };
-        let p = home.join(".claude").join("settings.json");
+        // **尊重 `CLAUDE_CONFIG_DIR`**（B04 登记项之一）：Claude Code 真正读的是那个目录下的
+        // `settings.json`，不是恒定的 `~/.claude/`。本机实测 `CLAUDE_CONFIG_DIR` 指向
+        // `~/.claude-accts/z`，而 cc-acct-iso 把它的 `settings.json` **软链**回
+        // `~/.claude/settings.json`，所以旧写法**恰好**对得上。
+        // 但那是巧合而非保证：某个账号库没做软链（或用户手工维护 CLAUDE_CONFIG_DIR，见 R13）
+        // 时，旧写法会**读错文件**，而 `source` 字段还会言之凿凿地报出那个没被读的路径
+        // ——诊断错了还给出一个看着很确定的来源，比说不知道更坏。
+        // cc-monitor 自己就出多账号隔离这套东西，这里不该假设只有一个 config dir。
+        let p = settings_path(
+            std::env::var_os("CLAUDE_CONFIG_DIR")
+                .map(std::path::PathBuf::from)
+                .as_deref(),
+            &home,
+            &|d: &std::path::Path| d.is_dir(),
+        );
         let raw = std::fs::read_to_string(&p).ok();
         // 路径存在性判定用真实文件系统；`$HOME` 前缀先展开再查，否则显式路径一律判成缺失。
         let home2 = home.clone();
@@ -365,6 +397,49 @@ mod tests {
     }
     fn never(_: &str) -> bool {
         false
+    }
+
+    // ===== 该读哪个 settings.json（B04 登记项：尊重 CLAUDE_CONFIG_DIR）=====
+    #[test]
+    fn settings_path_honors_claude_config_dir() {
+        let home = std::path::Path::new("/home/u");
+        let yes = |_: &std::path::Path| true;
+        let no = |_: &std::path::Path| false;
+
+        // 未设 → 回落 ~/.claude
+        assert_eq!(
+            settings_path(None, home, &yes),
+            std::path::PathBuf::from("/home/u/.claude/settings.json")
+        );
+        // 设了且是目录 → 用它。**这是本机实况**：CLAUDE_CONFIG_DIR=~/.claude-accts/z
+        let acct = std::path::Path::new("/home/u/.claude-accts/z");
+        assert_eq!(
+            settings_path(Some(acct), home, &yes),
+            std::path::PathBuf::from("/home/u/.claude-accts/z/settings.json")
+        );
+        // 设了但不是目录（已删 / 指向文件）→ 回落，而不是读一个不存在的路径
+        assert_eq!(
+            settings_path(Some(acct), home, &no),
+            std::path::PathBuf::from("/home/u/.claude/settings.json")
+        );
+    }
+
+    /// 旧写法恒读 `~/.claude/settings.json`。本机之所以**恰好**没出错，是因为
+    /// cc-acct-iso 把账号库的 settings.json 软链回了那里——**巧合不是保证**。
+    /// 这条断言的是"我们确实按 CLAUDE_CONFIG_DIR 走了"，而不是"结果碰巧一样"。
+    #[test]
+    fn config_dir_is_not_ignored_even_when_symlinked_to_the_same_place() {
+        let home = std::path::Path::new("/home/u");
+        let acct = std::path::Path::new("/home/u/.claude-accts/z");
+        let got = settings_path(Some(acct), home, &|_| true);
+        assert!(
+            got.starts_with(acct),
+            "必须读 CLAUDE_CONFIG_DIR 下那份（哪怕它软链到别处），实得 {got:?}"
+        );
+        assert_ne!(
+            got,
+            std::path::PathBuf::from("/home/u/.claude/settings.json")
+        );
     }
 
     // ===== 核心：用户盘上的**真实**形态不得被误判 =====
