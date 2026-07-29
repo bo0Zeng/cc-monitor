@@ -12,6 +12,7 @@ mod adapter;
 mod auto_launch;
 mod bind;
 mod bridge;
+mod cc_bus; // B03：cc-bus 状态的纯解析层（脏数据防御，见 features/B03-dirty-data-samples.md）
 mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（keystone 第一块）
 mod config;
 mod data_paths;
@@ -883,6 +884,8 @@ pub fn run() {
             config::load_config,
             config::save_config,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
+            // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
+            cc_bus::read_cc_bus_state,
             mcp::read_mcp_servers,
             mcp::read_remote_mcp_servers,
             mcp::list_remote_mcp_origins,
