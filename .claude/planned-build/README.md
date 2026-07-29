@@ -21,4 +21,9 @@
 | **tmux-daemon-reconcile/** | tmux 存活对账（带外杀 tmux → 变灰，#60-A / F74c） | 已交付（reconcile_step + 收帧收割器，见 INVARIANTS §24/§24bis）。**注意：该目录无 `STATUS.md`/`MASTERPLAN.md`，`PLAN.md` 从不声明完成——「已交付」只存在于本索引里，不可回溯** |
 | **integrate-toolchain/** | 工具链整合：受管工具注册表 + 配置面审计 + 待贴文本统一 + 设置面板 IA（**P 段**） | **已收官**：T01/T02/T03/T04/T07 交付并审计闭环；T05/T09 移出本区；T06（code-picture）**用户已搁置**；T08 未开工。Phase G 终账 = `PHASE-G-DRAFT.md` + 仓根 `项目审阅报告-PhaseG-2026-07-29.md` |
 
+| **account-zero/** | 把「基座」变成受管的「账号 0」（吸收破坏隔离的那个状态，而不是把它定义成违规） | **Phase A 已落盘、用户 2026-07-29 已批准**；等 Z01 的功能计划。Z01 纯增量零风险；Z02 要碰 `tabs.ts`（红线待松） |
+| **rust-ts-boundary/** | Rust↔TS 边界从人工纪律改成生成物（`tauri-specta`）+ 门禁 | **Phase A 已落盘，等审批**。路线图 ①，是 ③④ 的地基；也是「要不要用 Rust GUI 重写前端」那个问题的便宜答案 |
+| **gate-integrity/** | 门禁不许在零断言下报绿（真机套件断言地板 + vendored bash 进 shellcheck + 6 套 e2e 进 CI） | **Phase A 已落盘，等审批**。路线图 ③，规模小但保护其余全部工作。**G-B 是 `account-zero` Z01 的前置** |
+| **local-as-remote/** | 本地 = 不走 ssh 的远端（含 Linux 平台）。落地 `doc/INVARIANTS.md` **§40** | **Phase A 已落盘，等审批**。路线图 ④。L5 平价对账可先做；L0 是唯一可能推翻方向的一步（WebKitGTK） |
+
 > 注：状态摘要仅导航用；权威状态恒以各区 `STATUS.md` 为准。新开工作区时在此追加一行。
