@@ -185,6 +185,41 @@ pub async fn read_cc_bus_state(origin: String) -> Result<CcBusState, String> {
     .map_err(|e| format!("spawn_blocking: {e}"))
 }
 
+/// B03 批一：查**单个** agent 是否真在线（`tmux has-session`）。
+///
+/// **这是刻意的第二次往返**：`agents.tsv` 只证明"登记过"，实测最早的条目是 10 天前的
+/// （进程早没了）。若在读状态时就顺带全量查在线，一屏 37 个 agent 就是 37 次 tmux 调用
+/// ——所以只在用户点某一行的「检查」时查那一行。**不默认全量查、不轮询**（红线）。
+///
+/// **id 会被拼进命令串**，这正是 `is_valid_bus_id` 存在的理由：盘上真有 `--help` 这种 id，
+/// 不挡住的话 `tmux has-session -t --help` 会被当成选项解析。校验不过直接拒绝，不构造命令。
+#[tauri::command]
+pub async fn check_cc_bus_agent_online(origin: String, id: String) -> Result<bool, String> {
+    if !is_valid_bus_id(&id) {
+        return Err(format!("非法 agent id（拒绝拼入命令）: {id:?}"));
+    }
+    let cfg = crate::load_remote_config_by_label(&origin)
+        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+    // id 已过 `[A-Za-z0-9_-]` 白名单且不以 `-` 开头，故此处无引号逃逸面；仍加单引号并用
+    // `=<名>:` 精确形态（INVARIANTS §31a：裸目标是"精确→前缀→glob"三级解析，会命中兄弟会话）。
+    let cmd = format!("tmux has-session -t '={id}:' 2>/dev/null && echo ONLINE || echo OFFLINE");
+    let read = async {
+        use tokio::io::AsyncReadExt;
+        let stream = crate::ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
+        let mut buf = Vec::new();
+        stream
+            .take(4096)
+            .read_to_end(&mut buf)
+            .await
+            .map_err(|e| format!("查在线失败: {e}"))?;
+        Ok::<Vec<u8>, String>(buf)
+    };
+    let raw = tokio::time::timeout(std::time::Duration::from_secs(15), read)
+        .await
+        .map_err(|_| format!("远端 '{origin}' 查在线超时（15s）"))??;
+    Ok(String::from_utf8_lossy(&raw).contains("ONLINE"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -346,5 +381,24 @@ mod tests {
         // 尊重 CC_BUS_HOME，且两文件缺失时仍 rc=0
         assert!(CC_BUS_CAT_CMD.contains("CC_BUS_HOME"));
         assert!(CC_BUS_CAT_CMD.trim_end().ends_with("true"));
+    }
+
+    // ===== 在线检查：id 必须先过校验才允许拼进命令（盘上真有 `--help` 这种 id）=====
+    #[test]
+    fn online_check_rejects_ids_before_building_command() {
+        // 这条守的是「命令构造前先校验」这个顺序本身：凡 is_valid_bus_id 拒的，
+        // 都不该有机会进入 `tmux has-session -t '=<id>:'`。
+        for bad in ["--help", "-t", "a b", "a;rm -rf /", "a$(id)", "", "a'b"] {
+            assert!(!is_valid_bus_id(bad), "{bad:?} 必须在构造命令前被拒");
+        }
+        // 反向：合法 id 拼出来的目标是精确形态
+        let id = "proj_cc";
+        assert!(is_valid_bus_id(id));
+        let cmd =
+            format!("tmux has-session -t '={id}:' 2>/dev/null && echo ONLINE || echo OFFLINE");
+        assert!(
+            cmd.contains("'=proj_cc:'"),
+            "必须用 =<名>: 精确形态（INVARIANTS §31a）"
+        );
     }
 }

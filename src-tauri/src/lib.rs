@@ -886,6 +886,7 @@ pub fn run() {
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
             cc_bus::read_cc_bus_state,
+            cc_bus::check_cc_bus_agent_online,
             mcp::read_mcp_servers,
             mcp::read_remote_mcp_servers,
             mcp::list_remote_mcp_origins,

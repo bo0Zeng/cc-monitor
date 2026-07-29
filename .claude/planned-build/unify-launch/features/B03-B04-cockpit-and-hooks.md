@@ -94,3 +94,47 @@ Windows、只能经 SSH 看。两条备选：复用 daemon 既有 inotify watche
 - [ ] 通过代码审计（无阻塞项）
 - [ ] 通过工程审计
 - [ ] 主计划已据此更新（含变更记录）
+
+---
+
+## 9. B03 批一落地记录（2026-07-28）
+
+**后端**（`src-tauri/src/cc_bus.rs`，commit `7556109`）：纯解析层 + 只读 IPC
+`read_cc_bus_state(origin)`，形状逐条照抄 `mcp.rs::fetch_remote_claude_json`
+（定值命令常量 → 零注入面、30s 超时、32MB 上限、宽容解析、`spawn_blocking`）。
+一条 `cat` 读回两文件用 `CC_BUS_SPLIT_MARKER` 切开，省一次往返。
+另加 `check_cc_bus_agent_online(origin, id)`——**刻意的第二次往返**，只查用户点的那一行。
+id 进命令串前必须过 `is_valid_bus_id`（盘上真有 `--help` 这种 id），目标用 `=<名>:` 精确形态。
+
+**前端**（`src/settings/cc-bus-section.ts` + `.vitest.ts`）：挂进 `panel.ts` 的集成组。
+
+**与 §2 批一措辞的一处偏离（更严格，非放宽）**：原写「打开分节时才 invoke 一次」。
+`CollapsibleGroup` 没有展开回调，而为一个消费者去改这个共享 UI 原语正是 R12/R15 拒绝的
+"为假想需求建抽象"。改成**用户点「读取」才发请求**——一次 30s 超时的远端往返，显式触发
+比"展开即偷偷发"更诚实，且天然满足"启动时不预取"。
+
+**复用而非新增**：列远端直接用既有 `list_remote_mcp_origins`（它其实是通用的"列远端配置
+标签"，名字带 mcp 只是历史）。为同一件事再加一条 IPC 是无谓重复。
+
+**变异验收**（11 项 DOM 测试，每条先 diff 打出实际改动行再判色）：默认就说"在线" → 红 ·
+不显示 skipped → 红 · 查失败当成不在线 → 红 · 偷偷加 setInterval → 红 ·
+预取 → **第一次变异存活**，因为插在构造函数里时 `originSel.value` 还是空、`reload()`
+撞上 `if (!origin) return` 空转（失效模式②：变异语义无效）；换到可达点（`loadOrigins`
+末尾）后即红。**这条记下来：变异存活先判它可不可达，别急着改测试。**
+
+## 10. B02 审计留下、判为「登记不改」的三条
+
+| # | 事项 | 为什么现在不改 |
+|---|---|---|
+| L1 | `--tmux-size` 越界值（`0x0` / `99999x99999` / `4294967296x50`）能过校验，真跑时 `tmux new-session` 失败但 stderr 被 `2>/dev/null`（为幂等建闸吞 duplicate session）一起吞掉 → **诊断黑洞** | 注入面已关严（`x50`/`220x`/`1x2x3`/`$(id)x50` 全被拒）；cc-spawn 恒传 `220x50`。只影响 ccm 作为公共 CLI 的体验。修法是加上下界或只透出非 duplicate 的 stderr |
+| L2 | spawn 出的 agent 现在会落 manifest 的 `isDefault` 账号（旧实现是 `CFGDIR=<unset>`） | 方向上是改进（cc-acct-iso 之后基座常没凭据），但**是可观测的行为变更**，且会消耗默认号额度。此处登记，B03 批二做图形化 spawn 时给用户显式选择 |
+| L3 | 「上总线」时序从"紧跟 send-keys"变成"排在信任框轮询之后"，最坏晚 3s | 消息落 inbox 不丢，只影响即时性；且在阻塞-1 修好后这条路径本就少见 |
+
+## 11. B03 批二待办（依赖已满足，B02 已完成）
+
+- 派活 `cc-send <id> "<text>"`、读 inbox `cat ~/.cc-bus/inbox/<id>.jsonl`（id 过同一套校验）
+- 图形化 spawn → 调收编后的 `cc-spawn`（**不在 cc-monitor 侧重写起会话**）
+- **补回 `inbox_id_from_filename`**：批一因它只有测试在用（dead_code 告警）按 R12/R15 删了，
+  批二真读 inbox 时连同测试一起加回
+- **这里才是成功标准② 的第二次架构验收**：TS 侧第一次真需要发新维度时才加
+  `LaunchDimension` + `requiredCaps`；若发现仍要改 9 个签名/6 个调用点 → R03 回炉

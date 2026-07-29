@@ -25,6 +25,7 @@ import { getClaudeDirOverride, setClaudeDirOverride } from "../paths";
 import { CcIntegrationSection } from "./cc_integration";
 import { AccountsSection } from "./accounts-section";
 import { McpSection } from "./mcp-section"; // F87：MCP 管理（集成组）
+import { CcBusSection } from "./cc-bus-section"; // B03：cc-bus 驾驶舱（只读，按需读，无轮询）
 import { DiagnosticsSection } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
 import { DataSection } from "./data-section";
@@ -440,6 +441,8 @@ export class SettingsPanel {
     integration.appendChild(new CcIntegrationSection().element);
     // F87（#50+#51）：MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）。
     integration.appendChild(this.titledSection("MCP", new McpSection().element));
+    // B03 批一：cc-bus 驾驶舱——只读看远端登记过的 agent；登记≠在线；点「读取」才发请求。
+    integration.appendChild(this.titledSection("cc-bus", new CcBusSection().element));
     integration.appendChild(
       this.titledSection("诊断", new DiagnosticsSection({ headless: true }).element),
     );
