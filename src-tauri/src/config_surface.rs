@@ -51,7 +51,20 @@ pub enum PathResolution {
     ///
     /// 这一个变体就是 T04 要修的那个假警报的解药：`cc-bus` 三条 touches 原先被当纯本机路径，
     /// 于是 Windows 客户端上审计页显示"不存在"，而驾驶舱正从远端读得好好的。
-    EitherHost { local: PathBuf },
+    ///
+    /// ## 它**包住**一个本机解析结果，而不是自己存一个 `PathBuf`（T04 审计阻塞 1）
+    ///
+    /// 第一版是 `EitherHost { local: PathBuf }`，glob 形态被塞成
+    /// `dir.join("cc-*")` ——于是 `observe` 去 stat 一个**字面含 `*` 的文件名**，
+    /// 计数分支彻底走不到。实测：`~/.local/bin` 下真有 12 条 `cc-*`，
+    /// 而 `ls -d ~/.local/bin/'cc-*'` → `No such file or directory`。
+    /// 结果那一行从 T04 之前正确的「12 项匹配」退化成
+    /// 「未确定 —— 本机 …/cc-* 不存在」——`why` 里陈述了一个**假事实**。
+    /// 这正是本模块文档禁止的"对能用的安装报假警报"，只是从红叉降级成了带谎话的灰字。
+    ///
+    /// 包住内层之后 glob 计数**自动继承**，且"Either 绝不说 Absent"这个性质
+    /// 变成一句话就能证明：只把内层的 `Absent` 改写成 `Undetermined`，其余原样透传。
+    EitherHost(Box<PathResolution>),
 }
 
 /// 现状。**没有"疑似缺失"这一档**（见模块文档）。
@@ -111,7 +124,12 @@ pub fn resolve_touched_path(
     // **顺序要紧：先按 `destination` 全量校验，再用 `host` 做投影。**
     // 第一版是 host 优先短路，于是 `LocalHomeRelative` 那条"必须以 `~/` 开头"
     // 与"glob 只许在最后一段、只许一个 `*`"的校验，对所有 `Remote` / `Either` 的
-    // touches **完全不再执行**——而本仓 10 条 touches 里有 7 条是这两种 host。
+    // touches **完全不再执行**。
+    //
+    // **数字更正**（T04 审计重要 6）：我原先三处都写"10 条里 7 条"——是 **8** 条
+    // （`Remote` 5 + `Either` 3）。而且真正受影响的更少：那两条校验只在
+    // `resolve_local_home` 里，8 条中有 4 条（`RemoteHomeRelative`×2 + 占位符×2）
+    // 本来就不经过它 —— **实际被短路掉的是 4 条**。修复是对的，描述夸大了一倍。
     // host 是"在哪台机器上"，destination 是"装到哪"，两者独立；
     // 但**校验属于后者，不能被前者跳过**。
     //
@@ -129,23 +147,23 @@ pub fn resolve_touched_path(
 /// 覆盖掉是降级。
 fn project_onto_host(by_dest: PathResolution, host: HostScope, declared: &str) -> PathResolution {
     match (host, by_dest) {
-        // 远端：本机**不许**替它回答"路径在不在"（T03 阻塞 3 的根因）
+        // 远端：本机**不许**替它回答"路径在不在"（T03 阻塞 3 的根因）。
+        //
+        // **如实登记**（T04 审计重要 3）：`(Remote, LocalGlob)` 今天**走不到**
+        // ——唯一的 glob（`~/.local/bin/cc-*`）是 `Either`。留着这一支不是装样子：
+        // 它和上一行是同一条性质的两半，删掉半边会让"远端不许本机作答"这句话
+        // 在下一个 glob 型远端 touch 出现时**静默失守**。
+        // 同理 `(Client, *)` 与 `(ProjectDir, *)` 全落 `(_, other)`——这两个变体
+        // 今天**纯粹是标签**，不改变任何行为；它们的价值在 `host_label` 上屏那一侧。
         (HostScope::Remote, PathResolution::Local(_))
         | (HostScope::Remote, PathResolution::LocalGlob { .. }) => {
             PathResolution::Remote(declared.to_string())
         }
-        // 两端皆可：可以在本机查，但**查不到 ≠ 不存在**
-        (HostScope::Either, PathResolution::Local(p)) => PathResolution::EitherHost { local: p },
-        (
-            HostScope::Either,
-            PathResolution::LocalGlob {
-                dir,
-                prefix,
-                suffix,
-            },
-        ) => PathResolution::EitherHost {
-            local: dir.join(format!("{prefix}*{suffix}")),
-        },
+        // 两端皆可：可以在本机查（**含 glob 计数**，因为内层原样保留），但查不到 ≠ 不存在
+        (HostScope::Either, inner @ PathResolution::Local(_))
+        | (HostScope::Either, inner @ PathResolution::LocalGlob { .. }) => {
+            PathResolution::EitherHost(Box::new(inner))
+        }
         (_, other) => other,
     }
 }
@@ -243,6 +261,22 @@ fn resolve_local_home(
     Ok(PathResolution::Local(base.join(rel)))
 }
 
+/// 展示用：这条解析指向的东西（含 glob pattern）。
+fn describe_target(r: &PathResolution) -> String {
+    match r {
+        PathResolution::Local(p) => p.to_string_lossy().into_owned(),
+        PathResolution::LocalGlob {
+            dir,
+            prefix,
+            suffix,
+        } => format!("{}/{prefix}*{suffix}", dir.display()),
+        PathResolution::EitherHost(inner) => describe_target(inner),
+        PathResolution::Remote(p) | PathResolution::NeedsProjectDir(p) => p.clone(),
+        PathResolution::NeedsUserConfig { what } => (*what).to_string(),
+        PathResolution::WindowsProfile => "$PROFILE".to_string(),
+    }
+}
+
 /// 观测一条已解析的路径。
 pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
     match res {
@@ -288,18 +322,29 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
             }
         },
         // **本机没找到 ≠ 不存在**：这是 T04 的核心语义。绝不返回 `Absent`。
-        PathResolution::EitherHost { local } => match (fs.meta)(local) {
-            Some((true, _)) => SurfaceState::Present {
-                detail: format!("本机存在（目录）：{}", local.display()),
-            },
-            Some((false, n)) => SurfaceState::Present {
-                detail: format!("本机存在（文件，{n} 字节）"),
-            },
-            None => SurfaceState::Undetermined {
+        //
+        // 实现就一句话：**递归观测内层，只把 `Absent` 改写成 `Undetermined`**。
+        // 这样 glob 计数、目录列举、"列不出来"那档全部自动继承，
+        // 而"Either 绝不说 Absent"这个性质由这个 match 直接可证（第一版自己存 `PathBuf`，
+        // glob 被拍成字面 `cc-*` 去 stat，计数分支永远走不到——审计阻塞 1）。
+        PathResolution::EitherHost(inner) => match observe(inner, fs) {
+            SurfaceState::Absent => SurfaceState::Undetermined {
                 why: format!(
-                    "本机 {} 不存在——但这套东西装在 Claude Code 跑的那台上，\
-                     很可能是某个远端。远端状态请到 cc-bus 页按连接查（本页不连 SSH）。",
-                    local.display()
+                    "本机没找到（{}）——但这套东西装在 Claude Code 跑的那台上，\
+                     很可能是某个远端。远端状态请到对应页面按连接查（本页不连 SSH）。",
+                    describe_target(inner)
+                ),
+            },
+            SurfaceState::Present { detail } => SurfaceState::Present {
+                detail: format!("本机存在（{detail}）"),
+            },
+            // 内层本来就"不确定"（比如目录列不出来）时，**追加**而不是替换那条理由——
+            // 两件事都要说：本机为什么查不了 + 它也可能根本不在本机。
+            // （第二个探针一加就红在这里：原先 `other => other` 把 Either 的提示整个吞了。）
+            SurfaceState::Undetermined { why } => SurfaceState::Undetermined {
+                why: format!(
+                    "{why}；而且这套东西装在 Claude Code 跑的那台上，很可能是某个远端\
+                     ——本页不连 SSH。"
                 ),
             },
         },
@@ -345,11 +390,18 @@ pub fn source_label(s: &ToolSource) -> String {
 /// 「在哪台机器上」。**必须上屏**——否则用户看 `$PROFILE` 与 `~/.local/bin/ccm`
 /// 分不出说的是哪台机器，而这一页的全部价值是可信告知。
 pub fn host_label(h: HostScope) -> &'static str {
+    // **短标签，挂在路径行上当徽章**（T04 审计重要 8）。原先是独立一行长句，
+    // 而审计核实 10 行里 9 行是**冗余**的——「现状」那一列早就写着
+    // 「远端路径（…）——本页不连 SSH」/「装在 Claude Code 跑的那台上」/「相对项目目录」。
+    // 真正新增信息的只有 Windows 上的 `$PROFILE` 那行（它的 why 只说"路径由 PowerShell 决定"）。
+    // 所以：信息保留，但收成一个词，省掉 10 行灰字。
+    // 也顺便更正我 commit 里那句"用户看 $PROFILE 与 ~/.local/bin/ccm 分不出哪台"
+    // ——只有一半成立，ccm 那行的 why 早就写着"远端"。
     match h {
-        HostScope::Client => "本机（cc-monitor 所在的这台）",
-        HostScope::Remote => "远端（按连接配置）",
-        HostScope::Either => "Claude Code 跑的那台（本机或远端）",
-        HostScope::ProjectDir => "项目目录所在的那台",
+        HostScope::Client => "本机",
+        HostScope::Remote => "远端",
+        HostScope::Either => "本机或远端",
+        HostScope::ProjectDir => "项目目录",
     }
 }
 
@@ -402,7 +454,7 @@ fn row(
                     prefix,
                     suffix,
                 } => Some(format!("{}/{prefix}*{suffix}", dir.display())),
-                PathResolution::EitherHost { local } => Some(local.to_string_lossy().into_owned()),
+                PathResolution::EitherHost(_) => Some(describe_target(r)),
                 _ => None,
             };
             (shown, observe(r, fs))
@@ -923,7 +975,22 @@ mod tests {
     /// 正从远端把 inbox 读得好好的——T02 专门要防的假警报，出现在那一页上格外讽刺。
     #[test]
     fn either_host_never_says_absent() {
-        let nothing = empty_probe();
+        // 审计指出：原先只用 `empty_probe`（meta/list 恒 None），而 bug 的输出恰好就是
+        // 它想要的 `Undetermined` —— 断言与 bug 撞了同一个答案。现在两种探针都跑：
+        // ① 全空（本机什么都没有）② 目录列得出但一条都不匹配。两种都不许说 Absent。
+        for f in [
+            empty_probe(),
+            FsProbe {
+                meta: &|_| None,
+                list: &|_| Some(vec!["unrelated".to_string()]),
+            },
+        ] {
+            either_never_absent_with(&f);
+        }
+    }
+
+    fn either_never_absent_with(probe: &FsProbe) {
+        let nothing = probe;
         for f in TOOLS
             .iter()
             .flat_map(|t| t.touches.iter().map(move |f| (t, f)))
@@ -957,12 +1024,56 @@ mod tests {
             meta: &|_| Some((false, 7)),
             list: &|_| None,
         };
-        let r = PathResolution::EitherHost {
-            local: "/h/.cc-bus".into(),
-        };
+        let r = PathResolution::EitherHost(Box::new(PathResolution::Local("/h/.cc-bus".into())));
         match observe(&r, &f) {
-            SurfaceState::Present { detail } => assert!(detail.contains("本机存在")),
+            SurfaceState::Present { detail } => {
+                assert!(detail.contains("本机存在"), "实得 {detail}");
+                assert!(detail.contains("7 字节"), "内层细节要保住：{detail}");
+            }
             other => panic!("实得 {other:?}"),
+        }
+    }
+
+    /// **`Either` + glob 必须保住计数**（T04 审计阻塞 1）。
+    ///
+    /// 第一版 `EitherHost { local: PathBuf }` 把 glob 拍成 `dir.join("cc-*")`，
+    /// 于是 `observe` 去 stat 一个**字面含 `*` 的文件名**、计数分支永远走不到，
+    /// 那一行从 T04 之前正确的「12 项匹配」退化成「未确定 —— 本机 …/cc-* 不存在」
+    /// ——`why` 里陈述了一个**假事实**（实测 `ls -d ~/.local/bin/'cc-*'` 报不存在，
+    /// 而那个目录下真有 12 条 `cc-*`）。
+    #[test]
+    fn either_host_keeps_the_glob_count() {
+        // 真实盘面：`~/.local/bin` 下 12 条 cc-*（其中一条属于 cc-acct-iso）
+        let names: Vec<String> = (0..11)
+            .map(|i| format!("cc-{i}"))
+            .chain(["cc-acct-iso".to_string()])
+            .collect();
+        let f = FsProbe {
+            meta: &|_| None, // 目录本身 stat 不到也不影响 glob 走 list
+            list: &|_| Some(names.clone()),
+        };
+        let ccbus = TOOLS.iter().find(|t| t.id == "cc-bus").unwrap();
+        let glob = ccbus
+            .touches
+            .iter()
+            .find(|f| f.path.contains('*'))
+            .expect("cc-bus 应有一条 glob touch");
+        assert_eq!(glob.host, HostScope::Either, "前提：这条是 Either");
+        let r = resolve_touched_path(
+            glob.path,
+            &ccbus.destination,
+            glob.host,
+            &home(),
+            None,
+            &no_dir,
+        )
+        .unwrap();
+        match observe(&r, &f) {
+            SurfaceState::Present { detail } => {
+                assert!(detail.contains("12 项匹配"), "计数丢了：{detail}");
+                assert!(detail.contains("本机存在"), "要标明是本机：{detail}");
+            }
+            other => panic!("有 12 条匹配却报 {other:?}——这正是阻塞 1 的形态"),
         }
     }
 
@@ -997,10 +1108,113 @@ mod tests {
             }
         }
         // 计数自检：一条 Remote 都没扫到 = 守卫空转
-        assert!(checked >= 4, "只扫到 {checked} 条 Remote，守卫可能失效");
+        // **等号而不是 `>=`**（T04 审计重要 5）：真实是 5 条，写 `>= 4` 恰好容忍一次
+        // 静默降级——审计实测单独改一条 host 就是全绿。改 TOOLS 时要来改这个数。
+        assert_eq!(
+            checked, 5,
+            "Remote 条目数变了（真实应为 5）——改 TOOLS 就要来确认这个数"
+        );
     }
 
-    /// `host` 的四个变体都得有真实使用者——只有一个用户的变体同样是过度设计。
+    /// **逐条钉死 `(tool_id, path) → host`**（T04 审计阻塞 3）。
+    ///
+    /// 审计实测：把 `~/.claude-accts/` 的 host 改回**我上一版刚更正的那个错值**
+    /// （`Remote → Client`），`cargo test` **512 项全绿**。也就是说 commit message 里
+    /// 「跨字段守卫…改任一边都红」**是假的**——那条守卫只守 `destination` 那一边
+    /// （变异 B 改的是 `project_onto_host` 的代码，证明的是代码承重，不是两个字段相互约束）。
+    ///
+    /// T04 的中心论据是「host 把我一直在犯的错变成了必须逐条声明的东西」。声明是有了，
+    /// **门禁没有**——我上一次犯的那个错今天改回去仍然全绿。这张表就是那道门禁：
+    /// 改任何一条 host 都会红，且报错直接指出改了哪一条。
+    ///
+    /// 改 `TOOLS` 时**必须来改这张表**——这是有意的摩擦：host 判错过三次
+    /// （T02 的 `~/.cc-bus/`、T03 的 basename 猜远端、T04 的 `~/.claude-accts/` 连错两版），
+    /// 让它必须被显式确认一次。
+    #[test]
+    fn every_host_declaration_is_pinned() {
+        use HostScope::*;
+        let want: &[(&str, &str, HostScope)] = &[
+            ("ccm", "~/.local/bin/ccm", Remote),
+            ("ccm", "~/.bashrc", Remote),
+            // 钩子诊断真有本机+远端两条路径（`diagnose_local_/remote_cc_bus_hooks`）
+            ("cc-bus", "~/.claude/settings.json", Either),
+            ("cc-bus", "~/.local/bin/cc-*", Either),
+            // 但 `cc_bus.rs` 的 5 个 IPC 全走 origin+ssh，**零本机读取路径** → Remote
+            ("cc-bus", "~/.cc-bus/", Remote),
+            ("cc-acct-iso", "$ACCT_ISO_DEST", Remote),
+            // 列举走远端 ssh，但本机 CLAUDE_CONFIG_DIR 会指进来 → 两端皆可
+            ("cc-acct-iso", "~/.claude-accts/", Either),
+            ("remote-daemon", "$DAEMON_PATH", Remote),
+            ("project-mcp", ".mcp.json", ProjectDir),
+            ("powershell-profile", "$PROFILE", Client),
+        ];
+        let mut actual: Vec<(&str, &str, HostScope)> = TOOLS
+            .iter()
+            .flat_map(|t| t.touches.iter().map(move |f| (t.id, f.path, f.host)))
+            .collect();
+        let mut expect = want.to_vec();
+        actual.sort_by_key(|(a, b, _)| (*a, *b));
+        expect.sort_by_key(|(a, b, _)| (*a, *b));
+        assert_eq!(
+            actual, expect,
+            "host 声明与钉死的表不一致——改 TOOLS 就要来改这张表，并说清为什么"
+        );
+    }
+
+    /// **`host` 必须携带 `destination` 之外的信息**（T04 审计重要 1 的机器化）。
+    ///
+    /// 审计核实：T04 第一版的 `destination → host` 是一张 **1:1 表**
+    /// （`RemoteHomeRelative→Remote`、`LocalHomeRelative→Either`、
+    ///  `UserConfiguredPath→Remote`、`ProjectRelative→ProjectDir`、`UserShellProfile→Client`），
+    /// 于是那条"跨字段"断言在真实 `TOOLS` 上**可以完全由 destination 推出**
+    /// ——与 T02 被删的那颗钉子同一类。
+    ///
+    /// 把两条标错的改对之后它才真正独立：`LocalHomeRelative` 同时映到
+    /// `Either`（settings.json / cc-*）与 `Remote`（~/.cc-bus/），
+    /// `UserConfiguredPath` 同时映到 `Remote`（两个占位符）与 `Either`（~/.claude-accts/）。
+    /// **这条测试就是"host 不是 destination 的函数"这句话的门禁**——
+    /// 哪天它变回 1:1，说明 host 退化成了冗余标签，那时该删掉这个字段而不是留着装样子。
+    #[test]
+    fn host_is_not_a_function_of_destination() {
+        use std::collections::HashMap;
+        let mut by_dest: HashMap<String, std::collections::HashSet<HostScope>> = HashMap::new();
+        for t in TOOLS {
+            let key = match &t.destination {
+                ToolDestination::RemoteHomeRelative(_) => "RemoteHomeRelative",
+                ToolDestination::LocalHomeRelative(_) => "LocalHomeRelative",
+                ToolDestination::UserShellProfile => "UserShellProfile",
+                ToolDestination::ProjectRelative(_) => "ProjectRelative",
+                ToolDestination::UserConfiguredPath { .. } => "UserConfiguredPath",
+            };
+            for f in t.touches {
+                by_dest.entry(key.to_string()).or_default().insert(f.host);
+            }
+        }
+        let multi: Vec<_> = by_dest
+            .iter()
+            .filter(|(_, hosts)| hosts.len() >= 2)
+            .map(|(d, hosts)| (d.clone(), hosts.len()))
+            .collect();
+        assert!(
+            multi.len() >= 2,
+            "至少要有两个 destination 变体各映到 ≥2 个 host，否则 host 就是 destination 的函数、\
+             那条跨字段守卫等于同义反复（T02 删掉的那颗钉子就是这个病）。实得 {multi:?}，\
+             全表 {by_dest:?}"
+        );
+    }
+
+    /// `host` 的四个变体都得有真实使用者。
+    ///
+    /// **如实登记一处尺子不一致**（T04 审计重要 4）：这条用 **≥1**，而同文件
+    /// `user_configured_destinations_declare_a_placeholder_not_a_guess` 用 **≥2**。
+    /// 变体真实用户数：`Client` 1 条/1 工具、`ProjectDir` 1/1、`Either` 4 条/2 工具、`Remote` 4/3。
+    ///
+    /// 为什么**不**统一到 ≥2：同文件的 `ToolSource` 5 个变体里 4 个是单用户（T01 保留了它），
+    /// `TouchEffect` 的门禁也只要求 `>= 3` 种被用到。**描述数据的 enum 允许变体各自单用户**
+    /// ——这一点 T01 论证过（变体差异是数据的本性，不是过度设计）。
+    /// 而 `UserConfiguredPath` 那条 ≥2 守的是**别的东西**：那是"这个变体值不值得存在"的判据，
+    /// 因为它是我为了不写死一个假常量而**新造**的。两把尺子各有其位，但**同一文件里并存
+    /// 就该写明**，不能让人以为是疏忽。
     #[test]
     fn all_host_scopes_are_really_used() {
         let used: std::collections::HashSet<_> = TOOLS
@@ -1196,12 +1410,12 @@ mod tests {
             "至少三种 host 出现在表里，实得 {labels:?}"
         );
         let ps = rows.iter().find(|r| r.path_declared == "$PROFILE").unwrap();
-        assert!(ps.host_label.contains("本机"));
+        assert_eq!(ps.host_label, "本机");
         let ccm = rows
             .iter()
             .find(|r| r.path_declared == "~/.local/bin/ccm")
             .unwrap();
-        assert!(ccm.host_label.contains("远端"));
+        assert_eq!(ccm.host_label, "远端");
     }
 
     /// `GenerateOnly` 的措辞必须**明确说我们不写**——这是用户定的调，写错了就是失信。

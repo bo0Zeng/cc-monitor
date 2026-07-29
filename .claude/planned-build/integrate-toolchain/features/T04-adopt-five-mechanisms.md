@@ -87,10 +87,10 @@ pub enum HostScope {
 - A3（`remote-section.ts` 的待贴块）**在任何测试里都没被执行过**（`new RemoteSection` 全文 0 次）
 - 三句话必填的 `throw` 到 `main.ts` 整条链**无 try/catch**，将来忘填会白屏
 
-## 8. 签收
-- [ ] 通过代码审计（无阻塞项）
-- [ ] 通过工程审计
-- [ ] 主计划已据此更新（含变更记录）
+## 8. 签收（第一步）
+- [x] 通过代码审计（3 阻塞 + 5 重要已修，2 项如实登记）
+- [x] 通过工程审计
+- [x] 主计划已据此更新（含变更记录）
 
 ---
 
@@ -171,3 +171,159 @@ tmux 走强制 `-L` 的 shim + canary 双向自检，跑完默认 socket 三个�
 五套机制的**装/升/卸**真正走注册表。先有 `host` 才不会写出一个在 Windows 上说假话的部署器。
 **T03 那条纪律要贯彻**：远端的"某个路径在不在"必须由远端自己回报——
 `hooks_diag` 的 `X`/`P` 标记协议是这条的第一个落地样例，第二步按它办。
+
+---
+
+## 10. 第一步的审计闭环（Phase D，2026-07-29）
+
+独立对抗性 agent，60 次工具调用 / 约 19 分钟，收工时工作区干净、512/804 基线核实为真。
+它把我的门禁数字全部实跑核过（`cargo test --lib` 512、`vitest` 804、`fmt --check` 0、`tsc` 0），
+并**逐条复现了我自称的三条变异，一条不虚**。三条阻塞全部独立复现后才动手。
+
+### 阻塞 1（已修）：`Either` + glob 把「12 项匹配」变成一句假话
+
+`EitherHost { local: PathBuf }` 把 glob 拍成 `dir.join("cc-*")`，`observe` 于是去 stat
+一个**字面含 `*` 的文件名**，计数分支彻底走不到。实测：`ls -d ~/.local/bin/'cc-*'`
+→ `No such file or directory`，而那个目录下**真有 12 条 `cc-*`**。
+那一行从 T04 之前正确的「12 项匹配」退化成「未确定 —— 本机 …/cc-* 不存在」
+——**`why` 里陈述了一个假事实**。这正是本模块文档禁止的"对能用的安装报假警报"，
+只是从红叉降级成了**带谎话的灰字**。
+
+两条现有测试都盖不住：`either_host_never_says_absent` 用 `empty_probe`，
+**bug 的输出恰好就是它想要的 `Undetermined`**（断言与 bug 撞了同一个答案）；
+另一条用手搓的 `EitherHost { local: "/h/.cc-bus" }`，不是 glob。
+
+→ 改成 `EitherHost(Box<PathResolution>)`：**包住内层解析**。glob 计数、目录列举、
+"列不出来"那档全部自动继承，而「Either 绝不说 Absent」变成一句话可证
+（只把内层 `Absent` 改写，其余透传）。新增 `either_host_keeps_the_glob_count`
+（12 条匹配必须报「本机存在（12 项匹配）」），并给 `either_host_never_says_absent` 换成**双探针**
+（全空 + 目录列得出但零匹配）。
+
+**第二个探针一加就红**，暴露了另一件事：内层本来就"不确定"（目录列不出来）时，
+原先 `other => other` 把 `Either` 的提示整个吞了。改成**追加**理由——两件事都要说：
+本机为什么查不了 + 它也可能根本不在本机。
+
+### 阻塞 2（已修）：`~/.cc-bus/` 标 `Either` 是错的，且换来一个新的假阳性
+
+`cc_bus.rs` 的全部 5 个 IPC（`read_cc_bus_state` / `check_cc_bus_agent_online` /
+`read_cc_bus_inbox` / `cc_bus_send` / `cc_bus_spawn`）都以 `origin` 入参走 ssh 远端 exec，
+**一条本机读取路径都没有**；驾驶舱的 origin 下拉来自 `list_remote_mcp_origins`，
+连"本机"这一档都没有。而本机 `~/.cc-bus/` **真实存在**（开发机上就有）→
+这一行会**确定地**说「本机存在（目录）」，配上 `IndirectWrite` 那句
+"你在 cc-monitor 里的操作会让它被写"——**而我们写的是远端那个**。
+把用户不关心的那台的目录，冒充成"我们会动的那个"。
+**这正是我派单时担心的"用一个新的假阳性换掉旧的假阴性"，当下就能重现。** → 改 `Remote`。
+
+对比：`~/.claude/settings.json` 与 `~/.local/bin/cc-*` 确实有两条真路径
+（`diagnose_local_cc_bus_hooks` + `diagnose_remote_cc_bus_hooks`），那两条标 `Either` 是对的。
+**cc-bus 三条里两条对、一条错。**
+
+### 阻塞 3（已修）：「改任一边都红」是假的——我上次犯的那个错今天改回去仍然全绿
+
+审计实测：把 `~/.claude-accts/` 的 `host` 改回 **`Client`**（**正是这个 commit 声称刚更正的那条错值**）
+→ `cargo test` **512 项全绿**。改 ccm 的 `~/.bashrc` 同样全绿。两条同时改才红
+——说明真实 `checked = 5`，而阈值写 `>= 4`，**恰好容忍一次静默降级**。
+
+我 commit 里写的「跨字段守卫不是同义反复…改任一边都红，变异 B 就是证据」**不成立**：
+变异 B 改的是 `project_onto_host` 的**代码**，证明的是代码承重，不是两个字段相互约束。
+T04 的中心论据是「host 把我一直在犯的错变成了必须逐条声明的东西」——
+**声明是有了，门禁没有。**
+
+→ 新增 `every_host_declaration_is_pinned`：逐条钉死 `(tool_id, path) → host` 十条表。
+改任何一条都红，报错直接指出改了哪条。**改 `TOOLS` 就必须来改这张表**——
+这是有意的摩擦：host 判错过三次（T02 的 `~/.cc-bus/`、T03 的 basename 猜远端、
+T04 的 `~/.claude-accts/` **连错两版**），让它必须被显式确认一次。
+两个阈值同时改成等号（`checked == 5`、`labels.len() == 4`）。
+
+### 重要 1（已修）+ 重要 2（已修）：`host` 曾经是 `destination` 的纯函数
+
+审计核实第一版是一张 **1:1 表**（`RemoteHomeRelative→Remote`、`LocalHomeRelative→Either`、
+`UserConfiguredPath→Remote`、`ProjectRelative→ProjectDir`、`UserShellProfile→Client`），
+所以那条"跨字段"断言在真实 `TOOLS` 上**完全可由 destination 推出**——与 T02 被删的那颗钉子同一类。
+
+**审计给出了保留 `host` 最硬的理由，比我 commit 里给的硬**：把两条标错的改对，它才真正独立。
+改完之后 `LocalHomeRelative` 同时映到 `Either`（settings.json / cc-*）与 `Remote`（~/.cc-bus/），
+`UserConfiguredPath` 同时映到 `Remote`（两个占位符）与 `Either`（~/.claude-accts/）。
+→ 新增 `host_is_not_a_function_of_destination`，把这句话变成门禁：
+**哪天它退回 1:1，说明 host 退化成冗余标签，那时该删掉这个字段而不是留着装样子。**
+
+**重要 2 是 `~/.claude-accts/` 我连错两版**：第一版 `Client`（错，账号库列举全走 ssh）、
+第二版 `Remote`（**也不对**）——本机 `CLAUDE_CONFIG_DIR` 会指进这个目录
+（这台就是 `~/.claude-accts/z`），`hooks_diag::claude_config_dir` 与 `config_surface` 自己都在读它，
+`ConfigSurfaceReport.claude_config_dir` 更是直接打印它。于是同一页**自相矛盾**：
+顶部写着解析基准是 `/home/zbl/.claude-accts/z`，而那一行写着「位置：远端」。→ 改 `Either`。
+
+### 重要 6（已修）：我的数字夸大了一倍
+
+我三处都写"10 条 touches 里 7 条受影响"——是 **8** 条（`Remote` 5 + `Either` 3）。
+而且那两条校验只在 `resolve_local_home` 里，8 条中有 4 条本来就不经过它
+——**实际被短路掉的是 4 条**。修复是对的，描述夸大了一倍。
+
+### 重要 8（已修）：那行灰字 9/10 是冗余的
+
+审计核实真实是 **10 行**（不是我说的 12），每行 5-6 行文字。而「位置」旁边的「现状」
+早就写着「远端路径（…）——本页不连 SSH」/「装在 Claude Code 跑的那台上」/「相对项目目录」
+——**唯一真正新增信息的是 Windows 上的 `$PROFILE` 那行**。
+所以我 commit 里"用户看 `$PROFILE` 与 `~/.local/bin/ccm` 分不出哪台"只有一半成立。
+→ 收成**路径行上的一个短徽章**（本机 / 远端 / 本机或远端 / 项目目录），信息保留、省掉 10 行灰字。
+
+### 重要 7（已修）：诊断文本里的位置零覆盖 + 可选链吞掉诊断
+
+审计实测删掉 `formatReportText` 的 `位置:` 一行推送 → 16 项全绿。
+DOM 那条有牙，但报错是 `undefined 和 string 的组合无效`——`?.textContent` 把诊断吞了。
+→ 补 `formatReportText` 断言；DOM 断言改成先 `expect(...).not.toBeNull()` 再看内容。
+
+### 重要 3/4（如实登记，不改）
+
+- `(Remote, LocalGlob)` **今天走不到**（唯一的 glob 是 `Either`）。留着不是装样子：
+  它与上一行是同一条性质的两半，删掉半边会让"远端不许本机作答"在下一个 glob 型远端 touch
+  出现时**静默失守**。`(Client, *)` / `(ProjectDir, *)` 全落 `(_, other)`——
+  这两个变体今天**纯粹是标签**，价值在 `host_label` 上屏那一侧。
+- **同一文件里两把尺子**（`all_host_scopes_are_really_used` 用 ≥1、
+  `user_configured_destinations_…` 用 ≥2）。不统一，但**写明理由**：
+  描述数据的 enum 允许变体单用户（T01 对 `ToolSource` 已论证），
+  而那条 ≥2 守的是"这个我新造的变体值不值得存在"。两把尺子各有其位，并存就该写明。
+
+### 反验证（三条，全部先 diff 确认落位）
+
+| 变异 | 结果 |
+|---|---|
+| `~/.claude-accts/` 的 host 改回 `Client`（审计原手法） | 红 `host 声明与钉死的表不一致` |
+| `~/.cc-bus/` 改回 `Either`（让 destination→host 退回 1:1） | **3 红**，含 `host 就是 destination 的函数…实得 [("UserConfiguredPath", 2)]` |
+| `EitherHost` 退回自存 `PathBuf`（丢 glob 计数） | 红 `有 12 条匹配却报 Undetermined{…本机没找到…}——这正是阻塞 1 的形态` |
+
+过程记录：中间那条变异第一次**锚点没对上、没写进文件**，输出的"28 passed"是未变异结果。
+当场识别并用 `str.index` 定位重做——**先 diff 确认改动行再判色**这条纪律本会话第三次救场。
+
+### 审计自己声明未验证的
+
+七套真机套件（它明确禁跑 tmux）、clippy、shellcheck、exec-bit guard、Windows 实机渲染。
+它还指出一件对的事：`git show --stat` 里没有 e2e 文件**与"行为等价"自洽，但不构成它们被跑过的证据**。
+这几项是我自己跑的（见下），本轮我又核了一次 `git diff --stat HEAD -- e2e/` 为空。
+
+### 我核实后认同审计的其余意见
+
+三条自称变异一条不虚 · 顺序纠错有真牙（塞回 host 优先短路 → 双红）·
+`NeedsUserConfig` 不被 `Remote` 覆盖的取舍对 · 另三条 host 声明查证无误
+（`~/.bashrc = Remote`：`sftp.rs` 确写远端 profile，本机 PS profile 在 `profile_installer.rs` 用
+`dirs::document_dir`，两者没混；`$PROFILE = Client`；`.mcp.json = ProjectDir` 且它是四个变体里
+**唯一有两套真实现支撑**的）· `cc-*` note 的"计数偏大 1"也对。
+**审计不主张用 ≥2 尺子否掉 `HostScope`**，理由与 T01 保留 `ToolSource` 一致——我同意。
+
+### 本轮门禁
+
+cargo test **515**（+3）· cargo fmt 0 · clippy 0 error · tsc 0 · npm test **804** ·
+shellcheck 0 · exec-bit guard 过 · **七套真机套件全绿**（26/44/12/15/13/14/11）·
+`git diff --stat HEAD -- e2e/` **为空**（行为等价的直接证据，不只是"没改 e2e"这句话）。
+tmux 走强制 `-L` 的 shim + canary 双向自检，跑完默认 socket 三个会话逐字未变。
+
+## 5. 代码审计结果（Phase D）
+见 §10。3 阻塞 + 5 重要已修，2 项如实登记。
+
+## 6. 工程审计结果（Phase E）
+- **主计划自洽。** `host` 现在真正独立于 `destination`，且有门禁盯着它别退化回去。
+- **给第二步的硬约束**（比第一步写的更具体）：**"某个路径在不在"必须由那台机器自己回报。**
+  `hooks_diag` 的 `X`/`P` 标记协议是第一个样例；`Either` 的"本机命中才说存在、
+  未命中只说不确定"是第二个。部署器按这两条办，别再让本机替远端作答。
+- **`(Client,*)` / `(ProjectDir,*)` 今天纯是标签**——第二步若它们仍不改变任何行为，
+  要重新论证是否该合并进 `Remote`/`Either`（现在留着的理由只是上屏措辞）。

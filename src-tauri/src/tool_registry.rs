@@ -277,7 +277,17 @@ pub const TOOLS: &[ToolSpec] = &[
             },
             TouchedFile {
                 path: "~/.cc-bus/",
-                host: HostScope::Either,
+                // **`Remote` 而不是 `Either`**（T04 审计阻塞 2）：`cc_bus.rs` 的全部 5 个 IPC
+                // （`read_cc_bus_state` / `check_cc_bus_agent_online` / `read_cc_bus_inbox` /
+                //  `cc_bus_send` / `cc_bus_spawn`）都以 `origin` 入参走 `cfg_of` → ssh 远端 exec，
+                // **一条本机读取路径都没有**；驾驶舱的 origin 下拉来自 `list_remote_mcp_origins`，
+                // 连"本机"这一档都没有。
+                //
+                // 标 `Either` 的后果是**用一个新的假阳性换掉旧的假阴性**：本机恰好有
+                // `~/.cc-bus/`（开发机上就有）时，这一行会**确定地**说「本机存在（目录）」，
+                // 配上 `IndirectWrite` 那句"你在 cc-monitor 里的操作会让它被写"——
+                // 而我们写的是**远端**那个。把用户不关心的那台的目录冒充成"我们会动的那个"。
+                host: HostScope::Remote,
                 note: Some(
                     "运行期状态：inbox / 名册 / 队列 / 日志。                     驾驶舱读它；但你在驾驶舱点「发消息」/「派活」会让 cc-send / cc-spawn 往这里追加",
                 ),
@@ -309,13 +319,21 @@ pub const TOOLS: &[ToolSpec] = &[
             },
             TouchedFile {
                 path: "~/.claude-accts/",
-                // **远端，不是本机**（T04 查证时纠正的第三处同族错误）：
-                // `accounts.rs` 全部入口都是 `list_remote_accounts(origin)` / 
-                // `list_remote_session_accounts(origin)`，走 `ssh_source` 远端 exec。
-                // 我在 T02 的 `config_surface.rs` 注释里还写过"本机账号库，账号页真的在读它"
-                // ——那句话也是错的，已一并更正。
-                host: HostScope::Remote,
-                note: Some("远端账号库，只读；切号是 cc-acct-iso 自己的事"),
+                // **`Either`**——这一条我改了两次，第二次也不对（T04 审计重要 2）。
+                //
+                // 第一版标 `Client`：错，`accounts.rs` 的账号库列举全是
+                // `list_remote_accounts(origin)` / `list_remote_session_accounts(origin)`，走 ssh exec。
+                // 第二版改 `Remote`：也不对——本机 `CLAUDE_CONFIG_DIR` 会**指进这个目录**
+                // （这台机器上就是 `~/.claude-accts/z`），`hooks_diag::claude_config_dir` 与
+                // `config_surface` 自己都在读它，`ConfigSurfaceReport.claude_config_dir` 更是
+                // 直接把它打印出来。于是同一页会**自相矛盾**：顶部写着解析基准是
+                // `/home/zbl/.claude-accts/z`，而这一行写着「位置：远端」。
+                //
+                // 按 `Either` 的定义（"Claude Code 跑在哪台，这东西就在哪台"）它本就是两端皆可。
+                host: HostScope::Either,
+                note: Some(
+                    "账号库：列举走远端 ssh；本机 CLAUDE_CONFIG_DIR 也可能指进来（两端都可能有）",
+                ),
                 effect: TouchEffect::ReadOnly,
             },
         ],

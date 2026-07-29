@@ -258,7 +258,13 @@ export class ConfigSurfaceSection {
 
     const p = document.createElement("div");
     p.className = "config-surface-path";
-    p.textContent = row.path_declared;
+    // T04 审计重要 8：位置收成路径行上的徽章而不是独立一行——10 行里 9 行的"位置"
+    // 在「现状」那列已经说过了，独立成行等于凭空多 10 行灰字。
+    const host = document.createElement("span");
+    host.className = "config-surface-host";
+    host.textContent = row.host_label;
+    p.appendChild(host);
+    p.appendChild(document.createTextNode(row.path_declared));
     if (row.note) {
       const n = document.createElement("span");
       n.className = "config-surface-note";
@@ -273,13 +279,6 @@ export class ConfigSurfaceSection {
       rp.textContent = `解析为 ${row.path_resolved}`;
       el.appendChild(rp);
     }
-
-    // T04：先说清"在哪台机器上"——`$PROFILE` 与 `~/.local/bin/ccm` 长得都像本机路径，
-    // 不标明的话用户根本分不出。
-    const host = document.createElement("div");
-    host.className = "config-surface-host";
-    host.textContent = `位置：${row.host_label}`;
-    el.appendChild(host);
 
     const eff = document.createElement("div");
     eff.className = "config-surface-effect";

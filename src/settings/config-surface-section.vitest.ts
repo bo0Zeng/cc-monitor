@@ -32,7 +32,7 @@ function row(over: Partial<SurfaceRow> = {}): SurfaceRow {
     path_declared: "~/.local/bin/ccm",
     path_resolved: "/h/.local/bin/ccm",
     note: null,
-    host_label: "远端（按连接配置）",
+    host_label: "远端",
     effect_label: "整个文件由 cc-monitor 拥有，部署时整体覆盖",
     state: { kind: "present", detail: "文件，1024 字节" },
     installable: true,
@@ -129,6 +129,8 @@ describe("formatReportText", () => {
     expect(txt).toContain("~/.claude 解析为=/h/.claude");
     expect(txt).toContain("~/.local/bin/ccm");
     expect(txt).toContain("解析为: /h/.local/bin/ccm");
+    // 审计实测：删掉 `位置:` 那一行推送，16 项全绿——诊断文本里的位置此前零覆盖
+    expect(txt).toContain("位置: 远端");
     expect(txt).toContain("本页不猜项目目录");
     expect(txt).toContain("优先级最高");
     // 读不到时不许说成"不含"
@@ -260,10 +262,12 @@ describe("ConfigSurfaceSection", () => {
     expect(eff, "「我们做什么」列必须在 DOM 里").not.toBeNull();
     expect(undo, "「能否撤」列必须在 DOM 里").not.toBeNull();
     // 且内容真的是后端给的措辞 / describeUndo 的结论，不是空 div
-    // T04：位置也必须上屏（同一条纪律：纯函数被断言 ≠ 它上了屏）
-    expect(r.querySelector(".config-surface-host")?.textContent).toContain(
-      "远端（按连接配置）",
-    );
+    // T04：位置也必须上屏（同一条纪律：纯函数被断言 ≠ 它上了屏）。
+    // **先断言元素存在**再看内容——审计指出 `?.textContent` 会让删掉 appendChild 时
+    // 报成"undefined 和 string 的组合无效"，而不是"位置没上屏"，诊断被可选链吞了。
+    const hostEl = r.querySelector(".config-surface-host");
+    expect(hostEl, "位置徽章必须在 DOM 里").not.toBeNull();
+    expect(hostEl!.textContent).toBe("远端");
     expect(eff!.textContent).toBe("整个文件由 cc-monitor 拥有，部署时整体覆盖");
     expect(undo!.textContent).toContain("尚未支持部署");
   });

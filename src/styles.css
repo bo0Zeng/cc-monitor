@@ -6211,7 +6211,6 @@ body.settings-window-mode .grid-monitor-trigger {
   color: var(--text-faint);
 }
 .config-surface-resolved,
-.config-surface-host,
 .config-surface-effect,
 .config-surface-undo,
 .config-surface-scope-detail {
@@ -6272,4 +6271,17 @@ body.settings-window-mode .grid-monitor-trigger {
   margin: 4px 0;
   font-size: 12px;
   color: var(--warn);
+}
+
+/* T04：位置徽章（挂在路径行上，不占独立一行——审计核实 10 行里 9 行的"位置"
+   在「现状」那列已经说过了）。 */
+.config-surface-host {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  font-family: var(--font, inherit);
+  font-size: 11px;
+  color: var(--text-faint);
 }
