@@ -23,7 +23,7 @@
 //! 本模块不写任何用户文件（红线），也**不新增轮询**（红线）——一次按需扫完就返回。
 
 use crate::tool_registry::{
-    ToolDestination, ToolSource, ToolSpec, TouchEffect, TouchedFile, TOOLS,
+    HostScope, ToolDestination, ToolSource, ToolSpec, TouchEffect, TouchedFile, TOOLS,
 };
 use std::path::{Path, PathBuf};
 
@@ -46,6 +46,12 @@ pub enum PathResolution {
     WindowsProfile,
     /// 路径由**用户配置**决定，本页查不到——`what` 告诉用户去哪儿看那个值。
     NeedsUserConfig { what: &'static str },
+    /// **两端皆可**（`HostScope::Either`）：可以在本机查，但**"本机没找到" ≠ "不存在"**
+    /// ——这东西也可能装在远端（Claude Code 跑在哪台，它就在哪台）。
+    ///
+    /// 这一个变体就是 T04 要修的那个假警报的解药：`cc-bus` 三条 touches 原先被当纯本机路径，
+    /// 于是 Windows 客户端上审计页显示"不存在"，而驾驶舱正从远端读得好好的。
+    EitherHost { local: PathBuf },
 }
 
 /// 现状。**没有"疑似缺失"这一档**（见模块文档）。
@@ -80,6 +86,7 @@ pub struct FsProbe<'a> {
 pub fn resolve_touched_path(
     declared: &str,
     dest: &ToolDestination,
+    host: HostScope,
     home: &Path,
     cfg_dir_env: Option<&Path>,
     is_dir: &dyn Fn(&Path) -> bool,
@@ -101,6 +108,55 @@ pub fn resolve_touched_path(
              给人看的说明请放 `note` 字段，`path` 只放机器可解析的路径"
         ));
     }
+    // **顺序要紧：先按 `destination` 全量校验，再用 `host` 做投影。**
+    // 第一版是 host 优先短路，于是 `LocalHomeRelative` 那条"必须以 `~/` 开头"
+    // 与"glob 只许在最后一段、只许一个 `*`"的校验，对所有 `Remote` / `Either` 的
+    // touches **完全不再执行**——而本仓 10 条 touches 里有 7 条是这两种 host。
+    // host 是"在哪台机器上"，destination 是"装到哪"，两者独立；
+    // 但**校验属于后者，不能被前者跳过**。
+    //
+    // （更正我自己上一版注释里说过头的一句：我写"`UserConfiguredPath` 的占位符校验
+    //  变成死代码"——不对。那条 `Err` 分支在更早一步就已经改成了"不是占位符就按本机路径解析"，
+    //  本来就没有可被跳过的校验。真正被短路掉的是上面那两条。）
+    let by_dest = resolve_by_destination(declared, dest, home, cfg_dir_env, is_dir)?;
+    Ok(project_onto_host(by_dest, host, declared))
+}
+
+/// `host` 只改写**本机可解析**的那两种结果，其余原样透传。
+///
+/// 为什么不是"host 说远端就一律返回 Remote"：`UserConfiguredPath` 解析出的
+/// `NeedsUserConfig { what }` 比 `Remote` **信息更多**（它告诉用户去哪儿看那个值），
+/// 覆盖掉是降级。
+fn project_onto_host(by_dest: PathResolution, host: HostScope, declared: &str) -> PathResolution {
+    match (host, by_dest) {
+        // 远端：本机**不许**替它回答"路径在不在"（T03 阻塞 3 的根因）
+        (HostScope::Remote, PathResolution::Local(_))
+        | (HostScope::Remote, PathResolution::LocalGlob { .. }) => {
+            PathResolution::Remote(declared.to_string())
+        }
+        // 两端皆可：可以在本机查，但**查不到 ≠ 不存在**
+        (HostScope::Either, PathResolution::Local(p)) => PathResolution::EitherHost { local: p },
+        (
+            HostScope::Either,
+            PathResolution::LocalGlob {
+                dir,
+                prefix,
+                suffix,
+            },
+        ) => PathResolution::EitherHost {
+            local: dir.join(format!("{prefix}*{suffix}")),
+        },
+        (_, other) => other,
+    }
+}
+
+fn resolve_by_destination(
+    declared: &str,
+    dest: &ToolDestination,
+    home: &Path,
+    cfg_dir_env: Option<&Path>,
+    is_dir: &dyn Fn(&Path) -> bool,
+) -> Result<PathResolution, String> {
     match dest {
         ToolDestination::UserShellProfile => {
             if declared == "$PROFILE" {
@@ -122,7 +178,8 @@ pub fn resolve_touched_path(
         }
         // **占位符只对应"落点"那一条，别的 touches 照常解析。**
         // 第一版这条臂要求**每条** touches 都等于占位符，于是 cc-acct-iso 的
-        // `~/.claude-accts/`（本机账号库，账号页真的在读它）被判违规——
+        // `~/.claude-accts/`（账号库；**T04 查证：它在远端**，`accounts.rs` 全走 ssh exec，
+        // 我这句原先写的"本机账号库"是错的）被判违规——
         // 落点只是这个工具碰的文件之一，不是全部。测试当场红在这里。
         ToolDestination::UserConfiguredPath { token, what } => {
             if declared == *token {
@@ -230,6 +287,22 @@ pub fn observe(res: &PathResolution, fs: &FsProbe) -> SurfaceState {
                 }
             }
         },
+        // **本机没找到 ≠ 不存在**：这是 T04 的核心语义。绝不返回 `Absent`。
+        PathResolution::EitherHost { local } => match (fs.meta)(local) {
+            Some((true, _)) => SurfaceState::Present {
+                detail: format!("本机存在（目录）：{}", local.display()),
+            },
+            Some((false, n)) => SurfaceState::Present {
+                detail: format!("本机存在（文件，{n} 字节）"),
+            },
+            None => SurfaceState::Undetermined {
+                why: format!(
+                    "本机 {} 不存在——但这套东西装在 Claude Code 跑的那台上，\
+                     很可能是某个远端。远端状态请到 cc-bus 页按连接查（本页不连 SSH）。",
+                    local.display()
+                ),
+            },
+        },
         PathResolution::NeedsUserConfig { what } => SurfaceState::Undetermined {
             why: format!("路径由配置决定（{what}）——本页不猜它当前是什么值"),
         },
@@ -269,6 +342,17 @@ pub fn source_label(s: &ToolSource) -> String {
     }
 }
 
+/// 「在哪台机器上」。**必须上屏**——否则用户看 `$PROFILE` 与 `~/.local/bin/ccm`
+/// 分不出说的是哪台机器，而这一页的全部价值是可信告知。
+pub fn host_label(h: HostScope) -> &'static str {
+    match h {
+        HostScope::Client => "本机（cc-monitor 所在的这台）",
+        HostScope::Remote => "远端（按连接配置）",
+        HostScope::Either => "Claude Code 跑的那台（本机或远端）",
+        HostScope::ProjectDir => "项目目录所在的那台",
+    }
+}
+
 /// 「我们对它做什么」。措辞直接决定用户的危险感知，所以定在后端、UI 不再各写一遍。
 pub fn effect_label(e: TouchEffect) -> &'static str {
     match e {
@@ -293,6 +377,7 @@ pub struct SurfaceRow {
     /// 解析出的本机路径（远端 / 项目相对 / `$PROFILE` 一律 `None`）。
     pub path_resolved: Option<String>,
     pub note: Option<&'static str>,
+    pub host_label: &'static str,
     pub effect_label: &'static str,
     pub state: SurfaceState,
     pub installable: bool,
@@ -307,7 +392,7 @@ fn row(
     is_dir: &dyn Fn(&Path) -> bool,
     fs: &FsProbe,
 ) -> SurfaceRow {
-    let resolved = resolve_touched_path(f.path, &t.destination, home, cfg_dir_env, is_dir);
+    let resolved = resolve_touched_path(f.path, &t.destination, f.host, home, cfg_dir_env, is_dir);
     let (path_resolved, state) = match &resolved {
         Ok(r) => {
             let shown = match r {
@@ -317,6 +402,7 @@ fn row(
                     prefix,
                     suffix,
                 } => Some(format!("{}/{prefix}*{suffix}", dir.display())),
+                PathResolution::EitherHost { local } => Some(local.to_string_lossy().into_owned()),
                 _ => None,
             };
             (shown, observe(r, fs))
@@ -336,6 +422,7 @@ fn row(
         path_declared: f.path,
         path_resolved,
         note: f.note,
+        host_label: host_label(f.host),
         effect_label: effect_label(f.effect),
         state,
         installable: t.installable,
@@ -519,6 +606,7 @@ mod tests {
         let r = resolve_touched_path(
             "~/.local/bin/ccm",
             &ToolDestination::LocalHomeRelative("x"),
+            HostScope::Client,
             &home(),
             None,
             &no_dir,
@@ -534,6 +622,7 @@ mod tests {
         let with = resolve_touched_path(
             "~/.claude/settings.json",
             &ToolDestination::LocalHomeRelative("x"),
+            HostScope::Client,
             &home(),
             Some(&acct),
             &yes_dir,
@@ -547,6 +636,7 @@ mod tests {
         let without = resolve_touched_path(
             "~/.claude/settings.json",
             &ToolDestination::LocalHomeRelative("x"),
+            HostScope::Client,
             &home(),
             Some(&acct),
             &no_dir,
@@ -563,6 +653,7 @@ mod tests {
         let r = resolve_touched_path(
             "~/.local/bin/cc-*",
             &ToolDestination::LocalHomeRelative("x"),
+            HostScope::Client,
             &home(),
             None,
             &no_dir,
@@ -584,6 +675,7 @@ mod tests {
             resolve_touched_path(
                 "~/.local/bin/ccm-daemon",
                 &ToolDestination::RemoteHomeRelative("x"),
+                HostScope::Remote,
                 &home(),
                 None,
                 &no_dir
@@ -595,6 +687,7 @@ mod tests {
             resolve_touched_path(
                 ".mcp.json",
                 &ToolDestination::ProjectRelative("x"),
+                HostScope::ProjectDir,
                 &home(),
                 None,
                 &no_dir
@@ -606,6 +699,7 @@ mod tests {
             resolve_touched_path(
                 "$PROFILE",
                 &ToolDestination::UserShellProfile,
+                HostScope::Client,
                 &home(),
                 None,
                 &no_dir
@@ -635,7 +729,8 @@ mod tests {
             ),
         ] {
             assert!(
-                resolve_touched_path(declared, &dest, &home(), None, &no_dir).is_err(),
+                resolve_touched_path(declared, &dest, HostScope::Client, &home(), None, &no_dir)
+                    .is_err(),
                 "{declared:?} 配 {dest:?} 应判不自洽"
             );
         }
@@ -758,7 +853,8 @@ mod tests {
         for t in TOOLS {
             for f in t.touches {
                 r.checked += 1;
-                if let Err(e) = resolve_touched_path(f.path, &t.destination, &home(), None, &no_dir)
+                if let Err(e) =
+                    resolve_touched_path(f.path, &t.destination, f.host, &home(), None, &no_dir)
                 {
                     r.violations.push(format!("{}/{:?}：{e}", t.id, f.path));
                 }
@@ -789,7 +885,8 @@ mod tests {
             } else {
                 ToolDestination::LocalHomeRelative("x")
             };
-            let r = resolve_touched_path(declared, &dest, &home(), None, &no_dir);
+            let r =
+                resolve_touched_path(declared, &dest, HostScope::Client, &home(), None, &no_dir);
             // **必须直接 Err。** 第一版这里写的是"Err 或者解析出带括号的假路径都算抓到"，
             // 于是 `~/.local/bin/cc-*（12 条软链）` 溜了过去——它成功解析成
             // `LocalGlob { prefix: "cc-", suffix: "（12 条软链）" }`，`dir` 干干净净，
@@ -818,6 +915,157 @@ mod tests {
     // 这条留给 T04（五套机制收编）时连着 origin 模型一起做，不在 T02 硬塞。
     // 替代的有牙测试放在 `tool_registry.rs`：`installable_tools_declare_where_they_land`
     // 与 `owned_file_implies_installable`（两条都是跨字段一致性，改任一边就红）。
+
+    // ===== T04：`host` 维度 =====
+
+    /// **这一条是 T04 存在的理由。** `cc-bus` 三条 touches 原先被当纯本机路径，
+    /// 于是在**生产平台 Windows** 上审计页会说"不存在"，而同一个 app 的驾驶舱
+    /// 正从远端把 inbox 读得好好的——T02 专门要防的假警报，出现在那一页上格外讽刺。
+    #[test]
+    fn either_host_never_says_absent() {
+        let nothing = empty_probe();
+        for f in TOOLS
+            .iter()
+            .flat_map(|t| t.touches.iter().map(move |f| (t, f)))
+            .filter(|(_, f)| f.host == HostScope::Either)
+            .map(|(t, f)| {
+                resolve_touched_path(f.path, &t.destination, f.host, &home(), None, &no_dir)
+                    .unwrap()
+            })
+        {
+            assert!(
+                matches!(f, PathResolution::EitherHost { .. }),
+                "Either 的路径必须解析成 EitherHost，实得 {f:?}"
+            );
+            match observe(&f, &nothing) {
+                SurfaceState::Undetermined { why } => {
+                    assert!(
+                        why.contains("Claude Code 跑的那台"),
+                        "理由要说清为什么：{why}"
+                    );
+                    assert!(why.contains("不连 SSH"), "要指路：{why}");
+                }
+                other => panic!("本机没找到不等于不存在，不许判 {other:?}"),
+            }
+        }
+    }
+
+    /// 但本机**真找到了**就该确定地说存在——`Either` 不是"永远说不知道"。
+    #[test]
+    fn either_host_reports_present_when_found_locally() {
+        let f = FsProbe {
+            meta: &|_| Some((false, 7)),
+            list: &|_| None,
+        };
+        let r = PathResolution::EitherHost {
+            local: "/h/.cc-bus".into(),
+        };
+        match observe(&r, &f) {
+            SurfaceState::Present { detail } => assert!(detail.contains("本机存在")),
+            other => panic!("实得 {other:?}"),
+        }
+    }
+
+    /// **跨字段一致性**：`host == Remote` ⇔ 解析结果不含任何本机路径。
+    ///
+    /// 这条**不是**同义反复（T02 那条被删的"钉子"是）：`host` 与 `destination` 是
+    /// **两个独立字段**，解析要先按 destination 全量校验、再用 host 投影。
+    /// 改任一边都会红——变异验证见 §5。
+    #[test]
+    fn remote_host_never_resolves_to_a_local_path() {
+        let mut checked = 0;
+        for t in TOOLS {
+            for f in t.touches {
+                let r =
+                    resolve_touched_path(f.path, &t.destination, f.host, &home(), None, &no_dir)
+                        .unwrap();
+                let local = matches!(
+                    r,
+                    PathResolution::Local(_)
+                        | PathResolution::LocalGlob { .. }
+                        | PathResolution::EitherHost { .. }
+                );
+                if f.host == HostScope::Remote {
+                    checked += 1;
+                    assert!(
+                        !local,
+                        "{}/{:?} 声明在远端，却解析出本机路径 {r:?}——本机不许替远端回答\
+                         「这个路径在不在」（T03 阻塞 3 的根因）",
+                        t.id, f.path
+                    );
+                }
+            }
+        }
+        // 计数自检：一条 Remote 都没扫到 = 守卫空转
+        assert!(checked >= 4, "只扫到 {checked} 条 Remote，守卫可能失效");
+    }
+
+    /// `host` 的四个变体都得有真实使用者——只有一个用户的变体同样是过度设计。
+    #[test]
+    fn all_host_scopes_are_really_used() {
+        let used: std::collections::HashSet<_> = TOOLS
+            .iter()
+            .flat_map(|t| t.touches.iter().map(|f| f.host))
+            .collect();
+        for want in [
+            HostScope::Client,
+            HostScope::Remote,
+            HostScope::Either,
+            HostScope::ProjectDir,
+        ] {
+            assert!(
+                used.contains(&want),
+                "{want:?} 没有任何使用者，那它不该存在"
+            );
+        }
+    }
+
+    /// **`host` 投影不许吞掉 `NeedsUserConfig`**：那个结果比 `Remote` 信息更多
+    /// （它告诉用户去哪儿看那个值），覆盖掉是降级。
+    #[test]
+    fn host_projection_preserves_the_richer_resolution() {
+        let daemon = TOOLS.iter().find(|t| t.id == "remote-daemon").unwrap();
+        let f = &daemon.touches[0];
+        assert_eq!(f.host, HostScope::Remote);
+        let r = resolve_touched_path(f.path, &daemon.destination, f.host, &home(), None, &no_dir)
+            .unwrap();
+        match r {
+            PathResolution::NeedsUserConfig { what } => {
+                assert!(what.contains("daemon"), "实得 {what}");
+            }
+            other => panic!("远端投影把 NeedsUserConfig 吞成了 {other:?}"),
+        }
+    }
+
+    /// **destination 的校验不许被 host 短路。**
+    ///
+    /// 第一版 host 优先短路，于是 `LocalHomeRelative` 的"必须 `~/` 开头"与
+    /// "glob 只许在最后一段 / 只许一个 `*`"对所有 `Remote`/`Either` 的 touches
+    /// **完全不再执行**——而 10 条 touches 里 7 条是这两种 host。
+    #[test]
+    fn destination_checks_still_run_under_every_host() {
+        for host in [
+            HostScope::Client,
+            HostScope::Remote,
+            HostScope::Either,
+            HostScope::ProjectDir,
+        ] {
+            for bad in ["/etc/passwd", "~/.local/*/bin", "~/.local/bin/*-*"] {
+                let e = resolve_touched_path(
+                    bad,
+                    &ToolDestination::LocalHomeRelative("x"),
+                    host,
+                    &home(),
+                    None,
+                    &no_dir,
+                );
+                assert!(
+                    e.is_err(),
+                    "host={host:?} 时 {bad:?} 仍该判不自洽，实得 {e:?}"
+                );
+            }
+        }
+    }
 
     // ===== 注册表 ↔ 真写入方对齐（T02 审计重要 6：此前零耦合） =====
 
@@ -932,6 +1180,28 @@ mod tests {
             with_note.len() >= 2,
             "note 至少两个工具用上，实得 {with_note:?}"
         );
+    }
+
+    /// `host` 必须进到行里（T04）——不上屏的话用户分不出说的是哪台机器。
+    #[test]
+    fn rows_carry_the_host_label() {
+        let rows = build_rows(&home(), None, &no_dir, &empty_probe());
+        for r in &rows {
+            assert!(!r.host_label.is_empty(), "{} 缺 host 标签", r.path_declared);
+        }
+        // 四档措辞各不相同，且能看出"哪台"
+        let labels: std::collections::HashSet<_> = rows.iter().map(|r| r.host_label).collect();
+        assert!(
+            labels.len() >= 3,
+            "至少三种 host 出现在表里，实得 {labels:?}"
+        );
+        let ps = rows.iter().find(|r| r.path_declared == "$PROFILE").unwrap();
+        assert!(ps.host_label.contains("本机"));
+        let ccm = rows
+            .iter()
+            .find(|r| r.path_declared == "~/.local/bin/ccm")
+            .unwrap();
+        assert!(ccm.host_label.contains("远端"));
     }
 
     /// `GenerateOnly` 的措辞必须**明确说我们不写**——这是用户定的调，写错了就是失信。

@@ -6211,6 +6211,7 @@ body.settings-window-mode .grid-monitor-trigger {
   color: var(--text-faint);
 }
 .config-surface-resolved,
+.config-surface-host,
 .config-surface-effect,
 .config-surface-undo,
 .config-surface-scope-detail {

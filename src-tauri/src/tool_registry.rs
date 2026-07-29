@@ -109,6 +109,37 @@ pub enum ToolDestination {
     },
 }
 
+/// 这个文件在**哪台机器**上。
+///
+/// ## 为什么这是 `TouchedFile` 的属性，不是工具的属性
+///
+/// T04 第一步。它不是"为模型而模型"——不加它，`config_surface` 在**生产平台上会说假话**：
+/// `cc-bus` 的 `destination` 是 `LocalHomeRelative`，三条 touches 于是被当**本机路径**去 stat。
+/// 但 cc-monitor 的生产平台是 Windows（`ci.yml`/`release.yml` 打包 job 都是 `windows-latest`），
+/// 而 cc-bus 跑在 **Claude Code 所在的那台**——`hooks_diag` 为此有**两条** IPC
+/// （`diagnose_local_cc_bus_hooks` / `diagnose_remote_cc_bus_hooks`），
+/// `cc_bus::read_cc_bus_state(origin)` 读 `~/.cc-bus/` 更是**按 origin 远端 exec** 的。
+/// 于是 Windows 用户打开「配置面审计」会看到那三行写着**「不存在」**，
+/// 而同一个 app 的驾驶舱正从远端把 inbox 读得好好的。
+/// **这正是 T02 专门要防的那类假警报，出现在那一页上格外讽刺。**
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+pub enum HostScope {
+    /// cc-monitor 自己跑的那台（Windows 客户端）。
+    Client,
+    /// 一个远端连接（按 origin 选）。
+    ///
+    /// **本机不许替它回答"这个路径在不在"**——T03 阻塞 3 的根因就是本机按 basename 猜远端，
+    /// 结果把"装在 /usr/local/bin 且在 PATH 上"错判成"$HOME 那个路径存在"，
+    /// 于是该警示的形态不警示，用户贴上去正是一个 path-missing 钩子。
+    Remote,
+    /// **两端皆可**：Claude Code 跑在哪台，这东西就在哪台。
+    ///
+    /// 关键语义：**「本机没找到」≠「不存在」**。这一条就是上面那个假警报的解药。
+    Either,
+    /// 项目目录内（在哪台机器上取决于那个项目是本地还是远端）。
+    ProjectDir,
+}
+
 /// 这个工具会碰用户的哪个文件，以及**碰它意味着什么**。
 /// **6 个实例化** —— 这是本结构里最扎实的一项，也是 T02 审计视图的直接输入。
 ///
@@ -143,6 +174,8 @@ pub struct TouchedFile {
     /// 现在 `declared_fields_of` 参数化了，`TouchedFile` 与 `ToolSpec` 走同一条纪律
     /// （`touched_file_fields_follow_the_same_discipline`）。
     pub note: Option<&'static str>,
+    /// 这个文件在哪台机器上。见 [`HostScope`]——**不加它，审计页在 Windows 上会说假话**。
+    pub host: HostScope,
     /// 我们对它做什么。**这决定了 T02 审计页里那一行的措辞与危险程度。**
     pub effect: TouchEffect,
 }
@@ -205,11 +238,13 @@ pub const TOOLS: &[ToolSpec] = &[
             TouchedFile {
                 path: "~/.local/bin/ccm",
                 note: None,
+                host: HostScope::Remote,
                 effect: TouchEffect::OwnedFile,
             },
             TouchedFile {
                 path: "~/.bashrc",
                 note: Some("或用户在部署向导里选的其它 profile"),
+                host: HostScope::Remote,
                 effect: TouchEffect::FencedBlock,
             },
         ],
@@ -228,11 +263,13 @@ pub const TOOLS: &[ToolSpec] = &[
         touches: &[
             TouchedFile {
                 path: "~/.claude/settings.json",
+                host: HostScope::Either,
                 note: Some("只碰 hooks 段，且我们不写——只生成待贴文本"),
                 effect: TouchEffect::GenerateOnly,
             },
             TouchedFile {
                 path: "~/.local/bin/cc-*",
+                host: HostScope::Either,
                 note: Some(
                     "cc-bus 自己的安装脚本软链的 11 条命令——**不是 cc-monitor 建的**，                     我们只在钩子诊断时查 cc-register / cc-bus-stop-hook 存不存在。                     注意本页这个 glob 还会数到 cc-acct-iso 的同前缀软链，所以计数偏大 1",
                 ),
@@ -240,6 +277,7 @@ pub const TOOLS: &[ToolSpec] = &[
             },
             TouchedFile {
                 path: "~/.cc-bus/",
+                host: HostScope::Either,
                 note: Some(
                     "运行期状态：inbox / 名册 / 队列 / 日志。                     驾驶舱读它；但你在驾驶舱点「发消息」/「派活」会让 cc-send / cc-spawn 往这里追加",
                 ),
@@ -263,6 +301,7 @@ pub const TOOLS: &[ToolSpec] = &[
         touches: &[
             TouchedFile {
                 path: "$ACCT_ISO_DEST",
+                host: HostScope::Remote,
                 note: Some(
                     "远端，部署目录由你在账号页填的那个值决定（deploy_remote_acct_iso 的 dest_dir）",
                 ),
@@ -270,7 +309,13 @@ pub const TOOLS: &[ToolSpec] = &[
             },
             TouchedFile {
                 path: "~/.claude-accts/",
-                note: Some("账号库，只读；切号是它自己的事"),
+                // **远端，不是本机**（T04 查证时纠正的第三处同族错误）：
+                // `accounts.rs` 全部入口都是 `list_remote_accounts(origin)` / 
+                // `list_remote_session_accounts(origin)`，走 `ssh_source` 远端 exec。
+                // 我在 T02 的 `config_surface.rs` 注释里还写过"本机账号库，账号页真的在读它"
+                // ——那句话也是错的，已一并更正。
+                host: HostScope::Remote,
+                note: Some("远端账号库，只读；切号是 cc-acct-iso 自己的事"),
                 effect: TouchEffect::ReadOnly,
             },
         ],
@@ -289,6 +334,7 @@ pub const TOOLS: &[ToolSpec] = &[
         uninstallable: false,
         touches: &[TouchedFile {
             path: "$DAEMON_PATH",
+            host: HostScope::Remote,
             note: Some(
                 "远端，路径由该连接的「daemon 路径」配置项决定——**不是**固定的 ~/.local/bin/ccm-daemon",
             ),
@@ -304,6 +350,7 @@ pub const TOOLS: &[ToolSpec] = &[
         uninstallable: true,
         touches: &[TouchedFile {
             path: ".mcp.json",
+            host: HostScope::ProjectDir,
             note: Some("相对你选定的项目目录"),
             effect: TouchEffect::OwnedFile,
         }],
@@ -317,6 +364,7 @@ pub const TOOLS: &[ToolSpec] = &[
         uninstallable: true,
         touches: &[TouchedFile {
             path: "$PROFILE",
+            host: HostScope::Client,
             note: Some("Windows 客户端侧，具体路径由 PowerShell 决定"),
             effect: TouchEffect::FencedBlock,
         }],
