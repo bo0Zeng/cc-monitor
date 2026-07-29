@@ -26,4 +26,48 @@
 | **gate-integrity/** | 门禁不许在零断言下报绿（真机套件断言地板 + vendored bash 进 shellcheck + 6 套 e2e 进 CI） | **Phase A 已落盘，等审批**。路线图 ③，规模小但保护其余全部工作。**G-B 是 `account-zero` Z01 的前置** |
 | **local-as-remote/** | 本地 = 不走 ssh 的远端（含 Linux 平台）。落地 `doc/INVARIANTS.md` **§40** | **Phase A 已落盘，等审批**。路线图 ④。L5 平价对账可先做；L0 是唯一可能推翻方向的一步（WebKitGTK） |
 
+
+---
+
+## 当前在跑：四区连续执行顺序（2026-07-29 用户授权全自动）
+
+> **用户原话**：「我要全自动把这些需求跑完」+ 顺序按 ①rust-ts-boundary ②account-zero
+> ③gate-integrity ④local-as-remote。下表是把该顺序与**技术依赖**、**外部授权**合并后的实际序列。
+> **loop 每轮先读本表，再读对应区的 `STATUS.md`。**
+
+| # | 功能 | 区 | 需要外部授权？ |
+|---|---|---|---|
+| 1 | **C01** 边界样板（一条命令走通，**变异验收**：删一个 Rust 字段 tsc 必须报错） | rust-ts-boundary | 否 |
+| 2 | **C02** 事件半边（已是单一枢纽，改动面最小） | rust-ts-boundary | 否 |
+| 3 | **C03** 大整数策略（必须在 C04 之前，否则把已知数据损失批量固化） | rust-ts-boundary | 否 |
+| 4 | **C05** 门禁（生成物必须最新） | rust-ts-boundary | 否 |
+| 5 | **C04** 命令半边全量（分批，每批一 commit + 全门禁） | rust-ts-boundary | 否 |
+| 6 | **G-B** vendored bash 进 shellcheck + `run-tests.sh` 进 CI | gate-integrity | 否 |
+| 7 | **Z01** 账号 0 登记 + 可见 | account-zero | **是：动 `~/.claude/skills/cc-acct-iso/`** |
+| 8 | **Z04** 守卫 | account-zero | **是：同上** |
+| 9 | **Z02** 「未选账号」消失 | account-zero | **是：`tabs.ts` 红线** |
+| 10 | **Z03** 账号 0 接既有能力 | account-zero | 是（承 Z01/Z02） |
+| 11 | **Z05** rc 片段一键生成（独立，可提前） | account-zero | 否 |
+| 12 | **G-A** 八套真机套件断言地板 | gate-integrity | 否 |
+| 13 | **G-C** 6 套 e2e 进 CI | gate-integrity | 否 |
+| 14 | **L5** 平价对账表 + 门禁（独立，可提前） | local-as-remote | 否 |
+| 15 | **L0** Linux 可构建可跑（**唯一可能推翻方向的一步**） | local-as-remote | 否 |
+| 16 | **L1** POSIX 本地 = 不走 ssh 的远端 | local-as-remote | 否 |
+| 17 | **L2** Windows 本地进 IR | local-as-remote | 否 |
+| 18 | **L3a** 本地账号枚举（只读，Rust 读 manifest） | local-as-remote | 否 |
+| 19 | **L4** Linux 打包进 CI/release | local-as-remote | 否 |
+| 20 | **L3b** 本地账号管理（写） | local-as-remote | 依赖 account-zero 全部落地 |
+
+**为什么 G-B 插在 Z01 之前**：Z01 要改 `vendor/cc-acct-iso/scripts/`，而那 1348 行今天在
+shellcheck 门禁之外、它自己的 424 行测试从没跑过。**没有网不能改那个工具。**
+
+**未获授权时的行为（loop 不许在这儿空转）**：跑到 #7 若两条授权都还没有，**跳过 #7-#10，
+继续 #11 起**；跳过的项在本表标注「已跳过，等授权」，并在收尾汇报里如实列出。
+**绝不为了「跑完」而自行放宽用户设的红线或改用户家目录里的文件。**
+
+**loop 停止条件**（任一命中即停，交回用户）：
+撞到需要新决策的阻塞 · 同一步 ≥2 次失败 · 门禁红且非在途变异 · 全部完成（→ Phase G）
+
+---
+
 > 注：状态摘要仅导航用；权威状态恒以各区 `STATUS.md` 为准。新开工作区时在此追加一行。

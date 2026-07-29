@@ -100,9 +100,27 @@ L3 是「给一个 bash 工具做 Windows 等价物」。** 三件事的成本�
 | L0 | **Linux 可构建 + 可跑** | Tauri 在 Linux 上构建通过、app 能起、既有远端功能在 Linux 宿主上可用；WebKitGTK 依赖摸清 | 待规划 | — | **P0** |
 | L1 | **POSIX 本地 = 不走 ssh 的远端** | `transport:{kind:"local"}` 在 POSIX 上有真实含义：复用 `ccm` + tmux，本地 exec 不经 ssh | 待规划 | L0 | **P0** |
 | L2 | **Windows 本地进 IR** | `planLocal` 复活 + PowerShell 渲染器分支 honour `plan.env`；`build_local_ps_command` 变成该分支的实现而非平行世界 | 待规划 | L1 | P1 |
-| L3 | **Windows 账号支持** | cc-acct-iso 的 Windows 等价物或 Rust 实现 manifest；账号注入 + per-account model 到 Windows 本地 | 待规划 | **`account-zero` 全部落地** + L2 | **P1**（见下） |
+| **L3a** | **本地账号枚举（只读）** | Rust 直接读 `%USERPROFILE%\.claude-accts\accounts.json`（manifest 格式已定），`loggedIn` 由 `.credentials.json` 是否存在判定。**不需要 bash、不需要 cc-acct-iso** ⇒ 本地立刻有：账号列表 / 选号 / 账号注入 / per-account model | 待规划 | L2 | **P1** |
+| L3b | **本地账号管理（写）** | 建 / 迁 / 删 / 改默认号。需要 cc-acct-iso 的 Windows 等价物（PowerShell 或 Rust 实现） | 待规划 | **`account-zero` 全部落地** + L3a | P2 |
 | L4 | **Linux 打包 + 进 CI/release** | Linux 产物（AppImage/deb 择一）+ CI 构建 job；`release.yml` 加 Linux 产物 | 待规划 | L0,L1 | P2 |
 | L5 | **平价对账表 + 门禁** | 枚举全部 119 个 Tauri 命令，每条要么两侧都有、要么在白名单表里且带理由；**新增命令不登记就红** | 待规划 | — | P1 |
+
+### Windows 本地排期：原来的 L3 拆成 L3a / L3b（2026-07-29 用户要求排期后重新推导）
+
+**上一版把「Windows 账号支持」当成一件事、硬依赖 `account-zero` 全部落地，那个判断太粗。**
+重新推导：本地缺的其实是**两件性质完全不同的事**。
+
+| | 缺的是什么 | 需要什么 | 依赖 |
+|---|---|---|---|
+| **L3a 枚举（读）** | 本地**没有账号列表的来源**。`fetchAccounts(origin)` → `list_remote_accounts(origin)` → 远端 `cc-acct-iso --list-accounts`，**这条链在本地没有对应物** ⇒ UI 拿不出账号可选 ⇒ `plan.env` 永远不会含 `export CLAUDE_CONFIG_DIR` | **只要读一个 JSON 文件**。manifest 格式已定（`accounts.json`：`version`/`sharedStore`/`acctsDir`/`accounts[]`，每项 `name`/`configDir`/`isDefault`），Rust 读它 + 检查 `.credentials.json` 是否存在 = 约百行。`email` 也照远端的做法**现读**该 config dir 的 `.claude.json` | **只依赖 L2**（要有地方 honour `plan.env`） |
+| **L3b 管理（写）** | 本地无法**建 / 迁 / 删 / 改默认号** | cc-acct-iso 的 Windows 等价物。它要做 symlink 布局、隔离集搬迁、备份回滚 —— 是**一整个工具** | **`account-zero` 全部落地**（manifest 数据模型正在变） |
+
+**这个拆分的意义**：用户能感受到的那部分（**选号、注入、per-account model 在本地生效**）
+归 L3a，**不依赖 `account-zero`、不依赖任何 bash、可以排在 L2 之后立刻做**。
+真正贵且必须等模型定稿的只是「在 Windows 上建账号」这件事。
+
+**上一版为什么判错**：我把「账号功能」当成一个整体，于是它继承了最贵那部分的依赖。
+按本会话反复用的那把尺子——**先数清现实里有几件事，再决定依赖**——它是两件。
 
 ### L3 的优先级由 P3 升到 P1（用户 2026-07-29 追加原则）
 
@@ -175,11 +193,14 @@ buildLaunchPlan ──▶ 渲染器 ─┼─ transport: {kind:"local"} + POSIX 
 ```
 L5（平价对账表）        独立，先做——它让后面全部进度可度量
 
-L0（Linux 可构建可跑）── L1（POSIX 本地）──┬── L2（Windows 本地进 IR）── L3（Windows 账号）
-                                          └── L4（Linux 打包进 CI）
-                                                        ↑
-                                          L3 硬依赖 account-zero 全部落地
+L0（Linux 可构建可跑）── L1（POSIX 本地）──┬── L2（Windows 本地进 IR）──┬── L3a（本地账号枚举·读）
+                                          │                           └── L3b（本地账号管理·写）
+                                          └── L4（Linux 打包进 CI）           ↑
+                                                        L3b 硬依赖 account-zero 全部落地
 ```
+
+**只有 L3b 一个功能被 `account-zero` 卡住。** L5 / L0 / L1 / L2 / L3a / L4 六个功能
+**不依赖 `account-zero`、不依赖任何外部授权**，可以连续跑完。
 
 **顺序与理由**：
 
