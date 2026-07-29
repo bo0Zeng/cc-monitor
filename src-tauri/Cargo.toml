@@ -71,6 +71,15 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # v2.0.0 issue #4：滚动 log 文件 + non_blocking writer，给 GUI app（无 stderr）一个用户可见的诊断通道
 tracing-appender = "0.2"
+
+[dev-dependencies]
+# C01（rust-ts-boundary）：**故意只在 dev 侧**。`ts-rs` 是 codegen 工具，
+# 导出本来就走 `cargo test`（`#[ts(export)]` 生成的是一个测试），
+# 所以它没有理由进发布二进制。派生用 `#[cfg_attr(test, ...)]` 挂在 test cfg 上。
+#
+# **这是个会被复制 127 次的策略决定**（Phase D 审计 I4 点出），所以现在定比 C04 再定便宜。
+# 供应链增量本来就小（`ts-rs` + `ts-rs-macros` + `termcolor`，后两者是 proc-macro/构建期），
+# 但「codegen 工具不进产物」是正确的依赖方向。
 ts-rs = "12.0.1"
 
 [target.'cfg(windows)'.dependencies]

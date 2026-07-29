@@ -23,7 +23,7 @@ export default defineConfig({
         "src/**/types.ts",
       ],
       // 地板棘轮（非追高目标）：设在当前值下方 ~2-3% 吸收环境/v8 版本差，只挡**明显回归**
-      // （如新增大块无测代码）。当前 vitest(jsdom) 套件：S41.85 / B36.48 / F38.07 / L42.98。
+      // （如新增大块无测代码）。当前 vitest(jsdom) 套件：S48.98 / B41.15 / F44.60 / L50.41。
       // 注：只统计 `*.vitest.ts`；`*.test.ts`(tsx node) 不计入 → 故意不设 85% 全局。
       thresholds: {
         statements: 40,

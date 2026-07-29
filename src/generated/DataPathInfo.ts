@@ -24,20 +24,40 @@ exists: boolean,
 /**
  * 文件大小（bytes）；目录返 None（不递归算大小避免大目录卡 IPC）
  *
- * **两个 `ts` 属性都不是装饰，各修掉一次「类型撒谎」**（C01 实测发现）：
+ * **两个 `ts` 属性都不是装饰，各修掉一次「类型撒谎」**（C01 实测 + Phase D 审计取证）：
  *
  * 1. **`optional`**：本字段带 `skip_serializing_if`，`None` 时**字段在 JSON 里整个缺席**，
- *    TS 侧收到 `undefined` 而不是 `null`。不加它，`ts-rs` 生成必需且可为 null 的形态
- *    ——声明了一个永不出现的 null。
+ *    TS 侧收到 `undefined` 而不是 `null`。审计逐字节验过序列化产物：
+ *    `None` → `{"label":…,"exists":true}`（key 整个不在）；
+ *    `Some(u64::MAX)` → `…,"sizeBytes":18446744073709551615`。
+ *    机制也查过：`ts-rs` 对 `skip_serializing_if` 只置 `maybe_omitted`，
+ *    而它的兜底分支要求 `maybe_omitted && has_default`——本字段没有 `#[serde(default)]`，
+ *    所以显式 `ts(optional)` 确实必需。
+ *
+ *    **一处措辞订正**：本注释初版写「不加 `optional` 会得到必需且可为 null」——**不准**。
+ *    在 `type = "number"` 同时存在时，实测是 `sizeBytes: number`（必需、**不**可 null）；
+ *    `bigint | null` 只在两个属性都缺席时出现。两个都是谎，但是不同的谎。
+ *    （另：`ts(optional = nullable, type = "number")` 实测也产出 `sizeBytes?: number`
+ *    ——type override 吃掉 nullable，所以那条逃生路不存在。）
+ *
  * 2. **`type = "number"`**：`ts-rs` 默认把 `u64` 映射成 `bigint`，
  *    **而 Tauri 的命令 IPC 走 JSON，`u64` 到 TS 侧是 JSON number，不是 BigInt**。
- *    仓库自身就是证据：C01 之前 `data-section.ts` 直接 `formatBytes(info.sizeBytes)`，
- *    而 `formatBytes` 内部有 `(n / 1024).toFixed(1)` —— `bigint` 没有 `.toFixed`，
- *    真是 BigInt 的话生产里早就 `TypeError` 了。所以 `bigint` 是**朝另一个方向撒谎**。
+ *
+ *    **证据分强弱两层，用强的那层**（审计订正）：
+ *    - **强（原理级）**：`tauri-2.11.2/src/ipc/mod.rs:181-183` 的
+ *      `impl<T: Serialize> IpcResponse for T` 走 `serde_json::to_string(&self)`
+ *      ⇒ 线上是 **JSON 文本**，而 `JSON.parse` 永不产出 BigInt
+ *      ⇒ 命令返回值**在原理上不可能**以 BigInt 到达 TS 侧。
+ *    - **弱（现象级，本注释初版用的）**：改动前 `data-section.ts` 直接
+ *      `formatBytes(info.sizeBytes)` 而 `formatBytes` 内有 `.toFixed()`，
+ *      `bigint` 没有该方法 ⇒ 真是 BigInt 的话生产里早就 `TypeError`。
+ *      **它只证明「今天不是 bigint」，不证明「不可能是」。**
+ *    - **仓内同向先例**：`usage.rs:24-27` 的 `TokenUsage` 四个 `u64` 字段跨边界，
+ *      TS 侧 `views/usage-pivot.ts` 声明 `number` 并直接做算术。全仓无 BigInt。
  *
  *    **收窄成 `number` 在这里是安全的**：本字段只用于展示文件大小，
  *    而 f64 的安全整数上限 2^53-1 ≈ **8 PB**。
- *    **全局的大整数策略由 C03 定**（哪些字段该走 string/bigint 过线）；
- *    但无论策略如何，**类型不许与运行时不一致**，所以这一处在 C01 就修掉。
+ *    **全局的大整数策略由 C03 定**（哪些字段该走 string 过线）；
+ *    但无论策略如何，**类型不许与运行时不一致**，所以这一处在 C01 修掉。
  */
 sizeBytes?: number, };
