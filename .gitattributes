@@ -25,7 +25,9 @@
 # C01（rust-ts-boundary）：ts-rs 生成物，diff 默认折叠。源是 src-tauri/src/**.rs 的
 # #[cfg_attr(test, derive(ts_rs::TS))]，重新生成走 `npm run gen:types`。
 #
-# **不要在这里写「改了会被守卫抓到」——那是假保证**（Phase D 审计 B2 实测：手改生成物、
-# 甚至插一个 Rust 侧根本不存在的字段，5 条守卫 + tsc **全绿**）。
-# 手改**目前只靠人工纪律**；真正的检查是 C05 的「重新生成 + git diff --exit-code」，尚未落地。
+# **别把这条保证挂在 vitest 守卫上**（Phase D 审计 B2 实测：手改生成物、甚至插一个 Rust 侧
+# 根本不存在的字段，5 条守卫 + tsc **全绿**）。真正抓它的是 **C05**：`ci.yml` 的 `rust` job
+# 在 `cargo test --all` 之后跑 `git diff --exit-code -- ../src/generated/`
+# ——CI 从 commit checkout，重新生成产出正确版 ⇒ **已提交的**手改必然 diff 非空。
+# （未提交的本地手改会被重新生成静默冲掉，从来到不了仓库。）
 src/generated/** linguist-generated=true

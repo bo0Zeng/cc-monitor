@@ -126,6 +126,12 @@ src-tauri/src/**.rs   ──(ts-rs 派生 + cargo test 导出)──▶  生成�
 | **5. `lib.rs` 的 `invoke_handler`（119 项）** | C01,C04 | **保持手写**（`ts-rs` 不管命令签名），由**钉死全部 119 项的结构性守卫**对拍——把今天覆盖 3/119 的白名单测试扩到 119，形状照 `every_host_declaration_is_pinned` + `structural_scan::require` | 手写列表，`lib.rs:894-1033` | `lib.rs` 已经同时是顶和底（Phase G 整体设计视角重要 7：29 处上行引用）。**本工作区不解决那个问题**，只保证列表不漂 |
 | **6. CI（`ci.yml`）** | C05 | 新增一步「重新生成 + `git diff --exit-code`」。**必须在 windows job 之外的某个 job 里**（生成是平台无关的，别占 Windows 配额） | 4 个 windows job + 4 个 ubuntu job | 与 `gate-integrity` 工作区**同时在改 `ci.yml`** ⇒ 见下方冲突协议 |
 
+> **共享面 6 的协议按实际开工顺序调整（2026-07-29）**：原文「`gate-integrity` 最先改 `ci.yml`」，
+> 但它还没开工而 C05 已被提到执行顺序 #2 ⇒ **C05 先改，且只在 `rust` job 末尾追加一步、
+> 不重排任何既有步骤**。后到的 `gate-integrity` / `local-as-remote` 同样只追加。
+> **协议实质不变**：后到者不重排先到者。
+
+
 ### 跨工作区冲突协议（本轮四个工作区并行的前提）
 
 | 文件 | 谁改 | 协议 |
@@ -250,6 +256,7 @@ C01（样板 + 变异验收）
 
 ## §7 变更记录
 
+- 05 — 2026-07-29 — **C05 落地：门禁拆成两半，各在已有 job 里查** — 实测发现**没有任何 CI job 同时有 Rust 和 node**，所以 `npm run check:types` 那条串联进不了 CI。改为：`rust` job 加一步 `git diff --exit-code -- ../src/generated/`（保证已提交的生成物 == 从 Rust 源生成的）+ `frontend` job 既有的 `tsc`（保证 TS 消费方 == 已提交的生成物），两者合起来即「TS 消费方 == Rust 源」，而 `git diff` 不需要 node ⇒ 代价 ≈ 一条 git 命令。顺带闭合 C01 登记的「手改生成物」盲区（已提交的那种）。
 - 04 — 2026-07-29 — **C01 Phase D 审计闭环：执行顺序改动 + 依赖方向改动**（见 features/C01 §7）— C05 由 #4 提到 #2（CI 两次独立 checkout ⇒「忘了重新生成」让所有门禁保持绿色，实测）；ts-rs 移到 dev-dependencies + cfg_attr(test) 派生；§3 的 @generated 与实现矛盾已改准；「clippy 0」改「clippy 无新增」。
 - 03 — 2026-07-29 — **共享面 1 两处订正 + 新增一条硬性范围约束**（C02 Phase B 实测）— ① 事件名常量 `ts-rs` 生成不了，改为结构性守卫钉死；② 漏了 `src/remote-health.ts`；③ payload 实为 11 个不是 10 个；④ **线上格式是混的**（3 个 camelCase / 8 个 snake_case），生成物必须忠实复现，**统一它属于行为变化，本工作区一律不做**。
 - 02 — 2026-07-29 — **技术选型从 `tauri-specta` 改为 `ts-rs` v12**（见 §8）— C01 开工前实测发现 `tauri-specta` 对 Tauri 2 只有 `2.0.0-rc.1`，不给生产打包链引入预发布依赖。代价是 `invoke` 包装层手写，由「钉死 119 个命令」的结构性守卫兜住。
