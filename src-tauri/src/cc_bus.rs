@@ -3,9 +3,12 @@
 //! 为什么单独一层：`~/.cc-bus/` 里的状态文件**实测是脏的**，且脏得比计划预估严重。
 //! 2026-07-28 直接读开发机上那份真实数据，结论见
 //! `.claude/planned-build/unify-launch/features/B03-dirty-data-samples.md`：
-//!   · `spawned.tsv` **15 行里 8 行是坏的（53%）**——目录名与任务文本里含 `\n`，
-//!     把一条记录劈成多行。**坏行是多数派**，所以解析器绝不能"发现坏行就整体报错"，
+//!   · `spawned.tsv` **15 行里 5 行畸形**（另有 3 行是真空行，按契约不计）——目录名与
+//!     任务文本里含 `\n`，把一条记录劈成多行。解析器绝不能"发现坏行就整体报错"，
 //!     那样 7 条好记录也一起没了。
+//!     （**我原先写的"8 行坏、53%、坏行是多数派"是错的**：8 = 5 畸形 + 3 空行，而
+//!     "空行不计入 skipped"恰恰是我自己在下方立的契约。写文档时用了代码里明令禁止的口径。
+//!     实际 5/15=33%，非空行口径 5/12=42%，都不是多数派。设计结论不变，错的是记录。）
 //!   · `inbox/` 里 `--help.jsonl`、`282.jsonl` 至今仍在盘上（有人敲过 `cc-send --help`，
 //!     `--help` 被当成了收件人）。
 //!   · `agents.tsv` 结构干净（37 行全 3 字段），它的脏在**陈旧**（最早 10 天前）不在畸形
@@ -56,7 +59,10 @@ pub struct CcBusState {
 /// 判一行是否该被跳过：字段数不足、或 id 非法。
 /// 空行**不计入 skipped**——文件尾部的空行是正常的，把它算成"无法解析"会让 UI 虚报。
 fn row_fields(line: &str, want: usize) -> Option<Vec<&str>> {
-    if line.trim().is_empty() {
+    // **只把"真空行"当空行**（B03 审计重要-4）：原先用 `line.trim().is_empty()`，
+    // 于是 `"\t\t\t"` 这种**有结构无内容**的行被当成空行 → 既不算好行也不计 skipped，
+    // 凭空蒸发。按契约它该算坏行。判据改成"去掉空白后为空**且**不含制表符"。
+    if line.trim().is_empty() && !line.contains('\t') {
         return None;
     }
     let f: Vec<&str> = line.split('\t').collect();
@@ -105,7 +111,9 @@ pub fn parse_spawned_tsv(text: &str) -> (Vec<CcBusSpawned>, usize) {
             id: f[0].to_string(),
             dir: f[1].to_string(),
             spawned_at: f[2].to_string(),
-            task: f[3].to_string(),
+            // **末字段要把余下的都收回来**（B03 审计重要-4）：任务文本里出现一个制表符，
+            // 原先的 `f[3]` 只留第一段、后面**静默丢弃**，UI 上看不出来被截断了。
+            task: f[3..].join("\t"),
         });
     }
     (out, skipped)
@@ -195,14 +203,14 @@ pub async fn read_cc_bus_state(origin: String) -> Result<CcBusState, String> {
 /// 不挡住的话 `tmux has-session -t --help` 会被当成选项解析。校验不过直接拒绝，不构造命令。
 #[tauri::command]
 pub async fn check_cc_bus_agent_online(origin: String, id: String) -> Result<bool, String> {
-    if !is_valid_bus_id(&id) {
-        return Err(format!("非法 agent id（拒绝拼入命令）: {id:?}"));
-    }
+    // **必须走 `build_online_cmd`，不能内联复制一份校验**（B03 审计阻塞-2）：
+    // 我原先在这里内联了 `is_valid_bus_id` + 命令拼接，于是 `build_online_cmd` 成了**零生产
+    // 调用点的死代码**，而真正在跑的那句校验**零测试覆盖**——删掉它整套测试照样全绿。
+    // 这直接证伪了我自己写的「删掉任何一处校验，对应测试立刻红」。抽取纯函数是为了让断言
+    // 落在调用点上，结果抽完没接上去，等于白抽。
+    let cmd = build_online_cmd(&id)?;
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
-    // id 已过 `[A-Za-z0-9_-]` 白名单且不以 `-` 开头，故此处无引号逃逸面；仍加单引号并用
-    // `=<名>:` 精确形态（INVARIANTS §31a：裸目标是"精确→前缀→glob"三级解析，会命中兄弟会话）。
-    let cmd = format!("tmux has-session -t '={id}:' 2>/dev/null && echo ONLINE || echo OFFLINE");
     let read = async {
         use tokio::io::AsyncReadExt;
         let stream = crate::ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
@@ -277,8 +285,12 @@ fn build_spawn_cmd(tool: &str, dir: &str, task: &str) -> Result<String, String> 
     if dir.trim().is_empty() {
         return Err("工作目录为空".to_string());
     }
+    // **`--` 不能省**（B03 审计建议）：`cc-spawn` 的旗标循环（`--new`/`--tool`/`--`）跑在
+    // 取位置参数**之前**，所以 `dir` 若是 `--new` 这类词会被它自己吃成旗标，然后把任务文本
+    // 当成目录，报出"目录不存在: 分析架构"这种莫名其妙的错。这与我给 id 加前导 `-` 校验的
+    // 理由逐字同源，只是当时没施加到 dir 上。用 `--` 显式结束选项即可，不必再加白名单。
     let mut cmd = format!(
-        "cc-spawn --tool {tool} {}",
+        "cc-spawn --tool {tool} -- {}",
         crate::ssh_source::shell_quote(dir)
     );
     if !task.trim().is_empty() {
@@ -300,7 +312,7 @@ pub struct CcBusMessage {
 }
 
 /// 解析 inbox 的 jsonl。**同 TSV 那两个解析器的契约**：坏行跳过并计数，不抛、不因坏行
-/// 丢好行。实测当前 inbox 干净（11 行 0 坏），但 `spawned.tsv` 53% 坏行的教训摆在那里
+/// 丢好行。实测当前 inbox 干净（11 行 0 坏），但 `spawned.tsv` 那 5 条畸形行的教训摆在那里
 /// ——"现在干净"不是"以后也干净"，而这层成本只有几行。
 pub fn parse_inbox_jsonl(text: &str) -> (Vec<CcBusMessage>, usize) {
     let mut out = Vec::new();
@@ -458,8 +470,9 @@ mod tests {
     }
 
     #[test]
-    fn bad_lines_being_majority_still_yields_good_rows() {
-        // 盘面实况：15 行里 8 行坏（53%）。坏行是多数派也不能整体失败。
+    fn many_bad_lines_still_yield_all_good_rows() {
+        // 坏行很多时也不能整体失败。（原名叫 "majority"，但真实盘面是 5/15=33%，
+        // 并非多数派——名字与事实不符会误导后来人，已改名。这里构造 8 条纯属压力形态。）
         let mut text = String::new();
         for i in 0..7 {
             text.push_str(&format!(
@@ -697,14 +710,15 @@ mod tests {
         let dir = "/tmp/has space/and'quote";
         let task = "分析; whoami";
         let c = build_spawn_cmd("codex", dir, task).unwrap();
-        assert!(c.starts_with("cc-spawn --tool codex '"));
-        let rest = &c["cc-spawn --tool codex ".len()..c.len() - " 2>&1".len()];
+        // `--` 结束选项：dir 若是 `--new` 这类词，不加它会被 cc-spawn 的旗标循环吃掉
+        assert!(c.starts_with("cc-spawn --tool codex -- '"));
+        let rest = &c["cc-spawn --tool codex -- ".len()..c.len() - " 2>&1".len()];
         let (qd, qt) = rest.split_at(crate::ssh_source::shell_quote(dir).len());
         assert_eq!(unquote_posix(qd).as_deref(), Some(dir));
         assert_eq!(unquote_posix(qt.trim_start()).as_deref(), Some(task));
         // 无任务时不得留下空参数
         let c2 = build_spawn_cmd("claude", "/tmp", "").unwrap();
-        assert_eq!(c2, "cc-spawn --tool claude '/tmp' 2>&1");
+        assert_eq!(c2, "cc-spawn --tool claude -- '/tmp' 2>&1");
         assert!(
             build_spawn_cmd("claude", "  ", "t").is_err(),
             "空目录应被拒"
@@ -736,6 +750,120 @@ mod tests {
         let (m, sk) = parse_inbox_jsonl(text);
         assert_eq!(m.len(), 2, "好行必须全解出，实得 {m:?}");
         assert_eq!(sk, 2, "坏 json + 无有效字段各一条；空行不计");
+    }
+
+    // ===== B03 审计逼出来的补漏 =====
+
+    /// **阻塞-2 的守卫**：断言在线检查**真的经过** `build_online_cmd`。
+    /// 光测 `build_online_cmd` 本身不够——它曾经是零生产调用点的死代码，
+    /// 而真正在跑的那份内联校验零覆盖。这条测的是「构造逻辑只有一份」。
+    #[test]
+    fn online_check_has_exactly_one_command_construction() {
+        let code = non_test_code();
+        assert!(code.contains("pub async fn check_cc_bus_agent_online"));
+        // 非测试**代码**里，这个命令模板只准出现一次（在 build_online_cmd 里）
+        assert_eq!(
+            code.matches("tmux has-session -t").count(),
+            1,
+            "在线检查的命令串只准构造一处；多处 = 又内联复制了一份（阻塞-2 原样复发）"
+        );
+        let f = code
+            .split("fn build_online_cmd")
+            .nth(1)
+            .expect("build_online_cmd 应存在");
+        assert!(f.contains("tmux has-session -t"));
+        // 且 check_cc_bus_agent_online 必须**调用**它，而不是自己拼
+        let g = code
+            .split("pub async fn check_cc_bus_agent_online")
+            .nth(1)
+            .expect("函数应存在");
+        assert!(
+            g.contains("build_online_cmd(&id)?"),
+            "必须走 build_online_cmd"
+        );
+    }
+
+    /// 取本文件的**非测试、非注释**代码。
+    /// **扫源码的守卫必须先剥注释**——本轮我有两条守卫栽在这上面：一条把文档注释里提到的
+    /// 命令名也数进去（3 != 1），另一条把错误消息里的 `format!` 当成命令构造。
+    /// 守卫扫错东西 = 假红，和恒绿一样坏。
+    fn non_test_code() -> String {
+        let src = include_str!("cc_bus.rs");
+        let code = src.split(concat!("#[cfg", "(test)]")).next().unwrap_or(src);
+        code.lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("//") && !t.starts_with('*') && !t.starts_with("/*")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn non_test_code_helper_is_sane() {
+        // 守住这个助手本身：剥过头（剥成空）或没剥干净，上下两条守卫就都成了摆设
+        let c = non_test_code();
+        assert!(
+            c.contains("pub async fn check_cc_bus_agent_online"),
+            "剥过头了"
+        );
+        assert!(c.contains("fn build_online_cmd"), "剥过头了");
+        assert!(!c.contains("阻塞-2 原样复发"), "注释没剥干净");
+        assert!(c.len() > 2000, "剩下的代码太少，守卫形同虚设");
+    }
+
+    /// **重要-2 的守卫**：`parse_agents_tsv` 的 id 校验此前**没有会红的断言**
+    /// （`never_panics_on_adversarial_input` 用 `let _ =` 丢结果，只守 panic 不守语义）。
+    /// 对照 `parse_spawned_tsv` 有 `garbage_id_rows_are_skipped_not_rendered` 守着——
+    /// 两个同构解析器只守了一个。
+    #[test]
+    fn agents_garbage_id_rows_are_skipped_not_rendered() {
+        let text = "--help\thelp:0.0\t2026-07-18T07:26:31-07:00\n\
+                    good_cc\tgood_cc:0.0\t2026-07-28T11:48:32-07:00\n";
+        let (rows, skipped) = parse_agents_tsv(text);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "good_cc");
+        assert_eq!(skipped, 1, "--help 这行必须被跳过并计数");
+    }
+
+    /// **重要-4a**：只含制表符的行有结构无内容 → 该算坏行，不该凭空蒸发。
+    #[test]
+    fn tab_only_line_counts_as_bad_not_vanished() {
+        let (rows, skipped) = parse_spawned_tsv("\t\t\t\n");
+        assert_eq!(rows.len(), 0);
+        assert_eq!(skipped, 1, "有结构无内容的行必须计入 skipped");
+        // 真空行仍然不计（这是既有契约，别修坏）
+        let (_, sk2) = parse_spawned_tsv("\n\n   \n");
+        assert_eq!(sk2, 0, "真空行不计入 skipped，否则 UI 虚报");
+    }
+
+    /// **重要-4b**：任务文本里有制表符时，末字段要把余下的都收回来，不能静默截断。
+    #[test]
+    fn task_with_tabs_is_not_silently_truncated() {
+        let (rows, _) = parse_spawned_tsv("a_cc\t/d\t2026\tpart1\tpart2\tpart3\n");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].task, "part1\tpart2\tpart3", "多余字段不得丢");
+    }
+
+    /// **重要-6 的守卫**：「定值命令零插值」此前断言打在常量上，
+    /// 没有任何东西守「`fetch_remote_cc_bus` 原样把它交出去」。往里塞一个 `format!` 就穿了。
+    #[test]
+    fn cat_command_reaches_ssh_unmodified() {
+        // **断言打在调用点**：光断言 `CC_BUS_CAT_CMD` 这个常量长得干净不够
+        // （B03 审计重要-6），得守住"它原样到达 SSH"——往中间塞一层 format! 就穿了。
+        // **不能**断言"函数体内没有 format!"：那过宽，错误消息用 format! 是正当的
+        // （我第一版就是这么写的，当场假红）。
+        let code = non_test_code();
+        assert!(
+            code.contains("connect_and_exec_cmd(cfg, CC_BUS_CAT_CMD)"),
+            "定值命令必须原样交给 SSH（不得包 format!/push_str）"
+        );
+        // 非测试代码里这个常量只准出现两次：定义处 + 那唯一一个调用点
+        assert_eq!(
+            code.matches("CC_BUS_CAT_CMD").count(),
+            2,
+            "常量出现次数变了，检查是否多了第二条构造路径"
+        );
     }
 
     #[test]
