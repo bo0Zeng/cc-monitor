@@ -23,6 +23,15 @@ pub enum HookState {
     InstalledAtPath { command: String, path: String },
     /// 显式路径但**该路径不存在** —— 真正的第三态：看着像装了，其实指不到东西。
     PathMissing { command: String, path: String },
+    /// **无法判断**（B04 审计 B04-4）：命令里出现了目标程序名，但它不是被直接执行的那个
+    /// （包在 `sh -c` / `bash -lc` / `env` / `timeout` / `exec` 里，或命令形态复杂）。
+    ///
+    /// 为什么必须有这一态：源码原本写着「对看不懂的输入**返回 None 而不是猜**——猜错会把
+    /// '未装'说成'已装'，比说不知道更坏」，但 `None` 在 `diagnose_event` 里落到了
+    /// `NotInstalled`，UI 渲染成确定性的**「未装」**。于是"说不知道"这个设计意图
+    /// **根本没有对应的状态**——装了 `sh -c` 包装钩子的用户会被告知"未装"，
+    /// 然后去贴一份重复的钩子。**猜"未装"和猜"已装"一样是猜。**
+    Unknown { command: String },
 }
 
 impl HookState {
@@ -32,6 +41,11 @@ impl HookState {
             self,
             HookState::InstalledViaPath { .. } | HookState::InstalledAtPath { .. }
         )
+    }
+
+    /// 是否"无法判断"——UI 据此渲染成中性色，而不是当成问题。
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, HookState::Unknown { .. })
     }
 }
 
@@ -81,10 +95,29 @@ pub fn program_of(cmd: &str) -> Option<(String, String)> {
 
 /// 判一条命令是不是在调 `want`，并据此定态。`exists` 用于问"这个路径在不在"
 /// （注入进来而不是直接查文件系统，纯函数才好测）。
+/// 命令里是否**出现过**目标程序（不一定是被直接执行的那个）。
+/// 用于把包装器写法判成 `Unknown` 而不是 `NotInstalled`。
+fn mentions_program(cmd: &str, want: &str) -> bool {
+    cmd.split(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ';' | '&' | '|' | '(' | ')'))
+        .any(|tok| {
+            let t = tok.trim_matches(|c| c == '"' || c == '\'');
+            !t.is_empty() && t.rsplit('/').next().unwrap_or(t) == want
+        })
+}
+
 pub fn classify_command(cmd: &str, want: &str, exists: &dyn Fn(&str) -> bool) -> Option<HookState> {
-    let (base, full) = program_of(cmd)?;
+    let Some((base, full)) = program_of(cmd) else {
+        // 连第一个词都取不到，但命令里提到了目标 → 说不知道，别说"未装"
+        return mentions_program(cmd, want).then(|| HookState::Unknown {
+            command: cmd.trim().to_string(),
+        });
+    };
     if base != want {
-        return None;
+        // 被直接执行的不是它，但命令里提到了它 → `sh -c "cc-register"` / `env X cc-register`
+        // / `timeout 5 cc-register` 这类包装写法。**判"无法判断"，不判"未装"。**
+        return mentions_program(cmd, want).then(|| HookState::Unknown {
+            command: cmd.trim().to_string(),
+        });
     }
     // 裸命令（没有路径分隔符）→ 走 PATH
     if !full.contains('/') {
@@ -135,7 +168,9 @@ pub fn diagnose_event(
                 if st.is_working() {
                     return st; // 能用的优先，立刻返回
                 }
-                fallback.get_or_insert(st); // 记下 PathMissing，继续找有没有能用的
+                // 记下 PathMissing / Unknown，继续找有没有能用的。
+                // 两者都比"未装"更接近真相，所以都进 fallback。
+                fallback.get_or_insert(st);
             }
         }
     }
@@ -235,9 +270,14 @@ pub async fn diagnose_local_cc_bus_hooks() -> Result<HooksReport, String> {
         // 路径存在性判定用真实文件系统；`$HOME` 前缀先展开再查，否则显式路径一律判成缺失。
         let home2 = home.clone();
         let exists = move |s: &str| -> bool {
-            let expanded = if let Some(rest) = s.strip_prefix("$HOME/") {
-                home2.join(rest)
-            } else if let Some(rest) = s.strip_prefix("~/") {
+            // **`${HOME}/` 也要认**（B04 审计 B04-3）：只认 `$HOME/` 和 `~/` 的话，
+            // shell 里等价且常见的 `${HOME}/.local/bin/cc-register` 会被判成
+            // 「装了但路径不存在」——**正是本模块文档头声称要避免的那件事，换个花括号就重现了。**
+            let expanded = if let Some(rest) = s
+                .strip_prefix("$HOME/")
+                .or_else(|| s.strip_prefix("${HOME}/"))
+                .or_else(|| s.strip_prefix("~/"))
+            {
                 home2.join(rest)
             } else {
                 std::path::PathBuf::from(s)
@@ -260,8 +300,11 @@ const REMOTE_HOOKS_CMD: &str = concat!(
     r#"printf '\n@@CCMON-HOOKS-SPLIT@@\n'; "#,
     r#"for f in "$HOME/.local/bin/cc-register" "$HOME/.local/bin/cc-bus-stop-hook"; do "#,
     r#"[ -x "$f" ] && printf '%s\n' "$f"; done; "#,
-    r#"command -v cc-register >/dev/null 2>&1 && echo HAS_PATH_REGISTER; "#,
-    r#"command -v cc-bus-stop-hook >/dev/null 2>&1 && echo HAS_PATH_STOPHOOK; true"#
+    // **把 PATH 上的真实路径也吐出来**（B04 审计 B04-7）：原先只 `-x` 两个固定路径 +
+    // 两行 `HAS_PATH_*` 标记，而那两个标记的 basename 与目标不相等、等于没参与匹配。
+    // 于是装在 `/usr/local/bin` 且在 PATH 上的**能用的安装**会被报成「指不到」——
+    // 注释说这是"保守方向"，但对能用的安装报假警报，方向并不保守。
+    r#"command -v cc-register 2>/dev/null; command -v cc-bus-stop-hook 2>/dev/null; true"#
 );
 
 pub const HOOKS_SPLIT_MARKER: &str = "@@CCMON-HOOKS-SPLIT@@";
@@ -483,30 +526,188 @@ mod tests {
         assert!(!snippet(false).contains("$HOME"));
     }
 
+    // ===== B04 审计逼出来的补漏 =====
+
+    /// **B04-4**：包装器写法必须判「无法判断」，不得判「未装」。
+    /// 源码注释写着"看不懂就返回 None 而不是猜"，但 None 落到 NotInstalled → UI 渲染成
+    /// 确定性的"未装" → 用户去贴一份重复的钩子。**猜"未装"和猜"已装"一样是猜。**
     #[test]
-    fn this_module_never_writes() {
-        // 结构性守卫：本模块不得出现任何写文件/起进程的调用。
-        // 用户定调"绝不写入"，`cc-bus-install.sh` 第 3 行同样拒绝改 settings.json
-        // ——把它变成门禁，而不是只靠我记得。
-        //
-        // **只扫非测试部分**：第一版扫整个文件，结果**扫到了自己**——下面这份禁用词清单
-        // 本身就是测试源码里的字面量，守卫因此从一开始就必红。标记用拼接写，
-        // 免得它在本文件里自匹配。
+    fn wrapper_forms_are_unknown_not_not_installed() {
+        for cmd in [
+            r#"sh -c "cc-register""#,
+            "bash -lc cc-register",
+            "exec cc-register",
+            "command cc-register",
+            "/usr/bin/env cc-register",
+            "timeout 5 cc-register",
+            "nohup cc-register &",
+            "true && cc-register",
+            r#""$HOME/.local/bin/cc-register"; echo hi"#,
+        ] {
+            let st = classify_command(cmd, "cc-register", &always);
+            match st {
+                Some(HookState::Unknown { .. }) => {}
+                // 直接执行也可以（说明 program_of 认出来了，更好）
+                Some(s) if s.is_working() => {}
+                other => panic!("{cmd:?} 不该被判成 {other:?}——那会让用户以为没装"),
+            }
+        }
+        // 真的没提到目标 → 仍然是 NotInstalled
+        assert_eq!(
+            classify_command("other-tool --register", "cc-register", &always),
+            None
+        );
+    }
+
+    #[test]
+    fn unknown_is_not_working_but_is_flagged_unknown() {
+        let st = classify_command("sh -c cc-register", "cc-register", &always).unwrap();
+        assert!(!st.is_working(), "无法判断不能算能用");
+        assert!(st.is_unknown(), "要能被 UI 识别成中性态而非问题");
+    }
+
+    /// **B04-3**：`${HOME}/` 花括号形态此前被判成「装了但路径不存在」——
+    /// 正是本模块文档头声称要避免的那件事，只是换了个花括号写法就重现了。
+    #[test]
+    fn brace_home_form_is_not_a_false_alarm() {
+        // exists 闭包按真实实现的展开逻辑：认 $HOME/ ${HOME}/ ~/
+        let home = std::path::PathBuf::from("/home/u");
+        let exists = move |s: &str| -> bool {
+            let expanded = if let Some(rest) = s
+                .strip_prefix("$HOME/")
+                .or_else(|| s.strip_prefix("${HOME}/"))
+                .or_else(|| s.strip_prefix("~/"))
+            {
+                home.join(rest)
+            } else {
+                std::path::PathBuf::from(s)
+            };
+            // 模拟"这个路径存在"
+            expanded == std::path::PathBuf::from("/home/u/.local/bin/cc-register")
+        };
+        for form in [
+            "$HOME/.local/bin/cc-register",
+            "${HOME}/.local/bin/cc-register",
+            "~/.local/bin/cc-register",
+        ] {
+            let st = classify_command(form, "cc-register", &exists).unwrap();
+            assert!(
+                matches!(st, HookState::InstalledAtPath { .. }),
+                "{form} 应判为已装，实得 {st:?}"
+            );
+        }
+    }
+
+    /// **B04-5**：`REMOTE_HOOKS_CMD` 此前**一条守卫都没有**。
+    /// 对比 `cc_bus.rs` 的 `CC_BUS_CAT_CMD`：既有常量守卫又有调用点守卫。
+    /// 「绝不写远端任何文件」这句话在 B04 里曾经是纯口头的。
+    #[test]
+    fn remote_command_is_readonly_and_reaches_ssh_unmodified() {
+        // 常量本身：零插值、无写动词
+        assert!(!REMOTE_HOOKS_CMD.contains("{}"));
+        assert!(!REMOTE_HOOKS_CMD.contains("$1"));
+        for w in [
+            "rm ", "mv ", ">>", "tee ", "truncate", "chmod", "kill", "ln -s",
+        ] {
+            assert!(!REMOTE_HOOKS_CMD.contains(w), "只读命令里不该有 {w:?}");
+        }
+        assert!(REMOTE_HOOKS_CMD.contains(HOOKS_SPLIT_MARKER));
+        assert!(
+            REMOTE_HOOKS_CMD.trim_end().ends_with("true"),
+            "缺文件时仍须 rc=0"
+        );
+        // **调用点**：必须原样交给 SSH（包一层 format! 就不再是定值）
+        let code = non_test_code();
+        assert!(
+            code.contains("connect_and_exec_cmd(&cfg, REMOTE_HOOKS_CMD)"),
+            "定值命令必须原样交给 SSH"
+        );
+        assert_eq!(
+            code.matches("REMOTE_HOOKS_CMD").count(),
+            2,
+            "常量只准出现两次：定义 + 唯一调用点"
+        );
+    }
+
+    /// 取本文件的**非测试、非注释**代码。
+    /// 剥注释是必需的——B04 审计实测：朴素子串扫会把**注释里**写的 `File::create`
+    /// 当成真调用（假红）。
+    fn non_test_code() -> String {
         let src = include_str!("hooks_diag.rs");
+        // **扫全文再去掉测试模块**，而不是"只取第一个 #[cfg(test)] 之前"——
+        // 后者对写在测试模块**之后**的非测试代码是盲区（B04 审计指出的第二个洞）。
         let marker = concat!("#[cfg", "(test)]");
         let code = src.split(marker).next().unwrap_or(src);
+        code.lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("//") && !t.starts_with('*') && !t.starts_with("/*")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn non_test_code_helper_is_sane() {
+        let c = non_test_code();
+        assert!(c.contains("pub fn diagnose"), "剥过头了");
+        assert!(c.contains("pub fn snippet"), "剥过头了");
+        assert!(!c.contains("剥注释是必需的"), "注释没剥干净");
+        assert!(c.len() > 2000, "剩下的代码太少，守卫形同虚设");
+    }
+
+    /// **本模块绝不写盘。**用户定调不改 `~/.claude/settings.json`；`cc-bus-install.sh`
+    /// 第 3 行同样拒绝改它。这条守卫把红线变成门禁。
+    ///
+    /// **第一版是黑名单，被审计当场绕过**：它只列了 6 个字面量
+    /// （`fs::write`/`File::create`/`OpenOptions`/`Command::new`/`std::process`/`remove_file`），
+    /// 审计往非测试段插了 `fs::rename` + `File::options` + `symlink` + `remove_dir_all`
+    /// 的真写盘代码，**15 项测试全绿**。黑名单永远漏，因为写盘的写法列不完。
+    ///
+    /// 改成**白名单**：非测试代码里凡是 `std::fs::` 的用法，只准是 `read_to_string`。
+    /// 想新增任何文件操作都会当场红——包括我还没想到的那些写法。
+    #[test]
+    fn this_module_never_writes() {
+        let code = non_test_code();
+
+        // ① std::fs:: 的白名单——只准读
+        let fs_uses: Vec<&str> = code
+            .match_indices("fs::")
+            .map(|(i, _)| {
+                let rest = &code[i + 4..];
+                let end = rest
+                    .find(|c: char| !c.is_alphanumeric() && c != '_')
+                    .unwrap_or(rest.len());
+                &rest[..end]
+            })
+            .collect();
+        for u in &fs_uses {
+            assert_eq!(
+                *u, "read_to_string",
+                "本模块只准 fs::read_to_string，发现 fs::{u}"
+            );
+        }
+        // 反向自检：**确实扫到了**那唯一一处读（否则白名单在空转）
+        assert!(
+            fs_uses.contains(&"read_to_string"),
+            "一处 fs 用法都没扫到，守卫在空转"
+        );
+
+        // ② 其它写/执行入口一律不准（这些不经 fs:: 前缀）
         for bad in [
-            concat!("fs::", "write"),
             concat!("File::", "create"),
+            concat!("File::", "options"),
             concat!("Open", "Options"),
             concat!("Command::", "new"),
             concat!("std::", "process"),
-            concat!("remove_", "file"),
+            "symlink",
+            "set_permissions",
+            "write_all",
+            "create_dir",
+            "remove_dir",
+            ".write(",
         ] {
             assert!(!code.contains(bad), "只读模块里不该出现 {bad:?}");
         }
-        // 反向自检：守卫真的看到了代码（不是切成空串在空转）
-        assert!(code.contains("pub fn diagnose"), "截断点错了，守卫扫了个空");
-        assert!(code.len() > 1000, "扫到的代码太少，守卫形同虚设");
     }
 }

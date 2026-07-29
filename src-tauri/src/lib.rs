@@ -47,6 +47,7 @@ mod subagent;
 mod tasks;
 mod tmux;
 mod tmux_reconcile;
+mod tool_registry; // T01：受管工具声明（只声明，不改各工具行为）
 mod usage;
 mod utils;
 mod watcher;
