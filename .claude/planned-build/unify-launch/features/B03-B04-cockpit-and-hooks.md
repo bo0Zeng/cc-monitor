@@ -187,3 +187,45 @@ id 进命令串前必须过 `is_valid_bus_id`（盘上真有 `--help` 这种 id�
   纯逻辑摘出来，而不是降低断言强度。**
 - `shell_quote` 那条变异第一次"通过"是**假信号**：Python 语法错导致变异根本没写进文件。
   改用 heredoc 落文件后重跑，6 条断言红。**变异前后必须 diff 确认真改到了。**
+
+## 13. B04 落地记录（2026-07-28）
+
+**后端** `src-tauri/src/hooks_diag.rs`（commit `c2dea4d`）+ **UI** `src/settings/cc-bus-hooks-section.ts`。
+挂进 `panel.ts` 集成组，标题「cc-bus 钩子」。**全程只读，零写入路径**（两侧各有结构性守卫）。
+
+### 计划的「三态」订正为四态
+
+计划 §3 写「已装 / 未装 / 装了但指向别的路径」，并提醒第三态"最容易被误报成已装"。
+实测发现**方向反了**，且三态不够用——见 `features/B04-hook-states-from-real-disk.md`：
+用户盘上装的是 `"$HOME/.local/bin/cc-register" >/dev/null 2>&1 || true`，规范片段是裸
+`cc-register …`，**功能等价但字符串不等**。按等值比较会把这套**完全正确的安装**报成第三态。
+
+→ 「已装」必须拆开才说得清哪种才是问题：
+`NotInstalled` / `InstalledViaPath`（裸命令走 PATH）/ `InstalledAtPath`（显式路径**且存在**
+——**用户当前状态，不是问题**）/ `PathMissing`（显式路径但**不存在**——**真正的第三态**）。
+
+### 不代劳写入的理由要讲给用户听
+
+文案不只说"请手动粘贴"，而是说清：`~/.claude/settings.json` 是**共享的全局配置**，
+用户自己的编辑器、别的工具、别的 skill 都可能在动它，单方面改有可能覆盖掉他人的改动；
+且 cc-bus 自己的安装脚本同样拒绝碰它。复制成功的提示里额外强调「**合并**进 hooks 段，
+不是整份覆盖」——那里可能还有别的工具的钩子。
+
+### 本轮修掉的两个自己的缺陷
+
+1. **结构性守卫 `this_module_never_writes` 第一版是坏的**：用 `include_str!` 扫整个文件，
+   而禁用词清单本身就是测试源码里的字面量 → **扫到了自己、必红**。改成只扫
+   `#[cfg(test)]` 之前的部分（标记用 `concat!` 拼接免自匹配），并加**反向自检**断言
+   「守卫真的看到了代码、不是切成空串在空转」——正是 B01 审计教的那一课，这次自己先接住。
+2. **`invoke` resolve 成 `undefined` 会让分节崩掉**（真 bug，测试跑出来的未捕获 rejection）。
+   原代码只 `catch` 不校验形状，`origins.length` 直接抛。本工作区一路在守「脏数据不能把
+   面板搞崩」，**对自己的 IPC 返回值同样适用**。`cc-bus-section.ts` 有同一处模式，一并修。
+
+### 变异验收
+
+后端 5 条（不剥引号 / 存在的显式路径也判 PathMissing / 显式路径当裸命令 / 不比对程序名 /
+不优先返回能用的那条）全红。
+前端 5 条：PathMissing 说成已装 → 红 · InstalledAtPath 报成有问题 → 红 · 吞掉 note → 红 ·
+回退成不校验形状 → 红 · **预取远端第一次变异存活**——插在构造函数里时 `originSel.value`
+还是空、`checkRemote` 撞上 `if (!origin) return` 空转（失效模式②，与 B03 那次同型）；
+换到可达点（`loadOrigins` 末尾）后即红。**变异存活先判可达性，别急着改测试。**
