@@ -1,0 +1,292 @@
+# 主计划 / MASTERPLAN — account-zero（把「基座」变成受管的「账号 0」）
+
+> 所有功能宏观设计的**单一事实来源**。跨功能的任何决策以此为准。
+> 每次修订都在末尾「§7 变更记录」追加一行。
+>
+> **状态：Phase A 已落盘，等用户审批。未动任何代码。**
+
+---
+
+## §0.0 当前事实（先读这一节）
+
+> 这一节回答「所以现在的事实是什么」。放最前面是 Phase G 文档审阅的结论：
+> 自省/推导记录被排在时间线上、而全篇没有一处回答当前事实，
+> **读一半停下的人会拿走一个已被推翻的结论**。本工作区的推导过程在 §0.2，
+> 这一节只放**已实测核实**的现状。
+
+**布局（2026-07-29 在 aya 上实测）**
+
+```
+~/.claude/                     ← 共享库 SHARED_STORE，同时是账号 0 的凭据落点
+  .credentials.json            ← 账号 0 的凭据【当前不存在：已全迁 V2】
+  projects/ sessions/ history.jsonl CLAUDE.md plugins/ cache/ …   ← 真目录，大家共用
+  .claude.json                 ← 【当前不存在，且按本计划它永远不该存在】
+
+~/.claude.json                 ← 账号 0 的状态【在家目录，不在 .claude 里】
+                                  当前 590 字节空骨架，mtime 2026-07-28 16:20
+
+~/.claude-accts/               ← ACCTS_DIR，被 lib.sh:129 强制禁止位于 SHARED_STORE 内部
+  accounts.json                ← manifest。当前：z（isDefault=true）、b
+  z/  .credentials.json + .claude.json + policy-limits.json + backups/ 为真文件
+      其余十余项 symlink 回 ~/.claude/
+  b/  同构
+```
+
+**隔离 / 共享的确切划分**（`lib.sh:114-117` 的默认值）
+
+```
+ISOLATE_SET   = .credentials.json  .claude.json  backups  policy-limits.json  stats-cache.json
+SHARE_EXCLUDE = accounts  *.bak  *.bak-*
+LEGACY_HOME_ITEMS = .claude.json          （源目录 = $HOME，不是 ~/.claude）
+其余 ~/.claude/* 一律 symlink 共享
+```
+
+- **隔离「你是谁」+「你的本机状态」，不隔离「你做过什么」。** 换号不丢历史、不用重配
+  `CLAUDE.md`/插件，但额度与身份分开。
+- **这个划分对账号 0 与 z/b 完全一致**，账号 0 不是「少隔离」也不是「多共享」——
+  它只是把那 5 项放在了不同的物理位置。
+- **账号 0 与 z/b 共享同一份物理 `projects/`**：z/b 是 symlink 指过来，账号 0 的 config dir
+  就是 `~/.claude` 本身。所以三者的会话历史互相可见。
+
+**当前的缺陷（本工作区要治的）**
+
+| # | 事实 | 证据 |
+|---|---|---|
+| 1 | **账号 0 不在 manifest 里，是个幽灵**。往 `~/.claude` 写了凭据，cc-monitor 的账号列表看不到、用量查不到、会话归属不到 | `cmd_which` 在 `CLAUDE_CONFIG_DIR` 为空时 return 1（「裸起模式」）；`remote-launch.ts:74` 明写「用量探针需要显式 configDir（不支持基座/无账号场景）」 |
+| 2 | **`verify` 把它定义成违规而不是状态** | `cc-acct-iso:349` `vfail "共享库里仍有 .credentials.json —— 全迁未完成,或有进程没设 CLAUDE_CONFIG_DIR 就起了 claude"` |
+| 3 | **这件事已经在 aya 上发生过一次**。`inplace_any=0` 且 `~/.claude.json` 在迁移（07-26 17:39）之后出现（07-28 16:20，590 字节空骨架）⇒ `verify` 现在就会报 `vwarn`。凭据没写进去（登录没走完），**踩到边没踩满** | `cc-acct-iso:351-352` 那条 vwarn 的触发条件逐条成立 |
+| 4 | **`LaunchAccount` 只有两个变体**，于是「用户显式选了基座」和「根本没选/没有当前账号」被压成同一个 `{kind:"base"}` | `src/launch-requests.ts:27-28`：`return configDir ? {kind:"account",…} : {kind:"base"}` |
+| 5 | **因此 cc-monitor 对「不知道」发 `--base`**，而 `--base` = `unset CLAUDE_CONFIG_DIR` = 起账号 0；全迁后账号 0 没凭据 ⇒ 要求重新登录，而**一旦登录就产生第 1 条那个幽灵** | `shared/ccm:572,598`；`ACCOUNT_DIMENSION.cliFlags` 对 base 恒返回 `["--base"]` |
+| 6 | **`--base` 同时关掉了 ccm 唯一正确的 per-machine 回退** | `shared/ccm:320` `elif [ "$use_base" != 1 ] && [ -z "${CLAUDE_CONFIG_DIR:-}" ]` → 落该机器 manifest 的默认号；`ccm:207` `--account 与 --base 互斥` |
+| 7 | **屏幕上有一句假话** | `src/settings/remote-section.ts:892` 「不指定（用远端登录的**基座账号**，不注入 CLAUDE_CONFIG_DIR）」——全迁的机器上那儿没有账号 |
+| 8 | **迁移不会自动设默认号** | `cc-acct-iso:150` `makedef=0`，只有显式 `--default` 才置 1 ⇒「有账号但无默认号」是不加 `--default` 迁移的**默认结果** |
+
+**已核实的好消息（决定了本工作区范围比预估小）**
+
+- **`share_items()` 会跳过 ISOLATE_SET**（`lib.sh:191-195`）⇒ 将来新建账号时，账号 0 的
+  `.credentials.json`/`backups`/`policy-limits.json` **不会**被 symlink 进新账号。
+  **「账号 0」这个模型已经被现有隔离集结构性支持了——隔离/共享逻辑一行都不用改。**
+- **`list-accounts` 的 email 是现读的**（`cc-acct-iso:264` `live="$(claude_json_email "$c")"`，
+  读不到才回落 manifest 静态值）⇒ 在某账号目录里登成另一个邮箱，UI 会自动显示新邮箱，
+  不会 manifest 说一套实际另一套。
+- **`shared/ccm` 本体一行都不用改。** 它的 `--base`（= unset）语义本来就对，
+  `:320` 的 per-machine 回退也本来就对。要改的是 cc-monitor **什么时候**发 `--base`。
+
+---
+
+## §0.1 目标与范围
+
+- **总体目标**：把「基座」从一个**不可见的空值**变成一个**登记在册、可见、可管的「账号 0」**。
+  核心动机（用户原话）：「想要即使破了隔离也在我们的机制内。即万一用户还往 `$HOME/.claude.json`
+  写账号我们也能知晓。」
+
+- **设计原则（本工作区的立论）**：
+  **一条守不住的不变量，不如一个能表达它的模型。**
+  「共享库不含账号态」这条不变量 cc-monitor **守不住**（管不住终端里手敲的 `claude`），
+  而它被违反时产生的偏偏是一个**不可见**的身份。所以：**吸收 > 检测 > 禁止**。
+  代价是用一条可查的检查（`~/.claude/.claude.json` 出现 = 有人用显式路径起过账号 0）
+  换掉那条不变量。**这是一笔交易，不是免费的**（见 §6 风险 1）。
+
+- **账号 0 的定义（这条是全局约定，所有功能都按它实现）**：
+
+  > **账号 0 ≡ 「不设 `CLAUDE_CONFIG_DIR`」这个状态本身。**
+  > 凭据在 `~/.claude/.credentials.json`，状态在 `$HOME/.claude.json`。
+  > 起它 = **什么都不设**（不是设成空串，不是设成 `~/.claude`）。
+
+  **为什么不能给它一个 `configDir = ~/.claude`**（= cc-acct-iso 已有的 V1
+  `--default-in-place` 模式，工具自己标「除非你清楚为何要它，否则请用默认(V2)」）：
+  那样起它就有**两条路**（`CLAUDE_CONFIG_DIR=~/.claude` → 读 `~/.claude/.claude.json`；
+  裸起 → 读 `$HOME/.claude.json`），**同一个账号两份状态**，就是 `cc-acct-iso:110` 那条
+  `.claude.json 会分裂` 警告。定义成「不注入」则只有一条路、只有一份文件，分裂不存在。
+
+- **范围内**：
+  - cc-acct-iso 的 manifest 数据模型 + `list-accounts` / `verify` / `which` / `run` 对账号 0 的处理
+  - vendored 副本 lockstep + `.vendor_id` 重算
+  - cc-monitor：`LaunchAccount` 三态化 · 账号 0 成为显式可选项 · 「基座」一词从 UI 消失
+  - 用量探针与按会话切号支持账号 0
+  - 守卫：禁显式路径起账号 0 · `verify` 新增检查 · 删除账号 0 特判
+  - 远端版本协商（老 cc-acct-iso 不认账号 0 时怎么降级）
+
+- **范围外**：
+  - **不改 `shared/ccm` 本体**（已核实：不需要改）
+  - **不改隔离/共享划分**（已核实：ISOLATE_SET 已经支持账号 0）
+  - 不走 V1 `--default-in-place`（理由见上）
+  - 不动 daemon
+  - 不做「让裸 `claude` 自动可用」——那是 rc 片段的事，见 Z05，独立可选
+
+- **整体成功标准**：
+  1. 在 aya 上往 `~/.claude` 写入凭据后，**cc-monitor 的账号列表里出现账号 0 且标 `loggedIn`**，
+     `verify` 说「账号 0 已登录」而不是 `vfail`。
+  2. UI 里搜不到「基座」这个词（`grep -rn "基座" src/ --include=*.ts` 仅剩注释/历史说明）。
+  3. **不存在「未选账号」这个可启动状态**：要么账号 0，要么具名账号。
+  4. 账号 0 的用量能查、会话能归属、能被按会话切号选中。
+  5. `~/.claude/.claude.json` 一旦出现，`verify` 报得出来。
+
+---
+
+## §0.2 推导链（为什么是这个方案，不是别的）
+
+> 本节是过程记录，**当前事实看 §0.0**。保留是因为这条链走了四轮、推翻过两次，
+> 后来人不看会重走一遍。
+
+1. **起点**：Phase G 整体设计视角审阅报了一条阻塞「两个渲染器对 base 不等价」。
+2. **第一次推翻**（我说「产品语义决定」）：错。摊开六格发现 4 格强制基座、2 格继承，
+   而那 2 格恰好是「没装 ccm + 非 send-into」。
+3. **第二次推翻**（我说「4:2，仓里早选定强制基座，只是漏落两格」）：也错。
+   数格子数对了，但**没问「基座在全迁之后还是不是一个能起 claude 的地方」**。答案是不是。
+   所以那 4 格不是「已经做对的多数」，是同一个错误铺得更广。
+4. **审阅也错了一半**：它说兜底渲染器「漏了 unset」。实际兜底路径（继承）**两种机器都对**
+   （迁移过+贴了 rc 片段 → 继承到默认号；没迁移 → 落 `~/.claude`）。
+   是 CLI 路径发 `--base` 才引入问题。
+5. **根因**：`LaunchAccount` 两变体，把「我不知道」和「我要基座」压成一个类型（§0.0 缺陷 4）。
+   **这跟本轮修的两条阻塞是同一个形状**——`read_optional` 的 `Option<Vec<u8>>` 把
+   「读失败」和「文件是空的」压成同一个 `None`；远端 `classify_command` 用 basename
+   回答精确路径问题使 `PathMissing` 永不可达。**一个类型承担两个语义，其中一个是「我不知道」。**
+6. **用户的转向**（这一步改变了方案）：动机不是「让裸起可用」，而是**containment**——
+   cc-monitor 管不住终端，所以别把破坏隔离定义成违规，要让它落在模型内。
+7. **两个被否掉的备选**：
+   - 「把 `verify` 的 vfail 显示出来」（我提的）：只是让你看见警告再去手动收拾。**吸收 > 检测。**
+   - 「V1 `--default-in-place`」（用户先提的形态）：引入 `.claude.json` 分裂。
+     用「账号 0 ≡ 不注入」重新定义即可避开。
+   - 「symlink `$HOME/.claude.json` → `~/.claude/.claude.json`」（我提的补救）：
+     **大概率撑不过一次写**——原子写（写 tmp + rename）会把符号链接换成普通文件，
+     这正是本轮在 `upload_atomic` 上确认过的机制（BACKLOG E20）。已放弃。
+
+---
+
+## §1 功能清单
+
+> 状态：待规划 / 规划中 / 实现中 / 审计中 / 完成
+
+| ID | 功能 | 一句话目标 | 状态 | 依赖 | 优先级 |
+|----|------|-----------|------|------|--------|
+| Z01 | **账号 0 登记 + 可见** | manifest 认识账号 0；`list-accounts` 报出来；`verify` 从「违规」改判为「状态」；cc-monitor 列表多一行 | 待规划 | — | **P0** |
+| Z02 | **「未选账号」消失** | `LaunchAccount` 三态化；账号 0 成为显式可选项；「基座」一词从 UI 移除；`--base` 只在真要账号 0 时发 | 待规划 | Z01 | P0 |
+| Z03 | **账号 0 接上既有能力** | 用量探针支持它（今天 `remote-launch.ts:74` 明确拒绝无 configDir）；按会话切号能切到它 | 待规划 | Z01,Z02 | P1 |
+| Z04 | **守卫** | 禁显式 `CLAUDE_CONFIG_DIR=~/.claude` 起账号 0；`verify` 新增「`~/.claude/.claude.json` 出现」检查；「删除账号 0」特判防连带删共享库 | 待规划 | Z01 | P1 |
+| Z05 | **rc 片段一键生成**（独立） | 把 `cc-acct-iso shellinit` 接进 T03 的「生成待贴文本」组件，一键复制 | 待规划 | — | P3 |
+
+**Z05 为什么在这儿但标 P3**：它是 BACKLOG **F14**（「`.bashrc` 迁移用户自跑」），
+与账号 0 正交，价值独立（贴了片段裸 `claude` 就走默认号）。放进本工作区只因为它同属账号体验，
+**不做也不影响 Z01-Z04**。
+
+---
+
+## §2 架构概览
+
+**三层，各自的职责边界**
+
+| 层 | 住哪 | 对账号 0 的职责 |
+|---|---|---|
+| **cc-acct-iso**（bash，跑在目标机上） | 上游 `~/.claude/skills/cc-acct-iso/scripts/` + vendored 副本 | **唯一知道那台机器迁移没迁移的地方。** manifest 读写、账号 0 的登记与探测、`verify` 判定 |
+| **shared/ccm**（bash，跑在目标机上） | 仓内 `shared/ccm`（`include_str!` 进二进制） | **不改。** `--base` = unset = 起账号 0，语义已对；`:320` 的 per-machine 回退已对 |
+| **cc-monitor**（Rust + TS） | `accounts.rs` / IR / UI | 把账号 0 当一个**普通账号**渲染与选择。**不自己判断迁移状态**，一律问目标机 |
+
+**关键契约**：
+- **「迁移状态」的判断权归目标机**。cc-monitor 只消费 `list-accounts` 的输出，
+  绝不自己 stat 远端路径去猜——这是本轮反复栽的「以为在本机、其实在远端」偏差的防线。
+- **`configDir` 为「无」必须是一个显式表达**，不能是空串（见 §3 共享面 2 与 §6 风险 3）。
+
+---
+
+## §3 ★共享面账本
+
+| 共享面 | 涉及功能 | 最终形态设计 | 当前状态 | 备注 |
+|---|---|---|---|---|
+| **1. cc-acct-iso manifest 数据模型** | Z01,Z02,Z03,Z04 | 账号 0 用**显式标记**表达「不注入」，例如 `"mode":"bare"` + `configDir` 省略/为 `null`。**绝不用空串**。`list-accounts` 输出里账号 0 与其他账号同构（有 `name`/`email`/`isDefault`/`loggedIn`），只是 `configDir` 缺席 | 未动 | **最重要的一条。** 空串会让 `run` 那行 `env CLAUDE_CONFIG_DIR="$cfgdir"` 设出一个空值，而空值 ≠ 未设 |
+| **2. `cc-acct-iso run` 的启动路径**（`cc-acct-iso:682`） | Z01,Z02,Z03 | `run 0` 必须走**真 `unset`** 分支（`exec env -u CLAUDE_CONFIG_DIR …` 或直接 `exec "$LAUNCHER"`），而不是 `env CLAUDE_CONFIG_DIR="" …` | 今天是 `exec env CLAUDE_CONFIG_DIR="$cfgdir" "$LAUNCHER" "$@"` | 空串 vs unset 的行为**必须先实测**，见 §6 开放问题 3 |
+| **3. `src/launch-plan.ts::LaunchAccount`** | Z02,Z03 | 三态判别联合：`{kind:"account",name?,configDir}` · `{kind:"account0"}`（显式要账号 0 → 发 `--base`） · **不再有表示「没选」的变体**（UI 层保证必选，见共享面 5） | 今天两态，`accountOf` 把「无 configDir」映射成 `{kind:"base"}` | R05 已经把它从裸魔法串 `"__base__"` 升级成判别联合，这次是加变体不是重构 |
+| **4. `ACCOUNT_DIMENSION`（`launch-dimensions.ts`）** | Z02,Z03 | `applies` 保持恒真（F05 那条论证仍成立）；`cliFlags`：`account0 → ["--base"]`、具名 → `["--account",name]`；`apply`：`account0` 不推 env op（= 不设，正确） | `cliFlags` 对 `base` 恒返回 `["--base"]` | **`--base` 不删，是把它的含义从「我不知道」收紧成「起账号 0」** |
+| **5. UI 里「基座」的全部出现点** | Z02 | 「基座」一词只在**历史注释**里出现；用户可见文案统一为「账号 0」（名字见 §6 开放问题 5）。账号选择器**不预选**、不选不让走（保住 `cc-bus-section.ts:229`「不替用户默认花掉某个会花钱的号」那个意图，但换掉机制——**「不选账号」不是安全的空值，它是坏的值**） | 7 个文件：`tabs.ts`(~14 处) · `launch-menu.ts:74` · `views/history.ts` · `settings/cc-bus-section.ts:234,474,516` · `settings/remote-section.ts:890-892` · `accounts.ts:164` · `remote-launch.ts:122` | **`tabs.ts` 撞红线，见 §6 开放问题 2** |
+| **6. `verify` 的判定语义** | Z01（改判）,Z04（加检查） | `~/.claude/.credentials.json` 存在 → **「账号 0 已登录」**（正常）；`~/.claude/.claude.json` 存在 → **新增 vwarn**「有人用显式路径起过账号 0，状态可能已分裂」 | 今天前者是 `vfail`、后者无检查 | 这就是 §0.1 那笔交易的落点：**用一条检查换掉一条不变量** |
+| **7. 上游 ↔ vendored lockstep** | Z01,Z04 | 上游 `~/.claude/skills/cc-acct-iso/scripts/` 与 `src-tauri/vendor/cc-acct-iso/scripts/` 逐字节一致，`.vendor_id` 按 `VENDOR.md` 菜谱重算，`build.rs` 的软检查不 warn | 今天一致 | `~/.local/bin/cc-acct-iso` 是 symlink 指向上游 ⇒ **改了立刻在 aya 上生效，没有缓冲**。见 §6 风险 2 |
+| **8. 远端版本协商** | Z01（建立）,Z03（依赖） | cc-monitor 判断对面 cc-acct-iso 认不认账号 0：**看 `list-accounts` 输出里有没有账号 0 条目**（或 manifest `version` 字段）。不认 → 降级成今天的行为并**明说**「该机器的 cc-acct-iso 版本较旧，账号 0 不可见」，绝不静默 | 未动 | 本仓已有先例：`ccm` 的 `capabilities=` 串 |
+
+---
+
+## §4 依赖图与实现顺序
+
+```
+Z01（登记+可见）──┬── Z02（未选账号消失）──── Z03（用量+切号）
+                  └── Z04（守卫）
+Z05（rc 片段）  独立，任意时点可插
+```
+
+**顺序与理由**：
+
+1. **Z01 先做**。它是**纯增量、零行为变化**：manifest 多一个条目、列表多一行、`verify` 改判。
+   **用户的核心动机（幽灵变可见）在这一步就达成**，且不碰任何启动路径、不碰 `tabs.ts`。
+   ⇒ 单独交付有价值，风险最低，先暴露数据模型的问题。
+2. **Z02 次之**。它依赖 Z01 提供的「账号 0 是一个真条目」。改动面最大（7 文件含 `tabs.ts`）、
+   要推翻四条已记档决策（F01 步骤2 / F09 的阈值订正 / R05 的类型化理由 / U8 文案），
+   所以**必须在 Z01 把数据模型稳住之后**。
+3. **Z04 可与 Z02 并行**（只碰 cc-acct-iso，不碰 cc-monitor UI），但排在 Z02 后写，
+   免得两个功能同时改 `verify`。
+4. **Z03 最后**。它要账号 0 已经能被选中（Z02）才有意义。
+
+---
+
+## §5 横切关注点与约定
+
+- **不用 emoji**（用户偏好，全局）。commit **不加** `Co-Authored-By`。`git add` 显式文件清单。
+- **测试约定**：沿用本仓既有门禁——`cargo test --all` · `cargo test -p code-picture-core` ·
+  `cargo fmt --check` · `cargo clippy --all-targets` · `npx tsc --noEmit` · `npm test` ·
+  `npm audit --omit=dev --audit-level=high` ·
+  `shellcheck --severity=error e2e/*.sh shared/cc-bus/scripts/* shared/ccm` ·
+  `bash e2e/exec-bit-guard.sh` · **8 套真机套件**（实测基线 26/44/12/15/13/21/14/7 = 152 条）。
+  基线（本工作区开工时）：**cargo 536 · npm 814 · clippy 0 · tsc 0**。
+- **改 cc-acct-iso 要跟着扩门禁**：`vendor/cc-acct-iso/scripts/` 目前**在 shellcheck 门禁之外**
+  （BACKLOG **E13**，实测今天零告警 ⇒ 扩进来零成本）。本工作区既然要改它，**Z01 顺手把它纳入**。
+  另有 `vendor/cc-acct-iso/scripts/test/run-tests.sh`（424 行，工具自己的测试）在 CI 与
+  `package.json` 里都不存在 —— 既然要改工具，**这套测试必须先接进门禁**，否则改动无网。
+- **测试纪律**（本会话固化，逐条适用）：变异**先 diff 确认落位、再确认它编译得过**，然后才判色 ·
+  反向自检 · 计数自检用 `==` 不用 `>=` · **守卫范围要恰好等于性质范围**（本会话栽过三次）·
+  **源码文本扫描 ≠ 行为测试** · commit message 里每句「已有测试守着」都要先跑变异证明。
+- **绝不启动真实已认证的 `claude`/`codex` 子进程**。凡涉及真登录的验证，
+  由用户自己跑（本计划 §6 开放问题 6 列出具体步骤）。
+- **绝不写 `~/.claude/settings.json`、`~/.bashrc`、任何 PowerShell profile。**
+  `~/.claude-accts/accounts.json` 是**用户真实数据**：任何改它的代码路径必须
+  「备份 → 写 → 读回比对 → 不符回滚」，且测试一律注入闭包、绝不真写盘。
+- **tmux 一律走强制 `-L` 的守卫 shim + 起飞前 canary 双向自检 + 跑完核对默认 socket 会话清单**。
+  裸 `tmux kill-server` 是禁用词。
+
+---
+
+## §6 风险与开放问题
+
+**风险**
+
+1. **换掉了「共享库不含账号态」这条不变量。** 今天安全，因为 `.credentials.json` 与
+   `.claude.json` 都在 ISOLATE_SET 里、不会被 symlink 共享。但这**依赖 Claude Code
+   未来不把身份态放进某个已共享的文件**。V2 那条不变量正是为了不依赖这个假设。
+   **缓解**：Z04 的两条检查 + `verify` 每次都跑。**这是一笔明知代价的交易，不是疏漏。**
+2. **上游 cc-acct-iso 改坏会立刻影响 aya 的真实账号操作**（`~/.local/bin/cc-acct-iso`
+   是 symlink 指向 `~/.claude/skills/cc-acct-iso/scripts/cc-acct-iso`，无缓冲）。
+   **缓解**：改前把上游整目录复制一份带时间戳的备份；先在 vendored 副本上改+测，
+   过了 `run-tests.sh` 再同步上游。
+3. **空串 ≠ 未设，且未实测。** `cc-acct-iso:682` 是 `exec env CLAUDE_CONFIG_DIR="$cfgdir" …`。
+   若账号 0 的 `cfgdir` 为空，会设出 `CLAUDE_CONFIG_DIR=""`。Claude Code 大概会当未设处理，
+   **也可能当成一个空路径直接坏掉**。⇒ **Z01 的第一步就是实测这一条**，结果决定共享面 2 的形态。
+4. **远端版本错配**：老 cc-acct-iso 不认账号 0。缓解见共享面 8（明说降级，不静默）。
+5. **要推翻四条已记档决策**（F01 步骤2 给 tabs 加基座项 / F09 把 account 组阈值从 ≥2 订正成 ≥1
+   就为了它 / R05 的类型化理由 / U8 的「不指定」文案）。Phase F 必须逐条回写，
+   不能只在新工作区写「已改」而让原文档继续声称旧决策——**这正是 Phase G 文档审阅
+   报为阻塞 B1/重要 I1 的那个失效模式。**
+
+**待用户确认的开放问题（Phase A 审批时一并定）**
+
+| # | 问题 | 我的建议 |
+|---|---|---|
+| 1 | **授权动 `~/.claude/skills/cc-acct-iso/`**（你的家目录，上游本体）？ | 需要。若不给，Z01/Z04 只能改 vendored 副本 → 两份漂移，**比不做更坏**。替代方案：我改 vendored + 生成一份 diff 给你自己贴到上游 |
+| 2 | **`tabs.ts` 红线松不松？** Z02 绕不开（~14 处） | 建议松。只做 history + 设置页会让四个入口行为不一致，我不推荐 |
+| 3 | 账号 0 的**显示名**：「账号 0」/「主账号」/ 让你命名？ | 建议 manifest 里存一个可改的 `name`，默认 `"0"`，UI 显示「账号 0（主）」。理由：你可能想叫它别的，而 manifest 已经有 `name` 字段 |
+| 4 | aya 上**现在就把账号 0 登记进 manifest** 吗（它未登录，纯加一行）？ | 建议 Z01 做完后由你手动跑一次 `cc-acct-iso` 的登记命令，我不代你改 `accounts.json` |
+| 5 | Z05（rc 片段一键生成）**这轮做不做**？ | 建议做，独立价值，且顺手把 BACKLOG F14 收掉 |
+| 6 | **真机验证谁跑**？需要真起 claude + 真登录，本会话红线禁止我做 | 你跑三步：① `cc-acct-iso verify` 看当前是否已报那条 vwarn ② 不选账号 resume 一个远端会话，看是否要求登录 ③ Z01 做完后再 verify 一次，看账号 0 是否出现 |
+
+---
+
+## §7 变更记录
+
+- 01 — 2026-07-29 — 初版，Phase A 主规划完成 — 由 Phase G 审阅的阻塞 E15 起，经四轮推导
+  （两次自我推翻 + 一次用户转向）收敛到「基座 → 受管账号 0」。等用户审批。
