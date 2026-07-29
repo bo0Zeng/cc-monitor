@@ -771,6 +771,21 @@ export class SettingsPanel {
    * 两者相乘：任一 section 构造期抛 → 整页白、零提示。
    *
    * 每块一个 catch，**不是整个 `buildBody` 一个** —— 那样一块坏还是全没。
+   *
+   * ## 它挡什么、不挡什么（如实写明，别让人以为白屏问题全解了）
+   *
+   * **挡住的**：构造期**同步**抛。`buildPasteBlock` 的三句话必填 `throw` 就是这一类
+   * ——那也是当初发现这条链没有 try/catch 的起因。
+   *
+   * **挡不住的**：那 24 处构造期 I/O 全是 `void this.someAsyncMethod()` 形态
+   * （实测：`cc-bus-section.ts:72` 的 `void this.loadOrigins()` 对应
+   *  `:192 private async loadOrigins()`）。**`void` 掉的 Promise 其 reject 是
+   * 未捕获 rejection，同步 try/catch 抓不到。**
+   *
+   * 为什么今天不炸：那些 section 各自内部有 catch（实测 7 个文件共 39 处）。
+   * **但我没有逐一核实那 39 处是否覆盖了全部 24 条路** —— 所以这里只声明
+   * `safeBlock` 覆盖同步路径，**不声明白屏问题已全解**。异步那半边留给 T07 的
+   * 对抗性审计去核；覆盖不到就如实说没守，这是本工作区的纪律。
    */
   private safeBlock(title: string, build: () => HTMLElement): HTMLElement {
     try {

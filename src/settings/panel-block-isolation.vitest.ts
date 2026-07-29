@@ -7,7 +7,12 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 
-describe("panel 的分区块隔离", () => {
+// **如实登记这组测试的成色**：下面 4 条全是**源码文本扫描**，不是行为测试。
+// 它们能证明"每个区块都经 safeBlock""catch 是每块一个""失败块有文案和可复制原文"，
+// **但不能证明"面板真的不会白屏"** —— 那需要真构造 panel 并让某块抛。
+// 本会话已多次栽在这个形状上（纯函数被断言 ≠ 它上了屏；文本扫描 ≠ 行为）。
+// 真行为测试见 `remote-section-smoke.vitest.ts`（那是真 `new` 一次 section）。
+describe("panel 的分区块隔离（源码文本扫描，非行为测试）", () => {
   const src = readFileSync("src/settings/panel.ts", "utf8");
 
   it("每个区块都经 safeBlock，不许有裸的 titledSection 调用", () => {
