@@ -1,6 +1,6 @@
 // F08：越层启动器诊断 + 别名生成器——纯函数单测。只诊断+引导，本文件也锁死"不代改配置"
 // 这条边界（`diagnoseRemoteLauncher` 只返回文案，从不修改输入）。
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { diagnoseRemoteLauncher, buildAliasLine } from "./launcher-diagnostics";
 
 describe("diagnoseRemoteLauncher", () => {
@@ -76,10 +76,19 @@ describe("buildAliasLine", () => {
     );
   });
   it("--base 单独生效（未填 account 时）", () => {
-    expect(buildAliasLine("bcc", { base: true })).toBe('bcc() { ccm --base "$@"; }');
+    expect(buildAliasLine("bcc", { base: true })).toBe(
+      'bcc() { ccm --base "$@"; }',
+    );
   });
   it("--agent codex + --model + --launcher 全组合", () => {
-    expect(buildAliasLine("oot", { tmux: true, agent: "codex", model: "opus", launcher: "mycc" })).toBe(
+    expect(
+      buildAliasLine("oot", {
+        tmux: true,
+        agent: "codex",
+        model: "opus",
+        launcher: "mycc",
+      }),
+    ).toBe(
       `oot() { ccm --tmux --agent codex --model 'opus' --launcher 'mycc' "$@"; }`,
     );
   });
@@ -91,6 +100,93 @@ describe("buildAliasLine", () => {
   it("前后空白被 trim（用户不小心多打的空格不影响生成结果）", () => {
     expect(buildAliasLine("  zcc  ", { account: "  z  " })).toBe(
       `zcc() { ccm --account 'z' "$@"; }`,
+    );
+  });
+});
+
+// ===== T03 迁移等价：别名生成器改走 `buildPasteBlock` 之后，原有的门必须还在 =====
+//
+// 迁移最容易悄悄丢的就是这类"审计当初专门加上的门"。F08 Phase D 审计的原始发现：
+// 名字为空/非法时输出是**中文提示文案**而不是可执行代码，当"生成成功"一样复制出去、
+// 粘进 `.bashrc` 会造成语法错误。所以这里逐条钉住迁移后它仍然拦得住。
+describe("T03 迁移后：别名生成器的门与三句话", () => {
+  let toasts: unknown[][];
+  let writeText: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    toasts = [];
+    vi.resetModules();
+    vi.doMock("./error-toast", () => ({
+      showActionFailureToast: (...a: unknown[]) => {
+        toasts.push(a);
+      },
+    }));
+    writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+  });
+
+  async function mount(): Promise<HTMLElement> {
+    const mod = await import("./launcher-diagnostics");
+    const el = mod.buildAliasGeneratorSection();
+    document.body.appendChild(el);
+    return el;
+  }
+
+  it("名字为空 → 拒绝复制，且**绝不碰剪贴板**", async () => {
+    const el = await mount();
+    el.querySelector<HTMLButtonElement>(".paste-block-copy")!.click();
+    expect(writeText).not.toHaveBeenCalled();
+    expect(toasts.at(-1)?.[0]).toBe("还不能贴");
+  });
+
+  it("名字非法（含连字符）→ 同样拒绝", async () => {
+    const el = await mount();
+    const name = el.querySelector<HTMLInputElement>('input[type="text"]')!;
+    name.value = "my-alias";
+    name.dispatchEvent(new Event("input"));
+    expect(
+      el.querySelector<HTMLInputElement>(".paste-block-out")!.value,
+    ).toContain("只能用字母/数字/下划线");
+    el.querySelector<HTMLButtonElement>(".paste-block-copy")!.click();
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("名字合法 → 输出真代码，复制放行", async () => {
+    const el = await mount();
+    const name = el.querySelector<HTMLInputElement>('input[type="text"]')!;
+    name.value = "zcct";
+    name.dispatchEvent(new Event("input"));
+    const out = el.querySelector<HTMLInputElement>(".paste-block-out")!;
+    expect(out.value).toBe('zcct() { ccm "$@"; }');
+    el.querySelector<HTMLButtonElement>(".paste-block-copy")!.click();
+    expect(writeText).toHaveBeenCalledWith('zcct() { ccm "$@"; }');
+  });
+
+  it("表单变化会重新求值（迁移前是 regen，迁移后是 paste.refresh）", async () => {
+    const el = await mount();
+    const name = el.querySelector<HTMLInputElement>('input[type="text"]')!;
+    name.value = "zcct";
+    name.dispatchEvent(new Event("input"));
+    const tmux = el.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    tmux.checked = true;
+    tmux.dispatchEvent(new Event("change"));
+    expect(el.querySelector<HTMLInputElement>(".paste-block-out")!.value).toBe(
+      'zcct() { ccm --tmux "$@"; }',
+    );
+  });
+
+  it("三句话上屏：贴到哪 / 怎么合并 / 怎样才生效", async () => {
+    const el = await mount();
+    expect(el.querySelector(".paste-block-target")?.textContent).toContain(
+      ".bashrc",
+    );
+    expect(el.querySelector(".paste-block-merge")?.textContent).toBeTruthy();
+    // 迁移前这句只在复制成功的 toast 里出现，现在常驻屏幕
+    expect(el.querySelector(".paste-block-activation")?.textContent).toContain(
+      "新终端",
     );
   });
 });

@@ -15,8 +15,15 @@ const flush = async () => {
 
 const rep = (ss: unknown, stop: unknown, note = "") => ({
   diagnosis: { session_start: ss, stop, note },
-  snippet_home: '{"hooks":{"SessionStart":[{"hooks":[{"command":"$HOME/.local/bin/cc-register"}]}]}}',
-  snippet_bare: '{"hooks":{"SessionStart":[{"hooks":[{"command":"cc-register"}]}]}}',
+  // T03：Rust 侧 `Snippet` 现在带 warning（形态与盘上实况冲突时非 null）
+  snippet_home: {
+    text: '{"hooks":{"SessionStart":[{"hooks":[{"command":"$HOME/.local/bin/cc-register"}]}]}}',
+    warning: null as string | null,
+  },
+  snippet_bare: {
+    text: '{"hooks":{"SessionStart":[{"hooks":[{"command":"cc-register"}]}]}}',
+    warning: null as string | null,
+  },
   source: "/home/zbl/.claude/settings.json",
 });
 
@@ -112,7 +119,8 @@ describe("B04 只读与文案", () => {
     const s = new CcBusHooksSection();
     document.body.appendChild(s.element);
     await flush();
-    const out = s.element.querySelector<HTMLTextAreaElement>(".cc-bus-hooks-out")!;
+    // T03：输出面现在由 `buildPasteBlock` 产出，`cc-bus-hooks-out` 落在它的根节点上
+    const out = s.element.querySelector<HTMLTextAreaElement>(".paste-block-out")!;
     expect(out.value).toContain("$HOME/.local/bin/");
     const sel = s.element.querySelector<HTMLSelectElement>(".cc-bus-hooks-form")!;
     sel.value = "bare";

@@ -5815,10 +5815,9 @@ body.settings-window-mode .grid-monitor-trigger {
      一个字符，前几十字符逐行重复；而邮箱才是分辨"学校号/私人号"的字段。路径要全文有 title，
      也有「复制路径」按钮兜着。F10：用量列（懒加载"查看用量"按钮/结果短句）权重给 1fr——
      结果文案长度不定（"会话窗口 38%·重置2h14m"这类），比路径列更需要弹性空间。 */
-  grid-template-columns: 14px 16px minmax(0, auto) minmax(0, 1.2fr) auto minmax(
-      0,
-      1fr
-    ) minmax(0, 0.8fr) auto;
+  grid-template-columns:
+    14px 16px minmax(0, auto) minmax(0, 1.2fr) auto minmax(0, 1fr)
+    minmax(0, 0.8fr) auto;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   overflow-x: auto;
@@ -6226,4 +6225,34 @@ body.settings-window-mode .grid-monitor-trigger {
 }
 .config-surface-row.tone-unknown .config-surface-state {
   color: var(--warn);
+}
+
+/* === T03 待贴文本统一组件 ===
+   三句话（贴到哪 / 怎么合并 / 怎样才生效）常驻屏幕而不是只在 toast 里闪一下；
+   warning 用 warn 色——它说的是"你选的形态与盘上现状冲突"，是需要看见的提醒。 */
+.paste-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+.paste-block-out {
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  width: 100%;
+}
+.paste-block-warning {
+  border-left: 3px solid var(--warn);
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--warn);
+}
+.paste-block-target,
+.paste-block-merge,
+.paste-block-activation {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.paste-block-target {
+  font-family: var(--mono, monospace);
 }

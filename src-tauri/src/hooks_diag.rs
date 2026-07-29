@@ -63,6 +63,20 @@ pub struct HooksDiagnosis {
 /// 去掉包裹的引号 → 取 basename。这足以覆盖实测见到的全部形态
 /// （裸命令、`"$HOME/.local/bin/x"`、`env A=1 x`），且对看不懂的输入**返回 None
 /// 而不是猜**——猜错会把"未装"说成"已装"，那比说不知道更坏。
+/// 剥掉**配对的**一层包裹引号。不配对就原样返回。
+///
+/// B04 登记项：原先两处都用 `trim_matches(|c| c == '"' || c == '\'')`，它是**逐字符两端剥**
+/// ——`"a'` 会被剥成 `a`（两端引号种类都不同）、`''x''` 会被剥干净。
+/// 不配对的引号意味着这条命令形状可疑，替用户猜一个"本意"比原样交给下游判断更坏。
+fn unquote_once(tok: &str) -> &str {
+    let b = tok.as_bytes();
+    if b.len() >= 2 && (b[0] == b'"' || b[0] == b'\'') && b[b.len() - 1] == b[0] {
+        &tok[1..tok.len() - 1]
+    } else {
+        tok
+    }
+}
+
 pub fn program_of(cmd: &str) -> Option<(String, String)> {
     let mut rest = cmd.trim();
     // 剥前导环境赋值：`FOO=bar baz` 里的 `FOO=bar`
@@ -81,8 +95,11 @@ pub fn program_of(cmd: &str) -> Option<(String, String)> {
         rest = rest[tok.len()..].trim_start();
     }
     let tok = rest.split_whitespace().next()?;
-    // 去掉包裹引号（实测用户那条就是 `"$HOME/.local/bin/cc-register"`）
-    let unq = tok.trim_matches(|c| c == '"' || c == '\'');
+    // 去掉包裹引号（实测用户那条就是 `"$HOME/.local/bin/cc-register"`）。
+    // **只剥配对的一层**（B04 登记项，T03 收）：原先 `trim_matches(|c| c == '"' || c == '\'')`
+    // 会把 `"a'` 这种**不配对**的也剥成 `a`、把 `''x''` 剥干净。不配对的引号说明这条命令
+    // 本身形状可疑，剥掉它等于替用户猜一个"本意"。
+    let unq = unquote_once(tok);
     if unq.is_empty() {
         return None;
     }
@@ -100,7 +117,7 @@ pub fn program_of(cmd: &str) -> Option<(String, String)> {
 fn mentions_program(cmd: &str, want: &str) -> bool {
     cmd.split(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ';' | '&' | '|' | '(' | ')'))
         .any(|tok| {
-            let t = tok.trim_matches(|c| c == '"' || c == '\'');
+            let t = unquote_once(tok);
             !t.is_empty() && t.rsplit('/').next().unwrap_or(t) == want
         })
 }
@@ -209,12 +226,38 @@ pub fn diagnose(raw: Option<&str>, exists: &dyn Fn(&str) -> bool) -> HooksDiagno
     }
 }
 
+/// 生成一段待贴片段时**盘上的实况**。两个字段都来自已有的探测，不新增探测机制：
+/// 本机走 `exists` 闭包（含按 `$PATH` 逐目录反查），远端走 `REMOTE_HOOKS_CMD` 里
+/// 已经在吐的 `-x` 判定与 `command -v` 输出。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SnippetProbe {
+    /// `$HOME/.local/bin/{cc-register,cc-bus-stop-hook}` 是否都在盘上。
+    pub home_path_exists: bool,
+    /// 裸命令是否解析得到。**`None` = 取不到，不猜**（同本仓其它"说不知道"的地方）。
+    pub on_path: Option<bool>,
+}
+
+/// 一段待贴片段 + 可能的警示。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Snippet {
+    pub text: String,
+    /// 选的形态与盘上实况冲突时的警示。`None` = 没冲突。**UI 必须把它显示出来。**
+    pub warning: Option<String>,
+}
+
 /// 生成待贴的 JSON 片段。**两种形态**让用户挑：
-///   · `home` = true：`$HOME/.local/bin/...` 显式路径——**默认推荐**，因为实测这台机器上
-///     用的就是这个形态、被验证过能工作；
+///   · `home` = true：`$HOME/.local/bin/...` 显式路径，不依赖 PATH；
 ///   · `home` = false：裸命令，简洁但依赖 PATH。
 /// 生成的是**待贴文本**，本模块绝不代写文件。
-pub fn snippet(home: bool) -> String {
+///
+/// ## 为什么要吃 `probe`（B04 登记项，T03 收）
+///
+/// 上一版签名是 `snippet(home: bool) -> String`——**只按一个布尔选形态，完全不看盘上实况**。
+/// 于是面板可以推荐 `$HOME/.local/bin/cc-register` 而那个文件根本不存在，
+/// **贴上去就是一个 `path-missing` 的钩子**，而这一步没有任何测试能发现。
+/// （B04 审计当时只删了面板上那句"与本机现状一致"的假承诺，根因没动。）
+/// 现在形态与实况冲突就带 `warning`，并有测试钉住；UI 侧另有测试钉住它真的上屏。
+pub fn snippet(home: bool, probe: &SnippetProbe) -> Snippet {
     let (reg, stop) = if home {
         (
             "\"$HOME/.local/bin/cc-register\" >/dev/null 2>&1 || true",
@@ -223,10 +266,46 @@ pub fn snippet(home: bool) -> String {
     } else {
         ("cc-register >/dev/null 2>&1 || true", "cc-bus-stop-hook")
     };
-    format!(
+    let text = format!(
         "{{\n  \"hooks\": {{\n    \"SessionStart\": [ {{ \"hooks\": [ {{ \"type\": \"command\",\n      \"command\": \"{}\" }} ] }} ],\n    \"Stop\": [ {{ \"hooks\": [ {{ \"type\": \"command\",\n      \"command\": \"{}\" }} ] }} ]\n  }}\n}}",
         reg.replace('"', "\\\""),
         stop.replace('"', "\\\"")
+    );
+    // **形态与实况冲突就说出来**，而不是安静地生成一段贴上去指不到东西的钩子。
+    let warning = if home && !probe.home_path_exists {
+        Some(
+            "你选的是 $HOME 显式路径形态，但 $HOME/.local/bin/ 下**找不到** cc-register / \
+             cc-bus-stop-hook——照这段贴进去会得到一个指不到东西的钩子（钩子诊断会报 path-missing）。\
+             要么改选「裸命令」形态，要么先把 cc-bus 装到那个位置。"
+                .to_string(),
+        )
+    } else if !home && probe.on_path == Some(false) {
+        Some(
+            "你选的是裸命令形态，但这两个命令**不在 PATH 上**——照这段贴进去钩子跑不起来。\
+             改选「$HOME 显式路径」形态，或把它们所在目录加进 PATH。"
+                .to_string(),
+        )
+    } else {
+        None
+    };
+    Snippet { text, warning }
+}
+
+/// 按 `$PATH` 逐目录反查一个裸命令在不在。**复用注入的 `exists`，不新增探测机制。**
+/// `path_env` 为 `None`（取不到环境变量）时返回 `None`——**不猜**。
+pub fn resolves_on_path(
+    prog: &str,
+    path_env: Option<&str>,
+    exists: &dyn Fn(&str) -> bool,
+) -> Option<bool> {
+    let pe = path_env?;
+    if pe.trim().is_empty() {
+        return None;
+    }
+    Some(
+        pe.split(':')
+            .filter(|d| !d.is_empty())
+            .any(|d| exists(&format!("{}/{prog}", d.trim_end_matches('/')))),
     )
 }
 
@@ -270,19 +349,20 @@ pub fn claude_config_dir(
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct HooksReport {
     pub diagnosis: HooksDiagnosis,
-    /// `$HOME/.local/bin/...` 显式路径形态——**默认推荐**，因为实测这台机器上用的就是它。
-    pub snippet_home: String,
+    /// `$HOME/.local/bin/...` 显式路径形态。**不再无条件称"默认推荐"**——
+    /// 推荐哪个取决于盘上实况，冲突时 `warning` 会说出来（T03 收的 B04 登记项）。
+    pub snippet_home: Snippet,
     /// 裸命令形态，简洁但依赖 PATH。
-    pub snippet_bare: String,
+    pub snippet_bare: Snippet,
     /// 读到的原文路径（展示用，让用户知道诊断的是哪个文件）。
     pub source: String,
 }
 
-fn report(diagnosis: HooksDiagnosis, source: String) -> HooksReport {
+fn report(diagnosis: HooksDiagnosis, source: String, probe: SnippetProbe) -> HooksReport {
     HooksReport {
         diagnosis,
-        snippet_home: snippet(true),
-        snippet_bare: snippet(false),
+        snippet_home: snippet(true, &probe),
+        snippet_bare: snippet(false, &probe),
         source,
     }
 }
@@ -292,7 +372,14 @@ fn report(diagnosis: HooksDiagnosis, source: String) -> HooksReport {
 pub async fn diagnose_local_cc_bus_hooks() -> Result<HooksReport, String> {
     tokio::task::spawn_blocking(|| {
         let Some(home) = dirs::home_dir() else {
-            return report(diagnose(None, &|_| false), "（取不到 HOME）".to_string());
+            return report(
+                diagnose(None, &|_| false),
+                "（取不到 HOME）".to_string(),
+                SnippetProbe {
+                    home_path_exists: false,
+                    on_path: None,
+                },
+            );
         };
         // **尊重 `CLAUDE_CONFIG_DIR`**（B04 登记项之一）：Claude Code 真正读的是那个目录下的
         // `settings.json`，不是恒定的 `~/.claude/`。本机实测 `CLAUDE_CONFIG_DIR` 指向
@@ -327,9 +414,23 @@ pub async fn diagnose_local_cc_bus_hooks() -> Result<HooksReport, String> {
             };
             expanded.exists()
         };
+        // **探测复用同一个 `exists` 闭包**，不新增探测机制（T03）。
+        let home_path_exists = ["cc-register", "cc-bus-stop-hook"]
+            .iter()
+            .all(|prog| exists(&format!("$HOME/.local/bin/{prog}")));
+        let path_env = std::env::var("PATH").ok();
+        let on_path = ["cc-register", "cc-bus-stop-hook"]
+            .iter()
+            .map(|prog| resolves_on_path(prog, path_env.as_deref(), &exists))
+            // 任一取不到就整体说"不知道"——**不猜**
+            .try_fold(true, |acc, r| r.map(|b| acc && b));
         report(
             diagnose(raw.as_deref(), &exists),
             p.to_string_lossy().into_owned(),
+            SnippetProbe {
+                home_path_exists,
+                on_path,
+            },
         )
     })
     .await
@@ -393,7 +494,21 @@ pub async fn diagnose_remote_cc_bus_hooks(origin: String) -> Result<HooksReport,
         } else {
             diagnose(Some(&json_part), &exists)
         };
-        report(d, format!("[{origin}] ~/.claude/settings.json"))
+        // 远端：`REMOTE_HOOKS_CMD` 已经在吐 `-x` 命中的绝对路径与 `command -v` 结果，
+        // 直接用它，不新增往返。`$HOME/.local/bin/x` 与远端回报的绝对路径按 basename 对齐
+        // （同上面 `exists` 的做法）。`present` 里既有 `-x` 命中也有 `command -v` 命中，
+        // 分不出是哪一种 → `on_path` 只能说 `None`，**不猜**。
+        let home_path_exists = ["cc-register", "cc-bus-stop-hook"]
+            .iter()
+            .all(|prog| exists(&format!("$HOME/.local/bin/{prog}")));
+        report(
+            d,
+            format!("[{origin}] ~/.claude/settings.json"),
+            SnippetProbe {
+                home_path_exists,
+                on_path: None,
+            },
+        )
     })
     .await
     .map_err(|e| format!("spawn_blocking: {e}"))
@@ -594,22 +709,135 @@ mod tests {
     }
 
     // ===== 生成的待贴文本必须是合法 JSON，且两种形态都对 =====
+
+    /// 一切正常的探测（两种形态都不该有 warning）。
+    fn ok_probe() -> SnippetProbe {
+        SnippetProbe {
+            home_path_exists: true,
+            on_path: Some(true),
+        }
+    }
+
     #[test]
     fn snippet_is_valid_json_and_round_trips() {
         for home in [true, false] {
-            let s = snippet(home);
-            let v: serde_json::Value = serde_json::from_str(&s).expect("生成的片段必须是合法 JSON");
+            let sn = snippet(home, &ok_probe());
+            let v: serde_json::Value =
+                serde_json::from_str(&sn.text).expect("生成的片段必须是合法 JSON");
             // 把自己生成的东西再喂给自己的诊断——闭环，防止生成一段自己都不认的文本
-            let d = diagnose(Some(&s), &always);
+            let d = diagnose(Some(&sn.text), &always);
             assert!(
                 d.session_start.is_working(),
-                "home={home} 生成的片段自己都不认: {s}"
+                "home={home} 生成的片段自己都不认: {}",
+                sn.text
             );
             assert!(d.stop.is_working(), "home={home}");
             assert!(v.get("hooks").is_some());
+            assert!(sn.warning.is_none(), "探测一切正常时不该有警示");
         }
-        assert!(snippet(true).contains("$HOME/.local/bin/"));
-        assert!(!snippet(false).contains("$HOME"));
+        assert!(snippet(true, &ok_probe())
+            .text
+            .contains("$HOME/.local/bin/"));
+        assert!(!snippet(false, &ok_probe()).text.contains("$HOME"));
+    }
+
+    // ===== T03 收的 B04 登记项：片段必须看盘上实况 =====
+
+    /// **上一版 `snippet(home: bool)` 只按布尔选形态，完全不看实况**：于是面板可以推荐
+    /// `$HOME/.local/bin/cc-register` 而那个文件根本不存在，贴上去就是一个 `path-missing`
+    /// 的钩子，而这一步没有任何测试能发现。这条测试就是那个缺口。
+    #[test]
+    fn home_form_warns_when_the_path_is_not_on_disk() {
+        let probe = SnippetProbe {
+            home_path_exists: false,
+            on_path: Some(true),
+        };
+        let sn = snippet(true, &probe);
+        let w = sn.warning.expect("显式路径形态 + 路径不存在 → 必须警示");
+        assert!(w.contains("$HOME/.local/bin/"), "要指名那个路径：{w}");
+        assert!(w.contains("path-missing"), "要说清后果：{w}");
+        // **闭环验证后果是真的**：把这段喂回自己的诊断，`exists` 说不存在 → 真的 PathMissing
+        let d = diagnose(Some(&sn.text), &|_| false);
+        assert!(
+            matches!(d.session_start, HookState::PathMissing { .. }),
+            "警示说的后果得是真的，实得 {:?}",
+            d.session_start
+        );
+        // 同一份探测下裸命令形态没问题 → 不该警示（否则两种形态都报警，用户无从选择）
+        assert!(snippet(false, &probe).warning.is_none());
+    }
+
+    #[test]
+    fn bare_form_warns_when_not_on_path() {
+        let probe = SnippetProbe {
+            home_path_exists: true,
+            on_path: Some(false),
+        };
+        let w = snippet(false, &probe)
+            .warning
+            .expect("裸命令形态 + 不在 PATH → 必须警示");
+        assert!(w.contains("PATH"), "{w}");
+        assert!(snippet(true, &probe).warning.is_none());
+    }
+
+    /// **取不到就别猜**：`on_path: None` 时裸命令形态不许警示
+    /// （报一个我们并不知道的问题，和漏报一样是失信）。
+    #[test]
+    fn unknown_path_status_does_not_fabricate_a_warning() {
+        let probe = SnippetProbe {
+            home_path_exists: true,
+            on_path: None,
+        };
+        assert!(snippet(false, &probe).warning.is_none());
+        assert!(snippet(true, &probe).warning.is_none());
+    }
+
+    #[test]
+    fn resolves_on_path_uses_the_injected_exists() {
+        let ex = |s: &str| s == "/opt/bin/cc-register";
+        assert_eq!(
+            resolves_on_path("cc-register", Some("/usr/bin:/opt/bin"), &ex),
+            Some(true)
+        );
+        assert_eq!(
+            resolves_on_path("cc-register", Some("/usr/bin:/bin"), &ex),
+            Some(false)
+        );
+        // 尾斜杠不该造出 `//`
+        assert_eq!(
+            resolves_on_path("cc-register", Some("/opt/bin/"), &ex),
+            Some(true)
+        );
+        // **取不到 PATH → None，不猜 false**
+        assert_eq!(resolves_on_path("cc-register", None, &ex), None);
+        assert_eq!(resolves_on_path("cc-register", Some("   "), &ex), None);
+    }
+
+    /// **B04 登记项②**：`trim_matches` 逐字符两端剥，会把不配对的也剥掉。
+    #[test]
+    fn unquote_only_strips_a_matched_pair() {
+        assert_eq!(unquote_once("\"x\""), "x");
+        assert_eq!(unquote_once("'x'"), "x");
+        // 不配对 → 原样返回（旧的 trim_matches 会剥成 `a`）
+        assert_eq!(unquote_once("\"a'"), "\"a'");
+        assert_eq!(unquote_once("\"a"), "\"a");
+        assert_eq!(unquote_once("a\""), "a\"");
+        // 只剥**一层**（旧的会把 `''x''` 剥干净）
+        assert_eq!(unquote_once("''x''"), "'x'");
+        assert_eq!(unquote_once(""), "");
+        assert_eq!(unquote_once("\""), "\"");
+        // 真实形态照旧
+        assert_eq!(
+            unquote_once("\"$HOME/.local/bin/cc-register\""),
+            "$HOME/.local/bin/cc-register"
+        );
+        // 走到 program_of 上：不配对引号不该被当成正常路径
+        let (base, full) = program_of("\"$HOME/.local/bin/cc-register").unwrap();
+        assert_eq!(base, "cc-register");
+        assert_eq!(
+            full, "\"$HOME/.local/bin/cc-register",
+            "不配对的引号要留着，让下游看到这条命令形状可疑"
+        );
     }
 
     // ===== B04 审计逼出来的补漏 =====

@@ -7,7 +7,7 @@
  *
  * MASTERPLAN 设计原则#7：越层启动器只诊断 + 引导迁移，绝不自动降级、绝不偷改用户配置。
  */
-import { showActionFailureToast } from "./error-toast";
+import { buildPasteBlock } from "./paste-block"; // T03：待贴文本统一组件
 
 /** 该远端命令看起来是不是绕开了 `ccm`（越层启动器）——启发式：非空、不含 "ccm"、且不是
  *  裸 `claude`（显式写 claude 是有意选择基座行为，不算"看起来像旧式包装"）。命中不代表
@@ -27,7 +27,14 @@ export function diagnoseRemoteLauncher(cmd: string): string | null {
  *  优先的兜底，防御性处理调用方万一没做互斥的情况）。 */
 export function buildAliasLine(
   name: string,
-  flags: { tmux?: boolean; account?: string; base?: boolean; agent?: string; model?: string; launcher?: string },
+  flags: {
+    tmux?: boolean;
+    account?: string;
+    base?: boolean;
+    agent?: string;
+    model?: string;
+    launcher?: string;
+  },
 ): string {
   const trimmedName = name.trim();
   if (!trimmedName) return "（先填个别名名字）";
@@ -65,7 +72,8 @@ export function buildAliasGeneratorSection(): HTMLElement {
 
   const hint = document.createElement("p");
   hint.className = "ccm-alias-gen-hint";
-  hint.textContent = "拼一条 ccm 组合，生成可以直接粘进 ~/.bashrc（或对应 shell 配置文件）的别名函数。";
+  hint.textContent =
+    "拼一条 ccm 组合，生成可以直接粘进 ~/.bashrc（或对应 shell 配置文件）的别名函数。";
   wrap.appendChild(hint);
 
   const grid = document.createElement("div");
@@ -103,7 +111,10 @@ export function buildAliasGeneratorSection(): HTMLElement {
   });
 
   const agentSel = document.createElement("select");
-  for (const [value, text] of [["", "--agent（默认 claude，省略）"], ["codex", "--agent codex"]]) {
+  for (const [value, text] of [
+    ["", "--agent（默认 claude，省略）"],
+    ["codex", "--agent codex"],
+  ]) {
     const opt = document.createElement("option");
     opt.value = value;
     opt.textContent = text;
@@ -118,49 +129,53 @@ export function buildAliasGeneratorSection(): HTMLElement {
   launcherIn.type = "text";
   launcherIn.placeholder = "--launcher <cmd>（留空=不带）";
 
-  const out = document.createElement("input");
-  out.type = "text";
-  out.readOnly = true;
-  out.className = "ccm-alias-gen-out";
-
-  const regen = (): void => {
-    out.value = buildAliasLine(nameIn.value, {
-      tmux: tmuxCk.checked,
-      account: acctIn.value,
-      base: baseCk.checked,
-      agent: agentSel.value || undefined,
-      model: modelIn.value,
-      launcher: launcherIn.value,
-    });
-  };
-  for (const el of [nameIn, tmuxCk, acctIn, baseCk, agentSel, modelIn, launcherIn]) {
-    el.addEventListener("input", regen);
-    el.addEventListener("change", regen);
-  }
-  regen();
-
-  const copyBtn = document.createElement("button");
-  copyBtn.type = "button";
-  copyBtn.className = "settings-btn settings-btn-secondary";
-  copyBtn.textContent = "复制";
-  copyBtn.addEventListener("click", () => {
-    // Phase D 审计（重要项修复）：名字为空/非法时 out.value 是中文提示文案，不是可执行代码——
-    // 别把它当"生成成功"一样弹确认复制的 toast（那样粘进 .bashrc 同样会造成语法错误）。
-    if (!nameIn.value.trim() || out.value.startsWith("（")) {
-      showActionFailureToast("还没生成好", "先填一个合法的别名名字（字母/数字/下划线，不能以数字开头）。", { level: "info", durationMs: 3000 });
-      return;
-    }
-    void navigator.clipboard?.writeText(out.value).then(
-      () => showActionFailureToast(
-        "已复制",
-        "粘贴进 ~/.bashrc（或对应 shell 配置文件），然后 `source` 它或开一个新终端才会生效——当前这个终端窗口不会立刻认得这个别名。",
-        { level: "info", durationMs: 5000 },
-      ),
-      () => showActionFailureToast("复制失败", "剪贴板不可用，手动选中复制。", { level: "error" }),
-    );
+  // T03：输出面 + 复制按钮 + 三句话改走统一组件；**表单与生成逻辑留在这里**
+  // （7 个控件是这一处独有的，上提就是把三件不相干的事装进一个盒子）。
+  const paste = buildPasteBlock({
+    text: () =>
+      buildAliasLine(nameIn.value, {
+        tmux: tmuxCk.checked,
+        account: acctIn.value,
+        base: baseCk.checked,
+        agent: agentSel.value || undefined,
+        model: modelIn.value,
+        launcher: launcherIn.value,
+      }),
+    target: "~/.bashrc（或你实际用的 shell 配置文件）",
+    mergeNote: "追加一行函数定义即可，不影响文件里已有的内容。",
+    activation:
+      "source 它，或开一个新终端——**当前这个终端窗口不会立刻认得这个别名**。",
+    // 保留 F08 Phase D 审计修的那道门：名字为空/非法时输出是中文提示而不是可执行代码，
+    // 当"生成成功"一样复制出去，粘进 .bashrc 同样会造成语法错误。
+    invalidReason: (t: string) =>
+      !nameIn.value.trim() || t.startsWith("（")
+        ? "先填一个合法的别名名字（字母/数字/下划线，不能以数字开头）。"
+        : null,
+    className: "ccm-alias-gen-out",
   });
+  for (const el of [
+    nameIn,
+    tmuxCk,
+    acctIn,
+    baseCk,
+    agentSel,
+    modelIn,
+    launcherIn,
+  ]) {
+    el.addEventListener("input", paste.refresh);
+    el.addEventListener("change", paste.refresh);
+  }
 
-  grid.append(nameIn, tmuxLabel, acctIn, baseLabel, agentSel, modelIn, launcherIn, out, copyBtn);
+  grid.append(
+    nameIn,
+    tmuxLabel,
+    acctIn,
+    baseLabel,
+    agentSel,
+    modelIn,
+    launcherIn,
+  );
   wrap.appendChild(grid);
+  wrap.appendChild(paste.element);
   return wrap;
 }
