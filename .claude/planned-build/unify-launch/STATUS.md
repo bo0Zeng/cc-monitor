@@ -8,12 +8,15 @@
 
 ## 当前状态
 
-- **当前阶段**：R 段（重构 Sonnet 产出 + 信号修复）—— **当前重心**
-- **当前功能**：**B02 完成**（`cc-spawn` 收编进 `ccm`；ccm 新增 `--detach`/`--tmux-size`）→ 下一个 **B03**（驾驶舱，批一只读可先做）
+- **当前阶段**：**本工作区已收官**。R 段 9/9 + B 段 B01-B04 + L2 全部完成并 push；
+  重心已移交 `integrate-toolchain`（P 段），Phase G 最终验收于 2026-07-29 收官
+- **当前功能**：无进行中功能（B04 是本工作区最后一个功能，已完成）
 - **已完成功能**：**F01**（tmux 目标精确匹配）、**F02**（统一启动 CLI `ccm` + 重构 bashrc，含 R11 追加修复 `ef1310b`）、**F03**（LaunchPlan IR + 双渲染器 + 维度注册表）、**F04**（会话身份统一，根治 R10）、**F05**（AccountResolver：判别联合 + `resolveAccount` + `ACCOUNT_DIMENSION.applies` 恒真接上 F03 移交点，顺带发现并修复 R11 同型潜在 bug）、**F06**（本地路径并入 IR：`history.rs` 两套 PowerShell builder 收拢成 `build_local_ps_command`，`planLocal` 让本地路径首次真正实例化 `transport:{kind:"local"}`）、**F07**（每账号默认模型：维度注册表**架构验收**通过——新增 `MODEL_DIMENSION` 零改 `buildLaunchPlan`/两个渲染器主体结构；`applies` 条件式 vs 恒真的判断依据记入 INVARIANTS §37；新增 R14）、**F11**（预信任能力上提进 `ccm`：`shared/ccm` 的 `--tmux` 建会话路径新增预信任 + `pretrusted` 追踪 + screen-scrape 轮询兜底 + `CCM_NO_PRETRUST` opt-out；范围收窄不碰仓库外的 `cc-spawn` 本体；双 agent 审各自独立复现真实阻塞项，含修复既有 `e2e/ccm-acceptance.sh` 污染真实全局配置的回归）、**F08**（终端集成收尾：`ccm --model` 闭合 R14；`canRenderCli` 针对性特判而非机械塞进 `CLI_REQUIRED_CAPS`；别名生成器+越层启动器诊断合并落点，紧邻彼此、不再按主机重复渲染；commit `06a9c76`）、**F09**（UI 收敛：动作×修饰——R12 降级为已归档设计决策；归档 tab 收敛成 `Resume`+账号×容器 3 级级联 flyout；存活 tab 收敛成 `Restart`+账号 flyout；徽章恒显身份（R7 语义反转）；对齐全套全仓删除；双 agent 审 1 阻塞+5 重要全部修复）
-- **下一个功能**：**B01**（cc-bus 逐字节原样搬进 `shared/cc-bus/`）→ B02（`cc-spawn` 收编，成功标准② 第二次架构验收）→ B03/B04 → P 段 → Phase G
-- **阻塞 / 待用户确认**：无
-- **最近一次计划回看时间**：2026-07-28（MASTERPLAN 变更记录 16）
+- **下一个功能**：无（本工作区功能清单已清空）。后续见 `../integrate-toolchain/STATUS.md`
+- **阻塞 / 待用户确认**：无。**未收项**（R15/R16 等）已登进 `../BACKLOG.md`，见本文件 §未收项
+- **最近一次计划回看时间**：2026-07-29（Phase G 收官；本文件的「恢复入口」失准被
+  Phase G 文档视角审阅点为阻塞 B1，已订正——B01 早已签收、B03/B04 已有 7 个 commit，
+  而这三处此前分别写着「下一个 B01」与「B03/B04 待做」）
 - **自动模式（/loop）**：**全自动**（连续 B→G）。用户 2026-07-27 追加授权：**具体设计决策由本席开
   agent 讨论分析后自行决定，不必逐项停下来问**——除非真遇到阻塞或用户主动打断
 - **本轮 loop 目标**：**R 段已满（9/9）** → 进 B 段：B01 → B02 → B03 → B04
@@ -253,8 +256,8 @@ tmux 命令、export 在载荷内故安全。
 |----|------|------|
 | B01 | cc-bus 搬进本仓：`~/.claude/skills/cc-bus/`（13 脚本 **951 行** bash / SKILL.md / examples 3 个，17 文件合计 1107 行）**原样固化为仓内基线，不趁搬家重构**（盘上有 2 个 `scripts.bak-*` + 2 个脚本各一份 `.bak`，说明一直手改）；部署走「备份→写→读回比对→回滚」 | **完成**（`1a3debf` 搬家 + 审计修复 commit；已过独立对抗性审计，无阻塞） |
 | B02 | **`cc-spawn` 收编**：建会话/送环境/送任务改经 `ccm`，只保留 cc-bus 专属部分（`cc-register` 总线登记 / `spawned.tsv` 台账 / 复用判定）。**闭合账本未达成行** | **完成**（136→95 行；ccm 新增 `--detach`/`--tmux-size`；新增 `e2e/cc-spawn-uplift.sh` 12 项，3 条变异验收） |
-| B03 | 驾驶舱：cc-monitor 看见/管理 bus 上的 agent、派活、读 inbox、`cc-spawn` 图形化 | 待做 |
-| B04 | settings.json 钩子的「读+诊断+生成待贴文本」（**不写**——用户定调；cc-bus 自己的安装脚本第 3 行同样拒绝改它） | 待做 |
+| B03 | 驾驶舱：cc-monitor 看见/管理 bus 上的 agent、派活、读 inbox、`cc-spawn` 图形化 | **完成**（批一只读 + 驾驶舱视图 + 派活/读 inbox；7 个 commit，M1-M6 未收项见 §未收项） |
+| B04 | settings.json 钩子的「读+诊断+生成待贴文本」（**不写**——用户定调；cc-bus 自己的安装脚本第 3 行同样拒绝改它） | **完成**（`hooks_diag.rs` 读+诊断+生成待贴文本；只读，不写用户 settings.json） |
 
 **B03 的两条已知张力**（Phase B 必须先解决）：
 ① 与「不新增轮询」红线冲突——`~/.cc-bus/{agents.tsv,inbox/,spawned.tsv}` 是 aya 本机文件，

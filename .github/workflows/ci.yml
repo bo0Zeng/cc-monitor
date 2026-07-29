@@ -156,7 +156,9 @@ jobs:
       - name: exec-bit guard (shared/** shebang files must be 100755 in git)
         run: bash e2e/exec-bit-guard.sh
 
-  # R00③：**真机行为验收进 CI**。这 7 套（共 126 条断言）此前既不在 CI 也不在 `npm test`，
+  # R00③：**真机行为验收进 CI**。这 **8** 套（2026-07-29 Phase G 实测**共 152 条**断言：
+  # tmux-target 26 · ccm-cli 44 · ccm-print-parity 12 · ccm-acceptance 15 · ccm-pretrust 13 ·
+  # cc-spawn-uplift 21 · tmux-guarded 14 · usage-probe 7）此前既不在 CI 也不在 `npm test`，
   # 只靠开发者本地手动跑——而它们恰恰是本仓唯一能回答「这条命令在 tmux 上到底干了什么」的门禁
   # （§5.2 实证：cargo test 369 + npm test 全绿 + tsc 0，仍放行过一个让 send-keys 完全失效的改动，
   # 因为那些门禁只断言「我写出了打算写的字符串」）。
@@ -193,7 +195,7 @@ jobs:
       - name: tmux 目标精确匹配（F01，26 项）
         run: npm run test:tmux-target
 
-      - name: ccm CLI 契约（F02，39 项）
+      - name: ccm CLI 契约（F02，44 项）
         run: npm run test:ccm-cli
 
       - name: ccm --print 平价预言机（F03，12 项）
@@ -210,7 +212,7 @@ jobs:
       # 裸调 tmux，塞不进 -L，只能这样拦），并断言 shim 看不到默认 socket 上的任何会话，
       # 不过就 exit 9 中止。开发机上有正在运行的 tmux 会话与真实 ~/.cc-bus/，
       # 这条自检是为了那里；CI 上是干净 runner，自检自然通过。
-      - name: cc-spawn 收编等价（B02，12 项）
+      - name: cc-spawn 收编等价（B02，21 项）
         run: npm run test:cc-spawn-uplift
 
   e2e-tmux-rust:
