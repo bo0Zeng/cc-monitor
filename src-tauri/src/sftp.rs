@@ -552,28 +552,30 @@ const CCM_CLI_REMOTE_PATH: &str = ".local/bin/ccm";
 /// - **有 BEGIN 但其后无 END（损坏/截断/上次安装中断）→ `Err` 中止**（审计 B1：绝不用独立
 ///   `find` 误配前面的 END 而吞掉用户内容；宁可报错让用户手修，也不破坏文件）。
 pub fn merge_profile_block(existing: &str, snippet: &str) -> Result<String, String> {
+    // **T04 第二步：配对判定改走 `fenced_block::find_pair`，与本机 profile 共用同一条规则。**
+    // 原实现是自己 `find(BEGIN)` 再在其后 `find(END)`——判定本身是对的（审计 B1 加固过），
+    // 但本机侧漏了同一道保护，于是两侧对"围栏损坏"处置不一致、本机那边会**吃掉用户内容**。
+    // 现在两侧同一个函数，判定不可能再漂移。
     let block = format!(
         "{CCM_PROFILE_BEGIN}\n{}\n{CCM_PROFILE_END}\n",
         snippet.trim()
     );
-    match existing.find(CCM_PROFILE_BEGIN) {
-        Some(b) => {
-            // 关键：找 BEGIN **之后**的 END（独立 find 会误配前面的 END → 吞内容）。
-            match existing[b..].find(CCM_PROFILE_END) {
-                Some(rel) => {
-                    let e = b + rel;
-                    let after = existing[e..]
-                        .find('\n')
-                        .map(|n| e + n + 1)
-                        .unwrap_or(existing.len());
-                    Ok(format!("{}{}{}", &existing[..b], block, &existing[after..]))
-                }
-                None => Err(
-                    "远端 profile 里有 cc-monitor BEGIN 标记但缺对应的 END（可能被手动改坏 / \
-                     上次安装中断）。为避免误删你的内容，已中止——请手动修好该文件后重试。"
-                        .to_string(),
-                ),
-            }
+    match crate::fenced_block::find_pair(
+        existing,
+        CCM_PROFILE_BEGIN,
+        CCM_PROFILE_END,
+        "远端 profile",
+    )? {
+        Some((begin_line, end_line)) => {
+            // 行下标 → 字节切片：`split_inclusive('\n')` 与 `.lines()` 索引一致
+            let lines: Vec<&str> = existing.split_inclusive('\n').collect();
+            let before: String = lines[..begin_line].concat();
+            let after: String = if end_line + 1 < lines.len() {
+                lines[(end_line + 1)..].concat()
+            } else {
+                String::new()
+            };
+            Ok(format!("{before}{block}{after}"))
         }
         None => {
             // 无块 → 追加（原内容不以换行结尾则补一个，保证块独占起行）。

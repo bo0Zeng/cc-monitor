@@ -210,7 +210,7 @@ pub fn install_to_profile(
         (String::new(), false)
     };
 
-    let updated = replace_or_append_block(&existing, &code);
+    let updated = replace_or_append_block(&existing, &code)?;
 
     // 写之前先备份原文件（即使没动 BEGIN/END 块外的内容，也防 atomic_write 异常）
     let backup_path = if did_exist && !existing.is_empty() {
@@ -289,7 +289,7 @@ pub fn uninstall_from_profile(path: &PathBuf) -> Result<(), String> {
             on_disk_size
         ));
     }
-    let stripped = strip_block(&existing);
+    let stripped = strip_block(&existing)?;
     if stripped == existing {
         return Ok(()); // 没有块，无需写
     }
@@ -380,20 +380,16 @@ fn find_conflicting_functions(content: &str, command_name: &str) -> Vec<String> 
     hits
 }
 
-/// 找已有 cc-monitor 块的范围（line index, inclusive）。返回 None 表示没有。
-fn find_block_range(content: &str) -> Option<(usize, usize)> {
-    let mut begin: Option<usize> = None;
-    for (idx, line) in content.lines().enumerate() {
-        let l = line.trim_start();
-        if l.starts_with(BEGIN_MARKER) && begin.is_none() {
-            begin = Some(idx);
-        } else if l.starts_with(END_MARKER) {
-            if let Some(b) = begin {
-                return Some((b, idx));
-            }
-        }
-    }
-    None
+/// 找已有 cc-monitor 块的范围（line index, inclusive）。
+///
+/// **T04 第二步：改走 `fenced_block::find_pair`，与远端 profile 共用同一条判定。**
+/// 原实现在「有 BEGIN 但其后没有 END」时返回 `None` → 调用方走**追加**分支，
+/// 而第二次安装时那个损坏的 BEGIN 会与新块的 END 配上对、**吃掉两者之间的用户代码**
+/// （实测见 `repro_local_eats_user_content_on_damaged_fence`）。
+/// 远端侧（`sftp::merge_profile_block`）当初被审计 B1 要求在同一情形 Err 中止，
+/// 本机侧漏了这道保护——写的都是"下次开终端就炸"级别的文件。
+fn find_block_range(content: &str) -> Result<Option<(usize, usize)>, String> {
+    crate::fenced_block::find_pair(content, BEGIN_MARKER, END_MARKER, "PowerShell profile")
 }
 
 /// 检测 existing 用的行尾风格。包含任何 `\r\n` 就视为 CRLF（Windows 用户 profile
@@ -426,10 +422,10 @@ fn ends_with_eol(s: &str) -> bool {
 /// `existing.lines().join("\n")` 静默把 CRLF → LF，length 校验检不出（两边都已
 /// LF），用户用 notepad 看会被"行尾不一致"警告/ git diff 整文件标红。
 /// 改用 `split_inclusive('\n')` 保留终止符，新 block 按 detected EOL 重写。
-fn replace_or_append_block(existing: &str, new_block: &str) -> String {
+fn replace_or_append_block(existing: &str, new_block: &str) -> Result<String, String> {
     let eol = detect_eol(existing);
     let block = rewrite_eol(new_block.trim_end_matches(|c| c == '\r' || c == '\n'), eol);
-    if let Some((begin, end)) = find_block_range(existing) {
+    if let Some((begin, end)) = find_block_range(existing)? {
         // split_inclusive('\n') 与 .lines() 索引一致：都按 '\n' 切，索引位置相同；
         // 区别只是 split_inclusive 把 '\n'（及前一个 '\r'）保留在切片内部。
         let lines: Vec<&str> = existing.split_inclusive('\n').collect();
@@ -454,7 +450,7 @@ fn replace_or_append_block(existing: &str, new_block: &str) -> String {
                 out.push_str(eol);
             }
         }
-        out
+        Ok(out)
     } else {
         // 追加
         let mut out = existing.to_string();
@@ -466,15 +462,19 @@ fn replace_or_append_block(existing: &str, new_block: &str) -> String {
         }
         out.push_str(&block);
         out.push_str(eol);
-        out
+        Ok(out)
     }
 }
 
 /// 删除 ccm 块（如果有）。
-fn strip_block(existing: &str) -> String {
+///
+/// **卸载路径也走同一条配对判定**（T04 第二步）：围栏损坏时 `Err` 中止而不是
+/// "当作没有块、原样返回"。后者看着无害，实则让用户以为卸载干净了，
+/// 而那个悬空的 BEGIN 还留在文件里——下次安装就会吃掉它下面的内容。
+fn strip_block(existing: &str) -> Result<String, String> {
     let eol = detect_eol(existing);
-    let Some((begin, end)) = find_block_range(existing) else {
-        return existing.to_string();
+    let Some((begin, end)) = find_block_range(existing)? else {
+        return Ok(existing.to_string());
     };
     let lines: Vec<&str> = existing.split_inclusive('\n').collect();
     let before: String = lines[..begin].concat();
@@ -502,7 +502,7 @@ fn strip_block(existing: &str) -> String {
         let new_len = out.len() - eol.len();
         out.truncate(new_len);
     }
-    out
+    Ok(out)
 }
 
 /// 命令名只允许字母数字下划线（防注入）。
@@ -592,6 +592,26 @@ fn atomic_replace_path(src: &std::path::Path, dst: &std::path::Path) -> std::io:
 
 #[cfg(test)]
 mod tests {
+    /// **围栏损坏时中止，而不是吃掉用户内容**（T04 第二步修的真 bug）。
+    ///
+    /// 修前实测：`装一次` 走追加分支（用户代码还在），`装两次` 时那个损坏的 BEGIN
+    /// 与新块的 END 配上对，两者之间的 `function cc { }` **被整段替换掉**。
+    /// 远端侧（`sftp::merge_profile_block`）当初被审计 B1 要求在同一情形 Err 中止，
+    /// 本机侧漏了这道保护——写的都是"下次开终端就炸"级别的文件。
+    #[test]
+    fn damaged_fence_aborts_instead_of_eating_user_content() {
+        const BLOCK: &str = "# === cc-monitor BEGIN v1 ===\nNEW\n# === cc-monitor END ===";
+        // 用户 profile：有个损坏的 BEGIN（上次安装中断/手改坏），**下面是用户自己的代码**
+        let damaged = "# my stuff\n# === cc-monitor BEGIN v1 ===\nfunction cc { }\n";
+        // **修后：第一次就 Err 中止，用户内容一个字节都不动。**
+        let e = replace_or_append_block(damaged, BLOCK).unwrap_err();
+        assert!(e.contains("找不到配对的 END"), "{e}");
+        assert!(e.contains("已中止"), "要让用户知道我们没动文件：{e}");
+        assert!(e.contains("PowerShell profile"), "要说清是哪个文件：{e}");
+        // 修前实测的退化链（留作记录，见 fenced_block 模块文档）：
+        //   装一次 → 追加，用户代码还在；装两次 → 损坏的 BEGIN 与新块的 END 配对
+        //   → `function cc { }` **被吃掉**。
+    }
     use super::*;
 
     #[test]
@@ -668,7 +688,7 @@ $PSDefaultParameterValues = @{}
 "#;
         let new_block =
             "# === cc-monitor BEGIN v1 ===\nfunction cc { Write-Host new-version }\n# === cc-monitor END ===";
-        let out = replace_or_append_block(existing, new_block);
+        let out = replace_or_append_block(existing, new_block).unwrap();
         assert!(out.contains("Set-Alias g git"));
         assert!(out.contains("$PSDefaultParameterValues = @{}"));
         assert!(out.contains("new-version"));
@@ -679,7 +699,7 @@ $PSDefaultParameterValues = @{}
     fn append_to_empty_profile() {
         let new_block =
             "# === cc-monitor BEGIN v1 ===\nfunction cc { Write-Host hi }\n# === cc-monitor END ===";
-        let out = replace_or_append_block("", new_block);
+        let out = replace_or_append_block("", new_block).unwrap();
         assert!(out.starts_with("# === cc-monitor BEGIN"));
         assert!(out.ends_with("END ===\n"));
     }
@@ -688,7 +708,7 @@ $PSDefaultParameterValues = @{}
     fn append_to_existing_profile_with_no_block() {
         let existing = "Set-Alias g git\n";
         let new_block = "# === cc-monitor BEGIN v1 ===\nfunction cc {}\n# === cc-monitor END ===";
-        let out = replace_or_append_block(existing, new_block);
+        let out = replace_or_append_block(existing, new_block).unwrap();
         assert!(out.starts_with("Set-Alias g git"));
         assert!(out.contains("BEGIN v1"));
     }
@@ -701,7 +721,7 @@ function cc { Write-Host hi }
 # === cc-monitor END ===
 $PSDefaultParameterValues = @{}
 "#;
-        let out = strip_block(existing);
+        let out = strip_block(existing).unwrap();
         assert!(out.contains("Set-Alias g git"));
         assert!(out.contains("$PSDefaultParameterValues"));
         assert!(!out.contains("BEGIN"));
@@ -711,7 +731,7 @@ $PSDefaultParameterValues = @{}
     #[test]
     fn strip_block_no_op_when_no_block() {
         let content = "Set-Alias g git\n";
-        assert_eq!(strip_block(content), content);
+        assert_eq!(strip_block(content).unwrap(), content);
     }
 
     #[test]
@@ -720,7 +740,7 @@ $PSDefaultParameterValues = @{}
         // 早期 .lines().join("\n") 会静默把 CRLF → LF。这里验保留。
         let crlf = "# my profile\r\nSet-Alias g git\r\nfunction prompt { 'PS> ' }\r\n";
         let new_block = "# === cc-monitor BEGIN v1 ===\nfunction cc {}\n# === cc-monitor END ===";
-        let out = replace_or_append_block(crlf, new_block);
+        let out = replace_or_append_block(crlf, new_block).unwrap();
         // 用户原内容仍带 CRLF
         assert!(
             out.contains("# my profile\r\n"),
@@ -747,7 +767,7 @@ $PSDefaultParameterValues = @{}
                     function cc {}\r\n\
                     # === cc-monitor END ===\r\n\
                     function prompt { 'PS> ' }\r\n";
-        let out = strip_block(crlf);
+        let out = strip_block(crlf).unwrap();
         assert!(out.contains("Set-Alias g git\r\n"));
         assert!(out.contains("function prompt"));
         assert!(!out.contains("BEGIN"));
@@ -759,7 +779,7 @@ $PSDefaultParameterValues = @{}
     fn lf_only_file_stays_lf() {
         let lf = "Set-Alias g git\n";
         let new_block = "# === cc-monitor BEGIN v1 ===\nfunction cc {}\n# === cc-monitor END ===";
-        let out = replace_or_append_block(lf, new_block);
+        let out = replace_or_append_block(lf, new_block).unwrap();
         // 已是 LF 的文件不强加 CRLF
         assert!(!out.contains("\r\n"), "纯 LF 文件被改成了 CRLF：{out:?}");
     }
