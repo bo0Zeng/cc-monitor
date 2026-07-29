@@ -8,10 +8,17 @@ SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 # 旗标可在 <目录> 前任意顺序出现。
 new_flag=0
 tool=""
+acct=""
+use_base=0
 while true; do
   case "${1:-}" in
     --new)  new_flag=1; shift;;                                   # 强制新建(否则默认复用同目录已有活会话)
     --tool) tool="${2:-}"; shift 2 2>/dev/null || { echo "cc-spawn: --tool 需要参数(claude|codex)" >&2; exit 2; };;  # 派生哪个 CLI
+    # L2(unify-launch B03 审计):显式指定账号。**不加这个的话** ccm 会落 manifest 的默认号,
+    # 于是从驾驶舱点两下就在默认账号上起真 agent 烧额度,而用户无从选择也无从得知用了哪个号。
+    # ccm 本来就支持 --account/--base,这里只是转发——**不改 ccm 本体**(账本红线)。
+    --account) acct="${2:-}"; shift 2 2>/dev/null || { echo "cc-spawn: --account 需要参数" >&2; exit 2; };;
+    --base) use_base=1; shift;;   # 显式不注入任何账号(issue #75 的同款逃生口)
     --)     shift; break;;
     *)      break;;
   esac
@@ -24,6 +31,7 @@ if [ -z "$tool" ]; then
   case "$(basename "${CCSPAWN_LAUNCH:-claude}")" in *codex*) tool=codex;; *) tool=claude;; esac
 fi
 case "$tool" in claude|codex) ;; *) echo "cc-spawn: 未知 --tool '$tool'(应为 claude|codex)" >&2; exit 2;; esac
+[ -n "$acct" ] && [ "$use_base" = 1 ] && { echo "cc-spawn: --account 与 --base 互斥" >&2; exit 2; }
 # 启动器:CCSPAWN_LAUNCH 覆盖;否则按 tool 取默认。(可测性钩子:测试时设 mock 命令免起真 CLI)
 LAUNCH="${CCSPAWN_LAUNCH:-$tool}"
 
@@ -114,6 +122,9 @@ mkdir -p "$BUS"
 launch_argv=($LAUNCH)
 [ ${#launch_argv[@]} -gt 0 ] || { echo "cc-spawn: 启动器为空(CCSPAWN_LAUNCH?)" >&2; exit 2; }
 ccm_args=(--tmux="$name" --detach --tmux-size 220x50 --cwd "$absdir" --agent "$tool" --launcher "${launch_argv[0]}")
+# 账号:转发给 ccm(它已有 --account/--base,校验与解析都在那边,这里不重复实现)
+[ -n "$acct" ] && ccm_args+=(--account "$acct")
+[ "$use_base" = 1 ] && ccm_args+=(--base)
 # 初始任务作为**位置参数**传给启动器(`exec <launcher> [启动器余下的词] '<任务>'`)。
 passthru=("${launch_argv[@]:1}")
 [ -n "$task" ] && passthru+=("$task")

@@ -19,6 +19,9 @@
 // cc-monitor 侧不碰建会话逻辑——那正是本工作区消灭的病（账本 K8：再造第 N 套实现）。
 // 也因此本文件**零引用 launch IR 模块**：spawn 是 fire-and-forget 的远端 exec，不开标签页。
 import { invoke } from "@tauri-apps/api/core";
+// L2：账号选择复用既有封装——`fetchAccounts` 带 TTL 缓存、`selectableAccounts` 是
+// 「可选账号」的单一判据（`accounts.ts:130` 注释明写"别各处再 filter 一遍"）。
+import { fetchAccounts, selectableAccounts } from "../accounts";
 
 interface CcBusAgent {
   id: string;
@@ -52,6 +55,7 @@ export class CcBusSection {
   private spawnDir!: HTMLInputElement;
   private spawnTask!: HTMLInputElement;
   private spawnTool!: HTMLSelectElement;
+  private spawnAcct!: HTMLSelectElement;
   private spawnBtn!: HTMLButtonElement;
   private spawnOut!: HTMLElement;
   /** spawn 二次确认。**记住"确认的是哪一组参数"而不只是一个布尔**（B03 审计重要-1）：
@@ -153,10 +157,18 @@ export class CcBusSection {
     }
     box.appendChild(this.spawnTool);
 
+    // L2（B03 审计重要-5）：**必须让用户表态用哪个账号**。原实现没有这个控件，于是
+    // 点两下就在 manifest 默认号上起真 agent 烧额度——用户既没选过，也不知道用了哪个号。
+    // 默认项是「基座」而不是某个具体账号：**不替用户默认花掉某个号的额度**。
+    this.spawnAcct = document.createElement("select");
+    this.spawnAcct.className = "settings-input cc-bus-spawn-acct";
+    box.appendChild(this.spawnAcct);
+    this.renderAccountOptions([]);
+
     // 任一参数变化立刻解除武装——文案承诺了"参数改动要重新确认"，代码就得兑现。
     // （原实现的文案还写着"点别处不算"，而代码里根本没有任何"点别处"的处理；
     //  对用户做代码不兑现的承诺，比不做承诺更坏。那句话已删。）
-    for (const el of [this.spawnDir, this.spawnTask, this.spawnTool] as HTMLElement[]) {
+    for (const el of [this.spawnDir, this.spawnTask, this.spawnTool, this.spawnAcct] as HTMLElement[]) {
       el.addEventListener("input", () => this.disarmSpawn());
       el.addEventListener("change", () => this.disarmSpawn());
     }
@@ -205,6 +217,39 @@ export class CcBusSection {
       opt.value = o;
       opt.textContent = o;
       this.originSel.appendChild(opt);
+    }
+    // 账号随机器变——换台机器，上一台的账号名多半不适用
+    this.originSel.addEventListener("change", () => {
+      this.disarmSpawn();
+      void this.loadAccounts(this.originSel.value);
+    });
+    void this.loadAccounts(this.originSel.value);
+  }
+
+  /** 渲染账号下拉。第一项恒为「基座」——**不替用户默认选一个会花钱的号**。 */
+  private renderAccountOptions(names: string[]): void {
+    this.spawnAcct.replaceChildren();
+    const base = document.createElement("option");
+    base.value = ""; // 空串 → 后端转发 `--base`（显式不注入）
+    base.textContent = "账号：基座（不注入任何账号）";
+    this.spawnAcct.appendChild(base);
+    for (const n of names) {
+      const o = document.createElement("option");
+      o.value = n;
+      o.textContent = `账号：${n}`;
+      this.spawnAcct.appendChild(o);
+    }
+  }
+
+  /** 取该远端的可选账号。**拿不到就只留「基座」**——宁可少一个选项，
+   *  也不能让用户以为选了某个号而其实没生效。 */
+  private async loadAccounts(origin: string): Promise<void> {
+    try {
+      const st = await fetchAccounts(origin);
+      const names = Array.isArray(st?.accounts) ? selectableAccounts(st).map((a) => a.name) : [];
+      this.renderAccountOptions(names);
+    } catch {
+      this.renderAccountOptions([]);
     }
   }
 
@@ -420,7 +465,13 @@ export class CcBusSection {
       this.spawnDir.value.trim(),
       this.spawnTask.value,
       this.spawnTool.value,
+      this.spawnAcct.value,
     ]);
+  }
+
+  /** 确认文案里要点名账号——「消耗额度」不说清是哪个号的额度等于没说。 */
+  private acctLabel(): string {
+    return this.spawnAcct.value ? `账号 ${this.spawnAcct.value}` : "基座（无账号）";
   }
 
   private disarmSpawn(): void {
@@ -449,7 +500,7 @@ export class CcBusSection {
       this.spawnBtn.textContent = "确认派生";
       this.spawnOut.textContent =
         (changed ? "参数已改动，请重新确认：" : "") +
-        `将在 ${origin} 的 ${dir} 上派生一个 ${this.spawnTool.value}——` +
+        `将在 ${origin} 的 ${dir} 上用${this.acctLabel()}派生一个 ${this.spawnTool.value}——` +
         "这会起一个真实 agent 进程并**消耗额度**。再点一次「确认派生」执行。";
       return;
     }
@@ -462,6 +513,8 @@ export class CcBusSection {
         dir,
         task: this.spawnTask.value,
         tool: this.spawnTool.value,
+        // 空串 = 显式基座。后端把它翻成 `--base`，**不存在"什么都不传"这一档**。
+        account: this.spawnAcct.value,
       });
       this.spawnOut.textContent = out || "已派生。";
       // 派生完顺手刷新名单——这是**用户动作触发**的一次读，不是后台轮询

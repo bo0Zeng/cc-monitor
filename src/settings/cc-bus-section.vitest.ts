@@ -7,11 +7,21 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+// **mock 掉 accounts 模块**：`fetchAccounts` 带 TTL 缓存，跨测试会泄漏上一条的结果
+// （实测：第一条测试的账号列表会被后面"取不到账号"那条读到）。它自己有测试，
+// 这里只需要它的返回值，不该顺带重测它的缓存。
+vi.mock("../accounts", () => ({
+  fetchAccounts: vi.fn(),
+  selectableAccounts: (st: { accounts?: { mode: string; loggedIn: boolean; exists: boolean }[] }) =>
+    (st.accounts ?? []).filter((a) => a.mode === "isolated" && a.loggedIn && a.exists),
+}));
 
 import { CcBusSection } from "./cc-bus-section";
 import { invoke } from "@tauri-apps/api/core";
+import { fetchAccounts } from "../accounts";
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
+const mockFetchAccounts = fetchAccounts as unknown as ReturnType<typeof vi.fn>;
 
 const STATE = {
   agents: [
@@ -29,6 +39,9 @@ const flush = async () => {
 
 beforeEach(() => {
   mockInvoke.mockReset();
+  mockFetchAccounts.mockReset();
+  // 默认：拿不到账号（多数测试不关心账号，只留「基座」一项）
+  mockFetchAccounts.mockResolvedValue({ origin: "aya", available: false, accounts: [] });
   document.body.replaceChildren();
 });
 
@@ -42,6 +55,7 @@ describe("B03 cc-bus 驾驶舱：不预取、不轮询", () => {
     document.body.appendChild(s.element);
     await flush();
     const called = mockInvoke.mock.calls.map((c) => c[0]);
+    // 账号列表经 `fetchAccounts`（已 mock），不走 invoke；这里只该看到列远端那一次
     expect(called).toEqual(["list_remote_mcp_origins"]);
     expect(called).not.toContain("read_cc_bus_state");
     expect(s.element.querySelector(".cc-bus-status")?.textContent).toContain("尚未读取");
@@ -308,6 +322,7 @@ describe("B03 批二：派活 / 收信 / 图形化 spawn", () => {
       dir: "/home/zbl/proj",
       task: "分析架构",
       tool: "codex",
+      account: "", // L2：空串 = 显式基座，**不存在"什么都不传"这一档**
     });
     expect(btn.textContent).toBe("派生"); // 武装状态要复位，不能一直停在"确认"
   });
@@ -547,5 +562,116 @@ describe("B03 审计修复：指纹比对是承重机制（隔离测试）", () 
     btn.click();
     await flush();
     expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
+  });
+});
+
+describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () => {
+  const ACCTS = {
+    origin: "aya",
+    available: true,
+    error: null,
+    meta: null,
+    accounts: [
+      { name: "z", email: "z@x", configDir: "/a/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true },
+      { name: "b", email: "b@x", configDir: "/a/b", isDefault: false, mode: "isolated", exists: true, loggedIn: true },
+      // 不可选的：未登录 / in-place 逃生口 —— 不该出现在下拉里
+      { name: "gone", email: "", configDir: "/a/g", isDefault: false, mode: "isolated", exists: true, loggedIn: false },
+      { name: "inplace", email: "", configDir: "/a/i", isDefault: false, mode: "in-place", exists: true, loggedIn: true },
+    ],
+  };
+  const load = async () => {
+    mockFetchAccounts.mockResolvedValue(ACCTS);
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "read_cc_bus_state") return STATE;
+      if (cmd === "cc_bus_spawn") return "已 spawn";
+      throw new Error(cmd);
+    });
+    const s = new CcBusSection();
+    document.body.appendChild(s.element);
+    await flush();
+    return s;
+  };
+
+  it("默认必须是「基座」——不替用户默认花掉某个号的额度", async () => {
+    const s = await load();
+    const sel = s.element.querySelector<HTMLSelectElement>(".cc-bus-spawn-acct")!;
+    expect(sel.value).toBe("");
+    expect(sel.options[0].textContent).toContain("基座");
+  });
+
+  it("只列可选账号（未登录 / in-place 不进下拉）", async () => {
+    const s = await load();
+    const opts = [...s.element.querySelectorAll<HTMLOptionElement>(".cc-bus-spawn-acct option")].map(
+      (o) => o.value,
+    );
+    expect(opts).toEqual(["", "z", "b"]);
+    expect(opts).not.toContain("gone");
+    expect(opts).not.toContain("inplace");
+  });
+
+  it("选了账号要原样传给后端；不选则传空串（后端翻成 --base）", async () => {
+    const s = await load();
+    s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!.value = "/d";
+    const acct = s.element.querySelector<HTMLSelectElement>(".cc-bus-spawn-acct")!;
+    const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-spawn-go")!;
+    acct.value = "b";
+    acct.dispatchEvent(new Event("change"));
+    btn.click();
+    await flush();
+    btn.click();
+    await flush();
+    const calls = mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn");
+    expect(calls).toHaveLength(1);
+    expect((calls[0][1] as Record<string, unknown>).account).toBe("b");
+  });
+
+  it("确认文案必须点名账号——「消耗额度」不说是哪个号的额度等于没说", async () => {
+    const s = await load();
+    s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!.value = "/d";
+    const acct = s.element.querySelector<HTMLSelectElement>(".cc-bus-spawn-acct")!;
+    const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-spawn-go")!;
+    acct.value = "z";
+    acct.dispatchEvent(new Event("change"));
+    btn.click();
+    await flush();
+    const out = s.element.querySelector(".cc-bus-spawn-out")?.textContent ?? "";
+    expect(out).toContain("账号 z");
+    expect(out).toContain("消耗额度");
+  });
+
+  it("不选账号时文案要说「基座」，不能含糊", async () => {
+    const s = await load();
+    s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!.value = "/d";
+    (s.element.querySelector(".cc-bus-spawn-go") as HTMLButtonElement).click();
+    await flush();
+    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain("基座");
+  });
+
+  it("武装后改账号必须重新确认（换号 = 换花谁的钱）", async () => {
+    const s = await load();
+    s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!.value = "/d";
+    const acct = s.element.querySelector<HTMLSelectElement>(".cc-bus-spawn-acct")!;
+    const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-spawn-go")!;
+    btn.click(); // 武装（基座）
+    await flush();
+    acct.value = "z"; // 程序化改值，不派发事件 —— 单独考指纹比对这道防线
+    btn.click();
+    await flush();
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
+  });
+
+  it("账号取不到时只留「基座」，不能让人以为选了号而其实没生效", async () => {
+    mockFetchAccounts.mockRejectedValue(new Error("daemon 太旧"));
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      throw new Error(cmd);
+    });
+    const s = new CcBusSection();
+    document.body.appendChild(s.element);
+    await flush();
+    const opts = [...s.element.querySelectorAll<HTMLOptionElement>(".cc-bus-spawn-acct option")];
+    expect(opts).toHaveLength(1);
+    expect(opts[0].value).toBe("");
   });
 });

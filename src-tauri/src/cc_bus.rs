@@ -277,7 +277,17 @@ fn build_send_cmd(id: &str, text: &str) -> Result<String, String> {
 /// 图形化 spawn = 远端跑**收编后的** `cc-spawn`（它内部已改经 `ccm`）。
 /// **刻意不在 cc-monitor 侧重写起会话**——那正是本工作区消灭的病（账本 K8）。
 /// `tool` 走白名单（是枚举不是引用）；`dir`/`task` 是自由文本 → 引用。
-fn build_spawn_cmd(tool: &str, dir: &str, task: &str) -> Result<String, String> {
+///
+/// `account`：`Some(名)` → 转发 `--account <名>`；`None` → 转发 `--base`（**显式不注入**）。
+/// **刻意不提供"什么都不传"这一档**（L2 / B03 审计重要-5）：不传的话 ccm 会落 manifest 的
+/// 默认号，于是从驾驶舱点两下就在默认账号上起真 agent 烧额度，而用户既没选过也不知道用了
+/// 哪个号。让调用方**必须表态**——选一个号，或显式说"就用基座"。
+fn build_spawn_cmd(
+    tool: &str,
+    dir: &str,
+    task: &str,
+    account: Option<&str>,
+) -> Result<String, String> {
     match tool {
         "claude" | "codex" => {}
         _ => return Err(format!("未知 tool: {tool}（支持 claude|codex）")),
@@ -285,12 +295,29 @@ fn build_spawn_cmd(tool: &str, dir: &str, task: &str) -> Result<String, String> 
     if dir.trim().is_empty() {
         return Err("工作目录为空".to_string());
     }
+    // 账号名会作为 `--account` 的值拼进命令。它来自 manifest（由 cc-monitor 自己维护），
+    // 但仍过一遍字符集——**不因为"这是我们自己的数据"就免检**（B03 审计的 `--help` 教训：
+    // 盘上真会出现没人预料的 id）。
+    if let Some(a) = account {
+        if a.is_empty()
+            || a.starts_with('-')
+            || !a
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err(format!("非法账号名（拒绝拼入命令）: {a:?}"));
+        }
+    }
     // **`--` 不能省**（B03 审计建议）：`cc-spawn` 的旗标循环（`--new`/`--tool`/`--`）跑在
     // 取位置参数**之前**，所以 `dir` 若是 `--new` 这类词会被它自己吃成旗标，然后把任务文本
     // 当成目录，报出"目录不存在: 分析架构"这种莫名其妙的错。这与我给 id 加前导 `-` 校验的
     // 理由逐字同源，只是当时没施加到 dir 上。用 `--` 显式结束选项即可，不必再加白名单。
+    let acct_flag = match account {
+        Some(a) => format!(" --account {a}"),
+        None => " --base".to_string(),
+    };
     let mut cmd = format!(
-        "cc-spawn --tool {tool} -- {}",
+        "cc-spawn --tool {tool}{acct_flag} -- {}",
         crate::ssh_source::shell_quote(dir)
     );
     if !task.trim().is_empty() {
@@ -394,6 +421,8 @@ pub async fn cc_bus_send(origin: String, id: String, text: String) -> Result<Str
 }
 
 /// B03 批二：图形化 spawn。**注意这会起一个真实 agent 进程（消耗额度）**
+///
+/// `account`：`None` 或空串 = 显式用基座（转发 `--base`）；否则用该账号。
 /// —— UI 侧必须先让用户确认。
 #[tauri::command]
 pub async fn cc_bus_spawn(
@@ -401,8 +430,10 @@ pub async fn cc_bus_spawn(
     dir: String,
     task: String,
     tool: String,
+    account: Option<String>,
 ) -> Result<String, String> {
-    let cmd = build_spawn_cmd(&tool, &dir, &task)?;
+    let acct = account.as_deref().filter(|a| !a.is_empty());
+    let cmd = build_spawn_cmd(&tool, &dir, &task, acct)?;
     let cfg = cfg_of(&origin)?;
     let out = exec_read(&cfg, &cmd, 64 * 1024, 60, "spawn").await?;
     Ok(out.trim().to_string())
@@ -703,26 +734,61 @@ mod tests {
     fn spawn_cmd_whitelists_tool_and_quotes_paths() {
         for bad in ["bash", "claude; id", "", "CLAUDE"] {
             assert!(
-                build_spawn_cmd(bad, "/tmp", "").is_err(),
+                build_spawn_cmd(bad, "/tmp", "", None).is_err(),
                 "tool {bad:?} 应被拒"
             );
         }
         let dir = "/tmp/has space/and'quote";
         let task = "分析; whoami";
-        let c = build_spawn_cmd("codex", dir, task).unwrap();
+        let c = build_spawn_cmd("codex", dir, task, None).unwrap();
         // `--` 结束选项：dir 若是 `--new` 这类词，不加它会被 cc-spawn 的旗标循环吃掉
-        assert!(c.starts_with("cc-spawn --tool codex -- '"));
-        let rest = &c["cc-spawn --tool codex -- ".len()..c.len() - " 2>&1".len()];
+        assert!(c.starts_with("cc-spawn --tool codex --base -- '"));
+        let rest = &c["cc-spawn --tool codex --base -- ".len()..c.len() - " 2>&1".len()];
         let (qd, qt) = rest.split_at(crate::ssh_source::shell_quote(dir).len());
         assert_eq!(unquote_posix(qd).as_deref(), Some(dir));
         assert_eq!(unquote_posix(qt.trim_start()).as_deref(), Some(task));
         // 无任务时不得留下空参数
-        let c2 = build_spawn_cmd("claude", "/tmp", "").unwrap();
-        assert_eq!(c2, "cc-spawn --tool claude -- '/tmp' 2>&1");
+        let c2 = build_spawn_cmd("claude", "/tmp", "", None).unwrap();
+        assert_eq!(c2, "cc-spawn --tool claude --base -- '/tmp' 2>&1");
         assert!(
-            build_spawn_cmd("claude", "  ", "t").is_err(),
+            build_spawn_cmd("claude", "  ", "t", None).is_err(),
             "空目录应被拒"
         );
+    }
+
+    // ===== L2：spawn 必须显式表态用哪个账号（B03 审计重要-5）=====
+
+    /// **不传账号 = 显式用基座**，而不是"什么都不说、让 ccm 落默认号"。
+    /// 原实现就是后者：从驾驶舱点两下就在 manifest 默认账号上起真 agent 烧额度，
+    /// 用户既没选过也不知道用了哪个号。
+    #[test]
+    fn spawn_always_states_an_account_choice() {
+        let c = build_spawn_cmd("claude", "/d", "", None).unwrap();
+        assert!(c.contains(" --base "), "不选账号必须显式 --base，实得: {c}");
+        let c2 = build_spawn_cmd("claude", "/d", "", Some("acctz")).unwrap();
+        assert!(c2.contains(" --account acctz "), "选了号要转发，实得: {c2}");
+        // 两者互斥：命令里不得同时出现
+        assert!(!c2.contains("--base"));
+        assert!(!c.contains("--account"));
+    }
+
+    /// 账号名来自 manifest（我们自己维护），但**仍要过字符集**——
+    /// B03 审计的 `--help` 教训：盘上真会出现没人预料的 id，
+    /// "这是我们自己的数据"不是免检理由。
+    #[test]
+    fn account_name_is_validated_before_joining_the_command() {
+        for bad in ["--base", "-x", "a b", "a;id", "", "a'b", "a/b", "$(id)"] {
+            assert!(
+                build_spawn_cmd("claude", "/d", "", Some(bad)).is_err(),
+                "账号名 {bad:?} 必须被拒"
+            );
+        }
+        for ok in ["z", "acct_b", "team-1", "A9"] {
+            assert!(
+                build_spawn_cmd("claude", "/d", "", Some(ok)).is_ok(),
+                "{ok} 应合法"
+            );
+        }
     }
 
     // ===== inbox 解析同样守"坏行跳过并计数" =====
