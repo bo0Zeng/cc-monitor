@@ -92,10 +92,29 @@ pub enum ToolDestination {
 
 /// 这个工具会碰用户的哪个文件，以及**碰它意味着什么**。
 /// **6 个实例化** —— 这是本结构里最扎实的一项，也是 T02 审计视图的直接输入。
+///
+/// ## `path` 与 `note` 为什么拆开（T02 一上手就撞到的计划≠现实）
+///
+/// 第一版把两件事写在同一个字符串里：`"~/.bashrc（或所选 profile）"`、
+/// `"~/.claude/settings.json 的 hooks 段"`、`"~/.local/bin/cc-*（12 条软链）"`、
+/// `"远端 ~/.local/bin/ccm-daemon"`。作为展示文本没问题，但 T02 要**真去查这些文件的现状**，
+/// 那些散文进不了 `Path`——于是拆成机器可解析的 `path` + 给人看的 `note`。
+///
+/// 「本机还是远端」**没有新增字段**：从 [`ToolSpec::destination`] 推导
+/// （`RemoteHomeRelative` → 远端），并由 `config_surface` 的测试把这条推导钉住。
+/// 哪天出现"本机工具却碰远端文件"的组合，那条测试会红，届时再加字段——
+/// 现在 6 个工具没有一个是那样，提前加就是为假想需求设计。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct TouchedFile {
-    /// 展示给用户的路径（可含 `~` / `$PROFILE` 这类占位，注册表不展开）。
+    /// **机器可解析**的路径：可含 `~/` 前缀、可含**最后一段**的 glob（`cc-*`）、
+    /// 可以是 `$PROFILE` 这种由外部决定的占位。**不放散文**——那是 `note` 的事。
     pub path: &'static str,
+    /// 给人看的补充说明（"或用户所选的其它 profile"、"12 条软链"）。没有就 `None`。
+    ///
+    /// **如实写明**：T01 的字段纪律扫描只枚举 `ToolSpec` 的字段，**不覆盖 `TouchedFile`**。
+    /// 所以 `note` 的 ≥2 判据是人工数的（ccm 1 处 + cc-bus 3 处 + cc-acct-iso 1 处 + …），
+    /// 不谎称有门禁守着。
+    pub note: Option<&'static str>,
     /// 我们对它做什么。**这决定了 T02 审计页里那一行的措辞与危险程度。**
     pub effect: TouchEffect,
 }
@@ -146,10 +165,12 @@ pub const TOOLS: &[ToolSpec] = &[
         touches: &[
             TouchedFile {
                 path: "~/.local/bin/ccm",
+                note: None,
                 effect: TouchEffect::OwnedFile,
             },
             TouchedFile {
-                path: "~/.bashrc（或所选 profile）",
+                path: "~/.bashrc",
+                note: Some("或用户在部署向导里选的其它 profile"),
                 effect: TouchEffect::FencedBlock,
             },
         ],
@@ -167,15 +188,18 @@ pub const TOOLS: &[ToolSpec] = &[
         uninstallable: false,
         touches: &[
             TouchedFile {
-                path: "~/.claude/settings.json 的 hooks 段",
+                path: "~/.claude/settings.json",
+                note: Some("只碰 hooks 段，且我们不写——只生成待贴文本"),
                 effect: TouchEffect::GenerateOnly,
             },
             TouchedFile {
-                path: "~/.local/bin/cc-*（12 条软链）",
+                path: "~/.local/bin/cc-*",
+                note: Some("12 条软链"),
                 effect: TouchEffect::OwnedFile,
             },
             TouchedFile {
-                path: "~/.cc-bus/（运行期状态）",
+                path: "~/.cc-bus/",
+                note: Some("运行期状态：inbox / 名册 / 队列 / 日志"),
                 effect: TouchEffect::ReadOnly,
             },
         ],
@@ -193,10 +217,12 @@ pub const TOOLS: &[ToolSpec] = &[
         touches: &[
             TouchedFile {
                 path: "~/.claude/skills/cc-acct-iso",
+                note: None,
                 effect: TouchEffect::OwnedFile,
             },
             TouchedFile {
                 path: "~/.claude-accts/",
+                note: Some("账号库，只读；切号是它自己的事"),
                 effect: TouchEffect::ReadOnly,
             },
         ],
@@ -211,7 +237,8 @@ pub const TOOLS: &[ToolSpec] = &[
         installable: true,
         uninstallable: false,
         touches: &[TouchedFile {
-            path: "远端 ~/.local/bin/ccm-daemon",
+            path: "~/.local/bin/ccm-daemon",
+            note: Some("远端（本页查不到现状，要 SSH）"),
             effect: TouchEffect::OwnedFile,
         }],
     },
@@ -223,7 +250,8 @@ pub const TOOLS: &[ToolSpec] = &[
         installable: true,
         uninstallable: true,
         touches: &[TouchedFile {
-            path: "<项目目录>/.mcp.json",
+            path: ".mcp.json",
+            note: Some("相对你选定的项目目录"),
             effect: TouchEffect::OwnedFile,
         }],
     },
@@ -236,6 +264,7 @@ pub const TOOLS: &[ToolSpec] = &[
         uninstallable: true,
         touches: &[TouchedFile {
             path: "$PROFILE",
+            note: Some("Windows 客户端侧，具体路径由 PowerShell 决定"),
             effect: TouchEffect::FencedBlock,
         }],
     },
@@ -255,8 +284,29 @@ mod tests {
     // 字段集合就对不上，测试会红在那里而不是静默放过。
 
     /// 剥掉 `//` 行注释与整个 `#[cfg(test)]` 段，只留生产代码文本。
+    ///
+    /// **顺序不能反：先剥注释，再切测试段。** 第一版是反的，于是本模块文档里那句
+    /// 「已在 `lib.rs` 标 `#[cfg(test)]`」——一句**散文**——把切点提到了结构声明**之前**，
+    /// `production_code` 只返回前 50 行文档注释，5 条测试全红。
+    /// 是 `parser_actually_sees_the_real_source` 的反向自检（`assert!(code.contains(
+    /// "pub struct ToolSpec {"), "剥过头了")`）报出来的——**要件 3 又救了一次**。
+    /// 附带教训：我提交 `a6d4b63` 前改了这句文档却**没重跑 cargo test**，
+    /// 于是那个 commit 的 message 写着「cargo test 474」而实际是 469+5 红。
     fn production_code(src: &str) -> String {
-        let code = src.split(concat!("#[cfg", "(test)]")).next().unwrap_or(src);
+        let no_comments: String = src
+            .lines()
+            .map(|l| match l.find("//") {
+                Some(i) => &l[..i],
+                None => l,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        // 切点还要求 `#[cfg(test)]` **顶格**（模块级属性），免得将来被缩进的同名属性骗到
+        let code = no_comments
+            .split(concat!("\n#[cfg", "(test)]"))
+            .next()
+            .unwrap_or(&no_comments)
+            .to_string();
         code.lines()
             .map(|l| match l.find("//") {
                 Some(i) => &l[..i],
@@ -469,6 +519,21 @@ mod tests {
             field_value(ccm, "path").is_none(),
             "`path` 只在嵌套块里，不该被顶层取到"
         );
+    }
+
+    /// **文档里提到 `#[cfg(test)]` 不许把切点提前**（这是真踩过的：5 条测试当场全红）。
+    #[test]
+    fn prose_mentioning_the_test_attribute_does_not_truncate_the_scan() {
+        let src = concat!(
+            "//! 已在 `lib.rs` 标 `#[cfg",
+            "(test)]`，不占这笔债。\n",
+            "pub struct ToolSpec {\n    pub id: &'static str,\n}\n",
+            "\n#[cfg",
+            "(test)]\nmod tests { fn helper() {} }\n"
+        );
+        let code = production_code(src);
+        assert!(code.contains("pub struct ToolSpec {"), "散文把切点提前了");
+        assert!(!code.contains("fn helper"), "测试段没被切掉");
     }
 
     /// **防上帝结构的门禁**（计划 §5 P2）。不是形式主义：本会话四次拒绝提前抽象

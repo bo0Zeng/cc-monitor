@@ -27,12 +27,16 @@ import { AccountsSection } from "./accounts-section";
 import { McpSection } from "./mcp-section"; // F87：MCP 管理（集成组）
 import { CcBusSection } from "./cc-bus-section"; // B03：cc-bus 驾驶舱（只读，按需读，无轮询）
 import { CcBusHooksSection } from "./cc-bus-hooks-section"; // B04：钩子只读诊断 + 生成待贴文本（绝不写入）
+import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置面审计（只读、按需一次、不轮询）
 import { DiagnosticsSection } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
 import { DataSection } from "./data-section";
 import { RemoteSection } from "./remote-section";
 import { getBehavior, setBehavior, type BehaviorConfig } from "../behavior";
-import { diagnoseRemoteLauncher, buildAliasGeneratorSection } from "../launcher-diagnostics";
+import {
+  diagnoseRemoteLauncher,
+  buildAliasGeneratorSection,
+} from "../launcher-diagnostics";
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
 // F82a：独立设置窗口——保存后广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为
@@ -63,7 +67,10 @@ interface FieldSpec {
 const BASE_FONT_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
   { label: "默认（推荐）", value: "" },
   { label: "Inter", value: "Inter, 'Segoe UI', system-ui, sans-serif" },
-  { label: "Microsoft YaHei UI", value: "'Microsoft YaHei UI', 'PingFang SC', system-ui, sans-serif" },
+  {
+    label: "Microsoft YaHei UI",
+    value: "'Microsoft YaHei UI', 'PingFang SC', system-ui, sans-serif",
+  },
   { label: "Segoe UI", value: "'Segoe UI', system-ui, sans-serif" },
   { label: "系统默认", value: "system-ui, sans-serif" },
 ];
@@ -81,7 +88,12 @@ const MONO_FONT_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
 const FIELDS: ReadonlyArray<FieldSpec> = [
   { key: "font-base", label: "正文字体", type: "font-base", group: "font" },
   { key: "font-mono", label: "等宽字体", type: "font-mono", group: "font" },
-  { key: "font-size-base", label: "基础字号 (px)", type: "number", group: "font" },
+  {
+    key: "font-size-base",
+    label: "基础字号 (px)",
+    type: "number",
+    group: "font",
+  },
   { key: "bg", label: "主背景", type: "color", group: "color" },
   { key: "bg-2", label: "次背景", type: "color", group: "color" },
   { key: "card", label: "卡片", type: "color", group: "color" },
@@ -142,7 +154,11 @@ const DIAG_STORAGE_INFO_TEXT =
 // F82b（#56+#47）：4 组终态的合并 tooltip——外观并了 行为/快捷键、集成并了 诊断&存储，
 // group 级 tooltip 把原分组说明拼一起（子分节各带小标题导航）。
 const APPEARANCE_GROUP_INFO_TEXT =
-  APPEARANCE_INFO_TEXT + "\n\n【行为】" + BEHAVIOR_INFO_TEXT + "\n\n【快捷键】" + KEYBINDINGS_INFO_TEXT;
+  APPEARANCE_INFO_TEXT +
+  "\n\n【行为】" +
+  BEHAVIOR_INFO_TEXT +
+  "\n\n【快捷键】" +
+  KEYBINDINGS_INFO_TEXT;
 const INTEGRATION_GROUP_INFO_TEXT =
   INTEGRATION_INFO_TEXT + "\n\n【诊断 & 存储】" + DIAG_STORAGE_INFO_TEXT;
 const REMOTE_GROUP_INFO_TEXT =
@@ -155,7 +171,10 @@ export class SettingsPanel {
   private current: ThemeConfig = {};
   /** 打开时的 theme 快照，取消时回滚 */
   private original: ThemeConfig = {};
-  private inputs = new Map<keyof ThemeConfig, HTMLInputElement | HTMLSelectElement>();
+  private inputs = new Map<
+    keyof ThemeConfig,
+    HTMLInputElement | HTMLSelectElement
+  >();
   private isOpen = false;
 
   /** Claude 数据目录输入框 —— 改动后保存会提示需要重启 */
@@ -277,7 +296,8 @@ export class SettingsPanel {
     // 输入，单键快捷键守卫（registry.ts::isEditableTarget）会把它当"正在打字"，从而吞掉
     // 所有单键快捷键（h/w/数字… 全部失效）—— 用户配置完远端/外观关掉设置后最典型。
     const active = document.activeElement;
-    if (active instanceof HTMLElement && this.el.contains(active)) active.blur();
+    if (active instanceof HTMLElement && this.el.contains(active))
+      active.blur();
     // 窗口模式：关闭 = 关掉这个独立设置窗口（而非隐藏浮层）。
     if (this.windowMode) {
       void getCurrentWindow().close();
@@ -319,7 +339,9 @@ export class SettingsPanel {
   }
 
   private async resetAll(): Promise<void> {
-    if (!window.confirm("确定要恢复全部外观默认？已保存的颜色和字体偏好会丢失。")) {
+    if (
+      !window.confirm("确定要恢复全部外观默认？已保存的颜色和字体偏好会丢失。")
+    ) {
       return;
     }
     this.current = {};
@@ -413,10 +435,24 @@ export class SettingsPanel {
       defaultCollapsed: false,
       infoTooltip: APPEARANCE_GROUP_INFO_TEXT,
     });
-    appearance.appendChild(this.titledSection("行为", this.buildBehaviorGroup()));
-    appearance.appendChild(this.titledSection("快捷键", this.buildKeybindingsGroup()));
-    appearance.appendChild(this.buildGroup("字体", FIELDS.filter((f) => f.group === "font")));
-    appearance.appendChild(this.buildGroup("颜色", FIELDS.filter((f) => f.group === "color")));
+    appearance.appendChild(
+      this.titledSection("行为", this.buildBehaviorGroup()),
+    );
+    appearance.appendChild(
+      this.titledSection("快捷键", this.buildKeybindingsGroup()),
+    );
+    appearance.appendChild(
+      this.buildGroup(
+        "字体",
+        FIELDS.filter((f) => f.group === "font"),
+      ),
+    );
+    appearance.appendChild(
+      this.buildGroup(
+        "颜色",
+        FIELDS.filter((f) => f.group === "color"),
+      ),
+    );
     body.appendChild(appearance.element);
 
     // 3. 远端 —— 连上后的行为 & 历史。当前无独立设置（resume 命令等在「外观 → 行为」里），留空占位（用户拍板）。
@@ -441,16 +477,31 @@ export class SettingsPanel {
     integration.appendChild(this.buildDataGroup());
     integration.appendChild(new CcIntegrationSection().element);
     // F87（#50+#51）：MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）。
-    integration.appendChild(this.titledSection("MCP", new McpSection().element));
-    // B03 批一：cc-bus 驾驶舱——只读看远端登记过的 agent；登记≠在线；点「读取」才发请求。
-    integration.appendChild(this.titledSection("cc-bus", new CcBusSection().element));
-    // B04：钩子诊断。**只读**——不替用户改 ~/.claude/settings.json（共享全局配置）。
-    integration.appendChild(this.titledSection("cc-bus 钩子", new CcBusHooksSection().element));
     integration.appendChild(
-      this.titledSection("诊断", new DiagnosticsSection({ headless: true }).element),
+      this.titledSection("MCP", new McpSection().element),
+    );
+    // B03 批一：cc-bus 驾驶舱——只读看远端登记过的 agent；登记≠在线；点「读取」才发请求。
+    integration.appendChild(
+      this.titledSection("cc-bus", new CcBusSection().element),
+    );
+    // B04：钩子诊断。**只读**——不替用户改 ~/.claude/settings.json（共享全局配置）。
+    integration.appendChild(
+      this.titledSection("cc-bus 钩子", new CcBusHooksSection().element),
+    );
+    // T02：一张表回答「你动过我哪些文件」。放在集成组末尾——它是这一组的**总账**。
+    integration.appendChild(
+      this.titledSection("配置面审计", new ConfigSurfaceSection().element),
+    );
+    integration.appendChild(
+      this.titledSection(
+        "诊断",
+        new DiagnosticsSection({ headless: true }).element,
+      ),
     );
     this.dataSection = new DataSection({ headless: true });
-    integration.appendChild(this.titledSection("数据存储", this.dataSection.element));
+    integration.appendChild(
+      this.titledSection("数据存储", this.dataSection.element),
+    );
     body.appendChild(integration.element);
 
     return body;
@@ -473,7 +524,10 @@ export class SettingsPanel {
     this.autoFollowCheckbox = document.createElement("input");
     this.autoFollowCheckbox.type = "checkbox";
     this.autoFollowCheckbox.className = "settings-checkbox";
-    this.autoFollowCheckbox.addEventListener("change", () => void this.onBehaviorToggle());
+    this.autoFollowCheckbox.addEventListener(
+      "change",
+      () => void this.onBehaviorToggle(),
+    );
     autoRow.appendChild(this.autoFollowCheckbox);
     const autoLabel = document.createElement("span");
     autoLabel.className = "settings-checkbox-label";
@@ -487,7 +541,10 @@ export class SettingsPanel {
     this.bringFrontCheckbox = document.createElement("input");
     this.bringFrontCheckbox.type = "checkbox";
     this.bringFrontCheckbox.className = "settings-checkbox";
-    this.bringFrontCheckbox.addEventListener("change", () => void this.onBehaviorToggle());
+    this.bringFrontCheckbox.addEventListener(
+      "change",
+      () => void this.onBehaviorToggle(),
+    );
     frontRow.appendChild(this.bringFrontCheckbox);
     const frontLabel = document.createElement("span");
     frontLabel.className = "settings-checkbox-label";
@@ -501,7 +558,10 @@ export class SettingsPanel {
     this.showBgCheckbox = document.createElement("input");
     this.showBgCheckbox.type = "checkbox";
     this.showBgCheckbox.className = "settings-checkbox";
-    this.showBgCheckbox.addEventListener("change", () => void this.onBehaviorToggle());
+    this.showBgCheckbox.addEventListener(
+      "change",
+      () => void this.onBehaviorToggle(),
+    );
     bgRow.appendChild(this.showBgCheckbox);
     const bgLabel = document.createElement("span");
     bgLabel.className = "settings-checkbox-label";
@@ -516,7 +576,10 @@ export class SettingsPanel {
     this.notifyTurnEndCheckbox = document.createElement("input");
     this.notifyTurnEndCheckbox.type = "checkbox";
     this.notifyTurnEndCheckbox.className = "settings-checkbox";
-    this.notifyTurnEndCheckbox.addEventListener("change", () => void this.onBehaviorToggle());
+    this.notifyTurnEndCheckbox.addEventListener(
+      "change",
+      () => void this.onBehaviorToggle(),
+    );
     notifyRow.appendChild(this.notifyTurnEndCheckbox);
     const notifyLabel = document.createElement("span");
     notifyLabel.className = "settings-checkbox-label";
@@ -556,11 +619,11 @@ export class SettingsPanel {
     const [remoteRow, remoteInput] = mkResumeRow(
       "远端 resume 命令",
       "默认：claude",
-      "远端 resume / 起会话时实际敲的启动器。\n"
-        + "推荐填 `ccm`（装了「ccm 启动器」后可用）——tmux 与账号由 cc-monitor 经参数控制。\n"
-        + "**别填 cct 这类自己建 tmux 的命令**：它会另起一个 tmux，cc-monitor 设的账号 env\n"
-        + "落在那个 tmux 进程边界之外、被整个吃掉，「用账号 X resume」就不生效。\n"
-        + "留空 = claude。",
+      "远端 resume / 起会话时实际敲的启动器。\n" +
+        "推荐填 `ccm`（装了「ccm 启动器」后可用）——tmux 与账号由 cc-monitor 经参数控制。\n" +
+        "**别填 cct 这类自己建 tmux 的命令**：它会另起一个 tmux，cc-monitor 设的账号 env\n" +
+        "落在那个 tmux 进程边界之外、被整个吃掉，「用账号 X resume」就不生效。\n" +
+        "留空 = claude。",
     );
     this.resumeRemoteInput = remoteInput;
     group.appendChild(remoteRow);
@@ -569,7 +632,9 @@ export class SettingsPanel {
     this.remoteLauncherWarning.className = "settings-launcher-warning";
     this.remoteLauncherWarning.style.display = "none";
     group.appendChild(this.remoteLauncherWarning);
-    remoteInput.addEventListener("input", () => this.updateRemoteLauncherWarning());
+    remoteInput.addEventListener("input", () =>
+      this.updateRemoteLauncherWarning(),
+    );
     // F08 Phase D 审计（重要项修复）：别名生成器紧挨着诊断放在同一处——此前生成器藏在
     // "远端 (SSH)"每台主机卡片的三层折叠里、且按主机重复渲染（内容与选中哪台机器无关），
     // 诊断提示也从未指向它。两者是同一段用户旅程的两半，理应彼此相邻。
@@ -666,7 +731,10 @@ export class SettingsPanel {
     return group;
   }
 
-  private buildGroup(title: string, fields: ReadonlyArray<FieldSpec>): HTMLElement {
+  private buildGroup(
+    title: string,
+    fields: ReadonlyArray<FieldSpec>,
+  ): HTMLElement {
     const group = document.createElement("div");
     group.className = "settings-group";
     const heading = document.createElement("div");
@@ -760,7 +828,8 @@ export class SettingsPanel {
     if (f.type === "font-base" || f.type === "font-mono") {
       const sel = document.createElement("select");
       sel.className = "settings-input settings-input-select";
-      const presets = f.type === "font-base" ? BASE_FONT_PRESETS : MONO_FONT_PRESETS;
+      const presets =
+        f.type === "font-base" ? BASE_FONT_PRESETS : MONO_FONT_PRESETS;
       for (const p of presets) {
         const opt = document.createElement("option");
         opt.value = p.value;
@@ -782,13 +851,19 @@ export class SettingsPanel {
   private buildFooter(): HTMLElement {
     const footer = document.createElement("div");
     footer.className = "settings-footer";
-    footer.appendChild(this.makeBtn("恢复默认", "secondary", () => this.resetAll()));
+    footer.appendChild(
+      this.makeBtn("恢复默认", "secondary", () => this.resetAll()),
+    );
     footer.appendChild(this.makeBtn("取消", "secondary", () => this.cancel()));
     footer.appendChild(this.makeBtn("保存", "primary", () => this.save()));
     return footer;
   }
 
-  private makeBtn(label: string, variant: "primary" | "secondary", onClick: () => void): HTMLElement {
+  private makeBtn(
+    label: string,
+    variant: "primary" | "secondary",
+    onClick: () => void,
+  ): HTMLElement {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = `settings-btn settings-btn-${variant}`;
@@ -799,7 +874,10 @@ export class SettingsPanel {
 
   // === 数据同步 ===
 
-  private onFieldChange(f: FieldSpec, input: HTMLInputElement | HTMLSelectElement): void {
+  private onFieldChange(
+    f: FieldSpec,
+    input: HTMLInputElement | HTMLSelectElement,
+  ): void {
     const v = input.value;
     let nextValue: string | number | undefined;
     if (v === "") {

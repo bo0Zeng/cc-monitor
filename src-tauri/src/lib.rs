@@ -15,6 +15,7 @@ mod bridge;
 mod cc_bus; // B03：cc-bus 状态的纯解析层（脏数据防御，见 features/B03-dirty-data-samples.md）
 mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（keystone 第一块）
 mod config;
+mod config_surface; // T02：配置面审计视图（遍历 tool_registry，只读、不轮询）
 mod data_paths;
 mod event_replay;
 mod history;
@@ -900,6 +901,7 @@ pub fn run() {
             cc_bus::cc_bus_send,
             cc_bus::cc_bus_spawn,
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
+            config_surface::config_surface_report,
             hooks_diag::diagnose_local_cc_bus_hooks,
             hooks_diag::diagnose_remote_cc_bus_hooks,
             mcp::read_mcp_servers,

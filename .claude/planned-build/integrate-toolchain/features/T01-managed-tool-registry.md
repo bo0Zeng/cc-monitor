@@ -247,3 +247,114 @@ cargo test 459 · cargo fmt 0 · clippy 无 error · tsc 0 · npm test 753 ·
 
 cargo test **470**（+7）· cargo fmt 0 · clippy 无 error · tsc 0 · npm test 760 ·
 **六套真机套件全绿**（ccm-cli / print-parity / acceptance / pretrust / tmux-target / tmux-guarded）
+
+---
+
+## 12. 上一节登记项的收口（2026-07-29，commit `a6d4b63`）
+
+上一节「仍未改，如实登记」里的五条已全部处置，**一条也没留在纸上**。
+
+### I1 安慰剂 → 真扫描（本轮最重的一条）
+
+问题的要害不是"断言写少了"，是**变异打错了地方**：我原先报的「变异四条全红」，
+四条变异全打在**断言已经看着的现有字段**上（改 `installable` 的取值、删 `touches`），
+而威胁点是**新增一个字段**。审计只用一个中性命名的 `needs_elevation` 就让 21 项全绿。
+
+重写后的扫描：
+1. 从源码 `pub struct ToolSpec {` 的配对花括号里**枚举声明的字段**（名 + 类型）；
+2. 从 `pub const TOOLS` 里配对枚举每个 `ToolSpec { … }` 字面量（嵌套的 `TouchedFile` 块
+   靠"配对后从块尾继续找"跳过，不重复计入）；
+3. 在字面量**顶层**取该字段的值（`depth==0` + 前一字符非标识符字符，所以嵌套块里的
+   同名 `path` 不会被误取），判是否**实质取值**——`false`/`None`/`""`/`&[]`/`0`/`vec![]`
+   都算中性：那意味着这工具其实不需要这字段，只是被 Rust 逼着填一个；
+4. <2 个实质使用者 → 违规；`bool` 字段若 6 个全为真 → 也违规（没有区分力）；
+5. 收成 `ScanReport` 走 `require(5, …)` 拿要件 3 的计数自检。
+
+**验证用审计自己那条手法，且钉成常驻测试**（不是一次性核对）：
+`the_scan_catches_the_audits_own_single_use_field` 在测试里**直接变异真文件文本**
+（注入 `needs_elevation`：声明 1 处 + 每个字面量 1 处，其中 ccm 那处为 `true`），
+先 `assert_eq!(matches.count(), 1 + TOOLS.len())` **确认变异真落位**——本会话已有
+两次"全绿"其实是变异根本没写进文件，这一条现在写进了测试本身。
+
+真机对拍（同一手法打真文件，`cargo test tool_registry`）：
+
+| | 修前 | 修后 |
+|---|---|---|
+| 塞 `needs_elevation`（5 false + 1 true） | **21 项全绿** | 红：`字段 needs_elevation: bool 只被 1 个工具实质实例化（["ccm"]）` |
+| 把 `installable` 全改成 `false`（退化方向） | 未覆盖 | 红：`字段 installable 只被 0 个工具实质实例化` |
+
+顺带修了一条**我第一版自己写错的自检**：`mutated.matches("installable: false")` 不带
+8 空格前缀会把 `uninstallable: false` 也数进去（实得 9 而非 6），测试当场红在那一行
+——**先确认变异落位再判色**这条纪律又救了一次。
+
+### 名字黑名单 → 结构性质
+
+`probe_mechanism_is_not_part_of_the_spec` 原先列 `["probe","detect","check_cmd",
+"fingerprint_cmd"]`，**换个名字就穿**（这正是本会话第五次栽在黑名单上）。
+现在守的是「`ToolSpec` 的每个字段类型必须是 const-可构造的声明式数据」：
+白名单放行 `&'static str` / `bool` / `&'static [T]` / 本模块声明的 plain enum/struct，
+其余判违规。`a_renamed_probe_mechanism_is_still_caught` 用四种改了名的走私形态验证
+（`fn(&str)->bool` / `Box<dyn Fn>` / `String` / `Vec<String>`），**叫什么都拦得住**。
+
+**已知上限如实写进模块文档**：若有人声明一个 const-可构造的「命令模板」枚举，
+守卫拦不住——因为那时它确实是声明式数据，届时得就事论事重新论证，不能引用那段文档了事。
+
+### Q3 我那处事实错误：结论对、理由错
+
+原文说 cc-acct-iso 的探测是「比对内容指纹」。核实：`check_remote_acct_iso` 跑的是远端
+`PATH="$HOME/.local/bin:$PATH" command -v cc-acct-iso` 再解析 stdout，与 `ccm_probe.rs`
+**同一族**；`.vendor_id` 指纹比对发生在**部署决策**那一步（`deploy_decision` 读远端 marker）。
+所以「四种机制彼此不兼容、**各只有一个使用者**」是**错的**——「跑命令解析 stdout」这一族
+至少两个使用者，按 ≥2 判据它反而**够格**。
+
+换上的真实理由更硬：**`ToolSpec` 是 `const` 声明式数据，探测是行为。**
+`Vendored { repo_path, fingerprint_file }` 是两个字符串，谁读它都不需要任何能力；
+探测要么要一条活 ssh 会话、要么要一次协议握手、要么要读本机 fs。塞进 `const` 只能塞成
+「命令模板 + 解析规则」的小 DSL。并且写清编译器只帮一半：`Box<dyn Fn>` 在 `const` 里
+构造不出来，但**函数指针是 const-可构造的**——所以这条边界必须靠上面那个结构守卫。
+
+### I2 尺子不一致，两边都收
+
+- **删掉 `ProbeStatus`**。它与 `ccm_probe::CcmProbeResult` 同形、零适配、零消费者，
+  且 `version: String` 比对方的 `Option<String>` 还丢了"取不到"这一档。
+  **发明第二个同形结构不是统一，是重复**；按我同轮删 `WriteVerdict::is_ok`、
+  把 `build_online_cmd` 零调用点判为**阻塞**的尺子，它该删。统一的结果类型**已经存在**。
+- **零生产消费者如实登记，且不拿"T02 会用"自动豁免**：T02 收工时若 `TOOLS` 仍无生产
+  消费者，**就该删掉本模块**。存根不靠我记得——clippy 现在对本模块 6 个类型各报一条
+  `never used`，T02 接上后自己消失。
+- **`structural_scan` 不占这笔债**：它的消费者全在 `#[cfg(test)]` 里（`sftp.rs` 的 tmux
+  目标守卫 + `tool_registry` 的字段纪律），是**测试支撑模块**。在 `lib.rs` 标 `#[cfg(test)]`
+  ——把这件事写进类型系统，顺带消掉 5 条 dead_code。
+
+### S7 `write_and_verify` → `verify_and_rollback`
+
+两个真实调用点传的都是 `|| Ok(())`：写入（含备份与写失败时的恢复）在调用方上方做完，
+**因为那一段各落点不同**（本机要 `fs::copy` 备份、要把备份路径拼进错误文本；远端要设权限位、
+要防传输损坏）。留着 `write` 参数的后果是那条 `Err` 分支**生产不可达**，而我为它写的测试
+看着是绿的。删参数 + 改名，让签名说的就是它真做的事；连带删掉
+`write_failure_short_circuits_without_rollback`（恒绿装饰）。
+
+**顺带说清没被覆盖的**：`sftp.rs` 那三处读回比对只共用了 `verify_readback`（判定），
+没走 `verify_and_rollback`——它们的回滚是 `async` SFTP 操作，塞不进 `impl FnOnce()`。
+不谎称已统一。（`verify_readback` 本身有 **5 个生产调用点**，抽象成色扎实。）
+
+### S8 `comment_prefix` 前置条件
+
+写清：注释判定是**逐行朴素实现**，只看行首，因此要求文本**无 heredoc、无跨行字符串**
+——否则 heredoc 正文里一行 `# tmux -t $bare` 会被当注释跳过而它在 shell 里要真执行。
+已核实 `shared/ccm` **零 heredoc**（`grep -cE "<<-?'?[A-Za-z_]"` = 0，全用 `printf`/单行赋值），
+故当前唯一调用点成立。以后扫别的文件先确认这条，不成立就传 `None`（宁可假红）。
+
+### 本轮门禁
+
+cargo test **474**（+4：tool_registry 5→10，verified_write −1）· cargo fmt 0 ·
+clippy 0 error（`structural_scan` 的 5 条 dead_code 已消，`tool_registry` 的 6 条**有意留着**
+当 I2 的存根）· tsc 0 · npm test 760 · **七套真机套件全绿**：
+tmux-target 26 / ccm-cli 44 / print-parity 12 / acceptance 15 / pretrust 13 /
+tmux-guarded 14 / cc-spawn-uplift 11。
+
+tmux 纪律：全程走**强制 `-L` 的 PATH shim**（任何没显式给 `-L`/`-S` 的调用被改道到
+`ccm-guard-shim`），起飞前做 **canary 双向自检**（正向：裸 `new-session` 必须落隔离 socket；
+反向：默认 socket 的会话清单必须逐字不变且不含 canary；杀隔离 server 后默认 socket 仍在），
+跑完再核对一次——默认 socket 上 `cc-9d66c46d`（我自己）/ `cc-claudecode-frontend` /
+`cc-d7692cdf` 三个会话逐字未变。
