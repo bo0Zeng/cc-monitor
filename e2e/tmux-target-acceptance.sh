@@ -15,7 +15,9 @@ trap 'rm -rf "$SP"' EXIT
 # 生产命令串来自**真 builder**（不手搓等价命令）——见 tmux-target-emit.mts 头注
 (cd "$REPO" && npx tsx e2e/tmux-target-emit.mts) > "$SP/f01-cmds.tsv"
 SOCK=ccmF01
-TMUX_BIN="$(command -v tmux)"
+# 缺 tmux 必须硬失败（Phase G 审阅）：原先这行**完全没有守卫**，`TMUX_BIN` 会是空串，
+# shim 变成 `exec  -L ccmF01 "$@"`，套件在一堆看不懂的报错里跑，而不是明确说"需要 tmux"。
+TMUX_BIN="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
 SHIM="$SP/shim"; rm -rf "$SHIM"; mkdir -p "$SHIM"
 printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$TMUX_BIN" "$SOCK" > "$SHIM/tmux"
 chmod +x "$SHIM/tmux"

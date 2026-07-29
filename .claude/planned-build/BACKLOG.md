@@ -93,3 +93,47 @@
     ⇒ **以后功能的 DoD 别再写「明暗主题各扫一眼」**,改写「零硬编码颜色 + var 全部有定义」
 11. MASTERPLAN 变更记录只记「账本形态变了什么 + 为什么」,实现叙事留在 `features/`
     (现在 account-ux 的 MASTERPLAN 有 32% 是变更记录,与 feature 文件重复)
+
+---
+
+## E. unify-launch + integrate-toolchain 两工作区遗留（2026-07-29 Phase G 登记）
+
+> **这一节本该在写下「顺延」那一刻就存在。** Phase G 文档视角审阅把它的缺失点为阻塞 B2：
+> 本轮在 feature/STATUS/PHASE-G-DRAFT 里写了十几条「未收」「登记」「不做」，
+> **BACKLOG 里一条都没有**——`grep -n "R15\|R16\|B03" BACKLOG.md` 零命中。
+> 也就是本文件头注亲自定义的那个失效模式（U6→U8 断链）在本轮完整复现了一次。
+
+| ID | 项 | 来源 | 状态 / 说明 |
+|---|---|---|---|
+| E1 | **R16：`views/history.ts` 账号 resume 菜单缺基座逃生口** | `unify-launch/STATUS.md`「R15/R16」 | **未做，疑为活 bug**（= issue #75 场景）。`appendAccountResumeItems` 没有「基座」项，用户无法从菜单显式起一个不注入账号的会话。原文写「计划文里查无决策记录，疑为遗漏」 |
+| E2 | R15：`LaunchContext.passThrough` 纯透传子集 | 同上 | 登记，暂不做（收益是类型收紧，无行为变化） |
+| E3 | **T01-P6 + ccm CLI 写坏不回滚** | `T01` §12 · `sftp.rs:843-847` 注释 | 两条都等同一个前置：`ProfileFs` 六闭包注入层（`exists`/`read_to_string`/`metadata`/`create_dir_all`/`copy`/`atomic_write_string`）。ccm CLI 读回不符**不回滚**，损坏的 CLI 留在远端，而下次 probe 可能仍报 installed |
+| E4 | `remote-section.ts` 的 `refresh()` 全函数零 try/catch | T07 §9 | 今天不炸只因 `readRemoteConfig` 自带兜底「永不抛」——**靠被调方的性质，不是靠自己的结构** |
+| E5 | `accounts-section.ts` 四处（102/130/415/519）整条链在 try 外 | T07 §9 | 同 E4 一类 |
+| E6 | B03 的 M1-M6 | `unify-launch` B03/B04 计划 §12 | 其中 M6 = `CcBusAgent.pane` 解析了没有任何读者 |
+| E7 | 族 B 5 处「复制诊断」重复实现 | T03 §9 | `paste-block.ts` 已收编 3 处，这 5 处是另一族（诊断文本复制），未收 |
+| E8 | 卸载缺「强制清理 cc-monitor 块」入口 | T04 §13 | 悬空 BEGIN 时 `find_pair` 一律 `Err` 中止（这是对的），但用户没有任何出口把坏块清掉 |
+| E9 | 24 处构造期 I/O 改懒加载 | T07 §5 | **明写不做**（实测只有约 11 处真在构造器里；改造面大、收益是启动延迟，不是正确性） |
+| E10 | `(Remote, LocalGlob)` 组合不可达但有意保留 | T02 §8 | 保留理由是 `HostScope` 与 `PathResolution` 正交，不为省一个不可达组合去耦合两个维度 |
+| E11 | **八套 CI 真机套件没有「最小断言数」地板** | Phase G 代码工程视角审阅（阻塞 2） | **未做**。每套收尾只有 `[ "$FAIL" -eq 0 ]`，加上 3 处静默 SKIP 分支，任何环境退化都是「少跑若干条 + 绿」。本仓 `structural_scan.rs::require(min_checked)` 已经把这道自检做成调用方想忘都忘不掉，**Rust 侧做到了，价值更高的 shell 侧没做**。做法：每套收尾加 `[ "$PASS" -ge <实测数> ]`，数字取一次真机运行的实测值（静态 `ck`/`chk` 调用数 ≠ 运行期断言数，两者差得很远）。**2026-07-29 Phase G 已实测，直接用这组数即可**：`tmux-target` 26 · `ccm-cli` 44 · `ccm-print-parity` 12 · `ccm-acceptance` 15 · `ccm-pretrust` 13 · `cc-spawn-uplift` 21 · `tmux-guarded` 14 · `usage-probe` 7（合计 152）。前 7 套尾部已打印 `PASS=<n>`，`cc-spawn-uplift` 没打印、要先加 |
+| ~~E12~~ | ~~`ci.yml` 断言条数标签与实际不符~~ | 同上（阻塞 3） | **已修**（2026-07-29）：标签按实测改为 ccm-cli 44、cc-spawn-uplift 21，表头改为「8 套 / 152 条」并逐套列出 |
+| E13 | `vendor/cc-acct-iso/scripts/` 1348 行 bash 在 shellcheck 门禁之外 | 同上（重要 4） | 它被 `include_bytes!` 进二进制并部署到远端执行，**与当初把 `shared/ccm` 纳入门禁的论证一字不差**。实测今天 `shellcheck --severity=error` 零告警 ⇒ 扩进来是零成本 |
+| E14 | 6 套已自动化的 e2e 套件不在 `package.json` 也不在 `ci.yml` | 同上（重要 5） | `graylight-suite` / `graylight-daemon-frames` / `restart-suite` / `restart-daemon-frames` / `resume-suite` / `resume-daemon-frames`。只需 tmux + 一个 debug daemon，而 CI 的 `daemon` job 已经在编译 `remote-daemon-proto` |
+| E15 | **两个渲染器对「未选账号（base）」不等价** | Phase G 整体设计视角审阅（阻塞 1，本席复现后降为「重要」） | CLI 渲染器吐 `--base` → ccm `unset CLAUDE_CONFIG_DIR`（强制基座）；兜底渲染器 base 态**零 env op** → `bash -lic` 继承登录 shell 里的 `CLAUDE_CONFIG_DIR`（继承语义）。**降级理由**：审阅把它归为 R11 同型，但 `shared/ccm:320` 显示「落 manifest 默认账号」只在**无继承值**时触发，而兜底路径没有 ccm、没有 manifest，R11 那个病灶在那条路上不存在。剩下的暴露面是「用户自己在远端 profile 里 export 的值被继承」——**那算 bug 还是用户本意，取决于「未选账号」是「不注入」还是「强制基座」，是产品语义决定，不在验收轮里单方面改远端启动语义**。待用户拍板 |
+| E16 | 首次安装失败时不删新建的文件（本机 + 远端各一处） | Phase G 实现细节视角审阅（重要） | `backup_path = None` ⇒ rollback 闭包是空操作，而文案说「已尝试回滚」。**文案已在 Phase G 改成如实**（`sftp::rollback_note`），但「删掉新建的半坏文件」是行为新增（远端要 `remove`），未做 |
+| E17 | 远端 hooks 诊断读死 `$HOME/.claude/settings.json`，不认 `CLAUDE_CONFIG_DIR` | 同上（重要） | 本机侧刚在 B04 修成尊重它，远端侧没跟上，而 `source` 字段照样报一个看着很确定的来源。改 `REMOTE_HOOKS_CMD` 里那一处定值即可，注入面不变 |
+| E18 | 远端 `classify_command` 用 basename 匹配回答精确路径问题 | 同上（重要） | 远端 `exists` 闭包只比 basename ⇒ `PathMissing` 这一态对任何「装在别处」的程序**永远不可达**。远端已经有 `X\t<path>` 精确行可用 |
+| E19 | `shared/ccm` 相对 `--cwd` 被应用两次 + 会产孤儿会话 | 同上（重要） | `tmux new-session -c` 的相对路径由 tmux **server** 解析，内层 ccm 再 `cd` 一次；且 `pane_current_path`（绝对、已解符号链接）与相对 `$cwd` 恒不相等 ⇒ 每次调用都退让到新的 `cc-foo-N`。Phase D 为预信任造过 `cwd_abs`，没推广到容器路径。**含符号链接的绝对路径同型** |
+| E20 | `upload_atomic` 会把符号链接形态的 `.bashrc` 换成普通文件 | 同上（重要） | `try_exists` 跟随链接 → rename 搬的是链接本身 → 落一个普通文件 → 链接被删。dotfiles/stow 用户的 `.bashrc → ~/dotfiles/bashrc` 就此断开，而备份只存内容、链接不可恢复 |
+| E21 | `config.json` 的丢失更新 + 固定 tmp 名 | 同上（重要） | 7 处写者全是 `load → 改整棵树 → save 整棵树`，Rust 侧无版本/无合并；`tmp = path.with_extension("json.tmp")` 是固定名，而同仓 `profile_installer::atomic_write_string` 特意加了 PID+时间戳「避免并行写碰撞」 |
+| E22 | 「Claude 配置目录在哪」有 4 份独立实现 | Phase G 整体设计视角审阅（重要 9） | `hooks_diag.rs:415` / `paths.rs:33` / `mcp.rs:31` / `config_surface.rs:600`。`hooks_diag` 自己写着「若它自己再写一遍判定，两处就会各自漂移」——`config_surface` 遵守了（调 `hooks_diag::claude_config_dir`），另两处没有 |
+| E23 | IR 之外的第 6 个手拼 builder | 同上（重要 2） | `src/remote-launch.ts:70-76` 的 `buildUsageProbePayload` 手拼 `export CLAUDE_CONFIG_DIR=…; unset <nested>; claude`，即 `account` + `nested-env-reset` 两个维度的手工复刻，由 F10（晚于 F03）新增 |
+| E24 | `remote-launch.ts` 五个导出**生产零调用点**，却塑造了 IR 的类型设计 | 同上（重要 3） | `LaunchAccount.name` 的可选性 + `cliFlags` 返回 `null` 强制降级这条分支，唯一理由是服务这条只有测试在用的兼容面。按本轮那把 ≥2 尺子，这是一个**没有生产消费者的兼容面换来一条永久降级分支** |
+| E25 | 五份 T 文档章节号重复（T02/T03/T04/T07 各有两套 §5-§8） | Phase G 文档视角审阅（阻塞 B3 后半） | 第一套一律「（待填）」+ 未勾选，第二套才是真内容。T01 是唯一做对的（续编成 §11/§12）。今天**没有**实际引用踩上去（现有跨文档引用都指向续编号的 §9/§12/§13），但二义性是latent。修法：照 T01 把第二套续编下去 + 每份最前加一节 ≤10 行「当前事实」 |
+| E26 | MASTERPLAN 功能表状态列全面过期 | 同上（重要 I1） | `integrate-toolchain/MASTERPLAN.md` §1 里 T01-T09 全标「待做」而 5 个已交付；`unify-launch/MASTERPLAN.md` §1 表**完全没有 R00-R09 / B01-B04 的行**——三分之二的在跑工作只存在于 STATUS 的两张表里。它自称「单一事实来源」 |
+| E27 | 文档里 4 处把 `doc/INVARIANTS.md` 的**行号 37** 写成了**节号 §37** | 同上（重要 I3） | `account-isolation/MASTERPLAN.md:73`/`:111`、`STATUS.md:11`、`features/07-a5plus-graceful-exit.md:60`。内容实际在 §1（位于第 37 行）；而今天真的存在一个 §37，讲的是维度 `applies`——**跟着引用走会落到完全无关的一节，比 404 更坏，因为读者不会察觉** |
+| E28 | 已删的 `shared/ccm-wrapper.sh` 仍被 4 处当现存文件引用 | 同上 | 含 `account-onboarding/UNIFIED-PLAN.md:71` 对一个已删文件下达未来指令（「须 lockstep」） |
+| E29 | `planned-build/README.md` 索引缺 integrate-toolchain + 七行失准 | 同上（重要 I5） | 缺的正是今天唯一在动的工作区；另有一行「tmux-daemon-reconcile 已交付」而该目录无 STATUS/MASTERPLAN、`PLAN.md` 从不声明完成——「已交付」只存在于索引里，不可回溯 |
+| E30 | README 产品文档漂移复发 | 同上（重要 I2） | **版本号与两个测试数已修**（2026-07-29：三处 v3.2.0→v3.3.0、cargo 365→536、DOM 595→814，均为实测）。**仍未做**：README 那个约 1400 字的单段落「项目状态」把整部版本史塞进去、与 CHANGELOG 重复，且**零账号功能覆盖**；以及 §A 那条登记行自己写着「README 停在 v3.0.0」也该更新——**「修了一半、登记项没跟着更新」正是这条复发的机制** |
+| E31 | `shell_quote` 放错模块 | Phase G 代码工程视角审阅（重要 6） | `ssh_source.rs` fan-in 14 里，5 个模块（`accounts`/`account_usage`/`cc_bus`/`remote_history`/`tmux`）**只为一个与 SSH 无关的纯字符串工具**依赖这个 4847 行模块。搬去 `utils.rs` 即可，一处改动。（顺带：该审阅逐个查过 14 个依赖方，只用到 6 个符号 ⇒ **这是内聚的 SSH facade，不是上帝对象，不该按行数拆**） |
+| E32 | Rust 侧零覆盖率门禁 | 同上（重要 7） | 31570 行 / 536 测试，无覆盖率地板。TS 侧地板只量 `*.vitest.ts` 而分母含 `*.test.ts` 覆盖的文件 ⇒ 只能设到 40/34/36/41，且新增只有 `*.test.ts` 覆盖的模块会**压低**全局数字、可能误红 |

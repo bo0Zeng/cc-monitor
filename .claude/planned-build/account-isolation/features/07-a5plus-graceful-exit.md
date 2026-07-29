@@ -57,4 +57,4 @@ A5 换号重启的 ④ 结束旧进程当前是**直接 `kill_remote_tmux`**（S
 - **未采纳（记账）**：defensive `Promise.race`（真实注入恒 resolve，低价值）；「用户手造 cc-* 且 claude 为会话 PID-1」的边角（cc-monitor 自身 resume 流不可达，且降级安全=中止不双进程）。
 
 ## 签收
-- [x] 过代码审计(D，两视角，零阻塞，S1 hardening 已修) · [x] 过工程审计(E，主线程对账：架构清晰、无新耦合/技术债、daemon 只读守住) · [x] 主计划已更新(F：INVARIANTS §37 补 enter? / DESIGN §5④+§1 V3 标已解) · [x] 测试绿（453 vitest + 352 cargo + build）
+- [x] 过代码审计(D，两视角，零阻塞，S1 hardening 已修) · [x] 过工程审计(E，主线程对账：架构清晰、无新耦合/技术债、daemon 只读守住) · [x] 主计划已更新(F：INVARIANTS **§1** 补 enter?（原文误写 §37） / DESIGN §5④+§1 V3 标已解) · [x] 测试绿（453 vitest + 352 cargo + build）

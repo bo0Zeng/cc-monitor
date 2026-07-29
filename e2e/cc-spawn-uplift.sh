@@ -19,7 +19,12 @@ set -o pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 CCSPAWN="$REPO/shared/cc-bus/scripts/cc-spawn"
 SOCK="ccmB02e2e$$"
-REALTMUX="$(command -v tmux)" || { echo "SKIP: 未装 tmux"; exit 0; }
+# **`exit 1` 而不是 `exit 0`**（Phase G 审阅阻塞）：这里原先是 `echo "SKIP: 未装 tmux"; exit 0`,
+# 于是在没有 tmux 的环境里 20 条断言一条不跑、套件报绿。同类的另外 7 套一律 `exit 1`。
+# 一套能在零断言下报绿的套件，正好抵消掉 CI 里为它写的立项理由（"cargo/npm/tsc 全绿仍放行过
+# 一个让 send-keys 完全失效的改动，因为那些门禁只断言我写出了打算写的字符串"）。
+TMUX_BIN="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
+REALTMUX="$TMUX_BIN"
 
 BIN="$(mktemp -d)"; SANDBOX="$(mktemp -d)"; WORK="$(mktemp -d)"
 cat > "$BIN/tmux" << EOF

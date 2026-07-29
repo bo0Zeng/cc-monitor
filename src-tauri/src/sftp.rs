@@ -205,6 +205,102 @@ pub(crate) async fn read_optional(sftp: &SftpSession, path: &str) -> Option<Vec<
     sftp.read(path.to_string()).await.ok()
 }
 
+/// **远端 profile 的读取结论**（Phase G 审阅修复）：把 `read_optional` 的 `Option<Vec<u8>>`
+/// 拆成三态，取代原先的 `read_optional(..).map(from_utf8_lossy).unwrap_or_default()`。
+///
+/// 那一行有两个各自独立的数据丢失口，而**本机侧同一操作两个口都堵着**
+/// （`profile_installer::install_to_profile`：`read_to_string` 遇非 UTF-8 直接 `Err`；
+/// `on_disk_size > 0 && raw.is_empty()` 直接 `Err`，后者是 v1.7.9 事故的修法）：
+///
+/// 1. **`unwrap_or_default()` 把「读不出来」当成「文件是空的」**。于是 install 走
+///    `if !existing.is_empty()` 时**跳过备份**、把用户整份 `.bashrc` 换成只含 ccm 块的
+///    `merged`，无任何可恢复副本；uninstall 则 `stripped == existing` 成立 →
+///    对着一份读不出来的文件回「没有 ccm 块，无需卸载」——正是
+///    `strip_profile_block` 头注亲自定义为 bug 的形态（"它主动告诉用户没问题"），
+///    上一轮只修到纯函数一层，根因在这个读取行。
+/// 2. **`from_utf8_lossy` 在有损字符串空间里做读-改-写**。非 UTF-8 字节（GBK 注释、
+///    latin-1 人名、误粘的 `\xa0`）变 U+FFFD → **备份写的是已经有损的那份**，原字节
+///    从此不可恢复；而读回校验拿同样有损的两份比对，**逐字节相同、校验通过**，
+///    整套「备份 + 读回 + 回滚」为这次损坏出具合格证。`verify_uploaded_bytes` 的头注
+///    自己写着"按字节而不是按字符串"，那条纪律只落到了 daemon 二进制那条路。
+///
+/// 修法与本机侧对齐成 **fail-safe**：说不清就 `Err` 中止、不动原文件。
+/// `Ok(None)` = 文件真的不存在（`try_exists` 明确说 false）；`Ok(Some(s))` = 读到了且是
+/// 合法 UTF-8；`Err` = 读不出来 / 非 UTF-8 / 有字节数却读到空。
+pub(crate) fn interpret_profile_read(
+    what: &str,
+    bytes: Option<&[u8]>,
+    exists: Option<bool>,
+    size: Option<u64>,
+) -> Result<Option<String>, String> {
+    let Some(bytes) = bytes else {
+        // read 失败。只有 `try_exists` **明确说不存在**才当新建；"问不出来"归到 Err，
+        // 因为把无权限/被占用当成空文件正是上面第 1 条的病灶。
+        return if exists == Some(false) {
+            Ok(None)
+        } else {
+            Err(format!(
+                "读不出 {what}（文件可能存在但无权限 / 被占用 / 传输失败）。已取消，未改动任何文件。"
+            ))
+        };
+    };
+    if bytes.is_empty() {
+        if let Some(n) = size.filter(|n| *n > 0) {
+            return Err(format!(
+                "{what} 在远端有 {n} 字节，但读回来是空的。已取消，未改动任何文件——\
+                 继续走会用「空内容 + ccm 块」覆盖掉那 {n} 字节。"
+            ));
+        }
+        return Ok(Some(String::new()));
+    }
+    String::from_utf8(bytes.to_vec()).map(Some).map_err(|e| {
+        format!(
+            "{what} 不是合法 UTF-8（前 {} 字节合法，之后不是）。ccm 块的合并/删除是按文本做的，\
+             按有损文本写回会把这些字节永久换成 U+FFFD，连备份一起坏掉。已取消，未改动任何文件。",
+            e.utf8_error().valid_up_to()
+        )
+    })
+}
+
+/// **回滚措辞必须与实际发生的事一致**（Phase G 审阅修复）：install 的两个失败分支都写
+/// `if !existing.is_empty() { 回滚 }`，但错误文案是无条件的「已尝试回滚原文件」——
+/// `existing` 为空（首次安装 / 原文件是空文件）时那个 `if` 一条也不执行，用户却被告知
+/// 回滚过了，而一份校验不通过的 profile 正留在远端等着下次开终端时执行。
+/// 这与两条阻塞是同一类病：**机制声称做了它没做的事**。
+///
+/// 本函数只负责措辞。真正的"首次安装失败就删掉新建的文件"是行为新增（要在远端 `remove`），
+/// 已登记为未收项，不在验收轮里做。
+pub(crate) fn rollback_note(existing_was_empty: bool) -> &'static str {
+    if existing_was_empty {
+        "原文件此前不存在或为空，没有可回滚的内容；刚写入的内容仍在远端，请手动清理后重试。"
+    } else {
+        "已尝试回滚原文件。"
+    }
+}
+
+/// [`interpret_profile_read`] 的异步取样：read 成功就直接判，**只在需要时**才补问
+/// `try_exists`（区分"真不存在"与"读不出来"）/ `metadata`（区分"真空文件"与"有字节读到空"），
+/// 不为常见路径多加往返。
+async fn read_profile_text(
+    sftp: &SftpSession,
+    path: &str,
+    what: &str,
+) -> Result<Option<String>, String> {
+    let bytes = read_optional(sftp, path).await;
+    let (exists, size) = match &bytes {
+        Some(b) if b.is_empty() => (
+            None,
+            sftp.metadata(path.to_string())
+                .await
+                .ok()
+                .and_then(|m| m.size),
+        ),
+        Some(_) => (None, None),
+        None => (sftp.try_exists(path.to_string()).await.ok(), None),
+    };
+    interpret_profile_read(what, bytes.as_deref(), exists, size)
+}
+
 /// mkdir -p：逐级创建 `dir`（绝对或相对），已存在则跳过，创建失败容忍（并发/权限留给上传报错）。
 pub(crate) async fn ensure_dir_all(sftp: &SftpSession, dir: &str) {
     let mut cur = String::new();
@@ -728,11 +824,13 @@ pub async fn uninstall_remote_ccm_helper(
     let conn = connect_sftp(&cfg).await?;
     let sftp = &conn.sftp;
 
-    let existing = read_optional(sftp, &profile)
-        .await
-        .map(|b| String::from_utf8_lossy(&b).into_owned())
-        .unwrap_or_default();
-    let stripped = strip_profile_block(&existing, &format!("远端 ~/{profile}"))?;
+    let what = format!("远端 ~/{profile}");
+    // fail-safe 读取（见 `interpret_profile_read`）：读不出来 → `?` 中止，**不再**回
+    // 「没有 ccm 块，无需卸载」。
+    let Some(existing) = read_profile_text(sftp, &profile, &what).await? else {
+        return Ok(format!("远端 {profile} 不存在，没有 ccm 块可卸载。"));
+    };
+    let stripped = strip_profile_block(&existing, &what)?;
     if stripped == existing {
         return Ok(format!("远端 {profile} 里没有 ccm 块，无需卸载。"));
     }
@@ -854,12 +952,15 @@ pub async fn install_remote_ccm_helper(
     }
 
     // ② 再把别名块合进 profile。
-    let existing = read_optional(sftp, &profile)
-        .await
-        .map(|b| String::from_utf8_lossy(&b).into_owned())
+    let what = format!("远端 ~/{profile}");
+    // fail-safe 读取（见 `interpret_profile_read`）：读不出来 → `?` 中止。**这一处最要紧**——
+    // 原先读失败会变成 `existing = ""`，于是下方 `if !existing.is_empty()` 跳过备份、
+    // `merged`（= 只有 ccm 块）整份覆盖用户 `.bashrc`，无任何可恢复副本。
+    let existing = read_profile_text(sftp, &profile, &what)
+        .await?
         .unwrap_or_default();
     // 损坏块（BEGIN 无 END）→ merge 返回 Err，直接中止，不动原文件。
-    let merged = merge_profile_block(&existing, CCM_WRAPPER_SNIPPET, &format!("远端 ~/{profile}"))?;
+    let merged = merge_profile_block(&existing, CCM_WRAPPER_SNIPPET, &what)?;
     if merged == existing {
         return Ok(format!(
             "ccm CLI 已部署到远端 ~/{CCM_CLI_REMOTE_PATH}；{profile} 的别名块已是最新，无需改动。"
@@ -893,7 +994,8 @@ pub async fn install_remote_ccm_helper(
             let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
         }
         return Err(format!(
-            "写后读不回 {profile}（无法确认写对了），已尝试回滚原文件。"
+            "写后读不回 {profile}（无法确认写对了）。{}",
+            rollback_note(existing.is_empty())
         ));
     };
     if let crate::verified_write::WriteVerdict::Mismatch { detail } =
@@ -902,7 +1004,10 @@ pub async fn install_remote_ccm_helper(
         if !existing.is_empty() {
             let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
         }
-        return Err(format!("写后校验失败：{detail} 已尝试回滚原文件。"));
+        return Err(format!(
+            "写后校验失败：{detail} {}",
+            rollback_note(existing.is_empty())
+        ));
     }
 
     tracing::info!(
@@ -1321,6 +1426,147 @@ mod tests {
         let bin = &[0x7f, b'E', b'L', b'F', 0x00, 0xff, 0xfe];
         assert!(verify_uploaded_bytes("/r/d", bin, Some(bin)).is_ok());
         assert!(verify_uploaded_bytes("/r/d", b"", Some(b"")).is_ok());
+    }
+
+    /// Phase G 阻塞①：**「读不出来」绝不能变成「文件是空的」**。
+    ///
+    /// 旧代码是 `read_optional(..).map(from_utf8_lossy).unwrap_or_default()`，
+    /// 读失败 → `existing = ""` → install 跳过备份 + 整份覆盖用户 `.bashrc`；
+    /// uninstall 回「没有 ccm 块，无需卸载」。
+    #[test]
+    fn read_failure_is_not_an_empty_file() {
+        // 读失败 + 明确不存在 → 当新建（这条是**反向自检**：不能一律 Err，否则首次安装就废了）
+        assert_eq!(
+            interpret_profile_read("远端 ~/.bashrc", None, Some(false), None),
+            Ok(None)
+        );
+        // 读失败 + 文件确实在 → 必须 Err
+        let e = interpret_profile_read("远端 ~/.bashrc", None, Some(true), None).unwrap_err();
+        assert!(e.contains("读不出"), "{e}");
+        assert!(e.contains("未改动任何文件"), "{e}");
+        // 读失败 + 连"在不在"都问不出来 → 也必须 Err（不许乐观当新建）
+        let e2 = interpret_profile_read("远端 ~/.bashrc", None, None, None).unwrap_err();
+        assert!(e2.contains("读不出"), "{e2}");
+    }
+
+    /// Phase G 阻塞②：**非 UTF-8 的 profile 必须拒绝，不许有损重写**。
+    ///
+    /// 有损路线的恶性在于它**自带合格证**：备份写的是已经变成 U+FFFD 的那份，
+    /// 读回校验两边同样有损 → 逐字节相同 → 校验通过。所以这里断言的是"根本不进那条路"。
+    #[test]
+    fn non_utf8_profile_is_refused_instead_of_lossily_rewritten() {
+        // GBK 的「中」= 0xD6 0xD0，单独出现不是合法 UTF-8
+        let gbk = b"# \xd6\xd0\xce\xc4\nexport PATH=$PATH\n";
+        let e = interpret_profile_read("远端 ~/.bashrc", Some(gbk), None, None).unwrap_err();
+        assert!(e.contains("不是合法 UTF-8"), "{e}");
+        assert!(e.contains("前 2 字节合法"), "偏移要说清，实得：{e}");
+        assert!(e.contains("未改动任何文件"), "{e}");
+        // 有损重写会把它变成什么——写在这里，好让人一眼看到丢了什么
+        assert_ne!(
+            String::from_utf8_lossy(gbk).into_owned().as_bytes(),
+            gbk,
+            "这条测试的前提没了：这串本来就该是有损的"
+        );
+
+        // **反向自检**：合法的多字节 UTF-8（中文注释）必须原样通过、往返零损失
+        let utf8 = "# 中文注释\nexport PATH=$PATH\n";
+        assert_eq!(
+            interpret_profile_read("远端 ~/.bashrc", Some(utf8.as_bytes()), None, None),
+            Ok(Some(utf8.to_string()))
+        );
+    }
+
+    /// Phase G：本机侧 v1.7.9 的那道防线（磁盘有字节却读到空）补到远端侧。
+    #[test]
+    fn bytes_on_disk_but_read_empty_is_refused() {
+        let e = interpret_profile_read("远端 ~/.bashrc", Some(b""), None, Some(120)).unwrap_err();
+        assert!(e.contains("有 120 字节"), "{e}");
+        assert!(e.contains("未改动任何文件"), "{e}");
+        // 反向自检：真的空文件（size 0 / 问不到 size）不能被拦
+        assert_eq!(
+            interpret_profile_read("远端 ~/.bashrc", Some(b""), None, Some(0)),
+            Ok(Some(String::new()))
+        );
+        assert_eq!(
+            interpret_profile_read("远端 ~/.bashrc", Some(b""), None, None),
+            Ok(Some(String::new()))
+        );
+    }
+
+    /// **结构性守卫**：两处 profile 读-改-写的**初始读取**必须走 fail-safe 读取器。
+    ///
+    /// 范围**只覆盖「喂给文本变换的那一次读取」**，即函数体开头到
+    /// `merge_profile_block`/`strip_profile_block` 之间那一段。
+    ///
+    /// 第一版写成"整个函数体不许出现 `read_optional(sftp, &profile)`"，**当场被自己抓红**：
+    /// 同一函数里的**写后读回校验**正当地用它，而且那处用 lossy 也是安全的——写进去的一定是
+    /// 合法 UTF-8，传输损坏会变成 U+FFFD → 与期望不符 → Mismatch → 回滚，方向 fail-safe。
+    /// 收窄了**两次**才对上，两次都是自己抓自己：
+    /// ① 初版扫整个函数体 → 撞上写后读回校验那处正当的 `read_optional(sftp, &profile)`；
+    /// ② 收到"变换之前"后仍假红 → `install` 的读取段里还有一处正当的 `read_optional`，
+    ///    读的是刚部署的 **ccm CLI 脚本**（`CCM_CLI_REMOTE_PATH`），不是 profile。
+    /// 所以禁的必须是**读 profile 那一次**的确切形态，不是"任何 `read_optional`"。
+    /// 守卫范围必须等于性质范围；本会话第三次栽在同一形状上，故把订正过程留在注释里。
+    #[test]
+    fn profile_read_modify_write_goes_through_the_failsafe_reader() {
+        fn body<'a>(src: &'a str, sig: &str) -> &'a str {
+            let i = src
+                .find(sig)
+                .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
+            let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
+            &src[i..j]
+        }
+        let src = include_str!("sftp.rs");
+        let mut checked = 0usize;
+        for (sig, transform) in [
+            (
+                "pub async fn uninstall_remote_ccm_helper(",
+                "strip_profile_block(",
+            ),
+            (
+                "pub async fn install_remote_ccm_helper(",
+                "merge_profile_block(",
+            ),
+        ] {
+            let code = body(src, sig)
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            // 反向自检①：真取到函数体了（不是空串在空转）
+            assert!(code.contains("upload_atomic("), "{sig}: 取到的体里没有上传");
+            let cut = code
+                .find(transform)
+                .unwrap_or_else(|| panic!("{sig}: 找不到 {transform}——守卫失效了"));
+            let before = &code[..cut];
+            // 反向自检②：截出来的前半段非空，且确实是读取段
+            assert!(
+                before.len() > 40 && before.contains("profile"),
+                "{sig}: 截出的读取段不像读取段（{} 字节）",
+                before.len()
+            );
+            assert!(
+                before.contains("read_profile_text(sftp, &profile"),
+                "{sig}: 喂给 {transform} 的 profile 读取没走 fail-safe 读取器"
+            );
+            assert!(
+                !before.contains("read_optional(sftp, &profile)"),
+                "{sig}: 又直接拿 read_optional 读 profile 了——那会把「读不出来」当成空文件，\
+                 于是跳过备份 + 整份覆盖 / 谎报无需卸载"
+            );
+            checked += 1;
+        }
+        assert_eq!(checked, 2, "期望恰好两个 profile 命令，实得 {checked}");
+    }
+
+    /// Phase G：回滚措辞必须与实际发生的事一致（机制不许声称做了它没做的事）。
+    #[test]
+    fn rollback_note_matches_what_actually_happened() {
+        assert!(rollback_note(false).contains("已尝试回滚"));
+        let n = rollback_note(true);
+        assert!(n.contains("没有可回滚的内容"), "{n}");
+        assert!(!n.contains("已尝试回滚"), "空 existing 时不许说回滚过：{n}");
+        assert!(n.contains("请手动清理"), "要给出恢复路径：{n}");
     }
 
     /// **结构性守卫**：两条 deploy 路径的**内容**上传必须走 verified。

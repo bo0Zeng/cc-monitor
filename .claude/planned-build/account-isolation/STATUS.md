@@ -8,7 +8,7 @@
 > · **A5+ 优雅退出**：换号重启 ④ = `Escape`→`/exit`+Enter→有界等 10s(`awaitExitFor`/`claudeExited` 轮询前台不再是 claude)→`kill` 兜底(必跑;失败仍中止防双进程)。Rust 提纯 `build_send_keys_remote_cmd` + `tmux_send_keys` 加 `enter?`(默认 true 向后兼容,`/compact` 不受影响,补 R1 命令测)。
 > · **A6 部署向导**：**纯前端零新增 daemon 命令**。只读用既有 `list_remote_accounts`;dry-run/verify/--apply/sync/login 全经既有 `launch_remote_terminal` 弹终端。纯 `acct-deploy.ts`(校验+单引号,与 launch.rs 双层防线)。
 > · **D 两视角并行(各功能)**：**零阻塞**。A6 1 重要 I-1(login=`cc-acct-iso run <名>` 偏 DoD→裁定为改进[工具唯一登录入口+注入面更小],回写 DoD);hardening 采纳 A5+ S1(清挂起轮询 timer)/A6 S2(预览复制按钮)/S3(拒前导-)。两 agent 均独立重跑构建测试、grep 核实,**谎报未复现**。
-> · **Phase F 文档**：INVARIANTS §37 补 `enter?` 注;DESIGN §6 dry-run/verify 走终端裁定回写(daemon 只读零妥协⇒A6 不触发发版)、§5④ 优雅退出落地、§1 V2/V3 标已解;MASTERPLAN 变更记录 + 账本(tmux_send_keys `enter?` / A6 纯前端)。
+> · **Phase F 文档**：INVARIANTS **§1** 补 `enter?` 注（原文误写 §37）;DESIGN §6 dry-run/verify 走终端裁定回写(daemon 只读零妥协⇒A6 不触发发版)、§5④ 优雅退出落地、§1 V2/V3 标已解;MASTERPLAN 变更记录 + 账本(tmux_send_keys `enter?` / A6 纯前端)。
 > · **实测(每步 Read 回盘 + 重定向文件核实,不信内联)**：tsc 0 / npm test **453**(37 文件,+acct-deploy 12 +graceful 3 +claudeExited 5 +前导-1) / cargo test --lib **352**(+send_keys 构造测) / build ✓ / **真机零改动**(A6 自身不落盘,落盘全在用户看着的终端里由用户确认;A5+ 只 send-keys/kill/resume 远端 ssh)。
 
 > **Phase G 收官(2026-07-24)**:1 个聚焦集成审计 agent 独立复核（自己重跑构建测试 + grep 核实"声称做了"的项，不信文档自述）——**零阻塞零重要**。关键：历史「日志谎报」事故**未复现**，features/05 声称项（删 peekSelectableAccounts / `live.sid===sid` 守卫 / tmux_send_keys 白名单 / compact 真检测器）逐条 grep/读码为真。五维度全过:① account store 六消费方一致无漂移(三站点走 withAccount + restartWithAccount 刻意分离);② 共享面账本落最终形态(全族仅 1 条计划内 TODO=优雅退出 V3);③ 文档-代码一致 + §7 四分支齐;④ daemon 只读边界全族守住;⑤ 无回归。**实测（agent 独立重跑 + 我端到端）**:tsc 0 / npm test 433 / cargo test --lib 351 / daemon cargo 124 / build ✓ / 真机零改动(生产代码只写 monitor data dir,不碰用户 ~/.claude)。

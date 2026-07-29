@@ -63,7 +63,16 @@
 | F03 | LaunchPlan IR + 双渲染器 + 维度注册表 | 结构化启动意图；主渲染器 → CLI，兜底渲染器 → 今天的裸 shell | **完成** | F02 | P1 |
 | F04 | 会话身份统一（@ccm_sid） | 本工具/CLI 起的会话必有身份；三道门取代名前缀白名单；**须根治「一个 sid 匹配多个活会话」**（见下） | **完成** | F02,F03 | P1 |
 | F05 | AccountResolver | 账号解析收敛成判别联合，注入源过 `isSelectable` | **完成** | F03 | P1 |
-| F06 | 本地路径并入 IR | Rust 两套 PowerShell builder 收进同一意图模型 | 完成 | F03 | P2 |
+| F06 | 本地路径：两套 PowerShell builder 收成一个 | Rust `history.rs` 的两套 PowerShell 拼装收进 `build_local_ps_command` | **完成（**标题已订正**：不是「并入 IR」）** | F03 | P2 |
+
+> **F06 订正（2026-07-29 Phase G 文档-代码交叉对比，本席实测）**：原标题「本地路径并入 IR」
+> **过度声明**。实测：`planLocal` 在生产代码里**零调用点**（`src/launch-requests.ts:139` 只剩一句
+> 注释记录 R07 删掉了那次 `buildLaunchPlan` 调用），`src-tauri/src/history.rs:930`
+> `build_local_ps_command` **不引用任何 IR 类型**（`grep LaunchPlan src-tauri/src/history.rs` 为空）。
+> 也就是**本地路径完全在 IR 之外**，且 R07 是**有意**把它移出去的（理由「接了也拿不到新东西」成立）。
+> F06 真正交付的东西是实在的——两套 PowerShell 拼装收成一个函数——**但那不叫「并入 IR」**。
+> 后果：`§0.1`「IR、CLI、UI 三处是同一个模型」这条在本地这一格上，**声明的架构与建成的架构相反**。
+
 | F07 | 每账号默认模型 | 维度注册表的**架构验收**（第一个真实新维度） | 完成 | F03 | P2 |
 | F08 | 终端集成收尾 | CLI 安装向导 + 别名生成 + 越层启动器诊断 + 旧 swap 退役 | 完成 | F02,F04 | P2 |
 | F09 | UI 收敛：动作 × 修饰 | 10 个 resume 入口 → 1 动作 + 修饰 flyout；徽章常显；删对齐全套 | **完成**（Phase B→F 全过，R12 降级见 `features/F09-ui-convergence.md`；双 agent 审计 1 阻塞+5 重要，全部修复） | F05 | P2 |

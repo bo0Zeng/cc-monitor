@@ -70,7 +70,7 @@
 - **cc-monitor 账号模型(前端)**:#68 的「发现/显示/切换」+ #69 的「resume 指定账号」+ 本功能「按会话 CLAUDE_CONFIG_DIR」= 同一账号模型,一处实现(`src/accounts.ts` + 状态栏 chip + 设置面板 + 右键菜单/历史动作表)。
 - **daemon 只读铁律(`doc/INVARIANTS.md §1`)**:daemon 绝不写 `~/.claude/`。故账号功能里**只读部分走 daemon**(list/探测/trust 预检),**动凭据的 `--apply` 一律弹终端窗口让用户亲手跑**。daemon 内若真要跑 `cc-acct-iso`,只允许硬编码只读子命令,**绝不做子命令透传**。
 - **`sessions/` 必须共享**:daemon 靠 `<claude_dir>/sessions/<PID>.json` 判活并拿 pid。A1 已把 `sessions/` 放进共享集 ⇒ 各账号的 pidfile 都落共享库,daemon 一处全看见。**改 A1 的 ISOLATE_SET 时不得把 `sessions/` 挪进去**,否则 cc-monitor 会瞎掉。
-- **`tmux_send_keys` 签名(`src-tauri/src/tmux.rs`,A5 建 / A5+ 扩)**:`(origin,target,keys,enter?)`——`enter` 可选、**缺省 true**(旧调用不传即附回车,字节等价)。`enter=false` 省尾回车(优雅退出发 `Escape`)。`target` 恒经 `is_ccm_tmux_name` 白名单(cc-* 会话名,跨语言契约见 INVARIANTS §37)。改前端 tmux 名前缀/字符集必须同步 Rust 白名单。
+- **`tmux_send_keys` 签名(`src-tauri/src/tmux.rs`,A5 建 / A5+ 扩)**:`(origin,target,keys,enter?)`——`enter` 可选、**缺省 true**(旧调用不传即附回车,字节等价)。`enter=false` 省尾回车(优雅退出发 `Escape`)。`target` 恒经 `is_ccm_tmux_name` 白名单(cc-* 会话名,跨语言契约见 INVARIANTS **§1**〔A5 段，`doc/INVARIANTS.md` 第 37 行附近〕——**不是 §37**，见文末订正)。改前端 tmux 名前缀/字符集必须同步 Rust 白名单。
 - **A6 部署面 = 纯前端 + 既有命令(账本最终形态)**:app 内部署/维护**不新增任何 daemon/Rust 命令**——只读状态用既有 `list_remote_accounts`;动凭据/dry-run/verify/login 全经既有 `launch_remote_terminal` 弹终端。命令由纯 `src/settings/acct-deploy.ts` 构建(校验 + POSIX 单引号,与 launch.rs 双引号/控制字符拒收双层防线)。**daemon 只读铁律零妥协 ⇒ A6 不触发发版**(仅随 A2–A5 的 monitor 重编)。
 
 ## Features(拆分 + 顺序 + 理由)
@@ -108,9 +108,25 @@ A2 需要发版才能真用 → **建议 A2–A5 做完一起发一版**。
 - 2026-07-23 **A1 之后重新拆分 cc-monitor 侧**:原 A2/A3 两分 → A2(daemon 只读三命令)/A3(账号模型+全局 UI)/A4(注入+按账号 resume)/A5(换号重启+compact)/A6(app 内部署向导)/A7(future 本地)。新增设计基线 `DESIGN-account-switching.md`(15 条已验证底层事实 + 三种"切账号"语义 + 完整编排 + 降级矩阵 + 安全边界)。**账本新增两条**:daemon 只读铁律下的部署切法(只读走 daemon、`--apply` 走终端窗口);`sessions/` 必须留在共享集(daemon 靠它判活拿 pid)。关键实测:`--resume` 不换 sid;`/proc/<pid>/environ` 可探测运行中会话的账号;**会话 jsonl 里没有任何账号字段**(⇒ 历史会话只能靠 cc-monitor 自己记,记不到就显示未知)。写 `features/02-a2-daemon-accounts.md`,呈用户审批。
 - 2026-07-24 **A2 完成**:daemon 只读三命令(`--list-accounts`/`--session-accounts`/`--account-trust`)+ BUILD_ID `p1p→p1q-accounts`。3 视角审计修 R1(PID 复用误归属,procStart 对拍)/重要-B(FIFO/设备文件 OOM,read_regular_capped)/R2(export 前缀)+ Unicode 两端对齐。monitor 侧 `src-tauri/src/accounts.rs`(available:false 区分 daemonless/旧)。
 - 2026-07-24 **A6 完成 + D/E/F 签收**:app 内部署向导（`features/06`）。**纯前端、零新增 daemon 命令**——只读状态用既有 `list_remote_accounts`，dry-run/verify/--apply/sync/login 全经既有 `launch_remote_terminal` 弹终端（用户看着跑）。纯构建器 `src/settings/acct-deploy.ts`（`validateAcctName` + `buildAcctIsoCmd` 7 步 + POSIX 单引号 + 拒双引号/控制字符/前导-，与 launch.rs 双层防线）；`accounts-section.ts` not-enabled 内联启用向导（名输入+实时校验+命令预览+复制+四步按钮）+ ready 维护区（加账号/verify/sync）+ 每行登录终端按钮。D 两视角**零阻塞**，1 重要 I-1（login=`cc-acct-iso run <名>` 偏离 DoD 初稿→裁定为改进[工具唯一登录入口+注入面更小]，回写 DoD）；hardening S2 复制按钮 + S3 拒前导-。**§6 裁定回写 DESIGN**（dry-run/verify 走终端不走 daemon，守只读铁律零妥协 ⇒ A6 不触发发版）。tsc0/vitest453/build 绿。
-- 2026-07-24 **A5+ 优雅退出完成 + D/E/F 签收**:换号重启 ④ 从直接 kill 升级为 DESIGN §5④ 完整形态（`features/07`）。序列 = `Escape`（打断，不带尾回车）→ `/exit`+Enter（文档化干净退出）→ 有界等 M 秒（默认 10s，`awaitExitFor` 轮询 `claudeExited`）→ `kill_remote_tmux`（清场+兜底 SIGKILL，失败仍中止防双进程）。Rust 提纯 `build_send_keys_remote_cmd` + `tmux_send_keys` 加 `enter?`（默认 true 向后兼容，补 R1 命令构造测）。D 两视角**零阻塞零重要**（亲验无 resume-while-alive 窗口）；hardening S1 清挂起轮询 timer。**账本**:`tmux_send_keys` 签名加 `enter?`；INVARIANTS §37 补注；DESIGN §1 V3 标已解。tsc0/vitest453/cargo352/build 绿。
+- 2026-07-24 **A5+ 优雅退出完成 + D/E/F 签收**:换号重启 ④ 从直接 kill 升级为 DESIGN §5④ 完整形态（`features/07`）。序列 = `Escape`（打断，不带尾回车）→ `/exit`+Enter（文档化干净退出）→ 有界等 M 秒（默认 10s，`awaitExitFor` 轮询 `claudeExited`）→ `kill_remote_tmux`（清场+兜底 SIGKILL，失败仍中止防双进程）。Rust 提纯 `build_send_keys_remote_cmd` + `tmux_send_keys` 加 `enter?`（默认 true 向后兼容，补 R1 命令构造测）。D 两视角**零阻塞零重要**（亲验无 resume-while-alive 窗口）；hardening S1 清挂起轮询 timer。**账本**:`tmux_send_keys` 签名加 `enter?`；INVARIANTS **§1** 补注（原文误写 §37，见文末订正）；DESIGN §1 V3 标已解。tsc0/vitest453/cargo352/build 绿。
 - 2026-07-24 **A3 完成**:account store(accounts.ts)+ 状态栏 chip + 设置账号组 + Ctrl+K 只读命令 + tab 徽章。
 - 2026-07-24 **⚠️ 污染事故 + 修复**:发现上一段 session 的"进度日志被终端 `vitest --watch` 污染、伪造 test/cargo 成功输出",导致 STATUS 记了**没落盘**的改动(buildEnvPrefix 调用无定义、SESSION_ACCOUNTS_TTL_MS 未定义 → 整树 tsc 4 error;history.rs/run.ts/sessionBadge/env 测全缺;panel-groups 2 红)。用户「查看进度」时重跑权威 tsc/grep/git 戳穿。**已修复到真绿基线**并建纪律(每步 Read 回盘 + 真跑测试重定向文件核实,绝不信内联绿、绝不 watch)。见 memory `terminal-pollution-fabricated-progress` + STATUS 顶部恢复记录。
 - 2026-07-24 **Phase G 整体验收通过 · A0–A5 全族收官 · 交回用户**：1 个聚焦集成审计 agent 独立复核（自跑构建测试 + grep 核实"声称做了"的项，不信文档自述）——**零阻塞零重要**，历史「日志谎报」事故未复现（features/05 声称项逐条为真）。五维度全过：account store 六消费方一致无漂移 / 共享面账本落最终形态（全族仅 1 条计划内 TODO）/ 文档-代码一致 + §7 四分支齐 / daemon 只读边界全族守住 / 无回归。实测 tsc0 / npm test 433 / cargo 351 / daemon 124 / build ✓ / 真机零改动。**loop 停，交回用户**。遗留（均需用户单独决策）：发版(daemon 重编+嵌入+tag)、真机迁移(用户自跑管线)、A6 部署向导 / A7 本地(各需批)、A2-A5 未 commit(待拍板)、若干计划内裁剪/建议(优雅退出 V3/resolveLiveTmux DRY/建议-4 reason code)。
 - 2026-07-24 **A5 完成 + D/E/F 签收**:换号破坏性重启 + compact。新 Rust `tmux_send_keys`(headless,`is_ccm_tmux_name` 白名单只发 cc-*)；编排器 `restartWithAccount`(account-restart.ts,①预检→②confirm→③[可选默认关]compact→④kill→⑤带账号 resume→⑥record,§5.2 失败语义 kill 失败中止防双进程)；compact 真检测器(`isCompactRecord` + onLine waiter + `awaitCompactFor`)替盲等；tabs 活 tab 右键两项 + **异步菜单追加收敛 A4 冷缓存债**(删死代码 peekSelectableAccounts)。D 三视角报 1 阻塞(restartTabWithAccount 缺 `live.sid===sid` 守卫→降级远端可 kill 错会话/双进程)已修 + 3 锁定测。架构裁定 **withAccount 与 restartWithAccount 应分离**(语义不兼容)。**账本**:新增 `tmux_send_keys`(tmux.rs);INVARIANTS 补 tmux 名跨语言契约。tsc0/vitest433/cargo351/build 绿。**A2–A5 预批全完 → Phase G**。
 - 2026-07-24 **A4 完成 + D/E/F 签收**:`buildEnvPrefix` 注入(与 daemon `is_safe_config_dir` 逐码点对齐,含 C1 控制符)+ 四 runner/三 builder 透传 + Rust `last_account`/`list_last_accounts` + sessionBadge 三源(§3)+ `shouldShowAccountBadge`(§7)+ 选账号 UI 四落点。**E 收敛重构**:抽 `withAccount(origin,name,run,opts)` 统一三站点 resolve+降级+记账(消漂移)——**A5 是其超集**。**账本新增复用点**:accounts.ts 的 `accountConfigDir`/`peekSelectableAccounts`/`recordLastAccount`/`withAccount`/`shouldShowAccountBadge`(均纯/单测)。D 三视角零阻塞;补建 `features/04-a4-inject-and-select.md`。tsc 0 / npm test 417 / cargo 350 / build ✓。**遗留低优先技术债**:tabs 同步 peek vs history 异步 fetch 冷缓存分裂 → A5 顺带收敛。进 A5。
+
+---
+
+## 订正：本文件曾把 `doc/INVARIANTS.md` 的**行号 37** 当成**节号 §37**（2026-07-29，Phase G 文档视角审阅 I3）
+
+本工作区有 4 处写「INVARIANTS §37」，指的都是「tmux 名跨语言白名单 + `tmux_send_keys` 的
+`enter?`」。那段内容实际在 **§1**（恰好位于 `doc/INVARIANTS.md` 第 **37** 行）。
+
+**为什么这比悬空链接更坏**：这些引用写下时（2026-07-24，`git show b889808:doc/INVARIANTS.md`）
+INVARIANTS 最大节号只到 §31，`§37` 根本不存在——所以当时读者会知道自己找不到。
+但 **§37 后来真的被建出来了**（2026-07-27 `9531ef3`，F07），讲的是**维度 `applies` 该不该恒真**，
+与 tmux 白名单毫无关系。**跟着引用走会落到一节看起来很正经、其实完全无关的内容上，
+而读者不会察觉自己被误导。**
+
+纪律：**引用节号前先 `grep -n "^## <N>\."` 确认那一节讲的是什么**；
+行号与节号在同一份文件里长得太像，尤其是当 N 恰好也是个合法行号的时候。
