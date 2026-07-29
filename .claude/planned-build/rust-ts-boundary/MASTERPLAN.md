@@ -3,7 +3,7 @@
 > 所有功能宏观设计的**单一事实来源**。跨功能的任何决策以此为准。
 > 每次修订都在末尾「§7 变更记录」追加一行。
 >
-> **状态：Phase A 已落盘，等用户审批。未动任何代码。**
+> **状态：主计划用户 2026-07-29 已批准。技术选型于 C01 开工前实测订正，见 §8。**
 > **这是路线图第 ① 项，也是 ③（门禁）与 ④（Linux）的共同地基。**
 
 ---
@@ -58,7 +58,7 @@
   4. **不改运行时行为**。本工作区是纯类型层工作，任何一次 commit 都应该
      「行为逐字节不变」——判据是 8 套真机套件 152 条断言全绿。
 
-- **范围内**：`tauri-specta` 接入 · 生成 TS 类型 · 类型化 `invoke` 包装层 ·
+- **范围内**：**`ts-rs` v12** 接入（选型订正见 §8）· 生成 TS 类型 · 类型化 `invoke` 包装层（手写、由钉死 119 命令的守卫兜）·
   128 个 struct 迁移 · 10 个事件 payload 迁移 · 大整数类型的显式处置 ·
   CI 门禁「生成物是最新的」
 
@@ -82,7 +82,7 @@
 
 | ID | 功能 | 一句话目标 | 状态 | 依赖 | 优先级 |
 |----|------|-----------|------|------|--------|
-| C01 | **样板：一条命令走通全链** | 接 `tauri-specta`，选**一个**低风险命令生成类型 + 类型化 `invoke`，跑通「改 Rust → tsc 报错」 | 待规划 | — | **P0** |
+| C01 | **样板：一条命令走通全链** | 接 **`ts-rs` v12**，选**一个**低风险命令生成类型 + 类型化 `invoke`，跑通「改 Rust → tsc 报错」 | **实现中** | — | **P0** |
 | C02 | **事件半边先迁完** | `bridge.rs` 10 个事件 payload → 生成；`src/events.ts` 从手抄改成消费生成物 | 待规划 | C01 | P0 |
 | C03 | **大整数的显式处置** | `u64`/`i64` 跨边界的策略定下来并落地（`sftp_pool.rs:33` 那 6 个字段是第一批） | 待规划 | C01 | P0 |
 | C04 | **命令半边全量迁移** | 119 个命令 + 128 个 struct 分批迁完；29 个 `import { invoke }` 收成 1 | 待规划 | C01,C03 | P1 |
@@ -98,7 +98,7 @@ C01 的验收不是「跑通了」，是**变异验收**：删一个 Rust 字段
 ## §2 架构概览
 
 ```
-src-tauri/src/**.rs   ──(specta 派生)──▶  生成的 TS 类型 + invoke 包装
+src-tauri/src/**.rs   ──(ts-rs 派生 + cargo test 导出)──▶  生成的 TS 类型（+ 手写 invoke 包装）
    ↑ 唯一的源                                   ↓ 唯一的消费入口
    │                                    src/generated/bindings.ts（只读、不许手改）
    │                                            ↓
@@ -110,7 +110,8 @@ src-tauri/src/**.rs   ──(specta 派生)──▶  生成的 TS 类型 + invo
 - **类型化 `invoke` 包装**：生成的 `commands.xxx(args)` 取代裸 `invoke("xxx", args)`。
   这是「29 个文件 → 1 个」的机制。
 - **`camelCase` 的处置**：`#[serde(rename_all="camelCase")]` 保留（它是运行时契约的一部分），
-  但 specta 必须**读同一个属性**生成一致的字段名——**C01 的验收要包含一条 camelCase 字段的对拍**。
+  而 **`ts-rs` 认 serde 属性**——这正是选它而不选 `typeshare` 的主要理由。
+  **C01 的验收必须包含一条 camelCase 字段的对拍**：生成物里的字段名要是 camelCase 而不是 snake_case。
 
 ---
 
@@ -122,7 +123,7 @@ src-tauri/src/**.rs   ──(specta 派生)──▶  生成的 TS 类型 + invo
 | **2. `src/sftp/paths.ts:6-13`** | C03,C04 | 由生成物取代；6 个字段里的 `u64` 按 C03 定的策略表达 | 手写，`u64→number` 静默有损 | 这是**唯一已确认的数据损失点**，所以它是 C03 的第一批 |
 | **3. `src/accounts.ts` 6 个 type** | C04 | 由生成物取代；**中文注释也应该从 Rust 侧 doc comment 生成**（今天是拷贝的） | 手写，注释都是拷贝的 | 与 `account-zero` 工作区**同时在改** ⇒ 见下方冲突协议 |
 | **4. IR 类型 `src/launch-plan.ts`** | C04 | `LaunchPlan`/`LaunchContext`/`LaunchAccount`/`EnvOp`/`WrapSpec` —— **这几个今天只活在 TS 侧**（Rust 不认识它们）。**本工作区不动它们**：它们不是跨边界类型，不该为了统一而强行搬去 Rust | 纯 TS | **重要判断**：IR 是前端的意图模型，Rust 侧只收渲染好的命令串。**别把它拖过边界。**`account-zero` Z02 与 `local-as-remote` 都要改这些类型，本工作区**不插手** |
-| **5. `lib.rs` 的 `invoke_handler`（119 项）** | C01,C04 | 从手写列表改成 specta 的 collect 宏（若 `tauri-specta` 支持）或保持手写但由门禁对拍 | 手写列表，`lib.rs:894-1033` | `lib.rs` 已经同时是顶和底（Phase G 整体设计视角重要 7：29 处上行引用）。**本工作区不解决那个问题**，只保证列表不漂 |
+| **5. `lib.rs` 的 `invoke_handler`（119 项）** | C01,C04 | **保持手写**（`ts-rs` 不管命令签名），由**钉死全部 119 项的结构性守卫**对拍——把今天覆盖 3/119 的白名单测试扩到 119，形状照 `every_host_declaration_is_pinned` + `structural_scan::require` | 手写列表，`lib.rs:894-1033` | `lib.rs` 已经同时是顶和底（Phase G 整体设计视角重要 7：29 处上行引用）。**本工作区不解决那个问题**，只保证列表不漂 |
 | **6. CI（`ci.yml`）** | C05 | 新增一步「重新生成 + `git diff --exit-code`」。**必须在 windows job 之外的某个 job 里**（生成是平台无关的，别占 Windows 配额） | 4 个 windows job + 4 个 ubuntu job | 与 `gate-integrity` 工作区**同时在改 `ci.yml`** ⇒ 见下方冲突协议 |
 
 ### 跨工作区冲突协议（本轮四个工作区并行的前提）
@@ -177,7 +178,7 @@ C01（样板 + 变异验收）
 
 **风险**
 
-1. **`tauri-specta` v2 的成熟度未实测。** 它对 Tauri 2 是一等支持，但本仓有 119 个命令、
+1. **~~`tauri-specta` v2 的成熟度未实测~~ —— 已实测并因此换掉，见 §8。`ts-rs` v12 的边角情况仍未实测。** 它对 Tauri 2 是一等支持，但本仓有 119 个命令、
    128 个 struct、22 个文件手工 camelCase，**边角情况一定会撞到**
    （`Result<T, String>` 的映射、`Option<T>` 的 `null` vs `undefined`、
    `#[serde(untagged)]`/`flatten`、异步命令、`State<'_, T>` 参数）。
@@ -205,8 +206,51 @@ C01（样板 + 变异验收）
 
 ---
 
+## §8 技术选型订正：用 `ts-rs` v12，不用 `tauri-specta` rc（2026-07-29，C01 开工前实测）
+
+**主计划初版写的是「接 `tauri-specta`」。实测后改掉。**
+
+| crate | 实测可解析版本 | 结论 |
+|---|---|---|
+| `tauri-specta` | **只有 `2.0.0-rc.1`**（`cargo add tauri-specta` 解析出的 v1.0.2 是 **Tauri 1** 的版本；`tauri-specta@2` 在 registry 里查不到） | **不用**：本仓 `tauri 2.11.2` 是生产应用（Windows 打包发版），**不给它引入预发布依赖** |
+| `ts-rs` | **v12.0.1，稳定** | **采用** |
+| `typeshare` | v1.0.5，稳定 | 备选，未采用（理由见下） |
+| `specta`（单独） | v1.0.5 稳定，但那是 Tauri-1 时代的；specta v2 同样只有 rc | 不用 |
+
+**为什么 `ts-rs` 而不是 `typeshare`**：
+`ts-rs` 是 derive 宏（`#[derive(TS)]`），**认 serde 属性**——包括本仓 22 个文件在用的
+`#[serde(rename_all="camelCase")]`，这正是要点。`typeshare` 是独立 CLI 解析源码，
+对泛型与复杂类型更受限。而且 **`ts-rs` 的导出走 `cargo test`**（每个类型一条 export 测试），
+**与本仓「门禁 = 测试」的既有文化一致**。它还有 `#[ts(type = "…")]` 逃生口，
+正好给 C03 的大整数决策用。
+
+### 这个选择的代价，说清楚
+
+`ts-rs` 只生成**类型**，**不生成带每命令签名的 `invoke` 包装**（那是 `tauri-specta` 的功能）。
+所以 §0.1 的成功标准要分开看：
+
+| 成功标准 | `ts-rs` 能不能达成 |
+|---|---|
+| ① 删一个 Rust struct 字段，`tsc` 报错 | **能**（类型是生成的） |
+| ② 改一个命令的**参数类型**，`tsc` 报错 | **能**，前提是参数也走 `#[derive(TS)]` 的结构体或生成的类型 |
+| ③ 重新生成后 `git diff --exit-code` 空且进 CI | **能** |
+| ④ 29 个 `import { invoke }` 收成 1 | **能**，但那一个包装层**是手写的** |
+| ⑤ 大整数不再是 `number` | **能**（`#[ts(type=…)]`） |
+
+**手写包装层的漂移风险由「钉死全部 119 个命令」的结构性守卫兜**——把今天那条只覆盖
+3/119 的白名单测试（`src/settings/cc-bus-hooks-section.vitest.ts:317-340`）**扩到 119**，
+形状照 `config_surface.rs::every_host_declaration_is_pinned`（T02 建立）+
+`structural_scan::require(min_checked)`（计数自检，`0` 直接硬失败）。
+
+**这其实更贴本仓的文化**：这个仓通篇不是「相信框架」，是「钉死的表 + 计数自检 + 变异验收」。
+把命令签名交给一个 rc 阶段的框架去保证，反而比钉死一张表更不可靠。
+
+**若用户希望改用 `tauri-specta` rc**（省掉手写包装层与那张表），这是一个可逆决定——
+但要接受一个预发布依赖进生产打包链。**默认按上表执行。**
+
 ## §7 变更记录
 
+- 02 — 2026-07-29 — **技术选型从 `tauri-specta` 改为 `ts-rs` v12**（见 §8）— C01 开工前实测发现 `tauri-specta` 对 Tauri 2 只有 `2.0.0-rc.1`，不给生产打包链引入预发布依赖。代价是 `invoke` 包装层手写，由「钉死 119 个命令」的结构性守卫兜住。
 - 01 — 2026-07-29 — 初版，Phase A 主规划完成 — 路线图第 ① 项。
   由 Phase G 代码工程视角的「命令名零漂移但 payload 形状零门禁」+ 整体设计视角的
   「128 struct ↔ 209 type，22 文件手工 camelCase」两条实测立项；
