@@ -58,7 +58,9 @@
 
 set -u
 
-CCM_VERSION="1"
+# 2：B02 新增 --detach / --tmux-size（capabilities 变了）。本文件经 `sftp.rs` 的
+# `include_str!` 部署到远端，版本号与 capabilities 一样是**外部可见契约**，不能只改后者。
+CCM_VERSION="2"
 
 # —— 自身绝对路径（--tmux 时要把自己送进容器；不依赖 PATH）——
 if [ -z "${CCM_SELF:-}" ]; then
@@ -343,6 +345,11 @@ fi
 
 # ===== attach：不起 agent，直接接回 =====
 if [ "$action" = attach ]; then
+  # B02 审计重要-4：`attach` 分支在这里就 exec 掉了，早于下面的容器逻辑，所以
+  # `ccm attach foo --tmux --detach` 会**静默吞掉** `--detach` 照样 attach。
+  # 静默忽略正是本工作区反复消灭的病（写了个修饰、看起来生效了、其实被吃掉）。
+  [ "$detach" = 1 ] && die "attach 动作与 --detach 矛盾（attach 的语义就是接进去）"
+  [ -n "$tmux_size" ] && die "attach 动作不支持 --tmux-size（接回既有会话，尺寸归它自己）"
   cmd="tmux attach -t $(sq "=$attach_name:")"
   if [ "$do_print" = 1 ]; then printf '%s\n' "$cmd"; exit 0; fi
   exec tmux attach -t "=$attach_name:"
@@ -356,6 +363,13 @@ fi
 # "sessions should be nested with care" rc=1 → 用户原地不动、什么也没拿到（实测）。
 # cc-monitor / cc-bus 用户基本常驻 tmux，这条必须有。
 if [ "$use_tmux" = 1 ] && [ -n "${TMUX:-}" ] && [ -z "$tmux_name" ]; then
+  # B02 审计重要-4：这条分支把 `use_tmux` 清零 → 不再走容器路径 → `--detach` /
+  # `--tmux-size` 双双落空。对 `--detach` 尤其危险：调用方要的是"建完就返回"，
+  # 拿到的却是**阻塞式 exec**（就地把当前 shell 换成 agent），语义完全相反。
+  # 显式 die：要么别在 tmux 里用无名 --tmux，要么给个显式会话名走真容器路径。
+  if [ "$detach" = 1 ] || [ -n "$tmux_size" ]; then
+    die "已在 tmux 内且未给会话名 → 会就地起而非建容器，--detach/--tmux-size 无法生效。请用 --tmux=<显式名>"
+  fi
   use_tmux=0
 fi
 
@@ -523,8 +537,16 @@ if [ "$use_tmux" = 1 ]; then
   # `&&` 挂在 send-keys 之后，幂等接回既有会话时（new-session 失败短路）不会误触发轮询。
   # CCM_NO_PRETRUST=1 也关掉这条自动按 Enter 兜底——选择不自动管理信任的用户不该被这条
   # 换了个机制（每次自动按而非持久化写入）的路径悄悄绕过。
+  # **`|| true` 不能省**（B02 审计阻塞-1，实测复现）：`for` 循环的退出码 = 最后一条命令的
+  # 退出码，而**信任框没出现**（绝大多数正常情况）时最后一条是失败的 `grep -q`，循环 rc=1。
+  # 在 `--detach` 出现之前，这个 rc 被尾部的 `; tmux attach` 冲掉了，没人看得见；`--detach`
+  # 把 attach 摘掉之后它就直接成了 `exec bash -c "$seq"` 的退出码 —— 于是「预信任没生效」
+  # （`~/.claude.json` 不存在 / 没装 jq / 该文件是坏 JSON）这条**良性**路径上，ccm 恒返回 1，
+  # 调用方（cc-spawn）判定失败并跳过 `cc-register` 与台账，留下一个**真的在跑、却不在总线上
+  # 的孤儿会话**，同时报出与事实相反的"建会话失败"。兜底本身是 best-effort，它的成败
+  # 不该表达为整条链的成败。
   if [ "$agent" = claude ] && [ "$pretrusted" != 1 ] && [ "${CCM_NO_PRETRUST:-}" != 1 ]; then
-    seq="$seq && (for _i in 1 2 3 4 5 6; do sleep 0.5; tmux capture-pane -t $t -p 2>/dev/null | grep -q 'Yes, I trust this folder' && { tmux send-keys -t $t Enter; break; }; done)"
+    seq="$seq && { (for _i in 1 2 3 4 5 6; do sleep 0.5; tmux capture-pane -t $t -p 2>/dev/null | grep -q 'Yes, I trust this folder' && { tmux send-keys -t $t Enter; break; }; done) || true; }"
   fi
   # `--detach`：只建会话就返回，不 attach。
   # **为什么这是拆开而非新增**：`--tmux` 至此一直同时承担两件正交的事——「起一个容器」与
@@ -560,8 +582,16 @@ fi
 # 机器级 env（代理等）——旧 `eval "$CC_ENV"` 的搬家，语义不变。
 [ -n "$CCM_ENV" ] && eval "$CCM_ENV"
 # cc-bus 身份：codex 沙箱够不着 tmux socket，须把会话名经 env 透进去（见 agent_needs_bus_id）。
+# **必须无条件覆盖，不能写成 `${CC_BUS_ID:-…}`**（B02 审计重要-3，有可复现反例）：
+# `:-` 是"缺省"，pane 环境里已有 `CC_BUS_ID` 就会沿用——而 tmux server 的全局环境继承自
+# 起它的那个客户端，父 agent 的 `CC_BUS_ID` 会漏进来。cc-spawn 收编前用的是 send-keys 的
+# `CC_BUS_ID=<name> ` env 前缀，那是**永远覆盖**。语义差别的后果不只是 `FROM` 写错：
+# `cc-whoami:10` 把 `$CC_BUS_ID` 排在最高优先级，子 agent 的 Stop 钩子会去读**父 agent 的
+# inbox**——身份冒用 + 抢信。会话名是这个会话身份的唯一事实来源，继承来的值一律不作数。
 if agent_needs_bus_id "$agent" && [ -n "${TMUX:-}" ]; then
-  export CC_BUS_ID="${CC_BUS_ID:-$(tmux display-message -p '#S' 2>/dev/null)}"
+  _sname="$(tmux display-message -p '#S' 2>/dev/null)"
+  [ -n "$_sname" ] && export CC_BUS_ID="$_sname"
+  unset _sname
 fi
 # 会话级 env。--base 显式清残留（就地复用已存在 shell 时必需，见 issue #75）。
 [ -n "$config_dir" ] && export CLAUDE_CONFIG_DIR="$config_dir"
