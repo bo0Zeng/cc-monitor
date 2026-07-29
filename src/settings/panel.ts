@@ -422,8 +422,21 @@ export class SettingsPanel {
       defaultCollapsed: true,
       infoTooltip: REMOTE_INFO_TEXT,
     });
-    this.remoteSection = new RemoteSection({ headless: true });
-    connection.appendChild(this.remoteSection.element);
+    // **T07 审计阻塞 1**：这里原先是**裸构造**，不在 `safeBlock` 里——而 `RemoteSection`
+    // 正是唯一活的同步 throw 宿主（它的构造路径含 `remote-section.ts:1635 buildPasteBlock`，
+    // 即三句话必填 `throw` 的那个）。审计真造它抛：`new SettingsPanel` 直接炸穿、
+    // `document.querySelector(".settings-panel") === null`，**什么都没上屏**。
+    // 也就是说我 commit 标题那句「一块坏不再整页白屏」当时是**假的**：
+    // 覆盖了 10 块，漏的那 1 块是最大最复杂、且是唯一被立项文档点名的 throw 源。
+    //
+    // `this.remoteSection` 失败时留 `undefined`——`open()` 那边是 `?.refresh()`，天然容错。
+    connection.appendChild(
+      this.safeBlock("连接（远端）", () => {
+        const sec = new RemoteSection({ headless: true });
+        this.remoteSection = sec;
+        return sec.element;
+      }),
+    );
     body.appendChild(connection.element);
 
     // 2. 外观 —— 行为 + 快捷键 + 字体 + 颜色（默认展开，保留「行为」的高可达性）
