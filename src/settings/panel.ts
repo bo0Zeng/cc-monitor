@@ -436,10 +436,10 @@ export class SettingsPanel {
       infoTooltip: APPEARANCE_GROUP_INFO_TEXT,
     });
     appearance.appendChild(
-      this.titledSection("行为", this.buildBehaviorGroup()),
+      this.safeBlock("行为", () => this.buildBehaviorGroup()),
     );
     appearance.appendChild(
-      this.titledSection("快捷键", this.buildKeybindingsGroup()),
+      this.safeBlock("快捷键", () => this.buildKeybindingsGroup()),
     );
     appearance.appendChild(
       this.buildGroup(
@@ -464,7 +464,9 @@ export class SettingsPanel {
       defaultCollapsed: true,
       infoTooltip: REMOTE_GROUP_INFO_TEXT,
     });
-    accountsGroup.appendChild(new AccountsSection().element);
+    accountsGroup.appendChild(
+      this.safeBlock("账号", () => new AccountsSection().element),
+    );
     body.appendChild(accountsGroup.element);
 
     // 4. 集成 —— Claude 数据源 + PowerShell + MCP（F87）+ 诊断 & 存储
@@ -475,32 +477,36 @@ export class SettingsPanel {
       infoTooltip: INTEGRATION_GROUP_INFO_TEXT,
     });
     integration.appendChild(this.buildDataGroup());
-    integration.appendChild(new CcIntegrationSection().element);
+    integration.appendChild(
+      this.safeBlock("终端集成", () => new CcIntegrationSection().element),
+    );
     // F87（#50+#51）：MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）。
     integration.appendChild(
-      this.titledSection("MCP", new McpSection().element),
+      this.safeBlock("MCP", () => new McpSection().element),
     );
     // B03 批一：cc-bus 驾驶舱——只读看远端登记过的 agent；登记≠在线；点「读取」才发请求。
     integration.appendChild(
-      this.titledSection("cc-bus", new CcBusSection().element),
+      this.safeBlock("cc-bus", () => new CcBusSection().element),
     );
     // B04：钩子诊断。**只读**——不替用户改 ~/.claude/settings.json（共享全局配置）。
     integration.appendChild(
-      this.titledSection("cc-bus 钩子", new CcBusHooksSection().element),
+      this.safeBlock("cc-bus 钩子", () => new CcBusHooksSection().element),
     );
     // T02：一张表回答「你动过我哪些文件」。放在集成组末尾——它是这一组的**总账**。
     integration.appendChild(
-      this.titledSection("配置面审计", new ConfigSurfaceSection().element),
+      this.safeBlock("配置面审计", () => new ConfigSurfaceSection().element),
     );
     integration.appendChild(
-      this.titledSection(
+      this.safeBlock(
         "诊断",
-        new DiagnosticsSection({ headless: true }).element,
+        () => new DiagnosticsSection({ headless: true }).element,
       ),
     );
-    this.dataSection = new DataSection({ headless: true });
+    // 用局部常量捕获：thunk 延后求值，TS 无法证明字段此时已赋值
+    const dataSection = new DataSection({ headless: true });
+    this.dataSection = dataSection;
     integration.appendChild(
-      this.titledSection("数据存储", this.dataSection.element),
+      this.safeBlock("数据存储", () => dataSection.element),
     );
     body.appendChild(integration.element);
 
@@ -751,6 +757,47 @@ export class SettingsPanel {
    * F82b：把一个既有的「表单本体」`body` 包一层子分节小标题（`.settings-group-title`），供
    * 合并后的 4 组内部导航（如「外观」里的 行为 / 快捷键，「集成」里的 诊断 / 数据存储）。
    */
+  /**
+   * **分区块隔离**（T07）。构造 `build()` 时抛出 → 就地渲染「此区块加载失败」，
+   * **其余区块照常出**，而不是整个设置窗白屏。
+   *
+   * 为什么必须收 thunk 而不是收 `HTMLElement`：`titledSection(t, new Foo().element)`
+   * 的**实参在进入函数前就求值**，`new Foo()` 抛的话根本走不到函数体里的 try。
+   *
+   * 爆炸半径实测（T07 §0/§1）：**9 个文件 / 24 处在构造期发起 I/O**
+   * （`void this.loadX()`），而整条构造链
+   * `panel.buildBody → panel 构造器 → main.ts:859 new SettingsPanel → main.ts:122
+   * bootstrapSettings → main.ts:102 DOMContentLoaded` **没有一个 try/catch**。
+   * 两者相乘：任一 section 构造期抛 → 整页白、零提示。
+   *
+   * 每块一个 catch，**不是整个 `buildBody` 一个** —— 那样一块坏还是全没。
+   */
+  private safeBlock(title: string, build: () => HTMLElement): HTMLElement {
+    try {
+      return this.titledSection(title, build());
+    } catch (e) {
+      const wrap = document.createElement("div");
+      wrap.className = "settings-group settings-block-failed";
+      wrap.dataset.failedBlock = title;
+      const heading = document.createElement("div");
+      heading.className = "settings-group-title";
+      heading.textContent = title;
+      wrap.appendChild(heading);
+      const msg = document.createElement("div");
+      msg.className = "settings-block-failed-msg";
+      msg.textContent = `此区块加载失败：${String(e)}`;
+      wrap.appendChild(msg);
+      // 可复制——用户报障时要的是原文，不是转述
+      const out = document.createElement("textarea");
+      out.readOnly = true;
+      out.rows = 3;
+      out.className = "settings-input settings-block-failed-out";
+      out.value = `[${title}] ${String(e)}`;
+      wrap.appendChild(out);
+      return wrap;
+    }
+  }
+
   private titledSection(title: string, body: HTMLElement): HTMLElement {
     const wrap = document.createElement("div");
     wrap.className = "settings-group";
