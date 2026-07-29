@@ -64,21 +64,32 @@ pub fn verify_readback(expected: &str, actual: &str) -> WriteVerdict {
     WriteVerdict::Mismatch { detail }
 }
 
-/// **统一写入器**：写 → 读回 → 比对 → 不符则回滚。
+/// **写后校验器**：读回 → 比对 → 不符则回滚。
 ///
-/// 三个动作都以闭包注入，因为落点各不相同（本机 `std::fs` / 远端 SFTP），
+/// 两个动作以闭包注入，因为落点各不相同（本机 `std::fs` / 远端 SFTP），
 /// **而"什么时候算失败、失败了要不要回滚"必须是同一套**——那才是这个抽象的内容。
 ///
 /// 为什么要做成可注入而不是直接调 `std::fs`：变异测试实测发现，回滚那一步
 /// **没有任何测试走得到**（它只在"真的写了文件且读回损坏"时才执行）。
 /// 不可注入 = 不可测 = 那行代码没有门禁。现在 `rollback` 是否被调用可以直接断言。
-pub fn write_and_verify(
+///
+/// ## 原先它还收一个 `write` 闭包，本轮**删掉了**（T01 审计 S7）
+///
+/// 两个真实调用点传的都是 `|| Ok(())` ——写入（含备份与写失败时的恢复）在调用方
+/// 上方已经做完了，因为**那一段各落点不同**：本机侧要 `std::fs::copy` 备份、
+/// 失败时要把备份路径拼进错误文本；远端侧要设权限位、要防传输损坏。
+/// 留着那个参数的后果是：`write` 返回 `Err` 那条分支**生产上不可达**，
+/// 而我为它写的测试看着是绿的——按本模块自己的 ≥2 判据，这个参数不合格。
+/// 于是改名为 `verify_and_rollback`，让签名说的就是它真做的事。
+///
+/// 顺带说清一条**没被这个抽象覆盖**的：`sftp.rs` 那三处读回比对只共用了
+/// [`verify_readback`]（判定），没走这里——它们的回滚是 `async` SFTP 操作，
+/// 塞不进 `impl FnOnce()`。不谎称已统一。
+pub fn verify_and_rollback(
     expected: &str,
-    write: impl FnOnce() -> Result<(), String>,
     read_back: impl FnOnce() -> Result<String, String>,
     rollback: impl FnOnce(),
 ) -> Result<(), String> {
-    write()?;
     let actual = match read_back() {
         Ok(a) => a,
         Err(e) => {
@@ -150,9 +161,8 @@ mod tests {
     #[test]
     fn rollback_is_called_on_content_mismatch() {
         let rolled = Cell::new(false);
-        let r = write_and_verify(
+        let r = verify_and_rollback(
             "expected\n",
-            || Ok(()),
             || Ok("expectee\n".to_string()), // 同长度、内容不同
             || rolled.set(true),
         );
@@ -167,12 +177,7 @@ mod tests {
     #[test]
     fn rollback_is_not_called_on_success() {
         let rolled = Cell::new(false);
-        let r = write_and_verify(
-            "same\n",
-            || Ok(()),
-            || Ok("same\n".to_string()),
-            || rolled.set(true),
-        );
+        let r = verify_and_rollback("same\n", || Ok("same\n".to_string()), || rolled.set(true));
         assert!(r.is_ok());
         assert!(!rolled.get(), "写对了不该回滚（回滚会把刚写好的覆盖掉）");
     }
@@ -181,9 +186,8 @@ mod tests {
     fn readback_failure_also_rolls_back() {
         // "我写了但读不回来" ≠ "我写对了"。不能当成功放过。
         let rolled = Cell::new(false);
-        let r = write_and_verify(
+        let r = verify_and_rollback(
             "x\n",
-            || Ok(()),
             || Err("permission denied".into()),
             || rolled.set(true),
         );
@@ -192,24 +196,9 @@ mod tests {
         assert!(r.unwrap_err().contains("回读失败"));
     }
 
-    #[test]
-    fn write_failure_short_circuits_without_rollback() {
-        // 写都没写成功，没有"新内容"要回滚；备份处置由调用方按自己的语义决定
-        let rolled = Cell::new(false);
-        let read_called = Cell::new(false);
-        let r = write_and_verify(
-            "x\n",
-            || Err("disk full".into()),
-            || {
-                read_called.set(true);
-                Ok(String::new())
-            },
-            || rolled.set(true),
-        );
-        assert!(r.is_err());
-        assert!(!read_called.get(), "写失败就不该再读回");
-        assert!(!rolled.get(), "写失败时本函数不回滚（没有新内容要撤）");
-    }
+    // 原先这里还有一条 `write_failure_short_circuits_without_rollback`。
+    // 它守的是 `write` 闭包返回 `Err` 那条路，而两个真实调用点传的都是 `|| Ok(())`
+    // ——**生产不可达**。删参数的同时删掉它：留着就是一条恒绿的装饰（T01 审计 S7）。
 
     #[test]
     fn identical_content_passes() {

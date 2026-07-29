@@ -240,11 +240,10 @@ pub fn install_to_profile(
     // 旧实现是 `written.len() != updated.len()`——同长度的损坏（字节翻转 / 编码变形 /
     // 行尾 LF↔CR 等长替换）会被静默放过，而这里写的是用户的 shell profile，
     // 写坏的后果是下次开终端就炸。远端侧（`sftp.rs`）一直比的是内容，本机侧此前更弱。
-    // 走**统一写入器**（T01）。写入本身在上面已做完，这里把「读回 → 比对 → 回滚」交给它，
-    // 与远端 SFTP 侧共用同一套判定与回滚语义。
-    crate::verified_write::write_and_verify(
+    // 写入（含备份与写失败时的恢复）在上面已做完——那一段各落点不同，不上提。
+    // 这里把「读回 → 比对 → 回滚」交给统一实现，与远端 SFTP 侧共用同一套判定语义。
+    crate::verified_write::verify_and_rollback(
         &updated,
-        || Ok(()), // 写已在上方完成（含备份与失败时的恢复）
         || {
             std::fs::read_to_string(path)
                 .map_err(|e| format!("{e}（请检查 {} 内容）", path.display()))
@@ -306,10 +305,9 @@ pub fn uninstall_from_profile(path: &PathBuf) -> Result<(), String> {
             backup.display()
         ));
     }
-    // 同上走统一写入器。卸载路径此前也只比长度——剥离别名块写坏同样弄坏用户的 shell 配置。
-    crate::verified_write::write_and_verify(
+    // 同上走统一校验。卸载路径此前也只比长度——剥离别名块写坏同样弄坏用户的 shell 配置。
+    crate::verified_write::verify_and_rollback(
         &stripped,
-        || Ok(()),
         || {
             std::fs::read_to_string(path)
                 .map_err(|e| format!("{e}（请检查 {} 内容）", path.display()))

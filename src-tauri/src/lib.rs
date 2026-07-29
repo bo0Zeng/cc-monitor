@@ -43,7 +43,12 @@ mod sftp;
 // remote off（默认）时本模块不被调用，本地路径 bit-for-bit 不变。
 mod ccm_probe;
 mod ssh_source;
-mod structural_scan; // T01：结构性扫描的可复用形式（枚举+逐个断言+计数自检+钉死逃生口）
+// T01：结构性扫描的可复用形式（枚举+逐个断言+计数自检+钉死逃生口）。
+// **只在测试期编译**——它的消费者全在 `#[cfg(test)]` 里（`sftp.rs` 的 tmux 目标守卫、
+// `tool_registry.rs` 的字段纪律）。这是测试支撑模块，不是被闲置的生产代码；
+// 加 `cfg(test)` 就是把这件事写进类型系统，顺带消掉 5 条 dead_code 警告。
+#[cfg(test)]
+mod structural_scan;
 mod subagent;
 mod tasks;
 mod tmux;
