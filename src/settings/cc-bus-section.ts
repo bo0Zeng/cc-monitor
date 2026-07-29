@@ -169,7 +169,11 @@ export class CcBusSection {
   private async loadOrigins(): Promise<void> {
     let origins: string[] = [];
     try {
-      origins = await invoke<string[]>("list_remote_mcp_origins");
+      // **别只防 reject**：invoke 也可能 resolve 成 undefined/非数组（桥接层异常、命令改了
+      // 返回类型）。只 catch 不校验形状的话，下一行 `.length` 会直接抛 —— 这正是本工作区
+      // 一路在守的「脏数据不能把面板搞崩」，对自己的 IPC 返回值同样适用。
+      const got = await invoke<string[]>("list_remote_mcp_origins");
+      if (Array.isArray(got)) origins = got;
     } catch {
       /* 拿不到就当没有远端，不影响面板其余部分 */
     }

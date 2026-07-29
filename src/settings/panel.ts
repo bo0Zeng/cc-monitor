@@ -26,6 +26,7 @@ import { CcIntegrationSection } from "./cc_integration";
 import { AccountsSection } from "./accounts-section";
 import { McpSection } from "./mcp-section"; // F87：MCP 管理（集成组）
 import { CcBusSection } from "./cc-bus-section"; // B03：cc-bus 驾驶舱（只读，按需读，无轮询）
+import { CcBusHooksSection } from "./cc-bus-hooks-section"; // B04：钩子只读诊断 + 生成待贴文本（绝不写入）
 import { DiagnosticsSection } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
 import { DataSection } from "./data-section";
@@ -443,6 +444,8 @@ export class SettingsPanel {
     integration.appendChild(this.titledSection("MCP", new McpSection().element));
     // B03 批一：cc-bus 驾驶舱——只读看远端登记过的 agent；登记≠在线；点「读取」才发请求。
     integration.appendChild(this.titledSection("cc-bus", new CcBusSection().element));
+    // B04：钩子诊断。**只读**——不替用户改 ~/.claude/settings.json（共享全局配置）。
+    integration.appendChild(this.titledSection("cc-bus 钩子", new CcBusHooksSection().element));
     integration.appendChild(
       this.titledSection("诊断", new DiagnosticsSection({ headless: true }).element),
     );
