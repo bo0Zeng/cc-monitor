@@ -54,8 +54,11 @@ export class CcBusSection {
   private spawnTool!: HTMLSelectElement;
   private spawnBtn!: HTMLButtonElement;
   private spawnOut!: HTMLElement;
-  /** spawn 二次确认：起一个真 agent 会消耗额度，不能一键就走。 */
-  private spawnArmed = false;
+  /** spawn 二次确认。**记住"确认的是哪一组参数"而不只是一个布尔**（B03 审计重要-1）：
+   *  原实现只有 `spawnArmed: boolean`，且只在成功执行时复位，于是
+   *  「武装 → 改目录/改 tool → 再点」会**用新值执行**，用户确认过的那句话描述的是一个
+   *  从未发生的操作。这里改成存下确认时的参数快照，点第二次时比对，不一致就重新武装。 */
+  private armedFor: string | null = null;
   /** 已加载过的状态；null = 还没读过（**不在构造时预取**）。 */
   private state: CcBusState | null = null;
 
@@ -150,6 +153,14 @@ export class CcBusSection {
     }
     box.appendChild(this.spawnTool);
 
+    // 任一参数变化立刻解除武装——文案承诺了"参数改动要重新确认"，代码就得兑现。
+    // （原实现的文案还写着"点别处不算"，而代码里根本没有任何"点别处"的处理；
+    //  对用户做代码不兑现的承诺，比不做承诺更坏。那句话已删。）
+    for (const el of [this.spawnDir, this.spawnTask, this.spawnTool] as HTMLElement[]) {
+      el.addEventListener("input", () => this.disarmSpawn());
+      el.addEventListener("change", () => this.disarmSpawn());
+    }
+
     this.spawnBtn = document.createElement("button");
     this.spawnBtn.type = "button";
     this.spawnBtn.className = "settings-btn settings-btn-secondary cc-bus-spawn-go";
@@ -220,15 +231,28 @@ export class CcBusSection {
     if (!st) return;
     const spawnedIds = new Set(st.spawned.map((s) => s.id));
     const dirOf = new Map(st.spawned.map((s) => [s.id, s.dir]));
+    const registered = new Set(st.agents.map((a) => a.id));
 
-    // **如实显示解析损耗**——不假装干净。实测 spawned.tsv 53% 的行是坏的。
-    const parts = [`登记 ${st.agents.length} 个`, `其中 spawn 的 ${spawnedIds.size} 个`];
+    // **spawned-only 的条目也要渲染**（B03 审计阻塞-1，用真实数据复现）：
+    // 盘上实测 agents=37 / spawned=7 / **交集只有 2**——原实现只遍历 `agents`，于是另外
+    // 5 个 cc-spawn 派生的 agent **连同它们的工作目录一行都不显示**，而头条却写着
+    // 「其中 spawn 的 7 个」（`其中` 蕴含子集关系，我却拿 spawned 全集去数）。
+    // 数字与可见行数差 3.5 倍，且差的方向是**让人以为看全了**——这个分节唯一的职责
+    // 就是如实呈现，这是最不该犯的错。
+    // 修法取"并进列表"而非"只改计数"：spawned-only 的条目有 dir 和时间，
+    // 信息量比 agents.tsv 还大，藏起来没有道理。
+    const extra = st.spawned.filter((sp) => !registered.has(sp.id));
+    const bothCount = st.agents.filter((a) => spawnedIds.has(a.id)).length;
+
+    const parts = [`登记 ${st.agents.length} 个`];
+    if (bothCount > 0) parts.push(`其中 spawn 派生 ${bothCount} 个`);
+    if (extra.length > 0) parts.push(`另有 ${extra.length} 个 spawn 过但未登记`);
     if (st.skipped > 0) parts.push(`${st.skipped} 条无法解析（已跳过）`);
     parts.push("「登记」不等于「在线」");
     this.statusEl.textContent = parts.join(" · ");
 
     this.listBox.replaceChildren();
-    if (st.agents.length === 0) {
+    if (st.agents.length === 0 && extra.length === 0) {
       const empty = document.createElement("div");
       empty.className = "settings-hint";
       empty.textContent = "这台机器上没有登记过的 cc-bus agent（或未装 cc-bus）。";
@@ -236,11 +260,27 @@ export class CcBusSection {
       return;
     }
     for (const a of st.agents) {
-      this.listBox.appendChild(this.buildRow(a, spawnedIds.has(a.id), dirOf.get(a.id)));
+      this.listBox.appendChild(this.buildRow(a, spawnedIds.has(a.id), dirOf.get(a.id), true));
+    }
+    // 未登记的 spawn 记录：**明确标注它没在总线上**，别让用户以为它是个正常 agent
+    for (const sp of extra) {
+      this.listBox.appendChild(
+        this.buildRow(
+          { id: sp.id, pane: "", registered_at: sp.spawned_at },
+          true,
+          sp.dir,
+          false,
+        ),
+      );
     }
   }
 
-  private buildRow(a: CcBusAgent, isSpawned: boolean, dir: string | undefined): HTMLElement {
+  private buildRow(
+    a: CcBusAgent,
+    isSpawned: boolean,
+    dir: string | undefined,
+    registered: boolean,
+  ): HTMLElement {
     const row = document.createElement("div");
     row.className = "cc-bus-row";
     row.dataset.agentId = a.id; // 靠 dataset 认身份，不靠 textContent
@@ -256,6 +296,7 @@ export class CcBusSection {
     if (dir) bits.push(dir);
     bits.push(a.registered_at || "时间未知");
     bits.push(isSpawned ? "cc-spawn 派生" : "自行登记");
+    if (!registered) bits.push("未在 agents.tsv 登记");
     meta.textContent = bits.join(" · ");
     row.appendChild(meta);
 
@@ -372,25 +413,47 @@ export class CcBusSection {
     }
   }
 
+  /** 当前表单参数的指纹——确认的必须**正好**是执行的那一组。 */
+  private spawnFingerprint(): string {
+    return JSON.stringify([
+      this.originSel.value,
+      this.spawnDir.value.trim(),
+      this.spawnTask.value,
+      this.spawnTool.value,
+    ]);
+  }
+
+  private disarmSpawn(): void {
+    this.armedFor = null;
+    this.spawnBtn.textContent = "派生";
+  }
+
   /** 两步确认：起一个真 agent 会消耗额度，一键就走太危险。 */
   private async doSpawn(): Promise<void> {
     const origin = this.originSel.value;
     if (!origin) return;
     const dir = this.spawnDir.value.trim();
     if (!dir) {
+      // **先解除武装再返回**（审计重要-1）：原实现这条 return 在武装判断**之前**，于是
+      // 「武装 → 清空 dir → 点击（只提示请填目录，**仍处武装态**）→ 填新 dir → 点一次」
+      // = 一次点击就起 agent，全程没出现过确认文案。
+      this.disarmSpawn();
       this.spawnOut.textContent = "请先填工作目录。";
       return;
     }
-    if (!this.spawnArmed) {
-      this.spawnArmed = true;
+    const fp = this.spawnFingerprint();
+    if (this.armedFor !== fp) {
+      // 未武装，或武装后参数被改过 → （重新）武装，把要做的事原样说清楚
+      const changed = this.armedFor !== null;
+      this.armedFor = fp;
       this.spawnBtn.textContent = "确认派生";
       this.spawnOut.textContent =
+        (changed ? "参数已改动，请重新确认：" : "") +
         `将在 ${origin} 的 ${dir} 上派生一个 ${this.spawnTool.value}——` +
-        "这会起一个真实 agent 进程并**消耗额度**。再点一次「确认派生」执行，点别处不算。";
+        "这会起一个真实 agent 进程并**消耗额度**。再点一次「确认派生」执行。";
       return;
     }
-    this.spawnArmed = false;
-    this.spawnBtn.textContent = "派生";
+    this.disarmSpawn();
     this.spawnBtn.disabled = true;
     this.spawnOut.textContent = "派生中…";
     try {

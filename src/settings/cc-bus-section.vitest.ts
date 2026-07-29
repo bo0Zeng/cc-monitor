@@ -19,7 +19,7 @@ const STATE = {
     { id: "KVM_cc", pane: "KVM_cc:0.0", registered_at: "2026-07-18T07:26:31-07:00" },
   ],
   spawned: [{ id: "proj_cc", dir: "/home/zbl/proj", spawned_at: "2026-07-28T11:48:00-07:00", task: "t" }],
-  skipped: 8, // 盘面实况：spawned.tsv 15 行里 8 行坏
+  skipped: 8, // 任意非零值，只为验证"如实显示"；真实盘面是 5（15 行里 5 畸形 + 3 空行）
 };
 
 /** 等微任务队列排空（section 内部是 async invoke 链）。 */
@@ -331,5 +331,221 @@ describe("B03 批二：派活 / 收信 / 图形化 spawn", () => {
       .join("\n");
     expect(code).not.toMatch(/from ["']\.\.\/launch/);
     expect(code).not.toMatch(/tryRenderCli|buildLaunchPlan|LAUNCH_DIMENSIONS/);
+  });
+});
+
+describe("B03 审计修复：驾驶舱如实呈现 + 两步确认不可绕过", () => {
+  // 真实盘面形态：agents 与 spawned 只有部分交集（实测 37 / 7 / 交集 2）
+  const SKEWED = {
+    agents: [
+      { id: "both_cc", pane: "both_cc:0.0", registered_at: "2026-07-28T11:00:00-07:00" },
+      { id: "onlyreg_cc", pane: "onlyreg_cc:0.0", registered_at: "2026-07-28T11:00:00-07:00" },
+    ],
+    spawned: [
+      { id: "both_cc", dir: "/d/both", spawned_at: "2026-07-28T10:00:00-07:00", task: "t" },
+      { id: "ghost_cc", dir: "/d/ghost", spawned_at: "2026-07-18T10:00:00-07:00", task: "t2" },
+      { id: "ghost2_cc", dir: "/d/g2", spawned_at: "2026-07-18T10:00:00-07:00", task: "t3" },
+    ],
+    skipped: 0,
+  };
+
+  const load = async (state: unknown) => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "read_cc_bus_state") return state;
+      throw new Error(cmd);
+    });
+    const s = new CcBusSection();
+    document.body.appendChild(s.element);
+    await flush();
+    (s.element.querySelector(".cc-bus-read") as HTMLButtonElement).click();
+    await flush();
+    return s;
+  };
+
+  it("【阻塞-1】spawn 过但未登记的 agent 必须**渲染出来**，不能只计数不显示", async () => {
+    const s = await load(SKEWED);
+    const ids = [...s.element.querySelectorAll<HTMLElement>(".cc-bus-row")].map(
+      (r) => r.dataset.agentId,
+    );
+    expect(ids).toContain("ghost_cc");
+    expect(ids).toContain("ghost2_cc");
+    expect(ids).toHaveLength(4); // 2 登记 + 2 未登记
+  });
+
+  it("【阻塞-1】头条数字必须与可见行数自洽（`其中` 只能数交集）", async () => {
+    const s = await load(SKEWED);
+    const txt = s.element.querySelector(".cc-bus-status")?.textContent ?? "";
+    expect(txt).toContain("登记 2 个");
+    expect(txt).toContain("其中 spawn 派生 1 个"); // 交集是 1，不是 spawned 全集 3
+    expect(txt).toContain("另有 2 个 spawn 过但未登记");
+    expect(txt).not.toContain("其中 spawn 的 3 个");
+  });
+
+  it("【阻塞-1】未登记的行要标注出来，别让人以为它在总线上", async () => {
+    const s = await load(SKEWED);
+    const ghost = [...s.element.querySelectorAll<HTMLElement>(".cc-bus-row")].find(
+      (r) => r.dataset.agentId === "ghost_cc",
+    )!;
+    expect(ghost.querySelector(".cc-bus-meta")?.textContent).toContain("未在 agents.tsv 登记");
+    expect(ghost.querySelector(".cc-bus-meta")?.textContent).toContain("/d/ghost");
+  });
+
+  it("【重要-1】武装后改目录，再点必须**重新确认**而不是用新值执行", async () => {
+    const s = await load(SKEWED);
+    mockInvoke.mockClear();
+    const dir = s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!;
+    const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-spawn-go")!;
+    dir.value = "/home/zbl/a";
+    btn.click();
+    await flush();
+    expect(btn.textContent).toBe("确认派生");
+    // 偷偷换个目录
+    dir.value = "/home/zbl/b";
+    dir.dispatchEvent(new Event("input"));
+    btn.click();
+    await flush();
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
+    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain("/home/zbl/b");
+  });
+
+  it("【重要-1】武装后改 tool 同样要重新确认", async () => {
+    const s = await load(SKEWED);
+    mockInvoke.mockClear();
+    s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!.value = "/d";
+    const tool = s.element.querySelector<HTMLSelectElement>(".cc-bus-spawn-tool")!;
+    const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-spawn-go")!;
+    btn.click();
+    await flush();
+    tool.value = "codex";
+    tool.dispatchEvent(new Event("change"));
+    btn.click();
+    await flush();
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
+  });
+
+  it("【重要-1】武装→清空目录→点击→填新目录→点一次，**不得**直接执行", async () => {
+    const s = await load(SKEWED);
+    mockInvoke.mockClear();
+    const dir = s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!;
+    const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-spawn-go")!;
+    dir.value = "/d/first";
+    btn.click(); // 武装
+    await flush();
+    dir.value = ""; // 清空
+    btn.click(); // 原实现：只提示"请填目录"，仍处武装态
+    await flush();
+    dir.value = "/d/second";
+    btn.click(); // 原实现：这一下就执行了，全程没出现确认文案
+    await flush();
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
+    expect(btn.textContent).toBe("确认派生"); // 应该是刚武装，不是已执行
+  });
+
+  it("【重要-1】UI 不得承诺代码没实现的行为（原文案写了「点别处不算」）", () => {
+    const s = new CcBusSection();
+    const all = s.element.textContent ?? "";
+    expect(all).not.toContain("点别处不算");
+  });
+
+  it("参数不变时，第二次点击仍应正常执行（别把功能修没了）", async () => {
+    const s = await load(SKEWED);
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "cc_bus_spawn") return "已 spawn";
+      if (cmd === "read_cc_bus_state") return SKEWED;
+      throw new Error(cmd);
+    });
+    s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!.value = "/d/x";
+    const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-spawn-go")!;
+    btn.click();
+    await flush();
+    btn.click();
+    await flush();
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(1);
+    expect(btn.textContent).toBe("派生");
+  });
+});
+
+describe("B03 审计修复：指纹比对是承重机制（隔离测试）", () => {
+  const ST = { agents: [], spawned: [], skipped: 0 };
+  const load = async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "read_cc_bus_state") return ST;
+      throw new Error(cmd);
+    });
+    const s = new CcBusSection();
+    document.body.appendChild(s.element);
+    await flush();
+    return s;
+  };
+
+  // **不派发 input/change 事件**地改值 —— 绕开解除武装的监听器，
+  // 单独把指纹比对这条防线暴露出来。上一轮变异检查发现：两个机制互相掩盖，
+  // 只测"用户手动输入"路径的话，指纹比对被删掉也测不出来。
+  it("程序化改目录（无事件）后再点，仍必须重新确认", async () => {
+    const s = await load();
+    mockInvoke.mockClear();
+    const dir = s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!;
+    const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-spawn-go")!;
+    dir.value = "/d/one";
+    btn.click();
+    await flush();
+    expect(btn.textContent).toBe("确认派生");
+    dir.value = "/d/two"; // 直接赋值，不派发事件
+    btn.click();
+    await flush();
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
+    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain("参数已改动");
+  });
+
+  it("程序化改 task（无事件）也算参数变化", async () => {
+    const s = await load();
+    mockInvoke.mockClear();
+    s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!.value = "/d";
+    const task = s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-task")!;
+    const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-spawn-go")!;
+    btn.click();
+    await flush();
+    task.value = "偷偷换的任务";
+    btn.click();
+    await flush();
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
+  });
+
+  it("清空目录后按钮不得仍显示「确认派生」（否则按钮在撒谎）", async () => {
+    // 这条守的是 `disarmSpawn()` 在空目录分支里的**可观测**作用。
+    // 它在有指纹比对的前提下不产生绕过（变异实测：删掉它仍无法一击直达），
+    // 但**按钮文案会与实际状态不符**——按钮说"确认派生"，而当前根本没有可派生的目录。
+    // 不给它一条会红的断言，它就是一行无门禁的代码。
+    const s = await load();
+    const dir = s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!;
+    const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-spawn-go")!;
+    dir.value = "/d/first";
+    btn.click();
+    await flush();
+    expect(btn.textContent).toBe("确认派生");
+    dir.value = "";
+    btn.click();
+    await flush();
+    expect(btn.textContent).toBe("派生");
+    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain("请先填工作目录");
+  });
+
+  it("清空目录（无事件）再填新的，也必须重新确认", async () => {
+    const s = await load();
+    mockInvoke.mockClear();
+    const dir = s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!;
+    const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-spawn-go")!;
+    dir.value = "/d/first";
+    btn.click();
+    await flush();
+    dir.value = "";
+    btn.click();
+    await flush();
+    dir.value = "/d/second";
+    btn.click();
+    await flush();
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
   });
 });
