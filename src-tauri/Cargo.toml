@@ -71,6 +71,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # v2.0.0 issue #4：滚动 log 文件 + non_blocking writer，给 GUI app（无 stderr）一个用户可见的诊断通道
 tracing-appender = "0.2"
+ts-rs = "12.0.1"
 
 [target.'cfg(windows)'.dependencies]
 # v1.7.0：cc 注入式绑定恢复 ToolHelp（claude.exe 的 parent_pid 反查 PS） +

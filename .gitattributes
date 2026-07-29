@@ -21,3 +21,7 @@
 *.exe   binary
 *.msi   binary
 *.dll   binary
+
+# C01（rust-ts-boundary）：ts-rs 生成物，diff 默认折叠。**不许手改**——
+# 源是 src-tauri/src/**.rs 的 #[derive(ts_rs::TS)]，改了会被 generated-boundary-guard 抓到。
+src/generated/** linguist-generated=true

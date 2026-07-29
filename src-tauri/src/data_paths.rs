@@ -19,7 +19,8 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct DataPathInfo {
     /// 用户可见的简短名字（如 "config.json"）
@@ -33,11 +34,29 @@ pub struct DataPathInfo {
     /// 是否存在
     pub exists: bool,
     /// 文件大小（bytes）；目录返 None（不递归算大小避免大目录卡 IPC）
+    ///
+    /// **两个 `ts` 属性都不是装饰，各修掉一次「类型撒谎」**（C01 实测发现）：
+    ///
+    /// 1. **`optional`**：本字段带 `skip_serializing_if`，`None` 时**字段在 JSON 里整个缺席**，
+    ///    TS 侧收到 `undefined` 而不是 `null`。不加它，`ts-rs` 生成必需且可为 null 的形态
+    ///    ——声明了一个永不出现的 null。
+    /// 2. **`type = "number"`**：`ts-rs` 默认把 `u64` 映射成 `bigint`，
+    ///    **而 Tauri 的命令 IPC 走 JSON，`u64` 到 TS 侧是 JSON number，不是 BigInt**。
+    ///    仓库自身就是证据：C01 之前 `data-section.ts` 直接 `formatBytes(info.sizeBytes)`，
+    ///    而 `formatBytes` 内部有 `(n / 1024).toFixed(1)` —— `bigint` 没有 `.toFixed`，
+    ///    真是 BigInt 的话生产里早就 `TypeError` 了。所以 `bigint` 是**朝另一个方向撒谎**。
+    ///
+    ///    **收窄成 `number` 在这里是安全的**：本字段只用于展示文件大小，
+    ///    而 f64 的安全整数上限 2^53-1 ≈ **8 PB**。
+    ///    **全局的大整数策略由 C03 定**（哪些字段该走 string/bigint 过线）；
+    ///    但无论策略如何，**类型不许与运行时不一致**，所以这一处在 C01 就修掉。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
     pub size_bytes: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/generated/")]
 #[serde(rename_all = "camelCase")]
 pub struct DataPathsResponse {
     pub monitor_data_dir: String,
