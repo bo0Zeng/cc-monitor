@@ -100,6 +100,8 @@ pub struct JsonlBatchPayload {
 }
 
 #[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct SessionEndedPayload {
     pub session_id: String,
 }
@@ -107,6 +109,8 @@ pub struct SessionEndedPayload {
 /// audit-fixes F03.2：idle-tmux 灰灯事件（SESSION_IDLE）payload。独立命名（非复用
 /// `SessionEndedPayload`）便于 grep 与语义分离——idle ≠ ended。
 #[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct SessionIdlePayload {
     pub session_id: String,
 }
@@ -115,6 +119,8 @@ pub struct SessionIdlePayload {
 /// 建骨架（Batch7-F24 修复：本地**运行中途**新出现的 bg 会话此前只能等首行经
 /// ensureTab 建成无标注普通 tab——与远端 remote-session-added 对称补上元信息通道）。
 #[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct SessionStartedPayload {
     pub session_id: String,
     /// Batch7-F24：pidfile 元信息（lookup 不到时 None——纯 revive 场景照旧）。
@@ -133,6 +139,8 @@ pub struct SessionStartedPayload {
 /// 会话靠 ensureTab 远端见行复活自愈，**零行 idle 会话会卡 archived 到下一行
 /// 到达**。低频、可自愈补救（F5 对账），暂不为此引入统一 lifecycle 通道。
 #[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct RemoteSessionAddedPayload {
     pub session_id: String,
     /// 机器标签（`[label]` Tab 前缀）。
@@ -150,6 +158,8 @@ pub struct RemoteSessionAddedPayload {
 /// 记忆的上次所在 tab；后端 replay 按 session 分组、该 tab 的块先发。缺省 /
 /// 解析失败 → None（旧行为；viewer 窗口不发此事件）。
 #[derive(Debug, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct FrontendReadyPayload {
     #[serde(rename = "prioritySid")]
     pub priority_sid: Option<String>,
@@ -172,6 +182,8 @@ pub struct ActiveSessionPayload {
 /// `kind` = 类别（"overflow" / "version" / …）供前端节流键与图标选择；`message` =
 /// 直接展示给用户的人读说明。
 #[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteHealthPayload {
     pub origin: Option<String>,
@@ -183,6 +195,8 @@ pub struct RemoteHealthPayload {
 /// （"busy" / "idle" / "shell" / "waiting"，None=旧版 CC 无此字段，前端按未知处理）；
 /// `waiting_for` 仅 status=="waiting" 时有（"permission prompt" / "dialog open" …）。
 #[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct SessionActivityPayload {
     pub session_id: String,
     pub status: Option<String>,
@@ -193,6 +207,8 @@ pub struct SessionActivityPayload {
 /// 每次发都是**完整重发**（而非 diff），前端 panel 直接整体 re-render，
 /// 避免 diff 算法 + 防止漏掉删除事件。
 #[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct TasksUpdatePayload {
     pub session_id: String,

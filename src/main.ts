@@ -41,6 +41,7 @@ import { getKeybindings } from "./keybindings/store";
 import { turnEndNotifier } from "./turn-notify";
 import { AccountChip } from "./account-chip";
 import { buildAccountCommands } from "./account-commands";
+import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import {
   fetchSessionAccounts,
   fetchAccounts,
@@ -766,7 +767,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   console.info(
     `[perf] emit frontend-ready @ ${window.__ccmPerf.frontendReadyEmit.toFixed(0)}ms`,
   );
-  void emit("frontend-ready", { prioritySid: lastActive });
+  // C02：`frontend-ready` 是**唯一方向相反**的 payload（前端 emit、Rust 收），
+  // 而 TS 侧**从来没有过这个类型**——这是净新增能力，不是替换。
+  // 生成物来自 `bridge.rs::FrontendReadyPayload`（只有 `Deserialize`；实测 `ts-rs` 照样生成）。
+  // 它用的是**字段级** `#[serde(rename = "prioritySid")]`，不是容器级 `rename_all`。
+  const frontendReady: FrontendReadyPayload = { prioritySid: lastActive };
+  void emit("frontend-ready", frontendReady);
 
   // issue #23: 红绿灯初始快照（session-activity 事件不进 replay buffer，F5 会丢；
   // 快照 + 事件增量双路收敛，同 fetchSessionTasks 模式）。Tab 未建时进 pendingActivity 暂存。
