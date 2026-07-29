@@ -1215,7 +1215,10 @@ export class RemoteSection {
   private async populateAliases(): Promise<void> {
     let aliases: string[] = [];
     try {
-      aliases = await invoke<string[]>("list_ssh_host_aliases");
+      // 同 `mcp-section` 那处：**别只防 reject**，`invoke` 也可能 resolve 成 `undefined`
+      // → 下面 `aliases.length` 抛（T07 审计④）。
+      const got = await invoke<string[]>("list_ssh_host_aliases");
+      if (Array.isArray(got)) aliases = got;
     } catch (e) {
       console.warn("list_ssh_host_aliases failed:", e);
     }

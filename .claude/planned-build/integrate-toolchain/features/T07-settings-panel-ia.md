@@ -241,3 +241,56 @@ tempdir 造坏围栏 profile → 调 `install_to_profile` → 断言 Err **且�
 ### 本轮门禁
 
 cargo test **529** · clippy 0 error · tsc 0 · npm test **813**（4 条文本扫描 → 4 条真行为，数目不变）。
+
+---
+
+## 10. 三条未修项已收（2026-07-29）
+
+### ① 围栏顺序守卫：**代理指标换成真行为断言**
+
+旧版按**字节偏移顺序**扫自身源码。审计两个编译得过且真写盘的变异让它保持绿，
+还能被注释骗红，而它命中真备份**纯属排序运气**（`str::find` 只取第一处 copy，窗口内各 3 处）。
+
+→ 换成 `damaged_fence_leaves_the_file_byte_identical`：tempdir 造坏围栏 profile →
+调**真函数** → 断言 **Err + 文件字节与调用前逐字相同 + 目录里不许多出任何文件**。
+加一条反向自检 `intact_fence_actually_writes`（围栏完好时必须真写进去，
+否则上一条可能因"什么都不做"而恒绿）。
+
+**用审计原变异反验证，两个都编译得过（0 error）、都红**：
+
+| 变异 | 旧守卫 | 新守卫 |
+|---|---|---|
+| 围栏前插 `std::fs::write(path, "MUTANT CLOBBER\n")` | **全绿** | 红。而错误消息本身就是那个荒谬矛盾：**文件已被清成 `MUTANT CLOBBER`，函数却说「已中止，为避免误删你的内容」** |
+| 窗口外 helper 里产生泄漏文件 | **全绿** | 红 `install：不该留下 ["stray.leaked"]` |
+
+（第一次构造变异② 时我把 install 的备份也删了 → **4 个编译 error**。
+**编译失败不等于测试有牙**，重做了一个干净版本。这是本会话第三次踩这条。）
+
+**顺带修了我自己踩的一个**：变异反验证时测试 panic，末尾的 `remove_dir_all` 走不到，
+`/tmp` 下留了两个目录。→ 加 `TmpDir` + `Drop` 守卫，panic 也自清。
+
+### ② `open()` 的隔离补上后半段
+
+`safeBlock` 原先只覆盖生命周期**前半**：某块构造失败被收住、面板照常渲染，
+**但那些 `!` 字段仍是 undefined**，`open()` 解引用时 reject（审计实测：让「快捷键」块失败 →
+`await panel.open()` reject、`.settings-panel` 拿不到 `.open`）。
+→ `open()` 拆成 `open()` + `openInner()`，外层 try/catch：任何一步失败都**照常打开面板**
+并在 banner 里说明。理由：**面板是用户唯一的逃生口**（里面有"打开 profile"之类的按钮）。
+补行为测试：快捷键块失败 → `open()` resolve 且 `.open` class 拿到。
+
+### ③ 两处 `invoke` 形状校验（同一个已记录为真 bug 的形状）
+
+`mcp-section.ts` 的 `origins.length` 与 `remote-section.ts` 的 `aliases.length` 都在 try 外，
+而 `invoke` **可能 resolve 成 `undefined`** —— `cc-bus-section.ts:199` 与
+`cc-bus-hooks-section.ts` 早就用 `if (Array.isArray(got))` 防了并写着「**别只防 reject**」。
+**同一个形状，两处防了两处没防。** 已按已有形状补上。
+
+**剩下两条如实登记未收**：`remote-section.ts:1164 refresh()` 全函数零 try/catch
+（今天不炸只因 `readRemoteConfig` 自带兜底"永不抛"）· `accounts-section.ts` 那条链在 try 外。
+两条都是**静默半渲染**（审计已实测这类不会白屏），风险低于本轮已收的三条，进 Phase G 遗留项。
+
+### 本轮门禁
+
+cargo test **530** · cargo fmt 0 · clippy 0 error · tsc 0 · npm test **814** ·
+shellcheck 0 · exec-bit guard 过 · **七套真机套件全绿** · `git diff --stat HEAD -- e2e/` 0 行 ·
+tempdir 清干净（`ls /tmp/ccm-fence*` 空）。

@@ -19,10 +19,17 @@ export interface McpServerEntry {
 }
 
 /** 按 scope 分组（保序）。纯函数。 */
-export function groupByScope(entries: McpServerEntry[]): Record<McpScope, McpServerEntry[]> {
-  const g: Record<McpScope, McpServerEntry[]> = { user: [], local: [], project: [] };
+export function groupByScope(
+  entries: McpServerEntry[],
+): Record<McpScope, McpServerEntry[]> {
+  const g: Record<McpScope, McpServerEntry[]> = {
+    user: [],
+    local: [],
+    project: [],
+  };
   for (const e of entries) {
-    if (e.scope === "user" || e.scope === "local" || e.scope === "project") g[e.scope].push(e);
+    if (e.scope === "user" || e.scope === "local" || e.scope === "project")
+      g[e.scope].push(e);
   }
   return g;
 }
@@ -30,13 +37,20 @@ export function groupByScope(entries: McpServerEntry[]): Record<McpScope, McpSer
 /** 一行摘要：远程型 `<type> · <url>`；stdio 型 `stdio · <command> <args>`；否则「(未知形态)」。纯函数。 */
 export function serverSummary(server: unknown): string {
   if (server && typeof server === "object") {
-    const s = server as { type?: unknown; url?: unknown; command?: unknown; args?: unknown };
+    const s = server as {
+      type?: unknown;
+      url?: unknown;
+      command?: unknown;
+      args?: unknown;
+    };
     if (typeof s.url === "string" && s.url) {
       const t = typeof s.type === "string" && s.type ? s.type : "http";
       return `${t} · ${s.url}`;
     }
     if (typeof s.command === "string" && s.command) {
-      const args = Array.isArray(s.args) ? s.args.filter((a) => typeof a === "string").join(" ") : "";
+      const args = Array.isArray(s.args)
+        ? s.args.filter((a) => typeof a === "string").join(" ")
+        : "";
       return `stdio · ${s.command}${args ? " " + args : ""}`;
     }
   }
@@ -44,16 +58,22 @@ export function serverSummary(server: unknown): string {
 }
 
 /** 解析 server 配置 JSON 文本：必须是对象。纯函数。 */
-export function parseServerConfig(text: string): { ok: true; value: unknown } | { ok: false; error: string } {
+export function parseServerConfig(
+  text: string,
+): { ok: true; value: unknown } | { ok: false; error: string } {
   const t = text.trim();
   if (!t) return { ok: false, error: "配置为空" };
   let v: unknown;
   try {
     v = JSON.parse(t);
   } catch (e) {
-    return { ok: false, error: `JSON 无效：${e instanceof Error ? e.message : String(e)}` };
+    return {
+      ok: false,
+      error: `JSON 无效：${e instanceof Error ? e.message : String(e)}`,
+    };
   }
-  if (!v || typeof v !== "object" || Array.isArray(v)) return { ok: false, error: "配置必须是 JSON 对象" };
+  if (!v || typeof v !== "object" || Array.isArray(v))
+    return { ok: false, error: "配置必须是 JSON 对象" };
   return { ok: true, value: v };
 }
 
@@ -71,7 +91,11 @@ export function catalogKey(name: string, server: unknown): string {
   return `${name}\u0000${stableStringify(server)}`;
 }
 
-const SCOPE_LABEL: Record<McpScope, string> = { user: "用户", local: "本项目(local)", project: "项目 .mcp.json" };
+const SCOPE_LABEL: Record<McpScope, string> = {
+  user: "用户",
+  local: "本项目(local)",
+  project: "项目 .mcp.json",
+};
 
 export class McpSection {
   readonly element: HTMLElement;
@@ -167,7 +191,11 @@ export class McpSection {
   private async loadMachines(): Promise<void> {
     let origins: string[] = [];
     try {
-      origins = await invoke<string[]>("list_remote_mcp_origins");
+      // **别只防 reject**：`invoke` 也可能 resolve 成 `undefined`（后端返回类型变了 / 命令没注册），
+      // 那样下面的 `.length` 直接抛。这是本仓已记录为真 bug 的形状，
+      // `cc-bus-section.ts:199` 与 `cc-bus-hooks-section.ts` 早就这么防了——**这里漏了**（T07 审计④）。
+      const got = await invoke<string[]>("list_remote_mcp_origins");
+      if (Array.isArray(got)) origins = got;
     } catch {
       /* 拿不到就当没有远端（本机模式），不影响本地功能 */
     }
@@ -200,7 +228,9 @@ export class McpSection {
     this.dirRow.style.display = ""; // F89a：远端也显目录行（可填项目管理远端 .mcp.json）
     this.dirInput.value = ""; // 本机/远端项目路径不通用，切机器清空
     const key = origin ?? "";
-    for (const btn of this.machineRow.querySelectorAll<HTMLElement>(".mcp-machine-btn")) {
+    for (const btn of this.machineRow.querySelectorAll<HTMLElement>(
+      ".mcp-machine-btn",
+    )) {
       btn.classList.toggle("active", (btn.dataset.origin ?? "") === key); // 靠 dataset 身份，非 textContent
     }
     if (origin === null) void this.loadProjectCandidates();
@@ -234,7 +264,10 @@ export class McpSection {
   }
 
   /** F89a：读+管理远端某项目的 `.mcp.json`（project scope 可写）。切走/改目录 → 丢弃。 */
-  private async reloadRemoteProject(origin: string, dir: string): Promise<void> {
+  private async reloadRemoteProject(
+    origin: string,
+    dir: string,
+  ): Promise<void> {
     this.listBox.replaceChildren();
     const loading = document.createElement("div");
     loading.className = "settings-hint mcp-loading";
@@ -242,7 +275,10 @@ export class McpSection {
     this.listBox.appendChild(loading);
     let entries: McpServerEntry[];
     try {
-      entries = await invoke<McpServerEntry[]>("read_remote_project_mcp", { origin, projectDir: dir });
+      entries = await invoke<McpServerEntry[]>("read_remote_project_mcp", {
+        origin,
+        projectDir: dir,
+      });
     } catch (e) {
       if (this.origin !== origin || this.currentDir() !== dir) return;
       this.listBox.replaceChildren();
@@ -254,7 +290,10 @@ export class McpSection {
       retry.type = "button";
       retry.className = "settings-btn settings-btn-secondary";
       retry.textContent = "重试";
-      retry.addEventListener("click", () => void this.reloadRemoteProject(origin, dir));
+      retry.addEventListener(
+        "click",
+        () => void this.reloadRemoteProject(origin, dir),
+      );
       box.append(line, retry);
       this.listBox.appendChild(box);
       return;
@@ -276,7 +315,9 @@ export class McpSection {
     this.listBox.replaceChildren();
     let entries: McpServerEntry[];
     try {
-      entries = await invoke<McpServerEntry[]>("read_mcp_servers", { projectDir: dir || null });
+      entries = await invoke<McpServerEntry[]>("read_mcp_servers", {
+        projectDir: dir || null,
+      });
     } catch (e) {
       if (this.origin !== startOrigin) return; // 期间已切走 → 静默丢弃
       showActionFailureToast("读取 MCP 配置失败", String(e));
@@ -297,7 +338,9 @@ export class McpSection {
     this.listBox.appendChild(loading);
     let entries: McpServerEntry[];
     try {
-      entries = await invoke<McpServerEntry[]>("read_remote_mcp_servers", { origin });
+      entries = await invoke<McpServerEntry[]>("read_remote_mcp_servers", {
+        origin,
+      });
     } catch (e) {
       if (this.origin !== origin) return; // 期间已切走 → 丢弃
       this.renderRemoteError(origin, String(e));
@@ -342,7 +385,8 @@ export class McpSection {
       "跨机 user scope（机器全局）MCP · 只读。要管理远端**项目级** .mcp.json：在上方项目目录填/选远端项目路径。";
     const refresh = document.createElement("button");
     refresh.type = "button";
-    refresh.className = "settings-btn settings-btn-secondary mcp-remote-refresh";
+    refresh.className =
+      "settings-btn settings-btn-secondary mcp-remote-refresh";
     refresh.textContent = "重新读取";
     refresh.addEventListener("click", () => void this.reloadRemote(origin));
     head.append(note, refresh);
@@ -352,25 +396,39 @@ export class McpSection {
   /** 渲染分组列表。remote 模式跳过空 scope（user scope 只读噪音）——**但可写的远端项目 scope 即使空也渲染**
    *  （F89a 审计修·阻塞：否则新/空远端项目不出加表单，无法建第一条 server）。
    *  F89b：读到的 server 累进库；列表尾 append 库区（可一键注册进当前项目）。 */
-  private renderList(entries: McpServerEntry[], dir: string, remote: boolean): void {
+  private renderList(
+    entries: McpServerEntry[],
+    dir: string,
+    remote: boolean,
+  ): void {
     for (const e of entries) {
-      this.catalog.set(catalogKey(e.name, e.server), { name: e.name, server: e.server });
+      this.catalog.set(catalogKey(e.name, e.server), {
+        name: e.name,
+        server: e.server,
+      });
     }
     this.listBox.replaceChildren();
     const grouped = groupByScope(entries);
     for (const scope of ["user", "local", "project"] as McpScope[]) {
       const writableProject = scope === "project" && !!dir; // 可写项目 scope 恒渲染（带加表单）
       if (remote && grouped[scope].length === 0 && !writableProject) continue;
-      this.listBox.appendChild(this.renderScope(scope, grouped[scope], dir, remote));
+      this.listBox.appendChild(
+        this.renderScope(scope, grouped[scope], dir, remote),
+      );
     }
     // F89b：库区（尾部）。注册目标 = 当前机器(this.origin)+当前项目目录(dir)。已在本项目的条目标注、不重复注册。
-    const projectKeys = new Set(grouped.project.map((e) => catalogKey(e.name, e.server)));
+    const projectKeys = new Set(
+      grouped.project.map((e) => catalogKey(e.name, e.server)),
+    );
     const cat = this.renderCatalog(dir, projectKeys);
     if (cat) this.listBox.appendChild(cat);
   }
 
   /** F89b：统一目录（库）区。空库 → null（不显）。可折叠。每条：已在本项目→标注；否则有可写目标→注册钮。 */
-  private renderCatalog(dir: string, projectKeys: Set<string>): HTMLElement | null {
+  private renderCatalog(
+    dir: string,
+    projectKeys: Set<string>,
+  ): HTMLElement | null {
     if (this.catalog.size === 0) return null;
     const box = document.createElement("div");
     box.className = "mcp-scope mcp-catalog";
@@ -432,7 +490,10 @@ export class McpSection {
           reg.disabled = true;
           reg.title = "先填项目目录作注册目标";
         } else {
-          reg.addEventListener("click", () => void this.writeEntry(dir, name, server));
+          reg.addEventListener(
+            "click",
+            () => void this.writeEntry(dir, name, server),
+          );
         }
         row.appendChild(reg);
       }
@@ -455,7 +516,11 @@ export class McpSection {
     box.className = "mcp-scope";
     const title = document.createElement("div");
     title.className = "settings-group-title";
-    const readOnlySuffix = writable ? "" : remote ? " · 只读（远端）" : " · 只读";
+    const readOnlySuffix = writable
+      ? ""
+      : remote
+        ? " · 只读（远端）"
+        : " · 只读";
     title.textContent = `${SCOPE_LABEL[scope]}（${entries.length}）${readOnlySuffix}`;
     box.appendChild(title);
 
@@ -549,7 +614,8 @@ export class McpSection {
     nameInput.placeholder = "server 名";
     const jsonInput = document.createElement("textarea");
     jsonInput.className = "settings-input mcp-json-input";
-    jsonInput.placeholder = '{ "command": "npx", "args": ["-y", "@x/mcp"] }  或  { "type": "http", "url": "https://…" }';
+    jsonInput.placeholder =
+      '{ "command": "npx", "args": ["-y", "@x/mcp"] }  或  { "type": "http", "url": "https://…" }';
     jsonInput.rows = 3;
     // F87b②：暴露引用给「编辑」按钮预填（每次 reload 重建表单时刷新）。
     this.addNameInput = nameInput;
@@ -565,7 +631,9 @@ export class McpSection {
     saveBtn.addEventListener("click", () => {
       const name = nameInput.value.trim();
       if (!name) {
-        showActionFailureToast("缺 server 名", "填一个 MCP server 名再保存。", { level: "info" });
+        showActionFailureToast("缺 server 名", "填一个 MCP server 名再保存。", {
+          level: "info",
+        });
         return;
       }
       const parsed = parseServerConfig(jsonInput.value);
@@ -603,17 +671,31 @@ export class McpSection {
     if (this.editBanner) this.editBanner.style.display = "none";
   }
 
-  private async writeEntry(dir: string, name: string, server: unknown): Promise<void> {
+  private async writeEntry(
+    dir: string,
+    name: string,
+    server: unknown,
+  ): Promise<void> {
     const startOrigin = this.origin; // 捕获：目标机器在 await 前定死（写入目标不受切机器影响）
     try {
       // F89a：本机 → 本地 FS 写；远端 → SFTP 写远端 .mcp.json（写面仍只 .mcp.json，SS-14；SS-G 用户显式触发）。
       if (startOrigin === null) {
-        await invoke("write_project_mcp_server", { projectDir: dir, name, server });
+        await invoke("write_project_mcp_server", {
+          projectDir: dir,
+          name,
+          server,
+        });
       } else {
-        await invoke("write_remote_mcp_server", { origin: startOrigin, projectDir: dir, name, server });
+        await invoke("write_remote_mcp_server", {
+          origin: startOrigin,
+          projectDir: dir,
+          name,
+          server,
+        });
       }
     } catch (e) {
-      if (this.origin === startOrigin) showActionFailureToast("写入 .mcp.json 失败", String(e));
+      if (this.origin === startOrigin)
+        showActionFailureToast("写入 .mcp.json 失败", String(e));
       return;
     }
     // F89a 审计修·重要：await 期间用户已切机器 → 不回填 dirInput、不 refresh（否则拿旧 dir 渲染新机器项目）。
@@ -625,15 +707,23 @@ export class McpSection {
   private async removeEntry(dir: string, name: string): Promise<void> {
     const startOrigin = this.origin;
     const where = startOrigin === null ? "本机" : `远端 [${startOrigin}]`;
-    if (!window.confirm(`从${where}项目 .mcp.json 删除 MCP server「${name}」？`)) return;
+    if (
+      !window.confirm(`从${where}项目 .mcp.json 删除 MCP server「${name}」？`)
+    )
+      return;
     try {
       if (startOrigin === null) {
         await invoke("remove_project_mcp_server", { projectDir: dir, name });
       } else {
-        await invoke("remove_remote_mcp_server", { origin: startOrigin, projectDir: dir, name });
+        await invoke("remove_remote_mcp_server", {
+          origin: startOrigin,
+          projectDir: dir,
+          name,
+        });
       }
     } catch (e) {
-      if (this.origin === startOrigin) showActionFailureToast("删除失败", String(e));
+      if (this.origin === startOrigin)
+        showActionFailureToast("删除失败", String(e));
       return;
     }
     if (this.origin !== startOrigin) return; // 期间切机器 → 丢弃回填/刷新
