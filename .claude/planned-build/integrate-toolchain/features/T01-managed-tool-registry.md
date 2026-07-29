@@ -177,3 +177,73 @@ sftp 13 项测试行为等价，六套真机套件全绿。
 
 cargo test 459 · cargo fmt 0 · clippy 无 error · tsc 0 · npm test 753 ·
 六套真机套件（ccm-cli / print-parity / acceptance / pretrust / tmux-target / tmux-guarded）全绿
+
+## 11. T01 代码审计结果（Phase D，2026-07-29）
+
+独立对抗性审计（10 分钟，27 次调用，按要求写短）。**无阻塞项。**
+它明确认同的部分：「原先只比长度」为真（已用 `46abd84^` 原文核实）· `verified_write`
+5 条变异**全被杀**（不是安慰剂）· `structural_scan` 在「拆掉自己」维度上 5 条变异全被杀 ·
+`sftp.rs` 改用后行为等价（五项判据逐项对拍）· 三处「读不回来/内容不符」分开报是真改 ·
+并**发现我一处未宣传的顺带修复**：旧版读不回来时直接 `?` 返回**不回滚**，新版会回滚。
+
+### 本轮修掉的（都用审计给的手法验证过）
+
+| # | 发现 | 我的独立复现 | 处置 |
+|---|---|---|---|
+| **S1** | marker 写成 `"-t "`（带空格）→ `-t$name` **紧贴形态完全不进枚举** | **属实**：把 `shared/ccm` 里 `-t "=$x:"` 改成 `-t$x`，13 项 sftp 测试**全绿** | marker 改 `"-t"`，紧贴/带空格统一处理；并排除 `-tmux`/`-timeout` 这类更长选项名误命中 |
+| **S2** | 谓词看**整个 48 字符窗口** → 同一行的 `"export A=b:c"` 诱饵能让裸目标零违规 | **属实** | 谓词改为只看**紧跟的那一个 token**；窗口只用于报错展示 |
+| **S3** | `pin_definition` 只做 `contains` → 「定义两次、后者生效」可绕过 | **属实**：追加一行 `t="$tmux_name"`，钉死与扫描**双双通过**而 `$t` 已是裸值 | 除逐字存在外，加断言「该变量在非注释行只被赋值一次」 |
+| **I3** | `require(0)` 静默关掉要件 3（`checked < 0` 恒假） | 属实（类型上 `min_checked` 是可选的，而文档说它不是） | `min_checked == 0` 直接报错 |
+| **S4** | `require(4)` 过松：真实 `checked=11`，删掉 7 处仍全绿 | 属实 | 提到 `require(10)`，留 1 的余量以免正常增删误红 |
+| **S6** | `allow` 前缀语义不对称：`-t $t ;rm -rf /` 被放行，行尾 `-t $t` 反判红 | 属实 | `allow` 改为比对 token 相等，语义对称 |
+
+**修的过程中被自己的测试抓到两次**（都是 `first_token` 太朴素）：
+① `$(sq "=$x:")` 是**合法单参数**但内部含空格，按空格硬切会截成 `$(sq` → 把合法写法判违规；
+② 真实形态 `seq="…tmux attach -t $t"` 尾部那个 `"` 是**赋值的闭合引号**、不属于目标，
+不在引号处终止的话 token 变成 `$t"` 而漏过 `allow`。
+→ `first_token` 改成取 shell 意义上的**一个参数**：`$(…)` 配对、引号区配对、裸词到分隔符
+（含引号）为止。**这两次都是测试先红我才知道，不是我想到的。**
+
+**四条绕过手法的前后对照**（都在真实 `shared/ccm` 上跑）：
+
+| 手法 | 修之前 | 修之后 |
+|---|---|---|
+| `-t$name` 紧贴 | 全绿（checked 11→10） | **红** |
+| `t=` 定义两次 | 全绿 | **红** |
+| 同行诱饵 `A=b:c` | 全绿 | **红** |
+| 删掉 4 处目标 | 全绿（阈值 4） | **红** |
+
+### 仍未改，如实登记
+
+- **I1（重要）**：`every_field_has_at_least_two_instantiations` **是安慰剂**。审计塞了个中性
+  命名的单实例化字段 `needs_elevation` → 21 项**全绿**。我原先报的「变异四条全红」，变异打的是
+  **断言已经看着的现有字段**，不是威胁点（新增字段）。而且那条测试本身就是**固定 needle**
+  ——`structural_scan.rs` 的文档正在痛批固定 needle，同一次提交里两种标准。
+  → **下一步用 `structural_scan` 重写它**（枚举 `ToolSpec` 的字段名，逐个数 `TOOLS` 里的
+  实质取值），本轮先如实登记为安慰剂，不假称已守。
+- **I2（重要）**：`tool_registry.rs` **零生产消费者**（353 行只有自己的测试在用）。而我同一轮
+  删 `WriteVerdict::is_ok` 的理由是"只有测试在用"、把 `build_online_cmd` 零调用点判为阻塞
+  ——**尺子不一致**。审计要求显式登记而非用"T02 会用"默认豁免，**同意**。
+  另：`ProbeStatus` 与既有 `ccm_probe.rs::CcmProbeResult` **字段同形、无 From/Into**，
+  所谓"结果统一"**并未发生**（现状是第 4 个平行形状）；且 `version: String` 比
+  `Option<String>` 丢了"取不到"这一档，是降级。→ T02 真消费时一并处理。
+- **Q3 我一处事实错误**：模块文档写 cc-acct-iso 的探测是"比对内容指纹"——审计核实
+  `acct_iso_deploy.rs::check_remote_acct_iso` 判 installed 用的是**远端 exec `command -v`
+  + 解析 stdout**，指纹只用于"有更新"提示。这与 ccm 的"跑命令解析文本"是**同一族机制、
+  两个使用者**，恰好够 ≥2。**结论（不进 `ToolSpec`）仍成立，但我给的理由是错的**，待改写。
+- **S7**：`write_and_verify` 的 `write` 闭包在两个真实调用点都是 `|| Ok(())`，那条
+  「写失败则短路」测试守的是**生产不可达**的路；按我自己的 ≥2 纪律，`write` 参数不合格。
+- **S8**：`comment_prefix` 整行跳过——审计核实 `shared/ccm` **无 heredoc**（`grep "<<"` 无命中），
+  行首 `#` 确实不可执行，当前唯一调用点上安全；但该写成前置条件（将来扫 Rust 源时
+  `#[allow(...)]` 属性行会被整行跳过）。
+
+### 审计自己声明未能验证的
+
+**没跑真实 crate 的 `cargo test`**（`src-tauri/target` 45G，scratchpad 空间不足），
+所以它报告里**一切门禁数字均未复核**，变异是在 scratchpad 的独立 crate 里做的。
+远端 SFTP 三处的运行期行为它也只做了静态对拍。这两条我认为是诚实的成色声明。
+
+### 本轮门禁（我自己跑的）
+
+cargo test **470**（+7）· cargo fmt 0 · clippy 无 error · tsc 0 · npm test 760 ·
+**六套真机套件全绿**（ccm-cli / print-parity / acceptance / pretrust / tmux-target / tmux-guarded）

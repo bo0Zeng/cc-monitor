@@ -920,19 +920,34 @@ mod tests {
         // 这里是它的**第一个真实调用点**——抽了不接上就是 B03 阻塞-2 那个病
         // （我抽了 `build_online_cmd` 却没接，让它成了零调用点死代码、真校验零覆盖）。
         const EXACT_T_DEF: &str = r#"t="$(sq "=$tmux_name:")""#;
-        crate::structural_scan::pin_definition(CCM_CLI_SCRIPT, EXACT_T_DEF, "间接目标变量 $t")
-            .expect("$t 的定义被改动 —— 它是 tmux 序列里所有 -t 的来源，改了就能绕过扫描");
+        // 钉死逃生口。**除「逐字存在」还要断言只被赋值一次**（T01 审计 S3，已独立复现：
+        // 在它后面再加一行 `t="$tmux_name"`，旧的 contains 版本照样通过而 `$t` 已成裸值）。
+        crate::structural_scan::pin_definition(
+            CCM_CLI_SCRIPT,
+            EXACT_T_DEF,
+            "t=",
+            "间接目标变量 $t",
+        )
+        .expect("$t 的定义被改动或被二次赋值 —— 它是 tmux 序列里所有 -t 的来源");
 
         let report = crate::structural_scan::scan_after_marker(
             CCM_CLI_SCRIPT,
-            "-t ",
+            // **marker 是 `-t` 而非 `-t `**：带空格会漏掉 `-t$name` 紧贴形态（T01 审计 S1，
+            // 实测那样能把裸目标塞回来而 require 照样通过）。紧贴/带空格由扫描器统一处理，
+            // 并排除 `-tmux` 这类更长选项名的误命中。
+            "-t",
             Some("#"),
             48,
             // `$t` 是上面已钉死定义的间接变量，放行（但仍计数）。
-            &|rest: &str| rest.starts_with("$t ") || rest.starts_with("$t\""),
-            &|win: &str| {
-                let eq = win.find('=');
-                let colon = win.find(':');
+            &|rest: &str| {
+                let t = crate::structural_scan::first_token(rest);
+                t == "$t"
+            },
+            // **谓词只看紧跟的那一个 token**（T01 审计 S2：看整个窗口时，同一行里出现
+            // `"export A=b:c"` 这种诱饵就能让裸目标零违规）。
+            &|tok: &str| {
+                let eq = tok.find('=');
+                let colon = tok.find(':');
                 if eq.is_some() && colon.is_some() && eq < colon {
                     Ok(())
                 } else {
@@ -943,8 +958,10 @@ mod tests {
                 }
             },
         );
+        // **阈值贴近实际**（T01 审计 S4）：真实脚本 checked=11，写 4 意味着删掉 7 处仍全绿，
+        // 要件 3 的实际保护面只有 4/11。往下留 1 的余量以免正常增删命令时误红。
         report
-            .require(4, "CLI 的 tmux 目标（INVARIANTS §31a）")
+            .require(10, "CLI 的 tmux 目标（INVARIANTS §31a）")
             .expect("结构性扫描不通过");
     }
 
