@@ -33,7 +33,8 @@ mod remote_history;
 mod search;
 mod session_map;
 mod sftp_pool;
-// SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
+mod verified_write; // T01：统一的「备份→写→读回比对→回滚」；本机侧从长度比对升级为内容比对
+                    // SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
 mod sftp;
 // SSH-remote Phase 0 (issue #15)：从 setup() 调用 —— 当 config.json 的
 // `remote.enabled = true` 时，ssh_source::run 作为**附加**数据源与本地 jsonl-watcher

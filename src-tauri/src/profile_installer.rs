@@ -236,19 +236,25 @@ pub fn install_to_profile(
         ));
     }
 
-    // 写完读回来校验
-    let written = std::fs::read_to_string(path)
-        .map_err(|e| format!("写后回读校验失败: {e}（请检查 {} 内容）", path.display()))?;
-    if written.len() != updated.len() {
-        if let Some(b) = &backup_path {
-            let _ = std::fs::copy(b, path);
-        }
-        return Err(format!(
-            "写入后回读长度不匹配：期望 {} 字节，实际 {} 字节。已尝试从备份恢复。",
-            updated.len(),
-            written.len()
-        ));
-    }
+    // 写完读回来校验。**T01：从「只比长度」升级为「内容级比对」。**
+    // 旧实现是 `written.len() != updated.len()`——同长度的损坏（字节翻转 / 编码变形 /
+    // 行尾 LF↔CR 等长替换）会被静默放过，而这里写的是用户的 shell profile，
+    // 写坏的后果是下次开终端就炸。远端侧（`sftp.rs`）一直比的是内容，本机侧此前更弱。
+    // 走**统一写入器**（T01）。写入本身在上面已做完，这里把「读回 → 比对 → 回滚」交给它，
+    // 与远端 SFTP 侧共用同一套判定与回滚语义。
+    crate::verified_write::write_and_verify(
+        &updated,
+        || Ok(()), // 写已在上方完成（含备份与失败时的恢复）
+        || {
+            std::fs::read_to_string(path)
+                .map_err(|e| format!("{e}（请检查 {} 内容）", path.display()))
+        },
+        || {
+            if let Some(b) = &backup_path {
+                let _ = std::fs::copy(b, path);
+            }
+        },
+    )?;
 
     Ok(())
 }
@@ -300,16 +306,18 @@ pub fn uninstall_from_profile(path: &PathBuf) -> Result<(), String> {
             backup.display()
         ));
     }
-    let written = std::fs::read_to_string(path)
-        .map_err(|e| format!("写后回读校验失败: {e}（请检查 {} 内容）", path.display()))?;
-    if written.len() != stripped.len() {
-        let _ = std::fs::copy(&backup, path);
-        return Err(format!(
-            "卸载后回读长度不匹配：期望 {} 字节，实际 {} 字节。已从备份恢复。",
-            stripped.len(),
-            written.len()
-        ));
-    }
+    // 同上走统一写入器。卸载路径此前也只比长度——剥离别名块写坏同样弄坏用户的 shell 配置。
+    crate::verified_write::write_and_verify(
+        &stripped,
+        || Ok(()),
+        || {
+            std::fs::read_to_string(path)
+                .map_err(|e| format!("{e}（请检查 {} 内容）", path.display()))
+        },
+        || {
+            let _ = std::fs::copy(&backup, path);
+        },
+    )?;
     Ok(())
 }
 
