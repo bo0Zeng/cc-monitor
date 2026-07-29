@@ -18,6 +18,7 @@ mod config;
 mod data_paths;
 mod event_replay;
 mod history;
+mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生成待贴文本（绝不写入）
 mod launch;
 mod logging;
 mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
@@ -890,6 +891,9 @@ pub fn run() {
             cc_bus::read_cc_bus_inbox,
             cc_bus::cc_bus_send,
             cc_bus::cc_bus_spawn,
+            // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
+            hooks_diag::diagnose_local_cc_bus_hooks,
+            hooks_diag::diagnose_remote_cc_bus_hooks,
             mcp::read_mcp_servers,
             mcp::read_remote_mcp_servers,
             mcp::list_remote_mcp_origins,
