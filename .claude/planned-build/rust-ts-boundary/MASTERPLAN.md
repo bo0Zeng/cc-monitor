@@ -119,7 +119,7 @@ src-tauri/src/**.rs   ──(ts-rs 派生 + cargo test 导出)──▶  生成�
 
 | 共享面 | 涉及功能 | 最终形态设计 | 当前状态 | 备注 |
 |---|---|---|---|---|
-| **1. `src/events.ts`** | C02,C05 | 单一订阅枢纽保留（这个形状是对的），但 10 个 payload 类型改成 `import` 生成物；事件名常量也从 `bridge.rs:11-51` 生成 | 手抄 | **先迁这里**：它已经是单一枢纽，改动面最小、最容易证明链路会红 |
+| **1. `src/events.ts` + `src/remote-health.ts`** | C02,C05 | 单一订阅枢纽保留（这个形状是对的），**11 个** payload 类型改成 `import` 生成物。**事件名常量不生成**（`ts-rs` 只生成类型、不生成 `const`）——改为由**钉死 10 个名字的结构性守卫**对拍，形状照 `every_host_declaration_is_pinned` | 手抄 | **C02 Phase B 实测订正两处**：① 原文写「事件名常量也从 `bridge.rs` 生成」——`ts-rs` 做不到；② 原文只写 `events.ts`，**漏了 `src/remote-health.ts`**（`RemoteHealthPayload` 的手写版在那儿）。另：payload struct 实为 **11 个**（含方向相反的 `FrontendReadyPayload`，`Deserialize`），不是 10 个 |
 | **2. `src/sftp/paths.ts:6-13`** | C03,C04 | 由生成物取代；6 个字段里的 `u64` 按 C03 定的策略表达 | 手写，`u64→number` 静默有损 | 这是**唯一已确认的数据损失点**，所以它是 C03 的第一批 |
 | **3. `src/accounts.ts` 6 个 type** | C04 | 由生成物取代；**中文注释也应该从 Rust 侧 doc comment 生成**（今天是拷贝的） | 手写，注释都是拷贝的 | 与 `account-zero` 工作区**同时在改** ⇒ 见下方冲突协议 |
 | **4. IR 类型 `src/launch-plan.ts`** | C04 | `LaunchPlan`/`LaunchContext`/`LaunchAccount`/`EnvOp`/`WrapSpec` —— **这几个今天只活在 TS 侧**（Rust 不认识它们）。**本工作区不动它们**：它们不是跨边界类型，不该为了统一而强行搬去 Rust | 纯 TS | **重要判断**：IR 是前端的意图模型，Rust 侧只收渲染好的命令串。**别把它拖过边界。**`account-zero` Z02 与 `local-as-remote` 都要改这些类型，本工作区**不插手** |
@@ -250,6 +250,7 @@ C01（样板 + 变异验收）
 
 ## §7 变更记录
 
+- 03 — 2026-07-29 — **共享面 1 两处订正 + 新增一条硬性范围约束**（C02 Phase B 实测）— ① 事件名常量 `ts-rs` 生成不了，改为结构性守卫钉死；② 漏了 `src/remote-health.ts`；③ payload 实为 11 个不是 10 个；④ **线上格式是混的**（3 个 camelCase / 8 个 snake_case），生成物必须忠实复现，**统一它属于行为变化，本工作区一律不做**。
 - 02 — 2026-07-29 — **技术选型从 `tauri-specta` 改为 `ts-rs` v12**（见 §8）— C01 开工前实测发现 `tauri-specta` 对 Tauri 2 只有 `2.0.0-rc.1`，不给生产打包链引入预发布依赖。代价是 `invoke` 包装层手写，由「钉死 119 个命令」的结构性守卫兜住。
 - 01 — 2026-07-29 — 初版，Phase A 主规划完成 — 路线图第 ① 项。
   由 Phase G 代码工程视角的「命令名零漂移但 payload 形状零门禁」+ 整体设计视角的
