@@ -128,7 +128,7 @@ export class ConfigSurfaceSection {
     hint.className = "settings-hint";
     hint.textContent =
       "这一页列出 cc-monitor 会碰你哪些文件、对它做什么、现在什么状态。" +
-      "**只读**：本页不会写任何东西，也不后台轮询——每次打开或点「重新扫描」才读一次。";
+      "这一页只读：不会写任何东西，也不后台轮询——每次打开或点「重新扫描」才读一次。";
     root.appendChild(hint);
 
     const honesty = document.createElement("div");

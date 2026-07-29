@@ -6071,9 +6071,10 @@ body.settings-window-mode .grid-monitor-trigger {
   border: 1px solid var(--border-strong);
   border-radius: 5px;
 }
-.ccm-alias-gen-out {
-  flex-basis: 100%;
-  font-family: var(--font-mono, monospace);
+/* T03 迁移后这个 class 挂在 paste-block 的根 div 上，不再是 .ccm-alias-gen-grid 的
+   flex 子项——`flex-basis` 已无意义（删），`font-family` 若留在根上会**下渗到三行灰字**
+   （那三个 div 没自设字体）。所以只给输出面本身设等宽。 */
+.ccm-alias-gen-out > .paste-block-out {
   color: var(--text-2);
 }
 .accounts-wiz-field {
@@ -6201,7 +6202,7 @@ body.settings-window-mode .grid-monitor-trigger {
 }
 .config-surface-path,
 .config-surface-scope-head {
-  font-family: var(--mono, monospace);
+  font-family: var(--font-mono, monospace);
   font-size: 12px;
   color: var(--text);
 }
@@ -6237,9 +6238,13 @@ body.settings-window-mode .grid-monitor-trigger {
   margin: 8px 0;
 }
 .paste-block-out {
-  font-family: var(--mono, monospace);
+  font-family: var(--font-mono, monospace);
   font-size: 12px;
   width: 100%;
+  /* 迁移前 A3 是 <pre class="remote-wrapper-snippet">（`white-space: pre` + 横向滚动）。
+     换成 textarea 后默认软换行，29 行的 wrapper 片段会被折得很难读——把语义补回来。 */
+  white-space: pre;
+  overflow-x: auto;
 }
 .paste-block-warning {
   border-left: 3px solid var(--warn);
@@ -6254,5 +6259,16 @@ body.settings-window-mode .grid-monitor-trigger {
   color: var(--text-faint);
 }
 .paste-block-target {
-  font-family: var(--mono, monospace);
+  font-family: var(--font-mono, monospace);
+}
+
+/* T03 审计闭环：钩子形态警示（待贴块旁那条 + 远端诊断里那两条）。
+   用 warn 色——它说的是"你选的形态与那一端的盘面冲突"，需要看见但不是错误。 */
+.cc-bus-hooks-form-warning,
+.cc-bus-hooks-diag-warning {
+  border-left: 3px solid var(--warn);
+  padding: 4px 8px;
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--warn);
 }

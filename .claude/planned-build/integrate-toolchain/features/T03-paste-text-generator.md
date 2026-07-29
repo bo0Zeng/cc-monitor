@@ -192,3 +192,161 @@ UX 契约不同（没有"贴到哪"、没有"怎样才生效"），硬塞进同�
 cargo test **502**（+5）· cargo fmt 0 · clippy 0 error · tsc 0 · npm test **797**（+21）·
 shellcheck 0 · exec-bit guard 过 · **七套真机套件全绿**（26/44/12/15/13/14/11）。
 tmux 走强制 `-L` 的 shim，起飞前 canary 双向自检，跑完默认 socket 三个会话逐字未变。
+
+---
+
+## 6. 代码审计结果（Phase D，2026-07-29）
+
+独立对抗性 agent，37 次工具调用 / 约 10 分钟，收工时 `git status` 干净。
+它**实际做了变异**且逐条给了数字。三条阻塞全部独立复现后才动手。
+
+### 阻塞 1（已修）：`PATH.split(':')` —— 生产平台是 Windows
+
+我在派单时就把这条列成怀疑项，审计证实了。复现证据：
+`ci.yml:23,57` 与 `release.yml:72` 都是 `windows-latest`；全仓 `src-tauri/src` **零处**
+`std::env::split_paths`。而 `C:\Windows;C:\Users\me\.local\bin` 按 `':'` 切成
+`["C", "\Windows;C", "\Users\me\.local\bin"]`，逐个拼 `/cc-register` 全不存在
+→ 返回 **`Some(false)` 而不是 `None`**。
+
+后果比"算错"更坏：本模块文档头花六行论证「不能对能用的安装报假警报」、
+`SnippetProbe::on_path` 的注释写着「取不到就不猜」——**而它在生产平台上既没取到、
+又给了一个确定的否定答案**，于是裸命令形态**恒**报"不在 PATH 上"，把用户从一个能用的形态劝走。
+更糟的是**旧测试把错的行为钉绿了**：它硬编码 `"/usr/bin:/opt/bin"`，锁死 Unix 语义。
+
+→ 改用 `std::env::split_paths`（平台自带）。测试改用 `std::env::join_paths` 按当前平台拼
+——**CI 的 `windows-latest` job 上跑的就是 Windows 语义，那才是真覆盖。**
+
+**我第一版的测试写错了**：我想加一条"喂 Windows 形态 PATH，断言不被按 `':'` 切"，
+当场红在 `把盘符当目录了：C/cc-register | \Windows;C/cc-register`。
+原因是 `split_paths` **本身就是平台相关的**（Linux 上确实按 `':'`），
+我把一个平台相关行为断言成了平台无关的。→ 换成**结构性守卫**：
+`resolves_on_path` 的函数体必须含 `std::env::split_paths`、不许出现写死的 `split(':')`，
+带剥注释 + 反向自检。变异回写死 `':'` → 红。
+
+### 阻塞 2（已修）：我在 commit message 里的一句声明是**假的**
+
+T03 的 commit 写着「形态与实况冲突时带 `warning`，**且 UI 侧有测试钉住它真的上屏**」。
+审计实测：删掉 `cc-bus-hooks-section.ts` 的 `warning:` 接线 → **56/56 全绿**。
+原因：fixture 把 `warning` 恒设 `null`，没有一条测试喂过非空 warning；
+`paste-block.vitest.ts` 那条只证明"组件收到 warning 会显示"，
+**不证明这个消费者把 Rust 的 warning 接上了**。
+
+**这正是 T02 教训（纯函数被断言 ≠ 它上了屏）原样重演，而且被我写成了已完成的门禁。**
+→ 补三条测试（home 形态带 warning 必须非 hidden 且文案上屏 / 切 bare 后隐藏 / 都没 warning 时不留空框）。
+反验证：删掉上屏逻辑 → 红（此前是 56/56 绿）。
+
+### 阻塞 3（已修）：远端那半边零覆盖 + 自相矛盾 + 到不了屏幕
+
+审计变异：把远端 `home_path_exists` 改成 `= true` → `cargo test hooks_diag` **24 项全绿**。
+那段藏在 `#[tauri::command] async fn` 里、要一条真 ssh 才走得到 = 不可测 = 没门禁。
+
+**逻辑矛盾**：`REMOTE_HOOKS_CMD` 把 `-x` 命中与 `command -v` 命中都打成裸行，
+**两者完全分不出来**。代码据此拒绝给 `on_path` 下结论（`None`，注释明写"不猜"），
+却用**同一份含混证据确定地**断言 `home_path_exists = true`。真实假阴性：
+远端 cc-register 只装在 `/usr/local/bin` 且在 PATH 上时，`command -v` 打出它 →
+按 basename 匹配上 → `home_path_exists = true` → `$HOME` 形态**不警示** →
+用户贴上去正是一个 path-missing 钩子，**就是这次要修的那件事**。
+
+→ 三处一起改：
+1. 协议给两类命中各打标记（`X\t<path>` / `P\t<path>`），`home_path_exists` 只看 X、
+   `on_path` 只看 P；`exists` 的宽容语义**刻意不变**（B04-7 的决定）。
+   旧协议（无标记）→ 两项都 `None`，不拿含混回报当精确证据。
+2. `home_path_exists` 从 `bool` 改成 `Option<bool>` —— 与 `on_path` **同一档口径**，
+   审计正是从这个不对称进来的。`None` 一律不警示。
+3. 解析抽成纯函数 `parse_remote_probe`，补 6 组断言（含审计给的那个假阴性场景）。
+   变异：远端 `home_path_exists` 改回恒 `Some(true)` → 红 `PATH 上有 ≠ $HOME/.local/bin 下有`。
+4. **屏幕可达性**：待贴片段标题改成「待贴片段（基于本机盘面）」，
+   远端诊断框里渲染远端那两种形态各自的警示（此前远端算了 `Snippet` 却没人看）。
+   两处 warning 用**不同 class**——同名时 `querySelector` 先命中 renderDiag 那条，
+   测试当场串了（第一版红在"切到 bare 形态 → 警示隐藏"）。
+
+### 重要 1（已修）：`warning` 是唯一的单消费者槽，与我自己的尺子矛盾
+
+逐字段数：`text`/三句话 3、`invalidReason` 2、`multiline` 2、`className` 3、**`warning` 1**。
+而同一个 commit 里我用"只有 1 个用户"否掉了 `MergeIntoKey` 枚举变体——**尺子不能一边松一边紧**。
+→ `warning` 移回 `cc-bus-hooks-section.ts` 自己渲染。那里也才是它该被钉住的地方（见阻塞 2）。
+
+### 重要 3（已修）：族 B 是无约束逃生口，白名单只白在"文件名"上
+
+审计实测：新建含 `writeText` 的文件 → 守卫红（对）；**把文件名加进 `FAMILY_B` → 全绿**。
+族 B 成员身上原先一条断言都没有。
+→ 补正向约束：族 B 不许 `import` 组件、不许出现组件那句专属文案「生效条件：」。
+**判据第一版太糙**（用了 `"贴到 "`），打在 `accounts-section.ts:721` 那句
+"把它贴到 cc-monitor 的 GitHub issue 里"上——那是贴到 issue，不是贴进配置。已收紧。
+
+### 重要 5/6（已修）：迁移静默丢掉的样式钩子 + `--mono` 是未定义变量
+
+- `.remote-wrapper-snippet`（`styles.css:3480` 的 border/背景/`white-space: pre`/横向滚动）
+  被我改名成 `-paste` → **那条规则失去宿主，新名字一条规则都没有**。已改回原名，
+  并给 `.paste-block-out` 补 `white-space: pre; overflow-x: auto`
+  ——29 行的 wrapper 片段从 `<pre>` 换成 textarea 后默认软换行，语义要补回来。
+- `.cc-bus-hooks-out` 从来没有规则、迁移后也没人查它 → **纯死 class，删掉**。
+- `.ccm-alias-gen-out` 从 `<input>` 挪到根 div：`flex-basis: 100%` 失效（不再是 flex 子项）、
+  `font-family: mono` 会**下渗到三行灰字**。→ 规则改成 `.ccm-alias-gen-out > .paste-block-out`。
+- **`var(--mono, monospace)` 是未定义变量**（真变量是 `--font-mono`，全仓 61 处用它）。
+  三处一并修，**包括 T02 那处**——它是我从 `:6204` 那个既有笔误复制扩散来的。
+
+### 重要 7（已修）：字面 `**` 常驻上屏
+
+三句话与 warning 都走 `textContent`，不渲染 markdown。迁移前这些星号只在 toast 里闪 6 秒，
+**现在常驻**。已清掉传给组件的全部 `**`，并顺手清掉 B04/T02 三条同类的 hint 文案。
+加了两条测试：一条把"组件用 textContent 所以星号原样显示"钉成已知事实
+（**文案里带 `**` 就是 bug，不是"以后会渲染"**），一条按**配对花括号**取出
+`buildPasteBlock({...})` 的实参块逐字检查——第一版用"6 空格缩进的字符串"这种糙启发式，
+误抓了 section 的 hint（那条也确实有星号，已清），但**守卫报错的位置和它声称守的东西对不上，
+就是个会被关掉的守卫**。
+
+### 重要 8（已修）：守卫注释里的数字错了
+
+我写"迁移前是 9 个文件带 `writeText`"——审计核实是 **7 个文件 / 9 处**
+（`accounts-section.ts` 独占 3 处）。commit 正文的"全仓 9 处"是对的，注释把"处"写成了"文件"，
+**而这条注释正是阈值的论证依据**。已更正为 7 → 5。
+
+### 如实登记，本轮不改
+
+- **重要 2**：A3（`remote-section.ts`，被我称为"这次抽象最实在的收益"）**在任何测试里都没被执行过**
+  ——`remote-section.vitest.ts` 17 条全是纯函数，全文 `new RemoteSection` 出现 0 次。
+  它只被结构性守卫按源码文本查了一下 `contains("buildPasteBlock")`。
+  **审计这条完全成立。** 补一条构造 `RemoteSection` 的 smoke 测试需要摸清它的构造依赖，
+  归到 T07（面板 IA 重构）一起做——那时本来就要动这些 section。
+- **重要 4**：三句话必填的 `throw` 落在
+  `paste-block.ts:80 → panel.ts:404 buildBody() → panel.ts:215 构造器 → main.ts:859`，
+  **整条链没有一个 try/catch**（`main.ts:102` 的 DOMContentLoaded handler 也没有）。
+  将来任一消费者把 target 写成空串 → 设置窗白屏、零提示。
+  三个现有调用点都是字面量，所以今天不会触发。**给 `panel.ts` 加分区块级 try/catch
+  是 T07 的活**（它要重构整个面板 IA），在 T03 里改会动到不属于本功能的范围。
+
+### 审计自己声明未验证的
+
+只跑了 `cargo test --lib hooks_diag`（24）与四个相关 vitest 文件（56）；
+**全量 cargo/npm、tsc、clippy、shellcheck、七套真机套件它都没跑**，Windows 实机行为、
+真实像素级 UX、远端真实往返也没跑（无 Windows 机 / 无 GUI / 无配好的远端）。这些声明我认为诚实。
+
+### 我核实后认同审计的意见
+
+- 三个消费者数得对，阈值 5 是正确算术不是"刚好卡住"（它变异 `main.ts` 的 `writeText` → 守卫立刻红）。
+- 三句话必填 + 必须上屏**不是**安慰剂：它变异了三种形态，每种都精确红 2 条。
+- `mergeNote` 自由文本槽它认同——强制的是"必须说一句"这个位置，且这个强制有变异覆盖。
+- **它否掉了我派给它的一个攻击点**：`$HOME` 是字面量所以 warning 恒报——不成立，
+  `exists` 闭包对 `$HOME/` / `${HOME}/` / `~/` 三种前缀都展开，真机实测两个软链都在。
+- `vi.doMock` 真生效、`unquote_once` 不是只测自己、只读红线守住了——各有变异证据。
+
+## 7. 工程审计结果（Phase E）
+
+- **主计划仍自洽。** T03 的组件正是 T07 要遍历渲染的那类"块"，无返工。
+- **给 T07 交接两条**（已在上面登记）：A3 的 smoke 测试、`panel.ts` 的分区块 try/catch。
+  两条都是"动整个面板"才顺手的活，塞进 T03 会越界。
+- **给 T04 的约束不变**：`TouchedFile` 的 `host` 维度 + `origin` 模型一起做。
+  本轮远端探测改成"两类证据各用其一"之后，`origin` 这条线的形状更清楚了：
+  **远端的"某个路径在不在"必须由远端自己回报，不能由本机按 basename 猜**——T04 收编五套机制时按这条办。
+
+## 8. 签收
+- [x] 通过代码审计（3 阻塞 + 6 重要已修，2 项如实登记并交接 T07）
+- [x] 通过工程审计
+- [x] 主计划已据此更新（含变更记录）
+
+### 本轮门禁
+
+cargo test **505**（+3）· cargo fmt 0 · clippy 0 error · tsc 0 · npm test **804**（+7）·
+shellcheck 0 · exec-bit guard 过 · **七套真机套件全绿**（26/44/12/15/13/14/11）。
+tmux 走强制 `-L` 的 shim，起飞前 canary 双向自检，跑完默认 socket 三个会话逐字未变。

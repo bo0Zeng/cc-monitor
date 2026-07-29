@@ -232,7 +232,12 @@ pub fn diagnose(raw: Option<&str>, exists: &dyn Fn(&str) -> bool) -> HooksDiagno
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SnippetProbe {
     /// `$HOME/.local/bin/{cc-register,cc-bus-stop-hook}` 是否都在盘上。
-    pub home_path_exists: bool,
+    /// **`None` = 取不到，不猜。**
+    ///
+    /// 上一版这里是 `bool`，与下面的 `on_path: Option<bool>` **不对称**——T03 审计
+    /// 阻塞 3 正是从这个不对称进来的：同一份含混证据被用出两个结论，
+    /// 一个说"分不清所以不猜"，一个确定地说"在"。两个字段现在同一档口径。
+    pub home_path_exists: Option<bool>,
     /// 裸命令是否解析得到。**`None` = 取不到，不猜**（同本仓其它"说不知道"的地方）。
     pub on_path: Option<bool>,
 }
@@ -272,16 +277,18 @@ pub fn snippet(home: bool, probe: &SnippetProbe) -> Snippet {
         stop.replace('"', "\\\"")
     );
     // **形态与实况冲突就说出来**，而不是安静地生成一段贴上去指不到东西的钩子。
-    let warning = if home && !probe.home_path_exists {
+    // **只在确定"不在"时才警示。** `None`（取不到）不警示——报一个我们并不知道的问题，
+    // 和漏报一样是失信。
+    let warning = if home && probe.home_path_exists == Some(false) {
         Some(
-            "你选的是 $HOME 显式路径形态，但 $HOME/.local/bin/ 下**找不到** cc-register / \
+            "你选的是 $HOME 显式路径形态，但 $HOME/.local/bin/ 下找不到 cc-register / \
              cc-bus-stop-hook——照这段贴进去会得到一个指不到东西的钩子（钩子诊断会报 path-missing）。\
              要么改选「裸命令」形态，要么先把 cc-bus 装到那个位置。"
                 .to_string(),
         )
     } else if !home && probe.on_path == Some(false) {
         Some(
-            "你选的是裸命令形态，但这两个命令**不在 PATH 上**——照这段贴进去钩子跑不起来。\
+            "你选的是裸命令形态，但这两个命令不在 PATH 上——照这段贴进去钩子跑不起来。\
              改选「$HOME 显式路径」形态，或把它们所在目录加进 PATH。"
                 .to_string(),
         )
@@ -293,6 +300,20 @@ pub fn snippet(home: bool, probe: &SnippetProbe) -> Snippet {
 
 /// 按 `$PATH` 逐目录反查一个裸命令在不在。**复用注入的 `exists`，不新增探测机制。**
 /// `path_env` 为 `None`（取不到环境变量）时返回 `None`——**不猜**。
+///
+/// ## 切分必须用 `std::env::split_paths`，不能写死 `':'`（T03 审计阻塞 1）
+///
+/// 第一版是 `pe.split(':')`。**本应用的生产平台是 Windows**
+/// （`ci.yml` 与 `release.yml` 的打包 job 都是 `windows-latest`），而 Windows 的 PATH
+/// 用 `';'` 分隔且盘符自带冒号：`C:\Windows;C:\Users\me\.local\bin` 按 `':'` 切成
+/// `["C", "\Windows;C", "\Users\me\.local\bin"]`，逐个拼 `/cc-register` 全不存在
+/// → 返回 `Some(false)` 而**不是** `None`。
+///
+/// 后果比"算错"更坏：本模块文档头花六行论证「不能对能用的安装报假警报」，
+/// `SnippetProbe::on_path` 的注释写着「取不到就不猜」——而它在生产平台上
+/// **既没取到、又给了一个确定的否定答案**，于是裸命令形态**恒**带一句
+/// 「这两个命令不在 PATH 上」，把用户从一个能用的形态劝走。
+/// 旧测试还把错的行为钉绿了：它硬编码 `"/usr/bin:/opt/bin"`，锁死的是 Unix 语义。
 pub fn resolves_on_path(
     prog: &str,
     path_env: Option<&str>,
@@ -302,11 +323,11 @@ pub fn resolves_on_path(
     if pe.trim().is_empty() {
         return None;
     }
-    Some(
-        pe.split(':')
-            .filter(|d| !d.is_empty())
-            .any(|d| exists(&format!("{}/{prog}", d.trim_end_matches('/')))),
-    )
+    Some(std::env::split_paths(pe).any(|d| {
+        let d = d.to_string_lossy();
+        let d = d.trim_end_matches(['/', '\\']);
+        !d.is_empty() && exists(&format!("{d}/{prog}"))
+    }))
 }
 
 // ===== IPC 层：本机与远端各读一次 settings.json。**全程只读。** =====
@@ -375,8 +396,9 @@ pub async fn diagnose_local_cc_bus_hooks() -> Result<HooksReport, String> {
             return report(
                 diagnose(None, &|_| false),
                 "（取不到 HOME）".to_string(),
+                // 连 HOME 都取不到 → 两项都是"不知道"，**不猜**
                 SnippetProbe {
-                    home_path_exists: false,
+                    home_path_exists: None,
                     on_path: None,
                 },
             );
@@ -415,9 +437,11 @@ pub async fn diagnose_local_cc_bus_hooks() -> Result<HooksReport, String> {
             expanded.exists()
         };
         // **探测复用同一个 `exists` 闭包**，不新增探测机制（T03）。
-        let home_path_exists = ["cc-register", "cc-bus-stop-hook"]
-            .iter()
-            .all(|prog| exists(&format!("$HOME/.local/bin/{prog}")));
+        let home_path_exists = Some(
+            ["cc-register", "cc-bus-stop-hook"]
+                .iter()
+                .all(|prog| exists(&format!("$HOME/.local/bin/{prog}"))),
+        );
         let path_env = std::env::var("PATH").ok();
         let on_path = ["cc-register", "cc-bus-stop-hook"]
             .iter()
@@ -442,16 +466,63 @@ pub async fn diagnose_local_cc_bus_hooks() -> Result<HooksReport, String> {
 const REMOTE_HOOKS_CMD: &str = concat!(
     r#"cat "$HOME/.claude/settings.json" 2>/dev/null; "#,
     r#"printf '\n@@CCMON-HOOKS-SPLIT@@\n'; "#,
+    // **两类命中各打一个标记**（T03 审计阻塞 3）：`X` = `$HOME/.local/bin/` 下 `-x` 命中，
+    // `P` = PATH 上 `command -v` 命中。不打标记的话两者在回报里**完全分不出来**，
+    // 于是同一份含混证据被用出了两个互相矛盾的结论：`on_path` 说"分不清所以不猜"，
+    // 而 `home_path_exists` 却确定地说"在"。真实假阴性：远端 cc-register 只装在
+    // `/usr/local/bin` 且在 PATH 上时，`command -v` 打出它 → 按 basename 匹配上 →
+    // `home_path_exists = true` → `$HOME` 形态**不警示** → 用户贴上去正是一个
+    // path-missing 钩子，就是这次要修的那件事。
     r#"for f in "$HOME/.local/bin/cc-register" "$HOME/.local/bin/cc-bus-stop-hook"; do "#,
-    r#"[ -x "$f" ] && printf '%s\n' "$f"; done; "#,
+    r#"[ -x "$f" ] && printf 'X\t%s\n' "$f"; done; "#,
     // **把 PATH 上的真实路径也吐出来**（B04 审计 B04-7）：原先只 `-x` 两个固定路径 +
     // 两行 `HAS_PATH_*` 标记，而那两个标记的 basename 与目标不相等、等于没参与匹配。
     // 于是装在 `/usr/local/bin` 且在 PATH 上的**能用的安装**会被报成「指不到」——
     // 注释说这是"保守方向"，但对能用的安装报假警报，方向并不保守。
-    r#"command -v cc-register 2>/dev/null; command -v cc-bus-stop-hook 2>/dev/null; true"#
+    r#"for p in cc-register cc-bus-stop-hook; do "#,
+    r#"h="$(command -v "$p" 2>/dev/null)" && printf 'P\t%s\n' "$h"; done; true"#
 );
 
 pub const HOOKS_SPLIT_MARKER: &str = "@@CCMON-HOOKS-SPLIT@@";
+
+/// 解析远端探测回报：`X\t<path>` = `$HOME/.local/bin/` 下 `-x` 命中，
+/// `P\t<path>` = PATH 上 `command -v` 命中。返回 `(宽容清单, 探测结论)`。
+///
+/// 抽成纯函数是因为**这段此前零覆盖**（T03 审计阻塞 3 实测：把远端
+/// `home_path_exists` 改成 `= true`，`cargo test hooks_diag` 24 项照样全绿）。
+/// 它藏在 `#[tauri::command] async fn` 里、要一条真 ssh 才走得到 = 不可测 = 没门禁。
+///
+/// **旧协议（不打标记）的远端一律落到"说不知道"**：两个字段都 `None`，
+/// 不拿含混回报当精确证据用。
+pub fn parse_remote_probe(probe_part: &str) -> (Vec<String>, SnippetProbe) {
+    let (mut x_hits, mut p_hits, mut legacy) = (Vec::new(), Vec::new(), Vec::new());
+    for line in probe_part.lines() {
+        let l = line.trim();
+        if l.is_empty() {
+            continue;
+        }
+        match l.split_once('\t') {
+            Some(("X", v)) => x_hits.push(v.to_string()),
+            Some(("P", v)) => p_hits.push(v.to_string()),
+            _ => legacy.push(l.to_string()),
+        }
+    }
+    let basename_hit = |list: &[String], s: &str| -> bool {
+        let base = s.rsplit('/').next().unwrap_or(s);
+        list.iter()
+            .any(|p| p.rsplit('/').next().unwrap_or(p) == base)
+    };
+    // 有任一带标记的行 → 新协议；一行都没有（对方啥也没找到）也算新协议；
+    // 只有无标记的行 → 旧协议，分不清。
+    let tagged = !x_hits.is_empty() || !p_hits.is_empty() || legacy.is_empty();
+    let progs = ["cc-register", "cc-bus-stop-hook"];
+    let probe = SnippetProbe {
+        home_path_exists: tagged.then(|| progs.iter().all(|p| basename_hit(&x_hits, p))),
+        on_path: tagged.then(|| progs.iter().all(|p| basename_hit(&p_hits, p))),
+    };
+    let lenient: Vec<String> = x_hits.into_iter().chain(p_hits).chain(legacy).collect();
+    (lenient, probe)
+}
 
 /// 诊断**远端**的 `~/.claude/settings.json`。只读，绝不写远端任何文件。
 #[tauri::command]
@@ -480,12 +551,12 @@ pub async fn diagnose_remote_cc_bus_hooks(origin: String) -> Result<HooksReport,
             // 这是**保守**方向：宁可说"指不到"也不要假称"装好了"）。
             None => (text.clone(), String::new()),
         };
-        let present: Vec<String> = probe_part.lines().map(|l| l.trim().to_string()).collect();
+        let (lenient, probe) = parse_remote_probe(&probe_part);
+        // `exists` 的宽容语义**刻意不变**（B04 审计 B04-7 的决定）：`-x` 与 PATH 命中
+        // 任一都算"这个程序在远端存在"。这里只是不再拿它去回答"$HOME 那个具体路径在不在"。
         let exists = move |s: &str| -> bool {
-            // 远端不能 stat，靠上面那条命令探到的清单反查。`$HOME/x` 与远端回报的绝对路径
-            // 对不上，故按 basename 匹配（清单里只会有那两个已知程序，不存在歧义）。
             let base = s.rsplit('/').next().unwrap_or(s);
-            present
+            lenient
                 .iter()
                 .any(|p| p.rsplit('/').next().unwrap_or(p) == base)
         };
@@ -494,21 +565,7 @@ pub async fn diagnose_remote_cc_bus_hooks(origin: String) -> Result<HooksReport,
         } else {
             diagnose(Some(&json_part), &exists)
         };
-        // 远端：`REMOTE_HOOKS_CMD` 已经在吐 `-x` 命中的绝对路径与 `command -v` 结果，
-        // 直接用它，不新增往返。`$HOME/.local/bin/x` 与远端回报的绝对路径按 basename 对齐
-        // （同上面 `exists` 的做法）。`present` 里既有 `-x` 命中也有 `command -v` 命中，
-        // 分不出是哪一种 → `on_path` 只能说 `None`，**不猜**。
-        let home_path_exists = ["cc-register", "cc-bus-stop-hook"]
-            .iter()
-            .all(|prog| exists(&format!("$HOME/.local/bin/{prog}")));
-        report(
-            d,
-            format!("[{origin}] ~/.claude/settings.json"),
-            SnippetProbe {
-                home_path_exists,
-                on_path: None,
-            },
-        )
+        report(d, format!("[{origin}] ~/.claude/settings.json"), probe)
     })
     .await
     .map_err(|e| format!("spawn_blocking: {e}"))
@@ -713,7 +770,7 @@ mod tests {
     /// 一切正常的探测（两种形态都不该有 warning）。
     fn ok_probe() -> SnippetProbe {
         SnippetProbe {
-            home_path_exists: true,
+            home_path_exists: Some(true),
             on_path: Some(true),
         }
     }
@@ -749,7 +806,7 @@ mod tests {
     #[test]
     fn home_form_warns_when_the_path_is_not_on_disk() {
         let probe = SnippetProbe {
-            home_path_exists: false,
+            home_path_exists: Some(false),
             on_path: Some(true),
         };
         let sn = snippet(true, &probe);
@@ -770,7 +827,7 @@ mod tests {
     #[test]
     fn bare_form_warns_when_not_on_path() {
         let probe = SnippetProbe {
-            home_path_exists: true,
+            home_path_exists: Some(true),
             on_path: Some(false),
         };
         let w = snippet(false, &probe)
@@ -785,32 +842,143 @@ mod tests {
     #[test]
     fn unknown_path_status_does_not_fabricate_a_warning() {
         let probe = SnippetProbe {
-            home_path_exists: true,
+            home_path_exists: Some(true),
             on_path: None,
         };
         assert!(snippet(false, &probe).warning.is_none());
         assert!(snippet(true, &probe).warning.is_none());
     }
 
+    /// **按平台构造 PATH**（T03 审计阻塞 1）。旧版这条测试硬编码 `"/usr/bin:/opt/bin"`，
+    /// 锁死的是 Unix 语义——于是 `split(':')` 这个在**生产平台 Windows 上算错**的实现
+    /// 被它钉成了绿的。现在用 `std::env::join_paths` 按当前平台拼，Linux 与 Windows 同一条测试。
     #[test]
     fn resolves_on_path_uses_the_injected_exists() {
-        let ex = |s: &str| s == "/opt/bin/cc-register";
+        let sep_dir = if cfg!(windows) {
+            "C:\\opt\\bin"
+        } else {
+            "/opt/bin"
+        };
+        let other = if cfg!(windows) {
+            "C:\\Windows"
+        } else {
+            "/usr/bin"
+        };
+        let join = |dirs: &[&str]| -> String {
+            std::env::join_paths(dirs.iter().map(std::path::Path::new))
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        };
+        let want = format!("{}/cc-register", sep_dir.trim_end_matches(['/', '\\']));
+        let ex = |s: &str| s == want;
         assert_eq!(
-            resolves_on_path("cc-register", Some("/usr/bin:/opt/bin"), &ex),
-            Some(true)
+            resolves_on_path("cc-register", Some(&join(&[other, sep_dir])), &ex),
+            Some(true),
+            "PATH 必须按当前平台的分隔符切"
         );
         assert_eq!(
-            resolves_on_path("cc-register", Some("/usr/bin:/bin"), &ex),
+            resolves_on_path("cc-register", Some(&join(&[other])), &ex),
             Some(false)
-        );
-        // 尾斜杠不该造出 `//`
-        assert_eq!(
-            resolves_on_path("cc-register", Some("/opt/bin/"), &ex),
-            Some(true)
         );
         // **取不到 PATH → None，不猜 false**
         assert_eq!(resolves_on_path("cc-register", None, &ex), None);
         assert_eq!(resolves_on_path("cc-register", Some("   "), &ex), None);
+    }
+
+    /// **结构性守卫：PATH 切分必须用平台自己的切分器，不许写死分隔符。**
+    ///
+    /// 为什么不是行为测试：`std::env::split_paths` **本身就是平台相关的**
+    /// （Linux 上按 `':'`、Windows 上按 `';'`），所以"喂一段 Windows 形态的 PATH，
+    /// 断言它不被按 `':'` 切"这个性质在 Linux 上**根本不成立**——我第一版就是这么写的，
+    /// 当场红在 `把盘符当目录了：C/cc-register | \Windows;C/cc-register | …`。
+    /// 那不是实现的错，是我把一个平台相关的行为断言成了平台无关的。
+    ///
+    /// 真正想守的是**源码性质**：这里必须调 `std::env::split_paths`，
+    /// 不许出现写死的 `split(':')`。行为侧由上面那条 `join_paths` 测试覆盖——
+    /// 它在 CI 的 `windows-latest` job 上跑的就是 Windows 语义，那才是真覆盖。
+    #[test]
+    fn path_splitting_delegates_to_the_platform() {
+        let src = include_str!("hooks_diag.rs");
+        let body_start = src
+            .find("pub fn resolves_on_path(")
+            .expect("找不到 resolves_on_path——守卫失效了");
+        let body_end = src[body_start..]
+            .find("\n}\n")
+            .map(|i| body_start + i)
+            .expect("取不到函数体");
+        let body: String = src[body_start..body_end]
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        // 反向自检：剥完还看得见真代码
+        assert!(body.contains("path_env?"), "剥过头了，守卫在空转");
+        assert!(
+            body.contains("std::env::split_paths"),
+            "PATH 切分必须交给平台，实得:\n{body}"
+        );
+        for bad in ["split(':')", "split(';')", "split(\":\")"] {
+            assert!(
+                !body.contains(bad),
+                "不许写死分隔符 {bad}——生产平台是 Windows（ci.yml/release.yml 都是 windows-latest）"
+            );
+        }
+    }
+
+    /// **远端探测解析**（T03 审计阻塞 3）。此前这段藏在 `#[tauri::command] async fn` 里，
+    /// 要一条真 ssh 才走得到 = 不可测 = 没门禁；审计实测把远端 `home_path_exists` 改成
+    /// `= true`，24 项照样全绿。
+    #[test]
+    fn remote_probe_uses_each_kind_of_evidence_precisely() {
+        // 两个程序都在 $HOME/.local/bin 下 `-x` 命中 + 都在 PATH 上
+        let (lenient, p) = parse_remote_probe(
+            "X\t/home/u/.local/bin/cc-register\nX\t/home/u/.local/bin/cc-bus-stop-hook\n\
+             P\t/home/u/.local/bin/cc-register\nP\t/home/u/.local/bin/cc-bus-stop-hook\n",
+        );
+        assert_eq!(p.home_path_exists, Some(true));
+        assert_eq!(p.on_path, Some(true));
+        assert_eq!(lenient.len(), 4, "宽容清单要含全部命中（B04-7 的决定不变）");
+
+        // **审计指出的真实假阴性**：只装在 /usr/local/bin 且在 PATH 上——
+        // 旧代码按 basename 匹配会把它算成 `$HOME` 路径存在 → `$HOME` 形态不警示 →
+        // 用户贴上去正是一个 path-missing 钩子。
+        let (_, p) = parse_remote_probe(
+            "P\t/usr/local/bin/cc-register\nP\t/usr/local/bin/cc-bus-stop-hook\n",
+        );
+        assert_eq!(
+            p.home_path_exists,
+            Some(false),
+            "PATH 上有 ≠ $HOME/.local/bin 下有"
+        );
+        assert_eq!(p.on_path, Some(true));
+
+        // 只有一个命中 → 不能说"都在"
+        let (_, p) = parse_remote_probe("X\t/home/u/.local/bin/cc-register\n");
+        assert_eq!(p.home_path_exists, Some(false));
+
+        // 新协议但一个都没找到 → 确定地说"都不在"
+        let (lenient, p) = parse_remote_probe("");
+        assert_eq!(p.home_path_exists, Some(false));
+        assert_eq!(p.on_path, Some(false));
+        assert!(lenient.is_empty());
+
+        // **旧协议（不打标记）→ 两项都说不知道**，不拿含混回报当精确证据
+        let (lenient, p) = parse_remote_probe("/home/u/.local/bin/cc-register\n");
+        assert_eq!(p.home_path_exists, None, "旧协议不许下结论");
+        assert_eq!(p.on_path, None);
+        assert_eq!(lenient.len(), 1, "但宽容清单仍要用它（诊断照旧宽容）");
+    }
+
+    /// 两个字段现在**同一档口径**：`None` 一律不警示。
+    #[test]
+    fn unknown_home_path_does_not_fabricate_a_warning() {
+        let probe = SnippetProbe {
+            home_path_exists: None,
+            on_path: None,
+        };
+        assert!(snippet(true, &probe).warning.is_none());
+        assert!(snippet(false, &probe).warning.is_none());
     }
 
     /// **B04 登记项②**：`trim_matches` 逐字符两端剥，会把不配对的也剥掉。

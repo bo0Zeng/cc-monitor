@@ -44,8 +44,10 @@ describe("待贴配置文本只有一个实现", () => {
       readFileSync(f, "utf8").includes("writeText"),
     );
     // 反向自检：一处都没扫到 = 守卫失效了，不是代码变干净了。
-    // 阈值 5 = 组件自己 + 族 B 的四个文件。迁移前是 9 个文件带 writeText，
-    // 族 A 三处迁移后各自不再持有它——**这个数字下降就是迁移成功的直接证据**。
+    // 阈值 5 = 组件自己 + 族 B 的四个文件。**迁移前是 7 个文件 / 9 处**
+    // （`accounts-section.ts` 独占 3 处）——审计核实我这条注释原先把"处"写成了"文件"，
+    // 而这条注释正是阈值的论证依据。族 A 三处迁移后各自不再持有 `writeText`，
+    // 于是 7 → 5：**这个数字下降就是迁移成功的直接证据**。
     expect(hits.length).toBeGreaterThanOrEqual(5);
     const known = new Set([...FAMILY_A, ...FAMILY_B]);
     const unknown = hits.filter((f) => !known.has(f));
@@ -67,6 +69,34 @@ describe("待贴配置文本只有一个实现", () => {
         .filter((l) => !l.trimStart().startsWith("//"))
         .join("\n");
       expect(code.includes("writeText"), `${f} 里仍有裸 writeText`).toBe(false);
+    }
+  });
+
+  it("族 B 成员不许悄悄变成待贴块（白名单不能只白在文件名上）", () => {
+    // 审计实测的绕过：新建一个含 `writeText` 的文件 → 守卫红（对）；
+    // **把文件名加进 FAMILY_B → 全绿**。族 B 成员身上原先一条断言都没有，
+    // 任何人手搓一个待贴块只需往数组里加一行。
+    // 正向约束：族 B 的活儿是"复制点东西给人看"，**不该出现待贴语义的文案**
+    // （那三句话是族 A 的契约）。真要做待贴块，就得走组件、从族 B 挪进族 A。
+    for (const f of FAMILY_B) {
+      if (f === "src/paste-block.ts") continue; // 组件自己就是那套文案的产地
+      const code = readFileSync(f, "utf8")
+        .split("\n")
+        .filter((l) => !l.trimStart().startsWith("//"))
+        .join("\n");
+      // 判据要**精确**：第一版用了 `"贴到 "`，结果打在 `accounts-section.ts:721`
+      // 那句"把它贴到 cc-monitor 的 GitHub issue 里"上——那是贴到 issue，不是贴进配置。
+      // 现在只认组件独有的两个信号：`import` 了组件，或吐出组件那句专属文案。
+      for (const smell of [
+        'from "../paste-block"',
+        'from "./paste-block"',
+        "生效条件：",
+      ]) {
+        expect(
+          code.includes(smell),
+          `${f} 出现了待贴语义 ${smell}：要么它其实是族 A（走组件），要么改个说法`,
+        ).toBe(false);
+      }
     }
   });
 

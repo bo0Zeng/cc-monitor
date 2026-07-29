@@ -144,7 +144,7 @@ export function buildAliasGeneratorSection(): HTMLElement {
     target: "~/.bashrc（或你实际用的 shell 配置文件）",
     mergeNote: "追加一行函数定义即可，不影响文件里已有的内容。",
     activation:
-      "source 它，或开一个新终端——**当前这个终端窗口不会立刻认得这个别名**。",
+      "source 它，或开一个新终端——当前这个终端窗口不会立刻认得这个别名。",
     // 保留 F08 Phase D 审计修的那道门：名字为空/非法时输出是中文提示而不是可执行代码，
     // 当"生成成功"一样复制出去，粘进 .bashrc 同样会造成语法错误。
     invalidReason: (t: string) =>
