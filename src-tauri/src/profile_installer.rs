@@ -210,7 +210,7 @@ pub fn install_to_profile(
         (String::new(), false)
     };
 
-    let updated = replace_or_append_block(&existing, &code)?;
+    let updated = replace_or_append_block(&existing, &code, &path.display().to_string())?;
 
     // 写之前先备份原文件（即使没动 BEGIN/END 块外的内容，也防 atomic_write 异常）
     let backup_path = if did_exist && !existing.is_empty() {
@@ -289,7 +289,7 @@ pub fn uninstall_from_profile(path: &PathBuf) -> Result<(), String> {
             on_disk_size
         ));
     }
-    let stripped = strip_block(&existing)?;
+    let stripped = strip_block(&existing, &path.display().to_string())?;
     if stripped == existing {
         return Ok(()); // 没有块，无需写
     }
@@ -324,7 +324,9 @@ pub fn uninstall_from_profile(path: &PathBuf) -> Result<(), String> {
 /// 找文件中第一个 cc-monitor 块的版本字符串（"v1" 等）。
 fn find_block_version(content: &str) -> (bool, Option<String>) {
     for line in content.lines() {
-        if let Some(rest) = line.strip_prefix(BEGIN_MARKER) {
+        // T04 审计③：与 `find_pair` 同口径（`trim_start`）。不加的话缩进的悬空 BEGIN 会让
+        // `has_ccm_block=false` → UI 说"未安装"**且隐藏卸载按钮**，而点安装却 Err 报行号。
+        if let Some(rest) = line.trim_start().strip_prefix(BEGIN_MARKER) {
             // rest 可能是 " v1 ===" 之类
             let trimmed = rest.trim().trim_end_matches('=').trim();
             // trimmed = "v1"
@@ -388,8 +390,8 @@ fn find_conflicting_functions(content: &str, command_name: &str) -> Vec<String> 
 /// （实测见 `repro_local_eats_user_content_on_damaged_fence`）。
 /// 远端侧（`sftp::merge_profile_block`）当初被审计 B1 要求在同一情形 Err 中止，
 /// 本机侧漏了这道保护——写的都是"下次开终端就炸"级别的文件。
-fn find_block_range(content: &str) -> Result<Option<(usize, usize)>, String> {
-    crate::fenced_block::find_pair(content, BEGIN_MARKER, END_MARKER, "PowerShell profile")
+fn find_block_range(content: &str, what: &str) -> Result<Option<(usize, usize)>, String> {
+    crate::fenced_block::find_pair(content, BEGIN_MARKER, END_MARKER, what)
 }
 
 /// 检测 existing 用的行尾风格。包含任何 `\r\n` 就视为 CRLF（Windows 用户 profile
@@ -422,10 +424,10 @@ fn ends_with_eol(s: &str) -> bool {
 /// `existing.lines().join("\n")` 静默把 CRLF → LF，length 校验检不出（两边都已
 /// LF），用户用 notepad 看会被"行尾不一致"警告/ git diff 整文件标红。
 /// 改用 `split_inclusive('\n')` 保留终止符，新 block 按 detected EOL 重写。
-fn replace_or_append_block(existing: &str, new_block: &str) -> Result<String, String> {
+fn replace_or_append_block(existing: &str, new_block: &str, what: &str) -> Result<String, String> {
     let eol = detect_eol(existing);
     let block = rewrite_eol(new_block.trim_end_matches(|c| c == '\r' || c == '\n'), eol);
-    if let Some((begin, end)) = find_block_range(existing)? {
+    if let Some((begin, end)) = find_block_range(existing, what)? {
         // split_inclusive('\n') 与 .lines() 索引一致：都按 '\n' 切，索引位置相同；
         // 区别只是 split_inclusive 把 '\n'（及前一个 '\r'）保留在切片内部。
         let lines: Vec<&str> = existing.split_inclusive('\n').collect();
@@ -471,9 +473,9 @@ fn replace_or_append_block(existing: &str, new_block: &str) -> Result<String, St
 /// **卸载路径也走同一条配对判定**（T04 第二步）：围栏损坏时 `Err` 中止而不是
 /// "当作没有块、原样返回"。后者看着无害，实则让用户以为卸载干净了，
 /// 而那个悬空的 BEGIN 还留在文件里——下次安装就会吃掉它下面的内容。
-fn strip_block(existing: &str) -> Result<String, String> {
+fn strip_block(existing: &str, what: &str) -> Result<String, String> {
     let eol = detect_eol(existing);
-    let Some((begin, end)) = find_block_range(existing)? else {
+    let Some((begin, end)) = find_block_range(existing, what)? else {
         return Ok(existing.to_string());
     };
     let lines: Vec<&str> = existing.split_inclusive('\n').collect();
@@ -604,10 +606,15 @@ mod tests {
         // 用户 profile：有个损坏的 BEGIN（上次安装中断/手改坏），**下面是用户自己的代码**
         let damaged = "# my stuff\n# === cc-monitor BEGIN v1 ===\nfunction cc { }\n";
         // **修后：第一次就 Err 中止，用户内容一个字节都不动。**
-        let e = replace_or_append_block(damaged, BLOCK).unwrap_err();
+        let e = replace_or_append_block(damaged, BLOCK, "C:/x/profile.ps1").unwrap_err();
         assert!(e.contains("找不到配对的 END"), "{e}");
         assert!(e.contains("已中止"), "要让用户知道我们没动文件：{e}");
-        assert!(e.contains("PowerShell profile"), "要说清是哪个文件：{e}");
+        // T04 审计⑥：`what` 现在传**真路径**而不是类别名（调用方手里一直有它）。
+        // 原断言写的是类别名，与它自己的注释"要说清是哪个文件"不符。
+        assert!(
+            e.contains("C:/x/profile.ps1"),
+            "要说清是哪个文件的真路径：{e}"
+        );
         // 修前实测的退化链（留作记录，见 fenced_block 模块文档）：
         //   装一次 → 追加，用户代码还在；装两次 → 损坏的 BEGIN 与新块的 END 配对
         //   → `function cc { }` **被吃掉**。
@@ -688,7 +695,7 @@ $PSDefaultParameterValues = @{}
 "#;
         let new_block =
             "# === cc-monitor BEGIN v1 ===\nfunction cc { Write-Host new-version }\n# === cc-monitor END ===";
-        let out = replace_or_append_block(existing, new_block).unwrap();
+        let out = replace_or_append_block(existing, new_block, "C:/x/profile.ps1").unwrap();
         assert!(out.contains("Set-Alias g git"));
         assert!(out.contains("$PSDefaultParameterValues = @{}"));
         assert!(out.contains("new-version"));
@@ -699,7 +706,7 @@ $PSDefaultParameterValues = @{}
     fn append_to_empty_profile() {
         let new_block =
             "# === cc-monitor BEGIN v1 ===\nfunction cc { Write-Host hi }\n# === cc-monitor END ===";
-        let out = replace_or_append_block("", new_block).unwrap();
+        let out = replace_or_append_block("", new_block, "C:/x/profile.ps1").unwrap();
         assert!(out.starts_with("# === cc-monitor BEGIN"));
         assert!(out.ends_with("END ===\n"));
     }
@@ -708,7 +715,7 @@ $PSDefaultParameterValues = @{}
     fn append_to_existing_profile_with_no_block() {
         let existing = "Set-Alias g git\n";
         let new_block = "# === cc-monitor BEGIN v1 ===\nfunction cc {}\n# === cc-monitor END ===";
-        let out = replace_or_append_block(existing, new_block).unwrap();
+        let out = replace_or_append_block(existing, new_block, "C:/x/profile.ps1").unwrap();
         assert!(out.starts_with("Set-Alias g git"));
         assert!(out.contains("BEGIN v1"));
     }
@@ -721,7 +728,7 @@ function cc { Write-Host hi }
 # === cc-monitor END ===
 $PSDefaultParameterValues = @{}
 "#;
-        let out = strip_block(existing).unwrap();
+        let out = strip_block(existing, "C:/x/profile.ps1").unwrap();
         assert!(out.contains("Set-Alias g git"));
         assert!(out.contains("$PSDefaultParameterValues"));
         assert!(!out.contains("BEGIN"));
@@ -731,7 +738,7 @@ $PSDefaultParameterValues = @{}
     #[test]
     fn strip_block_no_op_when_no_block() {
         let content = "Set-Alias g git\n";
-        assert_eq!(strip_block(content).unwrap(), content);
+        assert_eq!(strip_block(content, "C:/x/profile.ps1").unwrap(), content);
     }
 
     #[test]
@@ -740,7 +747,7 @@ $PSDefaultParameterValues = @{}
         // 早期 .lines().join("\n") 会静默把 CRLF → LF。这里验保留。
         let crlf = "# my profile\r\nSet-Alias g git\r\nfunction prompt { 'PS> ' }\r\n";
         let new_block = "# === cc-monitor BEGIN v1 ===\nfunction cc {}\n# === cc-monitor END ===";
-        let out = replace_or_append_block(crlf, new_block).unwrap();
+        let out = replace_or_append_block(crlf, new_block, "C:/x/profile.ps1").unwrap();
         // 用户原内容仍带 CRLF
         assert!(
             out.contains("# my profile\r\n"),
@@ -767,7 +774,7 @@ $PSDefaultParameterValues = @{}
                     function cc {}\r\n\
                     # === cc-monitor END ===\r\n\
                     function prompt { 'PS> ' }\r\n";
-        let out = strip_block(crlf).unwrap();
+        let out = strip_block(crlf, "C:/x/profile.ps1").unwrap();
         assert!(out.contains("Set-Alias g git\r\n"));
         assert!(out.contains("function prompt"));
         assert!(!out.contains("BEGIN"));
@@ -779,7 +786,7 @@ $PSDefaultParameterValues = @{}
     fn lf_only_file_stays_lf() {
         let lf = "Set-Alias g git\n";
         let new_block = "# === cc-monitor BEGIN v1 ===\nfunction cc {}\n# === cc-monitor END ===";
-        let out = replace_or_append_block(lf, new_block).unwrap();
+        let out = replace_or_append_block(lf, new_block, "C:/x/profile.ps1").unwrap();
         // 已是 LF 的文件不强加 CRLF
         assert!(!out.contains("\r\n"), "纯 LF 文件被改成了 CRLF：{out:?}");
     }

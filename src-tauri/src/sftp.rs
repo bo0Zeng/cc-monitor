@@ -134,6 +134,73 @@ pub async fn upload_atomic(
 }
 
 /// 读远端文件，不存在 / 读失败 → None。
+/// 判定一次远端上传的读回结果。**纯函数，可测**——远端往返塞不进单测，
+/// 但"读回的字节该不该判通过"这条判据可以，而它正是此前完全缺失的那一环。
+///
+/// 按字节而不是按字符串：`deploy_remote_daemon` 上传的是**可执行二进制**，
+/// `String::from_utf8` 会失败。这也是没直接复用 `verified_write::verify_readback`
+/// （它是 `&str`）的原因——判据同源（逐字节相同才算通过），载体不同。
+pub fn verify_uploaded_bytes(
+    path: &str,
+    expected: &[u8],
+    actual: Option<&[u8]>,
+) -> Result<(), String> {
+    let Some(actual) = actual else {
+        return Err(format!(
+            "上传后读不回 {path}——无法确认写对了。已中止，未写入版本标记（下次会重新部署）。"
+        ));
+    };
+    if actual == expected {
+        return Ok(());
+    }
+    if actual.len() == expected.len() {
+        let at = expected
+            .iter()
+            .zip(actual)
+            .position(|(a, b)| a != b)
+            .unwrap_or(0);
+        return Err(format!(
+            "上传后校验失败：{path} 长度相同（{} 字节）但内容不同，首个差异在第 {at} 字节。\
+             这类损坏（传输截断后补齐 / 编码变形）只比长度是查不出来的。\
+             已中止，未写入版本标记（下次会重新部署）。",
+            expected.len()
+        ));
+    }
+    Err(format!(
+        "上传后校验失败：{path} 长度不匹配（期望 {} 字节，读回 {} 字节）。\
+         已中止，未写入版本标记（下次会重新部署）。",
+        expected.len(),
+        actual.len()
+    ))
+}
+
+/// 上传 + **读回逐字节比对**。
+///
+/// ## 为什么这个函数此前不存在（T04 审计①）
+///
+/// `deploy_remote_daemon` 与 `deploy_remote_acct_iso` 的**全部** `upload_atomic`
+/// ——1 个 daemon 可执行二进制 + 6 个远端脚本（含 0755 的 `cc-acct-iso` / `lib.sh` /
+/// install.sh）——写完**直接写版本标记**，中间没有任何读回。`upload_atomic` 自己
+/// 只做 flush/shutdown/rename，不读回（实测 `grep -c` = 0）。
+///
+/// 而 T04 第二步我论证「备份→写→读回比对→回滚这个范式已共享（5 处），所以不用抽」
+/// ——**那 5 处全在 profile/CLI 那条线上，压根没覆盖这两条 deploy 路**。
+/// 我那套"五套机制"框架恰好把这个洞盖住了：把"范式已共享"当成了"范式已覆盖"。
+///
+/// 后果具体：传输损坏的 daemon 二进制照样被写上正确的 `.build_id` 标记 →
+/// 下次 `deploy_decision` 判「已是最新，跳过」→ **坏二进制永久驻留**，
+/// 而用户看到的是部署成功。标记写在校验之后，就断了这条链。
+pub(crate) async fn upload_atomic_verified(
+    sftp: &SftpSession,
+    remote_path: &str,
+    bytes: &[u8],
+    mode: u32,
+) -> Result<(), String> {
+    upload_atomic(sftp, remote_path, bytes, mode).await?;
+    let back = read_optional(sftp, remote_path).await;
+    verify_uploaded_bytes(remote_path, bytes, back.as_deref())
+}
+
 pub(crate) async fn read_optional(sftp: &SftpSession, path: &str) -> Option<Vec<u8>> {
     sftp.read(path.to_string()).await.ok()
 }
@@ -286,7 +353,7 @@ pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<Option<String>
                 cfg.daemon_path
             );
             ensure_dir_all(sftp, remote_parent(&cfg.daemon_path)).await;
-            upload_atomic(sftp, &cfg.daemon_path, bin.bytes, 0o700).await?;
+            upload_atomic_verified(sftp, &cfg.daemon_path, bin.bytes, 0o700).await?;
             upload_atomic(sftp, &marker, bin.build_id.as_bytes(), 0o600).await?;
             tracing::info!(
                 "远端 [{}] daemon 部署完成：{}",
@@ -351,11 +418,26 @@ pub fn daemon_binary(arch: &str) -> Option<&'static DaemonBinary> {
 // 卸载删 daemon 二进制 + 同目录 .build_id（is_safe_remote_daemon_path 守卫）。
 // ============================================================================
 
+/// 远端受管路径的安全谓词。**T04 审计⑤：两个消费者、5 个条件里 4 个逐字相同，
+/// 只差"必须含哪个标记词"** —— 正好达到我为 `fenced_block::find_pair` 立的 ≥2 门槛，
+/// 所以按同一把尺子抽出来（`acct_iso_deploy::is_safe_remote_acct_iso_dir` 是第 2 个消费者）。
+///
+/// 判据：非空 · 绝对路径 · 不含 `..` · 不是根 · 含 `markers` 里任一标记词。
+/// 最后一条是**防误删的关键**：它把"这是 cc-monitor 管的目录"变成路径本身的性质，
+/// 而不是靠调用方记得。
+pub(crate) fn is_safe_remote_managed_path(path: &str, markers: &[&str]) -> bool {
+    let p = path.trim();
+    !p.is_empty()
+        && p.starts_with('/')
+        && !p.contains("..")
+        && p != "/"
+        && markers.iter().any(|m| p.contains(m))
+}
+
 /// 远端 daemon 路径安全守卫（卸载用，纯函数可单测）：绝对、无 `..`、非根、且含 `cc-monitor`
 /// （约定 `~/.cc-monitor/bin/cc-monitor-remote`）—— 杜绝把卸载误用成删任意远端文件。
-pub fn is_safe_remote_daemon_path(path: &str) -> bool {
-    let p = path.trim();
-    !p.is_empty() && p.starts_with('/') && !p.contains("..") && p != "/" && p.contains("cc-monitor")
+fn is_safe_remote_daemon_path(path: &str) -> bool {
+    is_safe_remote_managed_path(path, &["cc-monitor"])
 }
 
 /// 手动安装 / 更新远端 daemon（设置面板「安装 daemon」按钮）。逻辑同自动部署
@@ -394,7 +476,7 @@ pub async fn deploy_remote_daemon(cfg: RemoteConfig) -> Result<String, String> {
         )),
         DeployAction::Deploy(reason) => {
             ensure_dir_all(sftp, remote_parent(&path)).await;
-            upload_atomic(sftp, &path, bin.bytes, 0o700).await?;
+            upload_atomic_verified(sftp, &path, bin.bytes, 0o700).await?;
             upload_atomic(sftp, &marker, bin.build_id.as_bytes(), 0o600).await?;
             tracing::info!(
                 "远端 [{}] 手动部署 daemon 完成：{}",
@@ -551,21 +633,27 @@ const CCM_CLI_REMOTE_PATH: &str = ".local/bin/ccm";
 /// - 无 BEGIN → **追加**（块外内容原样保留）。
 /// - **有 BEGIN 但其后无 END（损坏/截断/上次安装中断）→ `Err` 中止**（审计 B1：绝不用独立
 ///   `find` 误配前面的 END 而吞掉用户内容；宁可报错让用户手修，也不破坏文件）。
-pub fn merge_profile_block(existing: &str, snippet: &str) -> Result<String, String> {
+pub fn merge_profile_block(existing: &str, snippet: &str, what: &str) -> Result<String, String> {
     // **T04 第二步：配对判定改走 `fenced_block::find_pair`，与本机 profile 共用同一条规则。**
-    // 原实现是自己 `find(BEGIN)` 再在其后 `find(END)`——判定本身是对的（审计 B1 加固过），
+    //
+    // **更正我原话「判定本身是对的…判定没变」——被实测证伪，9 个边界里 3 个变了**
+    // （T04 审计②，它把旧 byte-find 实现逐字复制成 `old_merge` 并列对拍）：
+    //   1. **行内 marker**（用户 profile 里有 `echo "…BEGIN…"` / `echo "…END…"`）：
+    //      旧实现会**切断那个 echo 行、并把第二个 echo 行整行吃掉** —— 远端侧一个
+    //      **我未申报就修掉了的数据丢失**。新实现按行 `trim_start().starts_with` 判，改成追加。
+    //   2. **BEGIN 与 END 同一行**：旧能正确替换该行 → 新直接 Err（`find_pair` 认到 BEGIN
+    //      就 `continue`，同行的 END 被跳过）。**这是退化**，虽符合"宁可报错"但当时未文档化未测试。
+    //   3. **缩进 marker**：旧"保留 BEGIN 行缩进、丢 END 缩进"（不自洽）→ 新统一归一到列 0。
+    // 三条现在都有测试锁死（见 `remote_merge_boundary_semantics_after_migration`）。
+    //
+    // 原实现是自己 `find(BEGIN)` 再在其后 `find(END)`——
     // 但本机侧漏了同一道保护，于是两侧对"围栏损坏"处置不一致、本机那边会**吃掉用户内容**。
     // 现在两侧同一个函数，判定不可能再漂移。
     let block = format!(
         "{CCM_PROFILE_BEGIN}\n{}\n{CCM_PROFILE_END}\n",
         snippet.trim()
     );
-    match crate::fenced_block::find_pair(
-        existing,
-        CCM_PROFILE_BEGIN,
-        CCM_PROFILE_END,
-        "远端 profile",
-    )? {
+    match crate::fenced_block::find_pair(existing, CCM_PROFILE_BEGIN, CCM_PROFILE_END, what)? {
         Some((begin_line, end_line)) => {
             // 行下标 → 字节切片：`split_inclusive('\n')` 与 `.lines()` 索引一致
             let lines: Vec<&str> = existing.split_inclusive('\n').collect();
@@ -592,20 +680,29 @@ pub fn merge_profile_block(existing: &str, snippet: &str) -> Result<String, Stri
 /// 纯函数：从 profile 内容删掉 cc-monitor 的 BEGIN/END 块（可单测）。
 /// - 有**配对**块（BEGIN 后找得到 END）→ 整块删，块前后用户内容原样保留。
 /// - 无 BEGIN，或 BEGIN 后无 END（损坏）→ **原样返回**（宁可不删也不破坏文件）。
-pub fn strip_profile_block(existing: &str) -> String {
-    let Some(b) = existing.find(CCM_PROFILE_BEGIN) else {
-        return existing.to_string();
+pub fn strip_profile_block(existing: &str, what: &str) -> Result<String, String> {
+    // **T04 审计阻塞：这里原先没迁移，于是「卸」那半边被我从"两侧一致"改成了"两侧不一致"。**
+    // 原实现在悬空 BEGIN 时 `return existing.to_string()` → 调用方判 `stripped == existing`
+    // → 打印「远端 {profile} 里没有 ccm 块，无需卸载」。**那正是我在同一个 commit 里
+    // 定义为 bug 的形态**，而且比本机那边更糟：它主动告诉用户"没问题"。
+    //
+    // 更要紧的是这是我**新造的漂移**：`af21ffb~1` 时两侧卸载都"原样返回"（一致），
+    // `af21ffb` 之后本机 Err、远端静默 no-op（不一致）。我 commit 里那句
+    // 「两侧不可能再漂移」**只对 install 半边成立，对 uninstall 半边方向相反**。
+    // 现在两侧的装与卸四条路全走 `find_pair`。
+    let Some((begin_line, end_line)) =
+        crate::fenced_block::find_pair(existing, CCM_PROFILE_BEGIN, CCM_PROFILE_END, what)?
+    else {
+        return Ok(existing.to_string());
     };
-    // 找 BEGIN **之后**的 END（同 merge：独立 find 会误配前面的 END）。
-    let Some(rel) = existing[b..].find(CCM_PROFILE_END) else {
-        return existing.to_string(); // 损坏块（BEGIN 无 END）→ 不动
+    let lines: Vec<&str> = existing.split_inclusive('\n').collect();
+    let before: String = lines[..begin_line].concat();
+    let after: String = if end_line + 1 < lines.len() {
+        lines[(end_line + 1)..].concat()
+    } else {
+        String::new()
     };
-    let e = b + rel;
-    let after = existing[e..]
-        .find('\n')
-        .map(|n| e + n + 1)
-        .unwrap_or(existing.len());
-    format!("{}{}", &existing[..b], &existing[after..])
+    Ok(format!("{before}{after}"))
 }
 
 /// 卸载远端 ccm 助手（设置面板「卸载 ccm」按钮）：从 profile 删 BEGIN/END 块。
@@ -635,7 +732,7 @@ pub async fn uninstall_remote_ccm_helper(
         .await
         .map(|b| String::from_utf8_lossy(&b).into_owned())
         .unwrap_or_default();
-    let stripped = strip_profile_block(&existing);
+    let stripped = strip_profile_block(&existing, &format!("远端 ~/{profile}"))?;
     if stripped == existing {
         return Ok(format!("远端 {profile} 里没有 ccm 块，无需卸载。"));
     }
@@ -762,7 +859,7 @@ pub async fn install_remote_ccm_helper(
         .map(|b| String::from_utf8_lossy(&b).into_owned())
         .unwrap_or_default();
     // 损坏块（BEGIN 无 END）→ merge 返回 Err，直接中止，不动原文件。
-    let merged = merge_profile_block(&existing, CCM_WRAPPER_SNIPPET)?;
+    let merged = merge_profile_block(&existing, CCM_WRAPPER_SNIPPET, &format!("远端 ~/{profile}"))?;
     if merged == existing {
         return Ok(format!(
             "ccm CLI 已部署到远端 ~/{CCM_CLI_REMOTE_PATH}；{profile} 的别名块已是最新，无需改动。"
@@ -971,26 +1068,26 @@ mod tests {
     fn merge_profile_block_append_replace_idempotent() {
         let snippet = "ccm() { :; }";
         // 空 existing → 仅块。
-        let m1 = merge_profile_block("", snippet).unwrap();
+        let m1 = merge_profile_block("", snippet, "远端 ~/.bashrc").unwrap();
         assert!(m1.contains(CCM_PROFILE_BEGIN));
         assert!(m1.contains("ccm() { :; }"));
         assert!(m1.contains(CCM_PROFILE_END));
 
         // 无块 → 追加，原内容保留在前。
         let existing = "export PATH=/x\nalias ll='ls -l'\n";
-        let m2 = merge_profile_block(existing, snippet).unwrap();
+        let m2 = merge_profile_block(existing, snippet, "远端 ~/.bashrc").unwrap();
         assert!(m2.starts_with(existing), "块外内容保留在前");
         assert!(m2.contains(CCM_PROFILE_BEGIN));
 
         // 幂等：同 snippet 再 merge 不变。
         assert_eq!(
-            merge_profile_block(&m2, snippet).unwrap(),
+            merge_profile_block(&m2, snippet, "远端 ~/.bashrc").unwrap(),
             m2,
             "merge∘merge == merge"
         );
 
         // 重装（换 snippet 内容）→ 整块替换，只有一个块，块外内容仍保留。
-        let m3 = merge_profile_block(&m2, "ccm() { echo new; }").unwrap();
+        let m3 = merge_profile_block(&m2, "ccm() { echo new; }", "远端 ~/.bashrc").unwrap();
         assert!(m3.starts_with(existing), "重装仍保留块外内容");
         assert!(
             m3.contains("echo new") && !m3.contains("{ :; }"),
@@ -1004,7 +1101,7 @@ mod tests {
     fn merge_profile_block_preserves_content_after_block() {
         let existing =
             format!("head_line\n{CCM_PROFILE_BEGIN}\nold()\n{CCM_PROFILE_END}\ntail_user_line\n");
-        let m = merge_profile_block(&existing, "ccm() { echo new; }").unwrap();
+        let m = merge_profile_block(&existing, "ccm() { echo new; }", "远端 ~/.bashrc").unwrap();
         assert!(m.contains("head_line"), "块前内容保留");
         assert!(
             m.contains("tail_user_line"),
@@ -1021,12 +1118,12 @@ mod tests {
         // END 在前、孤立 BEGIN 在后无配对 END：独立 find 会误配 → 旧实现吞内容。新实现报错。
         let corrupt = format!("{CCM_PROFILE_END}\nuser_a\n{CCM_PROFILE_BEGIN}\nuser_b\n");
         assert!(
-            merge_profile_block(&corrupt, "ccm() { :; }").is_err(),
+            merge_profile_block(&corrupt, "ccm() { :; }", "远端 ~/.bashrc").is_err(),
             "孤立 BEGIN（其后无 END）必须中止而非吞内容"
         );
         // 纯孤立 BEGIN（截断的安装）→ Err。
         let truncated = format!("user_x\n{CCM_PROFILE_BEGIN}\nhalf");
-        assert!(merge_profile_block(&truncated, "ccm() { :; }").is_err());
+        assert!(merge_profile_block(&truncated, "ccm() { :; }", "远端 ~/.bashrc").is_err());
     }
 
     /// F08b：仅当交叉编译产物已放进 embedded-daemons/（build.rs 置了 `embedded_daemons` cfg）
@@ -1121,24 +1218,192 @@ mod tests {
     #[test]
     fn strip_removes_paired_block_keeps_surrounding() {
         let s = format!("head\n{CCM_PROFILE_BEGIN}\nccm() {{ :; }}\n{CCM_PROFILE_END}\ntail\n");
-        let out = strip_profile_block(&s);
+        let out = strip_profile_block(&s, "远端 ~/.bashrc").unwrap();
         assert_eq!(out, "head\ntail\n");
         assert!(!out.contains(CCM_PROFILE_BEGIN));
         // 幂等：再 strip 不变
-        assert_eq!(strip_profile_block(&out), out);
+        assert_eq!(strip_profile_block(&out, "远端 ~/.bashrc").unwrap(), out);
     }
 
     #[test]
     fn strip_noop_when_no_block() {
         let s = "just user content\nno block here\n";
-        assert_eq!(strip_profile_block(s), s);
+        assert_eq!(strip_profile_block(s, "远端 ~/.bashrc").unwrap(), s);
+    }
+
+    /// **T04 审计⑤**：抽出来的谓词要对两个消费者都成立，且**标记词是必需条件**
+    /// ——那是防误删的关键（把"这是 cc-monitor 管的目录"变成路径本身的性质）。
+    #[test]
+    fn safe_managed_path_requires_a_marker() {
+        // 四条通用条件
+        for bad in ["", "  ", "relative/x", "/a/../b/cc-monitor", "/"] {
+            assert!(
+                !is_safe_remote_managed_path(bad, &["cc-monitor"]),
+                "{bad:?} 不该通过"
+            );
+        }
+        // **没有标记词一律不通过**——哪怕是个完全正常的绝对路径
+        assert!(!is_safe_remote_managed_path(
+            "/home/u/.local/bin/x",
+            &["cc-monitor"]
+        ));
+        assert!(is_safe_remote_managed_path(
+            "/home/u/.cc-monitor/d",
+            &["cc-monitor"]
+        ));
+        // 多标记词：任一命中即可（acct-iso 就是两个）
+        let m = &["cc-acct-iso", ".cc-monitor"];
+        assert!(is_safe_remote_managed_path("/opt/cc-acct-iso", m));
+        assert!(is_safe_remote_managed_path("/home/u/.cc-monitor/ai", m));
+        assert!(!is_safe_remote_managed_path("/opt/other", m));
+    }
+
+    /// **T04 审计②：迁移后远端这三个边界的语义确实变了，逐条锁死。**
+    /// 我原话"判定没变"已被实测证伪——写在这里免得下次又当成"没变"。
+    #[test]
+    fn remote_merge_boundary_semantics_after_migration() {
+        let snip = "ccm() { :; }";
+        // ① 行内 marker 不再命中 → 追加，且**用户那两行 echo 一个字节都不动**
+        //    （旧实现会切断第一行、吃掉第二行——远端一个未申报就修掉的数据丢失）
+        let inline =
+            format!("a\necho \"{CCM_PROFILE_BEGIN}\"\necho \"{CCM_PROFILE_END}\"\nuser code\n");
+        let got = merge_profile_block(&inline, snip, "远端 ~/.bashrc").unwrap();
+        assert!(got.starts_with(&inline), "块外内容必须逐字保留：{got}");
+        assert!(got.contains(snip));
+        // ② BEGIN 与 END 同一行 → 现在 Err（**退化，如实记**：旧实现能替换该行）
+        let same_line = format!("a\n{CCM_PROFILE_BEGIN} {CCM_PROFILE_END}\nb\n");
+        let e = merge_profile_block(&same_line, snip, "远端 ~/.bashrc").unwrap_err();
+        assert!(e.contains("找不到配对的 END"), "{e}");
+        // ③ 缩进 marker → 归一到列 0（旧实现保留 BEGIN 缩进、丢 END 缩进，不自洽）
+        let indented = format!("a\n  {CCM_PROFILE_BEGIN}\nold\n\t{CCM_PROFILE_END}\nb\n");
+        let got = merge_profile_block(&indented, snip, "远端 ~/.bashrc").unwrap();
+        assert!(
+            got.contains(&format!("\n{CCM_PROFILE_BEGIN}\n")),
+            "缩进应归一到列 0：{got}"
+        );
+        assert!(
+            got.starts_with("a\n") && got.ends_with("b\n"),
+            "块外保留：{got}"
+        );
+    }
+
+    // ===== T04 审计① 上传读回判据（此前这条路完全没有读回）=====
+
+    #[test]
+    fn upload_verify_catches_same_length_corruption() {
+        let want = b"#!/bin/sh\nexec ccm \"$@\"\n";
+        // 等长但一字节不同——**只比长度是查不出来的**，而此前连长度都没比
+        let mut bad = want.to_vec();
+        let k = bad.len() / 2;
+        bad[k] ^= 0x01;
+        let e = verify_uploaded_bytes("/r/x", want, Some(&bad)).unwrap_err();
+        assert!(e.contains("长度相同"), "{e}");
+        assert!(e.contains("首个差异在第"), "要指出位置：{e}");
+        // **关键**：措辞必须说清标记没写，否则用户不知道下次会重试
+        assert!(e.contains("未写入版本标记"), "{e}");
     }
 
     #[test]
-    fn strip_noop_on_malformed_begin_without_end() {
-        // BEGIN 无配对 END（损坏）→ 原样返回，绝不吞内容（同 merge 的 B1 守卫精神）。
-        let s = format!("user_a\n{CCM_PROFILE_BEGIN}\nhalf written, no end");
-        assert_eq!(strip_profile_block(&s), s);
+    fn upload_verify_catches_truncation_and_unreadable() {
+        let want = b"0123456789";
+        let e = verify_uploaded_bytes("/r/x", want, Some(b"01234")).unwrap_err();
+        assert!(e.contains("长度不匹配"), "{e}");
+        assert!(e.contains("期望 10 字节"), "{e}");
+        // 读不回来 ≠ 写对了
+        let e2 = verify_uploaded_bytes("/r/x", want, None).unwrap_err();
+        assert!(e2.contains("读不回"), "{e2}");
+        assert!(e2.contains("未写入版本标记"), "{e2}");
+    }
+
+    #[test]
+    fn upload_verify_passes_on_exact_bytes() {
+        // 二进制（含 NUL 与非 UTF-8）也要过——daemon 是可执行文件，String 路线走不通
+        let bin = &[0x7f, b'E', b'L', b'F', 0x00, 0xff, 0xfe];
+        assert!(verify_uploaded_bytes("/r/d", bin, Some(bin)).is_ok());
+        assert!(verify_uploaded_bytes("/r/d", b"", Some(b"")).is_ok());
+    }
+
+    /// **结构性守卫**：两条 deploy 路径的**内容**上传必须走 verified。
+    ///
+    /// 范围只覆盖 `deploy_remote_daemon` 与 `deploy_remote_acct_iso` 两个函数体
+    /// ——**第一版写成"全文件不许有裸 upload_atomic"，当场被自己抓**：
+    /// ccm helper 那条路（`&profile, stripped/merged`）**故意**用裸上传，
+    /// 因为它下游紧接着自己的读回 + 回滚（`sftp.rs` 那三处 `verify_readback`）。
+    /// 守卫范围比性质宽 = 假红 = 会被人关掉。
+    ///
+    /// 版本标记允许裸上传：它是"校验通过"的凭证，必须最后写。
+    #[test]
+    fn deploy_paths_use_verified_upload_for_content() {
+        fn body<'a>(src: &'a str, sig: &str) -> &'a str {
+            let i = src
+                .find(sig)
+                .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
+            let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
+            &src[i..j]
+        }
+        let checks = [
+            (
+                body(
+                    include_str!("sftp.rs"),
+                    "pub async fn deploy_remote_daemon(",
+                ),
+                "deploy_remote_daemon",
+            ),
+            (
+                body(
+                    include_str!("acct_iso_deploy.rs"),
+                    "pub async fn deploy_remote_acct_iso(",
+                ),
+                "deploy_remote_acct_iso",
+            ),
+        ];
+        let mut verified_total = 0usize;
+        for (b, what) in checks {
+            let code = b
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            // 反向自检：真取到函数体了
+            assert!(
+                code.contains("upload_atomic"),
+                "{what}: 取到的体里没有上传，守卫在空转"
+            );
+            verified_total += code.matches("upload_atomic_verified(").count();
+            for l in code.lines() {
+                if !l.contains("upload_atomic(") {
+                    continue;
+                }
+                assert!(
+                    l.contains("marker"),
+                    "{what}: 内容上传仍走裸 upload_atomic —— {}",
+                    l.trim()
+                );
+            }
+        }
+        // 计数自检：2 处 daemon 二进制 + 6 个 acct-iso 脚本
+        assert_eq!(
+            verified_total, 7,
+            "期望 1(daemon 体内) + 6(acct-iso)，实得 {verified_total}"
+        );
+    }
+
+    #[test]
+    fn strip_aborts_on_malformed_begin_without_end() {
+        // **这条测试原先把 bug 编码进去了**（T04 审计阻塞）：它断言悬空 BEGIN 时
+        // strip 是 no-op，而调用方据此打印「远端 … 没有 ccm 块，无需卸载」——
+        // 那正是同一个 commit 里被定义为 bug 的形态，只是发生在「卸」这半边。
+        // 现在两侧的装与卸四条路全走 `find_pair`，此处必须 Err 中止。
+        let corrupt = format!("a\n{CCM_PROFILE_BEGIN}\nccm() {{ :; }}\nuser code\n");
+        let e = strip_profile_block(&corrupt, "远端 ~/.bashrc").unwrap_err();
+        assert!(e.contains("找不到配对的 END"), "{e}");
+        assert!(e.contains("已中止"), "要让用户知道我们没动文件：{e}");
+        assert!(e.contains("远端 ~/.bashrc"), "要说清是哪个文件：{e}");
+        // 而**没有** BEGIN 时仍是正常的 no-op（别把这条也变成错误）
+        assert_eq!(
+            strip_profile_block("just user code\n", "远端 ~/.bashrc").unwrap(),
+            "just user code\n"
+        );
     }
 
     #[test]
