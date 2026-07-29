@@ -32,6 +32,7 @@ function row(over: Partial<SurfaceRow> = {}): SurfaceRow {
     path_declared: "~/.local/bin/ccm",
     path_resolved: "/h/.local/bin/ccm",
     note: null,
+    host_label: "远端（按连接配置）",
     effect_label: "整个文件由 cc-monitor 拥有，部署时整体覆盖",
     state: { kind: "present", detail: "文件，1024 字节" },
     installable: true,
@@ -259,6 +260,10 @@ describe("ConfigSurfaceSection", () => {
     expect(eff, "「我们做什么」列必须在 DOM 里").not.toBeNull();
     expect(undo, "「能否撤」列必须在 DOM 里").not.toBeNull();
     // 且内容真的是后端给的措辞 / describeUndo 的结论，不是空 div
+    // T04：位置也必须上屏（同一条纪律：纯函数被断言 ≠ 它上了屏）
+    expect(r.querySelector(".config-surface-host")?.textContent).toContain(
+      "远端（按连接配置）",
+    );
     expect(eff!.textContent).toBe("整个文件由 cc-monitor 拥有，部署时整体覆盖");
     expect(undo!.textContent).toContain("尚未支持部署");
   });

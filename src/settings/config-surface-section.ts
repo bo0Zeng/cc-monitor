@@ -23,6 +23,7 @@ export interface SurfaceRow {
   path_declared: string;
   path_resolved: string | null;
   note: string | null;
+  host_label: string;
   effect_label: string;
   state: SurfaceState;
   installable: boolean;
@@ -87,6 +88,7 @@ export function formatReportText(r: ConfigSurfaceReport): string {
     }
     const st = describeSurfaceState(row.state);
     lines.push(`  ${row.path_declared}${row.note ? `（${row.note}）` : ""}`);
+    lines.push(`    位置: ${row.host_label}`);
     if (row.path_resolved) lines.push(`    解析为: ${row.path_resolved}`);
     lines.push(`    我们做什么: ${row.effect_label}`);
     lines.push(`    现状: ${st.text}`);
@@ -271,6 +273,13 @@ export class ConfigSurfaceSection {
       rp.textContent = `解析为 ${row.path_resolved}`;
       el.appendChild(rp);
     }
+
+    // T04：先说清"在哪台机器上"——`$PROFILE` 与 `~/.local/bin/ccm` 长得都像本机路径，
+    // 不标明的话用户根本分不出。
+    const host = document.createElement("div");
+    host.className = "config-surface-host";
+    host.textContent = `位置：${row.host_label}`;
+    el.appendChild(host);
 
     const eff = document.createElement("div");
     eff.className = "config-surface-effect";
