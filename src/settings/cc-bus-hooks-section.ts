@@ -13,7 +13,7 @@
 // 然后建议用户去修一个没坏的东西。所以这里必须把
 // 「显式路径且存在（没问题）」与「显式路径但不存在（真问题）」**分开渲染**。
 import { invoke } from "@tauri-apps/api/core";
-import { showActionFailureToast } from "../error-toast";
+import { buildPasteBlock, type PasteBlock } from "../paste-block"; // T03
 
 /** 与 Rust 侧 `HookState` 的 `#[serde(tag = "kind", rename_all = "kebab-case")]` 对位。 */
 type HookState =
@@ -28,10 +28,15 @@ interface HooksDiagnosis {
   stop: HookState;
   note: string;
 }
+/** 与 Rust 侧 `Snippet` 对位。`warning` = 选的形态与盘上实况冲突（T03 收的 B04 登记项）。 */
+interface Snippet {
+  text: string;
+  warning: string | null;
+}
 interface HooksReport {
   diagnosis: HooksDiagnosis;
-  snippet_home: string;
-  snippet_bare: string;
+  snippet_home: Snippet;
+  snippet_bare: Snippet;
   source: string;
 }
 
@@ -74,7 +79,7 @@ export class CcBusHooksSection {
   private originSel!: HTMLSelectElement;
   private localBox!: HTMLElement;
   private remoteBox!: HTMLElement;
-  private snippetOut!: HTMLTextAreaElement;
+  private paste!: PasteBlock;
   private formSel!: HTMLSelectElement;
   private lastReport: HooksReport | null = null;
 
@@ -129,7 +134,8 @@ export class CcBusHooksSection {
 
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "settings-btn settings-btn-secondary cc-bus-hooks-check-remote";
+    btn.className =
+      "settings-btn settings-btn-secondary cc-bus-hooks-check-remote";
     btn.textContent = "检查远端";
     btn.addEventListener("click", () => void this.checkRemote(btn));
     row.appendChild(btn);
@@ -172,33 +178,21 @@ export class CcBusHooksSection {
     this.formSel.addEventListener("change", () => this.renderSnippet());
     box.appendChild(this.formSel);
 
-    this.snippetOut = document.createElement("textarea");
-    this.snippetOut.className = "settings-input cc-bus-hooks-out";
-    this.snippetOut.readOnly = true;
-    this.snippetOut.rows = 8;
-    box.appendChild(this.snippetOut);
-
-    const copy = document.createElement("button");
-    copy.type = "button";
-    copy.className = "settings-btn settings-btn-secondary cc-bus-hooks-copy";
-    copy.textContent = "复制";
-    copy.addEventListener("click", () => {
-      const v = this.snippetOut.value;
-      if (!v.trim()) {
-        showActionFailureToast("还没有片段", "先等诊断读完。", { level: "info", durationMs: 3000 });
-        return;
-      }
-      void navigator.clipboard?.writeText(v).then(
-        () =>
-          showActionFailureToast(
-            "已复制",
-            "把它合并进 ~/.claude/settings.json 的 hooks 段（**合并**，不是整份覆盖——那里可能还有别的工具的钩子）。改完新开一个会话才生效。",
-            { level: "info", durationMs: 6000 },
-          ),
-        () => showActionFailureToast("复制失败", "剪贴板不可用，手动选中复制。", { level: "error" }),
-      );
+    // T03：输出面 + 复制按钮 + 三句话改走统一组件。**形态选择器留在这里**
+    // （它是这一处独有的），生成仍在 Rust 侧。
+    this.paste = buildPasteBlock({
+      text: () => this.currentSnippet()?.text ?? "",
+      warning: () => this.currentSnippet()?.warning ?? null,
+      target: "~/.claude/settings.json 的 hooks 段",
+      mergeNote:
+        "**合并**进去，不是整份覆盖——那里可能还有别的工具的钩子，覆盖会把它们删掉。",
+      activation: "改完新开一个会话才生效（当前会话不会重读它）。",
+      invalidReason: (t) => (t.trim() ? null : "先等诊断读完。"),
+      multiline: true,
+      rows: 8,
+      className: "cc-bus-hooks-out",
     });
-    box.appendChild(copy);
+    box.appendChild(this.paste.element);
     return box;
   }
 
@@ -220,7 +214,9 @@ export class CcBusHooksSection {
       o.textContent = "（未配置远端）";
       this.originSel.appendChild(o);
       this.originSel.disabled = true;
-      const btn = this.element.querySelector<HTMLButtonElement>(".cc-bus-hooks-check-remote");
+      const btn = this.element.querySelector<HTMLButtonElement>(
+        ".cc-bus-hooks-check-remote",
+      );
       if (btn) btn.disabled = true;
       this.remoteBox.textContent = "未配置远端。";
       return;
@@ -250,7 +246,9 @@ export class CcBusHooksSection {
     btn.disabled = true;
     this.remoteBox.textContent = "检查中…";
     try {
-      const rep = await invoke<HooksReport>("diagnose_remote_cc_bus_hooks", { origin });
+      const rep = await invoke<HooksReport>("diagnose_remote_cc_bus_hooks", {
+        origin,
+      });
       this.renderDiag(this.remoteBox, rep);
     } catch (e) {
       this.remoteBox.textContent = `远端诊断失败：${String(e)}`;
@@ -286,9 +284,16 @@ export class CcBusHooksSection {
     }
   }
 
+  /** 当前形态对应的那份片段。诊断还没读完 → `null`。 */
+  private currentSnippet(): Snippet | null {
+    if (!this.lastReport) return null;
+    return this.formSel.value === "bare"
+      ? this.lastReport.snippet_bare
+      : this.lastReport.snippet_home;
+  }
+
   private renderSnippet(): void {
     if (!this.lastReport) return;
-    this.snippetOut.value =
-      this.formSel.value === "bare" ? this.lastReport.snippet_bare : this.lastReport.snippet_home;
+    this.paste.refresh();
   }
 }

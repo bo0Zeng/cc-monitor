@@ -31,7 +31,12 @@ import { openPortForwardPanel } from "../views/port-forward";
 import { deriveTmuxName } from "../remote-launch";
 import { runRemoteLauncher } from "../remote-launch-run";
 import { invalidateCcmProbeCache } from "../ccm-probe";
-import { fetchAccounts, isSelectable, currentWorkingAccount, withAccount } from "../accounts";
+import {
+  fetchAccounts,
+  isSelectable,
+  currentWorkingAccount,
+  withAccount,
+} from "../accounts";
 // F12：配置数据层已抽到 src/remote-config.ts（治分层倒挂）——UI 从数据模块 import，不再自持 CRUD。
 import {
   HOST_DEFAULTS,
@@ -80,7 +85,10 @@ export type ConnectStage =
   | { kind: "established" };
 
 /** F46：阶段事件 → 泳道行的图标 + 文案。纯函数便于单测。 */
-export function describeStage(st: ConnectStage): { icon: string; text: string } {
+export function describeStage(st: ConnectStage): {
+  icon: string;
+  text: string;
+} {
   switch (st.kind) {
     case "dialing":
       return { icon: "→", text: `拨号 ${st.endpoint}` };
@@ -99,7 +107,10 @@ export function describeStage(st: ConnectStage): { icon: string; text: string } 
     default: {
       // F46 建议 E：穷尽性兜底——未来新增 ConnectStage 变体时编译期(never)即报错。
       const _never: never = st;
-      return { icon: "·", text: String((_never as { kind?: string }).kind ?? "") };
+      return {
+        icon: "·",
+        text: String((_never as { kind?: string }).kind ?? ""),
+      };
     }
   }
 }
@@ -122,7 +133,8 @@ interface ConnTestResult {
  * daemonPath placeholder：必须是**绝对路径**。SSH exec 不经 shell，`~` 不会被展开，
  * 故用 `/home/<user>/...` 形式而非 `~/...`（避免误导用户以为 `~` 可用）。
  */
-const DAEMON_PATH_PLACEHOLDER = "/home/<user>/.cc-monitor/bin/cc-monitor-remote";
+const DAEMON_PATH_PLACEHOLDER =
+  "/home/<user>/.cc-monitor/bin/cc-monitor-remote";
 
 /**
  * 按远端用户名生成 daemonPath 默认值（与自动部署的约定路径一致，
@@ -161,6 +173,7 @@ const REMOTE_INFO_TEXT =
  */
 // 单一来源：shared/ccm-aliases.sh（后端 sftp.rs include_str! 同一文件，杜绝漂移）
 import CCM_WRAPPER_SNIPPET from "../../shared/ccm-aliases.sh?raw";
+import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件
 
 export interface RemoteSectionOptions {
   /** 被 CollapsibleGroup 包起来时传 headless: true，不渲染自己的小标题。 */
@@ -357,7 +370,8 @@ class MachineCard {
     // 删除按钮（legend 右侧）
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
-    removeBtn.className = "settings-btn settings-btn-secondary remote-machine-remove";
+    removeBtn.className =
+      "settings-btn settings-btn-secondary remote-machine-remove";
     removeBtn.textContent = "删除";
     removeBtn.title = "从列表移除这台机器";
     removeBtn.addEventListener("click", (ev) => {
@@ -383,11 +397,26 @@ class MachineCard {
       this.hooks.onChange();
     };
 
-    this.labelInput = buildTextRow(body, "名称 (label，可选)", "pi / nano（留空用主机名）", onChange);
-    this.hostInput = buildTextRow(body, "主机 (host)", "raspberrypi.local 或 192.168.1.10", onChange);
+    this.labelInput = buildTextRow(
+      body,
+      "名称 (label，可选)",
+      "pi / nano（留空用主机名）",
+      onChange,
+    );
+    this.hostInput = buildTextRow(
+      body,
+      "主机 (host)",
+      "raspberrypi.local 或 192.168.1.10",
+      onChange,
+    );
     this.portInput = buildNumberRow(body, "端口 (port)", 22, onChange);
     this.userInput = buildTextRow(body, "用户 (user)", "pi", onChange);
-    this.daemonPathInput = buildTextRow(body, "daemon 路径 (daemonPath)", DAEMON_PATH_PLACEHOLDER, onChange);
+    this.daemonPathInput = buildTextRow(
+      body,
+      "daemon 路径 (daemonPath)",
+      DAEMON_PATH_PLACEHOLDER,
+      onChange,
+    );
     const daemonHint = document.createElement("div");
     daemonHint.className = "settings-hint";
     daemonHint.textContent =
@@ -402,7 +431,12 @@ class MachineCard {
         onChange();
       }
     });
-    this.keyPathInput = buildTextRow(body, "私钥路径 (keyPath，可选)", "C:\\Users\\me\\.ssh\\id_ed25519", onChange);
+    this.keyPathInput = buildTextRow(
+      body,
+      "私钥路径 (keyPath，可选)",
+      "C:\\Users\\me\\.ssh\\id_ed25519",
+      onChange,
+    );
     this.fingerprintInput = buildTextRow(
       body,
       "主机指纹 (hostKeyFingerprint，可选)",
@@ -415,11 +449,14 @@ class MachineCard {
     resetFpBtn.type = "button";
     resetFpBtn.className = "settings-btn settings-btn-secondary";
     resetFpBtn.textContent = "重置为 TOFU";
-    resetFpBtn.title = "清除已固化的主机指纹，下次连接重新捕获（仅在你确知服务器合法换过 host key 时用）";
+    resetFpBtn.title =
+      "清除已固化的主机指纹，下次连接重新捕获（仅在你确知服务器合法换过 host key 时用）";
     resetFpBtn.addEventListener("click", () => this.onResetFingerprint());
     this.fingerprintInput.parentElement?.appendChild(resetFpBtn);
     const syncResetVisibility = (): void => {
-      resetFpBtn.style.display = shouldShowResetFingerprint(this.fingerprintInput.value)
+      resetFpBtn.style.display = shouldShowResetFingerprint(
+        this.fingerprintInput.value,
+      )
         ? "inline-block"
         : "none";
     };
@@ -439,7 +476,8 @@ class MachineCard {
     this.addressesInput.className = "settings-input settings-input-wide";
     this.addressesInput.rows = 2;
     this.addressesInput.spellcheck = false;
-    this.addressesInput.placeholder = "10.0.0.2\npi.example.com:2222\n[fe80::1]:22（首选地址填上方 host）";
+    this.addressesInput.placeholder =
+      "10.0.0.2\npi.example.com:2222\n[fe80::1]:22（首选地址填上方 host）";
     this.addressesInput.addEventListener("change", onChange);
     addrRow.appendChild(this.addressesInput);
     body.appendChild(addrRow);
@@ -517,14 +555,22 @@ class MachineCard {
 
     // F48：打开该台的 SFTP 文件面板（独立 overlay）。
     actionRow.appendChild(
-      mkBtn("文件", "", "打开 SFTP 文件面板（浏览 / 上传 / 下载 / 管理远端文件）", () => {
-        const cfg = this.collect();
-        if (!cfg.host || !cfg.user) {
-          this.renderTestResult(null, "请先填好 host / user 再打开文件面板。");
-          return;
-        }
-        openSftpPanel(cfg);
-      }),
+      mkBtn(
+        "文件",
+        "",
+        "打开 SFTP 文件面板（浏览 / 上传 / 下载 / 管理远端文件）",
+        () => {
+          const cfg = this.collect();
+          if (!cfg.host || !cfg.user) {
+            this.renderTestResult(
+              null,
+              "请先填好 host / user 再打开文件面板。",
+            );
+            return;
+          }
+          openSftpPanel(cfg);
+        },
+      ),
     );
 
     // F50：一键把本地公钥推到远端 authorized_keys（onboarding 免密）。
@@ -618,7 +664,8 @@ class MachineCard {
    * host key 时才该重置。
    */
   private onResetFingerprint(): void {
-    const host = this.hostInput.value.trim() || this.labelInput.value.trim() || "该主机";
+    const host =
+      this.hostInput.value.trim() || this.labelInput.value.trim() || "该主机";
     if (
       !window.confirm(
         `确认重置 ${host} 的主机指纹？\n\n` +
@@ -641,14 +688,17 @@ class MachineCard {
     this.testResult.style.display = "block";
     const line = document.createElement("div");
     line.className = "remote-test-line remote-test-caution";
-    line.textContent = "已重置为 TOFU：下次连接将重新捕获主机指纹（记得测试连接后重新固化）。";
+    line.textContent =
+      "已重置为 TOFU：下次连接将重新捕获主机指纹（记得测试连接后重新固化）。";
     this.testResult.appendChild(line);
   }
 
   /** legend 显示 label || host || 占位。 */
   private updateLegend(): void {
     this.nameSpan.textContent =
-      this.labelInput.value.trim() || this.hostInput.value.trim() || "（未命名机器）";
+      this.labelInput.value.trim() ||
+      this.hostInput.value.trim() ||
+      "（未命名机器）";
   }
 
   /** 点「测试连接」：组本卡片 → test_remote_connection → 渲染结果。 */
@@ -670,7 +720,10 @@ class MachineCard {
     const onStage = new Channel<ConnectStage>();
     onStage.onmessage = (st) => this.appendStageLine(stageLog, st);
     try {
-      const res = await invoke<ConnTestResult>("test_remote_connection", { cfg, onStage });
+      const res = await invoke<ConnTestResult>("test_remote_connection", {
+        cfg,
+        onStage,
+      });
       this.renderTestResult(res, null, stageLog);
     } catch (e) {
       console.warn("test_remote_connection failed:", e);
@@ -751,10 +804,13 @@ class MachineCard {
       pubKeyPath = picked;
     }
     await this.runRemoteAction(btn, "推送公钥中", async () => {
-      const r = await invoke<{ outcome: string; pubPath: string }>("push_public_key", {
-        cfg,
-        pubKeyPath,
-      });
+      const r = await invoke<{ outcome: string; pubPath: string }>(
+        "push_public_key",
+        {
+          cfg,
+          pubKeyPath,
+        },
+      );
       return r.outcome === "added"
         ? `公钥已推送（ADDED）：${r.pubPath}`
         : `公钥已存在，无需重复（ALREADY）：${r.pubPath}`;
@@ -783,7 +839,10 @@ class MachineCard {
     title.textContent = `在 ${origin} 开新 Claude`;
     box.appendChild(title);
 
-    const mkField = (labelText: string, placeholder: string): HTMLInputElement => {
+    const mkField = (
+      labelText: string,
+      placeholder: string,
+    ): HTMLInputElement => {
       const row = document.createElement("label");
       row.className = "launcher-field";
       const span = document.createElement("span");
@@ -798,7 +857,10 @@ class MachineCard {
     };
     const cwdInput = mkField("工作目录", "/home/pi/proj（留空=登录默认目录）");
     const nameInput = mkField("tmux 会话名", "留空则按工作目录名自动生成");
-    const cmdInput = mkField("启动命令", "claude（可自定义，如 claude --model opus）");
+    const cmdInput = mkField(
+      "启动命令",
+      "claude（可自定义，如 claude --model opus）",
+    );
     // 工作目录变化 → 实时预览留空时将用的派生名(placeholder)。
     cwdInput.addEventListener("input", () => {
       nameInput.placeholder = cwdInput.value.trim()
@@ -826,7 +888,8 @@ class MachineCard {
         const none = document.createElement("option");
         none.value = "";
         // U8：说清后果——「不指定」= 用远端 ~/.claude 那套基座凭据，**不受当前账号影响**。
-        none.textContent = "不指定（用远端登录的基座账号，不注入 CLAUDE_CONFIG_DIR）";
+        none.textContent =
+          "不指定（用远端登录的基座账号，不注入 CLAUDE_CONFIG_DIR）";
         acctSelect.appendChild(none);
         for (const a of sel) {
           const opt = document.createElement("option");
@@ -937,8 +1000,10 @@ class MachineCard {
     ) {
       return;
     }
-    await this.runRemoteAction(this.daemonUninstallButton, "卸载 daemon 中", () =>
-      invoke<string>("uninstall_remote_daemon", { cfg }),
+    await this.runRemoteAction(
+      this.daemonUninstallButton,
+      "卸载 daemon 中",
+      () => invoke<string>("uninstall_remote_daemon", { cfg }),
     );
   }
 
@@ -957,7 +1022,10 @@ class MachineCard {
       return;
     }
     await this.runRemoteAction(this.ccmUninstallButton, "卸载 ccm 中", () =>
-      invoke<string>("uninstall_remote_ccm_helper", { cfg, profile: ".bashrc" }),
+      invoke<string>("uninstall_remote_ccm_helper", {
+        cfg,
+        profile: ".bashrc",
+      }),
     );
   }
 
@@ -1005,9 +1073,14 @@ class MachineCard {
         const saveBtn = document.createElement("button");
         saveBtn.type = "button";
         saveBtn.className = "settings-btn";
-        saveBtn.textContent = current ? "更新为该指纹（严格校验）" : "保存为严格校验";
+        saveBtn.textContent = current
+          ? "更新为该指纹（严格校验）"
+          : "保存为严格校验";
         const fp = res.fingerprint;
-        saveBtn.addEventListener("click", () => void this.onSaveFingerprint(fp));
+        saveBtn.addEventListener(
+          "click",
+          () => void this.onSaveFingerprint(fp),
+        );
         fpLine.appendChild(saveBtn);
 
         // FIX 4：首次 / TOFU 捕获（之前没配过指纹）时该指纹**未经验证**，首连本身可能已被
@@ -1107,7 +1180,10 @@ export class RemoteSection {
     this.updateEmptyHint();
   }
 
-  private appendCard(initial: RemoteHostConfig, collapsed = false): MachineCard {
+  private appendCard(
+    initial: RemoteHostConfig,
+    collapsed = false,
+  ): MachineCard {
     const card = new MachineCard(
       initial,
       {
@@ -1197,7 +1273,8 @@ export class RemoteSection {
     pfBtn.type = "button";
     pfBtn.className = "settings-btn settings-btn-secondary";
     pfBtn.textContent = "端口转发…";
-    pfBtn.title = "本地端口转发(-L)管理台:把远端机(或其内网)端口映到本机,经已配置的 SSH 连接隧道";
+    pfBtn.title =
+      "本地端口转发(-L)管理台:把远端机(或其内网)端口映到本机,经已配置的 SSH 连接隧道";
     pfBtn.addEventListener("click", () => openPortForwardPanel());
     pfRow.appendChild(pfBtn);
     group.appendChild(pfRow);
@@ -1230,7 +1307,8 @@ export class RemoteSection {
     // 空列表提示
     this.emptyHint = document.createElement("div");
     this.emptyHint.className = "settings-hint";
-    this.emptyHint.textContent = "尚未添加远端机器。点下方「添加机器」，或从上方下拉导入别名。";
+    this.emptyHint.textContent =
+      "尚未添加远端机器。点下方「添加机器」，或从上方下拉导入别名。";
     this.emptyHint.style.display = "none";
     group.appendChild(this.emptyHint);
 
@@ -1271,13 +1349,17 @@ export class RemoteSection {
     row.appendChild(labelLine);
 
     this.importSelect = document.createElement("select");
-    this.importSelect.className = "settings-input settings-input-select settings-input-wide";
+    this.importSelect.className =
+      "settings-input settings-input-select settings-input-wide";
     const placeholder = document.createElement("option");
     placeholder.value = "";
     placeholder.textContent = "选择一个主机别名…（导入为新机器）";
     this.importSelect.appendChild(placeholder);
     this.importSelect.disabled = true;
-    this.importSelect.addEventListener("change", () => void this.onImportAlias());
+    this.importSelect.addEventListener(
+      "change",
+      () => void this.onImportAlias(),
+    );
     row.appendChild(this.importSelect);
 
     // F57：批量导入——一次导入全部主机,智能聚合同机多地址,预览可拆分。
@@ -1303,7 +1385,9 @@ export class RemoteSection {
     const alias = this.importSelect.value;
     if (!alias) return;
     try {
-      const resolved = await invoke<ResolvedHost>("resolve_ssh_host", { alias });
+      const resolved = await invoke<ResolvedHost>("resolve_ssh_host", {
+        alias,
+      });
       const card = this.appendCard({ ...HOST_DEFAULTS });
       card.applyResolved(resolved, alias);
       await this.save();
@@ -1366,8 +1450,18 @@ export class RemoteSection {
 
   /** F57：批量导入预览弹框——列各聚合组,勾选包含 / 拆分成独立机 / 改 label,确认建卡。 */
   private showImportPreview(groups: ImportGroup[]): void {
-    type Row = { g: ImportGroup; include: boolean; split: boolean; label: string };
-    const state: Row[] = groups.map((g) => ({ g, include: true, split: false, label: g.label }));
+    type Row = {
+      g: ImportGroup;
+      include: boolean;
+      split: boolean;
+      label: string;
+    };
+    const state: Row[] = groups.map((g) => ({
+      g,
+      include: true,
+      split: false,
+      label: g.label,
+    }));
 
     const back = document.createElement("div");
     back.className = "import-preview-back";
@@ -1382,7 +1476,9 @@ export class RemoteSection {
     list.className = "import-preview-list";
     for (const s of state) {
       const src = s.g.members.map((m) => m.alias).join(", ");
-      const addrHint = s.g.addresses.length ? ` +${s.g.addresses.length} 备用地址` : "";
+      const addrHint = s.g.addresses.length
+        ? ` +${s.g.addresses.length} 备用地址`
+        : "";
       const jumpHint = s.g.jump ? ` · 跳板 ${s.g.jump}` : "";
       const aggLine = `${s.g.host}${addrHint} · ${s.g.user || "(无 user)"}${jumpHint} · 来源: ${src}`;
 
@@ -1460,7 +1556,12 @@ export class RemoteSection {
 
   /** F57：把预览里勾选的组建成机器卡（拆分组建多台;同名 label 已存在则跳过）。 */
   private async applyImportPreview(
-    state: Array<{ g: ImportGroup; include: boolean; split: boolean; label: string }>,
+    state: Array<{
+      g: ImportGroup;
+      include: boolean;
+      split: boolean;
+      label: string;
+    }>,
   ): Promise<void> {
     // 已存在的卡（导入前）→ 撞到就跳过（不重复导入）。批内新机同名 → 加后缀消歧（不丢机,F57-1）。
     const preExisting = new Set(
@@ -1527,31 +1628,21 @@ export class RemoteSection {
     );
     row.appendChild(label);
 
-    const pre = document.createElement("pre");
-    pre.className = "remote-wrapper-snippet";
-    pre.textContent = CCM_WRAPPER_SNIPPET;
-    row.appendChild(pre);
-
-    const btnRow = document.createElement("div");
-    btnRow.className = "settings-row settings-row-end";
-    const copyBtn = document.createElement("button");
-    copyBtn.type = "button";
-    copyBtn.className = "settings-btn settings-btn-secondary";
-    copyBtn.textContent = "复制";
-    copyBtn.addEventListener("click", () => {
-      void navigator.clipboard.writeText(CCM_WRAPPER_SNIPPET).then(
-        () => {
-          const prev = copyBtn.textContent;
-          copyBtn.textContent = "已复制";
-          window.setTimeout(() => {
-            copyBtn.textContent = prev;
-          }, 1500);
-        },
-        (e) => console.warn("copy ccm aliases failed:", e),
-      );
-    });
-    btnRow.appendChild(copyBtn);
-    row.appendChild(btnRow);
+    // T03：改走统一的待贴块。**这一处此前有两个真缺陷**，只有把三个待贴落点放到一起
+    // 数才看得见：① 没有粘后指引（另两处都有）；② 复制失败被 `console.warn` 吞掉
+    // ——用户点了「复制」，按钮不变、没有任何提示，然后去粘贴，粘到的是上一次剪贴板里的东西。
+    row.appendChild(
+      buildPasteBlock({
+        text: () => CCM_WRAPPER_SNIPPET,
+        target: "这台远端的 ~/.bashrc（或它实际用的 shell 配置文件）",
+        mergeNote:
+          "追加到文件末尾即可；里面是带 BEGIN/END 围栏的块，重复贴会有两份，先删掉旧的那一份。",
+        activation: "source 它，或在该远端开一个新的登录 shell。",
+        multiline: true,
+        rows: 10,
+        className: "remote-wrapper-snippet-paste",
+      }).element,
+    );
 
     parent.appendChild(row);
   }
@@ -1575,7 +1666,8 @@ export class RemoteSection {
       : 0;
     // 指纹格式软校验：非空且不以 SHA256: 开头 → 大概率粘错字段。
     const fingerprintLooksOff = next.hosts.some(
-      (h) => !!h.hostKeyFingerprint && !h.hostKeyFingerprint.startsWith("SHA256:"),
+      (h) =>
+        !!h.hostKeyFingerprint && !h.hostKeyFingerprint.startsWith("SHA256:"),
     );
 
     if (incompleteCount > 0) {
@@ -1583,7 +1675,9 @@ export class RemoteSection {
         `已保存，但有 ${incompleteCount} 台 host/user/daemonPath 不完整 —— 后端会跳过这些台。补全后重启 monitor 才会连。`,
       );
     } else if (fingerprintLooksOff) {
-      this.showBanner("已保存。注意：某台主机指纹不是 `SHA256:` 开头格式 —— 请确认没粘错。");
+      this.showBanner(
+        "已保存。注意：某台主机指纹不是 `SHA256:` 开头格式 —— 请确认没粘错。",
+      );
     }
 
     try {
