@@ -20,7 +20,8 @@ type HookState =
   | { kind: "not-installed" }
   | { kind: "installed-via-path"; command: string }
   | { kind: "installed-at-path"; command: string; path: string }
-  | { kind: "path-missing"; command: string; path: string };
+  | { kind: "path-missing"; command: string; path: string }
+  | { kind: "unknown"; command: string };
 
 interface HooksDiagnosis {
   session_start: HookState;
@@ -34,19 +35,37 @@ interface HooksReport {
   source: string;
 }
 
-/** 一态 → （给用户看的话，是否算能用）。**`path-missing` 绝不能说成"已装"**。 */
-export function describeState(st: HookState): { text: string; ok: boolean } {
+/** 一态 → 展示文案 + 三档语气。**`path-missing` 绝不能说成"已装"**；
+ *  `unknown` 要中性（既不说已装也不说未装）。 */
+export function describeState(st: HookState): {
+  text: string;
+  tone: "ok" | "bad" | "unknown";
+} {
   switch (st.kind) {
     case "not-installed":
-      return { text: "未装", ok: false };
+      return { text: "未装", tone: "bad" };
     case "installed-via-path":
-      return { text: "已装（走 PATH）", ok: true };
+      return { text: "已装（走 PATH）", tone: "ok" };
     case "installed-at-path":
       // 这是用户当前的实际状态。**不能渲染成"有问题"**——它能跑。
-      return { text: `已装（显式路径：${st.path}）`, ok: true };
+      return { text: `已装（显式路径：${st.path}）`, tone: "ok" };
     case "path-missing":
       // 真正的第三态：看着像装了，其实指不到东西。
-      return { text: `装了但路径不存在：${st.path}`, ok: false };
+      return { text: `装了但路径不存在：${st.path}`, tone: "bad" };
+    case "unknown":
+      // **第五态**（B04 审计 B04-4）：命令里出现了目标程序，但它包在 sh -c / env /
+      // timeout 之类里，判不出是不是真的在跑。此前这种情况落到"未装"（红），
+      // 于是装了包装写法的用户会去贴一份重复的钩子。**猜"未装"和猜"已装"一样是猜。**
+      return {
+        text: `无法判断（命令形态复杂，钩子里出现了它但不是被直接执行的：${st.command}）`,
+        tone: "unknown",
+      };
+    default: {
+      // 后端将来加第六态时，这里**不能整个炸掉**（原实现无 default，`d` 会是 undefined，
+      // `d.ok` 当场抛，整个 renderDiag 挂掉）——与本工作区"对自己的 IPC 也要防御"一致。
+      const unknownKind = (st as { kind?: string }).kind ?? "?";
+      return { text: `未知状态（${unknownKind}）`, tone: "unknown" };
+    }
   }
 }
 
@@ -138,8 +157,12 @@ export class CcBusHooksSection {
     this.formSel.className = "settings-input cc-bus-hooks-form";
     // **$HOME 形态排第一 = 默认**：实测这台机器上用的就是它，是被验证过能工作的形态。
     for (const [v, label] of [
-      ["home", "$HOME 显式路径（推荐，与本机现状一致）"],
-      ["bare", "裸命令（简洁，依赖 PATH）"],
+      // **不再宣称"与本机现状一致"**（B04 审计 B04-6）：那句话是写死的，而 `snippet()`
+      // 根本不接收诊断结果。若用户的 cc-register 只在 /usr/local/bin，面板仍会推荐
+      // `$HOME/.local/bin/...` 并说"与现状一致"——贴上去就是一个 PathMissing 的钩子。
+      // 与其给一个可能是错的承诺，不如只描述两种形态各自的取舍，让用户按诊断结果自己选。
+      ["home", "$HOME 显式路径（不依赖 PATH；要求它确实装在那儿）"],
+      ["bare", "裸命令（简洁；要求它在 PATH 上）"],
     ]) {
       const o = document.createElement("option");
       o.value = v;
@@ -256,7 +279,7 @@ export class CcBusHooksSection {
     ] as [string, HookState][]) {
       const d = describeState(st);
       const line = document.createElement("div");
-      line.className = `cc-bus-hooks-state cc-bus-hooks-${d.ok ? "ok" : "bad"}`;
+      line.className = `cc-bus-hooks-state cc-bus-hooks-${d.tone}`;
       line.dataset.kind = st.kind; // 靠 dataset 认状态，不靠文案
       line.textContent = `${label}：${d.text}`;
       box.appendChild(line);

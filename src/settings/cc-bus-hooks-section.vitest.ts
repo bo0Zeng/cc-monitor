@@ -28,23 +28,23 @@ beforeEach(() => {
 describe("B04 四态不得被误渲染", () => {
   it("installed-at-path 是用户当前状态，**不能**被说成有问题", () => {
     const d = describeState({ kind: "installed-at-path", command: "x", path: "$HOME/.local/bin/cc-register" });
-    expect(d.ok).toBe(true);
+    expect(d.tone).toBe("ok");
     expect(d.text).toContain("已装");
     expect(d.text).not.toContain("但");
   });
 
   it("path-missing **绝不能**被说成已装", () => {
     const d = describeState({ kind: "path-missing", command: "x", path: "/gone/cc-register" });
-    expect(d.ok).toBe(false);
+    expect(d.tone).toBe("bad");
     expect(d.text).toContain("路径不存在");
     expect(d.text).not.toMatch(/^已装/);
   });
 
   it("四态各自的 ok 判定", () => {
-    expect(describeState({ kind: "not-installed" }).ok).toBe(false);
-    expect(describeState({ kind: "installed-via-path", command: "cc-register" }).ok).toBe(true);
-    expect(describeState({ kind: "installed-at-path", command: "x", path: "/p" }).ok).toBe(true);
-    expect(describeState({ kind: "path-missing", command: "x", path: "/p" }).ok).toBe(false);
+    expect(describeState({ kind: "not-installed" }).tone).toBe("bad");
+    expect(describeState({ kind: "installed-via-path", command: "cc-register" }).tone).toBe("ok");
+    expect(describeState({ kind: "installed-at-path", command: "x", path: "/p" }).tone).toBe("ok");
+    expect(describeState({ kind: "path-missing", command: "x", path: "/p" }).tone).toBe("bad");
   });
 
   it("渲染时 ok/bad 的 class 与 dataset 必须与状态一致", async () => {
@@ -146,11 +146,10 @@ describe("B04 只读与文案", () => {
     for (const bad of ["write_settings", "save_settings", "writeTextFile", "install_hooks", "apply_hooks"]) {
       expect(code).not.toContain(bad);
     }
-    // 只允许这三条只读 invoke
-    const invokes = [...code.matchAll(/invoke<[^>]*>\(\s*"([a-z_]+)"/g)].map((m) => m[1]);
-    expect(new Set(invokes)).toEqual(
-      new Set(["list_remote_mcp_origins", "diagnose_local_cc_bus_hooks", "diagnose_remote_cc_bus_hooks"]),
-    );
+    // 只允许只读 invoke —— **扫描器用下面那条改进版**（原正则 /invoke<[^>]*>\(\s*"([a-z_]+)"/
+    // 被审计实测出对 6 种写法完全看不见：不带类型参数 / 单引号 / 模板串 / 嵌套泛型 /
+    // 驼峰命名 / 常量间接。白名单看不见新增的 invoke = 白名单是摆设）。
+    // 具体断言见本文件末尾「用改进后的扫描器复查」那条，那里同时守着扫描器自身。
   });
 
   it("文案要讲清为什么不代劳，而不是只说「请手动粘贴」", () => {
@@ -187,5 +186,64 @@ describe("B04 对自己的 IPC 返回值也要防御", () => {
     document.body.appendChild(s.element);
     await flush();
     expect(s.element.querySelector(".cc-bus-hooks-remote")?.textContent).toContain("未配置远端");
+  });
+});
+
+describe("B04 审计修复：第五态、兜底、以及守卫本身", () => {
+  it("【B04-4】unknown 要中性，既不说已装也不说未装", () => {
+    const d = describeState({ kind: "unknown", command: 'sh -c "cc-register"' });
+    expect(d.tone).toBe("unknown");
+    expect(d.text).toContain("无法判断");
+    expect(d.text).not.toContain("未装");
+    expect(d.text).not.toMatch(/^已装/);
+  });
+
+  it("【建议】后端加第六态时不得整个炸掉（原实现无 default，d.ok 当场抛）", () => {
+    // 故意传一个类型上不存在的 kind——模拟后端先行升级
+    const d = describeState({ kind: "brand-new-kind" } as unknown as Parameters<typeof describeState>[0]);
+    expect(d.tone).toBe("unknown");
+    expect(d.text).toContain("未知状态");
+  });
+
+  it("【B04-6】不得再宣称「与本机现状一致」（那是写死的，snippet 根本不看诊断）", () => {
+    const s2 = new CcBusHooksSection();
+    const all = s2.element.textContent ?? "";
+    expect(all).not.toContain("与本机现状一致");
+  });
+
+  it("【B04-2】invoke 白名单必须看得见各种写法，而不只是「带类型参数+双引号」", () => {
+    // 审计实测：原正则 /invoke<[^>]*>\(\s*"([a-z_]+)"/g 对 6 种写法完全看不见。
+    // 这条测试守的是**扫描器本身**——它若只认一种写法，白名单就是摆设。
+    const scan = (code: string): string[] => [
+      ...code.matchAll(/invoke\s*(?:<[^(]*?>)?\s*\(\s*[`'"]([A-Za-z_][A-Za-z0-9_]*)[`'"]/g),
+    ].map((m) => m[1]);
+    const forms = [
+      ['invoke<void>("new_cmd")', "new_cmd"],
+      ['invoke("new_cmd")', "new_cmd"],
+      ["invoke<void>('new_cmd')", "new_cmd"],
+      ["invoke<void>(`new_cmd`)", "new_cmd"],
+      ['invoke<Record<string, string>>("new_cmd")', "new_cmd"],
+      ['invoke<void>("newCmd2")', "newCmd2"],
+      ['invoke<void>(\n  "new_cmd",\n)', "new_cmd"],
+    ] as const;
+    for (const [code, want] of forms) {
+      expect(scan(code), `这种写法必须被看见: ${code}`).toContain(want);
+    }
+  });
+
+  it("【B04-2】用改进后的扫描器复查：本文件仍只有三条只读 invoke", () => {
+    const src = readFileSync(resolve(process.cwd(), "src/settings/cc-bus-hooks-section.ts"), "utf8");
+    const code = src
+      .split("\n")
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join("\n");
+    const found = new Set(
+      [...code.matchAll(/invoke\s*(?:<[^(]*?>)?\s*\(\s*[`'"]([A-Za-z_][A-Za-z0-9_]*)[`'"]/g)].map(
+        (m) => m[1],
+      ),
+    );
+    expect(found).toEqual(
+      new Set(["list_remote_mcp_origins", "diagnose_local_cc_bus_hooks", "diagnose_remote_cc_bus_hooks"]),
+    );
   });
 });
