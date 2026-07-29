@@ -248,11 +248,22 @@ pub fn settings_path(
     home: &std::path::Path,
     is_dir: &dyn Fn(&std::path::Path) -> bool,
 ) -> std::path::PathBuf {
-    let base = match cfg_dir_env {
+    claude_config_dir(cfg_dir_env, home, is_dir).join("settings.json")
+}
+
+/// Claude Code 真正在用的配置目录。**这条规则只准在这里解释一次**——
+/// `config_surface.rs` 要把 `~/.claude/...` 形态的申报路径解析成真实路径，
+/// 若它自己再写一遍 `CLAUDE_CONFIG_DIR` 判定，两处就会各自漂移
+/// （账本 §3「不得为新功能另写一套」的同型问题）。
+pub fn claude_config_dir(
+    cfg_dir_env: Option<&std::path::Path>,
+    home: &std::path::Path,
+    is_dir: &dyn Fn(&std::path::Path) -> bool,
+) -> std::path::PathBuf {
+    match cfg_dir_env {
         Some(d) if is_dir(d) => d.to_path_buf(),
         _ => home.join(".claude"),
-    };
-    base.join("settings.json")
+    }
 }
 
 /// 一次诊断的完整回报（含用于展示的两种待贴片段）。
