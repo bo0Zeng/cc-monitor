@@ -202,3 +202,134 @@ describe("B03 脏数据如实呈现", () => {
     expect(metas[1]).toContain("自行登记");
   });
 });
+
+describe("B03 批二：派活 / 收信 / 图形化 spawn", () => {
+  const setup = async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "read_cc_bus_state") return STATE;
+      throw new Error(cmd);
+    });
+    const s = new CcBusSection();
+    document.body.appendChild(s.element);
+    await flush();
+    (s.element.querySelector(".cc-bus-read") as HTMLButtonElement).click();
+    await flush();
+    return s;
+  };
+
+  it("收件箱按需读，一次一个 agent", async () => {
+    const s = await setup();
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "read_cc_bus_inbox")
+        return [
+          { from: "KVM_cc", ts: "2026-07-26T05:06:19-07:00", text: "A 就绪", class: "direct" },
+        ];
+      throw new Error(cmd);
+    });
+    const row = s.element.querySelector<HTMLElement>(".cc-bus-row")!;
+    (row.querySelector(".cc-bus-inbox") as HTMLButtonElement).click();
+    await flush();
+    const calls = mockInvoke.mock.calls.filter((c) => c[0] === "read_cc_bus_inbox");
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1]).toEqual({ origin: "aya", id: "proj_cc" });
+    expect(row.querySelector(".cc-bus-detail")?.textContent).toContain("KVM_cc");
+    expect(row.querySelector(".cc-bus-detail")?.textContent).toContain("A 就绪");
+  });
+
+  it("空收件箱要说「空」，不能留个空白让人以为坏了", async () => {
+    const s = await setup();
+    mockInvoke.mockImplementation(async () => []);
+    const row = s.element.querySelector<HTMLElement>(".cc-bus-row")!;
+    (row.querySelector(".cc-bus-inbox") as HTMLButtonElement).click();
+    await flush();
+    expect(row.querySelector(".cc-bus-detail")?.textContent).toContain("空的");
+  });
+
+  it("发消息把原文原样交给后端（引用是后端的事，前端不得自己加工）", async () => {
+    const s = await setup();
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "cc_bus_send") return "queued";
+      throw new Error(cmd);
+    });
+    const row = s.element.querySelector<HTMLElement>(".cc-bus-row")!;
+    const input = row.querySelector<HTMLInputElement>(".cc-bus-msg")!;
+    const evil = "hi'; rm -rf ~; echo '";
+    input.value = evil;
+    (row.querySelector(".cc-bus-send") as HTMLButtonElement).click();
+    await flush();
+    const calls = mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_send");
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1]).toEqual({ origin: "aya", id: "proj_cc", text: evil });
+    expect(input.value).toBe(""); // 发完清空，免得手滑重发
+  });
+
+  it("空消息不发（不浪费一次往返）", async () => {
+    const s = await setup();
+    mockInvoke.mockClear();
+    const row = s.element.querySelector<HTMLElement>(".cc-bus-row")!;
+    row.querySelector<HTMLInputElement>(".cc-bus-msg")!.value = "   ";
+    (row.querySelector(".cc-bus-send") as HTMLButtonElement).click();
+    await flush();
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_send")).toHaveLength(0);
+  });
+
+  it("spawn 必须两步确认——第一次点只是武装，不得真起 agent", async () => {
+    const s = await setup();
+    mockInvoke.mockClear();
+    s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!.value = "/home/zbl/proj";
+    const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-spawn-go")!;
+    btn.click();
+    await flush();
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
+    expect(btn.textContent).toContain("确认");
+    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain("消耗额度");
+  });
+
+  it("第二次点才真派生，且把 tool/dir/task 原样传下去", async () => {
+    const s = await setup();
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "cc_bus_spawn") return "已 spawn: proj_cc";
+      if (cmd === "read_cc_bus_state") return STATE;
+      throw new Error(cmd);
+    });
+    s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!.value = "/home/zbl/proj";
+    s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-task")!.value = "分析架构";
+    s.element.querySelector<HTMLSelectElement>(".cc-bus-spawn-tool")!.value = "codex";
+    const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-spawn-go")!;
+    btn.click();
+    await flush();
+    btn.click();
+    await flush();
+    const calls = mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn");
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1]).toEqual({
+      origin: "aya",
+      dir: "/home/zbl/proj",
+      task: "分析架构",
+      tool: "codex",
+    });
+    expect(btn.textContent).toBe("派生"); // 武装状态要复位，不能一直停在"确认"
+  });
+
+  it("目录为空时连武装都不该发生", async () => {
+    const s = await setup();
+    mockInvoke.mockClear();
+    const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-spawn-go")!;
+    btn.click();
+    await flush();
+    expect(btn.textContent).toBe("派生");
+    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain("请先填工作目录");
+    expect(mockInvoke.mock.calls.filter((c) => c[0] === "cc_bus_spawn")).toHaveLength(0);
+  });
+
+  it("**零引用 launch IR**：spawn 走远端 exec，不经会话启动那套", () => {
+    const src = readFileSync(resolve(process.cwd(), "src/settings/cc-bus-section.ts"), "utf8");
+    const code = src
+      .split("\n")
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join("\n");
+    expect(code).not.toMatch(/from ["']\.\.\/launch/);
+    expect(code).not.toMatch(/tryRenderCli|buildLaunchPlan|LAUNCH_DIMENSIONS/);
+  });
+});

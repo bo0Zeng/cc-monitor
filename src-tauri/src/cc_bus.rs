@@ -220,6 +220,182 @@ pub async fn check_cc_bus_agent_online(origin: String, id: String) -> Result<boo
     Ok(String::from_utf8_lossy(&raw).contains("ONLINE"))
 }
 
+// ===== B03 批二：命令构造抽成**纯函数**，让校验落在可测的地方 =====
+//
+// 为什么要抽：变异测试实测发现，把 `cc_bus_send` 里那句 id 校验整个删掉，测试**照样全绿**
+// ——断言测的是 `is_valid_bus_id` 这个**谓词本身**，而不是"命令构造真的调了它"
+// （失效模式③：门禁太窄，断言没覆盖使用处）。这几个 async 命令要 SSH 连接、没法单测，
+// 于是把「校验 + 拼串」这段纯逻辑摘出来：async 那层只管连接与读回，构造与校验在这里，
+// 测试直接打这里。删掉任何一处校验，对应测试立刻红。
+
+/// `tmux has-session` 的目标串。`=<名>:` 精确形态（INVARIANTS §31a：裸目标是
+/// 「精确→名字开头→glob」三级解析，会命中/误杀兄弟会话）。
+fn build_online_cmd(id: &str) -> Result<String, String> {
+    if !is_valid_bus_id(id) {
+        return Err(format!("非法 agent id（拒绝拼入命令）: {id:?}"));
+    }
+    Ok(format!(
+        "tmux has-session -t '={id}:' 2>/dev/null && echo ONLINE || echo OFFLINE"
+    ))
+}
+
+/// 读某个 agent 的 inbox。只取尾部 200 行：inbox 是只增文件，全量读会随时间越来越慢，
+/// 而驾驶舱只看最近的。
+fn build_inbox_cmd(id: &str) -> Result<String, String> {
+    if !is_valid_bus_id(id) {
+        return Err(format!("非法 agent id（拒绝拼入命令）: {id:?}"));
+    }
+    Ok(format!(
+        "B=\"${{CC_BUS_HOME:-$HOME/.cc-bus}}\"; tail -n 200 \"$B/inbox/{id}.jsonl\" 2>/dev/null; true"
+    ))
+}
+
+/// 发消息。**两道防线**：`id` 是位置参数（`--help` 会被当选项）→ 白名单校验；
+/// `text` 是任意用户输入 → `shell_quote` 单引号逃逸。
+/// 投递管线（ACL/限流/去重/灭环）一律归 `cc-bus-lib.sh`，**cc-monitor 侧不重实现**。
+fn build_send_cmd(id: &str, text: &str) -> Result<String, String> {
+    if !is_valid_bus_id(id) {
+        return Err(format!("非法 agent id（拒绝拼入命令）: {id:?}"));
+    }
+    if text.trim().is_empty() {
+        return Err("消息为空".to_string());
+    }
+    Ok(format!(
+        "cc-send {id} {} 2>&1",
+        crate::ssh_source::shell_quote(text)
+    ))
+}
+
+/// 图形化 spawn = 远端跑**收编后的** `cc-spawn`（它内部已改经 `ccm`）。
+/// **刻意不在 cc-monitor 侧重写起会话**——那正是本工作区消灭的病（账本 K8）。
+/// `tool` 走白名单（是枚举不是引用）；`dir`/`task` 是自由文本 → 引用。
+fn build_spawn_cmd(tool: &str, dir: &str, task: &str) -> Result<String, String> {
+    match tool {
+        "claude" | "codex" => {}
+        _ => return Err(format!("未知 tool: {tool}（支持 claude|codex）")),
+    }
+    if dir.trim().is_empty() {
+        return Err("工作目录为空".to_string());
+    }
+    let mut cmd = format!(
+        "cc-spawn --tool {tool} {}",
+        crate::ssh_source::shell_quote(dir)
+    );
+    if !task.trim().is_empty() {
+        cmd.push(' ');
+        cmd.push_str(&crate::ssh_source::shell_quote(task));
+    }
+    cmd.push_str(" 2>&1");
+    Ok(cmd)
+}
+
+/// inbox 里的一条消息（字段取自盘上真实 jsonl：id/from/to/ts/text/class/…）。
+/// 只取渲染要用的四个——多取一个字段就多一处要跟着 cc-bus 演进的耦合。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct CcBusMessage {
+    pub from: String,
+    pub ts: String,
+    pub text: String,
+    pub class: String,
+}
+
+/// 解析 inbox 的 jsonl。**同 TSV 那两个解析器的契约**：坏行跳过并计数，不抛、不因坏行
+/// 丢好行。实测当前 inbox 干净（11 行 0 坏），但 `spawned.tsv` 53% 坏行的教训摆在那里
+/// ——"现在干净"不是"以后也干净"，而这层成本只有几行。
+pub fn parse_inbox_jsonl(text: &str) -> (Vec<CcBusMessage>, usize) {
+    let mut out = Vec::new();
+    let mut skipped = 0usize;
+    for line in text.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            skipped += 1;
+            continue;
+        };
+        let get = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
+        let (from, text) = (get("from"), get("text"));
+        // from 与 text 全空 = 这行不是一条消息（可能是别的工具写进来的）
+        if from.is_empty() && text.is_empty() {
+            skipped += 1;
+            continue;
+        }
+        out.push(CcBusMessage {
+            from,
+            ts: get("ts"),
+            text,
+            class: get("class"),
+        });
+    }
+    (out, skipped)
+}
+
+/// 三条命令共用的「连上去、跑、读回」。抽出来是因为它们的超时/上限/措辞各不相同，
+/// 而**连接与读取的形状必须一致**（同 `mcp.rs` 的既有纪律）。
+async fn exec_read(
+    cfg: &crate::ssh_source::RemoteConfig,
+    cmd: &str,
+    cap: u64,
+    secs: u64,
+    what: &str,
+) -> Result<String, String> {
+    use tokio::io::AsyncReadExt;
+    let read = async {
+        let stream = crate::ssh_source::connect_and_exec_cmd(cfg, cmd).await?;
+        let mut buf = Vec::new();
+        stream
+            .take(cap)
+            .read_to_end(&mut buf)
+            .await
+            .map_err(|e| format!("{what}失败: {e}"))?;
+        Ok::<Vec<u8>, String>(buf)
+    };
+    let raw = tokio::time::timeout(std::time::Duration::from_secs(secs), read)
+        .await
+        .map_err(|_| format!("远端 '{}' {what}超时（{secs}s）", cfg.origin_label()))??;
+    Ok(String::from_utf8_lossy(&raw).into_owned())
+}
+
+fn cfg_of(origin: &str) -> Result<crate::ssh_source::RemoteConfig, String> {
+    crate::load_remote_config_by_label(origin)
+        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))
+}
+
+/// B03 批二：读某个 agent 的 inbox（**只读**）。
+#[tauri::command]
+pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMessage>, String> {
+    let cmd = build_inbox_cmd(&id)?;
+    let cfg = cfg_of(&origin)?;
+    let raw = exec_read(&cfg, &cmd, 4 * 1024 * 1024, 30, "读 inbox").await?;
+    tokio::task::spawn_blocking(move || parse_inbox_jsonl(&raw).0)
+        .await
+        .map_err(|e| format!("spawn_blocking: {e}"))
+}
+
+/// B03 批二：给某个 agent 发消息。**这是本模块唯一的写操作**（其余全只读）。
+#[tauri::command]
+pub async fn cc_bus_send(origin: String, id: String, text: String) -> Result<String, String> {
+    let cmd = build_send_cmd(&id, &text)?;
+    let cfg = cfg_of(&origin)?;
+    let out = exec_read(&cfg, &cmd, 64 * 1024, 30, "发消息").await?;
+    Ok(out.trim().to_string())
+}
+
+/// B03 批二：图形化 spawn。**注意这会起一个真实 agent 进程（消耗额度）**
+/// —— UI 侧必须先让用户确认。
+#[tauri::command]
+pub async fn cc_bus_spawn(
+    origin: String,
+    dir: String,
+    task: String,
+    tool: String,
+) -> Result<String, String> {
+    let cmd = build_spawn_cmd(&tool, &dir, &task)?;
+    let cfg = cfg_of(&origin)?;
+    let out = exec_read(&cfg, &cmd, 64 * 1024, 60, "spawn").await?;
+    Ok(out.trim().to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,5 +576,173 @@ mod tests {
             cmd.contains("'=proj_cc:'"),
             "必须用 =<名>: 精确形态（INVARIANTS §31a）"
         );
+    }
+
+    // ===================== B03 批二 =====================
+    //
+    // **断言方式的两个教训，都写在这里免得再犯**：
+    //  ① 第一版我写 `assert!(!cmd.contains("; rm -rf ~;"))` —— 错的。正确逃逸的结果本来
+    //     就**包含**那个危险子串，只是它落在单引号内、完全惰性。断言"危险子串不出现"是在
+    //     检查一个错误的性质。真正要证的是「这一整坨仍是**一个** shell 词，内容逐字等于
+    //     原文」→ 用**往返还原**证。
+    //  ② 第二版我把断言打在 `is_valid_bus_id` 这个谓词上，结果把 `cc_bus_send` 里那句
+    //     校验整个删掉，测试**照样全绿**（失效模式③：门禁太窄）。所以现在一律打在
+    //     `build_*_cmd` 这些**真正构造命令的函数**上。
+
+    /// POSIX 单引号形态的最小逆运算：把 `shell_quote` 的产物还原回原文。
+    /// 只认它产出的那一种形状；遇到**裸单引号**返回 None——那正是"能逃出去"的标志。
+    fn unquote_posix(q: &str) -> Option<String> {
+        let b = q.as_bytes();
+        if b.len() < 2 || b[0] != b'\'' || b[b.len() - 1] != b'\'' {
+            return None;
+        }
+        let esc = "'\\''"; // 单引号 反斜杠 单引号 单引号
+        let mut out = String::new();
+        let mut rest = &q[1..q.len() - 1];
+        loop {
+            match rest.find('\'') {
+                None => {
+                    out.push_str(rest);
+                    return Some(out);
+                }
+                Some(i) => {
+                    out.push_str(&rest[..i]);
+                    if !rest[i..].starts_with(esc) {
+                        return None;
+                    }
+                    out.push('\'');
+                    rest = &rest[i + esc.len()..];
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unquote_helper_itself_rejects_unescaped_quotes() {
+        // 守住这个测试助手本身：它若把裸引号也"还原"了，下面几条就全成了摆设
+        assert_eq!(unquote_posix("'a'b'"), None);
+        assert_eq!(unquote_posix("noquotes"), None);
+        assert_eq!(unquote_posix("'ok'").as_deref(), Some("ok"));
+    }
+
+    #[test]
+    fn quote_roundtrip_is_the_real_property() {
+        for evil in [
+            "hi'; rm -rf ~; echo '",
+            "$(id)",
+            "`whoami`",
+            "a\nb",
+            "中文 带空格",
+            "'",
+            "''",
+        ] {
+            let q = crate::ssh_source::shell_quote(evil);
+            assert_eq!(
+                unquote_posix(&q).as_deref(),
+                Some(evil),
+                "逃逸后必须能逐字还原（说明它仍是一个完整的 shell 词）: {q}"
+            );
+        }
+    }
+
+    // ===== 校验落在构造函数上（删掉任何一处校验，这些立刻红）=====
+    #[test]
+    fn builders_reject_bad_ids_at_the_call_site() {
+        for bad in ["--help", "-t", "a b", "a;id", "", "a'b", "a/b"] {
+            assert!(build_online_cmd(bad).is_err(), "online: {bad:?} 应被拒");
+            assert!(build_inbox_cmd(bad).is_err(), "inbox: {bad:?} 应被拒");
+            assert!(build_send_cmd(bad, "hi").is_err(), "send: {bad:?} 应被拒");
+        }
+    }
+
+    #[test]
+    fn online_cmd_uses_exact_target_form() {
+        let c = build_online_cmd("proj_cc").unwrap();
+        assert!(
+            c.contains("'=proj_cc:'"),
+            "必须 =<名>: 精确形态（§31a）: {c}"
+        );
+        assert!(c.contains("ONLINE") && c.contains("OFFLINE"));
+    }
+
+    #[test]
+    fn inbox_cmd_is_readonly_and_bounded() {
+        let c = build_inbox_cmd("proj_cc").unwrap();
+        assert!(c.contains("tail -n 200"), "必须有上界: {c}");
+        assert!(c.contains("CC_BUS_HOME"), "须尊重 CC_BUS_HOME: {c}");
+        for w in ["rm ", "mv ", ">>", "tee ", "kill"] {
+            assert!(!c.contains(w), "只读命令里不该有 {w:?}: {c}");
+        }
+    }
+
+    #[test]
+    fn send_cmd_makes_free_text_one_word() {
+        let evil = "hi'; rm -rf ~; echo '";
+        let c = build_send_cmd("proj_cc", evil).unwrap();
+        assert!(c.starts_with("cc-send proj_cc '"));
+        assert!(c.ends_with("' 2>&1"));
+        let body = &c["cc-send proj_cc ".len()..c.len() - " 2>&1".len()];
+        assert_eq!(unquote_posix(body).as_deref(), Some(evil));
+        assert!(build_send_cmd("proj_cc", "   ").is_err(), "空消息应被拒");
+    }
+
+    #[test]
+    fn spawn_cmd_whitelists_tool_and_quotes_paths() {
+        for bad in ["bash", "claude; id", "", "CLAUDE"] {
+            assert!(
+                build_spawn_cmd(bad, "/tmp", "").is_err(),
+                "tool {bad:?} 应被拒"
+            );
+        }
+        let dir = "/tmp/has space/and'quote";
+        let task = "分析; whoami";
+        let c = build_spawn_cmd("codex", dir, task).unwrap();
+        assert!(c.starts_with("cc-spawn --tool codex '"));
+        let rest = &c["cc-spawn --tool codex ".len()..c.len() - " 2>&1".len()];
+        let (qd, qt) = rest.split_at(crate::ssh_source::shell_quote(dir).len());
+        assert_eq!(unquote_posix(qd).as_deref(), Some(dir));
+        assert_eq!(unquote_posix(qt.trim_start()).as_deref(), Some(task));
+        // 无任务时不得留下空参数
+        let c2 = build_spawn_cmd("claude", "/tmp", "").unwrap();
+        assert_eq!(c2, "cc-spawn --tool claude '/tmp' 2>&1");
+        assert!(
+            build_spawn_cmd("claude", "  ", "t").is_err(),
+            "空目录应被拒"
+        );
+    }
+
+    // ===== inbox 解析同样守"坏行跳过并计数" =====
+    #[test]
+    fn parses_real_inbox_line() {
+        let l = r#"{"id":"KVM_cc-178-31346","from":"KVM_cc","to":"cc-9d66c46d","ts":"2026-07-26T05:06:19-07:00","text":"【告知】A 大半就绪","class":"direct","hops":"1"}"#;
+        let (m, sk) = parse_inbox_jsonl(l);
+        assert_eq!(sk, 0);
+        assert_eq!(m.len(), 1);
+        assert_eq!(m[0].from, "KVM_cc");
+        assert_eq!(m[0].class, "direct");
+        assert_eq!(m[0].text, "【告知】A 大半就绪");
+    }
+
+    #[test]
+    fn inbox_bad_lines_skipped_not_fatal() {
+        let text = concat!(
+            r#"{"from":"a","text":"ok1","ts":"t","class":"direct"}"#,
+            "\n这不是 json\n\n",
+            r#"{"from":"b","text":"ok2","ts":"t","class":"broadcast"}"#,
+            "\n",
+            r#"{"nothing":"useful"}"#,
+            "\n"
+        );
+        let (m, sk) = parse_inbox_jsonl(text);
+        assert_eq!(m.len(), 2, "好行必须全解出，实得 {m:?}");
+        assert_eq!(sk, 2, "坏 json + 无有效字段各一条；空行不计");
+    }
+
+    #[test]
+    fn inbox_missing_fields_degrade_not_panic() {
+        let (m, sk) = parse_inbox_jsonl(r#"{"text":"orphan"}"#);
+        assert_eq!(sk, 0);
+        assert_eq!(m[0].from, "");
+        assert_eq!(m[0].text, "orphan");
     }
 }
