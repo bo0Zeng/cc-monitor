@@ -651,13 +651,23 @@ pub async fn uninstall_remote_ccm_helper(
         .await
         .map_err(|e| format!("写远端 {profile} 失败: {e}"))?;
 
+    // T01：判定走统一的 `verify_readback`（与本机侧同一套语义与措辞）。
+    // **「读不回来」与「内容不符」要分开报**：原先 `unwrap_or_default()` 把读失败变成空串，
+    // 于是 SSH 抖一下会被报成"内容与期望不符"，把用户往错误方向引。
     let verify = read_optional(sftp, &profile)
         .await
-        .map(|b| String::from_utf8_lossy(&b).into_owned())
-        .unwrap_or_default();
-    if verify != stripped {
+        .map(|b| String::from_utf8_lossy(&b).into_owned());
+    let Some(verify) = verify else {
         let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
-        return Err("写后校验失败（读回内容与期望不符），已尝试回滚原文件。".to_string());
+        return Err(format!(
+            "写后读不回 {profile}（无法确认写对了），已尝试回滚原文件。"
+        ));
+    };
+    if let crate::verified_write::WriteVerdict::Mismatch { detail } =
+        crate::verified_write::verify_readback(&stripped, &verify)
+    {
+        let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
+        return Err(format!("写后校验失败：{detail} 已尝试回滚原文件。"));
     }
 
     tracing::info!("远端 [{}] 已卸载 ccm 助手（{profile}）", cfg.origin_label());
@@ -725,11 +735,22 @@ pub async fn install_remote_ccm_helper(
     // 读回精确比对（兼防传输损坏）——CLI 是可执行文件，写坏比 profile 写坏更危险。
     let cli_back = read_optional(sftp, CCM_CLI_REMOTE_PATH)
         .await
-        .map(|b| String::from_utf8_lossy(&b).into_owned())
-        .unwrap_or_default();
-    if cli_back != CCM_CLI_SCRIPT {
+        .map(|b| String::from_utf8_lossy(&b).into_owned());
+    let Some(cli_back) = cli_back else {
         return Err(format!(
-            "ccm CLI 写后校验失败（读回内容与期望不符）：~/{CCM_CLI_REMOTE_PATH}。未改动 {profile}。"
+            "写后读不回 ~/{CCM_CLI_REMOTE_PATH}（无法确认写对了）。未改动 {profile}。"
+        ));
+    };
+    // **登记未改**（T01 §5 P5）：这一处**不回滚**，而另两处回滚。原因是部署前没有取旧 CLI 的
+    // 备份，想回滚得先多一次读往返。留着不动是因为：加备份是这条部署路径上的行为变更，
+    // 而它被 12 条 print-parity + 15 条 acceptance 真机断言盯着，风险/收益不划算。
+    // 但要如实说清后果——见下方错误措辞：**损坏的 CLI 会留在远端**。
+    if let crate::verified_write::WriteVerdict::Mismatch { detail } =
+        crate::verified_write::verify_readback(CCM_CLI_SCRIPT, &cli_back)
+    {
+        return Err(format!(
+            "ccm CLI 写后校验失败：{detail} 未改动 {profile}；\
+             但 ~/{CCM_CLI_REMOTE_PATH} 已被写入且内容不对，请手动删除或重新部署。"
         ));
     }
 
@@ -764,16 +785,25 @@ pub async fn install_remote_ccm_helper(
         .await
         .map_err(|e| format!("写远端 {profile} 失败: {e}"))?;
 
-    // 读回**精确比对**：不等于期望内容（写坏 / 传输损坏）→ 回滚原文件。
+    // 读回比对：不等于期望内容（写坏 / 传输损坏）→ 回滚原文件。判定同上走 `verify_readback`。
     let verify = read_optional(sftp, &profile)
         .await
-        .map(|b| String::from_utf8_lossy(&b).into_owned())
-        .unwrap_or_default();
-    if verify != merged {
+        .map(|b| String::from_utf8_lossy(&b).into_owned());
+    let Some(verify) = verify else {
         if !existing.is_empty() {
             let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
         }
-        return Err("写后校验失败（读回内容与期望不符），已尝试回滚原文件。".to_string());
+        return Err(format!(
+            "写后读不回 {profile}（无法确认写对了），已尝试回滚原文件。"
+        ));
+    };
+    if let crate::verified_write::WriteVerdict::Mismatch { detail } =
+        crate::verified_write::verify_readback(&merged, &verify)
+    {
+        if !existing.is_empty() {
+            let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
+        }
+        return Err(format!("写后校验失败：{detail} 已尝试回滚原文件。"));
     }
 
     tracing::info!(
