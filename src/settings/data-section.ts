@@ -17,21 +17,18 @@ import { showActionFailureToast } from "../error-toast";
 import { enumeratePrefix } from "../local-storage";
 import { formatBytes } from "../format";
 
-interface DataPathInfo {
-  label: string;
-  path: string;
-  kind: "file" | "dir";
-  description: string;
-  exists: boolean;
-  sizeBytes?: number;
-}
-
-interface DataPathsResponse {
-  monitorDataDir: string;
-  entries: DataPathInfo[];
-  webviewUserDataDir: DataPathInfo | null;
-  profileBackupDirs: DataPathInfo[];
-}
+// C01（rust-ts-boundary）：这两个类型**改成从生成物 import**，不再手写。
+// 生成源是 `src-tauri/src/data_paths.rs` 的 `#[derive(ts_rs::TS)]`，产出 `src/generated/`。
+//
+// **换过来当场发现两处手写与 Rust 不一致**，都记在 C01 计划的 §7：
+// ① `sizeBytes` 手写成 `number`，而 Rust 是 `u64` ⇒ **静默有损**（JS number 是 f64，
+//    安全整数上限 2^53-1）。生成物给的是 `bigint`，诚实。收窄见下方 `Number(...)` 那行。
+// ② `kind` 手写成 `"file" | "dir"`，而 Rust 是任意 `String` ⇒ **生成物会放宽这个类型**。
+//    正确方向是把 Rust 侧改成 enum（让源更严），**但那是类型收紧、不属于 C01 范围**，
+//    已登记。在那之前 `kind` 在 TS 侧是 `string`。
+// `ts-rs` 一个类型一个文件，所以是两条 import（本文件其余 import 不带扩展名，这里对齐）。
+import type { DataPathInfo } from "../generated/DataPathInfo";
+import type { DataPathsResponse } from "../generated/DataPathsResponse";
 
 export class DataSection {
   private root: HTMLElement;
@@ -199,6 +196,10 @@ export class DataSection {
     const meta = document.createElement("span");
     meta.className = "settings-data-item-meta";
     if (info.exists) {
+      // C01：`sizeBytes` 的类型现在由生成物给出（`sizeBytes?: number`）。
+      // 那个 `number` 是 Rust 侧 `#[ts(type = "number")]` 的**显式决定**（附上限论证），
+      // 不是这里的巧合——`ts-rs` 默认会把 `u64` 映射成 `bigint`，而 Tauri 的 JSON IPC
+      // 到 TS 侧是 number，那个默认值对运行时是错的。详见 `data_paths.rs` 该字段的注释。
       meta.textContent =
         info.sizeBytes !== undefined ? formatBytes(info.sizeBytes) : "已创建";
     } else {
