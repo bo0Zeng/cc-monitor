@@ -69,7 +69,7 @@ pub fn find_pair(
     match begin {
         None => Ok(None),
         Some(b) => Err(format!(
-            "{what} 第 {} 行有 cc-monitor BEGIN 标记，但**其后找不到配对的 END**\
+            "{what} 第 {} 行有 cc-monitor BEGIN 标记，但其后找不到配对的 END\
              （可能被手动改坏 / 上次安装中断）。为避免误删你的内容，已中止\
              ——请手动修好该文件后重试。",
             b + 1
@@ -106,6 +106,8 @@ mod tests {
         assert!(e.contains("找不到配对的 END"), "{e}");
         assert!(e.contains("已中止"), "措辞要让用户知道我们没动文件：{e}");
         assert!(e.contains("PowerShell profile"), "要说清是哪个文件：{e}");
+        // 用户可见文案不许带 markdown 星号（前端 toast 是纯文本渲染）
+        assert!(!e.contains("**"), "文案里有字面星号：{e}");
     }
 
     /// **只找 BEGIN 之后的 END**：BEGIN 前面的 END 不算（独立 `find` 会误配它）。

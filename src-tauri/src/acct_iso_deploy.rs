@@ -9,7 +9,8 @@
 //! 一键安装（同 daemon 部署），且落点被 [`is_safe_remote_acct_iso_dir`] 守卫限制。
 
 use crate::sftp::{
-    connect_sftp, deploy_decision, ensure_dir_all, read_optional, upload_atomic, DeployAction,
+    connect_sftp, deploy_decision, ensure_dir_all, read_optional, upload_atomic,
+    upload_atomic_verified, DeployAction,
 };
 use crate::ssh_source::{connect_and_exec_cmd, RemoteConfig};
 use serde::Serialize;
@@ -38,12 +39,9 @@ fn vendor_id() -> &'static str {
 /// 远端部署目录安全守卫（纯函数，可单测）：绝对路径、无 `..`、非根，且含约定标记词
 /// （`cc-acct-iso` 或 `.cc-monitor`）——杜绝把部署误用成往任意远端目录写文件。
 pub fn is_safe_remote_acct_iso_dir(path: &str) -> bool {
-    let p = path.trim();
-    !p.is_empty()
-        && p.starts_with('/')
-        && !p.contains("..")
-        && p != "/"
-        && (p.contains("cc-acct-iso") || p.contains(".cc-monitor"))
+    // T04 审计⑤：与 `is_safe_remote_daemon_path` 5 个条件里 4 个逐字相同，已抽到
+    // `sftp::is_safe_remote_managed_path`（2 个消费者，同 `find_pair` 那把 ≥2 尺子）。
+    crate::sftp::is_safe_remote_managed_path(path, &["cc-acct-iso", ".cc-monitor"])
 }
 
 /// 远端 cc-acct-iso 状态（供前端决定：一键部署 / 走 init 向导 / 正常）。
@@ -140,30 +138,31 @@ pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Resu
 
             // 上传脚本（可执行 0o755）与文档/示例（0o644）。
             let scripts_dir = format!("{dest}/scripts");
-            upload_atomic(
+            upload_atomic_verified(
                 sftp,
                 &format!("{scripts_dir}/cc-acct-iso"),
                 SCRIPT_MAIN,
                 0o755,
             )
             .await?;
-            upload_atomic(sftp, &format!("{scripts_dir}/lib.sh"), SCRIPT_LIB, 0o755).await?;
-            upload_atomic(
+            upload_atomic_verified(sftp, &format!("{scripts_dir}/lib.sh"), SCRIPT_LIB, 0o755)
+                .await?;
+            upload_atomic_verified(
                 sftp,
                 &format!("{scripts_dir}/cc-acct-iso-install.sh"),
                 SCRIPT_INSTALL,
                 0o755,
             )
             .await?;
-            upload_atomic(
+            upload_atomic_verified(
                 sftp,
                 &format!("{scripts_dir}/test/run-tests.sh"),
                 SCRIPT_TEST,
                 0o755,
             )
             .await?;
-            upload_atomic(sftp, &format!("{dest}/SKILL.md"), SKILL_MD, 0o644).await?;
-            upload_atomic(
+            upload_atomic_verified(sftp, &format!("{dest}/SKILL.md"), SKILL_MD, 0o644).await?;
+            upload_atomic_verified(
                 sftp,
                 &format!("{dest}/examples/config"),
                 EXAMPLE_CONFIG,

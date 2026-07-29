@@ -87,7 +87,7 @@ pub enum HostScope {
 - A3（`remote-section.ts` 的待贴块）**在任何测试里都没被执行过**（`new RemoteSection` 全文 0 次）
 - 三句话必填的 `throw` 到 `main.ts` 整条链**无 try/catch**，将来忘填会白屏
 
-## 8. 签收（第一步）
+## 8. 签收（第一步 + 第二步，第二步的 Phase D 见 §13）
 - [x] 通过代码审计（3 阻塞 + 5 重要已修，2 项如实登记）
 - [x] 通过工程审计
 - [x] 主计划已据此更新（含变更记录）
@@ -415,4 +415,106 @@ tmux 走强制 `-L` 的 shim + canary 双向自检，跑完默认 socket 三个�
 cargo test **522**（+7）· cargo fmt 0 · clippy 0 error · tsc 0 · npm test **804** ·
 shellcheck 0 · exec-bit guard 过 · **七套真机套件全绿**（26/44/12/15/13/14/11）·
 `git diff --stat HEAD -- e2e/` **0 行**（行为等价的直接证据）。
+tmux 走强制 `-L` 的 shim + canary 双向自检，跑完默认 socket 三个会话逐字未变。
+
+---
+
+## 13. 第二步的审计闭环（Phase D，2026-07-29）
+
+审计 47 次工具调用 / 13 分钟，工作区还原干净，**门禁数字全部实跑核过**，并**逐条复现了我自称的三条变异，一条不虚**。
+
+### 阻塞（已修）：我自己造的漂移——远端卸载会谎报成功
+
+`sftp::strip_profile_block` 没迁移：悬空 BEGIN 时 `return existing.to_string()` →
+调用方判 `stripped == existing` → 打印「远端 {profile} 里没有 ccm 块，无需卸载」。
+**那正是我在同一个 commit 里定义为 bug 的形态**，而且比本机那边更糟——它主动告诉用户没问题。
+
+更要紧：**这是我新造的漂移**。`af21ffb~1` 时两侧卸载都"原样返回"（一致）；
+`af21ffb` 之后本机 Err、远端静默 no-op（不一致）。我 commit 里那句
+**「两侧不可能再漂移」只对 install 半边成立，对 uninstall 半边方向相反**。
+→ 迁进 `find_pair`（第 3 个消费者），现在两侧的装与卸**四条路**全走同一判定。
+**并且原来那条测试 `strip_noop_on_malformed_begin_without_end` 把 bug 编码进去了**
+（断言 no-op），已改成断言中止。
+
+### ①（已修，审计说比我抽的判定影响面更大——同意）两条 deploy 路径零读回
+
+`deploy_remote_daemon` + `deploy_remote_acct_iso` 的**全部** `upload_atomic`
+——1 个 daemon 可执行二进制 + 6 个远端脚本（含 0755 的 `cc-acct-iso`/`lib.sh`/install.sh）
+——写完**直接写版本标记**，中间没有任何读回（`upload_atomic` 只做 flush/shutdown/rename，实测 `grep -c` = 0）。
+
+**我那套"五套机制"框架恰好把这个洞盖住了**：我论证「备份→写→读回比对→回滚这个范式已共享（5 处），
+所以不用抽」——而**那 5 处全在 profile/CLI 那条线上，压根没覆盖这两条 deploy 路**。
+把"范式已共享"当成了"范式已覆盖"。
+
+后果具体：传输损坏的 daemon 二进制照样被写上正确的 `.build_id` → 下次 `deploy_decision`
+判「已是最新，跳过」→ **坏二进制永久驻留**，而用户看到的是部署成功。
+→ 新增 `upload_atomic_verified`（上传 + 读回**逐字节**比对）+ 纯函数判据 `verify_uploaded_bytes`。
+按字节而非字符串：daemon 是可执行文件，`String::from_utf8` 会失败——判据同源、载体不同，
+所以没直接复用 `verified_write::verify_readback`。**标记仍走裸上传：它是"校验通过"的凭证，必须最后写。**
+
+**过程记录：我第一次批量替换扩了范围**——把 ccm helper 那条**故意**用裸上传的路
+（下游紧接着自己的读回+回滚）和 best-effort 回滚也改了，9 处越界，已全部回退。
+只留真正零读回的 8 处（2 daemon + 6 acct-iso）。
+**结构性守卫也因此收窄**：第一版写成"全文件不许裸 `upload_atomic`"，当场被自己抓红
+——**守卫范围比性质宽 = 假红 = 会被人关掉**。现在只覆盖那两个 deploy 函数体，带计数自检（7）。
+
+### ②（已修）远端 3 个边界语义变了，我原话"判定没变"被证伪
+
+审计把旧 byte-find 实现逐字复制成 `old_merge` 并列对拍，9 个边界里 **3 个变了**：
+
+| 边界 | 旧 | 新 |
+|---|---|---|
+| 行内 marker（`echo "…BEGIN…"`） | **切断该行 + 吃掉第二个 echo 行** | 不命中 → 追加 |
+| BEGIN 与 END 同一行 | 能正确替换该行 | **直接 Err（退化）** |
+| 缩进 marker | 保留 BEGIN 缩进、丢 END 缩进（不自洽） | 归一到列 0 |
+
+第一条意味着**我未申报就修掉了远端一个数据丢失**——比我声称的更有价值，但也证明"判定没变"是错的。
+→ 三条全部补测试锁死（`remote_merge_boundary_semantics_after_migration`），
+文档如实改成"判定变了"并逐条列出，**包括那条退化**。
+
+### ③（已修）`find_block_version` 缺 `trim_start`，口径不一致被提升为用户可见矛盾
+
+缩进的悬空 BEGIN → `has_ccm_block=false` → `cc_integration.ts:453` **隐藏卸载按钮**、
+UI 说"未安装"，而点安装却 Err 报行号。→ 加 `trim_start`，与 `find_pair` 同口径。
+
+### ⑤（已修）我确实漏了第 5 个共性
+
+`is_safe_remote_daemon_path` 与 `is_safe_remote_acct_iso_dir` **5 个条件里 4 个逐字相同**，
+只差标记词，**2 个消费者未共享——正好达到我为 `find_pair` 立的那条 ≥2 门槛**。
+→ 抽成 `sftp::is_safe_remote_managed_path(path, markers)`，测试钉住"标记词是必需条件"
+（那是防误删的关键：把"这是 cc-monitor 管的目录"变成路径本身的性质）。
+**但审计也确认这不支持建统一部署器**——它自己数了 7 个入口逐个列步骤序列后认同该结论。
+
+### ⑥⑦（已修）文案
+
+`what` 从类别名改成**真路径**（两侧调用方手里一直有它；原测试注释写"要说清是哪个文件"
+而断言的是类别名，断言与注释不符）· 去掉用户可见 toast 里的字面 `**`（前端纯文本渲染），
+并加断言禁止它回来。
+
+### ④ 部分做（如实登记）
+
+修正我 commit 里「4 条独立」的暗示：实际是 **1 个语义性质 + 2 个接线见证 + 1 个本变异下冗余**
+（`merge_profile_block_aborts_on_orphan_begin` 在 `af21ffb~1` 就存在、不是本轮新增）。
+"跨模块同时红证明两侧真共用"这半句**站得住**（接线证明就该那样），但别暗示 4 条独立。
+**审计要的"真文件级损坏围栏测试"本轮没做**——`install_to_profile` 仍只有纯函数测试。
+要写它得起临时目录真写盘，而红线是"部署器测试一律注入闭包、绝不真写盘"，
+需要先给它做一层可注入的 fs。**如实登记，不假称已做。**
+
+### ⑧ 登记不改
+
+卸载缺"强制清理 cc-monitor 块"入口。审计核实**用户有出路**（错误文案带行号 +
+面板有"打开 profile"按钮），③ 修掉之后缩进场景的按钮隐藏也没了。判定：可等 T07。
+
+### 反验证（两条，先 diff 确认落位且确认编译得过）
+
+| 变异 | 结果 |
+|---|---|
+| 远端 strip 退回悬空 BEGIN 时 no-op（阻塞形态） | 红 `strip_aborts_on_malformed_begin_without_end` |
+| acct-iso 一处 verified 退回裸 `upload_atomic` | 红 `deploy_remote_acct_iso: 内容上传仍走裸 upload_atomic —— …lib.sh…` |
+
+### 本轮门禁
+
+cargo test **528**（+6）· cargo fmt 0 · clippy 0 error · tsc 0 · npm test **804** ·
+shellcheck 0 · exec-bit guard 过 · **七套真机套件全绿**（26/44/12/15/13/14/11）·
+`git diff --stat HEAD -- e2e/` **0 行**。
 tmux 走强制 `-L` 的 shim + canary 双向自检，跑完默认 socket 三个会话逐字未变。
