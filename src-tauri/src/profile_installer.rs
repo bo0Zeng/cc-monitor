@@ -600,6 +600,62 @@ mod tests {
     /// 与新块的 END 配上对，两者之间的 `function cc { }` **被整段替换掉**。
     /// 远端侧（`sftp::merge_profile_block`）当初被审计 B1 要求在同一情形 Err 中止，
     /// 本机侧漏了这道保护——写的都是"下次开终端就炸"级别的文件。
+    /// **围栏损坏时一个字节都不许写**（T07 DoD④ 的核心性质）。
+    ///
+    /// 「返回 `Err`」只证明它报错了；**「写从未发生」才是"没动用户文件"的证据**。
+    /// 这里用**顺序**证明它：在两个函数体内，围栏判定的 `?` 必须出现在
+    /// **第一次写**（`std::fs::copy` 备份 / `atomic_write_string`）**之前**——
+    /// `?` 一短路，后面的写根本走不到。
+    ///
+    /// 实测行号（本次）：install 的 `replace_or_append_block(...)?` 在函数体第 32 行，
+    /// 而首次写在 37（备份 copy）/ 44（atomic_write）；uninstall 是 15 vs 21 / 24。
+    ///
+    /// **如实说明这条守卫的成色**：它证明的是"围栏 Err 时代码走不到写"，
+    /// **不是**注入层意义上的"write 闭包未被调用"。DoD④ 原计划要做的
+    /// `ProfileFs` 六闭包注入层**本轮没做**（见 §T07 记录）——那能同时解开
+    /// T01-P6 与「ccm CLI 写坏不回滚」，是笔更大的活。这里先把性质锁住，不假称已注入。
+    #[test]
+    fn fence_error_short_circuits_before_any_write() {
+        let src = include_str!("profile_installer.rs");
+        for (sig, fence) in [
+            (
+                "pub fn install_to_profile(",
+                "replace_or_append_block(&existing",
+            ),
+            ("pub fn uninstall_from_profile(", "strip_block(&existing"),
+        ] {
+            let a = src
+                .find(sig)
+                .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
+            let b = src[a..].find("\n}\n").map(|k| a + k).unwrap_or(src.len());
+            let body = &src[a..b];
+            // 反向自检：真取到函数体了
+            assert!(
+                body.contains("atomic_write_string"),
+                "{sig}: 取到的体里没有写，守卫在空转"
+            );
+            let fence_at = body
+                .find(fence)
+                .unwrap_or_else(|| panic!("{sig}: 找不到围栏判定 {fence}"));
+            // 第一次写：备份 copy 或 atomic_write，取更早的那个
+            let copy_at = body.find("std::fs::copy").unwrap_or(usize::MAX);
+            let write_at = body.find("atomic_write_string").unwrap_or(usize::MAX);
+            let first_write = copy_at.min(write_at);
+            assert!(
+                fence_at < first_write,
+                "{sig}: 围栏判定在第一次写**之后**（fence@{fence_at} vs write@{first_write}）\
+                 ——那样围栏损坏时用户文件已经被动过了"
+            );
+            // 且那个围栏判定必须带 `?`（不带就不会短路）
+            let tail = &body[fence_at..(fence_at + 200).min(body.len())];
+            assert!(
+                tail.contains(")?;") || tail.contains(")?\n"),
+                "{sig}: 围栏判定没带 `?`，不会短路：{}",
+                &tail[..tail.len().min(80)]
+            );
+        }
+    }
+
     #[test]
     fn damaged_fence_aborts_instead_of_eating_user_content() {
         const BLOCK: &str = "# === cc-monitor BEGIN v1 ===\nNEW\n# === cc-monitor END ===";
