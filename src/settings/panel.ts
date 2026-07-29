@@ -223,7 +223,33 @@ export class SettingsPanel {
     if (this.isOpen) this.cancel();
   }
 
+  /**
+   * **T07 审计⑤：`safeBlock` 的隔离原先只覆盖生命周期前半。**
+   *
+   * 这个方法直接解引用 8 个由 `safeBlock` **内部**赋值的 `!` 字段
+   * （`autoFollowCheckbox` … `kbOverrideChip`）。某块构造失败时 `safeBlock` 把异常收住了、
+   * 面板照常渲染 —— **但那些字段仍是 undefined**，于是 `open()` 在解引用时 reject。
+   * 审计实测：让「快捷键」块失败 → 构造被收住，可 `await panel.open()` **reject**、
+   * `.settings-panel` 拿不到 `.open` class。也就是说"一块坏、别的还能用"只成立到构造结束。
+   *
+   * 今天没有活的 throw 源（`registry.ts` 的 `exportOverrides` 不会抛），所以这是
+   * **结构性不完整**而非活缺陷 —— 但隔离要么覆盖整个生命周期，要么就不算隔离。
+   * 这里包一层：任何一步失败都把面板**照常打开**并在 banner 里说明，而不是让 `open()` reject。
+   */
   async open(): Promise<void> {
+    try {
+      await this.openInner();
+    } catch (e) {
+      // 面板必须能打开——它是用户唯一的逃生口（里面有"打开 profile"之类的按钮）
+      this.banner.textContent = `部分设置项加载失败：${String(e)}`;
+      this.banner.classList.add("settings-banner-show");
+      this.el.classList.add("open");
+      this.isOpen = true;
+      dispatcher.pushOverlay(this);
+    }
+  }
+
+  private async openInner(): Promise<void> {
     this.original = await loadTheme();
     this.current = { ...this.original };
     this.claudeDirOriginal = (await getClaudeDirOverride()) ?? "";

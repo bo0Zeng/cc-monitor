@@ -600,60 +600,97 @@ mod tests {
     /// 与新块的 END 配上对，两者之间的 `function cc { }` **被整段替换掉**。
     /// 远端侧（`sftp::merge_profile_block`）当初被审计 B1 要求在同一情形 Err 中止，
     /// 本机侧漏了这道保护——写的都是"下次开终端就炸"级别的文件。
-    /// **围栏损坏时一个字节都不许写**（T07 DoD④ 的核心性质）。
-    ///
-    /// 「返回 `Err`」只证明它报错了；**「写从未发生」才是"没动用户文件"的证据**。
-    /// 这里用**顺序**证明它：在两个函数体内，围栏判定的 `?` 必须出现在
-    /// **第一次写**（`std::fs::copy` 备份 / `atomic_write_string`）**之前**——
-    /// `?` 一短路，后面的写根本走不到。
-    ///
-    /// 实测行号（本次）：install 的 `replace_or_append_block(...)?` 在函数体第 32 行，
-    /// 而首次写在 37（备份 copy）/ 44（atomic_write）；uninstall 是 15 vs 21 / 24。
-    ///
-    /// **如实说明这条守卫的成色**：它证明的是"围栏 Err 时代码走不到写"，
-    /// **不是**注入层意义上的"write 闭包未被调用"。DoD④ 原计划要做的
-    /// `ProfileFs` 六闭包注入层**本轮没做**（见 §T07 记录）——那能同时解开
-    /// T01-P6 与「ccm CLI 写坏不回滚」，是笔更大的活。这里先把性质锁住，不假称已注入。
-    #[test]
-    fn fence_error_short_circuits_before_any_write() {
-        let src = include_str!("profile_installer.rs");
-        for (sig, fence) in [
-            (
-                "pub fn install_to_profile(",
-                "replace_or_append_block(&existing",
-            ),
-            ("pub fn uninstall_from_profile(", "strip_block(&existing"),
-        ] {
-            let a = src
-                .find(sig)
-                .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
-            let b = src[a..].find("\n}\n").map(|k| a + k).unwrap_or(src.len());
-            let body = &src[a..b];
-            // 反向自检：真取到函数体了
-            assert!(
-                body.contains("atomic_write_string"),
-                "{sig}: 取到的体里没有写，守卫在空转"
-            );
-            let fence_at = body
-                .find(fence)
-                .unwrap_or_else(|| panic!("{sig}: 找不到围栏判定 {fence}"));
-            // 第一次写：备份 copy 或 atomic_write，取更早的那个
-            let copy_at = body.find("std::fs::copy").unwrap_or(usize::MAX);
-            let write_at = body.find("atomic_write_string").unwrap_or(usize::MAX);
-            let first_write = copy_at.min(write_at);
-            assert!(
-                fence_at < first_write,
-                "{sig}: 围栏判定在第一次写**之后**（fence@{fence_at} vs write@{first_write}）\
-                 ——那样围栏损坏时用户文件已经被动过了"
-            );
-            // 且那个围栏判定必须带 `?`（不带就不会短路）
-            let tail = &body[fence_at..(fence_at + 200).min(body.len())];
-            assert!(
-                tail.contains(")?;") || tail.contains(")?\n"),
-                "{sig}: 围栏判定没带 `?`，不会短路：{}",
-                &tail[..tail.len().min(80)]
-            );
+    /// panic 也要清 tempdir。**这是我自己踩的**：用审计那两个变异反验证时测试 panic，
+    /// 末尾的 `remove_dir_all` 走不到，`/tmp` 下留了两个目录。`Drop` 不受 panic 影响。
+    struct TmpDir(std::path::PathBuf);
+    impl Drop for TmpDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+    fn tmpdir(tag: &str) -> TmpDir {
+        let d = std::env::temp_dir().join(format!(
+            "ccm-fence-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|x| x.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&d).expect("建 tempdir");
+        TmpDir(d)
+    }
+
+    /// **围栏损坏时一个字节都不许写** —— 真行为断言（T07 审计① 换掉的那条安慰剂）。
+    ///
+    /// ## 上一版是安慰剂，两个变异实证
+    ///
+    /// 上一版按**字节偏移顺序**扫自身源码（`body.find(fence) < body.find(write)`）。
+    /// 审计用两个**编译得过且真写盘**的变异让它保持绿：
+    /// ① 在围栏前插 `std::fs::write(path, "MUTANT CLOBBER\n")` —— 扫描不认这个 API 名
+    ///    → 函数返回「已中止」而**用户文件已被清成 `"MUTANT CLOBBER\n"`**；
+    /// ② 把同一个 `std::fs::copy` 挪进窗口之外的 helper → **泄漏文件真的产生**。
+    /// 它还能被**注释文本**骗红（提到 `"atomic_write_string"` 的注释就让它 FAILED），
+    /// 而且 `str::find` 只取第一处 `copy`（窗口内各有 3 处）
+    /// —— **恰好命中真备份纯属排序运气**。
+    ///
+    /// **顺序/长相是代理指标，不是性质。** 换成直接量：造一个坏围栏文件、调真函数、
+    /// 断言 **Err 且文件字节与调用前逐字相同**。用 tempdir，不碰任何用户文件。
+    #[test]
+    fn damaged_fence_leaves_the_file_byte_identical() {
+        let td = tmpdir("bad");
+        let dir = &td.0;
+        let path = dir.join("Microsoft.PowerShell_profile.ps1");
+
+        // 坏围栏：有 BEGIN、没有配对 END，**下面是用户自己的代码**
+        let original =
+            "# my stuff\n# === cc-monitor BEGIN v1 ===\nfunction cc { Write-Host mine }\n";
+        std::fs::write(&path, original).expect("写 tempdir 样本");
+        let before = std::fs::read(&path).expect("读原文");
+
+        for (what, r) in [
+            ("install", install_to_profile(&path, "cc", true)),
+            ("uninstall", uninstall_from_profile(&path)),
+        ] {
+            // Ok 是 `()`；意外成功会被下面的字节断言 + 「应因围栏损坏中止」两条同时抓住
+            let e = match r {
+                Ok(()) => "(意外返回 Ok —— 围栏损坏本该中止)".to_string(),
+                Err(e) => e,
+            };
+            let after = std::fs::read(&path).expect("读回");
+            assert_eq!(
+                after,
+                before,
+                "{what}：围栏损坏时文件必须逐字未变。实得 {:?}（错误/返回：{e}）",
+                String::from_utf8_lossy(&after)
+            );
+            assert!(
+                e.contains("找不到配对的 END"),
+                "{what}：应因围栏损坏中止，实得：{e}"
+            );
+            // 顺带：不许留下备份/临时文件（上一版变异② 的泄漏形态）
+            let leaked: Vec<String> = std::fs::read_dir(&dir)
+                .expect("列 tempdir")
+                .filter_map(|x| x.ok())
+                .map(|x| x.file_name().to_string_lossy().into_owned())
+                .filter(|n| n != "Microsoft.PowerShell_profile.ps1")
+                .collect();
+            assert!(leaked.is_empty(), "{what}：不该留下 {leaked:?}");
+        }
+    }
+
+    /// 反向自检：围栏**完好**时这条路必须真能写成（否则上一条可能是"什么都不做"而恒绿）。
+    #[test]
+    fn intact_fence_actually_writes() {
+        let td = tmpdir("ok");
+        let path = td.0.join("Microsoft.PowerShell_profile.ps1");
+        std::fs::write(&path, "# mine\n").expect("写样本");
+        let before = std::fs::read_to_string(&path).unwrap();
+        install_to_profile(&path, "cc", true).expect("围栏完好时应写成");
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert_ne!(after, before, "围栏完好时必须真写进去");
+        assert!(after.contains("# mine"), "块外内容要保留：{after}");
+        assert!(after.contains("cc-monitor BEGIN"), "块要写进去：{after}");
     }
 
     #[test]

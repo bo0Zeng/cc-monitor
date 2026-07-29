@@ -8,7 +8,11 @@ import { describe, it, expect, vi } from "vitest";
 const { remoteRefresh, dataRefresh, boom } = vi.hoisted(() => ({
   remoteRefresh: vi.fn(),
   dataRefresh: vi.fn(),
-  boom: { remote: false, mcp: false } as { remote: boolean; mcp: boolean },
+  boom: { remote: false, mcp: false, kb: false } as {
+    remote: boolean;
+    mcp: boolean;
+    kb: boolean;
+  },
 }));
 
 // —— 重子分区 stub 成 { element }，聚焦分组结构本身 —— //
@@ -60,6 +64,9 @@ vi.mock("./accounts-section", () => ({
 vi.mock("../keybindings/editor", () => ({
   KeybindingsEditor: class {
     element = document.createElement("div");
+    constructor() {
+      if (boom.kb) throw new Error("KB_BOOM");
+    }
   },
 }));
 vi.mock("../keybindings/registry", () => ({
@@ -114,6 +121,7 @@ describe("T07 分区块隔离（真行为）", () => {
   beforeEach(() => {
     boom.remote = false;
     boom.mcp = false;
+    boom.kb = false;
     document.body.textContent = "";
   });
 
@@ -162,6 +170,16 @@ describe("T07 分区块隔离（真行为）", () => {
     const p = new SettingsPanel({ windowMode: true });
     void p;
     expect(document.querySelectorAll(".settings-block-failed").length).toBe(0);
+  });
+
+  it("快捷键块失败后 open() 仍要把面板打开（T07 审计⑤：隔离要覆盖整个生命周期）", async () => {
+    // 审计实测：修之前这条会 reject、`.settings-panel` 拿不到 `.open`
+    boom.kb = true;
+    const p = new SettingsPanel({ windowMode: true });
+    await expect(p.open()).resolves.toBeUndefined();
+    expect(
+      document.querySelector(".settings-panel")?.classList.contains("open"),
+    ).toBe(true);
   });
 
   it("RemoteSection 抛之后 open() 不许因为 remoteSection 是 undefined 而炸", async () => {
