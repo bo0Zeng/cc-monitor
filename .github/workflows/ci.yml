@@ -46,6 +46,27 @@ jobs:
       - name: cargo test
         run: cargo test --all
 
+      # C05（rust-ts-boundary）：**生成物必须最新**。上一步的 `cargo test --all` 会跑
+      # `ts-rs` 的导出测试、把 `src/generated/**` 重新写一遍；这里断言它与已提交的版本一致。
+      #
+      # **为什么这一半在这个 job、另一半在 frontend job**：这个性质要
+      # 「先重新生成、再 tsc」，而**没有任何 job 同时有 Rust 和 node**
+      # （给本 job 加 `npm ci` 是分钟级；给 frontend job 加整套 Tauri 编译是 CI 里最贵的东西）。
+      # 所以拆成两半：本步保证「已提交的生成物 == 从 Rust 源生成的」，
+      # frontend job 的 `tsc` 保证「TS 消费方 == 已提交的生成物」，**两者合起来**就是
+      # 「TS 消费方 == Rust 源」。而 `git diff` 不需要 node ⇒ 这一半的代价 ≈ 一条 git 命令。
+      #
+      # 立项理由（C01 Phase D 审计变异实测）：serde-rename 一个字段而**不重新生成**
+      # ⇒ cargo 绿 · tsc 绿 · 守卫绿 · npm 819 全绿，**而生产里 UI 标签会变空**。
+      # 失效模式不是「没门禁」，是「所有现有门禁都保持绿色」。
+      - name: 生成物必须最新（C05；改了 Rust 就得重新生成并提交）
+        run: |
+          git diff --exit-code -- ../src/generated/ || {
+            echo "::error::src/generated/ 与 Rust 源不一致。改了带 #[derive(ts_rs::TS)] 的类型后，请跑 'npm run gen:types' 并把 src/generated/ 一起提交。"
+            git diff --stat -- ../src/generated/
+            exit 1
+          }
+
       # F09：vendor code-picture-core 是 path 依赖、**非** workspace 成员 → `--all` 测不到它。
       # 显式 `-p` 把它的 25 个测试跑起来（tree-sitter 符号索引 + git 锚点 + SQLite 内核）。
       # 不动 vendor crate 源码/Cargo.toml（红线：别误伤 vendor）。
