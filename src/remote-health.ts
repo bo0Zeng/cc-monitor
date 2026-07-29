@@ -18,12 +18,11 @@ import { listen } from "@tauri-apps/api/event";
 import { showActionFailureToast } from "./error-toast";
 import { shouldShowHealthToast } from "./remote-health-throttle";
 
-/** 后端 `RemoteHealthPayload`（camelCase serde，见 src-tauri/src/bridge.rs）。 */
-interface RemoteHealthPayload {
-  origin: string | null;
-  kind: string;
-  message: string;
-}
+// C02：改成 import 生成物（源：`src-tauri/src/bridge.rs` 的 `RemoteHealthPayload`）。
+// 原先这里手抄了一份，注释还写着「camelCase serde」——**那三个字段全是单词，
+// camelCase 与 snake_case 在这里看不出区别**，所以那句注释既没错也没用；
+// 现在字段名由生成物负责，不必再靠注释提醒。
+import type { RemoteHealthPayload } from "./generated/RemoteHealthPayload";
 
 /** kind → toast 标题（未知 kind 回退到通用「远端提示」）。 */
 function headlineFor(kind: string): string {

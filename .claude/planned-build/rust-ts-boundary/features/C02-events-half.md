@@ -65,6 +65,36 @@
 **② 共享面 1 只写了 `src/events.ts`，漏了 `src/remote-health.ts`。**
 → 补进主计划共享面表。
 
+### Phase C 步骤 1 实测：**范围再改一次** —— `JsonlLine`/`JsonlBatch` 延后
+
+加派生之前先查了 10 个 payload 的字段类型，撞到**两条传递依赖**——`ts-rs` 会要求
+被引用的类型也派生 `TS`：
+
+| payload | 传递依赖 | 处置 |
+|---|---|---|
+| `TasksUpdatePayload.tasks` | `Vec<crate::tasks::TaskEntry>` | **一起做**。`TaskEntry` 是 7 个简单字段 + `rename_all="camelCase"` + 2 处 `skip_serializing_if`（正好会被 C01 那条通用守卫要求配 `ts(optional)`） |
+| `JsonlLinePayload.message` | `crate::messages::JsonlRecord` | **延后，不在 C02 做** |
+
+**为什么 `JsonlRecord` 必须延后**（两条独立理由，任一条都够）：
+
+1. **Rust 侧那个 enum 自认是有损的。** `history.rs:628` 原文：
+   「**用 `serde_json::Value` 原样搬运**（不走**有损的** `JsonlRecord` enum，避免丢 gitBranch/…）」
+   —— 仓库自己在另一条路上**绕开**了它。让一个自认有损的模型去当 TS 类型的**源**，
+   等于把 TS 侧收窄成那个损失。这跟 C01 那条 `kind` 被放宽是**同一个病的反面**，
+   但后果大得多。
+2. **闭包触底到 `serde_json::Value`**（`ApiMessage.content`，`messages.rs` 里有 6 处 `Value`），
+   而 TS 侧的 `JsonlRecord` 住在 **`src/cards/index.ts`（1187 行）**——
+   那是前端卡片渲染的承重模型。**用生成物替换它是一次前端渲染层的重构，不是一次类型迁移。**
+
+⇒ **C02 覆盖 8 个 payload + `TaskEntry`**：`SessionEnded` · `SessionIdle` · `SessionStarted` ·
+`RemoteSessionAdded` · `RemoteHealth` · `SessionActivity` · `FrontendReady` · `TasksUpdate`。
+**`JsonlLine` / `JsonlBatch` 登记延后**，等有人先决定「Rust 的 `JsonlRecord` 要不要变成
+无损模型」——那是一个独立的产品/架构决定，不该被一次类型迁移顺手做掉。
+
+**顺带记一条 C01 那条通用守卫的第一次真实收益**：`JsonlLinePayload.origin` 也带
+`skip_serializing_if`（`bridge.rs:78`），`TaskEntry` 有 2 处。它们全都会被那条扫描要求配
+`ts(optional)` —— **这条守卫是 C02 开工前就已经在替我数活了**。
+
 ## 3. 一条硬性范围约束：**绝不"统一"线上格式**
 
 实测线上格式是混的——3 个事件的 payload 字段是 camelCase，8 个是 snake_case。
@@ -78,20 +108,23 @@
 
 ## 4. DoD
 
-- [ ] **10 个** payload struct 派生 `TS` + 导到 `src/generated/`（`ActiveSessionPayload` 移出，归 C04）
+- [x] **8 个** payload struct + `TaskEntry` 派生 `TS` + 导到 `src/generated/`
+      （`ActiveSessionPayload` 归 C04；`JsonlLine`/`JsonlBatch` 延后，理由见 §2 末）
       （含 `FrontendReadyPayload`——它是 `Deserialize`，TS 侧构造它时同样需要类型）
-- [ ] `src/events.ts` 的 6 个手写 `interface` 删除，改成 import 生成物
-- [ ] `src/remote-health.ts` 的 `RemoteHealth` 手写类型同样替换
-- [ ] **两处内联字面量类型**（`events.ts:396` jsonl-batch · `:465` remote-session-added）换成生成物
-- [ ] **`frontend-ready` 的 TS 侧首次拿到类型**（今天是无类型的内联对象 `{ prioritySid }`）
-- [ ] **生成物忠实复现混合的线上格式**：3 个 camelCase、8 个 snake_case，**一个都不改**
-- [ ] **10 个事件名由结构性守卫钉死**（`bridge.rs` 的 const ↔ TS 字面量），计数自检 `== 10`
-- [ ] **变异验收**：① 删掉某个 payload 的一个字段 → `tsc` 报错；
+- [x] `src/events.ts` 的 5 个手写 `interface` 换成 import + re-export
+      （`JsonlLinePayload` 留手写——它依赖延后的 `JsonlRecord`）
+- [x] `src/remote-health.ts` 的 `RemoteHealthPayload` 已替换；**顺带 `src/tasks-panel.ts` 的手写 `TaskEntry` 也替换**（与生成物完全同形，留两份就是漂移风险）
+- [x] `events.ts` remote-session-added 那处内联字面量换成生成物
+      （`:396` jsonl-batch 那处随 `JsonlBatch` 一起延后）
+- [x] **`frontend-ready` 的 TS 侧首次拿到类型**（今天是无类型的内联对象 `{ prioritySid }`）
+- [x] **生成物忠实复现混合的线上格式**（逐个核过：`session_id`/`waiting_for` snake · `sessionId`/`prioritySid` camel）—— ：3 个 camelCase、8 个 snake_case，**一个都不改**
+- [x] **10 个事件名由结构性守卫钉死**（`bridge.rs` 的 const ↔ TS 字面量），计数自检 `== 10`
+- [x] **变异验收**：① 删 `SessionStartedPayload.kind`（连带 `lib.rs:467` 构造点）→ 编译过（547 绿）→ 生成物少了字段 → `tsc` 红指向 `events.ts:444`；
       ② 改掉一个事件名常量 → 那条守卫红。两次都先 diff 确认落位 + 确认编译得过才判色
-- [ ] 反向自检：不变异时 `tsc` 0 错、守卫绿
-- [ ] `src/generated/` 的守卫计数从 `toBe(2)` 更新到实际值（C01 留的那条会红一次，**这是设计**）
-- [ ] 全门禁绿且数字不降（基线：cargo 538 · npm 819/54 · clippy 0 · tsc 0）
-- [ ] **8 套真机套件全绿、条数与基线一致**（行为逐字节不变）
+- [x] 反向自检：不变异时 `tsc` 0 错、守卫 6 绿
+- [x] 生成目录期望从 2 项扩到 **11 项**，`skip_serializing_if` 计数自检 `toBe(1)` → `toBe(3)`
+- [x] 全门禁绿且数字不降：cargo **547**（+9 导出测试）· code-picture-core 25 · npm **820/54**（+1 事件名守卫）· clippy 0 · tsc 0 · fmt 干净 · **C05 那条新门禁 rc=0** · npm audit rc=0 · shellcheck 0 · exec-bit rc=0
+- [x] **8 套真机套件全绿、条数与基线一致**（26/44/12/15/13/-/14/7）· 默认 socket 4 会话逐字未变 · `git diff -- e2e/` 0 行
 
 **明确不做**：不统一线上格式（§3）· 不碰命令半边（C04）· 不碰大整数策略（C03）·
 不做 CI 门禁（C05）· 不碰 IR 类型 · 不碰 `src/accounts.ts`（归 `account-zero`）
@@ -121,7 +154,47 @@
 
 ## 7. 代码审计结果（Phase D）
 
-（待填）
+**对抗性审计已发出（1 个综合 agent），结果待收。** 以下是**我自己**在 Phase C 撞到并处置的，
+交给审计独立复核（**别采信**）：
+
+### 一、范围在实测中改了三次（11 → 10 → 8 + TaskEntry）
+
+- **11 → 10**：`ActiveSessionPayload` 不是事件 payload，是 `list_active_sessions` 的返回类型
+  （`bridge.rs` 自己的 doc comment 就这么写）⇒ 归 C04。
+- **10 → 8**：加派生前先查字段类型，撞到两条传递依赖。`TaskEntry` 简单 ⇒ 一起做；
+  **`JsonlRecord` 延后**，两条独立理由（Rust 侧自认有损 + 闭包触底到 `serde_json::Value`
+  且 TS 侧那个类型是 1187 行的渲染承重模型）。
+
+**这三次都是「加派生之前先数清字段类型」换来的**，不是做到一半才发现。
+
+### 二、一条我先说错、随后被实测纠正的判断
+
+我一度认为 C01 那条「每处 `skip_serializing_if` 都要配 `ts(optional)`」的规则**太严**
+——因为 `TaskEntry` 那两个字段带 `serde(default)`，`ts-rs` 的
+`maybe_omitted && has_default` 兜底**自动**加了 `?`，看起来不需要显式属性。
+
+**实测证否**：兜底产出 `description?: string | null`（可缺席**且**可为 null），
+而 `skip_serializing_if` 意味着运行时**永不为 null**（缺席就是缺席）⇒ 那个 `| null` 过度宽松，
+**且与手写版 `tasks-panel.ts` 的 `description?: string` 不一致，`tsc` 当场报错**。
+加显式 `ts(optional)` 后产出 `description?: string`，与运行时一致。
+⇒ **规则不该放宽，C01 那条守卫是对的。** 已把这段推理写进守卫注释。
+
+### 三、两处 TS 侧的 import/re-export 坑（同一个）
+
+`events.ts` 与 `tasks-panel.ts` 都踩了：**只写 `export type { … } from "…"` 不会把名字带进
+本地作用域**，而两个文件内部都在用那些名字（8 处 / 4 处）。必须 `import type` + 单独 `export type {…}`。
+第一次改完 `tsc` 报 8 条 + 4 条，据此修正。
+
+### 四、变异验收（两条，各自先 diff 确认落位 + 确认编译得过才判色）
+
+- **变异 1**：删 `SessionStartedPayload.kind`。**第一次编译不过**（`lib.rs:467` 有构造点用它）
+  ——而那一刻 `tsc` 输出为空。**如果按那个空输出判色会得出「链路没牙」的错误结论。**
+  补齐构造点后：编译过（547 绿）→ 生成物确认少了字段 → `tsc` 红指向 `events.ts:444`。
+  这是本会话「编译失败不等于测试有牙」的**第六次**，每次都是靠先查编译才没误判。
+- **变异 2**：改 `SESSION_IDLE` 常量的字面量。**事件名守卫红，而 `tsc` 绿**
+  ⇒ 证明这条守卫覆盖的是一个**别的门禁都抓不到**的洞。
+  （一个 `const &str` 字面量改动不可能编译失败，且该守卫读 Rust 源不读生成物，
+  所以判色有效；但我那条查编译的 grep 正则写坏了没真跑成，如实记。）
 
 ## 8. 工程审计结果（Phase E）
 

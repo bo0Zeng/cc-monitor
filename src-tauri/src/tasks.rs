@@ -32,13 +32,25 @@ use tauri::{AppHandle, Emitter};
 /// 单个 task 记录。`status` 保留 String（不强类型 enum）以容纳 CLI 未来可能新增
 /// 的 status 值（如 `cancelled` 等），前端做 icon 映射时兜底显示原文。
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct TaskEntry {
     pub id: String,
     pub subject: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    // C02：**显式 `ts(optional)` 而不是靠 `ts-rs` 的 `has_default` 兜底**。
+    // 兜底产出 `description?: string | null`（可缺席**且**可为 null），而 `skip_serializing_if`
+    // 意味着运行时**永不为 null**（缺席就是缺席）⇒ 那个 `| null` 是过度宽松。
+    // 显式属性产出 `description?: string`，与运行时一致，也与手写版（`tasks-panel.ts`）一致。
+    #[cfg_attr(test, ts(optional))]
     pub description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    // C02：**显式 `ts(optional)` 而不是靠 `ts-rs` 的 `has_default` 兜底**。
+    // 兜底产出 `active_form?: string | null`（可缺席**且**可为 null），而 `skip_serializing_if`
+    // 意味着运行时**永不为 null**（缺席就是缺席）⇒ 那个 `| null` 是过度宽松。
+    // 显式属性产出 `active_form?: string`，与运行时一致，也与手写版（`tasks-panel.ts`）一致。
+    #[cfg_attr(test, ts(optional))]
     pub active_form: Option<String>,
     pub status: String,
     #[serde(default)]

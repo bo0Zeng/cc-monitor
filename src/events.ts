@@ -2,7 +2,30 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { JsonlRecord } from "./cards";
-import type { TaskEntry } from "./tasks-panel";
+// C02（rust-ts-boundary）：这 5 个 payload 类型**改成从生成物 re-export**，不再手写。
+// 源是 `src-tauri/src/bridge.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
+// **仍然 `export`**——本文件是事件的单一订阅枢纽，别的模块从这里 import 这些类型，
+// 换成 re-export 就不用改任何调用点（对外 API 逐字节不变）。
+//
+// **`JsonlLinePayload` 仍是手写的**：它的 `message: JsonlRecord` 依赖 Rust 侧那个
+// **自认有损**的 enum（`history.rs:628` 明写另一条路刻意绕开它），而 TS 侧的 `JsonlRecord`
+// 住在 `src/cards/index.ts`（1187 行，前端卡片渲染的承重模型）。
+// 用生成物替换它是一次渲染层重构，不是一次类型迁移 ⇒ 已登记延后，见 C02 计划 §2 末。
+import type { SessionEndedPayload } from "./generated/SessionEndedPayload";
+import type { SessionIdlePayload } from "./generated/SessionIdlePayload";
+import type { SessionStartedPayload } from "./generated/SessionStartedPayload";
+import type { TasksUpdatePayload } from "./generated/TasksUpdatePayload";
+import type { SessionActivityPayload } from "./generated/SessionActivityPayload";
+import type { RemoteSessionAddedPayload } from "./generated/RemoteSessionAddedPayload";
+// 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
+// 只写 `export type { … } from` 不会把名字带进本地作用域。
+export type {
+  SessionEndedPayload,
+  SessionIdlePayload,
+  SessionStartedPayload,
+  TasksUpdatePayload,
+  SessionActivityPayload,
+};
 
 export interface JsonlLinePayload {
   session_id: string;
@@ -21,31 +44,6 @@ export interface JsonlLinePayload {
    */
   origin?: string;
   message: JsonlRecord;
-}
-
-export interface SessionEndedPayload {
-  session_id: string;
-}
-
-/** audit-fixes F03.2：灰灯事件 payload（镜像 bridge.rs::SessionIdlePayload）。
- *  远端 claude 退出但 tmux 会话仍在（idle-tmux 第三态）时后端 emit——非归档、仅置灰点。 */
-export interface SessionIdlePayload {
-  session_id: string;
-}
-
-/** 会话（重新）变活事件 payload（镜像 bridge.rs::SessionStartedPayload）。
- *  Batch7-F24：附 pidfile 元信息——前端无 Tab 时建骨架（中途出现的本地 bg 会话）。 */
-export interface SessionStartedPayload {
-  session_id: string;
-  cwd: string | null;
-  kind: string | null;
-  name: string | null;
-}
-
-/** v2.3.0 issue #11: 后端 emit task-update 时的 payload */
-export interface TasksUpdatePayload {
-  sessionId: string;
-  tasks: TaskEntry[];
 }
 
 export interface EventHandlers {
@@ -110,12 +108,6 @@ export interface EventHandlers {
 }
 
 /** issue #23：session-activity 事件 payload（镜像 bridge.rs::SessionActivityPayload） */
-export interface SessionActivityPayload {
-  session_id: string;
-  status: string | null;
-  waiting_for: string | null;
-}
-
 /** queue 中的不同事件类型，drain 按 kind 派发 */
 type QueueItem =
   | { kind: "payload"; payload: JsonlLinePayload }
@@ -458,13 +450,9 @@ export async function bindEvents(
 
   // Batch5-F18：远端会话宣告同进 queue——骨架建 Tab 与该会话的行/ended 保序。
   registrations.push(
-    sub<{
-      session_id: string;
-      origin: string;
-      kind: string | null;
-      cwd: string | null;
-      name: string | null;
-    }>("remote-session-added", (e) => {
+    // C02：这里原先是**内联字面量类型**——最危险的一种手写形态（没有名字，
+    // 漂移时没有任何东西会红，人在 review 里也很难看见）。换成生成物。
+    sub<RemoteSessionAddedPayload>("remote-session-added", (e) => {
       queue.push({
         kind: "remote-added",
         sessionId: e.payload.session_id,
