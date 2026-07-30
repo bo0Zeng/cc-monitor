@@ -505,6 +505,48 @@ fn run_tmux_probe() -> TmuxProbe {
 /// `observation` 字段 ⇒ **旧 monitor 行为零变化**（有会话时它照旧解析 raw；零会话/出错时
 /// 它看到空 raw、照旧保守跳过 = 今天的行为，无回归）。新 monitor 读 `observation` 才能
 /// 区分"确证零会话"与"观测失败"，从而修掉灰灯卡死。
+/// P5：从 `tmux ls` 的 `raw` 里取**会话名集合**。
+///
+/// 只依赖「名字在第一列」这一点 —— 列的构成由 `TMUX_LS_FMT` 定（**红线：不改它**），
+/// 这里刻意不解析其余列，免得再造一处对格式的依赖。
+fn session_names(raw: &str) -> std::collections::BTreeSet<String> {
+    raw.lines()
+        .map(|l| l.split('\t').next().unwrap_or(""))
+        .map(str::trim)
+        .filter(|n| !n.is_empty() && *n != "NO_TMUX")
+        .map(str::to_string)
+        .collect()
+}
+
+/// P5：与上一份快照差分，返回**这一轮消失了的会话名**（升序，`BTreeSet` 保证稳定）。
+///
+/// **差分而不是逐事件**，因为 SIGUSR1 会合并：一串 hook 同时打进来可能只醒一次，
+/// 逐事件必漏；差分则一次报全。
+///
+/// **三态语义（最要紧的是第三条）**：
+/// - `Sessions(raw)` ⇒ 现集 = raw 里的名字；消失 = 旧集 − 现集
+/// - `ServerEmpty` / `NoServer` ⇒ 现集为空 ⇒ 旧集里**全部**算消失（server 没了，会话自然都没了）
+/// - `NoTmux` / `Unobservable` ⇒ **「不知道」，绝不当作「都没了」** —— 观测失败时报一堆
+///   死亡帧，会把活着的会话全部误 retire。此时**旧快照原样保留**，等下一次成功观测。
+fn diff_closed(
+    prev: &mut Option<std::collections::BTreeSet<String>>,
+    obs: &TmuxObservation,
+) -> Vec<String> {
+    let now = match obs {
+        TmuxObservation::Sessions(raw) => session_names(raw),
+        TmuxObservation::ServerEmpty | TmuxObservation::NoServer => Default::default(),
+        // 观测无效 ⇒ 什么都不结论，快照不动。
+        TmuxObservation::NoTmux | TmuxObservation::Unobservable => return Vec::new(),
+    };
+    let closed = match prev.as_ref() {
+        Some(old) => old.difference(&now).cloned().collect(),
+        // 第一次观测没有「上一份」可比 ⇒ 不报任何死亡（否则 daemon 一启动就诬告一批）。
+        None => Vec::new(),
+    };
+    *prev = Some(now);
+    closed
+}
+
 fn observation_to_frame(obs: TmuxObservation) -> Frame {
     match obs {
         TmuxObservation::Sessions(raw) => Frame::TmuxSessions {
@@ -657,6 +699,9 @@ fn watch_loop(
     // 线程**里，主循环只收结果。gate 在「无在途探测」上 → 最多同时一个探测线程；即便远端 tmux
     // 卡死（D-state/socket 卡住/NFS home），也只泄漏这一个后台线程，reader 永不冻结。
     let mut tmux_inflight = false;
+    // P5：上一份 `tmux ls` 的会话名集合。`None` = 还没成功观测过（第一次不报死亡）。
+    // 纯 reader 线程内部状态，不进 `ReaderState`（那是 per-file 记账，语义不同）。
+    let mut last_names: Option<std::collections::BTreeSet<String>> = None;
     // P3：对 tmux server 的认知 + 已挂过的 socket 目录 watch（只加一次）。
     let mut server = ServerState::Unknown;
     let mut watched_socket: Option<PathBuf> = None;
@@ -767,6 +812,13 @@ fn watch_loop(
                         }
                     }
                 }
+                // P5：**先**差分发死亡帧、**再**发快照帧。顺序有意：monitor 那边死亡帧是
+                // 「直接 retire」，快照帧是「对账」；先 retire 再对账，两者对同一 sid 的结论
+                // 一致（retire 幂等）。反过来则会出现「快照说它不在 → miss+1」这种多余一跳。
+                for name in diff_closed(&mut last_names, &obs) {
+                    tracing::info!("tmux 会话 {name} 已关闭（快照差分）⇒ 发正向死亡帧");
+                    sink.send(Frame::TmuxSessionClosed { name });
+                }
                 // P1：四态 → wire（`raw` 载荷不变、新信息走 additive `observation`）。
                 sink.send(observation_to_frame(obs));
             }
@@ -776,6 +828,11 @@ fn watch_loop(
                 if server == ServerState::Alive(pid) {
                     server = ServerState::Gone;
                     tracing::info!("tmux server pid {pid} 已退出（pidfd）⇒ 发零会话帧");
+                    // P5：server 没了 = 它上面的会话全没了 ⇒ 逐个报死亡，别只发一个零会话帧
+                    // 就指望 monitor 自己推断（那又回到「靠快照 + miss 计数」那条慢路）。
+                    for name in diff_closed(&mut last_names, &TmuxObservation::NoServer) {
+                        sink.send(Frame::TmuxSessionClosed { name });
+                    }
                     sink.send(observation_to_frame(TmuxObservation::NoServer));
                 }
             }
@@ -1890,6 +1947,110 @@ mod tests {
             WatchEvent::TmuxProbeDue => {}
             _ => panic!("期望 TmuxProbeDue"),
         }
+    }
+
+    // ---------- P5（zero-poll-liveness）：快照差分 → 正向死亡帧 ----------
+
+    use std::collections::BTreeSet;
+
+    fn names(v: &[&str]) -> Option<BTreeSet<String>> {
+        Some(v.iter().map(|s| s.to_string()).collect())
+    }
+
+    #[test]
+    fn session_names_takes_first_column_only() {
+        let raw = "s1\t/p\tclaude\t1\t2\tsid-a\ns2\t/q\tbash\t0\t1\t\n";
+        assert_eq!(
+            session_names(raw),
+            ["s1", "s2"].iter().map(|s| s.to_string()).collect()
+        );
+    }
+
+    #[test]
+    fn session_names_ignores_blank_lines_and_no_tmux_sentinel() {
+        assert!(session_names("\n\n").is_empty());
+        assert!(session_names("NO_TMUX\n").is_empty());
+    }
+
+    #[test]
+    fn diff_reports_only_the_disappeared_one() {
+        let mut prev = names(&["a", "b", "c"]);
+        let closed = diff_closed(
+            &mut prev,
+            &TmuxObservation::Sessions("a\t/p\tsh\t0\t1\t\nc\t/p\tsh\t0\t1\t\n".into()),
+        );
+        assert_eq!(closed, vec!["b".to_string()]);
+        assert_eq!(prev, names(&["a", "c"]));
+    }
+
+    /// 信号会合并 ⇒ 一次差分要能报出**所有**消失的（逐事件必漏）。
+    #[test]
+    fn diff_reports_all_disappeared_at_once() {
+        let mut prev = names(&["a", "b", "c", "d"]);
+        let closed = diff_closed(
+            &mut prev,
+            &TmuxObservation::Sessions("b\t/p\tsh\t0\t1\t\n".into()),
+        );
+        assert_eq!(
+            closed,
+            vec!["a".to_string(), "c".to_string(), "d".to_string()]
+        );
+    }
+
+    #[test]
+    fn server_gone_closes_everything() {
+        let mut prev = names(&["a", "b"]);
+        let closed = diff_closed(&mut prev, &TmuxObservation::NoServer);
+        assert_eq!(closed, vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(prev, Some(BTreeSet::new()));
+    }
+
+    /// ★ 最要紧的一条：**观测失败 ≠ 都没了**。
+    /// 报一堆死亡帧会把活着的会话全部误 retire —— 这正是 P1 当年那条
+    /// 「空 `raw` 同时意味着零会话和出错」的教训在死亡帧这条路上的复发点。
+    #[test]
+    fn unobservable_never_reports_deaths_and_keeps_snapshot() {
+        for obs in [TmuxObservation::Unobservable, TmuxObservation::NoTmux] {
+            let mut prev = names(&["a", "b"]);
+            assert!(
+                diff_closed(&mut prev, &obs).is_empty(),
+                "{obs:?} 不该报死亡"
+            );
+            assert_eq!(prev, names(&["a", "b"]), "{obs:?} 不该动快照");
+        }
+    }
+
+    /// 第一次观测没有「上一份」可比 ⇒ 不报任何死亡（否则 daemon 一启动就诬告一批）。
+    #[test]
+    fn first_observation_reports_nothing() {
+        let mut prev = None;
+        let closed = diff_closed(
+            &mut prev,
+            &TmuxObservation::Sessions("a\t/p\tsh\t0\t1\t\n".into()),
+        );
+        assert!(closed.is_empty());
+        assert_eq!(prev, names(&["a"]));
+    }
+
+    /// 幂等：同一份观测再来一次，不该重复报死亡。
+    #[test]
+    fn repeated_identical_observation_reports_nothing() {
+        let mut prev = names(&["a"]);
+        let obs = TmuxObservation::Sessions("a\t/p\tsh\t0\t1\t\n".into());
+        assert!(diff_closed(&mut prev, &obs).is_empty());
+        assert!(diff_closed(&mut prev, &obs).is_empty());
+    }
+
+    /// 新会话出现不该被当成死亡（差分方向别搞反）。
+    #[test]
+    fn new_session_is_not_a_death() {
+        let mut prev = names(&["a"]);
+        let closed = diff_closed(
+            &mut prev,
+            &TmuxObservation::Sessions("a\t/p\tsh\t0\t1\t\nb\t/p\tsh\t0\t1\t\n".into()),
+        );
+        assert!(closed.is_empty());
+        assert_eq!(prev, names(&["a", "b"]));
     }
 
     // ---------- P4（zero-poll-liveness）：外部 poke ⇒ 立刻重探 ----------
