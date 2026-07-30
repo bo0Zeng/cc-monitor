@@ -88,9 +88,16 @@ where
 
 /// 索引状态（cc-monitor 自建 DTO → camelCase;core 直出类型保持 snake_case,见手册 §7.3）。
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct PanoramaStatus {
     stale: bool,
+    // **C03 大整数策略**：量纲是**秒或毫秒时间戳**（索引建立时刻）——
+    // 2^53-1 无论按 ms（≈28.5 万年）还是按 s 都远超任何真实取值 ⇒ f64 精度足够。
+    // **写 "number | null" 而不是 "number"**：它是 `Option` 且**无** `skip_serializing_if`
+    // ⇒ 线上 None 序列化成显式 `null`（批 4 的 `duration_ms` 立的规则，已有守卫机检）。
+    #[cfg_attr(test, ts(type = "number | null"))]
     indexed_at: Option<u64>, // unix 秒
     symbols: usize,
 }

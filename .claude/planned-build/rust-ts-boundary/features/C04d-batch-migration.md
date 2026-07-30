@@ -34,7 +34,7 @@
 | **5b** | `main.ts` 9 · `settings/mcp-section` 10 | 是（**1 个**；`main.ts` 零新派生） | **8** | **完成** |
 | **5c** | `settings/remote-section` **9**（不是 8，见 §3g） | 是（**6 个**） | **7** | **完成** |
 | 6 | `sftp/panel` · `views/history` · `views/session-viewer`（**含 3 个动态派发口**） | 是 | 3 | 待做 |
-| 7 | `panorama/api.ts`（21 处，最大） | 是 | **1**（包装层自己） | 待做 |
+| **7** | `panorama/api.ts` 21（最大单文件） | **只 1 个**（其余 10 个受 vendor 铁律阻塞，见 §3k） | **3**（=最终形态） | **完成 · 成功标准 4 达成** |
 | — | **`tabs.ts`（15 处）** | — | — | **已跳过，等授权** |
 
 **最终形态**：`import { invoke }` 只剩 `src/ipc/commands.ts`（那 1 个）
@@ -519,6 +519,51 @@ C04a 写下：「7 个命令 TS 静态看不见 ⇒ 只做单向断言」。批 
 | **A** | 给 `stream_history_sessions_in_project` 传 `origin` | `tsc` 报 `'origin' does not exist in type '{ projectDir: string; onEntry: Channel<HistorySessionEntry>; }'` | 成立 |
 | **B** | 往 `DYNAMIC_ONLY` 塞一个名字 | 守卫红 | 成立（空集被钉死，不许静默变大） |
 | C | 三条等号自动各红一次 | 文件数 5→4 · 包装层 77→88 · **字面量名 117→119** | 成立 |
+
+## 3k. 批次 7：★★ **成功标准 4 达成** + 一处被文档强制的设计决定
+
+21 条包装层条目（88 → **109**）· **1 个**派生（生成物 66 → **67**）· 1 个文件迁走（4 → **3**）。
+**`import { invoke }` 的生产文件从 29 降到 3，即主计划 §0.1 成功标准 4 改写后的最终形态**：
+`ipc/commands.ts`（包装层自己）· `tabs.ts`（等红线授权）· `accounts.ts`（等 Z02）。
+
+### ★ 10 个返回类型住在 vendored 里 —— 决定被 `VENDOR.md` 强制
+
+`Overview`/`NodeView`/`SubGraph`/`Edge`/`ImpactSet`/`Symbol`/`DocLink`/`Annotation`/
+`DriftItem`/`IndexStats` 都在 `src-tauri/vendor/code-picture-core/src/model.rs`。
+`VENDOR.md` 有一条明写的铁律：
+
+> **副本是上游的镜子，不是分身**（SS-10）：**只照上游改，绝不在副本里改出自己的版本**。
+
+⇒ 加派生就是违反它；「先改上游」要动 `code-picture` 仓（**在册红线**）。
+**按 §5「名字钉死是普遍的、类型生成是按需的」**，本批只做名字钉死 + 实参把关，
+类型生成**如实登记为结构性阻塞（BACKLOG E38，含三条备选路径与我的倾向）**。
+`PanoramaStatus` 例外（在 `panorama.rs`、本仓自己的）⇒ 已生成。
+**门禁复核 vendored 零改动**：`cargo test -p code-picture-core` 仍 **25**、
+`git status -- src-tauri/vendor/` **0 行**。
+
+### 守卫指出 `indexed_at`，规则按批 4 那条走
+
+`PanoramaStatus.indexed_at: Option<u64>` 生成出 `bigint | null` ⇒ 守卫红。
+它是 `Option` 且**无** `skip_serializing_if` ⇒ 按批 4 立的规则写
+`ts(type = "number | null")`（不是 `"number"`——那会丢掉 `null`）。
+`Option<大整数>` 计数 2 → **3**。
+
+### ★ 一处我自己量错的 Rust 参数，被包装层当场揪出
+
+`panorama_touching` 的 Rust 签名是 `(repo, files, ranges: Vec<(usize, usize)>)`，
+**我提取参数的正则用了 `[^,]+?` ⇒ 被元组里的逗号截断，漏了 `ranges`**。
+`tsc` 报「'ranges' does not exist in type '{ repo; files }'」才发现。
+⇒ **量 Rust 签名时，参数类型里可能含逗号（元组/泛型），别用 `[^,]` 切。**
+另两处 `budget`/`limit` 我写成 `number | null`，而调用方是 TS 可选参数（`number | undefined`）
+——Rust 是 `Option<usize>`，**缺席/null/数字三种都合法** ⇒ 改成 `?: number | null` 才忠实。
+
+### 批次 7 变异
+
+| # | 变异 | 判色 | 结论 |
+|---|---|---|---|
+| **A** | 给 `panorama_touching` 少传 `ranges` | `tsc` 报 `Argument of type '{ repo; files }' is not assignable to … { repo; files; ranges }` | 成立。**那正是我漏量的参数**，此前裸 `invoke` 的 `InvokeArgs` 完全不管 |
+| **B** | 删 `indexed_at` 的 `ts(type)` | 生成物变 `bigint \| null`、守卫红并点名 | 成立 |
+| C | 五条等号自动各红一次 | 生成物清单 · 派生源 24→25 · 大整数 22→23 · `Option<大整数>` 2→3 · 文件数 4→**3** · 包装层 88→109 | 成立 |
 
 ## 4. 代码审计结果（Phase D）
 

@@ -110,7 +110,7 @@ describe("C01 边界生成物", () => {
   it("派生 ts_rs::TS 的 Rust 源文件恰好 13 个（自动发现的范围自检）", () => {
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(24);
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(25);
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -161,6 +161,7 @@ describe("C01 边界生成物", () => {
       "LogFileEntry.ts", // C04d 批4（LogFileInfo 的传递依赖）
       "LogFileInfo.ts", // C04d 批4（字节数 + 毫秒时间戳，两个量纲分开论证）
       "McpServerEntry.ts", // C04d 批5b（`scope: String` 比手写的三值 union **宽**——那才是线上真相）
+      "PanoramaStatus.ts", // C04d 批7（**panorama 一族唯一能生成的**——其余 10 个住 vendored，受 SS-10 铁律阻塞）
       "ProfileKind.ts", // C04d 批5a（ProfileScan 的传递依赖）
       "ProfileScan.ts", // C04d 批5a（`size_bytes: u64` 按字节数量纲论证）
       "PushResult.ts", // C04d 批5c（**我用 grep 漏掉的那个跨行调用点**）
@@ -369,7 +370,7 @@ describe("C01 边界生成物", () => {
     // `EntryMetadata.updated_at` · `SearchIndexStatus.built_at_ms` ·
     // `SessionHits.updated_at` · **`Hit.ts_ms`（这个是守卫指出来的**——`Hit` 是
     // `SessionHits` 的传递依赖，我没逐字段读它就派生了）。
-    expect(checked, `期望恰好 22 个大整数字段，实得 ${checked}`).toBe(22);
+    expect(checked, `期望恰好 23 个大整数字段，实得 ${checked}`).toBe(23);
   });
 
   it("`Option<大整数>` 配 ts(type) 时不许丢掉 `| null`（除非同时有 ts(optional)）", () => {
@@ -402,7 +403,9 @@ describe("C01 边界生成物", () => {
     }
     // 计数自检用等号：`data_paths.rs::size_bytes`（走 optional 分支）+
     // `messages.rs::duration_ms`（走 null 分支）= 2 处。
-    expect(checked, `期望恰好 2 处 Option<大整数>，实得 ${checked}`).toBe(2);
+    // C04d 批 7 → 3：`data_paths.rs::size_bytes`（optional 分支）·
+    // `messages.rs::duration_ms` · `panorama.rs::indexed_at`（后两个走 `| null` 分支）。
+    expect(checked, `期望恰好 3 处 Option<大整数>，实得 ${checked}`).toBe(3);
   });
 
   it("`u64` 的映射与运行时一致，且属性真的在源码里（不是被注释喂饱）", () => {
@@ -472,13 +475,17 @@ describe("C01 边界生成物", () => {
     // 注意 `src/ipc/commands.ts` **算在里面**——包装层就是最终该剩下的那 1 个。
     // 裸 `grep 'import { invoke }'` 只有 24，因为有文件是多名导入（`import { invoke, Channel }`）
     // ——这正是原来那个 29 容易被量错的原因，所以这里用正则而不是字面量。
-    // C04d：批1 29→23 · 批2 23→19 · 批3 19→14 · 批4 14→12 · 批5a 12→10 · 批5b 10→8 · 批5c 8→7 · 批6a 7→6 · 批6b 6→5 · 批6c 5→**4**（1 个文件；
+    // C04d：批1 29→23 · 批2 23→19 · 批3 19→14 · 批4 14→12 · 批5a 12→10 · 批5b 10→8 · 批5c 8→7 · 批6a 7→6 · 批6b 6→5 · 批6c 5→4 · 批7 4→**3**（1 个文件；
     // `accounts.ts` 那 1 个**被跨工作区冲突协议挡住**，见 features/C04d §3d）。最终形态是
     // 「1 个包装层 + `tabs.ts`（等授权）+ 1 个动态派发逃生口」= 3，见主计划 §0.1 标准 4。
     // **C04d 批 6c：5 → 4。** 剩下这 4 个就是最终形态：
     // `ipc/commands.ts`（包装层自己）· `tabs.ts`（等红线授权）·
     // `accounts.ts`（等 account-zero 的 Z02，跨工作区冲突协议）· `panorama/api.ts`（批 7 待做）。
-    expect(hits.length, `期望恰好 4 个，实得 ${hits.length}`).toBe(4);
+    // ★★ **C04d 批 7 到 4 → 3：主计划 §0.1 成功标准 4 的最终形态达成。**
+    // 这 3 个就是设计上该剩下的：`ipc/commands.ts`（包装层自己，即那个「1」）·
+    // `tabs.ts`（等 tabs.ts 红线授权）· `accounts.ts`（等 account-zero 的 Z02，跨工作区冲突协议）。
+    // 29 → 23 → 19 → 14 → 12 → 10 → 8 → 7 → 6 → 5 → 4 → **3**。
+    expect(hits.length, `期望恰好 3 个，实得 ${hits.length}`).toBe(3);
     expect(hits.map((f) => f.replace(/\\/g, "/")), "包装层自己必须在名单里").toContain(
       "src/ipc/commands.ts",
     );
