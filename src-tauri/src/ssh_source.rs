@@ -1607,7 +1607,14 @@ pub enum InboundFrame {
     Overflow { dropped: u64 },
     /// B2：daemon 在远端本地跑 `tmux ls` 的原始 stdout（或哨兵 `NO_TMUX`）——喂 tmux 对账，
     /// 替掉每 8s 新建 SSH 的刷屏轮询。`raw` 由 `tmux::parse_tmux_ls` 解析（`NO_TMUX`→无 tmux）。
-    TmuxSessions { raw: String },
+    ///
+    /// P1（zero-poll-liveness）：`observation` = daemon 的**显式观测分类**（additive；旧 daemon
+    /// 为 `None`）。分类判定见 `tmux::classify_tmux_observation`——它把「确证零会话」与
+    /// 「观测失败」分开，这是修掉 §24bis 灰灯卡死的关键（空 `raw` 在旧协议里两义不可分）。
+    TmuxSessions {
+        raw: String,
+        observation: Option<String>,
+    },
 }
 
 /// 把 daemon 发来的一行（已去掉行尾 `\n`）解析成 [`InboundFrame`]。
@@ -1698,7 +1705,13 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
         "tmux_sessions" => {
             // B2：raw = tmux ls 原文（或 NO_TMUX）。缺/非字符串 → 坏帧跳过。
             let raw = obj.get("raw")?.as_str()?.to_string();
-            Some(InboundFrame::TmuxSessions { raw })
+            // P1：observation 是 additive 可选字段——**缺失/非字符串都当 None**（不是坏帧）。
+            // 旧 daemon 没有它；非字符串是坏 daemon，退化成旧判据即今天的保守行为。
+            let observation = obj
+                .get("observation")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            Some(InboundFrame::TmuxSessions { raw, observation })
         }
         // 未知 kind：向前兼容，跳过（调用方 warn）。绝不 panic。
         _ => None,
@@ -2364,43 +2377,43 @@ async fn stream_loop(
                     tracing::warn!("ssh_source remote-health emit failed: {e}");
                 }
             }
-            Some(InboundFrame::TmuxSessions { raw }) => {
+            Some(InboundFrame::TmuxSessions { raw, observation }) => {
                 // audit-fixes F03.2（收帧驱动 tmux 存活收割器，取代已删的 8s poller = 甲-evented 零轮询）：
                 // daemon 每 ~8s 推本 origin 最新 `tmux ls` 原文；收到即对账——把 tmux 后端已消失的 tracked
                 // sid 去抖 retire → 当 removed 送 emitter（emitter 再判 None→archived+clear_idle）。tracked =
                 // 本连接 announced（live 会话）∪ 本 origin idle 会话（后者使 idle→archived 有产出者，补齐红线④）。
-                // 守卫同旧 poller：`NO_TMUX`/空 backend 保守跳过（tmux ls `|| true` 把瞬时错也吞成空，累计
-                // 缺失会一抖动批量误灰、只发 removed 永久卡灰；杀单会话 backend 非空、目标缺失照常 retire）。
-                if raw.trim() != "NO_TMUX" {
-                    let backend: std::collections::HashSet<String> =
-                        crate::tmux::parse_tmux_ls(&raw)
-                            .iter()
-                            .filter_map(|s| s.sid.clone())
-                            .collect();
-                    if !backend.is_empty() {
-                        let idle = snapshot_idle_for_origin(&host_label);
-                        let tracked = reaper_tracked(announced.keys().cloned(), &idle);
-                        // idle 集当 pre_bound 传入：@ccm_sid 证明绑过 tmux，播种 ever_bound，免跨线程
-                        // 缝漏置导致 idle→archived 无产出者（D 审计②修，见 reconcile_step 注释）。
-                        let retire = crate::tmux_reconcile::reconcile_step(
-                            &mut reconcile_state,
-                            &tracked,
-                            &backend,
-                            &idle,
-                            crate::tmux_reconcile::RETIRE_MISS_THRESHOLD,
+                //
+                // P1（zero-poll-liveness）：原先这里内联着
+                // `if raw.trim() != "NO_TMUX" { … if !backend.is_empty() { … } }`——**把五种语义
+                // 不同的观测压成两条路**，其中「daemon 确证零会话」被误并进「观测失败」一律跳过
+                // ⇒ 杀掉某 origin 最后一个 tmux 会话时灰灯卡到断连（§24bis 预登记的残留 bug）。
+                // 现在判断提成纯函数 `tmux::classify_tmux_observation`（可 CI 单测，生产与测试
+                // 同一条路径），空集也是**有效观测**、照常累计缺失。
+                if let crate::tmux::TmuxObservation::Backend(backend) =
+                    crate::tmux::classify_tmux_observation(&raw, observation.as_deref())
+                {
+                    let idle = snapshot_idle_for_origin(&host_label);
+                    let tracked = reaper_tracked(announced.keys().cloned(), &idle);
+                    // idle 集当 pre_bound 传入：@ccm_sid 证明绑过 tmux，播种 ever_bound，免跨线程
+                    // 缝漏置导致 idle→archived 无产出者（D 审计②修，见 reconcile_step 注释）。
+                    let retire = crate::tmux_reconcile::reconcile_step(
+                        &mut reconcile_state,
+                        &tracked,
+                        &backend,
+                        &idle,
+                        crate::tmux_reconcile::RETIRE_MISS_THRESHOLD,
+                    );
+                    if !retire.is_empty() {
+                        tracing::info!(
+                            "tmux-reconcile(收帧): [{host_label}] retire {} sid(s)（tmux 后端已不在）",
+                            retire.len()
                         );
-                        if !retire.is_empty() {
-                            tracing::info!(
-                                "tmux-reconcile(收帧): [{host_label}] retire {} sid(s)（tmux 后端已不在）",
-                                retire.len()
-                            );
-                            if let Err(e) = session_changes.send(SessionChange {
-                                added: vec![],
-                                removed: retire,
-                                status_changed: vec![],
-                            }) {
-                                tracing::warn!("ssh_source tmux-reconcile(收帧) send failed: {e}");
-                            }
+                        if let Err(e) = session_changes.send(SessionChange {
+                            added: vec![],
+                            removed: retire,
+                            status_changed: vec![],
+                        }) {
+                            tracing::warn!("ssh_source tmux-reconcile(收帧) send failed: {e}");
                         }
                     }
                 }
@@ -3930,7 +3943,9 @@ mod parse_frame_tests {
         assert_eq!(
             frame,
             InboundFrame::TmuxSessions {
-                raw: "s1\t/p\tclaude\t1\t2\tsid-a".to_string()
+                raw: "s1\t/p\tclaude\t1\t2\tsid-a".to_string(),
+                // P1：旧 daemon 无该字段 ⇒ None（**不是**坏帧）。
+                observation: None,
             }
         );
         // NO_TMUX 哨兵也是合法 raw。
@@ -3941,6 +3956,23 @@ mod parse_frame_tests {
         // 缺 raw / raw 非字符串 → None（坏帧跳过）。
         assert_eq!(parse_frame(r#"{"kind":"tmux_sessions"}"#), None);
         assert_eq!(parse_frame(r#"{"kind":"tmux_sessions","raw":5}"#), None);
+        // P1（additive 字段）：observation 存在则读出；**非字符串不是坏帧**、退化成 None
+        // （坏 daemon 也只该让 monitor 退回保守判据，不该让整帧被丢）。
+        assert_eq!(
+            parse_frame(r#"{"kind":"tmux_sessions","raw":"","observation":"zero_sessions"}"#),
+            Some(InboundFrame::TmuxSessions {
+                raw: String::new(),
+                observation: Some("zero_sessions".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_frame(r#"{"kind":"tmux_sessions","raw":"","observation":7}"#),
+            Some(InboundFrame::TmuxSessions {
+                raw: String::new(),
+                observation: None,
+            }),
+            "observation 类型错只该退化成 None，不该把整帧当坏帧丢掉"
+        );
     }
 
     /// 已知 kind 但必需字段缺失 / 类型错 → None（坏帧当 garbage 跳过，不 panic）。

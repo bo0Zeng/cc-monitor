@@ -125,7 +125,24 @@ pub enum Frame {
     /// （或哨兵 `NO_TMUX`），周期性推给 monitor——替掉 monitor 每 8s 新建 SSH 跑 tmux ls 的刷屏轮询。
     /// **送 raw、client 解析**（照 `Line` 帧哲学，复用 monitor 现有 `tmux::parse_tmux_ls`，零解析重复）。
     /// **monitor 专属**：aterm DaemonTransport 未知 kind 跳过。旧 monitor 忽略未知 kind（additive）。
-    TmuxSessions { raw: String },
+    TmuxSessions {
+        raw: String,
+        /// P1（zero-poll-liveness，**additive、不 bump `PROTO_VERSION`**）：本次观测的**分类**
+        /// ——`"zero_sessions"`（确证零会话）/ `"no_tmux"` / `"unobservable"`（观测失败）。
+        ///
+        /// **有会话时省略**（`skip_serializing_if`）⇒ 热路径字节与 P1 之前**逐字节一致**。
+        ///
+        /// **为什么需要它**：P1 之前 `raw` 的空串同时意味着「零会话」和「`tmux ls` 出错被
+        /// `|| true` 吞了」，两者不可分 ⇒ monitor 只能一律保守跳过 ⇒ 当被杀的是该 origin
+        /// 最后一个 tmux 会话时（server 随之退出、`tmux ls` 回空）对账整段跳过 ⇒ idle 灰灯
+        /// **卡到断连 flush 才清**（`doc/INVARIANTS.md` §24bis 预先登记的残留 bug）。
+        ///
+        /// **旧 monitor 忽略本字段**：它看到空 `raw` ⇒ 空 backend ⇒ 保守跳过 = 今天的行为，
+        /// 无回归。新 monitor 读本字段才能安全 retire。取值集与 monitor
+        /// `src-tauri/src/tmux.rs` 的 `OBS_*` const 是**双写点**（有守卫钉住）。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        observation: Option<String>,
+    },
     /// The bounded frame channel back-pressured and the reader had to drop
     /// `dropped` frames (a slow/wedged SSH pipe). Emitted once when the channel
     /// drains enough to accept it, so the client can warn the user that live
@@ -271,6 +288,7 @@ mod tests {
             (
                 Frame::TmuxSessions {
                     raw: "s1\t/p\tclaude\t1\t2\tsid-a".into(),
+                    observation: None,
                 },
                 "tmux_sessions",
             ),
@@ -312,7 +330,11 @@ mod tests {
     #[test]
     fn tmux_sessions_frame_ships_raw_as_one_line() {
         let raw = "s1\t/p\tclaude\t1\t2\tsid-a\ns2\t/q\tnode\t0\t1\t";
-        let line = to_line(&Frame::TmuxSessions { raw: raw.into() }).expect("serialize");
+        let line = to_line(&Frame::TmuxSessions {
+            raw: raw.into(),
+            observation: None,
+        })
+        .expect("serialize");
         assert!(line.ends_with('\n'));
         let body = line.strip_suffix('\n').unwrap();
         assert!(!body.contains('\n'), "内嵌换行须被转义、无裸换行: {body:?}");
