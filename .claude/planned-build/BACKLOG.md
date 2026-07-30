@@ -203,7 +203,7 @@ hook 明确说「**这个具体会话**关了」，没有抖动可言。所以�
 ③ `never_bound` 按设计永不判。**做 E34 时顺手把这三格显示出来**，否则下次还是只能靠猜。
 
 | **E35** | **★ 真 bug：历史会话「留空恢复默认」清不掉自定义标题** | C04d 批 6c 读边界时发现，**已实测确认机理** | **未修**（修它是行为改动，不在 C04d 范围）。见下方独立小节 |
-| **E36** | **多账号不支持第三方 API key**（用户 2026-07-30 问） | 结构性不支持，不只是没做 | **未做**，需用户排期。见下方独立小节 |
+| **E36** | **多账号加第三方 API key** | 用户 2026-07-30 问；**已完成调研，结论比初判乐观得多** | **未做，等用户拍形态**。见下方独立小节（含对我初判的订正） |
 
 ---
 
@@ -247,29 +247,63 @@ UI 文案承诺的「留空恢复默认」不成立。
 
 ---
 
-## E36 详述：多账号不支持第三方 API key（结构性，不只是没做）
+## E36 详述：多账号加第三方 API key —— **调研后订正：不需要碰红线**
 
-**用户问**：「现在的多账号可以有的是第三方 apikey 吗?」**答：不支持，且结构上顶不住。**
+**用户问**：「现在的多账号可以有的是第三方 apikey 吗?」→ **今天不支持**（下文①②③），
+但**怎么做**这件事，我第一版的结论是错的，已订正。
 
-三条实测证据：
+### ★ 对我自己初判的订正（重要）
 
-1. **全仓零处理**。`ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` / `apiKeyHelper` 在
-   `src/` + `src-tauri/src/` + `shared/` **grep 零命中**。`accounts.rs::RemoteAccount` 的字段
-   只有 `name`/`email`/`config_dir`/`is_default`/`mode`/`exists`/`logged_in`
-   ——**没有一格能装 base_url 或 key**。
-2. **隔离粒度不覆盖它**。`~/.claude/skills/cc-acct-iso/scripts/lib.sh:114`：
-   `ISOLATE_SET=".credentials.json .claude.json backups policy-limits.json stats-cache.json"`
-   其余一律符号链接共享。真机验证：`~/.claude-accts/z/settings.json` 与
-   `~/.claude-accts/b/settings.json` **都指向** `/home/zbl/.claude/settings.json`
-   ⇒ 想靠 `settings.json` 的 `env`/`apiKeyHelper` 给每账号配不同 key，**会被所有账号共享**。
-   走环境变量更不行——那是进程级的，与选哪个账号无关。
-3. **`logged_in` 的判据不认它**。它是 stat `.credentials.json` **存在性**得来的
-   （代码注释自己写「不代表凭据有效」）⇒ 纯 API-key 账号不产生该文件、UI 里显示成**未登录**。
+我最初写「要动三层，第一层要改 `~/.claude/skills/cc-acct-iso/` 的 `ISOLATE_SET`（红线），
+且会变更现有 z/b 两账号的共享结构、需迁移」。**这条是错的**——我漏看了本仓自己已经建好的机制：
 
-**要真支持得动三层**：① `ISOLATE_SET` 加 `settings.json`（或引入 per-account env 覆盖文件）
-② `RemoteAccount` 加 `auth_kind`，`logged_in` 按 kind 分别判 ③ 启动路径把 key/base_url
-注进子进程环境。
+**cc-monitor 就是构造启动命令的那一方**，`src/launch-plan.ts` 的 IR 里已经有 `EnvOp`：
 
-**第一层要改 `~/.claude/skills/cc-acct-iso/`——需用户单独授权的红线**；而且它一改，
-现有 `z`/`b` 两账号的共享结构就变了，**属于需要迁移的改动**，不能顺手做。
-**建议排进 `account-zero` 工作区**（那里正在处理账号模型），等用户定。
+```ts
+export type EnvOp =
+  | { kind: "export-config-dir"; value: string }
+  | { kind: "export-model"; value: string }   // F07：每账号默认模型（ANTHROPIC_MODEL）
+  | { kind: "unset-config-dir" }
+  | { kind: "unset-nested-env" };
+```
+
+`export-model` **已经在做「每账号一个 `ANTHROPIC_MODEL`」**。加 `ANTHROPIC_BASE_URL` /
+`ANTHROPIC_AUTH_TOKEN` 就是在同一处再加两个**窄变体**，与 `settings.json` 完全无关
+⇒ **零红线、零迁移、零 ISOLATE_SET 改动。**
+
+**官方文档给的决定性依据**（`code.claude.com/docs/en/env-vars`）：
+> `ANTHROPIC_API_KEY`: "…**When set, this key is used instead of your Claude Pro, Max, Team,
+> or Enterprise subscription even if you are logged in.**"
+
+启动时的 env 就够，且**优先于订阅登录** ⇒ per-account 天然按启动区分。
+
+### 今天为什么不支持（三条实测）
+
+1. **全仓零处理**：`ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL`/`apiKeyHelper` 在
+   `src/` + `src-tauri/src/` + `shared/` **grep 零命中**；`RemoteAccount` 没有一格能装它们。
+2. **`settings.json` 是共享的**：真机验证 `~/.claude-accts/z/settings.json` 与 `b/settings.json`
+   **都指向** `~/.claude/settings.json` ⇒ 走 `settings.json` 的 `env`/`apiKeyHelper`
+   会被**所有账号共用一个 key**。（用户的 `apiswitch/settings1.json` 参考就是这个形态
+   ——**单账号正确，多账号不适用**。）另：认证优先级里 `apiKeyHelper` **排在 OAuth 之上**
+   ⇒ 它一存在，已登录的订阅账号也会被顶掉走网关。
+3. **`logged_in` 的判据不认它**：它是 stat `.credentials.json` **存在性**得来的
+   （代码注释自承「不代表凭据有效」）⇒ 纯 key 账号不产生该文件、UI 显示「未登录」。
+
+### 建议形态（等用户拍）
+
+- `EnvOp` 加两个**窄变体**（不开自由 `{key,value}` 后门——本仓刻意拒绝过，
+  注释写着「防止绕开校验往命令里塞任意变量名」）：
+  `{ kind: "export-base-url"; value }` · `{ kind: "export-auth-token"; value }`
+- `RemoteAccount` 加 `auth_kind`（`subscription` | `api-key`），`logged_in` 按 kind 分别判
+- **key 存哪里要用户定**：`accounts.json` 明文 / 系统 keyring / 沿用 helper 脚本
+
+### 调研中发现的两处「官方 vs 本仓」冲突（独立风险，值得单独排期）
+
+| 项 | 官方文档 | 本仓 / 现实 |
+|---|---|---|
+| 用户级 `settings.local.json` | **明确写不存在**（`.local` 只在项目级） | `config_surface.rs` 把 `<config_dir>/settings.local.json` 当用户级作用域建模，还有测试断言那儿的 hook 算已装 |
+| `CLAUDE_CONFIG_DIR` | settings 页与 env-vars 页**都没提** | **整套多账号隔离全靠它**；`mcp.rs::claude_json_candidates()` 也在读它。它确实有效，但**无文档保证** |
+
+第一条 ⇒ 我一度想用 `settings.local.json` 做 per-account，**那个前提被官方否认，已放弃**。
+第二条是**稳定性风险**：隔离依赖一个未文档化的环境变量，Claude Code 若改其行为，
+多账号会整体失效且我们没有文档依据。**建议单独登记为 E37 并做一次真机验证 + 版本钉**。
