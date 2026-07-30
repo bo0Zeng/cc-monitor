@@ -110,7 +110,7 @@ describe("C01 边界生成物", () => {
   it("派生 ts_rs::TS 的 Rust 源文件恰好 13 个（自动发现的范围自检）", () => {
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(13);
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(14);
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -131,6 +131,7 @@ describe("C01 边界生成物", () => {
       "ConfigSurfaceReport.ts", //    C04d 批2
       "DataPathInfo.ts", //           C01
       "DataPathsResponse.ts", //      C01
+      "DiagnosticsConfig.ts", // C04d 批4
       "ForkedFrom.ts", //             C04c
       "ForwardStatus.ts", //          C04d 批3（`connCount: u64` 按累计连接数量纲论证）
       "FrontendReadyPayload.ts", //   C02（方向相反的那个：TS → Rust，带 Deserialize）
@@ -140,8 +141,11 @@ describe("C01 边界生成物", () => {
       "JsonlBatchPayload.ts", //      C04c
       "JsonlLinePayload.ts", //       C04c
       "JsonlRecord.ts", //            C04c（**线定义本身**：wire == serde_json::to_string(它)）
+      "LogFileEntry.ts", // C04d 批4（LogFileInfo 的传递依赖）
+      "LogFileInfo.ts", // C04d 批4（字节数 + 毫秒时间戳，两个量纲分开论证）
       "RemoteHealthPayload.ts", //    C02
       "RemoteSessionAddedPayload.ts", // C02
+      "RestartHint.ts", // C04d 批4（只有 unit variant 的外部标记枚举 → 字面量联合）
       "SessionActivityPayload.ts", // C02
       "SessionEndedPayload.ts", //    C02
       "SessionIdlePayload.ts", //     C02
@@ -317,9 +321,11 @@ describe("C01 边界生成物", () => {
     // 计数自检用等号：`data_paths.rs` 1（C01）+ `sftp_pool.rs` 3（size / transferred / total）
     // + `usage.rs` 4 = 8。**`bridge.rs` 的 `JsonlLinePayload.seq` 不计**——那个 struct 未派生
     // （随 `JsonlLine`/`JsonlBatch` 延后），而它正是那两个延后的真正卡点。
-    // **C04d 批 3 从 10 改到 11**：改成自动发现后多扫出 `ForwardStatus.conn_count`
-    // ——它此前对守卫完全隐形（`port_forward.rs` 不在那张手写清单里）。
-    expect(checked, `期望恰好 11 个大整数字段，实得 ${checked}`).toBe(11);
+    // 批 3 从 10 → 11（自动发现多扫出 `ForwardStatus.conn_count`，它此前对守卫完全隐形）；
+    // **批 4 再 → 14**：`logging.rs` 的 `current_size_bytes`/`size_bytes`（字节数量纲）
+    // 与 `modified_ms`（毫秒时间戳量纲）——**两个量纲的上限论证在 Rust 侧分开写**，
+    // 混成一条是 C03 明确禁止的。
+    expect(checked, `期望恰好 14 个大整数字段，实得 ${checked}`).toBe(14);
   });
 
   it("`Option<大整数>` 配 ts(type) 时不许丢掉 `| null`（除非同时有 ts(optional)）", () => {
@@ -418,9 +424,10 @@ describe("C01 边界生成物", () => {
     // 注意 `src/ipc/commands.ts` **算在里面**——包装层就是最终该剩下的那 1 个。
     // 裸 `grep 'import { invoke }'` 只有 24，因为有文件是多名导入（`import { invoke, Channel }`）
     // ——这正是原来那个 29 容易被量错的原因，所以这里用正则而不是字面量。
-    // C04d：批1 29→23 · 批2 23→19 · 批3 19→**14**（5 个文件）。最终形态是
+    // C04d：批1 29→23 · 批2 23→19 · 批3 19→14 · 批4 14→**12**（2 个文件；
+    // `accounts.ts` 那 1 个**被跨工作区冲突协议挡住**，见 features/C04d §3d）。最终形态是
     // 「1 个包装层 + `tabs.ts`（等授权）+ 1 个动态派发逃生口」= 3，见主计划 §0.1 标准 4。
-    expect(hits.length, `期望恰好 14 个，实得 ${hits.length}`).toBe(14);
+    expect(hits.length, `期望恰好 12 个，实得 ${hits.length}`).toBe(12);
     expect(hits.map((f) => f.replace(/\\/g, "/")), "包装层自己必须在名单里").toContain(
       "src/ipc/commands.ts",
     );

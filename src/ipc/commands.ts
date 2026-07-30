@@ -21,8 +21,8 @@
  *
  * ## 本文件今天覆盖多少
  *
- * **22 个命令**（C04a 样板 1 + C04d 批 1 的 5 + 批 2 的 4 + 批 3 的 12）。
- * 其余 97 个仍走各模块里的裸 `invoke`，由 **C04d** 后续批次迁进来。
+ * **28 个命令**（C04a 样板 1 + C04d 批 1 的 5 + 批 2 的 4 + 批 3 的 12 + 批 4 的 6）。
+ * 其余 91 个仍走各模块里的裸 `invoke`，由 **C04d** 后续批次迁进来。
  *
  * **条目按字母序**（键名排序），加新条目时插到对的位置——这样 diff 只显示真正的新增。
  *
@@ -45,8 +45,11 @@ import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
 import type { CcmProbeResult } from "../generated/CcmProbeResult";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
+import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { ForwardStatus } from "../generated/ForwardStatus";
 import type { HooksReport } from "../generated/HooksReport";
+import type { LogFileInfo } from "../generated/LogFileInfo";
+import type { RestartHint } from "../generated/RestartHint";
 import type { SessionUsageRow } from "../generated/SessionUsageRow";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
 import type { TaskEntry } from "../generated/TaskEntry";
@@ -109,6 +112,14 @@ export const commands = {
   /** 写配置。Rust 返回 `Result<(), String>` ⇒ **桶①**。入参同样是不透明 JSON（见 `load_config`）。 */
   save_config: (args: { value: Record<string, unknown> }) => invoke<void>("save_config", args),
 
+  /**
+   * 写诊断配置。返回 `RestartHint` —— **它是个只有 unit variant 的外部标记枚举**
+   * （`#[serde(rename_all = "snake_case")]`，没有 `tag`）⇒ 线上就是字符串
+   * `"none"` / `"needs_restart"`，生成物给的正是那个字面量联合。
+   */
+  set_diagnostics_config: (args: { cfg: DiagnosticsConfig }) =>
+    invoke<RestartHint>("set_diagnostics_config", args),
+
   /** 起一条端口转发。Rust 返回 `Result<String, String>`（转发 id）⇒ 原始类型。 */
   start_forward: (args: {
     spec: { origin: string; localPort: number; remoteHost: string; remotePort: number };
@@ -116,6 +127,13 @@ export const commands = {
 
   /** 停一条端口转发。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   stop_forward: (args: { id: string }) => invoke<void>("stop_forward", args),
+
+  /**
+   * 往远端 tmux 会话发按键。Rust 返回 `Result<(), String>` ⇒ **桶①**。
+   * `enter` 缺省时 Rust 侧按 true 处理（`account-restart.ts` 有一处显式传 `false`）。
+   */
+  tmux_send_keys: (args: { origin: string; target: string; keys: string; enter?: boolean }) =>
+    invoke<void>("tmux_send_keys", args),
 
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
   get_session_tasks: (args: { sessionId: string }) =>
@@ -134,6 +152,12 @@ export const commands = {
    */
   check_remote_acct_iso: (args: { cfg: unknown }) =>
     invoke<AcctIsoStatus>("check_remote_acct_iso", args),
+
+  /** 诊断配置（log 开关 / 级别 / error toast / 保留天数）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
+  get_diagnostics_config: () => invoke<DiagnosticsConfig>("get_diagnostics_config"),
+
+  /** log 目录与文件清单。`current_size_bytes`/`size_bytes` 是**字节数**、`modified_ms` 是**毫秒时间戳**——两个量纲的上限论证在 Rust 侧分开写（C03 纪律）。 */
+  get_log_file_info: () => invoke<LogFileInfo>("get_log_file_info"),
 
   /** 一次配置面审计（只读、一次性，不新增轮询）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   config_surface_report: () => invoke<ConfigSurfaceReport>("config_surface_report"),
@@ -156,6 +180,10 @@ export const commands = {
     toolUseTimestamp: string;
   }) => invoke<SubagentLoadResult>("load_subagent", args),
 
+  /** 杀掉远端某个 tmux 会话。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  kill_remote_tmux: (args: { origin: string; target: string }) =>
+    invoke<void>("kill_remote_tmux", args),
+
   /** 当前活着的端口转发列表。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   list_forwards: () => invoke<ForwardStatus[]>("list_forwards"),
 
@@ -169,6 +197,9 @@ export const commands = {
    * **这是一处如实登记的结构性缺口，不是我引入的缺陷。**
    */
   load_config: () => invoke<Record<string, unknown>>("load_config"),
+
+  /** 用系统默认程序打开 monitor 的 log **目录**。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  open_log_dir: () => invoke<void>("open_log_dir"),
 
   /** 用系统默认程序打开 monitor 的 log 文件。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_log_file: () => invoke<void>("open_log_file"),

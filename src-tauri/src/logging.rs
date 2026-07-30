@@ -78,6 +78,8 @@ const ERROR_EVENT: &str = "monitor-error";
 // ===== DiagnosticsConfig =====
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct DiagnosticsConfig {
     /// 是否写 log 文件。toggle 后需要重启 monitor 才能生效（layer 已注册不可摘）。
     #[serde(default = "default_log_enabled")]
@@ -119,6 +121,8 @@ impl Default for DiagnosticsConfig {
 
 /// `set_diagnostics_config` 返回值：告诉前端是否需要弹"请重启"提示。
 #[derive(Debug, Clone, Copy, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "snake_case")]
 pub enum RestartHint {
     /// 全部立即生效，无需重启
@@ -528,17 +532,29 @@ fn atomic_replace(src: &Path, dst: &Path) -> std::io::Result<()> {
 // ===== 文件信息（IPC get_log_file_info 用） =====
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct LogFileInfo {
     pub dir: String,
     pub current_file: Option<String>,
+    // **C03 大整数策略**：量纲是**字节数**——`Number.MAX_SAFE_INTEGER` = 2^53-1 B ≈ **8 PB**。
+    // 单个 log 文件不可能接近它（rolling 按天切）⇒ f64 精度足够。同 `SftpEntry.size` 那条论证。
+    #[cfg_attr(test, ts(type = "number"))]
     pub current_size_bytes: u64,
     pub all_files: Vec<LogFileEntry>,
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct LogFileEntry {
     pub path: String,
+    // 同上：字节数量纲，8 PB。
+    #[cfg_attr(test, ts(type = "number"))]
     pub size_bytes: u64,
+    // **另一个量纲**：**毫秒时间戳**——2^53-1 ms ≈ **28.5 万年**。
+    // 刻意与上面那条分开写：把两个量纲的上限论证混成一条，是 C03 明确禁止的做法。
+    #[cfg_attr(test, ts(type = "number"))]
     pub modified_ms: i64,
 }
 
