@@ -25,6 +25,7 @@
 | **rust-ts-boundary/** | Rust↔TS 边界从人工纪律改成生成物（`tauri-specta`）+ 门禁 | **Phase A 已落盘，等审批**。路线图 ①，是 ③④ 的地基；也是「要不要用 Rust GUI 重写前端」那个问题的便宜答案 |
 | **gate-integrity/** | 门禁不许在零断言下报绿（真机套件断言地板 + vendored bash 进 shellcheck + 6 套 e2e 进 CI） | **Phase A 已落盘，等审批**。路线图 ③，规模小但保护其余全部工作。**G-B 是 `account-zero` Z01 的前置** |
 | **local-as-remote/** | 本地 = 不走 ssh 的远端（含 Linux 平台）。落地 `doc/INVARIANTS.md` **§40** | **Phase A 已落盘，等审批**。路线图 ④。L5 平价对账可先做；L0 是唯一可能推翻方向的一步（WebKitGTK） |
+| **zero-poll-liveness/** | 判活从轮询改成内核事件（tmux hook + pidfd + inotify）。承 BACKLOG **E34**（用户点名「把轮询杀掉」）+ 用户 2026-07-30 追加「daemon 是能改的，要性能最佳且不要轮询」 | **Phase A 已落盘，等审批**。**范围比 E34 登记的大一格**：daemon 里是 **A/B 两条**轮询（2s 判活 tick + 8s `tmux ls`），E34 只盯了后者。P1 顺带销掉 `INVARIANTS:408` 那条预先登记、卡在「daemon 零改」上的真 bug |
 
 
 ---
@@ -60,7 +61,7 @@
 | 18 | **L3a** 本地账号枚举（只读，Rust 读 manifest） | local-as-remote | 否 |
 | 19 | **L4** Linux 打包进 CI/release | local-as-remote | 否 |
 | 20 | **L3b** 本地账号管理（写） | local-as-remote | 依赖 account-zero 全部落地 |
-| **21** | **E34 事件驱动的 tmux 存活信号**（用户点名「把轮询杀掉」）—— **先调研再动手**：`session-closed` 是否支持 per-session 作用域 · 谁写/写什么（§24 单写者）· hook 里跑什么才安全 | （新，未分配工作区） | **是：需改 `shared/ccm` 本体（在册红线）+ §24 解法需用户表态** |
+| **21** | **E34 事件驱动的 tmux 存活信号**（用户点名「把轮询杀掉」）—— 已升格为独立工作区，**Phase A 已落盘等审批**，拆成 P0-P7 八个功能 | **zero-poll-liveness** | **部分**：P4（装 hook 到活着的 tmux server）要授权；其余不要。**原表两处已订正**：① 不再需要改 `shared/ccm` 本体（hook 由 **daemon** 装——只有 daemon 有「server 重启」这个时机）② §24 单写者不再是开放问题（所有新信号都汇进既有 `SessionChange{removed}` → emitter，零新写点） |
 
 **为什么 C05 从 #4 提到 #2**（C01 的 Phase D 审计 I1 实测）：CI 的 `rust` job（跑 `cargo test`）
 与 `frontend` job（跑 `tsc`）是**两次独立 checkout**——重新生成的产物在前者里被丢掉，

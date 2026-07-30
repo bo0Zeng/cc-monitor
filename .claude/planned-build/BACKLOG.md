@@ -140,11 +140,32 @@
 
 | E33 | **远端 tab 带外杀 tmux 后「变灰」延迟长到被用户当成 bug** | 用户 2026-07-29 真机观测 + `tmux_reconcile.rs` 头注自陈 | **未做**。用户报「一直有个 tab 不灰」，随后自行变灰 ⇒ 机制没坏，是**延迟**。**延迟可以算出来**：`TMUX_EMIT_INTERVAL`(**8s**，`remote-daemon-proto/src/watcher.rs:65`) × `RETIRE_MISS_THRESHOLD`(**2**) ≈ **16 秒**。（`tmux_reconcile.rs` 头注说这两个是「占位常量、真机未标定」——**那句只对 threshold 准**，`TMUX_EMIT_INTERVAL` 是有明确值的；用户追问「不是都没有轮询了」时才查清的。另：**轮询没消失，是搬走了**——删掉的是 monitor 侧每 8s 新建 SSH 跑 tmux ls，换成 daemon 在它自己那台机器上周期跑、经 `TmuxSessions` 帧上报；「不新增轮询」红线守的是 monitor 侧那条。`RETIRE_MISS_THRESHOLD` **不能降到 1**——`tmux_reconcile.rs:31` 有编译期断言钉死 `>= 2`，因为 `/branch` 漂移有 ~1s 竞态窗），且「带外杀端到端变灰」本身就在它的**真机累积项**里、**从没验过**。⇒ 这是那条累积项的**第一个真机观测点**。做法：① 标定两个常量；② 给 tab 加一条可见的诊断（数据来源 / `ever_bound` / `miss` 计数），让**三格**一眼可分——它们从 UI 上完全看不出区别，全表现为「不灰」：① **在等那 ~16 秒**；② **daemon 没在发 `TmuxSessions` 帧**（没跑 / 版本旧 / `raw` 是 `NO_TMUX` / backend 集为空被观测无效门保守跳过）⇒ **对账一轮都没执行，不是延迟长**；③ **`never_bound` 按设计永不判**（`never_bound` 的 sid 按设计**永不变灰**，见 `reconcile_step` 末支注释——bg / 无 wrapper / 直起 claude 免疫误 retire）。**注意本地会话完全不经这条路**：`reconcile_step` 全仓只在 `ssh_source.rs:2383` 的远端收帧循环里被调，独立 poller 已删（`lib.rs:705`） |
 
-| **E34** | **★ 把 tmux 存活的「轮询」换成事件：带外杀 tmux 后近乎零延迟变灰** | 用户 2026-07-29 明确要求「我要把轮询杀掉」 | **未做，需先调研**。见下方独立小节 |
+| **E34** | **★ 把 tmux 存活的「轮询」换成事件：带外杀 tmux 后近乎零延迟变灰** | 用户 2026-07-29 明确要求「我要把轮询杀掉」 | **已升格为独立工作区 `zero-poll-liveness`（2026-07-30 主计划已批、P0 已交付）**。下方旧小节保留作历史，但**其中三条已被实测推翻**，见该小节顶部的订正块 |
+| **E39** | **`notify-debouncer-mini` 静默吞掉 inotify 队列溢出 ⇒ 溢出时事件永久丢失** | `zero-poll-liveness` P0-⑤ 读源码实测（2026-07-30） | **既有盲区，非新引入**。`notify 6.1.1/src/inotify.rs:208` 把 `Q_OVERFLOW` 报成 `EventKind::Other + Flag::Rescan`，但 `notify-debouncer-mini 0.4.1/src/lib.rs:319` 的 `add_event` **只读 `event.paths`**，而溢出事件 `paths` 为空 ⇒ 循环体一次不执行 ⇒ 完全不可见。**两端都中招**（daemon 与 `src-tauri/src/watcher.rs` 用同一套 debouncer）。今天没有周期兜底：目录发现（`SessionAdded`）与 jsonl 行流只靠 notify 事件。**pidfd 对此免疫** ⇒ `zero-poll-liveness` P2 会把判活这一路摘出 inotify 依赖。处置选项：① 换 raw `notify` + 自写去抖（要保 `DEBOUNCE_MS=100` 双写点语义）② 加一个只为拿 `need_rescan` 的 raw-notify 哨兵实例 ③ 接受并登记。**绝不补定时器**（那等于零轮询造假）。**结论来自读源码，未真触发过溢出** |
+| **E40** | **cgroup 隔离结论只对「daemon 经 SSH 起」成立 ⇒ `local-as-remote` L1 必须重判** | 同上，P0-③ | **提醒项，不是 bug**。实测：tmux server 在 `session-12881.scope`、每个新 SSH 登录得新 `session-<N>.scope` ⇒ 必然不同锅 ⇒ daemon 自持的 pidfd 探针扛得住「tmux 整锅 SIGKILL」。**但 L1（本地=不走 ssh）里 daemon 可能与 tmux 同锅**，届时探针会被一起端。L1 落地时必须重测这一格，**不许继承 `zero-poll-liveness` 的结论** |
 
 ---
 
 ## E34 详述：事件驱动的 tmux 存活信号（用户点名要做，需先调研）
+
+> ### ⚠ 2026-07-30 订正：本小节以下内容有四条已被实测推翻，**以 `zero-poll-liveness` 工作区为准**
+>
+> 本项已升格为独立工作区 `.claude/planned-build/zero-poll-liveness/`（主计划用户已批、P0 已交付签收）。
+> 以下旧文保留作历史记录，但**这四条别照着做**：
+>
+> 1. **「daemon 零改」不成立、且用户已松该红线**（2026-07-30 原话「daemon 是能改的，
+>    我的要求就是性能最佳且不要轮询」）。零改做不到正向死亡帧 ⇒ 16s 只能降到「新间隔×2」，
+>    因为 `RETIRE_MISS_THRESHOLD >= 2` 是编译期断言、判据本身是轮询式的
+> 2. **范围写小了**：daemon 里是 **A/B 两条**轮询（2s 判活 tick + 8s `tmux ls`），本小节只盯了后者
+> 3. **「需改 `shared/ccm` 本体」不成立**：hook 由 **daemon** 装——只有 daemon 有
+>    「server 重启」这个时机（socket 目录 inotify），ccm 只在建会话时被调一次
+> 4. **「把 sid 字面量烤进 per-session hook，最干净」这条路不存在**：P0 实测
+>    `session-closed` **专门不支持 per-session**（对照实验：`session-renamed -t A` 会触发）。
+>    而且 `#{@ccm_sid}` 在 `session-closed` 里**解析到别的会话** —— 照直觉写会把
+>    还活着的会话变灰。必须用全局 `[50]` + `#{hook_session_name}` + monitor 侧反查
+>
+> **另**：「§24 单写者」不再是开放问题——所有新信号都汇进既有
+> `SessionChange{removed}` → emitter，零新写点。
 
 **用户原话**：「为什么延迟这么高? 不应该一关就杀吗? 不是事件驱动吗 / 怎么做成零延迟」→「我要把轮询杀掉」
 
