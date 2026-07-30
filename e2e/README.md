@@ -25,6 +25,48 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 ./e2e/f40-suite.sh          # 环境变量:E2E_DISPLAY / E2E_LOG / E2E_DRAIN_MAX_MS
 ```
 
+### 哪些进 CI、哪些不进（G-A/G-C，2026-07-30）
+
+**13 套带断言数地板进了 CI**，每步都经 `e2e/assert-pass-floor.sh <套件> <地板>` 跑
+（地板值写在 `ci.yml` 的调用行上；抓不到 `合计 PASS=<n>` 那行也判红，见该脚本头注）：
+
+| job | 套件（地板） |
+|---|---|
+| `e2e-tmux` | tmux-target 26 · ccm-cli 44 · ccm-print-parity 12 · ccm-acceptance 15 · ccm-pretrust 13 · cc-spawn-uplift 21 · **restart 24** · **resume 17** |
+| `e2e-tmux-rust` | tmux-guarded 14 · usage-probe 7 · **graylight-frames 5** · **restart-frames 5** · **resume-frames 7** |
+
+**这 13 套刻意都不进本地 `npm test`**（`gate-integrity` 开放问题 1 的决定）：
+`npm test` 要保持「不需要 tmux / 不需要 daemon 就能跑」，否则每个开发动作都变重。
+
+> **代价，如实写在这里**：**本地改了 `shared/ccm`（或 `src/account-restart.ts` /
+> `src/remote-launch.ts` 这类被上面套件驱动的真源）时，`npm test` 不会有任何反应。**
+> 要拿到信号得手跑，例如 `npm run test:restart` / `npm run test:ccm-cli`；
+> 想连地板一起验就 `bash e2e/assert-pass-floor.sh restart 24`。
+> 不手跑的话，**第一次发现是在 CI 上**。
+
+**`graylight-suite`（全链级）不在这 13 套里**：它断言的是**正在跑的 dev app** 写的
+`monitor.*.log`，需要 GUI runner + 起整个 app —— 与本文件开头「跑法」那段要 Xvfb 的
+原因相同（`ci.yml` 也已就 DOM e2e 论证过「大投入低 ROI」）。它**仍然可以本地跑**。
+
+### tmux 隔离（E41 已解，2026-07-30）
+
+`graylight-*` / `restart-*` / `resume-*` 六套此前**裸调 tmux**，会直接操作开发者默认
+socket 上的真实会话（BACKLOG E41）。现在每套开头都钉住自己的 server：
+
+```bash
+unset TMUX TMUX_PANE
+TMUX_TMPDIR="$(mktemp -d /tmp/e2e-sock.XXXXXX)"; export TMUX_TMPDIR
+```
+
+**两件事缺一不可**（实测）：
+- **`unset TMUX`** —— 从一个 tmux 会话里跑套件时，`$TMUX` 会让客户端连**外层那台
+  server** 并**完全忽略 `TMUX_TMPDIR`**。这才是 E41 的实质，不是「没写 `-L`」。
+- **`TMUX_TMPDIR` 必须是短路径** —— unix socket 路径上限 108 字节，长目录会报
+  `File name too long`。
+
+收尾只用 `-S <私有 socket> kill-server` 收自己那台；**绝不裸 `kill-server`**
+（万一隔离没生效，裸的那个会打到开发者的 server 上）。
+
 **单实例串行**:fixture 目录/cwd 固定名(`-tmp-e2e-fork`)且 `touch src/main.ts` 会触发
 全窗口 reload——并发跑两个套件会互删 fixture、互触发重放,结果不可信。
 
