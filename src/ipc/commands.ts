@@ -21,8 +21,8 @@
  *
  * ## 本文件今天覆盖多少
  *
- * **28 个命令**（C04a 样板 1 + C04d 批 1 的 5 + 批 2 的 4 + 批 3 的 12 + 批 4 的 6）。
- * 其余 91 个仍走各模块里的裸 `invoke`，由 **C04d** 后续批次迁进来。
+ * **40 个命令**（C04a 样板 1 + C04d 批 1-5a 的 39）。
+ * 其余 79 个仍走各模块里的裸 `invoke`，由 **C04d** 后续批次迁进来。
  *
  * **条目按字母序**（键名排序），加新条目时插到对的位置——这样 diff 只显示真正的新增。
  *
@@ -42,12 +42,18 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
 
 import type { AccountUsageProbeResult } from "../generated/AccountUsageProbeResult";
 import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
+import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
+import type { CcBusMessage } from "../generated/CcBusMessage";
+import type { CcBusState } from "../generated/CcBusState";
+import type { CcPreviewResponse } from "../generated/CcPreviewResponse";
+import type { CcStatusResponse } from "../generated/CcStatusResponse";
 import type { CcmProbeResult } from "../generated/CcmProbeResult";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { ForwardStatus } from "../generated/ForwardStatus";
 import type { HooksReport } from "../generated/HooksReport";
+import type { ProfileScan } from "../generated/ProfileScan";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { RestartHint } from "../generated/RestartHint";
 import type { SessionUsageRow } from "../generated/SessionUsageRow";
@@ -89,6 +95,52 @@ export const commands = {
    */
   aggregate_usage_all: (args: { onRow: Channel<SessionUsageRow> }) =>
     invoke<number>("aggregate_usage_all", args),
+
+  /** 往 bus 上某个 agent 发一条消息。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
+  cc_bus_send: (args: { origin: string; id: string; text: string }) =>
+    invoke<string>("cc_bus_send", args),
+
+  /**
+   * 在某目录派生一个协作 agent。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。
+   * `account` 空串 = **显式基座**（后端翻成 `--base`）——**不存在「什么都不传」这一档**。
+   */
+  cc_bus_spawn: (args: {
+    origin: string;
+    dir: string;
+    task: string;
+    tool: string;
+    // Rust 侧是 `Option<String>`；TS 侧传**空串**表示显式基座（后端翻成 `--base`）。
+    account: string;
+  }) => invoke<string>("cc_bus_spawn", args),
+
+  /** 读 `cc_get_auto_launch`。返回值字段被真消费 ⇒ 生成物（桶③）。 */
+  cc_get_auto_launch: () => invoke<AutoLaunchConfig>("cc_get_auto_launch"),
+
+  /** PowerShell profile cc 集成：装。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  cc_integration_install: (args: {
+    path: string;
+    commandName: string;
+    includeCcFunction: boolean;
+  }) => invoke<void>("cc_integration_install", args),
+
+  /** 预览将写入 profile 的代码（含 BEGIN/END marker）。 */
+  cc_integration_preview: (args: { commandName: string; includeCcFunction: boolean }) =>
+    invoke<CcPreviewResponse>("cc_integration_preview", args),
+
+  /** 扫一个指定 profile 路径。 */
+  cc_integration_scan_path: (args: { path: string; commandName: string }) =>
+    invoke<ProfileScan>("cc_integration_scan_path", args),
+
+  /** PowerShell profile cc 集成的总状态。`commandName` 在 Rust 侧是 `Option<String>` ⇒ 可省。 */
+  cc_integration_status: (args?: { commandName?: string }) =>
+    invoke<CcStatusResponse>("cc_integration_status", args),
+
+  /** PowerShell profile cc 集成：卸。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  cc_integration_uninstall: (args: { path: string }) =>
+    invoke<void>("cc_integration_uninstall", args),
+
+  /** 写 `cc_set_auto_launch`。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  cc_set_auto_launch: (args: { enabled: boolean }) => invoke<void>("cc_set_auto_launch", args),
 
   /** 远端 `tmux capture-pane -p` 的画面文本。返回**原始类型**，无需生成物（桶③）。 */
   capture_remote_pane: (args: { origin: string; target: string }) =>
@@ -135,6 +187,13 @@ export const commands = {
   tmux_send_keys: (args: { origin: string; target: string; keys: string; enter?: boolean }) =>
     invoke<void>("tmux_send_keys", args),
 
+  /** 读某 agent 的 inbox。返回值字段被真消费 ⇒ 生成物（桶③）。 */
+  read_cc_bus_inbox: (args: { origin: string; id: string }) =>
+    invoke<CcBusMessage[]>("read_cc_bus_inbox", args),
+
+  /** 读 bus 的完整状态（agents + spawned + 坏行数）。`skipped: usize` → `number`。 */
+  read_cc_bus_state: (args: { origin: string }) => invoke<CcBusState>("read_cc_bus_state", args),
+
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
   get_session_tasks: (args: { sessionId: string }) =>
     invoke<TaskEntry[]>("get_session_tasks", args),
@@ -158,6 +217,10 @@ export const commands = {
 
   /** log 目录与文件清单。`current_size_bytes`/`size_bytes` 是**字节数**、`modified_ms` 是**毫秒时间戳**——两个量纲的上限论证在 Rust 侧分开写（C03 纪律）。 */
   get_log_file_info: () => invoke<LogFileInfo>("get_log_file_info"),
+
+  /** 某个 bus agent 在不在线。返回 `Result<bool, String>` ⇒ 原始类型。 */
+  check_cc_bus_agent_online: (args: { origin: string; id: string }) =>
+    invoke<boolean>("check_cc_bus_agent_online", args),
 
   /** 一次配置面审计（只读、一次性，不新增轮询）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   config_surface_report: () => invoke<ConfigSurfaceReport>("config_surface_report"),

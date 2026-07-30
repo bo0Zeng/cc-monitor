@@ -1601,6 +1601,8 @@ async fn bring_remote_terminal_to_front(
 // === v1.7：PowerShell profile cc 集成 IPC ===
 
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 struct CcStatusResponse {
     profiles: Vec<profile_installer::ProfileScan>,
     active_registrations: u32,
@@ -1612,6 +1614,8 @@ struct CcStatusResponse {
 }
 
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 struct LegacyProfileEntry {
     kind: profile_installer::ProfileKind,
     path: String,
@@ -1657,6 +1661,8 @@ async fn cc_integration_status(
 }
 
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 struct CcPreviewResponse {
     code: String,
 }

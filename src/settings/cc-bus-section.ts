@@ -18,33 +18,16 @@
 // **批二不重写起会话**：图形化 spawn 调的是收编后的 `cc-spawn`（它内部已改经 `ccm`），
 // cc-monitor 侧不碰建会话逻辑——那正是本工作区消灭的病（账本 K8：再造第 N 套实现）。
 // 也因此本文件**零引用 launch IR 模块**：spawn 是 fire-and-forget 的远端 exec，不开标签页。
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "../ipc/commands";
 // L2：账号选择复用既有封装——`fetchAccounts` 带 TTL 缓存、`selectableAccounts` 是
 // 「可选账号」的单一判据（`accounts.ts:130` 注释明写"别各处再 filter 一遍"）。
 import { fetchAccounts, selectableAccounts } from "../accounts";
 
-interface CcBusAgent {
-  id: string;
-  pane: string;
-  registered_at: string;
-}
-interface CcBusSpawned {
-  id: string;
-  dir: string;
-  spawned_at: string;
-  task: string;
-}
-interface CcBusState {
-  agents: CcBusAgent[];
-  spawned: CcBusSpawned[];
-  skipped: number;
-}
-interface CcBusMessage {
-  from: string;
-  ts: string;
-  text: string;
-  class: string;
-}
+// C04d 批 5a：四个类型换成生成物（源 `cc_bus.rs`）。手写版与生成物**逐字等价** ⇒ 零漂移，
+// 价值是防将来漂。`CcBusState.skipped` 在 Rust 侧是 `usize`
+// ——**ts-rs 把它映射成 `number` 而不是 `bigint`**，所以 C03 那条大整数性质对它不适用。
+import type { CcBusAgent } from "../generated/CcBusAgent";
+import type { CcBusState } from "../generated/CcBusState";
 
 export class CcBusSection {
   readonly element: HTMLElement;
@@ -195,7 +178,7 @@ export class CcBusSection {
       // **别只防 reject**：invoke 也可能 resolve 成 undefined/非数组（桥接层异常、命令改了
       // 返回类型）。只 catch 不校验形状的话，下一行 `.length` 会直接抛 —— 这正是本工作区
       // 一路在守的「脏数据不能把面板搞崩」，对自己的 IPC 返回值同样适用。
-      const got = await invoke<string[]>("list_remote_mcp_origins");
+      const got = await commands.list_remote_mcp_origins();
       if (Array.isArray(got)) origins = got;
     } catch {
       /* 拿不到就当没有远端，不影响面板其余部分 */
@@ -260,7 +243,7 @@ export class CcBusSection {
     this.statusEl.textContent = "读取中…";
     this.listBox.replaceChildren();
     try {
-      this.state = await invoke<CcBusState>("read_cc_bus_state", { origin });
+      this.state = await commands.read_cc_bus_state({ origin });
       this.render();
     } catch (e) {
       this.state = null;
@@ -398,7 +381,7 @@ export class CcBusSection {
     stateEl.className = "cc-bus-online cc-bus-online-checking";
     stateEl.textContent = "检查中…";
     try {
-      const online = await invoke<boolean>("check_cc_bus_agent_online", { origin, id });
+      const online = await commands.check_cc_bus_agent_online({ origin, id });
       stateEl.className = `cc-bus-online cc-bus-online-${online ? "yes" : "no"}`;
       stateEl.textContent = online ? "在线" : "不在线";
     } catch (e) {
@@ -417,7 +400,7 @@ export class CcBusSection {
     box.replaceChildren();
     box.textContent = "读取中…";
     try {
-      const msgs = await invoke<CcBusMessage[]>("read_cc_bus_inbox", { origin, id });
+      const msgs = await commands.read_cc_bus_inbox({ origin, id });
       box.replaceChildren();
       if (msgs.length === 0) {
         box.textContent = "收件箱是空的。";
@@ -448,7 +431,7 @@ export class CcBusSection {
     if (!origin || !text.trim()) return;
     btn.disabled = true;
     try {
-      await invoke<string>("cc_bus_send", { origin, id, text });
+      await commands.cc_bus_send({ origin, id, text });
       input.value = "";
       box.textContent = "已发送（对方空闲会被敲门，在忙则靠它的 Stop 钩子兜底）。";
     } catch (e) {
@@ -508,7 +491,7 @@ export class CcBusSection {
     this.spawnBtn.disabled = true;
     this.spawnOut.textContent = "派生中…";
     try {
-      const out = await invoke<string>("cc_bus_spawn", {
+      const out = await commands.cc_bus_spawn({
         origin,
         dir,
         task: this.spawnTask.value,

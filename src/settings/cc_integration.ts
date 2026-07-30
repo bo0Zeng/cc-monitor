@@ -12,13 +12,21 @@
  * v1.7.2 改回正确文件名并扫描旧位置遗留。
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "../ipc/commands";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { makeInfoIcon, swapFileName } from "./info-icon";
 import { showActionFailureToast } from "../error-toast";
 import { LS_KEYS, safeGet, safeSet } from "../local-storage";
 
-type ProfileKind = "Ps51" | "Ps7" | "Custom";
+// C04d 批 5a：五个线上类型换成生成物（源 `profile_installer.rs` / `lib.rs` / `auto_launch.rs`）。
+// 手写版与生成物**逐字等价** ⇒ 零漂移，价值是防将来漂。
+// **`CcStatusResponse` / `LegacyProfileEntry` / `CcPreviewResponse` 在 Rust 侧是非 `pub` 的**
+// （模块内可见即可，只作命令返回类型）——它们一样跨边界，所以本轮把守卫的类型头锚点
+// 从 `^pub (struct|enum)` 放宽成 `^(pub )?(struct|enum)`：**「是不是 pub」与「会不会跨边界」无关**。
+// TS 侧原来那个 `LegacyProfileEntry` 只是名字不同、结构一致，改用生成的 `LegacyProfileEntry`。
+import type { LegacyProfileEntry } from "../generated/LegacyProfileEntry";
+import type { ProfileKind } from "../generated/ProfileKind";
+import type { ProfileScan } from "../generated/ProfileScan";
 
 /** v1.7.12: 前端用的预设 id，覆盖 PS 版本 × profile scope 矩阵 */
 type PresetId =
@@ -38,36 +46,10 @@ const PRESET_OPTIONS: Array<{ id: PresetId; label: string }> = [
 
 // P2.1: 通过 LS_KEYS 中转保留下划线 key 名（迁移成本大于收益）。
 
-interface ProfileScan {
-  kind: ProfileKind;
-  path: string;
-  exists: boolean;
-  has_ccm_block: boolean;
-  ccm_block_version: string | null;
-  conflicting_functions: string[];
-  size_bytes: number;
-}
 
-interface LegacyEntry {
-  kind: ProfileKind;
-  path: string;
-}
 
-interface CcStatusResponse {
-  profiles: ProfileScan[];
-  active_registrations: number;
-  default_command_name: string;
-  legacy_profile_paths_with_block: LegacyEntry[];
-}
 
-interface CcPreviewResponse {
-  code: string;
-}
 
-interface AutoLaunchConfig {
-  auto_launch_enabled: boolean;
-  monitor_exe_path: string | null;
-}
 
 /** 固定命令名 —— 不让用户改。`claude` 跟 claude.exe 同名会无限递归；其他名字没必要让用户折腾 */
 const CC_COMMAND_NAME = "cc";
@@ -347,9 +329,7 @@ export class CcIntegrationSection {
   /** 打开面板时调用：拿推荐路径 + 填默认值 + 扫一遍当前路径状态 */
   private async refresh(): Promise<void> {
     try {
-      const status = await invoke<CcStatusResponse>("cc_integration_status", {
-        commandName: CC_COMMAND_NAME,
-      });
+      const status = await commands.cc_integration_status({ commandName: CC_COMMAND_NAME });
       this.recommended.Ps51 = null;
       this.recommended.Ps7 = null;
       for (const p of status.profiles) {
@@ -408,7 +388,7 @@ export class CcIntegrationSection {
       return;
     }
     try {
-      const scan = await invoke<ProfileScan>("cc_integration_scan_path", {
+      const scan = await commands.cc_integration_scan_path({
         path: p,
         commandName: CC_COMMAND_NAME,
       });
@@ -453,7 +433,7 @@ export class CcIntegrationSection {
     this.uninstallBtn.style.display = scan.has_ccm_block ? "" : "none";
   }
 
-  private renderLegacy(entries: LegacyEntry[]): void {
+  private renderLegacy(entries: LegacyProfileEntry[]): void {
     this.legacyArea.innerHTML = "";
     if (entries.length === 0) return;
     const warn = document.createElement("div");
@@ -519,7 +499,7 @@ export class CcIntegrationSection {
 
   private async openPreview(): Promise<void> {
     try {
-      const resp = await invoke<CcPreviewResponse>("cc_integration_preview", {
+      const resp = await commands.cc_integration_preview({
         commandName: CC_COMMAND_NAME,
         includeCcFunction: this.wantsWrapper(),
       });
@@ -572,7 +552,7 @@ export class CcIntegrationSection {
     }
     const includeCc = this.wantsWrapper();
     try {
-      await invoke<void>("cc_integration_install", {
+      await commands.cc_integration_install({
         path: p,
         commandName: CC_COMMAND_NAME,
         includeCcFunction: includeCc,
@@ -590,7 +570,7 @@ export class CcIntegrationSection {
   private async uninstall(): Promise<void> {
     if (!confirm("确认卸载？BEGIN/END 块会被整块删除，profile 其他内容不动。")) return;
     try {
-      await invoke<void>("cc_integration_uninstall", {
+      await commands.cc_integration_uninstall({
         path: this.pathInput.value.trim(),
       });
       await this.scanCurrentPath();
@@ -601,7 +581,7 @@ export class CcIntegrationSection {
 
   private async refreshAutoLaunch(): Promise<void> {
     try {
-      const cfg = await invoke<AutoLaunchConfig>("cc_get_auto_launch");
+      const cfg = await commands.cc_get_auto_launch();
       this.autoLaunchCheckbox.checked = cfg.auto_launch_enabled;
       this.autoLaunchPathSpan.textContent =
         cfg.monitor_exe_path ?? "(未记录，启动一次 monitor 后自动记录)";
@@ -613,7 +593,7 @@ export class CcIntegrationSection {
 
   private async toggleAutoLaunch(enabled: boolean): Promise<void> {
     try {
-      await invoke<void>("cc_set_auto_launch", { enabled });
+      await commands.cc_set_auto_launch({ enabled });
     } catch (e) {
       showActionFailureToast("保存失败", String(e));
       this.autoLaunchCheckbox.checked = !enabled;
