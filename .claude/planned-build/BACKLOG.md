@@ -201,3 +201,75 @@ hook 明确说「**这个具体会话**关了」，没有抖动可言。所以�
 三种「不灰」从 UI 上完全看不出区别：① 在等那 ~16 秒 ② daemon 没在发 `TmuxSessions` 帧
 （没跑 / 版本旧 / `raw == NO_TMUX` / backend 集空被观测无效门保守跳过 ⇒ **一轮都没执行**）
 ③ `never_bound` 按设计永不判。**做 E34 时顺手把这三格显示出来**，否则下次还是只能靠猜。
+
+| **E35** | **★ 真 bug：历史会话「留空恢复默认」清不掉自定义标题** | C04d 批 6c 读边界时发现，**已实测确认机理** | **未修**（修它是行为改动，不在 C04d 范围）。见下方独立小节 |
+| **E36** | **多账号不支持第三方 API key**（用户 2026-07-30 问） | 结构性不支持，不只是没做 | **未做**，需用户排期。见下方独立小节 |
+
+---
+
+## E35 详述：「留空恢复默认」清不掉自定义标题（真 bug，机理已确认）
+
+**发现方式**：C04d 批 6c 要给 `update_history_metadata` 写包装层签名，被迫精确写下 `patch`
+的类型，于是去读了 Rust 侧的 `MetadataPatch`。
+
+**机理**（读了 struct + `update_history_metadata` 函数体，不是只看注释）：
+
+```rust
+pub struct MetadataPatch {
+    #[serde(default, rename = "customTitle", alias = "custom_title")]
+    pub custom_title: Option<Option<String>>,   // ← 双层 Option
+}
+// update_history_metadata:
+if let Some(t) = patch.custom_title { entry.custom_title = t.filter(|s| !s.trim().is_empty()); }
+```
+
+`#[serde(default)]`（**非** double_option）下：键缺失 → 外层 `None`；键存在但值是 JSON `null`
+→ **也是外层 `None`**（`Option<T>` from null 恒为 None）。⇒ `if let Some(t)` **不触发**
+⇒ **`null` 的语义是「不改」**。Rust struct 注释也明写：「清空走空/空白串 → `Some(Some(""))`
+→ update 里 filter 掉，**不靠 null**」。
+
+**而前端传的正是 null**（`src/views/history.ts`，「自定义标题（留空恢复默认）」那个 prompt）：
+
+```ts
+patch: { customTitle: next.trim() === "" ? null : next.trim() }
+```
+
+⇒ 用户按提示「留空」提交 → 前端发 `null` → 后端**什么都不做** → **标题清不掉**。
+UI 文案承诺的「留空恢复默认」不成立。
+
+**修法（一行）**：前端把 `null` 改成 `""`（走 `Some(Some(""))` → filter → None = 清空）。
+**为什么本轮不修**：C04d 每个 commit 的硬判据是**行为逐字节不变**，这是行为改动。
+需要一条复现测试 + 一个独立 commit。
+
+**包装层已经把这个陷阱写在签名旁边**（`src/ipc/commands.ts` 的 `update_history_metadata`
+条目），并刻意**不为 `MetadataPatch` 生成类型**——生成 `customTitle?: string | null`
+会让人以为 `null` 是清空，那是**说谎的类型**。
+
+---
+
+## E36 详述：多账号不支持第三方 API key（结构性，不只是没做）
+
+**用户问**：「现在的多账号可以有的是第三方 apikey 吗?」**答：不支持，且结构上顶不住。**
+
+三条实测证据：
+
+1. **全仓零处理**。`ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` / `apiKeyHelper` 在
+   `src/` + `src-tauri/src/` + `shared/` **grep 零命中**。`accounts.rs::RemoteAccount` 的字段
+   只有 `name`/`email`/`config_dir`/`is_default`/`mode`/`exists`/`logged_in`
+   ——**没有一格能装 base_url 或 key**。
+2. **隔离粒度不覆盖它**。`~/.claude/skills/cc-acct-iso/scripts/lib.sh:114`：
+   `ISOLATE_SET=".credentials.json .claude.json backups policy-limits.json stats-cache.json"`
+   其余一律符号链接共享。真机验证：`~/.claude-accts/z/settings.json` 与
+   `~/.claude-accts/b/settings.json` **都指向** `/home/zbl/.claude/settings.json`
+   ⇒ 想靠 `settings.json` 的 `env`/`apiKeyHelper` 给每账号配不同 key，**会被所有账号共享**。
+   走环境变量更不行——那是进程级的，与选哪个账号无关。
+3. **`logged_in` 的判据不认它**。它是 stat `.credentials.json` **存在性**得来的
+   （代码注释自己写「不代表凭据有效」）⇒ 纯 API-key 账号不产生该文件、UI 里显示成**未登录**。
+
+**要真支持得动三层**：① `ISOLATE_SET` 加 `settings.json`（或引入 per-account env 覆盖文件）
+② `RemoteAccount` 加 `auth_kind`，`logged_in` 按 kind 分别判 ③ 启动路径把 key/base_url
+注进子进程环境。
+
+**第一层要改 `~/.claude/skills/cc-acct-iso/`——需用户单独授权的红线**；而且它一改，
+现有 `z`/`b` 两账号的共享结构就变了，**属于需要迁移的改动**，不能顺手做。
+**建议排进 `account-zero` 工作区**（那里正在处理账号模型），等用户定。
