@@ -156,18 +156,6 @@ pub fn launch_local_posix(_cmd: &str, _cwd: Option<&str>) -> Result<(), String> 
     Err("POSIX 本地拉起不适用于 Windows 宿主（Windows 本地属 L2 的 PowerShell 分支）".into())
 }
 
-/// L1：**本地终端拉起**——`launch_remote_terminal` 的本地对侧。
-///
-/// 与远端那条的唯一区别就是 transport：同一个 `local_cmd`（前端用同一套 build 函数产），
-/// 这里直接 exec，不包 ssh。**它就是 §40「一条路径，transport 是它唯一的差异」的那半。**
-#[tauri::command]
-pub async fn launch_local_terminal(local_cmd: String, cwd: Option<String>) -> Result<(), String> {
-    // 与 `launch_remote_terminal` 同处理：spawn 是阻塞 OS 调用，不堵 IPC 派发线程。
-    tokio::task::spawn_blocking(move || launch_local_posix(&local_cmd, cwd.as_deref()))
-        .await
-        .map_err(|e| format!("拉起本地终端任务失败: {e}"))?
-}
-
 /// 构造远端拉起的 PowerShell 命令体（不含 `-EncodedCommand` 编码）。
 ///
 /// 形态：`& ssh -t[ -J <跳板>] -p <port> [-i '<key>'] <user>@<host> -- '<bash -lic ''…''>'`
@@ -411,6 +399,38 @@ mod tests {
             build_local_posix_argv(with_dq).is_ok(),
             "POSIX 本地不经 PowerShell，不该拦"
         );
+    }
+
+    /// ★ L1：`launch_local_posix` 的 **spawn 那半**真的会跑起来（此前无覆盖）。
+    ///
+    /// 用一条无害命令写一个标记文件来观测。**刻意不起任何 agent**。
+    /// 它不是 hermetic 的（`bash -lic` 会 source 用户 rc）—— 但要验的正是
+    /// 「按我们给的 argv 真的 exec 了」，而 rc 的存在恰恰是生产形态的一部分。
+    #[cfg(not(windows))]
+    #[test]
+    fn local_posix_spawn_actually_runs_the_command() {
+        let dir = std::env::temp_dir().join(format!("l1-spawn-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let marker = dir.join("ran");
+        let cmd = format!("printf ok > {}", marker.display());
+        launch_local_posix(&cmd, dir.to_str()).expect("spawn 应成功");
+        // 轮询等它落地（spawn 是异步的；上限宽松，判的是「跑没跑」不是快慢）。
+        let mut seen = false;
+        for _ in 0..100 {
+            if marker.is_file() {
+                seen = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let content = if seen {
+            std::fs::read_to_string(&marker).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(seen, "5s 内没看到标记文件——spawn 那半没真跑");
+        assert_eq!(content, "ok", "命令跑了但内容不对");
     }
 
     #[test]

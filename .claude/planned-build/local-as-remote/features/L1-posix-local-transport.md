@@ -1,4 +1,4 @@
-# L1 — POSIX 本地 = 不走 ssh 的远端（**传输层已交付；前端接线登记未做**）
+# L1 — POSIX 本地 = 不走 ssh 的远端（**两半均已交付**）
 
 > 主计划：`../MASTERPLAN.md` §1 L1（**P0**）· §0.2 · §2「关键判断」· §3 账本第 1/4 行 · §4 顺序表第 3 位
 > 前置：L0 构建那半（`4ecd93c`）· L5 对账表（`5e85959`）
@@ -124,10 +124,11 @@ E31 承诺的收益不存在。
 
 Windows 宿主上同名函数返回 Err 并指向 L2 —— **平台差异收在这一层**，调用点不必自己写 `cfg`。
 
-### 5.4 新命令 `launch_local_terminal`
+### 5.4 ~~新命令 `launch_local_terminal`~~ —— **第二半已撤，见 §10**
 
-`launch_remote_terminal` 的本地对侧：同一个 payload，直接 exec。
-与远端那条同样跑在 `spawn_blocking` 里（spawn 是阻塞 OS 调用，不堵 IPC 派发线程）。
+第一半加了这个命令（理由：`launch_remote_terminal` 的本地对侧）。
+**第二半的开工复测推翻了它** —— 本地入口早就有两个，它是投机 API。**已删。**
+本节保留作记录：下面 §6 那三道门禁的连红，正是它触发的。
 
 ## 6. ★ 三道既有门禁替我把关，其中一道是我不知道的
 
@@ -172,8 +173,8 @@ L5 那轮我扫了 `generate_handler!`，却没 grep「谁在断言它」——
 | 门禁 | 前 | 后 |
 |---|---|---|
 | monitor `cargo test --all` | 626 | **629**（+3 新断言） |
-| monitor clippy lib | 36 | **36**（新函数一度是 +1 dead_code —— **不加 `#[allow]` 糊过去**，而是把 spawn 那半补完给它真调用点） |
-| Tauri 命令数 | 120 | **121**（`parity_ledger` 121/50/21、C04a 121、包装层 111 三处同步） |
+| monitor clippy lib | 36 | **36**（新函数一度 +1 dead_code；第一半用「加命令」消掉，**第二半改成接既有入口** —— 全程没用 `#[allow]` 糊） |
+| Tauri 命令数 | 120 | **121** → **第二半撤回 120**（三处钉死数一并退回，见 §13） |
 | npm / tsc / check:types | 866 · 0 · 67 | **同左** |
 | daemon / shellcheck / vendored | 173 · 37 rc=0 · 294 | **同左** |
 
@@ -184,12 +185,89 @@ L5 那轮我扫了 `generate_handler!`，却没 grep「谁在断言它」——
 - [x] **补上 L0 漏的 `cfg(windows)` 清单**：52 处 / 12 模块，筛出**唯一一处真缺口**
 - [x] **订正 E31**：搬家断不掉任何一条边 ⇒ **不做**，并写明将来成立的条件
 - [x] 抽出与传输无关的校验；**PowerShell 怪癖没跟着搬**（判据落在性质上）
-- [x] `build_local_posix_argv` + `launch_local_posix` + `launch_local_terminal`
+- [x] `build_local_posix_argv` + `launch_local_posix`（~~`launch_local_terminal`~~ 第二半已撤）
 - [x] **验收判据机器化**：换 transport 后剥净包装**逐字节相同**（主计划 §2 第 1 条的原话）
 - [x] 三条变异全部隔离成立
-- [ ] **前端接线**：`transport:{kind:"local"}` 的生产者 + 调 `launch_local_terminal` —— §10
+- [x] **本地入口按平台分流**（§10-§11）：**不是加前端调用点** —— 复测发现本地入口早就有两个，而上一轮那个 `launch_local_terminal` 是投机 API，**已撤**
+- [x] **两个渲染器共享一个决策**；sid 校验是**真共享**（变异 A 连带红了既有 PS 测试）
+- [x] **spawn 那半的覆盖补上了**（上一轮登记的欠账）
 
-## 10. 没做的（登记）
+## 10. ★ 第二半开工复测：**上一轮那个新命令是投机 API，已撤**
+
+接线前先看前端怎么走 —— 结果推翻了「加个前端调用点」这个设想：
+
+1. **`launch-requests.ts` 记着 R07 经 Phase D 审计的决定**：本地**刻意不走 TS IR**。
+   理由不是做不到，是「**接了也拿不到新东西**」（`plan.action`/`plan.cwd` 在当前维度注册表下
+   恒等于输入，`plan.launcher` 恒 `""`），而且生产侧走一遍是 **fail-closed 风险**
+   ——将来任何对 `transport:local` 抛异常的新维度都会让本地 resume 彻底拉不起来。
+2. **本地入口本来就有两个**：`new_local_session` / `resume_history_session`
+   （`views/history.ts` 直接调）。它们内部硬接 `build_*_ps_command` + `launch_powershell_window`。
+3. ⇒ **真正该接的是这两个既有入口，不是加第三个。**
+
+而上一轮我加的 `launch_local_terminal`，理由是「`launch_remote_terminal` 的本地对侧」。
+复查它的四个远端调用点（SFTP 面板「在此打开终端」· 账号部署向导 · accounts-section ·
+`remote-launch-run`）—— **全是远端专属流程，没有一个有本地对侧需求**；
+而「在这个目录开个终端」本地早就有 `new_local_session` 了。
+
+⇒ **它是投机 API，本轮撤掉**：删函数 + 删 TS 包装 + 三处钉死数退回（121→120、111→110）+
+对账表那行移除。**当时加它的动机是「给 `launch_local_posix` 一个生产调用点、消掉 dead_code」
+—— 那个动机本身没错（不该用 `#[allow]` 糊），但答案选错了**：正解是接既有入口。
+
+> **一条方法论**：「为了消一个 dead_code 而新增公开 API」要当心 —— 先问「已有的入口能不能接」。
+
+## 11. 第二半交付：两个渲染器共享一个决策
+
+```
+local_launch_choice(action, launcher)      ← 平台无关：sid 校验 + 选哪个启动器
+        ├── build_local_ps_command   → if (Get-Command cc …) { … } else { … }
+        └── build_local_posix_command → if command -v cc >/dev/null 2>&1; then …; else …; fi
+launch_local(action, launcher, cwd)        ← 按宿主挑一条送法
+        ├── #[cfg(windows)]      → launch_powershell_window
+        └── #[cfg(not(windows))] → launch_local_posix
+```
+
+三处要点：
+
+- **校验只有一份**。抽进 `local_launch_choice` 之后，**sid 校验仍然在**
+  （主计划点名「要保留——那是一道独立防线，不是重复」）。
+  变异 A 把它拆掉时**同时**红了我的新测试**与既有的 PS 测试** ⇒ 证明它是**真共享**、
+  不是我又抄了一份。
+- **`command -v` 是 `Get-Command` 的等价物**，不是随手挑的：它同样找得到 shell **函数**，
+  而 `ccm` 的 `cc` 集成正是一个函数；命令跑在 `bash -lic` 里、rc 已加载 ⇒ 找得到。
+- **平台门控用 `#[cfg(any(windows, test))]`，不用 `#[allow(dead_code)]`**。
+  三个 PS 构造器在 Linux 生产段确实没人调，但逐字节钉死它们的测试要在所有平台跑。
+  精确门控说清了「谁在什么条件下用它」；`#[allow]` 会把将来真正的死代码一并盖住。
+
+### 11.1 spawn 那半的覆盖补上了
+
+上一轮登记的「spawn 那半没有测试覆盖」**本轮补掉**：
+`local_posix_spawn_actually_runs_the_command` 用一条无害命令（`printf ok > <临时文件>`）
+观测它真的 exec 了。**刻意不起任何 agent**。
+它不是 hermetic 的（`bash -lic` 会 source 用户 rc）——但要验的正是「按我们给的 argv 真的
+exec 了」，rc 的存在恰恰是生产形态的一部分。变异 D（让 spawn 空转直接返回 Ok）**精确红它**。
+
+## 12. 变异验收（第二半）
+
+| 变异 | 结果 |
+|---|---|
+| **A** POSIX 渲染器丢掉 sid 校验 | **成立**：红我的新测试 **+ 既有 PS 测试** ⇒ 证明校验是真共享的 |
+| **B** POSIX 渲染器照搬 `Get-Command` 语法 | **成立且隔离**：只红 `posix_renderer_mirrors_the_powershell_one` |
+| **D** spawn 那半空转（不真起进程） | **成立且隔离**：只红 spawn 那条，报「5s 内没看到标记文件」 |
+
+**没做变异的一处，如实说**：`launch_local` 那个 6 行的 cfg 分流**本身没有测试覆盖** ——
+测它要真跑 `cc`/`claude`，撞红线。改动它不会红任何测试，**登记**。
+
+## 13. 门禁（第二半）
+
+| 门禁 | 前 | 后 |
+|---|---|---|
+| monitor `cargo test --all` | 629 | **632**（+3：POSIX 渲染器 2 条 + spawn 1 条） |
+| monitor clippy lib | 36 | **36**（撤掉投机命令后回到基线；平台死代码用精确 cfg 门控解决） |
+| Tauri 命令数 | 121 | **120**（撤回；三处钉死数同步退回） |
+| npm / tsc / check:types | 866 · 0 · 67 | **同左** |
+
+## 14. 没做的（登记）
+
 
 | # | 事项 | 为什么 |
 |---|---|---|

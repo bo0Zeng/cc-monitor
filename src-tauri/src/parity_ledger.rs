@@ -175,8 +175,6 @@ mod tests {
         ("resume_history_session", "session.launch", Side::Local),
         ("new_local_session", "session.launch", Side::Local),
         ("launch_remote_terminal", "session.launch", Side::Remote),
-        // L1：POSIX 本地对侧——同一个 payload，只是不包 ssh。
-        ("launch_local_terminal", "session.launch", Side::Local),
         ("cc_integration_status", "ccm.status", Side::Local),
         ("probe_ccm_cli", "ccm.status", Side::Remote),
         ("cc_integration_install", "ccm.install", Side::Local),
@@ -530,8 +528,8 @@ mod tests {
         // 反向自检：一条都没检到 = 签名采集坏了。**等号而不是 `>=`**（T04 审计重要 5：
         // 写 `>= N` 恰好容忍一次静默降级）。
         assert_eq!(
-            checked, 67,
-            "检到 {checked} 条 Local/Both 命令（真实应为 67 = Local 46 + Both 21）\
+            checked, 66,
+            "检到 {checked} 条 Local/Both 命令（真实应为 66 = Local 45 + Both 21）\
              ——改 LEDGER 就要来确认这个数"
         );
     }
@@ -539,7 +537,7 @@ mod tests {
     /// ★ 断言 4：表的形状钉死。改 `LEDGER` 就要来改这几个数。
     #[test]
     fn ledger_shape_is_pinned() {
-        assert_eq!(LEDGER.len(), 121, "命令总数变了");
+        assert_eq!(LEDGER.len(), 120, "命令总数变了");
         let sides = capability_sides();
         assert_eq!(sides.len(), 50, "能力总数变了");
         let asym = asymmetric_capabilities();
