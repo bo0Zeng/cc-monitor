@@ -7,43 +7,21 @@
 // **一条硬纪律来自后端，前端不许在这里放水**：查不了的东西显示成「未确定 + 为什么」，
 // **绝不显示成"缺失"**。远端路径、相对项目目录的 `.mcp.json`、Windows 侧 `$PROFILE`
 // 本机都查不到，把它们画成红叉就是对能用的安装报假警报——B04 审计已经抓过一次同型病。
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
 
-/** 与 Rust 侧 `SurfaceState` 的 `#[serde(tag = "kind", rename_all = "snake_case")]` 对位。 */
-export type SurfaceState =
-  | { kind: "present"; detail: string }
-  | { kind: "absent" }
-  | { kind: "undetermined"; why: string };
+// C04d 批 2：**四个线上类型全部改用生成物**（`config_surface.rs` 是源）。
+// `SurfaceState` 是 `#[serde(tag = "kind", rename_all = "snake_case")]` 的内部标记枚举
+// ——`ts-rs` 认 serde 属性，生成的判别联合与手写版逐字等价（本批次实测零漂移）。
+//
+// 本文件内部与 `.vitest.ts` 都用这些名字，所以 **import + 单独 re-export 都要有**：
+// 只写 `export type { … } from` 不会把名字带进本地作用域（C02 栽两次、C04c 第三次）。
+import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
+import type { SettingsScope } from "../generated/SettingsScope";
+import type { SurfaceRow } from "../generated/SurfaceRow";
+import type { SurfaceState } from "../generated/SurfaceState";
 
-export interface SurfaceRow {
-  tool_id: string;
-  tool_name: string;
-  source_label: string;
-  path_declared: string;
-  path_resolved: string | null;
-  note: string | null;
-  host_label: string;
-  effect_label: string;
-  state: SurfaceState;
-  installable: boolean;
-  uninstallable: boolean;
-}
-
-export interface SettingsScope {
-  scope: string;
-  path: string;
-  state: SurfaceState;
-  has_cc_bus_hooks: boolean | null;
-  precedence_note: string;
-}
-
-export interface ConfigSurfaceReport {
-  rows: SurfaceRow[];
-  settings_scopes: SettingsScope[];
-  claude_config_dir: string;
-  home: string;
-}
+export type { ConfigSurfaceReport, SettingsScope, SurfaceRow, SurfaceState };
 
 /** 一态 → 文案 + 三档语气。**`undetermined` 必须中性且带出理由**，不能借"缺失"的红。 */
 export function describeSurfaceState(st: SurfaceState): {
@@ -187,7 +165,7 @@ export class ConfigSurfaceSection {
   async refresh(): Promise<void> {
     this.body.textContent = "扫描中…";
     try {
-      const r = await invoke<ConfigSurfaceReport>("config_surface_report");
+      const r = await commands.config_surface_report();
       // **校验自己 IPC 的返回形状**（B03 的真 bug：`invoke` 可能 resolve 成 undefined，
       // 于后续 `.length` 当场抛，把整个 section 挂掉）。
       if (!r || !Array.isArray(r.rows) || !Array.isArray(r.settings_scopes)) {

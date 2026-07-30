@@ -21,8 +21,8 @@
  *
  * ## 本文件今天覆盖多少
  *
- * **6 个命令**（C04a 的样板 `get_data_paths` + C04d 批次 1 的 5 个）。
- * 其余 113 个仍走各模块里的裸 `invoke`，由 **C04d** 后续批次迁进来。
+ * **10 个命令**（C04a 样板 1 + C04d 批 1 的 5 + 批 2 的 4）。
+ * 其余 109 个仍走各模块里的裸 `invoke`，由 **C04d** 后续批次迁进来。
  *
  * **条目按字母序**（键名排序），加新条目时插到对的位置——这样 diff 只显示真正的新增。
  *
@@ -40,7 +40,11 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 
+import type { AccountUsageProbeResult } from "../generated/AccountUsageProbeResult";
+import type { CcmProbeResult } from "../generated/CcmProbeResult";
+import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
+import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
 import type { TaskEntry } from "../generated/TaskEntry";
 
 /**
@@ -55,6 +59,13 @@ import type { TaskEntry } from "../generated/TaskEntry";
  * 必须是**另一个导出**。塞了会被守卫第 2 条当场抓红（fail-safe）。
  */
 export const commands = {
+  /**
+   * 起一个 tmux 会话跑 `/usage` 并 capture-pane 抓屏。返回值字段被真消费 ⇒ 生成物（桶③）。
+   * **解析是 TS 侧纯函数 `parseUsageCapture` 的职责**——`captured=true` 只代表拿到了文本。
+   */
+  account_usage: (args: { origin: string; accountName: string; launchPayload: string }) =>
+    invoke<AccountUsageProbeResult>("account_usage", args),
+
   /** 远端 `tmux capture-pane -p` 的画面文本。返回**原始类型**，无需生成物（桶③）。 */
   capture_remote_pane: (args: { origin: string; target: string }) =>
     invoke<string>("capture_remote_pane", args),
@@ -71,6 +82,9 @@ export const commands = {
   /** 设置面板「数据」区：枚举 monitor 写到磁盘的所有路径。返回值字段被真消费 ⇒ 用生成物（桶③）。 */
   get_data_paths: () => invoke<DataPathsResponse>("get_data_paths"),
 
+  /** 探测远端有没有装 `ccm` CLI 及其能力集。返回**线上形状**（TS 侧另有领域类型）⇒ 桶③。 */
+  probe_ccm_cli: (args: { origin: string }) => invoke<CcmProbeResult>("probe_ccm_cli", args),
+
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
   get_session_tasks: (args: { sessionId: string }) =>
     invoke<TaskEntry[]>("get_session_tasks", args),
@@ -78,6 +92,16 @@ export const commands = {
   /** 在远端起一个终端跑给定命令。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   launch_remote_terminal: (args: { origin: string; remoteCmd: string }) =>
     invoke<void>("launch_remote_terminal", args),
+
+  /** 一次配置面审计（只读、一次性，不新增轮询）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
+  config_surface_report: () => invoke<ConfigSurfaceReport>("config_surface_report"),
+
+  /** 展开子 agent 折叠条时拉它的 jsonl。`records` 是 `JsonlRecord[]`（C04c 生成）⇒ 桶③。 */
+  load_subagent: (args: {
+    parentJsonlPath: string;
+    description: string;
+    toolUseTimestamp: string;
+  }) => invoke<SubagentLoadResult>("load_subagent", args),
 
   /** 用系统默认程序打开 monitor 的 log 文件。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_log_file: () => invoke<void>("open_log_file"),

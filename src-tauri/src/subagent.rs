@@ -30,6 +30,8 @@ struct SubagentMeta {
 }
 
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct SubagentLoadResult {
     /// 命中的 jsonl 文件路径（用于前端 debug / 状态栏显示）
     pub path: String,

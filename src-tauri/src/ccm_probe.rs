@@ -7,6 +7,8 @@ use serde::Serialize;
 use tokio::io::{AsyncReadExt, BufReader};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct CcmProbeResult {
     pub installed: bool,
     pub version: Option<String>,

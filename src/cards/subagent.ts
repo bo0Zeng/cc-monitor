@@ -9,16 +9,14 @@
  * 不直接调 Rust 命令以外的全局状态。
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "../ipc/commands";
 import { AGENT_PROFILE } from "../agent-profile";
 import type { JsonlRecord, RenderContext, RenderResult } from "./index";
 
 /** Rust subagent::load_subagent 的返回结构 */
-interface SubagentLoadResult {
-  path: string;
-  agent_id: string;
-  records: JsonlRecord[];
-}
+// C04d 批 2：改用生成物。**它的 `records: Vec<JsonlRecord>` 传递依赖是 C04c 生成的**
+// ——那一轮把 `JsonlRecord` 变成生成物的投资，在这里第一次收息（否则这一批还得先啃它）。
+import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
 
 /** Agent tool_use 块的 input 形状（部分字段，按实测保留） */
 interface AgentInput {
@@ -88,7 +86,7 @@ export function buildAgentCard(
     bodyEl.textContent = "加载 subagent…";
 
     try {
-      const result = await invoke<SubagentLoadResult>("load_subagent", {
+      const result: SubagentLoadResult = await commands.load_subagent({
         parentJsonlPath: ctx.parentPath,
         description: desc,
         toolUseTimestamp: timestamp,

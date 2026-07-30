@@ -96,8 +96,11 @@ describe("C01 边界生成物", () => {
     expect(files, "生成目录内容变了——把新文件纳入本守卫再更新这个期望").toEqual([
       // **按字母序**（本条是 readdir + sort 的逐项对拍，不许按功能分组打乱顺序）。
       // 每项后面标它属于哪个功能，便于回溯。
+      "AccountUsageProbeResult.ts", // C04d 批2
       "ActiveSessionPayload.ts", //   C04b
       "ApiMessage.ts", //             C04c
+      "CcmProbeResult.ts", //         C04d 批2（**线上形状**；TS 侧另有同名领域类型，留手写）
+      "ConfigSurfaceReport.ts", //    C04d 批2
       "DataPathInfo.ts", //           C01
       "DataPathsResponse.ts", //      C01
       "ForkedFrom.ts", //             C04c
@@ -111,7 +114,11 @@ describe("C01 边界生成物", () => {
       "SessionEndedPayload.ts", //    C02
       "SessionIdlePayload.ts", //     C02
       "SessionStartedPayload.ts", //  C02
+      "SettingsScope.ts", //          C04d 批2（ConfigSurfaceReport 的传递依赖）
       "SftpEntry.ts", //              C03（Phase G 报的唯一已确认静默有损点）
+      "SubagentLoadResult.ts", //     C04d 批2（**records: JsonlRecord[] 的传递依赖是 C04c 生成的**）
+      "SurfaceRow.ts", //             C04d 批2（ConfigSurfaceReport 的传递依赖）
+      "SurfaceState.ts", //           C04d 批2（serde(tag="kind") 内部标记枚举 → 判别联合）
       "TaskEntry.ts", //              C02
       "TasksUpdatePayload.ts", //     C02
       "TransferProgress.ts", //       C03
@@ -374,9 +381,9 @@ describe("C01 边界生成物", () => {
     // 注意 `src/ipc/commands.ts` **算在里面**——包装层就是最终该剩下的那 1 个。
     // 裸 `grep 'import { invoke }'` 只有 24，因为有文件是多名导入（`import { invoke, Channel }`）
     // ——这正是原来那个 29 容易被量错的原因，所以这里用正则而不是字面量。
-    // C04d 批次 1：29 → **23**（6 个文件迁进包装层）。最终形态是
+    // C04d：批1 29→23（6 个文件）· 批2 23→**19**（4 个文件）。最终形态是
     // 「1 个包装层 + `tabs.ts`（等授权）+ 1 个动态派发逃生口」= 3，见主计划 §0.1 标准 4。
-    expect(hits.length, `期望恰好 23 个，实得 ${hits.length}`).toBe(23);
+    expect(hits.length, `期望恰好 19 个，实得 ${hits.length}`).toBe(19);
     expect(hits.map((f) => f.replace(/\\/g, "/")), "包装层自己必须在名单里").toContain(
       "src/ipc/commands.ts",
     );
