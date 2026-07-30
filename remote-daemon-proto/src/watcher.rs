@@ -70,6 +70,10 @@ use walkdir::WalkDir;
 enum WatchEvent {
     /// 文件系统事件（`notify-debouncer-mini` 经 [`DebouncerSink`] 转投进来）。
     Notify(DebounceEventResult),
+    /// **P3：tmux server 的 pidfd 醒了** —— 那个 server 进程实例已退出 ⇒ 等价于零会话。
+    ///
+    /// 带 `pid` 同样是为了挡陈旧唤醒（server 复活后是**新** pid，旧看守迟到的事件要被忽略）。
+    TmuxServerGone { pid: u32 },
     /// **pidfd 醒了**：这个 pidfile 当时追踪的那个进程实例已退出。
     ///
     /// 带 `pid` 是为了挡**陈旧唤醒**：同一 pidfile 路径可能已换成别的 pid
@@ -77,7 +81,7 @@ enum WatchEvent {
     /// `state.sessions[key].pid == pid` 才退休 ⇒ 天然幂等。
     PidDied { key: PathBuf, pid: u32 },
     /// 一次性 `tmux ls` 探测线程的结果。
-    TmuxObserved(TmuxObservation),
+    TmuxObserved(TmuxProbe),
     /// tmux 探测节拍——**本 crate 剩下的唯一定时器**，住在独立 ticker 线程里。**P5 删。**
     TmuxProbeDue,
     /// 预留给 P5：删掉 ticker 之后，主循环需要一条**显式**的停机信号才能及时
@@ -87,6 +91,43 @@ enum WatchEvent {
     /// 会一直阻塞在 `recv()`（进程退出时才随之消亡——不是泄漏，但不再"没人听就停读"）。
     #[allow(dead_code)]
     Shutdown,
+}
+
+/// P3：主循环对 tmux server 的认知。**三值**——`Unknown` 与 `Gone` 必须分开：
+/// 只有在 `Alive` 时才敢把「`tmux ls` rc=1」判成真异常（见 `classify_with_server_state`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ServerState {
+    /// 还没探到过（daemon 刚起 / 探测失败）。
+    Unknown,
+    /// 已探到并挂了 pidfd 看守。
+    Alive(u32),
+    /// pidfd 报过死，或探测明确说没有 server。
+    Gone,
+}
+
+/// P3：**收紧 P1 那处刻意的保守**。
+///
+/// P1 把 `tmux ls` rc=1 一律判成"确证零会话"，并留了一条注释说
+/// 「P3 持有 pidfd 后可把『server 活着但 rc=1』归 `Unobservable`」。这里落地。
+///
+/// **实现上刻意不依赖"pidfd 是否已经醒过"**——那会有个危险的失效模式：若 pidfd 路
+/// 因任何原因没醒，状态永远停在 `Alive`，rc=1 就被永久压成 `Unobservable` ⇒ 永不 retire。
+/// 改成**直接查 `/proc` 里那个 server pid 还在不在**：
+/// - 不在了 ⇒ 就是真的没 server（`NoServer` 原样通过，顺带把状态推到 `Gone`）
+/// - 还在 ⇒ 「server 明明活着、`tmux ls` 却连不上」= 真异常（socket 权限/被换掉之类）
+///   ⇒ `Unobservable`（保守跳过，不误 retire）
+///
+/// 一次 `/proc` 存在性读，无定时器、无状态耦合、无挂死风险。
+fn classify_with_server_state(obs: TmuxObservation, server: ServerState) -> TmuxObservation {
+    match (&obs, server) {
+        (TmuxObservation::NoServer, ServerState::Alive(pid)) if pid_alive(pid) => {
+            tracing::warn!(
+                "tmux ls 报 rc=1 但记着的 server pid {pid} 仍在 /proc ⇒ 观测无效（不当零会话）"
+            );
+            TmuxObservation::Unobservable
+        }
+        _ => obs,
+    }
 }
 
 /// P2：把 debouncer 的事件转投进统一 channel（零额外线程——`notify` 本来就在自己的
@@ -137,8 +178,30 @@ fn pidfd_open(pid: u32) -> std::io::Result<std::os::fd::OwnedFd> {
 /// **`poll` 真出错（非 `EINTR`）时刻意不发 `PidDied`**：宁可让会话留在 live、
 /// 等 pidfile 删除或断连来收，也不因一次系统调用失败就误归档——与本文件
 /// `is_same_live_process` 头注那条「瞬时读失败绝不误归档」同一条纪律。
+/// P3：pidfd 看守的目标——决定醒了之后发哪个事件。**让 `spawn_pid_watcher` 一份实现服务
+/// 两种目标 ⇒ 全 crate 只有一处 pidfd 的 `unsafe`。**
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PidWatchTarget {
+    /// 会话进程（P2）：醒了发 `PidDied { key, pid }`。
+    Session { key: PathBuf },
+    /// tmux server（P3）：醒了发 `TmuxServerGone { pid }`。
+    TmuxServer,
+}
+
+impl PidWatchTarget {
+    fn death_event(&self, pid: u32) -> WatchEvent {
+        match self {
+            PidWatchTarget::Session { key } => WatchEvent::PidDied {
+                key: key.clone(),
+                pid,
+            },
+            PidWatchTarget::TmuxServer => WatchEvent::TmuxServerGone { pid },
+        }
+    }
+}
+
 fn spawn_pid_watcher(
-    key: PathBuf,
+    target: PidWatchTarget,
     pid: u32,
     expected_start: Option<u64>,
     tx: std::sync::mpsc::Sender<WatchEvent>,
@@ -147,7 +210,7 @@ fn spawn_pid_watcher(
         Ok(fd) => fd,
         Err(e) => {
             tracing::debug!("pidfd_open pid {pid} 失败（目标已不在？）: {e}");
-            let _ = tx.send(WatchEvent::PidDied { key, pid });
+            let _ = tx.send(target.death_event(pid));
             return;
         }
     };
@@ -155,8 +218,8 @@ fn spawn_pid_watcher(
     // 用既有的 `session_alive`（存在性 + 同实例），语义正是这里要的；顺带覆盖
     // "pidfd 开成功但进程在这一瞬已退出"。
     if !session_alive(pid, expected_start) {
-        tracing::warn!("pidfd 开到的 pid {pid} 与 pidfile 基线不符（PID 复用）⇒ 当死");
-        let _ = tx.send(WatchEvent::PidDied { key, pid });
+        tracing::warn!("pidfd 开到的 pid {pid} 与基线不符（PID 复用）⇒ 当死");
+        let _ = tx.send(target.death_event(pid));
         return;
     }
     let builder = std::thread::Builder::new().name(format!("pidfd-{pid}"));
@@ -173,7 +236,7 @@ fn spawn_pid_watcher(
             // `fd` 的所有权在本闭包里，poll 期间不会被 close。
             let n = unsafe { libc::poll(&mut pfd as *mut libc::pollfd, 1, -1) };
             if n >= 0 {
-                let _ = tx.send(WatchEvent::PidDied { key, pid });
+                let _ = tx.send(target.death_event(pid));
                 return;
             }
             let err = std::io::Error::last_os_error();
@@ -198,7 +261,14 @@ fn arm_pid_watcher(key: &Path, pid: u32, expected_start: Option<u64>, state: &mu
     if !state.pid_watched.insert((key.to_path_buf(), pid)) {
         return; // 这个 (pidfile, pid) 已经挂过了
     }
-    spawn_pid_watcher(key.to_path_buf(), pid, expected_start, tx);
+    spawn_pid_watcher(
+        PidWatchTarget::Session {
+            key: key.to_path_buf(),
+        },
+        pid,
+        expected_start,
+        tx,
+    );
 }
 
 /// P2：tmux 探测节拍线程——**本 crate 剩下的唯一定时器**。
@@ -276,8 +346,14 @@ const TMUX_PROBE_NO_TMUX_RC: i32 = 97;
 enum TmuxObservation {
     /// rc=0 + stdout 非空：`tmux ls -F` 原文。
     Sessions(String),
-    /// **确证**零会话（rc=0 空 stdout，或 rc=1）⇒ monitor 可安全 retire。
-    ZeroSessions,
+    /// **P3 细分**：rc=0 但 stdout 空 = **server 活着、零会话**（只在 `exit-empty off` 下出现）。
+    ServerEmpty,
+    /// **P3 细分**：rc=1 = **server 不在**（socket 存在但无 server / socket 根本不存在）。
+    ///
+    /// 与 `ServerEmpty` **在 wire 上是同一个取值**（`zero_sessions`）——两者对 retire 决策
+    /// 完全等价，区别只对 P3 的复活监视与"真异常"判定有意义。**这正是 P0/P1 预判的
+    /// "P3 加细分时不必改帧契约"**：`observation_to_frame` 把两者映射到同一格。
+    NoServer,
     /// PATH 里没有 tmux。
     NoTmux,
     /// 观测无效（非 0/1/97 的 rc、被信号杀、exec 失败）⇒ monitor 必须跳过。
@@ -301,14 +377,14 @@ fn tmux_probe_script() -> String {
 /// `code == None` = 被信号杀（如 tmux 卡死后探测线程连带被清）⇒ 观测无效。
 fn classify_tmux_probe(code: Option<i32>, stdout: &str) -> TmuxObservation {
     match code {
-        Some(0) if stdout.trim().is_empty() => TmuxObservation::ZeroSessions,
+        Some(0) if stdout.trim().is_empty() => TmuxObservation::ServerEmpty,
         Some(0) => TmuxObservation::Sessions(stdout.to_string()),
         // rc=1 = server 不在。**一处刻意的保守**：socket 权限异常这类罕见情形也会落这里
         // ⇒ 理论上可能误 retire。缓解：socket 路径 uid 隔离（`/tmp/tmux-<uid>/`），同 uid 下
         // 权限异常几乎不可能。**P3 落地后有更强判据**：那时 daemon 持有 server 的 pidfd，
         // 「pidfd 说 server 活着但 tmux ls rc=1」= 真异常 ⇒ 归 `Unobservable`。
         // 该升级**不改帧契约**（`ZeroSessions` 语义不变），所以 P1 现在就能安全落地。
-        Some(1) => TmuxObservation::ZeroSessions,
+        Some(1) => TmuxObservation::NoServer,
         Some(TMUX_PROBE_NO_TMUX_RC) => TmuxObservation::NoTmux,
         _ => TmuxObservation::Unobservable,
     }
@@ -336,6 +412,72 @@ fn run_tmux_ls() -> TmuxObservation {
     }
 }
 
+/// P3：一次 tmux 探测的完整结果——观测分类 + （能拿到时）server 的 pid 与 socket 路径。
+///
+/// **为什么和 `tmux ls` 同一趟拿**：`display-message` 是另一个 subprocess，而
+/// `run_tmux_ls` 头注那条约束（无超时 ⇒ 只能在一次性后台线程里跑）对它同样适用。
+/// 放同一个探测线程里 ⇒ 不新增线程、不阻塞主循环（P2 建立的硬约束）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TmuxProbe {
+    obs: TmuxObservation,
+    /// tmux server 进程的 pid（`#{pid}`）——给 pidfd 看守用。拿不到 = 没有 server。
+    server_pid: Option<u32>,
+    /// 这个 server 的 socket 绝对路径（`#{socket_path}`）——给"复活"inotify 用。
+    socket_path: Option<PathBuf>,
+}
+
+/// P3：问 tmux server 要 pid 与 socket 路径。**只读**、无副作用；
+/// **死 socket 上调用不会把 server 拉活**（P0 实测）。
+///
+/// 与 `run_tmux_ls` 同一套 `sh -c` + `command -v` 门控；rc≠0（没有 server）⇒ 全 None。
+fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
+    // 一行两列（TAB 分隔），避免两次 subprocess。
+    let script = "if command -v tmux >/dev/null 2>&1; then exec tmux display-message -p '#{pid}\t#{socket_path}' 2>/dev/null; else exit 97; fi";
+    let out = match std::process::Command::new("sh")
+        .arg("-c")
+        .arg(script)
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            tracing::warn!("tmux display-message 执行失败: {e}");
+            return (None, None);
+        }
+    };
+    if out.status.code() != Some(0) {
+        return (None, None); // 没有 server / 没有 tmux
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let line = text.lines().next().unwrap_or("");
+    let mut it = line.split('\t');
+    let pid = it.next().and_then(|x| x.trim().parse::<u32>().ok());
+    let sock = it
+        .next()
+        .map(str::trim)
+        .filter(|x| !x.is_empty())
+        .map(PathBuf::from);
+    (pid, sock)
+}
+
+/// P3：一次完整探测（跑在一次性后台线程里）。
+///
+/// 只在"可能有 server"时才问 pid/socket——`NoTmux`/`Unobservable` 下问了也是白问。
+/// 注意 **`ServerEmpty` 也要问**：`exit-empty off` 下 server 活着但零会话。
+fn run_tmux_probe() -> TmuxProbe {
+    let obs = run_tmux_ls();
+    let (server_pid, socket_path) = match &obs {
+        TmuxObservation::Sessions(_) | TmuxObservation::ServerEmpty | TmuxObservation::NoServer => {
+            query_tmux_server()
+        }
+        TmuxObservation::NoTmux | TmuxObservation::Unobservable => (None, None),
+    };
+    TmuxProbe {
+        obs,
+        server_pid,
+        socket_path,
+    }
+}
+
 /// P1：四态 → wire。**`raw` 载荷刻意与 P1 之前逐字节一致**，新信息全部走 additive 的
 /// `observation` 字段 ⇒ **旧 monitor 行为零变化**（有会话时它照旧解析 raw；零会话/出错时
 /// 它看到空 raw、照旧保守跳过 = 今天的行为，无回归）。新 monitor 读 `observation` 才能
@@ -347,7 +489,8 @@ fn observation_to_frame(obs: TmuxObservation) -> Frame {
             // 有会话时**刻意省略**：raw 非空本身就说明是有会话，省略保持热路径字节不变。
             observation: None,
         },
-        TmuxObservation::ZeroSessions => Frame::TmuxSessions {
+        // P3：两个细分映射到**同一个** wire 取值 ⇒ 帧契约与 P1 逐字节一致。
+        TmuxObservation::ServerEmpty | TmuxObservation::NoServer => Frame::TmuxSessions {
             raw: String::new(),
             observation: Some(OBS_ZERO_SESSIONS.to_string()),
         },
@@ -459,6 +602,9 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool, tail_
     // 线程**里，主循环只收结果。gate 在「无在途探测」上 → 最多同时一个探测线程；即便远端 tmux
     // 卡死（D-state/socket 卡住/NFS home），也只泄漏这一个后台线程，reader 永不冻结。
     let mut tmux_inflight = false;
+    // P3：对 tmux server 的认知 + 已挂过的 socket 目录 watch（只加一次）。
+    let mut server = ServerState::Unknown;
+    let mut watched_socket: Option<PathBuf> = None;
     // P2：轮询 B（8s）从"主循环里的节流判断"搬进独立 ticker 线程 ⇒ 主循环变成最终形态。
     // **P5 删掉这一行 + `spawn_tmux_ticker` 即可**（并按 `WatchEvent::Shutdown` 的注释接停机信号）。
     spawn_tmux_ticker(events_tx.clone());
@@ -472,6 +618,20 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool, tail_
             WatchEvent::Notify(Ok(events)) => {
                 for ev in events {
                     let p = ev.path.as_path();
+                    // P3：**tmux socket 复活**——我们监视的正是它所在目录，socket 被
+                    // unlink+create 时（P0 实测 inode 会变）这里就会命中。
+                    // 只当"该重新探一次"的触发器：立刻起一次探测（若无在途），
+                    // 由探测结果去重挂 pidfd / 重同步。**绝不拿文件存在性判活。**
+                    if watched_socket.as_deref() == Some(p) {
+                        if !tmux_inflight {
+                            tmux_inflight = true;
+                            let tx = events_tx.clone();
+                            std::thread::spawn(move || {
+                                let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));
+                            });
+                        }
+                        continue;
+                    }
                     if is_jsonl(p) && !is_subagent_path(p) {
                         // process_jsonl skips sids not in active_sids.
                         process_jsonl(p, &mut state, &mut sink);
@@ -504,14 +664,59 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool, tail_
                     tmux_inflight = true;
                     let tx = events_tx.clone();
                     std::thread::spawn(move || {
-                        let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_ls()));
+                        let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));
                     });
                 }
             }
-            WatchEvent::TmuxObserved(obs) => {
+            WatchEvent::TmuxObserved(probe) => {
                 tmux_inflight = false;
+                // P3：先按「我们对 server 的认知」收紧判据，再发帧。
+                let obs = classify_with_server_state(probe.obs, server);
+                // P3：探到了 server ⇒ 挂 pidfd 看守（换了 pid 也要重挂：server 复活是新进程）。
+                match probe.server_pid {
+                    Some(pid) if server != ServerState::Alive(pid) => {
+                        server = ServerState::Alive(pid);
+                        // server 的 procStart 基线我们没有（不是从 pidfile 读的）⇒ 传 None，
+                        // 判据 2 退化成存在性（`is_same_live_process` 的 `_ => true` 臂）。
+                        spawn_pid_watcher(PidWatchTarget::TmuxServer, pid, None, events_tx.clone());
+                        tracing::info!("已给 tmux server pid {pid} 挂 pidfd 看守（零轮询判死）");
+                    }
+                    None if matches!(obs, TmuxObservation::NoServer) => {
+                        server = ServerState::Gone;
+                    }
+                    _ => {}
+                }
+                // P3：第一次知道 socket 路径就给它**所在目录**加 inotify——server 复活时
+                // tmux 会 unlink+create 那个 socket 文件（P0 实测 inode 会变）⇒ `IN_CREATE`
+                // 能感知。**注意「socket 文件存在」≠「server 活着」**（P0 实测：server 死后
+                // 文件仍留着）⇒ 只把它当"该重新探一次"的触发器，绝不用它判活。
+                if let Some(sock) = probe.socket_path.as_ref() {
+                    if watched_socket.as_ref() != Some(sock) {
+                        if let Some(dir) = sock.parent() {
+                            match debouncer.watcher().watch(dir, RecursiveMode::NonRecursive) {
+                                Ok(()) => {
+                                    tracing::info!("已监视 tmux socket 目录 {}", dir.display());
+                                    watched_socket = Some(sock.clone());
+                                }
+                                Err(e) => tracing::warn!(
+                                    "监视 tmux socket 目录失败 {}: {e}（复活仍由 ticker 兜）",
+                                    dir.display()
+                                ),
+                            }
+                        }
+                    }
+                }
                 // P1：四态 → wire（`raw` 载荷不变、新信息走 additive `observation`）。
                 sink.send(observation_to_frame(obs));
+            }
+            // P3：tmux server 的 pidfd 醒了 ⇒ 立刻等价于零会话，**不等下一个 8s 节拍**。
+            // pid 比对挡陈旧唤醒（复活后是新 pid，旧看守迟到的事件要忽略）。
+            WatchEvent::TmuxServerGone { pid } => {
+                if server == ServerState::Alive(pid) {
+                    server = ServerState::Gone;
+                    tracing::info!("tmux server pid {pid} 已退出（pidfd）⇒ 发零会话帧");
+                    sink.send(observation_to_frame(TmuxObservation::NoServer));
+                }
             }
             WatchEvent::Shutdown => break,
         }
@@ -1451,7 +1656,7 @@ mod tests {
         let pid = child.id();
         let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
         // expected_start=None ⇒ 判据 2 退化成存在性（`is_same_live_process` 的 `_ => true` 臂）。
-        spawn_pid_watcher(key.clone(), pid, None, tx);
+        spawn_pid_watcher(PidWatchTarget::Session { key: key.clone() }, pid, None, tx);
 
         // —— 反方向：目标还活着 ⇒ 不该有任何事件 ——
         match rx.recv_timeout(Duration::from_millis(400)) {
@@ -1487,7 +1692,7 @@ mod tests {
 
         let key = PathBuf::from("/tmp/ccm-p2-fixture/dead.json");
         let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
-        spawn_pid_watcher(key.clone(), pid, None, tx);
+        spawn_pid_watcher(PidWatchTarget::Session { key: key.clone() }, pid, None, tx);
         match rx
             .recv_timeout(Duration::from_secs(2))
             .expect("open 失败必须立刻报死")
@@ -1515,7 +1720,7 @@ mod tests {
 
         let key = PathBuf::from("/tmp/ccm-p2-fixture/reused.json");
         let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
-        spawn_pid_watcher(key.clone(), pid, bogus, tx);
+        spawn_pid_watcher(PidWatchTarget::Session { key: key.clone() }, pid, bogus, tx);
         match rx
             .recv_timeout(Duration::from_secs(2))
             .expect("基线不符必须立刻报死（否则会把冒名者当成原会话一直判活）")
@@ -1626,6 +1831,177 @@ mod tests {
         }
     }
 
+    // ---------- P3（zero-poll-liveness）：tmux server 生 / 死 / 复活 ----------
+
+    /// ★ P3 收紧判据：`tmux ls` rc=1 时，**只有在我们记着的 server pid 确实已经不在**
+    /// 才认"零会话"；pid 还在 = 真异常 ⇒ `Unobservable`（保守跳过，不误 retire）。
+    ///
+    /// **刻意不依赖"pidfd 是否已经醒过"**——那会有个危险失效模式：pidfd 路万一没醒，
+    /// 状态永停 `Alive`，rc=1 被永久压成 `Unobservable` ⇒ 永不 retire。改成直接查 `/proc`。
+    #[test]
+    fn no_server_is_tightened_only_when_the_pid_is_really_still_alive() {
+        // ① 记着的 server 是**自己**（铁定活着）+ rc=1 ⇒ 真异常 ⇒ Unobservable
+        let me = std::process::id();
+        assert_eq!(
+            classify_with_server_state(TmuxObservation::NoServer, ServerState::Alive(me)),
+            TmuxObservation::Unobservable,
+            "server 明明活着而 tmux ls 连不上 = 真异常，不该当成零会话"
+        );
+
+        // ② 记着的 server 已死 + rc=1 ⇒ 原样通过（真的没 server）
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn");
+        let dead = child.id();
+        child.kill().expect("kill");
+        child.wait().expect("reap");
+        assert_eq!(
+            classify_with_server_state(TmuxObservation::NoServer, ServerState::Alive(dead)),
+            TmuxObservation::NoServer,
+            "server 真没了就该照常判零会话"
+        );
+
+        // ③ Unknown / Gone 一律不收紧（还没探过、或已知没了）
+        for st in [ServerState::Unknown, ServerState::Gone] {
+            assert_eq!(
+                classify_with_server_state(TmuxObservation::NoServer, st),
+                TmuxObservation::NoServer,
+                "{st:?} 下不该收紧"
+            );
+        }
+
+        // ④ **收紧只作用于 NoServer**（守卫范围必须等于性质范围）：别的观测原样穿过，
+        //    尤其 `ServerEmpty`（exit-empty off 下 server 活着 + 零会话，是合法观测）。
+        for obs in [
+            TmuxObservation::Sessions("x".into()),
+            TmuxObservation::ServerEmpty,
+            TmuxObservation::NoTmux,
+            TmuxObservation::Unobservable,
+        ] {
+            assert_eq!(
+                classify_with_server_state(obs.clone(), ServerState::Alive(me)),
+                obs,
+                "{obs:?} 不该被 server 状态改写"
+            );
+        }
+    }
+
+    /// pidfd 看守的**目标**决定醒了发哪个事件——一份实现服务两种目标
+    /// （全 crate 只有一处 pidfd 的 unsafe）。
+    #[test]
+    fn pid_watch_target_maps_to_the_right_death_event() {
+        let key = PathBuf::from("/x/7.json");
+        match (PidWatchTarget::Session { key: key.clone() }).death_event(7) {
+            WatchEvent::PidDied { key: k, pid } => assert_eq!((k, pid), (key, 7)),
+            _ => panic!("Session 目标必须发 PidDied"),
+        }
+        match PidWatchTarget::TmuxServer.death_event(9) {
+            WatchEvent::TmuxServerGone { pid } => assert_eq!(pid, 9),
+            _ => panic!("TmuxServer 目标必须发 TmuxServerGone"),
+        }
+    }
+
+    /// ★ pidfd 用在**真 tmux server 进程**上（不只是 `sleep`）：双向验收。
+    ///
+    /// 隔离 socket（无 `-L` 一律不跑——本测试自己带 `-L`）。这一格 P2 没覆盖：
+    /// P2 只测了会话进程，P0-③ 只测了 cgroup 拓扑。
+    ///
+    /// **无 tmux 就硬失败而不是静默跳过**——静默 SKIP 是 gate-integrity 在治的那个病。
+    /// 本 crate 的 CI job 跑在 ubuntu-latest，tmux 是标配；真缺了应当看见红。
+    #[test]
+    fn pidfd_watches_a_real_tmux_server_and_stays_silent_while_it_lives() {
+        let sock = format!("ccmP3-{}", std::process::id());
+        let tmux = |args: &[&str]| -> std::process::Output {
+            std::process::Command::new("tmux")
+                .args(["-L", &sock])
+                .args(args)
+                .output()
+                .expect("tmux 不可执行——本测试要求环境有 tmux（刻意不静默跳过）")
+        };
+        // -f /dev/null：不读用户的 ~/.tmux.conf（隔离）
+        let out = std::process::Command::new("tmux")
+            .args([
+                "-f",
+                "/dev/null",
+                "-L",
+                &sock,
+                "new-session",
+                "-d",
+                "-s",
+                "p3",
+                "sh",
+            ])
+            .output()
+            .expect("tmux 不可执行——本测试要求环境有 tmux");
+        assert!(
+            out.status.success(),
+            "隔离 socket 上建会话失败: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+
+        let pid_out = tmux(&["display-message", "-p", "#{pid}"]);
+        let pid: u32 = String::from_utf8_lossy(&pid_out.stdout)
+            .trim()
+            .parse()
+            .expect("拿 server pid");
+
+        let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
+        spawn_pid_watcher(PidWatchTarget::TmuxServer, pid, None, tx);
+
+        // 反方向：server 还活着 ⇒ 不该有事件
+        match rx.recv_timeout(Duration::from_millis(400)) {
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            other => panic!("server 活着时不该有事件（ok={}）", other.is_ok()),
+        }
+
+        // 正方向：杀掉**这个隔离 socket 上的** server ⇒ pidfd 醒
+        let _ = tmux(&["kill-server"]);
+        match rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("server 退出后必须收到 TmuxServerGone")
+        {
+            WatchEvent::TmuxServerGone { pid: p } => assert_eq!(p, pid),
+            _ => panic!("期望 TmuxServerGone"),
+        }
+        let _ = std::fs::remove_file(format!("/tmp/tmux-{}/{sock}", unsafe { libc::getuid() }));
+    }
+
+    /// `query_tmux_server`：**死 socket 上不该把 server 拉活**、且拿不到 pid/socket。
+    ///
+    /// 这里不能直接调 `query_tmux_server()`（它走默认 socket = 用户实况），所以只钉住
+    /// 「探测脚本对没有 server 的情形返回全 None」这条语义——用 PATH 前置一个 rc=1 的假 tmux。
+    #[test]
+    fn tmux_server_query_yields_nothing_without_a_server() {
+        let dir = std::env::temp_dir().join(format!("ccm-p3-q-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let fake = dir.join("tmux");
+        std::fs::write(&fake, "#!/bin/sh\necho 'error connecting' >&2\nexit 1\n").expect("write");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perm = std::fs::metadata(&fake).expect("stat").permissions();
+            perm.set_mode(0o755);
+            std::fs::set_permissions(&fake, perm).expect("chmod");
+        }
+        // 跑与生产同一段脚本，只把 PATH 指向假 tmux。
+        let script = "if command -v tmux >/dev/null 2>&1; then exec tmux display-message -p '#{pid}\t#{socket_path}' 2>/dev/null; else exit 97; fi";
+        let out = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(script)
+            .env("PATH", dir.display().to_string())
+            .output()
+            .expect("spawn");
+        assert_ne!(out.status.code(), Some(0), "没有 server 时脚本不该 rc=0");
+        assert!(
+            String::from_utf8_lossy(&out.stdout).trim().is_empty(),
+            "没有 server 时不该有 stdout"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     // ---------- P1（zero-poll-liveness）：tmux 观测四态 ----------
 
     /// 纯分类：四态各自的判据。**P0 实测的状态空间**（见
@@ -1637,21 +2013,18 @@ mod tests {
             classify_tmux_probe(Some(0), "s1\t/p\tclaude\t1\t1\tsid-a\n"),
             TmuxObservation::Sessions("s1\t/p\tclaude\t1\t1\tsid-a\n".to_string())
         );
-        // rc=0 + 空 → server 活但零会话（exit-empty off）
+        // rc=0 + 空 → **server 活但零会话**（exit-empty off）。P3 起与 rc=1 分开。
         assert_eq!(
             classify_tmux_probe(Some(0), ""),
-            TmuxObservation::ZeroSessions
+            TmuxObservation::ServerEmpty
         );
         assert_eq!(
             classify_tmux_probe(Some(0), "  \n"),
-            TmuxObservation::ZeroSessions,
+            TmuxObservation::ServerEmpty,
             "只有空白也算空"
         );
-        // rc=1 → server 不在（两种 stderr 措辞都走这里，刻意不看 stderr）
-        assert_eq!(
-            classify_tmux_probe(Some(1), ""),
-            TmuxObservation::ZeroSessions
-        );
+        // rc=1 → **server 不在**（两种 stderr 措辞都走这里，刻意不看 stderr）
+        assert_eq!(classify_tmux_probe(Some(1), ""), TmuxObservation::NoServer);
         // 约定 rc → 无 tmux
         assert_eq!(
             classify_tmux_probe(Some(TMUX_PROBE_NO_TMUX_RC), ""),
@@ -1690,8 +2063,11 @@ mod tests {
         }
         // 零会话 / 观测无效：raw 都是空串（旧 monitor 一律保守跳过 = 今天的行为），
         // 区别只在 observation ⇒ 只有新 monitor 分得开。
+        // P3：`ServerEmpty` 与 `NoServer` 两个细分**必须映射到同一个 wire 取值**
+        // ——这就是"P3 加细分不改帧契约"那条承诺的机器化。
         for (obs, token) in [
-            (TmuxObservation::ZeroSessions, OBS_ZERO_SESSIONS),
+            (TmuxObservation::ServerEmpty, OBS_ZERO_SESSIONS),
+            (TmuxObservation::NoServer, OBS_ZERO_SESSIONS),
             (TmuxObservation::Unobservable, OBS_UNOBSERVABLE),
         ] {
             match observation_to_frame(obs) {
@@ -1744,15 +2120,15 @@ mod tests {
             TmuxObservation::Sessions(ref s) if s.contains("sid-a")
         ));
 
-        // ② rc=0 但不输出 → ZeroSessions（exit-empty off 那格）
+        // ② rc=0 但不输出 → ServerEmpty（exit-empty off 那格）
         write_fake("#!/bin/sh\nexit 0\n");
-        assert_eq!(run(&path_with_fake), TmuxObservation::ZeroSessions);
+        assert_eq!(run(&path_with_fake), TmuxObservation::ServerEmpty);
 
         // ③ rc=1（真 tmux 在 server 不在时就是这个）→ ZeroSessions
         //    **这一格是 P1 的核心**：改回 `|| true` 会让它变成 rc=0+空 ⇒ 仍是 ZeroSessions，
         //    所以本格单独看不出回归；真正钉住 `exec` 的是 ④。
         write_fake("#!/bin/sh\necho 'no server running on /tmp/x' >&2\nexit 1\n");
-        assert_eq!(run(&path_with_fake), TmuxObservation::ZeroSessions);
+        assert_eq!(run(&path_with_fake), TmuxObservation::NoServer);
 
         // ④ ★ rc=2（观测无效）→ 必须是 Unobservable，**绝不能被折成零会话**。
         //    这一格就是 `|| true` 的变异检测点：加回 `|| true` 会把 rc=2 吞成 rc=0+空
