@@ -40,17 +40,28 @@
 **最终形态**：`import { invoke }` 只剩 `src/ipc/commands.ts`（那 1 个）
 + **`tabs.ts`（等授权）** + **一个动态派发逃生口**。这正是主计划 §0.1 成功标准 4 改写后的形态。
 
-### 3 个动态派发口怎么处置（批 6 的核心判断）
+### ★ 3 个「动态派发口」——查实后**不需要逃生口**（批 6a 定稿，推翻原计划）
 
-`sftp/panel.ts:483-485` 的 `doWrite(cmd, args)` 转发 3 个 sftp 写命令 ·
-`views/session-viewer.ts:211` `invoke<number>(ipc, …)` · `views/history.ts:489` `invoke(ipc, …)`
-——命令名运行时才定，**结构性摘不掉裸 `invoke`**。
+原计划要在 `commands.ts` 里另导出一个 `invokeDynamic(name, args)` + `DYNAMIC_ONLY` 白名单。
+**批 6a 查实三处的实际形状后，这个设计不该做：**
 
-按账本第 7 行约束 ①：逃生口**必须是另一个导出**，不许塞进 `commands` 扁平表
-（塞了会被守卫第 2 条抓红，那个 fail-safe 是刻意的）。计划形态：
-`src/ipc/commands.ts` 里另导出一个 `invokeDynamic(name, args)`，
-它内部断言 `name` 属于 `DYNAMIC_ONLY` 白名单——**把「动态」这件事本身也钉死**，
-而不是留一个任意 `string` 的后门。这条留到批 6 时再定稿。
+| 位置 | 实际形状 | 是不是真动态 |
+|---|---|---|
+| `views/session-viewer.ts:211` | `const ipc = origin ? "stream_read_remote_session" : "stream_read_session_jsonl"` | **不是**——两个**字面量**之间的三元 |
+| `views/history.ts:489` | `const ipc = proj.origin ? "stream_remote_history_sessions" : "stream_history_sessions_in_project"` | **不是**——同上 |
+| `sftp/panel.ts:485` | `doWrite(cmd: string, args)` 转发 helper | **不是**——**调用方传的全是字面量** |
+
+⇒ 「动态」只在于名字从一个**封闭、静态可知的集合**里选。
+**为一件其实是静态的事加一个 `string` 键的后门，方向是错的**——那等于亲手造一个
+守卫扫不到的洞，而这个工作区整轮都在治「守卫扫不到」。
+
+**新处置：三处都改成静态调用，`invokeDynamic` 不做。**
+连带后果（都是好的）：
+1. C04a 记的「7 个命令 TS 静态看不见」这个**已知盲区会整体消失**
+   ⇒ TS 字面量命令名从 **112 → 119**（批 6a 已到 114），`DYNAMIC_ONLY` 最终 `toEqual([])`。
+2. **最终形态从 4 变 3**：1 包装层 + `tabs.ts`（等授权）+ `accounts.ts`（等 Z02）
+   ——**没有动态派发口这一项**。主计划 §0.1 成功标准 4 要按这个改。
+3. 每条命令拿到**自己精确的签名**，而不是共用一个超集 args（见下）。
 
 ## 3. 批次 1 明细（本 commit 交付）
 
@@ -394,6 +405,28 @@ default: {
 |---|---|---|---|---|---|
 | **A** | 给 Rust `ConnectStage` 加一个 variant | rc=0 | ✔ grep 到 `probeMutantStage` | `tsc` 报 `not assignable to type 'never'` | **成立**，且是本批最重要的一条 |
 | B | 四条等号自动各红一次 | — | — | 生成物清单 · 派生源 19→21 · 文件数 8→7 · 包装层 53→62 | 成立 |
+
+## 3h. 批次 6a 明细：**推翻自己的逃生口设计，换来盲区开始归零**
+
+4 条包装层条目（62 → **66**）· 1 个派生（生成物 57 → **58**）· 1 个文件迁走（7 → **6**）·
+**TS 字面量命令名 112 → 114**（盲区 7 → 5）。
+
+### 两条 `stream_*` 的签名**刻意不同**，此前被超集 args 掩盖
+
+Rust 侧：`stream_read_remote_session(jsonl_path, origin, on_chunk)` ——`origin` **必填**；
+`stream_read_session_jsonl(jsonl_path, on_chunk)` ——**根本没有 origin**。
+
+而 TS 那处三元给**两边传同一个超集** `{ jsonlPath, origin: opts.origin, onChunk }`，
+本地那次靠「`origin` 是 `undefined` ⇒ Tauri 序列化时丢掉」才对。
+改成两次静态调用后各拿精确签名 ⇒ **给本地命令传 `origin` 变成编译期错误**（变异 A 实证）。
+
+### 批次 6a 变异
+
+| # | 变异 | 判色 | 结论 |
+|---|---|---|---|
+| **A** | 给 `stream_read_session_jsonl` 传 `origin` | `tsc` 报 `'origin' does not exist in type '{ jsonlPath: string; onChunk: … }'` | **成立**。此前那个超集 args 一直合法 |
+| **B** | 往 `DYNAMIC_ONLY` 塞回一个已消掉的名字 | 守卫红（盲区集被钉死，不许静默变大或变小） | 成立 |
+| C | 五条等号自动各红一次 | 生成物清单 · 派生源 21→22 · 文件数 7→6 · 包装层 62→66 · **字面量名 112→114** | 成立 |
 
 ## 4. 代码审计结果（Phase D）
 

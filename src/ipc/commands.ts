@@ -21,8 +21,8 @@
  *
  * ## 本文件今天覆盖多少
  *
- * **62 个命令**（C04a 样板 1 + C04d 批 1-5c 的 61）。
- * 其余 57 个仍走各模块里的裸 `invoke`（119 − 62 = 57），由 **C04d** 后续批次迁进来。
+ * **66 个命令**（C04a 样板 1 + C04d 批 1-6a 的 65）。
+ * 其余 53 个仍走各模块里的裸 `invoke`（119 − 66 = 53），由 **C04d** 后续批次迁进来。
  *
  * **条目按字母序**（键名排序），加新条目时插到对的位置——这样 diff 只显示真正的新增。
  *
@@ -44,6 +44,7 @@ import type { AccountUsageProbeResult } from "../generated/AccountUsageProbeResu
 import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
 import type { ActiveSessionPayload } from "../generated/ActiveSessionPayload";
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
+import type { BranchResult } from "../generated/BranchResult";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
 import type { CcPreviewResponse } from "../generated/CcPreviewResponse";
@@ -57,6 +58,7 @@ import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { ForwardStatus } from "../generated/ForwardStatus";
 import type { HooksReport } from "../generated/HooksReport";
 import type { ImportGroup } from "../generated/ImportGroup";
+import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { ProfileScan } from "../generated/ProfileScan";
 import type { PushResult } from "../generated/PushResult";
 import type { ResolvedHost } from "../generated/ResolvedHost";
@@ -199,6 +201,26 @@ export const commands = {
     invoke<ConnTestResult>("test_remote_connection", args),
 
   /**
+   * 流式读**远端**会话 jsonl（issue #16，SSH 拉取）。Rust 返回 `Result<u32, String>`（条数）。
+   *
+   * **注意它与 `stream_read_session_jsonl` 的签名刻意不同**：远端这条 `origin: String` 是
+   * **必填**，本地那条**根本没有 origin**。此前 TS 侧用一个三元选命令名 + 给两边传同一个
+   * 超集 args（本地传 `origin: undefined` 靠 Tauri 丢掉）——包装层收成两条精确签名后，
+   * 「给本地命令传 origin」变成**编译期错误**。
+   */
+  stream_read_remote_session: (args: {
+    jsonlPath: string;
+    origin: string;
+    onChunk: Channel<JsonlLinePayload[]>;
+  }) => invoke<number>("stream_read_remote_session", args),
+
+  /** 流式读**本地**会话 jsonl。**无 origin 参数**（见上条）。 */
+  stream_read_session_jsonl: (args: {
+    jsonlPath: string;
+    onChunk: Channel<JsonlLinePayload[]>;
+  }) => invoke<number>("stream_read_session_jsonl", args),
+
+  /**
    * 往远端 tmux 会话发按键。Rust 返回 `Result<(), String>` ⇒ **桶①**。
    * `enter` 缺省时 Rust 侧按 true 处理（`account-restart.ts` 有一处显式传 `false`）。
    */
@@ -250,6 +272,13 @@ export const commands = {
   /** `ssh -G` 解析一个别名。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   resolve_ssh_host: (args: { alias: string }) => invoke<ResolvedHost>("resolve_ssh_host", args),
 
+  /** 在新终端 resume 一个历史会话。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  resume_history_session: (args: {
+    sessionId: string;
+    cwd: string;
+    launcher: string | null;
+  }) => invoke<void>("resume_history_session", args),
+
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
   get_session_tasks: (args: { sessionId: string }) =>
     invoke<TaskEntry[]>("get_session_tasks", args),
@@ -280,6 +309,10 @@ export const commands = {
 
   /** 部署内嵌的 daemon 到远端。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
   deploy_remote_daemon: (args: { cfg: unknown }) => invoke<string>("deploy_remote_daemon", args),
+
+  /** 从某一轮建分支（F62）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
+  create_branch_session: (args: { sourceJsonlPath: string; messageUuid: string }) =>
+    invoke<BranchResult>("create_branch_session", args),
 
   /** 一次配置面审计（只读、一次性，不新增轮询）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   config_surface_report: () => invoke<ConfigSurfaceReport>("config_surface_report"),
