@@ -23,7 +23,17 @@
 
 **下一个：P5**（正向死亡帧 + 删 `TMUX_EMIT_INTERVAL`）。P4 只做到「立刻重探」，
 「消失的是**哪个**会话」要 daemon 留住上一份 `tmux ls` 快照 —— 那是 P5 的事。
-**删轮询 B 的前置条件写死在三处**，别提前删。
+
+**★ 删轮询 B 的前置条件已实测满足**（2026-07-30，P5 开工前补做，见
+`features/P4-tmux-hook-notify.md` §7bis）：真 daemon + 私有 socket，
+**hook 在 → kill 到新帧 136/137ms；hook 拆掉 → 5042ms**。有对照组 ⇒ 因果成立，
+不是「恰好赶上 ticker」。daemon 自己装上 3/3、`SIGUSR1 处理器`先于 hook 出现。
+
+**P5 三步的顺序（别跳）**：① daemon 留快照 + 差分（「消失的是哪个」）→
+② 新帧 `TmuxSessionClosed { name }`（**本区唯一动 wire 的一步**；monitor 侧遇未知 kind
+已确认是 `warn` 后跳过、不崩 —— `ssh_source.rs:2428` + 既有测试 `unknown_kind_returns_none`）
+→ ③ 才是删 `TMUX_EMIT_INTERVAL`。**铁律 9 点名这是本区最像会自己犯的错**：
+为了让零定时器守卫变绿而删掉唯一信号源。
 
 **★ 新增一条纪律（P4 实测七次才收干净）**：daemon 源码的**散文里不许逐字引用
 `readonly_guard` 的禁用模式** —— 它连注释一起扫，是 fail-closed 的设计。
