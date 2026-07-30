@@ -19,11 +19,22 @@ use tauri::ipc::Channel;
 /// 一个 (会话/模型/天) 桶的 token 合计。u64 防大历史累加溢出。
 /// `Deserialize` 供 F88a-remote 反序列化 daemon `--usage` 回传的行（`remote_history::aggregate_remote_usage_all`）。
 #[derive(serde::Serialize, serde::Deserialize, Clone, Default, PartialEq, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct UsageTotals {
+    /// **C03：四个字段都显式收窄成 `number`。**
+    /// 头注那句「u64 防大历史累加溢出」是**刻意选择**，所以上限要按 token 量算清、
+    /// 不能套用字节数那条「8 PB」：f64 安全整数上限 2^53-1 ≈ **9×10^15 tokens**，
+    /// 按每天 10^7 tokens 算是 **9 亿天** —— 余量极大。
+    /// 仓内先例：TS 侧 `views/usage-pivot.ts` 早就声明 `number` 并直接做算术。
+    #[cfg_attr(test, ts(type = "number"))]
     pub input: u64,
+    #[cfg_attr(test, ts(type = "number"))]
     pub cache_creation: u64,
+    #[cfg_attr(test, ts(type = "number"))]
     pub cache_read: u64,
+    #[cfg_attr(test, ts(type = "number"))]
     pub output: u64,
     pub msgs: u32,
 }

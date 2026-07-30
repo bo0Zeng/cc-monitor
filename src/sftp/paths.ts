@@ -2,15 +2,15 @@
  * F48：SFTP 面板的纯路径逻辑(零 DOM/IPC,便于 vitest)。远端路径恒用 `/`(SFTP 约定)。
  */
 
-/** 目录项(镜像 Rust sftp_pool::SftpEntry,camelCase)。 */
-export interface SftpEntry {
-  name: string;
-  path: string;
-  isDir: boolean;
-  isSymlink: boolean;
-  size: number;
-  lossyName: boolean;
-}
+// C03（rust-ts-boundary）：改成从生成物 re-export（源：`sftp_pool.rs::SftpEntry`）。
+// **这里原是 Phase G 报的那个唯一已确认的静默有损点**：Rust `size: u64` ↔ 手写 `size: number`。
+// 现在那个 `number` 是 Rust 侧 `#[ts(type = "number")]` 的显式决定（附 8 PB 上限论证），
+// 不再是手抄时的巧合。
+//
+// 本文件内部也用 `SftpEntry`，所以 import + re-export 都要有
+// ——只写 `export type { … } from` 不会把名字带进本地作用域（C02 踩过两次）。
+import type { SftpEntry } from "../generated/SftpEntry";
+export type { SftpEntry };
 
 /** 面包屑:绝对路径 → 段 + 累积路径(根为 `/`)。用于路径条点跳祖先。 */
 export function breadcrumbs(path: string): { name: string; path: string }[] {

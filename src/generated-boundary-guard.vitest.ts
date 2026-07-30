@@ -69,6 +69,8 @@ const TS_DERIVING_SOURCES = [
   "src-tauri/src/data_paths.rs", // C01
   "src-tauri/src/bridge.rs", // C02：8 个事件 payload
   "src-tauri/src/tasks.rs", // C02：TaskEntry（TasksUpdatePayload 的传递依赖）
+  "src-tauri/src/sftp_pool.rs", // C03：SftpEntry + TransferProgress
+  "src-tauri/src/usage.rs", // C03：UsageTotals
 ];
 
 describe("C01 边界生成物", () => {
@@ -92,8 +94,13 @@ describe("C01 边界生成物", () => {
       "SessionEndedPayload.ts",
       "SessionIdlePayload.ts",
       "SessionStartedPayload.ts",
+      // C03 的三个（**跳过了 `SftpStat`**：它的 TS 调用是裸 `invoke("sftp_stat", …)`
+      // 无类型参数、字段没人用 ⇒ 生成它就是为假想消费者建抽象）
+      "SftpEntry.ts",
       "TaskEntry.ts",
       "TasksUpdatePayload.ts",
+      "TransferProgress.ts",
+      "UsageTotals.ts",
     ]);
     for (const f of files) {
       const src = read(`src/generated/${f}`);
@@ -187,6 +194,60 @@ describe("C01 边界生成物", () => {
     // 计数自检用等号：`data_paths.rs` 的 `size_bytes` 1 处 + `tasks.rs` 的
     // `description`/`active_form` 2 处 = 3 处。加了新的必须红一次，确认新那处也配了。
     expect(checked, `期望恰好 3 处 skip_serializing_if，实得 ${checked}`).toBe(3);
+  });
+
+  it("每一个 u64/i64 字段都配了 ts(type = …)——C03 的大整数策略，打在源上", () => {
+    // 性质：`ts-rs` 默认把 `u64`/`i64` 映射成 `bigint`，而 **Tauri 命令 IPC 走
+    // `serde_json::to_string` ⇒ 线上是 JSON 文本、`JSON.parse` 永不产 BigInt**
+    // ⇒ 那个默认值与运行时不一致。所以每个跨边界的大整数字段都必须**显式表态**。
+    //
+    // ## 为什么打在**源**上而不是打在**产物**上
+    //
+    // 打在产物上（断言生成物里不含 `bigint`）有两个毛病：
+    // ① 只在**已生成**的类型上成立——新增一个带 `u64` 的 struct 时它不会红，
+    //    而打在源上会在**加派生的那一刻**就红；
+    // ② **会假红**。C03 实测：我自己用裸 `grep -c bigint src/generated/*.ts` 得到
+    //    `DataPathInfo.ts:4 / TransferProgress.ts:1 / SftpEntry.ts:2` —— 全在 **JSDoc 散文**里
+    //    （`ts-rs` 把 Rust 的 `///` doc comment 搬进 JSDoc，而那些注释正是在解释
+    //    「不许回落到 bigint」）。**剥注释后类型体里 0 个。**
+    //    这正是「代理指标 ≠ 性质」的又一个实例，也是 C03 计划里明写「不能写那条断言」的理由。
+    //
+    // 逐字段判：属性块 = 从字段声明往上到上一个 `pub ` / 块首之间（属性写在字段上方）。
+    let checked = 0;
+    for (const f of TS_DERIVING_SOURCES) {
+      const src = code(read(f));
+      const lines = src.split("\n");
+      for (let k = 0; k < lines.length; k += 1) {
+        if (!/^pub struct\s+\w+/.test(lines[k])) continue;
+        let top = k;
+        while (top > 0 && /^\s*(#\[|$)/.test(lines[top - 1])) top -= 1;
+        let bottom = k;
+        while (bottom < lines.length && lines[bottom] !== "}") bottom += 1;
+        if (!lines.slice(top, k).join("\n").includes("ts_rs::TS")) continue;
+        const body = lines.slice(k, bottom + 1);
+        for (let q = 0; q < body.length; q += 1) {
+          if (!/^\s*pub\s+\w+\s*:\s*(Option<)?(u64|i64)>?\s*,/.test(body[q])) continue;
+          // 该字段自己的属性块：往上收到上一个 `pub ` 行（或 struct 头）为止
+          let attrTop = q;
+          while (attrTop > 1 && !/^\s*pub\s+\w+\s*:/.test(body[attrTop - 1])) attrTop -= 1;
+          const own = body.slice(attrTop, q).join("\n");
+          expect(
+            own,
+            `${f}: 字段 ${body[q].trim()} 是大整数却没配 ts(type = …)` +
+              `——会回落到 ts-rs 的默认 bigint，与 JSON IPC 的运行时不一致`,
+          // **正则必须允许 `type` 不紧跟 `ts(`**：实测属性写法是
+          // `ts(optional, type = "number")`。第一版写成 `/ts\(type\s*=/` 当场假红，
+          // 而**报错信息里的省略号把属性行藏住了**，我一度以为是向上收属性的循环有问题
+          // ——别从被截断的断言消息里推断原因。
+          ).toMatch(/ts\([^)]*type\s*=/);
+          checked += 1;
+        }
+      }
+    }
+    // 计数自检用等号：`data_paths.rs` 1（C01）+ `sftp_pool.rs` 3（size / transferred / total）
+    // + `usage.rs` 4 = 8。**`bridge.rs` 的 `JsonlLinePayload.seq` 不计**——那个 struct 未派生
+    // （随 `JsonlLine`/`JsonlBatch` 延后），而它正是那两个延后的真正卡点。
+    expect(checked, `期望恰好 8 个大整数字段，实得 ${checked}`).toBe(8);
   });
 
   it("`u64` 的映射与运行时一致，且属性真的在源码里（不是被注释喂饱）", () => {

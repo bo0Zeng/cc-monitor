@@ -29,6 +29,8 @@ use crate::ssh_source::RemoteConfig;
 
 /// 目录项（前端渲染 + 排序用）。
 #[derive(Serialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SftpEntry {
     pub name: String,
@@ -36,6 +38,11 @@ pub struct SftpEntry {
     pub path: String,
     pub is_dir: bool,
     pub is_symlink: bool,
+    /// **C03：显式收窄成 `number`，不许回落到 `ts-rs` 的默认 `bigint`。**
+    /// Tauri 命令 IPC 走 `serde_json::to_string` ⇒ 线上是 JSON 文本，`JSON.parse` 永不产 BigInt
+    /// ⇒ `bigint` 与运行时不一致。上限论证：文件大小，f64 安全整数上限 2^53-1 ≈ **8 PB**。
+    /// **这是 Phase G 报的那个唯一已确认的静默有损点**（Rust `u64` ↔ 手写 `paths.ts` 的 `size: number`）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub size: u64,
     /// 非 UTF-8 文件名有损显示（russh-sftp 按 UTF-8 解）→ 标记,前端拒对其写操作。
     pub lossy_name: bool,
@@ -249,10 +256,15 @@ const CHUNK: usize = 32 * 1024;
 const PROGRESS_EVERY: u64 = 256 * 1024;
 
 #[derive(Serialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct TransferProgress {
+    /// C03：同 `SftpEntry.size` —— 传输字节数，2^53-1 ≈ 8 PB 够用；显式收窄不回落 `bigint`。
+    #[cfg_attr(test, ts(type = "number"))]
     pub transferred: u64,
     /// 总字节;下载时=远端 size,上传时=本地 size。未知(极少)为 0。
+    #[cfg_attr(test, ts(type = "number"))]
     pub total: u64,
 }
 
