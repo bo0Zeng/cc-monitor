@@ -12,32 +12,24 @@
  * 参照 cc_integration.ts 的 section 范式。
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "../ipc/commands";
 import { makeInfoIcon } from "./info-icon";
 import { showActionFailureToast } from "../error-toast";
 import { formatBytes } from "../format";
 
-interface DiagnosticsConfig {
-  log_enabled: boolean;
-  log_level: string;
-  error_toast: boolean;
-  max_files: number;
-}
-
-interface LogFileEntry {
-  path: string;
-  size_bytes: number;
-  modified_ms: number;
-}
-
-interface LogFileInfo {
-  dir: string;
-  current_file: string | null;
-  current_size_bytes: number;
-  all_files: LogFileEntry[];
-}
-
-type RestartHint = "none" | "needs_restart";
+// C04d 批 4：四个类型换成生成物（源 `logging.rs`）。手写版与生成物**逐字等价**
+// ——这一批零漂移，价值是防将来漂。
+//
+// `RestartHint` 是**只有 unit variant 的外部标记枚举**（`rename_all = "snake_case"`，无 `tag`）
+// ⇒ 线上就是字符串，生成物给的正是 `"none" | "needs_restart"`，与手写版完全相同。
+//
+// 三个大整数字段按 C03 策略配了 `ts(type = "number")`，且**两个量纲分开论证**：
+// `current_size_bytes`/`size_bytes` 是**字节数**（2^53-1 B ≈ 8 PB）·
+// `modified_ms` 是**毫秒时间戳**（≈ 28.5 万年）。混成一条是 C03 明确禁止的。
+// **只 import 还真被本文件引用的那个**：`LogFileInfo`/`LogFileEntry`/`RestartHint`
+// 现在由包装层的签名提供，调用点不再需要本地标注 —— 这正是包装层该有的效果
+// （它们仍被 `ipc/commands.ts` 与生成物之间的 import 链消费，不是死文件）。
+import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 
 const LOG_LEVELS = ["trace", "debug", "info", "warn", "error", "off"] as const;
 
@@ -225,7 +217,7 @@ export class DiagnosticsSection {
   /** 从后端拉当前配置 + log 文件信息，刷新 UI */
   private async refresh(): Promise<void> {
     try {
-      const cfg = await invoke<DiagnosticsConfig>("get_diagnostics_config");
+      const cfg = await commands.get_diagnostics_config();
       this.current = cfg;
       this.logEnabledCheckbox.checked = cfg.log_enabled;
       this.levelSelect.value = cfg.log_level;
@@ -234,7 +226,7 @@ export class DiagnosticsSection {
       console.warn("get_diagnostics_config failed:", e);
     }
     try {
-      const info = await invoke<LogFileInfo>("get_log_file_info");
+      const info = await commands.get_log_file_info();
       if (info.current_file) {
         this.pathSpan.textContent = info.current_file;
         this.pathSpan.title = info.current_file;
@@ -260,7 +252,7 @@ export class DiagnosticsSection {
       max_files: this.current.max_files, // UI 不暴露，保持原值
     };
     try {
-      const hint = await invoke<RestartHint>("set_diagnostics_config", { cfg });
+      const hint = await commands.set_diagnostics_config({ cfg });
       this.current = cfg;
       if (hint === "needs_restart") {
         showActionFailureToast(
@@ -279,7 +271,7 @@ export class DiagnosticsSection {
 
   private async openFile(): Promise<void> {
     try {
-      await invoke("open_log_file");
+      await commands.open_log_file();
     } catch (e) {
       showActionFailureToast("打开 log 文件失败", String(e));
     }
@@ -287,7 +279,7 @@ export class DiagnosticsSection {
 
   private async openDir(): Promise<void> {
     try {
-      await invoke("open_log_dir");
+      await commands.open_log_dir();
     } catch (e) {
       showActionFailureToast("打开 log 目录失败", String(e));
     }

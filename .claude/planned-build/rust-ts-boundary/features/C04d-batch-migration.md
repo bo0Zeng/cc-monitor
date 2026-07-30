@@ -28,7 +28,8 @@
 | **1** | 6 个文件 / 5 条包装层条目，**零新派生** | 否 | **23** | **完成** |
 | **2** | 需要生成类型的 1-调用点文件（`account-usage` 内联字面量 · `cards/subagent` · `ccm-probe` · `settings/config-surface-section`） | 是（**7 个**：4 个命令返回类型 + 3 个传递依赖，含 1 个内部标记枚举） | **19** | **完成** |
 | **3** | 2-3 调用点一组（`config` · `views/usage-view` · `views/port-forward` · `settings/accounts-section` · `settings/cc-bus-hooks-section`） | 是（**8 个**，含 2 个内部标记枚举） | **14** | **完成** |
-| 4 | `account-restart` · `accounts.ts` · `settings/diagnostics-section` | 是（`accounts.rs` 6 个，**踩账本第 3 行的冲突协议**） | 11 | 待做 |
+| **4** | `account-restart` 4 · `settings/diagnostics-section` 5 | 是（**4 个**，含 3 个大整数、两个量纲） | **12** | **完成** |
+| **4b** | **`accounts.ts` 4** | 是（`accounts.rs` 6 个类型） | 11 | **已跳过——被跨工作区冲突协议挡住**（详见 §3d） |
 | 5 | `settings/cc-bus-section` · `cc_integration` · `main.ts` · `remote-section` · `mcp-section` | 是 | 6 | 待做 |
 | 6 | `sftp/panel` · `views/history` · `views/session-viewer`（**含 3 个动态派发口**） | 是 | 3 | 待做 |
 | 7 | `panorama/api.ts`（21 处，最大） | 是 | **1**（包装层自己） | 待做 |
@@ -174,6 +175,57 @@
 | **B** | 删 `conn_count` 的 `ts(type)` | rc=0 | ✔（生成物变成 `connCount: bigint`） | **先是全绿（缺口）→ 改成自动发现后红并点名字段** | **抓到守卫缺口** |
 | **B′** | 给 `config_surface.rs::path_resolved` 加 `skip_serializing_if` 不配 `ts(optional)` | rc=0 | ✔ | 守卫红并点名字段 | 自动发现后另一条性质也有牙 |
 | C | 三条等号自动各红一次 | — | — | 生成物清单 · 文件数 19→14 · 包装层 10→22 | 成立 |
+
+## 3d. 批次 4 明细 + **一处被协议挡住的拆分**
+
+### 先读协议再动手，结果就是不能全做
+
+主计划 §3 的跨工作区冲突协议原文：
+
+> `src/accounts.ts` | 本区 C04 · `account-zero` Z01/Z02 | **`account-zero` 优先**。
+> 本区 C04 迁移 `accounts.ts` 必须排在 `account-zero` Z02 之后，
+> 否则会在**一个正在变形的类型上**做机械迁移
+
+而 `account-zero` 的 Z01/Z02 **卡在外部授权上**（要动 `~/.claude/skills/cc-acct-iso/`），至今未做
+⇒ **`accounts.ts` 那一份被协议挡住，拆成批 4b**。
+**注意这不是 `tabs.ts` 红线**，是另一条独立的阻塞原因，两者别混。
+
+**核实了会不会连带**：`accounts.ts` 的 3 个类型化调用（`list_remote_accounts` →
+`AccountsResult` · `list_remote_session_accounts` → `SessionAccountsResult` ·
+`check_account_trust` → `AccountTrustResult`）**全部**来自 `accounts.rs`；
+而 `account-restart.ts`（`tmux_send_keys` ×3 · `kill_remote_tmux`）与
+`settings/diagnostics-section.ts`（`logging.rs` 那几个）**一个都不碰 `accounts.rs`**
+⇒ 两者可以安全先做。**这是先量再切，不是猜着切。**
+
+### 交付
+
+6 条包装层条目（22 → **28**）· 4 个派生（生成物 36 → **40**）· 2 个文件迁走（14 → **12**）。
+
+**本批次零漂移**：4 个 TS 手写版与生成物**逐字等价**，包括 `RestartHint`
+——它是**只有 unit variant 的外部标记枚举**（`rename_all = "snake_case"`，**没有** `tag`）
+⇒ 线上就是字符串，生成物给的 `"none" | "needs_restart"` 与手写版完全相同。
+价值是防将来漂。
+
+### 三个大整数，两个量纲，分开论证
+
+`LogFileInfo.current_size_bytes: u64` 与 `LogFileEntry.size_bytes: u64` 是**字节数**
+（2^53-1 B ≈ **8 PB**，同 `SftpEntry.size` 那条）；`LogFileEntry.modified_ms: i64` 是
+**毫秒时间戳**（≈ **28.5 万年**）。**刻意分开写**——把两个量纲混成一条论证是 C03 明确禁止的。
+大整数字段计数 11 → **14**。
+
+### 一处包装层的附带收益
+
+换完调用点后 `LogFileInfo` / `LogFileEntry` / `RestartHint` 三个 import 变成**未使用**
+——因为包装层的签名已经提供了类型，调用点不再需要本地标注。**这正是包装层该有的效果**，
+删掉即可（它们仍被 `ipc/commands.ts` 与生成物之间的 import 链消费，不是死文件）。
+
+### 批次 4 变异
+
+| # | 变异 | 编译 | 生成物是本次产的 | 判色 | 结论 |
+|---|---|---|---|---|---|
+| **A** | `RestartHint::NeedsRestart` 加显式 `serde(rename)` | rc=0 | ✔ | `tsc` TS2367：「types 'RestartHint' and `"needs_restart"` have no overlap」 | 成立。抓的是**字符串字面量比较**——运行时会静默失效的那一类 |
+| **B** | 删 `modified_ms` 的 `ts(type)` | rc=0 | ✔（生成物变成 `modified_ms: bigint`） | 守卫红并点名字段 | 成立。**关键点：`logging.rs` 是本批次新加派生的文件，我没做任何清单维护它就自动进了守卫范围** ⇒ 批 3 那个「取消手写清单」的修法**在一个批次内就还本了** |
+| C | 五条等号自动各红一次 | — | — | 生成物清单 · 派生源文件数 13→14 · 大整数 11→14 · 文件数 14→12 · 包装层 22→28 | 成立 |
 
 ## 4. 代码审计结果（Phase D）
 

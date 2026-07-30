@@ -9,7 +9,7 @@
 //      （kill 失败提前 return、绝不记，见 §5.2 + vitest ④）。硬合需给 withAccount 加 abort-vs-degrade /
 //      条件记账 / run 前置 compact&kill 钩子三个开关，复杂度净增、收益为负。二者已共用 accounts.ts
 //      **同一批原语**（fetchAccounts / accountConfigDir / recordLastAccount），无逻辑漂移。故维持分离。
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "./ipc/commands";
 import { runRemoteResumeTmux } from "./remote-launch-run";
 import { fetchAccounts, accountConfigDir, recordLastAccount, checkTrust, getModelForAccount } from "./accounts";
 import { showActionFailureToast } from "./error-toast";
@@ -100,7 +100,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
       { level: "info", durationMs: 8000 },
     );
     try {
-      await invoke("tmux_send_keys", { origin, target: tmuxName, keys: "/compact" });
+      await commands.tmux_send_keys({ origin, target: tmuxName, keys: "/compact" });
       const done = opts.awaitCompact
         ? await opts.awaitCompact()
         : await delay(DEFAULT_COMPACT_WAIT_MS).then(() => false);
@@ -129,9 +129,9 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   //      `new-session -d ... 2>/dev/null && send-keys` 短路成只 attach 到没有 claude 的旧 shell）+ 优雅
   //      退出超时时的**兜底 SIGKILL**。**失败 → 中止不续 ⑤**（避免新旧两进程抢同一会话；§5.2 ④ 语义不变）。
   try {
-    await invoke("tmux_send_keys", { origin, target: tmuxName, keys: "Escape", enter: false });
+    await commands.tmux_send_keys({ origin, target: tmuxName, keys: "Escape", enter: false });
     await delay(EXIT_INTERRUPT_GAP_MS);
-    await invoke("tmux_send_keys", { origin, target: tmuxName, keys: "/exit", enter: true });
+    await commands.tmux_send_keys({ origin, target: tmuxName, keys: "/exit", enter: true });
     const exited = opts.awaitExit
       ? await opts.awaitExit()
       : await delay(DEFAULT_EXIT_WAIT_MS).then(() => false);
@@ -150,7 +150,7 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
     });
   }
   try {
-    await invoke("kill_remote_tmux", { origin, target: tmuxName });
+    await commands.kill_remote_tmux({ origin, target: tmuxName });
   } catch (e) {
     showActionFailureToast(
       "重启已中止",
