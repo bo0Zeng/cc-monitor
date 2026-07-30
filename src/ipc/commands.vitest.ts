@@ -43,12 +43,21 @@ import { commands } from "./commands";
 
 /** Rust 有、但 TS 侧**静态**看不见的命令（全部经动态命令名调用）。见头注「不能写的断言 2」。 */
 const DYNAMIC_ONLY = [
+  // **C04d 批 6a 起这个集合在收缩，而且预计会归零。**
+  //
+  // C04a 把这 7 个记成「TS 静态看不见 ⇒ 已知盲区」。批 6a 查实后发现：
+  // 它们**从来不是任意字符串**——`session-viewer.ts` 与 `history.ts` 那两处是
+  // `origin ? "A" : "B"` 的**两字面量三元**；`sftp/panel.ts` 那处是个
+  // `doWrite(cmd, args)` 转发 helper，而**调用方传的全是字面量**。
+  // ⇒ 「动态」只在于名字从一个**封闭、静态可知的集合**里选。
+  //
+  // 所以原计划的 `invokeDynamic(name, args)` 逃生口**不需要**——
+  // 为一件其实是静态的事加一个 `string` 键的后门，方向是错的。三处都改成静态调用即可。
+  // 批 6a 已消掉两个（两个 `stream_read_*`）；剩下 5 个由批 6b/6c 消掉。
   "sftp_delete",
   "sftp_mkdir",
   "sftp_rename",
   "stream_history_sessions_in_project",
-  "stream_read_remote_session",
-  "stream_read_session_jsonl",
   "stream_remote_history_sessions",
 ];
 
@@ -202,7 +211,7 @@ describe("C04a 命令名钉死", () => {
     }
 
     // 计数自检：C04d 每迁一个模块进来，这个数要跟着涨（红一次提醒更新）
-    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(62);
+    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(66);
   });
 
   it("TS 侧字面量命令名 ⊆ Rust 集，唯一名数 == 112，动态名盲区逐字钉死", () => {
@@ -216,7 +225,10 @@ describe("C04a 命令名钉死", () => {
 
     // **等号，不是下界**：Phase D 审计变异 M6 实测，`toBeGreaterThan(50)` 只要 29 个含调用点的
     // 文件里最大的 4 个被扫到就能喂饱——把 walk 缩到 3 个子目录（可见名 112 → 81）时守卫仍全绿。
-    expect(used.size, `期望恰好 112 个字面量命令名，实得 ${used.size}`).toBe(112);
+    // **C04d 批 6a：112 → 114。** 那两个 `stream_read_*` 此前藏在一个
+    // `origin ? "A" : "B"` 三元里（C04a 把它记成「7 个命令 TS 静态看不见」的盲区之一），
+    // 改成两次静态调用后**它们成了字面量** ⇒ 这个数会随盲区收缩而涨，最终应到 **119**。
+    expect(used.size, `期望恰好 114 个字面量命令名，实得 ${used.size}`).toBe(114);
 
     // **不断言反向**（Rust ⊆ TS），但把盲区本身钉死：动态名集变了必须红一次。
     const rustOnly = [...rust].filter((c) => !used.has(c)).sort();

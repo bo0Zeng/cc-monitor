@@ -630,6 +630,8 @@ pub fn delete_history_session(session_id: String, jsonl_path: String) -> Result<
 
 /// 建分支的返回体（前端据此提示 / 一键 resume 新分支）。
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct BranchResult {
     #[serde(rename = "sessionId")]
     pub session_id: String,

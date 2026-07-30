@@ -9,7 +9,8 @@
  * 关闭查看器后状态彻底释放。
  */
 
-import { invoke, Channel } from "@tauri-apps/api/core";
+import { Channel } from "@tauri-apps/api/core";
+import { commands } from "../ipc/commands";
 import { MessageStream } from "../stream";
 import {
   type JsonlRecord,
@@ -39,12 +40,8 @@ interface JsonlLinePayload {
   message: JsonlRecord;
 }
 
-/** F62：`create_branch_session` 返回体的 TS 镜像（后端 `history::BranchResult`，camelCase
- *  wire；改字段名两侧须同步，后端有 `branch_result_camel_case_contract` 守 Rust 侧）。 */
-interface BranchResult {
-  sessionId: string;
-  jsonlPath: string;
-}
+// C04d 批 6a：手写的 `BranchResult` 镜像已删——**包装层的签名直接提供它**，
+// 本文件不再需要本地标注（生成物仍被 ipc/commands.ts 的 import 链消费）。
 
 export interface ViewerOptions {
   jsonlPath: string;
@@ -205,15 +202,25 @@ export class SessionViewer {
     try {
       // issue #16：远端会话走 stream_read_remote_session（SSH 拉取，payload 带
       // origin），本地走原 IPC。chunk 结构一致，下游渲染零差异。
-      const ipc = opts.origin
-        ? "stream_read_remote_session"
-        : "stream_read_session_jsonl";
-      const finalCount = await invoke<number>(ipc, {
-        jsonlPath: opts.jsonlPath,
-        // 多机 #30：远端会话带 origin（= 该台 label）按 label 选台；本地 undefined → 省略。
-        origin: opts.origin,
-        onChunk: channel,
-      });
+      //
+      // **C04d 批 6a：这里原来是「动态派发口」，现在不是了。**
+      // 原形态是 `const ipc = origin ? "A" : "B"` + `invoke<number>(ipc, 超集args)`
+      // ——它被 C04a 记成「7 个命令 TS 静态看不见」的盲区之一。但它**从来不是任意字符串**，
+      // 只是在**两个字面量之间**选。改成两次静态调用后：
+      // ① 那个盲区消失（两个命令名现在是 TS 侧的字面量，守卫扫得到）；
+      // ② **两条命令拿到各自精确的签名**——远端那条 `origin` 必填、本地那条**根本没有
+      //    origin 参数**（Rust 签名本就不同）。此前给两边传同一个超集 args、靠 Tauri
+      //    丢掉 `undefined` 才对；现在「给本地命令传 origin」是**编译期错误**。
+      const finalCount = opts.origin
+        ? await commands.stream_read_remote_session({
+            jsonlPath: opts.jsonlPath,
+            origin: opts.origin,
+            onChunk: channel,
+          })
+        : await commands.stream_read_session_jsonl({
+            jsonlPath: opts.jsonlPath,
+            onChunk: channel,
+          });
       // **竞态修复**：Channel 和 invoke 是两条独立 IPC 通道，invoke resolve 时
       // 余下 chunk 的 onmessage 可能还排队没跑。等 totalRecords 追上 finalCount
       // 再切到最终状态文，否则会被晚到的 onmessage 又改回"加载中"。
@@ -328,7 +335,7 @@ export class SessionViewer {
       if (btn.dataset.busy === "1") return;
       btn.dataset.busy = "1";
       try {
-        const res = await invoke<BranchResult>("create_branch_session", {
+        const res = await commands.create_branch_session({
           sourceJsonlPath: jsonlPath,
           messageUuid: uuid,
         });
@@ -361,7 +368,7 @@ export class SessionViewer {
     }
     try {
       const behavior = await getBehavior();
-      await invoke("resume_history_session", {
+      await commands.resume_history_session({
         sessionId,
         cwd: cwd ?? "",
         launcher: behavior.resumeCommandLocal || null,
