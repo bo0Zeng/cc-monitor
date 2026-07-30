@@ -125,6 +125,25 @@ pub enum Frame {
     /// （或哨兵 `NO_TMUX`），周期性推给 monitor——替掉 monitor 每 8s 新建 SSH 跑 tmux ls 的刷屏轮询。
     /// **送 raw、client 解析**（照 `Line` 帧哲学，复用 monitor 现有 `tmux::parse_tmux_ls`，零解析重复）。
     /// **monitor 专属**：aterm DaemonTransport 未知 kind 跳过。旧 monitor 忽略未知 kind（additive）。
+    /// **P5（zero-poll-liveness，additive、不 bump `PROTO_VERSION`）**：某个 tmux 会话
+    /// **关闭了**——正向死亡帧。
+    ///
+    /// **它补的是什么**：`TmuxSessions` 是「当前还剩哪些」的快照，monitor 靠**连续两次
+    /// 没看见**（`RETIRE_MISS_THRESHOLD >= 2`）才敢 retire —— 那道门是为了容忍观测抖动，
+    /// 但也意味着「多个会话里关掉一个」至少要等两个节拍。本帧是 daemon 与上一份快照
+    /// 差分出来的**确定结论**，monitor 收到即可直接 retire，**绕过 miss 计数**。
+    ///
+    /// **快照路径与 miss 计数原样保留**（重同步 / 旧 daemon 降级都靠它）⇒ 同一 sid 可能
+    /// 两条路都到，retire 必须幂等（`SidTrack.retired` 本就是幂等设计）。
+    ///
+    /// **旧 monitor 忽略本帧**：未知 kind 走 `warn` 后跳过（`ssh_source.rs` 那条已有测试
+    /// `unknown_kind_returns_none` 钉住）⇒ 行为退回今天的「靠快照 + miss 计数」，不崩。
+    TmuxSessionClosed {
+        /// 会话名（`tmux ls` 第一列）。**不带 sid**：`#{@ccm_sid}` 在 hook 上下文里取不到
+        /// （P0 实测会拿到空 ⇒ 把活会话判灰），而 daemon 这边是**差分算出来的名字**，
+        /// sid 由 monitor 用最新快照反查 —— 那份映射它本来就有。
+        name: String,
+    },
     TmuxSessions {
         raw: String,
         /// P1（zero-poll-liveness，**additive、不 bump `PROTO_VERSION`**）：本次观测的**分类**

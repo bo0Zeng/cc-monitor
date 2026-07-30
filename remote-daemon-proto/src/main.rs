@@ -132,6 +132,9 @@ const EMITS: &[&str] = &[
     "overflow",
     "turn_end",      // daemon-09：process_jsonl 已发 TurnEnd（登记=承诺真发，已接线）
     "tmux_sessions", // B2：watch_loop 周期本地 tmux ls 发 TmuxSessions（登记=承诺真发，已接线）
+    // P5：与上一份快照差分算出的**正向死亡帧**。登记 = 承诺真发（已接线，见 watcher.rs
+    // 的 `diff_closed`）。monitor 收到即 retire、绕过 miss 计数；旧 monitor 忽略未知 kind。
+    "tmux_session_closed",
 ];
 
 /// Batch7-F24/Batch8-F25：从 argv 剥离流模式 flag（`--with-bg` / `--tail-only`），

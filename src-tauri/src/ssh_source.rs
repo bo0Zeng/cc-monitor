@@ -1611,6 +1611,9 @@ pub enum InboundFrame {
     /// P1（zero-poll-liveness）：`observation` = daemon 的**显式观测分类**（additive；旧 daemon
     /// 为 `None`）。分类判定见 `tmux::classify_tmux_observation`——它把「确证零会话」与
     /// 「观测失败」分开，这是修掉 §24bis 灰灯卡死的关键（空 `raw` 在旧协议里两义不可分）。
+    /// P5：daemon 差分算出的**正向死亡帧**——某个 tmux 会话确定关闭了。
+    /// 收到即 retire、绕过 miss 计数（快照 + miss 那条路原样保留作兜底）。
+    TmuxSessionClosed { name: String },
     TmuxSessions {
         raw: String,
         observation: Option<String>,
@@ -1701,6 +1704,12 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             // issue #32：dropped 必需且为数字；缺/错则当坏帧跳过（不 panic）。
             let dropped = obj.get("dropped")?.as_u64()?;
             Some(InboundFrame::Overflow { dropped })
+        }
+        // P5：additive 新帧。缺 `name` / 非字符串 → 坏帧跳过（不 panic），
+        // 与其余帧同一口径。**旧 daemon 不发它** ⇒ 这条分支永不命中，行为退回快照+miss。
+        "tmux_session_closed" => {
+            let name = obj.get("name")?.as_str()?.to_string();
+            Some(InboundFrame::TmuxSessionClosed { name })
         }
         "tmux_sessions" => {
             // B2：raw = tmux ls 原文（或 NO_TMUX）。缺/非字符串 → 坏帧跳过。
@@ -2375,6 +2384,46 @@ async fn stream_loop(
                 };
                 if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
                     tracing::warn!("ssh_source remote-health emit failed: {e}");
+                }
+            }
+            // P5：正向死亡帧 —— daemon 已经**确定**这个会话没了（它与上一份快照差分算出来的），
+            // 不需要 monitor 再靠「连续两次没看见」去猜。
+            //
+            // **为什么仍然按名字反查 sid 而不是让 daemon 带上**：`#{@ccm_sid}` 在 hook 上下文
+            // 取不到（P0 实测拿到空 ⇒ 会把活会话判灰）；而 name→sid 的映射 monitor 这边本来
+            // 就有（最新那份 `tmux ls` 原文）。让知道的人去查，比让不知道的人硬传更稳。
+            //
+            // **快照路径与 `RETIRE_MISS_THRESHOLD` 原样保留**：重同步 / 旧 daemon 降级都靠它。
+            // 同一 sid 两条路都可能到 ⇒ retire 必须幂等（`SidTrack.retired` 本就是）。
+            Some(InboundFrame::TmuxSessionClosed { name }) => {
+                let sid = {
+                    let reg = tmux_raw_registry().lock().unwrap();
+                    reg.get(&host_label).and_then(|raw| {
+                        crate::tmux::parse_tmux_ls(raw)
+                            .into_iter()
+                            .find(|e| e.name == name)
+                            .and_then(|e| e.sid)
+                    })
+                };
+                match sid {
+                    Some(sid) => {
+                        tracing::info!(
+                            "tmux 会话 {name} 关闭（daemon 死亡帧）⇒ 立刻 retire sid={sid}"
+                        );
+                        if let Err(e) = session_changes.send(SessionChange {
+                            added: vec![],
+                            removed: vec![sid],
+                            status_changed: vec![],
+                        }) {
+                            tracing::warn!("ssh_source tmux_session_closed send failed: {e}");
+                        }
+                    }
+                    // 查不到 sid 的两种正常情形：① 那个会话本就没绑过 `@ccm_sid`
+                    //（never-bound：bg / 直起 claude）② 快照还没到过。两者都**不该猜**——
+                    // 交给快照 + miss 那条兜底路，它对 never-bound 有专门的不误判逻辑。
+                    None => tracing::debug!(
+                        "tmux 会话 {name} 关闭，但最新快照里查不到它的 sid ⇒ 交给对账兜底"
+                    ),
                 }
             }
             Some(InboundFrame::TmuxSessions { raw, observation }) => {
@@ -3823,6 +3872,28 @@ mod parse_frame_tests {
             }
             other => panic!("expected Line, got {other:?}"),
         }
+    }
+
+    // ---------- P5（zero-poll-liveness）：正向死亡帧的解析 ----------
+
+    #[test]
+    fn tmux_session_closed_parses() {
+        assert_eq!(
+            parse_frame(r#"{"kind":"tmux_session_closed","name":"cc-abc123"}"#),
+            Some(InboundFrame::TmuxSessionClosed {
+                name: "cc-abc123".to_string()
+            })
+        );
+    }
+
+    /// 缺 `name` / 非字符串 ⇒ 坏帧跳过（`None`），**不 panic**，与其余帧同一口径。
+    #[test]
+    fn tmux_session_closed_bad_payload_is_skipped() {
+        assert_eq!(parse_frame(r#"{"kind":"tmux_session_closed"}"#), None);
+        assert_eq!(
+            parse_frame(r#"{"kind":"tmux_session_closed","name":42}"#),
+            None
+        );
     }
 
     /// 未知 kind（协议向前演进新增的帧类型）→ None，调用方 warn+skip，绝不 panic。
