@@ -37,6 +37,10 @@ const rows: SessionUsageRow[] = [
     sessionId: "s1",
     projectPath: "/a",
     projectName: "A",
+    // C04d 批 3：`origin` 现在是**必填** `string | null`——线上恒有该键、值可能为 null
+    // （Rust 侧 `#[serde(default)] Option<String>` 且无 skip_serializing_if）。
+    // 夹具此前省略它 ⇒ 在造一个线上不存在的形状。
+    origin: null,
     buckets: [
       { model: "opus", day: "2026-07-17", totals: t(100, 10, 500, 20) },
       { model: "haiku", day: "2026-07-18", totals: t(5, 0, 0, 3) },
@@ -46,6 +50,10 @@ const rows: SessionUsageRow[] = [
     sessionId: "s2",
     projectPath: "/b",
     projectName: "B",
+    // C04d 批 3：`origin` 现在是**必填** `string | null`——线上恒有该键、值可能为 null
+    // （Rust 侧 `#[serde(default)] Option<String>` 且无 skip_serializing_if）。
+    // 夹具此前省略它 ⇒ 在造一个线上不存在的形状。
+    origin: null,
     buckets: [{ model: "opus", day: "2026-07-17", totals: t(50, 0, 200, 10) }],
   },
 ];
@@ -72,8 +80,8 @@ test("按 model pivot：opus 合并两会话，haiku 独立", () => {
 test("F88d-fix 按等效成本降序（raw 与等效不同序时以等效为准）", () => {
   // A：狂读 cache（便宜，×0.1）raw 大但等效小；B：output 重（贵，×5）raw 小但等效大。
   const rows2: SessionUsageRow[] = [
-    { sessionId: "a", projectPath: "/a", projectName: "A", buckets: [{ model: "m", day: "d", totals: t(0, 0, 10000, 0) }] }, // raw 10000 / 等效 1000
-    { sessionId: "b", projectPath: "/b", projectName: "B", buckets: [{ model: "m", day: "d", totals: t(0, 0, 0, 1000) }] }, // raw 1000 / 等效 5000
+    { sessionId: "a", projectPath: "/a", projectName: "A", origin: null, buckets: [{ model: "m", day: "d", totals: t(0, 0, 10000, 0) }] }, // raw 10000 / 等效 1000
+    { sessionId: "b", projectPath: "/b", projectName: "B", origin: null, buckets: [{ model: "m", day: "d", totals: t(0, 0, 0, 1000) }] }, // raw 1000 / 等效 5000
   ];
   const p = pivotUsage(rows2, "project");
   // 按 raw 应 A 先（10000>1000）；按等效应 B 先（5000>1000）→ 修后表以等效为准
@@ -161,9 +169,9 @@ test("#67 sortPivotRows：key 升序=日历序 / 数值列升降序 / 不改入�
 test("#67 平手回退跟随方向：主键全平手时 asc 与 desc 互为逆序(不再「点了没反应」)", () => {
   // 三天 msgs 全 = 1(主键全平手)、等效∑各不同 → asc 应恰是 desc 的逆序
   const tie: SessionUsageRow[] = [
-    { sessionId: "a", projectPath: "/a", projectName: "a", buckets: [{ model: "m", day: "2026-07-01", totals: t(10, 0, 0, 0) }] },
-    { sessionId: "b", projectPath: "/b", projectName: "b", buckets: [{ model: "m", day: "2026-07-02", totals: t(30, 0, 0, 0) }] },
-    { sessionId: "c", projectPath: "/c", projectName: "c", buckets: [{ model: "m", day: "2026-07-03", totals: t(20, 0, 0, 0) }] },
+    { sessionId: "a", projectPath: "/a", projectName: "a", origin: null, buckets: [{ model: "m", day: "2026-07-01", totals: t(10, 0, 0, 0) }] },
+    { sessionId: "b", projectPath: "/b", projectName: "b", origin: null, buckets: [{ model: "m", day: "2026-07-02", totals: t(30, 0, 0, 0) }] },
+    { sessionId: "c", projectPath: "/c", projectName: "c", origin: null, buckets: [{ model: "m", day: "2026-07-03", totals: t(20, 0, 0, 0) }] },
   ];
   const p = pivotUsage(tie, "day");
   const asc = sortPivotRows(p, "msgs", "asc").map((r) => r.key);
@@ -176,14 +184,14 @@ test("#67 平手回退跟随方向：主键全平手时 asc 与 desc 互为逆�
 test("#67 边角：空数组 / 单行 / 空 day 串都不崩", () => {
   eq(sortPivotRows([], "key", "asc").length, 0);
   const one = pivotUsage(
-    [{ sessionId: "s", projectPath: "/p", projectName: "P", buckets: [{ model: "m", day: "2026-07-01", totals: t(1, 0, 0, 0) }] }],
+    [{ sessionId: "s", projectPath: "/p", projectName: "P", origin: null, buckets: [{ model: "m", day: "2026-07-01", totals: t(1, 0, 0, 0) }] }],
     "day",
   );
   eq(sortPivotRows(one, "total", "desc").length, 1);
   const withEmpty = pivotUsage(
     [
-      { sessionId: "s1", projectPath: "/p", projectName: "P", buckets: [{ model: "m", day: "", totals: t(1, 0, 0, 0) }] },
-      { sessionId: "s2", projectPath: "/p", projectName: "P", buckets: [{ model: "m", day: "2026-07-01", totals: t(2, 0, 0, 0) }] },
+      { sessionId: "s1", projectPath: "/p", projectName: "P", origin: null, buckets: [{ model: "m", day: "", totals: t(1, 0, 0, 0) }] },
+      { sessionId: "s2", projectPath: "/p", projectName: "P", origin: null, buckets: [{ model: "m", day: "2026-07-01", totals: t(2, 0, 0, 0) }] },
     ],
     "day",
   );

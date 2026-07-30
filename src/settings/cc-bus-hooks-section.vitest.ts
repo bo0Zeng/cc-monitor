@@ -314,7 +314,15 @@ describe("B04 审计修复：第五态、兜底、以及守卫本身", () => {
     }
   });
 
-  it("【B04-2】用改进后的扫描器复查：本文件仍只有三条只读 invoke", () => {
+  it("【B04-2】本文件仍只碰那三条**只读**命令（C04d 批 3 起认包装层形态）", () => {
+    // **这条守的性质与 C04a 那条 119 命令守卫不同，所以它不被替代**：
+    // C04a 只保证「名字存在」；这一条保证「**这个面板只碰只读命令**」——
+    // 钩子诊断面板绝不该有写操作，那是 B04 立的安全不变量。
+    //
+    // **C04d 批 3 起本文件走包装层**（`commands.xxx()`），裸 `invoke("name")` 已不存在
+    // ⇒ 扫描器必须同时认两种形态，否则这条会退化成「扫到空集」的假绿。
+    // 上面那组 `forms` 表测的是**裸形态**的扫描器（仍要留着：其它文件还在用裸形态，
+    // 且 C04d 后续批次迁完前它一直有效）。
     const src = readFileSync(
       resolve(process.cwd(), "src/settings/cc-bus-hooks-section.ts"),
       "utf8",
@@ -323,13 +331,14 @@ describe("B04 审计修复：第五态、兜底、以及守卫本身", () => {
       .split("\n")
       .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
       .join("\n");
-    const found = new Set(
-      [
-        ...code.matchAll(
-          /invoke\s*(?:<[^(]*?>)?\s*\(\s*[`'"]([A-Za-z_][A-Za-z0-9_]*)[`'"]/g,
-        ),
-      ].map((m) => m[1]),
-    );
+    const bare = [
+      ...code.matchAll(/invoke\s*(?:<[^(]*?>)?\s*\(\s*[`'"]([A-Za-z_][A-Za-z0-9_]*)[`'"]/g),
+    ].map((m) => m[1]);
+    const wrapped = [...code.matchAll(/\bcommands\.([a-z_][a-z_0-9]*)\s*\(/g)].map((m) => m[1]);
+    const found = new Set([...bare, ...wrapped]);
+    // 反向自检：**真扫到了东西**。空集必须是失败而不是「通过」——
+    // 迁移把调用形态换掉时，这一格正是会静默变空的地方。
+    expect(found.size, "一条命令都没扫到——扫描器与当前调用形态脱节了").toBeGreaterThan(0);
     expect(found).toEqual(
       new Set([
         "list_remote_mcp_origins",

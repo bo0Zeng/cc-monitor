@@ -13,6 +13,8 @@
 
 /// 一个钩子的诊断结论。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum HookState {
     /// 没有任何一条 command 调到这个程序。
@@ -51,6 +53,8 @@ impl HookState {
 
 /// 整份诊断。`note` 装"为什么没读到"这类说明（文件缺失/坏 JSON），**不为空即应展示**。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct HooksDiagnosis {
     pub session_start: HookState,
     pub stop: HookState,
@@ -244,6 +248,8 @@ pub struct SnippetProbe {
 
 /// 一段待贴片段 + 可能的警示。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct Snippet {
     pub text: String,
     /// 选的形态与盘上实况冲突时的警示。`None` = 没冲突。**UI 必须把它显示出来。**
@@ -368,6 +374,8 @@ pub fn claude_config_dir(
 
 /// 一次诊断的完整回报（含用于展示的两种待贴片段）。
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct HooksReport {
     pub diagnosis: HooksDiagnosis,
     /// `$HOME/.local/bin/...` 显式路径形态。**不再无条件称"默认推荐"**——

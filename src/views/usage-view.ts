@@ -6,7 +6,8 @@
  * **只 token 不 $**（用户 2026-07-17 拍板）。顶部标死「已花费≠配额剩余」硬边界。
  */
 
-import { invoke, Channel } from "@tauri-apps/api/core";
+import { Channel } from "@tauri-apps/api/core";
+import { commands } from "../ipc/commands";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import {
@@ -143,7 +144,8 @@ export class UsageView {
     };
     // F88a-remote：远端 daemon 服务端聚合 fan-out（非流式，一次返 Vec），与本地流式并发；
     // 各带 origin=host → pivot 按 [origin] 分桶（usage-pivot 已 origin-aware、零改）。远端失败不拖垮本地。
-    const remoteDone = invoke<SessionUsageRow[]>("aggregate_remote_usage_all")
+    const remoteDone = commands
+      .aggregate_remote_usage_all()
       .then((rows) => {
         if (seq !== this.loadSeq) return; // 被新 open/close 抢占
         if (rows.length) {
@@ -156,7 +158,7 @@ export class UsageView {
         if (seq === this.loadSeq) console.warn("远端用量聚合失败（跳过）:", e);
       });
     try {
-      await invoke("aggregate_usage_all", { onRow: channel });
+      await commands.aggregate_usage_all({ onRow: channel });
       await remoteDone;
       if (seq === this.loadSeq && this.isOpen) this.renderList();
     } catch (e) {
