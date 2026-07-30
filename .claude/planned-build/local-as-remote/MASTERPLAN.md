@@ -97,7 +97,7 @@ L3 是「给一个 bash 工具做 Windows 等价物」。** 三件事的成本�
 
 | ID | 功能 | 一句话目标 | 状态 | 依赖 | 优先级 |
 |----|------|-----------|------|------|--------|
-| L0 | **Linux 可构建 + 可跑** | Tauri 在 Linux 上构建通过、app 能起、既有远端功能在 Linux 宿主上可用；WebKitGTK 依赖摸清 | 待规划 | — | **P0** |
+| L0 | **Linux 可构建 + 可跑** | Tauri 在 Linux 上构建通过、app 能起、既有远端功能在 Linux 宿主上可用；WebKitGTK 依赖摸清 | **⚠ 构建那半 ✅ 已交付**（`features/L0-linux-buildable.md`）：三个 WebKitGTK 依赖本来就在（零安装）、`npm run build` rc=0、`cargo build` **完整 app 二进制** rc=0 ⇒ **计划最担心的「WebKitGTK 碎片化很痛」没有发生**（但只覆盖一台机器，**不外推**）。**「起 app」那半待授权**：`BUILD_ID` 已 bump 成 `p1r-event-liveness`，本分支构建出的 app 一连上用户已配置的远端就会把 daemon 判 stale ⇒ **自动重装** | — | **P0** |
 | L1 | **POSIX 本地 = 不走 ssh 的远端** | `transport:{kind:"local"}` 在 POSIX 上有真实含义：复用 `ccm` + tmux，本地 exec 不经 ssh | 待规划 | L0 | **P0** |
 | L2 | **Windows 本地进 IR** | `planLocal` 复活 + PowerShell 渲染器分支 honour `plan.env`；`build_local_ps_command` 变成该分支的实现而非平行世界 | 待规划 | L1 | P1 |
 | **L3a** | **本地账号枚举（只读）** | Rust 直接读 `%USERPROFILE%\.claude-accts\accounts.json`（manifest 格式已定），`loggedIn` 由 `.credentials.json` 是否存在判定。**不需要 bash、不需要 cc-acct-iso** ⇒ 本地立刻有：账号列表 / 选号 / 账号注入 / per-account model | 待规划 | L2 | **P1** |
