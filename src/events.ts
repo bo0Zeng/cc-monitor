@@ -4,8 +4,11 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { JsonlRecord } from "./cards";
 // C02（rust-ts-boundary）：这 5 个 payload 类型**改成从生成物 re-export**，不再手写。
 // 源是 `src-tauri/src/bridge.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
-// **仍然 `export`**——本文件是事件的单一订阅枢纽，别的模块从这里 import 这些类型，
-// 换成 re-export 就不用改任何调用点（对外 API 逐字节不变）。
+// **仍然 `export`**，但理由要写准（C02 Phase D 审计 S4）：初版写的是「别的模块从这里
+// import 这些类型」——**那句可被 grep 否证**：这 5 个名字除本文件与守卫测试外，
+// 全仓没有任何 import 点。真正的理由是**不缩小已经导出的表面**（保守、零代价，
+// 且若将来有人要用，从枢纽拿是对的地方）。
+// 对照：`tasks-panel.ts::TaskEntry` 那处同款注释是**准的**——它真有外部消费者（`tabs.ts`）。
 //
 // **`JsonlLinePayload` 仍是手写的**：它的 `message: JsonlRecord` 依赖 Rust 侧那个
 // **自认有损**的 enum（`history.rs:628` 明写另一条路刻意绕开它），而 TS 侧的 `JsonlRecord`
@@ -107,7 +110,6 @@ export interface EventHandlers {
   onSessionActivity?: (payload: SessionActivityPayload) => void;
 }
 
-/** issue #23：session-activity 事件 payload（镜像 bridge.rs::SessionActivityPayload） */
 /** queue 中的不同事件类型，drain 按 kind 派发 */
 type QueueItem =
   | { kind: "payload"; payload: JsonlLinePayload }

@@ -120,39 +120,72 @@ describe("C01 边界生成物", () => {
   });
 
   it("每一处 skip_serializing_if 都配了 ts(optional)——通用性质，不是单字段字面量", () => {
-    // **审计 S3**：第一版把这条通用性质写成了对 `sizeBytes` 一个字段的字面量断言，
-    // 一到 C02 就得再抄一遍。改成扫源码：**只查带 `ts_rs::TS` 派生的 struct**
-    // （没派生 TS 的 struct 不需要 `ts(optional)`，对它们要求就是假红）。
-    //
     // 性质：`skip_serializing_if` ⇒ 字段在 JSON 里可缺席 ⇒ TS 侧必须是 optional。
-    // 少了它，`ts-rs` 生成一个必需字段，**类型就在撒谎**。
+    // 少了它，`ts-rs` 的 `maybe_omitted && has_default` 兜底会产出 `x?: T | null`
+    // ——可缺席**且**可为 null，而 `skip_serializing_if` 意味着运行时**永不为 null**
+    // ⇒ 那个 `| null` 过度宽松。显式 `ts(optional)` 才产出 `x?: T`。
+    //
+    // ## 本条被 C02 的 Phase D 审计打红过一次，两处都改了
+    //
+    // **① 窗口曾是「前视 400 字符」，会被隔壁字段的属性喂饱**（审计 B1，我已变异复现）：
+    // `TaskEntry` 的 `description` 与 `active_form` 是**相邻同构字段**，删掉前者的
+    // `ts(optional)` 后，它的窗口跨过 `pub description: …` 那一行、命中**后者的**属性
+    // （约 +176，远在 400 内）⇒ 生成物退化成 `description?: string | null`，
+    // 而守卫 6/6 全绿、`tsc` 0 错、C05 的 diff 门禁也不红（源与生成物是一致的）。
+    //
+    // **这条性质在 C01 时是真的**——那时只有 1 处 `skip_serializing_if`，窗口内无处可抄。
+    // **是 C02 把它扩到第 2 处相邻同构字段的那一刻失效的，而没人碰过守卫的逻辑。**
+    // 而且 C02 顺手拆掉了第二道防线：手写版 `tasks-panel.ts::TaskEntry` 本来会让 `tsc` 红，
+    // 但那份正是 C02 删掉的。**两件事合起来才造成这个洞。**
+    // → 修法：窗口收到**同一字段的属性块**，即 `skip_serializing_if` 到该字段自己的
+    //   `pub ` 声明之间。属性写在字段上方，所以这正好是它该在的范围。
+    //
+    // **② 切块曾对属性顺序敏感**（审计 S2）：按 `#[derive` 边界切，若有人把 `cfg_attr`
+    // 写在 `#[derive]` **之前**，struct 体会落进不含 `ts_rs::TS` 的块而被跳过。
+    // → 修法：以 `pub struct` 为锚**往上收全部连续属性行**，与顺序无关。
+    //   C04 要把这个形状复制 127 次，现在治比那时治便宜。
     let checked = 0;
     for (const f of TS_DERIVING_SOURCES) {
       const src = code(read(f));
       expect(src, `${f}: 剥过头了`).toContain("pub struct");
-      // 按 `#[derive` / `#[cfg_attr(test, derive` 边界切成块，只留提到 ts_rs::TS 的块
-      const blocks = src.split(/(?=#\[(?:derive|cfg_attr\(test, derive))/);
-      for (const b of blocks) {
-        if (!b.includes("ts_rs::TS")) continue;
-        for (const m of b.matchAll(/skip_serializing_if/g)) {
-          const after = b.slice(m.index, m.index + 400);
+      const lines = src.split("\n");
+      // 以 `pub struct` 为锚：往上收连续属性行（与顺序无关），往下收到列 0 的 `}`
+      for (let k = 0; k < lines.length; k += 1) {
+        if (!/^pub struct\s+\w+/.test(lines[k])) continue;
+        let top = k;
+        // **往上走时必须跳过空行**：`code()` 把注释行变成**空行**而不是删掉，
+        // 而本仓的属性与 `pub struct` 之间常有解释性注释（`data_paths.rs` 就有一整段）。
+        // 第一版只跳 `#[` 行，于是在空行处停住 ⇒ `attrs` 为空 ⇒ 整个 struct 被跳过。
+        // **是计数自检 `toBe(3)` 当场抓到的**（实得 2）——这条自检不是装饰。
+        while (top > 0 && /^\s*(#\[|$)/.test(lines[top - 1])) top -= 1;
+        let bottom = k;
+        while (bottom < lines.length && lines[bottom] !== "}") bottom += 1;
+        const attrs = lines.slice(top, k).join("\n");
+        if (!attrs.includes("ts_rs::TS")) continue;
+        const body = lines.slice(k, bottom + 1);
+        // 逐字段判：属性块 = 从 `skip_serializing_if` 那行到该字段自己的 `pub ` 行之间
+        for (let q = 0; q < body.length; q += 1) {
+          if (!body[q].includes("skip_serializing_if")) continue;
+          let fieldLine = q;
+          while (fieldLine < body.length && !/^\s*pub\s+\w+\s*:/.test(body[fieldLine])) {
+            fieldLine += 1;
+          }
           expect(
-            after,
-            `${f}: 有 skip_serializing_if 的字段没配 ts(optional)——生成的类型会声明一个可缺席的必需字段`,
+            fieldLine,
+            `${f}: skip_serializing_if 之后找不到字段声明——切块逻辑失效了`,
+          ).toBeLessThan(body.length);
+          const own = body.slice(q, fieldLine).join("\n");
+          expect(
+            own,
+            `${f}: 字段 ${body[fieldLine]?.trim()} 有 skip_serializing_if 却没配 ts(optional)` +
+              `——生成的类型会多一个永不出现的 \`| null\``,
           ).toMatch(/ts\(optional/);
           checked += 1;
         }
       }
     }
-    // 反向自检 + 计数自检：`data_paths.rs` 的 `size_bytes` 1 处 + `tasks.rs` 的
-    // `description`/`active_form` 2 处 = 3 处。加了新的就必须红一次，确认新那处也配了。
-    //
-    // **C02 实证这条规则不该放宽**：`TaskEntry` 那两个字段带 `serde(default)`，
-    // `ts-rs` 的 `maybe_omitted && has_default` 兜底会**自动**加 `?`——看起来不需要
-    // 显式 `ts(optional)`。但兜底产出的是 `description?: string | null`
-    // （可缺席**且**可为 null），而 `skip_serializing_if` 意味着运行时**永不为 null**
-    // ⇒ 那个 `| null` 是过度宽松，且与手写版（`tasks-panel.ts`）不一致、导致 tsc 报错。
-    // 显式属性产出 `description?: string`，才与运行时一致。**兜底不够，规则保持严格。**
+    // 计数自检用等号：`data_paths.rs` 的 `size_bytes` 1 处 + `tasks.rs` 的
+    // `description`/`active_form` 2 处 = 3 处。加了新的必须红一次，确认新那处也配了。
     expect(checked, `期望恰好 3 处 skip_serializing_if，实得 ${checked}`).toBe(3);
   });
 
@@ -220,11 +253,13 @@ describe("C02 事件名钉死", () => {
     expect(rust, "剥过头了").toContain("pub const");
 
     // 从源码抠出 `pub const X: &str = "y";` 的所有对
-    const pairs = [...rust.matchAll(/pub const\s+([A-Z_]+)\s*:\s*&str\s*=\s*"([^"]+)"\s*;/g)].map(
+    const pairs = [...rust.matchAll(/pub const\s+([A-Z0-9_]+)\s*:\s*&str\s*=\s*"([^"]+)"\s*;/g)].map(
       (m) => ({ konst: m[1], value: m[2] }),
     );
     // 计数自检用等号：加/删事件时必须红一次，逼人来更新 TS 侧与本断言
-    expect(pairs.length, `期望恰好 10 个事件名常量，实得 ${pairs.length}`).toBe(10);
+    // 11 = 原 10 个（Rust emit → 前端 listen）+ `FRONTEND_READY`（方向相反，前端 emit →
+    // Rust listen）。后者由 C02 Phase D 审计 I3 补上：C02 给它上了类型，却把名字漏在门禁外。
+    expect(pairs.length, `期望恰好 11 个事件名常量，实得 ${pairs.length}`).toBe(11);
 
     // 每个字面量必须在 TS 侧真的被订阅/emit（剥注释后再找，防散文里提过就算）
     const tsFiles = ["src/events.ts", "src/main.ts", "src/remote-health.ts"];

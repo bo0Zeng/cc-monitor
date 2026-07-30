@@ -49,7 +49,9 @@ pub struct TaskEntry {
     // C02：**显式 `ts(optional)` 而不是靠 `ts-rs` 的 `has_default` 兜底**。
     // 兜底产出 `active_form?: string | null`（可缺席**且**可为 null），而 `skip_serializing_if`
     // 意味着运行时**永不为 null**（缺席就是缺席）⇒ 那个 `| null` 是过度宽松。
-    // 显式属性产出 `active_form?: string`，与运行时一致，也与手写版（`tasks-panel.ts`）一致。
+    // 显式属性产出 **`activeForm?: string`**（容器上有 `rename_all = "camelCase"`）。
+    // 本注释初版写成 `active_form?: string` —— **写错了字段名，而这段的整个论点就是
+    // 「字段名由 serde 决定」，写错等于自相矛盾**（C02 Phase D 审计 I6 点出）。
     #[cfg_attr(test, ts(optional))]
     pub active_form: Option<String>,
     pub status: String,

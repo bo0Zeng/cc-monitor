@@ -40,6 +40,14 @@ pub mod events {
     /// 兜底是该会话的行仍在 buffer：重放行经 ensureTab 照建 Tab。已宣告但零行
     /// 的远端会话 F5 后骨架消失属可接受边角（首行到达即重建）。
     pub const REMOTE_SESSION_ADDED: &str = "remote-session-added";
+    /// **方向相反的那一个**（前端 emit、Rust `app.listen` 收）：前端注册完 listener 后
+    /// 通知后端开始 replay 历史，payload 见 [`FrontendReadyPayload`]。
+    ///
+    /// **C02 Phase D 审计 I3 补上这个常量**：C02 恰好是「给 `frontend-ready` 首次上类型」
+    /// 的那一次，而它的**名字**当时两侧都是裸字面量、`events` 里没有常量，
+    /// 于是「10 个事件名钉死」那条守卫**不含它** —— 给它上了类型却把名字漏在门禁外。
+    /// 加常量本身零行为变化（同一个字面量，只是有了名字）。
+    pub const FRONTEND_READY: &str = "frontend-ready";
     /// **远端健康通道**（SS-F，issue #32 起）：远端数据源把「拥塞丢行 / 版本不符」等
     /// 非致命健康事件回传给用户。前端单一 listener（remote-health.ts）按 origin 节流后
     /// 弹 toast。`kind` 区分类别（"overflow" / "version" / …），payload 见
