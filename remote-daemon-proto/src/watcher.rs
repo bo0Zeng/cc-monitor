@@ -261,6 +261,21 @@ fn spawn_pid_watcher(
     }
 }
 
+/// P4b：给当前 tmux server 装通知 hook。**尽力而为**：拿不到自己的 exe 路径 /
+/// starttime 就跳过（那说明 `/proc` 不可用，整条 pidfd 路本来也不成立）。
+///
+/// 装的是**我们自己进程**的 pid + starttime —— hook 子进程据此校验身份再发 SIGUSR1，
+/// 挡的是「daemon 退出后 pid 被复用，hook 误伤无关进程」。
+fn install_tmux_hooks_best_effort() {
+    let me = std::process::id();
+    let (Ok(exe), Some(start)) = (std::env::current_exe(), proc_starttime(me)) else {
+        tracing::warn!("拿不到自身 exe/starttime ⇒ 跳过装 tmux hook（退回定时探测）");
+        return;
+    };
+    let n = crate::tmux_hook::install_hooks(&exe, me, start);
+    tracing::info!("tmux hook 已装 {n}/3（会话生/死/改名 → SIGUSR1 → 立刻重探）");
+}
+
 /// P2：挂 pidfd 看守的幂等入口。`events_tx` 为 `None`（单元测试）时什么都不做。
 fn arm_pid_watcher(key: &Path, pid: u32, expected_start: Option<u64>, state: &mut ReaderState) {
     let Some(tx) = state.events_tx.clone() else {
@@ -722,6 +737,10 @@ fn watch_loop(
                         // 判据 2 退化成存在性（`is_same_live_process` 的 `_ => true` 臂）。
                         spawn_pid_watcher(PidWatchTarget::TmuxServer, pid, None, events_tx.clone());
                         tracing::info!("已给 tmux server pid {pid} 挂 pidfd 看守（零轮询判死）");
+                        // P4b：**这里就是「该（重）装 hook」的时机** —— hook 活在 server
+                        // 内存里，server 每次起来都要重装，而 P3 把「server 起来了」变成了事件。
+                        // 装不上不致命（退回定时探测），但会 warn ⇒ 不静默降级。
+                        install_tmux_hooks_best_effort();
                     }
                     None if matches!(obs, TmuxObservation::NoServer) => {
                         server = ServerState::Gone;
@@ -1306,7 +1325,7 @@ fn pid_alive(pid: u32) -> bool {
 ///
 /// Linux: the `starttime` field (jiffies since boot) from `/proc/<pid>/stat`.
 /// Non-Linux (Windows smoke): `None` — liveness then degrades to existence only.
-fn proc_starttime(pid: u32) -> Option<u64> {
+pub(crate) fn proc_starttime(pid: u32) -> Option<u64> {
     #[cfg(target_os = "linux")]
     {
         let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;

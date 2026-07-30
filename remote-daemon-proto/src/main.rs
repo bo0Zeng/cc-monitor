@@ -25,6 +25,7 @@ mod history_query;
 mod readonly_guard; // F08a：daemon 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 mod resolve_query;
 mod search_query;
+mod tmux_hook; // P4b：tmux hook → SIGUSR1 通知通路（零 fs 写）
 mod turn_detect;
 mod usage_query;
 mod watcher;
@@ -239,6 +240,8 @@ async fn main() {
         // 一次性查询模式：--search 全文搜索（#28）/ --usage 用量聚合（F88a-remote）/
         // --resolve advisor（daemon-04，读 stdin ResumeSpec→stdout CommandPlan），其余走历史查询（#16）。
         let code = match args.first().map(String::as_str) {
+            // P4b：hook 子进程走这条 —— 校验身份后给 daemon 发 SIGUSR1，**不碰文件系统**。
+            Some("--tmux-notify") => tmux_hook::notify(&args),
             Some("--search") => search_query::run(&claude_dir, &args),
             Some("--usage") => usage_query::run(&claude_dir, &args),
             Some("--resolve") => resolve_query::run(&claude_dir, &args),
