@@ -16,6 +16,7 @@ vi.mock("../error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("../remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
 
 import { AccountsSection } from "./accounts-section";
+import { showActionFailureToast } from "../error-toast";
 import * as accounts from "../accounts";
 import type { AccountsState, Account } from "../accounts";
 
@@ -392,6 +393,86 @@ describe("Z01 账号 0 在设置账号表里的呈现", () => {
     fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })] }));
     const el = await mount();
     expect(el.querySelector(".accounts-hint-warn")).toBeNull();
+  });
+});
+
+describe("Z05：rc 片段一键生成（待贴文本，绝不代写）", () => {
+  const FENCED =
+    "# ===== BEGIN cc-acct-iso =====\nexport CLAUDE_CONFIG_DIR='/h/.claude-accts/z'\n" +
+    "zcc() { CLAUDE_CONFIG_DIR='/h/.claude-accts/z' command claude \"$@\"; }\n" +
+    "0cc() { env -u CLAUDE_CONFIG_DIR command claude \"$@\"; }\n# ===== END cc-acct-iso =====\n";
+
+  const ready = (): AccountsState =>
+    state({ accounts: [acct({ name: "z" })], defaultName: "z" });
+
+  async function clickRc(resp: unknown, reject = false): Promise<HTMLElement> {
+    fetchAccountsMock.mockResolvedValue(ready());
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "remote_acct_iso_shellinit"
+        ? reject
+          ? Promise.reject(new Error(String(resp)))
+          : Promise.resolve(resp)
+        : Promise.resolve(undefined),
+    );
+    const el = await mount();
+    const btn = [...el.querySelectorAll<HTMLButtonElement>("button")].find(
+      (b) => b.textContent === "生成 rc 片段…",
+    );
+    expect(btn, "维护区应有「生成 rc 片段…」按钮").toBeTruthy();
+    btn!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    return el;
+  }
+
+  it("抓到完整片段 ⇒ 渲染成待贴块（走 T03 组件，不是手搓的复制按钮）", async () => {
+    const el = await clickRc(FENCED);
+    const block = el.querySelector(".paste-block");
+    expect(block, "必须是 T03 的 paste-block").toBeTruthy();
+    expect(el.querySelector<HTMLTextAreaElement>(".paste-block-out")?.value).toBe(FENCED);
+  });
+
+  it("★ 三句话都上屏（贴到哪 / 怎么合并 / 怎样才生效）", async () => {
+    const el = await clickRc(FENCED);
+    expect(el.querySelector(".paste-block-target")?.textContent).toContain(".bashrc");
+    expect(el.querySelector(".paste-block-merge")?.textContent).toContain("追加");
+    expect(el.textContent).toContain("source");
+  });
+
+  it("★ 半截片段（缺 END 围栏）⇒ 点复制被拦下并说明理由，且不碰剪贴板", async () => {
+    // `invalidReason` 是**点复制时**才求值的（组件设计：拒绝时绝不把半成品写进剪贴板），
+    // 所以断言要点到按钮上、读 toast，而不是去 DOM 里找文案。
+    const toast = vi.mocked(showActionFailureToast);
+    toast.mockClear();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    const el = await clickRc("# ===== BEGIN cc-acct-iso =====\nzcc() { :; }\n");
+    const copy = [...el.querySelectorAll<HTMLButtonElement>(".paste-block button")].find(
+      (b) => b.textContent === "复制",
+    );
+    expect(copy, "待贴块应有复制按钮").toBeTruthy();
+    copy!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    const msgs = toast.mock.calls.map((c) => `${c[0]}|${c[1]}`).join(" ");
+    expect(msgs).toContain("还不能贴");
+    expect(msgs).toContain("片段不完整");
+    expect(writeText, "被拒时绝不能碰剪贴板").not.toHaveBeenCalled();
+  });
+
+  it("抓取失败 ⇒ 不渲染任何待贴块（绝不给半截东西）", async () => {
+    const el = await clickRc("远端没能产出 rc 片段", true);
+    expect(el.querySelector(".paste-block")).toBeNull();
+  });
+
+  it("★ 绝不代写任何文件：整条路径上零 writeFile/写盘命令", async () => {
+    await clickRc(FENCED);
+    const written = invokeMock.mock.calls
+      .map(([c]) => String(c))
+      .filter((c) => /write|deploy|sftp|install/i.test(c));
+    expect(written, `不该有任何写入类命令：${written.join(",")}`).toEqual([]);
   });
 });
 

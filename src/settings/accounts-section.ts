@@ -26,6 +26,7 @@ import { pickPrimaryOrigin } from "../account-chip";
 import { accountAvatarEl } from "../account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
+import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件（Z05 复用它）
 import { SETTINGS_APPLIED_EVENT } from "./events";
 import {
   buildAcctIsoCmd,
@@ -520,10 +521,67 @@ export class AccountsSection {
         { danger: true, confirmExtra: "补齐/修复共享库软链、修权限、刷新 manifest 邮箱（幂等）。" },
       ),
     );
-    ops.append(verifyBtn, syncBtn);
+    const rcBtn = mkBtn("生成 rc 片段…");
+    rcBtn.title =
+      "抓远端 `cc-acct-iso shellinit` 的输出，给你一段可贴的 rc 片段（贴了之后裸 claude 走默认账号，"
+      + "每个账号有 <名>cc 函数，账号 0 有 0cc 逃生口）。**只读，不会替你写任何文件。**";
+    const rcBox = document.createElement("div");
+    rcBox.className = "accounts-maint-rc";
+    rcBtn.addEventListener("click", () => void this.renderRcSnippet(rcBtn, rcBox));
+    ops.append(verifyBtn, syncBtn, rcBtn);
     box.appendChild(ops);
+    box.appendChild(rcBox);
     wrap.appendChild(box);
     return wrap;
+  }
+
+  /**
+   * Z05（销 BACKLOG F14）：rc 片段一键生成。
+   *
+   * **单一来源留在 bash**：片段由远端 `cc-acct-iso shellinit` 产出，本文件**不重新生成一份**
+   * ——那会多一个跨语言双写点（本工作区反复在治的病）。抓到什么贴什么。
+   *
+   * **绝不代写**：只产出文本 + 复制按钮，写 `~/.bashrc` 是用户明令的红线（`paste-block.ts`
+   * 的模块头也写死了「本文件没有、也不得有任何写入路径」）。
+   */
+  private async renderRcSnippet(btn: HTMLButtonElement, box: HTMLElement): Promise<void> {
+    const host = this.currentHost();
+    if (!host) {
+      showActionFailureToast("拿不到这台远端的配置", "请先在「远端」里配好它", { level: "error" });
+      return;
+    }
+    btn.disabled = true;
+    const prev = btn.textContent;
+    btn.textContent = "抓取中…";
+    box.innerHTML = "";
+    try {
+      const snippet = await commands.remote_acct_iso_shellinit({ cfg: host });
+      box.appendChild(
+        buildPasteBlock({
+          text: () => snippet,
+          target: "这台远端的 ~/.bashrc（zsh 用户贴 ~/.zshrc；它是登录 shell 的配置文件）",
+          mergeNote:
+            "**追加**到文件末尾，并删掉你以前手写的 swap 式切号块——片段自带 BEGIN/END 围栏，"
+            + "重新生成时替换围栏之间那一段即可，别贴成两份。",
+          activation: "`source` 它，或在该远端开一个新的登录 shell（已经开着的 shell 不受影响）。",
+          // 围栏在 Rust 侧已经校验过一次（拿不到就直接 Err）；这里再校验一次是因为
+          // 「能显示」与「能贴」是两件事——半截片段贴进 rc 会让登录 shell 报错。
+          invalidReason: (t) =>
+            t.includes("# ===== BEGIN cc-acct-iso =====") &&
+            t.includes("# ===== END cc-acct-iso =====")
+              ? null
+              : "片段不完整（缺 BEGIN/END 围栏），先别贴 —— 在远端跑一次 `cc-acct-iso verify` 看是什么状况。",
+          multiline: true,
+          rows: 12,
+          className: "accounts-rc-paste",
+        }).element,
+      );
+    } catch (e) {
+      showActionFailureToast("生成 rc 片段失败", String(e), { level: "error" });
+    } finally {
+      btn.disabled = false;
+      btn.textContent = prev;
+    }
   }
 
   private async accountRow(a: Account, isCurrent: boolean): Promise<HTMLElement> {

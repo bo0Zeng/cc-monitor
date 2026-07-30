@@ -104,6 +104,57 @@ pub async fn check_remote_acct_iso(cfg: RemoteConfig) -> Result<AcctIsoStatus, S
     })
 }
 
+/// Z05：抓远端 `cc-acct-iso shellinit` 的输出，交给前端做「待贴文本」。
+///
+/// **为什么是抓远端而不是在 TS 里重新生成一份**：片段的形态（`export CLAUDE_CONFIG_DIR=<默认号>`
+/// + 每账号一个 `<名>cc()` + Z01 的 `0cc()` 逃生口）是 `cc-acct-iso` 的知识。在 TS 里照抄一份
+/// 就多一个**跨语言双写点** —— 那正是本工作区反复在治的病（`TMUX_LS_FMT` / `NATIVE_IDENTITY` /
+/// `--base`）。抓输出则**单一来源留在 bash**，一处都不用同步。
+///
+/// **只读**：`cmd_shellinit` 全是 `printf`，不写任何文件（已逐行核过）。
+/// 它更**不会**去动用户的 `~/.bashrc` —— 贴不贴由用户自己决定，这是明令的红线。
+///
+/// `2>/dev/null` 丢掉 warn（比如「manifest 里没有默认账号」）：那些混进 stdout 会让片段贴了就坏。
+/// 真出问题由下面的围栏校验兜住，并把可执行的下一步写进错误文案。
+#[tauri::command]
+pub async fn remote_acct_iso_shellinit(cfg: RemoteConfig) -> Result<String, String> {
+    let out = exec_collect(
+        &cfg,
+        "PATH=\"$HOME/.local/bin:$PATH\" cc-acct-iso shellinit 2>/dev/null || true",
+    )
+    .await?;
+    validate_shellinit_output(out)
+}
+
+/// `remote_acct_iso_shellinit` 的**fail-closed 校验**，抽成纯函数好单测（SSH 那半测不了）。
+///
+/// `shellinit` 的输出恒被 BEGIN/END 围栏夹住。**两条都要在**：只查 BEGIN 的话，
+/// 一次被截断的输出（SSH 中途断、超时）会带着半截片段过关，而**半截片段贴进 rc
+/// 会让用户的登录 shell 直接报错**（未闭合的函数体）。这就是这条必须 fail-closed 的理由。
+pub(crate) fn validate_shellinit_output(out: String) -> Result<String, String> {
+    let has_begin = out.contains(SHELLINIT_FENCE_BEGIN);
+    let has_end = out.contains(SHELLINIT_FENCE_END);
+    if has_begin && has_end {
+        return Ok(out);
+    }
+    Err(if has_begin {
+        format!(
+            "远端产出的 rc 片段**不完整**（有 {SHELLINIT_FENCE_BEGIN:?} 但没有 \
+{SHELLINIT_FENCE_END:?}）——输出可能被截断了。**别贴**，半截片段会让登录 shell 报错。请重试。"
+        )
+    } else {
+        format!(
+            "远端没能产出 rc 片段（输出里没有 {SHELLINIT_FENCE_BEGIN:?}）。\
+常见原因：cc-acct-iso 未安装（先在「维护」里部署）、或该远端还没跑过 `cc-acct-iso init`。"
+        )
+    })
+}
+
+/// `cc-acct-iso shellinit` 输出的围栏 —— **跨语言双写点**，由
+/// `acct_iso_shellinit_fence_matches_vendored_script` 钉住（它读 vendored 脚本对拍）。
+pub(crate) const SHELLINIT_FENCE_BEGIN: &str = "# ===== BEGIN cc-acct-iso =====";
+pub(crate) const SHELLINIT_FENCE_END: &str = "# ===== END cc-acct-iso =====";
+
 /// 一键部署 / 更新 vendored cc-acct-iso 到远端 `dest_dir`，随后跑 install 脚本建软链。
 /// 返回人读结果。逻辑对标 [`crate::sftp::deploy_remote_daemon`]。
 #[tauri::command]
@@ -227,6 +278,53 @@ pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ★ Z05 跨语言双写点守卫：`SHELLINIT_FENCE_BEGIN` 必须与 vendored `cc-acct-iso`
+    /// 里 `cmd_shellinit` 真正打印的那行**逐字一致**。
+    ///
+    /// **为什么需要它**：Rust 侧拿这个围栏当「片段产出成功」的判据（没有它就报错、
+    /// 绝不把半截东西交给前端当待贴文本）。bash 那边哪天改了围栏措辞，表现是
+    /// **功能整体失灵但错误文案听起来像用户的错**（「远端没能产出 rc 片段」）。
+    ///
+    /// 做法同 `tmux.rs::tmux_ls_fmt_double_write_point_stays_in_sync` 与
+    /// `accounts_query.rs` 的 Z06 守卫：`include_str!` 读 **vendored** 副本 + 锚定那一行。
+    /// **`cp -a` 保 mtime ⇒ 本地 re-vendor 后要 `touch` 本文件，否则判的是上次的结果**（Z06 实测）。
+    #[test]
+    fn acct_iso_shellinit_fence_matches_vendored_script() {
+        let script = include_str!("../vendor/cc-acct-iso/scripts/cc-acct-iso");
+        for fence in [SHELLINIT_FENCE_BEGIN, SHELLINIT_FENCE_END] {
+            assert!(
+                script.contains(&format!("printf '{fence}\\n'")),
+                "Z05 双写点漂移：vendored cc-acct-iso 里找不到打印 {fence:?} 的那行。\n\
+                 Rust 侧拿这两条围栏当「片段完整」的判据，两边必须一致。"
+            );
+        }
+        // 反向自检：断言的是「源真读进来了」，不是「命中若干条」。
+        assert!(
+            script.len() > 1000,
+            "include_str! 没读到 vendored 脚本，上面的断言是空转"
+        );
+    }
+
+    /// fail-closed：**半截片段绝不放行**（贴进 rc 会让登录 shell 报错）。
+    #[test]
+    fn shellinit_validation_is_fail_closed() {
+        let good = format!("{SHELLINIT_FENCE_BEGIN}\nzcc() {{ :; }}\n{SHELLINIT_FENCE_END}\n");
+        assert_eq!(validate_shellinit_output(good.clone()).unwrap(), good);
+
+        // 只有 BEGIN（输出被截断）⇒ 拒，且诊断要说「不完整」而不是「没产出」
+        let truncated = format!("{SHELLINIT_FENCE_BEGIN}\nzcc() {{ :; }}\n");
+        let e = validate_shellinit_output(truncated).unwrap_err();
+        assert!(e.contains("不完整"), "诊断该说是截断，实得：{e}");
+        assert!(e.contains("别贴"), "必须明确劝阻，实得：{e}");
+
+        // 压根没跑成（没装 / PATH 不对）⇒ 拒，诊断给可执行的下一步
+        let e = validate_shellinit_output(String::new()).unwrap_err();
+        assert!(e.contains("未安装"), "诊断该给下一步，实得：{e}");
+
+        // 只有 END（不可能但也是坏数据）⇒ 拒
+        assert!(validate_shellinit_output(SHELLINIT_FENCE_END.to_string()).is_err());
+    }
 
     #[test]
     fn safe_dir_accepts_conventional_paths() {

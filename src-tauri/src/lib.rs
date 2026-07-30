@@ -960,6 +960,7 @@ pub fn run() {
             sftp::uninstall_remote_daemon,
             acct_iso_deploy::deploy_remote_acct_iso,
             acct_iso_deploy::check_remote_acct_iso,
+            acct_iso_deploy::remote_acct_iso_shellinit,
             history::delete_history_session,
             history::create_branch_session,
             history::update_history_metadata,
