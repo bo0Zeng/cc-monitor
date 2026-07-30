@@ -508,6 +508,9 @@ export const commands = {
   /** 在远端起一个终端跑给定命令。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   launch_remote_terminal: (args: { origin: string; remoteCmd: string }) =>
     invoke<void>("launch_remote_terminal", args),
+  /** L1：本地终端拉起——`launch_remote_terminal` 的本地对侧（同一 payload，不包 ssh）。 */
+  launch_local_terminal: (args: { localCmd: string; cwd?: string | null }) =>
+    invoke<void>("launch_local_terminal", args),
 
   /**
    * 远端有没有装 `cc-acct-iso` + 命中路径 + 内嵌 vendor 指纹。

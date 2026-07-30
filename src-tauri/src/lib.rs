@@ -977,6 +977,7 @@ pub fn run() {
             accounts::list_remote_session_accounts,
             accounts::check_account_trust,
             launch::launch_remote_terminal,
+            launch::launch_local_terminal,
             sftp_pool::sftp_realpath,
             sftp_pool::sftp_list_dir,
             sftp_pool::sftp_stat,
