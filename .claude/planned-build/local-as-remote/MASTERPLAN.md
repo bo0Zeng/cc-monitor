@@ -87,9 +87,16 @@
 L3 是「给一个 bash 工具做 Windows 等价物」。** 三件事的成本差一个量级，所以拆开排。
 
 **L2 拿不到什么**：账号注入与 per-account model 都依赖账号基础设施 ⇒ 归 L3。
-**L2 能拿到什么**：① §40 的例外从「IR 管不到」变成类型上的显式分支
-② **嵌套 env 清理在 Windows 本地首次生效**（今天没有——从一个 agent 会话里起本地会话
-会泄漏继承的 agent env；这一条不需要任何账号基础设施）③ 给 L3 准备落点。
+~~**L2 能拿到什么**~~ **⚠ 2026-07-30 L2 开工复测：这三条全不成立，已否决原方案**
+（见 `features/L2-parallel-worlds-guard.md`）：
+① 兜底渲染器 `renderFallback` 的生产调用点**全在远端**（`remote-launch.ts` ×5 + `remote-launch-run.ts` ×1），
+   本地路径一次都不经过它 ⇒ 加「Windows 本地」臂等于加一条**永不执行的死分支**。
+② **事实错误**：嵌套 env 清理**一直都在**——`lib.rs:124` 的 `scrub_env_vars` 在 `:161` 的
+   `tauri::Builder` 之前就跑完了，后续 `Command::new` 继承已清洗的环境。
+   `INVARIANTS §36` 早就写清了两种形态**分工不同**（远端逐次清 / 本地启动期一次清），
+   并把「给本地渲染器补读 `plan.env`」定为**铁律禁止**。
+③ 「给 L3 准备落点」随前两条一起落空。
+**L2 改做的是它真正的意图**（别让本地/远端变成静默漂移的平行世界），落在今天真实存在的那个漂移点上。
 
 ---
 
@@ -99,7 +106,7 @@ L3 是「给一个 bash 工具做 Windows 等价物」。** 三件事的成本�
 |----|------|-----------|------|------|--------|
 | L0 | **Linux 可构建 + 可跑** | Tauri 在 Linux 上构建通过、app 能起、既有远端功能在 Linux 宿主上可用；WebKitGTK 依赖摸清 | **⚠ 构建那半 ✅ 已交付**（`features/L0-linux-buildable.md`）：三个 WebKitGTK 依赖本来就在（零安装）、`npm run build` rc=0、`cargo build` **完整 app 二进制** rc=0 ⇒ **计划最担心的「WebKitGTK 碎片化很痛」没有发生**（但只覆盖一台机器，**不外推**）。**「起 app」那半待授权**：`BUILD_ID` 已 bump 成 `p1r-event-liveness`，本分支构建出的 app 一连上用户已配置的远端就会把 daemon 判 stale ⇒ **自动重装** | — | **P0** |
 | L1 | **POSIX 本地 = 不走 ssh 的远端** | `transport:{kind:"local"}` 在 POSIX 上有真实含义：复用 `ccm` + tmux，本地 exec 不经 ssh | **✅ 两半均已交付**（`features/L1-posix-local-transport.md`）：抽出与传输无关的校验（**PowerShell 拒双引号那条没跟着搬**）· `build_local_posix_argv` / `launch_local_posix` / 新命令 `launch_local_terminal`（120→**121**）· **验收判据已机器化**（换 transport 后剥净包装逐字节相同）· 三条变异隔离成立。**E40 已重测**：同锅是实测事实，但本地不起 daemon ⇒ 失效模式不适用，**复活条件写死**。**E31 订正：搬家断不掉任何一条边 ⇒ 不做**。**第二半**：本地入口（`resume_history_session`/`new_local_session`）按平台分流 —— 两个渲染器共享一个决策（sid 校验是**真共享**，变异连带红了既有 PS 测试）；**不是加前端调用点**：复测发现 R07 已审计决定本地不走 TS IR，且上一轮那个 `launch_local_terminal` 是**投机 API、已撤**（121→120）。spawn 那半的覆盖也补上了 | L0 | **P0** |
-| L2 | **Windows 本地进 IR** | `planLocal` 复活 + PowerShell 渲染器分支 honour `plan.env`；`build_local_ps_command` 变成该分支的实现而非平行世界 | 待规划 | L1 | P1 |
+| L2 | ~~**Windows 本地进 IR**~~ → **平行世界漂移点守卫** | ~~`planLocal` 复活 + PowerShell 渲染器 honour `plan.env`~~ **⚠ 原方案三条逐条否决**（`features/L2-parallel-worlds-guard.md`）：一条撞 `INVARIANTS §36` **铁律**（逐字禁止给本地渲染器补读 `plan.env`）、两条撞 R07 已审计的决定（本地借 IR 做校验、不消费输出，因为接了也拿不到新东西）、**收益② 是事实错误**（实证 `lib.rs:124` 的启动期清洗早于 `:161` 的 Builder ⇒ 保护一直都在）、收益① 的兜底渲染器**只服务远端**（加臂 = 加死分支）。**✅ 改做 L2 的真意图**：钉住今天真实存在的跨语言漂移点 —— Rust `adapter` ↔ TS `AGENT_PROFILE`（resume flag / 默认启动器 / 嵌套 env 清单）此前只有一句注释、零门禁；新增 `src/agent-profile-parity.vitest.ts` 6 条断言，三条变异成立 | — | P1 |
 | **L3a** | **本地账号枚举（只读）** | Rust 直接读 `%USERPROFILE%\.claude-accts\accounts.json`（manifest 格式已定），`loggedIn` 由 `.credentials.json` 是否存在判定。**不需要 bash、不需要 cc-acct-iso** ⇒ 本地立刻有：账号列表 / 选号 / 账号注入 / per-account model | 待规划 | L2 | **P1** |
 | L3b | **本地账号管理（写）** | 建 / 迁 / 删 / 改默认号。需要 cc-acct-iso 的 Windows 等价物（PowerShell 或 Rust 实现） | 待规划 | **`account-zero` 全部落地** + L3a | P2 |
 | L4 | **Linux 打包 + 进 CI/release** | Linux 产物（AppImage/deb 择一）+ CI 构建 job；`release.yml` 加 Linux 产物 | 待规划 | L0,L1 | P2 |

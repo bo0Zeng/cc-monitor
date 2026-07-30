@@ -841,6 +841,8 @@ plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**�
 即"不接"是因为**接了也拿不到新东西**，不是因为技术上不可能——这两个理由的强度与适用范围完全不同，
 别再把 `Get-Command` 当成万能挡箭牌。
 
+**L2 复测确认（2026-07-30，`local-as-remote`）**：本节铁律**仍然成立**，且 `local-as-remote` 主计划原本的 L2（「PowerShell 渲染器 honour `plan.env`」）**正是它禁止的那件事** ⇒ **已否决，不做**。启动期清洗的时序也实证过：`lib.rs:124` 的 `scrub_env_vars` 早于 `:161` 的 `tauri::Builder`。L2 改做的是「别让本地/远端静默漂移」这个真意图落在真实漂移点上 —— Rust `adapter` ↔ TS `AGENT_PROFILE`（`src/agent-profile-parity.vitest.ts`）。**那条守卫不违反本铁律**：它只读、不给任何渲染器加读 `plan.env` 的代码。
+
 **另注（同一审计发现）**：`F06-local-path-ir.md` §1 有一条**已勾 `[x]`** 的 DoD 逐字要求
 "从产出的 `LaunchPlan` 取 `action`/`cwd`/`launcher` 三个字段映射回现有 Tauri 调用参数"
 ——**它从未实现**，且已在同文件 §3.2 被撤回（理由即上述"无信息增量"）。那条勾已就地标注撤回。
