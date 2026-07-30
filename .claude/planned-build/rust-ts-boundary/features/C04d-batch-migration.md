@@ -31,7 +31,8 @@
 | **4** | `account-restart` 4 · `settings/diagnostics-section` 5 | 是（**4 个**，含 3 个大整数、两个量纲） | **12** | **完成** |
 | **4b** | **`accounts.ts` 4** | 是（`accounts.rs` 6 个类型） | 11 | **已跳过——被跨工作区冲突协议挡住**（详见 §3d） |
 | **5a** | `settings/cc-bus-section` 6 · `settings/cc_integration` 7 | 是（**10 个**，含 3 个**非 pub**） | **10** | **完成** |
-| 5b | `main.ts` 9 · `settings/remote-section` 9 · `settings/mcp-section` 10 | 是 | 7 | 待做 |
+| **5b** | `main.ts` 9 · `settings/mcp-section` 10 | 是（**1 个**；`main.ts` 零新派生） | **8** | **完成** |
+| 5c | `settings/remote-section` 8 | 是（3 个） | 7 | 待做 |
 | 6 | `sftp/panel` · `views/history` · `views/session-viewer`（**含 3 个动态派发口**） | 是 | 3 | 待做 |
 | 7 | `panorama/api.ts`（21 处，最大） | 是 | **1**（包装层自己） | 待做 |
 | — | **`tabs.ts`（15 处）** | — | — | **已跳过，等授权** |
@@ -284,6 +285,57 @@
 | **A** | 非 pub 的 `CcStatusResponse` 加不配 `ts(type)` 的 `u64` 字段 | rc=101 | **判据是源文本，与编译无关** | 守卫红并点名 `probe_mutant_bytes` | **成立**（见上方对判色三步的细化） |
 | **B** | `ProfileKind::Ps7` 加显式 `serde(rename)` | rc=0 | ✔ grep 到 `Ps7RENAMED` | `tsc` 报 `Record<ProfileKind, string \| null>` 上 `'Ps7' does not exist` ×2 | 成立。映射类型的键真被消费 |
 | C | 等号自动各红一次 | — | — | 生成物清单 · 派生源 14→18 · 大整数 14→15 · 文件数 12→10 · 包装层 28→40 | 成立 |
+
+## 3f. 批次 5b 明细：**一处「类型逼测试撒谎」的教科书例子**
+
+13 条包装层条目（40 → **53**）· 1 个派生（生成物 50 → **51**）· 2 个文件迁走（10 → **8**）。
+`main.ts` **零新派生**——`list_last_accounts` 返 `HashMap<String,String>`（= `Record<string,string>`）·
+`list_active_sessions` 的类型 C04b 已生成 · `load_subagent` 批 2 已进包装层 ·
+`open_settings_window`/`replay_session_to_window` 是桶①。
+
+### ★ `McpServerEntry.scope`：手写版比线上**更窄**，而窄不是 fail-safe 方向
+
+Rust 是 `pub scope: String`，手写版窄化成 `McpScope = "user" | "local" | "project"`。
+
+**我先推断「来了第四种 scope 会 `undefined.push` 抛」——那是错的**，我把它写进注释后才去核实现：
+`groupByScope` 里有**显式三值判断**，未知 scope 被跳过、**从不抛**；
+它的 vitest 注释也明写「测未知 scope 被忽略」。**运行时一直是对的。**（注释已订正。）
+
+**真正的问题**是：手写的窄 union 让那条测试**必须挂一个 `@ts-expect-error`**
+才能构造一个**真实会从线上来的** entry ——
+
+> `// @ts-expect-error 测未知 scope 被忽略`
+> `ent("weird", "w", {})`
+
+**是类型在逼测试撒谎，而运行时早就正确处理了这个情况。**
+换成生成物后那个抑制指令变成**多余**（`tsc` 报 `Unused '@ts-expect-error' directive`），已删。
+⇒ **类型说了实话，测试就不必撒谎。** 这是本工作区最直观的一次收益。
+
+`McpScope` **保留**：它是 TS 侧的**域细化**，`groupByScope` 的返回类型用它是对的
+（分组结果确实只有三档）。运行时逐字节不变。
+
+### 另一处分叉被包装层结构性消除
+
+`main.ts:294` 原来写 `invoke<{ path: string }>("load_subagent", …)`，而 `cards/subagent.ts`
+用完整的 `SubagentLoadResult` —— **同一个命令在全仓有两种 TS 类型**。
+包装层收敛成一处后这类分叉**结构性消失**（本处只读 `.path`，用完整类型完全够）。
+
+### 三处我自己造的错（都被断言/tsc 当场拦住）
+
+1. 一个批量插入脚本的锚点没找到 ⇒ **异常在写盘前抛出，文件没被改坏**（`git diff` 确认 0 行）。
+   改成逐个核锚点的 `ins()` helper 重做。
+2. 忘了给 `list_active_sessions` 加包装层条目（只换了调用点）⇒ `tsc` 报
+   `Property 'list_active_sessions' does not exist`。
+3. **包装层条目数我口算成 54，实际 53**（新增是 13 条不是 14）⇒ 等号守卫报
+   `expected 53 to be 40` 时我按实测值改准，并把头注的「其余 66 个（119 − 53）」也算对。
+
+### 批次 5b 变异
+
+| # | 变异 | 编译 | 判据新鲜 | 判色 | 结论 |
+|---|---|---|---|---|---|
+| **A** | `McpServerEntry.source_path` 加 `serde(rename)` | rc=0 | ✔ grep 到 `sourcePathRENAMED` | `tsc` 报**生产代码** `mcp-section.ts:559` **与它的 vitest** 各一处 | 成立 |
+| **B** | 包装层里 `read_mcp_servers` 的字面量抄成**邻居真命令** `read_remote_mcp_servers` | — | — | `tsc` **rc=0**（管不了）· 守卫红并同时点出两个名字 | 成立。键↔字面量对拍仍是唯一的牙 |
+| C | 四条等号自动各红一次 | — | — | 生成物清单 · 派生源 18→19 · 文件数 10→8 · 包装层 40→53 | 成立 |
 
 ## 4. 代码审计结果（Phase D）
 

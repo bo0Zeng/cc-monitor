@@ -21,8 +21,8 @@
  *
  * ## 本文件今天覆盖多少
  *
- * **40 个命令**（C04a 样板 1 + C04d 批 1-5a 的 39）。
- * 其余 79 个仍走各模块里的裸 `invoke`，由 **C04d** 后续批次迁进来。
+ * **53 个命令**（C04a 样板 1 + C04d 批 1-5b 的 52）。
+ * 其余 66 个仍走各模块里的裸 `invoke`（119 − 53 = 66），由 **C04d** 后续批次迁进来。
  *
  * **条目按字母序**（键名排序），加新条目时插到对的位置——这样 diff 只显示真正的新增。
  *
@@ -42,6 +42,7 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
 
 import type { AccountUsageProbeResult } from "../generated/AccountUsageProbeResult";
 import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
+import type { ActiveSessionPayload } from "../generated/ActiveSessionPayload";
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
 import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
@@ -55,6 +56,7 @@ import type { ForwardStatus } from "../generated/ForwardStatus";
 import type { HooksReport } from "../generated/HooksReport";
 import type { ProfileScan } from "../generated/ProfileScan";
 import type { LogFileInfo } from "../generated/LogFileInfo";
+import type { McpServerEntry } from "../generated/McpServerEntry";
 import type { RestartHint } from "../generated/RestartHint";
 import type { SessionUsageRow } from "../generated/SessionUsageRow";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
@@ -194,6 +196,30 @@ export const commands = {
   /** 读 bus 的完整状态（agents + spawned + 坏行数）。`skipped: usize` → `number`。 */
   read_cc_bus_state: (args: { origin: string }) => invoke<CcBusState>("read_cc_bus_state", args),
 
+  /** 读本机 MCP server 清单（user/local/project 三档）。Rust 签名**无 `Result` 包装**。 */
+  read_mcp_servers: (args: { projectDir: string | null }) =>
+    invoke<McpServerEntry[]>("read_mcp_servers", args),
+
+  /** 读远端的 MCP server 清单。 */
+  read_remote_mcp_servers: (args: { origin: string }) =>
+    invoke<McpServerEntry[]>("read_remote_mcp_servers", args),
+
+  /** 读远端某项目目录的 `.mcp.json`。 */
+  read_remote_project_mcp: (args: { origin: string; projectDir: string }) =>
+    invoke<McpServerEntry[]>("read_remote_project_mcp", args),
+
+  /** 删本机项目 `.mcp.json` 里的一个 server。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  remove_project_mcp_server: (args: { projectDir: string; name: string }) =>
+    invoke<void>("remove_project_mcp_server", args),
+
+  /** 删远端项目 `.mcp.json` 里的一个 server。**桶①**。 */
+  remove_remote_mcp_server: (args: { origin: string; projectDir: string; name: string }) =>
+    invoke<void>("remove_remote_mcp_server", args),
+
+  /** 把某 sid 的历史定向重放到当前窗口（viewer 用，不发 frontend-ready）。**桶①**。 */
+  replay_session_to_window: (args: { sessionId: string }) =>
+    invoke<void>("replay_session_to_window", args),
+
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
   get_session_tasks: (args: { sessionId: string }) =>
     invoke<TaskEntry[]>("get_session_tasks", args),
@@ -243,6 +269,25 @@ export const commands = {
     toolUseTimestamp: string;
   }) => invoke<SubagentLoadResult>("load_subagent", args),
 
+  /**
+   * 启动时先拉本地活跃会话建骨架 Tab。返回值字段被真消费 ⇒ 生成物（桶③）。
+   * **线上是 snake_case**（`ActiveSessionPayload` 没有 `rename_all`），C04b 已论证过。
+   */
+  list_active_sessions: () => invoke<ActiveSessionPayload[]>("list_active_sessions"),
+
+  /** 本机有 `.mcp.json` 的项目目录候选。Rust 签名**无 `Result` 包装**（`-> Vec<String>`）。 */
+  list_mcp_project_dirs: () => invoke<string[]>("list_mcp_project_dirs"),
+
+  /**
+   * 每个 sid 最近一次用的账号（sid → 账号名）。Rust 返回 `HashMap<String, String>`
+   * **无 `Result` 包装** ⇒ `Record<string, string>`，无需生成物。
+   */
+  list_last_accounts: () => invoke<Record<string, string>>("list_last_accounts"),
+
+  /** 远端有 `.mcp.json` 的项目目录候选。 */
+  list_remote_mcp_project_dirs: (args: { origin: string }) =>
+    invoke<string[]>("list_remote_mcp_project_dirs", args),
+
   /** 杀掉远端某个 tmux 会话。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   kill_remote_tmux: (args: { origin: string; target: string }) =>
     invoke<void>("kill_remote_tmux", args),
@@ -261,9 +306,26 @@ export const commands = {
    */
   load_config: () => invoke<Record<string, unknown>>("load_config"),
 
+  /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  open_settings_window: () => invoke<void>("open_settings_window"),
+
   /** 用系统默认程序打开 monitor 的 log **目录**。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_log_dir: () => invoke<void>("open_log_dir"),
 
   /** 用系统默认程序打开 monitor 的 log 文件。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_log_file: () => invoke<void>("open_log_file"),
+  /**
+   * 写本机项目 `.mcp.json` 的一个 server。**桶①**。
+   * `server` 是不透明 JSON（Rust 侧 `serde_json::Value`）⇒ `unknown`，与生成物一致。
+   */
+  write_project_mcp_server: (args: { projectDir: string; name: string; server: unknown }) =>
+    invoke<void>("write_project_mcp_server", args),
+
+  /** 写远端项目 `.mcp.json` 的一个 server。**桶①**。 */
+  write_remote_mcp_server: (args: {
+    origin: string;
+    projectDir: string;
+    name: string;
+    server: unknown;
+  }) => invoke<void>("write_remote_mcp_server", args),
 } as const;

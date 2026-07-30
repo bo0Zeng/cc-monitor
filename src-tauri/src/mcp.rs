@@ -14,12 +14,17 @@ use std::path::{Path, PathBuf};
 
 /// 一条 MCP server 展示项。`server` 原样保留（宽容，未知字段不丢）。camelCase 上 wire。
 #[derive(serde::Serialize, Debug, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct McpServerEntry {
     /// `"user"` | `"local"` | `"project"`
     pub scope: String,
     pub name: String,
     /// server 配置原样（`{command,args,env}` 或 `{type:"sse"|"http",url,...}`）。
+    // `serde_json::Value` 用 `unknown` 而不是 `any`——前端必须先形状守卫才能读
+    // （同 C04c 对 `ApiMessage.content` 的处置；§18 宽容 schema 的读法）。
+    #[cfg_attr(test, ts(type = "unknown"))]
     pub server: Value,
     /// 来源文件绝对路径（展示 / 诊断用）。
     pub source_path: String,
