@@ -21,6 +21,9 @@ export default defineConfig({
         "src/**/*.vitest.ts",
         "src/**/*.d.ts",
         "src/**/types.ts",
+        // 守卫专用的辅助模块：进不了 bundle（没有生产文件 import 它，
+        // 由 `generated-boundary-guard.vitest.ts` 机检），所以也不该计入生产覆盖率地板。
+        "src/test-support/**",
       ],
       // 地板棘轮（非追高目标）：设在当前值下方 ~2-3% 吸收环境/v8 版本差，只挡**明显回归**
       // （如新增大块无测代码）。当前 vitest(jsdom) 套件：S48.98 / B41.15 / F44.60 / L50.41。

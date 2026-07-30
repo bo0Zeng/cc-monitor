@@ -36,28 +36,36 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
-const ROOT = resolve(import.meta.dirname, "..");
+const ROOT = REPO_ROOT;
 const read = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
 
+// C04a：剥注释的实现**抽到了 `src/test-support/strip-comments.ts`**——本文件与
+// `src/ipc/commands.vitest.ts` 两个守卫都要用它，而两份手抄的剥注释语义一旦漂移
+// 就是**静默削弱守卫**（那正是本工作区在治的病）。按 ≥2 那把尺子抽成单一实现。
+//
+// 本文件栽过两轮、C03/C04a 又各栽一次，四次都是「拿注释当代码判据」——
+// 具体四例记在那个文件的头注里。
+import { REPO_ROOT } from "./test-support/repo-root";
+import { stripComments } from "./test-support/strip-comments";
+
 /**
- * **剥注释再扫——守卫与断言两侧都要剥，Rust 侧也要剥。**
- *
- * 本文件栽过两轮：
- * ① 第一版没剥，生成物的 JSDoc 里含有我写在 Rust doc comment 里的 `sizeBytes: bigint | null`
- *    那串字，被当成类型判据；
- * ② 剥了 TS 侧、**忘了剥 Rust 侧** —— Phase D 审计变异实测：把
- *    `#[ts(optional, type = "number")]` 真的删掉、只留注释，那条「钉住显式决定」的断言
- *    **依然绿**，因为 doc comment 里就写着 `` `type = "number"` `` 这串字。
- *    这是本会话同一形状的第三次。
- *
- * Rust 与 TS 的行注释与块注释语法一致，所以这里共用一套正则。
- * （**别在这段块注释里写块注释的结束符**——第一版就是这么把注释提前关掉、
- *   让整个文件变成语法错的：注释谈注释语法，反而破坏了注释。）
+ * 剥注释——**方言必须显式给**（C04a Phase D 审计：Rust 的 `'a` 生命周期与 TS 的 `'…'`
+ * 字符串处理相反，共用一个默认值会让一侧静默剥错）。
  */
-function code(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, "") // 块注释 / JSDoc
-    .replace(/(^|[^:])\/\/.*$/gm, "$1"); // 行注释 + Rust doc comment（`https://` 不误伤）
+const code = (src: string) => stripComments(src, "ts");
+const rustCode = (src: string) => stripComments(src, "rust");
+
+/**
+ * `src/` 下的**生产** `.ts` 文件（仓库相对路径）。排除 `*.test.ts` / `*.vitest.ts`
+ * ——「生产」的定义要与 `vitest.config.ts` 的 coverage `exclude` 一致，别两处各说一套。
+ */
+function productionTsFiles(dir = "src", out: string[] = []): string[] {
+  for (const name of readdirSync(resolve(ROOT, dir), { withFileTypes: true })) {
+    const rel = `${dir}/${name.name}`;
+    if (name.isDirectory()) productionTsFiles(rel, out);
+    else if (name.name.endsWith(".ts") && !/\.(test|vitest)\.ts$/.test(name.name)) out.push(rel);
+  }
+  return out;
 }
 
 /** ts-rs v12 写在每个生成文件头部的原话（硬编码在 ts-rs 里，改不了，所以不是 `@generated`）。 */
@@ -153,7 +161,7 @@ describe("C01 边界生成物", () => {
     //   C04 要把这个形状复制 127 次，现在治比那时治便宜。
     let checked = 0;
     for (const f of TS_DERIVING_SOURCES) {
-      const src = code(read(f));
+      const src = rustCode(read(f));
       expect(src, `${f}: 剥过头了`).toContain("pub struct");
       const lines = src.split("\n");
       // 以 `pub struct` 为锚：往上收连续属性行（与顺序无关），往下收到列 0 的 `}`
@@ -215,7 +223,7 @@ describe("C01 边界生成物", () => {
     // 逐字段判：属性块 = 从字段声明往上到上一个 `pub ` / 块首之间（属性写在字段上方）。
     let checked = 0;
     for (const f of TS_DERIVING_SOURCES) {
-      const src = code(read(f));
+      const src = rustCode(read(f));
       const lines = src.split("\n");
       for (let k = 0; k < lines.length; k += 1) {
         if (!/^pub struct\s+\w+/.test(lines[k])) continue;
@@ -252,7 +260,7 @@ describe("C01 边界生成物", () => {
 
   it("`u64` 的映射与运行时一致，且属性真的在源码里（不是被注释喂饱）", () => {
     const info = code(read("src/generated/DataPathInfo.ts"));
-    const rust = code(read("src-tauri/src/data_paths.rs")); // ← 审计 B1：这里以前是裸 read
+    const rust = rustCode(read("src-tauri/src/data_paths.rs")); // ← 审计 B1：这里以前是裸 read
     expect(info, "剥过头了").toContain("export type DataPathInfo");
     expect(rust, "剥过头了").toContain("pub struct DataPathInfo");
 
@@ -290,7 +298,40 @@ describe("C01 边界生成物", () => {
       /^\s*(export\s+)?(interface|type)\s+DataPath(Info|sResponse)\b/m,
     );
 
-    expect(src).toMatch(/invoke<\s*DataPathsResponse\s*>\(\s*"get_data_paths"\s*\)/);
+    // **C04a 把这条钉的形态换掉了，本断言随之更新**（守卫红了一次，那是它在正确工作）：
+    // 该模块现在是包装层的样板，命令名与返回类型都由 `src/ipc/commands.ts` 给出。
+    expect(src).toMatch(/commands\.get_data_paths\(\)/);
+    // C04a 的性质：样板模块**不再直接 import invoke**。
+    // **Phase D 审计 Z1 订正**：原来这里写「全仓 29 → 28 个」，是**假的**——
+    // `data-section.ts` 出列 (-1)，但 `src/ipc/commands.ts` 自己 import invoke 入列 (+1)，
+    // 净持平仍是 29。真正的下降从 C04d 迁第二个模块起。那个数现在由下一条断言机检
+    // （全仓唯一被写错的数字，恰好是唯一没被机检的数字）。
+    expect(src, "样板模块又直接 import invoke 了——那等于两条路并存").not.toMatch(
+      /import\s*\{[^}]*\binvoke\b[^}]*\}\s*from\s*["']@tauri-apps\/api\/core["']/,
+    );
+  });
+
+  it("直接 import invoke 的生产文件恰好 29 个（主计划 §0.1 成功标准 4 的度量）", () => {
+    const hits = productionTsFiles().filter((f) =>
+      /import\s*\{[^}]*\binvoke\b[^}]*\}\s*from\s*["']@tauri-apps\/api\/core["']/.test(code(read(f))),
+    );
+    // 反向自检：真扫到了文件
+    expect(hits.length, "一个都没扫到——遍历或正则坏了").toBeGreaterThan(10);
+    // **等号**：这个数是成功标准 4 的度量，C04d 每迁一个模块必须让它降一次。
+    // 注意 `src/ipc/commands.ts` **算在里面**——包装层就是最终该剩下的那 1 个。
+    // 裸 `grep 'import { invoke }'` 只有 24，因为有文件是多名导入（`import { invoke, Channel }`）
+    // ——这正是原来那个 29 容易被量错的原因，所以这里用正则而不是字面量。
+    expect(hits.length, `期望恰好 29 个，实得 ${hits.length}`).toBe(29);
+    expect(hits.map((f) => f.replace(/\\/g, "/")), "包装层自己必须在名单里").toContain(
+      "src/ipc/commands.ts",
+    );
+  });
+
+  it("生产代码不许 import `src/test-support/`（那是守卫专用，进 bundle 就等于把测试代码发出去）", () => {
+    const offenders = productionTsFiles().filter((f) => /test-support\//.test(code(read(f))));
+    // `strip-comments.ts` 自称「只被 *.vitest.ts 引用 ⇒ 进不了 bundle」。
+    // 那是一条**约定**，而 eslint 在本仓是 advisory ⇒ 指望不上，机检掉。
+    expect(offenders, "这些生产文件 import 了 test-support").toEqual([]);
   });
 });
 
@@ -310,7 +351,7 @@ describe("C01 边界生成物", () => {
  */
 describe("C02 事件名钉死", () => {
   it("bridge.rs 的 10 个事件名常量，TS 侧字面量逐个对上", () => {
-    const rust = code(read("src-tauri/src/bridge.rs"));
+    const rust = rustCode(read("src-tauri/src/bridge.rs"));
     expect(rust, "剥过头了").toContain("pub const");
 
     // 从源码抠出 `pub const X: &str = "y";` 的所有对
