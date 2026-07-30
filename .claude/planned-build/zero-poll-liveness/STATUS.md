@@ -14,11 +14,21 @@
 - **P4a（本轮已交付）**：daemon 侧 —— `WatchEvent::Poke` 变体（与 `TmuxProbeDue` 共用
   处理臂）· `watcher::spawn` 返回窄句柄 `WatcherPoke`（只能催重探，不能伪造带载荷事件）·
   `main` 起 `SIGUSR1` 流接到它。**没有 hook 在发信号 ⇒ 完全惰性。**
-- **P4b（下一轮）**：`--tmux-notify <pid> <starttime>` 子命令（校验 `/proc` starttime 再
-  `kill(pid, SIGUSR1)`）+ 在 `ServerState::Alive(pid)` 那个臂装
-  `session-created[50]`/`session-closed[50]`/`session-renamed[50]`。
-  **hook 用 `#{hook_session_name}`，绝不用 `#{@ccm_sid}`**（P0 实测后者会让活会话变灰）。
-  真机验证一律在私有 socket（`unset TMUX` + 短 `TMUX_TMPDIR`）。
+- **P4b（本轮已交付）**：`--tmux-notify <pid> <starttime>` 子命令（校验 `/proc` starttime
+  后 `kill(pid, SIGUSR1)`）+ 在 `ServerState::Alive(pid)` 臂装
+  `session-created[50]`/`session-closed[50]`/`session-renamed[50]`（`run-shell -b`）。
+  **真机私有 socket 实测两条**：通路打通（探针被 SIGUSR1 终止）· PID 复用防御成立
+  （starttime 写错时探针存活）。**默认 socket 零改动**（会话逐字未变、hook 57→57）。
+  见 `features/P4-tmux-hook-notify.md`。
+
+**下一个：P5**（正向死亡帧 + 删 `TMUX_EMIT_INTERVAL`）。P4 只做到「立刻重探」，
+「消失的是**哪个**会话」要 daemon 留住上一份 `tmux ls` 快照 —— 那是 P5 的事。
+**删轮询 B 的前置条件写死在三处**，别提前删。
+
+**★ 新增一条纪律（P4 实测七次才收干净）**：daemon 源码的**散文里不许逐字引用
+`readonly_guard` 的禁用模式** —— 它连注释一起扫，是 fail-closed 的设计。
+自己写的守卫可以修（`format!` 拼判据 + 剥 `cfg(test)` + 剥注释），
+**但不许为自己方便去改那道红线守卫**。
 
 **订正计划一处**：修订里写的入口名 `spawn_watcher` —— 实际叫 **`watcher::spawn`**。
 
@@ -35,6 +45,7 @@
 | P1 | `ZeroSessions` 观测分类（销 `INVARIANTS:408` 残留） | **✅ 完成签收**（`features/P1-zero-sessions-sentinel.md`）。三条变异双向成立；延迟「永不」→ **~16s**（有界化不是即时化） |
 | P2 | pidfd 替判活轮询 + 建统一事件 channel | **✅ 完成签收**（`features/P2-pidfd-unified-channel.md`）。账本第 1 行到最终形态；**端到端实测 ~18ms**（原 2s tick）；两条变异双向成立 |
 | P3 | tmux server 生/死/复活（**不删 8s 轮询**） | **✅ 完成签收**（`features/P3-tmux-server-lifecycle.md`）。调研的 ⚠ 盲区已消；实测 kill-server→27ms · 复活→153ms · 跨 cgroup SIGKILL→30ms；零新定时器 |
+| P4 | daemon 装 tmux hook + SIGUSR1 通知通路 | **✅ 完成签收**（`features/P4-tmux-hook-notify.md`）。拆 P4a/P4b，**顺序由安全性决定**（SIGUSR1 默认终止进程 ⇒ 处理器必须先于 hook）。真机私有 socket 实测：**通路打通**（探针被信号终止）+ **PID 复用防御成立**（starttime 写错不误伤）；**默认 socket 零改动**。**同一个自指陷阱连踩七次**，其中一次让守卫成了安慰剂——是变异揪出来的 |
 | P4 | daemon 装 tmux hook | **设计已重定、代码未落**。原方案（hook 追加日志 + daemon inotify）**撞红线 I7**、被 `readonly_guard` 当场拦下 ⇒ 改为 **SIGUSR1 通路**（daemon 文件系统写归零、会话名不经 shell、无日志增长）。见 MASTERPLAN「§P4 设计修订」。原实现存 `scratchpad/P4-work.patch` |
 | P5 | wire 正向死亡帧 + 免 debounce retire + **删 `TMUX_EMIT_INTERVAL`** | 未开工（承 P4） |
 | P6 | 零定时器守卫 + 延迟 e2e | 未开工 |
