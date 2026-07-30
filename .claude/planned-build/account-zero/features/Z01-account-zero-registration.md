@@ -103,12 +103,26 @@ Z06 的声明表里本来就有——`root` 字段：
 
 `isSelectable()` 要求 `mode === "isolated"` ⇒ 账号 0（`mode:"bare"`）**天然落选**，这正是当前想要的：
 
-> 从 UI 起它需要「**显式 unset** `CLAUDE_CONFIG_DIR`」这条注入路径，而 `launch-plan` 今天只会 `export`。
-> **只是「不注入」是错的**——远端 rc 里那句 `export CLAUDE_CONFIG_DIR=<默认账号>` 会让它落到别的账号上，
-> 那才是真正的静默串号。
+> ~~从 UI 起它需要「显式 unset `CLAUDE_CONFIG_DIR`」这条注入路径，而 `launch-plan` 今天只会 `export`。~~
 
-⇒ 已在 `isSelectable()` 上方写死这段理由；放开它需要**同时**给出 unset 的注入形态，
-而那要动 `launch-plan` + `tabs.ts`（**红线未松**）⇒ **登记为后续**（见 §7）。
+### ★ 3.4bis 这段理由**是错的，Z02 已订正**
+
+**unset 的注入形态早就有了**，两条渲染路各一份：
+
+| 渲染路 | 怎么 unset |
+|---|---|
+| CLI | `ACCOUNT_DIMENSION.cliFlags` 对非 `account` 态吐 `--base`；`shared/ccm` 收到会 `unset CLAUDE_CONFIG_DIR`（**两处落点**：载荷行 `:572` + 会话级 env `:598`） |
+| 兜底 | `ENV_RESET_DIMENSION` 推 `{kind:"unset-config-dir"}` op |
+
+**我错在哪**：只查了 `ACCOUNT_DIMENSION.apply`（那里确实只 push `export-config-dir`），
+**没往下查 `cliFlags` 与 `ccm`**。与 Z07 把 D2 的推理照搬给 D1b 同类：
+**一个层面看到的事实被当成了整条链路的事实。**
+
+**真正卡住的是选择链路**：① `accountConfigDir()` 返回 null ⇒ `resolveAccount` 说不出
+「显式选了账号 0」 ② 菜单没有这个选项 ③ **`tabs.ts:2283`** 那个三元加变体**不报编译错**地走错分支。
+只有 ③ 卡红线。⇒ 详见 `Z02-PARTIAL.md`；`isSelectable()` 上方的注释已改写。
+
+那条 `--base` 契约现已由 `src/base-flag-contract-guard.vitest.ts` 钉住（Z02 交付）。
 
 ## 4. 三个坑（都被门禁当场接住）
 
@@ -188,7 +202,7 @@ Z06 的声明表里本来就有——`root` 字段：
 
 | 项 | 内容 | 归属 |
 |---|---|---|
-| **Z01-follow** | 账号 0 可选：`launch-plan` 需要 `unset-config-dir` 这一种注入形态（**不是「不注入」**），外加 `tabs.ts` 的起会话路径 | Z02/Z03 之后（`tabs.ts` 红线） |
+| **Z01-follow**〔**Z02 已订正**〕 | 账号 0 可选。~~需要 `unset-config-dir` 注入形态~~ —— **那个早就有**（见 §3.4bis）。真正要做的是**选择链路**：`resolveAccount` 增 `account0` 出口 · 菜单加选项 · **`tabs.ts:2283` 三元改穷尽判别（必须最先做）** | `tabs.ts` 红线松开后，按 `Z02-PARTIAL.md` §6 七步 |
 | **Z01-usage** | 账号 0 的用量查询（依赖上一条） | 同上 |
 | **Z07-补** | `verify` 对 `.claude.json` 的致命判据仍在，但**混合模式下会 skip**——in-place 逃生口本身该不该保留是另一个问题 | 已在 Z07 文档记 |
 
