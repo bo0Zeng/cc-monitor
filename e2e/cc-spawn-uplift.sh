@@ -66,7 +66,11 @@ case "$CC_BUS_HOME" in "$HOME"/.cc-bus*) echo "FATAL CC_BUS_HOME 指向真实总
 echo "[自检] CC_BUS_HOME=$CC_BUS_HOME  CCM_CLAUDEJSON=$CCM_CLAUDEJSON"
 
 fail=0
-chk() { if [ "$2" = "$3" ]; then echo "  PASS $1"; else echo "  FAIL $1: 期望[$3] 实得[$2]"; fail=$((fail+1)); fi; }
+pass=0
+# G-A：`pass` 计数是**门禁的一部分**，不是装饰——此前这套只在末尾说一句「全部通过」,
+# 删掉几条断言它照样绿（门禁的天然失效模式就是静默缩水）。格式与另外 7 套逐字一致,
+# 好让 `e2e/assert-pass-floor.sh` 用同一条正则抓。
+chk() { if [ "$2" = "$3" ]; then echo "  PASS $1"; pass=$((pass+1)); else echo "  FAIL $1: 期望[$3] 实得[$2]"; fail=$((fail+1)); fi; }
 # 等某个文件出现（每个场景用独立文件名，避免上一场景的残留让等待恒真）
 waitfor() { local f="$1"; for _ in $(seq 40); do [ -s "$f" ] && return 0; sleep 0.5; done; return 1; }
 
@@ -91,8 +95,9 @@ s=$(date +%s)
 CCM_NO_PRETRUST=1 timeout 30 "$CCSPAWN" "$WORK/proj" "分析这个项目的架构" > "$WORK/out1.txt" 2>&1
 rc=$?; e=$(date +%s)
 chk "退出码 0" "$rc" "0"
-if [ $((e-s)) -lt 15 ]; then echo "  PASS 未挂起（$((e-s))s）"; else
-  echo "  FAIL 耗时 $((e-s))s，疑似挂在 attach"; fail=$((fail+1)); fi
+# G-A：这条**手搓的**判定绕开了 `chk`，于是它既不计数也不在门禁的账里
+#（实测：输出有 21 行 PASS，而计数只到 20 —— 差的就是这一条）。改成走 chk。
+chk "未挂起（$((e-s))s < 15s）" "$([ $((e-s)) -lt 15 ] && echo YES || echo NO)" "YES"
 chk "会话名 proj_cc 存在" "$(tmux has-session -t '=proj_cc' 2>/dev/null && echo YES || echo NO)" "YES"
 
 echo "[2] --tmux-size 生效（原 cc-spawn 的 -x 220 -y 50 没被丢掉）"
@@ -179,5 +184,6 @@ CCM_BIN="$SANDBOX/oldccm" timeout 30 "$CCSPAWN" "$WORK/old" > "$WORK/out8.txt" 2
 chk "报的是版本太旧" "$(grep -c '版本太旧' "$WORK/out8.txt")" "1"
 
 echo
-if [ "$fail" -eq 0 ]; then echo "===== cc-spawn 收编验收全部通过 ====="; else echo "===== FAIL=$fail ====="; fi
+echo "===== 合计 PASS=$pass FAIL=$fail ====="
+if [ "$fail" -eq 0 ]; then echo "===== cc-spawn 收编验收全部通过 ====="; fi
 exit "$fail"
