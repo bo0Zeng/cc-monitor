@@ -14,6 +14,30 @@
 # **status=live tmuxIdle=1 这一行同时证明**:该 tab 变灰前是 live(status 字段)+ 此刻进灰(tmuxIdle=1)。
 set -euo pipefail
 
+# ── G-C（解 BACKLOG E41）：把整套件钉在**自己的 tmux server** 上 ──────────────────
+# 此前这套件裸调 tmux ⇒ 在开发者机器上会**直接操作默认 socket 上的真实会话**，
+# 所以它既进不了 CI 也不敢在有活会话的机器上跑（E41）。
+#
+# **两件事都必须做，缺一就不隔离**（2026-07-30 本机实测）：
+#   ① `unset TMUX` —— 从 tmux 会话里跑这套件时，`$TMUX` 会让客户端连**外层那台 server**
+#      并**完全忽略 `TMUX_TMPDIR`**（实测：设了 TMUX_TMPDIR 仍在默认 socket 上建出了会话）。
+#      **这才是 E41 的实质**：不只是「缺 `-L`」，是「继承了 `$TMUX`」。
+#   ② `TMUX_TMPDIR` 必须是**短路径** —— unix socket 路径上限 108 字节，指向长目录时
+#      tmux 报 `File name too long`（实测在 scratchpad 那种长路径上必踩）。
+#
+# 这样做的好处是**零调用点改动**：套件里 84 处裸 `tmux` 一个都不用改，
+# 也自动覆盖它 shell out 出去的东西（`ccm` / `cc-spawn` 内部也是裸调 tmux）。
+unset TMUX TMUX_PANE
+TMUX_TMPDIR="$(mktemp -d /tmp/e2e-sock.XXXXXX)"; export TMUX_TMPDIR
+# 收尾：只用 **`-S <私有 socket>`** 收自己那台（**绝不裸 `kill-server`** —— 万一上面的
+# 隔离没生效，裸的那个会打到用户的 server 上）。server 无会话时本就会自己退，这条是兜底。
+_gc_sock_cleanup() {
+  set +e
+  [ -n "${TMUX_TMPDIR:-}" ] && /usr/bin/tmux -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null
+  [ -n "${TMUX_TMPDIR:-}" ] && rm -rf -- "$TMUX_TMPDIR"
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
 DISPLAY="${E2E_DISPLAY:-:80}"; export DISPLAY
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 LOG="${E2E_LOG:-$(ls -t "$HOME"/.claude/claudecode-frontend/logs/monitor.*.log 2>/dev/null | head -1)}"
@@ -36,7 +60,7 @@ cleanup() {
   tmux kill-session -t "=$SESSION:" 2>/dev/null
   tmux kill-session -t "=$KEEP:" 2>/dev/null
 }
-trap cleanup EXIT
+trap 'cleanup; _gc_sock_cleanup' EXIT
 
 # 等 monitor 日志(从 start 行之后)出现匹配 pattern 的行,回显之;超时非零。
 wait_log() {  # <startline> <grep-ere> <timeout-s>
@@ -101,4 +125,6 @@ ARCH="$(wait_log "$MARK" "\[e2e\] tab-state sid=$SID8 status=archived" "$ARCH_WA
   || bad "${ARCH_WAIT}s 内未见归档 tab-state(sid=$SID8 status=archived)"
 
 echo "== 结果:$pass 过 / $fail 败 =="
+# G-C：与另外 8 套逐字一致的收尾格式，好让 `e2e/assert-pass-floor.sh` 用同一条正则抓。
+echo "===== 合计 PASS=$pass FAIL=$fail ====="
 [ "$fail" -eq 0 ]

@@ -144,9 +144,9 @@ STATUS 记着这些标签**漂过两次**（39 vs 44、12 vs 21）。
 
 ## 8. 本轮没做的
 
-- **E41 未解除**：那 6 套（`graylight-*`/`restart-*`/`resume-*`/`gen-idle-tmux.sh`）
-  仍无 socket 隔离、仍不在 CI、本轮**未跑**。它们与 G-A 的 8 套无交集，**不阻塞本功能**，
-  但要把它们也纳入地板得先解 E41 ⇒ 仍登记在 BACKLOG
+- ~~**E41 未解除**~~ → **G-C 已解（同日）**：那批套件加了 `unset TMUX` + 短 `TMUX_TMPDIR`，
+  5 套已进 CI 并复用本功能的 `assert-pass-floor.sh`（覆盖面地板 8 → 13）。
+  **另：本节原写「6 套…`gen-idle-tmux.sh`」——那个是生成器不是套件，G-C 已订正。**
 - 未给 8 套**加**任何断言（本功能是给既有断言建地板，不是扩覆盖）
 - `e2e-tmux-rust` job 仍无 `npm ci`（那两套的 npm script 只是 `bash …`，不需要依赖；
   与本功能无关，未动）
