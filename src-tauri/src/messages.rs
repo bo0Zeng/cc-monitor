@@ -23,6 +23,8 @@ use serde::{Deserialize, Serialize};
 /// = 自身 uuid（**不是**"整段共享同一个 messageUuid"——早期注释误述，勿据此把 F62 改回错的）。
 /// `analyze_jsonl` 取首条 forkedFrom 的 sessionId 认 parent，故只需前缀共享 sessionId 即可。
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct ForkedFrom {
     #[serde(rename = "sessionId")]
     pub session_id: String,
@@ -31,6 +33,8 @@ pub struct ForkedFrom {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(tag = "type")]
 pub enum JsonlRecord {
     #[serde(rename = "user")]
@@ -84,6 +88,9 @@ pub enum JsonlRecord {
         #[serde(rename = "isApiErrorMessage", default)]
         is_api_error_message: bool,
         #[serde(default)]
+        // `serde_json::Value` 没有天然的 TS 对应；用 `unknown` 而不是 `any`——
+        // 前端必须先 typeof/形状守卫才能读，这与 §18「宽容 schema」的读法一致。
+        #[cfg_attr(test, ts(type = "unknown"))]
         error: Option<serde_json::Value>,
         #[serde(rename = "apiErrorStatus", default)]
         api_error_status: Option<u32>,
@@ -110,6 +117,16 @@ pub enum JsonlRecord {
     System {
         #[serde(default)]
         subtype: Option<String>,
+        // **C03 大整数策略**（默认 `number`，但绝不许是 ts-rs 的默认 `bigint`）。
+        // 上限论证**按量纲单独算**，不套用字节数/时间戳那两条：这里的量纲是**时长(ms)**，
+        // `Number.MAX_SAFE_INTEGER` = 2^53-1 ms ≈ **28.5 万年**。单条 system 记录的
+        // 耗时不可能接近它 ⇒ f64 精度足够，且 Tauri 的 IPC 是 `serde_json::to_string`
+        // ⇒ 线上是 JSON 文本 ⇒ `JSON.parse` 永远给不出 BigInt，写 `bigint` 才是错的。
+        // **注意 Option 的外层**：`ts(type = …)` 覆盖的是**整个**类型，不只是内层。
+        // 写 `"number"` 会生成 `durationMs: number` —— 丢掉 `| null`，而这个字段
+        // **没有** `skip_serializing_if` ⇒ None 会被序列化成 `null`（不是省略）。
+        // 我本轮就先写错了一次，是盯生成物发现的 ⇒ 已补一条守卫机检这个形状。
+        #[cfg_attr(test, ts(type = "number | null"))]
         #[serde(rename = "durationMs", default)]
         duration_ms: Option<u64>,
         #[serde(rename = "messageCount", default)]
@@ -134,6 +151,9 @@ pub enum JsonlRecord {
         #[serde(rename = "maxRetries", default)]
         max_retries: Option<u32>,
         #[serde(default)]
+        // `serde_json::Value` 没有天然的 TS 对应；用 `unknown` 而不是 `any`——
+        // 前端必须先 typeof/形状守卫才能读，这与 §18「宽容 schema」的读法一致。
+        #[cfg_attr(test, ts(type = "unknown"))]
         error: Option<serde_json::Value>,
     },
 
@@ -222,8 +242,12 @@ pub enum JsonlRecord {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct ApiMessage {
     pub role: String,
+    // 同上：`unknown` 逼前端先做形状判断（`cards/index.ts` 的 `ContentBlock` 就是那层解释模型）。
+    #[cfg_attr(test, ts(type = "unknown"))]
     pub content: serde_json::Value,
     #[serde(default)]
     pub model: Option<String>,
@@ -231,11 +255,18 @@ pub struct ApiMessage {
     pub usage: Option<Usage>,
     /// Batch14-F42：一轮结束判定（assistant 终结记录带 `end_turn`；
     /// aterm/HANDOFF 同判据）。老记录/流式中间记录无此字段 → None 不序列化。
+    // 同 `JsonlLinePayload.origin`：`skip_serializing_if` ⇒ 必须 `ts(optional)`。
+    // 这里还叠了 C02 实测过的一层：`default` + `skip_serializing_if` 会走 ts-rs 的
+    // `maybe_omitted && has_default` 回退，生成**过宽**的 `stop_reason?: string | null`。
+    // 显式 `ts(optional)` 才得到诚实的 `stop_reason?: string`。
+    #[cfg_attr(test, ts(optional))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct Usage {
     #[serde(default)]
     pub input_tokens: u32,

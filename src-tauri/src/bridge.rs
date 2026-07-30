@@ -77,13 +77,25 @@ pub mod events {
 ///
 /// Notes: session fork (`/branch`) 创建新 jsonl 文件 → 新 session_id，timeline 独立。
 #[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct JsonlLinePayload {
     pub session_id: String,
     pub cwd: Option<String>,
     pub path: String,
+    // **C03 大整数策略**：量纲是**per-file 行号**，`Number.MAX_SAFE_INTEGER` = 2^53-1 行
+    // ——按每行约 1 KB 算是 9 EB 的单个 jsonl 文件 ⇒ f64 精度足够。
+    // 而 `bigint` 是错的：Tauri IPC 走 `serde_json::to_string` ⇒ 线上是 JSON 文本
+    // ⇒ `JSON.parse` 永远给不出 BigInt（`tauri-2.11.2/src/ipc/mod.rs:181-183`）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub seq: u64,
     /// issue #15：数据来源标签。`None` = 本地（不序列化，前端视为本地，Tab 标题无前缀）；
     /// `Some(host)` = 远端 SSH 数据源的主机名，前端据此给 Tab 标题加 `[host]` 前缀。
+    // **C01/C02 立的规则**：有 `skip_serializing_if` 就必须配 `ts(optional)`。
+    // 不配的话 ts-rs 生成 `origin: string | null` —— 两处都错：线上是**省略**而不是
+    // 必填，而且**永远不会是 null**（Rust 侧 None 直接不序列化）。
+    // 这一条本轮由守卫当场抓到（原话：「会多一个永不出现的 `| null`」）。
+    #[cfg_attr(test, ts(optional))]
     #[serde(rename = "origin", skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
     pub message: crate::messages::JsonlRecord,
@@ -98,6 +110,8 @@ pub struct JsonlLinePayload {
 /// （见 events.ts「chunkIndex/chunkTotal 元数据仍在 payload，但不再做 prepend/append 决策」）。
 /// `chunk_total == 1` = 不切块（小数据单次 emit，无切块开销）。
 #[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct JsonlBatchPayload {
     /// 0-based 块序号

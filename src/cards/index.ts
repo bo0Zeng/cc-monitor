@@ -39,22 +39,31 @@ import { resolveRemoteConfigByOrigin } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
 
 // === Rust 端 JsonlRecord 的 TS 镜像 ===
+//
+// **C04c 起不再是「镜像」了：`JsonlRecord` / `ApiMessage` / `Usage` 三个都由 `ts-rs`
+// 从 `src-tauri/src/messages.rs` 生成**——那个 enum **就是**线定义
+// （wire == `serde_json::to_string(JsonlRecord)`），所以它才是唯一的源。
+//
+// 手抄版被删掉时暴露的三处漂移（都是**手写版更宽或更窄**，无声地）：
+// ① variant 数 **8 vs 12**：手抄版缺 `permission-mode` / `last-prompt` /
+//    `file-history-snapshot` / `Unknown`；
+// ② 手抄版给 `queue-operation` 声称了一个 Rust 根本没有的 `timestamp?: string`
+//    ——线上永远没有它，读到的恒为 `undefined`；
+// ③ 手抄的 `Usage` 把 `cache_creation_input_tokens` / `cache_read_input_tokens` 标成
+//    optional，而 Rust 侧只有 `#[serde(default)]`、**没有** `skip_serializing_if`
+//    ⇒ 线上恒有。
+//
+// **`ContentBlock` 刻意留手写**（就在下面）：Rust 的 `ApiMessage.content` 是
+// `serde_json::Value`，压根没引用 Rust 那个 `ContentBlock` ⇒ 它在线上**不可达**。
+// TS 这个是对 `content: unknown` 的**解释模型**，属于前端侧的意图类型，
+// 同账本第 4 行「IR 是前端的意图模型，别把它拖过边界」。生成它就是为假想消费者建抽象。
+import type { ApiMessage } from "../generated/ApiMessage";
+import type { JsonlRecord } from "../generated/JsonlRecord";
+import type { Usage } from "../generated/Usage";
 
-interface ApiMessage {
-  role: string;
-  content: unknown; // string | ContentBlock[]
-  model?: string;
-  usage?: Usage;
-  /** Batch14-F42：一轮结束判据（assistant 终结记录 = "end_turn"），turn-notify 消费。 */
-  stop_reason?: string | null;
-}
-
-interface Usage {
-  input_tokens: number;
-  cache_creation_input_tokens?: number;
-  cache_read_input_tokens?: number;
-  output_tokens: number;
-}
+// 本文件内部也用这些名字，所以 import + re-export 都要有：
+// **只写 `export type { … } from` 不会把名字带进本地作用域**（C02 栽过两次，C04c 又栽一次）。
+export type { ApiMessage, JsonlRecord, Usage };
 
 export type ContentBlock =
   | { type: "text"; text: string }
@@ -67,110 +76,6 @@ export type ContentBlock =
       is_error?: boolean;
     };
 
-export type JsonlRecord =
-  | {
-      /** issue #36：CC 2.1.x 队列操作记录（enqueue 带 content，折叠豁免用） */
-      type: "queue-operation";
-      operation?: string;
-      content?: string;
-      timestamp?: string;
-    }
-  | {
-      type: "user";
-      uuid: string;
-      timestamp: string;
-      message: ApiMessage;
-      cwd?: string;
-      sessionId?: string;
-      /** issue #8: ESC 回退分支检测用。parentUuid → 上一条 jsonl 记录 uuid。 */
-      parentUuid?: string;
-      /**
-       * Claude Code 注入的 meta 消息（skill/command 展开的 prompt、system-reminder、
-       * caveat 等）带 isMeta:true —— 不是用户真正输入，renderMessage 跳过建卡。
-       */
-      isMeta?: boolean;
-    }
-  | {
-      type: "assistant";
-      uuid: string;
-      timestamp: string;
-      message: ApiMessage;
-      sessionId?: string;
-      /** issue #8: ESC 回退分支检测用 */
-      parentUuid?: string;
-      /**
-       * issue #21: API 最终失败时 CLI 写的合成 assistant 消息（重试耗尽/不可重试）。
-       * isApiErrorMessage 是判定主键；error 是机器可读分类（实测皆 string：
-       * authentication_failed / invalid_request / server_error / unknown…勿穷举；
-       * 后端按 §18 透传 Value 防类型漂移 → 这里 unknown、用 typeof 守卫）；
-       * apiErrorStatus 仅 HTTP 类有。报错文本在 message.content[0].text。
-       * 镜像 messages.rs::Assistant。
-       */
-      isApiErrorMessage?: boolean;
-      error?: unknown;
-      apiErrorStatus?: number;
-    }
-  | { type: "ai-title"; aiTitle: string; sessionId: string }
-  // Claude Code v2.1.x 起的新名字。aiTitle / customTitle 语义一致 ——
-  // 都是会话级语义标题（旧 jsonl 用 ai-title，新 jsonl 用 custom-title）。
-  | { type: "custom-title"; customTitle: string; sessionId: string }
-  | {
-      type: "system";
-      subtype?: string;
-      durationMs?: number;
-      messageCount?: number;
-      timestamp: string;
-      /** issue #8: 部分 system 记录有 uuid+parentUuid 参与 jsonl 链跟踪 */
-      uuid?: string;
-      parentUuid?: string;
-      /**
-       * issue #21: subtype="api_error"（API 调用失败将重试）时有。error 对象两种
-       * shape（新版有 .formatted 现成文案），unknown 透传、渲染侧防御性取字段。
-       * 镜像 messages.rs::System。
-       */
-      level?: string;
-      retryAttempt?: number;
-      maxRetries?: number;
-      error?: unknown;
-    }
-  | {
-      /**
-       * issue #8: attachment 不渲染（renderMessage 返回 skip），但有 uuid+parentUuid
-       * 夹在 user→assistant 之间。前端必须收到才能完整算 ESC 回退主线 ——
-       * 否则 parent 链断在 attachment 处，下游整段会被错误折叠为"已被回退"。
-       */
-      type: "attachment";
-      uuid: string;
-      timestamp: string;
-      parentUuid?: string;
-    }
-  | {
-      /**
-       * F63 (issue #49)：**看不懂的记录**——后端 `parser.rs::salvage` 抢救出的
-       * 原文 + 链上身份。**不是真实 jsonl 里的类型**，是我们自造的信封（故带
-       * `cc-monitor-` 前缀防撞未来真类型）。镜像 `messages.rs::Unrecognized`。
-       *
-       * 同 attachment：**不建卡**（`renderMessage` 落 `default => skip`），但必须
-       * 收到——它可能是链上的一环，缺席会让 children 落 `branching.ts` 的孤儿
-       * root → 整棵误折叠。有 uuid 才进链（`extractBranchRecord` 已守）。
-       *
-       * `raw` 是一字节不改的原文：F63 只做**逃生口**，不认领具体新类型
-       * （SS-1 账本：留逃生口就够，别建完整统一格式）。将来要用 `pr-link` /
-       * `agent-name` / `worktree-state` 这些，从 `raw` 里取，无需再动后端。
-       */
-      type: "cc-monitor-unrecognized";
-      uuid?: string;
-      parentUuid?: string;
-      timestamp?: string;
-      /** 原文里的 `type`（若有）——诊断/记账按它分类 */
-      originalType?: string;
-      /** 原始 JSON 行，一字节不改 */
-      raw: string;
-      /** 为什么没认出来：`unknown-type` / `parse-failed: <serde 原文>` */
-      reason: string;
-    };
-
-// === 卡片渲染 ===
 
 /**
  * 渲染上下文，沿调用链向下传递。
@@ -1113,7 +1018,9 @@ function isSyntheticReply(text: string): boolean {
 function cardHeader(
   role: string,
   timestamp: string,
-  model?: string,
+  // C04c：`| null` —— `ApiMessage.model` 是 `Option<String>` 且无 skip_serializing_if
+  // ⇒ 线上是显式 null。下面的真值判断本来就吃得下 null，只是类型此前没说实话。
+  model?: string | null,
 ): HTMLElement {
   const h = document.createElement("div");
   h.className = "card-header";

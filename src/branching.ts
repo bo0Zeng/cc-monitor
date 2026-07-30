@@ -269,10 +269,14 @@ export function setsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boole
  * 我们要的（本机实测 7 个未知 type 全无 uuid，故今天这条路一个都不会进链）。
  */
 export function extractBranchRecord(rec: {
+  // **C04c**：`| null` 是线上的实情。这些字段在 Rust 侧是 `Option<T>` 且**没有**
+  // `skip_serializing_if` ⇒ `None` 序列化成**显式 null**、不是省略。
+  // 下面 `!rec.uuid` / `?? ""` 这些真值判断本来就吃得下 null，只是此前的类型没说实话
+  // ——生成的 `JsonlRecord` 一接进来就把这个谎揭出来了（`tsc` 报在这条调用上）。
   type: string;
-  uuid?: string;
-  parentUuid?: string;
-  timestamp?: string;
+  uuid?: string | null;
+  parentUuid?: string | null;
+  timestamp?: string | null;
   message?: { content?: unknown };
 }): BranchRecord | null {
   if (
@@ -288,7 +292,9 @@ export function extractBranchRecord(rec: {
   const userText = rec.type === "user" ? contentText(rec.message?.content) : "";
   return {
     uuid: rec.uuid,
-    parentUuid: rec.parentUuid,
+    // **C04c 的边界归一化**：`BranchRecord` 是前端自己的分支图模型（不是线上类型，
+    // 同账本第 4 行「IR 是前端的意图模型」）⇒ 不把线上的 null 传染进去，在入口处收成 undefined。
+    parentUuid: rec.parentUuid ?? undefined,
     timestamp: rec.timestamp,
     type: rec.type,
     // issue #22：只有 user 记录可能是回撤打断叶子；其他类型恒 false。
