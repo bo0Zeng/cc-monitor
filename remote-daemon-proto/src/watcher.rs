@@ -84,6 +84,14 @@ enum WatchEvent {
     TmuxObserved(TmuxProbe),
     /// tmux 探测节拍——**本 crate 剩下的唯一定时器**，住在独立 ticker 线程里。**P5 删。**
     TmuxProbeDue,
+    /// **P4：外部戳一下** —— 语义与 [`WatchEvent::TmuxProbeDue`] **完全相同**（立刻重探
+    /// tmux 并走同一条差分/发帧路径），区别只在**来源**：这个是事件驱动的（tmux hook
+    /// → `--tmux-notify` → `SIGUSR1` → 这里），那个是定时器。
+    ///
+    /// **为什么不复用 `TmuxProbeDue` 就完事**：两者共用一条处理路径是对的，但**来源要能
+    /// 分辨** —— P5 删掉 ticker 之后，「还有没有人在戳」是判断 hook 通路是否活着的唯一线索；
+    /// 混成一个变体就再也分不出「hook 没装上」与「ticker 还在兜底」。
+    Poke,
     /// 预留给 P5：删掉 ticker 之后，主循环需要一条**显式**的停机信号才能及时
     /// 发现 stdout 写端已关（`sink.is_closed()` 现在靠 ticker 每 8s 醒一次来复查）。
     ///
@@ -512,15 +520,38 @@ fn observation_to_frame(obs: TmuxObservation) -> Frame {
 /// `claude_dir` is the resolved `~/.claude` (or `$CLAUDE_CONFIG_DIR`). The
 /// reader watches `<claude_dir>/projects/` recursively and
 /// `<claude_dir>/sessions/`.
-pub fn spawn(claude_dir: PathBuf, with_bg: bool, tail_only: bool) -> mpsc::Receiver<Frame> {
+/// **P4：戳一下 watcher 的句柄** —— 故意是个**窄类型**而不是把
+/// `Sender<WatchEvent>` 整个交出去：外部（`main` 的 SIGUSR1 流）只该有「催一次重探」
+/// 这一个权力，不该能伪造 `PidDied` / `TmuxObserved` 这类带载荷的内部事件。
+///
+/// 这是账本第 1 行那条「只加事件源、不加定时器」的自然延伸：新来源经**同一个** channel。
+#[derive(Clone)]
+pub struct WatcherPoke(std::sync::mpsc::Sender<WatchEvent>);
+
+impl WatcherPoke {
+    /// 催一次 tmux 重探。watcher 已停（channel 关）时静默无操作 —— 那说明没人在听，
+    /// 不是错误。
+    pub fn poke(&self) {
+        let _ = self.0.send(WatchEvent::Poke);
+    }
+}
+
+pub fn spawn(
+    claude_dir: PathBuf,
+    with_bg: bool,
+    tail_only: bool,
+) -> (mpsc::Receiver<Frame>, WatcherPoke) {
     let (tx, rx) = mpsc::channel::<Frame>(CHANNEL_CAPACITY);
-    // notify-debouncer-mini is a synchronous std::sync::mpsc API; run it on a
-    // blocking thread and hand frames to the async writer over tokio mpsc.
+    // P4：事件 channel 从 `watch_loop` 内部**上提到这里**造 —— 因为 poke 句柄必须在线程
+    // 起来之前就能交给 `main`。**仍然只有这一条 channel**（账本第 1 行不许再开第二条）：
+    // 交出去的是同一个 sender 的 clone，`watch_loop` 收的是同一条的 receiver。
+    let (events_tx, events_rx) = std::sync::mpsc::channel::<WatchEvent>();
+    let poke = WatcherPoke(events_tx.clone());
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
-        .spawn(move || watch_loop(claude_dir, tx, with_bg, tail_only))
+        .spawn(move || watch_loop(claude_dir, tx, with_bg, tail_only, events_tx, events_rx))
         .expect("spawn jsonl-watcher thread");
-    rx
+    (rx, poke)
 }
 
 /// The reader half: initial walkdir scan, then the live debouncer loop.
@@ -528,7 +559,14 @@ pub fn spawn(claude_dir: PathBuf, with_bg: bool, tail_only: bool) -> mpsc::Recei
 /// Runs on its own OS thread. `tx` is the bounded sender; it is wrapped in a
 /// [`FrameSink`] whose [`FrameSink::send`] never blocks the notify callback and
 /// turns dropped frames into an [`Frame::Overflow`] signal (#32).
-fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool, tail_only: bool) {
+fn watch_loop(
+    claude_dir: PathBuf,
+    tx: mpsc::Sender<Frame>,
+    with_bg: bool,
+    tail_only: bool,
+    events_tx: std::sync::mpsc::Sender<WatchEvent>,
+    events_rx: std::sync::mpsc::Receiver<WatchEvent>,
+) {
     let projects = claude_dir.join("projects");
     let sessions = claude_dir.join("sessions");
 
@@ -545,7 +583,9 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool, tail_
     // 「field `start` is never read」间接暴露），**daemon 启动时就活着的会话会一个看守都没有**
     // ——而原先那条 2s 判活轮询是覆盖它们的 ⇒ 那是回归。Phase 1 期间发出的 `PidDied` 只是
     // 在 channel 里排队，主循环起来后照常消费。
-    let (events_tx, events_rx) = std::sync::mpsc::channel::<WatchEvent>();
+    // P4：channel 已由 `spawn` 造好传进来（poke 句柄要在线程起来前就交出去）。
+    // **顺序仍然关键**（P2 那个静默回归的教训）：`state.events_tx` 必须在 Phase 1 之前设好，
+    // 否则 daemon 启动时就活着的会话一个 pidfd 看守都拿不到。
     state.events_tx = Some(events_tx.clone());
 
     // --- Phase 1: synchronous initial scan. ---
@@ -659,7 +699,9 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool, tail_
                     }
                 }
             }
-            WatchEvent::TmuxProbeDue => {
+            // P4：`Poke` 与 `TmuxProbeDue` 走**同一段**——`tmux_inflight` 那道去重顺带
+            // 免疫了「信号合并 / 一串 hook 同时打进来」：多次戳只会落一次探测。
+            WatchEvent::TmuxProbeDue | WatchEvent::Poke => {
                 if !tmux_inflight {
                     tmux_inflight = true;
                     let tx = events_tx.clone();
@@ -1829,6 +1871,102 @@ mod tests {
             WatchEvent::TmuxProbeDue => {}
             _ => panic!("期望 TmuxProbeDue"),
         }
+    }
+
+    // ---------- P4（zero-poll-liveness）：外部 poke ⇒ 立刻重探 ----------
+
+    /// P4：`Poke` 与 `TmuxProbeDue` 必须走**同一条**处理路径 —— 事件驱动的那一拍和
+    /// 定时器那一拍，除了来源不同，后续行为应当逐字相同。
+    ///
+    /// 这条扫源码而不是跑循环：`watch_loop` 要真 spawn 线程 + 真跑 `tmux ls`，
+    /// 在单测里不可控。**范围窄于性质，如实记**：它钉的是「两个变体在同一个 match 臂上」，
+    /// 钉不住「那个臂里的代码是对的」——后者由 P4 的真机验收（hook 装上之后）覆盖。
+    #[test]
+    fn poke_shares_the_probe_arm_with_the_ticker() {
+        // ★★ 判据**运行时拼**且**只扫生产段** —— 初版两样都没做，于是变异验收时
+        // 「把 Poke 拆成独立臂」**没有变红**：断言那串字面量就在本测试自己的源码里，
+        // `contains` 恒真 ⇒ 这条守卫是**安慰剂**。是变异（而不是审读）把它揪出来的。
+        let me = include_str!("watcher.rs");
+        let marker = "\n#[cfg(test)]\nmod tests";
+        let prod = match me.find(marker) {
+            Some(i) => &me[..i],
+            None => me,
+        };
+        let arm = format!("WatchEvent::TmuxProbeDue {} WatchEvent::Poke =>", "|");
+        assert!(
+            prod.contains(&arm),
+            "P4：Poke 必须与 TmuxProbeDue 共用同一个 match 臂（否则两条路会各自漂）"
+        );
+        assert!(
+            prod.len() < me.len() && prod.len() > 1000,
+            "剥 cfg(test) 没生效，这条断言在空转"
+        );
+    }
+
+    /// ★ P4：`WatcherPoke` 是**窄**句柄 —— 外部只能催重探，不能伪造带载荷的内部事件。
+    ///
+    /// 为什么要钉：`main` 的 SIGUSR1 流拿到的若是 `Sender<WatchEvent>` 本身，它就能发
+    /// `PidDied{key,pid}` / `TmuxObserved(..)` —— 那等于把「谁能宣布一个会话死了」这件事
+    /// 从 watcher 内部漏到了进程边界上（signal 处理器是最不该有这个权力的地方）。
+    #[test]
+    fn watcher_poke_is_a_narrow_handle() {
+        let me = include_str!("watcher.rs");
+        // 结构性判据：poke 句柄只暴露一个无参方法，且它只发 Poke 这一个变体。
+        assert!(
+            me.contains("pub fn poke(&self)"),
+            "WatcherPoke 应当只暴露 poke()"
+        );
+        assert!(
+            me.contains("self.0.send(WatchEvent::Poke)"),
+            "poke() 只许发 Poke 变体"
+        );
+        // 反向：句柄字段不许是 pub（否则外部直接拿 sender，窄类型就白设了）。
+        //
+        // ★ 判据**在运行时拼出来**，绝不把它当字面量写进源码 —— 否则这条 `!contains`
+        // 会被**本测试自己的那行字面量**命中而恒红（初版就是这么栽的：源码里字段并不是
+        // pub，测试却红了，因为 `me` 里找到了断言自己那串）。
+        let forbidden = format!("pub struct WatcherPoke({} ", "pub");
+        assert!(
+            !me.contains(&forbidden),
+            "WatcherPoke 的字段不许 pub —— 那就绕开了窄接口"
+        );
+        assert!(me.len() > 1000, "include_str! 没读到源码，上面的断言是空转");
+    }
+
+    /// P4：**channel 仍然只有一条**（账本第 1 行：不许再开第二条）。
+    /// `spawn` 把 channel 上提到自己这里造，是为了能在线程起来前交出 poke 句柄；
+    /// 上提**不等于**新增 —— `watch_loop` 收的是同一条的 receiver。
+    #[test]
+    fn still_exactly_one_event_channel() {
+        // ★ 只数**生产代码**：测试自己造了 6 条同型 channel（各自的夹具），把它们算进来
+        // 这条断言就恒红（初版实测 7 处）。做法与 `readonly_guard::tests::strip_cfg_test`
+        // 同源，这里用够用的简化版：本文件只有**一个**测试模块，且在文件末尾。
+        //
+        // ★★ **锚点必须避开自指**，这个坑本功能连踩三次：
+        //   ① 用 `rfind("#[cfg(test)]")` —— 找到的是**本测试源码里那行字面量**（在模块标记
+        //      之后）⇒ 几乎什么都没剥掉，实测仍数出 6。
+        //   ② 下面那条「字段不许 pub」的 `!contains` 判据写成字面量 —— 被自己命中而恒红。
+        //      （连**解释这个坑的注释**逐字引用那串时也会再次触发，实测第四次才收干净。）
+        // 现在锚 `\n#[cfg(test)]\nmod tests`：源码里这串是**转义写法**（反斜杠 + n 两个字符），
+        // 与真正的换行不相等 ⇒ 不会匹配到本行自己。
+        let me = include_str!("watcher.rs");
+        let marker = "\n#[cfg(test)]\nmod tests";
+        let prod = match me.find(marker) {
+            Some(i) => &me[..i],
+            None => me,
+        };
+        let n = prod
+            .matches("std::sync::mpsc::channel::<WatchEvent>()")
+            .count();
+        assert_eq!(
+            n, 1,
+            "生产代码里事件 channel 的创建点应当恰好 1 处（实得 {n}）——账本第 1 行不许开第二条"
+        );
+        // 反向自检：真剥掉了测试段（否则上面数的是全文）。
+        assert!(
+            prod.len() < me.len() && prod.len() > 1000,
+            "剥 cfg(test) 没生效，这条断言在空转"
+        );
     }
 
     // ---------- P3（zero-poll-liveness）：tmux server 生 / 死 / 复活 ----------
