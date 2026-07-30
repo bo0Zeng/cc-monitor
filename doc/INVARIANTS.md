@@ -392,6 +392,13 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 **F74c(#60-A) 补充——tmux 存活对账是 `remote_tx` 的第三生产者**：tmux 存活收割器（带外杀 tmux 后端 → 变灰）与 daemon 帧、断连 flush **并列**为 `remote_tx` 的生产者，**必须**把 retire 的 sid 当 `SessionChange{removed}` 经该通道下发，**绝不**直接写 `remote_active`、**绝不**让前端直接 archive——唯一写者仍是 `remote-session-emitter`。误判防线（`ever_bound` 门 + debounce + 漂移靠 announced_live 剔除 + 空 backend/NO_TMUX 跳过）在 `tmux_reconcile::reconcile_step`（纯函数、source-agnostic），阈值真机标定。**后人给收割器接线时不许把它直连前端或直写集合。**
 
+> **`zero-poll-liveness` 更新（P5）——事件路同样只经 emitter**：daemon 现在会主动推正向死亡帧
+> `TmuxSessionClosed { name }`（tmux hook → SIGUSR1 → 差分算出消失的会话名，见 §41）。
+> 它是 `remote_tx` 的**第四个**生产者，与前三者一样**必须**走 `SessionChange{removed}`
+> ——`ssh_source.rs` 收到该帧后拿 name 反查 sid，然后送 emitter，**零新写点**。
+> 查不到 sid 时（never-bound 会话 / 快照还没到）**不猜**，交回收割器兜底。
+> 事件路只是**绕过 miss 计数**的快路径，`RETIRE_MISS_THRESHOLD >= 2` 与快照对账路径一字未动。
+
 > **audit-fixes F03.2 更新——收割器已从 8s poller 改为「收帧驱动」**：原 `tmux_reconcile.rs::run_tmux_reconcile_poller`（8s 定时轮询 + `snapshot_announced_by_origin`）**已删**——cc-monitor 侧零轮询（唯一周期=daemon 内部 tmux ls）。收割逻辑现内联在 `ssh_source.rs::stream_loop` 的 `InboundFrame::TmuxSessions` 帧臂：daemon 每 ~8s 推该 origin 的 `tmux ls` 原文即对账一次，`tracked = 本连接 announced（keys=live sids）∪ 本 origin idle 会话`，调 `reconcile_step` 去抖 retire → 送 `removed` 给 emitter。`reconcile_step` 与 `ReconcileState` 保留为纯决策（F90 可 lift）。
 
 ## 24bis. 远端 idle-tmux 灰灯（audit-fixes F03.2）：`REMOTE_IDLE` 与 `remote_active` 正交、同一 emitter 单写
@@ -413,11 +420,13 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 3. **wire additive**：`TmuxSessions` 帧加 `observation: Option<String>`（`"zero_sessions"` / `"no_tmux"` / `"unobservable"`），**有会话时省略** ⇒ `raw` 载荷与之前逐字节一致 ⇒ **旧 monitor 行为零变化**（空 raw 照旧保守跳过）。**不 bump `PROTO_VERSION`**。取值集是 monitor↔daemon 的**第三个双写点**（前两个：`TMUX_LS_FMT` · `NO_TMUX`），由 `tmux.rs::observation_tokens_double_write_point_stays_in_sync` 钉住。
 4. **monitor 把那条内联 if 提成纯函数** `tmux::classify_tmux_observation`（原判断住在需要真远端连接的 `async fn` 里、单测碰不到）。`ZeroSessions` ⇒ 返回**空集但有效**的 `Backend(∅)` ⇒ 照常进 `reconcile_step` 累计缺失；`NoTmux`/`Unobservable` 才跳过。
 
-**修完后的延迟**：该场景从「永不（卡到断连）」变成 **`RETIRE_MISS_THRESHOLD`(2) × daemon 推帧间隔(8s) ≈ 16s**——**是有界化，不是即时化**。降到 ~10ms 是 `zero-poll-liveness` P3/P5 的事（事件驱动 + 正向死亡帧绕过 miss 计数）。
+**修完后的延迟**：该场景从「永不（卡到断连）」变成 **`RETIRE_MISS_THRESHOLD`(2) × daemon 推帧间隔(8s) ≈ 16s**——**是有界化，不是即时化**。
 
-**一处刻意的保守**：`rc=1` 直接判 `ZeroSessions`，意味着"socket 权限异常"这类罕见情形也会被判成零会话（理论上可能误 retire）。缓解：socket 路径 uid 隔离。**P3 落地后收紧**：那时 daemon 持有 tmux server 的 pidfd，「pidfd 说 server 活着但 `tmux ls` rc=1」= 真异常 ⇒ 归 `Unobservable`；该升级**不改帧契约**。
+> **已落地（2026-07-30，P3/P5）**：8s 推帧间隔本身**已删**，四路信号全部事件驱动 ⇒ 该场景走 tmux server 的 `pidfd`，**实测 27ms**（跨 cgroup 整锅 SIGKILL 30ms）。「多个中杀一个」走 hook→SIGUSR1 + 正向死亡帧，**实测 126ms**（对照组：拆掉 hook 5042ms）。详见 **§41**。
 
-**尚未真机生效**：`BUILD_ID` 仍是 `p1q-accounts`（刻意不在 P1 单独 bump），故已部署的旧 daemon 不会被判 stale、不会自动重装 ⇒ 本修复在远端**休眠**直到 P5 一并 bump + 重部署。
+**一处刻意的保守**：`rc=1` 直接判 `ZeroSessions`，意味着"socket 权限异常"这类罕见情形也会被判成零会话（理论上可能误 retire）。缓解：socket 路径 uid 隔离。~~**P3 落地后收紧**~~ **✅ P3 已收紧**（`watcher.rs::classify_tmux_probe`）：「server 活着但 `tmux ls` rc=1」= 真异常 ⇒ 归 `Unobservable`，帧契约未改。**★ 一处比原设想更细的地方**：判据**刻意不依赖「pidfd 是否醒过」**——那会在 pidfd 路失效时把 rc=1 **永久**压成 `Unobservable` ⇒ 永不 retire；改成直接查 `/proc` 里 server pid 还在不在（一次存在性读，无挂死风险），有专门的变异钉住。
+
+~~**尚未真机生效**~~ **✅ `BUILD_ID` 已 bump 为 `p1r-event-liveness`**（2026-07-30，P7）——在此之前它一直是 `p1q-accounts`，已部署的旧 daemon 不会被判 stale、不自动重装 ⇒ 本修复在远端**休眠**。**如实记**：这次 bump 原计划排在 P5，**P5 漏做了**，是 P7 开工复测时才抓出来的（「有些遗漏不会红任何测试」的又一例：BUILD_ID 是个字符串常量，改不改都全绿）。真机生效仍需重部署。
 
 ---
 
@@ -1092,3 +1101,80 @@ Linux 本地是 POSIX + tmux + `ccm`，跟远端那条路**只差一跳 ssh**。
 单靠人记不住。落地要求一条**钉死的对账表 + 计数自检**，形状照 `config_surface.rs` 的
 `every_host_declaration_is_pinned`（T02 建立）：**枚举全部 Tauri 命令，每条要么两侧都有、
 要么在白名单表里且带理由；新增命令不登记就红。** 具体做法归 `local-as-remote` 工作区 **L5**。
+
+## 41. daemon 的判活信号全部由内核事件驱动 —— 四路事件、零定时器、三个盲区如实分类（zero-poll-liveness P0-P7）
+
+用户 2026-07-29 原话「我要把轮询杀掉」。daemon 里原有 **A/B 两条**轮询（2s 判活 tick + 8s
+`tmux ls` tick），**两条都已删除**，生产段现在零定时器（`no_timer_guard.rs` 钉住，见下）。
+
+### 41.1 四路事件（延迟均为真机实测，标明测法）
+
+| 场景 | 事件源 | 实测延迟 | 谁发 |
+|---|---|---|---|
+| claude 进程退出 / 被强杀 | pidfile inotify **+ `pidfd`**（绑进程实例本身） | **~18ms**（P2 端到端） | `WatchEvent::PidDied` |
+| 杀掉某 origin **仅剩的**会话（server 随之退出） | tmux server 的 `pidfd` | **27ms**；跨 cgroup 整锅 SIGKILL **30ms** | `WatchEvent::TmuxServerGone` |
+| server 复活 | socket **所在目录**的 inotify `IN_CREATE` | **153ms**（含 `DEBOUNCE_MS` 100ms） | `WatchEvent::TmuxObserved` |
+| **多个会话里杀掉其中一个** | tmux `session-created/closed/renamed[50]` hook → `--tmux-notify` → SIGUSR1 | **126ms**（**对照组：拆掉 hook = 5042ms**） | `WatchEvent::Poke` |
+
+四路全部汇进 `watcher.rs` 的**同一个 mpsc channel**（`WatchEvent`），`watch_loop` 阻塞在
+**无超时** `recv()` 上。
+
+> **数字的诚实边界**：最后一行 126ms 取自 P5 §6.3 的对照实验（有对照组，故取它作对外数字）；
+> P5 §4 另一套测法对同一场景测到 **18ms**。两个数都如实留档，差异在测法不是行为。
+> CI 里 `graylight-daemon-frames` 报的那个毫秒数是**上界**（`wait_line` 0.5s 轮询 ⇒ 粒度 500ms），
+> 它是数量级判据（阈值 5s），**不是性能基线**。
+
+### 41.2 一条正确性改进（不只是延迟改进）
+
+PID 死亡判定从「pid 存在 + procStart 匹配」的**启发式**升级为 `pidfd` 绑进程实例本身
+⇒ **PID 复用问题在机制上不存在**（不是「检测得更准」，是「无从发生」）。
+同理 `--tmux-notify` 收到后先核 `/proc/<pid>/stat` 的 starttime 再 `kill`，starttime 不符即静默
+no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关进程）。
+
+### 41.3 三个盲区，如实分类
+
+| # | 盲区 | 处置 |
+|---|---|---|
+| ① | tmux server 复活后 hook 丢失（hook 活在 server 内存里） | **本工作区解决**：socket 目录 inotify ⇒ 「server 起来了」本身是事件，`ServerState::Alive(pid)` 臂里重装 hook |
+| ② | 会话**活着但卡死** | **明确不做**，且要说清：**今天的轮询也没在做这个** —— 卡死的 CC 在 `tmux ls` 里照样在，8s 轮询只检「会话不在了」。⇒ **删轮询在这一格上零损失**，不是拿盲区换延迟 |
+| ③ | user manager / 整台机器挂掉 | 机器内部无解，靠 monitor **断连自愈**（既有路径：重连后 daemon 重发 added + 重放行 → un-archive） |
+
+**另有一条既有盲区（不是本区引入）**：`notify-debouncer-mini` 静默吞掉 inotify 队列溢出
+（`add_event` 只读 `event.paths`，而溢出事件 `paths` 为空）⇒ 溢出时事件永久丢失。
+两端都中招，登记为 BACKLOG **E39**。**`pidfd` 对溢出免疫**（内核直通）⇒ 本工作区让情况变好。
+**绝不为它补定时器** —— 那等于零轮询造假。
+
+### 41.4 红线：绝不为了让守卫变绿而删掉唯一信号源
+
+`no_timer_guard.rs`（daemon crate，全在 `#[cfg(test)]` 内）扫**全 crate 生产段**：
+
+- **判据落在「周期性唤醒」，不落在「出现过 `Duration`」** —— `Duration` 有大量非定时器的正当
+  用途（去抖窗口、超时上限）。禁的是 `thread::sleep` / `time::sleep` / `recv_timeout` /
+  `time::interval` / `Instant::now` / `Duration::from_secs` 这类**会让线程自己醒来**的构件。
+- **非定时器的 `Duration` 用途逐条登记带理由**，处数必须**恰好等于**登记表条数 ⇒
+  用 `from_millis(8000)` 偷渡节拍也会红。**登记表不是豁免清单。**
+- 范围**只钉 daemon 生产段**：monitor 侧有 UI 刷新、重连退避等正当周期行为，扩过去会变成噪音。
+
+**两条派生纪律**（都是实测踩出来的）：
+
+1. **daemon 源码的散文里不许逐字引用守卫的禁用模式** —— `readonly_guard`（铁律 I7，daemon 只读）
+   与 `no_timer_guard` 都连注释一起扫，是 fail-closed 的设计。**改措辞，不许为自己方便去改红线守卫。**
+2. **删掉一个周期性信号时，光跑单元 + 集成门禁不够** —— 还要跑依赖那个节拍的 e2e。
+   P5 删 8s ticker 时漏了这一步，`graylight-daemon-frames` 第 2 段（它靠 ticker 重发快照）
+   静默变红，直到 P6 并 e2e 时才被撞出来；那 6 套是 **CI-only**，不在 `cargo test` / `npm test` 里。
+
+### 41.5 兼容与部署
+
+- **wire 两处 additive，`PROTO_VERSION` 不 bump**：`TmuxSessions` 加 `observation`
+  （有会话时**省略** ⇒ `raw` 载荷逐字节不变）；新帧 `TmuxSessionClosed { name }` 进 `EMITS`。
+  旧 monitor 遇未知 kind 走 `warn` 后跳过（`unknown_kind_returns_none` 钉住），行为退回
+  「快照 + miss 计数」。
+- **`BUILD_ID` 必须 bump**（现 `p1r-event-liveness`）：不 bump ⇒ 旧 daemon 报同一个 id
+  ⇒ 不被判 stale ⇒ 不自动重装 ⇒ **整轮改动在已部署的远端休眠**。
+  单一事实源：`build.rs::emit_daemon_build_id` 从 daemon 源码抠出，emit 成 monitor 的
+  `EXPECTED_DAEMON_BUILD_ID`。
+- **死亡帧只带 name、不带 sid**：`#{@ccm_sid}` 在 hook 上下文会解析到**别的会话**
+  （P0 实测；照直觉写会把活着的会话变灰）。name→sid 的映射 monitor 本来就有
+  （最新那份 `tmux ls` 原文）⇒ **让知道的人去查，比让不知道的人硬传更稳。**
+- **`RETIRE_MISS_THRESHOLD >= 2` 与快照对账路径一字未动** —— 死亡帧是**绕过** miss 计数的
+  快路径，不是替换兜底。查不到 sid 时（never-bound / 快照还没到）**不猜**，交回兜底路。

@@ -25,7 +25,7 @@
 | **rust-ts-boundary/** | Rust↔TS 边界从人工纪律改成生成物（`tauri-specta`）+ 门禁 | **Phase A 已落盘，等审批**。路线图 ①，是 ③④ 的地基；也是「要不要用 Rust GUI 重写前端」那个问题的便宜答案 |
 | **gate-integrity/** | 门禁不许在零断言下报绿（真机套件断言地板 + vendored bash 进 shellcheck + 6 套 e2e 进 CI） | **主计划已批（07-29）；G-B 已交付签收（07-30）**。**G-B 解除了 `account-zero` cc-acct-iso 半区（Z01/Z04/Z06/Z08）的「没有网不能改那个工具」**。余 G-A（八套断言地板）· G-C（6 套 e2e 进 CI） |
 | **local-as-remote/** | 本地 = 不走 ssh 的远端（含 Linux 平台）。落地 `doc/INVARIANTS.md` **§40** | **Phase A 已落盘，等审批**。路线图 ④。L5 平价对账可先做；L0 是唯一可能推翻方向的一步（WebKitGTK） |
-| **zero-poll-liveness/** | 判活从轮询改成内核事件（tmux hook + pidfd + inotify）。承 BACKLOG **E34** + 用户 2026-07-30「daemon 是能改的，要性能最佳且不要轮询」 | **主计划已批 + P4 hook 已授权；P0/P1/P2/P3 已交付签收**（`4e7b100`/`81b22b8`/`03daf6c`/`de57453`）。**实测**：强杀会话进程 → `session_removed` **~18ms**（原 ≤2s）· `kill-server` → 零会话帧 **27ms** · server 复活 **153ms** · 跨 cgroup SIGKILL **30ms**。P1 销掉 `INVARIANTS:408` 那条真 bug。**P4 设计被 `readonly_guard` 推翻并重定**（原方案让 daemon 写文件 ⇒ 撞红线 I7），改走 SIGUSR1 通路（`5290768`）。余 P4-P7 |
+| **zero-poll-liveness/** | 判活从轮询改成内核事件（tmux hook + pidfd + inotify）。承 BACKLOG **E34** + 用户 2026-07-30「daemon 是能改的，要性能最佳且不要轮询」 | **✅ 全区交付签收（P0-P7 八个功能全部完成，2026-07-30）**（`4e7b100`/`81b22b8`/`03daf6c`/`de57453`/`5290768`/`7127357`/`3ccb6d6`/`d9f464c`/`64c2477`/`67653e2`/`75ee6f4`/`66134cc`）。**daemon 里 A/B 两条轮询都已删除，生产段零定时器**（`no_timer_guard.rs` 钉住，四条变异成立）。**四路事件实测**：强杀会话进程 → `session_removed` **~18ms**（原 ≤2s）· `kill-server` → 零会话帧 **27ms** · server 复活 **153ms** · 跨 cgroup SIGKILL **30ms** · **「多个中杀一个」→ 正向死亡帧 126ms（对照组：拆掉 hook 5042ms）**，原为 8s×2 ≈ 16s。P1 销掉 `INVARIANTS:408` 那条真 bug；`pidfd` 让 **PID 复用在机制上不存在**（唯一一条正确性改进）。wire 两处 additive、**不 bump `PROTO_VERSION`**；`BUILD_ID` → `p1r-event-liveness`。文档见 `doc/INVARIANTS.md` **§41**，**BACKLOG E34 已结案**（含对其原措辞三处订正） |
 
 
 ---
@@ -64,7 +64,7 @@
 | 18 | **L3a** 本地账号枚举（只读，Rust 读 manifest） | local-as-remote | 否 |
 | 19 | **L4** Linux 打包进 CI/release | local-as-remote | 否 |
 | 20 | **L3b** 本地账号管理（写） | local-as-remote | 依赖 account-zero 全部落地 |
-| **21** | **E34 事件驱动的 tmux 存活信号**（用户点名「把轮询杀掉」）—— 已升格为独立工作区、拆成 P0-P7 八个功能；**主计划已批，P0-P3 已交付签收**（实测 ~18ms / 27ms / 153ms / 30ms），余 P4-P7 | **zero-poll-liveness** | **部分**：P4（装 hook 到活着的 tmux server）要授权；其余不要。**原表两处已订正**：① 不再需要改 `shared/ccm` 本体（hook 由 **daemon** 装——只有 daemon 有「server 重启」这个时机）② §24 单写者不再是开放问题（所有新信号都汇进既有 `SessionChange{removed}` → emitter，零新写点） |
+| **21** | ~~**E34 事件驱动的 tmux 存活信号**~~（用户点名「把轮询杀掉」）—— 升格为独立工作区、拆成 P0-P7 八个功能，**✅ 八个全部交付签收（2026-07-30）**。实测 ~18ms / 27ms / 153ms / 30ms / **126ms**（末者有对照组 5042ms）；两条轮询都已删、生产段零定时器；文档 `doc/INVARIANTS.md` §41，**E34 已结案** | **zero-poll-liveness** | **已给**：P4（装 hook 到活着的 tmux server）用户 2026-07-30 已授权；其余不需要。**原表两处已订正**：① 不再需要改 `shared/ccm` 本体（hook 由 **daemon** 装——只有 daemon 有「server 重启」这个时机）② §24 单写者不再是开放问题（所有新信号都汇进既有 `SessionChange{removed}` → emitter，零新写点） |
 
 **为什么 C05 从 #4 提到 #2**（C01 的 Phase D 审计 I1 实测）：CI 的 `rust` job（跑 `cargo test`）
 与 `frontend` job（跑 `tsc`）是**两次独立 checkout**——重新生成的产物在前者里被丢掉，
