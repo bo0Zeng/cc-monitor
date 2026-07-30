@@ -8,13 +8,12 @@
 import { normalizeModel, equivalentInputTokens } from "./pricing";
 
 /** 与后端 `usage.rs::UsageTotals` wire 对齐（camelCase）。 */
-export interface UsageTotals {
-  input: number;
-  cacheCreation: number;
-  cacheRead: number;
-  output: number;
-  msgs: number;
-}
+// C03：改成从生成物 re-export（源：`usage.rs::UsageTotals`）。
+// 四个 token 字段在 Rust 侧是 `u64`（头注「u64 防大历史累加溢出」是刻意选择），
+// 由 `#[ts(type = "number")]` 显式收窄——上限按 token 量算：2^53-1 ≈ 9×10^15，
+// 按每天 10^7 tokens 算是 9 亿天。**这不是套用字节数那条「8 PB」，是单独算的。**
+import type { UsageTotals } from "../generated/UsageTotals";
+export type { UsageTotals };
 export interface UsageBucket {
   model: string;
   day: string;

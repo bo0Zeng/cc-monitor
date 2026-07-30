@@ -28,11 +28,9 @@ import {
   type SortBy,
 } from "./paths";
 
-/** F47 TransferProgress（camelCase）。 */
-interface TransferProgress {
-  transferred: number;
-  total: number;
-}
+// C03：改成 import 生成物（源：`sftp_pool.rs::TransferProgress`）。
+// 两个字段在 Rust 侧是 `u64`，由 `#[ts(type = "number")]` 显式收窄（附上限论证）。
+import type { TransferProgress } from "../generated/TransferProgress";
 
 export class SftpPanel implements OverlayHandle {
   private el: HTMLElement;

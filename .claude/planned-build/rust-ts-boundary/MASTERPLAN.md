@@ -84,7 +84,7 @@
 |----|------|-----------|------|------|--------|
 | C01 | **样板：一条命令走通全链** | 接 **`ts-rs` v12**，选**一个**低风险命令生成类型 + 类型化 `invoke`，跑通「改 Rust → tsc 报错」 | **实现中** | — | **P0** |
 | C02 | **事件半边先迁完** | **8 个**事件 payload + `TaskEntry` → 生成；`events.ts` / `remote-health.ts` / `tasks-panel.ts` / `main.ts` 改成消费生成物；新增事件名钉死守卫。**`JsonlLine`/`JsonlBatch` 延后**（卡 C03 的 `seq: u64`，理由见 C02 §2 订正块） | **完成**（`682d5a5` + 审计闭环） | C01 | P0 |
-| C03 | **大整数的显式处置** | `u64`/`i64` 跨边界的策略定下来并落地（`sftp_pool.rs:33` 那 6 个字段是第一批） | 待规划 | C01 | P0 |
+| C03 | **大整数的显式处置** | 策略=默认 `number` 但绝不许是 `ts-rs` 的默认 `bigint`；每个大整数字段必须配 `#[ts(type = …)]`，守卫**打在源上**。三个应用面：`SftpEntry.size`（唯一已确认的静默有损点）· `TransferProgress`（2）· `UsageTotals`（4） | **完成** | C01 | P0 |
 | C04 | **命令半边全量迁移** | 119 个命令 + 128 个 struct 分批迁完；29 个 `import { invoke }` 收成 1 | 待规划 | C01,C03 | P1 |
 | C05 | **门禁** | CI 检查生成物最新（重新生成后 `git diff --exit-code` 空）+ 禁止新增手写跨边界类型 | 待规划 | C02 | P1 |
 
@@ -120,7 +120,7 @@ src-tauri/src/**.rs   ──(ts-rs 派生 + cargo test 导出)──▶  生成�
 | 共享面 | 涉及功能 | 最终形态设计 | 当前状态 | 备注 |
 |---|---|---|---|---|
 | **1. `src/events.ts` + `src/remote-health.ts` + `src/tasks-panel.ts` + `src/main.ts`** | C02,C05 | 单一订阅枢纽保留（这个形状是对的），**C02 交付 9 个**生成类型（8 payload + `TaskEntry`）；`JsonlLine`/`JsonlBatch` 延后。**事件名常量不生成**（`ts-rs` 只生成类型、不生成 `const`）——改为由**钉死 10 个名字的结构性守卫**对拍，形状照 `every_host_declaration_is_pinned` | 手抄 | **C02 Phase B 实测订正两处**：① 原文写「事件名常量也从 `bridge.rs` 生成」——`ts-rs` 做不到；② 原文只写 `events.ts`，**漏了 `src/remote-health.ts`**（`RemoteHealthPayload` 的手写版在那儿）。另：payload struct 实为 **11 个**（含方向相反的 `FrontendReadyPayload`，`Deserialize`），不是 10 个 |
-| **2. `src/sftp/paths.ts:6-13`** | C03,C04 | 由生成物取代；6 个字段里的 `u64` 按 C03 定的策略表达 | 手写，`u64→number` 静默有损 | 这是**唯一已确认的数据损失点**，所以它是 C03 的第一批 |
+| **2. `src/sftp/paths.ts` + `src/sftp/panel.ts` + `src/views/usage-pivot.ts`** | C03,C04 | 三处手写镜像全部由生成物取代；`u64` 一律 `#[ts(type = "number")]` + **按量纲分开算**的上限论证（字节数 8 PB / token 量 9 亿天，不套用同一条） | **已完成**（C03） | 这是**唯一已确认的数据损失点**，所以它是 C03 的第一批 |
 | **3. `src/accounts.ts` 6 个 type** | C04 | 由生成物取代；**中文注释也应该从 Rust 侧 doc comment 生成**（今天是拷贝的） | 手写，注释都是拷贝的 | 与 `account-zero` 工作区**同时在改** ⇒ 见下方冲突协议 |
 | **4. IR 类型 `src/launch-plan.ts`** | C04 | `LaunchPlan`/`LaunchContext`/`LaunchAccount`/`EnvOp`/`WrapSpec` —— **这几个今天只活在 TS 侧**（Rust 不认识它们）。**本工作区不动它们**：它们不是跨边界类型，不该为了统一而强行搬去 Rust | 纯 TS | **重要判断**：IR 是前端的意图模型，Rust 侧只收渲染好的命令串。**别把它拖过边界。**`account-zero` Z02 与 `local-as-remote` 都要改这些类型，本工作区**不插手** |
 | **5. `lib.rs` 的 `invoke_handler`（119 项）** | C01,C04 | **保持手写**（`ts-rs` 不管命令签名），由**钉死全部 119 项的结构性守卫**对拍——把今天覆盖 3/119 的白名单测试扩到 119，形状照 `every_host_declaration_is_pinned` + `structural_scan::require` | 手写列表，`lib.rs:894-1033` | `lib.rs` 已经同时是顶和底（Phase G 整体设计视角重要 7：29 处上行引用）。**本工作区不解决那个问题**，只保证列表不漂 |
@@ -256,6 +256,7 @@ C01（样板 + 变异验收）
 
 ## §7 变更记录
 
+- 07 — 2026-07-29 — **C03 落地：大整数策略 + 第二条源上守卫** — 盘点发现已派生集合里只有 1 个大整数字段且已处置 ⇒ 规则若只覆盖它会平凡通过，故给它找了三个真实应用面（SftpEntry.size 是 Phase G 报的唯一已确认静默有损点 · TransferProgress 2 个 · UsageTotals 4 个）。**刻意的窄越界**：三者都属命令半边（协议归 C04），理由是策略需 ≥2 个应用面才成为规则。跳过 SftpStat（TS 侧裸 invoke 无类型参数、字段没人用 ⇒ 为假想消费者建抽象）。上限论证**按量纲分开算**。实证了「不能断言生成物不含 bigint」——我自己用裸 grep 复现了那个假阳性（全在 JSDoc 散文里）。
 - 06 — 2026-07-29 — **C02 落地 + 审计闭环**（`682d5a5` + 修复）— 8 个事件 payload + `TaskEntry` 改生成物；新增事件名钉死守卫并在审计后扩到 **11** 个常量（补 `FRONTEND_READY`——C02 给它上了类型却把名字漏在门禁外）；**修掉一条阻塞**：`skip_serializing_if` 扫描的 400 字符窗口会被隔壁字段的属性喂饱（该性质在 C01 时为真、被 C02 扩到第 2 处相邻同构字段的那一刻失效），窗口收到同字段属性块；顺带治 S2（切块对属性顺序敏感 ⇒ 改以 `pub struct` 为锚往上收属性，C04 要复制 127 次）。**订正一条我写错的延后理由**：`JsonlRecord` 不是「有损模型」而**就是 wire 的定义**，真正卡点是 `seq: u64` 要先有 C03。
 - 05 — 2026-07-29 — **C05 落地：门禁拆成两半，各在已有 job 里查** — 实测发现**没有任何 CI job 同时有 Rust 和 node**，所以 `npm run check:types` 那条串联进不了 CI。改为：`rust` job 加一步 `git diff --exit-code -- ../src/generated/`（保证已提交的生成物 == 从 Rust 源生成的）+ `frontend` job 既有的 `tsc`（保证 TS 消费方 == 已提交的生成物），两者合起来即「TS 消费方 == Rust 源」，而 `git diff` 不需要 node ⇒ 代价 ≈ 一条 git 命令。顺带闭合 C01 登记的「手改生成物」盲区（已提交的那种）。
 - 04 — 2026-07-29 — **C01 Phase D 审计闭环：执行顺序改动 + 依赖方向改动**（见 features/C01 §7）— C05 由 #4 提到 #2（CI 两次独立 checkout ⇒「忘了重新生成」让所有门禁保持绿色，实测）；ts-rs 移到 dev-dependencies + cfg_attr(test) 派生；§3 的 @generated 与实现矛盾已改准；「clippy 0」改「clippy 无新增」。
