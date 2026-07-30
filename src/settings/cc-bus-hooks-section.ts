@@ -12,33 +12,18 @@
 // **功能等价但字符串不等**——按等值比较会把这套**完全正确的安装**报成第三态，
 // 然后建议用户去修一个没坏的东西。所以这里必须把
 // 「显式路径且存在（没问题）」与「显式路径但不存在（真问题）」**分开渲染**。
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "../ipc/commands";
 import { buildPasteBlock, type PasteBlock } from "../paste-block"; // T03
 
-/** 与 Rust 侧 `HookState` 的 `#[serde(tag = "kind", rename_all = "kebab-case")]` 对位。 */
-type HookState =
-  | { kind: "not-installed" }
-  | { kind: "installed-via-path"; command: string }
-  | { kind: "installed-at-path"; command: string; path: string }
-  | { kind: "path-missing"; command: string; path: string }
-  | { kind: "unknown"; command: string };
+// C04d 批 3：四个类型全部换成生成物（源 `hooks_diag.rs`）。手写版与生成物**逐字等价**
+// ——这一处零漂移，价值是防将来漂。`HookState` 是
+// `#[serde(tag = "kind", rename_all = "kebab-case")]` 的内部标记枚举 → 判别联合。
+import type { HooksDiagnosis } from "../generated/HooksDiagnosis";
+import type { HooksReport } from "../generated/HooksReport";
+import type { HookState } from "../generated/HookState";
+import type { Snippet } from "../generated/Snippet";
 
-interface HooksDiagnosis {
-  session_start: HookState;
-  stop: HookState;
-  note: string;
-}
-/** 与 Rust 侧 `Snippet` 对位。`warning` = 选的形态与盘上实况冲突（T03 收的 B04 登记项）。 */
-interface Snippet {
-  text: string;
-  warning: string | null;
-}
-interface HooksReport {
-  diagnosis: HooksDiagnosis;
-  snippet_home: Snippet;
-  snippet_bare: Snippet;
-  source: string;
-}
+export type { HooksDiagnosis, HooksReport, HookState, Snippet };
 
 /** 一态 → 展示文案 + 三档语气。**`path-missing` 绝不能说成"已装"**；
  *  `unknown` 要中性（既不说已装也不说未装）。 */
@@ -212,7 +197,7 @@ export class CcBusHooksSection {
       // **别只防 reject**：invoke 也可能 resolve 成 undefined/非数组（桥接层异常、命令改了
       // 返回类型）。只 catch 不校验形状的话，下一行 `.length` 会直接抛 —— 这正是本工作区
       // 一路在守的「脏数据不能把面板搞崩」，对自己的 IPC 返回值同样适用。
-      const got = await invoke<string[]>("list_remote_mcp_origins");
+      const got = await commands.list_remote_mcp_origins();
       if (Array.isArray(got)) origins = got;
     } catch {
       /* 无远端不影响本机诊断 */
@@ -241,7 +226,7 @@ export class CcBusHooksSection {
 
   private async checkLocal(): Promise<void> {
     try {
-      const rep = await invoke<HooksReport>("diagnose_local_cc_bus_hooks");
+      const rep = await commands.diagnose_local_cc_bus_hooks();
       this.lastReport = rep;
       this.renderDiag(this.localBox, rep);
       this.renderSnippet();
@@ -256,9 +241,7 @@ export class CcBusHooksSection {
     btn.disabled = true;
     this.remoteBox.textContent = "检查中…";
     try {
-      const rep = await invoke<HooksReport>("diagnose_remote_cc_bus_hooks", {
-        origin,
-      });
+      const rep = await commands.diagnose_remote_cc_bus_hooks({ origin });
       this.renderDiag(this.remoteBox, rep, true);
     } catch (e) {
       this.remoteBox.textContent = `远端诊断失败：${String(e)}`;

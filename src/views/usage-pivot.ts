@@ -14,18 +14,17 @@ import { normalizeModel, equivalentInputTokens } from "./pricing";
 // 按每天 10^7 tokens 算是 9 亿天。**这不是套用字节数那条「8 PB」，是单独算的。**
 import type { UsageTotals } from "../generated/UsageTotals";
 export type { UsageTotals };
-export interface UsageBucket {
-  model: string;
-  day: string;
-  totals: UsageTotals;
-}
-export interface SessionUsageRow {
-  sessionId: string;
-  projectPath: string;
-  projectName: string;
-  buckets: UsageBucket[];
-  origin?: string; // 远端 host；本地 undefined
-}
+// C04d 批 3：这两个也换成生成物（源 `usage.rs`）。**账本第 2 行的状态订正**：
+// C03 只把 `UsageTotals` 换掉了，`UsageBucket`/`SessionUsageRow` 一直还是手写
+// ——那一行标「已完成」是高估了，本批次才真正达成。
+//
+// **本批次抓到的漂移**：手写版写 `origin?: string`，而 Rust 是 `#[serde(default)] Option<String>`
+// 且**没有** `skip_serializing_if` ⇒ 线上恒有该键、值可能是 `null`（不是省略）。
+// 生成物给的 `origin: string | null` 才是实情。
+import type { SessionUsageRow } from "../generated/SessionUsageRow";
+import type { UsageBucket } from "../generated/UsageBucket";
+
+export type { SessionUsageRow, UsageBucket };
 
 export type UsageDim = "session" | "day" | "project" | "model";
 export interface PivotRow {

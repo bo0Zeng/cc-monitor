@@ -3,21 +3,16 @@
  * 列当前转发 + 加转发表单(选主机/本地端口/远端 host:port)+ 启停 + 刷新。消费后端
  * start_forward/stop_forward/list_forwards;转发经 cc-monitor 已有 SSH 连接隧道(复用连接大脑)。
  */
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
 import { readRemoteConfig } from "../remote-config";
 
 /** 后端 ForwardStatus（camelCase）。 */
-interface ForwardStatus {
-  id: string;
-  origin: string;
-  localPort: number;
-  remoteHost: string;
-  remotePort: number;
-  state: string; // "running" | "error"
-  error: string | null;
-  connCount: number;
-}
+// C04d 批 3：改用生成物（源 `port_forward.rs`）。手写版与它**逐字等价**
+// ——本批次这一处零漂移，价值是防将来漂，不是抓到了 bug。
+// `connCount` 走 C03 大整数策略：Rust 是 `u64`，按**累计连接数**量纲算
+// 2^53-1 条（每秒 1000 连接要 28.5 万年）⇒ `number` 够用。
+import type { ForwardStatus } from "../generated/ForwardStatus";
 
 function mkBtn(label: string, onClick: () => void): HTMLButtonElement {
   const b = document.createElement("button");
@@ -128,7 +123,7 @@ class PortForwardPanel {
   private async reload(): Promise<void> {
     let forwards: ForwardStatus[] = [];
     try {
-      forwards = await invoke<ForwardStatus[]>("list_forwards");
+      forwards = await commands.list_forwards();
     } catch (e) {
       showActionFailureToast("列转发失败", String(e));
     }
@@ -179,7 +174,7 @@ class PortForwardPanel {
       return;
     }
     try {
-      await invoke("start_forward", { spec: { origin, localPort, remoteHost, remotePort } });
+      await commands.start_forward({ spec: { origin, localPort, remoteHost, remotePort } });
       this.localInput.value = "";
       this.rportInput.value = "";
       await this.reload();
@@ -190,7 +185,7 @@ class PortForwardPanel {
 
   private async onStop(id: string): Promise<void> {
     try {
-      await invoke("stop_forward", { id });
+      await commands.stop_forward({ id });
       await this.reload();
     } catch (e) {
       showActionFailureToast("停止转发失败", String(e));

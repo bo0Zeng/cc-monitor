@@ -46,6 +46,8 @@ pub fn is_safe_remote_acct_iso_dir(path: &str) -> bool {
 
 /// 远端 cc-acct-iso 状态（供前端决定：一键部署 / 走 init 向导 / 正常）。
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct AcctIsoStatus {
     /// 远端 PATH（含 ~/.local/bin）里能否找到 `cc-acct-iso`。
     pub installed: bool,

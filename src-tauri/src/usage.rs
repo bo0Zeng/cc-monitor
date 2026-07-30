@@ -64,6 +64,8 @@ impl UsageTotals {
 
 /// 一条会话在某 (模型, 天) 下的用量。
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct UsageBucket {
     pub model: String,
@@ -75,6 +77,8 @@ pub struct UsageBucket {
 /// `Deserialize` 供 F88a-remote 反序列化 daemon `--usage` 回传的行（daemon 侧不带 `origin`，
 /// `#[serde(default)]` 使缺 origin 反序列化为 None，monitor 收到后盖主机 label）。
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionUsageRow {
     pub session_id: String,

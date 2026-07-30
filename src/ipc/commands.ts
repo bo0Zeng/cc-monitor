@@ -21,8 +21,8 @@
  *
  * ## 本文件今天覆盖多少
  *
- * **10 个命令**（C04a 样板 1 + C04d 批 1 的 5 + 批 2 的 4）。
- * 其余 109 个仍走各模块里的裸 `invoke`，由 **C04d** 后续批次迁进来。
+ * **22 个命令**（C04a 样板 1 + C04d 批 1 的 5 + 批 2 的 4 + 批 3 的 12）。
+ * 其余 97 个仍走各模块里的裸 `invoke`，由 **C04d** 后续批次迁进来。
  *
  * **条目按字母序**（键名排序），加新条目时插到对的位置——这样 diff 只显示真正的新增。
  *
@@ -38,12 +38,16 @@
  * 4. 全仓 TS **字面量**命令名 ⊆ Rust 命令集，且唯一名数 == 112，且
  *    「Rust 有而 TS 静态看不见」的那 7 个动态名逐字钉死。
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, type Channel } from "@tauri-apps/api/core";
 
 import type { AccountUsageProbeResult } from "../generated/AccountUsageProbeResult";
+import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
 import type { CcmProbeResult } from "../generated/CcmProbeResult";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
+import type { ForwardStatus } from "../generated/ForwardStatus";
+import type { HooksReport } from "../generated/HooksReport";
+import type { SessionUsageRow } from "../generated/SessionUsageRow";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
 import type { TaskEntry } from "../generated/TaskEntry";
 
@@ -66,6 +70,23 @@ export const commands = {
   account_usage: (args: { origin: string; accountName: string; launchPayload: string }) =>
     invoke<AccountUsageProbeResult>("account_usage", args),
 
+  /**
+   * 远端 daemon 服务端聚合的用量行（非流式，一次返 `Vec`）。返回值字段被真消费 ⇒ 生成物（桶③）。
+   * **注意它没有 `Result` 包装**——Rust 签名是 `-> Vec<SessionUsageRow>`，失败在 Rust 内部吞成空表。
+   */
+  aggregate_remote_usage_all: () => invoke<SessionUsageRow[]>("aggregate_remote_usage_all"),
+
+  /**
+   * 本地用量聚合，**经 `Channel` 流式**逐行推（第一个进包装层的 Channel 参数）。
+   *
+   * Rust 返回 `Result<u32, String>`（处理了多少行）。TS 侧今天**不读它**——
+   * 但按 §5 桶② 写 `unknown` 在这里是**过度**的：桶② 的用意是「不为没人消费的
+   * **payload 结构**生成类型」，而这是个**原始类型**，写 `number` 零成本且更诚实。
+   * **这是对三桶规则的一处细化**，已记进 C04d 计划。
+   */
+  aggregate_usage_all: (args: { onRow: Channel<SessionUsageRow> }) =>
+    invoke<number>("aggregate_usage_all", args),
+
   /** 远端 `tmux capture-pane -p` 的画面文本。返回**原始类型**，无需生成物（桶③）。 */
   capture_remote_pane: (args: { origin: string; target: string }) =>
     invoke<string>("capture_remote_pane", args),
@@ -85,6 +106,17 @@ export const commands = {
   /** 探测远端有没有装 `ccm` CLI 及其能力集。返回**线上形状**（TS 侧另有领域类型）⇒ 桶③。 */
   probe_ccm_cli: (args: { origin: string }) => invoke<CcmProbeResult>("probe_ccm_cli", args),
 
+  /** 写配置。Rust 返回 `Result<(), String>` ⇒ **桶①**。入参同样是不透明 JSON（见 `load_config`）。 */
+  save_config: (args: { value: Record<string, unknown> }) => invoke<void>("save_config", args),
+
+  /** 起一条端口转发。Rust 返回 `Result<String, String>`（转发 id）⇒ 原始类型。 */
+  start_forward: (args: {
+    spec: { origin: string; localPort: number; remoteHost: string; remotePort: number };
+  }) => invoke<string>("start_forward", args),
+
+  /** 停一条端口转发。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  stop_forward: (args: { id: string }) => invoke<void>("stop_forward", args),
+
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
   get_session_tasks: (args: { sessionId: string }) =>
     invoke<TaskEntry[]>("get_session_tasks", args),
@@ -93,8 +125,29 @@ export const commands = {
   launch_remote_terminal: (args: { origin: string; remoteCmd: string }) =>
     invoke<void>("launch_remote_terminal", args),
 
+  /**
+   * 远端有没有装 `cc-acct-iso` + 命中路径 + 内嵌 vendor 指纹。
+   *
+   * **本批次抓到的漂移**：TS 侧原来写 `invoke<{ installed: boolean }>` —— 只认 1/3 个字段，
+   * 把 `path` 与 `vendor_id` 藏掉了。而 Rust 那两个字段的注释明写「附带回传，
+   * 避免以后要它时再加一趟往返」⇒ **是手写镜像把后端的好意抹掉了**。
+   */
+  check_remote_acct_iso: (args: { cfg: unknown }) =>
+    invoke<AcctIsoStatus>("check_remote_acct_iso", args),
+
   /** 一次配置面审计（只读、一次性，不新增轮询）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   config_surface_report: () => invoke<ConfigSurfaceReport>("config_surface_report"),
+
+  /** 把内嵌的 vendor `cc-acct-iso` 部署到远端。返回人话结果串 ⇒ 原始类型，无需生成物。 */
+  deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>
+    invoke<string>("deploy_remote_acct_iso", args),
+
+  /** 本机 cc-bus 钩子诊断。返回值字段被真消费 ⇒ 生成物（桶③）。 */
+  diagnose_local_cc_bus_hooks: () => invoke<HooksReport>("diagnose_local_cc_bus_hooks"),
+
+  /** 远端 cc-bus 钩子诊断。同上。 */
+  diagnose_remote_cc_bus_hooks: (args: { origin: string }) =>
+    invoke<HooksReport>("diagnose_remote_cc_bus_hooks", args),
 
   /** 展开子 agent 折叠条时拉它的 jsonl。`records` 是 `JsonlRecord[]`（C04c 生成）⇒ 桶③。 */
   load_subagent: (args: {
@@ -102,6 +155,20 @@ export const commands = {
     description: string;
     toolUseTimestamp: string;
   }) => invoke<SubagentLoadResult>("load_subagent", args),
+
+  /** 当前活着的端口转发列表。返回值字段被真消费 ⇒ 生成物（桶③）。 */
+  list_forwards: () => invoke<ForwardStatus[]>("list_forwards"),
+
+  /** 装了 MCP 的远端 host 列表。原始类型数组，无需生成物。 */
+  list_remote_mcp_origins: () => invoke<string[]>("list_remote_mcp_origins"),
+
+  /**
+   * 读配置。**Rust 侧返回 `Result<serde_json::Value, String>`——它把配置当不透明 JSON 透传**，
+   * 所以这个边界**结构性无法**由生成物加固：Rust 自己就不知道形状。
+   * `Record<string, unknown>` 已经是最诚实的类型（TS 侧的 `Config` 就是它的别名）。
+   * **这是一处如实登记的结构性缺口，不是我引入的缺陷。**
+   */
+  load_config: () => invoke<Record<string, unknown>>("load_config"),
 
   /** 用系统默认程序打开 monitor 的 log 文件。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_log_file: () => invoke<void>("open_log_file"),

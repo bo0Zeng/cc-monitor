@@ -7,7 +7,7 @@
 // 设置窗独立于主窗、拿不到活跃会话，故用远端选择器（多台时下拉）。改默认账号后
 // emit(SETTINGS_APPLIED_EVENT) 让主窗状态栏 chip 同步。
 import { emit } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "../ipc/commands";
 import {
   fetchAccounts,
   deriveUi,
@@ -154,7 +154,7 @@ export class AccountsSection {
       if (!window.confirm(msg)) return;
     }
     try {
-      await invoke("launch_remote_terminal", { origin: this.origin, remoteCmd: built.cmd });
+      await commands.launch_remote_terminal({ origin: this.origin, remoteCmd: built.cmd });
       showActionFailureToast("已在终端里运行", "完成后点「刷新」更新账号列表。", {
         level: "info",
         durationMs: 5000,
@@ -184,9 +184,7 @@ export class AccountsSection {
     if (host) {
       try {
         // 探测不依赖 dest（D 审计 S2/S5：只 command -v 一次 exec，任何配置下都能判 installed）。
-        const status = await invoke<{ installed: boolean }>("check_remote_acct_iso", {
-          cfg: host,
-        });
+        const status = await commands.check_remote_acct_iso({ cfg: host });
         if (!status.installed) {
           const dest = deriveAcctIsoDir(host.daemonPath, host.user);
           this.renderNeedsDeploy(host, dest);
@@ -233,7 +231,8 @@ export class AccountsSection {
       btn.disabled = true;
       const prev = btn.textContent;
       btn.textContent = "部署中…";
-      void invoke<string>("deploy_remote_acct_iso", { cfg: host, destDir: dest })
+      void commands
+        .deploy_remote_acct_iso({ cfg: host, destDir: dest })
         .then(
           (msg) => {
             showActionFailureToast("已部署 cc-acct-iso", msg, {

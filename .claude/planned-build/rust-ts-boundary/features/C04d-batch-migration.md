@@ -27,7 +27,7 @@
 |---|---|---|---|---|
 | **1** | 6 个文件 / 5 条包装层条目，**零新派生** | 否 | **23** | **完成** |
 | **2** | 需要生成类型的 1-调用点文件（`account-usage` 内联字面量 · `cards/subagent` · `ccm-probe` · `settings/config-surface-section`） | 是（**7 个**：4 个命令返回类型 + 3 个传递依赖，含 1 个内部标记枚举） | **19** | **完成** |
-| 3 | 2-3 调用点的一组（`config` · `views/usage-view` · `views/port-forward` · `settings/accounts-section` · `settings/cc-bus-hooks-section`） | 是 | 14 | 待做 |
+| **3** | 2-3 调用点一组（`config` · `views/usage-view` · `views/port-forward` · `settings/accounts-section` · `settings/cc-bus-hooks-section`） | 是（**8 个**，含 2 个内部标记枚举） | **14** | **完成** |
 | 4 | `account-restart` · `accounts.ts` · `settings/diagnostics-section` | 是（`accounts.rs` 6 个，**踩账本第 3 行的冲突协议**） | 11 | 待做 |
 | 5 | `settings/cc-bus-section` · `cc_integration` · `main.ts` · `remote-section` · `mcp-section` | 是 | 6 | 待做 |
 | 6 | `sftp/panel` · `views/history` · `views/session-viewer`（**含 3 个动态派发口**） | 是 | 3 | 待做 |
@@ -115,6 +115,65 @@
 **C04c 那条教训当场生效**：A/B 两条我**在判色前就发现无效**——因为我这次在判色步骤里加了
 「grep 生成物确认它是本次变异产的」。B 的 grep 显示 `agent_id` 还在生成物里
 ⇒ `tsc rc=0` 是在读过期产物，不是「链条没牙」。**把那条教训变成了流程里的一步，而不是记忆。**
+
+## 3c. 批次 3 明细
+
+12 条包装层条目（10 → **22**）· 8 个派生（生成物 28 → **36**）· 5 个文件迁走（19 → **14**）。
+两处**前序功能的投资在收息**：`UsageBucket → UsageTotals` 是 **C03** 生成的；
+`SubagentLoadResult → JsonlRecord` 是 **C04c** 的（批 2）。
+
+### 抓到两处真漂移
+
+| # | 漂移 | 方向 | 后果 |
+|---|---|---|---|
+| ① | `AcctIsoStatus`：TS 写 `invoke<{ installed: boolean }>`，Rust 返 **3 个字段** | 手写版**更窄** | `path` 与 `vendor_id` 被藏掉。而 Rust 那两个字段的注释明写「附带回传，避免以后要它时再加一趟往返」⇒ **手写镜像把后端的好意抹掉了** |
+| ② | `SessionUsageRow.origin`：手写 `origin?: string` | 手写版**说错了缺省语义** | Rust 是 `#[serde(default)] Option<String>` 且**无** `skip_serializing_if` ⇒ 线上**恒有该键、值可能为 null**（不是省略）。下游 `usage-pivot.test.ts` 的 **10 个夹具**都在造一个线上不存在的形状，本批次补上 `origin: null` 让夹具忠于线上 |
+
+`ForwardStatus` / `HooksReport` 一族（4 个类型）与手写版**逐字等价** ⇒ 那几处零漂移，价值是防将来漂。
+
+### 一处结构性缺口，如实登记不假装解决
+
+`load_config` / `save_config` 的 Rust 签名是 `Result<serde_json::Value, String>`
+——**它把配置当不透明 JSON 透传，Rust 自己就不知道形状**。这个边界**结构性无法**由生成物加固；
+`Record<string, unknown>`（TS 的 `Config` 就是它的别名）已经是最诚实的类型。**不是我引入的缺陷。**
+
+### 对三桶规则的一处细化
+
+`aggregate_usage_all` 返回 `Result<u32, String>`，TS 侧今天不读它。按 §5 桶② 该写 `unknown`，
+但那在这里**过度**了：桶② 的用意是「不为没人消费的 **payload 结构**生成类型」，
+而这是个**原始类型**，写 `number` 零成本且更诚实。同理 `start_forward`/`deploy_remote_acct_iso`
+（`String`）写 `string`。**桶② 只管结构体，不管原始类型。**
+
+### ★ 守卫的一个真缺口：手写的派生源清单，我在同一个坑里踩了第二次
+
+变异「删掉 `ForwardStatus.conn_count` 的 `ts(type)`」→ **守卫全绿**。
+原因：`TS_DERIVING_SOURCES` 是**手写数组**，而批 2/批 3 在 **7 个新文件**里加了派生却没同步它
+⇒ 两条通用性质（`skip_serializing_if ⇒ ts(optional)` · 大整数 ⇒ `ts(type)`）对它们**完全失效**。
+`conn_count` 当初配上 `ts(type)` 只是因为我手工盯了生成物 ——
+**与 C04c 的 `duration_ms` 同一个失效模式。**
+
+**修法不是补清单，是取消清单**：改成递归全仓自动发现含 `ts_rs::TS` 的 `.rs` 文件，
+再用等号钉住**文件个数**（`toBe(13)`）——范围不会漏，但扩大范围要被看见。
+自动发现当场多扫出 1 个大整数字段（10 → **11**，正是 `conn_count`）。
+重跑变异：两条性质在新文件上都有牙了，且 `conn_count` 那次顺手证实生成物真会回落成 `bigint`。
+
+### 一条被迁移打空的老守卫（不是删，是适配）
+
+`cc-bus-hooks-section.vitest.ts` 的【B04-2】断言「本文件只有三条**只读** invoke」——
+文件迁走后它的扫描器只认裸 `invoke("name")` ⇒ 扫到**空集**、`toEqual` 红。
+**这条守的性质与 C04a 那条 119 命令守卫不同，不被替代**：C04a 只保证名字存在，
+这一条保证「**这个面板只碰只读命令**」（B04 立的安全不变量）。
+⇒ 让扫描器同时认 `commands.xxx(`，并**加一条非空自检**——空集必须是失败而不是通过，
+因为「迁移把调用形态换掉」正是这一格会静默变空的地方。
+
+### 批次 3 变异
+
+| # | 变异 | 编译 | 生成物是本次产的 | 判色 | 结论 |
+|---|---|---|---|---|---|
+| **A** | `HookState::PathMissing` 加显式 `serde(rename)` | rc=0 | ✔ | `tsc` 报 `case "path-missing"` 不可比 + `Property 'path' does not exist on type 'never'` | 成立 |
+| **B** | 删 `conn_count` 的 `ts(type)` | rc=0 | ✔（生成物变成 `connCount: bigint`） | **先是全绿（缺口）→ 改成自动发现后红并点名字段** | **抓到守卫缺口** |
+| **B′** | 给 `config_surface.rs::path_resolved` 加 `skip_serializing_if` 不配 `ts(optional)` | rc=0 | ✔ | 守卫红并点名字段 | 自动发现后另一条性质也有牙 |
+| C | 三条等号自动各红一次 | — | — | 生成物清单 · 文件数 19→14 · 包装层 10→22 | 成立 |
 
 ## 4. 代码审计结果（Phase D）
 

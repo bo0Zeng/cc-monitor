@@ -28,6 +28,8 @@ pub struct ForwardSpec {
 
 /// 转发状态(列表展示)。
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct ForwardStatus {
     pub id: String,
@@ -38,6 +40,10 @@ pub struct ForwardStatus {
     /// "running"（accept 循环存活）| "error"（循环退出）。v1 = accept 循环存活性,非 session 健康。
     pub state: String,
     pub error: Option<String>,
+    // **C03 大整数策略**：量纲是**累计连接数**，`Number.MAX_SAFE_INTEGER` = 2^53-1 条
+    // ——单条转发即使每秒 1000 个连接也要 28.5 万年才到 ⇒ f64 精度足够。
+    // 不是 Option ⇒ 不需要 `| null`（那条守卫只管 Option）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub conn_count: u64,
 }
 
