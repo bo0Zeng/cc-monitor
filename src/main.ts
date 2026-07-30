@@ -41,6 +41,7 @@ import { getKeybindings } from "./keybindings/store";
 import { turnEndNotifier } from "./turn-notify";
 import { AccountChip } from "./account-chip";
 import { buildAccountCommands } from "./account-commands";
+import type { ActiveSessionPayload } from "./generated/ActiveSessionPayload";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import {
   fetchSessionAccounts,
@@ -740,9 +741,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 内容重放开始前就看到完整 tab 栏。失败不阻启动（骨架只是体验优化，行
   // 到达照常 ensureTab 建）。远端骨架走 remote-session-added 事件，不在此列。
   try {
-    const active = await invoke<
-      { session_id: string; cwd: string; kind: string | null; name: string | null }[]
-    >("list_active_sessions");
+    const active = await invoke<ActiveSessionPayload[]>("list_active_sessions");
     for (const s of active) {
       tabs.createSkeletonTab(s.session_id, s.cwd || null, null, s.kind ?? null, s.name ?? null);
     }

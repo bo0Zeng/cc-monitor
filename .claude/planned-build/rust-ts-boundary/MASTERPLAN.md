@@ -98,7 +98,7 @@
 | C03 | **大整数的显式处置** | 策略=默认 `number` 但绝不许是 `ts-rs` 的默认 `bigint`；每个大整数字段必须配 `#[ts(type = …)]`，守卫**打在源上**。三个应用面：`SftpEntry.size`（唯一已确认的静默有损点）· `TransferProgress`（2）· `UsageTotals`（4） | **完成** | C01 | P0 |
 | **C04 → 已拆成四个** | ~~命令半边全量迁移~~ | **Phase B 结论：拆开**（见 `features/C04-command-half.md`）。原范围是 **63 个待生成 struct + 119 个命令签名 + 161 个调用点**——比 C01+C02+C03 加起来还大，违反 planned-build 自己的粒度准则；且成功标准「29 文件→1」**不松 `tabs.ts` 红线结构性达不到**（该文件 15 处调用点） | **已拆** | — | — |
 | C04a | **类型化 `invoke` 包装层 + 钉死 119 个命令** | 建机制：手写包装层（`ts-rs` 不生成命令签名）+ 把只覆盖 3/119 的白名单守卫扩到 119；先迁一个模块做样板 | **完成**（Phase D 两份审计闭环：3 阻塞 + 6 重要 + 11 建议全部处置） | C01 | P1 |
-| C04b | **两处已登记的内联字面量** | `main.ts:744` 的 `ActiveSessionPayload` + `tabs.ts:1632` 的 `SessionActivityPayload`（**后者卡红线**） | 待规划 | C04a | P1 |
+| C04b | **两处已登记的内联字面量** | `main.ts:744` 的 `ActiveSessionPayload`（**已做**）+ `tabs.ts:1632` 的 `SessionActivityPayload`（**已跳过，等 `tabs.ts` 红线授权**——实测是**一行改动**，类型已生成好、字段逐字节一致，零技术障碍） | **完成（一半，另一半等授权）** | C04a | P1 |
 | C04c | **`JsonlLine`/`JsonlBatch`** | 卡点已由 C03 解除（`seq: u64` 有策略了）+ 逃生口 `#[ts(type = "import('../cards').JsonlRecord")]`；**当场暴露的 4 处 `cards/index.ts` 缺口如实登记不顺手修** | 待规划 | C03 | P2 |
 | C04d | **按模块分批迁移剩余 63 个 struct + 161 个调用点** | 每批一模块、一 commit、一次全门禁；`import { invoke }` 文件数逐批下降 | 待规划 | C04a | P2 |
 | C05 | **门禁** | CI 检查生成物最新（重新生成后 `git diff --exit-code` 空）+ 禁止新增手写跨边界类型 | **完成**（`f7dd23c`） | C02 | P1 |
@@ -134,7 +134,7 @@ src-tauri/src/**.rs   ──(ts-rs 派生 + cargo test 导出)──▶  生成�
 
 | 共享面 | 涉及功能 | 最终形态设计 | 当前状态 | 备注 |
 |---|---|---|---|---|
-| **1. `src/events.ts` + `src/remote-health.ts` + `src/tasks-panel.ts` + `src/main.ts`** | C02,C05 | 单一订阅枢纽保留（这个形状是对的），**C02 交付 9 个**生成类型（8 payload + `TaskEntry`）；`JsonlLine`/`JsonlBatch` 延后。**事件名常量不生成**（`ts-rs` 只生成类型、不生成 `const`）——改为由**钉死 10 个名字的结构性守卫**对拍，形状照 `every_host_declaration_is_pinned` | 手抄 | **C02 Phase B 实测订正两处**：① 原文写「事件名常量也从 `bridge.rs` 生成」——`ts-rs` 做不到；② 原文只写 `events.ts`，**漏了 `src/remote-health.ts`**（`RemoteHealthPayload` 的手写版在那儿）。另：payload struct 实为 **11 个**（含方向相反的 `FrontendReadyPayload`，`Deserialize`），不是 10 个 |
+| **1. `src/events.ts` + `src/remote-health.ts` + `src/tasks-panel.ts` + `src/main.ts`** | C02,C04b,C05 | 单一订阅枢纽保留（这个形状是对的），**C02 交付 9 个**生成类型（8 payload + `TaskEntry`）；`JsonlLine`/`JsonlBatch` 延后。**事件名常量不生成**（`ts-rs` 只生成类型、不生成 `const`）——改为由**钉死 10 个名字的结构性守卫**对拍，形状照 `every_host_declaration_is_pinned` | **C02 交付 9 个；C04b 又把 `main.ts` 的 `ActiveSessionPayload` 内联字面量换成生成物（第 15 个）** | **C02 Phase B 实测订正两处**：① 原文写「事件名常量也从 `bridge.rs` 生成」——`ts-rs` 做不到；② 原文只写 `events.ts`，**漏了 `src/remote-health.ts`**（`RemoteHealthPayload` 的手写版在那儿）。另：payload struct 实为 **11 个**（含方向相反的 `FrontendReadyPayload`，`Deserialize`），不是 10 个 |
 | **2. `src/sftp/paths.ts` + `src/sftp/panel.ts` + `src/views/usage-pivot.ts`** | C03,C04 | 三处手写镜像全部由生成物取代；`u64` 一律 `#[ts(type = "number")]` + **按量纲分开算**的上限论证（字节数 8 PB / token 量 9 亿天，不套用同一条） | **已完成**（C03） | 这是**唯一已确认的数据损失点**，所以它是 C03 的第一批 |
 | **3. `src/accounts.ts` 6 个 type** | C04 | 由生成物取代；**中文注释也应该从 Rust 侧 doc comment 生成**（今天是拷贝的） | 手写，注释都是拷贝的 | 与 `account-zero` 工作区**同时在改** ⇒ 见下方冲突协议 |
 | **4. IR 类型 `src/launch-plan.ts`** | C04 | `LaunchPlan`/`LaunchContext`/`LaunchAccount`/`EnvOp`/`WrapSpec` —— **这几个今天只活在 TS 侧**（Rust 不认识它们）。**本工作区不动它们**：它们不是跨边界类型，不该为了统一而强行搬去 Rust | 纯 TS | **重要判断**：IR 是前端的意图模型，Rust 侧只收渲染好的命令串。**别把它拖过边界。**`account-zero` Z02 与 `local-as-remote` 都要改这些类型，本工作区**不插手** |
@@ -340,3 +340,20 @@ C01（样板 + 变异验收）
   ⇒ 去掉行锚。「本仓 fmt 统一风格所以免疫」这条理由被实测推翻了。
   数字订正三处：**「161 个调用点」不成立**（生产+剥注释+按表达式 = **143**；那个 161 两种口径都复现不出）·
   「29 → 28」是假的（净持平仍 29，现已用等号机检）· 「TS 侧 211 个 type/interface」8 种口径都复现不出，删掉。
+- 09 — 2026-07-29 — **C04b 落地一半（另一半如实标注等授权）** —
+  `main.ts:744` 的内联字面量换成生成的 `ActiveSessionPayload`（生成物 14 → **15**）。
+  **变异 A 是主计划成功标准 1 在「命令返回类型」上的首次成立**：删 `ActiveSessionPayload.cwd`
+  并同步改掉 `lib.rs` 的构造点让 Rust **编译得过**（C01 就栽在「变异没编译过时 tsc 什么都不说，
+  那种绿是无效结果」），`tsc` 精确报 `main.ts(746,46): Property 'cwd' does not exist`。
+  **`tabs.ts:1632` 那一半已跳过，等红线授权**——本轮核实后可以把代价说得更硬：
+  `list_session_activity` 的返回类型**就是** `Vec<bridge::SessionActivityPayload>`，
+  而 `src/generated/SessionActivityPayload.ts` C02 时已生成、字段逐字节一致
+  ⇒ **它是一行改动**（内联字面量换成 import + `SessionActivityPayload[]`），
+  不需要新派生、不需要重新生成、不需要改守卫。**零技术障碍，100% 卡在红线上。**
+  一条刻意不做的事：`ActiveSessionPayload` 与 `SessionActivityPayload` 在线上都是 **snake_case**
+  （都没有 `rename_all = "camelCase"`），**不许顺手统一**——那是行为改动，而本工作区每个 commit
+  的硬判据是行为逐字节不变。这个不一致**正是生成它的理由**：手写镜像能静默漂成 camelCase，
+  生成物不会。守卫的 camelCase 断言只钉那两个确实是 camelCase 的文件（范围恰好等于性质范围），
+  所以加一个 snake_case 生成物不假红——已实测确认。
+  另**不把 `list_active_sessions` 加进 C04a 的包装层**：`main.ts` 有 9 个调用点，只迁 1 个既不让
+  「29」降一格、又让同一文件里两条路并存（正是账本第 7 行约束 ④ 要防的）。整文件迁移归 C04d。

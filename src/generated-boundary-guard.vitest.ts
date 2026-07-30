@@ -90,6 +90,10 @@ describe("C01 边界生成物", () => {
     files.sort();
     // 计数自检用等号：C02 加进新文件时这里必须红一次，提醒把它纳入下方逐项断言
     expect(files, "生成目录内容变了——把新文件纳入本守卫再更新这个期望").toEqual([
+      // C04b（`list_active_sessions` 的返回项。**线上是 snake_case**——它没有
+      // `rename_all = "camelCase"`，生成物忠实于线上契约而不是风格偏好；
+      // 顺手统一是行为改动，本工作区的硬判据是「行为逐字节不变」）
+      "ActiveSessionPayload.ts",
       // C01
       "DataPathInfo.ts",
       "DataPathsResponse.ts",
