@@ -53,6 +53,19 @@ export function isValidConfigDir(dir: string): boolean {
  * 非空则校验后 `export CLAUDE_CONFIG_DIR='<dir>'; `（posixQuote 包裹，前缀拼在 unset 之前）。
  * 非法即 throw（调用方 toast 报错，绝不拼进命令）。
  */
+/**
+ * Z03：「**显式不注入** `CLAUDE_CONFIG_DIR`」这条前缀 —— 也就是**账号 0 的起法**。
+ *
+ * **绝不能用「什么都不加」代替它**：远端 rc 里那句 `export CLAUDE_CONFIG_DIR=<默认账号>`
+ *（`cc-acct-iso shellinit` 生成的就是它）会让「什么都不加」落到默认账号上 = 静默串号。
+ *
+ * 逐字节形态由两处消费：`launch-render-fallback.ts` 的 `unset-config-dir` op（e2e 探针
+ * 用 `grep -q "unset CLAUDE_CONFIG_DIR;"` 断言这个精确子串）与用量探针载荷。
+ * CLI 渲染路径上的同一语义由 `shared/ccm` 的 `--base` 承担，那条跨语言契约由
+ * `base-flag-contract-guard.vitest.ts` 钉住。
+ */
+export const UNSET_CONFIG_DIR_PREFIX = "unset CLAUDE_CONFIG_DIR; ";
+
 export function buildEnvPrefix(configDir?: string): string {
   if (!configDir) return "";
   if (!isValidConfigDir(configDir)) {

@@ -29,11 +29,16 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const cacheKey = (origin: string, accountName: string): string => `${origin}|${accountName}`;
 
-/** per-account 探测 plan 用量窗口%。`force` 忽略缓存（用户点"刷新用量"时传）。 */
+/**
+ * per-account 探测 plan 用量窗口%。`force` 忽略缓存（用户点"刷新用量"时传）。
+ *
+ * Z03：`configDir` 传 **`null`** = 探**账号 0**（载荷前缀是 `unset CLAUDE_CONFIG_DIR; `）。
+ * **别传空串**——那是坏数据，`buildUsageProbePayload` 会 throw（被下面 catch 成 probe-failed）。
+ */
 export async function fetchAccountUsage(
   origin: string,
   accountName: string,
-  configDir: string,
+  configDir: string | null,
   opts?: { force?: boolean },
 ): Promise<AccountUsageOutcome> {
   const key = cacheKey(origin, accountName);

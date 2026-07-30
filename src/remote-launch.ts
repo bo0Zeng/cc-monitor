@@ -32,6 +32,7 @@ import {
   sanitizeRemoteLauncher,
   isValidConfigDir,
   buildEnvPrefix,
+  UNSET_CONFIG_DIR_PREFIX,
   isValidTmuxName,
   isValidNewTmuxName,
 } from "./shell-quote.ts";
@@ -41,6 +42,7 @@ export {
   sanitizeRemoteLauncher,
   isValidConfigDir,
   buildEnvPrefix,
+  UNSET_CONFIG_DIR_PREFIX,
   isValidTmuxName,
   isValidNewTmuxName,
 };
@@ -67,11 +69,22 @@ export const CLAUDE_NESTED_ENV_VARS = AGENT_PROFILE.nestedEnvVars.join(" ");
  * `configDir` 非法（`isValidConfigDir` 未过）时 throw——同 `buildEnvPrefix` 既有 fail-closed
  * 纪律，绝不把未经校验的路径拼进命令。
  */
-export function buildUsageProbePayload(configDir: string): string {
-  // 用量探针恒是 per-account 的——不像 resume/新建路径存在"未选账号=基座"这个合法沉默态，
-  // 空 configDir 在这里没有意义（探不出"哪个账号"的用量），直接拒绝而非静默退化成裸 `claude`。
+export function buildUsageProbePayload(configDir: string | null): string {
+  // 用量探针恒是 **per-account** 的——探不出"哪个账号"的用量就没有意义。
+  // 账号维度在这里有且只有两种合法表态，**没有第三种**：
+  //
+  //   `configDir` 是路径  → 具名账号 → `export CLAUDE_CONFIG_DIR=…; `
+  //   `configDir` 是 null → **账号 0**（Z03）→ `unset CLAUDE_CONFIG_DIR; `
+  //
+  // **空串仍然 throw**：它不是账号 0，是坏数据（空值 ≠ 未设，这是 Z01 起整套设计的支点）。
+  // **fail-closed**：账号 0 这条路**绝不**退化成"什么前缀都不加"——远端 rc 里那句
+  // `export CLAUDE_CONFIG_DIR=<默认账号>` 会让裸载荷探到别的号，而 UI 上会把结果标成
+  // 账号 0 的用量 = 静默串号（正是 BACKLOG E37 那类最坏形态）。
+  if (configDir === null) {
+    return `${UNSET_CONFIG_DIR_PREFIX}unset ${CLAUDE_NESTED_ENV_VARS}; ${AGENT_PROFILE.defaultLauncher}`;
+  }
   if (!configDir) {
-    throw new Error("用量探针需要显式 configDir（不支持基座/无账号场景）");
+    throw new Error("用量探针需要显式 configDir（账号 0 请传 null，空串是坏数据）");
   }
   return `${buildEnvPrefix(configDir)}unset ${CLAUDE_NESTED_ENV_VARS}; ${AGENT_PROFILE.defaultLauncher}`;
 }

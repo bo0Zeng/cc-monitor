@@ -360,13 +360,23 @@ describe("Z01 账号 0 在设置账号表里的呈现", () => {
     expect(dirs[1]).not.toBe("");
   });
 
-  it("账号 0 的用量单元格明说不支持，而不是留白或去发一次注定失败的探测", async () => {
+  // Z01 时这里钉的是「明说暂不支持」的占位；**Z03 把它做通了** ⇒ 契约变了，断言跟着变：
+  // 账号 0 现在**真的会探**，而且载荷必须是 `unset CLAUDE_CONFIG_DIR; ` 打头（不是裸载荷）。
+  it("账号 0 的用量会真的去探，且载荷显式 unset（不是裸载荷）", async () => {
     fetchAccountsMock.mockResolvedValue(state({ accounts: [zero], defaultName: null }));
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "account_usage"
+        ? Promise.resolve({ captured: true, raw: "42%\nResets in 2h", error: null })
+        : Promise.resolve(undefined),
+    );
     const el = await mount();
     el.querySelector<HTMLButtonElement>(".accounts-usage-btn")?.click();
     await new Promise((r) => setTimeout(r, 0));
-    expect(el.querySelector(".accounts-usage-pending")?.textContent).toContain("暂不支持");
-    expect(invokeMock.mock.calls.filter(([c]) => c === "account_usage")).toHaveLength(0);
+    const calls = invokeMock.mock.calls.filter(([c]) => c === "account_usage");
+    expect(calls).toHaveLength(1);
+    const payload = (calls[0][1] as { launchPayload: string }).launchPayload;
+    expect(payload.startsWith("unset CLAUDE_CONFIG_DIR; ")).toBe(true);
+    expect(payload).not.toContain("export CLAUDE_CONFIG_DIR");
   });
 
   it("降级说明会被渲染成显眼的一条（绝不静默）", async () => {

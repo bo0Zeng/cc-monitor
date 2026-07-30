@@ -4,6 +4,7 @@ const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
 
 import { fetchAccountUsage, invalidateAccountUsageCache } from "./account-usage.ts";
+import { buildUsageProbePayload } from "./remote-launch.ts";
 
 describe("fetchAccountUsage", () => {
   beforeEach(() => {
@@ -75,6 +76,47 @@ describe("fetchAccountUsage", () => {
     const r = await fetchAccountUsage("aya", "z", "");
     expect(r.status).toBe("probe-failed");
     expect(invokeMock).not.toHaveBeenCalled(); // 校验在 invoke 之前失败，不该发起探测
+  });
+
+  // ---- Z03：账号 0（configDir === null）----
+
+  it("★ 账号 0 的载荷显式 unset CLAUDE_CONFIG_DIR，绝不是裸载荷", async () => {
+    invokeMock.mockResolvedValue({ captured: true, raw: "30%", error: null });
+    await fetchAccountUsage("aya", "0", null);
+    const payload = (invokeMock.mock.calls[0][1] as { launchPayload: string }).launchPayload;
+    // fail-closed：裸载荷会继承远端 rc 里那句 `export CLAUDE_CONFIG_DIR=<默认账号>`
+    // ⇒ 探到别的号，而 UI 会把它标成账号 0 的用量（静默串号）。
+    expect(payload.startsWith("unset CLAUDE_CONFIG_DIR; ")).toBe(true);
+    expect(payload).not.toContain("export CLAUDE_CONFIG_DIR");
+  });
+
+  it("账号 0 与具名账号只差账号那一段，其余逐字相同", async () => {
+    expect(buildUsageProbePayload(null).replace("unset CLAUDE_CONFIG_DIR; ", "")).toBe(
+      buildUsageProbePayload("/h/.claude-accts/z").replace(
+        "export CLAUDE_CONFIG_DIR='/h/.claude-accts/z'; ",
+        "",
+      ),
+    );
+  });
+
+  it("★ 空串仍然 throw —— 它不是账号 0，是坏数据（空值 ≠ 未设）", () => {
+    expect(() => buildUsageProbePayload("")).toThrow();
+    expect(() => buildUsageProbePayload(null)).not.toThrow();
+  });
+
+  it("账号 0 的探测结果照常解析 + 进缓存（与具名账号同一条路）", async () => {
+    invokeMock.mockResolvedValue({ captured: true, raw: "77%\nResets in 3h", error: null });
+    const r = await fetchAccountUsage("aya", "0", null);
+    expect(r.status).toBe("ok");
+    await fetchAccountUsage("aya", "0", null);
+    expect(invokeMock).toHaveBeenCalledTimes(1); // 去抖缓存对它同样生效
+  });
+
+  it("账号 0 与同名具名账号不共用缓存键（键含 origin+name，此处只验不串味）", async () => {
+    invokeMock.mockResolvedValue({ captured: true, raw: "10%", error: null });
+    await fetchAccountUsage("aya", "0", null);
+    await fetchAccountUsage("bee", "0", null);
+    expect(invokeMock).toHaveBeenCalledTimes(2);
   });
 
   it("去抖缓存：同一账号第二次调用（不带 force）不重复 invoke", async () => {
