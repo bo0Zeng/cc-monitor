@@ -5,8 +5,12 @@
 //!
 //! **本模块只负责编排一次性探针会话本身**（建/等/送键/抓屏/清理），完全不理解 `/usage`
 //! 输出的语义——那是 TS 侧 `src/account-usage-parse.ts` 纯函数的职责。`launch_payload`
-//! （`export CLAUDE_CONFIG_DIR=...; unset <嵌套env>; claude` 这一行）由 TS 侧
-//! `buildUsageProbePayload` 构造好传入，本模块只管把它安全地敲进一个隐藏 tmux 会话。
+//! 由 TS 侧 `buildUsageProbePayload` 构造好传入，本模块只管把它安全地敲进一个隐藏 tmux
+//! 会话。**Z03 起它有两种形态**，账号维度必定显式表态、不存在裸载荷：
+//!   - 具名账号：`export CLAUDE_CONFIG_DIR=...; unset <嵌套env>; claude`
+//!   - **账号 0**：`unset CLAUDE_CONFIG_DIR; unset <嵌套env>; claude`
+//!     （**不能省成裸载荷**——远端 rc 里那句 `export CLAUDE_CONFIG_DIR=<默认账号>` 会让
+//!     探针探到别的号，而 UI 会把结果标成账号 0 的用量 = 静默串号）
 //!
 //! **命名与识别**：探针会话固定命名 `ccm-usage-<slug>`（`slug` 是账号名的安全化版本）——
 //! 这个前缀（`tmux.rs::USAGE_PROBE_NAME_PREFIX`）专属本功能，不会被其它任何路径创建，因此
@@ -130,7 +134,8 @@ else printf 'NO_TMUX\\n'; fi",
 /// exec，不占用前台可见终端，同 `list_remote_tmux`/`capture_remote_pane` 既有分工）。
 ///
 /// `account_name` 只用于探针会话名 slug + 错误文案，不参与鉴权（鉴权/账号存在性由 TS 侧调用
-/// 前已经确认过，`launch_payload` 本身已经带着正确的 `CLAUDE_CONFIG_DIR`）。
+/// 前已经确认过，`launch_payload` 本身已经**对账号维度显式表态过**：具名账号带
+/// `export CLAUDE_CONFIG_DIR=…`，账号 0 带 `unset CLAUDE_CONFIG_DIR`。本模块只透传不校验。）
 #[tauri::command]
 pub async fn account_usage(
     origin: String,

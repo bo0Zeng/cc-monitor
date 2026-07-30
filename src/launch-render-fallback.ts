@@ -9,7 +9,12 @@
  * 包裹留好落点。
  */
 import { AGENT_PROFILE } from "./agent-profile.ts";
-import { posixQuote, sanitizeRemoteLauncher, buildEnvPrefix } from "./shell-quote.ts";
+import {
+  posixQuote,
+  sanitizeRemoteLauncher,
+  buildEnvPrefix,
+  UNSET_CONFIG_DIR_PREFIX,
+} from "./shell-quote.ts";
 import { SESSION_BACKEND, type TmuxTarget } from "./session-backend.ts";
 import type { EnvOp, LaunchContainer, LaunchPlan, WrapSpec } from "./launch-plan.ts";
 
@@ -20,7 +25,7 @@ function renderEnvOps(ops: EnvOp[]): string {
       if (op.kind === "export-model") return `export ANTHROPIC_MODEL=${posixQuote(op.value)}; `; // F07
       // R04③：`unset` 侧收窄为无参变体后，键表由 kind 在这里查——不再由维度递自由字符串数组。
       // 输出逐字节不变（`unset CLAUDE_CONFIG_DIR; ` / `unset <嵌套env 全套>; `）。
-      if (op.kind === "unset-config-dir") return "unset CLAUDE_CONFIG_DIR; ";
+      if (op.kind === "unset-config-dir") return UNSET_CONFIG_DIR_PREFIX;
       if (op.kind === "unset-nested-env") return `unset ${AGENT_PROFILE.nestedEnvVars.join(" ")}; `;
       // **穷尽性守卫（R04 Phase D 审计发现的真实回退，已修）**：收窄前的末支是
       // `return \`unset ${op.keys.join(" ")}; \``——它**读了 `op.keys`**，于是编译器被迫穷尽：

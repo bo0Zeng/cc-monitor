@@ -684,17 +684,9 @@ export class AccountsSection {
     pending.textContent = "查询中…";
     container.appendChild(pending);
     if (!this.origin) return; // 理论不可达（accountRow 只在 origin 非空时被调），防御性早退
-    if (a.configDir === null) {
-      container.innerHTML = "";
-      const s = document.createElement("span");
-      s.className = "accounts-usage-pending";
-      s.textContent = "账号 0 暂不支持用量查询";
-      s.title = "用量探测要起一次带 CLAUDE_CONFIG_DIR 的隐藏会话；账号 0 的起法是「什么都不设」，尚未支持";
-      container.appendChild(s);
-      return;
-    }
-    const cfgDir = a.configDir;
-    void fetchAccountUsage(this.origin, a.name, cfgDir, { force: true }).then((outcome) => {
+    // Z03：账号 0（`configDir === null`）也能探，载荷走 `unset CLAUDE_CONFIG_DIR; `。
+    // **原样传 `null`，别 `?? ""`**——空串是坏数据，会被 fail-closed 拒掉。
+    void fetchAccountUsage(this.origin, a.name, a.configDir, { force: true }).then((outcome) => {
       container.innerHTML = "";
       container.appendChild(this.buildUsageOutcomeEl(a, outcome));
     });
