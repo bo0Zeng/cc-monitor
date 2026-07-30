@@ -129,6 +129,78 @@ pub(crate) fn parse_visible_tmux_sessions(raw: &str) -> Vec<TmuxSession> {
         .collect()
 }
 
+// ---------- P1（zero-poll-liveness）：`TmuxSessions.observation` 的取值 ----------
+//
+// **第三个双写点**（前两个：`TMUX_LS_FMT` · `NO_TMUX` 哨兵）。monitor 与 daemon 分属两个
+// 独立 crate、不能共享类型，所以这三个字符串两侧各写一份，由
+// `observation_tokens_double_write_point_stays_in_sync` 测试逐字节钉住（同 `TMUX_LS_FMT`
+// 那条守卫的做法：`include_str!` daemon 源 + 锚定 const 定义行，改任一侧忘同步即红）。
+//
+// **为什么用字符串而不是布尔**：P3 会加「server 已死」vs「server 活着但零会话」的细分
+// （两者对 retire 决策等价、只对复活监视有意义）。字符串枚举加一个取值是 additive；
+// 布尔字段加第二个就得改帧形状。
+/// daemon 确证零会话（`tmux ls` rc=0 但 stdout 空 = `exit-empty off`；或 rc=1 = server 不在）。
+const OBS_ZERO_SESSIONS: &str = "zero_sessions";
+/// 远端没装 tmux（`command -v tmux` 失败）——与既有 `NO_TMUX` 哨兵同义，显式化。
+const OBS_NO_TMUX: &str = "no_tmux";
+/// 观测无效（`tmux ls` 以非 0/1 退出、或 exec 本身失败）⇒ 必须跳过，**绝不当零会话**。
+const OBS_UNOBSERVABLE: &str = "unobservable";
+
+/// P1（zero-poll-liveness）：一帧 `TmuxSessions` 的**观测分类**结果。
+///
+/// 存在的理由：这个判断原先是 `ssh_source::stream_loop` 里那条
+/// `if raw.trim() != "NO_TMUX" { … if !backend.is_empty() { … } }` 内联 if——
+/// 它把**五种语义完全不同的观测压成两条路**，而且住在一个需要真远端连接的
+/// `async fn` 里、单测碰不到。提成纯函数后生产与测试走同一条路径。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TmuxObservation {
+    /// 有效观测：某后端自报正在跑的 sid 集。
+    ///
+    /// **可能为空集**——空集 = daemon **确证**该主机零会话（不是"观测失败"）。
+    /// 空集照常进对账、照常累计缺失，**这正是 P1 修掉的那个 bug**：
+    /// 原先空 backend 一律保守跳过 ⇒ 当被杀的是该 origin 最后一个 tmux 会话时
+    /// （server 随之退出、`tmux ls` 回空）⇒ 对账整段跳过 ⇒ idle 灰灯**卡到断连才清**。
+    Backend(std::collections::HashSet<String>),
+    /// 观测无效 ⇒ 本轮跳过、**不累计缺失**（否则 ssh 抖动会批量误灰）。
+    Skip,
+}
+
+/// P1：把一帧 `TmuxSessions` 分类。`observation` = daemon 的显式分类字段
+/// （P1 起的 additive wire 字段；旧 daemon 为 `None`）。
+///
+/// **判据只用 rc + stdout 空否**（daemon 侧已折成 `observation`），**绝不看 stderr 文本**——
+/// P0 实测 stderr 有两种措辞（`no server running on …` / `error connecting to … `），
+/// 且拿英文消息当判据本身就是错的。
+///
+/// 未知的 `observation` 取值 → **落回 raw 判据**（向前兼容：未来 daemon 加新分类时，
+/// 老 monitor 退化成今天的保守行为，不会误灰）。
+pub(crate) fn classify_tmux_observation(raw: &str, observation: Option<&str>) -> TmuxObservation {
+    // NO_TMUX 哨兵（旧 daemon 唯一能表达的"后端不存在"）：远端没装 tmux ⇒ 无从对账。
+    if raw.trim() == "NO_TMUX" {
+        return TmuxObservation::Skip;
+    }
+    // P1：daemon 的显式分类优先。**未知取值刻意不在此匹配** ⇒ 落回下方 raw 判据（向前兼容）。
+    match observation {
+        Some(OBS_NO_TMUX) | Some(OBS_UNOBSERVABLE) => return TmuxObservation::Skip,
+        // 只在 raw 确实为空时认这条——帧内部自相矛盾（说零会话却带着会话行）时以
+        // **数据**为准、落回 raw 判据，不凭一个字符串把明明在跑的会话判死。
+        Some(OBS_ZERO_SESSIONS) if raw.trim().is_empty() => {
+            return TmuxObservation::Backend(std::collections::HashSet::new());
+        }
+        _ => {}
+    }
+    let backend: std::collections::HashSet<String> = parse_tmux_ls(raw)
+        .iter()
+        .filter_map(|s| s.sid.clone())
+        .collect();
+    // 旧 daemon 的空串语义不可分（零会话 / `|| true` 吞掉的错，两者同形）⇒ 保守跳过。
+    // **新 daemon 走不到这里**：它零会话时带 `zero_sessions`、出错时带 `unobservable`。
+    if backend.is_empty() {
+        return TmuxObservation::Skip;
+    }
+    TmuxObservation::Backend(backend)
+}
+
 /// F60(纯函数,单测):判定 `capture_remote_pane` 的 stdout——哨兵 `NO_TMUX`(无 tmux)/
 /// `NO_PANE`(会话不存在 / 抓屏失败)→ Err;否则原样返回抓到的屏幕文本。
 /// (理论边角:pane 内容 `trim_end` 后恰等于某哨兵串 → 误判,概率可忽略。)
@@ -412,6 +484,127 @@ fn is_ccm_tmux_name(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ---------- P1（zero-poll-liveness）：观测分类 ----------
+
+    fn sids(o: &TmuxObservation) -> Vec<String> {
+        match o {
+            TmuxObservation::Backend(s) => {
+                let mut v: Vec<String> = s.iter().cloned().collect();
+                v.sort();
+                v
+            }
+            TmuxObservation::Skip => panic!("期望 Backend，实得 Skip"),
+        }
+    }
+
+    /// ★ P1 的回归测试（**这条在修之前是红的**）：daemon 确证零会话 ⇒ 必须是**有效观测（空集）**，
+    /// 不是跳过。这就是 `doc/INVARIANTS.md` §24bis 那条残留 bug 的机理：
+    /// 杀掉某 origin 仅剩的 tmux 会话 → server 随之退出 → `tmux ls` 回空 →
+    /// 旧代码保守跳过 → idle 灰灯卡到断连 flush 才清。
+    #[test]
+    fn zero_sessions_is_a_valid_observation_not_a_skip() {
+        assert_eq!(
+            classify_tmux_observation("", Some("zero_sessions")),
+            TmuxObservation::Backend(std::collections::HashSet::new()),
+            "daemon 确证零会话时必须进对账（空集），否则灰灯永不清"
+        );
+    }
+
+    /// 旧 daemon（无 `observation` 字段）+ 空 raw ⇒ **保持今天的保守行为**。
+    /// 空 raw 在旧 daemon 那里同时意味着「零会话」和「`tmux ls` 出错被 `|| true` 吞了」，
+    /// 分不开 ⇒ 只能跳过。**新旧混搭不许回归。**
+    #[test]
+    fn old_daemon_empty_raw_still_skips() {
+        assert_eq!(
+            classify_tmux_observation("", None),
+            TmuxObservation::Skip,
+            "旧 daemon 的空串语义不可分，必须保守跳过"
+        );
+    }
+
+    /// 远端没装 tmux ⇒ 跳过（哨兵与显式分类**两条路都要认**）。
+    #[test]
+    fn no_tmux_skips_both_via_sentinel_and_field() {
+        assert_eq!(
+            classify_tmux_observation("NO_TMUX", None),
+            TmuxObservation::Skip
+        );
+        assert_eq!(
+            classify_tmux_observation("NO_TMUX\n", Some("no_tmux")),
+            TmuxObservation::Skip
+        );
+    }
+
+    /// 观测无效（`tmux ls` 非 0/1 退出、exec 失败）⇒ 跳过，**绝不当成零会话**。
+    #[test]
+    fn unobservable_skips() {
+        assert_eq!(
+            classify_tmux_observation("", Some("unobservable")),
+            TmuxObservation::Skip,
+            "观测失败当成零会话会批量误灰"
+        );
+    }
+
+    /// 有会话时照常解析出 sid 集（`@ccm_sid` 为空的会话不进集合，见 `parse_tmux_ls`）。
+    #[test]
+    fn sessions_parse_into_sid_set() {
+        let raw = "s1\t/p\tclaude\t1\t2\tsid-a\ns2\t/q\tnode\t0\t1\t\ns3\t/r\tbash\t0\t1\tsid-c";
+        let o = classify_tmux_observation(raw, None);
+        assert_eq!(sids(&o), vec!["sid-a".to_string(), "sid-c".to_string()]);
+    }
+
+    /// 向前兼容：未来 daemon 加了本 monitor 不认识的分类 ⇒ **落回 raw 判据**，
+    /// 退化成今天的保守行为，不误灰。
+    #[test]
+    fn unknown_observation_falls_back_to_raw() {
+        assert_eq!(
+            classify_tmux_observation("", Some("some_future_kind")),
+            TmuxObservation::Skip
+        );
+        let o = classify_tmux_observation("s1\t/p\tclaude\t1\t1\tsid-a", Some("some_future_kind"));
+        assert_eq!(sids(&o), vec!["sid-a".to_string()]);
+    }
+
+    /// **P1 刻意保留的一处不对称**：`observation` 说有会话、但 raw 里一个 `@ccm_sid` 都没有
+    /// （老会话 / 未装 wrapper）⇒ 仍然跳过。因为对账的判据是 sid 集，没有 sid 就无从判断，
+    /// 而"有 tmux 会话但都没绑 sid"**不等于**"零会话"。
+    #[test]
+    fn sessions_without_any_ccm_sid_still_skips() {
+        assert_eq!(
+            classify_tmux_observation("s1\t/p\tbash\t0\t1\t", None),
+            TmuxObservation::Skip,
+            "有会话但无 @ccm_sid ≠ 零会话，不许当空集喂进对账"
+        );
+    }
+
+    /// P1：`observation` 取值集是 monitor↔daemon 的**第三个双写点**（前两个：`TMUX_LS_FMT` ·
+    /// `NO_TMUX` 哨兵）。两个独立 crate 不能共享类型 ⇒ 用与
+    /// `tmux_ls_fmt_double_write_point_stays_in_sync` 相同的办法钉住：`include_str!` 读 daemon 源
+    /// + **锚定 const 定义行**（不是裸字面量——否则该串若出现在某条注释里会掩盖真漂移）。
+    ///   **双向**：改 monitor 或 daemon 任一侧忘同步，本测即红。
+    #[test]
+    fn observation_tokens_double_write_point_stays_in_sync() {
+        let daemon_src = include_str!("../../remote-daemon-proto/src/watcher.rs");
+        for (name, value) in [
+            ("OBS_ZERO_SESSIONS", OBS_ZERO_SESSIONS),
+            ("OBS_NO_TMUX", OBS_NO_TMUX),
+            ("OBS_UNOBSERVABLE", OBS_UNOBSERVABLE),
+        ] {
+            let expected_def = format!("const {name}: &str = \"{value}\";");
+            assert!(
+                daemon_src.contains(&expected_def),
+                "observation 双写点漂移：daemon watcher.rs 不含 {expected_def:?}\n\
+                 （改了分类取值就得两侧同步——同 TMUX_LS_FMT 的纪律）"
+            );
+        }
+        // 反向自检：断言的是「扫到了 daemon 源」而不是「命中若干条」——阈值不能挂在
+        // 被检查的量上（rust-ts-boundary 的教训）。
+        assert!(
+            daemon_src.len() > 1000,
+            "include_str! 没读到 daemon 源，上面三条断言全是空转"
+        );
+    }
 
     /// A5：send-keys 目标白名单——只认本工具的 cc-* 会话名，拒用户别的 tmux。
     #[test]

@@ -68,27 +68,129 @@ const TMUX_EMIT_INTERVAL: Duration = Duration::from_secs(8);
 /// `parse_tmux_ls` 靠它解析）。name⇥path⇥cmd⇥attached⇥windows⇥@ccm_sid。**改此须同步 monitor（双写点）。**
 const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{?session_attached,1,0}\t#{session_windows}\t#{@ccm_sid}";
 
-/// B2：在**本机**（daemon 就在远端主机）跑 `tmux ls` 取原文（或哨兵 `NO_TMUX`）。`sh -c` + `command -v`
-/// 门控（同 monitor `list_remote_tmux` 命令）解析 PATH；无 tmux → `NO_TMUX`、无 server → 空。执行失败 →
-/// 空串（monitor 对账侧空 backend 保守跳过、不误灰）。**只读**（tmux ls 不改任何状态）。
+// ---------- P1（zero-poll-liveness）：`TmuxSessions.observation` 的取值 ----------
+//
+// **双写点**：与 monitor `src-tauri/src/tmux.rs` 的同名 const 逐字节一致，由 monitor 侧
+// `observation_tokens_double_write_point_stays_in_sync` 测试钉住（`include_str!` 读本文件 +
+// 锚定 const 定义行）。**改本处必须同步 monitor**，同 `TMUX_LS_FMT` 的纪律。
+/// daemon 确证零会话（rc=0 但 stdout 空 = `exit-empty off`；或 rc=1 = server 不在）。
+const OBS_ZERO_SESSIONS: &str = "zero_sessions";
+/// 远端没装 tmux——与既有 `NO_TMUX` 哨兵同义，显式化。
+const OBS_NO_TMUX: &str = "no_tmux";
+/// 观测无效（`tmux ls` 以非 0/1 退出、或 exec 本身失败）⇒ monitor 必须跳过，绝不当零会话。
+const OBS_UNOBSERVABLE: &str = "unobservable";
+
+/// P1（zero-poll-liveness）：探测脚本里「PATH 中没有 tmux」的约定退出码。
+///
+/// **为什么要一个专用 rc 而不是让脚本 `printf 'NO_TMUX'`**：P1 之前脚本用
+/// `tmux ls … || true` 把 tmux 自己的 rc **吞掉了**，于是「零会话」「`tmux ls` 出错」
+/// 「exec 失败」三种语义全压成同一个空串，monitor 只能一律保守跳过 ⇒ 就是
+/// `doc/INVARIANTS.md` §24bis 那条残留 bug 的根。改成 `exec tmux …` 让 tmux 的 rc
+/// 原样成为 `sh` 的 rc，无 tmux 那格才需要一个不与 tmux 冲突的自定义值。
+///
+/// 97 是任意选的哨兵值（tmux 只用 0/1）。
+const TMUX_PROBE_NO_TMUX_RC: i32 = 97;
+
+/// P1：`tmux ls` 一次观测的四态分类（**P0 实测定死**，见
+/// `.claude/planned-build/zero-poll-liveness/features/P0-machine-facts.md` §3 ④）。
+///
+/// P0 实测的状态空间（隔离 socket）：
+/// - rc=0 + stdout 非空 → 有会话
+/// - rc=0 + stdout 空 → **server 活着但零会话**（只在 `exit-empty off` 下出现；
+///   默认 `exit-empty on` 时 server 随最后一个会话一起退出，走下一格）
+/// - rc=1 → server 不在（socket 存在但无 server / socket 根本不存在，两种 stderr 措辞）
+/// - 其他 rc → 观测无效
+///
+/// **前三格里后两格对 retire 决策完全等价**（都是"零会话"），区别只对 P3 的复活监视有意义
+/// ⇒ 折成一个 `ZeroSessions`，P3 加细分时**不必改帧契约**。
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TmuxObservation {
+    /// rc=0 + stdout 非空：`tmux ls -F` 原文。
+    Sessions(String),
+    /// **确证**零会话（rc=0 空 stdout，或 rc=1）⇒ monitor 可安全 retire。
+    ZeroSessions,
+    /// PATH 里没有 tmux。
+    NoTmux,
+    /// 观测无效（非 0/1/97 的 rc、被信号杀、exec 失败）⇒ monitor 必须跳过。
+    Unobservable,
+}
+
+/// P1：`sh -c` 探测脚本。`command -v` 门控解析 PATH（同 monitor `list_remote_tmux`）；
+/// **`exec` 让 tmux 的 rc 原样成为 sh 的 rc**（这是 P1 的关键改动——原先 `|| true` 吞了 rc）。
+///
+/// **提成独立函数是为了可测**：真机 tmux 的四种 rc 由 P0 实测过，但脚本本身（`command -v`
+/// 门控 + `exec` 的 rc 透传）要能在 CI 上用**假 tmux** 验证，不能只信字符串断言。
+fn tmux_probe_script() -> String {
+    format!(
+        "if command -v tmux >/dev/null 2>&1; then exec tmux ls -F '{TMUX_LS_FMT}' 2>/dev/null; else exit {TMUX_PROBE_NO_TMUX_RC}; fi"
+    )
+}
+
+/// P1：把探测的 (rc, stdout) 折成四态。**纯函数、可单测**（判据只有 rc + stdout 空否，
+/// 刻意**不看 stderr**——P0 实测 stderr 有两种措辞，且拿英文消息当判据本身就是错的）。
+///
+/// `code == None` = 被信号杀（如 tmux 卡死后探测线程连带被清）⇒ 观测无效。
+fn classify_tmux_probe(code: Option<i32>, stdout: &str) -> TmuxObservation {
+    match code {
+        Some(0) if stdout.trim().is_empty() => TmuxObservation::ZeroSessions,
+        Some(0) => TmuxObservation::Sessions(stdout.to_string()),
+        // rc=1 = server 不在。**一处刻意的保守**：socket 权限异常这类罕见情形也会落这里
+        // ⇒ 理论上可能误 retire。缓解：socket 路径 uid 隔离（`/tmp/tmux-<uid>/`），同 uid 下
+        // 权限异常几乎不可能。**P3 落地后有更强判据**：那时 daemon 持有 server 的 pidfd，
+        // 「pidfd 说 server 活着但 tmux ls rc=1」= 真异常 ⇒ 归 `Unobservable`。
+        // 该升级**不改帧契约**（`ZeroSessions` 语义不变），所以 P1 现在就能安全落地。
+        Some(1) => TmuxObservation::ZeroSessions,
+        Some(TMUX_PROBE_NO_TMUX_RC) => TmuxObservation::NoTmux,
+        _ => TmuxObservation::Unobservable,
+    }
+}
+
+/// B2：在**本机**（daemon 就在远端主机）跑 `tmux ls` 取观测。`sh -c` + `command -v` 门控
+/// （同 monitor `list_remote_tmux` 命令）解析 PATH。**只读**（tmux ls 不改任何状态）。
+///
+/// P1 起返回四态分类而非裸 `String`——见 [`TmuxObservation`]。
 ///
 /// **无超时**：`output()` 是无超时阻塞调用，远端 tmux 卡死（D-state/socket 卡住/NFS home）时会永不返回。
 /// 故**只能在一次性后台线程里调用**（见 `watch_loop` 的 `tmux_inflight`），**绝不可**直接跑在 watch_loop
 /// 线程上——否则会冻结整个 reader（Line/notify/判活全停）。
-fn run_tmux_ls() -> String {
-    let script = format!(
-        "if command -v tmux >/dev/null 2>&1; then tmux ls -F '{TMUX_LS_FMT}' 2>/dev/null || true; else printf 'NO_TMUX\\n'; fi"
-    );
+fn run_tmux_ls() -> TmuxObservation {
     match std::process::Command::new("sh")
         .arg("-c")
-        .arg(&script)
+        .arg(tmux_probe_script())
         .output()
     {
-        Ok(out) => String::from_utf8_lossy(&out.stdout).into_owned(),
+        Ok(out) => classify_tmux_probe(out.status.code(), &String::from_utf8_lossy(&out.stdout)),
         Err(e) => {
             tracing::warn!("tmux ls 本地执行失败: {e}");
-            String::new()
+            TmuxObservation::Unobservable
         }
+    }
+}
+
+/// P1：四态 → wire。**`raw` 载荷刻意与 P1 之前逐字节一致**，新信息全部走 additive 的
+/// `observation` 字段 ⇒ **旧 monitor 行为零变化**（有会话时它照旧解析 raw；零会话/出错时
+/// 它看到空 raw、照旧保守跳过 = 今天的行为，无回归）。新 monitor 读 `observation` 才能
+/// 区分"确证零会话"与"观测失败"，从而修掉灰灯卡死。
+fn observation_to_frame(obs: TmuxObservation) -> Frame {
+    match obs {
+        TmuxObservation::Sessions(raw) => Frame::TmuxSessions {
+            raw,
+            // 有会话时**刻意省略**：raw 非空本身就说明是有会话，省略保持热路径字节不变。
+            observation: None,
+        },
+        TmuxObservation::ZeroSessions => Frame::TmuxSessions {
+            raw: String::new(),
+            observation: Some(OBS_ZERO_SESSIONS.to_string()),
+        },
+        TmuxObservation::NoTmux => Frame::TmuxSessions {
+            // 保留 `NO_TMUX` 哨兵：旧 monitor 认它（`raw.trim() != "NO_TMUX"` 那道门）。
+            raw: "NO_TMUX\n".to_string(),
+            observation: Some(OBS_NO_TMUX.to_string()),
+        },
+        TmuxObservation::Unobservable => Frame::TmuxSessions {
+            raw: String::new(),
+            observation: Some(OBS_UNOBSERVABLE.to_string()),
+        },
     }
 }
 
@@ -177,7 +279,7 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool, tail_
     // B2 审计（run_tmux_ls 无超时 → 阻塞会冻结整个 reader）：把 `tmux ls` 放到一次性后台线程跑，
     // watch_loop 只做非阻塞 try_recv。gate 在「无在途探测」上 → 最多同时一个探测线程；即便远端 tmux
     // 卡死（D-state/socket 卡住/NFS home），也只泄漏这一个后台线程，reader（Line/notify/判活）永不冻结。
-    let mut tmux_inflight: Option<std::sync::mpsc::Receiver<String>> = None;
+    let mut tmux_inflight: Option<std::sync::mpsc::Receiver<TmuxObservation>> = None;
 
     // Live loop with a 2s poll tick. The tick detects a session whose PID died
     // WITHOUT its sessions/<PID>.json being deleted (Claude Code can leave a
@@ -228,8 +330,9 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool, tail_
         // run_tmux_ls 无超时 → 必须跑在**独立线程**（见 tmux_inflight 注释），watch_loop 只非阻塞收结果。
         if let Some(rx) = tmux_inflight.as_ref() {
             match rx.try_recv() {
-                Ok(raw) => {
-                    sink.send(Frame::TmuxSessions { raw });
+                Ok(obs) => {
+                    // P1：四态 → wire（`raw` 载荷不变、新信息走 additive `observation`）。
+                    sink.send(observation_to_frame(obs));
                     tmux_inflight = None;
                 }
                 // 探测仍在跑（含卡死）：不阻塞、下一轮再看。
@@ -1115,6 +1218,160 @@ fn path_key(p: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ---------- P1（zero-poll-liveness）：tmux 观测四态 ----------
+
+    /// 纯分类：四态各自的判据。**P0 实测的状态空间**（见
+    /// `.claude/planned-build/zero-poll-liveness/features/P0-machine-facts.md` §3 ④）。
+    #[test]
+    fn tmux_probe_classifies_four_states() {
+        // rc=0 + 非空 → 有会话
+        assert_eq!(
+            classify_tmux_probe(Some(0), "s1\t/p\tclaude\t1\t1\tsid-a\n"),
+            TmuxObservation::Sessions("s1\t/p\tclaude\t1\t1\tsid-a\n".to_string())
+        );
+        // rc=0 + 空 → server 活但零会话（exit-empty off）
+        assert_eq!(
+            classify_tmux_probe(Some(0), ""),
+            TmuxObservation::ZeroSessions
+        );
+        assert_eq!(
+            classify_tmux_probe(Some(0), "  \n"),
+            TmuxObservation::ZeroSessions,
+            "只有空白也算空"
+        );
+        // rc=1 → server 不在（两种 stderr 措辞都走这里，刻意不看 stderr）
+        assert_eq!(
+            classify_tmux_probe(Some(1), ""),
+            TmuxObservation::ZeroSessions
+        );
+        // 约定 rc → 无 tmux
+        assert_eq!(
+            classify_tmux_probe(Some(TMUX_PROBE_NO_TMUX_RC), ""),
+            TmuxObservation::NoTmux
+        );
+        // 其他 rc / 被信号杀 → 观测无效（**绝不当零会话**）
+        assert_eq!(
+            classify_tmux_probe(Some(2), ""),
+            TmuxObservation::Unobservable
+        );
+        assert_eq!(
+            classify_tmux_probe(Some(127), ""),
+            TmuxObservation::Unobservable
+        );
+        assert_eq!(classify_tmux_probe(None, ""), TmuxObservation::Unobservable);
+    }
+
+    /// **`raw` 载荷与 P1 之前逐字节一致**——旧 monitor 行为零变化的那条保证。
+    /// 有会话时 `observation` 必须**省略**（热路径不加字节）。
+    #[test]
+    fn observation_frame_keeps_raw_payload_backward_compatible() {
+        match observation_to_frame(TmuxObservation::Sessions("s1\t/p\tclaude\t1\t1\tx".into())) {
+            Frame::TmuxSessions { raw, observation } => {
+                assert_eq!(raw, "s1\t/p\tclaude\t1\t1\tx");
+                assert_eq!(observation, None, "有会话时必须省略，否则热路径白涨字节");
+            }
+            f => panic!("期望 TmuxSessions，实得 {f:?}"),
+        }
+        // 无 tmux：保留 NO_TMUX 哨兵（旧 monitor 那道门认它）
+        match observation_to_frame(TmuxObservation::NoTmux) {
+            Frame::TmuxSessions { raw, observation } => {
+                assert_eq!(raw.trim(), "NO_TMUX");
+                assert_eq!(observation.as_deref(), Some(OBS_NO_TMUX));
+            }
+            f => panic!("期望 TmuxSessions，实得 {f:?}"),
+        }
+        // 零会话 / 观测无效：raw 都是空串（旧 monitor 一律保守跳过 = 今天的行为），
+        // 区别只在 observation ⇒ 只有新 monitor 分得开。
+        for (obs, token) in [
+            (TmuxObservation::ZeroSessions, OBS_ZERO_SESSIONS),
+            (TmuxObservation::Unobservable, OBS_UNOBSERVABLE),
+        ] {
+            match observation_to_frame(obs) {
+                Frame::TmuxSessions { raw, observation } => {
+                    assert_eq!(raw, "", "旧 monitor 必须看到与今天相同的空 raw");
+                    assert_eq!(observation.as_deref(), Some(token));
+                }
+                f => panic!("期望 TmuxSessions，实得 {f:?}"),
+            }
+        }
+    }
+
+    /// ★ **真跑那段 shell 脚本**（拿假 tmux 喂各种 rc），不只做字符串断言。
+    ///
+    /// 为什么必须这样测：P1 的关键改动是把 `tmux ls … || true` 换成 `exec tmux …` 让 rc
+    /// 透出。`|| true` 与 `exec` 的差别**在字符串断言里看不出来**——只有真执行才知道 rc
+    /// 有没有传出来。（同 `tmux.rs::emit_guarded_commands_for_e2e` 的教训：门禁只锁字符串
+    /// 形状不锁行为。）
+    #[test]
+    fn probe_script_propagates_rc_with_fake_tmux() {
+        let dir = std::env::temp_dir().join(format!("ccm-p1-probe-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let fake = dir.join("tmux");
+
+        let run = |path_value: &str| -> TmuxObservation {
+            let out = std::process::Command::new("/bin/sh")
+                .arg("-c")
+                .arg(tmux_probe_script())
+                .env("PATH", path_value)
+                .output()
+                .expect("spawn /bin/sh");
+            classify_tmux_probe(out.status.code(), &String::from_utf8_lossy(&out.stdout))
+        };
+        let write_fake = |body: &str| {
+            std::fs::write(&fake, body).expect("write fake tmux");
+            let mut perm = std::fs::metadata(&fake).expect("stat").permissions();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                perm.set_mode(0o755);
+            }
+            std::fs::set_permissions(&fake, perm).expect("chmod");
+        };
+        let path_with_fake = format!("{}:/usr/bin:/bin", dir.display());
+
+        // ① 假 tmux 打印一行会话、rc=0 → Sessions
+        write_fake("#!/bin/sh\nprintf 's1\\t/p\\tclaude\\t1\\t1\\tsid-a\\n'\nexit 0\n");
+        assert!(matches!(
+            run(&path_with_fake),
+            TmuxObservation::Sessions(ref s) if s.contains("sid-a")
+        ));
+
+        // ② rc=0 但不输出 → ZeroSessions（exit-empty off 那格）
+        write_fake("#!/bin/sh\nexit 0\n");
+        assert_eq!(run(&path_with_fake), TmuxObservation::ZeroSessions);
+
+        // ③ rc=1（真 tmux 在 server 不在时就是这个）→ ZeroSessions
+        //    **这一格是 P1 的核心**：改回 `|| true` 会让它变成 rc=0+空 ⇒ 仍是 ZeroSessions，
+        //    所以本格单独看不出回归；真正钉住 `exec` 的是 ④。
+        write_fake("#!/bin/sh\necho 'no server running on /tmp/x' >&2\nexit 1\n");
+        assert_eq!(run(&path_with_fake), TmuxObservation::ZeroSessions);
+
+        // ④ ★ rc=2（观测无效）→ 必须是 Unobservable，**绝不能被折成零会话**。
+        //    这一格就是 `|| true` 的变异检测点：加回 `|| true` 会把 rc=2 吞成 rc=0+空
+        //    ⇒ 误判成 ZeroSessions ⇒ 本断言红。
+        write_fake("#!/bin/sh\necho boom >&2\nexit 2\n");
+        assert_eq!(
+            run(&path_with_fake),
+            TmuxObservation::Unobservable,
+            "观测失败被折成零会话会批量误灰——这里红说明 rc 没有真的透出来"
+        );
+
+        // ⑤ PATH 里没有 tmux → NoTmux（command -v 门控）。
+        //    **必须用一个确实没有 tmux 的空目录**：初版这里写的是 `/usr/bin:/bin`，而真 tmux
+        //    就在 `/usr/bin` ⇒ 测试真跑了**默认 socket** 上的 `tmux ls`（只读、无损，但违反
+        //    "tmux 一律走隔离 socket"的纪律，且在别人机器上结果不可预测）。断言当场红是因为
+        //    它列出了真实会话而不是 NoTmux —— 算这条测试自己抓到的第一个问题。
+        let empty = dir.join("no-tmux-here");
+        std::fs::create_dir_all(&empty).expect("mkdir empty");
+        assert_eq!(
+            run(&empty.display().to_string()),
+            TmuxObservation::NoTmux,
+            "PATH 里没有 tmux 时必须走 command -v 门控那支"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// Build a byte buffer from JSONL lines joined with `\n` and a trailing one.
     fn jsonl(lines: &[&str]) -> Vec<u8> {

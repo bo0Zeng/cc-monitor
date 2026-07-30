@@ -405,7 +405,19 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 **单写者已机器化**（Phase G）：第 1 条「`mark_idle`/`clear_idle` 唯一写者=emitter」原靠注释约定、`cargo check` 抓不住；现有 `ssh_source.rs::f032_idle_tests::remote_idle_single_writer_guard` 扫源码断言这两个写函数**只被 lib.rs 调用**，emitter 之外新增写者即测红（同 F08 daemon 只读护栏的机器化思路）。
 
-**已知残留（daemon-bound，记档待版本批次）**：收帧收割器对**空 backend 保守跳过**（`ssh_source.rs` `!backend.is_empty()` 门），是为挡 `tmux ls` 瞬时抖动批量误灰。代价：当**被杀的是该 origin 最后一个 tmux 会话**时，tmux server 退出→daemon `run_tmux_ls` 回空串→收割器整段跳过→该 idle-tmux 灰灯**卡到断连 flush 才清**（多会话场景不中招；断连自愈）。干净修法=daemon 对「命令成功但零会话」回确定性哨兵（如 `NO_SESSIONS`）区分于「exec 失败」，monitor 即可安全 retire——**但这要动 daemon（红线：daemon 零行为改动），留 daemon 版本批次**。
+**原「已知残留」已修（2026-07-30，`zero-poll-liveness` P1；用户当日松了「daemon 零改」红线）**：收帧收割器原先对**空 backend 一律保守跳过**（`ssh_source.rs` 的 `!backend.is_empty()` 门），代价是当**被杀的是该 origin 最后一个 tmux 会话**时（tmux server 随之退出、`run_tmux_ls` 回空串）收割器整段跳过 ⇒ 该 idle-tmux 灰灯**卡到断连 flush 才清**。
+
+**修法**（比原记档设想的更细，因为 P0 实测把状态空间量清了）：
+1. **daemon 让 rc 透出**——`run_tmux_ls` 原先 `tmux ls … 2>/dev/null || true` 把 tmux 的 rc **吞掉**，五种观测压成"空串/有内容"两种；现改为 `exec tmux …`（rc 原样成为 `sh` 的 rc）+ 一个约定 rc 表示"PATH 里无 tmux"，折成四态 `Sessions / ZeroSessions / NoTmux / Unobservable`（`watcher.rs::classify_tmux_probe`）。
+2. **P0 实测订正了原记档的措辞**：原文说的「命令成功但零会话」在默认 `exit-empty on` 下**不出现**（server 随最后一个会话退出、rc=1）；但 `exit-empty off` 下**确实出现**且 **rc=0 + stdout 空**。两者对 retire 决策等价 ⇒ 合成一个 `ZeroSessions`（区别只对 P3 的复活监视有意义 ⇒ 将来加细分**不必改帧契约**）。
+3. **wire additive**：`TmuxSessions` 帧加 `observation: Option<String>`（`"zero_sessions"` / `"no_tmux"` / `"unobservable"`），**有会话时省略** ⇒ `raw` 载荷与之前逐字节一致 ⇒ **旧 monitor 行为零变化**（空 raw 照旧保守跳过）。**不 bump `PROTO_VERSION`**。取值集是 monitor↔daemon 的**第三个双写点**（前两个：`TMUX_LS_FMT` · `NO_TMUX`），由 `tmux.rs::observation_tokens_double_write_point_stays_in_sync` 钉住。
+4. **monitor 把那条内联 if 提成纯函数** `tmux::classify_tmux_observation`（原判断住在需要真远端连接的 `async fn` 里、单测碰不到）。`ZeroSessions` ⇒ 返回**空集但有效**的 `Backend(∅)` ⇒ 照常进 `reconcile_step` 累计缺失；`NoTmux`/`Unobservable` 才跳过。
+
+**修完后的延迟**：该场景从「永不（卡到断连）」变成 **`RETIRE_MISS_THRESHOLD`(2) × daemon 推帧间隔(8s) ≈ 16s**——**是有界化，不是即时化**。降到 ~10ms 是 `zero-poll-liveness` P3/P5 的事（事件驱动 + 正向死亡帧绕过 miss 计数）。
+
+**一处刻意的保守**：`rc=1` 直接判 `ZeroSessions`，意味着"socket 权限异常"这类罕见情形也会被判成零会话（理论上可能误 retire）。缓解：socket 路径 uid 隔离。**P3 落地后收紧**：那时 daemon 持有 tmux server 的 pidfd，「pidfd 说 server 活着但 `tmux ls` rc=1」= 真异常 ⇒ 归 `Unobservable`；该升级**不改帧契约**。
+
+**尚未真机生效**：`BUILD_ID` 仍是 `p1q-accounts`（刻意不在 P1 单独 bump），故已部署的旧 daemon 不会被判 stale、不会自动重装 ⇒ 本修复在远端**休眠**直到 P5 一并 bump + 重部署。
 
 ---
 

@@ -2,7 +2,7 @@
 
 > 所有功能宏观设计的**单一事实来源**。每次修订在末尾「§7 变更记录」追加一行。
 >
-> **状态：Phase A 已落盘，等用户审批。未动任何代码。**
+> **状态：主计划 2026-07-30 用户已批准 + P4 hook 授权已给。P0/P1 已交付签收。**
 > **来源：BACKLOG E34（用户 2026-07-29 点名「我要把轮询杀掉」）+ 用户 2026-07-30
 > 追加要求「daemon 是能改的，我的要求就是性能最佳且不要轮询」。**
 
@@ -26,7 +26,8 @@ E34 登记时只盯着 tmux 那条。实际 `watch_loop`（`remote-daemon-proto/
 
 ### 事实 2：daemon 的进程模型使这件事比调研设想的**便宜得多**
 
-- daemon 是**我方仓内 Rust**（`remote-daemon-proto/`，standalone crate，47 个测试，
+- daemon 是**我方仓内 Rust**（`remote-daemon-proto/`，standalone crate，**125** 个测试
+  （此前记的 47 是 `watcher.rs` 单文件里 `#[test]` 的数量，已订正），
   CI 有独立 job 跑 `fmt --check` + `clippy --all-targets` + `test`）
 - 它**已经依赖 `notify 6.1`**（Linux 上就是 inotify）+ `notify-debouncer-mini 0.4` + tokio
 - 它由 monitor 经 SSH 直接 exec（`~/.cc-monitor/bin/cc-monitor-remote`）⇒
@@ -138,7 +139,7 @@ threshold=1 会误 retire 还活着的 A）。
 | # | 功能 | 规模 | 需外部授权？ | 状态 |
 |---|---|---|---|---|
 | **P0** | **五项机制实测**（隔离 socket + scratchpad，唯一可能推翻方向的一步） | 小，全是测 | 否（隔离 socket） | **✅ 完成，已签收** |
-| **P1** | daemon `NO_SESSIONS` 哨兵 + monitor 侧安全 retire（销 `INVARIANTS:408` 残留） | 小 | 否 | 未开工 |
+| **P1** | daemon `ZeroSessions` 观测分类 + monitor 侧安全 retire（销 `INVARIANTS:408` 残留） | 小 | 否 | **✅ 完成，已签收** |
 | **P2** | pidfd 替掉判活轮询 A（含 PID 复用在机制上消失） | 中 | 否 | 未开工 |
 | **P3** | tmux server 生 / 死 / 复活事件化（**不删轮询 B**，见下） | 中 | 否 | 未开工 |
 | **P4** | daemon 装 tmux hook（会话生/死/改名）+ 事件通路 | 中 | **是：改活 tmux server 的 hook 状态** | 未开工 |
@@ -259,8 +260,13 @@ threshold=1 会误 retire 还活着的 A）。
   `from_secs` 节流常量。**阈值不能挂在被优化的量上**（rust-ts-boundary 的教训）⇒
   断言的是「扫到的文件数 > 0」+「命中数 == 0」，不是「命中数 < N」
 - **端到端延迟 e2e**：隔离 socket 起会话 → 带外 `kill-session` → 量到「monitor 收到
-  removed」的墙上时间。落进既有 `graylight-daemon-frames` 一族（`e2e/README.md` 记的
-  两级跑法），**不新建套件**
+  removed」的墙上时间。
+  **⚠ P1 审计订正了载体**：原计划「落进既有 `graylight-daemon-frames` 一族」**行不通**——
+  实测那 6 套（`graylight-*` / `restart-*` / `resume-*` + helper `gen-idle-tmux.sh`，正是
+  BACKLOG E14 记的"不在 CI 的 6 套"）**一处 `-L` 都没有**，会在**默认 socket** 上建/杀会话。
+  ⇒ P6 必须**先给它们做 socket 隔离**（顺带闭合 E41），或改用已隔离的 6 套（`tmux-target` /
+  `tmux-guarded` / `ccm-acceptance` / `ccm-pretrust` / `cc-spawn-uplift` / `usage-probe`）作载体。
+  两条路都比"直接并入"贵，**P6 开工时先定这个**
 - 新套件断言条数进 CI 标签（gate-integrity G-A 的地板纪律，本区遵守不重复实现）
 
 ### P7 — 文档
@@ -415,5 +421,6 @@ pidfd 那步必须做「杀掉被追踪进程 → 事件真的到了」和「不
 | # | 日期 | 改了什么 / 为什么 |
 |---|---|---|
 | 03 | 2026-07-30 | **P0 交付，四处设计被实测收紧**：① P0-① 的"好答案分支（帧带 sid）"**被证伪**——`#{@ccm_sid}` 在 `session-closed` 里解析到**别的会话**，照直觉写会把活着的会话变灰 ⇒ 只能带名字 ② P0-② 的"per-session 干净路线"**被证伪**（对照实验：per-session 机制可用，但 `session-closed` 专门不触发）⇒ 必须全局 `[50]`，用户已授权的正是需要的那条 ③ §6 风险 3 **范围订正**：inotify 溢出是**既有盲区**（debouncer 吞掉），且 pidfd 免疫 ⇒ P2 让情况变好，不是本区引入的风险 ④ P1 哨兵从 `NO_SESSIONS` 改为 **`ZeroSessions`**、判据改为 **rc + stdout 空否**（Phase D 自审补测发现 `exit-empty off` 下"server 活+零会话"存在且 rc=0）。另**计划外最有价值的产出**：`run-shell -b` 在「杀掉最后一个会话」时写不进去 ⇒ **hook 与 pidfd 的分界从此有实测依据**（hook 管"多个中杀一个"，pidfd 管"杀到没了/server 被端"），并给 `local-as-remote` L1 留下"cgroup 隔离只对经 SSH 起成立"的提醒 |
+| 04 | 2026-07-30 | **P1 交付**（销掉 `INVARIANTS:408` 那条 2026-07-25 就登记、明文卡在「daemon 零改」上的真 bug）。两条实质影响回写：① **P6 的载体作废重定**——实测那 6 套非 CI 套件（`graylight-*`/`restart-*`/`resume-*` + helper）**一处 `-L` 都没有**、会在默认 socket 上建/杀会话 ⇒ 原计划「并入既有 graylight 一族」行不通，P6 得先做 socket 隔离（登记 E41）或换已隔离的载体。旁证：`graylight-daemon-frames.sh:30` 那个 keepalive 会话的存在理由**就是**绕开 P1 修的这个 bug ⇒ 该 bug 当年是被测试侧绕过而非被发现 ② **P3 有了明确的收紧对象**（`rc=1` 判 `ZeroSessions` 是刻意保守，P3 持 pidfd 后可把「server 活着但 rc=1」归 `Unobservable`，且不改帧契约）。另：`BUILD_ID` **刻意不在 P1 bump**（推到 P5 一次重部署覆盖整个工作区，避免让用户每台远端被强制重装两次）⇒ 本修复在远端**休眠**，已记进 STATUS；基线订正 daemon 测试数 47→125 |
 | 02 | 2026-07-30 | **交审前自查改掉一处顺序缺陷**：初稿把「删 `TMUX_EMIT_INTERVAL`」排在 P3，但 P3 只覆盖 server 级生死——「多个会话里被杀掉一个」server 还活着 ⇒ 无 pidfd/无 socket 事件，**只有 hook（P4）知道**。那样删会把该场景从 16s 变成**永不**。删轮询 B 移到 P5，并在成功标准 1 / §1 P3 / §4 顺序表三处写死前置条件，另加 §6 风险 9 |
 | 01 | 2026-07-30 | Phase A 落盘。范围比 E34 登记的**大一格**（发现 daemon 有 A/B **两条**轮询，E34 只盯了 tmux 那条）；架构比 E34 登记的**不同**（E34 写"daemon 零改"，用户已松该红线，且零改做不到正向死亡帧 ⇒ 16s 只能降到「新间隔×2」）；比用户调研的落地成本**低**（`notify` crate 自带 inotify ⇒ 调研的 ⚠ 盲区消失；daemon 自持 pidfd ⇒ 不要 systemd unit 与 python）。顺带把 `INVARIANTS:408` 那条"卡在 daemon 零改上"的预登记残留纳为 P1 |
