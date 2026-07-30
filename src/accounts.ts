@@ -143,10 +143,22 @@ export function currentWorkingAccount(state: AccountsState): Account | null {
 
 /** 某账号是否可被选为默认 / 用来起会话。 */
 export function isSelectable(a: Account): boolean {
-  // Z01：账号 0（mode "bare"）在这里**天然落选**，这正是当前想要的——从 UI 起它需要
-  // 「显式 unset CLAUDE_CONFIG_DIR」这条注入路径，而 launch-plan 今天只会 export。
-  // 若哪天放开，必须**同时**给出 unset 的注入形态：只是「不注入」是错的，远端 rc 里
-  // 那句 `export CLAUDE_CONFIG_DIR=<默认账号>` 会让它落到别的账号上（静默串号）。
+  // 账号 0（mode "bare"）在这里**天然落选**。
+  //
+  // ★ **Z02 订正了 Z01 在这儿写的一句错话**。Z01 写的是「从 UI 起它需要『显式 unset』的
+  // 注入路径，而 launch-plan 今天只会 export」——**不对**：那条路径早就有了，两条渲染路各一份
+  //   · CLI 路径：`ACCOUNT_DIMENSION.cliFlags` 对非 account 态吐 `--base`，
+  //     而 `shared/ccm` 收到 `--base` 会 `unset CLAUDE_CONFIG_DIR`（两处落点，
+  //     由 `base-flag-contract-guard.vitest.ts` 钉住）
+  //   · 兜底渲染路径：`ENV_RESET_DIMENSION` 推 `unset-config-dir` op
+  //
+  // 真正缺的是**选择链路**，不是注入形态：
+  //   1. `accountConfigDir()` 对它返回 null ⇒ `resolveAccount` 说不出「用户显式选了账号 0」
+  //      （只能说 `unavailable`，那是「你要的号不能用」，语义不同）
+  //   2. `AccountModifierOption` 没有账号 0 这个选项
+  //   3. `tabs.ts:2283` 那个 `opt.kind === "base" ? … : …` 三元**不会编译报错**地把新变体
+  //      送进 else 分支（拿 `opt.name === undefined` 去起会话）⇒ 加变体前必须先改它
+  // 第 3 条卡 `tabs.ts` 红线 ⇒ 放开这条门槛要等红线松（见 features/Z02-PARTIAL.md）。
   return a.mode === "isolated" && a.loggedIn && a.exists;
 }
 
