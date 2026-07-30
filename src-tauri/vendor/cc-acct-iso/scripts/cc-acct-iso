@@ -347,9 +347,21 @@ cmd_which() {
     IFS="$MF_SEP" read -r n _ c d <<<"$rec"
     if [ "$c" = "$target" ]; then
       printf '%s%s\n' "$n" "$([ "$d" = true ] && printf ' (默认)' || true)"
+      # Z04:它是**已登记的 in-place 账号**——逃生口,可用,但别把它当账号 0。
+      [ "$target" = "$SHARED_STORE" ] && warn "这是 in-place(V1) 账号,**不是账号 0**:\
+它的 .claude.json 写在共享库、账号 0 的写在 $LEGACY_HOME_DIR ⇒ 两套状态。详情跑 '$SELF verify'"
       return 0
     fi
   done
+  # Z04:**最危险的那种**——手工把 CLAUDE_CONFIG_DIR 设成共享库,以为这样就是「账号 0」。
+  # 它谁都不是:manifest 里没有这个 config-dir,而 claude 会把 .claude.json 写进共享库
+  # (账号 0 的那份在 $LEGACY_HOME_DIR)⇒ 状态分裂,且分裂出来的那份没有任何账号认领。
+  if [ "$target" = "$SHARED_STORE" ]; then
+    warn "CLAUDE_CONFIG_DIR 显式指向共享库($SHARED_STORE),但 manifest 里没有这个账号。\
+**这不是账号 0** —— 账号 0 是「**什么都不设**」(用 '$SELF run $ACCOUNT_ZERO_NAME',或 shellinit 生成的 ${ACCOUNT_ZERO_NAME}cc)。\
+照这样起 claude 会把 .claude.json 写进共享库而不是 $LEGACY_HOME_DIR ⇒ 同一个人两套状态"
+    return 1
+  fi
   info "(未登记的 config-dir:$target)"
   return 1
 }
@@ -383,7 +395,30 @@ cmd_verify() {
     IFS="$MF_SEP" read -r n _ c _ <<<"$rec"
     if [ "$c" = "$SHARED_STORE" ]; then inplace_any=1; else isolated_any=1; fi
   done
-  [ "$inplace_any" = 1 ] && vwarn "存在 in-place 账号(config-dir == 共享库):该模式下 .claude.json 会分裂,cc-monitor 不支持"
+  # Z04:in-place 账号的 config-dir **就是**共享库 ⇒ 它的 .claude.json 是 <共享库>/.claude.json,
+  # 而账号 0(裸起)读的是 $LEGACY_HOME_DIR/.claude.json。**两份同时存在 = 状态真的分裂了**:
+  # 设了 CLAUDE_CONFIG_DIR 起 claude 读前者、裸起读后者 ⇒ 同一个人两套 projects 信任 /
+  # oauthAccount / numStartups。
+  #
+  # 此前这里只有一句泛泛的「该模式下会分裂」——**它不查有没有真分裂**。更糟的是下面
+  # 「隔离项 .claude.json 是本账号私有实体」那条会把共享库那份报成**绿灯**(对 in-place 账号
+  # 而言它确实是私有实体)⇒ **真分裂今天完全不可见**。这就是 Z04 要补的那条腿。
+  #
+  # **档位 vwarn 不是 vfail**:in-place 是工具自己给的逃生口(`init` 那里就 warn 过),用它的人
+  # 可能明知代价;判致命会让在野所有 in-place 用户的 verify 突然红(风险不对称)。
+  if [ "$inplace_any" = 1 ]; then
+    local _cj_s="$SHARED_STORE/.claude.json" _cj_h="$LEGACY_HOME_DIR/.claude.json"
+    if [ "$_cj_s" != "$_cj_h" ] && [ -e "$_cj_s" ] && [ -e "$_cj_h" ]; then
+      vwarn "存在 in-place 账号,而且 **.claude.json 已经真的分裂了**:$_cj_s($(stat -c %s -- "$_cj_s" 2>/dev/null || echo ?) 字节)\
+ 与 $_cj_h($(stat -c %s -- "$_cj_h" 2>/dev/null || echo ?) 字节)同时存在。设了 CLAUDE_CONFIG_DIR 起 claude 读前者、\
+裸起读后者 ⇒ 同一个人两套 projects 信任/oauthAccount/numStartups。\
+**凭据却是同一份**($SHARED_STORE/.credentials.json)⇒ 一个登录身份、两套本机状态。\
+换句话说 in-place 账号与账号 0 在这个库里是同一个登录、不同的状态文件。这是 in-place(V1) 的代价;要收敛请迁到 V2"
+    else
+      vwarn "存在 in-place 账号(config-dir == 共享库):该模式下 .claude.json 会分裂,cc-monitor 不支持。\
+(现在**还没**分裂 —— 但只要有人裸起一次 claude 就会)"
+    fi
+  fi
   # 只要还有一个隔离账号,「共享库不该有账号态」就仍然成立(混合模式下也必须查)
   if [ "$isolated_any" = 1 ]; then
     # Z01:**共享库里的 secret = 账号 0 的身份,是一种状态而不是违规。**
@@ -895,6 +930,10 @@ cmd_run() {
   acct_dir_ok "$cfgdir" || die "config-dir 不在受控范围内:$cfgdir"
   [ -d "$cfgdir" ] || die "config-dir 不存在:$cfgdir(跑 $SELF verify)"
   have "$LAUNCHER" || die "找不到启动器:$LAUNCHER"
+  # Z04:这是工具**自己**去产生 `CLAUDE_CONFIG_DIR=<共享库>` 那个环境的唯一一处。
+  # 不禁(in-place 是被支持的逃生口,禁了它就没法用了),但把代价说在前面。
+  [ "$cfgdir" = "$SHARED_STORE" ] && warn "$name 是 in-place(V1) 账号:这会设 CLAUDE_CONFIG_DIR=$SHARED_STORE,\
+它的 .claude.json 与账号 0 的($LEGACY_HOME_DIR/.claude.json)是**两份**。要一份状态请迁到 V2"
   [ -f "$cfgdir/.credentials.json" ] || warn "$name 尚未登录,起来后请在里面 /login"
   exec env CLAUDE_CONFIG_DIR="$cfgdir" "$LAUNCHER" "$@"
 }

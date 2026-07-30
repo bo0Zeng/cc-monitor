@@ -681,13 +681,95 @@ xok  "ni_is_home_rooted 在 pipefail 下 rc=0" \
 eq   "共享库只有 .claude.json 时账号 0 仍算未登录" \
      "$(bash -euo pipefail -c ". \"$SCRIPTS_DIR/lib.sh\"; SHARED_STORE=\"$SB/zz\"; mkdir -p \"$SB/zz\"; : >\"$SB/zz/.claude.json\"; acct_zero_logged_json")" "false"
 
+group "20. Z04:守卫 —— 分裂实况可见 / 共享库删不掉 / 显式指共享库不是账号 0"
+new_sandbox
+ccq init d --default-in-place --apply
+M="$SB/.claude-accts/accounts.json"
+
+# —— ① rm 不得连带删掉共享库(is_under 守卫;此前零断言) ——
+"$CLI" rm d --force --apply >"$SB/z04-rm.out" 2>&1 || true
+chk  "rm in-place 账号被拒"          'grep -q "拒绝删除 ACCTS_DIR 之外的 config-dir" "$SB/z04-rm.out"'
+chk  "★ 共享库整个还在"              '[ -d "$SB/.claude" ] && [ -f "$SB/.claude/.credentials.json" ] && [ -f "$SB/.claude/skills/foo.md" ]'
+chk  "账号仍在 manifest 里(没被半删)" '[ "$(jq -r "[.accounts[] | select(.name==\"d\")] | length" "$M")" = 1 ]'
+# ★ 共享库其实有**两道**独立守卫,变异验收时实测到的:把 cmd_rm 里那道 is_under 拿掉后,
+#   计划执行器里 `RM)` 那道**照样**挡住了(共享库完好)。所以「共享库还在」这条断言在那次变异下
+#   **没有变红,而那是正确的** —— 不是弱绿。两道都要钉住,而第二道从 CLI 走不到
+#  (sync 只会 plan RM 账号目录内的东西)⇒ 用扫源码的方式钉它存在。
+chk  "守卫层 1:cmd_rm 里有 is_under 前置" \
+     'grep -q "is_under \"\$cfgdir\" \"\$ACCTS_DIR\" || die" "$SCRIPTS_DIR/cc-acct-iso"'
+chk  "守卫层 2:计划执行器 RM 分支自己也查一遍(纵深防御)" \
+     'grep -A 1 "^    RM)" "$SCRIPTS_DIR/lib.sh" | grep -q "is_under \"\$a\" \"\$ACCTS_DIR\" || die"'
+chk  "反向自检:两条 grep 真读到了文件(不是空转)" \
+     '[ "$(wc -c <"$SCRIPTS_DIR/cc-acct-iso")" -gt 1000 ] && [ "$(wc -c <"$SCRIPTS_DIR/lib.sh")" -gt 1000 ]'
+# 账号 0 走的是另一条拒绝路径(Z01),这里补验它同样不动共享库
+"$CLI" rm 0 --force --apply >"$SB/z04-rm0.out" 2>&1 || true
+chk  "rm 0 之后共享库也毫发无损"      '[ -f "$SB/.claude/.credentials.json" ]'
+
+# —— ② in-place:**没**分裂时说「还没分裂」,别喊狼来了 ——
+# 沙盒的 .credentials.json 是默认 umask 造的(664)⇒ verify 有一条**与 Z04 无关**的既有致命
+#(「凭据权限必须 600」)。不修它,下面「只提示不判 FAIL」验的就不是 Z04 这条判据。
+chmod 600 "$SB/.claude/.credentials.json"
+rm -f "$SB/.claude/.claude.json"
+cc verify --no-probe >"$SB/z04-v1.out" 2>&1 || true
+chk  "未分裂 ⇒ 措辞是「现在还没分裂」" 'grep -q "现在\*\*还没\*\*分裂" "$SB/z04-v1.out"'
+chkn "未分裂 ⇒ 不喊「已经真的分裂」"   'grep -q "已经真的分裂" "$SB/z04-v1.out"'
+
+# —— ③ ★ 真分裂:两份 .claude.json 同时存在。这条此前**完全不可见** ——
+#    (上面「隔离项 .claude.json 是本账号私有实体」还会把共享库那份报成绿灯)
+printf '{"oauthAccount":{"emailAddress":"split@example.com"},"numStartups":1}' >"$SB/.claude/.claude.json"
+cc verify --no-probe >"$SB/z04-v2.out" 2>&1 || true
+chk  "真分裂被点名"        'grep -q "已经真的分裂" "$SB/z04-v2.out"'
+chk  "两个路径都打出来"    'grep -q "$SB/.claude/.claude.json" "$SB/z04-v2.out" && grep -q "$SB/.claude.json" "$SB/z04-v2.out"'
+chk  "说清了哪条路读哪份"  'grep -q "设了 CLAUDE_CONFIG_DIR 起 claude 读前者" "$SB/z04-v2.out"'
+chk  "只提示不判 FAIL(in-place 是逃生口,不给在野环境突然一个红)" 'grep -q "结果:PASS" "$SB/z04-v2.out"'
+# 反向自检:那条「私有实体」绿灯仍在 ⇒ 证明新检查是**补了一条腿**,不是把旧的换掉了
+chk  "旧的「私有实体」绿灯仍在(新检查是补腿不是替换)" 'grep -q "隔离项 .claude.json 是本账号私有实体" "$SB/z04-v2.out"'
+
+# —— ④ which:显式把 CLAUDE_CONFIG_DIR 指到共享库 ——
+CLAUDE_CONFIG_DIR="$SB/.claude" "$CLI" which >"$SB/z04-w1.out" 2>&1 || true
+chk  "已登记 in-place:仍报出账号名"   'grep -q "^d (默认)" "$SB/z04-w1.out"'
+chk  "但明说它不是账号 0"             'grep -q "不是账号 0" "$SB/z04-w1.out"'
+# 全 isolated 的库里手工指共享库 = 最危险那种(谁都不是)
+new_sandbox
+ccq init d --apply
+ccq add x --apply
+CLAUDE_CONFIG_DIR="$SB/.claude" "$CLI" which >"$SB/z04-w2.out" 2>&1 || true
+chk  "未登记地指向共享库 ⇒ 明说这不是账号 0"  'grep -q "这不是账号 0" "$SB/z04-w2.out"'
+chk  "并给出正确起法"                        'grep -q "什么都不设" "$SB/z04-w2.out"'
+xfail "未登记地指向共享库 ⇒ rc 非 0" env CLAUDE_CONFIG_DIR="$SB/.claude" "$CLI" which
+
+# —— ⑤ run in-place 账号:代价说在前面,但**不禁**(逃生口要保持可用) ——
+new_sandbox
+ccq init d --default-in-place --apply
+OUT="$("$CLI" --launcher fakeclaude run d 2>&1)"
+chk  "run in-place 仍然起得来(不禁)" 'printf "%s" "$OUT" | grep -q "CFG=$SB/.claude"'
+chk  "但先把两份状态的代价说了"      'printf "%s" "$OUT" | grep -q "是\*\*两份\*\*"'
+
+# —— ⑥ ★ 反向自检:这三条守卫**不许误伤账号 0** ——
+#    (Z07 对 D1b 犯的就是这类错:一条对合法状态恒红的检查)
+OUT0="$(CLAUDE_CONFIG_DIR="$SB/.claude" "$CLI" --launcher fakeclaude run 0 2>&1 | tail -2)"
+chk  "run 0 不冒出 in-place 警告"    'printf "%s" "$OUT0" | grep -qv "in-place(V1) 账号:" || true; ! printf "%s" "$OUT0" | grep -q "是\*\*两份\*\*"'
+chk  "run 0 仍然把 CLAUDE_CONFIG_DIR 摘掉" 'printf "%s" "$OUT0" | grep -q "CFG=<unset>"'
+env -u CLAUDE_CONFIG_DIR "$CLI" which >"$SB/z04-w0.out" 2>&1 || true
+chk  "which(未设)报账号 0，且不冒出「这不是账号 0」" \
+     'grep -q "账号 0" "$SB/z04-w0.out" && ! grep -q "这不是账号 0" "$SB/z04-w0.out"'
+# ★ 这条断言初版写成「纯 in-place 库里 verify 仍单独报账号 0 已登录」——**写错了**:
+#   in-place 账号与账号 0 读的是**同一份** .credentials.json(共享库那份),分开报会让人
+#   以为是两个登录。正确的事实是「一个登录身份、两套状态文件」,由分裂那条说。
+chmod 600 "$SB/.claude/.credentials.json"
+printf '{"y":2}' >"$SB/.claude/.claude.json"
+cc verify --no-probe >"$SB/z04-v0.out" 2>&1 || true
+chk  "分裂告警说清了「凭据却是同一份」" 'grep -q "凭据却是同一份" "$SB/z04-v0.out"'
+chk  "并点名它与账号 0 是同一个登录"     'grep -q "与账号 0 在这个库里是同一个登录" "$SB/z04-v0.out"'
+
+
 # ══════════════════════════════════════════════════════════════════
 export HOME="$ORIG_HOME"
 printf '\n\033[1m────────────────────────────\033[0m\n'
 # 断言条数地板（**同源**:地板写在套件自己这一处,CI 侧那条是双保险）。
 # 为什么必须有:下面的退出码只看失败数 $F —— **$F=0 就 exit 0** ⇒ 一条不跑也会报绿。
 # 改这个数的时机:真加了断言(只应涨)。删断言要说明理由。
-MIN_ASSERTS=268
+MIN_ASSERTS=294
 if [ "$T" -lt "$MIN_ASSERTS" ]; then
   printf '\033[31m断言条数缩水:%d < 地板 %d —— 有断言被删或整组没跑\033[0m\n' "$T" "$MIN_ASSERTS"
   exit 1
