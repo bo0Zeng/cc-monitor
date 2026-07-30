@@ -71,23 +71,109 @@ fn build_jump_arg(jump_user: &str, jump_host: &str, jump_port: u16) -> Result<St
     Ok(format!(" -J {jump_user}@{jump_host}{port_suffix}"))
 }
 
+/// L1（local-as-remote）：**与传输无关**的那层命令校验 —— 三条送法一律适用。
+///
+/// 从 [`build_remote_ssh_ps_command`] 里抽出来，好让 POSIX 本地那条路
+/// （[`build_local_posix_argv`]）用**同一份**判据，而不是各写一份会静默漂移的副本。
+///
+/// **刻意不含「拒绝双引号」那条**：它的理由是 PowerShell 5.1 向 native 程序传参对内嵌 `"`
+/// 有历史畸变（见调用处），是**那条送法的**约束，不是命令本身的性质。
+/// 把它一并搬进来，等于把一个 Windows 怪癖套到 Linux 上 —— 判据要落在性质上。
+fn validate_launch_cmd(cmd: &str, what: &str) -> Result<(), String> {
+    if cmd.trim().is_empty() {
+        return Err(format!("refuse launch: {what}为空"));
+    }
+    if cmd.len() > MAX_REMOTE_CMD {
+        return Err(format!(
+            "refuse launch: {what}过长（{} > {MAX_REMOTE_CMD}）",
+            cmd.len()
+        ));
+    }
+    if cmd.chars().any(|c| c.is_control()) {
+        return Err(format!("refuse launch: {what}含控制字符"));
+    }
+    Ok(())
+}
+
+/// L1：**POSIX 本地**送法 —— 直接 exec，**不要 ssh 包**。
+///
+/// 返回 argv 而不是命令串：本地没有「要穿过一层 shell」的问题，拼成串再让别人拆是
+/// 白白造一个注入面。`bash -lic` 这层**保留**——它和远端那条路是同一个语义
+///（PATH / 别名 / 函数按「用户粘贴进交互终端」解析），`ccm` 正是靠它才被找到。
+///
+/// ⇒ 与 [`build_remote_ssh_ps_command`] 的关系就是 §2「payload 共享、transport 只管送」：
+/// 同一个 `cmd`，本地是 `bash -lic <cmd>`，远端是把这同一串再包进 ssh。
+/// 有测试逐字节钉住这条（`local_and_remote_share_the_same_payload`）。
+pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
+    validate_launch_cmd(cmd, "本地命令")?;
+    Ok(vec!["bash".into(), "-lic".into(), cmd.into()])
+}
+
+/// L1：在 **POSIX 本机**跑一条命令 —— 不经 ssh、不经 PowerShell。
+///
+/// 这是 §40「本地 = 不走 ssh 的远端」在传输层的落点：远端那条路是
+/// `ssh -t host -- 'bash -lic <cmd>'`，本地就是把 `ssh` 那一跳**去掉**，其余不变。
+///
+/// 三处设计：
+/// - **不开 GUI 终端窗口**。POSIX 上没有「唯一的终端」这种东西，而会话容器本来就是
+///   tmux（`ccm --tmux` 自己会建）。开窗口要先猜用户用哪个终端模拟器，是平白引入一个
+///   会在别人机器上错的决定。⇒ 命令直接跑，会话留在 tmux 里等 attach。
+/// - **脱离 app 的进程组**（`process_group(0)`）+ stdio 全 null：
+///   否则子进程会跟着 app 的 Ctrl-C 一起走，也会把 app 的 stdio 占住。
+/// - **起一条线程收尸**。`process_group` 不改变父子关系 ⇒ 不 `wait` 就留僵尸。
+///   线程随子进程结束而结束（`ccm` 建完会话就返回，是短命进程）。
+#[cfg(not(windows))]
+pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<(), String> {
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+
+    let argv = build_local_posix_argv(cmd)?;
+    let mut builder = Command::new(&argv[0]);
+    builder.args(&argv[1..]);
+    // 只有真实存在的目录才作起始目录（与 Windows 那条路同一条纪律）。
+    if let Some(d) = cwd.filter(|c| std::path::Path::new(c).is_dir()) {
+        builder.current_dir(d);
+    }
+    builder
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0);
+    let mut child = builder
+        .spawn()
+        .map_err(|e| format!("spawn 本地命令失败: {e}"))?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    tracing::info!("launch: local posix exec (no ssh)");
+    Ok(())
+}
+
+/// Windows 宿主上没有这条路：Windows **本地**走 L2 的 PowerShell 分支，不是本函数。
+/// 保留同名同签名，是为了让调用点不必自己写 `cfg`（平台差异收在这一层）。
+#[cfg(windows)]
+pub fn launch_local_posix(_cmd: &str, _cwd: Option<&str>) -> Result<(), String> {
+    Err("POSIX 本地拉起不适用于 Windows 宿主（Windows 本地属 L2 的 PowerShell 分支）".into())
+}
+
+/// L1：**本地终端拉起**——`launch_remote_terminal` 的本地对侧。
+///
+/// 与远端那条的唯一区别就是 transport：同一个 `local_cmd`（前端用同一套 build 函数产），
+/// 这里直接 exec，不包 ssh。**它就是 §40「一条路径，transport 是它唯一的差异」的那半。**
+#[tauri::command]
+pub async fn launch_local_terminal(local_cmd: String, cwd: Option<String>) -> Result<(), String> {
+    // 与 `launch_remote_terminal` 同处理：spawn 是阻塞 OS 调用，不堵 IPC 派发线程。
+    tokio::task::spawn_blocking(move || launch_local_posix(&local_cmd, cwd.as_deref()))
+        .await
+        .map_err(|e| format!("拉起本地终端任务失败: {e}"))?
+}
+
 /// 构造远端拉起的 PowerShell 命令体（不含 `-EncodedCommand` 编码）。
 ///
 /// 形态：`& ssh -t[ -J <跳板>] -p <port> [-i '<key>'] <user>@<host> -- '<bash -lic ''…''>'`
 /// （F45 竞发落地后 host 换成连接大脑当前胜者地址；F56 jump 有值插 `-J`——本函数签名不变。）
 pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Result<String, String> {
-    if remote_cmd.trim().is_empty() {
-        return Err("refuse launch: 远端命令为空".into());
-    }
-    if remote_cmd.len() > MAX_REMOTE_CMD {
-        return Err(format!(
-            "refuse launch: 远端命令过长（{} > {MAX_REMOTE_CMD}）",
-            remote_cmd.len()
-        ));
-    }
-    if remote_cmd.chars().any(|c| c.is_control()) {
-        return Err("refuse launch: 远端命令含控制字符".into());
-    }
+    validate_launch_cmd(remote_cmd, "远端命令")?;
     if remote_cmd.contains('"') {
         return Err(
             "refuse launch: 远端命令含双引号（PowerShell 5.1 native 传参畸变面）。\
@@ -252,6 +338,79 @@ mod tests {
             jump: None,
             daemonless: false,
         }
+    }
+
+    /// ★ L1 的验收判据（主计划 §2「关键判断」第 1 条逐字）：
+    /// **给同一个 plan 换 transport，除 ssh 包装外输出逐字节相同。**
+    ///
+    /// 这条测试就是那句话的机器版：把远端命令体里的 ssh 包装层层剥掉，
+    /// 剩下的必须与本地 argv **逐字节**相等。任何一侧偷偷加/减修饰都会红。
+    #[test]
+    fn local_and_remote_share_the_same_payload() {
+        let payload = "unset CLAUDE_CONFIG_DIR; cd '/home/z/p' && ccm --tmux claude --resume s1";
+        let local = build_local_posix_argv(payload).unwrap();
+        assert_eq!(
+            local,
+            vec!["bash", "-lic", payload],
+            "本地：直接 exec，无 ssh 包"
+        );
+
+        let c = cfg("h", "u", 22, None);
+        let remote = build_remote_ssh_ps_command(&c, payload).unwrap();
+        // 剥 ssh 层 → 剥 PS 单引号层 → 得到与本地同构的 `bash -lic <quoted>`
+        let after_dashdash = remote.rsplit_once("-- ").unwrap().1;
+        let inner = after_dashdash
+            .strip_prefix('\'')
+            .and_then(|s| s.strip_suffix('\''))
+            .expect("ps quoted")
+            .replace("''", "'");
+        assert_eq!(
+            inner,
+            format!("bash -lic {}", posix_quote(payload)),
+            "远端：同一个 payload，只多了 ssh + PS 两层包装"
+        );
+        // ★ 逐字节：把远端**每一层包装都反解**之后，得到的必须就是本地那一串。
+        //（不能写成 `inner.contains(payload)` —— payload 里有单引号，`posix_quote`
+        //  会把它变成 `'\''`；那条会误报，而它误报说明的恰恰是「包装确实存在」。）
+        let unwrapped = inner
+            .strip_prefix("bash -lic '")
+            .and_then(|s| s.strip_suffix('\''))
+            .expect("bash -lic 层")
+            .replace(r"'\''", "'");
+        assert_eq!(
+            unwrapped, local[2],
+            "剥净包装后，两条路送的是同一串（逐字节）"
+        );
+    }
+
+    /// 与传输无关的三条校验，本地那条路**同样**生效（不是只有远端才验）。
+    #[test]
+    fn local_argv_shares_the_transport_agnostic_validation() {
+        assert!(build_local_posix_argv("   ").is_err(), "空命令");
+        assert!(
+            build_local_posix_argv(&"x".repeat(MAX_REMOTE_CMD + 1)).is_err(),
+            "超长"
+        );
+        assert!(build_local_posix_argv("a\nb").is_err(), "控制字符");
+        assert!(build_local_posix_argv("claude --resume s1").is_ok());
+    }
+
+    /// ★ 「拒绝双引号」是 **PowerShell 5.1 的怪癖**，不是命令本身的性质
+    /// ⇒ 它只该拦远端那条路，**不该**跟着搬到 POSIX 本地。
+    ///
+    /// 判据落在性质上，不落在表面特征上：把一个 Windows 传参畸变套到 Linux 上，
+    /// 会让本地路径无端拒绝一批合法命令。
+    #[test]
+    fn double_quote_rejection_is_powershell_only() {
+        let with_dq = r#"claude --append-system-prompt "be brief""#;
+        assert!(
+            build_remote_ssh_ps_command(&cfg("h", "u", 22, None), with_dq).is_err(),
+            "远端（走 PowerShell）应拒"
+        );
+        assert!(
+            build_local_posix_argv(with_dq).is_ok(),
+            "POSIX 本地不经 PowerShell，不该拦"
+        );
     }
 
     #[test]
