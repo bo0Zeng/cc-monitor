@@ -9,11 +9,11 @@
  *   必须逐帧采样可见元素 getBoundingClientRect().top 的方向反转。
  * - 状态快照:贴底距离/账本余量/fold 数等(Ctrl+Alt+F9 触发,e2e 套件用 xdotool 按)。
  */
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "./ipc/commands";
 
 function log(line: string): void {
   console.info(line);
-  void invoke("frontend_perf_log", { lines: line }).catch(() => {});
+  void commands.frontend_perf_log({ lines: line }).catch(() => {});
 }
 
 /**

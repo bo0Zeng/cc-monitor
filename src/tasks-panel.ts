@@ -22,8 +22,8 @@
  *   未知值       •
  */
 
-import { invoke } from "@tauri-apps/api/core";
 import { dispatcher } from "./keybindings/registry";
+import { commands } from "./ipc/commands";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 
 // C02：改成从生成物 re-export（源：`src-tauri/src/tasks.rs` 的 `TaskEntry`）。
@@ -235,7 +235,7 @@ export async function fetchSessionTasks(
   sessionId: string,
 ): Promise<TaskEntry[]> {
   try {
-    return await invoke<TaskEntry[]>("get_session_tasks", { sessionId });
+    return await commands.get_session_tasks({ sessionId });
   } catch (e) {
     console.warn(`[tasks-panel] fetch ${sessionId} failed:`, e);
     return [];

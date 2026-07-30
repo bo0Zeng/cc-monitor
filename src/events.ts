@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
+import { commands } from "./ipc/commands";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 // C02（rust-ts-boundary）：这 5 个 payload 类型**改成从生成物 re-export**，不再手写。
 // 源是 `src-tauri/src/bridge.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
@@ -503,5 +503,5 @@ function emitPerfSummary(
   ];
   console.info(lines.join("\n"));
   // Batch13-F40:无 devtools 环境的唯一取证通道——经后端写进 monitor 日志(grep fe_perf)
-  void invoke("frontend_perf_log", { lines: lines.join("\n") }).catch(() => {});
+  void commands.frontend_perf_log({ lines: lines.join("\n") }).catch(() => {});
 }

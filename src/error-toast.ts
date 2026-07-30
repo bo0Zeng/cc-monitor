@@ -16,7 +16,7 @@
  */
 
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "./ipc/commands";
 
 interface MonitorErrorPayload {
   level: string;
@@ -40,7 +40,7 @@ function showErrorToast(p: MonitorErrorPayload): void {
     level: "error",
     durationMs: 6000,
     onClick: () => {
-      void invoke("open_log_file").catch((err) => {
+      void commands.open_log_file().catch((err) => {
         console.warn("open_log_file failed:", err);
       });
     },
