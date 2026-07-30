@@ -11,7 +11,10 @@
  * - 卸载行为说明：NSIS 默认不清 `~/.claude/claudecode-frontend/`，用户元数据保留
  */
 
-import { invoke } from "@tauri-apps/api/core";
+// C04a：**本模块是包装层的样板**——不再直接 import `invoke`，改用 `commands`。
+// 选它做样板的理由：全仓 29 个 import invoke 的文件里，它的调用点最少（1 处），
+// 且它的返回类型 C01 就已经生成好了。
+import { commands } from "../ipc/commands";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { showActionFailureToast } from "../error-toast";
 import { enumeratePrefix } from "../local-storage";
@@ -81,7 +84,8 @@ export class DataSection {
 
   private async load(): Promise<void> {
     try {
-      const data = await invoke<DataPathsResponse>("get_data_paths");
+      // 命令名与返回类型都由包装层给出——这里既不写字面量也不写类型参数。
+      const data = await commands.get_data_paths();
       this.loaded = true;
       this.render(data);
     } catch (e) {
