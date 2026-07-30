@@ -9,7 +9,14 @@
   · **Z04**（守卫，`f97bb76`）· **Z02 部分**（`--base` 跨语言契约守卫，2026-07-30；三态化卡红线）
 - **当前功能**：—（Z02 已按「能做的做完 + 卡住的标注」处理；下一个是 **#10 Z03**）
 - **当前步骤**：Z02 Phase F 完成（部分交付）
-- **下一个功能**：Z03（**承 Z02 的三态化，同样卡 `tabs.ts`，预计一并标注**）→ Z05 → G-A
+- **下一个功能**：Z03 → Z05 → G-A
+- **Z03 开工前的实测（2026-07-30 已测，下轮别重测）**：它能**干净拆成两半**——
+  - **(a) 用量探针支持账号 0：可做，不碰 `tabs.ts`。** 面只有 `remote-launch.ts::buildUsageProbePayload`
+    （今天 `if (!configDir) throw`，注释写「不支持基座/无账号场景」）+ `account-usage.ts::fetchAccountUsage`
+    的 `configDir: string` 签名 + Z01 在 `account-chip.ts`/`settings/accounts-section.ts` 放的两处
+    「账号 0 暂不支持用量查询」占位（做完要一并换掉）。载荷前缀要从 `export CLAUDE_CONFIG_DIR=…; `
+    换成 `unset CLAUDE_CONFIG_DIR; `——**那条语义现已由 `base-flag-contract-guard.vitest.ts` 钉住**。
+  - **(b) 按会话切号切到账号 0：卡 `tabs.ts` 红线**（tab 右键菜单），且承 Z02 的三态化。
 - **阻塞 / 待用户确认**：
   - **[已批准] 主计划**（用户 2026-07-29「批准主计划 account zero」）
   - ~~**[待确认] 授权动 `~/.claude/skills/cc-acct-iso/`**~~ → **2026-07-30 用户已授权**
