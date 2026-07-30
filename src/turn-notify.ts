@@ -18,11 +18,23 @@
  */
 import { getBehavior } from "./behavior";
 
-/** onLine payload 的最小形状（tabs.ts 的 LinePayload 超集兼容）。 */
+/**
+ * onLine payload 的最小形状（`tabs.ts` 的 `LinePayload` 超集兼容）。
+ *
+ * **C04c**：这里的 `| null` 是线上的实情——`timestamp` 在 `cc-monitor-unrecognized`
+ * variant 上是 `Option<String>` 且无 `skip_serializing_if` ⇒ 序列化成**显式 null**。
+ * 生成的 `JsonlRecord` 一接进来 `tsc` 就报在 `tabs.ts:818` 的调用上。
+ *
+ * **为什么不直接用生成的 `JsonlLinePayload`**：本接口是**刻意的最小契约**
+ * ——这个模块只关心「够不够判一轮结束」这四个字段，依赖注入全量替换才可测。
+ * 收窄成最小形状是有意的解耦，不是手抄镜像；而 `isSidechain` 这个字段
+ * C04c 之前 TS 侧的 `JsonlRecord` **根本没有**（正是它逼出了这个本地接口）。
+ * 现在生成物有了它，但最小契约仍然值得保留。
+ */
 export interface TurnNotifyPayload {
   message?: {
     type?: string;
-    timestamp?: string;
+    timestamp?: string | null;
     /** 旧版 CC 会把 subagent 行写进主文件——子 agent 完成≠主轮结束，须跳过。 */
     isSidechain?: boolean;
     message?: { stop_reason?: string | null };

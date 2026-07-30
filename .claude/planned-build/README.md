@@ -43,8 +43,8 @@
 | 4 | **C03** 大整数策略（必须在 C04 之前，否则把已知数据损失批量固化） | rust-ts-boundary | 否 |
 | 5 | **C04a** 类型化 invoke 包装层 + 钉死 119 个命令（机制先建）—— **完成** (`588cf5d`，Phase D 3 阻塞+6 重要+11 建议全处置) | rust-ts-boundary | 否 |
 | 5b | **C04b** 两处内联字面量 —— **`main.ts:744` 已完成** (`285bbae`，生成物 14→15，变异 A 是成功标准 1 在命令返回类型上首次成立) · **`tabs.ts:1632` 已跳过，等授权**（实测**一行改动**：类型 C02 已生成、字段逐字节一致，零技术障碍） | rust-ts-boundary | **`tabs.ts` 红线** |
-| 5c | **C04c** `JsonlLine`/`JsonlBatch`（卡点已由 C03 解除） | rust-ts-boundary | 否 |
-| 5d | **C04d** 按模块分批迁移剩余 63 个 struct + **143** 个调用点（原写 161，C04a Phase D 审计 I5 实测订正）（`tabs.ts` 那批卡红线） | rust-ts-boundary | 部分卡红线 |
+| 5c | **C04c** JSONL 边界 —— **完成**：Phase B 修订处置，**直接生成 `JsonlRecord`** 而非用逃生口指向手抄版（生成物 15→21；三处静默漂移自动消失；守卫补上「不扫 enum」与「字段层属性顺序敏感」两个真缺口） | rust-ts-boundary | 否 |
+| 5d | **C04d** 按模块分批迁移剩余 **57** 个 struct（C04c 又生成了 6 个）+ **143** 个调用点（原写 161，C04a Phase D 审计 I5 实测订正）（`tabs.ts` 那批卡红线） | rust-ts-boundary | 部分卡红线 |
 | 6 | **G-B** vendored bash 进 shellcheck + `run-tests.sh` 进 CI | gate-integrity | 否 |
 | 7 | **Z01** 账号 0 登记 + 可见 | account-zero | **是：动 `~/.claude/skills/cc-acct-iso/`** |
 | 8 | **Z04** 守卫 | account-zero | **是：同上** |

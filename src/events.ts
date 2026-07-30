@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type EventCallback, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import type { JsonlRecord } from "./cards";
 // C02（rust-ts-boundary）：这 5 个 payload 类型**改成从生成物 re-export**，不再手写。
 // 源是 `src-tauri/src/bridge.rs` 的 `#[cfg_attr(test, derive(ts_rs::TS))]`。
 // **仍然 `export`**，但理由要写准（C02 Phase D 审计 S4）：初版写的是「别的模块从这里
@@ -10,10 +9,18 @@ import type { JsonlRecord } from "./cards";
 // 且若将来有人要用，从枢纽拿是对的地方）。
 // 对照：`tasks-panel.ts::TaskEntry` 那处同款注释是**准的**——它真有外部消费者（`tabs.ts`）。
 //
-// **`JsonlLinePayload` 仍是手写的**：它的 `message: JsonlRecord` 依赖 Rust 侧那个
-// **自认有损**的 enum（`history.rs:628` 明写另一条路刻意绕开它），而 TS 侧的 `JsonlRecord`
-// 住在 `src/cards/index.ts`（1187 行，前端卡片渲染的承重模型）。
-// 用生成物替换它是一次渲染层重构，不是一次类型迁移 ⇒ 已登记延后，见 C02 计划 §2 末。
+// **C04c 起 `JsonlLinePayload` / `JsonlBatchPayload` 也是生成的。**
+// C02 时这里写着「用生成物替换它是一次渲染层重构，不是一次类型迁移 ⇒ 延后」
+// ——**实测把这个判断推翻了**：直接接生成物一共只有 6 个 `tsc` 错，其中 4 个是机械的
+// （`export type {…} from` 不带名字进本地作用域），真错只有 2 处 `string | null` vs
+// `string | undefined`，且都能在**消费侧**修（`branching.ts` / `turn-notify.ts`），
+// 一行 `tabs.ts` 都不用碰。
+//
+// 那段理由本身也有一处方向反了（C02 audit I4 已订正）：这个边界上
+// **Rust 的 `JsonlRecord` 就是线定义**（wire == `serde_json::to_string(它)`），
+// 而 TS 侧那份手抄反而**更窄**（8 vs 12 个 variant），所以方向是让 TS 对齐 Rust。
+import type { JsonlBatchPayload } from "./generated/JsonlBatchPayload";
+import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { SessionEndedPayload } from "./generated/SessionEndedPayload";
 import type { SessionIdlePayload } from "./generated/SessionIdlePayload";
 import type { SessionStartedPayload } from "./generated/SessionStartedPayload";
@@ -23,6 +30,8 @@ import type { RemoteSessionAddedPayload } from "./generated/RemoteSessionAddedPa
 // 本文件内部也用这些名字（8 处），所以 import + re-export 都要有：
 // 只写 `export type { … } from` 不会把名字带进本地作用域。
 export type {
+  JsonlBatchPayload,
+  JsonlLinePayload,
   SessionEndedPayload,
   SessionIdlePayload,
   SessionStartedPayload,
@@ -30,24 +39,6 @@ export type {
   SessionActivityPayload,
 };
 
-export interface JsonlLinePayload {
-  session_id: string;
-  cwd: string | null;
-  path: string;
-  /**
-   * P5.1：per-file 单调递增的行号（后端 watcher 给）。
-   * 前端 RecordTimeline 按 seq 排序到 DOM —— 后端 emit 顺序不影响视觉。
-   * 同 session 内单调；跨 session 不可比；不跨 monitor 进程持久。
-   */
-  seq: number;
-  /**
-   * issue #15：数据来源标签。缺省（undefined）= 本地，Tab 标题无前缀（与历史一致）；
-   * 有值（如 "raspberrypi.local"）= 远端 SSH 数据源主机名，Tab 标题加 `[origin]` 前缀
-   * 以区分本地/远端会话。后端仅在远端行序列化此字段（本地行 skip）。
-   */
-  origin?: string;
-  message: JsonlRecord;
-}
 
 export interface EventHandlers {
   /**
@@ -387,11 +378,7 @@ export async function bindEvents(
   // 路径，前端 timeline 按 seq 排序）；但 chunkIndex===0 仍是 batch-start 哨兵的
   // 触发条件（下方 :389,ARCHITECTURE §1 依赖它）——不是死字段（Phase G 终审勘误）。
   registrations.push(
-    sub<{
-      chunkIndex: number;
-      chunkTotal: number;
-      payloads: JsonlLinePayload[];
-    }>("jsonl-batch", (e) => {
+    sub<JsonlBatchPayload>("jsonl-batch", (e) => {
       if (perf.firstJsonlBatch === undefined) {
         perf.firstJsonlBatch = performance.now();
         console.info(

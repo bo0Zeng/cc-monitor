@@ -99,7 +99,7 @@
 | **C04 → 已拆成四个** | ~~命令半边全量迁移~~ | **Phase B 结论：拆开**（见 `features/C04-command-half.md`）。原范围是 **63 个待生成 struct + 119 个命令签名 + 161 个调用点**——比 C01+C02+C03 加起来还大，违反 planned-build 自己的粒度准则；且成功标准「29 文件→1」**不松 `tabs.ts` 红线结构性达不到**（该文件 15 处调用点） | **已拆** | — | — |
 | C04a | **类型化 `invoke` 包装层 + 钉死 119 个命令** | 建机制：手写包装层（`ts-rs` 不生成命令签名）+ 把只覆盖 3/119 的白名单守卫扩到 119；先迁一个模块做样板 | **完成**（Phase D 两份审计闭环：3 阻塞 + 6 重要 + 11 建议全部处置） | C01 | P1 |
 | C04b | **两处已登记的内联字面量** | `main.ts:744` 的 `ActiveSessionPayload`（**已做**）+ `tabs.ts:1632` 的 `SessionActivityPayload`（**已跳过，等 `tabs.ts` 红线授权**——实测是**一行改动**，类型已生成好、字段逐字节一致，零技术障碍） | **完成（一半，另一半等授权）** | C04a | P1 |
-| C04c | **`JsonlLine`/`JsonlBatch`** | 卡点已由 C03 解除（`seq: u64` 有策略了）+ 逃生口 `#[ts(type = "import('../cards').JsonlRecord")]`；**当场暴露的 4 处 `cards/index.ts` 缺口如实登记不顺手修** | 待规划 | C03 | P2 |
+| C04c | **JSONL 边界（含 `JsonlRecord` 本体）** | **Phase B 修订了处置**：不用逃生口，**直接生成 `JsonlRecord`**（它就是线定义）+ `ApiMessage`/`Usage`/`ForkedFrom` + 两个 payload = 6 个生成物。原计划以为是「渲染层重构」，实测只有 6 个 tsc 错（4 机械 + 2 处 `null` vs `undefined`），一行 `tabs.ts` 都不用碰。4 处缺口**换成生成物后自动消失**，不是登记不修 | **完成** | C03 | P2 |
 | C04d | **按模块分批迁移剩余 63 个 struct + 161 个调用点** | 每批一模块、一 commit、一次全门禁；`import { invoke }` 文件数逐批下降 | 待规划 | C04a | P2 |
 | C05 | **门禁** | CI 检查生成物最新（重新生成后 `git diff --exit-code` 空）+ 禁止新增手写跨边界类型 | **完成**（`f7dd23c`） | C02 | P1 |
 
@@ -134,7 +134,7 @@ src-tauri/src/**.rs   ──(ts-rs 派生 + cargo test 导出)──▶  生成�
 
 | 共享面 | 涉及功能 | 最终形态设计 | 当前状态 | 备注 |
 |---|---|---|---|---|
-| **1. `src/events.ts` + `src/remote-health.ts` + `src/tasks-panel.ts` + `src/main.ts`** | C02,C04b,C05 | 单一订阅枢纽保留（这个形状是对的），**C02 交付 9 个**生成类型（8 payload + `TaskEntry`）；`JsonlLine`/`JsonlBatch` 延后。**事件名常量不生成**（`ts-rs` 只生成类型、不生成 `const`）——改为由**钉死 10 个名字的结构性守卫**对拍，形状照 `every_host_declaration_is_pinned` | **C02 交付 9 个；C04b 又把 `main.ts` 的 `ActiveSessionPayload` 内联字面量换成生成物（第 15 个）** | **C02 Phase B 实测订正两处**：① 原文写「事件名常量也从 `bridge.rs` 生成」——`ts-rs` 做不到；② 原文只写 `events.ts`，**漏了 `src/remote-health.ts`**（`RemoteHealthPayload` 的手写版在那儿）。另：payload struct 实为 **11 个**（含方向相反的 `FrontendReadyPayload`，`Deserialize`），不是 10 个 |
+| **1. `src/events.ts` + `src/remote-health.ts` + `src/tasks-panel.ts` + `src/main.ts`** | C02,C04b,C05 | 单一订阅枢纽保留（这个形状是对的），**C02 交付 9 个**生成类型（8 payload + `TaskEntry`）；`JsonlLine`/`JsonlBatch` 延后。**事件名常量不生成**（`ts-rs` 只生成类型、不生成 `const`）——改为由**钉死 10 个名字的结构性守卫**对拍，形状照 `every_host_declaration_is_pinned` | **C02 交付 9 个；C04b 加 `ActiveSessionPayload`（第 15 个）；C04c 再加 `JsonlLinePayload`/`JsonlBatchPayload` + 4 个传递依赖（→ 21 个）⇒ 事件半边的「手抄镜像全部由生成物取代」基本达成** | **C02 Phase B 实测订正两处**：① 原文写「事件名常量也从 `bridge.rs` 生成」——`ts-rs` 做不到；② 原文只写 `events.ts`，**漏了 `src/remote-health.ts`**（`RemoteHealthPayload` 的手写版在那儿）。另：payload struct 实为 **11 个**（含方向相反的 `FrontendReadyPayload`，`Deserialize`），不是 10 个 |
 | **2. `src/sftp/paths.ts` + `src/sftp/panel.ts` + `src/views/usage-pivot.ts`** | C03,C04 | 三处手写镜像全部由生成物取代；`u64` 一律 `#[ts(type = "number")]` + **按量纲分开算**的上限论证（字节数 8 PB / token 量 9 亿天，不套用同一条） | **已完成**（C03） | 这是**唯一已确认的数据损失点**，所以它是 C03 的第一批 |
 | **3. `src/accounts.ts` 6 个 type** | C04 | 由生成物取代；**中文注释也应该从 Rust 侧 doc comment 生成**（今天是拷贝的） | 手写，注释都是拷贝的 | 与 `account-zero` 工作区**同时在改** ⇒ 见下方冲突协议 |
 | **4. IR 类型 `src/launch-plan.ts`** | C04 | `LaunchPlan`/`LaunchContext`/`LaunchAccount`/`EnvOp`/`WrapSpec` —— **这几个今天只活在 TS 侧**（Rust 不认识它们）。**本工作区不动它们**：它们不是跨边界类型，不该为了统一而强行搬去 Rust | 纯 TS | **重要判断**：IR 是前端的意图模型，Rust 侧只收渲染好的命令串。**别把它拖过边界。**`account-zero` Z02 与 `local-as-remote` 都要改这些类型，本工作区**不插手** |
@@ -357,3 +357,38 @@ C01（样板 + 变异验收）
   所以加一个 snake_case 生成物不假红——已实测确认。
   另**不把 `list_active_sessions` 加进 C04a 的包装层**：`main.ts` 有 9 个调用点，只迁 1 个既不让
   「29」降一格、又让同一文件里两条路并存（正是账本第 7 行约束 ④ 要防的）。整文件迁移归 C04d。
+- 10 — 2026-07-29 — **C04c：修订原处置，直接生成 `JsonlRecord`（生成物 15 → 21）** —
+  原计划要用逃生口 `#[ts(type = "import('../cards').JsonlRecord")]` 指向 TS 手写版。
+  **那会让生成物指向病灶**：C02 audit I4 已订正过方向——这个边界上 **Rust 的 `JsonlRecord`
+  就是线定义**（wire == `serde_json::to_string(它)`），TS 那份是更窄的手抄（**8 vs 12** 个 variant；
+  我第一遍报 11 是错的，漏了 `#[serde(other)] Unknown`）。
+  原计划以为「用生成物替换是一次渲染层重构」——**实测推翻**：一共 6 个 tsc 错，
+  4 个机械（3 个又是 `export type {…} from` 不带名字进本地作用域，**第三次栽**）+ 2 个真错
+  （都是 `string | null` vs `string | undefined`，都在消费侧修），**一行 `tabs.ts` 都不用碰**。
+
+  **手抄版被删时暴露三处静默漂移，且都是「换成生成物后自动消失」而不是「登记不修」**：
+  ① TS 给 `queue-operation` 声称了一个 Rust 根本没有的 `timestamp?: string`（线上恒 undefined）；
+  ② 手抄的 `Usage` 把两个 token 字段标成 optional，而 Rust 只有 `default`、无 `skip_serializing_if`
+  ⇒ 线上恒有；③ variant 8 vs 12。
+
+  **一处教科书级的「运行时对、类型说谎」**：`cards/api-error.ts:70-72` 本来就写着
+  「`typeof` 而非 `!== undefined`：serde 把 None 序列化成显式 null」并用 `typeof` 防着，
+  而签名却是 `retryAttempt?: number`——**中间靠一条注释解释差异**。接上生成物后 `tsc` 当场揭穿。
+
+  **守卫挖出并修掉两个真缺口**：① 两条通用性质扫描**只扫 `pub struct` 不扫 `pub enum`**、
+  且字段正则要求 `pub ` 前缀（enum variant 字段没有），后果是 `System.duration_ms: Option<u64>`
+  生成出 `bigint | null` 而守卫一声不吭——我是盯生成物发现的，不是它逼我的；
+  ② **字段层属性窗口顺序敏感**（只看 serde 属性之后的行）⇒ `ts(optional)` 写在前面就假红。
+  C02 审计的 S2 只修了 struct 层，字段层漏了。**新增一条守卫**：`Option<大整数>` 配 `ts(type)`
+  时不许丢 `| null`（我自己踩的：`ts(type)` 覆盖整个类型、不只是 Option 内层）。
+
+  **一条变异如实作废 + 一条更细的新教训**：「删 `api_error_status` 字段」两轮都没编译过，
+  而第二轮 `tsc` 变红报的是 **`apiErrorStatusRENAMED`** ——它在读**上一次变异遗留的过期生成物**。
+  ⇒ 变异链上生成物是中间产物；**变异没编译过时，不只「tsc 沉默」是假信号，「tsc 变红」也可能是**。
+  判色前要确认的不只是「编译过了」，还有「**生成物是这次变异产的**」。验收由同性质且构造上
+  必然编译的 A1（改 serde rename）承担。
+
+  刻意不做：不派生 `ContentBlock`（`ApiMessage.content` 是 `serde_json::Value`、压根没引用它
+  ⇒ 线上不可达，同 C03 跳过 `SftpStat`；TS 侧那个留手写，它是对 `content: unknown` 的解释模型，
+  属账本第 4 行那类）· 不给 `Unknown` variant 加 `#[ts(skip)]`（生成物比线上宽一格是 fail-safe 方向，
+  收窄则要求我证明它永不上线，那个证明横跨 32k 行 Rust，不做）。

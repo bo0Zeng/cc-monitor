@@ -22,7 +22,10 @@ export function buildApiErrorCard(args: {
   timeLabel: string;
   text: string;
   category?: string;
-  status?: number;
+  // **C04c**：`| null` 不是装饰。线上 `Option::None` 是**显式 null**（该字段没有
+  // `skip_serializing_if`），而下面第 73 行的注释早就写着这一点、并用 `typeof` 防着它
+  // ——**是类型签名在说谎，运行时一直是对的**。生成物把这个谎揭出来了。
+  status?: number | null;
 }): HTMLElement {
   const card = document.createElement("div");
   card.className = "card card-api-error";
@@ -60,8 +63,8 @@ export function buildApiErrorCard(args: {
 export function buildApiRetryCard(args: {
   /** 已格式化的展示时间（调用方 formatTimestampShort 的结果） */
   timeLabel: string;
-  retryAttempt?: number;
-  maxRetries?: number;
+  retryAttempt?: number | null;
+  maxRetries?: number | null;
   error?: unknown;
 }): HTMLElement {
   const line = document.createElement("div");

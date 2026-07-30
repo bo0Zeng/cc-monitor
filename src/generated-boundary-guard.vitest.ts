@@ -79,6 +79,10 @@ const TS_DERIVING_SOURCES = [
   "src-tauri/src/tasks.rs", // C02：TaskEntry（TasksUpdatePayload 的传递依赖）
   "src-tauri/src/sftp_pool.rs", // C03：SftpEntry + TransferProgress
   "src-tauri/src/usage.rs", // C03：UsageTotals
+  // C04c：JSONL 边界。`messages.rs` 是**线定义**（wire == `serde_json::to_string(JsonlRecord)`），
+  // 加进来后这两条通用性质（skip_serializing_if ⇒ ts(optional) · u64 ⇒ ts(type=…)）
+  // 立刻在它上面生效——本轮它就当场抓到了 `ApiMessage.stop_reason` 缺 ts(optional)。
+  "src-tauri/src/messages.rs", // C04c：JsonlRecord + ApiMessage + Usage + ForkedFrom
 ];
 
 describe("C01 边界生成物", () => {
@@ -90,29 +94,29 @@ describe("C01 边界生成物", () => {
     files.sort();
     // 计数自检用等号：C02 加进新文件时这里必须红一次，提醒把它纳入下方逐项断言
     expect(files, "生成目录内容变了——把新文件纳入本守卫再更新这个期望").toEqual([
-      // C04b（`list_active_sessions` 的返回项。**线上是 snake_case**——它没有
-      // `rename_all = "camelCase"`，生成物忠实于线上契约而不是风格偏好；
-      // 顺手统一是行为改动，本工作区的硬判据是「行为逐字节不变」）
-      "ActiveSessionPayload.ts",
-      // C01
-      "DataPathInfo.ts",
-      "DataPathsResponse.ts",
-      // C02（8 个事件 payload + TaskEntry。`JsonlLinePayload`/`JsonlBatchPayload` 延后，
-      // 理由见 C02 计划 §2 末：它们依赖 Rust 侧那个自认有损的 `JsonlRecord` enum）
-      "FrontendReadyPayload.ts",
-      "RemoteHealthPayload.ts",
-      "RemoteSessionAddedPayload.ts",
-      "SessionActivityPayload.ts",
-      "SessionEndedPayload.ts",
-      "SessionIdlePayload.ts",
-      "SessionStartedPayload.ts",
-      // C03 的三个（**跳过了 `SftpStat`**：它的 TS 调用是裸 `invoke("sftp_stat", …)`
-      // 无类型参数、字段没人用 ⇒ 生成它就是为假想消费者建抽象）
-      "SftpEntry.ts",
-      "TaskEntry.ts",
-      "TasksUpdatePayload.ts",
-      "TransferProgress.ts",
-      "UsageTotals.ts",
+      // **按字母序**（本条是 readdir + sort 的逐项对拍，不许按功能分组打乱顺序）。
+      // 每项后面标它属于哪个功能，便于回溯。
+      "ActiveSessionPayload.ts", //   C04b
+      "ApiMessage.ts", //             C04c
+      "DataPathInfo.ts", //           C01
+      "DataPathsResponse.ts", //      C01
+      "ForkedFrom.ts", //             C04c
+      "FrontendReadyPayload.ts", //   C02（方向相反的那个：TS → Rust，带 Deserialize）
+      "JsonlBatchPayload.ts", //      C04c
+      "JsonlLinePayload.ts", //       C04c
+      "JsonlRecord.ts", //            C04c（**线定义本身**：wire == serde_json::to_string(它)）
+      "RemoteHealthPayload.ts", //    C02
+      "RemoteSessionAddedPayload.ts", // C02
+      "SessionActivityPayload.ts", // C02
+      "SessionEndedPayload.ts", //    C02
+      "SessionIdlePayload.ts", //     C02
+      "SessionStartedPayload.ts", //  C02
+      "SftpEntry.ts", //              C03（Phase G 报的唯一已确认静默有损点）
+      "TaskEntry.ts", //              C02
+      "TasksUpdatePayload.ts", //     C02
+      "TransferProgress.ts", //       C03
+      "Usage.ts", //                  C04c（messages.rs 的 token 计数，**不是** usage.rs 的 UsageTotals）
+      "UsageTotals.ts", //            C03
     ]);
     for (const f of files) {
       const src = read(`src/generated/${f}`);
@@ -166,11 +170,12 @@ describe("C01 边界生成物", () => {
     let checked = 0;
     for (const f of TS_DERIVING_SOURCES) {
       const src = rustCode(read(f));
-      expect(src, `${f}: 剥过头了`).toContain("pub struct");
+      expect(src, `${f}: 剥过头了`).toMatch(/pub (struct|enum)\s/);
       const lines = src.split("\n");
       // 以 `pub struct` 为锚：往上收连续属性行（与顺序无关），往下收到列 0 的 `}`
       for (let k = 0; k < lines.length; k += 1) {
-        if (!/^pub struct\s+\w+/.test(lines[k])) continue;
+        // C04c：`pub enum` 也算（variant 字段同样跨边界，且它们没有 `pub ` 前缀）
+        if (!/^pub (struct|enum)\s+\w+/.test(lines[k])) continue;
         let top = k;
         // **往上走时必须跳过空行**：`code()` 把注释行变成**空行**而不是删掉，
         // 而本仓的属性与 `pub struct` 之间常有解释性注释（`data_paths.rs` 就有一整段）。
@@ -182,18 +187,21 @@ describe("C01 边界生成物", () => {
         const attrs = lines.slice(top, k).join("\n");
         if (!attrs.includes("ts_rs::TS")) continue;
         const body = lines.slice(k, bottom + 1);
-        // 逐字段判：属性块 = 从 `skip_serializing_if` 那行到该字段自己的 `pub ` 行之间
+        // 逐**字段**判（不是逐 `skip_serializing_if` 判）：从字段声明行**往上**收它自己的
+        // 属性块。**C04c 订正**：第一版的窗口是 `slice(skip_serializing_if 那行, 字段行)`
+        // ——只看得见写在 serde 属性**之后**的属性，于是
+        // `#[cfg_attr(test, ts(optional))]` + `#[serde(skip_serializing_if)]` 这个顺序
+        // （与 `data_paths.rs` 的 serde-在前 语义完全相同）会**假红**。本轮我写 `origin`
+        // 时就撞上了，而生成物明明已经是 `origin?: string`。
+        // C02 审计的 S2 只修了 **struct 层**的顺序敏感，**字段层**这个窗口漏了。
+        // 现在与 u64 那条扫描同一个形状：往上收 ⇒ 顺序无关。
         for (let q = 0; q < body.length; q += 1) {
-          if (!body[q].includes("skip_serializing_if")) continue;
-          let fieldLine = q;
-          while (fieldLine < body.length && !/^\s*pub\s+\w+\s*:/.test(body[fieldLine])) {
-            fieldLine += 1;
-          }
-          expect(
-            fieldLine,
-            `${f}: skip_serializing_if 之后找不到字段声明——切块逻辑失效了`,
-          ).toBeLessThan(body.length);
-          const own = body.slice(q, fieldLine).join("\n");
+          if (!/^\s*(pub\s+)?\w+\s*:/.test(body[q])) continue;
+          let attrTop = q;
+          while (attrTop > 1 && !/^\s*(pub\s+)?\w+\s*:/.test(body[attrTop - 1])) attrTop -= 1;
+          const own = body.slice(attrTop, q).join("\n");
+          if (!own.includes("skip_serializing_if")) continue;
+          const fieldLine = q;
           expect(
             own,
             `${f}: 字段 ${body[fieldLine]?.trim()} 有 skip_serializing_if 却没配 ts(optional)` +
@@ -203,9 +211,10 @@ describe("C01 边界生成物", () => {
         }
       }
     }
-    // 计数自检用等号：`data_paths.rs` 的 `size_bytes` 1 处 + `tasks.rs` 的
-    // `description`/`active_form` 2 处 = 3 处。加了新的必须红一次，确认新那处也配了。
-    expect(checked, `期望恰好 3 处 skip_serializing_if，实得 ${checked}`).toBe(3);
+    // 计数自检用等号：`data_paths.rs::size_bytes` 1 + `tasks.rs::description/active_form` 2
+    // + C04c 新增的 `bridge.rs::JsonlLinePayload.origin` 1 + `messages.rs::ApiMessage.stop_reason` 1
+    // = **5 处**。加了新的必须红一次，确认新那处也配了。
+    expect(checked, `期望恰好 5 处 skip_serializing_if，实得 ${checked}`).toBe(5);
   });
 
   it("每一个 u64/i64 字段都配了 ts(type = …)——C03 的大整数策略，打在源上", () => {
@@ -225,12 +234,18 @@ describe("C01 边界生成物", () => {
     //    这正是「代理指标 ≠ 性质」的又一个实例，也是 C03 计划里明写「不能写那条断言」的理由。
     //
     // 逐字段判：属性块 = 从字段声明往上到上一个 `pub ` / 块首之间（属性写在字段上方）。
+    // **C04c 补的缺口**：原来两条扫描都只认 `^pub struct`，且字段正则要求 `pub ` 前缀
+    // ⇒ **`pub enum` 的 variant 字段完全隐形**（variant 字段没有 `pub`）。
+    // C04c 把 `messages.rs` 加进派生集时当场暴露：`JsonlRecord::System.duration_ms: Option<u64>`
+    // 生成出 `durationMs: bigint | null`，而守卫**一声不吭**——我是盯生成物发现的，不是它逼我的。
+    // 范围必须等于性质的范围：性质是「**任何**跨边界的大整数字段都要显式表态」，
+    // 与它住在 struct 还是 enum variant 里无关。
     let checked = 0;
     for (const f of TS_DERIVING_SOURCES) {
       const src = rustCode(read(f));
       const lines = src.split("\n");
       for (let k = 0; k < lines.length; k += 1) {
-        if (!/^pub struct\s+\w+/.test(lines[k])) continue;
+        if (!/^pub (struct|enum)\s+\w+/.test(lines[k])) continue;
         let top = k;
         while (top > 0 && /^\s*(#\[|$)/.test(lines[top - 1])) top -= 1;
         let bottom = k;
@@ -238,10 +253,11 @@ describe("C01 边界生成物", () => {
         if (!lines.slice(top, k).join("\n").includes("ts_rs::TS")) continue;
         const body = lines.slice(k, bottom + 1);
         for (let q = 0; q < body.length; q += 1) {
-          if (!/^\s*pub\s+\w+\s*:\s*(Option<)?(u64|i64)>?\s*,/.test(body[q])) continue;
-          // 该字段自己的属性块：往上收到上一个 `pub ` 行（或 struct 头）为止
+          // `pub ` 可选：enum variant 的字段没有它
+          if (!/^\s*(pub\s+)?\w+\s*:\s*(Option<)?(u64|i64)>?\s*,/.test(body[q])) continue;
+          // 该字段自己的属性块：往上收到上一个字段声明行（或类型头）为止
           let attrTop = q;
-          while (attrTop > 1 && !/^\s*pub\s+\w+\s*:/.test(body[attrTop - 1])) attrTop -= 1;
+          while (attrTop > 1 && !/^\s*(pub\s+)?\w+\s*:/.test(body[attrTop - 1])) attrTop -= 1;
           const own = body.slice(attrTop, q).join("\n");
           expect(
             own,
@@ -259,7 +275,40 @@ describe("C01 边界生成物", () => {
     // 计数自检用等号：`data_paths.rs` 1（C01）+ `sftp_pool.rs` 3（size / transferred / total）
     // + `usage.rs` 4 = 8。**`bridge.rs` 的 `JsonlLinePayload.seq` 不计**——那个 struct 未派生
     // （随 `JsonlLine`/`JsonlBatch` 延后），而它正是那两个延后的真正卡点。
-    expect(checked, `期望恰好 8 个大整数字段，实得 ${checked}`).toBe(8);
+    expect(checked, `期望恰好 10 个大整数字段，实得 ${checked}`).toBe(10);
+  });
+
+  it("`Option<大整数>` 配 ts(type) 时不许丢掉 `| null`（除非同时有 ts(optional)）", () => {
+    // **本轮我自己踩的坑**：`ts(type = …)` 覆盖的是**整个**类型、不只是 `Option` 的内层。
+    // `duration_ms: Option<u64>` 配 `ts(type = "number")` 生成出 `durationMs: number`
+    // ——丢了 `| null`，而该字段**没有** `skip_serializing_if` ⇒ None 会序列化成 `null`。
+    // 我是盯生成物发现的，不是守卫逼我的 ⇒ 补上这条。
+    //
+    // 两种诚实形态，取决于 serde 怎么处置 None：
+    // - 有 `skip_serializing_if` ⇒ 线上**省略** ⇒ `ts(optional, type = "number")` ⇒ `x?: number`
+    // - 无 `skip_serializing_if` ⇒ 线上是 **null** ⇒ `ts(type = "number | null")` ⇒ `x: number | null`
+    let checked = 0;
+    for (const f of TS_DERIVING_SOURCES) {
+      const lines = rustCode(read(f)).split("\n");
+      for (let k = 0; k < lines.length; k += 1) {
+        if (!/^\s*(pub\s+)?\w+\s*:\s*Option<(u64|i64)>\s*,/.test(lines[k])) continue;
+        let top = k;
+        while (top > 0 && !/^\s*(pub\s+)?\w+\s*:/.test(lines[top - 1])) top -= 1;
+        const attrs = lines.slice(top, k).join("\n");
+        const declared = /ts\([^)]*type\s*=\s*"([^"]*)"/.exec(attrs);
+        if (!declared) continue; // 没配 ts(type) 的由上一条断言负责
+        checked += 1;
+        if (/ts\([^)]*optional/.test(attrs)) continue; // 省略语义，不该有 null
+        expect(
+          declared[1],
+          `${f}:${k + 1} 字段 ${lines[k].trim()} 是 Option 且无 skip_serializing_if ` +
+            `⇒ 线上会是 null，但 ts(type) 里没有 \`| null\``,
+        ).toMatch(/\|\s*null/);
+      }
+    }
+    // 计数自检用等号：`data_paths.rs::size_bytes`（走 optional 分支）+
+    // `messages.rs::duration_ms`（走 null 分支）= 2 处。
+    expect(checked, `期望恰好 2 处 Option<大整数>，实得 ${checked}`).toBe(2);
   });
 
   it("`u64` 的映射与运行时一致，且属性真的在源码里（不是被注释喂饱）", () => {
