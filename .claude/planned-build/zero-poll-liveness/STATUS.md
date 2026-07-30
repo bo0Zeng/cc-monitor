@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-**主计划 2026-07-30 用户已批准 + P4 hook 授权已给。P0/P1/P2 已交付签收。下一个：P3。**
+**主计划 2026-07-30 用户已批准 + P4 hook 授权已给。P0/P1/P2/P3 已交付签收。下一个：P4（装 hook，授权已给）。**
 
 ## 自动模式
 
@@ -18,8 +18,8 @@
 | P0 | 五项机制实测 | **✅ 完成签收**（`features/P0-machine-facts.md`）。五项里三项坏答案，定死三条设计 |
 | P1 | `ZeroSessions` 观测分类（销 `INVARIANTS:408` 残留） | **✅ 完成签收**（`features/P1-zero-sessions-sentinel.md`）。三条变异双向成立；延迟「永不」→ **~16s**（有界化不是即时化） |
 | P2 | pidfd 替判活轮询 + 建统一事件 channel | **✅ 完成签收**（`features/P2-pidfd-unified-channel.md`）。账本第 1 行到最终形态；**端到端实测 ~18ms**（原 2s tick）；两条变异双向成立 |
-| P3 | tmux server 生/死/复活（**不删 8s 轮询**） | 未开工（**下一个**）。pidfd 复用面已铺好，只需多一个调用点 + 一个 `WatchEvent` 变体，不必再写 unsafe |
-| P4 | daemon 装 tmux hook | 未开工，**需授权** |
+| P3 | tmux server 生/死/复活（**不删 8s 轮询**） | **✅ 完成签收**（`features/P3-tmux-server-lifecycle.md`）。调研的 ⚠ 盲区已消；实测 kill-server→27ms · 复活→153ms · 跨 cgroup SIGKILL→30ms；零新定时器 |
+| P4 | daemon 装 tmux hook | 未开工（**下一个**）。**授权已给**。P3 的 `ServerState::Alive(pid)` 臂就是（重）装 hook 的现成时机 |
 | P5 | wire 正向死亡帧 + 免 debounce retire + **删 `TMUX_EMIT_INTERVAL`** | 未开工（承 P4） |
 | P6 | 零定时器守卫 + 延迟 e2e | 未开工 |
 | P7 | 文档收口 + E34 结案 | 未开工 |
@@ -43,15 +43,19 @@
 
 ## 本轮 loop 目标
 
-**P3 — tmux server 生 / 死 / 复活事件化**。三件事：
-① pidfd 绑 tmux server pid（`tmux display-message -p '#{pid}'`）→ 醒了即"零会话"
-② 对 socket 目录（`/tmp/tmux-<uid>/`）加 inotify `IN_CREATE` 感知复活 → 重挂 pidfd +
-（P4 后）重装 hook + 全量重同步。**P0 已实测：server 死后 socket 文件仍留着**（「文件存在」
-≠「server 活」，别用存在性判活）、**复活时 inode 会变**（unlink+create ⇒ `IN_CREATE` 能感知）
-③ 顺带把 P1 那处刻意保守的判据收紧：pidfd 说 server 活着但 `tmux ls` rc=1 = 真异常 ⇒
-`Unobservable`（**不改帧契约**）。
-**刻意不删 `TMUX_EMIT_INTERVAL`**（那是 P5 的事——只有到 P5 才存在覆盖"多个中杀一个"的事件源）。
-**pidfd 用在 tmux server 上时要自测跨 cgroup 存活那一格**（P0-③ 只测了拓扑，P2 只测了会话进程）。
+**P4 — daemon 装 tmux hook（授权已给）**。P0 定死的形态，不要再讨论：
+- **全局 `[50]` 槽位**（per-session 的 `session-closed` 专门不触发，对照实验已证）
+- **`run-shell -b`**（同步版会阻塞用户实况 server；`-b` 在「杀掉最后一个会话」那格写不进去
+  —— 那两格由 P3 的 pidfd 覆盖，分界是实测的）
+- hook 只调用**一个独立可执行文件**，不在配置里堆多层引号（调研坑 §11.4）
+- 只用 `#{hook_session_name}`（`#{@ccm_sid}` 会解析到**别的会话**，会把活着的会话变灰）
+- **装的时机**：P3 的 `ServerState::Alive(pid)` 那个臂（server 每次起来都要重装，
+  因为 hook 活在 server 内存里）
+- 事件通路：hook → 追加一行到 `$XDG_RUNTIME_DIR/cc-monitor/tmux-events.log`（tmpfs）
+  → daemon 对该文件 inotify → 读增量；daemon 启动时 seek 到末尾（生命周期 ⊆ 连接、
+  启动本来就做全量重同步 ⇒ 不需跨进程游标）
+- **动用户实况 tmux server 前**：先备份 `tmux show-hooks -g` 全文，测完 `set-hook -gu`
+  逐个撤销并复核；隔离 socket 上做验收，默认 socket 最后核对「已设 hook 数仍为 0」
 
 ## loop 停止条件
 

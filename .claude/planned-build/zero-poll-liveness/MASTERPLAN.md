@@ -2,7 +2,7 @@
 
 > 所有功能宏观设计的**单一事实来源**。每次修订在末尾「§7 变更记录」追加一行。
 >
-> **状态：主计划 2026-07-30 用户已批准 + P4 hook 授权已给。P0/P1/P2 已交付签收。**
+> **状态：主计划 2026-07-30 用户已批准 + P4 hook 授权已给。P0/P1/P2/P3 已交付签收。**
 > **来源：BACKLOG E34（用户 2026-07-29 点名「我要把轮询杀掉」）+ 用户 2026-07-30
 > 追加要求「daemon 是能改的，我的要求就是性能最佳且不要轮询」。**
 
@@ -141,7 +141,7 @@ threshold=1 会误 retire 还活着的 A）。
 | **P0** | **五项机制实测**（隔离 socket + scratchpad，唯一可能推翻方向的一步） | 小，全是测 | 否（隔离 socket） | **✅ 完成，已签收** |
 | **P1** | daemon `ZeroSessions` 观测分类 + monitor 侧安全 retire（销 `INVARIANTS:408` 残留） | 小 | 否 | **✅ 完成，已签收** |
 | **P2** | pidfd 替掉判活轮询 A（含 PID 复用在机制上消失）+ **建统一事件 channel** | 中 | 否 | **✅ 完成，已签收** |
-| **P3** | tmux server 生 / 死 / 复活事件化（**不删轮询 B**，见下） | 中 | 否 | 未开工 |
+| **P3** | tmux server 生 / 死 / 复活事件化（**不删轮询 B**，见下） | 中 | 否 | **✅ 完成，已签收** |
 | **P4** | daemon 装 tmux hook（会话生/死/改名）+ 事件通路 | 中 | **是：改活 tmux server 的 hook 状态** | 未开工 |
 | **P5** | wire 正向死亡帧 + monitor 侧免 debounce 立即 retire + **删 `TMUX_EMIT_INTERVAL`** | 中 | 否（承 P4） | 未开工 |
 | **P6** | 门禁：零定时器守卫 + 端到端延迟 e2e | 小 | 否 | 未开工 |
@@ -421,6 +421,7 @@ pidfd 那步必须做「杀掉被追踪进程 → 事件真的到了」和「不
 | # | 日期 | 改了什么 / 为什么 |
 |---|---|---|
 | 03 | 2026-07-30 | **P0 交付，四处设计被实测收紧**：① P0-① 的"好答案分支（帧带 sid）"**被证伪**——`#{@ccm_sid}` 在 `session-closed` 里解析到**别的会话**，照直觉写会把活着的会话变灰 ⇒ 只能带名字 ② P0-② 的"per-session 干净路线"**被证伪**（对照实验：per-session 机制可用，但 `session-closed` 专门不触发）⇒ 必须全局 `[50]`，用户已授权的正是需要的那条 ③ §6 风险 3 **范围订正**：inotify 溢出是**既有盲区**（debouncer 吞掉），且 pidfd 免疫 ⇒ P2 让情况变好，不是本区引入的风险 ④ P1 哨兵从 `NO_SESSIONS` 改为 **`ZeroSessions`**、判据改为 **rc + stdout 空否**（Phase D 自审补测发现 `exit-empty off` 下"server 活+零会话"存在且 rc=0）。另**计划外最有价值的产出**：`run-shell -b` 在「杀掉最后一个会话」时写不进去 ⇒ **hook 与 pidfd 的分界从此有实测依据**（hook 管"多个中杀一个"，pidfd 管"杀到没了/server 被端"），并给 `local-as-remote` L1 留下"cgroup 隔离只对经 SSH 起成立"的提醒 |
+| 06 | 2026-07-30 | **P3 交付：用户调研那个 ⚠ 盲区（server 复活）已消**——在 daemon 里 `notify` 就是 inotify，本功能只是多一个 watch 目标 + 精确路径过滤。**实测**：`kill-server` → `zero_sessions` 帧 **27ms** · 复活 → 含新会话的帧 **153ms**（含 100ms DEBOUNCE_MS）· **跨 cgroup 整锅 SIGKILL → 30ms**（用真 daemon：tmux server 在 `app.slice/…`、daemon 在 `tmux-spawn-….scope`，transient unit 已回滚零残留）。三条设计要点：① `TmuxObservation` 细分为 `ServerEmpty`/`NoServer`，但**两者映射到同一 wire 取值** ⇒ 帧契约逐字节不变（P0/P1 的预判兑现，有测试钉住）② 收紧 P1 的 rc=1 判据时**刻意不依赖「pidfd 是否醒过」**——那会在 pidfd 路失效时把 rc=1 永久压成 `Unobservable` ⇒ 永不 retire；改成直接查 `/proc` 里 server pid 还在不在（一次存在性读，无挂死风险），变异 A 专门钉住这条 ③ 复活必须监视 socket **所在目录**而非文件（要感知的是「被重新 create」）。**账本第 1 行的证据**：P3 只加了两个 `WatchEvent` 变体 + 两个发送方，**零新定时器、循环结构未动** ⇒ P2 把结构做对了、P3 就便宜。给 P4 的现成时机：`ServerState::Alive(pid)` 那个臂正是「该（重）装 hook」的点（hook 活在 server 内存里、每次起来都要重装，而 P3 把「server 起来了」变成了事件）|
 | 05 | 2026-07-30 | **P2 交付：账本第 1 行到最终形态**（无超时 `recv()` + 单一 `mpsc<WatchEvent>`；轮询 A 消失、轮询 B 从主循环搬进独立 ticker 线程 ⇒ P5 删 ticker 即可、不必再动循环结构）。**端到端实测：杀掉会话进程 → `session_removed` ~18ms**（原 2s tick ⇒ 降两个数量级；测法含 grep 轮询开销、是上界）。三条回写：① **P6 的载体问题 P2 顺手解决了**——冒烟用的「隔离 `CLAUDE_CONFIG_DIR` + PATH 前置假 tmux + 读 daemon stdout 帧」模式**根本不需要任何 tmux socket**、天生隔离 ⇒ daemon 侧延迟 e2e 照这个建，不必先改那 6 套（E41 只剩真 tmux 那半边要管）② P3 给 tmux server 挂 pidfd 只是多一个调用点 + 一个变体，不必再写 unsafe ③ **P5 硬前置**：删 ticker 前必须把写端关闭接到 `WatchEvent::Shutdown`，否则 reader 不再「没人听就停读」（变体与注释已备好）。**自查出并补掉一个静默回归**：初版把事件 channel 建在 Phase 2，而 Phase 1 初始扫描已在调 `process_session_added` ⇒ 启动时就活着的会话一个 pidfd 看守都没有（原 2s 轮询覆盖它们 ⇒ 是回归）。它不是被测试抓到的、是被 clippy 的「field `start` is never read」间接暴露 ⇒ 补了一条扫源码守卫钉住注入点必须早于扫描锚点 |
 | 04 | 2026-07-30 | **P1 交付**（销掉 `INVARIANTS:408` 那条 2026-07-25 就登记、明文卡在「daemon 零改」上的真 bug）。两条实质影响回写：① **P6 的载体作废重定**——实测那 6 套非 CI 套件（`graylight-*`/`restart-*`/`resume-*` + helper）**一处 `-L` 都没有**、会在默认 socket 上建/杀会话 ⇒ 原计划「并入既有 graylight 一族」行不通，P6 得先做 socket 隔离（登记 E41）或换已隔离的载体。旁证：`graylight-daemon-frames.sh:30` 那个 keepalive 会话的存在理由**就是**绕开 P1 修的这个 bug ⇒ 该 bug 当年是被测试侧绕过而非被发现 ② **P3 有了明确的收紧对象**（`rc=1` 判 `ZeroSessions` 是刻意保守，P3 持 pidfd 后可把「server 活着但 rc=1」归 `Unobservable`，且不改帧契约）。另：`BUILD_ID` **刻意不在 P1 bump**（推到 P5 一次重部署覆盖整个工作区，避免让用户每台远端被强制重装两次）⇒ 本修复在远端**休眠**，已记进 STATUS；基线订正 daemon 测试数 47→125 |
 | 02 | 2026-07-30 | **交审前自查改掉一处顺序缺陷**：初稿把「删 `TMUX_EMIT_INTERVAL`」排在 P3，但 P3 只覆盖 server 级生死——「多个会话里被杀掉一个」server 还活着 ⇒ 无 pidfd/无 socket 事件，**只有 hook（P4）知道**。那样删会把该场景从 16s 变成**永不**。删轮询 B 移到 P5，并在成功标准 1 / §1 P3 / §4 顺序表三处写死前置条件，另加 §6 风险 9 |
