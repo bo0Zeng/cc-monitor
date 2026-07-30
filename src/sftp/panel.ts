@@ -2,7 +2,8 @@
  * F48：SFTP 文件面板(独立 overlay,每 host 打开;照 SettingsPanel 范式,不碰 TabManager)。
  * 消费 F47 的 sftp_* 命令。Part 1 = 浏览(面包屑/列表/导航/排序);传输/写/拖入见后续。
  */
-import { invoke, Channel } from "@tauri-apps/api/core";
+import { Channel } from "@tauri-apps/api/core";
+import { commands } from "../ipc/commands";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -188,7 +189,7 @@ export class SftpPanel implements OverlayHandle {
     } else {
       this.revealName = null;
       try {
-        const home = await invoke<string>("sftp_realpath", { cfg, path: "." });
+        const home = await commands.sftp_realpath({ cfg, path: "." });
         this.cwd = home || "/";
       } catch (e) {
         this.cwd = "/";
@@ -224,7 +225,7 @@ export class SftpPanel implements OverlayHandle {
     this.renderCrumbs();
     this.listEl.textContent = "读取中…";
     try {
-      this.entries = await invoke<SftpEntry[]>("sftp_list_dir", {
+      this.entries = await commands.sftp_list_dir({
         cfg: this.cfg,
         path: this.cwd,
       });
@@ -267,7 +268,7 @@ export class SftpPanel implements OverlayHandle {
     if (!localPath) return; // 用户取消对话框
     const remotePath = joinPath(this.cwd, e.name);
     await this.runTransfer(`下载 ${e.name}`, e.size, (transferId, onProgress) =>
-      invoke("sftp_download", { cfg: this.cfg, remotePath, localPath, transferId, onProgress }),
+      commands.sftp_download({ cfg: this.cfg, remotePath, localPath, transferId, onProgress }),
     );
   }
 
@@ -288,14 +289,14 @@ export class SftpPanel implements OverlayHandle {
     // 覆盖前确认(aterm 契约:不静默覆盖)。
     let exists = false;
     try {
-      await invoke("sftp_stat", { cfg: this.cfg, path: remotePath });
+      await commands.sftp_stat({ cfg: this.cfg, path: remotePath });
       exists = true;
     } catch {
       exists = false; // stat 失败 = 不存在(或不可读),按新建处理
     }
     if (exists && !window.confirm(`远端已存在 ${name},覆盖?`)) return;
     await this.runTransfer(`上传 ${name}`, 0, (transferId, onProgress) =>
-      invoke("sftp_upload", { cfg: this.cfg, localPath, remotePath, transferId, onProgress }),
+      commands.sftp_upload({ cfg: this.cfg, localPath, remotePath, transferId, onProgress }),
     );
     await this.reload(); // 上传后刷新目录,新文件出现
   }
@@ -324,7 +325,7 @@ export class SftpPanel implements OverlayHandle {
     let cancelled = false;
     const cancelBtn = mkBtn("取消", () => {
       cancelled = true;
-      void invoke("sftp_cancel_transfer", { transferId });
+      void commands.sftp_cancel_transfer({ transferId });
     });
     cancelBtn.className = "sftp-btn sftp-cancel-transfer";
     rowEl.append(labelEl, barWrap, pct, cancelBtn);
@@ -356,18 +357,22 @@ export class SftpPanel implements OverlayHandle {
     if (!this.cfg) return;
     const name = window.prompt("新建目录名:");
     if (!name?.trim()) return;
-    await this.doWrite("sftp_mkdir", { cfg: this.cfg, path: joinPath(this.cwd, name.trim()) });
+    await this.doWrite(() =>
+      commands.sftp_mkdir({ cfg: this.cfg, path: joinPath(this.cwd, name.trim()) }),
+    );
   }
 
   private async rename(e: SftpEntry): Promise<void> {
     if (!this.cfg) return;
     const to = window.prompt(`重命名 ${e.name} 为:`, e.name);
     if (!to?.trim() || to.trim() === e.name) return;
-    await this.doWrite("sftp_rename", {
-      cfg: this.cfg,
-      from: joinPath(this.cwd, e.name),
-      to: joinPath(this.cwd, to.trim()),
-    });
+    await this.doWrite(() =>
+      commands.sftp_rename({
+        cfg: this.cfg,
+        from: joinPath(this.cwd, e.name),
+        to: joinPath(this.cwd, to.trim()),
+      }),
+    );
   }
 
   private async remove(e: SftpEntry): Promise<void> {
@@ -375,11 +380,13 @@ export class SftpPanel implements OverlayHandle {
     // 二次确认,文案回显真实条目名(aterm 契约:防误删)。
     const kind = e.isDir ? "目录" : "文件";
     if (!window.confirm(`删除${kind} ${e.name}?此操作不可撤销。`)) return;
-    await this.doWrite("sftp_delete", {
-      cfg: this.cfg,
-      path: joinPath(this.cwd, e.name),
-      isDir: e.isDir,
-    });
+    await this.doWrite(() =>
+      commands.sftp_delete({
+        cfg: this.cfg,
+        path: joinPath(this.cwd, e.name),
+        isDir: e.isDir,
+      }),
+    );
   }
 
   /** 拖入的本地文件 → 逐个上传到当前目录(复用 runTransfer)。 */
@@ -390,14 +397,14 @@ export class SftpPanel implements OverlayHandle {
       const remotePath = joinPath(this.cwd, name);
       let exists = false;
       try {
-        await invoke("sftp_stat", { cfg: this.cfg, path: remotePath });
+        await commands.sftp_stat({ cfg: this.cfg, path: remotePath });
         exists = true;
       } catch {
         exists = false;
       }
       if (exists && !window.confirm(`远端已存在 ${name},覆盖?`)) continue;
       await this.runTransfer(`上传 ${name}`, 0, (transferId, onProgress) =>
-        invoke("sftp_upload", { cfg: this.cfg, localPath, remotePath, transferId, onProgress }),
+        commands.sftp_upload({ cfg: this.cfg, localPath, remotePath, transferId, onProgress }),
       );
     }
     await this.reload();
@@ -409,7 +416,7 @@ export class SftpPanel implements OverlayHandle {
     const path = joinPath(this.cwd, e.name);
     let text: string | null;
     try {
-      text = await invoke<string | null>("sftp_read_text_for_edit", { cfg: this.cfg, path });
+      text = await commands.sftp_read_text_for_edit({ cfg: this.cfg, path });
     } catch (err) {
       showActionFailureToast("读取失败", String(err));
       return;
@@ -469,7 +476,7 @@ export class SftpPanel implements OverlayHandle {
     }
     saveBtn.disabled = true;
     try {
-      await invoke("sftp_write_text", { cfg: this.cfg, path, content });
+      await commands.sftp_write_text({ cfg: this.cfg, path, content });
       back.remove(); // 成功才关,刷新目录
       await this.reload();
     } catch (e) {
@@ -479,10 +486,19 @@ export class SftpPanel implements OverlayHandle {
     }
   }
 
-  /** 写命令通用:invoke → 失败 toast → 成功刷新目录。 */
-  private async doWrite(cmd: string, args: Record<string, unknown>): Promise<void> {
+  /**
+   * 写命令通用:调用 → 失败 toast → 成功刷新目录。
+   *
+   * **C04d 批 6b：签名从 `(cmd: string, args: Record<string, unknown>)` 改成接一个 thunk。**
+   * 原形态被 C04a 记成「TS 静态看不见的动态命令名」盲区之一，但**三个调用方传的全是字面量**
+   * （`sftp_mkdir`/`sftp_rename`/`sftp_delete`）——「动态」只在于名字从一个封闭集合里选。
+   * 改成 thunk 后：命令名回到调用点成为字面量（守卫扫得到）、
+   * **每个命令的实参由包装层各自的精确签名把关**（不再是 `Record<string, unknown>` 一锅端）。
+   * 这比原计划的 `invokeDynamic(name, args)` 逃生口好——那会留一个 `string` 键的后门。
+   */
+  private async doWrite(run: () => Promise<void>): Promise<void> {
     try {
-      await invoke(cmd, args);
+      await run();
       await this.reload();
     } catch (e) {
       showActionFailureToast("操作失败", String(e));
@@ -540,7 +556,7 @@ export class SftpPanel implements OverlayHandle {
     const remoteCmd = buildOpenTerminalCmd(this.cwd);
     // D 审计重要-1:launch_remote_terminal 按 origin 从**已保存**配置加载(需完整 host/user/
     // daemonPath);SFTP 浏览用的是即时 cfg(daemonPath 可空)。配置未存全时给可操作提示。
-    void invoke("launch_remote_terminal", { origin: this.origin(), remoteCmd }).catch((e) => {
+    void commands.launch_remote_terminal({ origin: this.origin(), remoteCmd }).catch((e) => {
       const msg = String(e);
       showActionFailureToast(
         "打开终端失败",

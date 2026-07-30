@@ -428,6 +428,46 @@ Rust 侧：`stream_read_remote_session(jsonl_path, origin, on_chunk)` ——`ori
 | **B** | 往 `DYNAMIC_ONLY` 塞回一个已消掉的名字 | 守卫红（盲区集被钉死，不许静默变大或变小） | 成立 |
 | C | 五条等号自动各红一次 | 生成物清单 · 派生源 21→22 · 文件数 7→6 · 包装层 62→66 · **字面量名 112→114** | 成立 |
 
+## 3i. 批次 6b 明细：`doWrite` 从 `(cmd: string, args: Record<string, unknown>)` 改成接 thunk
+
+11 条包装层条目（66 → **77**）· **零新派生**（`SftpEntry`/`TransferProgress` C03 已生成）·
+1 个文件迁走（6 → **5**）· **字面量命令名 114 → 117**（盲区 5 → **2**）。
+
+### `doWrite` 的处置：thunk，而不是逃生口
+
+原形态 `doWrite(cmd: string, args: Record<string, unknown>)` 被 C04a 记成盲区之一。
+三个调用方传的全是字面量（`sftp_mkdir`/`sftp_rename`/`sftp_delete`）⇒ 改成
+`doWrite(run: () => Promise<void>)`，调用方写 `this.doWrite(() => commands.sftp_delete({…}))`。
+
+**两个收益，第二个是意外的**：
+1. 命令名回到调用点成为**字面量**（守卫扫得到）⇒ 盲区少三个；
+2. **每个命令的实参由包装层各自的精确签名把关**——原来那个 `Record<string, unknown>`
+   会照收任何键。变异实证：给 `sftp_mkdir` 多传一个 `isDir` → `tsc` 报
+   `'isDir' does not exist in type '{ cfg: unknown; path: string; }'`；
+   把 `sftp_rename` 的 `from`/`to` 写成 `path` → 同样精确报错。
+   **这一层此前完全没有把关。**
+
+### `sftp_stat` 按 §5 桶② 写 `unknown` 并在那行注明
+
+它是 C03 **刻意跳过**没生成类型的那一个（TS 侧裸 `invoke` 无类型参数、字段没人读）。
+包装层给它 `unknown` + 一行说明为什么不是生成物 —— 不留下让人以为「漏了」的空白。
+
+### 一处我自己造的错：`replace` 默认预期 1 处，而有两个命令各出现 2 处
+
+`sftp_stat` 与 `sftp_upload` 各有 **2** 处（单文件路径 + 多文件循环）。
+我的 helper 默认 `assert count==1` ⇒ 整个脚本在写盘前中止，
+**但 import 替换是另一条独立命令、已经跑了** ⇒ 又一次中间态不一致（同批 5c）。
+修法：helper 加一个**显式的预期处数**参数 `rep(a, b, n=1)`，2 处的地方显式写 `n=2`。
+**「默认 1 处」这个假设本身就该被声明出来。**
+
+### 批次 6b 变异
+
+| # | 变异 | 判色 | 结论 |
+|---|---|---|---|
+| **A** | 给 `sftp_mkdir` 多传一个 `isDir` | `tsc` 报 `'isDir' does not exist in type '{ cfg: unknown; path: string; }'` | 成立。thunk 化前 `Record<string, unknown>` 会照收 |
+| **B** | 把 `sftp_rename` 的 `from`/`to` 写成 `path` | `tsc` 报 `'path' does not exist in type '{ cfg: unknown; from: string; to: string; }'` | 成立 |
+| C | 三条等号自动各红一次 | 文件数 6→5 · 包装层 66→77 · **字面量名 114→117** | 成立 |
+
 ## 4. 代码审计结果（Phase D）
 
 **强度：低风险**（无逻辑改动，纯调用形式替换；三条等号守卫全程盯着）⇒

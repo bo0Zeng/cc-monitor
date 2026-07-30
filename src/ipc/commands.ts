@@ -21,8 +21,8 @@
  *
  * ## 本文件今天覆盖多少
  *
- * **66 个命令**（C04a 样板 1 + C04d 批 1-6a 的 65）。
- * 其余 53 个仍走各模块里的裸 `invoke`（119 − 66 = 53），由 **C04d** 后续批次迁进来。
+ * **77 个命令**（C04a 样板 1 + C04d 批 1-6b 的 76）。
+ * 其余 42 个仍走各模块里的裸 `invoke`（119 − 77 = 42），由 **C04d** 后续批次迁进来。
  *
  * **条目按字母序**（键名排序），加新条目时插到对的位置——这样 diff 只显示真正的新增。
  *
@@ -59,7 +59,9 @@ import type { ForwardStatus } from "../generated/ForwardStatus";
 import type { HooksReport } from "../generated/HooksReport";
 import type { ImportGroup } from "../generated/ImportGroup";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
+import type { TransferProgress } from "../generated/TransferProgress";
 import type { ProfileScan } from "../generated/ProfileScan";
+import type { SftpEntry } from "../generated/SftpEntry";
 import type { PushResult } from "../generated/PushResult";
 import type { ResolvedHost } from "../generated/ResolvedHost";
 import type { LogFileInfo } from "../generated/LogFileInfo";
@@ -180,6 +182,63 @@ export const commands = {
    */
   set_diagnostics_config: (args: { cfg: DiagnosticsConfig }) =>
     invoke<RestartHint>("set_diagnostics_config", args),
+
+  /** 取消一次进行中的传输。Rust **无返回值**（`fn … -> ()`）⇒ **桶①**。 */
+  sftp_cancel_transfer: (args: { transferId: string }) =>
+    invoke<void>("sftp_cancel_transfer", args),
+
+  /** 删远端文件/目录。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  sftp_delete: (args: { cfg: unknown; path: string; isDir: boolean }) =>
+    invoke<void>("sftp_delete", args),
+
+  /** 下载（带 `Channel<TransferProgress>` 进度）。**桶①**。 */
+  sftp_download: (args: {
+    cfg: unknown;
+    remotePath: string;
+    localPath: string;
+    transferId: string;
+    onProgress: Channel<TransferProgress>;
+  }) => invoke<void>("sftp_download", args),
+
+  /** 列目录。返回值字段被真消费 ⇒ 生成物（桶③；`size: u64` C03 已按字节数量纲论证）。 */
+  sftp_list_dir: (args: { cfg: unknown; path: string }) =>
+    invoke<SftpEntry[]>("sftp_list_dir", args),
+
+  /** 建远端目录。**桶①**。 */
+  sftp_mkdir: (args: { cfg: unknown; path: string }) => invoke<void>("sftp_mkdir", args),
+
+  /** 读远端文本供编辑。Rust 返回 `Result<Option<String>, String>` ⇒ `string | null`。 */
+  sftp_read_text_for_edit: (args: { cfg: unknown; path: string }) =>
+    invoke<string | null>("sftp_read_text_for_edit", args),
+
+  /** 解析远端真实路径（`realpath`）。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
+  sftp_realpath: (args: { cfg: unknown; path: string }) =>
+    invoke<string>("sftp_realpath", args),
+
+  /** 远端重命名/移动。**桶①**。 */
+  sftp_rename: (args: { cfg: unknown; from: string; to: string }) =>
+    invoke<void>("sftp_rename", args),
+
+  /**
+   * stat 一个远端路径。**返回 `unknown`（§5 桶②）而不是生成物**：
+   * `SftpStat` 是 C03 **刻意跳过**没生成的那一个——TS 侧一直是裸 `invoke` 无类型参数、
+   * **字段没人读**，为它生成类型就是「为假想消费者建抽象」。
+   * 这里写 `unknown` 并在这一行注明，不留下让人以为「漏了」的空白。
+   */
+  sftp_stat: (args: { cfg: unknown; path: string }) => invoke<unknown>("sftp_stat", args),
+
+  /** 上传（带 `Channel<TransferProgress>` 进度）。**桶①**。 */
+  sftp_upload: (args: {
+    cfg: unknown;
+    localPath: string;
+    remotePath: string;
+    transferId: string;
+    onProgress: Channel<TransferProgress>;
+  }) => invoke<void>("sftp_upload", args),
+
+  /** 写远端文本。**桶①**。 */
+  sftp_write_text: (args: { cfg: unknown; path: string; content: string }) =>
+    invoke<void>("sftp_write_text", args),
 
   /** 起一条端口转发。Rust 返回 `Result<String, String>`（转发 id）⇒ 原始类型。 */
   start_forward: (args: {
