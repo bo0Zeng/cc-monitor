@@ -4,8 +4,8 @@
  * 的屏幕文本，等宽 `<pre>` 展示；失败弹 toast。**非 attach、不接管终端；只读快照非实时**
  * （「重新抓取」按钮手动刷新，要动态看去 attach）。一次只开一个。
  */
-import { invoke } from "@tauri-apps/api/core";
 import { showActionFailureToast } from "../error-toast";
+import { commands } from "../ipc/commands";
 
 let current: HTMLElement | null = null;
 
@@ -72,7 +72,7 @@ export async function openPanePreview(origin: string, target: string): Promise<v
     refreshBtn.disabled = true;
     if (!loaded) pre.textContent = "抓取中…";
     try {
-      const text = await invoke<string>("capture_remote_pane", { origin, target });
+      const text = await commands.capture_remote_pane({ origin, target });
       if (current !== overlay) return; // 抓取途中被关/换
       pre.textContent = text.length > 0 ? text : "（画面为空）";
       loaded = true;

@@ -11,7 +11,7 @@
  * （`runRemoteResumeTmux` 的位置参数签名被 `e2e/restart-cmd-driver.ts` 经 `account-restart.ts`
  * 传递性锁死）。
  */
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "./ipc/commands";
 import {
   planResumeDirect,
   planResumeTmux,
@@ -71,7 +71,7 @@ async function invokeLaunchOrCopyFallback(
   toasts: LaunchToasts,
 ): Promise<boolean> {
   try {
-    await invoke("launch_remote_terminal", { origin, remoteCmd: cmd });
+    await commands.launch_remote_terminal({ origin, remoteCmd: cmd });
     showActionFailureToast(toasts.success, toasts.successDetail, { level: "info", durationMs: 6000 });
     return true;
   } catch (err) {

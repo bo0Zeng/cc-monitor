@@ -374,7 +374,9 @@ describe("C01 边界生成物", () => {
     // 注意 `src/ipc/commands.ts` **算在里面**——包装层就是最终该剩下的那 1 个。
     // 裸 `grep 'import { invoke }'` 只有 24，因为有文件是多名导入（`import { invoke, Channel }`）
     // ——这正是原来那个 29 容易被量错的原因，所以这里用正则而不是字面量。
-    expect(hits.length, `期望恰好 29 个，实得 ${hits.length}`).toBe(29);
+    // C04d 批次 1：29 → **23**（6 个文件迁进包装层）。最终形态是
+    // 「1 个包装层 + `tabs.ts`（等授权）+ 1 个动态派发逃生口」= 3，见主计划 §0.1 标准 4。
+    expect(hits.length, `期望恰好 23 个，实得 ${hits.length}`).toBe(23);
     expect(hits.map((f) => f.replace(/\\/g, "/")), "包装层自己必须在名单里").toContain(
       "src/ipc/commands.ts",
     );

@@ -21,9 +21,10 @@
  *
  * ## 本文件今天覆盖多少
  *
- * **1 个命令**（`get_data_paths`，C04a 的样板）。其余 118 个仍走各模块里的裸 `invoke`
- * （112 个有字面量命令名 + 7 个走动态命令名，`get_data_paths` 自己算在前者里），
- * 由 **C04d** 按模块分批迁进来。
+ * **6 个命令**（C04a 的样板 `get_data_paths` + C04d 批次 1 的 5 个）。
+ * 其余 113 个仍走各模块里的裸 `invoke`，由 **C04d** 后续批次迁进来。
+ *
+ * **条目按字母序**（键名排序），加新条目时插到对的位置——这样 diff 只显示真正的新增。
  *
  * **所以守卫里绝不能写「每个命令都必须经过包装层」**——那会假红，而假红的守卫会被人关掉。
  *
@@ -40,6 +41,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
+import type { TaskEntry } from "../generated/TaskEntry";
 
 /**
  * 类型化命令表。**键名必须逐字节等于 Rust 侧的命令名**，
@@ -53,6 +55,30 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
  * 必须是**另一个导出**。塞了会被守卫第 2 条当场抓红（fail-safe）。
  */
 export const commands = {
+  /** 远端 `tmux capture-pane -p` 的画面文本。返回**原始类型**，无需生成物（桶③）。 */
+  capture_remote_pane: (args: { origin: string; target: string }) =>
+    invoke<string>("capture_remote_pane", args),
+
+  /**
+   * 前端性能日志落进 monitor 日志（无 devtools 环境下的唯一取证通道，grep `fe_perf`）。
+   * Rust 侧无返回值 ⇒ **桶①** `Promise<void>`。
+   *
+   * **两个调用方**（`e2e-probe.ts` 与 `events.ts`）—— 这正是包装层的价值：
+   * 原来两处各自手写这个命令名。
+   */
+  frontend_perf_log: (args: { lines: string }) => invoke<void>("frontend_perf_log", args),
+
   /** 设置面板「数据」区：枚举 monitor 写到磁盘的所有路径。返回值字段被真消费 ⇒ 用生成物（桶③）。 */
   get_data_paths: () => invoke<DataPathsResponse>("get_data_paths"),
+
+  /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
+  get_session_tasks: (args: { sessionId: string }) =>
+    invoke<TaskEntry[]>("get_session_tasks", args),
+
+  /** 在远端起一个终端跑给定命令。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  launch_remote_terminal: (args: { origin: string; remoteCmd: string }) =>
+    invoke<void>("launch_remote_terminal", args),
+
+  /** 用系统默认程序打开 monitor 的 log 文件。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  open_log_file: () => invoke<void>("open_log_file"),
 } as const;
