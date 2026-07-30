@@ -53,10 +53,11 @@ const DYNAMIC_ONLY = [
   //
   // 所以原计划的 `invokeDynamic(name, args)` 逃生口**不需要**——
   // 为一件其实是静态的事加一个 `string` 键的后门，方向是错的。三处都改成静态调用即可。
-  // 批 6a 已消掉两个（两个 `stream_read_*`）；剩下 5 个由批 6b/6c 消掉。
-  "sftp_delete",
-  "sftp_mkdir",
-  "sftp_rename",
+  // 批 6a 消掉两个（两个 `stream_read_*`，那处三元改成两次静态调用）；
+  // **批 6b 再消掉三个**（`sftp/panel.ts` 的 `doWrite(cmd, args)` 改成接 thunk
+  // ⇒ 命令名回到调用点成为字面量，且每个命令的实参由包装层各自的精确签名把关，
+  // 不再是 `Record<string, unknown>` 一锅端）。
+  // 剩下这 2 个由批 6c 消掉（`views/history.ts` 那个两字面量三元），届时本数组应 `toEqual([])`。
   "stream_history_sessions_in_project",
   "stream_remote_history_sessions",
 ];
@@ -211,7 +212,7 @@ describe("C04a 命令名钉死", () => {
     }
 
     // 计数自检：C04d 每迁一个模块进来，这个数要跟着涨（红一次提醒更新）
-    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(66);
+    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(77);
   });
 
   it("TS 侧字面量命令名 ⊆ Rust 集，唯一名数 == 112，动态名盲区逐字钉死", () => {
@@ -228,7 +229,7 @@ describe("C04a 命令名钉死", () => {
     // **C04d 批 6a：112 → 114。** 那两个 `stream_read_*` 此前藏在一个
     // `origin ? "A" : "B"` 三元里（C04a 把它记成「7 个命令 TS 静态看不见」的盲区之一），
     // 改成两次静态调用后**它们成了字面量** ⇒ 这个数会随盲区收缩而涨，最终应到 **119**。
-    expect(used.size, `期望恰好 114 个字面量命令名，实得 ${used.size}`).toBe(114);
+    expect(used.size, `期望恰好 117 个字面量命令名，实得 ${used.size}`).toBe(117);
 
     // **不断言反向**（Rust ⊆ TS），但把盲区本身钉死：动态名集变了必须红一次。
     const rustOnly = [...rust].filter((c) => !used.has(c)).sort();
