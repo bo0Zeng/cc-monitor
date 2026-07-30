@@ -5,8 +5,19 @@
 - **当前步骤**：n/a
 - **已完成功能**：**G-B**（vendored bash 进门禁，`0b297ed`）· **G-A**（八套真机套件断言数地板，
   2026-07-30）—— 见 `features/G-B-vendored-bash-gates.md` / `features/G-A-e2e-assertion-floors.md`
-- **下一个功能**：**G-C**（6 套 e2e 进 CI）—— 注意它**绕不开 E41**（那 6 套一处 `-L` 都没有），
+- **下一个功能**：**G-C**（6 套 e2e 进 CI）—— 注意它**绕不开 E41**（那批一处 `-L` 都没有），
   G-A 的 8 套与它们**无交集**（G-A 已实测确认，别再把两批混为一谈）
+- **G-C 开工前的实测（2026-07-30 已测，下轮别重测）**：
+  - **计划说「6 套」，实际是 7 个文件**：`graylight-suite.sh`(tmux 12) ·
+    `graylight-daemon-frames.sh`(24) · `restart-suite.sh`(8) · `restart-daemon-frames.sh`(8) ·
+    `resume-suite.sh`(15) · `resume-daemon-frames.sh`(17) · `gen-idle-tmux.sh`(7)。
+    另有 `f40-suite.sh` 也没有 npm script，**开工先定它算不算在内**。
+  - **三样东西全部为零**：`-L` 隔离 **0 处**（E41 的实质）· `合计 PASS=` 打印 **0 处**
+    （⇒ G-A 的 `assert-pass-floor.sh` 现在还接不上它们）· `package.json` 的 `test:` script **0 个**。
+  - ⇒ G-C 每套要做四件事：**加 socket 隔离 → 加 `PASS=` 计数（格式与另 8 套逐字一致）→
+    加 npm script → 加带地板的 CI 步骤**。地板必须**真跑一遍**测出来（G-A 的教训：能真跑就别抄）。
+  - **顺序建议**：先给一套走通全链路（建议 `gen-idle-tmux.sh`，tmux 调用最少=7），
+    再复制到其余六套；**每套加完 `-L` 就先单跑一遍**，别攒到最后一起跑。
 - **阻塞 / 待用户确认**：
   - ~~**[待批准] 主计划**~~ → **2026-07-29 已批准**
   - **[待定] G-C 的 6 套要不要进本地 `npm test`** —— 建议**只进 CI**。
