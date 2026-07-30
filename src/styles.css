@@ -5957,6 +5957,15 @@ body.settings-window-mode .grid-monitor-trigger {
   line-height: 1.5;
   margin-top: 8px;
 }
+/* Z01：账号列表「能用但有缺」的说明（旧 daemon / 旧 cc-acct-iso ⇒ 看不见账号 0）。
+   不是错误态，所以不用 --danger；但必须比普通 hint 显眼，否则等于静默。 */
+.accounts-hint-warn {
+  color: var(--warn);
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+}
 .accounts-info {
   padding: 8px 10px;
   background: var(--bg-2);

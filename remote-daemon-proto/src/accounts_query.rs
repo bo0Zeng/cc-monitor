@@ -7,6 +7,14 @@
 //! - `--account-trust <configDir> <cwd> [--accts-dir <p>]`
 //!   → 单行 `{"trusted":bool,"known":bool}`：目标账号是否已信任该目录
 //!   （换号 resume 前的预检——首次用某账号进某目录，CC 会弹信任确认，会卡住编排）。
+//! - `--account-trust-zero <cwd>`
+//!   → 同上，但问的是**账号 0**（见下）。它没有 configDir，`.claude.json` 在 `$HOME`。
+//!
+//! # Z01：账号 0
+//! manifest 里 `configDir` **键缺席**的那一条 = 账号 0 =「不设 `CLAUDE_CONFIG_DIR`」
+//! 这个状态本身。本模块**结构性**地认它（看键在不在），**不认名字**——不在 Rust 里
+//! 硬编码 "0"。它的 config dir 是共享库（`sharedStore`）、`.claude.json` 在 `$HOME`。
+//! **空串不算缺席**：`is_safe_config_dir("")` 会挡掉它（空值 ≠ 未设）。
 //!
 //! 输出协议同 `history_query`：每行一个 JSON 对象（**不是** wire::Frame）。
 //! 成功 exit 0；`--account-trust` 的硬错误 exit 2 + stderr 纯 `{code,message}` JSON
@@ -23,7 +31,8 @@
 //!   **绝不回传文件内容**——那里面有 `mcpServers` 的环境变量（可能含 API key）。
 //! - `/proc/<pid>/environ` 只抠 `CLAUDE_CONFIG_DIR` 一个键，**不回传整个环境快照**。
 //! - `--account-trust` 的 `configDir` 必须逐字等于 manifest 里某个账号的 `configDir`，
-//!   否则拒绝——避免它退化成"任意文件读"原语。
+//!   否则拒绝——避免它退化成"任意文件读"原语。`--account-trust-zero` 不收路径参数
+//!   （路径是 `$HOME/.claude.json`，写死在代码里），所以它连这个面都没有。
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -66,8 +75,12 @@ struct RawAccount {
     name: String,
     #[serde(default)]
     email: Option<String>,
-    #[serde(rename = "configDir")]
-    config_dir: String,
+    /// **Z01：可以缺席。** 缺席 = 账号 0 =「不设 `CLAUDE_CONFIG_DIR`」这个状态本身，
+    /// 它的 config dir 就是共享库。**判据是结构性的（这个键在不在），不认名字**——
+    /// 不在这里硬编码 "0"，manifest 想叫它什么都行。
+    /// 空串**不算缺席**：`is_safe_config_dir("")` 会把它挡掉（空值 ≠ 未设）。
+    #[serde(rename = "configDir", default)]
+    config_dir: Option<String>,
     #[serde(rename = "isDefault", default)]
     is_default: bool,
     #[serde(default)]
@@ -386,30 +399,48 @@ fn list_accounts(accts_dir: &Path) -> Vec<String> {
         Ok(m) => {
             let mut lines = Vec::new();
             for a in &m.accounts {
-                if !is_safe_config_dir(&a.config_dir) {
-                    tracing::warn!(
-                        "账号 {} 的 configDir 不安全，已丢弃：{}",
-                        a.name,
-                        a.config_dir
-                    );
-                    continue;
-                }
-                let dir = Path::new(norm_dir(&a.config_dir));
+                // Z01：configDir 缺席 = 账号 0。它的 config dir 就是共享库 ⇒ 登录态查那儿，
+                // 而 `configDir` 在帧里出 **null**（下游据此「不注入 CLAUDE_CONFIG_DIR」）。
+                let (cfg_out, probe_dir) = match a.config_dir.as_deref() {
+                    None => (
+                        serde_json::Value::Null,
+                        m.shared_store.as_deref().map(PathBuf::from),
+                    ),
+                    Some(c) => {
+                        if !is_safe_config_dir(c) {
+                            tracing::warn!("账号 {} 的 configDir 不安全，已丢弃：{}", a.name, c);
+                            continue;
+                        }
+                        let n = norm_dir(c);
+                        (
+                            serde_json::Value::String(n.to_string()),
+                            Some(PathBuf::from(n)),
+                        )
+                    }
+                };
                 lines.push(
                     serde_json::json!({
                         "name": a.name,
                         "email": a.email.clone().unwrap_or_default(),
-                        "configDir": norm_dir(&a.config_dir),
+                        "configDir": cfg_out,
                         "isDefault": a.is_default,
                         "mode": a.mode.clone().unwrap_or_else(|| "isolated".into()),
-                        "exists": dir.is_dir(),
+                        // 账号 0 恒 exists（「裸起」这个状态永远可达）；有 configDir 的看目录在不在。
+                        "exists": match &probe_dir {
+                            Some(d) if a.config_dir.is_some() => d.is_dir(),
+                            _ => a.config_dir.is_none(),
+                        },
                         // 只 stat 存在性，绝不读内容。
                         // **Z06 双写点**：这个文件名是「什么算已登录」的判据，而 cc-acct-iso
                         // 的 `NATIVE_IDENTITY` 声明里也各写了一份（bash 侧 `cc-acct-iso` 的
                         // `logged=` 那行）。两个进程、两种语言，无法共享常量 ⇒ 由本文件测试
                         // 模块里的 `credential_filename_matches_native_identity_declaration`
                         // 钉住（同 `TMUX_LS_FMT` 双写点那条守卫的做法）。**改这里必须改声明。**
-                        "loggedIn": dir.join(".credentials.json").exists(),
+                        // 探不到 config dir（账号 0 且 manifest 没写 sharedStore）⇒ false，
+                        // 那是「不知道」，不假装已登录。
+                        "loggedIn": probe_dir
+                            .as_ref()
+                            .is_some_and(|d| d.join(".credentials.json").exists()),
                     })
                     .to_string(),
                 );
@@ -424,6 +455,11 @@ fn list_accounts(accts_dir: &Path) -> Vec<String> {
                     "sharedStore": json_str(m.shared_store.as_deref()),
                     "count": lines.len(),
                     "error": serde_json::Value::Null,
+                    // Z01 能力标记：本 daemon 认识「configDir 缺席 = 账号 0」。
+                    // **旧 daemon 不会出这个键**（它把账号 0 当坏数据跳过了）⇒ monitor 侧
+                    // default=false ⇒ 能**明说**「远端 daemon 太旧，列表里少了账号 0」，
+                    // 而不是让用户看着一个静默少一行的列表。
+                    "accountZeroAware": true,
                 })
                 .to_string(),
             );
@@ -435,12 +471,19 @@ fn list_accounts(accts_dir: &Path) -> Vec<String> {
 
 /// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
 fn session_accounts(claude_dir: &Path, accts_dir: &Path) -> Vec<String> {
-    let by_dir: Vec<(String, String)> = load_manifest(accts_dir)
+    // Z01：`None` 这个 key 是账号 0（configDir 缺席）。裸起会话过去归属不到任何账号
+    // （`account: null` + `bare: true`），现在它有名字了。
+    let by_dir: Vec<(Option<String>, String)> = load_manifest(accts_dir)
         .map(|m| {
             m.accounts
                 .into_iter()
-                .filter(|a| is_safe_config_dir(&a.config_dir))
-                .map(|a| (norm_dir(&a.config_dir).to_string(), a.name))
+                .filter_map(|a| match a.config_dir.as_deref() {
+                    None => Some((None, a.name)),
+                    Some(c) if is_safe_config_dir(c) => {
+                        Some((Some(norm_dir(c).to_string()), a.name))
+                    }
+                    Some(_) => None,
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -488,9 +531,16 @@ fn session_accounts(claude_dir: &Path, accts_dir: &Path) -> Vec<String> {
             None
         };
         let cfg_norm = cfg.as_deref().map(|c| norm_dir(c).to_string());
-        let account = cfg_norm
-            .as_deref()
-            .and_then(|c| by_dir.iter().find(|(d, _)| d == c).map(|(_, n)| n.clone()));
+        // 归属：有 configDir 就逐字匹配；没有且**进程确实活着**就是账号 0。
+        // 进程已死时不归属（cfg 恒 None，归给账号 0 会把死会话贴成账号 0 的）。
+        let account = if alive {
+            by_dir
+                .iter()
+                .find(|(d, _)| d.as_deref() == cfg_norm.as_deref())
+                .map(|(_, n)| n.clone())
+        } else {
+            None
+        };
         out.push(
             serde_json::json!({
                 "pid": pid,
@@ -498,7 +548,9 @@ fn session_accounts(claude_dir: &Path, accts_dir: &Path) -> Vec<String> {
                 "cwd": json_str(cwd),
                 "configDir": json_str(cfg_norm.as_deref()),
                 "account": json_str(account.as_deref()),
-                // 进程活着（身份已确认）但没设 CLAUDE_CONFIG_DIR = 裸起（迁移后不该出现）
+                // 进程活着（身份已确认）但没设 CLAUDE_CONFIG_DIR。**Z01 起这不再是异常**：
+                // 它就是账号 0（上面的 `account` 会给出名字）。字段保留是因为下游要用它
+                // 区分「账号 0」与「设了 configDir 的账号」——语义从「告警」变成「事实」。
                 "bare": alive && cfg_norm.is_none(),
                 "alive": alive,
             })
@@ -523,17 +575,38 @@ fn account_trust(
     }
     let m = load_manifest(accts_dir).map_err(|e| ("manifest_unavailable".to_string(), e))?;
     let want = norm_dir(config_dir);
-    if !m
-        .accounts
-        .iter()
-        .any(|a| is_safe_config_dir(&a.config_dir) && norm_dir(&a.config_dir) == want)
-    {
+    if !m.accounts.iter().any(|a| {
+        a.config_dir
+            .as_deref()
+            .is_some_and(|c| is_safe_config_dir(c) && norm_dir(c) == want)
+    }) {
         return Err((
             "unknown_config_dir".into(),
             "该 configDir 不在 manifest 的账号列表里，拒绝读取".into(),
         ));
     }
-    let p = Path::new(want).join(".claude.json");
+    trust_of_claude_json(&Path::new(want).join(".claude.json"), cwd)
+}
+
+/// `--account-trust-zero <cwd>`：**账号 0** 的信任预检。
+///
+/// 为什么要单独一个入口而不是给 `--account-trust` 传个空 `configDir`：账号 0 **没有**
+/// config dir，空串是被明令禁止的拼法（空值 ≠ 未设，见 `RawAccount::config_dir`）。
+/// 而且它的 `.claude.json` 也不在共享库里 —— 原生根是 `$HOME`（cc-acct-iso 的
+/// `NATIVE_IDENTITY` 里 `.claude.json:home:secret`）⇒ 路径来源本就不同，
+/// 用同一个入口只能靠哨兵值区分，那比多一个动词更容易出错。
+fn account_trust_zero(cwd: &str) -> Result<String, (String, String)> {
+    let home = home_dir().ok_or_else(|| {
+        (
+            "no_home".to_string(),
+            "拿不到 $HOME，无法定位账号 0 的 .claude.json".to_string(),
+        )
+    })?;
+    trust_of_claude_json(&home.join(".claude.json"), cwd)
+}
+
+/// 读某个 `.claude.json`，回答「这个 cwd 被信任过吗」。两个 trust 入口共用。
+fn trust_of_claude_json(p: &Path, cwd: &str) -> Result<String, (String, String)> {
     if !p.exists() {
         // 该账号还没有 .claude.json（全新账号）→ 肯定没信任过，不是错误
         return Ok(
@@ -543,7 +616,7 @@ fn account_trust(
     }
     // 安全读：is_file 挡掉 FIFO/设备（其 metadata().len() 报 0 会骗过大小检查、
     // read 无上限 → 远端 OOM，审计实测 symlink→/dev/zero 6 秒涨 11GB）+ take 限量。
-    let bytes = read_regular_capped(&p, MAX_CLAUDE_JSON_BYTES)
+    let bytes = read_regular_capped(p, MAX_CLAUDE_JSON_BYTES)
         .map_err(|e| ("claude_json_unreadable".to_string(), e))?;
     let v: serde_json::Value = serde_json::from_slice(&bytes)
         .map_err(|e| ("claude_json_invalid".to_string(), e.to_string()))?;
@@ -599,6 +672,28 @@ pub fn run(claude_dir: &Path, args: &[String]) -> i32 {
                 2
             }
         },
+        Some("--account-trust-zero") => match args.get(1) {
+            Some(cwd) => match account_trust_zero(cwd) {
+                Ok(line) => {
+                    println!("{line}");
+                    0
+                }
+                Err((code, message)) => {
+                    eprintln!("{}", serde_json::json!({"code": code, "message": message}));
+                    2
+                }
+            },
+            None => {
+                eprintln!(
+                    "{}",
+                    serde_json::json!({
+                        "code": "bad_args",
+                        "message": "--account-trust-zero requires <cwd>"
+                    })
+                );
+                2
+            }
+        },
         other => {
             eprintln!("cc-monitor-remote accounts error: unknown argument: {other:?}");
             2
@@ -638,7 +733,7 @@ mod tests {
         // 本文件真的在用这个名字（防止有人改了上面的常量却没改 json 里那行字面量）。
         let me = include_str!("accounts_query.rs");
         assert!(
-            me.contains(&format!("dir.join({CREDENTIAL_FILE:?}).exists()")),
+            me.contains(&format!(".join({CREDENTIAL_FILE:?}).exists()")),
             "本文件的 loggedIn 判据没在用 {CREDENTIAL_FILE:?} —— 常量与实际用法脱节了"
         );
         // 反向自检：断言的是「两个源都真读进来了」，不是「命中若干条」。
@@ -1039,15 +1134,21 @@ mod tests {
         let accts = root.join("accts");
         write_manifest(
             &accts,
+            // Z01 起「缺 configDir」不再是坏数据（那是账号 0），所以坏样本换成
+            // 缺 name / configDir 不安全这两种真·坏法。
             r#"{"version":1,"accounts":[
                 {"name":"good","configDir":"/h/.claude-accts/good"},
                 {"configDir":"/h/.claude-accts/noname"},
-                {"name":"nodir"},
+                {"name":"unsafe","configDir":"relative/path"},
                 {"name":"good2","configDir":"/h/.claude-accts/good2"}]}"#,
         );
         let lines = list_accounts(&accts);
         assert_eq!(meta(&lines)["enabled"], true);
-        assert_eq!(meta(&lines)["count"], 2, "缺字段的两个被跳过,好的两个留下");
+        assert_eq!(
+            meta(&lines)["count"],
+            2,
+            "缺 name / 路径不安全的被跳过,好的两个留下"
+        );
         let names: Vec<String> = lines[1..]
             .iter()
             .map(|l| {
@@ -1072,5 +1173,211 @@ mod tests {
         assert!(!is_safe_config_dir("/home/u/z\u{2069}b")); // 双向隔离
                                                             // 正常中文与普通空格仍放行
         assert!(is_safe_config_dir("/home/用户/带 空格/z"));
+    }
+
+    // ---- 12. Z01：账号 0（configDir 键缺席）----
+
+    /// 缺 `configDir` = 账号 0。它的 config dir 就是共享库 ⇒ 登录态查那儿；
+    /// 帧里 `configDir` 出 **null**（下游据此「不注入 CLAUDE_CONFIG_DIR」）。
+    #[test]
+    fn account_zero_is_kept_and_probes_shared_store() {
+        let root = tmpdir("acct0");
+        let shared = root.join("claude");
+        fs::create_dir_all(&shared).unwrap();
+        let accts = root.join("accts");
+        write_manifest(
+            &accts,
+            &format!(
+                r#"{{"version":1,"sharedStore":{shared:?},"accounts":[
+                    {{"name":"z","configDir":{z:?}}},
+                    {{"name":"0","isDefault":false,"mode":"bare"}}]}}"#,
+                shared = shared.to_string_lossy(),
+                z = root.join("accts/z").to_string_lossy()
+            ),
+        );
+        let lines = list_accounts(&accts);
+        assert_eq!(meta(&lines)["count"], 2, "账号 0 不得被静默丢掉");
+        let zero: serde_json::Value = serde_json::from_str(&lines[2]).unwrap();
+        assert_eq!(zero["name"], "0");
+        assert_eq!(
+            zero["configDir"],
+            serde_json::Value::Null,
+            "必须是 null，**绝不能是空串**"
+        );
+        assert_eq!(zero["mode"], "bare");
+        assert_eq!(zero["exists"], true, "「裸起」这个状态永远可达");
+        assert_eq!(zero["loggedIn"], false, "共享库里还没凭据");
+
+        fs::write(shared.join(".credentials.json"), "{}").unwrap();
+        let lines = list_accounts(&accts);
+        let zero: serde_json::Value = serde_json::from_str(&lines[2]).unwrap();
+        assert_eq!(zero["loggedIn"], true, "共享库凭据 = 账号 0 已登录");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// ★ 空串 **不是** 缺席。这是整个 Z01 的支点：`CLAUDE_CONFIG_DIR=""` 会被
+    /// Claude Code 当成一个空路径，与「未设」完全不同。它必须被当坏数据丢掉，
+    /// **不能**退化成账号 0。
+    #[test]
+    fn empty_config_dir_is_not_account_zero() {
+        let root = tmpdir("acct0empty");
+        let accts = root.join("accts");
+        write_manifest(
+            &accts,
+            r#"{"version":1,"sharedStore":"/h/.claude","accounts":[
+                {"name":"empty","configDir":""}]}"#,
+        );
+        let lines = list_accounts(&accts);
+        assert_eq!(
+            meta(&lines)["count"],
+            0,
+            "空串 configDir 必须被丢掉，不得当成账号 0"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// manifest 没写 sharedStore 时，账号 0 的登录态是「不知道」⇒ false，
+    /// **不得假装已登录**，也不得因此把账号 0 丢掉。
+    #[test]
+    fn account_zero_without_shared_store_is_not_logged_in() {
+        let root = tmpdir("acct0nostore");
+        let accts = root.join("accts");
+        write_manifest(
+            &accts,
+            r#"{"version":1,"accounts":[{"name":"0","mode":"bare"}]}"#,
+        );
+        let lines = list_accounts(&accts);
+        assert_eq!(meta(&lines)["count"], 1);
+        let zero: serde_json::Value = serde_json::from_str(&lines[1]).unwrap();
+        assert_eq!(zero["loggedIn"], false);
+        assert_eq!(zero["configDir"], serde_json::Value::Null);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// 裸起会话（活着但没设 CLAUDE_CONFIG_DIR）现在归属账号 0。
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn bare_session_is_attributed_to_account_zero() {
+        if std::env::var_os("CLAUDE_CONFIG_DIR").is_some() {
+            return; // 跑在已设了该变量的 shell 里 ⇒ 本用例不适用
+        }
+        let root = tmpdir("acct0sess");
+        let claude = root.join("claude");
+        let sessions = claude.join("sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        let accts = root.join("accts");
+        write_manifest(
+            &accts,
+            r#"{"version":1,"accounts":[{"name":"0","mode":"bare"}]}"#,
+        );
+        let me = std::process::id();
+        let ticks = proc_starttime(me).expect("能读自己的 starttime");
+        fs::write(
+            sessions.join(format!("{me}.json")),
+            format!(r#"{{"sessionId":"sid-zero","cwd":"/w","procStart":"{ticks}"}}"#),
+        )
+        .unwrap();
+        let by = sid_map(&session_accounts(&claude, &accts));
+        assert_eq!(by["sid-zero"]["alive"], true);
+        assert_eq!(by["sid-zero"]["bare"], true);
+        assert_eq!(by["sid-zero"]["account"], "0", "裸起不再是「归属不明」");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// 反向：manifest 里 **没有** 账号 0 时，裸起会话仍旧行为（account: null）。
+    /// 钉住「归属来自 manifest」，而不是在 Rust 里硬编码了个 "0"。
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn bare_session_without_account_zero_stays_unattributed() {
+        if std::env::var_os("CLAUDE_CONFIG_DIR").is_some() {
+            return;
+        }
+        let root = tmpdir("acct0none");
+        let claude = root.join("claude");
+        let sessions = claude.join("sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        let accts = root.join("accts");
+        write_manifest(
+            &accts,
+            r#"{"version":1,"accounts":[{"name":"z","configDir":"/h/.claude-accts/z"}]}"#,
+        );
+        let me = std::process::id();
+        let ticks = proc_starttime(me).unwrap();
+        fs::write(
+            sessions.join(format!("{me}.json")),
+            format!(r#"{{"sessionId":"sid-none","cwd":"/w","procStart":"{ticks}"}}"#),
+        )
+        .unwrap();
+        let by = sid_map(&session_accounts(&claude, &accts));
+        assert_eq!(by["sid-none"]["account"], serde_json::Value::Null);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// 账号 0 **不得**把 `--account-trust` 变成「读共享库 .claude.json」的口子：
+    /// 它没有 configDir ⇒ 任何路径都不在 manifest 里 ⇒ 拒。
+    #[test]
+    fn account_trust_does_not_accept_shared_store_via_account_zero() {
+        let root = tmpdir("acct0trust");
+        let shared = root.join("claude");
+        fs::create_dir_all(&shared).unwrap();
+        fs::write(shared.join(".claude.json"), r#"{"projects":{"/w":{}}}"#).unwrap();
+        let accts = root.join("accts");
+        write_manifest(
+            &accts,
+            &format!(
+                r#"{{"version":1,"sharedStore":{s:?},"accounts":[{{"name":"0","mode":"bare"}}]}}"#,
+                s = shared.to_string_lossy()
+            ),
+        );
+        let e = account_trust(&accts, &shared.to_string_lossy(), "/w").unwrap_err();
+        assert_eq!(e.0, "unknown_config_dir");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// `trust_of_claude_json` 是两个 trust 入口共用的那份实现（避免第二份）。
+    /// 账号 0 走 `$HOME/.claude.json`——声明里 `.claude.json` 的原生根就是 home。
+    #[test]
+    fn trust_of_claude_json_reads_only_the_three_booleans() {
+        let root = tmpdir("acct0tz");
+        fs::create_dir_all(&root).unwrap();
+        let cj = root.join(".claude.json");
+
+        // 文件不存在 ⇒ known:false，不是错误
+        let v: serde_json::Value =
+            serde_json::from_str(&trust_of_claude_json(&cj, "/w").unwrap()).unwrap();
+        assert_eq!(v["known"], false);
+        assert_eq!(v["trusted"], false);
+
+        fs::write(
+            &cj,
+            r#"{"projects":{"/w":{"hasTrustDialogAccepted":true}},
+                "mcpServers":{"x":{"env":{"API_KEY":"sk-SECRET"}}}}"#,
+        )
+        .unwrap();
+        let out = trust_of_claude_json(&cj, "/w").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["trusted"], true);
+        assert_eq!(v["known"], true);
+        assert!(
+            !out.contains("sk-SECRET"),
+            "绝不能把 .claude.json 的内容回传"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// `--account-trust-zero` 只收 cwd，路径写死在代码里 ⇒ 它连「任意文件读」的面都没有。
+    /// 钉住入口形状（而不是去改 $HOME 跑真的，那在并行测试里是竞态）。
+    #[test]
+    fn account_trust_zero_takes_no_path_argument() {
+        let me = include_str!("accounts_query.rs");
+        assert!(
+            me.contains("fn account_trust_zero(cwd: &str)"),
+            "账号 0 的 trust 入口一旦收了路径参数，就重新开出了任意文件读的面"
+        );
+        assert!(
+            me.contains(r#"home.join(".claude.json")"#),
+            "账号 0 的 .claude.json 必须来自 $HOME（声明里它的原生根是 home）"
+        );
+        assert!(me.len() > 1000, "include_str! 没读到源码，上面的断言是空转");
     }
 }

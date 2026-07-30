@@ -36,6 +36,7 @@ function state(p: Partial<AccountsState>): AccountsState {
     origin: "aya",
     available: true,
     error: null,
+    notice: null,
     meta: {
       enabled: true,
       acctsDir: "/a",
@@ -342,6 +343,45 @@ describe("F10：账号行用量单元格（懒加载 + 五种状态）", () => {
     await flush();
     const after = invokeMock.mock.calls.filter(([cmd]) => cmd === "account_usage").length;
     expect(after).toBe(before + 1);
+  });
+});
+
+describe("Z01 账号 0 在设置账号表里的呈现", () => {
+  const zero = acct({ name: "0", configDir: null, mode: "bare", email: "me@x.edu" });
+
+  it("账号 0 有一行，且路径列说的是它的真实含义（不是空白、不是空串）", async () => {
+    fetchAccountsMock.mockResolvedValue(
+      state({ accounts: [acct({ name: "z" }), zero], defaultName: "z" }),
+    );
+    const el = await mount();
+    const dirs = [...el.querySelectorAll(".accounts-row-dir")].map((d) => d.textContent);
+    expect(dirs).toHaveLength(2);
+    expect(dirs[1]).toBe("（不设 CLAUDE_CONFIG_DIR）");
+    expect(dirs[1]).not.toBe("");
+  });
+
+  it("账号 0 的用量单元格明说不支持，而不是留白或去发一次注定失败的探测", async () => {
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [zero], defaultName: null }));
+    const el = await mount();
+    el.querySelector<HTMLButtonElement>(".accounts-usage-btn")?.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(el.querySelector(".accounts-usage-pending")?.textContent).toContain("暂不支持");
+    expect(invokeMock.mock.calls.filter(([c]) => c === "account_usage")).toHaveLength(0);
+  });
+
+  it("降级说明会被渲染成显眼的一条（绝不静默）", async () => {
+    fetchAccountsMock.mockResolvedValue(
+      state({ accounts: [acct({ name: "z" })], notice: "远端 daemon 版本较旧：看不到账号 0" }),
+    );
+    const el = await mount();
+    const warn = el.querySelector(".accounts-hint-warn");
+    expect(warn?.textContent).toContain("账号 0");
+  });
+
+  it("变异反证：没有 notice 时不该冒出这条横幅", async () => {
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })] }));
+    const el = await mount();
+    expect(el.querySelector(".accounts-hint-warn")).toBeNull();
   });
 });
 

@@ -54,7 +54,9 @@ J
   # 假启动器:打印它看到的 CLAUDE_CONFIG_DIR 和参数
   cat >"$SB/bin/fakeclaude" <<'L'
 #!/usr/bin/env bash
-printf 'CFG=%s ARGS=%s\n' "${CLAUDE_CONFIG_DIR:-<unset>}" "$*"
+# Z01:必须用 `${X-…}` 而**不是** `${X:-…}` —— 后者把**空串**也报成 <unset>,
+# 而「空值 ≠ 未设」正是账号 0 全部设计的支点,抹掉它这套断言就成了安慰剂。
+printf 'CFG=%s ARGS=%s\n' "${CLAUDE_CONFIG_DIR-<unset>}" "$*"
 L
   chmod +x "$SB/bin/fakeclaude"
   PATH="$SB/bin:$PATH"; export PATH
@@ -97,7 +99,7 @@ chk  "manifest 是合法 JSON" 'jq -e . "$M"'
 eq   "version"      "$(jq -r .version "$M")"      "1"
 eq   "sharedStore"  "$(jq -r .sharedStore "$M")"  "$SB/.claude"
 eq   "acctsDir"     "$(jq -r .acctsDir "$M")"     "$SB/.claude-accts"
-eq   "账号数"        "$(jq -r '.accounts|length' "$M")" "1"
+eq   "账号数(1 个注册账号 + 恒在列的账号 0)" "$(jq -r '.accounts|length' "$M")" "2"
 eq   "accounts[0].name"      "$(jq -r '.accounts[0].name' "$M")"      "d"
 eq   "accounts[0].email(取自 oauthAccount)" "$(jq -r '.accounts[0].email' "$M")" "default@example.com"
 eq   "accounts[0].configDir" "$(jq -r '.accounts[0].configDir' "$M")" "$SB/.claude-accts/d"
@@ -115,7 +117,7 @@ eq   "x 凭据权限 600" "$(stat -c %a "$SB/.claude-accts/x/.credentials.json")
 eq   "种下的 .claude.json 已剥掉 oauthAccount" "$(jq -r '.oauthAccount // "null"' "$SB/.claude-accts/x/.claude.json")" "null"
 eq   "种下的 .claude.json 保留项目信任" "$(jq -r '.projects["/tmp/x"].hasTrustDialogAccepted' "$SB/.claude-accts/x/.claude.json")" "true"
 chk  "x 的共享项是 symlink"     '[ -L "$SB/.claude-accts/x/skills" ]'
-eq   "manifest 现在 2 个账号" "$(jq -r '.accounts|length' "$M")" "2"
+eq   "manifest 现在 2 个注册账号 + 账号 0" "$(jq -r '.accounts|length' "$M")" "3"
 eq   "x 不是默认"            "$(jq -r '.accounts[1].isDefault' "$M")" "false"
 xfail "重复 add 同名被拒" "$CLI" add x --apply
 
@@ -161,7 +163,7 @@ group "6. verify:结构 + 隔离 + 共享(只读,不起 claude)"
 cc verify >"$SB/verify.out" 2>&1
 eq   "verify 退出码 0(PASS)" "$?" "0"
 chk  "输出含 PASS"            'grep -q "结果:PASS" "$SB/verify.out"'
-chk  "报告了共享库无凭据"      'grep -q "纯共享库" "$SB/verify.out"'
+chk  "报告了账号 0 未登录"     'grep -q "账号 0 未登录" "$SB/verify.out"'
 chk  "报告了各账号邮箱互不相同" 'grep -q "邮箱互不相同" "$SB/verify.out"'
 chk  "活体探测证明共享生效"    'grep -q "个账号都能经各自 config-dir 看到" "$SB/verify.out"'
 chkn "探测文件已清理"          'ls "$SB"/.claude/*/.cc-acct-iso-probe.* 2>/dev/null'
@@ -198,7 +200,7 @@ chk  "shellinit 片段本身是合法 shell" 'bash -n "$SB/sh.out"'
 group "8. rm:只删账号目录,不动共享库"
 ccq rm x --apply
 chkn "x 的 config-dir 已删"     '[ -e "$SB/.claude-accts/x" ]'
-eq   "manifest 只剩 1 个账号"    "$(jq -r '.accounts|length' "$M")" "1"
+eq   "manifest 只剩 1 个注册账号 + 账号 0" "$(jq -r '.accounts|length' "$M")" "2"
 chk  "共享库文件毫发无损"        '[ -f "$SB/.claude/skills/foo.md" ] && [ -f "$SB/.claude/skills/from-x.md" ] && [ -f "$SB/.claude/settings.json" ]'
 xfail "默认账号不加 --force 删不掉" "$CLI" rm d --apply
 chk  "默认账号仍在"              '[ -d "$SB/.claude-accts/d" ]'
@@ -385,10 +387,10 @@ chk  "确实落盘了" '[ -d "$SB/.claude-accts/pre" ]'
 "$CLI" add p1 --from-credentials "$SB/.claude/accounts/second.json" --apply >/dev/null 2>&1 &
 "$CLI" add p2 --from-credentials "$SB/.claude/accounts/second.json" --apply >/dev/null 2>&1 &
 wait
-eq   "并发 add 两个账号都在 manifest 里" "$(jq -r '[.accounts[].name] | sort | join(",")' "$SB/.claude-accts/accounts.json")" "d,p1,p2,pre"
+eq   "并发 add 两个账号都在 manifest 里" "$(jq -r '[.accounts[].name] | sort | join(",")' "$SB/.claude-accts/accounts.json")" "0,d,p1,p2,pre"
 # 契约字段
 eq   "manifest 有 updatedAt" "$(jq -r 'has("updatedAt")' "$SB/.claude-accts/accounts.json")" "true"
-eq   "每个账号有 mode 字段"   "$(jq -r '[.accounts[].mode] | unique | join(",")' "$SB/.claude-accts/accounts.json")" "isolated"
+eq   "每个账号有 mode 字段(账号 0 = bare)" "$(jq -r '[.accounts[].mode] | unique | join(",")' "$SB/.claude-accts/accounts.json")" "bare,isolated"
 chk  "list --json 是合法 JSON" '"$CLI" list --json | jq -e . >/dev/null'
 eq   "list --json 带登录态"    "$("$CLI" list --json | jq -r '.accounts[] | select(.name=="p1") | .loggedIn')" "true"
 eq   "list --json 未登录的标 false" "$("$CLI" list --json | jq -r '.accounts[] | select(.name=="pre") | .loggedIn')" "false"
@@ -533,7 +535,7 @@ ccq add b --apply
 printf '{"oauthAccount":{"x":1}}' >"$SB/.claude/.claude.json"
 cc verify --no-probe >"$SB/v17a.out" 2>&1 || true
 chk  "共享库出现 .claude.json ⇒ verify FAIL" 'grep -q "结果:FAIL" "$SB/v17a.out"'
-chk  "报的是 secret 项泄漏且点名静默串号" 'grep -q "共享库里仍有 secret 项 .claude.json" "$SB/v17a.out" && grep -q "静默串号" "$SB/v17a.out"'
+chk  "报的是 .claude.json 不在任何账号的原生位置" 'grep -q "共享库里有 .claude.json" "$SB/v17a.out" && grep -q "不是任何账号的原生位置" "$SB/v17a.out"'
 rm -f "$SB/.claude/.claude.json"
 xok  "移除后 verify 恢复 PASS" "$CLI" verify --no-probe
 
@@ -586,13 +588,106 @@ chk  "探不到版本时明说跳过" 'grep -q "探测不到 Claude Code 版本"
 chk  "ni_probe_version 不执行 launcher(把 launcher 换成必失败的也不影响退出码)" \
      'LAUNCHER=definitely-no-such-binary bash -euo pipefail -c ". \"$SCRIPTS_DIR/lib.sh\"; SHARED_STORE=\"$SB/.claude\"; ni_probe_version >/dev/null"'
 
+
+group "19. Z01:账号 0 —— 「不设 CLAUDE_CONFIG_DIR」这个状态本身"
+new_sandbox
+ccq init d --apply
+ccq add x --apply
+M="$SB/.claude-accts/accounts.json"
+# init --apply 把凭据**搬进**了账号 d ⇒ 此刻共享库是空的。显式造一份,模拟
+# 「全迁之后有人没设 CLAUDE_CONFIG_DIR 又起了一次 claude」—— 账号 0 就是这么诞生的。
+printf '{"tok":"ZERO"}' >"$SB/.claude/.credentials.json"; chmod 600 "$SB/.claude/.credentials.json"
+
+# —— 恒在列,且**在数组末尾**(放首位会让所有按下标取账号的地方整体错位) ——
+eq   "manifest 里账号 0 恒在列"   "$(jq -r '[.accounts[].name] | index("0") != null' "$M")" "true"
+eq   "账号 0 在数组**末尾**"      "$(jq -r '.accounts[-1].name' "$M")" "0"
+eq   "既有账号下标未被扰动"       "$(jq -r '.accounts[0].name' "$M")" "d"
+eq   "账号 0 的 mode 是 bare"     "$(jq -r '.accounts[-1].mode' "$M")" "bare"
+eq   "账号 0 不是默认账号"        "$(jq -r '.accounts[-1].isDefault' "$M")" "false"
+
+# ★ 全局最要紧的一条:configDir 这个**键必须整个缺席**。
+#   写成 "" 会让 run 那行 `env CLAUDE_CONFIG_DIR="$cfgdir"` 设出一个**空值**,
+#   而空值 ≠ 未设 —— Claude Code 会拿空串当路径。写成 null 同理(消费侧 unwrap_or_default)。
+eq   "账号 0 **没有** configDir 键" "$(jq -r '.accounts[-1] | has("configDir")' "$M")" "false"
+chkn "manifest 里根本不出现 configDir 的空串" 'grep -q "\"configDir\": \"\"" "$M"'
+
+# —— 读回:它是写时合成的,不许再被当成注册项载进 MF ——
+cc list --json >"$SB/z01-l.json" 2>"$SB/z01-l.err"
+eq   "读回 manifest 不产生 warn"  "$(grep -c "configDir 非法" "$SB/z01-l.err" || true)" "0"
+eq   "list --json 里账号 0 只有一份" "$(jq -r '[.accounts[] | select(.name=="0")] | length' "$SB/z01-l.json")" "1"
+eq   "list --json 账号 0 也在末尾"   "$(jq -r '.accounts[-1].name' "$SB/z01-l.json")" "0"
+eq   "list --json 账号 0 也无 configDir" "$(jq -r '.accounts[-1] | has("configDir")' "$SB/z01-l.json")" "false"
+# 幂等:再 sync 一次,账号 0 不会被复制成第二份、也不会消失
+ccq sync --apply
+eq   "sync 后账号 0 仍只有一份"   "$(jq -r '[.accounts[] | select(.name=="0")] | length' "$M")" "1"
+eq   "sync 后注册账号数不变"      "$(jq -r '[.accounts[] | select(.name!="0")] | length' "$M")" "2"
+
+# —— 登录态:共享库有 cfg 根的 secret = 账号 0 已登录 ——
+eq   "共享库有凭据 ⇒ 账号 0 已登录" "$(jq -r '.accounts[-1].loggedIn' "$SB/z01-l.json")" "true"
+mv "$SB/.claude/.credentials.json" "$SB/cred.bak"
+cc list --json >"$SB/z01-l2.json" 2>&1
+eq   "凭据搬走 ⇒ 账号 0 未登录"     "$(jq -r '.accounts[-1].loggedIn' "$SB/z01-l2.json")" "false"
+eq   "未登录也仍在列(它是状态,不是记录)" "$(jq -r '.accounts[-1].name' "$SB/z01-l2.json")" "0"
+mv "$SB/cred.bak" "$SB/.claude/.credentials.json"
+
+# —— verify 改判:从「违规」变「状态」 ——
+cc verify --no-probe >"$SB/z01-v.out" 2>&1 || true
+chk  "verify 报账号 0 已登录"      'grep -q "账号 0 已登录" "$SB/z01-v.out"'
+chk  "而且不判 FAIL"               'grep -q "结果:PASS" "$SB/z01-v.out"'
+chkn "不再说共享库凭据是违规"      'grep -q "共享库里仍有 secret 项 .credentials.json" "$SB/z01-v.out"'
+mv "$SB/.claude/.credentials.json" "$SB/cred.bak"
+cc verify --no-probe >"$SB/z01-v2.out" 2>&1 || true
+chk  "无凭据 ⇒ 报账号 0 未登录"    'grep -q "账号 0 未登录" "$SB/z01-v2.out"'
+mv "$SB/cred.bak" "$SB/.claude/.credentials.json"
+
+# ★ root 字段才是判据:.claude.json 的原生根是 $HOME ⇒ 共享库那份不是任何账号的原生位置。
+#   (这条同时钉住:D1b 的改判**只放行 cfg 根的 secret**,不是把整条检查废掉。)
+printf '{"oauthAccount":{"emailAddress":"ghost@example.com"}}' >"$SB/.claude/.claude.json"
+cc verify --no-probe >"$SB/z01-v3.out" 2>&1 || true
+chk  "home 根的 secret 在共享库 ⇒ 仍 FAIL" 'grep -q "结果:FAIL" "$SB/z01-v3.out"'
+chk  "且措辞不再提「静默串号」(那是 Z07 的事实错误)" \
+     'grep -q "不是任何账号的原生位置" "$SB/z01-v3.out" && ! grep -q "共享库里有 .claude.json.*静默串号" "$SB/z01-v3.out"'
+rm -f "$SB/.claude/.claude.json"
+
+# —— 保留名 / run / which / shellinit ——
+xfail "add 0 被拒(保留名)"        "$CLI" add 0 --apply
+xfail "rm 0 被拒"                 "$CLI" rm 0 --force --apply
+# **别写成 `"$CLI" … | grep -q`**:套件开了 pipefail,左侧 die 非零 ⇒ 整条管线判失败,
+# grep 命中了也报红(本轮实测栽过)。一律落文件再 grep。
+"$CLI" add 0 --apply >"$SB/z01-add0.out" 2>&1 || true
+chk   "拒绝理由说清了它是保留名"  'grep -q "保留名" "$SB/z01-add0.out"'
+"$CLI" rm 0 --force --apply >"$SB/z01-rm0.out" 2>&1 || true
+chk   "rm 0 的理由不是「没有这个账号」" 'grep -q "不是注册项" "$SB/z01-rm0.out"'
+
+# ★ run 0 = **什么都不设**。用 env -u 而不是 =""(否则 fakeclaude 会打出 CFG= 而不是 CFG=<unset>)。
+OUT="$(CLAUDE_CONFIG_DIR="$SB/.claude-accts/x" "$CLI" --launcher fakeclaude run 0 -- --foo 2>&1 | tail -1)"
+eq   "run 0 把继承来的 CLAUDE_CONFIG_DIR **摘掉**" "$OUT" "CFG=<unset> ARGS=--foo"
+eq   "which 在未设时报出账号 0" "$(cd "$SB" && env -u CLAUDE_CONFIG_DIR "$CLI" which 2>/dev/null | head -1)" "0"
+xok  "which 未设时 rc=0(它是正常账号,不是错误态)" env -u CLAUDE_CONFIG_DIR "$CLI" which
+cc shellinit >"$SB/z01-sh.out" 2>&1
+chk  "shellinit 给出回到账号 0 的逃生口" 'grep -q "^0cc()" "$SB/z01-sh.out"'
+chk  "逃生口用 env -u 而不是空串"        'grep -q "0cc() { env -u CLAUDE_CONFIG_DIR" "$SB/z01-sh.out"'
+chkn "逃生口里绝不出现 CLAUDE_CONFIG_DIR=\"\"" 'grep -q "CLAUDE_CONFIG_DIR=\\x27\\x27\|CLAUDE_CONFIG_DIR=\"\"" "$SB/z01-sh.out"'
+chk  "片段仍是合法 shell"                'bash -n "$SB/z01-sh.out"'
+# 谓词必须**只给退出码**:初版 printf 'false' 把字符串漏进了 which/run 的 stdout。
+eq   "acct_zero_logged 不往 stdout 吐东西" \
+     "$(bash -euo pipefail -c ". \"$SCRIPTS_DIR/lib.sh\"; SHARED_STORE=\"$SB/.claude\"; acct_zero_logged && printf DONE")" "DONE"
+# 三个 Z01 helper 在 set -euo pipefail 下都必须 rc=0(Z06 那个 while|pipe 的坑的同款防线)
+xok  "acct_zero_json 在 pipefail 下 rc=0" \
+     bash -euo pipefail -c ". \"$SCRIPTS_DIR/lib.sh\"; SHARED_STORE=\"$SB/.claude\"; LEGACY_HOME_DIR=\"$SB\"; acct_zero_json 1 >/dev/null"
+xok  "ni_is_home_rooted 在 pipefail 下 rc=0" \
+     bash -euo pipefail -c ". \"$SCRIPTS_DIR/lib.sh\"; ni_is_home_rooted .credentials.json || true"
+# home 根的 secret 不算账号 0 登录(判据与 verify 同源:声明的 root 字段)
+eq   "共享库只有 .claude.json 时账号 0 仍算未登录" \
+     "$(bash -euo pipefail -c ". \"$SCRIPTS_DIR/lib.sh\"; SHARED_STORE=\"$SB/zz\"; mkdir -p \"$SB/zz\"; : >\"$SB/zz/.claude.json\"; acct_zero_logged_json")" "false"
+
 # ══════════════════════════════════════════════════════════════════
 export HOME="$ORIG_HOME"
 printf '\n\033[1m────────────────────────────\033[0m\n'
 # 断言条数地板（**同源**:地板写在套件自己这一处,CI 侧那条是双保险）。
 # 为什么必须有:下面的退出码只看失败数 $F —— **$F=0 就 exit 0** ⇒ 一条不跑也会报绿。
 # 改这个数的时机:真加了断言(只应涨)。删断言要说明理由。
-MIN_ASSERTS=231
+MIN_ASSERTS=268
 if [ "$T" -lt "$MIN_ASSERTS" ]; then
   printf '\033[31m断言条数缩水:%d < 地板 %d —— 有断言被删或整组没跑\033[0m\n' "$T" "$MIN_ASSERTS"
   exit 1

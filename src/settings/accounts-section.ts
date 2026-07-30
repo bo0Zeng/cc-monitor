@@ -127,7 +127,7 @@ export class AccountsSection {
         void this.renderNotEnabledFlow(ui.manifestPath, ui.reason);
         return;
       case "ready":
-        await this.renderTable(state, ui.accounts);
+        await this.renderTable(state, ui.accounts, ui.notice);
         return;
     }
   }
@@ -398,9 +398,21 @@ export class AccountsSection {
     return box;
   }
 
-  private async renderTable(state: AccountsState, accounts: Account[]): Promise<void> {
+  private async renderTable(
+    state: AccountsState,
+    accounts: Account[],
+    notice: string | null = null,
+  ): Promise<void> {
     const def = currentWorkingAccount(state);
     this.body.appendChild(this.renderCurrentBanner(def));
+    // Z01：**能用但有缺**（远端 daemon / cc-acct-iso 旧到看不见账号 0）。列表本身是好的，
+    // 所以不走 needs-update 那条整体降级——但也**绝不静默**：少一行账号用户看不出来。
+    if (notice) {
+      const n = document.createElement("div");
+      n.className = "accounts-hint accounts-hint-warn";
+      n.textContent = notice;
+      this.body.appendChild(n);
+    }
     const meta = state.meta;
     if (meta) {
       const info = document.createElement("div");
@@ -563,8 +575,12 @@ export class AccountsSection {
 
     const dir = document.createElement("span");
     dir.className = "accounts-row-dir";
-    dir.textContent = a.configDir;
-    dir.title = a.configDir;
+    // Z01：账号 0 没有 config dir——它**就是**「不设 CLAUDE_CONFIG_DIR」这个状态。
+    // 显示它的真实含义，别显示空白，更别显示一个空串路径。
+    dir.textContent = a.configDir ?? "（不设 CLAUDE_CONFIG_DIR）";
+    dir.title =
+      a.configDir ??
+      "账号 0：起它就是什么都不设。凭据在共享库（~/.claude），.claude.json 在 $HOME。";
     row.appendChild(dir);
 
     const actions = document.createElement("span");
@@ -618,8 +634,16 @@ export class AccountsSection {
     copy.type = "button";
     copy.textContent = "复制路径";
     copy.addEventListener("click", () => {
-      void navigator.clipboard?.writeText(a.configDir).then(
-        () => showActionFailureToast("已复制", a.configDir, { level: "info", durationMs: 2500 }),
+      const text = a.configDir ?? "";
+      if (!text) {
+        showActionFailureToast("账号 0 没有 config dir", "起它就是不设 CLAUDE_CONFIG_DIR", {
+          level: "info",
+          durationMs: 3000,
+        });
+        return;
+      }
+      void navigator.clipboard?.writeText(text).then(
+        () => showActionFailureToast("已复制", text, { level: "info", durationMs: 2500 }),
         () => showActionFailureToast("复制失败", "剪贴板不可用", { level: "error" }),
       );
     });
@@ -660,7 +684,17 @@ export class AccountsSection {
     pending.textContent = "查询中…";
     container.appendChild(pending);
     if (!this.origin) return; // 理论不可达（accountRow 只在 origin 非空时被调），防御性早退
-    void fetchAccountUsage(this.origin, a.name, a.configDir, { force: true }).then((outcome) => {
+    if (a.configDir === null) {
+      container.innerHTML = "";
+      const s = document.createElement("span");
+      s.className = "accounts-usage-pending";
+      s.textContent = "账号 0 暂不支持用量查询";
+      s.title = "用量探测要起一次带 CLAUDE_CONFIG_DIR 的隐藏会话；账号 0 的起法是「什么都不设」，尚未支持";
+      container.appendChild(s);
+      return;
+    }
+    const cfgDir = a.configDir;
+    void fetchAccountUsage(this.origin, a.name, cfgDir, { force: true }).then((outcome) => {
       container.innerHTML = "";
       container.appendChild(this.buildUsageOutcomeEl(a, outcome));
     });

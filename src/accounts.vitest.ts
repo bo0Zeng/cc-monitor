@@ -31,6 +31,7 @@ import {
   fetchSessionAccounts,
   invalidateAccountsCache,
   __resetAccountsCacheForTest,
+  isAccountZero,
   type AccountsState,
   type Account,
   type SessionAccount,
@@ -57,6 +58,7 @@ function state(p: Partial<AccountsState>): AccountsState {
     origin: "aya",
     available: true,
     error: null,
+    notice: null,
     meta: {
       enabled: true,
       acctsDir: "/h/.claude-accts",
@@ -725,5 +727,46 @@ describe("withAccount（A4 统一编排 resolve+record，三站点共用）", ()
     const run = vi.fn().mockResolvedValue(undefined);
     await withAccount("aya", "z", run, {});
     expect(run).toHaveBeenCalledWith({ configDir: "/h/z", accountName: "z", modelOverride: undefined });
+  });
+});
+
+describe("Z01 账号 0（configDir 缺席）", () => {
+  const zero = () =>
+    acct({ name: "0", configDir: null, mode: "bare", loggedIn: true, exists: true });
+
+  it("判据是结构性的（configDir 为 null），不认名字", () => {
+    expect(isAccountZero(zero())).toBe(true);
+    expect(isAccountZero(acct({ name: "0", configDir: "/h/.claude-accts/0" }))).toBe(
+      false,
+      // 名字叫 0 但有 config dir ⇒ 那是个普通账号，不是账号 0
+    );
+    expect(isAccountZero(acct({ name: "叫别的", configDir: null }))).toBe(true);
+  });
+
+  it("★ 空串不是账号 0（空值 ≠ 未设）", () => {
+    expect(isAccountZero(acct({ configDir: "" }))).toBe(false);
+  });
+
+  it("暂不可选：从 UI 起它需要 unset 注入，launch-plan 今天只会 export", () => {
+    expect(isSelectable(zero())).toBe(false);
+    const st = state({ accounts: [zero()] });
+    expect(accountConfigDir(st, "0")).toBeNull();
+  });
+
+  it("deriveUi 把降级说明透传出去（绝不静默）", () => {
+    const st = state({ accounts: [acct({})], notice: "远端 daemon 版本较旧：…" });
+    const ui = deriveUi(st);
+    expect(ui.kind).toBe("ready");
+    if (ui.kind === "ready") expect(ui.notice).toContain("daemon");
+  });
+
+  it("无缺时 notice 为 null", () => {
+    const ui = deriveUi(state({ accounts: [acct({})] }));
+    if (ui.kind === "ready") expect(ui.notice).toBeNull();
+  });
+
+  it("账号 0 在列不影响既有账号的解析", () => {
+    const st = state({ accounts: [acct({ name: "z" }), zero()] });
+    expect(accountConfigDir(st, "z")).toBe("/h/.claude-accts/z");
   });
 });

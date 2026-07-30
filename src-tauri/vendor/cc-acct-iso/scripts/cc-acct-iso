@@ -176,6 +176,10 @@ cmd_add() {
   need_manifest
   lock_acquire            # 读-改-写 manifest:先上锁再读,否则并发 add 会互相覆盖
   manifest_load
+  # Z01:"0" 是**保留名**。它是合成项(「不设 CLAUDE_CONFIG_DIR」这个状态),不是注册项;
+  # 允许注册同名会让 manifest 里出现两个 name="0",按名字查账号就有两个答案。
+  [ "$name" = "$ACCOUNT_ZERO_NAME" ] && die "'$ACCOUNT_ZERO_NAME' 是保留名:它代表「不设 CLAUDE_CONFIG_DIR」\
+这个状态本身(凭据在 $SHARED_STORE),恒在列、无需注册。换个名字"
   mf_index "$name" >/dev/null && die "账号已存在:$name"
 
   local cfgdir="$ACCTS_DIR/$name"
@@ -239,6 +243,8 @@ cmd_rm() {
   [ -n "$name" ] || die "用法:$SELF rm <名> [--force] [--apply]"
   cfg_finalize; need_manifest; lock_acquire; manifest_load
   local idx cfgdir isdef
+  [ "$name" = "$ACCOUNT_ZERO_NAME" ] && die "账号 0 删不掉:它不是注册项,是「不设 CLAUDE_CONFIG_DIR」\
+这个状态。要让它从列表消失,就把 $SHARED_STORE 里的凭据迁走(见 '$SELF isolate')"
   idx="$(mf_index "$name")" || die "没有这个账号:$name"
   cfgdir="$(mf_field "$idx" 3)"; isdef="$(mf_field "$idx" 4)"
   [ "$isdef" = "true" ] && [ "$force" != 1 ] && die "$name 是默认账号;确定要删就加 --force"
@@ -288,11 +294,19 @@ cmd_list() {
       printf '    { "name": "%s", "email": "%s", "configDir": "%s", "isDefault": %s, "mode": "%s", "exists": %s, "loggedIn": %s }' \
         "$(json_esc "$n")" "$(json_esc "$live")" "$(json_esc "$c")" "$d" "$(acct_mode "$c")" "$exists" "$logged"
     done
-    if [ "$first" = 1 ]; then printf ']\n}\n'; else printf '\n  ]\n}\n'; fi
+    # Z01:账号 0 **追加在末尾**(既有下标不变)。**configDir 键省略** ⇒ 消费侧「缺它」= 不注入。
+    if [ "$first" = 1 ]; then printf '\n'; else printf ',\n'; fi
+    acct_zero_json 1
+    printf '\n  ]\n}\n'
     return 0
   fi
-  [ "${#MF[@]}" -gt 0 ] || { info "(还没有账号;用 $SELF add <名> 新增)"; return 0; }
   printf '%-14s %-34s %-8s %s\n' "账号" "邮箱" "状态" "config-dir"
+  # Z01:账号 0 —— config-dir 那列写「(不设)」,那正是它的定义
+  local z0e z0s
+  z0e="$(acct_zero_email)"; [ -n "$z0e" ] || z0e="-"
+  if [ "$(acct_zero_logged)" = true ]; then z0s="已登录"; else z0s="未登录"; fi
+  printf '%-14s %-34s %-8s %s\n' "$ACCOUNT_ZERO_NAME" "$z0e" "$z0s" "(不设 CLAUDE_CONFIG_DIR)"
+  [ "${#MF[@]}" -gt 0 ] || { info "(除账号 0 外还没有别的账号;用 $SELF add <名> 新增)"; return 0; }
   for rec in "${MF[@]}"; do
     IFS="$MF_SEP" read -r n e c d <<<"$rec"
     live="$(claude_json_email "$c")"
@@ -315,9 +329,16 @@ cmd_which() {
   if [ -z "$target" ]; then
     target="${CLAUDE_CONFIG_DIR-}"
     if [ -z "$target" ]; then
-      info "未设 CLAUDE_CONFIG_DIR ⇒ 裸起模式(config dir=$SHARED_STORE,.claude.json=$LEGACY_HOME_DIR/.claude.json)"
-      info "${_c_dim}全迁(V2)之后裸起是没有凭据的;用 '$SELF shellinit' 拿 rc 片段,或用 '$SELF run <名>'。${_c_reset}"
-      return 1
+      # Z01:这个状态现在**有名字**了 —— 它就是账号 0。它是个正常账号,不是错误 ⇒ **rc=0**。
+      # (旧文案说「全迁之后裸起是没有凭据的」—— 那句不成立:凭据可以就在共享库里,
+      #  那正是账号 0 已登录的样子。改成如实报它的登录态。)
+      printf '%s\n' "$ACCOUNT_ZERO_NAME"
+      if acct_zero_logged; then
+        info "未设 CLAUDE_CONFIG_DIR ⇒ 账号 0(已登录;凭据在 $SHARED_STORE,.claude.json 在 $LEGACY_HOME_DIR)"
+      else
+        info "未设 CLAUDE_CONFIG_DIR ⇒ 账号 0(未登录);用 '$SELF run <名>' 起别的账号,或直接 /login"
+      fi
+      return 0
     fi
   fi
   target="$(to_abs "$target")"
@@ -365,19 +386,41 @@ cmd_verify() {
   [ "$inplace_any" = 1 ] && vwarn "存在 in-place 账号(config-dir == 共享库):该模式下 .claude.json 会分裂,cc-monitor 不支持"
   # 只要还有一个隔离账号,「共享库不该有账号态」就仍然成立(混合模式下也必须查)
   if [ "$isolated_any" = 1 ]; then
-    # Z07:从**声明**派生 —— 凡类别为 `secret` 的项出现在共享库里都是致命的
-    # (共享集是 @auto ⇒ 它会被自动 symlink 给每个账号 = 静默串号)。
-    # 此前只查 `.credentials.json`;`.claude.json` 同样含 `oauthAccount`,漏查了。
-    # **这条零误报**:全迁之后 secret 本就不该出现在共享库里。
-    local _svc _leak=0
+    # Z01:**共享库里的 secret = 账号 0 的身份,是一种状态而不是违规。**
+    #
+    # ★ 订正 Z07 的一句事实错误(commit e6674d3):那条检查的说辞写的是
+    #   「它会被自动 symlink 给每个账号 = 静默串号」——**错的**。`share_items()` 的两个分支
+    #   都有 `is_isolate "$base" && continue`,隔离项**从不**被 symlink 出去。
+    #   沙盒实测:往共享库放回一个 .credentials.json 再 sync,z 保持自己的私有实体
+    #   (内容不是共享库那份)、b 根本没有,零软链、不串号。
+    #   (D2 那条 600 启发式的同款说辞**仍然成立**——未声明项不在隔离集里,确实会被 symlink。)
+    #
+    # 它的**真实含义**是:有人没设 CLAUDE_CONFIG_DIR 就起了 claude ⇒ 产生了一个身份。
+    # 那个身份此前是**不可见的幽灵**(manifest 不认、cc-monitor 看不到、用量查不到)。
+    # 本工作区的立论是**吸收 > 检测 > 禁止**:把它登记成「账号 0」,而不是判它违规。
+    # ⇒ 这里从 vfail 改判为**状态报告**。守不住的那条不变量,换成下面 `.claude.json` 那条可查的检查。
+    # 判据就是声明里的 **root 字段**(Z06 建这张表就是为了这种问题有唯一答案):
+    #   root=cfg  ⇒ 共享库**就是**账号 0 的 config dir ⇒ 它在这儿是**原生位置** ⇒ 状态,不是违规
+    #   root=home ⇒ 账号 0 的那份住 $HOME、隔离账号的住各自 config dir ⇒ 共享库这份
+    #               **不是任何账号的原生位置**,是迁移残留。它含 oauthAccount ⇒ 仍判致命。
+    #               (混合模式除外:in-place 账号的 config dir 就是共享库,那儿是它的原生位置。)
+    local _svc _z0=0
     for _svc in $(ni_secrets); do
-      if [ -e "$SHARED_STORE/$_svc" ]; then
-        _leak=1
-        vfail "共享库里仍有 secret 项 $_svc($SHARED_STORE/$_svc)—— 全迁未完成,或有进程没设 CLAUDE_CONFIG_DIR 就起了 claude。\
-它会被自动 symlink 给每个账号 = 静默串号"
+      [ -e "$SHARED_STORE/$_svc" ] || continue
+      if ni_is_home_rooted "$_svc"; then
+        if [ "$inplace_any" = 1 ]; then
+          skip "共享库有 $_svc,但存在 in-place 账号(它的原生位置就是这儿)⇒ 不判"
+        else
+          vfail "共享库里有 $_svc —— 它的原生根是 \$HOME,**不是任何账号的原生位置**\
+(账号 0 的住 $LEGACY_HOME_DIR/$_svc,隔离账号的住各自 config dir)⇒ 这是迁移残留,且它含身份。\
+请核对后 '$SELF isolate $_svc --apply' 或手工移除"
+        fi
+      else
+        _z0=1
+        ok "账号 0 已登录($_svc 在共享库 = 有人未设 CLAUDE_CONFIG_DIR 起过 claude)"
       fi
     done
-    [ "$_leak" = 0 ] && ok "共享库无任何 secret 项(纯共享库)"
+    [ "$_z0" = 0 ] && ok "账号 0 未登录(共享库无 cfg 根的 secret 项)"
     if [ "$inplace_any" = 0 ] && [ -e "$LEGACY_HOME_DIR/.claude.json" ]; then
       vwarn "$LEGACY_HOME_DIR/.claude.json 又出现了 —— 有进程在没设 CLAUDE_CONFIG_DIR 的情况下起过 claude"
     fi
@@ -838,6 +881,14 @@ cmd_run() {
   shift
   [ "${1-}" = "--" ] && shift
   cfg_finalize; need_manifest; manifest_load
+  # Z01:起账号 0 = **什么都不设**。用 `env -u` 而不是不加 env —— 调用者的环境里
+  # 很可能已经有 CLAUDE_CONFIG_DIR(比如从 `run z` 起的 shell 里再跑这条),不摘掉就串号了。
+  # **绝不写 CLAUDE_CONFIG_DIR=""**:空值 ≠ 未设,Claude Code 会拿空串当路径。
+  if [ "$name" = "$ACCOUNT_ZERO_NAME" ]; then
+    have "$LAUNCHER" || die "找不到启动器:$LAUNCHER"
+    acct_zero_logged || warn "账号 0 尚未登录(共享库无 .credentials.json),起来后请 /login"
+    exec env -u CLAUDE_CONFIG_DIR "$LAUNCHER" "$@"
+  fi
   local idx cfgdir
   idx="$(mf_index "$name")" || die "没有这个账号:$name(用 $SELF list 看)"
   cfgdir="$(mf_field "$idx" 3)"
@@ -864,6 +915,10 @@ cmd_shellinit() {
     printf '# 裸 claude 走默认账号(全迁后必需,否则找不到凭据)\n'
     printf 'export CLAUDE_CONFIG_DIR=%q\n' "$def_cfg"
   fi
+  # Z01:上面那行 `export CLAUDE_CONFIG_DIR=<默认>` 是**全局**的 ⇒ 之后这个 shell 里
+  # 再没有回到账号 0 的路。给它一个逃生口。**`env -u` 不是 `=""`**(空值 ≠ 未设)。
+  printf '%scc() { env -u CLAUDE_CONFIG_DIR command %q "$@"; }   # 账号 0(不设 CLAUDE_CONFIG_DIR)\n' \
+    "$ACCOUNT_ZERO_NAME" "$LAUNCHER"
   for rec in ${MF[@]+"${MF[@]}"}; do
     IFS="$MF_SEP" read -r n _ c d <<<"$rec"
     case "$n" in *[!A-Za-z0-9_]*) printf '# (跳过 %s:名字不能做 shell 函数名)\n' "$n"; continue ;; esac

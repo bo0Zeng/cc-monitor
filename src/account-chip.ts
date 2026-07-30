@@ -295,7 +295,14 @@ export class AccountChip {
     // F10 Phase D 审计（UX，重要）：菜单展开期间当前账号那一行此前完全空白,跟"探测失败"/
     // "没查过"视觉上无法区分——探测开始就先给一个占位,resolve 后再换成真实结果/失败短句。
     if (this.menuCurrentUsageEl) this.menuCurrentUsageEl.textContent = "…";
-    void fetchAccountUsage(origin, accountName, def.configDir, { force }).then((outcome) => {
+    // Z01：账号 0 没有 configDir，用量探测要起一次带 CLAUDE_CONFIG_DIR 的隐藏会话
+    // ⇒ 今天起不了。**明说**而不是空白（同本文件其余状态一律给短句的口径）。
+    if (def.configDir === null) {
+      if (this.menuCurrentUsageEl) this.menuCurrentUsageEl.textContent = "账号 0 暂不支持用量查询";
+      return;
+    }
+    const defConfigDir = def.configDir;
+    void fetchAccountUsage(origin, accountName, defConfigDir, { force }).then((outcome) => {
       // F10 Phase D 审计（UX，阻塞）：探测耗时可达数秒到 25s,期间用户可能已经切到另一个账号
       // （selectDefault → refresh 会同步清空/重填 usageSpan）——不加这道身份校验,姗姗来迟的
       // 结果会把"账号名已经是新账号,百分比却是旧账号的"这种静默误标写进折叠态 chip,用户毫无
