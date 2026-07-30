@@ -21,11 +21,11 @@
 | **tmux-daemon-reconcile/** | tmux 存活对账（带外杀 tmux → 变灰，#60-A / F74c） | 已交付（reconcile_step + 收帧收割器，见 INVARIANTS §24/§24bis）。**注意：该目录无 `STATUS.md`/`MASTERPLAN.md`，`PLAN.md` 从不声明完成——「已交付」只存在于本索引里，不可回溯** |
 | **integrate-toolchain/** | 工具链整合：受管工具注册表 + 配置面审计 + 待贴文本统一 + 设置面板 IA（**P 段**） | **已收官**：T01/T02/T03/T04/T07 交付并审计闭环；T05/T09 移出本区；T06（code-picture）**用户已搁置**；T08 未开工。Phase G 终账 = `PHASE-G-DRAFT.md` + 仓根 `项目审阅报告-PhaseG-2026-07-29.md` |
 
-| **account-zero/** | 把「基座」变成受管的「账号 0」（吸收破坏隔离的那个状态，而不是把它定义成违规） | **Phase A 已落盘、用户 2026-07-29 已批准**；等 Z01 的功能计划。Z01 纯增量零风险；Z02 要碰 `tabs.ts`（红线待松） |
+| **account-zero/** | 把「基座」变成受管的「账号 0」（吸收破坏隔离的那个状态，而不是把它定义成违规）+ **2026-07-30 扩范围：原生身份组成的单点声明 + 版本钉/漂移检测 + 物理迁移能力** | **Phase A 已批（07-29）、07-30 按用户追加需求修订落地**。8 个功能（Z01-Z08）**零代码**。**Z08 迁移能力是 P0**——它同时是 BACKLOG **E36「API key 路线乙」**的前置。**整个 cc-acct-iso 半区的硬前置是 G-B**。Z02 仍卡 `tabs.ts` 红线；动 `~/.claude/skills/` 与 z/b 真账号目录的授权**已给**，但用户说「先不要改，我在用 claude code」⇒ 动真账号那步等发话 |
 | **rust-ts-boundary/** | Rust↔TS 边界从人工纪律改成生成物（`tauri-specta`）+ 门禁 | **Phase A 已落盘，等审批**。路线图 ①，是 ③④ 的地基；也是「要不要用 Rust GUI 重写前端」那个问题的便宜答案 |
-| **gate-integrity/** | 门禁不许在零断言下报绿（真机套件断言地板 + vendored bash 进 shellcheck + 6 套 e2e 进 CI） | **Phase A 已落盘，等审批**。路线图 ③，规模小但保护其余全部工作。**G-B 是 `account-zero` Z01 的前置** |
+| **gate-integrity/** | 门禁不许在零断言下报绿（真机套件断言地板 + vendored bash 进 shellcheck + 6 套 e2e 进 CI） | **Phase A 已落盘，等审批**。路线图 ③，规模小但保护其余全部工作。**G-B 是整个 `account-zero` cc-acct-iso 半区的硬前置**（不只 Z01——Z06/Z08 是对那 1348 行做结构性改动，比 Z01 大得多） |
 | **local-as-remote/** | 本地 = 不走 ssh 的远端（含 Linux 平台）。落地 `doc/INVARIANTS.md` **§40** | **Phase A 已落盘，等审批**。路线图 ④。L5 平价对账可先做；L0 是唯一可能推翻方向的一步（WebKitGTK） |
-| **zero-poll-liveness/** | 判活从轮询改成内核事件（tmux hook + pidfd + inotify）。承 BACKLOG **E34**（用户点名「把轮询杀掉」）+ 用户 2026-07-30 追加「daemon 是能改的，要性能最佳且不要轮询」 | **Phase A 已落盘，等审批**。**范围比 E34 登记的大一格**：daemon 里是 **A/B 两条**轮询（2s 判活 tick + 8s `tmux ls`），E34 只盯了后者。P1 顺带销掉 `INVARIANTS:408` 那条预先登记、卡在「daemon 零改」上的真 bug |
+| **zero-poll-liveness/** | 判活从轮询改成内核事件（tmux hook + pidfd + inotify）。承 BACKLOG **E34** + 用户 2026-07-30「daemon 是能改的，要性能最佳且不要轮询」 | **主计划已批 + P4 hook 已授权；P0/P1/P2/P3 已交付签收**（`4e7b100`/`81b22b8`/`03daf6c`/`de57453`）。**实测**：强杀会话进程 → `session_removed` **~18ms**（原 ≤2s）· `kill-server` → 零会话帧 **27ms** · server 复活 **153ms** · 跨 cgroup SIGKILL **30ms**。P1 销掉 `INVARIANTS:408` 那条真 bug。**P4 设计被 `readonly_guard` 推翻并重定**（原方案让 daemon 写文件 ⇒ 撞红线 I7），改走 SIGUSR1 通路（`5290768`）。余 P4-P7 |
 
 
 ---
@@ -47,8 +47,11 @@
 | 5c | **C04c** JSONL 边界 —— **完成**：Phase B 修订处置，**直接生成 `JsonlRecord`** 而非用逃生口指向手抄版（生成物 15→21；三处静默漂移自动消失；守卫补上「不扫 enum」与「字段层属性顺序敏感」两个真缺口） | rust-ts-boundary | 否 |
 | 5d | **C04d** 按模块分批迁移 —— **完成**（八批 11 个 commit：`f44cb57`…`4696505`）。`import invoke` 的生产文件 **29 → 3** = 主计划成功标准 4 达成；**119 个命令全部静态可见**（盲区归零）；生成物 → 67。两批等授权：4b `accounts.ts`（等 Z02）· 8 `tabs.ts`（等红线） | rust-ts-boundary | 部分卡红线 |
 | 6 | **G-B** vendored bash 进 shellcheck + `run-tests.sh` 进 CI | gate-integrity | 否 |
-| 7 | **Z01** 账号 0 登记 + 可见 | account-zero | **是：动 `~/.claude/skills/cc-acct-iso/`** |
-| 8 | **Z04** 守卫 | account-zero | **是：同上** |
+| 6b | **Z08** `isolate`/`share`/`migrate` 迁移能力（**2026-07-30 新增，P0**） | account-zero | 否（授权已给）。**前置 G-B**。同时是 BACKLOG **E36 API key 路线乙**的前置 —— 一个能力两个需求都要 |
+| 6c | **Z06** 原生身份组成单点声明（**新增，P0**）—— 那份知识今天散在 6 处 | account-zero | 否（授权已给）。前置 G-B + Z08 |
+| 6d | **Z07** 版本钉 + 漂移检测（**新增，P0**，销 BACKLOG **E37**） | account-zero | 否。前置 Z06 |
+| 7 | **Z01** 账号 0 登记 + 可见 | account-zero | ~~是~~ → **授权已给**（2026-07-30）。**前置 G-B** |
+| 8 | **Z04** 守卫 | account-zero | **授权已给**。可与 Z06 并行但别同轮改 `verify` |
 | 9 | **Z02** 「未选账号」消失 | account-zero | **是：`tabs.ts` 红线** |
 | 10 | **Z03** 账号 0 接既有能力 | account-zero | 是（承 Z01/Z02） |
 | 11 | **Z05** rc 片段一键生成（独立，可提前） | account-zero | 否 |
@@ -71,11 +74,18 @@
 C01 已加 `npm run check:types`（同一棵树里 regen → tsc → `git diff --exit-code`）作为可脚本化的
 兜底，但**它还没进 CI**。若先做 C02/C03/C04，这个洞会被复制到 127 个 struct。
 
-**为什么 G-B 插在 Z01 之前**：Z01 要改 `vendor/cc-acct-iso/scripts/`，而那 1348 行今天在
-shellcheck 门禁之外、它自己的 424 行测试从没跑过。**没有网不能改那个工具。**
+**为什么 G-B 插在整个 account-zero cc-acct-iso 半区之前**（2026-07-30 扩写）：Z01/Z04/**Z06/Z08**
+都要改 `vendor/cc-acct-iso/scripts/`，而那 1348 行今天在 shellcheck 门禁之外、它自己的 424 行
+测试从没跑过。**没有网不能改那个工具。** 而 Z06（把散在 6 处的身份组成收成单点声明）与
+Z08（新增 `isolate`/`share`/`migrate`）是**结构性**改动，比 Z01 的「加一个 manifest 条目」大得多
+⇒ 这条前置对它们比对 Z01 更硬。
 
-**未获授权时的行为（loop 不许在这儿空转）**：跑到 #7 若两条授权都还没有，**跳过 #7-#10，
-继续 #11 起**；跳过的项在本表标注「已跳过，等授权」，并在收尾汇报里如实列出。
+**授权现状（2026-07-30 更新）**：动 `~/.claude/skills/cc-acct-iso/` 的授权**已给** ⇒ #6b-#8 不再被
+授权挡住（只被 **G-B** 这个技术前置挡）。仍未松的只有 **`tabs.ts` 红线**（挡 #9 Z02、以及
+rust-ts-boundary 的 C04b/C04d 批 8）。**另有一条时序约束**：动 `z`/`b` **真实账号目录**那一步
+（Z08 的迁移落地、E36 写 key）用户说「先不要改，我现在在用 claude code」⇒ **等用户发话**；
+但 Z08 的**能力本身**（代码 + 隔离 socket 上的验收）不受这条限制，可以先做完。
+跳过的项在本表标注原因，并在收尾汇报里如实列出。
 **绝不为了「跑完」而自行放宽用户设的红线或改用户家目录里的文件。**
 
 **loop 停止条件**（任一命中即停，交回用户）：
