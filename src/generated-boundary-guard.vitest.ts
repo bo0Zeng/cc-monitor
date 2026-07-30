@@ -110,7 +110,7 @@ describe("C01 边界生成物", () => {
   it("派生 ts_rs::TS 的 Rust 源文件恰好 13 个（自动发现的范围自检）", () => {
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(19);
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(21);
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -136,6 +136,8 @@ describe("C01 边界生成物", () => {
       "CcStatusResponse.ts", // C04d 批5a（**非 pub**）
       "CcmProbeResult.ts", //         C04d 批2（**线上形状**；TS 侧另有同名领域类型，留手写）
       "ConfigSurfaceReport.ts", //    C04d 批2
+      "ConnTestResult.ts", // C04d 批5c
+      "ConnectStage.ts", // C04d 批5c（**让 describeStage 的 `never` 兜底真正对 Rust 有牙**）
       "DataPathInfo.ts", //           C01
       "DataPathsResponse.ts", //      C01
       "DiagnosticsConfig.ts", // C04d 批4
@@ -145,6 +147,8 @@ describe("C01 边界生成物", () => {
       "HookState.ts", //              C04d 批3（serde(tag="kind", kebab-case) 内部标记枚举）
       "HooksDiagnosis.ts", //         C04d 批3
       "HooksReport.ts", //            C04d 批3
+      "ImportGroup.ts", // C04d 批5c
+      "ImportMember.ts", // C04d 批5c（ImportGroup 的传递依赖）
       "JsonlBatchPayload.ts", //      C04c
       "JsonlLinePayload.ts", //       C04c
       "JsonlRecord.ts", //            C04c（**线定义本身**：wire == serde_json::to_string(它)）
@@ -154,8 +158,10 @@ describe("C01 边界生成物", () => {
       "McpServerEntry.ts", // C04d 批5b（`scope: String` 比手写的三值 union **宽**——那才是线上真相）
       "ProfileKind.ts", // C04d 批5a（ProfileScan 的传递依赖）
       "ProfileScan.ts", // C04d 批5a（`size_bytes: u64` 按字节数量纲论证）
+      "PushResult.ts", // C04d 批5c（**我用 grep 漏掉的那个跨行调用点**）
       "RemoteHealthPayload.ts", //    C02
       "RemoteSessionAddedPayload.ts", // C02
+      "ResolvedHost.ts", // C04d 批5c
       "RestartHint.ts", // C04d 批4（只有 unit variant 的外部标记枚举 → 字面量联合）
       "SessionActivityPayload.ts", // C02
       "SessionEndedPayload.ts", //    C02
@@ -449,10 +455,10 @@ describe("C01 边界生成物", () => {
     // 注意 `src/ipc/commands.ts` **算在里面**——包装层就是最终该剩下的那 1 个。
     // 裸 `grep 'import { invoke }'` 只有 24，因为有文件是多名导入（`import { invoke, Channel }`）
     // ——这正是原来那个 29 容易被量错的原因，所以这里用正则而不是字面量。
-    // C04d：批1 29→23 · 批2 23→19 · 批3 19→14 · 批4 14→12 · 批5a 12→10 · 批5b 10→**8**（2 个文件；
+    // C04d：批1 29→23 · 批2 23→19 · 批3 19→14 · 批4 14→12 · 批5a 12→10 · 批5b 10→8 · 批5c 8→**7**（1 个文件；
     // `accounts.ts` 那 1 个**被跨工作区冲突协议挡住**，见 features/C04d §3d）。最终形态是
     // 「1 个包装层 + `tabs.ts`（等授权）+ 1 个动态派发逃生口」= 3，见主计划 §0.1 标准 4。
-    expect(hits.length, `期望恰好 8 个，实得 ${hits.length}`).toBe(8);
+    expect(hits.length, `期望恰好 7 个，实得 ${hits.length}`).toBe(7);
     expect(hits.map((f) => f.replace(/\\/g, "/")), "包装层自己必须在名单里").toContain(
       "src/ipc/commands.ts",
     );

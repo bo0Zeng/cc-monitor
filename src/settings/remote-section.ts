@@ -22,7 +22,8 @@
  * 每台各有「测试连接」（`test_remote_connection`）展示 SSH/指纹/daemon，指纹可一键固化。
  */
 
-import { invoke, Channel } from "@tauri-apps/api/core";
+import { Channel } from "@tauri-apps/api/core";
+import { commands } from "../ipc/commands";
 import { AGENT_PROFILE } from "../agent-profile";
 import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
@@ -48,41 +49,20 @@ import {
 } from "../remote-config";
 import { makeInfoIcon } from "./info-icon";
 
-/** `resolve_ssh_host` 的返回（Rust ResolvedHost，camelCase）。 */
-interface ResolvedHost {
-  host: string;
-  port: number;
-  user: string;
-  keyPath: string | null;
-  proxyJump: string | null; // F57
-}
+// C04d 批 5c：五个类型换成生成物（源 `ssh_source.rs`）。手写版与生成物**逐字等价** ⇒ 零漂移。
+//
+// **`ConnectStage` 一并生成的理由不是「顺手」**：下面 `describeStage` 里有
+// `const _never: never = st` 穷尽性兜底，而**手写类型时 Rust 新增一个 variant 并不会让它红**
+// ——那条 `never` 检查一直在守一个 TS 侧自己造的联合，不是 Rust 的真实形状。
+// 换成生成物后它才真正对 Rust 的改动有牙（本批次已用变异验证）。
+import type { ConnectStage } from "../generated/ConnectStage";
+import type { ConnTestResult } from "../generated/ConnTestResult";
+import type { ImportGroup } from "../generated/ImportGroup";
+import type { ImportMember } from "../generated/ImportMember";
+import type { ResolvedHost } from "../generated/ResolvedHost";
 
-/** F57：批量导入预览的一台（Rust ImportGroup/ImportMember，camelCase）。 */
-interface ImportMember {
-  alias: string;
-  host: string;
-  port: number;
-  proxyJump: string | null;
-}
-interface ImportGroup {
-  label: string;
-  host: string;
-  port: number;
-  user: string;
-  keyPath: string | null;
-  addresses: string[];
-  jump: string | null;
-  members: ImportMember[];
-}
+export type { ConnectStage };
 
-/** F46：连接分阶段事件（Rust ConnectStage，serde tag=kind camelCase）。 */
-export type ConnectStage =
-  | { kind: "dialing"; endpoint: string }
-  | { kind: "hostKey"; endpoint: string; fingerprint: string }
-  | { kind: "failed"; endpoint: string; reason: string }
-  | { kind: "won"; endpoint: string }
-  | { kind: "auth"; ok: boolean; detail: string | null }
-  | { kind: "established" };
 
 /** F46：阶段事件 → 泳道行的图标 + 文案。纯函数便于单测。 */
 export function describeStage(st: ConnectStage): {
@@ -115,16 +95,6 @@ export function describeStage(st: ConnectStage): {
   }
 }
 
-/** `test_remote_connection` 的返回（Rust ConnTestResult，camelCase）。 */
-interface ConnTestResult {
-  sshOk: boolean;
-  fingerprint: string | null;
-  /** F45：竞发胜出的地址（host:port）。多地址 TOFU 首连时告知固化的是哪条路径的指纹。 */
-  endpoint: string | null;
-  daemonOk: boolean;
-  daemonHello: string | null;
-  message: string;
-}
 
 // F12：`RemoteHostConfig` / `RemoteConfig` / `parseAddressLines` / `sftpEligibleHosts` 已移入
 // `src/remote-config.ts`（数据层），本文件从那里 import（见顶部）。
@@ -720,7 +690,7 @@ class MachineCard {
     const onStage = new Channel<ConnectStage>();
     onStage.onmessage = (st) => this.appendStageLine(stageLog, st);
     try {
-      const res = await invoke<ConnTestResult>("test_remote_connection", {
+      const res = await commands.test_remote_connection({
         cfg,
         onStage,
       });
@@ -760,7 +730,7 @@ class MachineCard {
     try {
       // snippet 由后端拥有（写进 ~/.bashrc 的是被 shell 执行的代码，不让前端注入）；
       // 前端 CCM_WRAPPER_SNIPPET 仅用于面板展示/手动复制，须与后端常量逐字一致。
-      const msg = await invoke<string>("install_remote_ccm_helper", {
+      const msg = await commands.install_remote_ccm_helper({
         cfg,
         profile: ".bashrc",
       });
@@ -804,13 +774,7 @@ class MachineCard {
       pubKeyPath = picked;
     }
     await this.runRemoteAction(btn, "推送公钥中", async () => {
-      const r = await invoke<{ outcome: string; pubPath: string }>(
-        "push_public_key",
-        {
-          cfg,
-          pubKeyPath,
-        },
-      );
+      const r = await commands.push_public_key({ cfg, pubKeyPath });
       return r.outcome === "added"
         ? `公钥已推送（ADDED）：${r.pubPath}`
         : `公钥已存在，无需重复（ALREADY）：${r.pubPath}`;
@@ -982,7 +946,7 @@ class MachineCard {
       return;
     }
     await this.runRemoteAction(this.daemonInstallButton, "安装 daemon 中", () =>
-      invoke<string>("deploy_remote_daemon", { cfg }),
+      commands.deploy_remote_daemon({ cfg }),
     );
   }
 
@@ -1003,7 +967,7 @@ class MachineCard {
     await this.runRemoteAction(
       this.daemonUninstallButton,
       "卸载 daemon 中",
-      () => invoke<string>("uninstall_remote_daemon", { cfg }),
+      () => commands.uninstall_remote_daemon({ cfg }),
     );
   }
 
@@ -1022,7 +986,7 @@ class MachineCard {
       return;
     }
     await this.runRemoteAction(this.ccmUninstallButton, "卸载 ccm 中", () =>
-      invoke<string>("uninstall_remote_ccm_helper", {
+      commands.uninstall_remote_ccm_helper({
         cfg,
         profile: ".bashrc",
       }),
@@ -1217,7 +1181,7 @@ export class RemoteSection {
     try {
       // 同 `mcp-section` 那处：**别只防 reject**，`invoke` 也可能 resolve 成 `undefined`
       // → 下面 `aliases.length` 抛（T07 审计④）。
-      const got = await invoke<string[]>("list_ssh_host_aliases");
+      const got = await commands.list_ssh_host_aliases();
       if (Array.isArray(got)) aliases = got;
     } catch (e) {
       console.warn("list_ssh_host_aliases failed:", e);
@@ -1388,7 +1352,7 @@ export class RemoteSection {
     const alias = this.importSelect.value;
     if (!alias) return;
     try {
-      const resolved = await invoke<ResolvedHost>("resolve_ssh_host", {
+      const resolved = await commands.resolve_ssh_host({
         alias,
       });
       const card = this.appendCard({ ...HOST_DEFAULTS });
@@ -1407,7 +1371,7 @@ export class RemoteSection {
   private async onBatchImport(): Promise<void> {
     let groups: ImportGroup[];
     try {
-      groups = await invoke<ImportGroup[]>("import_ssh_hosts");
+      groups = await commands.import_ssh_hosts();
     } catch (e) {
       this.showBanner(`批量导入失败：${String(e)}`);
       return;
