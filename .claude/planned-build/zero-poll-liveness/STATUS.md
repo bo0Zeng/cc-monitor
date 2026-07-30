@@ -4,7 +4,23 @@
 
 ## 当前阶段
 
-**主计划 2026-07-30 用户已批准 + P4 hook 授权已给。P0/P1/P2/P3 已交付签收。下一个：P4（装 hook，授权已给）。**
+**主计划 2026-07-30 用户已批准 + P4 hook 授权已给。P0-P3 已签收；P4 做了一半。**
+
+**P4 拆两步做，顺序是安全性决定的（不是进度问题）**：
+
+> **`SIGUSR1` 的默认处置是终止进程。** 先装 hook 再装处理器 =
+> 给一个会自杀的 daemon 装上自杀触发器。**必须 daemon 侧先落地。**
+
+- **P4a（本轮已交付）**：daemon 侧 —— `WatchEvent::Poke` 变体（与 `TmuxProbeDue` 共用
+  处理臂）· `watcher::spawn` 返回窄句柄 `WatcherPoke`（只能催重探，不能伪造带载荷事件）·
+  `main` 起 `SIGUSR1` 流接到它。**没有 hook 在发信号 ⇒ 完全惰性。**
+- **P4b（下一轮）**：`--tmux-notify <pid> <starttime>` 子命令（校验 `/proc` starttime 再
+  `kill(pid, SIGUSR1)`）+ 在 `ServerState::Alive(pid)` 那个臂装
+  `session-created[50]`/`session-closed[50]`/`session-renamed[50]`。
+  **hook 用 `#{hook_session_name}`，绝不用 `#{@ccm_sid}`**（P0 实测后者会让活会话变灰）。
+  真机验证一律在私有 socket（`unset TMUX` + 短 `TMUX_TMPDIR`）。
+
+**订正计划一处**：修订里写的入口名 `spawn_watcher` —— 实际叫 **`watcher::spawn`**。
 
 ## 自动模式
 

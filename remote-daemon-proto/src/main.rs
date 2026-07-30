@@ -280,7 +280,39 @@ async fn main() {
 
     // (c) Start the watcher reader; it returns the receiving half of the
     // bounded frame channel.
-    let rx = watcher::spawn(claude_dir, with_bg, tail_only);
+    let (rx, poke) = watcher::spawn(claude_dir, with_bg, tail_only);
+
+    // (c2) **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
+    //
+    // ★ **这一步必须先于任何 hook 安装落地** —— `SIGUSR1` 的**默认处置是终止进程**。
+    // 先装 hook 再装处理器，等于给一个会自杀的 daemon 装了自杀触发器。
+    // 本轮（P4 daemon 侧）刻意只做这一半：没有 hook 在发信号，它完全惰性。
+    //
+    // 为什么是信号而不是别的：原方案让 hook 追加事件日志、daemon inotify 读增量，
+    // **撞红线 I7「daemon 只读」**（`readonly_guard` 当场拦下）。信号通路让 daemon 的
+    // 文件系统写归零，且会话名根本不经 shell ⇒ 那条引号/注入面直接消失。
+    // 代价是信号无载荷且会合并 —— 靠「重探 + 与上一份快照差分」天然免疫。
+    #[cfg(unix)]
+    let poke_task = tokio::spawn(async move {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut sigusr1 = match signal(SignalKind::user_defined1()) {
+            Ok(s) => s,
+            Err(e) => {
+                // 装不上就退化成「只有 ticker 兜底」，**说出来**而不是静默降级。
+                tracing::warn!("装不上 SIGUSR1 处理器（{e}）⇒ tmux hook 通路不可用，退回定时探测");
+                return;
+            }
+        };
+        tracing::info!("SIGUSR1 处理器已就位（tmux hook 通路的 daemon 侧）");
+        while sigusr1.recv().await.is_some() {
+            poke.poke();
+        }
+    });
+    #[cfg(not(unix))]
+    let poke_task = {
+        let _ = poke;
+        tokio::spawn(async {})
+    };
 
     // (d) Run the stdout writer until the channel closes or a signal fires.
     tokio::select! {
@@ -291,6 +323,7 @@ async fn main() {
             tracing::info!("shutdown signal received; exiting");
         }
     }
+    poke_task.abort();
 }
 
 /// The stdout writer half of the §5.4 split: drain frames and write one wire
