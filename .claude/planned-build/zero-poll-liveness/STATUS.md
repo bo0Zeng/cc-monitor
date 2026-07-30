@@ -19,7 +19,7 @@
 | P1 | `ZeroSessions` 观测分类（销 `INVARIANTS:408` 残留） | **✅ 完成签收**（`features/P1-zero-sessions-sentinel.md`）。三条变异双向成立；延迟「永不」→ **~16s**（有界化不是即时化） |
 | P2 | pidfd 替判活轮询 + 建统一事件 channel | **✅ 完成签收**（`features/P2-pidfd-unified-channel.md`）。账本第 1 行到最终形态；**端到端实测 ~18ms**（原 2s tick）；两条变异双向成立 |
 | P3 | tmux server 生/死/复活（**不删 8s 轮询**） | **✅ 完成签收**（`features/P3-tmux-server-lifecycle.md`）。调研的 ⚠ 盲区已消；实测 kill-server→27ms · 复活→153ms · 跨 cgroup SIGKILL→30ms；零新定时器 |
-| P4 | daemon 装 tmux hook | 未开工（**下一个**）。**授权已给**。P3 的 `ServerState::Alive(pid)` 臂就是（重）装 hook 的现成时机 |
+| P4 | daemon 装 tmux hook | **设计已重定、代码未落**。原方案（hook 追加日志 + daemon inotify）**撞红线 I7**、被 `readonly_guard` 当场拦下 ⇒ 改为 **SIGUSR1 通路**（daemon 文件系统写归零、会话名不经 shell、无日志增长）。见 MASTERPLAN「§P4 设计修订」。原实现存 `scratchpad/P4-work.patch` |
 | P5 | wire 正向死亡帧 + 免 debounce retire + **删 `TMUX_EMIT_INTERVAL`** | 未开工（承 P4） |
 | P6 | 零定时器守卫 + 延迟 e2e | 未开工 |
 | P7 | 文档收口 + E34 结案 | 未开工 |
@@ -43,19 +43,19 @@
 
 ## 本轮 loop 目标
 
-**P4 — daemon 装 tmux hook（授权已给）**。P0 定死的形态，不要再讨论：
-- **全局 `[50]` 槽位**（per-session 的 `session-closed` 专门不触发，对照实验已证）
-- **`run-shell -b`**（同步版会阻塞用户实况 server；`-b` 在「杀掉最后一个会话」那格写不进去
-  —— 那两格由 P3 的 pidfd 覆盖，分界是实测的）
-- hook 只调用**一个独立可执行文件**，不在配置里堆多层引号（调研坑 §11.4）
-- 只用 `#{hook_session_name}`（`#{@ccm_sid}` 会解析到**别的会话**，会把活着的会话变灰）
-- **装的时机**：P3 的 `ServerState::Alive(pid)` 那个臂（server 每次起来都要重装，
-  因为 hook 活在 server 内存里）
-- 事件通路：hook → 追加一行到 `$XDG_RUNTIME_DIR/cc-monitor/tmux-events.log`（tmpfs）
-  → daemon 对该文件 inotify → 读增量；daemon 启动时 seek 到末尾（生命周期 ⊆ 连接、
-  启动本来就做全量重同步 ⇒ 不需跨进程游标）
-- **动用户实况 tmux server 前**：先备份 `tmux show-hooks -g` 全文，测完 `set-hook -gu`
-  逐个撤销并复核；隔离 socket 上做验收，默认 socket 最后核对「已设 hook 数仍为 0」
+**P4（修订版）— hook + SIGUSR1 通路**。形态见 `MASTERPLAN.md`「§P4 设计修订」。四步：
+1. `tmux_hook.rs`：`hook_commands(exe, daemon_pid, daemon_starttime)` → 三条
+   `run-shell -b '<exe> --tmux-notify <pid> <ticks>'`（**零 fs 写**、名字不传 ⇒ 无注入面）；
+   `run()` = 读 `/proc/<pid>/stat` 校验 starttime 相符 → `libc::kill(pid, SIGUSR1)`
+2. `spawn_watcher` 返回一个窄 poke 句柄（暴露统一 channel 的发送端，只能发"该重探了"）
+3. `main.rs`：`tokio::signal::unix::signal(user_defined1())` → 每次收到就 poke
+   （`signal` feature 早已启用、main 已在用它做停机）
+4. `watch_loop`：`ServerState::Alive(pid)` 臂里装 hook（一次性线程，三个 subprocess）；
+   **留住上一份 `tmux ls` 快照**（P5 的死亡帧要靠它差分出消失的会话名）
+
+**收尾必须**：`readonly_guard` 绿（这是本轮的硬判据）· 隔离 socket 端到端冒烟（杀掉多个中的
+一个 → 立刻重探，不等 8s）· 动实况 tmux server 前先存档 `show-hooks -g`、测完 `set-hook -gu`
+逐个撤销并复核回 0（基线已存 `scratchpad/live-hooks-baseline.txt`：57 行槽位名、**0** 个已设）
 
 ## loop 停止条件
 

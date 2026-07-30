@@ -229,9 +229,10 @@ threshold=1 会误 retire 还活着的 A）。
 
 - daemon 在「感知到 server 存在」时装 `session-created[50]` / `session-closed[50]` /
   `session-renamed[50]`，hook 只调用**一个独立可执行文件**（不在配置里堆引号，吃调研坑 4）
-- 事件通路：hook → 追加一行到 `$XDG_RUNTIME_DIR/cc-monitor/tmux-events.log`（tmpfs）
-  → daemon 对该文件 inotify → 读增量。**daemon 启动时 seek 到文件末尾**
-  （生命周期 ⊆ 连接，启动时本来就做全量 `tmux ls` 重同步 ⇒ 不需要跨进程游标持久化）
+- 事件通路 —— **2026-07-30 已推翻重定，见下方「§P4 设计修订」**。
+  原方案（hook 追加日志文件 + daemon inotify 读增量）**违反红线 I7「daemon 只读」**，
+  被 `readonly_guard` 当场拦下。新方案：hook → `<exe> --tmux-notify <pid> <starttime>`
+  → 校验身份 → `SIGUSR1` → daemon 重探并与上一份快照差分
 - **授权点**：这会改用户活着的 tmux server 的 hook 状态。槽位 50 调研实测空着；
   撤销 = `tmux set-hook -gu 'session-closed[50]'`（逐个 unset）。**要用户明确一句授权。**
 - **未获授权时的准确后果**（不许含糊）：P4/P5 跳过 ⇒ 轮询 B（8s）**保留**，
@@ -244,6 +245,55 @@ threshold=1 会误 retire 还活着的 A）。
   | 杀掉该 origin **仅剩的** tmux 会话 | **~0（P3 pidfd + P1 哨兵）**，原卡到断连 | 同 |
   | 杀掉多个中的**一个** tmux 会话 | **仍 ~16s**（只有 hook 知道） | **~10ms 量级** |
   | tmux server 复活 | ~0（P3 socket inotify） | 同 |
+
+### P4 设计修订（2026-07-30，被 `readonly_guard` 拦下后重定）
+
+**被拦的是什么**：原方案让 daemon 往 `$XDG_RUNTIME_DIR/cc-monitor/tmux-events.log` **追加**
+事件行。`remote-daemon-proto/src/readonly_guard.rs` 扫 daemon 生产源码里的 `fs::` 变更调用，
+当场红：「daemon 只读护栏违规（红线 I7）：生产代码 `tmux_hook.rs` 含文件系统写操作
+`fs::create_dir`」。
+
+**为什么不是守卫太严**：`doc/INVARIANTS.md` §A2 把这条定得很硬——新增的账号只读查询被明确
+框成「**本约的「读」面延伸（澄清，非例外/非松动）**」，并写着「动凭据的部署操作**绝不经
+daemon**——那会往只读组件里塞写权限」。追加日志确实是往只读组件里塞写权限。
+**放宽它需要用户对红线表态**，不是我能自行决定的。
+
+**重定后的方案（零红线改动，且在另外两点上更好）**：
+
+```
+tmux hook (全局 [50], run-shell -b)
+   └─> <daemon exe> --tmux-notify <daemon_pid> <daemon_starttime>
+          ├─ 读 /proc/<pid>/stat 校验 starttime 相符（挡 PID 复用误伤无关进程）
+          └─ kill(pid, SIGUSR1)            ← 无文件系统写
+   daemon: tokio SIGUSR1 流（`signal` feature 已启用、main 已在用）
+          └─> 经 WatcherPoke 往统一 channel 发一拍 ⇒ 立刻重探
+          └─> 与**上一份 tmux ls 快照差分** ⇒ 消失的会话名 = 关闭的那个
+```
+
+三条优势（不只是"绕开守卫"）：
+
+| | 原方案 | 新方案 |
+|---|---|---|
+| daemon 文件系统写 | **有**（违反 I7） | **零** |
+| 会话名经 shell 引号 | 有——`"#{hook_session_name}"` 里含 `"` 或 `$(...)` 会破坏命令串甚至注入（原方案只能"接受并登记"） | **名字根本不传** ⇒ 注入面消失 |
+| 日志文件 | 要管增长 / 轮转 / 多消费者 | 不存在 |
+
+**代价与处置**：
+- 信号无载荷、会合并（多个会话同时关 → 可能只来一次）⇒ **靠"重探 + 差分"天然免疫**
+  （差分一次能报出所有消失的会话，比逐条事件更稳）
+- **P5 要的名字改由 daemon 自己算**：daemon 得留住上一份 `tmux ls` 快照（现在是发完就忘）。
+  纯 daemon 内部状态，一个字段。
+- 信号在 daemon 不在时会丢 ⇒ 无所谓：daemon 不在就没有 monitor 在听
+- **不新增 `unsafe`**：走 `tokio::signal::unix`（`Cargo.toml` 的 `signal` feature 早已启用，
+  `main.rs` 已在用它做停机）；`kill` 那一侧在 hook 子进程里，用 `libc::kill` 一处调用
+- `spawn_watcher` 要**返回一个 poke 句柄**（把统一 channel 的发送端以一个窄类型暴露给 main），
+  这是 P2 那条「只加事件源、不加定时器」约束的自然延伸
+
+**如果用户更想保留原方案**：那需要给 I7 加一条**窄例外**——写只准落
+`$XDG_RUNTIME_DIR`/`/tmp/cc-monitor-<uid>`、**绝不进 `claude_dir`**，并给 `readonly_guard`
+加一条新断言把这个边界机器化（那样守卫反而更强：从"任何 fs 写"变成"任何落在观测树内的
+fs 写"，范围等于性质）。原方案的完整实现已存成 patch
+（`scratchpad/P4-work.patch`，485 行，含单测；当时 145 passed / 只有这条守卫红）。
 
 ### P5 — 正向死亡帧（wire）
 
@@ -421,6 +471,7 @@ pidfd 那步必须做「杀掉被追踪进程 → 事件真的到了」和「不
 | # | 日期 | 改了什么 / 为什么 |
 |---|---|---|
 | 03 | 2026-07-30 | **P0 交付，四处设计被实测收紧**：① P0-① 的"好答案分支（帧带 sid）"**被证伪**——`#{@ccm_sid}` 在 `session-closed` 里解析到**别的会话**，照直觉写会把活着的会话变灰 ⇒ 只能带名字 ② P0-② 的"per-session 干净路线"**被证伪**（对照实验：per-session 机制可用，但 `session-closed` 专门不触发）⇒ 必须全局 `[50]`，用户已授权的正是需要的那条 ③ §6 风险 3 **范围订正**：inotify 溢出是**既有盲区**（debouncer 吞掉），且 pidfd 免疫 ⇒ P2 让情况变好，不是本区引入的风险 ④ P1 哨兵从 `NO_SESSIONS` 改为 **`ZeroSessions`**、判据改为 **rc + stdout 空否**（Phase D 自审补测发现 `exit-empty off` 下"server 活+零会话"存在且 rc=0）。另**计划外最有价值的产出**：`run-shell -b` 在「杀掉最后一个会话」时写不进去 ⇒ **hook 与 pidfd 的分界从此有实测依据**（hook 管"多个中杀一个"，pidfd 管"杀到没了/server 被端"），并给 `local-as-remote` L1 留下"cgroup 隔离只对经 SSH 起成立"的提醒 |
+| 07 | 2026-07-30 | **P4 设计被 `readonly_guard` 当场推翻并重定（未落代码）**。原方案让 daemon 追加事件日志文件 ⇒ 撞红线 I7「daemon 只读」，守卫报「生产代码 `tmux_hook.rs` 含 `fs::create_dir`」。`INVARIANTS §A2` 把这条定得很硬（新增只读查询被明确框成「读面延伸，非例外非松动」；「动凭据的部署操作绝不经 daemon——那会往只读组件里塞写权限」）⇒ **放宽它需要用户对红线表态，不是我能自行决定的**。重定为 **hook → `<exe> --tmux-notify <pid> <starttime>` → 校验 /proc 身份 → `SIGUSR1` → daemon 重探 + 与上一份快照差分**：daemon 文件系统写**归零**、**会话名不再经 shell 引号**（原方案那个 `"` / `$(...)` 注入面直接消失、不必再「接受并登记」）、不需要管日志增长。代价：信号无载荷且会合并 ⇒ 靠「重探+差分」天然免疫，且 P5 要的名字改由 daemon 自己算（留一份上次快照，纯内部状态）。**不新增 unsafe**（`tokio::signal` 的 `signal` feature 早已启用）。原方案完整实现（485 行、含单测、当时 145 passed 仅这条守卫红）已存 `scratchpad/P4-work.patch`，**若用户宁愿给 I7 加窄例外**（写只准落运行时目录、绝不进 `claude_dir`，并把这个边界加进守卫 ⇒ 守卫从「任何 fs 写」变成「任何落在观测树内的 fs 写」、范围等于性质）则可换回 |
 | 06 | 2026-07-30 | **P3 交付：用户调研那个 ⚠ 盲区（server 复活）已消**——在 daemon 里 `notify` 就是 inotify，本功能只是多一个 watch 目标 + 精确路径过滤。**实测**：`kill-server` → `zero_sessions` 帧 **27ms** · 复活 → 含新会话的帧 **153ms**（含 100ms DEBOUNCE_MS）· **跨 cgroup 整锅 SIGKILL → 30ms**（用真 daemon：tmux server 在 `app.slice/…`、daemon 在 `tmux-spawn-….scope`，transient unit 已回滚零残留）。三条设计要点：① `TmuxObservation` 细分为 `ServerEmpty`/`NoServer`，但**两者映射到同一 wire 取值** ⇒ 帧契约逐字节不变（P0/P1 的预判兑现，有测试钉住）② 收紧 P1 的 rc=1 判据时**刻意不依赖「pidfd 是否醒过」**——那会在 pidfd 路失效时把 rc=1 永久压成 `Unobservable` ⇒ 永不 retire；改成直接查 `/proc` 里 server pid 还在不在（一次存在性读，无挂死风险），变异 A 专门钉住这条 ③ 复活必须监视 socket **所在目录**而非文件（要感知的是「被重新 create」）。**账本第 1 行的证据**：P3 只加了两个 `WatchEvent` 变体 + 两个发送方，**零新定时器、循环结构未动** ⇒ P2 把结构做对了、P3 就便宜。给 P4 的现成时机：`ServerState::Alive(pid)` 那个臂正是「该（重）装 hook」的点（hook 活在 server 内存里、每次起来都要重装，而 P3 把「server 起来了」变成了事件）|
 | 05 | 2026-07-30 | **P2 交付：账本第 1 行到最终形态**（无超时 `recv()` + 单一 `mpsc<WatchEvent>`；轮询 A 消失、轮询 B 从主循环搬进独立 ticker 线程 ⇒ P5 删 ticker 即可、不必再动循环结构）。**端到端实测：杀掉会话进程 → `session_removed` ~18ms**（原 2s tick ⇒ 降两个数量级；测法含 grep 轮询开销、是上界）。三条回写：① **P6 的载体问题 P2 顺手解决了**——冒烟用的「隔离 `CLAUDE_CONFIG_DIR` + PATH 前置假 tmux + 读 daemon stdout 帧」模式**根本不需要任何 tmux socket**、天生隔离 ⇒ daemon 侧延迟 e2e 照这个建，不必先改那 6 套（E41 只剩真 tmux 那半边要管）② P3 给 tmux server 挂 pidfd 只是多一个调用点 + 一个变体，不必再写 unsafe ③ **P5 硬前置**：删 ticker 前必须把写端关闭接到 `WatchEvent::Shutdown`，否则 reader 不再「没人听就停读」（变体与注释已备好）。**自查出并补掉一个静默回归**：初版把事件 channel 建在 Phase 2，而 Phase 1 初始扫描已在调 `process_session_added` ⇒ 启动时就活着的会话一个 pidfd 看守都没有（原 2s 轮询覆盖它们 ⇒ 是回归）。它不是被测试抓到的、是被 clippy 的「field `start` is never read」间接暴露 ⇒ 补了一条扫源码守卫钉住注入点必须早于扫描锚点 |
 | 04 | 2026-07-30 | **P1 交付**（销掉 `INVARIANTS:408` 那条 2026-07-25 就登记、明文卡在「daemon 零改」上的真 bug）。两条实质影响回写：① **P6 的载体作废重定**——实测那 6 套非 CI 套件（`graylight-*`/`restart-*`/`resume-*` + helper）**一处 `-L` 都没有**、会在默认 socket 上建/杀会话 ⇒ 原计划「并入既有 graylight 一族」行不通，P6 得先做 socket 隔离（登记 E41）或换已隔离的载体。旁证：`graylight-daemon-frames.sh:30` 那个 keepalive 会话的存在理由**就是**绕开 P1 修的这个 bug ⇒ 该 bug 当年是被测试侧绕过而非被发现 ② **P3 有了明确的收紧对象**（`rc=1` 判 `ZeroSessions` 是刻意保守，P3 持 pidfd 后可把「server 活着但 rc=1」归 `Unobservable`，且不改帧契约）。另：`BUILD_ID` **刻意不在 P1 bump**（推到 P5 一次重部署覆盖整个工作区，避免让用户每台远端被强制重装两次）⇒ 本修复在远端**休眠**，已记进 STATUS；基线订正 daemon 测试数 47→125 |
