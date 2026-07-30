@@ -177,6 +177,12 @@ pub struct FrontendReadyPayload {
 /// 供前端启动时先建全部骨架 Tab。远端不走此 IPC——连接晚于前端启动，走
 /// [`RemoteSessionAddedPayload`] 事件。
 #[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+// **刻意不加 `#[serde(rename_all = "camelCase")]`**：本 struct 在线上就是 snake_case
+// （`main.ts` 读的是 `s.session_id`），生成物必须忠实于**线上契约**而不是风格偏好。
+// 顺手统一成 camelCase 是行为改动 —— 本工作区每个 commit 的硬判据是「行为逐字节不变」。
+// 这个不一致**正是生成它的理由**：手写镜像可以静默漂成 camelCase，生成物不会。
 pub struct ActiveSessionPayload {
     pub session_id: String,
     pub cwd: String,
