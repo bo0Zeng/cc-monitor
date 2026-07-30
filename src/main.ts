@@ -11,7 +11,7 @@
  */
 import "./styles.css";
 import { emit } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "./ipc/commands";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import { basename } from "./sftp/paths"; // F09：复用已测纯函数（去 main.ts 内联 basename 盲区）
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -41,7 +41,6 @@ import { getKeybindings } from "./keybindings/store";
 import { turnEndNotifier } from "./turn-notify";
 import { AccountChip } from "./account-chip";
 import { buildAccountCommands } from "./account-commands";
-import type { ActiveSessionPayload } from "./generated/ActiveSessionPayload";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import {
   fetchSessionAccounts,
@@ -192,7 +191,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // TDZ；但这条"届时早已初始化"的保证依赖"这中间没有 await 会提前执行到回调"这条隐式不变量，
   // 谁在中间插一个真会被调用的 await 就有踩 TDZ 的风险，需要留意。
   const accountChip = new AccountChip({
-    openSettings: () => void invoke("open_settings_window"),
+    openSettings: () => void commands.open_settings_window(),
     // 切号后立刻重算一次：currentByOrigin 只由下面这条 10s 轮询喂，不主动刷的话会有最长 10s 的
     // 反向窗口——chip 已显示新账号，而对齐动作会把会话打回**刚被切走**的旧账号（D 审计重-5）。
     onDefaultChanged: () => void refreshSessionAccounts(),
@@ -241,7 +240,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       // 由 cc-monitor 记在本机），live 探测不到时徽章兜底显「上次用本工具起」。失败 → 空表降级。
       let lastByS = new Map<string, string>();
       try {
-        const raw = await invoke<Record<string, string>>("list_last_accounts");
+        const raw = await commands.list_last_accounts();
         lastByS = new Map(Object.entries(raw));
       } catch (e) {
         console.warn("list_last_accounts failed:", e);
@@ -291,7 +290,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
     void (async () => {
       try {
-        const result = await invoke<{ path: string }>("load_subagent", {
+        // C04d 批 5b：这里原来写 `invoke<{ path: string }>` —— **同一个命令在全仓有两种 TS 类型**
+        // （`cards/subagent.ts` 用完整的 `SubagentLoadResult`，这里只声明 `path`）。
+        // 包装层收敛成一处后这类分叉结构性消失：本处只读 `.path`，用完整类型完全够。
+        const result = await commands.load_subagent({
           parentJsonlPath: actx.parentPath,
           description: entry.desc, // ★ 用 trim 后的原始 desc（非展示 label）——load_subagent 精确匹配
           toolUseTimestamp: entry.timestamp,
@@ -414,7 +416,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   settingsTrigger.setAttribute("aria-label", "打开设置");
   settingsTrigger.textContent = "⚙";
   settingsTrigger.addEventListener("click", () => {
-    void invoke("open_settings_window"); // F82a：开独立设置窗口（非浮层）
+    void commands.open_settings_window(); // F82a：开独立设置窗口（非浮层）
   });
   document.getElementById("app")?.appendChild(settingsTrigger);
 
@@ -525,7 +527,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       { id: "open-panorama", title: "打开代码全景", keywords: "panorama 全景 code", hint: chordHint("app.toggle-panorama"), run: () => { if (!panoramaView.isVisible()) void panoramaView.open(); } },
       { id: "open-usage", title: "打开用量视图", keywords: "usage token 用量", run: () => { if (!usageView.isVisible()) void usageView.open(); } },
       { id: "open-grid", title: "打开多 agent 监控", keywords: "grid monitor 监控 agent 并排", run: () => { if (!gridMonitorView.isVisible()) gridMonitorView.open(); } },
-      { id: "open-settings", title: "打开设置", keywords: "settings 设置 preferences", hint: chordHint("app.open-settings"), run: () => void invoke("open_settings_window") },
+      { id: "open-settings", title: "打开设置", keywords: "settings 设置 preferences", hint: chordHint("app.open-settings"), run: () => void commands.open_settings_window() },
       { id: "open-sftp", title: "打开 SFTP 文件面板", keywords: "sftp file 文件 传输", run: () => void openSftpFromTopbar(sftpTrigger) },
       { id: "win-minimize", title: "最小化窗口", keywords: "minimize 最小化", hint: chordHint("app.minimize"), run: () => void getCurrentWindow().minimize() },
       { id: "win-fullscreen", title: "切换全屏", keywords: "fullscreen 全屏", hint: chordHint("app.toggle-fullscreen"), run: () => { const w = getCurrentWindow(); void w.isFullscreen().then((f) => w.setFullscreen(!f)).catch((e) => console.warn("toggle-fullscreen failed:", e)); } },
@@ -541,7 +543,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         snapshot: accountChip.snapshotReady(),
         chordHint: (id) => chordHint(id as Parameters<typeof chordHint>[0]),
         setCurrent: (name) => void accountChip.applyDefaultByName(name),
-        openSettings: () => void invoke("open_settings_window"),
+        openSettings: () => void commands.open_settings_window(),
       }),
     );
     // 切到会话（来自 F91 只读投影 snapshotSessions）
@@ -613,7 +615,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("tab.open-cwd", () => tabs.openActiveTabCwd());
   dispatcher.bind("tab.pop-out", () => tabs.openActiveInNewWindow());
   dispatcher.bind("terminal.bring-front", () => tabs.bringActiveTerminalToFront());
-  dispatcher.bind("app.open-settings", () => void invoke("open_settings_window")); // F82a：开独立设置窗口
+  dispatcher.bind("app.open-settings", () => void commands.open_settings_window()); // F82a：开独立设置窗口
   dispatcher.bind("app.toggle-history", () => {
     if (historyView.isVisible()) historyView.close();
     else void historyView.open();
@@ -741,7 +743,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 内容重放开始前就看到完整 tab 栏。失败不阻启动（骨架只是体验优化，行
   // 到达照常 ensureTab 建）。远端骨架走 remote-session-added 事件，不在此列。
   try {
-    const active = await invoke<ActiveSessionPayload[]>("list_active_sessions");
+    const active = await commands.list_active_sessions();
     for (const s of active) {
       tabs.createSkeletonTab(s.session_id, s.cwd || null, null, s.kind ?? null, s.name ?? null);
     }
@@ -994,7 +996,7 @@ async function bootstrapViewer(sid: string): Promise<void> {
 
   // 拉本 sid 的历史（定向 emit 到本窗口）。不发 frontend-ready。
   try {
-    await invoke("replay_session_to_window", { sessionId: sid });
+    await commands.replay_session_to_window({ sessionId: sid });
   } catch (e) {
     console.error("viewer: replay_session_to_window failed:", e);
     statusMsg.textContent = `加载失败：${String(e)}`;

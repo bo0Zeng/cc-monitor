@@ -7,16 +7,29 @@
  * 设置窗独立于主窗口、拿不到活跃会话 cwd → 用项目目录输入框（datalist 从 `list_mcp_project_dirs` 自动补全「用过的项目」）。
  * 纯函数（groupByScope / serverSummary / parseServerConfig）零 import，node 可测。
  */
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
 
 export type McpScope = "user" | "local" | "project";
-export interface McpServerEntry {
-  scope: McpScope;
-  name: string;
-  server: unknown; // 原样保留（宽容）
-  sourcePath: string;
-}
+// C04d 批 5b：改用生成物（源 `mcp.rs`）。
+//
+// **一处方向选择 + 一处对我自己的订正**：Rust 侧 `scope` 是 `String`，
+// 而手写版把它窄化成 `McpScope = "user" | "local" | "project"`。
+//
+// 我一开始推断「来了第四种 scope 会 `undefined.push` 抛」——**那是错的**。
+// `groupByScope` 的实现里有**显式三值判断**，未知 scope 被跳过、**从不抛**；
+// 它的 vitest 注释也明写「测未知 scope 被忽略」。**运行时一直是对的。**
+//
+// 真正的问题是：手写的窄 union 让那条测试**必须挂一个 `@ts-expect-error`**
+// 才能构造一个**真实会从线上来的** entry ——
+// **是类型在逼测试撒谎，而运行时早就处理好了这个情况。**
+// 换成生成物（`scope: string`，与线上一致）后那个抑制不再需要，已删。
+//
+// `McpScope` 保留：它是 TS 侧的**域细化**，`groupByScope` 的返回类型用它是对的
+// （分组结果确实只有三档）。运行时**逐字节不变**。
+import type { McpServerEntry } from "../generated/McpServerEntry";
+
+export type { McpServerEntry };
 
 /** 按 scope 分组（保序）。纯函数。 */
 export function groupByScope(
@@ -169,7 +182,7 @@ export class McpSection {
 
   private async loadProjectCandidates(): Promise<void> {
     try {
-      const dirs = await invoke<string[]>("list_mcp_project_dirs");
+      const dirs = await commands.list_mcp_project_dirs();
       this.datalist.replaceChildren();
       for (const d of dirs) {
         const opt = document.createElement("option");
@@ -194,7 +207,7 @@ export class McpSection {
       // **别只防 reject**：`invoke` 也可能 resolve 成 `undefined`（后端返回类型变了 / 命令没注册），
       // 那样下面的 `.length` 直接抛。这是本仓已记录为真 bug 的形状，
       // `cc-bus-section.ts:199` 与 `cc-bus-hooks-section.ts` 早就这么防了——**这里漏了**（T07 审计④）。
-      const got = await invoke<string[]>("list_remote_mcp_origins");
+      const got = await commands.list_remote_mcp_origins();
       if (Array.isArray(got)) origins = got;
     } catch {
       /* 拿不到就当没有远端（本机模式），不影响本地功能 */
@@ -250,7 +263,7 @@ export class McpSection {
   private async loadRemoteProjectCandidates(origin: string): Promise<void> {
     let dirs: string[] = [];
     try {
-      dirs = await invoke<string[]>("list_remote_mcp_project_dirs", { origin });
+      dirs = await commands.list_remote_mcp_project_dirs({ origin });
     } catch {
       /* 拿不到不影响手填 */
     }
@@ -275,7 +288,7 @@ export class McpSection {
     this.listBox.appendChild(loading);
     let entries: McpServerEntry[];
     try {
-      entries = await invoke<McpServerEntry[]>("read_remote_project_mcp", {
+      entries = await commands.read_remote_project_mcp({
         origin,
         projectDir: dir,
       });
@@ -315,7 +328,7 @@ export class McpSection {
     this.listBox.replaceChildren();
     let entries: McpServerEntry[];
     try {
-      entries = await invoke<McpServerEntry[]>("read_mcp_servers", {
+      entries = await commands.read_mcp_servers({
         projectDir: dir || null,
       });
     } catch (e) {
@@ -338,7 +351,7 @@ export class McpSection {
     this.listBox.appendChild(loading);
     let entries: McpServerEntry[];
     try {
-      entries = await invoke<McpServerEntry[]>("read_remote_mcp_servers", {
+      entries = await commands.read_remote_mcp_servers({
         origin,
       });
     } catch (e) {
@@ -680,13 +693,13 @@ export class McpSection {
     try {
       // F89a：本机 → 本地 FS 写；远端 → SFTP 写远端 .mcp.json（写面仍只 .mcp.json，SS-14；SS-G 用户显式触发）。
       if (startOrigin === null) {
-        await invoke("write_project_mcp_server", {
+        await commands.write_project_mcp_server({
           projectDir: dir,
           name,
           server,
         });
       } else {
-        await invoke("write_remote_mcp_server", {
+        await commands.write_remote_mcp_server({
           origin: startOrigin,
           projectDir: dir,
           name,
@@ -713,9 +726,9 @@ export class McpSection {
       return;
     try {
       if (startOrigin === null) {
-        await invoke("remove_project_mcp_server", { projectDir: dir, name });
+        await commands.remove_project_mcp_server({ projectDir: dir, name });
       } else {
-        await invoke("remove_remote_mcp_server", {
+        await commands.remove_remote_mcp_server({
           origin: startOrigin,
           projectDir: dir,
           name,

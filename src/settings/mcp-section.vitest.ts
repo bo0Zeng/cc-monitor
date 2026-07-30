@@ -32,7 +32,10 @@ describe("F87 groupByScope", () => {
       ent("project", "p1", {}),
       ent("user", "u1", {}),
       ent("project", "p2", {}),
-      // @ts-expect-error 测未知 scope 被忽略
+      // C04d 批 5b：**原来这里挂着 `@ts-expect-error`**——因为手写的 `McpServerEntry.scope`
+      // 被窄化成三值 union，而这条测试要构造的恰恰是**真实会从线上来的**未知 scope。
+      // 换成生成物（Rust 侧就是 `String`）后，这个构造本来就合法，抑制指令成了多余。
+      // ⇒ **类型说了实话，测试就不必撒谎。**
       ent("weird", "w", {}),
     ]);
     expect(g.user.map((e) => e.name)).toEqual(["u1"]);
