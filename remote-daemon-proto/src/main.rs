@@ -298,6 +298,8 @@ async fn main() {
     // **撞红线 I7「daemon 只读」**（`readonly_guard` 当场拦下）。信号通路让 daemon 的
     // 文件系统写归零，且会话名根本不经 shell ⇒ 那条引号/注入面直接消失。
     // 代价是信号无载荷且会合并 —— 靠「重探 + 与上一份快照差分」天然免疫。
+    // P5：留一份给停机用（下面 select 结束后要显式通知 reader）。
+    let poke_for_shutdown = poke.clone();
     #[cfg(unix)]
     let poke_task = tokio::spawn(async move {
         use tokio::signal::unix::{signal, SignalKind};
@@ -329,6 +331,10 @@ async fn main() {
             tracing::info!("shutdown signal received; exiting");
         }
     }
+    // P5：**显式告诉 reader 停** —— 删掉 8s ticker 之后，reader 那边的
+    // `sink.is_closed()` 复查再没有定期醒来的机会，只会一直阻塞在 `recv()`。
+    // 漏这一句不会红任何测试（进程退出时线程随之消亡），所以它与删 ticker 是同一步。
+    poke_for_shutdown.shutdown();
     poke_task.abort();
 }
 

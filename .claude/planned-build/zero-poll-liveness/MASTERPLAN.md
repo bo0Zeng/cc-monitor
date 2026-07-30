@@ -241,9 +241,9 @@ threshold=1 会误 retire 还活着的 A）。
   | 场景 | 未获授权（P1-P3） | 获授权（P1-P5） |
   |---|---|---|
   | claude 进程正常退出 | ~0.1s（既有 pidfile inotify，本来就是事件） | 同 |
-  | claude 被强杀留下陈旧 pidfile | **~0（P2 的 pidfd）**，原 ≤2s | 同 |
+  | claude 被强杀留下陈旧 pidfile | **~0（P2 的 pidfd）**，原 ≤2s | 同（P2 实测 ~18ms） |
   | 杀掉该 origin **仅剩的** tmux 会话 | **~0（P3 pidfd + P1 哨兵）**，原卡到断连 | 同 |
-  | 杀掉多个中的**一个** tmux 会话 | **仍 ~16s**（只有 hook 知道） | **~10ms 量级** |
+  | 杀掉多个中的**一个** tmux 会话 | **仍 ~16s**（只有 hook 知道） | **实测 126 ms**（P5 删轮询 B 后复测；P4 后 136/137 ms） |
   | tmux server 复活 | ~0（P3 socket inotify） | 同 |
 
 ### P4 设计修订（2026-07-30，被 `readonly_guard` 拦下后重定）
@@ -295,7 +295,7 @@ tmux hook (全局 [50], run-shell -b)
 fs 写"，范围等于性质）。原方案的完整实现已存成 patch
 （`scratchpad/P4-work.patch`，485 行，含单测；当时 145 passed / 只有这条守卫红）。
 
-### P5 — 正向死亡帧（wire）
+### P5 — 正向死亡帧（wire）〔**已交付，2026-07-30**。上表「获授权」那列已换成实测值〕
 
 - 新帧 `TmuxSessionClosed { name }`（若 P0-① 拿到好答案则同时带 `sid`），走 `emits`
   声明门控，**不 bump `PROTO_VERSION`**
