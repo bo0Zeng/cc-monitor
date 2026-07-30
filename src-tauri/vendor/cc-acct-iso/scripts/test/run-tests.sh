@@ -414,9 +414,78 @@ chk  "探测验证了账号→共享库方向" 'grep -q "写的文件出现在�
 chk  "探测验证了共享库→各账号方向" 'grep -q "个账号都能经各自 config-dir 看到" "$SB/v18.out"'
 chkn "探测文件已清理(共享库侧)" 'ls "$SB"/.claude/*/.cc-acct-iso-probe.* 2>/dev/null'
 
+
+# ══════════════════════════════════════════════════════════════════
+group "15. Z08:隔离项私有化（isolate / sync 不再删文件 / add 认隔离集）"
+# 这一组钉的是一个**真实的数据丢失回归**:把某项加进 ISOLATE_SET 再 sync --apply,
+# 此前 sync 会把每个账号的软链**直接删掉**(实测两个账号的 settings.json 都不存在了、
+# 设置静默回落 Claude Code 默认值)。正确处置是私有化。
+new_sandbox
+ccq init z --apply
+ccq add b --apply
+ISO_PLUS=".credentials.json .claude.json backups policy-limits.json stats-cache.json settings.json"
+
+chk  "前置:settings.json 初始是共享软链(z)" '[ -L "$SB/.claude-accts/z/settings.json" ]'
+chk  "前置:settings.json 初始是共享软链(b)" '[ -L "$SB/.claude-accts/b/settings.json" ]'
+
+# —— sync:隔离项若还是软链 ⇒ 私有化,**不是删** ——
+ISOLATE_SET="$ISO_PLUS" ccq sync --apply
+chk  "sync 后 z/settings.json 存在(不再被删掉)"  '[ -e "$SB/.claude-accts/z/settings.json" ]'
+chk  "sync 后 b/settings.json 存在(不再被删掉)"  '[ -e "$SB/.claude-accts/b/settings.json" ]'
+chkn "sync 后 z/settings.json 不再是软链"        '[ -L "$SB/.claude-accts/z/settings.json" ]'
+chkn "sync 后 b/settings.json 不再是软链"        '[ -L "$SB/.claude-accts/b/settings.json" ]'
+chk  "私有化后内容与共享库逐字节相同(z)" 'cmp -s "$SB/.claude/settings.json" "$SB/.claude-accts/z/settings.json"'
+chk  "共享库那份**保留**作新账号模板(绝不 MOVE)" '[ -f "$SB/.claude/settings.json" ]'
+chk  "两个账号各自独立(改 z 不影响 b)" 'printf "{\"theme\":\"zzz\"}\n" >"$SB/.claude-accts/z/settings.json"; ! cmp -s "$SB/.claude-accts/z/settings.json" "$SB/.claude-accts/b/settings.json"'
+chkn "改 z 也不回写共享库(软链已摘掉,不会反向覆盖)" 'grep -q zzz "$SB/.claude/settings.json"'
+
+# —— sync 幂等:再跑一次不该有任何改动 ——
+OUT15="$(ISOLATE_SET="$ISO_PLUS" cc sync 2>&1)"
+chk  "sync 私有化后幂等(第二次无改动)" 'printf "%s" "$OUT15" | grep -q "无需改动"'
+
+# —— add 认隔离集:新账号也要拿到该私有项 ——
+ISOLATE_SET="$ISO_PLUS" ccq add c --apply
+chk  "add 后新账号 c 拿到 settings.json"      '[ -e "$SB/.claude-accts/c/settings.json" ]'
+chkn "add 后 c/settings.json 不是软链"        '[ -L "$SB/.claude-accts/c/settings.json" ]'
+chk  "c 的内容取自共享库模板"                  'cmp -s "$SB/.claude/settings.json" "$SB/.claude-accts/c/settings.json"'
+chkn "add **不**从别处复制身份(.credentials.json 不种)" '[ -e "$SB/.claude-accts/c/.credentials.json" ]'
+
+# —— 定向 isolate 命令 ——
+new_sandbox
+ccq init z --apply
+ccq add b --apply
+xfail "isolate 缺项名要报错"                     "$CLI" isolate --apply
+xfail "isolate 拒绝含 / 的项名"                  "$CLI" isolate a/b --apply
+xfail "isolate 拒绝共享库里没有的项"             "$CLI" isolate no-such-thing --apply
+OUT16="$(cc isolate settings.json 2>&1)"
+chk  "isolate 默认是 dry-run(不落盘)"            '[ -L "$SB/.claude-accts/z/settings.json" ]'
+chk  "isolate dry-run 报出私有化计划"            'printf "%s" "$OUT16" | grep -q "私有化"'
+chk  "isolate 对不在 ISOLATE_SET 里的项要 warn"  'printf "%s" "$OUT16" | grep -q "下次 sync"'
+ccq isolate settings.json --apply
+chkn "isolate --apply 后 z 不再是软链"           '[ -L "$SB/.claude-accts/z/settings.json" ]'
+chkn "isolate --apply 后 b 不再是软链"           '[ -L "$SB/.claude-accts/b/settings.json" ]'
+chk  "isolate 幂等(已私有的再跑不报错)"          "$CLI" isolate settings.json --apply
+
+# —— 回滚:私有化是可撤的 ——
+new_sandbox
+ccq init z --apply
+ccq add b --apply
+ISOLATE_SET="$ISO_PLUS" ccq sync --apply
+chkn "回滚前:z 是私有实体" '[ -L "$SB/.claude-accts/z/settings.json" ]'
+ccq rollback latest --apply
+chk  "rollback 后 z/settings.json 回到软链" '[ -L "$SB/.claude-accts/z/settings.json" ]'
+
 # ══════════════════════════════════════════════════════════════════
 export HOME="$ORIG_HOME"
 printf '\n\033[1m────────────────────────────\033[0m\n'
+# 断言条数地板（**同源**:地板写在套件自己这一处,CI 侧那条是双保险）。
+# 为什么必须有:下面的退出码只看失败数 $F —— **$F=0 就 exit 0** ⇒ 一条不跑也会报绿。
+# 改这个数的时机:真加了断言(只应涨)。删断言要说明理由。
+MIN_ASSERTS=197
+if [ "$T" -lt "$MIN_ASSERTS" ]; then
+  printf '\033[31m断言条数缩水:%d < 地板 %d —— 有断言被删或整组没跑\033[0m\n' "$T" "$MIN_ASSERTS"
+  exit 1
+fi
 if [ "$F" -eq 0 ]; then
   printf '\033[32m全绿:%d/%d 断言通过\033[0m\n' "$T" "$T"; exit 0
 else

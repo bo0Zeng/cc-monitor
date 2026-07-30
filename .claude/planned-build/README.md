@@ -47,7 +47,7 @@
 | 5c | **C04c** JSONL 边界 —— **完成**：Phase B 修订处置，**直接生成 `JsonlRecord`** 而非用逃生口指向手抄版（生成物 15→21；三处静默漂移自动消失；守卫补上「不扫 enum」与「字段层属性顺序敏感」两个真缺口） | rust-ts-boundary | 否 |
 | 5d | **C04d** 按模块分批迁移 —— **完成**（八批 11 个 commit：`f44cb57`…`4696505`）。`import invoke` 的生产文件 **29 → 3** = 主计划成功标准 4 达成；**119 个命令全部静态可见**（盲区归零）；生成物 → 67。两批等授权：4b `accounts.ts`（等 Z02）· 8 `tabs.ts`（等红线） | rust-ts-boundary | 部分卡红线 |
 | 6 | **G-B** vendored bash 进 shellcheck + `run-tests.sh` 进 CI —— **✅ 完成签收（2026-07-30）**：shellcheck 覆盖 32→**36** 文件 + 覆盖面地板；`run-tests.sh` 首次运行 **171/171 全绿**、进 CI 带条数地板。**第一个发现是账本自己那个 `scripts/**` pattern 会恒红**（不开 globstar 时把 `scripts/test` 目录喂给 shellcheck）。⇒ **account-zero cc-acct-iso 半区（Z01/Z04/Z06/Z08）的网建好了** | gate-integrity | 否 |
-| 6b | **Z08** `isolate`/`share`/`migrate` 迁移能力（**2026-07-30 新增，P0**） | account-zero | 否（授权已给）。**前置 G-B**。同时是 BACKLOG **E36 API key 路线乙**的前置 —— 一个能力两个需求都要 |
+| 6b | **Z08** `isolate` 迁移能力 —— **✅ 完成签收（2026-07-30）**：新 `ISOLATE` 动词（copy-then-unlink + CAS + 自检 + 回滚）· **`cmd_sync` 从 `RM` 改成私有化（修一个真实的数据丢失：此前加隔离项再 sync 会把每个账号那个文件直接删掉）** · `cmd_add` 认隔离集 · lockstep 完成。测试 171→**197**。**`share <item>` 排第二半**（反方向不丢数据）；**`migrate` 命令名被 `sync` 吸收**。⇒ **E36 API key 路线乙的技术前置就位** | account-zero | 否 |
 | 6c | **Z06** 原生身份组成单点声明（**新增，P0**）—— 那份知识今天散在 6 处 | account-zero | 否（授权已给）。前置 G-B + Z08 |
 | 6d | **Z07** 版本钉 + 漂移检测（**新增，P0**，销 BACKLOG **E37**） | account-zero | 否。前置 Z06 |
 | 7 | **Z01** 账号 0 登记 + 可见 | account-zero | ~~是~~ → **授权已给**（2026-07-30）。**前置 G-B** |

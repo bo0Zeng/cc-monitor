@@ -204,7 +204,7 @@ LEGACY_HOME_ITEMS = .claude.json          （源目录 = $HOME，不是 ~/.claud
 | Z03 | **账号 0 接上既有能力** | 用量探针支持它（今天 `remote-launch.ts:74` 明确拒绝无 configDir）；按会话切号能切到它 | 待规划 | Z01,Z02 | P1 |
 | Z04 | **守卫** | 禁显式 `CLAUDE_CONFIG_DIR=~/.claude` 起账号 0；`verify` 新增「`~/.claude/.claude.json` 出现」检查；「删除账号 0」特判防连带删共享库 | 待规划 | Z01 | P1 |
 | Z05 | **rc 片段一键生成**（独立） | 把 `cc-acct-iso shellinit` 接进 T03 的「生成待贴文本」组件，一键复制 | 待规划 | — | P3 |
-| **Z08** | **物理迁移能力** `isolate` / `migrate` | 让 cc-acct-iso 能把某一项在**共享 ⇄ 私有**之间搬（`isolate <item>` / `share <item>`），并能按新声明整体 `migrate` | 待规划 | **G-B** | **P0** |
+| **Z08** | **物理迁移能力** `isolate` | `isolate <item>`（copy-then-unlink + CAS + 自检 + 回滚）· `cmd_sync` 的隔离项分支从 **`RM` 改成私有化**（修一个**真实的数据丢失**）· `cmd_add` 认 `ISOLATE_SET` | **✅ 完成，已签收**（`features/Z08-isolate-migration.md`）。**`share <item>` 排第二半**（实测反方向不丢数据、优先级低）；**`migrate` 命令名被 `sync` 吸收**（旧声明无处持久化 ⇒ 差集无从计算） | **G-B** | **P0** |
 | **Z06** | **原生身份组成的单点声明** | 一处声明「Claude Code 原生把身份/本机状态放在哪些文件、哪个根下」；`ISOLATE_SET` / `LEGACY_HOME_ITEMS` / `loggedIn` 判据全部**从它派生**；加守卫禁止绕过它再写死一份 | 待规划 | **G-B**, Z08 | **P0** |
 | **Z07** | **版本钉 + 漂移检测**（销 E37） | 声明绑 Claude Code 版本；实际布局与声明不符即报；`CLAUDE_CONFIG_DIR` 这条**零官方文档**的依赖从「隐忧」变成「有检测的已知依赖」 | 待规划 | Z06 | **P0** |
 
@@ -266,7 +266,7 @@ LEGACY_HOME_ITEMS = .claude.json          （源目录 = $HOME，不是 ~/.claud
 | **6. `verify` 的判定语义** | Z01（改判）,Z04（加检查） | `~/.claude/.credentials.json` 存在 → **「账号 0 已登录」**（正常）；`~/.claude/.claude.json` 存在 → **新增 vwarn**「有人用显式路径起过账号 0，状态可能已分裂」 | 今天前者是 `vfail`、后者无检查 | 这就是 §0.1 那笔交易的落点：**用一条检查换掉一条不变量** |
 | **7. 上游 ↔ vendored lockstep** | Z01,Z04 | 上游 `~/.claude/skills/cc-acct-iso/scripts/` 与 `src-tauri/vendor/cc-acct-iso/scripts/` 逐字节一致，`.vendor_id` 按 `VENDOR.md` 菜谱重算，`build.rs` 的软检查不 warn | 今天一致 | `~/.local/bin/cc-acct-iso` 是 symlink 指向上游 ⇒ **改了立刻在 aya 上生效，没有缓冲**。见 §6 风险 2 |
 | **9. 原生身份组成的声明** | **Z06**,Z07,Z08 | **单一事实源**：一处声明「哪些文件构成身份 + 本机状态、各在哪个根下」（形如 `NATIVE_IDENTITY` 表：项名 → 根(`config_dir`/`$HOME`) → 类别(身份/本机状态/缓存)）。`ISOLATE_SET`、`LEGACY_HOME_ITEMS`、`loggedIn` 判据、`chmod 600` 目标**全部从它派生**。**守卫**：扫源码断言这些名字不再在别处出现字面量 | 今天散在 6 处（见 §0.1 那张表） | **划分的内容零改动**，只改来源 ⇒ 行为逐字节不变，可用「8 套真机 152 条不变」验收 |
-| **10. `isolate`/`share`/`migrate` 子命令** | **Z08**,Z06 | `isolate <item>`：**copy-then-unlink**（读软链目标 → 同目录 `mktemp` 写副本 → CAS 复核共享文件未变 → `mv` 原子替换 → `cmp` + `readlink` 自检 → 不符 `ln -sfn` 回滚）。`migrate`：按新旧声明求差集，对每项调 `isolate`/`share`。**共享库那份留作新账号模板** | 不存在 | **同时是第三方 API key 路线乙 的前置**（BACKLOG E36）。dry-run 默认（同工具既有惯例） |
+| **10. `isolate`/`share` 子命令** | **Z08**,Z06 | **✅ `isolate` 已落地**：新 plan 动词 `ISOLATE` = copy-then-unlink（读共享签名 → `bk_copy` → 同目录 `mktemp` → **CAS 复核签名未变** → **先 `rm` 掉软链**（否则 `mv -f` 会跟随软链**反向覆盖共享库**）→ `mv -f` 原子落位 → `cmp`+非软链自检 → 不符 `ln -s` 回滚 → `undo_restore`）。**共享库那份保留作新账号模板。** `cmd_sync` 的隔离项分支改用它、`cmd_add` 认隔离集。**⚠ `migrate` 那句「按新旧声明求差集」已否掉**：旧声明**没有任何地方持久化**（`ISOLATE_SET` 只有当前值）⇒ 差集无从计算；真正可做的是「让现实对齐当前声明」= **`sync` 的职责**，故不新增该命令名 | ✅ Z08 完成；**`share <item>` 未做**（第二半） | 前置 G-B 已解除。**E36「API key 路线乙」的技术前置就此就位**。dry-run 默认 |
 | **11. Claude Code 版本钉** | **Z07** | manifest 记「本声明适用的 Claude Code 版本区间」；`verify` 比对实际版本 + 实际布局，不符 → 报（不是 warn，是要求人复核）。**销掉 BACKLOG E37** | 不存在（E37 只登记了一句「建议登记」，连登记都没做） | 唯一能把「`CLAUDE_CONFIG_DIR` 零官方文档」这条系统性风险变成可观测的东西 |
 | **8. 远端版本协商** | Z01（建立）,Z03（依赖） | cc-monitor 判断对面 cc-acct-iso 认不认账号 0：**看 `list-accounts` 输出里有没有账号 0 条目**（或 manifest `version` 字段）。不认 → 降级成今天的行为并**明说**「该机器的 cc-acct-iso 版本较旧，账号 0 不可见」，绝不静默 | 未动 | 本仓已有先例：`ccm` 的 `capabilities=` 串 |
 
@@ -381,6 +381,7 @@ Z05（rc 片段）  独立，任意时点可插
 
 | # | 日期 | 改了什么 / 为什么 |
 |---|---|---|
+| **新2** | 2026-07-30 | **Z08 交付签收。三处对计划的实测订正**：① **我此前记的失效模式是错的** —— 不是「配置说隔离、现实还共享」，实测是 **`cmd_sync` 把每个账号的软链直接 `RM` 删掉** ⇒ 两个账号**根本没有该文件**（对 `settings.json` = hooks/model/permissions/theme 全部静默丢失、回落默认值）。**Z08 修的是数据丢失，不是不一致。** ② **`migrate` 那句「按新旧声明求差集」否掉**：旧声明无处持久化 ⇒ 差集无从计算；改成「让现实对齐当前声明」并**吸收进 `sync`**（那本就是 `sync` 的职责，`verify` 今天就在报这条不变量违反），**不新增命令名**。③ **`share <item>` 排到第二半**，理由是实测的：反方向今天只是一句 `warn`、**不丢数据**，而 isolate 方向真丢。**G-B 的网第一次真正管住一个改动**（shellcheck 36 文件 + vendored 自测 171→**197**、地板同步上调）。**断言地板搬进脚本自己**（`MIN_ASSERTS`，补 gate-integrity §2「同源」；CI 侧那条留作双保险）。lockstep 完成：`.vendor_id` `e5475b0c140ebbe1` → `740a68b11a71ce27`，`build.rs` 过期检查不 warn。**用户真实 `~/.claude-accts/` 零改动**（z/b 的 `settings.json` 仍是 07-26 那两个软链、`accounts.json` mtime 未变、`ISOLATE_SET` 仍是默认值）—— 本轮只交付能力，落地真机等用户发话 |
 | **新** | 2026-07-30 | **按用户追加需求扩了本区范围：加 Z06/Z07/Z08 三个功能。** 用户原话「能不能把账号 0 定义为 claude code 默认登录方式，到时候如果 claude code 换登录方式了换位置了我们可以方便迁移」。**一处订正**：我起初把现有定义说成「按物理位置的外延定义」——**说错了**，「账号 0 ≡ 不设 `CLAUDE_CONFIG_DIR` 这个状态本身」本来就是内涵的，而且 §0.1 有专门论证为什么不能给它 `configDir`（两条路 ⇒ 状态分裂）。**那条定义不动。** 真正没被抽象的是「原生身份由哪些文件组成」，它硬编码在 `ISOLATE_SET`/`LEGACY_HOME_ITEMS` 并散抄 6 处（§0.1 新增那张表列了行号）⇒ 加一层**声明**（Z06）、一个**版本钉+漂移检测**（Z07，销 BACKLOG E37）、一个**物理迁移能力**（Z08）。**范围外那条「不改隔离/共享划分」据此订正**——划分的内容零改动，改的是它的来源。**验收边界写死**：换位置这类一处改完 + 一次迁移；**换机制（keyring）救不了，只承诺 100% 当场检测到而不是静默共用身份**（§6 R-新1）。**顺序**：G-B 是整个 cc-acct-iso 半区的前置（不只 Z01）；**Z08 排 Z06 之前**且它同时是 BACKLOG **E36「API key 路线乙」**的前置——一个能力两个需求都要 |
 
 - 01 — 2026-07-29 — 初版，Phase A 主规划完成 — 由 Phase G 审阅的阻塞 E15 起，经四轮推导

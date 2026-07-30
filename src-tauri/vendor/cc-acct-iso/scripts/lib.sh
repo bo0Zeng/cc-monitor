@@ -412,6 +412,7 @@ plan_show() {
       LINK)     info "  建链接   $b → $a" ;;
       RELINK)   info "  修链接   $b → $a  ${_c_dim}(原指向有误)${_c_reset}" ;;
       MOVE)     info "  搬文件   $a → $b" ;;
+      ISOLATE)  info "  私有化   $b  ${_c_dim}(内容取自 $a;共享库那份保留作模板)${_c_reset}" ;;
       COPY)     info "  复制     $a → $b" ;;
       SEED)     info "  种配置   $a → $b  ${_c_dim}(剥掉 oauthAccount)${_c_reset}" ;;
       RM)       info "  删除     $a" ;;
@@ -462,6 +463,44 @@ _exec_op() {
       bk_copy "$a"
       mv -- "$a" "$b" || die "搬移失败:$a → $b"
       undo_restore "$a"; undo_delete "$b"
+      ;;
+    ISOLATE)
+      # 「隔离项现在是软链」⇒ 把它变成本账号私有实体。**copy-then-unlink，绝不 MOVE**:
+      # MOVE 会把共享库那份搬走 ⇒ 只有第一个账号拿到文件、其余账号的软链全部悬空。
+      # 共享库那份**保留**,作新账号的模板。
+      #
+      # 原子性:同目录 mktemp 写副本 → `mv -f` 盖过软链路径(rename(2),原子)。
+      # 路径**没有一个瞬间是不存在的**,且内容与共享库逐字节相同 ⇒ 对正在读它的进程不可观测。
+      #
+      # CAS:`mv` 之前复核共享文件的 mtime+大小没变。变了说明有活进程在这中间写过它,
+      # 我们手上这份副本已陈旧 ⇒ 不落盘、die,让人重跑(宁可不动也不落一次陈旧覆盖)。
+      [ -e "$a" ] || die "私有化失败:共享库缺 $a"
+      local sig_before sig_after
+      sig_before="$(stat -c '%Y.%s' -- "$a" 2>/dev/null || echo unknown)"
+      bk_copy "$b"
+      tmp="$b.cc-acct-iso.tmp.$$"
+      if [ -d "$a" ]; then
+        rm -rf -- "$tmp"
+        cp -a -- "$a" "$tmp" || { rm -rf -- "$tmp"; die "私有化复制失败(目录):$a → $b"; }
+      else
+        cp -- "$a" "$tmp" || { rm -f -- "$tmp"; die "私有化复制失败:$a → $b"; }
+        chmod 600 -- "$tmp" || true
+      fi
+      sig_after="$(stat -c '%Y.%s' -- "$a" 2>/dev/null || echo unknown)"
+      if [ "$sig_before" != "$sig_after" ]; then
+        rm -rf -- "$tmp"
+        die "私有化中止:$a 在复制期间被改动(有进程正在写它)。请重跑。"
+      fi
+      # 软链要先摘掉:`mv -f tmp link` 会跟随软链把内容写到共享库去(那是灾难性的反向覆盖)。
+      [ -L "$b" ] && { rm -f -- "$b" || die "摘软链失败:$b"; }
+      mv -f -- "$tmp" "$b" || { rm -rf -- "$tmp"; die "私有化落位失败:$b"; }
+      # 自检:必须不再是软链,且内容与共享库一致。不符立刻回滚成软链。
+      if [ -L "$b" ] || { [ ! -d "$a" ] && ! cmp -s -- "$a" "$b"; }; then
+        rm -rf -- "$b"
+        ln -s -- "$a" "$b" || warn "回滚建链也失败了:$b(备份在 $BACKUP)"
+        die "私有化自检不通过,已回滚成软链:$b"
+      fi
+      undo_restore "$b"
       ;;
     COPY)
       tmp="$b.cc-acct-iso.tmp.$$"

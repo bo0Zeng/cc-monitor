@@ -290,7 +290,7 @@ UI 文案承诺的「留空恢复默认」不成立。
 > | 改 `ISOLATE_SET` | 不用 | **要**（`settings.json` 今天是共享的：实测 z/b 都软链到 `~/.claude/settings.json`） |
 > | 迁移已有 z/b | 不用 | **要**，而且 **cc-acct-iso 根本没有这个能力** |
 >
-> ⇒ **乙 的前置 = `account-zero` **Z08**（`isolate <item>` 能力，copy-then-unlink）。**
+> ⇒ **乙 的前置 = `account-zero` **Z08** —— 2026-07-30 已交付签收**（`isolate` 能力 + `sync` 改成私有化）。
 > 那个能力**同时**是「Claude Code 换登录位置后迁移」（Z06/Z07）的前置——一个能力两个需求都要。
 >
 > **授权状态**：用户已授权动 `~/.claude/skills/cc-acct-iso/` **且**授权改 `z`/`b` 真实账号目录

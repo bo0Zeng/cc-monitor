@@ -34,6 +34,8 @@ ${_c_bold}cc-acct-iso${_c_reset} —— Claude Code 多账号:并发隔离 + 实
   which [<config-dir>]                     某 config-dir / 当前 \$CLAUDE_CONFIG_DIR 属于哪个账号
   verify [<名>...] [--no-probe]            自检:结构 + 隔离 + 共享(不登录;会写一个自动清理的探针)
   sync                                     幂等补链/修断链/修权限/刷新 manifest 邮箱
+                                           (隔离项若还是软链 → 私有化,不再删)
+  isolate <项名>                           把某共享项变成每账号私有实体(共享库那份留作模板)
   rollback [<备份时间戳>|latest]           从备份还原(同样 dry-run 默认)
   run <名> [-- <启动器参数>]               用该账号起 claude(唯一登录入口)
   shellinit                                打印可 source 的 rc 片段(export + <名>cc 函数)
@@ -175,6 +177,17 @@ cmd_add() {
   plan_init
   plan_add MKDIR "$cfgdir"
   plan_links_for "$cfgdir"
+  # Z08:**此前 add 完全不碰 ISOLATE_SET** ⇒ 新账号对每个隔离项既没有软链(share_items 跳过它)
+  # 也没有实体 ⇒ 拿不到该文件。凡共享库里有那一份(它是模板)就复制成本账号私有实体。
+  # `.credentials.json` / `.claude.json` 刻意**不**在这里种:身份必须由 `--from-credentials` /
+  # `--seed-claude-json` 显式给,或由用户登录产生 —— 绝不从别人那儿悄悄复制一份身份过来。
+  local _iso
+  for _iso in ${ISOLATE_ARR[@]+"${ISOLATE_ARR[@]}"}; do
+    case "$_iso" in .credentials.json|.claude.json) continue ;; esac
+    if [ -e "$SHARED_STORE/$_iso" ] || [ -L "$SHARED_STORE/$_iso" ]; then
+      plan_add ISOLATE "$SHARED_STORE/$_iso" "$cfgdir/$_iso"
+    fi
+  done
 
   if [ -n "$fromcred" ]; then
     fromcred="$(to_abs "$fromcred")"
@@ -548,7 +561,18 @@ cmd_sync() {
         [ -L "$c/$base" ] || continue
         tgt="$(readlink "$c/$base")"
         case "$tgt" in "$SHARED_STORE"/*) ;; *) continue ;; esac
-        if is_isolate "$base" || is_excluded "$base" \
+        if is_isolate "$base"; then
+          # Z08:隔离项现在是**指向共享库的软链** ⇒ 串号风险(`verify` 也这么报)。
+          # **此前这里是 `RM`** —— 那会把该账号的这个文件**直接删掉**(实测:把 settings.json
+          # 加进 ISOLATE_SET 再 sync --apply,两个账号的 settings.json 都不存在了、
+          # 设置静默回落默认值)。正确处置是**私有化**:内容从共享库复制下来、软链原子替换,
+          # 共享库那份保留作新账号模板。共享库真没有那份时才回落到 RM(无内容可复制)。
+          if [ -e "$SHARED_STORE/$base" ] || [ -L "$SHARED_STORE/$base" ]; then
+            plan_add ISOLATE "$SHARED_STORE/$base" "$c/$base"
+          else
+            plan_add RM "$c/$base"
+          fi
+        elif is_excluded "$base" \
            || { [ ! -e "$SHARED_STORE/$base" ] && [ ! -L "$SHARED_STORE/$base" ]; }; then
           plan_add RM "$c/$base"
         fi
@@ -566,6 +590,48 @@ cmd_sync() {
     plan_add MANIFEST
   fi
   info "${_c_bold}sync${_c_reset}  共享库=$SHARED_STORE"
+  plan_commit
+}
+
+# ---------- isolate（Z08）----------
+# 把某个共享项就地变成**每个账号各自私有**的实体。用途有两个,都是真需求:
+#   ① 第三方 API key 路线乙:`apiKeyHelper` 要写进每账号自己的 settings.json
+#   ② Claude Code 换了身份文件的位置时,把 z/b 的物理布局迁过去
+# **它不改 ISOLATE_SET**（那是配置的事）——它只让**现实**对齐配置。
+# 正常用法是「先把该项加进 ISOLATE_SET,再跑 sync」;这个命令是**定向**版本,
+# 用于只想动一项、不想让 sync 顺手把别的漂移也一起修的场合。
+cmd_isolate() {
+  local item=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --apply) APPLY=1; shift ;;
+      -h|--help) usage; return 0 ;;
+      -*) die "isolate:未知参数 $1" ;;
+      *) [ -z "$item" ] || die "isolate:只接受一个项名"; item="$1"; shift ;;
+    esac
+  done
+  [ -n "$item" ] || die "isolate:要私有化哪一项?(如 settings.json)"
+  case "$item" in */*|.|..) die "isolate:项名必须是共享库下的单层名字,不能含 /" ;; esac
+  cfg_finalize; need_manifest; lock_acquire; manifest_load
+  { [ -e "$SHARED_STORE/$item" ] || [ -L "$SHARED_STORE/$item" ]; } \
+    || die "共享库里没有 $item —— 无内容可复制"
+  is_isolate "$item" || warn "$item 不在 ISOLATE_SET 里:本次会私有化,但下次 sync 会把它当共享项、\
+再给每个账号建回软链。要长期私有请同时把它加进 ISOLATE_SET(见 config)"
+  plan_init
+  local i n e c d done_n=0
+  for i in "${!MF[@]}"; do
+    IFS="$MF_SEP" read -r n e c d <<<"${MF[$i]}"
+    acct_dir_ok "$c" || { warn "跳过 $n:config-dir 不在受控范围内($c)"; continue; }
+    [ -d "$c" ] || { warn "跳过 $n:config-dir 不存在($c)"; continue; }
+    [ "$c" != "$SHARED_STORE" ] || continue          # in-place 账号就是共享库本身
+    if [ -L "$c/$item" ] || [ ! -e "$c/$item" ]; then
+      plan_add ISOLATE "$SHARED_STORE/$item" "$c/$item"
+      done_n=$((done_n+1))
+    else
+      info "  $n:$item 已是私有实体,跳过"
+    fi
+  done
+  info "${_c_bold}isolate${_c_reset}  $item  —— 待私有化 $done_n 个账号;共享库那份**保留**作新账号模板"
   plan_commit
 }
 
@@ -736,6 +802,7 @@ main() {
     which|who) cmd_which "$@" ;;
     verify)    cmd_verify "$@" ;;
     sync)      cmd_sync "$@" ;;
+    isolate)   cmd_isolate "$@" ;;
     rollback)  cmd_rollback "$@" ;;
     run)       cmd_run "$@" ;;
     shellinit) cmd_shellinit "$@" ;;
