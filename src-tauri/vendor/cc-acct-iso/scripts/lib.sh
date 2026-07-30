@@ -179,6 +179,14 @@ ni_is_secret() {       # 某项是不是身份本体
   for _it in $(ni_secrets); do [ "$_it" = "$1" ] && return 0; done
   return 1
 }
+# Z01:某项的原生根是不是 $HOME。用来区分「共享库里这个 secret 是账号 0 的原生位置」
+# (root=cfg ⇒ 账号 0 的 config dir **就是**共享库 ⇒ 正常)与「它不是任何账号的原生位置」
+# (root=home ⇒ 账号 0 的那份住 $HOME、隔离账号的住各自 config dir ⇒ 共享库这份是残留)。
+ni_is_home_rooted() {
+  local _it
+  for _it in $(ni_home_rooted); do [ "$_it" = "$1" ] && return 0; done
+  return 1
+}
 
 # ---------- 配置 ----------
 CFG_FILE=""
@@ -371,6 +379,10 @@ manifest_load() {
   local i n e c d bad_i=()
   for i in "${!MF[@]}"; do
     IFS="$MF_SEP" read -r n e c d <<<"${MF[$i]}"
+    # Z01:账号 0 是**写时合成**的(它没有自己的 config-dir,它的 config dir 就是共享库)。
+    # 读回时**静默过滤掉**,不进 MF —— MF 的每条都被 sync/verify/mf_set_default 当作
+    # 「有真目录、可 chmod、可建软链」来用。**不要 warn**:它不是坏数据,是设计如此。
+    if [ "$n" = "$ACCOUNT_ZERO_NAME" ] && [ -z "$c" ]; then bad_i+=("$i"); continue; fi
     if [ -z "$c" ] || ! path_shell_safe "$c"; then bad_i+=("$i"); warn "manifest 里账号 '$n' 的 configDir 非法,已忽略该账号:$c"; continue; fi
     case "$c" in /*) ;; *) bad_i+=("$i"); warn "manifest 里账号 '$n' 的 configDir 不是绝对路径,已忽略:$c"; continue ;; esac
     case "$c" in */../*|*/..) bad_i+=("$i"); warn "manifest 里账号 '$n' 的 configDir 含 '..',已忽略:$c"; continue ;; esac
@@ -403,17 +415,18 @@ manifest_render() {
   if [ -n "$_pv" ]; then
     printf '  "claudeVersionPinned": "%s",\n' "$(json_esc "$_pv")"
   fi
-  if [ "${#MF[@]}" -eq 0 ]; then
-    printf '  "accounts": []\n}\n'; return 0
-  fi
+  # Z01:账号 0 恒在列(它是一种状态,不是注册项)。**追加在数组末尾** —— 放首位会让所有
+  # 按下标取账号的地方整体错位;追加则既有下标全部不变。
   printf '  "accounts": [\n'
-  for rec in "${MF[@]}"; do
+  for rec in ${MF[@]+"${MF[@]}"}; do
     IFS="$MF_SEP" read -r n e c d <<<"$rec"
     [ "$first" = 1 ] || printf ',\n'
     first=0
     printf '    { "name": "%s", "email": "%s", "configDir": "%s", "isDefault": %s, "mode": "%s" }' \
       "$(json_esc "$n")" "$(json_esc "$e")" "$(json_esc "$c")" "$d" "$(acct_mode "$c")"
   done
+  [ "$first" = 1 ] || printf ',\n'
+  acct_zero_json 0
   printf '\n  ]\n}\n'
 }
 
@@ -440,6 +453,56 @@ mf_field() {  # mf_field <idx> <1..4>
   IFS="$MF_SEP" read -r n e c d <<<"$rec"
   case "$2" in 1) printf '%s' "$n";; 2) printf '%s' "$e";; 3) printf '%s' "$c";; 4) printf '%s' "$d";; esac
 }
+# ---------- 账号 0（Z01）----------
+#
+# **账号 0 ≡「不设 CLAUDE_CONFIG_DIR」这个状态本身。** 凭据在 `<共享库>/.credentials.json`,
+# 状态在 `$LEGACY_HOME_DIR/.claude.json`,起它 = **什么都不设**。
+#
+# **它刻意不进 `MF`**:`MF` 的每条记录都带一个真 config-dir,而 `sync`/`verify`/`mf_set_default`
+# 等一堆循环都假设那个目录存在、可 chmod、可建软链。账号 0 没有自己的目录(它的 config dir
+# **就是**共享库)⇒ 塞进 MF 会污染所有那些循环。它是**状态**,不是注册项 ⇒ 在输出时**合成**。
+#
+# **绝不给它 `configDir`**:那样起它就有两条路(`CLAUDE_CONFIG_DIR=<共享库>` 读
+# `<共享库>/.claude.json`;裸起读 `$HOME/.claude.json`)⇒ 同一账号两份状态分裂。
+# JSON 里**省略这个键**(不是空串——空串会让 `env CLAUDE_CONFIG_DIR="" claude` 设出一个空值,
+# 而空值 ≠ 未设)。
+ACCOUNT_ZERO_NAME="0"
+
+# **谓词**(只给退出码,不打任何东西)。初版写成 printf 'true'/'false' —— 那样
+# `if acct_zero_logged; then` 会恒真、且把 "false" 吐进调用方的 stdout(实测污染了
+# `which` 的输出和 `run` 的 exec 前输出)。要字符串的用下面的 _json 版。
+acct_zero_logged() {
+  # **只看 cfg 根的 secret**:共享库**就是**账号 0 的 config dir ⇒ 那儿的 .credentials.json
+  # 是它的凭据。home 根的(.claude.json)原生位置是 $HOME,共享库里若有那是残留
+  # (verify 判它 FAIL),**不算账号 0 登录了**。判据与 verify 那条同源:声明里的 root 字段。
+  local it
+  for it in $(ni_secrets); do
+    if ni_is_home_rooted "$it"; then continue; fi
+    if [ -e "$SHARED_STORE/$it" ]; then return 0; fi
+  done
+  return 1
+}
+acct_zero_logged_json() { if acct_zero_logged; then printf 'true'; else printf 'false'; fi; }
+
+acct_zero_email() {    # 账号 0 的邮箱现读自 $LEGACY_HOME_DIR/.claude.json(它的状态落点)
+  claude_json_email "$LEGACY_HOME_DIR"
+}
+
+# 合成账号 0 的 JSON 对象。`with_live` = 1 时多带 exists/loggedIn(给 `list --json`)。
+# **configDir 键一律省略** —— 消费侧「缺 configDir」就是「不注入」。
+acct_zero_json() {
+  local with_live="${1:-0}" email logged
+  email="$(acct_zero_email)"
+  logged="$(acct_zero_logged_json)"
+  printf '    { "name": "%s", "email": "%s", "isDefault": false, "mode": "bare"' \
+    "$(json_esc "$ACCOUNT_ZERO_NAME")" "$(json_esc "$email")"
+  if [ "$with_live" = 1 ]; then
+    # exists 恒 true:账号 0 这个「状态」永远存在(裸起 claude 总是可能的)
+    printf ', "exists": true, "loggedIn": %s' "$logged"
+  fi
+  printf ' }'
+}
+
 mf_add()  { MF+=("$1$MF_SEP$2$MF_SEP$3$MF_SEP$4"); }
 mf_set_default() {  # 只留一个 isDefault
   local i n e c d

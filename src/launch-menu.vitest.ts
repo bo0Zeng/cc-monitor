@@ -24,7 +24,15 @@ function acct(name: string, opts: Partial<Account> = {}): Account {
 }
 
 function state(accounts: Account[], available = true): AccountsState {
-  return { origin: "host", available, error: null, meta: null, accounts, defaultName: null };
+  return {
+    origin: "host",
+    available,
+    error: null,
+    meta: null,
+    accounts,
+    defaultName: null,
+    notice: null,
+  };
 }
 
 describe("enumerateAccountModifiers", () => {

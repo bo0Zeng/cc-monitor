@@ -74,6 +74,7 @@ function state(p: Partial<AccountsState>): AccountsState {
     origin: "devbox",
     available: true,
     error: null,
+    notice: null,
     meta: {
       enabled: true,
       acctsDir: "/a",

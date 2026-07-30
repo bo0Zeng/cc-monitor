@@ -17,9 +17,14 @@ import type { LaunchModifiers } from "./launch-plan";
 export interface Account {
   name: string;
   email: string;
-  configDir: string;
+  /**
+   * Z01：**可以是 null** —— 那就是账号 0（「不设 CLAUDE_CONFIG_DIR」这个状态本身）。
+   * 起它 = **什么都不设**（不是设成空串：空值 ≠ 未设）。
+   * 消费侧一律 `?? fallback`，**绝不 `|| ""` 后拼进命令行**。
+   */
+  configDir: string | null;
   isDefault: boolean;
-  /** "isolated"（正常）/ "in-place"（逃生口，不支持切换）。 */
+  /** "isolated"（正常）/ "in-place"（逃生口，不支持切换）/ "bare"（账号 0）。 */
   mode: string;
   exists: boolean;
   /** 仅 stat .credentials.json 存在性——不代表凭据有效。 */
@@ -34,6 +39,8 @@ export interface AccountsMeta {
   sharedStore: string | null;
   count: number;
   error: string | null;
+  /** Z01：远端 daemon 认不认「configDir 缺席 = 账号 0」。旧 daemon 不出这个键 ⇒ undefined。 */
+  accountZeroAware?: boolean;
 }
 
 interface RawAccountsResult {
@@ -41,6 +48,8 @@ interface RawAccountsResult {
   error: string | null;
   meta: AccountsMeta | null;
   accounts: Account[];
+  /** Z01：能用但有缺（远端版本旧到看不见账号 0）时的人话说明。 */
+  notice?: string | null;
 }
 
 export interface SessionAccount {
@@ -69,6 +78,12 @@ export interface AccountsState {
   accounts: Account[];
   /** 本机选择的默认账号（config.json）；缺省跟随 manifest 的 isDefault。 */
   defaultName: string | null;
+  /**
+   * Z01：**能用但有缺**时的人话说明（`available` 仍是 true）。null = 无缺。
+   * 「绝不静默降级」是它存在的全部理由——旧 daemon / 旧 cc-acct-iso 会让账号 0
+   * 从列表里凭空少一行，用户看不出区别。
+   */
+  notice: string | null;
 }
 
 /** chip / 设置组据此决定怎么显示。纯派生自 AccountsState。 */
@@ -76,7 +91,7 @@ export type AccountsUi =
   | { kind: "hidden"; reason: string } // daemonless：完全不显示账号 UI
   | { kind: "needs-update"; reason: string } // 旧 daemon
   | { kind: "not-enabled"; manifestPath: string | null; reason: string } // 未迁移/无账号
-  | { kind: "ready"; accounts: Account[]; defaultName: string | null };
+  | { kind: "ready"; accounts: Account[]; defaultName: string | null; notice: string | null };
 
 // ------------------------------------------------------------ 纯函数
 
@@ -98,7 +113,12 @@ export function deriveUi(state: AccountsState): AccountsUi {
       reason: state.meta?.error ?? "该远端尚未启用多账号",
     };
   }
-  return { kind: "ready", accounts: state.accounts, defaultName: state.defaultName };
+  return {
+    kind: "ready",
+    accounts: state.accounts,
+    defaultName: state.defaultName,
+    notice: state.notice,
+  };
 }
 
 /** 当前生效的默认账号名：本机 defaultName 优先，否则取 manifest isDefault，再否则第一个。 */
@@ -123,6 +143,10 @@ export function currentWorkingAccount(state: AccountsState): Account | null {
 
 /** 某账号是否可被选为默认 / 用来起会话。 */
 export function isSelectable(a: Account): boolean {
+  // Z01：账号 0（mode "bare"）在这里**天然落选**，这正是当前想要的——从 UI 起它需要
+  // 「显式 unset CLAUDE_CONFIG_DIR」这条注入路径，而 launch-plan 今天只会 export。
+  // 若哪天放开，必须**同时**给出 unset 的注入形态：只是「不注入」是错的，远端 rc 里
+  // 那句 `export CLAUDE_CONFIG_DIR=<默认账号>` 会让它落到别的账号上（静默串号）。
   return a.mode === "isolated" && a.loggedIn && a.exists;
 }
 
@@ -199,6 +223,16 @@ export function accountConfigDir(state: AccountsState, name: string): string | n
   const acc = state.accounts.find((a) => a.name === name);
   if (!acc || !isSelectable(acc)) return null;
   return acc.configDir || null;
+}
+
+/**
+ * Z01：这个账号是不是账号 0（「不设 CLAUDE_CONFIG_DIR」这个状态本身）。
+ *
+ * 判据是**结构性**的（`configDir` 缺席），**不认名字**——manifest 想把它叫什么都行，
+ * 前端不硬编码 "0"。空串**不算**：那是非法拼法，daemon 侧已挡掉。
+ */
+export function isAccountZero(a: Account): boolean {
+  return a.configDir === null || a.configDir === undefined;
 }
 
 /** 账号徽章文本（tab 行用）：账号名首字符（ASCII 取前 2，其它取 1 个 code point）。 */
@@ -393,6 +427,7 @@ export async function fetchAccounts(origin: string, force = false): Promise<Acco
       meta: null,
       accounts: [],
       defaultName: null,
+      notice: null,
     };
     accountsCache.set(origin, { at: now, value: state });
     return state;
@@ -405,6 +440,8 @@ export async function fetchAccounts(origin: string, force = false): Promise<Acco
     meta: raw.meta,
     accounts: raw.accounts ?? [],
     defaultName,
+    // Z01：后端算好的降级说明（旧 daemon / 旧 cc-acct-iso ⇒ 列表里少了账号 0）。
+    notice: raw.notice ?? null,
   };
   accountsCache.set(origin, { at: now, value: state });
   return state;
@@ -437,9 +474,13 @@ export interface TrustResult {
   known: boolean;
   error: string | null;
 }
+/**
+ * Z01：`configDir` 传 `null` = 问账号 0（后端走 `--account-trust-zero`，它的
+ * `.claude.json` 在 `$HOME`）。**绝不传空串**——那会被 daemon 判成不安全路径拒掉。
+ */
 export async function checkTrust(
   origin: string,
-  configDir: string,
+  configDir: string | null,
   cwd: string,
 ): Promise<TrustResult> {
   try {
