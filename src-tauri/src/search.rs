@@ -56,6 +56,8 @@ const PER_SESSION_CAP: usize = 30;
 // === wire 类型（camelCase，契约测试守护） ===
 
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResponse {
     /// "ready" | "indexing"
@@ -74,6 +76,8 @@ pub struct SearchResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionHits {
     pub session_id: String,
@@ -82,6 +86,8 @@ pub struct SessionHits {
     pub jsonl_path: String,
     /// ai-title / 首条 user 摘要 / sid 前 8 位 之一
     pub title: String,
+    // **C03 大整数策略**：量纲是**毫秒时间戳**——2^53-1 ms ≈ **28.5 万年**。
+    #[cfg_attr(test, ts(type = "number"))]
     pub updated_at: i64,
     /// 本会话命中总数（可能 > 返回的 hits 长度）
     pub hit_count: u32,
@@ -90,15 +96,21 @@ pub struct SessionHits {
     /// `Some(label)` = 远端机器 label，前端据此加 `[host]` 前缀 + 点击走远端 viewer。
     /// daemon 的 `--search` 输出**不含** origin（远端无身份概念）；由 monitor fan-out
     /// 反序列化后补上。
+    #[cfg_attr(test, ts(optional))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct Hit {
     /// 消息 uuid，前端打开 viewer 后据此滚动定位 + 高亮
     pub uuid: String,
+    // **C03 大整数策略**：量纲是**毫秒时间戳**——2^53-1 ms ≈ **28.5 万年**。
+    // （这一处是**守卫指出来的**：`Hit` 是 `SessionHits` 的传递依赖，我没逐字段读它。）
+    #[cfg_attr(test, ts(type = "number"))]
     pub ts_ms: i64,
     /// "user" | "assistant" | "tool"
     pub kind: String,
@@ -111,11 +123,15 @@ pub struct Hit {
 }
 
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SearchIndexStatus {
     pub ready: bool,
     pub indexed_sessions: u32,
     pub indexed_messages: u32,
+    // **C03 大整数策略**：量纲是**毫秒时间戳**——2^53-1 ms ≈ **28.5 万年**。
+    #[cfg_attr(test, ts(type = "number"))]
     pub built_at_ms: i64,
 }
 

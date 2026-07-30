@@ -22,7 +22,8 @@
  *  - delete 从缓存移除条目，并 -1 project.sessionCount
  */
 
-import { invoke, Channel } from "@tauri-apps/api/core";
+import { Channel } from "@tauri-apps/api/core";
+import { commands } from "../ipc/commands";
 import { SessionViewer, type ViewerOptions } from "./session-viewer";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
@@ -53,20 +54,6 @@ import {
 
 /** 项目级元数据，从 `list_history_projects` 拿。不含 session 内容。
  *  P1.2：后端 wire 全 camelCase（`#[serde(rename_all = "camelCase")]`）。 */
-interface HistoryProject {
-  projectPath: string;
-  projectName: string;
-  /** `<claude_dir>/projects/<encoded-dir>` 的完整路径，作 lazy load 的 key */
-  projectDir: string;
-  sessionCount: number;
-  starredCount: number;
-  hiddenCount: number;
-  lastActivity: number;
-  hasLive: boolean;
-  /** issue #16：数据来源。undefined=本地；host 字符串=远端（组头显示 [host] 徽标，
-   *  展开走 stream_remote_history_sessions）。 */
-  origin?: string;
-}
 
 /** issue #16：项目缓存/展开态的 key。本地 = projectDir；远端用 origin 命名空间隔离
  *  （本地与远端可能有相同的编码目录名，裸 projectDir 会撞 key）。 */
@@ -75,35 +62,23 @@ function projectKey(p: { origin?: string; projectDir: string }): string {
 }
 
 /** 会话级详情，从 `stream_history_sessions_in_project` 流式拿。 */
-interface HistorySessionEntry {
-  sessionId: string;
-  projectPath: string;
-  projectName: string;
-  aiTitle: string | null;
-  firstUserExcerpt: string;
-  startedAt: number;
-  updatedAt: number;
-  jsonlPath: string;
-  isLive: boolean;
-  /** Batch11-F32：CC 后台分身会话（sessionKind:"bg"）——⚙ 徽标防 resume 误选克隆 */
-  isBg?: boolean;
-  messageCountApprox: number;
-  starred: boolean;
-  customTitle: string | null;
-  hidden: boolean;
-  /** issue #12: 若是 /branch fork 出来的，记 parent session id（在本项目内才能建树） */
-  forkedFromSessionId?: string;
-  /** issue #12: fork 处的 parent 消息 uuid（v1 树渲染不显示，将来可点击跳到父消息） */
-  forkedFromMessageUuid?: string;
-  /** issue #16：数据来源。undefined=本地；host=远端（禁用 resume/delete，查看走
-   *  stream_read_remote_session）。 */
-  origin?: string;
-}
 
 /**
  * issue #12: session tree node。child 关系由 forkedFromSessionId 建。
  * 项目内独立树（跨项目 fork 不连接）。parent 不在本项目时 child 当 root + marker。
  */
+// C04d 批 6c：六个线上类型全部换成生成物（源 `history.rs` / `remote_history.rs` / `search.rs`）。
+// 手写版与生成物**逐字等价** ⇒ 零漂移，价值是防将来漂。
+// TS 侧原来的 `SearchHit` / `SearchSessionHits` 只是名字不同，用别名对上 `Hit` / `SessionHits`。
+//
+// `SessionTreeNode` **留手写**：它是前端自己的树形模型（Rust 不认识它），
+// 同账本第 4 行「IR 是前端的意图模型，别拖过边界」。
+import type { HistoryProject } from "../generated/HistoryProject";
+import type { HistorySessionEntry } from "../generated/HistorySessionEntry";
+import type { Hit as SearchHit } from "../generated/Hit";
+import type { SearchResponse } from "../generated/SearchResponse";
+import type { SessionHits as SearchSessionHits } from "../generated/SessionHits";
+
 interface SessionTreeNode {
   entry: HistorySessionEntry;
   children: SessionTreeNode[];
@@ -112,54 +87,14 @@ interface SessionTreeNode {
 }
 
 /** 后端 `update_history_metadata` 返回值；wire 是 camelCase（带 snake_case alias）。 */
-interface EntryMetadata {
-  starred: boolean;
-  customTitle: string | null;
-  hidden: boolean;
-  updatedAt: number;
-  lastAccount?: string | null; // A4：上次用本工具带账号起该会话时记的账号名（源②）
-}
 
 /** 组内会话排序模式（顶层布局固定按工作目录分组，不是 sort 选项）。 */
 type SortMode = "updated_desc" | "started_desc";
 
 /** issue #6: 全文搜索 —— 单条命中的前/中/后三段（matched 前端包 <mark>）。 */
-interface SearchHit {
-  uuid: string;
-  tsMs: number;
-  /** "user" | "assistant" | "tool" */
-  kind: string;
-  before: string;
-  matched: string;
-  after: string;
-}
 
-/** issue #6: 全文搜索 —— 一个会话的命中组。 */
-interface SearchSessionHits {
-  sessionId: string;
-  projectPath: string;
-  projectName: string;
-  jsonlPath: string;
-  title: string;
-  updatedAt: number;
-  hitCount: number;
-  hits: SearchHit[];
-  /** issue #28: 数据来源。undefined=本地；远端=该台 label，渲染 `[host]` 前缀 +
-   *  点击走远端只读视图（origin 透传 openViewer → stream_read_remote_session）。 */
-  origin?: string;
-}
 
 /** issue #6: `search_history` IPC 返回（后端 wire 全 camelCase）。 */
-interface SearchResponse {
-  /** "ready" | "indexing" */
-  status: string;
-  totalHits: number;
-  sessionCount: number;
-  truncated: boolean;
-  indexedSessions: number;
-  indexedMessages: number;
-  sessions: SearchSessionHits[];
-}
 
 /** issue #6: 历史浏览器的两种模式 —— 项目树过滤 vs 内容全文搜索。 */
 type SearchMode = "tree" | "fulltext";
@@ -400,7 +335,7 @@ export class HistoryView {
     // 本地批：每次重扫。失败即整体失败（本地都读不了没得显示）。
     let local: HistoryProject[];
     try {
-      local = await invoke<HistoryProject[]>("list_history_projects");
+      local = await commands.list_history_projects();
     } catch (e) {
       if (seq === this.refreshSeq) this.statusEl.textContent = `加载失败：${String(e)}`;
       return;
@@ -416,9 +351,9 @@ export class HistoryView {
     }
     // 需 fan-out：独立 try——远端连不上/无配置不影响本地浏览。
     try {
-      const res = await invoke<{ projects: HistoryProject[]; failedHosts: string[] }>(
-        "list_remote_history_projects",
-      );
+      // C04d 批 6c：原来是内联字面量 `{ projects: HistoryProject[]; failedHosts: string[] }`
+      // ——它正是 Rust 的 `RemoteProjectsResult`，现在由包装层给出。
+      const res = await commands.list_remote_history_projects();
       if (seq !== this.refreshSeq) return; // 抢占：丢弃过期结果
       const remote = res.projects;
       if (res.failedHosts.length === 0) {
@@ -478,19 +413,29 @@ export class HistoryView {
 
     // issue #16：远端项目走 stream_remote_history_sessions（独立 SSH 连接一次性
     // exec daemon --list-sessions），本地走原 IPC。entry 结构两端一致。
-    const ipc = proj.origin
-      ? "stream_remote_history_sessions"
-      : "stream_history_sessions_in_project";
+    //
+    // **C04d 批 6c：这里原来是「动态派发口」，现在不是了**（同批 6a 的两个 `stream_read_*`）。
+    // 原形态 `const ipc = origin ? "A" : "B"` + `invoke(ipc, 超集args)` 是 C04a 记的
+    // 「7 个命令 TS 静态看不见」盲区的**最后两个**。它从来不是任意字符串，只是在两个
+    // 字面量之间选 ⇒ 改成两次静态调用后：盲区**归零**（119 个命令全部静态可见），
+    // 且两条命令各拿精确签名——**远端那条 `origin` 必填、本地那条根本没有 origin 参数**。
 
     const p = (async () => {
       try {
         // 多机 #30：远端项目带 origin（= 该台 label）让后端按 label 选连哪台；
         // 本地 proj.origin=undefined → JSON 省略，本地命令无感。
-        await invoke(ipc, {
-          projectDir: proj.projectDir,
-          origin: proj.origin,
-          onEntry: channel,
-        });
+        if (proj.origin) {
+          await commands.stream_remote_history_sessions({
+            projectDir: proj.projectDir,
+            origin: proj.origin,
+            onEntry: channel,
+          });
+        } else {
+          await commands.stream_history_sessions_in_project({
+            projectDir: proj.projectDir,
+            onEntry: channel,
+          });
+        }
         // 完成后再画一次（兜底最后一帧没触发 rAF 的边界）
         if (this.isOpen) this.renderList();
       } catch (e) {
@@ -766,11 +711,9 @@ export class HistoryView {
     this.resultsEl.replaceChildren();
     this.statusEl.textContent = "查询索引状态…";
     try {
-      const st = await invoke<{
-        ready: boolean;
-        indexedSessions: number;
-        indexedMessages: number;
-      }>("get_search_index_status");
+      // C04d 批 6c：原来是**更窄**的内联字面量（少了 Rust 侧的 `builtAtMs`）。
+      // 换成生成物后那个字段也在类型里了——宽于原来、与线上一致。
+      const st = await commands.get_search_index_status();
       if (this.searchMode !== "fulltext") return;
       this.statusEl.textContent = st.ready
         ? `输入关键词搜索会话内容（已索引 ${st.indexedSessions} 个会话 / ${st.indexedMessages} 条消息）`
@@ -794,7 +737,7 @@ export class HistoryView {
     }
     this.statusEl.textContent = "搜索中…";
     try {
-      const resp = await invoke<SearchResponse>("search_history", {
+      const resp = await commands.search_history({
         query,
         includeTools: this.includeTools,
         scope: this.searchScope,
@@ -944,7 +887,7 @@ export class HistoryView {
     btn.textContent = "索引中…";
     this.statusEl.textContent = "重新索引中…";
     try {
-      await invoke("rebuild_search_index");
+      await commands.rebuild_search_index();
       // 重建完后若有关键词则重搜，否则刷新空闲提示
       if (this.searchInput.value.trim() !== "") {
         await this.runFullTextSearch();
@@ -1421,7 +1364,7 @@ export class HistoryView {
       proj = ctx.project;
     if (!e || !proj) return;
     try {
-      const next = await invoke<EntryMetadata>("update_history_metadata", {
+      const next = await commands.update_history_metadata({
         sessionId: e.sessionId,
         patch: { starred: !e.starred },
       });
@@ -1444,7 +1387,7 @@ export class HistoryView {
     const next = window.prompt("自定义标题（留空恢复默认）", cur);
     if (next === null) return;
     try {
-      const updated = await invoke<EntryMetadata>("update_history_metadata", {
+      const updated = await commands.update_history_metadata({
         sessionId: e.sessionId,
         patch: { customTitle: next.trim() === "" ? null : next.trim() },
       });
@@ -1460,7 +1403,7 @@ export class HistoryView {
       proj = ctx.project;
     if (!e || !proj) return;
     try {
-      const updated = await invoke<EntryMetadata>("update_history_metadata", {
+      const updated = await commands.update_history_metadata({
         sessionId: e.sessionId,
         patch: { hidden: !e.hidden },
       });
@@ -1487,7 +1430,7 @@ export class HistoryView {
       let rowLastAccount: string | undefined;
       if (!ctx.account) {
         try {
-          const lastMap = await invoke<Record<string, string>>("list_last_accounts");
+          const lastMap = await commands.list_last_accounts();
           rowLastAccount = lastMap?.[ctx.sessionId];
         } catch {
           rowLastAccount = undefined;
@@ -1522,7 +1465,7 @@ export class HistoryView {
       try {
         // F34：用户自定义本地 resume 命令（如 cct）；空 = 后端默认（cc 检测→默认）
         const behavior = await getBehavior();
-        await invoke("resume_history_session", {
+        await commands.resume_history_session({
           sessionId: ctx.sessionId,
           cwd: ctx.cwd,
           launcher: behavior.resumeCommandLocal || null,
@@ -1555,7 +1498,7 @@ export class HistoryView {
         // 任何 IPC 之前跑），new 分支没有 sid 需要拦截，`getBehavior()` 是 remote 分支也要用的
         // 共享读取，不为这里的顺序特意重排。
         validateLocalLaunch({ kind: "new" }, ctx.cwd);
-        await invoke("new_local_session", {
+        await commands.new_local_session({
           cwd: ctx.cwd,
           launcher: behavior.resumeCommandLocal || null,
         });
@@ -1586,7 +1529,7 @@ export class HistoryView {
       );
       if (!ok2) return;
       try {
-        await invoke("delete_remote_history_session", {
+        await commands.delete_remote_history_session({
           origin: e.origin,
           jsonlPath: e.jsonlPath,
         });
@@ -1600,7 +1543,7 @@ export class HistoryView {
       );
       if (!ok) return;
       try {
-        await invoke("delete_history_session", {
+        await commands.delete_history_session({
           sessionId: e.sessionId,
           jsonlPath: e.jsonlPath,
         });

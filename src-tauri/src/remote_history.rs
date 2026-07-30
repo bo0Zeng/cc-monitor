@@ -184,6 +184,8 @@ pub async fn aggregate_remote_usage_all() -> Vec<crate::usage::SessionUsageRow> 
 /// 「某台失败缺项」与「某台真的无项目」。带上 `failed_hosts` 让前端判断「部分失败」：部分失败
 /// 时**不冻结 TTL 缓存**（下次 open 重试失败台），避免瞬断台的项目在缓存里消失整个 TTL 窗口。
 #[derive(serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteProjectsResult {
     pub projects: Vec<HistoryProject>,

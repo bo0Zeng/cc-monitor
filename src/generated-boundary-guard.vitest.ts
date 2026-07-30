@@ -110,7 +110,7 @@ describe("C01 边界生成物", () => {
   it("派生 ts_rs::TS 的 Rust 源文件恰好 13 个（自动发现的范围自检）", () => {
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(22);
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(24);
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -142,9 +142,13 @@ describe("C01 边界生成物", () => {
       "DataPathInfo.ts", //           C01
       "DataPathsResponse.ts", //      C01
       "DiagnosticsConfig.ts", // C04d 批4
+      "EntryMetadata.ts", // C04d 批6c
       "ForkedFrom.ts", //             C04c
       "ForwardStatus.ts", //          C04d 批3（`connCount: u64` 按累计连接数量纲论证）
       "FrontendReadyPayload.ts", //   C02（方向相反的那个：TS → Rust，带 Deserialize）
+      "HistoryProject.ts", // C04d 批6c
+      "HistorySessionEntry.ts", // C04d 批6c（两个 stream_* 的 Channel 载荷）
+      "Hit.ts", // C04d 批6c（SessionHits 的传递依赖；`ts_ms` 是**守卫指出来**我才补的）
       "HookState.ts", //              C04d 批3（serde(tag="kind", kebab-case) 内部标记枚举）
       "HooksDiagnosis.ts", //         C04d 批3
       "HooksReport.ts", //            C04d 批3
@@ -161,11 +165,15 @@ describe("C01 边界生成物", () => {
       "ProfileScan.ts", // C04d 批5a（`size_bytes: u64` 按字节数量纲论证）
       "PushResult.ts", // C04d 批5c（**我用 grep 漏掉的那个跨行调用点**）
       "RemoteHealthPayload.ts", //    C02
+      "RemoteProjectsResult.ts", // C04d 批6c
       "RemoteSessionAddedPayload.ts", // C02
       "ResolvedHost.ts", // C04d 批5c
       "RestartHint.ts", // C04d 批4（只有 unit variant 的外部标记枚举 → 字面量联合）
+      "SearchIndexStatus.ts", // C04d 批6c
+      "SearchResponse.ts", // C04d 批6c
       "SessionActivityPayload.ts", // C02
       "SessionEndedPayload.ts", //    C02
+      "SessionHits.ts", // C04d 批6c
       "SessionIdlePayload.ts", //     C02
       "SessionStartedPayload.ts", //  C02
       "SessionUsageRow.ts", //        C04d 批3（**抓到漂移**：origin 手写成 ?: string，线上恒有可为 null）
@@ -282,7 +290,10 @@ describe("C01 边界生成物", () => {
     // 计数自检用等号：`data_paths.rs::size_bytes` 1 + `tasks.rs::description/active_form` 2
     // + C04c 新增的 `bridge.rs::JsonlLinePayload.origin` 1 + `messages.rs::ApiMessage.stop_reason` 1
     // = **5 处**。加了新的必须红一次，确认新那处也配了。
-    expect(checked, `期望恰好 5 处 skip_serializing_if，实得 ${checked}`).toBe(5);
+    // **C04d 批 6c：5 → 10。** 新增 5 处都在 history/search 一族：
+    // `HistoryProject.origin` · `HistorySessionEntry.origin` ·
+    // `HistorySessionEntry.forked_from_session_id`/`forked_from_message_uuid` · `SessionHits.origin`。
+    expect(checked, `期望恰好 10 处 skip_serializing_if，实得 ${checked}`).toBe(10);
   });
 
   it("每一个 u64/i64 字段都配了 ts(type = …)——C03 的大整数策略，打在源上", () => {
@@ -353,7 +364,12 @@ describe("C01 边界生成物", () => {
     // **批 4 再 → 14**：`logging.rs` 的 `current_size_bytes`/`size_bytes`（字节数量纲）
     // 与 `modified_ms`（毫秒时间戳量纲）——**两个量纲的上限论证在 Rust 侧分开写**，
     // 混成一条是 C03 明确禁止的。
-    expect(checked, `期望恰好 15 个大整数字段，实得 ${checked}`).toBe(15);
+    // **C04d 批 6c：15 → 22。** 新增 7 个**全是毫秒时间戳**量纲：
+    // `HistoryProject.last_activity` · `HistorySessionEntry.started_at`/`updated_at` ·
+    // `EntryMetadata.updated_at` · `SearchIndexStatus.built_at_ms` ·
+    // `SessionHits.updated_at` · **`Hit.ts_ms`（这个是守卫指出来的**——`Hit` 是
+    // `SessionHits` 的传递依赖，我没逐字段读它就派生了）。
+    expect(checked, `期望恰好 22 个大整数字段，实得 ${checked}`).toBe(22);
   });
 
   it("`Option<大整数>` 配 ts(type) 时不许丢掉 `| null`（除非同时有 ts(optional)）", () => {
@@ -456,10 +472,13 @@ describe("C01 边界生成物", () => {
     // 注意 `src/ipc/commands.ts` **算在里面**——包装层就是最终该剩下的那 1 个。
     // 裸 `grep 'import { invoke }'` 只有 24，因为有文件是多名导入（`import { invoke, Channel }`）
     // ——这正是原来那个 29 容易被量错的原因，所以这里用正则而不是字面量。
-    // C04d：批1 29→23 · 批2 23→19 · 批3 19→14 · 批4 14→12 · 批5a 12→10 · 批5b 10→8 · 批5c 8→7 · 批6a 7→6 · 批6b 6→**5**（1 个文件；
+    // C04d：批1 29→23 · 批2 23→19 · 批3 19→14 · 批4 14→12 · 批5a 12→10 · 批5b 10→8 · 批5c 8→7 · 批6a 7→6 · 批6b 6→5 · 批6c 5→**4**（1 个文件；
     // `accounts.ts` 那 1 个**被跨工作区冲突协议挡住**，见 features/C04d §3d）。最终形态是
     // 「1 个包装层 + `tabs.ts`（等授权）+ 1 个动态派发逃生口」= 3，见主计划 §0.1 标准 4。
-    expect(hits.length, `期望恰好 5 个，实得 ${hits.length}`).toBe(5);
+    // **C04d 批 6c：5 → 4。** 剩下这 4 个就是最终形态：
+    // `ipc/commands.ts`（包装层自己）· `tabs.ts`（等红线授权）·
+    // `accounts.ts`（等 account-zero 的 Z02，跨工作区冲突协议）· `panorama/api.ts`（批 7 待做）。
+    expect(hits.length, `期望恰好 4 个，实得 ${hits.length}`).toBe(4);
     expect(hits.map((f) => f.replace(/\\/g, "/")), "包装层自己必须在名单里").toContain(
       "src/ipc/commands.ts",
     );
