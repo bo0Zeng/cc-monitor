@@ -50,6 +50,175 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use walkdir::WalkDir;
 
+// ============ P2（zero-poll-liveness）：统一事件 channel + pidfd 判活 ============
+//
+// **账本第 1 行的最终形态在这里建立**（`.claude/planned-build/zero-poll-liveness/MASTERPLAN.md` §3）：
+// `watch_loop` 阻塞在**无超时 `recv()`** 上、消费**单一** `mpsc<WatchEvent>`。
+// 所有事件源（notify / pidfd / tmux 探测）都往这一个 channel 发。
+//
+// **给 P3/P4 的硬约束**：往里**加事件源**，**不许**各自再挂一条独立线程 + 定时器
+// ——那正是"补丁叠补丁"。加一个 `WatchEvent` 变体 + 一个发送方即可。
+//
+// P2 之前这里有两条轮询：
+// - **轮询 A**（本功能消掉）：循环 tick 2s（`recv_timeout` 的超时值本身）驱动的判活扫描，
+//   遍历 `state.sessions` 调 `session_alive` 检「pidfile 还在但 PID 已死」+ PID 复用。
+// - **轮询 B**（**刻意留到 P5**）：`TMUX_EMIT_INTERVAL` = 8s 的 `tmux ls`。P2 把它从
+//   "主循环里的节流判断"搬进一条独立 ticker 线程（见 `spawn_tmux_ticker`），
+//   使主循环**现在**就是最终形态；P5 删 ticker 线程即可，不必再动循环结构。
+
+/// P2：`watch_loop` 消费的统一事件。
+enum WatchEvent {
+    /// 文件系统事件（`notify-debouncer-mini` 经 [`DebouncerSink`] 转投进来）。
+    Notify(DebounceEventResult),
+    /// **pidfd 醒了**：这个 pidfile 当时追踪的那个进程实例已退出。
+    ///
+    /// 带 `pid` 是为了挡**陈旧唤醒**：同一 pidfile 路径可能已换成别的 pid
+    /// （`/clear` 原地换 sid、PID 复用写同路径），或已被移除。消费侧比对
+    /// `state.sessions[key].pid == pid` 才退休 ⇒ 天然幂等。
+    PidDied { key: PathBuf, pid: u32 },
+    /// 一次性 `tmux ls` 探测线程的结果。
+    TmuxObserved(TmuxObservation),
+    /// tmux 探测节拍——**本 crate 剩下的唯一定时器**，住在独立 ticker 线程里。**P5 删。**
+    TmuxProbeDue,
+    /// 预留给 P5：删掉 ticker 之后，主循环需要一条**显式**的停机信号才能及时
+    /// 发现 stdout 写端已关（`sink.is_closed()` 现在靠 ticker 每 8s 醒一次来复查）。
+    ///
+    /// **P5 必须做**：删 ticker 的同时把写端关闭接到这个变体上，否则 reader 线程
+    /// 会一直阻塞在 `recv()`（进程退出时才随之消亡——不是泄漏，但不再"没人听就停读"）。
+    #[allow(dead_code)]
+    Shutdown,
+}
+
+/// P2：把 debouncer 的事件转投进统一 channel（零额外线程——`notify` 本来就在自己的
+/// 线程里回调 handler，这里只是换个投递目标）。
+struct DebouncerSink(std::sync::mpsc::Sender<WatchEvent>);
+
+impl notify_debouncer_mini::DebounceEventHandler for DebouncerSink {
+    fn handle_event(&mut self, event: DebounceEventResult) {
+        // 接收端已走（reader 退出）⇒ 丢弃即可，不 panic。
+        let _ = self.0.send(WatchEvent::Notify(event));
+    }
+}
+
+/// P2：`pidfd_open(2)`。绑的是**进程实例本身**而不是 pid 数字 ⇒ **PID 复用在机制上
+/// 不存在**（不是"检测得更准"，是"无从发生"）。这是本工作区唯一一条正确性改进。
+///
+/// 需 Linux 5.3+（本机 7.0）。失败最常见的是 `ESRCH`——目标在 open 之前就没了。
+fn pidfd_open(pid: u32) -> std::io::Result<std::os::fd::OwnedFd> {
+    use std::os::fd::FromRawFd;
+    // SAFETY：`SYS_pidfd_open` 只读地为目标进程创建一个 fd，不解引用任何指针。
+    // 返回值 <0 时按 errno 处理、不构造 OwnedFd；>=0 时它是一个我们独占的新 fd，
+    // 交给 OwnedFd 接管所有权（唯一持有者，Drop 时 close）。
+    let rc = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0 as libc::c_uint) };
+    if rc < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY：rc 是刚由内核分配、无人持有的合法 fd。
+    Ok(unsafe { std::os::fd::OwnedFd::from_raw_fd(rc as i32) })
+}
+
+/// P2：给一个 pidfile 挂 pidfd 看守。**零轮询**——线程阻塞在无超时 `poll(2)` 上，
+/// 由**内核**在目标进程终止时唤醒。
+///
+/// 三条判据，按顺序：
+/// 1. `pidfd_open` 失败（`ESRCH` 等）⇒ 目标已不在 ⇒ 立刻发 `PidDied`。
+/// 2. open 成功后**再读一次** `proc_starttime` 与 add 时捕获的基线比对
+///    （复用既有纯函数 `is_same_live_process`）：不符 = 在"读 pidfile"与
+///    "开 pidfd"之间发生了 PID 复用 ⇒ 我们开到的是冒名者 ⇒ 发 `PidDied`。
+///    **这就是原先那套 procStart 启发式的全部去处**——从"每 2s 复查一遍"
+///    降级为"开 pidfd 时校验一次"，之后靠内核，不再需要周期比对。
+/// 3. 起线程 `poll(pidfd, POLLIN, -1)`；醒了发 `PidDied`。
+///
+/// **线程数的界**：每个被追踪的 (pidfile, pid) 最多一条，实际是个位数
+/// （一台机器上同时活着的 CC 交互会话数）。线程活到目标进程真正退出为止——
+/// 若 pidfile 先被删而进程仍在，那条线程会继续等，等到进程退出时发一条
+/// **陈旧唤醒**，被消费侧的 pid 比对挡掉（无副作用）。
+///
+/// **`poll` 真出错（非 `EINTR`）时刻意不发 `PidDied`**：宁可让会话留在 live、
+/// 等 pidfile 删除或断连来收，也不因一次系统调用失败就误归档——与本文件
+/// `is_same_live_process` 头注那条「瞬时读失败绝不误归档」同一条纪律。
+fn spawn_pid_watcher(
+    key: PathBuf,
+    pid: u32,
+    expected_start: Option<u64>,
+    tx: std::sync::mpsc::Sender<WatchEvent>,
+) {
+    let fd = match pidfd_open(pid) {
+        Ok(fd) => fd,
+        Err(e) => {
+            tracing::debug!("pidfd_open pid {pid} 失败（目标已不在？）: {e}");
+            let _ = tx.send(WatchEvent::PidDied { key, pid });
+            return;
+        }
+    };
+    // 判据 2：open 之后复核身份（挡 pidfile 读取 → pidfd_open 之间的 PID 复用）。
+    // 用既有的 `session_alive`（存在性 + 同实例），语义正是这里要的；顺带覆盖
+    // "pidfd 开成功但进程在这一瞬已退出"。
+    if !session_alive(pid, expected_start) {
+        tracing::warn!("pidfd 开到的 pid {pid} 与 pidfile 基线不符（PID 复用）⇒ 当死");
+        let _ = tx.send(WatchEvent::PidDied { key, pid });
+        return;
+    }
+    let builder = std::thread::Builder::new().name(format!("pidfd-{pid}"));
+    let spawned = builder.spawn(move || {
+        use std::os::fd::AsRawFd;
+        let raw = fd.as_raw_fd();
+        let mut pfd = libc::pollfd {
+            fd: raw,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        loop {
+            // SAFETY：pfd 是栈上的一个合法 pollfd，nfds=1 与之匹配；timeout=-1 = 无限等。
+            // `fd` 的所有权在本闭包里，poll 期间不会被 close。
+            let n = unsafe { libc::poll(&mut pfd as *mut libc::pollfd, 1, -1) };
+            if n >= 0 {
+                let _ = tx.send(WatchEvent::PidDied { key, pid });
+                return;
+            }
+            let err = std::io::Error::last_os_error();
+            if err.kind() == std::io::ErrorKind::Interrupted {
+                continue; // EINTR：接着等
+            }
+            // 真错误：**不**报死（见头注）。
+            tracing::warn!("pidfd poll pid {pid} 失败、放弃看守（不报死）: {err}");
+            return;
+        }
+    });
+    if let Err(e) = spawned {
+        tracing::warn!("起 pidfd 看守线程失败 pid {pid}: {e}");
+    }
+}
+
+/// P2：挂 pidfd 看守的幂等入口。`events_tx` 为 `None`（单元测试）时什么都不做。
+fn arm_pid_watcher(key: &Path, pid: u32, expected_start: Option<u64>, state: &mut ReaderState) {
+    let Some(tx) = state.events_tx.clone() else {
+        return;
+    };
+    if !state.pid_watched.insert((key.to_path_buf(), pid)) {
+        return; // 这个 (pidfile, pid) 已经挂过了
+    }
+    spawn_pid_watcher(key.to_path_buf(), pid, expected_start, tx);
+}
+
+/// P2：tmux 探测节拍线程——**本 crate 剩下的唯一定时器**。
+///
+/// 把 8s 节流从主循环里搬出来，是为了让主循环**现在**就变成账本第 1 行的最终形态
+/// （无超时 `recv()`）；**P5 删掉本函数即可**，不必再动循环结构。
+/// 立刻发一拍再进入 sleep ⇒ 保留原「首轮立即发」行为（monitor 连上尽快拿到 tmux 状态）。
+fn spawn_tmux_ticker(tx: std::sync::mpsc::Sender<WatchEvent>) {
+    let builder = std::thread::Builder::new().name("tmux-ticker".to_string());
+    let spawned = builder.spawn(move || {
+        // send 失败 = reader 走了 ⇒ 线程自然结束。
+        while tx.send(WatchEvent::TmuxProbeDue).is_ok() {
+            std::thread::sleep(TMUX_EMIT_INTERVAL);
+        }
+    });
+    if let Err(e) = spawned {
+        tracing::warn!("起 tmux ticker 线程失败: {e}");
+    }
+}
+
 /// Bounded channel capacity between the reader and the stdout writer.
 ///
 /// Large enough to absorb a `/resume` history burst without dropping, small
@@ -226,6 +395,16 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool, tail_
     // the channel drains enough to accept it (#32). Never blocks this reader.
     let mut sink = FrameSink::new(tx);
 
+    // P2：**唯一**的事件 channel（账本第 1 行最终形态）。notify / pidfd / tmux 全走它。
+    //
+    // **刻意建在 Phase 1 之前**：`process_session_added` 会顺手挂 pidfd 看守，而 Phase 1 的
+    // 初始扫描就在调它。若把 channel 建在 Phase 2（本功能初版就是这么写的、被 clippy 的
+    // 「field `start` is never read」间接暴露），**daemon 启动时就活着的会话会一个看守都没有**
+    // ——而原先那条 2s 判活轮询是覆盖它们的 ⇒ 那是回归。Phase 1 期间发出的 `PidDied` 只是
+    // 在 channel 里排队，主循环起来后照常消费。
+    let (events_tx, events_rx) = std::sync::mpsc::channel::<WatchEvent>();
+    state.events_tx = Some(events_tx.clone());
+
     // --- Phase 1: synchronous initial scan. ---
     // Mirror the LOCAL watcher's `active_filter` (`session_map.is_session_active`):
     // only stream sessions whose PID is alive (sessions/<PID>.json + /proc/<pid>).
@@ -244,8 +423,10 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool, tail_
     }
 
     // --- Phase 2: live watch. ---
-    let (notify_tx, notify_rx) = std::sync::mpsc::channel::<DebounceEventResult>();
-    let mut debouncer = match new_debouncer(Duration::from_millis(DEBOUNCE_MS), notify_tx) {
+    let mut debouncer = match new_debouncer(
+        Duration::from_millis(DEBOUNCE_MS),
+        DebouncerSink(events_tx.clone()),
+    ) {
         Ok(d) => d,
         Err(e) => {
             tracing::error!("debouncer init failed: {e}");
@@ -274,20 +455,21 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool, tail_
         tracing::warn!("sessions dir does not exist: {}", sessions.display());
     }
 
-    // B2：tmux 状态上报节流器。None=从未发 → 首轮立即发（monitor 连上尽快拿到 tmux 状态）。
-    let mut last_tmux_emit: Option<std::time::Instant> = None;
-    // B2 审计（run_tmux_ls 无超时 → 阻塞会冻结整个 reader）：把 `tmux ls` 放到一次性后台线程跑，
-    // watch_loop 只做非阻塞 try_recv。gate 在「无在途探测」上 → 最多同时一个探测线程；即便远端 tmux
-    // 卡死（D-state/socket 卡住/NFS home），也只泄漏这一个后台线程，reader（Line/notify/判活）永不冻结。
-    let mut tmux_inflight: Option<std::sync::mpsc::Receiver<TmuxObservation>> = None;
+    // B2 审计（`run_tmux_ls` 无超时 → 阻塞会冻结整个 reader）：`tmux ls` 一律跑在**一次性后台
+    // 线程**里，主循环只收结果。gate 在「无在途探测」上 → 最多同时一个探测线程；即便远端 tmux
+    // 卡死（D-state/socket 卡住/NFS home），也只泄漏这一个后台线程，reader 永不冻结。
+    let mut tmux_inflight = false;
+    // P2：轮询 B（8s）从"主循环里的节流判断"搬进独立 ticker 线程 ⇒ 主循环变成最终形态。
+    // **P5 删掉这一行 + `spawn_tmux_ticker` 即可**（并按 `WatchEvent::Shutdown` 的注释接停机信号）。
+    spawn_tmux_ticker(events_tx.clone());
 
-    // Live loop with a 2s poll tick. The tick detects a session whose PID died
-    // WITHOUT its sessions/<PID>.json being deleted (Claude Code can leave a
-    // stale file when force-killed) — mirroring the local STILL_ACTIVE check —
-    // and archives that Tab via SessionRemoved.
-    loop {
-        match notify_rx.recv_timeout(Duration::from_secs(2)) {
-            Ok(Ok(events)) => {
+    // P2：**无超时** `recv()`——本循环再没有任何定时器（轮询 A 已由 pidfd 取代）。
+    // 事件源：notify（经 DebouncerSink）· pidfd 看守线程 · tmux 探测/节拍线程。
+    // **P3/P4 只往 `WatchEvent` 加变体 + 加发送方，不许再挂独立定时器。**
+    // `while let Ok(..)` = 所有发送端都掉了就结束（等价于原来的 Disconnected 分支）。
+    while let Ok(event) = events_rx.recv() {
+        match event {
+            WatchEvent::Notify(Ok(events)) => {
                 for ev in events {
                     let p = ev.path.as_path();
                     if is_jsonl(p) && !is_subagent_path(p) {
@@ -304,52 +486,34 @@ fn watch_loop(claude_dir: PathBuf, tx: mpsc::Sender<Frame>, with_bg: bool, tail_
                     }
                 }
             }
-            Ok(Err(errs)) => tracing::warn!("debouncer error: {errs:?}"),
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-        }
-
-        // Liveness poll: archive sessions whose PID is no longer alive OR whose
-        // PID was reused by a different process (procStart mismatch, #34).
-        // Batch6-F22-②：引用计数感知——同 sid 可能有多个 pidfile（resume 时原
-        // 进程未死），任一 PID 死亡不再误杀整个 sid。
-        let dead: Vec<PathBuf> = state
-            .sessions
-            .iter()
-            .filter(|(_, e)| !session_alive(e.pid, e.start))
-            .map(|(k, _)| k.clone())
-            .collect();
-        for k in dead {
-            if let Some(e) = state.sessions.remove(&k) {
-                retire_sid_if_unreferenced(&e.sid, &mut state, &mut sink);
-            }
-        }
-
-        // B2：周期在本机跑 tmux ls 发 TmuxSessions 帧（替 monitor 每 8s 新建 SSH 跑 tmux ls 的刷屏）。
-        // 循环每 ≤2s 转一圈（notify 超时），节流到 TMUX_EMIT_INTERVAL；首轮立即发。
-        // run_tmux_ls 无超时 → 必须跑在**独立线程**（见 tmux_inflight 注释），watch_loop 只非阻塞收结果。
-        if let Some(rx) = tmux_inflight.as_ref() {
-            match rx.try_recv() {
-                Ok(obs) => {
-                    // P1：四态 → wire（`raw` 载荷不变、新信息走 additive `observation`）。
-                    sink.send(observation_to_frame(obs));
-                    tmux_inflight = None;
+            WatchEvent::Notify(Err(errs)) => tracing::warn!("debouncer error: {errs:?}"),
+            // P2：pidfd 醒了 = 该 pidfile 当时追踪的**那个进程实例**已退出。取代原先
+            // 每 2s 遍历 `state.sessions` 调 `session_alive` 的判活扫描。
+            // **pid 比对挡陈旧唤醒**（同路径已换 pid / 已被移除）⇒ 幂等。
+            // Batch6-F22-② 的引用计数语义原样保留：经 `retire_sid_if_unreferenced`，
+            // 同 sid 多 pidfile（resume 时原进程未死）任一 PID 死亡不误杀整个 sid。
+            WatchEvent::PidDied { key, pid } => {
+                if state.sessions.get(&key).map(|e| e.pid) == Some(pid) {
+                    if let Some(e) = state.sessions.remove(&key) {
+                        retire_sid_if_unreferenced(&e.sid, &mut state, &mut sink);
+                    }
                 }
-                // 探测仍在跑（含卡死）：不阻塞、下一轮再看。
-                Err(std::sync::mpsc::TryRecvError::Empty) => {}
-                // 线程未发结果就退出（不应发生）：清掉、下个间隔重试。
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => tmux_inflight = None,
             }
-        }
-        if tmux_inflight.is_none()
-            && last_tmux_emit.is_none_or(|t| t.elapsed() >= TMUX_EMIT_INTERVAL)
-        {
-            let (tmux_tx, tmux_rx) = std::sync::mpsc::channel();
-            std::thread::spawn(move || {
-                let _ = tmux_tx.send(run_tmux_ls());
-            });
-            tmux_inflight = Some(tmux_rx);
-            last_tmux_emit = Some(std::time::Instant::now());
+            WatchEvent::TmuxProbeDue => {
+                if !tmux_inflight {
+                    tmux_inflight = true;
+                    let tx = events_tx.clone();
+                    std::thread::spawn(move || {
+                        let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_ls()));
+                    });
+                }
+            }
+            WatchEvent::TmuxObserved(obs) => {
+                tmux_inflight = false;
+                // P1：四态 → wire（`raw` 载荷不变、新信息走 additive `observation`）。
+                sink.send(observation_to_frame(obs));
+            }
+            WatchEvent::Shutdown => break,
         }
 
         if sink.is_closed() {
@@ -380,6 +544,15 @@ struct ReaderState {
     /// liveness poll detect both a dead process AND a **reused PID** (#34); the
     /// cached sid lets a file-delete still emit the right `SessionRemoved`.
     sessions: HashMap<PathBuf, SessionEntry>,
+    /// P2：统一事件 channel 的发送端，由 `watch_loop` 注入。
+    /// **测试里为 `None`** ⇒ 不起 pidfd 看守线程（11 处 `ReaderState::new` 因此无需改签名；
+    /// pidfd 本身由专门的双向验收测试覆盖，见 `pidfd_*` 那几条）。
+    events_tx: Option<std::sync::mpsc::Sender<WatchEvent>>,
+    /// P2：已挂过 pidfd 看守的 **(pidfile, pid) 对**——防同一进程重复起线程。
+    /// **按对而不是按路径**：同路径换了 pid（`/clear` 原地换 sid、PID 复用写同路径）
+    /// 要能重新挂；而按对存就不必在任何移除路径上做清理（陈旧条目至多一个/对，
+    /// 且 daemon 生命周期 ⊆ 一次 SSH 连接）。
+    pid_watched: HashSet<(PathBuf, u32)>,
     /// Fast membership for the active-session filter: sids currently streaming.
     /// Mirrors the local watcher's `active_filter` — only sessions whose PID is
     /// alive on this host stream; historical jsonl is NOT pulled (that is the
@@ -402,6 +575,8 @@ impl ReaderState {
             offsets: HashMap::new(),
             seqs: SeqCounter::new(),
             sessions: HashMap::new(),
+            events_tx: None,
+            pid_watched: HashSet::new(),
             active_sids: HashSet::new(),
             with_bg,
             tail_only,
@@ -429,7 +604,10 @@ impl ReaderState {
 struct SessionEntry {
     pid: u32,
     sid: String,
-    start: Option<u64>,
+    // P2：原先这里有个 `start: Option<u64>`——**那是 2s 判活轮询的 procStart 基线**
+    // （每轮拿它跟 /proc 现值比对判 PID 复用）。pidfd 取代轮询后基线只在**挂看守那一刻**
+    // 用一次（`arm_pid_watcher` 的实参），之后身份由内核保证 ⇒ 不必再存在 entry 里。
+    // 删它是"轮询消失 ⇒ 它的状态也消失"，不是丢信息。
     /// Batch9-F27：pidfile 的官方 status（busy/idle/shell/waiting）与 waitingFor
     /// ——modify 事件 diff，变了发 session_status 帧（远端红绿灯）。
     status: Option<String>,
@@ -723,17 +901,21 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // #34: the poll baseline. Reuse the very ticks the verdict just examined —
     // no second /proc read, so no verdict-to-baseline TOCTOU window.
     let start = current_ticks;
+    // P2：`key` 下面被 insert 消耗掉，先留一份给 pidfd 看守用。
+    let key_for_watch = key.clone();
     state.sessions.insert(
         key,
         SessionEntry {
             pid,
             sid: sid.clone(),
-            start,
             status: meta_str("status"),
             waiting_for: meta_str("waitingFor"),
         },
     );
     state.active_sids.insert(sid.clone());
+    // P2：给这个进程实例挂 pidfd 看守（取代原先每 2s 一遍的判活扫描）。
+    // `start` 就是上面 verdict 用过的那次 /proc 读，不再多读一次。
+    arm_pid_watcher(&key_for_watch, pid, start, state);
     // Batch8-F25：先定位该 sid 的 jsonl（帧要带 path 供 monitor 旁路快照；
     // mtime 降序，first=当前活跃文件。会话刚起还没写首行时为空 → path=None，
     // 此时无历史可拉，后续行天然从 tail 全量到达）。
@@ -1218,6 +1400,231 @@ fn path_key(p: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ---------- P2（zero-poll-liveness）：pidfd 判活 ----------
+
+    /// 起一个**假**进程当靶子。**绝不起真实已认证的 claude/codex**——这里只要一个
+    /// 「活着、能被杀、pid 可拿」的进程，`sleep` 足够。
+    fn spawn_target() -> std::process::Child {
+        std::process::Command::new("sleep")
+            .arg("30")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn sleep")
+    }
+
+    /// `pidfd_open` 的基本性质：自己开得开；不存在的 pid 开不开。
+    ///
+    /// 不存在的 pid 取一个刚退出并已回收的子进程 pid——比硬编码一个大数可靠
+    /// （大数也可能恰好被占）。
+    #[test]
+    fn pidfd_open_works_for_self_and_fails_for_dead_pid() {
+        assert!(
+            pidfd_open(std::process::id()).is_ok(),
+            "自己的 pid 必须开得开"
+        );
+
+        let mut child = spawn_target();
+        let dead_pid = child.id();
+        child.kill().expect("kill");
+        child.wait().expect("reap"); // 回收，pid 彻底消失
+        let err = pidfd_open(dead_pid).expect_err("已回收的 pid 不该开得开");
+        assert_eq!(
+            err.raw_os_error(),
+            Some(libc::ESRCH),
+            "应是 ESRCH，实得 {err:?}"
+        );
+    }
+
+    /// ★ **双向验收（本功能 DoD 的硬项）**：杀 → 事件真的到；不杀 → 事件不到。
+    ///
+    /// 只测"杀了会到"是不够的——一个恒发 `PidDied` 的实现也能让那半边绿。
+    /// 反方向那半边才是钉住"事件由**目标进程退出**驱动"的那条。
+    ///
+    /// 测试里用 `recv_timeout` 是可以的：**要求零定时器的是生产循环**，不是测试。
+    #[test]
+    fn pidfd_watcher_fires_on_death_and_stays_silent_while_alive() {
+        let key = PathBuf::from("/tmp/ccm-p2-fixture/1234.json");
+        let mut child = spawn_target();
+        let pid = child.id();
+        let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
+        // expected_start=None ⇒ 判据 2 退化成存在性（`is_same_live_process` 的 `_ => true` 臂）。
+        spawn_pid_watcher(key.clone(), pid, None, tx);
+
+        // —— 反方向：目标还活着 ⇒ 不该有任何事件 ——
+        match rx.recv_timeout(Duration::from_millis(400)) {
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            other => panic!("目标活着时不该有事件，实得 {:?}", other.is_ok()),
+        }
+
+        // —— 正方向：杀掉 ⇒ 内核唤醒 poll ⇒ 事件到 ——
+        child.kill().expect("kill");
+        let got = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("杀掉后必须收到 PidDied（超时 = pidfd 没被内核唤醒）");
+        match got {
+            WatchEvent::PidDied { key: k, pid: p } => {
+                assert_eq!(k, key, "带回的 key 必须是挂看守时那个");
+                assert_eq!(
+                    p, pid,
+                    "带回的 pid 必须是挂看守时那个（消费侧靠它挡陈旧唤醒）"
+                );
+            }
+            _ => panic!("期望 PidDied"),
+        }
+        child.wait().expect("reap");
+    }
+
+    /// 判据 1：`pidfd_open` 失败（目标已不在）⇒ **立刻**发 `PidDied`，不静默丢。
+    #[test]
+    fn pidfd_watcher_reports_dead_when_open_fails() {
+        let mut child = spawn_target();
+        let pid = child.id();
+        child.kill().expect("kill");
+        child.wait().expect("reap");
+
+        let key = PathBuf::from("/tmp/ccm-p2-fixture/dead.json");
+        let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
+        spawn_pid_watcher(key.clone(), pid, None, tx);
+        match rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("open 失败必须立刻报死")
+        {
+            WatchEvent::PidDied { key: k, pid: p } => {
+                assert_eq!((k, p), (key, pid));
+            }
+            _ => panic!("期望 PidDied"),
+        }
+    }
+
+    /// ★ 判据 2：**PID 复用**（open 之后身份复核不符）⇒ 当死。
+    ///
+    /// 造法：给一个**活着**的进程配一个**对不上**的 procStart 基线。真实场景里这等价于
+    /// 「读 pidfile 拿到 (pid, start) → 那个进程死了 → 别人占了同一个 pid → 我们开到了冒名者」。
+    /// 这一格是原先那套 procStart 启发式的全部去处：从"每 2s 复查"降成"挂看守时校验一次"。
+    #[test]
+    fn pidfd_watcher_rejects_reused_pid_via_start_mismatch() {
+        let mut child = spawn_target();
+        let pid = child.id();
+        let real = proc_starttime(pid);
+        assert!(real.is_some(), "本机应能读到 /proc/<pid>/stat 的 starttime");
+        // 刻意错开：真值 + 1 ⇒ `is_same_live_process(true, Some(a), Some(b))` 的 a != b 臂。
+        let bogus = real.map(|t| t + 1);
+
+        let key = PathBuf::from("/tmp/ccm-p2-fixture/reused.json");
+        let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
+        spawn_pid_watcher(key.clone(), pid, bogus, tx);
+        match rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("基线不符必须立刻报死（否则会把冒名者当成原会话一直判活）")
+        {
+            WatchEvent::PidDied { key: k, pid: p } => {
+                assert_eq!((k, p), (key, pid));
+            }
+            _ => panic!("期望 PidDied"),
+        }
+        child.kill().expect("kill");
+        child.wait().expect("reap");
+    }
+
+    /// `arm_pid_watcher` 幂等：同一 `(pidfile, pid)` 挂两次只起一条看守。
+    /// 按**对**而不是按路径存，所以同路径换了 pid 要能重新挂——两条都测。
+    #[test]
+    fn arm_pid_watcher_is_idempotent_per_pidfile_and_pid() {
+        let mut st = ReaderState::new(PathBuf::from("/tmp/ccm-p2-proj"), false, false);
+        let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
+        st.events_tx = Some(tx);
+        let key = PathBuf::from("/tmp/ccm-p2-fixture/idem.json");
+
+        // 用一个已死的 pid：每次成功挂载都会立刻投一条 PidDied ⇒ 收到几条 = 挂了几次。
+        let mut child = spawn_target();
+        let dead = child.id();
+        child.kill().expect("kill");
+        child.wait().expect("reap");
+
+        arm_pid_watcher(&key, dead, None, &mut st);
+        arm_pid_watcher(&key, dead, None, &mut st); // 同对 ⇒ 应被跳过
+        assert!(
+            rx.recv_timeout(Duration::from_secs(2)).is_ok(),
+            "第一次必须挂上"
+        );
+        match rx.recv_timeout(Duration::from_millis(400)) {
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            _ => panic!("同一 (pidfile, pid) 不该挂第二条看守"),
+        }
+
+        // 同路径换 pid ⇒ 必须重新挂（/clear 原地换 sid、PID 复用写同路径）
+        let mut child2 = spawn_target();
+        let dead2 = child2.id();
+        child2.kill().expect("kill");
+        child2.wait().expect("reap");
+        arm_pid_watcher(&key, dead2, None, &mut st);
+        assert!(
+            rx.recv_timeout(Duration::from_secs(2)).is_ok(),
+            "同路径换 pid 必须重新挂看守"
+        );
+    }
+
+    /// `events_tx` 为 `None`（单元测试默认）时 `arm_pid_watcher` 什么都不做——
+    /// 11 处 `ReaderState::new` 因此不必改签名。
+    #[test]
+    fn arm_pid_watcher_is_a_noop_without_sender() {
+        let mut st = ReaderState::new(PathBuf::from("/tmp/ccm-p2-proj"), false, false);
+        arm_pid_watcher(&PathBuf::from("/x/1.json"), 1, None, &mut st);
+        assert!(
+            st.pid_watched.is_empty(),
+            "没有发送端时不该登记，也不该起线程"
+        );
+    }
+
+    /// ★ 守卫：**事件 channel 必须建在 Phase 1 初始扫描之前**。
+    ///
+    /// 为什么需要一条扫源码的守卫而不是一条行为测试：`watch_loop` 要真文件系统 + notify +
+    /// 多线程，单测碰不到；而这个顺序错了的后果**极其安静**——`process_session_added` 在
+    /// Phase 1 里被调用时 `events_tx` 还是 `None` ⇒ `arm_pid_watcher` 直接 return ⇒
+    /// **daemon 启动时就活着的会话一个 pidfd 看守都没有**，永远判不出死。而 P2 之前那条
+    /// 2s 判活轮询是覆盖它们的 ⇒ 是回归。
+    ///
+    /// **P2 初版真犯了这个错**（channel 建在 "Phase 2: live watch" 处），是被 clippy 的
+    /// 「field `start` is never read」间接暴露出来的——不是被任何测试抓到的。所以补这条。
+    #[test]
+    fn events_channel_is_created_before_the_initial_scan() {
+        let src = include_str!("watcher.rs");
+        let tx_at = src
+            .find("state.events_tx = Some(events_tx.clone());")
+            .expect("找不到 events_tx 注入点——守卫锚点漂了，先修锚点别改断言");
+        let scan_at = src
+            .find("// --- Phase 1: synchronous initial scan. ---")
+            .expect("找不到 Phase 1 锚点——守卫锚点漂了");
+        assert!(
+            tx_at < scan_at,
+            "events_tx 必须在 Phase 1 初始扫描**之前**注入，否则启动时已在跑的会话拿不到 \
+             pidfd 看守（静默回归：那些会话永远判不出死）。实测 tx@{tx_at} scan@{scan_at}"
+        );
+        // 反向自检：断言的是"两个锚点都找到了 + 源码真读进来了"，
+        // 不是"命中数 < N"——阈值不能挂在被检查的量上。
+        assert!(
+            src.len() > 1000,
+            "include_str! 没读到源码，上面的断言是空转"
+        );
+    }
+
+    /// tmux ticker：**首拍立即发**（保留 P2 之前"monitor 连上尽快拿到 tmux 状态"的行为）。
+    /// 不等第二拍——那要 8s，不值当放进单元测试。
+    #[test]
+    fn tmux_ticker_fires_immediately() {
+        let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
+        spawn_tmux_ticker(tx);
+        match rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("ticker 必须立刻发第一拍")
+        {
+            WatchEvent::TmuxProbeDue => {}
+            _ => panic!("期望 TmuxProbeDue"),
+        }
+    }
 
     // ---------- P1（zero-poll-liveness）：tmux 观测四态 ----------
 
