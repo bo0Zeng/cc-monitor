@@ -41,6 +41,8 @@ use std::sync::Arc;
 /// 项目级元数据 —— 首次 list 时返回，**不含**任何 session 内容。
 /// P1.2：全字段 camelCase wire，前端 TS interface 字段名一致。
 #[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryProject {
     /// 真实工作目录路径（从某个 jsonl 的首条 user 消息的 cwd 取）
@@ -54,16 +56,21 @@ pub struct HistoryProject {
     pub starred_count: u32,
     pub hidden_count: u32,
     /// 该项目下任意 jsonl 文件的最大 mtime（ms）
+    // **C03 大整数策略**：量纲是**毫秒时间戳**——2^53-1 ms ≈ **28.5 万年**。
+    #[cfg_attr(test, ts(type = "number"))]
     pub last_activity: i64,
     /// 该项目下是否有 session 当前 PID 还活着
     pub has_live: bool,
     /// issue #16：数据来源。None=本地；Some(host)=远端（前端组头显示 [host] 徽标，
     /// 展开时改调 stream_remote_history_sessions）。
+    #[cfg_attr(test, ts(optional))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct HistorySessionEntry {
     pub session_id: String,
@@ -71,7 +78,11 @@ pub struct HistorySessionEntry {
     pub project_name: String,
     pub ai_title: Option<String>,
     pub first_user_excerpt: String,
+    // **C03 大整数策略**：量纲是**毫秒时间戳**——2^53-1 ms ≈ **28.5 万年**。
+    #[cfg_attr(test, ts(type = "number"))]
     pub started_at: i64,
+    // **C03 大整数策略**：量纲是**毫秒时间戳**——2^53-1 ms ≈ **28.5 万年**。
+    #[cfg_attr(test, ts(type = "number"))]
     pub updated_at: i64,
     pub jsonl_path: String,
     pub is_live: bool,
@@ -84,12 +95,15 @@ pub struct HistorySessionEntry {
     pub hidden: bool,
     // issue #12: fork 关系。若本 session 是从某 parent session 用 /branch 分叉来的，
     // 这两个字段记 parent session 的 id 和被 fork 处的 messageUuid。
+    #[cfg_attr(test, ts(optional))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub forked_from_session_id: Option<String>,
+    #[cfg_attr(test, ts(optional))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub forked_from_message_uuid: Option<String>,
     /// issue #16：数据来源。None=本地；Some(host)=远端（前端据此禁用 resume/delete、
     /// 查看走 stream_read_remote_session）。
+    #[cfg_attr(test, ts(optional))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
 }
@@ -103,6 +117,8 @@ pub struct HistoryMetadata {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct EntryMetadata {
     #[serde(default)]
     pub starred: bool,
@@ -110,6 +126,8 @@ pub struct EntryMetadata {
     pub custom_title: Option<String>,
     #[serde(default)]
     pub hidden: bool,
+    // **C03 大整数策略**：量纲是**毫秒时间戳**——2^53-1 ms ≈ **28.5 万年**。
+    #[cfg_attr(test, ts(type = "number"))]
     #[serde(default, rename = "updatedAt", alias = "updated_at")]
     pub updated_at: i64,
     /// A4：上次用本工具（cc-monitor）起该会话时选的账号名（DESIGN §3 源②）。

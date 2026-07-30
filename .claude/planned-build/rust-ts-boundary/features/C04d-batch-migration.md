@@ -468,6 +468,58 @@ Rust 侧：`stream_read_remote_session(jsonl_path, origin, on_chunk)` ——`ori
 | **B** | 把 `sftp_rename` 的 `from`/`to` 写成 `path` | `tsc` 报 `'path' does not exist in type '{ cfg: unknown; from: string; to: string; }'` | 成立 |
 | C | 三条等号自动各红一次 | 文件数 6→5 · 包装层 66→77 · **字面量名 114→117** | 成立 |
 
+## 3j. 批次 6c：★★ **里程碑——119 个命令全部静态可见，盲区归零**
+
+12 条包装层条目（77 → **88**）· 8 个派生（生成物 58 → **66**）· 1 个文件迁走（5 → **4**）·
+**TS 字面量命令名 117 → 119**、**`DYNAMIC_ONLY` → `toEqual([])`**。
+
+### C04a 立的那个「已知盲区」被完全消除
+
+C04a 写下：「7 个命令 TS 静态看不见 ⇒ 只做单向断言」。批 6a/6b/6c 逐个查实后，
+**那 7 个从来不是任意字符串**：
+
+| 位置 | 实际形状 | 批次 |
+|---|---|---|
+| `views/session-viewer.ts:211` | `origin ? "stream_read_remote_session" : "stream_read_session_jsonl"` | 6a |
+| `sftp/panel.ts:485` | `doWrite(cmd: string, args)` 转发 helper，**调用方传的全是字面量** | 6b |
+| `views/history.ts:489` | `origin ? "stream_remote_history_sessions" : "stream_history_sessions_in_project"` | 6c |
+
+「动态」只在于名字从一个**封闭、静态可知的集合**里选 ⇒ 三处改成静态调用 / thunk，
+**原计划的 `invokeDynamic(name, args)` 逃生口没有做**。
+`DYNAMIC_ONLY` **保留为空数组而不是删掉断言**——它现在钉的性质变成
+「**不许再出现新的动态命名调用**」：哪天有人写 `invoke(someVar, …)`，`rustOnly` 会非空、这条会红。
+
+### 两处**更窄**的内联字面量被换宽
+
+1. `list_remote_history_projects` 原来写 `invoke<{ projects: HistoryProject[]; failedHosts: string[] }>`
+   —— 那正是 Rust 的 `RemoteProjectsResult`。
+2. `get_search_index_status` 原来写 `invoke<{ ready; indexedSessions; indexedMessages }>`
+   —— **少了 Rust 侧的 `builtAtMs`**。换成生成物后那个字段也进类型了（宽于原来、与线上一致）。
+
+### 让守卫指出该配什么属性，而不是我猜
+
+派生完先跑守卫，它逐个报出缺的属性：`ts(optional)` ×5（两个 `origin`、两个 `forked_from_*`、
+`SessionHits.origin`）· `ts(type)` ×7 **全是毫秒时间戳量纲**。
+其中 **`Hit.ts_ms` 是守卫指出来的**——`Hit` 是 `SessionHits` 的传递依赖，我派生它时没逐字段读。
+计数：`skip_serializing_if` 5 → **10** · 大整数 15 → **22** · 派生源 22 → **24**。
+
+### 一处刻意不生成：`MetadataPatch`
+
+它的字段是 `Option<Option<String>>`，而 `#[serde(default)]`（非 double_option）下
+**JSON `null` 到不了 `Some(None)`** ⇒ **`null` 的语义是「不改」，不是「清空」**。
+生成 `customTitle?: string | null` 会让人以为 `null` 是清空 —— **那是说谎的类型**。
+⇒ 包装层手写这个入参形状，并把陷阱写在签名旁边。
+**顺带发现一个真 bug（已登记 E35，本轮刻意不修）**：`views/history.ts` 的
+「留空恢复默认」传的正是 `null` ⇒ 后端什么都不做、标题清不掉。
+
+### 批次 6c 变异
+
+| # | 变异 | 判色 | 结论 |
+|---|---|---|---|
+| **A** | 给 `stream_history_sessions_in_project` 传 `origin` | `tsc` 报 `'origin' does not exist in type '{ projectDir: string; onEntry: Channel<HistorySessionEntry>; }'` | 成立 |
+| **B** | 往 `DYNAMIC_ONLY` 塞一个名字 | 守卫红 | 成立（空集被钉死，不许静默变大） |
+| C | 三条等号自动各红一次 | 文件数 5→4 · 包装层 77→88 · **字面量名 117→119** | 成立 |
+
 ## 4. 代码审计结果（Phase D）
 
 **强度：低风险**（无逻辑改动，纯调用形式替换；三条等号守卫全程盯着）⇒

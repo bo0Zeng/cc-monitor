@@ -21,8 +21,8 @@
  *
  * ## 本文件今天覆盖多少
  *
- * **77 个命令**（C04a 样板 1 + C04d 批 1-6b 的 76）。
- * 其余 42 个仍走各模块里的裸 `invoke`（119 − 77 = 42），由 **C04d** 后续批次迁进来。
+ * **89 个命令**（C04a 样板 1 + C04d 批 1-6c 的 88）。
+ * 其余 30 个仍走各模块里的裸 `invoke`（119 − 89 = 30），由 **C04d** 后续批次迁进来。
  *
  * **条目按字母序**（键名排序），加新条目时插到对的位置——这样 diff 只显示真正的新增。
  *
@@ -55,7 +55,10 @@ import type { CcmProbeResult } from "../generated/CcmProbeResult";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
+import type { EntryMetadata } from "../generated/EntryMetadata";
 import type { ForwardStatus } from "../generated/ForwardStatus";
+import type { HistoryProject } from "../generated/HistoryProject";
+import type { HistorySessionEntry } from "../generated/HistorySessionEntry";
 import type { HooksReport } from "../generated/HooksReport";
 import type { ImportGroup } from "../generated/ImportGroup";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
@@ -63,7 +66,10 @@ import type { TransferProgress } from "../generated/TransferProgress";
 import type { ProfileScan } from "../generated/ProfileScan";
 import type { SftpEntry } from "../generated/SftpEntry";
 import type { PushResult } from "../generated/PushResult";
+import type { RemoteProjectsResult } from "../generated/RemoteProjectsResult";
 import type { ResolvedHost } from "../generated/ResolvedHost";
+import type { SearchIndexStatus } from "../generated/SearchIndexStatus";
+import type { SearchResponse } from "../generated/SearchResponse";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { McpServerEntry } from "../generated/McpServerEntry";
 import type { RestartHint } from "../generated/RestartHint";
@@ -183,6 +189,18 @@ export const commands = {
   set_diagnostics_config: (args: { cfg: DiagnosticsConfig }) =>
     invoke<RestartHint>("set_diagnostics_config", args),
 
+  /**
+   * 全文搜索历史。`afterMs`/`limit` 在 Rust 侧是 `Option<i64>`/`Option<usize>` ⇒ `number | null`。
+   * `afterMs` 是**毫秒时间戳**量纲（同 C03：2^53-1 ms ≈ 28.5 万年）。
+   */
+  search_history: (args: {
+    query: string;
+    includeTools: boolean;
+    scope: string | null;
+    afterMs: number | null;
+    limit: number | null;
+  }) => invoke<SearchResponse>("search_history", args),
+
   /** 取消一次进行中的传输。Rust **无返回值**（`fn … -> ()`）⇒ **桶①**。 */
   sftp_cancel_transfer: (args: { transferId: string }) =>
     invoke<void>("sftp_cancel_transfer", args),
@@ -280,6 +298,22 @@ export const commands = {
   }) => invoke<number>("stream_read_session_jsonl", args),
 
   /**
+   * 流式列**远端**某项目的会话（issue #16）。**`origin` 必填**——与下面本地那条的
+   * Rust 签名不同（同批 6a 的两个 `stream_read_*`）。
+   */
+  stream_remote_history_sessions: (args: {
+    projectDir: string;
+    origin: string;
+    onEntry: Channel<HistorySessionEntry>;
+  }) => invoke<number>("stream_remote_history_sessions", args),
+
+  /** 流式列**本机**某项目的会话。**无 origin 参数**（见上条）。 */
+  stream_history_sessions_in_project: (args: {
+    projectDir: string;
+    onEntry: Channel<HistorySessionEntry>;
+  }) => invoke<number>("stream_history_sessions_in_project", args),
+
+  /**
    * 往远端 tmux 会话发按键。Rust 返回 `Result<(), String>` ⇒ **桶①**。
    * `enter` 缺省时 Rust 侧按 true 处理（`account-restart.ts` 有一处显式传 `false`）。
    */
@@ -303,6 +337,9 @@ export const commands = {
    */
   push_public_key: (args: { cfg: unknown; pubKeyPath: string | null }) =>
     invoke<PushResult>("push_public_key", args),
+
+  /** 重建搜索索引。返回新状态 ⇒ 生成物（桶③）。 */
+  rebuild_search_index: () => invoke<SearchIndexStatus>("rebuild_search_index"),
 
   /** 读本机 MCP server 清单（user/local/project 三档）。Rust 签名**无 `Result` 包装**。 */
   read_mcp_servers: (args: { projectDir: string | null }) =>
@@ -373,6 +410,14 @@ export const commands = {
   create_branch_session: (args: { sourceJsonlPath: string; messageUuid: string }) =>
     invoke<BranchResult>("create_branch_session", args),
 
+  /** 删本机历史会话（带 projects 目录内的路径守卫）。**桶①**。 */
+  delete_history_session: (args: { sessionId: string; jsonlPath: string }) =>
+    invoke<void>("delete_history_session", args),
+
+  /** 删远端历史会话。**桶①**。 */
+  delete_remote_history_session: (args: { origin: string; jsonlPath: string }) =>
+    invoke<void>("delete_remote_history_session", args),
+
   /** 一次配置面审计（只读、一次性，不新增轮询）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   config_surface_report: () => invoke<ConfigSurfaceReport>("config_surface_report"),
 
@@ -403,6 +448,9 @@ export const commands = {
   /** `~/.ssh/config` 里的 host 别名清单（不展开 Include、不解析 Match）。 */
   list_ssh_host_aliases: () => invoke<string[]>("list_ssh_host_aliases"),
 
+  /** 本机历史项目列表。返回值字段被真消费 ⇒ 生成物（桶③）。 */
+  list_history_projects: () => invoke<HistoryProject[]>("list_history_projects"),
+
   /** 本机有 `.mcp.json` 的项目目录候选。Rust 签名**无 `Result` 包装**（`-> Vec<String>`）。 */
   list_mcp_project_dirs: () => invoke<string[]>("list_mcp_project_dirs"),
 
@@ -411,6 +459,9 @@ export const commands = {
    * **无 `Result` 包装** ⇒ `Record<string, string>`，无需生成物。
    */
   list_last_accounts: () => invoke<Record<string, string>>("list_last_accounts"),
+
+  /** 远端历史项目列表（含失败主机名单）。 */
+  list_remote_history_projects: () => invoke<RemoteProjectsResult>("list_remote_history_projects"),
 
   /** 远端有 `.mcp.json` 的项目目录候选。 */
   list_remote_mcp_project_dirs: (args: { origin: string }) =>
@@ -422,6 +473,9 @@ export const commands = {
   /** 往远端 `~/.bashrc` 装 ccm wrapper。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
   install_remote_ccm_helper: (args: { cfg: unknown; profile: string }) =>
     invoke<string>("install_remote_ccm_helper", args),
+
+  /** 搜索索引状态。Rust 签名**无 `Result` 包装**（`-> SearchIndexStatus`）。 */
+  get_search_index_status: () => invoke<SearchIndexStatus>("get_search_index_status"),
 
   /** 杀掉远端某个 tmux 会话。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   kill_remote_tmux: (args: { origin: string; target: string }) =>
@@ -441,6 +495,10 @@ export const commands = {
    */
   load_config: () => invoke<Record<string, unknown>>("load_config"),
 
+  /** 在某目录起一个新的本地会话。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  new_local_session: (args: { cwd: string; launcher: string | null }) =>
+    invoke<void>("new_local_session", args),
+
   /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_settings_window: () => invoke<void>("open_settings_window"),
 
@@ -457,6 +515,31 @@ export const commands = {
 
   /** 用系统默认程序打开 monitor 的 log 文件。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_log_file: () => invoke<void>("open_log_file"),
+  /**
+   * 改一条会话的用户元数据（星标 / 自定义标题 / 隐藏 / 上次账号）。
+   *
+   * **`patch` 刻意不用生成物**：Rust 侧 `MetadataPatch` 的字段是 `Option<Option<String>>`
+   * （双层 Option），语义**无法忠实映射到 TS**——`#[serde(default)]`（非 double_option）下
+   * **JSON `null` 到不了 `Some(None)`**，外层直接是 `None`
+   * ⇒ **`null` 的含义是「不改」，不是「清空」**。
+   * 生成一个 `customTitle?: string | null` 会让人以为 `null` 是清空，那是**说谎的类型**。
+   *
+   * **⚠ 已登记的真 bug（BACKLOG E35，本轮刻意不修——修它是行为改动）**：
+   * `views/history.ts` 的「留空恢复默认」传的正是 `null` ⇒ 后端**什么都不做**、标题清不掉。
+   * Rust struct 注释里作者的意图是「清空走空串」，两边不一致。
+   */
+  update_history_metadata: (args: {
+    sessionId: string;
+    patch: {
+      starred?: boolean;
+      /** **注意语义**：`null` = **不改**（不是清空）。清空要传空串 `""`。见 E35。 */
+      customTitle?: string | null;
+      hidden?: boolean;
+      /** 同上：`null` = 不改。 */
+      lastAccount?: string | null;
+    };
+  }) => invoke<EntryMetadata>("update_history_metadata", args),
+
   /**
    * 写本机项目 `.mcp.json` 的一个 server。**桶①**。
    * `server` 是不透明 JSON（Rust 侧 `serde_json::Value`）⇒ `unknown`，与生成物一致。
