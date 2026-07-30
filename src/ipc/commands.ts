@@ -22,7 +22,7 @@
  * ## 本文件今天覆盖多少
  *
  * **89 个命令**（C04a 样板 1 + C04d 批 1-6c 的 88）。
- * 其余 30 个仍走各模块里的裸 `invoke`（119 − 89 = 30），由 **C04d** 后续批次迁进来。
+ * 其余 10 个仍走各模块里的裸 `invoke`（119 − 109 = 10），由 **C04d** 后续批次迁进来。
  *
  * **条目按字母序**（键名排序），加新条目时插到对的位置——这样 diff 只显示真正的新增。
  *
@@ -54,6 +54,27 @@ import type { ConnTestResult } from "../generated/ConnTestResult";
 import type { CcmProbeResult } from "../generated/CcmProbeResult";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
+// **panorama 一族的返回类型指向 `src/panorama/types.ts` 的手写类型，不是生成物。**
+// 不是漏了——那 10 个类型（`Overview`/`NodeView`/`SubGraph`/`Edge`/`ImpactSet`/`Symbol`/
+// `DocLink`/`Annotation`/`DriftItem`/`IndexStats`）住在 **vendored** 的
+// `src-tauri/vendor/code-picture-core/src/model.rs`，而 `VENDOR.md` 有一条明写的铁律：
+// 「**副本是上游的镜子，不是分身**（SS-10）：只照上游改，绝不在副本里改出自己的版本」。
+// 给它们加 `ts_rs::TS` 派生就是在副本里改出自己的版本；而「先改上游再 re-vendor」要动
+// `code-picture` 仓——**本会话在册的红线**。⇒ 按 §5 那条「名字钉死是普遍的、类型生成是按需的」，
+// 本批只做**名字钉死 + 实参把关**，类型生成如实登记为结构性阻塞（BACKLOG E38）。
+// `PanoramaStatus` 例外：它在 `panorama.rs`、是本仓自己的类型 ⇒ 已生成。
+import type {
+  Annotation,
+  DocLink,
+  DriftItem,
+  Edge,
+  ImpactSet,
+  IndexStats,
+  NodeView,
+  Overview,
+  SubGraph,
+  Symbol as PanoramaSymbol,
+} from "../panorama/types";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { EntryMetadata } from "../generated/EntryMetadata";
 import type { ForwardStatus } from "../generated/ForwardStatus";
@@ -63,6 +84,7 @@ import type { HooksReport } from "../generated/HooksReport";
 import type { ImportGroup } from "../generated/ImportGroup";
 import type { JsonlLinePayload } from "../generated/JsonlLinePayload";
 import type { TransferProgress } from "../generated/TransferProgress";
+import type { PanoramaStatus } from "../generated/PanoramaStatus";
 import type { ProfileScan } from "../generated/ProfileScan";
 import type { SftpEntry } from "../generated/SftpEntry";
 import type { PushResult } from "../generated/PushResult";
@@ -200,6 +222,110 @@ export const commands = {
     afterMs: number | null;
     limit: number | null;
   }) => invoke<SearchResponse>("search_history", args),
+
+  /** F72：批准一条 Proposed 批注。 */
+  panorama_approve_annotation: (args: { repo: string; id: string }) =>
+    invoke<boolean>("panorama_approve_annotation", args),
+
+  /** F72：新增批注，返回批注 id。 */
+  panorama_add_annotation: (args: {
+    repo: string;
+    file: string;
+    symbol: string | null;
+    body: string;
+    author: string;
+  }) => invoke<string>("panorama_add_annotation", args),
+
+  /** 某符号的被调者边。`depth` 是 `u32` ⇒ `number`。 */
+  panorama_callees: (args: { repo: string; symbol: string; depth: number }) =>
+    invoke<Edge[]>("panorama_callees", args),
+
+  /** 某符号的调用者边。 */
+  panorama_callers: (args: { repo: string; symbol: string; depth: number }) =>
+    invoke<Edge[]>("panorama_callers", args),
+
+  /** 某符号关联的文档链接。 */
+  panorama_docs_for: (args: { repo: string; symbol: string }) =>
+    invoke<DocLink[]>("panorama_docs_for", args),
+
+  /** 悬空文档链接清单。 */
+  panorama_drift: (args: { repo: string }) => invoke<DriftItem[]>("panorama_drift", args),
+
+  /** 某符号的影响面（blast radius）。 */
+  panorama_impact: (args: { repo: string; symbol: string }) =>
+    invoke<ImpactSet>("panorama_impact", args),
+
+  /** 建/增量更新索引。 */
+  panorama_index: (args: { repo: string }) => invoke<IndexStats>("panorama_index", args),
+
+  /** F72：列全部批注（含 Proposed，给审批队列）。 */
+  panorama_list_annotations: (args: { repo: string }) =>
+    invoke<Annotation[]>("panorama_list_annotations", args),
+
+  /**
+   * 单符号视图。**Rust 返回 `Result<Option<NodeView>, String>`** ⇒ `NodeView | null`
+   * （符号不存在时是 `null`，不是抛错）。
+   */
+  panorama_node: (args: { repo: string; symbol: string }) =>
+    invoke<NodeView | null>("panorama_node", args),
+
+  /** 全局概览（脊柱 / 子系统 / 入口点）。`budget` 是 `Option<usize>` ⇒ `number | null`。 */
+  panorama_overview: (args: { repo: string; budget?: number | null }) =>
+    invoke<Overview>("panorama_overview", args),
+
+  /** F72：提一条待审批注，返回 id。 */
+  panorama_propose_annotation: (args: {
+    repo: string;
+    file: string;
+    symbol: string | null;
+    body: string;
+    author: string;
+  }) => invoke<string>("panorama_propose_annotation", args),
+
+  /** 全量重建索引。 */
+  panorama_reindex: (args: { repo: string }) => invoke<IndexStats>("panorama_reindex", args),
+
+  /** F72：删批注。 */
+  panorama_remove_annotation: (args: { repo: string; id: string }) =>
+    invoke<boolean>("panorama_remove_annotation", args),
+
+  /** 删一条文档链接。 */
+  panorama_remove_doc_link: (args: { repo: string; doc: string; target: string }) =>
+    invoke<boolean>("panorama_remove_doc_link", args),
+
+  /** 按名子串搜符号 → 拿全限定 id。`limit` 是 `Option<usize>` ⇒ `number | null`。 */
+  panorama_search: (args: { repo: string; query: string; limit?: number | null }) =>
+    invoke<PanoramaSymbol[]>("panorama_search", args),
+
+  /** 索引状态（是否过期 / 建立时刻 / 符号数）。**这个类型是本仓的 ⇒ 用生成物。** */
+  panorama_status: (args: { repo: string }) => invoke<PanoramaStatus>("panorama_status", args),
+
+  /** 某符号周边子图。 */
+  panorama_subgraph: (args: { repo: string; symbol: string; depth: number }) =>
+    invoke<SubGraph>("panorama_subgraph", args),
+
+  /** 某文件里的符号清单。 */
+  panorama_symbols_in_file: (args: { repo: string; file: string }) =>
+    invoke<PanoramaSymbol[]>("panorama_symbols_in_file", args),
+
+  /**
+   * 给定文件集（可带行范围）触及的符号 id。返回原始类型数组。
+   *
+   * **`ranges` 是我第一版漏掉的参数**：Rust 签名是 `ranges: Vec<(usize, usize)>`
+   * （1-based `[start,end]`，空则整文件），而我提取参数的正则用了 `[^,]+?`
+   * ——**被元组里的逗号截断了**。是包装层的精确签名让 `tsc` 当场报
+   * 「'ranges' does not exist」才发现的。
+   * ⇒ **量 Rust 签名时，参数类型里可能有逗号（元组/泛型），别用 `[^,]` 切。**
+   */
+  panorama_touching: (args: {
+    repo: string;
+    files: string[];
+    ranges: [number, number][];
+  }) => invoke<string[]>("panorama_touching", args),
+
+  /** 写一条文档链接。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
+  panorama_write_doc_link: (args: { repo: string; doc: string; target: string }) =>
+    invoke<void>("panorama_write_doc_link", args),
 
   /** 取消一次进行中的传输。Rust **无返回值**（`fn … -> ()`）⇒ **桶①**。 */
   sftp_cancel_transfer: (args: { transferId: string }) =>

@@ -307,3 +307,41 @@ export type EnvOp =
 第一条 ⇒ 我一度想用 `settings.local.json` 做 per-account，**那个前提被官方否认，已放弃**。
 第二条是**稳定性风险**：隔离依赖一个未文档化的环境变量，Claude Code 若改其行为，
 多账号会整体失效且我们没有文档依据。**建议单独登记为 E37 并做一次真机验证 + 版本钉**。
+
+| **E38** | **panorama 一族 10 个类型的生成被 SS-10 铁律 + code-picture 仓红线双重阻塞** | C04d 批 7 实测 | **结构性阻塞，如实登记**。见下方小节 |
+
+---
+
+## E38 详述：vendored 类型的生成为什么做不了（不是忘了）
+
+C04d 批 7 迁 `src/panorama/api.ts` 的 21 个调用点时发现：它们的返回类型有 **10 个**
+（`Overview` · `NodeView` · `SubGraph` · `Edge` · `ImpactSet` · `Symbol` · `DocLink` ·
+`Annotation` · `DriftItem` · `IndexStats`）住在
+**`src-tauri/vendor/code-picture-core/src/model.rs`** —— vendored 代码。
+
+**两重阻塞，任一条单独成立就做不了**：
+
+1. **`VENDOR.md` 的 SS-10 铁律**（原文）：
+   > **副本是上游的镜子，不是分身**（SS-10 铁律）：**只照上游改，绝不在副本里改出自己的版本**。
+   > 要加字段/改行为先改上游再 re-vendor。
+
+   给它们加 `#[cfg_attr(test, derive(ts_rs::TS))]` 就是「在副本里改出自己的版本」。
+2. **「先改上游」要动 `code-picture` 仓**（`/home/zbl/文档/project/self项目/code-picture/code-picture`）
+   —— 本会话在册的红线，需另外授权。
+
+**批 7 的处置**：按主计划 §5「**名字钉死是普遍的，类型生成是按需的**」——
+本批只做**名字钉死 + 实参把关**（21 条包装层条目），返回类型指向 `src/panorama/types.ts`
+的现有手写类型。`PanoramaStatus` 例外（它在 `panorama.rs`、是本仓自己的）⇒ 已生成。
+
+**代价是具体的**：这 10 个手写镜像**仍无守卫**，是全仓剩下最大的手写跨边界面。
+它们会不会漂？**会**——上游 F68 就给 `Symbol` 加过 `signature: Option<String>` 字段
+（`VENDOR.md` 沿革里记着），那种改动如果 TS 侧没跟上就是静默不一致。
+
+**要做的话有三条路，都需要用户决定**：
+- **甲**：授权动 `code-picture` 上游 → 加派生 → re-vendor。**最正**，但跨仓。
+- **乙**：在 cc-monitor 侧写一个**薄适配层**（`panorama.rs` 里定义自己的 DTO + `From<model::X>`），
+  给 DTO 加派生。**不碰 vendor**，代价是 10 个转换函数 + 一层拷贝。
+- **丙**：维持现状，改为**给这 10 个手写类型加一条结构性守卫**
+  （对拍 `vendor/.../model.rs` 的字段名集合 vs `src/panorama/types.ts`）。
+  **不生成、但能抓漂移**；成本最低，且不违反任何铁律。**我倾向丙**——
+  它把「防漂」这个真实目的达成了，而生成物本身在这里只是手段。
