@@ -519,13 +519,80 @@ eq   "sync 会修 .claude.json 的权限(此前只修 .credentials.json)" "$(sta
 OUT16C="$(cc sync 2>&1)"
 chk  "权限已对时 sync 无改动(收敛)" 'printf "%s" "$OUT16C" | grep -q "无需改动"'
 
+
+# ══════════════════════════════════════════════════════════════════
+group "17. Z07:版本钉 + 声明漂移检测（销 E37）"
+# E37 的实质:CLAUDE_CONFIG_DIR 零官方文档而整套隔离压在它上面,失效时**今天没有任何
+# 东西会响**,最坏形态是**静默共用身份**。这一组钉住「会响」。
+new_sandbox
+ccq init z --apply
+ccq add b --apply
+
+# —— D1b(致命):secret 出现在共享库 ⇒ 会被自动 symlink 给每个账号 = 静默串号 ——
+# 此前只查 .credentials.json;从声明派生后 .claude.json 也覆盖。**这条零误报**。
+printf '{"oauthAccount":{"x":1}}' >"$SB/.claude/.claude.json"
+cc verify --no-probe >"$SB/v17a.out" 2>&1 || true
+chk  "共享库出现 .claude.json ⇒ verify FAIL" 'grep -q "结果:FAIL" "$SB/v17a.out"'
+chk  "报的是 secret 项泄漏且点名静默串号" 'grep -q "共享库里仍有 secret 项 .claude.json" "$SB/v17a.out" && grep -q "静默串号" "$SB/v17a.out"'
+rm -f "$SB/.claude/.claude.json"
+xok  "移除后 verify 恢复 PASS" "$CLI" verify --no-probe
+
+# —— D2(提示):共享库出现声明之外的 mode 600 文件 ⇒ 它会被自动 symlink 给每个账号 ——
+printf 'sekrit' >"$SB/.claude/mystery-token.json"; chmod 600 "$SB/.claude/mystery-token.json"
+# 必须先 sync:共享库多了一项而账号还没链上,会触发**既有**的「共享项缺失」检查而 FAIL,
+# 那跟 Z07 无关。sync 之后才是「已正常共享、但它是个 600 的未声明项」这个真场景。
+ccq sync --apply
+cc verify --no-probe >"$SB/v17b.out" 2>&1 || true
+chk  "600 的未声明共享项被点名"     'grep -q "mystery-token.json" "$SB/v17b.out"'
+chk  "并给出处置建议(isolate)"       'grep -q "isolate mystery-token.json" "$SB/v17b.out"'
+chk  "但只是提示、不判 FAIL"          'grep -q "结果:PASS" "$SB/v17b.out"'
+chmod 644 "$SB/.claude/mystery-token.json"
+cc verify --no-probe >"$SB/v17c.out" 2>&1 || true
+chkn "同名文件改成 644 后不再点名(判据是 600 不是名字)" 'grep -q "mystery-token.json" "$SB/v17c.out"'
+rm -f "$SB/.claude/mystery-token.json"
+ccq sync --apply   # 清掉刚才那项留下的软链,免得影响后面
+
+# —— D4(提示):声明项哪儿都找不到 ⇒ 只提示,**不判致命** ——
+# 理由:policy-limits.json / stats-cache.json 是 Claude Code **懒创建**的,
+# 「还没被创建」与「改了位置」分辨不出来。判致命会让几乎每台干净机器都红。
+cc verify --no-probe >"$SB/v17d.out" 2>&1 || true
+chk  "懒创建的声明项缺席只报提示"     'grep -q "可能只是\*\*还没被创建\*\*" "$SB/v17d.out" || grep -q "还没被创建" "$SB/v17d.out"'
+chk  "缺席不影响 PASS"                'grep -q "结果:PASS" "$SB/v17d.out"'
+
+# —— D3:版本钉 ——
+# **沙盒里造一个确定性的版本来源**,否则会读到真机的 .last-update-result.json(测试泄漏)。
+new_sandbox
+# **必须在沙盒里遮蔽 `claude`**:ni_probe_version 的第一条来源是解析 launcher 可执行文件的
+# 路径,而沙盒 PATH 不遮蔽的话会找到**真机**那个 `~/.local/bin/claude`(它软链到
+# `.../versions/2.1.220`)⇒ 测试读到真机版本、结果不确定。本轮实测踩到这个泄漏。
+printf '#!/bin/sh\nexit 0\n' >"$SB/bin/claude"; chmod +x "$SB/bin/claude"
+printf '{"version_from":"9.9.1","version_to":null}\n' >"$SB/.claude/.last-update-result.json"
+ccq init z --apply
+chk  "sync/init 会把探测到的版本钉进 manifest" 'grep -q "\"claudeVersionPinned\": \"9.9.1\"" "$SB/.claude-accts/accounts.json"'
+cc verify --no-probe >"$SB/v17e0.out" 2>&1 || true
+chk  "版本一致时 verify 明说一致" 'grep -q "版本与声明所钉一致(9.9.1)" "$SB/v17e0.out"'
+# 版本变了 ⇒ 必须要求人复核声明
+printf '{"version_from":"9.9.1","version_to":"9.9.2"}\n' >"$SB/.claude/.last-update-result.json"
+cc verify --no-probe >"$SB/v17e.out" 2>&1 || true
+chk  "版本变化 ⇒ 要求复核 NATIVE_IDENTITY" 'grep -q "请复核 NATIVE_IDENTITY" "$SB/v17e.out"'
+chk  "并打出新旧两个版本"                   'grep -q "从 9.9.1 变成了 9.9.2" "$SB/v17e.out"'
+chk  "版本变化只是提示、不判 FAIL"          'grep -q "结果:PASS" "$SB/v17e.out"'
+# 探不到版本时要明说跳过,**不能假装通过**
+rm -f "$SB/.claude/.last-update-result.json"
+cc verify --no-probe >"$SB/v17f.out" 2>&1 || true
+chk  "探不到版本时明说跳过" 'grep -q "探测不到 Claude Code 版本" "$SB/v17f.out"'
+
+# —— 版本探测本身:只读、绝不执行 claude ——
+chk  "ni_probe_version 不执行 launcher(把 launcher 换成必失败的也不影响退出码)" \
+     'LAUNCHER=definitely-no-such-binary bash -euo pipefail -c ". \"$SCRIPTS_DIR/lib.sh\"; SHARED_STORE=\"$SB/.claude\"; ni_probe_version >/dev/null"'
+
 # ══════════════════════════════════════════════════════════════════
 export HOME="$ORIG_HOME"
 printf '\n\033[1m────────────────────────────\033[0m\n'
 # 断言条数地板（**同源**:地板写在套件自己这一处,CI 侧那条是双保险）。
 # 为什么必须有:下面的退出码只看失败数 $F —— **$F=0 就 exit 0** ⇒ 一条不跑也会报绿。
 # 改这个数的时机:真加了断言(只应涨)。删断言要说明理由。
-MIN_ASSERTS=215
+MIN_ASSERTS=231
 if [ "$T" -lt "$MIN_ASSERTS" ]; then
   printf '\033[31m断言条数缩水:%d < 地板 %d —— 有断言被删或整组没跑\033[0m\n' "$T" "$MIN_ASSERTS"
   exit 1

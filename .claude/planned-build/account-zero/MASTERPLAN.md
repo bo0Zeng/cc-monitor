@@ -160,6 +160,12 @@ LEGACY_HOME_ITEMS = .claude.json          （源目录 = $HOME，不是 ~/.claud
      `verify` 绿。**用变异验收**：把声明改成一个假位置，必须①`verify` 红 ②migrate 能搬回来。
   8. **换机制会被当场检测到**：声明绑 Claude Code 版本；实际布局与声明不符 ⇒ 报，
      **绝不静默**（这条销掉 BACKLOG **E37**）。
+     **⚠ Z07 交付后如实限定**：「绝不静默」**已达成**（四条检测都会打印）；但
+     **「把声明改成一个假位置 ⇒ `verify` 当场红」这句要限定**——假位置只会让 D4 报**提示**，
+     真正的 FAIL 需要 secret 真的泄漏进共享库（D1b）。原因：声明里好几项是 Claude Code
+     **懒创建**的（`policy-limits.json` 撞限速才出现），**「还没被创建」与「改了位置」
+     在这个信号层面不可判定**；判致命会让几乎每台干净机器都红（初版写成 vfail，沙盒当场
+     误报 4 条）。
 
 ---
 
@@ -206,7 +212,7 @@ LEGACY_HOME_ITEMS = .claude.json          （源目录 = $HOME，不是 ~/.claud
 | Z05 | **rc 片段一键生成**（独立） | 把 `cc-acct-iso shellinit` 接进 T03 的「生成待贴文本」组件，一键复制 | 待规划 | — | P3 |
 | **Z08** | **物理迁移能力** `isolate` | `isolate <item>`（copy-then-unlink + CAS + 自检 + 回滚）· `cmd_sync` 的隔离项分支从 **`RM` 改成私有化**（修一个**真实的数据丢失**）· `cmd_add` 认 `ISOLATE_SET` | **✅ 完成，已签收**（`features/Z08-isolate-migration.md`）。**`share <item>` 排第二半**（实测反方向不丢数据、优先级低）；**`migrate` 命令名被 `sync` 吸收**（旧声明无处持久化 ⇒ 差集无从计算） | **G-B** | **P0** |
 | **Z06** | **原生身份组成的单点声明** | `NATIVE_IDENTITY`（项名:原生根:类别）；`ISOLATE_SET` / `LEGACY_HOME_ITEMS` / `chmod 600` 目标**从它派生**（派生结果与历史字面量逐字相同）；**跨语言双写点守卫**钉住 daemon 那处独立的 `loggedIn` 判定 | **✅ 完成，已签收**（`features/Z06-native-identity-declaration.md`）。**守卫形态已订正**：原写「断言那些文件名在声明之外零出现」——实测那既做不到也不该做（bash 侧 ~18 处字面量绝大多数是正当具体用途或用户可见文案）。**`mcp.rs` 的 `.claude.json` 三候选那条双写点未钉**（第二半） | **G-B**, Z08 | **P0** |
-| **Z07** | **版本钉 + 漂移检测**（销 E37） | 声明绑 Claude Code 版本；实际布局与声明不符即报；`CLAUDE_CONFIG_DIR` 这条**零官方文档**的依赖从「隐忧」变成「有检测的已知依赖」 | 待规划 | Z06 | **P0** |
+| **Z07** | **版本钉 + 漂移检测**（销 E37） | 只读版本探测（解析 launcher 路径里的版本，**绝不执行 claude**）+ manifest additive `claudeVersionPinned` + `verify` 四条检测（**D1b 致命**：secret 泄漏进共享库 = 静默串号，零误报；D2/D3/D4 提示） | **✅ 完成，已签收**（`features/Z07-version-pin-drift-detection.md`）。**成功标准 8 的达成范围已如实限定**，见下 | Z06 | **P0** |
 
 ### Z08 为什么排 P0 且在 Z06 之前
 
@@ -267,7 +273,7 @@ LEGACY_HOME_ITEMS = .claude.json          （源目录 = $HOME，不是 ~/.claud
 | **7. 上游 ↔ vendored lockstep** | Z01,Z04 | 上游 `~/.claude/skills/cc-acct-iso/scripts/` 与 `src-tauri/vendor/cc-acct-iso/scripts/` 逐字节一致，`.vendor_id` 按 `VENDOR.md` 菜谱重算，`build.rs` 的软检查不 warn | 今天一致 | `~/.local/bin/cc-acct-iso` 是 symlink 指向上游 ⇒ **改了立刻在 aya 上生效，没有缓冲**。见 §6 风险 2 |
 | **9. 原生身份组成的声明** | **Z06**,Z07,Z08 | **✅ 已落地**：`NATIVE_IDENTITY` 表（项名:原生根:类别）+ 四个投影；`ISOLATE_SET`/`LEGACY_HOME_ITEMS`/`chmod 600` 目标从它派生，**派生结果与历史字面量逐字相同**（有对拍断言）。**⚠ 守卫形态已订正**：原文那句「扫源码断言这些名字不再在别处出现字面量」**做不到也不该做**——实测 bash 侧 ~18 处字面量绝大多数是**正当的具体用途**（种这个文件、chmod 那个文件）或**用户可见文案**，硬消掉是把代码改难读。真正被独立实现两遍的判定只有两条，且**跨语言跨进程**（`loggedIn`：bash vs daemon `accounts_query.rs:407`；`.claude.json` 位置：bash vs `mcp.rs` 三候选）⇒ 改用**双写点守卫**（`include_str!` + 锚定声明行，同 `TMUX_LS_FMT` 的范式） | ✅ 凭据那条已钉（daemon 141 测）；**`mcp.rs` 那条未钉**（第二半） | **原计划点名的 `accounts.rs:49` 不是决策点**（只是文档注释）。⚠ **`cp -a` 保留 mtime ⇒ re-vendor 后本地 cargo 可能不重编译 `include_str!`、守卫报陈旧结果**；CI 干净 checkout 不受影响，本地要 `touch` |
 | **10. `isolate`/`share` 子命令** | **Z08**,Z06 | **✅ `isolate` 已落地**：新 plan 动词 `ISOLATE` = copy-then-unlink（读共享签名 → `bk_copy` → 同目录 `mktemp` → **CAS 复核签名未变** → **先 `rm` 掉软链**（否则 `mv -f` 会跟随软链**反向覆盖共享库**）→ `mv -f` 原子落位 → `cmp`+非软链自检 → 不符 `ln -s` 回滚 → `undo_restore`）。**共享库那份保留作新账号模板。** `cmd_sync` 的隔离项分支改用它、`cmd_add` 认隔离集。**⚠ `migrate` 那句「按新旧声明求差集」已否掉**：旧声明**没有任何地方持久化**（`ISOLATE_SET` 只有当前值）⇒ 差集无从计算；真正可做的是「让现实对齐当前声明」= **`sync` 的职责**，故不新增该命令名 | ✅ Z08 完成；**`share <item>` 未做**（第二半） | 前置 G-B 已解除。**E36「API key 路线乙」的技术前置就此就位**。dry-run 默认 |
-| **11. Claude Code 版本钉** | **Z07** | manifest 记「本声明适用的 Claude Code 版本区间」；`verify` 比对实际版本 + 实际布局，不符 → 报（不是 warn，是要求人复核）。**销掉 BACKLOG E37** | 不存在（E37 只登记了一句「建议登记」，连登记都没做） | 唯一能把「`CLAUDE_CONFIG_DIR` 零官方文档」这条系统性风险变成可观测的东西 |
+| **11. Claude Code 版本钉** | **Z07** | **✅ 已落地**：manifest additive `claudeVersionPinned`（探不到就省略该键——「没钉」≠「钉了空」）+ `verify` 比对。**版本探测只读**：解析 launcher 可执行文件路径里的版本（原生安装器布局 `.../versions/<semver>`，纯 `readlink`）→ 回落 `.last-update-result.json` → 探不到就明说跳过。**绝不执行 `claude --version`**（`verify` 的契约是「不登录」）。**版本是给人看的上下文，不是自动迁移的触发器** ⇒ 档位是 vwarn | ✅ 完成 | 与它配套的致命档是 **D1b**（secret 泄漏进共享库，从 `ni_secrets` 派生，零误报）。**Z01 必须处理 D1b 的例外**——账号 0 的 config dir **就是**共享库 |
 | **8. 远端版本协商** | Z01（建立）,Z03（依赖） | cc-monitor 判断对面 cc-acct-iso 认不认账号 0：**看 `list-accounts` 输出里有没有账号 0 条目**（或 manifest `version` 字段）。不认 → 降级成今天的行为并**明说**「该机器的 cc-acct-iso 版本较旧，账号 0 不可见」，绝不静默 | 未动 | 本仓已有先例：`ccm` 的 `capabilities=` 串 |
 
 ---
@@ -381,6 +387,7 @@ Z05（rc 片段）  独立，任意时点可插
 
 | # | 日期 | 改了什么 / 为什么 |
 |---|---|---|
+| **新4** | 2026-07-30 | **Z07 交付签收，BACKLOG E37 已销。** 四条检测 + 只读版本探测（解析 launcher 路径里的版本，**零执行**；`verify` 契约是「不登录」，在里面跑 `claude --version` 是越界）。**一处自己犯的错、被既有套件当场接住**：D1「声明项哪儿都找不到」初版写成 **vfail**，沙盒误报 4 条——声明里好几项是 Claude Code **懒创建**的，「还没被创建」与「改了位置」**在这个信号层面不可判定**，判致命会让几乎每台干净机器都红 ⇒ 降级 vwarn，致命档换成 **D1b**（secret 泄漏进共享库 = 会被自动 symlink 给每个账号 = 静默串号，**零误报**，且从 `ni_secrets` 派生后顺带覆盖了此前漏查的 `.claude.json`）。**成功标准 8 的达成范围已如实限定**（见 §0.1）。**两次测试泄漏真机状态**：往共享库放文件后没 `sync` ⇒ 触发的是既有检查；沙盒 PATH 不遮蔽 `claude` ⇒ 读到真机 2.1.220。**给 Z01 的提醒**：账号 0 的 config dir 就是共享库 ⇒ **D1b 对它必须有例外**，别直接沿用。测试 215→**231**，两道地板同步上调，`.vendor_id` `15b1ca8ccfb7c9c1` → `3416ab2260e55d74` |
 | **新3** | 2026-07-30 | **Z06 交付签收。开工前复测把计划的「6 处」纠正了**：`accounts.rs:49` 只是文档注释、不是决策点；真正被独立实现两遍的只有两条判定，且**跨语言跨进程**（`loggedIn` 在 bash 与 **daemon `accounts_query.rs:407`** 各一份；`.claude.json` 位置在 bash 与 `mcp.rs` 三候选各一份）。而 bash 侧 ~18 处字面量**绝大多数是正当的具体用途或用户可见文案** ⇒ **守卫形态从「字面量零出现」改成「跨语言双写点」**（`include_str!` + 锚定声明行，同 `TMUX_LS_FMT` 范式）。**单点声明的第一个收益是让两处不一致自己浮出来**：`init` 的 MOVE 路径只 chmod 600 了 `.credentials.json`、`sync` 的权限修复也只管它 ⇒ `.claude.json`（同样含 `oauthAccount`）的权限漂了没人修。**两条都修了**（不修则 `sync` 第一次跑必然产生一次性修复、不收敛，直接打红既有的幂等断言）；第三条（`verify` 硬失败范围）**刻意不改**——在野 `.claude.json` 若是 644 会给用户突然的新红。**一个把 197 条打红 115 条的坑**：投影里 `cond && printf` 惯用法在 `set -o pipefail` 下，最后一行条件为假会让 `while` 以 1 退出 ⇒ 整条管线判失败 ⇒ `set -e` 就地退出（派生值全对却在赋值后死掉），改用 `if … fi` 并加三条 `pipefail` 断言。**另一个坑**：`VENDOR.md` 菜谱的 `cp -a` **保留 mtime** ⇒ re-vendor 后 cargo 指纹判「没变」⇒ `include_str!` 不重编译 ⇒ **守卫报陈旧结果**（本地要 `touch`，CI 不受影响）。测试 197→**215**，daemon 140→**141**，两道地板同步上调 |
 | **新2** | 2026-07-30 | **Z08 交付签收。三处对计划的实测订正**：① **我此前记的失效模式是错的** —— 不是「配置说隔离、现实还共享」，实测是 **`cmd_sync` 把每个账号的软链直接 `RM` 删掉** ⇒ 两个账号**根本没有该文件**（对 `settings.json` = hooks/model/permissions/theme 全部静默丢失、回落默认值）。**Z08 修的是数据丢失，不是不一致。** ② **`migrate` 那句「按新旧声明求差集」否掉**：旧声明无处持久化 ⇒ 差集无从计算；改成「让现实对齐当前声明」并**吸收进 `sync`**（那本就是 `sync` 的职责，`verify` 今天就在报这条不变量违反），**不新增命令名**。③ **`share <item>` 排到第二半**，理由是实测的：反方向今天只是一句 `warn`、**不丢数据**，而 isolate 方向真丢。**G-B 的网第一次真正管住一个改动**（shellcheck 36 文件 + vendored 自测 171→**197**、地板同步上调）。**断言地板搬进脚本自己**（`MIN_ASSERTS`，补 gate-integrity §2「同源」；CI 侧那条留作双保险）。lockstep 完成：`.vendor_id` `e5475b0c140ebbe1` → `740a68b11a71ce27`，`build.rs` 过期检查不 warn。**用户真实 `~/.claude-accts/` 零改动**（z/b 的 `settings.json` 仍是 07-26 那两个软链、`accounts.json` mtime 未变、`ISOLATE_SET` 仍是默认值）—— 本轮只交付能力，落地真机等用户发话 |
 | **新** | 2026-07-30 | **按用户追加需求扩了本区范围：加 Z06/Z07/Z08 三个功能。** 用户原话「能不能把账号 0 定义为 claude code 默认登录方式，到时候如果 claude code 换登录方式了换位置了我们可以方便迁移」。**一处订正**：我起初把现有定义说成「按物理位置的外延定义」——**说错了**，「账号 0 ≡ 不设 `CLAUDE_CONFIG_DIR` 这个状态本身」本来就是内涵的，而且 §0.1 有专门论证为什么不能给它 `configDir`（两条路 ⇒ 状态分裂）。**那条定义不动。** 真正没被抽象的是「原生身份由哪些文件组成」，它硬编码在 `ISOLATE_SET`/`LEGACY_HOME_ITEMS` 并散抄 6 处（§0.1 新增那张表列了行号）⇒ 加一层**声明**（Z06）、一个**版本钉+漂移检测**（Z07，销 BACKLOG E37）、一个**物理迁移能力**（Z08）。**范围外那条「不改隔离/共享划分」据此订正**——划分的内容零改动，改的是它的来源。**验收边界写死**：换位置这类一处改完 + 一次迁移；**换机制（keyring）救不了，只承诺 100% 当场检测到而不是静默共用身份**（§6 R-新1）。**顺序**：G-B 是整个 cc-acct-iso 半区的前置（不只 Z01）；**Z08 排 Z06 之前**且它同时是 BACKLOG **E36「API key 路线乙」**的前置——一个能力两个需求都要 |

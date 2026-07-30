@@ -147,6 +147,33 @@ ni_secrets() {         # 类别 secret 的项 = 必须 chmod 600 的那些
     if [ "$class" = "secret" ]; then printf '%s ' "$name"; fi
   done | sed 's/ *$//'
 }
+# Z07:**只读**地探测 Claude Code 的版本 —— **绝不执行 claude**。
+# 三条来源按可靠性排序,全失败返回空串(调用方一律当「未知」,不因此报错):
+#   ① `claude` 可执行文件解析后的路径里带版本(原生安装器的布局:
+#      `~/.local/share/claude/versions/<semver>`)。**纯 readlink,零执行。**
+#   ② `<共享库>/.last-update-result.json` 的 `version_to`(成功)或 `version_from`(失败时的当前值)
+#   ③ 任一账号 `.claude.json` 的 `lastOnboardingVersion`(最旧的线索,只当兜底)
+# **为什么不用 `claude --version`**:那要执行用户机器上真实的、已认证的 claude。
+# 本工具在 `verify` 这种只读命令里执行它,越界(`verify` 的契约是「不登录」)。
+ni_probe_version() {
+  local exe resolved v
+  exe="$(command -v "${LAUNCHER:-claude}" 2>/dev/null || true)"
+  if [ -n "$exe" ] && have readlink; then
+    resolved="$(readlink -f -- "$exe" 2>/dev/null || true)"
+    case "$resolved" in
+      */versions/*)
+        v="${resolved##*/versions/}"; v="${v%%/*}"
+        case "$v" in [0-9]*) printf '%s' "$v"; return 0 ;; esac
+        ;;
+    esac
+  fi
+  if [ -f "$SHARED_STORE/.last-update-result.json" ] && have jq; then
+    v="$(jq -r '(.version_to // .version_from // empty)' "$SHARED_STORE/.last-update-result.json" 2>/dev/null || true)"
+    if [ -n "$v" ] && [ "$v" != "null" ]; then printf '%s' "$v"; return 0; fi
+  fi
+  printf ''
+}
+
 ni_is_secret() {       # 某项是不是身份本体
   local _it
   for _it in $(ni_secrets); do [ "$_it" = "$1" ] && return 0; done
@@ -367,6 +394,15 @@ manifest_render() {
   printf '  "updatedAt": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf '  "sharedStore": "%s",\n' "$(json_esc "$SHARED_STORE")"
   printf '  "acctsDir": "%s",\n' "$(json_esc "$ACCTS_DIR")"
+  # Z07 版本钉(**additive**,不 bump manifest version):记下写这份 manifest 时探测到的
+  # Claude Code 版本。`verify` 拿它与当下比对,不同就要求人复核 NATIVE_IDENTITY 那张表
+  # (身份文件有没有改名/搬位置)。**它是给人看的上下文,不是自动迁移的触发器。**
+  # cc-monitor 侧 serde 无 deny_unknown_fields ⇒ 旧 monitor 忽略本字段,安全。
+  # 探不到版本就省略这个键(而不是写空串)——「没钉」与「钉了空」语义不同。
+  local _pv; _pv="$(ni_probe_version)"
+  if [ -n "$_pv" ]; then
+    printf '  "claudeVersionPinned": "%s",\n' "$(json_esc "$_pv")"
+  fi
   if [ "${#MF[@]}" -eq 0 ]; then
     printf '  "accounts": []\n}\n'; return 0
   fi
@@ -379,6 +415,16 @@ manifest_render() {
       "$(json_esc "$n")" "$(json_esc "$e")" "$(json_esc "$c")" "$d" "$(acct_mode "$c")"
   done
   printf '\n  ]\n}\n'
+}
+
+# Z07:读 manifest 里钉的版本。没钉/读不了 ⇒ 空串(调用方当「还没钉」)。
+manifest_pinned_version() {
+  [ -f "$MANIFEST" ] || { printf ''; return 0; }
+  if have jq; then
+    jq -r '(.claudeVersionPinned // empty)' "$MANIFEST" 2>/dev/null || printf ''
+  else
+    sed -n 's/.*"claudeVersionPinned"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$MANIFEST" | head -1
+  fi
 }
 
 mf_index() {  # 按名字找下标,找不到返回 1

@@ -365,9 +365,19 @@ cmd_verify() {
   [ "$inplace_any" = 1 ] && vwarn "存在 in-place 账号(config-dir == 共享库):该模式下 .claude.json 会分裂,cc-monitor 不支持"
   # 只要还有一个隔离账号,「共享库不该有账号态」就仍然成立(混合模式下也必须查)
   if [ "$isolated_any" = 1 ]; then
-    if [ -e "$SHARED_STORE/.credentials.json" ]; then
-      vfail "共享库里仍有 .credentials.json($SHARED_STORE/.credentials.json)—— 全迁未完成,或有进程没设 CLAUDE_CONFIG_DIR 就起了 claude"
-    else ok "共享库无 .credentials.json(纯共享库)"; fi
+    # Z07:从**声明**派生 —— 凡类别为 `secret` 的项出现在共享库里都是致命的
+    # (共享集是 @auto ⇒ 它会被自动 symlink 给每个账号 = 静默串号)。
+    # 此前只查 `.credentials.json`;`.claude.json` 同样含 `oauthAccount`,漏查了。
+    # **这条零误报**:全迁之后 secret 本就不该出现在共享库里。
+    local _svc _leak=0
+    for _svc in $(ni_secrets); do
+      if [ -e "$SHARED_STORE/$_svc" ]; then
+        _leak=1
+        vfail "共享库里仍有 secret 项 $_svc($SHARED_STORE/$_svc)—— 全迁未完成,或有进程没设 CLAUDE_CONFIG_DIR 就起了 claude。\
+它会被自动 symlink 给每个账号 = 静默串号"
+      fi
+    done
+    [ "$_leak" = 0 ] && ok "共享库无任何 secret 项(纯共享库)"
     if [ "$inplace_any" = 0 ] && [ -e "$LEGACY_HOME_DIR/.claude.json" ]; then
       vwarn "$LEGACY_HOME_DIR/.claude.json 又出现了 —— 有进程在没设 CLAUDE_CONFIG_DIR 的情况下起过 claude"
     fi
@@ -516,6 +526,80 @@ cmd_verify() {
       PROBE_FILE=""
       [ "$miss2" = 0 ] && ok "一处写入,$seen 个账号都能经各自 config-dir 看到($pdir/)"
     fi
+  fi
+
+  # ── Z07:声明漂移检测(销 BACKLOG E37)────────────────────────────
+  # E37 的实质:`CLAUDE_CONFIG_DIR` 零官方文档,而整套隔离压在它上面;它失效时
+  # **今天没有任何东西会响**,而最坏形态不是报错、是**静默共用身份**
+  # (以为在用 z,实际烧 b 的额度,UI 上看不出来)。
+  #
+  # **这里买到的是「快速失败」,不是「保证可迁」**:
+  #   换位置(改名/搬目录) ⇒ D1 报出来,改声明 + `sync --apply` 即可
+  #   换机制(凭据进 OS keyring) ⇒ 按目录切身份整体失效,任何检测都救不了那件事,
+  #                              但 D1/D2 会让它**当场可见**而不是静默串号
+  info ""
+  info "${_c_bold}声明漂移(Z07)${_c_reset}"
+
+  # D1(致命):声明里的项在共享库与**所有**账号里都找不到 ⇒ 声明与现实脱节。
+  # 这正是「Claude Code 换了文件名/位置」的直接征兆。
+  local _ni _found _ci
+  while IFS= read -r _ni; do
+    [ -n "$_ni" ] || continue
+    _found=0
+    { [ -e "$SHARED_STORE/$_ni" ] || [ -L "$SHARED_STORE/$_ni" ]; } && _found=1
+    { [ -e "$LEGACY_HOME_DIR/$_ni" ] || [ -L "$LEGACY_HOME_DIR/$_ni" ]; } && _found=1
+    if [ "$_found" = 0 ]; then
+      for _ci in "${!MF[@]}"; do
+        IFS="$MF_SEP" read -r _ _ c _ <<<"${MF[$_ci]}"
+        { [ -e "$c/$_ni" ] || [ -L "$c/$_ni" ]; } && { _found=1; break; }
+      done
+    fi
+    if [ "$_found" = 1 ]; then
+      ok "声明项 $_ni 在实际布局里找得到"
+    else
+      # **只能是提示,不能判致命**:声明里好几项是 Claude Code **懒创建**的
+      # (`policy-limits.json` 撞到限速才出现、`stats-cache.json` 用过才有),
+      # 「还没被创建」与「改了位置」从这里分辨不出来。判致命会让几乎每台干净机器都红。
+      # (本轮实测:初版写成 vfail,沙盒里当场误报 4 条。)
+      # 真正无歧义的致命信号是下面 D1b 那条。
+      vwarn "声明项 $_ni 在共享库/\$HOME/所有账号里都找不到 —— 可能只是**还没被创建**(懒创建的项), \
+也可能 Claude Code 改了它的位置。若近期升级过 Claude Code,请复核 NATIVE_IDENTITY 那张表"
+    fi
+  done < <(ni_items)
+
+  # D2(提示):共享库顶层出现 **mode 600 的文件**却不在声明里。
+  # 为什么这条最要紧:共享集是 @auto(共享库顶层减去隔离集与排除集) ⇒ 这种文件会被
+  # **自动 symlink 给每个账号**;它若含身份,就是 E37 最坏的那种静默串号。
+  # 600 是启发式(Claude Code 写凭据用 600),故只报提示不判致命——**误报的代价远小于漏报**。
+  local _sf _sbase _smode
+  shopt -s nullglob dotglob
+  for _sf in "$SHARED_STORE"/*; do
+    [ -f "$_sf" ] || continue
+    _sbase="${_sf##*/}"
+    is_isolate "$_sbase" && continue
+    is_excluded "$_sbase" && continue
+    _smode="$(stat -c %a "$_sf" 2>/dev/null || echo '')"
+    if [ "$_smode" = "600" ]; then
+      vwarn "共享库里有 mode 600 的 $_sbase,而它**不在** NATIVE_IDENTITY 声明里 ⇒ 它会被自动 \
+symlink 给每个账号。若它含身份,就是静默串号。请判定:是身份就加进声明再跑 '$SELF isolate $_sbase --apply'"
+    fi
+  done
+  shopt -u nullglob dotglob
+
+  # D3(提示):当前版本与 manifest 里钉的版本不同 ⇒ 要人复核声明还成不成立。
+  # 版本探测是**只读**的(见 lib.sh 的 ni_probe_version,绝不执行 claude);探不到就跳过。
+  local _nowv _pinv
+  _nowv="$(ni_probe_version)"
+  _pinv="$(manifest_pinned_version)"
+  if [ -z "$_nowv" ]; then
+    vwarn "探测不到 Claude Code 版本 ⇒ 版本钉这条检查跳过(不影响 D1/D2)"
+  elif [ -z "$_pinv" ]; then
+    vwarn "manifest 里还没钉版本(当前探测到 $_nowv)。跑一次 '$SELF sync --apply' 会把它钉上"
+  elif [ "$_nowv" != "$_pinv" ]; then
+    vwarn "Claude Code 版本从 $_pinv 变成了 $_nowv ⇒ **请复核 NATIVE_IDENTITY 那张表还成不成立**\
+(身份文件有没有改名/搬位置)。复核完跑 '$SELF sync --apply' 重新钉"
+  else
+    ok "版本与声明所钉一致($_pinv)"
   fi
 
   info ""

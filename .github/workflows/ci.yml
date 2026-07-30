@@ -201,7 +201,7 @@ jobs:
       # `VENDOR.md` SS-10 铁律「副本是上游的镜子，绝不在副本里改出自己的版本」——往副本加断言
       # 要走一次上游 lockstep + 重算 `.vendor_id`，而那属于「改那个工具」= G-B 要先建网再做的事。
       # 取舍已记进 `features/G-B-vendored-bash-gates.md` §3。
-      - name: vendored cc-acct-iso self-tests (sandboxed, 215 assertions)
+      - name: vendored cc-acct-iso self-tests (sandboxed, 231 assertions)
         run: |
           set -euo pipefail
           OUT=$(bash src-tauri/vendor/cc-acct-iso/scripts/test/run-tests.sh 2>&1) || {
@@ -209,10 +209,10 @@ jobs:
           echo "$OUT" | tail -3
           N=$(printf '%s' "$OUT" | grep -oE '全绿:[0-9]+' | grep -oE '[0-9]+' | tail -1)
           echo "断言条数 = ${N:-0}"
-          # 地板 = 2026-07-30 实测值 215（Z08 +26 ⇒ 197；Z06 +18 ⇒ 215）。
+          # 地板 = 2026-07-30 实测值 231（Z08 +26 ⇒ 197；Z06 +18 ⇒ 215；Z07 +16 ⇒ 231）。
           # **Z08 起脚本自己也有一道地板**（`MIN_ASSERTS`，那才是 gate-integrity §2 说的「同源」）；
           # 这条 CI 侧的留作双保险——脚本被整体换掉时它还在。
-          [ "${N:-0}" -ge 215 ] || { echo "断言条数缩水：${N:-0}（地板 215）"; exit 1; }
+          [ "${N:-0}" -ge 231 ] || { echo "断言条数缩水：${N:-0}（地板 231）"; exit 1; }
 
       - name: python syntax compile
         run: python3 -m py_compile e2e/*.py
