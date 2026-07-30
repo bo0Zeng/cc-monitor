@@ -132,3 +132,22 @@ daemon `accounts_query.rs:407` 那处独立的 `loggedIn` 判定。lockstep 完�
 2. `VENDOR.md` 菜谱的 `cp -a` **保留 mtime** ⇒ re-vendor 后 cargo 可能不重编译
    `include_str!` ⇒ **守卫报陈旧结果**。CI 干净 checkout 不受影响；**本地 re-vendor 后要
    `touch` 引用它的 Rust 文件**
+
+---
+
+## Z07 签收（2026-07-30）—— BACKLOG E37 已销
+
+**交付**：只读版本探测（解析 launcher 路径里的 `.../versions/<semver>`，纯 `readlink`；
+回落 `.last-update-result.json`；探不到就明说跳过。**绝不执行 `claude --version`**）+
+manifest additive `claudeVersionPinned` + `verify` 四条检测。测试 215 → **231**，
+`.vendor_id` `15b1ca8ccfb7c9c1` → `3416ab2260e55d74`。
+
+**一处自己犯的错，被既有套件当场接住**：D1「声明项哪儿都找不到」初版写成 vfail，沙盒误报
+4 条——`policy-limits.json` 这类是**懒创建**的，「还没创建」与「改了位置」**不可判定**。
+降级 vwarn；致命档换成 **D1b**（secret 泄漏进共享库，零误报）。
+
+**成功标准 8 的达成范围已如实限定**：「绝不静默」达成；但「改成假位置 ⇒ verify 当场红」
+要限定为「报提示」，真正的 FAIL 需要 secret 真的泄漏。
+
+**给 Z01 的硬提醒**：账号 0 的 config dir **就是**共享库 ⇒ **D1b 对它必须有例外**，
+否则 Z01 一登记账号 0，`verify` 就会对它恒报「secret 泄漏进共享库」。**别直接沿用。**
