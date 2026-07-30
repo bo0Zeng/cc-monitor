@@ -164,8 +164,54 @@ jobs:
       # **刻意不含 `shared/ccm-aliases.sh`**：那是个供 source 的片段、无 shebang，
       # SC2148 是它的构造性属性；而它会被写进用户 shell profile、并在 UI 面板里展示供手动复制，
       # 为过 lint 往里塞 `# shellcheck shell=bash` 等于往用户配置和界面文案里掺 lint 噪音。
+      # G-B：vendored `cc-acct-iso` 的 1348 行 bash 纳入。同一条论证：它被
+      # `acct_iso_deploy.rs` 的 `include_bytes!` 打进二进制、部署到远端执行，**是生产件**
+      # ——与当初把 `shared/ccm` 纳入的理由一字不差。实测（2026-07-30）`--severity=error`
+      # 零告警，连默认档（含 warning/info/style）也是零（脚本自带 `# shellcheck disable=` 指令）。
+      #
+      # **不要写成 `src-tauri/vendor/cc-acct-iso/scripts/**`**：不开 globstar 时 `**` 等价于 `*`，
+      # 会把 `scripts/test`（目录）喂给 shellcheck ⇒ `openBinaryFile: inappropriate type` ⇒ 恒红。
+      # 主计划账本原文就是那个 pattern，G-B 开工实测踩出来的。故显式列四个文件。
+      #
+      # **覆盖面地板**（本工作区在治的病：零断言/零覆盖也报绿）：文件数少一个就红。
+      # 改名/挪走脚本时若不同步这里，shellcheck 会少扫几个文件而**照样绿**——地板挡的正是这个。
       - name: shellcheck (errors only)
-        run: shellcheck --severity=error e2e/*.sh shared/cc-bus/scripts/* shared/ccm
+        run: |
+          set -euo pipefail
+          FILES=$(printf '%s\n' e2e/*.sh shared/cc-bus/scripts/* shared/ccm \
+            src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso \
+            src-tauri/vendor/cc-acct-iso/scripts/lib.sh \
+            src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso-install.sh \
+            src-tauri/vendor/cc-acct-iso/scripts/test/run-tests.sh)
+          N=$(printf '%s\n' "$FILES" | grep -c .)
+          echo "shellcheck 覆盖 $N 个文件"
+          # 地板 = 2026-07-30 实测值 36（e2e 18 + cc-bus 13 + ccm 1 + vendored 4）
+          [ "$N" -ge 36 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 36）"; exit 1; }
+          # shellcheck disable=SC2086
+          shellcheck --severity=error $FILES
+
+      # G-B：**部署工具自己的 424 行测试**进 CI。此前它在 CI 与 `package.json` 里都不存在
+      # ——`account-zero` 即将对那个工具做结构性改动（Z06 把散在 6 处的身份组成收成单点声明、
+      # Z08 新增 isolate/share/migrate），**没有网不能改它**。
+      # 全沙盒：`mktemp -d` 造假 `$HOME` + `export HOME=$SB` + cleanup trap + 假 launcher
+      # `fakeclaude` ⇒ 零真机风险、不起真 claude。2026-07-30 首次运行：171/171 全绿。
+      #
+      # **断言条数地板**：脚本的退出码只看 `F`（失败数），`F=0` 就 exit 0 ⇒ **一条不跑也会绿**。
+      # 地板放 CI 侧而不是脚本里（偏离主计划 §2 的「同源」原则），因为脚本是 **vendored** 的、
+      # `VENDOR.md` SS-10 铁律「副本是上游的镜子，绝不在副本里改出自己的版本」——往副本加断言
+      # 要走一次上游 lockstep + 重算 `.vendor_id`，而那属于「改那个工具」= G-B 要先建网再做的事。
+      # 取舍已记进 `features/G-B-vendored-bash-gates.md` §3。
+      - name: vendored cc-acct-iso self-tests (sandboxed, 171 assertions)
+        run: |
+          set -euo pipefail
+          OUT=$(bash src-tauri/vendor/cc-acct-iso/scripts/test/run-tests.sh 2>&1) || {
+            echo "$OUT"; exit 1; }
+          echo "$OUT" | tail -3
+          N=$(printf '%s' "$OUT" | grep -oE '全绿:[0-9]+' | grep -oE '[0-9]+' | tail -1)
+          echo "断言条数 = ${N:-0}"
+          # 地板 = 2026-07-30 实测值 171
+          [ "${N:-0}" -ge 171 ] || { echo "断言条数缩水：${N:-0}（地板 171）"; exit 1; }
+
       - name: python syntax compile
         run: python3 -m py_compile e2e/*.py
 

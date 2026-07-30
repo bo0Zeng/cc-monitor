@@ -23,7 +23,7 @@
 
 | **account-zero/** | 把「基座」变成受管的「账号 0」（吸收破坏隔离的那个状态，而不是把它定义成违规）+ **2026-07-30 扩范围：原生身份组成的单点声明 + 版本钉/漂移检测 + 物理迁移能力** | **Phase A 已批（07-29）、07-30 按用户追加需求修订落地**。8 个功能（Z01-Z08）**零代码**。**Z08 迁移能力是 P0**——它同时是 BACKLOG **E36「API key 路线乙」**的前置。**整个 cc-acct-iso 半区的硬前置是 G-B**。Z02 仍卡 `tabs.ts` 红线；动 `~/.claude/skills/` 与 z/b 真账号目录的授权**已给**，但用户说「先不要改，我在用 claude code」⇒ 动真账号那步等发话 |
 | **rust-ts-boundary/** | Rust↔TS 边界从人工纪律改成生成物（`tauri-specta`）+ 门禁 | **Phase A 已落盘，等审批**。路线图 ①，是 ③④ 的地基；也是「要不要用 Rust GUI 重写前端」那个问题的便宜答案 |
-| **gate-integrity/** | 门禁不许在零断言下报绿（真机套件断言地板 + vendored bash 进 shellcheck + 6 套 e2e 进 CI） | **Phase A 已落盘，等审批**。路线图 ③，规模小但保护其余全部工作。**G-B 是整个 `account-zero` cc-acct-iso 半区的硬前置**（不只 Z01——Z06/Z08 是对那 1348 行做结构性改动，比 Z01 大得多） |
+| **gate-integrity/** | 门禁不许在零断言下报绿（真机套件断言地板 + vendored bash 进 shellcheck + 6 套 e2e 进 CI） | **主计划已批（07-29）；G-B 已交付签收（07-30）**。**G-B 解除了 `account-zero` cc-acct-iso 半区（Z01/Z04/Z06/Z08）的「没有网不能改那个工具」**。余 G-A（八套断言地板）· G-C（6 套 e2e 进 CI） |
 | **local-as-remote/** | 本地 = 不走 ssh 的远端（含 Linux 平台）。落地 `doc/INVARIANTS.md` **§40** | **Phase A 已落盘，等审批**。路线图 ④。L5 平价对账可先做；L0 是唯一可能推翻方向的一步（WebKitGTK） |
 | **zero-poll-liveness/** | 判活从轮询改成内核事件（tmux hook + pidfd + inotify）。承 BACKLOG **E34** + 用户 2026-07-30「daemon 是能改的，要性能最佳且不要轮询」 | **主计划已批 + P4 hook 已授权；P0/P1/P2/P3 已交付签收**（`4e7b100`/`81b22b8`/`03daf6c`/`de57453`）。**实测**：强杀会话进程 → `session_removed` **~18ms**（原 ≤2s）· `kill-server` → 零会话帧 **27ms** · server 复活 **153ms** · 跨 cgroup SIGKILL **30ms**。P1 销掉 `INVARIANTS:408` 那条真 bug。**P4 设计被 `readonly_guard` 推翻并重定**（原方案让 daemon 写文件 ⇒ 撞红线 I7），改走 SIGUSR1 通路（`5290768`）。余 P4-P7 |
 
@@ -46,7 +46,7 @@
 | 5b | **C04b** 两处内联字面量 —— **`main.ts:744` 已完成** (`285bbae`，生成物 14→15，变异 A 是成功标准 1 在命令返回类型上首次成立) · **`tabs.ts:1632` 已跳过，等授权**（实测**一行改动**：类型 C02 已生成、字段逐字节一致，零技术障碍） | rust-ts-boundary | **`tabs.ts` 红线** |
 | 5c | **C04c** JSONL 边界 —— **完成**：Phase B 修订处置，**直接生成 `JsonlRecord`** 而非用逃生口指向手抄版（生成物 15→21；三处静默漂移自动消失；守卫补上「不扫 enum」与「字段层属性顺序敏感」两个真缺口） | rust-ts-boundary | 否 |
 | 5d | **C04d** 按模块分批迁移 —— **完成**（八批 11 个 commit：`f44cb57`…`4696505`）。`import invoke` 的生产文件 **29 → 3** = 主计划成功标准 4 达成；**119 个命令全部静态可见**（盲区归零）；生成物 → 67。两批等授权：4b `accounts.ts`（等 Z02）· 8 `tabs.ts`（等红线） | rust-ts-boundary | 部分卡红线 |
-| 6 | **G-B** vendored bash 进 shellcheck + `run-tests.sh` 进 CI | gate-integrity | 否 |
+| 6 | **G-B** vendored bash 进 shellcheck + `run-tests.sh` 进 CI —— **✅ 完成签收（2026-07-30）**：shellcheck 覆盖 32→**36** 文件 + 覆盖面地板；`run-tests.sh` 首次运行 **171/171 全绿**、进 CI 带条数地板。**第一个发现是账本自己那个 `scripts/**` pattern 会恒红**（不开 globstar 时把 `scripts/test` 目录喂给 shellcheck）。⇒ **account-zero cc-acct-iso 半区（Z01/Z04/Z06/Z08）的网建好了** | gate-integrity | 否 |
 | 6b | **Z08** `isolate`/`share`/`migrate` 迁移能力（**2026-07-30 新增，P0**） | account-zero | 否（授权已给）。**前置 G-B**。同时是 BACKLOG **E36 API key 路线乙**的前置 —— 一个能力两个需求都要 |
 | 6c | **Z06** 原生身份组成单点声明（**新增，P0**）—— 那份知识今天散在 6 处 | account-zero | 否（授权已给）。前置 G-B + Z08 |
 | 6d | **Z07** 版本钉 + 漂移检测（**新增，P0**，销 BACKLOG **E37**） | account-zero | 否。前置 Z06 |
@@ -64,7 +64,7 @@
 | 18 | **L3a** 本地账号枚举（只读，Rust 读 manifest） | local-as-remote | 否 |
 | 19 | **L4** Linux 打包进 CI/release | local-as-remote | 否 |
 | 20 | **L3b** 本地账号管理（写） | local-as-remote | 依赖 account-zero 全部落地 |
-| **21** | **E34 事件驱动的 tmux 存活信号**（用户点名「把轮询杀掉」）—— 已升格为独立工作区，**Phase A 已落盘等审批**，拆成 P0-P7 八个功能 | **zero-poll-liveness** | **部分**：P4（装 hook 到活着的 tmux server）要授权；其余不要。**原表两处已订正**：① 不再需要改 `shared/ccm` 本体（hook 由 **daemon** 装——只有 daemon 有「server 重启」这个时机）② §24 单写者不再是开放问题（所有新信号都汇进既有 `SessionChange{removed}` → emitter，零新写点） |
+| **21** | **E34 事件驱动的 tmux 存活信号**（用户点名「把轮询杀掉」）—— 已升格为独立工作区、拆成 P0-P7 八个功能；**主计划已批，P0-P3 已交付签收**（实测 ~18ms / 27ms / 153ms / 30ms），余 P4-P7 | **zero-poll-liveness** | **部分**：P4（装 hook 到活着的 tmux server）要授权；其余不要。**原表两处已订正**：① 不再需要改 `shared/ccm` 本体（hook 由 **daemon** 装——只有 daemon 有「server 重启」这个时机）② §24 单写者不再是开放问题（所有新信号都汇进既有 `SessionChange{removed}` → emitter，零新写点） |
 
 **为什么 C05 从 #4 提到 #2**（C01 的 Phase D 审计 I1 实测）：CI 的 `rust` job（跑 `cargo test`）
 与 `frontend` job（跑 `tsc`）是**两次独立 checkout**——重新生成的产物在前者里被丢掉，
