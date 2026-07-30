@@ -21,8 +21,8 @@
  *
  * ## 本文件今天覆盖多少
  *
- * **53 个命令**（C04a 样板 1 + C04d 批 1-5b 的 52）。
- * 其余 66 个仍走各模块里的裸 `invoke`（119 − 53 = 66），由 **C04d** 后续批次迁进来。
+ * **62 个命令**（C04a 样板 1 + C04d 批 1-5c 的 61）。
+ * 其余 57 个仍走各模块里的裸 `invoke`（119 − 62 = 57），由 **C04d** 后续批次迁进来。
  *
  * **条目按字母序**（键名排序），加新条目时插到对的位置——这样 diff 只显示真正的新增。
  *
@@ -48,13 +48,18 @@ import type { CcBusMessage } from "../generated/CcBusMessage";
 import type { CcBusState } from "../generated/CcBusState";
 import type { CcPreviewResponse } from "../generated/CcPreviewResponse";
 import type { CcStatusResponse } from "../generated/CcStatusResponse";
+import type { ConnectStage } from "../generated/ConnectStage";
+import type { ConnTestResult } from "../generated/ConnTestResult";
 import type { CcmProbeResult } from "../generated/CcmProbeResult";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { ForwardStatus } from "../generated/ForwardStatus";
 import type { HooksReport } from "../generated/HooksReport";
+import type { ImportGroup } from "../generated/ImportGroup";
 import type { ProfileScan } from "../generated/ProfileScan";
+import type { PushResult } from "../generated/PushResult";
+import type { ResolvedHost } from "../generated/ResolvedHost";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { McpServerEntry } from "../generated/McpServerEntry";
 import type { RestartHint } from "../generated/RestartHint";
@@ -183,6 +188,17 @@ export const commands = {
   stop_forward: (args: { id: string }) => invoke<void>("stop_forward", args),
 
   /**
+   * 测一条远端配置：连 SSH → 读指纹 → exec daemon → 等 hello。
+   *
+   * **`onStage` 是 `Channel<ConnectStage>`**（第二个进包装层的 Channel 参数）。
+   * `ConnectStage` 本轮一并生成——TS 侧 `describeStage` 里有 `const _never: never = st`
+   * 穷尽性兜底，而**手写类型时 Rust 加一个 variant 并不会让它红**；
+   * 换成生成物后那条 `never` 检查才真正对 Rust 的改动有牙。
+   */
+  test_remote_connection: (args: { cfg: unknown; onStage: Channel<ConnectStage> }) =>
+    invoke<ConnTestResult>("test_remote_connection", args),
+
+  /**
    * 往远端 tmux 会话发按键。Rust 返回 `Result<(), String>` ⇒ **桶①**。
    * `enter` 缺省时 Rust 侧按 true 处理（`account-restart.ts` 有一处显式传 `false`）。
    */
@@ -195,6 +211,17 @@ export const commands = {
 
   /** 读 bus 的完整状态（agents + spawned + 坏行数）。`skipped: usize` → `number`。 */
   read_cc_bus_state: (args: { origin: string }) => invoke<CcBusState>("read_cc_bus_state", args),
+
+  /**
+   * 把本机公钥推到远端 `authorized_keys`。返回值字段被真消费 ⇒ 生成物（桶③）。
+   *
+   * **这条是我漏掉又补回来的**：我用 `grep -P` 逐文件列调用点时，
+   * 它写成**跨行**形式（`invoke<…>(\n  "push_public_key",`）而 grep 是**按行**匹配的
+   * ⇒ 漏计一处。守卫里的 JS 正则跨行、一直数对（`toBe(112)` 含它）。
+   * **临时 grep 比守卫弱，别拿它当账本。**
+   */
+  push_public_key: (args: { cfg: unknown; pubKeyPath: string | null }) =>
+    invoke<PushResult>("push_public_key", args),
 
   /** 读本机 MCP server 清单（user/local/project 三档）。Rust 签名**无 `Result` 包装**。 */
   read_mcp_servers: (args: { projectDir: string | null }) =>
@@ -219,6 +246,9 @@ export const commands = {
   /** 把某 sid 的历史定向重放到当前窗口（viewer 用，不发 frontend-ready）。**桶①**。 */
   replay_session_to_window: (args: { sessionId: string }) =>
     invoke<void>("replay_session_to_window", args),
+
+  /** `ssh -G` 解析一个别名。返回值字段被真消费 ⇒ 生成物（桶③）。 */
+  resolve_ssh_host: (args: { alias: string }) => invoke<ResolvedHost>("resolve_ssh_host", args),
 
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
   get_session_tasks: (args: { sessionId: string }) =>
@@ -248,6 +278,9 @@ export const commands = {
   check_cc_bus_agent_online: (args: { origin: string; id: string }) =>
     invoke<boolean>("check_cc_bus_agent_online", args),
 
+  /** 部署内嵌的 daemon 到远端。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
+  deploy_remote_daemon: (args: { cfg: unknown }) => invoke<string>("deploy_remote_daemon", args),
+
   /** 一次配置面审计（只读、一次性，不新增轮询）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   config_surface_report: () => invoke<ConfigSurfaceReport>("config_surface_report"),
 
@@ -275,6 +308,9 @@ export const commands = {
    */
   list_active_sessions: () => invoke<ActiveSessionPayload[]>("list_active_sessions"),
 
+  /** `~/.ssh/config` 里的 host 别名清单（不展开 Include、不解析 Match）。 */
+  list_ssh_host_aliases: () => invoke<string[]>("list_ssh_host_aliases"),
+
   /** 本机有 `.mcp.json` 的项目目录候选。Rust 签名**无 `Result` 包装**（`-> Vec<String>`）。 */
   list_mcp_project_dirs: () => invoke<string[]>("list_mcp_project_dirs"),
 
@@ -287,6 +323,13 @@ export const commands = {
   /** 远端有 `.mcp.json` 的项目目录候选。 */
   list_remote_mcp_project_dirs: (args: { origin: string }) =>
     invoke<string[]>("list_remote_mcp_project_dirs", args),
+
+  /** 批量导入 `~/.ssh/config` 的预览分组（F57）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
+  import_ssh_hosts: () => invoke<ImportGroup[]>("import_ssh_hosts"),
+
+  /** 往远端 `~/.bashrc` 装 ccm wrapper。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
+  install_remote_ccm_helper: (args: { cfg: unknown; profile: string }) =>
+    invoke<string>("install_remote_ccm_helper", args),
 
   /** 杀掉远端某个 tmux 会话。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   kill_remote_tmux: (args: { origin: string; target: string }) =>
@@ -308,6 +351,14 @@ export const commands = {
 
   /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_settings_window: () => invoke<void>("open_settings_window"),
+
+  /** 从远端 `~/.bashrc` 卸 ccm wrapper。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
+  uninstall_remote_ccm_helper: (args: { cfg: unknown; profile: string }) =>
+    invoke<string>("uninstall_remote_ccm_helper", args),
+
+  /** 卸远端 daemon。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
+  uninstall_remote_daemon: (args: { cfg: unknown }) =>
+    invoke<string>("uninstall_remote_daemon", args),
 
   /** 用系统默认程序打开 monitor 的 log **目录**。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_log_dir: () => invoke<void>("open_log_dir"),

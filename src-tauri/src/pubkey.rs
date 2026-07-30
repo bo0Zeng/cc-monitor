@@ -31,6 +31,8 @@ impl PushOutcome {
 
 /// 前端回传:结果标记 + 实际推送的 .pub 路径(供 toast 显示)。
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct PushResult {
     pub outcome: String,

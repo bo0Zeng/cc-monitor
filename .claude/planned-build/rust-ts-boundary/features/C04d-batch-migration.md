@@ -32,7 +32,7 @@
 | **4b** | **`accounts.ts` 4** | 是（`accounts.rs` 6 个类型） | 11 | **已跳过——被跨工作区冲突协议挡住**（详见 §3d） |
 | **5a** | `settings/cc-bus-section` 6 · `settings/cc_integration` 7 | 是（**10 个**，含 3 个**非 pub**） | **10** | **完成** |
 | **5b** | `main.ts` 9 · `settings/mcp-section` 10 | 是（**1 个**；`main.ts` 零新派生） | **8** | **完成** |
-| 5c | `settings/remote-section` 8 | 是（3 个） | 7 | 待做 |
+| **5c** | `settings/remote-section` **9**（不是 8，见 §3g） | 是（**6 个**） | **7** | **完成** |
 | 6 | `sftp/panel` · `views/history` · `views/session-viewer`（**含 3 个动态派发口**） | 是 | 3 | 待做 |
 | 7 | `panorama/api.ts`（21 处，最大） | 是 | **1**（包装层自己） | 待做 |
 | — | **`tabs.ts`（15 处）** | — | — | **已跳过，等授权** |
@@ -336,6 +336,64 @@ Rust 是 `pub scope: String`，手写版窄化成 `McpScope = "user" | "local" |
 | **A** | `McpServerEntry.source_path` 加 `serde(rename)` | rc=0 | ✔ grep 到 `sourcePathRENAMED` | `tsc` 报**生产代码** `mcp-section.ts:559` **与它的 vitest** 各一处 | 成立 |
 | **B** | 包装层里 `read_mcp_servers` 的字面量抄成**邻居真命令** `read_remote_mcp_servers` | — | — | `tsc` **rc=0**（管不了）· 守卫红并同时点出两个名字 | 成立。键↔字面量对拍仍是唯一的牙 |
 | C | 四条等号自动各红一次 | — | — | 生成物清单 · 派生源 18→19 · 文件数 10→8 · 包装层 40→53 | 成立 |
+
+## 3g. 批次 5c 明细：**两处「我的工具比守卫弱」+ 一条穷尽性兜底被激活**
+
+9 条包装层条目（53 → **62**）· 6 个派生（生成物 51 → **57**）· 1 个文件迁走（8 → **7**）。
+**本批零漂移**（6 个手写版与生成物逐字等价）。
+
+### ★ 我用 `grep -P` 逐文件列调用点，漏了一处——因为 grep 是**按行**的
+
+`remote-section.ts` 实际有 **9** 个调用点，不是我一直记的 8：`push_public_key` 写成**跨行**形式
+
+```ts
+const r = await invoke<{ outcome: string; pubPath: string }>(
+  "push_public_key",
+  { cfg, pubKeyPath },
+);
+```
+
+我的临时 `grep -P '…invoke…["\']NAME'` 是**按行匹配**的 ⇒ 命令名在下一行就看不见。
+而守卫里的 JS 正则跨整个文件、**一直数对**（`toBe(112)` 含它）。
+**教训：临时 grep 比守卫弱，别拿它当账本。**（发现方式：`tsc` 报 `Cannot find name 'invoke'`
+——我把 import 换掉后，那个漏掉的调用点没人给它 `invoke` 了。）
+
+### ★ 包装层签名又抓到一处真的类型松散
+
+`push_public_key` 我先写成 `pubKeyPath: string`，`tsc` 报 `'string | null' is not assignable`。
+查下来：`pubKeyPath` 在「已填私钥」那条路上**确实是 `null`**（Rust 据 `keyPath` 推同名 `.pub`），
+而 Rust 侧参数就是 `Option<String>`。**是我签名写窄了，不是代码有问题。**
+裸 `invoke` 的 args 是宽松的 `InvokeArgs` ⇒ 这处松散一直没人管；包装层一上来就报了。
+（再次印证：**实参类型也要从 Rust 签名量。**）
+
+### ★ `ConnectStage` 一并生成，让一条早就写好的穷尽性兜底**第一次真正生效**
+
+`describeStage` 里有：
+
+```ts
+default: {
+  const _never: never = st;   // 未来新增 ConnectStage 变体时编译期(never)即报错
+```
+
+**但手写类型时它守的只是 TS 自己造的联合**——Rust 加一个 variant 并不会让它红。
+换成生成物后，**变异 A 给 Rust 的 `ConnectStage` 加一个 variant → `tsc` 报
+`Type '{ kind: "probeMutantStage"; }' is not assignable to type 'never'`**。
+那条注释里写的意图，从此才是真的。**这是「把已有的好意图接上真实源头」的一例**，
+比新增一条断言更有价值。
+
+### 一处我自己造的错，与批 5b 同一个锚点
+
+`ins("  /** 往远端 tmux 会话发按键。")` 又失败——那条注释是**多行**的
+（`/**` 单独一行）。批 5b 撞过同一处。**异常在写盘前抛出 ⇒ `commands.ts` 未被改坏**
+（`git diff` 确认 0 行），但 `remote-section.ts` 已改 ⇒ **中间态不一致**，
+补做时要先确认哪个文件动了。锚点改成 `"  /**\n   * 往远端 tmux 会话发按键。"` 后通过。
+
+### 批次 5c 变异
+
+| # | 变异 | 编译 | 判据新鲜 | 判色 | 结论 |
+|---|---|---|---|---|---|
+| **A** | 给 Rust `ConnectStage` 加一个 variant | rc=0 | ✔ grep 到 `probeMutantStage` | `tsc` 报 `not assignable to type 'never'` | **成立**，且是本批最重要的一条 |
+| B | 四条等号自动各红一次 | — | — | 生成物清单 · 派生源 19→21 · 文件数 8→7 · 包装层 53→62 | 成立 |
 
 ## 4. 代码审计结果（Phase D）
 
