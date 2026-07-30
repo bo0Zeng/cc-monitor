@@ -75,7 +75,7 @@ ccm-pretrust 13 · cc-spawn-uplift 21 · tmux-guarded 14 · usage-probe 7
 | ID | 功能 | 一句话目标 | 状态 | 依赖 | 优先级 |
 |----|------|-----------|------|------|--------|
 | G-A | **八套真机套件加断言数地板** | 每套收尾 `[ "$PASS" -ge <实测值> ]`；`cc-spawn-uplift` 先补 `PASS=` 打印；地板值写进 `ci.yml` 标签 | 待规划 | — | **P0** |
-| G-B | **vendored bash 进门禁** | `vendor/cc-acct-iso/scripts/**` 纳入 shellcheck；`run-tests.sh`（424 行）接进 CI | 待规划 | — | P0 |
+| G-B | **vendored bash 进门禁** | shellcheck 清单扩到 vendored 四个文件（**不是 `**` glob，见下**）+ 覆盖面地板；`run-tests.sh`（424 行）接进 CI + 断言条数地板 | **✅ 完成，已签收** | — | P0 |
 | G-C | **6 套已自动化 e2e 进 CI** | `graylight`/`restart`/`resume` 三族共 6 套进 `ci.yml`（复用已有的 daemon 编译 job）+ 进 `package.json` | 待规划 | G-A | P1 |
 
 **G-A 为什么排第一**：它是三条里唯一能**回答「其余门禁到底有没有在跑」**的。
@@ -111,8 +111,8 @@ G-B/G-C 是扩大覆盖面，G-A 是保证覆盖面不会静默缩水。
 | **1. `ci.yml`** | G-A,G-B,G-C | 三处改动：shellcheck 的文件清单扩到 vendored · 新增 `run-tests.sh` 一步 · 新增 6 套 e2e 步骤。**断言条数标签与套件里的地板值同源** | Phase G 刚把标签订正为「8 套 / 152 条」并逐套列出 | **本工作区最先改 `ci.yml`**，`rust-ts-boundary` C05 与 `local-as-remote` L0/L4 都在它之后追加。**不改任何触发条件** |
 | **2. 八套套件脚本的收尾段** | G-A | 统一形态：`printf 'PASS=%s FAIL=%s\n'` + `[ "$FAIL" -eq 0 ]` + `[ "${PASS:-0}" -ge <N> ]`。**`${PASS:-0}` 不是 `$PASS`**——变量名打错时要红而不是 unbound 后静默 | 7 套有 `PASS=` 打印无地板；`cc-spawn-uplift` 连打印都没有 | 八套的计数变量名不统一（`PASS`/`fail` 混用），G-A 要先统一 |
 | **3. `package.json` 的 `test:*` 脚本链** | G-C | 6 套加进去。**注意 `npm test` 是 16 个 `&&` 串起来的手工链** | 16/16 今天没漏 | 加进 `npm test` 会让本地 `npm test` 需要 tmux + debug daemon ⇒ **见 §6 开放问题 1** |
-| **4. `shellcheck` 的文件清单** | G-B | `e2e/*.sh shared/cc-bus/scripts/* shared/ccm src-tauri/vendor/cc-acct-iso/scripts/**` | 前三项 | 实测今天扩进来零告警 |
-| **5. `vendor/cc-acct-iso/scripts/test/run-tests.sh`** | G-B | 进 CI 一步。它是**部署工具自己的测试**，而 `account-zero` 即将改那个工具 | 存在但从不运行 | 先跑一次看今天是否绿——**若今天就红，那是 G-B 的第一个发现** |
+| **4. `shellcheck` 的文件清单** | G-B | **✅ 已落地。⚠ 原文那个 `scripts/**` pattern 实测会让这一步恒红**——不开 globstar 时 `**` 等价 `*`，把 `scripts/test`（目录）喂给 shellcheck ⇒ `openBinaryFile: inappropriate type` rc=2。终态是**显式四个文件** + **覆盖面地板 `[ N -ge 36 ]`**（防改名/挪走导致少扫几个文件却照样绿） | ✅ 完成（32 → **36** 个文件） | 复测确认：`--severity=error` 零告警，**默认档（含 warning/info/style）也是零**（脚本自带 `# shellcheck disable=` 指令） |
+| **5. `vendor/cc-acct-iso/scripts/test/run-tests.sh`** | G-B | **✅ 已进 CI，带断言条数地板 `[ N -ge 171 ]`**——脚本退出码只看失败数 `F`，`F=0` 就 exit 0 ⇒ **一条不跑也会绿**，地板挡的是这个 | ✅ 完成 | **首次运行 171/171 全绿**（「若今天就红」的假设没命中）。**地板放 CI 侧而非脚本里**：脚本是 vendored 的，SS-10 禁止在副本里改出自己的版本 ⇒ 论证见 `features/G-B-…md` §3；**Z06/Z08 re-vendor 时应顺手把地板搬进脚本、补上「同源」** |
 
 ---
 
@@ -175,6 +175,11 @@ G-B（vendored 进门禁）  独立，可并行
 ---
 
 ## §7 变更记录
+
+| # | 日期 | 改了什么 / 为什么 |
+|---|---|---|
+| **新** | 2026-07-30 | **G-B 交付签收。** 三条实测：① 账本第 4 行那句「实测今天扩进来零告警」**成立且更强**（默认档也是零）② 账本第 5 行留的「若今天就红那是第一个发现」**没命中**——`run-tests.sh` 首次运行 **171/171 全绿** ③ **真正的第一个发现是账本第 4 行自己的 pattern**：`scripts/**` 不开 globstar 时等价 `scripts/*`，会把 `scripts/test` 目录喂给 shellcheck ⇒ **照抄进 `ci.yml` 会恒红**，已改成显式四文件清单并订正账本。**两条地板**（覆盖面 ≥36、断言条数 ≥171）都做了变异验收——这两个检查的天然失效模式都是**静默缩水而非报错**，正是本工作区存在的理由。**一处刻意偏离 §2「同源」**：断言地板放 CI 侧不放脚本里，因为脚本是 vendored 的（SS-10「副本是上游的镜子」），往副本加断言要走一次上游 lockstep + 重算 `.vendor_id`，而那属于「改那个工具」= G-B 要先建网再做的事 ⇒ **留给 Z06/Z08 re-vendor 时顺手补**。**account-zero cc-acct-iso 半区的网建好了**（Z01/Z04/Z06/Z08 解除「没有网不能改那个工具」） |
+
 
 - 01 — 2026-07-29 — 初版，Phase A 主规划完成 — 路线图第 ③ 项。
   由 Phase G 代码工程视角的三条（阻塞 2「八套无断言地板」· 重要 4「vendored bash 在门禁外」·
