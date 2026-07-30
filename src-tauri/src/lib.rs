@@ -750,7 +750,7 @@ pub fn run() {
                 let session_map = session_map.clone();
                 let remote_active = remote_active.clone();
                 let t0_capture = t0;
-                app.listen("frontend-ready", move |event| {
+                app.listen(bridge::events::FRONTEND_READY, move |event| {
                     // Batch5-F19：payload 携带用户上次所在 tab（localStorage 记忆），
                     // replay 按 session 分组、该 tab 的块先发。缺省/解析失败 → None
                     // （行为同 F19 前；viewer 等旧调用方不带 payload 也安全）。

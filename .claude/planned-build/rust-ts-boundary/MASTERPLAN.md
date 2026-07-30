@@ -83,7 +83,7 @@
 | ID | 功能 | 一句话目标 | 状态 | 依赖 | 优先级 |
 |----|------|-----------|------|------|--------|
 | C01 | **样板：一条命令走通全链** | 接 **`ts-rs` v12**，选**一个**低风险命令生成类型 + 类型化 `invoke`，跑通「改 Rust → tsc 报错」 | **实现中** | — | **P0** |
-| C02 | **事件半边先迁完** | `bridge.rs` 10 个事件 payload → 生成；`src/events.ts` 从手抄改成消费生成物 | 待规划 | C01 | P0 |
+| C02 | **事件半边先迁完** | **8 个**事件 payload + `TaskEntry` → 生成；`events.ts` / `remote-health.ts` / `tasks-panel.ts` / `main.ts` 改成消费生成物；新增事件名钉死守卫。**`JsonlLine`/`JsonlBatch` 延后**（卡 C03 的 `seq: u64`，理由见 C02 §2 订正块） | **完成**（`682d5a5` + 审计闭环） | C01 | P0 |
 | C03 | **大整数的显式处置** | `u64`/`i64` 跨边界的策略定下来并落地（`sftp_pool.rs:33` 那 6 个字段是第一批） | 待规划 | C01 | P0 |
 | C04 | **命令半边全量迁移** | 119 个命令 + 128 个 struct 分批迁完；29 个 `import { invoke }` 收成 1 | 待规划 | C01,C03 | P1 |
 | C05 | **门禁** | CI 检查生成物最新（重新生成后 `git diff --exit-code` 空）+ 禁止新增手写跨边界类型 | 待规划 | C02 | P1 |
@@ -119,7 +119,7 @@ src-tauri/src/**.rs   ──(ts-rs 派生 + cargo test 导出)──▶  生成�
 
 | 共享面 | 涉及功能 | 最终形态设计 | 当前状态 | 备注 |
 |---|---|---|---|---|
-| **1. `src/events.ts` + `src/remote-health.ts`** | C02,C05 | 单一订阅枢纽保留（这个形状是对的），**11 个** payload 类型改成 `import` 生成物。**事件名常量不生成**（`ts-rs` 只生成类型、不生成 `const`）——改为由**钉死 10 个名字的结构性守卫**对拍，形状照 `every_host_declaration_is_pinned` | 手抄 | **C02 Phase B 实测订正两处**：① 原文写「事件名常量也从 `bridge.rs` 生成」——`ts-rs` 做不到；② 原文只写 `events.ts`，**漏了 `src/remote-health.ts`**（`RemoteHealthPayload` 的手写版在那儿）。另：payload struct 实为 **11 个**（含方向相反的 `FrontendReadyPayload`，`Deserialize`），不是 10 个 |
+| **1. `src/events.ts` + `src/remote-health.ts` + `src/tasks-panel.ts` + `src/main.ts`** | C02,C05 | 单一订阅枢纽保留（这个形状是对的），**C02 交付 9 个**生成类型（8 payload + `TaskEntry`）；`JsonlLine`/`JsonlBatch` 延后。**事件名常量不生成**（`ts-rs` 只生成类型、不生成 `const`）——改为由**钉死 10 个名字的结构性守卫**对拍，形状照 `every_host_declaration_is_pinned` | 手抄 | **C02 Phase B 实测订正两处**：① 原文写「事件名常量也从 `bridge.rs` 生成」——`ts-rs` 做不到；② 原文只写 `events.ts`，**漏了 `src/remote-health.ts`**（`RemoteHealthPayload` 的手写版在那儿）。另：payload struct 实为 **11 个**（含方向相反的 `FrontendReadyPayload`，`Deserialize`），不是 10 个 |
 | **2. `src/sftp/paths.ts:6-13`** | C03,C04 | 由生成物取代；6 个字段里的 `u64` 按 C03 定的策略表达 | 手写，`u64→number` 静默有损 | 这是**唯一已确认的数据损失点**，所以它是 C03 的第一批 |
 | **3. `src/accounts.ts` 6 个 type** | C04 | 由生成物取代；**中文注释也应该从 Rust 侧 doc comment 生成**（今天是拷贝的） | 手写，注释都是拷贝的 | 与 `account-zero` 工作区**同时在改** ⇒ 见下方冲突协议 |
 | **4. IR 类型 `src/launch-plan.ts`** | C04 | `LaunchPlan`/`LaunchContext`/`LaunchAccount`/`EnvOp`/`WrapSpec` —— **这几个今天只活在 TS 侧**（Rust 不认识它们）。**本工作区不动它们**：它们不是跨边界类型，不该为了统一而强行搬去 Rust | 纯 TS | **重要判断**：IR 是前端的意图模型，Rust 侧只收渲染好的命令串。**别把它拖过边界。**`account-zero` Z02 与 `local-as-remote` 都要改这些类型，本工作区**不插手** |
@@ -256,6 +256,7 @@ C01（样板 + 变异验收）
 
 ## §7 变更记录
 
+- 06 — 2026-07-29 — **C02 落地 + 审计闭环**（`682d5a5` + 修复）— 8 个事件 payload + `TaskEntry` 改生成物；新增事件名钉死守卫并在审计后扩到 **11** 个常量（补 `FRONTEND_READY`——C02 给它上了类型却把名字漏在门禁外）；**修掉一条阻塞**：`skip_serializing_if` 扫描的 400 字符窗口会被隔壁字段的属性喂饱（该性质在 C01 时为真、被 C02 扩到第 2 处相邻同构字段的那一刻失效），窗口收到同字段属性块；顺带治 S2（切块对属性顺序敏感 ⇒ 改以 `pub struct` 为锚往上收属性，C04 要复制 127 次）。**订正一条我写错的延后理由**：`JsonlRecord` 不是「有损模型」而**就是 wire 的定义**，真正卡点是 `seq: u64` 要先有 C03。
 - 05 — 2026-07-29 — **C05 落地：门禁拆成两半，各在已有 job 里查** — 实测发现**没有任何 CI job 同时有 Rust 和 node**，所以 `npm run check:types` 那条串联进不了 CI。改为：`rust` job 加一步 `git diff --exit-code -- ../src/generated/`（保证已提交的生成物 == 从 Rust 源生成的）+ `frontend` job 既有的 `tsc`（保证 TS 消费方 == 已提交的生成物），两者合起来即「TS 消费方 == Rust 源」，而 `git diff` 不需要 node ⇒ 代价 ≈ 一条 git 命令。顺带闭合 C01 登记的「手改生成物」盲区（已提交的那种）。
 - 04 — 2026-07-29 — **C01 Phase D 审计闭环：执行顺序改动 + 依赖方向改动**（见 features/C01 §7）— C05 由 #4 提到 #2（CI 两次独立 checkout ⇒「忘了重新生成」让所有门禁保持绿色，实测）；ts-rs 移到 dev-dependencies + cfg_attr(test) 派生；§3 的 @generated 与实现矛盾已改准；「clippy 0」改「clippy 无新增」。
 - 03 — 2026-07-29 — **共享面 1 两处订正 + 新增一条硬性范围约束**（C02 Phase B 实测）— ① 事件名常量 `ts-rs` 生成不了，改为结构性守卫钉死；② 漏了 `src/remote-health.ts`；③ payload 实为 11 个不是 10 个；④ **线上格式是混的**（3 个 camelCase / 8 个 snake_case），生成物必须忠实复现，**统一它属于行为变化，本工作区一律不做**。
