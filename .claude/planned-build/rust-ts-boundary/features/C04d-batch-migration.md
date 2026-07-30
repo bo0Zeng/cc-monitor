@@ -26,7 +26,7 @@
 | 批 | 范围 | 需要新 Rust 派生？ | 29 → | 状态 |
 |---|---|---|---|---|
 | **1** | 6 个文件 / 5 条包装层条目，**零新派生** | 否 | **23** | **完成** |
-| 2 | 需要生成类型的 1-调用点文件（`account-usage` 内联字面量 · `cards/subagent` · `ccm-probe` · `settings/config-surface-section`） | 是（4 个） | 19 | 待做 |
+| **2** | 需要生成类型的 1-调用点文件（`account-usage` 内联字面量 · `cards/subagent` · `ccm-probe` · `settings/config-surface-section`） | 是（**7 个**：4 个命令返回类型 + 3 个传递依赖，含 1 个内部标记枚举） | **19** | **完成** |
 | 3 | 2-3 调用点的一组（`config` · `views/usage-view` · `views/port-forward` · `settings/accounts-section` · `settings/cc-bus-hooks-section`） | 是 | 14 | 待做 |
 | 4 | `account-restart` · `accounts.ts` · `settings/diagnostics-section` | 是（`accounts.rs` 6 个，**踩账本第 3 行的冲突协议**） | 11 | 待做 |
 | 5 | `settings/cc-bus-section` · `cc_integration` · `main.ts` · `remote-section` · `mcp-section` | 是 | 6 | 待做 |
@@ -84,6 +84,37 @@
 | **A** | 把 `get_session_tasks` 条目的 `invoke` 字面量抄成另一个**真实存在**的命令（`"open_log_file"`） | `tsc` **rc=0**（管不了）· 守卫红：「包装层条目 get_session_tasks 应当恰好调一个字面量命令名: expected [ 'open_log_file' ] to deeply equal [ 'get_session_tasks' ]」 | 成立。**C04a 那条对拍第一次面对带参数的多行条目，抓住了** |
 | **B** | 把 `tasks-panel.ts` 改回裸 `invoke` | 「期望恰好 23 个，实得 24」 | 成立 |
 | **C** | 三条等号在改动落地时**自动各红一次**（未刻意变异） | 包装层 `1 → 6` 红 · 文件数 `29 → 23` 红 · **字面量唯一名 `112` 没红** | 成立，且第三条印证了预判：命令名从裸调用搬进包装层，唯一名集合不变、只是位置变了 |
+
+## 3b. 批次 2 明细
+
+7 个派生：`AccountUsageProbeResult`（camelCase）· `SubagentLoadResult` · `CcmProbeResult` ·
+`ConfigSurfaceReport` + 传递依赖 `SurfaceRow` / `SettingsScope` / `SurfaceState`（后者是
+`#[serde(tag = "kind", rename_all = "snake_case")]` 的**内部标记枚举** → 生成判别联合）。
+生成物 21 → **28**；`import invoke` 的生产文件 23 → **19**；包装层 6 → **10**。
+
+**C04c 的投资在这里第一次收息**：`SubagentLoadResult.records: Vec<JsonlRecord>` 的传递依赖
+**C04c 已经生成好了**，否则这一批得先啃那个 12-variant 的 enum。
+
+**本批次零漂移**：4 个 TS 手写版与生成物**逐字等价** ⇒ 这一批的价值是**防将来漂**，
+不是抓到了 bug。**如实这么说**，别把「防御性收益」讲成「发现了问题」。
+
+**一处设计判据的复用**：`ccm-probe.ts` 同时有 `RawCcmProbeResult`（线上形状）和另一个
+`CcmProbeResult`（TS 侧领域类型，`capabilities: Set<string>`）。**线上的换生成物、领域的留手写**
+——同 C04c 处置 `ContentBlock` 的判据。故 import 时用 `as RawCcmProbeResult` 别名避免撞名。
+
+### 批次 2 变异
+
+| # | 变异 | 编译 | 生成物是本次产的？ | 判色 | 结论 |
+|---|---|---|---|---|---|
+| A | 给 `SurfaceState` 加一个 Rust variant | **rc=101** | — | — | **作废**（Rust 有穷尽 match） |
+| B | 删 `SubagentLoadResult.agent_id` | **rc=101** | **否**（grep 到生成物里 `agent_id` 还在） | — | **作废** |
+| **A′** | 给 `SurfaceState::Absent` 加显式 `serde(rename)` | rc=0 | ✔ grep 到 `absent_RENAMED` | `tsc` 同时报**生产代码**的 `case "absent"` **与它的 vitest** | **成立**。内部标记枚举的判别联合窄化真被消费 |
+| **B′** | 给 `agent_id` 加 `serde(rename)` | rc=0 | ✔ | `tsc`: `Property 'agent_id' does not exist on type 'SubagentLoadResult'` | 成立 |
+| C | 三条等号在改动落地时自动各红一次 | — | — | 生成物清单 `toEqual` 红 · 文件数 `23 → 19` 红 · 包装层 `6 → 10` 红 | 成立 |
+
+**C04c 那条教训当场生效**：A/B 两条我**在判色前就发现无效**——因为我这次在判色步骤里加了
+「grep 生成物确认它是本次变异产的」。B 的 grep 显示 `agent_id` 还在生成物里
+⇒ `tsc rc=0` 是在读过期产物，不是「链条没牙」。**把那条教训变成了流程里的一步，而不是记忆。**
 
 ## 4. 代码审计结果（Phase D）
 

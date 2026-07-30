@@ -5,7 +5,7 @@
  * 去抖（探测是较重操作：起隐藏会话+网络查询，几秒到十几秒）。没有 `setInterval`，没有后台
  * 定时任务；`force:true`（用户点"刷新用量"）忽略缓存强制重查。
  */
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "./ipc/commands";
 import { buildUsageProbePayload } from "./remote-launch.ts";
 import { parseUsageCapture, type AccountUsageParseResult } from "./account-usage-parse.ts";
 
@@ -45,10 +45,11 @@ export async function fetchAccountUsage(
   let outcome: AccountUsageOutcome;
   try {
     const payload = buildUsageProbePayload(configDir);
-    const result = await invoke<{ captured: boolean; raw: string | null; error: string | null }>(
-      "account_usage",
-      { origin, accountName, launchPayload: payload },
-    );
+    const result = await commands.account_usage({
+      origin,
+      accountName,
+      launchPayload: payload,
+    });
     outcome = result.captured
       ? parseUsageCapture(result.raw ?? "")
       : { status: "probe-failed", error: result.error ?? "探测失败（原因未知）" };

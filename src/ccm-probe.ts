@@ -10,7 +10,7 @@
  * 到"更保守、被充分验证过的兜底渲染器"是正确方向（区别于 `isValidConfigDir` 这类必须
  * fail-closed 的安全校验）。
  */
-import { invoke } from "@tauri-apps/api/core";
+import { commands } from "./ipc/commands";
 
 export interface CcmProbeResult {
   installed: boolean;
@@ -18,11 +18,11 @@ export interface CcmProbeResult {
   capabilities: Set<string>;
 }
 
-interface RawCcmProbeResult {
-  installed: boolean;
-  version: string | null;
-  capabilities: string[];
-}
+// C04d 批 2：**线上形状**改用生成物。本文件另有一个同名的 TS 侧领域类型
+// `CcmProbeResult`（`capabilities: Set<string>`）——那是解释后的模型，留手写
+// （同 C04c 对 `ContentBlock` 的判据：线上的换生成物，领域的不拖过边界）。
+// 故这里用 `as RawCcmProbeResult` 别名，避免与领域类型撞名。
+import type { CcmProbeResult as RawCcmProbeResult } from "./generated/CcmProbeResult";
 
 const CCM_PROBE_TTL_MS = 5 * 60_000;
 const NOT_INSTALLED: CcmProbeResult = { installed: false, version: null, capabilities: new Set() };
@@ -34,7 +34,7 @@ export async function probeCcm(origin: string, force = false): Promise<CcmProbeR
   if (!force && cached && now - cached.at < CCM_PROBE_TTL_MS) return cached.value;
   let value: CcmProbeResult;
   try {
-    const raw = await invoke<RawCcmProbeResult>("probe_ccm_cli", { origin });
+    const raw: RawCcmProbeResult = await commands.probe_ccm_cli({ origin });
     value = raw.installed
       ? { installed: true, version: raw.version, capabilities: new Set(raw.capabilities) }
       : NOT_INSTALLED;

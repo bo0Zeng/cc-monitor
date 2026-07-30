@@ -47,6 +47,8 @@ const QUIESCENCE_MAX_POLLS: u32 = 14; // ≈7s 上限
 const EXEC_TIMEOUT_SECS: u64 = 25;
 
 #[derive(serde::Serialize, Debug, Clone, Default)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct AccountUsageProbeResult {
     /// true = 拿到了屏幕文本（不代表内容可解析——解析是 TS 侧纯函数 `parseUsageCapture` 的职责）。
