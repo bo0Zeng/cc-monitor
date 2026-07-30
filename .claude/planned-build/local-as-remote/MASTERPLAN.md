@@ -3,7 +3,7 @@
 > 所有功能宏观设计的**单一事实来源**。跨功能的任何决策以此为准。
 > 每次修订都在末尾「§7 变更记录」追加一行。
 >
-> **状态：Phase A 已落盘，等用户审批。未动任何代码。**
+> **状态：✅ 主计划用户 2026-07-30 已批准**（原话「批准local-as-remote」）。Phase A 已落盘，B 起开工。
 > **本工作区落地的是 `doc/INVARIANTS.md` §40**（用户 2026-07-29 拍板的方向性约束）。
 > 路线图第 ④ 项。
 
@@ -103,7 +103,7 @@ L3 是「给一个 bash 工具做 Windows 等价物」。** 三件事的成本�
 | **L3a** | **本地账号枚举（只读）** | Rust 直接读 `%USERPROFILE%\.claude-accts\accounts.json`（manifest 格式已定），`loggedIn` 由 `.credentials.json` 是否存在判定。**不需要 bash、不需要 cc-acct-iso** ⇒ 本地立刻有：账号列表 / 选号 / 账号注入 / per-account model | 待规划 | L2 | **P1** |
 | L3b | **本地账号管理（写）** | 建 / 迁 / 删 / 改默认号。需要 cc-acct-iso 的 Windows 等价物（PowerShell 或 Rust 实现） | 待规划 | **`account-zero` 全部落地** + L3a | P2 |
 | L4 | **Linux 打包 + 进 CI/release** | Linux 产物（AppImage/deb 择一）+ CI 构建 job；`release.yml` 加 Linux 产物 | 待规划 | L0,L1 | P2 |
-| L5 | **平价对账表 + 门禁** | 枚举全部 119 个 Tauri 命令，每条要么两侧都有、要么在白名单表里且带理由；**新增命令不登记就红** | 待规划 | — | P1 |
+| L5 | **平价对账表 + 门禁** | 枚举全部 **120** 个 Tauri 命令（**开工复测订正：计划原写 119**；以 `generate_handler!` 条目为准，实测 120 = 120、零缺口），每条要么两侧都有、要么在白名单表里且带理由；**新增命令不登记就红** | **Phase B 复测已做**（`features/L5-parity-ledger.md`），实现待续 | — | P1 |
 
 ### Windows 本地排期：原来的 L3 拆成 L3a / L3b（2026-07-29 用户要求排期后重新推导）
 
