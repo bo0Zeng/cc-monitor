@@ -102,3 +102,33 @@ hooks/model/permissions/theme 全丢、静默回落默认值）。**Z08 修的�
 ① 把 `settings.json` 加进 `ISOLATE_SET` 再 `sync --apply` ——**对在用的会话不可观测**
 （同目录 `mv` 原子替换、内容逐字节相同）② 往目标账号那份里写 `apiKeyHelper` + `env`
 ——**这才是真内容变更，要等用户不在用那个号**。
+
+---
+
+## Z06 签收（2026-07-30）
+
+**交付**：`NATIVE_IDENTITY` 声明表 + 四个投影；`ISOLATE_SET` / `LEGACY_HOME_ITEMS` /
+`chmod 600` 目标从它派生（派生结果与历史字面量**逐字相同**）；**跨语言双写点守卫**钉住
+daemon `accounts_query.rs:407` 那处独立的 `loggedIn` 判定。lockstep 完成
+（`.vendor_id` `740a68b11a71ce27` → `15b1ca8ccfb7c9c1`）。测试 197 → **215**，daemon 140 → **141**。
+
+**开工前复测纠正了计划**：`accounts.rs:49` 只是注释不是决策点；bash 侧 ~18 处字面量绝大多数
+是正当具体用途或用户文案 ⇒ **守卫从「字面量零出现」改成「跨语言双写点」**。
+
+**单点声明的第一个收益**：两处此前不可见的不一致自己浮出来（`init`/`sync` 都只 chmod
+`.credentials.json`，`.claude.json` 的权限没人管）—— 两条都修了，第三条（`verify` 硬失败
+范围）刻意不改（会给在野环境突然的新红）。
+
+**未做，如实登记**：
+- **`mcp.rs` 的 `.claude.json` 三候选那条双写点未钉**（Z06 第二半）。它比凭据那条微妙：
+  `mcp.rs` 是**防御性**列三个候选，与声明不是简单相等关系，钉之前要先想清断言什么
+- `verify` 的硬失败范围未收紧
+- 用户真实 `~/.claude-accts/` **零改动**（z/b 的 `settings.json` 仍是 07-26 那两个软链、
+  `accounts.json` mtime 未变）。上游备份在 `scratchpad/z06-upstream-backup/`
+
+**两个坑，记在这里免得后人重踩**：
+1. `set -o pipefail` 下 `while … cond && printf … done | sed`：**最后一行条件为假就让整条
+   管线失败** ⇒ `set -e` 就地退出。现象极迷惑（派生值全对、却在赋值后死掉，197 条红 115 条）
+2. `VENDOR.md` 菜谱的 `cp -a` **保留 mtime** ⇒ re-vendor 后 cargo 可能不重编译
+   `include_str!` ⇒ **守卫报陈旧结果**。CI 干净 checkout 不受影响；**本地 re-vendor 后要
+   `touch` 引用它的 Rust 文件**

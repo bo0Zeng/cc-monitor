@@ -475,13 +475,57 @@ chkn "回滚前:z 是私有实体" '[ -L "$SB/.claude-accts/z/settings.json" ]'
 ccq rollback latest --apply
 chk  "rollback 后 z/settings.json 回到软链" '[ -L "$SB/.claude-accts/z/settings.json" ]'
 
+
+# ══════════════════════════════════════════════════════════════════
+group "16. Z06:原生身份组成的单点声明（NATIVE_IDENTITY 派生）"
+# 这一组钉的是「三个集合从声明派生、且派生结果与历史字面量逐字相同」。
+# 派生对了但**行为变了**才是真危险,所以既比字面量、也比行为。
+# shellcheck source=/dev/null
+. "$SCRIPTS_DIR/lib.sh"
+
+eq   "ni_isolate_default 逐字等于历史 ISOLATE_SET" \
+     "$(ni_isolate_default)" ".credentials.json .claude.json backups policy-limits.json stats-cache.json"
+eq   "ni_home_rooted 逐字等于历史 LEGACY_HOME_ITEMS" "$(ni_home_rooted)" ".claude.json"
+eq   "ni_secrets = 两个身份本体" "$(ni_secrets)" ".credentials.json .claude.json"
+chk  "ni_is_secret 认 .credentials.json"      'ni_is_secret .credentials.json'
+chk  "ni_is_secret 认 .claude.json"           'ni_is_secret .claude.json'
+chkn "ni_is_secret 不认 backups(derived)"     'ni_is_secret backups'
+chkn "ni_is_secret 不认 stats-cache.json(state)" 'ni_is_secret stats-cache.json'
+chkn "ni_is_secret 不认表外的项"               'ni_is_secret settings.json'
+eq   "声明有 5 项" "$(ni_items | grep -c .)" "5"
+
+# ★ set -euo pipefail 下三个投影都必须 rc=0。
+# 栽过一次:while 里用 `cond && printf`,最后一行条件为假 ⇒ while 以 1 退出 ⇒ pipefail
+# 判整条管线失败 ⇒ set -e 就地退出(派生值全对,却在赋值之后死掉,197 条红了 115 条)。
+chk  "ni_isolate_default 在 pipefail 下 rc=0" 'bash -euo pipefail -c ". \"$SCRIPTS_DIR/lib.sh\"; ni_isolate_default >/dev/null"'
+chk  "ni_home_rooted 在 pipefail 下 rc=0"     'bash -euo pipefail -c ". \"$SCRIPTS_DIR/lib.sh\"; ni_home_rooted >/dev/null"'
+chk  "ni_secrets 在 pipefail 下 rc=0"         'bash -euo pipefail -c ". \"$SCRIPTS_DIR/lib.sh\"; ni_secrets >/dev/null"'
+
+# —— 覆盖仍然生效(派生只改**默认值**的来源,不改覆盖语义)——
+new_sandbox
+OUT16A="$(ISOLATE_SET="a.json b.json" cc config 2>&1)"
+chk  "ISOLATE_SET 环境变量仍能覆盖派生默认值" 'printf "%s" "$OUT16A" | grep -q "ISOLATE_SET       a.json b.json"'
+OUT16B="$(cc config 2>&1)"
+chk  "不覆盖时 config 打印的就是派生值" 'printf "%s" "$OUT16B" | grep -q "ISOLATE_SET       .credentials.json .claude.json backups policy-limits.json stats-cache.json"'
+
+# —— secret 的权限:init 就该 600,sync 幂等不再产生一次性漂移 ——
+new_sandbox
+ccq init z --apply
+eq   "init 后 .credentials.json 是 600" "$(stat -c %a "$SB/.claude-accts/z/.credentials.json" 2>/dev/null)" "600"
+eq   "init 后 .claude.json 也是 600(Z06 从声明派生后补上的)" "$(stat -c %a "$SB/.claude-accts/z/.claude.json" 2>/dev/null)" "600"
+chmod 644 "$SB/.claude-accts/z/.claude.json"
+ccq sync --apply
+eq   "sync 会修 .claude.json 的权限(此前只修 .credentials.json)" "$(stat -c %a "$SB/.claude-accts/z/.claude.json" 2>/dev/null)" "600"
+OUT16C="$(cc sync 2>&1)"
+chk  "权限已对时 sync 无改动(收敛)" 'printf "%s" "$OUT16C" | grep -q "无需改动"'
+
 # ══════════════════════════════════════════════════════════════════
 export HOME="$ORIG_HOME"
 printf '\n\033[1m────────────────────────────\033[0m\n'
 # 断言条数地板（**同源**:地板写在套件自己这一处,CI 侧那条是双保险）。
 # 为什么必须有:下面的退出码只看失败数 $F —— **$F=0 就 exit 0** ⇒ 一条不跑也会报绿。
 # 改这个数的时机:真加了断言(只应涨)。删断言要说明理由。
-MIN_ASSERTS=197
+MIN_ASSERTS=215
 if [ "$T" -lt "$MIN_ASSERTS" ]; then
   printf '\033[31m断言条数缩水:%d < 地板 %d —— 有断言被删或整组没跑\033[0m\n' "$T" "$MIN_ASSERTS"
   exit 1

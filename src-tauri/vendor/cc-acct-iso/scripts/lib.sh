@@ -96,6 +96,63 @@ real_of() {  # 尽量解析真实路径(不要求存在);没有 realpath 就原�
   else printf '%s' "$1"; fi
 }
 
+# ---------- 原生身份组成（Z06 单点声明）----------
+#
+# 「Claude Code 原生把『你是谁』与『你的本机状态』放在哪些文件、哪个根下」——
+# 这份知识此前在好几处各写一份,改一处漏一处的表现是**静默错**
+# (`loggedIn` 恒 false;或更坏:两个账号悄悄共用一份身份,以为在用 z 实际烧 b 的额度)。
+#
+# **它买到的是「快速失败」,不是「保证可迁」**:
+#   - Claude Code 只是**换位置**(改名/搬目录) ⇒ 改这张表 + 跑一次 `sync`
+#   - Claude Code **换机制**(比如凭据搬进 OS keyring) ⇒ 按目录切身份这条路整体失效,
+#     任何抽象都救不了;那时要的是**当场被检测到**而不是静默共用身份(那是 Z07 的活)
+#
+# 每行 `<项名>:<原生根>:<类别>`
+#   原生根  cfg   = 未迁移时住 `<config dir>/<项名>`(设了 CLAUDE_CONFIG_DIR 就跟着走)
+#           home  = 未迁移时住 `$HOME/<项名>`(**不跟 CLAUDE_CONFIG_DIR 走**,经典位置)
+#   类别    secret  身份本体。必须 600、必须隔离、**绝不从别的账号复制**
+#           state   本机状态。必须隔离(共享会串号,或高频写互相覆盖)
+#           derived 跟着别的项走的附属物(备份之类)
+#
+# **改这张表 = 改多账号的核心契约。** 改完必须:
+#   ① 跑 `scripts/test/run-tests.sh`(内含派生对拍与跨语言双写点提示)
+#   ② 对已存在的账号跑 `cc-acct-iso sync --apply`(Z08 的 ISOLATE 会把现实迁过去)
+NATIVE_IDENTITY="\
+.credentials.json:cfg:secret
+.claude.json:home:secret
+backups:cfg:derived
+policy-limits.json:cfg:state
+stats-cache.json:cfg:state"
+
+# 声明的四个投影。**全部只读这一张表**,别在别处再写一份清单。
+# ⚠ 这三个投影里的 while 一律用 `if … fi` 而**不是** `cond && printf`:
+# 本脚本开了 `set -o pipefail`,而 `&&` 惯用法在**最后一行条件为假**时会让 while 以 1 退出
+# ⇒ pipefail 把整条管线判失败 ⇒ `set -e` 就地退出。`if` 在条件为假且无 else 时返回 0。
+# (Z06 实测栽过一次:派生出的值全对,却在赋值之后立刻退出,197 条里红了 115 条。)
+ni_items() {           # 全部项名(逐行)
+  printf '%s\n' "$NATIVE_IDENTITY" | while IFS=: read -r name _root _class; do
+    if [ -n "$name" ]; then printf '%s\n' "$name"; fi
+  done
+}
+ni_isolate_default() { # = ISOLATE_SET 的默认值(空格分隔)
+  ni_items | tr '\n' ' ' | sed 's/ *$//'
+}
+ni_home_rooted() {     # 原生根是 $HOME 的项 = LEGACY_HOME_ITEMS 的默认值
+  printf '%s\n' "$NATIVE_IDENTITY" | while IFS=: read -r name root _class; do
+    if [ "$root" = "home" ]; then printf '%s ' "$name"; fi
+  done | sed 's/ *$//'
+}
+ni_secrets() {         # 类别 secret 的项 = 必须 chmod 600 的那些
+  printf '%s\n' "$NATIVE_IDENTITY" | while IFS=: read -r name _root class; do
+    if [ "$class" = "secret" ]; then printf '%s ' "$name"; fi
+  done | sed 's/ *$//'
+}
+ni_is_secret() {       # 某项是不是身份本体
+  local _it
+  for _it in $(ni_secrets); do [ "$_it" = "$1" ] && return 0; done
+  return 1
+}
+
 # ---------- 配置 ----------
 CFG_FILE=""
 cfg_load() {
@@ -111,10 +168,12 @@ cfg_load() {
   fi
   SHARED_STORE="${SHARED_STORE:-$HOME/.claude}"
   ACCTS_DIR="${ACCTS_DIR:-$HOME/.claude-accts}"
-  ISOLATE_SET="${ISOLATE_SET:-.credentials.json .claude.json backups policy-limits.json stats-cache.json}"
+  # Z06:下面两个集合**从 NATIVE_IDENTITY 派生**,不再各写一份(见本文件「原生身份组成」那节)。
+  # 环境变量/配置文件仍可覆盖(`${X:-…}` 语义逐字不变)。
+  ISOLATE_SET="${ISOLATE_SET:-$(ni_isolate_default)}"
   SHARE_SET="${SHARE_SET:-@auto}"
   SHARE_EXCLUDE="${SHARE_EXCLUDE:-accounts *.bak *.bak-*}"
-  LEGACY_HOME_ITEMS="${LEGACY_HOME_ITEMS:-.claude.json}"
+  LEGACY_HOME_ITEMS="${LEGACY_HOME_ITEMS:-$(ni_home_rooted)}"
   LEGACY_HOME_DIR="${LEGACY_HOME_DIR:-$HOME}"
   LAUNCHER="${LAUNCHER:-claude}"
 }

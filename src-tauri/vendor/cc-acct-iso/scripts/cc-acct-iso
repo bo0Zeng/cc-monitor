@@ -126,7 +126,14 @@ cmd_init() {
       plan_add MOVE "$src" "$cfgdir/$item"
     done
     plan_links_for "$cfgdir"
-    plan_add CHMOD 600 "$cfgdir/.credentials.json"
+    # Z06:从**声明**派生 —— 凡类别为 `secret` 的项迁进来都要 600。
+    # 此前只 chmod 了 `.credentials.json`,`.claude.json`(同样含 oauthAccount)搬进来后
+    # 保持原模式 ⇒ 与 `--seed-claude-json` 那条路(它确实 chmod 600 了)不一致,
+    # 也让 sync 的权限修复第一次跑时必然产生一次改动(不收敛)。收成一处声明后自洽。
+    local _sec
+    for _sec in $(ni_secrets); do
+      plan_add CHMOD 600 "$cfgdir/$_sec"
+    done
   fi
 
   src="$(isolate_src .claude.json)"
@@ -538,10 +545,19 @@ cmd_sync() {
     if [ ! -d "$c" ]; then warn "跳过 $n:config-dir 不存在($c)"; continue; fi
     if [ "$c" != "$SHARED_STORE" ]; then     # in-place 账号无需补链/改权限
       [ "$(stat -c %a "$c" 2>/dev/null || echo 700)" = "700" ] || plan_add CHMOD 700 "$c"
-      if [ -f "$c/.credentials.json" ] && [ ! -L "$c/.credentials.json" ]; then
-        cmode="$(stat -c %a "$c/.credentials.json" 2>/dev/null || echo 600)"
-        [ "$cmode" = "600" ] || plan_add CHMOD 600 "$c/.credentials.json"
-      fi
+      # Z06:权限修复从**声明**派生 —— 凡 `NATIVE_IDENTITY` 里类别为 `secret` 的项都要 600。
+      # **这修了一个此前不可见的缺口**:`.claude.json` 同样含 `oauthAccount`(身份本体)、
+      # `init --seed-claude-json` 也确实 chmod 600 了它,但 `sync` 此前只修 `.credentials.json`
+      # ⇒ 它的权限漂了就再也没人修。散着写的时候这种不一致看不出来,收成一处声明就浮出来了。
+      # (刻意**不**同时收紧 `verify` 的硬失败范围:在野的 `.claude.json` 若是 644,
+      #  那会给用户一个突然的新红。见 feature 文档 §「浮出来但本轮不改的两处」。)
+      local _sec
+      for _sec in $(ni_secrets); do
+        if [ -f "$c/$_sec" ] && [ ! -L "$c/$_sec" ]; then
+          cmode="$(stat -c %a "$c/$_sec" 2>/dev/null || echo 600)"
+          [ "$cmode" = "600" ] || plan_add CHMOD 600 "$c/$_sec"
+        fi
+      done
       while IFS= read -r -d '' item; do
         if [ -L "$c/$item" ]; then
           tgt="$(readlink "$c/$item")"
