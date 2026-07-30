@@ -137,3 +137,67 @@
 | E30 | README 产品文档漂移复发 | 同上（重要 I2） | **版本号与两个测试数已修**（2026-07-29：三处 v3.2.0→v3.3.0、cargo 365→536、DOM 595→814，均为实测）。**仍未做**：README 那个约 1400 字的单段落「项目状态」把整部版本史塞进去、与 CHANGELOG 重复，且**零账号功能覆盖**；以及 §A 那条登记行自己写着「README 停在 v3.0.0」也该更新——**「修了一半、登记项没跟着更新」正是这条复发的机制** |
 | E31 | `shell_quote` 放错模块 | Phase G 代码工程视角审阅（重要 6） | `ssh_source.rs` fan-in 14 里，5 个模块（`accounts`/`account_usage`/`cc_bus`/`remote_history`/`tmux`）**只为一个与 SSH 无关的纯字符串工具**依赖这个 4847 行模块。搬去 `utils.rs` 即可，一处改动。（顺带：该审阅逐个查过 14 个依赖方，只用到 6 个符号 ⇒ **这是内聚的 SSH facade，不是上帝对象，不该按行数拆**） |
 | E32 | Rust 侧零覆盖率门禁 | 同上（重要 7） | 31570 行 / 536 测试，无覆盖率地板。TS 侧地板只量 `*.vitest.ts` 而分母含 `*.test.ts` 覆盖的文件 ⇒ 只能设到 40/34/36/41，且新增只有 `*.test.ts` 覆盖的模块会**压低**全局数字、可能误红 |
+
+| E33 | **远端 tab 带外杀 tmux 后「变灰」延迟长到被用户当成 bug** | 用户 2026-07-29 真机观测 + `tmux_reconcile.rs` 头注自陈 | **未做**。用户报「一直有个 tab 不灰」，随后自行变灰 ⇒ 机制没坏，是**延迟**。**延迟可以算出来**：`TMUX_EMIT_INTERVAL`(**8s**，`remote-daemon-proto/src/watcher.rs:65`) × `RETIRE_MISS_THRESHOLD`(**2**) ≈ **16 秒**。（`tmux_reconcile.rs` 头注说这两个是「占位常量、真机未标定」——**那句只对 threshold 准**，`TMUX_EMIT_INTERVAL` 是有明确值的；用户追问「不是都没有轮询了」时才查清的。另：**轮询没消失，是搬走了**——删掉的是 monitor 侧每 8s 新建 SSH 跑 tmux ls，换成 daemon 在它自己那台机器上周期跑、经 `TmuxSessions` 帧上报；「不新增轮询」红线守的是 monitor 侧那条。`RETIRE_MISS_THRESHOLD` **不能降到 1**——`tmux_reconcile.rs:31` 有编译期断言钉死 `>= 2`，因为 `/branch` 漂移有 ~1s 竞态窗），且「带外杀端到端变灰」本身就在它的**真机累积项**里、**从没验过**。⇒ 这是那条累积项的**第一个真机观测点**。做法：① 标定两个常量；② 给 tab 加一条可见的诊断（数据来源 / `ever_bound` / `miss` 计数），让**三格**一眼可分——它们从 UI 上完全看不出区别，全表现为「不灰」：① **在等那 ~16 秒**；② **daemon 没在发 `TmuxSessions` 帧**（没跑 / 版本旧 / `raw` 是 `NO_TMUX` / backend 集为空被观测无效门保守跳过）⇒ **对账一轮都没执行，不是延迟长**；③ **`never_bound` 按设计永不判**（`never_bound` 的 sid 按设计**永不变灰**，见 `reconcile_step` 末支注释——bg / 无 wrapper / 直起 claude 免疫误 retire）。**注意本地会话完全不经这条路**：`reconcile_step` 全仓只在 `ssh_source.rs:2383` 的远端收帧循环里被调，独立 poller 已删（`lib.rs:705`） |
+
+| **E34** | **★ 把 tmux 存活的「轮询」换成事件：带外杀 tmux 后近乎零延迟变灰** | 用户 2026-07-29 明确要求「我要把轮询杀掉」 | **未做，需先调研**。见下方独立小节 |
+
+---
+
+## E34 详述：事件驱动的 tmux 存活信号（用户点名要做，需先调研）
+
+**用户原话**：「为什么延迟这么高? 不应该一关就杀吗? 不是事件驱动吗 / 怎么做成零延迟」→「我要把轮询杀掉」
+
+### 现状（2026-07-29 实测，不是推测）
+
+两条信号路性质完全不同：
+
+| 信号 | 机制 | 延迟 |
+|---|---|---|
+| claude 进程退出 | pidfile 消失 → daemon 的 `notify` inotify（`DEBOUNCE_MS = 100`，`remote-daemon-proto/src/watcher.rs:61`） | **~0.1 秒，本来就是事件驱动** |
+| tmux 会话被带外杀 | **没有任何东西推**，只能 daemon 周期跑 `tmux ls`（`TMUX_EMIT_INTERVAL = 8s`，`watcher.rs:65`）× `RETIRE_MISS_THRESHOLD`(2) | **~16 秒** |
+
+daemon 用 `notify` 只 watch 两处：`projects`（递归）+ `sessions`（非递归）。
+**「一关就杀」在正常情况下确实是瞬时的**——那 16 秒只出现在
+`tmux_reconcile.rs` 头注点名的那个场景：**claude 被守护托管而不随 tmux 死**
+（`ccm --detach` 那类 disown 的会话）⇒ pidfile 还在 ⇒ 事件路无信号 ⇒ 只剩轮询能发现。
+
+**一处订正**：轮询**没有被消灭，是搬走了**——删掉的是 monitor 侧每 8s 新建 SSH 跑 `tmux ls`
+（`lib.rs:705`：`run_tmux_reconcile_poller` 已删），换成 daemon 在它自己那台机器上周期跑。
+「不新增轮询」那条红线守的是 monitor 侧那条。
+
+### 可行性：tmux 其实有事件，只是本仓没用
+
+- 本机 **tmux 3.6**；`session-closed` hook 自 2.4 起就有
+- 而 **`shared/ccm` 与 `shared/cc-bus/scripts/*` 现在一个 tmux hook 都没设**（grep 零命中）
+
+⇒ 把「轮询获得的信号」换成「tmux 推的事件」是可行的：
+`session-closed` hook 在会话关闭那一刻触发 → 碰一下 daemon **已经在 inotify** 的目录
+→ 复用整条既有事件链 → **daemon 零改**（红线保住），延迟 16s → **~100ms**。
+
+**附带收益**：`RETIRE_MISS_THRESHOLD >= 2` 那条编译期断言的存在理由
+（防轮询抖动 + `/branch` 漂移竞态误判）**在事件路径上不成立**——
+hook 明确说「**这个具体会话**关了」，没有抖动可言。所以事件路可以不要 debounce。
+
+### 三个必须先调研/实测的问题（**不许凭推测动手**）
+
+1. **`session-closed` 支不支持 per-session 作用域？** tmux 文档在这点上有歧义
+   （会话对象正在销毁）。若支持，`ccm` 建会话时可以把 sid **字面量烤进** per-session hook，
+   最干净；若只支持全局，就得用 `#{hook_session_name}` + 一张名字→sid 映射。**必须实测。**
+2. **谁写、写什么 —— 会不会破 §24「单写者」？** 最直接的是 hook 删掉该会话的 pidfile 让既有
+   `SessionRemoved` 路照跑，但那让 liveness 目录**多一个写者**。要么换成
+   「写一个独立的『tmux 已关』标记，由既有唯一写者读」，要么**显式论证**这个第二写者可接受
+   （断连 flush 已经是第二生产者的先例）。
+3. **hook 里跑什么才安全？** `run-shell` 在 tmux server 上下文里跑，
+   要确认不会因为 hook 失败卡住 server、以及远端机器上路径/权限如何取。
+
+### 两条需要用户表态的红线
+
+- **必须改 `shared/ccm` 本体**（加 hook 只能在建会话那一步做）——而「不改 `shared/ccm` 本体」目前在册
+- **§24 单写者**倾向哪种解法（见上方问题 2）
+
+### 附带的诊断项（E33，与本条同源）
+
+三种「不灰」从 UI 上完全看不出区别：① 在等那 ~16 秒 ② daemon 没在发 `TmuxSessions` 帧
+（没跑 / 版本旧 / `raw == NO_TMUX` / backend 集空被观测无效门保守跳过 ⇒ **一轮都没执行**）
+③ `never_bound` 按设计永不判。**做 E34 时顺手把这三格显示出来**，否则下次还是只能靠猜。

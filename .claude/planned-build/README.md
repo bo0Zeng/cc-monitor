@@ -60,6 +60,7 @@
 | 18 | **L3a** 本地账号枚举（只读，Rust 读 manifest） | local-as-remote | 否 |
 | 19 | **L4** Linux 打包进 CI/release | local-as-remote | 否 |
 | 20 | **L3b** 本地账号管理（写） | local-as-remote | 依赖 account-zero 全部落地 |
+| **21** | **E34 事件驱动的 tmux 存活信号**（用户点名「把轮询杀掉」）—— **先调研再动手**：`session-closed` 是否支持 per-session 作用域 · 谁写/写什么（§24 单写者）· hook 里跑什么才安全 | （新，未分配工作区） | **是：需改 `shared/ccm` 本体（在册红线）+ §24 解法需用户表态** |
 
 **为什么 C05 从 #4 提到 #2**（C01 的 Phase D 审计 I1 实测）：CI 的 `rust` job（跑 `cargo test`）
 与 `frontend` job（跑 `tsc`）是**两次独立 checkout**——重新生成的产物在前者里被丢掉，
