@@ -947,10 +947,29 @@ enum LocalPsAction {
 ///
 /// 抽成独立函数是为了单测（不 spawn 进程也能验证防注入 + cc 优先逻辑）。
 /// （纯字符串构造，跨平台可编译可测；拉起本身在 launch.rs 按平台门控。）
-fn build_local_ps_command(
+/// L1：**与平台无关**的本地拉起决策 —— 校验 + 按活跃适配器算出「用哪个命令」。
+///
+/// 抽出来是因为 L1 给本地加了第二个渲染器（POSIX）。**校验与选择只能有一份**，
+/// 否则两个平台迟早各自漂移；而「怎么写这个条件判断」才是平台差异
+/// （PowerShell 用 `Get-Command`，POSIX 用 `command -v`）。
+///
+/// **sid 校验留在这里**：它与前端 `validateLocalLaunch` 是**两道独立防线**，不是重复
+/// ——前端那道拦 UI 传参，这道拦任何绕过前端到达 IPC 的输入。
+enum LocalLaunchChoice {
+    /// 用户显式指定了命令（F34）⇒ 不做别名探测，直接用。
+    Fixed(String),
+    /// 有 wrapper 别名（`cc`）：探测得到就用 `preferred`，否则 `fallback`。
+    Probe {
+        alias: String,
+        preferred: String,
+        fallback: String,
+    },
+}
+
+fn local_launch_choice(
     action: &LocalPsAction,
     launcher: Option<&str>,
-) -> Result<String, String> {
+) -> Result<LocalLaunchChoice, String> {
     if let LocalPsAction::Resume(sid) = action {
         let valid = !sid.is_empty()
             && sid
@@ -970,22 +989,84 @@ fn build_local_ps_command(
     };
     // F34：设了自定义命令就直接用（不再别名自动检测——用户显式选择优先）
     if let Some(l) = sanitize_launcher(launcher)? {
-        return Ok(suffix(&l));
+        return Ok(LocalLaunchChoice::Fixed(suffix(&l)));
     }
     let def = agent.default_launcher();
     Ok(match agent.launcher_alias() {
-        // 有 wrapper 别名（cc）：优先它、检测不到回退 default。
-        Some(alias) => format!(
-            "if (Get-Command {alias} -ErrorAction SilentlyContinue) {{ {} }} else {{ {} }}",
-            suffix(alias),
-            suffix(def),
-        ),
-        None => suffix(def),
+        Some(alias) => LocalLaunchChoice::Probe {
+            alias: alias.to_string(),
+            preferred: suffix(alias),
+            fallback: suffix(def),
+        },
+        None => LocalLaunchChoice::Fixed(suffix(def)),
     })
+}
+
+/// **平台门控**：生产路径上它只在 Windows 被调用（POSIX 走 `build_local_posix_command`）；
+/// 但逐字节钉死它输出的测试要在所有平台跑 ⇒ `any(windows, test)`。
+/// 用精确门控而不是 `#[allow(dead_code)]`——后者会把将来真正的死代码一并盖住。
+#[cfg(any(windows, test))]
+fn build_local_ps_command(
+    action: &LocalPsAction,
+    launcher: Option<&str>,
+) -> Result<String, String> {
+    Ok(match local_launch_choice(action, launcher)? {
+        LocalLaunchChoice::Fixed(cmd) => cmd,
+        // 有 wrapper 别名（cc）：优先它、检测不到回退 default。
+        LocalLaunchChoice::Probe {
+            alias,
+            preferred,
+            fallback,
+        } => format!(
+            "if (Get-Command {alias} -ErrorAction SilentlyContinue) {{ {preferred} }} else {{ {fallback} }}"
+        ),
+    })
+}
+
+/// L1：本地拉起命令的 **POSIX** 渲染 —— 与上面那个是同一个决策的另一种写法。
+///
+/// `Get-Command` 的 POSIX 等价物是 `command -v`：它同样能找到 shell **函数**与别名
+/// （`ccm` 的 `cc` 集成正是一个函数），而命令跑在 `bash -lic` 里、rc 已加载 ⇒ 找得到。
+fn build_local_posix_command(
+    action: &LocalPsAction,
+    launcher: Option<&str>,
+) -> Result<String, String> {
+    Ok(match local_launch_choice(action, launcher)? {
+        LocalLaunchChoice::Fixed(cmd) => cmd,
+        LocalLaunchChoice::Probe {
+            alias,
+            preferred,
+            fallback,
+        } => {
+            format!("if command -v {alias} >/dev/null 2>&1; then {preferred}; else {fallback}; fi")
+        }
+    })
+}
+
+/// L1：按宿主平台把「本地拉起」送出去。
+///
+/// 这就是 §40「一条路径，transport 是它唯一的差异」在本地这一侧的落点：
+/// 上面两个渲染器共享同一个决策，这里只挑一条送法。
+fn launch_local(
+    action: &LocalPsAction,
+    launcher: Option<&str>,
+    cwd: Option<&str>,
+) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let ps = build_local_ps_command(action, launcher)?;
+        crate::launch::launch_powershell_window(&ps, cwd)
+    }
+    #[cfg(not(windows))]
+    {
+        let cmd = build_local_posix_command(action, launcher)?;
+        crate::launch::launch_local_posix(&cmd, cwd)
+    }
 }
 
 /// 薄委托——保留旧函数名与调用点不变（`resume_impl` 只改内部实现，DoD 要求两个
 /// `#[tauri::command]` 的签名/行为/错误文案逐字节不变）。
+#[cfg(any(windows, test))]
 fn build_resume_ps_command(session_id: &str, launcher: Option<&str>) -> Result<String, String> {
     build_local_ps_command(&LocalPsAction::Resume(session_id.to_string()), launcher)
 }
@@ -994,8 +1075,11 @@ fn build_resume_ps_command(session_id: &str, launcher: Option<&str>) -> Result<S
 /// （与远端 resume/attach 族共用），本函数只剩「构造本地 resume 命令体 + 委托拉起」。
 /// 非 Windows：launch 层统一报错（仅 Windows 支持，错误文案改为中文）。
 fn resume_impl(session_id: &str, cwd: &str, launcher: Option<&str>) -> Result<(), String> {
-    let ps_command = build_resume_ps_command(session_id, launcher)?;
-    crate::launch::launch_powershell_window(&ps_command, Some(cwd))?;
+    launch_local(
+        &LocalPsAction::Resume(session_id.to_string()),
+        launcher,
+        Some(cwd),
+    )?;
     tracing::info!("history: resumed sid={session_id}");
     Ok(())
 }
@@ -1003,6 +1087,7 @@ fn resume_impl(session_id: &str, cwd: &str, launcher: Option<&str>) -> Result<()
 /// F96（#62）：本地「在该目录起**新**会话」的 PowerShell 命令体——薄委托（同上，DoD 要求
 /// 行为逐字节不变）。硬约束（用户 2026-07-15）：agent 名 / resume flag 全走活跃适配器，
 /// 本函数不出现 agent 字面量。
+#[cfg(any(windows, test))]
 fn build_new_session_ps_command(launcher: Option<&str>) -> Result<String, String> {
     build_local_ps_command(&LocalPsAction::New, launcher)
 }
@@ -1017,8 +1102,7 @@ pub fn new_local_session(cwd: String, launcher: Option<String>) -> Result<(), St
     if !cwd.is_empty() && !std::path::Path::new(&cwd).is_dir() {
         return Err(format!("目录不存在，无法在此起新会话：{cwd}"));
     }
-    let ps_command = build_new_session_ps_command(launcher.as_deref())?;
-    crate::launch::launch_powershell_window(&ps_command, Some(&cwd))?;
+    launch_local(&LocalPsAction::New, launcher.as_deref(), Some(&cwd))?;
     tracing::info!("history: new local session in {cwd}");
     Ok(())
 }
@@ -2032,6 +2116,54 @@ mod tests {
             assert!(
                 build_new_session_ps_command(Some(bad)).is_err(),
                 "应拒绝注入 launcher: {bad:?}"
+            );
+        }
+    }
+
+    /// ★ L1：POSIX 渲染器的形状 —— 与 PowerShell 那条是**同一个决策**的另一种写法。
+    ///
+    /// `Get-Command` 的等价物是 `command -v`（它同样找得到 shell **函数**，
+    /// 而 `ccm` 的 `cc` 集成正是一个函数；命令跑在 `bash -lic` 里、rc 已加载）。
+    #[test]
+    fn posix_renderer_mirrors_the_powershell_one() {
+        let sid = "01998f2a-1234-7abc-9def-0123456789ab";
+        assert_eq!(
+            build_local_posix_command(&LocalPsAction::Resume(sid.to_string()), None).unwrap(),
+            format!(
+                "if command -v cc >/dev/null 2>&1; then cc --resume {sid}; \
+                 else claude --resume {sid}; fi"
+            )
+        );
+        assert_eq!(
+            build_local_posix_command(&LocalPsAction::New, None).unwrap(),
+            "if command -v cc >/dev/null 2>&1; then cc; else claude; fi"
+        );
+        // F34 自定义命令：两边都不做别名探测，**逐字节相同**（这一支没有平台差异）。
+        for action in [LocalPsAction::New, LocalPsAction::Resume(sid.to_string())] {
+            assert_eq!(
+                build_local_posix_command(&action, Some("cct")).unwrap(),
+                build_local_ps_command(&action, Some("cct")).unwrap(),
+                "显式指定命令时两个渲染器不该有任何差异"
+            );
+        }
+    }
+
+    /// ★ L1：**sid 校验与注入防线在 POSIX 那条路上同样生效**。
+    ///
+    /// 主计划点名这道校验「要保留——那是一道独立防线，不是重复」。
+    /// L1 把它抽进了共享决策 `local_launch_choice`，本测试钉住抽完之后两条路都还有。
+    #[test]
+    fn posix_renderer_keeps_sid_and_launcher_defenses() {
+        for bad in ["", "../etc", "a b", "x;id", "sid$(id)"] {
+            assert!(
+                build_local_posix_command(&LocalPsAction::Resume(bad.to_string()), None).is_err(),
+                "POSIX 渲染器应拒绝非法 sid: {bad:?}"
+            );
+        }
+        for bad in ["cc; calc", "cc|id", "cc$(id)", "cc`id`", "cc&&x"] {
+            assert!(
+                build_local_posix_command(&LocalPsAction::New, Some(bad)).is_err(),
+                "POSIX 渲染器应拒绝注入 launcher: {bad:?}"
             );
         }
     }
