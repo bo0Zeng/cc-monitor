@@ -41,7 +41,7 @@
 | 2 | **C05** 门禁（生成物必须最新）—— **2026-07-29 由 #4 提到这里**，理由见下 | rust-ts-boundary | 否 |
 | 3 | **C02** 事件半边（已是单一枢纽，改动面最小） | rust-ts-boundary | 否 |
 | 4 | **C03** 大整数策略（必须在 C04 之前，否则把已知数据损失批量固化） | rust-ts-boundary | 否 |
-| 5 | **C04a** 类型化 invoke 包装层 + 钉死 119 个命令（机制先建） | rust-ts-boundary | 否 |
+| 5 | **C04a** 类型化 invoke 包装层 + 钉死 119 个命令（机制先建）—— **完成** (`588cf5d`，Phase D 3 阻塞+6 重要+11 建议全处置) | rust-ts-boundary | 否 |
 | 5b | **C04b** 两处内联字面量（`main.ts:744` 可做 · **`tabs.ts:1632` 卡红线**） | rust-ts-boundary | **`tabs.ts` 红线** |
 | 5c | **C04c** `JsonlLine`/`JsonlBatch`（卡点已由 C03 解除） | rust-ts-boundary | 否 |
 | 5d | **C04d** 按模块分批迁移剩余 63 个 struct + 161 个调用点（`tabs.ts` 那批卡红线） | rust-ts-boundary | 部分卡红线 |
