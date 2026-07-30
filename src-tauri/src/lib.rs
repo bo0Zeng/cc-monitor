@@ -50,6 +50,8 @@ mod ssh_source;
 // `tool_registry.rs` 的字段纪律）。这是测试支撑模块，不是被闲置的生产代码；
 // 加 `cfg(test)` 就是把这件事写进类型系统，顺带消掉 5 条 dead_code 警告。
 #[cfg(test)]
+mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半；内部整体 cfg(test)）
+#[cfg(test)]
 mod structural_scan;
 mod subagent;
 mod tasks;

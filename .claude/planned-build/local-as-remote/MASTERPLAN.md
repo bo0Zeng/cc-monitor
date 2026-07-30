@@ -103,7 +103,7 @@ L3 是「给一个 bash 工具做 Windows 等价物」。** 三件事的成本�
 | **L3a** | **本地账号枚举（只读）** | Rust 直接读 `%USERPROFILE%\.claude-accts\accounts.json`（manifest 格式已定），`loggedIn` 由 `.credentials.json` 是否存在判定。**不需要 bash、不需要 cc-acct-iso** ⇒ 本地立刻有：账号列表 / 选号 / 账号注入 / per-account model | 待规划 | L2 | **P1** |
 | L3b | **本地账号管理（写）** | 建 / 迁 / 删 / 改默认号。需要 cc-acct-iso 的 Windows 等价物（PowerShell 或 Rust 实现） | 待规划 | **`account-zero` 全部落地** + L3a | P2 |
 | L4 | **Linux 打包 + 进 CI/release** | Linux 产物（AppImage/deb 择一）+ CI 构建 job；`release.yml` 加 Linux 产物 | 待规划 | L0,L1 | P2 |
-| L5 | **平价对账表 + 门禁** | 枚举全部 **120** 个 Tauri 命令（**开工复测订正：计划原写 119**；以 `generate_handler!` 条目为准，实测 120 = 120、零缺口），每条要么两侧都有、要么在白名单表里且带理由；**新增命令不登记就红** | **Phase B 复测已做**（`features/L5-parity-ledger.md`），实现待续 | — | P1 |
+| L5 | **平价对账表 + 门禁** | 枚举全部 **120** 个 Tauri 命令（**开工复测订正：计划原写 119**；以 `generate_handler!` 条目为准，实测 120 = 120、零缺口），每条要么两侧都有、要么在白名单表里且带理由；**新增命令不登记就红** | **✅ 已交付**（`src-tauri/src/parity_ledger.rs` + `features/L5-parity-ledger.md`）：120 条 → 50 个能力（29 对称 / **21 不对称**：天然 7 · 欠账 12 · **未裁定 2**）；四条断言、五条变异全成立 | — | P1 |
 
 ### Windows 本地排期：原来的 L3 拆成 L3a / L3b（2026-07-29 用户要求排期后重新推导）
 
