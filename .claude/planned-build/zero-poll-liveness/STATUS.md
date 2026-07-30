@@ -60,11 +60,8 @@
 | P3 | tmux server 生/死/复活（**不删 8s 轮询**） | **✅ 完成签收**（`features/P3-tmux-server-lifecycle.md`）。调研的 ⚠ 盲区已消；实测 kill-server→27ms · 复活→153ms · 跨 cgroup SIGKILL→30ms；零新定时器 |
 | P4 | daemon 装 tmux hook + SIGUSR1 通知通路 | **✅ 完成签收**（`features/P4-tmux-hook-notify.md`）。拆 P4a/P4b，**顺序由安全性决定**（SIGUSR1 默认终止进程 ⇒ 处理器必须先于 hook）。真机私有 socket 实测：**通路打通**（探针被信号终止）+ **PID 复用防御成立**（starttime 写错不误伤）；**默认 socket 零改动**。**同一个自指陷阱连踩七次**，其中一次让守卫成了安慰剂——是变异揪出来的 |
 | P5 | 正向死亡帧 + 删 `TMUX_EMIT_INTERVAL` | **✅ 完成签收**（`features/P5-death-frame.md`）：快照差分（三态；**观测失败绝不当「都没了」**）+ `TmuxSessionClosed` 帧（additive、不 bump、旧 monitor 跳过）+ monitor 消费（绕过 miss 计数，**兜底路一字未动**）+ **删轮询 B 并接上 `Shutdown`**。**生产段零定时器**。实测：多个中杀一个 **126ms**（删前 136/137）· stdout 关闭 **111ms** 退出 · 首轮初探保住了（差点顺手删掉）|
-| P6 | 零定时器门禁 | **⚠ 守卫已交付**（`features/P6-no-timer-gate.md`）：`no_timer_guard.rs` 扫全 crate 生产段，**判据落在「周期性唤醒」而非「出现 `Duration`」**（去抖窗口是 `Duration` 但不是定时器）；非定时器用途**逐条登记带理由**，多一处未登记就红。四条变异成立（含「护栏自身失效」）。**e2e 延迟那半登记未做** —— 载体已被 G-C 解锁（那批已隔离进 CI），并进 `*-daemon-frames` 即可 |
-| P4 | daemon 装 tmux hook | **设计已重定、代码未落**。原方案（hook 追加日志 + daemon inotify）**撞红线 I7**、被 `readonly_guard` 当场拦下 ⇒ 改为 **SIGUSR1 通路**（daemon 文件系统写归零、会话名不经 shell、无日志增长）。见 MASTERPLAN「§P4 设计修订」。原实现存 `scratchpad/P4-work.patch` |
-| P5 | wire 正向死亡帧 + 免 debounce retire + **删 `TMUX_EMIT_INTERVAL`** | 未开工（承 P4） |
-| P6 | 零定时器守卫 + 延迟 e2e | 未开工 |
-| P7 | 文档收口 + E34 结案 | 未开工 |
+| P6 | 零定时器门禁 + 延迟 e2e | **✅ 完成签收**（`features/P6-no-timer-gate.md`），两半都做完：**① 守卫** `no_timer_guard.rs` 扫全 crate 生产段，**判据落在「周期性唤醒」而非「出现 `Duration`」**（去抖窗口是 `Duration` 但不是定时器）；非定时器用途**逐条登记带理由**，多一处未登记就红。四条变异成立（含「护栏自身失效」）。**② 端到端延迟 e2e** 并进 `graylight-daemon-frames`（5 → 8 条，`ci.yml` 地板同步抬），阈值 5s 是**数量级判据不是性能指标**。★ 并轨时**撞出并修掉一个 P5 留下的真回归**（对照组确认非本轮引入，见该文 §7.1）|
+| P7 | 文档收口 + E34 结案 | 进行中（本轮） |
 
 ## 阻塞项 / 待用户表态
 
