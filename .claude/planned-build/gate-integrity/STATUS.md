@@ -1,12 +1,13 @@
 # 状态 / STATUS — gate-integrity（恢复工作的入口，每次先读这里）
 
 - **当前阶段**：**C-F 实现中**（主计划 2026-07-29 已批准；用户 2026-07-30「继续，全自动」）
-- **当前功能**：无（G-A 刚签收）
+- **当前功能**：无（G-C 刚签收 —— **本区三个功能全部完成**）
 - **当前步骤**：n/a
 - **已完成功能**：**G-B**（vendored bash 进门禁，`0b297ed`）· **G-A**（八套真机套件断言数地板，
   2026-07-30）—— 见 `features/G-B-vendored-bash-gates.md` / `features/G-A-e2e-assertion-floors.md`
-- **下一个功能**：**G-C**（6 套 e2e 进 CI）—— 注意它**绕不开 E41**（那批一处 `-L` 都没有），
-  G-A 的 8 套与它们**无交集**（G-A 已实测确认，别再把两批混为一谈）
+- **下一个功能**：**无（本区完成）** → 回 README 表走 #14 local-as-remote
+- **G-C 签收（2026-07-30）**：见 `features/G-C-e2e-suites-into-ci.md`。**BACKLOG E41 已销**。
+  遗留一条：`e2e/README.md` 要补「这 6 套不进 `npm test` 的代价」一句（开放问题 1 的尾巴）。
 - **G-C 开工前的实测（2026-07-30 已测，下轮别重测）**：
   - **计划说「6 套」，实际是 7 个文件**：`graylight-suite.sh`(tmux 12) ·
     `graylight-daemon-frames.sh`(24) · `restart-suite.sh`(8) · `restart-daemon-frames.sh`(8) ·

@@ -45,6 +45,12 @@
     "test:cc-spawn-uplift": "bash e2e/cc-spawn-uplift.sh",
     "test:ccm-print-parity": "bash e2e/ccm-print-parity.sh",
     "test:usage-probe": "bash e2e/usage-probe-acceptance.sh",
+    "test:graylight": "bash e2e/graylight-suite.sh",
+    "test:graylight-frames": "bash e2e/graylight-daemon-frames.sh",
+    "test:restart": "bash e2e/restart-suite.sh",
+    "test:restart-frames": "bash e2e/restart-daemon-frames.sh",
+    "test:resume": "bash e2e/resume-suite.sh",
+    "test:resume-frames": "bash e2e/resume-daemon-frames.sh",
     "test:exec-bits": "bash e2e/exec-bit-guard.sh"
   },
   "dependencies": {

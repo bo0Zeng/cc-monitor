@@ -13,6 +13,30 @@
 # 红线:daemon 零改动(只跑它) / 不碰真 ~/.claude(CLAUDE_CONFIG_DIR 隔离) / 不改 TMUX_LS_FMT。
 set -euo pipefail
 
+# ── G-C（解 BACKLOG E41）：把整套件钉在**自己的 tmux server** 上 ──────────────────
+# 此前这套件裸调 tmux ⇒ 在开发者机器上会**直接操作默认 socket 上的真实会话**，
+# 所以它既进不了 CI 也不敢在有活会话的机器上跑（E41）。
+#
+# **两件事都必须做，缺一就不隔离**（2026-07-30 本机实测）：
+#   ① `unset TMUX` —— 从 tmux 会话里跑这套件时，`$TMUX` 会让客户端连**外层那台 server**
+#      并**完全忽略 `TMUX_TMPDIR`**（实测：设了 TMUX_TMPDIR 仍在默认 socket 上建出了会话）。
+#      **这才是 E41 的实质**：不只是「缺 `-L`」，是「继承了 `$TMUX`」。
+#   ② `TMUX_TMPDIR` 必须是**短路径** —— unix socket 路径上限 108 字节，指向长目录时
+#      tmux 报 `File name too long`（实测在 scratchpad 那种长路径上必踩）。
+#
+# 这样做的好处是**零调用点改动**：套件里 84 处裸 `tmux` 一个都不用改，
+# 也自动覆盖它 shell out 出去的东西（`ccm` / `cc-spawn` 内部也是裸调 tmux）。
+unset TMUX TMUX_PANE
+TMUX_TMPDIR="$(mktemp -d /tmp/e2e-sock.XXXXXX)"; export TMUX_TMPDIR
+# 收尾：只用 **`-S <私有 socket>`** 收自己那台（**绝不裸 `kill-server`** —— 万一上面的
+# 隔离没生效，裸的那个会打到用户的 server 上）。server 无会话时本就会自己退，这条是兜底。
+_gc_sock_cleanup() {
+  set +e
+  [ -n "${TMUX_TMPDIR:-}" ] && /usr/bin/tmux -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null
+  [ -n "${TMUX_TMPDIR:-}" ] && rm -rf -- "$TMUX_TMPDIR"
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/.." && pwd)"
 DAEMON="${CCM_E2E_DAEMON:-$REPO/remote-daemon-proto/target/debug/cc-monitor-remote}"
@@ -42,7 +66,7 @@ cleanup() {
   tmux kill-session -t "=$KEEP:" 2>/dev/null
   rm -rf "$CLAUDE_DIR" "$WORK"
 }
-trap cleanup EXIT
+trap 'cleanup; _gc_sock_cleanup' EXIT
 
 echo "== F-E1 daemon-frame gray-light 套件 =="
 echo "sid=$SID  session=$SESSION  claude_dir=$CLAUDE_DIR"
@@ -125,4 +149,6 @@ else
 fi
 
 echo "== 结果:$pass 过 / $fail 败 =="
+# G-C：与另外 8 套逐字一致的收尾格式，好让 `e2e/assert-pass-floor.sh` 用同一条正则抓。
+echo "===== 合计 PASS=$pass FAIL=$fail ====="
 [ "$fail" -eq 0 ]

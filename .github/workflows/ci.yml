@@ -226,17 +226,18 @@ jobs:
       # G-A **覆盖面地板**：8 套真机套件必须**每一套**都经 `assert-pass-floor.sh` 跑。
       # 不加这条的失效模式是：有人把某一步改回裸 `npm run test:X`（或整步删掉），
       # 那套的断言数就再没人管了，而 CI **照样全绿** —— 与断言数缩水同一类病，只是换了一层。
-      - name: G-A 覆盖面地板（8 套真机套件都必须带断言数地板）
+      - name: G-A/G-C 覆盖面地板（13 套真机套件都必须带断言数地板）
         run: |
           set -euo pipefail
           # 只数**真正的调用行**（`run: bash e2e/…`）——本步骤自己那几行 grep 也含这个脚本名，
           # 用宽模式会把它们算进来（实测会数成 11 而不是 8，那个数就成了假的）。
           N=$(grep -c 'run: bash e2e/assert-pass-floor\.sh' .github/workflows/ci.yml || true)
           echo "带地板的 e2e 步骤数 = ${N:-0}"
-          [ "${N:-0}" -ge 8 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 8）——有套件被改回裸 npm run 或被删掉"; exit 1; }
+          [ "${N:-0}" -ge 13 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 13）——有套件被改回裸 npm run 或被删掉"; exit 1; }
           # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
           for pair in "tmux-target 26" "ccm-cli 44" "ccm-print-parity 12" "ccm-acceptance 15" \
-                      "ccm-pretrust 13" "cc-spawn-uplift 21" "tmux-guarded 14" "usage-probe 7"; do
+                      "ccm-pretrust 13" "cc-spawn-uplift 21" "tmux-guarded 14" "usage-probe 7" \
+                      "restart 24" "resume 17" "graylight-frames 5" "restart-frames 5" "resume-frames 7"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
               || { echo "::error::找不到调用行 'assert-pass-floor.sh $pair' —— 套件或地板被改了"; exit 1; }
           done
@@ -304,6 +305,15 @@ jobs:
       - name: cc-spawn 收编等价（B02）
         run: bash e2e/assert-pass-floor.sh cc-spawn-uplift 21
 
+      # G-C（解 E41）：这两套只要 node + tmux（经 tsx driver 驱真编排逻辑，不碰 daemon）。
+      # 它们此前进不了 CI 的原因不是「需要什么」，而是**会踩开发者机器上的真实 tmux 会话**
+      # ——现在每套都把自己钉在私有 socket 上（`unset TMUX` + 短 `TMUX_TMPDIR`），可以进来了。
+      - name: 换号重启编排（F-E3）
+        run: bash e2e/assert-pass-floor.sh restart 24
+
+      - name: resume 编排 + 复用守卫（F-E2）
+        run: bash e2e/assert-pass-floor.sh resume 17
+
   e2e-tmux-rust:
     name: E2E real-machine (tmux + Rust builder emit)
     runs-on: ubuntu-latest
@@ -331,6 +341,22 @@ jobs:
 
       - name: 用量探针（F10）
         run: bash e2e/assert-pass-floor.sh usage-probe 7
+
+      # G-C：这三套要一个**真 daemon 二进制**（daemon-wrapper.sh 默认取
+      # `remote-daemon-proto/target/debug/cc-monitor-remote`）。主计划把「怎么把 daemon 产物
+      # 从 `daemon` job 传过来」记成 G-C 唯一的技术不确定性——**直接在本 job 里编就绕开了**：
+      # 本 job 已有 Rust 工具链，而 daemon crate 比它已经在编的 src-tauri 轻得多。
+      - name: build debug daemon（供 daemon-frames 三套）
+        run: cargo build --manifest-path remote-daemon-proto/Cargo.toml
+
+      - name: 灰灯 daemon 帧（F-E1）
+        run: bash e2e/assert-pass-floor.sh graylight-frames 5
+
+      - name: 换号 daemon 帧（F-E3）
+        run: bash e2e/assert-pass-floor.sh restart-frames 5
+
+      - name: resume daemon 帧（F-E2）
+        run: bash e2e/assert-pass-floor.sh resume-frames 7
 
 # 注：曾加过一个 `cargo audit` 信息性 job，但对 Windows-only Tauri 应用而言它**永久红**——
 # Cargo.lock 含大量 Tauri 的 Linux GTK 传递依赖（atk/gdk/gtk-rs，标记 unmaintained，且
