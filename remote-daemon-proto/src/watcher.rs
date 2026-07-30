@@ -62,7 +62,7 @@ use walkdir::WalkDir;
 // P2 之前这里有两条轮询：
 // - **轮询 A**（本功能消掉）：循环 tick 2s（`recv_timeout` 的超时值本身）驱动的判活扫描，
 //   遍历 `state.sessions` 调 `session_alive` 检「pidfile 还在但 PID 已死」+ PID 复用。
-// - **轮询 B**（**刻意留到 P5**）：`TMUX_EMIT_INTERVAL` = 8s 的 `tmux ls`。P2 把它从
+// - ~~**轮询 B**：`TMUX_EMIT_INTERVAL` = 8s 的 `tmux ls`~~ **P5 已删**。P2 曾把它从
 //   "主循环里的节流判断"搬进一条独立 ticker 线程（见 `spawn_tmux_ticker`），
 //   使主循环**现在**就是最终形态；P5 删 ticker 线程即可，不必再动循环结构。
 
@@ -95,9 +95,9 @@ enum WatchEvent {
     /// 预留给 P5：删掉 ticker 之后，主循环需要一条**显式**的停机信号才能及时
     /// 发现 stdout 写端已关（`sink.is_closed()` 现在靠 ticker 每 8s 醒一次来复查）。
     ///
-    /// **P5 必须做**：删 ticker 的同时把写端关闭接到这个变体上，否则 reader 线程
-    /// 会一直阻塞在 `recv()`（进程退出时才随之消亡——不是泄漏，但不再"没人听就停读"）。
-    #[allow(dead_code)]
+    /// **P5 已接上**：`main` 在 writer 结束 / 收到停机信号后经 [`WatcherPoke::shutdown`]
+    /// 发它。没有它的话，删掉 ticker 之后 reader 线程会一直阻塞在 `recv()`
+    ///（进程退出时才随之消亡——不是泄漏，但「没人听就停读」这条性质会丢）。
     Shutdown,
 }
 
@@ -294,22 +294,17 @@ fn arm_pid_watcher(key: &Path, pid: u32, expected_start: Option<u64>, state: &mu
     );
 }
 
-/// P2：tmux 探测节拍线程——**本 crate 剩下的唯一定时器**。
+/// **P5：一次性初探**（取代 P2 那个 8s ticker 线程）。
 ///
-/// 把 8s 节流从主循环里搬出来，是为了让主循环**现在**就变成账本第 1 行的最终形态
-/// （无超时 `recv()`）；**P5 删掉本函数即可**，不必再动循环结构。
-/// 立刻发一拍再进入 sleep ⇒ 保留原「首轮立即发」行为（monitor 连上尽快拿到 tmux 状态）。
-fn spawn_tmux_ticker(tx: std::sync::mpsc::Sender<WatchEvent>) {
-    let builder = std::thread::Builder::new().name("tmux-ticker".to_string());
-    let spawned = builder.spawn(move || {
-        // send 失败 = reader 走了 ⇒ 线程自然结束。
-        while tx.send(WatchEvent::TmuxProbeDue).is_ok() {
-            std::thread::sleep(TMUX_EMIT_INTERVAL);
-        }
-    });
-    if let Err(e) = spawned {
-        tracing::warn!("起 tmux ticker 线程失败: {e}");
-    }
+/// **删 ticker 时差点顺手删掉的东西**：它除了打节拍，还承担「**首轮立即发一拍**」——
+/// monitor 一连上就该拿到 tmux 状态。全删的话，daemon 要等到第一个 hook 触发才会探，
+/// 空闲机器上可能是**永远**。所以节拍没了，但这一拍要留下。
+///
+/// 之后的每一拍都由事件驱动：tmux hook → `--tmux-notify` → SIGUSR1 → `WatchEvent::Poke`
+/// （P4），server 生死由 pidfd / socket inotify 管（P3）。**零定时器。**
+fn initial_tmux_probe(tx: &std::sync::mpsc::Sender<WatchEvent>) {
+    // send 失败 = reader 已经走了 ⇒ 无所谓。
+    let _ = tx.send(WatchEvent::TmuxProbeDue);
 }
 
 /// Bounded channel capacity between the reader and the stdout writer.
@@ -321,10 +316,6 @@ pub const CHANNEL_CAPACITY: usize = 10_000;
 
 /// notify-debouncer-mini debounce window, matching `../src-tauri/src/watcher.rs`.
 const DEBOUNCE_MS: u64 = 100;
-
-/// B2：daemon 周期在**本机**跑 `tmux ls` 并经 `TmuxSessions` 帧上报的节流间隔——替掉 monitor 每 8s
-/// 新建 SSH 跑 tmux ls 的刷屏轮询（灰延迟 ≈ 本值 × monitor 对账 threshold）。
-const TMUX_EMIT_INTERVAL: Duration = Duration::from_secs(8);
 
 /// B2：`tmux ls -F` 格式串——**与 monitor `tmux::TMUX_LS_FMT` 逐字对齐**（真 TAB 分列，monitor
 /// `parse_tmux_ls` 靠它解析）。name⇥path⇥cmd⇥attached⇥windows⇥@ccm_sid。**改此须同步 monitor（双写点）。**
@@ -591,6 +582,14 @@ impl WatcherPoke {
     pub fn poke(&self) {
         let _ = self.0.send(WatchEvent::Poke);
     }
+
+    /// **P5：显式停机。** 删掉 8s ticker 之后，`sink.is_closed()` 那道复查再没有定期
+    /// 醒来的机会 ⇒ 必须由 `main` 在 writer 结束时主动说一声，reader 线程才会退出
+    /// `recv()`。**这件事漏做不会红任何测试**（进程退出时线程随之消亡），
+    /// 所以它和删 ticker 是同一步、不许拆开。
+    pub fn shutdown(&self) {
+        let _ = self.0.send(WatchEvent::Shutdown);
+    }
 }
 
 pub fn spawn(
@@ -707,7 +706,7 @@ fn watch_loop(
     let mut watched_socket: Option<PathBuf> = None;
     // P2：轮询 B（8s）从"主循环里的节流判断"搬进独立 ticker 线程 ⇒ 主循环变成最终形态。
     // **P5 删掉这一行 + `spawn_tmux_ticker` 即可**（并按 `WatchEvent::Shutdown` 的注释接停机信号）。
-    spawn_tmux_ticker(events_tx.clone());
+    initial_tmux_probe(&events_tx);
 
     // P2：**无超时** `recv()`——本循环再没有任何定时器（轮询 A 已由 pidfd 取代）。
     // 事件源：notify（经 DebouncerSink）· pidfd 看守线程 · tmux 探测/节拍线程。
@@ -1934,19 +1933,64 @@ mod tests {
         );
     }
 
-    /// tmux ticker：**首拍立即发**（保留 P2 之前"monitor 连上尽快拿到 tmux 状态"的行为）。
-    /// 不等第二拍——那要 8s，不值当放进单元测试。
+    /// **P5：ticker 已删，但「首轮立即发一拍」这条行为必须留着** ——
+    /// 这正是删 ticker 时差点顺手删掉的东西：monitor 一连上就该拿到 tmux 状态，
+    /// 否则空闲机器上要等到第一个 hook 触发才探（可能是**永远**）。
+    /// 本测试从「ticker 首拍」改判为「一次性初探真的发了一拍」，**性质没放松**。
     #[test]
-    fn tmux_ticker_fires_immediately() {
+    fn initial_probe_fires_once() {
         let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
-        spawn_tmux_ticker(tx);
-        match rx
-            .recv_timeout(Duration::from_secs(2))
-            .expect("ticker 必须立刻发第一拍")
-        {
+        initial_tmux_probe(&tx);
+        match rx.try_recv().expect("初探必须立刻发一拍") {
             WatchEvent::TmuxProbeDue => {}
             _ => panic!("期望 TmuxProbeDue"),
         }
+        // 且**只发一拍** —— 它不是节拍器。
+        assert!(
+            rx.try_recv().is_err(),
+            "初探不该发第二拍（那就又成定时器了）"
+        );
+    }
+
+    /// P5：`WatcherPoke::shutdown()` 发的是 `Shutdown` 而不是别的。
+    /// 这条漏了不会红任何别的测试（进程退出时 reader 线程随之消亡），所以单独钉。
+    #[test]
+    fn poke_shutdown_sends_shutdown_variant() {
+        let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
+        WatcherPoke(tx).shutdown();
+        assert!(matches!(rx.try_recv(), Ok(WatchEvent::Shutdown)));
+    }
+
+    /// ★ P5：**生产段零定时器**（账本第 1 行的最终形态、P6 守卫的雏形）。
+    /// 判据运行时拼 + 只扫剥掉 `cfg(test)` 与行注释的生产段（自指陷阱见 P4 §5）。
+    #[test]
+    fn production_has_no_timers_left() {
+        let me = include_str!("watcher.rs");
+        let marker = "\n#[cfg(test)]\nmod tests";
+        let prod = match me.find(marker) {
+            Some(i) => &me[..i],
+            None => me,
+        };
+        let code: String = prod
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for pat in [
+            format!("thread::{}", "sleep"),
+            format!("recv{}", "_timeout"),
+            format!("Duration::{}", "from_secs"),
+            format!("{}::now", "Instant"),
+        ] {
+            assert!(
+                !code.contains(&pat),
+                "生产段不该再有定时器构件：{pat}（P5 起判活全是事件驱动）"
+            );
+        }
+        assert!(
+            code.contains("fn watch_loop"),
+            "剥注释后代码为空，断言在空转"
+        );
     }
 
     // ---------- P5（zero-poll-liveness）：快照差分 → 正向死亡帧 ----------
