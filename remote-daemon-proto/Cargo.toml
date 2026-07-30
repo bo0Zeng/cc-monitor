@@ -29,6 +29,10 @@ tokio = { version = "1", features = [
     "fs",
     "time",
 ] }
+# P2（zero-poll-liveness）：pidfd_open + poll。**已是 tokio 在 unix 上的传递依赖**
+# （本 crate Cargo.lock 里 libc 0.2.186 早已解析）⇒ 声明它不动 lock、离线可用。
+# 只用 SYS_pidfd_open / poll / pollfd 三样，不引入任何 feature。
+libc = "0.2"
 notify = "6.1"
 notify-debouncer-mini = "0.4"
 walkdir = "2.5"
