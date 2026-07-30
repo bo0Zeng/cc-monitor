@@ -110,7 +110,7 @@ describe("C01 边界生成物", () => {
   it("派生 ts_rs::TS 的 Rust 源文件恰好 13 个（自动发现的范围自检）", () => {
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(14);
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(18);
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -127,6 +127,13 @@ describe("C01 边界生成物", () => {
       "AcctIsoStatus.ts", //          C04d 批3（**抓到漂移**：TS 原来只认 1/3 个字段）
       "ActiveSessionPayload.ts", //   C04b
       "ApiMessage.ts", //             C04c
+      "AutoLaunchConfig.ts", // C04d 批5a
+      "CcBusAgent.ts", // C04d 批5a（CcBusState 的传递依赖）
+      "CcBusMessage.ts", // C04d 批5a
+      "CcBusSpawned.ts", // C04d 批5a（CcBusState 的传递依赖）
+      "CcBusState.ts", // C04d 批5a（`skipped: usize` → number，**ts-rs 对 usize 不回落 bigint**）
+      "CcPreviewResponse.ts", // C04d 批5a（**非 pub**，只作命令返回类型）
+      "CcStatusResponse.ts", // C04d 批5a（**非 pub**）
       "CcmProbeResult.ts", //         C04d 批2（**线上形状**；TS 侧另有同名领域类型，留手写）
       "ConfigSurfaceReport.ts", //    C04d 批2
       "DataPathInfo.ts", //           C01
@@ -141,8 +148,11 @@ describe("C01 边界生成物", () => {
       "JsonlBatchPayload.ts", //      C04c
       "JsonlLinePayload.ts", //       C04c
       "JsonlRecord.ts", //            C04c（**线定义本身**：wire == serde_json::to_string(它)）
+      "LegacyProfileEntry.ts", // C04d 批5a（**非 pub**，CcStatusResponse 的传递依赖）
       "LogFileEntry.ts", // C04d 批4（LogFileInfo 的传递依赖）
       "LogFileInfo.ts", // C04d 批4（字节数 + 毫秒时间戳，两个量纲分开论证）
+      "ProfileKind.ts", // C04d 批5a（ProfileScan 的传递依赖）
+      "ProfileScan.ts", // C04d 批5a（`size_bytes: u64` 按字节数量纲论证）
       "RemoteHealthPayload.ts", //    C02
       "RemoteSessionAddedPayload.ts", // C02
       "RestartHint.ts", // C04d 批4（只有 unit variant 的外部标记枚举 → 字面量联合）
@@ -216,12 +226,16 @@ describe("C01 边界生成物", () => {
     let checked = 0;
     for (const f of TS_DERIVING_SOURCES) {
       const src = rustCode(read(f));
-      expect(src, `${f}: 剥过头了`).toMatch(/pub (struct|enum)\s/);
+      expect(src, `${f}: 剥过头了`).toMatch(/(pub )?(struct|enum)\s/);
       const lines = src.split("\n");
       // 以 `pub struct` 为锚：往上收连续属性行（与顺序无关），往下收到列 0 的 `}`
       for (let k = 0; k < lines.length; k += 1) {
-        // C04c：`pub enum` 也算（variant 字段同样跨边界，且它们没有 `pub ` 前缀）
-        if (!/^pub (struct|enum)\s+\w+/.test(lines[k])) continue;
+        // C04c：`pub enum` 也算（variant 字段同样跨边界，且它们没有 `pub ` 前缀）。
+        // **C04d 批 5 再放宽 `pub` 为可选**：`lib.rs` 里 `CcStatusResponse` /
+        // `LegacyProfileEntry` / `CcPreviewResponse` 三个是**非 pub** 的（模块内可见即可，
+        // 它们只作命令返回类型），但一样跨边界、一样该受这两条性质约束。
+        // 范围必须等于性质的范围——「是不是 pub」与「会不会跨边界」无关。
+        if (!/^(pub )?(struct|enum)\s+\w+/.test(lines[k])) continue;
         let top = k;
         // **往上走时必须跳过空行**：`code()` 把注释行变成**空行**而不是删掉，
         // 而本仓的属性与 `pub struct` 之间常有解释性注释（`data_paths.rs` 就有一整段）。
@@ -279,7 +293,12 @@ describe("C01 边界生成物", () => {
     //    「不许回落到 bigint」）。**剥注释后类型体里 0 个。**
     //    这正是「代理指标 ≠ 性质」的又一个实例，也是 C03 计划里明写「不能写那条断言」的理由。
     //
-    // 逐字段判：属性块 = 从字段声明往上到上一个 `pub ` / 块首之间（属性写在字段上方）。
+    // 逐字段判：属性块 = 从字段声明往上到上一个字段声明 / 块首之间（属性写在字段上方）。
+    //
+    // **`usize`/`isize` 刻意不在本条范围内**（C04d 批 5 实测）：`ts-rs` 把它们映射成
+    // `number` 而**不是** `bigint` ⇒ 本条性质（「不许回落到 bigint」）对它们不适用。
+    // 64 位下 `usize` 确实能装超过 2^53 的值，但那是**另一条性质**（精度上限），
+    // 而本仓的 `usize` 用在计数上（`CcBusState.skipped` = 坏行数）⇒ 不构成风险。
     // **C04c 补的缺口**：原来两条扫描都只认 `^pub struct`，且字段正则要求 `pub ` 前缀
     // ⇒ **`pub enum` 的 variant 字段完全隐形**（variant 字段没有 `pub`）。
     // C04c 把 `messages.rs` 加进派生集时当场暴露：`JsonlRecord::System.duration_ms: Option<u64>`
@@ -291,7 +310,8 @@ describe("C01 边界生成物", () => {
       const src = rustCode(read(f));
       const lines = src.split("\n");
       for (let k = 0; k < lines.length; k += 1) {
-        if (!/^pub (struct|enum)\s+\w+/.test(lines[k])) continue;
+        // 同上：`pub` 可选（非 pub 的命令返回类型一样跨边界）
+        if (!/^(pub )?(struct|enum)\s+\w+/.test(lines[k])) continue;
         let top = k;
         while (top > 0 && /^\s*(#\[|$)/.test(lines[top - 1])) top -= 1;
         let bottom = k;
@@ -325,7 +345,7 @@ describe("C01 边界生成物", () => {
     // **批 4 再 → 14**：`logging.rs` 的 `current_size_bytes`/`size_bytes`（字节数量纲）
     // 与 `modified_ms`（毫秒时间戳量纲）——**两个量纲的上限论证在 Rust 侧分开写**，
     // 混成一条是 C03 明确禁止的。
-    expect(checked, `期望恰好 14 个大整数字段，实得 ${checked}`).toBe(14);
+    expect(checked, `期望恰好 15 个大整数字段，实得 ${checked}`).toBe(15);
   });
 
   it("`Option<大整数>` 配 ts(type) 时不许丢掉 `| null`（除非同时有 ts(optional)）", () => {
@@ -415,19 +435,23 @@ describe("C01 边界生成物", () => {
   });
 
   it("直接 import invoke 的生产文件恰好 29 个（主计划 §0.1 成功标准 4 的度量）", () => {
-    const hits = productionTsFiles().filter((f) =>
+    const scanned = productionTsFiles();
+    const hits = scanned.filter((f) =>
       /import\s*\{[^}]*\binvoke\b[^}]*\}\s*from\s*["']@tauri-apps\/api\/core["']/.test(code(read(f))),
     );
-    // 反向自检：真扫到了文件
-    expect(hits.length, "一个都没扫到——遍历或正则坏了").toBeGreaterThan(10);
+    // **反向自检该问「遍历有没有工作」，不该问「命中多少」**（C04d 批 5a 订正）：
+    // 原来写的是 `hits.length > 10`，校准于这个数还是 29 的年代。
+    // 而 C04d 的**目标就是把命中数降到 3-4** ⇒ 那个下界会在迁移快成功时**挡住正确的进展**，
+    // 逼人去改自检而不是去看性质。所以自检改成断言**扫过的文件数**够多。
+    expect(scanned.length, "一个 .ts 都没扫到——遍历坏了").toBeGreaterThan(100);
     // **等号**：这个数是成功标准 4 的度量，C04d 每迁一个模块必须让它降一次。
     // 注意 `src/ipc/commands.ts` **算在里面**——包装层就是最终该剩下的那 1 个。
     // 裸 `grep 'import { invoke }'` 只有 24，因为有文件是多名导入（`import { invoke, Channel }`）
     // ——这正是原来那个 29 容易被量错的原因，所以这里用正则而不是字面量。
-    // C04d：批1 29→23 · 批2 23→19 · 批3 19→14 · 批4 14→**12**（2 个文件；
+    // C04d：批1 29→23 · 批2 23→19 · 批3 19→14 · 批4 14→12 · 批5a 12→**10**（2 个文件；
     // `accounts.ts` 那 1 个**被跨工作区冲突协议挡住**，见 features/C04d §3d）。最终形态是
     // 「1 个包装层 + `tabs.ts`（等授权）+ 1 个动态派发逃生口」= 3，见主计划 §0.1 标准 4。
-    expect(hits.length, `期望恰好 12 个，实得 ${hits.length}`).toBe(12);
+    expect(hits.length, `期望恰好 10 个，实得 ${hits.length}`).toBe(10);
     expect(hits.map((f) => f.replace(/\\/g, "/")), "包装层自己必须在名单里").toContain(
       "src/ipc/commands.ts",
     );

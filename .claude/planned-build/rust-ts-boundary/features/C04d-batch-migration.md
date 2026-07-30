@@ -30,7 +30,8 @@
 | **3** | 2-3 调用点一组（`config` · `views/usage-view` · `views/port-forward` · `settings/accounts-section` · `settings/cc-bus-hooks-section`） | 是（**8 个**，含 2 个内部标记枚举） | **14** | **完成** |
 | **4** | `account-restart` 4 · `settings/diagnostics-section` 5 | 是（**4 个**，含 3 个大整数、两个量纲） | **12** | **完成** |
 | **4b** | **`accounts.ts` 4** | 是（`accounts.rs` 6 个类型） | 11 | **已跳过——被跨工作区冲突协议挡住**（详见 §3d） |
-| 5 | `settings/cc-bus-section` · `cc_integration` · `main.ts` · `remote-section` · `mcp-section` | 是 | 6 | 待做 |
+| **5a** | `settings/cc-bus-section` 6 · `settings/cc_integration` 7 | 是（**10 个**，含 3 个**非 pub**） | **10** | **完成** |
+| 5b | `main.ts` 9 · `settings/remote-section` 9 · `settings/mcp-section` 10 | 是 | 7 | 待做 |
 | 6 | `sftp/panel` · `views/history` · `views/session-viewer`（**含 3 个动态派发口**） | 是 | 3 | 待做 |
 | 7 | `panorama/api.ts`（21 处，最大） | 是 | **1**（包装层自己） | 待做 |
 | — | **`tabs.ts`（15 处）** | — | — | **已跳过，等授权** |
@@ -226,6 +227,63 @@
 | **A** | `RestartHint::NeedsRestart` 加显式 `serde(rename)` | rc=0 | ✔ | `tsc` TS2367：「types 'RestartHint' and `"needs_restart"` have no overlap」 | 成立。抓的是**字符串字面量比较**——运行时会静默失效的那一类 |
 | **B** | 删 `modified_ms` 的 `ts(type)` | rc=0 | ✔（生成物变成 `modified_ms: bigint`） | 守卫红并点名字段 | 成立。**关键点：`logging.rs` 是本批次新加派生的文件，我没做任何清单维护它就自动进了守卫范围** ⇒ 批 3 那个「取消手写清单」的修法**在一个批次内就还本了** |
 | C | 五条等号自动各红一次 | — | — | 生成物清单 · 派生源文件数 13→14 · 大整数 11→14 · 文件数 14→12 · 包装层 22→28 | 成立 |
+
+## 3e. 批次 5a 明细：**两个新的守卫覆盖缺口**
+
+12 条包装层条目（28 → **40**）· 10 个派生（生成物 40 → **50**）· 2 个文件迁走（12 → **10**）。
+**本批零漂移**（9 个手写版与生成物逐字等价；TS 侧那个 `LegacyEntry` 只是名字不同、结构一致）。
+
+### 缺口 3：守卫的类型头锚点是 `^pub (struct|enum)`，**非 pub 的跨边界类型看不见**
+
+`lib.rs` 里 `CcStatusResponse` / `LegacyProfileEntry` / `CcPreviewResponse` 三个是**非 `pub`** 的
+（模块内可见即可，它们只作命令返回类型），但**一样跨边界、一样该受那两条性质约束**。
+⇒ 锚点放宽成 `^(pub )?(struct|enum)`。**「是不是 pub」与「会不会跨边界」无关**——
+这是「范围必须等于性质的范围」这条纪律的第三次应用（前两次：不扫 enum · 手写清单）。
+
+**变异验证**：给非 pub 的 `CcStatusResponse` 加一个不配 `ts(type)` 的 `u64` 字段 → 守卫红并点名。
+
+### 缺口不是缺口的一例：`usize` 刻意不纳入大整数性质
+
+`CcBusState.skipped: usize` —— **实测 `ts-rs` 把 `usize` 映射成 `number` 而不是 `bigint`**
+⇒ 本条性质（「不许回落到 bigint」）对它**不适用**，不是漏。
+64 位下 `usize` 确实能装超过 2^53，但那是**另一条性质**（精度上限），
+而本仓的 `usize` 用在计数上（坏行数）⇒ 不构成风险。**已把这个事实写进那条断言的注释**，
+免得下一个人以为是缺口而"顺手补上"。
+
+### ★ 一条反向自检自己成了阻碍——校准于旧世界的下界
+
+「直接 import invoke 的生产文件数」那条的反向自检原本写 `hits.length > 10`，
+**校准于这个数还是 29 的年代**。而 C04d 的**目标就是把它降到 3-4**
+⇒ 那个下界会在迁移快成功时**挡住正确的进展**，逼人去改自检而不是去看性质。
+
+**修法**：反向自检该问「**遍历有没有工作**」，不该问「命中多少」
+⇒ 改成断言**扫过的 `.ts` 文件数** `> 100`。
+**教训**：反向自检的阈值不能挂在「被优化的那个量」上，否则它会随进展变成假红。
+
+### ★ 对「判色三步」的一处细化
+
+变异 A（给非 pub 结构加 u64 字段）**cargo rc=101 没编译过**，但**守卫仍然有效地红了**
+——因为这条守卫扫的是 **Rust 源文本**，不是构建产物。
+
+⇒ 「必须 cargo rc=0 + grep 生成物确认新鲜」这两步，**只适用于依赖生成物的 `tsc` 类变异**；
+**扫源码的守卫，编译状态与它的判据无关**。判色前要问的是
+「**我这次判色依赖的那个东西，是不是本次变异产的**」——对 tsc 是生成物，对源码扫描器是源文件本身。
+
+### 一处我自己造的错：包装层实参名是**猜的**
+
+我先按 TS 调用点猜了 `profilePath` 等参数名，与 Rust 签名不符。
+**按 Rust 签名（真相）逐个核准后订正四处**：`cc_integration_install`/`_uninstall` 用 `path` 不是
+`profilePath` · `cc_integration_scan_path` 还要 `commandName` · `cc_integration_status` 的
+`commandName` 在 Rust 侧是 `Option<String>` ⇒ TS 侧可省。
+**教训：实参名要从 Rust 签名量，不能从调用点猜**（调用点也可能一直在传错名字而没人发现）。
+
+### 批次 5a 变异
+
+| # | 变异 | 编译 | 判据来源新鲜 | 判色 | 结论 |
+|---|---|---|---|---|---|
+| **A** | 非 pub 的 `CcStatusResponse` 加不配 `ts(type)` 的 `u64` 字段 | rc=101 | **判据是源文本，与编译无关** | 守卫红并点名 `probe_mutant_bytes` | **成立**（见上方对判色三步的细化） |
+| **B** | `ProfileKind::Ps7` 加显式 `serde(rename)` | rc=0 | ✔ grep 到 `Ps7RENAMED` | `tsc` 报 `Record<ProfileKind, string \| null>` 上 `'Ps7' does not exist` ×2 | 成立。映射类型的键真被消费 |
+| C | 等号自动各红一次 | — | — | 生成物清单 · 派生源 14→18 · 大整数 14→15 · 文件数 12→10 · 包装层 28→40 | 成立 |
 
 ## 4. 代码审计结果（Phase D）
 

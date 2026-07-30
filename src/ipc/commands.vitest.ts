@@ -202,7 +202,7 @@ describe("C04a 命令名钉死", () => {
     }
 
     // 计数自检：C04d 每迁一个模块进来，这个数要跟着涨（红一次提醒更新）
-    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(28);
+    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(40);
   });
 
   it("TS 侧字面量命令名 ⊆ Rust 集，唯一名数 == 112，动态名盲区逐字钉死", () => {

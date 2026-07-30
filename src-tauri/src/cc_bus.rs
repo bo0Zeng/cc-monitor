@@ -33,6 +33,8 @@ pub fn is_valid_bus_id(s: &str) -> bool {
 
 /// `agents.tsv` 的一行：id / pane 地址 / 登记时间。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct CcBusAgent {
     pub id: String,
     pub pane: String,
@@ -41,6 +43,8 @@ pub struct CcBusAgent {
 
 /// `spawned.tsv` 的一行：id / 工作目录 / spawn 时间 / 初始任务。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct CcBusSpawned {
     pub id: String,
     pub dir: String,
@@ -50,6 +54,8 @@ pub struct CcBusSpawned {
 
 /// 一次读回的完整状态。`skipped` = 两个文件里被跳过的坏行总数。
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct CcBusState {
     pub agents: Vec<CcBusAgent>,
     pub spawned: Vec<CcBusSpawned>,
@@ -331,6 +337,8 @@ fn build_spawn_cmd(
 /// inbox 里的一条消息（字段取自盘上真实 jsonl：id/from/to/ts/text/class/…）。
 /// 只取渲染要用的四个——多取一个字段就多一处要跟着 cc-bus 演进的耦合。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct CcBusMessage {
     pub from: String,
     pub ts: String,
