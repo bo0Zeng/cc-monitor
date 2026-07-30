@@ -102,7 +102,15 @@ const PROTO_VERSION: u32 = 1;
 ///   纯一次性查询、零写入、不 shell out；**不动** PROTO_VERSION / CAPABILITIES / EMITS。
 ///   bump BUILD_ID 只为给"含账号命令"的 daemon 独立身份，旧版遇到新命令会
 ///   `unknown argument` exit 2，monitor 侧按"功能不可用"优雅降级。
-const BUILD_ID: &str = "p1q-accounts";
+/// - p1r-event-liveness = zero-poll-liveness P0-P6：判活信号全部换成内核事件
+///   （pidfile inotify + pidfd 看进程死 · socket 目录 inotify 看 server 生死复活 ·
+///   tmux hook → `--tmux-notify` → SIGUSR1 看会话开关），两条轮询（判活 2s tick /
+///   tmux 8s tick）都已删除，生产段零定时器（`no_timer_guard.rs` 钉住）。
+///   wire 两处 additive、**不 bump PROTO_VERSION**：`TmuxSessions` 加
+///   `observation`（有会话时省略 ⇒ 载荷逐字节不变）+ 新帧 `TmuxSessionClosed`（进 EMITS）。
+///   **bump BUILD_ID 是必须的**：旧 daemon 报同一个 id 就不会被判 stale、不自动重装，
+///   整轮改动会在已部署的远端**休眠**（本条正是 P1 记档里点名、P5 漏做、P7 补上的那次 bump）。
+const BUILD_ID: &str = "p1r-event-liveness";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜

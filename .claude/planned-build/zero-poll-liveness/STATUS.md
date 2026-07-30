@@ -4,46 +4,33 @@
 
 ## 当前阶段
 
-**主计划 2026-07-30 用户已批准 + P4 hook 授权已给。P0-P3 已签收；P4 做了一半。**
+**✅ 全区收官（2026-07-30）—— P0-P7 八个功能全部交付签收。**
 
-**P4 拆两步做，顺序是安全性决定的（不是进度问题）**：
+**用户要求（2026-07-29「我要把轮询杀掉」）已达成**：daemon 里 **A/B 两条轮询都已删除**
+（2s 判活 tick + 8s `tmux ls` tick），生产段**零定时器**，由 `no_timer_guard.rs` 钉住
+（判据落在「周期性唤醒」而非「出现 `Duration`」，四条变异成立含「护栏自身失效」）。
 
-> **`SIGUSR1` 的默认处置是终止进程。** 先装 hook 再装处理器 =
-> 给一个会自杀的 daemon 装上自杀触发器。**必须 daemon 侧先落地。**
+**四路事件与实测延迟**（每格都是真机实测，测法见各 feature 文档）：
 
-- **P4a（本轮已交付）**：daemon 侧 —— `WatchEvent::Poke` 变体（与 `TmuxProbeDue` 共用
-  处理臂）· `watcher::spawn` 返回窄句柄 `WatcherPoke`（只能催重探，不能伪造带载荷事件）·
-  `main` 起 `SIGUSR1` 流接到它。**没有 hook 在发信号 ⇒ 完全惰性。**
-- **P4b（本轮已交付）**：`--tmux-notify <pid> <starttime>` 子命令（校验 `/proc` starttime
-  后 `kill(pid, SIGUSR1)`）+ 在 `ServerState::Alive(pid)` 臂装
-  `session-created[50]`/`session-closed[50]`/`session-renamed[50]`（`run-shell -b`）。
-  **真机私有 socket 实测两条**：通路打通（探针被 SIGUSR1 终止）· PID 复用防御成立
-  （starttime 写错时探针存活）。**默认 socket 零改动**（会话逐字未变、hook 57→57）。
-  见 `features/P4-tmux-hook-notify.md`。
+| 场景 | 事件源 | 实测 |
+|---|---|---|
+| claude 进程退出 / 被强杀 | pidfile inotify + `pidfd` | **~18ms**（原 ≤2s） |
+| 杀掉某 origin 仅剩的会话 | tmux server 的 `pidfd` | **27ms**；跨 cgroup SIGKILL **30ms** |
+| server 复活 | socket 目录 inotify `IN_CREATE` | **153ms**（含 100ms 去抖） |
+| **多个会话里杀掉其中一个** | tmux hook → SIGUSR1 → 正向死亡帧 | **126ms**（**对照组：拆掉 hook 5042ms**），原 8s×2 ≈ **16s** |
 
-**下一个：P6**（零定时器守卫）。**P5 已全部交付** —— 生产段 `thread::sleep` /
-`recv_timeout` / `Duration::from_secs` / `Instant::now` 逐个扫为 0，`watcher.rs` 里已有一条
-`production_has_no_timers_left` 雏形守卫（变异成立）。**P6 要做的是把它升格成正式门禁**：
-按完整形态钉（P4 已授权 ⇒ 不许把断言写松），且要能容忍 `Duration` 在**非定时器**用途上
-出现（别为了变绿把判据写歪）。
+**唯一一条正确性改进**（不只是延迟）：`pidfd` 绑进程实例本身 ⇒ **PID 复用在机制上不存在**。
 
-**★ 删轮询 B 的前置条件已实测满足**（2026-07-30，P5 开工前补做，见
-`features/P4-tmux-hook-notify.md` §7bis）：真 daemon + 私有 socket，
-**hook 在 → kill 到新帧 136/137ms；hook 拆掉 → 5042ms**。有对照组 ⇒ 因果成立，
-不是「恰好赶上 ticker」。daemon 自己装上 3/3、`SIGUSR1 处理器`先于 hook 出现。
+**成果落档**：`doc/INVARIANTS.md` **§41**（四路事件 + 三盲区分类 + 护栏纪律 + 兼容部署）·
+§24 补「事件路同样只经 emitter」· §24bis 四处过时表述订正 · **BACKLOG E34 已结案**
+（含对其原措辞三处订正）· E33 标成「延迟那半已解、诊断那半未做」。
 
-**P5 三步的顺序（别跳）**：① daemon 留快照 + 差分（「消失的是哪个」）→
-② 新帧 `TmuxSessionClosed { name }`（**本区唯一动 wire 的一步**；monitor 侧遇未知 kind
-已确认是 `warn` 后跳过、不崩 —— `ssh_source.rs:2428` + 既有测试 `unknown_kind_returns_none`）
-→ ③ 才是删 `TMUX_EMIT_INTERVAL`。**铁律 9 点名这是本区最像会自己犯的错**：
-为了让零定时器守卫变绿而删掉唯一信号源。
+**兼容与部署**：wire 两处 additive（`observation` 字段 + `TmuxSessionClosed` 帧），
+**`PROTO_VERSION` 未 bump**；`BUILD_ID` → **`p1r-event-liveness`**（P5 漏做、P7 补上）。
+**真机生效仍需重部署。**
 
-**★ 新增一条纪律（P4 实测七次才收干净）**：daemon 源码的**散文里不许逐字引用
-`readonly_guard` 的禁用模式** —— 它连注释一起扫，是 fail-closed 的设计。
-自己写的守卫可以修（`format!` 拼判据 + 剥 `cfg(test)` + 剥注释），
-**但不许为自己方便去改那道红线守卫**。
-
-**订正计划一处**：修订里写的入口名 `spawn_watcher` —— 实际叫 **`watcher::spawn`**。
+**三条红线全程未破**：`TMUX_LS_FMT` · `RETIRE_MISS_THRESHOLD >= 2` · `shared/ccm` 本体
+——**一字未动**。死亡帧是**绕过** miss 计数的快路径，不是替换兜底。
 
 ## 自动模式
 
@@ -61,7 +48,7 @@
 | P4 | daemon 装 tmux hook + SIGUSR1 通知通路 | **✅ 完成签收**（`features/P4-tmux-hook-notify.md`）。拆 P4a/P4b，**顺序由安全性决定**（SIGUSR1 默认终止进程 ⇒ 处理器必须先于 hook）。真机私有 socket 实测：**通路打通**（探针被信号终止）+ **PID 复用防御成立**（starttime 写错不误伤）；**默认 socket 零改动**。**同一个自指陷阱连踩七次**，其中一次让守卫成了安慰剂——是变异揪出来的 |
 | P5 | 正向死亡帧 + 删 `TMUX_EMIT_INTERVAL` | **✅ 完成签收**（`features/P5-death-frame.md`）：快照差分（三态；**观测失败绝不当「都没了」**）+ `TmuxSessionClosed` 帧（additive、不 bump、旧 monitor 跳过）+ monitor 消费（绕过 miss 计数，**兜底路一字未动**）+ **删轮询 B 并接上 `Shutdown`**。**生产段零定时器**。实测：多个中杀一个 **126ms**（删前 136/137）· stdout 关闭 **111ms** 退出 · 首轮初探保住了（差点顺手删掉）|
 | P6 | 零定时器门禁 + 延迟 e2e | **✅ 完成签收**（`features/P6-no-timer-gate.md`），两半都做完：**① 守卫** `no_timer_guard.rs` 扫全 crate 生产段，**判据落在「周期性唤醒」而非「出现 `Duration`」**（去抖窗口是 `Duration` 但不是定时器）；非定时器用途**逐条登记带理由**，多一处未登记就红。四条变异成立（含「护栏自身失效」）。**② 端到端延迟 e2e** 并进 `graylight-daemon-frames`（5 → 8 条，`ci.yml` 地板同步抬），阈值 5s 是**数量级判据不是性能指标**。★ 并轨时**撞出并修掉一个 P5 留下的真回归**（对照组确认非本轮引入，见该文 §7.1）|
-| P7 | 文档收口 + E34 结案 | 进行中（本轮） |
+| P7 | 文档收口 + E34 结案 | **✅ 完成签收**（`features/P7-docs-and-closeout.md`）：`INVARIANTS §41` 新节（四路事件带实测延迟与测法 + 三盲区分类 + 零定时器护栏两条派生纪律）· §24/§24bis 订正 · **E34 结案 + 对其原措辞三处订正** · E33 只标解了一半（诊断那半是 UI 改动、不在本区）。★ **开工复测抓出 P5 漏掉的 `BUILD_ID` bump** —— 改不改都全绿，漏掉则整轮工作在已部署远端休眠；已补为 `p1r-event-liveness`，传导四条核实全部实跑 |
 
 ## 阻塞项 / 待用户表态
 
@@ -72,29 +59,27 @@
 
 **当前无阻塞项。**
 
-## 必须做但刻意延后的（不许忘）
+## 必须做但刻意延后的（不许忘）—— **三条全部结清**
 
-| # | 事项 | 排在哪 |
+| # | 事项 | 结果 |
 |---|---|---|
-| 1 | **bump `BUILD_ID`**（现 `p1q-accounts`）+ 重部署 | **P5**。不 bump ⇒ 已部署的旧 daemon 不被判 stale ⇒ 不自动重装 ⇒ **P1 的修复在远端休眠**。推到 P5 是为了让整个工作区只强制重装一次（P5 要加新帧 kind）。`release.yml` 每次发版现场交叉编译，不需本机 zigbuild |
-| 2 | **给 6 套非 CI e2e 做 socket 隔离**（`graylight-*` / `restart-*` / `resume-*` + `gen-idle-tmux.sh`）—— 它们一处 `-L` 都没有，会动默认 socket | **P6**，但**范围被 P2 缩小了**：daemon 侧延迟 e2e 可照 P2 冒烟那个「隔离 `CLAUDE_CONFIG_DIR` + PATH 前置假 tmux + 读 stdout 帧」模式建，**不需要任何 tmux socket**；只有 P5 的真 hook 那半边还要真 socket（带 `-L`）。E41 本身仍未闭合 |
-| 3 | **P5 删 ticker 前必须接 `WatchEvent::Shutdown`** | **P5**。否则主循环不再「写端关了就停读」（变体与注释已备好，见 `P2-…md` §2.5） |
+| 1 | **bump `BUILD_ID`** + 重部署 | **✅ 已 bump 为 `p1r-event-liveness`**。★ **原排 P5、P5 漏做、P7 复测抓出** —— 这条常量改不改都全绿，是「有些遗漏不会红任何测试」的标本。**重部署仍待真机** |
+| 2 | 给 6 套非 CI e2e 做 socket 隔离（E41） | **✅ 由 `gate-integrity` G-C 做掉**（`unset TMUX` + 短 `TMUX_TMPDIR`，**E41 已销**）。⇒ P6 的延迟 e2e **直接并进 `graylight-daemon-frames`**（5 → 8 条），没另造套件 |
+| 3 | 删 ticker 前必须接 `WatchEvent::Shutdown` | **✅ P5 已接**（`WatcherPoke::shutdown()`）。实测 stdout 关闭 → **111ms 退出** |
 
-## 本轮 loop 目标
+## 收官后的移交（给下一个碰这块的人）
 
-**P4（修订版）— hook + SIGUSR1 通路**。形态见 `MASTERPLAN.md`「§P4 设计修订」。四步：
-1. `tmux_hook.rs`：`hook_commands(exe, daemon_pid, daemon_starttime)` → 三条
-   `run-shell -b '<exe> --tmux-notify <pid> <ticks>'`（**零 fs 写**、名字不传 ⇒ 无注入面）；
-   `run()` = 读 `/proc/<pid>/stat` 校验 starttime 相符 → `libc::kill(pid, SIGUSR1)`
-2. `spawn_watcher` 返回一个窄 poke 句柄（暴露统一 channel 的发送端，只能发"该重探了"）
-3. `main.rs`：`tokio::signal::unix::signal(user_defined1())` → 每次收到就 poke
-   （`signal` feature 早已启用、main 已在用它做停机）
-4. `watch_loop`：`ServerState::Alive(pid)` 臂里装 hook（一次性线程，三个 subprocess）；
-   **留住上一份 `tmux ls` 快照**（P5 的死亡帧要靠它差分出消失的会话名）
+**本区已关闭，无在途工作。** 三件登记在别处、不属本区的事：
 
-**收尾必须**：`readonly_guard` 绿（这是本轮的硬判据）· 隔离 socket 端到端冒烟（杀掉多个中的
-一个 → 立刻重探，不等 8s）· 动实况 tmux server 前先存档 `show-hooks -g`、测完 `set-hook -gu`
-逐个撤销并复核回 0（基线已存 `scratchpad/live-hooks-baseline.txt`：57 行槽位名、**0** 个已设）
+| 事项 | 去处 |
+|---|---|
+| **重部署**（让 `p1r-event-liveness` 在真机生效） | 待用户；不 bump 时的后果与单一事实源机制见 `INVARIANTS §41.5` |
+| **E39**：`notify-debouncer-mini` 静默吞掉 inotify 队列溢出 | BACKLOG E39（**既有盲区、非本区引入**；`pidfd` 对溢出免疫 ⇒ 本区让情况变好）。**绝不为它补定时器** |
+| **E33 的诊断那半**：给 tab 加「三格一眼可分」的可见诊断 | BACKLOG E33（UI 改动）。三格内容要跟着改写：「在等那 ~16 秒」现在≈不可感知；「daemon 没在发帧」要多列一种成因——**hook 没装上** |
+
+**给 `local-as-remote` L1 的提醒（E40）**：cgroup 隔离结论**只对「daemon 经 SSH 起」成立**。
+本地路径下 daemon 可能与 tmux **同锅**，届时 pidfd 探针会被一起端。
+**必须重测这一格，不许继承本区的结论。**
 
 ## loop 停止条件
 
@@ -109,8 +94,11 @@
 - **执行顺序表第 21 行就是本区**（E34）。原表写「（新，未分配工作区）」+「需改
   `shared/ccm` 本体」——**两条都要订正**：本区已建，且 hook 由 daemon 装 ⇒ 不碰 ccm
 - `gate-integrity` 也会碰 `ci.yml` ⇒ 双方都只追加
-- `local-as-remote` L1 会碰同一个 daemon ⇒ 本区先落地，L1 继承事件模型
+- `local-as-remote` L1 会碰同一个 daemon ⇒ 本区已先落地，L1 继承事件模型。
+  **但 E40 那格不许继承**：cgroup 隔离结论只对「daemon 经 SSH 起」成立，本地可能同锅 ⇒ 必须重测
 
 ## 时间线
 
 - 2026-07-30 Phase A 落盘（本文件 + `MASTERPLAN.md`）
+- 2026-07-30 **P0-P7 全部交付签收，本区收官**。两条轮询删净、生产段零定时器；
+  「多个中杀一个」从 ~16s 降到 **126ms**（有对照组）；`INVARIANTS §41` 落档，**E34 结案**
