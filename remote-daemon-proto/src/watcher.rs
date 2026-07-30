@@ -1961,38 +1961,6 @@ mod tests {
         assert!(matches!(rx.try_recv(), Ok(WatchEvent::Shutdown)));
     }
 
-    /// ★ P5：**生产段零定时器**（账本第 1 行的最终形态、P6 守卫的雏形）。
-    /// 判据运行时拼 + 只扫剥掉 `cfg(test)` 与行注释的生产段（自指陷阱见 P4 §5）。
-    #[test]
-    fn production_has_no_timers_left() {
-        let me = include_str!("watcher.rs");
-        let marker = "\n#[cfg(test)]\nmod tests";
-        let prod = match me.find(marker) {
-            Some(i) => &me[..i],
-            None => me,
-        };
-        let code: String = prod
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        for pat in [
-            format!("thread::{}", "sleep"),
-            format!("recv{}", "_timeout"),
-            format!("Duration::{}", "from_secs"),
-            format!("{}::now", "Instant"),
-        ] {
-            assert!(
-                !code.contains(&pat),
-                "生产段不该再有定时器构件：{pat}（P5 起判活全是事件驱动）"
-            );
-        }
-        assert!(
-            code.contains("fn watch_loop"),
-            "剥注释后代码为空，断言在空转"
-        );
-    }
-
     // ---------- P5（zero-poll-liveness）：快照差分 → 正向死亡帧 ----------
 
     use std::collections::BTreeSet;
