@@ -304,7 +304,7 @@ fs 写"，范围等于性质）。原方案的完整实现已存成 patch
 - 快照路径与 `RETIRE_MISS_THRESHOLD >= 2` **原样保留**（重同步 / 旧 daemon 降级都靠它）
 - 同一 sid 两条路都可能到 ⇒ retire 必须幂等（`SidTrack.retired` 已是幂等设计，复用）
 
-### P6 — 门禁
+### P6 — 门禁〔**守卫已交付 2026-07-30**（features/P6-no-timer-gate.md）；e2e 延迟那半已登记未做〕
 
 - **零定时器守卫**：扫 `remote-daemon-proto/src/watcher.rs` 断言无 `recv_timeout` /
   `from_secs` 节流常量。**阈值不能挂在被优化的量上**（rust-ts-boundary 的教训）⇒
@@ -314,9 +314,12 @@ fs 写"，范围等于性质）。原方案的完整实现已存成 patch
   **⚠ P1 审计订正了载体**：原计划「落进既有 `graylight-daemon-frames` 一族」**行不通**——
   实测那 6 套（`graylight-*` / `restart-*` / `resume-*` + helper `gen-idle-tmux.sh`，正是
   BACKLOG E14 记的"不在 CI 的 6 套"）**一处 `-L` 都没有**，会在**默认 socket** 上建/杀会话。
-  ⇒ P6 必须**先给它们做 socket 隔离**（顺带闭合 E41），或改用已隔离的 6 套（`tmux-target` /
-  `tmux-guarded` / `ccm-acceptance` / `ccm-pretrust` / `cc-spawn-uplift` / `usage-probe`）作载体。
-  两条路都比"直接并入"贵，**P6 开工时先定这个**
+  ⇒ P6 必须**先给它们做 socket 隔离**（顺带闭合 E41），或改用已隔离的 6 套作载体。
+  ~~两条路都比"直接并入"贵，P6 开工时先定这个~~
+  **〔2026-07-30 已过时〕**：`gate-integrity` **G-C**（`69e14c3`）已经给那批做了隔离
+  （`unset TMUX` + 短 `TMUX_TMPDIR`），**E41 已销**，其中 5 套已进 CI 且自带断言数地板。
+  ⇒ **「先做隔离」这条前置不存在了，直接并入 `*-daemon-frames` 一族即可。**
+  （记录会过时：这条不是当初写错，是**别的功能把它解决了而计划没同步**。）
 - 新套件断言条数进 CI 标签（gate-integrity G-A 的地板纪律，本区遵守不重复实现）
 
 ### P7 — 文档

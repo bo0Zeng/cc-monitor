@@ -22,6 +22,7 @@
 mod accounts_query;
 mod codex;
 mod history_query;
+mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 mod readonly_guard; // F08a：daemon 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 mod resolve_query;
 mod search_query;
