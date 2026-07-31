@@ -25,7 +25,6 @@ import { getClaudeDirOverride, setClaudeDirOverride } from "../paths";
 import { CcIntegrationSection } from "./cc_integration";
 import { AccountsSection } from "./accounts-section";
 import { McpSection } from "./mcp-section"; // F87：MCP 管理（集成组）
-import { CcBusSection } from "./cc-bus-section"; // B03：cc-bus 驾驶舱（只读，按需读，无轮询）
 import { CcBusHooksSection } from "./cc-bus-hooks-section"; // B04：钩子只读诊断 + 生成待贴文本（绝不写入）
 import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置面审计（只读、按需一次、不轮询）
 import { DiagnosticsSection } from "./diagnostics-section";
@@ -695,17 +694,10 @@ export class SettingsPanel {
       element: footprintPage,
     });
 
-    // ---- cc-bus：**临时**单列一项 ----
-    //
-    // 它是**运营视图不是设置**（主计划 §1-1），S6 要把它整个移出设置窗。
-    // 塞进上面任何一类都是误归档 —— 它既不改 monitor 的状态，也不改某台机器的状态。
-    // 单列一项的好处：S6 那天删掉它就是删这一段注册，不用先从别人肚子里把它挖出来。
-    const ccBusPage = document.createElement("div");
-    // B03 批一：cc-bus 驾驶舱——只读看远端登记过的 agent；登记≠在线；点「读取」才发请求。
-    ccBusPage.appendChild(
-      this.safeBlock("cc-bus", () => new CcBusSection().element),
-    );
-    router.addRoute({ id: "cc-bus", title: "cc-bus", element: ccBusPage });
+    // S6：cc-bus 驾驶舱**已搬出设置**，成为顶层运营视图（入口 = 命令面板）。
+    // S2 当初把它临时单列成一页，正是为了这一刻只删这一段注册 —— 兑现了。
+    // 视图本体见 `views/cc-bus-view.ts`；驾驶舱组件 `CcBusSection` 原样复用，未重写。
+
 
     // ★ S4b-2：切到某台机器页时，把那几块 per-machine 分节搬进那一页，并同步
     // 「当前在看哪台机器」。挂在**路由器**这一层而不是列表行上，是因为切页有两个入口
