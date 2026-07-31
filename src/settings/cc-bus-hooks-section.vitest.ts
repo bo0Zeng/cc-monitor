@@ -1,7 +1,6 @@
 // B04 UI 断言。守的是**四态不得被误渲染**这条要害，以及"绝不写入"这条红线。
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { componentSources } from "../test-support/component-sources";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../error-toast", () => ({ showActionFailureToast: vi.fn() }));
 
@@ -189,14 +188,10 @@ describe("B04 只读与文案", () => {
   });
 
   it("**绝无写入路径**：源码里不得有任何写 settings 的 invoke", () => {
-    const src = readFileSync(
-      resolve(process.cwd(), "src/settings/cc-bus-hooks-section.ts"),
-      "utf8",
-    );
-    const code = src
-      .split("\n")
-      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
-      .join("\n");
+    // S4b-3b-3：扫整个组件（`cc-bus-hooks*` 全部文件），不写死单个文件名（§5-4）。
+    const files = componentSources("cc-bus-hooks");
+    expect(files.length, "反向自检：守卫必须真扫到文件").toBeGreaterThan(0);
+    const code = files.map((f) => f.code).join("\n");
     // 反向自检：守卫真的看到了代码（不是过滤成空串在空转）
     expect(code).toContain("class CcBusHooksSection");
     expect(code.length).toBeGreaterThan(1000);
@@ -323,14 +318,10 @@ describe("B04 审计修复：第五态、兜底、以及守卫本身", () => {
     // ⇒ 扫描器必须同时认两种形态，否则这条会退化成「扫到空集」的假绿。
     // 上面那组 `forms` 表测的是**裸形态**的扫描器（仍要留着：其它文件还在用裸形态，
     // 且 C04d 后续批次迁完前它一直有效）。
-    const src = readFileSync(
-      resolve(process.cwd(), "src/settings/cc-bus-hooks-section.ts"),
-      "utf8",
-    );
-    const code = src
-      .split("\n")
-      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
-      .join("\n");
+    // S4b-3b-3：扫整个组件（`cc-bus-hooks*` 全部文件），不写死单个文件名（§5-4）。
+    const files = componentSources("cc-bus-hooks");
+    expect(files.length, "反向自检：守卫必须真扫到文件").toBeGreaterThan(0);
+    const code = files.map((f) => f.code).join("\n");
     const bare = [
       ...code.matchAll(/invoke\s*(?:<[^(]*?>)?\s*\(\s*[`'"]([A-Za-z_][A-Za-z0-9_]*)[`'"]/g),
     ].map((m) => m[1]);
