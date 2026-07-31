@@ -21,6 +21,7 @@
 
 mod accounts_query;
 mod codex;
+mod fork_write; // G2：唯一被允许写文件系统的模块
 mod history_query;
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 mod readonly_guard; // F08a：daemon 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
@@ -262,6 +263,9 @@ async fn main() {
             Some("--search") => search_query::run(&claude_dir, &args),
             Some("--usage") => usage_query::run(&claude_dir, &args),
             Some("--resolve") => resolve_query::run(&claude_dir, &args),
+            // G2（branch-anywhere）：从指定消息处分叉出一个新会话文件。
+            // **daemon 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
+            Some("--fork-session") => fork_write::run(&claude_dir, &args),
             // ★ 这几个字面量必须与 `accounts_query::run` 自己认的子命令**完全一致**。
             // v3.4.0 出过一次事故：`--account-trust-zero` 在 accounts_query 里实现完整，
             // 但这里漏列 ⇒ 落进下面的 `_` 臂走历史查询 ⇒ `unknown argument` + exit 2，
