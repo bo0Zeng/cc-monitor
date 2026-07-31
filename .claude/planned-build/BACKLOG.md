@@ -141,5 +141,269 @@
 | **E42** | **★ `/usage` 解析从未真机验证过 —— 「用量读不到」很可能不是版本漂移，是它一直没对过** | 用户 2026-07-31 报「抓到了屏幕但认不出格式」 | **未修**。`src/account-usage-parse.ts` 的文件头注**自己写着**：正则「基于训练知识对 `/usage` 公开呈现形态的**回忆重建**，**没有经过任何真机验证**」，且 `unify-launch/features/F10-remaining-account-ux.md` §7 留了一份**上线前必须做的真机验证清单**——**那份清单从未执行**。⇒ 用户看到的那句「可能是 Claude Code 版本更新导致 /usage 输出变了」是**降级文案里的猜测**，不是诊断结论；更可能的解释是 `LABEL_PATTERNS`/`PERCENT_RE`/`RESET_RE` 三组模式**从一开始就对不上真实输出**。**修法唯一前置 = 拿到一份真实 `/usage` 抓屏文本**（本仓红线禁止启动真实已认证的 claude 去自测）。拿到后重写那三组模式即可，Rust 侧编排与调用方都不用动（该文件头注已声明这是唯一需要重写的文件） |
 | **E43** | **账号选择器移出设置，与「设置 / 历史」并排放右上角** | 用户 2026-07-31 | **未做（UX）**。要一并想清**哪些该留在设置里、哪些该移出来**——判据建议落在「**这是常用切换动作，还是一次性配置**」上，而不是按「和账号有关」归堆 |
 | **E44** | **全量梳理 UX 交互；两处「部署」是否该统一呈现** | 用户 2026-07-31 | **未做（UX）**。**实测澄清一件事：那两处部署的不是同一个东西** —— 设置「连接」里是 `deploy_remote_daemon`（部署 `cc-monitor-remote` daemon，`remote-section.ts:949`），设置「账号」里是 `deploy_remote_acct_iso`（部署 `cc-acct-iso` 这个 bash 工具，`accounts-section.ts:236`）。⇒ **后端不该合**（T04 第二步已审计过「统一部署器不该建」：7 个入口逐个列步骤序列后确认，三个范式里两个早就共享了、第四个只有一个使用者）；要讨论的是**呈现层**要不要让用户在一个地方看到「这台机器上我装了哪些东西、各自什么状态」 |
-| **E45** | **`cc` 的会话命名逻辑写在 shell 里，与前端 `deriveTmuxName` 构成跨语言双写点** | 用户 2026-07-31 提议「cc 不该自己在 bashrc 搞，应该去调用 daemon 生成会话」 | **未做，是个真提议**。今天 `shared/ccm::derive_tmux_name`（shell）与 `src/remote-launch.ts::deriveTmuxName`（TS）各写一份，靠 `e2e/ccm-cli.test.sh` 的真值对拍钉住。由一处统一开会话能消掉这个双写点，并让终端与 monitor 真正走同一条路（今天是「规则相同、各写一份」）。<br><br>**★ 更正（同日）**：我最初把它记成「正面撞铁律 I7（daemon 只读）」，**那是错的，用户当场指出**。查证：`readonly_guard` 守的是 **daemon 自己的源码里不许有文件系统写调用**（`fs::write`/`create_dir` 这类），针对的是**被观测文件系统**（`~/.claude` 等）。`tmux new-session` 是起进程、不是 fs 写，护栏根本拦不到。真正的问题只是**语义**：daemon 今天是观察者（只跑 `tmux ls` 这类只读观测），让它变执行者是个可讨论的设计取舍，不是机器化的墙。<br><br>**待定的真问题**：① 谁来当那个「统一开会话」的角色（daemon？还是 monitor 侧已有的 SSH exec 通道？）；② daemon 没装的机器（daemonless）上 `cc` 必须照样能用 |
-| **E46** | **「daemon 只读」这条被我反复引用得过宽，文档该把边界写清** | 同上，用户 2026-07-31 反问「daemon 从来没说过只读，不然 code-picture 怎么集成进去」 | **未做**。事实边界：`readonly_guard` = daemon 进程不写被观测文件系统。**cc-monitor 本来就在远端写**（装 ccm 进 `~/.bashrc`、部署 daemon 二进制、装 cc-acct-iso、写 `.mcp.json`），走的是 monitor 侧 SSH exec / SFTP，不经过 daemon。⇒ code-picture 要在远端生成文件夹与 I7 **不冲突**（daemon 里也确实没有 panorama/code-picture 代码）。`doc/INVARIANTS.md` 该把「谁不许写什么」写成一句不会被误引的话 |
+| **E45** | **设置页面大改**：「集成」改名「部署」· 该折叠的折叠 · 警告信息收成图标点开才展开 · 按「远端部署 / 本地部署」分栏 | 用户 2026-07-31 | **未做（UX）**。现状树见 `PHASE-G-REPORT.md` 之后的讨论记录 / 本条下方。**注意既有决定**：T07 实测四个耦合面后判定**不拆 `panel.ts`**（风险>收益），真病是「任一 section 构造期抛 = 整页白屏」，已用 `safeBlock` 分区块隔离治掉——**本条是信息架构改动，别顺手把那个结论推翻** |
+| E33 | **远端 tab 带外杀 tmux 后「变灰」延迟长到被用户当成 bug** | 用户 2026-07-29 真机观测 + `tmux_reconcile.rs` 头注自陈 | **⚠ 延迟那半已解，诊断那半未做**（2026-07-30，`zero-poll-liveness` P0-P7）。**① 标定两个常量 ⇒ 已被更好的东西取代**：`TMUX_EMIT_INTERVAL` **整个删掉了**（判活全部事件驱动，见 `doc/INVARIANTS.md` §41）——「多个中杀一个」实测 **126ms**（对照组 5042ms）、「杀到 server 没了」**27ms**。`RETIRE_MISS_THRESHOLD >= 2` **一字未动**，它现在只在**兜底路**上生效（死亡帧绕过它）⇒ 标定的必要性大幅下降。**② 给 tab 加可见诊断（三格一眼可分）＝ 仍未做**，且三格的内容要跟着改写：①「在等那 ~16 秒」现在≈不可感知；②「daemon 没在发帧」要多列一种成因——**hook 没装上**（server 重启后重装失败 / daemon 是旧版）；③ `never_bound` 按设计永不判，不变。**这是 UI 改动，不在 `zero-poll-liveness` 范围内，留在本条。** 以下为原始记录：**未做**。用户报「一直有个 tab 不灰」，随后自行变灰 ⇒ 机制没坏，是**延迟**。**延迟可以算出来**：`TMUX_EMIT_INTERVAL`(**8s**，`remote-daemon-proto/src/watcher.rs:65`) × `RETIRE_MISS_THRESHOLD`(**2**) ≈ **16 秒**。（`tmux_reconcile.rs` 头注说这两个是「占位常量、真机未标定」——**那句只对 threshold 准**，`TMUX_EMIT_INTERVAL` 是有明确值的；用户追问「不是都没有轮询了」时才查清的。另：**轮询没消失，是搬走了**——删掉的是 monitor 侧每 8s 新建 SSH 跑 tmux ls，换成 daemon 在它自己那台机器上周期跑、经 `TmuxSessions` 帧上报；「不新增轮询」红线守的是 monitor 侧那条。`RETIRE_MISS_THRESHOLD` **不能降到 1**——`tmux_reconcile.rs:31` 有编译期断言钉死 `>= 2`，因为 `/branch` 漂移有 ~1s 竞态窗），且「带外杀端到端变灰」本身就在它的**真机累积项**里、**从没验过**。⇒ 这是那条累积项的**第一个真机观测点**。做法：① 标定两个常量；② 给 tab 加一条可见的诊断（数据来源 / `ever_bound` / `miss` 计数），让**三格**一眼可分——它们从 UI 上完全看不出区别，全表现为「不灰」：① **在等那 ~16 秒**；② **daemon 没在发 `TmuxSessions` 帧**（没跑 / 版本旧 / `raw` 是 `NO_TMUX` / backend 集为空被观测无效门保守跳过）⇒ **对账一轮都没执行，不是延迟长**；③ **`never_bound` 按设计永不判**（`never_bound` 的 sid 按设计**永不变灰**，见 `reconcile_step` 末支注释——bg / 无 wrapper / 直起 claude 免疫误 retire）。**注意本地会话完全不经这条路**：`reconcile_step` 全仓只在 `ssh_source.rs:2383` 的远端收帧循环里被调，独立 poller 已删（`lib.rs:705`） |
+
+| ~~**E34**~~ | ~~**★ 把 tmux 存活的「轮询」换成事件：带外杀 tmux 后近乎零延迟变灰**~~ **✅ 已解（2026-07-30，独立工作区 `zero-poll-liveness` P0-P7 全部交付）** | 用户 2026-07-29 明确要求「我要把轮询杀掉」 | **daemon 里 A/B 两条轮询都已删除，生产段零定时器**（`no_timer_guard.rs` 钉住）。四路事件 + 实测延迟 + 三盲区分类见 **`doc/INVARIANTS.md` §41**。**★ 对本条原措辞的三处订正**（不是执行走样，是登记时就写错了）：① 原文承诺「**daemon 零改**」——**不成立**，用户 2026-07-30 当日松了该红线（原话「daemon 是能改的，我的要求就是性能最佳且不要轮询」）；零改做不到正向死亡帧，16s 只能降到「新间隔×2」，因为 `RETIRE_MISS_THRESHOLD >= 2` 是编译期断言、判据本身就是轮询式的。② 原文只盯了 tmux 那条 8s 轮询，**范围写小了**——daemon 里是 **A/B 两条**（还有 2s 判活 tick）。③ 原文「把轮询换成事件」的**字面版会留 2 个盲区**：「会话活着但卡死」与「整台机器挂掉」。如实分类后：前者**今天的轮询也没在做**（卡死的 CC 在 `tmux ls` 里照样在）⇒ 删轮询在这格零损失；后者机器内部无解，靠 monitor 断连自愈。**另**：原文列的「需改 `shared/ccm` 本体」也不成立——hook 由 **daemon** 装（只有它有「server 重启」这个时机），ccm 一字未改。下方旧小节保留作历史，顶部订正块已列出别照着做的四条 |
+| **E39** | **`notify-debouncer-mini` 静默吞掉 inotify 队列溢出 ⇒ 溢出时事件永久丢失** | `zero-poll-liveness` P0-⑤ 读源码实测（2026-07-30） | **既有盲区，非新引入**。`notify 6.1.1/src/inotify.rs:208` 把 `Q_OVERFLOW` 报成 `EventKind::Other + Flag::Rescan`，但 `notify-debouncer-mini 0.4.1/src/lib.rs:319` 的 `add_event` **只读 `event.paths`**，而溢出事件 `paths` 为空 ⇒ 循环体一次不执行 ⇒ 完全不可见。**两端都中招**（daemon 与 `src-tauri/src/watcher.rs` 用同一套 debouncer）。今天没有周期兜底：目录发现（`SessionAdded`）与 jsonl 行流只靠 notify 事件。**pidfd 对此免疫** ⇒ `zero-poll-liveness` P2 会把判活这一路摘出 inotify 依赖。处置选项：① 换 raw `notify` + 自写去抖（要保 `DEBOUNCE_MS=100` 双写点语义）② 加一个只为拿 `need_rescan` 的 raw-notify 哨兵实例 ③ 接受并登记。**绝不补定时器**（那等于零轮询造假）。**结论来自读源码，未真触发过溢出** |
+| ~~**E41**~~ | ~~6 套非 CI 的 e2e 套件不做 tmux socket 隔离 ⇒ 在开发机上会动开发者自己的 tmux server~~ **✅ 已解（2026-07-30，`gate-integrity` G-C）**：6 套统一加前导 `unset TMUX` + 短 `TMUX_TMPDIR`（零调用点改动，84 处裸 `tmux` 一个没改）。**★ 归因订正**：本条原文把病因记成「一处 `-L` 都没有」——**那只是表面特征**。实测的实质是**从 tmux 会话里跑时继承了 `$TMUX`**，客户端会连外层那台 server 并**完全忽略 `TMUX_TMPDIR`**（我第一次就是只设 `TMUX_TMPDIR` 没 `unset TMUX`，会话照样落在默认 socket 上）。另：socket 路径有 108 字节上限，`TMUX_TMPDIR` 必须短路径。5 套已进 CI 并自带地板（24/17/5/5/7）；`graylight-suite` 拿到隔离但不进 CI（全链级，要跑起 GUI app，与 ci.yml 既有论证同源）。详见 `gate-integrity/features/G-C-e2e-suites-into-ci.md` | `zero-poll-liveness` P1 工程审计实测（2026-07-30） | ~~**未修，已改 P6 计划**~~。`graylight-suite` · `graylight-daemon-frames` · `restart-suite` · `restart-daemon-frames` · `resume-suite` · `resume-daemon-frames` + helper `gen-idle-tmux.sh` —— **一处 `-L` 都没有**，直接在**默认 socket** 上 `new-session` / `kill-session`（如 `graylight-daemon-frames.sh:56`）。在 CI 的干净容器里无害，但这 6 套正是 **E14** 记的「不在 CI」那 6 套 ⇒ 实际只会被人在开发机上手跑。对比：CI 那 8 套安全（6 套带 `-L`：`ccm-acceptance`/`ccm-pretrust`/`cc-spawn-uplift`/`tmux-guarded`/`tmux-target`/`usage-probe`；另 2 套 `ccm-cli.test.sh`/`ccm-print-parity.sh` **根本不调 tmux**——grep 命中的 "tmux" 全在注释与 `--print` 断言里，`ccm-cli.test.sh:4` 明写「不真起 agent、不碰 tmux」）。⇒ `zero-poll-liveness` **P6 的延迟 e2e 原计划挂在 graylight 一族，实测行不通**：要么先给这 6 套加 `-L` 隔离（顺带闭合本项 + 让 E14 进 CI 变得安全），要么改用已隔离的载体。**旁证**：`graylight-daemon-frames.sh:30` 留了个 keepalive 会话，注释自陈是为了绕开 §24bis 空 backend 守卫——而那正是 P1 修掉的 bug ⇒ 该 bug 当年是被**测试侧绕过**而不是被发现 |
+| **E40** | **cgroup 隔离结论只对「daemon 经 SSH 起」成立 ⇒ `local-as-remote` L1 必须重判** | 同上，P0-③ | **提醒项，不是 bug**。实测：tmux server 在 `session-12881.scope`、每个新 SSH 登录得新 `session-<N>.scope` ⇒ 必然不同锅 ⇒ daemon 自持的 pidfd 探针扛得住「tmux 整锅 SIGKILL」。**但 L1（本地=不走 ssh）里 daemon 可能与 tmux 同锅**，届时探针会被一起端。L1 落地时必须重测这一格，**不许继承 `zero-poll-liveness` 的结论** |
+
+---
+
+## E34 详述：事件驱动的 tmux 存活信号（用户点名要做，需先调研）
+
+> ### ⚠ 2026-07-30 订正：本小节以下内容有四条已被实测推翻，**以 `zero-poll-liveness` 工作区为准**
+>
+> 本项已升格为独立工作区 `.claude/planned-build/zero-poll-liveness/`（主计划用户已批、P0 已交付签收）。
+> 以下旧文保留作历史记录，但**这四条别照着做**：
+>
+> 1. **「daemon 零改」不成立、且用户已松该红线**（2026-07-30 原话「daemon 是能改的，
+>    我的要求就是性能最佳且不要轮询」）。零改做不到正向死亡帧 ⇒ 16s 只能降到「新间隔×2」，
+>    因为 `RETIRE_MISS_THRESHOLD >= 2` 是编译期断言、判据本身是轮询式的
+> 2. **范围写小了**：daemon 里是 **A/B 两条**轮询（2s 判活 tick + 8s `tmux ls`），本小节只盯了后者
+> 3. **「需改 `shared/ccm` 本体」不成立**：hook 由 **daemon** 装——只有 daemon 有
+>    「server 重启」这个时机（socket 目录 inotify），ccm 只在建会话时被调一次
+> 4. **「把 sid 字面量烤进 per-session hook，最干净」这条路不存在**：P0 实测
+>    `session-closed` **专门不支持 per-session**（对照实验：`session-renamed -t A` 会触发）。
+>    而且 `#{@ccm_sid}` 在 `session-closed` 里**解析到别的会话** —— 照直觉写会把
+>    还活着的会话变灰。必须用全局 `[50]` + `#{hook_session_name}` + monitor 侧反查
+>
+> **另**：「§24 单写者」不再是开放问题——所有新信号都汇进既有
+> `SessionChange{removed}` → emitter，零新写点。
+
+**用户原话**：「为什么延迟这么高? 不应该一关就杀吗? 不是事件驱动吗 / 怎么做成零延迟」→「我要把轮询杀掉」
+
+### 现状（2026-07-29 实测，不是推测）
+
+两条信号路性质完全不同：
+
+| 信号 | 机制 | 延迟 |
+|---|---|---|
+| claude 进程退出 | pidfile 消失 → daemon 的 `notify` inotify（`DEBOUNCE_MS = 100`，`remote-daemon-proto/src/watcher.rs:61`） | **~0.1 秒，本来就是事件驱动** |
+| tmux 会话被带外杀 | **没有任何东西推**，只能 daemon 周期跑 `tmux ls`（`TMUX_EMIT_INTERVAL = 8s`，`watcher.rs:65`）× `RETIRE_MISS_THRESHOLD`(2) | **~16 秒** |
+
+daemon 用 `notify` 只 watch 两处：`projects`（递归）+ `sessions`（非递归）。
+**「一关就杀」在正常情况下确实是瞬时的**——那 16 秒只出现在
+`tmux_reconcile.rs` 头注点名的那个场景：**claude 被守护托管而不随 tmux 死**
+（`ccm --detach` 那类 disown 的会话）⇒ pidfile 还在 ⇒ 事件路无信号 ⇒ 只剩轮询能发现。
+
+**一处订正**：轮询**没有被消灭，是搬走了**——删掉的是 monitor 侧每 8s 新建 SSH 跑 `tmux ls`
+（`lib.rs:705`：`run_tmux_reconcile_poller` 已删），换成 daemon 在它自己那台机器上周期跑。
+「不新增轮询」那条红线守的是 monitor 侧那条。
+
+### 可行性：tmux 其实有事件，只是本仓没用
+
+- 本机 **tmux 3.6**；`session-closed` hook 自 2.4 起就有
+- 而 **`shared/ccm` 与 `shared/cc-bus/scripts/*` 现在一个 tmux hook 都没设**（grep 零命中）
+
+⇒ 把「轮询获得的信号」换成「tmux 推的事件」是可行的：
+`session-closed` hook 在会话关闭那一刻触发 → 碰一下 daemon **已经在 inotify** 的目录
+→ 复用整条既有事件链 → **daemon 零改**（红线保住），延迟 16s → **~100ms**。
+
+**附带收益**：`RETIRE_MISS_THRESHOLD >= 2` 那条编译期断言的存在理由
+（防轮询抖动 + `/branch` 漂移竞态误判）**在事件路径上不成立**——
+hook 明确说「**这个具体会话**关了」，没有抖动可言。所以事件路可以不要 debounce。
+
+### 三个必须先调研/实测的问题（**不许凭推测动手**）
+
+1. **`session-closed` 支不支持 per-session 作用域？** tmux 文档在这点上有歧义
+   （会话对象正在销毁）。若支持，`ccm` 建会话时可以把 sid **字面量烤进** per-session hook，
+   最干净；若只支持全局，就得用 `#{hook_session_name}` + 一张名字→sid 映射。**必须实测。**
+2. **谁写、写什么 —— 会不会破 §24「单写者」？** 最直接的是 hook 删掉该会话的 pidfile 让既有
+   `SessionRemoved` 路照跑，但那让 liveness 目录**多一个写者**。要么换成
+   「写一个独立的『tmux 已关』标记，由既有唯一写者读」，要么**显式论证**这个第二写者可接受
+   （断连 flush 已经是第二生产者的先例）。
+3. **hook 里跑什么才安全？** `run-shell` 在 tmux server 上下文里跑，
+   要确认不会因为 hook 失败卡住 server、以及远端机器上路径/权限如何取。
+
+### 两条需要用户表态的红线
+
+- **必须改 `shared/ccm` 本体**（加 hook 只能在建会话那一步做）——而「不改 `shared/ccm` 本体」目前在册
+- **§24 单写者**倾向哪种解法（见上方问题 2）
+
+### 附带的诊断项（E33，与本条同源）
+
+三种「不灰」从 UI 上完全看不出区别：① 在等那 ~16 秒 ② daemon 没在发 `TmuxSessions` 帧
+（没跑 / 版本旧 / `raw == NO_TMUX` / backend 集空被观测无效门保守跳过 ⇒ **一轮都没执行**）
+③ `never_bound` 按设计永不判。**做 E34 时顺手把这三格显示出来**，否则下次还是只能靠猜。
+
+| **E35** | **★ 真 bug：历史会话「留空恢复默认」清不掉自定义标题** | C04d 批 6c 读边界时发现，**已实测确认机理** | **未修**（修它是行为改动，不在 C04d 范围）。见下方独立小节 |
+| **E36** | **多账号加第三方 API key** | 用户 2026-07-30 问 | **未做（零代码）。用户已选路线乙**（`apiKeyHelper` 写进每账号自己的 `settings.json`）⇒ **前置 = `account-zero` Z08**（`isolate` 迁移能力）。见下方独立小节顶部的订正块 |
+| ~~**E37**~~ | ~~`CLAUDE_CONFIG_DIR` 零官方文档，而整套多账号隔离压在它上面~~ | 2026-07-30 查官方文档均无此项 | **✅ 已销（2026-07-30，`account-zero` Z07）**。从「失效时无人知晓」变成「有版本钉 + 四条检测」：**D1b 致命**（secret 泄漏进共享库；零误报。⚠ 当时写的理由「会被自动 symlink 给每个账号 = 静默串号」**是错的**——隔离项从不被 symlink 出去；**Z01 已订正并改判**：`root=cfg` 的 `.credentials.json` = 账号 0 已登录（正常），`root=home` 的 `.claude.json` 仍致命）· D2 提示（共享库出现声明外的 mode 600 文件）· D3 提示（版本与钉的不同 ⇒ 要求复核声明）· D4 提示（声明项缺席——**刻意只提示**：`policy-limits.json` 这类是懒创建的，「还没创建」与「改了位置」不可判定）。版本探测**只读、绝不执行 claude**。**边界如实**：换位置这类能报能迁；**换机制（keyring）按目录切身份整体失效、救不了**，只承诺当场可见 |
+
+---
+
+## E35 详述：「留空恢复默认」清不掉自定义标题（真 bug，机理已确认）
+
+**发现方式**：C04d 批 6c 要给 `update_history_metadata` 写包装层签名，被迫精确写下 `patch`
+的类型，于是去读了 Rust 侧的 `MetadataPatch`。
+
+**机理**（读了 struct + `update_history_metadata` 函数体，不是只看注释）：
+
+```rust
+pub struct MetadataPatch {
+    #[serde(default, rename = "customTitle", alias = "custom_title")]
+    pub custom_title: Option<Option<String>>,   // ← 双层 Option
+}
+// update_history_metadata:
+if let Some(t) = patch.custom_title { entry.custom_title = t.filter(|s| !s.trim().is_empty()); }
+```
+
+`#[serde(default)]`（**非** double_option）下：键缺失 → 外层 `None`；键存在但值是 JSON `null`
+→ **也是外层 `None`**（`Option<T>` from null 恒为 None）。⇒ `if let Some(t)` **不触发**
+⇒ **`null` 的语义是「不改」**。Rust struct 注释也明写：「清空走空/空白串 → `Some(Some(""))`
+→ update 里 filter 掉，**不靠 null**」。
+
+**而前端传的正是 null**（`src/views/history.ts`，「自定义标题（留空恢复默认）」那个 prompt）：
+
+```ts
+patch: { customTitle: next.trim() === "" ? null : next.trim() }
+```
+
+⇒ 用户按提示「留空」提交 → 前端发 `null` → 后端**什么都不做** → **标题清不掉**。
+UI 文案承诺的「留空恢复默认」不成立。
+
+**修法（一行）**：前端把 `null` 改成 `""`（走 `Some(Some(""))` → filter → None = 清空）。
+**为什么本轮不修**：C04d 每个 commit 的硬判据是**行为逐字节不变**，这是行为改动。
+需要一条复现测试 + 一个独立 commit。
+
+**包装层已经把这个陷阱写在签名旁边**（`src/ipc/commands.ts` 的 `update_history_metadata`
+条目），并刻意**不为 `MetadataPatch` 生成类型**——生成 `customTitle?: string | null`
+会让人以为 `null` 是清空，那是**说谎的类型**。
+
+---
+
+## E36 详述：多账号加第三方 API key
+
+> ### ⚠ 2026-07-30 订正：用户选了**乙**，本小节以下正文写的是**甲**
+>
+> 以下正文论证的是**甲：加两个窄 `EnvOp` 变体**（`ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`
+> 走环境变量注入）——那条路确实**零红线、零迁移、零 `ISOLATE_SET` 改动**，论证仍然有效。
+>
+> **但用户 2026-07-30 明确选的是乙**：`apiKeyHelper` 写进**每账号自己的** `settings.json`
+> （理由：那才是官方推荐的形态，且 `settings.json` 里还有一堆本就该按账号分的键——
+> `hooks`（用户的 cc-bus 加入点）/ `model`（不同账号可能不同 plan）/ `permissions.defaultMode`
+> / `effortLevel` / `env` / `theme`）。用户原话：「我要用乙」+「cc-bus 本来就应该这样。
+> 不装的账号不应该被自动启动消耗额度」——**后半句把 per-account 加入变成了功能需求，不是代价**。
+>
+> **乙 的代价与甲完全不同**：
+>
+> | | 甲（EnvOp） | **乙（已选）** |
+> |---|---|---|
+> | 改 `ISOLATE_SET` | 不用 | **要**（`settings.json` 今天是共享的：实测 z/b 都软链到 `~/.claude/settings.json`） |
+> | 迁移已有 z/b | 不用 | **要**，而且 **cc-acct-iso 根本没有这个能力** |
+>
+> ⇒ **乙 的前置 = `account-zero` **Z08** —— 2026-07-30 已交付签收**（`isolate` 能力 + `sync` 改成私有化）。
+> 那个能力**同时**是「Claude Code 换登录位置后迁移」（Z06/Z07）的前置——一个能力两个需求都要。
+>
+> **授权状态**：用户已授权动 `~/.claude/skills/cc-acct-iso/` **且**授权改 `z`/`b` 真实账号目录
+> （走「备份 → 改 → verify 复核 → 不符回滚」），共享库那份 `settings.json` 留作新账号模板。
+> 但随后说「先不要改，我现在在用 claude code」⇒ **等用户发话再动**。
+> 已论证：**隔离那一步本身对在用的会话不可观测**（同目录 `mktemp` + `mv` 原子替换、内容逐字节
+> 相同、全机无进程长开 `settings.json` 的 fd）；**会出事的是之后往里写 key 那一步**。
+
+### 以下是甲路线的原始论证（保留：若将来改主意选甲，这些结论直接可用）
+
+
+**用户问**：「现在的多账号可以有的是第三方 apikey 吗?」→ **今天不支持**（下文①②③），
+但**怎么做**这件事，我第一版的结论是错的，已订正。
+
+### ★ 对我自己初判的订正（重要）
+
+我最初写「要动三层，第一层要改 `~/.claude/skills/cc-acct-iso/` 的 `ISOLATE_SET`（红线），
+且会变更现有 z/b 两账号的共享结构、需迁移」。**这条是错的**——我漏看了本仓自己已经建好的机制：
+
+**cc-monitor 就是构造启动命令的那一方**，`src/launch-plan.ts` 的 IR 里已经有 `EnvOp`：
+
+```ts
+export type EnvOp =
+  | { kind: "export-config-dir"; value: string }
+  | { kind: "export-model"; value: string }   // F07：每账号默认模型（ANTHROPIC_MODEL）
+  | { kind: "unset-config-dir" }
+  | { kind: "unset-nested-env" };
+```
+
+`export-model` **已经在做「每账号一个 `ANTHROPIC_MODEL`」**。加 `ANTHROPIC_BASE_URL` /
+`ANTHROPIC_AUTH_TOKEN` 就是在同一处再加两个**窄变体**，与 `settings.json` 完全无关
+⇒ **零红线、零迁移、零 ISOLATE_SET 改动。**
+
+**官方文档给的决定性依据**（`code.claude.com/docs/en/env-vars`）：
+> `ANTHROPIC_API_KEY`: "…**When set, this key is used instead of your Claude Pro, Max, Team,
+> or Enterprise subscription even if you are logged in.**"
+
+启动时的 env 就够，且**优先于订阅登录** ⇒ per-account 天然按启动区分。
+
+### 今天为什么不支持（三条实测）
+
+1. **全仓零处理**：`ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL`/`apiKeyHelper` 在
+   `src/` + `src-tauri/src/` + `shared/` **grep 零命中**；`RemoteAccount` 没有一格能装它们。
+2. **`settings.json` 是共享的**：真机验证 `~/.claude-accts/z/settings.json` 与 `b/settings.json`
+   **都指向** `~/.claude/settings.json` ⇒ 走 `settings.json` 的 `env`/`apiKeyHelper`
+   会被**所有账号共用一个 key**。（用户的 `apiswitch/settings1.json` 参考就是这个形态
+   ——**单账号正确，多账号不适用**。）另：认证优先级里 `apiKeyHelper` **排在 OAuth 之上**
+   ⇒ 它一存在，已登录的订阅账号也会被顶掉走网关。
+3. **`logged_in` 的判据不认它**：它是 stat `.credentials.json` **存在性**得来的
+   （代码注释自承「不代表凭据有效」）⇒ 纯 key 账号不产生该文件、UI 显示「未登录」。
+
+### 建议形态（等用户拍）
+
+- `EnvOp` 加两个**窄变体**（不开自由 `{key,value}` 后门——本仓刻意拒绝过，
+  注释写着「防止绕开校验往命令里塞任意变量名」）：
+  `{ kind: "export-base-url"; value }` · `{ kind: "export-auth-token"; value }`
+- `RemoteAccount` 加 `auth_kind`（`subscription` | `api-key`），`logged_in` 按 kind 分别判
+- **key 存哪里要用户定**：`accounts.json` 明文 / 系统 keyring / 沿用 helper 脚本
+
+### 调研中发现的两处「官方 vs 本仓」冲突（独立风险，值得单独排期）
+
+| 项 | 官方文档 | 本仓 / 现实 |
+|---|---|---|
+| 用户级 `settings.local.json` | **明确写不存在**（`.local` 只在项目级） | `config_surface.rs` 把 `<config_dir>/settings.local.json` 当用户级作用域建模，还有测试断言那儿的 hook 算已装 |
+| `CLAUDE_CONFIG_DIR` | settings 页与 env-vars 页**都没提** | **整套多账号隔离全靠它**；`mcp.rs::claude_json_candidates()` 也在读它。它确实有效，但**无文档保证** |
+
+第一条 ⇒ 我一度想用 `settings.local.json` 做 per-account，**那个前提被官方否认，已放弃**。
+第二条是**稳定性风险**：隔离依赖一个未文档化的环境变量，Claude Code 若改其行为，
+多账号会整体失效且我们没有文档依据。**建议单独登记为 E37 并做一次真机验证 + 版本钉**。
+
+| **E38** | **panorama 一族 10 个类型的生成被 SS-10 铁律 + code-picture 仓红线双重阻塞** | C04d 批 7 实测 | **结构性阻塞，如实登记**。见下方小节 |
+
+---
+
+## E38 详述：vendored 类型的生成为什么做不了（不是忘了）
+
+C04d 批 7 迁 `src/panorama/api.ts` 的 21 个调用点时发现：它们的返回类型有 **10 个**
+（`Overview` · `NodeView` · `SubGraph` · `Edge` · `ImpactSet` · `Symbol` · `DocLink` ·
+`Annotation` · `DriftItem` · `IndexStats`）住在
+**`src-tauri/vendor/code-picture-core/src/model.rs`** —— vendored 代码。
+
+**两重阻塞，任一条单独成立就做不了**：
+
+1. **`VENDOR.md` 的 SS-10 铁律**（原文）：
+   > **副本是上游的镜子，不是分身**（SS-10 铁律）：**只照上游改，绝不在副本里改出自己的版本**。
+   > 要加字段/改行为先改上游再 re-vendor。
+
+   给它们加 `#[cfg_attr(test, derive(ts_rs::TS))]` 就是「在副本里改出自己的版本」。
+2. **「先改上游」要动 `code-picture` 仓**（`/home/zbl/文档/project/self项目/code-picture/code-picture`）
+   —— 本会话在册的红线，需另外授权。
+
+**批 7 的处置**：按主计划 §5「**名字钉死是普遍的，类型生成是按需的**」——
+本批只做**名字钉死 + 实参把关**（21 条包装层条目），返回类型指向 `src/panorama/types.ts`
+的现有手写类型。`PanoramaStatus` 例外（它在 `panorama.rs`、是本仓自己的）⇒ 已生成。
+
+**代价是具体的**：这 10 个手写镜像**仍无守卫**，是全仓剩下最大的手写跨边界面。
+它们会不会漂？**会**——上游 F68 就给 `Symbol` 加过 `signature: Option<String>` 字段
+（`VENDOR.md` 沿革里记着），那种改动如果 TS 侧没跟上就是静默不一致。
+
+**要做的话有三条路，都需要用户决定**：
+- **甲**：授权动 `code-picture` 上游 → 加派生 → re-vendor。**最正**，但跨仓。
+- **乙**：在 cc-monitor 侧写一个**薄适配层**（`panorama.rs` 里定义自己的 DTO + `From<model::X>`），
+  给 DTO 加派生。**不碰 vendor**，代价是 10 个转换函数 + 一层拷贝。
+- **丙**：维持现状，改为**给这 10 个手写类型加一条结构性守卫**
+  （对拍 `vendor/.../model.rs` 的字段名集合 vs `src/panorama/types.ts`）。
+  **不生成、但能抓漂移**；成本最低，且不违反任何铁律。**我倾向丙**——
+  它把「防漂」这个真实目的达成了，而生成物本身在这里只是手段。
+| **E47** | **「/branch 后进终端，灰点会莫名变绿」尚未解释** | 用户 2026-07-30 与灰点 bug 一并报的第二个现象 | **未查**。S0 修掉了灰点本身（`cause=superseded` ⇒ 直接归档，不再有那个灰点），所以这个现象**可能已随之消失**——但成因从未查清，不当作已修。猜测方向：attach 会触发 tmux hook（ccm 装了 `set-titles`，可能命中 `session-renamed`）⇒ 来一帧新 `TmuxSessions` ⇒ 状态被重算。**复现前不要写修法** |
+| **E48** | **UI 不阻止两台机器取同一个 origin（`label \|\| host`），而 origin 是全系统的机器身份** | S1 自审时发现 | **未修**（S1 只保证「无效配置不会静默吞编辑/静默删不掉」，没有让它变合法）。origin 是 `announced_registry` / `idle_registry` / `tmux_raw_registry` / 会话来源标注共用的 key，重了会在这些地方互相覆盖 —— 持久化层只是最后一环。**该在 UI 上拦**（保存时校验重名并提示），归 S4「机器详情页」时一起做 |
+| **E49** | **`cc` 的会话命名逻辑写在 shell 里，与前端 `deriveTmuxName` 构成跨语言双写点** | 用户 2026-07-31 提议「cc 不该自己在 bashrc 搞，应该去调用 daemon 生成会话」 | **未做，是个真提议**。今天 `shared/ccm::derive_tmux_name`（shell）与 `src/remote-launch.ts::deriveTmuxName`（TS）各写一份，靠 `e2e/ccm-cli.test.sh` 的真值对拍钉住。由一处统一开会话能消掉这个双写点，让终端与 monitor 真正走同一条路（今天是「规则相同、各写一份」）。**★ 更正（同日，用户当场指出）**：我最初记成「正面撞铁律 I7（daemon 只读）」，**那是错的**。`readonly_guard` 守的是 daemon **自己的源码里不许有文件系统写调用**（`fs::write`/`create_dir`），针对被观测文件系统（`~/.claude` 等）；`tmux new-session` 是起进程、不是 fs 写，护栏拦不到。真正的问题只是**语义**：daemon 今天是观察者，让它变执行者是可讨论的取舍，不是机器化的墙。**待定的真问题**：① 谁当那个「统一开会话」的角色（daemon？还是 monitor 侧已有的 SSH exec 通道？）；② daemon 没装的机器（daemonless）上 `cc` 必须照样能用 |
+| **E50** | **「daemon 只读」这条被我反复引用得过宽，文档该把边界写清** | 用户 2026-07-31 反问「daemon 从来没说过只读，不然 code-picture 怎么集成进去？都要在目录生成 code-picture 文件夹了」 | **未做**。事实边界：`readonly_guard` = **daemon 进程不写被观测文件系统**。而 **cc-monitor 本来就在远端写**（装 ccm 进 `~/.bashrc`、部署 daemon 二进制、装 cc-acct-iso、写 `.mcp.json`），走的是 monitor 侧 SSH exec / SFTP，**不经过 daemon**。⇒ code-picture 要在远端生成文件夹与 I7 **不冲突**（daemon 源码里也确实没有 panorama/code-picture，grep 为空）。`doc/INVARIANTS.md` 该把「谁不许写什么」写成一句不会被误引的话 |
+| **E51** | **BACKLOG 编号靠人手递增，已经撞过一次号** | 2026-07-31 自身事故 | **未做**。本轮追加时按「上次见到的最大号 +1」拍了三个号，而文件中部**早有**同号条目（早先的 UX 条目）⇒ 重号。随后用「首次出现的整行模式」定位改写，命中的是**靠前那个**，一次性删掉了其后 262 行（已从上一次 commit 恢复，内容零丢失）。**三条教训**：① 加条目前先扫全表取真实最大号，别凭记忆；② 改长文档一律按**行号/唯一锚点**定位，绝不用会重复的模式串做切片；③ 写这条记录时又踩了一次同族的坑 —— 叙述里逐字引用那个表格行模式，把去重自检打红了（同 `no_timer_guard` 记过的「散文里写了守卫的禁用模式」）。**改措辞，别改检查。** |
