@@ -4,6 +4,34 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // F56：写入/读取都走 config.ts；mock 掉以测 jump write→read 往返。
 // S1：写入口从 writeRemoteConfig（整表覆盖，已取消导出）改为 patchRemoteConfig（局部合并）。
 vi.mock("../config", () => ({ loadConfig: vi.fn(), saveConfig: vi.fn() }));
+// S3：把整个 IPC 面 mock 成一个**会记账的 Proxy** —— 用来钉「渲染机器列表时零次
+// 后端调用」。这比源码扫描强：扫描只能证明「没 import」，证明不了「渲染时没调」。
+const { ipcCalls, ipcReplies } = vi.hoisted(() => ({
+  ipcCalls: [] as string[],
+  /** 按命令名设定返回值；没设的一律 resolve(undefined)。 */
+  ipcReplies: new Map<string, unknown>(),
+}));
+// `onTestConnection` 在进 try 之前就 `new Channel<ConnectStage>()`（连接分阶段泳道）。
+// jsdom 里没有 Tauri 宿主，那句会抛 —— 而调用点是 `() => void this.onTestConnection()`，
+// 抛出去变成一条被吞掉的 unhandled rejection：**按钮点了什么都不发生，测试也看不出原因**。
+vi.mock("@tauri-apps/api/core", () => ({
+  Channel: class {
+    onmessage: ((v: unknown) => void) | null = null;
+  },
+  invoke: vi.fn(),
+}));
+vi.mock("../ipc/commands", () => ({
+  commands: new Proxy(
+    {},
+    {
+      get: (_t, name: string) => (...args: unknown[]) => {
+        ipcCalls.push(name);
+        void args;
+        return Promise.resolve(ipcReplies.get(name));
+      },
+    },
+  ),
+}));
 import { loadConfig, saveConfig } from "../config";
 import { shouldShowResetFingerprint, describeStage, RemoteSection } from "./remote-section";
 // F12：数据层已抽到 src/remote-config.ts——数据函数/类型从那里 import。
@@ -15,6 +43,7 @@ import {
   sftpEligibleHosts,
 } from "../remote-config";
 import type { RemoteHostConfig, RemoteConfig } from "../remote-config";
+import { recordFacet, readStatus } from "./machine-status";
 
 describe("F43 shouldShowResetFingerprint", () => {
   it("已固化非空指纹 → 显示", () => {
@@ -301,5 +330,129 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const calls = vi.mocked(saveConfig).mock.calls;
     const last = calls[calls.length - 1]![0] as Record<string, unknown>;
     expect(last.keepMe).toBe(1);
+  });
+
+  it("★ 渲染机器列表：后端调用**不随机器数增长**（状态灯绝不引入轮询）", async () => {
+    // 主计划 §1-2 的红线。「打开设置时顺便把 N 台机器都探一遍」听起来不像轮询，
+    // 但它是同一件事的另一种说法：一次 UI 动作扇出 N 次 ssh 往返，用户没要求过。
+    //
+    // 判据**不是**「零调用」—— 实测渲染时确实有一次 `list_ssh_host_aliases`
+    //（读本机 `~/.ssh/config` 填「导入」下拉），那既不是状态探测、也不走 ssh、
+    // 更不随机器数增长。红线禁的是**逐机器探测**，所以判据就写成那样：
+    // **同一份调用清单，1 台和 3 台必须逐字相同。**
+    ipcCalls.length = 0;
+    await mount([mkH("a", "1.1.1.1")]);
+    const withOne = [...ipcCalls];
+
+    ipcCalls.length = 0;
+    await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2"), mkH("c", "3.3.3.3")]);
+    const withThree = [...ipcCalls];
+
+    expect(withThree).toEqual(withOne);
+    // 反向自检：不是因为一次都没记到才「相同」。
+    expect(withOne.length).toBeGreaterThan(0);
+    // 且清单里不许出现任何逐机器探测类命令。
+    for (const name of withThree) {
+      expect(name).not.toMatch(/test_remote_connection|probe_|deploy_|remote_ccm/);
+    }
+  });
+
+  it("★ 本机是第一行、没有删除按钮", async () => {
+    const sec = await mount([mkH("a", "1.1.1.1")]);
+    const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine")];
+    expect(rows[0]!.classList.contains("remote-machine-local")).toBe(true);
+    expect(rows[0]!.textContent).toContain("本机");
+    // 本机删不掉 —— 这不是「暂未实现」，是它本来就不该能删（§40）。
+    expect(rows[0]!.querySelector(".remote-machine-remove")).toBeNull();
+    // 真机器那行照样有删除按钮（反向自检：别是选择器写错了导致恒 null）
+    expect(rows[1]!.querySelector(".remote-machine-remove")).not.toBeNull();
+  });
+
+  it("★ 本机行不进 this.cards —— 保存写出去的机器数不变（S1 的边界）", async () => {
+    // this.cards 是 S1 保存路径的输入。本机混进去 = 往用户的远端机器列表里
+    // 写一台叫「本机」的假机器。
+    const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")]);
+    sec.element
+      .querySelectorAll<HTMLButtonElement>(".remote-machine-remove")[0]!
+      .click();
+    await new Promise((r) => setTimeout(r, 0));
+    const got = writtenHosts();
+    expect(got.map((h) => h.label)).toEqual(["b"]);
+    expect(got.some((h) => h.label === "本机")).toBe(false);
+  });
+
+  it("本机的 daemon 格是「不需要」，不是「缺组件」", async () => {
+    const sec = await mount([]);
+    const local = sec.element.querySelector<HTMLElement>(".remote-machine-local")!;
+    const cell = local.querySelector<HTMLElement>('[data-facet="daemon"]')!;
+    expect(cell.classList.contains("remote-status-na")).toBe(true);
+    expect(cell.title).toContain("不需要");
+    // 对照：没测过的格子是 unknown，不是 na —— 两者混同会让用户以为本机缺组件。
+    const conn = local.querySelector<HTMLElement>('[data-facet="connection"]')!;
+    expect(conn.classList.contains("remote-status-unknown")).toBe(true);
+    expect(conn.title).toContain("未测过");
+  });
+
+  it("★ 状态条读的是账本，且带年龄（不是伪装成实时）", async () => {
+    localStorage.clear();
+    recordFacet("a", "connection", { kind: "ok", at: Date.now() - 3 * 60_000 });
+    const sec = await mount([mkH("a", "1.1.1.1")]);
+    const row = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine")][1]!;
+    const cell = row.querySelector<HTMLElement>('[data-facet="connection"]')!;
+    expect(cell.classList.contains("remote-status-ok")).toBe(true);
+    expect(cell.title).toContain("3 分钟前");
+  });
+
+  it("删掉一台机器会连它的状态记录一起清（下一台同名的不该继承 ✓）", async () => {
+    localStorage.clear();
+    recordFacet("a", "connection", { kind: "ok", at: Date.now() });
+    const sec = await mount([mkH("a", "1.1.1.1")]);
+    sec.element
+      .querySelectorAll<HTMLButtonElement>(".remote-machine-remove")[0]!
+      .click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(readStatus("a")).toEqual({});
+  });
+
+  it("★ SSH 不通时**不**给 daemon 那格下结论", async () => {
+    // SSH 都没通，daemon 是「不知道」。记成 fail 等于替用户断言「远端没装 daemon」，
+    // 而事实可能只是网络不通 —— 那条结论会一直挂在列表行上误导人。
+    localStorage.clear();
+    ipcReplies.set("test_remote_connection", {
+      sshOk: false,
+      daemonOk: false,
+      fingerprint: null,
+      endpoint: null,
+      daemonHello: null,
+    });
+    const sec = await mount([mkH("a", "1.1.1.1")]);
+    const btns = [...sec.element.querySelectorAll<HTMLButtonElement>("button")];
+    const testBtn = btns.find((b) => b.textContent?.includes("测试连接"))!;
+    testBtn.click();
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(ipcCalls).toContain("test_remote_connection");
+    const st = readStatus("a");
+    expect(st.connection?.kind).toBe("fail");
+    expect(st.daemon).toBeUndefined();
+    ipcReplies.clear();
+  });
+
+  it("SSH 通了才给 daemon 下结论（反向对照：别是恒不记）", async () => {
+    localStorage.clear();
+    ipcReplies.set("test_remote_connection", {
+      sshOk: true,
+      daemonOk: true,
+      fingerprint: null,
+      endpoint: null,
+      daemonHello: null,
+    });
+    const sec = await mount([mkH("a", "1.1.1.1")]);
+    const btns = [...sec.element.querySelectorAll<HTMLButtonElement>("button")];
+    btns.find((b) => b.textContent?.includes("测试连接"))!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    const st = readStatus("a");
+    expect(st.connection?.kind).toBe("ok");
+    expect(st.daemon?.kind).toBe("ok");
+    ipcReplies.clear();
   });
 });

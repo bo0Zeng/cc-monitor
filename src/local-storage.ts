@@ -47,6 +47,9 @@ export const LS_KEYS = {
   historyRemoteSources: "cc-monitor.history.remote-sources",
   /** F84b-fix(batch18)：命令栏可发现 chip 是否已被用户见过——首运行给一次性微高亮，之后不再。 */
   cmdkHintSeen: "cc-monitor.cmdk-hint.seen",
+  /** S3(settings-ia)：机器列表行上那几个状态格子的账本（origin → facet → 结论+时刻）。
+   *  **纯 UI 缓存，不是权威数据**；丢了只是列表回到「未测过」，不影响任何行为。 */
+  machineStatus: "cc-monitor.settings.machine-status",
 } as const;
 
 export function safeGet(key: string): string | null {
