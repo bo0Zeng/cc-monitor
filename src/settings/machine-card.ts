@@ -848,7 +848,7 @@ export class MachineCard {
         none.value = "";
         // U8：说清后果——「不指定」= 用远端 ~/.claude 那套基座凭据，**不受当前账号影响**。
         none.textContent =
-          "不指定（用远端登录的基座账号，不注入 CLAUDE_CONFIG_DIR）";
+          "不指定账号（用远端已登录的那个，不注入 CLAUDE_CONFIG_DIR）";
         acctSelect.appendChild(none);
         for (const a of sel) {
           const opt = document.createElement("option");
