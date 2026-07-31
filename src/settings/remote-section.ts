@@ -220,6 +220,12 @@ export class RemoteSection {
   private pages?: MachinePagesHost;
   /** S4b：已注册的机器页 id —— 重建列表时按它收掉旧页。 */
   private machinePageIds: string[] = [];
+  /**
+   * Phase G：卡片 → 它那一页的 id。**创建时写一次，之后只读**。
+   * 用 `Map` 而不是把 id 挂到 `MachineCard` 上：路由 id 是**列表这一层**的概念，
+   * 卡片不该知道自己被谁注册成了哪一页。
+   */
+  private pageIdOf = new Map<MachineCard, string>();
   /** S5/E56：「还差什么」清单容器。 */
   private gapsBox!: HTMLElement;
 
@@ -309,6 +315,9 @@ export class RemoteSection {
     for (const id of this.machinePageIds) this.pages?.removeMachinePage(id);
     this.machinePageIds = [];
     this.cards = [];
+    // Phase G：这批卡整个作废，页 id 表跟着清 —— 不清的话 `#n` 去重会把上一批的
+    // id 也算进冲突，重建几次之后每台机器的 id 会一路往后飘（`aya#2`、`aya#3`…）。
+    this.pageIdOf.clear();
     this.machinesContainer.innerHTML = "";
     this.machinesContainer.appendChild(this.buildLocalRow());
     if (this.pages) {
@@ -391,7 +400,7 @@ export class RemoteSection {
     this.cards.push(card);
     if (this.pages) {
       // S4b：表单搬到这台机器自己那一页；列表里只留一行（名字 + 状态 + 点进去）。
-      const id = `${MACHINE_PAGE_PREFIX}${persistedKey ?? hostKey(initial)}`;
+      const id = this.assignPageId(card, persistedKey ?? hostKey(initial));
       card.setPageMode();
       this.pages.addMachinePage(id, card.displayName(), card.element, card.parts());
       this.machinePageIds.push(id);
@@ -459,10 +468,48 @@ export class RemoteSection {
     return null;
   }
 
+  /**
+   * Phase G：**给这张卡定一个此后不再变的页 id**。
+   *
+   * # 它修的是两个实测复现的缺陷（都源自「页 id 每次现算」）
+   *
+   * 原来 `appendCard` / `refreshMachineRow` / `removeCard` 三处各自算一遍
+   * `MACHINE_PAGE_PREFIX + (persistedKey ?? hostKey(collect()))` —— 而那个 key 是**会变的**：
+   *
+   * 1. **连点两次「+ 添加机器」直接抛**：空白卡的 `hostKey()` 是 `""` ⇒ id 恒为 `machine:`，
+   *    第二次撞上 `router.addRoute` 的重复注册 `throw`。而 `this.cards.push` 已经执行、
+   *    页和行都没建 ⇒ 之后任何一次 `save()` 会把这张**界面上看不见的幽灵卡**写进 `config.json`。
+   *    异常在 click handler 里没人接，屏幕上零提示。
+   * 2. **改名之后删不掉（UI 侧）**：`save()` 会把 `persistedKey` 改成新 origin，
+   *    于是后两处算出的 id 与注册时那个永久分叉 ⇒ `removeMachinePage` 空转、
+   *    `findMachineRow` 返回 null ⇒ **列表行 / 导航项 / 详情页三者全留下**，
+   *    而盘上那台已经删了。用户看到「删了还在」，再点进那个幽灵页编辑就把机器写回去。
+   *
+   * ⇒ 身份只在**创建**时定一次，之后一律查表。这与 S1 给 `persistedKey` 立的规矩同源：
+   * **「这一条是谁」不能从会变的显示值里现推**。
+   *
+   * 冲突时加 `#n` 后缀而不是抛：重名是用户输入的正常后果，不该炸掉整个列表
+   * （E48「UI 该拦重名」仍然要做，但那是**提示**，不是靠崩溃来阻止）。
+   */
+  private assignPageId(card: MachineCard, base: string): string {
+    // 空白卡（还没填 host/label）没有可读身份 —— 给个占位，别让它变成裸 `machine:`。
+    const stem = `${MACHINE_PAGE_PREFIX}${base || "新机器"}`;
+    let id = stem;
+    for (let n = 2; this.machinePageIds.includes(id); n += 1) id = `${stem}#${n}`;
+    this.pageIdOf.set(card, id);
+    return id;
+  }
+
+  /** 这张卡的页 id。创建时定死，**绝不重算**（理由见 `assignPageId`）。 */
+  private pageIdFor(card: MachineCard): string | null {
+    return this.pageIdOf.get(card) ?? null;
+  }
+
   /** S4b：刷新某台机器在列表里那一行（名字 + 状态条）。没有分页宿主时什么都不用做。 */
   private refreshMachineRow(card: MachineCard): void {
     if (!this.pages) return;
-    const pageId = `${MACHINE_PAGE_PREFIX}${card.persistedKey ?? hostKey(card.collect())}`;
+    const pageId = this.pageIdFor(card);
+    if (!pageId) return;
     const row = this.findMachineRow(pageId);
     if (!row) return;
     const nameBtn = row.querySelector<HTMLElement>(".remote-machine-open");
@@ -485,10 +532,15 @@ export class RemoteSection {
     this.cards.splice(idx, 1);
     card.element.remove();
     // S4b：连它那一页和列表行一起收掉，否则导航里会留下一个指向已删机器的死项。
-    const pageId = `${MACHINE_PAGE_PREFIX}${card.persistedKey ?? hostKey(card.collect())}`;
-    this.pages?.removeMachinePage(pageId);
-    this.machinePageIds = this.machinePageIds.filter((x) => x !== pageId);
-    this.findMachineRow(pageId)?.remove();
+    // Phase G：**查表拿 id，不再现算** —— 现算会在改过名之后指向一个不存在的页
+    //（那正是「删了还在」那个缺陷）。理由详见 `assignPageId`。
+    const pageId = this.pageIdFor(card);
+    if (pageId) {
+      this.pages?.removeMachinePage(pageId);
+      this.machinePageIds = this.machinePageIds.filter((x) => x !== pageId);
+      this.findMachineRow(pageId)?.remove();
+      this.pageIdOf.delete(card);
+    }
     this.updateEmptyHint();
     void this.save();
   }

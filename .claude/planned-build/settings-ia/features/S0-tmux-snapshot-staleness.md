@@ -54,7 +54,8 @@ resume 到了另外一个历史记录」。落到实现上：
       + `BUILD_ID` bump 到 `p1t-removal-cause`。
 - [x] 旧 daemon × 新 monitor 向后兼容 —— `parses_session_removed` 钉住「缺字段 ⇒ Gone」。
 - [x] 变异验证：6 条（见 §6），逐条改坏见红、还原见绿。
-- [x] 观察项已登记 —— BACKLOG **E43**（「进终端变绿」成因未查清，S0 可能顺带消除但不声称已修）。
+- [x] 观察项已登记 —— BACKLOG **E47**（「进终端变绿」成因未查清，S0 可能顺带消除但不声称已修）。
+      *（Phase G 更正：原写 E43，那是「账号选择器移出设置」，编号引错。）*
 
 **不做**：不改 `shared/ccm`（它已经在正确地做它该做的事，1s 延迟是它的设计）；
 不给 daemon 补任何轮询；不动 `TMUX_LS_FMT`；不改 `RETIRE_MISS_THRESHOLD`。

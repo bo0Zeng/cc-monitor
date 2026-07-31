@@ -47,6 +47,22 @@ describe("computeGaps", () => {
     expect(gaps.some((g) => g.facet === "ccm")).toBe(true);
   });
 
+  it("★ 本机的「连接」不算缺 —— 本地 = 不走 ssh 的远端（INVARIANTS §40）", () => {
+    // Phase G 逮到的真 bug：漏这一条，落地页顶上会永久挂着一条 **blocking** 的
+    // 「本机 · 连接：未测过 —— 连不上这台机器，它上面的会话都看不到」。
+    // 那句话对本机是假的，是清单里最重的一级，而且没有任何按钮能消掉它。
+    const gaps = computeGaps({ origins: [LOCAL_MACHINE_KEY], statusOf: none });
+    expect(gaps.some((g) => g.facet === "connection")).toBe(false);
+    // 本机不该有任何 blocking 条目（daemon 与 connection 是仅有的两条 blocking）
+    expect(gaps.some((g) => g.severity === "blocking")).toBe(false);
+    // 反向：远端的连接照常算数
+    expect(
+      computeGaps({ origins: ["aya"], statusOf: none }).some(
+        (g) => g.facet === "connection",
+      ),
+    ).toBe(true);
+  });
+
   it("★ S9：Windows 本机的 ccm 不算缺（它的对应物是「终端集成」那块）", () => {
     const gaps = computeGaps({
       origins: [LOCAL_MACHINE_KEY],

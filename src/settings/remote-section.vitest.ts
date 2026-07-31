@@ -50,6 +50,9 @@ import {
 import type { RemoteHostConfig, RemoteConfig } from "../remote-config";
 import { recordFacet, readStatus, LOCAL_MACHINE_KEY } from "./machine-status";
 import { __setHostOsForTests } from "./host-os";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { stripComments } from "../test-support/strip-comments";
 
 describe("F43 shouldShowResetFingerprint", () => {
   it("已固化非空指纹 → 显示", () => {
@@ -397,6 +400,81 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const got = writtenHosts();
     expect(got).toHaveLength(2); // ← 分裂的话这里是 3
     expect(got.map((h) => h.label)).toEqual(["a-renamed", "b"]);
+  });
+
+  // ── Phase G：页 id 从「每次现算」改成「创建时定死」——两条实测复现的缺陷 ──
+  //
+  // 这两条在修之前**各自都有绿测试**（改名一条、删除一条），只是从没人把它们串起来
+  // ——「组合未覆盖」，不是断言造假。所以这里刻意写成**两步串一起**的场景。
+
+  it("★ 连点两次「+ 添加机器」不许抛（空白卡的 origin 是空串，页 id 会撞）", async () => {
+    const p = fakePages();
+    const sec = await mount([], p.host);
+    const add = [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find(
+      (b) => b.textContent === "+ 添加机器",
+    )!;
+    expect(add, "找不到「+ 添加机器」按钮，下面的断言就是空转").toBeTruthy();
+    add.click();
+    // 修之前：第二次点击命中 router 的重复注册 throw（两次算出的 id 都是 `machine:`），
+    // 而 `this.cards.push` 已经执行 ⇒ 之后任何一次 save 都会把这张
+    // **界面上看不见的幽灵卡**写进 config.json。
+    expect(() => add.click()).not.toThrow();
+    const ids = p.added.map((a) => a.id).filter((i) => i !== LOCAL_MACHINE_PAGE_ID);
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size, "两张空白卡必须拿到不同的页 id").toBe(2);
+  });
+
+  it("★ 改名之后再删：列表行 / 导航项 / 盘上那条**三者一起**消失", async () => {
+    const p = fakePages();
+    const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], p.host);
+    // 分页模式下编辑表单在**卡片自己那一页**上，不在列表里（`card.element` 被交给
+    // `addMachinePage`）—— 所以 label 输入框要从注册进去的那个 element 上取。
+    const ayaPage = p.added.find((a) => a.id === "machine:a")!;
+    expect(ayaPage, "aya 那一页要注册进来了，否则下面全是空转").toBeTruthy();
+    const first = ayaPage.element.querySelectorAll<HTMLInputElement>('input[type="text"]')[0]!;
+    first.value = "a-renamed";
+    first.dispatchEvent(new Event("change"));
+    await new Promise((r) => setTimeout(r, 0));
+
+    // 修之前：save() 把 persistedKey 改成新 origin，而页是按旧 origin 注册的
+    // ⇒ removeCard 现算出 `machine:a-renamed`（不存在）⇒ 三者全留下，盘上却真删了。
+    sec.element.querySelectorAll<HTMLButtonElement>(".remote-machine-remove")[0]!.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(writtenHosts().map((h) => h.label), "盘上真的少一台").toEqual(["b"]);
+    expect(p.removed, "那一页要被注销").toContain("machine:a");
+    // 按 pageId 筛，别数总行数 —— 第一行是「本机」，它本来就在，数总数会把它算进去。
+    const rowIds = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row")]
+      .map((r) => r.dataset.pageId)
+      .filter((i) => i !== LOCAL_MACHINE_PAGE_ID);
+    expect(rowIds, "被删那台的列表行要消失，b 那行还在").toEqual(["machine:b"]);
+  });
+
+  it("★ 页 id 只许在一个地方算出来（现算公式不许再出现）", () => {
+    // **为什么要这条源码扫描**：上面两条行为测试盖住了「删除」与「连点添加」，
+    // 但第三个现算点 `refreshMachineRow` 只在 `onStatusChanged` 里被调，
+    // 而那条路要真发一次连接测试才走得到 —— 我实测过：把它改回现算，
+    // 那两条行为测试**依然全绿**（变异 Q3 exit=0）。
+    //
+    // 与其造一个很别扭的夹具去触发它，不如直接钉住**病根的形状**：
+    // 「`MACHINE_PAGE_PREFIX` 后面直接跟一个会变的表达式」这件事本身。
+    // 任何一处把公式抄回去，这条就红。
+    const code = stripComments(
+      readFileSync(resolve(process.cwd(), "src/settings/remote-section.ts"), "utf8"),
+      "ts",
+    );
+    // 允许的两处：`LOCAL_MACHINE_PAGE_ID` 那个常量、以及 `assignPageId` 里的 `stem`。
+    const occurrences = [...code.matchAll(/\$\{MACHINE_PAGE_PREFIX\}/g)].length;
+    expect(
+      occurrences,
+      "MACHINE_PAGE_PREFIX 只该出现在 LOCAL_MACHINE_PAGE_ID 与 assignPageId 两处；" +
+        "多出来的那处八成是又把页 id 现算了一遍（改名后会指向不存在的页）",
+    ).toBe(2);
+    // 反向自检：扫描器真读到了东西（路径写错会是空串，上面那条就恒 0≠2 假红，
+    // 但这里显式钉一下更清楚）
+    expect(code).toContain("assignPageId");
+    // 病根形状本身：`persistedKey ?? hostKey(...)` 不许再出现在页 id 的位置上
+    expect(code).not.toMatch(/\$\{MACHINE_PAGE_PREFIX\}\$\{card\./);
   });
 
   it("★ 两台机器名相同时删掉一台：真的少一台（不是静默无效）", async () => {

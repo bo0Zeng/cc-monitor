@@ -163,6 +163,12 @@ export class UsageView {
     btn.disabled = true;
     const prev = btn.textContent;
     btn.textContent = "读取中…";
+    // **先清掉上一次的结果**（Phase G 审计逮到的）：`renderPlanIdle` 是唯一做
+    // `replaceChildren` 的地方，而它只在 `build()` 里跑过一次 ⇒ 连读两次，
+    // 两块结果**叠在一起**，而且阅读顺序把**过期**那条放在最前面。
+    // 两块标签一模一样、都没有时间戳 ⇒ 用户无从分辨哪个是新的。
+    // 这与本块自己的判据「宁可说不知道，也不给错数字」直接相悖。
+    this.clearPlanResults();
     try {
       const cfg = await readRemoteConfig();
       const origin = cfg.enabled ? pickPrimaryOrigin(cfg.hosts) : null;
@@ -185,6 +191,19 @@ export class UsageView {
     } finally {
       btn.disabled = false;
       btn.textContent = prev;
+    }
+  }
+
+  /**
+   * 摘掉上一次读取留下的结果 / 消息，**保留**说明与按钮那两块常驻元素。
+   * 用「按类名摘」而不是 `replaceChildren` 重建整块：按钮此刻正处在 disabled 状态、
+   * 而且 `loadPlanWindows` 的 `finally` 还握着它的引用要恢复文案。
+   */
+  private clearPlanResults(): void {
+    for (const el of this.planEl.querySelectorAll(
+      ".usage-plan-result, .usage-plan-msg",
+    )) {
+      el.remove();
     }
   }
 

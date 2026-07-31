@@ -29,6 +29,8 @@ import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
 import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件（Z05 复用它）
 import { SETTINGS_APPLIED_EVENT } from "./events";
+// Phase G：这两格此前**没有任何生产者**，见下面 `note()` 的注释。
+import { recordFacet } from "./machine-status";
 import {
   buildAcctIsoCmd,
   validateAcctName,
@@ -127,6 +129,24 @@ export class AccountsSection {
     void this.reload(true);
   }
 
+  /**
+   * Phase G：给状态账本记一格。
+   *
+   * **这里此前是个洞**：`MACHINE_FACETS` 有 5 格，而全仓 `recordFacet` 的生产者只覆盖
+   * 3 格（machine-card 的 connection/daemon/ccm）—— `acctIso` 与 `accounts` **一个写点都没有**。
+   * 后果不是「少两个格子」，而是**「还差什么」那张清单在任何真实安装上都清不空**：
+   * 每台机器恒定产出 ≥2 条 `unknown` ⇒ `summarizeGaps` 恒非 null ⇒
+   * `remote-section` 里「全绿就整块不出现」那一支是**死代码**。
+   * 一张自称「还差什么、点哪里补齐」却既补不齐也消不掉的清单，比不做这个功能更糟。
+   */
+  private note(
+    facet: "acctIso" | "accounts",
+    state: { kind: "ok" | "fail" | "na"; detail?: string },
+  ): void {
+    if (!this.origin) return; // 本机：这两格由 L3b 补，今天表示不了
+    recordFacet(this.origin, facet, state);
+  }
+
   private async reload(force: boolean): Promise<void> {
     this.body.innerHTML = "";
     if (!this.origin) {
@@ -137,21 +157,31 @@ export class AccountsSection {
     try {
       state = await fetchAccounts(this.origin, force);
     } catch (e) {
+      this.note("accounts", { kind: "fail", detail: "拉取失败" });
       this.info(`拉取账号失败：${String(e)}`);
       return;
     }
     const ui = deriveUi(state);
     switch (ui.kind) {
       case "hidden":
+        // daemonless **不是缺**：用户显式选的降级，读不到账号是它的定义而非故障。
+        this.note("accounts", { kind: "na", detail: "daemonless" });
+        this.note("acctIso", { kind: "na", detail: "daemonless" });
         this.info("该远端配置为 daemonless，无法读取账号。");
         return;
       case "needs-update":
+        this.note("accounts", { kind: "fail", detail: "daemon 需更新" });
         this.info(`远端 daemon 需要更新才能用多账号：${ui.reason}`);
         return;
       case "not-enabled":
+        // 读得到、但多账号管线没启用 ⇒ accounts 这一格算读到了，acctIso 那格是真的缺。
+        this.note("accounts", { kind: "ok", detail: "已读取" });
+        this.note("acctIso", { kind: "fail", detail: "未启用" });
         void this.renderNotEnabledFlow(ui.manifestPath, ui.reason);
         return;
       case "ready":
+        this.note("accounts", { kind: "ok", detail: `${ui.accounts.length} 个` });
+        this.note("acctIso", { kind: "ok", detail: "已启用" });
         await this.renderTable(state, ui.accounts, ui.notice);
         return;
     }
