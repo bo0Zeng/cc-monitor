@@ -7,6 +7,7 @@
  * 设置窗独立于主窗口、拿不到活跃会话 cwd → 用项目目录输入框（datalist 从 `list_mcp_project_dirs` 自动补全「用过的项目」）。
  * 纯函数（groupByScope / serverSummary / parseServerConfig）零 import，node 可测。
  */
+import { setCurrentMachine, subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
 
@@ -130,6 +131,11 @@ export class McpSection {
 
   constructor() {
     this.element = this.build();
+    // S4a：跟随共用的「当前在看哪台机器」store。本分节是四块里**唯一**能表示「本机」的
+    // （它的机器行第一颗按钮就是本机），所以 null 也照单全收。
+    // `selectMachine` 自带「同值早退」，与 store 的「同值不通知」两道去重叠加，
+    // 不会因为往返而多打一次 ssh。
+    subscribeMachine((origin) => void this.selectMachine(origin));
     void this.loadProjectCandidates();
     void this.loadMachines(); // F87b③：有远端则显机器选择行
     // 业务二审 gap#6：打开即读（空 dir 也先显 user/local scope），不再是看似坏掉的空框。
@@ -225,7 +231,8 @@ export class McpSection {
       btn.textContent = text;
       btn.dataset.origin = origin ?? ""; // 身份存 dataset（本机=""），active 高亮/切换不靠脆弱的 textContent
       if (origin === this.origin) btn.classList.add("active");
-      btn.addEventListener("click", () => void this.selectMachine(origin));
+      // S4a：写进共用 store；实际切换由订阅统一处理（单一路径，不双写）。
+      btn.addEventListener("click", () => setCurrentMachine(origin));
       this.machineRow.appendChild(btn);
     };
     mk(null, "本机");

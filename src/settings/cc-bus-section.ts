@@ -18,6 +18,7 @@
 // **批二不重写起会话**：图形化 spawn 调的是收编后的 `cc-spawn`（它内部已改经 `ccm`），
 // cc-monitor 侧不碰建会话逻辑——那正是本工作区消灭的病（账本 K8：再造第 N 套实现）。
 // 也因此本文件**零引用 launch IR 模块**：spawn 是 fire-and-forget 的远端 exec，不开标签页。
+import { setCurrentMachine, subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
 // L2：账号选择复用既有封装——`fetchAccounts` 带 TTL 缓存、`selectableAccounts` 是
 // 「可选账号」的单一判据（`accounts.ts:130` 注释明写"别各处再 filter 一遍"）。
@@ -203,8 +204,18 @@ export class CcBusSection {
     }
     // 账号随机器变——换台机器，上一台的账号名多半不适用
     this.originSel.addEventListener("change", () => {
+      // S4a：写进共用 store；实际切换由订阅统一处理。
+      setCurrentMachine(this.originSel.value || null);
+    });
+    // S4a：跟随共用 store。本分节只列远端，收到 `null`（本机）就原地不动
+    //（cc-bus 跑在远端机器上，本机这一格本来就没有意义）。
+    subscribeMachine((origin) => {
+      if (origin === null) return;
+      if (![...this.originSel.options].some((o) => o.value === origin)) return;
+      if (this.originSel.value === origin) return;
+      this.originSel.value = origin;
       this.disarmSpawn();
-      void this.loadAccounts(this.originSel.value);
+      void this.loadAccounts(origin);
     });
     void this.loadAccounts(this.originSel.value);
   }

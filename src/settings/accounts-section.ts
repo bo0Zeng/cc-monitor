@@ -6,6 +6,7 @@
 //
 // 设置窗独立于主窗、拿不到活跃会话，故用远端选择器（多台时下拉）。改默认账号后
 // emit(SETTINGS_APPLIED_EVENT) 让主窗状态栏 chip 同步。
+import { setCurrentMachine, subscribeMachine } from "./machine-context";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "../ipc/commands";
 import {
@@ -58,8 +59,8 @@ export class AccountsSection {
     this.originSelect = document.createElement("select");
     this.originSelect.className = "accounts-origin-select";
     this.originSelect.addEventListener("change", () => {
-      this.origin = this.originSelect.value || null;
-      void this.reload(true);
+      // S4a：写进共用 store；真正的切换由下面的订阅统一处理（单一路径，不双写）。
+      setCurrentMachine(this.originSelect.value || null);
     });
     bar.appendChild(this.originSelect);
     const refresh = document.createElement("button");
@@ -78,6 +79,18 @@ export class AccountsSection {
     root.appendChild(this.body);
 
     this.element = root;
+
+    /**
+     * S4a：把本分节的 origin 选择接到**共用**的「当前在看哪台机器」store 上。
+     *
+     * 病因见 `machine-context.ts` 头注：这四块此前各维护一份 `this.origin`，
+     * 用户在一处切了机器，另外三处还停在上一台 —— 而它们讲的是同一台机器。
+     *
+     * **不能表示「本机」时怎么办**：本分节的下拉只列远端。收到 `null`（本机）就**原地不动**，
+     * 不乱选一台。这是已知的半截状态，S4b 的机器详情页会从根上解决它
+     * （本机那一页压根不会包含只对远端有意义的分节）。
+     */
+    subscribeMachine((origin) => this.followMachine(origin));
     void this.init();
   }
 
@@ -101,6 +114,17 @@ export class AccountsSection {
     if (this.origin) this.originSelect.value = this.origin;
     this.originSelect.style.display = this.hosts.length > 1 ? "" : "none";
     await this.reload(false);
+  }
+
+  /** S4a：跟随共用 store 切机器。见构造里那段注释。 */
+  private followMachine(origin: string | null): void {
+    if (origin === null) return; // 本机：本分节表示不了，原地不动
+    const has = [...this.originSelect.options].some((o) => o.value === origin);
+    if (!has) return; // 这台不在本分节的清单里（还没加载到 / 已被删）
+    if (this.origin === origin) return;
+    this.origin = origin;
+    this.originSelect.value = origin;
+    void this.reload(true);
   }
 
   private async reload(force: boolean): Promise<void> {
