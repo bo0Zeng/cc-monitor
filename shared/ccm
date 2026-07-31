@@ -626,7 +626,22 @@ if agent_has_identity "$agent"; then
   sessions_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"
   if [ -n "${TMUX:-}" ]; then
     tmux set-option set-titles on >/dev/null 2>&1 || true
-    tmux set-option set-titles-string "#T" >/dev/null 2>&1 || true
+    # ★ 窗口标题**由 tmux 自己合成**，不再等于 pane 标题（`#T`）。
+    #
+    # 为什么改：monitor 靠扫 Windows 窗口标题里的 `ccm-rbind-<sid>` 来绑窗口，
+    # 而 **claude 也在往 pane 标题写自己的状态**（转圈图标 + 当前在干什么）。
+    # 用 `#T` 时两者抢同一个位置，claude 一忙就把 marker 冲掉；下面那个循环
+    # 每 20 秒才补一次 ⇒ **点 ↗ 时的 4 秒现扫窗口去撞 20 秒一次的脉冲，约 1/5 命中**。
+    # 真机实测（2026-07-31）：四个空闲会话 marker 都在、唯独忙碌那个被冲成
+    # 「⠐ 理解…」，点 ↗ 必弹「未绑定窗口」。
+    #
+    # 换成从 `@ccm_sid` 直接合成之后，marker **常驻**：claude 写的是 pane 标题，
+    # 而窗口标题走的是这条 format，两条路不再交叉。首次绑定不再看运气。
+    #（`bind.rs` 那句「4s 若仍偶发不足，据真机再抬」是在症状层调参——抬窗口只能提高
+    #  命中率，抬到 20s 才保证，而那样点一次要等 20 秒。根因在这里。）
+    #
+    # `#{?@ccm_sid,…,#T}`：sid 还没回填时回退 `#T`，不产出一个空的 `ccm-rbind-`。
+    tmux set-option set-titles-string '#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}' >/dev/null 2>&1 || true
   fi
   (
     prev="" n=0
