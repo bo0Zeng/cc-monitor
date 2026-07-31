@@ -861,12 +861,20 @@ pub fn list_last_accounts() -> HashMap<String, String> {
 /// profile**）里跑，命令优先用户的 `cc` wrapper、回退 `claude`。详 `resume_impl`。
 /// Windows 上优先 wt.exe，找不到回退独立控制台。其他平台暂不支持。
 #[tauri::command]
+/// G3b：`config_dir` = 用哪个账号起。**缺省 / 空 = 账号 0**（一个字都不注入，
+/// 与 IR 的 `--base` 对齐）。前端不传时输出与本参数存在之前**逐字节相同**，既有调用点无需改。
 pub fn resume_history_session(
     session_id: String,
     cwd: String,
     launcher: Option<String>,
+    config_dir: Option<String>,
 ) -> Result<(), String> {
-    resume_impl(&session_id, &cwd, launcher.as_deref())
+    resume_impl(
+        &session_id,
+        &cwd,
+        launcher.as_deref(),
+        config_dir.as_deref(),
+    )
 }
 
 /// F34：用户自定义 resume 启动命令（设置面板「本地 resume 命令」）。
@@ -915,6 +923,67 @@ enum LocalPsAction {
 /// （PowerShell 用 `Get-Command`，POSIX 用 `command -v`）。
 ///
 /// **sid 校验留在这里**：它与前端 `validateLocalLaunch` 是**两道独立防线**，不是重复
+
+/// G3b：账号前缀 —— 把 `CLAUDE_CONFIG_DIR` 注入本地拉起命令。
+///
+/// # `None` = 账号 0 = **一个字都不注入**
+///
+/// 与 IR 的 `--base` 语义对齐，也保证「没选账号」这条路的输出**与本功能之前逐字节相同**
+/// —— 既有那批钉死输出的测试因此原样全绿，它们就成了「账号 0 不变」的守卫。
+///
+/// # 校验语义照抄 TS 侧的 `isValidConfigDir`（`src/shell-quote.ts:41`）
+///
+/// **不重新发明判据**：那边已经因为账号隔离审计 D7（extraEnv key 无校验）收紧过一轮。
+/// 拒的东西：非绝对路径 · `/` 本身 · 含 `/../` 或以 `/..` 结尾 · shell 元字符/引号/控制符 ·
+/// 可欺骗 Unicode（零宽 / 双向控制 / NBSP / BOM）。
+///
+/// **非法即 Err，绝不拼进命令** —— 这条路径的产物会进 shell，宽容一格就是注入面。
+fn validate_config_dir(dir: &str) -> Result<(), String> {
+    if !dir.starts_with('/') || dir == "/" || dir.contains("/../") || dir.ends_with("/..") {
+        return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"));
+    }
+    const SHELL_META: &[char] = &[
+        '\'', '"', '\\', '`', '$', ';', '|', '&', '<', '>', '*', '?', '(', ')', '!',
+    ];
+    const SPOOFABLE: &[char] = &[
+        '\u{00a0}', '\u{200b}', '\u{200c}', '\u{200d}', '\u{200e}', '\u{200f}', '\u{2028}',
+        '\u{2029}', '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}',
+        '\u{2067}', '\u{2068}', '\u{2069}', '\u{feff}',
+    ];
+    if dir.chars().any(|c| {
+        c.is_control()
+            || ('\u{0080}'..='\u{009f}').contains(&c)
+            || SHELL_META.contains(&c)
+            || SPOOFABLE.contains(&c)
+    }) {
+        return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"));
+    }
+    Ok(())
+}
+
+/// POSIX 侧前缀。校验通过才产出，`None` → 空串（逐字节等同旧行为）。
+fn config_dir_prefix_posix(config_dir: Option<&str>) -> Result<String, String> {
+    match config_dir.map(str::trim).filter(|d| !d.is_empty()) {
+        None => Ok(String::new()),
+        Some(d) => {
+            validate_config_dir(d)?;
+            Ok(format!("export CLAUDE_CONFIG_DIR='{d}'; "))
+        }
+    }
+}
+
+/// PowerShell 侧前缀。同上；PS 里用 `$env:` 且单引号是字面量引号（无插值）。
+#[cfg(any(windows, test))]
+fn config_dir_prefix_ps(config_dir: Option<&str>) -> Result<String, String> {
+    match config_dir.map(str::trim).filter(|d| !d.is_empty()) {
+        None => Ok(String::new()),
+        Some(d) => {
+            validate_config_dir(d)?;
+            Ok(format!("$env:CLAUDE_CONFIG_DIR='{d}'; "))
+        }
+    }
+}
+
 /// ——前端那道拦 UI 传参，这道拦任何绕过前端到达 IPC 的输入。
 enum LocalLaunchChoice {
     /// 用户显式指定了命令（F34）⇒ 不做别名探测，直接用。
@@ -970,8 +1039,10 @@ fn local_launch_choice(
 fn build_local_ps_command(
     action: &LocalPsAction,
     launcher: Option<&str>,
+    config_dir: Option<&str>,
 ) -> Result<String, String> {
-    Ok(match local_launch_choice(action, launcher)? {
+    let prefix = config_dir_prefix_ps(config_dir)?;
+    Ok(prefix + &match local_launch_choice(action, launcher)? {
         LocalLaunchChoice::Fixed(cmd) => cmd,
         // 有 wrapper 别名（cc）：优先它、检测不到回退 default。
         LocalLaunchChoice::Probe {
@@ -991,17 +1062,22 @@ fn build_local_ps_command(
 fn build_local_posix_command(
     action: &LocalPsAction,
     launcher: Option<&str>,
+    config_dir: Option<&str>,
 ) -> Result<String, String> {
-    Ok(match local_launch_choice(action, launcher)? {
-        LocalLaunchChoice::Fixed(cmd) => cmd,
-        LocalLaunchChoice::Probe {
-            alias,
-            preferred,
-            fallback,
-        } => {
-            format!("if command -v {alias} >/dev/null 2>&1; then {preferred}; else {fallback}; fi")
-        }
-    })
+    let prefix = config_dir_prefix_posix(config_dir)?;
+    Ok(prefix
+        + &match local_launch_choice(action, launcher)? {
+            LocalLaunchChoice::Fixed(cmd) => cmd,
+            LocalLaunchChoice::Probe {
+                alias,
+                preferred,
+                fallback,
+            } => {
+                format!(
+                    "if command -v {alias} >/dev/null 2>&1; then {preferred}; else {fallback}; fi"
+                )
+            }
+        })
 }
 
 /// L1：按宿主平台把「本地拉起」送出去。
@@ -1012,15 +1088,16 @@ fn launch_local(
     action: &LocalPsAction,
     launcher: Option<&str>,
     cwd: Option<&str>,
+    config_dir: Option<&str>,
 ) -> Result<(), String> {
     #[cfg(windows)]
     {
-        let ps = build_local_ps_command(action, launcher)?;
+        let ps = build_local_ps_command(action, launcher, config_dir)?;
         crate::launch::launch_powershell_window(&ps, cwd)
     }
     #[cfg(not(windows))]
     {
-        let cmd = build_local_posix_command(action, launcher)?;
+        let cmd = build_local_posix_command(action, launcher, config_dir)?;
         crate::launch::launch_local_posix(&cmd, cwd)
     }
 }
@@ -1029,17 +1106,29 @@ fn launch_local(
 /// `#[tauri::command]` 的签名/行为/错误文案逐字节不变）。
 #[cfg(any(windows, test))]
 fn build_resume_ps_command(session_id: &str, launcher: Option<&str>) -> Result<String, String> {
-    build_local_ps_command(&LocalPsAction::Resume(session_id.to_string()), launcher)
+    // G3b：本薄委托保持 2 参签名不变（既有测试逐字节钉住它）——账号 0 走这条。
+    // 要带账号的调用方直接用 `build_local_ps_command`。
+    build_local_ps_command(
+        &LocalPsAction::Resume(session_id.to_string()),
+        launcher,
+        None,
+    )
 }
 
 /// Batch14-F41：wt.exe/PowerShell 拉起机械抽到 `launch.rs::launch_powershell_window`
 /// （与远端 resume/attach 族共用），本函数只剩「构造本地 resume 命令体 + 委托拉起」。
 /// 非 Windows：launch 层统一报错（仅 Windows 支持，错误文案改为中文）。
-fn resume_impl(session_id: &str, cwd: &str, launcher: Option<&str>) -> Result<(), String> {
+fn resume_impl(
+    session_id: &str,
+    cwd: &str,
+    launcher: Option<&str>,
+    config_dir: Option<&str>,
+) -> Result<(), String> {
     launch_local(
         &LocalPsAction::Resume(session_id.to_string()),
         launcher,
         Some(cwd),
+        config_dir,
     )?;
     tracing::info!("history: resumed sid={session_id}");
     Ok(())
@@ -1050,7 +1139,7 @@ fn resume_impl(session_id: &str, cwd: &str, launcher: Option<&str>) -> Result<()
 /// 本函数不出现 agent 字面量。
 #[cfg(any(windows, test))]
 fn build_new_session_ps_command(launcher: Option<&str>) -> Result<String, String> {
-    build_local_ps_command(&LocalPsAction::New, launcher)
+    build_local_ps_command(&LocalPsAction::New, launcher, None)
 }
 
 /// F96（#62）：历史页右键「在该目录起新会话」——本地分支。远端分支走前端
@@ -1063,7 +1152,8 @@ pub fn new_local_session(cwd: String, launcher: Option<String>) -> Result<(), St
     if !cwd.is_empty() && !std::path::Path::new(&cwd).is_dir() {
         return Err(format!("目录不存在，无法在此起新会话：{cwd}"));
     }
-    launch_local(&LocalPsAction::New, launcher.as_deref(), Some(&cwd))?;
+    // G3b：起**全新**会话不继承任何账号（那是「新开一个」的语义，不是分叉）。
+    launch_local(&LocalPsAction::New, launcher.as_deref(), Some(&cwd), None)?;
     tracing::info!("history: new local session in {cwd}");
     Ok(())
 }
@@ -1423,6 +1513,86 @@ mod tests {
     use super::*;
 
     /// Phase 2 F1a-3：Codex 会话按 cwd 分组成合成 HistoryProject（count/max-mtime/name/键/has_live）。
+    // ── G3b：本地拉起的账号注入（`CLAUDE_CONFIG_DIR`）─────────────────────────
+    //
+    // 既有那批**逐字节钉死输出**的测试全部传 `None` 后原样通过 ——
+    // 它们因此就是「**账号 0 = 一个字都不注入 = 旧行为**」的守卫，不用再写一条。
+
+    #[test]
+    fn account_zero_injects_nothing_byte_for_byte() {
+        // 三种「没有账号」的表达（None / 空串 / 纯空白）产出必须完全相同。
+        let a = build_local_posix_command(&LocalPsAction::New, None, None).unwrap();
+        for empty in [Some(""), Some("   ")] {
+            assert_eq!(
+                build_local_posix_command(&LocalPsAction::New, None, empty).unwrap(),
+                a,
+                "空 configDir 必须等价于账号 0，不能产出半个前缀"
+            );
+        }
+        assert!(
+            !a.contains("CLAUDE_CONFIG_DIR"),
+            "账号 0 不该出现这个变量名"
+        );
+    }
+
+    #[test]
+    fn account_prefix_is_prepended_posix_and_ps() {
+        let dir = "/home/u/.claude-accts/z";
+        let px = build_local_posix_command(&LocalPsAction::New, None, Some(dir)).unwrap();
+        assert!(
+            px.starts_with(&format!("export CLAUDE_CONFIG_DIR='{dir}'; ")),
+            "POSIX 前缀必须在最前面（要先于拉起命令生效）：{px}"
+        );
+        // 前缀之后仍是原来那条命令，逐字节
+        let bare = build_local_posix_command(&LocalPsAction::New, None, None).unwrap();
+        assert!(px.ends_with(&bare), "前缀不该改动命令本体");
+
+        let ps = build_local_ps_command(&LocalPsAction::New, None, Some(dir)).unwrap();
+        assert!(
+            ps.starts_with(&format!("$env:CLAUDE_CONFIG_DIR='{dir}'; ")),
+            "{ps}"
+        );
+    }
+
+    /// ★ 非法 configDir **绝不拼进命令** —— 这条产物会进 shell，宽容一格就是注入面。
+    /// 判据照抄 TS 侧 `isValidConfigDir`（`src/shell-quote.ts:41`），不重新发明。
+    #[test]
+    fn illegal_config_dir_is_refused_not_sanitized() {
+        let bad = [
+            "relative/path",              // 非绝对
+            "/",                          // 根
+            "/home/u/../../etc",          // 含 /../
+            "/home/u/..",                 // 以 /.. 结尾
+            "/home/u'; rm -rf /; echo '", // 单引号闭合 + 注入
+            "/home/u`whoami`",            // 反引号
+            "/home/u$HOME",               // 变量展开
+            "/home/u;id",                 // 分号
+            "/home/u|id",                 // 管道
+            "/home/u\n/x",                // 控制符（字面反斜杠 n 不算，见下面真控制符）
+            "/home/u\u{0000}x",
+            "/home/u\u{200b}x", // 零宽
+            "/home/u\u{feff}x", // BOM
+            "/home/u\u{00a0}x", // NBSP
+        ];
+        for d in bad {
+            assert!(
+                build_local_posix_command(&LocalPsAction::New, None, Some(d)).is_err(),
+                "非法 configDir 竟被接受：{d:?}"
+            );
+            assert!(
+                build_local_ps_command(&LocalPsAction::New, None, Some(d)).is_err(),
+                "非法 configDir 竟被接受（PS）：{d:?}"
+            );
+        }
+        // 反向自检：正常路径必须通过，否则上面全是空转
+        assert!(build_local_posix_command(
+            &LocalPsAction::New,
+            None,
+            Some("/home/u/.claude-accts/z")
+        )
+        .is_ok());
+    }
+
     #[test]
     fn codex_projects_group_by_cwd() {
         let sessions = vec![
@@ -2003,21 +2173,21 @@ mod tests {
     fn posix_renderer_mirrors_the_powershell_one() {
         let sid = "01998f2a-1234-7abc-9def-0123456789ab";
         assert_eq!(
-            build_local_posix_command(&LocalPsAction::Resume(sid.to_string()), None).unwrap(),
+            build_local_posix_command(&LocalPsAction::Resume(sid.to_string()), None, None).unwrap(),
             format!(
                 "if command -v cc >/dev/null 2>&1; then cc --resume {sid}; \
                  else claude --resume {sid}; fi"
             )
         );
         assert_eq!(
-            build_local_posix_command(&LocalPsAction::New, None).unwrap(),
+            build_local_posix_command(&LocalPsAction::New, None, None).unwrap(),
             "if command -v cc >/dev/null 2>&1; then cc; else claude; fi"
         );
         // F34 自定义命令：两边都不做别名探测，**逐字节相同**（这一支没有平台差异）。
         for action in [LocalPsAction::New, LocalPsAction::Resume(sid.to_string())] {
             assert_eq!(
-                build_local_posix_command(&action, Some("cct")).unwrap(),
-                build_local_ps_command(&action, Some("cct")).unwrap(),
+                build_local_posix_command(&action, Some("cct"), None).unwrap(),
+                build_local_ps_command(&action, Some("cct"), None).unwrap(),
                 "显式指定命令时两个渲染器不该有任何差异"
             );
         }
@@ -2031,13 +2201,14 @@ mod tests {
     fn posix_renderer_keeps_sid_and_launcher_defenses() {
         for bad in ["", "../etc", "a b", "x;id", "sid$(id)"] {
             assert!(
-                build_local_posix_command(&LocalPsAction::Resume(bad.to_string()), None).is_err(),
+                build_local_posix_command(&LocalPsAction::Resume(bad.to_string()), None, None)
+                    .is_err(),
                 "POSIX 渲染器应拒绝非法 sid: {bad:?}"
             );
         }
         for bad in ["cc; calc", "cc|id", "cc$(id)", "cc`id`", "cc&&x"] {
             assert!(
-                build_local_posix_command(&LocalPsAction::New, Some(bad)).is_err(),
+                build_local_posix_command(&LocalPsAction::New, Some(bad), None).is_err(),
                 "POSIX 渲染器应拒绝注入 launcher: {bad:?}"
             );
         }
@@ -2054,7 +2225,7 @@ mod tests {
              else { claude --resume 01998f2a-1234-7abc-9def-0123456789ab }";
         assert_eq!(build_resume_ps_command(sid, None).unwrap(), expected);
         assert_eq!(
-            build_local_ps_command(&LocalPsAction::Resume(sid.to_string()), None).unwrap(),
+            build_local_ps_command(&LocalPsAction::Resume(sid.to_string()), None, None).unwrap(),
             expected
         );
     }
@@ -2064,7 +2235,7 @@ mod tests {
         let expected = "if (Get-Command cc -ErrorAction SilentlyContinue) { cc } else { claude }";
         assert_eq!(build_new_session_ps_command(None).unwrap(), expected);
         assert_eq!(
-            build_local_ps_command(&LocalPsAction::New, None).unwrap(),
+            build_local_ps_command(&LocalPsAction::New, None, None).unwrap(),
             expected
         );
     }
