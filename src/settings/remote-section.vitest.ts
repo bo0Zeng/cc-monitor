@@ -444,6 +444,47 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     }
   });
 
+  it("★ E56「还差什么」：全新用户（账本空）只说「没测过」，一条「缺」都不说", async () => {
+    // 一个刚装好、什么都没点过的人不该看到一屏红叉。
+    localStorage.clear();
+    const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
+    const box = sec.element.querySelector<HTMLElement>(".remote-gaps")!;
+    expect(box.style.display).not.toBe("none");
+    expect(box.textContent).toContain("还没测过");
+    expect(box.textContent).not.toContain("确认缺");
+    const items = [...box.querySelectorAll<HTMLElement>(".remote-gap")];
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every((i) => i.dataset.kind === "unknown")).toBe(true);
+  });
+
+  it("★ 测过且失败的那项才说「缺」，成功的项不出现", async () => {
+    localStorage.clear();
+    recordFacet("a", "connection", { kind: "ok", at: Date.now() });
+    recordFacet("a", "daemon", { kind: "fail", at: Date.now() });
+    const sec = await mount([mkH("a", "1.1.1.1")], fakePages().host);
+    const box = sec.element.querySelector<HTMLElement>(".remote-gaps")!;
+    expect(box.textContent).toContain("确认缺");
+    // **按机器筛**：清单里同时有本机的条目（本机也没测过），不区分 origin 会误判。
+    const ofA = [...box.querySelectorAll<HTMLElement>('.remote-gap[data-origin="a"]')].map(
+      (i) => `${i.dataset.facet}:${i.dataset.kind}`,
+    );
+    expect(ofA).toContain("daemon:missing");
+    // aya 的 connection 测过且 ok ⇒ 它那台不该再出现这一项
+    expect(ofA.some((f) => f.startsWith("connection:"))).toBe(false);
+  });
+
+  it("★ 渲染「还差什么」不发任何后端请求（只读账本）", async () => {
+    // §1-2：状态灯绝不引入轮询。这块是「新用户第一眼看到的东西」，
+    // 更不能因为它就把 N 台机器探一遍。
+    localStorage.clear();
+    ipcCalls.length = 0;
+    await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], fakePages().host);
+    const withTwo = [...ipcCalls];
+    ipcCalls.length = 0;
+    await mount([mkH("a", "1.1.1.1")], fakePages().host);
+    expect(withTwo).toEqual([...ipcCalls]);
+  });
+
   it("★ 列表级控件全在**一条工具条**上，且在列表之前", async () => {
     // S4b-3b：此前它们散在列表上下两侧（导入在最上、端口转发/启用 toggle 在中间、
     // 添加按钮在列表下方），空列表提示还得写「点**下方**…或从**上方**…」——
