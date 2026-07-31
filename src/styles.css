@@ -2801,6 +2801,66 @@ body.settings-window-mode .grid-monitor-trigger {
   padding: 12px 14px;
 }
 
+/* S2（settings-ia）：设置窗两栏 —— 左导航 + 右内容。
+   刻意**不动** `.settings-body` 既有的 `overflow-y: auto`：改滚动容器会牵连 banner、
+   窗口模式、以及 `.settings-flyout` 那套 `position:fixed` 脱流的注释所依赖的前提。
+   导航用 `position: sticky` 跟着 body 滚，效果等价、改动面小得多。 */
+.settings-shell {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.settings-nav {
+  flex: 0 0 150px;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-nav-item {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+  padding: 6px 10px;
+  text-align: left;
+}
+.settings-nav-item:hover {
+  background: var(--bg-2);
+  color: var(--text);
+}
+.settings-nav-item-active {
+  background: var(--bg-2);
+  color: var(--text);
+  font-weight: 600;
+}
+/* 内容列必须能被压缩，否则里面的宽表格/长路径会把 flex 项撑开、把导航挤没。 */
+.settings-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* 页与页之间不叠：可见性由路由器设 `hidden`，这里只兜底防样式表里别处的
+   `display` 规则把 hidden 元素又显示回来。 */
+.settings-page[hidden] {
+  display: none;
+}
+.settings-page-head {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.settings-page-title {
+  color: var(--text);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  margin: 0;
+}
+
 .settings-group + .settings-group {
   margin-top: 16px;
 }

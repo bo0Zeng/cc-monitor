@@ -30,6 +30,7 @@ import { CcBusHooksSection } from "./cc-bus-hooks-section"; // B04：钩子只�
 import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置面审计（只读、按需一次、不轮询）
 import { DiagnosticsSection } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
+import { SettingsRouter } from "./router";
 import { DataSection } from "./data-section";
 import { RemoteSection } from "./remote-section";
 import { getBehavior, setBehavior, type BehaviorConfig } from "../behavior";
@@ -128,11 +129,14 @@ const KEYBINDINGS_INFO_TEXT =
   "自定义全部快捷键：Tab 切换 / 终端拉前 / 行为开关 / 弹层关闭 等约 17 项。\n\n" +
   "改即生效，无需重启。点 [改] 后按下你想要的组合键。冲突会弹覆盖确认。";
 
-const INTEGRATION_INFO_TEXT =
-  "monitor 怎么对接 Claude Code：\n\n" +
+// S2：原 `INTEGRATION_INFO_TEXT` 是一段合写的文案，而它描述的两件事在新 IA 里**去了不同的页**
+// ——「Claude 数据目录」是 monitor 自己的配置（应用页），「PowerShell 集成」是某台机器上的
+// 启动器（机器页）。合着搬会让两页各有一半文案对不上眼前的内容，故按语义拆开。
+const DATA_DIR_INFO_TEXT =
   "「Claude 数据目录」—— monitor 监听的 .claude 根目录（下含 projects/ 和 sessions/）。" +
-  "默认 ~/.claude 或 $CLAUDE_CONFIG_DIR。修改后需重启 monitor 生效。\n\n" +
-  "「PowerShell 集成」—— 把 cc 命令注入到 $PROFILE，让你打 `cc` 而不是 `claude` 启动 " +
+  "默认 ~/.claude 或 $CLAUDE_CONFIG_DIR。修改后需重启 monitor 生效。";
+const TERMINAL_INTEGRATION_INFO_TEXT =
+  "「终端集成」—— 把 cc 命令注入到 $PROFILE，让你打 `cc` 而不是 `claude` 启动 " +
   "Claude Code，自动跟 monitor 双向绑定（拉前终端按钮才能 work）。可一键安装/卸载。";
 
 const APPEARANCE_INFO_TEXT =
@@ -159,14 +163,23 @@ const APPEARANCE_GROUP_INFO_TEXT =
   BEHAVIOR_INFO_TEXT +
   "\n\n【快捷键】" +
   KEYBINDINGS_INFO_TEXT;
-const INTEGRATION_GROUP_INFO_TEXT =
-  INTEGRATION_INFO_TEXT + "\n\n【诊断 & 存储】" + DIAG_STORAGE_INFO_TEXT;
-const REMOTE_GROUP_INFO_TEXT =
-  "远端会话「连上之后」的行为与历史相关设置。当前尚无独立项（resume 命令等在「外观 → 行为」里），" +
-  "留空占位；后续远端会话行为 / 历史项加入本组。（「连上远端」的 SSH 连接配置在上面的「连接」组。）";
+// S2：「日志与数据」页内折叠组的文案 = 数据目录 + 诊断/存储（正好是它的三块内容）。
+const LOGS_AND_DATA_INFO_TEXT =
+  DATA_DIR_INFO_TEXT + "\n\n" + DIAG_STORAGE_INFO_TEXT;
+// S2：机器页的文案 = 怎么连上远端 + 这台机上的启动器集成。
+const MACHINES_PAGE_INFO_TEXT =
+  REMOTE_INFO_TEXT + "\n\n【终端集成】" + TERMINAL_INTEGRATION_INFO_TEXT;
+// S2 删除：原 `REMOTE_GROUP_INFO_TEXT` 描述的是那个「留空占位」的空组（F82b 拍板的 4 组之一，
+// 后被 A3 借去放账号）。它逐字写着「当前尚无独立项…留空占位」「在上面的『连接』组」——
+// 那个组和那个「上面」都不存在了，留着就是一句会误导人的话。
+
+/** S2：落地页 id。主计划 §2.3 指定为「机器」。 */
+const SETTINGS_LANDING_ROUTE = "machines";
 
 export class SettingsPanel {
   private el: HTMLElement;
+  /** S2：页面路由器。`open()` 每次回落地页（计划指定不记忆上次停在哪一页）。 */
+  private router!: SettingsRouter;
   /** 当前编辑中的 theme（实时预览用） */
   private current: ThemeConfig = {};
   /** 打开时的 theme 快照，取消时回滚 */
@@ -274,6 +287,9 @@ export class SettingsPanel {
     void this.remoteSection?.refresh();
     // issue #5: 同步快捷键覆盖数 chip（编辑器关闭时也可能改了）
     this.refreshKbChip();
+    // S2：每次打开回落地页。**刻意不记忆上次停在哪一页** —— 既然计划把「机器」定为落地页，
+    // 记忆就会让这个决定从第二次打开起失效。
+    this.router.navigate(SETTINGS_LANDING_ROUTE);
     this.el.classList.add("open");
     this.isOpen = true;
     // 面板始终作为 overlay 栈**底**（窗口模式也是）：这样设置窗内的快捷键编辑器 / SFTP 面板
@@ -436,50 +452,35 @@ export class SettingsPanel {
     this.banner.className = "settings-banner";
     body.appendChild(this.banner);
 
-    // F82b（#56+#47）：**4 组终态**（连接 / 外观 / 远端 / 集成）。用户 2026-07-17 拍板「硬落 4 组，
-    // 连接=SSH、远端留空占位」。原 6 组合并：行为 + 快捷键 → 外观；诊断 & 存储 → 集成。端口转发（F58
-    // 独立视图）/ SSH config 导入（F89）/ 拉前折叠（F81）落地后进「连接」；MCP（F87）进「集成」。
-    // build*Group 只产出表单本体，CollapsibleGroup / titledSection 接管标题与描述。
-
-    // 1. 连接 —— 怎么连上远端（当前只有 SSH 数据源配置一块；F58/F89/F81 落地后补入本组）
-    const connection = new CollapsibleGroup({
-      id: "connection",
-      title: "连接",
-      defaultCollapsed: true,
-      infoTooltip: REMOTE_INFO_TEXT,
-    });
-    // **T07 审计阻塞 1**：这里原先是**裸构造**，不在 `safeBlock` 里——而 `RemoteSection`
-    // 正是唯一活的同步 throw 宿主（它的构造路径含 `remote-section.ts:1635 buildPasteBlock`，
-    // 即三句话必填 `throw` 的那个）。审计真造它抛：`new SettingsPanel` 直接炸穿、
-    // `document.querySelector(".settings-panel") === null`，**什么都没上屏**。
-    // 也就是说我 commit 标题那句「一块坏不再整页白屏」当时是**假的**：
-    // 覆盖了 10 块，漏的那 1 块是最大最复杂、且是唯一被立项文档点名的 throw 源。
+    // ★ S2（settings-ia）：从「一列 4 个折叠组」改成**左导航 + 分页**。
     //
-    // `this.remoteSection` 失败时留 `undefined`——`open()` 那边是 `?.refresh()`，天然容错。
-    connection.appendChild(
-      this.safeBlock("连接（远端）", () => {
-        const sec = new RemoteSection({ headless: true });
-        this.remoteSection = sec;
-        return sec.element;
-      }),
-    );
-    body.appendChild(connection.element);
+    // 原来的 4 组（连接 / 外观 / 账号 / 集成）**不在同一抽象层** —— 「连接」是动作、
+    // 「外观」「账号」是切面、「集成」是其它。判据不统一的后果是可量化的：14 个叶子里
+    // **8 个挤在「集成」**，因为新东西没地方放就往那儿扔。
+    //
+    // 新判据（主计划 §2.1，可机械执行）：**每个顶层 = 一类「被设置的对象」**。
+    // 新功能来了只问一句：**它改的是谁的状态。**
+    //
+    // 「集成」这个名字就此消失 —— 不是改叫「部署」：那 8 个叶子里真属部署的只有 1 个。
+    //
+    // **本轮只搬不改**：每个块的内部实现、构造时机都一字不动（见下面「构造时机」一段）。
+    // 机器列表页 → S3；机器详情页四栏 → S4；改动足迹页扩充 → S5；cc-bus 移出 → S6。
+    const router = new SettingsRouter({ landingId: SETTINGS_LANDING_ROUTE });
+    this.router = router;
 
-    // 2. 外观 —— 行为 + 快捷键 + 字体 + 颜色（默认展开，保留「行为」的高可达性）
-    const appearance = new CollapsibleGroup({
-      // F82b：用新 id（旧 `appearance` 只含字体+颜色，且此组现默认展开）——避免返回用户旧的
-      // collapsed 状态套到语义已变的合并组上、抵消「默认展开保『行为』可达」的意图。
-      id: "appearance-4grp",
-      title: "外观",
-      defaultCollapsed: false,
-      infoTooltip: APPEARANCE_GROUP_INFO_TEXT,
-    });
-    appearance.appendChild(
-      this.safeBlock("行为", () => this.buildBehaviorGroup()),
-    );
-    appearance.appendChild(
+    // ---- 应用：改 monitor 自己的状态 ----
+    const appPage = document.createElement("div");
+    appPage.appendChild(this.safeBlock("行为", () => this.buildBehaviorGroup()));
+    appPage.appendChild(
       this.safeBlock("快捷键", () => this.buildKeybindingsGroup()),
     );
+    const appearance = new CollapsibleGroup({
+      // id 沿用 F82b 那个：字体+颜色这两块的归属没变，用户此前的折叠状态该跟过来。
+      id: "appearance-4grp",
+      title: "外观",
+      defaultCollapsed: true,
+      infoTooltip: APPEARANCE_GROUP_INFO_TEXT,
+    });
     appearance.appendChild(
       this.buildGroup(
         "字体",
@@ -492,50 +493,17 @@ export class SettingsPanel {
         FIELDS.filter((f) => f.group === "color"),
       ),
     );
-    body.appendChild(appearance.element);
+    appPage.appendChild(appearance.element);
 
-    // 3. 远端 —— 连上后的行为 & 历史。当前无独立设置（resume 命令等在「外观 → 行为」里），留空占位（用户拍板）。
-    // A3：多账号「账号」组（占用原「远端」空占位组，id 沿用避免影响用户折叠状态）。
-    // 展示远端账号 + 设为本机默认（只读 + 改本机默认账号，不注入/不重启——A4/A5）。
-    const accountsGroup = new CollapsibleGroup({
-      id: "remote-placeholder",
-      title: "账号",
+    // 「日志与数据」——主计划 §2.3 逐字指定的折叠组。读一次就够的东西。
+    const logsAndData = new CollapsibleGroup({
+      id: "logs-and-data",
+      title: "日志与数据",
       defaultCollapsed: true,
-      infoTooltip: REMOTE_GROUP_INFO_TEXT,
+      infoTooltip: LOGS_AND_DATA_INFO_TEXT,
     });
-    accountsGroup.appendChild(
-      this.safeBlock("账号", () => new AccountsSection().element),
-    );
-    body.appendChild(accountsGroup.element);
-
-    // 4. 集成 —— Claude 数据源 + PowerShell + MCP（F87）+ 诊断 & 存储
-    const integration = new CollapsibleGroup({
-      id: "integration",
-      title: "集成",
-      defaultCollapsed: true,
-      infoTooltip: INTEGRATION_GROUP_INFO_TEXT,
-    });
-    integration.appendChild(this.buildDataGroup());
-    integration.appendChild(
-      this.safeBlock("终端集成", () => new CcIntegrationSection().element),
-    );
-    // F87（#50+#51）：MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）。
-    integration.appendChild(
-      this.safeBlock("MCP", () => new McpSection().element),
-    );
-    // B03 批一：cc-bus 驾驶舱——只读看远端登记过的 agent；登记≠在线；点「读取」才发请求。
-    integration.appendChild(
-      this.safeBlock("cc-bus", () => new CcBusSection().element),
-    );
-    // B04：钩子诊断。**只读**——不替用户改 ~/.claude/settings.json（共享全局配置）。
-    integration.appendChild(
-      this.safeBlock("cc-bus 钩子", () => new CcBusHooksSection().element),
-    );
-    // T02：一张表回答「你动过我哪些文件」。放在集成组末尾——它是这一组的**总账**。
-    integration.appendChild(
-      this.safeBlock("配置面审计", () => new ConfigSurfaceSection().element),
-    );
-    integration.appendChild(
+    logsAndData.appendChild(this.buildDataGroup());
+    logsAndData.appendChild(
       this.safeBlock(
         "诊断",
         () => new DiagnosticsSection({ headless: true }).element,
@@ -544,11 +512,76 @@ export class SettingsPanel {
     // 用局部常量捕获：thunk 延后求值，TS 无法证明字段此时已赋值
     const dataSection = new DataSection({ headless: true });
     this.dataSection = dataSection;
-    integration.appendChild(
+    logsAndData.appendChild(
       this.safeBlock("数据存储", () => dataSection.element),
     );
-    body.appendChild(integration.element);
+    appPage.appendChild(logsAndData.element);
+    router.addRoute({ id: "app", title: "应用", element: appPage });
 
+    // ---- 机器：改**某一台机器**的状态 ----
+    //
+    // 下面四块（账号 / 终端集成 / MCP / cc-bus 钩子）之所以归这里：**它们各自都维护着
+    // 一份自己的 origin 选择器**（主计划 §5-4 点名 `accounts`/`mcp`/`cc-bus`/`cc-bus-hooks`
+    // 四份互不同步）。有 origin 选择器 = 它改的是某台机器的状态。
+    // S4 会把这四份选择器换成「当前在哪台机器页」这个上下文。
+    const machinesPage = document.createElement("div");
+    // **T07 审计阻塞 1**：这里必须在 `safeBlock` 里——`RemoteSection` 正是唯一活的同步
+    // throw 宿主（构造路径含 `remote-section.ts` 那个三句话必填的 `throw`）。审计真造它抛过：
+    // 裸构造会让 `new SettingsPanel` 直接炸穿、**什么都没上屏**。
+    // `this.remoteSection` 失败时留 `undefined`——`open()` 那边是 `?.refresh()`，天然容错。
+    machinesPage.appendChild(
+      this.safeBlock("连接（远端）", () => {
+        const sec = new RemoteSection({ headless: true });
+        this.remoteSection = sec;
+        return sec.element;
+      }),
+    );
+    machinesPage.appendChild(
+      this.safeBlock("账号", () => new AccountsSection().element),
+    );
+    machinesPage.appendChild(
+      this.safeBlock("终端集成", () => new CcIntegrationSection().element),
+    );
+    // F87（#50+#51）：MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）。
+    machinesPage.appendChild(
+      this.safeBlock("MCP", () => new McpSection().element),
+    );
+    // B04：钩子诊断。**只读**——不替用户改 ~/.claude/settings.json（共享全局配置）。
+    machinesPage.appendChild(
+      this.safeBlock("cc-bus 钩子", () => new CcBusHooksSection().element),
+    );
+    router.addRoute({
+      id: "machines",
+      title: "机器",
+      element: machinesPage,
+      infoTooltip: MACHINES_PAGE_INFO_TEXT,
+    });
+
+    // ---- 改动足迹：「你在我机器上写过什么、能不能撤」 ----
+    const footprintPage = document.createElement("div");
+    // T02：一张表回答「你动过我哪些文件」。它就是这一页的全部内容（S5 会扩充）。
+    footprintPage.appendChild(
+      this.safeBlock("配置面审计", () => new ConfigSurfaceSection().element),
+    );
+    router.addRoute({
+      id: "footprint",
+      title: "改动足迹",
+      element: footprintPage,
+    });
+
+    // ---- cc-bus：**临时**单列一项 ----
+    //
+    // 它是**运营视图不是设置**（主计划 §1-1），S6 要把它整个移出设置窗。
+    // 塞进上面任何一类都是误归档 —— 它既不改 monitor 的状态，也不改某台机器的状态。
+    // 单列一项的好处：S6 那天删掉它就是删这一段注册，不用先从别人肚子里把它挖出来。
+    const ccBusPage = document.createElement("div");
+    // B03 批一：cc-bus 驾驶舱——只读看远端登记过的 agent；登记≠在线；点「读取」才发请求。
+    ccBusPage.appendChild(
+      this.safeBlock("cc-bus", () => new CcBusSection().element),
+    );
+    router.addRoute({ id: "cc-bus", title: "cc-bus", element: ccBusPage });
+
+    body.appendChild(router.element);
     return body;
   }
 
