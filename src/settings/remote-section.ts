@@ -50,6 +50,7 @@ import {
   defaultDaemonPathFor,
   shouldShowResetFingerprint,
 } from "./machine-card";
+import { computeGaps, summarizeGaps, describeGap } from "./readiness";
 // 旧调用点从本模块 import 这两个（测试也是）——搬家后原样再导出，不制造无谓的改动面。
 export { shouldShowResetFingerprint };
 import { makeInfoIcon } from "./info-icon";
@@ -217,6 +218,8 @@ export class RemoteSection {
   private pages?: MachinePagesHost;
   /** S4b：已注册的机器页 id —— 重建列表时按它收掉旧页。 */
   private machinePageIds: string[] = [];
+  /** S5/E56：「还差什么」清单容器。 */
+  private gapsBox!: HTMLElement;
 
   /** 打开面板时从 config 拉到的快照，用于判断是否变化（变了就提示重启）。 */
   private original: RemoteConfig = { enabled: false, hosts: [] };
@@ -321,7 +324,49 @@ export class RemoteSection {
     // S1：本编辑器**这次加载时**看到的 key 集合。删除判据以它为基准，
     // 而**不是**「盘上全量」—— 这正是 S2 拆页后的安全边界：一页只对自己加载过的负责。
     this.loadedKeys = hosts.map(hostKey);
+    this.renderGaps(hosts);
     this.updateEmptyHint();
+  }
+
+  /**
+   * S5/E56：渲染「还差什么」。**纯读账本**（`computeGaps` 是纯函数，不碰 IO）。
+   *
+   * 「缺」与「没测过」分开显示 —— 一个刚装好、什么都没点过的新用户不该看到一屏红叉。
+   * 后果写出来（不只是一个 ✗），让他自己判断值不值得补。
+   */
+  private renderGaps(hosts: RemoteHostConfig[]): void {
+    const daemonless = new Set(
+      hosts.filter((h) => h.daemonless).map((h) => hostKey(h)),
+    );
+    const gaps = computeGaps({
+      origins: [LOCAL_MACHINE_KEY, ...hosts.map(hostKey)],
+      statusOf: readStatus,
+      isDaemonless: (o) => daemonless.has(o),
+    });
+    const summary = summarizeGaps(gaps);
+    this.gapsBox.replaceChildren();
+    if (!summary) {
+      // 全绿就整块不出现 —— 老用户不该天天看见一个空清单。
+      this.gapsBox.style.display = "none";
+      return;
+    }
+    this.gapsBox.style.display = "";
+    const head = document.createElement("div");
+    head.className = "settings-label remote-gaps-head";
+    head.textContent = `还差什么：${summary}`;
+    this.gapsBox.appendChild(head);
+    const list = document.createElement("ul");
+    list.className = "remote-gaps-list";
+    for (const g of gaps) {
+      const li = document.createElement("li");
+      li.className = `remote-gap remote-gap-${g.kind} remote-gap-${g.severity}`;
+      li.dataset.origin = g.origin;
+      li.dataset.facet = g.facet;
+      li.dataset.kind = g.kind;
+      li.textContent = describeGap(g);
+      list.appendChild(li);
+    }
+    this.gapsBox.appendChild(list);
   }
 
   private appendCard(
@@ -560,6 +605,13 @@ export class RemoteSection {
     );
     toolbar.appendChild(enabledRow);
     group.appendChild(toolbar);
+
+    // ★ S5 / E56：「还差什么」——新用户一站式的落点。
+    // **只读 S3 的账本，不发任何请求**（§1-2）；空的时候整块不渲染，不打扰老用户。
+    this.gapsBox = document.createElement("div");
+    this.gapsBox.className = "remote-gaps";
+    this.gapsBox.style.display = "none";
+    group.appendChild(this.gapsBox);
 
     // 机器列表容器
     this.machinesContainer = document.createElement("div");

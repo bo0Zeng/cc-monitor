@@ -2872,6 +2872,35 @@ body.settings-window-mode .grid-monitor-trigger {
 .remote-status-unknown {
   color: var(--text-3, var(--text-2));
 }
+/* S5 / E56：机器页顶部的「还差什么」。**空的时候整块不渲染**（见 renderGaps），
+   所以这里不必为空态设计。 */
+.remote-gaps {
+  background: var(--bg-2);
+  border-radius: 6px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+}
+.remote-gaps-head {
+  margin-bottom: 4px;
+}
+.remote-gaps-list {
+  font-size: var(--font-size-small);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.remote-gap {
+  padding: 2px 0;
+}
+/* 「确认缺」与「还没测过」**视觉上必须能分开** —— 它们是两种不同的结论，
+   混成一个颜色就等于把「不知道」说成了「缺」。 */
+.remote-gap-missing {
+  color: var(--danger, var(--text));
+}
+.remote-gap-unknown {
+  color: var(--text-2);
+}
+
 /* S4b-3b-2：页内横向分栏（机器详情页的 连接/组件/账号/工具）。
    与左侧导航同一个 SettingsRouter，只是排布方向不同。 */
 .settings-shell-h {
