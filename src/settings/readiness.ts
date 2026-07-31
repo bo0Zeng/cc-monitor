@@ -27,6 +27,7 @@ import {
   type MachineFacet,
   type MachineStatus,
 } from "./machine-status";
+import type { HostOs } from "./host-os";
 
 export type GapKind = "missing" | "unknown";
 
@@ -74,11 +75,22 @@ const FACET_MEANING: Record<
 /**
  * 某台机器上**不适用**的项 —— 不适用不是缺。
  *
- * 本机不需要 daemon（`watcher.rs` 直读 jsonl，主计划 §2.4 那张表逐字写着「不需要」）。
- * 把它算成「缺」会让新用户以为本机装漏了东西。
+ * 1. 本机不需要 daemon（`watcher.rs` 直读 jsonl，主计划 §2.4 那张表逐字写着「不需要」）。
+ * 2. **S9**：`ccm` 是 POSIX 的 bash 启动器。monitor 跑在 Windows 上时，本机的对应物是
+ *    「终端集成」那块 PowerShell $PROFILE 注入（§2.4 表里「本机 · 启动器」一格），
+ *    不是 `ccm`。不排掉的话，Windows 用户会在这张专为新用户做的清单上，
+ *    读到一条「本机缺 cc 命令」—— 而那条在他机器上压根无从补起。
+ *
+ * 两条都是「把它算成缺会让用户以为自己装漏了东西」。
  */
-function notApplicable(origin: string, facet: MachineFacet): boolean {
-  return origin === LOCAL_MACHINE_KEY && facet === "daemon";
+function notApplicable(
+  origin: string,
+  facet: MachineFacet,
+  hostOs: HostOs,
+): boolean {
+  if (origin !== LOCAL_MACHINE_KEY) return false;
+  if (facet === "daemon") return true;
+  return facet === "ccm" && hostOs === "windows";
 }
 
 export interface ReadinessInput {
@@ -88,6 +100,12 @@ export interface ReadinessInput {
   statusOf: (origin: string) => MachineStatus;
   /** daemonless 的机器不需要 daemon —— 那是用户显式选的降级，不是缺件。 */
   isDaemonless?: (origin: string) => boolean;
+  /**
+   * S9：monitor 跑在哪个 OS 上。**注入而不是直接调 `hostOs()`** ——
+   * 这个模块的卖点就是纯函数，`isDaemonless` 当初也是为同一个理由注入的。
+   * 省略 = 按非 Windows 处理（`ccm` 照常算数）。
+   */
+  hostOs?: HostOs;
 }
 
 /**
@@ -99,10 +117,11 @@ export interface ReadinessInput {
 export function computeGaps(input: ReadinessInput): Gap[] {
   const blocking: Gap[] = [];
   const optional: Gap[] = [];
+  const os = input.hostOs ?? "unknown";
   for (const origin of input.origins) {
     const st = input.statusOf(origin);
     for (const facet of MACHINE_FACETS) {
-      if (notApplicable(origin, facet)) continue;
+      if (notApplicable(origin, facet, os)) continue;
       if (facet === "daemon" && input.isDaemonless?.(origin)) continue;
       const cur = st[facet];
       // `na` = 不适用，不是缺（账本里也可能显式记成 na）。

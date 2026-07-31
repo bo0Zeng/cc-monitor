@@ -128,7 +128,13 @@ vi.mock("@tauri-apps/api/window", () => ({
 }));
 
 import { SettingsPanel } from "./panel";
-import { beforeEach } from "vitest";
+import { __setHostOsForTests } from "./host-os";
+import { beforeEach, afterEach } from "vitest";
+
+// S9：jsdom 的 UA 含 `linux`，非 Windows 上「终端集成」那块**根本不构造**
+// ⇒ 不置覆盖值的话，本套隔离测试就少守一块。钉成 windows，守的是完整那组。
+beforeEach(() => __setHostOsForTests("windows"));
+afterEach(() => __setHostOsForTests(null));
 
 // **T07 审计阻塞 2：这些是行为测试，替掉原先那 4 条源码文本扫描。**
 //

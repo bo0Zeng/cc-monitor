@@ -52,6 +52,7 @@ import {
 } from "./machine-card";
 import { markRestartNeeded } from "./restart-notice";
 import { computeGaps, summarizeGaps, describeGap } from "./readiness";
+import { hostOs } from "./host-os"; // S9：本机 OS 决定哪些组件适用
 // 旧调用点从本模块 import 这两个（测试也是）——搬家后原样再导出，不制造无谓的改动面。
 export { shouldShowResetFingerprint };
 import { makeInfoIcon } from "./info-icon";
@@ -343,6 +344,8 @@ export class RemoteSection {
       origins: [LOCAL_MACHINE_KEY, ...hosts.map(hostKey)],
       statusOf: readStatus,
       isDaemonless: (o) => daemonless.has(o),
+      // S9：Windows 本机的启动器是「终端集成」那块，不是 POSIX 的 ccm。
+      hostOs: hostOs(),
     });
     const summary = summarizeGaps(gaps);
     this.gapsBox.replaceChildren();
