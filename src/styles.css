@@ -2848,6 +2848,35 @@ body.settings-window-mode .grid-monitor-trigger {
 .settings-page[hidden] {
   display: none;
 }
+/* S3（settings-ia）：机器列表行上的状态格子。
+   「上次动作的结论 + 它有多旧」——绝不伪装成实时（主计划 §1-2）。 */
+.remote-machine-status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  font-size: var(--font-size-small);
+  gap: 8px;
+  margin-left: 10px;
+}
+.remote-status-cell {
+  white-space: nowrap;
+}
+.remote-status-ok {
+  color: var(--ok, var(--text-2));
+}
+.remote-status-fail {
+  color: var(--danger, var(--text-2));
+}
+/* 「不适用」与「未测过」用同一种弱化色，但**语义不同**：前者是本机不需要 daemon，
+   后者是还没测过。区分在文案（title / 图标 — vs ·），不靠颜色。 */
+.remote-status-na,
+.remote-status-unknown {
+  color: var(--text-3, var(--text-2));
+}
+/* 本机行：不可编辑、不可删，视觉上比远端机器卡片轻。 */
+.remote-machine-local {
+  opacity: 0.95;
+}
+
 .settings-page-head {
   align-items: center;
   display: flex;

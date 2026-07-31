@@ -40,6 +40,17 @@ import {
 } from "../accounts";
 // F12：配置数据层已抽到 src/remote-config.ts（治分层倒挂）——UI 从数据模块 import，不再自持 CRUD。
 import {
+  describeFacet,
+  FACET_LABELS,
+  MACHINE_FACETS,
+  recordFacet,
+  readStatus,
+  LOCAL_MACHINE_KEY,
+  forgetMachine,
+  renameMachine,
+  type MachineFacet,
+} from "./machine-status";
+import {
   HOST_DEFAULTS,
   parseAddressLines,
   readRemoteConfig,
@@ -273,6 +284,8 @@ class MachineCard {
   private body!: HTMLElement;
   /** legend 里承载机器名的 span（label || host）。 */
   private nameSpan!: HTMLElement;
+  /** S3：legend 上的状态格子容器（折叠时这就是「列表行」）。 */
+  private statusStrip!: HTMLElement;
   /** legend 左侧折叠指示符（▸ 折叠 / ▾ 展开）。 */
   private toggleIndicator!: HTMLElement;
   private collapsed = false;
@@ -348,6 +361,12 @@ class MachineCard {
     this.nameSpan = document.createElement("span");
     this.nameSpan.className = "remote-machine-name";
     legend.appendChild(this.nameSpan);
+
+    // S3：状态条 —— 「上次动作的结论 + 它有多旧」。**这里绝不发起探测**，
+    // 只读账本（主计划 §1-2：状态灯绝不引入轮询）。
+    this.statusStrip = document.createElement("span");
+    this.statusStrip.className = "remote-machine-status";
+    legend.appendChild(this.statusStrip);
 
     // 删除按钮（legend 右侧）
     const removeBtn = document.createElement("button");
@@ -681,6 +700,29 @@ class MachineCard {
       this.labelInput.value.trim() ||
       this.hostInput.value.trim() ||
       "（未命名机器）";
+    this.renderStatusStrip();
+  }
+
+  /**
+   * S3：把账本里这台机器的状态摆出来。**纯读**——不查、不探、不发 IPC。
+   * 读的是 `persistedKey`（盘上那条），不是当前输入框的值：用户正在改名的中途，
+   * 输入框里的字符串还不对应任何一条已记录的结论。
+   */
+  renderStatusStrip(): void {
+    const key = this.persistedKey ?? hostKey(this.collect());
+    const st = readStatus(key);
+    this.statusStrip.replaceChildren();
+    for (const facet of MACHINE_FACETS) {
+      const d = describeFacet(st[facet]);
+      const cell = document.createElement("span");
+      cell.className = `remote-status-cell remote-status-${d.tone}`;
+      cell.dataset.facet = facet;
+      cell.textContent = `${d.icon} ${FACET_LABELS[facet]}`;
+      // 年龄放 title 只是**补充**；`describeFacet` 的正文已经把「多旧」说清楚，
+      // 而 §1-3 明令状态性信息不得只活在 hover 里。这里 title 里是同一句话的展开版。
+      cell.title = `${FACET_LABELS[facet]}：${d.text}`;
+      this.statusStrip.appendChild(cell);
+    }
   }
 
   /** 点「测试连接」：组本卡片 → test_remote_connection → 渲染结果。 */
@@ -707,9 +749,21 @@ class MachineCard {
         onStage,
       });
       this.renderTestResult(res, null, stageLog);
+      // S3：记进账本 —— 列表行上那个「✓ 3 分钟前」就是这一次的结论。
+      // 一次测试同时给出两格：`sshOk`（连得上吗）与 `daemonOk`（daemon 回 hello 了吗）。
+      // **只在 SSH 通了的时候才记 daemon** —— SSH 都没通，daemon 那格是「不知道」，
+      // 记成 `fail` 等于替用户断言「远端没装 daemon」，而事实可能只是网络不通。
+      this.recordFacet("connection", { kind: res.sshOk ? "ok" : "fail" });
+      if (res.sshOk) {
+        this.recordFacet("daemon", {
+          kind: res.daemonOk ? "ok" : "fail",
+          detail: res.daemonOk ? "在跑" : "没响应",
+        });
+      }
     } catch (e) {
       console.warn("test_remote_connection failed:", e);
       this.renderTestResult(null, `测试失败：${String(e)}`, stageLog);
+      this.recordFacet("connection", { kind: "fail", detail: "连不上" });
     } finally {
       this.testButton.disabled = false;
       this.testButton.textContent = prevLabel;
@@ -750,8 +804,10 @@ class MachineCard {
       // 渲染器（`ccm-probe.ts` 早就为这一步预留了 `invalidateCcmProbeCache`，只是从未被调用）。
       invalidateCcmProbeCache(cfg.label);
       this.testResult.textContent = `✓ ${msg}`;
+      this.recordFacet("ccm", { kind: "ok", detail: "已装" });
     } catch (e) {
       this.testResult.textContent = `✗ 安装失败：${String(e)}`;
+      this.recordFacet("ccm", { kind: "fail", detail: "装失败" });
     } finally {
       this.installButton.disabled = false;
       this.installButton.textContent = prev;
@@ -933,6 +989,12 @@ class MachineCard {
     btn: HTMLButtonElement,
     busyLabel: string,
     fn: () => Promise<string>,
+    /**
+     * S3：这次动作的结论记到列表行的哪个格子上。**在这里统一接线**而不是各处 handler
+     * 里散着写——散着写的失效模式是「新加一个动作忘了记」，那台机器的那一格就永远
+     * 停在旧结论上，而 UI 上看不出来。
+     */
+    ledger?: { facet: MachineFacet; ok: string; fail: string },
   ): Promise<void> {
     btn.disabled = true;
     const prev = btn.textContent;
@@ -942,12 +1004,24 @@ class MachineCard {
     try {
       const msg = await fn();
       this.testResult.textContent = `✓ ${msg}`;
+      if (ledger) this.recordFacet(ledger.facet, { kind: "ok", detail: ledger.ok });
     } catch (e) {
       this.testResult.textContent = `✗ ${String(e)}`;
+      if (ledger)
+        this.recordFacet(ledger.facet, { kind: "fail", detail: ledger.fail });
     } finally {
       btn.disabled = false;
       btn.textContent = prev;
     }
+  }
+
+  /** S3：记一格状态并立刻重绘状态条（同一个 key 口径：盘上那条的 origin）。 */
+  private recordFacet(
+    facet: MachineFacet,
+    state: { kind: "ok" | "fail"; detail?: string },
+  ): void {
+    recordFacet(this.persistedKey ?? hostKey(this.collect()), facet, state);
+    this.renderStatusStrip();
   }
 
   /** F08c：点「安装 daemon」——把内嵌 daemon 按远端架构装到 daemonPath。 */
@@ -957,8 +1031,11 @@ class MachineCard {
       this.showResultText("请先填好 host / user / daemonPath 再安装 daemon。");
       return;
     }
-    await this.runRemoteAction(this.daemonInstallButton, "安装 daemon 中", () =>
-      commands.deploy_remote_daemon({ cfg }),
+    await this.runRemoteAction(
+      this.daemonInstallButton,
+      "安装 daemon 中",
+      () => commands.deploy_remote_daemon({ cfg }),
+      { facet: "daemon", ok: "已装", fail: "装失败" },
     );
   }
 
@@ -980,7 +1057,10 @@ class MachineCard {
       this.daemonUninstallButton,
       "卸载 daemon 中",
       () => commands.uninstall_remote_daemon({ cfg }),
+      // 卸载**成功**意味着这台机器现在没有 daemon —— 结论是 `fail`（缺组件），不是 `ok`。
+      // 这里刻意不用 ledger 参数：它把「动作成功」映射成 `ok`，而本例正好相反。
     );
+    this.recordFacet("daemon", { kind: "fail", detail: "已卸载" });
   }
 
   /** F10：点「卸载 ccm」——从远端 ~/.bashrc 删掉 ccm 块（二次确认）。 */
@@ -1003,6 +1083,8 @@ class MachineCard {
         profile: ".bashrc",
       }),
     );
+    // 同 daemon 卸载：动作成功 = 组件不在了。
+    this.recordFacet("ccm", { kind: "fail", detail: "已卸载" });
   }
 
   /** 渲染测试结果：SSH ✓/✗、指纹（+可固化）、daemon ✓/✗（+hello）。
@@ -1151,10 +1233,58 @@ export class RemoteSection {
     void this.populateAliases();
   }
 
+  /**
+   * S3：本机行 —— 列表**第一行、不可删**。
+   *
+   * 这是 `INVARIANTS §40`「本地 = 不走 ssh 的远端」的诚实表达：本机不是一个特殊物种，
+   * 它就是机器列表里的一行，只是那几个格子的取值不同。
+   *
+   * ★ **它刻意不是一张 `MachineCard`，也绝不进 `this.cards`。**
+   * `this.cards` 是 S1 保存路径的输入（每张卡 = config.json 里的一条 `RemoteHostConfig`）。
+   * 把本机混进去，保存时就会往用户的远端机器列表里写一台叫「本机」的假机器。
+   * 由 `remote-section.vitest.ts` 里那条「加了本机行之后写出去的机器数不变」钉住。
+   */
+  private buildLocalRow(): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "remote-machine remote-machine-local";
+    const legend = document.createElement("div");
+    legend.className = "remote-machine-legend";
+    row.appendChild(legend);
+
+    const name = document.createElement("span");
+    name.className = "remote-machine-name";
+    name.textContent = "本机";
+    legend.appendChild(name);
+
+    const strip = document.createElement("span");
+    strip.className = "remote-machine-status";
+    legend.appendChild(strip);
+
+    const st = readStatus(LOCAL_MACHINE_KEY);
+    for (const facet of MACHINE_FACETS) {
+      // daemon 那格对本机是**不适用**，不是「缺组件」：`watcher.rs` 直读 jsonl，
+      // 本机压根不需要 daemon（主计划 §2.4 那张表逐字写着「不需要」）。
+      const state =
+        facet === "daemon"
+          ? ({ kind: "na", detail: "不需要", at: 0 } as const)
+          : st[facet];
+      const d = describeFacet(state);
+      const cell = document.createElement("span");
+      cell.className = `remote-status-cell remote-status-${d.tone}`;
+      cell.dataset.facet = facet;
+      cell.textContent = `${d.icon} ${FACET_LABELS[facet]}`;
+      cell.title = `${FACET_LABELS[facet]}：${d.text}`;
+      strip.appendChild(cell);
+    }
+    // **没有删除按钮** —— 本机删不掉，这不是「暂未实现」，是它本来就不该能删。
+    return row;
+  }
+
   /** 用 config 里的机器列表重建卡片。 */
   private rebuildCards(hosts: RemoteHostConfig[]): void {
     this.cards = [];
     this.machinesContainer.innerHTML = "";
+    this.machinesContainer.appendChild(this.buildLocalRow());
     for (const h of hosts) {
       // 从 config 重建的卡片默认折叠（只显示机器名）——多机时列表整洁；点名称展开编辑。
       // S1：从盘上来的卡片带着它此刻的 origin 当 persistedKey。
@@ -1189,6 +1319,9 @@ export class RemoteSection {
   private removeCard(card: MachineCard): void {
     const idx = this.cards.indexOf(card);
     if (idx < 0) return;
+    // S3：连同状态账本一起清 —— 否则下一台取同名的机器会**继承上一台的结论**，
+    // 显示一个它从没做过的 ✓。
+    if (card.persistedKey) forgetMachine(card.persistedKey);
     this.cards.splice(idx, 1);
     card.element.remove();
     this.updateEmptyHint();
@@ -1706,7 +1839,15 @@ export class RemoteSection {
           .map(([k]) => k),
       });
       // 落盘成功后卡片身份跟到新 origin 上（用户这次可能就是在改名）。
-      for (const c of this.cards) c.persistedKey = hostKey(c.collect());
+      for (const c of this.cards) {
+        const next = hostKey(c.collect());
+        // S3：状态账本跟着改名走，否则改个名字那几格就凭空清零。
+        if (c.persistedKey && c.persistedKey !== next) {
+          renameMachine(c.persistedKey, next);
+        }
+        c.persistedKey = next;
+        c.renderStatusStrip();
+      }
       this.loadedKeys = this.cards.map((c) => c.persistedKey!);
 
       const changed = !sameRemote(next, this.original);
