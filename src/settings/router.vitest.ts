@@ -174,4 +174,99 @@ describe("SettingsRouter", () => {
     expect(btn.getAttribute("aria-controls")).toBe(panel.id);
     expect(panel.getAttribute("aria-labelledby")).toBe(btn.id);
   });
+
+  // ---- S4b：动态增删 + 一层子项 ----
+
+  it("★ 子项紧跟父项之后，不跑到导航末尾", () => {
+    // 若只 append，新机器会排在「改动足迹」后面，和它的父项「机器」隔开 ——
+    // 导航就不再是一棵树，而是一堆平铺项。
+    const r = new SettingsRouter({ landingId: "machines" });
+    r.addRoute({ id: "app", title: "应用", element: page("app") });
+    r.addRoute({ id: "machines", title: "机器", element: page("m") });
+    r.addRoute({ id: "footprint", title: "改动足迹", element: page("fp") });
+    r.addRoute({ id: "m:aya", title: "aya", element: page("aya"), parentId: "machines" });
+    r.addRoute({ id: "m:nano", title: "nano", element: page("nano"), parentId: "machines" });
+    expect(navButtons(r).map((b) => b.textContent)).toEqual([
+      "应用",
+      "机器",
+      "aya",
+      "nano",
+      "改动足迹",
+    ]);
+  });
+
+  it("子项带缩进样式类，父项不带", () => {
+    const r = new SettingsRouter({ landingId: "m" });
+    r.addRoute({ id: "m", title: "机器", element: page("m") });
+    r.addRoute({ id: "m:aya", title: "aya", element: page("aya"), parentId: "m" });
+    const [parent, child] = navButtons(r);
+    expect(parent!.classList.contains("settings-nav-item-child")).toBe(false);
+    expect(child!.classList.contains("settings-nav-item-child")).toBe(true);
+  });
+
+  it("removeRoute 把导航项和页面一起摘掉", () => {
+    const r = new SettingsRouter({ landingId: "m" });
+    r.addRoute({ id: "m", title: "机器", element: page("m") });
+    r.addRoute({ id: "m:aya", title: "aya", element: page("aya"), parentId: "m" });
+    r.removeRoute("m:aya");
+    expect(r.routeIds).toEqual(["m"]);
+    expect(navButtons(r).map((b) => b.textContent)).toEqual(["机器"]);
+    expect(r.element.querySelectorAll(".settings-page")).toHaveLength(1);
+  });
+
+  it("★ 注销**当前页**时切到父页（否则用户停在一个已被摘掉的页上看空白）", () => {
+    const r = new SettingsRouter({ landingId: "m" });
+    r.addRoute({ id: "m", title: "机器", element: page("m") });
+    r.addRoute({ id: "m:aya", title: "aya", element: page("aya"), parentId: "m" });
+    r.navigate("m:aya");
+    expect(r.activeId).toBe("m:aya");
+    r.removeRoute("m:aya");
+    expect(r.activeId).toBe("m");
+    expect(visibleIds(r)).toEqual(["m"]);
+  });
+
+  it("注销的是当前页且它没有父 → 退到第一页，不留空白", () => {
+    const r = new SettingsRouter({ landingId: "a" });
+    r.addRoute({ id: "a", title: "A", element: page("a") });
+    r.addRoute({ id: "b", title: "B", element: page("b") });
+    r.navigate("b");
+    r.removeRoute("b");
+    expect(r.activeId).toBe("a");
+    expect(visibleIds(r)).toEqual(["a"]);
+  });
+
+  it("注销**非**当前页不影响当前页", () => {
+    const r = new SettingsRouter({ landingId: "a" });
+    r.addRoute({ id: "a", title: "A", element: page("a") });
+    r.addRoute({ id: "b", title: "B", element: page("b") });
+    r.removeRoute("b");
+    expect(r.activeId).toBe("a");
+    expect(visibleIds(r)).toEqual(["a"]);
+  });
+
+  it("注销不存在的 id = no-op", () => {
+    const r = new SettingsRouter({ landingId: "a" });
+    r.addRoute({ id: "a", title: "A", element: page("a") });
+    expect(() => r.removeRoute("没有这一页")).not.toThrow();
+    expect(r.routeIds).toEqual(["a"]);
+  });
+
+  it("注销后同名 id 可以重新注册（改名/重建机器页要靠这个）", () => {
+    const r = new SettingsRouter({ landingId: "a" });
+    r.addRoute({ id: "a", title: "A", element: page("a") });
+    r.removeRoute("a");
+    expect(() => r.addRoute({ id: "a", title: "A2", element: page("a2") })).not.toThrow();
+    expect(r.routeIds).toEqual(["a"]);
+  });
+
+  it("方向键把子项也算进去（子项不能变成键盘到不了的死角）", () => {
+    const r = new SettingsRouter({ landingId: "m" });
+    r.addRoute({ id: "m", title: "机器", element: page("m") });
+    r.addRoute({ id: "m:aya", title: "aya", element: page("aya"), parentId: "m" });
+    const nav = r.element.querySelector<HTMLElement>(".settings-nav")!;
+    nav.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
+    );
+    expect(r.activeId).toBe("m:aya");
+  });
 });

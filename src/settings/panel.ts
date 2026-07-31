@@ -531,7 +531,17 @@ export class SettingsPanel {
     // `this.remoteSection` 失败时留 `undefined`——`open()` 那边是 `?.refresh()`，天然容错。
     machinesPage.appendChild(
       this.safeBlock("连接（远端）", () => {
-        const sec = new RemoteSection({ headless: true });
+        // S4b：把路由器包成 `MachinePagesHost` 交给它 —— 每台机器的编辑表单去它自己那一页，
+        // 列表里只留一行。分节不需要知道路由器长什么样，只要「开页 / 收页 / 跳过去」。
+        const sec = new RemoteSection({
+          headless: true,
+          pages: {
+            addMachinePage: (id, title, element) =>
+              router.addRoute({ id, title, element, parentId: "machines" }),
+            removeMachinePage: (id) => router.removeRoute(id),
+            navigateToMachinePage: (id) => router.navigate(id),
+          },
+        });
         this.remoteSection = sec;
         return sec.element;
       }),
