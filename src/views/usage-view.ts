@@ -23,6 +23,14 @@ import {
   type UsageTotals,
 } from "./usage-pivot";
 import { equivalentInputTokens } from "./pricing";
+import { readRemoteConfig } from "../remote-config";
+import { fetchAccounts, currentWorkingAccount } from "../accounts";
+import { pickPrimaryOrigin } from "../account-chip";
+import {
+  fetchAccountUsage,
+  OK_USAGE_UNVERIFIED_CAVEAT,
+  type AccountUsageOutcome,
+} from "../account-usage";
 
 const DIMS: { id: UsageDim; label: string }[] = [
   { id: "day", label: "按天" },
@@ -50,6 +58,9 @@ export class UsageView {
   constructor() {
     this.root = this.build();
   }
+
+  /** S10：plan 窗口块（按需读取；空闲态只有一个按钮）。 */
+  private planEl!: HTMLElement;
 
   private build(): HTMLElement {
     const view = document.createElement("div");
@@ -90,6 +101,20 @@ export class UsageView {
       "以下为已花费用量（token 数），非配额剩余。「还剩多少」（/usage 的 5h/周窗口）是账号级服务端数据，本地会话文件推不出。「按天」为 UTC 日期。";
     view.appendChild(note);
 
+    // ★ S10（settings-ia）：per-account 的 **plan 窗口%** 并进本视图。
+    //
+    // 为什么并进来：这一页此前只讲「已花费 token」，而「还剩多少」（`/usage` 的 5h/周窗口）
+    // 是另一半，用户此前只能在 chip 的菜单里看到。**同一个问题不该有两个地方回答。**
+    // chip 上那份**保留** —— 它是常驻状态显示，不是入口。
+    //
+    // **按需读取，不在 open 时自动探** —— 一次探测要在远端起一个 tmux 会话、跑一次
+    // `/usage` 并抓屏（见 `account_usage.rs`）。打开用量页就自动付这个代价是不对的，
+    // 也撞 §1-2（不新增轮询）。
+    this.planEl = document.createElement("div");
+    this.planEl.className = "usage-plan";
+    view.appendChild(this.planEl);
+    this.renderPlanIdle();
+
     this.statusEl = document.createElement("div");
     this.statusEl.className = "usage-status";
     view.appendChild(this.statusEl);
@@ -107,6 +132,120 @@ export class UsageView {
 
   handleEsc(): void {
     this.close();
+  }
+
+  /** S10：空闲态 —— 一句说明 + 一个按钮。**不自动探**（见 build 里的注释）。 */
+  private renderPlanIdle(): void {
+    this.planEl.replaceChildren();
+    const label = document.createElement("div");
+    label.className = "usage-plan-label";
+    label.textContent = "账号 plan 窗口（还剩多少）";
+    this.planEl.appendChild(label);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "settings-btn settings-btn-secondary usage-plan-load";
+    btn.textContent = "读取当前账号的 plan 窗口";
+    btn.title =
+      "会在远端起一个一次性 tmux 会话跑 /usage 并抓屏——所以是点了才读，不自动。";
+    btn.addEventListener("click", () => void this.loadPlanWindows(btn));
+    this.planEl.appendChild(btn);
+  }
+
+  /**
+   * S10：读当前账号的 plan 窗口并渲染。
+   *
+   * **失败一律可见**：解析不出时把原始屏带回来 + 「复制诊断文本」——
+   * 这是 F10 建立、主计划要求本轮合并后必须保住的路径。探针的「静止 3s」判据是预算
+   * 不是实测值，真 claude 卡顿超时会抓早；那时必须让用户看见「认不出」和原文，
+   * **而不是给一个错的数字**。
+   */
+  private async loadPlanWindows(btn: HTMLButtonElement): Promise<void> {
+    btn.disabled = true;
+    const prev = btn.textContent;
+    btn.textContent = "读取中…";
+    try {
+      const cfg = await readRemoteConfig();
+      const origin = cfg.enabled ? pickPrimaryOrigin(cfg.hosts) : null;
+      if (!origin) {
+        this.renderPlanMessage("没有启用的远端机器 —— plan 窗口是账号级服务端数据，需要连上远端才能读。");
+        return;
+      }
+      const state = await fetchAccounts(origin, false);
+      const cur = currentWorkingAccount(state);
+      if (!cur) {
+        this.renderPlanMessage("没有解析到当前账号。");
+        return;
+      }
+      const outcome = await fetchAccountUsage(origin, cur.name, cur.configDir ?? null, {
+        force: true,
+      });
+      this.renderPlanOutcome(origin, cur.name, outcome);
+    } catch (e) {
+      this.renderPlanMessage(`读取失败：${String(e)}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = prev;
+    }
+  }
+
+  private renderPlanMessage(text: string): void {
+    const msg = document.createElement("div");
+    msg.className = "usage-plan-msg";
+    msg.textContent = text;
+    this.planEl.appendChild(msg);
+  }
+
+  private renderPlanOutcome(
+    origin: string,
+    account: string,
+    outcome: AccountUsageOutcome,
+  ): void {
+    const box = document.createElement("div");
+    box.className = "usage-plan-result";
+    box.dataset.status = outcome.status;
+    const who = document.createElement("div");
+    who.className = "usage-plan-who";
+    who.textContent = `${origin} · 账号 ${account}`;
+    box.appendChild(who);
+
+    if (outcome.status === "ok") {
+      for (const b of outcome.buckets) {
+        const row = document.createElement("div");
+        row.className = "usage-plan-row";
+        row.textContent = `${b.label}：${b.usedPercent}% 已用${b.resetIn ? ` · ${b.resetIn}` : ""}`;
+        row.title = OK_USAGE_UNVERIFIED_CAVEAT;
+        box.appendChild(row);
+      }
+    } else {
+      // ★ 可见失败：说清是什么状态，并把原始屏带回来。
+      const msg = document.createElement("div");
+      msg.className = "usage-plan-fail";
+      msg.textContent =
+        outcome.status === "probe-failed"
+          ? `探测失败：${outcome.error}`
+          : outcome.status === "not-logged-in"
+            ? "这个账号还没登录。"
+            : outcome.status === "cli-missing"
+              ? "远端找不到 claude 命令。"
+              : `认不出 /usage 的格式（${outcome.reason}）—— 下面是抓到的原始屏。`;
+      box.appendChild(msg);
+      const raw = "raw" in outcome ? outcome.raw : undefined;
+      if (raw) {
+        const pre = document.createElement("textarea");
+        pre.className = "settings-input usage-plan-raw";
+        pre.readOnly = true;
+        pre.rows = 6;
+        pre.value = raw;
+        box.appendChild(pre);
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.className = "settings-btn settings-btn-secondary";
+        copy.textContent = "复制诊断文本";
+        copy.addEventListener("click", () => void navigator.clipboard?.writeText(raw));
+        box.appendChild(copy);
+      }
+    }
+    this.planEl.appendChild(box);
   }
 
   async open(): Promise<void> {

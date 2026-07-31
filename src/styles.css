@@ -2872,6 +2872,37 @@ body.settings-window-mode .grid-monitor-trigger {
 .remote-status-unknown {
   color: var(--text-3, var(--text-2));
 }
+/* S10：用量视图里的「账号 plan 窗口」块（按需读取）。 */
+.usage-plan {
+  border-bottom: 1px solid var(--border, var(--bg-2));
+  margin-bottom: 10px;
+  padding: 8px 14px;
+}
+.usage-plan-label {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+  margin-bottom: 6px;
+}
+.usage-plan-result {
+  margin-top: 8px;
+}
+.usage-plan-who {
+  color: var(--text-2);
+  font-size: var(--font-size-small);
+}
+.usage-plan-row {
+  padding: 2px 0;
+}
+/* 失败要看得见 —— 这一块的全部意义就是「宁可说不知道，也不给错数字」。 */
+.usage-plan-fail {
+  color: var(--danger, var(--text));
+}
+.usage-plan-raw {
+  display: block;
+  margin: 6px 0;
+  width: 100%;
+}
+
 /* S7：「有改动待重启」常驻条。空时 `hidden`，不占位。
    刻意做得**看得见但不刺眼** —— 它会一直在，直到用户真的重启；
    做成红色告警会让人疲劳，做成灰字又会被忽略。 */

@@ -23,6 +23,9 @@ const FAMILY_B = [
   "src/settings/config-surface-section.ts", // T02 复制诊断文本
   "src/main.ts",
   "src/remote-launch-run.ts", // 回退：复制命令让用户自己跑
+  // S10：用量视图里 plan 窗口读不出来时，把抓到的原始屏交给用户复制去报障。
+  // **是族 B**（复制完就完事），不是待贴配置文本——没人要把它贴进任何文件。
+  "src/views/usage-view.ts",
   "src/paste-block.ts", // 组件自己
 ];
 
