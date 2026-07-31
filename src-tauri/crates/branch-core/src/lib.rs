@@ -220,6 +220,30 @@ mod tests {
         assert_eq!(types, vec!["user", "assistant", "system", "user"]);
     }
 
+    /// ★ G4：**实时会话的 jsonl 还在增长** —— 分叉产出不受后续追加影响。
+    ///
+    /// 祖先回溯只依赖被选节点**及其祖先**，那些在选中那一刻都已经落盘了。
+    /// 后续追加的记录（对话继续、甚至又长出新的 ESC 旁支）都在分叉点**之后**，
+    /// 不可能成为它的祖先 ⇒ 产出逐字节相同。
+    ///
+    /// 这条不是理论推演：G4 把入口接到实时 tab 上之后，用户会在**正在写的文件**上点分叉。
+    #[test]
+    fn branch_output_is_stable_while_source_keeps_growing() {
+        let base = native_shape_session();
+        let before = build_branch_records(&base, "u4", "SRC", "NEW").unwrap();
+
+        // 模拟：分叉之后对话继续，还顺手 ESC 回退出一条新旁支
+        let mut grown = base.clone();
+        grown.push(serde_json::json!({"type":"assistant","uuid":"n1","parentUuid":"u5",
+            "timestamp":"t90","sessionId":"SRC"}));
+        grown.push(serde_json::json!({"type":"user","uuid":"n2","parentUuid":"u4",
+            "timestamp":"t91","sessionId":"SRC"}));
+        grown.push(serde_json::json!({"type":"mode","sessionId":"SRC","mode":"plan"}));
+        let after = build_branch_records(&grown, "u4", "SRC", "NEW").unwrap();
+
+        assert_eq!(before, after, "源文件继续增长后，同一分叉点的产出应逐字段相同");
+    }
+
     /// G0：子 agent 记录不是可分叉的会话 —— 后端自己要拦，不能只靠前端不挂按钮。
     #[test]
     fn branch_rejects_sidechain_record() {

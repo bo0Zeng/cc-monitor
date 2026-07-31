@@ -7,6 +7,7 @@ import {
   type RenderContext,
 } from "./cards";
 import { BranchFolder } from "./branch-fold";
+import { attachBranchButton } from "./branch-button"; // G4：实时会话的分叉入口
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
 import {
@@ -610,15 +611,38 @@ export class TabManager {
       pendingToolResults: tab.pendingToolResults,
       lazy: true,
     };
+    // G4：批量渲染时 sink 建在循环外，故用一个随迭代更新的游标把当前 payload 的
+    // jsonl 路径带进钩子。渲染是同步的，游标不会串批。
+    let cur: JsonlLinePayload | null = null;
     const sink: StreamSink = {
       timeline: tab.timeline,
       onBranchRecord: () => {},
       onQueueOperation: () => {},
       observeForLazyEnhance: true,
+      onCardRendered:
+        tab.origin
+          ? undefined
+          : (el, msg) => {
+              if (!cur?.path) return;
+              if (msg.type !== "user" && msg.type !== "assistant") return;
+              if (!msg.uuid) return;
+              attachBranchButton(el, {
+                uuid: msg.uuid,
+                jsonlPath: cur.path,
+                cwd: tab.cwd ?? undefined,
+                onForked: (res) =>
+                  showActionFailureToast(
+                    "✓ 已从这一轮创建分支",
+                    `新会话 ${res.sessionId.slice(0, 8)} 已生成（原会话不受影响）`,
+                    { level: "info", durationMs: 8000 },
+                  ),
+              });
+            },
     };
     tab.branchFolder.unwrapAll();
     tab.stream.batchInsert(() => {
       for (const p of payloads) {
+        cur = p;
         try {
           renderContentRecord(p, ctx, sink);
         } catch (e) {
@@ -846,6 +870,29 @@ export class TabManager {
       onTitleUpdate: (title: string) => this.applyAiTitle(tab, title),
       onRealUserInput: (sid: string) => this.userActive(sid),
       observeForLazyEnhance: this.inBatch,
+      // G4（branch-anywhere）：实时会话也挂「从这一轮分叉」按钮。
+      // 钩子本来就在共享的 `render-stream-record.ts` 里，此前**只有历史查看器传了它**
+      // ⇒ 实时 tab 上没有入口。按钮本体是共享组件（off-main 的呈现区分也在那里）。
+      // **只对本地会话**：`create_branch_session` 走本机 claude 目录，远端会话的 jsonl
+      // 在远端机器上够不着 —— 远端那条路由 G6 接 daemon 的 `--fork-session`。
+      onCardRendered:
+        tab.origin || !payload.path
+          ? undefined
+          : (el, msg) => {
+              if (msg.type !== "user" && msg.type !== "assistant") return;
+              if (!msg.uuid) return;
+              attachBranchButton(el, {
+                uuid: msg.uuid,
+                jsonlPath: payload.path,
+                cwd: tab.cwd ?? undefined,
+                onForked: (res) =>
+                  showActionFailureToast(
+                    "✓ 已从这一轮创建分支",
+                    `新会话 ${res.sessionId.slice(0, 8)} 已生成（原会话不受影响）`,
+                    { level: "info", durationMs: 8000 },
+                  ),
+              });
+            },
     };
 
     // Batch13-F40a:meta/branch 收集与渲染解耦——收纳(不建卡)的记录也要喂

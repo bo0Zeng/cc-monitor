@@ -101,8 +101,8 @@
 | **G2** ✅ | **daemon 加 `--fork-session`** | 远端本地读写，不把几十 MB jsonl 拉过 ssh。**同轮收窄 `readonly_guard`** | G1 | **高**（动护栏 + daemon 首次写盘） |
 | **G3a** ✅ | **推断内核：知道 / 不知道** | 逐维度给出「知道，值是 X」或「不知道」，**绝不猜**。实测确认：**账号在会话退出后没有信息源**（pidfile 随进程消失 · 各账号 `projects` 软链到同一份、同 inode · jsonl 44 个键里没有账号字段） | G2 | 中 |
 | **G3b** | **接进两条 spawn 路 + 追问 UI** | 分叉改走 IR（远端可直接用）；**本地 PS/POSIX 命令构造器缺 `CLAUDE_CONFIG_DIR` 注入**，要补；`unknown` 的格子弹一次小窗让用户选 | G3a | 高（Windows 面只能单测） |
-| **G4** | **实时会话消息级入口** | `tabs.ts` 传 `onCardRendered`，复用同一个按钮 | G0 | 中（动主平台主路径） |
-| **G5** | **off-main 入口保留但呈现区分** | 弱化样式 + 换文案，说清「这条是被 ESC 回退掉的」 | G4 | 低 |
+| **G4** ✅ | **实时会话消息级入口** | `tabs.ts` 传 `onCardRendered`，复用同一个按钮 | G0 | 中（动主平台主路径） |
+| **G5** ✅ | **off-main 入口保留但呈现区分** | 弱化样式 + 换文案，说清「这条是被 ESC 回退掉的」 | G4 | 低 |
 | **G6** | **远端入口解禁** | `session-viewer` 与实时 tab 的 origin 门放开，走 G2 | G2,G4 | 中 |
 
 **顺序理由**：G0 快且不改行为，但它产出的一致性测试是 G1 拆分时的安全网，所以排最前。
@@ -148,10 +148,10 @@ G3 依赖 G2 才能在远端起会话。G4/G5 是纯前端、与后端正交，�
 |---|---|---|---|---|
 | 1 | **记录变换逻辑** | G0,G1,G2 | **一份纯函数，monitor 与 daemon 共用** | ✅ **已达最终形态**（G1）。新 crate `src-tauri/crates/branch-core`（只依赖 `serde_json`）；monitor 与 daemon 各自**单向 path 依赖**过来 —— 实测确认依赖**不会反向制造 workspace 成员关系**，daemon 仍是独立 crate。**选 ① 而非 ②「复制+漂移守卫」**：仓里那三个双写点先例都是**常量**，对 80 行算法而言守卫要么脆要么退化成整体字节比对。⚠ path 依赖**不进 `--all`**，已照 `code-picture-core` 先例在 CI 与发版 checklist 加 `-p branch-core` |
 | 2 | **`readonly_guard`** | G2 | **收窄不删** | ✅ **已达最终形态**（G2）。两层：默认层原 11 条未放宽；白名单层**恰好一个**模块 `fork_write.rs`，必须 `.create_new(true)` 且禁删除/改名/复制/硬链软链/截断/追加/覆盖写/建目录/`set_len`/`.create(true)`。边界进 `INVARIANTS §41.6`，**E50 已解** |
-| 3 | **`⑂` 按钮与 `onCardRendered`** | G4,G5,G6 | 按钮组件**一份**，历史查看器与实时 tab 共用；on-main / off-main / 远端三种呈现由参数区分 | 钩子已在共享的 `render-stream-record.ts:172`；**只有 viewer 传了它**，`tabs.ts` 没传 |
+| 3 | **`⑂` 按钮与 `onCardRendered`** | G4,G5,G6 | 按钮组件**一份**，两处共用 | ✅ **已达最终形态**（G4/G5）。抽成 `branch-button.ts`；`tabs.ts` 两条渲染路径都接上（批量那条用随迭代更新的游标带 path）。off-main 呈现由**后代选择器**驱动，零 JS 状态 |
 | 4 | **「这个会话怎么起的」** | G3 | **一处解析**：账号 / tmux / cwd 由同一个函数答，起会话与显示都读它 | **散的**：`TMUX_LS_FMT` 有 cwd 无账号（且不许改）；账号要走 daemon `--session-accounts`；tmux 与否要看 `@ccm_sid` / `@ccm_agent` |
 | 5 | **`launch-*` IR 族** | G3 | 分叉起会话**走既有 IR**（`launch-plan` / `launch-dimensions`），不另造一条起会话路径 | IR 已有 `identity.ccmSid` 等维度；分支目前**绕开** IR 直接拼 resume 命令 |
-| 6 | **`branching.ts` 主线判定** | G5 | UI 判 on/off-main 与折叠共用 `computeMainBranch`，按钮呈现读同一个集合 | 已有，`branch-fold` 在用；按钮**没读** |
+| 6 | **`branching.ts` 主线判定** | G5 | 按钮呈现与折叠共用同一份主线判定 | ✅ **已达最终形态**（G5），且比账本写的更强：**完全不碰主线集合**，判据是「在不在 `.branch-fold-wrap` 里」——那个 wrap 就是 `computeMainBranch` 的产物 ⇒ 不可能漂移、永远最新 |
 
 ---
 
@@ -230,6 +230,7 @@ daemon **176** · tsc 0 · check:types 67 · eslint 7 / stylelint 50（顾问式
 | # | 日期 | 改了什么 / 为什么 |
 |---|---|---|
 | 01 | 2026-07-31 | Phase A 落盘并获批。 |
+| 07 | 2026-07-31 | **G4+G5 完成**。G4 的实质不是加功能——钩子本来就在共享层，只是**只有 viewer 传了它**；抽成一份 `branch-button.ts` 后两边都传（`tabs.ts` 两条渲染路径都接，批量那条用随迭代更新的游标带 path）。**G5 的判据比账本要求的更强**：不「读 `computeMainBranch`」，而是读**它的效果**——「这张卡在不在 `.branch-fold-wrap` 里」，那个 wrap 就是主线判定包出来的 ⇒ 不可能漂移、**永远最新**（消息被 ESC 回退后自动变样，无需任何刷新管线）、样式还能纯 CSS 后代选择器搞定。tooltip 惰性求值（attach 时定死会说谎，变异 Q2 钉住）。呈现区分**不加二次确认**——用户原话「缺的是信息不是限制」。另补 `branch_output_is_stable_while_source_keeps_growing`：实时会话文件继续增长，同一分叉点产出逐字段相同。|
 | 06 | 2026-07-31 | **G3 拆成 a/b 两半，a 半完成。** 主计划要求「第一步是查清账号能不能还原」——查完了：**还原不出**，三条路全断（pidfile 随进程消失 / 各账号 `projects` 是软链到共享目录、同 inode / jsonl 44 个顶层键里没有账号字段）。⇒ 已退出的会话一律 `unknown`，**不拿当前账号顶替**（那会静默地用错身份跑一条对话，界面上看不出来）。内核 `fork-launch.ts` 12 测 + 4 变异全红，其中 P1 专守那条防线。<br><br>**订正一处我先前说过的话**：「要给后端加账号能力」过宽了 —— **远端那条路本来就有**（IR 的 `account` 维度）。准确说法是：分叉目前绕开了 IR，而**本地** PS/POSIX 命令构造器确实不注入 `CLAUDE_CONFIG_DIR`。b 半因此单拆，**未做不标完成**。讽刺的是今天 `⑂` 只对本地会话出现 ⇒ **唯一能分叉的那条路恰好是带不了账号的那条**，G6 开门后消失。|
 | 05 | 2026-07-31 | **G2 完成**（daemon 首次写盘 + 护栏收窄）。命令照既有一次性查询形状加，**只收 sid 不收路径**（少一条穿越面），变换走 G1 的共享 crate。护栏改成两层且**整体更强**：默认层未放宽，白名单层对**恰好一个**模块加更严断言；判据改述成「不许改动既有数据」，进 `INVARIANTS §41.6`、**E50 已解**。<br><br>**两处值得记**：① 护栏**第一次跑就抓了我自己** —— 抓的是新模块头注里那几个禁用函数名（护栏连注释一起扫，fail-closed）。这形状本仓已栽四次，按既有约定「改措辞别改护栏」处理。② **N5 变异暴露了护栏的真洞**：把 `.create_new(true)` 换成 `.create(true)`，**只有行为测试红、护栏自己通过** —— 因为必需 token 是裸的，被模块文档里那句话喂饱了。已改成带前导点（注释满足不了）并把 `.create(true)` 加进禁用清单，重跑后护栏自己也红。<br><br>e2e `daemon-fork-session.sh` 真跑二进制（10/10）—— 单测直接调 `run()` 会绕过 dispatch，`--account-trust-zero` 那次事故就是这么漏出去的。|
 | 04 | 2026-07-31 | **G1 完成**。记录变换提成共享 crate `branch-core`（只依赖 `serde_json`），monitor 与 daemon 各自单向 path 依赖 —— 实测确认不会把 daemon 拖进 monitor 的 workspace（那正是 `remote-daemon-proto` 刻意独立的理由）。**没选「复制 + 漂移守卫」**：仓里三个先例都是常量，对算法而言那种守卫要么脆要么禁止重构。**逮到一个差点漏掉的坑**：path 依赖**不自动成为 workspace 成员**，拆完 `cargo test --all` 从 646 掉到 639、新 crate 的 7 条一条没跑 —— 照 `code-picture-core` 的先例在 CI rust job 与发版 checklist 各补一步 `cargo test -p branch-core`，否则 G0 那条「格式 == 官方」的机检**在 CI 里等于不存在**。搬家后重跑 M1/M2 确认守卫未失效。总测试数 671 不变 ⇒ 纯搬运。|

@@ -29,6 +29,7 @@ import {
 import { UnrenderedRanges } from "../render-window";
 import { getBehavior } from "../behavior";
 import { showActionFailureToast } from "../error-toast";
+import { attachBranchButton } from "../branch-button";
 import { validateLocalLaunch } from "../launch-requests";
 
 interface JsonlLinePayload {
@@ -308,10 +309,10 @@ export class SessionViewer {
   }
 
   /**
-   * F62：给一张 user/assistant 卡挂「从这一轮创建分支」按钮（仅本地会话；见 onCardRendered）。
-   * 点击 → 后端 `create_branch_session` 复制 [根…这条] 前缀产出新会话（原生 forkedFrom 格式，
-   * 原会话不改），成功后弹 info toast，点 toast 一键 resume 新分支。增量重渲会重复调本函数，
-   * 靠幂等守卫（已挂过就跳过）避免重复按钮。
+   * F62 / G4：给一张 user/assistant 卡挂「从这一轮分叉」按钮。
+   *
+   * **按钮本体已抽成共享组件** `branch-button.ts`（G4）——历史查看器与实时 tab 用同一份，
+   * off-main 的呈现区分也在那里。本方法只负责「这条记录该不该有按钮」和「成功之后干什么」。
    */
   private attachBranchButton(
     cardEl: HTMLElement,
@@ -322,38 +323,19 @@ export class SessionViewer {
     if (message.type !== "user" && message.type !== "assistant") return;
     const uuid = message.uuid;
     if (!uuid) return;
-    if (cardEl.querySelector(":scope > .viewer-branch-btn")) return; // 幂等
-    cardEl.classList.add("has-branch-btn");
-
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "viewer-branch-btn";
-    btn.textContent = "⑂";
-    btn.title = "从这一轮创建分支（复制到这条为止 → 新会话，原会话不变，可 resume）";
-    btn.addEventListener("click", async (ev) => {
-      ev.stopPropagation();
-      if (btn.dataset.busy === "1") return;
-      btn.dataset.busy = "1";
-      try {
-        const res = await commands.create_branch_session({
-          sourceJsonlPath: jsonlPath,
-          messageUuid: uuid,
-        });
+    attachBranchButton(cardEl, {
+      uuid,
+      jsonlPath,
+      cwd,
+      onForked: (res) => {
         const sid8 = res.sessionId.slice(0, 8);
         showActionFailureToast("✓ 已从这一轮创建分支", `点此在新终端 resume 分支 ${sid8}`, {
           level: "info",
           durationMs: 8000,
           onClick: () => void this.resumeBranch(res.sessionId, cwd),
         });
-        btn.textContent = "✓";
-        window.setTimeout(() => (btn.textContent = "⑂"), 2000);
-      } catch (err) {
-        showActionFailureToast("创建分支失败", String(err));
-      } finally {
-        btn.dataset.busy = "0";
-      }
+      },
     });
-    cardEl.appendChild(btn);
   }
 
   /** F62：在新终端 resume 刚建的分支（复用本地 resume 命令 + 用户自定义 launcher）。 */

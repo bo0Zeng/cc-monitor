@@ -1532,6 +1532,36 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   background: var(--overlay-hover);
 }
 
+/* G5（branch-anywhere）：**被 ESC 回退掉的**那些卡片上的分叉按钮要长得不一样。
+   用户拍板「废弃分支也要给路口」——那段数据只剩这一个出口，CC 的 TUI 没有任何路
+   把它捞回来。但入口保留 ≠ 呈现相同：从一段折叠起来的废弃对话里点它，用户不该
+   以为自己在从主线分叉。**缺的是信息，不是限制。**
+
+   判据用**后代选择器**而不是给按钮打 JS 状态类：`.branch-fold-wrap` 是
+   `BranchFolder` 依 `computeMainBranch` 包出来的，所以这条规则
+   ① 不可能与主线判定漂移（它就是那个判定的结果）
+   ② 永远最新——一条消息被 ESC 回退后会被重新包进 wrap，样式自动跟着变，
+      不需要任何刷新管线。 */
+.branch-fold-wrap .viewer-branch-btn {
+  border-style: dashed;
+  color: var(--warn, #b8860b);
+  border-color: var(--warn, #b8860b);
+}
+.branch-fold-wrap .viewer-branch-btn::after {
+  /* 一个小角标，让「这条不是主线」在**不 hover** 时也看得出来 */
+  content: "↩";
+  position: absolute;
+  right: -3px;
+  bottom: -4px;
+  font-size: 9px;
+  line-height: 1;
+  opacity: 0.9;
+}
+.branch-fold-wrap .viewer-branch-btn:hover {
+  color: var(--warn, #b8860b);
+  background: var(--overlay-hover);
+}
+
 /* user 气泡：靠右、圆角、有底色 + 细边框增强视觉边界（避免与 assistant 的 serif 段糊在一起） */
 .card-user {
   background: var(--card);
