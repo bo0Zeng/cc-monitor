@@ -110,7 +110,12 @@ const PROTO_VERSION: u32 = 1;
 ///   `observation`（有会话时省略 ⇒ 载荷逐字节不变）+ 新帧 `TmuxSessionClosed`（进 EMITS）。
 ///   **bump BUILD_ID 是必须的**：旧 daemon 报同一个 id 就不会被判 stale、不自动重装，
 ///   整轮改动会在已部署的远端**休眠**（本条正是 P1 记档里点名、P5 漏做、P7 补上的那次 bump）。
-const BUILD_ID: &str = "p1r-event-liveness";
+/// - p1s-trust-zero-dispatch = **修 v3.4.0 发出去的一个真 bug**：`--account-trust-zero`
+///   在 `accounts_query.rs` 里实现完整，但本文件的 match 漏列它 ⇒ 落进 `_` 臂走历史查询
+///   ⇒ 回 `unknown argument` + exit 2，而 monitor 的账号 0 信任预检**真的在发这条命令**。
+///   **必须 bump**：不 bump 的话已部署的 v3.4.0 daemon 不被判 stale、不会自动换掉，
+///   修了也到不了用户手上（P5 漏做、P7 补上的那一课）。
+const BUILD_ID: &str = "p1s-trust-zero-dispatch";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
@@ -257,9 +262,16 @@ async fn main() {
             Some("--search") => search_query::run(&claude_dir, &args),
             Some("--usage") => usage_query::run(&claude_dir, &args),
             Some("--resolve") => resolve_query::run(&claude_dir, &args),
-            Some("--list-accounts") | Some("--session-accounts") | Some("--account-trust") => {
-                accounts_query::run(&claude_dir, &args)
-            }
+            // ★ 这几个字面量必须与 `accounts_query::run` 自己认的子命令**完全一致**。
+            // v3.4.0 出过一次事故：`--account-trust-zero` 在 accounts_query 里实现完整，
+            // 但这里漏列 ⇒ 落进下面的 `_` 臂走历史查询 ⇒ `unknown argument` + exit 2，
+            // 而 monitor 的账号 0 路径**真的在发这条命令**。
+            // 测试当时抓不到，是因为它们直接调 `accounts_query::run`、**绕过了本处调度**。
+            // 现由 `accounts_query::tests::main_dispatches_every_subcommand_we_handle` 钉住。
+            Some("--list-accounts")
+            | Some("--session-accounts")
+            | Some("--account-trust")
+            | Some("--account-trust-zero") => accounts_query::run(&claude_dir, &args),
             _ => history_query::run(&claude_dir, &args),
         };
         std::process::exit(code);
