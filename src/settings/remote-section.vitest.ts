@@ -91,7 +91,8 @@ describe("F54 findHostByOrigin", () => {
     addresses: [],
     jump: "",
     daemonless: false,
-  });
+    resumeCommand: "",
+      });
   const hosts = [mkHost("aya", "10.0.0.2"), mkHost("", "pi.local")];
   it("命中 label", () => {
     expect(findHostByOrigin(hosts, "aya")?.host).toBe("10.0.0.2");
@@ -129,7 +130,8 @@ describe("F56 jump write→read 往返（D-B1 回归）", () => {
     addresses: [],
     jump,
     daemonless: false,
-  });
+    resumeCommand: "",
+      });
 
   it("jump 写入 config 并读回不丢", async () => {
     vi.mocked(loadConfig).mockResolvedValue({});
@@ -160,6 +162,50 @@ describe("F56 jump write→read 往返（D-B1 回归）", () => {
   });
 });
 
+describe("S4b-3 resumeCommand write→read 往返（D-B1 同源回归：新字段不丢）", () => {
+  // `jump` 与 `daemonless` 都曾因为「加了字段但序列化清单没跟上」被静默丢掉。
+  // S1 的编译期穷尽检查挡住了「漏写清单」，但挡不住「读盘那侧忘了解析」——
+  // 这条往返把另一半也钉住。
+  const host = (resumeCommand: string): RemoteHostConfig => ({
+    label: "aya",
+    host: "10.0.0.2",
+    port: 22,
+    user: "u",
+    keyPath: "",
+    daemonPath: "/d",
+    hostKeyFingerprint: "",
+    addresses: [],
+    jump: "",
+    daemonless: false,
+    resumeCommand,
+  });
+
+  it("填了 per-machine resume 命令，写进 config 再读回来不丢", async () => {
+    vi.mocked(loadConfig).mockResolvedValue({});
+    let saved: Record<string, unknown> = {};
+    vi.mocked(saveConfig).mockImplementation(async (c: unknown) => {
+      saved = c as Record<string, unknown>;
+    });
+    await patchRemoteConfig({
+      enabled: true,
+      upsert: [{ key: null, value: host("ccm resume --tmux") }],
+    });
+    vi.mocked(loadConfig).mockResolvedValue(saved);
+    const back = await readRemoteConfig();
+    expect(back.hosts[0]!.resumeCommand).toBe("ccm resume --tmux");
+  });
+
+  it("没填的机器读回来是空串（= 沿用全局默认），不是 undefined", async () => {
+    // undefined 会让 `pickResumeCommand` 里的 `?? ""` 兜底，行为上等价；
+    // 但盘上/内存里形状不一致会让后续比较（如 sameRemote 判「变没变」）出意外。
+    vi.mocked(loadConfig).mockResolvedValue({
+      remote: { enabled: true, hosts: [{ label: "aya", host: "1.1.1.1" }] },
+    });
+    const back = await readRemoteConfig();
+    expect(back.hosts[0]!.resumeCommand).toBe("");
+  });
+});
+
 describe("F59 daemonless write→read 往返（D-B1 同源回归：布尔字段不丢）", () => {
   const host = (daemonless: boolean): RemoteHostConfig => ({
     label: "aya",
@@ -172,6 +218,7 @@ describe("F59 daemonless write→read 往返（D-B1 同源回归：布尔字段�
     addresses: [],
     jump: "",
     daemonless,
+    resumeCommand: "",
   });
 
   it("daemonless=true 写入 config 并读回不丢", async () => {
@@ -215,6 +262,7 @@ describe("F83 sftpEligibleHosts", () => {
     addresses: [],
     jump: "",
     daemonless: false,
+    resumeCommand: "",
     ...over,
   });
   const cfg = (hosts: RemoteHostConfig[]): RemoteConfig => ({ enabled: false, hosts });
@@ -263,7 +311,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     addresses: [],
     jump: "",
     daemonless: false,
-  });
+    resumeCommand: "",
+      });
 
   /** S4b：一个假的分页宿主，记录开了哪些页 / 跳去了哪一页。 */
   function fakePages() {

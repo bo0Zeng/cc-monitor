@@ -322,6 +322,8 @@ class MachineCard {
   private jumpInput!: HTMLInputElement;
   /** F59：daemonless 降级读取开关（无 daemon 时纯 tail 轮询读）。 */
   private daemonlessInput!: HTMLInputElement;
+  /** S4b-3（§5-1）：这台机器的 resume 启动命令（空 = 用全局默认）。 */
+  private resumeCmdInput!: HTMLInputElement;
   /** 依当前指纹值显隐「重置为 TOFU」按钮（load / 重置后调用）。 */
   private syncResetFpVisibility!: () => void;
   private testButton!: HTMLButtonElement;
@@ -372,6 +374,7 @@ class MachineCard {
       hostKeyFingerprint: this.fingerprintInput.value.trim(),
       addresses: parseAddressLines(this.addressesInput.value),
       jump: this.jumpInput.value.trim(),
+      resumeCommand: this.resumeCmdInput.value.trim(),
       daemonless: this.daemonlessInput.checked,
     };
   }
@@ -540,6 +543,19 @@ class MachineCard {
     this.daemonlessInput.type = "checkbox";
     this.daemonlessInput.className = "settings-checkbox";
     this.daemonlessInput.addEventListener("change", onChange);
+
+    // ★ S4b-3（主计划 §5-1）：**这台机器**的 resume 启动命令。
+    //
+    // 刻意紧挨着下面的「装/卸 ccm」按钮：此前 resume 命令是全局单值、住在
+    //「外观 → 行为」里，而装 ccm 是每台机器一个按钮 —— 两处隔着两个顶层组，
+    // 于是「装完 ccm 却忘了改 resume 命令」是个**结构性陷阱**，不是用户粗心。
+    // 空 = 沿用全局默认，所以没填过的机器行为一字不变。
+    this.resumeCmdInput = buildTextRow(
+      body,
+      "resume 命令（这台机器）",
+      "留空 = 用全局默认",
+      onChange,
+    );
     dlRow.appendChild(this.daemonlessInput);
     const dlLabel = document.createElement("span");
     dlLabel.className = "settings-checkbox-label";
@@ -1698,6 +1714,7 @@ export class RemoteSection {
       addresses: g.addresses,
       jump: g.jump ?? "",
       daemonless: false, // F59：从 ssh config 导入的主机默认走 daemon 路径
+      resumeCommand: "", // S4b-3：空 = 沿用全局默认（导入时无从得知这台该用什么）
     };
   }
 
@@ -1714,6 +1731,7 @@ export class RemoteSection {
       addresses: [],
       jump: m.proxyJump ?? "",
       daemonless: false, // F59：从 ssh config 导入的主机默认走 daemon 路径
+      resumeCommand: "", // S4b-3：空 = 沿用全局默认（导入时无从得知这台该用什么）
     };
   }
 
