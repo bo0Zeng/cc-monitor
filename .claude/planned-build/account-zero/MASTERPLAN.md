@@ -205,7 +205,7 @@ LEGACY_HOME_ITEMS = .claude.json          （源目录 = $HOME，不是 ~/.claud
 
 | ID | 功能 | 一句话目标 | 状态 | 依赖 | 优先级 |
 |----|------|-----------|------|------|--------|
-| Z01 | **账号 0 登记 + 可见** | manifest 认识账号 0；`list-accounts` 报出来；`verify` 从「违规」改判为「状态」；cc-monitor 列表多一行 | 待规划 | — | **P0** |
+| Z01 | **账号 0 登记 + 可见** | manifest 认识账号 0；`list-accounts` 报出来；`verify` 从「违规」改判为「状态」；cc-monitor 列表多一行 | **✅ 完成，已签收**（`60946b0`；账号 0 = `configDir` 键缺席，判据结构性、不认名字；**并订正了 Z07 的 D1b 理由**） | — | **P0** |
 | Z02 | **「未选账号」消失** | `LaunchAccount` 三态化；账号 0 成为显式可选项；「基座」一词从 UI 移除；`--base` 只在真要账号 0 时发 | **⚠ 部分交付**（features/Z02-PARTIAL.md）：`--base` 跨语言契约守卫已落；**三态化卡 `tabs.ts` 红线**；文案刻意不先改 | Z01 | P0 |
 | Z03 | **账号 0 接上既有能力** | 用量探针支持它（**实测拒绝点在 `remote-launch.ts:70`，`:74` 是注释**）；按会话切号能切到它 | **⚠ 部分交付**（features/Z03-account-zero-capabilities.md）：**(a) 用量探针已做**；**(b) 按会话切号卡 `tabs.ts` 红线** | Z01,Z02 | P1 |
 | Z04 | **守卫** | ~~禁~~**说清**显式 `CLAUDE_CONFIG_DIR=~/.claude`（`which`/`run` 三处点名「这不是账号 0」；**禁不了**用户的 shell，in-place 又是被支持的逃生口）；`verify` 补 **in-place 盲区**——两份 `.claude.json` 同时存在 = 真分裂（~~新增「`~/.claude/.claude.json` 出现」检查~~ Z01 已以 vfail 落地，别重复加）；「删除账号 0」~~特判~~**早已有两道守卫**，本轮补断言 | **✅ 已交付**（features/Z04-guards.md） | Z01 | P1 |

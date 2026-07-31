@@ -74,9 +74,9 @@ ccm-pretrust 13 · cc-spawn-uplift 21 · tmux-guarded 14 · usage-probe 7
 
 | ID | 功能 | 一句话目标 | 状态 | 依赖 | 优先级 |
 |----|------|-----------|------|------|--------|
-| G-A | **八套真机套件加断言数地板** | 每套收尾 `[ "$PASS" -ge <实测值> ]`；`cc-spawn-uplift` 先补 `PASS=` 打印；地板值写进 `ci.yml` 标签 | 待规划 | — | **P0** |
+| G-A | **八套真机套件加断言数地板** | 每套收尾 `[ "$PASS" -ge <实测值> ]`；`cc-spawn-uplift` 先补 `PASS=` 打印；地板值写进 `ci.yml` 标签 | **✅ 完成，已签收**（`0b297ed`；`e2e/assert-pass-floor.sh` fail-closed 三路） | — | **P0** |
 | G-B | **vendored bash 进门禁** | shellcheck 清单扩到 vendored 四个文件（**不是 `**` glob，见下**）+ 覆盖面地板；`run-tests.sh`（424 行）接进 CI + 断言条数地板 | **✅ 完成，已签收** | — | P0 |
-| G-C | **6 套已自动化 e2e 进 CI** | `graylight`/`restart`/`resume` 三族共 6 套进 `ci.yml`（复用已有的 daemon 编译 job）+ 进 `package.json` | 待规划 | G-A | P1 |
+| G-C | **6 套已自动化 e2e 进 CI** | `graylight`/`restart`/`resume` 三族共 6 套进 `ci.yml`（复用已有的 daemon 编译 job）+ 进 `package.json` | **✅ 完成，已签收**（`69e14c3`；6 套加 `unset TMUX` + 短 `TMUX_TMPDIR`，**E41 已销**，5 套进 CI 带地板） | G-A | P1 |
 
 **G-A 为什么排第一**：它是三条里唯一能**回答「其余门禁到底有没有在跑」**的。
 G-B/G-C 是扩大覆盖面，G-A 是保证覆盖面不会静默缩水。

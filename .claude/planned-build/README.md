@@ -93,4 +93,13 @@ rust-ts-boundary 的 C04b/C04d 批 8）。**另有一条时序约束**：动 `z`
 
 ---
 
+## ✅ 2026-07-30：四区全部走完，**Phase G 已做**
+
+报告在仓根 **`PHASE-G-REPORT.md`**。三件最该看的：
+1. **订正了 10 组计划断言**（多数是计划写下时就错、或被别的功能解决了而没同步）——「开工前复测」连续 23 轮每轮都抓到不符。
+2. **主计划终账又抓到 8 处过时**（zero-poll P4-P7 / gate-integrity G-A·G-C / account-zero Z01 已交付却仍标未开工；外加 `local-as-remote` 的 L2 行被改成了 5 列）——**已全部修**。
+3. **交了一半的逐条标清**（L0 起 app / L2 的 Windows 152 条 / L3a 的注入+UI / L4 的 release job 从未真跑 / zero-poll 待重部署），**Phase D 多 agent 审计与 `/full-audit` 是全区欠账**（常驻指令不开 agent）。
+
+---
+
 > 注：状态摘要仅导航用；权威状态恒以各区 `STATUS.md` 为准。新开工作区时在此追加一行。
