@@ -1,0 +1,215 @@
+# 主计划 / MASTERPLAN — branch-anywhere（任意节点分叉，两条都活着）
+
+> 跨功能宏观设计的**单一事实来源**。每次修订在 §8 变更记录追加一行。
+>
+> **状态：Phase A 已落盘，等用户审批。**
+> 来源：用户 2026-07-31 的四条要求 + 「废弃分支也该给路口」的拍板 + 对官方
+> `claude-agent-sdk 0.2.128` `fork_session` **真源码**的逐条对照。
+
+---
+
+## §0 开工前定死的事实（全部读过真源码，不是印象）
+
+### §0.1 今天已经有什么（F62）
+
+| | 现状 |
+|---|---|
+| 后端 | `create_branch_session(sourceJsonlPath, messageUuid)` → `history.rs::build_branch_records` |
+| 算法 | 沿 `parentUuid` **祖先回溯**到根 → 线性前缀 → 每条改写 `sessionId` + 加 `forkedFrom` |
+| 写盘 | 同目录 `<新sid>.jsonl`，`create_new`（已存在即失败，无 TOCTOU）。**源文件零改动** |
+| 入口 | **只有历史查看器**（`session-viewer.ts:331` 的 `⑂`），且 `opts.origin` 一非空就整个关掉 ⇒ **远端没有** |
+| 起会话 | 成功后弹 toast，点它走 `resumeBranch` → 本地 resume 命令。**不带账号、不管 tmux** |
+
+### §0.2 官方 SDK 已经把这活做了（但我们**不能直接用**）
+
+实读 `~/.cache/uv/.../claude_agent_sdk/_internal/session_mutations.py:240`
+（`claude-agent-sdk 0.2.128`，在 `__init__.py` 的 `__all__` 里，是公开 API）：
+
+```python
+fork_session(session_id, directory=None, up_to_message_id=None, title=None) -> ForkSessionResult
+```
+
+**两条不能用的硬理由**（提这条建议的报告都没提到）：
+
+1. **它是 Python。** cc-monitor 是 Tauri（Rust + TS），出 `.exe`/`.msi`/`.deb`，
+   **当前零 Python 运行时依赖**。为替掉一个已在跑、有测试的 80 行 Rust 函数而引入
+   一整个语言运行时，不划算。
+2. **「远端够不着的问题自动消失」对我们不成立。** 那句成立是因为那个项目的 bridge
+   跑在**有会话的那台机器上**。我们的拓扑是 monitor 在 Windows、会话在远端 Linux；
+   `fork_session()` 是本地调用 ⇒ 对我们它得跑在 daemon 里，而 **daemon 是静态 musl
+   Rust 二进制，装不了 Python**。而用户已拍板远端走 daemon 命令 —— 两条路互斥。
+
+⇒ **不引 SDK，把它的记录变换语义搬进我们的 Rust。**那份源码此刻的价值是
+**一份免费的、官方的正确性参照**。
+
+### §0.3 ★ 对照出来的六个缺口（本计划的技术核心）
+
+| # | 官方做的 | 我们 | 判断 |
+|---|---|---|---|
+| 1 | remap **全部** uuid，`forkedFrom` 指向**旧** uuid | **不 remap** —— 分支文件的 uuid 与源逐条相同，`forkedFrom.messageUuid` 等于自己 ⇒ **溯源链自指** | **真缺陷** |
+| 2 | 过滤 `isSidechain`（子 agent 会话，独立 parentUuid 图） | 不过滤。仓里别处**认识**这个字段（`messages.rs` / `turn-notify.ts` / 生成物都有），唯独分支这条路没管 | **真缺陷** |
+| 3 | `progress` 参与 parent 链走查、但**不写出**（且解析 parent 时跳过 progress 祖先） | 不区分 | **真缺陷** |
+| 4 | **只改最后一条**的 timestamp（注释写明：供 resume 做叶子检测） | 一条都不改 | **待验**（可能影响 resume 落点） |
+| 5 | remap `logicalParentUuid`（compact 边界回指） | **全仓 0 命中** —— 我们压根不知道这个字段 ⇒ 分支后它悬空指向源会话 | **真缺陷** |
+| 6 | 清 `teamName` / `agentName` / `slug` / `sourceToolAssistantUUID` | 不清，跨会话状态原样带过去 | **真缺陷** |
+| — | `O_EXCL` | ✓ 我们的 `create_new` 等价 | 已对齐 |
+| — | 标题继承 `… (fork)` / `content-replacement` 条目 | 没有 | 可选，非缺陷 |
+
+### §0.4 一个**刻意不跟**官方的地方：切片语义
+
+官方 `up_to_message_id` 是**文件线性切片**（`transcript[:cutoff+1]`）；
+我们是**沿 parentUuid 祖先回溯**。
+
+**我们保持祖先回溯，理由**：用户已拍板「**废弃分支也要给路口**」，而
+`branching.ts` 头注记着真机 1297 条里约 **3%** 的 parent 会 fork。
+从一个 off-main 节点**祖先回溯**拿到的正是「你 ESC 之前那条对话的完整血统」——
+干净、准确；**线性切片**会把同期其它废弃分支一起卷进去。
+这是本计划**唯一**一处与官方语义有意分歧，写在这里备查。
+
+### §0.5 三条硬约束
+
+| # | 约束 | 依据 |
+|---|---|---|
+| 1 | **不改 `TMUX_LS_FMT`**（红线） | 它只有 6 列且不含账号 ⇒ 账号继承**不能**从这里拿，必须另找来源（§3-2） |
+| 2 | **`readonly_guard` 是要改的，但只准收窄不准删** | 见 §4。禁用清单实为：`fs::write` / `create_dir` / `remove_file` / `remove_dir` / `rename` / `copy` / `hard_link` / `soft_link` / `File::create` / `File::options` / `OpenOptions` |
+| 3 | **`shared/ccm` 要改必须先问用户** | 起新会话可能要走它 |
+
+---
+
+## §1 功能清单
+
+| ID | 功能 | 一句话目标 | 依赖 | 风险 |
+|----|------|-----------|------|------|
+| **G0** | **补齐六个缺口 + 钉住切片语义** | `build_branch_records` 按 §0.3 对齐官方；§0.4 的分歧写成测试与注释 | — | 中（改已发布行为） |
+| **G1** | **变换逻辑提成共享纯函数** | monitor 与 daemon **共用同一份**，不写两遍 | G0 | 中（跨 crate，daemon 不在 workspace） |
+| **G2** | **daemon 加 `--fork-session`** | 远端本地读写，不把几十 MB jsonl 拉过 ssh。**同轮收窄 `readonly_guard`** | G1 | **高**（动护栏 + daemon 首次写盘） |
+| **G3** | **起新会话时继承原会话参数** | 账号 + tmux + cwd 照搬，只换 sid；**两个都活着** | G2 | 高（账号来源见 §3-2） |
+| **G4** | **实时会话消息级入口** | `tabs.ts` 传 `onCardRendered`，复用同一个按钮 | G0 | 中（动主平台主路径） |
+| **G5** | **off-main 入口保留但呈现区分** | 弱化样式 + 换文案，说清「这条是被 ESC 回退掉的」 | G4 | 低 |
+| **G6** | **远端入口解禁** | `session-viewer` 与实时 tab 的 origin 门放开，走 G2 | G2,G4 | 中 |
+
+**顺序理由**：G0 是所有人的地基（现在的产物有缺陷，先修再扩散）。G1 把它变成可共享的形状，
+否则 G2 会催生第二份实现。G2 是远端的唯一通路且风险最高，早做早暴露。
+G3 依赖 G2 才能在远端起会话。G4/G5 是纯前端、与后端正交，可与 G2/G3 并行。
+G6 是最后把门打开。
+
+### §1.1 明确**不做**（防范围蔓延）
+
+- **不引入 Python / SDK 依赖**（§0.2）。
+- **不改切片语义为线性**（§0.4）。
+- **不做标题继承 / `content-replacement`**——非缺陷，等有人要再说。
+- **不碰 CC 自己的 `/branch`**：我们这条路与它并行，不试图取代或拦截它。
+
+---
+
+## §2 目标形态
+
+```
+用户在任意一条消息旁点「⑂ 分叉」
+        │
+        ├─ 本地会话 ── monitor: fork_records()（Rust 纯函数）→ 写新 jsonl
+        │
+        └─ 远端会话 ── daemon --fork-session（远端本地读写）→ 回新 sid
+        │
+        ▼
+   读原会话的启动参数（账号 / 是否 tmux / cwd）
+        │
+        ▼
+   用同一套参数起**新**会话（只换 sid + 换 tmux 名）
+        │
+        ▼
+   原会话照跑不动、tab 不变灰；新会话另起一个 tab
+```
+
+**「不杀旧会话」的准确含义**（用户 2026-07-31 确认）：不走 CC 的 `/branch`
+（那是同一 pidfile 原地换 sid = S0 那个 `Superseded`），而是**复制 jsonl + 另起一个进程**。
+结果是**两条都能继续聊**。
+
+---
+
+## §3 ★共享面账本
+
+| # | 共享面 | 涉及 | 最终形态 | 当前状态 |
+|---|---|---|---|---|
+| 1 | **记录变换逻辑** | G0,G1,G2 | **一份纯函数，monitor 与 daemon 共用**。daemon 刻意不在 workspace（Linux-only 不能拖累 Windows CI）⇒ 共享方式要选：`path` 依赖 / 复制 + 漂移守卫 / 提第三个 crate。**G1 必须先定，否则 G2 会长出第二份实现** | 只在 `history.rs` 里，monitor 独占 |
+| 2 | **`readonly_guard`** | G2 | **收窄不删**：仍禁一切写，**除了**一个显式白名单模块，且它只准 `O_EXCL` 新建 —— 见 §4 | 全面禁写（11 条模式） |
+| 3 | **`⑂` 按钮与 `onCardRendered`** | G4,G5,G6 | 按钮组件**一份**，历史查看器与实时 tab 共用；on-main / off-main / 远端三种呈现由参数区分 | 钩子已在共享的 `render-stream-record.ts:172`；**只有 viewer 传了它**，`tabs.ts` 没传 |
+| 4 | **「这个会话怎么起的」** | G3 | **一处解析**：账号 / tmux / cwd 由同一个函数答，起会话与显示都读它 | **散的**：`TMUX_LS_FMT` 有 cwd 无账号（且不许改）；账号要走 daemon `--session-accounts`；tmux 与否要看 `@ccm_sid` / `@ccm_agent` |
+| 5 | **`launch-*` IR 族** | G3 | 分叉起会话**走既有 IR**（`launch-plan` / `launch-dimensions`），不另造一条起会话路径 | IR 已有 `identity.ccmSid` 等维度；分支目前**绕开** IR 直接拼 resume 命令 |
+| 6 | **`branching.ts` 主线判定** | G5 | UI 判 on/off-main 与折叠共用 `computeMainBranch`，按钮呈现读同一个集合 | 已有，`branch-fold` 在用；按钮**没读** |
+
+---
+
+## §4 `readonly_guard` 怎么改（E50 的答案）
+
+**不删、不放宽成「随便写」，而是把不变量重新表述准确。**
+
+那条护栏的**真实意图**从来不是「daemon 不许碰文件系统」，而是
+**「daemon 不许改动用户既有数据」**。今天用「全面禁写」来近似它，因为此前 daemon 确实
+一个字都不用写。现在要加的能力恰好落在这个近似的**误差里**：
+
+> **用 `O_EXCL` 新建一个此前不存在的文件**，不修改、不覆盖、不删除任何既有文件。
+
+⇒ 护栏改成两层：
+1. **默认层不变**：daemon 生产源码仍不得出现那 11 条写模式。
+2. **白名单层**：**恰好一个**模块（如 `fork_write.rs`）可写，且对它另加**更强**的断言 ——
+   只准 `O_EXCL` 新建、不得出现 `remove_*` / `rename` / `truncate` / 追加写，
+   且路径必须落在 projects 目录下。
+
+**这比今天更强而不是更弱**：今天护栏对「daemon 将来要写盘」没有任何设计，
+一旦有人要写就只能整条删掉；收窄之后，写的能力被钉死在一个可审计的洞里。
+
+**同时要更新** `doc/INVARIANTS.md` 里 I7 的措辞（E50 本来就是这件事）——
+把「daemon 只读」改成「daemon 不改动既有数据；新增文件须 `O_EXCL` 且限于白名单模块」。
+
+---
+
+## §5 已知风险
+
+1. **G0 改的是已发布行为。** v3.5.0 里 F62 已经在用户手上；uuid remap 会让**新**分支
+   与旧分支形态不同。要确认：已存在的分支文件不受影响（我们不迁移任何已有文件）。
+2. **实时会话的 jsonl 还在增长。** 从一条消息分叉时，文件末尾可能正在被 CC 追加。
+   祖先回溯只依赖被选节点及其祖先（都已落盘），所以**理论上安全**，但要有测试钉住
+   「分叉过程中源文件继续增长，产出不受影响」。
+3. **账号来源不确定（最高风险）。** §3-4：`TMUX_LS_FMT` 不含账号且**不许改**。
+   `--session-accounts` 是现成的答案，但它按 **PID** 扫 `sessions/<PID>.json` ——
+   对**已退出**的历史会话可能答不出。⇒ G3 的 Phase B 第一步就是**查清「历史会话能不能
+   还原出它当初用的账号」**，答不出就要设计降级（例如让用户在分叉时选一次，而不是猜）。
+4. **daemon 首次写盘。** 除了护栏，还要想清并发（两个 monitor 同时分叉同一会话）、
+   磁盘满、远端 projects 目录权限。`O_EXCL` 挡住覆盖，但错误要能回到 UI（§12 可见失败）。
+5. **`tabs.ts` 是主平台主路径。** G4 动它。用户已解禁（settings-ia 期间），但仍是高风险面。
+6. **G1 的共享方式选错会留长期债。** daemon 不在 workspace 是**刻意的**（Windows CI）。
+   三条路各有代价，Phase B 要拿实测说话，不能拍脑袋。
+
+---
+
+## §6 测试约定
+
+沿用既有门禁（`quality-gates` 已有），不新搭。基线（v3.5.0 实测）：
+vitest **1048 / 72 文件** · monitor `cargo test --all` **644** · vendor `code-picture-core` **25** ·
+daemon **176** · tsc 0 · check:types 67 · eslint 7 / stylelint 50（顾问式基线）· 8 套 e2e **149** 断言。
+
+**本区额外要求**：
+- G0 的六条补齐**逐条**要有能被变异打红的测试（变异判定**一律用退出码**）。
+- G2 的护栏收窄必须自带**反向自检**：白名单模块之外写一句 `fs::write` 要红；
+  白名单模块里写一句 `fs::remove_file` 也要红。
+- 远端路径要有一套 e2e（私有 socket），不能只有单测。
+
+---
+
+## §7 待用户确认
+
+| # | 事项 | 我的建议 |
+|---|---|---|
+| 1 | **主计划本身** | 请审批 |
+| 2 | G2 要动 `readonly_guard`（红线「护栏不动」） | 按 §4 **收窄**，不删。需要你点头 |
+| 3 | G3 若查明历史会话还原不出账号 | 降级成「分叉时让用户选一次」，**不猜**。到时如实回报 |
+| 4 | G3 若需要改 `shared/ccm`（红线「先问」） | 先尽量不改；真要改我停下来问 |
+
+---
+
+## §8 变更记录
+
+| # | 日期 | 改了什么 / 为什么 |
+|---|---|---|
+| 01 | 2026-07-31 | Phase A 落盘。基于用户四条要求 + 「废弃分支给路口」拍板 + **对官方 SDK `fork_session` 真源码的逐条对照**（不是转述报告）。两处订正了外部建议：① SDK 是 Python，我们零 Python 依赖且 daemon 是 musl 静态二进制 ⇒ **不能直接用**；② 「远端问题自动消失」是对方架构的性质，对我们不成立。真正的价值是那份对照照出了**我们六个缺口**（§0.3），其中 `logicalParentUuid` 全仓 0 命中、uuid 不 remap 导致溯源自指、泄漏字段不清，是真缺陷。 |
