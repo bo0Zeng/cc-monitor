@@ -184,6 +184,8 @@ export interface RemoteSectionOptions {
 
 /** S4b：机器详情页的路由 id 前缀。 */
 export const MACHINE_PAGE_PREFIX = "machine:";
+/** S4b-2：本机那一页的路由 id。与 `LOCAL_MACHINE_KEY` 同源，两处不各写一份。 */
+export const LOCAL_MACHINE_PAGE_ID = `${MACHINE_PAGE_PREFIX}${LOCAL_MACHINE_KEY}`;
 
 // === 共享 DOM 小工具 ===
 
@@ -1296,20 +1298,26 @@ export class RemoteSection {
    */
   private buildLocalRow(): HTMLElement {
     const row = document.createElement("div");
-    row.className = "remote-machine remote-machine-local";
+    row.className = "remote-machine remote-machine-row remote-machine-local";
+    row.dataset.pageId = LOCAL_MACHINE_PAGE_ID;
     const legend = document.createElement("div");
     legend.className = "remote-machine-legend";
     row.appendChild(legend);
 
-    const name = document.createElement("span");
-    name.className = "remote-machine-name";
+    // S4b-2：本机也有自己的一页 —— 「本地 = 不走 ssh 的远端」不只是说法，
+    // 它在导航里就该和别的机器长得一样、点得进去。
+    const name = document.createElement("button");
+    name.type = "button";
+    name.className = "remote-machine-name remote-machine-open";
     name.textContent = "本机";
+    name.addEventListener("click", () =>
+      this.pages?.navigateToMachinePage(LOCAL_MACHINE_PAGE_ID),
+    );
     legend.appendChild(name);
 
     const strip = document.createElement("span");
     strip.className = "remote-machine-status";
     legend.appendChild(strip);
-
     // daemon 那格对本机是**不适用**，不是「缺组件」：`watcher.rs` 直读 jsonl，
     // 本机压根不需要 daemon（主计划 §2.4 那张表逐字写着「不需要」）。
     renderStatusCells(strip, readStatus(LOCAL_MACHINE_KEY), {
@@ -1327,6 +1335,13 @@ export class RemoteSection {
     this.cards = [];
     this.machinesContainer.innerHTML = "";
     this.machinesContainer.appendChild(this.buildLocalRow());
+    if (this.pages) {
+      // 本机页的内容由宿主（panel）填 —— 它拿得到那几块 per-machine 分节，本分节拿不到。
+      const localPage = document.createElement("div");
+      localPage.className = "machine-page-local";
+      this.pages.addMachinePage(LOCAL_MACHINE_PAGE_ID, "本机", localPage);
+      this.machinePageIds.push(LOCAL_MACHINE_PAGE_ID);
+    }
     for (const h of hosts) {
       // 从 config 重建的卡片默认折叠（只显示机器名）——多机时列表整洁；点名称展开编辑。
       // S1：从盘上来的卡片带着它此刻的 origin 当 persistedKey。

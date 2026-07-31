@@ -19,9 +19,28 @@ const { remoteRefresh, dataRefresh } = vi.hoisted(() => ({
 // —— 重子分区 stub 成 { element }，聚焦分组结构本身 —— //
 // 注：vi.mock 工厂被提升到文件顶部、不能引用顶层变量，故每个工厂内联一个占位类。
 vi.mock("./remote-section", () => ({
+  // S4b-2：stub 必须**履行它替身的那份契约** —— 真 RemoteSection 在 refresh 时会调
+  // `pages.addMachinePage` 注册本机页，panel 靠那一刻把 per-machine 分节安顿下来。
+  // stub 不调的话，那几块就永远游离在文档之外，测试会以为它们「消失了」。
+  MACHINE_PAGE_PREFIX: "machine:",
+  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
   RemoteSection: class {
     element = document.createElement("div");
     refresh = remoteRefresh;
+    constructor(opts?: {
+      pages?: {
+        addMachinePage: (id: string, title: string, el: HTMLElement) => void;
+      };
+    }) {
+      
+      // **延后注册**：真 RemoteSection 是在异步 `refresh()` 里注册页的，
+      // 所以本机页排在 buildBody 注册的那几个主路由**之后**。同步注册会让它抢在
+      // 「应用/机器/…」前面成为第一页，落地页与导航顺序就都错了。
+      setTimeout(() => {
+        const page = document.createElement("div");
+        opts?.pages?.addMachinePage("machine:（本机）", "本机", page);
+      }, 0);
+    }
   },
 }));
 vi.mock("./data-section", () => ({
@@ -125,12 +144,16 @@ describe("S2 设置面板分页结构", () => {
     expect(navTitles()).toEqual(["应用", "机器", "改动足迹", "cc-bus"]);
   });
 
-  it("★ 逐页完整清单 —— 14 个叶子块一个不少、一个不错位", () => {
+  /** 等 RemoteSection 那边异步注册完本机页（真实实现是在 `refresh()` 里注册的）。 */
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  it("★ 逐页完整清单 —— 14 个叶子块一个不少、一个不错位", async () => {
     // 这是本轮最重要的一条：S2 只搬不改，**搬丢一块 = 一个功能凭空消失**，
     // 而它在 UI 上的表现只是「某个设置项找不到了」，不会报错。
     // 用**完整相等**而不是 `toContain`：后者对「多出一块」和「顺序乱了」都是瞎的。
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
+    await tick();
     expect(pageTitles("app")).toEqual([
       "行为",
       "快捷键",
@@ -142,11 +165,10 @@ describe("S2 设置面板分页结构", () => {
       "诊断",
       "数据存储",
     ]);
-    // 这四块归「机器」的判据：它们**各自维护着一份 origin 选择器**
-    //（主计划 §5-4 点名 accounts/mcp/cc-bus/cc-bus-hooks 四份互不同步）
-    // ⇒ 它们改的是某台机器的状态。S4 会把这四份换成「当前在哪台机器页」这个上下文。
-    expect(pageTitles("machines")).toEqual([
-      "连接（远端）",
+    // ★ S4b-2：这四块**已从列表页搬到机器详情页**。「机器」这一页现在只剩机器列表本身。
+    expect(pageTitles("machines")).toEqual(["连接（远端）"]);
+    // 它们跟着「当前在看哪台机器」走；初始落在本机页上（与 machine-context 的初始值对齐）。
+    expect(pageTitles("machine:（本机）")).toEqual([
       "账号",
       "终端集成",
       "MCP",
@@ -156,11 +178,12 @@ describe("S2 设置面板分页结构", () => {
     expect(pageTitles("cc-bus")).toEqual(["cc-bus"]);
   });
 
-  it("「账号」块真的挂着 AccountsSection（不是只有个标题）", () => {
+  it("「账号」块真的挂着 AccountsSection（不是只有个标题）", async () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
+    await tick();
     const page = document.querySelector<HTMLElement>(
-      '.settings-page[data-route-id="machines"]',
+      '.settings-page[data-route-id="machine:（本机）"]',
     );
     expect(page!.querySelector(".accounts-section-stub")).toBeTruthy();
     // F82b 那个「留空占位」组已随 S2 一并消失（它的说明文案也删了，见 panel.ts 注释）。
@@ -204,5 +227,42 @@ describe("S2 设置面板分页结构", () => {
     await p.open();
     expect(remoteRefresh).toHaveBeenCalled();
     expect(dataRefresh).toHaveBeenCalled();
+  });
+
+  it("★ 本机页上不出现只对远端有意义的块（S4a 那个半截状态的解药）", async () => {
+    // S4a 时三块的下拉只列远端、表示不了本机，收到 null 只能原地不动。
+    // 现在本机页上它们压根不显示，「表示不了」这件事也就不存在了。
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    await tick();
+    const local = document.querySelector<HTMLElement>(
+      '.settings-page[data-route-id="machine:（本机）"]',
+    )!;
+    const visibleTitles = [...local.querySelectorAll<HTMLElement>(".settings-group")]
+      .filter((g) => !g.hidden)
+      .map((g) => g.querySelector(".settings-group-title")?.textContent ?? "");
+    // 「账号」是 per-origin 的远端概念 ⇒ 本机页上隐藏；
+    // 「终端集成」（PowerShell $PROFILE）只对本机有意义 ⇒ 显示。
+    expect(visibleTitles).toContain("终端集成");
+    expect(visibleTitles).not.toContain("账号");
+    // MCP / cc-bus 钩子两边都有意义
+    expect(visibleTitles).toContain("MCP");
+    expect(visibleTitles).toContain("cc-bus 钩子");
+  });
+
+  it("★ RemoteSection 挂掉时那四块仍在（隔离不能因为它们依赖机器页而被打破）", async () => {
+    // 审计时真造它抛才发现的：没有机器页 ⇒ slot 无处安放 ⇒ 四块一起消失，
+    // 那就是「一块坏，五块没」。兜底落点让最坏情况只是它们留在列表页上。
+    // 这里用「本机页没注册」来代表那个场景（stub 不注册 = RemoteSection 没跑起来）。
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    // **不等** tick：此刻本机页还没注册，等价于 RemoteSection 挂掉的处境。
+    expect(pageTitles("machines")).toEqual([
+      "连接（远端）",
+      "账号",
+      "终端集成",
+      "MCP",
+      "cc-bus 钩子",
+    ]);
   });
 });
