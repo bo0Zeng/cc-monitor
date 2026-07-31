@@ -69,16 +69,48 @@ describe("hostOsAllows —— 失败方向", () => {
 });
 
 describe("hostOs 覆盖值", () => {
-  it("置了就用置的；清掉后回到真实探测", () => {
-    __setHostOsForTests("windows");
-    expect(hostOs()).toBe("windows");
-    __setHostOsForTests(null);
-    // **这里刻意写死 `linux` 而不是 `detectHostOs(navigator.userAgent)`**：
-    // 后者是把被测函数跟它自己的实现对拍，是同义反复 —— 审计用变异实测过，
-    // 把 `hostOs()` 里那句 UA 兜底（`typeof navigator === "undefined"` / `?? ""`）
-    // 整个删掉，那种写法**照样绿**。
-    // jsdom 的 UA 含 `linux`，所以真实探测的答案就是 linux；写死它才有牙。
-    expect(hostOs()).toBe("linux");
+  /**
+   * 把 `navigator.userAgent` 换成指定串。
+   *
+   * **为什么必须替，不能读环境里那个**：jsdom 的 UA 是
+   * `Mozilla/5.0 (${process.platform}) …` —— Linux 上是 `linux`（判成 linux），
+   * **Windows 上是 `win32`**（既不含 `Windows NT` 也不含 `Windows`，判成 unknown）。
+   * 我上一版就在这里写死了 `linux`，本机绿、**Windows CI 直接红**，
+   * 而这个项目的主平台恰恰是 Windows。
+   *
+   * 换句话说：想验「`hostOs()` 真的去读了 navigator」，就得**自己提供那个 UA**，
+   * 否则不是同义反复（拿实现对拍实现），就是把宿主平台混进判据。
+   */
+  function withUa<T>(ua: string, fn: () => T): T {
+    const saved = Object.getOwnPropertyDescriptor(globalThis.navigator, "userAgent");
+    Object.defineProperty(globalThis.navigator, "userAgent", {
+      value: ua,
+      configurable: true,
+    });
+    try {
+      return fn();
+    } finally {
+      if (saved) Object.defineProperty(globalThis.navigator, "userAgent", saved);
+      __setHostOsForTests(null);
+    }
+  }
+
+  it("★ 置了就用置的：覆盖值优先于真实 UA", () => {
+    withUa(UA.linux, () => {
+      __setHostOsForTests("windows");
+      expect(hostOs()).toBe("windows");
+    });
+  });
+
+  it("★ 清掉覆盖值后**真的去读 navigator.userAgent**（不是同义反复）", () => {
+    withUa(UA.windows, () => {
+      __setHostOsForTests(null);
+      expect(hostOs()).toBe("windows");
+    });
+    withUa(UA.macos, () => {
+      __setHostOsForTests(null);
+      expect(hostOs()).toBe("macos");
+    });
   });
 
   it("★ 没有 navigator（非浏览器宿主）时不许抛，判成 unknown", () => {
