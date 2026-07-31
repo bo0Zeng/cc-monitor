@@ -1,0 +1,45 @@
+  Settings  Status  Config  Usage  Stats
+
+  Session
+
+  Total cost:            $1210.97
+  Total duration (API):  1d 15h 51m
+  Total duration (wall): 2d 13h 15m
+  Total code changes:    15126 lines added, 252 lines removed
+  Usage by model:
+        claude-opus-5:  216.4k input, 5.4m output, 1.8b cache read, 16.2m cache write ($1206.06)
+        claude-haiku-4-5: 2.8m input, 86.3k output, 0 cache read, 0 cache write, 171 web search ($4.90)
+
+  Current session
+  ███████░░░░░░░░░░░░░░░░░░░░░░░░  12% used
+  Resets 2:20am (America/Los_Angeles)
+
+  Current week (all models)
+  ████████████████░░░░░░░░░░░░░░░  59% used
+  Resets Jul 31, 10pm (America/Los_Angeles)
+  +50% weekly limits promo through Aug 19 · clau.de/cc-50-promo
+
+  Current week (Fable)
+  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  8% used
+  Resets Jul 31, 9:59pm (America/Los_Angeles)
+
+  What's contributing to your limits usage?
+  Approximate, based on local sessions on this machine — does not include other devices or claude.ai
+
+  Last 24h · these are independent characteristics of your usage, not a breakdown
+
+  96% of your usage came from sessions active for 8+ hours
+    These are often background/loop sessions. Continuous usage can add up quickly
+    so make sure it is intentional.
+
+  92% of your usage was at >150k context
+    Longer sessions are more expensive even when cached. /compact mid-task, /clear
+    when switching to new tasks.
+
+  62% of your usage came from subagent-heavy sessions
+    Each subagent runs its own requests. Be deliberate about spawning them — and
+    consider configuring a cheaper model for simpler subagents.
+
+  Skills                  % of usage
+  /loop                          31%
+  /research-method                1%

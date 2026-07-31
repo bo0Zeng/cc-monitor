@@ -2,19 +2,23 @@
  * F10（unify-launch，剩余账号 UX）：解析 `/usage` 斜杠命令的 capture-pane 抓屏文本，提取
  * Claude 订阅计划的用量窗口百分比（"plan 窗口%"）。
  *
- * ★ 本文件的正则模式基于训练知识对 Claude Code CLI `/usage` 命令公开呈现形态的回忆重建，
- * **没有经过任何真机验证**——本仓库的开发环境里不应该启动一个真实已认证的 claude 子进程去
- * 测试（会消耗真实 API/订阅额度、且与当前会话交互不可控），见 `.claude/planned-build/
- * unify-launch/features/F10-remaining-account-ux.md` §0/§7。上线前必须按该文件 §7 的真机
- * 验证清单核实，并按需重写下面的 `LABEL_PATTERNS`/`PERCENT_RE`/`RESET_RE`。
+ * ★ **2026-07-31 已真机验证并据此重写**（E42）。此前这里写着「基于训练知识回忆重建、没有经过
+ * 任何真机验证」——那句是诚实的，而它预告的失败**真的发生了**：用户实测报「抓到了屏幕但认不出
+ * 格式」。真机抓屏由用户以截图提供（本仓库开发环境**不**启动真实已认证的 claude 子进程，
+ * 那会消耗真实订阅额度且与用户当前会话交互不可控），转录存于
+ * `src/__fixtures__/usage-capture-2026-07-31.txt`，测试直接读它。
  *
- * 设计原则：格式漂移时优雅降级到 "unrecognized"，绝不 throw、绝不伪造数据。这是唯一需要在
- * 真机验证后重写的文件——Rust 侧的探针编排（`account_usage.rs`）完全不理解这里的语义，
- * 调用方（`account-usage.ts`/UI）只认这里导出的判别式类型，不需要跟着改。
+ * 那次验证改掉的**不只是正则字面量，而是形状**：窗口从「硬编码 3 条枚举」改成「结构性扫描」，
+ * 因为真机第三块是 `Current week (Fable)` —— 括号里是**会变的模型名**，枚举天然追不上。
+ * 详见下面 `BUCKET_HEADER_RE` 的注释。
+ *
+ * 设计原则：格式漂移时优雅降级到 "unrecognized"，绝不 throw、绝不伪造数据。Rust 侧的探针编排
+ * （`account_usage.rs`）完全不理解这里的语义，调用方（`account-usage.ts`/UI）只认这里导出的
+ * 判别式类型；格式再变时，**改这一个文件就够**。
  */
 
 export interface AccountUsageBucket {
-  /** 人话标签（从原文抓到的最贴近的标签词，不是枚举——真机验证前有多少个窗口、叫什么都不确定）。 */
+  /** 人话标签（从原文抓到的最贴近的标签词，**不是枚举**——有多少个窗口、叫什么都会变）。 */
   label: string;
   /** 0-100，已用百分比（不是剩余）。 */
   usedPercent: number;
@@ -28,13 +32,47 @@ export type AccountUsageParseResult =
   | { status: "not-logged-in"; raw?: string }
   | { status: "cli-missing"; raw?: string };
 
-// ---- 训练知识猜测的正则模式（★ 非真机验证，见文件头注） ----
+// ---- 解析模式（★ 对照 2026-07-31 真机抓屏夹具，见文件头注） ----
 
-const LABEL_PATTERNS: { label: string; re: RegExp }[] = [
-  { label: "会话窗口（约 5 小时）", re: /current\s+session|session\s+usage/i },
-  { label: "每周窗口（全部模型）", re: /current\s+week(?!.*opus)|weekly\s+usage/i },
-  { label: "每周窗口（Opus）", re: /current\s+week.*opus|opus.*week/i },
-];
+/**
+ * ★ 2026-07-31 真机验证后重写（本文件头注要求的那次验证，用户提供了真实抓屏）。
+ *
+ * **真实形态**（`src/__fixtures__/usage-capture-2026-07-31.txt`，逐字转录）：
+ * ```
+ * Current session
+ * ███████░░░░  12% used
+ * Resets 2:20am (America/Los_Angeles)
+ *
+ * Current week (all models)
+ * ████████░░░░  59% used
+ * Resets Jul 31, 10pm (America/Los_Angeles)
+ *
+ * Current week (Fable)          ← ★ 括号里是**模型名**，会变
+ * ██░░░░░░░░░░  8% used
+ * Resets Jul 31, 9:59pm (America/Los_Angeles)
+ * ```
+ *
+ * **旧版为什么错**：它把三个窗口**硬编码成枚举**，第三条写死 `/current\s+week.*opus/`。
+ * 而真机第三块是 `Current week (Fable)` ⇒ **那一整块被静默丢掉**（实测：旧版对这份真实
+ * 输出返回 `ok` 但只有 2 个 bucket，用户看不出少了一个）。
+ * 而且本文件 `AccountUsageBucket.label` 的注释**本来就写着**「从原文抓到的最贴近的标签词，
+ * **不是枚举** —— 有多少个窗口、叫什么都不确定」。旧版没照那句做。
+ *
+ * ⇒ 改成**结构性识别**：凡是「独占一行的 `Current session` / `Current week (…)`」都算一个窗口，
+ * 标签从原文取。以后 Anthropic 加一个窗口、改一个模型名，这里都不用动。
+ */
+const BUCKET_HEADER_RE = /^\s*(Current\s+(?:session|week)(?:\s*\([^)]*\))?)\s*$/i;
+
+/** 把原文标签译成人话，**括号里的模型名原样保留**（它是会变的那部分）。 */
+function displayLabel(rawHeader: string): string {
+  const m = /^\s*Current\s+(session|week)\s*(?:\(([^)]*)\))?\s*$/i.exec(rawHeader);
+  if (!m) return rawHeader.trim();
+  const base = m[1].toLowerCase() === "session" ? "会话窗口" : "每周窗口";
+  const inner = (m[2] ?? "").trim();
+  if (!inner) return base;
+  if (/^all\s+models$/i.test(inner)) return `${base}（全部模型）`;
+  return `${base}（${inner}）`;
+}
 
 const PERCENT_RE = /(\d{1,3})\s*%/;
 const RESET_RE = /reset[s]?\s*(?:at|in)?\s*:?\s*([^\n]{1,40})/i;
@@ -63,15 +101,17 @@ export function parseUsageCapture(raw: string): AccountUsageParseResult {
 
   const lines = trimmed.split("\n");
   const buckets: AccountUsageBucket[] = [];
-  for (const { label, re } of LABEL_PATTERNS) {
-    const idx = lines.findIndex((l) => re.test(l));
-    if (idx === -1) continue;
-    const windowLines = lines.slice(idx, idx + BLOCK_LOOKAHEAD_LINES + 1).join("\n");
+  // 结构性扫描：每个「独占一行的 Current …」开一个窗口，往后数几行找 % 与 Resets。
+  // **不去重、不限个数** —— 有几个就报几个（旧版硬编码 3 条，多了报不出、改名就丢）。
+  for (let i = 0; i < lines.length; i++) {
+    const header = BUCKET_HEADER_RE.exec(lines[i]);
+    if (!header) continue;
+    const windowLines = lines.slice(i + 1, i + 1 + BLOCK_LOOKAHEAD_LINES).join("\n");
     const pctMatch = PERCENT_RE.exec(windowLines);
     if (!pctMatch) continue;
     const resetMatch = RESET_RE.exec(windowLines);
     buckets.push({
-      label,
+      label: displayLabel(header[1]),
       usedPercent: Number(pctMatch[1]),
       resetIn: resetMatch ? resetMatch[1].trim() : undefined,
     });

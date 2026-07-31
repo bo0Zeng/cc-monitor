@@ -42,10 +42,31 @@ const PROBE_COLS: u32 = 200;
 const PROBE_ROWS: u32 = 50;
 /// 看门狗自毁超时（秒）——正常路径下探针几秒内就该跑完+清理，这是"万一跑不完"的保险丝。
 const WATCHDOG_TIMEOUT_SECS: u32 = 30;
-/// 画面稳定轮询：每次间隔（秒）+ 最大轮询次数——用"连续两次抓屏内容一致"代替固定 sleep 猜测
-/// 冷启动/网络查询耗时（真机耗时未知，格式无关、版本无关，见 F10 计划 §1 设计说明）。
-const QUIESCENCE_POLL_INTERVAL_SECS: &str = "0.5";
-const QUIESCENCE_MAX_POLLS: u32 = 14; // ≈7s 上限
+/// 画面稳定轮询：用"抓屏内容连续多久没变"代替固定 sleep 猜测冷启动/网络查询耗时
+/// （真机耗时未知，且这个判据格式无关、版本无关，见 F10 计划 §1 设计说明）。
+const QUIESCENCE_POLL_INTERVAL_MS: u32 = 500;
+/// 判定"画面稳定"所需的**连续无变化次数**（× 间隔 = 静止时长）。6 × 0.5s = 3s。
+///
+/// ★ **这是 E42 的真正修复点**，且是唯一有实测支撑的那一半
+/// （`e2e/usage-probe-acceptance.sh` 场景 4：把它调回 1 就红，其余场景全绿）。
+/// 之所以是"静止时长"而不是"画面变过没有"：`send-keys '/usage'` 打进去的字符**会被终端
+/// 回显**，屏幕在毫秒级就变了 —— 任何"变过就算数"的判据都会被回显自己满足
+/// （我第一版修法就是这么错的，已在真 tmux 上证伪）。**能区分"渲染完了"和"还在等"的
+/// 只有：静止得够久。**
+///
+/// 3s 是**预算，不是测量值**：本仓库不允许起真实已认证的 claude 去测真实渲染耗时
+/// （消耗真实订阅额度、且与用户当前会话交互不可控）。取 3s 的依据是它显著大于回显与
+/// TUI 重绘的时间尺度（~10ms 级），又装得进下面的时间预算。**残余风险如实说**：真 claude
+/// 若在渲染途中静止超过 3s（如网络请求卡顿），仍会抓早 —— 那种情况下解析器返回
+/// `unrecognized` 并把原始屏带回 UI（"复制诊断文本"），是**可见失败，不是静默错值**。
+const QUIESCENCE_STILL_POLLS: u32 = 6;
+/// 两段等待的轮询上限**分开给**——它们等的不是一回事，预算也不该平摊。
+///
+/// 第一段等 claude 的 REPL 起来（本地进程启动，快）；第二段等 `/usage` 的面板渲染出来
+/// （要拉一次用量数据，可能走网络，慢）。总和受 [`EXEC_TIMEOUT_SECS`] 约束，
+/// 由 `time_budget_ordering_holds` 钉住。
+const STARTUP_MAX_POLLS: u32 = 12; // 6s
+const RENDER_MAX_POLLS: u32 = 20; // 10s
 /// Rust 侧整条 exec 的硬超时——防 SSH 通道本身卡死导致 `account_usage` 永久挂起（比现有
 /// `tmux.rs` 几个近乎瞬时往返的命令更谨慎，因为这次故意要在远端阻塞较久）。
 const EXEC_TIMEOUT_SECS: u64 = 25;
@@ -79,6 +100,50 @@ fn slugify_account_name(name: &str) -> String {
     }
 }
 
+/// 每轮 `sleep` 的秒数字面量（由 [`QUIESCENCE_POLL_INTERVAL_MS`] 推导，不双写）。
+fn poll_interval_secs() -> String {
+    format!(
+        "{}.{:03}",
+        QUIESCENCE_POLL_INTERVAL_MS / 1000,
+        QUIESCENCE_POLL_INTERVAL_MS % 1000
+    )
+}
+
+/// 稳定轮询片段：抓屏直到「**相对基线变过** 且 **连续静止够久**」，或到 `max_polls` 上限。
+///
+/// ★ 2026-07-31（E42）重做。原判据是「连续两次一致且非空」，间隔 0.5s ⇒ send-keys
+/// `/usage` 之后 t=0.5s / t=1.0s 抓到的都还是渲染前的画面，两次相等 ⇒ 立刻 break ⇒
+/// 抓回去的屏上根本没有 /usage 面板。用户实测症状正是「抓到了屏幕但认不出格式」。
+///
+/// 判据两半，**证据强度不同，别当成一回事**：
+///
+/// 1. 连续 [`QUIESCENCE_STILL_POLLS`] 次无变化 —— **修复 E42 的就是这一半**，
+///    有 e2e 场景 4（慢速 stand-in）红/绿两向实测。
+/// 2. `cur != base` —— 排除"什么都没发生"（键没送到 / 会话没起来）。
+///    **这一半没有实测支撑，是推理**：拿掉它 e2e 仍 9/9 全绿（实测过）。留着的理由是它守
+///    第 1 半守不住的那个形态 —— 「渲染前的画面本身就静止 ≥3s」，典型是 claude 启动慢时
+///    第一段等待停在静止的 shell 提示符上，于是 `/usage` 在 TUI 的输入框就绪前就被送出去、
+///    被真 claude 丢掉。e2e 复现不了它，因为 stand-in 是个 shell：**tty 会把早到的按键缓冲
+///    住**，等程序开始 read 时照样交付，而真 TUI 不会。代价有界（最多多等到上限，且届时
+///    抓到的内容与提前 break 时相同），所以按 fail-safe 留下，但不谎称它被验证过。
+///
+/// `$base` 由调用点在每次 send-keys **之前**取；只取一次不行（第二段会拿"claude 已起来"
+/// 的屏当基线，第 2 半退化成恒真）。
+fn quiescence_wait(t: &str, max_polls: u32) -> String {
+    let interval = poll_interval_secs();
+    let still = QUIESCENCE_STILL_POLLS;
+    format!(
+        "prev=''; same=0; i=0; while [ $i -lt {max_polls} ]; do \
+sleep {interval}; \
+cur=\"$(tmux capture-pane -p -t {t} 2>/dev/null || true)\"; \
+if [ -n \"$cur\" ] && [ \"$cur\" = \"$prev\" ]; then same=$((same+1)); else same=0; fi; \
+prev=\"$cur\"; \
+if [ -n \"$cur\" ] && [ \"$cur\" != \"$base\" ] && [ $same -ge {still} ]; then break; fi; \
+i=$((i+1)); \
+done"
+    )
+}
+
 /// 构造整条探针远端脚本（纯函数，可单测——同 `build_capture_pane_cmd`/`build_kill_session_cmd`
 /// 既有惯例：编排逻辑与"怎么发起 SSH exec"分离）。
 ///
@@ -102,26 +167,20 @@ fn build_usage_probe_cmd(
     let session = format!("ccm-usage-{account_slug}");
     let t = crate::tmux::exact_target(&session)?;
     let payload_q = ssh_source::shell_quote(launch_payload);
-
-    // 稳定轮询：抓两次屏，内容一致且非空就认为"画面稳定"，提前结束；否则轮询到上限。
-    let quiescence_wait = format!(
-        "prev=''; i=0; while [ $i -lt {QUIESCENCE_MAX_POLLS} ]; do \
-sleep {QUIESCENCE_POLL_INTERVAL_SECS}; \
-cur=\"$(tmux capture-pane -p -t {t} 2>/dev/null || true)\"; \
-if [ -n \"$cur\" ] && [ \"$cur\" = \"$prev\" ]; then break; fi; \
-prev=\"$cur\"; i=$((i+1)); \
-done"
-    );
+    let startup_wait = quiescence_wait(&t, STARTUP_MAX_POLLS);
+    let render_wait = quiescence_wait(&t, RENDER_MAX_POLLS);
 
     Ok(format!(
         "if command -v tmux >/dev/null 2>&1; then \
 tmux kill-session -t {t} >/dev/null 2>&1 || true; \
 tmux new-session -d -s {session_q} -x {PROBE_COLS} -y {PROBE_ROWS}; \
 setsid sh -c 'sleep {watchdog_timeout_secs}; tmux kill-session -t {t} >/dev/null 2>&1' </dev/null >/dev/null 2>&1 & \
+base=\"$(tmux capture-pane -p -t {t} 2>/dev/null || true)\"; \
 tmux send-keys -t {t} {payload_q} Enter; \
-{quiescence_wait}; \
+{startup_wait}; \
+base=\"$(tmux capture-pane -p -t {t} 2>/dev/null || true)\"; \
 tmux send-keys -t {t} '/usage' Enter; \
-{quiescence_wait}; \
+{render_wait}; \
 out=\"$(tmux capture-pane -p -t {t} 2>/dev/null || true)\"; \
 tmux kill-session -t {t} >/dev/null 2>&1 || true; \
 printf '%s' \"$out\"; \
@@ -316,6 +375,92 @@ mod tests {
     }
 
     #[test]
+    fn probe_quiescence_requires_the_screen_to_change_before_accepting_stability() {
+        // ★ E42 回归钉（2026-07-31 用户实测：「抓到了屏幕但认不出格式」）。
+        //
+        // 这条只钉**结构**（两半判据都在、基线取的位置对）。判据的**行为**由
+        // `e2e/usage-probe-acceptance.sh` 场景 4（慢速 stand-in）钉——那才是能证伪它的地方，
+        // 秒回的 stand-in 无论判据多松都会绿。两处分工写在 `quiescence_wait` 的文档注释里。
+        let cmd = build_usage_probe_cmd("z", "claude", WATCHDOG_TIMEOUT_SECS).unwrap();
+        assert!(
+            cmd.contains(r#"[ "$cur" != "$base" ]"#),
+            "稳定判据须含「相对基线变过」这一半（fail-safe，理由见 quiescence_wait 注释）：{cmd}"
+        );
+        assert!(
+            cmd.contains(&format!("[ $same -ge {QUIESCENCE_STILL_POLLS} ]")),
+            "稳定判据须含「连续静止够久」这一半——**修复 E42 的正是它**：{cmd}"
+        );
+
+        // 「变过」只有配上「每次 send-keys 前重取基线」才成立。基线若只取一次，第二段等待会
+        // 拿第一段结束时的旧屏当基线——那时 claude 已经起来了，判据退化回原来的坏行为。
+        let sends: Vec<usize> = cmd
+            .match_indices("tmux send-keys")
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(
+            sends.len(),
+            2,
+            "应恰好两次 send-keys（payload + /usage）：{cmd}"
+        );
+        for (n, &pos) in sends.iter().enumerate() {
+            let before = &cmd[..pos];
+            let base_pos = before
+                .rfind("base=\"$(tmux capture-pane")
+                .unwrap_or_else(|| panic!("第 {} 次 send-keys 之前没有取基线：{cmd}", n + 1));
+            assert!(
+                !before[base_pos..].contains("while ["),
+                "第 {} 次 send-keys 的基线必须紧邻它之前取，中间不能夹一轮等待",
+                n + 1
+            );
+        }
+    }
+
+    #[test]
+    fn time_budget_ordering_holds() {
+        // 三层超时必须**严格套娃**，否则外层会把内层掐死、让被保护的逻辑根本跑不完。
+        // ★ 这条测试是被真事逼出来的：E42 之前 `emit_usage_probe_cmd_for_e2e` 给三个场景
+        // 统一发 3s 看门狗，旧判据下自然完成约 2s 侥幸躲过；判据一改成"静止 3s"，
+        // 正常路径的会话就在轮询跑完前被自己的看门狗杀掉，抓回来一句
+        // "no server running"。**当时没有任何东西钉住这个关系。**
+        let interval_ms = u64::from(QUIESCENCE_POLL_INTERVAL_MS);
+        let poll_budget_ms =
+            interval_ms * u64::from(STARTUP_MAX_POLLS) + interval_ms * u64::from(RENDER_MAX_POLLS);
+        let exec_ms = EXEC_TIMEOUT_SECS * 1000;
+        let watchdog_ms = u64::from(WATCHDOG_TIMEOUT_SECS) * 1000;
+
+        // ① 两段轮询跑满也要装得进 exec 硬超时，且留出余量给 SSH 往返 + 建/清会话。
+        //    余量取轮询预算的 1/4——远端链路慢起来不是几十毫秒的事。
+        assert!(
+            poll_budget_ms + poll_budget_ms / 4 < exec_ms,
+            "轮询预算 {poll_budget_ms}ms(+25% 余量) 撑破了 exec 硬超时 {exec_ms}ms：\
+远端稍慢就会被 exec 先掐断，探针永远拿不到面板"
+        );
+        // ② exec 先放弃，看门狗后收尸——反过来会留下无人清理的探针会话。
+        assert!(
+            exec_ms < watchdog_ms,
+            "exec 超时 {exec_ms}ms 必须早于看门狗 {watchdog_ms}ms，否则会话会被提前杀掉"
+        );
+        // ③ 判定"静止"所需的时长必须显著短于**单段**上限，否则该判据永远无法满足，
+        //    每段都会空跑到上限——功能上还对，但每次探测都白等满预算。
+        let still_ms = interval_ms * u64::from(QUIESCENCE_STILL_POLLS);
+        for (name, cap) in [("startup", STARTUP_MAX_POLLS), ("render", RENDER_MAX_POLLS)] {
+            let cap_ms = interval_ms * u64::from(cap);
+            assert!(
+                still_ms * 2 <= cap_ms,
+                "{name} 段上限 {cap_ms}ms 容不下两倍静止时长 {still_ms}ms：判据几乎必然打不中，等于退化成固定 sleep"
+            );
+        }
+    }
+
+    #[test]
+    fn poll_interval_string_is_derived_not_double_written() {
+        // 反向自检：改 MS 常量，sleep 的字面量必须跟着变（否则就是又一个双写点）。
+        assert_eq!(poll_interval_secs(), "0.500");
+        let cmd = build_usage_probe_cmd("z", "claude", WATCHDOG_TIMEOUT_SECS).unwrap();
+        assert!(cmd.contains(&format!("sleep {}", poll_interval_secs())));
+    }
+
+    #[test]
     fn probe_cmd_cleans_up_session_after_capture() {
         let cmd = build_usage_probe_cmd("z", "claude", WATCHDOG_TIMEOUT_SECS).unwrap();
         let capture_pos = cmd.rfind("capture-pane").expect("须抓屏");
@@ -383,31 +528,43 @@ mod tests {
     #[test]
     #[ignore]
     fn emit_usage_probe_cmd_for_e2e() {
-        const E2E_WATCHDOG_SECS: u32 = 3;
-        // 三个场景各用**不同的 slug**（会话名互不相同）——同一 slug 跨场景复用会让上一个场景
-        // 遗留的看门狗（3s 后才触发，独立于主流程是否已自然完成）在下一个场景刚建好同名会话
-        // 时杀过来，制造纯测试脚本层面的竞态假象，跟被测代码本身无关。
-        println!(
-            "normal\t{}",
-            build_usage_probe_cmd("z", "unset CLAUDECODE; FAKECLAUDE", E2E_WATCHDOG_SECS).unwrap()
-        );
-        println!(
-            "collision\t{}",
-            build_usage_probe_cmd(
+        // 看门狗**按场景分开**：正常路径必须用生产值，短看门狗只给专门测看门狗的那个场景。
+        //
+        // ★ 2026-07-31 修：原先三个场景**统一用 3s**。那在旧的稳定判据下勉强成立（自然完成
+        // 约 2s，刚好赶在自毁前），E42 把判据改成"静止 3s"后自然完成变成 ~7s ⇒ 会话在轮询
+        // 跑完前就被自己的看门狗杀掉，正常路径场景整个失去意义（实测：抓回来的是
+        // "no server running"）。**根子上就不该让正常路径的看门狗短于自然完成时间**
+        // ——那让一个本该测编排的场景变成在测竞态。
+        const E2E_SHORT_WATCHDOG_SECS: u32 = 3;
+        for (name, payload, watchdog) in [
+            (
+                "normal",
+                "unset CLAUDECODE; FAKECLAUDE",
+                WATCHDOG_TIMEOUT_SECS,
+            ),
+            (
                 "collision",
                 "unset CLAUDECODE; FAKECLAUDE",
-                E2E_WATCHDOG_SECS
-            )
-            .unwrap()
-        );
-        println!(
-            "watchdog\t{}",
-            build_usage_probe_cmd(
+                WATCHDOG_TIMEOUT_SECS,
+            ),
+            // 慢速 stand-in：收到 /usage 后先停几秒再吐面板，复现 E42 的真实失败形态。
+            (
+                "slow",
+                "unset CLAUDECODE; SLOWCLAUDE",
+                WATCHDOG_TIMEOUT_SECS,
+            ),
+            (
                 "watchdog",
                 "unset CLAUDECODE; FAKECLAUDE",
-                E2E_WATCHDOG_SECS
-            )
-            .unwrap()
-        );
+                E2E_SHORT_WATCHDOG_SECS,
+            ),
+        ] {
+            // 各场景用**不同 slug**（会话名互不相同）——同一 slug 跨场景复用会让上一个场景
+            // 遗留的看门狗在下一个场景刚建好同名会话时杀过来，制造纯脚本层面的竞态假象。
+            println!(
+                "{name}\t{}",
+                build_usage_probe_cmd(name, payload, watchdog).unwrap()
+            );
+        }
     }
 }

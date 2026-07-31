@@ -1,8 +1,20 @@
-// F10：parseUsageCapture 纯函数测试。夹具是**基于训练知识猜测的合成文本**，不是真机抓取的
-// 真实 /usage 输出——测试价值在于锁住解析器的分支逻辑（标签定位/百分比提取/降级路径），
-// 不在于断言真实格式对不对。真机验证清单见 features/F10-remaining-account-ux.md §7。
+// F10 / E42：parseUsageCapture 纯函数测试。
+//
+// **两类夹具，价值不同，别混为一谈：**
+// - `__fixtures__/usage-capture-2026-07-31.txt` 是**用户真机 `/usage` 抓屏**（2026-07-31 两张
+//   截图转录；进度条字符是近似的，百分比/标签/Resets 行逐字照抄）。这是唯一能断言
+//   「真实格式认得出」的东西，其余测试都不能。
+// - 内联的合成文本是**猜测**，只用来锁分支逻辑（标签定位/百分比提取/降级路径），
+//   **不构成对真实格式的任何证据**。
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { parseUsageCapture } from "./account-usage-parse";
+
+const REAL_CAPTURE = readFileSync(
+  resolve(__dirname, "__fixtures__/usage-capture-2026-07-31.txt"),
+  "utf8",
+);
 
 describe("parseUsageCapture", () => {
   it("识别典型三窗口格式（合成猜测夹具，非真机抓取）", () => {
@@ -28,8 +40,53 @@ describe("parseUsageCapture", () => {
     expect(session?.resetIn).toContain("2h 14m");
     const allModels = r.buckets.find((b) => b.label.includes("全部模型"));
     expect(allModels?.usedPercent).toBe(71);
-    const opus = r.buckets.find((b) => b.label.includes("Opus"));
+    // 模型名**原样透传**，不再走「已知模型枚举」——正因如此真机那份里的
+    // `Current week (Fable)` 才能不改代码就认出来（旧实现硬编码 opus，直接把它丢了）。
+    const opus = r.buckets.find((b) => b.label.includes("opus"));
     expect(opus?.usedPercent).toBe(12);
+  });
+
+  describe("真机抓屏夹具（2026-07-31，用户截图转录）", () => {
+    it("三个窗口全部认出，含模型名带 Fable 的那个", () => {
+      const r = parseUsageCapture(REAL_CAPTURE);
+      expect(r.status).toBe("ok");
+      if (r.status !== "ok") return;
+      expect(r.buckets).toHaveLength(3);
+      expect(r.buckets.map((b) => [b.label, b.usedPercent])).toEqual([
+        ["会话窗口", 12],
+        ["每周窗口（全部模型）", 59],
+        ["每周窗口（Fable）", 8],
+      ]);
+    });
+
+    it("回归：第三个「按模型」周窗口不得被静默丢掉", () => {
+      // E42 的次缺陷。旧实现的标签表只有 session / all models / opus 三条硬编码，
+      // 真机第三桶是 `Current week (Fable)` ⇒ **一个桶凭空消失，status 仍是 ok**，
+      // 用户界面上看不出少了东西。这条单独立起来，因为「少一个桶」比「解析失败」更隐蔽。
+      const r = parseUsageCapture(REAL_CAPTURE);
+      if (r.status !== "ok") throw new Error("真机夹具必须解析成功");
+      const byModel = r.buckets.filter(
+        (b) => b.label.startsWith("每周窗口（") && !b.label.includes("全部模型"),
+      );
+      expect(byModel).toHaveLength(1);
+      expect(byModel[0]?.label).toBe("每周窗口（Fable）");
+    });
+
+    it("Resets 行按窗口就近归属，不会串到上一个窗口去", () => {
+      // 三行 Resets 措辞各不相同（相对时刻 / 带日期 / 带分钟），且中间还夹着一行
+      // 促销文案。归属错了会表现为「某个窗口显示了别人的重置时间」——数值全对、含义全错。
+      const r = parseUsageCapture(REAL_CAPTURE);
+      if (r.status !== "ok") throw new Error("真机夹具必须解析成功");
+      expect(r.buckets[0]?.resetIn).toContain("2:20am");
+      expect(r.buckets[1]?.resetIn).toContain("Jul 31, 10pm");
+      expect(r.buckets[2]?.resetIn).toContain("Jul 31, 9:59pm");
+    });
+
+    it("反向自检：夹具真读到了，且是那份真机内容", () => {
+      // 不写 `length > 0`——空文件也能让上面几条以别的方式红/绿得莫名其妙。
+      expect(REAL_CAPTURE).toContain("Current week (Fable)");
+      expect(REAL_CAPTURE).toContain("59% used");
+    });
   });
 
   it("识别措辞完全不同的变体格式（防止正则过拟合单一猜测）", () => {
