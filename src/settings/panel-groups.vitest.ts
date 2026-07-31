@@ -337,4 +337,24 @@ describe("S2 设置面板分页结构", () => {
     // 反向：账号**不该**也出现在工具栏里（搬 DOM 一处一份，不能有两份）
     expect(toolTitles).not.toContain("账号");
   });
+
+  it("★ S7：没有待生效改动时，重启条不出现（恒显示的警告 = 背景噪音）", async () => {
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    await tick();
+    const bar = document.querySelector<HTMLElement>(".settings-restart-bar");
+    expect(bar, "条本身要在 DOM 里（只是隐藏），否则状态变了没地方显示").not.toBeNull();
+    expect(bar!.hidden).toBe(true);
+  });
+
+  it("★ S7：重启条挂在面板底部、不属于任何一页（改哪一页都可能点亮它）", async () => {
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    await tick();
+    const bar = document.querySelector<HTMLElement>(".settings-restart-bar")!;
+    // 不在任何 .settings-page 里
+    expect(bar.closest(".settings-page")).toBeNull();
+    // 也不在导航里
+    expect(bar.closest(".settings-nav")).toBeNull();
+  });
 });
