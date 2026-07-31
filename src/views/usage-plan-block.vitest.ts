@@ -99,4 +99,40 @@ describe("S10 plan 窗口块", () => {
       expect(block.querySelector(".usage-plan-fail")!.textContent).toContain(expected);
     }
   });
+
+  it("★ 连读两次：只留最新那份（陈旧读数叠在上面比没有更糟）", async () => {
+    // Phase G 审计逮到的：`renderPlanIdle` 是唯一做 replaceChildren 的地方，
+    // 而它只在 build() 里跑过一次 ⇒ 结果只 append 不清。两块标签一模一样、
+    // 都没有时间戳，而阅读顺序把**过期**那条排在最前面。
+    const block = mountBlock();
+    outcome.value = {
+      status: "ok",
+      buckets: [{ label: "会话窗口", usedPercent: 12, resetIn: "2:20am" }],
+    };
+    await clickLoad(block);
+    outcome.value = {
+      status: "ok",
+      buckets: [{ label: "会话窗口", usedPercent: 88, resetIn: "3:30am" }],
+    };
+    await clickLoad(block);
+    const results = block.querySelectorAll(".usage-plan-result");
+    expect(results, "只该有一块结果").toHaveLength(1);
+    const rows = [...block.querySelectorAll(".usage-plan-row")].map((r) => r.textContent);
+    expect(rows.join(" ")).toContain("88%");
+    expect(rows.join(" "), "过期那条必须消失").not.toContain("12%");
+  });
+
+  it("★ 失败之后再成功：上一次的失败消息不许留在屏上", async () => {
+    const block = mountBlock();
+    outcome.value = { status: "probe-failed", error: "ssh 挂了" };
+    await clickLoad(block);
+    expect(block.querySelector(".usage-plan-fail")).not.toBeNull();
+    outcome.value = {
+      status: "ok",
+      buckets: [{ label: "会话窗口", usedPercent: 5, resetIn: "1am" }],
+    };
+    await clickLoad(block);
+    expect(block.querySelector(".usage-plan-fail"), "旧失败要清掉").toBeNull();
+    expect(block.querySelector(".usage-plan-row")!.textContent).toContain("5%");
+  });
 });

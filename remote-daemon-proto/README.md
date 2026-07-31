@@ -18,10 +18,17 @@ cc-monitor 的 SSH-远端功能后端 daemon（issue #15 起，已历 F14–F30+
   取代旧「build_id 精确匹配」门控）。**加新能力 token = 同时加 `split_stream_flags` 剥离分支**（`every_capability_token_is_strippable` 测试强制，防 §26 死循环）。
 
 ## Wire protocol
-每行一个 UTF-8 JSON 对象、`\n` 结尾、对象内无裸 `\n`/`\r`。`Frame` 类型见 `src/wire.rs`，外部 `kind` tag（snake_case），共 **6 个**：
+每行一个 UTF-8 JSON 对象、`\n` 结尾、对象内无裸 `\n`/`\r`。`Frame` 类型见 `src/wire.rs`，外部 `kind` tag（snake_case），共 **9 个**：
 `hello`（首帧握手，带 `v`/`build_id`/`host_arch`/`claude_dir`/`capabilities`）、`line`（tail 到的一行原始 jsonl）、
-`session_added`（新会话文件出现）、`session_status`（红绿灯状态变化，F27）、`session_removed`（会话文件消失）、
+`session_added`（新会话文件出现）、`session_status`（红绿灯状态变化，F27）、
+`session_removed`（会话消失；**S0 起带 `cause`**：`gone` = 真没了 / `superseded` = 同一 pidfile 原地换 sid，即 `/branch`、`/clear`）、
+`turn_end`（一轮对话结束）、`tmux_session_closed`（P5：某个 tmux 会话关闭的正向死亡帧，只带 `name`）、
+`tmux_sessions`（B2：`tmux ls` 原始 stdout，P1 起可带 `classification`）、
 `overflow`（拥塞丢帧哨兵，#32）。字段细节以 `../doc/IPC-PROTOCOL.md` §10 为准。
+
+> **2026-07-31 Phase G 更正**：这里此前写「共 6 个」，漏了 `turn_end` / `tmux_session_closed` /
+> `tmux_sessions` 三个，`session_removed` 也没跟上 S0 加的 `cause`；而下游那句
+> 「字段细节以 IPC-PROTOCOL.md 为准」指向的那份**同样漏了这三个**。两处已一并补齐。
 
 一次性历史查询（带参数 exec，干完即退、不进流式协议）：`--list-projects` / `--list-sessions <dir>` /
 `--read-session[-tail] <path>` / `--search` / `--usage` / `--resolve` /

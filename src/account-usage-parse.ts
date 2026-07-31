@@ -106,7 +106,15 @@ export function parseUsageCapture(raw: string): AccountUsageParseResult {
   for (let i = 0; i < lines.length; i++) {
     const header = BUCKET_HEADER_RE.exec(lines[i]);
     if (!header) continue;
-    const windowLines = lines.slice(i + 1, i + 1 + BLOCK_LOOKAHEAD_LINES).join("\n");
+    // **窗口遇到下一个 header 就截断**（Phase G 审计）：不截的话，某一块的 `%` 行
+    // 因为渲染被截而缺席时，前瞻会一路吃到**下一块**的百分比与 Resets，
+    // 产出一个张冠李戴的 bucket —— 有数字、`status:"ok"`，正是本文件明令禁止的
+    // 「宁可说不知道，也不给错数字」的反面。截断后那一块直接不出现（缺就是缺）。
+    const rawWindow = lines.slice(i + 1, i + 1 + BLOCK_LOOKAHEAD_LINES);
+    const nextHeader = rawWindow.findIndex((l) => BUCKET_HEADER_RE.test(l));
+    const windowLines = (
+      nextHeader === -1 ? rawWindow : rawWindow.slice(0, nextHeader)
+    ).join("\n");
     const pctMatch = PERCENT_RE.exec(windowLines);
     if (!pctMatch) continue;
     const resetMatch = RESET_RE.exec(windowLines);

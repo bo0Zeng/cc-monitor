@@ -69,11 +69,35 @@ describe("hostOsAllows —— 失败方向", () => {
 });
 
 describe("hostOs 覆盖值", () => {
-  it("置了就用置的；清掉后回到真实探测（jsdom 下是 linux）", () => {
+  it("置了就用置的；清掉后回到真实探测", () => {
     __setHostOsForTests("windows");
     expect(hostOs()).toBe("windows");
     __setHostOsForTests(null);
-    // jsdom 的 UA 含 `linux` —— 这条同时说明了为什么面板类测试必须显式置成 windows。
-    expect(hostOs()).toBe(detectHostOs(navigator.userAgent));
+    // **这里刻意写死 `linux` 而不是 `detectHostOs(navigator.userAgent)`**：
+    // 后者是把被测函数跟它自己的实现对拍，是同义反复 —— 审计用变异实测过，
+    // 把 `hostOs()` 里那句 UA 兜底（`typeof navigator === "undefined"` / `?? ""`）
+    // 整个删掉，那种写法**照样绿**。
+    // jsdom 的 UA 含 `linux`，所以真实探测的答案就是 linux；写死它才有牙。
+    expect(hostOs()).toBe("linux");
+  });
+
+  it("★ 没有 navigator（非浏览器宿主）时不许抛，判成 unknown", () => {
+    // `hostOs()` 里那句兜底就是为这个场景写的，但此前没有任何测试守它
+    // ⇒ 删掉兜底、测试全绿。现在删掉就红。
+    __setHostOsForTests(null);
+    const saved = globalThis.navigator;
+    // 故意抹掉宿主对象，模拟非浏览器环境
+    delete (globalThis as { navigator?: unknown }).navigator;
+    try {
+      expect(() => hostOs()).not.toThrow();
+      expect(hostOs()).toBe("unknown");
+    } finally {
+      Object.defineProperty(globalThis, "navigator", {
+        value: saved,
+        configurable: true,
+        writable: true,
+      });
+      __setHostOsForTests(null);
+    }
   });
 });

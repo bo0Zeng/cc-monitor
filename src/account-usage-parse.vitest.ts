@@ -195,3 +195,38 @@ describe("parseUsageCapture", () => {
     });
   });
 });
+
+describe("Phase G：前瞻窗口遇到下一个 header 必须截断", () => {
+  it("★ 某块的 % 行缺席时，**不许**去偷下一块的数字", () => {
+    // 渲染被截断时会出现这种屏。不截断的话，「会话窗口」会拿到 88%——
+    // 一个有数字、status 还是 ok 的**错值**，正是本模块明令禁止的伪造。
+    const screen = [
+      "Current session",
+      "Resets 2:20am",
+      "Current week (all models)",
+      "88% used",
+      "Resets Nov 3",
+    ].join("\n");
+    const r = parseUsageCapture(screen);
+    expect(r.status).toBe("ok");
+    const labels = r.status === "ok" ? r.buckets.map((b) => b.label) : [];
+    const pcts = r.status === "ok" ? r.buckets.map((b) => b.usedPercent) : [];
+    // 缺 % 的那块干脆不出现（缺就是缺），出现的那块必须是自己的数字
+    expect(labels).not.toContain("会话窗口");
+    expect(pcts).toEqual([88]);
+  });
+
+  it("反向自检：正常两块**都**解析得出来（别把截断做成一刀切丢块）", () => {
+    const screen = [
+      "Current session",
+      "12% used",
+      "Resets 2:20am",
+      "Current week (all models)",
+      "88% used",
+      "Resets Nov 3",
+    ].join("\n");
+    const r = parseUsageCapture(screen);
+    expect(r.status).toBe("ok");
+    expect(r.status === "ok" ? r.buckets.map((b) => b.usedPercent) : []).toEqual([12, 88]);
+  });
+});

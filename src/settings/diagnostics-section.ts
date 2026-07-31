@@ -16,6 +16,7 @@ import { commands } from "../ipc/commands";
 import { makeInfoIcon } from "./info-icon";
 import { showActionFailureToast } from "../error-toast";
 import { formatBytes } from "../format";
+import { markRestartNeeded } from "./restart-notice"; // S7：待生效改动的唯一去处
 
 // C04d 批 4：四个类型换成生成物（源 `logging.rs`）。手写版与生成物**逐字等价**
 // ——这一批零漂移，价值是防将来漂。
@@ -255,6 +256,16 @@ export class DiagnosticsSection {
       const hint = await commands.set_diagnostics_config({ cfg });
       this.current = cfg;
       if (hint === "needs_restart") {
+        // S7 收尾（Phase G 核账逮出来的）：**光弹 toast 不够**。
+        //
+        // 底部那条常驻条是「现在有什么改动还没生效」的唯一去处，而它此前只有
+        // 远端配置一个供给方 —— 于是这里改了 log 开关、6 秒后 toast 消失，
+        // 用户再看那条条子是空的，会读成「没有待生效的改动」。
+        // **条子的存在本身让它显得权威**，漏一个供给方比没有条子更误导。
+        //
+        // 两者并存是刻意的：toast 是「刚刚这一下的回执」（事件），
+        // 条子是「还欠着没生效」（状态）—— S7 的判据表分的正是这两类。
+        markRestartNeeded("诊断日志开关");
         showActionFailureToast(
           "设置已保存",
           "切换「启用 log 文件」需重启 monitor 才生效。",

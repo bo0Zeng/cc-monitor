@@ -76,12 +76,16 @@ const FACET_MEANING: Record<
  * 某台机器上**不适用**的项 —— 不适用不是缺。
  *
  * 1. 本机不需要 daemon（`watcher.rs` 直读 jsonl，主计划 §2.4 那张表逐字写着「不需要」）。
- * 2. **S9**：`ccm` 是 POSIX 的 bash 启动器。monitor 跑在 Windows 上时，本机的对应物是
+ * 2. **本机不需要「连接」**（`INVARIANTS §40`：本地 = **不走 ssh** 的远端）。
+ *    **Phase G 逮到的真 bug**：漏了这一条，于是每台新装的机器落地页顶上永久挂着一条
+ *    **blocking** 的「本机 · 连接：未测过 —— **连不上这台机器，它上面的会话都看不到**」。
+ *    那句话对本机是**假的**，而且它是清单里最重的一级，还没有任何按钮能把它消掉。
+ * 3. **S9**：`ccm` 是 POSIX 的 bash 启动器。monitor 跑在 Windows 上时，本机的对应物是
  *    「终端集成」那块 PowerShell $PROFILE 注入（§2.4 表里「本机 · 启动器」一格），
  *    不是 `ccm`。不排掉的话，Windows 用户会在这张专为新用户做的清单上，
  *    读到一条「本机缺 cc 命令」—— 而那条在他机器上压根无从补起。
  *
- * 两条都是「把它算成缺会让用户以为自己装漏了东西」。
+ * 三条都是同一句话：**把不适用算成缺，会让用户以为自己装漏了东西**。
  */
 function notApplicable(
   origin: string,
@@ -89,7 +93,7 @@ function notApplicable(
   hostOs: HostOs,
 ): boolean {
   if (origin !== LOCAL_MACHINE_KEY) return false;
-  if (facet === "daemon") return true;
+  if (facet === "daemon" || facet === "connection") return true;
   return facet === "ccm" && hostOs === "windows";
 }
 
