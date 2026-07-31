@@ -160,3 +160,102 @@ jobs:
             src-tauri/target/release/bundle/nsis/*-setup.exe
             src-tauri/target/release/bundle/msi/*.msi
             SHA256SUMS.txt
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # L4（local-as-remote）：**Linux 产物**。
+  #
+  # ⚠ **本 job 从未真正跑过**（它只在 tag 时触发，而本轮红线是不发版）。
+  # 下面每一处设计都是为了「万一它坏了，坏得可见且不伤及发版」：
+  #
+  # 1. `needs: [build-daemons, build-windows]` —— **串在 Windows 之后**，两个理由：
+  #    ① Release 是 `build-windows` 创建的；两个 job 同时 `action-gh-release` 会竞争同一个
+  #       release，串起来就没这个竞态。
+  #    ② `build-windows` 里那道**四处版本号与 tag 一致**的检查因此**被继承**——版本漂了它
+  #       先失败，本 job 根本不会起。**不重复实现那道检查**（重复 = 又一个会漂的副本）。
+  # 2. 本 job 失败**不会**让 release 消失（Windows 那半已经建好并传完了），
+  #    表现是「workflow 红 + release 里少了 .deb」——**可见的缺失，不是静默降级**。
+  # 3. **格式选 deb 而不是 AppImage**。STATUS 里建议过 AppImage（单文件、不管发行版依赖），
+  #    那个好处是真的；但 AppImage 打包要**下载 linuxdeploy** + 依赖 `libfuse2`
+  #    （Ubuntu 24.04 已不默认提供）——在一个**没法在本地验证**的 job 上，
+  #    那是两个额外的失败面。deb 用 Tauri 自带的纯 Rust 打包器，零外部工具。
+  #    ⇒ **先把 deb 跑通，AppImage 留作后续**（已登记）。
+  # 4. **不动 `src-tauri/tauri.conf.json` 的 `bundle.targets`**（那是 Windows 主路径共享的
+  #    最高风险面）；格式在命令行上给。
+  build-linux:
+    name: Build Linux artifacts (deb)
+    needs: [build-daemons, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # 追加附件到已存在的 release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'   # 与 build-windows / ci.yml 对齐
+          cache: 'npm'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # 同 ci.yml::linux-app-build 那四个（构建期必需，不是打包才要）。
+      - name: Install Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Download cross-compiled daemons
+        uses: actions/download-artifact@v4
+        with:
+          name: embedded-daemons
+          path: daemon-artifacts
+
+      # 只做**放置**，不重做校验：`build-windows` 已经对**同一批 artifact** verify 过
+      #（清单存在 + 清单内容 == 源码 BUILD_ID），而本 job `needs` 它 ⇒ 那道检查已经过了。
+      # 重写一份 bash 版校验只会多一个会漂的副本。缺文件仍然 fail（`cp` 会失败）。
+      - name: Place embedded daemons
+        run: |
+          set -euo pipefail
+          mkdir -p src-tauri/embedded-daemons
+          for a in x86_64 aarch64; do
+            bin=$(find daemon-artifacts -name "cc-monitor-remote-$a" -type f | head -1)
+            man=$(find daemon-artifacts -name "cc-monitor-remote-$a.build_id" -type f | head -1)
+            [ -n "$bin" ] && [ -n "$man" ] || { echo "daemon artifact 或清单缺失（$a）"; exit 1; }
+            cp "$bin" "src-tauri/embedded-daemons/cc-monitor-remote-$a"
+            cp "$man" "src-tauri/embedded-daemons/cc-monitor-remote-$a.build_id"
+            echo "embedded $a = $(cat "$man")"
+          done
+
+      - name: npm ci
+        run: npm ci
+
+      - name: tauri build (deb)
+        run: npx tauri build --bundles deb
+
+      - name: Compute SHA256 checksums (Linux)
+        run: |
+          set -euo pipefail
+          : > SHA256SUMS-linux.txt
+          # 二进制名是 cargo 包名 `monitor`（不是 productName `cc-monitor`）——
+          # 与 build-windows 里的 `monitor.exe` 同源，本地 `target/debug/monitor` 已核实。
+          for f in src-tauri/target/release/bundle/deb/*.deb src-tauri/target/release/monitor; do
+            [ -f "$f" ] || continue
+            # 只把**路径**收成 basename，别顺手把 hash 也剥了
+            #（`sed 's#.*/##'` 是贪婪的，会把 "hash  path/to/" 整段吃掉）。
+            sha256sum "$f" | awk '{n = split($2, p, "/"); print $1 "  " p[n]}' >> SHA256SUMS-linux.txt
+          done
+          cat SHA256SUMS-linux.txt
+
+      - name: Append Linux artifacts to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            src-tauri/target/release/bundle/deb/*.deb
+            SHA256SUMS-linux.txt

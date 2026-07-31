@@ -149,6 +149,58 @@ jobs:
       - name: cargo test
         run: cargo test
 
+  # L4（local-as-remote）：**Linux 宿主上 app 能不能构建**的持续信号。
+  #
+  # 为什么要它：L0 在开发机上实测过「三个 WebKitGTK pkg-config 依赖都在、`cargo build`
+  # 完整 app 二进制 rc=0」，但那是**一台机器一次性的读数**。没有这个 job，Linux 侧的构建
+  # 会在没人看的时候烂掉——而 `release.yml` 的 Linux 打包 job 只在 tag 时跑，
+  # **等到发版才发现就晚了**。⇒ 这个 job 是那个发版 job 的**前置信号**。
+  #
+  # **刻意只 build 不 bundle**：bundle（deb）要多几分钟，而回归信号在「能不能编过」这一步
+  # 就拿到了。打包本身留给 release（那里本来就要跑一次）。
+  #
+  # 装包说明：ubuntu runner 不预装 WebKitGTK 开发包。本仓 CI 里装系统包已有先例
+  #（e2e job 装 tmux/jq），这里同理——**这与「本机不装软件包」那条纪律无关**，那条说的是
+  # 开发者自己的机器。
+  linux-app-build:
+    name: Linux app build (no bundle)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'   # 与其余 job 对齐
+          cache: 'npm'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Tauri v2 在 Linux 上的构建期依赖。**逐个都是编译 app 必需**（不是打包才要的）：
+      # webkit2gtk-4.1 = WebView；gtk-3 = 窗口；ayatana-appindicator3 = 托盘；rsvg2 = 图标。
+      - name: Install Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: npm ci
+        run: npm ci
+
+      # 与 L0 本机实测的同一组命令：先前端，再 app 二进制。
+      - name: npm run build (tsc + vite)
+        run: npm run build
+
+      - name: cargo build (full app binary, not --lib)
+        working-directory: src-tauri
+        run: cargo build
+
   # F09：e2e 脚本**健康冒烟**（非真 e2e）。真 e2e（Xvfb + tauri dev 全量 app + xdotool，见
   # e2e/README.md）需 Linux GUI runner + 5min+ app 构建，且 app 生产仅 Windows → 大投入低 ROI，
   # 留 v2/真机。这里只防脚本**腐烂**：shellcheck 只挡 error 级（忽略 info/style 噪音，f40-suite
