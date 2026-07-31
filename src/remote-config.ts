@@ -142,7 +142,7 @@ export function findHostByOrigin(
   hosts: RemoteHostConfig[],
   origin: string,
 ): RemoteHostConfig | null {
-  return hosts.find((h) => (h.label.trim() || h.host) === origin) ?? null;
+  return hosts.find((h) => hostKey(h) === origin) ?? null;
 }
 
 /**
@@ -155,26 +155,135 @@ export async function resolveRemoteConfigByOrigin(
 }
 
 /**
+ * S1：落盘时要序列化的字段清单 —— **单一事实来源**。
+ *
+ * ★ 为什么值得单独立一个清单 + 编译期检查：这里原本是逐字段手抄的对象字面量，
+ * 而**手抄清单已经咬过两次**，两次都是「`RemoteHostConfig` 加了字段、这里没跟上
+ * ⇒ 每次保存都静默丢掉它」：
+ * - `jump`（F56 D-B1）：「设置卡填的跳板被静默丢弃」——用户填了，存不下来。
+ * - `daemonless`（F59）：补的时候注释里写着「同 D-B1 教训：枚举字段必逐个写全」。
+ *
+ * 两次都是**事后**补的。下面那个 `MissingField` 检查把它变成**编译期**问题：
+ * 加字段而漏改这里，`tsc` 直接红，且错误信息里点名缺的是哪个字段。
+ * （比写测试强：测试要有人想起来写；类型检查每次编译都跑。）
+ */
+const REMOTE_HOST_FIELDS = [
+  "label",
+  "host",
+  "port",
+  "user",
+  "keyPath",
+  "daemonPath",
+  "hostKeyFingerprint",
+  "addresses",
+  "jump",
+  "daemonless",
+] as const satisfies readonly (keyof RemoteHostConfig)[];
+
+/** 上面清单**漏掉**的字段（应为 `never`）。 */
+type MissingField = Exclude<
+  keyof RemoteHostConfig,
+  (typeof REMOTE_HOST_FIELDS)[number]
+>;
+// 漏了字段这一行就红，且 TS 的错误信息会把缺的字段名打出来。
+const _noMissingField: MissingField extends never ? true : MissingField = true;
+void _noMissingField;
+
+/** 按 [`REMOTE_HOST_FIELDS`] 挑字段落盘（不逐字段手抄，杜绝静默丢失）。 */
+function serializeHost(h: RemoteHostConfig): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of REMOTE_HOST_FIELDS) out[k] = h[k];
+  return out;
+}
+
+/**
  * 把 RemoteConfig MERGE 进 config.json 顶层的 `remote` 键，不动其他字段。
  * 写成 `{ enabled, hosts: [...] }`（升级旧单对象形态）；key 是 camelCase，与 Rust
  * `lib.rs::load_remote_configs` 读的键严格一致。
+ *
+ * ★ S1 起这是**数据层内部的「序列化 + 落盘」单一出口**，`remote` 键的盘上形状只有
+ * 这里知道。**刻意不 export**：它是整表覆盖语义，一旦调用方手上只有部分机器
+ *（S2 把机器拆成一页一台之后就是这样）就会把其余的静默删光。
+ * 不导出 = 这条footgun 在**类型层面不可达**，不靠「记得别用它」这种纪律。
+ * 对外只有 [`patchRemoteConfig`]（局部合并，安全性质来自构造）。
  */
-export async function writeRemoteConfig(next: RemoteConfig): Promise<void> {
+async function writeRemoteConfig(next: RemoteConfig): Promise<void> {
   const cfg = (await loadConfig()) as Record<string, unknown>;
   cfg.remote = {
     enabled: next.enabled,
-    hosts: next.hosts.map((h) => ({
-      label: h.label,
-      host: h.host,
-      port: h.port,
-      user: h.user,
-      keyPath: h.keyPath,
-      daemonPath: h.daemonPath,
-      hostKeyFingerprint: h.hostKeyFingerprint,
-      addresses: h.addresses,
-      jump: h.jump, // F56：跳板 label（D-B1:此前漏写 → 设置卡填的跳板被静默丢弃）
-      daemonless: h.daemonless, // F59：daemonless 降级开关（同 D-B1 教训：枚举字段必逐个写全，防静默丢失）
-    })),
+    hosts: next.hosts.map(serializeHost),
   };
   await saveConfig(cfg);
+}
+
+/** S1：一台机器在盘上的定位键 = 它的 origin（与 [`findHostByOrigin`] 同口径）。 */
+export function hostKey(h: RemoteHostConfig): string {
+  return h.label.trim() || h.host;
+}
+
+/**
+ * S1：一次**局部**修改。没被提到的机器，`applyRemoteHostsPatch` 根本不碰。
+ */
+export interface RemoteHostsPatch {
+  /** 全局开关。缺省 = 不动。 */
+  enabled?: boolean;
+  /**
+   * 要写入的机器。`key` = 这条记录**在盘上当前的 origin**；`null` = 新增（追加到末尾）。
+   * key 在盘上找不到（被别处删了/改了）**也按新增处理** —— 比静默丢弃安全。
+   */
+  upsert?: { key: string | null; value: RemoteHostConfig }[];
+  /** 要删除的机器，按 origin。 */
+  remove?: string[];
+}
+
+/**
+ * S1 **纯函数**（可单测，不碰文件系统）：把 patch 应用到一份现有配置上。
+ *
+ * ★ 安全性质来自**构造**，不是来自调用方守纪律：patch 里没提到的 host，这里根本不读
+ * 也不写，原对象引用直接留在结果里。S2 把机器卡片拆成一页一台之后，那一页只提交自己
+ * 那几台，其余机器天然安全 —— 而在整表覆盖的老实现下，同样的调用会把它们**静默删光**。
+ *
+ * 顺序语义：先 `remove` 后 `upsert`。这样「删掉 A、同时新增一台也叫 A」是**替换**，
+ * 不是「新增后被删」。
+ */
+export function applyRemoteHostsPatch(
+  cur: RemoteConfig,
+  patch: RemoteHostsPatch,
+): RemoteConfig {
+  const removeSet = new Set(patch.remove ?? []);
+  const hosts = cur.hosts.filter((h) => !removeSet.has(hostKey(h)));
+
+  // 匹配过的下标不再复用。**没有这一步，两台 origin 相同的机器会互相踩**：
+  // 第二条 upsert 会再次命中第一条已经被替换过的位置，前一条编辑凭空消失。
+  // （origin 重复本身是无效配置——整个系统都拿 origin 当机器身份——但
+  // 「无效配置」不该变成「静默吞掉用户的编辑」。见 BACKLOG E44。）
+  const used = new Set<number>();
+  for (const { key, value } of patch.upsert ?? []) {
+    const idx =
+      key === null
+        ? -1
+        : hosts.findIndex((h, i) => !used.has(i) && hostKey(h) === key);
+    if (idx >= 0) {
+      hosts[idx] = value;
+      used.add(idx);
+    } else {
+      hosts.push(value);
+    }
+  }
+
+  return {
+    enabled: patch.enabled ?? cur.enabled,
+    hosts,
+  };
+}
+
+/**
+ * S1：[`applyRemoteHostsPatch`] 的 IO 包装 —— read-modify-write。
+ * UI 侧唯一的写入口。
+ */
+export async function patchRemoteConfig(
+  patch: RemoteHostsPatch,
+): Promise<void> {
+  const cur = await readRemoteConfig();
+  await writeRemoteConfig(applyRemoteHostsPatch(cur, patch));
 }
