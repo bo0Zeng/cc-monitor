@@ -12,6 +12,7 @@
 // **功能等价但字符串不等**——按等值比较会把这套**完全正确的安装**报成第三态，
 // 然后建议用户去修一个没坏的东西。所以这里必须把
 // 「显式路径且存在（没问题）」与「显式路径但不存在（真问题）」**分开渲染**。
+import { setCurrentMachine, subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
 import { buildPasteBlock, type PasteBlock } from "../paste-block"; // T03
 
@@ -116,6 +117,18 @@ export class CcBusHooksSection {
 
     this.originSel = document.createElement("select");
     this.originSel.className = "settings-input cc-bus-hooks-origin";
+    // S4a：此前本分节**连 change 监听都没有** —— 下拉只在用户点「检查」时被读一次，
+    // 所以它与另外三块的不同步是最彻底的。现在写进共用 store。
+    // **不在切换时自动发诊断请求**：本分节的既有语义就是「点了才发」（只读诊断，
+    // 不替用户改 ~/.claude/settings.json），自动发就成了变相轮询。
+    this.originSel.addEventListener("change", () => {
+      setCurrentMachine(this.originSel.value || null);
+    });
+    subscribeMachine((origin) => {
+      if (origin === null) return; // 本机：本分节的下拉只列远端
+      if (![...this.originSel.options].some((o) => o.value === origin)) return;
+      this.originSel.value = origin;
+    });
     row.appendChild(this.originSel);
 
     const btn = document.createElement("button");
