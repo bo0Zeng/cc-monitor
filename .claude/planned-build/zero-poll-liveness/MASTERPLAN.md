@@ -144,10 +144,10 @@ threshold=1 会误 retire 还活着的 A）。
 | **P1** | daemon `ZeroSessions` 观测分类 + monitor 侧安全 retire（销 `INVARIANTS:408` 残留） | 小 | 否 | **✅ 完成，已签收** |
 | **P2** | pidfd 替掉判活轮询 A（含 PID 复用在机制上消失）+ **建统一事件 channel** | 中 | 否 | **✅ 完成，已签收** |
 | **P3** | tmux server 生 / 死 / 复活事件化（**不删轮询 B**，见下） | 中 | 否 | **✅ 完成，已签收** |
-| **P4** | daemon 装 tmux hook（会话生/死/改名）+ 事件通路 | 中 | **是：改活 tmux server 的 hook 状态** | 未开工 |
-| **P5** | wire 正向死亡帧 + monitor 侧免 debounce 立即 retire + **删 `TMUX_EMIT_INTERVAL`** | 中 | 否（承 P4） | 未开工 |
-| **P6** | 门禁：零定时器守卫 + 端到端延迟 e2e | 小 | 否 | 未开工 |
-| **P7** | 文档：INVARIANTS 新节 + 销 §24bis:408 残留 + E34 结案 | 小 | 否 | 未开工 |
+| **P4** | daemon 装 tmux hook（会话生/死/改名）+ 事件通路 | 中 | **是：改活 tmux server 的 hook 状态** | **✅ 完成，已签收**（`7127357` P4a + `3ccb6d6` P4b；真机私有 socket 实测通路打通 + PID 复用防御成立） |
+| **P5** | wire 正向死亡帧 + monitor 侧免 debounce 立即 retire + **删 `TMUX_EMIT_INTERVAL`** | 中 | 否（承 P4） | **✅ 完成，已签收**（`64c2477`+`67653e2`；快照差分三态 + additive 死亡帧 + 删轮询 B 并接 `Shutdown`） |
+| **P6** | 门禁：零定时器守卫 + 端到端延迟 e2e | 小 | 否 | **✅ 完成，已签收**（`75ee6f4` 守卫 + `66134cc` 延迟 e2e；判据落在「周期性唤醒」而非「出现 `Duration`」） |
+| **P7** | 文档：INVARIANTS 新节 + 销 §24bis:408 残留 + E34 结案 | 小 | 否 | **✅ 完成，已签收**（`93b0f7a`；`INVARIANTS §41` + E34 结案 + **补上 P5 漏做的 `BUILD_ID` bump**） |
 
 ### P0 — 五项机制实测（**门禁：不许凭推测动手**）
 
@@ -401,7 +401,7 @@ ccm 只在建会话时被调用一次，根本没有那个时机。
 
 - 本区与 `gate-integrity` 同时会碰 `ci.yml` ⇒ 都只追加，后到者不重排先到者
 - 本区与 `local-as-remote`（L1 本地=不走 ssh 的远端）会碰同一个 daemon ⇒
-  **本区先落地**（L1 尚未开工），L1 届时继承事件模型而不是继承轮询
+  **本区先落地**（当时 L1 尚未开工；**L1 已于 2026-07-30 交付**并继承了事件模型），L1 届时继承事件模型而不是继承轮询
 - 本区**不碰** `tabs.ts` / `accounts.ts` / `shared/ccm` / `src-tauri/vendor/`
 
 ---
