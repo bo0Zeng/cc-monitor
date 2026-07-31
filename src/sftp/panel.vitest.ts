@@ -31,6 +31,7 @@ const CFG = {
   addresses: [],
   jump: "",
   daemonless: false,
+  resumeCommand: "",
 };
 
 const ent = (name: string, isDir: boolean): SftpEntry => ({

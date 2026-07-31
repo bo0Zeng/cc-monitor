@@ -32,6 +32,18 @@ export interface RemoteHostConfig {
    * 仅显示最近活跃会话）。false（默认）= 正常 daemon 数据源路径。
    */
   daemonless: boolean;
+  /**
+   * S4b-3（主计划 §5-1）：**这台机器**的 resume 启动命令。空 = 用全局默认
+   *（`behavior.resumeCommandRemote`）。
+   *
+   * 为什么必须 per-machine：「装 ccm 助手」是**每台机器一个按钮**，而 resume 命令
+   * 此前是**全局单值** ⇒ A 机装了 ccm、B 机没装时，今天的数据模型根本表达不出来。
+   * 结果是一个结构性陷阱：装完 ccm 却忘了改 resume 命令（那两处此前还隔着两个顶层组）。
+   *
+   * 保留全局值当**回退**而不是做数据迁移：迁移会静默改写用户已有的设置，
+   * 而回退让「没填过 = 沿用今天的行为」，零意外。
+   */
+  resumeCommand: string;
 }
 
 /** F45：多行文本 ↔ 地址数组（trim + 去空行）。UI 用 textarea，config/IPC 用数组。 */
@@ -68,6 +80,7 @@ export const HOST_DEFAULTS: RemoteHostConfig = {
   addresses: [],
   jump: "",
   daemonless: false,
+  resumeCommand: "",
 };
 
 /** F45：容忍 config 里 addresses 为数组 / 换行文本 / 缺失。 */
@@ -101,6 +114,7 @@ function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
     jump: str("jump", HOST_DEFAULTS.jump),
     daemonless:
       typeof obj.daemonless === "boolean" ? obj.daemonless : HOST_DEFAULTS.daemonless,
+    resumeCommand: str("resumeCommand", HOST_DEFAULTS.resumeCommand),
   };
 }
 
@@ -178,6 +192,7 @@ const REMOTE_HOST_FIELDS = [
   "addresses",
   "jump",
   "daemonless",
+  "resumeCommand",
 ] as const satisfies readonly (keyof RemoteHostConfig)[];
 
 /** 上面清单**漏掉**的字段（应为 `never`）。 */
@@ -217,6 +232,35 @@ async function writeRemoteConfig(next: RemoteConfig): Promise<void> {
 }
 
 /** S1：一台机器在盘上的定位键 = 它的 origin（与 [`findHostByOrigin`] 同口径）。 */
+/**
+ * S4b-3（主计划 §5-1）：某台机器该用哪条 resume 启动命令。**纯函数。**
+ *
+ * **per-machine 优先，全局兜底。** 全局值（`behavior.resumeCommandRemote`）从「唯一真相」
+ * 降级为「默认值」—— 这样没填过 per-machine 的机器行为**一字不变**，不需要数据迁移
+ *（迁移会静默改写用户已有的设置）。
+ *
+ * 为什么必须 per-machine：「装 ccm 助手」是**每台机器一个按钮**，而 resume 命令此前是
+ * 全局单值 ⇒ A 机装了 ccm、B 机没装时，数据模型根本表达不出来。于是「装完 ccm 却忘了改
+ * resume 命令」是个**结构性陷阱**（那两处此前还隔着两个顶层组）。
+ */
+export function pickResumeCommand(
+  host: RemoteHostConfig | null,
+  globalDefault: string,
+): string {
+  return (host?.resumeCommand ?? "").trim() || globalDefault;
+}
+
+/** [`pickResumeCommand`] 的 IO 包装：按 origin 查这台机器，再决定用哪条命令。 */
+export async function resolveResumeCommand(
+  origin: string,
+  globalDefault: string,
+): Promise<string> {
+  return pickResumeCommand(
+    await resolveRemoteConfigByOrigin(origin),
+    globalDefault,
+  );
+}
+
 export function hostKey(h: RemoteHostConfig): string {
   return h.label.trim() || h.host;
 }

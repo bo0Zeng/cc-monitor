@@ -22,6 +22,7 @@
  *  - delete 从缓存移除条目，并 -1 project.sessionCount
  */
 
+import { resolveResumeCommand } from "../remote-config";
 import { Channel } from "@tauri-apps/api/core";
 import { commands } from "../ipc/commands";
 import { SessionViewer, type ViewerOptions } from "./session-viewer";
@@ -1440,7 +1441,14 @@ export class HistoryView {
       await withAccount(
         origin,
         ctx.account ?? null,
-        (mods) => runRemoteResume(origin, ctx.sessionId, ctx.cwd, behavior.resumeCommandRemote, mods),
+        async (mods) =>
+          runRemoteResume(
+            origin,
+            ctx.sessionId,
+            ctx.cwd,
+            await resolveResumeCommand(origin, behavior.resumeCommandRemote),
+            mods,
+          ),
         {
           sessionId: ctx.sessionId,
           onUnselectable: (n) =>
@@ -1486,7 +1494,13 @@ export class HistoryView {
       await withAccount(
         origin,
         null,
-        (mods) => runNewSessionRemote(origin, ctx.cwd, behavior.resumeCommandRemote, mods),
+        async (mods) =>
+          runNewSessionRemote(
+            origin,
+            ctx.cwd,
+            await resolveResumeCommand(origin, behavior.resumeCommandRemote),
+            mods,
+          ),
         { follow: {} },
       );
     } else {

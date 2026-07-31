@@ -51,7 +51,11 @@ import { turnEndNotifier } from "./turn-notify";
 import { getBehavior } from "./behavior";
 // F78：远端会话「打开工作目录」→ 用该机配置开 SFTP 面板进入远端 cwd（而非只提示打不开）。
 import { openSftpPanelDir } from "./sftp/panel";
-import { readRemoteConfig, findHostByOrigin } from "./remote-config";
+import {
+  readRemoteConfig,
+  findHostByOrigin,
+  resolveResumeCommand,
+} from "./remote-config";
 import { activityLightClass, type GridSessionSnapshot, type SessionPeek } from "./session-status";
 import { contextPercent } from "./views/pricing";
 
@@ -1997,7 +2001,14 @@ export class TabManager {
       await withAccount(
         origin,
         accountName ?? null,
-        (mods) => runRemoteResume(origin, sid, cwd, behavior.resumeCommandRemote, mods),
+        async (mods) =>
+          runRemoteResume(
+            origin,
+            sid,
+            cwd,
+            await resolveResumeCommand(origin, behavior.resumeCommandRemote),
+            mods,
+          ),
         {
           sessionId: sid,
           // audit-fixes F07（I 建议）：显式选号解析不到（登出/目录消失且缓存恰过期）→ 提示而非静默
@@ -2109,7 +2120,13 @@ export class TabManager {
         origin,
         accountName ?? null,
         async (mods) => {
-          await runRemoteResumeIntoExistingTmux(origin, sid, idle.name, behavior.resumeCommandRemote, mods);
+          await runRemoteResumeIntoExistingTmux(
+            origin,
+            sid,
+            idle.name,
+            await resolveResumeCommand(origin, behavior.resumeCommandRemote),
+            mods,
+          );
         },
         {
           sessionId: sid,
@@ -2138,7 +2155,14 @@ export class TabManager {
       // runRemoteResumeTmux 现在返回 boolean（Phase G）；withAccount 的 run 要 Promise<void>，
       // 这条归档 resume 路径不消费成败（失败已由它自己 toast + 剪贴板回退），故丢弃返回值。
       async (mods) => {
-        await runRemoteResumeTmux(origin, sid, cwd, behavior.resumeCommandRemote, name, mods);
+        await runRemoteResumeTmux(
+          origin,
+          sid,
+          cwd,
+          await resolveResumeCommand(origin, behavior.resumeCommandRemote),
+          name,
+          mods,
+        );
       },
       {
         sessionId: sid,
@@ -2523,7 +2547,7 @@ export class TabManager {
       cwd,
       tmuxName: live.name,
       accountName,
-      launcher: behavior.resumeCommandRemote,
+      launcher: await resolveResumeCommand(origin, behavior.resumeCommandRemote),
       compactFirst,
       // `confirmFn` 保留为可选参数（批量对齐曾用 `() => true` 跳过逐会话确认，随 F09 一并删除）；
       // 唯一现存调用点（右键菜单的 Restart flyout）不传 → 仍走 restartWithAccount 自带的破坏性二次确认。
