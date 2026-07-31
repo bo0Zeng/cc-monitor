@@ -2872,6 +2872,31 @@ body.settings-window-mode .grid-monitor-trigger {
 .remote-status-unknown {
   color: var(--text-3, var(--text-2));
 }
+/* S4b：列表里的机器行（表单在它自己那一页，这里只有名字 + 状态 + 删除）。 */
+.remote-machine-row .remote-machine-legend {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+.remote-machine-open {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 0;
+  text-align: left;
+}
+.remote-machine-open:hover {
+  text-decoration: underline;
+}
+/* 导航里的机器子项：缩进一级，与父项「机器」区分开。 */
+.settings-nav-item-child {
+  font-size: var(--font-size-small);
+  padding-left: 22px;
+}
+
 /* 本机行：不可编辑、不可删，视觉上比远端机器卡片轻。 */
 .remote-machine-local {
   opacity: 0.95;

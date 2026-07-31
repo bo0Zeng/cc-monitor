@@ -29,6 +29,14 @@ export interface SettingsRoute {
   element: HTMLElement;
   /** 可选：页标题旁 ⓘ 的 hover 文案。 */
   infoTooltip?: string;
+  /**
+   * S4b：可选的**父页 id**。有父的项在导航里缩进显示在父项之下。
+   *
+   * 用途只有一个：机器详情页挂在「机器」下面（主计划 §2.3 那张图里，机器是可展开的父项，
+   * 每台机器是它的子项）。**不做任意层级** —— 只支持一层子项，够用且不必去想
+   * 「孙子项怎么缩进 / 折叠状态存哪」这些本轮没有的问题。
+   */
+  parentId?: string;
 }
 
 export interface SettingsRouterOptions {
@@ -102,12 +110,18 @@ export class SettingsRouter {
     const navButton = document.createElement("button");
     navButton.type = "button";
     navButton.id = tabId;
-    navButton.className = "settings-nav-item";
+    navButton.className = route.parentId
+      ? "settings-nav-item settings-nav-item-child"
+      : "settings-nav-item";
     navButton.setAttribute("aria-controls", panelId);
     navButton.textContent = route.title;
     navButton.setAttribute("role", "tab");
     navButton.addEventListener("click", () => this.navigate(route.id));
-    this.nav.appendChild(navButton);
+    // 子项紧跟在父项（及父项已有的子项）之后 —— 否则新机器会跑到导航最末尾，
+    // 和它的父项「机器」隔着「改动足迹」。
+    const anchor = route.parentId ? this.lastNavNodeUnder(route.parentId) : null;
+    if (anchor) anchor.after(navButton);
+    else this.nav.appendChild(navButton);
 
     // 页头：标题 + 可选 ⓘ。既给页面一个锚（导航项在左边，视线回不来时容易失焦），
     // 也给那些原本挂在分组上的 hover 文案一个新宿主 —— 分组没了，文案不该跟着消失。
@@ -138,6 +152,40 @@ export class SettingsRouter {
       this.navigate(route.id);
     } else if (route.id === this.landingId) {
       this.navigate(route.id);
+    } else {
+      this.applyVisibility();
+    }
+  }
+
+  /** 父项本身、或它最后一个子项的导航节点 —— 新子项插在它后面。 */
+  private lastNavNodeUnder(parentId: string): HTMLElement | null {
+    const parent = this.routes.get(parentId);
+    if (!parent) return null;
+    let node: HTMLElement = parent.navButton;
+    for (const [, e] of this.routes) {
+      if (e.route.parentId === parentId) node = e.navButton;
+    }
+    return node;
+  }
+
+  /**
+   * S4b：注销一页（机器被删 / 改名时）。
+   *
+   * **当前页被注销时会切走**，切到它的父页（没有父就切第一页）—— 否则用户会停在
+   * 一个已经从 DOM 里摘掉的页面上，看到一片空白且不知道发生了什么。
+   */
+  removeRoute(id: string): void {
+    const entry = this.routes.get(id);
+    if (!entry) return;
+    const wasActive = this.active === id;
+    const fallback = entry.route.parentId ?? this.routeIds.find((x) => x !== id);
+    entry.navButton.remove();
+    this.pages.get(id)?.remove();
+    this.pages.delete(id);
+    this.routes.delete(id);
+    if (wasActive) {
+      this.active = null;
+      if (fallback) this.navigate(fallback);
     } else {
       this.applyVisibility();
     }

@@ -49,6 +49,8 @@ import {
   forgetMachine,
   renameMachine,
   type MachineFacet,
+  type MachineStatus,
+  type FacetState,
 } from "./machine-status";
 import {
   HOST_DEFAULTS,
@@ -157,12 +159,56 @@ const REMOTE_INFO_TEXT =
 import CCM_WRAPPER_SNIPPET from "../../shared/ccm-aliases.sh?raw";
 import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件
 
+/**
+ * S4b：「每台机器一页」的宿主。由 `panel.ts` 用 `SettingsRouter` 实现。
+ *
+ * 抽成接口而不是直接把 router 传进来：本分节只需要「给我开一页 / 收掉一页 / 跳过去」
+ * 这三件事，不该知道路由器长什么样（也让它在没有路由器的场合——如既有单测——照常工作）。
+ */
+export interface MachinePagesHost {
+  addMachinePage(id: string, title: string, element: HTMLElement): void;
+  removeMachinePage(id: string): void;
+  navigateToMachinePage(id: string): void;
+}
+
 export interface RemoteSectionOptions {
   /** 被 CollapsibleGroup 包起来时传 headless: true，不渲染自己的小标题。 */
   headless?: boolean;
+  /**
+   * S4b：有它就把每台机器的编辑表单搬到**它自己那一页**，列表里只留一行
+   * （名字 + 状态 + 点进去）。**不传就是老形态**（卡片就地折叠展开）——
+   * 既有单测与任何不带路由器的宿主照常工作。
+   */
+  pages?: MachinePagesHost;
 }
 
+/** S4b：机器详情页的路由 id 前缀。 */
+export const MACHINE_PAGE_PREFIX = "machine:";
+
 // === 共享 DOM 小工具 ===
+
+/**
+ * S3/S4b：把一台机器的状态格子渲染进容器。**纯读账本，绝不发起探测**
+ *（主计划 §1-2）。列表行与本机行共用同一份渲染，免得两处慢慢长歪。
+ */
+export function renderStatusCells(
+  strip: HTMLElement,
+  status: MachineStatus,
+  overrides: Partial<Record<MachineFacet, FacetState>> = {},
+): void {
+  strip.replaceChildren();
+  for (const facet of MACHINE_FACETS) {
+    const d = describeFacet(overrides[facet] ?? status[facet]);
+    const cell = document.createElement("span");
+    cell.className = `remote-status-cell remote-status-${d.tone}`;
+    cell.dataset.facet = facet;
+    cell.textContent = `${d.icon} ${FACET_LABELS[facet]}`;
+    // 年龄放 title 只是**补充**：`describeFacet` 的正文已把「多旧」说清楚，
+    // 而 §1-3 明令状态性信息不得只活在 hover 里。
+    cell.title = `${FACET_LABELS[facet]}：${d.text}`;
+    strip.appendChild(cell);
+  }
+}
 
 /**
  * F43：是否显示「重置为 TOFU」按钮——当且仅当当前已固化了非空指纹。
@@ -252,6 +298,8 @@ interface MachineCardHooks {
   onChange: () => void;
   /** 点删除 → 让 section 移除本卡片。 */
   onRemove: (card: MachineCard) => void;
+  /** S4b：这张卡的状态/名字变了，宿主该刷新列表那一行。 */
+  onStatusChanged?: (card: MachineCard) => void;
 }
 
 /**
@@ -284,8 +332,6 @@ class MachineCard {
   private body!: HTMLElement;
   /** legend 里承载机器名的 span（label || host）。 */
   private nameSpan!: HTMLElement;
-  /** S3：legend 上的状态格子容器（折叠时这就是「列表行」）。 */
-  private statusStrip!: HTMLElement;
   /** legend 左侧折叠指示符（▸ 折叠 / ▾ 展开）。 */
   private toggleIndicator!: HTMLElement;
   private collapsed = false;
@@ -361,12 +407,6 @@ class MachineCard {
     this.nameSpan = document.createElement("span");
     this.nameSpan.className = "remote-machine-name";
     legend.appendChild(this.nameSpan);
-
-    // S3：状态条 —— 「上次动作的结论 + 它有多旧」。**这里绝不发起探测**，
-    // 只读账本（主计划 §1-2：状态灯绝不引入轮询）。
-    this.statusStrip = document.createElement("span");
-    this.statusStrip.className = "remote-machine-status";
-    legend.appendChild(this.statusStrip);
 
     // 删除按钮（legend 右侧）
     const removeBtn = document.createElement("button");
@@ -696,33 +736,38 @@ class MachineCard {
 
   /** legend 显示 label || host || 占位。 */
   private updateLegend(): void {
-    this.nameSpan.textContent =
-      this.labelInput.value.trim() ||
-      this.hostInput.value.trim() ||
-      "（未命名机器）";
+    this.nameSpan.textContent = this.displayName();
     this.renderStatusStrip();
   }
 
   /**
-   * S3：把账本里这台机器的状态摆出来。**纯读**——不查、不探、不发 IPC。
-   * 读的是 `persistedKey`（盘上那条），不是当前输入框的值：用户正在改名的中途，
-   * 输入框里的字符串还不对应任何一条已记录的结论。
+   * S4b：列表那一行的状态条要跟着动作结果刷新。卡片自己不再渲染状态
+   *（状态是列表的一列，见 `RemoteSection.buildMachineRow` 的注释），
+   * 所以这里只是把「该刷了」这件事转给宿主。
    */
   renderStatusStrip(): void {
-    const key = this.persistedKey ?? hostKey(this.collect());
-    const st = readStatus(key);
-    this.statusStrip.replaceChildren();
-    for (const facet of MACHINE_FACETS) {
-      const d = describeFacet(st[facet]);
-      const cell = document.createElement("span");
-      cell.className = `remote-status-cell remote-status-${d.tone}`;
-      cell.dataset.facet = facet;
-      cell.textContent = `${d.icon} ${FACET_LABELS[facet]}`;
-      // 年龄放 title 只是**补充**；`describeFacet` 的正文已经把「多旧」说清楚，
-      // 而 §1-3 明令状态性信息不得只活在 hover 里。这里 title 里是同一句话的展开版。
-      cell.title = `${FACET_LABELS[facet]}：${d.text}`;
-      this.statusStrip.appendChild(cell);
-    }
+    this.hooks.onStatusChanged?.(this);
+  }
+
+  /** 这张卡在列表/导航上显示的名字。 */
+  displayName(): string {
+    return (
+      this.labelInput.value.trim() ||
+      this.hostInput.value.trim() ||
+      "（未命名机器）"
+    );
+  }
+
+  /**
+   * S4b：进入「独占一页」形态 —— 去掉折叠（一页只有它，没有可折的必要）
+   * 与删除按钮（删除入口在列表行上，那里才看得见「删的是哪一台」）。
+   */
+  setPageMode(): void {
+    this.setCollapsed(false);
+    this.toggleIndicator.remove();
+    this.element
+      .querySelector(".remote-machine-remove")
+      ?.remove();
   }
 
   /** 点「测试连接」：组本卡片 → test_remote_connection → 渲染结果。 */
@@ -1195,6 +1240,10 @@ class MachineCard {
 export class RemoteSection {
   private root: HTMLElement;
   private headless: boolean;
+  /** S4b：机器详情页宿主（没有就退回「卡片就地展开」的老形态）。 */
+  private pages?: MachinePagesHost;
+  /** S4b：已注册的机器页 id —— 重建列表时按它收掉旧页。 */
+  private machinePageIds: string[] = [];
 
   /** 打开面板时从 config 拉到的快照，用于判断是否变化（变了就提示重启）。 */
   private original: RemoteConfig = { enabled: false, hosts: [] };
@@ -1216,6 +1265,7 @@ export class RemoteSection {
 
   constructor(opts: RemoteSectionOptions = {}) {
     this.headless = opts.headless ?? false;
+    this.pages = opts.pages;
     this.root = this.build();
     void this.refresh();
   }
@@ -1260,28 +1310,20 @@ export class RemoteSection {
     strip.className = "remote-machine-status";
     legend.appendChild(strip);
 
-    const st = readStatus(LOCAL_MACHINE_KEY);
-    for (const facet of MACHINE_FACETS) {
-      // daemon 那格对本机是**不适用**，不是「缺组件」：`watcher.rs` 直读 jsonl，
-      // 本机压根不需要 daemon（主计划 §2.4 那张表逐字写着「不需要」）。
-      const state =
-        facet === "daemon"
-          ? ({ kind: "na", detail: "不需要", at: 0 } as const)
-          : st[facet];
-      const d = describeFacet(state);
-      const cell = document.createElement("span");
-      cell.className = `remote-status-cell remote-status-${d.tone}`;
-      cell.dataset.facet = facet;
-      cell.textContent = `${d.icon} ${FACET_LABELS[facet]}`;
-      cell.title = `${FACET_LABELS[facet]}：${d.text}`;
-      strip.appendChild(cell);
-    }
+    // daemon 那格对本机是**不适用**，不是「缺组件」：`watcher.rs` 直读 jsonl，
+    // 本机压根不需要 daemon（主计划 §2.4 那张表逐字写着「不需要」）。
+    renderStatusCells(strip, readStatus(LOCAL_MACHINE_KEY), {
+      daemon: { kind: "na", detail: "不需要", at: 0 },
+    });
     // **没有删除按钮** —— 本机删不掉，这不是「暂未实现」，是它本来就不该能删。
     return row;
   }
 
   /** 用 config 里的机器列表重建卡片。 */
   private rebuildCards(hosts: RemoteHostConfig[]): void {
+    // S4b：重建前先把上一批机器页收掉，否则改完配置会留下一串指向已不存在机器的导航项。
+    for (const id of this.machinePageIds) this.pages?.removeMachinePage(id);
+    this.machinePageIds = [];
     this.cards = [];
     this.machinesContainer.innerHTML = "";
     this.machinesContainer.appendChild(this.buildLocalRow());
@@ -1306,14 +1348,97 @@ export class RemoteSection {
       {
         onChange: () => void this.save(),
         onRemove: (c) => this.removeCard(c),
+        onStatusChanged: (c) => this.refreshMachineRow(c),
       },
       collapsed,
       persistedKey,
     );
     this.cards.push(card);
-    this.machinesContainer.appendChild(card.element);
+    if (this.pages) {
+      // S4b：表单搬到这台机器自己那一页；列表里只留一行（名字 + 状态 + 点进去）。
+      const id = `${MACHINE_PAGE_PREFIX}${persistedKey ?? hostKey(initial)}`;
+      card.setPageMode();
+      this.pages.addMachinePage(id, card.displayName(), card.element);
+      this.machinePageIds.push(id);
+      this.machinesContainer.appendChild(this.buildMachineRow(card, id));
+    } else {
+      this.machinesContainer.appendChild(card.element);
+    }
     this.updateEmptyHint();
     return card;
+  }
+
+  /**
+   * S4b：列表里的一行 —— 名字 + 状态条 + 点进去。**编辑表单不在这里**（在那台机器自己那页）。
+   *
+   * 状态条只渲染在行上，不再渲染在卡片 legend 上：§2.3 那张图里状态就是**列表**的一列，
+   * 而详情页上用户看的是那些动作按钮本身的结果，不需要再来一份缓存结论。
+   */
+  private buildMachineRow(card: MachineCard, pageId: string): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "remote-machine remote-machine-row";
+    row.dataset.pageId = pageId;
+
+    const legend = document.createElement("div");
+    legend.className = "remote-machine-legend";
+    row.appendChild(legend);
+
+    const name = document.createElement("button");
+    name.type = "button";
+    name.className = "remote-machine-name remote-machine-open";
+    name.textContent = card.displayName();
+    name.addEventListener("click", () => this.pages?.navigateToMachinePage(pageId));
+    legend.appendChild(name);
+
+    const strip = document.createElement("span");
+    strip.className = "remote-machine-status";
+    legend.appendChild(strip);
+    renderStatusCells(strip, readStatus(card.persistedKey ?? hostKey(card.collect())));
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className =
+      "settings-btn settings-btn-secondary remote-machine-remove";
+    removeBtn.textContent = "删除";
+    removeBtn.title = "从列表移除这台机器";
+    removeBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      this.removeCard(card);
+    });
+    legend.appendChild(removeBtn);
+    return row;
+  }
+
+  /**
+   * 按 pageId 找列表里那一行。
+   *
+   * **刻意不用 `querySelector` + `CSS.escape`**：pageId 里含用户填的机器名（任意字符），
+   * 直接拼进选择器会炸；而 `CSS.escape` 在 jsdom 里不一定有（实测：用了它之后
+   * `removeCard` 在 `save()` 之前就抛，删除功能整个静默失效，5 条既有测试同时变红）。
+   * 扫一遍 `dataset` 既安全又不依赖宿主实现。
+   */
+  private findMachineRow(pageId: string): HTMLElement | null {
+    for (const el of this.machinesContainer.children) {
+      if ((el as HTMLElement).dataset?.pageId === pageId) return el as HTMLElement;
+    }
+    return null;
+  }
+
+  /** S4b：刷新某台机器在列表里那一行（名字 + 状态条）。没有分页宿主时什么都不用做。 */
+  private refreshMachineRow(card: MachineCard): void {
+    if (!this.pages) return;
+    const pageId = `${MACHINE_PAGE_PREFIX}${card.persistedKey ?? hostKey(card.collect())}`;
+    const row = this.findMachineRow(pageId);
+    if (!row) return;
+    const nameBtn = row.querySelector<HTMLElement>(".remote-machine-open");
+    if (nameBtn) nameBtn.textContent = card.displayName();
+    const strip = row.querySelector<HTMLElement>(".remote-machine-status");
+    if (strip) {
+      renderStatusCells(
+        strip,
+        readStatus(card.persistedKey ?? hostKey(card.collect())),
+      );
+    }
   }
 
   private removeCard(card: MachineCard): void {
@@ -1324,6 +1449,11 @@ export class RemoteSection {
     if (card.persistedKey) forgetMachine(card.persistedKey);
     this.cards.splice(idx, 1);
     card.element.remove();
+    // S4b：连它那一页和列表行一起收掉，否则导航里会留下一个指向已删机器的死项。
+    const pageId = `${MACHINE_PAGE_PREFIX}${card.persistedKey ?? hostKey(card.collect())}`;
+    this.pages?.removeMachinePage(pageId);
+    this.machinePageIds = this.machinePageIds.filter((x) => x !== pageId);
+    this.findMachineRow(pageId)?.remove();
     this.updateEmptyHint();
     void this.save();
   }

@@ -260,13 +260,34 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     daemonless: false,
   });
 
+  /** S4b：一个假的分页宿主，记录开了哪些页 / 跳去了哪一页。 */
+  function fakePages() {
+    const added: { id: string; title: string; element: HTMLElement }[] = [];
+    const removed: string[] = [];
+    const navigated: string[] = [];
+    return {
+      added,
+      removed,
+      navigated,
+      host: {
+        addMachinePage: (id: string, title: string, element: HTMLElement) =>
+          void added.push({ id, title, element }),
+        removeMachinePage: (id: string) => void removed.push(id),
+        navigateToMachinePage: (id: string) => void navigated.push(id),
+      },
+    };
+  }
+
   /** 起一个 section 并等它 refresh 完（构造函数里是 `void this.refresh()`）。 */
-  async function mount(hosts: RemoteHostConfig[]): Promise<RemoteSection> {
+  async function mount(
+    hosts: RemoteHostConfig[],
+    pages?: ReturnType<typeof fakePages>["host"],
+  ): Promise<RemoteSection> {
     vi.mocked(loadConfig).mockResolvedValue({
       keepMe: 1,
       remote: { enabled: true, hosts },
     } as unknown as Awaited<ReturnType<typeof loadConfig>>);
-    const sec = new RemoteSection({ headless: true });
+    const sec = new RemoteSection({ headless: true, pages });
     // 构造里的 refresh 是 fire-and-forget，让出事件循环等它跑完。
     await new Promise((r) => setTimeout(r, 0));
     return sec;
@@ -394,13 +415,88 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   });
 
   it("★ 状态条读的是账本，且带年龄（不是伪装成实时）", async () => {
+    // S4b：状态条从卡片 legend 移到了**列表行**上（§2.3 里状态就是列表的一列），
+    // 所以这条要在分页形态下验。
     localStorage.clear();
     recordFacet("a", "connection", { kind: "ok", at: Date.now() - 3 * 60_000 });
-    const sec = await mount([mkH("a", "1.1.1.1")]);
-    const row = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine")][1]!;
+    const p = fakePages();
+    const sec = await mount([mkH("a", "1.1.1.1")], p.host);
+    const row = sec.element.querySelector<HTMLElement>(".remote-machine-row")!;
     const cell = row.querySelector<HTMLElement>('[data-facet="connection"]')!;
     expect(cell.classList.contains("remote-status-ok")).toBe(true);
     expect(cell.title).toContain("3 分钟前");
+  });
+
+  // ---- S4b：每台机器一页 ----
+
+  it("★ 有分页宿主时：每台机器开一页，列表里只留一行（表单不在列表上）", async () => {
+    const p = fakePages();
+    const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], p.host);
+    expect(p.added.map((x) => x.id)).toEqual(["machine:a", "machine:b"]);
+    expect(p.added.map((x) => x.title)).toEqual(["a", "b"]);
+    // 列表里是行，不是表单：行上没有 host 输入框（那在详情页上）。
+    const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row")];
+    expect(rows).toHaveLength(2);
+    for (const r of rows) expect(r.querySelector("input")).toBeNull();
+  });
+
+  it("★ 点机器名 → 跳到它那一页", async () => {
+    const p = fakePages();
+    const sec = await mount([mkH("a", "1.1.1.1")], p.host);
+    sec.element.querySelector<HTMLButtonElement>(".remote-machine-open")!.click();
+    expect(p.navigated).toEqual(["machine:a"]);
+  });
+
+  it("★ 删掉一台 → 它那一页也被收掉（否则导航里留个指向已删机器的死项）", async () => {
+    const p = fakePages();
+    const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], p.host);
+    sec.element
+      .querySelectorAll<HTMLButtonElement>(".remote-machine-remove")[0]!
+      .click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(p.removed).toContain("machine:a");
+    expect(
+      sec.element.querySelectorAll(".remote-machine-row"),
+    ).toHaveLength(1);
+    // 盘上也真的少了一台（S1 的保存路径没被这次改动带偏）
+    expect(writtenHosts().map((h) => h.label)).toEqual(["b"]);
+  });
+
+  it("详情页上的卡片没有折叠箭头、也没有删除按钮（删除入口在列表行）", async () => {
+    const p = fakePages();
+    await mount([mkH("a", "1.1.1.1")], p.host);
+    const pageEl = p.added[0]!.element;
+    expect(pageEl.querySelector(".remote-machine-toggle")).toBeNull();
+    expect(pageEl.querySelector(".remote-machine-remove")).toBeNull();
+    // 反向自检：表单本体确实在这一页上
+    expect(pageEl.querySelector("input")).not.toBeNull();
+  });
+
+  it("★ 重新加载配置时先收掉上一批机器页（否则导航里越积越多死项）", async () => {
+    // `refresh()` 每次打开设置都会跑。不收旧页的话，改一次机器名就会在导航里
+    // 同时留下新旧两项，而旧那项点进去是一台已经不存在的机器。
+    const p = fakePages();
+    const sec = await mount([mkH("a", "1.1.1.1")], p.host);
+    expect(p.added.map((x) => x.id)).toEqual(["machine:a"]);
+
+    vi.mocked(loadConfig).mockResolvedValue({
+      remote: { enabled: true, hosts: [mkH("b", "2.2.2.2")] },
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+    await sec.refresh();
+
+    expect(p.removed).toContain("machine:a");
+    expect(p.added.map((x) => x.id)).toEqual(["machine:a", "machine:b"]);
+    // 列表里也只剩新的那一台
+    const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row")];
+    expect(rows.map((r) => r.dataset.pageId)).toEqual(["machine:b"]);
+  });
+
+  it("不传分页宿主 = 老形态（卡片就地展开）—— 既有宿主不受影响", async () => {
+    const sec = await mount([mkH("a", "1.1.1.1")]);
+    expect(sec.element.querySelectorAll(".remote-machine-row")).toHaveLength(0);
+    // 卡片连同表单仍在列表里，删除按钮也还在卡片上
+    expect(sec.element.querySelector(".remote-machine input")).not.toBeNull();
+    expect(sec.element.querySelector(".remote-machine-remove")).not.toBeNull();
   });
 
   it("删掉一台机器会连它的状态记录一起清（下一台同名的不该继承 ✓）", async () => {
