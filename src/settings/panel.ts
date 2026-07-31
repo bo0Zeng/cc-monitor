@@ -30,6 +30,7 @@ import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置
 import { DiagnosticsSection } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
 import { SettingsRouter } from "./router";
+import { createRestartBar } from "./restart-notice";
 import { setCurrentMachine } from "./machine-context";
 import {
   LOCAL_MACHINE_PAGE_ID,
@@ -438,6 +439,10 @@ export class SettingsPanel {
 
     root.appendChild(this.buildHeader());
     root.appendChild(this.buildBody());
+    // ★ S7：「有改动待重启」常驻条。**放在 footer 之上、面板底部** —— 它是状态，
+    // 不是某一页的事（改远端配置和改诊断开关都会点亮它），所以不属于任何一页。
+    // 空时整块不渲染；**刻意没有关闭按钮**（见 restart-notice.ts 头注）。
+    root.appendChild(createRestartBar());
     root.appendChild(this.buildFooter());
 
     return root;

@@ -2872,6 +2872,20 @@ body.settings-window-mode .grid-monitor-trigger {
 .remote-status-unknown {
   color: var(--text-3, var(--text-2));
 }
+/* S7：「有改动待重启」常驻条。空时 `hidden`，不占位。
+   刻意做得**看得见但不刺眼** —— 它会一直在，直到用户真的重启；
+   做成红色告警会让人疲劳，做成灰字又会被忽略。 */
+.settings-restart-bar {
+  background: var(--bg-2);
+  border-top: 2px solid var(--warn, var(--text-2));
+  color: var(--text);
+  font-size: var(--font-size-small);
+  padding: 6px 14px;
+}
+.settings-restart-bar[hidden] {
+  display: none;
+}
+
 /* S6：cc-bus 驾驶舱顶层视图的外壳（照 grid-monitor 的 overlay 形态）。 */
 .cc-bus-view {
   background: var(--bg);

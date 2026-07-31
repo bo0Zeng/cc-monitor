@@ -50,6 +50,7 @@ import {
   defaultDaemonPathFor,
   shouldShowResetFingerprint,
 } from "./machine-card";
+import { markRestartNeeded } from "./restart-notice";
 import { computeGaps, summarizeGaps, describeGap } from "./readiness";
 // 旧调用点从本模块 import 这两个（测试也是）——搬家后原样再导出，不制造无谓的改动面。
 export { shouldShowResetFingerprint };
@@ -1027,7 +1028,11 @@ export class RemoteSection {
       const changed = !sameRemote(next, this.original);
       this.original = next;
       if (changed && incompleteCount === 0 && !fingerprintLooksOff) {
-        this.showBanner("远端设置已更新 —— 需要重启 monitor 才能生效。");
+        // S7：「要重启」这个**状态**收敛到底部常驻条，banner 只报「这次动作成功了」。
+        // 原先每次保存都在 banner 里重说一遍「需要重启」—— 那句话恒真，说多了就成噪音，
+        // 真该注意时反而认不出来（§12）。
+        markRestartNeeded("远端机器配置");
+        this.showBanner("远端设置已更新。");
       }
     } catch (e) {
       console.warn("save remote config failed:", e);

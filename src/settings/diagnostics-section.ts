@@ -104,7 +104,7 @@ export class DiagnosticsSection {
       makeInfoIcon(
         "按天滚动写入 monitor.YYYY-MM-DD.log，保留最近 3 天。\n" +
           "关闭后已存在的 log 文件不会被删除，但不再写新内容。\n" +
-          "⚠ 切换此项需要重启 monitor 才能生效（tracing layer 启动时定型）。",
+          "切换此项需重启 monitor 才生效（tracing layer 启动时定型）。",
       ),
     );
     group.appendChild(logRow);
