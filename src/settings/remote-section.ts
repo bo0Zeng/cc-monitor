@@ -43,7 +43,8 @@ import {
   HOST_DEFAULTS,
   parseAddressLines,
   readRemoteConfig,
-  writeRemoteConfig,
+  patchRemoteConfig,
+  hostKey,
   type RemoteHostConfig,
   type RemoteConfig,
 } from "../remote-config";
@@ -276,11 +277,22 @@ class MachineCard {
   private toggleIndicator!: HTMLElement;
   private collapsed = false;
 
+  /**
+   * S1：这张卡对应的记录**在盘上当前的 origin**。`null` = 还没落过盘（新增的卡）。
+   *
+   * 为什么需要它：机器的定位键是 origin（`label || host`），而 origin **可以被用户
+   * 编辑**。整表覆盖时这问题被掩盖着（反正全写）；改成局部合并后，「这张卡对应盘上
+   * 哪一条」必须有确定答案，否则改个名就会变成「新增一台 + 留下一条孤儿」。
+   */
+  persistedKey: string | null;
+
   constructor(
     initial: RemoteHostConfig,
     private hooks: MachineCardHooks,
     collapsed = false,
+    persistedKey: string | null = null,
   ) {
+    this.persistedKey = persistedKey;
     this.element = this.build();
     this.syncInputs(initial);
     this.updateLegend();
@@ -1105,6 +1117,12 @@ export class RemoteSection {
   /** 打开面板时从 config 拉到的快照，用于判断是否变化（变了就提示重启）。 */
   private original: RemoteConfig = { enabled: false, hosts: [] };
 
+  /**
+   * S1：本编辑器**加载时**看到的机器 key 列表。保存时 `remove = loadedKeys − 现存卡片的 key`。
+   * 基准取「加载时看到的」而非「盘上全量」，是为了让 S2 拆页后一页只对自己那几台负责。
+   */
+  private loadedKeys: string[] = [];
+
   private enabledCheckbox!: HTMLInputElement;
   private machinesContainer!: HTMLElement;
   private emptyHint!: HTMLElement;
@@ -1139,14 +1157,19 @@ export class RemoteSection {
     this.machinesContainer.innerHTML = "";
     for (const h of hosts) {
       // 从 config 重建的卡片默认折叠（只显示机器名）——多机时列表整洁；点名称展开编辑。
-      this.appendCard(h, true);
+      // S1：从盘上来的卡片带着它此刻的 origin 当 persistedKey。
+      this.appendCard(h, true, hostKey(h));
     }
+    // S1：本编辑器**这次加载时**看到的 key 集合。删除判据以它为基准，
+    // 而**不是**「盘上全量」—— 这正是 S2 拆页后的安全边界：一页只对自己加载过的负责。
+    this.loadedKeys = hosts.map(hostKey);
     this.updateEmptyHint();
   }
 
   private appendCard(
     initial: RemoteHostConfig,
     collapsed = false,
+    persistedKey: string | null = null,
   ): MachineCard {
     const card = new MachineCard(
       initial,
@@ -1155,6 +1178,7 @@ export class RemoteSection {
         onRemove: (c) => this.removeCard(c),
       },
       collapsed,
+      persistedKey,
     );
     this.cards.push(card);
     this.machinesContainer.appendChild(card.element);
@@ -1650,7 +1674,41 @@ export class RemoteSection {
     }
 
     try {
-      await writeRemoteConfig(next);
+      // ★ S1：**局部合并，不再整表覆盖**。
+      //
+      // 老写法是 `writeRemoteConfig(next)` —— 把 `cfg.remote` 整个换成本编辑器手上这份。
+      // 它今天之所以不出事，纯粹是因为 `collect()` 恰好映射了**全部**卡片：
+      // **正确性来自 UI 的巧合，不是来自构造**。S2 一旦把机器拆成一页一台，
+      // 同一句调用就会把不在本页的机器**静默删光**。
+      //
+      // 现在改成显式的 upsert/remove：
+      // - upsert 用每张卡的 `persistedKey` 定位盘上那一条 ⇒ 改 label（换 origin）
+      //   仍然是**改**那一条，不会变成「新增 + 孤儿」。
+      // - remove 只取「本编辑器加载时见过、现在卡片没了」的那些 ⇒ 没加载过的机器
+      //   既不 upsert 也不 remove，**字节不动**。
+      // 按**出现次数**比，不是按集合比。集合比在「两台机器 origin 相同、删掉其中一台」
+      // 时会算出 remove=[]（另一张卡还占着同一个 key）⇒ 删除静默失效。
+      // 老的整表覆盖写法没这个问题，所以这属于必须挡住的回归。
+      const countBy = (keys: (string | null)[]): Map<string, number> => {
+        const m = new Map<string, number>();
+        for (const k of keys) if (k !== null) m.set(k, (m.get(k) ?? 0) + 1);
+        return m;
+      };
+      const liveCount = countBy(this.cards.map((c) => c.persistedKey));
+      await patchRemoteConfig({
+        enabled: next.enabled,
+        upsert: this.cards.map((c) => ({
+          key: c.persistedKey,
+          value: c.collect(),
+        })),
+        remove: [...countBy(this.loadedKeys)]
+          .filter(([k, n]) => n > (liveCount.get(k) ?? 0))
+          .map(([k]) => k),
+      });
+      // 落盘成功后卡片身份跟到新 origin 上（用户这次可能就是在改名）。
+      for (const c of this.cards) c.persistedKey = hostKey(c.collect());
+      this.loadedKeys = this.cards.map((c) => c.persistedKey!);
+
       const changed = !sameRemote(next, this.original);
       this.original = next;
       if (changed && incompleteCount === 0 && !fingerprintLooksOff) {
@@ -1677,7 +1735,8 @@ export class RemoteSection {
 
 /** 把一个任意 JSON 对象规整成 RemoteHostConfig（缺失/类型不对走默认）。 */
 // F12：`coerceAddresses` / `coerceHost` / `readRemoteConfig` / `findHostByOrigin` /
-// `resolveRemoteConfigByOrigin` / `writeRemoteConfig` 已移入 `src/remote-config.ts`（数据层）。
+// `resolveRemoteConfigByOrigin` / 写入口已移入 `src/remote-config.ts`（数据层）。
+// S1：写入口 = `patchRemoteConfig`（局部合并）；整表覆盖的 `writeRemoteConfig` 已收回该文件内部、不再导出。
 // `sameHost` / `sameRemote`（下方）是 UI dirty-check，留本文件。
 
 function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {
