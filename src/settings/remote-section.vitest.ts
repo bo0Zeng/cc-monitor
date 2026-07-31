@@ -1,6 +1,6 @@
 // F43：指纹重置按钮显隐纯逻辑。remote-section 的 DOM 主体重(拉整卡),这里只钉住
 // 「有固化指纹才显示重置按钮」这条判定,防未来误改成空指纹也显示(重置无意义)。
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // F56：写入/读取都走 config.ts；mock 掉以测 jump write→read 往返。
 // S1：写入口从 writeRemoteConfig（整表覆盖，已取消导出）改为 patchRemoteConfig（局部合并）。
 vi.mock("../config", () => ({ loadConfig: vi.fn(), saveConfig: vi.fn() }));
@@ -48,7 +48,8 @@ import {
   sftpEligibleHosts,
 } from "../remote-config";
 import type { RemoteHostConfig, RemoteConfig } from "../remote-config";
-import { recordFacet, readStatus } from "./machine-status";
+import { recordFacet, readStatus, LOCAL_MACHINE_KEY } from "./machine-status";
+import { __setHostOsForTests } from "./host-os";
 
 describe("F43 shouldShowResetFingerprint", () => {
   it("已固化非空指纹 → 显示", () => {
@@ -366,6 +367,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   }
 
   beforeEach(() => vi.resetAllMocks());
+  // S9：jsdom 的 UA 是 linux。默认清掉覆盖值，用真实探测（= linux），
+  // 需要别的 OS 的那条测试自己置。
+  afterEach(() => __setHostOsForTests(null));
 
   it("删掉一张卡 ⇒ 只有那台从盘上消失，其余原样", async () => {
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")]);
@@ -471,6 +475,31 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(ofA).toContain("daemon:missing");
     // aya 的 connection 测过且 ok ⇒ 它那台不该再出现这一项
     expect(ofA.some((f) => f.startsWith("connection:"))).toBe(false);
+  });
+
+  it("★ S9：本机的 ccm 条目跟着 monitor 的 OS 走（钉的是接线，不是纯函数）", async () => {
+    // `readiness.vitest.ts` 已经证明 `computeGaps` 会按 `hostOs` 排掉这一项；
+    // 这一条守的是**调用点真把 `hostOs()` 传进去了** —— 漏传时纯函数测试全绿。
+    const localCcm = (sec: { element: HTMLElement }) =>
+      [
+        ...sec.element.querySelectorAll<HTMLElement>(
+          `.remote-gap[data-origin="${LOCAL_MACHINE_KEY}"]`,
+        ),
+      ].some((i) => i.dataset.facet === "ccm");
+
+    localStorage.clear();
+    __setHostOsForTests("windows");
+    expect(
+      localCcm(await mount([mkH("a", "1.1.1.1")], fakePages().host)),
+      "Windows 本机的启动器是「终端集成」，不该说它缺 ccm",
+    ).toBe(false);
+
+    localStorage.clear();
+    __setHostOsForTests("linux");
+    expect(
+      localCcm(await mount([mkH("a", "1.1.1.1")], fakePages().host)),
+      "Linux 本机的 ccm 是真能装的，照常算数",
+    ).toBe(true);
   });
 
   it("★ 渲染「还差什么」不发任何后端请求（只读账本）", async () => {

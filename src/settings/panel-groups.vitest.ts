@@ -11,9 +11,13 @@ import { describe, it, expect, vi } from "vitest";
 
 // refresh spy 守 F82b 段移动没丢 this.remoteSection/this.dataSection 字段（丢了 open() 的
 // `?.refresh()` 会静默 no-op）。vi.hoisted 让 spy 在被提升的 vi.mock 工厂里可见。
-const { remoteRefresh, dataRefresh } = vi.hoisted(() => ({
+const { remoteRefresh, dataRefresh, ccIntegrationBuilds } = vi.hoisted(() => ({
   remoteRefresh: vi.fn(),
   dataRefresh: vi.fn(),
+  // S9：数**构造**次数，不是数 DOM。真 CcIntegrationSection 的构造函数会发两次
+  // Windows 专用 IPC，所以门必须开在「建不建」这一层 ——「建了再 hidden」也能让
+  // DOM 断言通过，只有构造计数分得开这两者。
+  ccIntegrationBuilds: { n: 0 },
 }));
 
 // —— 重子分区 stub 成 { element }，聚焦分组结构本身 —— //
@@ -71,6 +75,9 @@ vi.mock("./diagnostics-section", () => ({
 vi.mock("./cc_integration", () => ({
   CcIntegrationSection: class {
     element = document.createElement("div");
+    constructor() {
+      ccIntegrationBuilds.n += 1;
+    }
   },
 }));
 vi.mock("./mcp-section", () => ({
@@ -129,6 +136,17 @@ vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
 vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ close: vi.fn() }) }));
 
 import { SettingsPanel } from "./panel";
+import { __setHostOsForTests } from "./host-os";
+import { beforeEach, afterEach } from "vitest";
+
+// S9：jsdom 的 UA 含 `linux` ⇒ 不置覆盖值，本文件整套跑的就是「非 Windows」那条分支，
+// 而下面这些断言（含「终端集成」那块）本来是照 Windows 形态写的。
+// **显式钉成 windows**，Linux 那条形态由本文件末尾专门的一节覆盖。
+beforeEach(() => {
+  __setHostOsForTests("windows");
+  ccIntegrationBuilds.n = 0;
+});
+afterEach(() => __setHostOsForTests(null));
 
 /** 某一页里的分节标题清单（含页内折叠组的标题）。 */
 function pageTitles(routeId: string): string[] {
@@ -356,5 +374,98 @@ describe("S2 设置面板分页结构", () => {
     expect(bar.closest(".settings-page")).toBeNull();
     // 也不在导航里
     expect(bar.closest(".settings-nav")).toBeNull();
+  });
+});
+
+/**
+ * S9：本机页上的「终端集成」按 OS 显隐。
+ *
+ * v3.4.0 已经发了 `.deb` ⇒ Linux 用户会在本机页看到一个装 PowerShell profile 的安装器。
+ */
+describe("S9 本机 OS 门（终端集成）", () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  /** 本机页「终端集成」那一格的元素（两条分支下标题相同，靠内容区分）。 */
+  function ccIntegrationBlock(): HTMLElement | null {
+    const page = document.querySelector<HTMLElement>(
+      '.settings-page[data-route-id="machine:（本机）"]',
+    );
+    if (!page) throw new Error("本机页不在");
+    for (const g of page.querySelectorAll<HTMLElement>(".settings-group")) {
+      const t = g.querySelector(".settings-group-title");
+      if (t?.textContent === "终端集成") return g;
+    }
+    return null;
+  }
+
+  it("★ Windows：那块照常构造并出现", async () => {
+    __setHostOsForTests("windows");
+    ccIntegrationBuilds.n = 0;
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    await tick();
+    expect(ccIntegrationBuilds.n, "Windows 上必须真的构造").toBe(1);
+    expect(ccIntegrationBlock()).not.toBeNull();
+    expect(ccIntegrationBlock()!.dataset.naBlock).toBeUndefined();
+  });
+
+  it("★ Linux：**整块不构造**（构造即发两次 Windows 专用 IPC）", async () => {
+    __setHostOsForTests("linux");
+    ccIntegrationBuilds.n = 0;
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    await tick();
+    // 这一条是「不构造」与「构造了再 hidden」的分界 —— 只看 DOM 分不出来。
+    expect(ccIntegrationBuilds.n, "非 Windows 上一次都不该构造").toBe(0);
+  });
+
+  it("★ Linux：那一格不是凭空少一块，而是一行「不适用」说明", async () => {
+    __setHostOsForTests("linux");
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    await tick();
+    const blk = ccIntegrationBlock();
+    expect(blk, "格子还在（标题不变），换的是内容").not.toBeNull();
+    expect(blk!.dataset.naBlock).toBe("终端集成");
+    expect(blk!.textContent).toContain("不适用");
+    // 不适用 ≠ 缺（S5 readiness 立的那条区分）⇒ 不能做成警告
+    expect(blk!.textContent).not.toContain("⚠");
+    expect(blk!.querySelector(".settings-block-failed")).toBeNull();
+  });
+
+  it("macOS 也不适用（PowerShell 不是只有 Linux 上没有）", async () => {
+    __setHostOsForTests("macos");
+    ccIntegrationBuilds.n = 0;
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    await tick();
+    expect(ccIntegrationBuilds.n).toBe(0);
+    expect(ccIntegrationBlock()!.dataset.naBlock).toBe("终端集成");
+  });
+
+  it("★ 认不出 OS 时**照常显示** —— 藏错了 Windows 用户就找不到安装入口", async () => {
+    __setHostOsForTests("unknown");
+    ccIntegrationBuilds.n = 0;
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    await tick();
+    expect(ccIntegrationBuilds.n, "不确定时倒向无回归的那一侧").toBe(1);
+    expect(ccIntegrationBlock()!.dataset.naBlock).toBeUndefined();
+  });
+
+  it("门只管这一块 —— 同栏的 MCP / cc-bus 钩子在 Linux 上照常在", async () => {
+    __setHostOsForTests("linux");
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    await tick();
+    const titles = [
+      ...document
+        .querySelector<HTMLElement>(
+          '.settings-page[data-route-id="machine:（本机）"]',
+        )!
+        .querySelectorAll(".settings-group-title"),
+    ].map((e) => e.textContent);
+    expect(titles).toContain("MCP");
+    expect(titles).toContain("cc-bus 钩子");
   });
 });

@@ -31,6 +31,7 @@ import { DiagnosticsSection } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
 import { SettingsRouter } from "./router";
 import { createRestartBar } from "./restart-notice";
+import { hostOsAllows, type HostOs } from "./host-os"; // S9：本机 OS 门
 import { setCurrentMachine } from "./machine-context";
 import {
   LOCAL_MACHINE_PAGE_ID,
@@ -193,6 +194,16 @@ export class SettingsPanel {
     tab: "acct" | "tools";
     el: HTMLElement;
   }[] = [];
+  /**
+   * S9：本机页上按 OS 显隐的块（今天只有「终端集成」）。
+   *
+   * **不是「构造了再藏」**：`CcIntegrationSection` 的构造函数就会发两次
+   * Windows 专用 IPC（`cc_integration_status` / `cc_get_auto_launch`），
+   * 藏起来那两次照发。所以门开在**建不建**这一层。
+   */
+  private static readonly CC_INTEGRATION_HOST_OS: readonly HostOs[] = [
+    "windows",
+  ];
   /** S4b-3b-2：pageId → 该页「账号 / 工具」两栏的容器。 */
   private machineTabSlots = new Map<
     string,
@@ -652,9 +663,14 @@ export class SettingsPanel {
       {
         // PowerShell $PROFILE 注入 —— 只对**本机**有意义；远端的对应物是
         // 机器详情页上的「装/卸 ccm」按钮（主计划 §2.4 那张表的「启动器」一行）。
+        //
+        // S9：而且只对**跑在 Windows 上的**本机有意义。非 Windows 上换成一行说明，
+        // **整块不构造**（构造即发两次 Windows 专用 IPC）。
         appliesTo: "local",
         tab: "tools",
-        el: this.safeBlock("终端集成", () => new CcIntegrationSection().element),
+        el: hostOsAllows(SettingsPanel.CC_INTEGRATION_HOST_OS)
+          ? this.safeBlock("终端集成", () => new CcIntegrationSection().element)
+          : SettingsPanel.ccIntegrationNotApplicable(),
       },
       // F87（#50+#51）：MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）。
       // 本机与远端都有意义（它自己的机器行第一颗按钮就是本机）。
@@ -1017,6 +1033,33 @@ export class SettingsPanel {
       wrap.appendChild(out);
       return wrap;
     }
+  }
+
+  /**
+   * S9：非 Windows 本机上「终端集成」那一格的替身。
+   *
+   * **不能就这么少一块**：主计划 §2.4 那张表里「本机 · 启动器」写的是
+   * 「PowerShell 集成（未来 POSIX ccm）」—— Linux 上这一格**确实还空着**，
+   * 空着的原因得说出来，否则用户只能猜是不是自己装漏了什么。
+   *
+   * 沿用 S5 `readiness.ts` 立的那条区分：**不适用 ≠ 缺**。所以这是一行
+   * **静态说明**而不是 ⚠ —— S7 的判据表里静态说明本就不该做成警告。
+   */
+  private static ccIntegrationNotApplicable(): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "settings-group";
+    wrap.dataset.naBlock = "终端集成";
+    const heading = document.createElement("div");
+    heading.className = "settings-group-title";
+    heading.textContent = "终端集成";
+    wrap.appendChild(heading);
+    const msg = document.createElement("div");
+    msg.className = "settings-hint";
+    msg.textContent =
+      "本机不是 Windows，PowerShell 集成不适用。" +
+      "POSIX 这边的终端集成（ccm）目前只在远端机器的「组件」栏提供安装入口。";
+    wrap.appendChild(msg);
+    return wrap;
   }
 
   private titledSection(title: string, body: HTMLElement): HTMLElement {

@@ -47,6 +47,46 @@ describe("computeGaps", () => {
     expect(gaps.some((g) => g.facet === "ccm")).toBe(true);
   });
 
+  it("★ S9：Windows 本机的 ccm 不算缺（它的对应物是「终端集成」那块）", () => {
+    const gaps = computeGaps({
+      origins: [LOCAL_MACHINE_KEY],
+      statusOf: none,
+      hostOs: "windows",
+    });
+    // 不排掉的话，Windows 用户会在这张专为新用户做的清单上读到
+    // 一条「本机缺 cc 命令」—— 而那条在他机器上无从补起。
+    expect(gaps.some((g) => g.facet === "ccm")).toBe(false);
+    // 反向自检：本机**其它**项照常出现（不是整台被跳过了）
+    expect(gaps.some((g) => g.facet === "acctIso")).toBe(true);
+  });
+
+  it("★ S9：非 Windows 本机的 ccm 照常算数（bash 的 cc 在这些机器上是真能装的）", () => {
+    for (const os of ["linux", "macos", "unknown"] as const) {
+      const gaps = computeGaps({
+        origins: [LOCAL_MACHINE_KEY],
+        statusOf: none,
+        hostOs: os,
+      });
+      expect(gaps.some((g) => g.facet === "ccm"), os).toBe(true);
+    }
+    // 不传 hostOs 也按「照常算数」处理（省略 ≠ Windows）
+    expect(
+      computeGaps({ origins: [LOCAL_MACHINE_KEY], statusOf: none }).some(
+        (g) => g.facet === "ccm",
+      ),
+    ).toBe(true);
+  });
+
+  it("★ S9：OS 门只管本机 —— 远端机器的 ccm 在 Windows 上照常算数", () => {
+    // 远端是不是 POSIX 跟 monitor 跑在哪没关系（远端一律走 ccm）。
+    const gaps = computeGaps({
+      origins: ["aya"],
+      statusOf: none,
+      hostOs: "windows",
+    });
+    expect(gaps.some((g) => g.facet === "ccm")).toBe(true);
+  });
+
   it("账本里显式记成 na 的也不算缺", () => {
     const gaps = computeGaps({
       origins: ["aya"],
