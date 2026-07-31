@@ -153,9 +153,9 @@ describe("S2 设置面板分页结构", () => {
   it("导航 = 应用 / 机器 / 改动足迹 / cc-bus（按序）", () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
-    // cc-bus 是**临时**一项：它是运营视图不是设置（主计划 §1-1），S6 会把它移出设置窗。
-    // 单列在这里而不是塞进上面任何一页，是为了不误归档；S6 那天删掉它就是删一行注册。
-    expect(navTitles()).toEqual(["应用", "机器", "改动足迹", "cc-bus"]);
+    // S6 已把 cc-bus 驾驶舱移出设置（它是运营视图不是设置，§1-1）⇒ 顶层回到计划里的 3 个。
+    // 它现在的入口是命令面板（不加第 7 个顶栏图标，理由见 views/cc-bus-view.ts 头注）。
+    expect(navTitles()).toEqual(["应用", "机器", "改动足迹"]);
   });
 
   /** 等 RemoteSection 那边异步注册完本机页（真实实现是在 `refresh()` 里注册的）。 */
@@ -189,7 +189,10 @@ describe("S2 设置面板分页结构", () => {
       "cc-bus 钩子",
     ]);
     expect(pageTitles("footprint")).toEqual(["配置面审计"]);
-    expect(pageTitles("cc-bus")).toEqual(["cc-bus"]);
+    // cc-bus 已不在设置里（S6）—— 连页都不该存在。
+    expect(
+      document.querySelector('.settings-page[data-route-id="cc-bus"]'),
+    ).toBeNull();
   });
 
   it("「账号」块真的挂着 AccountsSection（不是只有个标题）", async () => {

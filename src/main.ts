@@ -25,6 +25,7 @@ import { HistoryView } from "./views/history";
 import { SessionViewer } from "./views/session-viewer"; // F77：点 agent 看记录复用只读会话查看器
 import { PanoramaView } from "./views/panorama";
 import { UsageView } from "./views/usage-view";
+import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
 import { CommandBarView, type Command } from "./views/command-bar";
 import { UsageHud } from "./usage-hud";
@@ -510,6 +511,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   sftpTrigger.addEventListener("click", () => void openSftpFromTopbar(sftpTrigger));
   document.getElementById("app")?.appendChild(sftpTrigger);
 
+  // S6（settings-ia）：cc-bus 驾驶舱从设置里搬出来，成为顶层运营视图。
+  // **刻意不加第 7 个顶栏图标** —— F84 加命令面板时就为「顶栏已拥挤」立过先例
+  //（那次逐字写着「键位唯一入口…按钮延后」）。驾驶舱是低频运营视图，正是面板服务的对象。
+  // 理由完整版见 `views/cc-bus-view.ts` 头注。
+  const ccBusView = new CcBusView();
+
   // F84（#57）：键盘命令栏（Ctrl+K）。只读命令面板——组装既有 view/dispatcher 目标 + F91
   // snapshotSessions() 的「切到会话…」。写/驱动动作（resume/kill/delete）首刀排除（守北极星）。
   // 键位唯一入口（palette 惯例，顶栏已拥挤，按钮延后）。commandBar 放 sftpTrigger 之后建，
@@ -526,6 +533,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       { id: "open-history", title: "打开历史浏览器", keywords: "history 历史", hint: chordHint("app.toggle-history"), run: () => { if (!historyView.isVisible()) void historyView.open(); } },
       { id: "open-panorama", title: "打开代码全景", keywords: "panorama 全景 code", hint: chordHint("app.toggle-panorama"), run: () => { if (!panoramaView.isVisible()) void panoramaView.open(); } },
       { id: "open-usage", title: "打开用量视图", keywords: "usage token 用量", run: () => { if (!usageView.isVisible()) void usageView.open(); } },
+      { id: "open-cc-bus", title: "打开 cc-bus 驾驶舱", keywords: "cc-bus bus agent 驾驶舱 通信", run: () => { if (!ccBusView.isVisible()) ccBusView.open(); } },
       { id: "open-grid", title: "打开多 agent 监控", keywords: "grid monitor 监控 agent 并排", run: () => { if (!gridMonitorView.isVisible()) gridMonitorView.open(); } },
       { id: "open-settings", title: "打开设置", keywords: "settings 设置 preferences", hint: chordHint("app.open-settings"), run: () => void commands.open_settings_window() },
       { id: "open-sftp", title: "打开 SFTP 文件面板", keywords: "sftp file 文件 传输", run: () => void openSftpFromTopbar(sftpTrigger) },
