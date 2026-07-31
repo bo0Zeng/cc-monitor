@@ -269,21 +269,21 @@ test("F74 buildResumeTmuxCmd:非法显式 name(空格/tmux 保留字符/注入/�
 });
 
 test("F74 pickFreshTmuxName:基名空闲→基名;被占→加后缀取第一个空位", () => {
-  // 无冲突 → 基名 cc-<sid8>。
-  eq(pickFreshTmuxName("cb3230f3-dead-beef", new Set()), "cc-cb3230f3");
+  // S4b-3b：命名反转成 `<X>-cc`。无冲突 → 基名 `<sid8>-cc`。
+  eq(pickFreshTmuxName("cb3230f3-dead-beef", new Set()), "cb3230f3-cc");
   // 基名被占(漂移的会话仍占着原名)→ -2,保证新建自己的 tmux 跑 --resume,落进原会话。
-  eq(pickFreshTmuxName("cb3230f3-dead-beef", new Set(["cc-cb3230f3"])), "cc-cb3230f3-2");
+  eq(pickFreshTmuxName("cb3230f3-dead-beef", new Set(["cb3230f3-cc"])), "cb3230f3-cc-2");
   // -2 也被占 → 顺延到第一个空位。
   eq(
     pickFreshTmuxName(
       "cb3230f3-dead-beef",
-      new Set(["cc-cb3230f3", "cc-cb3230f3-2", "cc-cb3230f3-3"]),
+      new Set(["cb3230f3-cc", "cb3230f3-cc-2", "cb3230f3-cc-3"]),
     ),
-    "cc-cb3230f3-4",
+    "cb3230f3-cc-4",
   );
   // 生成的名恒能过 buildResumeTmuxCmd 的裸拼校验(闭环:两函数同一命名域)。
-  const picked = pickFreshTmuxName("s1", new Set(["cc-s1"]));
-  eq(picked, "cc-s1-2");
+  const picked = pickFreshTmuxName("s1", new Set(["s1-cc"]));
+  eq(picked, "s1-cc-2");
   eq(buildResumeTmuxCmd("s1", "", "claude", picked).includes(`-s ${picked} `), true);
 });
 
@@ -335,13 +335,14 @@ test("buildAttachCmd:posixQuote 名 / 空格 / 非法名 throw", () => {
   throws(() => buildAttachCmd("x\ny"), "含换行 throw");
 });
 
-test("deriveTmuxName:basename / 尾斜杠 / 特殊字符换- / 空→cc-session", () => {
-  eq(deriveTmuxName("/home/pi/proj"), "cc-proj");
-  eq(deriveTmuxName("/home/pi/proj/"), "cc-proj", "去尾斜杠");
-  eq(deriveTmuxName("/home/pi/my proj!"), "cc-my-proj", "空格/! 换- 折叠去尾");
-  eq(deriveTmuxName("/a/b.c"), "cc-b-c", ". 换-");
-  eq(deriveTmuxName(""), "cc-session");
-  eq(deriveTmuxName("/"), "cc-session", "根→空 basename→cc-session");
+test("deriveTmuxName:basename / 尾斜杠 / 特殊字符换- / 空→session-cc", () => {
+  // S4b-3b（用户 2026-07-31）：`cc-` 前缀反转成 `-cc` 后缀。
+  eq(deriveTmuxName("/home/pi/proj"), "proj-cc");
+  eq(deriveTmuxName("/home/pi/proj/"), "proj-cc", "去尾斜杠");
+  eq(deriveTmuxName("/home/pi/my proj!"), "my-proj-cc", "空格/! 换- 折叠去尾");
+  eq(deriveTmuxName("/a/b.c"), "b-c-cc", ". 换-");
+  eq(deriveTmuxName(""), "session-cc");
+  eq(deriveTmuxName("/"), "session-cc", "根→空 basename→session-cc");
 });
 
 test("buildLauncherCmd:完整形态(启动新会话,无 --resume)", () => {

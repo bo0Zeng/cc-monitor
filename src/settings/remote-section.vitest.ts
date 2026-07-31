@@ -432,6 +432,28 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     }
   });
 
+  it("★ 列表级控件全在**一条工具条**上，且在列表之前", async () => {
+    // S4b-3b：此前它们散在列表上下两侧（导入在最上、端口转发/启用 toggle 在中间、
+    // 添加按钮在列表下方），空列表提示还得写「点**下方**…或从**上方**…」——
+    // 一句提示同时指两个方向，本身就是布局在报警。
+    const sec = await mount([mkH("a", "1.1.1.1")]);
+    const bar = sec.element.querySelector<HTMLElement>(".remote-toolbar");
+    expect(bar, "工具条必须在").not.toBeNull();
+    const texts = [...bar!.querySelectorAll("button, select, span")].map(
+      (e) => e.textContent ?? "",
+    );
+    for (const t of ["+ 添加机器", "批量导入…", "端口转发…", "启用远端模式"]) {
+      expect(texts.some((x) => x.includes(t)), `工具条缺「${t}」`).toBe(true);
+    }
+    // 导入下拉也在条上（它没有稳定文案，按 tagName 认）
+    expect(bar!.querySelector("select")).not.toBeNull();
+    // **顺序**：工具条在机器列表之前 —— 否则「上方工具条」那句提示又变成谎话。
+    const list = sec.element.querySelector<HTMLElement>(".remote-machines")!;
+    expect(
+      bar!.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("★ 本机是第一行、没有删除按钮", async () => {
     const sec = await mount([mkH("a", "1.1.1.1")]);
     const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine")];

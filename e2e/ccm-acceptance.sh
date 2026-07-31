@@ -123,8 +123,8 @@ echo "===== 场景 1：ccm --tmux --account z —— 账号必须穿过 tmux 边
 reset
 ( cd "$TMP/proj" && bash "$CCM" --tmux --account z --launcher CCMPROBE >/dev/null 2>&1 & )
 wait_probe || echo "      (注：等 probe 记录超时，下面断言会如实报空)"
-ck "会话 cc-proj 被建出" "yes" "$(T has-session -t '=cc-proj:' 2>/dev/null && echo yes || echo no)"
-ck "@ccm_agent 打上" "claude" "$(opt cc-proj @ccm_agent)"
+ck "会话 proj-cc 被建出" "yes" "$(T has-session -t '=proj-cc:' 2>/dev/null && echo yes || echo no)"
+ck "@ccm_agent 打上" "claude" "$(opt proj-cc @ccm_agent)"
 ck "**CLAUDE_CONFIG_DIR 穿过了 tmux 边界**" "$ACCTS/z" \
    "$(grep -m1 '^CFG=' "$TMP/probe.log" 2>/dev/null | cut -d= -f2-)"
 ck "cwd 正确落到 --cwd 解析值" "$TMP/proj" \
@@ -156,11 +156,11 @@ echo
 echo "===== 场景 3a：身份——通道A（意图）打 @ccm_sid_expect，不是 @ccm_sid ====="
 reset
 ( cd "$TMP/proj" && bash "$CCM" --tmux --ccm-sid deadbeef-1234 --launcher CCMPROBE >/dev/null 2>&1 & )
-wait_opt cc-proj @ccm_sid_expect || echo "      (注：等 @ccm_sid_expect 超时)"
+wait_opt proj-cc @ccm_sid_expect || echo "      (注：等 @ccm_sid_expect 超时)"
 sleep 2   # 留给 poller 的真实窗口——下一条是负向断言，必须让它"有机会却不该"提升
-ck "通道A：已知 sid 建时立刻打 @ccm_sid_expect" "deadbeef-1234" "$(opt cc-proj @ccm_sid_expect)"
+ck "通道A：已知 sid 建时立刻打 @ccm_sid_expect" "deadbeef-1234" "$(opt proj-cc @ccm_sid_expect)"
 ck "F04：@ccm_sid（事实）此时仍未设——CCMPROBE 从未写 sessions/*.json，通道B无可确认之物" \
-   "" "$(opt cc-proj @ccm_sid)"
+   "" "$(opt proj-cc @ccm_sid)"
 
 echo
 echo "===== 场景 3b：身份——通道B（poller）独立确认后才把 @ccm_sid_expect 提升为 @ccm_sid ====="
@@ -172,9 +172,9 @@ wait_grep . "$TMP/ccmprobe.pid" || { echo "      (注：等 CCMPROBE 落 PID 超
 CCMPROBE_PID="$(head -1 "$TMP/ccmprobe.pid" 2>/dev/null)"
 mkdir -p "$ACCTS/z/sessions"
 [ -n "$CCMPROBE_PID" ] && printf '{"sessionId":"deadbeef-3b"}' > "$ACCTS/z/sessions/$CCMPROBE_PID.json"
-wait_opt cc-proj @ccm_sid || echo "      (注：等通道B提升 @ccm_sid 超时)"
-ck "通道B：poller 读到会话文件后，把 @ccm_sid（事实）提升为确认值" "deadbeef-3b" "$(opt cc-proj @ccm_sid)"
-ck "@ccm_sid_expect（意图）仍保留，两个 key 独立共存" "deadbeef-3b" "$(opt cc-proj @ccm_sid_expect)"
+wait_opt proj-cc @ccm_sid || echo "      (注：等通道B提升 @ccm_sid 超时)"
+ck "通道B：poller 读到会话文件后，把 @ccm_sid（事实）提升为确认值" "deadbeef-3b" "$(opt proj-cc @ccm_sid)"
+ck "@ccm_sid_expect（意图）仍保留，两个 key 独立共存" "deadbeef-3b" "$(opt proj-cc @ccm_sid_expect)"
 
 echo
 echo "===== 场景 4：agent 轴 ====="
@@ -182,7 +182,7 @@ echo "===== 场景 4：agent 轴 ====="
 reset
 ( cd "$TMP/proj" && CLAUDECODE=1 bash "$CCM" --tmux --agent codex --launcher CCMPROBE >/dev/null 2>&1 & )
 wait_probe || echo "      (注：等 probe 记录超时，下面断言会如实报空)"
-ck "@ccm_agent = codex" "codex" "$(opt cc-proj @ccm_agent)"
+ck "@ccm_agent = codex" "codex" "$(opt proj-cc @ccm_agent)"
 ck "codex 无嵌套 env 概念 → CLAUDECODE 保留" "1" \
    "$(grep -m1 '^NESTED=' "$TMP/probe.log" 2>/dev/null | cut -d= -f2-)"
 reset
@@ -207,14 +207,14 @@ reset
 ( cd "$TMP/proj" && bash "$CCM" --tmux --launcher CCMPROBE >/dev/null 2>&1 & )
 wait_probe || echo "      (注：等首个会话 probe 记录超时)"
 ( cd "$TMP/proj" && bash "$CCM" --tmux --launcher CCMPROBE >/dev/null 2>&1 & )
-wait_session cc-proj-2 || echo "      (注：等 cc-proj-2 出现超时)"
-ck "同目录连开两次 → 两个会话（cc-proj + cc-proj-2）" "cc-proj cc-proj-2" \
+wait_session proj-cc-2 || echo "      (注：等 proj-cc-2 出现超时)"
+ck "同目录连开两次 → 两个会话（proj-cc + proj-cc-2）" "proj-cc proj-cc-2" \
    "$(T ls -F '#{session_name}' 2>/dev/null | sort | tr '\n' ' ' | sed 's/ $//')"
-# **第三次**：避让必须会继续往上数。只写死 `-2` 的话第三次会撞回 cc-proj-2 并 attach 进去
+# **第三次**：避让必须会继续往上数。只写死 `-2` 的话第三次会撞回 proj-cc-2 并 attach 进去
 # ——正是本次要修的那个病，只是换了个门牌号。
 ( cd "$TMP/proj" && bash "$CCM" --tmux --launcher CCMPROBE >/dev/null 2>&1 & )
-wait_session cc-proj-3 || echo "      (注：等 cc-proj-3 出现超时)"
-ck "再开第三次 → cc-proj-3（避让会继续数，不是只到 -2）" "cc-proj cc-proj-2 cc-proj-3" \
+wait_session proj-cc-3 || echo "      (注：等 proj-cc-3 出现超时)"
+ck "再开第三次 → proj-cc-3（避让会继续数，不是只到 -2）" "proj-cc proj-cc-2 proj-cc-3" \
    "$(T ls -F '#{session_name}' 2>/dev/null | sort | tr '\n' ' ' | sed 's/ $//')"
 
 echo
@@ -244,9 +244,9 @@ echo "===== 场景 5ter：多开出来的那个会话**也被打上 @ccm_sid**�
 # 本测试要往那儿合成会话文件就等于写用户家目录。带上就落到隔离的 $ACCTS/z 里。
 reset
 ( cd "$TMP/proj" && bash "$CCM" --tmux --account z --launcher CCMPROBE >/dev/null 2>&1 & )
-wait_session cc-proj || echo "      (注：等 cc-proj 出现超时)"
+wait_session proj-cc || echo "      (注：等 proj-cc 出现超时)"
 ( cd "$TMP/proj" && bash "$CCM" --tmux --account z --launcher CCMPROBE >/dev/null 2>&1 & )
-wait_session cc-proj-2 || echo "      (注：等 cc-proj-2 出现超时)"
+wait_session proj-cc-2 || echo "      (注：等 proj-cc-2 出现超时)"
 wait_grep '^[0-9]*$' "$TMP/ccmprobe.pid" || true
 # 等两行 PID 都落盘（两个 CCMPROBE 各追加一行）
 for _i in $(seq 1 80); do [ "$(wc -l < "$TMP/ccmprobe.pid" 2>/dev/null || echo 0)" -ge 2 ] && break; sleep 0.25; done
@@ -255,18 +255,20 @@ _p1="$(sed -n '1p' "$TMP/ccmprobe.pid" 2>/dev/null)"
 _p2="$(sed -n '2p' "$TMP/ccmprobe.pid" 2>/dev/null)"
 [ -n "$_p1" ] && printf '{"sessionId":"aaaaaaaa-1111"}' > "$ACCTS/z/sessions/$_p1.json"
 [ -n "$_p2" ] && printf '{"sessionId":"bbbbbbbb-2222"}' > "$ACCTS/z/sessions/$_p2.json"
-wait_opt cc-proj @ccm_sid   || echo "      (注：等 cc-proj 的 @ccm_sid 超时)"
-wait_opt cc-proj-2 @ccm_sid || echo "      (注：等 cc-proj-2 的 @ccm_sid 超时)"
+wait_opt proj-cc @ccm_sid   || echo "      (注：等 proj-cc 的 @ccm_sid 超时)"
+wait_opt proj-cc-2 @ccm_sid || echo "      (注：等 proj-cc-2 的 @ccm_sid 超时)"
 # 两个都要有标记，且**各是各的 sid**（都有值但串了的话，attach 会连到错的那个）
-ck "第一个会话有 @ccm_sid" "aaaaaaaa-1111" "$(opt cc-proj @ccm_sid)"
+ck "第一个会话有 @ccm_sid" "aaaaaaaa-1111" "$(opt proj-cc @ccm_sid)"
 ck "★ 多开出来的第二个会话**也有** @ccm_sid（不是 #76 那种管不了的孤儿）" "bbbbbbbb-2222" \
-   "$(opt cc-proj-2 @ccm_sid)"
+   "$(opt proj-cc-2 @ccm_sid)"
 
 echo
 echo "===== 场景 6：会话名过 cc-monitor 的 is_ccm_tmux_name（F04 之前也能被控制面接受）====="
 name="$(T ls -F '#{session_name}' 2>/dev/null | head -1)"
-case "$name" in cc-*) r=yes ;; *) r=no ;; esac
-ck "会话名以 cc- 开头" "yes" "$r"
+# S4b-3b：命名反转成 `<X>-cc`（含撞名的 `<X>-cc-<N>`）。Rust 侧 `is_ccm_tmux_name`
+# 同时认新后缀与老前缀（老会话还在跑，不能不认），这里钉的是**新产的名字**。
+case "$name" in *-cc|*-cc-[0-9]*) r=yes ;; *) r=no ;; esac
+ck "会话名以 -cc 结尾（新命名）" "yes" "$r"
 
 echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="

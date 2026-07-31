@@ -1548,58 +1548,18 @@ export class RemoteSection {
     this.banner.className = "settings-banner";
     group.appendChild(this.banner);
 
-    // 0. 从 ~/.ssh/config 导入（选别名 → 加为新机器）
-    this.buildImportRow(group);
+    // ★ S4b-3b：**一条工具条**（主计划 §2.3 那张图逐字给的顺序）：
+    //   + 添加 · 从 ssh config 导入 · 批量导入 · 端口转发 · [x] 启用远端模式
+    //
+    // 此前这几个控件散在列表**上下两侧**（导入在最上、端口转发和启用 toggle 在中间、
+    // 添加按钮在列表下方），空列表提示还得写「点**下方**添加机器，或从**上方**下拉导入」
+    // ——一句提示要同时指两个方向，本身就是布局在报警。
+    //
+    // 归拢的判据与 §2.1 同源：**它们改的都不是某一台机器的状态，而是这份列表本身**
+    //（加一台 / 导入一批 / 全局开关 / 跨机器的隧道台）。per-machine 的东西在机器详情页上。
+    const toolbar = document.createElement("div");
+    toolbar.className = "settings-row remote-toolbar";
 
-    // F58：端口转发管理台入口。
-    const pfRow = document.createElement("div");
-    pfRow.className = "settings-row settings-row-actions";
-    const pfBtn = document.createElement("button");
-    pfBtn.type = "button";
-    pfBtn.className = "settings-btn settings-btn-secondary";
-    pfBtn.textContent = "端口转发…";
-    pfBtn.title =
-      "本地端口转发(-L)管理台:把远端机(或其内网)端口映到本机,经已配置的 SSH 连接隧道";
-    pfBtn.addEventListener("click", () => openPortForwardPanel());
-    pfRow.appendChild(pfBtn);
-    group.appendChild(pfRow);
-
-    // 1. 启用 toggle（全局）
-    const enabledRow = document.createElement("label");
-    enabledRow.className = "settings-row settings-row-checkbox";
-    this.enabledCheckbox = document.createElement("input");
-    this.enabledCheckbox.type = "checkbox";
-    this.enabledCheckbox.className = "settings-checkbox";
-    this.enabledCheckbox.addEventListener("change", () => void this.save());
-    enabledRow.appendChild(this.enabledCheckbox);
-    const enabledLabel = document.createElement("span");
-    enabledLabel.className = "settings-checkbox-label";
-    enabledLabel.textContent = "启用远端模式（通过 SSH 连下列机器取数据）";
-    enabledRow.appendChild(enabledLabel);
-    enabledRow.appendChild(
-      makeInfoIcon(
-        "勾选后 monitor 启动时会**额外**用 SSH 连下列每台机器作为数据源（与本地聚合）。\n" +
-          "⚠ 需重启 monitor 才生效。某台配置不完整时后端跳过该台。列表为空 = 等于关闭。",
-      ),
-    );
-    group.appendChild(enabledRow);
-
-    // 2. 机器列表容器
-    this.machinesContainer = document.createElement("div");
-    this.machinesContainer.className = "remote-machines";
-    group.appendChild(this.machinesContainer);
-
-    // 空列表提示
-    this.emptyHint = document.createElement("div");
-    this.emptyHint.className = "settings-hint";
-    this.emptyHint.textContent =
-      "尚未添加远端机器。点下方「添加机器」，或从上方下拉导入别名。";
-    this.emptyHint.style.display = "none";
-    group.appendChild(this.emptyHint);
-
-    // 3. 添加机器按钮
-    const addRow = document.createElement("div");
-    addRow.className = "settings-row settings-row-end";
     const addBtn = document.createElement("button");
     addBtn.type = "button";
     addBtn.className = "settings-btn settings-btn-secondary";
@@ -1608,8 +1568,57 @@ export class RemoteSection {
       this.appendCard({ ...HOST_DEFAULTS });
       // 空白机器先不写 config（缺必填字段无意义）；用户填了字段 change 时才 save。
     });
-    addRow.appendChild(addBtn);
-    group.appendChild(addRow);
+    toolbar.appendChild(addBtn);
+
+    // 从 ~/.ssh/config 导入（下拉 + 批量导入按钮）——它自己会往 toolbar 里塞两个控件。
+    this.buildImportRow(toolbar);
+
+    // F58：端口转发管理台入口。**跨机器**的隧道台，属于列表级而非某台机器。
+    const pfBtn = document.createElement("button");
+    pfBtn.type = "button";
+    pfBtn.className = "settings-btn settings-btn-secondary";
+    pfBtn.textContent = "端口转发…";
+    pfBtn.title =
+      "本地端口转发(-L)管理台:把远端机(或其内网)端口映到本机,经已配置的 SSH 连接隧道";
+    pfBtn.addEventListener("click", () => openPortForwardPanel());
+    toolbar.appendChild(pfBtn);
+
+    // 启用 toggle（全局）。**留在工具条上而不是收进折叠**：它是状态性开关，
+    // 关着的时候整个列表都不生效 —— 藏起来会让人对着一列配好的机器纳闷为什么没连上
+    //（`INVARIANTS §12`：「用户看到了但没注意到关键信息」已真实发生过一次）。
+    const enabledRow = document.createElement("label");
+    enabledRow.className = "settings-row-checkbox remote-toolbar-toggle";
+    this.enabledCheckbox = document.createElement("input");
+    this.enabledCheckbox.type = "checkbox";
+    this.enabledCheckbox.className = "settings-checkbox";
+    this.enabledCheckbox.addEventListener("change", () => void this.save());
+    enabledRow.appendChild(this.enabledCheckbox);
+    const enabledLabel = document.createElement("span");
+    enabledLabel.className = "settings-checkbox-label";
+    enabledLabel.textContent = "启用远端模式";
+    enabledRow.appendChild(enabledLabel);
+    enabledRow.appendChild(
+      makeInfoIcon(
+        "勾选后 monitor 启动时会**额外**用 SSH 连下列每台机器作为数据源（与本地聚合）。\n" +
+          "⚠ 需重启 monitor 才生效。某台配置不完整时后端跳过该台。列表为空 = 等于关闭。",
+      ),
+    );
+    toolbar.appendChild(enabledRow);
+    group.appendChild(toolbar);
+
+    // 机器列表容器
+    this.machinesContainer = document.createElement("div");
+    this.machinesContainer.className = "remote-machines";
+    group.appendChild(this.machinesContainer);
+
+    // 空列表提示。文案跟着布局改：控件全在**上方**那条工具条上了，
+    // 不再需要「点下方…或从上方…」这种同时指两个方向的说法。
+    this.emptyHint = document.createElement("div");
+    this.emptyHint.className = "settings-hint";
+    this.emptyHint.textContent =
+      "尚未添加远端机器。用上方工具条「+ 添加机器」，或从 ssh config 导入。";
+    this.emptyHint.style.display = "none";
+    group.appendChild(this.emptyHint);
 
     // 4. Feature ②：远端 ↗ 拉前用的只读 ccm wrapper 片段
     this.buildWrapperSnippetRow(group);
@@ -1618,34 +1627,29 @@ export class RemoteSection {
   }
 
   /** 顶部「从 ~/.ssh/config 导入」行：label + select + hint。 */
-  private buildImportRow(parent: HTMLElement): void {
-    const row = document.createElement("div");
-    row.className = "settings-row settings-row-stack";
-
-    const labelLine = document.createElement("span");
-    labelLine.className = "settings-label";
-    labelLine.textContent = "从 ~/.ssh/config 导入";
-    labelLine.appendChild(
-      makeInfoIcon(
-        "选一个 ~/.ssh/config 里的主机别名，自动用 `ssh -G` 解析出 host/port/user/私钥路径\n" +
-          "并**新增一台机器**填好（免手敲）。仍可手动微调任意字段。",
-      ),
-    );
-    row.appendChild(labelLine);
-
+  /**
+   * S4b-3b：「从 ssh config 导入」的两个控件，**直接塞进工具条**，不再自带一整行。
+   *
+   * 原先它是一整块：标题行「从 ~/.ssh/config 导入」+ ⓘ + 下拉 + 批量按钮 + hint 行。
+   * 归进工具条后标题行是多余的（下拉自己的 placeholder 已经写着「选择一个主机别名…」），
+   * ⓘ 挪到下拉上，hint 仍保留 —— 它承载的是**失败态**（没读到别名 / 读取失败），
+   * 属于 §1-3 说的「不读就会做错事的」，不能收进 hover。
+   */
+  private buildImportRow(toolbar: HTMLElement): void {
     this.importSelect = document.createElement("select");
-    this.importSelect.className =
-      "settings-input settings-input-select settings-input-wide";
+    this.importSelect.className = "settings-input settings-input-select";
+    this.importSelect.title =
+      "选一个 ~/.ssh/config 里的主机别名，自动用 `ssh -G` 解析出 host/port/user/私钥路径并新增一台机器填好（免手敲）。仍可手动微调任意字段。";
     const placeholder = document.createElement("option");
     placeholder.value = "";
-    placeholder.textContent = "选择一个主机别名…（导入为新机器）";
+    placeholder.textContent = "从 ssh config 导入…";
     this.importSelect.appendChild(placeholder);
     this.importSelect.disabled = true;
     this.importSelect.addEventListener(
       "change",
       () => void this.onImportAlias(),
     );
-    row.appendChild(this.importSelect);
+    toolbar.appendChild(this.importSelect);
 
     // F57：批量导入——一次导入全部主机,智能聚合同机多地址,预览可拆分。
     const batchBtn = document.createElement("button");
@@ -1655,14 +1659,14 @@ export class RemoteSection {
     batchBtn.title =
       "一次导入 ~/.ssh/config 全部主机；同密钥+同用户+同基名前缀的别名智能聚合成一台多地址主机（预览可拆分/勾选）";
     batchBtn.addEventListener("click", () => void this.onBatchImport());
-    row.appendChild(batchBtn);
+    toolbar.appendChild(batchBtn);
 
+    // 失败态提示（读不到别名 / 读取失败）。**不进 hover** —— 见方法头注。
+    // 挂在工具条外面（整行宽），否则长文案会把工具条撑变形。
     this.importHint = document.createElement("div");
     this.importHint.className = "settings-hint";
     this.importHint.style.display = "none";
-    row.appendChild(this.importHint);
-
-    parent.appendChild(row);
+    toolbar.insertAdjacentElement("afterend", this.importHint);
   }
 
   /** 选了别名 → resolve_ssh_host → 新增一台机器并填好 → 保存。 */

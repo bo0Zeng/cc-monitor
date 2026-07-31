@@ -256,7 +256,9 @@ derive_tmux_name() {
   b="$(printf '%s' "$1" | sed 's:/*$::')"   # 去掉全部尾斜杠（对齐 TS 的 /\/+$/）
   b="${b##*/}"
   s="$(printf '%s' "$b" | sed 's/[^A-Za-z0-9_-]/-/g; s/--*/-/g' | cut -c1-32 | sed 's/^-*//; s/-*$//')"
-  if [ -n "$s" ]; then printf 'cc-%s' "$s"; else printf 'cc-session'; fi
+  # S4b-3b（用户 2026-07-31）：`cc-` 前缀反转成 `-cc` 后缀。与前端 `deriveTmuxName`
+  # 逐字同规则（跨语言双写点，`e2e/ccm-cli.test.sh` 真值对拍钉住）。
+  if [ -n "$s" ]; then printf '%s-cc' "$s"; else printf 'session-cc'; fi
 }
 
 # 撞名策略**按调用方分成两条**（2026-07-31 修，用户实测报障后改）：

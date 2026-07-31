@@ -152,7 +152,9 @@ export function buildResumeIntoExistingTmuxCmd(
  * (纯函数,`existing` = 当前 tmux 会话名集合;sid 合法性由 `buildResumeTmuxCmd` 兜底校验。)
  */
 export function pickFreshTmuxName(sid: string, existing: Set<string>): string {
-  const base = `cc-${sid.slice(0, 8)}`;
+  // S4b-3b：命名从 `cc-<X>` 反转成 `<X>-cc`（用户 2026-07-31）。撞名后缀仍追加在最后
+  // （`<sid8>-cc-2`）—— 让「第几个」始终是名字的末段，读起来是「哪个会话的第几份」。
+  const base = `${sid.slice(0, 8)}-cc`;
   if (!existing.has(base)) return base;
   let i = 2;
   while (existing.has(`${base}-${i}`)) i += 1;
@@ -161,7 +163,10 @@ export function pickFreshTmuxName(sid: string, existing: Set<string>): string {
 
 /**
  * F53:从工作目录派生一个默认 tmux 会话名——basename(去尾 `/`)→ 非 `[A-Za-z0-9_-]` 换 `-`、
- * 折叠连字符、截 32 → `cc-<safe>`;空 → `cc-session`。「开新 Claude」弹框留空会话名时用它。
+ * 折叠连字符、截 32 → `<safe>-cc`;空 → `session-cc`。「开新 Claude」弹框留空会话名时用它。
+ *
+ * **S4b-3b（用户 2026-07-31）：`cc-` 前缀改成 `-cc` 后缀。** 与 `shared/ccm::derive_tmux_name`
+ * 逐字同规则（跨语言双写点，由 `e2e/ccm-cli.test.sh` 的真值对拍钉住，见 E49）。
  */
 export function deriveTmuxName(cwd: string): string {
   const base = cwd.trim().replace(/\/+$/, "").split("/").pop() ?? "";
@@ -170,7 +175,7 @@ export function deriveTmuxName(cwd: string): string {
     .replace(/-+/g, "-")
     .slice(0, 32)
     .replace(/^-+|-+$/g, ""); // 截断后再剥首尾 `-`,避免第 32 位恰为 `-` 留尾
-  return safe ? `cc-${safe}` : "cc-session";
+  return safe ? `${safe}-cc` : "session-cc";
 }
 
 /**

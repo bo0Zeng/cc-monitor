@@ -2872,6 +2872,21 @@ body.settings-window-mode .grid-monitor-trigger {
 .remote-status-unknown {
   color: var(--text-3, var(--text-2));
 }
+/* S4b-3b：机器列表的工具条（列表级动作全在这一条上，且在列表之前）。 */
+.remote-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.remote-toolbar-toggle {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
 /* S4b：列表里的机器行（表单在它自己那一页，这里只有名字 + 状态 + 删除）。 */
 .remote-machine-row .remote-machine-legend {
   align-items: center;

@@ -474,11 +474,25 @@ pub async fn tmux_send_keys(
 /// 100% 的真实流量）；未命中不代表拒绝，只代表"需要问远端 `@ccm_sid`"。**不删除**——F02 之前的
 /// 老 `cc-*` 会话没有 `@ccm_sid`，只靠这条前缀判据仍必须可 kill/send-keys，否则是向后兼容回归。
 fn is_ccm_tmux_name(name: &str) -> bool {
-    name.starts_with("cc-")
-        && name.len() > 3
-        && name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    // S4b-3b（用户 2026-07-31）：新会话叫 `<X>-cc`（撞名时 `<X>-cc-2`）。
+    // **老的 `cc-` 前缀一并保留、绝不删** —— 本函数头注逐字写着理由：F02 之前的老 `cc-*`
+    // 会话没有 `@ccm_sid`，只靠这条前缀判据仍必须可 kill/send-keys。删了就是把用户
+    // **正在跑的**会话变成 issue #76 那种「失管会话」。
+    let charset_ok = name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    let old_prefix = name.starts_with("cc-") && name.len() > 3;
+    // 后缀形态：`<X>-cc` 或 `<X>-cc-<N>`（撞名避让）。要求 `<X>` 非空，
+    // 否则裸 `-cc` 这种退化名也会命中。
+    let new_suffix = name
+        .split("-cc")
+        .next()
+        .is_some_and(|head| !head.is_empty() && head.len() < name.len())
+        && (name.ends_with("-cc")
+            || name
+                .rsplit_once("-cc-")
+                .is_some_and(|(_, n)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())));
+    charset_ok && (old_prefix || new_suffix)
 }
 
 #[cfg(test)]
@@ -610,6 +624,20 @@ mod tests {
     #[test]
     fn ccm_tmux_name_whitelist() {
         assert!(is_ccm_tmux_name("cc-abc12345"));
+        // ★ S4b-3b：新命名 `<X>-cc`（撞名时 `<X>-cc-<N>`）也要本地命中，
+        // 否则每次 kill/send-keys 都要多跑一趟远端去核 `@ccm_sid`。
+        assert!(is_ccm_tmux_name("abc12345-cc"));
+        assert!(is_ccm_tmux_name("abc12345-cc-2"));
+        assert!(is_ccm_tmux_name("my-proj-cc"));
+        // **老前缀必须继续命中** —— 用户机器上正跑着的会话就是这个形状，
+        // 不认它们等于把它们变成 issue #76 那种「失管会话」。
+        assert!(is_ccm_tmux_name("cc-proj"));
+        // 退化名不该命中：`-cc` 前面得有东西。
+        assert!(!is_ccm_tmux_name("-cc"));
+        // 名字里恰好含 `-cc` 但不是以它结尾、也不是 `-cc-<数字>` ⇒ 不认
+        //（那多半是别人的会话，误认会让我们跳过远端核验就去 kill）。
+        assert!(!is_ccm_tmux_name("foo-ccx"));
+        assert!(!is_ccm_tmux_name("foo-cc-bar"));
         assert!(is_ccm_tmux_name("cc-abc12345-2")); // pickFreshTmuxName 的 -N 变体
         assert!(!is_ccm_tmux_name("cc-")); // 只前缀无体
         assert!(!is_ccm_tmux_name("web")); // 用户自己的会话
