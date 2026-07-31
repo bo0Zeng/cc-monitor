@@ -28,7 +28,7 @@ printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$TMUX_BIN" "$SOCK" > "$BIN/tmux"; chmo
 # 只把「我看到的环境」落盘，供断言。**F04 场景3b 需要它自己的 PID**（供测试往
 # `sessions/$PID.json` 里合成一个假会话文件，验证通道B poller 确实会把它读出来）——
 # `exec` 保 PID 不变，故 CCMPROBE 里的 `$$` 就是 ccm 脚本里 poller 记的 `$ccm_pid`。
-printf '#!/bin/sh\necho $$ > %s/ccmprobe.pid\nprintf "CFG=%%s\\nPWD=%%s\\nNESTED=%%s\\n" "${CLAUDE_CONFIG_DIR:-<unset>}" "$PWD" "${CLAUDECODE:-<unset>}" >> %s/probe.log\nsleep 5\n' \
+printf '#!/bin/sh\necho $$ >> %s/ccmprobe.pid\nprintf "CFG=%%s\\nPWD=%%s\\nNESTED=%%s\\n" "${CLAUDE_CONFIG_DIR:-<unset>}" "$PWD" "${CLAUDECODE:-<unset>}" >> %s/probe.log\nsleep 5\n' \
   "$TMP" "$TMP" > "$BIN/CCMPROBE"; chmod +x "$BIN/CCMPROBE"
 export PATH="$BIN:$PATH"
 # **测试自身必须干净**：本脚本可能跑在一个已经带 CLAUDE_CONFIG_DIR 的进程里
@@ -169,7 +169,7 @@ reset
 wait_grep . "$TMP/ccmprobe.pid" || { echo "      (注：等 CCMPROBE 落 PID 超时)"; dump_panes; }
 # CCMPROBE 落盘了自己的 PID（= ccm 脚本 poller 记的 $ccm_pid，exec 保 PID 不变）；
 # 合成一份 Claude Code 会话文件，模拟"agent 真的确认在跑这个 sid"。
-CCMPROBE_PID="$(cat "$TMP/ccmprobe.pid" 2>/dev/null)"
+CCMPROBE_PID="$(head -1 "$TMP/ccmprobe.pid" 2>/dev/null)"
 mkdir -p "$ACCTS/z/sessions"
 [ -n "$CCMPROBE_PID" ] && printf '{"sessionId":"deadbeef-3b"}' > "$ACCTS/z/sessions/$CCMPROBE_PID.json"
 wait_opt cc-proj @ccm_sid || echo "      (注：等通道B提升 @ccm_sid 超时)"
@@ -228,6 +228,39 @@ wait_probe || echo "      (注：等首个会话 probe 记录超时)"
 sleep 2.5   # 幂等接回不再跑 CCMPROBE（无新记录可等），保留固定 grace
 ck "显式名连开两次 → 仍只有一个 cc-fixed" "cc-fixed" \
    "$(T ls -F '#{session_name}' 2>/dev/null | sort | tr '\n' ' ' | sed 's/ $//')"
+
+echo
+echo "===== 场景 5ter：多开出来的那个会话**也被打上 @ccm_sid**（issue #76 的真「孤儿」判据）====="
+#
+# 「孤儿」在本仓被用在两个意思上，别混：
+#   ① 字面「多出一个你没要的会话」—— 场景 5 反转的就是它，那个会话 monitor 看得见、有 tab
+#      （识别 Claude Code 会话靠 pidfile，与 tmux 名无关）。
+#   ② **issue #76 的真孤儿**：tmux 会话**没有 `@ccm_sid`** ⇒ cc-monitor attach / 管理不了。
+#
+# 场景 5 只证明了「会多出一个会话」，**没证明它不是第 ② 种**。ccm 的通道B（poller 按 `$$`
+# 找自己的会话文件）理论上对每个 ccm 进程各自成立，但既然 #76 就摆在那儿，这条不该靠推理。
+#
+# **必须带 `--account z`**：不带的话 poller 读的是**真实 `$HOME/.claude/sessions`**，
+# 本测试要往那儿合成会话文件就等于写用户家目录。带上就落到隔离的 $ACCTS/z 里。
+reset
+( cd "$TMP/proj" && bash "$CCM" --tmux --account z --launcher CCMPROBE >/dev/null 2>&1 & )
+wait_session cc-proj || echo "      (注：等 cc-proj 出现超时)"
+( cd "$TMP/proj" && bash "$CCM" --tmux --account z --launcher CCMPROBE >/dev/null 2>&1 & )
+wait_session cc-proj-2 || echo "      (注：等 cc-proj-2 出现超时)"
+wait_grep '^[0-9]*$' "$TMP/ccmprobe.pid" || true
+# 等两行 PID 都落盘（两个 CCMPROBE 各追加一行）
+for _i in $(seq 1 80); do [ "$(wc -l < "$TMP/ccmprobe.pid" 2>/dev/null || echo 0)" -ge 2 ] && break; sleep 0.25; done
+mkdir -p "$ACCTS/z/sessions"
+_p1="$(sed -n '1p' "$TMP/ccmprobe.pid" 2>/dev/null)"
+_p2="$(sed -n '2p' "$TMP/ccmprobe.pid" 2>/dev/null)"
+[ -n "$_p1" ] && printf '{"sessionId":"aaaaaaaa-1111"}' > "$ACCTS/z/sessions/$_p1.json"
+[ -n "$_p2" ] && printf '{"sessionId":"bbbbbbbb-2222"}' > "$ACCTS/z/sessions/$_p2.json"
+wait_opt cc-proj @ccm_sid   || echo "      (注：等 cc-proj 的 @ccm_sid 超时)"
+wait_opt cc-proj-2 @ccm_sid || echo "      (注：等 cc-proj-2 的 @ccm_sid 超时)"
+# 两个都要有标记，且**各是各的 sid**（都有值但串了的话，attach 会连到错的那个）
+ck "第一个会话有 @ccm_sid" "aaaaaaaa-1111" "$(opt cc-proj @ccm_sid)"
+ck "★ 多开出来的第二个会话**也有** @ccm_sid（不是 #76 那种管不了的孤儿）" "bbbbbbbb-2222" \
+   "$(opt cc-proj-2 @ccm_sid)"
 
 echo
 echo "===== 场景 6：会话名过 cc-monitor 的 is_ccm_tmux_name（F04 之前也能被控制面接受）====="
