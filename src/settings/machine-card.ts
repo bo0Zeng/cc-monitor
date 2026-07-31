@@ -303,7 +303,13 @@ export class MachineCard {
       onChange,
     );
     this.portInput = buildNumberRow(body, "端口 (port)", 22, onChange);
-    this.userInput = buildTextRow(body, "用户 (user)", "pi", onChange);
+    // 占位符举**多个**例子，别只写一个 —— 只写 "pi" 会让人以为这里非填树莓派默认用户不可。
+    this.userInput = buildTextRow(
+      body,
+      "用户 (user)",
+      "如 ubuntu / pi / root",
+      onChange,
+    );
     this.daemonPathInput = buildTextRow(
       body,
       "daemon 路径 (daemonPath)",
@@ -313,7 +319,7 @@ export class MachineCard {
     const daemonHint = document.createElement("div");
     daemonHint.className = "settings-hint";
     daemonHint.textContent =
-      "须为绝对路径（如 /home/pi/.cc-monitor/bin/cc-monitor-remote）；SSH 直接 exec 不经 shell，`~` 不会被展开。";
+      "须为绝对路径（如 /home/<你的用户名>/.cc-monitor/bin/cc-monitor-remote）；SSH 直接 exec 不经 shell，`~` 不会被展开。";
     body.appendChild(daemonHint);
     // F13：手动填完 user（change = 失焦提交，避免逐键拿半截用户名）后，daemonPath
     // 为空则按约定路径预填——与 ssh config 导入（applyResolved）同一兜底；已有值不覆盖。
@@ -805,7 +811,10 @@ export class MachineCard {
       box.appendChild(row);
       return input;
     };
-    const cwdInput = mkField("工作目录", "/home/pi/proj（留空=登录默认目录）");
+    const cwdInput = mkField(
+      "工作目录",
+      "远端绝对路径，如 /home/<你的用户名>/proj（留空=登录默认目录）",
+    );
     const nameInput = mkField("tmux 会话名", "留空则按工作目录名自动生成");
     const cmdInput = mkField(
       "启动命令",

@@ -349,7 +349,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 // （这台机器上就是 `~/.claude-accts/z`），`hooks_diag::claude_config_dir` 与
                 // `config_surface` 自己都在读它，`ConfigSurfaceReport.claude_config_dir` 更是
                 // 直接把它打印出来。于是同一页会**自相矛盾**：顶部写着解析基准是
-                // `/home/zbl/.claude-accts/z`，而这一行写着「位置：远端」。
+                // `<用户家目录>/.claude-accts/<账号>`，而这一行写着「位置：远端」。
                 //
                 // 按 `Either` 的定义（"Claude Code 跑在哪台，这东西就在哪台"）它本就是两端皆可。
                 host: HostScope::Either,
