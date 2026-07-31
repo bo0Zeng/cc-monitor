@@ -317,15 +317,27 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   /** S4b：一个假的分页宿主，记录开了哪些页 / 跳去了哪一页。 */
   function fakePages() {
     const added: { id: string; title: string; element: HTMLElement }[] = [];
+    const addedParts: (
+      | { connection: HTMLElement; components: HTMLElement }
+      | undefined
+    )[] = [];
     const removed: string[] = [];
     const navigated: string[] = [];
     return {
       added,
+      addedParts,
       removed,
       navigated,
       host: {
-        addMachinePage: (id: string, title: string, element: HTMLElement) =>
-          void added.push({ id, title, element }),
+        addMachinePage: (
+          id: string,
+          title: string,
+          element: HTMLElement,
+          parts?: { connection: HTMLElement; components: HTMLElement },
+        ) => {
+          added.push({ id, title, element });
+          addedParts.push(parts);
+        },
         removeMachinePage: (id: string) => void removed.push(id),
         navigateToMachinePage: (id: string) => void navigated.push(id),
       },
@@ -516,6 +528,30 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row")];
     expect(rows).toHaveLength(3);
     for (const r of rows) expect(r.querySelector("input")).toBeNull();
+  });
+
+  it("★ 卡片交出「连接 / 组件」两块，且 resume 命令归组件（§5-1 要它挨着装 ccm）", async () => {
+    // S4b-3a 那轮我把 resume 命令插在 daemonless 之后，commit 却说它「紧邻装/卸 ccm」——
+    // 实际隔着约 120 行。这条把它钉在**组件**那一半里，不让它漂回字段区。
+    const p = fakePages();
+    await mount([mkH("a", "1.1.1.1")], p.host);
+    // 直接拿 host 收到的 parts 断言（比翻 DOM 稳）；[0] 是本机页
+    const got = p.addedParts[1];
+    expect(got, "远端机器页必须带 parts").toBeTruthy();
+    const inConn = got!.connection.textContent ?? "";
+    const inComp = got!.components.textContent ?? "";
+    expect(inConn).toContain("主机 (host)");
+    expect(inComp).toContain("resume 命令（这台机器）");
+    expect(inComp).toContain("装 ccm 启动器");
+    // 反向：resume 命令**不该**留在连接那半
+    expect(inConn).not.toContain("resume 命令（这台机器）");
+  });
+
+  it("本机页不带 parts（它没有卡片，不该被拆栏）", async () => {
+    const p = fakePages();
+    await mount([], p.host);
+    expect(p.added[0]!.title).toBe("本机");
+    expect(p.addedParts[0]).toBeUndefined();
   });
 
   it("★ 点机器名 → 跳到它那一页", async () => {
