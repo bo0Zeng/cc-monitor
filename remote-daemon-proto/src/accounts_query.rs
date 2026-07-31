@@ -1365,6 +1365,74 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
+    /// ★ **main 必须分发本模块认的每一个子命令** —— v3.4.0 的事故守卫。
+    ///
+    /// 当时 `--account-trust-zero` 在本模块实现完整（`run` 里有它的臂），但 `main.rs` 的
+    /// match 只列了三个字面量 ⇒ 它落进 `_ => history_query::run` ⇒ 回 `unknown argument`
+    /// + exit 2。而 monitor 的账号 0 信任预检**真的在发这条命令**，随 v3.4.0 发了出去。
+    ///
+    /// **为什么既有测试一条都没红**：它们全都直接调 `accounts_query::run`，
+    /// **绕过了 main 的调度**——被测的那一半是好的，坏的是没人测的那一半。
+    /// ⇒ 这条守卫**跨文件**比对：本模块 `run` 里出现的每个 `Some("--x")`，
+    /// 在 `main.rs` 的生产段里都必须出现。
+    #[test]
+    fn main_dispatches_every_subcommand_we_handle() {
+        let me = include_str!("accounts_query.rs");
+        let main_raw = include_str!("main.rs");
+        // 只看生产段 + 剥行注释：两个文件的散文里都会提到这些字面量，
+        // 不剥的话「main 的注释里写了它」也会让守卫变绿——那正是安慰剂。
+        let strip = |src: &str| -> String {
+            let marker = "\n#[cfg(test)]\nmod tests";
+            let prod = match src.find(marker) {
+                Some(i) => &src[..i],
+                None => src,
+            };
+            prod.lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let mine = strip(me);
+        let main_prod = strip(main_raw);
+        assert!(
+            main_prod.len() > 3_000 && main_prod.len() < main_raw.len(),
+            "剥完 main 生产段只剩 {} 字节（原文 {}）——剥法坏了",
+            main_prod.len(),
+            main_raw.len()
+        );
+
+        // 抠出本模块 `run` 分发的子命令：形如 `Some("--x") =>`。
+        let mut subs: Vec<&str> = Vec::new();
+        let needle = format!("{}(\"--", "Some");
+        for (i, _) in mine.match_indices(needle.as_str()) {
+            let rest = &mine[i + needle.len()..];
+            if let Some(end) = rest.find('"') {
+                let name = &rest[..end];
+                if !subs.contains(&name) {
+                    subs.push(name);
+                }
+            }
+        }
+        // 反向自检：一个都没抠到 = 抠法坏了，而不是「本模块没有子命令」。
+        assert_eq!(
+            subs.len(),
+            4,
+            "从本模块抠到 {} 个子命令（真实应为 4）：{subs:?}——加/删子命令时来改这个数",
+            subs.len()
+        );
+
+        for name in &subs {
+            let lit = format!("{}(\"--{name}\")", "Some");
+            assert!(
+                main_prod.contains(lit.as_str()),
+                "`--{name}` 在本模块有完整实现，但 `main.rs` 的调度里找不到 `{lit}`。\n\
+                 它会落进 `_` 臂走历史查询 ⇒ 回 `unknown argument` + exit 2，\n\
+                 而调用方（monitor）拿到的是一个看起来像「daemon 太旧」的失败。\n\
+                 **v3.4.0 就是这么漏出去的。** 加子命令时两处都要加。"
+            );
+        }
+    }
+
     /// `--account-trust-zero` 只收 cwd，路径写死在代码里 ⇒ 它连「任意文件读」的面都没有。
     /// 钉住入口形状（而不是去改 $HOME 跑真的，那在并行测试里是竞态）。
     #[test]
