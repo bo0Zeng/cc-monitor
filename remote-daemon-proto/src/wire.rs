@@ -12,6 +12,28 @@ use std::collections::HashMap;
 ///
 /// Serializes with an external `kind` tag, e.g.
 /// `{"kind":"hello","v":1,...}` or `{"kind":"session_added","sid":"..."}`.
+/// [`Frame::SessionRemoved`] 的原因。**双写点**：字面量 `"superseded"` 与 monitor
+/// `src-tauri/src/ssh_source.rs` 的解析处逐字一致，由 monitor 侧
+/// `removal_cause_wire_literal_stays_in_sync` 钉住（同 `TMUX_LS_FMT` 的纪律）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RemovalCause {
+    /// 真的没了：pidfile 被删 / 进程退出 / 原地翻成非交互 kind。
+    /// **默认值** —— 缺字段就是它，保证旧 daemon×新 monitor 与今天行为一致。
+    #[default]
+    Gone,
+    /// 同一个 pidfile 原地换了 sid（`/branch`、`/clear`）：旧 sid **不是死了，是被顶替了**。
+    /// monitor 收到它必须直接归档，**不要**再去查 tmux 快照（那份快照对这个场景恒错）。
+    Superseded,
+}
+
+impl RemovalCause {
+    /// 给 `skip_serializing_if` 用：`Gone` 不上线，保持帧最小 + additive。
+    fn is_gone(&self) -> bool {
+        matches!(self, RemovalCause::Gone)
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Frame {
@@ -112,7 +134,25 @@ pub enum Frame {
         liveness_confidence: Option<String>,
     },
     /// A session file went away.
-    SessionRemoved { sid: String },
+    SessionRemoved {
+        sid: String,
+        /// **S0（additive）：这个 sid 是「死了」还是「被顶替了」。**
+        ///
+        /// 为什么必须由 daemon 说：monitor 收到 removed 后要在「灰点（tmux 还在，可以回去
+        /// attach）」和「归档」之间二选一，今天它靠**查自己缓存的那份 `tmux ls` 原文里
+        /// `@ccm_sid` 还在不在**来猜。`/branch`（同 pidfile 原地换 sid）时这个猜法必错：
+        /// 旧 sid 的 tmux 格子还在、只是 `@ccm_sid` 已被 `shared/ccm` 的 poller 换成新 sid，
+        /// 而那份缓存**在 P5 删掉 8s ticker 之后再没有任何事件路径会去刷新它**
+        /// ⇒ 旧 tab 永久灰点、且按旧 sid 找不到 tmux 会话 ⇒ 杀不掉。
+        ///
+        /// daemon 这边本来就**分得清**这两件事——它们是两个不同的调用点。把信息发出去，
+        /// monitor 就不用猜，也就不受「缓存多旧」和「ccm 的 1s poller 什么时候回填」影响。
+        ///
+        /// 线上表现：[`RemovalCause::Gone`] **不写字段**（旧 monitor 原样工作，additive）；
+        /// 只有 `Superseded` 才出现 `"cause":"superseded"`。
+        #[serde(default, skip_serializing_if = "RemovalCause::is_gone")]
+        cause: RemovalCause,
+    },
     /// phase②（daemon-09）：turn-end 边沿（一轮 assistant 完成）。**方案 C：raw-per-record、daemon
     /// 不 dedup**——每见一条 turn-end 记录（`end_turn && !isApiError && !isSidechain`，见 `turn_detect`）
     /// 发一帧；aterm 侧 **rolling-latest + debounce(1200ms) `baselineByPath`** 塌合同 turn 的多记录、
@@ -295,7 +335,13 @@ mod tests {
                 },
                 "session_status",
             ),
-            (Frame::SessionRemoved { sid: "s".into() }, "session_removed"),
+            (
+                Frame::SessionRemoved {
+                    sid: "s".into(),
+                    cause: RemovalCause::Gone,
+                },
+                "session_removed",
+            ),
             (
                 Frame::TurnEnd {
                     session_id: "s".into(),
@@ -577,5 +623,32 @@ mod tests {
             ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"status\":\"idle\"}\n",
             "liveness_confidence 省略，字节等价旧形"
         );
+    }
+
+    /// ★ S0：`cause` 的线上表现 —— `Gone` **不写字段**（additive，旧 monitor 原样工作），
+    /// 只有 `Superseded` 才出现。这条同时是**跨语言双写点**的本侧锚：字面量
+    /// `"superseded"` 与 monitor `src-tauri/src/ssh_source.rs` 的解析处逐字一致。
+    #[test]
+    fn removal_cause_is_additive_on_the_wire() {
+        let gone = to_line(&Frame::SessionRemoved {
+            sid: "s".into(),
+            cause: RemovalCause::Gone,
+        })
+        .unwrap();
+        assert!(
+            !gone.contains("cause"),
+            "Gone 必须不写 cause 字段（否则旧 monitor 看到未知字段、帧也白白变大）：{gone}"
+        );
+        let sup = to_line(&Frame::SessionRemoved {
+            sid: "s".into(),
+            cause: RemovalCause::Superseded,
+        })
+        .unwrap();
+        assert!(
+            sup.contains(r#""cause":"superseded""#),
+            "Superseded 必须逐字发 \"superseded\"（monitor 侧按这个字面量解析）：{sup}"
+        );
+        // 反向自检：两条不是同一个串（否则上面两个断言可能同时被一个退化实现满足）。
+        assert_ne!(gone, sup);
     }
 }

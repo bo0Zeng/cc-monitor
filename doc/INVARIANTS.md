@@ -406,7 +406,14 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 远端会话三态：**live**（claude 在跑）/ **idle-tmux**（claude 退出但 tmux 会话仍在 → 灰灯、可 attach 复用）/ **archived**（tmux 也没了）。承接 §24 单写者不变量，落地约束：
 
 1. **`REMOTE_IDLE` 是独立账本，唯一写者仍是 emitter**：`ssh_source.rs` 的 `REMOTE_IDLE`（origin → idle sid 集）与 `remote_active` **正交**——`mark_idle`/`clear_idle` 只由 `remote-session-emitter` 调（`run()` 的 removed/added 臂），其余路径（收割器、F5 对账）只 `snapshot_idle_*` 读。**绝不**给 `SessionChange` 加字段承载 idle（收割器仍只发 `{removed}`）。
-2. **emitter removed 臂据 tmux 存活分流**（`classify_removed` 纯函数 + `find_tmux_origin_for_sid`）：`Some(origin)`=tmux 会话尚在 → `mark_idle` + emit `SESSION_IDLE` + **不 forget**（不进归档、`remote_active` 早已在上方移出该 sid，idle 天然在集合外，**不新增 `remote_active` 写点**）；`None`=tmux 也没了 → `clear_idle` + `forget` + emit `SESSION_ENDED`（原归档路径）。判据 **command-agnostic**：`TmuxSessions` 帧最长 8s 陈旧，退出瞬间 command 列可能仍是 claude，故「claude 死」由 daemon-removed 边沿判、「tmux 在」由 `@ccm_sid` present 判（见 `tmux_origin_for_sid`）。
+2. **emitter removed 臂据 tmux 存活分流**（`classify_removed` 纯函数 + `find_tmux_origin_for_sid`）——
+   ★ **S0（2026-07-31）加了一道前置：`cause` 先于快照裁决**。daemon 现在在 `session_removed` 帧上
+   带 `cause`（additive，`Gone` 不上线、缺省即 `Gone`）：`Superseded` = 同一个 pidfile **原地换了 sid**
+   （`/branch`、`/clear` —— claude 进程不重启，只是 sessionId 变了）⇒ **恒归档，根本不查快照**。
+   为什么必须绕开快照：那个入参对这个场景**恒错** —— 旧 sid 的 tmux 格子确实还在，但它现在挂的是
+   **新** sid；而这份快照在 P5 删掉 8s ticker 之后，`/branch` 不触发任何事件路径去刷新它（§41.3 盲区 ④）
+   ⇒ 判成 idle 就是一个**永远消不掉、也 attach 不上**的灰点（用户 2026-07-30 实测「杀不掉」）。
+   `Gone` 维持下述原语义：`Some(origin)`=tmux 会话尚在 → `mark_idle` + emit `SESSION_IDLE` + **不 forget**（不进归档、`remote_active` 早已在上方移出该 sid，idle 天然在集合外，**不新增 `remote_active` 写点**）；`None`=tmux 也没了 → `clear_idle` + `forget` + emit `SESSION_ENDED`（原归档路径）。判据 **command-agnostic**：`TmuxSessions` 帧最长 8s 陈旧，退出瞬间 command 列可能仍是 claude，故「claude 死」由 daemon-removed 边沿判、「tmux 在」由 `@ccm_sid` present 判（见 `tmux_origin_for_sid`）。
 3. **idle→archived 的产出者 = 收帧收割器**：idle sid 并入收割器 `tracked`；且因 `@ccm_sid` 铁证其绑过 tmux，作 `reconcile_step` 的 `pre_bound` 直接播种 `ever_bound`——否则「SessionRemoved 删 announced」与「emitter mark_idle」之间的跨线程缝里那帧会漏置 `ever_bound`，令 idle sid 永不累计缺失 = 连接内卡灰关不掉。tmux 真消失 → 收割器去抖后 retire → emitter 走 `None` 归档。
 4. **前端灰灯与 §24 第 2 条同源**：`session-idle` 与 `session-ended` 同进 `events.ts` 的 queue（对同一 sid 二者互斥、emitter 择一）。`Tab.tmuxIdle` 与 `TabStatus` **正交**（status 仍 live、仅灯变灰，不碰任何 archived 门控）。清灰**主**信号 = `ensureTab`（远端 tab 又收 daemon 重宣告/行 = claude 复活，queue 内与行保序）；`session-activity` 为次要（非 queue、null-activity daemon 下不可靠，**不可**作唯一清灰路径）。
 
@@ -1121,6 +1128,13 @@ Linux 本地是 POSIX + tmux + `ccm`，跟远端那条路**只差一跳 ssh**。
 四路全部汇进 `watcher.rs` 的**同一个 mpsc channel**（`WatchEvent`），`watch_loop` 阻塞在
 **无超时** `recv()` 上。
 
+**第五个触发条件（S0，2026-07-31 补）**：pidfile 里绑的 **sid 变了**（新增 / 消失 / 原地换）
+⇒ 顺手起一次 tmux 重探。它不是新的事件**源**（复用同一条 pidfile inotify），而是
+「快照该刷新了」的一个额外时机 —— 因为 `tmux ls` 里的 `@ccm_sid` 列此刻已经过期。
+**触发条件必须是「sid 真的变了」，不是「收到了 .json 事件」**：CC 每次状态转换都重写
+pidfile（远端红绿灯就靠它），拿后者当触发器等于把探测变成变相轮询。
+由 `tmux_reprobe_triggers_on_sid_drift_not_on_every_json_event` 钉住。
+
 > **数字的诚实边界**：最后一行 126ms 取自 P5 §6.3 的对照实验（有对照组，故取它作对外数字）；
 > P5 §4 另一套测法对同一场景测到 **18ms**。两个数都如实留档，差异在测法不是行为。
 > CI 里 `graylight-daemon-frames` 报的那个毫秒数是**上界**（`wait_line` 0.5s 轮询 ⇒ 粒度 500ms），
@@ -1140,6 +1154,7 @@ no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关�
 | ① | tmux server 复活后 hook 丢失（hook 活在 server 内存里） | **本工作区解决**：socket 目录 inotify ⇒ 「server 起来了」本身是事件，`ServerState::Alive(pid)` 臂里重装 hook |
 | ② | 会话**活着但卡死** | **明确不做**，且要说清：**今天的轮询也没在做这个** —— 卡死的 CC 在 `tmux ls` 里照样在，8s 轮询只检「会话不在了」。⇒ **删轮询在这一格上零损失**，不是拿盲区换延迟 |
 | ③ | user manager / 整台机器挂掉 | 机器内部无解，靠 monitor **断连自愈**（既有路径：重连后 daemon 重发 added + 重放行 → un-archive） |
+| ④ | **已存在的会话上 `@ccm_sid` 变了**（`/branch`、`/clear`：claude 进程不重启、tmux 会话不动，只是换了个 sid） | **S0 解决，但换了条路**：这个盲区**四路事件一个都不响** —— 会话没建、没关、没改名，socket 没动，进程没死。P5 删掉 8s ticker 之前，是那个 ticker 在兜它；删掉之后它变成**永久**盲区，表现为用户实测的「/branch 后原 tab 永久灰点、杀不掉」。**修法不是补一条事件路径**（`@ccm_sid` 由 `shared/ccm` 的 1 秒 poller 回填，任何"变化后立刻探"都会撞进那 1s 窗口），而是**让 monitor 不再需要这份快照**：daemon 在 `session_removed` 帧上带 `cause=superseded` 明说"这个 sid 是被顶替不是死了"，monitor 直接归档。见 §24bis |
 
 **另有一条既有盲区（不是本区引入）**：`notify-debouncer-mini` 静默吞掉 inotify 队列溢出
 （`add_event` 只读 `event.paths`，而溢出事件 `paths` 为空）⇒ 溢出时事件永久丢失。

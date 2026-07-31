@@ -29,10 +29,52 @@ use std::time::Duration;
 ///   的 jsonl（修 Bug：若 jsonl 行先于 PID.json 到达，active() 被拒后 process_file
 ///   early return 但不更新 offset，且不会再被自动重扫——导致 /resume 起的新 session
 ///   在某些竞态下永远不出现 Tab。这里加 added → rescan 通道作为安全网）
+/// S0：一个 sid **为什么**从活跃集里出去。
+///
+/// 之所以要这个类型，而不是继续只传 sid：monitor 收到 removed 后要在「灰点（tmux 会话
+/// 还在，用户可以回去 attach）」和「归档」之间二选一，原先靠**查自己缓存的那份
+/// `tmux ls` 原文里 `@ccm_sid` 还在不在**来猜。`/branch` 场景这个猜法必错——见
+/// [`Superseded`](RemovalCause::Superseded)。远端由 daemon 在帧里明说，本地由 diff 得出。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RemovalCause {
+    /// 真的没了：pidfile 被删 / 进程退出 / 连接断开时兜底归档。**默认值。**
+    #[default]
+    Gone,
+    /// 同一个 pidfile 原地换了 sid（`/branch`、`/clear`）：旧 sid **不是死了，是被顶替了**。
+    ///
+    /// 此时旧 sid 的 tmux 格子确实还在，但那一格现在挂的是**新** sid；判成灰点的话，
+    /// 用户会看到一个永远消不掉、也 attach 不上的灰点（按旧 sid 去匹配 `@ccm_sid` 恒失败）。
+    Superseded,
+}
+
+/// S0：removed 列表的元素——sid + 它为什么走。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemovedSid {
+    pub sid: String,
+    pub cause: RemovalCause,
+}
+
+impl RemovedSid {
+    /// 真死。绝大多数调用点用这个。
+    pub fn gone(sid: impl Into<String>) -> Self {
+        Self {
+            sid: sid.into(),
+            cause: RemovalCause::Gone,
+        }
+    }
+    /// 被顶替（原地换 sid）。
+    pub fn superseded(sid: impl Into<String>) -> Self {
+        Self {
+            sid: sid.into(),
+            cause: RemovalCause::Superseded,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SessionChange {
     pub added: Vec<String>,
-    pub removed: Vec<String>,
+    pub removed: Vec<RemovedSid>,
     /// issue #23: 红绿灯——本次重扫中 status/waitingFor 发生变化（含新出现）的会话。
     /// lib.rs 据此 emit session-activity（变化才发，天然稀疏：CLI 仅在状态转换时
     /// 重写 sessions/<PID>.json）。
@@ -268,10 +310,13 @@ fn diff_sessions(
     prev: &HashMap<String, SessionInfo>,
     next: &HashMap<String, SessionInfo>,
 ) -> SessionChange {
-    let removed: Vec<String> = prev
+    // S0：本地 diff 只会得出「sid 集合里少了一个」= 真死。本地路径没有远端那条
+    // 「同 pidfile 原地换 sid」的信息（那是 daemon 才看得见的 per-pidfile 视角），
+    // 也不需要——本地没有 idle-tmux 灰点（`SESSION_IDLE` 是远端专有，见 bridge.rs）。
+    let removed: Vec<RemovedSid> = prev
         .keys()
         .filter(|k| !next.contains_key(*k))
-        .cloned()
+        .map(RemovedSid::gone)
         .collect();
     let added: Vec<String> = next
         .keys()
@@ -391,7 +436,7 @@ fn run_watcher(
                 if let Some(tx) = &change_tx {
                     let _ = tx.send(SessionChange {
                         added: vec![],
-                        removed: dead,
+                        removed: dead.into_iter().map(RemovedSid::gone).collect(),
                         status_changed: vec![],
                     });
                 }
@@ -703,7 +748,7 @@ mod tests {
         let prev = as_map(vec![mk("s1", Some("busy"), None)]);
         let next = as_map(vec![]);
         let c = diff_sessions(&prev, &next);
-        assert_eq!(c.removed, vec!["s1".to_string()]);
+        assert_eq!(c.removed, vec![RemovedSid::gone("s1")]);
         assert!(c.status_changed.is_empty());
     }
 

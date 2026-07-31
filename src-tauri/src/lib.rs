@@ -482,7 +482,10 @@ pub fn run() {
                                     }
                                 }
                             }
-                            for sid in change.removed {
+                            // S0：本地路径没有 idle-tmux 灰点（`SESSION_IDLE` 是远端专有），
+                            // cause 在这里无分支意义，取 sid 即可。
+                            for removed in change.removed {
+                                let sid = removed.sid;
                                 cache_for_emitter.forget(&sid);
                                 let payload = bridge::SessionEndedPayload {
                                     session_id: sid.clone(),
@@ -564,8 +567,8 @@ pub fn run() {
                                     for sid in &change.added {
                                         active.insert(sid.clone());
                                     }
-                                    for sid in &change.removed {
-                                        active.remove(sid);
+                                    for removed in &change.removed {
+                                        active.remove(&removed.sid);
                                     }
                                 }
                                 // added 先处理：每个新 sid 起一条**独立** std::thread
@@ -607,7 +610,8 @@ pub fn run() {
                                         );
                                     }
                                 }
-                                for sid in change.removed {
+                                for removed in change.removed {
+                                    let sid = removed.sid;
                                     // audit-fixes F03.2（灰灯三态分流）：daemon-removed（claude 进程没了，权威）
                                     // 到达时，看该 sid 的 `@ccm_sid` 是否仍出现在某 origin 的 TmuxSessions 帧里：
                                     //   - Some(origin)=tmux 会话尚在（空 shell）→ **idle-tmux 灰灯**：mark_idle +
@@ -617,8 +621,16 @@ pub fn run() {
                                     // 瞬间 command 列可能仍是 claude，故用 daemon-removed 判"claude 死"、@ccm_sid
                                     // present 判"tmux 在"。**§24**：removed sid 已在上方从 remote_active 移出，idle 天然
                                     // 在集合外；idle 只写独立 REMOTE_IDLE（唯一写者=本 emitter），**不新增 remote_active 写点**。
+                                    //
+                                    // ★ S0：上面那段「查 @ccm_sid 还在不在」**只对 `Gone` 成立**。
+                                    // `Superseded`（同 pidfile 原地换 sid，即 /branch）时旧 sid 的
+                                    // tmux 格子确实还在、但已经改挂新 sid ⇒ 查快照必然误判成灰点，
+                                    // 且那份快照在 P5 删掉 ticker 后没有任何事件路径会刷新它
+                                    // ⇒ 永久灰点、按旧 sid 也 attach 不上（用户实测「杀不掉」）。
+                                    // 故 cause 先于快照裁决，见 `classify_removed` 的文档注释。
                                     match ssh_source::classify_removed(
                                         ssh_source::find_tmux_origin_for_sid(&sid),
+                                        removed.cause,
                                     ) {
                                         ssh_source::RemovedDisposition::Idle { origin } => {
                                             ssh_source::mark_idle(&origin, &sid);

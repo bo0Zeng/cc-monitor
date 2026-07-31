@@ -38,7 +38,11 @@ use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::event_replay::EventReplay;
-use crate::session_map::SessionChange;
+use crate::session_map::{RemovalCause, RemovedSid, SessionChange};
+
+/// S0 **跨语言双写点**：daemon 那侧 `RemovalCause::Superseded` 的 serde 线上名。
+/// 改这里必须同步 `remote-daemon-proto/src/wire.rs`（同 `TMUX_LS_FMT` 的纪律）。
+const REMOVAL_CAUSE_SUPERSEDED: &str = "superseded";
 use crate::watcher::JsonlLine;
 
 /// 重连退避下界：每次连接掉线后至少等这么久再重连（也是连上过之后的快速重连值）。
@@ -1069,8 +1073,19 @@ pub enum RemovedDisposition {
 }
 
 /// **纯决策**（可单测，锁住「Some/None 不写反」——emitter 里的实际接线在 run() 闭包内无法单测，
-/// 抽出映射层给最易犯的分支互换上变异锚点）。Some(origin)→Idle；None→Archive。
-pub fn classify_removed(tmux_origin: Option<String>) -> RemovedDisposition {
+/// 抽出映射层给最易犯的分支互换上变异锚点）。
+///
+/// ★ S0：**`cause` 先于快照裁决**。
+/// - [`RemovalCause::Superseded`]（同 pidfile 原地换 sid = `/branch`）⇒ 恒 `Archive`，
+///   **根本不看 `tmux_origin`**。原因是那个入参对这个场景恒错：旧 sid 的 tmux 格子还在，
+///   但它现在挂的是**新** sid；而 `tmux_origin` 读的是缓存的 `tmux ls` 原文，那份缓存
+///   在 P5 删掉 8s ticker 之后**没有任何事件路径会因 /branch 去刷新它**。
+///   ⇒ 判成 Idle 就是一个永远消不掉、也 attach 不上的灰点（用户 2026-07-30 实测）。
+/// - [`RemovalCause::Gone`] ⇒ 维持原语义：Some(origin)→Idle；None→Archive。
+pub fn classify_removed(tmux_origin: Option<String>, cause: RemovalCause) -> RemovedDisposition {
+    if cause == RemovalCause::Superseded {
+        return RemovedDisposition::Archive;
+    }
     match tmux_origin {
         Some(origin) => RemovedDisposition::Idle { origin },
         None => RemovedDisposition::Archive,
@@ -1601,7 +1616,11 @@ pub enum InboundFrame {
         waiting_for: Option<String>,
     },
     /// 远端一个 session 文件消失。
-    SessionRemoved { sid: String },
+    SessionRemoved {
+        sid: String,
+        /// S0：daemon 明说的移除原因（缺字段 ⇒ [`RemovalCause::Gone`]，与旧 daemon 兼容）。
+        cause: RemovalCause,
+    },
     /// issue #32：远端 daemon 发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）。
     /// monitor 收到后经 SS-F remote-health 通道提示用户可能丢实时行。
     Overflow { dropped: u64 },
@@ -1698,7 +1717,15 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
         }
         "session_removed" => {
             let sid = obj.get("sid")?.as_str()?.to_string();
-            Some(InboundFrame::SessionRemoved { sid })
+            // ★ S0（additive）：`cause` 缺省 = `Gone`，旧 daemon 原样工作。
+            // **双写点**：字面量与 daemon `remote-daemon-proto/src/wire.rs::RemovalCause`
+            // 的 serde 名逐字一致，由 `removal_cause_wire_literal_stays_in_sync` 钉住。
+            // 未知取值也退回 `Gone`（宁可保守判活，不可凭一个不认识的词直接归档）。
+            let cause = match obj.get("cause").and_then(|v| v.as_str()) {
+                Some(REMOVAL_CAUSE_SUPERSEDED) => RemovalCause::Superseded,
+                _ => RemovalCause::Gone,
+            };
+            Some(InboundFrame::SessionRemoved { sid, cause })
         }
         "overflow" => {
             // issue #32：dropped 必需且为数字；缺/错则当坏帧跳过（不 panic）。
@@ -1917,7 +1944,8 @@ pub async fn run(
             );
             if let Err(e) = session_changes.send(SessionChange {
                 added: vec![],
-                removed,
+                // 连接断了兜底归档 = 真死（不是被顶替）。
+                removed: removed.into_iter().map(RemovedSid::gone).collect(),
                 status_changed: vec![], // 本分支无状态变化（F27 起 status 走 SessionAdded/SessionStatus 臂）
             }) {
                 tracing::warn!("ssh_source final session archival send failed: {e}");
@@ -2351,7 +2379,7 @@ async fn stream_loop(
                     tracing::warn!("ssh_source session_status send failed: {e}");
                 }
             }
-            Some(InboundFrame::SessionRemoved { sid }) => {
+            Some(InboundFrame::SessionRemoved { sid, cause }) => {
                 // FIX 2：已显式 removed 的 sid 从 announced 摘掉，避免连接结束时重复归档。
                 announced.remove(&sid);
                 if let Some(hm) = announced_registry().lock().unwrap().get_mut(&host_label) {
@@ -2362,7 +2390,8 @@ async fn stream_loop(
                 snapshots.cancel(&sid);
                 if let Err(e) = session_changes.send(SessionChange {
                     added: vec![],
-                    removed: vec![sid],
+                    // ★ S0：cause 由 daemon 说了算，monitor 不猜（原先靠查会陈旧的 tmux 快照）。
+                    removed: vec![RemovedSid { sid, cause }],
                     status_changed: vec![],
                 }) {
                     tracing::warn!("ssh_source session_removed send failed: {e}");
@@ -2412,7 +2441,8 @@ async fn stream_loop(
                         );
                         if let Err(e) = session_changes.send(SessionChange {
                             added: vec![],
-                            removed: vec![sid],
+                            // tmux 会话关了 = 那一格没了，真死。
+                            removed: vec![RemovedSid::gone(sid)],
                             status_changed: vec![],
                         }) {
                             tracing::warn!("ssh_source tmux_session_closed send failed: {e}");
@@ -2459,7 +2489,8 @@ async fn stream_loop(
                         );
                         if let Err(e) = session_changes.send(SessionChange {
                             added: vec![],
-                            removed: retire,
+                            // 对账收割 = tmux 后端已不见它，真死。
+                            removed: retire.into_iter().map(RemovedSid::gone).collect(),
                             status_changed: vec![],
                         }) {
                             tracing::warn!("ssh_source tmux-reconcile(收帧) send failed: {e}");
@@ -2758,7 +2789,7 @@ fn archive_daemonless(
     }
     if let Err(e) = session_changes.send(SessionChange {
         added: vec![],
-        removed: sids,
+        removed: sids.into_iter().map(RemovedSid::gone).collect(),
         status_changed: vec![],
     }) {
         tracing::warn!("daemonless [{host_label}] 归档 send failed: {e}");
@@ -2947,12 +2978,70 @@ mod f032_idle_tests {
     fn classify_removed_some_is_idle_none_is_archive() {
         // audit-fixes F03.2（D 审计②）：分流映射的变异锚点——把 Some/None 两臂写反则本测红。
         assert_eq!(
-            classify_removed(Some("pi".to_string())),
+            classify_removed(Some("pi".to_string()), RemovalCause::Gone),
             RemovedDisposition::Idle {
                 origin: "pi".to_string()
             }
         );
-        assert_eq!(classify_removed(None), RemovedDisposition::Archive);
+        assert_eq!(
+            classify_removed(None, RemovalCause::Gone),
+            RemovedDisposition::Archive
+        );
+    }
+
+    /// ★ S0：`Superseded` 恒归档 —— **且不看 tmux 快照**。
+    ///
+    /// 这条钉的是用户 2026-07-30 实测的那个 bug：`/branch` 之后原 tab 变成一个永远
+    /// 消不掉、也 attach 不上的灰点。四象限里出问题的就是 `(Some(origin), Superseded)`
+    /// 这一格 —— 快照说「tmux 还在」（对的，格子确实在），但那一格已经改挂新 sid 了。
+    #[test]
+    fn superseded_always_archives_even_when_tmux_snapshot_still_shows_the_sid() {
+        // ★ 关键格：快照有它、但它是被顶替的 ⇒ 必须归档，不能灰点。
+        assert_eq!(
+            classify_removed(Some("pi".to_string()), RemovalCause::Superseded),
+            RemovedDisposition::Archive
+        );
+        // 快照里没有时当然也归档（这格两个 cause 同答案，单独列出来是为了说明
+        // Superseded 的判定**与快照无关**，不是碰巧和 Gone 一致）。
+        assert_eq!(
+            classify_removed(None, RemovalCause::Superseded),
+            RemovedDisposition::Archive
+        );
+        // 反向对照：同一份「快照里有」的输入，Gone 仍然是灰点 —— 证明上面第一条不是
+        // 因为把灰点分支整个删了才绿的（那种"修法"会把真正的 idle-tmux 功能砸掉）。
+        assert_eq!(
+            classify_removed(Some("pi".to_string()), RemovalCause::Gone),
+            RemovedDisposition::Idle {
+                origin: "pi".to_string()
+            }
+        );
+    }
+
+    /// ★ S0 跨语言双写点：monitor 认的字面量必须与 daemon 发的逐字一致。
+    ///
+    /// 照本仓既有纪律（`TMUX_LS_FMT` / 观测取值那几条）：**读另一侧的源文件 + 锚定那一行**。
+    /// 漂了的表现是**静默失效**——monitor 认不出 `cause`、退回 `Gone`、灰点 bug 悄悄复活，
+    /// 而两侧各自的测试都是绿的。
+    #[test]
+    fn removal_cause_wire_literal_stays_in_sync() {
+        let daemon_wire = include_str!("../../remote-daemon-proto/src/wire.rs");
+        // 反向自检：真读到了那个文件，且它确实是那个 enum 所在的文件。
+        assert!(daemon_wire.len() > 2000, "没读到 daemon wire.rs");
+        assert!(
+            daemon_wire.contains("pub enum RemovalCause"),
+            "daemon 侧 RemovalCause 不在预期文件里，双写点锚点已失效"
+        );
+        // daemon 用 `#[serde(rename_all = "snake_case")]` + 变体名 `Superseded`
+        // ⇒ 线上就是 "superseded"。两个锚点都钉住，任一侧改名都红。
+        assert!(
+            daemon_wire.contains(r#"#[serde(rename_all = "snake_case")]"#),
+            "daemon 侧 RemovalCause 的 serde 命名策略变了，线上字面量可能已不是 snake_case"
+        );
+        assert_eq!(REMOVAL_CAUSE_SUPERSEDED, "superseded");
+        assert!(
+            daemon_wire.contains("    Superseded,"),
+            "daemon 侧变体名 Superseded 变了 ⇒ 线上字面量跟着变，monitor 会认不出"
+        );
     }
 
     #[test]
@@ -3988,8 +4077,32 @@ mod parse_frame_tests {
         assert_eq!(
             frame,
             InboundFrame::SessionRemoved {
-                sid: "s-dead".to_string()
+                sid: "s-dead".to_string(),
+                // ★ S0 向后兼容：**旧 daemon 不发 cause** ⇒ 必须解析成 Gone，
+                // 即维持今天的行为（查快照判灰点）。
+                cause: RemovalCause::Gone,
             }
+        );
+    }
+
+    /// ★ S0：带 cause 的帧解析 + 未知取值的降级方向。
+    #[test]
+    fn parses_session_removed_cause() {
+        assert_eq!(
+            parse_frame(r#"{"kind":"session_removed","sid":"s","cause":"superseded"}"#),
+            Some(InboundFrame::SessionRemoved {
+                sid: "s".to_string(),
+                cause: RemovalCause::Superseded,
+            })
+        );
+        // 未知取值退回 Gone：宁可保守判活（可能多留一个灰点），也不能凭一个不认识的词
+        // 直接归档掉一个其实还活着的会话——归档是**破坏性**的（forget 绑定 + 关 tab）。
+        assert_eq!(
+            parse_frame(r#"{"kind":"session_removed","sid":"s","cause":"从未见过的词"}"#),
+            Some(InboundFrame::SessionRemoved {
+                sid: "s".to_string(),
+                cause: RemovalCause::Gone,
+            })
         );
     }
 

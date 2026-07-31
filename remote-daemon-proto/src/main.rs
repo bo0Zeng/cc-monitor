@@ -110,12 +110,12 @@ const PROTO_VERSION: u32 = 1;
 ///   `observation`（有会话时省略 ⇒ 载荷逐字节不变）+ 新帧 `TmuxSessionClosed`（进 EMITS）。
 ///   **bump BUILD_ID 是必须的**：旧 daemon 报同一个 id 就不会被判 stale、不自动重装，
 ///   整轮改动会在已部署的远端**休眠**（本条正是 P1 记档里点名、P5 漏做、P7 补上的那次 bump）。
-/// - p1s-trust-zero-dispatch = **修 v3.4.0 发出去的一个真 bug**：`--account-trust-zero`
+/// - p1t-removal-cause = **修 v3.4.0 发出去的一个真 bug**：`--account-trust-zero`
 ///   在 `accounts_query.rs` 里实现完整，但本文件的 match 漏列它 ⇒ 落进 `_` 臂走历史查询
 ///   ⇒ 回 `unknown argument` + exit 2，而 monitor 的账号 0 信任预检**真的在发这条命令**。
 ///   **必须 bump**：不 bump 的话已部署的 v3.4.0 daemon 不被判 stale、不会自动换掉，
 ///   修了也到不了用户手上（P5 漏做、P7 补上的那一课）。
-const BUILD_ID: &str = "p1s-trust-zero-dispatch";
+const BUILD_ID: &str = "p1t-removal-cause";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜

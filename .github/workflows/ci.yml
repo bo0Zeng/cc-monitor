@@ -288,12 +288,12 @@ jobs:
           [ "${N:-0}" -ge 13 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 13）——有套件被改回裸 npm run 或被删掉"; exit 1; }
           # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
           for pair in "tmux-target 26" "ccm-cli 44" "ccm-print-parity 12" "ccm-acceptance 15" \
-                      "ccm-pretrust 13" "cc-spawn-uplift 21" "tmux-guarded 14" "usage-probe 7" \
-                      "restart 24" "resume 17" "graylight-frames 8" "restart-frames 5" "resume-frames 7"; do
+                      "ccm-pretrust 13" "cc-spawn-uplift 21" "tmux-guarded 14" "usage-probe 9" \
+                      "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
               || { echo "::error::找不到调用行 'assert-pass-floor.sh $pair' —— 套件或地板被改了"; exit 1; }
           done
-          echo "8 套逐个对上（套件名 + 地板值）"
+          echo "13 套逐个对上（套件名 + 地板值）"
 
       - name: exec-bit guard (shared/** shebang files must be 100755 in git)
         run: bash e2e/exec-bit-guard.sh
@@ -392,7 +392,7 @@ jobs:
         run: bash e2e/assert-pass-floor.sh tmux-guarded 14
 
       - name: 用量探针（F10）
-        run: bash e2e/assert-pass-floor.sh usage-probe 7
+        run: bash e2e/assert-pass-floor.sh usage-probe 9
 
       # G-C：这三套要一个**真 daemon 二进制**（daemon-wrapper.sh 默认取
       # `remote-daemon-proto/target/debug/cc-monitor-remote`）。主计划把「怎么把 daemon 产物
@@ -402,7 +402,7 @@ jobs:
         run: cargo build --manifest-path remote-daemon-proto/Cargo.toml
 
       - name: 灰灯 daemon 帧（F-E1）
-        run: bash e2e/assert-pass-floor.sh graylight-frames 8
+        run: bash e2e/assert-pass-floor.sh graylight-frames 12
 
       - name: 换号 daemon 帧（F-E3）
         run: bash e2e/assert-pass-floor.sh restart-frames 5
