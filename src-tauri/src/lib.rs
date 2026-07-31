@@ -22,6 +22,7 @@ mod fenced_block; // T04 第二步：围栏块配对判定（本机+远端 profi
 mod history;
 mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生成待贴文本（绝不写入）
 mod launch;
+mod local_accounts; // L3a：本机多账号枚举（只读）——`accounts.rs` 的本地对侧
 mod logging;
 mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
 mod messages;
@@ -974,6 +975,7 @@ pub fn run() {
             // A2：多账号只读查询（账号=一个 CLAUDE_CONFIG_DIR）。旧 daemon/daemonless
             // 台一律回 available:false，前端降级隐藏账号功能而不是弹错。
             accounts::list_remote_accounts,
+            local_accounts::list_local_accounts,
             accounts::list_remote_session_accounts,
             accounts::check_account_trust,
             launch::launch_remote_terminal,

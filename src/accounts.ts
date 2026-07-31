@@ -459,6 +459,54 @@ export async function fetchAccounts(origin: string, force = false): Promise<Acco
   return state;
 }
 
+/**
+ * L3a（local-as-remote）：取**本机**的账号状态 —— `fetchAccounts` 的本地对侧。
+ *
+ * 后端 `list_local_accounts` 直接读 `$HOME/.claude-accts/accounts.json`（只读、不起进程），
+ * **返回类型与远端那条逐字段相同** ⇒ 上层拿到的 `AccountsState` 形状一致，
+ * 这正是 §40「本地 = 不走 ssh 的远端」在这一格上的意思。
+ *
+ * `origin` 用一个固定哨兵：本机只有一台，没有「哪台」这个维度。
+ * 走同一个缓存 Map（TTL 相同）——本地读盘虽便宜，但缓存语义一致比省那点 IO 更要紧。
+ */
+export const LOCAL_ORIGIN = "__local__";
+
+export async function fetchLocalAccounts(force = false): Promise<AccountsState> {
+  const now = Date.now();
+  const cached = accountsCache.get(LOCAL_ORIGIN);
+  if (!force && cached && now - cached.at < ACCOUNTS_TTL_MS) return cached.value;
+
+  let raw: RawAccountsResult;
+  try {
+    raw = await invoke<RawAccountsResult>("list_local_accounts");
+  } catch (e) {
+    // Rust 侧只有「取不到 HOME」才 Err；当作不可用而非崩溃（与远端那条同处理）。
+    const state: AccountsState = {
+      origin: LOCAL_ORIGIN,
+      available: false,
+      error: String(e),
+      meta: null,
+      accounts: [],
+      defaultName: null,
+      notice: null,
+    };
+    accountsCache.set(LOCAL_ORIGIN, { at: now, value: state });
+    return state;
+  }
+  const defaultName = await getDefaultName();
+  const state: AccountsState = {
+    origin: LOCAL_ORIGIN,
+    available: raw.available,
+    error: raw.error,
+    meta: raw.meta,
+    accounts: raw.accounts ?? [],
+    defaultName,
+    notice: raw.notice ?? null,
+  };
+  accountsCache.set(LOCAL_ORIGIN, { at: now, value: state });
+  return state;
+}
+
 /** 取某台远端正在跑的会话账号归属（带 TTL 缓存）。 */
 export async function fetchSessionAccounts(
   origin: string,

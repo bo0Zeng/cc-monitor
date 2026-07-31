@@ -265,6 +265,8 @@ mod tests {
         ("uninstall_remote_daemon", "daemon.deploy", Side::Remote),
         ("list_remote_mcp_origins", "mcp.list-origins", Side::Remote),
         ("list_remote_accounts", "accounts.list", Side::Remote),
+        // L3a：本机枚举——同样只读、同样的输出类型 ⇒ 这条能力已对称。
+        ("list_local_accounts", "accounts.list", Side::Local),
         (
             "list_remote_session_accounts",
             "accounts.session-accounts",
@@ -292,7 +294,6 @@ mod tests {
 
     /// **不对称能力的理由**。键集合必须**恰好等于**从 `LEDGER` 算出来的不对称集合。
     const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
-        ("accounts.list", Asym::ParityDebt, "账号功能在本地完全不存在——§40 表里已列为最大一处平价欠账。归 L3（硬依赖 account-zero 的账号模型定稿）。"),
         ("accounts.session-accounts", Asym::ParityDebt, "同 accounts.list：按会话查账号只有远端有。归 L3。"),
         ("accounts.trust", Asym::ParityDebt, "同 accounts.list：预信任检查只有远端有。归 L3。"),
         ("acct-iso.check", Asym::ParityDebt, "本机同样需要「这台装没装 cc-acct-iso」的检测（切号要靠它），今天只能查远端。归 L3。"),
@@ -528,8 +529,8 @@ mod tests {
         // 反向自检：一条都没检到 = 签名采集坏了。**等号而不是 `>=`**（T04 审计重要 5：
         // 写 `>= N` 恰好容忍一次静默降级）。
         assert_eq!(
-            checked, 66,
-            "检到 {checked} 条 Local/Both 命令（真实应为 66 = Local 45 + Both 21）\
+            checked, 67,
+            "检到 {checked} 条 Local/Both 命令（真实应为 67 = Local 46 + Both 21）\
              ——改 LEDGER 就要来确认这个数"
         );
     }
@@ -537,11 +538,11 @@ mod tests {
     /// ★ 断言 4：表的形状钉死。改 `LEDGER` 就要来改这几个数。
     #[test]
     fn ledger_shape_is_pinned() {
-        assert_eq!(LEDGER.len(), 120, "命令总数变了");
+        assert_eq!(LEDGER.len(), 121, "命令总数变了");
         let sides = capability_sides();
         assert_eq!(sides.len(), 50, "能力总数变了");
         let asym = asymmetric_capabilities();
-        assert_eq!(asym.len(), 21, "不对称能力数变了");
+        assert_eq!(asym.len(), 20, "不对称能力数变了");
         let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
         for (_, k, _) in ASYMMETRY_REASONS {
             *kinds
@@ -553,7 +554,7 @@ mod tests {
                 .or_default() += 1;
         }
         assert_eq!(kinds.get("natural"), Some(&7), "天然不对称条数变了");
-        assert_eq!(kinds.get("debt"), Some(&12), "平价欠账条数变了");
+        assert_eq!(kinds.get("debt"), Some(&11), "平价欠账条数变了");
         assert_eq!(kinds.get("undecided"), Some(&2), "未裁定条数变了");
     }
 }

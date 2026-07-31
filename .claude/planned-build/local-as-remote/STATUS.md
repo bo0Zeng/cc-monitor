@@ -1,13 +1,13 @@
 # 状态 / STATUS — local-as-remote（恢复工作的入口，每次先读这里）
 
 - **当前阶段**：**主计划已批（2026-07-30），Phase B 起开工**
-- **当前功能**：无在途 —— L5 / L0(构建半) / L1 / L2 均已交付
+- **当前功能**：无在途 —— L5 / L0(构建半) / L1 / L2 / L3a(枚举半) 均已交付
 - **当前步骤**：n/a
-- **已完成功能**：**L5 平价对账表 + 门禁** · **L0 的「可构建」那半** · **L1（两半均已交付）** · **L2（原方案否决 + 改做漂移点守卫）**
-- **下一个功能**：**L3a（本地账号枚举，只读）** —— Rust 直接读 `%USERPROFILE%\.claude-accts\accounts.json`，
-  `loggedIn` 由 `.credentials.json` 是否存在判定；**不需要 bash、不需要 cc-acct-iso**。
-  做完它，L5 对账表里 `accounts.list` 那条 ParityDebt 该变对称 ⇒ **改 `LEDGER` 就要同步改理由表与形状钉死数**
-  （`parity_ledger.rs` 的断言 2/4 会精确报出来，这是有意的摩擦）。
+- **已完成功能**：**L5 平价对账表 + 门禁** · **L0 的「可构建」那半** · **L1（两半均已交付）** · **L2（原方案否决 + 改做漂移点守卫）** · **L3a（枚举那半）**
+- **下一个功能**：**L4（Linux 打包 + 进 CI/release）** —— 依赖 L0+L1，两者都已交付。
+  **红线：不改 workflow 触发条件**（改 job 内容可以）、**不发版**。产物格式仍是 `[待定]`（建议 AppImage）。
+- **L3a 只交付了枚举那半**：本地账号**注入** / per-account model / **UI 入口**都还没有
+  —— 后端与前端取数函数在了，但没有面板去调 `fetchLocalAccounts`，**用户暂时看不到**。
 - **L2 已否决原方案**（`features/L2-parallel-worlds-guard.md`）：三条组成部分分别撞
   `INVARIANTS §36` 铁律 / R07 已审计的决定；收益「嵌套 env 清理在 Windows 本地首次生效」是
   **事实错误**（`lib.rs:124` 的启动期清洗早于 `:161` 的 Builder）。改做了 Rust `adapter` ↔ TS
