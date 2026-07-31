@@ -20,8 +20,11 @@
 //!
 //! ## 原子写
 //! russh-sftp 无 `posix-rename@openssh.com` 扩展，标准 SFTP `rename` 不覆盖已存在目标。
-//! 故 [`upload_atomic`] 用「写 `<path>.tmp` → 删旧 `<path>` → rename」近似原子（单写者、
-//! 低频部署场景足够；删与 rename 之间的窗口极短且无并发读者）。
+//! 故 [`upload_atomic`] 用「写 `<path>.tmp` → 旧目标 **rename 成 `.bak`** → rename tmp→目标
+//! → 清 `.bak`」近似原子（单写者、低频部署场景足够）。
+//!
+//! **是备份不是删除**：F89a 审计改的就是这一点 —— 「先删旧」一旦后续 rename 失败就**丢原件**，
+//! 而先备份则最坏情况下原内容仍在 `.bak` 里。（本节此前仍写着「删旧」，2026-07-31 随 DN-7 一并订正。）
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -62,8 +65,19 @@ pub async fn connect_sftp(cfg: &RemoteConfig) -> Result<SftpConn, String> {
 
 /// 原子上传 `bytes` 到 `remote_path`，权限 `mode`（八进制如 0o700）。
 ///
-/// 写 `<remote_path>.tmp` → 删旧 → rename（见模块文档「原子写」）。`mode` 在创建时经
-/// FileAttributes 设置，rename 后再 `set_metadata` 兜底（部分 server 创建时 attrs 不生效）。
+/// 流程：写 `<remote_path>.tmp`（**EXCLUDE** 创建，防 symlink 预置 clobber）
+/// → 旧目标 **rename 成 `.bak`（不是删掉）** → rename tmp→目标 → 成功后清 `.bak`。
+/// 中途失败时旧内容仍在 `.bak` 里可恢复。
+///
+/// `mode` **只在 open-create 的 attrs 里设一次**。
+///
+/// ⚠ **rename 之后绝不 `set_metadata` 兜底 chmod** —— 真机 e2e 实证：OpenSSH sftp-server 上
+/// setstat（即便只设 permissions、`size=None`）会把刚 rename 好的文件**截断成 0 字节**，
+/// daemon 因此不可 exec → 连接 EOF → marker 变空 → 无限重部署。理由详见函数末尾那段注释。
+///
+/// （2026-07-31 修：本注释此前写的是「删旧 → rename」+「rename 后 set_metadata 兜底」，
+/// **两句都与函数体相反**，而且照它实现正好复活上面那个把 daemon 变砖的 bug。
+/// 由 aterm 侧交叉核对时发现〔DN-7〕。）
 pub async fn upload_atomic(
     sftp: &SftpSession,
     remote_path: &str,
