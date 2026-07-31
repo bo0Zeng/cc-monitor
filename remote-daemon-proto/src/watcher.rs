@@ -41,7 +41,7 @@
 //! this daemon reads via one `fs::read` snapshot and gives up the whole pass
 //! (cursor untouched). Both are at-least-once-safe.
 
-use crate::wire::{Frame, SeqCounter};
+use crate::wire::{Frame, RemovalCause, SeqCounter};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use std::collections::{HashMap, HashSet};
@@ -698,6 +698,8 @@ fn watch_loop(
     // 线程**里，主循环只收结果。gate 在「无在途探测」上 → 最多同时一个探测线程；即便远端 tmux
     // 卡死（D-state/socket 卡住/NFS home），也只泄漏这一个后台线程，reader 永不冻结。
     let mut tmux_inflight = false;
+    // S0：本批 notify 事件里是否发生过「pidfile 绑的 sid 变了」。见下方使用处。
+    let mut sid_drifted = false;
     // P5：上一份 `tmux ls` 的会话名集合。`None` = 还没成功观测过（第一次不报死亡）。
     // 纯 reader 线程内部状态，不进 `ReaderState`（那是 per-file 记账，语义不同）。
     let mut last_names: Option<std::collections::BTreeSet<String>> = None;
@@ -737,11 +739,38 @@ fn watch_loop(
                     } else if is_session_json(p) {
                         // notify coalesces to "something happened to this path";
                         // decide add vs remove by current existence on disk.
+                        //
+                        // ★ S0：顺带记「这个 pidfile 绑的 sid 有没有真的变」。变了就该重探
+                        // tmux —— 因为 `tmux ls` 快照里的 `@ccm_sid` 此刻已经过期。
+                        // **只认 sid 变化，不认「有 .json 事件」**：CC 状态转换时会重写
+                        // pidfile（红绿灯就靠它），拿那个当触发器等于把探测变成变相轮询。
+                        let key = path_key(p);
+                        let sid_before = state.sessions.get(&key).map(|e| e.sid.clone());
                         if p.exists() {
                             process_session_added(p, &mut state, &mut sink);
                         } else {
                             process_session_removed(p, &mut state, &mut sink);
                         }
+                        if state.sessions.get(&key).map(|e| e.sid.clone()) != sid_before {
+                            sid_drifted = true;
+                        }
+                    }
+                }
+                // ★ S0：一批事件处理完再决定探不探（批内多次漂移只探一次；`tmux_inflight`
+                // 再兜一层去重）。**注意这只让快照更新鲜，不是本 bug 的修复** —— `@ccm_sid`
+                // 由 `shared/ccm` 的 1 秒 poller 回填，这次探测很可能仍抓到旧 tag。
+                // 真正的修复是 `RemovalCause::Superseded`（让 monitor 不必依赖这份快照）。
+                if sid_drifted {
+                    // 只在**真的起了**探测时才清标志。在途时清掉会丢信号——那次在途的探测是
+                    // 在漂移**之前**发起的，它带回来的快照照样是旧的。留着标志，下一个事件
+                    // 会补上一次（代价只是晚一拍；这本来就只是"更新鲜"，不是本 bug 的修复）。
+                    if !tmux_inflight {
+                        sid_drifted = false;
+                        tmux_inflight = true;
+                        let tx = events_tx.clone();
+                        std::thread::spawn(move || {
+                            let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));
+                        });
                     }
                 }
             }
@@ -754,7 +783,13 @@ fn watch_loop(
             WatchEvent::PidDied { key, pid } => {
                 if state.sessions.get(&key).map(|e| e.pid) == Some(pid) {
                     if let Some(e) = state.sessions.remove(&key) {
-                        retire_sid_if_unreferenced(&e.sid, &mut state, &mut sink);
+                        // pidfd 醒了 = 那个进程实例真的退了。
+                        retire_sid_if_unreferenced(
+                            &e.sid,
+                            RemovalCause::Gone,
+                            &mut state,
+                            &mut sink,
+                        );
                     }
                 }
             }
@@ -1141,7 +1176,8 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             // PID 复用写同路径），对称走退休路径——与 F22-① 一致，免掉 poll 的
             // 2s 窗口，并补齐"同进程翻 kind"这条本地有、远端缺的清理。
             if let Some(old) = state.sessions.remove(&key) {
-                retire_sid_if_unreferenced(&old.sid, state, sink);
+                // 原地翻成非交互 kind：交互会话确实没了（进程还在，但不该是 tab）。
+                retire_sid_if_unreferenced(&old.sid, RemovalCause::Gone, state, sink);
             }
             tracing::debug!(
                 "sessions json skipped (kind={kind}): {} pid {pid} is a non-interactive claude (bg task)",
@@ -1185,7 +1221,9 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     // 到断连（跨机审计实锤，本地 diff_sessions 按 sid 集合 diff 无此病）。
     // 引用计数感知：其它 pidfile 仍持旧 sid 时只解绑本 entry、不发帧。
     if let Some(old) = state.sessions.remove(&key) {
-        retire_sid_if_unreferenced(&old.sid, state, sink);
+        // ★ S0：**同 pidfile 原地换 sid** —— 旧 sid 不是死了，是被顶替了。
+        // monitor 若不知道这点，就会去查自己那份会陈旧的 tmux 快照、把它判成灰点。
+        retire_sid_if_unreferenced(&old.sid, RemovalCause::Superseded, state, sink);
     }
     // Batch5-F20: add-time imposter check. `/proc/<pid>` existing is NOT enough:
     // a stale pidfile (CC force-killed, tmux server killed, power loss — nothing
@@ -1284,7 +1322,8 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
 fn process_session_removed(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
     let key = path_key(path);
     if let Some(e) = state.sessions.remove(&key) {
-        retire_sid_if_unreferenced(&e.sid, state, sink);
+        // pidfile 从盘上没了 = 真死。
+        retire_sid_if_unreferenced(&e.sid, RemovalCause::Gone, state, sink);
     }
 }
 
@@ -1292,7 +1331,12 @@ fn process_session_removed(path: &Path, state: &mut ReaderState, sink: &mut Fram
 /// 该 sid 时才清 active_sids + 发 [`Frame::SessionRemoved`]。同 sid 多 pidfile
 /// （resume 时原进程未死）场景下，先死的那个只解绑、不误杀整个 tab。
 /// 调用方约定：先从 `state.sessions` remove 掉当事 entry 再调本函数。
-fn retire_sid_if_unreferenced(sid: &str, state: &mut ReaderState, sink: &mut FrameSink) {
+fn retire_sid_if_unreferenced(
+    sid: &str,
+    cause: RemovalCause,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+) {
     let still_referenced = state.sessions.values().any(|e| e.sid == sid);
     if still_referenced {
         tracing::debug!("sid {sid} still referenced by another pidfile; not retiring");
@@ -1301,6 +1345,7 @@ fn retire_sid_if_unreferenced(sid: &str, state: &mut ReaderState, sink: &mut Fra
     state.active_sids.remove(sid);
     sink.send(Frame::SessionRemoved {
         sid: sid.to_string(),
+        cause,
     });
 }
 
@@ -2092,6 +2137,48 @@ mod tests {
         assert!(
             prod.len() < me.len() && prod.len() > 1000,
             "剥 cfg(test) 没生效，这条断言在空转"
+        );
+    }
+
+    /// ★ S0：pidfile **绑的 sid 变了**才重探 tmux —— 不是「有 .json 事件就探」。
+    ///
+    /// 为什么这条区分是必须的：CC 在**每次状态转换**时都会重写 `sessions/<PID>.json`
+    /// （远端红绿灯就靠它，见 `process_session_added` 里 F27 那段）。拿「有事件」当触发器，
+    /// 等于让 tmux 探测跟着对话节奏跑 —— 那是**变相轮询**，把 P5 好不容易拆掉的定时器
+    /// 用另一种形式装回来。
+    ///
+    /// 同 `poke_shares_the_probe_arm_with_the_ticker`：扫**生产段**源码（`watch_loop` 要真
+    /// spawn 线程 + 真跑 `tmux ls`，单测里跑不动）。**范围窄于性质，如实记**：它钉的是
+    /// 「触发条件写的是 sid 前后比对」，钉不住「比对结果被正确用了」。
+    #[test]
+    fn tmux_reprobe_triggers_on_sid_drift_not_on_every_json_event() {
+        let me = include_str!("watcher.rs");
+        let marker = "\n#[cfg(test)]\nmod tests";
+        let prod = match me.find(marker) {
+            Some(i) => &me[..i],
+            None => me,
+        };
+        assert!(
+            prod.len() < me.len() && prod.len() > 1000,
+            "剥 cfg(test) 没生效，这条断言在空转"
+        );
+        // 触发器 = 处理前后拿同一个 key 的 sid 比一次。判据运行时拼，避免本测试自己的
+        // 源码把 `contains` 喂成恒真（那正是 P4 那条守卫初版栽的跟头）。
+        let before = format!(
+            "let sid_before = state.sessions.get(&key){}",
+            ".map(|e| e.sid.clone());"
+        );
+        assert!(
+            prod.contains(&before),
+            "S0：处理 session json 之前必须先记下该 key 当前绑的 sid"
+        );
+        let cmp = format!(
+            "if state.sessions.get(&key).map(|e| e.sid.clone()) {} sid_before {{",
+            "!="
+        );
+        assert!(
+            prod.contains(&cmp),
+            "S0：触发条件必须是「sid 前后不同」，不是「收到了 .json 事件」"
         );
     }
 
@@ -2950,7 +3037,10 @@ mod tests {
         write("sid-2"); // /clear：同文件重写 sessionId
         process_session_added(&path, &mut state, &mut sink);
         assert!(
-            matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid }) if sid == "sid-1"),
+            // ★ S0：原地换 sid 的 removed 必须带 `Superseded`——monitor 靠它区分
+            // 「死了（tmux 还在 ⇒ 灰点）」和「被顶替了（⇒ 直接归档）」。
+            matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid, cause })
+                if sid == "sid-1" && cause == RemovalCause::Superseded),
             "old sid must be retired BEFORE the new announcement"
         );
         assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "sid-2"));
@@ -3059,7 +3149,10 @@ mod tests {
 
         // 删第二个 → 归零 → Removed 恰一次
         process_session_removed(&p2, &mut state, &mut sink);
-        assert!(matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid }) if sid == "shared-sid"));
+        assert!(
+            matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid, cause })
+            if sid == "shared-sid" && cause == RemovalCause::Gone)
+        );
         assert!(!state.active_sids.contains("shared-sid"));
         assert!(rx.try_recv().is_err());
 
@@ -3086,7 +3179,10 @@ mod tests {
         process_session_added(&path, &mut state, &mut sink);
         assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "solo"));
         process_session_removed(&path, &mut state, &mut sink);
-        assert!(matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid }) if sid == "solo"));
+        assert!(
+            matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid, cause })
+            if sid == "solo" && cause == RemovalCause::Gone)
+        );
         assert!(state.sessions.is_empty() && state.active_sids.is_empty());
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -3669,7 +3765,10 @@ mod tests {
 
         // Next send (channel now empty, cap 2): emits Overflow{3} into slot 1,
         // resets the counter, then the real frame into slot 2.
-        sink.send(Frame::SessionRemoved { sid: "f".into() });
+        sink.send(Frame::SessionRemoved {
+            sid: "f".into(),
+            cause: RemovalCause::Gone,
+        });
         assert_eq!(sink.dropped, 0, "overflow signal flushed, counter reset");
         assert!(
             matches!(rx.try_recv(), Ok(Frame::Overflow { dropped: 3 })),

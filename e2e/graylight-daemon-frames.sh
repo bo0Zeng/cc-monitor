@@ -110,6 +110,61 @@ TS_LIVE="$(wait_line 0 "\"kind\":\"tmux_sessions\".*$SID" 12 'tmux_sessions live
   && ok "TmuxSessions 带 @ccm_sid(live):$(printf '%.160s' "$TS_LIVE")" \
   || bad "12s 内未见含 @ccm_sid 的 tmux_sessions 帧"
 
+# ── 1bis. S0：**同 pidfile 原地换 sid**（= 用户的 `/branch`）───────────────────
+#
+# 用户 2026-07-30 实测：「执行 branch 后原本的 tab 不会变灰，而是变成灰点也杀不掉」。
+# 机制：`/branch` **不重启 claude 进程**（`shared/ccm` 末尾是 exec，pid 不变），只让 CC
+# 把 `sessions/<pid>.json` 里的 sessionId 换掉。这里就照这个形态复现：**进程不动，
+# 只原地改 sessionId**。
+#
+# 为什么必须有这条 e2e、单测不够：单测直接调 `process_session_added`，绕过了 inotify。
+# 而这个场景的整条链路是「CC 改文件 → inotify → 原地换 sid 分支 → 帧」，
+# 中间任何一环断了单测都看不出来。
+#
+# 断言的核心是 **`cause`**：旧 sid 的 session_removed 必须带 `"cause":"superseded"`。
+# monitor 靠它区分「死了（tmux 还在 ⇒ 灰点）」和「被顶替了（⇒ 直接归档）」。
+# 缺了它，monitor 只能去查自己缓存的 tmux 快照——而那份快照对本场景**恒错**
+#（旧 sid 的 tmux 格子还在，只是已改挂新 sid），且 P5 删掉 8s ticker 之后
+# `/branch` 不触发任何事件路径去刷新它 ⇒ 永久灰点。
+NEWSID="11111111-2222-3333-4444-555555555555"
+TAG_SID="$SID"
+PIDFILE="$(ls "$CLAUDE_DIR"/sessions/*.json 2>/dev/null | head -1 || true)"
+if [ -z "$PIDFILE" ]; then
+  bad "S0：找不到 fake-claude 写的 pidfile，无法复现 /branch"
+else
+  MARK_BRANCH="$(wc -l <"$FRAMES")"
+  echo "-- S0：原地把 $PIDFILE 的 sessionId 从 $SID 改成 $NEWSID（进程不动）--"
+  # 只换 sessionId，**其余字段（pid / procStart / kind）原样保留** —— 动了它们会撞上
+  # daemon 的 add-time 冒名检查（F20），那时红的原因就不是本条要测的东西了。
+  TMPJ="$(mktemp)"; sed "s/$SID/$NEWSID/g" "$PIDFILE" >"$TMPJ" && mv "$TMPJ" "$PIDFILE"
+
+  SR_SUP="$(wait_line "$MARK_BRANCH" "\"kind\":\"session_removed\".*$SID" 12 'session_removed(old sid)' || true)"
+  if [ -z "$SR_SUP" ]; then
+    bad "S0：原地换 sid 后 12s 内没有旧 sid 的 session_removed 帧"
+  else
+    ok "S0：旧 sid 收到 session_removed:$(printf '%.140s' "$SR_SUP")"
+    if printf '%s' "$SR_SUP" | grep -q '"cause":"superseded"'; then
+      ok "S0：该帧带 cause=superseded ⇒ monitor 会直接归档，不会判成永久灰点"
+    else
+      bad "S0：该帧**缺** cause=superseded ⇒ monitor 会去查陈旧 tmux 快照、把它判成灰点（正是用户报的 bug）:$SR_SUP"
+    fi
+  fi
+  # 新 sid 必须作为一个新会话宣告出来（否则 /branch 之后用户就没有 tab 了）。
+  SA_NEW="$(wait_line "$MARK_BRANCH" "\"kind\":\"session_added\".*$NEWSID" 12 'session_added(new sid)' || true)"
+  [ -n "$SA_NEW" ] \
+    && ok "S0：新 sid 已宣告为新会话:$(printf '%.140s' "$SA_NEW")" \
+    || bad "S0：原地换 sid 后 12s 内未见新 sid 的 session_added"
+  # 对照组：**真死**那条路不能被误标成 superseded（下面第 2 节杀进程时验，见那里）。
+  #
+  # 后续各节针对当前活着的那个 sid；但 **tmux 上那个 `@ccm_sid` 标签仍是老的**，
+  # 所以分成两个变量。**这与真机的差异要如实记**：真机上 `shared/ccm` 有个 1 秒 poller
+  # 会把标签改成新 sid（`shared/ccm:612` 注释自陈就是为了「随 /branch 漂移」），
+  # 本 fixture 没有那个 poller。这个差异**不影响本节要测的东西**——`cause` 完全由
+  # daemon 从 pidfile 视角判定，与标签无关；恰恰是「不依赖标签」才是 S0 的修法要点。
+  TAG_SID="$SID"   # tmux `@ccm_sid` 上挂着的（本 fixture 里恒为最初那个）
+  SID="$NEWSID"    # 当前活着的会话 sid
+fi
+
 # ── 2. GRAY:杀 fake-claude(留 tmux 会话)→ SessionRemoved + tmux 帧仍含 @ccm_sid ──
 FAKE_PID="$(awk -F'[:,]' '{for(i=1;i<=NF;i++) if($i ~ /"pid"/){print $(i+1); exit}}' "$CLAUDE_DIR"/sessions/*.json)"
 echo "-- kill fake-claude pid=$FAKE_PID(claude 退出,tmux 会话保留)--"
@@ -117,9 +172,21 @@ kill "$FAKE_PID" 2>/dev/null || true
 FAKE_PID=""  # 已杀,cleanup 不再重复
 
 MARK_KILL="$(wc -l <"$FRAMES")"
-SR="$(wait_line 0 "\"kind\":\"session_removed\".*$SID" 12 'session_removed')" \
-  && ok "SessionRemoved(claude 死):$SR" \
-  || bad "12s 内未见 SessionRemoved($SID)"
+# 起始行用 0 而非 MARK_KILL：MARK_KILL 是在 kill **之后**取的，帧可能已经先落盘了。
+# 此刻 $SID 已是 1bis 换上的新 sid，全文只会有它这一条 session_removed，不会串。
+SR="$(wait_line 0 "\"kind\":\"session_removed\".*$SID" 12 'session_removed' || true)"
+if [ -z "$SR" ]; then
+  bad "12s 内未见 SessionRemoved($SID)"
+else
+  ok "SessionRemoved(claude 死):$SR"
+  # ★ S0 对照组：**真死绝不能带 superseded** —— 带了就等于把「claude 死了但 tmux 还在」
+  # 这个灰点功能整个砸掉（用户会看到会话凭空归档、回不去）。
+  if printf '%s' "$SR" | grep -q '"cause"'; then
+    bad "S0 对照：真死的帧不该带任何 cause（Gone 按 additive 约定不上线）:$SR"
+  else
+    ok "S0 对照：真死的帧不带 cause ⇒ monitor 按 Gone 处理 ⇒ 灰点功能不受影响"
+  fi
+fi
 
 # claude 死后，**monitor 手上最新的那份 tmux 快照**必须仍含 @ccm_sid
 #（claude 死但 tmux 未亡 = 灰灯的后端条件）。
@@ -137,7 +204,7 @@ SR="$(wait_line 0 "\"kind\":\"session_removed\".*$SID" 12 'session_removed')" \
 # 而这 6 套是 CI-only、不在其中 ⇒ 没接住。教训已记进 P6 文档。
 TS_GRAY="$(grep '"kind":"tmux_sessions"' "$FRAMES" | tail -1 || true)"
 if [ -n "$TS_GRAY" ]; then
-  if printf '%s' "$TS_GRAY" | grep -q "$SID"; then
+  if printf '%s' "$TS_GRAY" | grep -q "$TAG_SID"; then
     ok "claude 死后最新 tmux 快照仍含 @ccm_sid ⇒ 灰(Idle 非 Archive):$(printf '%.160s' "$TS_GRAY")"
   else
     bad "claude 死后最新 tmux 快照丢了 @ccm_sid(不该):$TS_GRAY"
@@ -152,7 +219,7 @@ tmux kill-session -t "=$SESSION:" 2>/dev/null || true
 MARK_KS="$(wc -l <"$FRAMES")"
 TS_ARCH="$(wait_line "$MARK_KS" "\"kind\":\"tmux_sessions\"" 14 'tmux frame post-kill-session')"
 if [ -n "$TS_ARCH" ]; then
-  if printf '%s' "$TS_ARCH" | grep -q "$SID"; then
+  if printf '%s' "$TS_ARCH" | grep -q "$TAG_SID"; then
     bad "kill-session 后 tmux 帧仍含 sid(不该):$TS_ARCH"
   else
     ok "kill-session 后 tmux 帧不再含 @ccm_sid ⇒ 归档触发边沿:$(printf '%.160s' "$TS_ARCH")"
