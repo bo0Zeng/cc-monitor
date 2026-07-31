@@ -860,9 +860,9 @@ pub fn list_last_accounts() -> HashMap<String, String> {
 /// v2.8.1（bug 修复）：改为在 **PowerShell**（系统自带 `powershell.exe`，**加载用户
 /// profile**）里跑，命令优先用户的 `cc` wrapper、回退 `claude`。详 `resume_impl`。
 /// Windows 上优先 wt.exe，找不到回退独立控制台。其他平台暂不支持。
-#[tauri::command]
 /// G3b：`config_dir` = 用哪个账号起。**缺省 / 空 = 账号 0**（一个字都不注入，
 /// 与 IR 的 `--base` 对齐）。前端不传时输出与本参数存在之前**逐字节相同**，既有调用点无需改。
+#[tauri::command]
 pub fn resume_history_session(
     session_id: String,
     cwd: String,
@@ -942,9 +942,11 @@ fn validate_config_dir(dir: &str) -> Result<(), String> {
     if !dir.starts_with('/') || dir == "/" || dir.contains("/../") || dir.ends_with("/..") {
         return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"));
     }
-    const SHELL_META: &[char] = &[
-        '\'', '"', '\\', '`', '$', ';', '|', '&', '<', '>', '*', '?', '(', ')', '!',
-    ];
+    // ⚠ 写成**字符串**而不是 `&[char]` 数组是有原因的：`'\"'`（字符字面量里的双引号）
+    // 会让 `test-support/strip-comments.ts` 的状态机以为字符串开始了，从此不再剥注释
+    // ⇒ 本文件后面注释里那个 `#[tauri::command]` 字样就会被 C04a 守卫当成真属性，
+    // 报出一个不存在的命令。**实测踩过**（2026-07-31）。改措辞/改写法，别去动守卫。
+    const SHELL_META: &str = "'\"\\`$;|&<>*?()!";
     const SPOOFABLE: &[char] = &[
         '\u{00a0}', '\u{200b}', '\u{200c}', '\u{200d}', '\u{200e}', '\u{200f}', '\u{2028}',
         '\u{2029}', '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}',
@@ -953,7 +955,7 @@ fn validate_config_dir(dir: &str) -> Result<(), String> {
     if dir.chars().any(|c| {
         c.is_control()
             || ('\u{0080}'..='\u{009f}').contains(&c)
-            || SHELL_META.contains(&c)
+            || SHELL_META.contains(c)
             || SPOOFABLE.contains(&c)
     }) {
         return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"));
