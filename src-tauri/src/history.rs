@@ -643,6 +643,29 @@ pub fn delete_history_session(session_id: String, jsonl_path: String) -> Result<
 // 保留原 uuid/parentUuid、`sessionId` 改新 id、加 `forkedFrom{sessionId:源, messageUuid:自身}`。
 // 分叉点之后的记录、被 ESC 回退的兄弟子树、sidechain 全部不带过来（前缀只走祖先链）。
 //
+// === G0（branch-anywhere）：上面那句「= 原生格式」已被扩样本复核，并钉成机检 ===
+//
+// **样本**：两份**早于本功能合入（07-16）**因而只可能是 CC 自己产的 fork
+// —— `0473c3a0`(07-03) 与 `fe4aad07`(07-05)；外加一条三代 fork 链
+// （`a40059e8 → 7c2a26d6 → 4f3fba62`）证明每次 `/branch` 都产**独立文件**、父会话仍可 resume。
+//
+// **决定性指纹**：两份原生 fork 的复制段在源文件里分别跨 1964 / 170 行，却只取了
+// 1402 / 118 条 —— **跳过了 562 / 52 条落在区间内的旁支**。若官方是「线性文件切片」，
+// 那些记录会被一并带走。⇒ **官方 `/branch` 走的就是祖先回溯，与本实现相同。**
+//
+// 逐字段亦一致：uuid **原样保留**（不 remap）· timestamp **不改** ·
+// `slug`/`sourceToolAssistantUUID`/`agentName` **照样带着** · 复制段只有
+// `assistant`/`user`/`attachment`/`system` 四类、不带无 uuid 的旁挂记录
+// （`mode`/`permission-mode`/`ai-title`/`last-prompt`/`file-history-snapshot`/`queue-operation`）·
+// `logicalParentUuid` 在原生 fork 里就带着指向文件外的目标 ⇒ 官方自己不保证这条边。
+//
+// **⚠ 别拿 `claude-agent-sdk` 的 `fork_session` 当规范。**
+// 它也是官方的，但它 remap 全部 uuid、清 `slug` 等字段、改末条 timestamp、
+// 且 `up_to_message_id` 是**线性切片** —— 那些是 SDK 自己的选择，**不是 CC 的落盘规范**。
+// 规划 branch-anywhere 时正是照着它列出六条「我们的缺口」，被上面这批语料全部证伪。
+// 判据只有一个：**CC 自己落在盘上、`claude --resume` 能读回去的那个格式**。
+// `branch_matches_native_fork_shape` 就是这条判据的机检版本，改动本函数前先读它。
+//
 // **用 `serde_json::Value` 原样搬运**（不走有损的 `JsonlRecord` enum，避免丢 gitBranch/
 // version/origin 等 schema 外字段）——除 sessionId/forkedFrom 两处有意改动外逐字段忠实。
 
@@ -723,6 +746,23 @@ fn build_branch_records(
     if !by_uuid.contains_key(message_uuid) {
         return Err(format!(
             "refuse branch: message_uuid {message_uuid:?} not found in source session"
+        ));
+    }
+    // G0：**子 agent 记录不是可分叉的会话**。
+    //
+    // `create_branch_session` 是 Tauri 命令，前端传什么 uuid 它就用什么；F77 只是在
+    // 「子 agent 查看器」里不挂那个按钮，**后端从来没拦过**。真让一条 sidechain 记录
+    // 进来，产出的是一段 subagent 转录冒充会话。
+    //
+    // **判据是 truthy，不是「字段存在」**：真机原生 fork 的复制段上 244/244 条都**带着**
+    // `isSidechain` 这个键，值是 `false`。按「存在即拒」会把正常会话全拒光。
+    if by_uuid[message_uuid]
+        .get("isSidechain")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        return Err(format!(
+            "refuse branch: message_uuid {message_uuid:?} is a sidechain (subagent) record"
         ));
     }
     // 沿 parentUuid 回溯到根
@@ -1615,6 +1655,134 @@ mod tests {
             serde_json::json!({"type":"assistant","uuid":"u5","parentUuid":"u4","timestamp":"t5","sessionId":"SRC","message":{"role":"assistant","content":"a2"}}),
             serde_json::json!({"type":"user","uuid":"u6","parentUuid":"u3","timestamp":"t6","sessionId":"SRC","message":{"role":"user","content":"q2-alt"}}),
         ]
+    }
+
+    /// G0：**按真机原生 fork 的形状**造的合成夹具（无任何真实对话内容）。
+    ///
+    /// 与 `sample_session` 的关键差别：**被 ESC 回退的旁支夹在两条主链记录中间**。
+    /// `sample_session` 把废弃兄弟 `u6` 放在文件末尾，于是从 `u4` 分叉时
+    /// 「线性切片 `[0..=3]`」与「祖先回溯」**给出同一个答案** —— 那条夹具
+    /// **区分不了两种算法**，也就守不住本实现与 SDK 的核心分歧。
+    ///
+    /// 真机不是那样：原生 fork 的复制段跨 1964 行只取 1402 条，旁支就夹在中间。
+    ///
+    /// 从 `u4` 分叉时两种算法的答案：
+    /// - 祖先回溯 → `[u1, u2, u3, u4]`（4 条）
+    /// - 线性切片 `[0..=8]` → 9 条（多出 `mode`/`u6`/`u7`/`ai-title`/`file-history-snapshot`）
+    fn native_shape_session() -> Vec<serde_json::Value> {
+        vec![
+            // 根：带 schema 外字段与「泄漏字段」slug（原生 fork 照样保留它）
+            serde_json::json!({"type":"user","uuid":"u1","parentUuid":null,"timestamp":"t1",
+                "sessionId":"SRC","gitBranch":"main","slug":"some-slug","isSidechain":false,
+                "message":{"role":"user","content":"q1"}}),
+            // 分叉点
+            serde_json::json!({"type":"assistant","uuid":"u2","parentUuid":"u1","timestamp":"t2",
+                "sessionId":"SRC","isSidechain":false,"message":{"role":"assistant","content":"a1"}}),
+            // ↓ 无 uuid 的旁挂记录（原生 fork 一条都不带过去）
+            serde_json::json!({"type":"mode","sessionId":"SRC","mode":"default"}),
+            // ★ 被 ESC 回退的旁支，**夹在主链中间** —— 线性切片会把它卷进来
+            serde_json::json!({"type":"user","uuid":"u6","parentUuid":"u2","timestamp":"t6",
+                "sessionId":"SRC","message":{"role":"user","content":"abandoned"}}),
+            serde_json::json!({"type":"assistant","uuid":"u7","parentUuid":"u6","timestamp":"t7",
+                "sessionId":"SRC","message":{"role":"assistant","content":"abandoned-reply"}}),
+            serde_json::json!({"type":"ai-title","sessionId":"SRC","title":"t"}),
+            // 主链继续（parent 回到 u2 ⇒ u2 是分叉点）
+            serde_json::json!({"type":"system","uuid":"u3","parentUuid":"u2","timestamp":"t3",
+                "sessionId":"SRC","isSidechain":false}),
+            serde_json::json!({"type":"file-history-snapshot","sessionId":"SRC","snapshot":{}}),
+            // 分叉点：带另一个泄漏字段 + 一条**指向链外**的 logicalParentUuid
+            serde_json::json!({"type":"user","uuid":"u4","parentUuid":"u3","timestamp":"t4",
+                "sessionId":"SRC","sourceToolAssistantUUID":"tool-x",
+                "logicalParentUuid":"not-in-this-file","message":{"role":"user","content":"q2"}}),
+            serde_json::json!({"type":"assistant","uuid":"u5","parentUuid":"u4","timestamp":"t5",
+                "sessionId":"SRC","message":{"role":"assistant","content":"a2"}}),
+        ]
+    }
+
+    /// ★ G0 的核心：**我们的产出 == 原生 `/branch` 的形状**。
+    ///
+    /// 每条断言都对应一处「SDK 会做、而 CC 原生不做」的改动。这条测试存在的意义
+    /// 就是拦住下一次「照 SDK 改回去」——详见 `build_branch_records` 上方那段注释。
+    #[test]
+    fn branch_matches_native_fork_shape() {
+        let lines = native_shape_session();
+        let out = build_branch_records(&lines, "u4", "SRC", "NEW").unwrap();
+
+        // ① 祖先回溯，**不是**线性切片。
+        //    线性切片会给出 9 条（多出 mode/u6/u7/ai-title/file-history-snapshot）。
+        let uuids: Vec<&str> = out
+            .iter()
+            .map(|r| {
+                r.get("uuid")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("<no-uuid>")
+            })
+            .collect();
+        assert_eq!(
+            uuids,
+            vec!["u1", "u2", "u3", "u4"],
+            "只该取祖先链；混进旁支 = 退回线性切片，混进 <no-uuid> = 带上了旁挂记录"
+        );
+
+        // ② uuid **原样保留**（SDK 会 remap 成全新 uuid）。
+        //    上面那条断言已隐含，这里再对源逐条核一次，把意图写明白。
+        let src_uuids: Vec<&str> = lines
+            .iter()
+            .filter_map(|r| r.get("uuid").and_then(|v| v.as_str()))
+            .collect();
+        for u in &uuids {
+            assert!(src_uuids.contains(u), "uuid {u} 不在源里 ⇒ 被 remap 了");
+        }
+
+        // ③ timestamp **一条都不改**（SDK 会把末条改成 now，理由是 resume 的叶子检测）。
+        let want_ts = ["t1", "t2", "t3", "t4"];
+        for (r, want) in out.iter().zip(want_ts) {
+            assert_eq!(
+                r.get("timestamp").unwrap().as_str().unwrap(),
+                want,
+                "timestamp 被改过；原生 fork 的复制段与源逐字相同"
+            );
+        }
+
+        // ④ 「泄漏字段」**保留**（SDK 会清掉 slug / sourceToolAssistantUUID 等）。
+        assert_eq!(out[0].get("slug").unwrap(), "some-slug", "slug 被清掉了");
+        assert_eq!(
+            out[3].get("sourceToolAssistantUUID").unwrap(),
+            "tool-x",
+            "sourceToolAssistantUUID 被清掉了"
+        );
+
+        // ⑤ `logicalParentUuid` 指向链外时：**原样带着，不 remap 也不报错**
+        //    （原生 fork 自己就带着指向文件外的目标 ⇒ 官方不保证这条边）。
+        assert_eq!(out[3].get("logicalParentUuid").unwrap(), "not-in-this-file");
+
+        // ⑥ 根的 parentUuid 是 null；复制段只有那四类记录类型。
+        assert!(out[0].get("parentUuid").unwrap().is_null());
+        let types: Vec<&str> = out
+            .iter()
+            .map(|r| r.get("type").unwrap().as_str().unwrap())
+            .collect();
+        assert_eq!(types, vec!["user", "assistant", "system", "user"]);
+    }
+
+    /// G0：子 agent 记录不是可分叉的会话 —— 后端自己要拦，不能只靠前端不挂按钮。
+    #[test]
+    fn branch_rejects_sidechain_record() {
+        let mut lines = native_shape_session();
+        lines.push(
+            serde_json::json!({"type":"assistant","uuid":"sc1","parentUuid":"u4",
+            "timestamp":"t8","sessionId":"SRC","isSidechain":true,
+            "message":{"role":"assistant","content":"subagent"}}),
+        );
+        let err = build_branch_records(&lines, "sc1", "SRC", "NEW").unwrap_err();
+        assert!(err.contains("sidechain"), "got: {err}");
+
+        // 反向自检：`isSidechain: false` 是**正常会话的常态**（真机 244/244 条都带着这个键），
+        // 按「字段存在即拒」会把所有正常会话拒光。
+        assert!(
+            build_branch_records(&lines, "u4", "SRC", "NEW").is_ok(),
+            "isSidechain:false 的记录必须照常可分叉"
+        );
     }
 
     #[test]
