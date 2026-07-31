@@ -7,7 +7,17 @@
 - [ ] 改 **版本号三处对齐**（package.json + src-tauri/Cargo.toml + src-tauri/tauri.conf.json）
 - [ ] `Cargo.lock` 提交
 - [ ] [CHANGELOG.md](../CHANGELOG.md) 加新版本段（写法见 § 3）
-- [ ] `cargo fmt --check + cargo check + cargo test --all + cargo test -p code-picture-core + npm test + npm run coverage + npm run build` 全绿（fmt 不过 CI 会红；`npm test` 含 14 组 node 纯函数 + vitest DOM 595 测 = 前端 job；后端 `cargo test --all`〔+ vendor `-p code-picture-core`〕 + 远端 daemon `cargo test`（`remote-daemon-proto/`，含 `cargo fmt --check`）+ e2e 脚本冒烟是**独立 CI job**，别漏跑；CI 共 4 job）
+- [ ] **改 README 的版本号两处**：`README.md` 抬头那行 + 「项目当前状态」块的「版本」
+      （`README.en.md` 抬头同理）。
+      > **这一条是补出来的，别删。** v3.1→v3.4 **连续四次**发版漏改 README，
+      > 于是 README 的「当前版本」长期落后一个大版本；BACKLOG 早把「checklist 里没有
+      > README 这一条」点名为**机制性根因**，而根因没修 ⇒ 第四次照样复发。
+      > 版本号是最便宜的一条，**测试数 / CI job 数 / 代码行数那几处不要求每版跟**
+      >（它们在 README 里有 4-5 份副本、注定会漂；真要治是给它们找单一落点，见 BACKLOG E65）。
+- [ ] **README 的「平台」与功能列表**：本版若**新增了平台或用户可感知的大功能**，
+      抬头那行的「平台」和状态段的一句话概述要跟上（例：v3.4.0 首发 `.deb`，
+      而 README 到 v3.5.0 才补上「Linux」——用户读完会以为不支持）
+- [ ] `cargo fmt --check + cargo check + cargo test --all + cargo test -p code-picture-core + npm test + npm run coverage + npm run build` 全绿（fmt 不过 CI 会红；`npm test` 含 16 组 node 纯函数 + vitest DOM 1047 测 = 前端 job；后端 `cargo test --all`〔+ vendor `-p code-picture-core`〕 + 远端 daemon `cargo test`（`remote-daemon-proto/`，含 `cargo fmt --check`）+ Linux app 构建 + 三个 e2e job 都是**独立 CI job**，别漏跑；CI 共 **7** job）
 - [ ] **若本版动过滚动/渲染管线**（stream/tabs/session-viewer/branch-fold/render-*）：跑一遍 `e2e/f40-suite.sh`（Linux Xvfb，见 e2e/README）+ Windows 真机把 e2e/README「人工场景」的 WebView2 复核过一遍（WebKitGTK 无 overflow-anchor，两端补批语义不同）
 - [ ] **若本版改过 daemon 源码**（BUILD_ID 应已随改动 bump）：走 tag 发版由 release.yml 的 build-daemons job 从源码重编内嵌二进制（官方渠道恒一致）；**本地手工打包分发**则必须先重跑 zigbuild 更新 `src-tauri/embedded-daemons/`——否则装出去的是旧 daemon，连接后 StaleBuild 警告循环（build.rs 编译期有 staleness warning 兜底，易被刷屏淹没，别只靠它）
 - [ ] [CONTRIBUTING.md § 1.5](CONTRIBUTING.md#15-发版前) 列出的关键 UI 入口手测

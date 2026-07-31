@@ -2,7 +2,7 @@
 
 > **Read-only output renderer for Claude Code CLI** — Tauri 2 + Vanilla TypeScript, Windows desktop app
 >
-> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 | Current: v3.2.0
+> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 · Linux (.deb) | Current: v3.5.0
 
 Renders the real-time conversation written by Claude Code CLI to `~/.claude/projects/*.jsonl` with a modern UI: Markdown / LaTeX / syntax highlighting / collapsible tool-call cards / auto multi-tab management / history browsing & resume / **branch from any past turn**. **Fully read-only, zero intrusion** (does not **modify** any existing Claude Code file; the only two explicit user writes are deleting a session and branching from a turn — the latter only **adds** a new session file, leaving the original untouched).
 
