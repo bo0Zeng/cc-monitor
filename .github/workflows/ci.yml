@@ -73,6 +73,13 @@ jobs:
       - name: cargo test (vendor code-picture-core)
         run: cargo test -p code-picture-core
 
+      # G1（branch-anywhere）：`branch-core` 同理是 path 依赖、**非** workspace 成员
+      # ⇒ `--all` 同样测不到它。它是分叉的记录变换，monitor 与远端 daemon **共用同一份**，
+      # 里面那条 `branch_matches_native_fork_shape` 是「落盘格式 == 官方 /branch」的机检
+      # —— 不显式跑，这条判据在 CI 里等于不存在。
+      - name: cargo test (shared branch-core)
+        run: cargo test -p branch-core
+
   frontend:
     name: Frontend typecheck + build
     runs-on: windows-latest

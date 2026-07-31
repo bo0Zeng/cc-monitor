@@ -418,6 +418,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "branch-core"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "brotli"
 version = "8.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2799,6 +2806,7 @@ dependencies = [
 name = "monitor"
 version = "3.5.0"
 dependencies = [
+ "branch-core",
  "code-picture-core",
  "dirs 5.0.1",
  "futures",

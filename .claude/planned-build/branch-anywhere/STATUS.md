@@ -1,8 +1,8 @@
 # 状态 / STATUS — branch-anywhere（恢复入口，每次先读这里）
 
-- **当前阶段**：**全自动执行中**。G0 完成，下一个 G1
-- **已完成功能**：**G0**（把「落盘格式 == 官方 `/branch`」钉成测试，不改行为）
-- **下一个**：**G1 —— 变换逻辑提成 monitor 与 daemon 共用的纯函数**（三条共享路要拿实测说话）
+- **当前阶段**：**全自动执行中**。G0/G1 完成，下一个 G2
+- **已完成功能**：**G0**（格式一致性钉成测试）· **G1**（变换提成共享 crate `branch-core`）
+- **下一个**：**G2 —— daemon 加 `--fork-session` + 按 §4 收窄 `readonly_guard`**（已获批；同轮改 INVARIANTS I7 措辞、BACKLOG 标 E50 已解）
 
 ## 自动模式
 
@@ -34,8 +34,8 @@
 
 1. **账号从哪来（最高风险）** —— `TMUX_LS_FMT` 不含账号且**不许改**；`--session-accounts` 按 PID 扫
    `sessions/<PID>.json`，**对已退出的历史会话可能答不出**。G3 第一步是**查清**，不是设计。
-2. **G1 的共享方式** —— daemon 刻意不在 workspace（Linux-only 不能拖累 Windows CI）。
-   `path` 依赖 / 复制 + 漂移守卫 / 提第三个 crate，三条路要拿实测说话。
+2. ~~G1 的共享方式~~ **已定**：共享 crate `branch-core` + 单向 path 依赖（实测不破坏 daemon 的独立性）。
+   **记住**：path 依赖不进 `cargo test --all`，新增此类 crate 必须同时在 CI 与发版 checklist 加 `-p`。
 3. **CI 目前是红的**（BACKLOG E67，连红两个版本）。G2 动 daemon 侧护栏之前最好先弄绿，
    否则分不清是不是自己弄红的。
 4. **别拿 SDK 当规范** —— 规划本区时栽过一次，详见 `MASTERPLAN.md §0.3` 的警示。
