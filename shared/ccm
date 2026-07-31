@@ -259,12 +259,22 @@ derive_tmux_name() {
   if [ -n "$s" ]; then printf 'cc-%s' "$s"; else printf 'cc-session'; fi
 }
 
-# **不做撞名避让** —— 这是有意的，别"顺手"加回来：
-#   `--tmux` 无显式名 = 「在这个目录起会话」→ 期望**幂等接回**同一会话
-#   （对齐前端 `buildLauncherCmd`：用 `deriveTmuxName` 不避让，靠 new-session 短路）。
-# 避让语义（`pickFreshTmuxName`，产 `cc-<sid8>-2/-3`）只属于「灰会话 fresh resume，
-# 不能撞上被 /branch 漂移占着的原名」那一条路径——那时 cc-monitor 会算好名字用
-# `--tmux=<名>` 显式传进来。CLI 自己避让会把「同目录再开一次」变成产孤儿（实测踩过）。
+# 撞名策略**按调用方分成两条**（2026-07-31 修，用户实测报障后改）：
+#
+#   `--tmux=<名>`（显式名）→ **不避让**，幂等接回。调用方（cc-monitor）自己算好了要哪个
+#     会话（如灰会话 fresh resume 的 `cc-<sid8>-2`），CLI 再改一次就错了。
+#   `--tmux`（无名）    → **无条件新建**，撞名就退到 `-2/-3`。
+#
+# 原先两者共用「不避让 + 幂等接回」，理由是「同目录再开一次会产孤儿（实测踩过）」。
+# **那个理由只对显式名成立。** 复核（2026-07-31）：`src/launch-render-cli.ts:95` 显示
+# cc-monitor 起会话时**永远**传 `--tmux=<名>`；无名的 `--tmux` 只出现在两处 ——
+# 给用户复制的诊断文案，和别名块 `cct() { ccm --tmux "$@"; }`，也就是**用户在终端里敲的
+# 那一下**。这条路径上**没有任何调用方对名字有期望**，所以不存在「谁被搞糊涂了」。
+#
+# 用户报的病：在某目录已经有会话的情况下，**新开一个终端**进同一目录敲 `cct`，会被
+# attach 进那个正在被别处用着的会话（两个终端镜像同一个窗口、按键互相打架）。
+# 「我既然新开一个终端在这个路径 cc 了，我肯定是要新建窗口而非 attach」—— 这是对的：
+# 终端里那一下**从来就不是**「接回我 detach 的那个」，而是「再来一个」。
 
 # ===== L2 环境：账号 =====
 # 从 cc-acct-iso 的 manifest 解析 configDir。解析不到 → 报错退出（显式选号绝不静默降级）。
@@ -389,18 +399,17 @@ if [ "$use_tmux" = 1 ]; then
     # 自己算好了要哪个会话（如灰会话 fresh resume 的 `cc-<sid8>-2`），CLI 再改一次就错了。
   else
     tmux_name="$(derive_tmux_name "$cwd")"
-    # **幂等接回只在同一目录才成立**。派生规则（与前端 `deriveTmuxName` 同源）会把 basename
-    # 全非 ASCII 的目录一律塌成 `cc-session`——`~/文档` 与 `~/下载/测试` 同名。若不校验，
-    # 在后者敲 `cct` 会**接回前者里那个 claude**。同名但目录不同 → 退让到 `-2/-3`。
+    # **无条件避让**：名字被占就退到 `-2/-3/...`，不问它是不是同一个目录。
+    #
+    # 这一条同时覆盖了原先那个更窄的判据（同名但异目录：派生规则会把 basename 全非 ASCII
+    # 的目录一律塌成 `cc-session`，`~/文档` 与 `~/下载/测试` 同名，不避让会**接回前者里那个
+    # claude**）—— 无条件避让是它的超集，故那段单独的 cwd 比对已删。
+    #
     # **只在真建会话时查**：`--print` 必须是**纯的**（F03 要拿它做渲染等价断言），
-    # 不能依赖实时 tmux 状态。`--print` 展示基名；真跑时同名异目录会退让到 `-N`。
-    _existing_path=""
-    [ "$do_print" = 1 ] || _existing_path="$(tmux display-message -p -t "=$tmux_name:" '#{pane_current_path}' 2>/dev/null || true)"
-    if [ -n "$_existing_path" ] && [ "$_existing_path" != "$cwd" ]; then
+    # 不能依赖实时 tmux 状态。`--print` 展示基名；真跑时撞名会退让到 `-N`。
+    if [ "$do_print" != 1 ] && tmux has-session -t "=$tmux_name:" 2>/dev/null; then
       _n=2
       while tmux has-session -t "=$tmux_name-$_n:" 2>/dev/null; do
-        _p="$(tmux display-message -p -t "=$tmux_name-$_n:" '#{pane_current_path}' 2>/dev/null || true)"
-        [ "$_p" = "$cwd" ] && break
         _n=$((_n+1))
       done
       tmux_name="$tmux_name-$_n"

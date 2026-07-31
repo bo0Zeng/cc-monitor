@@ -101,6 +101,20 @@ dump_panes() {
 # CCMPROBE 的三个字段由**同一条 printf** 写出，故等最后一个字段 NESTED= 到位即代表整条记录已落盘。
 wait_probe() { wait_grep '^NESTED=' "$TMP/probe.log" "${1:-20}" || { dump_panes; return 1; }; }
 
+# 等某个会话名出现。
+# **为什么不能用 `wait_probe` 等第二个会话**：它 grep 的是 probe.log 里有没有 `^NESTED=`，
+# 而第一次调用写下的那行还在 ⇒ 第二次 `wait_probe` **立刻返回、根本没等**
+#（实测：第二个会话还在建，断言就跑了，读到只有一个会话；那个会话随后落到下一个场景的
+# reset 之后，把下一条断言也带红）。等会话名是直接的、不受上一次残留影响。
+wait_session() {
+  local name="$1" to="${2:-20}" i
+  for ((i=0; i<to*4; i++)); do
+    T has-session -t "=$name:" 2>/dev/null && return 0
+    sleep 0.25
+  done
+  return 1
+}
+
 PASS=0; FAIL=0
 ck() { if [ "$2" = "$3" ]; then printf 'PASS | %-52s | %s\n' "$1" "$3"; PASS=$((PASS+1))
        else printf 'FAIL | %-52s | 期望=%s 实得=%s\n' "$1" "$2" "$3"; FAIL=$((FAIL+1)); fi; }
@@ -178,13 +192,42 @@ ck "claude 起前清嵌套 env（治 issue #24 带毒）" "<unset>" \
    "$(grep -m1 '^NESTED=' "$TMP/probe.log" 2>/dev/null | cut -d= -f2-)"
 
 echo
-echo "===== 场景 5：幂等 —— 同目录连开两次接回同一会话，不产孤儿 ====="
+echo "===== 场景 5：无显式名 = 无条件新建（2026-07-31 语义变更，用户实测报障后改）====="
+#
+# **这条断言的期望被刻意反转了。** 原先钉的是「同目录连开两次接回同一会话，不产孤儿」。
+# 用户报障：新开一个终端进同一目录敲 `cct`，会被 attach 进那个正被别处用着的会话
+#（两个终端镜像同一个窗口、按键互相打架）。「我既然新开一个终端在这个路径 cc 了，
+# 我肯定是要新建窗口而非 attach」。
+#
+# 改的依据不是"用户说了算"，是**那条路径专属终端**：`src/launch-render-cli.ts:95` 显示
+# cc-monitor 起会话时永远传 `--tmux=<名>`；无名的 `--tmux` 只出现在诊断文案与别名块
+# `cct() { ccm --tmux "$@"; }` 里。⇒ 这条路径上没有任何调用方对名字有期望。
+# 显式名那条**仍然幂等**，见紧随其后的对照场景。
 reset
 ( cd "$TMP/proj" && bash "$CCM" --tmux --launcher CCMPROBE >/dev/null 2>&1 & )
 wait_probe || echo "      (注：等首个会话 probe 记录超时)"
 ( cd "$TMP/proj" && bash "$CCM" --tmux --launcher CCMPROBE >/dev/null 2>&1 & )
-sleep 2.5   # 第二次是幂等接回、不再跑 CCMPROBE（无新记录可等），保留固定 grace
-ck "只有一个 cc-proj，无 cc-proj-2 孤儿" "cc-proj" "$(T ls -F '#{session_name}' 2>/dev/null | sort | tr '\n' ' ' | sed 's/ $//')"
+wait_session cc-proj-2 || echo "      (注：等 cc-proj-2 出现超时)"
+ck "同目录连开两次 → 两个会话（cc-proj + cc-proj-2）" "cc-proj cc-proj-2" \
+   "$(T ls -F '#{session_name}' 2>/dev/null | sort | tr '\n' ' ' | sed 's/ $//')"
+# **第三次**：避让必须会继续往上数。只写死 `-2` 的话第三次会撞回 cc-proj-2 并 attach 进去
+# ——正是本次要修的那个病，只是换了个门牌号。
+( cd "$TMP/proj" && bash "$CCM" --tmux --launcher CCMPROBE >/dev/null 2>&1 & )
+wait_session cc-proj-3 || echo "      (注：等 cc-proj-3 出现超时)"
+ck "再开第三次 → cc-proj-3（避让会继续数，不是只到 -2）" "cc-proj cc-proj-2 cc-proj-3" \
+   "$(T ls -F '#{session_name}' 2>/dev/null | sort | tr '\n' ' ' | sed 's/ $//')"
+
+echo
+echo "===== 场景 5bis：**显式名仍然幂等** —— cc-monitor 那条路不能被上面那条改动带偏 ====="
+# cc-monitor 自己算好名字用 `--tmux=<名>` 传进来，期望的就是幂等接回。
+# 若上面的无条件避让漏进了显式名分支，这里会冒出一个 cc-fixed-2。
+reset
+( cd "$TMP/proj" && bash "$CCM" --tmux=cc-fixed --launcher CCMPROBE >/dev/null 2>&1 & )
+wait_probe || echo "      (注：等首个会话 probe 记录超时)"
+( cd "$TMP/proj" && bash "$CCM" --tmux=cc-fixed --launcher CCMPROBE >/dev/null 2>&1 & )
+sleep 2.5   # 幂等接回不再跑 CCMPROBE（无新记录可等），保留固定 grace
+ck "显式名连开两次 → 仍只有一个 cc-fixed" "cc-fixed" \
+   "$(T ls -F '#{session_name}' 2>/dev/null | sort | tr '\n' ' ' | sed 's/ $//')"
 
 echo
 echo "===== 场景 6：会话名过 cc-monitor 的 is_ccm_tmux_name（F04 之前也能被控制面接受）====="

@@ -287,7 +287,7 @@ jobs:
           echo "带地板的 e2e 步骤数 = ${N:-0}"
           [ "${N:-0}" -ge 13 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 13）——有套件被改回裸 npm run 或被删掉"; exit 1; }
           # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
-          for pair in "tmux-target 26" "ccm-cli 44" "ccm-print-parity 12" "ccm-acceptance 15" \
+          for pair in "tmux-target 26" "ccm-cli 44" "ccm-print-parity 12" "ccm-acceptance 17" \
                       "ccm-pretrust 13" "cc-spawn-uplift 21" "tmux-guarded 14" "usage-probe 9" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
@@ -344,7 +344,7 @@ jobs:
         run: bash e2e/assert-pass-floor.sh ccm-print-parity 12
 
       - name: ccm 端到端验收（F02）
-        run: bash e2e/assert-pass-floor.sh ccm-acceptance 15
+        run: bash e2e/assert-pass-floor.sh ccm-acceptance 17
 
       - name: ccm 预信任（F11）
         run: bash e2e/assert-pass-floor.sh ccm-pretrust 13
