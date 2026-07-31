@@ -253,9 +253,21 @@ jobs:
           done
           cat SHA256SUMS-linux.txt
 
+      # DN-8（aterm 2026-07-31 请求）：daemon 的 **musl 二进制也挂成 Release 资产**。
+      # 此前它们只作为 CI artifact 传给 build-windows 内嵌 ⇒ 外部项目（aterm 走自部署）
+      # 拿不到，只能自己装 zig 交叉编译一遍。
+      #
+      # **挂在本 job 而不是 build-daemons**：后者跑在 build-windows **之前**，在那里调
+      # `action-gh-release` 会①抢先创建 release，正是本文件上面那段注释要避开的竞态；
+      # ②**绕过** build-windows 里「四处版本号与 tag 一致」那道检查。本 job
+      # `needs: [build-daemons, build-windows]`，两条都天然继承。artifact 也已经下载好了。
       - name: Append Linux artifacts to the release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             src-tauri/target/release/bundle/deb/*.deb
             SHA256SUMS-linux.txt
+            daemon-artifacts/cc-monitor-remote-x86_64
+            daemon-artifacts/cc-monitor-remote-aarch64
+            daemon-artifacts/cc-monitor-remote-x86_64.build_id
+            daemon-artifacts/cc-monitor-remote-aarch64.build_id
