@@ -33,7 +33,12 @@ vi.mock("../ipc/commands", () => ({
   ),
 }));
 import { loadConfig, saveConfig } from "../config";
-import { shouldShowResetFingerprint, describeStage, RemoteSection } from "./remote-section";
+import {
+  shouldShowResetFingerprint,
+  describeStage,
+  RemoteSection,
+  LOCAL_MACHINE_PAGE_ID,
+} from "./remote-section";
 // F12：数据层已抽到 src/remote-config.ts——数据函数/类型从那里 import。
 import {
   parseAddressLines,
@@ -421,7 +426,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     recordFacet("a", "connection", { kind: "ok", at: Date.now() - 3 * 60_000 });
     const p = fakePages();
     const sec = await mount([mkH("a", "1.1.1.1")], p.host);
-    const row = sec.element.querySelector<HTMLElement>(".remote-machine-row")!;
+    // 第一行是本机（S4b-2 起它也是一行、也有自己一页），远端机器从第二行开始。
+    const row = sec.element.querySelectorAll<HTMLElement>(".remote-machine-row")[1]!;
     const cell = row.querySelector<HTMLElement>('[data-facet="connection"]')!;
     expect(cell.classList.contains("remote-status-ok")).toBe(true);
     expect(cell.title).toContain("3 分钟前");
@@ -432,19 +438,23 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("★ 有分页宿主时：每台机器开一页，列表里只留一行（表单不在列表上）", async () => {
     const p = fakePages();
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], p.host);
-    expect(p.added.map((x) => x.id)).toEqual(["machine:a", "machine:b"]);
-    expect(p.added.map((x) => x.title)).toEqual(["a", "b"]);
+    // 本机排第一（§40：本地就是机器列表里的一行），远端跟在后面。
+    expect(p.added.map((x) => x.title)).toEqual(["本机", "a", "b"]);
+    expect(p.added.slice(1).map((x) => x.id)).toEqual(["machine:a", "machine:b"]);
     // 列表里是行，不是表单：行上没有 host 输入框（那在详情页上）。
     const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row")];
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     for (const r of rows) expect(r.querySelector("input")).toBeNull();
   });
 
   it("★ 点机器名 → 跳到它那一页", async () => {
     const p = fakePages();
     const sec = await mount([mkH("a", "1.1.1.1")], p.host);
-    sec.element.querySelector<HTMLButtonElement>(".remote-machine-open")!.click();
+    const opens = sec.element.querySelectorAll<HTMLButtonElement>(".remote-machine-open");
+    opens[1]!.click(); // [0] 是本机
     expect(p.navigated).toEqual(["machine:a"]);
+    opens[0]!.click(); // 本机也点得进去
+    expect(p.navigated[1]).toContain("本机");
   });
 
   it("★ 删掉一台 → 它那一页也被收掉（否则导航里留个指向已删机器的死项）", async () => {
@@ -455,9 +465,10 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       .click();
     await new Promise((r) => setTimeout(r, 0));
     expect(p.removed).toContain("machine:a");
+    // 剩下：本机 + b
     expect(
       sec.element.querySelectorAll(".remote-machine-row"),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
     // 盘上也真的少了一台（S1 的保存路径没被这次改动带偏）
     expect(writtenHosts().map((h) => h.label)).toEqual(["b"]);
   });
@@ -465,7 +476,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("详情页上的卡片没有折叠箭头、也没有删除按钮（删除入口在列表行）", async () => {
     const p = fakePages();
     await mount([mkH("a", "1.1.1.1")], p.host);
-    const pageEl = p.added[0]!.element;
+    const pageEl = p.added[1]!.element; // [0] 是本机页
     expect(pageEl.querySelector(".remote-machine-toggle")).toBeNull();
     expect(pageEl.querySelector(".remote-machine-remove")).toBeNull();
     // 反向自检：表单本体确实在这一页上
@@ -477,7 +488,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     // 同时留下新旧两项，而旧那项点进去是一台已经不存在的机器。
     const p = fakePages();
     const sec = await mount([mkH("a", "1.1.1.1")], p.host);
-    expect(p.added.map((x) => x.id)).toEqual(["machine:a"]);
+    expect(p.added.map((x) => x.title)).toEqual(["本机", "a"]);
 
     vi.mocked(loadConfig).mockResolvedValue({
       remote: { enabled: true, hosts: [mkH("b", "2.2.2.2")] },
@@ -485,15 +496,19 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     await sec.refresh();
 
     expect(p.removed).toContain("machine:a");
-    expect(p.added.map((x) => x.id)).toEqual(["machine:a", "machine:b"]);
-    // 列表里也只剩新的那一台
+    expect(p.added.map((x) => x.title)).toEqual(["本机", "a", "本机", "b"]);
+    // 列表里也只剩新的那一台（外加恒在的本机行）
     const rows = [...sec.element.querySelectorAll<HTMLElement>(".remote-machine-row")];
-    expect(rows.map((r) => r.dataset.pageId)).toEqual(["machine:b"]);
+    expect(rows.map((r) => r.dataset.pageId)).toEqual([
+      LOCAL_MACHINE_PAGE_ID,
+      "machine:b",
+    ]);
   });
 
   it("不传分页宿主 = 老形态（卡片就地展开）—— 既有宿主不受影响", async () => {
     const sec = await mount([mkH("a", "1.1.1.1")]);
-    expect(sec.element.querySelectorAll(".remote-machine-row")).toHaveLength(0);
+    // 本机行仍是一行（它一直都在），但远端机器不再被拆成「行 + 页」。
+    expect(sec.element.querySelectorAll(".remote-machine-row")).toHaveLength(1);
     // 卡片连同表单仍在列表里，删除按钮也还在卡片上
     expect(sec.element.querySelector(".remote-machine input")).not.toBeNull();
     expect(sec.element.querySelector(".remote-machine-remove")).not.toBeNull();

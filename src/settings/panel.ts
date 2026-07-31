@@ -31,6 +31,11 @@ import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置
 import { DiagnosticsSection } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
 import { SettingsRouter } from "./router";
+import { setCurrentMachine } from "./machine-context";
+import {
+  LOCAL_MACHINE_PAGE_ID,
+  MACHINE_PAGE_PREFIX,
+} from "./remote-section";
 import { DataSection } from "./data-section";
 import { RemoteSection } from "./remote-section";
 import { getBehavior, setBehavior, type BehaviorConfig } from "../behavior";
@@ -180,6 +185,12 @@ export class SettingsPanel {
   private el: HTMLElement;
   /** S2：页面路由器。`open()` 每次回落地页（计划指定不记忆上次停在哪一页）。 */
   private router!: SettingsRouter;
+  /** S4b-2：跟着当前机器页走的那几块分节（整块搬 DOM，不每台各起一份）。 */
+  private perMachineSlot!: HTMLElement;
+  private perMachineBlocks: {
+    appliesTo: "local" | "remote" | "both";
+    el: HTMLElement;
+  }[] = [];
   /** 当前编辑中的 theme（实时预览用） */
   private current: ThemeConfig = {};
   /** 打开时的 theme 快照，取消时回滚 */
@@ -443,6 +454,20 @@ export class SettingsPanel {
     return header;
   }
 
+  /**
+   * S4b-2：把那几块 per-machine 分节搬到某一页上，并按「这块对本机/远端有没有意义」显隐。
+   *
+   * `appendChild` 会把节点从原父节点上摘下来 —— 正是想要的「搬过去」，
+   * 所以同一时刻它们只存在于一个页面上，不会有两份。
+   */
+  private movePerMachineTo(page: HTMLElement, isLocal: boolean): void {
+    for (const b of this.perMachineBlocks) {
+      b.el.hidden =
+        b.appliesTo !== "both" && b.appliesTo !== (isLocal ? "local" : "remote");
+    }
+    page.appendChild(this.perMachineSlot);
+  }
+
   private buildBody(): HTMLElement {
     const body = document.createElement("div");
     body.className = "settings-body";
@@ -536,8 +561,13 @@ export class SettingsPanel {
         const sec = new RemoteSection({
           headless: true,
           pages: {
-            addMachinePage: (id, title, element) =>
-              router.addRoute({ id, title, element, parentId: "machines" }),
+            addMachinePage: (id, title, element) => {
+              router.addRoute({ id, title, element, parentId: "machines" });
+              // S4b-2：本机页一出现就让那几块 per-machine 分节先落在它上面。
+              // 这与 `machine-context` 的初始值（null = 本机）对齐 —— 否则 slot 在
+              // 用户第一次点进某台机器之前是**游离的**（不在文档里，谁也找不到它）。
+              if (id === LOCAL_MACHINE_PAGE_ID) this.movePerMachineTo(element, true);
+            },
             removeMachinePage: (id) => router.removeRoute(id),
             navigateToMachinePage: (id) => router.navigate(id),
           },
@@ -546,20 +576,48 @@ export class SettingsPanel {
         return sec.element;
       }),
     );
-    machinesPage.appendChild(
-      this.safeBlock("账号", () => new AccountsSection().element),
-    );
-    machinesPage.appendChild(
-      this.safeBlock("终端集成", () => new CcIntegrationSection().element),
-    );
-    // F87（#50+#51）：MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）。
-    machinesPage.appendChild(
-      this.safeBlock("MCP", () => new McpSection().element),
-    );
-    // B04：钩子诊断。**只读**——不替用户改 ~/.claude/settings.json（共享全局配置）。
-    machinesPage.appendChild(
-      this.safeBlock("cc-bus 钩子", () => new CcBusHooksSection().element),
-    );
+    // ★ S4b-2：这四块**不再挂在列表页上**，而是跟着「当前在看哪台机器」走 ——
+    // 它们讲的本来就是某一台机器的事（S4a 已把四份各自为政的 origin 选择器收口）。
+    //
+    // 单例 + 按页搬 DOM，不给每台机器各起一份：起 N 份意味着 N 倍的构造开销与
+    // N 份互不相干的缓存，而同一时刻只有一台机器的页面是可见的。
+    //
+    // `appliesTo` 决定它在本机页/远端页出不出现。这就是 S4a 登记的那个半截状态的解药：
+    // 那时三块的下拉只列远端、表示不了本机，收到 `null` 只能原地不动；
+    // 现在**本机页上它们压根不出现**，「表示不了」这件事也就不存在了。
+    this.perMachineSlot = document.createElement("div");
+    this.perMachineSlot.className = "machine-page-sections";
+    this.perMachineBlocks = [
+      {
+        // 账号列表是 per-origin 的远端概念（本机的多账号入口是 L3a 的欠账，见 BACKLOG）。
+        appliesTo: "remote",
+        el: this.safeBlock("账号", () => new AccountsSection().element),
+      },
+      {
+        // PowerShell $PROFILE 注入 —— 只对**本机**有意义；远端的对应物是
+        // 机器详情页上的「装/卸 ccm」按钮（主计划 §2.4 那张表的「启动器」一行）。
+        appliesTo: "local",
+        el: this.safeBlock("终端集成", () => new CcIntegrationSection().element),
+      },
+      // F87（#50+#51）：MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）。
+      // 本机与远端都有意义（它自己的机器行第一颗按钮就是本机）。
+      { appliesTo: "both", el: this.safeBlock("MCP", () => new McpSection().element) },
+      // B04：钩子诊断。**只读**——不替用户改 ~/.claude/settings.json（共享全局配置）。
+      // 本机与远端都要诊断（§2.4 表里这一行两栏都写着「诊断 + 待贴片段」）。
+      {
+        appliesTo: "both",
+        el: this.safeBlock("cc-bus 钩子", () => new CcBusHooksSection().element),
+      },
+    ];
+    for (const b of this.perMachineBlocks) this.perMachineSlot.appendChild(b.el);
+    // ★ 兜底落点：先挂在列表页上。
+    //
+    // 这不是"顺手"—— 它是 `safeBlock` 隔离的一部分。`RemoteSection` 是唯一活的同步
+    // throw 宿主（T07 审计阻塞 1）；它挂掉就没有任何机器页被注册，slot 便无处安放，
+    // **这四块会一起从界面上消失**。那等于「一块坏，五块没」，把 T07 好不容易建立的
+    // 隔离又打破了。有兜底落点的话，最坏情况只是它们留在列表页上 —— 位置不理想，
+    // 但都还在、都能用。（审计时真造 RemoteSection 抛才发现的。）
+    machinesPage.appendChild(this.perMachineSlot);
     router.addRoute({
       id: "machines",
       title: "机器",
@@ -590,6 +648,17 @@ export class SettingsPanel {
       this.safeBlock("cc-bus", () => new CcBusSection().element),
     );
     router.addRoute({ id: "cc-bus", title: "cc-bus", element: ccBusPage });
+
+    // ★ S4b-2：切到某台机器页时，把那几块 per-machine 分节搬进那一页，并同步
+    // 「当前在看哪台机器」。挂在**路由器**这一层而不是列表行上，是因为切页有两个入口
+    // （点导航项 / 点列表行），只有这里两条都覆盖得到。
+    router.onNavigate((id) => {
+      if (!id.startsWith(MACHINE_PAGE_PREFIX)) return;
+      const isLocal = id === LOCAL_MACHINE_PAGE_ID;
+      setCurrentMachine(isLocal ? null : id.slice(MACHINE_PAGE_PREFIX.length));
+      const page = router.pageContentOf(id);
+      if (page) this.movePerMachineTo(page, isLocal);
+    });
 
     body.appendChild(router.element);
     return body;

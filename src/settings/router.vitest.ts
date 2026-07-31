@@ -269,4 +269,33 @@ describe("SettingsRouter", () => {
     );
     expect(r.activeId).toBe("m:aya");
   });
+
+  it("★ onNavigate 只在真的换页时发（订阅者要做搬 DOM 这类有代价的事）", () => {
+    const seen: string[] = [];
+    const r = new SettingsRouter({ landingId: "a" });
+    r.addRoute({ id: "a", title: "A", element: page("a") });
+    r.addRoute({ id: "b", title: "B", element: page("b") });
+    r.onNavigate((id) => seen.push(id));
+    r.navigate("b");
+    r.navigate("b");
+    r.navigate("b");
+    expect(seen).toEqual(["b"]);
+    r.navigate("a");
+    expect(seen).toEqual(["b", "a"]);
+    // 点导航按钮走同一条路，也不该重复通知
+    navButtons(r)[0]!.click();
+    expect(seen).toEqual(["b", "a"]);
+  });
+
+  it("onNavigate 订阅者抛异常不影响切页本身（页面已经切了，只是附带的事没做成）", () => {
+    const r = new SettingsRouter({ landingId: "a" });
+    r.addRoute({ id: "a", title: "A", element: page("a") });
+    r.addRoute({ id: "b", title: "B", element: page("b") });
+    r.onNavigate(() => {
+      throw new Error("BOOM");
+    });
+    expect(() => r.navigate("b")).not.toThrow();
+    expect(r.activeId).toBe("b");
+    expect(visibleIds(r)).toEqual(["b"]);
+  });
 });

@@ -61,6 +61,7 @@ export class SettingsRouter {
   /** id → 该页的外壳（页头 + 内容）。显隐设在外壳上。 */
   private readonly pages = new Map<string, HTMLElement>();
   private active: string | null = null;
+  private readonly navListeners = new Set<(id: string) => void>();
 
   constructor(opts: SettingsRouterOptions) {
     this.landingId = opts.landingId;
@@ -157,6 +158,11 @@ export class SettingsRouter {
     }
   }
 
+  /** S4b-2：某一页的内容容器（页头之下那块）。给宿主往里搬 DOM 用。 */
+  pageContentOf(id: string): HTMLElement | null {
+    return this.routes.get(id)?.route.element ?? null;
+  }
+
   /** 父项本身、或它最后一个子项的导航节点 —— 新子项插在它后面。 */
   private lastNavNodeUnder(parentId: string): HTMLElement | null {
     const parent = this.routes.get(parentId);
@@ -191,11 +197,32 @@ export class SettingsRouter {
     }
   }
 
+  /**
+   * S4b-2：订阅「切到哪一页了」。返回退订函数。
+   *
+   * 为什么需要：切页可以从**两个**入口发生 —— 点导航项，或点机器列表里那一行。
+   * 「切到某台机器页时要做的事」（把 per-machine 的几块分节挪过去、更新
+   * `machine-context`）必须两条入口都覆盖，所以只能挂在路由器这一层。
+   */
+  onNavigate(fn: (id: string) => void): () => void {
+    this.navListeners.add(fn);
+    return () => this.navListeners.delete(fn);
+  }
+
   /** 切到某页。id 未注册 = no-op（不抛：切页是 UI 动作，不该因为拼错就炸掉面板）。 */
   navigate(id: string): void {
     if (!this.routes.has(id)) return;
+    if (this.active === id) return; // 同页不重复通知（订阅者可能做搬 DOM 这类有代价的事）
     this.active = id;
     this.applyVisibility();
+    for (const fn of [...this.navListeners]) {
+      try {
+        fn(id);
+      } catch (e) {
+        // 一个订阅者抛异常不能让切页本身失败 —— 页面已经切了，只是某件附带的事没做成。
+        console.warn("[settings-router] onNavigate 订阅者抛异常：", e);
+      }
+    }
   }
 
   /** 方向键在导航组内移动（tablist 惯例：组内用方向键，Tab 跳出整组）。 */

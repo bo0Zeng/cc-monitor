@@ -19,11 +19,27 @@ const { remoteRefresh, dataRefresh, boom } = vi.hoisted(() => ({
 // 注：vi.mock 工厂被提升到文件顶部、不能引用顶层变量，故每个工厂内联一个占位类。
 // **可控抛**：`shouldThrow` 打开时构造抛，用来验"一块坏、别的块还在"。
 vi.mock("./remote-section", () => ({
+  // S4b-2：stub 必须**履行它替身的那份契约** —— 真 RemoteSection 在 refresh 时会调
+  // `pages.addMachinePage` 注册本机页，panel 靠那一刻把 per-machine 分节安顿下来。
+  // stub 不调的话，那几块就永远游离在文档之外，测试会以为它们「消失了」。
+  MACHINE_PAGE_PREFIX: "machine:",
+  LOCAL_MACHINE_PAGE_ID: "machine:（本机）",
   RemoteSection: class {
     element = document.createElement("div");
     refresh = remoteRefresh;
-    constructor() {
+    constructor(opts?: {
+      pages?: {
+        addMachinePage: (id: string, title: string, el: HTMLElement) => void;
+      };
+    }) {
       if (boom.remote) throw new Error("REMOTE_BOOM");
+      // **延后注册**：真 RemoteSection 是在异步 `refresh()` 里注册页的，
+      // 所以本机页排在 buildBody 注册的那几个主路由**之后**。同步注册会让它抢在
+      // 「应用/机器/…」前面成为第一页，落地页与导航顺序就都错了。
+      setTimeout(() => {
+        const page = document.createElement("div");
+        opts?.pages?.addMachinePage("machine:（本机）", "本机", page);
+      }, 0);
     }
   },
 }));
@@ -125,10 +141,11 @@ describe("T07 分区块隔离（真行为）", () => {
     document.body.textContent = "";
   });
 
-  it("RemoteSection 构造抛 → 面板仍然渲染，其余块都在", () => {
+  it("RemoteSection 构造抛 → 面板仍然渲染，其余块都在", async () => {
     boom.remote = true;
     const p = new SettingsPanel({ windowMode: true });
     void p;
+    await new Promise((r) => setTimeout(r, 0));
     // **这一条就是阻塞①的证据**：修之前 `new SettingsPanel` 直接炸穿、什么都没上屏
     expect(
       document.querySelector(".settings-panel"),
@@ -153,10 +170,11 @@ describe("T07 分区块隔离（真行为）", () => {
     ).not.toBeNull();
   });
 
-  it("换一块抛（McpSection）→ 同样只坏那一块", () => {
+  it("换一块抛（McpSection）→ 同样只坏那一块", async () => {
     boom.mcp = true;
     const p = new SettingsPanel({ windowMode: true });
     void p;
+    await new Promise((r) => setTimeout(r, 0));
     expect(document.querySelector(".settings-panel")).not.toBeNull();
     const failed = document.querySelectorAll<HTMLElement>(
       ".settings-block-failed",
