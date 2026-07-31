@@ -24,7 +24,7 @@
 | **account-zero/** | 把「基座」变成受管的「账号 0」（吸收破坏隔离的那个状态，而不是把它定义成违规）+ **2026-07-30 扩范围：原生身份组成的单点声明 + 版本钉/漂移检测 + 物理迁移能力** | **Phase A 已批（07-29）、07-30 按用户追加需求修订落地**。8 个功能（Z01-Z08）**零代码**。**Z08 迁移能力是 P0**——它同时是 BACKLOG **E36「API key 路线乙」**的前置。**整个 cc-acct-iso 半区的硬前置是 G-B**。Z02 仍卡 `tabs.ts` 红线；动 `~/.claude/skills/` 与 z/b 真账号目录的授权**已给**，但用户说「先不要改，我在用 claude code」⇒ 动真账号那步等发话 |
 | **rust-ts-boundary/** | Rust↔TS 边界从人工纪律改成生成物（`tauri-specta`）+ 门禁 | **Phase A 已落盘，等审批**。路线图 ①，是 ③④ 的地基；也是「要不要用 Rust GUI 重写前端」那个问题的便宜答案 |
 | **gate-integrity/** | 门禁不许在零断言下报绿（真机套件断言地板 + vendored bash 进 shellcheck + 6 套 e2e 进 CI） | **主计划已批（07-29）；G-B 已交付签收（07-30）**。**G-B 解除了 `account-zero` cc-acct-iso 半区（Z01/Z04/Z06/Z08）的「没有网不能改那个工具」**。余 G-A（八套断言地板）· G-C（6 套 e2e 进 CI） |
-| **local-as-remote/** | 本地 = 不走 ssh 的远端（含 Linux 平台）。落地 `doc/INVARIANTS.md` **§40** | **主计划 2026-07-30 用户已批准**（原话「批准local-as-remote」）。**Phase A 已落盘，等审批**。路线图 ④。L5 平价对账可先做；L0 是唯一可能推翻方向的一步（WebKitGTK） |
+| **local-as-remote/** | 本地 = 不走 ssh 的远端（含 Linux 平台）。落地 `doc/INVARIANTS.md` **§40** | **✅ 全区收官（2026-07-30）**：L5 平价对账表（121 命令 / 50 能力 / **20 不对称逐条带理由**）· L0 可构建半（三个 WebKitGTK 依赖本来就在、app 二进制 rc=0 ⇒ **计划最担心的「WebKitGTK 很痛」没发生**）· L1（POSIX 本地送法：同一 payload 只少 ssh 那一跳，**验收判据已机器化**）· **L2 原方案三条全否**（撞 §36 铁律 / 撞 R07 审计决定 / 收益是事实错误）⇒ 改做跨语言漂移点守卫 · L3a 本机账号枚举（**对账表真的结清一条**）· L4 两个 Linux CI/release job。**L3b 未做**（硬依赖 `account-zero`）。~~**Phase A 已落盘，等审批**。路线图 ④。L5 平价对账可先做；L0 是唯一可能推翻方向的一步（WebKitGTK） |
 | **zero-poll-liveness/** | 判活从轮询改成内核事件（tmux hook + pidfd + inotify）。承 BACKLOG **E34** + 用户 2026-07-30「daemon 是能改的，要性能最佳且不要轮询」 | **✅ 全区交付签收（P0-P7 八个功能全部完成，2026-07-30）**（`4e7b100`/`81b22b8`/`03daf6c`/`de57453`/`5290768`/`7127357`/`3ccb6d6`/`d9f464c`/`64c2477`/`67653e2`/`75ee6f4`/`66134cc`）。**daemon 里 A/B 两条轮询都已删除，生产段零定时器**（`no_timer_guard.rs` 钉住，四条变异成立）。**四路事件实测**：强杀会话进程 → `session_removed` **~18ms**（原 ≤2s）· `kill-server` → 零会话帧 **27ms** · server 复活 **153ms** · 跨 cgroup SIGKILL **30ms** · **「多个中杀一个」→ 正向死亡帧 126ms（对照组：拆掉 hook 5042ms）**，原为 8s×2 ≈ 16s。P1 销掉 `INVARIANTS:408` 那条真 bug；`pidfd` 让 **PID 复用在机制上不存在**（唯一一条正确性改进）。wire 两处 additive、**不 bump `PROTO_VERSION`**；`BUILD_ID` → `p1r-event-liveness`。文档见 `doc/INVARIANTS.md` **§41**，**BACKLOG E34 已结案**（含对其原措辞三处订正） |
 
 
@@ -57,13 +57,13 @@
 | 11 | **Z05** rc 片段一键生成 —— **✅ 完成签收（2026-07-30）**：**片段从远端 `shellinit` 抓，不在 TS 里重写**（单一来源留在 bash，零新增双写点）· **fail-closed**：BEGIN/END 围栏都要在，半截片段绝不放行（贴进 rc 会让登录 shell 报错），两种失败给不同的可执行诊断 · 复用 T03 的 `buildPasteBlock`，**绝不代写 `~/.bashrc`** · 新增跨语言围栏守卫。**★ 撞出 T03 守卫的结构性盲区**：`accounts-section.ts` 现在族 A/族 B **两族都属**，二分覆盖不了 ⇒ 新增**族 AB** 并把判据从「有没有 `writeText`」换成**处数恰好等于已登记数**。四道既有守卫按设计触发（命令数 119→**120** ×3 + 待贴块族），顺带订正一处陈旧的测试标题。vitest 860→**866** / cargo 618→**620** | account-zero | 否 |
 | 12 | **G-A** 八套真机套件断言地板 —— **✅ 完成签收（2026-07-30）**：新增 `e2e/assert-pass-floor.sh`（fail-closed：套件非零退出 / 抓不到 `合计 PASS=` / 低于地板，三种都红），8 步 CI 全部接上，**地板全是本地真跑的实测值**（26/44/12/15/13/21/14/7 = **152**）· **覆盖面地板双层**（调用行数 ≥8 + 逐对校验「套件名+地板值」，后者防地板被抹成 0）· **顺手消掉一个漂过两次的双写点**（步骤名里的「N 项」去掉，留地板一处）· `cc-spawn-uplift` 补上 `PASS=` 打印，**并揪出一条绕开 `chk` 的手搓判定**（输出 21 行而计数只到 20）。**★ 验收判据当场成立**：删一条断言 ⇒ 裸跑 rc=0（今天的 CI 会绿）/ 带地板 rc=1。shellcheck 36→**37** | gate-integrity | 否 |
 | 13 | **G-C** 6 套 e2e 进 CI —— **✅ 完成签收（2026-07-30）· 并销掉 BACKLOG E41**：6 套统一加 `unset TMUX` + 短 `TMUX_TMPDIR`（**零调用点改动**，84 处裸 `tmux` 一个没改）。**★ E41 的归因订正**：病因不是「缺 `-L`」那个表面特征，而是**从 tmux 会话里跑时继承了 `$TMUX`** —— 只设 `TMUX_TMPDIR` 不 `unset TMUX` 时会话照样落默认 socket（实测踩到并当场清理）；另 socket 路径有 108 字节上限，`TMUX_TMPDIR` 必须短。**5 套进 CI 自带地板**（24/17/5/5/7），第 6 套 `graylight-suite` 拿到隔离但不进 CI（全链级要跑起 GUI app，证据：daemon 级兄弟同隔离下 5/5 绿）。**绕开了主计划记的「唯一技术不确定性」**（daemon 在 `e2e-tmux-rust` 就地编，不跨 job 传产物）。带地板套件 8→**13** / 152→**210** 条 | gate-integrity | 否 |
-| 14 | **L5** 平价对账表 + 门禁（独立，可提前） | local-as-remote | 否 |
-| 15 | **L0** Linux 可构建可跑（**唯一可能推翻方向的一步**） | local-as-remote | 否 |
-| 16 | **L1** POSIX 本地 = 不走 ssh 的远端 | local-as-remote | 否 |
-| 17 | **L2** Windows 本地进 IR | local-as-remote | 否 |
-| 18 | **L3a** 本地账号枚举（只读，Rust 读 manifest） | local-as-remote | 否 |
-| 19 | **L4** Linux 打包进 CI/release | local-as-remote | 否 |
-| 20 | **L3b** 本地账号管理（写） | local-as-remote | 依赖 account-zero 全部落地 |
+| ~~14~~ | **L5** 平价对账表 + 门禁（独立，可提前） | local-as-remote | 否 | **✅ 已交付（2026-07-30 全区收官）** |
+| ~~15~~ | **L0** Linux 可构建可跑（**唯一可能推翻方向的一步**） | local-as-remote | 否 | **⚠ 只交付「可构建」那半**（三个 WebKitGTK 依赖本来就在、app 二进制 rc=0 ⇒ 那个「痛点」没出现，但只覆盖一台机器**不外推**）；**「起 app」待授权** |
+| ~~16~~ | **L1** POSIX 本地 = 不走 ssh 的远端 | local-as-remote | 否 | **✅ 已交付（2026-07-30 全区收官）** |
+| ~~17~~ | **L2** Windows 本地进 IR | local-as-remote | 否 | **✅ 已交付（2026-07-30 全区收官）** |
+| ~~18~~ | **L3a** 本地账号枚举（只读，Rust 读 manifest） | local-as-remote | 否 | **⚠ 只交付枚举那半**（对账表 `accounts.list` 已结清）；**账号注入 / per-account model / UI 入口都还没有** |
+| ~~19~~ | **L4** Linux 打包进 CI/release | local-as-remote | 否 | **✅ 已交付**（CI build job 会真跑；**release 的 `build-linux` 从未真跑过** —— 只在 tag 触发。AppImage 待后续） |
+| **20** | **L3b** 本地账号管理（写） | local-as-remote | 依赖 account-zero 全部落地 | **未做** —— 本区自陈硬依赖 `account-zero` 的账号模型定稿；在一个正在变形的模型上做平台移植 = 反复批评过的形状 |
 | **21** | ~~**E34 事件驱动的 tmux 存活信号**~~（用户点名「把轮询杀掉」）—— 升格为独立工作区、拆成 P0-P7 八个功能，**✅ 八个全部交付签收（2026-07-30）**。实测 ~18ms / 27ms / 153ms / 30ms / **126ms**（末者有对照组 5042ms）；两条轮询都已删、生产段零定时器；文档 `doc/INVARIANTS.md` §41，**E34 已结案** | **zero-poll-liveness** | **已给**：P4（装 hook 到活着的 tmux server）用户 2026-07-30 已授权；其余不需要。**原表两处已订正**：① 不再需要改 `shared/ccm` 本体（hook 由 **daemon** 装——只有 daemon 有「server 重启」这个时机）② §24 单写者不再是开放问题（所有新信号都汇进既有 `SessionChange{removed}` → emitter，零新写点） |
 
 **为什么 C05 从 #4 提到 #2**（C01 的 Phase D 审计 I1 实测）：CI 的 `rust` job（跑 `cargo test`）

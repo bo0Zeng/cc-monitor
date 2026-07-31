@@ -3,7 +3,13 @@
 > 所有功能宏观设计的**单一事实来源**。跨功能的任何决策以此为准。
 > 每次修订都在末尾「§7 变更记录」追加一行。
 >
-> **状态：✅ 主计划用户 2026-07-30 已批准**（原话「批准local-as-remote」）。Phase A 已落盘，B 起开工。
+> **状态：✅ 全区收官（2026-07-30）—— L0(构建半) / L1 / L2 / L3a(枚举半) / L4 / L5 全部交付。**
+> **主计划用户 2026-07-30 已批准**（原话「批准local-as-remote」）。
+> **L3b 未做**（硬依赖 `account-zero` 的账号模型定稿，本区自陈）。
+> **本区订正了 5 组计划断言**：E40 前提不成立 · E31 中心断言不成立 · L0 漏了 cfg 清单 ·
+> **L2 三条全否**（撞 §36 铁律 / 撞 R07 审计决定 / 收益是事实错误）· L3a「注入/per-account」越界。
+> **成果落档**：`parity_ledger.rs`（121 命令 / 50 能力 / 20 不对称，逐条带理由）·
+> `agent-profile-parity.vitest.ts` · `local_accounts.rs` + 跨 crate 契约守卫 · 两个 Linux CI/release job。
 > **本工作区落地的是 `doc/INVARIANTS.md` §40**（用户 2026-07-29 拍板的方向性约束）。
 > 路线图第 ④ 项。
 
@@ -109,7 +115,7 @@ L3 是「给一个 bash 工具做 Windows 等价物」。** 三件事的成本�
 | L2 | ~~**Windows 本地进 IR**~~ → **平行世界漂移点守卫** | ~~`planLocal` 复活 + PowerShell 渲染器 honour `plan.env`~~ **⚠ 原方案三条逐条否决**（`features/L2-parallel-worlds-guard.md`）：一条撞 `INVARIANTS §36` **铁律**（逐字禁止给本地渲染器补读 `plan.env`）、两条撞 R07 已审计的决定（本地借 IR 做校验、不消费输出，因为接了也拿不到新东西）、**收益② 是事实错误**（实证 `lib.rs:124` 的启动期清洗早于 `:161` 的 Builder ⇒ 保护一直都在）、收益① 的兜底渲染器**只服务远端**（加臂 = 加死分支）。**✅ 改做 L2 的真意图**：钉住今天真实存在的跨语言漂移点 —— Rust `adapter` ↔ TS `AGENT_PROFILE`（resume flag / 默认启动器 / 嵌套 env 清单）此前只有一句注释、零门禁；新增 `src/agent-profile-parity.vitest.ts` 6 条断言，三条变异成立 | — | P1 |
 | **L3a** | **本地账号枚举（只读）** | Rust 直接读 `~/.claude-accts/accounts.json`，`loggedIn` 由 `.credentials.json` 存在性判定 | **✅ 枚举那半已交付**（`features/L3a-local-account-enum.md`）：`local_accounts.rs` + 命令 `list_local_accounts` + 前端 `fetchLocalAccounts`，**输出类型与远端逐字段相同**；**对账表真的结清一条**（`accounts.list` 欠账 → 对称，121/50/**20**/7·**11**·2）。★ **复用不了 daemon 那份**（bin-only + 刻意不进 workspace + monitor 要上 Windows）⇒ 第三份实现，**用跨 crate 契约守卫兜住**；★ **平台差异拆到性质层**（安全字符判据照搬、绝对路径判据各写各的 —— 照抄 `starts_with('/')` 会让 Windows 列表恒空）。**原行里的「选号 / 账号注入 / per-account model」越界**（那要改启动路径 + 前端），**已登记未做**；**UI 还没有入口** | L2 | **P1** |
 | L3b | **本地账号管理（写）** | 建 / 迁 / 删 / 改默认号。需要 cc-acct-iso 的 Windows 等价物（PowerShell 或 Rust 实现） | 待规划 | **`account-zero` 全部落地** + L3a | P2 |
-| L4 | **Linux 打包 + 进 CI/release** | Linux 产物（AppImage/deb 择一）+ CI 构建 job；`release.yml` 加 Linux 产物 | 待规划 | L0,L1 | P2 |
+| L4 | **Linux 打包 + 进 CI/release** | Linux 产物 + CI 构建 job；`release.yml` 加 Linux 产物 | **✅ 已交付**（`features/L4-linux-packaging.md`）：`ci.yml::linux-app-build`（**会真跑**，是发版 job 的前置信号，只 build 不 bundle）+ `release.yml::build-linux`（**deb**，`needs: [build-daemons, build-windows]` ⇒ 继承版本检查、避开 release 竞态、失败不伤发版）。**格式选 deb 不选 AppImage**：后者要下载 linuxdeploy + 依赖 libfuse2，在一个没法本地验证的 job 上是两个额外失败面（AppImage 已登记）。**不动 `tauri.conf.json`**（Windows 主路径共享面），格式走命令行。**纯追加、触发条件未改**。⚠ **`build-linux` 从未真跑过**（只在 tag 触发，本轮不发版）；自查实证修掉两个 bug（吃掉 hash 的 `sed` · 猜错的二进制名） | L0,L1 | P2 |
 | L5 | **平价对账表 + 门禁** | 枚举全部 **120** 个 Tauri 命令（**开工复测订正：计划原写 119**；以 `generate_handler!` 条目为准，实测 120 = 120、零缺口），每条要么两侧都有、要么在白名单表里且带理由；**新增命令不登记就红** | **✅ 已交付**（`src-tauri/src/parity_ledger.rs` + `features/L5-parity-ledger.md`）：120 条 → 50 个能力（29 对称 / **21 不对称**：天然 7 · 欠账 12 · **未裁定 2**）；四条断言、五条变异全成立 | — | P1 |
 
 ### Windows 本地排期：原来的 L3 拆成 L3a / L3b（2026-07-29 用户要求排期后重新推导）
