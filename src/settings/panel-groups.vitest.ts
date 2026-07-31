@@ -29,7 +29,12 @@ vi.mock("./remote-section", () => ({
     refresh = remoteRefresh;
     constructor(opts?: {
       pages?: {
-        addMachinePage: (id: string, title: string, el: HTMLElement) => void;
+        addMachinePage: (
+          id: string,
+          title: string,
+          el: HTMLElement,
+          parts?: { connection: HTMLElement; components: HTMLElement },
+        ) => void;
       };
     }) {
       
@@ -39,6 +44,15 @@ vi.mock("./remote-section", () => ({
       setTimeout(() => {
         const page = document.createElement("div");
         opts?.pages?.addMachinePage("machine:（本机）", "本机", page);
+        // 再注册一台**远端**机器页，带 parts —— 只有带 parts 的页才会被拆成四栏。
+        const conn = document.createElement("div");
+        conn.textContent = "CONN";
+        const comp = document.createElement("div");
+        comp.textContent = "COMP";
+        opts?.pages?.addMachinePage("machine:aya", "aya", document.createElement("div"), {
+          connection: conn,
+          components: comp,
+        });
       }, 0);
     }
   },
@@ -264,5 +278,60 @@ describe("S2 设置面板分页结构", () => {
       "MCP",
       "cc-bus 钩子",
     ]);
+  });
+
+  it("★ 远端机器页拆成横向四栏（连接/组件/账号/工具），本机页不拆", async () => {
+    // 分栏复用 SettingsRouter（横向 + 无页头），不另造 tab 原语。
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    await tick();
+    // stub 只注册本机页（没有卡片、不带 parts）⇒ 它**不该**被拆栏。
+    const local = document.querySelector<HTMLElement>(
+      '.settings-page[data-route-id="machine:（本机）"]',
+    )!;
+    expect(local.querySelector(".settings-shell-h")).toBeNull();
+
+    // 远端机器页**必须**拆成四栏，且顺序是 连接/组件/账号/工具。
+    const remote = document.querySelector<HTMLElement>(
+      '.settings-page[data-route-id="machine:aya"]',
+    )!;
+    const strip = remote.querySelector<HTMLElement>(".settings-shell-h");
+    expect(strip, "远端机器页必须分栏").not.toBeNull();
+    expect(
+      [...strip!.querySelectorAll(".settings-nav-item")].map((b) => b.textContent),
+    ).toEqual(["连接", "组件", "账号", "工具"]);
+    // 「连接」是落地栏，同一时刻只有它可见
+    const visible = [...strip!.querySelectorAll<HTMLElement>(".settings-page")].filter(
+      (e) => !e.hidden,
+    );
+    expect(visible).toHaveLength(1);
+    expect(visible[0]!.textContent).toContain("CONN");
+  });
+
+  it("★ 切到远端机器页 → 那几块分节各自落进「账号 / 工具」栏", async () => {
+    // 分栏若不接线，它们会退回「整块搬到页面底部」，四栏就成了空壳。
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    await tick();
+    // 点导航里的 aya 进那一页
+    const ayaNav = [...document.querySelectorAll<HTMLButtonElement>(".settings-nav-item")]
+      .find((b) => b.textContent === "aya")!;
+    ayaNav.click();
+
+    const strip = document.querySelector<HTMLElement>(
+      '.settings-page[data-route-id="machine:aya"] .settings-shell-h',
+    )!;
+    const tabPage = (id: string) =>
+      strip.querySelector<HTMLElement>(`.settings-page[data-route-id="machine:aya#${id}"]`)!;
+    // 账号块进「账号」栏
+    expect(tabPage("acct").querySelector(".accounts-section-stub")).toBeTruthy();
+    // MCP / cc-bus 钩子 / 终端集成 进「工具」栏
+    const toolTitles = [...tabPage("tools").querySelectorAll(".settings-group-title")].map(
+      (e) => e.textContent,
+    );
+    expect(toolTitles).toContain("MCP");
+    expect(toolTitles).toContain("cc-bus 钩子");
+    // 反向：账号**不该**也出现在工具栏里（搬 DOM 一处一份，不能有两份）
+    expect(toolTitles).not.toContain("账号");
   });
 });

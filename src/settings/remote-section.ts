@@ -166,7 +166,16 @@ import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组
  * 这三件事，不该知道路由器长什么样（也让它在没有路由器的场合——如既有单测——照常工作）。
  */
 export interface MachinePagesHost {
-  addMachinePage(id: string, title: string, element: HTMLElement): void;
+  /**
+   * `parts` 有值时宿主可以把它拆成「连接 / 组件」两栏（S4b-3b-2）；
+   * 本机页没有卡片、不带 parts。
+   */
+  addMachinePage(
+    id: string,
+    title: string,
+    element: HTMLElement,
+    parts?: { connection: HTMLElement; components: HTMLElement },
+  ): void;
   removeMachinePage(id: string): void;
   navigateToMachinePage(id: string): void;
 }
@@ -334,6 +343,9 @@ class MachineCard {
   private testResult!: HTMLElement;
   /** 折叠时隐藏的字段 + 测试/安装区（legend 始终可见）。 */
   private body!: HTMLElement;
+  /** S4b-3b-2：body 的两半 —— 详情页据此拆「连接 / 组件」两栏。 */
+  private connectionPart!: HTMLElement;
+  private componentsPart!: HTMLElement;
   /** legend 里承载机器名的 span（label || host）。 */
   private nameSpan!: HTMLElement;
   /** legend 左侧折叠指示符（▸ 折叠 / ▾ 展开）。 */
@@ -432,11 +444,27 @@ class MachineCard {
       this.setCollapsed(!this.collapsed);
     });
 
-    // body：折叠时整体隐藏（legend 始终在）。所有字段 + 测试/安装区都挂这里。
+    // body：折叠时整体隐藏（legend 始终在）。
     this.body = document.createElement("div");
     this.body.className = "remote-machine-body";
     card.appendChild(this.body);
-    const body = this.body;
+
+    // ★ S4b-3b-2：body 内部再分成**两块**，供机器详情页拆成「连接 / 组件」两栏
+    //（主计划 §2.3 / §2.4）。分界就在 resume 命令那一行：
+    //   连接 = 怎么连上这台机（host/port/user/密钥/指纹/地址/跳板/daemonless…）
+    //   组件 = 这台机上装了什么、怎么起（resume 命令 + 装卸 daemon/ccm + 测试）
+    //
+    // **顺带把 S4b-3a 摆错的位置纠正了**：那轮我把 resume 命令插在 daemonless 之后，
+    // commit 里却说它「放在装/卸 ccm 按钮紧邻处」—— 实际隔着 installInfo 等约 120 行。
+    // §5-1 要的正是这两者相邻（装完 ccm 就该顺手改 resume 命令），现在真的相邻了。
+    this.connectionPart = document.createElement("div");
+    this.connectionPart.className = "machine-part machine-part-connection";
+    this.body.appendChild(this.connectionPart);
+    this.componentsPart = document.createElement("div");
+    this.componentsPart.className = "machine-part machine-part-components";
+    this.body.appendChild(this.componentsPart);
+
+    let body = this.connectionPart;
 
     const onChange = () => {
       this.updateLegend();
@@ -550,6 +578,9 @@ class MachineCard {
     //「外观 → 行为」里，而装 ccm 是每台机器一个按钮 —— 两处隔着两个顶层组，
     // 于是「装完 ccm 却忘了改 resume 命令」是个**结构性陷阱**，不是用户粗心。
     // 空 = 沿用全局默认，所以没填过的机器行为一字不变。
+    // ↓↓ 从这里起归「组件」栏 ↓↓
+    body = this.componentsPart;
+
     this.resumeCmdInput = buildTextRow(
       body,
       "resume 命令（这台机器）",
@@ -765,6 +796,11 @@ class MachineCard {
    */
   renderStatusStrip(): void {
     this.hooks.onStatusChanged?.(this);
+  }
+
+  /** S4b-3b-2：交出「连接 / 组件」两块，供宿主拆成两栏。 */
+  parts(): { connection: HTMLElement; components: HTMLElement } {
+    return { connection: this.connectionPart, components: this.componentsPart };
   }
 
   /** 这张卡在列表/导航上显示的名字。 */
@@ -1389,7 +1425,7 @@ export class RemoteSection {
       // S4b：表单搬到这台机器自己那一页；列表里只留一行（名字 + 状态 + 点进去）。
       const id = `${MACHINE_PAGE_PREFIX}${persistedKey ?? hostKey(initial)}`;
       card.setPageMode();
-      this.pages.addMachinePage(id, card.displayName(), card.element);
+      this.pages.addMachinePage(id, card.displayName(), card.element, card.parts());
       this.machinePageIds.push(id);
       this.machinesContainer.appendChild(this.buildMachineRow(card, id));
     } else {

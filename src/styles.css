@@ -2872,6 +2872,30 @@ body.settings-window-mode .grid-monitor-trigger {
 .remote-status-unknown {
   color: var(--text-3, var(--text-2));
 }
+/* S4b-3b-2：页内横向分栏（机器详情页的 连接/组件/账号/工具）。
+   与左侧导航同一个 SettingsRouter，只是排布方向不同。 */
+.settings-shell-h {
+  display: block;
+}
+.settings-shell-h .settings-nav {
+  border-bottom: 1px solid var(--border, var(--bg-2));
+  flex-direction: row;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding-bottom: 4px;
+  position: static;
+}
+.settings-shell-h .settings-nav-item {
+  border-radius: 6px 6px 0 0;
+}
+.settings-shell-h .settings-content {
+  min-width: 0;
+}
+/* 卡片被拆成两半后，两半各自不再需要额外间距（间距由所在栏给）。 */
+.machine-part > :first-child {
+  margin-top: 0;
+}
+
 /* S4b-3b：机器列表的工具条（列表级动作全在这一条上，且在列表之前）。 */
 .remote-toolbar {
   align-items: center;

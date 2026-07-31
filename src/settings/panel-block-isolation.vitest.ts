@@ -29,7 +29,12 @@ vi.mock("./remote-section", () => ({
     refresh = remoteRefresh;
     constructor(opts?: {
       pages?: {
-        addMachinePage: (id: string, title: string, el: HTMLElement) => void;
+        addMachinePage: (
+          id: string,
+          title: string,
+          el: HTMLElement,
+          parts?: { connection: HTMLElement; components: HTMLElement },
+        ) => void;
       };
     }) {
       if (boom.remote) throw new Error("REMOTE_BOOM");

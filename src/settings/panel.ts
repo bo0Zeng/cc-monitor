@@ -189,8 +189,15 @@ export class SettingsPanel {
   private perMachineSlot!: HTMLElement;
   private perMachineBlocks: {
     appliesTo: "local" | "remote" | "both";
+    /** S4b-3b-2：这块归详情页的哪一栏。 */
+    tab: "acct" | "tools";
     el: HTMLElement;
   }[] = [];
+  /** S4b-3b-2：pageId → 该页「账号 / 工具」两栏的容器。 */
+  private machineTabSlots = new Map<
+    string,
+    { acct: HTMLElement; tools: HTMLElement }
+  >();
   /** 当前编辑中的 theme（实时预览用） */
   private current: ThemeConfig = {};
   /** 打开时的 theme 快照，取消时回滚 */
@@ -460,12 +467,51 @@ export class SettingsPanel {
    * `appendChild` 会把节点从原父节点上摘下来 —— 正是想要的「搬过去」，
    * 所以同一时刻它们只存在于一个页面上，不会有两份。
    */
-  private movePerMachineTo(page: HTMLElement, isLocal: boolean): void {
+  private movePerMachineTo(
+    page: HTMLElement,
+    isLocal: boolean,
+    pageId?: string,
+  ): void {
     for (const b of this.perMachineBlocks) {
       b.el.hidden =
         b.appliesTo !== "both" && b.appliesTo !== (isLocal ? "local" : "remote");
     }
+    const slots = pageId ? this.machineTabSlots.get(pageId) : undefined;
+    if (slots) {
+      // S4b-3b-2：分栏页 —— 每块按 `tab` 归到「账号 / 工具」栏里。
+      for (const b of this.perMachineBlocks) {
+        (b.tab === "acct" ? slots.acct : slots.tools).appendChild(b.el);
+      }
+      return;
+    }
+    // 没有分栏（本机页、以及 RemoteSection 挂掉时的兜底落点）→ 整块搬，形态同 S4b-2。
+    for (const b of this.perMachineBlocks) this.perMachineSlot.appendChild(b.el);
     page.appendChild(this.perMachineSlot);
+  }
+
+  /**
+   * S4b-3b-2：一台远端机器的四栏页。
+   *
+   * 「连接 / 组件」来自 `MachineCard` 拆出的两块；「账号 / 工具」是 per-machine 那几块
+   * 分节的落点 —— 它们是**单例**，由 `movePerMachineTo` 在切页时搬进当前这一页的对应栏。
+   */
+  private buildMachineTabs(
+    pageId: string,
+    parts: { connection: HTMLElement; components: HTMLElement },
+  ): HTMLElement {
+    const tabs = new SettingsRouter({
+      landingId: `${pageId}#conn`,
+      orientation: "horizontal",
+      hidePageHeader: true,
+    });
+    tabs.addRoute({ id: `${pageId}#conn`, title: "连接", element: parts.connection });
+    tabs.addRoute({ id: `${pageId}#comp`, title: "组件", element: parts.components });
+    const acct = document.createElement("div");
+    const tools = document.createElement("div");
+    tabs.addRoute({ id: `${pageId}#acct`, title: "账号", element: acct });
+    tabs.addRoute({ id: `${pageId}#tools`, title: "工具", element: tools });
+    this.machineTabSlots.set(pageId, { acct, tools });
+    return tabs.element;
   }
 
   private buildBody(): HTMLElement {
@@ -561,8 +607,13 @@ export class SettingsPanel {
         const sec = new RemoteSection({
           headless: true,
           pages: {
-            addMachinePage: (id, title, element) => {
-              router.addRoute({ id, title, element, parentId: "machines" });
+            addMachinePage: (id, title, element, parts) => {
+              // ★ S4b-3b-2：远端机器页拆成横向四栏（主计划 §2.3）。
+              // 复用 `SettingsRouter`（横向 + 无页头）而不是另造 tab 原语 ——
+              // 「同一时刻只有一栏可见 + aria + 方向键 + 不重复注册」与左侧导航
+              // 逐条相同，另造等于把这套逻辑抄第二遍、然后各自漂。
+              const pageEl = parts ? this.buildMachineTabs(id, parts) : element;
+              router.addRoute({ id, title, element: pageEl, parentId: "machines" });
               // S4b-2：本机页一出现就让那几块 per-machine 分节先落在它上面。
               // 这与 `machine-context` 的初始值（null = 本机）对齐 —— 否则 slot 在
               // 用户第一次点进某台机器之前是**游离的**（不在文档里，谁也找不到它）。
@@ -591,21 +642,28 @@ export class SettingsPanel {
       {
         // 账号列表是 per-origin 的远端概念（本机的多账号入口是 L3a 的欠账，见 BACKLOG）。
         appliesTo: "remote",
+        tab: "acct",
         el: this.safeBlock("账号", () => new AccountsSection().element),
       },
       {
         // PowerShell $PROFILE 注入 —— 只对**本机**有意义；远端的对应物是
         // 机器详情页上的「装/卸 ccm」按钮（主计划 §2.4 那张表的「启动器」一行）。
         appliesTo: "local",
+        tab: "tools",
         el: this.safeBlock("终端集成", () => new CcIntegrationSection().element),
       },
       // F87（#50+#51）：MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）。
       // 本机与远端都有意义（它自己的机器行第一颗按钮就是本机）。
-      { appliesTo: "both", el: this.safeBlock("MCP", () => new McpSection().element) },
+      {
+        appliesTo: "both",
+        tab: "tools",
+        el: this.safeBlock("MCP", () => new McpSection().element),
+      },
       // B04：钩子诊断。**只读**——不替用户改 ~/.claude/settings.json（共享全局配置）。
       // 本机与远端都要诊断（§2.4 表里这一行两栏都写着「诊断 + 待贴片段」）。
       {
         appliesTo: "both",
+        tab: "tools",
         el: this.safeBlock("cc-bus 钩子", () => new CcBusHooksSection().element),
       },
     ];
@@ -657,7 +715,7 @@ export class SettingsPanel {
       const isLocal = id === LOCAL_MACHINE_PAGE_ID;
       setCurrentMachine(isLocal ? null : id.slice(MACHINE_PAGE_PREFIX.length));
       const page = router.pageContentOf(id);
-      if (page) this.movePerMachineTo(page, isLocal);
+      if (page) this.movePerMachineTo(page, isLocal, id);
     });
 
     body.appendChild(router.element);

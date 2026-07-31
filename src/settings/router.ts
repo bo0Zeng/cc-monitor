@@ -41,6 +41,17 @@ export interface SettingsRoute {
 
 export interface SettingsRouterOptions {
   /**
+   * S4b-3b-2：导航方向。默认 `vertical`（设置窗左侧那条）。
+   * `horizontal` 用于**页内分栏**（机器详情页的 连接/组件/账号/工具）。
+   *
+   * **复用而不是另造一个 tab 原语**：分栏要的「同一时刻只有一页可见 + aria + 方向键 +
+   * 不重复注册」与左侧导航**逐条相同**，差的只是排列方向与是否显示页头。
+   * 另造等于把这套逻辑抄第二遍，而它们会各自漂。
+   */
+  orientation?: "vertical" | "horizontal";
+  /** S4b-3b-2：页内分栏不需要页头（标题已经在 tab 上了）。默认 false。 */
+  hidePageHeader?: boolean;
+  /**
    * 落地页 id。主计划 §2.3 指定为「机器」。
    *
    * **刻意不记忆上次停在哪一页**：既然计划指定了落地页，记忆就会让这个决定失效
@@ -54,6 +65,7 @@ export class SettingsRouter {
   private readonly nav: HTMLElement;
   private readonly content: HTMLElement;
   private readonly landingId: string;
+  private readonly hidePageHeader: boolean;
   private readonly routes = new Map<
     string,
     { route: SettingsRoute; navButton: HTMLButtonElement }
@@ -65,15 +77,22 @@ export class SettingsRouter {
 
   constructor(opts: SettingsRouterOptions) {
     this.landingId = opts.landingId;
+    this.hidePageHeader = opts.hidePageHeader ?? false;
+    const horizontal = opts.orientation === "horizontal";
 
     this.root = document.createElement("div");
-    this.root.className = "settings-shell";
+    this.root.className = horizontal
+      ? "settings-shell settings-shell-h"
+      : "settings-shell";
 
     this.nav = document.createElement("nav");
     this.nav.className = "settings-nav";
     // 导航是一组互斥的页面选择器 —— 用 tablist 语义，读屏器才会念「第 2 项，共 4 项」。
     this.nav.setAttribute("role", "tablist");
-    this.nav.setAttribute("aria-orientation", "vertical");
+    this.nav.setAttribute(
+      "aria-orientation",
+      horizontal ? "horizontal" : "vertical",
+    );
     this.nav.setAttribute("aria-label", "设置分类");
     // ★ 方向键必须实现，不是锦上添花：下面给非当前项设了 `tabIndex = -1`
     // （tablist 的 roving tabindex 惯例），**不配方向键的话那些项就键盘完全不可达了**。
@@ -140,7 +159,10 @@ export class SettingsRouter {
     title.textContent = route.title;
     head.appendChild(title);
     if (route.infoTooltip) head.appendChild(makeInfoIcon(route.infoTooltip));
-    page.appendChild(head);
+    // 页内分栏时标题已经在 tab 上了，再来一份页头是重复
+    //（但 ⓘ 若有仍要保住 —— 那是内容不是装饰）。
+    if (!this.hidePageHeader) page.appendChild(head);
+    else if (route.infoTooltip) page.appendChild(head);
     page.appendChild(route.element);
     this.pages.set(route.id, page);
     this.content.appendChild(page);
