@@ -36,6 +36,8 @@ uuid = { version = "1", features = ["v4"] }
 # Batch15-P0：code-picture 代码全景可视化内核（vendor 进仓,见 vendor/code-picture-core/VENDOR.md）。
 # 只读查询 + tree-sitter 符号索引 + rusqlite(bundled) 侧车索引;引 crate use Engine(不走 MCP)。
 code-picture-core = { path = "vendor/code-picture-core" }
+# G1（branch-anywhere）：分叉的记录变换，与远端 daemon 共用同一份实现。
+branch-core = { path = "crates/branch-core" }
 
 notify = "6"
 notify-debouncer-mini = "0.4"
