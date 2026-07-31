@@ -5,7 +5,7 @@
 // 或族 B（复制点东西给人看，契约不同，已登记不收）。新增一处两边都不在 → 红。
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 /** 族 A：待贴进配置文件才生效。**必须**走统一组件。 */
 const FAMILY_A = [
@@ -50,11 +50,23 @@ const FAMILY_AB: Array<{ file: string; writeTextUses: number; why: string }> = [
   },
 ];
 
+/**
+ * 收集源文件，**路径一律用 `/`**。
+ *
+ * `join` 在 Windows 上产出 `src\main.ts`，而上面三张名单是手写的 `src/main.ts`
+ * ⇒ 名单查不中 ⇒ **每一个白名单文件都被报成「未登记的 writeText」**，
+ * 整条守卫在 Windows runner 上恒红。而这个项目的**主平台就是 Windows**，
+ * 也就是说这条守卫在它最该生效的那台机器上从来没绿过。
+ *
+ * 归一化放在**产出侧**而不是比较侧：名单是给人读的，别让每次比较都记得转一道。
+ */
 function walk(dir: string, out: string[] = []): string[] {
   for (const e of readdirSync(dir)) {
     const p = join(dir, e);
     if (statSync(p).isDirectory()) walk(p, out);
-    else if (p.endsWith(".ts") && !p.endsWith(".vitest.ts")) out.push(p);
+    else if (p.endsWith(".ts") && !p.endsWith(".vitest.ts")) {
+      out.push(p.split(sep).join("/"));
+    }
   }
   return out;
 }
