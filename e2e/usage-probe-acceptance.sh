@@ -46,6 +46,19 @@ while IFS= read -r line; do
 done
 EOF
 chmod +x "$BIN/FAKECLAUDE"
+# 慢速 stand-in：收到 /usage 后**先停 2s 再**吐面板，复现 E42 的真实失败形态
+#（真 claude 要拉一次用量数据，不是瞬时的）。
+cat > "$BIN/SLOWCLAUDE" <<'EOF'
+#!/bin/sh
+echo "Welcome to Claude Code (slow stand-in)"
+while IFS= read -r line; do
+  if [ "$line" = "/usage" ]; then
+    sleep 2
+    printf 'Current session\n  38%%\nResets in 2h 14m\n'
+  fi
+done
+EOF
+chmod +x "$BIN/SLOWCLAUDE"
 export PATH="$BIN:$PATH"
 
 PASS=0; FAIL=0
@@ -85,12 +98,25 @@ reset
 # 用短看门狗（3s）的命令变体；`timeout` 在"起会话+挂看门狗+送 payload"之后、"送 /usage+抓屏
 # +清理"完成之前就把整条流水线杀掉,模拟"SSH 通道中途断开、cc-monitor 那次 exec 跑不完"。
 # 0.6s 留足两头余量:会话创建是单次近乎瞬时的 tmux 调用(远早于 0.6s);而脚本不被打断时的
-# 最短自然完成时间(两轮稳定轮询各自至少两次 0.5s 迭代才能判定"已稳定")在 2s 以上,0.6s
-# 稳落在第一轮稳定轮询进行中,离两头都有充分安全边际。
+# 最短自然完成时间(两轮稳定轮询各需连续 QUIESCENCE_STILL_POLLS=6 次无变化,即静止 3s)在
+# 6s 以上,0.6s 稳落在第一轮稳定轮询进行中,离两头都有充分安全边际。
 timeout 0.6 bash -c "$(CMD watchdog)" >/dev/null 2>&1
 ck "探针被打断后:会话在看门狗超时前仍短暂存活(前置条件,不是已经被前台清理路径顺便清掉)" "ccm-usage-watchdog " "$(sessions)"
 sleep 3
 ck "看门狗超时窗口后:会话已被自毁看门狗独立清理,不需要人工介入" "" "$(sessions)"
+
+echo
+echo "===== 场景 4：慢速渲染 —— /usage 面板延迟 2s 才出现，探针不得抓早（E42 回归）====="
+# ★ 这是 E42 的回归钉，也是**唯一**能证伪"稳定轮询判据"的场景：FAKECLAUDE 秒回，
+# 场景 1/2 无论判据多松都会绿。E42 的两个坏版本在这里都红：
+#   - 原版（连续两次一致就算稳）→ t=1.0s 提前 break，抓回渲染前的屏；
+#   - 第一版修法（只加 `!= $base`）→ `/usage` 被终端**回显**，屏幕相对基线立刻就"变过",
+#     回显自己满足了那一半，照样 1.0s 提前 break（本条实测证伪了那版修法）。
+reset
+OUT="$(bash -c "$(CMD slow)")"
+ck "延迟 2s 渲染的面板仍被抓到（不是抓回渲染前的屏）" "true" \
+  "$(printf '%s' "$OUT" | grep -q '38%' && echo true || echo false)"
+ck "慢速场景也用完即清" "" "$(sessions)"
 
 echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
