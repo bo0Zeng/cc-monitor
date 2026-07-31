@@ -46,7 +46,7 @@ describe("enumerateAccountModifiers", () => {
   // 现改为直接断言空数组——**断言的行为没变，只是不再借一个死组来表达**。
   it("恰好 1 个可选账号 → 只含基座逃生口（无需切到唯一账号）", async () => {
     fetchAccountsMock.mockResolvedValue(state([acct("z")]));
-    expect(await enumerateAccountModifiers("host")).toEqual([{ kind: "base", label: "基座（不隔离）" }]);
+    expect(await enumerateAccountModifiers("host")).toEqual([{ kind: "base", label: "不指定账号（用已登录的那个）" }]);
   });
 
   it("0 可选账号（无账号/全不可选）→ 空数组", async () => {
@@ -59,7 +59,7 @@ describe("enumerateAccountModifiers", () => {
       state([acct("z"), acct("b"), acct("dead", { loggedIn: false })]),
     );
     expect(await enumerateAccountModifiers("host")).toEqual([
-      { kind: "base", label: "基座（不隔离）" },
+      { kind: "base", label: "不指定账号（用已登录的那个）" },
       { kind: "account", name: "z", label: "z" },
       { kind: "account", name: "b", label: "b" },
     ]);

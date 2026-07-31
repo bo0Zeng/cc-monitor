@@ -1415,7 +1415,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     expect(labels).not.toContain("直连（不建 tmux）");
   });
 
-  it("F09：账号数据就绪后（恰好 1 个可选账号）→ Resume flyout 追加「基座（不隔离）」，不追加具名账号", async () => {
+  it("F09：账号数据就绪后（恰好 1 个可选账号）→ Resume flyout 追加「不指定账号（用已登录的那个）」，不追加具名账号", async () => {
     invalidateAccountsCache(); // 防陈旧缓存命中挡住下面的自定义 mock
     vi.mocked(invoke).mockImplementation((cmd: string) =>
       cmd === "list_remote_accounts"
@@ -1433,10 +1433,10 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     await flushMicro();
     await flushMicro();
     const labels = menuLabels();
-    expect(labels).toContain("基座（不隔离）");
+    expect(labels).toContain("不指定账号（用已登录的那个）");
     // 只有 1 个可选账号 → 不追加具名账号项（同旧版阈值，见 launch-menu.ts）。
     expect(labels).not.toContain("z");
-    clickItem("基座（不隔离）");
+    clickItem("不指定账号（用已登录的那个）");
     // 基座项本身也带 submenu（tmux/直连），点它只展开/切换，不直接执行——不该调用任何 resume。
     expect(runRemoteResumeTmux).not.toHaveBeenCalled();
     expect(runRemoteResume).not.toHaveBeenCalled();
@@ -1516,11 +1516,11 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     await flushMicro();
   };
 
-  it("R05：点「基座（不隔离）」下的直连 → useBase 生效（configDir 为空），#75 逃生口不退化", async () => {
+  it("R05：点「不指定账号（用已登录的那个）」下的直连 → useBase 生效（configDir 为空），#75 逃生口不退化", async () => {
     invalidateAccountsCache();
     twoAccounts();
     await openArchivedMenu();
-    clickLeafUnder("基座（不隔离）", "直连（不建 tmux）");
+    clickLeafUnder("不指定账号（用已登录的那个）", "直连（不建 tmux）");
     await flushMicro();
     expect(runRemoteResume).toHaveBeenCalledWith(
       "aya", "r1", "/home/pi/proj", "cct",
@@ -1766,7 +1766,7 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
     expect(labels).toContain("b");
     expect(labels).not.toContain("tmux");
     expect(labels).not.toContain("直连（不建 tmux）");
-    expect(labels).not.toContain("基座（不隔离）"); // restart 从不给基座逃生口（旧版行为）
+    expect(labels).not.toContain("不指定账号（用已登录的那个）"); // restart 从不给基座逃生口（旧版行为）
     expect(labels).toContain("直接重启");
     expect(labels).toContain("先压缩上下文再重启");
 

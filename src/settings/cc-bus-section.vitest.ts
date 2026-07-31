@@ -590,11 +590,11 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
     return s;
   };
 
-  it("默认必须是「基座」——不替用户默认花掉某个号的额度", async () => {
+  it("默认必须是「不指定账号」——不替用户默认花掉某个号的额度", async () => {
     const s = await load();
     const sel = s.element.querySelector<HTMLSelectElement>(".cc-bus-spawn-acct")!;
     expect(sel.value).toBe("");
-    expect(sel.options[0].textContent).toContain("基座");
+    expect(sel.options[0].textContent).toContain("不指定");
   });
 
   it("只列可选账号（未登录 / in-place 不进下拉）", async () => {
@@ -637,12 +637,12 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
     expect(out).toContain("消耗额度");
   });
 
-  it("不选账号时文案要说「基座」，不能含糊", async () => {
+  it("不选账号时文案要说「不指定」，不能含糊", async () => {
     const s = await load();
     s.element.querySelector<HTMLInputElement>(".cc-bus-spawn-dir")!.value = "/d";
     (s.element.querySelector(".cc-bus-spawn-go") as HTMLButtonElement).click();
     await flush();
-    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain("基座");
+    expect(s.element.querySelector(".cc-bus-spawn-out")?.textContent).toContain("不指定");
   });
 
   it("武装后改账号必须重新确认（换号 = 换花谁的钱）", async () => {

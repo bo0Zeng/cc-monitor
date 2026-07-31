@@ -225,7 +225,7 @@ export class CcBusSection {
     this.spawnAcct.replaceChildren();
     const base = document.createElement("option");
     base.value = ""; // 空串 → 后端转发 `--base`（显式不注入）
-    base.textContent = "账号：基座（不注入任何账号）";
+    base.textContent = "账号：不指定（不注入任何账号）";
     this.spawnAcct.appendChild(base);
     for (const n of names) {
       const o = document.createElement("option");
@@ -465,7 +465,7 @@ export class CcBusSection {
 
   /** 确认文案里要点名账号——「消耗额度」不说清是哪个号的额度等于没说。 */
   private acctLabel(): string {
-    return this.spawnAcct.value ? `账号 ${this.spawnAcct.value}` : "基座（无账号）";
+    return this.spawnAcct.value ? `账号 ${this.spawnAcct.value}` : "不指定账号";
   }
 
   private disarmSpawn(): void {

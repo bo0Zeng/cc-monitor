@@ -71,7 +71,7 @@ export async function enumerateAccountModifiers(origin: string): Promise<Account
   }
   if (!accountsAvailable || selectable.length < 1) return [];
 
-  const options: AccountModifierOption[] = [{ kind: "base", label: "基座（不隔离）" }];
+  const options: AccountModifierOption[] = [{ kind: "base", label: "不指定账号（用已登录的那个）" }];
   if (selectable.length >= 2) {
     options.push(...selectable.map((a) => ({ kind: "account" as const, name: a.name, label: a.name })));
   }
