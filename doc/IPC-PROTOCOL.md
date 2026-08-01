@@ -306,6 +306,35 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 | `kind` | string? | 会话类型（Batch6-F21 起双端消费）：`"interactive"` = 交互会话；`"bg"` = CC 2.1.x daemon 后台任务（`--fork-session`，另带 `jobId`）。**Batch7-F24 起 bg 门是配置门**：`showBgSessions` 开（默认）→ bg 正常算会话（建 Tab 带 ⚙ 标识 + 树状挂同 cwd 宿主后、行流出）；关 → 回 F21 行为（不建 Tab、行不流出；历史浏览器仍可看）。**缺失 = 旧 CC = 视为交互**（保守放行），本地 `session_map::scan_dir`（读启动时配置）与远端 daemon kind 门（`--with-bg` 参数）规则一字一致 |
 | `jobId` | string? | 仅 `kind:"bg"` 时有，后台任务 ID（monitor 不消费，仅留档） |
 
+### 9.1 ★ `kind` 是**排他式**契约：不在白名单里就被隐藏（E72）
+
+**给要自己写 pidfile 的外部集成方**（aterm 等）：真实判据在 `remote-daemon-proto/src/watcher.rs`，
+形如 `if kind != "interactive" && !with_bg { 排除 }`。展开成矩阵：
+
+| `kind` 的值 | 结果 |
+|---|---|
+| **字段缺席** | **放行**（旧版 CC 不写它，保守视为交互） |
+| `"interactive"` | 放行 |
+| `"bg"` | 仅当 `showBgSessions` 开（本地）/ `--with-bg`（远端）时放行 |
+| **其它任意值**（`"bridge"`、`"agent"`、你新造的任何名字） | **隐藏** |
+
+**为什么必须写在这里**：它此前只活在 daemon 的 Rust 注释里，而外部集成方最自然的直觉是
+「加一个新 `kind` = 加一个新类型，monitor 顶多不认识它」—— 事实相反，**不认识就等于隐藏**。
+这条误解已经真实发生过一次（2026-07-31 的跨项目问答里，**我自己第一次也答反了**，
+说写 `"bridge"` 会被当成交互会话；实际是被排除）。
+
+⇒ **想让你的会话可见，`kind` 要么不写、要么写 `"interactive"`。**
+
+**副作用一条**：同一个 pidfile 的 `kind` 从 `"interactive"` 翻成别的值时，会走
+`retire_sid_if_unreferenced(Gone)` 退休路径 —— 也就是说「改 kind」不是改标签，是**让会话消失**。
+
+### 9.2 `procStart` 参与 PID 复用检测，不只是展示（E72）
+
+`procStart` 不是元信息，它是**判活的第二个判据**：monitor 用 `(pid, procStart)` 这一对来区分
+「同一个进程还活着」与「PID 被系统复用给了另一个进程」。缺失时（某些 `/resume` 启动路径不写）
+退化为只看进程是否存在 —— 那条退化路径**认不出 PID 复用**。
+写 pidfile 的一方若能提供它，就应当提供。
+
 **派生 IPC 事件 `session-activity`**（issue #23 红绿灯）：watcher 每次重扫/心跳后比对，仅对 `status`/`waitingFor` 发生变化（含新出现）的会话 emit `SessionActivityPayload` = `{sessionId, status, waitingFor}`（见 `bridge.rs::SessionActivityPayload`；启动快照走 `list_session_activity`，详 STATE-MATRIX）。
 
 ---
@@ -354,6 +383,24 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 - `--account-trust <configDir> <cwd> [--accts-dir <p>]`（A2）→ 换号 resume 前的信任预检（首次用某账号进某目录，CC 会弹信任确认、会卡住自动化）。单行 `{"trusted":bool,"known":bool,"error":null}`。**安全**：`configDir` 必须逐字 ∈ manifest 的账号列表，否则 exit 2 + stderr `{"code":"unknown_config_dir",...}`——避免退化成任意文件读原语；**只回三个布尔/字符串字段，绝不回传 `.claude.json` 内容**（内含 `mcpServers` 的环境变量，可能有 API key）
 
 错误写 stderr + 退出码 2（`--account-trust` 用 `--resolve` 那套结构化 `{code,message}` JSON）。所有路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**旧 daemon 兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
+
+### 10.1 ★ `--resolve` 的返回值里**哪些是探测出来的、哪些是派生的**（E71）
+
+`--resolve` 读 stdin 的 `ResumeSpec`、往 stdout 写一个 `CommandPlan`。**这三个字段的可信度不一样**，
+而字段名读起来一模一样 —— 消费方（已经有一个了）很容易把派生值当事实用：
+
+| 字段 | 它到底是什么 | 能不能当事实用 |
+|---|---|---|
+| `command` | 调用方给的候选启动器 + `--resume <调用方给的 sid>` | **能**。这是唯一真正可信的一项 |
+| `sessionName` | **纯从 sid 派生**（`cc-<sid8>` / `cx-<sid8>`），`session_name_for(sid, is_codex)` | **不能**。它**没读过任何 pidfile、没查过 tmux** —— 据它去 attach 一个**并不存在**的 tmux 会话是现实风险 |
+| `capabilities` | tmux/pty 的**典型档**（硬编码的常见组合），文件头自陈「待后续 backend 探测细化」 | **不能**。它描述的是「这类后端通常支持什么」，不是「这台机器此刻支持什么」 |
+
+**为什么记在这里**：`resolve_query.rs` 的文件头写了这件事，但**跨项目的消费方不会读我们的 Rust 源码**。
+实现上也留着痕迹：`run(_claude_dir, …)` 的参数带下划线、`claude_dir` 标着
+`#[allow(dead_code)] // MVP 未用（不做 pidfile 消解）` —— 也就是说它**手上有 claude_dir 却没用**。
+
+**要判断某个 tmux 会话是否真的存在**，用 `tmux_sessions` 帧（那是真 `tmux ls`）或自己在远端跑一次，
+别拿 `sessionName` 当答案。
 
 ## 11. 远端终端拉起（ccm-rbind，issue #18）——注册与拉起全链路
 

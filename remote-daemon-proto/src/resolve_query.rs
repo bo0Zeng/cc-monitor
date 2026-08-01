@@ -59,13 +59,32 @@ struct Capabilities {
 }
 
 /// stdout 出参（camelCase 对齐 aterm `ResumePlan` + 加 mode/capabilities）。
+///
+/// # ★ E71：**这里面哪些是探测出来的、哪些是派生的**
+///
+/// 三个字段的可信度不一样，而字段名读起来一模一样 —— 消费方（已经有一个了）很容易
+/// 把派生值当事实用。跨项目那份说明在 `doc/IPC-PROTOCOL.md` §10.1
+///（**外部消费方不会读这份 Rust 源码**，所以那边才是正本）。
+///
+/// | 字段 | 可信度 |
+/// |---|---|
+/// | `command` | **可信**：调用方给的候选 + `--resume <调用方给的 sid>` |
+/// | `session_name` | **派生**：纯从 sid 拼（`cc-<sid8>`），没读过 pidfile、没查过 tmux |
+/// | `capabilities` | **典型档**：硬编码的常见组合，不是这台机器此刻的实测能力 |
+///
+/// 实现上留着痕迹：`run(_claude_dir, …)` 的参数带下划线 —— 它**手上有 `claude_dir` 却没用**。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CommandPlan {
+    /// **唯一可信的一项**。
     command: String,
     /// "PtyInject"（resume 走 pty send-keys 注入 §5④）| "ExecOnce"（未来）。MVP 恒 PtyInject。
     mode: String,
+    /// **典型档，不是探测结果**（见结构体头注）。
     capabilities: Capabilities,
+    /// **纯从 sid 派生，不是探测结果**（见结构体头注）——
+    /// 拿它去 attach 一个「并不存在」的 tmux 会话是现实风险。要判断会话是否真的存在，
+    /// 用 `tmux_sessions` 帧（那是真 `tmux ls`）。
     #[serde(skip_serializing_if = "Option::is_none")]
     session_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

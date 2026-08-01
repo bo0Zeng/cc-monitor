@@ -102,3 +102,68 @@ describe("stripComments", () => {
     expect(stripComments(src, "rust")).not.toBe(src);
   });
 });
+
+/**
+ * E75：**Rust 字符字面量**。头注原来写着「字符字面量对本函数无害」——那句只想到了斜杠，
+ * 漏了引号：`'"'` 里的双引号会开一个幻影字符串，把后面的注释全带走。
+ *
+ * 实测后果（G3b-1 当场撞出）：`history.rs` 里一个 `&['\'', '"', …]` 让 C04a 守卫报出
+ * 一个**不存在**的命令。与本文头注记的「`/*` 吞掉 521 行」同根因、方向相反
+ *（那次假阴性、这次假阳性）。
+ */
+describe("E75：Rust 字符字面量", () => {
+  it("★★ `'\"'` 之后的注释仍然要被剥掉（幻影字符串正是这条 bug）", () => {
+    const src = [
+      `const SHELL_META: &[char] = &['\\'', '"', '\\\\'];`,
+      `// 这一行是注释，必须被剥`,
+      `fn real_code() {}`,
+    ].join("\n");
+    const out = stripComments(src, "rust");
+    expect(out).toContain("fn real_code() {}");
+    expect(out, "注释没被剥 —— 幻影字符串把状态机带跑了").not.toContain("这一行是注释");
+  });
+
+  it("★★ 幻影字符串会不会一路吃到很远：中间的 `#[tauri::command]` 字样必须还在注释里被剥掉", () => {
+    const src = [
+      `let q = '"';`,
+      `/// 文档里提到 \`#[tauri::command]\` 只是举例`,
+      `#[tauri::command]`,
+      `pub fn real_one() {}`,
+      `let s = "后面还有一个双引号";`,
+    ].join("\n");
+    const out = stripComments(src, "rust");
+    // 注释里那个被剥掉，真属性还在 ⇒ 计数守卫才数得对
+    expect(out.match(/#\[tauri::command\]/g) ?? []).toHaveLength(1);
+  });
+
+  it("★ 生命周期一处都不许误伤（本仓 114 处 `&'static` / `&'a` / `'a>`）", () => {
+    const src = [
+      `const X: &'static str = "x";`,
+      `fn f<'a>(s: &'a str) -> &'a str { s }`,
+      `struct S<'a> { p: &'a [u8] }`,
+      `// 这行注释还是要被剥`,
+      `fn tail() {}`,
+    ].join("\n");
+    const out = stripComments(src, "rust");
+    expect(out).toContain(`const X: &'static str = `);
+    expect(out).toContain(`fn f<'a>(s: &'a str)`);
+    expect(out).toContain("fn tail() {}");
+    expect(out).not.toContain("这行注释");
+  });
+
+  it("各种转义形态都认（`'\\n'` / `'\\''` / `'\\u{1F600}'` / `'\\x41'`）", () => {
+    for (const lit of [`'\\n'`, `'\\''`, `'\\\\'`, `'\\u{1F600}'`, `'\\x41'`, `'a'`, `'中'`]) {
+      const src = `let c = ${lit};\n// 注释\nfn tail() {}`;
+      const out = stripComments(src, "rust");
+      expect(out, `${lit} 之后注释没剥`).not.toContain("注释");
+      expect(out).toContain("fn tail() {}");
+    }
+  });
+
+  it("★ TS 侧不受影响：`'…'` 仍是字符串定界符", () => {
+    const src = `const s = 'a // 不是注释';\n// 这才是注释\nconst t = 1;`;
+    const out = stripComments(src, "ts");
+    expect(out).toContain("'a // 不是注释'");
+    expect(out).not.toContain("这才是注释");
+  });
+});
