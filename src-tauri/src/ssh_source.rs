@@ -1559,6 +1559,90 @@ pub async fn connect_and_exec_cmd(
     Ok(channel.into_stream())
 }
 
+/// 一次远端 exec 的**完整**结果：stdout、stderr、退出码。
+///
+/// # 为什么需要它（而不是继续用 `connect_and_exec_cmd`）
+///
+/// `Channel::into_stream()` 只搬 `ChannelMsg::Data` —— **`ExtendedData`（= stderr）
+/// 与 `ExitStatus` 都被丢掉**（russh 0.61 `channels/io/mod.rs`）。所以既有的
+/// `run_list_query` 那条路只能看见 stdout：远端命令失败时它读到 0 行，
+/// 与「查询成功但结果为空」**在类型上不可区分**。
+///
+/// 列举类查询忍得了（空结果本来就合法），但 `--fork-session` 忍不了 ——
+/// 分叉失败必须让用户看见原因，而 daemon 恰恰把原因写在 **stderr + exit 2** 上。
+/// 所以这里直接驱动 `channel.wait()` 收全三样。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteExec {
+    pub stdout: String,
+    pub stderr: String,
+    /// `None` = 远端没送 exit-status（连接被掐 / 服务端不守规矩）。
+    /// **不许把 `None` 当成 0** —— 那正好会把「没跑成」读成「跑成了」。
+    pub exit_status: Option<u32>,
+}
+
+/// stdout/stderr 各自的收集上限。查询类输出都是一行 JSON 量级；
+/// 上限只是防「远端吐无穷字节」吃爆内存，正常路径远够不到。
+const EXEC_CAPTURE_MAX_BYTES: usize = 4 * 1024 * 1024;
+
+/// exec 一条命令并**收全** stdout / stderr / 退出码（见 [`RemoteExec`]）。
+///
+/// 与 `connect_and_exec_cmd` 一样每次独立连接（一次性查询语义），
+/// 不影响长连接流路径。超时由调用方套 `tokio::time::timeout`。
+///
+/// `abort_marker`：stdout 里一出现这个子串就**立刻收工返回**。存在的理由只有一个 ——
+/// **不认参数的旧 daemon 会掉进流模式**（长连接、永不 EOF）。老老实实收到通道关闭，
+/// 就只能等调用方的超时兜底，而超时会把「daemon 版本过旧」这条最有用的诊断吞成
+/// 一句「超时」。给调用方一个字符串就能提前抽身。`None` = 收到底。
+pub async fn connect_and_exec_capture(
+    cfg: &RemoteConfig,
+    cmd: &str,
+    abort_marker: Option<&str>,
+) -> Result<RemoteExec, String> {
+    let (session, _fp) = connect_session(cfg, None, None).await?;
+    let mut channel = session
+        .channel_open_session()
+        .await
+        .map_err(|e| format!("打开 session channel 失败: {e}"))?;
+    channel
+        .exec(true, cmd.as_bytes())
+        .await
+        .map_err(|e| format!("exec {cmd} 失败: {e}"))?;
+
+    let mut out: Vec<u8> = Vec::new();
+    let mut err: Vec<u8> = Vec::new();
+    let mut status: Option<u32> = None;
+    // EOF 之后服务端才送 exit-status，所以**不能见 Eof 就 break**；
+    // 收到 Close / 通道关闭（wait 返回 None）才算结束。
+    while let Some(msg) = channel.wait().await {
+        match msg {
+            russh::ChannelMsg::Data { data } => {
+                if out.len() < EXEC_CAPTURE_MAX_BYTES {
+                    out.extend_from_slice(&data);
+                }
+                if let Some(marker) = abort_marker {
+                    if String::from_utf8_lossy(&out).contains(marker) {
+                        break;
+                    }
+                }
+            }
+            russh::ChannelMsg::ExtendedData { data, .. } => {
+                if err.len() < EXEC_CAPTURE_MAX_BYTES {
+                    err.extend_from_slice(&data);
+                }
+            }
+            russh::ChannelMsg::ExitStatus { exit_status } => status = Some(exit_status),
+            russh::ChannelMsg::Close => break,
+            _ => {}
+        }
+    }
+
+    Ok(RemoteExec {
+        stdout: String::from_utf8_lossy(&out).into_owned(),
+        stderr: String::from_utf8_lossy(&err).into_owned(),
+        exit_status: status,
+    })
+}
+
 /// POSIX shell 单引号转义（issue #16：历史查询的路径参数经远端 shell 解析，
 /// 含空格/特殊字符必须包引号；单引号本身按 `'\''` 规则逃逸）。
 pub fn shell_quote(s: &str) -> String {

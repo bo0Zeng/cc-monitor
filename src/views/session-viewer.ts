@@ -27,10 +27,20 @@ import {
   type StreamSink,
 } from "../render-stream-record";
 import { UnrenderedRanges } from "../render-window";
-import { getBehavior } from "../behavior";
 import { showActionFailureToast } from "../error-toast";
 import { attachBranchButton } from "../branch-button";
-import { validateLocalLaunch } from "../launch-requests";
+import { collectForkSource, runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来
+import type { BranchResult } from "../generated/BranchResult";
+
+/**
+ * 历史会话的 jsonl 文件名**就是** sid（口径同 `remote_history::jsonl_stem`）。
+ * 远端分叉只认 sid，而查看器手上只有路径，所以从路径取。取不出来 → 空串，
+ * 后端的白名单会拒（fail-closed，不会拿一个残缺 id 去跑）。
+ */
+function sidFromJsonlPath(p: string): string {
+  const name = p.split(/[\\/]/).pop() ?? "";
+  return name.endsWith(".jsonl") ? name.slice(0, -".jsonl".length) : "";
+}
 
 interface JsonlLinePayload {
   session_id: string;
@@ -61,8 +71,9 @@ export interface ViewerOptions {
    */
   origin?: string;
   /**
-   * F62：会话工作目录（= 历史条目 projectPath）。本地会话建分支后一键 resume 时作
-   * 新终端起始目录。远端会话不建分支，可缺省。
+   * F62：会话工作目录（= 历史条目 projectPath）。分叉出新会话后作它的起始目录。
+   * **G6 订正**：原注释写着"远端会话不建分支，可缺省"——远端现在也能分叉了，
+   * 缺了它分叉起会话时会多问一次工作目录。
    */
   cwd?: string;
   /**
@@ -152,12 +163,13 @@ export class SessionViewer {
       onBranchRecord: () => {},
       onQueueOperation: () => {},
       observeForLazyEnhance: true,
-      // F62：仅本地会话给每张 user/assistant 卡挂「从这一轮建分支」按钮（远端会话不建分支）。
-      // F77：子 agent 记录 `suppressBranch` 也关掉（子 agent jsonl 不是可分支的会话）。
-      onCardRendered:
-        opts.origin || opts.suppressBranch
-          ? undefined
-          : (el, msg) => this.attachBranchButton(el, msg, opts.jsonlPath, opts.cwd),
+      // F62 / **G6**：给每张 user/assistant 卡挂「从这一轮分叉」按钮。**远端也挂**——
+      // 远端走 daemon 的 `--fork-session`（只认 sid），不再受"远端 jsonl 本机够不着"所限。
+      // F77：子 agent 记录 `suppressBranch` 仍关掉（子 agent jsonl 不是可分支的会话）。
+      onCardRendered: opts.suppressBranch
+        ? undefined
+        : (el, msg) =>
+            this.attachBranchButton(el, msg, opts.jsonlPath, opts.cwd, opts.origin ?? null),
     };
     this.renderCtx = ctx;
     this.renderSink = sink;
@@ -319,6 +331,7 @@ export class SessionViewer {
     message: JsonlRecord,
     jsonlPath: string,
     cwd: string | undefined,
+    origin: string | null,
   ): void {
     if (message.type !== "user" && message.type !== "assistant") return;
     const uuid = message.uuid;
@@ -326,39 +339,48 @@ export class SessionViewer {
     attachBranchButton(cardEl, {
       uuid,
       jsonlPath,
+      // 远端那条路只认 sid。查看器手上没有独立的 sid 字段，但历史会话的文件名**就是** sid
+      // （`remote_history::jsonl_stem` 是同一口径），所以从路径取。
+      sourceSessionId: sidFromJsonlPath(jsonlPath),
+      origin,
       cwd,
-      onForked: (res) => {
-        const sid8 = res.sessionId.slice(0, 8);
-        showActionFailureToast("✓ 已从这一轮创建分支", `点此在新终端 resume 分支 ${sid8}`, {
-          level: "info",
-          durationMs: 8000,
-          onClick: () => void this.resumeBranch(res.sessionId, cwd),
-        });
-      },
+      onForked: (res) =>
+        void this.startForkedSession(res, sidFromJsonlPath(jsonlPath), cwd ?? null, origin),
     });
   }
 
-  /** F62：在新终端 resume 刚建的分支（复用本地 resume 命令 + 用户自定义 launcher）。 */
-  private async resumeBranch(sessionId: string, cwd: string | undefined): Promise<void> {
-    // F06：走一遍本地 IR 构造，sid 校验先于任何 IPC 往返；构造失败与拉起失败分两个 catch，
-    // headline 对齐远端 `runRemoteResume` 的"无法构造 resume 命令"/执行失败两分。
-    try {
-      validateLocalLaunch({ kind: "resume", sid: sessionId }, cwd ?? "");
-    } catch (err) {
-      showActionFailureToast("无法构造 resume 命令", String(err));
-      return;
-    }
-    try {
-      const behavior = await getBehavior();
-      await commands.resume_history_session({
-        sessionId,
-        cwd: cwd ?? "",
-        launcher: behavior.resumeCommandLocal || null,
-      });
-    } catch (err) {
-      showActionFailureToast("恢复分支失败", String(err));
-    }
+  /**
+   * G6：分叉产出新会话文件之后 —— **起它**（不碰原会话）。
+   * 与实时 tab 那条走**同一个** `runForkFlow`，两处行为不许分裂。
+   */
+  private async startForkedSession(
+    res: BranchResult,
+    sourceSessionId: string,
+    cwd: string | null,
+    origin: string | null,
+  ): Promise<void> {
+    // ★ 查的是**源会话**的事实（活没活 / 哪个账号 / 哪个 tmux），不是新会话的 ——
+    //   新会话此刻还没起，查它必定是"查不到"，那样每次分叉都会白弹一次窗。
+    const facts = await collectForkSource(origin, sourceSessionId, cwd);
+    const outcome = await runForkFlow({
+      origin,
+      newSessionId: res.sessionId,
+      source: facts.source,
+      sourceTmuxName: facts.sourceTmuxName,
+      takenTmuxNames: facts.takenTmuxNames,
+    });
+    if (outcome !== "started") return;
+    showActionFailureToast(
+      "✓ 已从这一轮分叉并起新会话",
+      `新会话 ${res.sessionId.slice(0, 8)} 正在起来——原会话不受影响，两条都活着。`,
+      { level: "info", durationMs: 8000 },
+    );
   }
+
+  // G6：原来这里有个 `resumeBranch`（分叉后弹 toast、用户再点一下才 resume）。
+  // 它被 `fork-flow.ts` 顶掉了——分叉之后**直接起**，而且远端/本机、带不带账号、
+  // 进不进 tmux 全在那一条路上决定。它那条 F06 纪律（sid 校验先于任何 IPC 往返）
+  // **没有丢**，搬进了 `fork-flow.ts` 的 `startLocal`。
 
   /** F39:增量批后幂等重建 fold(branchRecords 全量;未渲染 uuid 的卡不在 DOM,自然跳过) */
   private rebuildFold(): void {

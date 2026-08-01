@@ -184,6 +184,13 @@ mod tests {
         ("cc_integration_preview", "ccm.install-ui", Side::Local),
         ("cc_integration_scan_path", "ccm.install-ui", Side::Local),
         ("create_branch_session", "history.branch", Side::Local),
+        // G6：远端分叉落地 ⇒ `history.branch` 从 ParityDebt 变成两侧都有（该行的
+        // 不对称理由已从 `ASYMMETRY_REASONS` 删除——留着就是宣称一条已经补上的欠账）。
+        (
+            "create_remote_branch_session",
+            "history.branch",
+            Side::Remote,
+        ),
         ("panorama_index", "panorama.code-graph", Side::Local),
         ("panorama_reindex", "panorama.code-graph", Side::Local),
         ("panorama_status", "panorama.code-graph", Side::Local),
@@ -303,7 +310,6 @@ mod tests {
         ("cc-bus.cockpit", Asym::ParityDebt, "cc_bus.rs 的 5 个 IPC **全走 origin+ssh、零本机读取路径**（`config_surface.rs` 的钉死表已把 `~/.cc-bus/` 记为 Remote）。而本机 cc-bus 是存在的——`diagnose_local_cc_bus_hooks` 就在诊断它 ⇒ 驾驶舱管不了本机的 agent，是真欠账。"),
         ("ccm.install-ui", Asym::Undecided, "本机安装向导有「扫 PATH 选装到哪」+「预览要写的文本」两步；远端 `install_remote_ccm_helper(cfg, profile)` 一步到位、没有这两步。**是欠账还是刻意简化，需要产品判断**——本表不替它裁定。"),
         ("daemon.deploy", Asym::NaturallyAsymmetric, "§40 天然不对称白名单第 3 条：本地会话由 `watcher.rs` 直接读 jsonl，**根本不需要 daemon**。"),
-        ("history.branch", Asym::ParityDebt, "远端历史会话不能分支。本地能分支（`create_branch_session`），远端没有对应命令。"),
         ("mcp.list-origins", Asym::NaturallyAsymmetric, "「有哪些 origin」这个概念在本地不存在——本地只有一台。"),
         ("panorama.code-graph", Asym::Undecided, "**本表交出的最大一处新发现**：21 条命令全部只吃本机 `repo` 路径。远端 repo 的代码图谱既没做、也没在任何计划里登记过。**不擅自判它是天然不对称**——那需要产品判断（远端开发是不是本工具的场景）。登记待裁定。"),
         ("port-forward", Asym::NaturallyAsymmetric, "§40 天然不对称白名单第 2 条：本地没有「转发到自己」这个需求。"),
@@ -538,11 +544,11 @@ mod tests {
     /// ★ 断言 4：表的形状钉死。改 `LEDGER` 就要来改这几个数。
     #[test]
     fn ledger_shape_is_pinned() {
-        assert_eq!(LEDGER.len(), 121, "命令总数变了");
+        assert_eq!(LEDGER.len(), 122, "命令总数变了"); // G6 +1
         let sides = capability_sides();
         assert_eq!(sides.len(), 50, "能力总数变了");
         let asym = asymmetric_capabilities();
-        assert_eq!(asym.len(), 20, "不对称能力数变了");
+        assert_eq!(asym.len(), 19, "不对称能力数变了"); // G6：history.branch 补平 -1
         let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
         for (_, k, _) in ASYMMETRY_REASONS {
             *kinds
@@ -554,7 +560,7 @@ mod tests {
                 .or_default() += 1;
         }
         assert_eq!(kinds.get("natural"), Some(&7), "天然不对称条数变了");
-        assert_eq!(kinds.get("debt"), Some(&11), "平价欠账条数变了");
+        assert_eq!(kinds.get("debt"), Some(&10), "平价欠账条数变了"); // G6：history.branch 还清 -1
         assert_eq!(kinds.get("undecided"), Some(&2), "未裁定条数变了");
     }
 }

@@ -670,7 +670,10 @@ pub fn delete_history_session(session_id: String, jsonl_path: String) -> Result<
 // version/origin 等 schema 外字段）——除 sessionId/forkedFrom 两处有意改动外逐字段忠实。
 
 /// 建分支的返回体（前端据此提示 / 一键 resume 新分支）。
-#[derive(Debug, Serialize)]
+///
+/// **`Deserialize` 是给远端那条路用的**（G6）：daemon 的 `--fork-session` 在 stdout 吐同形 JSON，
+/// `remote_branch` 直接反序列化成本类型 —— 两条路一个类型，前端的成功处理才只有一份。
+#[derive(Debug, Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub struct BranchResult {

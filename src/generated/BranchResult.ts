@@ -2,5 +2,8 @@
 
 /**
  * 建分支的返回体（前端据此提示 / 一键 resume 新分支）。
+ *
+ * **`Deserialize` 是给远端那条路用的**（G6）：daemon 的 `--fork-session` 在 stdout 吐同形 JSON，
+ * `remote_branch` 直接反序列化成本类型 —— 两条路一个类型，前端的成功处理才只有一份。
  */
 export type BranchResult = { sessionId: string, jsonlPath: string, };
