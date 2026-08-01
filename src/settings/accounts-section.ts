@@ -6,7 +6,7 @@
 //
 // 设置窗独立于主窗、拿不到活跃会话，故用远端选择器（多台时下拉）。改默认账号后
 // emit(SETTINGS_APPLIED_EVENT) 让主窗状态栏 chip 同步。
-import { setCurrentMachine, subscribeMachine } from "./machine-context";
+import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "../ipc/commands";
 import {
@@ -41,7 +41,6 @@ import {
 export class AccountsSection {
   readonly element: HTMLElement;
   private body: HTMLElement;
-  private originSelect: HTMLSelectElement;
   private hosts: RemoteHostConfig[] = [];
   private origin: string | null = null;
   /** U7：维护区展开态。null=用户还没表态（按账号数给默认）；true/false=用户手动开合过，reload 后保持。 */
@@ -54,17 +53,16 @@ export class AccountsSection {
     // 顶部：远端选择 + 刷新
     const bar = document.createElement("div");
     bar.className = "accounts-bar";
-    const originLabel = document.createElement("span");
-    originLabel.className = "accounts-bar-label";
-    originLabel.textContent = "远端：";
-    bar.appendChild(originLabel);
-    this.originSelect = document.createElement("select");
-    this.originSelect.className = "accounts-origin-select";
-    this.originSelect.addEventListener("change", () => {
-      // S4a：写进共用 store；真正的切换由下面的订阅统一处理（单一路径，不双写）。
-      setCurrentMachine(this.originSelect.value || null);
-    });
-    bar.appendChild(this.originSelect);
+    // E59：**这里原来有一个 origin 下拉，已删。**
+    //
+    // 本分节只作为「机器详情页」上的一块存在（`panel.ts` 的 `perMachineBlocks`，
+    // 唯一的构造点）。页头已经说了「你在看哪台机器」，分节里再放一个选择器就是**两层上下文**——
+    // 而且它能指向与页头**不同**的那台，写动作又按分节自己的 `this.origin` 定目标
+    // ⇒ **在标着 A 的页面上把东西写进 B**，`router.activeId` 仍是 A、界面上看不出来。
+    //
+    // 选「删」而不是「藏」是用户 2026-08-01 拍板的：这次重做的整条论证就是
+    // 「机器是中心对象、上下文由页面给」，留一个能绕过页面上下文的入口，
+    // 等于把地基判据降级成约定。⇒ `origin` **只能**来自共用 store。
     const refresh = document.createElement("button");
     refresh.type = "button";
     refresh.className = "accounts-refresh";
@@ -104,28 +102,23 @@ export class AccountsSection {
       this.hosts = [];
     }
     // 填远端下拉（含 daemonless，但标注）
-    this.originSelect.innerHTML = "";
-    for (const h of this.hosts) {
-      const opt = document.createElement("option");
-      const label = h.label || h.host;
-      opt.value = label;
-      opt.textContent = h.daemonless ? `${label}（daemonless）` : label;
-      this.originSelect.appendChild(opt);
-    }
-    this.origin = pickPrimaryOrigin(this.hosts) ?? (this.hosts[0]?.label || this.hosts[0]?.host || null);
-    if (this.origin) this.originSelect.value = this.origin;
-    this.originSelect.style.display = this.hosts.length > 1 ? "" : "none";
+    // E59：初值仍取「主 origin」作为**兜底落点**（`RemoteSection` 抛异常时这几块会留在
+    // 列表页上，那儿没有页上下文）。正常路径上，`subscribeMachine` 立刻会把它改成页头那台。
+    this.origin =
+      getCurrentMachine() ??
+      pickPrimaryOrigin(this.hosts) ??
+      (this.hosts[0]?.label || this.hosts[0]?.host || null);
     await this.reload(false);
   }
 
   /** S4a：跟随共用 store 切机器。见构造里那段注释。 */
   private followMachine(origin: string | null): void {
     if (origin === null) return; // 本机：本分节表示不了，原地不动
-    const has = [...this.originSelect.options].some((o) => o.value === origin);
-    if (!has) return; // 这台不在本分节的清单里（还没加载到 / 已被删）
+    // E59：判据从「在不在我自己的下拉里」改成「在不在已加载的主机清单里」——
+    // 下拉没了，而这条判据本来问的就是「这台我认不认得」。
+    if (!this.hosts.some((h) => (h.label || h.host) === origin)) return;
     if (this.origin === origin) return;
     this.origin = origin;
-    this.originSelect.value = origin;
     void this.reload(true);
   }
 

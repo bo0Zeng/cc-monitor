@@ -12,7 +12,7 @@
 // **功能等价但字符串不等**——按等值比较会把这套**完全正确的安装**报成第三态，
 // 然后建议用户去修一个没坏的东西。所以这里必须把
 // 「显式路径且存在（没问题）」与「显式路径但不存在（真问题）」**分开渲染**。
-import { setCurrentMachine, subscribeMachine } from "./machine-context";
+import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
 import { buildPasteBlock, type PasteBlock } from "../paste-block"; // T03
 
@@ -62,7 +62,18 @@ export function describeState(st: HookState): {
 
 export class CcBusHooksSection {
   readonly element: HTMLElement;
-  private originSel!: HTMLSelectElement;
+  /** E59：当前在看哪台机器（只读显示；值由共用 store 给，不可在本分节改）。 */
+  private originName!: HTMLSpanElement;
+
+  /** 已配置的远端清单——用来判断「store 给的这台我认不认得」。 */
+  private knownOrigins: string[] = [];
+
+  /** 当前生效的 origin；`null` = 本机 / 未选定 ⇒ 远端诊断不可用。 */
+  private origin: string | null = null;
+
+  /** 「检查远端」按钮。**存直接引用而不是每次 `this.element.querySelector`** ——
+   *  `build()` 里就会调 `setOrigin`，而那时 `this.element` 还没赋值（实测抛 undefined）。 */
+  private checkRemoteBtn!: HTMLButtonElement;
   private localBox!: HTMLElement;
   private remoteBox!: HTMLElement;
   private paste!: PasteBlock;
@@ -115,29 +126,28 @@ export class CcBusHooksSection {
     remoteT.textContent = "远端";
     row.appendChild(remoteT);
 
-    this.originSel = document.createElement("select");
-    this.originSel.className = "settings-input cc-bus-hooks-origin";
-    // S4a：此前本分节**连 change 监听都没有** —— 下拉只在用户点「检查」时被读一次，
-    // 所以它与另外三块的不同步是最彻底的。现在写进共用 store。
-    // **不在切换时自动发诊断请求**：本分节的既有语义就是「点了才发」（只读诊断，
-    // 不替用户改 ~/.claude/settings.json），自动发就成了变相轮询。
-    this.originSel.addEventListener("change", () => {
-      setCurrentMachine(this.originSel.value || null);
-    });
-    subscribeMachine((origin) => {
-      if (origin === null) return; // 本机：本分节的下拉只列远端
-      if (![...this.originSel.options].some((o) => o.value === origin)) return;
-      this.originSel.value = origin;
-    });
-    row.appendChild(this.originSel);
+    // E59：**这里原来有一个 origin 下拉，已删**（理由同 `accounts-section`：
+    // 本分节只作为机器详情页上的一块存在，页头就是选择器；留一个能指向别台机器的
+    // 入口 = 在标着 A 的页面上对 B 动手）。现在只显示「你在看哪台」，不可改。
+    //
+    // 顺带说明：本分节此前**连 change 监听都没有**，下拉只在点「检查远端」时被读一次 ——
+    // 所以它与另外几块的不同步是最彻底的那个。删掉之后这个不同步在结构上没了。
+    this.originName = document.createElement("span");
+    this.originName.className = "settings-value cc-bus-hooks-origin";
+    row.appendChild(this.originName);
 
     const btn = document.createElement("button");
+    this.checkRemoteBtn = btn;
     btn.type = "button";
     btn.className =
       "settings-btn settings-btn-secondary cc-bus-hooks-check-remote";
     btn.textContent = "检查远端";
     btn.addEventListener("click", () => void this.checkRemote(btn));
     row.appendChild(btn);
+
+    // ★ 顺序有讲究：`setOrigin` 要摸 `checkRemoteBtn`，所以必须在按钮建出来之后接。
+    subscribeMachine((origin) => this.setOrigin(origin));
+    this.setOrigin(getCurrentMachine());
     root.appendChild(row);
 
     this.remoteBox = document.createElement("div");
@@ -215,26 +225,30 @@ export class CcBusHooksSection {
     } catch {
       /* 无远端不影响本机诊断 */
     }
-    this.originSel.replaceChildren();
+    this.knownOrigins = origins;
     if (origins.length === 0) {
-      const o = document.createElement("option");
-      o.value = "";
-      o.textContent = "（未配置远端）";
-      this.originSel.appendChild(o);
-      this.originSel.disabled = true;
-      const btn = this.element.querySelector<HTMLButtonElement>(
-        ".cc-bus-hooks-check-remote",
-      );
-      if (btn) btn.disabled = true;
+      this.checkRemoteBtn.disabled = true;
+      this.originName.textContent = "（未配置远端）";
       this.remoteBox.textContent = "未配置远端。";
       return;
     }
-    for (const s of origins) {
-      const o = document.createElement("option");
-      o.value = s;
-      o.textContent = s;
-      this.originSel.appendChild(o);
-    }
+    // 清单到手之后重新认一次 store 给的那台（清单是异步来的，可能晚于第一次 setOrigin）。
+    this.setOrigin(getCurrentMachine());
+  }
+
+  /**
+   * E59：跟随共用 store。**不在切换时自动发诊断请求** —— 本分节的既有语义就是
+   * 「点了才发」（只读诊断，不替用户改 `~/.claude/settings.json`），自动发就成了变相轮询。
+   */
+  private setOrigin(origin: string | null): void {
+    const known = origin !== null && this.knownOrigins.includes(origin);
+    this.origin = known ? origin : null;
+    this.originName.textContent = known
+      ? (origin as string)
+      : origin === null
+        ? "（本机页：无远端可诊断）"
+        : `（${origin}：未在已配置的远端里）`;
+    this.checkRemoteBtn.disabled = !known;
   }
 
   private async checkLocal(): Promise<void> {
@@ -249,7 +263,7 @@ export class CcBusHooksSection {
   }
 
   private async checkRemote(btn: HTMLButtonElement): Promise<void> {
-    const origin = this.originSel.value;
+    const origin = this.origin;
     if (!origin) return;
     btn.disabled = true;
     this.remoteBox.textContent = "检查中…";

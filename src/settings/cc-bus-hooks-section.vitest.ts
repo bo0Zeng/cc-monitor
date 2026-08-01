@@ -5,6 +5,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../error-toast", () => ({ showActionFailureToast: vi.fn() }));
 
 import { CcBusHooksSection, describeState } from "./cc-bus-hooks-section";
+// E59：本分节不再自己挑机器 —— origin 只来自共用 store，所以测试要先把它设好。
+import { setCurrentMachine, __resetMachineContextForTests } from "./machine-context";
 import { invoke } from "@tauri-apps/api/core";
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -29,6 +31,7 @@ const rep = (ss: unknown, stop: unknown, note = "") => ({
 beforeEach(() => {
   mockInvoke.mockReset();
   document.body.replaceChildren();
+  __resetMachineContextForTests(); // E59：机器上下文是全局 store，别串测
 });
 
 describe("B04 四态不得被误渲染", () => {
@@ -132,6 +135,7 @@ describe("B04 只读与文案", () => {
         );
       throw new Error(cmd);
     });
+    setCurrentMachine("aya"); // E59：页上下文（原来是分节自己的下拉选的）
     const s = new CcBusHooksSection();
     document.body.appendChild(s.element);
     await flush();
@@ -405,6 +409,7 @@ describe("T03：形态与盘上实况冲突的警示必须上屏", () => {
       if (cmd === "diagnose_remote_cc_bus_hooks") return remote;
       throw new Error(cmd);
     });
+    setCurrentMachine("aya"); // E59：页上下文
     const s = new CcBusHooksSection();
     document.body.appendChild(s.element);
     await flush();
@@ -446,5 +451,64 @@ describe("T03：形态与盘上实况冲突的警示必须上屏", () => {
       s.element.querySelector<HTMLElement>(".cc-bus-hooks-form-warning")!
         .hidden,
     ).toBe(true);
+  });
+});
+
+/**
+ * ★★ E59：**本分节不许自己挑机器。**
+ *
+ * 它只作为「机器详情页」上的一块存在，页头就是选择器。留一个能指向别台机器的入口
+ * = 在标着 A 的页面上对 B 动手（本分节是只读诊断，所以后果轻；但 `mcp-section` /
+ * `accounts-section` 那两块是**会写**的）。用户 2026-08-01 拍板「删掉」而不是「藏起来」。
+ */
+describe("E59：origin 只来自页上下文", () => {
+  it("★★ DOM 里没有任何可选机器的控件", () => {
+    const s = new CcBusHooksSection();
+    document.body.appendChild(s.element);
+    expect(s.element.querySelector("select.cc-bus-hooks-origin")).toBeNull();
+    // 也不许换个形状偷偷留着（一排按钮之类）
+    const originish = [...s.element.querySelectorAll("button")].filter((b) =>
+      /^(本机|aya|nano)$/.test((b.textContent ?? "").trim()),
+    );
+    expect(originish).toHaveLength(0);
+  });
+
+  it("★★ 没有页上下文（本机页 / 未选定）→「检查远端」不可点，而不是默默挑一台", () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya", "nano"];
+      if (cmd === "diagnose_local_cc_bus_hooks")
+        return rep({ kind: "not-installed" }, { kind: "not-installed" });
+      throw new Error(cmd);
+    });
+    const s = new CcBusHooksSection();
+    document.body.appendChild(s.element);
+    return flush().then(() => {
+      const btn = s.element.querySelector<HTMLButtonElement>(".cc-bus-hooks-check-remote")!;
+      expect(btn.disabled, "没有页上下文却还能发远端诊断 —— 那它发给谁？").toBe(true);
+      expect(s.element.textContent).toContain("本机页");
+    });
+  });
+
+  it("★ 跟着页上下文走：store 切到 nano，显示与诊断目标都跟着变", async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya", "nano"];
+      if (cmd === "diagnose_local_cc_bus_hooks")
+        return rep({ kind: "not-installed" }, { kind: "not-installed" });
+      if (cmd === "diagnose_remote_cc_bus_hooks")
+        return rep({ kind: "not-installed" }, { kind: "not-installed" });
+      throw new Error(cmd);
+    });
+    setCurrentMachine("aya");
+    const s = new CcBusHooksSection();
+    document.body.appendChild(s.element);
+    await flush();
+    expect(s.element.querySelector(".cc-bus-hooks-origin")?.textContent).toBe("aya");
+
+    setCurrentMachine("nano");
+    expect(s.element.querySelector(".cc-bus-hooks-origin")?.textContent).toBe("nano");
+    s.element.querySelector<HTMLButtonElement>(".cc-bus-hooks-check-remote")!.click();
+    await flush();
+    const calls = mockInvoke.mock.calls.filter((c) => c[0] === "diagnose_remote_cc_bus_hooks");
+    expect(calls.at(-1)?.[1]).toEqual({ origin: "nano" });
   });
 });

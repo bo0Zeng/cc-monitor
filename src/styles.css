@@ -1055,14 +1055,11 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   color: var(--text-2);
   font-size: var(--font-size-small);
 }
-.mcp-machine-btn {
-  padding: 2px 10px;
-  font-size: var(--font-size-small);
-}
-.mcp-machine-btn.active {
+/* E59：`.mcp-machine-btn` 两条已删 —— 那排「机器：本机 / aya / nano」按钮不再存在
+ * （本分节只活在机器详情页上，页头就是选择器）。现在这里只剩一个只读的机器名。 */
+.mcp-machine-name {
   color: var(--text);
-  border-color: var(--accent, #7aa2f7);
-  background: var(--overlay-hover);
+  font-size: var(--font-size-small);
 }
 .mcp-scope {
   display: flex;
@@ -6100,17 +6097,7 @@ body.settings-window-mode .grid-monitor-trigger {
   color: var(--text-2);
   flex: none;
 }
-.accounts-origin-select {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 260px;
-  padding: 3px 6px;
-  font-size: var(--font-size-small);
-  color: var(--text);
-  background: var(--bg-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 5px;
-}
+/* E59：`.accounts-origin-select` 已删 —— 账号分节不再自己挑机器（origin 只来自共用 store）。 */
 .accounts-refresh {
   flex: none;
   padding: 3px 10px;

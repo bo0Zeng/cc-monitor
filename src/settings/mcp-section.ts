@@ -7,7 +7,7 @@
  * 设置窗独立于主窗口、拿不到活跃会话 cwd → 用项目目录输入框（datalist 从 `list_mcp_project_dirs` 自动补全「用过的项目」）。
  * 纯函数（groupByScope / serverSummary / parseServerConfig）零 import，node 可测。
  */
-import { setCurrentMachine, subscribeMachine } from "./machine-context";
+import { subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
 
@@ -137,7 +137,7 @@ export class McpSection {
     // 不会因为往返而多打一次 ssh。
     subscribeMachine((origin) => void this.selectMachine(origin));
     void this.loadProjectCandidates();
-    void this.loadMachines(); // F87b③：有远端则显机器选择行
+    this.loadMachines(); // E59：只渲染「在看哪台」那一行（选择按钮已删）
     // 业务二审 gap#6：打开即读（空 dir 也先显 user/local scope），不再是看似坏掉的空框。
     void this.reload();
   }
@@ -204,39 +204,35 @@ export class McpSection {
     return this.dirInput.value.trim();
   }
 
-  /** F87b③：读**后端 canonical 远端 origin**（已去重/空 label 回退 host/丢不完整主机——与
-   *  `read_remote_mcp_servers` 解析口径一致，前端不再自行从原始 config 重推）。有则渲染机器选择行。
-   *  无远端 → 不显（本机用户零变化）。 */
-  private async loadMachines(): Promise<void> {
-    let origins: string[] = [];
-    try {
-      // **别只防 reject**：`invoke` 也可能 resolve 成 `undefined`（后端返回类型变了 / 命令没注册），
-      // 那样下面的 `.length` 直接抛。这是本仓已记录为真 bug 的形状，
-      // `cc-bus-section.ts:199` 与 `cc-bus-hooks-section.ts` 早就这么防了——**这里漏了**（T07 审计④）。
-      const got = await commands.list_remote_mcp_origins();
-      if (Array.isArray(got)) origins = got;
-    } catch {
-      /* 拿不到就当没有远端（本机模式），不影响本地功能 */
-    }
+  /**
+   * 渲染「你在看哪台机器」那一行。
+   *
+   * **E59 之前它叫「读远端清单并渲染机器选择按钮」** —— 选择按钮删掉之后，
+   * 远端清单在这里就没有消费者了（`origin` 只来自共用 store，本分节不再自己挑）。
+   * 所以那次 `list_remote_mcp_origins` 调用**一并删掉**：留着就是一次没人用的 IPC，
+   * 而它是要连 SSH 的。
+   */
+  private loadMachines(): void {
+    // E59：**这一整行「机器：本机 / aya / nano」按钮已删。**
+    //
+    // 本分节只作为机器详情页上的一块存在（`panel.ts` 的 `perMachineBlocks`，唯一构造点），
+    // 页头已经说了在看哪台。留着这排按钮 = 两层上下文，而写动作按分节自己的 `this.origin`
+    // 定目标（`:699` 的 `const startOrigin = this.origin`）⇒ **在标着 A 的页面上把 MCP
+    // 服务器写进 B**，`router.activeId` 仍是 A、界面上看不出来。
+    //
+    // 「删」而不是「藏」是用户 2026-08-01 拍板的。⇒ `origin` 只能来自共用 store。
+    // 行本身留着（`machineRow`）当「你在看哪台」的只读显示 —— 本分节**本机与远端都有意义**，
+    // 两种模式下的读写面不同（本机可写 user/local/项目；远端只读 user scope + 可写项目），
+    // 所以还是得让用户看见现在是哪一种。
     this.machineRow.replaceChildren();
-    if (origins.length === 0) return; // 无远端 → 不显选择行
     const label = document.createElement("span");
     label.className = "mcp-machine-label";
     label.textContent = "机器：";
     this.machineRow.appendChild(label);
-    const mk = (origin: string | null, text: string): void => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "settings-btn settings-btn-secondary mcp-machine-btn";
-      btn.textContent = text;
-      btn.dataset.origin = origin ?? ""; // 身份存 dataset（本机=""），active 高亮/切换不靠脆弱的 textContent
-      if (origin === this.origin) btn.classList.add("active");
-      // S4a：写进共用 store；实际切换由订阅统一处理（单一路径，不双写）。
-      btn.addEventListener("click", () => setCurrentMachine(origin));
-      this.machineRow.appendChild(btn);
-    };
-    mk(null, "本机");
-    for (const o of origins) mk(o, o);
+    const name = document.createElement("span");
+    name.className = "mcp-machine-name";
+    name.textContent = this.origin ?? "本机";
+    this.machineRow.appendChild(name);
   }
 
   /** F87b③/F89a：切机器。本机 → 本地读写；远端 → **项目目录行也显**（F89a：填项目=远端项目 .mcp.json 可写；
@@ -247,12 +243,9 @@ export class McpSection {
     this.origin = origin;
     this.dirRow.style.display = ""; // F89a：远端也显目录行（可填项目管理远端 .mcp.json）
     this.dirInput.value = ""; // 本机/远端项目路径不通用，切机器清空
-    const key = origin ?? "";
-    for (const btn of this.machineRow.querySelectorAll<HTMLElement>(
-      ".mcp-machine-btn",
-    )) {
-      btn.classList.toggle("active", (btn.dataset.origin ?? "") === key); // 靠 dataset 身份，非 textContent
-    }
+    // E59：按钮没了，改成更新那行只读显示。
+    const name = this.machineRow.querySelector<HTMLElement>(".mcp-machine-name");
+    if (name) name.textContent = origin ?? "本机";
     if (origin === null) void this.loadProjectCandidates();
     else void this.loadRemoteProjectCandidates(origin);
     await this.refresh();
