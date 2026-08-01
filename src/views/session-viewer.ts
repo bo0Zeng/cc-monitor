@@ -27,9 +27,8 @@ import {
   type StreamSink,
 } from "../render-stream-record";
 import { UnrenderedRanges } from "../render-window";
-import { showActionFailureToast } from "../error-toast";
 import { attachBranchButton } from "../branch-button";
-import { collectForkSource, runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来
+import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
 import type { BranchResult } from "../generated/BranchResult";
 
 /**
@@ -359,22 +358,14 @@ export class SessionViewer {
     cwd: string | null,
     origin: string | null,
   ): Promise<void> {
-    // ★ 查的是**源会话**的事实（活没活 / 哪个账号 / 哪个 tmux），不是新会话的 ——
-    //   新会话此刻还没起，查它必定是"查不到"，那样每次分叉都会白弹一次窗。
-    const facts = await collectForkSource(origin, sourceSessionId, cwd);
-    const outcome = await runForkFlow({
+    // E78：与实时 tab 那条走**同一句** —— 查事实、起会话、反馈全在 `runForkFlow` 里。
+    // `sourceSessionId` 是**源**会话的（新会话此刻还没起，查它必定"查不到"、白弹一次窗）。
+    await runForkFlow({
       origin,
       newSessionId: res.sessionId,
-      source: facts.source,
-      sourceTmuxName: facts.sourceTmuxName,
-      takenTmuxNames: facts.takenTmuxNames,
+      sourceSessionId,
+      cwd,
     });
-    if (outcome !== "started") return;
-    showActionFailureToast(
-      "✓ 已从这一轮分叉并起新会话",
-      `新会话 ${res.sessionId.slice(0, 8)} 正在起来——原会话不受影响，两条都活着。`,
-      { level: "info", durationMs: 8000 },
-    );
   }
 
   // G6：原来这里有个 `resumeBranch`（分叉后弹 toast、用户再点一下才 resume）。

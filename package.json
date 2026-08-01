@@ -31,7 +31,7 @@
     "test:launch-dimensions": "tsx src/launch-dimensions.test.ts",
     "test:launch-render-cli": "tsx src/launch-render-cli.test.ts",
     "test:dom": "vitest run",
-    "lint": "eslint src",
+    "lint": "eslint .",
     "lint:css": "stylelint \"src/**/*.css\"",
     "coverage": "vitest run --coverage",
     "test": "npm run test:branching && npm run test:diff && npm run test:api-error && npm run test:bash && npm run test:remote-health && npm run test:remote-launch && npm run test:format && npm run test:history-cache && npm run test:history-prefs && npm run test:history-actions && npm run test:usage-pivot && npm run test:pricing && npm run test:session-backend && npm run test:panorama-session-files && npm run test:launch-dimensions && npm run test:launch-render-cli && npm run test:dom",

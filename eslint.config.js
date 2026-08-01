@@ -49,4 +49,43 @@ export default tseslint.config(
       globals: { ...globals.node },
     },
   },
+  {
+    // E83（2026-08-01）：`e2e/` 下那些 `.mjs`（wdio 配置、restart-shims、spec）**此前从没被 lint 过**。
+    //
+    // 病灶不是「它们脏」，是**作用面与配置意图对不上**：本文件的 `ignores` 明明是**仓级**的
+    // （逐条列出 dist / node_modules / src-tauri / remote-daemon-proto / coverage），
+    // 而 `npm run lint` 只跑 `eslint src` ⇒ 那份仓级意图从来没被兑现，
+    // `npx eslint .` 是 46 个告警、比 `eslint src` 的 7 个多出 39 个，
+    // **全在这几个文件里、全是 `no-undef: process/console/it`（纯缺一段 globals）**。
+    // 也就是说：39 个告警永远不会被任何人看到，而它们一个真问题都不是。
+    //
+    // ⇒ 补上 globals（node + wdio 的 mocha 风格全局），并把 `npm run lint` 放开到 `eslint .`。
+    // 补完实测：全仓 7 个，与 `eslint src` 的基线**一致** —— 基线数字不变，覆盖面变大。
+    files: ["e2e/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.mocha, // wdio 的 describe/it/before（`e2e/tier2/**`）
+        // `browser.execute(() => …)` 的**函数体在页面里跑**，所以 DOM 全局在这里是真实存在的
+        // （不是漏声明）。wdio 自己注入的 `browser`/`$`/`$$` 同理。
+        ...globals.browser,
+        browser: "readonly",
+        $: "readonly",
+        $$: "readonly",
+      },
+    },
+    rules: {
+      // 与 `src/**` 同一条 `_`-前缀「有意不用」约定 —— 那条规则原本只挂在 `src/**/*.ts` 上，
+      // 于是 shim 里刻意留的 `(_body, _opts)` 占位在这边会被判违规。约定该跟着仓走，不跟着目录走。
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          destructuredArrayIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
 );

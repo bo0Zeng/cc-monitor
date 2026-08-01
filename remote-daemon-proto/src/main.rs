@@ -20,6 +20,7 @@
 //!   source; keeping it real is the point.
 
 mod accounts_query;
+mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 #[cfg(test)]，生产构建为空）
 mod codex;
 mod fork_write; // G2：唯一被允许写文件系统的模块
 mod history_query;

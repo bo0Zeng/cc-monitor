@@ -112,12 +112,20 @@ jobs:
       - run: npx tsc --noEmit
 
       # F08b：ESLint（flat config + typescript-eslint）。**顾问式/不阻断**——同 Rust job 的
-      # clippy 仅报告不强制：既有告警作基线（7 项，见 features/08）、不追一次清零。`|| true`
+      # clippy 仅报告不强制：既有告警作基线（**7 项**）、不追一次清零。`|| true`
       # 让告警可见但不红 CI；新代码作者本地 `npm run lint` 自查。
+      #
+      # **E83（2026-08-01）：作用面从 `eslint src` 放开到 `eslint .`。** 本仓 `eslint.config.js`
+      # 的 `ignores` 一直是**仓级**写法（逐条列 dist / node_modules / src-tauri / …），
+      # 而脚本只跑 `src` ⇒ 那份意图从没兑现，`e2e/**/*.mjs` 里 39 个 `no-undef` 永远没人看得到，
+      # 且它们一个真问题都不是（纯缺一段 node/browser globals）。补完 globals 后
+      # **全仓实测仍是 7 项**，基线数字不变、覆盖面变大。
       - name: eslint (advisory, baseline)
         run: npm run lint || true
 
-      # F08b：Stylelint（styles.css 单文件）。同上顾问式（57 项基线，不 --fix 避免全量 churn）。
+      # F08b：Stylelint（styles.css 单文件）。同上顾问式，**50 项基线**（E82 订正：
+      # 这里原写「57 项」，实测 50 —— 基线数字写下之后没人回来核，属本轮点名的那类病）。
+      # 不 --fix 避免全量 churn。
       - name: stylelint (advisory, baseline)
         run: npm run lint:css || true
 
@@ -254,9 +262,12 @@ jobs:
             src-tauri/vendor/cc-acct-iso/scripts/test/run-tests.sh)
           N=$(printf '%s\n' "$FILES" | grep -c .)
           echo "shellcheck 覆盖 $N 个文件"
-          # 地板 = 2026-07-30 实测值 37（e2e 19 + cc-bus 13 + ccm 1 + vendored 4）
-          # G-A 新增 e2e/assert-pass-floor.sh ⇒ 36 → 37。
-          [ "$N" -ge 37 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 37）"; exit 1; }
+          # 地板：2026-07-30 实测 37（e2e 19 + cc-bus 13 + ccm 1 + vendored 4）；
+          # **2026-08-01 E82 棘到 39** —— 实测同一表达式已是 39（e2e 21：G2 加了
+          # `daemon-fork-session.sh` 与 `ccm-rbind-title.sh`，地板没跟 ⇒ 那段时间可以少扫
+          # 2 个文件而不报警）。**地板的意义就是灵敏度**：写下之后不回来棘，等于慢慢把它交出去
+          # （同 E81 的覆盖率棘轮）。棘的时候把**实测构成**一起写下，别只改数字。
+          [ "$N" -ge 39 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 39）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
@@ -316,15 +327,18 @@ jobs:
       - name: exec-bit guard (shared/** shebang files must be 100755 in git)
         run: bash e2e/exec-bit-guard.sh
 
-  # R00③：**真机行为验收进 CI**。这 **8** 套（2026-07-29 Phase G 实测**共 152 条**断言：
-  # tmux-target 26 · ccm-cli 44 · ccm-print-parity 12 · ccm-acceptance 15 · ccm-pretrust 13 ·
-  # cc-spawn-uplift 21 · tmux-guarded 14 · usage-probe 7）此前既不在 CI 也不在 `npm test`，
+  # R00③：**真机行为验收进 CI**。**E82（2026-08-01）订正这段散文里的数**：地板值本身一直是对的
+  # （下面有逐个 grep 的反向自检兜着），只是这几行注释没跟 —— 实际调用行是
+  # `ccm-acceptance 19` / `usage-probe 9`，不是 15 / 7；套数也从 8 长到了 15（跨两个 job）。
+  # 原文（2026-07-29 实测**共 152 条**断言：tmux-target 26 · ccm-cli 44 · ccm-print-parity 12 ·
+  # ccm-acceptance 15 · ccm-pretrust 13 · cc-spawn-uplift 21 · tmux-guarded 14 · usage-probe 7）
+  # 此前既不在 CI 也不在 `npm test`，
   # 只靠开发者本地手动跑——而它们恰恰是本仓唯一能回答「这条命令在 tmux 上到底干了什么」的门禁
   # （§5.2 实证：cargo test 369 + npm test 全绿 + tsc 0，仍放行过一个让 send-keys 完全失效的改动，
   # 因为那些门禁只断言「我写出了打算写的字符串」）。
   #
   # 上面 e2e-smoke 的注释说真 e2e 需要 GUI runner + 5min app 构建——**那说的是 DOM e2e**
-  # （Xvfb + tauri dev 全量 app + xdotool）。下面这 7 套只需要 tmux：全部在隔离 `-L` socket 上
+  # （Xvfb + tauri dev 全量 app + xdotool）。下面这一批只需要 tmux：全部在隔离 `-L` socket 上
   # 起自己的 tmux server，用假 launcher（`PROBE`/`CCMPROBE` 这类纯字母词）而**不是真 claude**
   # （真 claude 会重绘/清屏，把打进去的内容盖掉，让「兄弟会话未被污染」的 grep 假 PASS）。
   # 写用户配置的两套（ccm-acceptance / ccm-pretrust）经 CCM_CLAUDEJSON / CCM_CODEXTOML

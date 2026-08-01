@@ -40,12 +40,16 @@ import { runRemoteResume, runRemoteResumeTmux } from "./remote-launch-run";
 export interface ForkFlowInput {
   /** 远端 origin；`null` = 本机。 */
   origin: string | null;
-  /** 刚分叉出来的新会话 sid。 */
+  /** 刚分叉出来的**新**会话 sid。 */
   newSessionId: string;
-  /** 源会话的事实（由调用方查好，见模块头注「为什么不 import tabs.ts」）。 */
-  source: ForkLaunchInput;
-  sourceTmuxName?: string | null;
-  takenTmuxNames?: readonly string[];
+  /**
+   * **源**会话 sid。查事实查的是它 —— 新会话此刻还没起，查它必定「查不到」，
+   * 那样每次分叉都会白弹一次窗。两个调用点各有各的拿法（实时 tab 手里就有 `tab.sessionId`；
+   * 历史查看器只有路径，而历史会话的文件名就是 sid），**那不是重复，是两种不同的输入**。
+   */
+  sourceSessionId: string;
+  /** 源会话的工作目录（新会话的起始目录）。 */
+  cwd: string | null;
 }
 
 /** 一次分叉要用到的「源会话事实」，喂给 `runForkFlow`。 */
@@ -178,21 +182,42 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
 }
 
 /**
- * 起那条刚分叉出来的会话。失败**必须可见** —— 编排器里任何一步抛出来都变成 toast，
- * 绝不静默（`runRemoteResume*` 自己那两条失败路径已经各带 toast + 剪贴板回退）。
+ * **分叉之后的全部事情**：查源会话事实 → 编排（该问就问一次）→ 起 → 反馈。
+ *
+ * # E78：为什么连成功 toast 都收进来
+ *
+ * 此前 `collectForkSource` → `runForkFlow` → 成功 toast 这三步由**两个调用点各写一遍**
+ * （约 15 行，连文案都是逐字重复的双写点、无守卫）。Phase G 审计点名：本模块自称
+ * 「唯一生产接线」而真正共享的只有中段 —— **名不副实的抽象比没有抽象更坏**，
+ * 因为它让人以为改一处就够了。
+ *
+ * ⇒ 现在调用点只剩「我是谁 + 分叉结果」，`⑂` 在两处的行为**在结构上**不可能分裂。
+ *
+ * 失败**必须可见**：编排里任何一步抛出来都变成 toast，绝不静默
+ * （`runRemoteResume*` 自己那两条失败路径已经各带 toast + 剪贴板回退，所以那边只回 false）。
  */
 export async function runForkFlow(input: ForkFlowInput): Promise<ForkStartOutcome> {
   try {
-    return await startForkedSession(
+    const facts = await collectForkSource(input.origin, input.sourceSessionId, input.cwd);
+    const outcome = await startForkedSession(
       {
         newSessionId: input.newSessionId,
         origin: input.origin,
-        source: input.source,
-        sourceTmuxName: input.sourceTmuxName,
-        takenTmuxNames: input.takenTmuxNames,
+        source: facts.source,
+        sourceTmuxName: facts.sourceTmuxName,
+        takenTmuxNames: facts.takenTmuxNames,
       },
       productionDeps(input),
     );
+    if (outcome === "started") {
+      showActionFailureToast(
+        "✓ 已从这一轮分叉并起新会话",
+        `新会话 ${input.newSessionId.slice(0, 8)} 正在起来——原会话不受影响，两条都活着。`,
+        { level: "info", durationMs: 8000 },
+      );
+    }
+    // `cancelled`（用户自己收手）与 `failed`（已经弹过失败 toast）都不再叠一个反馈。
+    return outcome;
   } catch (err) {
     // 抛出来的（本机 sid 校验失败、IPC reject…）在这里变成 toast；返回 `failed` 而不是
     // `cancelled` —— 调用方据此区分「出错了」与「用户自己收手」。
