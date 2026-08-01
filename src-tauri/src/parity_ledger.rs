@@ -279,6 +279,15 @@ mod tests {
             "accounts.session-accounts",
             Side::Remote,
         ),
+        // E79：本机版落地 ⇒ `accounts.session-accounts` 从 ParityDebt 变成两侧都有。
+        // **平台限制不等于欠账**：Linux 有（读 /proc/<pid>/environ），Windows 上后端
+        // 明说 `available:false` + 原因 —— 那是「能力在这台机器上答不出」，
+        // 不是「这条能力我们没做」。对账表问的是后者。
+        (
+            "list_local_session_accounts",
+            "accounts.session-accounts",
+            Side::Local,
+        ),
         ("check_account_trust", "accounts.trust", Side::Remote),
         ("account_usage", "usage.per-account", Side::Remote),
         ("deploy_remote_acct_iso", "acct-iso.deploy", Side::Remote),
@@ -301,7 +310,6 @@ mod tests {
 
     /// **不对称能力的理由**。键集合必须**恰好等于**从 `LEDGER` 算出来的不对称集合。
     const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
-        ("accounts.session-accounts", Asym::ParityDebt, "同 accounts.list：按会话查账号只有远端有。归 L3。"),
         ("accounts.trust", Asym::ParityDebt, "同 accounts.list：预信任检查只有远端有。归 L3。"),
         ("acct-iso.check", Asym::ParityDebt, "本机同样需要「这台装没装 cc-acct-iso」的检测（切号要靠它），今天只能查远端。归 L3。"),
         ("acct-iso.deploy", Asym::NaturallyAsymmetric, "vendored 副本要**传到**远端才能用；本地就在本机、不存在传输这一步。这条不对称是传输本身造成的，不是能力缺失。"),
@@ -535,20 +543,20 @@ mod tests {
         // 反向自检：一条都没检到 = 签名采集坏了。**等号而不是 `>=`**（T04 审计重要 5：
         // 写 `>= N` 恰好容忍一次静默降级）。
         assert_eq!(
-            checked, 67,
-            "检到 {checked} 条 Local/Both 命令（真实应为 67 = Local 46 + Both 21）\
-             ——改 LEDGER 就要来确认这个数"
+            checked, 68,
+            "检到 {checked} 条 Local/Both 命令（真实应为 68 = Local 47 + Both 21；\
+             E79 的 `list_local_session_accounts` 是那个 +1）——改 LEDGER 就要来确认这个数"
         );
     }
 
     /// ★ 断言 4：表的形状钉死。改 `LEDGER` 就要来改这几个数。
     #[test]
     fn ledger_shape_is_pinned() {
-        assert_eq!(LEDGER.len(), 122, "命令总数变了"); // G6 +1
+        assert_eq!(LEDGER.len(), 123, "命令总数变了"); // G6 +1；E79 +1
         let sides = capability_sides();
         assert_eq!(sides.len(), 50, "能力总数变了");
         let asym = asymmetric_capabilities();
-        assert_eq!(asym.len(), 19, "不对称能力数变了"); // G6：history.branch 补平 -1
+        assert_eq!(asym.len(), 18, "不对称能力数变了"); // G6 -1；E79 accounts.session-accounts 补平 -1
         let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
         for (_, k, _) in ASYMMETRY_REASONS {
             *kinds
@@ -560,7 +568,7 @@ mod tests {
                 .or_default() += 1;
         }
         assert_eq!(kinds.get("natural"), Some(&7), "天然不对称条数变了");
-        assert_eq!(kinds.get("debt"), Some(&10), "平价欠账条数变了"); // G6：history.branch 还清 -1
+        assert_eq!(kinds.get("debt"), Some(&9), "平价欠账条数变了"); // G6 -1；E79 -1
         assert_eq!(kinds.get("undecided"), Some(&2), "未裁定条数变了");
     }
 }

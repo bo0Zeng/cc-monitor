@@ -107,10 +107,10 @@ function tsDerivingSources(): string[] {
 const TS_DERIVING_SOURCES = tsDerivingSources();
 
 describe("C01 边界生成物", () => {
-  it("派生 ts_rs::TS 的 Rust 源文件恰好 26 个（自动发现的范围自检）", () => {
+  it("派生 ts_rs::TS 的 Rust 源文件恰好 27 个（自动发现的范围自检）", () => {
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(26); // G6：tmux.rs 的 TmuxSession 加了导出
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(27); // G6 tmux.rs +1；E79 accounts.rs +1
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -172,6 +172,8 @@ describe("C01 边界生成物", () => {
       "RestartHint.ts", // C04d 批4（只有 unit variant 的外部标记枚举 → 字面量联合）
       "SearchIndexStatus.ts", // C04d 批6c
       "SearchResponse.ts", // C04d 批6c
+      "SessionAccount.ts",
+      "SessionAccountsResult.ts",
       "SessionActivityPayload.ts", // C02
       "SessionEndedPayload.ts", //    C02
       "SessionHits.ts", // C04d 批6c

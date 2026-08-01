@@ -96,6 +96,7 @@ import type { SearchResponse } from "../generated/SearchResponse";
 import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { McpServerEntry } from "../generated/McpServerEntry";
 import type { RestartHint } from "../generated/RestartHint";
+import type { SessionAccountsResult } from "../generated/SessionAccountsResult";
 import type { SessionUsageRow } from "../generated/SessionUsageRow";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
 import type { TaskEntry } from "../generated/TaskEntry";
@@ -553,6 +554,14 @@ export const commands = {
    * G6：**远端**分叉——经 ssh 让 daemon 在那台机器上分叉。返回体与本地那条同形（桶③）。
    * 参数刻意收 `sourceSessionId` 而**不是**路径：daemon 只认 sid（少一个可构造的路径入参）。
    */
+  /**
+   * E79：**本机**版「某会话现在跑在哪个账号下」——远端 `--session-accounts` 的对侧。
+   * **Linux 才有**（要读 `/proc/<pid>/environ`）；别的平台返回 `available:false` + 原因，
+   * 不是静默空表。返回值字段被真消费 ⇒ 生成物（桶③）。
+   */
+  list_local_session_accounts: () =>
+    invoke<SessionAccountsResult>("list_local_session_accounts"),
+
   create_remote_branch_session: (args: {
     origin: string;
     sourceSessionId: string;

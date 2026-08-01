@@ -135,3 +135,37 @@ describe("E78：两个调用点不许各自再拼一遍", () => {
     }
   });
 });
+
+/**
+ * E79：**本机侧现在有对侧探针了。**
+ *
+ * 此前 `collectForkSource(null, …)` 硬编码「查不出来」，于是分叉一个**正跑着的**本机会话
+ * 也要白弹一次追问小窗 —— 而那个 pidfile 就在本机、monitor 明明够得着。
+ *
+ * 这一组测的是 `deriveForkSource` 在「只有账号那一半、没有 tmux 那一半」时的行为，
+ * 也就是本机那条路喂给它的形状。
+ */
+describe("E79：本机只有账号那一半时的推断", () => {
+  it("★ 账号查到了（进程活着）→ 账号已知，而 tmux 那一格不许被顺势推成 known", () => {
+    const f = deriveForkSource([A("s1", "/acct/z")], null, "s1", "/p");
+    expect(f.source.liveConfigDir).toBe("/acct/z");
+    expect(f.source.sourceIsLive, "pidfile 说它活着").toBe(true);
+    // tmux 清单是 null（本机根本不查）⇒ 名字为 null。本机那条路会把 tmux 这一格摘掉，
+    // 所以这里只钉「没有凭空多出一个 tmux 名」。
+    expect(f.sourceTmuxName).toBeNull();
+  });
+
+  it("★★ 平台答不出（Windows：`available:false`）→ 落「不知道」，**不是**「账号 0」", () => {
+    // 本机那条路在 available:false 时喂空表 —— 与「查了但这个 sid 不在表里」同形，
+    // 结论都是 unknown。**关键是不能变成 `null`（= 确认账号 0）**。
+    const f = deriveForkSource([], null, "s1", "/p");
+    expect(f.source.sourceIsLive).toBe(false);
+    expect(f.source.liveConfigDir, "落 null 就是宣称「确认账号 0」").toBeUndefined();
+  });
+
+  it("★ 本机会话确认是账号 0（pidfile 里 configDir 缺席）→ 这次才是真的 null", () => {
+    const f = deriveForkSource([A("s1", null)], null, "s1", "/p");
+    expect(f.source.sourceIsLive).toBe(true);
+    expect(f.source.liveConfigDir).toBeNull();
+  });
+});

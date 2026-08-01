@@ -93,7 +93,12 @@ pub(crate) fn degraded_notice(meta: &AccountsMeta, accounts: &[RemoteAccount]) -
 }
 
 /// `--session-accounts` 的一行：某个**正在跑**的会话属于哪个账号。
+///
+/// E79：加 ts-rs 导出 —— 前端此前手抄了一份同名 interface（`src/accounts.ts`），
+/// 而本机版查询（`list_local_session_accounts`）要经包装层返回它，正好把手抄那份换掉。
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionAccount {
     pub pid: u32,
@@ -110,6 +115,8 @@ pub struct SessionAccount {
 }
 
 #[derive(serde::Serialize, Debug, Clone, Default)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionAccountsResult {
     pub available: bool,
