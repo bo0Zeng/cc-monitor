@@ -182,7 +182,7 @@ describe("C04a 命令名钉死", () => {
     expect(onlyRegistered, "这些注册了却找不到声明 ⇒ 注册表里有死名字").toEqual([]);
 
     // 计数自检用等号：加/删命令必须红一次，逼人来更新这个数与包装层
-    expect(declared.size, `期望恰好 121 个命令，实得 ${declared.size}`).toBe(121);
+    expect(declared.size, `期望恰好 122 个命令，实得 ${declared.size}`).toBe(122);
   });
 
   it("包装层：键名 ⊆ Rust 集，**且每个条目的键名 == 它传给 invoke 的字面量**", () => {
@@ -212,7 +212,7 @@ describe("C04a 命令名钉死", () => {
     }
 
     // 计数自检：C04d 每迁一个模块进来，这个数要跟着涨（红一次提醒更新）
-    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(110); // Z05 +1
+    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(112); // Z05 +1；G6 远端分叉 +1、list_remote_tmux 进包装层 +1
   });
 
   // 标题里的数原先写着 112，而断言早就是 119 了（Z05 起 120；local-as-remote L3a 起 121）——**标题也是记录**，
@@ -231,13 +231,13 @@ describe("C04a 命令名钉死", () => {
     // **C04d 批 6a：112 → 114。** 那两个 `stream_read_*` 此前藏在一个
     // `origin ? "A" : "B"` 三元里（C04a 把它记成「7 个命令 TS 静态看不见」的盲区之一），
     // 改成两次静态调用后**它们成了字面量** ⇒ 这个数会随盲区收缩而涨，最终应到 **全部**。
-    // ★★ **C04d 批 6c 到 119 —— 这是里程碑：命令全部静态可见。**（Z05 +1 ⇒ 120；L3a +1 ⇒ 121）
+    // ★★ **C04d 批 6c 到 119 —— 这是里程碑：命令全部静态可见。**（Z05 +1 ⇒ 120；L3a +1 ⇒ 121；G6 远端分叉 +1 ⇒ 122）
     // C04a 立本文件时记了「7 个命令 TS 静态看不见」这个已知盲区，并据此**刻意只做单向断言**。
     // 批 6a/6b/6c 逐个查实后发现那 7 个**从来不是任意字符串**：
     // 两处是 `origin ? "A" : "B"` 的两字面量三元（`session-viewer.ts` / `views/history.ts`）、
     // 一处是 `doWrite(cmd, args)` 转发 helper 而调用方传的全是字面量（`sftp/panel.ts`）。
     // 改成静态调用 / thunk 后**盲区归零** ⇒ 下面 `DYNAMIC_ONLY` 现在是空集。
-    expect(used.size, `期望恰好 121 个字面量命令名，实得 ${used.size}`).toBe(121);
+    expect(used.size, `期望恰好 122 个字面量命令名，实得 ${used.size}`).toBe(122);
 
     // **不断言反向**（Rust ⊆ TS），但把盲区本身钉死：动态名集变了必须红一次。
     const rustOnly = [...rust].filter((c) => !used.has(c)).sort();

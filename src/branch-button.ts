@@ -50,8 +50,12 @@ export function isOffMainCard(el: Element): boolean {
 export interface BranchButtonOptions {
   /** 分叉点消息的 uuid。 */
   uuid: string;
-  /** 源会话 jsonl 的绝对路径。 */
+  /** 源会话 jsonl 的绝对路径。**只有本机那条路用它**（远端的路径 monitor 够不着）。 */
   jsonlPath: string;
+  /** 源会话 sid。**远端那条路用它** —— daemon 只认 sid 不认路径（见 `remote_branch.rs` 头注）。 */
+  sourceSessionId: string;
+  /** 远端 origin；`null`/缺省 = 本机。G6 起远端也能分叉。 */
+  origin?: string | null;
   /** 新会话的工作目录（起会话用）。 */
   cwd?: string;
   /** 成功之后干什么（弹 toast / 起会话）——由调用方决定，本组件不管起会话。 */
@@ -91,10 +95,19 @@ export function attachBranchButton(
     btn.dataset.busy = "1";
     void (async () => {
       try {
-        const res = await commands.create_branch_session({
-          sourceJsonlPath: opts.jsonlPath,
-          messageUuid: opts.uuid,
-        });
+        // G6：本机与远端是**两条不同的 IPC**，不是同一条命令加个 origin 参数 ——
+        // 本机收路径（monitor 自己读写文件），远端收 sid（daemon 自己在那台机器上干活，
+        // 刻意不接受路径入参以少一条路径穿越面）。签名不同，所以命令也不同。
+        const res = opts.origin
+          ? await commands.create_remote_branch_session({
+              origin: opts.origin,
+              sourceSessionId: opts.sourceSessionId,
+              messageUuid: opts.uuid,
+            })
+          : await commands.create_branch_session({
+              sourceJsonlPath: opts.jsonlPath,
+              messageUuid: opts.uuid,
+            });
         btn.textContent = "✓";
         window.setTimeout(() => (btn.textContent = "⑂"), 2000);
         opts.onForked(res);

@@ -8,6 +8,8 @@ import {
 } from "./cards";
 import { BranchFolder } from "./branch-fold";
 import { attachBranchButton } from "./branch-button"; // G4：实时会话的分叉入口
+import { collectForkSource, runForkFlow } from "./fork-flow"; // G6：分叉完把新会话起起来
+import type { BranchResult } from "./generated/BranchResult";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
 import {
@@ -45,7 +47,6 @@ import {
   runRemoteAttach,
 } from "./remote-launch-run";
 import { pickFreshTmuxName } from "./remote-launch";
-import { AGENT_PROFILE } from "./agent-profile";
 import { collectEditedFiles } from "./panorama/session-files";
 import { openPanePreview } from "./views/pane-preview";
 import { turnEndNotifier } from "./turn-notify";
@@ -240,111 +241,27 @@ interface TabButtonRefs {
   cwdBtn: HTMLSpanElement;
 }
 
-/** F51：远端 tmux 会话(`list_remote_tmux` 后端返回,反查 attach 用)。 */
-interface TmuxSession {
-  name: string;
-  path: string;
-  command: string;
-  attached: boolean;
-  windows: number;
-  /** F74：`@ccm_sid` user option——此 tmux 当前所跑 CC 会话 sid（`__ccm_rbind` 写，随 /branch
-   * 漂移实时更新）。未设置（老会话 / 未装 wrapper）→ null。用它精确认「哪个 tmux 跑目标 sid」，
-   * 取代按 cwd 取第一个（同目录多 claude 会撞错会话）。 */
-  sid: string | null;
-}
+import {
+  findClaudeTmuxMatches,
+  findClaudeTmux,
+  findIdleTmux,
+  isCwdFallbackMatch,
+  claudeExited,
+  type TmuxSession,
+} from "./tmux-sessions";
+// G6：tmux↔sid 判据搬进叶子模块 `tmux-sessions.ts`（`fork-flow.ts` 也要用，而它被本文件
+// import ⇒ 留在这里会成环）。**原样 re-export**，既有 import 面零改动。
+export {
+  findClaudeTmuxMatches,
+  findClaudeTmux,
+  findIdleTmux,
+  isCwdFallbackMatch,
+  claudeExited,
+};
+export type { TmuxSession };
+
 /** tmux 反查缓存 TTL:菜单打开按需查,短缓存避免重复右键狂拉 ssh。 */
 const TMUX_CACHE_TTL_MS = 8000;
-/** F51：tmux 前台命令是否算 claude 会话。真机 tmux 多报 `claude`(调研 03 §2c 实测),
- * 但视启动路径也可能报解释器 `node`(claude 是 Node CLI)——两者都认,叠加 cwd 精确匹配
- * 收窄误配(D-正确性 Sug2:只认 claude 会在报 node 的环境静默失效)。 */
-function isClaudeTmuxCommand(cmd: string): boolean {
-  return AGENT_PROFILE.livenessProcessNames.has(cmd);
-}
-
-/**
- * F74：在 tmux 会话列表里定位「正跑目标 sid 的活 claude」。**优先 `@ccm_sid` 精确匹配**——
- * 同目录多个 claude tmux（原会话 + `/branch` 出来的分支…）只有 `@ccm_sid` 能分清哪个是目标
- * 会话，且不被漂移骗（`__ccm_rbind` 随 /branch 实时更新它）。
- *
- * 精确没命中时：**只有当整张列表没有任何会话带 `@ccm_sid`**（老 wrapper / 未装）才回退按
- * `path===cwd` 猜（向后兼容）。只要有会话带了 sid、却没一个等于目标 sid，就说明目标会话不在
- * 任何 tmux 里（已结束 / 已漂移到别的 sid）——此时**绝不**按 cwd 抓一个同目录的别的 claude
- * （那正是撞错会话的老 bug），宁可返 undefined（SS-5/SS-9：找不到就报「不在」，不静默换一个）。
- * 契约与铁律见 doc/INVARIANTS.md §30。
- */
-/**
- * F04（R10 根治）：`@ccm_sid` 精确命中该 sid 的**全部**活 claude 会话（不折叠成第一个）。
- * `findClaudeTmux` 用它重实现——`.filter(pred)[0]` 与旧版 `.find(pred)` 同一遍历顺序、同一
- * 结果，故 `findClaudeTmux` 的既有调用点/断言零改动。多数调用方仍只关心"有没有、是哪一个"，
- * 三处真正需要"是否命中 ≥2 个"的调用点（resume-attach 警告 / restart 拒绝 / 菜单 kill 项禁用）
- * 才用本函数，见各自调用点注释。
- */
-export function findClaudeTmuxMatches(
-  sessions: TmuxSession[] | null | undefined,
-  sid: string,
-): TmuxSession[] {
-  return sessions?.filter((s) => s.sid === sid && isClaudeTmuxCommand(s.command)) ?? [];
-}
-
-export function findClaudeTmux(
-  sessions: TmuxSession[] | null | undefined,
-  sid: string,
-  cwd: string,
-): TmuxSession | undefined {
-  const matches = findClaudeTmuxMatches(sessions, sid);
-  if (matches.length > 0) return matches[0];
-  const anySidKnown = sessions?.some((s) => s.sid != null);
-  if (anySidKnown) return undefined;
-  return cwd
-    ? sessions?.find((s) => s.path === cwd && isClaudeTmuxCommand(s.command))
-    : undefined;
-}
-
-/**
- * audit-fixes F03（idle-tmux）：找目标 sid 的**空 tmux**——`@ccm_sid` 精确命中该 sid、但当前
- * 前台命令**不是** claude（交互 shell，claude 已退出）。即三态里的 idle-tmux：会话还在、可 attach/
- * 就地 resume，但没在跑 claude。**只按 @ccm_sid 精确命中**（绝不按 cwd 猜，免撞同目录别的会话）。
- * F03.1 的就地复用 resume 与 F03.3 的 attach-into-idle 共用此判据（与 `findClaudeTmux` 互斥：
- * 后者要 command=claude，本函数要 command≠claude）。纯函数（node/jsdom 可测）。
- */
-export function findIdleTmux(
-  sessions: TmuxSession[] | null | undefined,
-  sid: string,
-): TmuxSession | undefined {
-  return sessions?.find((s) => s.sid === sid && !isClaudeTmuxCommand(s.command));
-}
-
-/**
- * F74c(#60-B)：`findClaudeTmux` 对给定 sid 是否会走 **cwd 回退**（= 无精确 `@ccm_sid` 命中
- * **且**整张列表都无任何会话带 sid）。回退命中的会话是「同目录里的某个 claude」，可能不是目标
- * 会话——未装 / 老 `ccm` wrapper 的向后兼容路径。用户 2026-07-17 拍板：保留回退但**命中时显式提示**
- * （attach 那一刻 toast，别静默串味）。纯函数（node/jsdom 可测），判据与 `findClaudeTmux` 回退分支对齐。
- */
-export function isCwdFallbackMatch(
-  sessions: TmuxSession[] | null | undefined,
-  sid: string,
-): boolean {
-  const exact = sessions?.some((s) => s.sid === sid && isClaudeTmuxCommand(s.command));
-  if (exact) return false;
-  const anySidKnown = sessions?.some((s) => s.sid != null);
-  return !anySidKnown; // 无精确命中 + 无任一 sid → findClaudeTmux 会走 cwd 回退
-}
-
-/**
- * A5+ 优雅退出检测：目标 sid 的 claude 是否已**不在**（本工具）tmux 里精确命中——前台回到 shell
- * （CC 退出）或会话已没。判据与破坏性重启的守卫 `!live || live.sid !== sid` 完全一致：不再精确命中
- * = 已退出。**注**：`sessions == null`（list 失败）时也返回 true，故轮询方（`awaitExitFor`）**只在
- * list 成功时**调用它，list 失败当「未知」继续轮询、不误判成已退出。纯函数（node/jsdom 可测）。
- */
-export function claudeExited(
-  sessions: TmuxSession[] | null | undefined,
-  sid: string,
-  cwd: string,
-): boolean {
-  const live = findClaudeTmux(sessions, sid, cwd);
-  return !live || live.sid !== sid;
-}
-
 /** F74c(#60-B)：cwd 回退串味风险提示（attach 到可能是同目录别的会话前）。 */
 function warnCwdFallbackAttach(): void {
   showActionFailureToast(
@@ -601,6 +518,30 @@ export class TabManager {
    *   (S-6 同步出账)、rebuildNow 无条件重折(flushPending 的 setsEqual 短路会把
    *   摊平永久化)。
    */
+  /**
+   * G6：分叉产出新会话文件之后 —— **起它**。
+   *
+   * 「不杀旧会话、起新会话」是用户对这个功能的原话，所以这里对源会话一个字都不碰：
+   * 只查它的事实（活没活、哪个账号、在哪个 tmux），拿去给新会话配参数。
+   * 两个调用点（批量渲染 / 逐行渲染）走同一条路，行为不许分裂。
+   */
+  private async startForkedSession(tab: Tab, res: BranchResult): Promise<void> {
+    const facts = await collectForkSource(tab.origin, tab.sessionId, tab.cwd);
+    const outcome = await runForkFlow({
+      origin: tab.origin,
+      newSessionId: res.sessionId,
+      source: facts.source,
+      sourceTmuxName: facts.sourceTmuxName,
+      takenTmuxNames: facts.takenTmuxNames,
+    });
+    if (outcome !== "started") return; // 取消 / 失败各自已经有反馈，别再叠一个
+    showActionFailureToast(
+      "✓ 已从这一轮分叉并起新会话",
+      `新会话 ${res.sessionId.slice(0, 8)} 正在起来——原会话不受影响，两条都活着。`,
+      { level: "info", durationMs: 8000 },
+    );
+  }
+
   private renderPayloadsBatch(tab: Tab, payloads: JsonlLinePayload[]): void {
     if (payloads.length === 0) return;
     const ctx: RenderContext = {
@@ -619,25 +560,21 @@ export class TabManager {
       onBranchRecord: () => {},
       onQueueOperation: () => {},
       observeForLazyEnhance: true,
-      onCardRendered:
-        tab.origin
-          ? undefined
-          : (el, msg) => {
-              if (!cur?.path) return;
-              if (msg.type !== "user" && msg.type !== "assistant") return;
-              if (!msg.uuid) return;
-              attachBranchButton(el, {
-                uuid: msg.uuid,
-                jsonlPath: cur.path,
-                cwd: tab.cwd ?? undefined,
-                onForked: (res) =>
-                  showActionFailureToast(
-                    "✓ 已从这一轮创建分支",
-                    `新会话 ${res.sessionId.slice(0, 8)} 已生成（原会话不受影响）`,
-                    { level: "info", durationMs: 8000 },
-                  ),
-              });
-            },
+      // G6：**远端也挂**。远端那条路走 daemon 的 `--fork-session`（只认 sid，不认路径），
+      // 所以 `jsonlPath` 缺席不再是"不能分叉"——只有本机那条路才需要它。
+      onCardRendered: (el, msg) => {
+        if (!tab.origin && !cur?.path) return; // 本机没路径就真的做不了
+        if (msg.type !== "user" && msg.type !== "assistant") return;
+        if (!msg.uuid) return;
+        attachBranchButton(el, {
+          uuid: msg.uuid,
+          jsonlPath: cur?.path ?? "",
+          sourceSessionId: tab.sessionId,
+          origin: tab.origin,
+          cwd: tab.cwd ?? undefined,
+          onForked: (res) => void this.startForkedSession(tab, res),
+        });
+      },
     };
     tab.branchFolder.unwrapAll();
     tab.stream.batchInsert(() => {
@@ -873,24 +810,21 @@ export class TabManager {
       // G4（branch-anywhere）：实时会话也挂「从这一轮分叉」按钮。
       // 钩子本来就在共享的 `render-stream-record.ts` 里，此前**只有历史查看器传了它**
       // ⇒ 实时 tab 上没有入口。按钮本体是共享组件（off-main 的呈现区分也在那里）。
-      // **只对本地会话**：`create_branch_session` 走本机 claude 目录，远端会话的 jsonl
-      // 在远端机器上够不着 —— 远端那条路由 G6 接 daemon 的 `--fork-session`。
+      // **G6 起远端也挂**：远端走 daemon 的 `--fork-session`（只认 sid），
+      // 所以远端会话的 jsonl 在不在本机够得着已经不再是门槛。
       onCardRendered:
-        tab.origin || !payload.path
-          ? undefined
+        !tab.origin && !payload.path
+          ? undefined // 本机没路径 → 真的做不了
           : (el, msg) => {
               if (msg.type !== "user" && msg.type !== "assistant") return;
               if (!msg.uuid) return;
               attachBranchButton(el, {
                 uuid: msg.uuid,
-                jsonlPath: payload.path,
+                jsonlPath: payload.path ?? "",
+                sourceSessionId: tab.sessionId,
+                origin: tab.origin,
                 cwd: tab.cwd ?? undefined,
-                onForked: (res) =>
-                  showActionFailureToast(
-                    "✓ 已从这一轮创建分支",
-                    `新会话 ${res.sessionId.slice(0, 8)} 已生成（原会话不受影响）`,
-                    { level: "info", durationMs: 8000 },
-                  ),
+                onForked: (res) => void this.startForkedSession(tab, res),
               });
             },
     };

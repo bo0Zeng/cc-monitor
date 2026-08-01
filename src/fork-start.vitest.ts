@@ -45,9 +45,11 @@ describe("什么时候问", () => {
     expect(d.ask).not.toHaveBeenCalled();
   });
 
+  // G6 起 origin 从 null 改成 "aya"：本机那条路会把 tmux 这格摘掉（见下面那个 describe），
+  // 而这条要守的是「问，且只问一次 + 顺序稳定」，所以换到两格都会问的远端上。
   it("★ 源会话已退出（账号/tmux 未知）→ 问，且**只问一次**", async () => {
     const d = deps({ ask: vi.fn(async () => ({ configDir: null, useTmux: false })) });
-    await startForkedSession({ newSessionId: "n", origin: null, source: DEAD }, asDeps(d));
+    await startForkedSession({ newSessionId: "n", origin: "aya", source: DEAD }, asDeps(d));
     expect(d.ask).toHaveBeenCalledTimes(1);
     // 传给弹窗的是「要问哪几格」，顺序稳定
     expect(d.ask.mock.calls[0][1]).toEqual(["account", "tmux"]);
@@ -112,6 +114,32 @@ describe("账号：知道就照搬，不知道就用用户答的，**绝不自�
     const d = deps({ ask: vi.fn(async () => ({ useTmux: false })) });
     await startForkedSession({ newSessionId: "n", origin: null, source: DEAD }, asDeps(d));
     expect(d.startLocal.mock.calls[0][0].configDir).toBeNull();
+  });
+});
+
+describe("G6：本机那条路不问 tmux", () => {
+  /**
+   * ★ `startLocal` 根本不看 tmux（`resume_history_session` 交给用户自配的拉起器，
+   * tmux 与否不在它的表达能力里）。问一个**答案会被忽略**的问题比不问更坏 ——
+   * 用户会以为自己选了。
+   */
+  it("★ 本机 + 源会话已退出 → 只问账号，不问 tmux", async () => {
+    const d = deps({ ask: vi.fn(async () => ({ configDir: null })) });
+    await startForkedSession({ newSessionId: "n", origin: null, source: DEAD }, asDeps(d));
+    expect(d.ask.mock.calls[0][1]).toEqual(["account"]);
+  });
+
+  it("远端仍然要问 tmux（那条路真能表达）", async () => {
+    const d = deps({ ask: vi.fn(async () => ({ configDir: null, useTmux: true })) });
+    await startForkedSession({ newSessionId: "n", origin: "aya", source: DEAD }, asDeps(d));
+    expect(d.ask.mock.calls[0][1]).toEqual(["account", "tmux"]);
+  });
+
+  it("★ 本机 + 什么都不缺 → 一次都不问（tmux 那格被摘掉后清单为空）", async () => {
+    // LIVE 的 tmux 是 known，本来就不会问；这里守的是「摘 tmux 不会误伤 account」。
+    const d = deps();
+    await startForkedSession({ newSessionId: "n", origin: null, source: LIVE }, asDeps(d));
+    expect(d.ask).not.toHaveBeenCalled();
   });
 });
 

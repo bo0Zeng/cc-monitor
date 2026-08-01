@@ -32,6 +32,7 @@ mod paths;
 mod port_forward;
 mod profile_installer;
 mod pubkey;
+mod remote_branch; // G6：远端分叉（经 ssh 调 daemon `--fork-session`）——写面故与只读的 remote_history 分家
 mod remote_history;
 mod search;
 mod session_map;
@@ -962,6 +963,7 @@ pub fn run() {
             history::list_history_projects,
             history::stream_history_sessions_in_project,
             history::stream_read_session_jsonl,
+            remote_branch::create_remote_branch_session, // G6
             remote_history::list_remote_history_projects,
             remote_history::stream_remote_history_sessions,
             remote_history::stream_read_remote_session,

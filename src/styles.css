@@ -2686,6 +2686,80 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   gap: 8px;
 }
 
+/* === G6：分叉起会话前的追问小窗 ===
+ *
+ * 视觉沿用设置面板那个 modal 的语言（同一套变量、同样的 backdrop + 居中浮窗），
+ * 但**不复用它的类名**——那套叫 `.settings-cc-modal-*`，这个窗不在设置里，
+ * 借它的名字会让"按类名找归属"这件事从此不可靠。
+ */
+.fork-ask-backdrop {
+  position: fixed;
+  inset: 0;
+  /* 邻居 `.settings-cc-modal-backdrop` 用的是 `rgba()`，那是 stylelint 基线里已有的
+   * 50 条告警之一。**新写的别再添一条**——同一个颜色，用现代写法。 */
+  background: rgb(0 0 0 / 60%);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fork-ask {
+  background: var(--bg, #1f1b16);
+  border: 1px solid var(--border-strong, #5a5046);
+  border-radius: 10px;
+  padding: 20px;
+  min-width: 420px;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fork-ask-title {
+  font-weight: 600;
+  color: var(--text, #d6cfc6);
+  font-size: 14px;
+}
+.fork-ask-lead {
+  color: var(--text-2, #bcb5a8);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.fork-ask-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text, #d6cfc6);
+  font-size: 12px;
+}
+.fork-ask-label {
+  white-space: nowrap;
+}
+.fork-ask-account,
+.fork-ask-cwd {
+  flex: 1;
+  background: var(--bg-2, #2a2520);
+  border: 1px solid var(--border, #3a342e);
+  border-radius: 6px;
+  padding: 5px 8px;
+  color: var(--text, #d6cfc6);
+  font-size: 12px;
+}
+/* 「为什么要问」——原样端出推断层给的理由，弱化呈现（是背景不是指令）。 */
+.fork-ask-why {
+  color: var(--text-3, #8c857b);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.fork-ask-why:empty {
+  display: none;
+}
+.fork-ask-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 /* === 通用 toast 体系（v2.0.0 落地 issue #4 + INVARIANT § 12）===
  *
  * .ccm-toast-stack: 固定右下角的堆叠容器；多个 toast append 进来自动垂直排列

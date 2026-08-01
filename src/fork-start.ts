@@ -78,7 +78,13 @@ export async function startForkedSession(
   deps: ForkStartDeps,
 ): Promise<ForkStartOutcome> {
   const facts = inferForkLaunch(input.source);
-  const slots = slotsNeedingInput(facts);
+  // G6：**本机这条路不进 tmux** —— `resume_history_session` 交给用户自配的拉起器
+  //（Windows 是 `wt.exe`，POSIX 是终端模拟器），tmux 与否根本不在它的表达能力里。
+  // 所以本机分叉时把 tmux 这格从追问清单里摘掉：**问一个答案会被忽略的问题，
+  // 比不问更坏** —— 用户会以为自己选了，而下面的 `startLocal` 压根不看。
+  const slots = slotsNeedingInput(facts).filter(
+    (s) => !(input.origin === null && s === "tmux"),
+  );
 
   let choices: ForkChoices = {};
   if (slots.length > 0) {

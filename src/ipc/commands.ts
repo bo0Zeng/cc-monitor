@@ -76,6 +76,7 @@ import type {
   Symbol as PanoramaSymbol,
 } from "../panorama/types";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
+import type { TmuxSession } from "../generated/TmuxSession";
 import type { EntryMetadata } from "../generated/EntryMetadata";
 import type { ForwardStatus } from "../generated/ForwardStatus";
 import type { HistoryProject } from "../generated/HistoryProject";
@@ -499,6 +500,11 @@ export const commands = {
     sessionId: string;
     cwd: string;
     launcher: string | null;
+    /**
+     * G3b-1：本机拉起时注入 `CLAUDE_CONFIG_DIR`。**缺省 / null / 空串一律 = 账号 0**
+     * （一个字都不注入）—— 既有调用点不传，逐字节等价旧行为。
+     */
+    configDir?: string | null;
   }) => invoke<void>("resume_history_session", args),
 
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
@@ -536,9 +542,26 @@ export const commands = {
   create_branch_session: (args: { sourceJsonlPath: string; messageUuid: string }) =>
     invoke<BranchResult>("create_branch_session", args),
 
+  /**
+   * G6：**远端**分叉——经 ssh 让 daemon 在那台机器上分叉。返回体与本地那条同形（桶③）。
+   * 参数刻意收 `sourceSessionId` 而**不是**路径：daemon 只认 sid（少一个可构造的路径入参）。
+   */
+  create_remote_branch_session: (args: {
+    origin: string;
+    sourceSessionId: string;
+    messageUuid: string;
+  }) => invoke<BranchResult>("create_remote_branch_session", args),
+
   /** 删本机历史会话（带 projects 目录内的路径守卫）。**桶①**。 */
   delete_history_session: (args: { sessionId: string; jsonlPath: string }) =>
     invoke<void>("delete_history_session", args),
+
+  /**
+   * G6：列远端 tmux 会话。`null` = 那台机器上没装 tmux（前端据此隐藏 attach 类操作）。
+   * 返回值字段被真消费 ⇒ 生成物（桶③）。
+   */
+  list_remote_tmux: (args: { origin: string }) =>
+    invoke<TmuxSession[] | null>("list_remote_tmux", args),
 
   /** 删远端历史会话。**桶①**。 */
   delete_remote_history_session: (args: { origin: string; jsonlPath: string }) =>
