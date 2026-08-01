@@ -35,7 +35,6 @@ vi.mock("../ipc/commands", () => ({
 import { loadConfig, saveConfig } from "../config";
 import {
   shouldShowResetFingerprint,
-  describeStage,
   RemoteSection,
   LOCAL_MACHINE_PAGE_ID,
 } from "./remote-section";
@@ -109,6 +108,9 @@ describe("F54 findHostByOrigin", () => {
     expect(findHostByOrigin([], "aya")).toBeNull();
   });
 });
+
+// E80：`describeStage` 搬去了 `machine-card.ts`（它唯一的消费者），本组从那边 import。
+import { describeStage } from "./machine-card";
 
 describe("F46 describeStage", () => {
   it("各阶段 kind 有图标+文案", () => {

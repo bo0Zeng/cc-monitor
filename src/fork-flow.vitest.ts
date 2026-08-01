@@ -6,6 +6,8 @@
  * 绝不能顺势推出「账号是 0」。
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { deriveForkSource } from "./fork-flow";
 import type { SessionAccount } from "./accounts";
 
@@ -95,5 +97,41 @@ describe("deriveForkSource", () => {
     expect(f.source.liveConfigDir).toBeUndefined();
     expect(f.takenTmuxNames).toEqual([]);
     expect(f.source.sourceCwd, "cwd 来自 jsonl，与远端可达性无关").toBe("/p");
+  });
+});
+
+/**
+ * E78：**「分叉完怎么起」只能有一份。**
+ *
+ * 此前 `collectForkSource` → `runForkFlow` → 成功 toast 这三步由两个调用点各写一遍，
+ * 连文案都是逐字重复的双写点、无守卫。Phase G 审计点名：`fork-flow.ts` 自称
+ * 「唯一生产接线」而真正共享的只有中段 —— **名不副实的抽象比没有抽象更坏**，
+ * 它让人以为改一处就够了。
+ *
+ * 这条守卫按**源码结构**判，不按行为判：行为测试证明不了「没有第二份」。
+ */
+describe("E78：两个调用点不许各自再拼一遍", () => {
+  const read = (p: string) => readFileSync(resolve(__dirname, "..", p), "utf8");
+  const CALL_SITES = ["src/tabs.ts", "src/views/session-viewer.ts"];
+
+  it("★ 成功 toast 的文案只出现在 fork-flow.ts 里", () => {
+    const marker = "已从这一轮分叉并起新会话";
+    expect(read("src/fork-flow.ts"), "接线层自己得有它，否则这条守卫在守空气").toContain(marker);
+    for (const f of CALL_SITES) {
+      expect(read(f), `${f} 又自己拼了一遍成功 toast`).not.toContain(marker);
+    }
+  });
+
+  it("★ 调用点不许自己调 collectForkSource（那是接线层的活）", () => {
+    for (const f of CALL_SITES) {
+      expect(read(f), `${f} 绕过接线层自己查事实了`).not.toContain("collectForkSource");
+    }
+  });
+
+  it("★ 反向自检：读文件这条路真的通（否则上面两条恒绿）", () => {
+    expect(read("src/fork-flow.ts").length).toBeGreaterThan(2000);
+    for (const f of CALL_SITES) {
+      expect(read(f), `${f} 应当仍在调 runForkFlow`).toContain("runForkFlow");
+    }
   });
 });

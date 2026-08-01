@@ -8,7 +8,7 @@ import {
 } from "./cards";
 import { BranchFolder } from "./branch-fold";
 import { attachBranchButton } from "./branch-button"; // G4：实时会话的分叉入口
-import { collectForkSource, runForkFlow } from "./fork-flow"; // G6：分叉完把新会话起起来
+import { runForkFlow } from "./fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
 import type { BranchResult } from "./generated/BranchResult";
 import { fetchSessionTasks, type TaskEntry, type TasksPanel } from "./tasks-panel";
 import type { JsonlLinePayload } from "./events";
@@ -526,20 +526,14 @@ export class TabManager {
    * 两个调用点（批量渲染 / 逐行渲染）走同一条路，行为不许分裂。
    */
   private async startForkedSession(tab: Tab, res: BranchResult): Promise<void> {
-    const facts = await collectForkSource(tab.origin, tab.sessionId, tab.cwd);
-    const outcome = await runForkFlow({
+    // E78：查事实、起会话、反馈**全在 `runForkFlow` 里** —— 这里只说「我是谁 + 分叉结果」。
+    // 此前这三步在本文件与 `session-viewer.ts` 各写一遍（连 toast 文案都是逐字重复的双写点）。
+    await runForkFlow({
       origin: tab.origin,
       newSessionId: res.sessionId,
-      source: facts.source,
-      sourceTmuxName: facts.sourceTmuxName,
-      takenTmuxNames: facts.takenTmuxNames,
+      sourceSessionId: tab.sessionId,
+      cwd: tab.cwd,
     });
-    if (outcome !== "started") return; // 取消 / 失败各自已经有反馈，别再叠一个
-    showActionFailureToast(
-      "✓ 已从这一轮分叉并起新会话",
-      `新会话 ${res.sessionId.slice(0, 8)} 正在起来——原会话不受影响，两条都活着。`,
-      { level: "info", durationMs: 8000 },
-    );
   }
 
   private renderPayloadsBatch(tab: Tab, payloads: JsonlLinePayload[]): void {

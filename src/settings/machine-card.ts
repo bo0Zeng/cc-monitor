@@ -22,8 +22,8 @@ import { invalidateCcmProbeCache } from "../ccm-probe";
 import { recordFacet, type MachineFacet } from "./machine-status";
 import { hostKey, type RemoteHostConfig } from "../remote-config";
 import { parseAddressLines } from "../remote-config";
-import { describeStage } from "./remote-section";
-import type { ConnectStage } from "./remote-section";
+// E80：`ConnectStage` 直连生成物，不再绕道 `remote-section`（那条绕道是 import 环的一半）。
+import type { ConnectStage } from "../generated/ConnectStage";
 import { AGENT_PROFILE } from "../agent-profile";
 import { deriveTmuxName } from "../remote-launch";
 import {
@@ -105,6 +105,48 @@ function parsePort(raw: string): number {
   if (!Number.isFinite(port) || port < 1 || port > 65535) port = 22;
   return port;
 }
+
+/**
+ * F46：阶段事件 → 泳道行的图标 + 文案。纯函数便于单测。
+ *
+ * **E80：从 `remote-section.ts` 搬来。** 它此前住在那边而唯一的消费者在这边，于是
+ * 「从 remote-section 抽出去的 machine-card」回头 import 它的**值** ⇒ 一条真的运行期
+ * import 环。搬到唯一消费者身边，环就没了。
+ *
+ * **`ConnectStage` 用生成物不是「顺手」**：下面有 `const _never: never = st` 穷尽性兜底，
+ * 而**手写类型时 Rust 新增一个 variant 并不会让它红** —— 那条 `never` 会一直在守一个
+ * TS 侧自己造的联合，不是 Rust 的真实形状。换成生成物它才真正对 Rust 的改动有牙。
+ */
+export function describeStage(st: ConnectStage): {
+  icon: string;
+  text: string;
+} {
+  switch (st.kind) {
+    case "dialing":
+      return { icon: "→", text: `拨号 ${st.endpoint}` };
+    case "hostKey":
+      return { icon: "🔑", text: `${st.endpoint} 主机指纹 ${st.fingerprint}` };
+    case "failed":
+      return { icon: "✗", text: `${st.endpoint} 失败：${st.reason}` };
+    case "won":
+      return { icon: "✓", text: `${st.endpoint} 胜出（其余地址已取消）` };
+    case "auth":
+      return st.ok
+        ? { icon: "✓", text: "鉴权通过" }
+        : { icon: "✗", text: `鉴权失败：${st.detail ?? ""}` };
+    case "established":
+      return { icon: "●", text: "连接就绪" };
+    default: {
+      // F46 建议 E：穷尽性兜底——未来新增 ConnectStage 变体时编译期(never)即报错。
+      const _never: never = st;
+      return {
+        icon: "·",
+        text: String((_never as { kind?: string }).kind ?? ""),
+      };
+    }
+  }
+}
+
 export interface MachineCardHooks {
   /** 任一字段变化 → 让 section 保存全部。 */
   onChange: () => void;

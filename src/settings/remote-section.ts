@@ -58,49 +58,17 @@ export { shouldShowResetFingerprint };
 import { makeInfoIcon } from "./info-icon";
 
 // C04d 批 5c：五个类型换成生成物（源 `ssh_source.rs`）。手写版与生成物**逐字等价** ⇒ 零漂移。
-//
-// **`ConnectStage` 一并生成的理由不是「顺手」**：下面 `describeStage` 里有
-// `const _never: never = st` 穷尽性兜底，而**手写类型时 Rust 新增一个 variant 并不会让它红**
-// ——那条 `never` 检查一直在守一个 TS 侧自己造的联合，不是 Rust 的真实形状。
-// 换成生成物后它才真正对 Rust 的改动有牙（本批次已用变异验证）。
-import type { ConnectStage } from "../generated/ConnectStage";
 import type { ImportGroup } from "../generated/ImportGroup";
 import type { ImportMember } from "../generated/ImportMember";
 
-export type { ConnectStage };
-
-
-/** F46：阶段事件 → 泳道行的图标 + 文案。纯函数便于单测。 */
-export function describeStage(st: ConnectStage): {
-  icon: string;
-  text: string;
-} {
-  switch (st.kind) {
-    case "dialing":
-      return { icon: "→", text: `拨号 ${st.endpoint}` };
-    case "hostKey":
-      return { icon: "🔑", text: `${st.endpoint} 主机指纹 ${st.fingerprint}` };
-    case "failed":
-      return { icon: "✗", text: `${st.endpoint} 失败：${st.reason}` };
-    case "won":
-      return { icon: "✓", text: `${st.endpoint} 胜出（其余地址已取消）` };
-    case "auth":
-      return st.ok
-        ? { icon: "✓", text: "鉴权通过" }
-        : { icon: "✗", text: `鉴权失败：${st.detail ?? ""}` };
-    case "established":
-      return { icon: "●", text: "连接就绪" };
-    default: {
-      // F46 建议 E：穷尽性兜底——未来新增 ConnectStage 变体时编译期(never)即报错。
-      const _never: never = st;
-      return {
-        icon: "·",
-        text: String((_never as { kind?: string }).kind ?? ""),
-      };
-    }
-  }
-}
-
+// E80（2026-08-01）：`describeStage` 与 `ConnectStage` 的再导出**搬去 `machine-card.ts`**。
+//
+// 那两样此前住在这里，而唯一的消费者是 `machine-card.ts` —— 于是 `machine-card`（从本文件
+// 抽出去的那个）回头 import 本文件的**值**，构成一条真的运行期 import 环
+// （`remote-section → machine-card → remote-section`）。今天不炸只是因为两边的用点都在
+// 方法体里、模块求值期不触发，属 TDZ 型隐患；而本仓的 eslint 没有 `import/no-cycle`，
+// 环在这里是**结构性不可见**的（Phase G 代码工程视角独立写 DFS 才扫出来）。
+// ⇒ 把只有一个消费者的东西搬到那个消费者身边，环就没了。环守卫见 `src/import-cycle-guard.vitest.ts`。
 
 // F12：`RemoteHostConfig` / `RemoteConfig` / `parseAddressLines` / `sftpEligibleHosts` 已移入
 // `src/remote-config.ts`（数据层），本文件从那里 import（见顶部）。

@@ -32,8 +32,13 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 
 | job | 套件（地板） |
 |---|---|
-| `e2e-tmux` | tmux-target 26 · ccm-cli 44 · ccm-print-parity 12 · ccm-acceptance 15 · ccm-pretrust 13 · cc-spawn-uplift 21 · **restart 24** · **resume 17** |
-| `e2e-tmux-rust` | tmux-guarded 14 · usage-probe 7 · **graylight-frames 5** · **restart-frames 5** · **resume-frames 7** |
+| `e2e-tmux` | tmux-target 26 · ccm-cli 44 · ccm-print-parity 12 · ccm-acceptance **19** · ccm-pretrust 13 · cc-spawn-uplift 21 · restart 24 · resume 17 · **ccm-rbind-title 8** |
+| `e2e-tmux-rust` | tmux-guarded 14 · usage-probe **9** · graylight-frames **12** · restart-frames 5 · resume-frames 7 · **daemon-fork 10** |
+
+> **E82（2026-08-01）订正**：上表原写 `ccm-acceptance 15` / `usage-probe 7` / `graylight-frames 5`，
+> 与 `ci.yml` 里真正的调用行（19 / 9 / 12）对不上，且漏了 G2 新增的两套。
+> **地板值的单一事实源是 `ci.yml` 的调用行**（那里有逐个 grep 的反向自检）；本表是给人读的副本，
+> 改地板时**两处都要动** —— 副本漂了不会让任何东西变红，所以只能靠这条提醒。
 
 **这 13 套刻意都不进本地 `npm test`**（`gate-integrity` 开放问题 1 的决定）：
 `npm test` 要保持「不需要 tmux / 不需要 daemon 就能跑」，否则每个开发动作都变重。
