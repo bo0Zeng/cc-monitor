@@ -387,15 +387,38 @@ mod tests {
     }
 
     /// 采集每条命令的**参数列表**（剥注释后），供结构反证用。跳过本文件自身。
+    ///
+    /// **递归**（U-1，2026-08-01）：原来是单层 `read_dir`，而目录没有扩展名 ⇒ 被整个跳过。
+    /// `src/adapter/` **今天就已经存在**（里面暂时没有 `#[tauri::command]`，所以还没炸）。
+    ///
+    /// 漏掉一条子目录里的命令时会怎样（Phase D 审计订正，原注释把话说满了）：
+    /// - `LEDGER.len() == 123`（`ledger_shape_is_pinned`）**照样满足** —— 它只数账本，不数源码；
+    /// - 但 `local_or_both_commands_take_no_remote_only_parameter` 的 `checked == 68` **会红**
+    ///   —— 前提是漏掉的那条恰好是 `Local`/`Both`。漏掉纯 `Remote` 的命令则两条都不响。
+    ///
+    /// 同型 bug 在 `remote-daemon-proto/src/no_timer_guard.rs` 同轮修掉。
     fn command_signatures() -> BTreeMap<String, String> {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let attr = format!("#[tauri::{}]", "command");
         let mut out = BTreeMap::new();
-        for entry in std::fs::read_dir(&dir).expect("read src dir") {
-            let path = entry.expect("dir entry").path();
-            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-                continue;
+        let mut files: Vec<std::path::PathBuf> = Vec::new();
+        let mut stack = vec![root];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read src dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    files.push(path);
+                }
             }
+        }
+        // Phase E 审计 R5：**必须排序。** 目录栈的产出顺序是文件系统给的，而下面
+        // `out.entry(name).or_insert(params)` 是**首个胜** —— 两个子模块出现同名
+        // `#[tauri::command] fn` 时，取到哪一份就随机器而变（同一个仓在不同机器上拿到不同签名）。
+        // 今天 `src/` 只有一层平目录 + 空的 `adapter/`，影响为零；但递归本就是为将来的多子目录准备的。
+        files.sort();
+        for path in files {
             // 跳过本护栏自身：它的说明文字里必然含这些子串。
             if path.file_name().and_then(|n| n.to_str()) == Some("parity_ledger.rs") {
                 continue;
