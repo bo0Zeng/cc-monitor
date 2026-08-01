@@ -2804,7 +2804,7 @@ dependencies = [
 
 [[package]]
 name = "monitor"
-version = "3.5.0"
+version = "3.6.0"
 dependencies = [
  "branch-core",
  "code-picture-core",
