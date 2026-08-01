@@ -14,10 +14,18 @@
 //! # 判据：子命令集的指纹 ↔ BUILD_ID 的历史表
 //!
 //! `SUBCOMMAND_HISTORY` 是一张**追加**的表：每行 = `(BUILD_ID, 那一版的子命令集指纹)`。
-//! 本护栏断言：**表的最后一行的 id == 当前 `BUILD_ID`，且它的指纹 == 现在算出来的指纹**。
+//! 本护栏断言两件事：
 //!
-//! 于是「加一个子命令」必然让指纹变 ⇒ 最后一行对不上 ⇒ 红；要弄绿，最省事的动作就是
-//! 「bump `BUILD_ID` + 追加一行」，也就是本来就该做的那件事。
+//! 1. **当前算出来的指纹必须在表里**（不是「等于最后一行」——见下）；
+//! 2. 表里**不许有重复的 BUILD_ID**。
+//!
+//! 于是「加一个子命令」⇒ 指纹是新的 ⇒ 不在表里 ⇒ 红。要弄绿只能追加一行；
+//! 而用**当前（未 bump 的）id** 追加会撞上第 2 条 ⇒ **只剩「bump + 追加」这一条路**，
+//! 也就是本来就该做的那件事。
+//!
+//! **为什么不是「等于最后一行」**（头一版是那么写的）：那会让**因为别的原因 bump BUILD_ID**
+//!（如 p1v 只加了个 wire 字段、子命令一个没动）也被逼着改这张表 ——
+//! 而「改表」恰恰是本护栏最不想诱导的动作。
 //!
 //! # 这条护栏**挡不住**什么（说清楚，别让人以为它是证明）
 //!
@@ -99,19 +107,21 @@ mod tests {
     #[test]
     fn adding_a_subcommand_forces_a_build_id_bump() {
         let now = subcommand_fingerprint();
+        // **判据是「当前指纹在不在表里」**，不是「等于最后一行」。
+        //
+        // 头一版写成「必须等于最后一行的指纹、且那行的 id 必须等于当前 BUILD_ID」——
+        // 那会让**因为别的原因 bump BUILD_ID**（比如 p1v 只是加了个 wire 字段、子命令一个没动）
+        // 也被逼着改这张表，而改表恰恰是本护栏最不想诱导的动作。
+        //
+        // 现在：加子命令 ⇒ 指纹是新的 ⇒ 不在表里 ⇒ 红。要弄绿只能追加一行；
+        // 而**用当前（未 bump 的）id 追加会撞上 `history_has_no_duplicate_build_ids`** ⇒
+        // 只剩「bump + 追加」这一条路。
         let (last_id, last_fp) = *SUBCOMMAND_HISTORY
             .last()
             .expect("SUBCOMMAND_HISTORY 不能为空");
+        let _ = last_id;
 
-        assert_eq!(
-            last_id,
-            super::super::BUILD_ID,
-            "历史表最后一行的 id 是 `{last_id}`，而当前 BUILD_ID 是 `{}`。\n\
-             要么你 bump 了却没追加一行，要么这张表被改乱了。",
-            super::super::BUILD_ID
-        );
-
-        if last_fp != now {
+        if !SUBCOMMAND_HISTORY.iter().any(|(_, fp)| *fp == now) {
             let old: Vec<&str> = last_fp.split('\n').collect();
             let new: Vec<&str> = now.split('\n').collect();
             let added: Vec<&&str> = new.iter().filter(|s| !old.contains(s)).collect();

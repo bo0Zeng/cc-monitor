@@ -280,6 +280,18 @@ export class TabManager {
   /** sessionId → button DOM refs，避免 refreshTabBar 每次重建整个 bar */
   private tabButtons = new Map<string, TabButtonRefs>();
   /** A3：远端 live 探测的会话账号归属（sid → 探测行）。main.ts 定期喂。 */
+  /**
+   * E73：sid → **attach 进去对人有没有意义**（来自 pidfile 的 `attachable`，经 daemon 帧透传）。
+   *
+   * 只记**显式 false** 的那些。缺席 = 可以 —— 存量会话与旧 daemon 一律照旧，零迁移。
+   *
+   * # 为什么单独一张表而不是 `Tab` 的字段
+   *
+   * 加字段要动 `ensureTab` 的位置参数列车（R03 刚把那种形状收拾过一轮），而这就是
+   * 「某个 sid 的一条会话级元信息」—— 与 `sessionAccountsByS` 同形，放这儿更合身。
+   */
+  private notAttachableSids = new Set<string>();
+
   private sessionAccountsByS = new Map<string, SessionAccount>();
   /** A3：账号名 → 邮箱（徽章 tooltip 用）。 */
   private accountEmailByName = new Map<string, string>();
@@ -957,8 +969,38 @@ export class TabManager {
     origin: string | null,
     kind: string | null = null,
     name: string | null = null,
+    // E73：`null` = 没说（旧 daemon / 存量会话）= 视为可以。只有显式 `false` 才记账。
+    attachable: boolean | null = null,
   ): void {
+    if (attachable === false) this.notAttachableSids.add(sessionId);
+    else this.notAttachableSids.delete(sessionId);
     this.ensureTab(sessionId, cwd, "", Number.MAX_SAFE_INTEGER, origin, kind, name);
+  }
+
+  /**
+   * E73：attach / `↗` / 「杀死空 tmux」这几个动作对这个会话有没有意义。
+   *
+   * **默认 true**：没说就是可以。判据只认 daemon 明说的 `attachable:false`
+   *（源头是 pidfile 的同名布尔，契约见 `doc/IPC-PROTOCOL.md` §9.3）。
+   */
+  isAttachable(sid: string): boolean {
+    return !this.notAttachableSids.has(sid);
+  }
+
+  /**
+   * E73：`attachable:false` 的会话点 `↗` 时的说法。
+   *
+   * **在发 IPC 之前就拦掉**（而不是等它失败再解释）：这一档我们**已经知道**答案，
+   * 让它先失败一次再猜原因是多余的往返，而且那条失败路径的原文案会把人引向
+   * 「去装 ccm」——正是 E73 要消灭的错误归因。
+   */
+  private explainNotAttachable(): void {
+    showActionFailureToast(
+      "这个会话没有可拉前的终端",
+      "它明确声明了自己不是「一个人坐在终端里对话」那种会话（由 SDK / 脚本驱动，" +
+        "标准输入不接键盘）。装 ccm 或重新 attach 都不会改变这一点。",
+      { level: "info", durationMs: 8000 },
+    );
   }
 
   /** Batch5-F19：启动 active 选择用（last-active 是否已有 tab）。 */
@@ -1782,7 +1824,8 @@ export class TabManager {
     if (!tab || tab.status === "archived") return;
     // Feature ②：远端 Tab → 后端按 ccm-rbind HWND 缓存拉前；本地 Tab → 原 sid_hwnd_cache 路径。
     if (tab.origin !== null) {
-      void bringRemoteTerminalToFront(this.activeId);
+      if (!this.isAttachable(this.activeId)) return this.explainNotAttachable();
+      void bringRemoteTerminalToFront(this.activeId, tab.origin, tab.cwd ?? "");
     } else {
       void bringTerminalToFront(this.activeId);
     }
@@ -2092,7 +2135,9 @@ export class TabManager {
     // （复用原会话名，不 new-session）→ 不产 `cc-<sid8>-N` 孤儿（治 #76 根因）+ 空 shell 起得了 claude
     // （治 create-gate 短路只 attach 空 shell 的 #75 一条）。仅 @ccm_sid 精确命中才复用（不按 cwd 猜，
     // 免撞同目录漂移会话）。
-    const idle = findIdleTmux(sessions, sid);
+    // E73：明说不可 attach 的会话**不算 idle-tmux** —— 它那个「前台不是 claude」
+    // 恰恰是因为里面跑着别的东西（SDK bridge 之类），不是空壳。
+    const idle = this.isAttachable(sid) ? findIdleTmux(sessions, sid) : undefined;
     if (idle) {
       await withAccount(
         origin,
@@ -2236,7 +2281,9 @@ export class TabManager {
     } else {
       // audit-fixes F03.3（attach-into-idle）：无活 claude，但目标 sid 的**空 tmux**（@ccm_sid 命中、
       // command≠claude）还在 → 提供 attach 进那个空 shell（用户可在里面自己敲/看，或就地 resume）。
-      const idle = findIdleTmux(sessions, sid);
+      // E73：明说不可 attach 的会话**不算 idle-tmux** —— 它那个「前台不是 claude」
+    // 恰恰是因为里面跑着别的东西（SDK bridge 之类），不是空壳。
+    const idle = this.isAttachable(sid) ? findIdleTmux(sessions, sid) : undefined;
       if (idle) {
         updateTabContextMenuItem("attach", {
           id: "attach",
@@ -2776,7 +2823,8 @@ export class TabManager {
       // Feature ②：远端 Tab → 走后端按 ccm-rbind 标题缓存的 HWND 拉前（未绑定则 toast no-op）；
       // 本地 Tab → 走原 sid_hwnd_cache 路径。
       if (t.origin !== null) {
-        void bringRemoteTerminalToFront(sid);
+        if (!this.isAttachable(sid)) return this.explainNotAttachable();
+        void bringRemoteTerminalToFront(sid, t.origin, t.cwd ?? "");
       } else {
         void bringTerminalToFront(sid);
       }
@@ -2909,7 +2957,10 @@ export class TabManager {
             }
           } else {
             // audit-fixes F03.3：缓存命中、无活 claude，但有目标 sid 的空 tmux（idle-tmux）→ 同步给 attach。
-            const idle = findIdleTmux(cached.sessions, sid);
+            // E73：同上——不可 attach 的不算空壳。
+            const idle = this.isAttachable(sid)
+              ? findIdleTmux(cached.sessions, sid)
+              : undefined;
             if (idle) {
               items.push({
                 id: "attach",
@@ -3282,16 +3333,84 @@ function bringTerminalToFront(sessionId: string): Promise<void> {
 }
 
 /**
+ * E73：`↗` 失败之后，**按远端 tmux 的实况把归因说对**。
+ *
+ * # 病
+ *
+ * 后端只有一句「未绑定窗口（远端会话需在远端启用 ccm wrapper）」—— 它对「用户直接跑
+ * `claude` 而不是 `ccm`」是对的，但对**根本没有交互终端撑着的会话**（如 SDK bridge：
+ * 有 tmux、`@ccm_sid` 也对，但前台是 `python3`、`stdin=DEVNULL`）就是把用户
+ * **引向一个不存在的问题** —— 去装 ccm 也不会好。**错误归因比失败本身更贵。**
+ *
+ * # 判据取自与 attach 同一处，不另造一套
+ *
+ * `attach / kill / preview` 三个动作都靠 `findClaudeTmuxMatches` 自门控，而 `↗` 一直没接上去
+ *（那三个「能用」是靠 `isClaudeTmuxCommand` 这个两条件与**碰巧**兜住的，不是设计 —— 见 E73）。
+ * 这里在**失败路径上**补查一次（happy path 零额外开销），用同一份 `list_remote_tmux` 分四档。
+ */
+export async function explainBringFrontFailure(
+  origin: string,
+  sessionId: string,
+  cwd: string,
+  raw: string,
+): Promise<{ title: string; detail: string }> {
+  // 只在**失败之后**才查；查不到就退回原文案（**不猜**）。
+  let sessions: TmuxSession[] | null | undefined;
+  try {
+    sessions = await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
+  } catch {
+    return {
+      title: "拉前失败",
+      detail: `${raw}\n\n（查不到远端 tmux 清单，无法进一步判断原因）`,
+    };
+  }
+  if (sessions == null) {
+    return {
+      title: "拉前失败",
+      detail: `${raw}\n\n远端似乎没装 tmux —— 本工具的「拉前」依赖 tmux + ccm wrapper 写的窗口标记。`,
+    };
+  }
+  if (findClaudeTmuxMatches(sessions, sessionId).length > 0) {
+    // ④ 真的是「有交互终端但没 marker」—— 后端那句原文在这一档才是对的。
+    return { title: "拉前失败", detail: raw };
+  }
+  const row = sessions.find((s) => s.sid === sessionId);
+  if (row) {
+    // ③ tmux 里有它，但前台不是 claude —— 这**不是** ccm 没装。
+    return {
+      title: "这个会话没有可拉前的终端",
+      detail:
+        `远端 tmux 里确实有它（会话 ${row.name}），但那个窗格的前台命令是「${row.command}」` +
+        `而不是 claude —— 说明它不是「一个人坐在终端里跟 claude 对话」那种会话` +
+        `（比如由 SDK / 脚本驱动的）。\n\n装 ccm 不会让这个变好：没有交互终端可拉。`,
+    };
+  }
+  // ② 压根不在 tmux 里
+  return {
+    title: "这个会话不在（本工具的）tmux 里",
+    detail:
+      `远端 tmux 清单里查不到 sid ${sessionId.slice(0, 8)}（cwd ${cwd || "未知"}）。\n\n` +
+      `可能是：会话不是经 ccm 起的 · 已经结束了 · 或者跑在别的 tmux server 上。\n原始错误：${raw}`,
+  };
+}
+
+/**
  * Feature ②：拉远端 Tab 对应的本地 ssh 窗口到前台。后端按 `ccm-rbind-<sid>` 窗口标题
  * 标记缓存的 HWND + SetForegroundWindow。
  *
- * 失败模式（任一都会显示在 toast 上）：
- *   - "未绑定窗口…"：远端 session 没经过 ccm wrapper 握手（直接跑 claude 而非 ccm），
- *     后端找不到 ccm-rbind 标记的窗口。设置面板「远端 ↗ 拉前」里有 ccm 函数贴远端。
+ * 失败模式（E73 起**按实况分档**，见 `explainBringFrontFailure`）：
+ *   - 有交互终端但没 marker → 原文案（去装 / 重装 ccm wrapper）
+ *   - tmux 里有它但前台不是 claude → 「没有可拉前的终端」，并**明说装 ccm 不会好**
+ *   - 压根不在 tmux 里 → 说清是「查不到」而不是「没装 ccm」
+ *   - 查不到清单 / 远端没装 tmux → 如实说查不了，不乱归因
  *   - "窗口已不存在"：用户关掉了对应 ssh 窗口
  *   - "invoke 超时"：极端情况下 Win32 调用卡住
  */
-function bringRemoteTerminalToFront(sessionId: string): Promise<void> {
+function bringRemoteTerminalToFront(
+  sessionId: string,
+  origin: string,
+  cwd: string,
+): Promise<void> {
   // #41:后端现扫重试窗口抬到 4s(ON_DEMAND_BIND_*,覆盖首次 attach 的标题四跳传播),故前端超时须
   // 抬到其上、留 Win32 activate 余量——5s→8s,否则前端超时会和后端重试撞车(刚要绑上就被判超时)。
   const timeoutMs = 8000;
@@ -3303,9 +3422,11 @@ function bringRemoteTerminalToFront(sessionId: string): Promise<void> {
         timeoutMs,
       ),
     ),
-  ]).catch((e) => {
+  ]).catch(async (e) => {
     console.warn(`bring_remote_terminal_to_front ${sessionId} failed:`, e);
-    showActionFailureToast("拉前失败", String(e?.message ?? e));
+    const raw = String(e?.message ?? e);
+    const { title, detail } = await explainBringFrontFailure(origin, sessionId, cwd, raw);
+    showActionFailureToast(title, detail);
   });
 }
 

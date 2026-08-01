@@ -70,7 +70,13 @@ export interface EventHandlers {
   onRemoteSessionAdded?: (
     sessionId: string,
     origin: string,
-    meta: { kind: string | null; cwd: string | null; name: string | null },
+    meta: {
+      kind: string | null;
+      /** E73：`null` = 没说（旧 daemon / 存量会话）= 视为可以 attach。 */
+      attachable: boolean | null;
+      cwd: string | null;
+      name: string | null;
+    },
   ) => void;
   /**
    * v2.2 (issue #12 性能): 启动重放（jsonl-batch 第一块）到达时调一次。
@@ -123,6 +129,8 @@ type QueueItem =
       sessionId: string;
       origin: string;
       sessionKind: string | null;
+      /** E73：attach 进去对人有没有意义。`null` = 没说（旧 daemon / 存量会话）= 视为可以。 */
+      attachable: boolean | null;
       cwd: string | null;
       name: string | null;
     };
@@ -297,6 +305,7 @@ export async function bindEvents(
       } else if (item.kind === "remote-added") {
         handlers.onRemoteSessionAdded?.(item.sessionId, item.origin, {
           kind: item.sessionKind,
+          attachable: item.attachable,
           cwd: item.cwd,
           name: item.name,
         });
@@ -447,6 +456,7 @@ export async function bindEvents(
         sessionId: e.payload.session_id,
         origin: e.payload.origin,
         sessionKind: e.payload.kind ?? null,
+        attachable: e.payload.attachable ?? null,
         cwd: e.payload.cwd ?? null,
         name: e.payload.name ?? null,
       });

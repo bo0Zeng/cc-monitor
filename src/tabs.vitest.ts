@@ -121,6 +121,7 @@ import {
   TabManager,
   findClaudeTmux,
   findClaudeTmuxMatches,
+  explainBringFrontFailure,
   findIdleTmux,
   isCwdFallbackMatch,
   claudeExited,
@@ -2471,4 +2472,98 @@ describe("account-ux U5 tab 徽章「信息才显」", () => {
     expect(el?.title).not.toContain("不一致");
   });
 
+});
+
+/**
+ * ★★ E73：`↗` 失败之后的**归因**必须按实况分档。
+ *
+ * 原来只有一句「未绑定窗口（远端会话需在远端启用 ccm wrapper）」—— 对「用户直接跑 claude
+ * 而不是 ccm」是对的，但对**没有交互终端撑着**的会话（SDK bridge：有 tmux、`@ccm_sid` 也对，
+ * 但前台是 python3、`stdin=DEVNULL`）就是**把用户引向一个不存在的问题** ——
+ * 装 ccm 也不会好。错误归因比失败本身更贵。
+ */
+describe("E73：↗ 拉前失败的归因", () => {
+  const S = (name: string, sid: string | null, command: string) => ({
+    name,
+    path: "/p",
+    command,
+    attached: false,
+    windows: 1,
+    sid,
+  });
+  const RAW = "未绑定窗口（远端会话需在远端启用 ccm wrapper）";
+  const SID = "abcd1234-1111-2222-3333-444455556666";
+
+  const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
+  beforeEach(() => mockInvoke.mockReset());
+
+  it("★★ tmux 里有它、但前台不是 claude → 明说「没有可拉前的终端」且**装 ccm 不会好**", async () => {
+    mockInvoke.mockResolvedValue([S("bridge-cc", SID, "python3")]);
+    const r = await explainBringFrontFailure("aya", SID, "/p", RAW);
+    expect(r.title).toContain("没有可拉前的终端");
+    expect(r.detail).toContain("python3");
+    expect(r.detail, "必须把「别去装 ccm」说出来，否则用户还是会去装").toContain(
+      "装 ccm 不会让这个变好",
+    );
+    expect(r.detail, "别再把原来那句误导文案抄进来").not.toContain("需在远端启用 ccm wrapper");
+  });
+
+  it("★ 有交互终端只是没 marker → 原文案在这一档才是对的，原样给", async () => {
+    mockInvoke.mockResolvedValue([S("proj-cc", SID, "claude")]);
+    const r = await explainBringFrontFailure("aya", SID, "/p", RAW);
+    expect(r.title).toBe("拉前失败");
+    expect(r.detail).toBe(RAW);
+  });
+
+  it("★ 压根不在 tmux 里 → 说清是「查不到」，不是「没装 ccm」", async () => {
+    mockInvoke.mockResolvedValue([S("别的-cc", "另一个-sid", "claude")]);
+    const r = await explainBringFrontFailure("aya", SID, "/p", RAW);
+    expect(r.title).toContain("不在（本工具的）tmux 里");
+    expect(r.detail).toContain(SID.slice(0, 8));
+  });
+
+  it("★ 查不到清单 / 远端没 tmux → **不乱归因**，如实说查不了", async () => {
+    mockInvoke.mockRejectedValue(new Error("ssh 挂了"));
+    const a = await explainBringFrontFailure("aya", SID, "/p", RAW);
+    expect(a.detail).toContain("无法进一步判断原因");
+    expect(a.detail, "原始错误不许吞").toContain(RAW);
+
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue(null); // 远端没装 tmux
+    const b = await explainBringFrontFailure("aya", SID, "/p", RAW);
+    expect(b.detail).toContain("没装 tmux");
+  });
+});
+
+/**
+ * ★★ E73 的字段那一半：**`attachable` 把「该不该出现」与「attach 有没有意义」拆成两个轴。**
+ *
+ * `kind` 此前把这两件事压在一个轴上，而 SDK / 脚本驱动的会话正好「①要②不要」。
+ * 那些会话**有** tmux、`@ccm_sid` 也对，只是 `stdin=DEVNULL` —— 于是它精确落进
+ * `findIdleTmux` 的判据里（`@ccm_sid` 命中 + 前台不是 claude），monitor 会把它当成
+ * **空壳**、给出「杀死会话（kill 空 tmux）」。它以为那是空的，实际里面跑着东西。
+ */
+describe("E73：attachable 门控", () => {
+  it("★ 缺席 = 可以（存量会话与旧 daemon 零迁移）", () => {
+    const tm = makeTM();
+    tm.createSkeletonTab("s1", "/p", "aya", "interactive", null);
+    expect(tm.isAttachable("s1")).toBe(true);
+    // 连 tab 都还没有的 sid 也按可以算（不知道 ≠ 不可以）
+    expect(tm.isAttachable("从没见过")).toBe(true);
+  });
+
+  it("★★ 显式 false → 记账；再宣告成 true / 缺席 → 撤销（不许粘住）", () => {
+    const tm = makeTM();
+    tm.createSkeletonTab("s1", "/p", "aya", "interactive", null, false);
+    expect(tm.isAttachable("s1")).toBe(false);
+    // 同一个 sid 后来被宣告成可以（比如 bridge 退出、真人接管）——不能一直挂着
+    tm.createSkeletonTab("s1", "/p", "aya", "interactive", null, null);
+    expect(tm.isAttachable("s1")).toBe(true);
+  });
+
+  it("★ 只认布尔 false，不认别的假值形态", () => {
+    const tm = makeTM();
+    tm.createSkeletonTab("s1", "/p", "aya", "interactive", null, true);
+    expect(tm.isAttachable("s1")).toBe(true);
+  });
 });

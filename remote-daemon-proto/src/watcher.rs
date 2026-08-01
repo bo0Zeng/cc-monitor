@@ -1303,6 +1303,12 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         agent_kind: None,
         liveness_confidence: None,
         session_kind: meta_str("kind"),
+        // E73：pidfile 的 `attachable`。**只认真正的布尔** —— 字符串 "false" 之类当没写
+        //（缺席 = true = 照旧），宁可少一次门控也不要把一个拼错的值当成"不可 attach"。
+        attachable: meta
+            .as_ref()
+            .and_then(|v| v.get("attachable"))
+            .and_then(|x| x.as_bool()),
         cwd: meta_str("cwd"),
         name: meta_str("name"),
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
@@ -3696,6 +3702,7 @@ mod tests {
             agent_kind: None,
             liveness_confidence: None,
             session_kind: None,
+            attachable: None,
             cwd: None,
             name: None,
             path: None,
@@ -3708,6 +3715,7 @@ mod tests {
             agent_kind: None,
             liveness_confidence: None,
             session_kind: None,
+            attachable: None,
             cwd: None,
             name: None,
             path: None,
@@ -3726,6 +3734,7 @@ mod tests {
             agent_kind: None,
             liveness_confidence: None,
             session_kind: None,
+            attachable: None,
             cwd: None,
             name: None,
             path: None,
@@ -3738,6 +3747,7 @@ mod tests {
             agent_kind: None,
             liveness_confidence: None,
             session_kind: None,
+            attachable: None,
             cwd: None,
             name: None,
             path: None,
@@ -3750,6 +3760,7 @@ mod tests {
             agent_kind: None,
             liveness_confidence: None,
             session_kind: None,
+            attachable: None,
             cwd: None,
             name: None,
             path: None,
@@ -3785,6 +3796,7 @@ mod tests {
             agent_kind: None,
             liveness_confidence: None,
             session_kind: None,
+            attachable: None,
             cwd: None,
             name: None,
             path: None,
