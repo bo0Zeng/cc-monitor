@@ -30,12 +30,35 @@ ALLOWLIST=(
   e2e/daemon-wrapper.sh    # 作为 daemonPath 由 app 直接执行
 )
 
+# E67②（2026-07-31）：**vendored `cc-acct-iso` 是第三个作用域**，而且是被这条守卫漏掉、
+# 让 CI 连红两个版本的那一个。病灶一模一样：vendor 进来时丢了可执行位（三个文件全是
+# 100644），而它自带的测试脚本用 `"$CLI" init d` **直接执行**副本 ⇒ rc=126「权限不够」，
+# 294 条断言里 184 条连锁失败。**盘上/远端都看不出来**：`core.fileMode=false` 让本地照跑，
+# 而 `acct_iso_deploy.rs` 上传时显式给 0o755（见该文件 :198/:207/:214）——所以真正被咬的
+# 只有「从干净 checkout 直接执行副本」这一条路，也就是 CI。
+#
+# **为什么这里必须是显式白名单，不能沿用 shared/ 那套「有 shebang 就该 755」**：
+# 这是 **vendored 副本**，`VENDOR.md` 的铁律是「副本是上游的镜子，不是分身」。
+# 上游 `~/.claude/skills/cc-acct-iso/scripts/` 实测：`cc-acct-iso` 755 ·
+# `cc-acct-iso-install.sh` 755 · `test/run-tests.sh` 755 · **`lib.sh` 644**（它是被
+# `source` 的库，虽然带 shebang）。照 shebang 一刀切会把 `lib.sh` 也逼成 755 ——
+# 那就是在副本里改出自己的版本了。所以只列上游确实是 755 的那三个。
+#
+# 顺带说明**为什么改模式不算违反镜子铁律**：`.vendor_id` 是**内容** sha256（VENDOR.md §8），
+# 恢复可执行位不动内容、指纹不变；丢可执行位本身是 vendor 那一步的失手，补回去是**向上游看齐**。
+VENDOR_ALLOWLIST=(
+  src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso
+  src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso-install.sh
+  src-tauri/vendor/cc-acct-iso/scripts/test/run-tests.sh
+)
+
 fail=0
 checked=0
 # **按作用域分开计数**：只统计总数不够——白名单那 2 个恒在，会把"shared/ 整个消失"
 # 这一变异盖成绿的（实测：`git rm -r --cached shared` 后总数仍为 2 → 旧自检不触发）。
 # 每个作用域必须各自证明"我确实查到了东西"。
 checked_shared=0
+checked_vendor=0
 
 # 取 git **index** 里记录的模式（不是盘上的）。
 git_mode() { git ls-files -s -- "$1" | awk '{print $1}'; }
@@ -93,6 +116,16 @@ for f in "${ALLOWLIST[@]}"; do
   check_one "$f"
 done
 
+for f in "${VENDOR_ALLOWLIST[@]}"; do
+  if [ -z "$(git_mode "$f")" ]; then
+    printf 'FAIL | vendored 白名单条目 %s 不在 git 里（re-vendor 时改名/挪走了？）\n' "$f"
+    fail=$((fail+1))
+    continue
+  fi
+  check_one "$f"
+  checked_vendor=$((checked_vendor+1))
+done
+
 echo
 # **自检**：受检数为 0 说明这条守卫已经失去意义（shared/ 改名/移动、glob 写错、
 # git 只是"成功地返回了 0 行"）。此时必须红，不能打印"全部 100755"（审计 I1）。
@@ -103,6 +136,11 @@ fi
 if [ "$checked_shared" -eq 0 ]; then
   echo "===== 守卫自检失败：shared/ 下 0 个带 shebang 的受检文件 —— 该目录改名/移动了？ ====="
   echo "      （白名单条目仍在，故总数非 0；但 shared/** 这个主作用域已失守）"
+  exit 1
+fi
+if [ "$checked_vendor" -ne "${#VENDOR_ALLOWLIST[@]}" ]; then
+  echo "===== 守卫自检失败：vendored 作用域只查到 $checked_vendor / ${#VENDOR_ALLOWLIST[@]} 个 ====="
+  echo "      （每个作用域都要各自证明「我确实查到了东西」，否则整目录消失会被别的作用域盖成绿）"
   exit 1
 fi
 if [ "$fail" -gt 0 ]; then

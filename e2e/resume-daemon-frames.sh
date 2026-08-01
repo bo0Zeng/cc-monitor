@@ -126,10 +126,31 @@ MARK_KILL="$(wc -l <"$FRAMES")"
 SR="$(wait_line 0 "\"kind\":\"session_removed\".*$SID" 12)" \
   && ok "SessionRemoved(claude 死 → 灰):$SR" \
   || bad "12s 内未见 SessionRemoved($SID)"
-TS_GRAY="$(wait_line "$MARK_KILL" "\"kind\":\"tmux_sessions\"" 12)"
-if [ -n "$TS_GRAY" ] && printf '%s' "$TS_GRAY" | grep -q "$SID"; then
-  ok "claude 死后 tmux 帧仍含 @ccm_sid ⇒ 灰(Idle 非 Archive)"
-else bad "claude 死后 tmux 帧丢了 @ccm_sid 或无帧(不该)"; fi
+# **E67③（2026-07-31）：这一条原来等的是「kill 之后**新**发一帧 tmux_sessions」，
+# P5 之后那一帧根本不会来 —— 而且是**永远**不会来，不是慢。**且它是裸赋值**
+# （`TS_GRAY="$(wait_line …)"`，不在 `&&/||` 列表里），`set -e` 会让整个脚本在超时那一刻
+# 直接退出，连一行 FAIL 都不打 —— CI 上看到的就是「跑到第三条断言就没了、退出码 1」。
+#
+# **为什么那一帧不会来**（读代码得到，非猜测，位置逐个给出）：
+#   · `watcher.rs:305 initial_tmux_probe` 头注：「P5：一次性初探（取代 P2 那个 8s ticker
+#     线程）……之后的每一拍都由事件驱动」；`67653e2` 删掉了 `TMUX_EMIT_INTERVAL`。
+#   · 事件源只有三个：`tmux_hook.rs:49 HOOK_EVENTS = [session-created, session-closed,
+#     session-renamed]`（→ SIGUSR1 → `watcher.rs:798 Poke`）、pidfd、socket inotify。
+#   · **claude 在 pane 里死掉不属于其中任何一个** —— tmux 会话没生、没死、没改名。
+#
+# 所以本条改成断言它真正想断言的那件事：**claude 死了，但那个 tmux 会话还在，
+# 而 monitor 手上那份快照仍把它连同 `@ccm_sid` 列着** ⇒ 灰（Idle）而非 Archive。
+# 「手上那份」= 最近一帧，不要求是 kill 之后新发的 —— 生产里 monitor 用的也正是缓存的那份。
+#
+# **顺带查出一个真问题（已登记 BACKLOG E76，本轮不修）**：P5 之后 `@ccm_sid` 被写入
+# （`shared/ccm` 通道 B 回填、`/branch` 漂移）**不触发任何重探**，因为没有「设置用户选项」
+# 这种 tmux hook。于是 daemon 的快照可能长期带着**空的** `@ccm_sid`。本套件之所以没暴露它，
+# 是因为夹具 `gen-idle-tmux.sh` 在 daemon 启动**之前**就把 `@ccm_sid` 设好了。
+GRAY_ALIVE="$(tmux has-session -t "=$SESSION:" 2>/dev/null && echo 1 || echo 0)"
+TS_GRAY="$(grep -E '"kind":"tmux_sessions"' "$FRAMES" | tail -1 || true)"
+if [ "$GRAY_ALIVE" = 1 ] && printf '%s' "$TS_GRAY" | grep -q "$SID"; then
+  ok "claude 死后 tmux 会话仍在、最近一帧仍含 @ccm_sid ⇒ 灰(Idle 非 Archive)"
+else bad "claude 死后会话没了($GRAY_ALIVE) 或最近一帧丢了 @ccm_sid(不该)"; fi
 
 # ── 3. REVIVE:跑真源就地 resume 命令(复用原名)→ fake-claude 复活 → SessionAdded 再现 = 清灰 ──
 echo "-- 就地 resume(真源 buildResumeIntoExistingTmuxCmd,复用 $SESSION,注入 daemon 所看目录)--"

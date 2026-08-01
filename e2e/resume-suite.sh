@@ -199,14 +199,27 @@ echo "   argv resume 行数=$N6  orphan($S6-N)=$(orphan_count "$S6")  session=$(
 [ "$N6" = 1 ] && [ "$(orphan_count "$S6")" = 0 ] && ok "B6a 幂等:仅 1 次 resume(第二次被 create-gate 短路)、0 孤儿" || bad "B6a 非幂等(resume 行数=$N6 或有孤儿)"
 
 # ── B6b:tmux 已消失 → 回退新建(pickFreshTmuxName base 空 → 复用 base 名新建)────────────────
+#
+# **E67③（2026-07-31）：这里是全套件唯一断言「生产侧 tmux 命名形状」的地方，也正是它把
+# CI 红了两个版本。** S4b-3b（用户 2026-07-31）把命名从 `cc-<X>` 反转成 `<X>-cc`，
+# 前端（`pickFreshTmuxName`/`deriveTmuxName`）与 Rust（`tmux::is_ccm_tmux_name`，
+# 新旧两种都认）都同步了，**只有这条 e2e 的期望值没跟上** ⇒ 断言恒假，
+# 而且连带下一条（拿老名字去 `session_exists`）也必然失败。
+#
+# 注意上面 B1..B6a 用的 `cc-<sid8>` **不是漏改**：那些名字是套件自己造的既存会话
+# （`gen-idle-tmux.sh` 也造 `cc-<sid8>`），代表「S4b-3b 之前建的老会话」——
+# `is_ccm_tmux_name` 刻意保留老前缀正是为了它们，所以那份夹具是**有效覆盖**，别顺手改掉。
 echo "-- B6b tmux 已消失 → 回退新建 --"
-SID7="$(cat /proc/sys/kernel/random/uuid)"; S7="cc-${SID7:0:8}"
+SID7="$(cat /proc/sys/kernel/random/uuid)"
+EXPECT7="${SID7:0:8}-cc"   # S4b-3b 之后的形状；撞名时才追加 `-2/-3`
 FRESH="$(drv pick-fresh "$SID7" "cc-unrelated,cc-other")"
-[ "$FRESH" = "$S7" ] && ok "B6b 无撞名 → pickFreshTmuxName 复用 base 名 $S7" || bad "B6b pick-fresh=$FRESH(期望 $S7)"
+[ "$FRESH" = "$EXPECT7" ] && ok "B6b 无撞名 → pickFreshTmuxName 复用 base 名 $EXPECT7" || bad "B6b pick-fresh=$FRESH(期望 $EXPECT7)"
 CMD7="$(drv tmux-new "$SID7" "/tmp/e2e-remote" "$FAKE" "$FRESH" -)"
-SESSIONS+=("$S7")
+# 后面两条查的是**真被建出来的那个**（`$FRESH`），不是我们期望的那个 —— 否则命名断言
+# 一旦失败，这里会跟着报一条误导性的「没建会话」，把一个错误放大成两个。
+SESSIONS+=("$FRESH")
 fire_resume "$CMD7"; sleep 1
-[ "$(session_exists "$S7")" = 1 ] && [ "$(orphan_count "$S7")" = 0 ] && ok "B6b 回退新建出 $S7、无孤儿" || bad "B6b 回退未建会话或有孤儿"
+[ "$(session_exists "$FRESH")" = 1 ] && [ "$(orphan_count "$FRESH")" = 0 ] && ok "B6b 回退新建出 $FRESH、无孤儿" || bad "B6b 回退未建会话或有孤儿"
 
 # ── B6c:会话仍 live → 守卫不误动(create-gate 短路,不双 resume/不产孤儿)──────────────────────
 echo "-- B6c 会话仍 live → create-gate 守卫不误动 --"
