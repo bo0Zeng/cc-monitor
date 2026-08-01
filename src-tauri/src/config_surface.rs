@@ -1487,8 +1487,14 @@ mod tests {
         };
         let s = build_settings_scopes(&home(), None, &no_dir, &read, &f);
         assert_eq!(s.len(), 3);
-        assert!(s[0].path.ends_with("/.claude/settings.json"));
-        assert!(s[1].path.ends_with("/.claude/settings.local.json"));
+        // E67①：**按「路径分量」比，不按斜杠比**。原来写的是
+        // `s[0].path.ends_with("/.claude/settings.json")`，在 Windows 上恒假 ——
+        // `PathBuf::from("/h").join(".claude")` 产出的是 `/h\.claude`（`join` 用平台分隔符），
+        // 于是这条测试**在主平台上从来没绿过**（CI 连红两个版本的那一条）。
+        // `Path::ends_with` 比的是完整分量，跨平台成立，而且比字符串后缀更严
+        // （`xx.claude/settings.json` 这种半个分量的巧合匹配不上）。
+        assert!(Path::new(&s[0].path).ends_with(Path::new(".claude").join("settings.json")));
+        assert!(Path::new(&s[1].path).ends_with(Path::new(".claude").join("settings.local.json")));
         // local 里有钩子字样 → 必须报 true（B04 的病：只看第一份会说"没装"）
         assert_eq!(s[1].has_cc_bus_hooks, Some(true));
         assert_eq!(s[0].has_cc_bus_hooks, Some(false));
