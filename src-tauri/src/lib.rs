@@ -990,6 +990,7 @@ pub fn run() {
             // 台一律回 available:false，前端降级隐藏账号功能而不是弹错。
             accounts::list_remote_accounts,
             local_accounts::list_local_accounts,
+            local_accounts::list_local_session_accounts, // E79：本机版「某会话属于哪个账号」
             accounts::list_remote_session_accounts,
             accounts::check_account_trust,
             launch::launch_remote_terminal,

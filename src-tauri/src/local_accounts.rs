@@ -502,3 +502,170 @@ mod tests {
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E79：本机的「某个 sid 现在跑在哪个账号下」
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 扫 `sessions/*.json` 的上限（照 daemon 侧 `accounts_query::MAX_SESSION_FILES`）。
+const MAX_LOCAL_SESSION_FILES: usize = 500;
+/// 单个 pidfile 读取上限（正常几百字节）。
+const MAX_LOCAL_SESSION_FILE_BYTES: u64 = 1024 * 1024;
+
+/// 从 `/proc/<pid>/environ` 抠 `CLAUDE_CONFIG_DIR`（**只这一个键**）。
+///
+/// 判据与 daemon 侧 `accounts_query::proc_claude_config_dir` 逐字同源 ——
+/// 这是本机/远端**同一个问题**的两侧实现，口径不许分叉。
+///
+/// **非 Linux 恒 `None`**：Windows 上读另一个进程的环境块要 `NtQueryInformationProcess`
+/// + 跨进程读内存（还要提权），代价与收益完全不成比例。**如实返回「查不出来」**，
+/// 而不是编一个值 —— 上层（分叉的追问小窗）本来就有「不知道就问一次」这条路。
+fn proc_claude_config_dir(pid: u32) -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        let bytes = std::fs::read(format!("/proc/{pid}/environ")).ok()?;
+        for entry in bytes.split(|b| *b == 0) {
+            if entry.is_empty() {
+                continue;
+            }
+            let s = String::from_utf8_lossy(entry);
+            if let Some(v) = s.strip_prefix("CLAUDE_CONFIG_DIR=") {
+                if v.is_empty() {
+                    return None;
+                }
+                return Some(v.to_string());
+            }
+        }
+        None
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        None
+    }
+}
+
+/// 进程还在不在。**只判存在性**，不做 procStart 比对 —— 这里不是判活路径
+///（那是 `session_map` 的活），只是给「这个 pidfile 还算数吗」一个粗过滤。
+fn pid_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        std::path::Path::new(&format!("/proc/{pid}")).exists()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        true // 非 Linux 上本查询本来就答不出账号，存活与否不影响结论
+    }
+}
+
+/// E79：**本机**版的「某会话跑在哪个账号下」——`--session-accounts` 的对侧实现。
+///
+/// # 为什么需要它
+///
+/// 这条查询此前**只有远端有**（daemon 的 `--session-accounts`），`local_accounts.rs`
+/// 只枚举账号、不认会话。后果是：本机分叉一个**正跑着的**会话时，monitor 明明够得着
+/// 那个 pidfile，却只能按「查不出来」处理、白弹一次追问小窗。
+///
+/// # 平台
+///
+/// **Linux 有，Windows 没有**，且这件事在返回值里说清楚（`available:false` + `error`），
+/// 不是静默返回空表。Windows 上读另一个进程的环境块要 `NtQueryInformationProcess`
+/// + 跨进程读内存（多半还要提权），代价与收益不成比例。
+///
+/// # 边界（照抄 daemon 侧那套，不放宽）
+///
+/// - `/proc/<pid>/environ` **只抠 `CLAUDE_CONFIG_DIR` 一个键**，绝不回传整个环境快照
+///   （那里面有用户全部的密钥类环境变量）。
+/// - `configDir` 过 `is_safe_config_dir` 白名单后才回；不合格的丢弃而不是原样透出。
+/// - 只读，不起进程，不 shell out。
+#[tauri::command]
+pub async fn list_local_session_accounts() -> Result<crate::accounts::SessionAccountsResult, String>
+{
+    tokio::task::spawn_blocking(|| {
+        if !cfg!(target_os = "linux") {
+            return crate::accounts::SessionAccountsResult {
+                available: false,
+                error: Some(
+                    "本机查不出「某会话属于哪个账号」：这条判据要读进程的环境块，\
+                     只有 Linux 上有便宜的做法（/proc/<pid>/environ）。"
+                        .into(),
+                ),
+                sessions: Vec::new(),
+            };
+        }
+        let Some(claude_dir) = crate::paths::resolve_claude_dir() else {
+            return crate::accounts::SessionAccountsResult {
+                available: false,
+                error: Some("取不到 claude 数据目录".into()),
+                sessions: Vec::new(),
+            };
+        };
+        let accts = local_accts_dir();
+        // configDir → 账号名（查不到就是 None，**不猜**）
+        let name_of = |dir: &str| -> Option<String> {
+            let a = accts.as_ref()?;
+            let r = list_from_dir(a);
+            r.accounts
+                .into_iter()
+                .find(|x| x.config_dir.as_deref().map(norm_dir) == Some(norm_dir(dir)))
+                .map(|x| x.name)
+        };
+
+        let mut sessions = Vec::new();
+        let dir = claude_dir.join("sessions");
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            // 目录不在 = 没有活跃会话，是**正常状态**，不是错误。
+            return crate::accounts::SessionAccountsResult {
+                available: true,
+                error: None,
+                sessions,
+            };
+        };
+        for entry in rd.take(MAX_LOCAL_SESSION_FILES) {
+            let Ok(entry) = entry else { continue };
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let Some(pid) = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .and_then(|s| s.parse::<u32>().ok())
+            else {
+                continue;
+            };
+            let Ok(bytes) = read_capped(&path, MAX_LOCAL_SESSION_FILE_BYTES) else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+                continue;
+            };
+            let str_of = |k: &str| v.get(k).and_then(|x| x.as_str()).map(str::to_string);
+            let alive = pid_alive(pid);
+            let raw_dir = if alive {
+                proc_claude_config_dir(pid)
+            } else {
+                None
+            };
+            let config_dir = raw_dir.filter(|d| is_safe_config_dir(d));
+            sessions.push(crate::accounts::SessionAccount {
+                pid,
+                session_id: str_of("sessionId"),
+                cwd: str_of("cwd"),
+                account: config_dir.as_deref().and_then(name_of),
+                // 活着却没设 CLAUDE_CONFIG_DIR = 账号 0（基座）。
+                bare: alive && config_dir.is_none(),
+                config_dir,
+                alive,
+            });
+        }
+        crate::accounts::SessionAccountsResult {
+            available: true,
+            error: None,
+            sessions,
+        }
+    })
+    .await
+    .map_err(|e| format!("list_local_session_accounts join 失败: {e}"))
+}

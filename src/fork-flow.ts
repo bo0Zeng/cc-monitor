@@ -108,8 +108,24 @@ export async function collectForkSource(
   cwd: string | null,
 ): Promise<ForkSourceFacts> {
   if (origin === null) {
+    // E79：本机侧**现在有对侧探针了**（`list_local_session_accounts`，Linux 才有 ——
+    // 要读 `/proc/<pid>/environ`）。此前这里硬编码「查不出来」，于是分叉一个**正跑着的**
+    // 本机会话也要白弹一次追问小窗，而那个 pidfile 就在本机、monitor 明明够得着。
+    //
+    // 平台答不出时（Windows）后端会明说 `available:false` ⇒ 这里照旧落「不知道」，
+    // 走追问那条路。**「查不出来」与「查了但没有」在这里是同一个结论，但理由不同**，
+    // 所以判据看的是 `available` 而不是 `sessions.length`。
+    let rows: SessionAccount[] = [];
+    try {
+      const r = await commands.list_local_session_accounts();
+      if (r.available) rows = r.sessions;
+    } catch {
+      /* 查不到就按「不知道」处理，不猜 */
+    }
+    // 本机这条路不进 tmux（`fork-start.ts` 已把 tmux 那一格摘掉），所以只用账号那一半。
+    const facts = deriveForkSource(rows, null, sid, cwd);
     return {
-      source: { sourceIsLive: false, sourceCwd: cwd },
+      source: { ...facts.source, liveTmuxName: null },
       sourceTmuxName: null,
       takenTmuxNames: [],
     };
