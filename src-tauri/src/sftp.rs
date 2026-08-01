@@ -733,7 +733,7 @@ const CCM_WRAPPER_SNIPPET: &str = include_str!("../../shared/ccm-aliases.sh");
 /// 它独占 L1 容器 / L2 环境 / L5 身份的实现——**环境必须在最终 exec 的那个 shell 里设**，
 /// 否则会像旧 `cct` 那样被 tmux 的进程边界吃掉（`update-environment` 默认列表不含
 /// `CLAUDE_CONFIG_DIR`，实测有对照组：`e2e/ccm-acceptance.sh`）。
-const CCM_CLI_SCRIPT: &str = include_str!("../../shared/ccm");
+pub(crate) const CCM_CLI_SCRIPT: &str = include_str!("../../shared/ccm");
 
 /// CLI 在远端的落点（SFTP 相对路径 = home 相对）。
 const CCM_CLI_REMOTE_PATH: &str = ".local/bin/ccm";
@@ -1095,36 +1095,30 @@ mod tests {
     ///  - `--print` / `--ccm-probe` ：F03 的渲染等价断言 + 安装自检/降级判据依赖它们。
     #[test]
     fn ccm_cli_has_required_elements() {
-        for needle in [
-            "--ccm-probe",
-            "--print",
-            "--tmux",
-            "--account",
-            "--agent",
-            "--ccm-sid",
-            "CLAUDE_CONFIG_DIR",
-            "@ccm_sid",
-            "@ccm_sid_expect",
-            "@ccm_agent",
-            "exec",
-        ] {
+        // U1a（2026-08-01）：三张表 + `-t` 扫描口径搬进 `crate::ccm_cli_contract`。
+        // **判据一条没改、没加、没减** —— 搬出去只是为了让 U9 迁到 `control/` 时
+        // 改的是「喂哪份脚本文本」，而不是把这些断言重写一遍（账本 S11：迁移是强度
+        // 悄悄下降的经典时机）。强度读数的基线对拍在那个模块的
+        // `ccm_cli_strength_is_at_or_above_baseline`。
+        use crate::ccm_cli_contract as contract;
+
+        for needle in contract::REQUIRED_NEEDLES {
             assert!(
                 CCM_CLI_SCRIPT.contains(needle),
                 "ccm CLI 缺关键要素: {needle}"
             );
         }
-        // F04（结构性，防 D6 复发）：两处"通道A立刻打标"必须写 `@ccm_sid_expect`，**不得**写裸
-        // `@ccm_sid`——否则一个从未被确认过的意图声明会永久冒充"事实"。用带引号的完整
-        // `set-option ... @ccm_sid_expect` 片段做锚点，防未来改动悄悄把它改回 `@ccm_sid`。
-        for needle in [
-            "tmux set-option -t $t @ccm_sid_expect $(sq \"$ccm_sid\")",
-            "tmux set-option @ccm_sid_expect \"$ccm_sid\"",
-        ] {
+        for needle in contract::CHANNEL_A_LITERALS {
             assert!(
                 CCM_CLI_SCRIPT.contains(needle),
                 "通道A（意图声明）必须写 @ccm_sid_expect（而非裸 @ccm_sid），缺: {needle}"
             );
         }
+        // 钉死逃生口。**除「逐字存在」还要断言只被赋值一次**（T01 审计 S3，已独立复现：
+        // 在它后面再加一行 `t="$tmux_name"`，旧的 contains 版本照样通过而 `$t` 已成裸值）。
+        contract::pin_t_def(CCM_CLI_SCRIPT)
+            .expect("$t 的定义被改动或被二次赋值 —— 它是 tmux 序列里所有 -t 的来源");
+
         // tmux 目标精确形态（INVARIANTS §31a）：**结构性扫描**——扫出 CLI 里每一个 `-t ` 的
         // 目标 token，逐个断言含 `=` 且以 `:`（或 `:` + 引号）收尾。
         //
@@ -1132,54 +1126,17 @@ mod tests {
         // `=名:` 全改回裸目标，`cargo test` 依旧全绿（正向 needle 恰好都还命中，反向 needle
         // 引用的是 CLI 里根本不存在的代码）。而这正是 F01 修掉的「杀错/打错兄弟会话」生产事故。
         // 结构性扫描对**新增**的 `-t` 也自动生效，这是固定 needle 永远做不到的。
-        // 唯一允许的间接目标变量：`$t`，其定义在此**逐字钉死**（否则它可以被改成裸值绕过扫描）。
-        // T01 第 6 步：改走可复用的 `structural_scan`。**四个要件一个不少**，
-        // 而且它们现在由那个模块内建（计数自检写在 `require` 里，调用方忘不掉）。
-        // 这里是它的**第一个真实调用点**——抽了不接上就是 B03 阻塞-2 那个病
-        // （我抽了 `build_online_cmd` 却没接，让它成了零调用点死代码、真校验零覆盖）。
-        const EXACT_T_DEF: &str = r#"t="$(sq "=$tmux_name:")""#;
-        // 钉死逃生口。**除「逐字存在」还要断言只被赋值一次**（T01 审计 S3，已独立复现：
-        // 在它后面再加一行 `t="$tmux_name"`，旧的 contains 版本照样通过而 `$t` 已成裸值）。
-        crate::structural_scan::pin_definition(
-            CCM_CLI_SCRIPT,
-            EXACT_T_DEF,
-            "t=",
-            "间接目标变量 $t",
-        )
-        .expect("$t 的定义被改动或被二次赋值 —— 它是 tmux 序列里所有 -t 的来源");
-
-        let report = crate::structural_scan::scan_after_marker(
-            CCM_CLI_SCRIPT,
-            // **marker 是 `-t` 而非 `-t `**：带空格会漏掉 `-t$name` 紧贴形态（T01 审计 S1，
-            // 实测那样能把裸目标塞回来而 require 照样通过）。紧贴/带空格由扫描器统一处理，
-            // 并排除 `-tmux` 这类更长选项名的误命中。
-            "-t",
-            Some("#"),
-            48,
-            // `$t` 是上面已钉死定义的间接变量，放行（但仍计数）。
-            &|rest: &str| {
-                let t = crate::structural_scan::first_token(rest);
-                t == "$t"
-            },
-            // **谓词只看紧跟的那一个 token**（T01 审计 S2：看整个窗口时，同一行里出现
-            // `"export A=b:c"` 这种诱饵就能让裸目标零违规）。
-            &|tok: &str| {
-                let eq = tok.find('=');
-                let colon = tok.find(':');
-                if eq.is_some() && colon.is_some() && eq < colon {
-                    Ok(())
-                } else {
-                    Err("tmux 目标必须是 `=名:` 精确形态（= 在前、: 在后）。\
-                         裸目标会「精确→名字开头→glob」三级解析、打错兄弟会话；\
-                         `=名`（无尾冒号）在 send-keys/capture-pane/set-option 上 rc=1 完全失效"
-                        .to_string())
-                }
-            },
-        );
-        // **阈值贴近实际**（T01 审计 S4）：真实脚本 checked=11，写 4 意味着删掉 7 处仍全绿，
-        // 要件 3 的实际保护面只有 4/11。往下留 1 的余量以免正常增删命令时误红。
-        report
-            .require(10, "CLI 的 tmux 目标（INVARIANTS §31a）")
+        //
+        // ⚠ **阈值余量已经没了**（U1a 实测订正）：本注释此前写「真实脚本 checked=11 ……
+        // 往下留 1 的余量以免正常增删命令时误红」，而实测 checked = **10** == 阈值。
+        // 追溯到 `666cc14`（无名 `--tmux` 改为无条件新建会话）：删两处 `display-message -p -t`、
+        // 加一处 `has-session -t`，净 −1，是正当的行为变更。**不下调阈值** —— 下调等于把
+        // 「少一处 tmux 命令」重新变成无声的。读数本身由 `ccm_cli_contract::BASELINE` 单独盯着。
+        contract::scan_t_targets(CCM_CLI_SCRIPT)
+            .require(
+                contract::MIN_CHECKED_T_TARGETS,
+                "CLI 的 tmux 目标（INVARIANTS §31a）",
+            )
             .expect("结构性扫描不通过");
     }
 
