@@ -113,6 +113,27 @@ export function isValidTmuxName(name: string): boolean {
  * (Rust 侧 `is_ccm_tmux_name` 的字符集今天顺带挡住这一面,但那是**身份**白名单、F04 会重构它,
  * 不能依赖它兼职做字符集防线。)
  */
+/**
+ * tmux 会话名里**一段**的净化（不含 `-cc` 后缀）。
+ *
+ * **为什么要抽出来**（Phase G 审计当场抓的一个阻塞）：`deriveTmuxName` 一直在做这件事，
+ * 而 `fork-launch.ts::forkTmuxName` 后来**另写了一份不做净化的**版本 —— 于是「源会话已退出
+ * ⇒ 拿 cwd 当基名」这条路会产出 `/home/pi/proj-fork-cc`，被 `planResumeTmux` 的
+ * `/^[A-Za-z0-9_][A-Za-z0-9_-]*$/` 当场拒掉。两处共用同一个净化器，那条路就不可能再产非法名。
+ *
+ * 规则与 `shared/ccm::derive_tmux_name` 逐字同源（跨语言双写点，由 `e2e/ccm-cli.test.sh`
+ * 的真值对拍钉住）：取末段路径 → 非 `[A-Za-z0-9_-]` 换 `-` → 折叠连字符 → 截 32 → 剥首尾 `-`。
+ * 结果可能是**空串**（如输入全是分隔符），调用方负责给一个兜底名。
+ */
+export function tmuxNameSegment(raw: string): string {
+  const base = raw.trim().replace(/\/+$/, "").split("/").pop() ?? "";
+  return base
+    .replace(/[^A-Za-z0-9_-]/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 32)
+    .replace(/^-+|-+$/g, ""); // 截断后再剥首尾 `-`，避免第 32 位恰为 `-` 留尾
+}
+
 export function isValidNewTmuxName(name: string): boolean {
   return isValidTmuxName(name) && !/[*?]/.test(name);
 }

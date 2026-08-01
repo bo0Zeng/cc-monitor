@@ -47,9 +47,25 @@ export const ACCOUNT_ZERO_VALUE = "__account_zero__";
  * `null` 与「答了但没改」是两件不同的事，调用方据此决定起不起会话 —— 所以取消绝不
  * 退化成一个空的 `{}`（那会被当成「用户确认了默认值」照常起）。
  */
+/**
+ * 上一个还没结算的小窗。**Phase G 审计抓出的一条**：原来只是
+ * `host.querySelector(".fork-ask-backdrop")?.remove()` 把前一个 backdrop 摘出 DOM ——
+ * 它的 Promise 与那条 capture 阶段的 `keydown` 监听都还活着。后果有两层：
+ * ① 第一条 `runForkFlow` **永挂**（无 toast、无取消，那次分叉悄无声息地没了下文）；
+ * ② 之后用户随便按一次 Esc，孤儿监听先在捕获阶段 `stopPropagation()` **吞掉这次全局 Esc**，
+ *    再把第一条静默取消。
+ *
+ * 触发不需要多罕见：`branch-button.ts` 的 busy 标志在 `onForked` 这个 fire-and-forget
+ * 调用之后**立刻**复位，所以连点两下 `⑂`、或在两张卡上各点一次就够了。
+ *
+ * ⇒ 新窗开之前，**把旧窗按取消结算掉**（而不是只摘 DOM）。
+ */
+let pendingCancel: (() => void) | null = null;
+
 export function askForkLaunch(opts: ForkAskOptions): Promise<ForkChoices | null> {
   const host = opts.host ?? document.body;
-  host.querySelector(".fork-ask-backdrop")?.remove();
+  pendingCancel?.();
+  host.querySelector(".fork-ask-backdrop")?.remove(); // 兜底：万一 DOM 被外部搬过
 
   const backdrop = document.createElement("div");
   backdrop.className = "fork-ask-backdrop";
@@ -151,10 +167,13 @@ export function askForkLaunch(opts: ForkAskOptions): Promise<ForkChoices | null>
     const finish = (v: ForkChoices | null): void => {
       if (settled) return; // Esc + 点按钮可能同一轮到达；只认第一次
       settled = true;
+      if (pendingCancel === cancelSelf) pendingCancel = null;
       document.removeEventListener("keydown", onKey, true);
       backdrop.remove();
       resolve(v);
     };
+    const cancelSelf = (): void => finish(null);
+    pendingCancel = cancelSelf;
     const onKey = (ev: KeyboardEvent): void => {
       if (ev.key === "Escape") {
         ev.stopPropagation();

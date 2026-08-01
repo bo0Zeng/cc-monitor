@@ -5,6 +5,8 @@
  * 拿当前账号顶替会静默地用错身份跑一条对话，而界面上看不出任何异样。
  */
 import { describe, it, expect } from "vitest";
+// 判据取自**真正的消费者**，不在测试里重抄它的正则。
+import { planResumeTmux } from "./launch-requests";
 import {
   inferForkLaunch,
   slotsNeedingInput,
@@ -125,9 +127,11 @@ describe("forkTmuxName", () => {
   });
 
   it("撞名再往后排，且每个候选都仍与原名不同", () => {
-    const taken = ["myproj-fork-cc", "myproj-fork2-cc"];
+    // Phase G：数字**追加在最后**（`…-cc-2`），与 `remote-launch.ts::pickFreshTmuxName`
+    // 白纸黑字的同一条规则对齐：「让『第几个』始终是名字的末段」。原来是 `-fork2-cc`（数字在中间）。
+    const taken = ["myproj-fork-cc", "myproj-fork-cc-2"];
     const n = forkTmuxName("myproj-cc", taken);
-    expect(n).toBe("myproj-fork3-cc");
+    expect(n).toBe("myproj-fork-cc-3");
     expect(taken).not.toContain(n);
   });
 
@@ -135,5 +139,28 @@ describe("forkTmuxName", () => {
     expect(forkTmuxName("a-cc").endsWith("-cc")).toBe(true);
     // 原名没有 -cc 后缀时也补上，不产出 ccm 认不出的名字
     expect(forkTmuxName("bare")).toBe("bare-fork-cc");
+  });
+
+  /**
+   * ★★ Phase G 审计抓出的阻塞：源会话已退出时**没有 tmux 名可继承**，调用方
+   * （`fork-start.ts`）会拿 **cwd** 当基名。此前不净化 ⇒ 产出 `/home/pi/proj-fork-cc`，
+   * 被 `planResumeTmux` 的 `/^[A-Za-z0-9_][A-Za-z0-9_-]*$/` 当场拒 ⇒
+   * **「分叉一条已退出的远端会话」这条主路径 100% 起不来**（失败还被吞成成功 toast）。
+   *
+   * 这里**不重抄那条正则**（重抄就会与生产侧各写一份、再漂一次）——
+   * 直接把名字喂给真正的消费者 `planResumeTmux`，不抛就是合法。
+   */
+  it("★★ 拿 cwd 当基名也必须产出合法名（真正的判据：planResumeTmux 收得下）", () => {
+    const SID = "0473c3a0-1111-2222-3333-444455556666";
+    for (const src of ["/home/pi/proj", "/tmp/e2e-remote", "/p/my proj", "/", "", "中文目录"]) {
+      const n = forkTmuxName(src);
+      expect(() => planResumeTmux(SID, "/p", "cc", n), `基名 ${JSON.stringify(src)} 产出了非法名 ${n}`).not.toThrow();
+      expect(n.endsWith("-cc"), `${n} 丢了 -cc 形状`).toBe(true);
+    }
+  });
+
+  it("净化后为空（如 cwd 是 `/`）→ 退回 session，与 deriveTmuxName 的兜底一致", () => {
+    expect(forkTmuxName("/")).toBe("session-fork-cc");
+    expect(forkTmuxName("")).toBe("session-fork-cc");
   });
 });

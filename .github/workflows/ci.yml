@@ -80,6 +80,16 @@ jobs:
       - name: cargo test (shared branch-core)
         run: cargo test -p branch-core
 
+      # Phase G 审计：`branch-core` **进了 test 门禁却没进 fmt/clippy** —— 而它当时就是
+      # 未格式化的（3 处 diff）。根因：全仓没有 `[workspace]` 表，上面那条
+      # `cargo fmt --check` 跑在 `working-directory: src-tauri`，只覆盖 `monitor` 一个包。
+      # **新增 path 依赖 crate 时三样都要补**（test / fmt / clippy），不是只补 test。
+      - name: cargo fmt --check (shared branch-core)
+        run: cargo fmt --check --manifest-path crates/branch-core/Cargo.toml
+
+      - name: cargo clippy (shared branch-core)
+        run: cargo clippy --manifest-path crates/branch-core/Cargo.toml --all-targets
+
   frontend:
     name: Frontend typecheck + build
     runs-on: windows-latest
@@ -285,22 +295,23 @@ jobs:
       # G-A **覆盖面地板**：8 套真机套件必须**每一套**都经 `assert-pass-floor.sh` 跑。
       # 不加这条的失效模式是：有人把某一步改回裸 `npm run test:X`（或整步删掉），
       # 那套的断言数就再没人管了，而 CI **照样全绿** —— 与断言数缩水同一类病，只是换了一层。
-      - name: G-A/G-C 覆盖面地板（13 套真机套件都必须带断言数地板）
+      - name: G-A/G-C 覆盖面地板（15 套真机套件都必须带断言数地板）
         run: |
           set -euo pipefail
           # 只数**真正的调用行**（`run: bash e2e/…`）——本步骤自己那几行 grep 也含这个脚本名，
           # 用宽模式会把它们算进来（实测会数成 11 而不是 8，那个数就成了假的）。
           N=$(grep -c 'run: bash e2e/assert-pass-floor\.sh' .github/workflows/ci.yml || true)
           echo "带地板的 e2e 步骤数 = ${N:-0}"
-          [ "${N:-0}" -ge 13 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 13）——有套件被改回裸 npm run 或被删掉"; exit 1; }
+          [ "${N:-0}" -ge 15 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 15）——有套件被改回裸 npm run 或被删掉"; exit 1; }
           # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
           for pair in "tmux-target 26" "ccm-cli 44" "ccm-print-parity 12" "ccm-acceptance 19" \
                       "ccm-pretrust 13" "cc-spawn-uplift 21" "tmux-guarded 14" "usage-probe 9" \
-                      "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7"; do
+                      "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
+                      "ccm-rbind-title 8" "daemon-fork 10"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
               || { echo "::error::找不到调用行 'assert-pass-floor.sh $pair' —— 套件或地板被改了"; exit 1; }
           done
-          echo "13 套逐个对上（套件名 + 地板值）"
+          echo "15 套逐个对上（套件名 + 地板值）"
 
       - name: exec-bit guard (shared/** shebang files must be 100755 in git)
         run: bash e2e/exec-bit-guard.sh
@@ -373,6 +384,13 @@ jobs:
       - name: resume 编排 + 复用守卫（F-E2）
         run: bash e2e/assert-pass-floor.sh resume 17
 
+      # Phase G 审计：G2 新增的这套**只有 npm 脚本、没进任何门禁**。它已具备入网条件
+      # （打印 `合计 PASS=`、`unset TMUX` + 私有 `-L` socket 隔离、不碰真 `~/.claude`），
+      # 只是当时忘了接线。对比 `graylight-suite` 的排除在 `e2e/README.md` 里是有论证的，
+      # 这两套什么都没写 —— 那正是「新东西入网漏一拍」的形状。
+      - name: ccm 拉前 marker 常驻（E68）
+        run: bash e2e/assert-pass-floor.sh ccm-rbind-title 8
+
   e2e-tmux-rust:
     name: E2E real-machine (tmux + Rust builder emit)
     runs-on: ubuntu-latest
@@ -430,6 +448,11 @@ jobs:
 
       - name: resume daemon 帧（F-E2）
         run: bash e2e/assert-pass-floor.sh resume-frames 7
+
+      # 同上（Phase G 审计）：G2 的 daemon 分叉 e2e 此前只有 npm 脚本。
+      # 它要的 debug daemon 上面那步已经编好了。
+      - name: daemon 分叉（G2 `--fork-session`）
+        run: bash e2e/assert-pass-floor.sh daemon-fork 10
 
 # 注：曾加过一个 `cargo audit` 信息性 job，但对 Windows-only Tauri 应用而言它**永久红**——
 # Cargo.lock 含大量 Tauri 的 Linux GTK 传递依赖（atk/gdk/gtk-rs，标记 unmaintained，且

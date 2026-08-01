@@ -35,6 +35,7 @@ import {
   UNSET_CONFIG_DIR_PREFIX,
   isValidTmuxName,
   isValidNewTmuxName,
+  tmuxNameSegment,
 } from "./shell-quote.ts";
 export {
   posixQuote,
@@ -45,6 +46,7 @@ export {
   UNSET_CONFIG_DIR_PREFIX,
   isValidTmuxName,
   isValidNewTmuxName,
+  tmuxNameSegment,
 };
 // F03：7 个 builder 的意图构造 + 校验逐字搬进 launch-requests.ts（LaunchContext/LaunchPlan
 // 翻译层）；本文件的每个导出现在只是「调那边 + 交渲染器」的薄适配器，位置参数签名逐字不变
@@ -169,12 +171,9 @@ export function pickFreshTmuxName(sid: string, existing: Set<string>): string {
  * 逐字同规则（跨语言双写点，由 `e2e/ccm-cli.test.sh` 的真值对拍钉住，见 E49）。
  */
 export function deriveTmuxName(cwd: string): string {
-  const base = cwd.trim().replace(/\/+$/, "").split("/").pop() ?? "";
-  const safe = base
-    .replace(/[^A-Za-z0-9_-]/g, "-")
-    .replace(/-+/g, "-")
-    .slice(0, 32)
-    .replace(/^-+|-+$/g, ""); // 截断后再剥首尾 `-`,避免第 32 位恰为 `-` 留尾
+  // 净化那一段已抽进 `shell-quote.ts::tmuxNameSegment`——`forkTmuxName` 要用同一份
+  // （它此前另写了一份不净化的，Phase G 当场抓出：cwd 当基名会产出非法的 `/a/b-fork-cc`）。
+  const safe = tmuxNameSegment(cwd);
   return safe ? `${safe}-cc` : "session-cc";
 }
 

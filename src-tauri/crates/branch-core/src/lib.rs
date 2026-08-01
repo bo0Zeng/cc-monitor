@@ -107,7 +107,6 @@ pub fn build_branch_records(
     Ok(out)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::build_branch_records;
@@ -234,14 +233,21 @@ mod tests {
 
         // 模拟：分叉之后对话继续，还顺手 ESC 回退出一条新旁支
         let mut grown = base.clone();
-        grown.push(serde_json::json!({"type":"assistant","uuid":"n1","parentUuid":"u5",
-            "timestamp":"t90","sessionId":"SRC"}));
-        grown.push(serde_json::json!({"type":"user","uuid":"n2","parentUuid":"u4",
-            "timestamp":"t91","sessionId":"SRC"}));
+        grown.push(
+            serde_json::json!({"type":"assistant","uuid":"n1","parentUuid":"u5",
+            "timestamp":"t90","sessionId":"SRC"}),
+        );
+        grown.push(
+            serde_json::json!({"type":"user","uuid":"n2","parentUuid":"u4",
+            "timestamp":"t91","sessionId":"SRC"}),
+        );
         grown.push(serde_json::json!({"type":"mode","sessionId":"SRC","mode":"plan"}));
         let after = build_branch_records(&grown, "u4", "SRC", "NEW").unwrap();
 
-        assert_eq!(before, after, "源文件继续增长后，同一分叉点的产出应逐字段相同");
+        assert_eq!(
+            before, after,
+            "源文件继续增长后，同一分叉点的产出应逐字段相同"
+        );
     }
 
     /// G0：子 agent 记录不是可分叉的会话 —— 后端自己要拦，不能只靠前端不挂按钮。

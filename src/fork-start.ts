@@ -43,13 +43,18 @@ export interface ForkStartDeps {
     cwd: string;
     configDir: string | null;
   }) => Promise<void>;
+  /**
+   * 起远端。**返回「真的拉起来了吗」** —— 远端那两条路（`runRemoteResume*`）失败时
+   * 自己弹 toast + 回退剪贴板并 `return false`，**不抛**。丢掉这个布尔就等于把失败
+   * 读成成功（account-ux Phase G 栽过一次，`remote-launch-run.ts` 的头注逐字记着）。
+   */
   startRemote: (a: {
     origin: string;
     sessionId: string;
     cwd: string;
     configDir: string | null;
     tmuxName: string | null;
-  }) => Promise<void>;
+  }) => Promise<boolean>;
 }
 
 export interface ForkStartInput {
@@ -65,7 +70,8 @@ export interface ForkStartInput {
   takenTmuxNames?: readonly string[];
 }
 
-export type ForkStartOutcome = "started" | "cancelled";
+/** `failed` 与 `cancelled` 必须分开：前者要报错，后者是用户自己收手、不该再弹任何东西。 */
+export type ForkStartOutcome = "started" | "cancelled" | "failed";
 
 /**
  * 起那条分叉出来的会话。
@@ -117,12 +123,12 @@ export async function startForkedSession(
   const tmuxName = useTmux
     ? forkTmuxName(input.sourceTmuxName ?? cwd ?? "fork", input.takenTmuxNames ?? [])
     : null;
-  await deps.startRemote({
+  const launched = await deps.startRemote({
     origin: input.origin,
     sessionId: input.newSessionId,
     cwd,
     configDir,
     tmuxName,
   });
-  return "started";
+  return launched ? "started" : "failed";
 }

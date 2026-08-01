@@ -1441,14 +1441,16 @@ export class HistoryView {
       await withAccount(
         origin,
         ctx.account ?? null,
-        async (mods) =>
-          runRemoteResume(
+        // 同 tabs.ts：`runRemoteResume` 已改返回 boolean，这条路显式丢弃（反馈走它自己的 toast）。
+        async (mods) => {
+          await runRemoteResume(
             origin,
             ctx.sessionId,
             ctx.cwd,
             await resolveResumeCommand(origin, behavior.resumeCommandRemote),
             mods,
-          ),
+          );
+        },
         {
           sessionId: ctx.sessionId,
           onUnselectable: (n) =>
