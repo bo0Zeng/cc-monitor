@@ -63,37 +63,47 @@ beforeEach(() => {
 });
 
 describe("S4a 跨分节机器同步", () => {
-  it("★ 在 cc-bus 里切机器 → cc-bus-hooks 跟着变（这就是 §5-4 记的那个病）", async () => {
+  /**
+   * **E59 改写了这两条。** 原来它们用 `cc-bus-hooks` 的下拉既当驱动又当观察点，
+   * 而那个下拉**已经删了** —— 本分节只作为机器详情页上的一块存在，页头就是选择器。
+   *
+   * 要守的性质没变（「在一处切机器，别处跟着变」），变的是**谁能驱动**：
+   * - `cc-bus-section` 仍有下拉 —— 它住在**顶层 cc-bus 驾驶舱视图**里，那儿没有页上下文，
+   *   它的选择器就是上下文本身（这是 E59 只删三处、留这一处的理由）。
+   * - `cc-bus-hooks` 只**跟随**，不驱动。
+   * - 机器详情页那条真实驱动路径是**路由切页 → store**，所以下面第二条直接驱动 store，
+   *   那才是生产里的形状。
+   */
+  it("★ 在 cc-bus 驾驶舱里切机器 → cc-bus-hooks 跟着变（§5-4 记的那个病）", async () => {
     const bus = new CcBusSection();
     const hooks = new CcBusHooksSection();
     await settle();
 
     const busSel = selOf(bus.element, "cc-bus-origin");
-    const hooksSel = selOf(hooks.element, "cc-bus-hooks-origin");
-    // 前置：两块都拿到了同一份机器清单（否则下面的同步是无从谈起的）
+    // 前置：驾驶舱那块拿到了机器清单（否则下面的同步无从谈起）
     expect([...busSel.options].map((o) => o.value)).toEqual(ORIGINS);
-    expect([...hooksSel.options].map((o) => o.value)).toEqual(ORIGINS);
+    // E59：hooks 那块不再有下拉，只有只读显示
+    expect(hooks.element.querySelector("select.cc-bus-hooks-origin")).toBeNull();
 
     busSel.value = "nano";
     busSel.dispatchEvent(new Event("change"));
     await settle();
 
     expect(getCurrentMachine()).toBe("nano");
-    expect(hooksSel.value).toBe("nano");
+    expect(hooks.element.querySelector(".cc-bus-hooks-origin")?.textContent).toBe("nano");
   });
 
-  it("★ 反方向也同步（不是单向绑定）", async () => {
+  it("★ 直接驱动 store（= 机器详情页切页那条真实路径）→ 两块都跟上", async () => {
     const bus = new CcBusSection();
     const hooks = new CcBusHooksSection();
     await settle();
     const busSel = selOf(bus.element, "cc-bus-origin");
-    const hooksSel = selOf(hooks.element, "cc-bus-hooks-origin");
 
-    hooksSel.value = "nano";
-    hooksSel.dispatchEvent(new Event("change"));
+    setCurrentMachine("nano");
     await settle();
 
     expect(busSel.value).toBe("nano");
+    expect(hooks.element.querySelector(".cc-bus-hooks-origin")?.textContent).toBe("nano");
   });
 
   it("★ 切到「本机」时，只列远端的分节**原地不动**（不乱选一台）", async () => {
