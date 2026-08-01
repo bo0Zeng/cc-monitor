@@ -328,6 +328,32 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 **副作用一条**：同一个 pidfile 的 `kind` 从 `"interactive"` 翻成别的值时，会走
 `retire_sid_if_unreferenced(Gone)` 退休路径 —— 也就是说「改 kind」不是改标签，是**让会话消失**。
 
+### 9.3 ★ `attachable`：新增字段，**给自己写 pidfile 的集成方**（E73，2026-08-01 定，契约冻结）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `attachable` | boolean? | **attach 进去对人有没有意义。** `false` ⇒ monitor 不提供 attach / `↗` 拉前 / 「杀死空 tmux」。**缺席 = `true`**（存量会话与旧 daemon 一律照旧，零迁移） |
+
+**为什么要这个字段（`kind` 答不了）**：`kind` 把两件事压在一个轴上 ——
+① 这个会话该不该在 UI 里出现（§9.1 的排他矩阵）② 它是不是「一个人坐在终端里跟它对话」。
+SDK / 脚本驱动的会话正好是 **①要 ②不要**，现有字段表达不了。
+
+**判据不是「有没有终端后端」**。那样问答不出来：这类会话**确实有** tmux、`@ccm_sid` 也设了。
+决定性的事实是 **`stdin` 不接键盘**（`stdin=DEVNULL`）—— 用户敲进去的字会被脚本吃掉。
+所以字段问的是「attach 进去对人有没有意义」，答案由**写 pidfile 的那一方**给，因为只有它知道。
+
+**不写会怎样（这是本字段存在的直接原因）**：monitor 的 idle-tmux 判据是
+「`@ccm_sid` 精确命中 **且** 前台命令不是 claude」。脚本驱动的会话（前台是 `python3` 之类）
+**精确落在里面** ⇒ monitor 认为那是个**空壳**，于是给出「杀死会话（kill 空 tmux）」和
+「就地 resume」。它以为里面没东西，实际正跑着你的脚本。
+
+**消费侧（monitor）怎么用**：daemon 把它 additive 放上 `session_added` 帧
+（`remote-daemon-proto/src/wire.rs`，最小 `BUILD_ID` = **`p1v-attachable`**），
+monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ② 把这些 sid 从 idle-tmux 判定里排除。
+
+**只认真正的布尔**：字符串 `"false"` 之类当没写（⇒ 视为可以）。宁可少一次门控，
+也不要把一个拼错的值读成「不可 attach」而把功能吞掉。
+
 ### 9.2 `procStart` 参与 PID 复用检测，不只是展示（E72）
 
 `procStart` 不是元信息，它是**判活的第二个判据**：monitor 用 `(pid, procStart)` 这一对来区分

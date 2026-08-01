@@ -171,6 +171,13 @@ pub struct RemoteSessionAddedPayload {
     /// kind = "interactive"/"bg"（bg → ⚙ 标识 + 树状归属）。wire 帧侧因 enum tag
     /// 占用叫 `session_kind`，bridge 事件 payload 无此约束，与本地 payload 统一叫 `kind`。
     pub kind: Option<String>,
+    /// **E73（additive）：attach 进去对人有没有意义。**
+    ///
+    /// `kind` 此前把两件事压在一个轴上：①「该不该在 UI 出现」②「是不是一个人坐在终端里
+    /// 跟它对话」。SDK / 脚本驱动的会话正好「①要②不要」—— 它有 tmux、`@ccm_sid` 也对，
+    /// 但 `stdin=DEVNULL`。`false` ⇒ 前端不给 attach / ↗ / 「杀死空 tmux」。
+    /// **None = true**（存量会话与旧 daemon 一律照旧）。
+    pub attachable: Option<bool>,
     /// 骨架标题不再等首行——cwd 直接可用（偿还 F18 backlog）。
     pub cwd: Option<String>,
     pub name: Option<String>,

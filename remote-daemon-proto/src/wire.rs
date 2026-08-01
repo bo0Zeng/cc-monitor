@@ -99,6 +99,20 @@ pub enum Frame {
         liveness_confidence: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         session_kind: Option<String>,
+        /// **E73（additive）：attach 进去对人有没有意义。**
+        ///
+        /// `session_kind` 今天把两件事压在一个轴上：①「该不该在 UI 出现」②「是不是一个人
+        /// 坐在终端里跟它对话」。SDK / 脚本驱动的会话正好是「①要②不要」—— 它有 tmux、
+        /// `@ccm_sid` 也对，但 `stdin=DEVNULL`，用户敲的字会被脚本吃掉。
+        ///
+        /// 判据**不是**「有没有终端后端」（它有 tmux，那样问答不出），而是
+        /// **「attach 进去对人有没有意义」**。
+        ///
+        /// `false` = 别给 attach / ↗ / 「杀死空 tmux」这几个动作。
+        /// **省略 = `true`**（存量会话与旧 daemon 一律照旧，零迁移）。
+        /// 来源：pidfile 的 `attachable` 布尔字段（契约见 `doc/IPC-PROTOCOL.md` §9.3）。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        attachable: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
         cwd: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -317,6 +331,7 @@ mod tests {
                     agent_kind: None,
                     liveness_confidence: None,
                     session_kind: None,
+                    attachable: None,
                     cwd: None,
                     name: None,
                     path: None,
@@ -546,6 +561,7 @@ mod tests {
             agent_kind: Some("codex".into()),
             liveness_confidence: Some("heuristic".into()),
             session_kind: None,
+            attachable: None,
             cwd: None,
             name: None,
             path: None,
@@ -599,6 +615,7 @@ mod tests {
             agent_kind: None,
             liveness_confidence: None,
             session_kind: None,
+            attachable: None,
             cwd: None,
             name: None,
             path: None,

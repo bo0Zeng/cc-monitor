@@ -1683,6 +1683,9 @@ pub enum InboundFrame {
     SessionAdded {
         sid: String,
         session_kind: Option<String>,
+        /// E73（additive）：attach 进去对人有没有意义。缺席 = true（存量零迁移）。
+        /// 语义与来源见 `remote-daemon-proto/src/wire.rs` 的同名字段 + `doc/IPC-PROTOCOL.md` §9.3。
+        attachable: Option<bool>,
         cwd: Option<String>,
         name: Option<String>,
         /// Batch8-F25：远端 jsonl 绝对路径（p1f daemon 起有值）——旁路快照用。
@@ -1782,6 +1785,9 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             Some(InboundFrame::SessionAdded {
                 sid,
                 session_kind: opt("session_kind"),
+                // E73：**只认真正的布尔**。字符串 "false" 之类当没写（缺席 = true）——
+                // 宁可少一次门控，也不要把一个拼错的值读成「不可 attach」而把功能吞掉。
+                attachable: obj.get("attachable").and_then(|x| x.as_bool()),
                 cwd: opt("cwd"),
                 name: opt("name"),
                 path: opt("path"),
@@ -2367,6 +2373,7 @@ async fn stream_loop(
             Some(InboundFrame::SessionAdded {
                 sid,
                 session_kind,
+                attachable,
                 cwd,
                 name,
                 path,
@@ -2380,6 +2387,7 @@ async fn stream_loop(
                     session_id: sid.clone(),
                     origin: host_label.clone(),
                     kind: session_kind,
+                    attachable,
                     cwd,
                     name,
                 };
@@ -2824,6 +2832,8 @@ fn announce_daemonless(
         session_id: sid.to_string(),
         origin: host_label.to_string(),
         kind: None,
+        // 这条路是「daemon 之外的兜底宣告」（无 pidfile 元信息）⇒ 一律 None = 照旧可 attach。
+        attachable: None,
         cwd: None,
         name: None,
     };
@@ -4098,6 +4108,7 @@ mod parse_frame_tests {
             InboundFrame::SessionAdded {
                 sid: "s-9".to_string(),
                 session_kind: None,
+                attachable: None,
                 cwd: None,
                 name: None,
                 path: None,
@@ -4119,6 +4130,7 @@ mod parse_frame_tests {
             InboundFrame::SessionAdded {
                 sid: "s-bg".to_string(),
                 session_kind: Some("bg".to_string()),
+                attachable: None,
                 cwd: Some("/proj/x".to_string()),
                 name: Some("评估任务".to_string()),
                 path: Some("/home/u/.claude/projects/p/s-bg.jsonl".to_string()),
@@ -5002,6 +5014,7 @@ mod reannounce_tests {
                 session_id: sid.into(),
                 origin: origin.into(),
                 kind: None,
+                attachable: None,
                 cwd: Some("/p".into()),
                 name: None,
             },

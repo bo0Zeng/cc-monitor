@@ -724,7 +724,14 @@ window.addEventListener("DOMContentLoaded", async () => {
     // Batch5-F18：远端会话宣告 → 骨架 Tab。Batch7-F24：p1e daemon 附 cwd/kind/name
     // ——骨架标题即时完整（bg → ⚙ + 树状挂宿主后）；旧 daemon 缺省照旧 sid 前缀。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
-      tabs.createSkeletonTab(sessionId, meta.cwd || null, origin, meta.kind, meta.name);
+      tabs.createSkeletonTab(
+        sessionId,
+        meta.cwd || null,
+        origin,
+        meta.kind,
+        meta.name,
+        meta.attachable, // E73
+      );
       // Batch5-F19：上次所在 tab 是远端会话时在此补切（应用一次即清；超过
       // 30s 启动窗口则放弃——迟到宣告不抢焦点，replay 优先级不受影响）
       if (pendingStartupActive === sessionId) {
