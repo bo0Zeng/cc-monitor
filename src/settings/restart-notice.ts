@@ -29,11 +29,78 @@
  * 状态性/安全性的一律常驻。**这一条是对用户原话的偏离，已在交付时明说。**
  */
 
+/**
+ * # E62：这条状态必须**活过设置窗口**
+ *
+ * 原来 `reasons` 只是个模块级 `Set`。而 windowMode 下 `close()` 走
+ * `getCurrentWindow().close()`，下一次 `open_settings_window` 是
+ * `WebviewWindowBuilder::new` 建**全新窗口** ⇒ 改完远端配置 → 关设置窗
+ *（这恰恰是改完之后的标准动作）→ 再打开 → **条没了，而 monitor 根本没重启**。
+ *
+ * 而本文件头注还写着「要让它消失只有一个办法：真的重启」—— 那句话当时是假的。
+ *
+ * 「需要重启」是**进程级**状态，却被放进了**最短命的那个窗口**的内存里。
+ * 同一批代码里 `machine-status` 已经论证过「跨重启保留是对的」并落了 localStorage；
+ * 这条比它更该落盘 —— 它描述的就是「这个进程还没重启」。
+ *
+ * ## 那怎么在真重启之后消掉
+ *
+ * 落盘的同时记下**本次进程的启动标识**（`bootId`）。读回来时若标识对不上，
+ * 说明 monitor 已经重启过了 ⇒ 整条丢弃。`bootId` 取一次随机值即可 ——
+ * 它只需要「每个 monitor 进程各不相同」，不需要有序或可解释。
+ *
+ * ⇒ 关窗再开：`bootId` 相同 ⇒ 条还在（对的，因为确实还没重启）。
+ * ⇒ 真重启：`bootId` 变了 ⇒ 条消失（对的，改动已生效）。
+ */
+import { LS_KEYS, safeGet, safeSet } from "../local-storage";
+
 type Listener = (reasons: string[]) => void;
 
+interface Persisted {
+  bootId: string;
+  reasons: string[];
+}
+
+/**
+ * 本次 monitor 进程的启动标识（首次调用时生成，之后原样读回）。
+ *
+ * **为什么不用 `sessionStorage`**（看起来更贴切：它的生命周期就是「这个 webview 活着」）：
+ * 设置窗是**另一个** webview，`sessionStorage` **不跨窗口共享** —— 那正好把我们要治的
+ * 「关窗即忘」原样搬了个家。`localStorage` 是同源共享的，才承得住「进程级」这个语义。
+ *
+ * 值本身没有含义，只需要「每个 monitor 进程各不相同」。**它不是权威数据**：
+ * 丢了最坏结果是那条提示早消失一次，不影响任何行为。
+ */
+function bootId(): string {
+  const KEY = "cc-monitor.boot-id";
+  let v = safeGet(KEY);
+  if (!v) {
+    v = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    safeSet(KEY, v);
+  }
+  return v;
+}
+
 /** 用 Set 而不是数组：同一个原因反复标记（每改一次远端配置都会标）只算一条。 */
-const reasons = new Set<string>();
+const reasons = new Set<string>(loadPersisted());
 const listeners = new Set<Listener>();
+
+function loadPersisted(): string[] {
+  const raw = safeGet(LS_KEYS.restartReasons);
+  if (!raw) return [];
+  try {
+    const p = JSON.parse(raw) as Partial<Persisted>;
+    // bootId 对不上 = monitor 已经重启过 ⇒ 那批改动早就生效了，丢弃。
+    if (typeof p?.bootId !== "string" || p.bootId !== bootId()) return [];
+    return Array.isArray(p.reasons) ? p.reasons.filter((r) => typeof r === "string") : [];
+  } catch {
+    return []; // 坏数据当没有——这条只是提示，不值得为它报错
+  }
+}
+
+function persist(): void {
+  safeSet(LS_KEYS.restartReasons, JSON.stringify({ bootId: bootId(), reasons: [...reasons] }));
+}
 
 /**
  * 记一笔「这项改动要重启才生效」。
@@ -45,6 +112,7 @@ export function markRestartNeeded(reason: string): void {
   const r = reason.trim();
   if (!r || reasons.has(r)) return; // 同值不通知：避免每敲一个字符就重渲染一次
   reasons.add(r);
+  persist(); // E62：进程级状态，关窗不能丢
   notify();
 }
 
@@ -62,6 +130,13 @@ export function subscribeRestart(fn: Listener): () => void {
 export function __resetRestartNoticeForTests(): void {
   reasons.clear();
   listeners.clear();
+  safeSet(LS_KEYS.restartReasons, "");
+}
+
+/** 仅供测试：把落盘的那份重新读进内存（模拟「关窗再开」）。 */
+export function __rehydrateRestartNoticeForTests(): void {
+  reasons.clear();
+  for (const r of loadPersisted()) reasons.add(r);
 }
 
 function notify(): void {
@@ -82,6 +157,9 @@ function notify(): void {
  * 刻意**不给「知道了」按钮**：那会让用户把一个仍然为真的状态划掉
  * ——「改动还没生效」这件事不会因为他点了一下就不成立。要让它消失只有一个办法：
  * 真的重启。（这也是为什么生产里没有清除入口。）
+ *
+ * **E62 起这句话才是真的。** 在那之前 `reasons` 只是模块级内存，关掉设置窗就没了 ——
+ * 也就是说当时还有第二个办法让它消失：关窗。见本文件上方 E62 那段。
  */
 export function createRestartBar(): HTMLElement {
   const bar = document.createElement("div");

@@ -50,6 +50,9 @@ export const LS_KEYS = {
   /** S3(settings-ia)：机器列表行上那几个状态格子的账本（origin → facet → 结论+时刻）。
    *  **纯 UI 缓存，不是权威数据**；丢了只是列表回到「未测过」，不影响任何行为。 */
   machineStatus: "cc-monitor.settings.machine-status",
+  /** E62：「有改动需重启」的原因集。**进程级状态**，不能只活在设置窗口的内存里 ——
+   *  windowMode 下关掉设置窗 = 那个 webview 整个没了，而 monitor 并没有重启。 */
+  restartReasons: "cc-monitor.settings.restart-reasons",
 } as const;
 
 export function safeGet(key: string): string | null {
