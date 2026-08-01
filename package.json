@@ -53,7 +53,8 @@
     "test:restart-frames": "bash e2e/restart-daemon-frames.sh",
     "test:resume": "bash e2e/resume-suite.sh",
     "test:resume-frames": "bash e2e/resume-daemon-frames.sh",
-    "test:exec-bits": "bash e2e/exec-bit-guard.sh"
+    "test:exec-bits": "bash e2e/exec-bit-guard.sh",
+    "test:f40": "bash e2e/f40-suite.sh"
   },
   "dependencies": {
     "@chenglou/pretext": "0.0.8",

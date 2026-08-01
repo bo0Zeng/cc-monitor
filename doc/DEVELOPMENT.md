@@ -129,9 +129,9 @@ cargo test --lib -- --nocapture       # 看 println! 输出
 
 | 层 | 跑法 | 覆盖 |
 |---|---|---|
-| node 纯函数断言(`src/**/*.test.ts`,14 组) | `npm test` 前段(node 原生跑 TS,需 Node ≥22.18) | diff/branching/api-error/bash/format/remote-health/remote-launch/history-cache/history-prefs/history-actions/usage-pivot/pricing/session-backend/panorama-session-files 纯逻辑 |
-| vitest + jsdom(`src/**/*.vitest.ts`,595 测) | `npm run test:dom`(覆盖率 `npm run coverage`) | DOM/生命周期/mock 协作:tabs 门控与物化、TailWindow、UnrenderedRanges、RecordTimeline、估高、路由表、探针纯函数、settings 面板分组、mcp-section、grid-monitor、command-bar、账号徽章/灰灯 等 |
-| E2E 套件(`e2e/f40-suite.sh`,14 断言) | **手动**,Linux Xvfb + `tauri dev`(前置见 [e2e/README.md](../e2e/README.md)) | 整机行为:启动门控/贴底/上翻补批/fork 折叠/抖动密度绊线 |
+| node 纯函数断言(`src/**/*.test.ts`,**16 组**) | `npm test` 前段(node 原生跑 TS,需 Node ≥22.18) | diff/branching/api-error/bash/format/remote-health/remote-launch/history-cache/history-prefs/history-actions/usage-pivot/pricing/session-backend/panorama-session-files/**launch-dimensions**/**launch-render-cli** 纯逻辑。<br>**这张清单的单一事实源是 `src/node-suite-registry-guard.vitest.ts` 的 `NODE_SUITES`**(U0 2026-08-01 起机检:套件集合↔`package.json`↔`npm test` 链三方对拍)。本行是给人读的副本 —— 原写「14 组」且漏了后两个,正是副本漂移 |
+| vitest + jsdom(`src/**/*.vitest.ts`;条数以 `npm run test:dom` 实跑为准,**别在文档里存副本** —— 这个数在仓里有 4-5 份拷贝、注定漂,见 BACKLOG E65) | `npm run test:dom`(覆盖率 `npm run coverage`) | DOM/生命周期/mock 协作:tabs 门控与物化、TailWindow、UnrenderedRanges、RecordTimeline、估高、路由表、探针纯函数、settings 面板分组、mcp-section、grid-monitor、command-bar、账号徽章/灰灯 等 |
+| E2E 套件(`npm run test:f40` = `e2e/f40-suite.sh`) | **手动**,Linux Xvfb + `tauri dev`(前置见 [e2e/README.md](../e2e/README.md)) | 整机行为:启动门控/贴底/上翻补批/fork 折叠/抖动密度绊线 |
 
 改前端:动纯函数跑对应 node 脚本、动 DOM 行为跑 `npm run test:dom`、动滚动/渲染管线跑一遍 e2e 套件;`tsc --noEmit` 对全部测试文件做类型检查。**WebView2(生产)行为无自动化覆盖**——涉滚动锚定的改动发版前须 Windows 真机复核(e2e/README「人工场景」)。
 

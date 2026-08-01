@@ -99,7 +99,18 @@ if command -v script >/dev/null 2>&1; then
   out2=$(timeout 4 script -qec "$TMUX_BIN -L $SOCK attach -t '=cc-nosuch:'" /dev/null 2>&1 | head -c 200)
   ck "pty 下 attach 不存在名 → can't find" "notfound" "$(echo "$out2" | grep -q "can.t find" && echo notfound || echo ok)"
 else
-  echo "SKIP | 无 script(1)，跳过 pty attach 正例"
+  # U0（2026-08-01）：与 `ccm-cli.test.sh` 缺 npx 那处**一字不差的病**，一并修。
+  # 静默 SKIP 掉 2 条 ⇒ 合计 PASS 26→24 ⇒ `assert-pass-floor.sh tmux-target 26` 判红，
+  # 而它的判词是「断言数缩水」—— **真因是环境缺 `script(1)`，报的是套件被削弱**。
+  # `gate-integrity/MASTERPLAN.md:18` 早把这两处并列记成「静默 SKIP 分支」（第三处
+  # `cc-spawn-uplift:22` 已在 Phase G 修掉）。诊断说真话，别让人去翻这套件最近改了什么。
+  FAIL=$((FAIL + 2))
+  # 诊断一律**单引号**：双引号里的反引号会被 bash 当命令替换执行（这里就踩过一次，
+  # `=名:` 被当成命令跑，输出里冒出「未找到命令」）。
+  echo 'FAIL | pty attach 正反例无法运行：**找不到 script(1)** —— 环境缺工具，不是套件退化'
+  echo '     | 这 2 条守的是 INVARIANTS §31a：`=名:` 精确目标在**有 tty** 时确实能接上真名、'
+  echo '     | 且不存在的名会如实 can'"'"'t find。无 pty 就只剩「无 tty 必失败」那种伪证据。'
+  echo '     | 装 util-linux 的 script(1) 再跑。'
 fi
 
 reset; rm -rf "$SHIM"
