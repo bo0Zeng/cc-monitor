@@ -303,14 +303,16 @@ jobs:
       # 在本地**永远看不出来**（本地跑的是盘上那份），只有干净 checkout 才炸。已踩过两次：
       # R00 的 `shared/ccm`（CI 上 Permission denied，e2e 连红三轮）与 B01 的 13 个 cc-bus 脚本。
       # 直接 bash 调用：本 job 没有 setup-node 步骤，不该为一条纯 shell 检查引入 npm 依赖。
-      # G-A **覆盖面地板**：8 套真机套件必须**每一套**都经 `assert-pass-floor.sh` 跑。
+      # G-A **覆盖面地板**：15 套真机套件必须**每一套**都经 `assert-pass-floor.sh` 跑。
+      # （U0 2026-08-01 订正：本行与下面 `:313` 原写「8」，是 E82 订正下方散文时漏跟的两处，
+      #  与紧邻的步骤名「15 套」和 `-ge 15` 自相矛盾。真值以本步骤的 grep 计数为准。）
       # 不加这条的失效模式是：有人把某一步改回裸 `npm run test:X`（或整步删掉），
       # 那套的断言数就再没人管了，而 CI **照样全绿** —— 与断言数缩水同一类病，只是换了一层。
       - name: G-A/G-C 覆盖面地板（15 套真机套件都必须带断言数地板）
         run: |
           set -euo pipefail
           # 只数**真正的调用行**（`run: bash e2e/…`）——本步骤自己那几行 grep 也含这个脚本名，
-          # 用宽模式会把它们算进来（实测会数成 11 而不是 8，那个数就成了假的）。
+          # 用宽模式会把它们算进来（实测会数成比真值更大的数，那个数就成了假的）。
           N=$(grep -c 'run: bash e2e/assert-pass-floor\.sh' .github/workflows/ci.yml || true)
           echo "带地板的 e2e 步骤数 = ${N:-0}"
           [ "${N:-0}" -ge 15 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 15）——有套件被改回裸 npm run 或被删掉"; exit 1; }

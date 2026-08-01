@@ -218,6 +218,7 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 | S13 | **`parity_ledger`**<br>**U-1 已交付**：`command_signatures()` 改递归 + `files.sort()`（不排序时「首个胜」会让同名命令随文件系统顺序漂）。实测 `adapter/` 下两文件的 `#[tauri::command]` 命中数都是 **0** ⇒ 递归当下是**纯预防性**，`LEDGER.len()==123` 与 `checked==68` 都没变 | 本区天然验收面。⚠ 它只钉命令**这一层**，别把「数字没动」读成「读面没搬成」 | U-1 · U7 |
 | S14 | **`--resolve`** | 吸收进 backend 的计划面；线上形状逐字不变（aterm 契约 2026-07-18 冻结）；`sessionName` 漂移随之消失 | U6 · U8 |
 | S15 | **本机分发链** | Tauri sidecar，**与 `embed_daemons` 完全另一套**；⚠ `sftp.rs:1262` 的 `assert_eq!(…, b"\x7fELF")` 与 `:1252` 的 arch 表会被 Windows PE 打红 | U5 |
+| S16 | **`npm test` 套件链 + tsx 套件登记表**（U0 新增）<br>**U0 已交付**：`src/node-suite-registry-guard.vitest.ts` 六条判据（条数 / 全仓总量地板 / 集合 / 路径 / 链路+`&&` / 失败收尾）。⚠ **U8c 退役两个 TS 渲染器时必须同步改四处**：`NODE_SUITES` · `TOTAL_FLOOR` · `package.json` 的 `test:*` 定义 · `npm test` 链。被碰到的是 3 个套件：`test:launch-render-cli`(26, **整删**) · `test:launch-dimensions`(28, **整删**) · `test:remote-launch`(40, **改不删**)。只删一半会当场红 —— 这正是本条要的效果 | U0 · U8c |
 
 ### 跨工作区冲突协议
 
@@ -242,7 +243,7 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 
 | # | 功能 | DoD |
 |---|---|---|
-| **U0** | **地板的脆点与孤儿** | ① 修 `ccm-cli.test.sh:206` 的 `command -v npx` 脆点（无 npx ⇒ PASS=39 < 地板 44 ⇒ CI 红但诊断写成「断言数缩水」，实为环境缺失）；② `graylight-suite` / `f40-suite` 两个孤儿套件明确处置（接线或删）；③ **16 个 `*.test.ts` / 241 例既无断言地板又被 `coverage.exclude` 排掉 —— 双重不设防**（E64①），补一条；④ 订正计划自己的 6/8 误记。**不再是「加地板」** |
+| **U0** | **地板的脆点与孤儿** | ① 修 `ccm-cli.test.sh:206` 的 `command -v npx` 脆点（无 npx ⇒ PASS=39 < 地板 44 ⇒ CI 红但诊断写成「断言数缩水」，实为环境缺失）；② `graylight-suite` / `f40-suite` 两个孤儿套件明确处置（接线或删）；③ **16 个 `*.test.ts` / **242** 例（原写 241 —— 那是 e2e 地板合计，串号了）既无断言地板又被 `coverage.exclude` 排掉 —— 双重不设防**（E64①），补一条；④ 订正计划自己的 6/8 误记。**不再是「加地板」** |
 | **U1a** | **守卫强度对拍（今天可做的一半）** | `ccm_cli_has_required_elements` 迁移前先把强度基线记下来（needle 数 / `require` 的实际 checked / `pin_definition`），作为 U9 迁移后的对拍表。**不是「加计数自检」——它已经有了** |
 
 ### 第二梯队 · backend 内部解耦（纯重构，行为逐字不变）
@@ -423,3 +424,7 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   （`launch-requests.ts:67` 的默认值），已修 + 加对拍断言 + 修 9 处自相矛盾的注释。详见 §5「已闭合」D3 条。
   仓库级命名（`monitor` crate 名三拼、`remote-daemon-proto` 目录与包名不符、统一后 `remote` 会变成假话）
   **不在用户这次的范围内**，仅作为观察留在 U13 行里。
+- 2026-08-01 **U0 完成**。Phase B 复查推翻了原 DoD 的两条：`graylight-suite` **不是孤儿**（`e2e/README.md:52` 有排除论证 + 有 npm 脚本），真问题是 `f40-suite` 连 npm 脚本都没有；「16 个 tsx 套件**双重**不设防」里的「双重」不成立（`coverage.exclude` 排的是测试文件自身，标准做法）。
+  Phase D 逮到 7 条重要项，其中 **D1 是我补的守卫自己漏了同族更重的那条洞**（收尾 `if (failed>0) throw` 被删 ⇒ 测试照跑照打 ✗ 而退出码 0），且我的「挡不住什么」段没写它。
+  连带修：另外两处同型的静默 SKIP（`tmux-target-acceptance.sh` 缺 `script(1)` / `restart-daemon-frames.sh` 缺 daemon）·`ci.yml:306/313` 残留的「8 套」· `DEVELOPMENT.md` 的「14 组」且漏两个名字 · `RELEASING.md` 的 f40 悬空引用 ·`.gitignore` 补 `src-tauri/crates/**/Cargo.lock`。
+  新增账本 **S16**。U0 行的「241 例」订正为 **242**（241 是 e2e 地板合计，串号了）。

@@ -55,7 +55,14 @@ if [ -z "$DAEMON" ]; then
     [ -x "$c" ] && { DAEMON="$c"; break; }
   done
 fi
-[ -n "$DAEMON" ] && [ -x "$DAEMON" ] || { echo "SKIP: 无可用 daemon 二进制（未构建且无已部署）——命令级由 restart-suite.sh 覆盖"; exit 0; }
+# U0（2026-08-01）：这条 SKIP **不是**静默绿 —— 本套件不打印 `合计 PASS=`，
+# `assert-pass-floor.sh:51-54` 抓不到那行就会判红。但诊断说的不是真因，同 npx / script(1) 那两处。
+[ -n "$DAEMON" ] && [ -x "$DAEMON" ] || {
+  echo "SKIP: 无可用 daemon 二进制（未构建且无已部署）——环境缺前置，不是套件退化。"
+  echo "      本套件不打印「合计 PASS=」，故 assert-pass-floor 会以「抓不到断言数」判红；"
+  echo "      真因是这里。先 cargo build 出 daemon 或部署一个，再跑。命令级由 restart-suite.sh 覆盖。"
+  exit 0
+}
 command -v tmux >/dev/null || { echo "无 tmux"; exit 1; }
 
 WORK="$(mktemp -d /tmp/e2e-restart-frames.XXXXXX)"

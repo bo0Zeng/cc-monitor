@@ -18,7 +18,7 @@
       抬头那行的「平台」和状态段的一句话概述要跟上（例：v3.4.0 首发 `.deb`，
       而 README 到 v3.5.0 才补上「Linux」——用户读完会以为不支持）
 - [ ] `cargo fmt --check + cargo check + cargo test --all + cargo test -p code-picture-core + cargo test -p branch-core + npm test + npm run coverage + npm run build` 全绿（fmt 不过 CI 会红；`npm test` 含 16 组 node 纯函数 + vitest DOM 1047 测 = 前端 job；后端 `cargo test --all`〔+ `-p code-picture-core` + `-p branch-core`，两者都是 path 依赖非 workspace 成员，`--all` 测不到〕 + 远端 daemon `cargo test`（`remote-daemon-proto/`，含 `cargo fmt --check`）+ Linux app 构建 + 三个 e2e job 都是**独立 CI job**，别漏跑；CI 共 **7** job）
-- [ ] **若本版动过滚动/渲染管线**（stream/tabs/session-viewer/branch-fold/render-*）：跑一遍 `e2e/f40-suite.sh`（Linux Xvfb，见 e2e/README）+ Windows 真机把 e2e/README「人工场景」的 WebView2 复核过一遍（WebKitGTK 无 overflow-anchor，两端补批语义不同）
+- [ ] **若本版动过滚动/渲染管线**（stream/tabs/session-viewer/branch-fold/render-*）：跑一遍 `npm run test:f40`（= `e2e/f40-suite.sh`；Linux Xvfb + 一个正在跑的 `tauri dev`，前置见 e2e/README）+ Windows 真机把 e2e/README「人工场景」的 WebView2 复核过一遍（WebKitGTK 无 overflow-anchor，两端补批语义不同）
 - [ ] **若本版改过 daemon 源码**（BUILD_ID 应已随改动 bump）：走 tag 发版由 release.yml 的 build-daemons job 从源码重编内嵌二进制（官方渠道恒一致）；**本地手工打包分发**则必须先重编并**同步更新 `src-tauri/embedded-daemons/` 里的二进制和同名 `.build_id` 清单**——否则装出去的是旧 daemon，连接后无限重装循环。
       > **这一格 2026-08-01（U-1）从 warning 升成编译期 panic。** 原来只有一条比 mtime 的
       > `cargo:warning`，而真实事故是**半 bump**：源码已 `p1v-`、清单还是 `p1u-`，二进制 mtime 反而更新

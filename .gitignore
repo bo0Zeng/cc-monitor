@@ -35,6 +35,12 @@ target/
 # Phase G 收尾：vendor 的 code-picture 副本里 cargo 生成的 Cargo.lock 是游离产物
 # （被 workspace 根 lock 架空、构建不用它），不进版本控制。re-vendor（F68）时别提交它。
 src-tauri/vendor/**/Cargo.lock
+# U0（2026-08-01）：`src-tauri/crates/` 下的 path 依赖 crate 同理。`branch-core` 不是
+# workspace 成员，单独 `cargo test -p branch-core` 会在那里落一个 Cargo.lock —— 同样是
+# 被上层架空的游离产物。它此前**既未跟踪也未 ignore**，于是每次 `git status` 都躺在那里，
+# 而本仓的红线是「显式 `git add` 文件清单、绝不 `git add -A`」——正是为了别把它扫进去。
+# 与其靠每次记得，不如让它别出现（同 vendor 那条的先例）。
+src-tauri/crates/**/Cargo.lock
 __pycache__/
 
 # planned-build agent worktrees (transient, never commit)

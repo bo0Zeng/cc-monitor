@@ -214,7 +214,22 @@ if command -v npx >/dev/null 2>&1; then
     ck "deriveTmuxName 对拍: $d" "$want" "$got"
   done
 else
-  echo "SKIP | 无 npx，跳过跨语言对拍"
+  # U0（2026-08-01）：**缺 npx 不许静默 SKIP。**
+  #
+  # 原来这里是 `echo "SKIP | 无 npx，跳过跨语言对拍"`，看着很客气，实际后果是：
+  # 5 条断言不跑 ⇒ 合计 PASS 从 44 掉到 39 ⇒ `assert-pass-floor.sh ccm-cli 44` 判红，
+  # 诊断写的是「断言数缩水 / 套件被削弱」—— **真因是环境缺工具，报的是代码退化**。
+  # 排查的人会去翻这个套件最近改了什么，而那里什么也没发生。
+  #
+  # 而被跳掉的这 5 条不是可有可无：它们是 `deriveTmuxName`（TS）与
+  # `derive_tmux_name`（bash）之间**唯一**的真值对拍 —— 跨语言双写点的漂移守卫。
+  # 少了它，两边规则各自演化不会有任何信号（E49 记的就是这条）。
+  #
+  # ⇒ 改成 fail-closed 且**诊断说真话**。CI 上 npx 恒在，这条只会在本机裸环境触发。
+  FAIL=$((FAIL + 1))
+  echo "FAIL | 跨语言对拍无法运行：**找不到 npx** —— 环境缺工具，不是套件退化"
+  echo "     | 被跳过的是 deriveTmuxName(TS) ↔ derive_tmux_name(bash) 的真值对拍，"
+  echo "     | 即跨语言双写点唯一的漂移守卫（E49）。装上 node/npx 再跑，或明确接受此处无守卫。"
 fi
 
 echo
