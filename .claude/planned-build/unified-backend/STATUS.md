@@ -1,48 +1,39 @@
 # 状态 / STATUS — unified-backend（恢复入口，每次先读这里）
 
-- **当前阶段**：**U-1 的 Phase C/D 已闭环 + 文档面已补齐 + Phase E 进行中**（2026-08-01 08:2x 用户手动续跑，07:22 那次唤醒未用上）。
-- **当前功能**：**U-1 护栏当下缺陷修复**（第零梯队，v3 新增）
+- **当前阶段**：第零 / 第一梯队（三个门禁功能）**全部闭环并各自提交**；进第二梯队 **U2**（第一个真动结构的）。
+- **当前功能**：**U2 抽 `platform/` + `common/`**
 
-## 续跑记录（2026-08-01 08:2x）—— 暂停点四件事的进度
+## 进度（2026-08-01，用户指令「全自动做完、中途不要停」）
 
-**代码已全部落地且门禁全绿**（daemon `cargo test` **193 passed** / monitor `--lib` **661 passed** / tsc 0 / vitest 79 文件 1148 例 / fmt 两侧 OK，均 RC=0）。工作区未提交，`git status` 见下。
+| 功能 | 状态 | commit |
+|---|---|---|
+| **U-1** 护栏当下缺陷修复 | ✅ 闭环 | `51a99ba` |
+| **U0** 门禁脆点与孤儿 | ✅ 闭环 | `a0ae7fd` |
+| **U1a** 守卫强度对拍基线 | ✅ 闭环 | `2b86b71` |
+| **U2** 抽 `platform/` + `common/` | ⏳ 进行中 | — |
+| U3 拆 `observe/`+`control/` · U1b · U4-U15 | 待做 | — |
 
-1. ✅ **补文档面**（Phase D 审计 I4）—— 五处全改完：`doc/RELEASING.md:22`（warning→三种 panic + 必须同步 `.build_id`）· `doc/REMOTE-PHASE0-DEPLOY.md:15-40`（手工打包必写清单 + rust-lld 零安装路线及其**不等价于 CI 产物**的限定 + 三种 panic 表）· `doc/CONTRIBUTING.md:82`（现为机器强制）· `doc/INVARIANTS.md:1188`（「扫全 crate 生产段」改动前是假的，加订正标注）· `doc/INVARIANTS.md §41.4`（两条派生纪律→**三条**，新增「剥法必须同时防欠剥与过剥」，含 B1 完整病历 + 「同一个坑 `readonly_guard` 早填过、另外三处没跟」的元教训）。
-   > 写文档时**当场订正了自己一句过头话**：初稿写「那段 dispatch 从来没被任何一条守卫扫过」，去读 `readonly_guard.rs:12-22` 才发现它 2025 年就用按括号配平逐块剥、注释里明写「不能简单从首个 `#[cfg(test)]` 截断到 EOF」——**它扫到了**。改成只点 `no_timer_guard` 一族，并把这个反差写成元教训。
-2. ✅ **更新 feature 文件** —— 补 Phase D 全部结果（阻塞 B1 + 重要 I1-I4 + 两个我自造的坑 + 5 条建议）、登记**偏离④**（地板判据从「数量相等」改成「字节下限」当时漏记，现已两条**都**上）、订正变异表第 1 行的 `tmp_probe`/`tmux_probe` 笔误。
-   > 笔误**不靠回忆订正**——重跑了一次那个变异取实测（RC=101，诊断逐字 `tmp_probe/probe.rs`），顺带发现原记录漏了**第二条测试**（`every_duration_use_is_registered_as_non_timer`）也会一起红。跑完 `rm -rf` + `touch` 还原，复验 193 绿。
-3. ✅ **Phase E 工程审计**（主线程对账 + 1 个聚焦 agent）。**潜在阻塞排除**：`release.yml:56-58` 的 build-daemons **确实写 `.build_id` 清单**（从源码 `grep -oP` 抠），`build-windows:113-118` 还会再对拍 ⇒ 三条 panic 在发版链上够不着，发版不会被打挂。阻塞 0 项、重要 5 项**全部当轮修完**（详见 feature 文件「工程审计结果」）。账本 **S1/S2/S8/S13 已落账**。
-   > **最要紧的一条**：`readonly_guard::strip_cfg_test` 有两条**过剥（fail-open）** —— ① 锚点没钉行首，`main.rs:23` 行尾注释里的 `#[cfg(test)]` 就能起跳；② 无花括号体声明会吃掉后文，**触发它的正是我这轮加的 `#[cfg(test)] mod guard_support;`**。合起来让 `main.rs:23–40`（15 条 `mod` + 2 条 `use`）从来不在扫描面里。两条一起修，扫描面 217_853→221_928。判定证据：同一处 `fs::write` 探针，旧剥法**假绿**、新剥法 **RC=101**。
-   > **审计有一半说错了，我核实后订正**：它说「只有 `guard_support.rs` 一个文件残留 5 个 `#[test]`、其余 15 个为 0」——HEAD 就有 4 个文件残留（watcher 76 / accounts_query 25 / resolve_query 10 / history_query 4），我的文件是第五个也是最小的。
-   > **另外我自己抄错了一个数**：字节基线注释写 119_454，用护栏自己的口径实测是 **121_131**（审计对）。已订正，并把复测办法写进注释，不再手抄。
-4. ⏳ **commit**（显式 `git add` 文件清单，**绝不 `-A`** —— `src-tauri/crates/branch-core/Cargo.lock` 是未跟踪且**不在 gitignore 里**的新文件，别误加）。然后推进 **U0**。
+**三个门禁功能全部闭环 —— 这是「重构不跑在假绿里」的前提，U2 起才动结构。**
 
-**本轮新增的计划改动（用户 tmux 命名提问触发）**：
-用户先问「是不是还有命名漂移」，我按**仓库级**答了（四套并存、`monitor`/`cc-monitor`/`ccmonitor` 三拼）；
-用户澄清**问的是 tmux 会话名、要后缀 `-cc`、其余不动** ⇒ 我上一版答复答偏了问题。
-按澄清后的范围复查：`-cc` 早在 2026-07-31 S4b-3b 就反转过了，但**漏了最后一个生产生成点**
-（`launch-requests.ts:67` 的默认值仍是 `cc-<sid8>`；线上没冒出来只因三条调用路径碰巧都传显式 name，
-而它是**公开导出 API 的默认值**）。已修 + 加「默认名 == `pickFreshTmuxName` 基名」对拍断言 +
-修 9 处仍在描述旧形态的注释（其中 `pickFreshTmuxName` 的头注**与它自己下一行的代码自相矛盾**）。
-`cc-` 的**识别**半支保留不动（老会话没有 `@ccm_sid`，删了就是把用户正在跑的会话变成失管会话）。
-§5 D3 已从「待拍板」移进「已闭合」；仓库级命名作为观察留在 U13 行里，动手前需单独拍板。
+### 三轮各自最要紧的一条（都是我自己造的或遗留的）
 
-**已改动文件（`git status`）**：
-```
- M .claude/planned-build/README.md
- M remote-daemon-proto/src/{accounts_query,build_id_guard,main,no_timer_guard}.rs
- M src-tauri/build.rs
- M src-tauri/src/{parity_ledger,ssh_source}.rs
-?? .claude/planned-build/unified-backend/
-?? remote-daemon-proto/src/guard_support.rs
-?? src-tauri/crates/branch-core/Cargo.lock   ← 不是本功能产物，别 add
-```
-另：`src-tauri/embedded-daemons/` 下四个文件被替换（gitignore，不进 git）。
+- **U-1**：修 `no_timer_guard` 的动作**当场制造了同一类新盲区** —— 我加的
+  `#[cfg(test)] mod guard_support;` 是无花括号体声明，让 `readonly_guard` 的剥法把
+  `main.rs:23–40`（15 条 `mod` + 2 条 `use`）吞出扫描面。两条过剥一起修，扫描面 +4075 字节。
+- **U0**：我补的 tsx 套件地板**漏了同族更重的那条洞** —— 收尾 `if (failed>0) throw` 被删时，
+  测试照跑照打 `✗` 而**退出码 0**。审计实测复现，加判据 d。
+- **U1a**：① `mod` 插错位置拆散 `#[cfg(test)]` 配对，`structural_scan` 变无条件编译、
+  dead_code +5，而 `cargo build` 无 `-D warnings` ⇒ **不会红**；② 强度读数漏了 `violations`，
+  对 F01 的裸目标事故形状**全瞎**（4 处精确目标改裸，四字段一字不变、全绿）。
 
-**Phase D 第一轮三视角结论**：一条阻塞（**我这次改动自己制造的**：`#[cfg(test)]\nmod guard_support;` 是无花括号体的声明，被旧剥法当成模块体，把 `main.rs:26-179` 整段吞掉 ⇒ `no_timer_guard` 在那一段静默变瞎。两份审计独立命中）—— **已根治**（要求那一行以 `{` 收尾）+ 两条回归钉 + 一条语义钉。产物审计**零阻塞**：两个内嵌二进制的 `p1v-attachable` 已**反汇编到指令级证实**。
+⇒ 三轮的共同形状：**我修护栏的动作本身在造新洞，而且都是静默的。**
+每条都靠「同一段违规代码在应扫到/应剥掉两个位置红绿相反」判定，不靠跑绿。
 
-**还欠的（已登记，不在 U-1 范围）**：`#[cfg(test)]` 修饰的**自由函数**（`history_query.rs:232/309`）永远不被剥且 `assert_no_test_code` 检不出 · 共享剥法只收敛 8 处里的 3 处（其余 5 处当下安全，U2/U3 搬文件时会咬） · 三处新递归都跟随符号链接 · aarch64 那份内嵌二进制**从未被执行过**（本机无 qemu）· 建议在 `.build_id` 清单里存一份 sha256 把「清单↔字节」焊死。
-- **待拍板**：**1 条 —— D1「间接写算不算违反 §41.6」**（见 `MASTERPLAN.md §5`）。它不阻塞 U-1/U0/U1a/U2/U3，最晚在 **U8a 之前**必须有答案。我给了推荐（①收窄铁律 + 把预信任单列为受管例外），若无异议我按推荐走并在 U8a 的 feature 文件里再显著标一次。
+### 当前门禁基线（U1a 提交后实测）
+
+daemon `cargo test` **194** · monitor `--lib` **663 / 3 ignored** · `npm test` **80 文件 1154 例** ·
+`tsc` 0 · 两侧 `cargo fmt` OK · clippy 本轮新模块 0 命中 · `cargo build --lib` dead_code **11（基线）** ·
+`assert-pass-floor.sh` ccm-cli 44 / tmux-target 26 · coverage 全过地板。均 RC=0。
 
 ## 计划自审结论（2026-08-01，四视角并行）
 
@@ -141,7 +132,8 @@ cc-bus 的 spawn 又一套。而 daemon 至今是**纯观察者**，一条执行
 
 ## loop / 自动度
 
-尚未设定 —— 主计划审批时一并定。
+**全自动连续跑**（用户 2026-08-01「全自动按照 plannedbuild 开做，在全部做完之前不要停下」）。
+每个功能走完 B→F 并**独立 commit** 作为回滚检查点；停止条件见上面「自动模式」那节。
 
 ## 时间线
 
