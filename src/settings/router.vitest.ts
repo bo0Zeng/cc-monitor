@@ -141,6 +141,56 @@ describe("SettingsRouter", () => {
     expect(r.activeId).toBe("c");
   });
 
+  /**
+   * ★★ E61：**生产里唯一真实的那个构型**——父 + **多个**子项 + 子项**后注册**。
+   *
+   * 既有三条测试互补但从不组合：扁平三页 / 只查 DOM 序 / 父 + **一个**子项。
+   * 恰好漏掉这一个，而它就是设置面板每次打开时的样子（机器页是 `RemoteSection`
+   * 异步 `refresh()` 之后才注册的 ⇒ 注册序 应用/机器/改动足迹/aya/nano，
+   * 视觉序 应用/机器/aya/nano/改动足迹）。
+   *
+   * 症状：焦点在「机器」上按 ↓ 跳到「改动足迹」，`End` 落到最后一台机器。
+   */
+  it("★★ 方向键按**视觉序**走：父 + 多个后注册的子项（E61 的真实构型）", () => {
+    const r = new SettingsRouter({ landingId: "app" });
+    r.addRoute({ id: "app", title: "应用", element: page("app") });
+    r.addRoute({ id: "machines", title: "机器", element: page("machines") });
+    r.addRoute({ id: "footprint", title: "改动足迹", element: page("footprint") });
+    // 机器页的子项**在 footprint 之后**注册（生产里就是这个时序）
+    r.addRoute({ id: "aya", title: "aya", element: page("aya"), parentId: "machines" });
+    r.addRoute({ id: "nano", title: "nano", element: page("nano"), parentId: "machines" });
+
+    const nav = r.element.querySelector<HTMLElement>(".settings-nav")!;
+    const domOrder = [...nav.querySelectorAll<HTMLElement>(".settings-nav-item")].map((b) =>
+      b.id.replace("settings-tab-", ""),
+    );
+    // 先钉住前提：视觉序确实 ≠ 注册序，否则这条测试在测一个不存在的差异
+    expect(domOrder).toEqual(["app", "machines", "aya", "nano", "footprint"]);
+    expect(r.routeIds).toEqual(["app", "machines", "footprint", "aya", "nano"]);
+
+    const key = (k: string) =>
+      nav.dispatchEvent(
+        new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }),
+      );
+
+    // 从「机器」往下：必须是 aya，而不是「改动足迹」
+    r.navigate("machines");
+    key("ArrowDown");
+    expect(r.activeId, "↓ 应当走到视觉上的下一项 aya").toBe("aya");
+    key("ArrowDown");
+    expect(r.activeId).toBe("nano");
+    key("ArrowDown");
+    expect(r.activeId).toBe("footprint");
+    // End 落到视觉最后一项（改动足迹），不是最后一台机器
+    key("End");
+    expect(r.activeId, "End 应当落到视觉最后一项").toBe("footprint");
+    // 反向：从 footprint 往上回到 nano
+    key("ArrowUp");
+    expect(r.activeId).toBe("nano");
+    key("Home");
+    expect(r.activeId).toBe("app");
+  });
+
   it("方向键切完焦点跟着走（否则按第二下会跳回原处）", () => {
     const r = new SettingsRouter({ landingId: "a" });
     r.addRoute({ id: "a", title: "A", element: page("a") });

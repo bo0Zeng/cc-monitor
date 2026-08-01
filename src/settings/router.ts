@@ -114,9 +114,29 @@ export class SettingsRouter {
     return this.active;
   }
 
-  /** 已注册的页 id（按注册顺序）——给测试和调用方对账用。 */
+  /** 已注册的页 id（按**注册**顺序）——给测试和调用方对账用。 */
   get routeIds(): string[] {
     return [...this.routes.keys()];
+  }
+
+  /**
+   * 导航项在屏幕上的**视觉**顺序（= DOM 顺序）。
+   *
+   * **E61：方向键必须走这个，不是 `routeIds`。** 两者只在「有子项」时不同，而生产里
+   * 恰恰有：`addRoute` 把子项 `anchor.after(...)` 插到父项之后（视觉序
+   * 应用/机器/aya/nano/改动足迹），而机器页是 `RemoteSection` **异步 `refresh()` 之后**
+   * 才注册的 ⇒ 注册序永远是 应用/机器/改动足迹/aya/nano。
+   * ⇒ 焦点在「机器」上按 ↓ 会跳到「改动足迹」，`End` 落到最后一台机器而不是视觉最后一项。
+   *
+   * 键盘导航的语义就是「按你看见的顺序走」，所以判据只能是 DOM。
+   */
+  private navOrderIds(): string[] {
+    const out: string[] = [];
+    for (const el of this.nav.querySelectorAll<HTMLElement>(".settings-nav-item")) {
+      const id = el.id.replace(/^settings-tab-/, "");
+      if (this.routes.has(id)) out.push(id);
+    }
+    return out;
   }
 
   addRoute(route: SettingsRoute): void {
@@ -249,7 +269,8 @@ export class SettingsRouter {
 
   /** 方向键在导航组内移动（tablist 惯例：组内用方向键，Tab 跳出整组）。 */
   private onNavKeydown(ev: KeyboardEvent): void {
-    const ids = this.routeIds;
+    // E61：**视觉序**，不是注册序（见 `navOrderIds` 的头注）。
+    const ids = this.navOrderIds();
     if (ids.length === 0) return;
     const cur = this.active === null ? 0 : ids.indexOf(this.active);
     let next: number;

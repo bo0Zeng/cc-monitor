@@ -30,7 +30,8 @@ import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置
 import { DiagnosticsSection } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
 import { SettingsRouter } from "./router";
-import { createRestartBar } from "./restart-notice";
+// E62：`markRestartNeeded` —— 本文件两处「重启才生效」的改动此前不给常驻条供货。
+import { createRestartBar, markRestartNeeded } from "./restart-notice";
 import { hostOsAllows, type HostOs } from "./host-os"; // S9：本机 OS 门
 import { setCurrentMachine } from "./machine-context";
 import {
@@ -223,6 +224,9 @@ export class SettingsPanel {
   private claudeDirInput!: HTMLInputElement;
   /** 打开时 claudeDir 的快照，用于判断是否变化（变了就提示重启） */
   private claudeDirOriginal: string = "";
+  /** E62：打开设置时 `showBgSessions` 的值——用来判断「真的改了没」。 */
+  private showBgOriginal = true;
+
   /** 顶部状态提示行（保存成功 / 需重启 等） */
   private banner!: HTMLElement;
   /** issue #3 (A): 数据存储展示区。打开面板时 refresh 一次拉最新 stat */
@@ -301,6 +305,8 @@ export class SettingsPanel {
     this.autoFollowCheckbox.checked = behavior.autoFollowUserActive;
     this.bringFrontCheckbox.checked = behavior.bringMonitorToFrontOnUserActive;
     this.showBgCheckbox.checked = behavior.showBgSessions;
+    // E62：记下打开设置时的值，只有**真的改了**才供货（每次 toggle 都标会把噪音变回来）。
+    this.showBgOriginal = behavior.showBgSessions;
     this.notifyTurnEndCheckbox.checked = behavior.notifyTurnEnd;
     this.resumeLocalInput.value = behavior.resumeCommandLocal;
     this.resumeRemoteInput.value = behavior.resumeCommandRemote;
@@ -354,6 +360,13 @@ export class SettingsPanel {
     };
     try {
       await setBehavior(next);
+      // E62：`showBgSessions` 是**重启生效**的（`behavior.ts` 的字段注释逐字写着：
+      // 后端启动时读一次 —— 本地扫描过滤 + 远端 daemon `--with-bg`）。改了却不供货，
+      // 用户就只能靠记性知道「我刚才改的那个还没生效」。
+      if (next.showBgSessions !== this.showBgOriginal) {
+        markRestartNeeded("显示后台任务会话");
+        this.showBgOriginal = next.showBgSessions;
+      }
       this.onBehaviorChange?.(next); // 同窗（主窗口浮层）直接同步 TabManager
       this.broadcastApplied(); // 窗口模式：广播让主窗口 applyBehavior
     } catch (e) {
@@ -401,6 +414,9 @@ export class SettingsPanel {
     if (dirChanged) {
       await setClaudeDirOverride(nextDir === "" ? null : nextDir);
       this.claudeDirOriginal = nextDir;
+      // E62：给 S7 那条常驻条**供货**。这里的 banner 是一次性的（关窗即没），
+      // 而「还没生效」是个会一直为真到重启为止的状态 —— 两者不是一回事，都要有。
+      markRestartNeeded("Claude 数据目录");
       this.banner.textContent =
         "Claude 数据目录已更新 —— 需要重启 monitor 才能生效";
       this.banner.classList.add("settings-banner-show");
