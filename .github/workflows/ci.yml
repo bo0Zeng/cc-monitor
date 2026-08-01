@@ -385,8 +385,22 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # **E67④（2026-08-01）订正**：原注释写着「这两套只从 Rust 侧取命令串、不跑前端，无需 node」
+      # ——**不成立**。`resume-daemon-frames.sh` 第 3 步要跑 `npx tsx e2e/resume-cmd-driver.ts`
+      # 拿**真源** resume 命令串，而那个 driver `import "../src/accounts.ts"`（第 25 行），
+      # `accounts.ts` 顶层 `import { invoke } from "@tauri-apps/api/core"` ⇒ 没有 node_modules
+      # 就是 `ERR_MODULE_NOT_FOUND`。
+      #
+      # **为什么以前没红**：这套件在第 2 步就死了（那行是裸赋值，`set -e` 直接退出、连 FAIL 都不打），
+      # 根本走不到第 3 步 —— 一个 bug 把另一个 bug 挡在后面。前一个修好，这个才露出来。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
       # src-tauri 依赖 tauri v2；Linux 上编译它需要 webkit2gtk/soup 一套开发库
-      # （Windows job 不需要，故只在这里装）。这两套只从 Rust 侧取命令串、不跑前端，无需 node。
+      # （Windows job 不需要，故只在这里装）。
       - name: install tmux + Tauri Linux build deps
         run: |
           sudo apt-get update
