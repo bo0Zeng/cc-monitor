@@ -1982,14 +1982,17 @@ export class TabManager {
       await withAccount(
         origin,
         accountName ?? null,
-        async (mods) =>
-          runRemoteResume(
+        // `runRemoteResume` 现在返回 boolean（Phase G：别把失败读成成功）。这条路的
+        // 反馈由它自己的 toast 承担，`withAccount` 只要 `void` ⇒ 显式丢弃。
+        async (mods) => {
+          await runRemoteResume(
             origin,
             sid,
             cwd,
             await resolveResumeCommand(origin, behavior.resumeCommandRemote),
             mods,
-          ),
+          );
+        },
         {
           sessionId: sid,
           // audit-fixes F07（I 建议）：显式选号解析不到（登出/目录消失且缓存恰过期）→ 提示而非静默

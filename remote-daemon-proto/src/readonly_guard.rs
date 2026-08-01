@@ -108,6 +108,28 @@ mod tests {
     /// 带上点就只能由**调用**满足。
     const WHITELIST_REQUIRED: &str = ".create_new(true)";
 
+    /// ★ Phase G 审计补的一条：**`.open(` 出现几次，`.create_new(true)` 就必须出现几次。**
+    ///
+    /// 原来白名单层禁了 `File::create` / `truncate(true)` / `append(true)` / `create(true)`，
+    /// 却**没有**禁 `OpenOptions` / `File::options` / 裸 `.open(`（那三个在默认层是禁的，
+    /// 白名单层反而放开了）。而 `WHITELIST_REQUIRED` 是**文件级子串**判定：
+    /// 只要文件里某一处有 `.create_new(true)`，另一处写
+    /// `OpenOptions::new().write(true).open(既有文件)` —— 不截断、不追加、从 0 偏移覆写
+    /// 用户既有 jsonl —— **两层判据全绿**。那正好落在「不许改动既有数据」的反面。
+    ///
+    /// 配对计数把这个洞堵上：想再开一个写句柄，就必须再配一个 `O_EXCL`。
+    fn open_calls_are_all_exclusive(prod: &str) -> Result<(), String> {
+        let opens = prod.matches(".open(").count();
+        let excl = prod.matches(".create_new(true)").count();
+        if opens != excl {
+            return Err(format!(
+                "白名单模块里 `.open(` 出现 {opens} 次、`.create_new(true)` 出现 {excl} 次 —— \
+                 每一个写句柄都必须是 O_EXCL 新建。不配对的那个可能在覆写既有文件。"
+            ));
+        }
+        Ok(())
+    }
+
     /// 默认层判据：这段源码有没有文件系统写操作。抽成纯函数，供反向自检直接喂字符串。
     fn violates_default_layer(prod: &str) -> Option<&'static str> {
         FS_MUTATION_PATTERNS
@@ -128,11 +150,23 @@ mod tests {
     fn scan(src_dir: &std::path::Path) -> (usize, usize) {
         let mut default_scanned = 0usize;
         let mut whitelisted = 0usize;
-        for entry in std::fs::read_dir(src_dir).expect("read src dir") {
-            let path = entry.expect("dir entry").path();
-            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-                continue;
+        // Phase G 审计：**递归**。原来是 `read_dir`（只看顶层）——今天 daemon src 是平的
+        // 所以尚未失效，但「写盘能力不可能悄悄扩散到第二个模块」这句承诺对
+        // `src/<subdir>/x.rs` 是不成立的：那种文件既不进默认层也不进白名单层，
+        // 而 `default_scanned >= 5` 与 `whitelisted == 1` 照样满足 ⇒ 护栏静默失效。
+        let mut stack = vec![src_dir.to_path_buf()];
+        let mut files = Vec::new();
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read src dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    files.push(path);
+                }
             }
+        }
+        for path in files {
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             // 跳过本护栏文件自身——它的模式字面量数组含这些子串。
             if name == "readonly_guard.rs" {
@@ -150,6 +184,9 @@ mod tests {
                     path.display(),
                     WHITELIST_REQUIRED
                 );
+                if let Err(why) = open_calls_are_all_exclusive(&prod) {
+                    panic!("白名单模块 {}：{why}", path.display());
+                }
                 if let Some(pat) = violates_whitelist_layer(&prod) {
                     panic!(
                         "白名单模块 {} 含 `{pat}`（红线 I7 白名单层）。\n\

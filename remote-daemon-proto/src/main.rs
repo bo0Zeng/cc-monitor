@@ -116,7 +116,13 @@ const PROTO_VERSION: u32 = 1;
 ///   ⇒ 回 `unknown argument` + exit 2，而 monitor 的账号 0 信任预检**真的在发这条命令**。
 ///   **必须 bump**：不 bump 的话已部署的 v3.4.0 daemon 不被判 stale、不会自动换掉，
 ///   修了也到不了用户手上（P5 漏做、P7 补上的那一课）。
-const BUILD_ID: &str = "p1t-removal-cause";
+/// - p1u-fork-session = **G2/G6（branch-anywhere）新增 `--fork-session`**：daemon 第一次
+///   有写盘能力（`fork_write.rs`，`readonly_guard` 两层白名单只放行它一个模块）。
+///   **必须 bump**：monitor 侧的远端分叉命令要靠这个 id 判 stale 才会自动重装；不 bump
+///   的话已部署的 daemon 报同一个 id ⇒ 不判 stale ⇒ 不重装 ⇒ 用户点远端 `⑂` 永远只拿到
+///   「版本过旧，请重新部署」。**这条是 Phase G 审计当场抓出来的** —— 上面 p1r/p1t 两段
+///   逐字写着这课，本轮仍然漏了，说明「加子命令」这一步该有机检而不是靠记性（登记 E77）。
+const BUILD_ID: &str = "p1u-fork-session";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜

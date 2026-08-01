@@ -863,21 +863,23 @@ pub fn list_last_accounts() -> HashMap<String, String> {
 /// v2.8.1（bug 修复）：改为在 **PowerShell**（系统自带 `powershell.exe`，**加载用户
 /// profile**）里跑，命令优先用户的 `cc` wrapper、回退 `claude`。详 `resume_impl`。
 /// Windows 上优先 wt.exe，找不到回退独立控制台。其他平台暂不支持。
-/// G3b：`config_dir` = 用哪个账号起。**缺省 / 空 = 账号 0**（一个字都不注入，
-/// 与 IR 的 `--base` 对齐）。前端不传时输出与本参数存在之前**逐字节相同**，既有调用点无需改。
+/// G3b / Phase G：`account` = 用哪个账号起，**三态**见 [`LaunchAccount`]。
+///
+/// 参数缺席 ⇒ 输出与本参数存在之前**逐字节相同**（既有调用点无需改）。
+/// `{"kind":"base"}` ⇒ **显式** `unset CLAUDE_CONFIG_DIR`（不是「什么都不加」——
+/// 那会被 shell rc 里的 `export CLAUDE_CONFIG_DIR=<默认账号>` 顶掉 = 静默串号）。
+///
+/// **订正**：G3b-1 当时把「缺省 / 空 = 账号 0（一个字都不注入，与 IR 的 `--base` 对齐）」
+/// 写进了这段注释 —— 那句话是错的：IR 的 `--base` 做的是 `unset`，不是「不注入」，
+/// 远端那条路也确实渲染成 `unset CLAUDE_CONFIG_DIR; `。Phase G 审计两个视角各自抓到。
 #[tauri::command]
 pub fn resume_history_session(
     session_id: String,
     cwd: String,
     launcher: Option<String>,
-    config_dir: Option<String>,
+    account: Option<LaunchAccount>,
 ) -> Result<(), String> {
-    resume_impl(
-        &session_id,
-        &cwd,
-        launcher.as_deref(),
-        config_dir.as_deref(),
-    )
+    resume_impl(&session_id, &cwd, launcher.as_deref(), account.as_ref())
 }
 
 /// F34：用户自定义 resume 启动命令（设置面板「本地 resume 命令」）。
@@ -941,37 +943,115 @@ enum LocalPsAction {
 /// 可欺骗 Unicode（零宽 / 双向控制 / NBSP / BOM）。
 ///
 /// **非法即 Err，绝不拼进命令** —— 这条路径的产物会进 shell，宽容一格就是注入面。
-fn validate_config_dir(dir: &str) -> Result<(), String> {
+/// 「这次拉起用哪个账号」。**三态，不是两态** —— Phase G 审计抓出的一条静默串号：
+///
+/// | 取值 | 含义 | 产出的前缀 |
+/// |---|---|---|
+/// | 参数缺席（`None`） | **调用方没表态** | 空串（既有调用点逐字节等价旧行为） |
+/// | `{"kind":"base"}` | **用户显式选了账号 0** | `unset CLAUDE_CONFIG_DIR; ` |
+/// | `{"kind":"named","configDir":"…"}` | 具名账号 | `export CLAUDE_CONFIG_DIR='…'; ` |
+///
+/// **为什么「账号 0」不能等于「什么都不加」**（`src/shell-quote.ts` 的 Z03 用整段注释写着，
+/// 远端那条路也确实渲染成 `unset CLAUDE_CONFIG_DIR; `）：用户的 shell rc 里很可能有一句
+/// `export CLAUDE_CONFIG_DIR=<默认账号>`（`cc-acct-iso shellinit` 生成的就是它），
+/// 而本地拉起**故意加载 rc**（`launch.rs` 的 `bash -lic` / 不带 `-NoProfile` 的 powershell）
+/// ⇒ 「什么都不加」会落到默认账号上 = **静默串号**。弹窗上写着「不注入」，实际起在别的号上，
+/// 正是 `fork-launch.ts` 头注要防的那件事。
+///
+/// **为什么不用一个魔法串**（如 `configDir: "__base__"`）：R05 刚把跨文件比字符串字面量的
+/// `"__base__"` 换成判别联合，理由是「拼错一个字符 tsc 抓不到，而行为是基座选项静默变成一个
+/// 名叫 `__base__` 的普通账号」。这里不重蹈。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum LaunchAccount {
+    /// 账号 0：**显式不注入**（产出 `unset`），不是「什么都不做」。
+    Base,
+    Named {
+        #[serde(rename = "configDir")]
+        config_dir: String,
+    },
+}
+
+/// 两种 shell 共用的元字符黑名单。**`\` 不在里面** —— 见 `validate_config_dir_ps`：
+/// Windows 的账号目录长成 `C:\Users\z\.claude-accts\z`，把 `\` 一律禁掉等于禁掉整个平台。
+/// 它在两种 shell 的**单引号**里都是字面量（POSIX `'…'` 无转义；PowerShell `'…'` 无插值），
+/// 所以真正要挡的是能提前闭合引号或另起命令的那几个。
+///
+/// ⚠ 写成**字符串**而不是 `&[char]` 数组是有原因的：`'\"'`（字符字面量里的双引号）
+/// 会让 `test-support/strip-comments.ts` 的状态机以为字符串开始了，从此不再剥注释
+/// ⇒ 本文件后面注释里那个 `#[tauri::command]` 字样就会被 C04a 守卫当成真属性，
+/// 报出一个不存在的命令。**实测踩过**（2026-07-31）。改措辞/改写法，别去动守卫。
+const SHELL_META_COMMON: &str = "'\"`$;|&<>*?()!";
+
+/// 会被用来伪装路径的不可见 / 双向控制字符。
+const SPOOFABLE: &[char] = &[
+    '\u{00a0}', '\u{200b}', '\u{200c}', '\u{200d}', '\u{200e}', '\u{200f}', '\u{2028}', '\u{2029}',
+    '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}',
+    '\u{2069}', '\u{feff}',
+];
+
+fn has_bad_chars(dir: &str, extra: &str) -> bool {
+    dir.chars().any(|c| {
+        c.is_control()
+            || ('\u{0080}'..='\u{009f}').contains(&c)
+            || SHELL_META_COMMON.contains(c)
+            || extra.contains(c)
+            || SPOOFABLE.contains(&c)
+    })
+}
+
+/// POSIX 侧校验：必须是**绝对 POSIX 路径**，且不含反斜杠（那边的路径里不该有）。
+fn validate_config_dir_posix(dir: &str) -> Result<(), String> {
     if !dir.starts_with('/') || dir == "/" || dir.contains("/../") || dir.ends_with("/..") {
         return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"));
     }
-    // ⚠ 写成**字符串**而不是 `&[char]` 数组是有原因的：`'\"'`（字符字面量里的双引号）
-    // 会让 `test-support/strip-comments.ts` 的状态机以为字符串开始了，从此不再剥注释
-    // ⇒ 本文件后面注释里那个 `#[tauri::command]` 字样就会被 C04a 守卫当成真属性，
-    // 报出一个不存在的命令。**实测踩过**（2026-07-31）。改措辞/改写法，别去动守卫。
-    const SHELL_META: &str = "'\"\\`$;|&<>*?()!";
-    const SPOOFABLE: &[char] = &[
-        '\u{00a0}', '\u{200b}', '\u{200c}', '\u{200d}', '\u{200e}', '\u{200f}', '\u{2028}',
-        '\u{2029}', '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}',
-        '\u{2067}', '\u{2068}', '\u{2069}', '\u{feff}',
-    ];
-    if dir.chars().any(|c| {
-        c.is_control()
-            || ('\u{0080}'..='\u{009f}').contains(&c)
-            || SHELL_META.contains(c)
-            || SPOOFABLE.contains(&c)
-    }) {
+    if has_bad_chars(dir, "\\") {
         return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"));
     }
     Ok(())
 }
 
-/// POSIX 侧前缀。校验通过才产出，`None` → 空串（逐字节等同旧行为）。
-fn config_dir_prefix_posix(config_dir: Option<&str>) -> Result<String, String> {
-    match config_dir.map(str::trim).filter(|d| !d.is_empty()) {
+/// PowerShell 侧校验。**与 POSIX 那条的唯一实质差别是「什么算绝对路径」** ——
+/// Phase G 审计抓出的一个真 bug：原来两边共用「必须 `/` 开头 + 禁 `\`」，
+/// 于是 Windows 上一个真实账号目录（`C:\Users\z\.claude-accts\z`）**必被拒**，
+/// 「本机分叉时选一个具名账号」在主平台上 100% 失败。判据照抄 `local_accounts::looks_absolute`
+/// （那个函数的头注写明：照搬 `starts_with('/')` 会把每个 Windows 账号判成不安全）。
+#[cfg(any(windows, test))]
+fn validate_config_dir_ps(dir: &str) -> Result<(), String> {
+    let b = dir.as_bytes();
+    let drive = b.len() >= 3
+        && b[0].is_ascii_alphabetic()
+        && b[1] == b':'
+        && (b[2] == b'\\' || b[2] == b'/');
+    let absolute = dir.starts_with('/') || drive || dir.starts_with("\\\\");
+    // `..` 两种分隔符都要挡（Windows 上 `/` 与 `\` 都是合法分隔符）。
+    let dotdot = dir.contains("/../")
+        || dir.ends_with("/..")
+        || dir.contains("\\..\\")
+        || dir.ends_with("\\..");
+    if !absolute || dir == "/" || dotdot {
+        return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"));
+    }
+    if has_bad_chars(dir, "") {
+        return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"));
+    }
+    Ok(())
+}
+
+/// POSIX 侧前缀。三态见 [`LaunchAccount`]；参数缺席 → 空串（逐字节等同旧行为）。
+fn config_dir_prefix_posix(account: Option<&LaunchAccount>) -> Result<String, String> {
+    match account {
         None => Ok(String::new()),
-        Some(d) => {
-            validate_config_dir(d)?;
+        Some(LaunchAccount::Base) => Ok("unset CLAUDE_CONFIG_DIR; ".to_string()),
+        Some(LaunchAccount::Named { config_dir }) => {
+            let d = config_dir.trim();
+            // 空串**不是**账号 0，是坏数据（空值 ≠ 未设 —— Z01 起整套设计的支点）。
+            if d.is_empty() {
+                return Err(
+                    "refuse resume: 具名账号的 configDir 是空的（账号 0 请用 kind=base）".into(),
+                );
+            }
+            validate_config_dir_posix(d)?;
             Ok(format!("export CLAUDE_CONFIG_DIR='{d}'; "))
         }
     }
@@ -979,11 +1059,19 @@ fn config_dir_prefix_posix(config_dir: Option<&str>) -> Result<String, String> {
 
 /// PowerShell 侧前缀。同上；PS 里用 `$env:` 且单引号是字面量引号（无插值）。
 #[cfg(any(windows, test))]
-fn config_dir_prefix_ps(config_dir: Option<&str>) -> Result<String, String> {
-    match config_dir.map(str::trim).filter(|d| !d.is_empty()) {
+fn config_dir_prefix_ps(account: Option<&LaunchAccount>) -> Result<String, String> {
+    match account {
         None => Ok(String::new()),
-        Some(d) => {
-            validate_config_dir(d)?;
+        // PS 里把环境变量置 `$null` 就是删掉它（等价于 POSIX 的 `unset`）。
+        Some(LaunchAccount::Base) => Ok("$env:CLAUDE_CONFIG_DIR=$null; ".to_string()),
+        Some(LaunchAccount::Named { config_dir }) => {
+            let d = config_dir.trim();
+            if d.is_empty() {
+                return Err(
+                    "refuse resume: 具名账号的 configDir 是空的（账号 0 请用 kind=base）".into(),
+                );
+            }
+            validate_config_dir_ps(d)?;
             Ok(format!("$env:CLAUDE_CONFIG_DIR='{d}'; "))
         }
     }
@@ -1044,9 +1132,9 @@ fn local_launch_choice(
 fn build_local_ps_command(
     action: &LocalPsAction,
     launcher: Option<&str>,
-    config_dir: Option<&str>,
+    account: Option<&LaunchAccount>,
 ) -> Result<String, String> {
-    let prefix = config_dir_prefix_ps(config_dir)?;
+    let prefix = config_dir_prefix_ps(account)?;
     Ok(prefix + &match local_launch_choice(action, launcher)? {
         LocalLaunchChoice::Fixed(cmd) => cmd,
         // 有 wrapper 别名（cc）：优先它、检测不到回退 default。
@@ -1067,9 +1155,9 @@ fn build_local_ps_command(
 fn build_local_posix_command(
     action: &LocalPsAction,
     launcher: Option<&str>,
-    config_dir: Option<&str>,
+    account: Option<&LaunchAccount>,
 ) -> Result<String, String> {
-    let prefix = config_dir_prefix_posix(config_dir)?;
+    let prefix = config_dir_prefix_posix(account)?;
     Ok(prefix
         + &match local_launch_choice(action, launcher)? {
             LocalLaunchChoice::Fixed(cmd) => cmd,
@@ -1093,16 +1181,16 @@ fn launch_local(
     action: &LocalPsAction,
     launcher: Option<&str>,
     cwd: Option<&str>,
-    config_dir: Option<&str>,
+    account: Option<&LaunchAccount>,
 ) -> Result<(), String> {
     #[cfg(windows)]
     {
-        let ps = build_local_ps_command(action, launcher, config_dir)?;
+        let ps = build_local_ps_command(action, launcher, account)?;
         crate::launch::launch_powershell_window(&ps, cwd)
     }
     #[cfg(not(windows))]
     {
-        let cmd = build_local_posix_command(action, launcher, config_dir)?;
+        let cmd = build_local_posix_command(action, launcher, account)?;
         crate::launch::launch_local_posix(&cmd, cwd)
     }
 }
@@ -1127,13 +1215,13 @@ fn resume_impl(
     session_id: &str,
     cwd: &str,
     launcher: Option<&str>,
-    config_dir: Option<&str>,
+    account: Option<&LaunchAccount>,
 ) -> Result<(), String> {
     launch_local(
         &LocalPsAction::Resume(session_id.to_string()),
         launcher,
         Some(cwd),
-        config_dir,
+        account,
     )?;
     tracing::info!("history: resumed sid={session_id}");
     Ok(())
@@ -1518,6 +1606,13 @@ mod tests {
     use super::*;
 
     /// Phase 2 F1a-3：Codex 会话按 cwd 分组成合成 HistoryProject（count/max-mtime/name/键/has_live）。
+    /// 测试用：把一个 configDir 包成具名账号。
+    fn named(d: &str) -> LaunchAccount {
+        LaunchAccount::Named {
+            config_dir: d.to_string(),
+        }
+    }
+
     // ── G3b：本地拉起的账号注入（`CLAUDE_CONFIG_DIR`）─────────────────────────
     //
     // 既有那批**逐字节钉死输出**的测试全部传 `None` 后原样通过 ——
@@ -1526,24 +1621,39 @@ mod tests {
     #[test]
     fn account_zero_injects_nothing_byte_for_byte() {
         // 三种「没有账号」的表达（None / 空串 / 纯空白）产出必须完全相同。
+        // ① 参数缺席 = 调用方没表态 ⇒ 一个字都不注入（既有调用点逐字节等价旧行为）
         let a = build_local_posix_command(&LocalPsAction::New, None, None).unwrap();
-        for empty in [Some(""), Some("   ")] {
-            assert_eq!(
-                build_local_posix_command(&LocalPsAction::New, None, empty).unwrap(),
-                a,
-                "空 configDir 必须等价于账号 0，不能产出半个前缀"
-            );
-        }
         assert!(
             !a.contains("CLAUDE_CONFIG_DIR"),
-            "账号 0 不该出现这个变量名"
+            "没表态时不该出现这个变量名"
         );
+
+        // ② ★★ 显式账号 0 = **unset**，不是「什么都不加」。Phase G 审计抓出的静默串号：
+        //    本地拉起故意加载 rc，而 rc 里很可能有 `export CLAUDE_CONFIG_DIR=<默认账号>`
+        //    ⇒ 「什么都不加」会落到别的号上，而弹窗上写着「不注入」。
+        let base = build_local_posix_command(&LocalPsAction::New, None, Some(&LaunchAccount::Base))
+            .unwrap();
+        assert!(
+            base.starts_with("unset CLAUDE_CONFIG_DIR; "),
+            "账号 0 必须显式 unset：{base}"
+        );
+        assert!(base.ends_with(&a), "前缀不该改动命令本体");
+        let base_ps =
+            build_local_ps_command(&LocalPsAction::New, None, Some(&LaunchAccount::Base)).unwrap();
+        assert!(
+            base_ps.starts_with("$env:CLAUDE_CONFIG_DIR=$null; "),
+            "PS 侧的账号 0 同样要显式清掉：{base_ps}"
+        );
+
+        // ③ 具名账号但 configDir 是空串 ⇒ **坏数据，报错**（空值 ≠ 未设）
+        assert!(build_local_posix_command(&LocalPsAction::New, None, Some(&named(""))).is_err());
+        assert!(build_local_posix_command(&LocalPsAction::New, None, Some(&named("   "))).is_err());
     }
 
     #[test]
     fn account_prefix_is_prepended_posix_and_ps() {
         let dir = "/home/u/.claude-accts/z";
-        let px = build_local_posix_command(&LocalPsAction::New, None, Some(dir)).unwrap();
+        let px = build_local_posix_command(&LocalPsAction::New, None, Some(&named(dir))).unwrap();
         assert!(
             px.starts_with(&format!("export CLAUDE_CONFIG_DIR='{dir}'; ")),
             "POSIX 前缀必须在最前面（要先于拉起命令生效）：{px}"
@@ -1552,10 +1662,51 @@ mod tests {
         let bare = build_local_posix_command(&LocalPsAction::New, None, None).unwrap();
         assert!(px.ends_with(&bare), "前缀不该改动命令本体");
 
-        let ps = build_local_ps_command(&LocalPsAction::New, None, Some(dir)).unwrap();
+        let ps = build_local_ps_command(&LocalPsAction::New, None, Some(&named(dir))).unwrap();
         assert!(
             ps.starts_with(&format!("$env:CLAUDE_CONFIG_DIR='{dir}'; ")),
             "{ps}"
+        );
+    }
+
+    /// ★★ Phase G 审计抓出的真 bug：**Windows 上的账号目录必须被接受**。
+    ///
+    /// 原来 POSIX 与 PS 共用一条「必须 `/` 开头 + 禁 `\`」的校验 ⇒
+    /// `C:\Users\z\.claude-accts\z` 恒被拒 ⇒ 「本机分叉时选一个具名账号」在**主平台**上
+    /// 100% 失败（`fork-flow.ts` 是全仓唯一给 `resume_history_session` 传 `configDir` 的
+    /// 调用点，所以这个洞是分叉专属的、别处测不到）。
+    ///
+    /// 判据照抄 `local_accounts::looks_absolute` —— 那个函数的头注已经写明这一课。
+    /// 而**旧测试全喂 POSIX 路径**（`/home/u/.claude-accts/z`），所以它们测不出来。
+    #[test]
+    fn windows_account_dirs_are_accepted_by_the_ps_side() {
+        for d in [
+            "C:\\Users\\z\\.claude-accts\\z",
+            "D:/Users/z/.claude-accts/b",
+            "\\\\server\\share\\accts\\z",
+        ] {
+            assert!(
+                build_local_ps_command(&LocalPsAction::New, None, Some(&named(d))).is_ok(),
+                "Windows 账号目录被拒了：{d:?}"
+            );
+        }
+        // POSIX 那条**仍然**只收 POSIX 路径（各自平台各自判据，别互相放宽）
+        assert!(
+            build_local_posix_command(&LocalPsAction::New, None, Some(&named("C:\\Users\\z")))
+                .is_err(),
+            "POSIX 侧不该接受 Windows 路径"
+        );
+        // 反斜杠形态的 `..` 也要挡住
+        for d in ["C:\\Users\\..\\evil", "C:\\Users\\z\\.."] {
+            assert!(
+                build_local_ps_command(&LocalPsAction::New, None, Some(&named(d))).is_err(),
+                "PS 侧漏了反斜杠 `..`：{d:?}"
+            );
+        }
+        // 引号仍然禁（单引号能提前闭合 PS 的字面量串）
+        assert!(
+            build_local_ps_command(&LocalPsAction::New, None, Some(&named("C:\\a'; rm x; '")))
+                .is_err()
         );
     }
 
@@ -1581,11 +1732,11 @@ mod tests {
         ];
         for d in bad {
             assert!(
-                build_local_posix_command(&LocalPsAction::New, None, Some(d)).is_err(),
+                build_local_posix_command(&LocalPsAction::New, None, Some(&named(d))).is_err(),
                 "非法 configDir 竟被接受：{d:?}"
             );
             assert!(
-                build_local_ps_command(&LocalPsAction::New, None, Some(d)).is_err(),
+                build_local_ps_command(&LocalPsAction::New, None, Some(&named(d))).is_err(),
                 "非法 configDir 竟被接受（PS）：{d:?}"
             );
         }
@@ -1593,7 +1744,7 @@ mod tests {
         assert!(build_local_posix_command(
             &LocalPsAction::New,
             None,
-            Some("/home/u/.claude-accts/z")
+            Some(&named("/home/u/.claude-accts/z"))
         )
         .is_ok());
     }

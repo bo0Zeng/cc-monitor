@@ -21,7 +21,7 @@ function deps(over: { ask?: AskFn } = {}) {
   return {
     ask: vi.fn<AskFn>(over.ask ?? (async () => ({}))),
     startLocal: vi.fn(async (_a: LocalArgs) => {}),
-    startRemote: vi.fn(async (_a: RemoteArgs) => {}),
+    startRemote: vi.fn(async (_a: RemoteArgs) => true),
   };
 }
 const asDeps = (d: ReturnType<typeof deps>): ForkStartDeps => d as unknown as ForkStartDeps;
@@ -167,7 +167,9 @@ describe("tmux 名", () => {
       },
       asDeps(d),
     );
-    expect(d.startRemote.mock.calls[0][0].tmuxName).toBe("p-fork2-cc");
+    // Phase G：撞名后缀改成**追加在最后**（`p-fork-cc-2`），与 `pickFreshTmuxName`
+    // 写下的同一条规则对齐（「让『第几个』始终是名字的末段」）。原来是 `p-fork2-cc`。
+    expect(d.startRemote.mock.calls[0][0].tmuxName).toBe("p-fork-cc-2");
   });
 
   it("源会话不在 tmux 里 → 新的也不进 tmux（tmuxName 为 null）", async () => {
@@ -177,6 +179,42 @@ describe("tmux 名", () => {
       asDeps(d),
     );
     expect(d.startRemote.mock.calls[0][0].tmuxName).toBeNull();
+  });
+});
+
+
+describe("Phase G：远端拉起失败不许被读成成功", () => {
+  /**
+   * ★★ `runRemoteResume*` 失败时**不抛** —— 它自己弹 toast + 回退剪贴板，然后 `return false`。
+   * 丢掉那个布尔，编排器就会回 `"started"`，调用点接着弹「✓ 已起来，两条都活着」，
+   * 用户同屏看到一条失败 toast 和一条成功 toast。account-ux Phase G 已经栽过一次同形的。
+   */
+  it("★★ startRemote 回 false → outcome 是 failed，不是 started", async () => {
+    const d = deps();
+    d.startRemote.mockImplementation(async () => false);
+    const r = await startForkedSession(
+      { newSessionId: "n", origin: "aya", source: LIVE, sourceTmuxName: "p-cc" },
+      asDeps(d),
+    );
+    expect(r).toBe("failed");
+  });
+
+  it("startRemote 回 true → started", async () => {
+    const d = deps();
+    const r = await startForkedSession(
+      { newSessionId: "n", origin: "aya", source: LIVE, sourceTmuxName: "p-cc" },
+      asDeps(d),
+    );
+    expect(r).toBe("started");
+  });
+
+  it("failed 与 cancelled 是两回事（取消不该被当成失败去报错）", async () => {
+    const d = deps({ ask: async () => null });
+    const r = await startForkedSession(
+      { newSessionId: "n", origin: "aya", source: DEAD },
+      asDeps(d),
+    );
+    expect(r).toBe("cancelled");
   });
 });
 
@@ -193,14 +231,20 @@ describe("本机 / 远端分流", () => {
     expect(b.startLocal).not.toHaveBeenCalled();
   });
 
-  it("★ 全程不碰原会话 —— 没有任何 kill / attach / resume 原 sid 的出口", async () => {
-    // 结构性断言：deps 里根本没有能作用于原会话的口子，只有 startLocal/startRemote(新 sid)。
+  it("★ 全程不碰原会话 —— 传下去的恒是**新** sid", async () => {
     const d = deps();
     await startForkedSession(
       { newSessionId: "NEW", origin: "aya", source: LIVE, sourceTmuxName: "p-cc" },
       asDeps(d),
     );
     expect(d.startRemote.mock.calls[0][0].sessionId).toBe("NEW");
-    expect(Object.keys(d)).toEqual(["ask", "startLocal", "startRemote"]);
+    // Phase G 审计（工程视角）指出这里原本还有一条
+    // `expect(Object.keys(d)).toEqual(["ask","startLocal","startRemote"])` —— `d` 就是本文件
+    // `deps()` 造的夹具，那是**断言夹具等于它自己，恒真**；而且 `asDeps` 经 `unknown` 强转，
+    // 真接口新增字段它也不会红。要守「没有作用于原会话的口子」得从**类型侧**守：
+    // 下面这行让 `ForkStartDeps` 一旦多出第四个成员就编译不过（`Exclude` 结果非 never）。
+    type Extra = Exclude<keyof ForkStartDeps, "ask" | "startLocal" | "startRemote">;
+    const noExtraMembers: Extra extends never ? true : never = true;
+    expect(noExtraMembers).toBe(true);
   });
 });

@@ -140,6 +140,55 @@ describe("askForkLaunch", () => {
     expect((await p)?.configDir).toBeNull();
   });
 
+
+  /**
+   * ★★ 并发弹窗。触发不罕见：`branch-button.ts` 的 busy 标志在 `onForked` 这个
+   * fire-and-forget 调用之后**立刻**复位，连点两下 `⑂` 就够了。
+   *
+   * 原来只把前一个 backdrop 摘出 DOM ⇒ 它的 Promise 与 capture 阶段的 keydown 都还活着：
+   * 第一条 `runForkFlow` 永挂，之后用户随便按一次 Esc，孤儿监听先吞掉这次全局 Esc、
+   * 再把第一条静默取消。
+   */
+  it("★★ 第二个小窗开起来时，第一个必须被**结算成取消**（不是只摘 DOM）", async () => {
+    const first = askForkLaunch({
+      facts: FACTS,
+      slots: ["account"],
+      accounts: ACCOUNTS,
+      defaultUseTmux: false,
+    });
+    const second = askForkLaunch({
+      facts: FACTS,
+      slots: ["account"],
+      accounts: ACCOUNTS,
+      defaultUseTmux: false,
+    });
+    expect(await first, "第一条不结算就会永挂——调用方既不报错也不起会话").toBeNull();
+
+    // 而且第一个的 keydown 监听要摘干净：这次 Esc 必须由**第二个**吃掉。
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(await second).toBeNull();
+    expect(document.querySelectorAll(".fork-ask-backdrop")).toHaveLength(0);
+  });
+
+  it("★ 正常结算之后，孤儿监听不该还在（否则下一次全局 Esc 会被吞）", async () => {
+    const p = askForkLaunch({
+      facts: FACTS,
+      slots: ["account"],
+      accounts: [],
+      defaultUseTmux: false,
+    });
+    q<HTMLButtonElement>(".fork-ask-ok").click();
+    await p;
+    let reachedDocument = false;
+    const probe = (): void => {
+      reachedDocument = true;
+    };
+    document.addEventListener("keydown", probe);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    document.removeEventListener("keydown", probe);
+    expect(reachedDocument, "上一个小窗的捕获监听把 Esc 吞了").toBe(true);
+  });
+
   it("关掉之后 DOM 不留残渣（含 keydown 监听——连开两次不会互相干扰）", async () => {
     const p1 = askForkLaunch({
       facts: FACTS,

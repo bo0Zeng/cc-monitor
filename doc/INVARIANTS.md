@@ -1133,7 +1133,7 @@ Linux 本地是 POSIX + tmux + `ccm`，跟远端那条路**只差一跳 ssh**。
 `every_host_declaration_is_pinned`（T02 建立）：**枚举全部 Tauri 命令，每条要么两侧都有、
 要么在白名单表里且带理由；新增命令不登记就红。** 具体做法归 `local-as-remote` 工作区 **L5**。
 
-## 41. daemon 的判活信号全部由内核事件驱动 —— 四路事件、零定时器、三个盲区如实分类（zero-poll-liveness P0-P7）
+## 41. daemon 的判活信号全部由内核事件驱动 —— 四路事件、零定时器、四个盲区如实分类（zero-poll-liveness P0-P7）
 
 用户 2026-07-29 原话「我要把轮询杀掉」。daemon 里原有 **A/B 两条**轮询（2s 判活 tick + 8s
 `tmux ls` tick），**两条都已删除**，生产段现在零定时器（`no_timer_guard.rs` 钉住，见下）。
@@ -1169,7 +1169,7 @@ PID 死亡判定从「pid 存在 + procStart 匹配」的**启发式**升级为 
 同理 `--tmux-notify` 收到后先核 `/proc/<pid>/stat` 的 starttime 再 `kill`，starttime 不符即静默
 no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关进程）。
 
-### 41.3 三个盲区，如实分类
+### 41.3 四个盲区，如实分类（标题原写「三个」，表里一直是四行 —— 2026-08-01 订正）
 
 | # | 盲区 | 处置 |
 |---|---|---|

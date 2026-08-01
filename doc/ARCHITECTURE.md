@@ -107,7 +107,9 @@ src-tauri/src/
 │              adapter/claude_code.rs  Claude Code 适配器（第一个实例，零行为变化包旧逻辑）
 │              adapter/codex.rs + codex_record.rs  Codex 适配器（AgentKind::Codex，第二个实例；~/.codex/sessions 存在才启用，零回归门控）
 ├── 业务层      event_replay.rs  内存 buffer + 出锁 batch emit（v2.6；顺序靠前端 seq，非持锁，见 §event_replay 顺序保证）
-│              history.rs    两级懒加载 + metadata + 物理删除 + resume + F62 从某轮建分支
+│              history.rs    两级懒加载 + metadata + 物理删除 + resume + F62 从某轮建分支（G3b-1 起 resume 可带 `CLAUDE_CONFIG_DIR`）
+│              remote_branch.rs  G6 远端分叉：经 ssh 调 daemon `--fork-session`（**只收 sid 不收路径**）。
+│                            与只读的 `remote_history.rs` 分家 —— 那个模块头注自称只读，塞进去就是让注释说谎
 │              launch.rs     终端拉起（wt.exe→PowerShell 单一入口）+ 远端 ssh 拉起（B14-F41）
 │              tasks.rs      v2.3 CLI task tracker 读 + watcher + emit task-update
 │              search.rs     issue #6 历史全文搜索（后台建内存索引 + substring 两级匹配）
@@ -115,6 +117,9 @@ src-tauri/src/
 │              mcp.rs        F87 MCP 管理（跨 scope 宽容读 / 只写项目 .mcp.json，SS-14 读写分界）
 │              panorama.rs   Batch15 code-picture 代码全景后端（per-repo Engine 池，只读查询）
 │              accounts.rs   A2 多账号只读查询（list_remote_accounts / list_remote_session_accounts / check_account_trust；账号=一个 CLAUDE_CONFIG_DIR，纯只读经 daemon，#68/#69）
+├── 共享 crate  crates/branch-core/  分支记录变换（祖先回溯）——monitor 与远端 daemon **共用一份**。
+│                            **path 依赖、非 workspace 成员** ⇒ 不进 `cargo test --all`，
+│                            CI 与发版 checklist 都要单独 `-p branch-core`（test / fmt / clippy 三样）
 ├── 集成层      bind.rs       cc 集成绑定核心（ps-await/registry/SidHwndCache）
 │              profile_installer.rs  PowerShell profile 块插入/卸载
 │              auto_launch.rs  auto-launch monitor 开关
@@ -236,7 +241,7 @@ monitor 与外部进程的所有通信都在 `~/.claude/claudecode-frontend/` �
 每条都是踩过坑总结出来的"为什么不能用别的方案"。
 
 ### 零侵入 = 不写 Claude Code 数据源
-watcher / session_map 只读 `~/.claude/projects/` 和 `~/.claude/sessions/`。写入均为用户**显式**触发：①历史浏览器 `delete_history_session`（Batch4-F15 起 exists → 双边 canonicalize → canonical 前缀 + `.jsonl` 扩展名四段守卫，`..`/symlink 穿越拒绝）；②F62 `create_branch_session`（从某轮建分支——**只新增** `<new-sid>.jsonl`，`validate_branch_source` 同源守卫 + `create_new` 原子写**绝不覆盖**，原会话零改动，§1 正交非侵入）；③PowerShell profile [安装]（只动 BEGIN/END **块内**内容，块外用户其他代码完全不动）。
+watcher / session_map 只读 `~/.claude/projects/` 和 `~/.claude/sessions/`。写入均为用户**显式**触发：①历史浏览器 `delete_history_session`（Batch4-F15 起 exists → 双边 canonicalize → canonical 前缀 + `.jsonl` 扩展名四段守卫，`..`/symlink 穿越拒绝）；②F62 `create_branch_session`（从某轮建分支——**只新增** `<new-sid>.jsonl`，`validate_branch_source` 同源守卫 + `create_new` 原子写**绝不覆盖**，原会话零改动，§1 正交非侵入）；③PowerShell profile [安装]（只动 BEGIN/END **块内**内容，块外用户其他代码完全不动）；④**G6 远端分叉**（`remote_branch::create_remote_branch_session` → ssh → daemon 的 `fork_write.rs`）——与②是**同一件事的远端形态**（用户显式点 `⑂` → 只新增一份 `<new-sid>.jsonl`、原会话零改动），区别只在**动手的是 daemon 而不是 monitor**。daemon 的写面被 `readonly_guard` 两层护栏钉死在那**一个**模块上（且必须 `O_EXCL`、禁删/改名/截断/追加/覆盖），细则见 `doc/INVARIANTS.md` §1 的 G6 段与 §41.6。<br>（2026-08-01 Phase G 订正：本枚举原来只有三条 —— 而 `INVARIANTS.md` 那边已经写上了第四条，两份文档口径不一致，而本文是新人先读的那份。）
 
 **为什么**：cc-monitor 是个监控渲染器，写 jsonl 会破坏用户对"数据源 = 我自己的命令痕迹"的认知；profile 写入则是必要的可选副作用（用户显式 opt-in 装 `__ccm_bind`），仍然走完整的 backup + ACL 保留路径。
 

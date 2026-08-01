@@ -98,16 +98,19 @@ export async function runRemoteResume(
   cwd: string,
   launcher: string,
   mods: LaunchModifiers = {}, // R03：正交修饰 bag（configDir/accountName/modelOverride），见 launch-plan.ts
-): Promise<void> {
+  // Phase G（branch-anywhere）：返回值从 `void` 改成 `boolean`，与 `runRemoteResumeTmux`
+  // 对齐（那边的头注逐字记着为什么要有返回值：account-ux 那次把「走到了第⑤步」当成
+  // 「已 resume」）。既有调用点忽略返回值 ⇒ 行为逐字不变。
+): Promise<boolean> {
   let cmd: string;
   try {
     const { ctx, plan } = planResumeDirect(sid, cwd, launcher, mods);
     cmd = await renderLaunchCommand(origin, ctx, plan);
   } catch (err) {
     showActionFailureToast("无法构造 resume 命令", String(err));
-    return;
+    return false;
   }
-  await invokeLaunchOrCopyFallback(origin, cmd, {
+  return invokeLaunchOrCopyFallback(origin, cmd, {
     success: "已拉起远端 resume",
     successDetail: `新终端窗口正在连接 [${origin}] 并 resume 该会话。`,
     failureCopied: "拉起失败，已复制 resume 命令",

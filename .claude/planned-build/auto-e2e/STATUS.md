@@ -5,7 +5,8 @@
 > 纯逻辑单测 + F40 渲染 e2e，真机流零 e2e 埋点）。用户 2026-07-26 定：装 Windows VM，要「给真机功能补 e2e 埋点(全自动)」。
 
 ## 当前
-- **阶段**：**Phase C——F-E0 基建 + F-E1 gray-light 已由独立 agent 实现 + 在 aya 实跑通过（2026-07-26，真结果），已 ff 并入 account-ux（HEAD 2a51a3e）**。主线程独立复核（非仅信 agent 自报）：worktree 重跑 tsc 0 / vitest 595、审 diff 确认全 DEV 门控·行为等价·daemon 零改·debugSnapshot 形状未动(f40 保真)。下接 F-E2/E3/E4（resume/换号/孤儿，同 fixture 基座）+ Tier2/3 待 Windows VM。
+- **阶段**：**✅ 全部 e2e 功能完成并随 v3.3.0 发版（2026-07-26）** —— F-E0/E1 核心 · F-Vwin · F-E2 · F-E3 · F-E4 · F-E5，详见下方「已完成」与「发版」两节。<br>（2026-08-01 订正：本行原停在「Phase C」，而同文件正文早已记着全部完成 —— `.claude/planned-build/README.md` 的索引就是忠实抄了这行才跟着错。**摘要字段必须随正文更新**，它是全仓约定的唯一权威入口。）
+- **历史（原「阶段」行）**：Phase C——F-E0 基建 + F-E1 gray-light 已由独立 agent 实现 + 在 aya 实跑通过（2026-07-26，真结果），已 ff 并入 account-ux（HEAD 2a51a3e）**。主线程独立复核（非仅信 agent 自报）：worktree 重跑 tsc 0 / vitest 595、审 diff 确认全 DEV 门控·行为等价·daemon 零改·debugSnapshot 形状未动(f40 保真)。下接 F-E2/E3/E4（resume/换号/孤儿，同 fixture 基座）+ Tier2/3 待 Windows VM。
 - **F-E0 交付**（DEV 探针,`import.meta.env.DEV` 门控,vite 生产已实测剥离 `[e2e]` 串）：`tabs.ts` 加 `e2eLog` + `debugSessionsSnapshot()` + `emitTabStateProbe`(markTmuxIdle/archiveTab/reviveTab/ensureTab 清灰四真值点 emit `[e2e] tab-state`);`e2e-probe.ts`+`main.ts` 加 Ctrl+Alt+F10/中键账号 chip → `[e2e] sessions`。fixtures:`e2e/fake-claude`、`gen-idle-tmux.sh`、`daemon-wrapper.sh`。**门禁绿**:tsc 0、vitest 595/595(无回归,f40 断言未破)。
 - **F-E1 实跑真结果（两级都过）**：
   - **daemon-frame 级** `e2e/graylight-daemon-frames.sh` = **5 过/0 败**:`session_added` → kill fake-claude → `session_removed` + `tmux_sessions.raw` 仍含 `@ccm_sid`(灰/Idle 后端条件) → kill-session → `tmux_sessions` 不再含 sid(归档触发)。

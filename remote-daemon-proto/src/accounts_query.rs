@@ -51,7 +51,7 @@ const MAX_SESSION_FILES: usize = 500;
 /// 审计实测 symlink→/dev/zero 6 秒涨 11GB），再 `take(cap)` 限量读，
 /// 一步消掉 metadata↔read 之间的 TOCTOU。symlink 会被 `metadata()`（跟随）解析到
 /// 目标类型：目标是常规文件才放行、是设备就拒。
-fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, String> {
+pub(crate) fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, String> {
     let meta = std::fs::metadata(path).map_err(|e| format!("{e}"))?;
     if !meta.is_file() {
         return Err("不是常规文件（可能是 FIFO/设备/目录）".into());

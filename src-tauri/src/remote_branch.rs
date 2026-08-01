@@ -30,9 +30,17 @@ use crate::ssh_source::{self, RemoteExec};
 const FORK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// 旧 daemon 掉进流模式的判据：查询模式的输出不可能含 wire 的 `"kind":"hello"`。
-/// 与 `remote_history::is_old_daemon_hello` 同一判据（那边是逐行判、这边是子串判——
-/// 这边拿它当 `abort_marker`，必须能在**半行**上就命中，不能等换行）。
+///
+/// **两种写法都要认**（Phase G 审计：原来只认无空格那条，而 `remote_history::is_old_daemon_hello`
+/// 认两条 —— 注释却写着「同一判据」，是句错话）。序列化器今天产的是无空格那条，
+/// 所以 `abort_marker` 用它（`abort_marker` 只能给一个子串，且要能在**半行**上命中、不等换行）；
+/// 判定时两条都查，免得哪天序列化器换了写法就退化成「等 30s 超时」。
 const HELLO_MARKER: &str = r#""kind":"hello""#;
+const HELLO_MARKER_SPACED: &str = r#""kind": "hello""#;
+
+fn looks_like_old_daemon(stdout: &str) -> bool {
+    stdout.contains(HELLO_MARKER) || stdout.contains(HELLO_MARKER_SPACED)
+}
 
 const OLD_DAEMON_MSG: &str =
     "远端 daemon 版本过旧（不支持远端分叉）——请重新部署 daemon 后再试（doc/REMOTE-PHASE0-DEPLOY.md）";
@@ -49,10 +57,12 @@ struct ForkErrEnvelope {
 ///
 /// 两个参数最终都会经 `shell_quote` 单引号包裹，所以这里**不是**注入防线的最后一道；
 /// 它的作用是 **fail-fast**：一个明显不是 sid/uuid 的串没必要跑一趟 ssh 才被 daemon 拒。
-/// 字符集与 daemon 侧 `fork_write::valid_sid` 一致（`[A-Za-z0-9-]`）。
+/// 字符集与 daemon 侧 `fork_write::is_plain_sid` 一致（`[A-Za-z0-9-]`，长度 1..=64）。
 fn validate_fork_id(what: &str, s: &str) -> Result<(), String> {
-    if s.is_empty() || s.len() > 128 {
-        return Err(format!("{what} 长度非法（1..=128）"));
+    // 上限与 daemon 侧 `fork_write::is_plain_sid` 对齐（Phase G 审计：原来这边 128、那边 64，
+    // 65..=128 的 id 会白跑一趟 ssh 才被拒；注释里引的函数名 `valid_sid` 也不存在）。
+    if s.is_empty() || s.len() > 64 {
+        return Err(format!("{what} 长度非法（1..=64）"));
     }
     if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
         return Err(format!("{what} 含非法字符（只许字母/数字/连字符）"));
@@ -80,29 +90,44 @@ fn build_fork_cmd(daemon_path: &str, source_sid: &str, message_uuid: &str) -> St
 ///    把它当 0 正好把「没跑成」读成「跑成了」。
 /// 3. exit 0 才解析 stdout；解析不出来仍是失败（**绝不返回一个空壳 `BranchResult`**）。
 fn interpret_fork_exec(ex: &RemoteExec) -> Result<BranchResult, String> {
-    if ex.stdout.contains(HELLO_MARKER) {
+    if looks_like_old_daemon(&ex.stdout) {
         return Err(OLD_DAEMON_MSG.to_string());
     }
 
+    // ★ Phase G 审计：**扫所有行**，不是只看第一条非空行。
+    // 远端 `~/.bashrc` 打一行 banner 是常见配置（而本仓的部署流程本来就会动 `.bashrc`），
+    // 命令又是经登录 shell 执行的 ⇒ 第一行很可能是噪声。只看第一行的后果是：
+    // 分叉**已经成功、文件已落盘、exit 0**，monitor 却报「结果解析失败」，用户重试 ⇒
+    // 远端多出一份孤儿分支文件（`O_EXCL` 拦不住，新 sid 不同）。
     let stderr_detail = || -> Option<String> {
-        let line = ex.stderr.lines().map(str::trim).find(|l| !l.is_empty())?;
-        match serde_json::from_str::<ForkErrEnvelope>(line) {
-            Ok(env) => Some(format!("{}（{}）", env.message, env.code)),
-            // 认不出信封 → 原样带出（截断防刷屏），比吞掉强。
-            Err(_) => Some(line.chars().take(400).collect()),
+        let mut first_nonempty: Option<&str> = None;
+        for line in ex.stderr.lines().map(str::trim).filter(|l| !l.is_empty()) {
+            if first_nonempty.is_none() {
+                first_nonempty = Some(line);
+            }
+            if let Ok(env) = serde_json::from_str::<ForkErrEnvelope>(line) {
+                return Some(format!("{}（{}）", env.message, env.code));
+            }
         }
+        // 一条信封都认不出 → 把第一行原样带出（截断防刷屏），比吞掉强。
+        first_nonempty.map(|l| l.chars().take(400).collect())
     };
 
     match ex.exit_status {
         Some(0) => {
-            let line = ex
-                .stdout
-                .lines()
-                .map(str::trim)
-                .find(|l| !l.is_empty())
-                .ok_or("远端分叉：daemon 报成功却没有输出结果")?;
-            serde_json::from_str::<BranchResult>(line)
-                .map_err(|e| format!("远端分叉：结果解析失败（{e}）：{line}"))
+            let mut saw_any = false;
+            for line in ex.stdout.lines().map(str::trim).filter(|l| !l.is_empty()) {
+                saw_any = true;
+                if let Ok(r) = serde_json::from_str::<BranchResult>(line) {
+                    return Ok(r);
+                }
+            }
+            Err(if saw_any {
+                "远端分叉：daemon 报成功，但输出里找不到结果 JSON（远端 shell 是不是打了 banner？）"
+                    .to_string()
+            } else {
+                "远端分叉：daemon 报成功却没有输出结果".to_string()
+            })
         }
         Some(code) => Err(match stderr_detail() {
             Some(d) => format!("远端分叉失败：{d}"),
@@ -201,7 +226,8 @@ mod tests {
     #[test]
     fn exit_zero_with_garbage_stdout_fails() {
         let e = interpret_fork_exec(&ex("not json at all", "", Some(0))).unwrap_err();
-        assert!(e.contains("解析失败"), "got: {e}");
+        // Phase G 起措辞改成指向真正的怀疑对象（远端 shell 打了 banner），不再叫「解析失败」。
+        assert!(e.contains("找不到结果 JSON"), "got: {e}");
         let e2 = interpret_fork_exec(&ex("", "", Some(0))).unwrap_err();
         assert!(e2.contains("没有输出结果"), "got: {e2}");
     }
@@ -223,13 +249,51 @@ mod tests {
         assert!(partial.contains(HELLO_MARKER));
     }
 
+    /// ★ Phase G 审计：远端登录 shell 打 banner 是常见配置（本仓的部署流程本来就动 `.bashrc`）。
+    /// 只看第一条非空行的话，**分叉已经成功、文件已落盘、exit 0**，monitor 却报「解析失败」，
+    /// 用户重试就在远端多留一份孤儿分支文件。
+    #[test]
+    fn banner_before_result_does_not_break_parsing() {
+        let out = format!("Welcome to raspberrypi!\n *  System load: 0.0\n{OK_LINE}\n");
+        let r = interpret_fork_exec(&ex(&out, "", Some(0))).unwrap();
+        assert_eq!(r.session_id, "new-sid-1");
+    }
+
+    /// 同理，stderr 上的 `{code,message}` 信封也不该被前面任意一行噪声顶掉。
+    #[test]
+    fn banner_before_error_envelope_still_surfaces_the_reason() {
+        let err = "bash: warning: setlocale: LC_ALL: cannot change locale\n\
+                   {\"code\":\"fork_failed\",\"message\":\"refuse fork: message uuid not found\"}\n";
+        let e = interpret_fork_exec(&ex("", err, Some(2))).unwrap_err();
+        assert!(e.contains("message uuid not found"), "got: {e}");
+    }
+
+    /// exit 0 但**只有噪声没有结果** —— 措辞要指向真正的怀疑对象（远端 shell），
+    /// 而不是甩锅给 daemon 说它「没有输出」。
+    #[test]
+    fn noise_only_stdout_says_where_to_look() {
+        let e = interpret_fork_exec(&ex("some banner line\n", "", Some(0))).unwrap_err();
+        assert!(e.contains("banner"), "got: {e}");
+    }
+
+    /// 带空格的 hello 写法也要认（原来只认无空格那条，注释却说与 `remote_history` 同判据）。
+    #[test]
+    fn spaced_hello_is_also_detected() {
+        let e = interpret_fork_exec(&ex(r#"{"kind": "hello","v":1}"#, "", Some(0))).unwrap_err();
+        assert!(e.contains("版本过旧"), "got: {e}");
+    }
+
     #[test]
     fn fork_ids_are_whitelisted() {
         assert!(validate_fork_id("sid", "0473c3a0-1111-2222-3333-444455556666").is_ok());
         for bad in ["", "../etc/passwd", "a b", "a;rm -rf /", "a'b", "a/b"] {
             assert!(validate_fork_id("sid", bad).is_err(), "该拒: {bad:?}");
         }
-        assert!(validate_fork_id("sid", &"a".repeat(129)).is_err());
+        assert!(
+            validate_fork_id("sid", &"a".repeat(65)).is_err(),
+            "上限该与 daemon 的 64 对齐"
+        );
+        assert!(validate_fork_id("sid", &"a".repeat(64)).is_ok());
     }
 
     /// 命令形状 = daemon 的 argv 契约。**位置参数顺序错了 daemon 会拿 uuid 当 sid 去找文件**，

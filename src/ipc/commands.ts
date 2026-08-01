@@ -501,10 +501,17 @@ export const commands = {
     cwd: string;
     launcher: string | null;
     /**
-     * G3b-1：本机拉起时注入 `CLAUDE_CONFIG_DIR`。**缺省 / null / 空串一律 = 账号 0**
-     * （一个字都不注入）—— 既有调用点不传，逐字节等价旧行为。
+     * G3b-1 / Phase G：本机拉起用哪个账号。**三态，别退回两态**：
+     *
+     * - 参数缺席 = 调用方**没表态** ⇒ 一个字都不注入（既有调用点逐字节等价旧行为）
+     * - `{ kind: "base" }` = 用户**显式**选了账号 0 ⇒ 后端产出 `unset CLAUDE_CONFIG_DIR`
+     * - `{ kind: "named", configDir }` = 具名账号 ⇒ `export CLAUDE_CONFIG_DIR='…'`
+     *
+     * **「账号 0」不等于「什么都不加」**：本地拉起故意加载 shell rc，而 rc 里很可能有
+     * `export CLAUDE_CONFIG_DIR=<默认账号>`（`cc-acct-iso shellinit` 生成的就是它）⇒
+     * 什么都不加会静默落到别的账号上。远端那条路一直渲染成 `unset`，本地此前不是（Phase G 修）。
      */
-    configDir?: string | null;
+    account?: { kind: "base" } | { kind: "named"; configDir: string };
   }) => invoke<void>("resume_history_session", args),
 
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */

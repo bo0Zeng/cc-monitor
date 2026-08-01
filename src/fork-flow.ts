@@ -154,7 +154,12 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
         sessionId: a.sessionId,
         cwd: a.cwd,
         launcher: behavior.resumeCommandLocal || null,
-        configDir: a.configDir,
+        // ★ 这条路上「账号 0」是**用户显式选的**（追问小窗的默认位就摆在那儿），
+        //   所以要走 `base` 让后端产出 `unset CLAUDE_CONFIG_DIR` —— **不是省略参数**。
+        //   省略 = 「没表态」= 一个字都不注入，会被 shell rc 里的默认账号顶掉
+        //   （Phase G 抓出的静默串号；远端那条路一直是 unset，本地此前不是）。
+        account:
+          a.configDir === null ? { kind: "base" } : { kind: "named", configDir: a.configDir },
       });
     },
 
@@ -164,11 +169,10 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
       // `configDir: null` = 账号 0 = 什么都不注入；`mods.configDir` 收 `string | undefined`，
       // 所以 null 要落成 undefined，**不能落成空串**（空值 ≠ 未设，见 accounts.ts Z01）。
       const mods = { configDir: a.configDir ?? undefined };
-      if (a.tmuxName) {
-        await runRemoteResumeTmux(a.origin, a.sessionId, a.cwd, launcher, a.tmuxName, mods);
-      } else {
-        await runRemoteResume(a.origin, a.sessionId, a.cwd, launcher, mods);
-      }
+      // ★ 返回值必须往上传：那两条路失败时**不抛**，只弹自己的 toast 并回 false。
+      return a.tmuxName
+        ? runRemoteResumeTmux(a.origin, a.sessionId, a.cwd, launcher, a.tmuxName, mods)
+        : runRemoteResume(a.origin, a.sessionId, a.cwd, launcher, mods);
     },
   };
 }
@@ -190,7 +194,9 @@ export async function runForkFlow(input: ForkFlowInput): Promise<ForkStartOutcom
       productionDeps(input),
     );
   } catch (err) {
+    // 抛出来的（本机 sid 校验失败、IPC reject…）在这里变成 toast；返回 `failed` 而不是
+    // `cancelled` —— 调用方据此区分「出错了」与「用户自己收手」。
     showActionFailureToast("起分叉会话失败", String(err));
-    return "cancelled";
+    return "failed";
   }
 }
