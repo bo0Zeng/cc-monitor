@@ -213,7 +213,7 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 | S8 | **`BUILD_ID` 单源链条**<br>**U-1 已交付**：① `ssh_source.rs::embedded_build_id_single_source_wired` 断言 ≠ `"unknown"`；② `build.rs` 三条硬 panic（抠不到源码 `BUILD_ID` / 有二进制但缺清单 / 清单与源码不符）；③ 半 bump **真修掉**（两个 arch 从 p1v 源码现编，`rust-lld` 零安装）。<br>⚠ **措辞订正**：原写「缺文件从 warn 改 fail」不准 —— 三条 panic 都以「`embedded-daemons/` 里真有二进制」为前提；**整个目录缺失时仍是优雅降级**（那是 dev/CI 常态），兜那一档的是①不是 `build.rs`。发版链两头都够得着（`release.yml:56-58` 写清单、`:113-118` 再对拍） | U-1 · U13 |
 | S9 | **读面七组 → 四组**（§0.1 三类） | monitor 侧退役 | U7a–U7e |
 | S10 | **`shared/ccm`** | 零决策执行臂。**保住**：三个 exec 出口 · `eval "$CCM_ENV"` · `--detach` · `--ccm-probe` 首行 · codex `CC_BUS_ID` 无条件覆盖 · **`@ccm_sid` 回填（§0.5-5）** · `ccm:264-279` 的撞名分叉 | U9 |
-| S11 | **`sftp.rs::ccm_cli_has_required_elements`** | 迁到 `control/` 的命令构造点，**逐条对拍不许降强度**：needle ≥ 11 · 两条通道 A 字面量 · `pin_definition` · `require` 的 `min_checked` 不低于迁移前的 checked | U1b · U9 |
+| S11 | **`sftp.rs::ccm_cli_has_required_elements`**<br>**U1a 已交付前半（基线）**：强度读数由 `ccm_cli_contract::measure()` **单一产出**，迁移前后同一函数跑两份脚本文本 —— **`needles`/`channel_a`/`t_targets_checked` 三个 `>=`，`t_violations` 是 `<=`（必须 0）**。⚠ 最后这半句不能少：Phase D 审计实测，只比前三个字段时「4 处精确目标全改裸目标」四字段一字不变、全绿。5 条**编译期**钉子（`const _: () = assert!`）钉住基线与阈值两个旋钮。<br>**U9 的迁移清单（现在写死，免得只搬一半）**：`measure()` 喂新构造点文本 · **`require()` 必须一起搬**（它看 violations，读数是它的镜子不是替身）· `pin_t_def()` · `doc/INVARIANTS.md:686` 的指向 | 迁移后逐条对拍 = U9；护栏按新边界重钉 = U1b |
 | S12 | **会话名生成** | 两族各一个函数 + 计数守卫 == 2。⚠ **守卫挂 U11 不是 U8**（ccm 到 U9、cc-spawn 到 U11 才收编，挂 U8 是**做完必红**的 DoD） | U8 · U9 · U11 |
 | S13 | **`parity_ledger`**<br>**U-1 已交付**：`command_signatures()` 改递归 + `files.sort()`（不排序时「首个胜」会让同名命令随文件系统顺序漂）。实测 `adapter/` 下两文件的 `#[tauri::command]` 命中数都是 **0** ⇒ 递归当下是**纯预防性**，`LEDGER.len()==123` 与 `checked==68` 都没变 | 本区天然验收面。⚠ 它只钉命令**这一层**，别把「数字没动」读成「读面没搬成」 | U-1 · U7 |
 | S14 | **`--resolve`** | 吸收进 backend 的计划面；线上形状逐字不变（aterm 契约 2026-07-18 冻结）；`sessionName` 漂移随之消失 | U6 · U8 |
@@ -428,3 +428,6 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   Phase D 逮到 7 条重要项，其中 **D1 是我补的守卫自己漏了同族更重的那条洞**（收尾 `if (failed>0) throw` 被删 ⇒ 测试照跑照打 ✗ 而退出码 0），且我的「挡不住什么」段没写它。
   连带修：另外两处同型的静默 SKIP（`tmux-target-acceptance.sh` 缺 `script(1)` / `restart-daemon-frames.sh` 缺 daemon）·`ci.yml:306/313` 残留的「8 套」· `DEVELOPMENT.md` 的「14 组」且漏两个名字 · `RELEASING.md` 的 f40 悬空引用 ·`.gitignore` 补 `src-tauri/crates/**/Cargo.lock`。
   新增账本 **S16**。U0 行的「241 例」订正为 **242**（241 是 e2e 地板合计，串号了）。
+- 2026-08-01 **U1a 完成**。实现期证伪了功能计划自己的一条 DoD（「`require` 阈值改小 ⇒ 不影响」——变异实测：阈值 10→3 全套依旧 4 passed），而**账本 S11 早就写着「`min_checked` 不低于迁移前的 checked」**，是功能计划抄漏了账本。五条钉子按 clippy 的提示改成**编译期** `const _: () = assert!`（改坏了编不过）。
+  Phase D 逮到 3 条重要项：**A1 是我造成的静默退化**（`mod` 插错位置拆散 `#[cfg(test)]` 配对，`structural_scan` 变无条件编译、dead_code +5，而 `cargo build` 无 `-D warnings` 故不会红）；**A2 是本功能核心目的上的缺口**（读数漏了 `violations`，对 F01 的裸目标事故形状全瞎）；A3 参数两处各写一遍。
+  顺带订正一处陈旧断言：`sftp.rs` 注释写「checked=11、留 1 余量」，**实测 10、余量为 0**，逐 commit 追到 `666cc14` 属正当行为变更（净 −1）。不下调阈值。
