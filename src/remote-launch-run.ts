@@ -118,7 +118,7 @@ export async function runRemoteResume(
   });
 }
 
-/** F52：tmux 版 resume——在远端 tmux 会话 `cc-<sid8>` 里幂等 resume Claude;失败回退复制命令。
+/** F52：tmux 版 resume——在远端 tmux 会话 `<sid8>-cc` 里幂等 resume Claude;失败回退复制命令。
  *
  *  @returns 是否**真的把终端拉起来了**。false = 命令构造失败 / `launch_remote_terminal` 失败
  *  （此时已走剪贴板回退，需用户手动粘贴）。
@@ -150,7 +150,7 @@ export async function runRemoteResumeTmux(
   });
 }
 
-/** F03：往一个**已存在的空 tmux**（idle-tmux：claude 已退、只剩交互 shell 的 `cc-<sid8>`）就地
+/** F03：往一个**已存在的空 tmux**（idle-tmux：claude 已退、只剩交互 shell 的 `<sid8>-cc`）就地
  *  resume——send-keys 载荷 + attach，复用原会话名（不产孤儿，治 #76）。签名/返回值与
  *  `runRemoteResumeTmux` 对齐：true=真拉起来了；false=命令构造失败/拉起失败（已回退剪贴板）。
  *  **`tryRenderCli` 对这类 plan（`mode==="send-into"`）恒返回 `ok:false`**——shared/ccm 没有就地

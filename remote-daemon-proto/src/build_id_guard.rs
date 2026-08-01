@@ -59,32 +59,31 @@ mod tests {
         ),
     ];
 
-    /// 剥测试段 + 行注释，只留生产代码。
-    ///
-    /// **两样都要剥**：`main.rs` 的散文里成篇地提到这些字面量（版本谱系那一大段就是），
-    /// 不剥的话「注释里写了它」也能把指纹喂饱 —— 那正是安慰剂。
-    /// 判据与 `accounts_query::tests::main_dispatches_every_subcommand_we_handle` 同源。
-    fn production_only(src: &str) -> String {
-        let marker = "\n#[cfg(test)]\nmod tests";
-        let prod = match src.find(marker) {
-            Some(i) => &src[..i],
-            None => src,
-        };
-        prod.lines()
-            .filter(|l| !l.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
+    use crate::guard_support::{assert_no_test_code, production_code};
 
     /// 从 `main.rs` 的生产段抠出 `Some("--x")` 形态的子命令，排序去重。
+    ///
+    /// **剥测试段与剥注释两样都要**：`main.rs` 的散文里成篇地提到这些字面量（版本谱系那一大段
+    /// 就是），不剥的话「注释里写了它」也能把指纹喂饱 —— 那正是安慰剂。
+    ///
+    /// # U-1（2026-08-01）：剥法换成 `guard_support`，指纹的来源变了
+    ///
+    /// 旧剥法锚 `"\n#[cfg(test)]\nmod tests"`，而 `main.rs` 的测试模块叫 `mod stream_flag_tests`
+    /// ⇒ 匹配不上 ⇒ 整个文件被当生产段。**于是本护栏数到的九个子命令，一直来自
+    /// `stream_flag_tests` 里那份副本，不是 `:275-291` 的真 dispatch。**
+    /// （两个 bug 凑出一个看起来正确的结果：不剥 ⇒ 真 dispatch 也在里面 ⇒ 一直绿。）
+    /// 换成逐个剥测试模块之后，指纹来自真 dispatch，**集合实测不变**（同为那九个）。
     fn subcommand_fingerprint() -> String {
-        let prod = production_only(include_str!("main.rs"));
+        let prod = production_code(include_str!("main.rs"));
         // 反向自检：剥完还得剩下真代码，否则下面数出来的空集会「恰好等于」某个错误期望。
         assert!(
             prod.len() > 3_000,
             "剥完 main 生产段只剩 {} 字节 —— 剥法坏了，本护栏此刻是无效的",
             prod.len()
         );
+        // 反向自检之二：**测试段真的剥掉了**。旧的 `len` 自检光靠剥注释就满足，
+        // 与测试段有没有剥掉毫无关系 —— 那正是本护栏扫了几个月测试代码没人发现的原因。
+        assert_no_test_code("build_id_guard/main.rs", &prod);
         let needle = format!("{}(\"--", "Some");
         let mut subs: Vec<&str> = Vec::new();
         for (i, _) in prod.match_indices(needle.as_str()) {

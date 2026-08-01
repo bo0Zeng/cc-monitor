@@ -9,47 +9,83 @@
 
 #[cfg(test)]
 mod tests {
-    /// 剥掉所有 `#[cfg(test)]` 属性修饰的花括号块（按括号配平跳过其后第一个 `{...}`）。
+    /// U-1（2026-08-01）修掉两条**过剥**（= fail-open，静默删掉扫描面，比假阳性危险得多）。
+    /// 两条都由 Phase E 工程审计逮出，并各自实测确认：
+    ///
+    /// ① **锚点必须钉在行首。** 原来是裸 `find("#[cfg(test)]")`，于是**注释里**逐字写出这个属性
+    ///    也会起跳。`main.rs:23` 的行尾注释正是这个形状（「内部整体 #[cfg(test)]，生产构建为空」），
+    ///    起跳后括号配平一路吃到 `:40` 的 `use tokio::io::{…}` 收尾 ⇒ **`main.rs:23–40`
+    ///    （15 条 `mod` 声明 + 2 条 `use`）从来不在本护栏的扫描面里**。这与 §41.4 第 1 条纪律
+    ///    「护栏连注释一起扫，是 fail-closed 的设计」正好相反 —— 对本函数而言，注释里出现这个
+    ///    属性是 **fail-open**。
+    ///
+    /// ② **无花括号体的声明不许吃掉后文。** `#[cfg(test)] mod x;` 底下没有块，
+    ///    `after.find('{')` 会一路找到**后面某个不相干 item** 的左大括号并从那里配平。
+    ///    `guard_support.rs` 落地时新加的 `#[cfg(test)] mod guard_support;`（`main.rs:26`）
+    ///    当场把洞从 429 B 撑到 497 B。判据：属性与第一个左大括号之间若先出现 `;`，那就是声明。
+    ///
+    /// 修完扫描面 **217_853 → 221_928 字节**（+4_075）——是**扩大**不是收窄（红线 I7 只禁收窄）。
+    ///
+    /// 剥掉所有 `#[cfg(test)]` 属性修饰的花括号块（按括号配平跳过其后第一个块）。
     /// 不能简单「从首个 `#[cfg(test)]` 截断到 EOF」——`main.rs` 的测试模块在文件**中部**，
     /// 其后仍有生产代码（`main`/`writer_task`/`write_frame`）。按块剥除才不误伤生产段。
-    /// 字节索引均落在 `#`/`{`/`}` 这些 ASCII 边界上，切片对 UTF-8（中文注释）安全。
+    /// 字节索引均落在 `#`/`{`/`}`/`;`/`\n` 这些 ASCII 边界上，切片对 UTF-8（中文注释）安全。
     ///
     /// **已知局限**（本护栏是纵深防御、非严格证明，不值当为它塞个 Rust 词法器）：括号配平不识别
-    /// 字符串/注释里的 `{`/`}`，若某 `#[cfg(test)]` 块内有含不配对花括号的字符串字面量，剥除边界会
+    /// 字符串/注释里的大括号，若某 `#[cfg(test)]` 块内有含不配对大括号的字符串字面量，剥除边界会
     /// 偏。偏向**保守**（少剥）→ 残留测试代码进扫描 → 顶多假阳性（CI 红、人一看是测试代码即排除，
-    /// fail-closed 安全）；真正危险的假阴性（多剥、吞掉生产 `fs::write`）需要生产 `fs::write` 紧跟在
-    /// 一个花括号不配对的 cfg(test) 块之后——现有 daemon 源无此形态，且真加生产写操作时该模式亦罕见。
+    /// fail-closed 安全）。这条局限**已被 `no_test_code_leaks_into_any_production_section` 钉住**：
+    /// 剥完全 crate 不许残留 `#[test]`，撞了就**改注释措辞**（§41.4 第 1 条纪律），别改本函数。
     fn strip_cfg_test(src: &str) -> String {
+        const ATTR: &str = "#[cfg(test)]";
+        // 只认**行首**的属性；文件开头那一处没有前导换行，单独放行。
+        fn anchor(hay: &str, at_file_start: bool) -> Option<usize> {
+            if at_file_start && hay.starts_with(ATTR) {
+                return Some(0);
+            }
+            let mut pat = String::with_capacity(ATTR.len() + 1);
+            pat.push('\n');
+            pat.push_str(ATTR);
+            hay.find(&pat).map(|i| i + 1)
+        }
         let mut out = String::new();
         let mut rest = src;
-        while let Some(pos) = rest.find("#[cfg(test)]") {
+        let mut first = true;
+        while let Some(pos) = anchor(rest, first) {
+            first = false;
             out.push_str(&rest[..pos]);
             let after = &rest[pos..];
-            match after.find('{') {
-                Some(brace) => {
-                    let bytes = after.as_bytes();
-                    let mut depth: i32 = 0;
-                    let mut end = brace;
-                    while end < after.len() {
-                        match bytes[end] {
-                            b'{' => depth += 1,
-                            b'}' => {
-                                depth -= 1;
-                                if depth == 0 {
-                                    end += 1;
-                                    break;
-                                }
+            let brace = after.find('{');
+            let semi = after.find(';');
+            // 先遇到 `;` ⇒ 是**声明**（`#[cfg(test)] mod x;` / `use …;`），没有块可剥。
+            let is_block = match (brace, semi) {
+                (Some(b), Some(s)) => s > b,
+                (Some(_), None) => true,
+                (None, _) => false,
+            };
+            if is_block {
+                let brace = brace.expect("is_block 为真时必有左大括号");
+                let bytes = after.as_bytes();
+                let mut depth: i32 = 0;
+                let mut end = brace;
+                while end < after.len() {
+                    match bytes[end] {
+                        b'{' => depth += 1,
+                        b'}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end += 1;
+                                break;
                             }
-                            _ => {}
                         }
-                        end += 1;
+                        _ => {}
                     }
-                    rest = &after[end..]; // 跳过整个 cfg(test) 块
+                    end += 1;
                 }
-                None => {
-                    // `#[cfg(test)]` 修饰的不是块（如 `use`）——只跳过属性本身，保留其余。
-                    rest = &after["#[cfg(test)]".len()..];
-                }
+                rest = &after[end..]; // 跳过整个 cfg(test) 块
+            } else {
+                // 声明或 `#[cfg(test)]` 修饰的非块 item——只跳过属性本身，保留其余。
+                rest = &after[ATTR.len()..];
             }
         }
         out.push_str(rest);
@@ -237,6 +273,53 @@ mod tests {
             whitelisted, 1,
             "白名单模块必须**恰好一个**（找到 {whitelisted} 个）。\n\
              多一个 = 写盘能力扩散；零个 = {WRITE_WHITELIST_MODULE} 被改名/删除而护栏没跟上。"
+        );
+    }
+
+    /// U-1（2026-08-01）：**剥法的欠剥方向也要机器钉住。**
+    ///
+    /// `strip_cfg_test` 的已知局限（括号配平不识别字符串/注释里的大括号）此前只写在散文里。
+    /// 散文挡不住事：`guard_support.rs` 落地时，我自己注释里一个孤立的右大括号就把配平提前收尾，
+    /// 让那个测试模块的 5 个 `#[test]` 整段留在「生产段」里 —— 而这**不会红**（那些测试只读文件、
+    /// 不含写模式），是静默的。下一个往 `guard_support.rs` 加 tempdir 测试的人才会撞上
+    /// 一条说「生产代码 guard_support.rs 含 fs::write」的**误导性**诊断。
+    ///
+    /// 处置遵循 §41.4 第 1 条纪律：**撞了改注释措辞，别改护栏**（本次就是把注释里的
+    /// 孤立大括号改成中文名词）。
+    #[test]
+    fn no_test_code_leaks_into_any_production_section() {
+        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut stack = vec![src_dir];
+        let mut leaks: Vec<(String, usize)> = Vec::new();
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read src dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if name == "readonly_guard.rs" {
+                    continue; // 与 `scan` 同款跳过：本文件的模式字面量必然含这些子串
+                }
+                let prod = strip_cfg_test(&std::fs::read_to_string(&path).expect("read rs file"));
+                // 用拼接写法，免得本行自己被数进去。
+                let attr = format!("#[{}]", "test");
+                let n = prod.matches(attr.as_str()).count();
+                if n > 0 {
+                    leaks.push((name.to_string(), n));
+                }
+            }
+        }
+        leaks.sort();
+        assert!(
+            leaks.is_empty(),
+            "剥完仍有测试属性残留在生产段里：{leaks:?}\n\
+             多半是某个注释/字符串里有**不配对的大括号**，把括号配平提前收尾了。\n\
+             ⇒ 改那处措辞（§41.4 第 1 条纪律），**不要**动 `strip_cfg_test`。"
         );
     }
 

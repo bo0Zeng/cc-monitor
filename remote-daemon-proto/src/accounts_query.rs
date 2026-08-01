@@ -1381,17 +1381,9 @@ mod tests {
         let main_raw = include_str!("main.rs");
         // 只看生产段 + 剥行注释：两个文件的散文里都会提到这些字面量，
         // 不剥的话「main 的注释里写了它」也会让守卫变绿——那正是安慰剂。
-        let strip = |src: &str| -> String {
-            let marker = "\n#[cfg(test)]\nmod tests";
-            let prod = match src.find(marker) {
-                Some(i) => &src[..i],
-                None => src,
-            };
-            prod.lines()
-                .filter(|l| !l.trim_start().starts_with("//"))
-                .collect::<Vec<_>>()
-                .join("\n")
-        };
+        // U-1：剥法收敛到 `guard_support`。旧的内联版锚 `mod tests`，而 main.rs 的测试模块
+        // 叫 `mod stream_flag_tests` ⇒ 匹配不上 ⇒ **这条守卫一直在拿测试段里那份副本对账**。
+        let strip = crate::guard_support::production_code;
         let mine = strip(me);
         let main_prod = strip(main_raw);
         assert!(
@@ -1400,6 +1392,10 @@ mod tests {
             main_prod.len(),
             main_raw.len()
         );
+        // ★ 上面那条 `len` 自检**检不出「测试段没剥掉」**（光靠剥注释就满足）。
+        // 真正的判据是这条：剥完不许再有测试属性。
+        crate::guard_support::assert_no_test_code("accounts_query/main.rs", &main_prod);
+        crate::guard_support::assert_no_test_code("accounts_query/self", &mine);
 
         // 抠出本模块 `run` 分发的子命令：形如 `Some("--x") =>`。
         let mut subs: Vec<&str> = Vec::new();

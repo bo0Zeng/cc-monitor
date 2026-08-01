@@ -64,7 +64,14 @@ export function planResumeTmux(
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
   }
-  const tmuxName = name ?? `cc-${sid.slice(0, 8)}`;
+  // S4b-3b（用户 2026-07-31）：会话名是 `<X>-cc` 后缀形，不是 `cc-<X>` 前缀形。
+  // **这一处是那次反转漏掉的最后一个生产生成点**（2026-08-01 用户复查时揪出）：
+  // 三条真实调用路径都传显式 name（`tabs.ts` 走 `pickFreshTmuxName`、`account-restart.ts`
+  // 复用既有会话名、`fork-flow.ts` 有非空守卫），所以旧形态**当时没在线上冒出来** ——
+  // 但它是个公开导出 API 的默认值，下一个省略 name 的调用方就会静默拿到旧前缀。
+  // 与 `remote-launch.ts::pickFreshTmuxName` 的基名逐字相同，由 `remote-launch.test.ts`
+  // 的对拍断言钉死（两处同源，别只改一边）。
+  const tmuxName = name ?? `${sid.slice(0, 8)}-cc`;
   if (!/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(tmuxName)) {
     throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(tmuxName)}`);
   }

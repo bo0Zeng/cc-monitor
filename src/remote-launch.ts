@@ -130,9 +130,9 @@ export function buildResumeTmuxCmd(
 }
 
 /**
- * F03（idle-tmux 就地复用）：往一个**已存在的空 tmux**（claude 已退、只剩交互 shell 的 `cc-<sid8>`，
+ * F03（idle-tmux 就地复用）：往一个**已存在的空 tmux**（claude 已退、只剩交互 shell 的 `<sid8>-cc`，
  * `@ccm_sid` 命中但 command≠claude）就地 resume——send-keys 载荷 + attach，**不 new-session**。
- * 复用原会话名 = 不产 `cc-<sid8>-N` 孤儿（治 #76 根因）；且修 create-gate 在会话已存在时短路跳过
+ * 复用原会话名 = 不产 `<sid8>-cc-N` 孤儿（治 #76 根因）；且修 create-gate 在会话已存在时短路跳过
  * send-keys、把用户 attach 进没起 claude 的空 shell（#75 一条）。
  * **基座（无 configDir）时前置 `unset CLAUDE_CONFIG_DIR;`**：清掉空 shell 可能残留的旧账号 env
  * （避免在错账号数据目录 resume——#75 的复用变体）；账号复用则由载荷里的 export 覆盖。
@@ -148,8 +148,8 @@ export function buildResumeIntoExistingTmuxCmd(
 }
 
 /**
- * F74：给灰会话 resume 挑一个**不撞现有 tmux 名**的会话名。基名 `cc-<sid8>`;被占(多半是
- * 被 `/branch` 漂移后仍占着原名的会话)→ 加数字后缀 `cc-<sid8>-2/-3/…` 取第一个空位。保证
+ * F74：给灰会话 resume 挑一个**不撞现有 tmux 名**的会话名。基名 `<sid8>-cc`;被占(多半是
+ * 被 `/branch` 漂移后仍占着原名的会话)→ 加数字后缀 `<sid8>-cc-2/-3/…` 取第一个空位。保证
  * resume 一定新建自己的 tmux 跑 `--resume <sid>` → 落进原会话,绝不 attach 进漂移的别人。
  * (纯函数,`existing` = 当前 tmux 会话名集合;sid 合法性由 `buildResumeTmuxCmd` 兜底校验。)
  */

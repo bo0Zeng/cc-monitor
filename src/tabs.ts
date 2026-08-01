@@ -2168,7 +2168,7 @@ export class TabManager {
       return;
     }
     // ② 目标会话不在任何 tmux（已结束 / 已漂移到别的 sid）→ 起**全新** resume。tmux 名从现有
-    // 名里挑一个不撞的，避免复用被 /branch 漂移占着的 cc-<sid8>（那正是「resume 进 branch」老 bug）。
+    // 名里挑一个不撞的，避免复用被 /branch 漂移占着的 `<sid8>-cc`（那正是「resume 进 branch」老 bug）。
     const existing = new Set((sessions ?? []).map((s) => s.name));
     const name = pickFreshTmuxName(sid, existing);
     // account-ux U3:tmux 版归档 resume 也跟随账号(注入 configDir)。① attach 活会话分支不动(账号焊死)。

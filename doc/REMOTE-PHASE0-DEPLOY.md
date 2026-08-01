@@ -14,8 +14,10 @@
 
 ## 发版构建：交叉编译 + 内嵌 daemon 二进制（F08b）
 
-打包 cc-monitor.exe 前，需把 daemon 交叉编译成两份 musl 二进制放进 `src-tauri/embedded-daemons/`
-（该目录已 gitignore——是构建产物；缺失时 `build.rs` 优雅降级，自动部署变 no-op，dev/CI 仍可编译）：
+打包 cc-monitor.exe 前，需把 daemon 交叉编译成两份 musl 二进制放进 `src-tauri/embedded-daemons/`，
+**每份二进制旁边还要有一个同名 `.build_id` 清单文件**（内容 = 那个二进制的 `BUILD_ID` 字符串）。
+该目录已 gitignore——是构建产物；**整个目录缺失**时 `build.rs` 优雅降级（`cargo:warning` + 自动部署变
+no-op，dev/CI 仍可编译），但**有二进制却缺清单是编译期 panic**，见下面的纪律。
 
 ```powershell
 # 一次性装工具链（Windows 主机；cross+Docker 在 Windows+Scoop-rustup 下踩坑，用 cargo-zigbuild）
@@ -32,11 +34,49 @@ cargo zigbuild --release --target aarch64-unknown-linux-musl
 mkdir ..\src-tauri\embedded-daemons
 copy target\x86_64-unknown-linux-musl\release\cc-monitor-remote   ..\src-tauri\embedded-daemons\cc-monitor-remote-x86_64
 copy target\aarch64-unknown-linux-musl\release\cc-monitor-remote  ..\src-tauri\embedded-daemons\cc-monitor-remote-aarch64
+
+# ★ 必做：写 .build_id 清单（内容 = remote-daemon-proto/src/main.rs::BUILD_ID 的值）
+#   缺清单 = 编译期 panic；写错内容 = 装出去无限重装。
+#   **从源码抠、别手打**（手打的值下次 bump 就过期；这段与 release.yml:113 同款）：
+$id = (Select-String -Path src\main.rs -Pattern 'const BUILD_ID: &str = "(.+?)"').Matches[0].Groups[1].Value
+$id | Out-File -Encoding ascii -NoNewline ..\src-tauri\embedded-daemons\cc-monitor-remote-x86_64.build_id
+$id | Out-File -Encoding ascii -NoNewline ..\src-tauri\embedded-daemons\cc-monitor-remote-aarch64.build_id
 ```
 
-> **纪律（build.rs 有 staleness 警告兜底）**：每次改了 daemon（尤其 bump `main.rs::BUILD_ID`）都要**重跑
-> zigbuild + 重新放二进制**，否则内嵌的旧二进制 build_id 与源码/期望不符 → 永不收敛的重复部署。
-> `build.rs` 在内嵌二进制比 daemon 源码旧时会 `cargo:warning` 提示。
+> **不想装 zig 也行（U-1 实测，零安装）**：`rust-lld` 随 rustc 自带，两个 musl target 都能链：
+> ```bash
+> cargo build --release --target x86_64-unknown-linux-musl
+> cargo build --release --target aarch64-unknown-linux-musl \
+>   --config 'target.aarch64-unknown-linux-musl.linker="rust-lld"'
+> ```
+> x86_64 不加 `--config` 也能链；aarch64 **必须**加，否则会挂在系统 `ld` 上。
+> **注意这不等价于 CI 产物**——static-pie / 未 strip / 可能是不同 rustc，只适合本机打包自用；
+> 官方发版一律走 release.yml 的 zigbuild。另外本机若无 qemu，**aarch64 那份从未被执行过**，
+> 只做过字节级核对，真机 smoke 前别当已验收。
+
+> **纪律（2026-08-01 U-1 起：`build.rs` 从 warning 升成硬 panic）**：每次改了 daemon
+> （尤其 bump `main.rs::BUILD_ID`）都要**重编二进制 + 同步改清单**，两件一起做。
+> `build.rs` 会在三种情况直接 panic 掉编译。
+> **三条都以「`embedded-daemons/` 里真有那个 arch 的二进制」为前提**（`build.rs:266` 的
+> `if src.exists()`）—— 整个目录不存在时走的是优雅降级（两条 `cargo:warning` + 自动部署 no-op），
+> 那正是 dev / CI 的常态，见下方补注：
+>
+> | 情况 | 为什么必须 fail 而不是 warn |
+> |---|---|
+> | 抠不到源码 `const BUILD_ID` | 单源链条断了，`DAEMON_BUILD_ID` 会静默退化成 `"unknown"`，每台远端都判 StaleBuild |
+> | **有二进制但缺 `.build_id` 清单** | 清单是二进制在运行期的**唯一**身份来源（`BUILD_ID` 被编译器优化成立即数，字节里搜不到连续明文，`sftp.rs` 的字节启发式会**误拒正品**）；缺清单还会把下面那条一致性校验静默跳过 |
+> | 清单与源码 `BUILD_ID` 不符（**半 bump**） | monitor 判过期的唯一判据就是这个字符串不等 ⇒ 装上去**永远判 StaleBuild、无限重装** |
+>
+> 原来只有一条比 mtime 的 `cargo:warning`。它漏掉了真实发生过的那次：源码已 bump 到
+> `p1v-attachable`、清单还是 `p1u-fork-session`，而二进制 mtime **更新**——mtime 判据完全不响。
+> 不想重编就 `rm -rf src-tauri/embedded-daemons/`：自动部署诚实关闭，编译立刻恢复。
+>
+> **⚠ 这三条挡不住「根本没有内嵌目录」那一档**（Phase E 审计 R3 订正）。干净 clone / CI 里
+> `embedded-daemons/` 不存在 ⇒ 三条 panic 一条都够不着，`DAEMON_BUILD_ID` 静默变 `"unknown"`。
+> 兜这一档的**不是** `build.rs`，是 monitor 侧的
+> `src-tauri/src/ssh_source.rs::embedded_build_id_single_source_wired`（断言它 ≠ `"unknown"`）。
+> 发版链上二者都够得着：`release.yml` 的 `build-daemons` 现场生成二进制**并写清单**
+> （`:56-58` 从源码抠 `BUILD_ID`），`build-windows` `:113-118` 还会再对拍一次。
 
 ---
 

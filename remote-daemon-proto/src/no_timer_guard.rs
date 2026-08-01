@@ -67,57 +67,162 @@ mod tests {
          再一起交付」。去掉它 inotify 照样推事件，只是更碎。不是定时器。",
     )];
 
-    /// 剥掉 `#[cfg(test)]` 块与行注释，只留生产代码。
+    use crate::guard_support::production_code;
+
+    /// 遍历 `src/` 下**全部**（含子目录）`.rs`，返回 `(相对路径, 生产段)`。
     ///
-    /// 剥注释是必需的：本 crate 的注释**大量**在解释「为什么这里没有定时器了」，
-    /// 逐字提到那些模式名（P4 实测：不剥的话守卫会被解释它自己的那段散文打红）。
-    fn production_code(src: &str) -> String {
-        // 锚点用转义写法 ⇒ 与真正的换行不相等 ⇒ 不会匹配到本行自己。
-        let marker = "\n#[cfg(test)]\nmod tests";
-        let prod = match src.find(marker) {
-            Some(i) => &src[..i],
-            None => src,
-        };
-        prod.lines()
-            .filter(|l| !l.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n")
+    /// # 为什么必须递归（2026-08-01，U-1）
+    ///
+    /// 原来是单层 `read_dir` + `extension != "rs"` 跳过 —— **目录没有扩展名，于是被整个跳过**。
+    /// `readonly_guard::scan` 在 Phase G 已经改成递归并留了警示注释，**这条没跟**。
+    ///
+    /// 失效形态实测（unified-backend 计划自审）：一旦生产代码搬进
+    /// `src/<子目录>/`，扫到的文件只剩顶层那几个 mod 声明 + 本护栏 + `wire.rs`，
+    /// 而当时的地板 `files.len() >= 5` **照样满足** ⇒ 护栏一行业务代码都没扫、全绿。
+    /// 那正是本仓在「守卫范围 ≠ 性质范围」上栽过的第四次。
+    fn daemon_sources() -> Vec<(String, String)> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut out = Vec::new();
+        let mut stack = vec![root.clone()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read src dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                // 跳过本护栏自身：它的模式表与说明文字必然含这些子串。
+                let base = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if SKIPPED_BY_NAME.contains(&base) {
+                    continue;
+                }
+                let rel = path
+                    .strip_prefix(&root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let src = std::fs::read_to_string(&path).expect("read rs file");
+                out.push((rel, production_code(&src)));
+            }
+        }
+        out.sort();
+        out
     }
 
-    fn daemon_sources() -> Vec<(String, String)> {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let mut out = Vec::new();
-        for entry in std::fs::read_dir(&dir).expect("read src dir") {
-            let path = entry.expect("dir entry").path();
-            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-                continue;
+    /// 采集时**按文件名主动跳过**的文件。
+    ///
+    /// 单独成表，是为了让「数量相等」那条判据算得出跳过了几个 —— 原来写死 `files.len() + 1`，
+    /// 那个 `1` 与下面 `daemon_sources()` 里的跳过逻辑隔空耦合（Phase E 审计建议）。
+    /// U1b 若要再跳过一个（如 `control/` 的窄写护栏自身），只改这张表，判据自动跟上。
+    const SKIPPED_BY_NAME: &[&str] = &["no_timer_guard.rs"];
+
+    /// 扫到的**真代码总量**下限。
+    ///
+    /// # 为什么是字节数而不是文件数
+    ///
+    /// 「文件数 >= N」挡不住本护栏真正的失效形态：**代码搬进子目录、顶层只剩壳**。
+    /// 那时文件数照样够，而扫到的是一堆 `mod x;` 声明。字节数直接度量「扫到的是不是真代码」，
+    /// 且**对拆分免疫**（把一个文件拆成三个，总字节不变）—— 而本工作区接下来做的正是拆分。
+    ///
+    /// 实测基线（2026-08-01，Phase E 复测）：**15 个文件合计 121_131 字节**，余量约 34%。
+    ///
+    /// **别手抄这个数。** 上面那行原本写的是 119_454 —— Phase E 审计算出 121_131，复测证明
+    /// **审计对、我抄错了**。本仓已有多起「写下之后没人回来核」的记录，所以复测办法写在这里：
+    /// 把下面的常量临时改成一个大数跑 `cargo test no_timer`，失败信息里的「只扫到 N 字节」
+    /// 就是当前实测值（那条断言恒打印实时值，不依赖本注释）。
+    ///
+    /// **要下调这个数之前先问：是真的删了那么多生产代码，还是扫描面又缩了？**
+    ///
+    /// ⚠ **它一条挡不住「单个文件被剥空/剥过头」** —— 最大的 `watcher.rs`（34_506 字节，占 28%）
+    /// 整个消失，总量仍有 86_625 ≥ 80_000、照样绿。所以字节地板必须与
+    /// 下面那条**数量相等**判据配着用（Phase D 审计 I1 指出的缺口）。
+    const MIN_SCANNED_CODE_BYTES: usize = 80_000;
+
+    /// 独立走一遍目录树，只数 `.rs` 个数 —— 用来与 `daemon_sources()` 的产出做**数量相等**核对。
+    ///
+    /// 刻意与 `daemon_sources` 分开写：那边还要读文件、剥生产段、跳过自身，
+    /// 这边只做「树上有几个 `.rs`」这一件事，两者对不上就说明采集环节漏了东西。
+    fn count_rs_in_tree() -> usize {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut n = 0usize;
+        let mut stack = vec![root];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read src dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    n += 1;
+                }
             }
-            let name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or_default()
-                .to_string();
-            // 跳过本护栏自身：它的模式表与说明文字必然含这些子串。
-            if name == "no_timer_guard.rs" {
-                continue;
-            }
-            let src = std::fs::read_to_string(&path).expect("read rs file");
-            out.push((name, production_code(&src)));
         }
-        out
+        n
     }
 
     /// ★ 生产段不许有任何**周期性唤醒**构件。
     #[test]
     fn daemon_production_code_has_no_periodic_wakeups() {
         let files = daemon_sources();
-        // 反向自检：扫到的文件数 > 0。**断言的是「命中数 == 0」+「扫到了东西」**，
+        // 反向自检：**扫到的必须是真代码**。断言的是「命中数 == 0」+「扫到了东西」，
         // 而不是「命中数 < N」—— 阈值绝不能挂在被优化的那个量上（rust-ts-boundary 的教训）。
+        //
+        // U-1：这里从「文件数 >= 5」换成**字节数**，理由见 `MIN_SCANNED_CODE_BYTES`。
+        let bytes: usize = files.iter().map(|(_, c)| c.len()).sum();
         assert!(
-            files.len() >= 5,
-            "只扫到 {} 个 daemon 源文件，护栏多半没在扫该扫的东西",
-            files.len()
+            bytes >= MIN_SCANNED_CODE_BYTES,
+            "只扫到 {bytes} 字节生产代码（下限 {MIN_SCANNED_CODE_BYTES}），\
+             护栏多半没在扫该扫的东西。扫到的文件：{:?}",
+            files.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>()
         );
+        // ★ 反向自检之二（Phase D 审计 I1 补）：**数量相等**。
+        // 字节地板挡不住「某个文件整体掉出扫描面」（实测 `watcher.rs` 占 29%，它整个消失
+        // 总量仍 84_948 ≥ 80_000、照样绿）。这条用一遍独立的目录树计数来兜死那一类：
+        // 采集到的 + 主动跳过的（本护栏自身）必须等于树上的 `.rs` 总数，一个都不许漏。
+        let tree = count_rs_in_tree();
+        assert_eq!(
+            files.len() + SKIPPED_BY_NAME.len(),
+            tree,
+            "扫到 {} 个 .rs + 主动跳过 {} 个（{SKIPPED_BY_NAME:?}）≠ 树上的 {tree} 个 —— 采集漏了文件。扫到的：{:?}",
+            files.len(),
+            SKIPPED_BY_NAME.len(),
+            files.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>()
+        );
+        // 反向自检之三：`src/` 下**只要存在含 `.rs` 的子目录**，扫到的集合里就必须有带 `/` 的项。
+        // 这条专门钉住「有人把遍历改回非递归」——那正是 U-1 修的那个 bug 的形状。
+        // **要求子目录里真有 `.rs`**（Phase D 审计 S1）：否则一个空目录 / `snapshots/` /
+        // `testdata/` 就会把它打成误红，那种守卫最后会被人删掉。
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let has_rs_subdir = std::fs::read_dir(&root)
+            .expect("read src dir")
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_dir())
+            .any(|e| {
+                let mut stack = vec![e.path()];
+                while let Some(d) = stack.pop() {
+                    let Ok(rd) = std::fs::read_dir(&d) else {
+                        continue;
+                    };
+                    for x in rd.flatten() {
+                        let p = x.path();
+                        if p.is_dir() {
+                            stack.push(p);
+                        } else if p.extension().and_then(|s| s.to_str()) == Some("rs") {
+                            return true;
+                        }
+                    }
+                }
+                false
+            });
+        if has_rs_subdir {
+            assert!(
+                files.iter().any(|(n, _)| n.contains('/')),
+                "src/ 下有含 .rs 的子目录，但扫到的全是顶层文件 —— 遍历退化成非递归了：{:?}",
+                files.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>()
+            );
+        }
         for (name, code) in &files {
             for pat in periodic_wake_patterns() {
                 assert!(
@@ -154,10 +259,18 @@ mod tests {
             REGISTERED_DURATION_USES.len()
         );
         // 登记表里的每条都必须**还在**（删了代码却留着登记 = 表在腐烂）。
+        //
+        // ★ 匹配按**文件名**不按完整相对路径（Phase E 审计 R4）：`daemon_sources()` 现在返回
+        // `observe/watcher.rs` 这种相对路径，而本表的键是裸文件名。若这里用全等，U2/U3 把
+        // `watcher.rs` 搬进 `observe/` 的那一刻，本断言就会以「登记表在腐烂」红掉 ——
+        // 那是一条**误导性诊断**：表没腐烂，只是文件搬了家。而 §4.1 红线又盯着这张表不许乱动，
+        // 于是下一个人只能在「改红线表」和「改护栏」之间二选一。⇒ 现在就让纯搬家不触碰它。
+        // （真删掉那处代码仍会红 —— `code.contains(snippet)` 那半边管这个。）
         for (file, snippet, _why) in REGISTERED_DURATION_USES {
-            let hit = daemon_sources()
-                .into_iter()
-                .any(|(n, code)| n == *file && code.contains(snippet));
+            let hit = daemon_sources().into_iter().any(|(n, code)| {
+                let same_file = n == *file || n.ends_with(&format!("/{file}"));
+                same_file && code.contains(snippet)
+            });
             assert!(
                 hit,
                 "登记表里的 {file} / `{snippet}` 已经不在生产代码里了，请清理登记"

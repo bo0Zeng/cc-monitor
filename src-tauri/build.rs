@@ -237,6 +237,15 @@ fn embed_daemons() {
     )
     .and_then(|m| m.modified())
     .ok();
+    // U-1：mtime 之外再取 **build_id 字符串本身**，用于下面那条硬校验（mtime 漏掉过一次真事故）。
+    let source_build_id = std::fs::read_to_string(
+        Path::new("..")
+            .join("remote-daemon-proto")
+            .join("src")
+            .join("main.rs"),
+    )
+    .ok()
+    .and_then(|s| extract_build_id(&s));
     let mut all = true;
     for arch in ["x86_64", "aarch64"] {
         let src = dir.join(format!("cc-monitor-remote-{arch}"));
@@ -265,9 +274,70 @@ fn embed_daemons() {
                     );
                 }
             }
+            // ★ U-1（2026-08-01）：**mtime 不够，要比 build_id 字符串本身。**
+            //
+            // 上面那条 mtime 警告漏掉了真实发生过的一次：源码 bump 到 `p1v-attachable`，
+            // 而 `embedded-daemons/*.build_id` 还是 `p1u-fork-session`（内嵌二进制**更新**
+            // 但内容是旧版）。这就是发版纪律里说的「半 bump 比不 bump 更糟」。
+            //
+            // 为什么必须 **panic** 而不是 warning：monitor 判「远端该不该换 daemon」的唯一
+            // 判据是 `reported_build_id != EXPECTED_DAEMON_BUILD_ID`。内嵌的是 p1u、期望的是
+            // p1v ⇒ 装上去之后**永远判 stale** ⇒ **无限重装循环**。这不是「慢一点」，是坏的。
+            // 出路只有两条：重跑 zigbuild 生成对得上的二进制，或删掉 embedded-daemons/
+            // （那样自动部署诚实地关掉，不会装一个注定被判过期的东西）。
+            // ★ Phase D 审计 I3：**缺清单不能只是 warning** —— 那正是本轮硬校验的静默旁路，
+            // 而且是最危险的场景（有人手工塞了个陈旧二进制、没写清单）恰好绕开校验。
+            // 顺带：`sftp.rs` 运行时对 x86_64 的身份识别**只能靠清单**
+            //（编译器把 BUILD_ID 优化成立即数，字节里搜不到连续明文，`bytes_contain` 会误拒正品）。
+            let expected = source_build_id.as_deref().unwrap_or_else(|| {
+                // 抠不到源码 build_id ⇒ 单源链条已断，`DAEMON_BUILD_ID` 此刻是 "unknown"，
+                // 装出去每台远端都会被判 StaleBuild。比 mismatch 更该拦。
+                panic!(
+                    "抠不到 daemon 源码的 `const BUILD_ID`（路径失效 / crate 改名 / const 写法变了）——\
+                     单源链条已断，`DAEMON_BUILD_ID` 会静默退化成 \"unknown\"，\
+                     装出去每台远端都会被判 StaleBuild 并无限重装。先修 build.rs 的提取逻辑。"
+                )
+            });
+            if embedded_id.is_empty() {
+                panic!(
+                    "内嵌 daemon {arch} 有二进制但**缺 .build_id 清单**。\n\
+                     清单是它在运行期的唯一身份来源（BUILD_ID 常被优化成立即数，字节里搜不到明文），\
+                     缺了它 ⇒ 运行时回退字节启发式会**误拒正品**，且本轮的一致性校验被静默跳过。\n\
+                     补：printf '%s\\n' '{expected}' > src-tauri/embedded-daemons/cc-monitor-remote-{arch}.build_id\n\
+                     （前提是那个二进制**真的**是 {expected} 编出来的；不确定就删掉整个目录重来。）"
+                );
+            }
+            if embedded_id != expected {
+                panic!(
+                    "内嵌 daemon {arch} 的 build_id 是 `{embedded_id}`，而 daemon 源码是 `{expected}` —— \
+                     **半 bump**。装上去会被 monitor 永远判 StaleBuild 并无限重装。\n\
+                     出路二选一：\n\
+                     ① 重编并同步清单。**不需要装 zig**（U-1 实测）。三步都要做，\n\
+                        **前两步在 `remote-daemon-proto/` 目录下跑**：\n\
+                        cd remote-daemon-proto\n\
+                        cargo build --release --target {arch}-unknown-linux-musl \\\n\
+                          --config 'target.{arch}-unknown-linux-musl.linker=\"rust-lld\"'\n\
+                        cp target/{arch}-unknown-linux-musl/release/cc-monitor-remote \\\n\
+                           ../src-tauri/embedded-daemons/cc-monitor-remote-{arch}\n\
+                        printf '%s\\n' '{expected}' \\\n\
+                           > ../src-tauri/embedded-daemons/cc-monitor-remote-{arch}.build_id\n\
+                        （x86_64 上不加 --config 也能链；aarch64 必须加，否则会挂在系统 ld 上。\n\
+                         注意：这样编出来的形态与发版 CI 的 zigbuild 产物**不同**\n\
+                         —— static-pie / 未 strip / 不同 rustc，只适合本机打包。）\n\
+                     ② 直接 `rm -rf src-tauri/embedded-daemons/`：自动部署诚实关闭，\
+                        编译立刻恢复（该目录已被 gitignore，删除零代价）。"
+                );
+            }
             let dst = Path::new(&out).join(format!("daemon-{arch}"));
             std::fs::copy(&src, &dst).expect("copy embedded daemon binary");
         } else {
+            // U-1：原来这里**连 warn 都没有** —— 缺二进制就静默不置 cfg，
+            // `sftp::daemon_binary()` 返回 None、远端自动部署整个消失而无人知晓。
+            // 那正是 v2.19–v2.22 那批安装包的事故形状（见 release.yml 的账）。
+            println!(
+                "cargo:warning=缺少内嵌 daemon {arch}（{}）——远端自动部署将关闭（embedded_daemons cfg 不置）",
+                src.display()
+            );
             all = false;
         }
     }

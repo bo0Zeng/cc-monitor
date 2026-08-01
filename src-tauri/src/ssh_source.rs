@@ -887,6 +887,38 @@ mod stream_flag_gate_tests {
             "单源应含 tail-only：{caps:?}"
         );
     }
+
+    /// U-1（2026-08-01）：**`build_id` 那半单源管道一直没有等价断言。**
+    ///
+    /// `build.rs::emit_daemon_build_id` 抠不到就 `unwrap_or_else(|| "unknown")` —— **静默退化**。
+    /// 一旦 daemon crate 改名 / `BUILD_ID` 挪出 `main.rs` / `const` 写法换行，
+    /// `EXPECTED_DAEMON_BUILD_ID` 会变成 `"unknown"`，而**编译通过、测试全绿**，
+    /// 运行期把每台远端 daemon 都判成 `StaleBuild` → 无限重装。
+    ///
+    /// capabilities 那半有 `embedded_capabilities_single_source_wired` 兜着，这半没有。
+    /// U13 的仓库级重命名**必须**先有这条，否则那次重命名是静默失败。
+    ///
+    /// 判据刻意宽松（不写死具体 id）：只要不是兜底值、且长得像一个 build id 就行 ——
+    /// 写死 id 会让每次正常 bump 都误红，那种守卫最后会被人删掉。
+    #[test]
+    fn embedded_build_id_single_source_wired() {
+        let id = super::EXPECTED_DAEMON_BUILD_ID;
+        assert_ne!(
+            id, "unknown",
+            "`build.rs::emit_daemon_build_id` 没抠到 daemon 的 `const BUILD_ID` —— \
+             多半是路径失效（crate 改名 / 文件搬家）或 `const` 写法变了。\
+             它是**静默退化**：不修的话每台远端都会被判 StaleBuild 并无限重装。"
+        );
+        assert!(
+            !id.is_empty() && id.len() <= 64,
+            "build_id 形状可疑：{id:?}"
+        );
+        assert!(
+            id.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.'),
+            "build_id 含意外字符（多半是抠错了行）：{id:?}"
+        );
+    }
 }
 
 pub async fn connect_and_exec(

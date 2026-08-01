@@ -19,7 +19,17 @@
       而 README 到 v3.5.0 才补上「Linux」——用户读完会以为不支持）
 - [ ] `cargo fmt --check + cargo check + cargo test --all + cargo test -p code-picture-core + cargo test -p branch-core + npm test + npm run coverage + npm run build` 全绿（fmt 不过 CI 会红；`npm test` 含 16 组 node 纯函数 + vitest DOM 1047 测 = 前端 job；后端 `cargo test --all`〔+ `-p code-picture-core` + `-p branch-core`，两者都是 path 依赖非 workspace 成员，`--all` 测不到〕 + 远端 daemon `cargo test`（`remote-daemon-proto/`，含 `cargo fmt --check`）+ Linux app 构建 + 三个 e2e job 都是**独立 CI job**，别漏跑；CI 共 **7** job）
 - [ ] **若本版动过滚动/渲染管线**（stream/tabs/session-viewer/branch-fold/render-*）：跑一遍 `e2e/f40-suite.sh`（Linux Xvfb，见 e2e/README）+ Windows 真机把 e2e/README「人工场景」的 WebView2 复核过一遍（WebKitGTK 无 overflow-anchor，两端补批语义不同）
-- [ ] **若本版改过 daemon 源码**（BUILD_ID 应已随改动 bump）：走 tag 发版由 release.yml 的 build-daemons job 从源码重编内嵌二进制（官方渠道恒一致）；**本地手工打包分发**则必须先重跑 zigbuild 更新 `src-tauri/embedded-daemons/`——否则装出去的是旧 daemon，连接后 StaleBuild 警告循环（build.rs 编译期有 staleness warning 兜底，易被刷屏淹没，别只靠它）
+- [ ] **若本版改过 daemon 源码**（BUILD_ID 应已随改动 bump）：走 tag 发版由 release.yml 的 build-daemons job 从源码重编内嵌二进制（官方渠道恒一致）；**本地手工打包分发**则必须先重编并**同步更新 `src-tauri/embedded-daemons/` 里的二进制和同名 `.build_id` 清单**——否则装出去的是旧 daemon，连接后无限重装循环。
+      > **这一格 2026-08-01（U-1）从 warning 升成编译期 panic。** 原来只有一条比 mtime 的
+      > `cargo:warning`，而真实事故是**半 bump**：源码已 `p1v-`、清单还是 `p1u-`，二进制 mtime 反而更新
+      > ⇒ mtime 判据完全不响。现在 `build.rs` 直接 panic 的有三种：抠不到源码 `const BUILD_ID`、
+      > **有二进制但缺 `.build_id` 清单**、清单与源码不符。三条都不是「慢一点」——monitor 判过期的
+      > 唯一判据就是 build_id 字符串不等，装上去会**永远判 StaleBuild 并无限重装**。
+      > 出路二选一：① 重编 + 同步清单（**不必装 zig**，`rust-lld` 即可，命令见 [REMOTE-PHASE0-DEPLOY.md § 发版构建](REMOTE-PHASE0-DEPLOY.md#发版构建交叉编译--内嵌-daemon-二进制f08b)）；
+      > ② `rm -rf src-tauri/embedded-daemons/`——自动部署诚实关闭、编译立刻恢复（目录本就 gitignore，删除零代价）。
+      > **⚠ 三条都以「目录里真有二进制」为前提**（Phase E 审计 R3 订正）：干净 clone / CI 里该目录不存在，
+      > 走的是优雅降级、`DAEMON_BUILD_ID` 静默变 `"unknown"`；兜那一档的是 monitor 侧的
+      > `ssh_source.rs::embedded_build_id_single_source_wired`，不是 `build.rs`。
 - [ ] [CONTRIBUTING.md § 1.5](CONTRIBUTING.md#15-发版前) 列出的关键 UI 入口手测
 
 ---
