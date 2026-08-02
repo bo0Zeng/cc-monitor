@@ -52,7 +52,7 @@
 | ③ | Linux 侧**行为逐字不变** | daemon `cargo test` 199 不减 · wire 逐字节对拍 · 四套 daemon e2e 过地板 |
 | ④ | 地雷①处置且**有机检** | 非 Linux 分支不许再返回一个凭空的 `true`；加一条源码扫描钉住「`platform/` 里的 fallback 分支不许凭空返回成功值」 |
 | ⑤ | `is_same_live_process` 上提 `platform/liveness.rs` | U3 交接项 1 |
-| ⑥ | 分层护栏的登记表**有 cfg 概念的措辞**（U3 交接项 2） | 头注写明：Windows 若需要 `install_hooks` 等价物，登记表会有一条在本平台不编译的项 |
+| ⑥ | ~~分层护栏的登记表有 cfg 概念的措辞~~ **延 U4b** | Windows 今天还没有 `install_hooks` 的等价物，写措辞等于凭空描述一个不存在的东西。**Phase D 审计指出我在 E 段改了口却没标注 DoD 表**（已披露但未对账）⇒ 此处标明延期 |
 | ⑦ | 文档面 | daemon README 的「3 处平台 cfg 在 platform 之外」表 · 新增 U4b 的待办说明 |
 
 ## 逐条实现步骤
@@ -117,9 +117,60 @@ DoD ④ 只说「加一条源码扫描钉住」。实做成了一个独立护栏
 | **wire 逐字节对拍** | 与 U2 前基线相同 |
 | e2e（真跑 daemon 二进制） | 12 / 5 / 7 / 10 全过地板 |
 
-## 代码审计结果（D）
+## 代码审计结果（D，一个综合视角）
 
-（待填）
+### 阻塞（0 项）
+
+跨 target RC=0 与「进 CI」都经审计独立复核成立，并各自做了**反向变异**：撤掉三处 cfg 门 ⇒
+`RC=101 / 14 行错`，且**第 12 个错只在 test target 上出现 —— 印证 `--all-targets` 是必要的**。
+
+### 重要（7 项，全部当轮修掉）
+
+| # | 发现 | 处置 |
+|---|---|---|
+| **A1** | **`fallback_guard` 只认三种 `not(...)` 拼法 —— 而 U4b 必然写的正是它看不见的那种。** 变异 M6：把地雷用 `#[cfg(windows)] { let _ = pid; true }` 原样放回去 ⇒ **fmt / 护栏 / 跨 target / 200 条测试四道门全绿**。头注列了两条「挡不住什么」，**没有这一条** —— 而隔壁 `layering_guard` 一个 commit 前刚写着「自己刚批评过的形状不能自己再犯一遍」 | `FALLBACK_CFGS` 扩到正向 cfg（`windows` / `target_os="windows"` / `target_os="macos"`）。M6 复跑 ⇒ **红** |
+| **A2** | **`block_after` 只认花括号块** ⇒ item 级 fallback 里的裸 `true` 逐字匹配也抓不到（变异 M7：`#[cfg(not(target_os="linux"))] const ASSUME_ALIVE: bool = true;` 全绿）。它从 cfg 之后找**全文下一个** `{`，抓到的是别的函数体 | 先看先遇 `{` 还是先遇 `;`，先 `;` 就取到 `;` 为止。M7 复跑 ⇒ **红** |
+| **A3** | **护栏对本轮最重要的那个 fallback 覆盖是 0。** `pidwatch/mod.rs` 的 `#[cfg(not(…))] mod fallback;` 无花括号 ⇒ `block_after` 返回 `None` ⇒ **`pidwatch/fallback.rs` 一行都没被扫过**。**我自己把 pidwatch 的 fallback 从「函数内 cfg 块」改成「整文件按 cfg 选」，然后写了一个只理解前一种形状的护栏** | 随 A2 一并解决（`mod fallback;` 现在按 item 取到 `;`） |
+| **A4** | **三处文档仍在断言这颗雷是活的 —— 就在杀掉它的这个 commit 里**：`proc.rs` 模块头注（**在被改的那个函数上方几行**，三条事实全被本 commit 证伪）· `README.md:103` · `watcher.rs:3421`（据「hardcoded `true` smoke stub」**刻意不加 cfg 门**，而今天在 Windows 上那条测试会 panic） | 三处全改。`watcher.rs` 那条**仍不加门**并写明理由：U4b 真机跑 `cargo test` 时它该是第一个红，加门会把它藏起来 |
+| **A5** | **新增 2 条悬空 intra-doc 链接**，其中一条正是 DoD ⑤「搬符号留悬空引用」要治的 | 两条都改成不带链接的写法；`cargo doc` 的 `unresolved link` 回到基线的 1 条 |
+| **A6** | DoD ⑥ 未交付且**DoD 表没标延期**（E 段改了口，表没跟）——已披露但未对账 | DoD 表标「延 U4b」 |
+| **A7** | **`unimplemented!()` 的爆炸半径比我写的大**。计划说「Windows daemon today 根本跑不起来，所以 panic 不影响任何现存路径」——U4a 之后这句**不再准确** | 见下 |
+
+### A7 的实况（审计追的调用链，我采信并记下）
+
+daemon **能起来**、能发 hello 帧，然后在 `watch_loop` 的 Phase 1 初始扫描碰到**第一个**
+`sessions/<PID>.json` 时 panic（`process_session_added` → `pid_alive`）。panic 后
+`jsonl-watcher` 线程 unwind → drop `FrameSink`(持 `tx`) → `main` 的 `rx.recv()` 返回 `None`
+→ **daemon 干净退出**。
+
+⇒ **U4b 之前，在一台真的在跑 Claude Code 的 Windows 机器上，「起来看看」拿到的是
+「hello 一帧 + panic + 进程退出」。** 方向仍是对的（大声 > 静默说谎），
+但「不影响任何现存路径」这个说法在 U4a 之后已经不准确。
+
+### 建议（已采纳 3 条）
+
+- **`checked >= 3` 太松**：实测 7，**4 个块可静默掉出采集面而地板照绿** —— 而这个仓一个
+  commit 前刚在 `layering_guard` 里论证并改掉了同一形状。**同一个仓、连续两个 commit 的双标。**
+  ⇒ 改成**数量相等**（独立数 cfg 出现次数，与 `checked` 比）。
+- **裸文件名跳过自身**：按本仓 `no_timer_guard` 定的判据（看失败方向），跳过 = **豁免** = fail-open，
+  落在 U3 判 `readonly_guard` 有罪的那一侧 ⇒ 改路径判定（今天两者字符串相同，零行为变化）。
+- **CI 新步骤排在最后**：它是四步里最便宜最确定的一步，却被最不稳的 `cargo test`（真起 tmux、
+  真 spawn 进程）挡在后面 ⇒ 前移到 `fmt` 之后。
+- 未采纳（登记）：`cargo fmt` 意外兜住了「逐字字符串匹配」的脆弱性（M5：cfg 写成无空格形态时护栏瞎，
+  但 rustfmt 会归一化 ⇒ CI 的 fmt 步骤替它兜住）—— **这条护栏协同值得写进头注**，
+  否则下一个人可能把 fmt 从 CI 拿掉而不知道代价。
+- Windows target 上有 6 条 warning（4 dead_code + 2 unused_mut）。CI 那步是裸 `cargo check`
+  无 `-D warnings` ⇒ 不影响 RC。「0 告警」这个说法**仅对 Linux 成立**。
+
+### 审计确认属实、我没改的
+
+- `is_same_live_process` 上提**逐字未变**（`diff` 空输出，28 行）。
+- Linux 侧四项判据与基线逐条对上；**测试名单逐条 diff 只有两处变化**（新增 `fallback_guard` 那条 +
+  `poll_hard_error_must_not_report_dead` 因拆文件改了路径），**一条都没丢**。`wire.rs` 与基线逐字节相同。
+- 「不做」清单**四条全守住**（无 `windows` 依赖 · 6 处 Win32 词全在注释/字符串里 · 未碰 `session_map.rs` · Linux 行为未变）。
+- README 那张「生产段还有 3 处平台 cfg 在 platform 之外」的表**今天仍准确**（审计全量 grep 26 处 cfg 逐个归位核过）。
+
+### U4b 清单：审计指出漏了 6 项，已补进 E 段
 
 ## 工程审计结果（E，主线程对账）
 
@@ -136,10 +187,28 @@ DoD ④ 只说「加一条源码扫描钉住」。实做成了一个独立护栏
   2. `proc::pid_alive` 的 `unimplemented!()` 换成 `OpenProcess` + 退出码。
   3. **`WaitForSingleObject ≡ poll(pidfd)` 的等价性必须在真机上验**（主计划开放-1）。
   4. `send_sigusr1` 的 Windows 等价物（daemon 那条 SIGUSR1 通路在 Windows 上是什么）。
-  5. `layering_guard` 的登记表届时会有一条**在 Linux 上不编译**的项，措辞要跟。
+  5. `layering_guard` 的登记表届时会有一条**在 Linux 上不编译**的项，措辞要跟（= 本功能延期的 DoD ⑥）。
+  6. **`/proc` 读取一族的其余四个**今天在 Windows 上全部静默返回 `None`：`proc_starttime` ·
+     `proc_cmdline`（「这是不是一个 claude 进程」的判据）· `proc_claude_config_dir`（账号归属的判据）·
+     `start_epoch_from_ticks`。方向保守所以不是雷，但**没有它们 U4b 的判活只有半条腿**。
+  7. **`path_key` 的 Windows 分支从未被验证过** —— `grep` 显示它**零测试**（5 个生产调用点、0 个测试引用），
+     U4a 之前 Windows 编不过、连类型检查都没走完。具体风险：`to_ascii_lowercase` **只折 ASCII**，
+     而 NTFS 的大小写不敏感走完整 Unicode upcase ⇒ `Café/` 与 `café/` 产出两个不同 key
+     ⇒ byte_offset 表分裂 ⇒ **同一文件重复发帧**（正是 `path_key` 存在的理由）。
+     分隔符 / `\\?\\` 前缀 / 8.3 短名 / 尾随点空格也都不归一。
+     monitor 侧 `src-tauri/src/watcher.rs` 是**同一份实现，两边同错**。
+  8. **`watcher.rs::session_alive_self_is_alive_in_existence_only_mode` 在 Windows 上会 panic** ——
+     本轮刻意不加门（见 A4）。
+  9. **tmux 观测整条是 POSIX-only 但编得过**：`run_tmux_ls` / `query_tmux_server` 用 `Command::new("sh")`，
+     `tmux_hook` 用 `Command::new("tmux")`。Windows 上没有 `sh` ⇒ 静默降级成「探测失败」。
+     **「Windows 上 tmux 通路是什么」比 `send_sigusr1` 更上游** —— 没有 tmux 就没有 SIGUSR1 要发。
+  10. **`fallback_guard` 本身要跟着改**：U4b 写 `#[cfg(windows)]` 真实现那一刻，
+      护栏对新代码的覆盖要重新确认（A1 已把正向 cfg 加进去，但 item 形状还会变）。
+  11. `main.rs` 三处 cfg（README 已登记）：SIGUSR1 处理器在非 Unix 是**空 task** ·
+      USERPROFILE 回退 · `shutdown_signal` 在 Windows 只有 Ctrl-C，**收不到 SIGTERM ⇒ 服务式停机没有优雅路径**。
 
 ## 签收
 
-- [ ] 过代码审计（D）—— **待跑**：代码已提交作检查点，审计随后
+- [x] 过代码审计（D）—— 阻塞 0 · 重要 7，**全部当轮修完并各自变异复验**
 - [x] 过工程审计（E，主线程对账）
 - [x] 主计划已更新（F）

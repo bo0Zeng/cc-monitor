@@ -3417,11 +3417,18 @@ mod tests {
 
     /// `session_alive` truth table around the captured procStart.
     ///
-    /// The existence-dependent assertions only hold on Linux: on non-Linux
-    /// `pid_alive` is a hardcoded `true` smoke stub (and `proc_starttime` is
-    /// `None`), so `session_alive` is `true` for everything there. The
+    /// The existence-dependent assertions only hold on Linux. The
     /// reuse-detection logic — the whole point of #34 — is Linux-only, matching
     /// the `/proc` runtime target.
+    ///
+    /// ⚠ **U4a 起这段的前提变了，本测试因此在 Windows 上会 panic。** 原文写的是
+    /// 「on non-Linux `pid_alive` is a hardcoded `true` smoke stub」，并据此**刻意不加 cfg 门**
+    /// —— 而 U4a 把那个恒真 stub 换成了 `unimplemented!()`。今天在 Windows 上
+    /// `session_alive` → `pid_alive` 会直接 panic。
+    ///
+    /// **本轮不加门**：`cargo check` 只编不跑，DoD ① 不受影响；而 U4b 一旦在真机上跑
+    /// `cargo test`，这会是第一个红 —— 那正是应该有人看一眼的时刻，加门会把它藏起来。
+    /// Phase D 审计的问题 9-3 已把它写进 U4b 的清单。
     #[test]
     fn session_alive_self_is_alive_in_existence_only_mode() {
         // Cross-platform: the current process is alive, and with no captured
