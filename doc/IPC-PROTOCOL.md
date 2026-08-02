@@ -86,7 +86,7 @@ PS 端 `__ccm_bind` 通知 monitor "我想绑定，去找标题 = marker 的窗�
 | `marker` | `string` | 唯一字符串，PS 同时把它写到自己的 `$Host.UI.RawUI.WindowTitle`；monitor 用 EnumWindows 查这个字符串 |
 | `proc_start` | `string` | .NET `Process.StartTime.ToFileTime()`，用于二次校验 PID 不被复用 |
 
-**生命周期**：短暂。PS 写完后**忙等** 800ms 看文件被 monitor 删除。如果 monitor 在线，正常 50-200ms 内删；超过 800ms PS 自删 + 报"绑定超时"。
+**生命周期**：短暂。PS 写完后**轮询**（30ms 步，deadline **3000ms**），退出条件二选一：await 文件被 monitor 删除，**或** `ps-registry/<PID>.json` 落地且 `ps_proc_start` 指纹匹配。monitor 在线时正常几十 ms 内完事；到 deadline 仍没绑上则 PS 自删 await + 报"绑定超时"——**但存在指纹不匹配的陈旧 registry 时不告警**（`cc.ps1.tpl` 的告警条件是 `-not $bound -and -not (Test-Path $regFile)`）。（v2 之前只认"await 被删"一种信号、deadline 是 800ms —— monitor 冷启动来不及。）
 
 **握手时序**：见下文 § 跨进程握手时序图。
 
@@ -302,13 +302,13 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 | `procStart` | string? | .NET `DateTime.ToFileTime()`（FILETIME 100ns 自 1601-01-01 UTC，字符串）。**某些 /resume 启动路径不写此字段** → Option；缺失时 PID 探活退化为只看 `STILL_ACTIVE`（详 § 6 / `session_map.rs`） |
 | `status` | string? | 会话状态枚举：`"busy"`（运行中 → 🟢）/ `"idle"`、`"shell"`（等输入 → 🔴）/ `"waiting"`（等用户决定 → 🟡）。**CLI 仅在状态转换时重写本文件**（信号天然稀疏）。旧版 CC 无此字段 → `null`，前端按未知处理（沿用原绿点） |
 | `waitingFor` | string? | 仅 `status=="waiting"` 时有，细分原因：`"permission prompt"` / `"dialog open"` / `"input needed"` / `"worker request"` / `"sandbox request"` |
-| `name` | string? | Claude 给会话起的语义名（aka aiTitle）；当前保留未用 |
+| `name` | string? | Claude 给会话起的语义名（aka aiTitle）。**已在用**：`session_map.rs::snapshot_active` 透传下游（有测试钉住），`session_added` 帧与 bridge 事件也带它 |
 | `kind` | string? | 会话类型（Batch6-F21 起双端消费）：`"interactive"` = 交互会话；`"bg"` = CC 2.1.x daemon 后台任务（`--fork-session`，另带 `jobId`）。**Batch7-F24 起 bg 门是配置门**：`showBgSessions` 开（默认）→ bg 正常算会话（建 Tab 带 ⚙ 标识 + 树状挂同 cwd 宿主后、行流出）；关 → 回 F21 行为（不建 Tab、行不流出；历史浏览器仍可看）。**缺失 = 旧 CC = 视为交互**（保守放行），本地 `session_map::scan_dir`（读启动时配置）与远端 daemon kind 门（`--with-bg` 参数）规则一字一致 |
 | `jobId` | string? | 仅 `kind:"bg"` 时有，后台任务 ID（monitor 不消费，仅留档） |
 
 ### 9.1 ★ `kind` 是**排他式**契约：不在白名单里就被隐藏（E72）
 
-**给要自己写 pidfile 的外部集成方**（aterm 等）：真实判据在 `remote-daemon-proto/src/watcher.rs`，
+**给要自己写 pidfile 的外部集成方**（aterm 等）：真实判据在 `remote-daemon-proto/src/observe/watcher.rs`，
 形如 `if kind != "interactive" && !with_bg { 排除 }`。展开成矩阵：
 
 | `kind` 的值 | 结果 |
@@ -383,14 +383,14 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 
 | `kind` | 字段 | 说明 |
 |---|---|---|
-| `hello` | `v, build_id, host_arch, claude_dir, capabilities` | 连接建立时**首帧**发一次（握手）。**三轴正交（§26/§28）**：`v`（proto 版本，只留破坏性变更、F66 **绝不 bump**，不符=不兼容）；`build_id`（**身份**，单源自 daemon 源码/编译期 env，管 staleness/重部署提示，不符=偏旧、经 `remote-health` 提示但不 hard-disconnect）；**`capabilities`（能力 token 集，加法式）——monitor 按声明发流模式 flag**（F66/#58③，`decide_stream_flags`；缺该字段=空集=最保守、不发任何 flag，§27）。**绝不用身份（build_id）匹配代理能力声明**（那正是 2026-07-09 事故根因） |
-| `line` | `session_id, path, seq, raw` | tail 到的一行原始 jsonl（`seq` = per-file 单调，口径同本地 watcher） |
-| `session_added` | `sid`, `session_kind?`, `cwd?`, `name?`, `path?`, `lines?`, `status?`, `waiting_for?` | 远端新会话文件出现（Batch5-F18 起 ssh_source 收到即同步透传前端 `remote-session-added {session_id, origin, kind, cwd, name}` 事件建骨架 Tab，先于该会话的任何行）。Batch7-F24（p1e）：附加 pidfile 元信息——wire 帧字段叫 `session_kind`（避开帧 tag `kind`），bridge 事件 payload 统一叫 `kind`（与本地 `list_active_sessions`/`session-started` 一致）；**additive 兼容**：None 不序列化（旧行为字节不变）、旧 monitor 忽略未知字段、旧 daemon 缺字段前端视为交互。daemon 默认不宣告 bg（F21）；monitor 仅对 hello **声明了 `bg` 能力**的 daemon 且 `showBgSessions` 开（默认）时传 `--with-bg`（F66/#58③；旧 daemon 不声明该能力→不传，且它会把未知参数当一次性查询→无 hello，护栏「声明 ⟹ 会剥离该 flag」保成立）。本地对称通道：`session-started` payload 扩为 `{session_id, cwd, kind, name}`——前端无 Tab 则建骨架（中途出现的本地 bg 会话由此获得 ⚙/树状）。**Batch8-F25/26（p1f）**：帧再附 `path`（远端 jsonl 绝对路径）；monitor 见 daemon 声明 `tail-only` 能力后 exec 追加 `--tail-only`（Batch9 起快照换 `--read-session-tail` 尾部优先，见查询表）——daemon 不再重放历史（连接时把各文件 seq 计数器初始化为当前完整行数 L，之后新行 seq=行号），历史由 monitor 按 path 经**独立连接**跑 `--read-session` 旁路快照拉回（0..L'-1 行号编 seq、并发 ≤2、F19 priority 先拉、完就断、失败重试 1 次后 remote-health 提示）；两路 seq 同处行号空间，重叠区被 (sid,seq) 去重精确吸收。旧 daemon 不声明能力 → 不传 flag → 全量推流（=2.18.0）；session_added 无 path（会话尚无 jsonl）→ 不拉快照，后续行从 tail 全量到达 |
-| `session_status` | `sid`, `status?`, `waiting_for?` | Batch9-F27（p1g）：会话红绿灯状态变化（daemon 对 pidfile modify 做 diff，CC 仅状态转换时重写故天然稀疏）。monitor 转发进 `SessionChange.status_changed` → `session-activity` 事件——**远端灯与本地共用前端链路**。宣告帧另带初始 `status`（连接建立灯就对）。旧 monitor 未知 kind 忽略 |
+| `hello` | `v, build_id, host_arch, claude_dir, capabilities, codex_dir?, kinds?, emits?`<br>⚠ **本表的列举顺序不是线上字节序**。线上按 `wire.rs` 声明序：`claude_dir, codex_dir, kinds, capabilities, emits`。`dg3_codex_fields_serialize_when_present` 用**精确字节串**钉住它（aterm 拿来做 fixture 真值）—— 要对字节就以 `wire.rs` 为准 | 连接建立时**首帧**发一次（握手）。**三轴正交（§26/§28）**：`v`（proto 版本，只留破坏性变更、F66 **绝不 bump**，不符=不兼容）；`build_id`（**身份**，单源自 daemon 源码/编译期 env，管 staleness/重部署提示，不符=偏旧、经 `remote-health` 提示但不 hard-disconnect）；**`capabilities`（能力 token 集，加法式）——monitor 按声明发流模式 flag**（F66/#58③，`decide_stream_flags`；缺该字段=空集=最保守、不发任何 flag，§27）。**绝不用身份（build_id）匹配代理能力声明**（那正是 2026-07-09 事故根因）。**DG3（#2D，additive）`codex_dir`**：对称 `claude_dir` 的 Codex 记录根（`<codex_dir>/sessions`）；Codex 未启用 / 旧 daemon 省略。**DG3 `kinds`**：本 daemon 服务的 agent kind 集（如 `["claude","codex"]`）——消费侧**显式判支持**，而不是从「`codex_dir` 存在」反推；空/缺 = 只 claude。**daemon-08（additive）`emits`**：本 daemon **会发射的帧 kind 集**（snake_case），供消费侧**门控消费**（含该 kind → 依赖它；不含 → 回退 β/watchdog）。⚠ `emits` 与 `capabilities` **正交、别混**：`capabilities` 是**流 flag 的可剥离能力**（受 §26 死循环护栏 + `every_capability_token_is_strippable` 强制每 token 有对应 flag），`emits` 是**纯发射声明、无对应 flag、不受 §26** |
+| `line` | `session_id, path, seq, raw, byte_offset` | tail 到的一行原始 jsonl（`seq` = per-file 单调，口径同本地 watcher）。**`byte_offset`**：该行**末尾**的字节偏移，语义**逐字节对齐 aterm `LineFramer.endOffset`**——计 CRLF 的 `\r`、含 `\n`、残行不计；resume 到 N ⇒ `tail -c +(N+1)`。给 offset 续拉 / 截断检测用（**`seq` 是 per-stream 序数、不是 resume 键**，别拿它续）。**只 `line` 帧带**——`turn_end` 明确不带（`daemon-09` 钉住） |
+| `session_added` | `sid`, `session_kind?`, `cwd?`, `name?`, `path?`, `lines?`, `status?`, `waiting_for?`, `agent_kind?`, `liveness_confidence?`, `attachable?` | 远端新会话文件出现（Batch5-F18 起 ssh_source 收到即同步透传前端 `remote-session-added {session_id, origin, kind, cwd, name}` 事件建骨架 Tab，先于该会话的任何行）。Batch7-F24（p1e）：附加 pidfile 元信息——wire 帧字段叫 `session_kind`（避开帧 tag `kind`），bridge 事件 payload 统一叫 `kind`（与本地 `list_active_sessions`/`session-started` 一致）；**additive 兼容**：None 不序列化（旧行为字节不变）、旧 monitor 忽略未知字段、旧 daemon 缺字段前端视为交互。daemon 默认不宣告 bg（F21）；monitor 仅对 hello **声明了 `bg` 能力**的 daemon 且 `showBgSessions` 开（默认）时传 `--with-bg`（F66/#58③；旧 daemon 不声明该能力→不传，且它会把未知参数当一次性查询→无 hello，护栏「声明 ⟹ 会剥离该 flag」保成立）。本地对称通道：`session-started` payload 扩为 `{session_id, cwd, kind, name}`——前端无 Tab 则建骨架（中途出现的本地 bg 会话由此获得 ⚙/树状）。**Batch8-F25/26（p1f）**：帧再附 `path`（远端 jsonl 绝对路径）；monitor 见 daemon 声明 `tail-only` 能力后 exec 追加 `--tail-only`（Batch9 起快照换 `--read-session-tail` 尾部优先，见查询表）——daemon 不再重放历史（连接时把各文件 seq 计数器初始化为当前完整行数 L，之后新行 seq=行号），历史由 monitor 按 path 经**独立连接**跑 `--read-session` 旁路快照拉回（0..L'-1 行号编 seq、并发 ≤2、F19 priority 先拉、完就断、失败重试 1 次后 remote-health 提示）；两路 seq 同处行号空间，重叠区被 (sid,seq) 去重精确吸收。旧 daemon 不声明能力 → 不传 flag → 全量推流（=2.18.0）；session_added 无 path（会话尚无 jsonl）→ 不拉快照，后续行从 tail 全量到达。**DG3（#2D，additive）`agent_kind`**：本会话属哪个 agent——`"codex"`；Claude 会话**省略** ⇒ **缺 = claude**。**DG3 `liveness_confidence`**：判活置信度——`"heuristic"`（Codex 无 pidfile，靠 mtime/proc 启发）；Claude 走 pidfile 权威故**省略** ⇒ **缺 = authoritative**。两者都是「缺字段有确定含义」，消费侧别把缺当未知。⚠ **今天的消费方是仓外 aterm，不是 cc-monitor** —— monitor 的 `ssh_source::parse_frame` 把这两个字段（以及 `byte_offset` / `codex_dir` / `kinds` / `emits`）**整个丢掉**。缺省值碰巧等于丢弃行为，不等于 monitor 实现了默认值：真发 `agent_kind:"codex"` monitor 一样当 claude。（daemon 今天也还没产出它们 —— DG1 未接线，`codex_dir`/`kinds`/`agent_kind`/`liveness_confidence` 硬写 None/空。）|
+| `session_status` | `sid`, `status?`, `waiting_for?`, `liveness_confidence?` | Batch9-F27（p1g）：会话红绿灯状态变化（daemon 对 pidfile modify 做 diff，CC 仅状态转换时重写故天然稀疏）。monitor 转发进 `SessionChange.status_changed` → `session-activity` 事件——**远端灯与本地共用前端链路**。宣告帧另带初始 `status`（连接建立灯就对）。旧 monitor 未知 kind 忽略。**DG3 `liveness_confidence`** 同 `session_added`（状态变化时带；Claude 省略 ⇒ 缺 = authoritative） |
 | `session_removed` | `sid`, `cause?` | 远端会话文件消失。**S0（additive）`cause`**：`"gone"`（真没了：pidfile 被删 / 进程退出 / 原地翻成非交互 kind）/ `"superseded"`（同一个 pidfile **原地换了 sid**，即 `/branch`、`/clear`）。`gone` 是默认值且**不序列化** ⇒ 缺字段 = `gone`，旧 daemon × 新 monitor 行为一字不变。**monitor 收到 `superseded` 必须直接归档、不许再去查 tmux 快照**（那份快照对这个场景恒错——这正是「branch 之后原 tab 永久灰点」的成因）。字面量与 `ssh_source.rs` 的解析处由 `removal_cause_wire_literal_stays_in_sync` 钉住 |
 | `turn_end` | `session_id`, `uuid` | 一轮对话结束（monitor 用它对齐轮次边界） |
 | `tmux_session_closed` | `name` | **P5（zero-poll-liveness，additive）**：某个 tmux 会话**关闭了**——正向死亡帧。**刻意不带 sid**：`#{@ccm_sid}` 在 hook 上下文里取不到（P0 实测会拿到空 ⇒ 把活会话判灰），daemon 这边是**差分算出来的名字**，sid 由 monitor 用最新快照反查 |
-| `tmux_sessions` | `raw`, `classification?` | **B2**：daemon 在远端本地跑 `tmux ls -F '<TMUX_LS_FMT>'` 的**原始 stdout**（或哨兵 `NO_TMUX`），替掉 monitor 每 8s 新建 SSH 跑 tmux ls 的刷屏轮询。**送 raw、client 解析**（照 `line` 帧哲学，复用 monitor 现有 `tmux::parse_tmux_ls`）。**P1（additive）`classification`**：`"zero_sessions"` / `"no_tmux"` / `"unobservable"`——**有会话时省略**，热路径字节与 P1 之前逐字节一致。没有它时 `raw` 的空串同时意味着「零会话」与「`tmux ls` 出错被 `\|\| true` 吞了」，两者不可分 |
+| `tmux_sessions` | `raw`, `observation?` | **B2**：daemon 在远端本地跑 `tmux ls -F '<TMUX_LS_FMT>'` 的**原始 stdout**（或哨兵 `NO_TMUX`），替掉 monitor 每 8s 新建 SSH 跑 tmux ls 的刷屏轮询。**送 raw、client 解析**（照 `line` 帧哲学，复用 monitor 现有 `tmux::parse_tmux_ls`）。**P1（additive）`observation`**：`"zero_sessions"` / `"no_tmux"` / `"unobservable"`——**有会话时省略**，热路径字节与 P1 之前逐字节一致。没有它时 `raw` 的空串同时意味着「零会话」与「`tmux ls` 出错被 `\|\| true` 吞了」，两者不可分 |
 | `overflow` | `dropped: u64` | issue #32：daemon 发送通道被慢/卡的 SSH 管道反压、丢了 `dropped` 帧的哨兵信号（通道排空到能再容纳时发一次）→ monitor 经 SS-F `remote-health` 事件 toast 提示用户可能丢实时行（丢的行仍在远端 jsonl，重开会话可看完整历史） |
 
 ### 一次性历史查询（带参数启动 daemon，issue #16）
@@ -401,14 +401,18 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 - `--list-sessions <project_dir>` → 每行 `{sessionId, jsonlPath, startedAtMs, updatedAtMs, messageCountApprox, firstUserExcerpt, aiTitle, cwd}`
 - `--read-session <jsonl_path>` → 原样透传该 jsonl 字节（monitor 侧走既有 `parse_line` 管线）
 - `--read-session-tail <jsonl_path> <N>`（Batch9-F30，p1g）→ **尾部优先**：首行 meta `{"kind":"snapshot_meta","total":T,"tail_from":F}`（可计行口径 = watcher 行号空间），随后原样输出行 [F,T)（最新 N 行）再输出 [0,F)。快照拉取用它——最新内容第一批就位、旧历史回填；monitor 按 meta 两段编 seq（前端 seq 二分插入天然支持乱序），`total` 做精确完整性对账。回填在途经 `snapshot-inflight` 事件驱动前端 batch 模式（替代纯 300ms 静默启发式，5min 防呆上限）
+- `--read-session-from-offset <jsonl_path> <offset>`（daemon-02，Phase 1 offset 续拉，`observe/history_query.rs`）→ seek 到字节 `offset`（0-based）后**原样透传 [offset, EOF]**，语义**逐字节 = aterm `tail -c +(offset+1)`**。`offset` 就是客户端从 `line` 帧 `byte_offset` 持久化下来的续点（重连/断线后带上）——**别拿 `seq` 当续点**，那是 per-stream 序数。**截断/重写不在此判**：远端 size < offset 时 seek 过 EOF → 读空 → 透传空，安全无副作用；客户端另经 size 查检测后自行决策 reset（同 aterm 的 `offsetByPath`）。透传而非逐行，理由同 `--read-session`。路径守卫与 `--read-session` 同一套
 - `--search <query> [--include-tools] [--scope user|assistant] [--after-ms N] [--limit N]`（issue #28）→ 服务端在远端 CPU 扫 `projects/**/*.jsonl` 做全文搜索（避免拉整库回本地），**每命中会话一行** camelCase `SessionHits` JSON（形状严格对齐 monitor `search::SessionHits`，monitor 补 `origin` 后与本地结果合并）
-- `--usage`（F88a-remote / #52，`remote-daemon-proto/src/usage_query.rs`）→ 服务端在远端聚合用量（**per-requestId 每字段 MAX**，口径对齐 monitor `usage.rs`——有 `per_request_field_max_matches_local_kou_jing` 跨轨对账测），**每会话一行** camelCase 用量行 JSON，monitor 侧 `remote_history::aggregate_remote_usage_all` fan-out 合并（各带 `origin`）。**additive 子命令、未 bump PROTO_VERSION**。
+- `--usage`（F88a-remote / #52，`remote-daemon-proto/src/observe/usage_query.rs`）→ 服务端在远端聚合用量（**per-requestId 每字段 MAX**，口径对齐 monitor `usage.rs`——有 `per_request_field_max_matches_local_kou_jing` 跨轨对账测），**每会话一行** camelCase 用量行 JSON，monitor 侧 `remote_history::aggregate_remote_usage_all` fan-out 合并（各带 `origin`）。**additive 子命令、未 bump PROTO_VERSION**。
 
-- `--list-accounts [--accts-dir <p>]`（A2 多账号，`remote-daemon-proto/src/accounts_query.rs`）→ 读 cc-acct-iso 的 manifest（`$ACCTS_DIR/accounts.json`，契约 v1）。**首行** `{"kind":"accounts-meta","enabled":bool,"acctsDir","manifestPath","updatedAt","sharedStore","count","error"}`，其后每账号一行 `{name,email,configDir,isDefault,mode,exists,loggedIn}`。**"未启用多账号"是正常状态**：manifest 缺失/坏/版本不支持 → `enabled:false` + `error` 人话原因 + **exit 0**（不是错误）。`loggedIn` 仅 stat `.credentials.json` 存在性。账号库目录解析：`--accts-dir` > `~/.cc-acct-iso/config` 的 `ACCTS_DIR=`（**正则抠值，绝不 source**）> `$HOME/.claude-accts`
+- `--list-accounts [--accts-dir <p>]`（A2 多账号，`remote-daemon-proto/src/observe/accounts_query.rs`）→ 读 cc-acct-iso 的 manifest（`$ACCTS_DIR/accounts.json`，契约 v1）。**首行** `{"kind":"accounts-meta","enabled":bool,"acctsDir","manifestPath","updatedAt","sharedStore","count","error"}`，其后每账号一行 `{name,email,configDir,isDefault,mode,exists,loggedIn}`。**"未启用多账号"是正常状态**：manifest 缺失/坏/版本不支持 → `enabled:false` + `error` 人话原因 + **exit 0**（不是错误）。`loggedIn` 仅 stat `.credentials.json` 存在性。账号库目录解析：`--accts-dir` > `~/.cc-acct-iso/config` 的 `ACCTS_DIR=`（**正则抠值，绝不 source**）> `$HOME/.claude-accts`
 - `--session-accounts [--accts-dir <p>]`（A2）→ 扫 `<claude_dir>/sessions/<PID>.json` 拿 pid，读 `/proc/<pid>/environ` **只抠 `CLAUDE_CONFIG_DIR` 一个键**，反查 manifest 得账号名。每条一行 `{pid,sessionId,cwd,configDir,account,bare,alive}`。`account:null` = 查不到（**不猜**）；`bare:true` = 进程活着但没设该变量（裸起）。这是"某条**正在跑**的会话属于哪个账号"的唯一硬真相（会话 jsonl 里没有任何账号字段）
 - `--account-trust <configDir> <cwd> [--accts-dir <p>]`（A2）→ 换号 resume 前的信任预检（首次用某账号进某目录，CC 会弹信任确认、会卡住自动化）。单行 `{"trusted":bool,"known":bool,"error":null}`。**安全**：`configDir` 必须逐字 ∈ manifest 的账号列表，否则 exit 2 + stderr `{"code":"unknown_config_dir",...}`——避免退化成任意文件读原语；**只回三个布尔/字符串字段，绝不回传 `.claude.json` 内容**（内含 `mcpServers` 的环境变量，可能有 API key）
+- `--account-trust-zero <cwd>`（A2）→ **账号 0**（未启用多账号时那个原生身份）的信任预检，返回形状同 `--account-trust`。**为什么单开一个动词而不是给 `--account-trust` 传空 `configDir`**：账号 0 没有 config dir，而空串是被明令禁止的拼法（空值 ≠ 未设）；且它的 `.claude.json` 原生根是 `$HOME`、不在共享账号库里 ⇒ 路径来源本就不同，合并只能靠哨兵值区分，比多一个动词更易错。**不收任何文件/配置目录路径参数**：它收 `cwd`，但那只当 `projects` 里的**查表键**，`.claude.json` 的根写死 `$HOME` ⇒ 连"任意文件读"的面都没有（`account_trust_zero_takes_no_path_argument` 钉住）
+- `--fork-session <args>`（G2 branch-anywhere，`remote-daemon-proto/src/control/fork_write.rs`）→ 从指定消息处分叉出一个新会话文件。**daemon 唯一的写盘入口**——其余一切子命令只读；`readonly_guard` 的写白名单按路径单独盯着 `control/fork_write.rs` 这一个文件（`doc/INVARIANTS.md` §41.6）
+- `--tmux-notify <daemon_pid> <daemon_starttime>`（P4b zero-poll-liveness）→ **不是查询**，是 tmux hook 子进程走的通路：校验身份后给正在跑的 daemon 发一个信号叫它立刻重扫 tmux，**完全不碰文件系统**。两个参数缺一或非整数 ⇒ exit 2。**必须同时比对 starttime 而不只看 pid 存在**：daemon 退出后那个 pid 可能已被别的进程占用，误发信号轻则无效、重则打断无关进程（很多程序把该信号当自定义控制信号，默认处置直接终止）。身份对不上 ⇒ **静默 exit 0，不做事**
 
-错误写 stderr + 退出码 2（`--account-trust` 用 `--resolve` 那套结构化 `{code,message}` JSON）。所有路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**旧 daemon 兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
+错误写 stderr + 退出码 2（`--account-trust` 用 `--resolve` 那套结构化 `{code,message}` JSON）。**读会话那一族**（`--read-session` / `--read-session-tail` / `--read-session-from-offset` / `--fork-session`）的路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**账号一族不走这条**，各有各的判据：`--accts-dir <p>` 解析到 `~/.cc-acct-iso/config` 或 `$HOME/.claude-accts`；`--account-trust <configDir>` 靠「逐字 ∈ manifest」而非 projects 前缀；`--tmux-notify` 根本不碰文件系统。**旧 daemon 兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
 
 ### 10.1 ★ `--resolve` 的返回值里**哪些是探测出来的、哪些是派生的**（E71）
 
@@ -432,23 +436,39 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 
 本地 `__ccm_bind`（§2/§3，文件 IPC + PowerShell 握手）的**远端对偶**：远端没有共享
 文件系统，注册信道改走**终端窗口标题**（OSC 转义经 tmux/ssh 透传到本地），monitor
-按标题扫窗口。全部代码：远端 `remote-section.ts::CCM_WRAPPER_SNIPPET`（安装器写进
-`~/.bashrc` 的 shell）+ 本地 `bind.rs::RemoteHwndCache` + `lib.rs::bring_remote_terminal_to_front`。
+按标题扫窗口。全部代码：远端 **`shared/ccm`**（部署为 `~/.local/bin/ccm`，字节源是
+`sftp.rs` 的 `CCM_CLI_SCRIPT`）—— **不是** `remote-section.ts::CCM_WRAPPER_SNIPPET`，
+那个其实是 `shared/ccm-aliases.sh`，**29 行、只有 `cc`/`cch`/`cct` 三个别名**，
+无任何 rbind / 标题 / poller 逻辑（`sftp.rs` 的守卫①明令该块不得含实现）+ 本地 `bind.rs::RemoteHwndCache` + `lib.rs::bring_remote_terminal_to_front`。
 
 ### 注册流程（远端 shell → 本地 HWND 缓存）
 
-1. **启动**：用户经 `ccm`（或自有启动器内调 `__ccm_rbind`）起 claude——契约是
-   `( __ccm_rbind; exec claude ... )`：exec 后子 shell 进程变身 claude，watcher 记的
-   `$BASHPID` **就是 claude 的 PID**（pidfile `sessions/<PID>.json` 按 PID 命名，这是支点）。
-2. **tmux 直通**：`__ccm_rbind` 在 `$TMUX` 内先 `tmux set set-titles on` +
-   `set-titles-string "#T"`（**当前 session 级、运行时选项**，不写 tmux.conf）——否则
-   OSC 只落 pane title、到不了外层终端窗口标题（Batch7 真机排查的主断链）。
-3. **marker 刷新**：后台 watcher 每 1s 读 `sessions/<PID>.json` 的 `sessionId`，**sid
-   变化时**（首现 / `/clear` / `/resume` 换 sid）发 `\033]0;ccm-rbind-<sid>\007` →
-   tmux pane title → 直通外层终端 → 经 ssh 显示层透传 → **本地 WT 窗口标题**。
-   claude 退出（`kill -0` 失败）watcher 自灭。
+> ⚠ **不存在名叫 `__ccm_rbind` 的函数。** 本节此前把它写成入口与对外契约
+> （`( __ccm_rbind; exec claude ... )`），全仓**没有任何定义** —— 实现早已搬进
+> `shared/ccm`（部署为 `~/.local/bin/ccm`），且 `sftp.rs` 有测试**明令**别名块不得含它。
+> 照旧文档写的外部集成方会调一个不存在的函数：bash 下只打一行 command-not-found、
+> **rc=0 继续跑** ⇒ 静默不注册、↗ 永远「未绑定窗口」。入口就是 `ccm` 本身。
+
+1. **启动**：用户经 `ccm` 起 claude。`ccm` 最后 `exec` 掉自己变身 claude，
+   **exec 后 PID 不变**，所以它记的 `$$` **就是 claude 的 PID**
+   （pidfile `sessions/<PID>.json` 按 PID 命名，这是支点）。
+   注意是 `$$` 不是 `$BASHPID`：poller 跑在 `( … ) &` 子 shell 里，那里的 `$BASHPID` 是子 shell 的。
+2. **tmux 直通**：`$TMUX` 内先 `tmux set-option set-titles on`，再
+   `set-titles-string '#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}'`
+   （**当前 session 级、运行时选项**，不写 tmux.conf）——否则 OSC 只落 pane title、
+   到不了外层终端窗口标题（Batch7 真机排查的主断链）。
+   **不是 `#T`**：`#T` 是 pane 标题，而 **claude 也在往 pane 标题写自己的状态**（转圈 + 在干什么），
+   两者抢同一个位置、claude 一忙就把 marker 冲掉。真机实测（2026-07-31）：四个空闲会话
+   marker 都在、唯独忙碌那个被冲成「⠐ 理解…」，点 ↗ 必弹「未绑定窗口」。
+   改成由 tmux 从 `@ccm_sid` **自己合成**之后 marker 常驻，两条路不再交叉。
+   `#{?@ccm_sid,…,#T}` 的 `#T` 只是 sid 尚未回填时的回退，避免产出一个空的 `ccm-rbind-`。
+3. **marker 刷新**：后台 poller 每 1s 读 `sessions/<PID>.json` 的 `sessionId`。
+   **sid 变化时**（首现 / `/clear` / `/resume` 换 sid）**或每 20 次循环（≈20s）自愈重打**一次，
+   发 `\033]0;ccm-rbind-<sid>\007` → tmux pane title → 直通外层终端 → 经 ssh 显示层透传 →
+   **本地 WT 窗口标题**；同一分支还 `tmux set-option @ccm_sid "$s"`（上面那条 format 的取值来源，
+   也是 `doc/INVARIANTS.md` §30 的判据来源）。claude 退出（`kill -0` 失败）poller 自灭。
 4. **扫描绑定**（`lib.rs` remote-session-emitter）：daemon `session_added` 后对该 sid
-   起独立线程，延迟 **+1500/3000/4500/6000ms 重试扫描**（等远端 shell 起 + OSC 透传），
+   起独立线程，**每 600ms 重试扫描一次、最多 15 次（≈9s）**（等远端 shell 起 + OSC 透传；`lib.rs` 里那句注释说明为什么比固定 4 次更稳健），
    `EnumWindows` + `GetWindowTextW` 找**标题子串含** `ccm-rbind-<sid>` 的首个可见窗口，
    命中即组 `SidHwndBinding{hwnd, owner_pid, owner_proc_start}` 存入 `RemoteHwndCache`。
    **无持久化**——monitor 重启靠重连的 session_added 重扫重绑（对比本地 §4 持久化缓存）。
@@ -479,47 +499,63 @@ PS (__ccm_bind)                          File System                    monitor 
 ─────────────────                        ─────────────                  ────────────────
 1. 检查 ps-registry/<PID>.json
    - 存在且 ps_proc_start 匹配
-     → 已注册，返回（avoid title flicker）
+     → 已注册，return（avoid title flicker）
    - 不匹配 → 继续
 
 2. 检查 auto-launch.json
    - auto_launch_enabled && monitor 不在跑
-     → Start-Process monitor.exe
+     → Start-Process monitor.exe --background
+       （不抢前台焦点；v2 起不再死等 2s）
 
 3. 生成 marker = "ccm-bind-<PID>-<8 字符 GUID>"
-4. 写 ps-await/<PID>.json     ────────►  ps-await/<PID>.json
-   含 ps_pid + marker + proc_start                │
-                                                  │ notify-debouncer (100ms)
-5. 设 $Host.UI.RawUI.WindowTitle = marker         │
-                                                  │
-                                                  ▼
-                                                  4. 读 ps-await/<PID>.json
-                                                     - 剥 BOM
+
+4. ★ 先设 $Host.UI.RawUI.WindowTitle = marker
+   （v2 竞态修复，顺序不可换 —— 见下）
+
+5. 后写 ps-await/<PID>.json  ────────►  ps-await/<PID>.json
+   .NET WriteAllText + UTF8Encoding($false)          │
+   （显式无 BOM）                                     │ notify-debouncer (50ms)
+                                                      ▼
+                                                  6. 读 ps-await/<PID>.json
+                                                     - 剥 BOM（兜老模板）
                                                      - parse JSON
-                                                  5. EnumWindows
-                                                     找 GetWindowTextW.contains(marker) 的窗口
-                                                  6. 拿到 HWND + GetWindowThreadProcessId 拿 owner_pid
-                                                  7. GetProcessTimes(owner) 拿 owner_proc_start
-                                                  8. 写 ps-registry/<PID>.json
+                                                  7. EnumWindows
+                                                     找 GetWindowTextW.contains(marker)
+                                                     ★ 找不到 → 重试 ≤600ms（12 × 50ms）
+                                                  8. GetWindowThreadProcessId → owner_pid
+                                                     GetProcessTimes(owner) → owner_proc_start
+                                                  9. 写 ps-registry/<PID>.json
                                                      ▲
-6. 忙等（每 30ms poll）：     ◄────────  ps-registry/<PID>.json 出现
-   while (ps-await 存在)
-     && (Get-Date) < deadline + 800ms
-
-                                                  9. 删 ps-await/<PID>.json
+6'. 轮询（每 30ms，deadline 3000ms）：◄──  ps-registry/<PID>.json 出现
+    while (ps-await 存在) && 未到 deadline
+      读 ps-registry：ps_proc_start 匹配 ⇒ bound，break
+                                                 10. 删 ps-await/<PID>.json
                                                      │
-7. 检测到 ps-await 删除  ◄────────────────────────────┘
-   - 恢复 $Host.UI.RawUI.WindowTitle = oldTitle
-   - 成功！
-
-如果超时（800ms 未删）：
-   - 自删 ps-await/<PID>.json
-   - Write-Warning "cc-monitor: 绑定超时"
+7'. 循环退出 ◄────────────────────────────────────────┘
+    - 恢复 $Host.UI.RawUI.WindowTitle = oldTitle
+    - 循环外**再补查一次 registry**（吃「退出瞬间 registry 刚落地」）
+    - ps-await 还在 ⇒ 自删
 ```
 
-**典型耗时**：50-200ms（notify-debouncer 合并 100ms + 解析 + EnumWindows + 写回）。
+### ★ 为什么第 4 步必须在第 5 步之前（v2 竞态修复）
 
----
+monitor 的 notify 在 **await 文件落地那一瞬**就 EnumWindows 找 marker。旧顺序（先写文件、后设标题）
+下 **monitor 扫得越快越容易找不到窗口** —— 然后它删掉 await 走失败路径，绑定成败全凭时序运气。
+v2.21 实测：**每个新 shell 的首次 `cc` 固定烧满超时**。
+
+两侧各修了一半，缺一不可：
+- **PS 侧**（`src-tauri/scripts/cc.ps1.tpl`）反转顺序 ⇒ 首次即中。
+- **monitor 侧**（`bind.rs`）加 ≤600ms 重试 ⇒ 兜住**旧模板**用户和慢标题传播。
+  旧模板不会自动更新，这条重试是它们唯一的活路。
+
+### ★ 退出条件是「二选一」，不是「等 await 被删」
+
+v2 之前 PS 只认「await 文件消失」一种信号，于是 monitor 的清理时序一变就卡。
+现在**registry 落地且指纹匹配**同样可以立刻返回 —— monitor 任何清理时序下都能走通。
+
+**典型耗时**：几十 ms（debouncer 合并 50ms + 解析 + EnumWindows + 写回）。
+deadline 是 **3000ms**（v2 从 800ms 提上来，覆盖 monitor 冷启动；循环"好了就走"，正常绑定仍是几十 ms 量级）。
+
 
 ## 设计选择 + 理由
 

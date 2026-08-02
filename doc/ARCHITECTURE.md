@@ -225,7 +225,7 @@ monitor 与外部进程的所有通信都在 `~/.claude/claudecode-frontend/` �
 | 路径 | 写入方 | 读取方 | 用途 | 生命周期 |
 |---|---|---|---|---|
 | `config.json` | monitor 设置面板 | monitor 启动 | 主题 / 字体 / claudeDir override / diagnostics | 持久 |
-| `ps-await/<PID>.json` | PowerShell (`__ccm_bind`) | monitor (`bind::BindRegistry`) | PS 通知 monitor "去找标题 = marker 的窗口" | 短暂 (800ms 超时) |
+| `ps-await/<PID>.json` | PowerShell (`__ccm_bind`) | monitor (`bind::BindRegistry`) | PS 通知 monitor "去找标题**含** marker 的窗口" | 短暂 (3s 超时) |
 | `ps-registry/<PID>.json` | monitor | PowerShell (查 + 比较 procStart) | monitor 通知 PS "绑定成功，HWND = X" | 与 PS 进程同寿 |
 | `sid-hwnd-cache.json` | monitor | monitor 启动恢复 | sid → hwnd 持久缓存，新 session 出现时查这里复用绑定 | 持久 |
 | `auto-launch.json` | monitor 设置面板 + 启动时回写 | PowerShell (`__ccm_bind` 头部) | "用 cc 启动 claude 时自动开 monitor" 开关 + monitor exe 路径 | 持久 |
@@ -321,7 +321,8 @@ F40b 上翻补批：active tab 滚到顶部 800px 内自动从 `TailWindow` 弹 
 **为什么**：OneDrive online-only placeholder / 杀软介入等罕见场景下，`read_to_string` 可能返回 `Ok("")` 即"磁盘有内容但读到空"，纯写就是把用户内容冲掉。backup + 校验是双保险。
 
 ### marker 握手 + EnumWindows 找窗口（cc 集成）
-PS 写 `ps-await/<PID>.json` + 改 `$Host.UI.RawUI.WindowTitle = marker` → monitor `EnumWindows` 找 `GetWindowTextW.contains(marker)` 的窗口拿 HWND。
+PS **先**改 `$Host.UI.RawUI.WindowTitle = marker`、**后**写 `ps-await/<PID>.json` → monitor `EnumWindows` 找 `GetWindowTextW.contains(marker)` 的窗口（找不到重试 ≤600ms）。
+**顺序不可换**：反过来 monitor 会在文件落地瞬间就去找一个还没设上的标题，扫得越快越容易失败（v2.21 实测「每个新 shell 首次 `cc` 固定烧满超时」）。细节见 [IPC-PROTOCOL.md § 跨进程握手时序图](IPC-PROTOCOL.md)拿 HWND。
 
 **为什么不**直接用 `EnumWindows + GetWindowThreadProcessId`：PowerShell 进程**不直接拥有终端窗口**（Windows Terminal 是单独进程；cmd 走 conhost；VSCode 走 integrated terminal）。window owner 不等于 PS owner。用 PS 改自己窗口标题为 unique marker + 反查 title 是唯一可靠的跨进程握手。
 

@@ -4,14 +4,15 @@
 //!
 //! ```text
 //! [PowerShell cc function]
-//!   1. 写 ps-await/<PID>.json {ps_pid, marker, proc_start}
-//!   2. 设 WindowTitle = marker
-//!   3. 轮询等 ps-await/<PID>.json 被删（800ms 超时）
+//!   1. 设 WindowTitle = marker  ← **先**（v2 竞态修复，顺序不可换）
+//!   2. 写 ps-await/<PID>.json {ps_pid, marker, proc_start}  ← **后**
+//!   3. 轮询（30ms 步，deadline 3s）：await 被删 **或** registry 落地且指纹匹配 ⇒ 返回
 //!
 //! [本模块 BindRegistry watcher]
 //!   4. notify 监听 ps-await 目录
 //!   5. 新文件 → 读 marker
-//!   6. EnumWindows + GetWindowTextW 找 title == marker 的窗口
+//!   6. EnumWindows + GetWindowTextW 找 `title.contains(marker)` 的窗口（**子串**，不是相等：
+//!      WT 会往标题里塞别的东西）；找不到先重试 ≤600ms（12 × 50ms）兜旧模板
 //!   7. 写 ps-registry/<PID>.json {ps_pid, hwnd, owner_pid, owner_proc_start, proc_start}
 //!   8. 删 ps-await/<PID>.json → PS 解除阻塞
 //!

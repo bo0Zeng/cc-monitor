@@ -208,7 +208,8 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 | S3 | **平台原语**<br>**U2 交付的是「目标归属地」+ 把 11/12 个 Windows 编译错集中到 `platform/pidwatch.rs`，**不是收口**。已收：`pidfd_open`/`watch_pid_until_exit`（切开了 observe 回边）· `/proc` 一族 9 项 · `path_key`（单列 `platform/paths.rs`，U4 加 Windows 分支时零二次搬）· `proc_claude_config_dir`（Phase D 审计要求补收）。<br>⚠ **生产段还有 4 处在外**：`tmux_hook.rs` 的 `libc::kill`（§1.1 已裁定 tmux_hook 归 control ⇒ **U3 连它一起处理**）· `main.rs` 三处（组装根，可辩护为留，**但不能因此说「唯一」**）。<br>⚠ **U4 伏笔**：`is_same_live_process` 那张判定表要上提到 `platform/liveness.rs`（Windows 判活复用它），别留在按 `/proc` 命名的模块里 | U2 · U3 · U4 |
 | S4 | **`observe/ → control/` 的窄接口**<br>**U3 已交付**：`layering_guard.rs` 两条机检 —— 反向零容忍 + 正向符号集**恰好等于**登记表。今天登记表**只有一条**：`crate::control::tmux_hook::install_hooks`。<br>摸底时真有一条反向边（`fork_write` → `accounts_query::read_regular_capped`），**没开例外** —— 那个函数不是 observe 的域逻辑，搬进 `common/fs.rs` 后边自然消失。铁律 6 的正例。<br>⚠ 加登记项前先答：**为什么这件事非得由观测侧发起、control 能不能自己做**（`install_hooks` 的答案：不能 —— 触发时机是「tmux server 起来了」，那是 socket inotify 观测到的事实，control 侧没这个信号，硬要它自己发现只能靠轮询，与 §41 正面冲突） | U3 ✅ |
 | S5 | **`common/`**<br>**U2 已交付**：`projects_root`（**5 处不是 4 处** —— 第五处是 `watcher.rs::watch_loop` 里内联的，`grep fn` 找不到）· `mtime_ms`（2 份）。门槛写在 `common/mod.rs`：≥2 **层**用 · **平台无关** · 无域知识。<br>⚠ **「时间换算 · quote」这两项要划掉**：Phase D 审计逐条核过，daemon crate 内**没有可合的逐字副本** —— 时间换算三处语义/单位各不相同（`file_mtime_epoch` 单位是**秒**不是毫秒），quote 在 daemon 内只有一份、多份在 monitor 侧**跨 crate**、`common/` 收不了。<br>⚠ **U3 必须复查**：`mtime_ms` 的两个调用点同属 observe，「≥2 层」按层口径**今天不成立**；`observe/` 一建出来就要重判 | U2 · U3 |
-| S6 | **wire 协议 + `IPC-PROTOCOL.md`** | 双向；**文档先修再冻结**（该文件 7 处在说谎，见 §3-U6）；wire 字段名双向 `include_str!` 对拍 | U6 |
+| S6 | **wire 协议 + `IPC-PROTOCOL.md`** | 双向；**文档先修再冻结**（该文件 7 处在说谎，见 §3-U6）；wire 字段名双向 `include_str!` 对拍 | U6a / U6b |
+| S6a | **跨进程握手时序约束**（U6a 新登记）<br>**U6a 已交付**：`cc.ps1.tpl`「先设标题、后写 await 文件」这个顺序，同时被写在**四处**：PS 模板本身 · `bind.rs` 模块头 · `doc/IPC-PROTOCOL.md` 时序图 · `cc_integration.ts` 给用户看的超时文案。U6a 之前**后三处全是旧的**（旧顺序 + 800ms + 100ms + 漏画 ≤600ms 重试）—— 文档在教人复刻 v2.21 那个「每个新 shell 首次 `cc` 固定烧满超时」。 | 四处保持一致，由 `profile_installer.rs::handshake_doc_guard` 三条护栏钉住（顺序 + 模板侧 deadline/轮询步长 + monitor 侧 debouncer/重试）。**不放 `bind.rs`**：它几乎整个 `#[cfg(windows)]`，护栏放那儿在 Linux CI 上一条都不跑 | U6a ✅ |
 | S7 | **daemon argv 面** | 三类；`split_stream_flags` + `every_capability_token_is_strippable` 同步扩。⚠ **起点比以为的更糟**：现有的二分表本身就漏了 5 条子命令（`--tmux-notify` / `--resolve` / `--fork-session` / `--account-trust-zero` / `--read-session-from-offset`），其中 `--account-trust-zero` 漏登记**出过 v3.4.0 事故** | U6 |
 | S8 | **`BUILD_ID` 单源链条**<br>**U-1 已交付**：① `ssh_source.rs::embedded_build_id_single_source_wired` 断言 ≠ `"unknown"`；② `build.rs` 三条硬 panic（抠不到源码 `BUILD_ID` / 有二进制但缺清单 / 清单与源码不符）；③ 半 bump **真修掉**（两个 arch 从 p1v 源码现编，`rust-lld` 零安装）。<br>⚠ **措辞订正**：原写「缺文件从 warn 改 fail」不准 —— 三条 panic 都以「`embedded-daemons/` 里真有二进制」为前提；**整个目录缺失时仍是优雅降级**（那是 dev/CI 常态），兜那一档的是①不是 `build.rs`。发版链两头都够得着（`release.yml:56-58` 写清单、`:113-118` 再对拍） | U-1 · U13 |
 | S9 | **读面七组 → 四组**（§0.1 三类） | monitor 侧退役 | U7a–U7e |
@@ -471,3 +472,24 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   ⇒ U5 改为**范围收窄**（去掉 app 侧的启停监督/自愈，保留「daemon 在本机可用、可手工起」），
   U5' 改成 **U5-走查**。**教训**：把一句「这部分我自己来」翻成「删掉一个功能并新立一个」，
   是在用户没要求的方向上改计划 —— 铁律 4 说的是「计划≠现实就停下改计划」，不是「凭我的理解改」。
+- 2026-08-02 **U6a 闭环，四个计划数字全被机检推翻**。计划的缺口数是手工 grep 数的，无一正确：
+  帧字段漏的是 **7 个不是 8 个**（多报的 `next` 是 `SeqCounter` 的进程内计数器、根本不上线）；
+  查询表漏的是 **3 个不是 6 个**（`--list-accounts` / `--search` / `--session-accounts` 早在表里）；
+  另发现 **1 处比漏写更糟的**：`tmux_sessions` 帧的字段文档里叫 `classification`，
+  **全仓没有任何东西叫这个名字**（线上真名 `observation`）—— 照文档写的客户端永远读到 `None`，
+  退回「保守跳过」，正是这字段当初要修的 idle 灰灯。
+  ⇒ **纪律**：Phase B 的「实测核计划」这一步，手工 grep 不算实测；能上机检的一律先把机检写出来、
+  让它报第一版清单，再动手补。本轮机检是在自己上线**之前**挣回成本的。
+- 2026-08-02 **U6a 最重的一条：文档在教人复刻一个已经修掉的 bug**。
+  `doc/IPC-PROTOCOL.md` 的握手时序图画的是 v2 修复**之前**的顺序（先写 await 文件、后设窗口标题），
+  而 `cc.ps1.tpl` 早已反转 —— 旧顺序下 monitor 扫得越快越容易找不到窗口，v2.21 实测
+  「每个新 shell 首次 `cc` 固定烧满超时」。同图还有 deadline 800ms（实际 3000ms）、
+  debouncer 100ms（实际 50ms）、monitor 侧 ≤600ms 重试**整个没画**。
+  同一处漂移还在 `bind.rs` 自己的模块头和 `cc_integration.ts` 给用户看的文案里。
+  ⇒ **账本新增一条共享面**：**跨进程时序约束**（PS 模板 ↔ bind.rs ↔ IPC-PROTOCOL.md ↔ UI 文案，
+  四处双写）。最终形态 = 由 `profile_installer.rs::handshake_doc_guard` 三条护栏钉住顺序与全部数字。
+  这类约束**字段级对拍抓不到** —— 两个文件单看都合理，只有合起来看才错。
+- 2026-08-02 **护栏放哪儿要先验证它在 CI 上真的跑**。握手护栏本来该放 `bind.rs`（代码在那），
+  但 `bind.rs` 几乎整个 `#[cfg(windows)]`，放那儿在 Linux CI 上**一条都不会跑**
+  （实测 `cargo test bind::` = 0 个）。改放 `profile_installer.rs`（用 `include_str!` 内嵌
+  `cc.ps1.tpl`、测试在 Linux 真跑）。⇒ 与 U4a 的教训同族：**「写了护栏」≠「护栏会执行」。**
