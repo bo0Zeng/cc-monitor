@@ -12,10 +12,16 @@
 //!
 //! # 本层现在装了什么
 //!
-//! - [`proc`]：`/proc` 与进程身份（`pid_alive` / `proc_starttime` / `session_alive` / `path_key` …）
+//! - [`proc`]：`/proc` 与进程身份（`pid_alive` / `proc_starttime` / `proc_claude_config_dir` /
+//!   `session_alive` + `is_same_live_process` / 两个 `/proc` 格式解析器 …）
+//! - [`paths`]：`path_key`（NTFS 大小写折叠 —— **路径**语义，不是 `/proc`）
 //! - [`pidwatch`]：`pidfd_open` + [`pidwatch::watch_pid_until_exit`]
+//! - [`signal`]：`send_sigusr1`（U3 从 `control/tmux_hook.rs` 下沉）
 //!
-//! 都是从 `watcher.rs` **逐字搬来**的 —— U2 是纯重构，行为逐字不变。
+//! **前三个是从 `watcher.rs` 逐字搬来的**（U2 纯重构，行为逐字不变）。
+//! [`signal`] 不是 —— 它是**重写**：原实现内联在 `tmux_hook` 里、失败时 `return 0`；
+//! 现在返回 `bool` 由调用方丢弃。语义等价（两条路径旧版都返回 `0`，那个 `return` 是纯提前返回），
+//! 但「逐字搬来」这句话覆盖不到它，故单列。
 
 pub(crate) mod paths;
 pub(crate) mod pidwatch;

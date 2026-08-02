@@ -6,7 +6,7 @@
 //!
 //! # 为什么是第三份实现，而不是复用 daemon 那份
 //!
-//! `remote-daemon-proto/src/accounts_query.rs` 已经有一份完整的 Rust manifest 读取器
+//! `remote-daemon-proto/src/observe/accounts_query.rs` 已经有一份完整的 Rust manifest 读取器
 //! （1383 行，直接读文件系统）。**复用不了**，理由是结构性的：
 //!
 //! - 那个 crate 是 **bin-only**（无 `[lib]`），且 `Cargo.toml` 注释写明**刻意不进 workspace**

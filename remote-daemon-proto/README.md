@@ -36,7 +36,7 @@ src/
 ├── common/       两层都要、**平台无关**、无域知识（门槛写在 common/mod.rs）
 │   ├── paths.rs      projects_root（原有 5 处）
 │   └── fs.rs         read_regular_capped（U3 从 accounts_query 搬来，**反向边因此消失**）
-└── 顶层           main（组装根）· wire（协议类型）· 四条 guard + layering_guard
+└── 顶层           main（组装根）· wire（协议类型）· 四条 guard + `layering_guard`（`guard_support` 是它们共用的剥法工具，不是护栏本身）
 ```
 
 ### 两层之间只有一个方向，而且**条数被钉住**
@@ -60,9 +60,12 @@ Phase D 审计逐条查过，**生产段还有 3 处平台原语在 `platform/` 
 | 位置 | 是什么 | 处置 |
 |---|---|---|
 | ~~`tmux_hook.rs` 的 `libc::kill`~~ | ~~`#[cfg(unix)]` + 发 SIGUSR1~~ | **U3 已收**进 `platform/signal.rs` |
-| `main.rs:345-365` | SIGUSR1 处理器的 `#[cfg(unix)]` / `#[cfg(not(unix))]` | `main.rs` 是**组装根**，平台分支留在这里可辩护。但不能因此说「唯一」 |
-| `main.rs:421-433` | `#[cfg(windows)]` USERPROFILE 回退 | 同上 |
-| `main.rs:439-467` | `shutdown_signal` 的一对 cfg | 同上 |
+| `main.rs` SIGUSR1 处理器 | `#[cfg(unix)]` / `#[cfg(not(unix))]` 一对 | `main.rs` 是**组装根**，平台分支留在这里可辩护。但不能因此说「唯一」 |
+| `main.rs` USERPROFILE 回退 | `#[cfg(windows)]` | 同上 |
+| `main.rs::shutdown_signal` | 一对 cfg | 同上 |
+
+> **刻意不写行号**：U3 只改了 `main.rs` 的 mod 块（净 −7 行），这张表里三处行号**当场全漂**，
+> 而 Phase D 审计是逐个数出来的。跨文件行号引用在这个仓已经栽过多次 —— 用符号名指。
 
 （U2 已收的两处曾经也在这张表上：`accounts_query.rs` 的 `proc_claude_config_dir`
 读 `/proc/<pid>/environ`，和 `watcher.rs` 里内联的第五处 `join("projects")`。）

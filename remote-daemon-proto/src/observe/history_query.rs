@@ -17,7 +17,9 @@
 //! 前缀校验，防 `../` 穿越）；project_dir 参数不允许含路径分隔符。
 //! 只读铁律（cc-monitor 不写远端）在此同样成立：本模块只 read_dir / read。
 
-// U2：合并进 `common/paths.rs`（原来这里各有一份逐字相同的副本）。
+// U2/U3：这两个原来在本文件里各有一份逐字相同的副本。去向**不同**：
+// `projects_root` 跨 observe/control 两层 ⇒ `common/`；`mtime_ms` 两个调用点同属 observe
+// ⇒ U3 按 `common/` 自己的「≥2 层」门槛搬回 `observe/`。
 use crate::common::paths::projects_root;
 use crate::observe::fs::mtime_ms;
 use std::io::Write;
