@@ -5,7 +5,7 @@
 //! escapes any inner newline as `\n` (two chars), so the only literal newline
 //! on the wire is the trailing terminator appended by [`to_line`].
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// A single daemon→client frame.
@@ -227,6 +227,42 @@ pub enum Frame {
     /// lines were lost (#32). `dropped` counts frames dropped since the last
     /// overflow signal.
     Overflow { dropped: u64 },
+
+    /// U6b-1：**入方向命令的应答**。`id` 是客户端给的不透明串，daemon **原样回显、不解析**。
+    ///
+    /// 复用出方向的 `kind` tag 空间而不另开一条流：旧 monitor 见到未知 kind 会**忽略**
+    /// （§10 已有的 additive 规律），所以新 daemon × 旧 monitor 天然安全。
+    ///
+    /// 错误形状 `{code, message}` **对齐 `--resolve` 已冻结的那套**（协议 v1 §3），
+    /// 不发明第二种错误 JSON。成功时两者都省略。
+    Reply {
+        id: String,
+        ok: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        code: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+    },
+
+    /// U6b-1：某个在跑的命令**已被取消**。取消是一条普通命令（`cmd:"cancel"`）、不是带外信号——
+    /// 带外要么另开通道要么发明转义序列，两者都要新的解析纪律，而取消排队等一下并无妨。
+    Cancelled { id: String },
+}
+
+/// U6b-1：**入方向**请求信封。只 `Deserialize` —— daemon 是读的那一方。
+///
+/// ```text
+/// {"id":"<opaque>","cmd":"<name>","args":{...}}
+/// ```
+///
+/// `id` **不透明**：daemon 不解析、不校验格式、只回显。谁生成谁负责唯一 —— 客户端。
+/// daemon 自己发号的话，重连后号段会撞（同 F90「不许拿会变的东西当持久键」）。
+#[derive(Debug, Clone, Deserialize)]
+pub struct Request {
+    pub id: String,
+    pub cmd: String,
+    #[serde(default)]
+    pub args: serde_json::Value,
 }
 
 /// Serialize a frame to its compact one-line wire form with a trailing `\n`.

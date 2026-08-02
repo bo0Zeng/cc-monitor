@@ -24,6 +24,7 @@ mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 �
 mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
+mod inbound; // U6b-1：流连接上的入方向（信封 / 分派 / 取消）
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 mod observe; // U3：观测面 —— 读，不改变世界
@@ -320,6 +321,18 @@ async fn main() {
         return;
     }
 
+    // (b2) U6b-1：**入方向 reader。位置不可上移。**
+    //
+    // ★ 必须在上面那个 Hello 已经 flush **之后**才起 —— 客户端要先读到 Hello 才知道
+    // 对面是什么版本、有什么能力；在那之前就收命令，等于在能力协商之前执行它。
+    // 这是**时序约束**，两边单看都合理、合起来才错（同 U6a 抓到的 PS 握手顺序那一族），
+    // 所以由 `hello_is_flushed_before_the_inbound_reader_starts` 机检钉住，不靠这条注释。
+    //
+    // 应答走**独立通道**：出方向丢一帧可恢复（`Overflow` 会说丢了多少，行还在远端 jsonl），
+    // 丢一条应答会让客户端永远等下去。混在一个通道里，实时行的洪峰会把应答挤掉。
+    let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
+    let inbound_task = inbound::spawn(tokio::io::stdin(), reply_tx.clone());
+
     // (c) Start the watcher reader; it returns the receiving half of the
     // bounded frame channel.
     let (rx, poke) = observe::watcher::spawn(claude_dir, with_bg, tail_only);
@@ -360,7 +373,7 @@ async fn main() {
 
     // (d) Run the stdout writer until the channel closes or a signal fires.
     tokio::select! {
-        _ = writer_task(stdout, rx) => {
+        _ = writer_task(stdout, rx, reply_rx) => {
             tracing::info!("writer task ended (channel closed)");
         }
         _ = shutdown_signal() => {
@@ -372,6 +385,8 @@ async fn main() {
     // 漏这一句不会红任何测试（进程退出时线程随之消亡），所以它与删 ticker 是同一步。
     poke_for_shutdown.shutdown();
     poke_task.abort();
+    inbound_task.abort();
+    drop(reply_tx);
 }
 
 /// The stdout writer half of the §5.4 split: drain frames and write one wire
@@ -379,11 +394,28 @@ async fn main() {
 ///
 /// Awaiting `recv()` here is what back-pressures the bounded channel when the
 /// SSH pipe is slow; that back-pressure never reaches the inotify reader.
+/// 排空两条通道写 stdout。
+///
+/// **`biased` + 应答在前**：出方向的实时行可以有洪峰（`CHANNEL_CAPACITY` 是 10_000），
+/// 公平轮询会让应答排在一万行后面，客户端那头看起来就是「命令没反应」。
+/// 应答量极小（一条命令一两帧），优先它不会饿死行。
+///
+/// `reply_rx` 永远不会返回 `None`（`main` 自己留着一个 sender 到进程结束），
+/// 所以这个 select 不会退化成 `None` 忙转。
 async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     mut out: W,
     mut rx: tokio::sync::mpsc::Receiver<Frame>,
+    mut reply_rx: tokio::sync::mpsc::Receiver<Frame>,
 ) {
-    while let Some(frame) = rx.recv().await {
+    loop {
+        let frame = tokio::select! {
+            biased;
+            Some(f) = reply_rx.recv() => f,
+            f = rx.recv() => match f {
+                Some(f) => f,
+                None => return, // 出方向通道关了 = 寿终
+            },
+        };
         if let Err(e) = write_frame(&mut out, &frame).await {
             // Broken pipe (client gone) is the normal end-of-life; stop quietly.
             tracing::warn!("stdout write failed ({e}); stopping writer");
