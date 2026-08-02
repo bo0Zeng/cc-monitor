@@ -1064,3 +1064,139 @@ $PSDefaultParameterValues = @{}
         }
     }
 }
+
+/// U6a：把 **PS↔monitor 握手**的顺序与数字钉在 `doc/IPC-PROTOCOL.md` 上。
+///
+/// # 为什么需要这个
+///
+/// U6a 逐图核时序图时发现：图上画的是 **v2 修复之前**的握手 —— 顺序是旧的
+/// （先写 await 文件、后设窗口标题）、deadline 写 800ms（实际早已是 3000ms）、
+/// notify debouncer 写 100ms（实际 50ms）、monitor 侧的 ≤600ms 重试**整个没画**。
+///
+/// 也就是说：文档描述的是那个**已经被修掉的 bug 的行为**。照图重新实现一遍 PS 侧，
+/// 会精确复刻 v2.21 那个「每个新 shell 首次 `cc` 固定烧满超时」的故障。
+///
+/// 顺序那一条尤其不能只靠注释：它是**两个文件之间的时序约束**，两边看起来都合理，
+/// 只有合起来看才错。
+#[cfg(test)]
+mod handshake_doc_guard {
+    const IPC_DOC: &str = include_str!("../../doc/IPC-PROTOCOL.md");
+    const BIND_RS: &str = include_str!("bind.rs");
+    const ARCH_DOC: &str = include_str!("../../doc/ARCHITECTURE.md");
+
+    /// v2 竞态修复的核心：**先设标题、再写 await 文件**。
+    ///
+    /// 反过来的话，monitor 的 notify 在文件落地瞬间就 EnumWindows 找 marker，
+    /// **扫得越快越容易找不到窗口** ⇒ 删 await 走失败路径 ⇒ 绑定成败全凭时序运气。
+    #[test]
+    fn ps_template_sets_the_window_title_before_writing_the_await_file() {
+        let t = super::CC_TEMPLATE;
+        let title = t
+            .find("$Host.UI.RawUI.WindowTitle = $marker")
+            .expect("模板里找不到设标题那行 —— 抽取坏了还是握手改了？");
+        let write = t
+            .find("WriteAllText($awaitFile")
+            .expect("模板里找不到写 await 文件那行 —— 抽取坏了还是握手改了？");
+        assert!(
+            title < write,
+            "cc.ps1.tpl 把顺序换回了「先写文件、后设标题」—— 那正是 v2.21 \
+             『每个新 shell 首次 cc 固定烧满超时』的成因（doc/IPC-PROTOCOL.md \
+             § 跨进程握手时序图 有整段说明）。设标题@{title} 写文件@{write}"
+        );
+    }
+
+    /// 模板里的 deadline / 轮询步长必须在协议文档里出现（防「改了代码忘了改图」）。
+    #[test]
+    fn handshake_timings_in_the_template_appear_in_the_protocol_doc() {
+        let t = super::CC_TEMPLATE;
+        let deadline = between(t, "AddMilliseconds(", ")").expect("模板里没有 deadline");
+        let poll = between(t, "Start-Sleep -Milliseconds ", "\n").expect("模板里没有轮询步长");
+
+        // 这两个数曾双双漂移：文档停在 800ms，实现早已 3000ms。
+        assert!(
+            IPC_DOC.contains(&format!("{deadline}ms")),
+            "PS 握手 deadline 是 {deadline}ms，但 doc/IPC-PROTOCOL.md 里没有 `{deadline}ms` \
+             —— 文档还停在旧数字上（上一次是 800ms）"
+        );
+        assert!(
+            IPC_DOC.contains(&format!("{poll}ms")),
+            "PS 轮询步长是 {poll}ms，但 doc/IPC-PROTOCOL.md 里没有 `{poll}ms`"
+        );
+    }
+
+    /// monitor 侧同理：debouncer 窗口 + 「找不到窗口就重试」的总时长。
+    ///
+    /// 重试那一条是**旧模板用户唯一的活路**（老 profile 不会自动更新），
+    /// 图上却整个没画 —— 少画它等于把兼容性保障说成不存在。
+    /// ★ **每一份描述这个握手的文档**都必须写当前顺序，不只 IPC-PROTOCOL.md。
+    ///
+    /// U6a 实测：同一个顺序被写在**五处** —— `cc.ps1.tpl`（真相）· `bind.rs` 模块头 ·
+    /// `doc/IPC-PROTOCOL.md` 时序图 · `doc/ARCHITECTURE.md` · `cc_integration.ts` 的 UI 文案。
+    /// v2 反转顺序时**只改了真相那一处**，另外四处全停在旧顺序上。
+    /// 只钉一份文档，剩下几份照样把人教回旧写法。
+    #[test]
+    fn every_doc_that_describes_the_handshake_states_the_current_order() {
+        // 判据：一段文字若同时提到 `ps-await` 与 `WindowTitle`，就算「在描述这个握手」，
+        // 那它必须把 `WindowTitle` 写在 `ps-await` 前面（= v2 的真实顺序）。
+        // 必须从**描述握手那一节**起算，不能拿全文首次出现比 —— IPC-PROTOCOL.md 有一整节
+        // 就叫 `ps-await/<PID>.json`，排在时序图**之前**，全文首现比法会恒红（实测踩到）。
+        for (name, doc, anchor) in [
+            ("doc/IPC-PROTOCOL.md", IPC_DOC, "## 跨进程握手时序图"),
+            ("doc/ARCHITECTURE.md", ARCH_DOC, "### marker 握手"),
+        ] {
+            let at = doc
+                .find(anchor)
+                .unwrap_or_else(|| panic!("{name} 里找不到锚点 {anchor:?} —— 文档被大改了？"));
+            let doc = &doc[at..];
+            let (Some(title), Some(await_file)) = (doc.find("WindowTitle"), doc.find("ps-await"))
+            else {
+                panic!("{name} 的握手节里找不到那两个关键词 —— 抽取坏了还是文档被大改了？");
+            };
+            assert!(
+                title < await_file,
+                "{name} 把握手顺序写成了「先写 ps-await、后设 WindowTitle」—— 那是 v2 之前的旧顺序，\n\
+                 照它实现会复刻 v2.21『每个新 shell 首次 cc 固定烧满超时』。\n\
+                 真相源是 src-tauri/scripts/cc.ps1.tpl（先设标题、后写文件）。"
+            );
+        }
+    }
+
+    #[test]
+    fn monitor_side_timings_appear_in_the_protocol_doc() {
+        let debounce = between(BIND_RS, "new_debouncer(Duration::from_millis(", ")")
+            .expect("找不到 debouncer");
+        assert!(
+            IPC_DOC.contains(&format!("{debounce}ms")),
+            "notify debouncer 是 {debounce}ms，doc/IPC-PROTOCOL.md 里没有 —— \
+             图上曾长期写着 100ms"
+        );
+
+        // 重试：`for _ in 0..12 { sleep(50ms) }` ⇒ 总 600ms。两个数都得对得上。
+        let n: u32 = between(BIND_RS, "for _ in 0..", " {")
+            .expect("找不到重试次数")
+            .parse()
+            .expect("重试次数不是整数");
+        let step: u32 = between(
+            BIND_RS,
+            "std::thread::sleep(std::time::Duration::from_millis(",
+            ")",
+        )
+        .expect("找不到重试步长")
+        .parse()
+        .expect("重试步长不是整数");
+        let total = n * step;
+        assert!(
+            IPC_DOC.contains(&format!("{total}ms")) && IPC_DOC.contains(&format!("{n} × {step}")),
+            "monitor 找不到窗口时重试 {n} × {step}ms = {total}ms，\
+             doc/IPC-PROTOCOL.md 必须同时写出总时长 `{total}ms` 和拆分 `{n} × {step}`（当前缺其一）"
+        );
+    }
+
+    /// 抽第一处 `a`…`b` 之间的内容。抽不到返回 None —— 调用方一律 expect，
+    /// 免得夹具悄悄退化成空转（本仓有先例：抽取器改坏后抽到 0 个、断言全绿）。
+    fn between<'a>(hay: &'a str, a: &str, b: &str) -> Option<&'a str> {
+        let s = hay.find(a)? + a.len();
+        let e = hay[s..].find(b)? + s;
+        Some(hay[s..e].trim())
+    }
+}

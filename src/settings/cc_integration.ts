@@ -288,7 +288,7 @@ export class CcIntegrationSection {
     row.appendChild(
       makeInfoIcon(
         "勾选后：跑 cc / __ccm_bind 时如果 monitor 没在跑，PowerShell 会自动启动它（路径下方显示）。\n" +
-          "不勾选：必须先手动开 monitor 再跑 cc，否则握手超时（800ms）。",
+          "不勾选：必须先手动开 monitor 再跑 cc，否则握手超时（3s）。",
       ),
     );
 

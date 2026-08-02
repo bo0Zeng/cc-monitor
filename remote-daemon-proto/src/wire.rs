@@ -77,8 +77,13 @@ pub enum Frame {
         /// daemon-01（gap#2，additive 不 bump PROTO_VERSION）：本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——
         /// 语义**逐字节对齐 aterm `LineFramer.endOffset`**：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒
         /// `tail -c +(N+1)`。给 offset 续拉/截断检测（`seq` 是 per-stream 序数、非 resume 键）。
-        /// 注（审计 quality）：`Frame` 仅 derive `Serialize`，故此 `#[serde(default)]` 在**本 crate 装饰性**——
-        /// 「旧 daemon 缺字段 → client 得 0」的向后兼容实现在 **cc-monitor 反序列化侧**（此处 default 无实效但无害，留作意图标注）。
+        /// 注：`Frame` 仅 derive `Serialize`，故此 `#[serde(default)]` 在**本 crate 装饰性**。
+        ///
+        /// ⚠ **别把它当成向后兼容的落点**。这里曾写着「向后兼容实现在 cc-monitor 反序列化侧」——
+        /// **那是假的**：`ssh_source.rs` 的 `"line"` 分支只取 `session_id/path/seq/raw`，
+        /// 全仓 `byte_offset` / `byteOffset` 零命中，**cc-monitor 根本不读这个字段**。
+        /// 今天唯一的消费者是仓外 aterm（它自己决定缺字段怎么办）。
+        /// U6a 审计抓到：一条把不存在的实现点写成契约锚的注释，下一个人照它去 monitor 找会扑空。
         #[serde(default)]
         byte_offset: u64,
     },
