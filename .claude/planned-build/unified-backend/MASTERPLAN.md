@@ -232,6 +232,8 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 
 | S24 | **数据面漂移记账的四个落点**（U-CC1 新登记）<br>未知记录 `type`（`parser.rs`）· 已知类型解析失败（`parser.rs`）· 未登记的会话 `kind`（`session_map.rs`）· daemon 未知能力 token（`ssh_source.rs`） | 只记账、**零行为变化**；有界（64 键 + `<overflow>`，样例按字符边界截 400 字节）；每个面必须写明**「这么降级之后会怎样」**（`DriftFace::consequence`，有计数自检）。<br>⚠ **第五个面「未登记的 `status`」刻意不加** —— 它在前端（`session-status.ts`），Rust 侧对 `status` 无任何白名单分支。加一个没有落点的面 = 「登记了但不产生信号」，比不加更糟。<br>⚠ **计数量纲逐面不同**（每条记录 / 每次扫描 / 每次握手），前端 `countUnit()` 逐面给单位并有测试钉住 | U-CC1 ✅ · TS 侧 status 面另记 |
 
+| S25 | **平面 ③（本机开窗面）的 POSIX 取舍**（U8b 新登记）<br>L1 裁决：POSIX 上**刻意不开 GUI 终端窗口**（没有「唯一的终端」，挑一个是会在别人机器上错的决定；会话容器是 tmux） | 由 `launch.rs::no_terminal_emulator_is_ever_spawned_from_this_file` **零命中**钉住（挡的是很自然的一次「顺手改进」）；文案由 `POSIX_NO_TERMINAL_WINDOW` 单点出，前端按标记分档、`the_posix_marker_is_the_one_the_frontend_matches_on` 跨轨对拍。<br>⚠ **今天的不对称**：本机 resume 有 OS 分派、远端没有 ⇒ POSIX 上只复制命令。补它与 **U8a-2c** 同一个阻塞（渲染好的串拆不回「只建不接」），**别单独硬补** —— fire-and-forget 会静默失败 | U8b ✅ · U8a-2c |
+
 ### 跨工作区冲突协议
 
 - **`branch-anywhere/`**：Phase G 已完成、**只剩发版**，下一步是给 aterm 发 `--fork-session` 契约冻结通报。
@@ -841,3 +843,26 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   该渲染器**已完全数据驱动**，56 种命令名零改动跑通 —— 加白名单是负收益。
 - 2026-08-02 账本新增 **S24**（数据面漂移记账的四个落点）。新开件登记：
   **U-CC1 ✅** · TS 侧「未登记 status」面另记 · `Workflow` 工具面支持（登记不做）。
+- 2026-08-02 **U8b 闭环：平面 ③ 的判定 —— 不新增功能，改掉一句撒谎的文案。**
+  重测 `launch.rs:304`：**不是 bug**（剪贴板兜底刻意、功能不变砖）。真问题在旁边 ——
+  它把一条**既定设计**报成「拉起失败」，而且文案里的 `(v1)` 暗示「v2 会支持开窗」，
+  **方向是反的**：L1 早就裁决过「POSIX 上没有『唯一的终端』，挑一个是平白引入一个
+  会在别人机器上错的决定」。Linux 用户每次点 ↗ 都在读那句谎话。
+  ⇒ 文案说实话 + 零命中护栏（生产段不许出现任何终端模拟器）+ 决定从一句代码注释
+  提升进 `ARCHITECTURE.md` 与双语 README。
+- 2026-08-02 **前端分档按「后端自己的声明」，不按 `hostOs`。**
+  `hostOs !== "windows"` 会把**真失败**（配置缺失 / 命令被拒 / spawn 崩）也一起软化成
+  「这是设计」—— 那是另一种撒谎。改成匹配后端那句话里的稳定标记，并配**反面测试**
+  （真失败仍叫「拉起失败」）+ 跨轨对拍（Rust `include_str!` 读 TS 里的标记字面量）。
+- 2026-08-02 **真正缺的那一半（远端 POSIX 拉起）与 U8a-2c 是同一个阻塞，不硬补。**
+  本机 resume 有 OS 分派、远端没有 ⇒ POSIX 上只复制命令、会话根本没建。
+  按 L1 形态补齐在语义上成立（`new-session -d … && send-keys …; tmux attach …` 里
+  前两步无 TTY 也成功），**但**渲染好的 shell 串拆不回「只建不接」：
+  `tmux attach` 必然失败 ⇒ 退出码永远非零 ⇒ **分不出「auth 失败」与「只是没 TTY」**
+  ⇒ fire-and-forget 会静默失败，比今天更糟。等 U8c 让前端发结构化请求后走 daemon 的 `launch`。
+- 2026-08-02 ⚠ **又一次把测试块插进了「`#[test]` 属性与它的 fn」之间**（第三次），
+  受害者是 L1 那条逐字节对拍 `local_and_remote_share_the_same_payload`：**它丢了属性、
+  变成死代码，而 `cargo test` 全绿**（它只是不再跑了）。
+  是 **clippy 集合差**抓到的（`duplicated attribute` + `never used`）。
+  ⇒ 血泪 12 后半句又救一次；也是血泪 10 的另一种形态：**判据自己被摘掉时，没有任何判据会红。**
+- 2026-08-02 账本新增 **S25**（平面 ③ 的 POSIX 取舍 + 零命中护栏 + 前后端标记对拍）。

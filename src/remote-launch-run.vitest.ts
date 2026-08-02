@@ -14,8 +14,7 @@ import {
   runRemoteResumeTmux,
   runRemoteResumeIntoExistingTmux,
   runRemoteLauncher,
-  runRemoteAttach,
-} from "./remote-launch-run";
+  runRemoteAttach, POSIX_NO_WINDOW_MARKER } from "./remote-launch-run";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const toastMock = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
@@ -83,6 +82,33 @@ describe("F41 runRemoteResume", () => {
     await runRemoteResume("aya", "sid-3", "", "");
     expect(toastMock.mock.calls[0][0]).toBe("拉起失败，请手动复制以下命令");
     expect(toastMock.mock.calls[0][1]).toContain("claude --resume sid-3");
+  });
+
+  /** ★ U8b：**POSIX 上「不开终端窗口」是既定设计，标题不许叫「拉起失败」。**
+   *
+   *  在 Linux 上每次点 ↗ 都会走这条路。把一个正常状态报成「失败」，
+   *  是把用户训练成「这东西坏了」。 */
+  it("后端说「这是既定设计」→ 标题改成「本机不开终端窗口」，不再叫失败", async () => {
+    mockInvoke(() =>
+      Promise.reject(
+        `本机不是 Windows：cc-monitor **${POSIX_NO_WINDOW_MARKER}**（会话容器是 tmux）——命令已复制。这是既定设计，不是没做完。`,
+      ),
+    );
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubClipboard(writeText);
+    await runRemoteResume("aya", "sid-9", "/p", "");
+    expect(toastMock.mock.calls[0][0]).toBe("本机不开终端窗口，命令已复制");
+    expect(toastMock.mock.calls[0][0]).not.toContain("失败");
+    // 后端那句话（含「为什么」）要原样带给用户，别只留一个标题。
+    expect(toastMock.mock.calls[0][1]).toContain(POSIX_NO_WINDOW_MARKER);
+  });
+
+  /** 反面同样要钉：**真失败不许被软化**。 */
+  it("真失败（配置缺失）仍然叫「拉起失败」", async () => {
+    mockInvoke(() => Promise.reject("未找到远端配置: \"aya\""));
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    await runRemoteResume("aya", "sid-10", "/p", "");
+    expect(toastMock.mock.calls[0][0]).toBe("拉起失败，已复制 resume 命令");
   });
 
   it("非法 sid → 构造报错 toast,不 invoke", async () => {

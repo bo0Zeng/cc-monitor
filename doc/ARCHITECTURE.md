@@ -110,7 +110,17 @@ src-tauri/src/
 │              history.rs    两级懒加载 + metadata + 物理删除 + resume + F62 从某轮建分支（G3b-1 起 resume 可带 `CLAUDE_CONFIG_DIR`）
 │              remote_branch.rs  G6 远端分叉：经 ssh 调 daemon `--fork-session`（**只收 sid 不收路径**）。
 │                            与只读的 `remote_history.rs` 分家 —— 那个模块头注自称只读，塞进去就是让注释说谎
-│              launch.rs     终端拉起（wt.exe→PowerShell 单一入口）+ 远端 ssh 拉起（B14-F41）
+│              launch.rs     终端拉起（wt.exe→PowerShell 单一入口）+ 远端 ssh 拉起（B14-F41）。
+│                            **U8a 三平面分解**：① 计划面「跑什么命令」→ daemon `control/resolve_query`；
+│                            ② 远端执行面「在远端真的建 tmux」→ daemon `control/launch`（U8a-2b，argv 不过 shell）；
+│                            ③ **本机开窗面** → **只能是 monitor**（daemon 在远端，开不了你面前的窗，这条永远搬不走）。
+│                            ⚠ **平面 ③ 在 POSIX 上刻意不开 GUI 终端窗口**：那儿没有「唯一的终端」，
+│                            挑一个是平白引入一个会在别人机器上错的决定；会话容器本来就是 tmux，
+│                            命令直接跑、会话留在 tmux 里等 attach（`launch_local_posix`）。
+│                            由 `no_terminal_emulator_is_ever_spawned_from_this_file` 零命中钉住。
+│                            ⚠ **今天的不对称**：本机 resume 有 OS 分派（`history.rs::launch_local`），
+│                            **远端没有**（一律 PowerShell ⇒ POSIX 上只复制命令）。补它要等前端发结构化请求
+│                            之后走 daemon 的 `launch`，登记 U8a-2c
 │              tasks.rs      v2.3 CLI task tracker 读 + watcher + emit task-update
 │              search.rs     issue #6 历史全文搜索（后台建内存索引 + substring 两级匹配）
 │              usage.rs      F88a 用量聚合（按会话/模型/天分桶，每 requestId 逐字段 MAX 后累加 token；只算不写）
