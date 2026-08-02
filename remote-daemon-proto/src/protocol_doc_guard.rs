@@ -483,6 +483,282 @@ mod tests {
             .join("\n")
     }
 
+    /// ★ **R3**：每条命令的 `args`/`data` 字段名，必须出现在**它自己那一小节**的代码跨度里。
+    ///
+    /// # 它闭掉的洞（设计审计 · 视角 A · P2）
+    ///
+    /// `every_wire_field_appears_in_the_protocol_doc` 只读 `wire.rs` —— 而命令的载荷
+    /// 两端都不在 `wire.rs`（请求侧手搓 `Value` 取字段，响应侧 `json!`）。
+    /// ⇒ `launch` 的 8 个字段**一个都不在护栏视野内**。
+    /// 「帧的字段有对拍，命令的载荷没有」，而后者才是新命令真正的契约面。
+    ///
+    /// # 强度边界（如实写）
+    ///
+    /// 它只查「字段名在那一小节的反引号跨度里出现过」，查不了描述得对不对 ——
+    /// 与本文件既有那条同一档局限。区别在于**作用面从「§10 全节」收到了「本命令那一小节」**。
+    #[test]
+    fn every_command_payload_field_appears_in_its_own_doc_section() {
+        let mut checked = 0usize;
+        for spec in crate::inbound::REGISTRY {
+            if spec.fields.is_empty() {
+                continue;
+            }
+            let Some(anchor) = spec.doc_anchor else {
+                // `a_command_with_a_payload_must_own_a_doc_section` 已经管这一档；
+                // 这里只跳过（`cancel` 的 `target` 记在入方向节正文里）。
+                continue;
+            };
+            let at = DOC
+                .find(anchor)
+                .unwrap_or_else(|| panic!("文档里找不到 `{}` 的小节标题 {anchor:?}", spec.name));
+            // 小节 = 从本标题到下一个同级或更高级标题。
+            let rest = &DOC[at + anchor.len()..];
+            let end = rest
+                .find("\n#### ")
+                .into_iter()
+                .chain(rest.find("\n### "))
+                .chain(rest.find("\n## "))
+                .min()
+                .map(|k| at + anchor.len() + k)
+                .unwrap_or(DOC.len());
+            let section = &DOC[at..end];
+            assert!(
+                section.len() > 300,
+                "`{}` 的小节只切出 {} 字节 —— 抽取坏了，本断言在空转",
+                spec.name,
+                section.len()
+            );
+            let words = code_span_identifiers(section);
+            let missing: Vec<&&str> = spec
+                .fields
+                .iter()
+                .filter(|f| !words.contains(**f))
+                .collect();
+            assert!(
+                missing.is_empty(),
+                "\n`{}` 的这些载荷字段没有出现在它自己那一小节里：{missing:?}\n\
+                 小节标题：{anchor}\n\
+                 命令的 args/data 才是新命令真正的契约面 —— 下游只能读它，别让下游去读 Rust 源码。",
+                spec.name
+            );
+            checked += spec.fields.len();
+        }
+        assert!(
+            checked >= 8,
+            "只检查了 {checked} 个字段 —— 抽取坏了，本断言在空转"
+        );
+    }
+
+    /// ★ **R2（登记制）**：`control/` 与 `observe/` 里每一个 serde 类型都必须**逐条登记**。
+    ///
+    /// # 为什么是登记制，不是「白名单恰好一条」
+    ///
+    /// 设计稿原本提的是「`control/`/`observe/` 不许 derive serde，白名单**恰好一条**
+    /// `resolve_query.rs`」。**实测那个前提是错的** —— 今天有 **3 个文件、6 个类型**，
+    /// 而且后两个**搬进 `wire/`（流协议的家）是错误归类**：
+    ///
+    /// - `resolve_query.rs` 的 4 个：与仓外 aterm **冻结在 2026-07-18** 的一次性契约；
+    /// - `fork_write.rs::ForkResult`：**一次性子命令 `--fork-session` 的出参**，不是流协议；
+    /// - `accounts_query.rs::RawAccount`：**根本不是 wire** —— 它在解析 cc-acct-iso
+    ///   写的清单**文件**（文件 schema）。
+    ///
+    /// ⇒ 目标不变（新增一个上线类型不许溜进来），形状改成 `spawn_registry` 那一套：
+    /// **逐条列举 + 写明它是什么 + 机检**。
+    ///
+    /// 「上线类型收进 `src/wire/` 目录树」等**真出现第二个流协议类型文件**时再做 ——
+    /// 今天只有一个（`wire.rs`），为一个文件建目录树是空转。
+    #[test]
+    fn every_serde_type_outside_wire_is_registered() {
+        /// (文件, 类型名, 它是什么 —— 为什么不在 `wire.rs`)
+        const ALLOWED: &[(&str, &str, &str)] = &[
+            (
+                "control/resolve_query.rs",
+                "ResumeSpec",
+                "一次性 `--resolve` 的入参。契约与仓外 aterm 冻结在 2026-07-18，逐字不动",
+            ),
+            (
+                "control/resolve_query.rs",
+                "Capabilities",
+                "同上，`CommandPlan` 的一部分",
+            ),
+            ("control/resolve_query.rs", "CommandPlan", "同上，出参"),
+            ("control/resolve_query.rs", "ResolveError", "同上，错误形状"),
+            (
+                "control/fork_write.rs",
+                "ForkResult",
+                "一次性子命令 `--fork-session` 的**出参**，不是流协议帧 —— 搬进 wire 是错误归类",
+            ),
+            (
+                "observe/accounts_query.rs",
+                "RawAccount",
+                "**根本不是 wire**：它在解析 cc-acct-iso 写的清单**文件**（文件 schema）",
+            ),
+        ];
+
+        let files: &[(&str, &str)] = &[
+            ("control/launch.rs", include_str!("control/launch.rs")),
+            (
+                "control/resolve_query.rs",
+                include_str!("control/resolve_query.rs"),
+            ),
+            (
+                "control/fork_write.rs",
+                include_str!("control/fork_write.rs"),
+            ),
+            ("control/tmux_hook.rs", include_str!("control/tmux_hook.rs")),
+            ("observe/watcher.rs", include_str!("observe/watcher.rs")),
+            (
+                "observe/accounts_query.rs",
+                include_str!("observe/accounts_query.rs"),
+            ),
+            (
+                "observe/history_query.rs",
+                include_str!("observe/history_query.rs"),
+            ),
+            (
+                "observe/search_query.rs",
+                include_str!("observe/search_query.rs"),
+            ),
+            (
+                "observe/usage_query.rs",
+                include_str!("observe/usage_query.rs"),
+            ),
+            ("observe/codex.rs", include_str!("observe/codex.rs")),
+            (
+                "observe/turn_detect.rs",
+                include_str!("observe/turn_detect.rs"),
+            ),
+        ];
+
+        let mut found: Vec<(String, String)> = Vec::new();
+        for (name, raw) in files {
+            let src = crate::guard_support::production_code(raw);
+            let mut from = 0usize;
+            while let Some(rel) = src[from..].find("#[derive(") {
+                let d = from + rel;
+                let Some(attr_end) = balanced(src.as_bytes(), d + 1, b'[', b']') else {
+                    break;
+                };
+                let is_ser = src[d..=attr_end].contains("Serialize")
+                    || src[d..=attr_end].contains("Deserialize");
+                if is_ser {
+                    // 类型名 = 属性之后第一个 `struct X` / `enum X`。
+                    let tail = &src[attr_end..];
+                    let ty = ["struct ", "enum "]
+                        .iter()
+                        .filter_map(|kw| tail.find(kw).map(|k| (k, *kw)))
+                        .min_by_key(|(k, _)| *k)
+                        .map(|(k, kw)| {
+                            tail[k + kw.len()..]
+                                .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                                .next()
+                                .unwrap_or("")
+                                .to_string()
+                        })
+                        .unwrap_or_default();
+                    if !ty.is_empty() {
+                        found.push((name.to_string(), ty));
+                    }
+                }
+                from = attr_end + 1;
+            }
+        }
+        assert!(
+            found.len() >= 6,
+            "只扫到 {} 个 serde 类型 —— 抽取坏了，本断言在空转：{found:?}",
+            found.len()
+        );
+        let unregistered: Vec<&(String, String)> = found
+            .iter()
+            .filter(|(f, t)| !ALLOWED.iter().any(|(af, at, _)| af == f && at == t))
+            .collect();
+        assert!(
+            unregistered.is_empty(),
+            "这些 serde 类型没在受管清单里：{unregistered:?}\n\
+             `control/`/`observe/` 里出现一个上线类型，多半意味着它该进 `wire.rs`（流协议）——\n\
+             如果它确实不是流协议（一次性子命令出参 / 文件 schema），\n\
+             把它加进 `ALLOWED` 并**写明它是什么**。"
+        );
+        // 幽灵条目：登记了但代码里已经没有了 ⇒ 清单越攒越松。
+        let ghosts: Vec<&(&str, &str, &str)> = ALLOWED
+            .iter()
+            .filter(|(f, t, _)| !found.iter().any(|(ff, tt)| ff == f && tt == t))
+            .collect();
+        assert!(ghosts.is_empty(), "清单里有幽灵条目：{ghosts:?}");
+        for (f, t, why) in ALLOWED {
+            assert!(!why.is_empty(), "{f}::{t} 没写理由");
+        }
+    }
+
+    /// ★ **R4**：协议级错误码是**闭集**，且只有 `inbound.rs` 可以发。
+    ///
+    /// # 为什么要分层（设计审计 · 视角 A · P6）
+    ///
+    /// `bad_request` 今天一词两义：协议级（信封 JSON 坏了 ⇒「**客户端代码写错了**，别重试」）
+    /// vs 命令级（参数不合适 ⇒ 可能是用户输入）。客户端拿到的只有 `code` 字符串，分不出来。
+    /// U8a-2b 已经把 `launch` 的形状错误改名成 `invalid_args`；本条把这条分层**钉住**。
+    ///
+    /// ⚠ **`resolve` 是登记在案的例外**：它的命令级 parse 错误仍叫 `bad_request`，
+    /// 因为一次性 `--resolve` 与仓外 aterm 的契约冻结在 2026-07-18，两条路复用同一个纯函数。
+    /// 改它会破坏那份契约 ⇒ 如实登记，不顺手改。
+    #[test]
+    fn protocol_level_codes_are_never_emitted_from_the_control_layer() {
+        // 协议级闭集。**只有 `inbound.rs` 可以发这些。**
+        const PROTOCOL_CODES: &[&str] = &[
+            "line_too_long",
+            "unknown_command",
+            "duplicate_id",
+            "handler_panicked",
+            "not_cancellable",
+        ];
+        // 逐个文件扫 `control/`（`observe/` 不产 code，不在本条范围）。
+        let files: &[(&str, &str)] = &[
+            ("control/launch.rs", include_str!("control/launch.rs")),
+            (
+                "control/resolve_query.rs",
+                include_str!("control/resolve_query.rs"),
+            ),
+            (
+                "control/fork_write.rs",
+                include_str!("control/fork_write.rs"),
+            ),
+            ("control/tmux_hook.rs", include_str!("control/tmux_hook.rs")),
+        ];
+        // 匹配器自检：独立手写的样本必须命中。
+        for sample in ["Err((\"unknown_command\", x))", "code: \"not_cancellable\""] {
+            assert!(
+                PROTOCOL_CODES.iter().any(|c| sample.contains(c)),
+                "匹配器漏了这种写法：{sample}"
+            );
+        }
+        let mut violations: Vec<String> = Vec::new();
+        for (name, raw) in files {
+            let prod = crate::guard_support::production_code(raw);
+            for c in PROTOCOL_CODES {
+                if prod.contains(c) {
+                    violations.push(format!("{name} 里出现了协议级 code `{c}`"));
+                }
+            }
+        }
+        assert!(
+            violations.is_empty(),
+            "{violations:?}\n\
+             协议级 code 的语义是「客户端代码写错了，别重试」，只有 `inbound.rs` 有资格判定它。\n\
+             命令自己的失败请用命令级 code（并登记进 `CommandSpec::codes`）。"
+        );
+
+        // 反面：注册表里登记的命令级 code 不许与协议级重名（`resolve` 的 `bad_request` 例外）。
+        for spec in crate::inbound::REGISTRY {
+            for c in spec.codes {
+                assert!(
+                    !PROTOCOL_CODES.contains(c),
+                    "`{}` 登记了协议级 code `{c}` —— 那一层不归命令管",
+                    spec.name
+                );
+            }
+        }
+    }
+
     /// ★ 文档必须提到 wire 的每一个字段。
     #[test]
     fn every_wire_field_appears_in_the_protocol_doc() {

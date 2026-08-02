@@ -234,24 +234,6 @@ enum Disposition {
     SpawnBlocking(Request, BlockingHandler),
 }
 
-impl Disposition {
-    /// 同步阻塞处理器。**它开跑之后打不断** —— 这是事实，不是遗憾。
-    fn spawn_blocking<F>(req: Request, f: F) -> Self
-    where
-        F: FnOnce(Request) -> CmdResult + Send + 'static,
-    {
-        Disposition::SpawnBlocking(req, Box::new(f))
-    }
-
-    fn spawn<F, Fut>(req: Request, f: F) -> Self
-    where
-        F: FnOnce(Request) -> Fut + Send + 'static,
-        Fut: std::future::Future<Output = CmdResult> + Send + 'static,
-    {
-        Disposition::Spawn(req, Box::new(move |r| Box::pin(f(r))))
-    }
-}
-
 /// 命令表。**非 async —— 见 [`Disposition`]。**
 fn dispatch(req: Request, replies: &mpsc::Sender<Frame>, running: &Running) -> Disposition {
     match req.cmd.as_str() {
@@ -303,34 +285,130 @@ fn dispatch(req: Request, replies: &mpsc::Sender<Frame>, running: &Running) -> D
             let _ = replies.try_send(ok(&req.id));
             Disposition::Done
         }
-        "ping" => Disposition::spawn(req, |_req| async move { Ok(None) }),
-        // U8a-2b：**平面 ②（远端执行面）** —— 在远端真的建 tmux 会话 / 往已有会话键入载荷。
+        // U8a-2d：其余命令**一律查注册表**，不再是一串手写臂。
         //
-        // 它与 `resolve` 是两类东西：`resolve` 纯计算（产出「该怎么起」的计划），
-        // 这条**真的改变世界**（起进程、动 tmux server 状态）。所以：
-        // - 必须走 `Disposition::spawn`（起进程会阻塞，绝不能占住读循环）；
-        // - 起进程点已登记进 `readonly_guard::spawn_registry`；
-        // - **不 attach** —— attach 是平面 ③，daemon 在远端开不了你面前的窗。
-        "launch" => Disposition::spawn_blocking(req, |r| {
-            crate::control::launch::launch_for_inbound(&r.args).map(Some)
-        }),
-        // U6b-3：第一条**真业务命令**。
-        //
-        // 一次性 `--resolve` 那条路**逐字不动** —— 它的契约与仓外 aterm 冻结在 2026-07-18，
-        // 且 aterm 现走 β TailTransport、**随时可能开始消费**。两条路复用同一个纯函数。
-        "resolve" => Disposition::spawn(req, |r| async move {
-            let input = serde_json::to_string(&r.args)
-                .map_err(|e| ("bad_request".to_string(), e.to_string()))?;
-            crate::control::resolve_query::resolve_json_for_inbound(&input)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-        other => Disposition::Reply(err(
-            &req.id,
-            "unknown_command",
-            &format!("未知命令 `{other}`"),
-        )),
+        // 这一步换掉的是 `hello_commands_match_the_dispatch_table` —— 那条机检扫的是
+        // 分派臂的**文本**（按 8 空格缩进切），既对 rustfmt 脆，又只能事后比对。
+        // 现在名字与处理器绑在**同一个值**里 ⇒ 「声明了却不接」「接了却不声明」
+        // 在注册表这一侧不可表示；剩下的只是 `COMMANDS` 那面镜子，由**数据对数据**的
+        // `the_commands_mirror_matches_the_registry` 钉住。
+        other => match lookup(other) {
+            Some(spec) => match spec.run {
+                Run::Async(f) => Disposition::Spawn(req, Box::new(f)),
+                Run::Blocking(f) => Disposition::SpawnBlocking(req, Box::new(f)),
+                // `cancel` 在上面那条硬臂里处理完了，走不到这儿。
+                Run::Builtin => Disposition::Reply(err(
+                    &req.id,
+                    "unknown_command",
+                    &format!("内建命令 `{other}` 没有在 dispatch 里被处理 —— 这是本 daemon 的 bug"),
+                )),
+            },
+            None => Disposition::Reply(err(
+                &req.id,
+                "unknown_command",
+                &format!("未知命令 `{other}`"),
+            )),
+        },
     }
+}
+
+/// 一条命令**怎么跑**。三档，缺一不可：
+///
+/// - [`Run::Async`]：真异步，有 await 点 ⇒ `cancel` 能在那儿把它打断。
+/// - [`Run::Blocking`]：**同步阻塞**（起进程 / 扫全库）⇒ 进 `spawn_blocking` 的专用线程池。
+///   ⚠ 它**开跑之后打不断** —— 这一档不是「修好了取消」，是**停止假装能取消**：
+///   `cancel` 命中它时回 `not_cancellable`，而不是撒一条 `cancelled` 的谎。
+/// - [`Run::Builtin`]：`dispatch` 里的硬臂（今天只有 `cancel`）。它要 `replies`/`running`，
+///   与别的命令签名不同 —— 硬塞进统一签名等于给每条命令都递上「自己发帧 / 碰登记表」的能力，
+///   而那条性质今天是成立的，不该为了整齐拆掉。**但它仍要在注册表里占一行**，
+///   否则「镜子 == 注册表」覆盖不到它。
+pub(crate) enum Run {
+    Async(fn(Request) -> BoxFut),
+    Blocking(fn(Request) -> CmdResult),
+    Builtin,
+}
+
+/// 一条入方向命令的登记。**名字与处理器绑在同一个值里。**
+///
+/// `doc_anchor` / `codes` / `fields` **只被护栏读**（`protocol_doc_guard` 与本文件的
+/// `structure_guards`）—— 那正是它们存在的理由：把「这条命令的契约面」写成**数据**，
+/// 好让机检对着它比。非测试构建里它们确实没有读者，故精确 allow 而不是给整个类型开口子。
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) struct CommandSpec {
+    /// 线上命令名。
+    pub(crate) name: &'static str,
+    /// 它在 `doc/IPC-PROTOCOL.md` §10 里那一小节的标题**逐字**；`None` = 没有自己的小节
+    /// （只要求名字出现在「入方向」节里）。**有 `fields` 就必须有小节** —— 由机检钉住。
+    ///
+    /// ⚠ **这是约定不是事实**：护栏只能查「标题在、字段名在它下面出现」，查不了写得对不对。
+    /// 这不是新增局限，是把 `protocol_doc_guard` 早就登记过的那条局限**局部化**
+    /// （从「§10 全节任意反引号」收到「本命令那一小节」），强度只升不降。
+    pub(crate) doc_anchor: Option<&'static str>,
+    /// 本命令**自己**可能回的 code。**协议级 code 不许出现在这里**（由 R4 的零命中钉住）。
+    pub(crate) codes: &'static [&'static str],
+    /// 本命令 `args` / `data` 的字段名。空 = 无载荷（如 `ping`）。
+    ///
+    /// ⚠ 它是**手写镜子**，本身就是一个新的漂移源 —— 所以必须再钉一层：
+    /// 与真正的解析器/输出构造器实测对拍（`launch_fields_match_its_parser_and_output`）。
+    /// 用一个手写清单去证明另一个手写清单是没有意义的。
+    pub(crate) fields: &'static [&'static str],
+    pub(crate) run: Run,
+}
+
+/// **单一事实源。** `COMMANDS` 是它的镜子，`dispatch` 从它查。
+pub(crate) const REGISTRY: &[CommandSpec] = &[
+    CommandSpec {
+        name: "cancel",
+        doc_anchor: None,
+        codes: &[],
+        fields: &["target"],
+        run: Run::Builtin,
+    },
+    CommandSpec {
+        name: "launch",
+        doc_anchor: Some("#### `launch`"),
+        codes: &[
+            "invalid_args",
+            "no_tmux",
+            "no_such_session",
+            "create_failed",
+            "typed_unconfirmed",
+        ],
+        fields: &[
+            "ccm_sid", "created", "cwd", "mode", "name", "payload", "session", "typed",
+        ],
+        run: Run::Blocking(|r| crate::control::launch::launch_for_inbound(&r.args).map(Some)),
+    },
+    CommandSpec {
+        name: "ping",
+        doc_anchor: None,
+        codes: &[],
+        fields: &[],
+        run: Run::Async(|_r| Box::pin(async move { Ok(None) })),
+    },
+    // U6b-3：第一条**真业务命令**。
+    // 一次性 `--resolve` 那条路**逐字不动** —— 契约与仓外 aterm 冻结在 2026-07-18，
+    // 两条路复用同一个纯函数。⚠ 它的命令级错误码今天仍叫 `bad_request`（与协议级同名），
+    // **刻意不改**：改它会破坏那份冻结的契约。如实登记。
+    CommandSpec {
+        name: "resolve",
+        doc_anchor: Some("#### `resolve`"),
+        codes: &["bad_request", "serialize_failed"],
+        fields: &[],
+        run: Run::Async(|r| {
+            Box::pin(async move {
+                let input = serde_json::to_string(&r.args)
+                    .map_err(|e| ("bad_request".to_string(), e.to_string()))?;
+                crate::control::resolve_query::resolve_json_for_inbound(&input)
+                    .map(Some)
+                    .map_err(|(c, m)| (c.to_string(), m))
+            })
+        }),
+    },
+];
+
+fn lookup(name: &str) -> Option<&'static CommandSpec> {
+    REGISTRY.iter().find(|s| s.name == name)
 }
 
 /// 把一条命令交给独立 task 跑，并登记它的取消句柄。
@@ -975,47 +1053,172 @@ mod structure_guards {
         );
     }
 
-    /// ★ `hello.commands` 与 `dispatch` 的分派臂必须**完全一致**。
+    /// ★ `COMMANDS` 这面**镜子**必须与注册表一致。
     ///
-    /// 声明了却不接 = 客户端发过去石沉大海；接了却不声明 = 客户端不知道能用。
-    /// 两边各写一份名单必然漂移 —— 这条让它们只能是同一份。
+    /// # 它替掉了什么
+    ///
+    /// 上一版是 `hello_commands_match_the_dispatch_table` —— 扫 `dispatch` 分派臂的**文本**
+    /// （按 8 空格缩进切）。那种判据既对 rustfmt 脆，又只能事后比对。
+    /// U8a-2d 把名字与处理器绑进**同一个值**（[`super::REGISTRY`]）之后，
+    /// 「声明了却不接 / 接了却不声明」在注册表这一侧**不可表示** ——
+    /// 剩下的只有 `COMMANDS` 这面镜子，而这条是**数据对数据**，不是扫文本。
+    ///
+    /// # 为什么还留着这面镜子
+    ///
+    /// monitor 侧 `inbound_client.rs` 与 `e2e/inbound-daemon-frames.sh` 都在**文本抽取**
+    /// `const COMMANDS`（拿它做跨轨对拍）。把它换成运行时派生会同时打断那两处。
+    /// ⇒ 保留字面量，由本条钉住它不漂。
     #[test]
-    fn hello_commands_match_the_dispatch_table() {
-        let src = crate::guard_support::production_code(include_str!("inbound.rs"));
-        // 找的是非 async 的那个签名 —— U6b-3 把 dispatch 改成了非 async，
-        // 那正是「处理器不许跑在读循环上」变成编译期不可表示的方式。
-        let at = src.find("fn dispatch(").expect("找不到 dispatch");
-        let body_start = src[at..]
-            .find('\n')
-            .map(|k| at + k + 1)
-            .unwrap_or(src.len());
-        let mut end = src.len();
-        let mut off = body_start;
-        for line in src[body_start..].lines() {
-            if !line.is_empty() && !line.starts_with(' ') {
-                end = off;
-                break;
-            }
-            off += line.len() + 1;
-        }
-        let marker = "\n        \"";
-        let mut arms: Vec<String> = src[body_start..end]
-            .split(marker)
-            .skip(1)
-            .filter_map(|a| a.split_once('"').map(|(n, _)| n.to_string()))
-            .collect();
-        arms.sort();
+    fn the_commands_mirror_matches_the_registry() {
+        let mut from_registry: Vec<&str> = super::REGISTRY.iter().map(|s| s.name).collect();
+        from_registry.sort_unstable();
         assert!(
-            arms.len() >= 2,
-            "只切出 {} 条分派臂 —— 抽取坏了，本断言在空转",
-            arms.len()
+            from_registry.len() >= 4,
+            "注册表只有 {} 条 —— 本断言在空转",
+            from_registry.len()
         );
-        let mut declared: Vec<String> = super::COMMANDS.iter().map(|s| s.to_string()).collect();
+        let mut mirror: Vec<&str> = super::COMMANDS.to_vec();
+        mirror.sort_unstable();
+        assert_eq!(
+            mirror, from_registry,
+            "\n`COMMANDS`（hello 上线的那份）与 `REGISTRY` 对不上。\n\
+             它今天只是一面镜子 —— 改注册表就把它一起改。\n\
+             （它之所以还是字面量：monitor 与 e2e 都在文本抽取它做跨轨对拍。）"
+        );
+        // 名字不许重复（`lookup` 取第一个，重复会让后一条静默失效）。
+        let mut uniq = from_registry.clone();
+        uniq.dedup();
+        assert_eq!(uniq.len(), from_registry.len(), "注册表里有重名命令");
+        // 排序：`COMMANDS` 上线时是有序的，别让它随手插到中间变成无序。
+        let mut sorted = super::COMMANDS.to_vec();
+        sorted.sort_unstable();
+        assert_eq!(
+            super::COMMANDS.to_vec(),
+            sorted,
+            "`COMMANDS` 不是字典序 —— 上线的能力集应当稳定可读"
+        );
+    }
+
+    /// ★ 每条命令的 `run` 档位必须与它真实的性质相符，**且新增命令必须来这里表态**。
+    ///
+    /// 这条与 `the_dispatch_table_puts_blocking_commands_on_the_blocking_arm` 是两件事：
+    /// 那条走**真的 `dispatch`**（接缝），这条查**注册表的声明**（源）。两条都要有。
+    #[test]
+    fn every_registered_command_declares_its_run_kind() {
+        use super::Run;
+        for spec in super::REGISTRY {
+            let expected_blocking = matches!(spec.name, "launch");
+            let is_blocking = matches!(spec.run, Run::Blocking(_));
+            assert_eq!(
+                is_blocking, expected_blocking,
+                "`{}` 的 Run 档位与预期不符 —— 放错档的代价是「占住 worker」或「假装能取消」",
+                spec.name
+            );
+            let is_builtin = matches!(spec.run, Run::Builtin);
+            assert_eq!(
+                is_builtin,
+                spec.name == "cancel",
+                "`{}` 的 Builtin 档位不对 —— 只有 `cancel` 该是硬臂",
+                spec.name
+            );
+        }
+        // 计数自检：新增命令而这里没表态 ⇒ 上面那条 `expected_blocking` 会把它当非阻塞，
+        // 于是真加了一条阻塞命令却没登记时会红。这里再加一条显式的覆盖面断言。
+        let known = ["cancel", "launch", "ping", "resolve"];
+        let missing: Vec<&str> = super::REGISTRY
+            .iter()
+            .map(|s| s.name)
+            .filter(|n| !known.contains(n))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "这些命令没在本条里表态「阻塞 / 异步 / 内建」：{missing:?}"
+        );
+    }
+
+    /// ★ `launch` 的 `fields` 必须与**真正的解析器 / 输出构造器**实测一致。
+    ///
+    /// # 为什么非有这一层不可
+    ///
+    /// `CommandSpec::fields` 是**手写镜子**。拿它去钉文档（R3）时，如果它自己会漂，
+    /// 那就是**用一个手写清单证明另一个手写清单** —— 一点强度都没有。
+    /// 所以它必须先与代码里真正读/写这些键的地方对上。
+    ///
+    /// 抽取面：`parse_request` 里每个 `get_str("…")`（= args 侧）+
+    /// `launch_for_inbound` 里 `json!` 的键（= data 侧）。
+    #[test]
+    fn launch_fields_match_its_parser_and_output() {
+        let src = crate::guard_support::production_code(include_str!("control/launch.rs"));
+        let mut found: Vec<String> = Vec::new();
+
+        // args 侧：`get_str("<key>")`
+        let key = "get_str(\"";
+        let mut from = 0usize;
+        while let Some(rel) = src[from..].find(key) {
+            let at = from + rel + key.len();
+            let end = src[at..].find('"').map(|k| at + k).unwrap_or(at);
+            found.push(src[at..end].to_string());
+            from = end;
+        }
+        let args_n = found.len();
+        assert!(
+            args_n >= 5,
+            "只从解析器抠到 {args_n} 个 args 字段 —— 抽取坏了，本断言在空转"
+        );
+
+        // data 侧：`json!({ "<key>": … })` —— 取 `json!` 块里的所有 `"key":`
+        let j = src
+            .find("serde_json::json!({")
+            .expect("找不到 launch 的输出构造 —— 抽取坏了");
+        let jend = src[j..].find("})").map(|k| j + k).expect("json! 没收尾");
+        let block = &src[j..jend];
+        let mut data_n = 0usize;
+        for part in block.split('"').skip(1).step_by(2) {
+            if !part.is_empty() && part.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
+                found.push(part.to_string());
+                data_n += 1;
+            }
+        }
+        assert!(
+            data_n >= 3,
+            "只从输出构造抠到 {data_n} 个 data 字段 —— 抽取坏了，本断言在空转"
+        );
+
+        found.sort();
+        found.dedup();
+        let spec = super::REGISTRY
+            .iter()
+            .find(|s| s.name == "launch")
+            .expect("注册表里没有 launch");
+        let mut declared: Vec<String> = spec.fields.iter().map(|s| s.to_string()).collect();
         declared.sort();
         assert_eq!(
-            arms, declared,
-            "\n`hello.commands`（= inbound::COMMANDS）与 dispatch 的分派臂对不上。\n\
-             声明了却不接 ⇒ 客户端发过去石沉大海；接了却不声明 ⇒ 客户端不知道能用。"
+            declared, found,
+            "\n`launch` 登记的 fields 与它真正读/写的键对不上。\n\
+             这面镜子是用来钉文档的（R3）—— 它自己先漂了，钉出来的就是假的。"
         );
+    }
+
+    /// ★ **有 `fields` 就必须有自己的文档小节。**
+    ///
+    /// 没有小节就没地方钉字段名 —— 那正是设计审计 P2 说的
+    /// 「帧的字段有对拍，命令的载荷没有」。
+    #[test]
+    fn a_command_with_a_payload_must_own_a_doc_section() {
+        for spec in super::REGISTRY {
+            if spec.fields.is_empty() {
+                continue;
+            }
+            // `cancel` 的 `target` 记在入方向节的正文里（它是取消机制本身，不另开小节）。
+            if spec.name == "cancel" {
+                continue;
+            }
+            assert!(
+                spec.doc_anchor.is_some(),
+                "`{}` 有 {} 个载荷字段却没有自己的文档小节 —— 那些字段没地方钉",
+                spec.name,
+                spec.fields.len()
+            );
+        }
     }
 }
