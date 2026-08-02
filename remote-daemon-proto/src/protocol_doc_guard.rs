@@ -522,6 +522,50 @@ mod tests {
         );
     }
 
+    /// ★ **入方向命令名**也必须在 §10 里（U7-5 补的第三条）。
+    ///
+    /// # 这条是 U7-5 扫「自洽夹具」时顺带发现的空白
+    ///
+    /// wire 字段有对拍、`--子命令` 有对拍，**入方向命令名一直没有**。
+    /// `hello_commands_match_the_dispatch_table` 钉的是 `COMMANDS ↔ dispatch 分派臂`，
+    /// 两边都在代码里 —— **文档不在其中**。
+    ///
+    /// 实测：把 `ping` 在 `COMMANDS` 与分派臂里**同时**改名（= 正常地重命名一条命令），
+    /// 只有 `ping_replies_ok` 这条**行为测试**红了 —— 而重命名时那条自然会被一起改。
+    /// 改完之后文档里的 `ping` 就成了一个不存在的命令，**没有任何东西会响**。
+    ///
+    /// 客户端是照文档发命令的：文档说 `ping`、daemon 只认 `heartbeat`，
+    /// 表现是 `unknown_command`，而两边各自看都"对"。
+    #[test]
+    fn every_inbound_command_appears_in_the_protocol_doc() {
+        let sec = DOC
+            .find("## 10. 远端 daemon wire 协议")
+            .expect("文档里找不到 §10 —— 抽取坏了");
+        let sec_end = DOC[sec..]
+            .find("\n## ")
+            .map(|k| sec + k)
+            .unwrap_or(DOC.len());
+        let documented = code_span_identifiers(&DOC[sec..sec_end]);
+        assert!(
+            documented.len() >= 60,
+            "只从 §10 切出 {} 个标识符 —— 抽取坏了，本断言在空转",
+            documented.len()
+        );
+        let cmds = crate::inbound::COMMANDS;
+        assert!(
+            cmds.len() >= 2,
+            "只有 {} 条命令 —— 抽取坏了，本断言在空转",
+            cmds.len()
+        );
+        let missing: Vec<&&str> = cmds.iter().filter(|c| !documented.contains(**c)).collect();
+        assert!(
+            missing.is_empty(),
+            "这些入方向命令不在 `doc/IPC-PROTOCOL.md` §10 里：{missing:?}\n\
+             客户端是照文档发命令的 —— 文档说一个名字、daemon 只认另一个，\n\
+             表现是 `unknown_command`，而两边各自看都「对」。"
+        );
+    }
+
     /// ★ 文档必须提到每一个被分发的子命令。
     #[test]
     fn every_dispatched_subcommand_appears_in_the_protocol_doc() {

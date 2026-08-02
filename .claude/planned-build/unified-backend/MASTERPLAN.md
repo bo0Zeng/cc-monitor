@@ -618,3 +618,25 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   实际只有一个该红（NEL 那个本来就不是洞）。硬要它红只能：删掉 `is_control()` 让洞变真，
   或写一个绕过 `is_safe_config_dir` 直调 `is_deceptive_char` 的测试假装覆盖。
   **两条都是为了让红灯好看而改代码。** ⇒ 验收标准与实测冲突时，先查标准对不对。
+- 2026-08-02 **U7-5：自洽夹具扫查结论 —— `usage-core` / `branch-core` 没有这个问题**（变异验过，
+  它们的契约是 JSON 字段名，内核与夹具各写各的字面量）。如实说明，没为凑一条修复而改东西。
+  `inbound` 的 `MAX_LINE_BYTES` 略弱（测试用它自己算洪水大小），但那不是跨边界契约名，**判定不改**。
+- 2026-08-02 **补上一个真空白：入方向命令名没钉到文档。**
+  `hello_commands_match_the_dispatch_table` 钉的是 `COMMANDS ↔ 分派臂` —— 两边都在代码里。
+  实测把 `ping` 在三处（COMMANDS / 分派臂 / 行为测试）**彻底重命名**后 **什么都不红**，
+  文档里的 `ping` 成了不存在的命令。客户端照文档发 ⇒ `unknown_command`，而两边各自看都「对」。
+  ⇒ 加 `every_inbound_command_appears_in_the_protocol_doc`。
+- 2026-08-02 **★ §0.1 分类 ③ 的描述已过期一半，且「判活」的后果被严重低估。**
+  ① 「daemon 非 Linux 恒 `true`」**已过期** —— U4a 换成了 `unimplemented!()`。
+  ② 「本机非 Windows 恒 `false`」仍成立，但实测调用链是
+  `spawn_watcher → active_filter → is_session_active → is_process_alive → false`
+  ⇒ **Linux/macOS 上本机 watcher 拒绝每一个会话，一行本机 jsonl 都不 emit**；
+  另有每 2s 的心跳收割器（**无平台门**）把会话表清空。
+  **即 cc-monitor 的本机读面在那两个平台上整体不工作**，只能当远端监视器。
+  这与仓库 Windows-first 的定位自洽，但**没有出现在任何面向用户的文档里**。
+  ⇒ **U7d 的性质改写**：不是「合并两个残桩」的清理，是「本机读面在两个平台上不存在」本身。
+- 2026-08-02 **§0.1 对 tmux 观测的归类也不对**：`tmux.rs` 的入口是 `list_remote_tmux(origin)`，
+  **开 SSH exec 列远端 tmux**，根本不是本机实现。那不是平台残桩对，是
+  **同一份远端数据的旧轮询 vs 新推送**（B2 的 `tmux_sessions` 帧正为替掉 8s 轮询）。
+  ⇒ 真问题是「旧路径退役了没有」，是**退役**不是「写新实现」。
+  ⇒ U7b 与 U7d **性质不同，不该并成一件**，也都不按「抽共享 crate」排。
