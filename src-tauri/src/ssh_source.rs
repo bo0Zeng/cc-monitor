@@ -1871,8 +1871,151 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 .map(str::to_string);
             Some(InboundFrame::TmuxSessions { raw, observation })
         }
+        // ── 以下三个 kind **认识但刻意不消费**（U7-1）。────────────────────────
+        //
+        // 「认识」与「消费」是两件事。落进 `_ => None` 的后果不是「忽略」，是
+        // **每帧刷一条 `skipping unparseable/unknown frame` 的 warn** —— 那既是噪声，
+        // 也让真正的坏帧淹没在里面。
+        //
+        // `turn_end`：daemon 的 `EMITS` 里**登记了、也真在发**（`watcher.rs` 每轮对话一帧），
+        // 而 monitor 此前**根本不认它** —— 实测是 `EMITS` 八个 kind 里唯一一个漏的。
+        // monitor 不需要它：轮次边界由本地 `parse_line` 管线从 `line` 帧的原始 jsonl 自己推。
+        // 它是发给 **aterm** 的（aterm 按 `emits` 门控消费）。
+        //
+        // `reply` / `cancelled`：U6b-1 的入方向应答帧。monitor 侧的发送端还没接
+        // （`ssh_source` 至今一个字节都没往 stdin 写过）⇒ 今天收不到；
+        // 但 U6b-1 的 E 段明确登记了「monitor 真正开始收之前要先认这两个 kind，否则日志刷屏」。
+        // 先认下来，接发送端时再改成真消费。
+        "turn_end" | "reply" | "cancelled" => None,
+
         // 未知 kind：向前兼容，跳过（调用方 warn）。绝不 panic。
         _ => None,
+    }
+}
+
+/// 本 monitor **认识**的全部帧 kind（消费 + 刻意不消费）。
+///
+/// 与 `parse_frame` 的 match 臂是同一份事实 —— 由
+/// `every_kind_the_daemon_emits_is_known_to_the_monitor` 与
+/// `known_kinds_matches_parse_frame` 两条钉住。
+#[cfg(test)]
+const KNOWN_FRAME_KINDS: &[&str] = &[
+    "cancelled",
+    "hello",
+    "line",
+    "overflow",
+    "reply",
+    "session_added",
+    "session_removed",
+    "session_status",
+    "tmux_session_closed",
+    "tmux_sessions",
+    "turn_end",
+];
+
+/// U7-1：**daemon 的产出面 ↔ monitor 的消费面**对拍。
+///
+/// # 这条抓到的第一个真缺陷
+///
+/// daemon 的 `EMITS` 是一份**承诺**（那个常量的注释逐条写着「登记 = 承诺真发，已接线」），
+/// monitor 的 `parse_frame` 是**实际消费面**。两者此前**没有任何对拍** ——
+/// 实测 `turn_end` 是 daemon 承诺发、也真在发、而 monitor 压根不认的那一个：
+/// 每轮对话刷一条 `skipping unparseable/unknown frame` 的 warn。
+///
+/// 「读面合流」的第一步不是搬代码，是**让消费面追上产出面并钉住**。
+#[cfg(test)]
+mod emits_parity {
+    /// daemon `main.rs` 的 `EMITS` 常量（编译期内嵌 daemon 源码，同 `build_id` 那套单源思路）。
+    const DAEMON_MAIN: &str = include_str!("../../remote-daemon-proto/src/main.rs");
+
+    fn daemon_emits() -> Vec<String> {
+        let i = DAEMON_MAIN
+            .find("const EMITS")
+            .expect("daemon main.rs 里找不到 EMITS —— 抽取坏了，本断言在空转");
+        let j = DAEMON_MAIN[i..]
+            .find("];")
+            .map(|k| i + k)
+            .expect("EMITS 没有收尾");
+        let mut out: Vec<String> = DAEMON_MAIN[i..j]
+            .split('"')
+            .skip(1)
+            .step_by(2)
+            .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
+            .map(str::to_string)
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// ★ daemon 承诺发的每个 kind，monitor 都必须**认识**（消费或刻意不消费）。
+    #[test]
+    fn every_kind_the_daemon_emits_is_known_to_the_monitor() {
+        let emits = daemon_emits();
+        assert!(
+            emits.len() >= 6,
+            "只抽到 {} 个 EMITS —— 抽取坏了，本断言在空转：{emits:?}",
+            emits.len()
+        );
+        let unknown: Vec<&String> = emits
+            .iter()
+            .filter(|k| !super::KNOWN_FRAME_KINDS.contains(&k.as_str()))
+            .collect();
+        assert!(
+            unknown.is_empty(),
+            "daemon 的 `EMITS` 承诺发这些 kind，但 monitor 的 `parse_frame` 不认：{unknown:?}\n\
+             后果不是「忽略」，是**每帧刷一条 warn** 并丢弃 —— 真正的坏帧会淹没在里面。\n\
+             要么加一条消费臂，要么加进那条「认识但刻意不消费」的臂**并写明理由**。"
+        );
+    }
+
+    /// ★ `KNOWN_FRAME_KINDS` 必须与 `parse_frame` 的 match 臂**完全一致**。
+    ///
+    /// 两份名单必然漂移 —— 这条让它们只能是同一份（同 daemon 侧
+    /// `hello_commands_match_the_dispatch_table` 的思路）。
+    #[test]
+    fn known_kinds_matches_parse_frame() {
+        let src = include_str!("ssh_source.rs");
+        let at = src
+            .find("fn parse_frame")
+            .expect("找不到 parse_frame —— 抽取坏了");
+        let end = src[at..]
+            .find("\n/// 本 monitor **认识**的全部帧 kind")
+            .map(|k| at + k)
+            .expect("找不到 parse_frame 的收尾锚点");
+        let body = &src[at..end];
+        let mut arms: Vec<String> = body
+            .match_indices("\" =>")
+            .filter_map(|(i, _)| {
+                let head = &body[..i];
+                let q = head.rfind('"')?;
+                let name = &head[q + 1..];
+                (!name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
+                    .then(|| name.to_string())
+            })
+            .collect();
+        // 「认识但不消费」那条臂是 `"a" | "b" | "c" =>`，上面只会抓到最后一个，补齐。
+        for extra in ["turn_end", "reply", "cancelled"] {
+            if body.contains(&format!("\"{extra}\"")) && !arms.contains(&extra.to_string()) {
+                arms.push(extra.to_string());
+            }
+        }
+        arms.sort();
+        arms.dedup();
+        assert!(
+            arms.len() >= 8,
+            "只切出 {} 条 kind 分支 —— 抽取坏了，本断言在空转：{arms:?}",
+            arms.len()
+        );
+        let mut known: Vec<String> = super::KNOWN_FRAME_KINDS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        known.sort();
+        assert_eq!(
+            arms, known,
+            "\n`KNOWN_FRAME_KINDS` 与 `parse_frame` 的 match 臂对不上 —— 两份名单已经漂了。"
+        );
     }
 }
 

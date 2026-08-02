@@ -546,3 +546,24 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   **给 U7–U11 的结构收益**：控制面每搬一条动作进 daemon = 一条 `Disposition::spawn` 臂 +
   一条 `COMMANDS` 登记，三条纪律（不许跑在读循环上 / 必须声明 / 必须进文档）自动生效，
   且第一条是编译期的。
+- 2026-08-02 **U7 的路线改了：从「monitor 侧读面退役」改成「抽共享 crate」。四项实测推翻原排期。**
+  ① **monitor 从不起本机 daemon** —— `cc-monitor-remote` 在非部署路径零命中，本机读面就是
+  进程内的 `watcher::spawn_watcher`（`lib.rs:441` 唯一消费者）；
+  ② U7a 的排期理由是「同时验证本机 backend 那套管道」，而 U5 已被用户收窄成「本机 backend
+  生命周期我自己搞」、U5-走查 又实测「装新版之后本机一个工具都不会被安装或更新」⇒ **那个理由 void**；
+  ③ **§0.1 自己**把 jsonl tail 评为「已对拍的小内核……全仓最有守卫的一对，**收益最低**」；
+  ④ 用量那对（②「真该合的」）**零个同名函数** —— daemon 刻意不带 `parse_line`/`JsonlRecord`，
+  在裸 `Value` 上抽取；所谓双写是**口径**双写不是代码双写。
+  ⇒ **U7a 若照原样做，本机会话在没人起 daemon 的机器上直接不可用** —— 不是风险，是确定的回归。
+  ⇒ 新路线由 `branch-core` 证明可行：它被两侧**双方依赖**（daemon 刻意不在 workspace 里，
+  照样 `path = "../src-tauri/crates/branch-core"`），两侧各有真实调用点。
+  **合流 = 把内核抽进共享 crate，不是让一侧退役** —— 双写被真正消灭，且不需要任何本机 daemon。
+  `U7a`（jsonl tail）**降级登记，不再排第一**。
+- 2026-08-02 **U7-1 交付（计划外，Phase B 摸底冒出来的）**：在讨论「哪一组该合」之前发现
+  **两侧的帧集根本没对过账**，而且已经漏了一个 —— `turn_end` 在 daemon 的 `EMITS` 里
+  （那个常量注释逐条写着「登记 = 承诺真发，已接线」）、`watcher.rs:1080` 每轮对话真发，
+  而 monitor 的 `parse_frame` **压根不认它** ⇒ 落进未知分支 ⇒ **每轮对话刷一条 warn 并丢弃**，
+  真正的坏帧会淹没在里面。
+  ⇒ 加两条对拍：daemon `EMITS` ⊆ monitor 已知集；已知集 ↔ `parse_frame` 分支表同一份。
+  ⇒ **账本 S9 的最终形态改写**：不是「monitor 侧退役」，是「①产出面↔消费面对拍（U7-1 ✅）+
+  ②真双写抽共享 crate + ③互补残桩各自补齐」。
