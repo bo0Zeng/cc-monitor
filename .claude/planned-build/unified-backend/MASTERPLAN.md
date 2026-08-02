@@ -210,7 +210,7 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 | S5 | **`common/`**<br>**U2 已交付**：`projects_root`（**5 处不是 4 处** —— 第五处是 `watcher.rs::watch_loop` 里内联的，`grep fn` 找不到）· `mtime_ms`（2 份）。门槛写在 `common/mod.rs`：≥2 **层**用 · **平台无关** · 无域知识。<br>⚠ **「时间换算 · quote」这两项要划掉**：Phase D 审计逐条核过，daemon crate 内**没有可合的逐字副本** —— 时间换算三处语义/单位各不相同（`file_mtime_epoch` 单位是**秒**不是毫秒），quote 在 daemon 内只有一份、多份在 monitor 侧**跨 crate**、`common/` 收不了。<br>⚠ **U3 必须复查**：`mtime_ms` 的两个调用点同属 observe，「≥2 层」按层口径**今天不成立**；`observe/` 一建出来就要重判 | U2 · U3 |
 | S6 | **wire 协议 + `IPC-PROTOCOL.md`**<br>**U8a-2a**：monitor 侧补齐 `hello.commands` 解析（此前整个字段被丢弃）+ `Reply`/`Cancelled` 从「认识但不消费」改成**真消费**；文档入方向节改写并订正 4 处漂移（漏列 `commands` 的线上字节序 · 「写半边从来没人用过」· `biased` 少说了有界 · 超时只覆盖半段） | 双向；**文档先修再冻结**（该文件 7 处在说谎，见 §3-U6）；wire 字段名双向 `include_str!` 对拍 | U6a / U6b / U8a-2a |
 | S6a | **跨进程握手时序约束**（U6a 新登记）<br>**U6a 已交付**：`cc.ps1.tpl`「先设标题、后写 await 文件」这个顺序，同时被写在**四处**：PS 模板本身 · `bind.rs` 模块头 · `doc/IPC-PROTOCOL.md` 时序图 · `cc_integration.ts` 给用户看的超时文案。U6a 之前**后三处全是旧的**（旧顺序 + 800ms + 100ms + 漏画 ≤600ms 重试）—— 文档在教人复刻 v2.21 那个「每个新 shell 首次 `cc` 固定烧满超时」。 | 四处保持一致，由 `profile_installer.rs::handshake_doc_guard` 三条护栏钉住（顺序 + 模板侧 deadline/轮询步长 + monitor 侧 debouncer/重试）。**不放 `bind.rs`**：它几乎整个 `#[cfg(windows)]`，护栏放那儿在 Linux CI 上一条都不跑 | U6a ✅ |
-| S16 | **入方向命令面**（U6b-1 新登记）<br>`inbound::COMMANDS` ↔ `dispatch` 分派臂 ↔ `hello.commands` ↔ `IPC-PROTOCOL.md` 入方向小节 ↔ **`e2e/inbound-daemon-frames.sh` 的命令名清单**，**五处** | 前三处由 `hello_commands_match_the_dispatch_table` 钉成**同一份真相源**（声明了却不接 ⇒ 客户端石沉大海；接了却不声明 ⇒ 客户端不知道能用）；第四处由 U6a 的字段对拍逼进文档；第五处由 U8a-2a 的 `the_e2e_command_list_matches_the_daemon_command_table` 钉住。<br>monitor 侧的 `InboundClient::accepts` **不是第六份副本** —— 它直接吃 `hello.commands`，无独立清单 | U6b-1 ✅ · U6b-3 ✅ · U8a-2a ✅ · U8a-2b ✅（加 `launch`，e2e 那处同步跟上）|
+| S16 | **入方向命令面**（U6b-1 新登记）<br>`inbound::COMMANDS` ↔ `dispatch` 分派臂 ↔ `hello.commands` ↔ `IPC-PROTOCOL.md` 入方向小节 ↔ **`e2e/inbound-daemon-frames.sh` 的命令名清单**，**五处** | 前三处由 `hello_commands_match_the_dispatch_table` 钉成**同一份真相源**（声明了却不接 ⇒ 客户端石沉大海；接了却不声明 ⇒ 客户端不知道能用）；第四处由 U6a 的字段对拍逼进文档；第五处由 U8a-2a 的 `the_e2e_command_list_matches_the_daemon_command_table` 钉住。<br>monitor 侧的 `InboundClient::accepts` **不是第六份副本** —— 它直接吃 `hello.commands`，无独立清单 | U6b-1 ✅ · U6b-3 ✅ · U8a-2a ✅ · U8a-2b ✅ · **U8a-2d ✅ 改写**：不再是「N 处副本互相对拍」，而是**注册表（`inbound::REGISTRY`）+ 三条派生 + 一面镜子** —— 名字与处理器绑在同一个值里 ⇒ 声明↔实现漂移**在注册表这一侧不可表示**；`COMMANDS` 保留为镜子（monitor 与 e2e 都在文本抽取它），由**数据对数据**钉住 |
 | S17 | **用量口径**（U7-2 新登记）<br>**U7-2 已交付**：抽进共享 crate `usage-core`，两侧各自 `path` 依赖。此前是无护栏的口径双写，且**已漂开两处**（BOM · 有 requestId 无 uuid） | 唯一实现在 crate 里；判据是「改内核一处 ⇒ 三侧同时红」，不是任何一侧的单侧测试 | U7-2 ✅ ·（U8a-2a 补账：当初 **CI 三样一条都没补**，test/fmt/clippy 全缺 ⇒ 那 8 条测试在 CI 里等于不存在）|
 | S18 | **账号契约 + 名字安全判据**（U7-3 新登记）<br>**U7-3 已交付**：四条常量 + `is_deceptive_char`（并集）进 `acct-core`；两条守卫**退役**，因为漂移已不可表示 | 唯一定义在 crate 里。**`is_safe_config_dir` / `norm_dir` 刻意不合** —— 那是平台特化不是漂移（本机要认 Windows 盘符且必须允许 `\`） | U7-3 ✅ ·（U8a-2a 补账：同 S17，4 条测试此前不进 CI）|
 | S7 | **daemon argv 面** | 三类；`split_stream_flags` + `every_capability_token_is_strippable` 同步扩。⚠ **起点比以为的更糟**：现有的二分表本身就漏了 5 条子命令（`--tmux-notify` / `--resolve` / `--fork-session` / `--account-trust-zero` / `--read-session-from-offset`），其中 `--account-trust-zero` 漏登记**出过 v3.4.0 事故** | U6 |
@@ -233,6 +233,8 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 | S24 | **数据面漂移记账的四个落点**（U-CC1 新登记）<br>未知记录 `type`（`parser.rs`）· 已知类型解析失败（`parser.rs`）· 未登记的会话 `kind`（`session_map.rs`）· daemon 未知能力 token（`ssh_source.rs`） | 只记账、**零行为变化**；有界（64 键 + `<overflow>`，样例按字符边界截 400 字节）；每个面必须写明**「这么降级之后会怎样」**（`DriftFace::consequence`，有计数自检）。<br>⚠ **第五个面「未登记的 `status`」刻意不加** —— 它在前端（`session-status.ts`），Rust 侧对 `status` 无任何白名单分支。加一个没有落点的面 = 「登记了但不产生信号」，比不加更糟。<br>⚠ **计数量纲逐面不同**（每条记录 / 每次扫描 / 每次握手），前端 `countUnit()` 逐面给单位并有测试钉住 | U-CC1 ✅ · TS 侧 status 面另记 |
 
 | S25 | **平面 ③（本机开窗面）的 POSIX 取舍**（U8b 新登记）<br>L1 裁决：POSIX 上**刻意不开 GUI 终端窗口**（没有「唯一的终端」，挑一个是会在别人机器上错的决定；会话容器是 tmux） | 由 `launch.rs::no_terminal_emulator_is_ever_spawned_from_this_file` **零命中**钉住（挡的是很自然的一次「顺手改进」）；文案由 `POSIX_NO_TERMINAL_WINDOW` 单点出，前端按标记分档、`the_posix_marker_is_the_one_the_frontend_matches_on` 跨轨对拍。<br>⚠ **今天的不对称**：本机 resume 有 OS 分派、远端没有 ⇒ POSIX 上只复制命令。补它与 **U8a-2c** 同一个阻塞（渲染好的串拆不回「只建不接」），**别单独硬补** —— fire-and-forget 会静默失败 | U8b ✅ · U8a-2c |
+
+| S26 | **`control/`/`observe/` 的 serde 类型**（U8a-2d 新登记）<br>今天 6 个：`resolve_query` 4（aterm 冻结契约）· `fork_write::ForkResult`（一次性子命令出参）· `accounts_query::RawAccount`（**文件 schema，根本不是 wire**） | **登记制**（逐条列举 + 写明它是什么 + 机检 + 幽灵条目检查），形状照 `spawn_registry`。<br>⚠ 设计稿原提的是「白名单恰好一条」——**实测那个前提错了**，而且后两个搬进 `wire/` 是错误归类。<br>⚠ 「上线类型收进 `src/wire/` 目录树」等**真出现第二个流协议类型文件**时再做（今天只有 `wire.rs` 一个，为一个文件建目录树是空转） | U8a-2d ✅ |
 
 ### 跨工作区冲突协议
 
@@ -866,3 +868,28 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   是 **clippy 集合差**抓到的（`duplicated attribute` + `never used`）。
   ⇒ 血泪 12 后半句又救一次；也是血泪 10 的另一种形态：**判据自己被摘掉时，没有任何判据会红。**
 - 2026-08-02 账本新增 **S25**（平面 ③ 的 POSIX 取舍 + 零命中护栏 + 前后端标记对拍）。
+- 2026-08-02 **U8a-2d 闭环：命令面注册表。** `CommandSpec { name, doc_anchor, codes, fields, run }`
+  + `Run::{Async, Blocking, Builtin}`，`dispatch` 改成查表。**净效果：文本扫描型护栏 −1
+  （删掉扫分派臂文本、按 8 空格缩进切的 `hello_commands_match_the_dispatch_table`），
+  数据对数据 +1，新增护栏 +4。** 名字与处理器绑在同一个值里 ⇒ 「声明了却不接 / 接了却不声明」
+  **在注册表这一侧不可表示**；`COMMANDS` 保留为镜子（monitor 与 e2e 都在文本抽取它）。
+- 2026-08-02 **被删的那条护栏是被它自己的计数自检送走的** —— 改查表之后它只切出 1 条臂，
+  当场红，而不是静默变绿。**那正是「该退休了」的正确信号形状**。
+- 2026-08-02 ★ **第三轮验 agent 断言、第三次打掉一条**：设计稿 R2 说
+  「`control`/`observe` 不许 derive serde，白名单**恰好一条** `resolve_query`」——
+  实测是 **3 个文件 6 个类型**，而且后两个**搬进 `wire/` 是错误归类**：
+  `fork_write::ForkResult` 是一次性子命令的**出参**，`accounts_query::RawAccount`
+  **根本不是 wire**（它在解析 cc-acct-iso 写的清单**文件**）。
+  ⇒ 目标不变、形状改成**登记制**（逐条列举 + 写明它是什么 + 机检 + 幽灵条目检查）。
+  「上线类型收进 `src/wire/` 目录树」等真出现第二个流协议类型文件时再做。
+- 2026-08-02 **R3 闭掉了设计审计 P2**：命令的 `args`/`data` 字段名此前**一个都不在护栏视野内**
+  （`every_wire_field_appears_in_the_protocol_doc` 只读 `wire.rs`，而命令载荷两端都不在那儿）。
+  现在每条命令的字段必须出现在**它自己那一小节**里。
+  ⚠ `fields` 是**手写镜子**，所以必须再钉一层（与解析器/输出构造器实测对拍）——
+  **用一个手写清单去证明另一个手写清单是没有意义的**。
+- 2026-08-02 **R4 错误码分两层落地**：协议级闭集（`line_too_long` / `unknown_command` /
+  `duplicate_id` / `handler_panicked` / `not_cancellable`）**只有 `inbound.rs` 可以发**，
+  `control/` 生产段零命中。⚠ `resolve` 的命令级 `bad_request` 与协议级同名是
+  **登记在案的例外**（与 aterm 的一次性契约冻结在 2026-07-18，改它会破坏那份契约）。
+- 2026-08-02 账本：**S16 改写**（命令面从「N 处副本互相对拍」→「注册表 + 三条派生 + 一面镜子」）；
+  新增 **S26**（`control`/`observe` 的 serde 类型登记制）。
