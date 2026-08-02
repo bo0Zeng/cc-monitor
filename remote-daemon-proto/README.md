@@ -70,16 +70,35 @@ Phase D 审计逐条查过，**生产段还有 3 处平台原语在 `platform/` 
 （U2 已收的两处曾经也在这张表上：`accounts_query.rs` 的 `proc_claude_config_dir`
 读 `/proc/<pid>/environ`，和 `watcher.rs` 里内联的第五处 `join("projects")`。）
 
+### ✅ U4a：跨 target 编译**已清零并进 CI**
+
+`cargo check --all-targets --target x86_64-pc-windows-msvc` **RC=0**（此前 12 个错），
+并已接进 daemon CI job（ubuntu 上跑，`check` 不链接，成本近零）。
+
+⚠ **「编得过」≠「跑得起来」。** Windows 侧今天是**诚实的空壳**，不是实现：
+
+| 符号 | 非目标平台的行为 | 真实现 |
+|---|---|---|
+| `pidwatch::watch_pid_until_exit` | **什么都不做** + `tracing::error!`。刻意**不调** `on_dead` —— 与「`poll` 真错误不报死」同一条纪律：宁可让会话留在 live，也不因平台未实现就误归档 | U4b：`OpenProcess` + `WaitForSingleObject` |
+| `proc::pid_alive` | `unimplemented!()` | U4b：`OpenProcess` + 退出码 |
+| `signal::send_sigusr1` | `false`（**保守方向**：发不出去当没发，调用方本就容忍失败） | U4b 定 Windows 等价物 |
+
+**U4b 需要 Windows 真机**：主计划 U4 行自己写着「`WaitForSingleObject` 换 pidfd —— 等价性
+仓里无实测，**第一步先验**」，而那个「验」在 Linux 上做不了。把一份无法验证的 Win32 实现
+写进去再宣布完成，就是「把没做的标成做完」。
+
+> **`platform/fallback_guard.rs` 钉住这一族**：fallback 分支不许凭空返回「成功」值。
+> 它从一个真实地雷来 —— `pid_alive` 的非 Linux 分支曾经恒真，让会话**永远不被归档**
+> 且毫无信号，在仓里活了很久（U2/U3 两轮识别、两轮推迟）。
+
 ### 判据不是「cfg 出现在哪」
 
 计划自审打掉过这条：本 crate 在 Windows 上编不过的 12 个错里，头号的 `pidfd_open`
 **根本没有 cfg** —— 它是无条件编译的 Linux-only 代码，cfg 位置扫描抓不到。
 真判据只有 `cargo check --all-targets --target x86_64-pc-windows-msvc`，
-**今天实测仍是 RC=101 / 12 错**（11 个已集中到 `platform/pidwatch.rs`，1 个是
-`watcher.rs` 测试段的 `libc::getuid`）。清零并进 CI 是 **U4** 的 DoD。
+U2 把 11/12 个错集中到一个文件，**U4a 清零并接进 CI**（见上）。
 
-⇒ **平台线在 U4 通过那条编译判据之前，都不算落地。** U2 做的是把 11/12 个错**集中到一个文件**，
-让 U4 有一个明确的下手点 —— 这是真进展，但不是收口。
+⇒ **平台线的编译判据已收口；语义判据（Windows 上真的跑得对）留 U4b。**
 
 **已登记、U2 刻意不修的**：`platform::proc::pid_alive` 的非 Linux 分支恒返回 `true`
 （静默错误地雷）。改它 = 决定「Windows 上进程是否存活怎么答」，是 U4 的正题；

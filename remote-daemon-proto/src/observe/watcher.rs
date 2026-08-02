@@ -53,12 +53,15 @@ use crate::platform::paths::path_key;
 use crate::platform::proc::{pid_alive, proc_cmdline, proc_starttime, start_epoch_from_ticks};
 // 只在测试段用到的几个（生产段的调用点随函数一起搬走了）。分开写而不是给整条 `use`
 // 加 `#[cfg(test)]`：上面那四个生产段真在用，混在一起会让「谁是生产依赖」看不出来。
+// U4a：`pidfd_open` 只在 Linux 上存在（`platform/pidwatch/linux.rs`）。
+// 少这个 cfg 会让 `cargo check --all-targets --target …windows-msvc` 红 —— 而那正是
+// §1.1 第一条解耦线的**唯一真判据**（计划自审 §0.5-3：cfg 位置扫描抓不到 pidfd）。
 #[cfg(test)]
+use crate::platform::liveness::is_same_live_process;
+#[cfg(all(test, target_os = "linux"))]
 use crate::platform::pidwatch::pidfd_open;
 #[cfg(test)]
-use crate::platform::proc::{
-    is_same_live_process, parse_btime, parse_starttime_from_stat, session_alive,
-};
+use crate::platform::proc::{parse_btime, parse_starttime_from_stat, session_alive};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use walkdir::WalkDir;
@@ -1562,6 +1565,8 @@ mod tests {
     ///
     /// 不存在的 pid 取一个刚退出并已回收的子进程 pid——比硬编码一个大数可靠
     /// （大数也可能恰好被占）。
+    // U4a：本测试直接调 `pidfd_open`，那是 Linux-only 原语。
+    #[cfg(target_os = "linux")]
     #[test]
     fn pidfd_open_works_for_self_and_fails_for_dead_pid() {
         assert!(
@@ -2104,6 +2109,9 @@ mod tests {
     ///
     /// **无 tmux 就硬失败而不是静默跳过**——静默 SKIP 是 gate-integrity 在治的那个病。
     /// 本 crate 的 CI job 跑在 ubuntu-latest，tmux 是标配；真缺了应当看见红。
+    // U4a：本测试清理 Linux 的 `/tmp/tmux-<uid>/` socket 目录（`libc::getuid`），
+    // 是 Linux-only 的夹具 —— 少这个门会让跨 target check 红。
+    #[cfg(target_os = "linux")]
     #[test]
     fn pidfd_watches_a_real_tmux_server_and_stays_silent_while_it_lives() {
         let sock = format!("ccmP3-{}", std::process::id());
