@@ -118,25 +118,47 @@
 ## 安装
 
 ### 系统要求
-- Windows 11 / 10 (1809+)
-- [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（Win11 自带，Win10 需安装）
-- [Claude Code CLI](https://github.com/anthropics/claude-code) 已安装并跑过至少一次
+
+**共同前提**：[Claude Code CLI](https://github.com/anthropics/claude-code) 已安装并跑过至少一次。
+
+| 平台 | 要求 |
+|---|---|
+| **Windows** 11 / 10 (1809+) | [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)（Win11 自带，Win10 需安装） |
+| **Linux**（v3.4.0 起） | WebKitGTK 4.1（Debian/Ubuntu：`libwebkit2gtk-4.1-0`），`.deb` 会声明依赖 |
+
+> **这张表 2026-08-02 才补上 Linux。** 在此之前本节只写「系统要求：Windows 11 / 10」——
+> 而 `.deb` 从 v3.4.0 就在发了。一个 Linux 用户读到那一行就会直接走人，
+> 是「新用户流程走查」逮到的第一个卡点。
 
 ### 下载
 
-从 [Releases](https://github.com/bo0Zeng/cc-monitor/releases) 页下载最新版（文件名形如 `cc-monitor_<version>_x64-setup.exe`）：
+从 [Releases](https://github.com/bo0Zeng/cc-monitor/releases) 页下载最新版。
 
+**Windows**
 - `*-setup.exe` — NSIS 安装器（推荐普通用户）
 - `*_zh-CN.msi` — MSI 包（适合企业 IT 部署）
+- `monitor.exe` — 裸 exe（需自管路径）
 
 双击运行；首次会提示 Windows SmartScreen "未知发布者"（未签名），选「更多信息 → 仍要运行」。
 
+**Linux**
+- `cc-monitor_<version>_amd64.deb` — `sudo dpkg -i cc-monitor_<version>_amd64.deb`
+  （缺依赖时跟一句 `sudo apt-get -f install`）
+- `monitor` — 裸二进制（`chmod +x` 后直接跑；不带桌面项与图标）
+
+校验和在 `SHA256SUMS.txt`（Windows）/ `SHA256SUMS-linux.txt`（Linux）。
+
 ### 首次使用
 
-1. 启动 cc-monitor.exe
+1. **启动程序**
+   - Windows：`cc-monitor.exe`
+   - Linux：应用菜单里的 **cc-monitor**，或命令行 **`monitor`**
+     > ⚠ **命令名是 `monitor` 不是 `cc-monitor`** —— 可执行文件用的是 cargo 包名，
+     > 而窗口标题/桌面项用 productName `cc-monitor`。两个名字不一致是既有事实，
+     > 统一留给后续的仓库级重命名；这里先如实写出来，免得你 `cc-monitor` 敲不出东西。
 2. 任一终端跑 `claude`（cc-monitor 立刻多一个 Tab）
 3. 在 claude 里输入 → cc-monitor 200ms 内出现 user / assistant 消息
-4. 想要 Tab ↗ 跳焦终端 → 见下文 PowerShell 集成
+4. 想要 Tab ↗ 跳焦终端 → Windows 见下文 PowerShell 集成；Linux/远端见「设置面板 → 机器」里的 ccm 助手
 
 ---
 
