@@ -42,16 +42,19 @@ pub const SUPPORTED_SCHEMA: u64 = 1;
 ///
 /// U7-3 实测，同名函数两侧**双向漂移**：
 ///
-/// | 缺在哪 | 码位 |
-/// |---|---|
-/// | monitor 缺 | `U+0085`（NEL，C1 换行 —— **不在 `char::is_control` 里**，daemon 侧注释特意点明过） |
-/// | daemon 缺 | `U+2060..=U+2064`（word joiner / 不可见运算符）· `U+1680` · `U+2000..=U+200A` · `U+202F` · `U+205F` · `U+3000`（各类空白） |
+/// | 缺在哪 | 码位 | 是不是真洞 |
+/// |---|---|---|
+/// | daemon 缺 | `U+2060..=U+2064`（word joiner / 不可见运算符）· `U+1680` · `U+2000..=U+200A` · `U+202F` · `U+205F` · `U+3000`（各类空白） | **是**。这些 `char::is_control()` 全是 `false`，daemon 侧真的会放行 |
+/// | monitor 缺 | `U+0085`（NEL） | **不是**。U7-3 我把它当安全洞报了出来，**那是错的**：Rust 里 `'\u{0085}'.is_control() == true`（NEL 属 Cc 类），monitor 的 `is_safe_config_dir` 本来就靠 `is_control()` 拒了它。**集合差了一项，可观察行为没差。**<br>daemon 源码里那句「NEL 不在 `char::is_control` 里」是**事实错误**，我照抄了它 —— U7-4 实测证伪 |
+///
+/// NEL 仍然留在本集合里：让集合**自足** —— 调用方即使没有另外查 `is_control()` 也有完整保护。
+/// 但**理由要说对**，不能靠一句错的断言撑着。
 ///
 /// 那条既有守卫只钉四个字符串常量，**看不见这个**。
 /// 一个能骗过其中一侧的名字就是能骗人的名字，与哪一侧在读无关 ⇒ 取并集。
 pub fn is_deceptive_char(c: char) -> bool {
     matches!(c,
-        '\u{0085}'                  // NEL（C1 换行，不在 char::is_control 里）
+        '\u{0085}'                  // NEL（C1 换行；is_control 已覆盖，留此为让集合自足）
         | '\u{00A0}'                // NBSP
         | '\u{1680}'                // Ogham space mark
         | '\u{2000}'..='\u{200A}'   // en/em 等各类空格
@@ -73,19 +76,24 @@ mod tests {
 
     /// ★ 并集必须**同时**覆盖两侧此前各自独有的那些码位。
     ///
-    /// 这条就是 U7-3 那个双向漂移的回归钉：任何一侧的集合被"还原"回去，本测试红。
+    /// 这条是集合漂移的回归钉：任一侧的集合被"还原"回去，本测试红。
+    ///
+    /// ⚠ 但要分清**哪一半是真洞**：daemon 缺的那些 `is_control()` 全是 `false`，
+    /// 它真的会放行；monitor 缺的 NEL 属 Cc 类、`is_control()` 本来就挡着 ——
+    /// U7-3 我把后者也当成安全洞报了，U7-4 实测证伪。集合差过，行为没差。
     #[test]
     fn the_union_covers_what_each_side_used_to_miss() {
-        // monitor 此前缺的
-        assert!(is_deceptive_char('\u{0085}'), "NEL —— monitor 侧此前漏的");
-        // daemon 此前缺的
+        // NEL：集合里确实缺过，但**不是安全洞**（`is_control()` 覆盖）。
+        // 留在集合里是为了让本集合自足，不是因为它此前漏防了什么。
+        assert!(is_deceptive_char('\u{0085}'), "NEL 从集合里掉了");
+        // daemon 此前**真的**漏防的（这些 `is_control()` 全是 false）
         for c in [
             '\u{2060}', '\u{2064}', '\u{1680}', '\u{2000}', '\u{200A}', '\u{202F}', '\u{205F}',
             '\u{3000}',
         ] {
             assert!(
                 is_deceptive_char(c),
-                "U+{:04X} —— daemon 侧此前漏的",
+                "U+{:04X} —— daemon 侧此前真的会放行",
                 c as u32
             );
         }
