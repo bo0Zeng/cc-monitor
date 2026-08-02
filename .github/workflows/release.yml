@@ -266,6 +266,10 @@ jobs:
         with:
           files: |
             src-tauri/target/release/bundle/deb/*.deb
+            # U5-走查：**裸二进制此前算了 hash 却没上传** —— `SHA256SUMS-linux.txt` 里有它那一行，
+            # 而 Release 页上没有那个文件，用户照校验和逐个核就会卡在这儿。
+            # 补上传（与 Windows 侧 `monitor.exe` 对称：那边一直是「安装器 + 裸二进制」两样都给）。
+            src-tauri/target/release/monitor
             SHA256SUMS-linux.txt
             daemon-artifacts/cc-monitor-remote-x86_64
             daemon-artifacts/cc-monitor-remote-aarch64
