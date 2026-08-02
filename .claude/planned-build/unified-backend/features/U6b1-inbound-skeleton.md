@@ -268,10 +268,58 @@ inbound 原有 5 条行为测试逐条弱化都会红。
 
 ## 工程审计结果（E）
 
-（待填）
+### 这一轮 D 审计改变了我对「护栏」这件事的判断
+
+前面几轮的模式是「加护栏 → 用变异证明它有效 → 收工」。U6b-1 的 D 审计把这个模式的**上限**测出来了：
+
+- 我加的每一条护栏，**变异都通过了**，可它们仍然被**七种普通写法**绕过 —— 包括
+  **rustfmt 自己的输出**（derive 折行）和**一行沿革注释**。
+- 原因是同一个：**我的变异是照着自己的实现设计的**。我知道判据是「`#[derive(` 开头那行有没有 Serialize」，
+  所以我的变异去改 `Serialize`；而绕过它只需要**让那行不再是 `#[derive(` 开头**。
+- ⇒ **自变异只能证明「判据被执行了」，证明不了「判据画的范围对」。** 后者需要一个不知道我怎么想的人来攻。
+
+这条要写进主计划的横切约定：**高风险档的护栏，D 审计必须包含一个「设法绕过」的对抗视角**，
+而且它得在 worktree 里、能真改真跑。
+
+### 账本对账
+
+- **S6**（wire 协议 + `IPC-PROTOCOL.md`）：U6a 交付「文档先修再冻结」，U6b-1 交付「双向」的入方向骨架，
+  U6b-2 交付能力协商的入方向那一半。**S6 的最终形态还差 U6b-3 的第一条真业务命令**。
+- **S7**（daemon argv 面「三类」）：**U6b-2 交付完毕**。账本原文说「三类；`split_stream_flags` +
+  `every_capability_token_is_strippable` 同步扩」，实现时发现那两条不够 —— 它们只覆盖**已声明能力**的 flag，
+  而危险来自**未声明的**。补了三条完备性/互斥机检，且判据从「非空即查询」改成「`args[0]` ∈ 子命令表」。
+- **新登记 S16「入方向命令面」**：`inbound::COMMANDS` ↔ `dispatch` 分派臂 ↔ `hello.commands` ↔
+  `IPC-PROTOCOL.md` 入方向小节，**四处双写**。最终形态 = 前三处由 `hello_commands_match_the_dispatch_table`
+  钉成同一份真相源，第四处由 U6a 的 `every_wire_field_appears_in_the_protocol_doc` 逼进文档。
+
+### 给后续功能的移交
+
+| 收件人 | 内容 |
+|---|---|
+| **U6b-3** | 三条「登记不做」的收口（结构机检改类型见证 · 字段判据收进 §10 表区间 · `inbound.rs` 的 `observe::` 禁令加机检）；以及**第一条真业务命令**会同时验证信封、`Disposition`、稳定键三件事 |
+| **U7（读面合流）** | 入方向已经能承载命令 ⇒ 「monitor 侧读面退役」不必再为每个查询开一条 SSH exec。但**monitor 侧至今一个字节都没往 stdin 写过**（`ssh_source.rs` 零 `stdin`），U7 前要先接发送端 |
+| **U8–U11（控制面）** | 每条搬进 daemon 的控制动作都是一条入方向命令 ⇒ 直接受 `hello_commands_match_the_dispatch_table` 与 argv 三分表约束。**这是 U6b 系列的主要收益**：控制面扩张时纪律自动生效，不用每次重谈 |
+
+### 一处必须如实登记的兼容性订正
+
+审计指出：monitor 对未知 kind 的**实际**行为是 `parse_frame → None` 然后
+`tracing::warn!("ssh_source skipping unparseable/unknown frame")` —— 是**忽略并每帧打一条 warn**，
+不是我在设计里写的「纯忽略」。今天无人发命令所以无影响，但 **U6b-3 让 monitor 真正收 `reply`/`cancelled`
+之前，monitor 侧要先认这两个 kind**，否则每条应答都会在日志里刷一行 warn。
+
+### 门禁数字的一处订正
+
+`8a13ba9` 的 commit message 写「monitor 667/3 ignored」，审计在同一 commit 上实测是 **666/3**。
+本轮实测 668（含新增 2 条）。667 那个数是我在中间态量的（当时已加了一部分护栏），
+**写进 commit message 时没有重新量** —— 同一类「手抄数字」的毛病，只是这次无害。
 
 ## 签收
 
-- [ ] 过代码审计（D）
-- [ ] 过工程审计（E）
-- [ ] 主计划已更新（F）
+- [x] 过代码审计（D）—— 4 阻塞 + 4 重要 + 7 条护栏绕过**全部修完并用审计原招复验**；三条明确登记归 U6b-3
+- [x] 过工程审计（E）—— 账本 S6 推进 / S7 交付 / S16 新登记；三条移交已写给 U6b-3 / U7 / U8–U11
+- [x] 主计划已更新（F）
+
+### 门禁终态（本轮实测，每条失败都会 exit 1）
+
+daemon `cargo test` **224** · monitor `--lib` **668 / 3 ignored** · `npm test` **80 文件 1154 例** ·
+`tsc` 0 · 两侧 `cargo fmt --check` 干净 · daemon clippy **0** · monitor clippy **64（与 HEAD 逐条相同）**。
