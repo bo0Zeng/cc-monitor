@@ -305,6 +305,31 @@ F40b 上翻补批：active tab 滚到顶部 800px 内自动从 `TailWindow` 弹 
 
 **为什么 procStart 可缺**：v2.4.2 实测 Claude Code 2.1.150 在某些启动路径下（/resume 或类似）写 `sessions/<PID>.json` 漏 procStart。之前 schema 必填导致 serde 整条解析失败 → 整个 session 被静默忽略 → monitor 漏 Tab。改 `Option<String>` 后缺失就跳过 procStart 校验仅 STILL_ACTIVE。INVARIANTS § 18 完整论证。
 
+### ⚠ 本机读面**只在 Windows 上工作**（U7d 实测登记，2026-08-02）
+
+上面那套探活是 `#[cfg(windows)]` 的。**非 Windows 分支恒返回 `false`**
+（`session_map.rs` 的 `#[cfg(not(windows))] fn is_process_alive → false`），而它是本机
+watcher 的活跃过滤器的唯一依据：
+
+```
+spawn_watcher(projects_dir, active_filter, …)      lib.rs
+  → active_filter(sid) = map.is_session_active(sid)
+    → is_process_alive(pid, proc_start)
+      → #[cfg(not(windows))] false
+```
+
+⇒ **在 Linux / macOS 上，本机 watcher 会拒绝每一个会话，一行本机 jsonl 都不会 emit。**
+另有每 2s 的心跳收割器（`!is_process_alive(...)`，**没有平台门**）把会话表清空。
+
+**结论：那两个平台上 cc-monitor 只能当远端监视器用**（SSH + daemon 那条路完全正常）。
+这与本仓 Windows-first 的定位自洽 —— `bind.rs` 整个 `cfg(windows)`、PowerShell 集成、
+`ccm` 的安装目标只有远端 —— **但此前它没有出现在任何面向用户的文档里**，
+只在 `.claude/planned-build/` 的病灶表里被记成「互补平台残桩」，
+那个说法读起来像清理项，看不出「本机读面不存在」。
+
+要在 Linux/macOS 上支持本机会话，需要给 `is_process_alive` 写一个 `/proc` 实现
+（daemon 侧 `platform/proc.rs::pid_alive` 已有 Linux 版可参照）——**那是一个功能决定，不是清理**。
+
 ### HWND 拉前三重校验
 `IsWindow(hwnd)` + 当前 `owner_pid == 绑定时 owner_pid` + 当前 owner 的 `procStart == 绑定时 owner_proc_start`。
 
