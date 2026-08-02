@@ -123,6 +123,24 @@ pub fn run(_claude_dir: &Path, _args: &[String]) -> i32 {
     }
 }
 
+/// U6b-3：给**流通道上的 `resolve` 命令**用的入口。
+///
+/// 与一次性 `--resolve` 复用**同一个** [`resolve_from_json`] —— 这是「吸收」的全部含义。
+///
+/// # 为什么不把一次性那条路搬走
+///
+/// 它的契约与仓外 aterm **冻结在 2026-07-18**（`daemon-协议-v1 §3`），且本文件头注写着
+/// aterm 现走 β TailTransport、DaemonTransport 未建、**暂不消费 resolve**
+/// —— 也就是说这条契约**随时可能开始被消费**。现在拆掉它是拿别人的集成期赌。
+///
+/// 两条路的差别只在信封：一次性那条是「1 exec = 1 请求 1 响应 1 退出、天然 1:1、无 request-id」；
+/// 流通道那条有 `id`、可取消、不用为一次极小的 RPC 单开一整条 SSH exec。
+pub fn resolve_json_for_inbound(input: &str) -> Result<serde_json::Value, (&'static str, String)> {
+    let json = resolve_from_json(input)?;
+    serde_json::from_str(&json)
+        .map_err(|e| ("serialize_failed", format!("CommandPlan 回读失败：{e}")))
+}
+
 /// 纯：ResumeSpec JSON 串 → CommandPlan JSON 串（或 `(code,message)`）。`run()` 与单测共用——
 /// 审计 quality-阻塞：让 stdin→响应 的分发逻辑（bad_request / serialize / happy）**可测**，
 /// 不必真接 stdin/stdout（此前 `run()` 零覆盖、commit「端到端 smoke」实为手工一次性验证、无测件）。

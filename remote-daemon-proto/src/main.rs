@@ -407,14 +407,16 @@ async fn main() {
         emits: EMITS.iter().map(|s| s.to_string()).collect(),
         commands: inbound::COMMANDS.iter().map(|s| s.to_string()).collect(),
     };
-    if let Err(e) = write_frame(&mut stdout, &hello).await {
-        tracing::error!("failed to write hello frame: {e}");
-        return;
-    }
-    if let Err(e) = stdout.flush().await {
-        tracing::error!("failed to flush hello frame: {e}");
-        return;
-    }
+    // U6b-3：写 + flush 一步到位，**并拿到 `HelloFlushed` 见证**。
+    // 那个见证是 `inbound::spawn` 的必填参数 ⇒「reader 抢在 Hello 之前起来」
+    // 变成编译期不可表示（此前靠一条比较字节位置的机检，被普通函数抽取绕过）。
+    let hello_flushed = match wire::write_and_flush_hello(&mut stdout, &hello).await {
+        Ok(w) => w,
+        Err(e) => {
+            tracing::error!("failed to write/flush hello frame: {e}");
+            return;
+        }
+    };
 
     // (b2) U6b-1：**入方向 reader。位置不可上移。**
     //
@@ -426,7 +428,7 @@ async fn main() {
     // 应答走**独立通道**：出方向丢一帧可恢复（`Overflow` 会说丢了多少，行还在远端 jsonl），
     // 丢一条应答会让客户端永远等下去。混在一个通道里，实时行的洪峰会把应答挤掉。
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
-    let inbound_task = inbound::spawn(tokio::io::stdin(), reply_tx.clone());
+    let inbound_task = inbound::spawn(tokio::io::stdin(), reply_tx.clone(), hello_flushed);
 
     // (c) Start the watcher reader; it returns the receiving half of the
     // bounded frame channel.

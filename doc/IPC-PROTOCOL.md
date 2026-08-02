@@ -406,7 +406,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 
 ```text
 → {"id":"<opaque>","cmd":"<name>","args":{...}}          请求（一行一个）
-← {"kind":"reply","id":"<opaque>","ok":true}              成功
+← {"kind":"reply","id":"<opaque>","ok":true,"data":{…}}   成功（`data` 是命令的返回值，无返回值时省略）
 ← {"kind":"reply","id":"<opaque>","ok":false,"code":"…","message":"…"}
 ← {"kind":"cancelled","id":"<被取消的 id>"}
 → {"id":"<opaque>","cmd":"cancel","args":{"target":"<id>"}}
@@ -418,6 +418,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `cmd` | → | 命令名 |
 | `args` | → | 命令自己的参数对象，缺省 `{}` |
 | `ok` | ← | 成败。`true` 时 `code` / `message` **不上线**（skip_if_none） |
+| `data` | ← | 命令的返回值（如 `resolve` 的 CommandPlan）。无返回值的命令省略 |
 | `code` / `message` | ← | 失败原因。形状**对齐 `--resolve` 已冻结的那套**（协议 v1 §3），不发明第二种错误 JSON |
 
 **四条刻意的选择：**
@@ -450,7 +451,26 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
   一条慢命令占住读循环 ⇒ 后续命令全排队，而症状表现成「远端没反应」、几乎归因不到具体哪条。
   钉住它的是 `handlers_never_run_on_the_reader_task`。
 
-**今天只有 `ping` 与 `cancel` 两条命令**（骨架验收用），它们随 `hello` 的 `commands` 字段上线 —— 那是与分派表**同一份真相源**（`hello_commands_match_the_dispatch_table` 钉住：声明了却不接 ⇒ 客户端发过去石沉大海；接了却不声明 ⇒ 客户端不知道能用）。真业务命令从 `--resolve` 吸收开始。
+**今天有三条命令**：`ping` / `cancel`（骨架验收用）+ **`resolve`**（第一条真业务命令，见下），它们随 `hello` 的 `commands` 字段上线 —— 那是与分派表**同一份真相源**（`hello_commands_match_the_dispatch_table` 钉住：声明了却不接 ⇒ 客户端发过去石沉大海；接了却不声明 ⇒ 客户端不知道能用）。真业务命令从 `--resolve` 吸收开始。
+
+#### `resolve`：一次性 exec 与流命令**并存**（U6b-3）
+
+```text
+→ {"id":"r1","cmd":"resolve","args":{ResumeSpec}}
+← {"kind":"reply","id":"r1","ok":true,"data":{CommandPlan}}
+```
+
+**一次性 `--resolve` 那条路逐字不动。** 它的契约与仓外 aterm **冻结在 2026-07-18**
+（`daemon-协议-v1 §3`），而 aterm 现走 β TailTransport、DaemonTransport 未建、
+**暂不消费 resolve** —— 也就是说这条契约**随时可能开始被消费**，现在拆掉它是拿别人的集成期赌。
+
+两条路**复用同一个纯函数**（`resolve_query::resolve_from_json`），差别只在信封：
+
+| | 一次性 exec | 流命令 |
+|---|---|---|
+| 请求/响应配对 | 1 exec = 1 请求 1 响应 1 退出，**天然 1:1、无 request-id** | 靠 `id` |
+| 取消 | 客户端杀 exec | `cancel` 命令 |
+| 代价 | 为一次极小的 RPC 单开一整条 SSH exec | 复用已有连接 |
 
 ### argv 三分（U6b-2）
 
