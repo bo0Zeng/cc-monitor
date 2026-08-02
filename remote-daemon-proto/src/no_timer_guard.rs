@@ -127,19 +127,42 @@ mod tests {
     /// 那时文件数照样够，而扫到的是一堆 `mod x;` 声明。字节数直接度量「扫到的是不是真代码」，
     /// 且**对拆分免疫**（把一个文件拆成三个，总字节不变）—— 而本工作区接下来做的正是拆分。
     ///
-    /// 实测基线（2026-08-01，Phase E 复测）：**15 个文件合计 121_131 字节**，余量约 34%。
+    /// # 这里刻意**不记**当前实测值
     ///
-    /// **别手抄这个数。** 上面那行原本写的是 119_454 —— Phase E 审计算出 121_131，复测证明
-    /// **审计对、我抄错了**。本仓已有多起「写下之后没人回来核」的记录，所以复测办法写在这里：
-    /// 把下面的常量临时改成一个大数跑 `cargo test no_timer`，失败信息里的「只扫到 N 字节」
-    /// 就是当前实测值（那条断言恒打印实时值，不依赖本注释）。
+    /// 这段注释踩过两次同一个坑：U1a 时写「119_454」被审计算出实际 121_131（**我抄错了**）；
+    /// 订正成 121_131 之后，U2 建出 `platform/` + `common/` 当场又过期，
+    /// 被 Phase D 审计第二次逮到 —— 而那一版注释自己第一句写的就是「**别手抄这个数**」。
+    ///
+    /// **教训不是「下次抄仔细点」**：注释里但凡出现一个会随代码变的数字，
+    /// 光写「别手抄」挡不住任何人。要么给复测办法，要么根本别记。这里两条都做：
+    ///
+    /// **复测办法** —— 把下面的常量临时改成一个大数跑 `cargo test no_timer`，
+    /// 失败信息里的「只扫到 N 字节」就是当前实测值。**那条断言恒打印实时值、不依赖本注释**，
+    /// 所以真值永远在你手上。
     ///
     /// **要下调这个数之前先问：是真的删了那么多生产代码，还是扫描面又缩了？**
     ///
-    /// ⚠ **它一条挡不住「单个文件被剥空/剥过头」** —— 最大的 `watcher.rs`（34_506 字节，占 28%）
-    /// 整个消失，总量仍有 86_625 ≥ 80_000、照样绿。所以字节地板必须与
-    /// 下面那条**数量相等**判据配着用（Phase D 审计 I1 指出的缺口）。
+    /// ⚠ **它一条挡不住「单个文件被剥空/剥过头」** —— 最大的那个文件（`watcher.rs`，约占三成）
+    /// 整个消失，总量仍会高于本地板、照样绿。所以字节地板必须与下面那条**数量相等**判据
+    /// 配着用（Phase D 审计 I1 指出的缺口）。
     const MIN_SCANNED_CODE_BYTES: usize = 80_000;
+
+    /// 登记表的键（裸文件名）与采集到的相对路径是否指同一个文件。
+    ///
+    /// # 为什么单独抽成函数
+    ///
+    /// U-1 Phase E 把匹配从「路径全等」放宽成「全等 **或** 以 `/文件名` 结尾」，为的是
+    /// U2/U3 把文件搬进子目录时不误红。但 Phase D 审计指出：**那条 `ends_with` 分支
+    /// 今天被执行了却恒为 false** —— 登记表只有 `watcher.rs` 一条，而它还在顶层，
+    /// 命中永远由左边的全等短路给出。⇒ **「返回 true」那一侧零覆盖**，
+    /// U3 搬 `watcher.rs` 进 `observe/` 的那一刻它才第一次真生效。
+    ///
+    /// 而它一旦写错，表现出来是「登记表里的 watcher.rs 已经不在生产代码里了，请清理登记」
+    /// —— 一条**指向完全错误方向**的诊断（表没腐烂，只是文件搬了家），而 §4.1 红线又盯着
+    /// 这张表不许乱动。抽出来钉三行，比到时候排查便宜得多。
+    fn matches_registered(scanned_rel: &str, registered_file: &str) -> bool {
+        scanned_rel == registered_file || scanned_rel.ends_with(&format!("/{registered_file}"))
+    }
 
     /// 独立走一遍目录树，只数 `.rs` 个数 —— 用来与 `daemon_sources()` 的产出做**数量相等**核对。
     ///
@@ -267,15 +290,30 @@ mod tests {
         // 于是下一个人只能在「改红线表」和「改护栏」之间二选一。⇒ 现在就让纯搬家不触碰它。
         // （真删掉那处代码仍会红 —— `code.contains(snippet)` 那半边管这个。）
         for (file, snippet, _why) in REGISTERED_DURATION_USES {
-            let hit = daemon_sources().into_iter().any(|(n, code)| {
-                let same_file = n == *file || n.ends_with(&format!("/{file}"));
-                same_file && code.contains(snippet)
-            });
+            let hit = daemon_sources()
+                .into_iter()
+                .any(|(n, code)| matches_registered(&n, file) && code.contains(snippet));
             assert!(
                 hit,
                 "登记表里的 {file} / `{snippet}` 已经不在生产代码里了，请清理登记"
             );
         }
+    }
+
+    /// `matches_registered` 的真值表 —— 尤其是**今天还没被真跑过**的 `ends_with` 那一侧。
+    #[test]
+    fn registered_file_matching_survives_a_move_into_a_subdir() {
+        // 今天走的分支：文件还在顶层，全等命中。
+        assert!(matches_registered("watcher.rs", "watcher.rs"));
+        // U3 之后才会走的分支：搬进子目录仍要命中（否则「纯搬家」会被误报成「登记腐烂」）。
+        assert!(matches_registered("observe/watcher.rs", "watcher.rs"));
+        assert!(matches_registered("a/b/watcher.rs", "watcher.rs"));
+        // 反向：**不许**把名字相近的当成同一个。这几条是这条判据真正的价值所在。
+        assert!(!matches_registered("notwatcher.rs", "watcher.rs"));
+        assert!(!matches_registered("observe/notwatcher.rs", "watcher.rs"));
+        assert!(!matches_registered("watcher.rs.bak", "watcher.rs"));
+        assert!(!matches_registered("watcher.rsx", "watcher.rs"));
+        assert!(!matches_registered("", "watcher.rs"));
     }
 
     /// 登记表每条都要有非空理由 —— 不写理由的登记等于无声豁免。

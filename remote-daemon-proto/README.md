@@ -11,6 +11,54 @@ cc-monitor 的 SSH-远端功能后端 daemon（issue #15 起，已历 F14–F30+
 - **Standalone crate。** 故意 *不* 进 Cargo workspace、无根 `Cargo.toml` 引用它——避免 Windows/Tauri CI 去
   编译这个 Linux-only crate。CI 单独在 ubuntu 跑它的 `cargo fmt --check`/`clippy`/`test`（`.github/workflows/ci.yml` 的 daemon job）。
 
+## 内部分层（U2 起，2026-08-01）
+
+`unified-backend` 工作区把 cc-monitor 拆成 **frontend（UI + 开窗）** 与 **backend（读 + 控制）**，
+本 crate 就是 backend。§1.1 的三条解耦线，**第一条（平台线）U2 起有了目录，但尚未收口**：
+
+```
+src/
+├── platform/     平台原语与平台 cfg 的**目标**归属地（尚未收全，见下）
+│   ├── proc.rs       /proc 与进程身份：pid_alive · proc_starttime · parse_starttime_from_stat
+│   │                 · parse_btime · USER_HZ · start_epoch_from_ticks · proc_cmdline
+│   │                 · proc_claude_config_dir · session_alive + is_same_live_process（纯判定）
+│   ├── paths.rs      path_key（NTFS 大小写折叠 —— 路径语义，不是 /proc）
+│   └── pidwatch.rs   pidfd_open + watch_pid_until_exit（零轮询，阻塞在无超时 poll(2)）
+├── common/       两边都要、**平台无关**、无域知识的纯工具（门槛写在 common/mod.rs 里）
+│   └── paths.rs      projects_root（原有 5 处）· mtime_ms（原有 2 份）
+└── （其余仍是平的：watcher / *_query / wire / fork_write / tmux_hook / …）
+                  observe/ 与 control/ 的拆分是 U3，尚未做。
+```
+
+### 「唯一允许平台 cfg 的层」是**目标**，不是现状
+
+Phase D 审计逐条查过，**生产段还有 4 处平台原语在 `platform/` 之外**，如实列在这里：
+
+| 位置 | 是什么 | 处置 |
+|---|---|---|
+| `tmux_hook.rs:145-152` | `#[cfg(unix)]` + `libc::kill(pid, SIGUSR1)` | §1.1 已裁定 `tmux_hook` 归 `control/` ⇒ **U3 要连它一起处理**，否则 `control/` 里带一个裸 libc 原语 |
+| `main.rs:345-365` | SIGUSR1 处理器的 `#[cfg(unix)]` / `#[cfg(not(unix))]` | `main.rs` 是**组装根**，平台分支留在这里可辩护。但不能因此说「唯一」 |
+| `main.rs:421-433` | `#[cfg(windows)]` USERPROFILE 回退 | 同上 |
+| `main.rs:439-467` | `shutdown_signal` 的一对 cfg | 同上 |
+
+（U2 已收的两处曾经也在这张表上：`accounts_query.rs` 的 `proc_claude_config_dir`
+读 `/proc/<pid>/environ`，和 `watcher.rs` 里内联的第五处 `join("projects")`。）
+
+### 判据不是「cfg 出现在哪」
+
+计划自审打掉过这条：本 crate 在 Windows 上编不过的 12 个错里，头号的 `pidfd_open`
+**根本没有 cfg** —— 它是无条件编译的 Linux-only 代码，cfg 位置扫描抓不到。
+真判据只有 `cargo check --all-targets --target x86_64-pc-windows-msvc`，
+**今天实测仍是 RC=101 / 12 错**（11 个已集中到 `platform/pidwatch.rs`，1 个是
+`watcher.rs` 测试段的 `libc::getuid`）。清零并进 CI 是 **U4** 的 DoD。
+
+⇒ **平台线在 U4 通过那条编译判据之前，都不算落地。** U2 做的是把 11/12 个错**集中到一个文件**，
+让 U4 有一个明确的下手点 —— 这是真进展，但不是收口。
+
+**已登记、U2 刻意不修的**：`platform::proc::pid_alive` 的非 Linux 分支恒返回 `true`
+（静默错误地雷）。改它 = 决定「Windows 上进程是否存活怎么答」，是 U4 的正题；
+在一个声明「行为逐字不变」的纯重构里夹带语义决策是错的。
+
 ## 版本 / 身份 / 能力（三轴正交，见 `../doc/INVARIANTS.md` §26/§28）
 - `PROTO_VERSION`（`main.rs`）：只在**破坏性 wire 变更**时 bump；additive 新帧/新能力**不** bump。
 - `BUILD_ID`（`main.rs`）：人读构建标 = **身份**，管 staleness 检测 + 重部署确认（单源自源码，`build.rs` 编译期提取）。

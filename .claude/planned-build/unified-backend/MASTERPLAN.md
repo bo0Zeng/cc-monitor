@@ -205,9 +205,9 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 |---|---|---|---|
 | S1 | **护栏的扫描面**<br>**U-1 已交付**：`no_timer_guard` 递归 + **字节地板与数量相等双判据**（单靠字节挡不住单文件被剥空）；`readonly_guard` 的**两条过剥（fail-open）已修**——锚点钉行首 + 无花括号体声明不吃后文，扫描面 217_853→221_928；欠剥方向新增机器判据 `no_test_code_leaks_into_any_production_section`。**遍历未收敛**（daemon 5 份 + monitor 1 份），留 U1a | 剩余：`readonly_guard` 钉 `observe/`；`readonly_guard` 钉 `observe/`；`control/` 窄写护栏（三条子判据原样迁）；`platform/` 与顶层谁管**必须写明**（今天改钉 observe 后是真空） | U-1 · U1a · U1b |
 | S2 | **守卫的测试段 marker**<br>**U-1 已交付**：`guard_support.rs`（`#[cfg(test)]`-only，`pub(crate)`）收敛了 3 个守卫的剥法 + `assert_no_test_code` 自检。⚠ **`readonly_guard` 仍是第二套且不能 naive 换**——它能剥 `#[cfg(test)]` **自由函数**（`history_query.rs:232/309`，两者对该文件差 1246 字节），换过去会让它变弱；要收敛得做**并集剥法**，留 U1a | 原病灶：三个守卫共用的 `"\n#[cfg(test)]\nmod tests"` 对 `main.rs`（`mod stream_flag_tests`）不匹配 ⇒ 抽成一个共享 helper + **能真正检出「没剥掉测试段」的自检**（现有的 `main_prod.len() < main_raw.len()` 光靠剥注释就满足） | U-1 |
-| S3 | **平台原语** | 全收 `platform/`，含 crate 内已有的 `proc_starttime` 双份。判据 = 跨 target `--all-targets` 编译进 CI | U2 · U4 |
+| S3 | **平台原语**<br>**U2 交付的是「目标归属地」+ 把 11/12 个 Windows 编译错集中到 `platform/pidwatch.rs`，**不是收口**。已收：`pidfd_open`/`watch_pid_until_exit`（切开了 observe 回边）· `/proc` 一族 9 项 · `path_key`（单列 `platform/paths.rs`，U4 加 Windows 分支时零二次搬）· `proc_claude_config_dir`（Phase D 审计要求补收）。<br>⚠ **生产段还有 4 处在外**：`tmux_hook.rs` 的 `libc::kill`（§1.1 已裁定 tmux_hook 归 control ⇒ **U3 连它一起处理**）· `main.rs` 三处（组装根，可辩护为留，**但不能因此说「唯一」**）。<br>⚠ **U4 伏笔**：`is_same_live_process` 那张判定表要上提到 `platform/liveness.rs`（Windows 判活复用它），别留在按 `/proc` 命名的模块里 | U2 · U3 · U4 |
 | S4 | **`observe/ → control/` 的窄接口** | 显式列举 + 条数测试钉住。反向不许 | U3 |
-| S5 | **`common/`** | `projects_root`（4 份）· `mtime_ms`（2 份）· 时间换算 · quote | U2 · U3 |
+| S5 | **`common/`**<br>**U2 已交付**：`projects_root`（**5 处不是 4 处** —— 第五处是 `watcher.rs::watch_loop` 里内联的，`grep fn` 找不到）· `mtime_ms`（2 份）。门槛写在 `common/mod.rs`：≥2 **层**用 · **平台无关** · 无域知识。<br>⚠ **「时间换算 · quote」这两项要划掉**：Phase D 审计逐条核过，daemon crate 内**没有可合的逐字副本** —— 时间换算三处语义/单位各不相同（`file_mtime_epoch` 单位是**秒**不是毫秒），quote 在 daemon 内只有一份、多份在 monitor 侧**跨 crate**、`common/` 收不了。<br>⚠ **U3 必须复查**：`mtime_ms` 的两个调用点同属 observe，「≥2 层」按层口径**今天不成立**；`observe/` 一建出来就要重判 | U2 · U3 |
 | S6 | **wire 协议 + `IPC-PROTOCOL.md`** | 双向；**文档先修再冻结**（该文件 7 处在说谎，见 §3-U6）；wire 字段名双向 `include_str!` 对拍 | U6 |
 | S7 | **daemon argv 面** | 三类；`split_stream_flags` + `every_capability_token_is_strippable` 同步扩。⚠ **起点比以为的更糟**：现有的二分表本身就漏了 5 条子命令（`--tmux-notify` / `--resolve` / `--fork-session` / `--account-trust-zero` / `--read-session-from-offset`），其中 `--account-trust-zero` 漏登记**出过 v3.4.0 事故** | U6 |
 | S8 | **`BUILD_ID` 单源链条**<br>**U-1 已交付**：① `ssh_source.rs::embedded_build_id_single_source_wired` 断言 ≠ `"unknown"`；② `build.rs` 三条硬 panic（抠不到源码 `BUILD_ID` / 有二进制但缺清单 / 清单与源码不符）；③ 半 bump **真修掉**（两个 arch 从 p1v 源码现编，`rust-lld` 零安装）。<br>⚠ **措辞订正**：原写「缺文件从 warn 改 fail」不准 —— 三条 panic 都以「`embedded-daemons/` 里真有二进制」为前提；**整个目录缺失时仍是优雅降级**（那是 dev/CI 常态），兜那一档的是①不是 `build.rs`。发版链两头都够得着（`release.yml:56-58` 写清单、`:113-118` 再对拍） | U-1 · U13 |
@@ -431,3 +431,14 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
 - 2026-08-01 **U1a 完成**。实现期证伪了功能计划自己的一条 DoD（「`require` 阈值改小 ⇒ 不影响」——变异实测：阈值 10→3 全套依旧 4 passed），而**账本 S11 早就写着「`min_checked` 不低于迁移前的 checked」**，是功能计划抄漏了账本。五条钉子按 clippy 的提示改成**编译期** `const _: () = assert!`（改坏了编不过）。
   Phase D 逮到 3 条重要项：**A1 是我造成的静默退化**（`mod` 插错位置拆散 `#[cfg(test)]` 配对，`structural_scan` 变无条件编译、dead_code +5，而 `cargo build` 无 `-D warnings` 故不会红）；**A2 是本功能核心目的上的缺口**（读数漏了 `violations`，对 F01 的裸目标事故形状全瞎）；A3 参数两处各写一遍。
   顺带订正一处陈旧断言：`sftp.rs` 注释写「checked=11、留 1 余量」，**实测 10、余量为 0**，逐 commit 追到 `666cc14` 属正当行为变更（净 −1）。不下调阈值。
+- 2026-08-01 **U2 完成**（第一个真动结构的）。Phase B 复查推翻主计划一条：**回边判断偏了一个函数** ——
+  `session_alive` 全在 platform 域内、无回边；真回边是 `spawn_pid_watcher` 依赖 `WatchEvent`/`PidWatchTarget`。
+  定形态为**切开**（`watch_pid_until_exit(pid, expected_start, on_dead)`）而非参数化谓词。
+  **「行为逐字不变」有硬证据**：wire 输出搬家前后 sha256 相同；审计独立做到 14 条子命令 + stderr + 退出码全 diff 为空，
+  外加流模式真杀进程触发 pidfd 判死、帧逐字节相同；`proc_starttime` 去重用 **60 万输入差分 fuzz** 证等价（0 mismatch）。
+  **唯一例外如实记**：`tracing` 事件的 target 从 `::watcher` 变成 `::platform::pidwatch`（影响面实测为零）。
+  Phase D 两条阻塞**都是我把「规则」写成了「现状」**（README 宣告平台线「已落地」，而它自己三行后就说判据是 U4 的；
+  「唯一允许平台 cfg 的层」写成现状而生产段还有 4 处在外）。据此真收两处 + 其余如实列表。
+  另：`no_timer_guard` 的实测基线注释**第二次过期**（那段自己第一句就是「别手抄这个数」）⇒ 这次不改数字、改做法：
+  删掉快照值只留复测办法。`REGISTERED_DURATION_USES` 的 `ends_with` 分支抽成 `matches_registered` + 真值表钉住
+  （它今天被执行但恒 false，U3 搬 `watcher.rs` 时才第一次真生效，写错会报出「登记表在腐烂」这条指向错误方向的诊断）。

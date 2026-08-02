@@ -117,6 +117,13 @@ src-tauri/src/
 │              mcp.rs        F87 MCP 管理（跨 scope 宽容读 / 只写项目 .mcp.json，SS-14 读写分界）
 │              panorama.rs   Batch15 code-picture 代码全景后端（per-repo Engine 池，只读查询）
 │              accounts.rs   A2 多账号只读查询（list_remote_accounts / list_remote_session_accounts / check_account_trust；账号=一个 CLAUDE_CONFIG_DIR，纯只读经 daemon，#68/#69）
+├── 远端 daemon  remote-daemon-proto/  **它不在上面这棵树里** —— 是独立 crate、刻意**不是 workspace 成员**
+│                            （`remote-daemon-proto/Cargo.toml:6-8`：进了 workspace 就会把 Linux-only 的
+│                            daemon 拖进 Windows CI）。U2（2026-08-01）起有了内部分层：`platform/`
+│                            （平台原语与平台 cfg 的**目标**归属地 —— **尚未收全**，生产段还有 4 处在外面，
+│                            清单见 daemon README）+ `common/`（平台无关的纯工具）。其余仍是平的；
+│                            `observe/`+`control/` 的拆分是 U3。
+│                            模块图见 [`remote-daemon-proto/README.md`](../remote-daemon-proto/README.md)。
 ├── 共享 crate  crates/branch-core/  分支记录变换（祖先回溯）——monitor 与远端 daemon **共用一份**。
 │                            **path 依赖、非 workspace 成员** ⇒ 不进 `cargo test --all`，
 │                            CI 与发版 checklist 都要单独 `-p branch-core`（test / fmt / clippy 三样）

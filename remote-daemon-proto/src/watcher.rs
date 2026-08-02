@@ -46,6 +46,19 @@ use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+
+// U2：平台原语搬进 `platform/`（§1.1 第一条解耦线）。这里 re-import 回来，
+// 调用点一处未改 —— 纯重构，行为逐字不变。
+use crate::platform::paths::path_key;
+use crate::platform::proc::{pid_alive, proc_cmdline, proc_starttime, start_epoch_from_ticks};
+// 只在测试段用到的几个（生产段的调用点随函数一起搬走了）。分开写而不是给整条 `use`
+// 加 `#[cfg(test)]`：上面那四个生产段真在用，混在一起会让「谁是生产依赖」看不出来。
+#[cfg(test)]
+use crate::platform::pidwatch::pidfd_open;
+#[cfg(test)]
+use crate::platform::proc::{
+    is_same_live_process, parse_btime, parse_starttime_from_stat, session_alive,
+};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use walkdir::WalkDir;
@@ -149,43 +162,6 @@ impl notify_debouncer_mini::DebounceEventHandler for DebouncerSink {
     }
 }
 
-/// P2：`pidfd_open(2)`。绑的是**进程实例本身**而不是 pid 数字 ⇒ **PID 复用在机制上
-/// 不存在**（不是"检测得更准"，是"无从发生"）。这是本工作区唯一一条正确性改进。
-///
-/// 需 Linux 5.3+（本机 7.0）。失败最常见的是 `ESRCH`——目标在 open 之前就没了。
-fn pidfd_open(pid: u32) -> std::io::Result<std::os::fd::OwnedFd> {
-    use std::os::fd::FromRawFd;
-    // SAFETY：`SYS_pidfd_open` 只读地为目标进程创建一个 fd，不解引用任何指针。
-    // 返回值 <0 时按 errno 处理、不构造 OwnedFd；>=0 时它是一个我们独占的新 fd，
-    // 交给 OwnedFd 接管所有权（唯一持有者，Drop 时 close）。
-    let rc = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0 as libc::c_uint) };
-    if rc < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    // SAFETY：rc 是刚由内核分配、无人持有的合法 fd。
-    Ok(unsafe { std::os::fd::OwnedFd::from_raw_fd(rc as i32) })
-}
-
-/// P2：给一个 pidfile 挂 pidfd 看守。**零轮询**——线程阻塞在无超时 `poll(2)` 上，
-/// 由**内核**在目标进程终止时唤醒。
-///
-/// 三条判据，按顺序：
-/// 1. `pidfd_open` 失败（`ESRCH` 等）⇒ 目标已不在 ⇒ 立刻发 `PidDied`。
-/// 2. open 成功后**再读一次** `proc_starttime` 与 add 时捕获的基线比对
-///    （复用既有纯函数 `is_same_live_process`）：不符 = 在"读 pidfile"与
-///    "开 pidfd"之间发生了 PID 复用 ⇒ 我们开到的是冒名者 ⇒ 发 `PidDied`。
-///    **这就是原先那套 procStart 启发式的全部去处**——从"每 2s 复查一遍"
-///    降级为"开 pidfd 时校验一次"，之后靠内核，不再需要周期比对。
-/// 3. 起线程 `poll(pidfd, POLLIN, -1)`；醒了发 `PidDied`。
-///
-/// **线程数的界**：每个被追踪的 (pidfile, pid) 最多一条，实际是个位数
-/// （一台机器上同时活着的 CC 交互会话数）。线程活到目标进程真正退出为止——
-/// 若 pidfile 先被删而进程仍在，那条线程会继续等，等到进程退出时发一条
-/// **陈旧唤醒**，被消费侧的 pid 比对挡掉（无副作用）。
-///
-/// **`poll` 真出错（非 `EINTR`）时刻意不发 `PidDied`**：宁可让会话留在 live、
-/// 等 pidfile 删除或断连来收，也不因一次系统调用失败就误归档——与本文件
-/// `is_same_live_process` 头注那条「瞬时读失败绝不误归档」同一条纪律。
 /// P3：pidfd 看守的目标——决定醒了之后发哪个事件。**让 `spawn_pid_watcher` 一份实现服务
 /// 两种目标 ⇒ 全 crate 只有一处 pidfd 的 `unsafe`。**
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -208,57 +184,18 @@ impl PidWatchTarget {
     }
 }
 
+/// **薄包装**：把 `platform::pidwatch::watch_pid_until_exit` 的「判死」回调
+/// 落成本模块的域事件。U2 切分后本函数**只剩这一件事** —— 平台那半（pidfd_open /
+/// 身份复核 / poll / 起线程）在 `platform/pidwatch.rs`，它不知道 `WatchEvent` 是什么。
 fn spawn_pid_watcher(
     target: PidWatchTarget,
     pid: u32,
     expected_start: Option<u64>,
     tx: std::sync::mpsc::Sender<WatchEvent>,
 ) {
-    let fd = match pidfd_open(pid) {
-        Ok(fd) => fd,
-        Err(e) => {
-            tracing::debug!("pidfd_open pid {pid} 失败（目标已不在？）: {e}");
-            let _ = tx.send(target.death_event(pid));
-            return;
-        }
-    };
-    // 判据 2：open 之后复核身份（挡 pidfile 读取 → pidfd_open 之间的 PID 复用）。
-    // 用既有的 `session_alive`（存在性 + 同实例），语义正是这里要的；顺带覆盖
-    // "pidfd 开成功但进程在这一瞬已退出"。
-    if !session_alive(pid, expected_start) {
-        tracing::warn!("pidfd 开到的 pid {pid} 与基线不符（PID 复用）⇒ 当死");
+    crate::platform::pidwatch::watch_pid_until_exit(pid, expected_start, move || {
         let _ = tx.send(target.death_event(pid));
-        return;
-    }
-    let builder = std::thread::Builder::new().name(format!("pidfd-{pid}"));
-    let spawned = builder.spawn(move || {
-        use std::os::fd::AsRawFd;
-        let raw = fd.as_raw_fd();
-        let mut pfd = libc::pollfd {
-            fd: raw,
-            events: libc::POLLIN,
-            revents: 0,
-        };
-        loop {
-            // SAFETY：pfd 是栈上的一个合法 pollfd，nfds=1 与之匹配；timeout=-1 = 无限等。
-            // `fd` 的所有权在本闭包里，poll 期间不会被 close。
-            let n = unsafe { libc::poll(&mut pfd as *mut libc::pollfd, 1, -1) };
-            if n >= 0 {
-                let _ = tx.send(target.death_event(pid));
-                return;
-            }
-            let err = std::io::Error::last_os_error();
-            if err.kind() == std::io::ErrorKind::Interrupted {
-                continue; // EINTR：接着等
-            }
-            // 真错误：**不**报死（见头注）。
-            tracing::warn!("pidfd poll pid {pid} 失败、放弃看守（不报死）: {err}");
-            return;
-        }
     });
-    if let Err(e) = spawned {
-        tracing::warn!("起 pidfd 看守线程失败 pid {pid}: {e}");
-    }
 }
 
 /// P4b：给当前 tmux server 装通知 hook。**尽力而为**：拿不到自己的 exe 路径 /
@@ -623,7 +560,10 @@ fn watch_loop(
     events_tx: std::sync::mpsc::Sender<WatchEvent>,
     events_rx: std::sync::mpsc::Receiver<WatchEvent>,
 ) {
-    let projects = claude_dir.join("projects");
+    // U2 Phase D 审计 重要-2：`projects` 这个目录名原本有**五**处，不是 `common/paths.rs`
+    // 注释里写的四处 —— 这是第五处（内联的，grep `fn projects_root` 找不到它）。
+    // 不收的话「合并去重」承诺的性质（改布局只改一处）根本没拿到。
+    let projects = crate::common::paths::projects_root(&claude_dir);
     let sessions = claude_dir.join("sessions");
 
     let mut state = ReaderState::new(projects.clone(), with_bg, tail_only);
@@ -1410,41 +1350,6 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
     state.seqs.peek(&key_str)
 }
 
-/// Whether `pid` currently exists as a process on this host (existence only).
-///
-/// Linux (the daemon's real target): `/proc/<pid>` existence. This is the
-/// add-time gate; the reuse-proof check is [`session_alive`].
-fn pid_alive(pid: u32) -> bool {
-    #[cfg(target_os = "linux")]
-    {
-        std::path::Path::new(&format!("/proc/{pid}")).exists()
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        // Non-Linux (Windows compile/smoke only — not the real target): treat as
-        // alive so the cross-platform smoke still exercises the pipeline.
-        let _ = pid;
-        true
-    }
-}
-
-/// The PID's procStart (start time), used to defend against PID reuse (#34).
-///
-/// Linux: the `starttime` field (jiffies since boot) from `/proc/<pid>/stat`.
-/// Non-Linux (Windows smoke): `None` — liveness then degrades to existence only.
-pub(crate) fn proc_starttime(pid: u32) -> Option<u64> {
-    #[cfg(target_os = "linux")]
-    {
-        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-        parse_starttime_from_stat(&stat)
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = pid;
-        None
-    }
-}
-
 /// Add-time verdict on whether the current occupant of a PID is plausibly the
 /// claude process that wrote the `sessions/<PID>.json` pidfile (Batch5-F20).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1534,43 +1439,6 @@ fn parse_procstart_ticks(bytes: &[u8]) -> Option<u64> {
     field.as_u64()
 }
 
-/// Parse the boot time (`btime <epoch-secs>` line) out of `/proc/stat` content.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn parse_btime(proc_stat: &str) -> Option<u64> {
-    proc_stat.lines().find_map(|l| {
-        l.strip_prefix("btime ")
-            .and_then(|v| v.trim().parse::<u64>().ok())
-    })
-}
-
-/// `/proc` time values are exported in USER_HZ ticks, which is a compile-time
-/// constant 100 on every mainstream Linux arch (independent of the kernel's
-/// internal HZ) — hardcoding avoids a libc dependency for sysconf(_SC_CLK_TCK).
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-const USER_HZ: u64 = 100;
-
-/// Starttime ticks → wall-clock epoch seconds: `/proc/stat` btime + ticks/USER_HZ.
-///
-/// btime is read FRESH on every call, deliberately un-cached: the kernel
-/// computes it per-read as (wall clock − CLOCK_BOOTTIME), so an NTP **step**
-/// moves it. A cached value taken before a backwards step would leave a
-/// constant offset that mis-kills every future real session with no self-heal
-/// (F20 audit I-1). Session-add is rare; one small /proc read is free.
-fn start_epoch_from_ticks(ticks: Option<u64>) -> Option<u64> {
-    #[cfg(target_os = "linux")]
-    {
-        let btime = std::fs::read_to_string("/proc/stat")
-            .ok()
-            .and_then(|s| parse_btime(&s))?;
-        Some(btime + ticks? / USER_HZ)
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = ticks;
-        None
-    }
-}
-
 /// The pidfile's mtime as epoch seconds (None on any error → check skipped).
 fn file_mtime_epoch(path: &Path) -> Option<u64> {
     let mtime = std::fs::metadata(path).ok()?.modified().ok()?;
@@ -1578,92 +1446,6 @@ fn file_mtime_epoch(path: &Path) -> Option<u64> {
         .duration_since(std::time::UNIX_EPOCH)
         .ok()
         .map(|d| d.as_secs())
-}
-
-/// `/proc/<pid>/cmdline`, NUL separators turned into spaces, lossily decoded.
-/// None when unreadable (vanished PID, permissions) → check skipped.
-fn proc_cmdline(pid: u32) -> Option<String> {
-    #[cfg(target_os = "linux")]
-    {
-        let bytes = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
-        let spaced: Vec<u8> = bytes
-            .into_iter()
-            .map(|b| if b == 0 { b' ' } else { b })
-            .collect();
-        Some(String::from_utf8_lossy(&spaced).into_owned())
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = pid;
-        None
-    }
-}
-
-/// Parse the `starttime` (field 22) out of a `/proc/<pid>/stat` line.
-///
-/// **The comm gotcha**: field 2 is `(comm)` and the executable name can contain
-/// spaces and parentheses (e.g. `(my proc)` or `((odd))`). Splitting the whole
-/// line on whitespace is therefore wrong. The robust parse — used by ps/htop —
-/// is to find the **last** `')'`, then count fields in the remainder: the first
-/// token after it is field 3 (`state`), so `starttime` (field 22) is token index
-/// `22 - 3 = 19` (0-based) of the post-`)` whitespace split.
-///
-/// Only called from the Linux branch of [`proc_starttime`] (and by unit tests on
-/// every platform); on a non-Linux build the function body is unreferenced.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
-    /// 0-based index of `starttime` (field 22) within the tokens that follow the
-    /// closing paren of `comm` (field 3 = `state` is token 0).
-    const STARTTIME_IDX_AFTER_COMM: usize = 22 - 3;
-    let after_comm = &stat[stat.rfind(')')? + 1..];
-    after_comm
-        .split_whitespace()
-        .nth(STARTTIME_IDX_AFTER_COMM)?
-        .parse::<u64>()
-        .ok()
-}
-
-/// Reuse-proof liveness for an ACTIVE session (#34): the PID must still exist
-/// **and** (when a procStart was captured at add-time) its current procStart
-/// must match. A mismatch means the OS reused the PID for a different process —
-/// the original session has ended.
-///
-/// Wires the real `/proc` reads into the pure [`is_same_live_process`] decision.
-fn session_alive(pid: u32, expected_start: Option<u64>) -> bool {
-    let exists = pid_alive(pid);
-    // Only read the current start if the PID exists (a read on a vanished PID is
-    // pointless and would just be `None` anyway).
-    let current_start = if exists { proc_starttime(pid) } else { None };
-    is_same_live_process(exists, expected_start, current_start)
-}
-
-/// Pure liveness decision (testable without a real `/proc`), given whether the
-/// PID currently **exists**, the procStart **captured** at add-time, and the
-/// procStart **read now**.
-///
-/// Key correctness rule (#34): a PID reuse only ever shows up as a
-/// *successfully-read, DIFFERENT* current start. So the only case that declares
-/// "dead by reuse" is `(Some(captured), Some(current))` with `captured != current`.
-/// Every other arm where the PID still exists returns alive — in particular a
-/// **transient `/proc/<pid>/stat` read failure** (`current == None`) must NOT
-/// false-archive a process that demonstrably still exists (that would be a
-/// regression vs. the Phase-0 existence-only check). If the process is truly
-/// gone, `exists` is already `false` and we return dead.
-fn is_same_live_process(
-    exists: bool,
-    expected_start: Option<u64>,
-    current_start: Option<u64>,
-) -> bool {
-    if !exists {
-        return false;
-    }
-    match (expected_start, current_start) {
-        // Baseline captured AND current readable: same process iff equal.
-        (Some(captured), Some(current)) => captured == current,
-        // No baseline, or current unreadable right now: existence is all we can
-        // assert. Do not archive a still-existing PID on missing start info.
-        _ => true,
-    }
 }
 
 /// Pure parse of the `sessionId` field out of a sessions JSON blob.
@@ -1756,18 +1538,6 @@ fn is_subagent_path(p: &Path) -> bool {
 
 fn file_stem_str(p: &Path) -> Option<String> {
     p.file_stem().and_then(|s| s.to_str()).map(str::to_string)
-}
-
-/// Case-fold the path on Windows so notify's NTFS case variance does not double
-/// emit; on other platforms keep the path verbatim. Mirrors `watcher.rs`.
-#[cfg(windows)]
-fn path_key(p: &Path) -> PathBuf {
-    PathBuf::from(p.to_string_lossy().to_ascii_lowercase())
-}
-
-#[cfg(not(windows))]
-fn path_key(p: &Path) -> PathBuf {
-    p.to_path_buf()
 }
 
 #[cfg(test)]

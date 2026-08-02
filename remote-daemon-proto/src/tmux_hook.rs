@@ -137,7 +137,7 @@ pub fn notify(args: &[String]) -> i32 {
     // ★ PID 复用防御：光看 /proc/<pid> 存在是不够的 —— daemon 退出后那个 pid 可能已经
     // 被**别的进程**占用，给它发 SIGUSR1 轻则无效、重则打断一个无关进程（很多程序把
     // SIGUSR1 当自定义控制信号，默认处置更是直接终止）。必须比对 starttime。
-    match crate::watcher::proc_starttime(pid) {
+    match crate::platform::proc::proc_starttime(pid) {
         Some(actual) if actual == want_start => {}
         _ => return 0, // 不是那个 daemon（或它已经不在）⇒ 静默不做事
     }
