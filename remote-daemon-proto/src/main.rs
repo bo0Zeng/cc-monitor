@@ -164,15 +164,109 @@ const EMITS: &[&str] = &[
     "tmux_session_closed",
 ];
 
-/// Batch7-F24/Batch8-F25：从 argv 剥离流模式 flag（`--with-bg` / `--tail-only`），
-/// 返回（剩余参数, with_bg, tail_only）。**必须在一次性查询模式判定之前调用**
-/// （INVARIANT §26：flag 落进 query 分支 → daemon 打印查询结果退出 → monitor
-/// 无 hello 死循环）。
+// U6b-2 **argv 三分表**：daemon 认识的每个 `--token` 恰好属于其中一类。
+//
+// # 为什么要有这张表
+//
+// 在它之前是**二分**：剥掉流 flag，剩下非空就当一次性查询。后果实测：
+//
+// ```text
+// $ cc-monitor-remote --some-future-flag
+// cc-monitor-remote query error: unknown argument: --some-future-flag
+// rc=2
+// ```
+//
+// **未知 flag 在流位置 ⇒ exit 2、一个字节都不输出、没有 hello。** monitor 那头看到的
+// 和「daemon 崩了」无法区分 ⇒ 重连 ⇒ 发同一个 flag ⇒ **死循环**。这正是 2026-07-09
+// 事故的形状。`every_capability_token_is_strippable` 挡不住它——那条只覆盖**与已声明
+// 能力绑定**的 flag，「monitor 因为别的原因发了个新 flag」不在它的判据里。
+//
+// # 这张表**漏一项**的后果比旧行为更糟，所以必须有完备性机检
+//
+// 判据改成「`args[0]` ∈ [`SUBCOMMANDS`] ⇒ 查询模式」之后，漏登记一条子命令不再是
+// exit 2（吵，但看得见），而是**那条子命令静默变成「起了个流」**——调用方拿到一堆
+// jsonl 行而不是查询结果。这是 v3.4.0 `--account-trust-zero` 漏登记那次事故的**加强版**。
+// ⇒ `every_dispatched_token_is_classified` 是本组的核心交付，不是附属品。
+
+/// ① 流模式 flag：出现即剥离并置位，**不影响模式判定**。
+const STREAM_FLAGS: &[&str] = &["--with-bg", "--tail-only"];
+
+/// ② 一次性查询子命令：**只有 `args[0]` 是其中之一才进查询模式**。
+const SUBCOMMANDS: &[&str] = &[
+    "--account-trust",
+    "--account-trust-zero",
+    "--fork-session",
+    "--list-accounts",
+    "--list-projects",
+    "--list-sessions",
+    "--read-session",
+    "--read-session-from-offset",
+    "--read-session-tail",
+    "--resolve",
+    "--search",
+    "--session-accounts",
+    "--tmux-notify",
+    "--usage",
+];
+
+/// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，daemon 顶层不解释它们。
+const SUBCOMMAND_OPTIONS: &[&str] = &[
+    "--accts-dir",
+    "--after-ms",
+    "--include-tools",
+    "--limit",
+    "--scope",
+];
+
+/// 从 argv 剥离流模式 flag，返回（剩余参数, with_bg, tail_only）。
+///
+/// **必须在一次性查询模式判定之前调用**（INVARIANT §26）。
 fn split_stream_flags(mut args: Vec<String>) -> (Vec<String>, bool, bool) {
     let with_bg = args.iter().any(|a| a == "--with-bg");
     let tail_only = args.iter().any(|a| a == "--tail-only");
-    args.retain(|a| a != "--with-bg" && a != "--tail-only");
+    args.retain(|a| !STREAM_FLAGS.contains(&a.as_str()));
     (args, with_bg, tail_only)
+}
+
+/// 剥完流 flag 之后：这些参数该进查询模式，还是该进流模式？
+///
+/// 返回 `true` = 一次性查询。判据是 **`args[0]` 是不是一条已登记的子命令**，
+/// 不再是「非空即查询」。
+///
+/// # 未知 `--flag` 忽略，未知**裸参数**仍报错
+///
+/// 两者要分开：
+/// - 未知 `--flag`：可能是**新版 monitor 发给旧版 daemon** 的。忽略它 + 一行 warn，
+///   照常进流模式发 hello ⇒ monitor 拿得到握手、能看出对面旧、可以降级。
+///   这条不能追溯修好**已经部署**的旧 daemon，但它让**下一个** flag 的新增是安全的。
+/// - 未知裸参数（不以 `--` 开头）：那是明确的调用错误。任何未来协议都不会把裸参数放 `args[0]`，
+///   静默吞掉只会让人查半天。**仍旧落进查询分支报 `unknown argument` + exit 2。**
+fn is_query_mode(args: &[String]) -> bool {
+    match args.first() {
+        None => false,
+        Some(first) => {
+            if SUBCOMMANDS.contains(&first.as_str()) {
+                return true;
+            }
+            // 不是子命令：这两种都算**明确的调用错误**，交给查询分支报 unknown argument + exit 2。
+            //
+            // - 还有任何一个**裸参数**（不以 `--` 开头）：任何未来协议都不会这么发。
+            // - `args[0]` 是个**子命令选项**（如 `--scope`）：选项脱离了它的子命令，
+            //   静默当成起流会让调用方拿到一堆 jsonl 行还以为查询成功了。
+            if args.iter().any(|a| !a.starts_with("--"))
+                || SUBCOMMAND_OPTIONS.contains(&first.as_str())
+            {
+                return true;
+            }
+            for a in args {
+                tracing::warn!(
+                    "未知 flag {a}：本 daemon 不认识它，已忽略并照常进流模式。\
+                     （若这是新版 monitor 的新能力，请升级 daemon。）"
+                );
+            }
+            false
+        }
+    }
 }
 
 // 本测块紧邻被测的 split_stream_flags（就近可读）、不挪文件尾；显式 allow 让 clippy
@@ -266,7 +360,7 @@ async fn main() {
     // （否则误入 query 分支——INVARIANT §26）。纯函数化供单测（审计 D）。
     let (args_rest, with_bg, tail_only) = split_stream_flags(args);
     let args = args_rest;
-    if !args.is_empty() {
+    if is_query_mode(&args) {
         // 一次性查询模式：--search 全文搜索（#28）/ --usage 用量聚合（F88a-remote）/
         // --resolve advisor（daemon-04，读 stdin ResumeSpec→stdout CommandPlan），其余走历史查询（#16）。
         let code = match args.first().map(String::as_str) {
@@ -311,6 +405,7 @@ async fn main() {
         kinds: Vec::new(),
         capabilities: CAPABILITIES.iter().map(|s| s.to_string()).collect(),
         emits: EMITS.iter().map(|s| s.to_string()).collect(),
+        commands: inbound::COMMANDS.iter().map(|s| s.to_string()).collect(),
     };
     if let Err(e) = write_frame(&mut stdout, &hello).await {
         tracing::error!("failed to write hello frame: {e}");
@@ -387,6 +482,25 @@ async fn main() {
     poke_task.abort();
     inbound_task.abort();
     drop(reply_tx);
+
+    // ★ **必须显式 exit，不能让 runtime 自然 drop。**
+    //
+    // `tokio::io::stdin()` 走的是**阻塞线程池**。`inbound_task.abort()` 只取消那个 async
+    // task，**阻塞中的 `read(0)` 不受影响**；而 `#[tokio::main]` 展开出来的 runtime 在 drop
+    // 时会等所有 blocking 任务结束 ⇒ 只要对端还开着 stdin，进程就永远停在这一行。
+    //
+    // D 审计实测（U6b-1 引入入方向之后，相对父提交的**回归**）：
+    // stdin 接一条开着但没数据的 FIFO，发 SIGTERM ⇒ 3/3 复现「5s 后仍未退出」，
+    // stderr 末行已经打了 "shutdown signal received; exiting" —— 清理跑完了，就是不退。
+    // 父提交同一脚本 100ms 内退出。
+    //
+    // 爆炸半径正是生产形状：monitor 经 SSH exec 连着时 stdin 一直开着。
+    // 远端手工 kill 一个卡住的 daemon、部署脚本替换在跑的二进制，今天都会失效。
+    //
+    // 为什么 exit 是安全的：**流模式 daemon 没有任何待落盘状态** —— 它只读；
+    // 唯一的写盘入口 `control/fork_write.rs` 在一次性查询模式，那条路早就 exit 了。
+    // stdout 也不欠 flush：`writer_task` 每帧写完即 flush。
+    std::process::exit(0);
 }
 
 /// The stdout writer half of the §5.4 split: drain frames and write one wire
@@ -407,14 +521,40 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     mut rx: tokio::sync::mpsc::Receiver<Frame>,
     mut reply_rx: tokio::sync::mpsc::Receiver<Frame>,
 ) {
+    // ★ 应答优先，但**有预算**。
+    //
+    // 第一版是无条件 `biased` + 应答在前，注释写着「应答量极小，优先它不会饿死行」——
+    // **那个前提由不可信输入决定，不成立**。D 审计端到端实测（客户端只是往 stdin 灌
+    // `{"id":"n","cmd":"n"}`）：500ms 内应答 70 789 条、出方向实时行 **4 条**，队列里一直排着。
+    //
+    // 机理是闭环的：读循环在应答通道满时阻塞（`send` 是 `.await`），于是通道**恒满**；
+    // `biased` 每次都命中 `reply_rx`，`rx` 永远轮不到。生产里出方向是 10 000 容量，
+    // 会先堆满再 `Overflow` 丢实时行 —— 一行命令就能让远端会话看起来「卡住」。
+    //
+    // 现在：连发 `REPLY_BURST` 条应答之后**强制让位一次**给出方向。
+    // 仍然偏向应答（正常场景一条命令一两帧，够不到预算），但偏置是**有界**的。
+    const REPLY_BURST: u32 = 8;
+    let mut burst = 0u32;
     loop {
-        let frame = tokio::select! {
-            biased;
-            Some(f) = reply_rx.recv() => f,
-            f = rx.recv() => match f {
-                Some(f) => f,
-                None => return, // 出方向通道关了 = 寿终
-            },
+        let frame = if burst < REPLY_BURST {
+            tokio::select! {
+                biased;
+                Some(f) = reply_rx.recv() => { burst += 1; f }
+                f = rx.recv() => match f {
+                    Some(f) => { burst = 0; f }
+                    None => return, // 出方向通道关了 = 寿终
+                },
+            }
+        } else {
+            burst = 0;
+            tokio::select! {
+                biased;
+                f = rx.recv() => match f {
+                    Some(f) => f,
+                    None => return,
+                },
+                Some(f) = reply_rx.recv() => f,
+            }
         };
         if let Err(e) = write_frame(&mut out, &frame).await {
             // Broken pipe (client gone) is the normal end-of-life; stop quietly.
@@ -491,5 +631,124 @@ async fn shutdown_signal() {
     #[cfg(not(unix))]
     {
         let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
+/// U6b-2：**argv 三分表的完备性与互斥**。
+///
+/// 这是 [`SUBCOMMANDS`] 那套判据能成立的**唯一**理由：判据改成「`args[0]` ∈ SUBCOMMANDS
+/// ⇒ 查询模式」之后，漏登记一条子命令的后果**不再是 exit 2**（吵，但看得见），
+/// 而是那条子命令**静默变成「起了个流」** —— 调用方拿到一堆 jsonl 行而不是查询结果。
+/// v3.4.0 `--account-trust-zero` 漏登记那次事故的加强版。
+#[cfg(test)]
+mod argv_table_guard {
+    use super::{STREAM_FLAGS, SUBCOMMANDS, SUBCOMMAND_OPTIONS};
+
+    /// 4 个分派文件里出现的每个 `--token`。
+    ///
+    /// **直接复用 U6a 的抽取**（`protocol_doc_guard` 的 `DISPATCH_FILES` +
+    /// `dispatched_subcommands`），而不是在这里重抄一份文件名单 —— 两份名单必然漂移，
+    /// 而 U6a 那份已经有 `dispatch_registry_is_complete` 反向核对它没漏文件。
+    fn dispatched() -> Vec<String> {
+        crate::protocol_doc_guard::dispatched_subcommands()
+    }
+
+    /// ★ 每个被分派的 token 都必须在三分表里。
+    #[test]
+    fn every_dispatched_token_is_classified() {
+        let tokens = dispatched();
+        assert!(
+            tokens.len() >= 14,
+            "只抽到 {} 个 token —— 抽取坏了，本断言在空转：{tokens:?}",
+            tokens.len()
+        );
+        let unclassified: Vec<&String> = tokens
+            .iter()
+            .filter(|t| {
+                let t = t.as_str();
+                !STREAM_FLAGS.contains(&t)
+                    && !SUBCOMMANDS.contains(&t)
+                    && !SUBCOMMAND_OPTIONS.contains(&t)
+            })
+            .collect();
+        assert!(
+            unclassified.is_empty(),
+            "这些 token 被分派了但不在 argv 三分表里：{unclassified:?}\n\
+             ⚠ 后果**不是**报错退出，而是：`args[0]` 认不出来 ⇒ 当成流模式 ⇒ \n\
+             那条子命令**静默变成起了个流**，调用方拿到 jsonl 行而不是查询结果。\n\
+             把它加进 STREAM_FLAGS / SUBCOMMANDS / SUBCOMMAND_OPTIONS 之一。"
+        );
+    }
+
+    /// ★ 三类**两两不交**。同一个 token 分两类 = 判据自相矛盾。
+    #[test]
+    fn the_three_classes_do_not_overlap() {
+        for (an, a) in [
+            ("STREAM_FLAGS", STREAM_FLAGS),
+            ("SUBCOMMANDS", SUBCOMMANDS),
+            ("SUBCOMMAND_OPTIONS", SUBCOMMAND_OPTIONS),
+        ] {
+            for (bn, b) in [
+                ("STREAM_FLAGS", STREAM_FLAGS),
+                ("SUBCOMMANDS", SUBCOMMANDS),
+                ("SUBCOMMAND_OPTIONS", SUBCOMMAND_OPTIONS),
+            ] {
+                if an == bn {
+                    continue;
+                }
+                let both: Vec<&&str> = a.iter().filter(|t| b.contains(t)).collect();
+                assert!(both.is_empty(), "{an} 与 {bn} 同时含有：{both:?}");
+            }
+        }
+    }
+
+    /// ★ 表里登记的子命令必须**真的被分派**（防表里堆死条目，让上面那条越来越松）。
+    #[test]
+    fn every_listed_subcommand_is_actually_dispatched() {
+        let tokens = dispatched();
+        let ghosts: Vec<&&str> = SUBCOMMANDS
+            .iter()
+            .filter(|t| !tokens.iter().any(|d| d == *t))
+            .collect();
+        assert!(
+            ghosts.is_empty(),
+            "SUBCOMMANDS 里这些 token 没有任何分派点：{ghosts:?}（删掉，别让表虚胖）"
+        );
+    }
+
+    /// ★ 未知 `--flag` 不许把 daemon 踢出流模式。
+    ///
+    /// 变异回旧行为（「非空即查询」）⇒ 本测试红。
+    #[test]
+    fn an_unknown_flag_does_not_kick_the_daemon_out_of_stream_mode() {
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(
+            !super::is_query_mode(&v(&["--some-future-flag"])),
+            "未知 flag 把 daemon 踢进了查询模式 ⇒ exit 2、无 hello ⇒ monitor 重连死循环\n\
+             （2026-07-09 事故的形状；实测过 `--some-future-flag` 会 rc=2）"
+        );
+        assert!(
+            !super::is_query_mode(&v(&["--a", "--b"])),
+            "多个未知 flag 同理"
+        );
+    }
+
+    /// ★ 但未知**裸参数**仍要报错 —— 那是明确的调用错误，静默吞掉只会让人查半天。
+    #[test]
+    fn an_unknown_bare_argument_still_goes_to_the_error_path() {
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(super::is_query_mode(&v(&["/some/path"])));
+        assert!(super::is_query_mode(&v(&["--future", "bare"])));
+    }
+
+    /// 已登记的子命令照旧进查询模式（回归）。
+    #[test]
+    fn listed_subcommands_still_enter_query_mode() {
+        for c in SUBCOMMANDS {
+            assert!(
+                super::is_query_mode(&[c.to_string()]),
+                "{c} 不再进查询模式了 —— 它会静默变成起了个流"
+            );
+        }
     }
 }

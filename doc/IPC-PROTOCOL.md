@@ -383,7 +383,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 
 | `kind` | 字段 | 说明 |
 |---|---|---|
-| `hello` | `v, build_id, host_arch, claude_dir, capabilities, codex_dir?, kinds?, emits?`<br>⚠ **本表的列举顺序不是线上字节序**。线上按 `wire.rs` 声明序：`claude_dir, codex_dir, kinds, capabilities, emits`。`dg3_codex_fields_serialize_when_present` 用**精确字节串**钉住它（aterm 拿来做 fixture 真值）—— 要对字节就以 `wire.rs` 为准 | 连接建立时**首帧**发一次（握手）。**三轴正交（§26/§28）**：`v`（proto 版本，只留破坏性变更、F66 **绝不 bump**，不符=不兼容）；`build_id`（**身份**，单源自 daemon 源码/编译期 env，管 staleness/重部署提示，不符=偏旧、经 `remote-health` 提示但不 hard-disconnect）；**`capabilities`（能力 token 集，加法式）——monitor 按声明发流模式 flag**（F66/#58③，`decide_stream_flags`；缺该字段=空集=最保守、不发任何 flag，§27）。**绝不用身份（build_id）匹配代理能力声明**（那正是 2026-07-09 事故根因）。**DG3（#2D，additive）`codex_dir`**：对称 `claude_dir` 的 Codex 记录根（`<codex_dir>/sessions`）；Codex 未启用 / 旧 daemon 省略。**DG3 `kinds`**：本 daemon 服务的 agent kind 集（如 `["claude","codex"]`）——消费侧**显式判支持**，而不是从「`codex_dir` 存在」反推；空/缺 = 只 claude。**daemon-08（additive）`emits`**：本 daemon **会发射的帧 kind 集**（snake_case），供消费侧**门控消费**（含该 kind → 依赖它；不含 → 回退 β/watchdog）。⚠ `emits` 与 `capabilities` **正交、别混**：`capabilities` 是**流 flag 的可剥离能力**（受 §26 死循环护栏 + `every_capability_token_is_strippable` 强制每 token 有对应 flag），`emits` 是**纯发射声明、无对应 flag、不受 §26** |
+| `hello` | `v, build_id, host_arch, claude_dir, capabilities, codex_dir?, kinds?, emits?, commands?`<br>⚠ **本表的列举顺序不是线上字节序**。线上按 `wire.rs` 声明序：`claude_dir, codex_dir, kinds, capabilities, emits`。`dg3_codex_fields_serialize_when_present` 用**精确字节串**钉住它（aterm 拿来做 fixture 真值）—— 要对字节就以 `wire.rs` 为准 | 连接建立时**首帧**发一次（握手）。**三轴正交（§26/§28）**：`v`（proto 版本，只留破坏性变更、F66 **绝不 bump**，不符=不兼容）；`build_id`（**身份**，单源自 daemon 源码/编译期 env，管 staleness/重部署提示，不符=偏旧、经 `remote-health` 提示但不 hard-disconnect）；**`capabilities`（能力 token 集，加法式）——monitor 按声明发流模式 flag**（F66/#58③，`decide_stream_flags`；缺该字段=空集=最保守、不发任何 flag，§27）。**绝不用身份（build_id）匹配代理能力声明**（那正是 2026-07-09 事故根因）。**DG3（#2D，additive）`codex_dir`**：对称 `claude_dir` 的 Codex 记录根（`<codex_dir>/sessions`）；Codex 未启用 / 旧 daemon 省略。**DG3 `kinds`**：本 daemon 服务的 agent kind 集（如 `["claude","codex"]`）——消费侧**显式判支持**，而不是从「`codex_dir` 存在」反推；空/缺 = 只 claude。**daemon-08（additive）`emits`**：本 daemon **会发射的帧 kind 集**（snake_case），供消费侧**门控消费**（含该 kind → 依赖它；不含 → 回退 β/watchdog）。⚠ `emits` 与 `capabilities` **正交、别混**：`capabilities` 是**流 flag 的可剥离能力**（受 §26 死循环护栏 + `every_capability_token_is_strippable` 强制每 token 有对应 flag），`emits` 是**纯发射声明、无对应 flag、不受 §26**。**U6b-2（additive）`commands`**：本 daemon **接受的入方向命令集**（见下「入方向」小节）。能力协商此前只有出方向那一半（`capabilities` 说「我认识哪些流 flag」）；客户端还得知道**发什么过去有人接**，否则只能试错。**空/缺 = 这个 daemon 不读 stdin**（U6b-1 之前的所有版本），别发命令 |
 | `line` | `session_id, path, seq, raw, byte_offset` | tail 到的一行原始 jsonl（`seq` = per-file 单调，口径同本地 watcher）。**`byte_offset`**：该行**末尾**的字节偏移，语义**逐字节对齐 aterm `LineFramer.endOffset`**——计 CRLF 的 `\r`、含 `\n`、残行不计；resume 到 N ⇒ `tail -c +(N+1)`。给 offset 续拉 / 截断检测用（**`seq` 是 per-stream 序数、不是 resume 键**，别拿它续）。**只 `line` 帧带**——`turn_end` 明确不带（`daemon-09` 钉住） |
 | `session_added` | `sid`, `session_kind?`, `cwd?`, `name?`, `path?`, `lines?`, `status?`, `waiting_for?`, `agent_kind?`, `liveness_confidence?`, `attachable?` | 远端新会话文件出现（Batch5-F18 起 ssh_source 收到即同步透传前端 `remote-session-added {session_id, origin, kind, cwd, name}` 事件建骨架 Tab，先于该会话的任何行）。Batch7-F24（p1e）：附加 pidfile 元信息——wire 帧字段叫 `session_kind`（避开帧 tag `kind`），bridge 事件 payload 统一叫 `kind`（与本地 `list_active_sessions`/`session-started` 一致）；**additive 兼容**：None 不序列化（旧行为字节不变）、旧 monitor 忽略未知字段、旧 daemon 缺字段前端视为交互。daemon 默认不宣告 bg（F21）；monitor 仅对 hello **声明了 `bg` 能力**的 daemon 且 `showBgSessions` 开（默认）时传 `--with-bg`（F66/#58③；旧 daemon 不声明该能力→不传，且它会把未知参数当一次性查询→无 hello，护栏「声明 ⟹ 会剥离该 flag」保成立）。本地对称通道：`session-started` payload 扩为 `{session_id, cwd, kind, name}`——前端无 Tab 则建骨架（中途出现的本地 bg 会话由此获得 ⚙/树状）。**Batch8-F25/26（p1f）**：帧再附 `path`（远端 jsonl 绝对路径）；monitor 见 daemon 声明 `tail-only` 能力后 exec 追加 `--tail-only`（Batch9 起快照换 `--read-session-tail` 尾部优先，见查询表）——daemon 不再重放历史（连接时把各文件 seq 计数器初始化为当前完整行数 L，之后新行 seq=行号），历史由 monitor 按 path 经**独立连接**跑 `--read-session` 旁路快照拉回（0..L'-1 行号编 seq、并发 ≤2、F19 priority 先拉、完就断、失败重试 1 次后 remote-health 提示）；两路 seq 同处行号空间，重叠区被 (sid,seq) 去重精确吸收。旧 daemon 不声明能力 → 不传 flag → 全量推流（=2.18.0）；session_added 无 path（会话尚无 jsonl）→ 不拉快照，后续行从 tail 全量到达。**DG3（#2D，additive）`agent_kind`**：本会话属哪个 agent——`"codex"`；Claude 会话**省略** ⇒ **缺 = claude**。**DG3 `liveness_confidence`**：判活置信度——`"heuristic"`（Codex 无 pidfile，靠 mtime/proc 启发）；Claude 走 pidfile 权威故**省略** ⇒ **缺 = authoritative**。两者都是「缺字段有确定含义」，消费侧别把缺当未知。⚠ **今天的消费方是仓外 aterm，不是 cc-monitor** —— monitor 的 `ssh_source::parse_frame` 把这两个字段（以及 `byte_offset` / `codex_dir` / `kinds` / `emits`）**整个丢掉**。缺省值碰巧等于丢弃行为，不等于 monitor 实现了默认值：真发 `agent_kind:"codex"` monitor 一样当 claude。（daemon 今天也还没产出它们 —— DG1 未接线，`codex_dir`/`kinds`/`agent_kind`/`liveness_confidence` 硬写 None/空。）|
 | `session_status` | `sid`, `status?`, `waiting_for?`, `liveness_confidence?` | Batch9-F27（p1g）：会话红绿灯状态变化（daemon 对 pidfile modify 做 diff，CC 仅状态转换时重写故天然稀疏）。monitor 转发进 `SessionChange.status_changed` → `session-activity` 事件——**远端灯与本地共用前端链路**。宣告帧另带初始 `status`（连接建立灯就对）。旧 monitor 未知 kind 忽略。**DG3 `liveness_confidence`** 同 `session_added`（状态变化时带；Claude 省略 ⇒ 缺 = authoritative） |
@@ -450,7 +450,31 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
   一条慢命令占住读循环 ⇒ 后续命令全排队，而症状表现成「远端没反应」、几乎归因不到具体哪条。
   钉住它的是 `handlers_never_run_on_the_reader_task`。
 
-**今天只有 `ping` 与 `cancel` 两条命令**（骨架验收用）。真业务命令从 `--resolve` 吸收开始。
+**今天只有 `ping` 与 `cancel` 两条命令**（骨架验收用），它们随 `hello` 的 `commands` 字段上线 —— 那是与分派表**同一份真相源**（`hello_commands_match_the_dispatch_table` 钉住：声明了却不接 ⇒ 客户端发过去石沉大海；接了却不声明 ⇒ 客户端不知道能用）。真业务命令从 `--resolve` 吸收开始。
+
+### argv 三分（U6b-2）
+
+daemon 认识的每个 `--token` 恰好属于三类之一：
+
+| 类 | 成员 | 语义 |
+|---|---|---|
+| **流模式 flag** | `--with-bg` · `--tail-only` | 出现即剥离并置位，**不影响模式判定** |
+| **一次性查询子命令** | 上面那张查询表的全部 | **只有 `args[0]` 是其中之一才进查询模式** |
+| **子命令选项** | `--accts-dir` · `--after-ms` · `--include-tools` · `--limit` · `--scope` | 只在某条子命令之后才有意义，daemon 顶层不解释 |
+
+**在此之前是二分**（剥掉流 flag、剩下非空就当查询），实测后果：
+
+```text
+$ cc-monitor-remote --some-future-flag
+cc-monitor-remote query error: unknown argument: --some-future-flag
+rc=2
+```
+
+**未知 flag 在流位置 ⇒ exit 2、一个字节都不输出、没有 hello。** monitor 看到的和「daemon 崩了」无法区分 ⇒ 重连 ⇒ 发同一个 flag ⇒ **死循环**（2026-07-09 事故的形状）。§26 的 `every_capability_token_is_strippable` 挡不住它 —— 那条只覆盖**与已声明能力绑定**的 flag。
+
+现在：**未知 `--flag` 忽略 + 一行 warn，照常进流模式发 hello**（新版 monitor × 旧版 daemon 能拿到握手、看出对面旧、自行降级）；**未知裸参数仍报错 exit 2**（那是明确的调用错误，任何未来协议都不会把裸参数放 `args[0]`）。
+
+⚠ **这张表漏一项的后果比旧行为更糟**：`args[0]` 认不出来 ⇒ 当成流模式 ⇒ 那条子命令**静默变成起了个流**，调用方拿到一堆 jsonl 行而不是查询结果（v3.4.0 `--account-trust-zero` 漏登记那次事故的加强版）。由 `every_dispatched_token_is_classified` + `the_three_classes_do_not_overlap` + `every_listed_subcommand_is_actually_dispatched` 三条机检钉住。
 
 ### 一次性历史查询（带参数启动 daemon，issue #16）
 
