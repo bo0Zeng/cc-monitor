@@ -517,6 +517,9 @@ fn is_ccm_tmux_name(name: &str) -> bool {
 /// ⚠ **必须是 `macro_rules!` 不能是 `const`**：`include_str!` 只接受**字面量 token**，
 /// 喂给它一个 `const` 会报 `argument must be a string literal`（我第一版就这么写的）。
 /// 宏能展开成字面量，于是既拿到了单一落点、又满足 `include_str!` 的要求。
+// 只在 `#[cfg(test)]` 的两条对拍守卫里用 —— 不加这个属性会留一条
+// `unused macro definition` 告警（Phase D 审计 I6）。
+#[cfg(test)]
 macro_rules! daemon_watcher_src {
     () => {
         "../../remote-daemon-proto/src/observe/watcher.rs"
@@ -951,7 +954,7 @@ mod tests {
     #[test]
     fn tmux_ls_fmt_double_write_point_stays_in_sync() {
         // F08a：TMUX_LS_FMT 双写点断言（红线 I8 的机器化护栏）。monitor(本 const) 与 daemon
-        // (`remote-daemon-proto/src/watcher.rs`) 分属两个独立 crate、不能共享 const，但两侧
+        // (`remote-daemon-proto/src/observe/watcher.rs`) 分属两个独立 crate、不能共享 const，但两侧
         // `tmux ls -F` 格式串**必须逐字一致**（否则 daemon 推的列 monitor 解错位）。编译期
         // include_str! 读 daemon 源，把本 const 的真 TAB 折回源码里的 `\t` 转义再断言 daemon 源
         // 含该带引号字面量——**双向**：改 monitor 或 daemon 任一侧忘同步，本测即红。
