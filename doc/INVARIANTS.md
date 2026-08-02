@@ -363,7 +363,19 @@ v2.4.2 之前 `SessionInfo.proc_start: String` 必填 → serde 直接解析失�
 
 **为什么**：记录一旦静默消失，它的 children 的 `parentUuid` 就指向集合外 → `branching.ts:100-106` 判孤儿 root → 死胡同 plain user root **整棵误折叠**（`branching.ts:24` 早预警、2026-06-13 咬过一次）。`Unrecognized` 进 `is_displayable()` 白名单（照 `Attachment` 先例：不建卡但进链）；前端 `branching.ts::extractBranchRecord` 白名单含 `"cc-monitor-unrecognized"`。
 
-**实测**（本机 771 会话 / 16 万行）：7 个未知 type 共 ~8,800 条以前被静默丢弃（占 5.6%），**uuid 全为 0**——即此刻并没有在误折叠，F63 是**保险**（不再丢 + Claude 发带链身份新类型时自动扛住）。`cc-monitor-unrecognized` 是**本地自造信封**（前缀防撞真类型），**不是** Claude 真实 jsonl 类型、不参与两端 schema 对账。
+**实测（F63 当时，2026-07-16）**：本机 771 会话 / 16 万行，7 个未知 type 共 ~8,800 条以前被静默丢弃（占 5.6%），**uuid 全为 0**——即此刻并没有在误折叠，F63 是**保险**（不再丢 + Claude 发带链身份新类型时自动扛住）。`cc-monitor-unrecognized` 是**本地自造信封**（前缀防撞真类型），**不是** Claude 真实 jsonl 类型、不参与两端 schema 对账。
+
+**★ 复测（U-CC1，2026-08-02，17 天后）**：本机 **1,904 会话 / 472,115 行 / 非法 JSON 1 条**；
+**20 种 type**，monitor 认识 11 种 ⇒ **未知 10 种 / 27,747 条 / 5.88%**（`uuid` 仍全为 0，逐种核过）。
+也就是说 CC 在 17 天里**新增了 3 个记录类型**：`started` · `result` · `fork-context-ref`
+（前两个来自新的 `subagents/workflows/wf_*/journal.jsonl`，第三个说明 CC 侧长出了
+**第二套分叉记账**，与我们仿的 `forkedFrom` 不是同一套）。
+
+⚠ **这次复测是人手工扫语料才发现的 —— 那正是问题所在。**
+「未知 type 不 warn」是**对的**（20,526 条 `mode` 会刷屏），但**宽容 ≠ 无声**：
+U-CC1 起，四个降级点各记一笔有界的账（`src-tauri/src/drift_ledger.rs`），
+经设置面板「改动足迹 → 数据面漂移记账」按需查看。
+**以后靠那一页看，别再靠人扫语料**（也别再往这段散文里手抄数字 —— 它已经过期过一次）。
 
 **反过来**：monitor **自己写的**文件（`config.json` / `auto-launch.json` / `ps-registry/<PID>.json` 等）schema 可以严格——这是 monitor 控制的产物，schema 演进有版本管理。
 

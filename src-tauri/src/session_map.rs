@@ -289,7 +289,20 @@ fn scan_dir(dir: &Path, show_bg: bool) -> HashMap<String, SessionInfo> {
 /// Batch6-F21：交互性谓词——`scan_dir` 过滤与单测共用（测产线谓词而非测试内
 /// 副本，审计 S2）。签名匹配 `HashMap::retain`。
 fn is_interactive(_sid: &String, info: &mut SessionInfo) -> bool {
-    info.kind.as_deref().map_or(true, |k| k == "interactive")
+    let ok = info.kind.as_deref().map_or(true, |k| k == "interactive");
+    // U-CC1：**排他 ≠ 无声**。这条白名单是刻意的（`kind` 是授权型判据，把 bg 当交互
+    // 会让用户对着一个不能打字的东西敲键），但「不在白名单里就隐藏」这件事本身
+    // 今天一声不吭 ⇒ CC 加了新 kind 时没有任何信号。只记账，**不改行为**。
+    if let Some(k) = info.kind.as_deref() {
+        if k != "interactive" && k != "bg" {
+            crate::drift_ledger::record(
+                crate::drift_ledger::DriftFace::UnknownSessionKind,
+                k,
+                None,
+            );
+        }
+    }
+    ok
 }
 
 /// v2.22.2:kind 优先级——interactive(或缺失,旧 CC 视为交互)= 1,bg 等 = 0。

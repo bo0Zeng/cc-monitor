@@ -35,6 +35,15 @@ pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
         // 加不了字段）→ 在这里抢救。from_str::<JsonlRecord> 已成功 ⇒ 必是合法 JSON。
         Ok(JsonlRecord::Unknown) => {
             let v: serde_json::Value = serde_json::from_str(trimmed)?;
+            // U-CC1：**记一笔，不 warn**。刻意不 warn 那个决定是对的（实测 20,526 条 `mode`
+            // 会刷屏），但「刻意不 warn」不等于「刻意不可观测」—— 见 `drift_ledger` 头注。
+            crate::drift_ledger::record(
+                crate::drift_ledger::DriftFace::UnknownRecordType,
+                v.get("type")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or(""),
+                Some(trimmed),
+            );
             Ok(Some(salvage(&v, trimmed, "unknown-type".to_string())))
         }
         Ok(record) => Ok(Some(record)),
@@ -46,6 +55,15 @@ pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
             // **刻意不对 unknown-type 分支 warn**（那是预期内的，实测 6472 条会刷屏）。
             Ok(v) => {
                 tracing::warn!("已知类型解析失败，抢救为 Unrecognized（不丢链）: {e}");
+                // U-CC1：这一类**值得警惕**（多半是 CC 改了已知类型的形状）。
+                // 键按 `type` 分组，这样诊断面能直接告诉你「是哪个类型变了」。
+                crate::drift_ledger::record(
+                    crate::drift_ledger::DriftFace::KnownTypeParseFailed,
+                    v.get("type")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or(""),
+                    Some(trimmed),
+                );
                 Ok(Some(salvage(&v, trimmed, format!("parse-failed: {e}"))))
             }
             // 连 JSON 都不是 → 真畸形，没东西可救，保持既有 Err 契约。
@@ -98,6 +116,51 @@ fn salvage(v: &serde_json::Value, raw: &str, reason: String) -> JsonlRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ★ **接缝**：`parse_line` 真的把未知 type 记进了漂移账本。
+    ///
+    /// 本区第 10 条纪律：`drift_ledger` 有自己的测试、`parse_line` 有自己的测试，
+    /// **两者之间的接缝没有判据的话，把 `record(...)` 那一行删掉 CI 一片绿**。
+    ///
+    /// ⚠ **写成「容忍污染」的形状**：账本是进程内全局的，任何跑过 `parse_line` 的测试
+    /// 都会往里写（`history`/`search`/`lib` 的批处理测试都会）。第一版断言
+    /// `entries[0].key == …`（位置敏感），实测 6 次全量跑红 4 次。
+    /// 这里只断言「**我这两条键在，且计数 ≥1**」，不碰表的整体形状。
+    #[test]
+    fn parse_line_feeds_the_drift_ledger() {
+        use crate::drift_ledger::{snapshot, DriftFace};
+        // 本测试专属的 type 名：别的测试不会产出它，故不受污染影响。
+        let unknown = r#"{"type":"u-cc1-seam-probe","agentId":"a1"}"#;
+        let r = parse_line(unknown).expect("合法 JSON 不该 Err");
+        assert!(
+            matches!(r, Some(JsonlRecord::Unrecognized { .. })),
+            "抢救行为变了 —— 本条只该记账，不该改行为"
+        );
+        // 已知 type 但字段坏（`user` 缺 uuid/timestamp）
+        let broken = r#"{"type":"user","message":{"role":"user","content":"x"}}"#;
+        let _ = parse_line(broken);
+
+        let snap = snapshot();
+        let entry = |face: DriftFace, key: &str| {
+            snap.iter()
+                .find(|f| f.face == face)
+                .and_then(|f| f.entries.iter().find(|e| e.key == key))
+                .cloned()
+        };
+        let a =
+            entry(DriftFace::UnknownRecordType, "u-cc1-seam-probe").expect("未知 type 没有被记账");
+        assert!(a.count >= 1);
+        assert!(
+            a.first_sample
+                .as_deref()
+                .is_some_and(|s| s.contains("u-cc1-seam-probe")),
+            "样例没留住原文"
+        );
+        assert!(
+            entry(DriftFace::KnownTypeParseFailed, "user").is_some(),
+            "已知类型解析失败没有被记账（应当按 type 分组，好回答「是哪个类型变了」）"
+        );
+    }
     use crate::adapter::AgentKind;
 
     #[test]

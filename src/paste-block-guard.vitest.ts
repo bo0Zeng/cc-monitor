@@ -21,6 +21,7 @@ const FAMILY_A = [
  */
 const FAMILY_B = [
   "src/settings/config-surface-section.ts", // T02 复制诊断文本
+  "src/settings/drift-ledger-section.ts", // U-CC1 复制漂移诊断文本（同族 B：复制完就完事，不贴进任何配置）
   "src/main.ts",
   "src/remote-launch-run.ts", // 回退：复制命令让用户自己跑
   // S10：用量视图里 plan 窗口读不出来时，把抓到的原始屏交给用户复制去报障。

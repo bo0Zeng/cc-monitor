@@ -13,7 +13,13 @@
  * 现在三标签各自独立提取（name 必须、message/args 可选），剥除后剩余非空白
  * → 判非命令走兜底（防误伤恰好含这些标签的正文）。
  *
- * 注：`/clear`、`/help`、`/model` 等 CLI-only 命令不会写 JSONL，物理上识别不到。
+ * 注（U-CC1 订正，2026-08-02 全量语料实测）：原文写的是「`/clear`、`/help`、`/model` 等
+ * CLI-only 命令不会写 JSONL，物理上识别不到」——**`/model` 那个例子是错的**。
+ * 本机 1,904 个 jsonl 里 `<command-name>` 共 **56 种**，其中 `/model` **74 条**、`/context` 11、
+ * `/login` 4、`/doctor` 3、`/ide` 3、`/exit` 3 都在。真正 0 条的只有 `/clear` 与 `/help`。
+ *
+ * 所以这一层**不需要白名单**：本渲染器已经完全数据驱动（任何 `/xxx` 都渲染成 ⌘ 卡，
+ * 三标签独立提取、顺序无关），56 种命令名零改动跑通。**加白名单是负收益。**
  */
 
 // 显式 .ts 扩展：slash.ts 被 bash.test.ts（node 直跑）间接 import，

@@ -27,6 +27,7 @@ import { AccountsSection } from "./accounts-section";
 import { McpSection } from "./mcp-section"; // F87：MCP 管理（集成组）
 import { CcBusHooksSection } from "./cc-bus-hooks-section"; // B04：钩子只读诊断 + 生成待贴文本（绝不写入）
 import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置面审计（只读、按需一次、不轮询）
+import { DriftLedgerSection } from "./drift-ledger-section"; // U-CC1：数据面漂移记账（只读、按需一次、不轮询）
 import { DiagnosticsSection } from "./diagnostics-section";
 import { CollapsibleGroup } from "./collapsible-group";
 import { SettingsRouter } from "./router";
@@ -722,8 +723,10 @@ export class SettingsPanel {
     // ---- 改动足迹：「你在我机器上写过什么、能不能撤」 ----
     const footprintPage = document.createElement("div");
     // T02：一张表回答「你动过我哪些文件」。它就是这一页的全部内容（S5 会扩充）。
+    footprintPage.appendChild(this.safeBlock("配置面审计", () => new ConfigSurfaceSection().element));
+    // U-CC1：同一页的另一半 —— 「CC 变了、而我们看不懂的那些东西」。
     footprintPage.appendChild(
-      this.safeBlock("配置面审计", () => new ConfigSurfaceSection().element),
+      this.safeBlock("数据面漂移记账", () => new DriftLedgerSection().element),
     );
     router.addRoute({
       id: "footprint",

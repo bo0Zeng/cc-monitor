@@ -17,6 +17,8 @@ mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（k
 mod config;
 mod config_surface; // T02：配置面审计视图（遍历 tool_registry，只读、不轮询）
 mod data_paths;
+// U-CC1：数据面漂移记账 —— 把「CC 变了」从不可观测变成看一眼就知道。只记账，零行为变化。
+mod drift_ledger;
 mod event_replay;
 mod fenced_block; // T04 第二步：围栏块配对判定（本机+远端 profile 共用最强那一档）
 mod history;
@@ -930,6 +932,7 @@ pub fn run() {
             cc_bus::cc_bus_spawn,
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
             config_surface::config_surface_report,
+            drift_ledger::drift_ledger_report,
             hooks_diag::diagnose_local_cc_bus_hooks,
             hooks_diag::diagnose_remote_cc_bus_hooks,
             mcp::read_mcp_servers,
