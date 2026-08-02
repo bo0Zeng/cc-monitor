@@ -278,3 +278,56 @@ mod tests {
         }
     }
 }
+
+/// U7b：**把「对账走推送、不许回到轮询」钉住。**
+///
+/// # 判定：两条 tmux 读路**刻意并存**，不是重复
+///
+/// U7-5 起初把它归成「旧轮询 vs 新推送，该退役旧的」。**复核后判定不同**：
+///
+/// | 路径 | 谁在用 | 为什么不能没有 |
+/// |---|---|---|
+/// | **推送账本**（`tmux_sessions` 帧 → `ssh_source::REMOTE_TMUX_RAW`） | 本模块的**后台对账**（判 idle / 归档） | B2 加它正是为了**替掉每 8s 新建 SSH 的轮询**（治远端 sshd 日志刷屏） |
+/// | **按需 exec**（`tmux::list_remote_tmux`） | `tabs.ts` 的 6 个**决策点**（接/起/回退） | 账本**只在该 origin 有 daemon 流连着时才有数据**；未连、daemonless、刚启动都为空。而且决策点要的是**当下这一刻**的权威读，不是推送节奏上的快照 |
+///
+/// 所以它们不是同一件事的两份实现，是**背景对账**与**决策点取值**两种用途。
+/// 硬合只能二选一：要么对账退回轮询（撤销 B2），要么决策点在没有 daemon 时失去数据。
+///
+/// # 那这条护栏防什么
+///
+/// 防**轮询回潮** —— 「对账拿不到数据时顺手 exec 一下」是最自然的补丁，
+/// 而它会把 B2 治好的那件事原样带回来（每 8s 一条新 SSH，远端 sshd 日志刷屏）。
+/// 判据是结构性的：**本模块的生产段里不许出现 `list_remote_tmux`。**
+///
+/// 已知的混用坑另有守卫：`ssh_source` 的
+/// `superseded_always_archives_even_when_tmux_snapshot_still_shows_the_sid`
+/// —— `/branch` 原地换 sid 时，那份快照对这个场景**恒错**。
+#[cfg(test)]
+mod source_of_truth_guard {
+    /// ★ 对账路径不许自己去开 SSH 拉 tmux。
+    #[test]
+    fn the_reconcile_path_never_execs_its_own_tmux_listing() {
+        let me = include_str!("tmux_reconcile.rs");
+        assert!(
+            me.len() > 3000,
+            "只读到 {} 字节 —— include_str! 没读到，本断言在空转",
+            me.len()
+        );
+        // 只看生产段：本护栏自己的文档里就写着那个名字。
+        let marker = "\n#[cfg(test)]";
+        let prod = me.split(marker).next().unwrap_or(me);
+        assert!(
+            prod.len() > 1000 && prod.len() < me.len(),
+            "剥完生产段只剩 {} 字节（原文 {}）—— 剥法坏了",
+            prod.len(),
+            me.len()
+        );
+        assert!(
+            !prod.contains("list_remote_tmux"),
+            "对账路径开始自己 exec `tmux ls` 了 —— 那是**轮询回潮**。\n\
+             B2 加推送帧正是为了替掉每 8s 新建 SSH 的轮询（治远端 sshd 日志刷屏）。\n\
+             对账拿不到数据时应当**等下一帧**，不是顺手 exec 一条。\n\
+             决策点（`tabs.ts`）用 `list_remote_tmux` 是另一回事，那条路要保留。"
+        );
+    }
+}

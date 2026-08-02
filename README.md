@@ -12,6 +12,13 @@
 
 ## 功能
 
+> ⚠ **平台前提：本机会话的实时监听目前只在 Windows 上工作。**
+> 判活用的是 Win32（`OpenProcess` + `GetExitCodeProcess`），**非 Windows 分支恒返回「不活跃」**
+> ⇒ Linux / macOS 上本机会话不会被监听（一行都不出）。
+> **那两个平台上它是个远端监视器** —— SSH + daemon 那条路（见下方「SSH 远端模式」）完全正常。
+> （「把 `localhost` 当远端配一条」理论上应当可行，但**没实测过**，不作为方案写在这里。）
+> 细节与后续计划见 `doc/ARCHITECTURE.md` §「本机读面只在 Windows 上工作」。
+
 ### 实时渲染
 - 自动监听 `~/.claude/projects/**/*.jsonl`，新行 200ms 内出现在窗口
 - 多 Tab：每个活跃 Claude session 一个 Tab，标题 `[项目名] aiTitle`
