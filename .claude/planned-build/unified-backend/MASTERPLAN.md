@@ -677,3 +677,21 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   `false` 是 fail-safe（少显示，而不是显示永不消失的僵尸会话），**且已写进 ARCHITECTURE + 双语 README**。
 - 2026-08-02 **端到端验收用真数据**：一次性探针扫本机 6 个真实 pidfile，**判活 6/6、与 `/proc`
   存在性逐个一致** —— 改动前这 6 个全会被判死。探针跑完即删（环境相关，不该进 CI）。
+- 2026-08-02 **U8a Phase B：「起会话」不是三种形态，是三个平面，归属完全不同。**
+  | 平面 | 归谁 | 现状 |
+  |---|---|---|
+  | ① 计划面（决定跑什么） | daemon `control/` | **已在那儿** —— `--resolve` 的 CommandPlan，U6b-3 已吸收进流通道 |
+  | ② 远端执行面（真的建 tmux / send-into） | daemon `control/`（**该搬的是这个**） | 今天由 monitor 拼串经 SSH 送 |
+  | ③ 本机开窗面（在用户机器上开终端） | **只能是 monitor**（daemon 在远端，开不了你面前的窗） | `launch_powershell_window`，Windows-only |
+  ⇒ **U8a 不是「把起会话整个搬进 daemon」**：③ 结构上搬不了，① 已搬完。
+  ⇒ U8a 拆成 **U8a（本件，判定）+ U8a-2（平面 ② 的实现）**。
+- 2026-08-02 **`send-into` 为什么特殊，说清楚了**：它是平面 ② 里唯一**不能靠「拼一条命令串扔过去」**
+  完成的 —— 要对**已存在**的 tmux 会话做 send-keys，而 `ccm` 语法没有「就地复用、不新建」。
+  实测 `canRenderCli` 的 6 条 `ok:false` 里只有它是**表达力缺口**，其余是能力缺失/参数校验。
+  ⇒ 搬进 daemon 之后它不再需要 CLI 等价语法，**#76 防线的形态会变**：
+  从「渲染器拒绝渲染」变成「daemon 有一条专门的命令」。U8a-2 必须显式承接这条，不能默认它还在。
+- 2026-08-02 **差点误报一处「Linux 缺口」**：U7d 让 Linux 成为一等本机监听平台后，
+  我去查「Linux 上点 ↗ 会怎样」—— `launch_powershell_window` 非 Windows 直接 Err，
+  全仓也没有任何 `gnome-terminal` 之类实现。**但那不是缺口**：`remote-launch-run.ts` 头注
+  逐字写着「失败回退 = 复制命令 + toast（**非 Windows dev** …功能永不变砖）」。
+  即 Linux 上 = 命令进剪贴板。**刻意设计，不改。** ⇒ 纪律 8 的第三次兑现。
