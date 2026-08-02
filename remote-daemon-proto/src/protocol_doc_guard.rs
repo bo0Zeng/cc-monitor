@@ -24,8 +24,11 @@
 //! # 判据
 //!
 //! - `wire.rs` 里每个 serde 字段名，**必须在文档里出现过**。
-//! - **全部分派文件**（不只 `main.rs`）里的每个 `--子命令`，**必须落进 §10 的两张表之一**
-//!   （流模式 flag 表 / 一次性查询表）—— 不是「全文出现过就行」。
+//! - **全部分派文件**（不只 `main.rs`）里的每个 `--子命令`，**必须落进 §10 的代码跨度**
+//!   —— 不是「全文出现过就行」。⚠ 这句话在 U8a-2b 之前是**过期的宣称**：实现一直是
+//!   `DOC.contains()` 全文子串，散文里提一句就算过。已收紧，两者现在对得上。
+//! - 每条**入方向命令**必须落进 §10「入方向」那一**小节**的代码跨度（收到小节是因为
+//!   §10 的帧字段表里本来就有 `status`/`name`/`sid` 这些词，一条同名命令能零文档白嫖）。
 //! - 那份分派文件名单本身，必须囊括 `src/` 下每一个做分派的文件（`dispatch_registry_is_complete`）。
 //!
 //! 后两条都是 D 审计逼出来的收紧。第一版判据是「`main.rs` 的子命令在全文出现过」，两头都太松：
@@ -467,6 +470,19 @@ mod tests {
         out
     }
 
+    /// 取所有反引号代码跨度的**原文**拼起来。
+    ///
+    /// 与 [`code_span_identifiers`] 的区别：那个按「标识符字符」切词，`--usage` 会被切成
+    /// `usage`，于是「文档里写了 `usage` 但没写 `--usage`」也算过。子命令那条要的是**原样**。
+    fn code_span_text(doc: &str) -> String {
+        doc.split('`')
+            .enumerate()
+            .filter(|(i, _)| i % 2 == 1)
+            .map(|(_, seg)| seg)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     /// ★ 文档必须提到 wire 的每一个字段。
     #[test]
     fn every_wire_field_appears_in_the_protocol_doc() {
@@ -545,10 +561,23 @@ mod tests {
             .find("\n## ")
             .map(|k| sec + k)
             .unwrap_or(DOC.len());
-        let documented = code_span_identifiers(&DOC[sec..sec_end]);
+        // ★ **收到「入方向」那一小节**（U8a-2b）。
+        //
+        // 原来扫的是 §10 整节，而 §10 里的帧字段表本来就有 `status` / `path` / `name` / `sid`
+        // 这些词 ⇒ **一条叫 `status` 的命令零文档也直接通过**（D 设计审计 · 视角 A · P3）。
+        // 收到入方向小节之后，命令名要想白嫖就得恰好撞上入方向小节里的某个词，面小得多。
+        let inbound_at = DOC[sec..sec_end]
+            .find("### 入方向：流连接上的命令信封")
+            .map(|k| sec + k)
+            .expect("§10 里找不到「入方向」小节 —— 抽取坏了还是文档被大改了？");
+        let inbound_end = DOC[inbound_at + 4..sec_end]
+            .find("\n### ")
+            .map(|k| inbound_at + 4 + k)
+            .unwrap_or(sec_end);
+        let documented = code_span_identifiers(&DOC[inbound_at..inbound_end]);
         assert!(
-            documented.len() >= 60,
-            "只从 §10 切出 {} 个标识符 —— 抽取坏了，本断言在空转",
+            documented.len() >= 25,
+            "只从「入方向」小节切出 {} 个标识符 —— 抽取坏了，本断言在空转",
             documented.len()
         );
         let cmds = crate::inbound::COMMANDS;
@@ -575,10 +604,33 @@ mod tests {
             "只抽到 {} 个子命令 —— 抽取坏了，本断言在空转：{cmds:?}",
             cmds.len()
         );
-        let missing: Vec<&String> = cmds.iter().filter(|c| !DOC.contains(c.as_str())).collect();
+        // ★ **收紧到 §10 的代码跨度**（U8a-2b）。
+        //
+        // 原实现是 `DOC.contains(c)` —— **全文子串**，散文里提一句就算过。
+        // 而本文件头注两处都写着「必须落进 §10 的两张表之一 —— 不是『全文出现过就行』」。
+        // 那是一份**过期的宣称**，正是本仓最忌讳的那种：护栏自称的强度比实际高一档。
+        // （D 设计审计 · 视角 A · P7 点名。字段那条早在 U6a 就收到 §10 了，这条没跟。）
+        let sec = DOC
+            .find("## 10. 远端 daemon wire 协议")
+            .expect("文档里找不到 §10 —— 抽取坏了");
+        let sec_end = DOC[sec..]
+            .find("\n## ")
+            .map(|k| sec + k)
+            .unwrap_or(DOC.len());
+        let spans = code_span_text(&DOC[sec..sec_end]);
+        assert!(
+            spans.len() > 2000,
+            "只从 §10 切出 {} 字节的代码跨度 —— 抽取坏了，本断言在空转",
+            spans.len()
+        );
+        let missing: Vec<&String> = cmds
+            .iter()
+            .filter(|c| !spans.contains(c.as_str()))
+            .collect();
         assert!(
             missing.is_empty(),
-            "这些子命令在 `doc/IPC-PROTOCOL.md` 里**一次都没出现**：{missing:?}"
+            "这些子命令没有落进 `doc/IPC-PROTOCOL.md` §10 的代码跨度里：{missing:?}\n\
+             （在散文里提一句不算 —— §10 是给仓外读的冻结契约，命令要出现在表里。）"
         );
     }
 }

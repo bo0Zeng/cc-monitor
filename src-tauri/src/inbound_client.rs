@@ -520,6 +520,41 @@ pub fn encode_request(id: &str, cmd: &str, args: &Value) -> String {
     s
 }
 
+/// U8a-2b：`launch` 命令的**参数构造器**（monitor 这一侧的契约面）。
+///
+/// # 它今天有没有生产调用方 —— 没有，如实说
+///
+/// 生产路径还没切过来：tauri 命令 `launch_remote_terminal(origin, remote_cmd)` 收到的
+/// 已经是一条**渲染好的 shell 串**，拆不回结构化计划。切换要等前端改成发结构化请求
+/// （U8c 的两个 TS 渲染器 + IR 退役），登记为 **U8a-2c**。
+///
+/// 那为什么现在就写：**它是契约**。字段名一旦与 daemon 的解析器漂开，症状是
+/// 「命令发出去了、daemon 回 `bad_request` 说缺字段」，而两边各自看都「对」。
+/// `launch_args_field_names_match_the_daemon_parser` 把这件事变成编译期就会红的对拍。
+///
+/// `mode` 只有两种取值 —— **没有 `attach-only`**：attach 是平面 ③，daemon 在远端，
+/// 开不了你面前的窗（见 daemon `control/launch.rs` 头注）。
+#[allow(dead_code)]
+pub fn launch_args(
+    mode: &str,
+    name: &str,
+    payload: &str,
+    cwd: Option<&str>,
+    ccm_sid: Option<&str>,
+) -> Value {
+    let mut m = serde_json::Map::new();
+    m.insert("mode".into(), Value::String(mode.to_string()));
+    m.insert("name".into(), Value::String(name.to_string()));
+    m.insert("payload".into(), Value::String(payload.to_string()));
+    if let Some(c) = cwd {
+        m.insert("cwd".into(), Value::String(c.to_string()));
+    }
+    if let Some(s) = ccm_sid {
+        m.insert("ccm_sid".into(), Value::String(s.to_string()));
+    }
+    Value::Object(m)
+}
+
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -758,6 +793,61 @@ mod tests {
             suite, daemon,
             "\ne2e 脚本断言的命令集与 daemon 的 `inbound::COMMANDS` 对不上。\n\
              加/删入方向命令时这两处要一起动 —— 否则新命令在**唯一跑真进程的那一层**漏测。"
+        );
+    }
+
+    /// ★ 跨轨对拍：`launch_args` 吐的键名必须**恰好**是 daemon 解析器认的那几个。
+    ///
+    /// 漂开的症状是「命令发出去了、daemon 回 `bad_request` 说缺字段」，而两边各自看都对。
+    #[test]
+    fn launch_args_field_names_match_the_daemon_parser() {
+        const DAEMON_LAUNCH: &str = include_str!("../../remote-daemon-proto/src/control/launch.rs");
+        let prod = guard_core::production_code(DAEMON_LAUNCH);
+        // daemon 侧逐个 `get_str("<key>")` 抠出来。
+        let key = "get_str(\"";
+        let mut wanted: Vec<String> = Vec::new();
+        let mut from = 0usize;
+        while let Some(rel) = prod[from..].find(key) {
+            let at = from + rel + key.len();
+            let end = prod[at..].find('"').map(|k| at + k).unwrap_or(at);
+            wanted.push(prod[at..end].to_string());
+            from = end;
+        }
+        wanted.sort();
+        wanted.dedup();
+        assert!(
+            wanted.len() >= 5,
+            "只从 daemon 解析器抠到 {} 个字段 —— 抽取坏了，本断言在空转：{wanted:?}",
+            wanted.len()
+        );
+
+        let full = launch_args(
+            "create-or-attach",
+            "cc-x",
+            "true",
+            Some("/tmp"),
+            Some("sid-1"),
+        );
+        let mut got: Vec<String> = full
+            .as_object()
+            .expect("对象")
+            .keys()
+            .map(String::from)
+            .collect();
+        got.sort();
+        assert_eq!(
+            got, wanted,
+            "\nmonitor 的 `launch_args` 与 daemon 的解析器字段名对不上。\n\
+             两边必须同时改 —— 否则症状是「daemon 回 bad_request 说缺字段」，很难归因。"
+        );
+
+        // 可选字段真的可选：不传就不出现（daemon 侧 `cwd`/`ccm_sid` 都是 `Option`）。
+        let minimal = launch_args("send-into", "cc-x", "true", None, None);
+        let keys: Vec<&String> = minimal.as_object().expect("对象").keys().collect();
+        assert_eq!(
+            keys.len(),
+            3,
+            "最小形态应当只有 mode/name/payload：{keys:?}"
         );
     }
 

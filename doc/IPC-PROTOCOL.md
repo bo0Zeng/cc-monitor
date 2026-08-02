@@ -484,6 +484,59 @@ monitor 永远不会发的形状。
 
 **今天有三条命令**：`ping` / `cancel`（骨架验收用）+ **`resolve`**（第一条真业务命令，见下），它们随 `hello` 的 `commands` 字段上线 —— 那是与分派表**同一份真相源**（`hello_commands_match_the_dispatch_table` 钉住：声明了却不接 ⇒ 客户端发过去石沉大海；接了却不声明 ⇒ 客户端不知道能用）。真业务命令从 `--resolve` 吸收开始。
 
+#### `launch`：平面 ②（远端执行面）——真的建 tmux 会话（U8a-2b）
+
+```text
+→ {"id":"L1","cmd":"launch","args":{
+     "mode":"create-or-attach" | "send-into",
+     "name":"cc-1a2b3c4d",
+     "payload":"cd '/x' && claude --resume …",
+     "cwd":"/x",             // 可选，仅 create-or-attach
+     "ccm_sid":"<完整 sid>"   // 可选，仅 create-or-attach；[A-Za-z0-9_-]
+   }}
+← {"kind":"reply","id":"L1","ok":true,"data":{"session":"cc-1a2b3c4d","created":true,"typed":true}}
+```
+
+**三件事它刻意不做**：
+
+1. **不 attach。** U8a 把「起会话」分成三个平面 —— ① 计划面（`resolve`）· ② 远端执行面（本命令）·
+   ③ 本机开窗面。attach 属于 ③，而 daemon 在远端，开不了你面前的窗。
+2. **不过 shell。** tmux 用 `Command::new("tmux").args([...])` 直传 argv ⇒
+   引号 / 转义 / 注入这一整类问题在这条路上**不存在**，不是「被挡住了」。
+   ⇒ monitor `launch.rs` 里那条「禁双引号」是 **PowerShell 专属**（`wt.exe` 传参畸变），
+   **这条路上不成立、也不许照抄**。
+3. **`send-into` 时不新建会话。** 会话不存在 ⇒ 回 `no_such_session`。
+   顺手新建就是 #76 的反向：用户以为在复用那个 idle 会话，实际被丢进一个新建的空 shell。
+
+**`data` 三字段就是失败语义**（能分辨「没起成」与「起了但没确认」）：
+
+| 结局 | `ok` | `code` | `created` / `typed` |
+|---|---|---|---|
+| 新建 + 键入 | true | — | true / true |
+| 会话已存在（幂等短路，**不重复 resume**） | true | — | false / false |
+| `send-into` 键入成功 | true | — | false / true |
+| tmux 不在 PATH | false | `no_tmux` | 没起成 |
+| `send-into` 但会话不存在 | false | `no_such_session` | 没起成 |
+| 建不出来且也不存在 | false | `create_failed` | 没起成 |
+| 会话在，`send-keys` 失败 | false | `typed_unconfirmed` | **起了但没确认** —— 别重试新建 |
+| 形状不合 | false | `invalid_args` | 没起成 |
+
+**错误码分两层**（U8a-2b 定，趁 `launch` 还没有仓外消费方）：
+**协议级**由 `inbound.rs` 独占 —— `bad_request`（信封 JSON 坏了）· `line_too_long` ·
+`unknown_command` · `duplicate_id` · `handler_panicked` · `not_cancellable`，语义是
+「客户端代码写错了，别重试」；**命令级**由各命令自己定，语义是「参数或环境的问题」。
+所以 `launch` 的形状错误叫 `invalid_args` 而**不是** `bad_request`。
+（⚠ `resolve` 今天仍回命令级 `bad_request` —— 它与仓外 aterm 的一次性契约冻结在 2026-07-18，
+两条路复用同一个纯函数，改它会破坏那份契约。如实登记，不顺手改。）
+
+**daemon 侧的校验是形状校验，不是安全边界**（同 §「信任边界」那条）：入方向命令来自
+已经握着这台机器 SSH 会话的对端，它本来就能在这台机器上跑任意命令。这里只回答
+「这组参数能不能构成一次有意义的 tmux 调用」，缺字段/空/超长/含控制字符 ⇒ 结构化错误。
+
+**生产路径今天还没切过来**：monitor 的 tauri 命令 `launch_remote_terminal(origin, remote_cmd)`
+收到的已经是一条**渲染好的 shell 串**，拆不回结构化计划。切换要等前端改成发结构化请求
+（U8c 两个 TS 渲染器 + IR 退役），登记为 **U8a-2c**。
+
 #### `resolve`：一次性 exec 与流命令**并存**（U6b-3）
 
 ```text

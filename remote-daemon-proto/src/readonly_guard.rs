@@ -428,6 +428,14 @@ mod spawn_registry {
              不是用户既有数据；P4b 的零轮询判活靠它",
         ),
         (
+            "control/launch.rs",
+            "tmux",
+            "U8a-2b 平面 ②：建 tmux 会话 / 往已有会话 send-keys（argv 直传，不过 shell）。\
+             改的是 **tmux server 的运行期状态** + 起一个用户自己要起的 claude 进程，\
+             **不是 daemon 进程自身写用户既有数据** —— 载荷落盘由那个 claude 进程负责，\
+             与用户在终端里手敲同一条命令没有区别（D1 裁决的正例）",
+        ),
+        (
             "observe/watcher.rs",
             "sh",
             "跑 `command -v tmux && tmux ls`（两处：探测 + 取观测）。**只读**，\
@@ -438,47 +446,44 @@ mod spawn_registry {
     /// ★ 生产段的每一处起进程都必须在 [`ALLOWED`] 里。
     #[test]
     fn every_process_spawn_in_production_is_registered() {
-        let files: &[(&str, &str)] = &[
-            ("main.rs", include_str!("main.rs")),
-            ("wire.rs", include_str!("wire.rs")),
-            ("inbound.rs", include_str!("inbound.rs")),
-            ("observe/watcher.rs", include_str!("observe/watcher.rs")),
-            (
-                "observe/history_query.rs",
-                include_str!("observe/history_query.rs"),
-            ),
-            (
-                "observe/search_query.rs",
-                include_str!("observe/search_query.rs"),
-            ),
-            (
-                "observe/usage_query.rs",
-                include_str!("observe/usage_query.rs"),
-            ),
-            (
-                "observe/accounts_query.rs",
-                include_str!("observe/accounts_query.rs"),
-            ),
-            ("observe/codex.rs", include_str!("observe/codex.rs")),
-            (
-                "observe/turn_detect.rs",
-                include_str!("observe/turn_detect.rs"),
-            ),
-            ("control/tmux_hook.rs", include_str!("control/tmux_hook.rs")),
-            (
-                "control/fork_write.rs",
-                include_str!("control/fork_write.rs"),
-            ),
-            (
-                "control/resolve_query.rs",
-                include_str!("control/resolve_query.rs"),
-            ),
-            ("platform/proc.rs", include_str!("platform/proc.rs")),
-            ("platform/signal.rs", include_str!("platform/signal.rs")),
-            ("platform/liveness.rs", include_str!("platform/liveness.rs")),
-        ];
+        // ★ **递归遍历，不是硬编码文件表**。
+        //
+        // 第一版是一张手写的 `include_str!` 清单。U8a-2b 新增 `control/launch.rs`（起 tmux）时
+        // 实测：**它不在表里 ⇒ 这条护栏根本扫不到它**，加一个未登记的起进程点全绿。
+        // 这正是本仓「扫描面画小了」那一族的第五次，而且是**我自己**在 D1 那轮埋的。
+        // 同文件上方 `scan()` 早就因为同样的理由改成递归了（Phase G 审计），这里没跟。
+        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut stack = vec![src_dir.clone()];
+        let mut files: Vec<(String, String)> = Vec::new();
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read src dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                let rel = path
+                    .strip_prefix(&src_dir)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                // 跳过本护栏文件自身：它的清单里逐字写着 `Command::new("tmux")` 这类字面量。
+                if rel == "readonly_guard.rs" {
+                    continue;
+                }
+                files.push((rel, std::fs::read_to_string(&path).expect("read rs file")));
+            }
+        }
+        assert!(
+            files.len() >= 20,
+            "只遍历到 {} 个源文件 —— 遍历坏了，本断言在空转",
+            files.len()
+        );
         let mut found: Vec<(String, String)> = Vec::new();
-        for (name, raw) in files {
+        for (name, raw) in &files {
             let prod = crate::guard_support::production_code(raw);
             let mut from = 0usize;
             while let Some(rel) = prod[from..].find("Command::new(") {
@@ -486,16 +491,16 @@ mod spawn_registry {
                 let tail = &prod[at..];
                 if let Some(q) = tail.find('"') {
                     if let Some(e) = tail[q + 1..].find('"') {
-                        found.push((name.to_string(), tail[q + 1..q + 1 + e].to_string()));
+                        found.push((name.clone(), tail[q + 1..q + 1 + e].to_string()));
                     }
                 }
                 from = at;
             }
         }
         assert!(
-            found.len() >= 3,
+            found.len() >= 4,
             "只扫到 {} 处起进程 —— 抽取坏了，本断言在空转：{found:?}\n\
-             （实测生产段今天有 3 处：tmux_hook 的 tmux + watcher 的两处 sh）",
+             （实测生产段今天有 4 处：tmux_hook 的 tmux + watcher 的两处 sh + launch 的 tmux）",
             found.len()
         );
         let unregistered: Vec<&(String, String)> = found

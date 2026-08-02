@@ -210,7 +210,7 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 | S5 | **`common/`**<br>**U2 已交付**：`projects_root`（**5 处不是 4 处** —— 第五处是 `watcher.rs::watch_loop` 里内联的，`grep fn` 找不到）· `mtime_ms`（2 份）。门槛写在 `common/mod.rs`：≥2 **层**用 · **平台无关** · 无域知识。<br>⚠ **「时间换算 · quote」这两项要划掉**：Phase D 审计逐条核过，daemon crate 内**没有可合的逐字副本** —— 时间换算三处语义/单位各不相同（`file_mtime_epoch` 单位是**秒**不是毫秒），quote 在 daemon 内只有一份、多份在 monitor 侧**跨 crate**、`common/` 收不了。<br>⚠ **U3 必须复查**：`mtime_ms` 的两个调用点同属 observe，「≥2 层」按层口径**今天不成立**；`observe/` 一建出来就要重判 | U2 · U3 |
 | S6 | **wire 协议 + `IPC-PROTOCOL.md`**<br>**U8a-2a**：monitor 侧补齐 `hello.commands` 解析（此前整个字段被丢弃）+ `Reply`/`Cancelled` 从「认识但不消费」改成**真消费**；文档入方向节改写并订正 4 处漂移（漏列 `commands` 的线上字节序 · 「写半边从来没人用过」· `biased` 少说了有界 · 超时只覆盖半段） | 双向；**文档先修再冻结**（该文件 7 处在说谎，见 §3-U6）；wire 字段名双向 `include_str!` 对拍 | U6a / U6b / U8a-2a |
 | S6a | **跨进程握手时序约束**（U6a 新登记）<br>**U6a 已交付**：`cc.ps1.tpl`「先设标题、后写 await 文件」这个顺序，同时被写在**四处**：PS 模板本身 · `bind.rs` 模块头 · `doc/IPC-PROTOCOL.md` 时序图 · `cc_integration.ts` 给用户看的超时文案。U6a 之前**后三处全是旧的**（旧顺序 + 800ms + 100ms + 漏画 ≤600ms 重试）—— 文档在教人复刻 v2.21 那个「每个新 shell 首次 `cc` 固定烧满超时」。 | 四处保持一致，由 `profile_installer.rs::handshake_doc_guard` 三条护栏钉住（顺序 + 模板侧 deadline/轮询步长 + monitor 侧 debouncer/重试）。**不放 `bind.rs`**：它几乎整个 `#[cfg(windows)]`，护栏放那儿在 Linux CI 上一条都不跑 | U6a ✅ |
-| S16 | **入方向命令面**（U6b-1 新登记）<br>`inbound::COMMANDS` ↔ `dispatch` 分派臂 ↔ `hello.commands` ↔ `IPC-PROTOCOL.md` 入方向小节 ↔ **`e2e/inbound-daemon-frames.sh` 的命令名清单**，**五处** | 前三处由 `hello_commands_match_the_dispatch_table` 钉成**同一份真相源**（声明了却不接 ⇒ 客户端石沉大海；接了却不声明 ⇒ 客户端不知道能用）；第四处由 U6a 的字段对拍逼进文档；第五处由 U8a-2a 的 `the_e2e_command_list_matches_the_daemon_command_table` 钉住。<br>monitor 侧的 `InboundClient::accepts` **不是第六份副本** —— 它直接吃 `hello.commands`，无独立清单 | U6b-1 ✅ · U6b-3 ✅ · U8a-2a ✅ |
+| S16 | **入方向命令面**（U6b-1 新登记）<br>`inbound::COMMANDS` ↔ `dispatch` 分派臂 ↔ `hello.commands` ↔ `IPC-PROTOCOL.md` 入方向小节 ↔ **`e2e/inbound-daemon-frames.sh` 的命令名清单**，**五处** | 前三处由 `hello_commands_match_the_dispatch_table` 钉成**同一份真相源**（声明了却不接 ⇒ 客户端石沉大海；接了却不声明 ⇒ 客户端不知道能用）；第四处由 U6a 的字段对拍逼进文档；第五处由 U8a-2a 的 `the_e2e_command_list_matches_the_daemon_command_table` 钉住。<br>monitor 侧的 `InboundClient::accepts` **不是第六份副本** —— 它直接吃 `hello.commands`，无独立清单 | U6b-1 ✅ · U6b-3 ✅ · U8a-2a ✅ · U8a-2b ✅（加 `launch`，e2e 那处同步跟上）|
 | S17 | **用量口径**（U7-2 新登记）<br>**U7-2 已交付**：抽进共享 crate `usage-core`，两侧各自 `path` 依赖。此前是无护栏的口径双写，且**已漂开两处**（BOM · 有 requestId 无 uuid） | 唯一实现在 crate 里；判据是「改内核一处 ⇒ 三侧同时红」，不是任何一侧的单侧测试 | U7-2 ✅ ·（U8a-2a 补账：当初 **CI 三样一条都没补**，test/fmt/clippy 全缺 ⇒ 那 8 条测试在 CI 里等于不存在）|
 | S18 | **账号契约 + 名字安全判据**（U7-3 新登记）<br>**U7-3 已交付**：四条常量 + `is_deceptive_char`（并集）进 `acct-core`；两条守卫**退役**，因为漂移已不可表示 | 唯一定义在 crate 里。**`is_safe_config_dir` / `norm_dir` 刻意不合** —— 那是平台特化不是漂移（本机要认 Windows 盘符且必须允许 `\`） | U7-3 ✅ ·（U8a-2a 补账：同 S17，4 条测试此前不进 CI）|
 | S7 | **daemon argv 面** | 三类；`split_stream_flags` + `every_capability_token_is_strippable` 同步扩。⚠ **起点比以为的更糟**：现有的二分表本身就漏了 5 条子命令（`--tmux-notify` / `--resolve` / `--fork-session` / `--account-trust-zero` / `--read-session-from-offset`），其中 `--account-trust-zero` 漏登记**出过 v3.4.0 事故** | U6 |
@@ -227,6 +227,8 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 | S20 | **共享 crate 家族的约定**（U8a-2a 新登记）<br>今天四个：`branch-core` / `usage-core` / `acct-core` / `guard-core` | 零（或仅 `serde_json`）依赖 · 平台无关 · 单向 path dep（不制造 workspace 成员关系）· **新增一个就要在 `ci.yml` 补 test/fmt/clippy 三样**（那条纪律 `ci.yml` 里早写着，U7-2/U7-3 两次没跟，U8a-2a 补齐）。<br>⚠ `guard-core` 是唯一**带 fs 遍历 + panic 语义**的一个，也是唯一**两侧都只作 dev-dependency**的（守卫全在 `cfg(test)`，不进发布二进制）—— 头注里已写明这条例外，别照抄错家族不变量 | U8a-2a ✅ · 新增 crate 时 |
 | S21 | **monitor 侧那条长连接的写半边**（U8a-2a 新登记）<br>今天只许经 `inbound_client::split_and_park` 出手；`ssh_source` 生产段**既不切流也不写流** | 由 `write_half_guard` 两条**零命中型**护栏钉住（不许出现 `tokio::io::split(` + 不许出现任何写方法/UFCS），外加一条「共享剥法 vs 便宜近似」的扫描面自检。<br>⚠ 判据形状换过一次：原来是「每处 split 后 240 字符内要有 park」，D 审计用**尾随注释**和**split 后先偷写一句**两种普通写法绕过 ⇒ 改成把切与停收成一个函数、判据改零命中。<br>⚠ **最终形态**：`inbound_client` 落 `control/`、帧类型单拎 wire 模块之后，这条护栏要跟着模块边界重钉（同 S1 的形状），归 U1b | U8a-2a ✅ · U1b |
 | S22 | **`inbound_client` → `ssh_source::InboundFrame` 这条反向边**（U8a-2a 新登记）<br>`§1.1-2` 裁定「允许 observe → control 的窄接口，**反向不许**」，daemon 侧为此立了 `layering_guard`；monitor 侧**没有**，所以这条边今天不会红 | 最终形态：帧类型（`InboundFrame` + `parse_frame` + `KNOWN_FRAME_KINDS`）单拎 `wire_frames.rs`，得到 `wire_frames ← inbound_client ← ssh_source`，无环、与 daemon 对称。**见证强度一字不变**（`DaemonHello` 的强度来自私有字段 + 唯一构造函数，与帧住哪无关）。<br>⚠ **刻意不在 U8a-2a 顺手做**：`parse_frame` 一搬，`emits_parity::known_kinds_matches_parse_frame` 与 `write_half_guard` 的锚点都要改文件面 —— 与 monitor 侧 layering guard 一起落 | U1b |
+
+| S23 | **tmux `=name:` 精确匹配**（U8a-2b 新登记）<br>今天**三处**：TS `session-backend.ts::exactTarget` · monitor `tmux.rs::exact_target`（外包一层 `shell_quote`）· **daemon `control/launch.rs::exact_target`（argv 版，不引号化）** | 规则同源、引号化各自按传输定。daemon 那处由 `exact_target_shape_matches_the_monitor_side` 跨轨对拍（`include_str!` monitor 源码）。<br>⚠ 这条有事故背书（裸 `-t` 会打到兄弟会话上，本仓踩过 `cc-<sid8>-2`），**新增第四处必须同时加对拍** | U8a-2b ✅ · U10（停/接/send-keys 会加新的 `-t` 构造点）|
 
 ### 跨工作区冲突协议
 
@@ -768,3 +770,37 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
 - 2026-08-02 账本：新增 **S20**（共享 crate 家族约定）· **S21**（monitor 侧写半边）·
   **S22**（`inbound_client → ssh_source` 反向边，归 U1b）；修掉 **S16 撞号**
   （入方向命令面 / `npm test` 套件链两条同号，而本轮恰好同时碰了它们 ⇒ 后者改 S19）。
+- 2026-08-02 **U8a-2b 闭环：daemon 侧长出真正的「远端执行面」（平面 ②）。**
+  `control/launch.rs` 一条 `launch` 命令：**argv 直传不过 shell**（引号/转义/注入这一整类问题
+  在这条路上**不存在**，不是被挡住了）· `send-into` 成为一等模式 · **不 attach**（平面 ③ 结构上搬不了）·
+  失败语义分「没起成 / 起了但没确认」。真 tmux e2e 27 条（建会话 / `@ccm_sid` / 载荷真落 /
+  幂等短路 / #76 反向防线），私有 socket 隔离。
+  ⚠ **生产路径没切**：tauri 命令收到的已经是渲染好的 shell 串，拆不回结构化计划 ⇒ 登记 **U8a-2c**（依赖 U8c）。
+- 2026-08-02 **用户中途点名的架构题 ⇒ 两份设计稿落盘**（`DESIGN-命令面怎么长大.md` /
+  `DESIGN-CC新功能的扩展缝.md`），由两个专职设计 agent 并行产出、主线程逐条复核。
+  **它们在实现中途就逮到两条真缺陷**，比事后审计值：
+  ① **`cancel` 对同步处理器无效，而 `launch` 就是同步的** —— 客户端收到 `Cancelled`，
+     而远端 tmux 会话照样建出来。控制面在骗调用方。⇒ `not_cancellable`。
+  ② **阻塞处理器跑在 tokio worker 上** —— 单核机器（Pi，正是目标机型）上一条 `launch`
+     占住唯一 worker，把出方向 writer 一起卡死，症状是「远端还活着但一句话不说」。⇒ `SpawnBlocking`。
+- 2026-08-02 **第 10 条纪律当场又验证一次**：`not_cancellable` 的第一条判据直接调 `spawn_handler`，
+  把 `dispatch` 里那一档改回可取消它**照样绿**。⇒ 补 `the_dispatch_table_puts_blocking_commands_on_the_blocking_arm`
+  （按 `dispatch` 返回的**变体**判，不是扫文本）。**「两端各自有测试」≠「接起来是对的」。**
+- 2026-08-02 **`spawn_registry` 的扫描面是手写文件名单、没有反查** —— 新增 `control/launch.rs`
+  起 `tmux` 时**落在盲区**，D1 那条 DoD 不落地也不会红。这是「扫描面画小了」那一族的**第五次**，
+  而且是 D1 那轮我自己埋的（同文件上方的 `scan()` 早就因同样理由改成递归了）。⇒ 递归遍历 + 文件数自检。
+- 2026-08-02 **护栏自称的强度比实际高一档**（`protocol_doc_guard` 头注写「必须落进 §10 的两张表」，
+  实现是 `DOC.contains()` 全文子串）；**命令名的文档对拍能被同名字段白嫖**（§10 帧字段表里本来就有
+  `status`/`name`/`sid`，一条叫 `status` 的命令零文档直接通过 —— **已实证**）。两条都收紧。
+- 2026-08-02 **趁 `launch` 还没有仓外消费方，把错误码分成两层**：协议级（`inbound.rs` 独占）
+  vs 命令级。`launch` 的形状错误改叫 `invalid_args`。`resolve` 那条**刻意不动** ——
+  它与仓外 aterm 的一次性契约冻结在 2026-07-18，两条路复用同一纯函数。如实登记，不顺手改。
+- 2026-08-02 **设计稿 B 的两条读面实测，刻意不塞进本轮**（本轮是控制面，混进去 commit 讲不清一件事）：
+  ① **CC 在 17 天里加了 3 个 jsonl 记录类型**（`started`/`result`/`fork-context-ref`），
+     而仓里没有任何东西知道 —— `INVARIANTS §18.1` 记的数字（7 种/8,774 条）已过期（今天 10 种/27,696 条）；
+  ② **`subagent.rs` 对 CC 新的 `subagents/workflows/wf_*/` 目录形状今天就加载失败**（非递归 + 匹配
+     `description`，而那类 meta 根本没有该字段）。⇒ 新开 **U-CC1（数据面漂移记账）** 与一条 bugfix。
+- 2026-08-02 账本：S16 命令面五处 → 六处；新增 **S23**（tmux `=name:` 精确匹配的第三处副本，
+  daemon argv 版，有跨轨对拍；这条有事故背书，新增第四处必须同时加对拍）。
+  新开件登记：**U8a-2c**（生产切换，依赖 U8c）· **U8a-2d**（命令面注册表，卡在 U10 之前）·
+  **U-CC1**（数据面漂移记账）。

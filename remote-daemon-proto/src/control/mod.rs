@@ -5,6 +5,9 @@
 //! - [`fork_write`]：**写文件系统**（`O_EXCL` 新建一个 `<new-sid>.jsonl`）。
 //!   全 crate **唯一**的写盘白名单模块，红线 I7 的那个洞口。
 //! - [`tmux_hook`]：**改 tmux server 状态**（`tmux set-hook -g`）+ **发信号**（`SIGUSR1`）。
+//! - [`launch`]（U8a-2b）：**起 tmux 会话 / 往已有会话键入载荷**（U8a 分解里的「平面 ②」）。
+//!   起进程（`tmux`，argv 直传不过 shell），已登记进 `readonly_guard::spawn_registry`。
+//!   **不 attach** —— 那是平面 ③，daemon 在远端开不了你面前的窗。
 //! - [`resolve_query`]：产出 `CommandPlan`（「这个会话该怎么起」）。
 //!   名字里有 `query` 但它不是观测 —— 账本 S14 明写它是 backend 的**计划面**。
 //!   按「读 / 改变世界」这条线分，产计划属于控制的前半。
@@ -17,5 +20,6 @@
 //! 反向边自然消失。铁律 6：改结构让问题不存在。
 
 pub(crate) mod fork_write;
+pub(crate) mod launch;
 pub(crate) mod resolve_query;
 pub(crate) mod tmux_hook;

@@ -1,7 +1,9 @@
 # 状态 / STATUS — unified-backend（恢复入口，每次先读这里）
 
 - **当前阶段**：第二梯队推进中。第零/第一梯队（三个门禁功能）+ U2/U3/U4a/U5-走查 全部闭环并各自提交。
-- **当前功能**：U7 整族闭环。**U8a 判定已出**。**D1 已裁决**（铁律收窄 + 起进程受管清单落成机检）。**U8a-2 顺序已订正**（入方向通道当时不可达 ⇒ 先接发送端）。**U8a-2a 已闭环** —— monitor 侧发送端接上，入方向通道**在生产里可达了**（「测试连接」的控制通道往返探测是第一个生产调用方；15 条真进程 e2e 进 CI）。下一个：**U8a-2b —— `launch` 命令本体**。
+- **当前功能**：U7 整族闭环。**U8a 判定已出**。**D1 已裁决**（铁律收窄 + 起进程受管清单落成机检）。**U8a-2 顺序已订正**（入方向通道当时不可达 ⇒ 先接发送端）。**U8a-2a 已闭环** —— monitor 侧发送端接上，入方向通道**在生产里可达了**（「测试连接」的控制通道往返探测是第一个生产调用方；15 条真进程 e2e 进 CI）。**U8a-2b 已闭环** —— daemon 侧长出真正的「远端执行面」（argv 直传不过 shell、`send-into` 一等模式、真 tmux e2e 27 条）。
+  ⚠ **生产路径尚未切换**（tauri 命令收到的是渲染好的 shell 串，拆不回结构化计划）⇒ 登记 **U8a-2c**，依赖 U8c 的前端改造。
+  下一个：**U8b —— 平面 ③ 的 OS 分派 + `launch.rs:304` 那个真 bug**（或按用户意愿先做 U8a-2d / U-CC1）。
 
 ## 进度（2026-08-01，用户指令「全自动做完、中途不要停」）
 
@@ -30,6 +32,7 @@
 | **U8a-2 第一步** D1 裁决 + 起进程受管清单 | ✅ 闭环（§5 待拍板清空；清单是机检不是散文） | 待提交 |
 | **U8a-2 摸底** 威胁模型 + 顺序订正 | ✅ 闭环（入方向今天不可达；daemon 侧第三层是安全剧场） | 待提交 |
 | **U8a-2a** 接上 monitor 侧入方向发送端 | ✅ 闭环（D 审计 **1 阻塞 + 8 重要**全部处置；三条「删掉功能本身也全绿」的变异各自补了回归钉） | 待提交 |
+| **U8a-2b** `launch` 命令本体（平面 ② 进 daemon） | ✅ 闭环（真 tmux e2e 27 条；D 设计审计 **2 阻塞 + 4 重要**全部处置） | 待提交 |
 | U1b · U4b · **U8a-2b**（launch 本体）· U8b–U8d · U9–U15 | 待做 | — |
 
 **⚠ U7a（jsonl tail）已降级登记**：§0.1 自评「收益最低」，且它「顺带验证本机 backend 管道」那个排期理由在 U5 收窄后已 void。
@@ -58,23 +61,24 @@
 ⇒ 三轮的共同形状：**我修护栏的动作本身在造新洞，而且都是静默的。**
 每条都靠「同一段违规代码在应扫到/应剥掉两个位置红绿相反」判定，不靠跑绿。
 
-### 当前门禁基线（U8a-2a 闭环后实测，2026-08-02）
+### 当前门禁基线（U8a-2b 闭环后实测，2026-08-02）
 
-monitor `cargo test --all` **704 / 3 ignored** · daemon **222** ·
-共享 crate `branch-core` / `usage-core` / `acct-core` / `guard-core` 各自 `-p` 跑（**新进 CI**）·
+monitor `cargo test --all` **705 / 3 ignored** · daemon **231** ·
+共享 crate `branch-core` / `usage-core` / `acct-core` / `guard-core` 各自 `-p` 跑（U8a-2a 起进 CI）·
 `npm test` **80 文件 1154 例** · `tsc` **0** · 两侧 + 四个共享 crate `cargo fmt --check` 干净 ·
-clippy daemon **0** / 共享 crate 各 **0** / monitor **62（与 HEAD 逐条相同，同一计量口径实测对比）** ·
-daemon 跨 target Windows `cargo check` 过 · e2e `inbound-frames` **15/15**（新，进 CI 带地板）。
+clippy daemon **0** / 共享 crate 各 **0** / monitor **62（同口径与 HEAD 相同）** ·
+daemon 跨 target Windows `cargo check` 过 · e2e `inbound-frames` **27/27**（含**真 tmux**：
+建会话 / `@ccm_sid` / 载荷真落 / 幂等短路 / send-into / #76 反向防线 / attach 被拒）。
 
-⚠ **clippy 计量口径**：`--message-format=short | grep -c warning` 得 62；
-早先记的 **64** 是另一种数法（全格式 `grep -c "^warning"`）。本轮为了断言「零新增」，
-**用 `git worktree` 拉了一份 HEAD 用同一条命令量**，两边都是 62 —— 别拿两种口径的数互相比。
+⚠ **改完 daemon 源码、跑 e2e 之前必须 `cargo build`**：`cargo test` 刷新的是**测试二进制**，
+e2e 用的是 `target/debug/cc-monitor-remote` 那个**普通 bin**。本轮踩到一次
+（`invalid_args` 改名后 e2e 仍拿到 `bad_request`，虚惊一场）。CI 无此问题（它在 e2e 步骤前显式 `cargo build`）。
 
-⚠ **daemon 从 226 掉到 222 不是删测试**：guard_support 的 7 条通用测试搬进了共享 crate
-`guard-core`（那边现在 11 条），daemon 侧留 3 条 daemon 专属 + 1 条新的再导出自检。
+⚠ **绝不要用 `git checkout -- <file>` 撤销变异** —— 本轮误用一次，把 `inbound.rs` 上
+所有未提交的改动一起冲掉了（靠 scratchpad 里的显式备份救回）。**还原一律从备份 `cp`，然后 `touch`。**
 
-⚠ **测试条数对账要用新鲜构建**，且**别手抄**（`8a13ba9` 的 commit message 写 667、
-审计在同一 commit 上实测 666）。`cp -a` 还原后必须 `touch`（cargo 按 mtime 判缓存）。
+⚠ **clippy 计量口径**：`--message-format=short | grep -c warning` 得 62；早先记的 **64** 是另一种数法。
+断言「零新增」时用 `git worktree` 拉一份 HEAD 用**同一条命令**量。
 
 ## 计划自审结论（2026-08-01，四视角并行）
 

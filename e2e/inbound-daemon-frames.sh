@@ -85,7 +85,7 @@ if wait_for '"kind":"hello"'; then ok "daemon 发出 hello"; else
   bad "10s 内没等到 hello"; echo "--- stderr ---"; tail -20 "$ERR"
 fi
 HELLO="$(head -1 "$OUT")"
-for c in ping cancel resolve; do
+for c in ping cancel resolve launch; do
   if printf '%s' "$HELLO" | grep -qF "\"$c\""; then ok "hello.commands 声明了 $c"; else
     bad "hello 里没有 $c：$HELLO"
   fi
@@ -161,6 +161,108 @@ for k in a b c; do
   wait_for "\"id\":\"e2e-multi-$k\"" || missing="$missing $k"
 done
 if [ -z "$missing" ]; then ok "三条并发命令各自拿到应答"; else bad "这几条没应答：$missing"; fi
+
+# ── 8b. U8a-2b：`launch` 打在**真 tmux** 上 ─────────────────────────────────────
+#
+# 这一段是 2b 的关键证据：不是喂夹具，是让真 daemon 用真 tmux 建出一个真会话、
+# 把载荷真敲进去。tmux server 是本套件开头隔离出来的私有 socket（`TMUX_TMPDIR`），
+# **绝不碰用户真实的 server**。
+if ! command -v tmux >/dev/null 2>&1; then
+  bad "没有 tmux —— launch 段无法验证（本套件依赖真 tmux，不接受跳过）"
+else
+  SESS="e2e-launch-$$"
+  MARK="$WORK/launched.marker"
+  # 载荷：写一个 marker 文件。它比「看进程名」可靠得多 —— 能证明**这一行真的被执行了**。
+  send "{\"id\":\"e2e-launch-1\",\"cmd\":\"launch\",\"args\":{\"mode\":\"create-or-attach\",\"name\":\"$SESS\",\"payload\":\"touch '$MARK'\",\"ccm_sid\":\"e2e-sid-1\"}}"
+  if wait_for '"id":"e2e-launch-1"'; then
+    R="$(grep -F '"id":"e2e-launch-1"' "$OUT" | head -1)"
+    if printf '%s' "$R" | grep -qF '"ok":true' &&
+       printf '%s' "$R" | grep -qF '"created":true' &&
+       printf '%s' "$R" | grep -qF '"typed":true'; then
+      ok "launch create-or-attach 回 created=true typed=true"
+    else
+      bad "launch 应答不对：$R"
+    fi
+  else
+    bad "launch 没有应答"
+  fi
+  if tmux has-session -t "=$SESS:" 2>/dev/null; then ok "真 tmux 会话建出来了"; else
+    bad "tmux 里找不到会话 $SESS"
+  fi
+  GOT_SID="$(tmux show-options -v -t "=$SESS:" @ccm_sid 2>/dev/null || true)"
+  if [ "$GOT_SID" = "e2e-sid-1" ]; then ok "@ccm_sid 已设（$GOT_SID）"; else
+    bad "@ccm_sid 不对：${GOT_SID:-<空>}"
+  fi
+  got_marker=0
+  for _ in $(seq 1 60); do [ -f "$MARK" ] && { got_marker=1; break; }; sleep 0.05; done
+  if [ "$got_marker" = 1 ]; then ok "载荷真的在会话里执行了（marker 落盘）"; else
+    bad "3s 内 marker 没出现 —— send-keys 没真落进交互 shell"
+  fi
+
+  # 幂等：同名再来一次 ⇒ created=false typed=false（**不重复 resume**）
+  rm -f "$MARK"
+  send "{\"id\":\"e2e-launch-2\",\"cmd\":\"launch\",\"args\":{\"mode\":\"create-or-attach\",\"name\":\"$SESS\",\"payload\":\"touch '$MARK'\"}}"
+  if wait_for '"id":"e2e-launch-2"'; then
+    R="$(grep -F '"id":"e2e-launch-2"' "$OUT" | head -1)"
+    if printf '%s' "$R" | grep -qF '"created":false' && printf '%s' "$R" | grep -qF '"typed":false'; then
+      ok "会话已存在 ⇒ 幂等短路（created=false typed=false）"
+    else
+      bad "幂等短路破了：$R"
+    fi
+  else
+    bad "第二次 launch 没有应答"
+  fi
+  sleep 0.4
+  if [ ! -f "$MARK" ]; then ok "幂等短路真的没重复键入载荷"; else
+    bad "幂等短路声称没键入，marker 却又出现了"
+  fi
+
+  # send-into：往**已存在**的会话键入 ⇒ typed=true
+  send "{\"id\":\"e2e-launch-3\",\"cmd\":\"launch\",\"args\":{\"mode\":\"send-into\",\"name\":\"$SESS\",\"payload\":\"touch '$MARK'\"}}"
+  if wait_for '"id":"e2e-launch-3"'; then
+    R="$(grep -F '"id":"e2e-launch-3"' "$OUT" | head -1)"
+    if printf '%s' "$R" | grep -qF '"ok":true' && printf '%s' "$R" | grep -qF '"typed":true'; then
+      ok "send-into 往已存在会话键入成功"
+    else
+      bad "send-into 应答不对：$R"
+    fi
+  else
+    bad "send-into 没有应答"
+  fi
+  got_marker=0
+  for _ in $(seq 1 60); do [ -f "$MARK" ] && { got_marker=1; break; }; sleep 0.05; done
+  if [ "$got_marker" = 1 ]; then ok "send-into 的载荷真的执行了"; else bad "send-into 没真敲进去"; fi
+
+  # ★ #76 防线（形态迁移后）：send-into 一个**不存在**的会话 ⇒ 报错，**绝不新建**
+  send '{"id":"e2e-launch-4","cmd":"launch","args":{"mode":"send-into","name":"e2e-nope-never","payload":"true"}}'
+  if wait_for '"id":"e2e-launch-4"'; then
+    R="$(grep -F '"id":"e2e-launch-4"' "$OUT" | head -1)"
+    if printf '%s' "$R" | grep -qF '"ok":false' && printf '%s' "$R" | grep -qF 'no_such_session'; then
+      ok "send-into 会话不存在 ⇒ no_such_session"
+    else
+      bad "应当回 no_such_session：$R"
+    fi
+  else
+    bad "send-into(不存在) 没有应答"
+  fi
+  if tmux has-session -t "=e2e-nope-never:" 2>/dev/null; then
+    bad "**send-into 顺手把会话建出来了** —— 那是 #76 的反向"
+  else
+    ok "send-into 没有顺手新建会话（#76 反向防线）"
+  fi
+
+  # attach 不归 daemon（平面 ③）
+  send '{"id":"e2e-launch-5","cmd":"launch","args":{"mode":"attach-only","name":"x","payload":"y"}}'
+  if wait_for '"id":"e2e-launch-5"'; then
+    R="$(grep -F '"id":"e2e-launch-5"' "$OUT" | head -1)"
+    if printf '%s' "$R" | grep -qF 'invalid_args'; then ok "attach-only 被拒（平面 ③ 不归 daemon）"; else
+      bad "attach-only 居然被接受了：$R"
+    fi
+  else
+    bad "attach-only 没有应答"
+  fi
+  tmux kill-session -t "=$SESS:" 2>/dev/null || true
+fi
 
 # ── 9. 关掉写端**不许**把 daemon 弄死 ───────────────────────────────────────────
 #
