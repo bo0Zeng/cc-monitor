@@ -398,6 +398,7 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
 | **开放-2** | `--print` 变 RPC 后「必须是纯的」靠什么保住 —— U9 给机制 |
 | **开放-3** | E19（相对 `--cwd` 应用两次 + 产孤儿会话）搬家时**要么修要么明确带走** |
 | **开放-4** | 非 tmux 路径的 OSC marker 确实拿不回来（daemon 无 tty）—— **如实降级**。tmux 路径靠 daemon 写 `@ccm_sid` + `set-titles-string` 合成 |
+| **开放-6（2026-08-01 用户报「终端里敲命令还是 attach」实测查出）** | **`ccm` 在本机没有任何安装/更新路径 —— 只有远端有。** 受管工具注册表 `tool_registry.rs:251-263` 里 `ccm` 的 destination 是 `RemoteHomeRelative(".local/bin/ccm")` + `HostScope::Remote`：app 只往**远端**装。本机那份 `~/.local/bin/ccm` 是当初手工 `cp` 的，**之后仓里每一次 ccm 修复它都收不到**。<br>实测：仓里 662 行（2026-08-01）· 本机 542 行（2026-07-27），逐字节匹配到 commit `29bdda4`。用户报的病（同目录新开终端敲 `cct` 被 attach 进正用着的会话）**在仓里 `666cc14` 就修好了**，而本机跑的那份还是修复之前的「同目录 → 幂等复用」。私有 socket 实测：仓里那份连开三次得到 `myproj-cc` / `-2` / `-3`，避让生效。<br>⇒ **这不是「还没修」，是「修了送不到本机」。** 落点 **U5**（本机 backend 生命周期由 frontend 拥有 —— 本机分发链本来就是它的正题，账本 S15）；U9 让 ccm 变薄之后这条链更要有。 |
 | **开放-5** | `account-onboarding/` 是否仍活着（其红线「daemon 起会话机制零改」与本区正面冲突）—— U8 前确认 |
 
 ---
