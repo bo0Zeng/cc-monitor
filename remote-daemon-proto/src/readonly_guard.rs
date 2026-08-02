@@ -393,3 +393,144 @@ mod tests {
         );
     }
 }
+
+/// U8a-2 / **D1 裁决的代码强制**：daemon 起进程的**受管例外清单**。
+///
+/// # 为什么要这条
+///
+/// `readonly_guard` 的既有判据只认**文件系统写模式**，**它不认 `Command` / `spawn`**
+/// （`§0.2` 早就登记了这件事：「『daemon 只读』这个词今天已经在骗人」）。
+/// 于是「起一个会写用户数据的进程」这条路，**机器护栏永远不会红**。
+///
+/// D1 的裁决（主计划 §5）选了①：**铁律收窄为「daemon 进程自身不许写用户既有数据」**，
+/// 间接写不算 —— 但推荐里带一个**强制条件**：
+///
+/// > 必须同时：在 §41.6 写下「间接写的责任在被起的那个程序，daemon 的责任是不越权
+/// > 替它决定写什么」+ 把预信任那条单列为**受管的例外**，**逐条列举写面**。
+///
+/// 「逐条列举」不能只是散文里列一遍 —— 那正是 §0.2 批评的「护栏与散文说的不是一件事」。
+/// 本护栏就是那份清单的机器形态：**生产段每一处起进程都必须在这里登记，并写明它做什么。**
+///
+/// # 它挡什么、不挡什么（如实登记）
+///
+/// - **挡**：悄悄新增一个起进程点。新增而不登记 ⇒ 红。
+/// - **不挡**：已登记的那条改成起别的东西（登记的是**文件名**，不是完整 argv）。
+///   完整 argv 里有格式化变量（`tmux_probe_script()` 拼的脚本），钉不住也不该钉死。
+///   这条边界写在这里，免得下一个人以为它保证了更多。
+#[cfg(test)]
+mod spawn_registry {
+    /// 生产段允许起的进程，**逐条登记**：(文件, 起什么, 做什么、为什么不算违反收窄后的铁律)。
+    const ALLOWED: &[(&str, &str, &str)] = &[
+        (
+            "control/tmux_hook.rs",
+            "tmux",
+            "装 tmux hook（`set-hook -g`）。改的是 **tmux server 的运行期状态**，\
+             不是用户既有数据；P4b 的零轮询判活靠它",
+        ),
+        (
+            "observe/watcher.rs",
+            "sh",
+            "跑 `command -v tmux && tmux ls`（两处：探测 + 取观测）。**只读**，\
+             `sh -c` 是为了让 `command -v` 解析 PATH",
+        ),
+    ];
+
+    /// ★ 生产段的每一处起进程都必须在 [`ALLOWED`] 里。
+    #[test]
+    fn every_process_spawn_in_production_is_registered() {
+        let files: &[(&str, &str)] = &[
+            ("main.rs", include_str!("main.rs")),
+            ("wire.rs", include_str!("wire.rs")),
+            ("inbound.rs", include_str!("inbound.rs")),
+            ("observe/watcher.rs", include_str!("observe/watcher.rs")),
+            (
+                "observe/history_query.rs",
+                include_str!("observe/history_query.rs"),
+            ),
+            (
+                "observe/search_query.rs",
+                include_str!("observe/search_query.rs"),
+            ),
+            (
+                "observe/usage_query.rs",
+                include_str!("observe/usage_query.rs"),
+            ),
+            (
+                "observe/accounts_query.rs",
+                include_str!("observe/accounts_query.rs"),
+            ),
+            ("observe/codex.rs", include_str!("observe/codex.rs")),
+            (
+                "observe/turn_detect.rs",
+                include_str!("observe/turn_detect.rs"),
+            ),
+            ("control/tmux_hook.rs", include_str!("control/tmux_hook.rs")),
+            (
+                "control/fork_write.rs",
+                include_str!("control/fork_write.rs"),
+            ),
+            (
+                "control/resolve_query.rs",
+                include_str!("control/resolve_query.rs"),
+            ),
+            ("platform/proc.rs", include_str!("platform/proc.rs")),
+            ("platform/signal.rs", include_str!("platform/signal.rs")),
+            ("platform/liveness.rs", include_str!("platform/liveness.rs")),
+        ];
+        let mut found: Vec<(String, String)> = Vec::new();
+        for (name, raw) in files {
+            let prod = crate::guard_support::production_code(raw);
+            let mut from = 0usize;
+            while let Some(rel) = prod[from..].find("Command::new(") {
+                let at = from + rel + "Command::new(".len();
+                let tail = &prod[at..];
+                if let Some(q) = tail.find('"') {
+                    if let Some(e) = tail[q + 1..].find('"') {
+                        found.push((name.to_string(), tail[q + 1..q + 1 + e].to_string()));
+                    }
+                }
+                from = at;
+            }
+        }
+        assert!(
+            found.len() >= 3,
+            "只扫到 {} 处起进程 —— 抽取坏了，本断言在空转：{found:?}\n\
+             （实测生产段今天有 3 处：tmux_hook 的 tmux + watcher 的两处 sh）",
+            found.len()
+        );
+        let unregistered: Vec<&(String, String)> = found
+            .iter()
+            .filter(|(f, p)| !ALLOWED.iter().any(|(af, ap, _)| af == f && ap == p))
+            .collect();
+        assert!(
+            unregistered.is_empty(),
+            "这些起进程点没在受管例外清单里：{unregistered:?}\n\
+             D1 把铁律收窄成「daemon **进程自身**不许写用户既有数据」，代价是**必须逐条列举**\n\
+             起进程的写面 —— 否则收窄就退化成「隔一层 exec 就绕过」。\n\
+             把它加进 `ALLOWED` 并**写明它做什么、为什么不违反收窄后的铁律**。"
+        );
+    }
+
+    /// ★ 清单里不许有**幽灵条目**（登记了但生产段已经没有了）。
+    ///
+    /// 否则清单会越攒越松，上面那条的判据跟着变松。
+    #[test]
+    fn the_registry_has_no_ghost_entries() {
+        for (f, p, why) in ALLOWED {
+            assert!(
+                !why.is_empty(),
+                "{f} 起 {p} 没写理由 —— 「逐条列举」列的是写面与理由，不是文件名清单"
+            );
+        }
+        let hook = crate::guard_support::production_code(include_str!("control/tmux_hook.rs"));
+        let watcher = crate::guard_support::production_code(include_str!("observe/watcher.rs"));
+        assert!(
+            hook.contains("Command::new(\"tmux\")"),
+            "清单登记了 tmux_hook 起 tmux，但生产段里找不到了 —— 幽灵条目"
+        );
+        assert!(
+            watcher.contains("Command::new(\"sh\")"),
+            "清单登记了 watcher 起 sh，但生产段里找不到了 —— 幽灵条目"
+        );
+    }
+}
