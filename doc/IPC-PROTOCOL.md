@@ -393,6 +393,65 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | `tmux_sessions` | `raw`, `observation?` | **B2**：daemon 在远端本地跑 `tmux ls -F '<TMUX_LS_FMT>'` 的**原始 stdout**（或哨兵 `NO_TMUX`），替掉 monitor 每 8s 新建 SSH 跑 tmux ls 的刷屏轮询。**送 raw、client 解析**（照 `line` 帧哲学，复用 monitor 现有 `tmux::parse_tmux_ls`）。**P1（additive）`observation`**：`"zero_sessions"` / `"no_tmux"` / `"unobservable"`——**有会话时省略**，热路径字节与 P1 之前逐字节一致。没有它时 `raw` 的空串同时意味着「零会话」与「`tmux ls` 出错被 `\|\| true` 吞了」，两者不可分 |
 | `overflow` | `dropped: u64` | issue #32：daemon 发送通道被慢/卡的 SSH 管道反压、丢了 `dropped` 帧的哨兵信号（通道排空到能再容纳时发一次）→ monitor 经 SS-F `remote-health` 事件 toast 提示用户可能丢实时行（丢的行仍在远端 jsonl，重开会话可看完整历史） |
 
+### 入方向：流连接上的命令信封（U6b-1）
+
+在此之前这条协议是**单向**的：daemon 只写、从不读。这不是设计选择，是缺口 —— 它已经在制造绕路：
+
+- **`--tmux-notify` 存在的唯一理由**就是 tmux hook 子进程没法给正在跑的 daemon 发消息，
+  只能新起一个进程、校验身份、发信号。
+- **`--resolve` 为一次极小的 RPC 单开一整条 SSH exec。**
+
+载体本来就在：monitor 那头拿的是 `russh::ChannelStream`，**双工**，而写半边从来没人用过。
+现在 daemon 在**同一条流连接**上读 stdin。
+
+```text
+→ {"id":"<opaque>","cmd":"<name>","args":{...}}          请求（一行一个）
+← {"kind":"reply","id":"<opaque>","ok":true}              成功
+← {"kind":"reply","id":"<opaque>","ok":false,"code":"…","message":"…"}
+← {"kind":"cancelled","id":"<被取消的 id>"}
+→ {"id":"<opaque>","cmd":"cancel","args":{"target":"<id>"}}
+```
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `id` | → ← | **不透明串**。daemon **不解析、不校验格式、不规范化，只回显**。谁生成谁负责唯一 —— 客户端。daemon 自己发号的话重连后号段会撞（同 §F90「不许拿会变的东西当持久键」）。含 emoji / 超长 / 纯数字都照原样回 |
+| `cmd` | → | 命令名 |
+| `args` | → | 命令自己的参数对象，缺省 `{}` |
+| `ok` | ← | 成败。`true` 时 `code` / `message` **不上线**（skip_if_none） |
+| `code` / `message` | ← | 失败原因。形状**对齐 `--resolve` 已冻结的那套**（协议 v1 §3），不发明第二种错误 JSON |
+
+**四条刻意的选择：**
+
+1. **应答复用出方向的 `kind` tag 空间**（`reply` / `cancelled` 是新 kind），不另开一条流 ——
+   旧 monitor 见到未知 kind 会**忽略**（§10 已有的 additive 规律），新 daemon × 旧 monitor 天然安全。
+2. **取消是一条普通命令、不是带外信号**。带外要么另开通道要么发明转义序列，两者都要新的解析纪律；
+   而取消排队等一下并无妨（它只在长命令上有意义）。取消一个不存在的 `id` 是**幂等**的、不是错误。
+3. **应答走独立通道**（容量 256，与出方向的 10 000 分开）。出方向丢一帧可恢复
+   （`overflow` 会说丢了多少，行还在远端 jsonl 里）；**丢一条应答会让客户端永远等下去**。
+   writer 用 `biased` select **优先应答** —— 否则一万行的洪峰会把应答排在后面，
+   客户端那头看起来就是「命令没反应」。
+4. **应答通道满时阻塞入方向，不丢弃**。满 = 客户端连应答都读不过来，这时候把背压顶回去正是想要的。
+
+**信任边界**（出方向 daemon 是唯一写者；入方向它变成读取不可信输入的一方）：
+
+| 约束 | 行为 |
+|---|---|
+| 单行上限 **1 MiB** | 超过即整行**不解析**（解析它本身就是被攻击面）+ 回 `line_too_long`。量级同 `--resolve` 的 stdin 上限 |
+| 坏 JSON | 回 `bad_request` 并**继续读下一行**。`id` 无从得知 ⇒ 回空 `id`，客户端按「上一条没应答」超时处理 |
+| 任何失败 | **绝不 panic、绝不结束读循环、绝不结束进程** |
+
+**★ 两条时序 / 线程约束，都由机检钉住（不是靠注释）：**
+
+- **客户端在读到 `hello` 之前不许写命令**，daemon 侧对应「reader 必须在 `hello` flush 之后才起」。
+  客户端要先知道对面是什么版本、有什么能力才能发命令。
+  钉住它的是 `inbound::structure_guards::hello_is_flushed_before_the_inbound_reader_starts`。
+- **命令处理器一律不许跑在读循环那个 task 上**（`cancel` 是唯一例外，且必须例外：
+  它就是用来打断别的命令的，自己再排到那些命令后面就永远不生效）。
+  一条慢命令占住读循环 ⇒ 后续命令全排队，而症状表现成「远端没反应」、几乎归因不到具体哪条。
+  钉住它的是 `handlers_never_run_on_the_reader_task`。
+
+**今天只有 `ping` 与 `cancel` 两条命令**（骨架验收用）。真业务命令从 `--resolve` 吸收开始。
+
 ### 一次性历史查询（带参数启动 daemon，issue #16）
 
 带参数 exec = 一次性查询模式，干完即退、**不进流式协议**：

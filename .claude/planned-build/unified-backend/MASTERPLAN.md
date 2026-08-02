@@ -493,3 +493,18 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   但 `bind.rs` 几乎整个 `#[cfg(windows)]`，放那儿在 Linux CI 上**一条都不会跑**
   （实测 `cargo test bind::` = 0 个）。改放 `profile_installer.rs`（用 `include_str!` 内嵌
   `cc.ps1.tpl`、测试在 Linux 真跑）。⇒ 与 U4a 的教训同族：**「写了护栏」≠「护栏会执行」。**
+- 2026-08-02 **U6b 拆成三件**（U6a 拆过一次，这是第二次拆）。Phase B 实测三处与计划叙述不同：
+  ① 「双向」的起点**不是零** —— `--resolve` 已经在读 stdin（一次性 exec 的 `ResumeSpec`），
+  缺的是**流式连接上**的入方向；② 载体现成 —— `ssh_source.rs` 里 `stdin` 零命中，
+  而 `russh::ChannelStream` 是双工的，那半条通道**完全没人用**；③ 「argv 三分」不是给现有分类加一档，
+  今天是**二分**（剥流 flag → 剩下非空即查询），第三类「子命令自己的选项」从没进过那张表。
+  拆法按**承载关系**：**U6b-1** 入方向骨架（信封 + `id` + 取消 + 上限 + 两条时序/线程机检）→
+  **U6b-2** 能力协商扩到入方向 + argv 三分重建 + §26 护栏扩 → **U6b-3** `--resolve` 吸收 + F90 稳定键。
+  先钉信封与线程纪律，否则后面每加一条命令都要重谈一次。
+- 2026-08-02 **做入方向的实证（不是推测）**：`--tmux-notify` 存在的唯一理由就是 hook 子进程
+  没法给正在跑的 daemon 发消息、只能新起进程发 `SIGUSR1`；`--resolve` 为一次极小的 RPC
+  单开一整条 SSH exec。**两者都是「没有常驻入方向」的代偿**。
+- 2026-08-02 **入方向的归属先定后写**（U6b-1 步骤 2）：传输层（读行/信封/上限）放**顶层 `inbound.rs`**、
+  与 `wire.rs` 同类；**每条命令的处理器归 `control/`**。依赖方向 `inbound → control`，
+  与既有 `observe → control` 同向 ⇒ `layering_guard` 判据不需放宽。
+  塞进 `control/` 会让「control = 做事」这条线变浑 —— §1.1 的线是按**职责**画的，不是按调用关系。

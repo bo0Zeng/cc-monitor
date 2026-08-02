@@ -79,7 +79,10 @@ mod tests {
                 i += 1;
                 continue;
             }
-            let is_ser = lines[i].contains("Serialize");
+            // `Serialize` **或** `Deserialize`：U6b-1 加了入方向的 `Request`（只 Deserialize），
+            // 第一版只认 Serialize ⇒ 它的 `cmd` / `args` 根本不被扫。出方向漏字段和
+            // 入方向漏字段对下游是同一件事。
+            let is_ser = lines[i].contains("Serialize") || lines[i].contains("Deserialize");
             i += 1;
 
             // derive 之后**还可能跟着别的列 0 属性行**（wire.rs 里就是
@@ -236,6 +239,27 @@ mod tests {
         );
     }
 
+    /// 文档里所有**反引号代码跨度**内出现的标识符（按非标识符字符切词）。
+    ///
+    /// 为什么要这一步而不是直接 `DOC.contains(name)`：见调用处。一句话——
+    /// 散文里的常见词不算「文档化」，而逗号连写的跨度里的词算。
+    fn code_span_identifiers(doc: &str) -> std::collections::HashSet<String> {
+        let mut out = std::collections::HashSet::new();
+        // 按反引号切：奇数段（下标为奇）是跨度内容。三反引号围栏也被这么切，
+        // 段落切得碎但对「取词」无影响（我们只关心词的集合）。
+        for (i, seg) in doc.split('`').enumerate() {
+            if i % 2 == 0 {
+                continue;
+            }
+            for tok in seg.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')) {
+                if !tok.is_empty() {
+                    out.insert(tok.to_string());
+                }
+            }
+        }
+        out
+    }
+
     /// ★ 文档必须提到 wire 的每一个字段。
     #[test]
     fn every_wire_field_appears_in_the_protocol_doc() {
@@ -245,10 +269,21 @@ mod tests {
             "只抽到 {} 个 wire 字段 —— 抽取坏了，本断言在空转：{fields:?}",
             fields.len()
         );
-        let missing: Vec<&String> = fields
-            .iter()
-            .filter(|f| !DOC.contains(f.as_str()))
-            .collect();
+        // ★ 判据是「作为标识符出现在某个**代码跨度之内**」，不是「字面量在全文任何地方出现过」。
+        //
+        // 松判据在 U6b-1 当场失效：新加的 `Reply { id, ok, code, message }` 四个字段
+        // **一条都没写进文档**，护栏却全绿 —— `ok` / `id` 这种词在 570 行中文文档里必然出现过。
+        //
+        // 但也不能要求「自成一个跨度」（`` `ok` ``）：文档里有 `v, build_id, host_arch, …`
+        // 这种**逗号连写在同一个跨度**的写法，那样会把 3 个既有的、确实有文档的字段误报。
+        // ⇒ 取所有反引号跨度的内容、按标识符切词，字段名必须是其中一个**完整词**。
+        let documented = code_span_identifiers(DOC);
+        assert!(
+            documented.len() >= 60,
+            "只从文档的代码跨度里切出 {} 个标识符 —— 抽取坏了，本断言在空转",
+            documented.len()
+        );
+        let missing: Vec<&String> = fields.iter().filter(|f| !documented.contains(*f)).collect();
         assert!(
             missing.is_empty(),
             "这些 wire 字段在 `doc/IPC-PROTOCOL.md` 里**一次都没出现**：{missing:?}\n\
