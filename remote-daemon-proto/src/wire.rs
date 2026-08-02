@@ -67,6 +67,13 @@ pub enum Frame {
         /// `emits` 是纯发射声明、无对应 flag、**不受 §26**。空/缺 → 省略（旧 client 忽略，additive）。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         emits: Vec<String>,
+        /// U6b-2（additive）：本 daemon **接受的入方向命令集**。
+        ///
+        /// 能力协商此前只有出方向那一半（`capabilities` 说「我认识哪些流 flag」）。
+        /// 客户端得知道发什么过去才有人接，否则只能试错。
+        /// 空/缺 = **这个 daemon 不读 stdin**（U6b-1 之前的所有版本），客户端别发命令。
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        commands: Vec<String>,
     },
     /// One raw JSONL line tailed from a session file.
     Line {
@@ -353,6 +360,7 @@ mod tests {
                     kinds: vec![],
                     capabilities: vec!["bg".into(), "tail-only".into()],
                     emits: vec!["line".into(), "session_status".into()],
+                    commands: vec![],
                 },
                 "hello",
             ),
@@ -482,6 +490,7 @@ mod tests {
             kinds: vec![],
             capabilities: caps,
             emits,
+            commands: vec![],
         }
     }
 
@@ -589,6 +598,7 @@ mod tests {
             kinds: vec!["claude".into(), "codex".into()],
             capabilities: vec![],
             emits: vec![],
+            commands: vec![],
         })
         .unwrap();
         // ★ 精确字节（aterm fixture 交叉核真值）：字段按声明序，codex_dir 在 claude_dir 后、kinds 次之。
@@ -643,6 +653,7 @@ mod tests {
             kinds: vec![],
             capabilities: vec![],
             emits: vec![],
+            commands: vec![],
         })
         .unwrap();
         assert_eq!(
