@@ -69,13 +69,19 @@ pub const REPLY_CHANNEL_CAPACITY: usize = 256;
 ///
 /// **这是单一真相源** —— `hello` 从这里取值，`dispatch` 必须恰好处理这些。
 /// 两者由 `hello_commands_match_the_dispatch_table` 钉住，不许各写各的。
-pub const COMMANDS: &[&str] = &["cancel", "ping", "resolve"];
+pub const COMMANDS: &[&str] = &["cancel", "launch", "ping", "resolve"];
 
 /// 在跑的命令登记表：`id` → 取消句柄。
 ///
 /// `id` 是客户端给的**不透明串**——daemon 不解析、不校验格式、只当 map 的键和回显值。
 /// 谁生成谁负责唯一。daemon 自己发号的话重连后号段会撞（同 F90「不许拿会变的东西当持久键」）。
-type Running = Arc<Mutex<HashMap<String, tokio::task::AbortHandle>>>;
+type Running = Arc<Mutex<HashMap<String, InFlight>>>;
+
+/// 一条在跑的命令。**`cancellable` 不是装饰** —— 见 [`Disposition::SpawnBlocking`]。
+struct InFlight {
+    abort: tokio::task::AbortHandle,
+    cancellable: bool,
+}
 
 /// 起入方向 reader。
 ///
@@ -163,13 +169,29 @@ async fn handle_line(raw: &[u8], replies: &mpsc::Sender<Frame>, running: &Runnin
         Disposition::Done => {}
         Disposition::Reply(f) => send(replies, f).await,
         Disposition::Spawn(req, run) => {
-            spawn_handler(req, replies.clone(), running.clone(), run).await
+            spawn_handler(req, replies.clone(), running.clone(), run, true).await
+        }
+        // ★ 同步阻塞处理器：进 `spawn_blocking` 的专用线程池，**不占 tokio worker**。
+        //   `cancellable: false` —— `spawn_blocking` 起的活 abort 不了，说实话。
+        Disposition::SpawnBlocking(req, run) => {
+            let fut = move |r: Request| async move {
+                match tokio::task::spawn_blocking(move || run(r)).await {
+                    Ok(res) => res,
+                    Err(e) => Err((
+                        "handler_panicked".to_string(),
+                        format!("阻塞处理器没能正常结束：{e}"),
+                    )),
+                }
+            };
+            spawn_handler(req, replies.clone(), running.clone(), fut, false).await
         }
     }
 }
 
 /// 处理器：拿走 [`Request`]，返回一个可以在**独立 task** 上跑的 future。
 type Handler = Box<dyn FnOnce(Request) -> BoxFut + Send>;
+/// 同步阻塞处理器（见 [`Disposition::SpawnBlocking`]）。
+type BlockingHandler = Box<dyn FnOnce(Request) -> CmdResult + Send>;
 type CmdResult = Result<Option<serde_json::Value>, (String, String)>;
 type BoxFut = std::pin::Pin<Box<dyn std::future::Future<Output = CmdResult> + Send + 'static>>;
 
@@ -195,9 +217,32 @@ enum Disposition {
     Done,
     Reply(Frame),
     Spawn(Request, Handler),
+    /// **同步阻塞**的处理器（起进程、扫全库）。走 `tokio::task::spawn_blocking`。
+    ///
+    /// # 为什么必须与 [`Disposition::Spawn`] 分开（D 设计审计 · 视角 A · P5）
+    ///
+    /// `launch` 的处理器是同步的，起 tmux 进程会真的阻塞。放在 `tokio::spawn` 上就是
+    /// **占住一个 worker**；`main` 是裸 `#[tokio::main]`（worker 数 = 可用并行度），
+    /// 单核机器（Pi 那一档，正是本 daemon 的目标机型）上一条在跑的 `launch` 就会占住
+    /// **唯一**的 worker —— 而 `writer_task`（出方向帧的唯一出口）和入方向 reader 都在
+    /// 同一个 runtime 上。症状是「远端还活着但一句话不说」，极难归因
+    /// （观测 watcher 在 `std::thread` 上，不受影响，所以看起来更像网络问题）。
+    ///
+    /// 分开还有第二个作用：`spawn_blocking` 起的活**abort 不了**。
+    /// 这一档因此同时是「这条命令不可取消」的类型级声明，`cancel` 据此回 `not_cancellable`
+    /// 而不是撒一条 `cancelled` 的谎。
+    SpawnBlocking(Request, BlockingHandler),
 }
 
 impl Disposition {
+    /// 同步阻塞处理器。**它开跑之后打不断** —— 这是事实，不是遗憾。
+    fn spawn_blocking<F>(req: Request, f: F) -> Self
+    where
+        F: FnOnce(Request) -> CmdResult + Send + 'static,
+    {
+        Disposition::SpawnBlocking(req, Box::new(f))
+    }
+
     fn spawn<F, Fut>(req: Request, f: F) -> Self
     where
         F: FnOnce(Request) -> Fut + Send + 'static,
@@ -217,9 +262,33 @@ fn dispatch(req: Request, replies: &mpsc::Sender<Frame>, running: &Running) -> D
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string();
-            let handle = lock(running).remove(&target);
+            // ★ **不可取消的命令要说实话，不许回一条撒谎的 `cancelled`。**
+            //
+            // D 设计审计（视角 A · P4）实测出的谎：`launch` 的处理器是**同步阻塞**的，
+            // `AbortHandle::abort()` 只在 await 点生效，对 `spawn_blocking` 起的活更是空操作
+            // ⇒ 客户端收到 `Cancelled`、`CallError::Cancelled`，而**远端的 tmux 会话照样建出来、
+            // 载荷照样键入**。那不是措辞问题，是控制面在骗调用方。
+            //
+            // 处置：登记表记住每条命令可不可取消；不可取消的**留在表里**（它还在跑），
+            // 回一条 `not_cancellable`，让调用方知道「这条停不下来，去查它的最终应答」。
+            let handle = {
+                let mut g = lock(running);
+                match g.get(&target) {
+                    Some(f) if !f.cancellable => None,
+                    _ => g.remove(&target),
+                }
+            };
+            if handle.is_none() && lock(running).contains_key(&target) {
+                let _ = replies.try_send(err(
+                    &req.id,
+                    "not_cancellable",
+                    "这条命令是同步阻塞的（已经在起进程/动 tmux），停不下来 —— \
+                     等它自己的应答，别当它没发生",
+                ));
+                return Disposition::Done;
+            }
             if let Some(h) = handle {
-                h.abort();
+                h.abort.abort();
                 // ★ `cancel` 的应答一律 `try_send`，**绝不 await**。
                 //
                 // 它被放进 `MAY_RUN_INLINE` 的理由原本写的是"纯 map 操作，不阻塞"——
@@ -235,6 +304,16 @@ fn dispatch(req: Request, replies: &mpsc::Sender<Frame>, running: &Running) -> D
             Disposition::Done
         }
         "ping" => Disposition::spawn(req, |_req| async move { Ok(None) }),
+        // U8a-2b：**平面 ②（远端执行面）** —— 在远端真的建 tmux 会话 / 往已有会话键入载荷。
+        //
+        // 它与 `resolve` 是两类东西：`resolve` 纯计算（产出「该怎么起」的计划），
+        // 这条**真的改变世界**（起进程、动 tmux server 状态）。所以：
+        // - 必须走 `Disposition::spawn`（起进程会阻塞，绝不能占住读循环）；
+        // - 起进程点已登记进 `readonly_guard::spawn_registry`；
+        // - **不 attach** —— attach 是平面 ③，daemon 在远端开不了你面前的窗。
+        "launch" => Disposition::spawn_blocking(req, |r| {
+            crate::control::launch::launch_for_inbound(&r.args).map(Some)
+        }),
         // U6b-3：第一条**真业务命令**。
         //
         // 一次性 `--resolve` 那条路**逐字不动** —— 它的契约与仓外 aterm 冻结在 2026-07-18，
@@ -258,8 +337,13 @@ fn dispatch(req: Request, replies: &mpsc::Sender<Frame>, running: &Running) -> D
 ///
 /// 登记与摘除都在这里，处理器本身不用管取消 —— 取消靠 `AbortHandle`，
 /// 处理器在任何 await 点被打断。
-async fn spawn_handler<F, Fut>(req: Request, replies: mpsc::Sender<Frame>, running: Running, f: F)
-where
+async fn spawn_handler<F, Fut>(
+    req: Request,
+    replies: mpsc::Sender<Frame>,
+    running: Running,
+    f: F,
+    cancellable: bool,
+) where
     F: FnOnce(Request) -> Fut + Send + 'static,
     Fut: std::future::Future<Output = CmdResult> + Send,
 {
@@ -343,7 +427,7 @@ where
         // 被 abort（= cancel 生效）时什么都不补：`Cancelled` 已经发过了。
     });
 
-    lock(&running).insert(id, abort);
+    lock(&running).insert(id, InFlight { abort, cancellable });
     let _ = gate_tx.send(()); // 登记落地之后才放行
 }
 
@@ -356,8 +440,8 @@ where
 ///
 /// 这张表丢一致性无所谓（最坏是某条命令取消不掉），**读循环活着更重要**。
 fn lock(
-    m: &Mutex<HashMap<String, tokio::task::AbortHandle>>,
-) -> std::sync::MutexGuard<'_, HashMap<String, tokio::task::AbortHandle>> {
+    m: &Mutex<HashMap<String, InFlight>>,
+) -> std::sync::MutexGuard<'_, HashMap<String, InFlight>> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
@@ -587,6 +671,105 @@ mod tests {
         }
     }
 
+    /// ★ **接缝**：`dispatch` 必须把阻塞命令放到阻塞那一档上。
+    ///
+    /// 下面那条 `cancelling_a_blocking_command_says_not_cancellable_instead_of_lying`
+    /// 验的是**机制**（`spawn_handler(..., cancellable=false)` 的行为）。
+    /// 变异实测：把 `dispatch` 里 `launch` 那一档的 `false` 改成 `true`，那条**照样绿** ——
+    /// 因为它直接调 `spawn_handler`，根本不经过 `dispatch`。
+    /// 这就是本区第 10 条纪律：**「两端各自有测试」≠「接起来是对的」，接缝要单独有判据。**
+    ///
+    /// 这条走**真的 `dispatch`**，按数据（返回的 `Disposition` 变体）判，不是扫文本。
+    /// 变异复验：把 `launch` 那档改回普通 `spawn` ⇒ 本条红。
+    #[test]
+    fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
+        let (tx, _rx) = mpsc::channel::<Frame>(4);
+        let running: Running = Arc::new(Mutex::new(HashMap::new()));
+        let d = |cmd: &str| dispatch(req("x", cmd), &tx, &running);
+
+        // `launch` 起进程、同步阻塞 ⇒ 必须是 SpawnBlocking（不占 tokio worker + 不可取消）。
+        assert!(
+            matches!(d("launch"), Disposition::SpawnBlocking(..)),
+            "`launch` 不在阻塞档上 —— 它会占住 tokio worker（单核机器上把出方向也一起卡死），\n\
+             而且 `cancel` 会对它撒谎（abort 对 spawn_blocking 是空操作）"
+        );
+        // 纯计算的两条留在普通 spawn 上（它们能在 await 点被真取消）。
+        for c in ["ping", "resolve"] {
+            assert!(
+                matches!(d(c), Disposition::Spawn(..)),
+                "`{c}` 不该在阻塞档上 —— 那会让它白白变成不可取消"
+            );
+        }
+        assert!(matches!(d("cancel"), Disposition::Done));
+        assert!(matches!(d("nope"), Disposition::Reply(..)));
+
+        // 计数自检：每条已声明的命令都被上面覆盖到了（新增命令必须来这里表态）。
+        let covered = ["launch", "ping", "resolve", "cancel"];
+        let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
+        assert!(
+            missing.is_empty(),
+            "这些命令没在本条里表态「阻塞还是不阻塞」：{missing:?}\n\
+             新增命令时必须回答这个问题 —— 放错档的代价是「占住 worker」或「假装能取消」。"
+        );
+    }
+
+    /// ★ **不可取消的命令不许回一条撒谎的 `cancelled`。**
+    ///
+    /// D 设计审计（视角 A · P4）：`launch` 的处理器是同步阻塞的，`abort()` 对
+    /// `spawn_blocking` 起的活是空操作 ⇒ 旧实现下客户端收到 `Cancelled`，
+    /// 而远端的 tmux 会话照样建出来、载荷照样键入。**控制面在骗调用方。**
+    #[tokio::test]
+    async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
+        let (tx, mut rx) = mpsc::channel::<Frame>(16);
+        let running: Running = Arc::new(Mutex::new(HashMap::new()));
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+
+        // 一条「在跑、且不可取消」的命令。
+        spawn_handler(
+            req("blk", "launch"),
+            tx.clone(),
+            running.clone(),
+            move |_r| async move {
+                let _ = release_rx.await;
+                Ok(None)
+            },
+            false, // ← 不可取消
+        )
+        .await;
+
+        // 对它发 cancel。
+        handle_line(
+            br#"{"id":"c1","cmd":"cancel","args":{"target":"blk"}}"#,
+            &tx,
+            &running,
+        )
+        .await;
+
+        let f = rx.recv().await.expect("应当有应答");
+        match f {
+            Frame::Reply {
+                id, ok, ref code, ..
+            } => {
+                assert_eq!(id, "c1");
+                assert!(!ok, "对不可取消的命令发 cancel 不该回 ok");
+                assert_eq!(
+                    code.as_deref(),
+                    Some("not_cancellable"),
+                    "应当明说停不下来，而不是撒一条 cancelled 的谎"
+                );
+            }
+            other => panic!("应答形状不对：{other:?}"),
+        }
+        // **绝不许**出现 `Cancelled` 帧。
+        assert!(
+            rx.try_recv().is_err(),
+            "除了 not_cancellable 之外还发了别的帧 —— 那多半就是那条谎"
+        );
+        // 登记还在（命令真的还在跑）。
+        assert!(lock(&running).contains_key("blk"), "不可取消的命令被摘掉了");
+        let _ = release_tx.send(());
+    }
+
     /// ★ 登记表不许残留空壳。
     ///
     /// 复现 D 审计那条：旧版先 `spawn` 后 `insert`，multi_thread 下 task 可以在 `insert`
@@ -606,6 +789,7 @@ mod tests {
                 tx.clone(),
                 running.clone(),
                 |_r| async move { Ok(None) },
+                true,
             )
             .await;
         }
@@ -643,6 +827,7 @@ mod tests {
                 let _ = held.await;
                 Ok(None)
             },
+            true,
         )
         .await;
         // 第二条：同一个 id。
@@ -651,6 +836,7 @@ mod tests {
             tx.clone(),
             running.clone(),
             |_r| async move { Ok(None) },
+            true,
         )
         .await;
         drop(tx);
@@ -685,6 +871,7 @@ mod tests {
             |_r| async {
                 panic!("处理器炸了");
             },
+            true,
         )
         .await;
         drop(tx);

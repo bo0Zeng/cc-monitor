@@ -69,8 +69,21 @@
 **强制条件（与裁决同时生效，不是建议）**：起进程的面**逐条登记**，且登记是**机检**不是散文：
 `readonly_guard::spawn_registry::every_process_spawn_in_production_is_registered`
 —— 生产段每一处 `Command::new` 都必须在清单里并写明「做什么、为什么不违反收窄后的铁律」。
-今天清单上有 **3 处**（`control/tmux_hook.rs` 起 `tmux` 装 hook；`observe/watcher.rs` 两处起 `sh`
-跑 `command -v tmux && tmux ls`，只读）。新增一处而不登记 ⇒ **红**（已变异复验）。
+今天清单上有 **4 处**（`control/tmux_hook.rs` 起 `tmux` 装 hook；`observe/watcher.rs` 两处起 `sh`
+跑 `command -v tmux && tmux ls`，只读；**`control/launch.rs` 起 `tmux` 建会话 / send-keys**，U8a-2b 新增）。
+新增一处而不登记 ⇒ **红**（已变异复验）。
+
+**U8a-2b 的写面（第 4 处）逐条**：`tmux new-session -d` / `set-option @ccm_sid` /
+`set-option set-titles[-string]` / `send-keys` / `has-session`。改的是 **tmux server 的运行期状态**，
+加上把一条载荷敲进那个会话的交互 shell —— 之后是**那个 claude 进程**在写它自己的 jsonl。
+按裁决第 1 条，那是被起程序的行为；按第 2 条，daemon 没有替用户决定往任何配置里塞东西
+（载荷是上游给的、`@ccm_sid` 是本方自建会话的身份标记）。⇒ **不违反收窄后的铁律**。
+
+⚠ **U8a-2b 顺带修掉了这条机检自己的一个洞**：`every_process_spawn_in_production_is_registered`
+原先扫的是一张**手写的文件清单**，新文件不在表里就根本扫不到 —— 实测新增
+`control/launch.rs`（起 tmux）时它全绿。已改成**递归遍历 `src/`** + 文件数自检。
+（同文件上方的 `scan()` 早在 Phase G 审计时就因同样理由改成递归了，这里没跟上。
+这是本仓「扫描面画小了」那一族的第五次，而且是 D1 那轮我自己埋的。）
 
 ⚠ **它挡什么、不挡什么**（如实登记，别以为它保证了更多）：挡「悄悄新增一个起进程点」；
 **不挡**「已登记那条改成起别的东西」—— 登记的是**文件名**不是完整 argv，
