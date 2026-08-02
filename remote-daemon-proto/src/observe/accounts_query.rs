@@ -34,6 +34,9 @@
 //!   否则拒绝——避免它退化成"任意文件读"原语。`--account-trust-zero` 不收路径参数
 //!   （路径是 `$HOME/.claude.json`，写死在代码里），所以它连这个面都没有。
 
+use acct_core::{
+    is_deceptive_char, ACCTS_DIR_NAME, CREDENTIALS_NAME, MANIFEST_NAME, SUPPORTED_SCHEMA,
+};
 use std::path::{Path, PathBuf};
 
 /// `.claude.json` 读取上限（照 `mcp.rs` 的 32MB 约定）。真机上它约 115KB。
@@ -68,22 +71,6 @@ struct Manifest {
     updated_at: Option<String>,
     shared_store: Option<String>,
     accounts: Vec<RawAccount>,
-}
-
-/// 会被用来做视觉欺骗的 Unicode 码点（双向覆盖 / 零宽 / 异常空白 / 行段分隔）。
-/// 这些不是 `is_control`（Rust 的 `char::is_control` 只覆盖 C0/C1），但在 UI 里能
-/// 伪造同形/反向的账号名与路径，是真实的钓鱼面。两端（daemon + cc-acct-iso
-/// `path_shell_safe`）都拒它们，避免"写侧放行、读侧丢弃 → 账号凭空消失"的不一致。
-fn is_deceptive_char(c: char) -> bool {
-    matches!(c,
-        '\u{0085}'                          // NEL（C1 换行，不在 char::is_control 里）
-        | '\u{00A0}'                        // NBSP
-        | '\u{200B}'..='\u{200F}'           // 零宽空格/连接符 + LRM/RLM
-        | '\u{2028}' | '\u{2029}'           // 行分隔 / 段分隔
-        | '\u{202A}'..='\u{202E}'           // 双向嵌入/覆盖
-        | '\u{2066}'..='\u{2069}'           // 双向隔离
-        | '\u{FEFF}'                        // ZWNBSP / BOM
-    )
 }
 
 /// 路径是否可安全地交给下游（cc-monitor 会把 configDir 拼进 `export CLAUDE_CONFIG_DIR='…'`）。
@@ -223,13 +210,13 @@ fn resolve_accts_dir(args: &[String]) -> PathBuf {
                 }
             }
         }
-        return h.join(".claude-accts");
+        return h.join(ACCTS_DIR_NAME);
     }
-    PathBuf::from(".claude-accts")
+    PathBuf::from(ACCTS_DIR_NAME)
 }
 
 fn manifest_path(accts_dir: &Path) -> PathBuf {
-    accts_dir.join("accounts.json")
+    accts_dir.join(MANIFEST_NAME)
 }
 
 /// 读 + 解析 manifest。缺文件/坏 JSON/不支持的 schema 都是 `Err(人话原因)`——
@@ -244,7 +231,7 @@ fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
     let root: serde_json::Value =
         serde_json::from_slice(&bytes).map_err(|e| format!("manifest 不是合法 JSON：{e}"))?;
     match root.get("version").and_then(|v| v.as_u64()) {
-        Some(1) => {}
+        Some(SUPPORTED_SCHEMA) => {}
         Some(v) => {
             return Err(format!(
                 "manifest schema 版本 {v} 不受支持（本 daemon 只认 1）"
@@ -376,7 +363,7 @@ fn list_accounts(accts_dir: &Path) -> Vec<String> {
                         // 那是「不知道」，不假装已登录。
                         "loggedIn": probe_dir
                             .as_ref()
-                            .is_some_and(|d| d.join(".credentials.json").exists()),
+                            .is_some_and(|d| d.join(CREDENTIALS_NAME).exists()),
                     })
                     .to_string(),
                 );
@@ -641,43 +628,10 @@ pub fn run(claude_dir: &Path, args: &[String]) -> i32 {
 
 #[cfg(test)]
 mod tests {
-    /// ★ Z06 跨语言双写点守卫：本文件判「已登录」用的那个文件名，必须与
-    /// cc-acct-iso 的 `NATIVE_IDENTITY` 声明里**标为 `secret` 的凭据项**一致。
-    ///
-    /// **为什么需要它**：「有 `.credentials.json` = 已登录」这条判据被**独立实现了两遍**
-    /// ——bash 侧 `cc-acct-iso`（`logged=false; [ -f … ] && logged=true`）与本文件。
-    /// 两个进程、两种语言，共享不了常量。Claude Code 哪天改了凭据文件名，改一边漏一边的
-    /// 表现是**静默错**：`loggedIn` 恒 false，UI 上看不出来。
-    ///
-    /// 做法照 `src-tauri/src/tmux.rs::tmux_ls_fmt_double_write_point_stays_in_sync`：
-    /// `include_str!` 读**vendored** 副本（它与上游逐字节一致，由 `build.rs` 的过期检查兜）
-    /// + 锚定声明里那一行。**双向**：改任一侧忘同步即红。
-    #[test]
-    fn credential_filename_matches_native_identity_declaration() {
-        // 本文件用来判「已登录」的文件名。改这里就要改下面的断言，也要改 bash 侧声明。
-        const CREDENTIAL_FILE: &str = ".credentials.json";
-        let lib_sh = include_str!("../../../src-tauri/vendor/cc-acct-iso/scripts/lib.sh");
-
-        // 声明里那一行的精确形状：`<项名>:<原生根>:<类别>`，凭据项必须是 secret。
-        let expected_line = format!("{CREDENTIAL_FILE}:cfg:secret");
-        assert!(
-            lib_sh.contains(&expected_line),
-            "Z06 双写点漂移：cc-acct-iso 的 NATIVE_IDENTITY 声明里找不到 {expected_line:?}。\n\
-             daemon 判「已登录」用的是 {CREDENTIAL_FILE:?}，两边必须一致——\
-             Claude Code 改了凭据文件名就要**同时**改声明与本文件。"
-        );
-        // 本文件真的在用这个名字（防止有人改了上面的常量却没改 json 里那行字面量）。
-        let me = include_str!("accounts_query.rs");
-        assert!(
-            me.contains(&format!(".join({CREDENTIAL_FILE:?}).exists()")),
-            "本文件的 loggedIn 判据没在用 {CREDENTIAL_FILE:?} —— 常量与实际用法脱节了"
-        );
-        // 反向自检：断言的是「两个源都真读进来了」，不是「命中若干条」。
-        assert!(
-            lib_sh.len() > 1000 && me.len() > 1000,
-            "include_str! 没读到源码，上面的断言是空转"
-        );
-    }
+    // U7-3：`credential_filename_matches_native_identity_declaration` 已搬进
+    // 共享 crate `acct-core`（`the_credential_filename_matches_the_cc_acct_iso_declaration`）。
+    // 常量住那儿，跟 bash 声明对账的守卫就该住那儿，否则又是两份。
+    // 它原先还带一半「本文件真的在用这个字面量」—— 常量共享之后那半**结构上不可能不成立**。
 
     use super::*;
     use std::fs;

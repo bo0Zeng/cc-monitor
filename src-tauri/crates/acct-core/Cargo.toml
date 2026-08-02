@@ -1,0 +1,9 @@
+[package]
+name = "acct-core"
+version = "0.1.0"
+edition = "2021"
+description = "cc-acct-iso 账号库契约的唯一定义 + 平台无关的名字安全判据——monitor 与远端 daemon 共用。"
+
+# **零依赖**。同 branch-core / usage-core 的约束：daemon 是 Linux-only 的静态 musl
+# 二进制、且刻意不在 monitor 的 workspace 里；一旦引入平台相关的东西，共享就破了。
+[dependencies]

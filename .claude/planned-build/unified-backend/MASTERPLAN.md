@@ -212,6 +212,7 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 | S6a | **跨进程握手时序约束**（U6a 新登记）<br>**U6a 已交付**：`cc.ps1.tpl`「先设标题、后写 await 文件」这个顺序，同时被写在**四处**：PS 模板本身 · `bind.rs` 模块头 · `doc/IPC-PROTOCOL.md` 时序图 · `cc_integration.ts` 给用户看的超时文案。U6a 之前**后三处全是旧的**（旧顺序 + 800ms + 100ms + 漏画 ≤600ms 重试）—— 文档在教人复刻 v2.21 那个「每个新 shell 首次 `cc` 固定烧满超时」。 | 四处保持一致，由 `profile_installer.rs::handshake_doc_guard` 三条护栏钉住（顺序 + 模板侧 deadline/轮询步长 + monitor 侧 debouncer/重试）。**不放 `bind.rs`**：它几乎整个 `#[cfg(windows)]`，护栏放那儿在 Linux CI 上一条都不跑 | U6a ✅ |
 | S16 | **入方向命令面**（U6b-1 新登记）<br>`inbound::COMMANDS` ↔ `dispatch` 分派臂 ↔ `hello.commands` ↔ `IPC-PROTOCOL.md` 入方向小节，**四处双写** | 前三处由 `hello_commands_match_the_dispatch_table` 钉成**同一份真相源**（声明了却不接 ⇒ 客户端石沉大海；接了却不声明 ⇒ 客户端不知道能用）；第四处由 U6a 的字段对拍逼进文档 | U6b-1 ✅ · U6b-3 加第一条真业务命令 |
 | S17 | **用量口径**（U7-2 新登记）<br>**U7-2 已交付**：抽进共享 crate `usage-core`，两侧各自 `path` 依赖。此前是无护栏的口径双写，且**已漂开两处**（BOM · 有 requestId 无 uuid） | 唯一实现在 crate 里；判据是「改内核一处 ⇒ 三侧同时红」，不是任何一侧的单侧测试 | U7-2 ✅ |
+| S18 | **账号契约 + 名字安全判据**（U7-3 新登记）<br>**U7-3 已交付**：四条常量 + `is_deceptive_char`（并集）进 `acct-core`；两条守卫**退役**，因为漂移已不可表示 | 唯一定义在 crate 里。**`is_safe_config_dir` / `norm_dir` 刻意不合** —— 那是平台特化不是漂移（本机要认 Windows 盘符且必须允许 `\`） | U7-3 ✅ |
 | S7 | **daemon argv 面** | 三类；`split_stream_flags` + `every_capability_token_is_strippable` 同步扩。⚠ **起点比以为的更糟**：现有的二分表本身就漏了 5 条子命令（`--tmux-notify` / `--resolve` / `--fork-session` / `--account-trust-zero` / `--read-session-from-offset`），其中 `--account-trust-zero` 漏登记**出过 v3.4.0 事故** | U6 |
 | S8 | **`BUILD_ID` 单源链条**<br>**U-1 已交付**：① `ssh_source.rs::embedded_build_id_single_source_wired` 断言 ≠ `"unknown"`；② `build.rs` 三条硬 panic（抠不到源码 `BUILD_ID` / 有二进制但缺清单 / 清单与源码不符）；③ 半 bump **真修掉**（两个 arch 从 p1v 源码现编，`rust-lld` 零安装）。<br>⚠ **措辞订正**：原写「缺文件从 warn 改 fail」不准 —— 三条 panic 都以「`embedded-daemons/` 里真有二进制」为前提；**整个目录缺失时仍是优雅降级**（那是 dev/CI 常态），兜那一档的是①不是 `build.rs`。发版链两头都够得着（`release.yml:56-58` 写清单、`:113-118` 再对拍） | U-1 · U13 |
 | S9 | **读面七组 → 四组**（§0.1 三类） | monitor 侧退役 | U7a–U7e |
@@ -581,3 +582,20 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
 - 2026-08-02 **判据升级**：这次不靠「两侧各自的测试都绿」，而是
   **改内核一处口径 ⇒ usage-core / daemon / monitor 三侧同时红**。
   那是双写被真正消灭的结构性证据；此前改一侧另一侧照样绿。
+- 2026-08-02 **U7-3 交付。这次先验守卫，结论与上一轮相反 —— 账号那条是真的。**
+  `contract_matches_the_daemon_implementation` 运行期读 daemon 源文件、剥注释、剥测试段、
+  有字节地板与锚点自检，注释里还记着第一版是安慰剂、被变异证伪后修好。**如实说明，不套用上一轮结论。**
+  但它只钉四个字符串常量、不钉逻辑 ⇒ 看不见安全函数上的漂移。
+- 2026-08-02 **安全函数 `is_deceptive_char` 两侧双向漂了**（那条守卫的盲区）：
+  本机缺 `U+0085`（NEL，**不在 `char::is_control` 里**），daemon 缺 word joiner / Ogham /
+  各类空白（`U+2060..2064` · `U+1680` · `U+2000..200A` · `U+202F` · `U+205F` · `U+3000`）。
+  一个能骗过其中一侧的名字就是能骗人的名字 ⇒ 取并集。
+- 2026-08-02 **两条守卫退役，因为漂移变成不可表示**（U6b-3 那条约定的第三次应用）：
+  四条常量两侧 import 同一个 `const`；`credential_filename_...` 的「本文件真在用这个字面量」
+  那一半结构上不可能不成立。**跟 bash 声明对账的那一半保留并搬进 crate** ——
+  常量住哪儿检查就住哪儿，否则又是两份。
+- 2026-08-02 **§1.5 的窗口问题自动消失**：它的前提是「U7 退役 `local_accounts.rs`」，
+  而路线已改成抽共享 crate、monitor 侧不退役。⇒ 账号不必排在 U8 之后。
+- 2026-08-02 **如实登记一处薄弱**：内核变异时 monitor 侧两次都绿 ——
+  不是接线没生效，是 `local_accounts.rs` 只有 5 条测试、既不覆盖 NEL 也不覆盖 manifest 名。
+  **不在本功能里顺手补** —— 补测试要单独设计，混在重构里做等于用新测试给新代码背书。

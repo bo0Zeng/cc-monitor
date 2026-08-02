@@ -3,6 +3,10 @@
 version = 4
 
 [[package]]
+name = "acct-core"
+version = "0.1.0"
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2806,6 +2810,7 @@ dependencies = [
 name = "monitor"
 version = "3.6.0"
 dependencies = [
+ "acct-core",
  "branch-core",
  "code-picture-core",
  "dirs 5.0.1",

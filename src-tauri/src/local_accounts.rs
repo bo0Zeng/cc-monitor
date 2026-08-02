@@ -17,7 +17,8 @@
 //! ⇒ 于是这份数据有 **三个读者**：`cc-acct-iso`（bash，写侧）· daemon（远端读）· 本模块（本地读）。
 //! 这是**已知代价**，处置照本仓既有纪律：**双写点必须有守卫**
 //!（同 `TMUX_LS_FMT` / 观测取值 / Z06 凭据文件名那几条）。见本文件测试模块里的
-//! `contract_matches_the_daemon_implementation`——它**读 daemon 的源文件**，钉住四条契约。
+//! **U7-3 起四条契约常量与欺骗字符判据都住在共享 crate `acct-core`** ——
+//! 两侧 import 同一份，漂移**不可表示**（此前靠一条读对面源文件的守卫发现，已退役）。
 //!
 //! # 与 daemon 那份**故意不同**的一处：路径绝对性判据
 //!
@@ -30,6 +31,9 @@
 //! **判据落在性质上，不落在表面特征上** —— 照抄 `starts_with('/')` 是抄了形式、丢了性质。
 
 use crate::accounts::{AccountsMeta, AccountsResult, RemoteAccount};
+use acct_core::{
+    is_deceptive_char, ACCTS_DIR_NAME, CREDENTIALS_NAME, MANIFEST_NAME, SUPPORTED_SCHEMA,
+};
 use std::path::{Path, PathBuf};
 
 /// manifest 读取上限（与 daemon 侧同值；账号数有限，8MB 是兜底不是预期）。
@@ -37,14 +41,10 @@ const MANIFEST_CAP: u64 = 8 * 1024 * 1024;
 
 /// 账号库目录名（`$HOME/.claude-accts`）。**双写点**：daemon 侧同名常量在
 /// `accounts_query.rs`，`cc-acct-iso` 的 `NATIVE_IDENTITY` 里也有一份。
-const ACCTS_DIR_NAME: &str = ".claude-accts";
 /// manifest 文件名。同上，三处双写。
-const MANIFEST_NAME: &str = "accounts.json";
 /// 「什么算已登录」的判据文件名。**Z06 双写点**：daemon 侧有守卫钉它与 bash 声明一致，
 /// 本模块这一份由 `contract_matches_the_daemon_implementation` 钉住。
-const CREDENTIALS_NAME: &str = ".credentials.json";
 /// 本模块认得的 manifest schema 版本。与 daemon 同值。
-const SUPPORTED_SCHEMA: u64 = 1;
 
 #[derive(serde::Deserialize)]
 struct RawAccount {
@@ -73,26 +73,10 @@ struct RawManifest {
     accounts: Vec<serde_json::Value>,
 }
 
-/// 会被用来做视觉欺骗的 Unicode 码点（双向覆盖 / 零宽 / 异常空白 / 行段分隔）。
-///
-/// 逐字对齐 daemon 侧的同名函数 —— 这是**平台无关的安全性质**：它们不是
-/// `char::is_control`（那只覆盖 C0/C1），但在 UI 里能伪造同形/反向的账号名与路径。
-fn is_deceptive_char(c: char) -> bool {
-    matches!(c,
-        '\u{200B}'..='\u{200F}'
-            | '\u{202A}'..='\u{202E}'
-            | '\u{2060}'..='\u{2064}'
-            | '\u{2066}'..='\u{2069}'
-            | '\u{00A0}'
-            | '\u{1680}'
-            | '\u{2000}'..='\u{200A}'
-            | '\u{2028}'
-            | '\u{2029}'
-            | '\u{202F}'
-            | '\u{205F}'
-            | '\u{3000}'
-            | '\u{FEFF}')
-}
+// U7-3：`is_deceptive_char` 搬进共享 crate `acct-core`。
+// 它是**平台无关的安全性质**（不是 `char::is_control` —— 那只覆盖 C0/C1），
+// 两侧读的是同一份 manifest，「什么算欺骗」必须一致。
+// 实测搬之前两侧**双向漂了**：本机缺 NEL，daemon 缺 word joiner / 各类空白。
 
 /// 「是绝对路径」——**这一半是平台相关的**（见模块头注）。
 fn looks_absolute(p: &str) -> bool {
@@ -443,68 +427,21 @@ mod tests {
         assert_eq!(r.accounts[0].name, "zero");
     }
 
-    /// ★ **跨 crate 契约守卫**：本模块是这份数据的第三个读者（bash 写侧 · daemon 远端读 ·
-    /// 本模块本地读），而 daemon crate 是 bin-only + 刻意不进 workspace ⇒ 复用不了。
-    /// 那就照本仓既有纪律**把契约钉住**（同 `TMUX_LS_FMT` 双写点那条守卫的做法）：
-    /// **读 daemon 的源文件**，确认四条判据两侧一致。
-    #[test]
-    fn contract_matches_the_daemon_implementation() {
-        // U3：daemon 分层后 `accounts_query.rs` 进了 `observe/`。这条是**运行期**读路径
-        // （不是 `include_str!`），所以断的时候是测试红而不是编译红 —— 同样是「响的」，
-        // 但要注意它的诊断只说「No such file or directory」，不会告诉你是对面重构了。
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("remote-daemon-proto")
-            .join("src")
-            .join("observe")
-            .join("accounts_query.rs");
-        let raw = std::fs::read_to_string(&p).expect("读 daemon 的 accounts_query.rs");
-        // 反向自检：真读到了（不写 `> 0`——空转也满足）。
-        assert!(
-            raw.len() > 10_000,
-            "只读到 {} 字节，多半路径错了",
-            raw.len()
-        );
-        // ★ 只扫**生产段**、且**剥掉注释**。第一版两条都没做，代价是它当场被变异证伪：
-        // 把 daemon **测试模块**里的一个同名常量改掉，守卫照样绿——因为 `contains` 在别处
-        // （生产字面量、甚至散文）还能找到同一串。**那样的守卫是安慰剂。**
-        // 剥 cfg(test) 的锚点用转义写法，与真正的换行不相等 ⇒ 不会匹配到本行自己。
-        let marker = "\n#[cfg(test)]\nmod tests";
-        let prod = match raw.find(marker) {
-            Some(i) => &raw[..i],
-            None => raw.as_str(),
-        };
-        let src: String = prod
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(
-            src.len() > 5_000 && src.len() < raw.len(),
-            "剥完生产段只剩 {} 字节（原文 {}）——剥法坏了",
-            src.len(),
-            raw.len()
-        );
-        assert!(
-            src.contains("fn list_accounts("),
-            "锚点没对上，daemon 侧结构变了？"
-        );
-
-        for (what, needle) in [
-            ("manifest 文件名", format!("\"{MANIFEST_NAME}\"")),
-            ("凭据文件名", format!("\"{CREDENTIALS_NAME}\"")),
-            ("账号库目录名", format!("\"{ACCTS_DIR_NAME}\"")),
-            ("schema 版本", format!("Some({SUPPORTED_SCHEMA}) =>")),
-        ] {
-            assert!(
-                src.contains(needle.as_str()),
-                "{what}（本机侧 {needle}）在 daemon 侧找不到 —— 两侧漂了。\n\
-                 这份数据有三个读者（cc-acct-iso 写侧 / daemon 远端读 / 本模块本地读），\n\
-                 daemon crate 是 bin-only 且刻意不进 workspace（Windows CI 会被拖垮）⇒ 复用不了，\n\
-                 只能靠这条守卫。改任一侧都要来对一次。"
-            );
-        }
-    }
+    // U7-3：**那条读对面源文件的跨 crate 契约守卫已退役。**
+    //
+    // 它是真的（剥注释、剥测试段、有字节地板与锚点自检，注释里还记着第一版是安慰剂、
+    // 被变异证伪后修好）—— 但守卫只能**发现**漂移。四个常量与 `is_deceptive_char`
+    // 现在都住在共享 crate `acct-core`，两侧 import 同一份 ⇒ 漂移**不可表示**，
+    // 想不一致得先把 import 删掉。
+    //
+    // 这是 U6b-3 那条横切约定的又一次应用：判据能被绕过时，先问「能不能让它不可表示」。
+    // 不可表示之后，判据本身是死重量。
+    //
+    // ⚠ **没有一并合掉的两个同名函数**：`is_safe_config_dir` 与 `norm_dir`。
+    // 它们两侧确实不同，但那是**刻意的平台特化**不是漂移 ——
+    // 本机侧要认 Windows 盘符（`looks_absolute`）且必须允许 `\` 作分隔符，
+    // 所以改成拒 `\..\`；daemon 是 Linux-only，直接把 `\` 当危险字符拒掉。
+    // 硬合只能二选一：要么本机失去 Windows 路径，要么 daemon 失去对 `\` 的拒绝。
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
