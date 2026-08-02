@@ -260,8 +260,8 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 |---|---|---|
 | **U4a** ✅ | **backend 在 Windows 编得过**（U4b 拆出去了，见下）| `cargo check --all-targets --target x86_64-pc-windows-msvc` 绿（**12 个错清零，不是 11**）**并进 CI**（ubuntu 上跑，`check` 不链接，成本近零）；`WaitForSingleObject` 换 pidfd（**等价性仓里无实测，第一步先验**）；判活/procStart 双格式。⚠ 搬 `session_map.rs` 的 Win32 实现要加 `windows` crate（daemon 今天零 windows 依赖，`windows-sys ≠ windows`）；⚠ daemon job 先加 `--locked` |
 | **U4b** | **backend 在 Windows 跑得对**（U4a 实现期拆出：DoD 自己写着「等价性仓里无实测，**第一步先验**」，而那个验**必须在 Windows 真机上做** ⇒ 对应 STATUS 停止条件第 4 条）| `pidwatch/fallback.rs` 的诚实空壳换真实现（`OpenProcess`+`WaitForSingleObject`，要加 `windows = "0.56"`）· `pid_alive` 的 `unimplemented!()` 换 `OpenProcess`+退出码 · **等价性真机验**（开放-1）· `send_sigusr1` 的 Windows 等价物 · `layering_guard` 登记表的 cfg 措辞 |
-| ~~**U5**~~ **用户 2026-08-01 明确不做**：「本机 backend 生命周期不管，我后面装新版再自己搞（**前提是你把东西都打包完善了**）」。⇒ Tauri sidecar / 启停监督 / 崩溃自愈**全部划掉**；**换成 U5' 打包完善**（下一行）。原 DoD 留档 |
-| **U5'** | **打包完善：本机分发链**（U5 的替代，用户设的前提条件）|  **今天的实况（2026-08-01 实测）**：`tauri.conf.json` 的 `bundle.resources` 与 `externalBin` **都是空的** ⇒ `.deb`/`.msi` 里**只有 app 二进制**。三个受管工具没有一个能装到本机：`ccm` 的 destination 是 `RemoteHomeRelative` + `HostScope::Remote`（只往远端装）· `cc-bus` 是 `LocalHomeRelative` 但 **`installable: false`**（app 根本装不了）· `cc-acct-iso` 的实际部署走远端 SFTP。**⇒ 装新版之后本机一个工具都不会被安装或更新**，这正是开放-6 的一般形态（用户报的「terminal 里敲命令还是 attach」只是它的一个症状）。<br>**DoD（用户设的前提）**：装完新版之后，用户**自己就能把本机那套搭起来** —— ① 三个工具的本机安装路径（app 里一个动作，或包里带、文档写清怎么放）② 装完能**看出版本对不对**（今天连「你本机那份是 2026-07-27 的」都无处可查）③ 文档写清手工步骤，且步骤可照做（不是「见某某」的转指）<br>**不做**：不做 sidecar、不做启停监督、不做崩溃自愈 —— 用户明确说那部分他自己搞 |
+| **U5**（**范围收窄，不是砍掉** —— 我 2026-08-01 一度误读成「整条划掉」并擅自换成一个新功能，用户澄清：他说的是**本机那套他自己起**，要我做的是**走查两类用户的使用流程**）<br>⇒ 保留：daemon 在本机可用、可被手工起。**去掉**：app 的启停监督 / 崩溃自愈 / sidecar 自动化 |
+| **U5-走查** | **新用户 / 旧版本用户两条使用流程走查**（用户 2026-08-01 原话：「我只是说你要模拟新用户和旧版本用户的使用流程」）|  **今天的实况（2026-08-01 实测）**：`tauri.conf.json` 的 `bundle.resources` 与 `externalBin` **都是空的** ⇒ `.deb`/`.msi` 里**只有 app 二进制**。三个受管工具没有一个能装到本机：`ccm` 的 destination 是 `RemoteHomeRelative` + `HostScope::Remote`（只往远端装）· `cc-bus` 是 `LocalHomeRelative` 但 **`installable: false`**（app 根本装不了）· `cc-acct-iso` 的实际部署走远端 SFTP。**⇒ 装新版之后本机一个工具都不会被安装或更新**，这正是开放-6 的一般形态（用户报的「terminal 里敲命令还是 attach」只是它的一个症状）。<br>**DoD（用户设的前提）**：装完新版之后，用户**自己就能把本机那套搭起来** —— ① 三个工具的本机安装路径（app 里一个动作，或包里带、文档写清怎么放）② 装完能**看出版本对不对**（今天连「你本机那份是 2026-07-27 的」都无处可查）③ 文档写清手工步骤，且步骤可照做（不是「见某某」的转指）<br>**不做**：不做 sidecar、不做启停监督、不做崩溃自愈 —— 用户明确说那部分他自己搞 |
 
 ### 第四梯队 · 协议
 
@@ -465,3 +465,9 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   （前提是你把东西都打包完善了）」。⇒ sidecar/监督/自愈全部划掉；**打包面变成硬要求**。
   实测确认这不是小事：`bundle.resources` 与 `externalBin` **都是空的**，三个受管工具没有一个
   能装到本机 —— 装新版之后本机一个工具都不会更新。开放-6 因此升级成一条正式功能。
+- 2026-08-01 **订正我自己的一次误读**：用户说「本机 backend 生命周期不管，我后面装新版再自己搞
+  （前提是你把东西都打包完善了）」，我读成「删掉 U5，换一个打包功能」并擅自新立了 U5'。
+  用户澄清：**他说的是本机那套他自己起；要我做的是走查新用户 / 旧版本用户两条使用流程。**
+  ⇒ U5 改为**范围收窄**（去掉 app 侧的启停监督/自愈，保留「daemon 在本机可用、可手工起」），
+  U5' 改成 **U5-走查**。**教训**：把一句「这部分我自己来」翻成「删掉一个功能并新立一个」，
+  是在用户没要求的方向上改计划 —— 铁律 4 说的是「计划≠现实就停下改计划」，不是「凭我的理解改」。
