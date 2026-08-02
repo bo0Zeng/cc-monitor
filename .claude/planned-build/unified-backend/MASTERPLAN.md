@@ -206,7 +206,7 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 | S1 | **护栏的扫描面**<br>**U-1 已交付**：`no_timer_guard` 递归 + **字节地板与数量相等双判据**（单靠字节挡不住单文件被剥空）；`readonly_guard` 的**两条过剥（fail-open）已修**——锚点钉行首 + 无花括号体声明不吃后文，扫描面 217_853→221_928；欠剥方向新增机器判据 `no_test_code_leaks_into_any_production_section`。**遍历未收敛**（daemon 5 份 + monitor 1 份），留 U1a | 剩余：`readonly_guard` 钉 `observe/`；`readonly_guard` 钉 `observe/`；`control/` 窄写护栏（三条子判据原样迁）；`platform/` 与顶层谁管**必须写明**（今天改钉 observe 后是真空） | U-1 · U1a · U1b |
 | S2 | **守卫的测试段 marker**<br>**U-1 已交付**：`guard_support.rs`（`#[cfg(test)]`-only，`pub(crate)`）收敛了 3 个守卫的剥法 + `assert_no_test_code` 自检。⚠ **`readonly_guard` 仍是第二套且不能 naive 换**——它能剥 `#[cfg(test)]` **自由函数**（`history_query.rs:232/309`，两者对该文件差 1246 字节），换过去会让它变弱；要收敛得做**并集剥法**，留 U1a | 原病灶：三个守卫共用的 `"\n#[cfg(test)]\nmod tests"` 对 `main.rs`（`mod stream_flag_tests`）不匹配 ⇒ 抽成一个共享 helper + **能真正检出「没剥掉测试段」的自检**（现有的 `main_prod.len() < main_raw.len()` 光靠剥注释就满足） | U-1 |
 | S3 | **平台原语**<br>**U2 交付的是「目标归属地」+ 把 11/12 个 Windows 编译错集中到 `platform/pidwatch.rs`，**不是收口**。已收：`pidfd_open`/`watch_pid_until_exit`（切开了 observe 回边）· `/proc` 一族 9 项 · `path_key`（单列 `platform/paths.rs`，U4 加 Windows 分支时零二次搬）· `proc_claude_config_dir`（Phase D 审计要求补收）。<br>⚠ **生产段还有 4 处在外**：`tmux_hook.rs` 的 `libc::kill`（§1.1 已裁定 tmux_hook 归 control ⇒ **U3 连它一起处理**）· `main.rs` 三处（组装根，可辩护为留，**但不能因此说「唯一」**）。<br>⚠ **U4 伏笔**：`is_same_live_process` 那张判定表要上提到 `platform/liveness.rs`（Windows 判活复用它），别留在按 `/proc` 命名的模块里 | U2 · U3 · U4 |
-| S4 | **`observe/ → control/` 的窄接口** | 显式列举 + 条数测试钉住。反向不许 | U3 |
+| S4 | **`observe/ → control/` 的窄接口**<br>**U3 已交付**：`layering_guard.rs` 两条机检 —— 反向零容忍 + 正向符号集**恰好等于**登记表。今天登记表**只有一条**：`crate::control::tmux_hook::install_hooks`。<br>摸底时真有一条反向边（`fork_write` → `accounts_query::read_regular_capped`），**没开例外** —— 那个函数不是 observe 的域逻辑，搬进 `common/fs.rs` 后边自然消失。铁律 6 的正例。<br>⚠ 加登记项前先答：**为什么这件事非得由观测侧发起、control 能不能自己做**（`install_hooks` 的答案：不能 —— 触发时机是「tmux server 起来了」，那是 socket inotify 观测到的事实，control 侧没这个信号，硬要它自己发现只能靠轮询，与 §41 正面冲突） | U3 ✅ |
 | S5 | **`common/`**<br>**U2 已交付**：`projects_root`（**5 处不是 4 处** —— 第五处是 `watcher.rs::watch_loop` 里内联的，`grep fn` 找不到）· `mtime_ms`（2 份）。门槛写在 `common/mod.rs`：≥2 **层**用 · **平台无关** · 无域知识。<br>⚠ **「时间换算 · quote」这两项要划掉**：Phase D 审计逐条核过，daemon crate 内**没有可合的逐字副本** —— 时间换算三处语义/单位各不相同（`file_mtime_epoch` 单位是**秒**不是毫秒），quote 在 daemon 内只有一份、多份在 monitor 侧**跨 crate**、`common/` 收不了。<br>⚠ **U3 必须复查**：`mtime_ms` 的两个调用点同属 observe，「≥2 层」按层口径**今天不成立**；`observe/` 一建出来就要重判 | U2 · U3 |
 | S6 | **wire 协议 + `IPC-PROTOCOL.md`** | 双向；**文档先修再冻结**（该文件 7 处在说谎，见 §3-U6）；wire 字段名双向 `include_str!` 对拍 | U6 |
 | S7 | **daemon argv 面** | 三类；`split_stream_flags` + `every_capability_token_is_strippable` 同步扩。⚠ **起点比以为的更糟**：现有的二分表本身就漏了 5 条子命令（`--tmux-notify` / `--resolve` / `--fork-session` / `--account-trust-zero` / `--read-session-from-offset`），其中 `--account-trust-zero` 漏登记**出过 v3.4.0 事故** | U6 |
@@ -442,3 +442,11 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   另：`no_timer_guard` 的实测基线注释**第二次过期**（那段自己第一句就是「别手抄这个数」）⇒ 这次不改数字、改做法：
   删掉快照值只留复测办法。`REGISTERED_DURATION_USES` 的 `ends_with` 分支抽成 `matches_registered` + 真值表钉住
   （它今天被执行但恒 false，U3 搬 `watcher.rs` 时才第一次真生效，写错会报出「登记表在腐烂」这条指向错误方向的诊断）。
+- 2026-08-01 **U3 完成**（`d0db4f9`）。§1.1 第二条解耦线交付：两层 + 方向固定 + 接口面恰好一个符号（机检）。
+  **计划预言的「`readonly_guard` 会当场红」没兑现，而没红本身就是缺陷** —— 白名单按裸文件名匹配，
+  文件搬进 `control/` 后护栏毫无察觉；同样的逻辑意味着任何目录下的 `fork_write.rs` 都会被当白名单放行。
+  改成按仓库相对路径，两个变异都咬。
+  **`mtime_ms` 从 `common/` 搬回 `observe/`** —— 我自己定的「≥2 层」门槛第一次要求我改自己的代码。
+  U2 交接四条全部兑现，其中 `matches_registered` 的 `ends_with` 分支**第一次真生效**（有变异证明）。
+  monitor 侧两处跨 crate 硬路径如 U2 审计预言的那样断了（都**响**，不是静默假绿），收成两个落点。
+  行为逐字不变：wire 与 **U2 之前**的基线仍逐字节相同。
