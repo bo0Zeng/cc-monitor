@@ -21,6 +21,9 @@ mod event_replay;
 mod fenced_block; // T04 第二步：围栏块配对判定（本机+远端 profile 共用最强那一档）
 mod history;
 mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生成待贴文本（绝不写入）
+                // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
+                // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
+mod inbound_client;
 mod launch;
 mod local_accounts; // L3a：本机多账号枚举（只读）——`accounts.rs` 的本地对侧
 mod logging;

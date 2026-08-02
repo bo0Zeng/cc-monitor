@@ -35,7 +35,7 @@ use russh::client;
 use russh::keys::{load_secret_key, HashAlg, PrivateKeyWithHashAlg, PublicKey};
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 use crate::event_replay::EventReplay;
 use crate::session_map::{RemovalCause, RemovedSid, SessionChange};
@@ -1702,6 +1702,10 @@ pub enum InboundFrame {
         /// （保守：按最小能力集待它，不发流模式 flag）。monitor 按此决定发
         /// `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配。
         capabilities: Vec<String>,
+        /// U6b-2 / U8a-2a：daemon 声明**接受哪些入方向命令**（`inbound::COMMANDS`）。
+        /// `capabilities` 说的是「我认识哪些流 flag」（出方向），这一条说的是入方向 ——
+        /// 两者正交。旧 daemon 无此字段 ⇒ 空集 ⇒ monitor 一条入方向命令都不发。
+        commands: Vec<String>,
     },
     /// 一行从远端 session jsonl 尾随读到的原始行。字段语义与本地 `watcher::JsonlLine` 对齐。
     Line {
@@ -1756,6 +1760,17 @@ pub enum InboundFrame {
         raw: String,
         observation: Option<String>,
     },
+    /// U6b-1 / U8a-2a：**入方向命令的应答**。`id` 是 monitor 自己生成的不透明串，
+    /// daemon 原样回显。由 `inbound_client` 按 `id` 路由回请求方。
+    Reply {
+        id: String,
+        ok: bool,
+        code: Option<String>,
+        message: Option<String>,
+        data: Option<serde_json::Value>,
+    },
+    /// U6b-1 / U8a-2a：某条在跑的入方向命令**已被取消**。
+    Cancelled { id: String },
 }
 
 /// 把 daemon 发来的一行（已去掉行尾 `\n`）解析成 [`InboundFrame`]。
@@ -1790,12 +1805,24 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                         .collect()
                 })
                 .unwrap_or_default();
+            // U8a-2a：入方向能力协商（additive，同上口径）。旧 daemon 无此字段 ⇒ 空集
+            // ⇒ `inbound_client` 一条入方向命令都不发。
+            let commands = obj
+                .get("commands")
+                .and_then(|c| c.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| x.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
             Some(InboundFrame::Hello {
                 v,
                 build_id,
                 host_arch,
                 claude_dir,
                 capabilities,
+                commands,
             })
         }
         "line" => {
@@ -1871,22 +1898,36 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 .map(str::to_string);
             Some(InboundFrame::TmuxSessions { raw, observation })
         }
-        // ── 以下三个 kind **认识但刻意不消费**（U7-1）。────────────────────────
+        // U8a-2a：入方向应答，**真消费** —— 由 `inbound_client` 按 `id` 路由回请求方。
+        // `id`/`ok` 必需（缺则坏帧跳过，同其余帧的口径）；`code`/`message`/`data` 可选。
+        "reply" => {
+            let id = obj.get("id")?.as_str()?.to_string();
+            let ok = obj.get("ok")?.as_bool()?;
+            let opt = |k: &str| obj.get(k).and_then(|v| v.as_str()).map(str::to_string);
+            Some(InboundFrame::Reply {
+                id,
+                ok,
+                code: opt("code"),
+                message: opt("message"),
+                data: obj.get("data").cloned(),
+            })
+        }
+        "cancelled" => {
+            let id = obj.get("id")?.as_str()?.to_string();
+            Some(InboundFrame::Cancelled { id })
+        }
+
+        // ── `turn_end` **认识但刻意不消费**（U7-1）。──────────────────────────
         //
         // 「认识」与「消费」是两件事。落进 `_ => None` 的后果不是「忽略」，是
         // **每帧刷一条 `skipping unparseable/unknown frame` 的 warn** —— 那既是噪声，
         // 也让真正的坏帧淹没在里面。
         //
-        // `turn_end`：daemon 的 `EMITS` 里**登记了、也真在发**（`watcher.rs` 每轮对话一帧），
+        // daemon 的 `EMITS` 里**登记了、也真在发**（`watcher.rs` 每轮对话一帧），
         // 而 monitor 此前**根本不认它** —— 实测是 `EMITS` 八个 kind 里唯一一个漏的。
         // monitor 不需要它：轮次边界由本地 `parse_line` 管线从 `line` 帧的原始 jsonl 自己推。
         // 它是发给 **aterm** 的（aterm 按 `emits` 门控消费）。
-        //
-        // `reply` / `cancelled`：U6b-1 的入方向应答帧。monitor 侧的发送端还没接
-        // （`ssh_source` 至今一个字节都没往 stdin 写过）⇒ 今天收不到；
-        // 但 U6b-1 的 E 段明确登记了「monitor 真正开始收之前要先认这两个 kind，否则日志刷屏」。
-        // 先认下来，接发送端时再改成真消费。
-        "turn_end" | "reply" | "cancelled" => None,
+        "turn_end" => None,
 
         // 未知 kind：向前兼容，跳过（调用方 warn）。绝不 panic。
         _ => None,
@@ -1994,8 +2035,10 @@ mod emits_parity {
                     .then(|| name.to_string())
             })
             .collect();
-        // 「认识但不消费」那条臂是 `"a" | "b" | "c" =>`，上面只会抓到最后一个，补齐。
-        for extra in ["turn_end", "reply", "cancelled"] {
+        // 多 pattern 合并的臂（`"a" | "b" =>`）上面只会抓到最后一个，补齐。
+        // U8a-2a：`reply`/`cancelled` 已各自独立成臂并**真消费**，只剩 `turn_end` 是
+        // 「认识但刻意不消费」的那一条。
+        for extra in ["turn_end"] {
             if body.contains(&format!("\"{extra}\"")) && !arms.contains(&extra.to_string()) {
                 arms.push(extra.to_string());
             }
@@ -2015,6 +2058,394 @@ mod emits_parity {
         assert_eq!(
             arms, known,
             "\n`KNOWN_FRAME_KINDS` 与 `parse_frame` 的 match 臂对不上 —— 两份名单已经漂了。"
+        );
+    }
+}
+
+/// U8a-2a：**握手完成 ⇒ 写半边解冻。**
+///
+/// 见证只能由一帧真的 Hello 换出来（`DaemonHello::from_hello_frame`）⇒
+/// 「hello 之前不许写」在 monitor 侧是类型上的事实，不是一条纪律。
+/// 第二次 hello（不该有）时 `parked` 已被 `take` 走，静默跳过。
+///
+/// **抽成函数是为了让它可测**：D 审计变异 MU13 —— 把这段逻辑整个删掉（写半边永不解冻、
+/// 客户端永不登记）⇒ `cargo test` **全绿**。它埋在 `stream_loop` 中段时没有任何判据碰得到。
+fn attach_inbound_client<W>(
+    host_label: &str,
+    parked: &mut Option<crate::inbound_client::ParkedWriter<W>>,
+    frame: Option<&InboundFrame>,
+) -> Option<std::sync::Arc<crate::inbound_client::InboundClient>>
+where
+    W: tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    let witness = crate::inbound_client::DaemonHello::from_hello_frame(frame?)?;
+    let client = parked.take()?.into_client(witness);
+    crate::inbound_client::register(host_label, client.clone());
+    Some(client)
+}
+
+/// U8a-2a：把一帧入方向应答路由回请求方。返回是否真的交到了某个等待者手上。
+///
+/// 没有客户端 = daemon 在 hello 之前就回了应答（协议倒错），照实报、不静默。
+///
+/// **抽成函数同样是为了可测**（D 审计变异 MU12：把 `route_reply` 换成丢弃 ⇒ 全绿）。
+fn route_inbound_frame(
+    host_label: &str,
+    client: Option<&std::sync::Arc<crate::inbound_client::InboundClient>>,
+    frame: InboundFrame,
+) -> bool {
+    let (kind, id) = match &frame {
+        InboundFrame::Reply { id, .. } => ("reply", id.clone()),
+        InboundFrame::Cancelled { id } => ("cancelled", id.clone()),
+        other => {
+            tracing::warn!("route_inbound_frame 收到非入方向帧，忽略：{other:?}");
+            return false;
+        }
+    };
+    let Some(c) = client else {
+        tracing::warn!(
+            "ssh_source [{host_label}] 收到 {kind}(id={id})，但本连接还没有入方向客户端 —— daemon 在 hello 之前就回应答了？"
+        );
+        return false;
+    };
+    match frame {
+        InboundFrame::Reply {
+            id,
+            ok,
+            code,
+            message,
+            data,
+        } => c.route_reply(&id, ok, code, message, data),
+        InboundFrame::Cancelled { id } => c.route_cancelled(&id),
+        _ => false,
+    }
+}
+
+/// U8a-2a：`stream_loop` 那条**接缝**的判据。
+///
+/// # 为什么单独立一个模块
+///
+/// D 审计做了三次变异，三次 `cargo test` **全绿**：
+/// - MU13：hello 臂里不 `into_client`/不 `register`（写半边永不解冻）
+/// - MU12：`reply` 臂里不 `route_reply`（应答收到就扔）
+/// - MU14：`probe_control_channel` 直接返回 `"control=ok(0ms)"`，一个字节都不发
+///
+/// 也就是「把发送端接上」这件事本身删掉之后 CI 一片绿 —— `inbound_client` 的单测走的是
+/// 自造客户端，e2e 走的是真 daemon 二进制，**两者之间的接缝没有任何判据**。
+/// 这个模块就是那条接缝。
+#[cfg(test)]
+mod seam_tests {
+    use super::*;
+    use crate::inbound_client;
+    use std::time::Duration;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
+    fn hello_line(commands: &str) -> String {
+        format!(
+            r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":{commands}}}"#
+        )
+    }
+
+    /// MU13 的回归钉：收到 hello ⇒ 写半边解冻 + 客户端登记进注册表。
+    #[tokio::test]
+    async fn a_hello_frame_thaws_the_write_half_and_registers_the_client() {
+        let (mine, _theirs) = tokio::io::duplex(4096);
+        let mut parked = Some(inbound_client::park(mine));
+        let origin = "seam-attach-origin";
+
+        // 非 hello 帧不解冻。
+        let not_hello = parse_frame(r#"{"kind":"overflow","dropped":1}"#);
+        assert!(
+            attach_inbound_client(origin, &mut parked, not_hello.as_ref()).is_none(),
+            "非 hello 帧居然把写半边解冻了"
+        );
+        assert!(parked.is_some(), "写半边被误消耗了");
+        assert!(inbound_client::client_for(origin).is_none());
+
+        // hello ⇒ 解冻 + 登记，且 daemon 声明的命令集透传到客户端。
+        let hello = parse_frame(&hello_line(r#"["ping"]"#));
+        let client = attach_inbound_client(origin, &mut parked, hello.as_ref())
+            .expect("hello 应当换出客户端");
+        assert!(client.accepts("ping"));
+        assert!(!client.accepts("launch"));
+        assert!(parked.is_none(), "写半边应当已被 take 走");
+        assert!(
+            inbound_client::client_for(origin).is_some_and(|c| std::sync::Arc::ptr_eq(&c, &client)),
+            "客户端没登记进注册表 —— 2b 的 launch 会取不到"
+        );
+
+        // 第二次 hello（不该有）：静默跳过，不会再造一个客户端。
+        let again = parse_frame(&hello_line(r#"["ping"]"#));
+        assert!(attach_inbound_client(origin, &mut parked, again.as_ref()).is_none());
+
+        inbound_client::unregister(origin, &client);
+        assert!(inbound_client::client_for(origin).is_none());
+    }
+
+    /// MU12 的回归钉：`reply` / `cancelled` 真的被路由回等待者。
+    #[tokio::test]
+    async fn reply_and_cancelled_frames_reach_the_waiting_caller() {
+        let (mine, theirs) = tokio::io::duplex(4096);
+        let mut peer = BufReader::new(theirs);
+        let mut parked = Some(inbound_client::park(mine));
+        let origin = "seam-route-origin";
+        let hello = parse_frame(&hello_line(r#"["ping","cancel"]"#));
+        let client = attach_inbound_client(origin, &mut parked, hello.as_ref()).expect("客户端");
+
+        let c = client.clone();
+        let caller = tokio::spawn(async move {
+            c.call("ping", serde_json::Value::Null, Duration::from_secs(5))
+                .await
+        });
+        let mut line = String::new();
+        tokio::time::timeout(Duration::from_secs(5), peer.read_line(&mut line))
+            .await
+            .expect("等请求行超时")
+            .expect("读到请求行");
+        let id = serde_json::from_str::<serde_json::Value>(line.trim_end()).expect("JSON")["id"]
+            .as_str()
+            .expect("id")
+            .to_string();
+
+        // 走的是 stream_loop 真正调的那个函数，不是直接调 route_reply。
+        let frame = parse_frame(&format!(
+            r#"{{"kind":"reply","id":"{id}","ok":true,"data":{{"pong":1}}}}"#
+        ))
+        .expect("reply 帧");
+        assert!(
+            route_inbound_frame(origin, Some(&client), frame),
+            "应答没被路由回等待者"
+        );
+        assert_eq!(
+            caller.await.expect("task").expect("call 成功"),
+            Some(serde_json::json!({ "pong": 1 }))
+        );
+
+        inbound_client::unregister(origin, &client);
+    }
+
+    /// 没有客户端时（daemon 在 hello 之前回应答）不 panic、返回 false。
+    #[test]
+    fn routing_without_a_client_is_reported_not_panicked() {
+        let frame = parse_frame(r#"{"kind":"reply","id":"x","ok":true}"#).expect("reply");
+        assert!(!route_inbound_frame("no-client-origin", None, frame));
+        // 非入方向帧误传进来也不 panic。
+        let other = parse_frame(r#"{"kind":"overflow","dropped":3}"#).expect("overflow");
+        assert!(!route_inbound_frame("no-client-origin", None, other));
+    }
+
+    /// MU14 的回归钉：`probe_control_channel` 必须**真发一条 ping 并等应答**。
+    ///
+    /// 用内存双工管道扮 daemon：读到请求行就回一条 `reply`。
+    #[tokio::test]
+    async fn the_control_probe_really_sends_a_ping_and_measures_the_round_trip() {
+        // mon_w → dae_r：monitor 写 / 假 daemon 读；dae_w → mon_r：假 daemon 写 / monitor 读。
+        let (mon_w, mut dae_r) = tokio::io::duplex(4096);
+        let (mut dae_w, mon_r) = tokio::io::duplex(4096);
+        let fake_daemon = tokio::spawn(async move {
+            use tokio::io::AsyncWriteExt;
+            let mut rd = BufReader::new(&mut dae_r);
+            let mut line = String::new();
+            rd.read_line(&mut line).await.expect("读到请求");
+            let req: serde_json::Value =
+                serde_json::from_str(line.trim_end()).expect("请求是合法 JSON");
+            let id = req["id"].as_str().expect("id").to_string();
+            dae_w
+                .write_all(
+                    format!("{{\"kind\":\"reply\",\"id\":\"{id}\",\"ok\":true}}\n").as_bytes(),
+                )
+                .await
+                .expect("回应答");
+            dae_w.flush().await.expect("flush");
+            line
+        });
+
+        let hello = parse_frame(&hello_line(r#"["ping"]"#)).expect("hello");
+        let out =
+            probe_control_channel(inbound_client::park(mon_w), BufReader::new(mon_r), &hello).await;
+        assert!(
+            out.starts_with("control=ok("),
+            "探测应当报成功往返，实得：{out}"
+        );
+        let sent = fake_daemon.await.expect("假 daemon task");
+        assert!(
+            sent.contains(r#""cmd":"ping""#),
+            "假 daemon 收到的不是 ping：{sent}"
+        );
+    }
+
+    /// 旧 daemon（`commands` 空集）：不发任何字节，直接报 unsupported。
+    #[tokio::test]
+    async fn the_control_probe_writes_nothing_to_an_old_daemon() {
+        let (mon_w, mut dae_r) = tokio::io::duplex(4096);
+        let (_dae_w, mon_r) = tokio::io::duplex(4096);
+        let hello = parse_frame(&hello_line("[]")).expect("hello");
+        let out =
+            probe_control_channel(inbound_client::park(mon_w), BufReader::new(mon_r), &hello).await;
+        assert!(out.starts_with("control=unsupported"), "实得：{out}");
+        let mut buf = [0u8; 16];
+        let read = tokio::time::timeout(
+            Duration::from_millis(80),
+            tokio::io::AsyncReadExt::read(&mut dae_r, &mut buf),
+        )
+        .await;
+        // 只可能是「超时没数据」或「对端已关（0 字节）」——**不许有真数据**。
+        match read {
+            Err(_) => {}
+            Ok(Ok(0)) => {}
+            Ok(other) => panic!("对旧 daemon 发了字节：{other:?}"),
+        }
+    }
+}
+
+/// U8a-2a：**写半边只许经 `inbound_client::park` 出手。**
+///
+/// 这条护栏存在的理由是它守的东西刚变过：这个文件从「只读一条流」变成了「双工」。
+/// 一旦有人为了图省事在这里直接 `write_all` 一行，`ParkedWriter` 那层
+/// 「Hello 之前不许写」的类型保证就被绕过了 —— 而且是**静默**绕过（编译、测试全绿）。
+#[cfg(test)]
+mod write_half_guard {
+    use crate::structural_scan::ScanReport;
+
+    /// 生产段。**用共享的 `guard_core::production_code`，不自己写便宜近似。**
+    ///
+    /// 这不是洁癖：本文件第一个 `#[cfg(test)]` 模块在 800 行附近，而本护栏要扫的
+    /// `parse_frame` / `stream_loop` / `probe_daemon` 全在它**后面**。
+    /// monitor 侧此前流行的那个近似（`split("\n#[cfg(test)]").next()`）会把扫描面
+    /// 砍掉三分之二 —— 下面第一条测试把这个差距**实测**出来，免得它变成一句口号。
+    fn prod() -> String {
+        let p = guard_core::production_code(include_str!("ssh_source.rs"));
+        guard_core::assert_no_test_code("ssh_source.rs", &p);
+        p
+    }
+
+    /// ★ 扫描面自检：共享剥法留住了要扫的部分，而便宜近似留不住。
+    #[test]
+    fn the_shared_stripper_keeps_the_part_this_guard_must_scan() {
+        let me = include_str!("ssh_source.rs");
+        let cheap = me.split("\n#[cfg(test)]").next().unwrap_or(me);
+        let good = prod();
+        for anchor in [
+            "fn parse_frame",
+            "async fn stream_loop",
+            "async fn probe_daemon",
+        ] {
+            assert!(
+                good.contains(anchor),
+                "共享剥法把 `{anchor}` 剥掉了 —— 本护栏此刻扫不到它"
+            );
+            assert!(
+                !cheap.contains(anchor),
+                "便宜近似居然也留住了 `{anchor}` —— 这条对照失去意义，重新确认文件结构"
+            );
+        }
+        assert!(
+            good.len() > cheap.len() * 2,
+            "共享剥法只留了 {} 字节，便宜近似 {} 字节 —— 差距没有预期那么大，检查剥法",
+            good.len(),
+            cheap.len()
+        );
+    }
+
+    /// ★ 本文件**自己不许切流** —— 切与停必须由 `inbound_client::split_and_park` 一步做完。
+    ///
+    /// # 判据形状换过一次（D 审计打的）
+    ///
+    /// 上一版是「每处 `tokio::io::split(` 后面 240 字符内要出现 `park`」。审计用两种**普通写法**
+    /// 绕过，两次全绿：
+    /// - 在那一行加一句**尾随注释**提 `park`，写半边交给别的函数
+    ///   （`guard_core::production_code` 只剥**行首**注释，行尾的留在扫描面里）；
+    /// - `split()` 之后先 `w.write(b"early\n").await` 再 `park(w)` —— 那就是一次
+    ///   **Hello 之前的写**，而窗口判据看不见。
+    ///
+    /// 处置按第 6 条纪律：不往判据上加正则，让违规不可表示。切分入口收成一个函数之后，
+    /// 这条判据变成**零命中型** —— 尾随注释再怎么写都改变不了「这里出现了 `tokio::io::split(`」。
+    #[test]
+    fn ssh_source_never_splits_a_stream_itself() {
+        // 运行时拼，避免命中本行自己。
+        let marker = format!("tokio::io::spl{}", "it(");
+        let prod = prod();
+        assert!(
+            !prod.contains(marker.as_str()),
+            "ssh_source 的生产段自己切流了。\n\
+             切分与停放必须是同一步（`inbound_client::split_and_park`）—— 中间留一个裸\n\
+             `WriteHalf` 就等于留了一个「Hello 之前能写」的窗口，而那正是本轮要消灭的东西。"
+        );
+        // 反面：切分入口必须真的被用着（否则上面那条零命中是因为**根本没有双工流**）。
+        let mut checked = 0usize;
+        for (_i, _) in prod.match_indices("inbound_client::split_and_park(") {
+            checked += 1;
+        }
+        ScanReport {
+            checked,
+            violations: Vec::new(),
+        }
+        .require(
+            2,
+            "本文件应有两处双工切分（stream_loop 的长连接 + probe_daemon 的一次性探测）",
+        )
+        .expect("split_and_park 用量");
+    }
+
+    /// ★ 本文件的生产段**一个字节都不许自己往流里写**。
+    ///
+    /// 写的能力整个交给了 `inbound_client`。这条是白名单的反面（「这里一处都不该有」），
+    /// 所以它必须自带**匹配器自检** —— 否则「零命中」既可能是干净，也可能是名单漏了写法。
+    #[test]
+    fn ssh_source_never_writes_to_a_stream_itself() {
+        // 运行时拼，避免命中本文件里这几行自己。
+        let needles: Vec<String> = [
+            "write", // 覆盖 .write( / .write_all( / .write_buf( / .write_all_buf( / .write_vectored( / .write_u8(
+            "shutdown",
+        ]
+        .iter()
+        .map(|s| format!(".{s}"))
+        .collect();
+        let ufcs = format!("AsyncWrite{}::", "Ext");
+
+        // ── 匹配器自检 ────────────────────────────────────────────────────────
+        //
+        // 上一版的自检是 `let planted = format!("…{}…", needles[0]); assert!(needles.any(…))`
+        // —— 用 needle 自己拼出来的样本，**数学上不可能失败**（D 审计点名）。
+        // 现在样本是**独立手写**的真实写法清单，名单漏一种写法这里就红。
+        let samples = [
+            "let _ = w.write(b\"x\").await;",
+            "let _ = w.write_all(b\"x\").await;",
+            "let _ = w.write_all_buf(&mut b).await;",
+            "let _ = w.write_vectored(&bufs).await;",
+            "let _ = w.write_u8(1).await;",
+            "let _ = w.shutdown().await;",
+        ];
+        for sample in samples {
+            assert!(
+                needles.iter().any(|n| sample.contains(n.as_str())),
+                "匹配器漏了这种写法：{sample:?} —— 下面那句「零命中」对它毫无意义"
+            );
+        }
+        // 反面：不该被这些 needle 命中的普通代码（防止 needle 宽到人人都红、逼人删护栏）。
+        for innocent in ["let n = buf.len();", "tracing::warn!(\"x\");"] {
+            assert!(
+                !needles.iter().any(|n| innocent.contains(n.as_str())),
+                "needle 宽过头了，普通代码 {innocent:?} 也命中"
+            );
+        }
+
+        let prod = prod();
+        let mut hits: Vec<String> = needles
+            .iter()
+            .filter(|n| prod.contains(n.as_str()))
+            .cloned()
+            .collect();
+        // UFCS 写法（`AsyncWriteExt::write_all(&mut w, …)`）绕开点调用，单列。
+        if prod.contains(ufcs.as_str()) {
+            hits.push(ufcs);
+        }
+        assert!(
+            hits.is_empty(),
+            "ssh_source 的生产段又开始自己写流了（{hits:?}）。\n\
+             写的能力在 U8a-2a 整个交给了 `inbound_client`：`ParkedWriter` 拿不到 Hello 见证\n\
+             就换不出能写的东西。在这里直接写 = **静默绕过**那条类型保证。\n\
+             真要发命令，走 `inbound_client::InboundClient::call`。"
         );
     }
 }
@@ -2359,6 +2790,28 @@ async fn stream_loop(
     let (with_bg, tail_only) = decide_stream_flags(&caps, crate::load_show_bg_sessions());
     let stream = connect_and_exec(cfg, with_bg, tail_only).await?;
 
+    // U8a-2a：这条 channel 是**双工**的，此前只用了读半边。`split_and_park` 一步切开并
+    // 把写半边停住 —— `ParkedWriter` 身上没有任何写方法，要等收到 hello 才换得出能发命令的
+    // 客户端。切与停必须是同一步：中间留一个裸 `WriteHalf` 就等于留了一个「Hello 之前能写」
+    // 的窗口（D 审计实测过那个窗口，两条护栏都拦不住）。见 `inbound_client` 头注。
+    let (stream, parked) = crate::inbound_client::split_and_park(stream);
+    let mut parked = Some(parked);
+    // 本连接的入方向客户端（收到 hello 后才有）。函数任何退出路径经 guard 摘除注册表
+    // 并叫醒还在等应答的调用方 —— 同 `SnapshotQueueCloser` 的形状。
+    let mut inbound: Option<std::sync::Arc<crate::inbound_client::InboundClient>> = None;
+    struct InboundCloser(
+        String,
+        Option<std::sync::Arc<crate::inbound_client::InboundClient>>,
+    );
+    impl Drop for InboundCloser {
+        fn drop(&mut self) {
+            if let Some(c) = self.1.take() {
+                crate::inbound_client::unregister(&self.0, &c);
+            }
+        }
+    }
+    let mut inbound_guard = InboundCloser(host_label.clone(), None);
+
     // Batch8-F26：旁路快照基础设施（仅 tail-only 生效；每连接一套，函数任何
     // 退出路径经 guard 关闭队列——已入队项仍会被分发器拉完，独立连接自灭）。
     let snapshots = SnapshotQueue::new();
@@ -2471,6 +2924,13 @@ async fn stream_loop(
                 flush_lines(replay, app, &host_label, lines).await;
             }
         }
+
+        // U8a-2a：**握手完成 ⇒ 写半边解冻。** 放在 match 之前是因为 Hello 那条臂按值解构了帧。
+        if let Some(client) = attach_inbound_client(&host_label, &mut parked, frame.as_ref()) {
+            inbound_guard.1 = Some(client.clone());
+            inbound = Some(client);
+        }
+
         match frame {
             Some(InboundFrame::Hello {
                 v,
@@ -2478,9 +2938,10 @@ async fn stream_loop(
                 host_arch,
                 claude_dir,
                 capabilities,
+                commands,
             }) => {
                 tracing::info!(
-                    "ssh_source daemon hello: v={v} build_id={build_id} host_arch={host_arch} claude_dir={claude_dir} caps={capabilities:?}"
+                    "ssh_source daemon hello: v={v} build_id={build_id} host_arch={host_arch} claude_dir={claude_dir} caps={capabilities:?} cmds={commands:?}"
                 );
                 // 标记本次连接已健康(收到 daemon hello)，供 run() 重连循环判定是否重置退避。
                 connected.store(true, Ordering::Release);
@@ -2769,6 +3230,10 @@ async fn stream_loop(
                     .lock()
                     .unwrap()
                     .insert(host_label.clone(), raw);
+            }
+            // U8a-2a：入方向应答 —— 交给本连接的客户端按 `id` 路由回请求方。
+            Some(f @ (InboundFrame::Reply { .. } | InboundFrame::Cancelled { .. })) => {
+                route_inbound_frame(&host_label, inbound.as_ref(), f);
             }
             None => {
                 // 未知 kind / 坏帧 / 非 JSON：跳过，绝不 panic、绝不中断流。
@@ -3969,10 +4434,19 @@ pub async fn test_remote_connection(
     // 3. exec daemon 并等首行 hello。
     let daemon_path = cfg.daemon_path.clone();
     match probe_daemon(&session, &daemon_path).await {
-        Ok(Some(summary)) => {
+        Ok(Some(probe)) => {
             result.daemon_ok = true;
-            result.daemon_hello = Some(summary);
-            result.message = "SSH 与 daemon 均正常。".to_string();
+            result.message = if probe.control_ok {
+                "SSH 与 daemon 均正常（含控制通道往返）。".to_string()
+            } else if probe.control_unsupported {
+                "SSH 与 daemon 正常，但该 daemon **不支持控制通道**（旧版本）——                 远端起会话等功能不可用，请在设置里重装该机器的 daemon。"
+                    .to_string()
+            } else {
+                // 控制通道真失败：**不许报「均正常」**。这一步就是为了让它在这里显形。
+                "SSH 与 daemon 正常，但**控制通道不通**（详见下方摘要的 control=… 段）——                 远端起会话会失败。"
+                    .to_string()
+            };
+            result.daemon_hello = Some(probe.summary);
         }
         Ok(None) => {
             result.message =
@@ -3991,16 +4465,38 @@ pub async fn test_remote_connection(
     Ok(result)
 }
 
-/// exec daemon、读首行 stdout（SHORT timeout）、若是 hello 帧返回人读摘要。
+/// [`probe_daemon`] 的结果。**不是一个摘要串** —— 顶层结论要能分辨「控制通道通不通」，
+/// 否则 D 审计点名的那件事会再发生一次：控制通道不通时仍然报「SSH 与 daemon 均正常」，
+/// 失败只藏在括号里，而这一步的立项理由恰恰是「别让用户在全绿之后才发现起不了会话」。
+struct DaemonProbe {
+    /// 人读摘要（进 `ConnTestResult::daemon_hello`）。
+    summary: String,
+    /// 控制通道 ping 往返成功。
+    control_ok: bool,
+    /// 旧 daemon：没声明任何入方向命令（不是失败，是能力缺失）。
+    control_unsupported: bool,
+}
+
+/// exec daemon、读首行 stdout、若是 hello 帧再**探一次控制通道往返**。
+///
+/// 三步（第三步是 U8a-2a 新增）：
+///
+/// 1. exec + 读首行，超时 8s；
+/// 2. 解析成 `hello` 帧 → 人读摘要；
+/// 3. 用同一条 channel 发一条 `ping` 等应答，超时 [`CONTROL_PROBE_TIMEOUT`]。
+///
+/// **时间预算是两段串联**：最坏 8s + 5s = 13s，只在「daemon 发了 hello、声明了 `ping`、
+/// 却不回应答」时吃满；旧 daemon（未声明入方向）走 `control=unsupported` 立即返回。
 ///
 /// 返回：
-/// - `Ok(Some(summary))` —— 读到并解析成 hello。
-/// - `Ok(None)`          —— 超时 / EOF / 非 hello（daemon 未正常响应）。
-/// - `Err(_)`            —— channel/exec/IO 硬错误。
+///
+/// - `Ok(Some(probe))` —— 读到并解析成 hello（`probe.control_*` 说明控制通道结论）。
+/// - `Ok(None)`        —— 超时 / EOF / 非 hello（daemon 未正常响应）。
+/// - `Err(_)`          —— channel/exec/IO 硬错误。
 async fn probe_daemon(
     session: &client::Handle<ClientHandler>,
     daemon_path: &str,
-) -> Result<Option<String>, String> {
+) -> Result<Option<DaemonProbe>, String> {
     let channel = session
         .channel_open_session()
         .await
@@ -4010,12 +4506,12 @@ async fn probe_daemon(
         .await
         .map_err(|e| format!("exec {daemon_path} 失败: {e}"))?;
 
-    let mut reader = BufReader::new(channel.into_stream());
+    // U8a-2a：切成两半，写半边同一步停住（见 `inbound_client::split_and_park`）。
+    let (rh, parked) = crate::inbound_client::split_and_park(channel.into_stream());
+    let mut reader = BufReader::new(rh);
+
     let mut line = String::new();
     let read = tokio::time::timeout(Duration::from_secs(8), reader.read_line(&mut line)).await;
-
-    // 读完后尽量优雅关掉写半边（daemon 看到 EOF 自行退出）。best-effort。
-    let _ = reader.get_mut().shutdown().await;
 
     match read {
         Err(_elapsed) => Ok(None), // 超时
@@ -4024,17 +4520,120 @@ async fn probe_daemon(
         Ok(Ok(_)) => {
             let trimmed = line.trim_end_matches(['\n', '\r']);
             match parse_frame(trimmed) {
-                Some(InboundFrame::Hello {
-                    v,
-                    build_id,
-                    host_arch,
-                    claude_dir,
-                    capabilities,
-                }) => Ok(Some(format!(
-                    "v={v} build={build_id} arch={host_arch} claude_dir={claude_dir} caps={capabilities:?}"
-                ))),
-                _ => Ok(None), // 非 hello 帧 → daemon 未正常握手
+                Some(frame @ InboundFrame::Hello { .. }) => {
+                    let head = describe_hello(&frame);
+                    let control = probe_control_channel(parked, reader, &frame).await;
+                    Ok(Some(DaemonProbe {
+                        control_ok: control.starts_with("control=ok("),
+                        control_unsupported: control.starts_with("control=unsupported"),
+                        summary: format!("{head} {control}"),
+                    }))
+                }
+                // 非 hello 帧 → daemon 未正常握手。写半边随 `parked` 一起 drop。
+                _ => Ok(None),
             }
+        }
+    }
+}
+
+/// hello 帧的人读摘要。
+fn describe_hello(frame: &InboundFrame) -> String {
+    match frame {
+        InboundFrame::Hello {
+            v,
+            build_id,
+            host_arch,
+            claude_dir,
+            capabilities,
+            commands,
+        } => format!(
+            "v={v} build={build_id} arch={host_arch} claude_dir={claude_dir} caps={capabilities:?} cmds={commands:?}"
+        ),
+        other => format!("(非 hello 帧: {other:?})"),
+    }
+}
+
+/// 探测 `ping` 往返的超时。测试连接是人在等着看结果，别让它挂太久。
+const CONTROL_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// U8a-2a：**入方向（控制通道）往返探测** —— 「测试连接」的第三步。
+///
+/// # 为什么加这一步
+///
+/// 此前「测试连接」只证明了两件事：SSH 通、daemon 会说 hello。它**没有**证明
+/// 反方向能走 —— 而 U8a-2b 之后起会话正是走那条反方向。少了这一步，用户会在
+/// 「测试连接全绿」之后才在真起会话时发现控制通道根本不通，且无从归因。
+///
+/// 探测用 `ping`：daemon 侧它是空操作（`Ok(None)`），零副作用、零写入。
+///
+/// 结果只追加进 `daemon_hello` 摘要串（前端已有展示位），不新增字段 ⇒ 零 TS 绑定改动。
+async fn probe_control_channel<R, W>(
+    parked: crate::inbound_client::ParkedWriter<W>,
+    reader: BufReader<R>,
+    hello: &InboundFrame,
+) -> String
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+    W: tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    let Some(witness) = crate::inbound_client::DaemonHello::from_hello_frame(hello) else {
+        // 不可达（调用方已确认是 Hello），但不 panic —— 探测路径宁可少报一行。
+        return "control=n/a".to_string();
+    };
+    let client = parked.into_client(witness);
+    if !client.accepts("ping") {
+        client.close_write();
+        return "control=unsupported(daemon 未声明入方向命令)".to_string();
+    }
+    // 应答走的是同一条流的读半边 —— 起一个只做路由的泵，探完就撤。
+    let pump = {
+        let c = client.clone();
+        tauri::async_runtime::spawn(pump_inbound_replies(reader, c))
+    };
+    let t0 = std::time::Instant::now();
+    let out = match client
+        .call("ping", serde_json::Value::Null, CONTROL_PROBE_TIMEOUT)
+        .await
+    {
+        Ok(_) => format!("control=ok({}ms)", t0.elapsed().as_millis()),
+        Err(e) => format!("control=failed({e})"),
+    };
+    pump.abort();
+    // 探测专用：告诉 daemon 我们不会再发命令了（关写半边 ⇒ 它的入方向 reader 寿终）。
+    // ⚠ 这**不会**让 daemon 退出 —— 那句流传已久的注释是错的，e2e 第 9 条实测钉住。
+    // 探测真正的收尾是本函数返回后整条 SSH channel 被 drop（stdout 断 ⇒ writer_task 结束 ⇒ exit）。
+    client.close_write();
+    out
+}
+
+/// 只做一件事：把读到的 `reply`/`cancelled` 路由给客户端。其余帧丢弃（探测不关心）。
+async fn pump_inbound_replies<R>(
+    mut reader: BufReader<R>,
+    client: std::sync::Arc<crate::inbound_client::InboundClient>,
+) where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    let mut buf = String::new();
+    loop {
+        buf.clear();
+        match reader.read_line(&mut buf).await {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        match parse_frame(buf.trim_end_matches(['\n', '\r'])) {
+            Some(InboundFrame::Reply {
+                id,
+                ok,
+                code,
+                message,
+                data,
+            }) => {
+                client.route_reply(&id, ok, code, message, data);
+            }
+            Some(InboundFrame::Cancelled { id }) => {
+                client.route_cancelled(&id);
+            }
+            _ => {}
         }
     }
 }
@@ -4107,8 +4706,103 @@ mod parse_frame_tests {
                 claude_dir: "/home/pi/.claude".to_string(),
                 // F66：旧 daemon（本样本无 capabilities 字段）→ 空集（保守缺省）
                 capabilities: Vec::new(),
+                // U8a-2a：同理，无 commands 字段 → 空集 ⇒ 一条入方向命令都不发。
+                commands: Vec::new(),
             }
         );
+    }
+
+    /// ★ U8a-2a：`hello.commands` 的**解析**必须有判据。
+    ///
+    /// D 审计变异 B1：把 `obj.get("commands")` 改成 `obj.get("commandz")`（两侧字段名漂移
+    /// 或一个笔误）⇒ `cargo test` 与 e2e **双双全绿**，而后果是 `commands` 永远空集 ⇒
+    /// `InboundClient::accepts()` 永远假 ⇒ **一条入方向命令都发不出去**，
+    /// 也就是 U8a-2a 要修的那个「通道不可达」原地复活。
+    ///
+    /// e2e 挡不住的原因：它 `grep` 的是整行 hello，daemon 把 `ping` 放哪个键里都绿。
+    #[test]
+    fn parses_hello_commands_across_the_three_shapes() {
+        let with = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","ping","resolve"]}"#;
+        match parse_frame(with).expect("hello must parse") {
+            InboundFrame::Hello { commands, .. } => {
+                assert_eq!(
+                    commands,
+                    vec!["cancel", "ping", "resolve"],
+                    "声明的命令集没解出来"
+                );
+            }
+            other => panic!("不是 hello：{other:?}"),
+        }
+        // 旧 daemon：无该字段 → 空集（保守缺省，不发任何入方向命令）。
+        let without =
+            r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d"}"#;
+        match parse_frame(without).expect("hello must parse") {
+            InboundFrame::Hello { commands, .. } => assert!(commands.is_empty()),
+            other => panic!("不是 hello：{other:?}"),
+        }
+        // 坏 daemon：非数组 / 元素非字符串 → 滤成空集，**绝不 panic**（同 capabilities 口径）。
+        let junk = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":"ping"}"#;
+        match parse_frame(junk).expect("hello must parse") {
+            InboundFrame::Hello { commands, .. } => assert!(commands.is_empty()),
+            other => panic!("不是 hello：{other:?}"),
+        }
+        let mixed = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["ping",7,null]}"#;
+        match parse_frame(mixed).expect("hello must parse") {
+            InboundFrame::Hello { commands, .. } => assert_eq!(commands, vec!["ping"]),
+            other => panic!("不是 hello：{other:?}"),
+        }
+    }
+
+    /// ★ U8a-2a：`reply` 帧的**字段**解析必须有判据。
+    ///
+    /// D 审计变异 I1：`ok` 改成 `unwrap_or(true)`（错误应答变成成功）+ `data` 从 `payload`
+    /// 键取 ⇒ 全绿。`known_kinds_matches_parse_frame` 只钉「有没有这条臂」，不看臂里取什么。
+    #[test]
+    fn parses_reply_and_cancelled_field_by_field() {
+        let ok_line = r#"{"kind":"reply","id":"a-1","ok":true,"data":{"pong":1}}"#;
+        assert_eq!(
+            parse_frame(ok_line).expect("reply must parse"),
+            InboundFrame::Reply {
+                id: "a-1".into(),
+                ok: true,
+                code: None,
+                message: None,
+                data: Some(serde_json::json!({ "pong": 1 })),
+            }
+        );
+        let err_line =
+            r#"{"kind":"reply","id":"a-2","ok":false,"code":"bad_request","message":"缺 sid"}"#;
+        assert_eq!(
+            parse_frame(err_line).expect("reply must parse"),
+            InboundFrame::Reply {
+                id: "a-2".into(),
+                ok: false,
+                code: Some("bad_request".into()),
+                message: Some("缺 sid".into()),
+                data: None,
+            }
+        );
+        // daemon 对**协议级**错误回空 id（它那时还不知道 id）——空串是合法值，不是坏帧。
+        let proto_err =
+            r#"{"kind":"reply","id":"","ok":false,"code":"line_too_long","message":"x"}"#;
+        assert!(matches!(
+            parse_frame(proto_err),
+            Some(InboundFrame::Reply { ok: false, .. })
+        ));
+        // 必需字段缺失 / 类型不对 → 坏帧跳过（与其余帧同一口径），**绝不当成 ok**。
+        for bad in [
+            r#"{"kind":"reply","ok":true}"#,
+            r#"{"kind":"reply","id":"a-3"}"#,
+            r#"{"kind":"reply","id":"a-3","ok":"true"}"#,
+            r#"{"kind":"reply","id":7,"ok":true}"#,
+        ] {
+            assert!(parse_frame(bad).is_none(), "坏 reply 却解出来了：{bad}");
+        }
+        assert_eq!(
+            parse_frame(r#"{"kind":"cancelled","id":"a-4"}"#).expect("cancelled must parse"),
+            InboundFrame::Cancelled { id: "a-4".into() }
+        );
+        assert!(parse_frame(r#"{"kind":"cancelled"}"#).is_none());
     }
 
     /// #33：hello 缺 build_id → None（按必需字段，坏帧跳过；既有 daemon 总在发它）。

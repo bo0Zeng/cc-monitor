@@ -226,7 +226,7 @@ daemon job（`ci.yml:150-175`）只跑 ubuntu-latest native gnu，**无 `--targe
 | `branch-core` | 8 |
 | vitest | 1148 例 / 79 文件 |
 | tsx node `*.test.ts` | 241 例 / 471 断言 / 16 文件 —— **既无断言地板又被 `coverage.exclude` 排掉，双重不设防**（E64①） |
-| e2e 有地板 | **15 套** |
+| e2e 有地板 | **16 套**（U8a-2a 起，原 15） |
 | e2e 无地板 | `graylight-suite`（**有论证的排除**，要 GUI+Xvfb）· `exec-bit-guard`（收尾格式不同，自带覆盖面自检）· **`f40-suite`（孤儿：不在 package.json、不在 CI）** · tier2 WDIO |
 | 覆盖率门禁 | 阻断式，S52/B43/F46/L53，实测 S54.14/B45.15/F48.73/L55.64，裕度 2.1–2.7 点 |
 

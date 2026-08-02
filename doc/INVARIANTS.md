@@ -1248,9 +1248,20 @@ no-op（真机反向实测：写错 starttime 时探针存活，不误伤无关�
      注释里白纸黑字写着「不能简单从首个 `#[cfg(test)]` 截断到 EOF，`main.rs` 的测试模块在文件中部」。
      **同一个坑，同一个 crate 里有人已经填过，另外三处没跟。** 这与递归那条是同一个病：
      `readonly_guard::scan` 早已递归且留了警示注释，`no_timer_guard` 也没跟。
-     ⇒ **护栏的公共机件必须收敛**（剥法现为 `guard_support.rs`；**遍历尚未收敛** ——
-     daemon crate 里今天仍有 5 份独立目录遍历，monitor 侧还有 1 份，登记为待办），
-     否则「已修好的教训」会在隔壁文件里原样复发。
+     ⇒ **护栏的公共机件必须收敛**，否则「已修好的教训」会在隔壁文件里原样复发。
+     **进度（U8a-2a，2026-08-02）**：剥法已从 daemon 私有的 `guard_support.rs` 搬进
+     **共享 crate `src-tauri/crates/guard-core`**（daemon 的 `guard_support.rs` 降为
+     `pub(crate) use` 再导出；monitor 侧同为 `[dev-dependencies]`）——
+     搬家的直接动因是 monitor 够不着它，于是那边的守卫各写便宜近似
+     （`src.split("\n#[cfg(test)]").next()`），在 `ssh_source.rs` 上会把扫描面砍掉三分之二。
+     **遍历收敛了一份**：`guard_core::assert_tree_strips_clean` 两侧共用（daemon
+     `every_daemon_file_strips_clean` + monitor `every_monitor_file_strips_clean`，
+     两条的 `min_files` 地板同时棘到实测值 34 / 52）。
+     **仍未收敛**：daemon 侧 6 处 `read_dir`（`readonly_guard`×2 / `no_timer_guard`×2 /
+     `layering_guard`×2 / `protocol_doc_guard`×1）+ monitor `parity_ledger.rs` 1 处，登记 U1a。
+     顺带订正一条：`cfg_is_test_only` 现在认**复合 cfg**（`#[cfg(all(test, target_os = "linux"))]`）——
+     只认逐字 `#[cfg(test)]` 时，`session_map.rs::linux_liveness` 的 5 个 `#[test]`
+     一直留在「生产段」里，是新加的 monitor 全树自检第一次跑就逮出来的。
      修这条时我又当场制造了同一类洞：新加的 `#[cfg(test)] mod guard_support;` 是**无花括号体的
      声明**，锚点照样匹配，收尾的列 0 右大括号一路找到 179 行某函数的收尾，把 `main.rs:26–179`
      （含 `const BUILD_ID`、`CAPABILITIES`、`EMITS`）整段吞掉。

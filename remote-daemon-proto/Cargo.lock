@@ -46,6 +46,7 @@ version = "0.0.0"
 dependencies = [
  "acct-core",
  "branch-core",
+ "guard-core",
  "libc",
  "notify",
  "notify-debouncer-mini",
@@ -107,6 +108,10 @@ checksum = "76ee7a02da4d231650c7cea31349b889be2f45ddb3ef3032d2ec8185f6313fd2"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "guard-core"
+version = "0.1.0"
 
 [[package]]
 name = "inotify"

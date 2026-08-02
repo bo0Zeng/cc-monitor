@@ -225,6 +225,23 @@ pub fn pin_definition(
 mod tests {
     use super::*;
 
+    /// U8a-2a：monitor 的每个源文件都要能被共享剥法（`guard_core`）剥干净。
+    ///
+    /// 与 daemon 侧 `every_daemon_file_strips_clean` 同一条，只是换了一棵树。
+    /// 它同时是「列 0 右大括号这个收尾判据够不够用」的持续验证 —— 哪天有人在测试模块里
+    /// 写了一段列 0 含右大括号的原始字符串，这里会红，那时再上真正的大括号配对。
+    ///
+    /// `min_files` 是**计数自检**：遍历坏掉时它会红，而不是静默扫 0 个文件通过。
+    #[test]
+    fn every_monitor_file_strips_clean() {
+        // 地板 = **实测值**（2026-08-02：52 个 .rs）。松着放等于把灵敏度交出去
+        // （同 `ci.yml` 那条 shellcheck 覆盖面棘轮的教条：棘的时候把实测构成一起写下）。
+        guard_core::assert_tree_strips_clean(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            52,
+        );
+    }
+
     /// tmux `-t` 目标的性质：**紧跟的那个 token 里**先出现 `=` 再出现 `:`。
     /// （T01 审计 S2：看整个窗口时，同一行的 `A=b:c` 诱饵能让裸目标零违规。）
     fn exact_target(win: &str) -> Result<(), String> {
