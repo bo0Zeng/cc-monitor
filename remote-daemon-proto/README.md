@@ -18,25 +18,48 @@ cc-monitor 的 SSH-远端功能后端 daemon（issue #15 起，已历 F14–F30+
 
 ```
 src/
-├── platform/     平台原语与平台 cfg 的**目标**归属地（尚未收全，见下）
+├── platform/     平台原语与平台 cfg 的归属地（**两层的生产段现在零平台原语**；main.rs 仍有 3 处，见下）
 │   ├── proc.rs       /proc 与进程身份：pid_alive · proc_starttime · parse_starttime_from_stat
 │   │                 · parse_btime · USER_HZ · start_epoch_from_ticks · proc_cmdline
 │   │                 · proc_claude_config_dir · session_alive + is_same_live_process（纯判定）
 │   ├── paths.rs      path_key（NTFS 大小写折叠 —— 路径语义，不是 /proc）
+│   ├── signal.rs     send_sigusr1（U3 从 tmux_hook 下沉；身份校验刻意留在调用方——那是域判断）
 │   └── pidwatch.rs   pidfd_open + watch_pid_until_exit（零轮询，阻塞在无超时 poll(2)）
-├── common/       两边都要、**平台无关**、无域知识的纯工具（门槛写在 common/mod.rs 里）
-│   └── paths.rs      projects_root（原有 5 处）· mtime_ms（原有 2 份）
-└── （其余仍是平的：watcher / *_query / wire / fork_write / tmux_hook / …）
-                  observe/ 与 control/ 的拆分是 U3，尚未做。
+├── observe/      ★ 读，不改变世界
+│   ├── watcher.rs · history_query · search_query · usage_query · accounts_query
+│   ├── turn_detect · codex          两个纯解析核
+│   └── fs.rs        mtime_ms（U3 从 common/ 搬回——两个调用点同属 observe，「≥2 层」不成立）
+├── control/      ★ 会改变世界，或产出「怎么改变世界」的计划
+│   ├── fork_write.rs    写盘（O_EXCL 新建）—— **唯一**写盘白名单，红线 I7 的那个洞口
+│   ├── tmux_hook.rs     改 tmux server 状态 + 发 SIGUSR1
+│   └── resolve_query.rs 产 CommandPlan（名字里有 query 但它是**计划面**，账本 S14）
+├── common/       两层都要、**平台无关**、无域知识（门槛写在 common/mod.rs）
+│   ├── paths.rs      projects_root（原有 5 处）
+│   └── fs.rs         read_regular_capped（U3 从 accounts_query 搬来，**反向边因此消失**）
+└── 顶层           main（组装根）· wire（协议类型）· 四条 guard + layering_guard
 ```
+
+### 两层之间只有一个方向，而且**条数被钉住**
+
+`observe → control` 允许，**反向一条都不许**（§1.1-2），由 `layering_guard.rs` 机检。
+今天正向**恰好一个符号**：`watcher` 调 `control::tmux_hook::install_hooks`。
+
+那不是设计失误 —— tmux hook 活在 **server 进程的内存里**，server 每次重起都要重装，
+而「server 起来了」这个事实**只有 observe 知道**（socket 目录 inotify）。硬要反过来只能靠轮询，
+与 §41 零定时器铁律正面冲突。**「有一个正当例外」与「这条线随便穿」是两回事，
+中间隔着的就是那个计数** —— 多一个就红，逼下一个人把他的理由也写出来。
+
+> U3 摸底时真有过一条**反向边**（`fork_write` → `accounts_query::read_regular_capped`）。
+> **没有给它开例外**：那个函数根本不是 observe 的域逻辑，是通用安全读文件，
+> 搬进 `common/fs.rs` 之后边自然消失。铁律 6：改结构让问题不存在。
 
 ### 「唯一允许平台 cfg 的层」是**目标**，不是现状
 
-Phase D 审计逐条查过，**生产段还有 4 处平台原语在 `platform/` 之外**，如实列在这里：
+Phase D 审计逐条查过，**生产段还有 3 处平台原语在 `platform/` 之外**（U2 时是 4 处，U3 收掉 `tmux_hook` 那处），如实列在这里 —— 三处全在 `main.rs`，它是**组装根**，平台分支留在这里可辩护：
 
 | 位置 | 是什么 | 处置 |
 |---|---|---|
-| `tmux_hook.rs:145-152` | `#[cfg(unix)]` + `libc::kill(pid, SIGUSR1)` | §1.1 已裁定 `tmux_hook` 归 `control/` ⇒ **U3 要连它一起处理**，否则 `control/` 里带一个裸 libc 原语 |
+| ~~`tmux_hook.rs` 的 `libc::kill`~~ | ~~`#[cfg(unix)]` + 发 SIGUSR1~~ | **U3 已收**进 `platform/signal.rs` |
 | `main.rs:345-365` | SIGUSR1 处理器的 `#[cfg(unix)]` / `#[cfg(not(unix))]` | `main.rs` 是**组装根**，平台分支留在这里可辩护。但不能因此说「唯一」 |
 | `main.rs:421-433` | `#[cfg(windows)]` USERPROFILE 回退 | 同上 |
 | `main.rs:439-467` | `shutdown_signal` 的一对 cfg | 同上 |

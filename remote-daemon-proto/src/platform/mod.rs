@@ -20,3 +20,4 @@
 pub(crate) mod paths;
 pub(crate) mod pidwatch;
 pub(crate) mod proc;
+pub(crate) mod signal;

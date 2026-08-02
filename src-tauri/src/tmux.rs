@@ -501,6 +501,28 @@ fn is_ccm_tmux_name(name: &str) -> bool {
     charset_ok && (old_prefix || new_suffix)
 }
 
+/// daemon 侧 `watcher.rs` 的源码路径 —— **跨 crate 硬路径的单一落点**。
+///
+/// # 为什么要有这个常量
+///
+/// monitor 的两条对拍守卫用 `include_str!` 读 daemon 的源码（两个 crate 不能共享 `const`，
+/// 只能靠「读对方源码 + 断言」防跨语言/跨 crate 漂移）。U2 的 Phase D 审计点名过：
+/// **这类硬路径在 daemon 重构时会一起断，而且断的是编译期**。
+///
+/// U3 把 `watcher.rs` 搬进 `observe/` 时它**当场兑现** —— `cargo test --lib` 直接
+/// `couldn't read src/../../remote-daemon-proto/src/watcher.rs`。
+/// 好消息是它**响**（编译错，不是静默假绿）；坏消息是它有两处、还散着。收进一个常量，
+/// 下次 daemon 再搬家只改这一行。
+///
+/// ⚠ **必须是 `macro_rules!` 不能是 `const`**：`include_str!` 只接受**字面量 token**，
+/// 喂给它一个 `const` 会报 `argument must be a string literal`（我第一版就这么写的）。
+/// 宏能展开成字面量，于是既拿到了单一落点、又满足 `include_str!` 的要求。
+macro_rules! daemon_watcher_src {
+    () => {
+        "../../remote-daemon-proto/src/observe/watcher.rs"
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -605,7 +627,7 @@ mod tests {
     ///   **双向**：改 monitor 或 daemon 任一侧忘同步，本测即红。
     #[test]
     fn observation_tokens_double_write_point_stays_in_sync() {
-        let daemon_src = include_str!("../../remote-daemon-proto/src/watcher.rs");
+        let daemon_src = include_str!(daemon_watcher_src!());
         for (name, value) in [
             ("OBS_ZERO_SESSIONS", OBS_ZERO_SESSIONS),
             ("OBS_NO_TMUX", OBS_NO_TMUX),
@@ -933,7 +955,7 @@ mod tests {
         // `tmux ls -F` 格式串**必须逐字一致**（否则 daemon 推的列 monitor 解错位）。编译期
         // include_str! 读 daemon 源，把本 const 的真 TAB 折回源码里的 `\t` 转义再断言 daemon 源
         // 含该带引号字面量——**双向**：改 monitor 或 daemon 任一侧忘同步，本测即红。
-        let daemon_src = include_str!("../../remote-daemon-proto/src/watcher.rs");
+        let daemon_src = include_str!(daemon_watcher_src!());
         let source_literal = TMUX_LS_FMT.replace('\t', "\\t");
         // 锚定到 const 定义行（非裸字面量）——否则该字面量若也出现在某条注释里，会掩盖真 const 漂移
         // （假阴性）。daemon 侧常量名同为 TMUX_LS_FMT（红线 I8 不许改），故按定义行精确比对。

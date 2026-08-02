@@ -1,0 +1,21 @@
+//! U3（2026-08-01）：**控制面** —— 会改变世界，或产出「要怎么改变世界」的计划。
+//!
+//! §1.1 第二条解耦线的另一半。三个模块各自改变的东西不同：
+//!
+//! - [`fork_write`]：**写文件系统**（`O_EXCL` 新建一个 `<new-sid>.jsonl`）。
+//!   全 crate **唯一**的写盘白名单模块，红线 I7 的那个洞口。
+//! - [`tmux_hook`]：**改 tmux server 状态**（`tmux set-hook -g`）+ **发信号**（`SIGUSR1`）。
+//! - [`resolve_query`]：产出 `CommandPlan`（「这个会话该怎么起」）。
+//!   名字里有 `query` 但它不是观测 —— 账本 S14 明写它是 backend 的**计划面**。
+//!   按「读 / 改变世界」这条线分，产计划属于控制的前半。
+//!
+//! # 这一层**不许**引用 [`crate::observe`]
+//!
+//! 由 `crate::layering_guard` 机检。U3 摸底时真有过一条反向边
+//! （`fork_write` → `accounts_query::read_regular_capped`），**没有给它开例外** ——
+//! 那个函数根本不是 observe 的域逻辑，是通用安全读文件，搬进 `common/fs.rs` 之后
+//! 反向边自然消失。铁律 6：改结构让问题不存在。
+
+pub(crate) mod fork_write;
+pub(crate) mod resolve_query;
+pub(crate) mod tmux_hook;

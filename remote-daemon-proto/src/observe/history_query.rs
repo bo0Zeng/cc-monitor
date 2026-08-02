@@ -18,7 +18,8 @@
 //! 只读铁律（cc-monitor 不写远端）在此同样成立：本模块只 read_dir / read。
 
 // U2：合并进 `common/paths.rs`（原来这里各有一份逐字相同的副本）。
-use crate::common::paths::{mtime_ms, projects_root};
+use crate::common::paths::projects_root;
+use crate::observe::fs::mtime_ms;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;

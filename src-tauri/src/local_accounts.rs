@@ -449,10 +449,14 @@ mod tests {
     /// **读 daemon 的源文件**，确认四条判据两侧一致。
     #[test]
     fn contract_matches_the_daemon_implementation() {
+        // U3：daemon 分层后 `accounts_query.rs` 进了 `observe/`。这条是**运行期**读路径
+        // （不是 `include_str!`），所以断的时候是测试红而不是编译红 —— 同样是「响的」，
+        // 但要注意它的诊断只说「No such file or directory」，不会告诉你是对面重构了。
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("remote-daemon-proto")
             .join("src")
+            .join("observe")
             .join("accounts_query.rs");
         let raw = std::fs::read_to_string(&p).expect("读 daemon 的 accounts_query.rs");
         // 反向自检：真读到了（不写 `> 0`——空转也满足）。

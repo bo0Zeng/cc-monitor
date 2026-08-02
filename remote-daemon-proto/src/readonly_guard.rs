@@ -111,7 +111,20 @@ mod tests {
     /// ★ **唯一**被允许写文件系统的模块（G2，branch-anywhere）。
     ///
     /// 收窄而非放开：见下面 `daemon_write_capability_is_confined_to_one_module` 的头注。
-    const WRITE_WHITELIST_MODULE: &str = "fork_write.rs";
+    /// 唯一被允许写文件系统的模块 —— **按仓库相对路径钉，不是按裸文件名**。
+    ///
+    /// # U3（2026-08-01）从裸文件名改成路径，理由是一次「该红没红」
+    ///
+    /// U3 把 `fork_write.rs` 从 `src/` 搬进 `src/control/`。功能计划**预言**这会让
+    /// `whitelisted == 1` 当场红（逼出 control 侧护栏），**结果它没红** ——
+    /// 因为匹配用的是 `path.file_name()`，文件名没变，护栏对整个分层重组**毫无察觉**。
+    ///
+    /// 「没红」在这里不是好消息，是缺陷的证据：同样的逻辑意味着**将来任何目录下的
+    /// `fork_write.rs` 都会被当白名单放行** —— 而白名单层比默认层松（它允许 `O_EXCL` 新建），
+    /// 放行错文件 = 给写盘能力开一个没人知道的第二个洞。U2 的 Phase D 审计已经点名过这条。
+    ///
+    /// 改成路径之后，**再搬一次家就会红**，而那正是应该有人看一眼的时刻。
+    const WRITE_WHITELIST_MODULE: &str = "control/fork_write.rs";
 
     /// 白名单模块**仍然不许**出现的东西 —— 这一层比默认层**更严**。
     ///
@@ -208,10 +221,16 @@ mod tests {
             if name == "readonly_guard.rs" {
                 continue;
             }
+            // U3：白名单按**仓库相对路径**判（见 `WRITE_WHITELIST_MODULE` 头注）。
+            let rel = path
+                .strip_prefix(src_dir)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
             let src = std::fs::read_to_string(&path).expect("read rs file");
             let prod = strip_cfg_test(&src);
 
-            if name == WRITE_WHITELIST_MODULE {
+            if rel == WRITE_WHITELIST_MODULE {
                 whitelisted += 1;
                 assert!(
                     prod.contains(WHITELIST_REQUIRED),

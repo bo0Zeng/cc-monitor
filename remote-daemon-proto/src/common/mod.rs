@@ -28,4 +28,5 @@
 //! > U3 划出 `observe/` 之后要重新判：要么它下沉成 observe 内部共享，要么真有 control 侧用上它。
 //! > 现在不动是因为 `observe/` 还不存在，硬划等于凭空造一个层。**U3 的 DoD 里必须复查这一条。**
 
+pub(crate) mod fs;
 pub(crate) mod paths;

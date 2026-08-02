@@ -120,9 +120,10 @@ src-tauri/src/
 ├── 远端 daemon  remote-daemon-proto/  **它不在上面这棵树里** —— 是独立 crate、刻意**不是 workspace 成员**
 │                            （`remote-daemon-proto/Cargo.toml:6-8`：进了 workspace 就会把 Linux-only 的
 │                            daemon 拖进 Windows CI）。U2（2026-08-01）起有了内部分层：`platform/`
-│                            （平台原语与平台 cfg 的**目标**归属地 —— **尚未收全**，生产段还有 4 处在外面，
-│                            清单见 daemon README）+ `common/`（平台无关的纯工具）。其余仍是平的；
-│                            `observe/`+`control/` 的拆分是 U3。
+│                            （平台原语与平台 cfg）+ `common/`（平台无关的纯工具）。
+│                            **U3 起再分 `observe/`（读）与 `control/`（改变世界）** —— 两层之间只许
+│                            observe→control 一个方向、且接口面**恰好一个符号**，由 `layering_guard` 机检。
+│                            仍有 3 处平台 cfg 在 `main.rs`（组装根，可辩护）；清单与理由见 daemon README。
 │                            模块图见 [`remote-daemon-proto/README.md`](../remote-daemon-proto/README.md)。
 ├── 共享 crate  crates/branch-core/  分支记录变换（祖先回溯）——monitor 与远端 daemon **共用一份**。
 │                            **path 依赖、非 workspace 成员** ⇒ 不进 `cargo test --all`，

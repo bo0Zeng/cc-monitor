@@ -34,7 +34,6 @@
 //!   否则拒绝——避免它退化成"任意文件读"原语。`--account-trust-zero` 不收路径参数
 //!   （路径是 `$HOME/.claude.json`，写死在代码里），所以它连这个面都没有。
 
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// `.claude.json` 读取上限（照 `mcp.rs` 的 32MB 约定）。真机上它约 115KB。
@@ -45,28 +44,6 @@ const MAX_MANIFEST_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_SESSION_FILE_BYTES: u64 = 1024 * 1024;
 /// `sessions/*.json` 扫描上限，防病态目录拖垮一次性查询。
 const MAX_SESSION_FILES: usize = 500;
-
-/// **安全读取**：先确认是常规文件（挡掉 FIFO / 字符设备 / socket——它们的
-/// `metadata().len()` 报 0 会骗过大小检查，而 `read_to_string` 无上限 → 远端 OOM，
-/// 审计实测 symlink→/dev/zero 6 秒涨 11GB），再 `take(cap)` 限量读，
-/// 一步消掉 metadata↔read 之间的 TOCTOU。symlink 会被 `metadata()`（跟随）解析到
-/// 目标类型：目标是常规文件才放行、是设备就拒。
-pub(crate) fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, String> {
-    let meta = std::fs::metadata(path).map_err(|e| format!("{e}"))?;
-    if !meta.is_file() {
-        return Err("不是常规文件（可能是 FIFO/设备/目录）".into());
-    }
-    let f = std::fs::File::open(path).map_err(|e| format!("{e}"))?;
-    let mut buf = Vec::new();
-    // take(cap+1)：读到 cap+1 就知道超限了，不必读满整个（可能无界的）文件
-    f.take(cap + 1)
-        .read_to_end(&mut buf)
-        .map_err(|e| format!("{e}"))?;
-    if buf.len() as u64 > cap {
-        return Err(format!("超过 {cap} 字节上限"));
-    }
-    Ok(buf)
-}
 
 // ---------------------------------------------------------------- manifest
 
@@ -310,6 +287,7 @@ fn json_str(v: Option<&str>) -> serde_json::Value {
 // 与 `platform::proc::proc_starttime` 逐字同语义（都返回 boot 起的 jiffies，解析都是
 // `nth(22-3)`），只是这一份把解析内联了、那一份走 `parse_starttime_from_stat`。
 // 合并前**逐条核过单位**：单位不同的话它们就不是重复，合并就是引 bug。
+use crate::common::fs::read_regular_capped;
 use crate::platform::proc::{proc_claude_config_dir, proc_starttime};
 
 /// 从 pidfile 字节里取 `procStart`（CC 写的是 starttime ticks 的十进制字符串；容忍裸数字）。
@@ -678,7 +656,7 @@ mod tests {
     fn credential_filename_matches_native_identity_declaration() {
         // 本文件用来判「已登录」的文件名。改这里就要改下面的断言，也要改 bash 侧声明。
         const CREDENTIAL_FILE: &str = ".credentials.json";
-        let lib_sh = include_str!("../../src-tauri/vendor/cc-acct-iso/scripts/lib.sh");
+        let lib_sh = include_str!("../../../src-tauri/vendor/cc-acct-iso/scripts/lib.sh");
 
         // 声明里那一行的精确形状：`<项名>:<原生根>:<类别>`，凭据项必须是 secret。
         let expected_line = format!("{CREDENTIAL_FILE}:cfg:secret");
@@ -1336,7 +1314,7 @@ mod tests {
     #[test]
     fn main_dispatches_every_subcommand_we_handle() {
         let me = include_str!("accounts_query.rs");
-        let main_raw = include_str!("main.rs");
+        let main_raw = include_str!("../main.rs");
         // 只看生产段 + 剥行注释：两个文件的散文里都会提到这些字面量，
         // 不剥的话「main 的注释里写了它」也会让守卫变绿——那正是安慰剂。
         // U-1：剥法收敛到 `guard_support`。旧的内联版锚 `mod tests`，而 main.rs 的测试模块

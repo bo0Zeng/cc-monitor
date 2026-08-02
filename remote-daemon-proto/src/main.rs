@@ -10,7 +10,7 @@
 //!
 //! ## Two-task design (the §5.4 slow-consumer guard)
 //!
-//! - The **reader** ([`watcher::spawn`]) runs the filesystem watcher on a
+//! - The **reader** ([`observe::watcher::spawn`]) runs the filesystem watcher on a
 //!   blocking thread and pushes frames into a *bounded* channel with `try_send`
 //!   (never blocking the inotify callback).
 //! - The **writer** (this file's [`writer_task`]) drains the channel and writes
@@ -19,23 +19,16 @@
 //!   inotify reader. This split is the single most-cited Phase-0 accident
 //!   source; keeping it real is the point.
 
-mod accounts_query;
 mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 #[cfg(test)]，生产构建为空）
-mod codex;
 mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
-mod fork_write; // G2：唯一被允许写文件系统的模块
+mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
-mod history_query;
+mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
+mod observe; // U3：观测面 —— 读，不改变世界
 mod platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线）
 mod readonly_guard; // F08a：daemon 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
-mod resolve_query;
-mod search_query;
-mod tmux_hook; // P4b：tmux hook → SIGUSR1 通知通路（零 fs 写）
-mod turn_detect;
-mod usage_query;
-mod watcher;
 mod wire;
 
 use std::path::PathBuf;
@@ -276,24 +269,24 @@ async fn main() {
         // --resolve advisor（daemon-04，读 stdin ResumeSpec→stdout CommandPlan），其余走历史查询（#16）。
         let code = match args.first().map(String::as_str) {
             // P4b：hook 子进程走这条 —— 校验身份后给 daemon 发 SIGUSR1，**不碰文件系统**。
-            Some("--tmux-notify") => tmux_hook::notify(&args),
-            Some("--search") => search_query::run(&claude_dir, &args),
-            Some("--usage") => usage_query::run(&claude_dir, &args),
-            Some("--resolve") => resolve_query::run(&claude_dir, &args),
+            Some("--tmux-notify") => control::tmux_hook::notify(&args),
+            Some("--search") => observe::search_query::run(&claude_dir, &args),
+            Some("--usage") => observe::usage_query::run(&claude_dir, &args),
+            Some("--resolve") => control::resolve_query::run(&claude_dir, &args),
             // G2（branch-anywhere）：从指定消息处分叉出一个新会话文件。
             // **daemon 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
-            Some("--fork-session") => fork_write::run(&claude_dir, &args),
-            // ★ 这几个字面量必须与 `accounts_query::run` 自己认的子命令**完全一致**。
+            Some("--fork-session") => control::fork_write::run(&claude_dir, &args),
+            // ★ 这几个字面量必须与 `observe::accounts_query::run` 自己认的子命令**完全一致**。
             // v3.4.0 出过一次事故：`--account-trust-zero` 在 accounts_query 里实现完整，
             // 但这里漏列 ⇒ 落进下面的 `_` 臂走历史查询 ⇒ `unknown argument` + exit 2，
             // 而 monitor 的账号 0 路径**真的在发这条命令**。
-            // 测试当时抓不到，是因为它们直接调 `accounts_query::run`、**绕过了本处调度**。
-            // 现由 `accounts_query::tests::main_dispatches_every_subcommand_we_handle` 钉住。
+            // 测试当时抓不到，是因为它们直接调 `observe::accounts_query::run`、**绕过了本处调度**。
+            // 现由 `observe::accounts_query::tests::main_dispatches_every_subcommand_we_handle` 钉住。
             Some("--list-accounts")
             | Some("--session-accounts")
             | Some("--account-trust")
-            | Some("--account-trust-zero") => accounts_query::run(&claude_dir, &args),
-            _ => history_query::run(&claude_dir, &args),
+            | Some("--account-trust-zero") => observe::accounts_query::run(&claude_dir, &args),
+            _ => observe::history_query::run(&claude_dir, &args),
         };
         std::process::exit(code);
     }
@@ -328,7 +321,7 @@ async fn main() {
 
     // (c) Start the watcher reader; it returns the receiving half of the
     // bounded frame channel.
-    let (rx, poke) = watcher::spawn(claude_dir, with_bg, tail_only);
+    let (rx, poke) = observe::watcher::spawn(claude_dir, with_bg, tail_only);
 
     // (c2) **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
     //

@@ -209,7 +209,7 @@ fn install_tmux_hooks_best_effort() {
         tracing::warn!("拿不到自身 exe/starttime ⇒ 跳过装 tmux hook（退回定时探测）");
         return;
     };
-    let n = crate::tmux_hook::install_hooks(&exe, me, start);
+    let n = crate::control::tmux_hook::install_hooks(&exe, me, start);
     tracing::info!("tmux hook 已装 {n}/3（会话生/死/改名 → SIGUSR1 → 立刻重探）");
 }
 
@@ -1062,7 +1062,7 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
         // 在 raw move 进 Line 帧前抽出（避免 clone raw）。§2.1 不变量并存：Line 逐行照发**每一条**。
         let turn_uuid: Option<String> = serde_json::from_str::<serde_json::Value>(&line.raw)
             .ok()
-            .and_then(|v| crate::turn_detect::turn_end_uuid(&v).map(str::to_string));
+            .and_then(|v| crate::observe::turn_detect::turn_end_uuid(&v).map(str::to_string));
         sink.send(Frame::Line {
             session_id: session_id.clone(),
             path: path_str.clone(),

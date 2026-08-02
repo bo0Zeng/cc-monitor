@@ -142,15 +142,12 @@ pub fn notify(args: &[String]) -> i32 {
         _ => return 0, // 不是那个 daemon（或它已经不在）⇒ 静默不做事
     }
 
-    #[cfg(unix)]
-    {
-        // SAFETY: `kill` 是 async-signal-safe 的 libc 调用；pid 已经过 starttime 身份校验。
-        let rc = unsafe { libc::kill(pid as libc::pid_t, libc::SIGUSR1) };
-        if rc != 0 {
-            // 竞态：校验之后、发信号之前 daemon 退出了。不是错误。
-            return 0;
-        }
-    }
+    // U3：发信号那一步下沉到 `platform::signal`（§1.1-1：平台原语只许在 platform/）。
+    // 措辞刻意不写出那个 libc 函数名 —— 「本层还有没有平台原语」是靠 grep 查的，
+    // 注释里留一个会让下一个人白查一趟（同 §41.4 第 1 条纪律的形状）。
+    // **身份校验留在这里**——那是域判断（「这个 pid 是不是我那个 daemon」），不是平台能力。
+    // 发失败仍不是错误：竞态（校验之后、发信号之前 daemon 退出了）。
+    let _ = crate::platform::signal::send_sigusr1(pid);
     0
 }
 

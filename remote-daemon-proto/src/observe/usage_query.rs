@@ -211,10 +211,10 @@ fn analyze_session(path: &Path, seen_requests: &mut HashSet<String>) -> Option<V
 /// SessionUsageRow 形 JSON（+`agentKind:"codex"`）。无 `~/.codex/sessions` → 无输出（零成本、Claude 段不受影响）。
 /// 安全：路径限 `<codex_dir>/sessions/`（canonicalize 前缀校验，同 Claude 段）；只读。
 fn aggregate_codex() -> Result<(), String> {
-    let Some(codex_dir) = crate::codex::resolve_codex_dir() else {
+    let Some(codex_dir) = crate::observe::codex::resolve_codex_dir() else {
         return Ok(());
     };
-    let root = crate::codex::sessions_root(&codex_dir);
+    let root = crate::observe::codex::sessions_root(&codex_dir);
     if !root.is_dir() {
         return Ok(());
     }
@@ -261,7 +261,7 @@ fn aggregate_codex() -> Result<(), String> {
 /// **跳全零 no-op** 事件；model 取当时 `turn_context.model`；**无跨会话去重**（Codex 无 requestId、
 /// 每 rollout 自成一会话、实测无 resume replay）。
 fn analyze_codex_session(path: &Path) -> Option<Value> {
-    let session_id = crate::codex::codex_sid_from_path(path)?;
+    let session_id = crate::observe::codex::codex_sid_from_path(path)?;
     let content = std::fs::read_to_string(path).ok()?;
     let mut cwd: Option<String> = None;
     let mut current_model = "unknown".to_string();
@@ -276,19 +276,20 @@ fn analyze_codex_session(path: &Path) -> Option<Value> {
             Err(_) => continue, // 畸形行跳过（不崩）
         };
         if cwd.is_none() {
-            if let Some(c) = crate::codex::session_meta_cwd(&v).filter(|c| !c.is_empty()) {
+            if let Some(c) = crate::observe::codex::session_meta_cwd(&v).filter(|c| !c.is_empty()) {
                 cwd = Some(c.to_string());
             }
         }
-        if let Some(m) = crate::codex::turn_context_model(&v).filter(|m| !m.is_empty()) {
+        if let Some(m) = crate::observe::codex::turn_context_model(&v).filter(|m| !m.is_empty()) {
             current_model = m.to_string();
         }
-        if crate::codex::is_token_count(&v) {
-            if let Some((inp, cached, out_tok)) = crate::codex::last_token_usage_fields(&v) {
+        if crate::observe::codex::is_token_count(&v) {
+            if let Some((inp, cached, out_tok)) = crate::observe::codex::last_token_usage_fields(&v)
+            {
                 if inp == 0 && cached == 0 && out_tok == 0 {
                     continue; // 全零 no-op（真机见会话起始 turn_context 前）→ 跳，免 ghost 桶
                 }
-                let day: String = crate::codex::envelope_ts(&v)
+                let day: String = crate::observe::codex::envelope_ts(&v)
                     .map(|t| t.chars().take(10).collect())
                     .unwrap_or_default();
                 let b = buckets.entry((current_model.clone(), day)).or_default();
