@@ -21,10 +21,27 @@ pub(crate) fn pid_alive(pid: u32) -> bool {
     }
     #[cfg(not(target_os = "linux"))]
     {
-        // Non-Linux (Windows compile/smoke only — not the real target): treat as
-        // alive so the cross-platform smoke still exercises the pipeline.
+        // ★ U4a（2026-08-01）：**从「静默说谎」改成「大声未实现」。**
+        //
+        // 这里原本是 `let _ = pid; true`，注释写「treat as alive so the cross-platform
+        // smoke still exercises the pipeline」。那个 `true` 是一个**没人会发现的谎**：
+        // `pid_alive` 是判活的加表门，恒 `true` 的后果是**会话永远不被归档**，
+        // 而且没有任何信号说「这个平台上我根本不知道」。
+        //
+        // U2 与 U3 两轮都明确把它推迟到本功能，理由是「改它 = 决定 Windows 语义」。
+        // 到了 U4a，真语义（`OpenProcess` + 退出码）仍属 **U4b** —— 它需要 Windows 真机验证，
+        // 而主计划自己写着「等价性仓里无实测，第一步先验」。
+        //
+        // 那 U4a 能做的是什么？**把谎换成事实**：
+        // - `panic` 是一个没人能忽略的信号，`true` 不是。
+        // - **不可能回归 Linux**：这条分支在 Linux 上编译期就不存在。
+        // - Windows daemon 今天跑不起来（U4b 才让它能跑），所以不影响任何现存路径。
+        // - 它给 U4b 留了一个**编译器/运行时帮你找**的落点，而不是一个「看起来能用」的假实现。
         let _ = pid;
-        true
+        unimplemented!(
+            "pid_alive 在本平台未实现（U4b：OpenProcess + 退出码）。\
+             此前这里恒返回一个乐观的存活值 —— 那会让会话永不归档且毫无信号，是比 panic 坏得多的失败模式。（措辞刻意避开那个布尔字面量：`platform/fallback_guard.rs` 连字符串一起扫，写出来会把那条护栏自己打红 —— 同 §41.4 第 1 条纪律。）"
+        )
     }
 }
 
@@ -167,34 +184,5 @@ pub(crate) fn session_alive(pid: u32, expected_start: Option<u64>) -> bool {
     // Only read the current start if the PID exists (a read on a vanished PID is
     // pointless and would just be `None` anyway).
     let current_start = if exists { proc_starttime(pid) } else { None };
-    is_same_live_process(exists, expected_start, current_start)
-}
-
-/// Pure liveness decision (testable without a real `/proc`), given whether the
-/// PID currently **exists**, the procStart **captured** at add-time, and the
-/// procStart **read now**.
-///
-/// Key correctness rule (#34): a PID reuse only ever shows up as a
-/// *successfully-read, DIFFERENT* current start. So the only case that declares
-/// "dead by reuse" is `(Some(captured), Some(current))` with `captured != current`.
-/// Every other arm where the PID still exists returns alive — in particular a
-/// **transient `/proc/<pid>/stat` read failure** (`current == None`) must NOT
-/// false-archive a process that demonstrably still exists (that would be a
-/// regression vs. the Phase-0 existence-only check). If the process is truly
-/// gone, `exists` is already `false` and we return dead.
-pub(crate) fn is_same_live_process(
-    exists: bool,
-    expected_start: Option<u64>,
-    current_start: Option<u64>,
-) -> bool {
-    if !exists {
-        return false;
-    }
-    match (expected_start, current_start) {
-        // Baseline captured AND current readable: same process iff equal.
-        (Some(captured), Some(current)) => captured == current,
-        // No baseline, or current unreadable right now: existence is all we can
-        // assert. Do not archive a still-existing PID on missing start info.
-        _ => true,
-    }
+    super::liveness::is_same_live_process(exists, expected_start, current_start)
 }

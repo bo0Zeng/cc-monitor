@@ -159,6 +159,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          # U4a：跨 target check 需要 Windows 的 std。**只 check 不链接**，
+          # 所以在 ubuntu 上就能跑、不需要 Windows runner，成本近零。
+          targets: x86_64-pc-windows-msvc
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -173,6 +176,19 @@ jobs:
 
       - name: cargo test
         run: cargo test
+
+      # ★ U4a（2026-08-01）：**§1.1 第一条解耦线（平台线）的唯一真判据。**
+      #
+      # 计划自审 §0.5-3 打掉过一个安慰剂式的机检：「`platform/` 之外出现平台 cfg 就红」
+      # **抓不到 `pidfd_open`** —— 它是**无条件编译**的 Linux-only 代码，一个 cfg 都没有。
+      # 能证明「平台依赖真的被隔离了」的只有编译器。
+      #
+      # **必须 `--all-targets`**：不加的话只编生产段，而实测 12 个错里有 1 个在测试段
+      # （`libc::getuid`）。少这个 flag 会让判据漏掉整个测试面。
+      #
+      # 这一步之前，daemon 在 Windows 上 **RC=101 / 12 个错**，而 CI 从来不知道。
+      - name: cargo check（跨 target：Windows 编得过 —— 平台线的真判据）
+        run: cargo check --all-targets --target x86_64-pc-windows-msvc
 
   # L4（local-as-remote）：**Linux 宿主上 app 能不能构建**的持续信号。
   #
