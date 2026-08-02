@@ -39,12 +39,11 @@ use std::path::{Path, PathBuf};
 /// manifest 读取上限（与 daemon 侧同值；账号数有限，8MB 是兜底不是预期）。
 const MANIFEST_CAP: u64 = 8 * 1024 * 1024;
 
-/// 账号库目录名（`$HOME/.claude-accts`）。**双写点**：daemon 侧同名常量在
-/// `accounts_query.rs`，`cc-acct-iso` 的 `NATIVE_IDENTITY` 里也有一份。
-/// manifest 文件名。同上，三处双写。
-/// 「什么算已登录」的判据文件名。**Z06 双写点**：daemon 侧有守卫钉它与 bash 声明一致，
-/// 本模块这一份由 `contract_matches_the_daemon_implementation` 钉住。
-/// 本模块认得的 manifest schema 版本。与 daemon 同值。
+// 四条契约常量（账号库目录名 / manifest 文件名 / 凭据文件名 / schema 版本）
+// U7-3 起住在 `acct-core`，见文件顶部的 `use`。**它们不再是双写点** ——
+// 本模块与 daemon import 同一份，想不一致得先把 import 删掉。
+// bash 写侧（`cc-acct-iso`）是另一门语言、共享不了常量，那条对账留在
+// `acct-core::tests::the_credential_filename_matches_the_cc_acct_iso_declaration`。
 
 #[derive(serde::Deserialize)]
 struct RawAccount {
@@ -76,7 +75,8 @@ struct RawManifest {
 // U7-3：`is_deceptive_char` 搬进共享 crate `acct-core`。
 // 它是**平台无关的安全性质**（不是 `char::is_control` —— 那只覆盖 C0/C1），
 // 两侧读的是同一份 manifest，「什么算欺骗」必须一致。
-// 实测搬之前两侧**双向漂了**：本机缺 NEL，daemon 缺 word joiner / 各类空白。
+// 实测搬之前两侧集合不同：daemon 缺 word joiner / 各类空白（**真洞**，那些 is_control 是 false）；
+// 本机缺 NEL（**非真洞** —— is_control 本来就挡着，U7-3 我误报过，U7-4 已证伪）。
 
 /// 「是绝对路径」——**这一半是平台相关的**（见模块头注）。
 fn looks_absolute(p: &str) -> bool {
@@ -309,8 +309,17 @@ mod tests {
             std::fs::create_dir_all(&p).expect("mkdir sandbox");
             Sandbox(p)
         }
+        /// 写 manifest。**文件名写死成字面量，刻意不用 `MANIFEST_NAME`。**
+        ///
+        /// U7-4：此前这里是 `self.0.join(MANIFEST_NAME)` —— 测试的**写侧**与生产的**读侧**
+        /// 用同一个常量，常量一起变，测试**结构上不可能因为它变了而失败**。
+        /// U7-3 实测：把内核里的 `MANIFEST_NAME` 改成 `"accts.json"`，daemon 红了 9 条，
+        /// monitor **全绿**。那不是「没测到」，是「测不到」。
+        ///
+        /// 常量是**实现**，文件名是**契约**（bash 写侧 / daemon / 本机三方共用）。
+        /// 测试该钉契约，所以这里用字面量。
         fn write_manifest(&self, json: &str) {
-            std::fs::write(self.0.join(MANIFEST_NAME), json).expect("write manifest");
+            std::fs::write(self.0.join("accounts.json"), json).expect("write manifest");
         }
     }
     impl Drop for Sandbox {
@@ -393,7 +402,9 @@ mod tests {
         // 账号 0 且 manifest 没写 sharedStore ⇒ 探不到 ⇒ false（「不知道」，不假装已登录）
         assert!(!r.accounts[2].logged_in);
 
-        std::fs::write(a.join(CREDENTIALS_NAME), "{}").unwrap();
+        // 同 `write_manifest`：文件名写死成字面量，刻意不用 `CREDENTIALS_NAME`。
+        // 用常量的话，测试写哪个文件、生产找哪个文件会一起变 ⇒ 测不出常量漂移。
+        std::fs::write(a.join(".credentials.json"), "{}").unwrap();
         assert!(list_from_dir(&sb.0).accounts[0].logged_in);
     }
 
@@ -425,6 +436,82 @@ mod tests {
         let r = list_from_dir(&sb.0);
         assert_eq!(r.accounts.len(), 1);
         assert_eq!(r.accounts[0].name, "zero");
+    }
+
+    /// ★ U7-4：**欺骗字符的覆盖面**，逐组各取一个代表。
+    ///
+    /// # 这条为什么单独立一件事做
+    ///
+    /// U7-3 把 `is_deceptive_char` 抽进 `acct-core` 时做变异验证：
+    /// 删掉内核里的 NEL（`U+0085`）⇒ acct-core 红、daemon 红、**monitor 全绿**。
+    /// 当时如实登记了原因 —— 不是接线没生效，是本模块**只测过 `U+202E` 一个码位**，
+    /// 而那恰好是两侧本来都有的。
+    ///
+    /// 我刻意**没在那次重构里顺手补** —— 补测试要单独设计，
+    /// 混在重构里做等于用新写的测试给新写的代码背书。
+    ///
+    /// # 判据：按**来源分组**取代表，不是堆码位
+    ///
+    /// 每组各一个，任何一组从内核里掉出去，本测试立刻红：
+    #[test]
+    fn every_group_of_deceptive_characters_is_rejected_in_a_config_dir() {
+        // (码位, 这一组是什么, U7-3 之前谁缺它)
+        let groups: &[(char, &str, &str)] = &[
+            // ⚠ NEL 属 Cc 类，`is_control()` 本来就挡着它 ⇒ 把它从内核集合里删掉
+            // **不会**让本测试红。U7-3 我曾把「本机缺 NEL」当安全洞报出来，U7-4 实测证伪：
+            // 集合确实差过一项，可观察行为没差。留在表里是为了这条注记本身。
+            (
+                '\u{0085}',
+                "NEL（C1 换行；is_control 已覆盖，非真洞）",
+                "集合差过、行为没差",
+            ),
+            ('\u{00A0}', "NBSP", "两侧都有"),
+            ('\u{1680}', "Ogham space mark", "daemon 缺"),
+            ('\u{2003}', "各类空格（U+2000..200A）", "daemon 缺"),
+            ('\u{200B}', "零宽空格/连接符", "两侧都有"),
+            ('\u{2028}', "行分隔", "两侧都有"),
+            ('\u{202E}', "双向覆盖（RLO）", "两侧都有"),
+            ('\u{202F}', "narrow NBSP", "daemon 缺"),
+            ('\u{205F}', "medium mathematical space", "daemon 缺"),
+            ('\u{2060}', "word joiner / 不可见运算符", "daemon 缺"),
+            ('\u{2066}', "双向隔离", "两侧都有"),
+            ('\u{3000}', "ideographic space", "daemon 缺"),
+            ('\u{FEFF}', "ZWNBSP / BOM", "两侧都有"),
+        ];
+        assert!(
+            groups.len() >= 13,
+            "分组表被削短了（{} 组）—— 本断言在空转",
+            groups.len()
+        );
+        for (c, what, who) in groups {
+            let path = format!("/home/u/.claude-accts/a{c}b");
+            assert!(
+                !is_safe_config_dir(&path),
+                "U+{:04X}（{what}；U7-3 之前{who}）没被挡下 —— \n\
+                 它能在 UI 里把账号名/路径伪造成另一个样子。",
+                *c as u32
+            );
+        }
+        // 反向：去掉欺骗字符之后同一条路径必须**通过**，否则上面全是空转。
+        assert!(
+            is_safe_config_dir("/home/u/.claude-accts/ab"),
+            "干净路径被误判成不安全 —— 上面那些断言全都不算数了"
+        );
+    }
+
+    /// ★ U7-4：账号库目录名是**契约**，写死成字面量核对。
+    ///
+    /// `local_accts_dir()` 拼的是 `$HOME/<ACCTS_DIR_NAME>`。此前没有任何测试碰它 ——
+    /// 常量改了、本机就去别处找账号库，而 UI 上的表现只是「一个账号都没有」。
+    #[test]
+    fn the_accounts_library_lives_under_the_contract_directory_name() {
+        let d = local_accts_dir().expect("取不到 HOME —— 本断言在空转");
+        assert_eq!(
+            d.file_name().and_then(|s| s.to_str()),
+            Some(".claude-accts"),
+            "账号库目录名变了。这是 bash 写侧 / daemon / 本机三方共用的契约名，\n\
+             改了它本机就去别处找账号库，UI 上只表现为「一个账号都没有」。"
+        );
     }
 
     // U7-3：**那条读对面源文件的跨 crate 契约守卫已退役。**
