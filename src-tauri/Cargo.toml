@@ -38,6 +38,7 @@ uuid = { version = "1", features = ["v4"] }
 code-picture-core = { path = "vendor/code-picture-core" }
 # G1（branch-anywhere）：分叉的记录变换，与远端 daemon 共用同一份实现。
 branch-core = { path = "crates/branch-core" }
+usage-core = { path = "crates/usage-core" }
 
 notify = "6"
 notify-debouncer-mini = "0.4"

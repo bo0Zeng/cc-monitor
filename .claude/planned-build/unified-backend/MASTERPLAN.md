@@ -211,6 +211,7 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 | S6 | **wire 协议 + `IPC-PROTOCOL.md`** | 双向；**文档先修再冻结**（该文件 7 处在说谎，见 §3-U6）；wire 字段名双向 `include_str!` 对拍 | U6a / U6b |
 | S6a | **跨进程握手时序约束**（U6a 新登记）<br>**U6a 已交付**：`cc.ps1.tpl`「先设标题、后写 await 文件」这个顺序，同时被写在**四处**：PS 模板本身 · `bind.rs` 模块头 · `doc/IPC-PROTOCOL.md` 时序图 · `cc_integration.ts` 给用户看的超时文案。U6a 之前**后三处全是旧的**（旧顺序 + 800ms + 100ms + 漏画 ≤600ms 重试）—— 文档在教人复刻 v2.21 那个「每个新 shell 首次 `cc` 固定烧满超时」。 | 四处保持一致，由 `profile_installer.rs::handshake_doc_guard` 三条护栏钉住（顺序 + 模板侧 deadline/轮询步长 + monitor 侧 debouncer/重试）。**不放 `bind.rs`**：它几乎整个 `#[cfg(windows)]`，护栏放那儿在 Linux CI 上一条都不跑 | U6a ✅ |
 | S16 | **入方向命令面**（U6b-1 新登记）<br>`inbound::COMMANDS` ↔ `dispatch` 分派臂 ↔ `hello.commands` ↔ `IPC-PROTOCOL.md` 入方向小节，**四处双写** | 前三处由 `hello_commands_match_the_dispatch_table` 钉成**同一份真相源**（声明了却不接 ⇒ 客户端石沉大海；接了却不声明 ⇒ 客户端不知道能用）；第四处由 U6a 的字段对拍逼进文档 | U6b-1 ✅ · U6b-3 加第一条真业务命令 |
+| S17 | **用量口径**（U7-2 新登记）<br>**U7-2 已交付**：抽进共享 crate `usage-core`，两侧各自 `path` 依赖。此前是无护栏的口径双写，且**已漂开两处**（BOM · 有 requestId 无 uuid） | 唯一实现在 crate 里；判据是「改内核一处 ⇒ 三侧同时红」，不是任何一侧的单侧测试 | U7-2 ✅ |
 | S7 | **daemon argv 面** | 三类；`split_stream_flags` + `every_capability_token_is_strippable` 同步扩。⚠ **起点比以为的更糟**：现有的二分表本身就漏了 5 条子命令（`--tmux-notify` / `--resolve` / `--fork-session` / `--account-trust-zero` / `--read-session-from-offset`），其中 `--account-trust-zero` 漏登记**出过 v3.4.0 事故** | U6 |
 | S8 | **`BUILD_ID` 单源链条**<br>**U-1 已交付**：① `ssh_source.rs::embedded_build_id_single_source_wired` 断言 ≠ `"unknown"`；② `build.rs` 三条硬 panic（抠不到源码 `BUILD_ID` / 有二进制但缺清单 / 清单与源码不符）；③ 半 bump **真修掉**（两个 arch 从 p1v 源码现编，`rust-lld` 零安装）。<br>⚠ **措辞订正**：原写「缺文件从 warn 改 fail」不准 —— 三条 panic 都以「`embedded-daemons/` 里真有二进制」为前提；**整个目录缺失时仍是优雅降级**（那是 dev/CI 常态），兜那一档的是①不是 `build.rs`。发版链两头都够得着（`release.yml:56-58` 写清单、`:113-118` 再对拍） | U-1 · U13 |
 | S9 | **读面七组 → 四组**（§0.1 三类） | monitor 侧退役 | U7a–U7e |
@@ -567,3 +568,16 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   ⇒ 加两条对拍：daemon `EMITS` ⊆ monitor 已知集；已知集 ↔ `parse_frame` 分支表同一份。
   ⇒ **账本 S9 的最终形态改写**：不是「monitor 侧退役」，是「①产出面↔消费面对拍（U7-1 ✅）+
   ②真双写抽共享 crate + ③互补残桩各自补齐」。
+- 2026-08-02 **U7-2 交付：用量口径抽进共享 crate。最值得记的是那条「跨轨对拍测试」根本不跨轨。**
+  `per_request_field_max_matches_local_kou_jing` 只调 daemon 自己的实现、断言人手写下的数字，
+  **从不碰 monitor**（那个测试模块里对「本地 usage.rs」的唯一提及是一句 doc 注释）。
+  名字里的 `matches_local` 是一句没有判据的声明 —— 与 U6a 抓到的
+  「注释宣称『今天零个 rename（已核）』却没有机检」是同一种病：**把一次人工核对写成了长期保证**。
+  ⇒ **横切约定补一条**：名字里带 `matches` / `parity` / `in_sync` 的测试，
+  必须能指出它**实际引用了对面哪个符号**；指不出来就是单轨测试，改名或补判据。
+- 2026-08-02 **无护栏的双写已经漂了两处**（实测）：BOM（daemon 剥、monitor 零处理）·
+  有 `requestId` 无 `uuid`（monitor 经 `parse_line` 丢、daemon 计入）。两处可达性都低，
+  但正是「无护栏双写」会积累的那种 —— 合并后统一到 daemon 的行为。
+- 2026-08-02 **判据升级**：这次不靠「两侧各自的测试都绿」，而是
+  **改内核一处口径 ⇒ usage-core / daemon / monitor 三侧同时红**。
+  那是双写被真正消灭的结构性证据；此前改一侧另一侧照样绿。

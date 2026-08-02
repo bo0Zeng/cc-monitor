@@ -87,82 +87,18 @@ fn aggregate(claude_dir: &Path) -> Result<(), String> {
 fn analyze_session(path: &Path, seen_requests: &mut HashSet<String>) -> Option<Value> {
     let session_id = path.file_stem()?.to_str()?.to_string();
     let content = std::fs::read_to_string(path).ok()?;
-    let mut cwd: Option<String> = None;
-    // 本文件内：requestId(缺→uuid) → (model, day, 逐字段 MAX totals)
-    let mut per_req: HashMap<String, (String, String, Totals)> = HashMap::new();
-    for line in content.lines() {
-        let trimmed = line.trim_start_matches('\u{feff}').trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let v: Value = match serde_json::from_str(trimmed) {
-            Ok(v) => v,
-            Err(_) => continue, // 畸形行跳过（不崩）
-        };
-        let rec_type = v.get("type").and_then(Value::as_str);
-        // cwd 只从 user 记录取（严格对齐本地 usage.rs 的 `JsonlRecord::User { cwd }`——审计双写点）。
-        if rec_type == Some("user") && cwd.is_none() {
-            if let Some(c) = v.get("cwd").and_then(Value::as_str) {
-                if !c.is_empty() {
-                    cwd = Some(c.to_string());
-                }
-            }
-        }
-        if rec_type != Some("assistant") {
-            continue;
-        }
-        let msg = match v.get("message") {
-            Some(m) => m,
-            None => continue,
-        };
-        let usage = match msg.get("usage") {
-            Some(u) if u.is_object() => u,
-            _ => continue,
-        };
-        // 键 = requestId（缺→uuid）。都无 → 跳过（无法去重/归属，同本地 fallback 但本地 uuid 恒有）。
-        let key = v
-            .get("requestId")
-            .and_then(Value::as_str)
-            .or_else(|| v.get("uuid").and_then(Value::as_str))
-            .unwrap_or("")
-            .to_string();
-        if key.is_empty() {
-            continue;
-        }
-        let model = msg
-            .get("model")
-            .and_then(Value::as_str)
-            .filter(|m| !m.is_empty())
-            .unwrap_or("unknown")
-            .to_string();
-        let day: String = v
-            .get("timestamp")
-            .and_then(Value::as_str)
-            .map(|t| t.chars().take(10).collect())
-            .unwrap_or_default();
-        let field = |k: &str| usage.get(k).and_then(Value::as_u64).unwrap_or(0);
-        let entry = per_req
-            .entry(key)
-            .or_insert_with(|| (model, day, Totals::default()));
-        let t = &mut entry.2;
-        t.input = t.input.max(field("input_tokens"));
-        t.cache_creation = t.cache_creation.max(field("cache_creation_input_tokens"));
-        t.cache_read = t.cache_read.max(field("cache_read_input_tokens"));
-        t.output = t.output.max(field("output_tokens"));
-    }
-    // flush：每 requestId 跨会话去重后，其逐字段 MAX 加进 (model, day) 桶（msgs+1/请求）。
-    let mut buckets: HashMap<(String, String), Totals> = HashMap::new();
-    for (key, (model, day, tmax)) in per_req {
-        if !seen_requests.insert(key) {
-            continue;
-        }
-        let b = buckets.entry((model, day)).or_default();
-        b.input += tmax.input;
-        b.cache_creation += tmax.cache_creation;
-        b.cache_read += tmax.cache_read;
-        b.output += tmax.output;
-        b.msgs += 1;
-    }
+
+    // U7-2：口径**不在这里**了 —— 唯一实现在共享 crate `usage-core`，monitor 侧
+    // （`src-tauri/src/usage.rs`）用的是同一个函数。
+    //
+    // 此前这里与 monitor 各写一遍，本文件头注逐字写着「改口径必须同步改本地 usage.rs
+    // （双写点）」，而那个双写**没有任何护栏**：名叫
+    // `per_request_field_max_matches_local_kou_jing` 的测试只调本文件自己的实现、
+    // 断言人手写下的数字，从不碰 monitor。实测已经漂开一处（BOM）。
+    let usage = usage_core::accumulate(content.lines(), seen_requests);
+    let buckets = usage.buckets;
+    let cwd = usage.cwd;
+
     if buckets.is_empty() {
         return None;
     }

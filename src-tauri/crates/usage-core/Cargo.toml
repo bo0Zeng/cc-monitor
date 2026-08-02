@@ -1,0 +1,11 @@
+[package]
+name = "usage-core"
+version = "0.1.0"
+edition = "2021"
+description = "Claude 会话用量口径的唯一实现——monitor 与远端 daemon 共用的纯函数（无 IO、无平台依赖）。"
+
+# **依赖只有 serde_json，这是本 crate 能被两侧共用的前提。**
+# 同 branch-core 的约束：daemon 是 Linux-only 的静态 musl 二进制、且刻意不在
+# monitor 的 workspace 里；一旦这里引入 tauri / tokio / 平台相关的东西，共享就破了。
+[dependencies]
+serde_json = "1"

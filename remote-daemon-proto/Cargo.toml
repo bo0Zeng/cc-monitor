@@ -20,6 +20,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # G1：分叉的记录变换与 monitor 共用同一份（单向 path 依赖；不会把本 crate 拖进 monitor 的 workspace）。
 branch-core = { path = "../src-tauri/crates/branch-core" }
+usage-core = { path = "../src-tauri/crates/usage-core" }
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",
