@@ -230,6 +230,8 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 
 | S23 | **tmux `=name:` 精确匹配**（U8a-2b 新登记）<br>今天**三处**：TS `session-backend.ts::exactTarget` · monitor `tmux.rs::exact_target`（外包一层 `shell_quote`）· **daemon `control/launch.rs::exact_target`（argv 版，不引号化）** | 规则同源、引号化各自按传输定。daemon 那处由 `exact_target_shape_matches_the_monitor_side` 跨轨对拍（`include_str!` monitor 源码）。<br>⚠ 这条有事故背书（裸 `-t` 会打到兄弟会话上，本仓踩过 `cc-<sid8>-2`），**新增第四处必须同时加对拍** | U8a-2b ✅ · U10（停/接/send-keys 会加新的 `-t` 构造点）|
 
+| S24 | **数据面漂移记账的四个落点**（U-CC1 新登记）<br>未知记录 `type`（`parser.rs`）· 已知类型解析失败（`parser.rs`）· 未登记的会话 `kind`（`session_map.rs`）· daemon 未知能力 token（`ssh_source.rs`） | 只记账、**零行为变化**；有界（64 键 + `<overflow>`，样例按字符边界截 400 字节）；每个面必须写明**「这么降级之后会怎样」**（`DriftFace::consequence`，有计数自检）。<br>⚠ **第五个面「未登记的 `status`」刻意不加** —— 它在前端（`session-status.ts`），Rust 侧对 `status` 无任何白名单分支。加一个没有落点的面 = 「登记了但不产生信号」，比不加更糟。<br>⚠ **计数量纲逐面不同**（每条记录 / 每次扫描 / 每次握手），前端 `countUnit()` 逐面给单位并有测试钉住 | U-CC1 ✅ · TS 侧 status 面另记 |
+
 ### 跨工作区冲突协议
 
 - **`branch-anywhere/`**：Phase G 已完成、**只剩发版**，下一步是给 aterm 发 `--fork-session` 契约冻结通报。
@@ -804,3 +806,38 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   daemon argv 版，有跨轨对拍；这条有事故背书，新增第四处必须同时加对拍）。
   新开件登记：**U8a-2c**（生产切换，依赖 U8c）· **U8a-2d**（命令面注册表，卡在 U10 之前）·
   **U-CC1**（数据面漂移记账）。
+- 2026-08-02 **U-CC1 闭环：数据面漂移记账。** 四个降级点各记一笔有界的账（未知记录 `type` ·
+  已知类型解析失败 · 未登记的会话 `kind` · daemon 未知能力 token）+ 设置面板一节。
+  **零行为变化**：不改任何白名单、不新增 warn、不新增轮询，`parse_line` 输出逐字节不变。
+- 2026-08-02 **它把「CC 变了」从不可观测变成看一眼就知道 —— 而这条是实测出来的，不是设想**：
+  `INVARIANTS §18.1` 记的是 7 种未知 type / 8,774 条 / 157,385 行（2026-07-16）。
+  17 天后复测：**10 种 / 27,747 条 / 472,115 行**，新增 `started` · `result` · `fork-context-ref`。
+  **是人手工扫语料才发现的** —— 那正是问题所在。§18.1 已更新并注明「以后靠那一页看，
+  别再往散文里手抄数字」。
+- 2026-08-02 ★ **验 agent 的断言，三条里打掉一条**（血泪 7 的正例）。设计稿 B 说
+  「`subagent.rs` 对 CC 新的 `subagents/workflows/wf_*/` **今天就加载失败**」，
+  两个成因（非递归 + meta 无 `description`）**都属实**，但那条路径**今天根本走不到**：
+  展开子 agent 的入口是 `AGENT_PROFILE.agentTools = {Agent, Task}`，而产出 workflow 的那个会话里
+  是 `Agent`×135 + **`Workflow`×1**、`Task` 0 个 —— `Workflow` 不在集合里 ⇒ 不生成可展开的卡；
+  那 135 个 `Agent` 卡**135/135 全部命中**。且全机器只有 **1 个** `wf_*` 目录（agent 说 7 个）。
+  ⇒ 正确说法是「**`Workflow` 是 CC 的新工具面，我们还不支持**」（缺功能），不是缺陷。
+  **登记不做**（一个实例、无用户可见故障、且 CC 侧 meta 缺 `description`，自动定位原理上做不到）。
+  **差一点就照着它「修」了一个不存在的缺陷。**
+- 2026-08-02 **全局状态的测试必然 flaky，除非它跑在局部实例上。** 漂移账本是进程内全局的，
+  **任何跑过 `parse_line` 的测试都会往里写**。第一版单测「reset + 断言整表形状」⇒
+  6 次全量跑红 4 次；加一把跨模块串行闸**也救不了**（那些测试不知道有这把闸）。
+  正解：把 `record`/`snapshot` 拆出**显式传账本**的纯形式，单测跑局部账本；
+  接缝测试碰全局但写成**容忍污染**的形状。**连跑 5 次确认稳定，不是跑一次就宣布修好。**
+- 2026-08-02 **新增一个 tauri 命令，七族既有护栏全部咬人**（逐条处置，这是本仓最值钱的资产之一）：
+  parity ledger 三条（登记 / 命令数 123→124 / 能力数 50→51 / Local·Both 68→69）·
+  generated-boundary 三条（ts-rs 源文件 27→28 / 生成目录清单 / **`u64` 没配 `ts(type)` 会回落成
+  `bigint`**）· paste-block 白名单 · commands 三条计数 · panel-groups 叶子块 14→15。
+- 2026-08-02 **clippy「零新增」要用集合差，不是比总数**：中途多出一条
+  `reset_for_test` never used（重写测试后它真的死了），是 `git worktree` 拉 HEAD 做
+  set difference 才抓到的。删掉后新增告警 0。
+- 2026-08-02 订正 `cards/slash.ts` 一条被语料证伪的注释：原文说「`/clear`、`/help`、`/model`
+  等 CLI-only 命令不会写 JSONL」，实测 `<command-name>` 共 **56 种**，`/model` **74 条**、
+  `/context` 11、`/login` 4、`/doctor` 3、`/ide` 3、`/exit` 3 都在；只有 `/clear`、`/help` 是 0。
+  该渲染器**已完全数据驱动**，56 种命令名零改动跑通 —— 加白名单是负收益。
+- 2026-08-02 账本新增 **S24**（数据面漂移记账的四个落点）。新开件登记：
+  **U-CC1 ✅** · TS 侧「未登记 status」面另记 · `Workflow` 工具面支持（登记不做）。

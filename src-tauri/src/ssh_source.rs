@@ -779,6 +779,13 @@ async fn authenticate_via_agent(
 /// hello → 重连死循环。而只有**会先剥离该 flag** 的 daemon 才声明对应能力（见 daemon
 /// `CAPABILITIES` 注释），故「声明了 = 发该 flag 安全」——比 build_id 精确匹配更强更干净，
 /// 且直接闭合 2026-07-09「身份确认不了就全降级」事故（能力由 daemon 自报，不靠脆弱身份链）。
+/// monitor **认识**的能力 token。
+///
+/// U-CC1：它与 [`decide_stream_flags`] 是同一份事实 —— 由
+/// `known_capability_tokens_match_decide_stream_flags` 钉住。
+/// 有它才能回答「daemon 声明了一个我们不认识的能力」这个问题（漂移记账的第四个面）。
+const KNOWN_CAPABILITY_TOKENS: &[&str] = &["bg", "tail-only"];
+
 fn decide_stream_flags(capabilities: &[String], show_bg: bool) -> (bool, bool) {
     let has = |c: &str| capabilities.iter().any(|t| t == c);
     (show_bg && has("bg"), has("tail-only"))
@@ -811,6 +818,34 @@ mod stream_flag_gate_tests {
     /// F66 DoD：能力门控矩阵——空集（旧 daemon/未确认）恒 (false,false)；
     /// 声明 bg+tail-only 后 tail_only 恒开、with_bg 随 showBgSessions；
     /// 部分声明只开对应位；未知 token 忽略。
+    /// ★ U-CC1：`KNOWN_CAPABILITY_TOKENS` 与 `decide_stream_flags` 必须是同一份事实。
+    ///
+    /// 漂开的后果是**漂移记账说谎**：daemon 声明了一个我们其实认识的 token，诊断面却把它
+    /// 报成「不认识」；或者反过来，真的新 token 被当成已知、一声不吭。
+    #[test]
+    fn known_capability_tokens_match_decide_stream_flags() {
+        for t in super::KNOWN_CAPABILITY_TOKENS {
+            let one = vec![t.to_string()];
+            assert_ne!(
+                super::decide_stream_flags(&one, true),
+                (false, false),
+                "`{t}` 在名单里，但 decide_stream_flags 根本不看它 —— 两份事实漂了"
+            );
+        }
+        for junk in ["nope", "future-thing", ""] {
+            assert_eq!(
+                super::decide_stream_flags(&[junk.to_string()], true),
+                (false, false),
+                "`{junk}` 不在名单里却影响了 flag —— 名单漏登记了一个真能力"
+            );
+        }
+        assert!(
+            super::KNOWN_CAPABILITY_TOKENS.len() >= 2,
+            "名单只剩 {} 个 —— 维护坏了，本断言在空转",
+            super::KNOWN_CAPABILITY_TOKENS.len()
+        );
+    }
+
     #[test]
     fn capability_gate_matrix() {
         // 空集 = 旧 daemon / 尚未收到 hello → 全降级
@@ -2943,6 +2978,18 @@ async fn stream_loop(
                 tracing::info!(
                     "ssh_source daemon hello: v={v} build_id={build_id} host_arch={host_arch} claude_dir={claude_dir} caps={capabilities:?} cmds={commands:?}"
                 );
+                // U-CC1：记下**我们不认识的**能力 token。多半是远端 daemon 比 monitor 新
+                // （自动部署会把它拉回同一个 build，但手工装 / 关了自动部署的用户会长期不一致）。
+                // 只记账，行为一字不改：不认识的 token 本来就按保守缺省忽略。
+                for t in &capabilities {
+                    if !KNOWN_CAPABILITY_TOKENS.contains(&t.as_str()) {
+                        crate::drift_ledger::record(
+                            crate::drift_ledger::DriftFace::UnknownDaemonToken,
+                            &format!("capabilities:{t}"),
+                            Some(&format!("build_id={build_id}")),
+                        );
+                    }
+                }
                 // 标记本次连接已健康(收到 daemon hello)，供 run() 重连循环判定是否重置退避。
                 connected.store(true, Ordering::Release);
                 // issue #33：版本协商。不兼容/偏旧经 SS-F remote-health 通道醒目提示（前端

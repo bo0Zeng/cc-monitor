@@ -53,6 +53,7 @@ import type { ConnectStage } from "../generated/ConnectStage";
 import type { ConnTestResult } from "../generated/ConnTestResult";
 import type { CcmProbeResult } from "../generated/CcmProbeResult";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
+import type { DriftFaceReport } from "../generated/DriftFaceReport";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 // **panorama 一族的返回类型指向 `src/panorama/types.ts` 的手写类型，不是生成物。**
 // 不是漏了——那 10 个类型（`Overview`/`NodeView`/`SubGraph`/`Edge`/`ImpactSet`/`Symbol`/
@@ -585,6 +586,8 @@ export const commands = {
 
   /** 一次配置面审计（只读、一次性，不新增轮询）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
   config_surface_report: () => invoke<ConfigSurfaceReport>("config_surface_report"),
+  // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
+  drift_ledger_report: () => invoke<DriftFaceReport[]>("drift_ledger_report"),
 
   /** 把内嵌的 vendor `cc-acct-iso` 部署到远端。返回人话结果串 ⇒ 原始类型，无需生成物。 */
   deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>

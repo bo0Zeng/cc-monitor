@@ -249,6 +249,10 @@ mod tests {
         ("load_subagent", "subagent.load", Side::Local),
         ("get_session_tasks", "session.tasks", Side::Local),
         ("config_surface_report", "audit.config-surface", Side::Local),
+        // U-CC1：漂移记账是**进程内**的全局账本，本地行与远端行都经同一个
+        // `parse_line`（`lib.rs::batch_to_payloads`）喂进来 ⇒ 一个读口就覆盖两侧，
+        // 天然 `Both`，不需要远端对侧命令。
+        ("drift_ledger_report", "audit.drift-ledger", Side::Both),
         ("sftp_realpath", "sftp.file-panel", Side::Remote),
         ("sftp_list_dir", "sftp.file-panel", Side::Remote),
         ("sftp_stat", "sftp.file-panel", Side::Remote),
@@ -566,18 +570,20 @@ mod tests {
         // 反向自检：一条都没检到 = 签名采集坏了。**等号而不是 `>=`**（T04 审计重要 5：
         // 写 `>= N` 恰好容忍一次静默降级）。
         assert_eq!(
-            checked, 68,
-            "检到 {checked} 条 Local/Both 命令（真实应为 68 = Local 47 + Both 21；\
-             E79 的 `list_local_session_accounts` 是那个 +1）——改 LEDGER 就要来确认这个数"
+            checked, 69,
+            "检到 {checked} 条 Local/Both 命令（真实应为 69 = Local 47 + Both 22；\
+             E79 的 `list_local_session_accounts` 是 +1；U-CC1 的 `drift_ledger_report` 是 +1，\
+             它是 Both —— 本地行与远端行都经同一个 `parse_line` 喂进同一个进程内账本）\
+             ——改 LEDGER 就要来确认这个数"
         );
     }
 
     /// ★ 断言 4：表的形状钉死。改 `LEDGER` 就要来改这几个数。
     #[test]
     fn ledger_shape_is_pinned() {
-        assert_eq!(LEDGER.len(), 123, "命令总数变了"); // G6 +1；E79 +1
+        assert_eq!(LEDGER.len(), 124, "命令总数变了"); // G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）
         let sides = capability_sides();
-        assert_eq!(sides.len(), 50, "能力总数变了");
+        assert_eq!(sides.len(), 51, "能力总数变了"); // U-CC1 +1（audit.drift-ledger，Both、不制造不对称）
         let asym = asymmetric_capabilities();
         assert_eq!(asym.len(), 18, "不对称能力数变了"); // G6 -1；E79 accounts.session-accounts 补平 -1
         let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();

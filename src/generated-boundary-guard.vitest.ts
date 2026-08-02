@@ -110,7 +110,7 @@ describe("C01 边界生成物", () => {
   it("派生 ts_rs::TS 的 Rust 源文件恰好 27 个（自动发现的范围自检）", () => {
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(27); // G6 tmux.rs +1；E79 accounts.rs +1
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(28); // G6 tmux.rs +1；E79 accounts.rs +1
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -142,6 +142,9 @@ describe("C01 边界生成物", () => {
       "DataPathInfo.ts", //           C01
       "DataPathsResponse.ts", //      C01
       "DiagnosticsConfig.ts", // C04d 批4
+      "DriftEntry.ts", //             U-CC1 数据面漂移记账
+      "DriftFace.ts", //              U-CC1
+      "DriftFaceReport.ts", //        U-CC1
       "EntryMetadata.ts", // C04d 批6c
       "ForkedFrom.ts", //             C04c
       "ForwardStatus.ts", //          C04d 批3（`connCount: u64` 按累计连接数量纲论证）
@@ -373,7 +376,7 @@ describe("C01 边界生成物", () => {
     // `EntryMetadata.updated_at` · `SearchIndexStatus.built_at_ms` ·
     // `SessionHits.updated_at` · **`Hit.ts_ms`（这个是守卫指出来的**——`Hit` 是
     // `SessionHits` 的传递依赖，我没逐字段读它就派生了）。
-    expect(checked, `期望恰好 23 个大整数字段，实得 ${checked}`).toBe(23);
+    expect(checked, `期望恰好 23 个大整数字段，实得 ${checked}`).toBe(24);
   });
 
   it("`Option<大整数>` 配 ts(type) 时不许丢掉 `| null`（除非同时有 ts(optional)）", () => {
