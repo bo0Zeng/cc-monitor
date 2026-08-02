@@ -131,7 +131,12 @@ src-tauri/src/
 ├── 集成层      bind.rs       cc 集成绑定核心（ps-await/registry/SidHwndCache）
 │              profile_installer.rs  PowerShell profile 块插入/卸载
 │              auto_launch.rs  auto-launch monitor 开关
-├── 远端层      ssh_source.rs  russh 远端数据源（连接/鉴权/流帧解析 + 版本协商 + 测试连接 + Batch5-F17 Line 帧攒批 Batcher——snapshot 聚批走 chunked 路径）
+├── 远端层      ssh_source.rs  russh 远端数据源（连接/鉴权/流帧解析 + 版本协商 + 测试连接 + Batch5-F17 Line 帧攒批 Batcher——snapshot 聚批走 chunked 路径）。
+│                            **U8a-2a 起这条流是双工的**：写半边经 `inbound_client::split_and_park` 交出去，本文件生产段自己不切流、不写流（`write_half_guard` 两条零命中型护栏钉住）
+│              inbound_client.rs  U8a-2a 入方向（控制通道）客户端：同一条长连接的**写半边**发命令、按 `id` 收 `reply`/`cancelled`。
+│                            「hello 之前不许写」是类型上的事实——`ParkedWriter` 没有任何写方法，换出客户端要一帧真 Hello。
+│                            超时/重试/并发上限全在客户端（daemon 零定时器铁律不变）。今天的生产调用方是「测试连接」的控制通道往返探测；
+│                            长连接（`stream_loop`）上的客户端已登记进注册表，第一个读者是 U8a-2b 的 `launch`
 │              remote_history.rs  远端历史浏览 + 全文搜索查询（一次性 exec daemon 子命令；多台 join_all 并发 fan-out，墙钟 Σ→max）
 │              (Batch8) ssh_source 内快照拉取：SnapshotQueue+dispatcher+fetch——
 │              tail-only 下每会话独立连接 --read-session-tail 旁路拉历史（尾部优先+行号 seq 缝合）

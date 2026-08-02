@@ -85,6 +85,11 @@ tracing-appender = "0.2"
 # 供应链增量本来就小（`ts-rs` + `ts-rs-macros` + `termcolor`，后两者是 proc-macro/构建期），
 # 但「codegen 工具不进产物」是正确的依赖方向。
 ts-rs = "12.0.1"
+# U8a-2a：源码扫描型守卫的「只留生产段」剥法，与远端 daemon 共用同一份。
+# **必须是 dev-dependency** —— 守卫全在 `cfg(test)` 里，它没有理由进发布二进制。
+# 起因：monitor 侧的守卫此前各写便宜近似（`split("\n#[cfg(test)]").next()`），
+# 那个近似在 `ssh_source.rs` 上会把扫描面砍掉三分之二（详见 guard-core 头注）。
+guard-core = { path = "crates/guard-core" }
 
 [target.'cfg(windows)'.dependencies]
 # v1.7.0：cc 注入式绑定恢复 ToolHelp（claude.exe 的 parent_pid 反查 PS） +

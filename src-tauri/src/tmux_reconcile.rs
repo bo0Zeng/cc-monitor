@@ -314,13 +314,23 @@ mod source_of_truth_guard {
             me.len()
         );
         // 只看生产段：本护栏自己的文档里就写着那个名字。
-        let marker = "\n#[cfg(test)]";
-        let prod = me.split(marker).next().unwrap_or(me);
+        //
+        // U8a-2a：从 `me.split("\n#[cfg(test)]").next()` 换成共享的 `guard_core`。
+        // **动之前实测过**（血泪第 8 条）：本文件里第一个测试模块之后确实没有生产代码，
+        // 所以那个近似**今天是对的** —— 换掉不是修 bug，是拆掉一颗定时炸弹：
+        // 哪天有人在 `mod tests` 后面加一个生产函数，扫描面会**静默**把它漏掉
+        // （`ssh_source.rs` 上同一个近似会砍掉三分之二的扫描面，那边是真的踩了）。
+        let prod = guard_core::production_code(me);
+        guard_core::assert_no_test_code("tmux_reconcile.rs", &prod);
         assert!(
             prod.len() > 1000 && prod.len() < me.len(),
             "剥完生产段只剩 {} 字节（原文 {}）—— 剥法坏了",
             prod.len(),
             me.len()
+        );
+        assert!(
+            prod.contains("fn reconcile_step"),
+            "生产段里没有 `reconcile_step` —— 剥过头了，本护栏此刻扫的不是对账路径"
         );
         assert!(
             !prod.contains("list_remote_tmux"),

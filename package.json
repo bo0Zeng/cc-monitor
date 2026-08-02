@@ -49,6 +49,7 @@
     "test:ccm-rbind-title": "bash e2e/ccm-rbind-title.sh",
     "test:graylight": "bash e2e/graylight-suite.sh",
     "test:graylight-frames": "bash e2e/graylight-daemon-frames.sh",
+    "test:inbound-frames": "bash e2e/inbound-daemon-frames.sh",
     "test:restart": "bash e2e/restart-suite.sh",
     "test:restart-frames": "bash e2e/restart-daemon-frames.sh",
     "test:resume": "bash e2e/resume-suite.sh",

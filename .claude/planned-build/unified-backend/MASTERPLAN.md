@@ -114,7 +114,7 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 
 | # | v1/v2 写的 | 实际 | 影响 |
 |---|---|---|---|
-| 1 | 「五套 `ccm-*` e2e **无最小断言数地板**」，列为必须最先做的 U0 | **全都有**，而且是运行期 PASS 数地板 + fail-closed（`e2e/assert-pass-floor.sh`），CI 还有一道逐对校验的元门禁（`ci.yml:310-326`，15 套）。这是 `gate-integrity` 早已收官的 G-A/G-C | **第一梯队本来是空的**。病根：把摸底 C 转述的陈旧 BACKLOG 条目（E11）当现状，而我这轮开头才读过写着「✅ 全部完成」的工作区索引 |
+| 1 | 「五套 `ccm-*` e2e **无最小断言数地板**」，列为必须最先做的 U0 | **全都有**，而且是运行期 PASS 数地板 + fail-closed（`e2e/assert-pass-floor.sh`），CI 还有一道逐对校验的元门禁（`ci.yml` 的 G-A 覆盖面地板，**16 套**（U8a-2a 起，原 15；行号随改动漂移，按步骤名找））。这是 `gate-integrity` 早已收官的 G-A/G-C | **第一梯队本来是空的**。病根：把摸底 C 转述的陈旧 BACKLOG 条目（E11）当现状，而我这轮开头才读过写着「✅ 全部完成」的工作区索引 |
 | 2 | 「`ccm-rbind-title` 实测 6，CI 写 8，对不上」 | **实测 8**（子 agent 实跑 `合计 PASS=8`；另一路逐行推演同为 8）。「6」= `grep -c '\bok\b'` 的伪计数（把 helper 定义行算一次，把 4 元循环算一次） | 按 6 去「核清」= **把地板松 2 条** |
 | 3 | U2 机检「`platform/` 之外出现平台 cfg 就红」 | **安慰剂**：`pidfd_open` 根本没有 cfg，11 个错一个 cfg 都不涉及 | 真判据只有跨 target 编译，且必须 `--all-targets` |
 | 4 | S11「ccm 掏空后 `ccm_cli_has_required_elements` 空转变绿」 | **反了**：它已有 `require(10)` 计数自检（`structural_scan::require` 对 `min_checked==0` 硬失败）+ `pin_definition`，掏空后**四路一起红** | 真风险是**重写时降强度**，U1 的 DoD 要改写 |
@@ -203,16 +203,16 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 
 | # | 共享面 | 最终形态 | 功能 |
 |---|---|---|---|
-| S1 | **护栏的扫描面**<br>**U-1 已交付**：`no_timer_guard` 递归 + **字节地板与数量相等双判据**（单靠字节挡不住单文件被剥空）；`readonly_guard` 的**两条过剥（fail-open）已修**——锚点钉行首 + 无花括号体声明不吃后文，扫描面 217_853→221_928；欠剥方向新增机器判据 `no_test_code_leaks_into_any_production_section`。**遍历未收敛**（daemon 5 份 + monitor 1 份），留 U1a | 剩余：`readonly_guard` 钉 `observe/`；`readonly_guard` 钉 `observe/`；`control/` 窄写护栏（三条子判据原样迁）；`platform/` 与顶层谁管**必须写明**（今天改钉 observe 后是真空） | U-1 · U1a · U1b |
-| S2 | **守卫的测试段 marker**<br>**U-1 已交付**：`guard_support.rs`（`#[cfg(test)]`-only，`pub(crate)`）收敛了 3 个守卫的剥法 + `assert_no_test_code` 自检。⚠ **`readonly_guard` 仍是第二套且不能 naive 换**——它能剥 `#[cfg(test)]` **自由函数**（`history_query.rs:232/309`，两者对该文件差 1246 字节），换过去会让它变弱；要收敛得做**并集剥法**，留 U1a | 原病灶：三个守卫共用的 `"\n#[cfg(test)]\nmod tests"` 对 `main.rs`（`mod stream_flag_tests`）不匹配 ⇒ 抽成一个共享 helper + **能真正检出「没剥掉测试段」的自检**（现有的 `main_prod.len() < main_raw.len()` 光靠剥注释就满足） | U-1 |
+| S1 | **护栏的扫描面**<br>**U-1 已交付**：`no_timer_guard` 递归 + **字节地板与数量相等双判据**（单靠字节挡不住单文件被剥空）；`readonly_guard` 的**两条过剥（fail-open）已修**——锚点钉行首 + 无花括号体声明不吃后文，扫描面 217_853→221_928；欠剥方向新增机器判据 `no_test_code_leaks_into_any_production_section`。**遍历部分收敛**（U8a-2a：strips-clean 那份抽进 `guard_core::assert_tree_strips_clean`，两侧共用，`min_files` 地板同时棘到实测 34/52）；daemon 侧仍有 6 处 `read_dir` + monitor `parity_ledger` 1 处，留 U1a | 剩余：`readonly_guard` 钉 `observe/`；`readonly_guard` 钉 `observe/`；`control/` 窄写护栏（三条子判据原样迁）；`platform/` 与顶层谁管**必须写明**（今天改钉 observe 后是真空） | U-1 · U1a · U1b |
+| S2 | **守卫的测试段 marker**<br>**U-1 已交付**：`guard_support.rs`（`#[cfg(test)]`-only，`pub(crate)`）收敛了 3 个守卫的剥法 + `assert_no_test_code` 自检。<br>**U8a-2a 再搬一次**：剥法本体进**共享 crate `guard-core`**（两侧 `[dev-dependencies]`），`guard_support.rs` 降为再导出。动因是 monitor 够不着 daemon 的 `cfg(test)` 模块，于是那边各写便宜近似 —— 在 `ssh_source.rs` 上会把扫描面砍掉三分之二。顺带把锚点放宽到**复合 cfg**（`#[cfg(all(test, …))]`，`session_map.rs::linux_liveness` 一直漏剥）。⚠ **`readonly_guard` 仍是第二套且不能 naive 换**——它能剥 `#[cfg(test)]` **自由函数**（`history_query.rs:232/309`，两者对该文件差 1246 字节），换过去会让它变弱；要收敛得做**并集剥法**，留 U1a | 原病灶：三个守卫共用的 `"\n#[cfg(test)]\nmod tests"` 对 `main.rs`（`mod stream_flag_tests`）不匹配 ⇒ 抽成一个共享 helper + **能真正检出「没剥掉测试段」的自检**（现有的 `main_prod.len() < main_raw.len()` 光靠剥注释就满足） | U-1 |
 | S3 | **平台原语**<br>**U2 交付的是「目标归属地」+ 把 11/12 个 Windows 编译错集中到 `platform/pidwatch.rs`，**不是收口**。已收：`pidfd_open`/`watch_pid_until_exit`（切开了 observe 回边）· `/proc` 一族 9 项 · `path_key`（单列 `platform/paths.rs`，U4 加 Windows 分支时零二次搬）· `proc_claude_config_dir`（Phase D 审计要求补收）。<br>⚠ **生产段还有 4 处在外**：`tmux_hook.rs` 的 `libc::kill`（§1.1 已裁定 tmux_hook 归 control ⇒ **U3 连它一起处理**）· `main.rs` 三处（组装根，可辩护为留，**但不能因此说「唯一」**）。<br>⚠ **U4 伏笔**：`is_same_live_process` 那张判定表要上提到 `platform/liveness.rs`（Windows 判活复用它），别留在按 `/proc` 命名的模块里 | U2 · U3 · U4 |
 | S4 | **`observe/ → control/` 的窄接口**<br>**U3 已交付**：`layering_guard.rs` 两条机检 —— 反向零容忍 + 正向符号集**恰好等于**登记表。今天登记表**只有一条**：`crate::control::tmux_hook::install_hooks`。<br>摸底时真有一条反向边（`fork_write` → `accounts_query::read_regular_capped`），**没开例外** —— 那个函数不是 observe 的域逻辑，搬进 `common/fs.rs` 后边自然消失。铁律 6 的正例。<br>⚠ 加登记项前先答：**为什么这件事非得由观测侧发起、control 能不能自己做**（`install_hooks` 的答案：不能 —— 触发时机是「tmux server 起来了」，那是 socket inotify 观测到的事实，control 侧没这个信号，硬要它自己发现只能靠轮询，与 §41 正面冲突） | U3 ✅ |
 | S5 | **`common/`**<br>**U2 已交付**：`projects_root`（**5 处不是 4 处** —— 第五处是 `watcher.rs::watch_loop` 里内联的，`grep fn` 找不到）· `mtime_ms`（2 份）。门槛写在 `common/mod.rs`：≥2 **层**用 · **平台无关** · 无域知识。<br>⚠ **「时间换算 · quote」这两项要划掉**：Phase D 审计逐条核过，daemon crate 内**没有可合的逐字副本** —— 时间换算三处语义/单位各不相同（`file_mtime_epoch` 单位是**秒**不是毫秒），quote 在 daemon 内只有一份、多份在 monitor 侧**跨 crate**、`common/` 收不了。<br>⚠ **U3 必须复查**：`mtime_ms` 的两个调用点同属 observe，「≥2 层」按层口径**今天不成立**；`observe/` 一建出来就要重判 | U2 · U3 |
-| S6 | **wire 协议 + `IPC-PROTOCOL.md`** | 双向；**文档先修再冻结**（该文件 7 处在说谎，见 §3-U6）；wire 字段名双向 `include_str!` 对拍 | U6a / U6b |
+| S6 | **wire 协议 + `IPC-PROTOCOL.md`**<br>**U8a-2a**：monitor 侧补齐 `hello.commands` 解析（此前整个字段被丢弃）+ `Reply`/`Cancelled` 从「认识但不消费」改成**真消费**；文档入方向节改写并订正 4 处漂移（漏列 `commands` 的线上字节序 · 「写半边从来没人用过」· `biased` 少说了有界 · 超时只覆盖半段） | 双向；**文档先修再冻结**（该文件 7 处在说谎，见 §3-U6）；wire 字段名双向 `include_str!` 对拍 | U6a / U6b / U8a-2a |
 | S6a | **跨进程握手时序约束**（U6a 新登记）<br>**U6a 已交付**：`cc.ps1.tpl`「先设标题、后写 await 文件」这个顺序，同时被写在**四处**：PS 模板本身 · `bind.rs` 模块头 · `doc/IPC-PROTOCOL.md` 时序图 · `cc_integration.ts` 给用户看的超时文案。U6a 之前**后三处全是旧的**（旧顺序 + 800ms + 100ms + 漏画 ≤600ms 重试）—— 文档在教人复刻 v2.21 那个「每个新 shell 首次 `cc` 固定烧满超时」。 | 四处保持一致，由 `profile_installer.rs::handshake_doc_guard` 三条护栏钉住（顺序 + 模板侧 deadline/轮询步长 + monitor 侧 debouncer/重试）。**不放 `bind.rs`**：它几乎整个 `#[cfg(windows)]`，护栏放那儿在 Linux CI 上一条都不跑 | U6a ✅ |
-| S16 | **入方向命令面**（U6b-1 新登记）<br>`inbound::COMMANDS` ↔ `dispatch` 分派臂 ↔ `hello.commands` ↔ `IPC-PROTOCOL.md` 入方向小节，**四处双写** | 前三处由 `hello_commands_match_the_dispatch_table` 钉成**同一份真相源**（声明了却不接 ⇒ 客户端石沉大海；接了却不声明 ⇒ 客户端不知道能用）；第四处由 U6a 的字段对拍逼进文档 | U6b-1 ✅ · U6b-3 加第一条真业务命令 |
-| S17 | **用量口径**（U7-2 新登记）<br>**U7-2 已交付**：抽进共享 crate `usage-core`，两侧各自 `path` 依赖。此前是无护栏的口径双写，且**已漂开两处**（BOM · 有 requestId 无 uuid） | 唯一实现在 crate 里；判据是「改内核一处 ⇒ 三侧同时红」，不是任何一侧的单侧测试 | U7-2 ✅ |
-| S18 | **账号契约 + 名字安全判据**（U7-3 新登记）<br>**U7-3 已交付**：四条常量 + `is_deceptive_char`（并集）进 `acct-core`；两条守卫**退役**，因为漂移已不可表示 | 唯一定义在 crate 里。**`is_safe_config_dir` / `norm_dir` 刻意不合** —— 那是平台特化不是漂移（本机要认 Windows 盘符且必须允许 `\`） | U7-3 ✅ |
+| S16 | **入方向命令面**（U6b-1 新登记）<br>`inbound::COMMANDS` ↔ `dispatch` 分派臂 ↔ `hello.commands` ↔ `IPC-PROTOCOL.md` 入方向小节 ↔ **`e2e/inbound-daemon-frames.sh` 的命令名清单**，**五处** | 前三处由 `hello_commands_match_the_dispatch_table` 钉成**同一份真相源**（声明了却不接 ⇒ 客户端石沉大海；接了却不声明 ⇒ 客户端不知道能用）；第四处由 U6a 的字段对拍逼进文档；第五处由 U8a-2a 的 `the_e2e_command_list_matches_the_daemon_command_table` 钉住。<br>monitor 侧的 `InboundClient::accepts` **不是第六份副本** —— 它直接吃 `hello.commands`，无独立清单 | U6b-1 ✅ · U6b-3 ✅ · U8a-2a ✅ |
+| S17 | **用量口径**（U7-2 新登记）<br>**U7-2 已交付**：抽进共享 crate `usage-core`，两侧各自 `path` 依赖。此前是无护栏的口径双写，且**已漂开两处**（BOM · 有 requestId 无 uuid） | 唯一实现在 crate 里；判据是「改内核一处 ⇒ 三侧同时红」，不是任何一侧的单侧测试 | U7-2 ✅ ·（U8a-2a 补账：当初 **CI 三样一条都没补**，test/fmt/clippy 全缺 ⇒ 那 8 条测试在 CI 里等于不存在）|
+| S18 | **账号契约 + 名字安全判据**（U7-3 新登记）<br>**U7-3 已交付**：四条常量 + `is_deceptive_char`（并集）进 `acct-core`；两条守卫**退役**，因为漂移已不可表示 | 唯一定义在 crate 里。**`is_safe_config_dir` / `norm_dir` 刻意不合** —— 那是平台特化不是漂移（本机要认 Windows 盘符且必须允许 `\`） | U7-3 ✅ ·（U8a-2a 补账：同 S17，4 条测试此前不进 CI）|
 | S7 | **daemon argv 面** | 三类；`split_stream_flags` + `every_capability_token_is_strippable` 同步扩。⚠ **起点比以为的更糟**：现有的二分表本身就漏了 5 条子命令（`--tmux-notify` / `--resolve` / `--fork-session` / `--account-trust-zero` / `--read-session-from-offset`），其中 `--account-trust-zero` 漏登记**出过 v3.4.0 事故** | U6 |
 | S8 | **`BUILD_ID` 单源链条**<br>**U-1 已交付**：① `ssh_source.rs::embedded_build_id_single_source_wired` 断言 ≠ `"unknown"`；② `build.rs` 三条硬 panic（抠不到源码 `BUILD_ID` / 有二进制但缺清单 / 清单与源码不符）；③ 半 bump **真修掉**（两个 arch 从 p1v 源码现编，`rust-lld` 零安装）。<br>⚠ **措辞订正**：原写「缺文件从 warn 改 fail」不准 —— 三条 panic 都以「`embedded-daemons/` 里真有二进制」为前提；**整个目录缺失时仍是优雅降级**（那是 dev/CI 常态），兜那一档的是①不是 `build.rs`。发版链两头都够得着（`release.yml:56-58` 写清单、`:113-118` 再对拍） | U-1 · U13 |
 | S9 | **读面七组 → 四组**（§0.1 三类） | monitor 侧退役 | U7a–U7e |
@@ -222,7 +222,11 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 | S13 | **`parity_ledger`**<br>**U-1 已交付**：`command_signatures()` 改递归 + `files.sort()`（不排序时「首个胜」会让同名命令随文件系统顺序漂）。实测 `adapter/` 下两文件的 `#[tauri::command]` 命中数都是 **0** ⇒ 递归当下是**纯预防性**，`LEDGER.len()==123` 与 `checked==68` 都没变 | 本区天然验收面。⚠ 它只钉命令**这一层**，别把「数字没动」读成「读面没搬成」 | U-1 · U7 |
 | S14 | **`--resolve`** | 吸收进 backend 的计划面；线上形状逐字不变（aterm 契约 2026-07-18 冻结）；`sessionName` 漂移随之消失 | U6 · U8 |
 | S15 | **本机分发链** | Tauri sidecar，**与 `embed_daemons` 完全另一套**；⚠ `sftp.rs:1262` 的 `assert_eq!(…, b"\x7fELF")` 与 `:1252` 的 arch 表会被 Windows PE 打红 | U5 |
-| S16 | **`npm test` 套件链 + tsx 套件登记表**（U0 新增）<br>**U0 已交付**：`src/node-suite-registry-guard.vitest.ts` 六条判据（条数 / 全仓总量地板 / 集合 / 路径 / 链路+`&&` / 失败收尾）。⚠ **U8c 退役两个 TS 渲染器时必须同步改四处**：`NODE_SUITES` · `TOTAL_FLOOR` · `package.json` 的 `test:*` 定义 · `npm test` 链。被碰到的是 3 个套件：`test:launch-render-cli`(26, **整删**) · `test:launch-dimensions`(28, **整删**) · `test:remote-launch`(40, **改不删**)。只删一半会当场红 —— 这正是本条要的效果 | U0 · U8c |
+| S19 | **`npm test` 套件链 + tsx 套件登记表**（U0 新增；⚠ **原编号 S16 与「入方向命令面」撞号**，U8a-2a 改号 —— 那一轮恰好同时碰了这两条，撞号让「本轮碰了哪几条」无法唯一指称）<br>**U0 已交付**：`src/node-suite-registry-guard.vitest.ts` 六条判据（条数 / 全仓总量地板 / 集合 / 路径 / 链路+`&&` / 失败收尾）。⚠ **U8c 退役两个 TS 渲染器时必须同步改四处**：`NODE_SUITES` · `TOTAL_FLOOR` · `package.json` 的 `test:*` 定义 · `npm test` 链。被碰到的是 3 个套件：`test:launch-render-cli`(26, **整删**) · `test:launch-dimensions`(28, **整删**) · `test:remote-launch`(40, **改不删**)。只删一半会当场红 —— 这正是本条要的效果 | U0 · U8c · U8a-2a（新增 `inbound-frames` 套件：`package.json` `test:inbound-frames` · `ci.yml` 地板 15 · G-A 覆盖面 15→16 三处 · shellcheck 覆盖面 39→40） |
+
+| S20 | **共享 crate 家族的约定**（U8a-2a 新登记）<br>今天四个：`branch-core` / `usage-core` / `acct-core` / `guard-core` | 零（或仅 `serde_json`）依赖 · 平台无关 · 单向 path dep（不制造 workspace 成员关系）· **新增一个就要在 `ci.yml` 补 test/fmt/clippy 三样**（那条纪律 `ci.yml` 里早写着，U7-2/U7-3 两次没跟，U8a-2a 补齐）。<br>⚠ `guard-core` 是唯一**带 fs 遍历 + panic 语义**的一个，也是唯一**两侧都只作 dev-dependency**的（守卫全在 `cfg(test)`，不进发布二进制）—— 头注里已写明这条例外，别照抄错家族不变量 | U8a-2a ✅ · 新增 crate 时 |
+| S21 | **monitor 侧那条长连接的写半边**（U8a-2a 新登记）<br>今天只许经 `inbound_client::split_and_park` 出手；`ssh_source` 生产段**既不切流也不写流** | 由 `write_half_guard` 两条**零命中型**护栏钉住（不许出现 `tokio::io::split(` + 不许出现任何写方法/UFCS），外加一条「共享剥法 vs 便宜近似」的扫描面自检。<br>⚠ 判据形状换过一次：原来是「每处 split 后 240 字符内要有 park」，D 审计用**尾随注释**和**split 后先偷写一句**两种普通写法绕过 ⇒ 改成把切与停收成一个函数、判据改零命中。<br>⚠ **最终形态**：`inbound_client` 落 `control/`、帧类型单拎 wire 模块之后，这条护栏要跟着模块边界重钉（同 S1 的形状），归 U1b | U8a-2a ✅ · U1b |
+| S22 | **`inbound_client` → `ssh_source::InboundFrame` 这条反向边**（U8a-2a 新登记）<br>`§1.1-2` 裁定「允许 observe → control 的窄接口，**反向不许**」，daemon 侧为此立了 `layering_guard`；monitor 侧**没有**，所以这条边今天不会红 | 最终形态：帧类型（`InboundFrame` + `parse_frame` + `KNOWN_FRAME_KINDS`）单拎 `wire_frames.rs`，得到 `wire_frames ← inbound_client ← ssh_source`，无环、与 daemon 对称。**见证强度一字不变**（`DaemonHello` 的强度来自私有字段 + 唯一构造函数，与帧住哪无关）。<br>⚠ **刻意不在 U8a-2a 顺手做**：`parse_frame` 一搬，`emits_parity::known_kinds_matches_parse_frame` 与 `write_half_guard` 的锚点都要改文件面 —— 与 monitor 侧 layering guard 一起落 | U1b |
 
 ### 跨工作区冲突协议
 
@@ -714,7 +718,8 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
 - 2026-08-02 **U8a-2 实现半的摸底把顺序改了：先接发送端，再写命令。**
   实测 `ssh_source.rs` 写半边的**唯一**用法是 `shutdown()`（关写端让 daemon 见 EOF），
   **零数据字节**；全仓**没有任何地方在构造入方向请求**。
-  ⇒ **U6b-1/2/3 建起来的入方向通道，今天在生产里不可达。** 骨架先行是刻意的，
+  ⇒ **U6b-1/2/3 建起来的入方向通道，今天在生产里不可达。**（**U8a-2a 已闭合** —— monitor 侧发送端接上，
+  「测试连接」的控制通道往返探测是第一个生产调用方，另有 15 条真进程 e2e。）骨架先行是刻意的，
   但它决定顺序：现在加 `launch`，是在一条没人能调的通道上再加一条没人能调的命令。
   ⇒ U8a-2 拆成 **2a（接发送端）+ 2b（launch 本体）**。2a 还能让已写好的
   `ping`/`cancel`/`resolve` 第一次真正跑起来 —— 现成的验收载体。
@@ -728,3 +733,38 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   否则下一个人会以为那层是安全边界而放松上游。
   顺带：`launch.rs` 的「禁双引号」是 **PowerShell 专属**（防 wt.exe 传参畸变），
   改走入方向通道时**不成立也不该照抄**。
+- 2026-08-02 **U8a-2a 闭环：monitor 侧入方向发送端接上，那条通道在生产里可达了。**
+  形状 = `split_and_park` → `ParkedWriter`（无写方法）→ 拿一帧真 Hello 换 `DaemonHello` 见证
+  → `InboundClient`。超时/重试/并发上限全在客户端（daemon 零定时器铁律不动）。
+  真进程端到端 `e2e/inbound-daemon-frames.sh` 15 条进 CI，喂给真 daemon 的 ping 行
+  **逐字节由 monitor 编码器钉住**。
+- 2026-08-02 **D 审计打掉的三条「删掉功能本身也全绿」**（这一轮最要紧的收获）：
+  ① hello 臂不 `into_client`/不 `register`；② `reply` 臂不路由；③ 控制通道探测直接返回成功。
+  根因是**单测走自造客户端、e2e 走真 daemon，两者之间的接缝没有任何判据**。
+  处置：把接缝抽成 `attach_inbound_client` / `route_inbound_frame` 并立 `seam_tests`。
+  ⇒ 一般化的教训：**「两端各自有测试」不等于「接起来是对的」，接缝要单独有判据。**
+- 2026-08-02 **判据被绕过 ⇒ 让违规不可表示（本区第二次用这一招）**：
+  「每处 `tokio::io::split` 后面要有 `park`」被**尾随注释**和**split 后先偷写一句**两种
+  普通写法绕过（后者就是一次 Hello 之前的写）。改成把切与停收成一个函数、`park` 本身
+  `#[cfg(test)]` gate 掉 ⇒ 生产段里**不存在**可写的裸 `WriteHalf`，判据随之变成零命中型。
+- 2026-08-02 **`call()` 的超时原先不覆盖写入路径**（D 审计判为阻塞）。死锁链每一环都是本仓
+  自己写下的事实：monitor 读侧停 → daemon stdout 反压 → 应答通道满 → daemon 停读 stdin →
+  `write_all` 永久 pending → 写队列填满 → `call()` 无视 timeout 永久挂起。
+  ⇒ 两段共用一个 deadline。**教训：契约文档里写下的保证要逐条问「它覆盖到哪一步为止」。**
+- 2026-08-02 **「超时不摘登记」这条设计在背压路径上不成立**：daemon 侧 cancel 的两条应答都是
+  `try_send`，通道满时静默丢弃 ⇒ 那条 id 永远等不到帧，每次超时吃 2 格、128 次封死且不自愈。
+  ⇒ `register` 满之前先用 `oneshot::Sender::is_closed()` 回收「调用方已走」的登记。
+- 2026-08-02 **铁律 4 我自己犯了一次**：计划「不做什么」写着「第一个生产调用方是 2b 的
+  `launch`」，实现却给「测试连接」加了真发 ping 的探测。应当**先改计划再做**。
+  裁决是保留（它是唯一在真 SSH 上跑过客户端的路径）+ 订正计划，并在 feature 文件里留档。
+- 2026-08-02 **护栏公共机件再收敛一步**：剥法从 daemon 私有的 `guard_support` 搬进共享 crate
+  `guard-core`（两侧 dev-dependency）。动因：monitor 够不着它，那边的守卫各写便宜近似
+  （`split("\n#[cfg(test)]").next()`），在 `ssh_source.rs` 上会把扫描面砍掉三分之二。
+  顺带把锚点放宽到复合 cfg —— `session_map.rs::linux_liveness` 的 5 个 `#[test]`
+  一直漏剥，是新加的 monitor 全树自检第一次跑就逮出来的。
+- 2026-08-02 **补账：`usage-core`（U7-2）与 `acct-core`（U7-3）此前一条 CI 步骤都没有** ——
+  test/fmt/clippy 三样全缺，12 条测试在 CI 里等于不存在，而 `ci.yml` 里就写着那条纪律。
+  **它们恰恰是「改内核一处 ⇒ 三侧同时红」那条验收标准的载体，漏跑等于把标准关掉。**
+- 2026-08-02 账本：新增 **S20**（共享 crate 家族约定）· **S21**（monitor 侧写半边）·
+  **S22**（`inbound_client → ssh_source` 反向边，归 U1b）；修掉 **S16 撞号**
+  （入方向命令面 / `npm test` 套件链两条同号，而本轮恰好同时碰了它们 ⇒ 后者改 S19）。

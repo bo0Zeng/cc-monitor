@@ -42,3 +42,8 @@ notify-debouncer-mini = "0.4"
 walkdir = "2.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+# U8a-2a：源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
+# 故是 dev-dependency —— 不进发布二进制）。
+guard-core = { path = "../src-tauri/crates/guard-core" }

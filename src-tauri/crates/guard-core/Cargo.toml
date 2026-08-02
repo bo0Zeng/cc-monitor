@@ -1,0 +1,9 @@
+[package]
+name = "guard-core"
+version = "0.1.0"
+edition = "2021"
+description = "源码扫描型守卫共用的「只留生产段」剥法——monitor 与远端 daemon 共用同一份，不许各写各的便宜近似。"
+
+# **零依赖**。同 branch-core / usage-core / acct-core 的约束：daemon 是 Linux-only 的静态
+# musl 二进制、且刻意不在 monitor 的 workspace 里；一旦引入平台相关的东西，共享就破了。
+[dependencies]

@@ -90,6 +90,28 @@ jobs:
       - name: cargo clippy (shared branch-core)
         run: cargo clippy --manifest-path crates/branch-core/Cargo.toml --all-targets
 
+      # ★ U8a-2a 补账：`usage-core`（U7-2）与 `acct-core`（U7-3）**当时一条 CI 步骤都没补** ——
+      # 它们的 8 + 4 条测试在 CI 里等于不存在，而上面那段注释逐字写着「新增 path 依赖 crate
+      # 时三样都要补」。是本轮加 `guard-core` 时照着这段注释走才发现的。
+      # 这两个 crate 恰恰是「改内核一处 ⇒ 三侧同时红」那条验收标准的载体，漏跑等于把它关掉。
+      - name: cargo test (shared usage-core / acct-core / guard-core)
+        run: |
+          cargo test -p usage-core
+          cargo test -p acct-core
+          cargo test -p guard-core
+
+      - name: cargo fmt --check (shared usage-core / acct-core / guard-core)
+        run: |
+          cargo fmt --check --manifest-path crates/usage-core/Cargo.toml
+          cargo fmt --check --manifest-path crates/acct-core/Cargo.toml
+          cargo fmt --check --manifest-path crates/guard-core/Cargo.toml
+
+      - name: cargo clippy (shared usage-core / acct-core / guard-core)
+        run: |
+          cargo clippy --manifest-path crates/usage-core/Cargo.toml --all-targets
+          cargo clippy --manifest-path crates/acct-core/Cargo.toml --all-targets
+          cargo clippy --manifest-path crates/guard-core/Cargo.toml --all-targets
+
   frontend:
     name: Frontend typecheck + build
     runs-on: windows-latest
@@ -288,7 +310,9 @@ jobs:
           # `daemon-fork-session.sh` 与 `ccm-rbind-title.sh`，地板没跟 ⇒ 那段时间可以少扫
           # 2 个文件而不报警）。**地板的意义就是灵敏度**：写下之后不回来棘，等于慢慢把它交出去
           # （同 E81 的覆盖率棘轮）。棘的时候把**实测构成**一起写下，别只改数字。
-          [ "$N" -ge 39 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 39）"; exit 1; }
+          # **2026-08-02 U8a-2a 棘到 40** —— 实测 40（e2e 22：新增 `inbound-daemon-frames.sh`；
+          # cc-bus 13 + ccm 1 + vendored 4 未变）。
+          [ "$N" -ge 40 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 40）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
@@ -324,28 +348,29 @@ jobs:
       # 在本地**永远看不出来**（本地跑的是盘上那份），只有干净 checkout 才炸。已踩过两次：
       # R00 的 `shared/ccm`（CI 上 Permission denied，e2e 连红三轮）与 B01 的 13 个 cc-bus 脚本。
       # 直接 bash 调用：本 job 没有 setup-node 步骤，不该为一条纯 shell 检查引入 npm 依赖。
-      # G-A **覆盖面地板**：15 套真机套件必须**每一套**都经 `assert-pass-floor.sh` 跑。
+      # G-A **覆盖面地板**：16 套真机套件必须**每一套**都经 `assert-pass-floor.sh` 跑。
       # （U0 2026-08-01 订正：本行与下面 `:313` 原写「8」，是 E82 订正下方散文时漏跟的两处，
-      #  与紧邻的步骤名「15 套」和 `-ge 15` 自相矛盾。真值以本步骤的 grep 计数为准。）
+      #  与紧邻的步骤名和 `-ge N` 自相矛盾。真值以本步骤的 grep 计数为准。
+      #  U8a-2a 2026-08-02：新增 inbound-frames ⇒ 15 → 16，三处一起改。）
       # 不加这条的失效模式是：有人把某一步改回裸 `npm run test:X`（或整步删掉），
       # 那套的断言数就再没人管了，而 CI **照样全绿** —— 与断言数缩水同一类病，只是换了一层。
-      - name: G-A/G-C 覆盖面地板（15 套真机套件都必须带断言数地板）
+      - name: G-A/G-C 覆盖面地板（16 套真机套件都必须带断言数地板）
         run: |
           set -euo pipefail
           # 只数**真正的调用行**（`run: bash e2e/…`）——本步骤自己那几行 grep 也含这个脚本名，
           # 用宽模式会把它们算进来（实测会数成比真值更大的数，那个数就成了假的）。
           N=$(grep -c 'run: bash e2e/assert-pass-floor\.sh' .github/workflows/ci.yml || true)
           echo "带地板的 e2e 步骤数 = ${N:-0}"
-          [ "${N:-0}" -ge 15 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 15）——有套件被改回裸 npm run 或被删掉"; exit 1; }
+          [ "${N:-0}" -ge 16 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 16）——有套件被改回裸 npm run 或被删掉"; exit 1; }
           # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
           for pair in "tmux-target 26" "ccm-cli 44" "ccm-print-parity 12" "ccm-acceptance 19" \
                       "ccm-pretrust 13" "cc-spawn-uplift 21" "tmux-guarded 14" "usage-probe 9" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
-                      "ccm-rbind-title 8" "daemon-fork 10"; do
+                      "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 15"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
               || { echo "::error::找不到调用行 'assert-pass-floor.sh $pair' —— 套件或地板被改了"; exit 1; }
           done
-          echo "15 套逐个对上（套件名 + 地板值）"
+          echo "16 套逐个对上（套件名 + 地板值）"
 
       - name: exec-bit guard (shared/** shebang files must be 100755 in git)
         run: bash e2e/exec-bit-guard.sh
@@ -476,6 +501,11 @@ jobs:
       # 本 job 已有 Rust 工具链，而 daemon crate 比它已经在编的 src-tauri 轻得多。
       - name: build debug daemon（供 daemon-frames 三套）
         run: cargo build --manifest-path remote-daemon-proto/Cargo.toml
+
+      # U8a-2a：入方向（控制通道）的真进程端到端。此前那条通道**从没有真进程验证过**——
+      # daemon 侧全是单测夹具，monitor 侧一个字节都没发过。
+      - name: 入方向 daemon 帧（U8a-2a）
+        run: bash e2e/assert-pass-floor.sh inbound-frames 15
 
       - name: 灰灯 daemon 帧（F-E1）
         run: bash e2e/assert-pass-floor.sh graylight-frames 12

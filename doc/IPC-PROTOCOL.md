@@ -383,7 +383,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 
 | `kind` | 字段 | 说明 |
 |---|---|---|
-| `hello` | `v, build_id, host_arch, claude_dir, capabilities, codex_dir?, kinds?, emits?, commands?`<br>⚠ **本表的列举顺序不是线上字节序**。线上按 `wire.rs` 声明序：`claude_dir, codex_dir, kinds, capabilities, emits`。`dg3_codex_fields_serialize_when_present` 用**精确字节串**钉住它（aterm 拿来做 fixture 真值）—— 要对字节就以 `wire.rs` 为准 | 连接建立时**首帧**发一次（握手）。**三轴正交（§26/§28）**：`v`（proto 版本，只留破坏性变更、F66 **绝不 bump**，不符=不兼容）；`build_id`（**身份**，单源自 daemon 源码/编译期 env，管 staleness/重部署提示，不符=偏旧、经 `remote-health` 提示但不 hard-disconnect）；**`capabilities`（能力 token 集，加法式）——monitor 按声明发流模式 flag**（F66/#58③，`decide_stream_flags`；缺该字段=空集=最保守、不发任何 flag，§27）。**绝不用身份（build_id）匹配代理能力声明**（那正是 2026-07-09 事故根因）。**DG3（#2D，additive）`codex_dir`**：对称 `claude_dir` 的 Codex 记录根（`<codex_dir>/sessions`）；Codex 未启用 / 旧 daemon 省略。**DG3 `kinds`**：本 daemon 服务的 agent kind 集（如 `["claude","codex"]`）——消费侧**显式判支持**，而不是从「`codex_dir` 存在」反推；空/缺 = 只 claude。**daemon-08（additive）`emits`**：本 daemon **会发射的帧 kind 集**（snake_case），供消费侧**门控消费**（含该 kind → 依赖它；不含 → 回退 β/watchdog）。⚠ `emits` 与 `capabilities` **正交、别混**：`capabilities` 是**流 flag 的可剥离能力**（受 §26 死循环护栏 + `every_capability_token_is_strippable` 强制每 token 有对应 flag），`emits` 是**纯发射声明、无对应 flag、不受 §26**。**U6b-2（additive）`commands`**：本 daemon **接受的入方向命令集**（见下「入方向」小节）。能力协商此前只有出方向那一半（`capabilities` 说「我认识哪些流 flag」）；客户端还得知道**发什么过去有人接**，否则只能试错。**空/缺 = 这个 daemon 不读 stdin**（U6b-1 之前的所有版本），别发命令 |
+| `hello` | `v, build_id, host_arch, claude_dir, capabilities, codex_dir?, kinds?, emits?, commands?`<br>⚠ **本表的列举顺序不是线上字节序**。线上按 `wire.rs` 声明序：`v, build_id, host_arch, claude_dir, codex_dir, kinds, capabilities, emits, commands`。`dg3_codex_fields_serialize_when_present` 用**精确字节串**钉住它（aterm 拿来做 fixture 真值）—— 要对字节就以 `wire.rs` 为准 | 连接建立时**首帧**发一次（握手）。**三轴正交（§26/§28）**：`v`（proto 版本，只留破坏性变更、F66 **绝不 bump**，不符=不兼容）；`build_id`（**身份**，单源自 daemon 源码/编译期 env，管 staleness/重部署提示，不符=偏旧、经 `remote-health` 提示但不 hard-disconnect）；**`capabilities`（能力 token 集，加法式）——monitor 按声明发流模式 flag**（F66/#58③，`decide_stream_flags`；缺该字段=空集=最保守、不发任何 flag，§27）。**绝不用身份（build_id）匹配代理能力声明**（那正是 2026-07-09 事故根因）。**DG3（#2D，additive）`codex_dir`**：对称 `claude_dir` 的 Codex 记录根（`<codex_dir>/sessions`）；Codex 未启用 / 旧 daemon 省略。**DG3 `kinds`**：本 daemon 服务的 agent kind 集（如 `["claude","codex"]`）——消费侧**显式判支持**，而不是从「`codex_dir` 存在」反推；空/缺 = 只 claude。**daemon-08（additive）`emits`**：本 daemon **会发射的帧 kind 集**（snake_case），供消费侧**门控消费**（含该 kind → 依赖它；不含 → 回退 β/watchdog）。⚠ `emits` 与 `capabilities` **正交、别混**：`capabilities` 是**流 flag 的可剥离能力**（受 §26 死循环护栏 + `every_capability_token_is_strippable` 强制每 token 有对应 flag），`emits` 是**纯发射声明、无对应 flag、不受 §26**。**U6b-2（additive）`commands`**：本 daemon **接受的入方向命令集**（见下「入方向」小节）。能力协商此前只有出方向那一半（`capabilities` 说「我认识哪些流 flag」）；客户端还得知道**发什么过去有人接**，否则只能试错。**空/缺 = 这个 daemon 不读 stdin**（U6b-1 之前的所有版本），别发命令 |
 | `line` | `session_id, path, seq, raw, byte_offset` | tail 到的一行原始 jsonl（`seq` = per-file 单调，口径同本地 watcher）。**`byte_offset`**：该行**末尾**的字节偏移，语义**逐字节对齐 aterm `LineFramer.endOffset`**——计 CRLF 的 `\r`、含 `\n`、残行不计；resume 到 N ⇒ `tail -c +(N+1)`。给 offset 续拉 / 截断检测用（**`seq` 是 per-stream 序数、不是 resume 键**，别拿它续）。**只 `line` 帧带**——`turn_end` 明确不带（`daemon-09` 钉住） |
 | `session_added` | `sid`, `session_kind?`, `cwd?`, `name?`, `path?`, `lines?`, `status?`, `waiting_for?`, `agent_kind?`, `liveness_confidence?`, `attachable?` | 远端新会话文件出现（Batch5-F18 起 ssh_source 收到即同步透传前端 `remote-session-added {session_id, origin, kind, cwd, name}` 事件建骨架 Tab，先于该会话的任何行）。Batch7-F24（p1e）：附加 pidfile 元信息——wire 帧字段叫 `session_kind`（避开帧 tag `kind`），bridge 事件 payload 统一叫 `kind`（与本地 `list_active_sessions`/`session-started` 一致）；**additive 兼容**：None 不序列化（旧行为字节不变）、旧 monitor 忽略未知字段、旧 daemon 缺字段前端视为交互。daemon 默认不宣告 bg（F21）；monitor 仅对 hello **声明了 `bg` 能力**的 daemon 且 `showBgSessions` 开（默认）时传 `--with-bg`（F66/#58③；旧 daemon 不声明该能力→不传，且它会把未知参数当一次性查询→无 hello，护栏「声明 ⟹ 会剥离该 flag」保成立）。本地对称通道：`session-started` payload 扩为 `{session_id, cwd, kind, name}`——前端无 Tab 则建骨架（中途出现的本地 bg 会话由此获得 ⚙/树状）。**Batch8-F25/26（p1f）**：帧再附 `path`（远端 jsonl 绝对路径）；monitor 见 daemon 声明 `tail-only` 能力后 exec 追加 `--tail-only`（Batch9 起快照换 `--read-session-tail` 尾部优先，见查询表）——daemon 不再重放历史（连接时把各文件 seq 计数器初始化为当前完整行数 L，之后新行 seq=行号），历史由 monitor 按 path 经**独立连接**跑 `--read-session` 旁路快照拉回（0..L'-1 行号编 seq、并发 ≤2、F19 priority 先拉、完就断、失败重试 1 次后 remote-health 提示）；两路 seq 同处行号空间，重叠区被 (sid,seq) 去重精确吸收。旧 daemon 不声明能力 → 不传 flag → 全量推流（=2.18.0）；session_added 无 path（会话尚无 jsonl）→ 不拉快照，后续行从 tail 全量到达。**DG3（#2D，additive）`agent_kind`**：本会话属哪个 agent——`"codex"`；Claude 会话**省略** ⇒ **缺 = claude**。**DG3 `liveness_confidence`**：判活置信度——`"heuristic"`（Codex 无 pidfile，靠 mtime/proc 启发）；Claude 走 pidfile 权威故**省略** ⇒ **缺 = authoritative**。两者都是「缺字段有确定含义」，消费侧别把缺当未知。⚠ **今天的消费方是仓外 aterm，不是 cc-monitor** —— monitor 的 `ssh_source::parse_frame` 把这两个字段（以及 `byte_offset` / `codex_dir` / `kinds` / `emits`）**整个丢掉**。缺省值碰巧等于丢弃行为，不等于 monitor 实现了默认值：真发 `agent_kind:"codex"` monitor 一样当 claude。（daemon 今天也还没产出它们 —— DG1 未接线，`codex_dir`/`kinds`/`agent_kind`/`liveness_confidence` 硬写 None/空。）|
 | `session_status` | `sid`, `status?`, `waiting_for?`, `liveness_confidence?` | Batch9-F27（p1g）：会话红绿灯状态变化（daemon 对 pidfile modify 做 diff，CC 仅状态转换时重写故天然稀疏）。monitor 转发进 `SessionChange.status_changed` → `session-activity` 事件——**远端灯与本地共用前端链路**。宣告帧另带初始 `status`（连接建立灯就对）。旧 monitor 未知 kind 忽略。**DG3 `liveness_confidence`** 同 `session_added`（状态变化时带；Claude 省略 ⇒ 缺 = authoritative） |
@@ -401,8 +401,9 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
   只能新起一个进程、校验身份、发信号。
 - **`--resolve` 为一次极小的 RPC 单开一整条 SSH exec。**
 
-载体本来就在：monitor 那头拿的是 `russh::ChannelStream`，**双工**，而写半边从来没人用过。
-现在 daemon 在**同一条流连接**上读 stdin。
+载体本来就在：monitor 那头拿的是 `russh::ChannelStream`，**双工**，而写半边
+**在 U8a-2a 之前从来没人用过**（U8a-2 摸底逐个 `write_all` 核过：零数据字节）。
+现在 daemon 在**同一条流连接**上读 stdin，monitor 侧的发送端见下「客户端侧语义」。
 
 ```text
 → {"id":"<opaque>","cmd":"<name>","args":{...}}          请求（一行一个）
@@ -429,8 +430,10 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
    而取消排队等一下并无妨（它只在长命令上有意义）。取消一个不存在的 `id` 是**幂等**的、不是错误。
 3. **应答走独立通道**（容量 256，与出方向的 10 000 分开）。出方向丢一帧可恢复
    （`overflow` 会说丢了多少，行还在远端 jsonl 里）；**丢一条应答会让客户端永远等下去**。
-   writer 用 `biased` select **优先应答** —— 否则一万行的洪峰会把应答排在后面，
-   客户端那头看起来就是「命令没反应」。
+   writer **有界地**优先应答（`main.rs::REPLY_BURST = 8`，连发 8 条后强制让位一次）——
+   不优先的话一万行的洪峰会把应答排在后面，客户端那头看起来就是「命令没反应」；
+   而**无条件**优先又会反过来饿死实时行（D 审计实测：500ms 内应答 70 789 条 vs 实时行 **4** 条，
+   机理是应答通道满时读循环阻塞 ⇒ 通道恒满 ⇒ `biased` 每次都命中应答）。
 4. **应答通道满时阻塞入方向，不丢弃**。满 = 客户端连应答都读不过来，这时候把背压顶回去正是想要的。
 
 **信任边界**（出方向 daemon 是唯一写者；入方向它变成读取不可信输入的一方）：
@@ -441,15 +444,43 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | 坏 JSON | 回 `bad_request` 并**继续读下一行**。`id` 无从得知 ⇒ 回空 `id`，客户端按「上一条没应答」超时处理 |
 | 任何失败 | **绝不 panic、绝不结束读循环、绝不结束进程** |
 
-**★ 两条时序 / 线程约束，都由机检钉住（不是靠注释）：**
+**★ 两条时序 / 线程约束，两侧都做成了「不可表示」——不是机检，更不是注释：**
 
-- **客户端在读到 `hello` 之前不许写命令**，daemon 侧对应「reader 必须在 `hello` flush 之后才起」。
-  客户端要先知道对面是什么版本、有什么能力才能发命令。
-  钉住它的是 `inbound::structure_guards::hello_is_flushed_before_the_inbound_reader_starts`。
+> ⚠ 本节此前指名了两条机检（`hello_is_flushed_before_the_inbound_reader_starts` /
+> `handlers_never_run_on_the_reader_task`）。**它们在 U6b-3 已经被删掉了** ——
+> 因为 D 审计用普通写法把两条都绕过去了，处置是「让违规不可表示」而不是往判据上加正则。
+> 文档没跟上，指着两个不存在的测试名。U8a-2a 订正。
+
+- **客户端在读到 `hello` 之前不许写命令**（客户端要先知道对面是什么版本、有什么能力）。
+  - daemon 侧：`inbound::spawn` 的参数里有一个 `wire::HelloFlushed` 见证，
+    而它**只能**由 `wire::write_and_flush_hello` 产出 ⇒ reader 抢在 Hello 之前起来**编译不过**。
+  - monitor 侧（U8a-2a）：写半边一拿到就被 `inbound_client::park` 收进 `ParkedWriter`，
+    那个类型**身上没有任何写方法**；唯一出口 `into_client` 要一个 `DaemonHello`，
+    而 `DaemonHello` 只能由一帧真的 `InboundFrame::Hello` 换出来。
+    （诚实边界：能绕过的唯一方式是自己造一个假 Hello 帧 —— 那在调用点是显眼的胡来。）
 - **命令处理器一律不许跑在读循环那个 task 上**（`cancel` 是唯一例外，且必须例外：
   它就是用来打断别的命令的，自己再排到那些命令后面就永远不生效）。
   一条慢命令占住读循环 ⇒ 后续命令全排队，而症状表现成「远端没反应」、几乎归因不到具体哪条。
-  钉住它的是 `handlers_never_run_on_the_reader_task`。
+  做法：`dispatch` 是**非 async 函数** ⇒ 分派臂里根本没有 `.await` 可写（写了是 `E0728`）。
+  要跑活只能返回 `Disposition::Spawn` 把 future 交给调用方。
+
+#### 客户端侧语义（monitor `inbound_client`，U8a-2a）
+
+daemon 侧刻意**不管**这些 —— 零定时器铁律不改，超时一律推给客户端。
+
+| 事项 | 归属 | 做法 |
+|---|---|---|
+| `id` 生成 | 客户端 | `<连接 nonce>-<单调序号>`。nonce 每条连接一套 ⇒ 重连后号段不撞，daemon 的 `duplicate_id` 正常打不到 |
+| 超时 | 客户端 | `call(cmd, args, timeout)` 自带，且**覆盖「写入 + 等应答」两段**（共用一个 deadline）。只裹后半段的话，写半边被反压卡住时它会无视自己的 timeout 永久挂起 —— 上面第 4 条（应答通道满时阻塞入方向）正是那条链的一环。等应答超时后**补发一条 `cancel`**（best-effort）让 daemon 别白跑；写入超时则不补（那条命令根本没入队） |
+| 超时后的登记 | 客户端 | **不摘**。摘了的话晚到的 `reply`/`cancelled` 会落进「未登记的 id」，每次超时刷一条 warn ——而那是预期内的事。登记由路由侧摘，`oneshot` 送不出去即知调用方已走 |
+| 并发上限 | 客户端 | 同时在等的命令 ≤ 256（同 daemon 应答通道容量）。**满之前先回收「调用方已走」的登记**（`oneshot::Sender::is_closed`）—— 否则背压路径下 daemon 的 cancel 应答被 `try_send` 丢掉，那条 id 永远等不到帧，表只涨不落且不自愈 |
+| 能力门控 | 客户端 | `hello.commands` 里没有的命令**直接拒**，一个字节都不发。旧 daemon 无该字段 ⇒ 空集 ⇒ 不发任何入方向命令 |
+| 关写半边 | 客户端 | 显式指令（`close_write`），**只有一次性探测该调**。⚠ 关它**不会让 daemon 退出** ——stdin EOF 只结束 daemon 的入方向 reader task；进程只在 stdout 关掉或收到停机信号时退出 |
+
+真进程端到端在 `e2e/inbound-daemon-frames.sh`（15 条断言，进 CI 带地板）——
+它喂给真 daemon 的那条 ping 行**逐字节**由 monitor 的编码器钉住
+（`the_e2e_ping_line_is_exactly_what_the_encoder_produces`），否则那套件只是在验证一个
+monitor 永远不会发的形状。
 
 **今天有三条命令**：`ping` / `cancel`（骨架验收用）+ **`resolve`**（第一条真业务命令，见下），它们随 `hello` 的 `commands` 字段上线 —— 那是与分派表**同一份真相源**（`hello_commands_match_the_dispatch_table` 钉住：声明了却不接 ⇒ 客户端发过去石沉大海；接了却不声明 ⇒ 客户端不知道能用）。真业务命令从 `--resolve` 吸收开始。
 
