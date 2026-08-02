@@ -2,14 +2,13 @@
 //! cc-monitor 无 API key/不联网、定价会过期要维护 → 只做「已花费 token」这半，不做费用）。
 //!
 //! 数据源现成：`ApiMessage.usage`（`messages.rs:231`）挂在 assistant 记录上。本模块复用 history 的
-//! 项目/会话遍历骨架（`history.rs:135/221`），每会话逐行**过 `parse_line`**（SS-16 唯一解析缝）累加。
+//! 项目/会话遍历骨架（`history.rs:135/221`）；**口径本身在共享 crate `usage-core`**
+//! （U7-2 起与远端 daemon 同一份实现，本文件不再各写一遍、也不再经 `parse_line`）。
 //! 纯读纯算、不写任何 Claude 数据。用量视图按需触发（非 history 热路径），全扫可接受（后续可加增量缓存）。
 //!
 //! **硬边界**：只做「已花费」，**不做「配额还剩多少」**（`/usage` 5h/周窗口 = 账号级服务端数据，本地
 //! jsonl 推不出）——UI 必须标死。context 窗% 的模型上限表在前端 `pricing.ts`（不在此模块）。
 
-use crate::messages::{JsonlRecord, Usage};
-use crate::parser::parse_line;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -37,29 +36,6 @@ pub struct UsageTotals {
     #[cfg_attr(test, ts(type = "number"))]
     pub output: u64,
     pub msgs: u32,
-}
-
-impl UsageTotals {
-    /// 逐字段取 MAX（同一 requestId 的多条流式记录用）：一次 API 请求在 jsonl 落成多条 assistant
-    /// 记录（thinking/text/各 tool_use 各一行），`message.usage` 挂**每一行**——但 `input`/`cache_*`
-    /// 是**请求级、逐行完全相同**，`output` 是**流式**（前几条占位小值、终结记录才是真总量）。故按
-    /// requestId 聚合时逐字段 MAX：prompt 侧近恒定→max 无害；output 单调→max=终结值。**两者皆正确。**
-    /// 不动 `msgs`（msgs 在 flush 时按「每请求 +1」，见 accumulate_usage）。
-    fn max_with(&mut self, u: &Usage) {
-        self.input = self.input.max(u.input_tokens as u64);
-        self.cache_creation = self.cache_creation.max(u.cache_creation as u64);
-        self.cache_read = self.cache_read.max(u.cache_read as u64);
-        self.output = self.output.max(u.output_tokens as u64);
-    }
-
-    /// 把一个「每请求 MAX」结果加进桶：各字段累加 + `msgs += 1`（一次请求算一条 assistant 轮次）。
-    fn add_request(&mut self, req: &UsageTotals) {
-        self.input += req.input;
-        self.cache_creation += req.cache_creation;
-        self.cache_read += req.cache_read;
-        self.output += req.output;
-        self.msgs += 1;
-    }
 }
 
 /// 一条会话在某 (模型, 天) 下的用量。
@@ -90,7 +66,7 @@ pub struct SessionUsageRow {
     pub origin: Option<String>,
 }
 
-/// 纯聚合：逐行过 `parse_line`，把 assistant 记录的 usage **按 requestId 聚合**进 (model, day) 桶，
+/// 纯聚合：把 assistant 记录的 usage **按 requestId 聚合**进 (model, day) 桶，
 /// 并捕获会话 cwd（首条 user 记录）。抽出便于单测（不落文件）。model 缺失→`"unknown"`；day 取 timestamp 前 10 字符。
 ///
 /// **★ 为什么按 requestId 逐字段 MAX 而非逐条 uuid 加**（P88a 审计修，实测真实 jsonl）：一次 API 请求
@@ -105,64 +81,36 @@ fn accumulate_usage(
     lines: impl Iterator<Item = String>,
     seen_requests: &mut HashSet<String>,
 ) -> (HashMap<(String, String), UsageTotals>, Option<String>) {
-    let mut buckets: HashMap<(String, String), UsageTotals> = HashMap::new();
-    let mut cwd: Option<String> = None;
-    // 本文件内：requestId(缺→uuid) → (model, day, 逐字段 MAX usage)。见函数 doc 为何 MAX。
-    let mut per_req: HashMap<String, (String, String, UsageTotals)> = HashMap::new();
-    for line in lines {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let rec = match parse_line(trimmed) {
-            Ok(Some(r)) => r,
-            _ => continue, // 解析失败/空行/Unrecognized 无 usage → 跳过，不崩
-        };
-        match &rec {
-            JsonlRecord::User { cwd: c, .. } => {
-                if cwd.is_none() {
-                    if let Some(v) = c {
-                        cwd = Some(v.clone());
-                    }
-                }
-            }
-            JsonlRecord::Assistant {
-                uuid,
-                request_id,
-                message,
-                timestamp,
-                ..
-            } => {
-                if let Some(u) = &message.usage {
-                    let key = request_id.clone().unwrap_or_else(|| uuid.clone());
-                    let model = message
-                        .model
-                        .clone()
-                        .filter(|m| !m.is_empty())
-                        .unwrap_or_else(|| "unknown".to_string());
-                    let day = timestamp.get(0..10).unwrap_or("").to_string();
-                    per_req
-                        .entry(key)
-                        .or_insert_with(|| (model, day, UsageTotals::default()))
-                        .2
-                        .max_with(u);
-                }
-            }
-            _ => {}
-        }
-    }
-    // flush：每个 requestId 跨文件去重（seen_requests，防 /branch 祖先复制同 requestId 重复计），
-    // 其「逐字段 MAX」加进 (model, day) 桶一次（msgs+1/请求）。同一 requestId 的记录 model/day 一致。
-    for (key, (model, day, usage_max)) in per_req {
-        if !seen_requests.insert(key) {
-            continue;
-        }
-        buckets
-            .entry((model, day))
-            .or_default()
-            .add_request(&usage_max);
-    }
-    (buckets, cwd)
+    // U7-2：口径**不在这里**了 —— 唯一实现在共享 crate `usage-core`，
+    // 远端 daemon（`observe/usage_query.rs`）用的是同一个函数。
+    //
+    // 此前两侧各写一遍，daemon 那份的头注逐字写着「改口径必须同步改本地 usage.rs
+    // （双写点）」，而那个双写**没有任何护栏**：名叫
+    // `per_request_field_max_matches_local_kou_jing` 的测试只调 daemon 自己的实现、
+    // 断言人手写下的数字，从不碰这里。实测已经漂开一处 —— daemon 剥 BOM，
+    // 这边**零 BOM 处理** ⇒ 带 BOM 的首行 daemon 计入、monitor 跳过。
+    //
+    // 内核吃裸 JSON 而不是 `JsonlRecord`：让 daemon 反向长出 `parse_line` 会把一个
+    // Linux-only 静态 musl 二进制拖上 monitor 的类型体系；而这边几乎无成本 ——
+    // **本文件的 Codex 用量轴早就「直读 rawJson、不经 `JsonlRecord`」**（见下方头注）。
+    let u = usage_core::accumulate(lines, seen_requests);
+    let buckets = u
+        .buckets
+        .into_iter()
+        .map(|(k, t)| {
+            (
+                k,
+                UsageTotals {
+                    input: t.input,
+                    cache_creation: t.cache_creation,
+                    cache_read: t.cache_read,
+                    output: t.output,
+                    msgs: t.msgs,
+                },
+            )
+        })
+        .collect();
+    (buckets, u.cwd)
 }
 
 /// **Codex 会话用量累加**（per-kind：event_msg `token_count` 的 `last_token_usage` 增量，非 Claude
@@ -355,7 +303,12 @@ pub async fn aggregate_usage_all(on_row: Channel<SessionUsageRow>) -> Result<u32
 mod tests {
     use super::*;
 
-    // JsonlRecord::User/Assistant 必需 uuid（无 default），缺了会落 Unrecognized（无 usage）。
+    // U7-2 之前这里写着「JsonlRecord::User/Assistant 必需 uuid（无 default），缺了会落
+    // Unrecognized（无 usage）」—— 那是**走 parse_line 时代**的约束。现在口径在
+    // `usage-core` 上，键是 `requestId`（缺才退到 uuid）⇒ **有 requestId、无 uuid 的记录
+    // 现在会被计入**（此前 monitor 丢、daemon 一直计）。这是**刻意的收敛**，
+    // 由 `usage-core` 的 `a_record_with_a_request_id_but_no_uuid_is_counted` 钉住。
+    // 夹具仍带 uuid（Claude Code 实际就这么写），不受影响。
     fn assistant(model: &str, day: &str, i: u32, cc: u32, cr: u32, o: u32) -> String {
         format!(
             r#"{{"type":"assistant","uuid":"u-{model}-{day}-{i}-{o}","timestamp":"{day}T10:00:00Z","message":{{"role":"assistant","content":[],"model":"{model}","usage":{{"input_tokens":{i},"cache_creation_input_tokens":{cc},"cache_read_input_tokens":{cr},"output_tokens":{o}}}}}}}"#
