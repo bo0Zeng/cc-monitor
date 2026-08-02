@@ -265,10 +265,32 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     Ok(())
 }
 
+/// POSIX 宿主上**刻意没有**这条路 —— 不是还没做，是 L1 裁决过的**反方向**。
+///
+/// # 为什么（与 [`launch_local_posix`] 头注同一条裁决）
+///
+/// POSIX 上没有「唯一的终端」这种东西。要开窗就得先猜用户用哪个终端模拟器
+/// （gnome-terminal / konsole / alacritty / kitty / wezterm / …），**那是一个平白引入的、
+/// 会在别人机器上错的决定**。而会话容器本来就是 tmux —— 命令跑完，会话留在那儿等 attach。
+///
+/// ⚠ **原文案是「拉起终端窗口仅支持 Windows（v1）」，那个 `(v1)` 在撒谎**：
+/// 它暗示「v2 会支持」，而实际上这件事**没排期、而且方向是反的**（U8b 订正）。
+///
+/// ⚠ **这不代表 POSIX 上「远端拉起」这件事就该只复制命令** —— 那是另一个缺口：
+/// 本机 resume 有 OS 分派（`history.rs::launch_local`），远端**没有**（`launch_remote_terminal`
+/// 一律走本函数）。补它要等前端改成发结构化请求（U8c）之后走 daemon 的 `launch`，
+/// 登记在 **U8a-2c**。今天硬补只能 fire-and-forget，而那会**静默失败**（见 U8b 计划）。
 #[cfg(not(windows))]
 pub fn launch_powershell_window(_ps_command: &str, _local_cwd: Option<&str>) -> Result<(), String> {
-    Err("拉起终端窗口仅支持 Windows（v1）".into())
+    Err(POSIX_NO_TERMINAL_WINDOW.into())
 }
+
+/// 非 Windows 上「不开终端窗口」的**唯一**说法。前后端共用同一句话的口径
+/// （前端据 `hostOs` 决定标题，正文原样带上这句）。
+#[cfg(any(not(windows), test))]
+pub const POSIX_NO_TERMINAL_WINDOW: &str =
+    "本机不是 Windows：cc-monitor **刻意不替你挑终端模拟器**（会话容器是 tmux）——\
+     命令已复制，在你自己的终端里粘贴执行即可。这是既定设计，不是没做完。";
 
 /// Windows 本机 ssh.exe 可用性预检：缺 OpenSSH 客户端时 spawn 出的窗口只会报
 /// "not recognized"（spawn 本身成功→前端误报成功）——预检失败直接 Err 走剪贴板回退。
@@ -326,6 +348,109 @@ mod tests {
             jump: None,
             daemonless: false,
         }
+    }
+
+    /// ★ U8b：**POSIX 上「不开终端窗口」是既定设计，文案不许暗示「以后会支持」。**
+    ///
+    /// 原文案「拉起终端窗口仅支持 Windows（v1）」里那个 `(v1)` 在撒谎 —— L1 早就裁决过
+    /// 反方向（`launch_local_posix` 头注：开窗要先猜终端模拟器，是平白引入一个会在别人
+    /// 机器上错的决定）。用户在 Linux 上每次点 ↗ 都会读到那句话。
+    #[test]
+    fn the_posix_message_states_a_decision_not_a_missing_feature() {
+        let m = POSIX_NO_TERMINAL_WINDOW;
+        assert!(
+            !m.contains("v1") && !m.contains("v2"),
+            "文案里带版本号会被读成「以后会支持」：{m}"
+        );
+        assert!(m.contains("刻意"), "没说清这是刻意的：{m}");
+        assert!(
+            m.contains("tmux"),
+            "没说清会话容器是什么，用户不知道去哪找：{m}"
+        );
+        assert!(m.contains("既定设计"), "没有把「这不是没做完」说出来：{m}");
+    }
+
+    /// ★ U8b **跨轨对拍**：前端匹配的那个标记，必须真的在后端那句话里。
+    ///
+    /// 前端据它把标题从「拉起失败」换成「本机不开终端窗口」。两边漂开的症状是
+    /// **静默退回**：用户又开始在 Linux 上每次点 ↗ 都读到「拉起失败」，而两边各自看都对。
+    #[test]
+    fn the_posix_marker_is_the_one_the_frontend_matches_on() {
+        const RUNNER: &str = include_str!("../../src/remote-launch-run.ts");
+        let key = "export const POSIX_NO_WINDOW_MARKER = \"";
+        let at = RUNNER
+            .find(key)
+            .expect("前端找不到 POSIX_NO_WINDOW_MARKER —— 抽取坏了，本断言在空转");
+        let rest = &RUNNER[at + key.len()..];
+        let marker = &rest[..rest.find('"').expect("字面量没收尾")];
+        assert!(
+            marker.chars().count() >= 6,
+            "抽到的标记太短（{marker:?}）—— 抽取坏了"
+        );
+        assert!(
+            POSIX_NO_TERMINAL_WINDOW.contains(marker),
+            "\n前端按 {marker:?} 判「这是既定设计」，但后端那句话里没有它：\n  {POSIX_NO_TERMINAL_WINDOW}\n\
+             ⇒ 用户会退回去看到「拉起失败」。两边必须一起改。"
+        );
+        // 反面：标记不许宽到把**真失败**也软化掉。
+        for real_failure in [
+            "未找到远端配置: \"x\"",
+            "refuse launch: 远端命令含控制字符",
+            "spawn powershell failed: No such file",
+        ] {
+            assert!(
+                !real_failure.contains(marker),
+                "标记 {marker:?} 太宽，会把真失败 {real_failure:?} 也报成「既定设计」"
+            );
+        }
+    }
+
+    /// ★ U8b：**`launch.rs` 的生产段不许出现任何终端模拟器。**
+    ///
+    /// 零命中型判据，钉的是 L1 那条裁决。它挡的是很自然的一个「顺手改进」：
+    /// 有人看到 Linux 上开不了窗，加一段 `gnome-terminal` / `x-terminal-emulator` 探测。
+    /// 那不是清理，是**产品决定** —— 要做就先答「探测顺序是什么、找不到怎么办」，
+    /// 而不是静默挑一个（挑错了用户会看到一个空白窗口或什么都没有，且极难归因）。
+    #[test]
+    fn no_terminal_emulator_is_ever_spawned_from_this_file() {
+        // 运行时拼，避免命中本行自己。
+        let emulators: Vec<String> = [
+            "gnome-termin",
+            "konsol",
+            "xterm",
+            "x-terminal-emulato",
+            "alacritt",
+            "kitt",
+            "wezter",
+            "foot",
+            "Terminal.ap",
+            "iTerm",
+        ]
+        .iter()
+        .map(|s| format!("{s}{}", ""))
+        .collect();
+        // 匹配器自检：独立手写的样本必须被这份名单命中（防名单写坏了导致零命中恒绿）。
+        for sample in [
+            "Command::new(\"gnome-terminal\")",
+            "Command::new(\"alacritty\")",
+            "spawn(\"x-terminal-emulator\")",
+        ] {
+            assert!(
+                emulators.iter().any(|e| sample.contains(e.as_str())),
+                "匹配器漏了这种写法：{sample} —— 下面那句「零命中」对它毫无意义"
+            );
+        }
+        let prod = guard_core::production_code(include_str!("launch.rs"));
+        let hits: Vec<&String> = emulators
+            .iter()
+            .filter(|e| prod.contains(e.as_str()))
+            .collect();
+        assert!(
+            hits.is_empty(),
+            "`launch.rs` 的生产段出现了终端模拟器（{hits:?}）。\n\
+             L1 裁决过：POSIX 上没有「唯一的终端」，挑一个是平白引入一个会在别人机器上错的决定。\n\
+             真要做就先答「探测顺序 / 找不到怎么办」，并当成产品决定走一遍计划 —— 别静默挑一个。"
+        );
     }
 
     /// ★ L1 的验收判据（主计划 §2「关键判断」第 1 条逐字）：

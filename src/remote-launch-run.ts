@@ -65,6 +65,17 @@ interface LaunchToasts {
 /** MASTERPLAN §3 账本对 `remote-launch-run.ts` 的既定最终形态之一：「剪贴板回退集中一处」。
  *  6 个 executor 的 invoke→toast/剪贴板回退骨架逐字相同，只有文案与 `origin` 不同——收敛成
  *  这一个函数，返回「IPC 是否真的被接受」（true=拉起成功；false=已走剪贴板回退）。 */
+/** U8b：后端在 POSIX 上回的那句话里的**稳定标记**。
+ *
+ *  它不是「随便找个子串」——后端 `launch.rs::POSIX_NO_TERMINAL_WINDOW` 是那句话的唯一出处，
+ *  两边由 Rust 侧的 `the_posix_marker_is_the_one_the_frontend_matches_on`
+ *  逐字对拍（`include_str!` 读本文件）。改一边不改另一边 ⇒ 红。
+ *
+ *  **为什么按错误文本判、而不是按 `hostOs` 判**：`hostOs !== "windows"` 会把
+ *  **真失败**（配置缺失 / 命令被拒 / spawn 崩）也一起软化成「这是设计」——那是另一种撒谎。
+ *  按后端自己的声明判，只软化后端明说「这是既定设计」的那一种。 */
+export const POSIX_NO_WINDOW_MARKER = "刻意不替你挑终端模拟器";
+
 async function invokeLaunchOrCopyFallback(
   origin: string,
   cmd: string,
@@ -82,8 +93,19 @@ async function invokeLaunchOrCopyFallback(
     } catch {
       copied = false; // 命令在 toast 里仍可见，可手动复制
     }
+    // U8b：**POSIX 上不开终端窗口是既定设计，不是失败。**
+    // 原来这里一律报「拉起失败」，在 Linux 上每次点 ↗ 都会读到 —— 那是把一个正常状态
+    // 训练成「坏了」。标题按后端的声明分档；正文原样带上后端那句话（它自己会解释为什么）。
+    const byDesign = String(err).includes(POSIX_NO_WINDOW_MARKER);
+    const headline = byDesign
+      ? copied
+        ? "本机不开终端窗口，命令已复制"
+        : "本机不开终端窗口，请手动复制以下命令"
+      : copied
+        ? toasts.failureCopied
+        : toasts.failureNotCopied;
     showActionFailureToast(
-      copied ? toasts.failureCopied : toasts.failureNotCopied,
+      headline,
       `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
       { level: "info", durationMs: 10000 },
     );
