@@ -210,6 +210,7 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 | S5 | **`common/`**<br>**U2 已交付**：`projects_root`（**5 处不是 4 处** —— 第五处是 `watcher.rs::watch_loop` 里内联的，`grep fn` 找不到）· `mtime_ms`（2 份）。门槛写在 `common/mod.rs`：≥2 **层**用 · **平台无关** · 无域知识。<br>⚠ **「时间换算 · quote」这两项要划掉**：Phase D 审计逐条核过，daemon crate 内**没有可合的逐字副本** —— 时间换算三处语义/单位各不相同（`file_mtime_epoch` 单位是**秒**不是毫秒），quote 在 daemon 内只有一份、多份在 monitor 侧**跨 crate**、`common/` 收不了。<br>⚠ **U3 必须复查**：`mtime_ms` 的两个调用点同属 observe，「≥2 层」按层口径**今天不成立**；`observe/` 一建出来就要重判 | U2 · U3 |
 | S6 | **wire 协议 + `IPC-PROTOCOL.md`** | 双向；**文档先修再冻结**（该文件 7 处在说谎，见 §3-U6）；wire 字段名双向 `include_str!` 对拍 | U6a / U6b |
 | S6a | **跨进程握手时序约束**（U6a 新登记）<br>**U6a 已交付**：`cc.ps1.tpl`「先设标题、后写 await 文件」这个顺序，同时被写在**四处**：PS 模板本身 · `bind.rs` 模块头 · `doc/IPC-PROTOCOL.md` 时序图 · `cc_integration.ts` 给用户看的超时文案。U6a 之前**后三处全是旧的**（旧顺序 + 800ms + 100ms + 漏画 ≤600ms 重试）—— 文档在教人复刻 v2.21 那个「每个新 shell 首次 `cc` 固定烧满超时」。 | 四处保持一致，由 `profile_installer.rs::handshake_doc_guard` 三条护栏钉住（顺序 + 模板侧 deadline/轮询步长 + monitor 侧 debouncer/重试）。**不放 `bind.rs`**：它几乎整个 `#[cfg(windows)]`，护栏放那儿在 Linux CI 上一条都不跑 | U6a ✅ |
+| S16 | **入方向命令面**（U6b-1 新登记）<br>`inbound::COMMANDS` ↔ `dispatch` 分派臂 ↔ `hello.commands` ↔ `IPC-PROTOCOL.md` 入方向小节，**四处双写** | 前三处由 `hello_commands_match_the_dispatch_table` 钉成**同一份真相源**（声明了却不接 ⇒ 客户端石沉大海；接了却不声明 ⇒ 客户端不知道能用）；第四处由 U6a 的字段对拍逼进文档 | U6b-1 ✅ · U6b-3 加第一条真业务命令 |
 | S7 | **daemon argv 面** | 三类；`split_stream_flags` + `every_capability_token_is_strippable` 同步扩。⚠ **起点比以为的更糟**：现有的二分表本身就漏了 5 条子命令（`--tmux-notify` / `--resolve` / `--fork-session` / `--account-trust-zero` / `--read-session-from-offset`），其中 `--account-trust-zero` 漏登记**出过 v3.4.0 事故** | U6 |
 | S8 | **`BUILD_ID` 单源链条**<br>**U-1 已交付**：① `ssh_source.rs::embedded_build_id_single_source_wired` 断言 ≠ `"unknown"`；② `build.rs` 三条硬 panic（抠不到源码 `BUILD_ID` / 有二进制但缺清单 / 清单与源码不符）；③ 半 bump **真修掉**（两个 arch 从 p1v 源码现编，`rust-lld` 零安装）。<br>⚠ **措辞订正**：原写「缺文件从 warn 改 fail」不准 —— 三条 panic 都以「`embedded-daemons/` 里真有二进制」为前提；**整个目录缺失时仍是优雅降级**（那是 dev/CI 常态），兜那一档的是①不是 `build.rs`。发版链两头都够得着（`release.yml:56-58` 写清单、`:113-118` 再对拍） | U-1 · U13 |
 | S9 | **读面七组 → 四组**（§0.1 三类） | monitor 侧退役 | U7a–U7e |
@@ -508,3 +509,25 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   与 `wire.rs` 同类；**每条命令的处理器归 `control/`**。依赖方向 `inbound → control`，
   与既有 `observe → control` 同向 ⇒ `layering_guard` 判据不需放宽。
   塞进 `control/` 会让「control = 做事」这条线变浑 —— §1.1 的线是按**职责**画的，不是按调用关系。
+- 2026-08-02 **U6b-1/U6b-2 闭环（`217835c`）。D 审计改变了我对「护栏」的判断，这条要写进横切约定。**
+  前几轮的模式是「加护栏 → 用变异证明有效 → 收工」。这一轮把那个模式的**上限**测出来了：
+  我加的每条护栏**自变异都通过**，却仍被**七种普通写法**绕过 —— 包括 **rustfmt 自己的输出**
+  （derive 超 100 列会折行，`Serialize` 不在 `#[derive(` 那行 ⇒ 整个类型隐形，而 `fmt --check` 干净）
+  和**一行沿革注释**（握手三条读的是整份原文、没剥注释）。
+  根因同一个：**我的变异是照着自己的实现设计的**。我知道判据看哪一行，就去改那一行的内容；
+  而绕过它只需要**让那行不再是那种形状**。
+  ⇒ **自变异只能证明「判据被执行了」，证明不了「判据画的范围对」。**
+  ⇒ **新横切约定**：高风险档的护栏，D 审计必须含一个「设法绕过」的对抗视角，且必须在 **worktree 隔离**里能真改真跑。
+- 2026-08-02 **两个「今天就活」的阻塞，都是我自己造的**（U6b-1）：
+  ① `tokio::io::stdin()` 走阻塞线程池 ⇒ stdin 开着时 SIGTERM 不再退出（**正是 monitor SSH exec 的生产形状**），
+  实测 3/3 挂死、父提交 100ms 退出；② 1 MiB 上限在整行已进内存之后才判 —— 我**抄了 `--resolve` 的常数、
+  没抄它的机制**（`stdin().take(MAX)`），还在 DoD 里写下「内存不涨」，**那句当时没有任何测试**。
+  ⇒ **纪律**：DoD 里每一条断言，写下的同时就要问「它对应哪个测试」；答不上来就别写成验收项。
+- 2026-08-02 **新增测试自己也要变异验证**。那条内存测试**改到第三版才不是安慰剂**：
+  ① 读完再量 —— buffer 已 free、glibc 已 munmap，RSS 掉回去了；
+  ② 边跑边采 —— `Flood` 永远 Ready，reader 在**一次 poll 里**读完 256 MiB，采样循环插不进去；
+  ③ 最后用内核的 `VmHWM` 高水位才抓到。前两版都被「全程累积、读完再判」这个真变异骗过。
+- 2026-08-02 **S7（argv 三分）交付，且判据比账本设想的更换了主语**：从「非空即查询」换成
+  「`args[0]` ∈ 子命令表才查询」。副作用是**漏登记的后果变糟了** —— 从 exit 2（吵但看得见）
+  变成「那条子命令静默变成起了个流」。⇒ 完备性机检从附属品升格成**判据能成立的唯一理由**。
+  实测 17/18 个子命令输出与改动前逐字相同，唯一差异正是有意的那处（未知 flag 改成照常起流）。
