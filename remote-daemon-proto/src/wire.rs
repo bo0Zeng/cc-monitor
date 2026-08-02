@@ -249,6 +249,9 @@ pub enum Frame {
         code: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         message: Option<String>,
+        /// U6b-3：命令的返回值（如 `resolve` 的 CommandPlan）。无返回值的命令省略。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        data: Option<serde_json::Value>,
     },
 
     /// U6b-1：某个在跑的命令**已被取消**。取消是一条普通命令（`cmd:"cancel"`）、不是带外信号——
@@ -280,6 +283,53 @@ pub fn to_line(frame: &Frame) -> serde_json::Result<String> {
     let mut s = serde_json::to_string(frame)?;
     s.push('\n');
     Ok(s)
+}
+
+/// U6b-3：**Hello 已经写出并 flush 的见证。**
+///
+/// # 为什么要一个类型
+///
+/// 「入方向 reader 必须在 Hello flush 之后才起」是**时序约束**。U6b-1 用一条比较
+/// `main.rs` 里两个字符串字节位置的机检来钉它 —— D 审计用一次**普通的函数抽取**就绕过了：
+/// 把 `inbound::spawn(` 的调用点包进 `fn start_inbound(...)` 放到文件后段，
+/// 位置比较看到的就是「reader 在后面」，而实际调用早在 Hello 之前。全量 211 passed。
+///
+/// 判据是「两个字符串的字节位置」，对**控制流**与**函数边界**都是瞎的。
+///
+/// 结论是审计给的：**别再往判据上加正则，让违规不可表示。**
+/// 拿不到 `HelloFlushed` 就调不了 `inbound::spawn`，而它**只能由真的写完并 flush 了一帧
+/// 才能产出**（构造函数私有，唯一出口是 [`write_and_flush_hello`]）。
+/// ⇒ 那条机检可以整条删掉。
+pub struct HelloFlushed(());
+
+impl HelloFlushed {
+    /// 只给测试用的见证。
+    ///
+    /// 生产路径拿不到它 —— `#[cfg(test)]` 在 release 构建里不存在，
+    /// 所以「不可表示」这条性质不受它影响。
+    #[cfg(test)]
+    pub fn for_tests() -> Self {
+        Self(())
+    }
+}
+
+/// 写出 Hello 帧并 flush，成功则产出 [`HelloFlushed`] 见证。
+///
+/// **这是 `HelloFlushed` 的唯一来源。** 放 `wire.rs` 而不是 `inbound.rs`：
+/// 握手是协议管道的事，让入方向模块去写出方向的首帧会把职责搅浑。
+pub async fn write_and_flush_hello<W: tokio::io::AsyncWrite + Unpin>(
+    out: &mut W,
+    hello: &Frame,
+) -> std::io::Result<HelloFlushed> {
+    use tokio::io::AsyncWriteExt as _;
+    debug_assert!(
+        matches!(hello, Frame::Hello { .. }),
+        "write_and_flush_hello 只该用来发 Hello"
+    );
+    let line = to_line(hello).map_err(std::io::Error::other)?;
+    out.write_all(line.as_bytes()).await?;
+    out.flush().await?;
+    Ok(HelloFlushed(()))
 }
 
 /// Per-file monotonic sequence counter.

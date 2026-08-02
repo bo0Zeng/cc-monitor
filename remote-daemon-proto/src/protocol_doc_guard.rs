@@ -484,16 +484,39 @@ mod tests {
         // 但也不能要求「自成一个跨度」（`` `ok` ``）：文档里有 `v, build_id, host_arch, …`
         // 这种**逗号连写在同一个跨度**的写法，那样会把 3 个既有的、确实有文档的字段误报。
         // ⇒ 取所有反引号跨度的内容、按标识符切词，字段名必须是其中一个**完整词**。
-        let documented = code_span_identifiers(DOC);
+        // ★ **只在 §10「远端 daemon wire 协议」那一节里找**（U6b-3，据 D 审计收紧）。
+        //
+        // 收紧前判据是「全文的代码跨度」。审计实测强度：把 §10 的帧字段表整段
+        // （12 002 字节 / 69 行）从文档里挖掉，**31 个字段里 16 个照样通过** ——
+        // 它们命中的是**毫不相干的代码跨度**：`sid` 命中文件名 `sid-hwnd-cache.json`、
+        // `attachable` 命中 BUILD_ID 名 `p1v-attachable`、`path`/`raw` 命中一段
+        // PowerShell 片段、`message` 命中一个前端事件的 payload。
+        //
+        // 也就是说：**一半的字段就算权威表被删干净，护栏也照样绿。**
+        // 子命令那条早已收紧成「必须落进 §10 的两张表之一」，字段这条一直停在全文。
+        let sec = DOC
+            .find("## 10. 远端 daemon wire 协议")
+            .expect("文档里找不到 §10 —— 抽取坏了还是文档被大改了？");
+        let sec_end = DOC[sec..]
+            .find("\n## ")
+            .map(|k| sec + k)
+            .unwrap_or(DOC.len());
+        let wire_section = &DOC[sec..sec_end];
+        assert!(
+            wire_section.len() > 8000,
+            "§10 区间只抽到 {} 字节 —— 抽取坏了，本断言在空转",
+            wire_section.len()
+        );
+        let documented = code_span_identifiers(wire_section);
         assert!(
             documented.len() >= 60,
-            "只从文档的代码跨度里切出 {} 个标识符 —— 抽取坏了，本断言在空转",
+            "只从 §10 的代码跨度里切出 {} 个标识符 —— 抽取坏了，本断言在空转",
             documented.len()
         );
         let missing: Vec<&String> = fields.iter().filter(|f| !documented.contains(*f)).collect();
         assert!(
             missing.is_empty(),
-            "这些 wire 字段在 `doc/IPC-PROTOCOL.md` 里**一次都没出现**：{missing:?}\n\
+            "这些 wire 字段不在 `doc/IPC-PROTOCOL.md` **§10 wire 协议节**里：{missing:?}\n\
              那份文档是 daemon↔monitor↔aterm 的权威契约。字段加进代码却没进文档，\n\
              下游只能靠读源码或抓包才知道它存在。"
         );
