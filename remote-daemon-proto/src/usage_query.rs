@@ -16,6 +16,8 @@
 //! 安全：路径严格限 `<claude_dir>/projects/`（canonicalize 前缀校验，复刻 history/search_query）；
 //! 只读铁律（cc-monitor 不写远端）成立——本模块只 read_dir / read。
 
+// U2：合并进 `common/paths.rs`（原来这里各有一份逐字相同的副本）。
+use crate::common::paths::projects_root;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
@@ -43,10 +45,6 @@ pub fn run(claude_dir: &Path, _args: &[String]) -> i32 {
             2
         }
     }
-}
-
-fn projects_root(claude_dir: &Path) -> PathBuf {
-    claude_dir.join("projects")
 }
 
 /// 扫 projects/**/*.jsonl，按 requestId 逐字段 MAX 聚合，每有 usage 的会话输出一行 JSON。

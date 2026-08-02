@@ -13,10 +13,11 @@
 //! 安全：路径严格限 `<claude_dir>/projects/`（canonicalize 前缀校验，复刻 history_query）；
 //! 只读铁律（cc-monitor 不写远端）成立——本模块只 read_dir / read。
 
+// U2：合并进 `common/paths.rs`（原来这里各有一份逐字相同的副本）。
+use crate::common::paths::{mtime_ms, projects_root};
 use serde_json::Value;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
 use walkdir::WalkDir;
 
 /// 单会话最多返回的命中 snippet 条数（防一个会话刷屏；hitCount 仍报全量）。
@@ -95,10 +96,6 @@ fn parse_opts(rest: &[String]) -> SearchOpts {
         i += 1;
     }
     opts
-}
-
-fn projects_root(claude_dir: &Path) -> PathBuf {
-    claude_dir.join("projects")
 }
 
 /// 扫 projects/**/*.jsonl，搜索匹配，每命中会话输出一行 JSON。
@@ -275,15 +272,6 @@ fn build_session_hits(
         "hitCount": hit_count,
         "hits": hits,
     }))
-}
-
-fn mtime_ms(p: &Path) -> i64 {
-    std::fs::metadata(p)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
 }
 
 // === 文本抽取（移植自 ../src-tauri/src/search.rs，Value 版） ===

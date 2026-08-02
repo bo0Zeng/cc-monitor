@@ -306,26 +306,11 @@ fn json_str(v: Option<&str>) -> serde_json::Value {
 
 // ---------------------------------------------------------------- /proc
 
-/// `/proc/<pid>/stat` 的 starttime（field 22，boot 起的 jiffies）。形状照 watcher。
-/// 这是 PID 的**身份指纹**：PID 会被复用，但 (PID, starttime) 对唯一。
-fn proc_starttime(pid: u32) -> Option<u64> {
-    #[cfg(target_os = "linux")]
-    {
-        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-        // starttime = comm 右括号之后的第 (22-3) 个 whitespace token
-        let after_comm = &stat[stat.rfind(')')? + 1..];
-        after_comm
-            .split_whitespace()
-            .nth(22 - 3)?
-            .parse::<u64>()
-            .ok()
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = pid;
-        None
-    }
-}
+// U2：**这里原本有第二份 `proc_starttime`**（`/proc/<pid>/stat` 的 field 22）。
+// 与 `platform::proc::proc_starttime` 逐字同语义（都返回 boot 起的 jiffies，解析都是
+// `nth(22-3)`），只是这一份把解析内联了、那一份走 `parse_starttime_from_stat`。
+// 合并前**逐条核过单位**：单位不同的话它们就不是重复，合并就是引 bug。
+use crate::platform::proc::{proc_claude_config_dir, proc_starttime};
 
 /// 从 pidfile 字节里取 `procStart`（CC 写的是 starttime ticks 的十进制字符串；容忍裸数字）。
 fn parse_procstart_ticks(v: &serde_json::Value) -> Option<u64> {
@@ -344,33 +329,6 @@ fn session_process_identity_ok(pid: u32, pidfile: &serde_json::Value) -> bool {
     match (parse_procstart_ticks(pidfile), proc_starttime(pid)) {
         (Some(recorded), Some(current)) => recorded == current,
         _ => false,
-    }
-}
-
-/// 从 `/proc/<pid>/environ` 抠 `CLAUDE_CONFIG_DIR` 的值（**只这一个键**）。
-/// 读不到（进程已消失 / 非同 uid）→ `None`。形状照 `watcher::proc_cmdline`。
-fn proc_claude_config_dir(pid: u32) -> Option<String> {
-    #[cfg(target_os = "linux")]
-    {
-        let bytes = std::fs::read(format!("/proc/{pid}/environ")).ok()?;
-        for entry in bytes.split(|b| *b == 0) {
-            if entry.is_empty() {
-                continue;
-            }
-            let s = String::from_utf8_lossy(entry);
-            if let Some(v) = s.strip_prefix("CLAUDE_CONFIG_DIR=") {
-                if v.is_empty() {
-                    return None;
-                }
-                return Some(v.to_string());
-            }
-        }
-        None
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = pid;
-        None
     }
 }
 

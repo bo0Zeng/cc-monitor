@@ -28,6 +28,8 @@
 //! 记录变换走共享 crate `branch-core`（monitor 与 daemon **同一份实现**，G1）。
 //! 本模块只负责：定位源文件 → 路径守卫 → 调变换 → `O_EXCL` 落盘。
 
+// U2：合并进 `common/paths.rs`（原来这里各有一份逐字相同的副本）。
+use crate::common::paths::projects_root;
 use std::path::{Path, PathBuf};
 
 /// 成功时 stdout 输出的一行 JSON（camelCase，与 monitor 侧 `BranchResult` 同形）。
@@ -36,10 +38,6 @@ use std::path::{Path, PathBuf};
 struct ForkResult {
     session_id: String,
     jsonl_path: String,
-}
-
-fn projects_root(claude_dir: &Path) -> PathBuf {
-    claude_dir.join("projects")
 }
 
 /// 在 `<claude_dir>/projects/**/` 里按 sid 找那份 `<sid>.jsonl`。
