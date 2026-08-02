@@ -50,8 +50,11 @@
 //!
 //! # U4a：按平台分文件
 //!
-//! [`linux`] 是原实现（逐字搬，`#![cfg(target_os = "linux")]`）；
-//! [`fallback`] 是**诚实的空壳**，不是假实现 —— 见它自己的头注。
+//! `linux` 是原实现（逐字搬，`#![cfg(target_os = "linux")]`）；
+//! `fallback` 是**诚实的空壳**，不是假实现 —— 见它自己的头注。
+//!
+//! （这两个名字**刻意不用 intra-doc 链接**：两个 mod 各自带 cfg，在任一 target 上只有一个存在，
+//! 写成 `[\`fallback\`]` 会在 Linux 上产生一条悬空链接 —— Phase D 审计 重要-5 逮到的正是它。）
 //!
 //! 分文件而不是在函数里塞 `#[cfg]`：这一族的平台差异是**整套机制不同**
 //! （pidfd+poll vs OpenProcess+WaitForSingleObject），不是某一行不同。

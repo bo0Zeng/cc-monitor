@@ -100,9 +100,9 @@ U2 把 11/12 个错集中到一个文件，**U4a 清零并接进 CI**（见上�
 
 ⇒ **平台线的编译判据已收口；语义判据（Windows 上真的跑得对）留 U4b。**
 
-**已登记、U2 刻意不修的**：`platform::proc::pid_alive` 的非 Linux 分支恒返回 `true`
-（静默错误地雷）。改它 = 决定「Windows 上进程是否存活怎么答」，是 U4 的正题；
-在一个声明「行为逐字不变」的纯重构里夹带语义决策是错的。
+> **⚠ 这段曾停留在 U2/U3 时期的措辞**（「已登记、刻意不修：`pid_alive` 非 Linux 恒返回 `true`」）。
+> Phase D 审计逮出：**就在杀掉这颗雷的那个 commit 里，三处文档仍在断言它是活的**。
+> 现状见上面那张表 —— `pid_alive` 已是 `unimplemented!()`，跨 target check 已 RC=0 并进 CI。
 
 ## 版本 / 身份 / 能力（三轴正交，见 `../doc/INVARIANTS.md` §26/§28）
 - `PROTO_VERSION`（`main.rs`）：只在**破坏性 wire 变更**时 bump；additive 新帧/新能力**不** bump。
