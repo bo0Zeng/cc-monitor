@@ -1,6 +1,6 @@
 # cc-monitor
 
-> **Read-only output renderer for Claude Code CLI** — Tauri 2 + Vanilla TypeScript, Windows desktop app
+> **Read-only output renderer for Claude Code CLI** — Tauri 2 + Vanilla TypeScript, desktop app (Windows / Linux)
 >
 > English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 · Linux (.deb) | Current: v3.6.0
 
@@ -12,13 +12,13 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 
 ## Features
 
-> ⚠ **Platform prerequisite: watching *local* sessions currently works on Windows only.**
-> Liveness detection uses Win32 (`OpenProcess` + `GetExitCodeProcess`); the **non-Windows branch
-> always reports "not alive"**, so on Linux / macOS local sessions are never watched (no lines at all).
-> **On those platforms treat it as a remote monitor** — the SSH + daemon path (see "SSH remote mode"
-> below) works fully. (Pointing a remote entry at `localhost` ought to work, but that is **untested**,
-> so it is not offered here as a solution.)
-> Details and follow-up in `doc/ARCHITECTURE.md`.
+> ⚠ **Platform prerequisite: watching *local* sessions supports Windows and Linux; macOS does not.**
+> Liveness is a two-factor check (PID + process start time, to defeat PID reuse), each platform using
+> its native quantity (Windows: Win32 `GetProcessTimes`; Linux: field 22 of `/proc/<pid>/stat`).
+> **On macOS local sessions are not watched** (no `/proc`; would need `sysctl` FFI, and this repo has
+> no macOS CI, so it is deliberately unimplemented) — there, use it as a remote monitor; the
+> SSH + daemon path (see "SSH remote mode" below) works fully.
+> Details in `doc/ARCHITECTURE.md`.
 
 ### Real-time rendering
 - Watches `~/.claude/projects/**/*.jsonl`; new lines appear in window within 200ms

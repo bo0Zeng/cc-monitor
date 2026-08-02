@@ -1,10 +1,19 @@
 //! 活跃 session 探测 —— 不用 hook，直接读 Claude Code 自己维护的 `~/.claude/sessions/<PID>.json`。
 //!
 //! 每个 PID.json 含：`{pid, sessionId, cwd, startedAt, procStart, status, ...}`
-//! - `procStart` 是 **.NET DateTime.Ticks 字符串**（100ns 自 0001-01-01 **Local**，
-//!   非 Win32 FILETIME UTC——比较时要用 `FileTime::to_net_local_ticks` 转换。
-//!   详 `utils::NetTicks` / `FileTime` 模块文档）
-//! - 跟 `GetProcessTimes` 返回的 FILETIME 直接 u64 等值比对（容差几毫秒）
+//!
+//! ## `procStart` 是**平台原生**的（U7d 实测订正，2026-08-02）
+//!
+//! 这里原先只写了 Windows 那一种，读起来像是跨平台统一格式 —— **不是**：
+//!
+//! | 平台 | `procStart` 的量纲 | 拿什么比 |
+//! |---|---|---|
+//! | Windows | **.NET DateTime.Ticks 字符串**（100ns 自 0001-01-01 **Local**，非 Win32 FILETIME UTC；比较要过 `FileTime::to_net_local_ticks`，详 `utils::NetTicks`） | `GetProcessTimes` 的 FILETIME，直接 u64 等值（容差几毫秒） |
+//! | Linux | **`/proc/<pid>/stat` 第 22 字段**（starttime，时钟滴答自 boot） | 同一字段，**逐字符相等** |
+//!
+//! Linux 那行是实测出来的：本机 6 个真实会话的 `procStart` 与 `/proc` 第 22 字段
+//! **6/6 完全相等**，且它们的量级（~10^6）一眼不是 .NET Ticks（~6.4e17）。
+//! ⇒ 两个平台各自与本平台的查询口径同源，**PID 复用防御两边都是满精度**，不需要启发式。
 //!
 //! **v1.6.7 撤回了 bring_terminal_to_front 整条链路**（4-tier WindowMatcher /
 //! WT title 匹配 / SetForegroundWindow 等）。在 explorer 启 PowerShell + WT
@@ -108,7 +117,8 @@ pub struct SessionInfo {
     #[serde(rename = "sessionId")]
     pub session_id: String,
     pub cwd: String,
-    /// .NET DateTime.ToFileTime() —— FILETIME 100ns 自 1601-01-01 UTC，**字符串** 形式
+    /// 进程启动时刻，**平台原生格式的字符串**（见模块头注那张表）：
+    /// Windows = .NET DateTime.ToFileTime()；Linux = `/proc/<pid>/stat` 第 22 字段。
     ///
     /// v2.4.2 issue: 实测 Claude Code 某些启动路径（特定 /resume 流？）写出的
     /// `sessions/<PID>.json` 不含 `procStart` 字段。之前 `String` 必填导致 serde
@@ -514,9 +524,147 @@ fn is_process_alive(pid: u32, expected_proc_start: Option<&str>) -> bool {
     }
 }
 
-#[cfg(not(windows))]
+/// Linux：`/proc/<pid>` 存在性 + `procStart` 精确比对（**同样是双重校验，不是降级**）。
+///
+/// # 为什么这里能做到与 Windows 同等强度（U7d 实测，2026-08-02）
+///
+/// 计划原本担心「monitor 侧 `procStart` 是 .NET DateTime.Ticks，而 Linux 的
+/// `/proc/<pid>/stat` 第 22 字段是自 boot 的时钟滴答，**量纲不同、不能硬套**」，
+/// 并准备降级成「只查存在性 + 标注置信度」。
+///
+/// **实测推翻了这条前提**：Claude Code 在 Linux 上写进 pidfile 的 `procStart`
+/// **就是 `/proc/<pid>/stat` 第 22 字段本身**。本机 6 个真实会话逐个比对，**6/6 完全相等**
+/// （`3169940` / `12892607` / `5500689` / `6027532` / `1069089` / `1196681`）——
+/// 那些值也一眼不是 .NET Ticks（后者是 ~6.4e17 量级）。
+///
+/// 也就是说 `procStart` 是**平台原生**的：Windows 上是 FILETIME 系，Linux 上是 jiffies 系，
+/// 各自与本平台的查询口径同源。⇒ PID 复用防御在这里是**满精度**的，不需要任何启发式。
+///
+/// # `procStart` 缺失 ⇒ 只查存在性
+///
+/// 与 Windows 分支同语义（v2.4.2 实测某些启动路径下 Claude Code 不写这个字段）。
+#[cfg(target_os = "linux")]
+fn is_process_alive(pid: u32, expected_proc_start: Option<&str>) -> bool {
+    let Ok(raw) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+        return false; // 进程不在（或读不到）⇒ 判死。fail-safe：宁可少显示，不显示僵尸
+    };
+    let Some(want) = expected_proc_start else {
+        return true; // 缺 procStart ⇒ 退到存在性，同 Windows 侧
+    };
+    proc_stat_starttime(&raw).is_some_and(|got| got == want)
+}
+
+/// 从 `/proc/<pid>/stat` 原文里取第 22 字段（starttime）。
+///
+/// # ★ 不能用朴素 `split_whitespace()`
+///
+/// 第 2 字段 `comm` 是**括号包起来的可执行名，允许含空格与括号**。
+/// 实测本机 400 个进程里就有一个踩中：**`comm = "tmux: server"`** ——
+/// 朴素切法读到 `0`，正确值是 `1042`。而 tmux server 正是本仓的核心依赖。
+///
+/// 稳健解法：找**最后一个** `)`（comm 内部的括号不会是最后一个），其后即第 3 字段起，
+/// 于是 starttime = 其后第 `22 - 3 = 19` 项（0 基）。
+#[cfg(target_os = "linux")]
+fn proc_stat_starttime(raw: &str) -> Option<&str> {
+    let close = raw.rfind(')')?;
+    raw.get(close + 1..)?.split_whitespace().nth(19)
+}
+
+/// 其余 unix（**主要是 macOS**）：仍然恒 `false` —— 本机会话不会被监听。
+///
+/// **这是如实的未实现，不是判据**。macOS 没有 `/proc`，要做得走 `sysctl KERN_PROC`
+/// 的 FFI；本仓没有 macOS CI，我也无法在这里实测 —— 按本仓纪律**不写没验过的实现**。
+///
+/// 为什么返回 `false` 而不是像 daemon 侧那样 `unimplemented!()`：
+/// 那边是 CLI，panic 是「没人能忽略的信号」；这边是 GUI 常驻进程，panic 会直接崩掉窗口。
+/// `false` 在这里是 **fail-safe**（少显示，而不是显示永不消失的僵尸会话），
+/// 且这条限制已写进 `doc/ARCHITECTURE.md` 与双语 README —— **不是静默的谎**。
+#[cfg(all(unix, not(target_os = "linux")))]
 fn is_process_alive(_pid: u32, _expected_proc_start: Option<&str>) -> bool {
     false
+}
+
+/// U7d：Linux 判活的测试。**跑在真进程上**，不是只喂夹具字符串。
+#[cfg(all(test, target_os = "linux"))]
+mod linux_liveness {
+    use super::{is_process_alive, proc_stat_starttime};
+
+    /// ★ 自己这个进程必须被判活，且 `procStart` 要与 `/proc` 对得上。
+    ///
+    /// 这条同时验了两件事：读得到、比得对。用**真进程**是刻意的 ——
+    /// 只喂夹具字符串的话，`/proc` 路径拼错、字段序错位都测不出来。
+    #[test]
+    fn the_current_process_is_alive_and_its_starttime_matches() {
+        let me = std::process::id();
+        assert!(
+            is_process_alive(me, None),
+            "自己这个进程都判成死的 —— /proc 读路径不对"
+        );
+        let raw = std::fs::read_to_string(format!("/proc/{me}/stat")).expect("读自己的 stat");
+        let st = proc_stat_starttime(&raw).expect("抽不到 starttime");
+        assert!(
+            st.parse::<u64>().is_ok() && st != "0",
+            "starttime 抽成了 {st:?} —— 字段序错位（`comm` 含空格时朴素切法就会得到 0）"
+        );
+        assert!(
+            is_process_alive(me, Some(st)),
+            "procStart 与 /proc 一致却判成死的"
+        );
+    }
+
+    /// ★ **PID 复用防御**：pid 对、`procStart` 不对 ⇒ 判死。
+    ///
+    /// 这条是双重校验的全部意义 —— 少了它，pid 被复用后僵尸条目会一直显示成活跃。
+    #[test]
+    fn a_mismatched_starttime_means_dead_even_though_the_pid_exists() {
+        let me = std::process::id();
+        assert!(
+            !is_process_alive(me, Some("1")),
+            "pid 存在但 procStart 对不上，仍被判活 —— PID 复用防御没生效"
+        );
+    }
+
+    /// 不存在的 pid ⇒ 判死。用一个**刚退出**的真子进程，不是凭空编号。
+    #[test]
+    fn a_process_that_has_exited_is_dead() {
+        let mut child = std::process::Command::new("true")
+            .spawn()
+            .expect("起不了子进程");
+        let pid = child.id();
+        child.wait().expect("wait");
+        // 子进程已 reap，`/proc/<pid>` 应当没了。
+        assert!(!is_process_alive(pid, None), "已退出并 reap 的进程仍被判活");
+    }
+
+    /// ★ `comm` 含空格时字段序不许错位 —— 实测本机 `tmux: server` 就是这种。
+    ///
+    /// 朴素 `split_whitespace()` 在这条上读到 `0`，正确值是 `1042`。
+    #[test]
+    fn a_comm_containing_spaces_does_not_shift_the_field_index() {
+        // 真实形状（截自 /proc/<tmux-server>/stat，starttime = 1042）
+        let raw = "123 (tmux: server) S 1 123 123 0 -1 4194560 900 0 0 0 5 2 0 0 20 \
+                   0 1 0 1042 12345678 900 18446744073709551615";
+        let raw = raw.replace('\\', "").replace('\n', " ");
+        assert_eq!(
+            proc_stat_starttime(&raw),
+            Some("1042"),
+            "`comm` 里的空格让字段序错位了"
+        );
+        // 反向：朴素切法在同一条输入上会得到别的东西 —— 证明本测试不是空转。
+        let naive = raw.split_whitespace().nth(21);
+        assert_ne!(
+            naive,
+            Some("1042"),
+            "朴素切法居然也对 —— 那这条测试没有区分力，换一条更刁的输入"
+        );
+    }
+
+    /// `comm` 里带右括号（如 `(sd-pam)`）也不许错位 —— 靠的是找**最后一个** `)`。
+    #[test]
+    fn a_comm_containing_a_closing_paren_still_parses() {
+        let raw = "7 ((sd-pam)) S 1 7 7 0 -1 4194368 100 0 0 0 0 0 0 0 20 0 1 0 1023 5000 1 1";
+        assert_eq!(proc_stat_starttime(raw), Some("1023"));
+    }
 }
 
 #[cfg(test)]

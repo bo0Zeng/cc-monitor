@@ -1,6 +1,6 @@
 # cc-monitor
 
-> **Claude Code CLI 的只读输出渲染窗口** — Tauri 2 + Vanilla TypeScript，Windows 桌面应用
+> **Claude Code CLI 的只读输出渲染窗口** — Tauri 2 + Vanilla TypeScript，桌面应用（Windows / Linux）
 >
 > [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 · Linux（.deb） | 当前版本: v3.6.0
 
@@ -12,12 +12,12 @@
 
 ## 功能
 
-> ⚠ **平台前提：本机会话的实时监听目前只在 Windows 上工作。**
-> 判活用的是 Win32（`OpenProcess` + `GetExitCodeProcess`），**非 Windows 分支恒返回「不活跃」**
-> ⇒ Linux / macOS 上本机会话不会被监听（一行都不出）。
-> **那两个平台上它是个远端监视器** —— SSH + daemon 那条路（见下方「SSH 远端模式」）完全正常。
-> （「把 `localhost` 当远端配一条」理论上应当可行，但**没实测过**，不作为方案写在这里。）
-> 细节与后续计划见 `doc/ARCHITECTURE.md` §「本机读面只在 Windows 上工作」。
+> ⚠ **平台前提：本机会话的实时监听支持 Windows 与 Linux，macOS 暂不支持。**
+> 判活是 PID + 进程启动时刻双重校验（防 PID 复用），两个平台各用原生口径
+> （Windows: Win32 `GetProcessTimes`；Linux: `/proc/<pid>/stat` 第 22 字段）。
+> **macOS 上本机会话不会被监听**（没有 `/proc`，需要 `sysctl` FFI，本仓无 macOS CI 故未实现）——
+> 那个平台上请把它当远端监视器用，SSH + daemon 那条路（见下方「SSH 远端模式」）完全正常。
+> 细节见 `doc/ARCHITECTURE.md` §「本机判活」。
 
 ### 实时渲染
 - 自动监听 `~/.claude/projects/**/*.jsonl`，新行 200ms 内出现在窗口

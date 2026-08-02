@@ -305,30 +305,32 @@ F40b 上翻补批：active tab 滚到顶部 800px 内自动从 `TailWindow` 弹 
 
 **为什么 procStart 可缺**：v2.4.2 实测 Claude Code 2.1.150 在某些启动路径下（/resume 或类似）写 `sessions/<PID>.json` 漏 procStart。之前 schema 必填导致 serde 整条解析失败 → 整个 session 被静默忽略 → monitor 漏 Tab。改 `Option<String>` 后缺失就跳过 procStart 校验仅 STILL_ACTIVE。INVARIANTS § 18 完整论证。
 
-### ⚠ 本机读面**只在 Windows 上工作**（U7d 实测登记，2026-08-02）
+### 本机判活：Windows + Linux 各用平台原生口径（U7d，2026-08-02）
 
-上面那套探活是 `#[cfg(windows)]` 的。**非 Windows 分支恒返回 `false`**
-（`session_map.rs` 的 `#[cfg(not(windows))] fn is_process_alive → false`），而它是本机
-watcher 的活跃过滤器的唯一依据：
+上面那套双重校验（PID + `procStart`）**两个平台都是满精度的**，因为
+**`procStart` 是平台原生格式**，各自与本平台的查询口径同源：
 
-```
-spawn_watcher(projects_dir, active_filter, …)      lib.rs
-  → active_filter(sid) = map.is_session_active(sid)
-    → is_process_alive(pid, proc_start)
-      → #[cfg(not(windows))] false
-```
+| 平台 | `procStart` 写的是 | monitor 拿什么比 |
+|---|---|---|
+| Windows | .NET `DateTime.ToFileTime()` | `GetProcessTimes` 的 FILETIME |
+| Linux | `/proc/<pid>/stat` **第 22 字段**（starttime） | 同一字段，**逐字符相等** |
 
-⇒ **在 Linux / macOS 上，本机 watcher 会拒绝每一个会话，一行本机 jsonl 都不会 emit。**
-另有每 2s 的心跳收割器（`!is_process_alive(...)`，**没有平台门**）把会话表清空。
+Linux 那行是实测的：本机 6 个真实会话 `procStart` 与 `/proc` 第 22 字段 **6/6 完全相等**，
+量级（~10^6）也一眼不是 .NET Ticks（~6.4e17）。⇒ **不需要任何启发式降级。**
 
-**结论：那两个平台上 cc-monitor 只能当远端监视器用**（SSH + daemon 那条路完全正常）。
-这与本仓 Windows-first 的定位自洽 —— `bind.rs` 整个 `cfg(windows)`、PowerShell 集成、
-`ccm` 的安装目标只有远端 —— **但此前它没有出现在任何面向用户的文档里**，
-只在 `.claude/planned-build/` 的病灶表里被记成「互补平台残桩」，
-那个说法读起来像清理项，看不出「本机读面不存在」。
+⚠ **解析 `/proc/<pid>/stat` 不能用朴素 `split_whitespace()`**：第 2 字段 `comm` 允许含空格与括号。
+实测本机 400 个进程里就有一个踩中 —— **`comm = "tmux: server"`**，朴素切法读到 `0`，正确值 `1042`。
+而 tmux server 正是本仓的核心依赖。做法：找**最后一个** `)`，其后是第 3 字段起，starttime 是其后第 19 项（0 基）。
 
-要在 Linux/macOS 上支持本机会话，需要给 `is_process_alive` 写一个 `/proc` 实现
-（daemon 侧 `platform/proc.rs::pid_alive` 已有 Linux 版可参照）——**那是一个功能决定，不是清理**。
+#### ⚠ macOS 仍然不工作
+
+`#[cfg(all(unix, not(target_os = "linux")))]` 分支仍恒返回「不活跃」⇒ **macOS 上本机会话不会被监听**。
+那是**如实的未实现**：macOS 没有 `/proc`，要走 `sysctl KERN_PROC` 的 FFI，而本仓没有 macOS CI、
+也无法实测 —— 按本仓纪律不写没验过的实现。
+
+为什么返回 `false` 而不是 `unimplemented!()`（daemon 侧那样）：那边是 CLI，panic 是「没人能忽略的信号」；
+这边是 GUI 常驻进程，panic 会直接崩窗口。`false` 在这里是 **fail-safe**（少显示，而不是显示永不消失的
+僵尸会话），且这条限制写在这里与 README —— **不是静默的谎**。
 
 ### HWND 拉前三重校验
 `IsWindow(hwnd)` + 当前 `owner_pid == 绑定时 owner_pid` + 当前 owner 的 `procStart == 绑定时 owner_proc_start`。
