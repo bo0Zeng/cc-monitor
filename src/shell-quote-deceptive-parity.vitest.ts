@@ -47,7 +47,9 @@ describe("视觉欺骗字符：TS ↔ Rust 同一个集合（账本 S18）", () 
 
   // ★ 抽取器自检：解析不出来时，下面那条会零命中零失败地绿。
   test("真的从 Rust 源码解析出了码位（抽取器自检）", () => {
-    expect(points.length).toBeGreaterThanOrEqual(30);
+    // 地板 30 → 39（实测 39）。30 意味着「解析漏掉九个码位」不会红 ——
+    // 而漏掉的那几个正是两侧会分家的地方（复盘 P3 棘的三条地板之一）。
+    expect(points.length).toBeGreaterThanOrEqual(39);
     // 定点核几个：区间展开对不对、单点有没有漏。
     expect(points).toContain(0x00a0); // NBSP
     expect(points).toContain(0x2003); // 区间 2000..=200A 的中间一个

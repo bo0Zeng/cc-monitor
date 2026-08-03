@@ -593,11 +593,15 @@ mod tests {
     /// ★ 断言 4：表的形状钉死。改 `LEDGER` 就要来改这几个数。
     #[test]
     fn ledger_shape_is_pinned() {
-        assert_eq!(LEDGER.len(), 126, "命令总数变了"); // G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）
+        // ⚠ 订正（2026-08-03 复盘）：下面四条尾注此前都**只记到 U8c-2c-2 为止** ——
+        // 而 U8a-2c-pre（`57dba2a`）把这四个数各 +1 时，只改了数、一条尾注都没动。
+        // ⇒ 尾注把 U8a-2c-pre 的增量记在了 U8c-2c-2 名下。**尾注的用处就是说清「谁加的」，
+        // 归属错了就不如没有。**
+        assert_eq!(LEDGER.len(), 126, "命令总数变了"); // G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）
         let sides = capability_sides();
-        assert_eq!(sides.len(), 53, "能力总数变了"); // U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：本机不经 IR，§36）
+        assert_eq!(sides.len(), 53, "能力总数变了"); // U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：本机不经 IR，§36）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）
         let asym = asymmetric_capabilities();
-        assert_eq!(asym.len(), 20, "不对称能力数变了"); // G6 -1；E79 accounts.session-accounts 补平 -1
+        assert_eq!(asym.len(), 20, "不对称能力数变了"); // G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
         let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
         for (_, k, _) in ASYMMETRY_REASONS {
             *kinds
@@ -608,7 +612,7 @@ mod tests {
                 })
                 .or_default() += 1;
         }
-        assert_eq!(kinds.get("natural"), Some(&9), "天然不对称条数变了"); // U8c-2c-2 +1（launch.render-cli：本地不经 IR，§36+R07）
+        assert_eq!(kinds.get("natural"), Some(&9), "天然不对称条数变了"); // U8c-2c-2 +1（launch.render-cli：本地不经 IR，§36+R07）；U8a-2c-pre +1（launch.render-payload：同上）
         assert_eq!(kinds.get("debt"), Some(&9), "平价欠账条数变了"); // G6 -1；E79 -1
         assert_eq!(kinds.get("undecided"), Some(&2), "未裁定条数变了");
     }

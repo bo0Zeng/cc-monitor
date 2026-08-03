@@ -47,8 +47,32 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
     expect(tsFields).toEqual(rustReqFields);
   });
 
-  test("Rust 侧三个 wire 枚举都带 deny_unknown_fields（多送字段必须被拒，不静默吞）", () => {
-    for (const t of ["CliRenderRequest", "WireAction", "WireContainer", "WireAccount"]) {
+  // 判据自带清单（同 `cli.rs` 那两处：遍历被测文件自己是恒真的）。
+  // ⚠ 复盘 P2/P3 订正两件事：
+  //  · 名字写着「三个 wire 枚举」，循环里其实是**四个**类型（一个请求结构 + 三个枚举）；
+  //  · 而 `launch_cli_cmd.rs` 里带 `deny_unknown_fields` 的**入方向**类型实测有**七个** ——
+  //    `PayloadRenderRequest` / `WireEnvOp` / 以及上一轮刚加的 `WireWrap` 三个从来没被查过。
+  //    `WireWrap` 尤其要紧：`wrap` 那一格上一轮才刚因为「内核有、wire 没有」静默丢过一次。
+  const DENY_WIRE_TYPES = [
+    "CliRenderRequest",
+    "WireAction",
+    "WireContainer",
+    "WireAccount",
+    "PayloadRenderRequest",
+    "WireWrap",
+    "WireEnvOp",
+  ];
+
+  test("Rust 侧七个入方向 wire 类型都带 deny_unknown_fields（多送字段必须被拒，不静默吞）", () => {
+    // 数量自检：将来加第八个类型时这条红，提醒把它加进上面的清单 ——
+    // 只看**属性行**，因为这些类型的文档注释里就写着这个词（M3 抓到过）。
+    const denyAttrLines = RUST.split("\n").filter(
+      (l) => l.trim().startsWith("#[") && l.includes("deny_unknown_fields"),
+    );
+    expect(denyAttrLines.length, "带 deny_unknown_fields 的类型数变了，清单要同步").toBe(
+      DENY_WIRE_TYPES.length,
+    );
+    for (const t of DENY_WIRE_TYPES) {
       const at = RUST.indexOf(`enum ${t} {`) >= 0 ? RUST.indexOf(`enum ${t} {`) : RUST.indexOf(`struct ${t} {`);
       expect(at, `${t} 找不到`).toBeGreaterThan(0);
       // ⚠ **只看紧邻的 `#[...]` 属性行** —— 初版是「往前扫 220 字符找子串」，

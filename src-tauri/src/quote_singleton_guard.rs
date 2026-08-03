@@ -78,9 +78,11 @@ mod tests {
     #[test]
     fn the_source_scan_actually_finds_rust_files() {
         let n = rust_sources(&repo_root()).len();
+        // 地板从 40 棘到 90（实测 99）：40 意味着**丢掉六成扫描面也不会红**。
+        // 留 9 个余量是给正常增删文件的，不是给坏掉的遍历器的。
         assert!(
-            n >= 40,
-            "只扫到 {n} 个 .rs —— 扫描器坏了，下面那条「只有一个实现」会空转变绿"
+            n >= 90,
+            "只扫到 {n} 个 .rs（实测应约 99）—— 扫描器坏了，下面那条「只有一个实现」会空转变绿"
         );
     }
 
@@ -108,13 +110,25 @@ mod tests {
         }
         assert!(
             offenders.is_empty(),
-            "又出现了第二份 POSIX 单引号 quote 实现（收口前有四份、逐字节相同、从来没红过）。\n\
+            "又出现了第二份 POSIX 单引号 quote 实现（收口前有**五份**、逐字节相同、从来没红过）。\n\
              唯一的家是 `{SOLE_HOME}`，请调 `launch_core::posix_quote`。\n\
              命中：{offenders:?}"
         );
     }
 
     /// 反向自检：唯一的那个家里**确实**有这个实现 —— 否则上面那条是在断言「哪里都没有」。
+    ///
+    /// # 复盘审计说它是仪式性的，实测判定：**不是，留**
+    ///
+    /// 分两种情形量过（2026-08-03）：
+    /// - **把实现挖空**（换成不逃逸的实现）⇒ 全仓红 **27 条**（launch-core 自己 7 条 +
+    ///   monitor 20 条）。这一情形本条确实是重复的。
+    /// - **行为等价、但源码里不再出现那个字面量**（改成逐 char push）⇒ launch-core 36 条
+    ///   全绿、monitor 737 条全绿，**只有本条红**。
+    ///
+    /// 第二种才是本条真正的岗位：那时零命中守卫会**零命中地绿**，从此对「下一个人再复制一份
+    /// 同样写法的实现」也不再有效 —— 也就是守卫悄悄失去了锚点。**所以它不是仪式，是那条
+    /// 零命中守卫的唯一锚点。**（同 `the_source_scan_actually_finds_rust_files` 一族。）
     #[test]
     fn the_sole_home_really_holds_the_implementation() {
         let src = fs::read_to_string(repo_root().join(SOLE_HOME)).expect("launch-core 读不到");
