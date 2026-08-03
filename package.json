@@ -36,6 +36,7 @@
     "coverage": "vitest run --coverage",
     "test": "npm run test:branching && npm run test:diff && npm run test:api-error && npm run test:bash && npm run test:remote-health && npm run test:remote-launch && npm run test:format && npm run test:history-cache && npm run test:history-prefs && npm run test:history-actions && npm run test:usage-pivot && npm run test:pricing && npm run test:session-backend && npm run test:panorama-session-files && npm run test:launch-dimensions && npm run test:launch-render-cli && npm run test:dom",
     "gen:types": "cd src-tauri && cargo test --lib export_bindings",
+    "gen:payload-golden": "npx tsx e2e/launch-payload-golden-emit.mts",
     "check:types": "npm run gen:types && tsc --noEmit && git diff --exit-code -- src/generated/",
     "test:tmux-target": "bash e2e/tmux-target-acceptance.sh",
     "test:tmux-guarded": "bash e2e/tmux-guarded-acceptance.sh",

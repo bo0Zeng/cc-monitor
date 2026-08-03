@@ -1,0 +1,152 @@
+{
+  "_": "由 src/launch-payload-golden.ts 生成，勿手改。重生成：npm run gen:payload-golden",
+  "nestedEnvKeys": [
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_CHILD_SESSION"
+  ],
+  "cases": [
+    {
+      "name": "裸载荷（无修饰）",
+      "env": [],
+      "cwd": null,
+      "launcher": "claude",
+      "args": [],
+      "wrap": [],
+      "payload": "claude"
+    },
+    {
+      "name": "只有 cwd",
+      "env": [],
+      "cwd": "/w",
+      "launcher": "claude",
+      "args": [],
+      "wrap": [],
+      "payload": "cd '/w' && claude"
+    },
+    {
+      "name": "具名账号 + 嵌套 env 清理 + cwd",
+      "env": [
+        {
+          "kind": "export-config-dir",
+          "value": "/home/u/.claude-accts/z"
+        },
+        {
+          "kind": "unset-nested-env"
+        }
+      ],
+      "cwd": "/w",
+      "launcher": "claude",
+      "args": [],
+      "wrap": [],
+      "payload": "export CLAUDE_CONFIG_DIR='/home/u/.claude-accts/z'; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; cd '/w' && claude"
+    },
+    {
+      "name": "账号 0（显式 unset）+ 嵌套 env 清理",
+      "env": [
+        {
+          "kind": "unset-config-dir"
+        },
+        {
+          "kind": "unset-nested-env"
+        }
+      ],
+      "cwd": "/w",
+      "launcher": "claude",
+      "args": [],
+      "wrap": [],
+      "payload": "unset CLAUDE_CONFIG_DIR; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; cd '/w' && claude"
+    },
+    {
+      "name": "模型偏好",
+      "env": [
+        {
+          "kind": "export-model",
+          "value": "opus"
+        }
+      ],
+      "cwd": null,
+      "launcher": "claude",
+      "args": [],
+      "wrap": [],
+      "payload": "export ANTHROPIC_MODEL='opus'; claude"
+    },
+    {
+      "name": "resume（flag 已展开进 args）",
+      "env": [],
+      "cwd": "/w",
+      "launcher": "claude",
+      "args": [
+        "--resume",
+        "abc-123"
+      ],
+      "wrap": [],
+      "payload": "cd '/w' && claude --resume abc-123"
+    },
+    {
+      "name": "四种 EnvOp 同时出现（顺序即契约）",
+      "env": [
+        {
+          "kind": "export-config-dir",
+          "value": "/home/u/.claude-accts/z"
+        },
+        {
+          "kind": "export-model",
+          "value": "sonnet"
+        },
+        {
+          "kind": "unset-config-dir"
+        },
+        {
+          "kind": "unset-nested-env"
+        }
+      ],
+      "cwd": "/w",
+      "launcher": "claude",
+      "args": [],
+      "wrap": [],
+      "payload": "export CLAUDE_CONFIG_DIR='/home/u/.claude-accts/z'; export ANTHROPIC_MODEL='sonnet'; unset CLAUDE_CONFIG_DIR; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; cd '/w' && claude"
+    },
+    {
+      "name": "带空格与中文的 cwd（单引号包裹）",
+      "env": [],
+      "cwd": "/home/用户/带 空格/proj",
+      "launcher": "claude",
+      "args": [],
+      "wrap": [],
+      "payload": "cd '/home/用户/带 空格/proj' && claude"
+    },
+    {
+      "name": "cwd 里有单引号（POSIX 断开转义）",
+      "env": [],
+      "cwd": "/tmp/it's here",
+      "launcher": "claude",
+      "args": [],
+      "wrap": [],
+      "payload": "cd '/tmp/it'\\''s here' && claude"
+    },
+    {
+      "name": "wrap 折叠（order 乱序给，必须按升序由内向外）",
+      "env": [
+        {
+          "kind": "unset-config-dir"
+        }
+      ],
+      "cwd": "/w",
+      "launcher": "claude",
+      "args": [],
+      "wrap": [
+        {
+          "order": 2,
+          "prelude": "outer_setup"
+        },
+        {
+          "order": 1,
+          "prelude": "inner_setup"
+        }
+      ],
+      "payload": "unset CLAUDE_CONFIG_DIR; cd '/w' && ( outer_setup; exec ( inner_setup; exec claude ) )"
+    }
+  ]
+}

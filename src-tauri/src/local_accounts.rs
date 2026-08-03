@@ -103,8 +103,16 @@ fn is_safe_config_dir(p: &str) -> bool {
     if p.contains("\\..\\") || p.ends_with("\\..") {
         return false;
     }
-    // 平台无关的那一半：shell 元字符 + 视觉欺骗字符。**反斜杠不在此列**
-    // ——Windows 路径分隔符就是它；本模块产出的值不进任何 shell（本地注入走 env，不拼命令）。
+    // 平台无关的那一半：shell 元字符 + 视觉欺骗字符。**反斜杠不在此列** —— Windows 路径分隔符就是它。
+    //
+    // ⚠ **U8c-1 订正（2026-08-02）**：这里原本写着「本模块产出的值**不进任何 shell**
+    // （本地注入走 env，不拼命令）」—— **那句今天是假的**。本模块的 `config_dir` 经
+    // `fork-flow.ts` → tauri 命令 `resume_history_session` → `history.rs::build_local_posix_command`
+    // 进了一条 `bash -lic` 的 shell 串。
+    //
+    // **实际无害**，但理由要说对：放行 `\` 在这里是安全的，因为**下游那一层自己会拒**
+    // （`launch_core::config_dir_command_safe` 明确把 `\` 列进拒绝集，POSIX 路径里不该有它）。
+    // 也就是说这是**分层校验**，不是「不进 shell 所以不用管」。
     !p.chars().any(|c| {
         c.is_control()
             || is_deceptive_char(c)

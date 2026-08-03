@@ -983,15 +983,31 @@ pub enum LaunchAccount {
 /// 被 C04a 守卫当成真属性，报出一个不存在的命令。**那是当时的绕法。**
 /// 守卫已经会认 Rust 字符字面量了，所以这条约束**不再成立**；`&str` 形态留着只是因为
 /// 配 `.contains(c)` 读起来更顺，不是被逼的。
+/// ⚠ **U8c-1 起只剩 Windows / 测试期在用**（POSIX 侧已改调 `launch_core`）。
+/// cfg 与它唯一的消费者 [`validate_config_dir_ps`] 对齐 —— 不加就是三条 `never used`
+/// 警告，而 `cargo build` 不带 `-D warnings` ⇒ **不会红**（clippy 集合差抓到的）。
+#[cfg(any(windows, test))]
 const SHELL_META_COMMON: &str = "'\"`$;|&<>*?()!";
 
 /// 会被用来伪装路径的不可见 / 双向控制字符。
+///
+/// ⚠ **U8c-1 起这张表只剩 Windows 那条路在用**（`validate_config_dir_ps`）。
+/// POSIX 侧已改调 `launch_core::config_dir_command_safe`（建立在 `acct_core::is_deceptive_char`
+/// 的并集上）。**这张表是 U7-3 之前的旧集合**，缺 `U+1680` · `U+2000..200A` · `U+202F` ·
+/// `U+205F` · `U+2060..2064` · `U+3000`。
+///
+/// **为什么不顺手把 PS 侧也换掉**：Windows 的账号目录长成 `C:\Users\z\.claude-accts\z`，
+/// 「什么算绝对路径」与「`\` 算不算危险字符」两侧结论相反 —— `acct-core` 头注已经为同族的
+/// `is_safe_config_dir` 裁决过「**是刻意的平台特化，不是漂移** ⇒ 不合」。
+/// 硬合只能二选一地牺牲一个平台。⇒ **登记在案，留给 U4b（真机）或 U8c-3**，不假装做完了。
+#[cfg(any(windows, test))]
 const SPOOFABLE: &[char] = &[
     '\u{00a0}', '\u{200b}', '\u{200c}', '\u{200d}', '\u{200e}', '\u{200f}', '\u{2028}', '\u{2029}',
     '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}',
     '\u{2069}', '\u{feff}',
 ];
 
+#[cfg(any(windows, test))]
 fn has_bad_chars(dir: &str, extra: &str) -> bool {
     dir.chars().any(|c| {
         c.is_control()
@@ -1003,14 +1019,23 @@ fn has_bad_chars(dir: &str, extra: &str) -> bool {
 }
 
 /// POSIX 侧校验：必须是**绝对 POSIX 路径**，且不含反斜杠（那边的路径里不该有）。
+///
+/// **U8c-1：判据本体已搬进共享 crate** `launch_core::config_dir_command_safe`。
+/// 本函数只剩「把 bool 变成带上下文的 Err」。
+///
+/// ⚠ **这次搬家不是纯重构，它把校验变严了**：本文件原先用自己那张 `SPOOFABLE`
+/// （18 项，是 **U7-3 之前**的旧集合），而 crate 侧建立在 `acct_core::is_deceptive_char`
+/// 的**并集**上 —— 多拒 `U+1680` · `U+2000..200A` · `U+202F` · `U+205F` · `U+2060..2064` ·
+/// `U+3000`。U7-3 当时把并集给了两个**读 manifest** 的地方，**拼命令这条路漏了**。
+///
+/// 诚实定级：那是**纵深防御**缺口，不是当时可利用的洞（configDir 的上游 manifest 读取
+/// 已经用并集把过一道）。但「权威也保留本地校验」是本仓自己的纪律（`resolve_query.rs` B2）。
 fn validate_config_dir_posix(dir: &str) -> Result<(), String> {
-    if !dir.starts_with('/') || dir == "/" || dir.contains("/../") || dir.ends_with("/..") {
-        return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"));
+    if launch_core::config_dir_command_safe(dir) {
+        Ok(())
+    } else {
+        Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"))
     }
-    if has_bad_chars(dir, "\\") {
-        return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"));
-    }
-    Ok(())
 }
 
 /// PowerShell 侧校验。**与 POSIX 那条的唯一实质差别是「什么算绝对路径」** ——
@@ -1044,7 +1069,8 @@ fn validate_config_dir_ps(dir: &str) -> Result<(), String> {
 fn config_dir_prefix_posix(account: Option<&LaunchAccount>) -> Result<String, String> {
     match account {
         None => Ok(String::new()),
-        Some(LaunchAccount::Base) => Ok("unset CLAUDE_CONFIG_DIR; ".to_string()),
+        // U8c-1：这条串的逐字节形态由内核持有（e2e 探针 `grep -q "unset CLAUDE_CONFIG_DIR;"`）。
+        Some(LaunchAccount::Base) => Ok(launch_core::UNSET_CONFIG_DIR_PREFIX.to_string()),
         Some(LaunchAccount::Named { config_dir }) => {
             let d = config_dir.trim();
             // 空串**不是**账号 0，是坏数据（空值 ≠ 未设 —— Z01 起整套设计的支点）。
@@ -1054,7 +1080,10 @@ fn config_dir_prefix_posix(account: Option<&LaunchAccount>) -> Result<String, St
                 );
             }
             validate_config_dir_posix(d)?;
-            Ok(format!("export CLAUDE_CONFIG_DIR='{d}'; "))
+            // U8c-1：串本身由内核产出（`launch-core`），本文件不再自己 format。
+            launch_core::config_dir_prefix_posix(Some(&launch_core::Account::Named {
+                config_dir: d,
+            }))
         }
     }
 }
@@ -1749,6 +1778,52 @@ mod tests {
             Some(&named("/home/u/.claude-accts/z"))
         )
         .is_ok());
+    }
+
+    /// ★ U8c-1：POSIX 校验改调 `launch-core` 之后**多拒**的那六段码位。
+    ///
+    /// 这不是纯重构 —— 本文件原先用的 `SPOOFABLE` 是 **U7-3 之前**的旧集合，
+    /// 而内核建立在 `acct_core::is_deceptive_char` 的并集上。这条测试点名那六段，
+    /// 变异（把内核换回旧表）时会逐个报出来。
+    ///
+    /// ⚠ **PS 那条路刻意还用旧表**（Windows 平台特化，见 `SPOOFABLE` 头注），
+    /// 所以这里只断言 POSIX 侧 —— 断言 PS 侧会当场红，那才是假装做完了。
+    #[test]
+    fn posix_config_dir_now_rejects_the_code_points_u7_3_added() {
+        for (name, c) in [
+            ("U+1680 Ogham space", '\u{1680}'),
+            ("U+2000 en quad", '\u{2000}'),
+            ("U+200A hair space", '\u{200a}'),
+            ("U+202F narrow NBSP", '\u{202f}'),
+            ("U+205F medium math space", '\u{205f}'),
+            ("U+2060 word joiner", '\u{2060}'),
+            ("U+3000 ideographic space", '\u{3000}'),
+        ] {
+            let dir = format!("/home/u/.claude-accts/{c}z");
+            assert!(
+                build_local_posix_command(&LocalPsAction::New, None, Some(&named(&dir))).is_err(),
+                "{name} 应被 POSIX 侧拒掉（acct-core 并集里有它，history.rs 旧表没有）"
+            );
+        }
+    }
+
+    /// ★ U8c-1：合法输入的产物**逐字节不变** —— 搬内核不许改一个字节。
+    #[test]
+    fn posix_account_prefix_is_byte_identical_after_moving_to_launch_core() {
+        assert_eq!(
+            config_dir_prefix_posix(None).unwrap(),
+            "",
+            "参数缺席仍是空串（既有调用点逐字节等价旧行为）"
+        );
+        assert_eq!(
+            config_dir_prefix_posix(Some(&LaunchAccount::Base)).unwrap(),
+            "unset CLAUDE_CONFIG_DIR; ",
+            "账号 0 的逐字节形态被 e2e 探针 grep 着"
+        );
+        assert_eq!(
+            config_dir_prefix_posix(Some(&named("/home/u/.claude-accts/z"))).unwrap(),
+            "export CLAUDE_CONFIG_DIR='/home/u/.claude-accts/z'; "
+        );
     }
 
     #[test]

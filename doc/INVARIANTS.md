@@ -886,6 +886,74 @@ attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建�
 `shared/ccm` 并对 `detach`/`tmux-size` 两项 fail-closed。**真正零覆盖的是**：
 首行 `name=ccm` · `version=` · `agents=` · TS 侧那 7 项 `CLI_REQUIRED_CAPS`。
 
+## 33b. 载荷编译器搬进 Rust 是**三步**，六条渲染器不变量各自的命运写在这里（U8c / unified-backend）
+
+**背景**：unified-backend 要把「起会话」的决策移到 backend，于是 TS 那两个渲染器要退役。
+这件事一轮吞不下（四个文件 614 行 + 三个下游依赖 321 行 + **本节以下六条不变量**），
+U8c-1 摸底后拆成三步：
+
+| 件 | 内容 | 状态 |
+|---|---|---|
+| **U8c-1** | 载荷编译器进共享 crate `launch-core` + 跨语言逐字节对拍；`history.rs` POSIX 分支改调内核 | **2026-08-02 已交付** |
+| **U8c-2** | 前端改发**结构化请求**（Rust 渲染），TS 两个渲染器降级为「只供对拍」 | 待做 |
+| **U8c-3** | 删 TS 渲染器 + IR，收敛下面六条 | 待做 |
+
+### 外层容器那半为什么本轮不搬（**不是因为它没了** —— 我第一版就是这么写的，被工程审计证伪）
+
+一条完整命令分两层：外层 tmux（`new-session … ; send-keys … ; attach`）+ 内层载荷
+（`env 前缀 → cd → argv`）。U8c-1 只搬内层，**理由是「先做被依赖的」，不是「外层已经不需要了」**。
+
+⚠ **实测：外层今天有四个产出方，一个都没退役**（2026-08-02 逐条核过）：
+
+| 产出方 | 实况 |
+|---|---|
+| `session-backend.ts`（TS） | **生产远端主路**，天天在跑 |
+| `control/launch.rs`（Rust argv，U8a-2b 建的） | **零生产调用方** —— 全仓 `.call("launch", …)` 只有一处且在 `#[cfg(test)]` 里，`ssh_source.rs` 还专门断言 `!client.accepts("launch")`。切过去归 **U8a-2c**，STATUS 早已登记为阻塞 |
+| `account_usage.rs::build_usage_probe_cmd`（Rust shell 串） | 用量探针，**生产在跑**（`tmux kill-session … new-session … send-keys … capture-pane`） |
+| `shared/ccm` | 用户终端那条路 |
+
+且 `control/launch.rs` **结构上不覆盖 attach** —— 它的模块头注逐字写着「本模块**不 attach**」（平面 ③）。
+而 `session-backend.ts::createRunAttach`/`attach()` 产出的串尾巴就是 `tmux attach -t …`。
+
+⇒ **U8c-3 删 `session-backend.ts` 之前必须先回答三件事**：
+① 生产是否已切到 daemon 的 `launch`（U8a-2c）；② **attach 那条串归谁产**；
+③ **daemonless 的远端**（U12 未决）还要不要能起会话 —— 要的话就必须有一个不依赖 daemon 的外层渲染方。
+
+### 六条不变量各自的命运（U8c-1 逐条判定，别到 U8c-3 才现想）
+
+| 条 | 讲什么 | U8c-1 动了吗 | 后两件会怎么动 |
+|---|---|---|---|
+| **§33** | 双渲染器；CLI 渲染器表达不了就必须放弃、不许近似 | **没动** | U8c-2 后「两个渲染器」变成「一个 Rust 渲染器 + 一条 ccm 调用形态」；**「表达不了就放弃」这条纪律必须原样继承**，不许因为换了语言就默许近似。U8c-3 改写本条 |
+| **§35** | 维度的 `applies` 不许条件性跳过 `cliFlags` 的 `null` 安全网 | **没动** | 维度注册表是 TS 的东西。U8c-2 把维度搬进 Rust 时，`null` 安全网要变成 Rust 的 `Option`/`Result` —— **「拿不到命令」而不是「渲染出一条丢了修饰的命令」这个结构保证不许降级** |
+| **§36** | 本地（Windows）路径**不经 IR** 产出命令 | **没动，而且 U8c-1 刻意维持它** | Windows 分支（`config_dir_prefix_ps` / `validate_config_dir_ps`）一个字节没碰。它要不要并进内核，取决于 `acct-core` 已裁决过的「`\` 与盘符」问题 ⇒ **U4b（真机）或 U8c-3**，登记在案 |
+| **§37** | 新维度的 `applies` 该不该恒真，看「沉默」是否等价于用户期望 | **没动** | 同 §35，随维度注册表一起搬 |
+| **§38** | 一条新正交轴进注册表还是做一等字段（三条 checklist） | **没动** | 这条是**设计判据**不是实现，跨语言仍然成立 ⇒ U8c-3 只需把例子里的 TS 符号名换成 Rust 的 |
+| **§39** | `WrapSpec` 是纯数据不是闭包 | **已在 Rust 侧兑现**：`launch_core::WrapSpec { order, prelude }` 就是纯数据，Rust 里连闭包这个选项都没给 | U8c-3 删 TS 那份 |
+
+### 变严的代价：它在两种语言之间**开了一条新缝**（U8c-1 如实登记）
+
+`history.rs` 的 POSIX 校验换成 `acct-core` 并集之后，同一个含 `U+3000` 的 configDir：
+**本机 Rust 拉起拒绝、远端 TS 拉起放行**（TS `shell-quote.ts::isValidConfigDir` 仍是旧集合）。
+迁移前两侧都用旧集合、是一致的。⇒ **这是变严的诚实代价**，U8c-2/U8c-3 收编 TS 时一并收口。
+
+### 跨语言一致性靠什么保住（U8c-1 的核心交付）
+
+**入库夹具 + 两侧各自与它比**，不是注释：
+
+```text
+  src/launch-payload-golden.ts（真 renderFallback）
+        │ npm run gen:payload-golden
+        ▼
+  src-tauri/crates/launch-core/fixtures/payload-golden.json   ← 入库
+        ▲                                    ▲
+        │ launch-payload-golden.vitest.ts    │ launch_payload_parity.rs
+        │ 「入库的 == 现场渲染的」            │ 「Rust 渲染的 == 入库的」
+```
+
+⚠ **两侧都必须有计数自检**（`MIN_CASES`）：夹具被清空/截断时，「逐条循环」在两种语言里
+都会零命中零失败地绿。⚠ **绝不能让 Rust 侧去调 TS 现场生成** —— 那就成了自洽夹具
+（U7-4 的病根正是「写侧读侧同一个常量」）。
+
 ## 34. tmux 破坏性/半破坏性命令三道门 + 原子 verify+act（F04 / unify-launch / R10）
 
 **背景**：F04 根治 R10——过去 `kill_remote_tmux`/`tmux_send_keys` 只有一道门（`is_ccm_tmux_name`

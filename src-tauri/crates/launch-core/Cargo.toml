@@ -1,0 +1,11 @@
+[package]
+name = "launch-core"
+version = "0.1.0"
+edition = "2021"
+description = "「起一个会话」的载荷编译器——env 前缀 / cd / argv / wrap 的唯一 Rust 真相源。今天只有 monitor 用；U8c-2 起远端 daemon 共用（写「两侧共用」是将来时）。"
+
+# **只依赖同族共享 crate**。同 branch-core / usage-core / acct-core / guard-core 的约束：
+# daemon 是 Linux-only 的静态 musl 二进制、且刻意不在 monitor 的 workspace 里；
+# 一旦引入平台相关的东西，共享就破了。
+[dependencies]
+acct-core = { path = "../acct-core" }
