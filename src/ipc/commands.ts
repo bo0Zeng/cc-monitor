@@ -39,6 +39,8 @@
  *    「Rust 有而 TS 静态看不见」的那 7 个动态名逐字钉死。
  */
 import { invoke, type Channel } from "@tauri-apps/api/core";
+// U8c-2c-2：手写 wire 镜像（不是 ts-rs 生成的）——与 Rust 的一致性由 launch-cli-wire.vitest.ts 钉。
+import type { CliRenderRequest, CliRenderResponse } from "../launch-cli-wire.ts";
 
 import type { AccountUsageProbeResult } from "../generated/AccountUsageProbeResult";
 import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
@@ -590,6 +592,10 @@ export const commands = {
   config_surface_report: () => invoke<ConfigSurfaceReport>("config_surface_report"),
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
   drift_ledger_report: () => invoke<DriftFaceReport[]>("drift_ledger_report"),
+  // U8c-2c-2：`ccm 调用行`改由 Rust 渲染（`launch_core::cli`）。
+  // **`ok:false` 不是错误，是诚实降级** —— 调用方拿着 `reason` 去走兜底渲染器（§33）。
+  render_ccm_launch: (args: { req: CliRenderRequest }) =>
+    invoke<CliRenderResponse>("render_ccm_launch", args),
 
   /** 把内嵌的 vendor `cc-acct-iso` 部署到远端。返回人话结果串 ⇒ 原始类型，无需生成物。 */
   deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>
