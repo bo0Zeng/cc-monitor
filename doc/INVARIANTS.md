@@ -918,9 +918,17 @@ U8c-1 摸底后拆成三步：
 且 `control/launch.rs` **结构上不覆盖 attach** —— 它的模块头注逐字写着「本模块**不 attach**」（平面 ③）。
 而 `session-backend.ts::createRunAttach`/`attach()` 产出的串尾巴就是 `tmux attach -t …`。
 
-⇒ **U8c-3 删 `session-backend.ts` 之前必须先回答三件事**：
-① 生产是否已切到 daemon 的 `launch`（U8a-2c）；② **attach 那条串归谁产**；
-③ **daemonless 的远端**（U12 未决）还要不要能起会话 —— 要的话就必须有一个不依赖 daemon 的外层渲染方。
+⇒ **U8c-3 删 `session-backend.ts` 之前必须先回答三件事。2026-08-03 逐条实测过了**：
+
+| # | 问题 | 答案 |
+|---|---|---|
+| ① | 生产切到 daemon 的 `launch` 了吗 | **否** —— 全仓 `.call("launch")` 只有一处且在 `#[cfg(test)]` 里，`ssh_source.rs` 还断言 `!accepts("launch")`。**U8a-2c 未做** |
+| ② | attach 那条串归谁产 | **一半有答案**：装了 ccm 的主机 U8c-2c-2 起已是 Rust 产（`ccm attach <名>`）；**没装 ccm 的仍靠 `session-backend.ts::attach`** |
+| ③ | daemonless 的远端还要不要能起会话 | **未决** —— U12 仍是待做项 |
+
+⇒ **①「否」+ ③「未决」⇒ 今天删不得**：硬删会把「没装 ccm 的远端」与「daemonless 的远端」
+两类主机的起会话能力直接删掉，而那两类今天都还成立。
+**U8c-3 的真前置不是文档，是 U8a-2c 与 U12 两件未做的功能。**
 
 ### 六条不变量各自的命运（U8c-1 逐条判定，别到 U8c-3 才现想）
 

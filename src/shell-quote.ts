@@ -43,8 +43,23 @@ export function isValidConfigDir(dir: string): boolean {
   if (dir === "/" || dir.includes("/../") || dir.endsWith("/..")) return false;
   // shell 元字符 / 引号 / 控制符（C0 + DEL + C1，对齐 daemon Rust char::is_control）——一律拒
   if (/['"\\`$;|&<>*?()!\u0000-\u001f\u007f-\u009f]/.test(dir)) return false;
-  // 可欺骗 Unicode（零宽 / 双向控制 / NBSP / BOM 等；NEL \u0085 已含在上面 C1 区）——一律拒
-  if (/[\u00a0\u200b-\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/.test(dir)) return false;
+  // 可欺骗 Unicode（零宽 / 双向控制 / 各类空白 / BOM；NEL \u0085 已含在上面 C1 区）——一律拒。
+  //
+  // ⚠ **这一行必须与 `acct-core::is_deceptive_char` 是同一个集合**（S18）：
+  // U7-3 把那张表收进共享 crate 时，只给了两个**读 manifest** 的地方，
+  // **拼命令这条路当时漏了**；U8c-1 把 Rust 的命令面接上了并集，**而 TS 这边没跟** ——
+  // 于是同一个含 `U+3000` 的 configDir「本机 Rust 拉起拒绝、远端 TS 拉起放行」。
+  // 本行补齐那六段（`U+1680` · `U+2000..200A` · `U+202F` · `U+205F` · `U+2060..2064` · `U+3000`）。
+  //
+  // 两侧一致由 `shell-quote-deceptive-parity.vitest.ts` 钉住：它**读 Rust 源码**、
+  // 把每个码位真的喂给本函数 —— 是行为对拍，不是文本对拍。
+  if (
+    /[\u00a0\u1680\u2000-\u200f\u2028\u2029\u202a-\u202f\u205f\u2060-\u2064\u2066-\u2069\u3000\ufeff]/.test(
+      dir,
+    )
+  ) {
+    return false;
+  }
   return true;
 }
 
