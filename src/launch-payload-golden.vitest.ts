@@ -9,7 +9,7 @@ import { describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { GOLDEN_CASES, renderGoldenFixture } from "./launch-payload-golden.ts";
-import { CLI_GOLDEN_CASES, renderCliGoldenFixture } from "./launch-cli-golden.ts";
+import { renderCliGoldenFixture } from "./launch-cli-golden.ts";
 
 // `import.meta.url` 在 vitest 里不是 `file:` scheme（实测 `The URL must be of scheme file`）——
 // 照本仓既有做法用 `resolve(__dirname, "..")`（同 `fork-flow.vitest.ts:114`）。
@@ -55,16 +55,12 @@ describe("ccm 调用行黄金串夹具（U8c-2c-1 跨语言对拍的 TS 半边�
     expect(readFileSync(CLI_FIXTURE_PATH, "utf8")).toBe(renderCliGoldenFixture());
   });
 
-  // ⚠ ok 与 refusal **两类都要有下限**：只剩 ok 那半的话，「该降级却渲染出来了」
-  // 就没人管了 —— 而那正是 doc/INVARIANTS.md §33 铁律要防的形态。
-  test("ok 与 refusal 两类都覆盖到了", () => {
-    const parsed = JSON.parse(readFileSync(CLI_FIXTURE_PATH, "utf8")) as {
-      cases: { ok: boolean }[];
-    };
-    expect(parsed.cases.length).toBe(CLI_GOLDEN_CASES.length);
-    expect(parsed.cases.filter((c) => c.ok).length).toBeGreaterThanOrEqual(6);
-    expect(parsed.cases.filter((c) => !c.ok).length).toBeGreaterThanOrEqual(5);
-  });
+  // ⚠ ok 与 refusal 两类的下限**刻意只留 Rust 侧**（`launch_cli_parity.rs` 对**同一个文件**
+  // 断言同一批阈值）。这里那三行（用例数 + ok 下限 + refusal 下限）2026-08-03 复盘 P3 删掉：
+  //  · 用例数那条与上面「入库的 == 现场渲染的」重复 —— 后者是**全文件字节比较**，
+  //    夹具被截断/清空时必红，理由同本文件上面那段已经写过的（那条纪律当时只落实了载荷那半）；
+  //  · 两个下限与 Rust 侧逐字重复，而重复的棘轮只有一侧会被想起来棘（实测：Rust 那侧
+  //    写着 6/5，真实是 9/7 —— 两侧都没棘过）。**留一侧、并棘到真值。**
 
   test("每条 refusal 都带非空理由（生产侧唯一的降级线索）", () => {
     const parsed = JSON.parse(readFileSync(CLI_FIXTURE_PATH, "utf8")) as {

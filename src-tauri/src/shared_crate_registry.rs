@@ -54,13 +54,30 @@ mod tests {
             .expect("ci.yml 读不到")
     }
 
+    /// `ci.yml` 里**真的会跑**的那些行 —— 注释行剔掉。
+    ///
+    /// ⚠ 实测（2026-08-03 复盘 P3）：本模块此前直接对整份 `ci.yml` 做 `contains`，
+    /// 把 `cargo test -p launch-core` **注释掉**之后守卫**照旧全绿**（3 passed）。
+    /// 而「注释掉一步」正是本模块要防的那个病的最省事形态 —— 它连 diff 都很小。
+    /// 顺带：文件头那段散文注释里也写着这套纪律的命令形态，散文不该当证据。
+    fn ci_live_lines() -> String {
+        ci_yml()
+            .lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     /// ★ 抽取器自检：`crates/` 下一个都没抽到时，下面那条会零命中零失败地绿。
     #[test]
     fn the_crate_scan_actually_finds_crates() {
         let n = shared_crate_names().len();
+        // 地板从 4 棘到 5（实测 5：branch-core / usage-core / acct-core / guard-core /
+        // launch-core）。差一个的地板意味着「少抽到一个 crate」不会红 —— 而少抽到的那个
+        // 恰好就是没人管 CI 的那个。删共享 crate 时来改这个数，是刻意的摩擦。
         assert!(
-            n >= 4,
-            "只从 crates/*/Cargo.toml 抽到 {n} 个包名 —— 抽取器坏了，\
+            n >= 5,
+            "只从 crates/*/Cargo.toml 抽到 {n} 个包名（实测应为 5）—— 抽取器坏了，\
              下面那条「三样都在 CI 里」会零命中零失败地绿"
         );
     }
@@ -68,7 +85,7 @@ mod tests {
     /// ★ 每个共享 crate 都必须在 `ci.yml` 里出现在 test / fmt / clippy **三处**。
     #[test]
     fn every_shared_crate_gets_all_three_ci_steps() {
-        let ci = ci_yml();
+        let ci = ci_live_lines();
         let mut missing = Vec::new();
         for name in shared_crate_names() {
             for (what, needle) in [
@@ -94,27 +111,52 @@ mod tests {
         );
     }
 
-    /// 反过来也要成立：`ci.yml` 里 `cargo test -p X` 提到的 crate 必须真的存在。
-    /// 挡的是「crate 改名/删除后 CI 步骤留成僵尸」——那一步会一直失败，但如果有人把它
-    /// 顺手删掉而不删对应的 fmt/clippy，覆盖面就悄悄缩水了。
+    /// 反过来也要成立：`ci.yml` 里提到的 crate 必须真的存在。
+    /// 挡的是「crate 改名/删除后 CI 步骤留成僵尸」。
+    ///
+    /// ⚠ 复盘 P3 订正：这条的说明写着「如果有人把 test 那步顺手删掉而不删对应的
+    /// fmt/clippy，覆盖面就悄悄缩水了」，**而它此前只扫 `cargo test -p` 那一种形态** ——
+    /// 也就是它声称担心的 fmt/clippy 僵尸行，它自己看不见。现在**三种形态都扫**。
     #[test]
     fn ci_does_not_reference_crates_that_no_longer_exist() {
-        let ci = ci_yml();
         let names = shared_crate_names();
         let mut ghosts = Vec::new();
-        for line in ci.lines() {
-            let Some(rest) = line.trim().strip_prefix("cargo test -p ") else {
+        let mut scanned = 0usize;
+        for line in ci_live_lines().lines() {
+            // 两种 YAML 写法都要认：`run: |` 块里独立成行的命令，与内联的
+            // `run: cargo test -p branch-core`。⚠ 初版只认前者 ⇒ 自检报「只扫到 14 处」，
+            // 而**分家的是我这个抽取器、不是 ci.yml**（`branch-core` 那三步是内联写法）。
+            // 那条自检第一次跑就抓到了它自己上游的这个错，值。
+            let t = line
+                .trim()
+                .trim_start_matches("- ")
+                .trim_start_matches("run: ")
+                .trim();
+            // 三种步骤形态各自的取名方式。
+            let referenced = if let Some(rest) = t.strip_prefix("cargo test -p ") {
+                rest.split_whitespace().next().unwrap_or("")
+            } else if let Some(at) = t.find("--manifest-path crates/") {
+                let rest = &t[at + "--manifest-path crates/".len()..];
+                rest.split('/').next().unwrap_or("")
+            } else {
                 continue;
             };
-            let referenced = rest.split_whitespace().next().unwrap_or("");
             // vendored 的 code-picture-core 不在 crates/ 下，走自己的一步。
             if referenced == "code-picture-core" || referenced.is_empty() {
                 continue;
             }
+            scanned += 1;
             if !names.iter().any(|n| n == referenced) {
                 ghosts.push(referenced.to_string());
             }
         }
+        // 抽取器自检：三种形态 × 5 个 crate = 15 行。扫不到就是取名方式跟 ci.yml 分家了。
+        assert!(
+            scanned >= 15,
+            "只扫到 {scanned} 处 crate 引用（三种形态 × 5 个 crate 应有 15 处）—— \
+             要么有一步被注释/删掉了，要么本抽取器的取名方式与 ci.yml 分家了。\
+             两种都得看一眼：后者会让下面那条零命中变绿"
+        );
         assert!(
             ghosts.is_empty(),
             "ci.yml 引用了 crates/ 下不存在的包：{ghosts:?}"

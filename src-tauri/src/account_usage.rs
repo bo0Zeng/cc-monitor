@@ -356,12 +356,33 @@ mod tests {
     fn account_usage_actually_forwards_the_config_dir_it_received() {
         let src = guard_core::production_code(include_str!("account_usage.rs"));
         // 只数**调用点** —— `fn probe_command_for(` 那个定义也含同一串，不能算进来。
-        let calls: Vec<&str> = src
+        //
+        // ⚠ **括号要配平**（2026-08-03 复盘 P3 实测修的）：初版取到**第一个** `)` 为止，
+        // 于是 `probe_command_for(&slug, None, watchdog_for(config_dir.as_deref()))`
+        // 这种形态里，`config_dir` 从**第三个实参**漏进窗口 ⇒ 第二个实参明明是 `None`
+        // （恒当账号 0 = 静默串号，正是本条要防的），守卫却 16 passed 全绿。
+        // 现在按括号深度取完整实参表，再按**顶层逗号**切开，只看**第二个**实参。
+        let calls: Vec<Vec<String>> = src
             .match_indices("probe_command_for(")
             .filter(|(i, _)| !src[..*i].ends_with("fn "))
             .map(|(i, _)| {
                 let rest = &src[i + "probe_command_for(".len()..];
-                &rest[..rest.find(')').unwrap_or(rest.len())]
+                let mut depth = 0usize;
+                let mut args: Vec<String> = vec![String::new()];
+                for c in rest.chars() {
+                    match c {
+                        '(' | '[' => depth += 1,
+                        ')' | ']' if depth == 0 => break,
+                        ')' | ']' => depth -= 1,
+                        ',' if depth == 0 => {
+                            args.push(String::new());
+                            continue;
+                        }
+                        _ => {}
+                    }
+                    args.last_mut().unwrap().push(c);
+                }
+                args.into_iter().map(|a| a.trim().to_string()).collect()
             })
             .collect();
         assert_eq!(
@@ -371,10 +392,20 @@ mod tests {
              多一个就说明有第二条路绕过了这条判据",
             calls.len()
         );
+        // `probe_command_for(slug, config_dir, watchdog)` —— 三个实参，配平后必须切出三段。
+        assert_eq!(
+            calls[0].len(),
+            3,
+            "实参切成了 {} 段（应为 3）：{:?} —— 括号配平/切分坏了，下面那条会看错格子",
+            calls[0].len(),
+            calls[0]
+        );
         assert!(
-            calls[0].contains("config_dir"),
-            "`account_usage` 没有把它收到的 `config_dir` 转发下去（实参：`{}`）—— \
-             恒当账号 0 或写死别的号 = 静默串号，而其余全部判据都会保持绿",
+            calls[0][1].contains("config_dir"),
+            "`account_usage` 没有把它收到的 `config_dir` 转发下去（第二个实参：`{}`；\
+             整个实参表：{:?}）—— 恒当账号 0 或写死别的号 = 静默串号，\
+             而其余全部判据都会保持绿",
+            calls[0][1],
             calls[0]
         );
     }

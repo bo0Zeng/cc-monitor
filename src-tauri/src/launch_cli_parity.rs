@@ -66,9 +66,12 @@ mod tests {
         );
         let ok = f.cases.iter().filter(|c| c.ok).count();
         let refused = f.cases.len() - ok;
-        assert!(ok >= 6, "ok 类只有 {ok} 条");
+        // 6 → 9 / 5 → 7（实测 9 ok + 7 refusal）。复盘 P3：**这是唯一一侧下限**了
+        // （TS 那半的重复副本已删），所以它得说真数 —— 6/5 意味着能静默丢掉三条 ok
+        // 和两条 refusal 而不红。
+        assert!(ok >= 9, "ok 类只有 {ok} 条（实测应为 9）");
         assert!(
-            refused >= 5,
+            refused >= 7,
             "refusal 类只有 {refused} 条 —— §33 要防的正是「该降级却渲染出来了」"
         );
     }
