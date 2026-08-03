@@ -94,23 +94,26 @@ jobs:
       # 它们的 8 + 4 条测试在 CI 里等于不存在，而上面那段注释逐字写着「新增 path 依赖 crate
       # 时三样都要补」。是本轮加 `guard-core` 时照着这段注释走才发现的。
       # 这两个 crate 恰恰是「改内核一处 ⇒ 三侧同时红」那条验收标准的载体，漏跑等于把它关掉。
-      - name: cargo test (shared usage-core / acct-core / guard-core)
+      - name: cargo test (shared usage-core / acct-core / guard-core / launch-core)
         run: |
           cargo test -p usage-core
           cargo test -p acct-core
           cargo test -p guard-core
+          cargo test -p launch-core
 
-      - name: cargo fmt --check (shared usage-core / acct-core / guard-core)
+      - name: cargo fmt --check (shared usage-core / acct-core / guard-core / launch-core)
         run: |
           cargo fmt --check --manifest-path crates/usage-core/Cargo.toml
           cargo fmt --check --manifest-path crates/acct-core/Cargo.toml
           cargo fmt --check --manifest-path crates/guard-core/Cargo.toml
+          cargo fmt --check --manifest-path crates/launch-core/Cargo.toml
 
-      - name: cargo clippy (shared usage-core / acct-core / guard-core)
+      - name: cargo clippy (shared usage-core / acct-core / guard-core / launch-core)
         run: |
           cargo clippy --manifest-path crates/usage-core/Cargo.toml --all-targets
           cargo clippy --manifest-path crates/acct-core/Cargo.toml --all-targets
           cargo clippy --manifest-path crates/guard-core/Cargo.toml --all-targets
+          cargo clippy --manifest-path crates/launch-core/Cargo.toml --all-targets
 
   frontend:
     name: Frontend typecheck + build

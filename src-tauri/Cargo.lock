@@ -2578,6 +2578,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "launch-core"
+version = "0.1.0"
+dependencies = [
+ "acct-core",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2820,6 +2827,7 @@ dependencies = [
  "dirs 5.0.1",
  "futures",
  "guard-core",
+ "launch-core",
  "notify",
  "notify-debouncer-mini",
  "parking_lot",
