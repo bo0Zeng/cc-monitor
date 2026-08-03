@@ -70,6 +70,7 @@ mod ccm_cli_contract;
 #[cfg(test)]
 mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半；内部整体 cfg(test)）
 #[cfg(test)]
+mod polling_registry; // U7-P：前端 + shared/ccm 的周期唤醒清账（daemon 那条零定时器护栏点名要「单独论证」的那半）
 mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只许有一个实现（账本 S5）
 #[cfg(test)]
 mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 —— 从散文变机检
