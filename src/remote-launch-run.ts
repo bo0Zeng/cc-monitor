@@ -64,6 +64,29 @@ async function renderLaunchCommand(
     // 这一行是唯一线索；不查的时候它不打扰任何人。
     console.debug(`[launch] CLI 渲染器降级 → 兜底渲染器（origin=${origin}）: ${r.reason}`);
   }
+  // U8a-2c-pre（账本 S28）：兜底那支的 **`container:"none"` 那一格**也切到 Rust 了
+  // （`launch_core::render_payload`）。**只有这一格** —— tmux 那两格还要外层容器命令
+  // （`session-backend.ts`），而 §33b 写死了「搬它之前必须先回答三件事」⇒ U8c-3。
+  if (plan.container.kind === "none" && plan.action.kind !== "attach") {
+    try {
+      return await commands.render_launch_payload({
+        req: {
+          env: plan.env,
+          cwd: plan.cwd,
+          launcher: sanitizeRemoteLauncher(plan.launcher),
+          args:
+            plan.action.kind === "resume"
+              ? [AGENT_PROFILE.resumeFlag, plan.action.sid, ...plan.args]
+              : [...plan.args],
+          nestedEnv: [...AGENT_PROFILE.nestedEnvVars],
+        },
+      });
+    } catch (e) {
+      // 后端拒了（非法 configDir / 会裂的 arg）⇒ **不静默用 TS 版糊过去**：
+      // 那等于把一次 fail-closed 变成 fail-open。原样抛给调用方的 catch（它会 toast）。
+      throw new Error(`后端拒绝渲染载荷：${String(e)}`);
+    }
+  }
   return renderFallback(plan);
 }
 

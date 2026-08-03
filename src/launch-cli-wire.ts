@@ -40,3 +40,20 @@ export interface CliRenderResponse {
   cmd: string | null;
   reason: string | null;
 }
+
+/** U8a-2c-pre：兜底那支 `container:"none"` 的载荷渲染入参。 */
+export type WireEnvOp =
+  | { kind: "export-config-dir"; value: string }
+  | { kind: "export-model"; value: string }
+  | { kind: "unset-config-dir" }
+  | { kind: "unset-nested-env" };
+
+export interface PayloadRenderRequest {
+  env: WireEnvOp[];
+  cwd: string | null;
+  /** 已 sanitize 的 launcher。 */
+  launcher: string;
+  args: string[];
+  /** 嵌套 env 键表（`AGENT_PROFILE.nestedEnvVars`）—— `unset-nested-env` 用。 */
+  nestedEnv: string[];
+}

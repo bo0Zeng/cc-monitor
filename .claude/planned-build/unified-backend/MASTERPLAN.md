@@ -236,7 +236,7 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 
 | S26 | **`control/`/`observe/` 的 serde 类型**（U8a-2d 新登记）<br>今天 6 个：`resolve_query` 4（aterm 冻结契约）· `fork_write::ForkResult`（一次性子命令出参）· `accounts_query::RawAccount`（**文件 schema，根本不是 wire**） | **登记制**（逐条列举 + 写明它是什么 + 机检 + 幽灵条目检查），形状照 `spawn_registry`。<br>⚠ 设计稿原提的是「白名单恰好一条」——**实测那个前提错了**，而且后两个搬进 `wire/` 是错误归类。<br>⚠ 「上线类型收进 `src/wire/` 目录树」等**真出现第二个流协议类型文件**时再做（今天只有 `wire.rs` 一个，为一个文件建目录树是空转） | U8a-2d ✅ |
 | S27 | **`CC_BUS_ID` 派生**（U9a 新登记）<br>唯一一处：`shared/ccm::derive_bus_id`（exec 路）+ 它的文本表示 `BUS_ID_RECIPE`（`--print` 路）。`cc-spawn` 自己那份**已删**（B02 收编时）。消费方 `cc-whoami:10` 是**最高优先级**来源 ⇒ 取错 = 身份冒用 + 抢信 | 判据：`ccm-contract-parity` A 组三条绝对断言（codex 有 / claude 没有 / `--print` 也要说）+ `cc-spawn-uplift` [7][8]（含父环境污染可复现反例）。<br>⚠ **两种表示无法真正共用一处**（配方跑在别人的 shell 里，看不见本文件的函数）⇒ 一致性由 A 组差分保证，不由人的记性保证。<br>⚠ **U11 收编 cc-spawn 时不许再造第三处** | U9a ✅ · U11 |
-| S28 | **「起会话」载荷的产出点**（U8c-1 新登记）<br>同一段 `env 前缀 → cd → argv → wrap` 今天有**五份、跨三种语言**（U8c-1 摸底数成四份、工程审计补齐成六份、U8c-2a 退役一份）：① TS `launch-render-fallback::renderEnvOps` + `shell-quote::buildEnvPrefix`/`UNSET_CONFIG_DIR_PREFIX` · **②** ~~TS `remote-launch::buildUsageProbePayload`~~ **U8c-2a 已退役**（`account_usage` 改收 `config_dir: Option<String>`，载荷由 `launch_core::usage_probe_payload` 编译 ⇒ **六份变五份**）· ③ Rust `history.rs` POSIX（**U8c-1 起调内核**）· ④ Rust `history.rs` PowerShell（`$env:`，平台变体不是副本）· ⑤⑥ **`shared/ccm` 的 `--print` 段与 exec 段**（S10 已裁定刻意不合并，靠 `ccm-contract-parity` 差分对拍）<br>~~**消费方**：`account_usage.rs`（收 TS 传来的 payload、只透传不校验）—— ② 一退役它就要改喂内核，今天没有落点~~ **U8c-2a 已做**：它现在自己调内核，是 `render_payload` 的**第一个生产调用方** | 唯一 Rust 实现在 `launch-core`；跨语言一致性由**入库夹具**保证（`crates/launch-core/fixtures/payload-golden.json`：TS `launch-payload-golden.vitest.ts` 断言「入库 == 现场」、Rust `launch_payload_parity.rs` 断言「Rust == 入库」，两侧各有计数自检，且 Rust 侧 `include_str!` 钉住 TS 那一半还在）。⚠ **绝不能让 Rust 去调 TS 现场生成**（U7-4 的自洽夹具病根）。<br>⚠ **今天有两套跨语言对拍并存且互不覆盖**：`ccm-print-parity`（TS ↔ ccm）与本条（TS ↔ Rust）—— ⑤⑥ 与 ①②③ 之间**没有任何判据**。<br>⚠ **夹具机制有一个结构性盲区**：TS 会 throw 的输入（非法/空 configDir）根本进不了夹具 ⇒ 那一类差异**加多少用例都覆盖不到**，只能靠类型（`render_payload` 回 `Result` 并自己 fail-closed）| U8c-1 ✅ · U8c-2 · U8c-3 · U9b |
+| S28 | **「起会话」载荷的产出点**（U8c-1 新登记）<br>同一段 `env 前缀 → cd → argv → wrap` 今天有**五份、跨三种语言**（U8c-1 摸底数成四份、工程审计补齐成六份、U8c-2a 退役一份）：① TS `launch-render-fallback::renderEnvOps` + `shell-quote::buildEnvPrefix`/`UNSET_CONFIG_DIR_PREFIX` · **①** TS `launch-render-fallback::renderEnvOps` —— **U8a-2c-pre 起只剩 `container:"tmux"` 两格**（`none` 那格已切到 `render_launch_payload`）⇒ 产出点是**四份半**，不是四份。**②** ~~TS `remote-launch::buildUsageProbePayload`~~ **U8c-2a 已退役**（`account_usage` 改收 `config_dir: Option<String>`，载荷由 `launch_core::usage_probe_payload` 编译 ⇒ **六份变五份**）· ③ Rust `history.rs` POSIX（**U8c-1 起调内核**）· ④ Rust `history.rs` PowerShell（`$env:`，平台变体不是副本）· ⑤⑥ **`shared/ccm` 的 `--print` 段与 exec 段**（S10 已裁定刻意不合并，靠 `ccm-contract-parity` 差分对拍）<br>~~**消费方**：`account_usage.rs`（收 TS 传来的 payload、只透传不校验）—— ② 一退役它就要改喂内核，今天没有落点~~ **U8c-2a 已做**：它现在自己调内核，是 `render_payload` 的**第一个生产调用方** | 唯一 Rust 实现在 `launch-core`；跨语言一致性由**入库夹具**保证（`crates/launch-core/fixtures/payload-golden.json`：TS `launch-payload-golden.vitest.ts` 断言「入库 == 现场」、Rust `launch_payload_parity.rs` 断言「Rust == 入库」，两侧各有计数自检，且 Rust 侧 `include_str!` 钉住 TS 那一半还在）。⚠ **绝不能让 Rust 去调 TS 现场生成**（U7-4 的自洽夹具病根）。<br>⚠ **今天有两套跨语言对拍并存且互不覆盖**：`ccm-print-parity`（TS ↔ ccm）与本条（TS ↔ Rust）—— ⑤⑥ 与 ①②③ 之间**没有任何判据**。<br>⚠ **夹具机制有一个结构性盲区**：TS 会 throw 的输入（非法/空 configDir）根本进不了夹具 ⇒ 那一类差异**加多少用例都覆盖不到**，只能靠类型（`render_payload` 回 `Result` 并自己 fail-closed）| U8c-1 ✅ · U8c-2 · U8c-3 · U9b |
 
 ### 跨工作区冲突协议
 
@@ -996,3 +996,13 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   `history.rs::SPOOFABLE` 那张旧表**已删除**。U8c-1 自己开的那条跨语言缝已收。
   判据是**行为对拍**（读 Rust 源码解析码位、逐个真喂给 TS 函数），刻意不是文本对拍 ——
   前三轮我写的判据初版都栽在「匹配面比声称的宽」上，其中一次正是匹配到了散文里的关键词。
+- 2026-08-03 **U8a-2c 摸底：可达，只是还没接**。`stream_loop` 的长连接**确实**接了入方向客户端
+  （`ssh_source.rs:2833` 切分 / `:2965` attach 并登记），`client_for()` 只是**还没有生产消费方**。
+  `ssh_source.rs` 那条 `!accepts("launch")` 是**桩了 hello 只声明 `["ping"]`** 的测试，不是能力声明。
+  ⚠ **我中途报过一次假阻塞** —— `grep … | head -8` 截断了输出，让我以为 attach 只在测试里。
+  是既有守卫那句「本文件应有两处双工切分（stream_loop + probe_daemon）」与我的结论矛盾把我拉回来的。
+  **`head` 截断会造假证据，量东西别带它。**
+- 2026-08-03 **兜底那支的 `container:"none"` 切到 Rust**（`render_launch_payload`）。
+  ⚠ **切换初版没有任何判据** —— 两个变异（切回 TS / 静默 fail-open）**都存活**，
+  是提交前的变异检查逼出来的。补了两条接缝判据后逐条转红。
+  这是 U8c-2a 咬过我的同一形状，区别是这次**在提交前自己抓到了**。

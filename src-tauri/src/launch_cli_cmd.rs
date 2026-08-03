@@ -125,3 +125,57 @@ pub fn render_ccm_launch(req: CliRenderRequest) -> CliRenderResponse {
         },
     }
 }
+
+/// U8a-2c-pre / S28：**兜底那支的 `container:"none"` 形态**改由 Rust 渲染载荷。
+///
+/// # 只有 none 那一格
+///
+/// `renderFallback` 分两格：`container:"none"` 是 `env → cd → argv`（就是
+/// [`launch_core::render_payload`]）；`container:"tmux"` 还要外层 tmux 命令
+/// （`session-backend.ts`）——那半归 U8c-3，且 §33b 有三个未答问题。
+///
+/// ⇒ 本命令**只收 none 那一格**。容器形态由调用方判断后决定调不调它。
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct PayloadRenderRequest {
+    /// 有序的 env 操作（与 TS `LaunchPlan.env` 同构）。
+    pub env: Vec<WireEnvOp>,
+    pub cwd: Option<String>,
+    /// 已 sanitize 的 launcher。
+    pub launcher: String,
+    pub args: Vec<String>,
+    /// 嵌套 env 键表（TS `AGENT_PROFILE.nestedEnvVars`）—— `unset-nested-env` 用。
+    pub nested_env: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum WireEnvOp {
+    ExportConfigDir { value: String },
+    ExportModel { value: String },
+    UnsetConfigDir,
+    UnsetNestedEnv,
+}
+
+#[tauri::command]
+pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String> {
+    let nested: Vec<&str> = req.nested_env.iter().map(String::as_str).collect();
+    let env: Vec<launch_core::EnvOp> = req
+        .env
+        .iter()
+        .map(|op| match op {
+            WireEnvOp::ExportConfigDir { value } => launch_core::EnvOp::ExportConfigDir { value },
+            WireEnvOp::ExportModel { value } => launch_core::EnvOp::ExportModel { value },
+            WireEnvOp::UnsetConfigDir => launch_core::EnvOp::UnsetConfigDir,
+            WireEnvOp::UnsetNestedEnv => launch_core::EnvOp::UnsetNestedEnv { keys: &nested },
+        })
+        .collect();
+    let args: Vec<&str> = req.args.iter().map(String::as_str).collect();
+    launch_core::render_payload(&launch_core::PayloadSpec {
+        env: &env,
+        cwd: req.cwd.as_deref(),
+        launcher: &req.launcher,
+        args: &args,
+        wrap: &[],
+    })
+}
