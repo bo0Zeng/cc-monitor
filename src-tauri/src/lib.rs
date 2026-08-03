@@ -943,6 +943,7 @@ pub fn run() {
             config_surface::config_surface_report,
             drift_ledger::drift_ledger_report,
             launch_cli_cmd::render_ccm_launch,
+            launch_cli_cmd::render_launch_payload,
             hooks_diag::diagnose_local_cc_bus_hooks,
             hooks_diag::diagnose_remote_cc_bus_hooks,
             mcp::read_mcp_servers,

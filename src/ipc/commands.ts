@@ -40,7 +40,11 @@
  */
 import { invoke, type Channel } from "@tauri-apps/api/core";
 // U8c-2c-2：手写 wire 镜像（不是 ts-rs 生成的）——与 Rust 的一致性由 launch-cli-wire.vitest.ts 钉。
-import type { CliRenderRequest, CliRenderResponse } from "../launch-cli-wire.ts";
+import type {
+  CliRenderRequest,
+  CliRenderResponse,
+  PayloadRenderRequest,
+} from "../launch-cli-wire.ts";
 
 import type { AccountUsageProbeResult } from "../generated/AccountUsageProbeResult";
 import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
@@ -596,6 +600,10 @@ export const commands = {
   // **`ok:false` 不是错误，是诚实降级** —— 调用方拿着 `reason` 去走兜底渲染器（§33）。
   render_ccm_launch: (args: { req: CliRenderRequest }) =>
     invoke<CliRenderResponse>("render_ccm_launch", args),
+  // U8a-2c-pre：兜底那支 `container:"none"` 的载荷也由 Rust 渲染（`launch_core::render_payload`）。
+  // 非法输入（空 configDir / shell 元字符 / 会裂的 arg）⇒ Rust 侧 `Err` ⇒ 这里 reject。
+  render_launch_payload: (args: { req: PayloadRenderRequest }) =>
+    invoke<string>("render_launch_payload", args),
 
   /** 把内嵌的 vendor `cc-acct-iso` 部署到远端。返回人话结果串 ⇒ 原始类型，无需生成物。 */
   deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>

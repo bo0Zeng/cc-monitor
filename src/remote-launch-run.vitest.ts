@@ -33,10 +33,39 @@ function stubClipboard(writeText: (t: string) => Promise<void>): void {
  * once 值吃掉）。改按 cmd 路由：probe 恒答"未装"（强制走兜底渲染器，保持本文件断言的裸 shell
  * 命令串不变），`launch_remote_terminal` 才落到调用方传入的具体行为。
  */
+interface PayloadRenderReq {
+  env: ({ kind: string; value?: string })[];
+  cwd: string | null;
+  launcher: string;
+  args: string[];
+  nestedEnv: string[];
+}
+
 function mockInvoke(launchTerminal: () => Promise<unknown>): void {
-  invokeMock.mockImplementation((cmd: string) => {
+  invokeMock.mockImplementation((cmd: string, args?: unknown) => {
     if (cmd === "probe_ccm_cli") {
       return Promise.resolve({ installed: false, version: null, capabilities: [] });
+    }
+    // U8a-2c-pre：兜底那支的 `container:"none"` 载荷现在由 **Rust** 渲染
+    // （`launch_core::render_payload`）。本文件的题目是 toast/剪贴板分支，不是渲染 ——
+    // 但下面几条断言要看命令内容，所以这里给一个**忠实的最小镜像**。
+    // ⚠ 它不是第三份实现：渲染的正确性由 `crates/launch-core/fixtures/payload-golden.json`
+    // 的跨语言逐字节对拍钉住，这里只是让 IPC 桩吐出形状对的串。
+    if (cmd === "render_launch_payload") {
+      const r = (args as { req: PayloadRenderReq }).req;
+      const env = r.env
+        .map((op) =>
+          op.kind === "export-config-dir"
+            ? `export CLAUDE_CONFIG_DIR='${op.value}'; `
+            : op.kind === "export-model"
+              ? `export ANTHROPIC_MODEL='${op.value}'; `
+              : op.kind === "unset-config-dir"
+                ? "unset CLAUDE_CONFIG_DIR; "
+                : `unset ${r.nestedEnv.join(" ")}; `,
+        )
+        .join("");
+      const cd = r.cwd ? `cd '${r.cwd}' && ` : "";
+      return Promise.resolve(`${env}${cd}${[r.launcher, ...r.args].join(" ")}`);
     }
     if (cmd === "launch_remote_terminal") return launchTerminal();
     return Promise.resolve(undefined);
@@ -60,6 +89,40 @@ describe("F41 runRemoteResume", () => {
     expect(writeText).not.toHaveBeenCalled();
     expect(toastMock).toHaveBeenCalledTimes(1);
     expect(toastMock.mock.calls[0][0]).toBe("已拉起远端 resume");
+  });
+
+  // ★ U8a-2c-pre 的**接缝判据**。没有它，「把兜底 none 那格切回 TS」这个变异全绿 ——
+  // 而那正是本轮唯一的实质改动（实测过：加这两条之前两个变异都存活）。
+  it("★ 兜底的 container:none 走的是后端渲染，不是 TS 的 renderFallback", async () => {
+    mockInvoke(() => Promise.resolve(undefined));
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    await runRemoteResume("aya", "sid-9", "/w", "");
+    const cmds = invokeMock.mock.calls.map((c) => c[0] as string);
+    expect(cmds).toContain("render_launch_payload");
+    // 送过去的必须是**结构化请求**，不是渲染好的串。
+    const req = (invokeMock.mock.calls.find((c) => c[0] === "render_launch_payload")?.[1] as
+      { req: PayloadRenderReq }).req;
+    expect(Array.isArray(req.env)).toBe(true);
+    expect(req.args).toContain("sid-9");
+    expect(req.nestedEnv.length).toBeGreaterThan(0);
+  });
+
+  // ★ fail-closed：后端拒了就**不许**静默用 TS 版糊过去 —— 那等于把一次 fail-closed
+  // 变成 fail-open（后端拒的正是非法 configDir / 会裂的 arg 那一类）。
+  it("★ 后端拒绝渲染载荷 → 报错，绝不静默回退到 TS 渲染器", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "probe_ccm_cli")
+        return Promise.resolve({ installed: false, version: null, capabilities: [] });
+      if (cmd === "render_launch_payload") return Promise.reject("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR");
+      return Promise.resolve(undefined);
+    });
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const ok = await runRemoteResume("aya", "sid-10", "/w", "");
+    expect(ok).toBe(false);
+    // 走的是「无法构造 resume 命令」那条，不是「拉起失败」—— 且**没有**发起拉起。
+    expect(toastMock.mock.calls[0][0]).toBe("无法构造 resume 命令");
+    expect(toastMock.mock.calls[0][1]).toContain("后端拒绝渲染载荷");
+    expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
   });
 
   it("invoke 失败 → 剪贴板写入完整命令 + toast 含原因与命令", async () => {
