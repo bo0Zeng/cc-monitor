@@ -26,14 +26,14 @@
 use serde::Deserialize;
 
 /// 夹具**编译期**嵌进来 —— 文件被删/改名 ⇒ **编译失败**，不是运行时跳过。
-const FIXTURE: &str = include_str!("../crates/launch-core/fixtures/payload-golden.json");
+const FIXTURE: &str = include_str!("../../../crates/launch-core/fixtures/payload-golden.json");
 
 /// ★ 对拍的 **TS 那一半**也要被钉住（审计 S3）。
 ///
 /// 夹具本身有 `include_str!` 保护（删了就编译失败），但阻止「夹具变陈旧」的唯一机制是那个
 /// vitest 文件 —— 把它改名成 `.spec.ts` 就同时从 vitest 的 glob 和 `npm test` 里消失，
 /// 之后两种语言可以**永远静默分家**。改名/删除 ⇒ 这里编译失败。
-const TS_HALF: &str = include_str!("../../src/launch-payload-golden.vitest.ts");
+const TS_HALF: &str = include_str!("../../../../src/launch-payload-golden.vitest.ts");
 
 /// 用例数。夹具被清空/截断时，逐条循环会「零命中零失败」地绿 —— 这条挡的正是那个。
 ///
@@ -64,7 +64,7 @@ struct Case {
     /// ★ **生产 wire 类型**（由 TS 的 `buildPayloadRenderRequest` 构造）。
     /// 同 `launch_cli_parity`：跑生产命令而不是自己重搭 spec —— 复盘实测，
     /// 此前 `render_launch_payload` 本体零调用零判据，「清空 `nested_env`」那个变异全绿。
-    req: crate::launch_cli_cmd::PayloadRenderRequest,
+    req: crate::backend::control::launch_wire::PayloadRenderRequest,
     /// 下面这几个是**夹具的可读性字段**（人看 diff 用），Rust 侧不消费；
     /// `deny_unknown_fields` 要求声明，故留。
     #[allow(dead_code)]
@@ -154,7 +154,7 @@ mod tests {
             let name = c.name.clone();
             let want = c.payload.clone();
             // ★ 跑**生产命令本体**（`render_launch_payload`），不是自己重搭 `PayloadSpec`。
-            let got = match crate::launch_cli_cmd::render_launch_payload(c.req) {
+            let got = match crate::backend::control::launch_wire::render_launch_payload(c.req) {
                 Ok(p) => p,
                 Err(e) => format!("<Err: {e}>"),
             };

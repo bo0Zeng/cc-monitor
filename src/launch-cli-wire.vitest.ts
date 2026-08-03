@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const read = (p: string) => readFileSync(resolve(__dirname, "..", p), "utf8");
-const RUST = read("src-tauri/src/launch_cli_cmd.rs");
+const RUST = read("src-tauri/src/backend/control/launch_wire.rs");
 const WIRE = read("src/launch-cli-wire.ts");
 const RUN = read("src/remote-launch-run.ts");
 
@@ -50,7 +50,8 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
   // 判据自带清单（同 `cli.rs` 那两处：遍历被测文件自己是恒真的）。
   // ⚠ 复盘 P2/P3 订正两件事：
   //  · 名字写着「三个 wire 枚举」，循环里其实是**四个**类型（一个请求结构 + 三个枚举）；
-  //  · 而 `launch_cli_cmd.rs` 里带 `deny_unknown_fields` 的**入方向**类型实测有**七个** ——
+  //  · 而 `launch_wire.rs`（P4a 前叫 `launch_cli_cmd.rs`）里带 `deny_unknown_fields` 的
+  //    **入方向**类型实测有**七个** ——
   //    `PayloadRenderRequest` / `WireEnvOp` / 以及上一轮刚加的 `WireWrap` 三个从来没被查过。
   //    `WireWrap` 尤其要紧：`wrap` 那一格上一轮才刚因为「内核有、wire 没有」静默丢过一次。
   const DENY_WIRE_TYPES = [

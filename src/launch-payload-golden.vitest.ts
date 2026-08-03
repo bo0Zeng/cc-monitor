@@ -1,7 +1,8 @@
 /**
  * U8c-1：夹具**入库版 == 现场渲染版**。
  *
- * 这是跨语言对拍的 TS 那一半（另一半是 `src-tauri/src/launch_payload_parity.rs`）。
+ * 这是跨语言对拍的 TS 那一半（另一半是
+ * `src-tauri/src/backend/control/launch_payload_parity.rs`）。
  * 它挡的是唯一一种能让对拍静默失效的改法：**改了 TS 渲染器但没重生成夹具** ——
  * 那时 Rust 侧仍与旧夹具一致、全绿，而两种语言其实已经分家了。
  */

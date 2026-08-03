@@ -8,7 +8,7 @@
 
 use serde::Deserialize;
 
-const FIXTURE: &str = include_str!("../crates/launch-core/fixtures/cli-golden.json");
+const FIXTURE: &str = include_str!("../../../crates/launch-core/fixtures/cli-golden.json");
 
 /// 与 `launch_payload_parity` 同理：写成相等而不是地板，加/删用例被迫回来改这个数。
 const EXPECT_CASES: usize = 16;
@@ -36,13 +36,13 @@ struct Case {
     /// 5 个 wire 映射变异（`send_into` 恒 false / 具名账号降成 base / 丢 cwd / 丢 model /
     /// 清空 nested_env）**全部存活**；wire 字段改名（`send_into`→`sendInto`）也全绿 ——
     /// 而那在生产里表现为**每次 tmux 拉起都静默回退 TS 兜底**。
-    req: crate::launch_cli_cmd::CliRenderRequest,
+    req: crate::backend::control::launch_wire::CliRenderRequest,
     ok: bool,
     out: String,
 }
 
 // U8a-2c-pre 复盘：这里原本有 `Ctx` / `FxAction` / `FxContainer` / `FxAccount` 四个
-// **手写镜像**（微架构审计点名：`FxAction` 与 `launch_cli_cmd::WireAction` 逐字相同，
+// **手写镜像**（微架构审计点名：`FxAction` 与 `launch_wire::WireAction` 逐字相同，
 // 连映射 match 都是复制的）。改成直接反序列化**生产 wire 类型**之后它们全成了死代码 ⇒ 删。
 // 净效果：少四个类型、少一份 match，而且对拍从「我重搭一个 spec」升级成「跑生产命令」。
 
@@ -83,7 +83,7 @@ mod tests {
         let mut bad = Vec::new();
         for c in f.cases {
             // ★ 跑的是**生产命令本体**（`render_ccm_launch`），不是自己重搭一遍 spec。
-            let res = crate::launch_cli_cmd::render_ccm_launch(c.req);
+            let res = crate::backend::control::launch_wire::render_ccm_launch(c.req);
             let (got_ok, got) = match (res.ok, res.cmd, res.reason) {
                 (true, Some(cmd), _) => (true, cmd),
                 (false, _, Some(r)) => (false, r),

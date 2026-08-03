@@ -1,7 +1,7 @@
 /**
  * U8c-2c-2：`render_ccm_launch` 的上线形状（TS 侧）。
  *
- * Rust 对侧是 `src-tauri/src/launch_cli_cmd.rs` 的 `CliRenderRequest`/`CliRenderResponse`，
+ * Rust 对侧是 `src-tauri/src/backend/control/launch_wire.rs` 的 `CliRenderRequest`/`CliRenderResponse`，
  * 那边带 `deny_unknown_fields` —— **多送一个字段会被拒**，不静默吞。
  *
  * ⚠ 这是一份**手写镜像**（不是 ts-rs 生成的）。保证它与 Rust 一致的是

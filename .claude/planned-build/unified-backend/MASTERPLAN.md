@@ -197,14 +197,36 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 1. **monitor 侧划出 `src-tauri/src/backend/`**，内部沿用 §1.1 的能力线：`backend/control/`（写/控制）
    与 `backend/observe/`（读）。`render_payload` / `render_ccm_invocation` / wire 适配层迁进
    `backend/control/`。
-2. **`launch-core` 缩回真·两侧共用的原语**：`posix_quote` · `config_dir_command_safe` ·
-   `UNSET_CONFIG_DIR_PREFIX`（外加它们的直接依赖）。**不再持有决策**。
+2. **`launch-core` 缩回真·两侧共用的原语**。~~`posix_quote` · `config_dir_command_safe` ·
+   `UNSET_CONFIG_DIR_PREFIX`~~
+   ⚠ **P4 摸底订正（2026-08-03）：这三个里只有第一个是两侧共用的。** 逐项数过 daemon 侧
+   对 `launch_core::` 的引用：**全仓一处，`control/tmux_hook.rs::sq` 里的 `posix_quote`**。
+   `config_dir_command_safe`（3 处）与 `UNSET_CONFIG_DIR_PREFIX`（1 处）**今天是 monitor 独用**，
+   而 daemon 的 `control/` 里**一处 config-dir 都没有**（它那边的 config_dir 全在
+   `observe/` 与 `platform/`，是**读**账号归属，不是**写**环境）。
+   ⇒ 缩回去的只有 `posix_quote`。**「三个原语」这句是照审计的措辞写下的，没有核过数。**
+
+   ★ **顺带把 A 的理由换成更硬的一条**：原理由是「monitor 侧一个边界都没有，所以东西被推进
+   crate」—— 那只说明**需要一个家**，没说明**为什么家在 monitor**。真正的理由是结构性的：
+   §1.3 把最终 exec 钉在**用户自己的终端进程**里，而 U8a-2b 把 daemon 的执行面定成
+   **argv 直传、不过 shell**（`control/launch.rs` 头注逐字写着「这条路根本不过 shell」）。
+   ⇒ **「渲染一条 shell 命令串」这件事永远属于开终端的那一侧，daemon 不会需要它。**
+   所以搬进 monitor 不是权宜、不是将来还要搬回去 —— 是它本来的归属地。
 3. ⚠ **这一层与 §1.2 是两件事，不许互相顶账**：§1.2 是「同一个二进制、两种交付/生命周期」，
    共享 crate 是「两个不同的二进制、共享库」。**抽 crate 的进度不能记成 §1.2 的进度**
    （同理：抽 `usage-core`/`acct-core` 是「消副本」，**不是 S9 的读面合流** —— 那两个
    30KB/31KB 的 monitor 侧读面今天一行没少）。
 
-**排期**：在「生产层的判据补齐」之后做（见下），因为它要搬的正是那批今天零判据的代码。
+**排期**：在「生产层的判据补齐」之后做（P0/P1/P2/P3 已闭环）。**并拆成两件**（P4 摸底后定）：
+
+| 件 | 内容 | 为什么这么切 |
+|---|---|---|
+| **P4a** | 建 `backend/` + `backend/control/`；`launch_cli_cmd.rs`（wire 类型 + 两个 tauri 命令）与两条 parity 判据迁进去；加边界机检。**`launch-core` 一个字节不动** | 夹具路径**零改动**（14 处引用全在 `crates/launch-core/fixtures/` 下）。P4b 要的落点由本件先造出来 |
+| **P4b** | `launch-core` 缩回 `posix_quote`：`cli.rs`（决策内核）+ 载荷渲染器迁进 `backend/control/`；夹具随之搬家；`quote_singleton_guard` 的 `SOLE_HOME` 锚点改指；crate 名要重定（只剩一个 quote 函数还叫 `launch-core` 是说谎） | 夹具搬家牵动 14 处 + crate 改名牵动 Cargo.toml×2/ci.yml×3/全部 `launch_core::` 引用 —— 与搬家混在一轮，出错时分不清是谁的锅 |
+
+⚠ **`observe/` 本轮刻意不建**：monitor 侧的读面（`local_accounts.rs` 30KB +
+`history_query.rs` 等）是 **U7 要退役的那批** —— 现在把它们搬进 `backend/observe/`
+再由 U7 删掉是纯搬运；只建一个空目录则是装饰。⇒ 建 `control/`，`observe/` 等 U7。
 
 ### 1.5 三条已定的技术决策
 

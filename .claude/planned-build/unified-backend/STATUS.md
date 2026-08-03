@@ -79,8 +79,17 @@
   `shared_crate_registry` 的 `contains` 认注释掉的 CI 行、`account_usage` 接线守卫的
   抽取窗口从第三个实参漏进 `config_dir`（后者放过的正是「静默串号」）。
   顺出一个真覆盖缺口：wire 守卫 4 → 7 个类型（含上一轮刚出过事的 `WireWrap`）。
-- **剩余（按序）**：**P4 §1.4b 搬家**（monitor 划 `backend/{control,observe}/`、
-  `launch-core` 缩回三个原语）→ 然后才是 **U8a-2c**（daemon `launch` 的第一条生产调用）。
+- **P4a 已闭环**（UB-复盘4）—— monitor 侧第一个架构边界 `src-tauri/src/backend/control/` 建成，
+  wire 适配层 + 两条 parity 判据迁入，四条边界机检逐条验红（含**宿主无关**那条：
+  生产段抓 `AppHandle` 就红 —— 「一份代码两种宿主」今天唯一可机检的形态）。
+  摸底订正 §1.4b 两处：**「三个原语两侧共用」只有 `posix_quote` 是**（daemon 全仓一处引用，
+  它的 `control/` 里一处 config-dir 都没有）；**A 的理由换成结构性的那条** ——
+  §1.3 把 exec 钉在用户终端 + U8a-2b 把 daemon 定成 argv 直传不过 shell ⇒
+  「渲染 shell 串」永远属于开终端那一侧，**不是权宜，是归属地**。
+  `observe/` **刻意不建**（那批读面是 U7 要退役的，搬进来再删是纯搬运）。
+- **剩余（按序）**：**P4b**（`launch-core` 缩回 `posix_quote`：`cli.rs` + 载荷渲染器迁进
+  `backend/control/`、夹具搬家 14 处、`SOLE_HOME` 锚点改指、crate 改名）→
+  然后才是 **U8a-2c**（daemon `launch` 的第一条生产调用）。
 - ⚠ **U8c-3 仍不能开**：本件只解掉「夹具会冻结」这一个阻塞；§33b 三问里 ① 是**否**、③ 未决。
 
 ## 进度（2026-08-01，用户指令「全自动做完、中途不要停」）
