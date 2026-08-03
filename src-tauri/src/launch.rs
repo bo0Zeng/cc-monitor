@@ -27,8 +27,10 @@ use crate::ssh_source::RemoteConfig;
 const MAX_REMOTE_CMD: usize = 4096;
 
 /// POSIX 单引号 quote（与前端 `posixQuote` 同构）：`'…'` 包裹，内部 `'` → `'\''`。
-fn posix_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
+pub(crate) fn posix_quote(s: &str) -> String {
+    // U8c-2b-0（账本 S5）：实现收进 `launch-core`，此处只留名字。
+    // `pub(crate)` 只为让 `quote_singleton_guard` 的行为对拍够得着它。
+    launch_core::posix_quote(s)
 }
 
 /// PowerShell 单引号字面量：`'…'` 包裹，内部 `'` → `''`。

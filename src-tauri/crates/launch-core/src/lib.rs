@@ -285,8 +285,10 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
     for a in spec.args {
         if !arg_is_join_safe(a) {
             return Err(format!(
-                "拒绝拼入命令：参数 {a:?} 含空白或 shell 元字符 —— 载荷是 `join(\" \")` 拼的，\
-                 它会裂成多个参数或另起一条命令"
+                "拒绝拼入命令：参数 {a:?} 不在放行集里 —— 载荷是 `join(\" \")` 拼的，\
+                 空白会让它裂成多个参数、shell 元字符会另起一条命令。\n\
+                 放行集是 `[A-Za-z0-9] + -_.:/=,@+`；**非 ASCII 也一律拒**（已知过严，\
+                 且与 `config_dir_command_safe` 放行中文不对称，见 `arg_is_join_safe` 头注）"
             ));
         }
     }
