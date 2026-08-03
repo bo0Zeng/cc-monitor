@@ -4,9 +4,12 @@
 //! 必须真的起一个已登录的 claude 会话跑 `/usage` 斜杠命令、capture-pane 抓屏解析。
 //!
 //! **本模块只负责编排一次性探针会话本身**（建/等/送键/抓屏/清理），完全不理解 `/usage`
-//! 输出的语义——那是 TS 侧 `src/account-usage-parse.ts` 纯函数的职责。`launch_payload`
-//! 由 TS 侧 `buildUsageProbePayload` 构造好传入，本模块只管把它安全地敲进一个隐藏 tmux
-//! 会话。**Z03 起它有两种形态**，账号维度必定显式表态、不存在裸载荷：
+//! 输出的语义——那是 TS 侧 `src/account-usage-parse.ts` 纯函数的职责。
+//!
+//! ⚠ **U8c-2a 起载荷不再由 TS 传进来** —— IPC 收的是**结构化账号表态**
+//! （`config_dir: Option<String>`），载荷由 `launch_core::usage_probe_payload` 编译
+//! （见 [`probe_payload_for`]）。TS 的 `buildUsageProbePayload` 已删除。
+//! **Z03 起它有两种形态**，账号维度必定显式表态、不存在裸载荷：
 //!   - 具名账号：`export CLAUDE_CONFIG_DIR=...; unset <嵌套env>; claude`
 //!   - **账号 0**：`unset CLAUDE_CONFIG_DIR; unset <嵌套env>; claude`
 //!     （**不能省成裸载荷**——远端 rc 里那句 `export CLAUDE_CONFIG_DIR=<默认账号>` 会让
@@ -189,25 +192,75 @@ else printf 'NO_TMUX\\n'; fi",
     ))
 }
 
+/// **结构化账号表态 → 整条远端探针命令**（U8c-2a：`account_usage` 的构造那一段整体抽成纯函数）。
+///
+/// # 为什么要抽出来（代码审计 R1–R4）
+///
+/// 抽之前，「载荷编译 + 命令编排」两段都长在 `account_usage` 这个 **async tauri 命令**里，
+/// 于是它们**没有任何单测能到达**。审计实测四个变异在 729 条 Rust + 1168 条 TS 全绿下存活：
+/// 恒当账号 0 · 探写死的别的号 · 只清一个嵌套 env 键 · 换掉启动器。
+/// 前两个正是这套设计从头到尾要防的形态 —— **探到别的号、UI 标成本账号 = 静默串号**。
+///
+/// 抽成纯函数之后，后两个（键表 / 启动器）由下面的逐字节断言杀掉，
+/// 前两个的接缝缩成 `account_usage` 里**一行、一个 token**（`config_dir.as_deref()`）。
+///
+/// ⚠ **诚实边界（登记在案，不假装做完了）**：那一行本身**仍然没有判据**。
+/// 代码审计实测：把它改成恒传 `None`（恒当账号 0）或写死别的号，
+/// **729 条 Rust + 1168 条 TS 全绿**。它正是这套设计要防的形态 —— 探到别的号、
+/// UI 标成本账号 = **静默串号**。
+/// 审计试过的两种纯函数写法都杀不掉它（接缝只是换了位置）；要真钉住，得让
+/// `emit_usage_probe_cmd_for_e2e` 改由**真接线**驱动（`Some(dir)`/`None` 两态各发一条场景），
+/// 让 usage-probe 那 9 条 e2e 覆盖到。⇒ **U8c-2b 或独立一件。**
+fn probe_command_for(
+    slug: &str,
+    config_dir: Option<&str>,
+    watchdog_timeout_secs: u32,
+) -> Result<String, String> {
+    build_usage_probe_cmd(slug, &probe_payload_for(config_dir)?, watchdog_timeout_secs)
+}
+
+/// 只产**载荷**那一段（不含外层 tmux 编排）。
+///
+/// 与 [`probe_command_for`] 分开是为了**可断言** —— 载荷进整条命令时会被 `shell_quote`
+/// 包一层，在命令串上做逐字节断言等于顺带在断言引号算法，噪音盖过信号。
+fn probe_payload_for(config_dir: Option<&str>) -> Result<String, String> {
+    // 键表与启动器都走活跃适配器 —— 它们各自已有 TS↔Rust 对拍守卫。
+    let agent = crate::adapter::active();
+    launch_core::usage_probe_payload(
+        config_dir,
+        agent.nested_env_to_scrub(),
+        agent.default_launcher(),
+    )
+}
+
 /// F10：per-account 探测 Claude 订阅计划用量窗口%（"plan 窗口%"）。通道 B（一次性 headless
 /// exec，不占用前台可见终端，同 `list_remote_tmux`/`capture_remote_pane` 既有分工）。
 ///
 /// `account_name` 只用于探针会话名 slug + 错误文案，不参与鉴权（鉴权/账号存在性由 TS 侧调用
-/// 前已经确认过，`launch_payload` 本身已经**对账号维度显式表态过**：具名账号带
-/// `export CLAUDE_CONFIG_DIR=…`，账号 0 带 `unset CLAUDE_CONFIG_DIR`。本模块只透传不校验。）
+/// 前已经确认过）。
+///
+/// # U8c-2a：**收结构化账号表态，不再收渲染好的串**
+///
+/// 此前这里收的是 `launch_payload: String` —— TS 的 `buildUsageProbePayload` 渲染好递进来，
+/// 本模块「只透传不校验」。那是账本 S28 里六个载荷产出点的第 ②。现在它退役了：
+/// 前端只报「哪个账号」，载荷由 `launch_core::usage_probe_payload` 编译。
+///
+/// `config_dir` **两态，没有第三态**（探针恒是 per-account）：
+/// `Some(路径)` = 具名账号 · `None` = **账号 0**（产出 `unset CLAUDE_CONFIG_DIR; `，
+/// 绝不是「什么都不加」——那会让探针落到远端 rc 的默认号上 = 静默串号）·
+/// `Some("")` = 坏数据 ⇒ 诚实回报 probe-failed。
 #[tauri::command]
 pub async fn account_usage(
     origin: String,
     account_name: String,
-    launch_payload: String,
+    config_dir: Option<String>,
 ) -> Result<AccountUsageProbeResult, String> {
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
     let slug = slugify_account_name(&account_name);
-    // 构造失败（Gate 1 拒绝）→ 诚实回报，不发起任何 SSH 连接。`slugify_account_name` 已保证
-    // slug 恒非空，这里恒不触发；留着是因为闸门该由 `exact_target` 说了算，不是由"我确信调用方
-    // 不会传空"说了算。
-    let cmd = match build_usage_probe_cmd(&slug, &launch_payload, WATCHDOG_TIMEOUT_SECS) {
+    // 载荷由内核编译（`launch-core`）：账号前缀 + 嵌套 env 清理 + 启动器，无 cd。
+    // 构造失败（载荷非法 / Gate 1 拒绝）→ 诚实回报，**不发起任何 SSH 连接**。
+    let cmd = match probe_command_for(&slug, config_dir.as_deref(), WATCHDOG_TIMEOUT_SECS) {
         Ok(c) => c,
         Err(e) => {
             return Ok(AccountUsageProbeResult {
@@ -279,6 +332,51 @@ mod tests {
         // 长度截断：防止一个异常长的账号名把远端命令串撑得过长。
         let long = "a".repeat(100);
         assert_eq!(slugify_account_name(&long).len(), 32);
+    }
+
+    /// ★ U8c-2a（代码审计 R1–R4 的收口）：**两态各自的载荷逐字节钉住**。
+    ///
+    /// 这条杀掉的是「载荷编译搬进 Rust 之后接线没人管」那一类：审计实测
+    /// 「只清一个嵌套 env 键」「换掉启动器」两个变异在全绿门禁下存活过。
+    ///
+    /// 它同时接住了搬家前那条 TS 测试（`launchPayload` 逐字节）钉的三件事：
+    /// ① 账号隔离真的通过 `CLAUDE_CONFIG_DIR` 生效（**不是裸 claude** —— 那会探到错账号
+    /// 的用量且看起来完全正常）· ② 嵌套 env 被清掉 · ③ 引号形态。
+    ///
+    /// ⚠ **键序与 TS `AGENT_PROFILE.nestedEnvVars` 同序是刻意的**（见
+    /// `adapter/claude_code.rs::CLAUDE_NESTED_ENV` 头注）：搬家前后送到远端的字节**完全相同**。
+    #[test]
+    fn probe_payload_is_byte_exact_for_both_account_states() {
+        const NESTED: &str =
+            "unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; ";
+        // 这两串**逐字节等于搬家前 TS `buildUsageProbePayload` 的产出**（键序刻意同 TS）。
+        assert_eq!(
+            probe_payload_for(Some("/h/.claude-accts/z")).unwrap(),
+            format!("export CLAUDE_CONFIG_DIR='/h/.claude-accts/z'; {NESTED}claude")
+        );
+        let zero = probe_payload_for(None).unwrap();
+        assert_eq!(zero, format!("unset CLAUDE_CONFIG_DIR; {NESTED}claude"));
+        // ★ 最要紧的一条：账号 0 **绝不**退化成裸载荷（那会继承远端 rc 里的默认号 = 静默串号）。
+        assert!(
+            !zero.contains("export CLAUDE_CONFIG_DIR="),
+            "账号 0 竟带上了 export：\n{zero}"
+        );
+        // 接缝判据：那条载荷真的被塞进了整条命令，中间这一步不是摆设。
+        let named = probe_payload_for(Some("/h/.claude-accts/z")).unwrap();
+        let cmd = probe_command_for("z", Some("/h/.claude-accts/z"), 30).unwrap();
+        assert!(
+            cmd.contains(&ssh_source::shell_quote(&named)),
+            "命令里找不到那条载荷：\n{cmd}"
+        );
+    }
+
+    /// 空 configDir 是坏数据 ⇒ 命令根本构造不出来（**不发起 SSH**）。
+    #[test]
+    fn empty_config_dir_never_produces_a_probe_command() {
+        assert!(probe_command_for("z", Some(""), 30).is_err());
+        assert!(probe_command_for("z", Some("/h/a;rm -rf /"), 30).is_err());
+        // 反向自检：合法输入必须构造得出来，否则上面两条是空转。
+        assert!(probe_command_for("z", Some("/h/.claude-accts/z"), 30).is_ok());
     }
 
     #[test]

@@ -25,7 +25,7 @@
 | 11 | 换号重启（编排） | `account-restart.ts:58` | Rust×3 + TS×1 | 三条独立 ssh + 一次拉起 |
 | 12 | cc-bus spawn（GUI） | `cc_bus.rs:436` | **三层**：Rust→cc-spawn(bash)→ccm(bash)→tmux | |
 | 13 | 终端里敲 `cc-spawn` | — | bash | 同 12 下半段 |
-| 14 | **用量探针（会真起 claude）** | `account_usage.rs:199` | 载荷 TS + 编排 Rust | **独立的第 N 套「建 tmux + send-keys + kill」**，不经 ccm、不经 `SESSION_BACKEND` |
+| 14 | **用量探针（会真起 claude）** | `account_usage.rs:199` | ~~载荷 TS + 编排 Rust~~ ⇒ **U8c-2a 起：载荷 Rust（`launch_core`）+ 编排 Rust** | **独立的第 N 套「建 tmux + send-keys + kill」**，不经 ccm、不经 `SESSION_BACKEND` |
 | 15 | SFTP「在此打开终端」 | `sftp/panel.ts:556` | TS | 不起 agent，`INVENTORY §A #7` 有意在范围外 |
 | 16 | 设置→账号 `cc-acct-iso` step（含 `/login`） | `accounts-section.ts:187` | TS | 账号是主语不是修饰，有意不收编 |
 | 17 | daemon `--resolve` | `resolve_query.rs:109` | **只产计划不执行** | **cc-monitor 侧零消费者**（全仓 `.rs`/`.ts` grep 0 命中） |

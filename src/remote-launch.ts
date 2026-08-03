@@ -64,32 +64,10 @@ import {
 /** Claude 嵌套会话环境标记（空格分隔，喂 `unset`）。CLAUDE_CONFIG_DIR 刻意不含。 */
 export const CLAUDE_NESTED_ENV_VARS = AGENT_PROFILE.nestedEnvVars.join(" ");
 
-/**
- * F10（剩余账号 UX）：给 `account_usage` IPC 的一次性用量探针会话构造启动 payload——
- * `export CLAUDE_CONFIG_DIR='<dir>'; unset <嵌套env>; claude`。这一行会被 Rust 侧原样
- * `tmux send-keys` 敲进探针会话（Rust 只管执行，不理解语义，见 `account_usage.rs` 头注）。
- * `configDir` 非法（`isValidConfigDir` 未过）时 throw——同 `buildEnvPrefix` 既有 fail-closed
- * 纪律，绝不把未经校验的路径拼进命令。
- */
-export function buildUsageProbePayload(configDir: string | null): string {
-  // 用量探针恒是 **per-account** 的——探不出"哪个账号"的用量就没有意义。
-  // 账号维度在这里有且只有两种合法表态，**没有第三种**：
-  //
-  //   `configDir` 是路径  → 具名账号 → `export CLAUDE_CONFIG_DIR=…; `
-  //   `configDir` 是 null → **账号 0**（Z03）→ `unset CLAUDE_CONFIG_DIR; `
-  //
-  // **空串仍然 throw**：它不是账号 0，是坏数据（空值 ≠ 未设，这是 Z01 起整套设计的支点）。
-  // **fail-closed**：账号 0 这条路**绝不**退化成"什么前缀都不加"——远端 rc 里那句
-  // `export CLAUDE_CONFIG_DIR=<默认账号>` 会让裸载荷探到别的号，而 UI 上会把结果标成
-  // 账号 0 的用量 = 静默串号（正是 BACKLOG E37 那类最坏形态）。
-  if (configDir === null) {
-    return `${UNSET_CONFIG_DIR_PREFIX}unset ${CLAUDE_NESTED_ENV_VARS}; ${AGENT_PROFILE.defaultLauncher}`;
-  }
-  if (!configDir) {
-    throw new Error("用量探针需要显式 configDir（账号 0 请传 null，空串是坏数据）");
-  }
-  return `${buildEnvPrefix(configDir)}unset ${CLAUDE_NESTED_ENV_VARS}; ${AGENT_PROFILE.defaultLauncher}`;
-}
+// U8c-2a：`buildUsageProbePayload` **已退役** —— 用量探针的载荷改由 Rust 内核
+// `launch_core::usage_probe_payload` 编译（账本 S28 的第 ② 份产出点就此消失）。
+// 那条「两态、绝不裸载荷、空串是坏数据」的 fail-closed 纪律原样搬了过去并有测试；
+// 前端只报 `configDir`（`null` = 账号 0）。
 
 /**
  * 直连 resume 命令（F41）：`unset <嵌套env>; [cd '<cwd>' && ]<launcher> --resume <sid>`。

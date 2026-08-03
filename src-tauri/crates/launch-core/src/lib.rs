@@ -16,8 +16,9 @@
 //!
 //! # 为什么是共享 crate
 //!
-//! 同一段载荷今天有**六份、跨三种语言**（账本 S28）：TS `launch-render-fallback.ts` ·
-//! TS `remote-launch.ts::buildUsageProbePayload` · Rust `history.rs`（本机 POSIX）·
+//! 同一段载荷今天有**五份、跨三种语言**（账本 S28；U8c-2a 退役了一份）：
+//! TS `launch-render-fallback.ts` · ~~TS `remote-launch.ts::buildUsageProbePayload`~~（**已退役**）·
+//! Rust `history.rs`（本机 POSIX）·
 //! Rust `history.rs`（Windows，`$env:` 变体，是平台特化不是副本）·
 //! **`shared/ccm` 的 `--print` 段与 exec 段**（S10 已裁定刻意不合并）。
 //! 消费方跨两种宿主（daemon 远端执行面 / monitor 本机拉起），
@@ -25,13 +26,14 @@
 //!
 //! # 诚实边界（U8c-1 交付时的实况，别读成「合完了」）
 //!
-//! - 本 crate 今天**只有一个生产消费方**：`history.rs` 的 POSIX 分支，而且它只用到
-//!   [`config_dir_prefix_posix`] 这一段。[`render_payload`] 的完整路径要等 **U8c-2**
-//!   （前端改发结构化请求）才有生产调用方。
+//! - 本 crate 今天有**两个**生产消费方：`history.rs` 的 POSIX 分支（只用
+//!   [`config_dir_prefix_posix`]）与 `account_usage.rs` 的用量探针（U8c-2a 起走
+//!   [`usage_probe_payload`] → [`render_payload`]，**后者的第一个生产调用方**）。
+//!   远端起会话主路仍在 TS 手里，要等 **U8c-2b**。
 //! - **Windows 分支不在这里** —— `$env:CLAUDE_CONFIG_DIR=$null; ` 与它自己那套
 //!   「什么算绝对路径」（盘符 / UNC / `\` 分隔）是刻意的平台特化。
 //!   `acct-core` 头注已经为同族的 `is_safe_config_dir` 裁决过「不合」，本 crate 不推翻它。
-//! - TS 那两个产出点仍然活着（U8c-2 收编、U8c-3 删除）。跨语言一致性今天由
+//! - TS 侧还剩 `launch-render-fallback.ts` 一个产出点（U8c-2b 收编、U8c-3 删除）。跨语言一致性今天由
 //!   `crates/launch-core/fixtures/payload-golden.json` 的**逐字节对拍**保证：
 //!   TS 侧生成并入库、Rust 侧读同一份文件自己渲染再比。
 
@@ -168,6 +170,26 @@ pub struct WrapSpec<'a> {
     pub prelude: &'a str,
 }
 
+/// 一个 argv 元素能不能安全地参与 `join(" ")`。
+///
+/// 载荷是空格拼起来的一整条 shell 串，所以 arg 里**任何空白都会让它裂成多个参数**，
+/// 任何 shell 元字符都可能另起一条命令。放行集刻意窄：字母数字 + `-_.:/=,@+`
+/// —— 覆盖 `--resume` 与 UUID 形态的 sid（今天 `args` 的唯一真实内容），其余一律拒。
+///
+/// ⚠ **已知过严、且与同 crate 另一道闸不对称**（代码审计指出）：这里用 `is_ascii_alphanumeric`
+/// ⇒ **非 ASCII 一律拒**，而 [`config_dir_command_safe`] 是**放行中文的**（`/home/用户/…`
+/// 有专门的放行测试）。不带引号的 CJK 对 shell 是惰性的（不分词、非元字符），
+/// 所以这一格今天是「宁可过严」。**今天零生产流量**（`plan.args` 恒空），
+/// 等 U8c-2b 往 args 里塞 `--add-dir <中文路径>` 这类东西时会撞上 —— 届时错误文案说的是
+/// 「含空白或 shell 元字符」，**会误导**，要一并改。
+pub fn arg_is_join_safe(a: &str) -> bool {
+    !a.is_empty()
+        && a.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(c, '-' | '_' | '.' | ':' | '/' | '=' | ',' | '@' | '+')
+        })
+}
+
 /// 载荷编译的输入。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PayloadSpec<'a> {
@@ -243,13 +265,16 @@ fn apply_wraps(inner: String, wraps: &[WrapSpec]) -> String {
 /// ⇒ 本 crate 对 `Some("")` / `value: ""` 回 `Err`。**这是与 TS 的一处刻意分歧**，
 /// 记在 `doc/INVARIANTS.md` §33b；U8c-2/3 收编 TS 时要一并把那边也改成 fail-closed。
 ///
-/// # 本函数**不管**的两件事（诚实边界）
+/// # `args` 的盲区已经闭掉（U8c-2a）
 ///
-/// - **`args` 不 quote**（两侧都是 `join(" ")`）：`args:["a b"]` 会裂成两个参数、
-///   `args:["x; rm -rf /"]` 会被 shell 当两条命令。**两侧一起错 ⇒ 对拍照绿**。
-///   今天 `plan.args` 零生产者（`--resume <sid>` 走 TS 的 `renderArgv` 且 sid 有白名单），
-///   潜伏不是现患；U8c-2 让 Rust 当生产者时**必须先解决它**。
-/// - **`launcher` 的 sanitize**：收的是已净化值（见 [`PayloadSpec::launcher`]）。
+/// U8c-1 交付时这里写着「`args` 不 quote，两侧一起错 ⇒ 对拍照绿，U8c-2 让 Rust 当生产者时
+/// 必须先解决」。**本轮解决了**：每个 arg 过 [`arg_is_join_safe`] 白名单，
+/// 含空白或 shell 元字符一律 `Err`。
+///
+/// **刻意不改成逐个 quote** —— 那会与 TS 的 `join(" ")` 逐字节分家，而黄金串对拍正靠字节相等。
+/// 白名单让**会裂/会注入的那一类在类型之外不可表示**，合法输入的字节一个都没变。
+///
+/// - **`launcher` 的 sanitize** 仍然不管：收的是已净化值（见 [`PayloadSpec::launcher`]）。
 ///
 /// # 只覆盖 TS 两种载荷形态里的一种
 ///
@@ -257,6 +282,14 @@ fn apply_wraps(inner: String, wraps: &[WrapSpec]) -> String {
 /// `container:"tmux"` 分支是 `env + argv`（**没有 `cd`** —— cwd 单独交给 `SESSION_BACKEND`）。
 /// 本函数是前者。U8c-2 接 tmux 路径时**必须传 `cwd: None`**，否则会多出一段 `cd`。
 pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
+    for a in spec.args {
+        if !arg_is_join_safe(a) {
+            return Err(format!(
+                "拒绝拼入命令：参数 {a:?} 含空白或 shell 元字符 —— 载荷是 `join(\" \")` 拼的，\
+                 它会裂成多个参数或另起一条命令"
+            ));
+        }
+    }
     let mut argv = vec![spec.launcher];
     argv.extend_from_slice(spec.args);
     let inner = argv.join(" ");
@@ -271,6 +304,44 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
         cd,
         apply_wraps(inner, spec.wrap)
     ))
+}
+
+/// 一次性**用量探针**会话的启动载荷（U8c-2a：`render_payload` 的第一个生产用例）。
+///
+/// 形态 `<账号前缀>unset <嵌套env>; <launcher>` —— **没有 `cd`**（探针不关心工作目录），
+/// 也就是 `PayloadSpec { cwd: None, args: [], wrap: [] }` 那一格。
+///
+/// # 账号维度**恒显式表态，只有两态**
+///
+/// 用量探针恒是 per-account 的 —— 探不出「哪个账号」的用量就没有意义：
+///
+/// | `config_dir` | 含义 | 前缀 |
+/// |---|---|---|
+/// | `Some(路径)` | 具名账号 | `export CLAUDE_CONFIG_DIR='…'; ` |
+/// | `None` | **账号 0**（Z03） | `unset CLAUDE_CONFIG_DIR; ` |
+/// | `Some("")` | **坏数据，不是账号 0** | `Err` |
+///
+/// **绝不退化成裸载荷** —— 远端 rc 里那句 `export CLAUDE_CONFIG_DIR=<默认账号>` 会让探针
+/// 探到别的号，而 UI 会把结果标成账号 0 的用量 = **静默串号**。
+pub fn usage_probe_payload(
+    config_dir: Option<&str>,
+    nested_env: &[&str],
+    launcher: &str,
+) -> Result<String, String> {
+    let account = match config_dir {
+        None => EnvOp::UnsetConfigDir,
+        Some("") => {
+            return Err("用量探针需要显式 configDir（账号 0 请传 None，空串是坏数据）".into())
+        }
+        Some(dir) => EnvOp::ExportConfigDir { value: dir },
+    };
+    render_payload(&PayloadSpec {
+        env: &[account, EnvOp::UnsetNestedEnv { keys: nested_env }],
+        cwd: None,
+        launcher,
+        args: &[],
+        wrap: &[],
+    })
 }
 
 #[cfg(test)]
@@ -511,6 +582,74 @@ mod tests {
             render_payload(&empty_keys).is_err(),
             "空键表应回 Err，不是裸 `unset ; `"
         );
+    }
+
+    /// ★ U8c-2a：`args` 白名单 —— 会裂成多个参数 / 会另起一条命令的那一类不可表示。
+    /// **合法输入的字节一个都没变**（黄金串对拍还在跑）。
+    #[test]
+    fn args_that_would_split_or_inject_are_refused() {
+        for bad in [
+            "a b",
+            "x; rm -rf /",
+            "a\nb",
+            "a|b",
+            "a$b",
+            "a`b`",
+            "",
+            "a'b",
+        ] {
+            let spec = PayloadSpec {
+                env: &[],
+                cwd: None,
+                launcher: "claude",
+                args: &[bad],
+                wrap: &[],
+            };
+            assert!(
+                render_payload(&spec).is_err(),
+                "arg {bad:?} 应被拒（载荷是 join(\" \") 拼的）"
+            );
+        }
+        // 反向自检：今天 `args` 真实装的东西必须照常通过，否则上面全是空转。
+        let ok = PayloadSpec {
+            env: &[],
+            cwd: None,
+            launcher: "claude",
+            args: &["--resume", "0b2f7a1e-3c4d-4e5f-8a9b-0c1d2e3f4a5b"],
+            wrap: &[],
+        };
+        assert_eq!(
+            render_payload(&ok).unwrap(),
+            "claude --resume 0b2f7a1e-3c4d-4e5f-8a9b-0c1d2e3f4a5b"
+        );
+    }
+
+    /// ★ U8c-2a：用量探针两态 —— 没有第三态，空串是坏数据。
+    #[test]
+    fn usage_probe_payload_is_two_states_and_never_bare() {
+        let nested = ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"];
+        assert_eq!(
+            usage_probe_payload(Some("/h/.claude-accts/z"), &nested, "claude").unwrap(),
+            "export CLAUDE_CONFIG_DIR='/h/.claude-accts/z'; \
+             unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; claude"
+        );
+        assert_eq!(
+            usage_probe_payload(None, &nested, "claude").unwrap(),
+            "unset CLAUDE_CONFIG_DIR; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; claude"
+        );
+        assert!(
+            usage_probe_payload(Some(""), &nested, "claude").is_err(),
+            "空串是坏数据，不是账号 0"
+        );
+        // ★ 最要紧的一条：**两态都必须带账号前缀**，绝不退化成裸载荷（静默串号）。
+        for dir in [Some("/h/.claude-accts/z"), None] {
+            let p = usage_probe_payload(dir, &nested, "claude").unwrap();
+            assert!(
+                p.starts_with("export CLAUDE_CONFIG_DIR=")
+                    || p.starts_with("unset CLAUDE_CONFIG_DIR;"),
+                "载荷没有账号表态，会探到远端 rc 里的默认号：{p}"
+            );
+        }
     }
 
     #[test]

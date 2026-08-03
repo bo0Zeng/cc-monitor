@@ -4,7 +4,6 @@ const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
 
 import { fetchAccountUsage, invalidateAccountUsageCache } from "./account-usage.ts";
-import { buildUsageProbePayload } from "./remote-launch.ts";
 
 describe("fetchAccountUsage", () => {
   beforeEach(() => {
@@ -26,21 +25,23 @@ describe("fetchAccountUsage", () => {
     );
   });
 
-  // F10 Phase D 审计遗留项（R01）：上面那条只断言了 origin/accountName，`launchPayload`——
-  // 这个功能里唯一真正被送到远端 shell 去执行的字符串——从未被断言过内容。
-  // 它同时锁死三件事：① 账号隔离真的通过 CLAUDE_CONFIG_DIR 生效（不是空跑一个裸 claude，
-  // 那会探到错账号的用量、且看起来完全正常）；② 嵌套 env 被清掉（探针从 cc-monitor 自身的
-  // Claude 会话里发起时，不清会让远端 claude 误认为自己是嵌套子会话）；③ 引号形态。
-  it("launchPayload 是逐字节确定的载荷（账号隔离 + 嵌套 env 清理 + 引号形态）", async () => {
+  // F10 Phase D 审计遗留项（R01）原本在这里逐字节钉住 `launchPayload`（账号隔离 + 嵌套 env
+  // 清理 + 引号形态）。**U8c-2a 之后 IPC 上已经没有那个串了** —— 载荷由 Rust 内核编译。
+  //
+  // 那三件事**一件都没丢**，只是判据换了地方：
+  //   ① 账号隔离真的生效（不是裸 claude ⇒ 探到错账号且看起来完全正常）
+  //      → `launch_core::usage_probe_payload_is_two_states_and_never_bare`（**两态都断言带前缀**）
+  //   ② 嵌套 env 被清掉 → 同上（载荷里必有 `unset <嵌套env>`），键表两侧一致由
+  //      `agent-profile-parity.vitest.ts` 钉
+  //   ③ 引号形态 → `launch_core::posix_quote` 单测 + 黄金串夹具对拍
+  // 这里剩下的职责是**「账号表态被原样送过去」**，见下面两条。
+  it("IPC 上只送账号表态，不送渲染好的载荷（U8c-2a）", async () => {
     invokeMock.mockResolvedValue({ captured: true, raw: "50%", error: null });
     await fetchAccountUsage("aya", "z", "/h/.claude-accts/z");
     expect(invokeMock).toHaveBeenCalledWith("account_usage", {
       origin: "aya",
       accountName: "z",
-      launchPayload:
-        "export CLAUDE_CONFIG_DIR='/h/.claude-accts/z'; " +
-        "unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; " +
-        "claude",
+      configDir: "/h/.claude-accts/z",
     });
   });
 
@@ -72,7 +73,7 @@ describe("fetchAccountUsage", () => {
     expect(r.status).toBe("probe-failed");
   });
 
-  it("configDir 非法（如空串）→ probe-failed（buildUsageProbePayload 的校验被捕获，不崩溃）", async () => {
+  it("configDir 非法（如空串）→ probe-failed，且**不发起探测**（U8c-2a 后前置校验留在 TS）", async () => {
     const r = await fetchAccountUsage("aya", "z", "");
     expect(r.status).toBe("probe-failed");
     expect(invokeMock).not.toHaveBeenCalled(); // 校验在 invoke 之前失败，不该发起探测
@@ -80,28 +81,26 @@ describe("fetchAccountUsage", () => {
 
   // ---- Z03：账号 0（configDir === null）----
 
-  it("★ 账号 0 的载荷显式 unset CLAUDE_CONFIG_DIR，绝不是裸载荷", async () => {
+  // U8c-2a：载荷不再由 TS 渲染 ⇒ 这里改钉「**账号表态被原样送到 Rust**」。
+  // 「两态、绝不裸载荷、空串是坏数据」那三条 fail-closed 纪律现在由
+  // `launch_core::usage_probe_payload_is_two_states_and_never_bare` 钉住。
+  it("★ 账号 0 的表态原样送到 Rust（configDir 必须是字面 null，不能被省成 undefined）", async () => {
     invokeMock.mockResolvedValue({ captured: true, raw: "30%", error: null });
     await fetchAccountUsage("aya", "0", null);
-    const payload = (invokeMock.mock.calls[0][1] as { launchPayload: string }).launchPayload;
-    // fail-closed：裸载荷会继承远端 rc 里那句 `export CLAUDE_CONFIG_DIR=<默认账号>`
-    // ⇒ 探到别的号，而 UI 会把它标成账号 0 的用量（静默串号）。
-    expect(payload.startsWith("unset CLAUDE_CONFIG_DIR; ")).toBe(true);
-    expect(payload).not.toContain("export CLAUDE_CONFIG_DIR");
+    const args = invokeMock.mock.calls[0][1] as Record<string, unknown>;
+    // 送 `undefined`（或干脆不带这个键）在 Rust 侧同样落 `None`，**今天等价** ——
+    // 但那是巧合不是契约：任何一次「忘了带 configDir」的改动都会静默变成账号 0。
+    // 钉住字面 null，让「有没有表态」在这一层就是可见的。
+    expect("configDir" in args).toBe(true);
+    expect(args.configDir).toBeNull();
+    expect(args).not.toHaveProperty("launchPayload"); // 渲染好的串已经不该出现在 IPC 上
   });
 
-  it("账号 0 与具名账号只差账号那一段，其余逐字相同", async () => {
-    expect(buildUsageProbePayload(null).replace("unset CLAUDE_CONFIG_DIR; ", "")).toBe(
-      buildUsageProbePayload("/h/.claude-accts/z").replace(
-        "export CLAUDE_CONFIG_DIR='/h/.claude-accts/z'; ",
-        "",
-      ),
-    );
-  });
-
-  it("★ 空串仍然 throw —— 它不是账号 0，是坏数据（空值 ≠ 未设）", () => {
-    expect(() => buildUsageProbePayload("")).toThrow();
-    expect(() => buildUsageProbePayload(null)).not.toThrow();
+  it("★ 具名账号的 configDir 原样送到 Rust（不能被渲染/改写）", async () => {
+    invokeMock.mockResolvedValue({ captured: true, raw: "30%", error: null });
+    await fetchAccountUsage("aya", "z", "/h/.claude-accts/z");
+    const args = invokeMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(args.configDir).toBe("/h/.claude-accts/z");
   });
 
   it("账号 0 的探测结果照常解析 + 进缓存（与具名账号同一条路）", async () => {
