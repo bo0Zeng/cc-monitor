@@ -44,6 +44,8 @@ import type {
   CliRenderRequest,
   CliRenderResponse,
   PayloadRenderRequest,
+  SendIntoRequest,
+  SendIntoResponse,
 } from "../launch-cli-wire.ts";
 
 import type { AccountUsageProbeResult } from "../generated/AccountUsageProbeResult";
@@ -604,6 +606,12 @@ export const commands = {
   // 非法输入（空 configDir / shell 元字符 / 会裂的 arg）⇒ Rust 侧 `Err` ⇒ 这里 reject。
   render_launch_payload: (args: { req: PayloadRenderRequest }) =>
     invoke<string>("render_launch_payload", args),
+
+  // U8a-2c-1：**「控制搬进 daemon」的第一条生产通道** —— 往已存在的远端 tmux 会话键入载荷
+  // （`send-keys` 那半边）。`attach` 那半边**不走它**：§1.3 要求最终 exec 落在用户自己的
+  // 终端进程里，daemon 在远端、开不了你面前的窗。
+  daemon_send_into: (args: { req: SendIntoRequest }) =>
+    invoke<SendIntoResponse>("daemon_send_into", args),
 
   /** 把内嵌的 vendor `cc-acct-iso` 部署到远端。返回人话结果串 ⇒ 原始类型，无需生成物。 */
   deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>

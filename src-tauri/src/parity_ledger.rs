@@ -255,6 +255,10 @@ mod tests {
         ("drift_ledger_report", "audit.drift-ledger", Side::Both),
         // U8c-2c-2：`ccm 调用行`的渲染入口。**Remote 侧专属** —— 本机路径不经 IR
         // 产出命令（§36 + R07 已裁决），它自己有 `history.rs::build_local_*_command`。
+        // U8a-2c-1：daemon `launch` 的发送端（`send-into` 那半边）。**Remote-only 且未裁定** ——
+        // 见 ASYMMETRY_REASONS 里那条：本机该不该也有一个「后端进程」来收这件事，
+        // 正是 §1.2 今天悬着的问题（v1 的三宿主被否决、U12 的 daemonless 未定）。
+        ("daemon_send_into", "launch.send-into", Side::Remote),
         ("render_ccm_launch", "launch.render-cli", Side::Remote),
         // 兜底那支的 `container:"none"` 载荷渲染。**同 launch.render-cli：Remote 侧专属**
         // —— 本地路径不经 IR 产出命令（§36 + R07）。
@@ -333,6 +337,7 @@ mod tests {
         ("ccm.install-ui", Asym::Undecided, "本机安装向导有「扫 PATH 选装到哪」+「预览要写的文本」两步；远端 `install_remote_ccm_helper(cfg, profile)` 一步到位、没有这两步。**是欠账还是刻意简化，需要产品判断**——本表不替它裁定。"),
         ("daemon.deploy", Asym::NaturallyAsymmetric, "§40 天然不对称白名单第 3 条：本地会话由 `watcher.rs` 直接读 jsonl，**根本不需要 daemon**。"),
         ("launch.render-payload", Asym::NaturallyAsymmetric, "同 launch.render-cli：本地按 §36 + R07 不经 IR 产出命令，它有自己的 `history.rs::build_local_*_command`。"),
+        ("launch.send-into", Asym::Undecided, "U8a-2c-1：往**已存在**的远端 tmux 会话键入载荷（`send-keys` 那半边由 daemon 做，`attach` 那半边必须留在用户终端 —— §1.3）。**刻意记 Undecided 而不是天然不对称**：本机今天没有对应能力，但那不是因为「本机不需要」，而是因为**本机该不该也有一个后端进程来收这件事还没裁定** —— §1.2 的三宿主 v1 被用户否决、U12 的 daemonless 处置未定。写成 NaturallyAsymmetric 就是替产品做主。"),
         ("launch.render-cli", Asym::NaturallyAsymmetric, "U8c-2c-2：`ccm 调用行`的渲染。**本地按 §36 + R07 就不经 IR 产出命令** —— 它有自己的 `history.rs::build_local_posix_command` / `build_local_ps_command`（要现场探 `command -v cc` / `Get-Command cc`，TS 无法预先渲染好交给它）。这条不对称是「本地渲染必须在目标机器上做」造成的，不是能力缺失。"),
         ("mcp.list-origins", Asym::NaturallyAsymmetric, "「有哪些 origin」这个概念在本地不存在——本地只有一台。"),
         ("panorama.code-graph", Asym::Undecided, "**本表交出的最大一处新发现**：21 条命令全部只吃本机 `repo` 路径。远端 repo 的代码图谱既没做、也没在任何计划里登记过。**不擅自判它是天然不对称**——那需要产品判断（远端开发是不是本工具的场景）。登记待裁定。"),
@@ -597,11 +602,11 @@ mod tests {
         // 而 U8a-2c-pre（`57dba2a`）把这四个数各 +1 时，只改了数、一条尾注都没动。
         // ⇒ 尾注把 U8a-2c-pre 的增量记在了 U8c-2c-2 名下。**尾注的用处就是说清「谁加的」，
         // 归属错了就不如没有。**
-        assert_eq!(LEDGER.len(), 126, "命令总数变了"); // G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）
+        assert_eq!(LEDGER.len(), 127, "命令总数变了"); // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）
         let sides = capability_sides();
-        assert_eq!(sides.len(), 53, "能力总数变了"); // U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：本机不经 IR，§36）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）
+        assert_eq!(sides.len(), 54, "能力总数变了"); // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：本机不经 IR，§36）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）
         let asym = asymmetric_capabilities();
-        assert_eq!(asym.len(), 20, "不对称能力数变了"); // G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
+        assert_eq!(asym.len(), 21, "不对称能力数变了"); // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
         let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
         for (_, k, _) in ASYMMETRY_REASONS {
             *kinds
@@ -614,6 +619,6 @@ mod tests {
         }
         assert_eq!(kinds.get("natural"), Some(&9), "天然不对称条数变了"); // U8c-2c-2 +1（launch.render-cli：本地不经 IR，§36+R07）；U8a-2c-pre +1（launch.render-payload：同上）
         assert_eq!(kinds.get("debt"), Some(&9), "平价欠账条数变了"); // G6 -1；E79 -1
-        assert_eq!(kinds.get("undecided"), Some(&2), "未裁定条数变了");
+        assert_eq!(kinds.get("undecided"), Some(&3), "未裁定条数变了"); // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
     }
 }

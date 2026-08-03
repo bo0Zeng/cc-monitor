@@ -40,6 +40,11 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "`env 前缀 → cd → argv → wrap` 载荷编译器。P4b 从共享 crate 搬回归属地",
     ),
     (
+        "control/daemon_launch.rs",
+        "control",
+        "U8a-2c-1：daemon `launch` 的发送端（`send-into` 那半边；attach 留在用户终端）",
+    ),
+    (
         "control/launch_wire.rs",
         "control",
         "前端结构化请求 → wire 适配 → ccm 调用行 / 裸载荷（两个 tauri 命令）",

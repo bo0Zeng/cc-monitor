@@ -60,6 +60,13 @@ mkfifo "$IN"
 # 改这里 ⇒ monitor 侧 `the_e2e_ping_line_is_exactly_what_the_encoder_produces` 变红。
 INBOUND_PING_LINE='{"id":"e2e-ping-1","cmd":"ping","args":null}'
 
+# ★ U8a-2c-1 跨轨对拍：**这一行是 monitor 的 `launch_args` + `encode_request` 的产物**
+# （由 monitor 侧 `the_e2e_send_into_line_is_exactly_what_the_encoder_produces` 逐字节钉住）。
+# 上面那条 ping 只证明「daemon 认得 monitor 编的信封」；这一条证明的是
+# **monitor 真正会发的那条业务命令**（`daemon_send_into` 唯一会说的 `send-into`）。
+# 值全是写死的（不插值），否则钉不住。
+INBOUND_SEND_INTO_LINE='{"id":"e2e-si-1","cmd":"launch","args":{"mode":"send-into","name":"e2e-si-fixed","payload":"true"}}'
+
 echo "== U8a-2a 入方向真进程端到端 =="
 echo "daemon: $DAEMON"
 
@@ -249,6 +256,22 @@ else
     bad "**send-into 顺手把会话建出来了** —— 那是 #76 的反向"
   else
     ok "send-into 没有顺手新建会话（#76 反向防线）"
+  fi
+
+  # ★ U8a-2c-1：**monitor 真正会发的那条 send-into**（逐字节由 monitor 侧钉住）打在真 tmux 上。
+  # 与上面 e2e-launch-3 的区别：那条是本脚本手写+插值的，这条是**编码器的产物**——
+  # 手写那条只证明 daemon 认得我写的形状，证明不了 monitor 发的形状。
+  tmux new-session -d -s e2e-si-fixed
+  send "$INBOUND_SEND_INTO_LINE"
+  if wait_for '"id":"e2e-si-1"'; then
+    R="$(grep -F '"id":"e2e-si-1"' "$OUT" | head -1)"
+    if printf '%s' "$R" | grep -qF '"ok":true' && printf '%s' "$R" | grep -qF '"typed":true'; then
+      ok "monitor 编码器产的 send-into 行被真 daemon 接受并键入"
+    else
+      bad "编码器产的 send-into 行被拒了：$R"
+    fi
+  else
+    bad "编码器产的 send-into 行没有应答"
   fi
 
   # attach 不归 daemon（平面 ③）

@@ -273,6 +273,43 @@ export async function runRemoteResumeTmux(
   });
 }
 
+/** U8a-2c-1：把 `send-keys` 那半边交给**远端 daemon**（`control/launch.rs`，`mode:"send-into"`）。
+ *
+ *  @returns `true` = 载荷**真的键入了** ⇒ 终端只需 `attach`；`false` = 回落到今天那条整串。
+ *
+ *  # 任何一步不顺都回落，而且回落后**行为逐字不变**
+ *
+ *  拿不到控制通道（daemon 不在场 / 长连接未握手）· daemon 回报未键入（会话已不存在）·
+ *  载荷渲染被后端拒 · IPC 本身异常 —— 一律 `false`，调用方照今天那条
+ *  `send-keys …; attach …` 整串走。**所以这条切换在没有 daemon 的远端上是零影响的。**
+ *
+ *  ⚠ **诚实登记一处 fail-open**：载荷渲染被 Rust 拒（非法 configDir / 会裂的 arg）时这里也回落，
+ *  而兜底渲染器（TS）对同样的输入**未必拒**。那不是本件引入的 —— 这一格今天**根本不经
+ *  Rust 渲染**（`renderLaunchCommand` 对 send-into 恒走 `renderFallback`），所以「回落=今天」
+ *  才是零行为变化的那个选择。要把它收成 fail-closed 得连兜底渲染器一起收 ⇒ U8c-3。
+ *
+ *  ⚠ **绝不 toast** 回落 —— 用户看不到区别（两条路都把会话就地 resume 起来了），
+ *  弹一个「降级了」的提示只会制造噪音。理由走 `console.debug`，同 `renderCliViaBackend`。 */
+async function sendIntoViaDaemon(
+  origin: string,
+  name: string,
+  plan: LaunchPlan,
+): Promise<boolean> {
+  try {
+    const payload = await commands.render_launch_payload({
+      req: buildPayloadRenderRequest(plan),
+    });
+    const res = await commands.daemon_send_into({ req: { origin, name, payload } });
+    if (!res.typed) {
+      console.debug(`[U8a-2c-1] send-into 回落到整串：${res.reason ?? "daemon 未给理由"}`);
+    }
+    return res.typed;
+  } catch (e) {
+    console.debug(`[U8a-2c-1] send-into 回落到整串（通道异常）：${String(e)}`);
+    return false;
+  }
+}
+
 /** F03：往一个**已存在的空 tmux**（idle-tmux：claude 已退、只剩交互 shell 的 `<sid8>-cc`）就地
  *  resume——send-keys 载荷 + attach，复用原会话名（不产孤儿，治 #76）。签名/返回值与
  *  `runRemoteResumeTmux` 对齐：true=真拉起来了；false=命令构造失败/拉起失败（已回退剪贴板）。
@@ -286,16 +323,31 @@ export async function runRemoteResumeIntoExistingTmux(
   mods: LaunchModifiers = {}, // R03：正交修饰 bag（configDir/accountName/modelOverride），见 launch-plan.ts
 ): Promise<boolean> {
   let cmd: string;
+  let viaDaemon = false;
   try {
     const { ctx, plan } = planResumeIntoExistingTmux(sid, name, launcher, mods);
-    cmd = await renderLaunchCommand(origin, ctx, plan);
+    // ★ U8a-2c-1：**先试 daemon**。这一格今天的整串是
+    //   `tmux send-keys -t '=name:' '<载荷>' Enter; tmux attach -t '=name:'` —— 两半干干净净：
+    //   `send-keys` 交给远端 `control/`，`attach` **必须**留在用户自己的终端（§1.3）。
+    //   拿不到控制通道 / daemon 回报未键入 ⇒ 原样回落到整串（**行为逐字不变**），
+    //   所以这条切换在没有 daemon 的远端上是零影响的。
+    const sent = await sendIntoViaDaemon(origin, name, plan);
+    if (sent) {
+      const attach = planAttach(name);
+      cmd = await renderLaunchCommand(origin, attach.ctx, attach.plan);
+      viaDaemon = true;
+    } else {
+      cmd = await renderLaunchCommand(origin, ctx, plan);
+    }
   } catch (err) {
     showActionFailureToast("无法构造就地 resume 命令", String(err));
     return false;
   }
   return invokeLaunchOrCopyFallback(origin, cmd, {
     success: "已在原 tmux 就地 resume",
-    successDetail: `新终端窗口正在连接 [${origin}] 并在原 tmux 会话「${name}」里 resume 该会话（复用、不新建）。`,
+    successDetail: viaDaemon
+      ? `远端 daemon 已在 tmux 会话「${name}」里就地 resume（复用、不新建），新终端窗口正在连接 [${origin}] 接上它。`
+      : `新终端窗口正在连接 [${origin}] 并在原 tmux 会话「${name}」里 resume 该会话（复用、不新建）。`,
     failureCopied: "拉起失败，已复制就地 resume 命令",
     failureNotCopied: "拉起失败，请手动复制以下命令",
   });
