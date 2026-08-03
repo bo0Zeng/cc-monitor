@@ -24,7 +24,7 @@ usage-core = { path = "../src-tauri/crates/usage-core" }
 acct-core = { path = "../src-tauri/crates/acct-core" }
 # U8c-2b-0：POSIX 单引号 quote 的唯一实现（账本 S5 收口）。
 # 本 crate 只用它一处（`control/tmux_hook::sq`）；U8c-2c 起载荷渲染也走它。
-launch-core = { path = "../src-tauri/crates/launch-core" }
+shell-quote-core = { path = "../src-tauri/crates/shell-quote-core" }
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",

@@ -1,8 +1,8 @@
 [package]
-name = "launch-core"
+name = "shell-quote-core"
 version = "0.1.0"
 edition = "2021"
-description = "POSIX 单引号 quote 的唯一 Rust 实现。monitor 5 处 + daemon 1 处都调它（收口前是五份逐字节相同的副本，靠巧合保持一致）。⚠ crate 名还叫 launch-core 是 P4b 的过渡态，改名单列 P4c。"
+description = "POSIX 单引号 quote 的唯一 Rust 实现。monitor 5 处 + daemon 1 处都调它（收口前是五份逐字节相同的副本，靠巧合保持一致）。P4c 起名副其实（P4b 之前叫 launch-core，那时它还持有决策内核）。"
 
 # **只依赖同族共享 crate**。同 branch-core / usage-core / acct-core / guard-core 的约束：
 # daemon 是 Linux-only 的静态 musl 二进制、且刻意不在 monitor 的 workspace 里；

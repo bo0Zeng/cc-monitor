@@ -1,6 +1,6 @@
 //! U8c-2c-1：**`ccm …` 调用行的渲染器** —— TS `launch-render-cli.ts::tryRenderCli` 的 Rust 对侧。
 //!
-//! ⚠ **P4b 搬家**：它原来是共享 crate `launch-core` 的 `cli` 模块 —— 而 **daemon 对它零引用**。
+//! ⚠ **P4b 搬家**：它原来是共享 crate（当时叫 `launch-core`）的 `cli` 模块 —— 而 **daemon 对它零引用**。
 //! 架构审计点破「这就是决策内核，放在共享 crate 里的真实原因是 monitor 没处放」。
 //! 现在住 `backend/control/`：§1.3 把最终 exec 钉在用户自己的终端进程里，
 //! U8a-2b 把 daemon 的执行面定成 argv 直传、不过 shell ⇒ **渲染 shell 串永远属于开终端那一侧。**
@@ -133,7 +133,7 @@ fn argv(token: &str) -> String {
     } else {
         // ⚠ **别在这里再写一遍逃逸** —— U8c-2b-0 的 `quote_singleton_guard` 这一轮就是这么
         // 咬到我的：初版 `argv` 自己 `format!` 了一份，成了第六份副本。
-        launch_core::posix_quote(token)
+        shell_quote_core::posix_quote(token)
     }
 }
 
@@ -342,7 +342,7 @@ pub fn render_ccm_invocation(
 // 就变成一个没有生成者的冻结文件 —— 跨语言对拍会退化成「Rust 没变」的快照。
 // 于是「渲染器该做什么」这件事在本仓就再没有独立说法了。
 //
-// 补之前先量：对本文件逐条造变异、只跑现有门禁（launch-core 15 条 + monitor 侧
+// 补之前先量：对本文件逐条造变异、只跑现有门禁（当时那个 crate 15 条 + monitor 侧
 // `_parity` 9 条），**七个存活**（R1–R7）。对照组「`--base` 改字」「account/model 换序」
 // 都当场红，所以那个量具不是恒绿的。下面每条测试都注明它杀的是哪个。
 //
@@ -857,6 +857,6 @@ mod tests {
             );
         }
         // 单引号自身走内核那份逃逸（`quote_singleton_guard` 钉住只有一个家）。
-        assert_eq!(argv("a'b"), launch_core::posix_quote("a'b"));
+        assert_eq!(argv("a'b"), shell_quote_core::posix_quote("a'b"));
     }
 }

@@ -16,12 +16,12 @@
 //!
 //! # 它为什么住在这里（P4b，§1.4b）
 //!
-//! 它原来在共享 crate `launch-core` 里 —— 而 **daemon 对它零引用**。放在那儿的真实原因是
+//! 它原来在共享 crate（当时叫 `launch-core`）里 —— 而 **daemon 对它零引用**。放在那儿的真实原因是
 //! 「monitor 侧当时一个边界都没有，没处放」。P4a 划出 `backend/control/` 之后它回到了归属地：
 //! §1.3 把最终 exec 钉在**用户自己的终端进程**里，U8a-2b 把 daemon 的执行面定成
 //! **argv 直传、不过 shell** ⇒ **「渲染一条 shell 命令串」永远属于开终端的那一侧。**
 //!
-//! 唯一留在共享 crate 里的是 [`launch_core::posix_quote`]（daemon 的 `tmux_hook` 真的在用）。
+//! 唯一留在共享 crate 里的是 [`shell_quote_core::posix_quote`]（daemon 的 `tmux_hook` 真的在用）。
 //!
 //! # 诚实边界（别读成「合完了」）
 //!
@@ -198,14 +198,14 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                 let _ = write!(
                     out,
                     "export CLAUDE_CONFIG_DIR={}; ",
-                    launch_core::posix_quote(value)
+                    shell_quote_core::posix_quote(value)
                 );
             }
             EnvOp::ExportModel { value } => {
                 let _ = write!(
                     out,
                     "export ANTHROPIC_MODEL={}; ",
-                    launch_core::posix_quote(value)
+                    shell_quote_core::posix_quote(value)
                 );
             }
             EnvOp::UnsetConfigDir => out.push_str(UNSET_CONFIG_DIR_PREFIX),
@@ -284,7 +284,7 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
     let inner = argv.join(" ");
     let cd = match spec.cwd {
         Some("") => return Err("cwd 是空串 —— 空值 ≠ 未设；不加 cd 请用 None".into()),
-        Some(c) => format!("cd {} && ", launch_core::posix_quote(c)),
+        Some(c) => format!("cd {} && ", shell_quote_core::posix_quote(c)),
         None => String::new(),
     };
     Ok(format!(

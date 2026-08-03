@@ -3,7 +3,7 @@
  *
  * `tryRenderCli` 是**装了 ccm 的机器上真正在跑的那条路**（U8c-2b-0 摸底实测：
  * `renderLaunchCommand` 先试它，成功就直接返回，`renderFallback` 根本不执行）。
- * 它现在有了 Rust 对侧（`launch_core::cli::render_ccm_invocation`），
+ * 它现在有了 Rust 对侧（`backend::control::ccm_invocation::render_ccm_invocation`），
  * 保证两者一致的必须是判据，不是注释。
  *
  * ⚠ **ok 与 refusal 两类都要覆盖**：只比 ok 的话，「该降级却渲染出来了」这一类抓不到 ——

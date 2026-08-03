@@ -93,9 +93,30 @@
   生成器重跑幂等）。`SOLE_HOME` 不用改（`posix_quote` 留在原地），两条锚点性质均已复验。
   ★ 搬家暴露一处真重复：`history.rs` 自己又写了一遍三态 match，`Base` 那臂与内核逐字相同
   ⇒ 生产从没走到内核的 base 那一态（`pub` 跨 crate 时 clippy 看不见）。已改成委托（字节一致）。
-- **剩余（按序）**：**P4c**（crate 改名 —— 只剩一个 quote 还叫 `launch-core` 是说谎；
-  牵动 Cargo.toml×2 / ci.yml 三步 / `shared_crate_registry` / 全部 `launch_core::` 引用）→
-  然后才是 **U8a-2c**（daemon `launch` 的第一条生产调用）。
+- **P4c 已闭环**（UB-复盘6）—— crate 改名 `launch-core` → **`shell-quote-core`**
+  （与 TS `shell-quote.ts`、`shared/ccm::sq` 同族）。并进既有 crate 的三个候选逐个否掉：
+  `acct-core` 是账号域、`branch-core`/`usage-core` 无关、`guard-core` 是 dev-only。
+  ★ 顺带清掉 **P4b 的指针债**：十个 TS 文件的注释 + `doc/INVARIANTS.md` 四行还指着
+  `launch_core::usage_probe_payload` / `launch_core::cli::…`，而那些符号 P4b 已搬去
+  `backend::control::` —— 与 P2 治过的「指向不存在的位置」同病。
+  `src-tauri/Cargo.toml` 用 **blob-replay** 只提交依赖改名那一行，用户的 `[profile.dev]` 仍留工作区。
+  三条锚点复验（`SOLE_HOME` 改指后仍是唯一锚点 · 零命中守卫点名 · CI 注册表自动跟上新名）。
+
+## ⇒ 复盘 P0–P4 全部闭环，回 U 序列主线
+
+| 件 | 内容 |
+|---|---|
+| P0 `75faef8` | 生产层补判据（夹具与生产同一份代码产 `req`，4 个变异转红 + 抓到 `wrap` 静默丢） |
+| P1 `f4452c8` | `cli.rs` 从 0 条自测到 21 条（12 个变异转红，其中 9 条夹具抓不到） |
+| P2+P3 `2e87a51` | 修四处说谎注释 · 四条仪式性判据两删两留 · 三条地板棘到真值 · 两个真 bug |
+| P4a `c86e443` | monitor 划出 `backend/control/` + 四条边界机检 |
+| P4b `bb6f6d2` | 决策内核与载荷编译器归位，crate 缩到 58 行零依赖 |
+| P4c | crate 名副其实 + 指针债清完 |
+
+- **下一轮：U8a-2c** —— daemon `launch` 的第一条生产调用。**那是分水岭**：复盘指出的
+  「方向偏移」（九个 commit 做的是「渲染从 TS 移到 monitor 的 Rust」，而主计划要的是
+  「控制从 monitor 移到 daemon」）要在这里正过来。⚠ 它切的是活的远端主路而本机没有真远端可验 ——
+  这是本件的核心风险，先想清楚怎么办再动手。
 - ⚠ **U8c-3 仍不能开**：本件只解掉「夹具会冻结」这一个阻塞；§33b 三问里 ① 是**否**、③ 未决。
 
 ## 进度（2026-08-01，用户指令「全自动做完、中途不要停」）

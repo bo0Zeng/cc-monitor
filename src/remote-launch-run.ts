@@ -49,7 +49,7 @@ async function renderLaunchCommand(
     // 不存在"渲染出来了但悄悄丢了某个修饰"这个中间态（改造前 `renderCli` 对 `cliFlags` 返回
     // `null` 是静默跳过的，安全性全靠调用方记得先问 `canRenderCli`）。
     //
-    // **U8c-2c-2：这一支已切到 Rust**（`launch_core::cli::render_ccm_invocation`）。
+    // **U8c-2c-2：这一支已切到 Rust**（`backend::control::ccm_invocation::render_ccm_invocation`）。
     // 前端只发结构化请求，命令由后端渲染 —— 这是本工作区第一条真正切过去的渲染路径。
     // TS 的 `tryRenderCli` **没删**，降级为「只供夹具对拍」（删在 U8c-3）。
     //
@@ -65,7 +65,7 @@ async function renderLaunchCommand(
     console.debug(`[launch] CLI 渲染器降级 → 兜底渲染器（origin=${origin}）: ${r.reason}`);
   }
   // U8a-2c-pre（账本 S28）：兜底那支的 **`container:"none"` 那一格**也切到 Rust 了
-  // （`launch_core::render_payload`）。**只有这一格** —— tmux 那两格还要外层容器命令
+  // （`backend::control::payload::render_payload`）。**只有这一格** —— tmux 那两格还要外层容器命令
   // （`session-backend.ts`），而 §33b 写死了「搬它之前必须先回答三件事」⇒ U8c-3。
   if (plan.container.kind === "none" && plan.action.kind !== "attach") {
     try {

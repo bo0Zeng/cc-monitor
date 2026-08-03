@@ -2,7 +2,7 @@
  * U8c-1：**跨语言逐字节对拍的黄金串来源**。
  *
  * 载荷（`env 前缀 → cd → argv`）今天有四个产出点，其中一个刚被搬进 Rust 共享 crate
- * `launch-core`。两种语言各写一份实现，**保证它们一致的不能是注释，得是判据**：
+ * Rust 侧的 `backend/control/payload.rs`。两种语言各写一份实现，**保证它们一致的不能是注释，得是判据**：
  *
  * ```text
  *   本文件（真 renderFallback）  ──生成──▶  src/backend/control/fixtures/payload-golden.json

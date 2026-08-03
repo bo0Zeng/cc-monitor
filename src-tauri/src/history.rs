@@ -1014,7 +1014,7 @@ fn has_bad_chars(dir: &str, extra: &str) -> bool {
 /// POSIX 侧校验：必须是**绝对 POSIX 路径**，且不含反斜杠（那边的路径里不该有）。
 ///
 /// **U8c-1：判据本体已搬出本文件** —— P4b 起在 `backend::control::payload::config_dir_command_safe`
-/// （U8c-1 时在共享 crate `launch-core`，而 daemon 对它零引用）。
+/// （U8c-1 时在共享 crate `launch-core`——P4c 起那个 crate 叫 `shell-quote-core` 且只剩 quote）。
 /// 本函数只剩「把 bool 变成带上下文的 Err」。
 ///
 /// ⚠ **这次搬家不是纯重构，它把校验变严了**：本文件原先用自己那张 `SPOOFABLE`
@@ -1070,7 +1070,7 @@ fn config_dir_prefix_posix(account: Option<&LaunchAccount>) -> Result<String, St
         // `Account::Base is never constructed` —— 也就是**这个三态里的 base 那一态，
         // 生产从来没走到内核里**，本文件自己截住了。两处逐字相同 ⇒ 是重复的决定，不是分工。
         // 字节完全一致（两边都是同一个常量），由
-        // `posix_account_prefix_is_byte_identical_after_moving_to_launch_core` 兜。
+        // `posix_account_prefix_is_byte_identical_after_moving_to_the_kernel` 兜。
         // ⚠ 剩下的 `None` 那臂与整个三态 match 仍是镜像 —— 那是**登记在案的重复**，
         // 收它要连 `validate_config_dir_posix`（POSIX 侧多拒一个 `\`）一起重定，不在 P4b 范围。
         Some(LaunchAccount::Base) => crate::backend::control::payload::config_dir_prefix_posix(
@@ -1085,7 +1085,7 @@ fn config_dir_prefix_posix(account: Option<&LaunchAccount>) -> Result<String, St
                 );
             }
             validate_config_dir_posix(d)?;
-            // U8c-1：串本身由内核产出（`launch-core`），本文件不再自己 format。
+            // U8c-1：串本身由内核产出（P4b 起在 `backend::control::payload`），本文件不再自己 format。
             crate::backend::control::payload::config_dir_prefix_posix(Some(
                 &crate::backend::control::payload::Account::Named { config_dir: d },
             ))
@@ -1785,7 +1785,7 @@ mod tests {
         .is_ok());
     }
 
-    /// ★ U8c-1：POSIX 校验改调 `launch-core` 之后**多拒**的那六段码位。
+    /// ★ U8c-1：POSIX 校验改调内核（P4b 起 `backend::control::payload`）之后**多拒**的那六段码位。
     ///
     /// 这不是纯重构 —— 本文件原先用的 `SPOOFABLE` 是 **U7-3 之前**的旧集合，
     /// 而内核建立在 `acct_core::is_deceptive_char` 的并集上。这条测试点名那六段，
@@ -1814,7 +1814,7 @@ mod tests {
 
     /// ★ U8c-1：合法输入的产物**逐字节不变** —— 搬内核不许改一个字节。
     #[test]
-    fn posix_account_prefix_is_byte_identical_after_moving_to_launch_core() {
+    fn posix_account_prefix_is_byte_identical_after_moving_to_the_kernel() {
         assert_eq!(
             config_dir_prefix_posix(None).unwrap(),
             "",

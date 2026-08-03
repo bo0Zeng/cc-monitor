@@ -365,7 +365,7 @@ describe("Z01 账号 0 在设置账号表里的呈现", () => {
   // 账号 0 现在**真的会探**，而且载荷必须是 `unset CLAUDE_CONFIG_DIR; ` 打头（不是裸载荷）。
   // U8c-2a：载荷不再走 IPC（由 Rust 内核编译）⇒ 这里改钉「账号 0 的**表态**真的送出去了」。
   // 「显式 unset、绝不裸载荷」那条 fail-closed 纪律由
-  // `launch_core::usage_probe_payload_is_two_states_and_never_bare` 钉住（两态都断言带前缀）。
+  // `backend::control::payload 的 usage_probe_payload_is_two_states_and_never_bare` 钉住（两态都断言带前缀）。
   it("账号 0 的用量会真的去探，且送的是账号 0 的显式表态（configDir === null）", async () => {
     fetchAccountsMock.mockResolvedValue(state({ accounts: [zero], defaultName: null }));
     invokeMock.mockImplementation((cmd: string) =>

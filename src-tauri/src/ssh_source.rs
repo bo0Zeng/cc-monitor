@@ -1713,8 +1713,9 @@ pub async fn connect_and_exec_capture(
 /// POSIX shell 单引号转义（issue #16：历史查询的路径参数经远端 shell 解析，
 /// 含空格/特殊字符必须包引号；单引号本身按 `'\''` 规则逃逸）。
 pub fn shell_quote(s: &str) -> String {
-    // U8c-2b-0（账本 S5）：实现收进 `launch-core`，此处只留名字（`pub`，全仓多处在用）。
-    launch_core::posix_quote(s)
+    // U8c-2b-0（账本 S5）：实现收进 `shell-quote-core`（P4c 前叫 `launch-core`），
+    // 此处只留名字（`pub`，全仓多处在用）。
+    shell_quote_core::posix_quote(s)
 }
 
 /// daemon→client 的一帧（解析后的 inbound 表示）。

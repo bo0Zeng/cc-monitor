@@ -47,12 +47,12 @@ dependencies = [
  "acct-core",
  "branch-core",
  "guard-core",
- "launch-core",
  "libc",
  "notify",
  "notify-debouncer-mini",
  "serde",
  "serde_json",
+ "shell-quote-core",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -159,10 +159,6 @@ dependencies = [
  "bitflags 2.11.1",
  "libc",
 ]
-
-[[package]]
-name = "launch-core"
-version = "0.1.0"
 
 [[package]]
 name = "lazy_static"
@@ -366,6 +362,10 @@ checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
 dependencies = [
  "lazy_static",
 ]
+
+[[package]]
+name = "shell-quote-core"
+version = "0.1.0"
 
 [[package]]
 name = "signal-hook-registry"

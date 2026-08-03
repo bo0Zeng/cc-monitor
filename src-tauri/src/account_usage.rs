@@ -258,7 +258,7 @@ pub async fn account_usage(
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
     let slug = slugify_account_name(&account_name);
-    // 载荷由内核编译（`launch-core`）：账号前缀 + 嵌套 env 清理 + 启动器，无 cd。
+    // 载荷由内核编译（P4b 起在 `backend::control::payload`）：账号前缀 + 嵌套 env 清理 + 启动器，无 cd。
     // 构造失败（载荷非法 / Gate 1 拒绝）→ 诚实回报，**不发起任何 SSH 连接**。
     let cmd = match probe_command_for(&slug, config_dir.as_deref(), WATCHDOG_TIMEOUT_SECS) {
         Ok(c) => c,
