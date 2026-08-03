@@ -983,7 +983,7 @@ pub enum LaunchAccount {
 /// 被 C04a 守卫当成真属性，报出一个不存在的命令。**那是当时的绕法。**
 /// 守卫已经会认 Rust 字符字面量了，所以这条约束**不再成立**；`&str` 形态留着只是因为
 /// 配 `.contains(c)` 读起来更顺，不是被逼的。
-/// ⚠ **U8c-1 起只剩 Windows / 测试期在用**（POSIX 侧已改调 `launch_core`）。
+/// ⚠ **U8c-1 起只剩 Windows / 测试期在用**（POSIX 侧已改调 `backend::control::payload`）。
 /// cfg 与它唯一的消费者 [`validate_config_dir_ps`] 对齐 —— 不加就是三条 `never used`
 /// 警告，而 `cargo build` 不带 `-D warnings` ⇒ **不会红**（clippy 集合差抓到的）。
 #[cfg(any(windows, test))]
@@ -1013,7 +1013,8 @@ fn has_bad_chars(dir: &str, extra: &str) -> bool {
 
 /// POSIX 侧校验：必须是**绝对 POSIX 路径**，且不含反斜杠（那边的路径里不该有）。
 ///
-/// **U8c-1：判据本体已搬进共享 crate** `launch_core::config_dir_command_safe`。
+/// **U8c-1：判据本体已搬出本文件** —— P4b 起在 `backend::control::payload::config_dir_command_safe`
+/// （U8c-1 时在共享 crate `launch-core`，而 daemon 对它零引用）。
 /// 本函数只剩「把 bool 变成带上下文的 Err」。
 ///
 /// ⚠ **这次搬家不是纯重构，它把校验变严了**：本文件原先用自己那张 `SPOOFABLE`
@@ -1024,7 +1025,7 @@ fn has_bad_chars(dir: &str, extra: &str) -> bool {
 /// 诚实定级：那是**纵深防御**缺口，不是当时可利用的洞（configDir 的上游 manifest 读取
 /// 已经用并集把过一道）。但「权威也保留本地校验」是本仓自己的纪律（`resolve_query.rs` B2）。
 fn validate_config_dir_posix(dir: &str) -> Result<(), String> {
-    if launch_core::config_dir_command_safe(dir) {
+    if crate::backend::control::payload::config_dir_command_safe(dir) {
         Ok(())
     } else {
         Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {dir:?}"))
@@ -1063,7 +1064,18 @@ fn config_dir_prefix_posix(account: Option<&LaunchAccount>) -> Result<String, St
     match account {
         None => Ok(String::new()),
         // U8c-1：这条串的逐字节形态由内核持有（e2e 探针 `grep -q "unset CLAUDE_CONFIG_DIR;"`）。
-        Some(LaunchAccount::Base) => Ok(launch_core::UNSET_CONFIG_DIR_PREFIX.to_string()),
+        //
+        // ⚠ **P4b 改成委托整条臂**（原来是自己 `UNSET_CONFIG_DIR_PREFIX.to_string()`）。
+        // 起因是搬家把一处被 crate 边界藏住的事实暴露了出来：clippy 报
+        // `Account::Base is never constructed` —— 也就是**这个三态里的 base 那一态，
+        // 生产从来没走到内核里**，本文件自己截住了。两处逐字相同 ⇒ 是重复的决定，不是分工。
+        // 字节完全一致（两边都是同一个常量），由
+        // `posix_account_prefix_is_byte_identical_after_moving_to_launch_core` 兜。
+        // ⚠ 剩下的 `None` 那臂与整个三态 match 仍是镜像 —— 那是**登记在案的重复**，
+        // 收它要连 `validate_config_dir_posix`（POSIX 侧多拒一个 `\`）一起重定，不在 P4b 范围。
+        Some(LaunchAccount::Base) => crate::backend::control::payload::config_dir_prefix_posix(
+            Some(&crate::backend::control::payload::Account::Base),
+        ),
         Some(LaunchAccount::Named { config_dir }) => {
             let d = config_dir.trim();
             // 空串**不是**账号 0，是坏数据（空值 ≠ 未设 —— Z01 起整套设计的支点）。
@@ -1074,9 +1086,9 @@ fn config_dir_prefix_posix(account: Option<&LaunchAccount>) -> Result<String, St
             }
             validate_config_dir_posix(d)?;
             // U8c-1：串本身由内核产出（`launch-core`），本文件不再自己 format。
-            launch_core::config_dir_prefix_posix(Some(&launch_core::Account::Named {
-                config_dir: d,
-            }))
+            crate::backend::control::payload::config_dir_prefix_posix(Some(
+                &crate::backend::control::payload::Account::Named { config_dir: d },
+            ))
         }
     }
 }

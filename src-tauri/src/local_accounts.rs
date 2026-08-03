@@ -111,7 +111,7 @@ fn is_safe_config_dir(p: &str) -> bool {
     // 进了一条 `bash -lic` 的 shell 串。
     //
     // **实际无害**，但理由要说对：放行 `\` 在这里是安全的，因为**下游那一层自己会拒**
-    // （`launch_core::config_dir_command_safe` 明确把 `\` 列进拒绝集，POSIX 路径里不该有它）。
+    // （`backend::control::payload::config_dir_command_safe` 明确把 `\` 列进拒绝集，POSIX 路径里不该有它）。
     // 也就是说这是**分层校验**，不是「不进 shell 所以不用管」。
     !p.chars().any(|c| {
         c.is_control()

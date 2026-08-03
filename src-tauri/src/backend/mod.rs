@@ -30,6 +30,16 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
     ("mod.rs", "-", "边界本身的说明 + 两条机检"),
     ("control/mod.rs", "control", "写/控制面的说明"),
     (
+        "control/ccm_invocation.rs",
+        "control",
+        "ctx → `ccm …` 调用行（维度注册表 + 诚实降级）。P4b 从共享 crate 搬回归属地",
+    ),
+    (
+        "control/payload.rs",
+        "control",
+        "`env 前缀 → cd → argv → wrap` 载荷编译器。P4b 从共享 crate 搬回归属地",
+    ),
+    (
         "control/launch_wire.rs",
         "control",
         "前端结构化请求 → wire 适配 → ccm 调用行 / 裸载荷（两个 tauri 命令）",

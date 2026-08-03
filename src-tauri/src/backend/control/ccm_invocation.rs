@@ -1,5 +1,10 @@
 //! U8c-2c-1：**`ccm …` 调用行的渲染器** —— TS `launch-render-cli.ts::tryRenderCli` 的 Rust 对侧。
 //!
+//! ⚠ **P4b 搬家**：它原来是共享 crate `launch-core` 的 `cli` 模块 —— 而 **daemon 对它零引用**。
+//! 架构审计点破「这就是决策内核，放在共享 crate 里的真实原因是 monitor 没处放」。
+//! 现在住 `backend/control/`：§1.3 把最终 exec 钉在用户自己的终端进程里，
+//! U8a-2b 把 daemon 的执行面定成 argv 直传、不过 shell ⇒ **渲染 shell 串永远属于开终端那一侧。**
+//!
 //! # 它为什么比载荷那一半更要紧
 //!
 //! 一条远端起会话命令有两种形态：**ccm 调用行**（装了 ccm 时走）与**裸载荷**（没装时走）。
@@ -128,7 +133,7 @@ fn argv(token: &str) -> String {
     } else {
         // ⚠ **别在这里再写一遍逃逸** —— U8c-2b-0 的 `quote_singleton_guard` 这一轮就是这么
         // 咬到我的：初版 `argv` 自己 `format!` 了一份，成了第六份副本。
-        crate::posix_quote(token)
+        launch_core::posix_quote(token)
     }
 }
 
@@ -530,10 +535,9 @@ mod tests {
     /// 但那时报的错会很难懂，所以先断言它有内容。
     #[test]
     fn the_reasons_the_fixture_covers_really_come_from_the_typescript_side() {
-        let fx = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/cli-golden.json"),
-        )
-        .expect("读不到 cli-golden.json");
+        // P4b：搬家后改用 `include_str!` —— 夹具被删/改名 ⇒ **编译失败**，
+        // 而不是运行时才发现（同两条 parity 判据的纪律）。
+        let fx = include_str!("fixtures/cli-golden.json");
         assert!(fx.len() > 1000, "夹具只有 {} 字节，像是坏了", fx.len());
         for want in [
             "远端未装 ccm",
@@ -853,6 +857,6 @@ mod tests {
             );
         }
         // 单引号自身走内核那份逃逸（`quote_singleton_guard` 钉住只有一个家）。
-        assert_eq!(argv("a'b"), crate::posix_quote("a'b"));
+        assert_eq!(argv("a'b"), launch_core::posix_quote("a'b"));
     }
 }

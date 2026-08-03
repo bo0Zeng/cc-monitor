@@ -87,8 +87,14 @@
   §1.3 把 exec 钉在用户终端 + U8a-2b 把 daemon 定成 argv 直传不过 shell ⇒
   「渲染 shell 串」永远属于开终端那一侧，**不是权宜，是归属地**。
   `observe/` **刻意不建**（那批读面是 U7 要退役的，搬进来再删是纯搬运）。
-- **剩余（按序）**：**P4b**（`launch-core` 缩回 `posix_quote`：`cli.rs` + 载荷渲染器迁进
-  `backend/control/`、夹具搬家 14 处、`SOLE_HOME` 锚点改指、crate 改名）→
+- **P4b 已闭环**（UB-复盘5）—— `launch-core` 从 1531 行**缩到 58 行**（只剩 `posix_quote`，
+  且卸掉 `acct-core` ⇒ 零依赖）；决策内核 → `backend/control/ccm_invocation.rs`、
+  载荷一族 → `backend/control/payload.rs`、夹具 → `backend/control/fixtures/`（**字节不变**，
+  生成器重跑幂等）。`SOLE_HOME` 不用改（`posix_quote` 留在原地），两条锚点性质均已复验。
+  ★ 搬家暴露一处真重复：`history.rs` 自己又写了一遍三态 match，`Base` 那臂与内核逐字相同
+  ⇒ 生产从没走到内核的 base 那一态（`pub` 跨 crate 时 clippy 看不见）。已改成委托（字节一致）。
+- **剩余（按序）**：**P4c**（crate 改名 —— 只剩一个 quote 还叫 `launch-core` 是说谎；
+  牵动 Cargo.toml×2 / ci.yml 三步 / `shared_crate_registry` / 全部 `launch_core::` 引用）→
   然后才是 **U8a-2c**（daemon `launch` 的第一条生产调用）。
 - ⚠ **U8c-3 仍不能开**：本件只解掉「夹具会冻结」这一个阻塞；§33b 三问里 ① 是**否**、③ 未决。
 

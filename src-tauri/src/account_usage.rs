@@ -7,7 +7,7 @@
 //! 输出的语义——那是 TS 侧 `src/account-usage-parse.ts` 纯函数的职责。
 //!
 //! ⚠ **U8c-2a 起载荷不再由 TS 传进来** —— IPC 收的是**结构化账号表态**
-//! （`config_dir: Option<String>`），载荷由 `launch_core::usage_probe_payload` 编译
+//! （`config_dir: Option<String>`），载荷由 `backend::control::payload::usage_probe_payload` 编译
 //! （见 [`probe_payload_for`]）。TS 的 `buildUsageProbePayload` 已删除。
 //! **Z03 起它有两种形态**，账号维度必定显式表态、不存在裸载荷：
 //!   - 具名账号：`export CLAUDE_CONFIG_DIR=...; unset <嵌套env>; claude`
@@ -226,7 +226,7 @@ fn probe_command_for(
 fn probe_payload_for(config_dir: Option<&str>) -> Result<String, String> {
     // 键表与启动器都走活跃适配器 —— 它们各自已有 TS↔Rust 对拍守卫。
     let agent = crate::adapter::active();
-    launch_core::usage_probe_payload(
+    crate::backend::control::payload::usage_probe_payload(
         config_dir,
         agent.nested_env_to_scrub(),
         agent.default_launcher(),
@@ -243,7 +243,7 @@ fn probe_payload_for(config_dir: Option<&str>) -> Result<String, String> {
 ///
 /// 此前这里收的是 `launch_payload: String` —— TS 的 `buildUsageProbePayload` 渲染好递进来，
 /// 本模块「只透传不校验」。那是账本 S28 里六个载荷产出点的第 ②。现在它退役了：
-/// 前端只报「哪个账号」，载荷由 `launch_core::usage_probe_payload` 编译。
+/// 前端只报「哪个账号」，载荷由 `backend::control::payload::usage_probe_payload` 编译。
 ///
 /// `config_dir` **两态，没有第三态**（探针恒是 per-account）：
 /// `Some(路径)` = 具名账号 · `None` = **账号 0**（产出 `unset CLAUDE_CONFIG_DIR; `，

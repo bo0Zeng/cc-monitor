@@ -1,4 +1,5 @@
-//! U8c-2c-1：`launch_core::cli::render_ccm_invocation` **↔** TS `tryRenderCli` 的**逐字节对拍**。
+//! U8c-2c-1：`backend::control::ccm_invocation::render_ccm_invocation` **↔** TS `tryRenderCli`
+//! 的**逐字节对拍**。
 //!
 //! 机制与 `launch_payload_parity.rs` 完全相同（入库夹具，两侧各自与它比，
 //! 绝不让 Rust 去调 TS 现场生成 —— 那是 U7-4 的自洽夹具病根）。
@@ -8,7 +9,7 @@
 
 use serde::Deserialize;
 
-const FIXTURE: &str = include_str!("../../../crates/launch-core/fixtures/cli-golden.json");
+const FIXTURE: &str = include_str!("fixtures/cli-golden.json");
 
 /// 与 `launch_payload_parity` 同理：写成相等而不是地板，加/删用例被迫回来改这个数。
 const EXPECT_CASES: usize = 16;

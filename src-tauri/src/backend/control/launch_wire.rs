@@ -18,7 +18,7 @@
 //! 用 `Result` 的 `Err` 表达它，会和「IPC 真的失败了」混成一件事，
 //! 而那两件事在前端要走**不同的分支**。
 
-use launch_core::cli::{render_ccm_invocation, Action, CliAccount, CliSpec, Container};
+use super::ccm_invocation::{render_ccm_invocation, Action, CliAccount, CliSpec, Container};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -131,7 +131,7 @@ pub fn render_ccm_launch(req: CliRenderRequest) -> CliRenderResponse {
 /// # 只有 none 那一格
 ///
 /// `renderFallback` 分两格：`container:"none"` 是 `env → cd → argv`（就是
-/// [`launch_core::render_payload`]）；`container:"tmux"` 还要外层 tmux 命令
+/// [`super::payload::render_payload`]）；`container:"tmux"` 还要外层 tmux 命令
 /// （`session-backend.ts`）——那半归 U8c-3，且 §33b 有三个未答问题。
 ///
 /// ⇒ 本命令**只收 none 那一格**。容器形态由调用方判断后决定调不调它。
@@ -177,26 +177,28 @@ pub enum WireEnvOp {
 #[tauri::command]
 pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String> {
     let nested: Vec<&str> = req.nested_env.iter().map(String::as_str).collect();
-    let env: Vec<launch_core::EnvOp> = req
+    let env: Vec<super::payload::EnvOp> = req
         .env
         .iter()
         .map(|op| match op {
-            WireEnvOp::ExportConfigDir { value } => launch_core::EnvOp::ExportConfigDir { value },
-            WireEnvOp::ExportModel { value } => launch_core::EnvOp::ExportModel { value },
-            WireEnvOp::UnsetConfigDir => launch_core::EnvOp::UnsetConfigDir,
-            WireEnvOp::UnsetNestedEnv => launch_core::EnvOp::UnsetNestedEnv { keys: &nested },
+            WireEnvOp::ExportConfigDir { value } => {
+                super::payload::EnvOp::ExportConfigDir { value }
+            }
+            WireEnvOp::ExportModel { value } => super::payload::EnvOp::ExportModel { value },
+            WireEnvOp::UnsetConfigDir => super::payload::EnvOp::UnsetConfigDir,
+            WireEnvOp::UnsetNestedEnv => super::payload::EnvOp::UnsetNestedEnv { keys: &nested },
         })
         .collect();
     let args: Vec<&str> = req.args.iter().map(String::as_str).collect();
-    let wrap: Vec<launch_core::WrapSpec> = req
+    let wrap: Vec<super::payload::WrapSpec> = req
         .wrap
         .iter()
-        .map(|w| launch_core::WrapSpec {
+        .map(|w| super::payload::WrapSpec {
             order: w.order,
             prelude: &w.prelude,
         })
         .collect();
-    launch_core::render_payload(&launch_core::PayloadSpec {
+    super::payload::render_payload(&super::payload::PayloadSpec {
         env: &env,
         cwd: req.cwd.as_deref(),
         launcher: &req.launcher,

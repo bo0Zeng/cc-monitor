@@ -11,7 +11,9 @@
 //! ⇒ **「渲染一条 shell 命令串」永远属于开终端的那一侧。** 这不是权宜之计，
 //! 也不是「将来还要搬去 daemon」—— 是它本来的归属地（P4a 摸底把这条理由换硬了）。
 
+pub mod ccm_invocation;
 pub mod launch_wire;
+pub mod payload;
 
 #[cfg(test)]
 mod launch_cli_parity;

@@ -18,9 +18,9 @@ static CLAUDE_LAYOUT: SessionLayout = SessionLayout {
 /// CC 的嵌套会话 env(resume 前清洗,否则 CC 自认嵌套子会话不写 JSONL/不注册 pidfile,spec §5)。
 /// ⚠ **顺序不是随手排的（U8c-2a 起）**：它与 TS `AGENT_PROFILE.nestedEnvVars` **逐项同序**。
 /// `unset A B` 与 `unset B A` 语义等价，两侧的守卫也都按**集合**比 —— 但自从
-/// `account_usage` 的载荷改由 Rust 编译（`launch_core::usage_probe_payload`），
+/// `account_usage` 的载荷改由 Rust 编译（`backend::control::payload::usage_probe_payload`），
 /// 这个顺序就**直接决定了送到远端的那条命令的字节**。同序 ⇒ 与搬家前逐字节相同，
-/// 也让 `crates/launch-core/fixtures/payload-golden.json`（TS 生成）继续代表生产字节。
+/// 也让 `src/backend/control/fixtures/payload-golden.json`（TS 生成）继续代表生产字节。
 static CLAUDE_NESTED_ENV: &[&str] = &[
     "CLAUDECODE",
     "CLAUDE_CODE_ENTRYPOINT",

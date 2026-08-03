@@ -26,7 +26,7 @@
 use serde::Deserialize;
 
 /// 夹具**编译期**嵌进来 —— 文件被删/改名 ⇒ **编译失败**，不是运行时跳过。
-const FIXTURE: &str = include_str!("../../../crates/launch-core/fixtures/payload-golden.json");
+const FIXTURE: &str = include_str!("fixtures/payload-golden.json");
 
 /// ★ 对拍的 **TS 那一半**也要被钉住（审计 S3）。
 ///

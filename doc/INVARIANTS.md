@@ -955,7 +955,7 @@ U8c-1 摸底后拆成三步：
   src/launch-payload-golden.ts（真 renderFallback）
         │ npm run gen:payload-golden
         ▼
-  src-tauri/crates/launch-core/fixtures/payload-golden.json   ← 入库
+  src-tauri/src/backend/control/fixtures/payload-golden.json   ← 入库（P4b 起）
         ▲                                    ▲
         │ launch-payload-golden.vitest.ts    │ launch_payload_parity.rs
         │ 「入库的 == 现场渲染的」            │ 「Rust 渲染的 == 入库的」

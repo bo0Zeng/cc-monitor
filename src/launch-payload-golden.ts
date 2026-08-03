@@ -5,7 +5,7 @@
  * `launch-core`。两种语言各写一份实现，**保证它们一致的不能是注释，得是判据**：
  *
  * ```text
- *   本文件（真 renderFallback）  ──生成──▶  crates/launch-core/fixtures/payload-golden.json
+ *   本文件（真 renderFallback）  ──生成──▶  src/backend/control/fixtures/payload-golden.json
  *          ▲                                              │
  *          │ launch-payload-golden.vitest.ts               │ launch_payload_parity.rs
  *          │ 断言「入库的 == 现场渲染的」                    ▼ 断言「Rust 渲染 == 入库的」

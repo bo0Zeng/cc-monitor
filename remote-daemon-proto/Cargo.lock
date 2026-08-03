@@ -163,9 +163,6 @@ dependencies = [
 [[package]]
 name = "launch-core"
 version = "0.1.0"
-dependencies = [
- "acct-core",
-]
 
 [[package]]
 name = "lazy_static"
