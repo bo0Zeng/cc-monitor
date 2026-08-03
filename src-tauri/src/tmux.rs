@@ -427,7 +427,15 @@ fn build_send_keys_remote_cmd(target: &str, keys: &str, enter: bool) -> Result<S
 }
 
 /// A5：向远端 tmux 会话发按键（headless ssh，如换号重启前在旧号上 send `/compact`、或优雅退出的
-/// `Escape`/`/exit`）。**只发按键、不杀不建**，走一次性 ssh、**daemon 不参与**（守只读边界）。
+/// `Escape`/`/exit`）。**只发按键、不杀不建**，走一次性 ssh、**daemon 不参与**。
+///
+/// ⚠ **U10 订正「daemon 不参与」的理由**：原注释写的是「守只读边界」—— 那个前提
+/// **自 U3/U8a-2b 起已经不成立**（daemon 有 `control/` 写面了，U8a-2c 还接了第一条生产调用）。
+/// 真实理由是另一条、而且更硬：本命令带 §34 的 **Gate 2 union**（本地 `cc-*` 前缀命中
+/// **或** 远端 `@ccm_sid` 已设，由嵌进远端命令的守卫核验、不通过回 `CCM_GUARD_REJECTED`），
+/// 而 daemon 的 `control/launch.rs` **只核会话存在性、从不核验 `@ccm_sid`**
+/// （它只在建会话时 `set-option` 写它）⇒ 改走 daemon 会**静默丢掉那道门**。
+/// 要切先把 Gate 2 搬进 daemon `control/`。**这条由 `tmux_daemon_gate_guard` 机检钉住。**
 /// `keys` 是字面串或 tmux 键名（`/compact` / `/exit` / `Escape`）；`enter`（可选，**默认 true** 向后兼容
 /// A5 旧调用）决定是否尾附 `Enter`——优雅退出的 `Escape` 传 `enter=false`。
 /// keys 经 `shell_quote`。成功无输出；失败（会话不存在等）经 `2>&1` 捕获报错。
