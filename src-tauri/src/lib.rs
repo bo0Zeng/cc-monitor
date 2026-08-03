@@ -25,9 +25,9 @@ mod history;
 mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生成待贴文本（绝不写入）
                 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
                 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
+mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
 mod inbound_client;
 mod launch;
-mod launch_cli_cmd; // U8c-2c-2：ccm 调用行的生产渲染入口（Rust）
 mod local_accounts; // L3a：本机多账号枚举（只读）——`accounts.rs` 的本地对侧
 mod logging;
 mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
@@ -66,9 +66,7 @@ mod ssh_source;
 #[cfg(test)]
 mod ccm_cli_contract;
 #[cfg(test)]
-mod launch_cli_parity; // U8c-2c-1：ccm 调用行的跨语言逐字节对拍
 #[cfg(test)]
-mod launch_payload_parity; // U8c-1：launch-core 的载荷渲染 ↔ TS 黄金串逐字节对拍
 #[cfg(test)]
 mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半；内部整体 cfg(test)）
 #[cfg(test)]
@@ -942,8 +940,8 @@ pub fn run() {
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
             config_surface::config_surface_report,
             drift_ledger::drift_ledger_report,
-            launch_cli_cmd::render_ccm_launch,
-            launch_cli_cmd::render_launch_payload,
+            backend::control::launch_wire::render_ccm_launch,
+            backend::control::launch_wire::render_launch_payload,
             hooks_diag::diagnose_local_cc_bus_hooks,
             hooks_diag::diagnose_remote_cc_bus_hooks,
             mcp::read_mcp_servers,
