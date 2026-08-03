@@ -65,6 +65,8 @@ mod ssh_source;
 #[cfg(test)]
 mod ccm_cli_contract;
 #[cfg(test)]
+mod launch_cli_parity; // U8c-2c-1：ccm 调用行的跨语言逐字节对拍
+#[cfg(test)]
 mod launch_payload_parity; // U8c-1：launch-core 的载荷渲染 ↔ TS 黄金串逐字节对拍
 #[cfg(test)]
 mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半；内部整体 cfg(test)）

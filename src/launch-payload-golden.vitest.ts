@@ -9,6 +9,7 @@ import { describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { GOLDEN_CASES, renderGoldenFixture } from "./launch-payload-golden.ts";
+import { CLI_GOLDEN_CASES, renderCliGoldenFixture } from "./launch-cli-golden.ts";
 
 // `import.meta.url` 在 vitest 里不是 `file:` scheme（实测 `The URL must be of scheme file`）——
 // 照本仓既有做法用 `resolve(__dirname, "..")`（同 `fork-flow.vitest.ts:114`）。
@@ -16,6 +17,11 @@ const FIXTURE_PATH = resolve(
   __dirname,
   "..",
   "src-tauri/crates/launch-core/fixtures/payload-golden.json",
+);
+const CLI_FIXTURE_PATH = resolve(
+  __dirname,
+  "..",
+  "src-tauri/crates/launch-core/fixtures/cli-golden.json",
 );
 
 describe("载荷黄金串夹具（U8c-1 跨语言对拍的 TS 半边）", () => {
@@ -41,5 +47,31 @@ describe("载荷黄金串夹具（U8c-1 跨语言对拍的 TS 半边）", () => 
     expect([...seen].sort()).toEqual(
       ["export-config-dir", "export-model", "unset-config-dir", "unset-nested-env"].sort(),
     );
+  });
+});
+
+describe("ccm 调用行黄金串夹具（U8c-2c-1 跨语言对拍的 TS 半边）", () => {
+  test("入库的夹具与现场渲染逐字节相同（改了 CLI 渲染器就得重生成）", () => {
+    expect(readFileSync(CLI_FIXTURE_PATH, "utf8")).toBe(renderCliGoldenFixture());
+  });
+
+  // ⚠ ok 与 refusal **两类都要有下限**：只剩 ok 那半的话，「该降级却渲染出来了」
+  // 就没人管了 —— 而那正是 doc/INVARIANTS.md §33 铁律要防的形态。
+  test("ok 与 refusal 两类都覆盖到了", () => {
+    const parsed = JSON.parse(readFileSync(CLI_FIXTURE_PATH, "utf8")) as {
+      cases: { ok: boolean }[];
+    };
+    expect(parsed.cases.length).toBe(CLI_GOLDEN_CASES.length);
+    expect(parsed.cases.filter((c) => c.ok).length).toBeGreaterThanOrEqual(6);
+    expect(parsed.cases.filter((c) => !c.ok).length).toBeGreaterThanOrEqual(5);
+  });
+
+  test("每条 refusal 都带非空理由（生产侧唯一的降级线索）", () => {
+    const parsed = JSON.parse(readFileSync(CLI_FIXTURE_PATH, "utf8")) as {
+      name: string; ok: boolean; out: string;
+    }[] | { cases: { name: string; ok: boolean; out: string }[] };
+    const cases = Array.isArray(parsed) ? parsed : parsed.cases;
+    const silent = cases.filter((c) => !c.ok && c.out.trim() === "").map((c) => c.name);
+    expect(silent).toEqual([]);
   });
 });
