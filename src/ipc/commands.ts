@@ -118,7 +118,9 @@ export const commands = {
    * 起一个 tmux 会话跑 `/usage` 并 capture-pane 抓屏。返回值字段被真消费 ⇒ 生成物（桶③）。
    * **解析是 TS 侧纯函数 `parseUsageCapture` 的职责**——`captured=true` 只代表拿到了文本。
    */
-  account_usage: (args: { origin: string; accountName: string; launchPayload: string }) =>
+  // U8c-2a：收**结构化账号表态**，不再收渲染好的载荷串。
+  // `configDir: null` = 账号 0（Rust 侧产出 `unset CLAUDE_CONFIG_DIR; `），不是「不表态」。
+  account_usage: (args: { origin: string; accountName: string; configDir: string | null }) =>
     invoke<AccountUsageProbeResult>("account_usage", args),
 
   /**

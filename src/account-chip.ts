@@ -296,7 +296,7 @@ export class AccountChip {
     // "没查过"视觉上无法区分——探测开始就先给一个占位,resolve 后再换成真实结果/失败短句。
     if (this.menuCurrentUsageEl) this.menuCurrentUsageEl.textContent = "…";
     // Z03：账号 0（`configDir === null`）现在**也能探**——载荷前缀是
-    // `unset CLAUDE_CONFIG_DIR; ` 而不是 export（见 `buildUsageProbePayload`）。
+    // `unset CLAUDE_CONFIG_DIR; ` 而不是 export（U8c-2a 起由 Rust `launch_core::usage_probe_payload` 产出）。
     // 这里把 `null` **原样传下去**：`fetchAccountUsage` 收 `string | null`，
     // **别 `?? ""`** —— 空串是坏数据，会被 fail-closed 拒掉。
     void fetchAccountUsage(origin, accountName, def.configDir, { force }).then((outcome) => {

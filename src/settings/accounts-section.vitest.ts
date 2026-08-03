@@ -363,7 +363,10 @@ describe("Z01 账号 0 在设置账号表里的呈现", () => {
 
   // Z01 时这里钉的是「明说暂不支持」的占位；**Z03 把它做通了** ⇒ 契约变了，断言跟着变：
   // 账号 0 现在**真的会探**，而且载荷必须是 `unset CLAUDE_CONFIG_DIR; ` 打头（不是裸载荷）。
-  it("账号 0 的用量会真的去探，且载荷显式 unset（不是裸载荷）", async () => {
+  // U8c-2a：载荷不再走 IPC（由 Rust 内核编译）⇒ 这里改钉「账号 0 的**表态**真的送出去了」。
+  // 「显式 unset、绝不裸载荷」那条 fail-closed 纪律由
+  // `launch_core::usage_probe_payload_is_two_states_and_never_bare` 钉住（两态都断言带前缀）。
+  it("账号 0 的用量会真的去探，且送的是账号 0 的显式表态（configDir === null）", async () => {
     fetchAccountsMock.mockResolvedValue(state({ accounts: [zero], defaultName: null }));
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "account_usage"
@@ -375,9 +378,12 @@ describe("Z01 账号 0 在设置账号表里的呈现", () => {
     await new Promise((r) => setTimeout(r, 0));
     const calls = invokeMock.mock.calls.filter(([c]) => c === "account_usage");
     expect(calls).toHaveLength(1);
-    const payload = (calls[0][1] as { launchPayload: string }).launchPayload;
-    expect(payload.startsWith("unset CLAUDE_CONFIG_DIR; ")).toBe(true);
-    expect(payload).not.toContain("export CLAUDE_CONFIG_DIR");
+    const args = calls[0][1] as Record<string, unknown>;
+    // 字面 null = 账号 0 的**显式**表态。省掉这个键在 Rust 侧同样落 `None`，
+    // 但那是巧合不是契约 —— 钉字面 null 让「有没有表态」在这一层就可见。
+    expect("configDir" in args).toBe(true);
+    expect(args.configDir).toBeNull();
+    expect(args).not.toHaveProperty("launchPayload");
   });
 
   it("降级说明会被渲染成显眼的一条（绝不静默）", async () => {
