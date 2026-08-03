@@ -968,3 +968,12 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   它是真生产路径（`tabs.ts` 的 Tab resume + `fork-flow` 无 tmuxName 时），
   但 `renderLaunchCommand` 会先试 `tryRenderCli` —— **装了 ccm 的机器走 CLI 形态，
   `renderFallback` 根本不执行**。只搬 fallback = 搬一条不跑的路；搬 CLI 形态 = 整个维度注册表。
+- 2026-08-02 **U8c-2c-1**：ccm 调用行进 `launch_core::cli` + 16 条跨语言黄金串
+  （**ok 9 / refusal 7** —— 只比 ok 的话「该降级却渲染出来了」抓不到，而那正是 §33 要防的）。
+  ⚠ **摸底缩小了 U8c-2c 的范围**：维度的 `apply` 那一半 U8c-1 已搬完，没搬的只有 `cliFlags`。
+  ⚠ **上一轮建的 `quote_singleton_guard` 这一轮就在真新代码上咬到我自己** ——
+  新写的 `cli.rs::argv` 又 `format!` 了一份逃逸，成了第六份。它写的时候我说「下一个要 quote
+  的人复制一份出来同样不会红」，**下一个就是我，隔了一轮**。
+  ⚠ 一处我自己知道的偏离在写代码时就修了：初版把能力检查提到维度循环外，
+  而 TS 是逐维度交错的 —— 两种失败同时成立时会给出**不同的 reason**，
+  而 reason 是生产侧唯一的降级线索。

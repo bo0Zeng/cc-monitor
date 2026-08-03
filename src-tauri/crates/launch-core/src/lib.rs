@@ -37,6 +37,8 @@
 //!   `crates/launch-core/fixtures/payload-golden.json` 的**逐字节对拍**保证：
 //!   TS 侧生成并入库、Rust 侧读同一份文件自己渲染再比。
 
+pub mod cli;
+
 use std::fmt::Write as _;
 
 /// POSIX 单引号 quote：整体 `'…'` 包裹，内部 `'` 断开为 `'\''`。

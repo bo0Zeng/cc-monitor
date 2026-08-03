@@ -3,7 +3,11 @@
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { renderGoldenFixture } from "../src/launch-payload-golden.ts";
+import { renderCliGoldenFixture } from "../src/launch-cli-golden.ts";
 
 const OUT = new URL("../src-tauri/crates/launch-core/fixtures/payload-golden.json", import.meta.url);
 writeFileSync(OUT, renderGoldenFixture());
+const OUT_CLI = new URL("../src-tauri/crates/launch-core/fixtures/cli-golden.json", import.meta.url);
+writeFileSync(OUT_CLI, renderCliGoldenFixture());
+console.log(`写入 ${fileURLToPath(OUT_CLI)}`);
 console.log(`写入 ${fileURLToPath(OUT)}`); // 不用 .pathname —— 中文路径会被百分号编码
