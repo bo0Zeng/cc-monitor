@@ -534,7 +534,8 @@ pub fn encode_request(id: &str, cmd: &str, args: &Value) -> String {
 ///
 /// `mode` 只有两种取值 —— **没有 `attach-only`**：attach 是平面 ③，daemon 在远端，
 /// 开不了你面前的窗（见 daemon `control/launch.rs` 头注）。
-#[allow(dead_code)]
+// U8a-2c-1：**它有生产调用方了** —— `backend::control::daemon_launch::daemon_send_into`。
+// 在那之前这里挂着 `#[allow(dead_code)]`（编码器早写好、零调用方，正是复盘点名的「方向偏移」形状）。
 pub fn launch_args(
     mode: &str,
     name: &str,
@@ -731,6 +732,38 @@ mod tests {
                  核心那条 ping 必须走 `$INBOUND_PING_LINE`。"
             );
         }
+    }
+
+    /// ★ U8a-2c-1：同上，但钉的是**业务命令**那一行。
+    ///
+    /// ping 那条证明「daemon 认得 monitor 编的信封」；这条证明的是
+    /// **monitor 真正会发的那条 `launch`**（`daemon_send_into` 唯一会说的 `send-into`）。
+    /// 少了它，那套 e2e 只验证了「daemon 认得我手写的 launch 形状」——
+    /// 而 `launch_args` 的键名/键序一改，e2e 会继续全绿而生产里一条命令都发不出去。
+    #[test]
+    fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
+        const SUITE: &str = include_str!("../../e2e/inbound-daemon-frames.sh");
+        let key = "INBOUND_SEND_INTO_LINE='";
+        let at = SUITE
+            .find(key)
+            .expect("e2e 脚本里找不到 INBOUND_SEND_INTO_LINE —— 抽取坏了，本断言在空转");
+        let rest = &SUITE[at + key.len()..];
+        let literal = &rest[..rest.find('\'').expect("赋值没有收尾单引号")];
+        assert!(
+            literal.len() > 40,
+            "抽到的字面量太短（{literal:?}）—— 抽取坏了"
+        );
+        assert_eq!(
+            format!("{literal}\n"),
+            encode_request(
+                "e2e-si-1",
+                "launch",
+                &launch_args("send-into", "e2e-si-fixed", "true", None, None)
+            ),
+            "\ne2e 脚本喂给真 daemon 的 send-into 行与 monitor 编码器的产物不一致。\n\
+             `launch_args` 的键名/键序改了就把脚本里那条 `INBOUND_SEND_INTO_LINE` 一起改 ——\n\
+             它们必须是同一份事实，否则 e2e 在验证一个 monitor 永远不会发的形状。"
+        );
     }
 
     /// ★ e2e 脚本里硬编码的那三个命令名，必须等于 daemon 的 `inbound::COMMANDS`。

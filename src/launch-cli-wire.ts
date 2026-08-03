@@ -48,6 +48,24 @@ export type WireEnvOp =
   | { kind: "unset-config-dir" }
   | { kind: "unset-nested-env" };
 
+/** U8a-2c-1：`daemon_send_into` 的上线形状。Rust 对侧是
+ *  `src-tauri/src/backend/control/daemon_launch.rs`。
+ *  ⚠ **没有 `mode` 字段** —— 这条通道只会说 `send-into`（`create-or-attach` 会新建会话 =
+ *  issue #76 的失管会话形态），mode 由 Rust 侧写死并有判据钉住。 */
+export interface SendIntoRequest {
+  origin: string;
+  /** tmux 会话名（裸名；`=name:` 的精确匹配形态由 daemon 侧加）。 */
+  name: string;
+  /** 内层载荷（`env 前缀 → argv`），由 `render_launch_payload` 产出。 */
+  payload: string;
+}
+
+/** `typed:false` 时 `reason` 必有值 —— 那是回落到「整串走终端」的唯一线索。 */
+export interface SendIntoResponse {
+  typed: boolean;
+  reason: string | null;
+}
+
 export interface PayloadRenderRequest {
   env: WireEnvOp[];
   cwd: string | null;

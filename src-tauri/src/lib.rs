@@ -940,6 +940,7 @@ pub fn run() {
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
             config_surface::config_surface_report,
             drift_ledger::drift_ledger_report,
+            backend::control::daemon_launch::daemon_send_into,
             backend::control::launch_wire::render_ccm_launch,
             backend::control::launch_wire::render_launch_payload,
             hooks_diag::diagnose_local_cc_bus_hooks,

@@ -12,6 +12,7 @@
 //! 也不是「将来还要搬去 daemon」—— 是它本来的归属地（P4a 摸底把这条理由换硬了）。
 
 pub mod ccm_invocation;
+pub mod daemon_launch;
 pub mod launch_wire;
 pub mod payload;
 

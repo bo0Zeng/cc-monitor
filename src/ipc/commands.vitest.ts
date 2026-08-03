@@ -168,7 +168,7 @@ function wrapperEntries(): Map<string, string> {
 }
 
 describe("C04a 命令名钉死", () => {
-  it("Rust 侧「声明 = 注册」，且计数恰好 121", () => {
+  it("Rust 侧「声明 = 注册」，且计数恰好 127", () => {
     const declared = rustCommands();
     const registered = registeredCommands();
 
@@ -182,7 +182,7 @@ describe("C04a 命令名钉死", () => {
     expect(onlyRegistered, "这些注册了却找不到声明 ⇒ 注册表里有死名字").toEqual([]);
 
     // 计数自检用等号：加/删命令必须红一次，逼人来更新这个数与包装层
-    expect(declared.size, `期望恰好 126 个命令，实得 ${declared.size}`).toBe(126); // U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）
+    expect(declared.size, `期望恰好 127 个命令，实得 ${declared.size}`).toBe(127); // U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）
   });
 
   it("包装层：键名 ⊆ Rust 集，**且每个条目的键名 == 它传给 invoke 的字面量**", () => {
@@ -212,12 +212,12 @@ describe("C04a 命令名钉死", () => {
     }
 
     // 计数自检：C04d 每迁一个模块进来，这个数要跟着涨（红一次提醒更新）
-    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(116); // Z05 +1；G6 远端分叉 +1、list_remote_tmux 进包装层 +1；U8c-2c-2 +1（render_ccm_launch）
+    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(117); // U8a-2c-1 +1（daemon_send_into）； Z05 +1；G6 远端分叉 +1、list_remote_tmux 进包装层 +1；U8c-2c-2 +1（render_ccm_launch）
   });
 
   // 标题里的数原先写着 112，而断言早就是 119 了（Z05 起 120；local-as-remote L3a 起 121）——**标题也是记录**，
   // 一并订正，免得下一个人拿标题当依据。
-  it("TS 侧字面量命令名 ⊆ Rust 集，唯一名数 == 121，动态名盲区逐字钉死", () => {
+  it("TS 侧字面量命令名 ⊆ Rust 集，唯一名数 == 127，动态名盲区逐字钉死", () => {
     const rust = rustCommands();
     const used = tsLiteralCommands();
 
@@ -237,7 +237,7 @@ describe("C04a 命令名钉死", () => {
     // 两处是 `origin ? "A" : "B"` 的两字面量三元（`session-viewer.ts` / `views/history.ts`）、
     // 一处是 `doWrite(cmd, args)` 转发 helper 而调用方传的全是字面量（`sftp/panel.ts`）。
     // 改成静态调用 / thunk 后**盲区归零** ⇒ 下面 `DYNAMIC_ONLY` 现在是空集。
-    expect(used.size, `期望恰好 126 个字面量命令名，实得 ${used.size}`).toBe(126); // U8c-2c-2 +1；U8a-2c-pre +1
+    expect(used.size, `期望恰好 127 个字面量命令名，实得 ${used.size}`).toBe(127); // U8c-2c-2 +1；U8a-2c-pre +1
 
     // **不断言反向**（Rust ⊆ TS），但把盲区本身钉死：动态名集变了必须红一次。
     const rustOnly = [...rust].filter((c) => !used.has(c)).sort();
