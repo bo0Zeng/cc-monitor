@@ -28,6 +28,7 @@
  */
 import { renderFallback } from "./launch-render-fallback.ts";
 import { AGENT_PROFILE } from "./agent-profile.ts";
+import { buildPayloadRenderRequest } from "./remote-launch-run.ts";
 import type { EnvOp, LaunchPlan } from "./launch-plan.ts";
 
 /** 一条用例：Rust `PayloadSpec` 的字段 + 它在 TS 侧渲染出来的串。 */
@@ -163,6 +164,8 @@ export function renderGoldenFixture(): string {
         launcher: c.launcher,
         args: c.args,
         wrap: c.wrap,
+        // ★ 同 cli 夹具：`req` 由生产代码（`buildPayloadRenderRequest`）构造。
+        req: buildPayloadRenderRequest(planOf(c)),
         payload: renderFallback(planOf(c)),
       })),
     },

@@ -56,4 +56,7 @@ export interface PayloadRenderRequest {
   args: string[];
   /** 嵌套 env 键表（`AGENT_PROFILE.nestedEnvVars`）—— `unset-nested-env` 用。 */
   nestedEnv: string[];
+  /** `( <prelude>; exec <inner> )` 包裹（§39 给 F04 rbind 留的槽）。今天恒空。
+   *  ⚠ 复盘补的：初版 wire 没有它 ⇒ 后端静默丢。 */
+  wrap: { order: number; prelude: string }[];
 }

@@ -14,7 +14,6 @@
 //!
 //! 没有任何一侧在运行时去调另一侧，所以不存在「两边同时错、对拍照样绿」那种自洽。
 
-use launch_core::{render_payload, EnvOp, PayloadSpec, WrapSpec};
 use serde::Deserialize;
 
 /// 夹具**编译期**嵌进来 —— 文件被删/改名 ⇒ **编译失败**，不是运行时跳过。
@@ -53,10 +52,21 @@ struct Fixture {
 #[serde(deny_unknown_fields)]
 struct Case {
     name: String,
+    /// ★ **生产 wire 类型**（由 TS 的 `buildPayloadRenderRequest` 构造）。
+    /// 同 `launch_cli_parity`：跑生产命令而不是自己重搭 spec —— 复盘实测，
+    /// 此前 `render_launch_payload` 本体零调用零判据，「清空 `nested_env`」那个变异全绿。
+    req: crate::launch_cli_cmd::PayloadRenderRequest,
+    /// 下面这几个是**夹具的可读性字段**（人看 diff 用），Rust 侧不消费；
+    /// `deny_unknown_fields` 要求声明，故留。
+    #[allow(dead_code)]
     env: Vec<FixtureEnvOp>,
+    #[allow(dead_code)]
     cwd: Option<String>,
+    #[allow(dead_code)]
     launcher: String,
+    #[allow(dead_code)]
     args: Vec<String>,
+    #[allow(dead_code)]
     wrap: Vec<FixtureWrap>,
     payload: String,
 }
@@ -65,8 +75,15 @@ struct Case {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 enum FixtureEnvOp {
-    ExportConfigDir { value: String },
-    ExportModel { value: String },
+    // 这几个载荷只为「让夹具能被解析」而存在（真值走 `req`）—— 精确开口，不给整个类型加 allow。
+    ExportConfigDir {
+        #[allow(dead_code)]
+        value: String,
+    },
+    ExportModel {
+        #[allow(dead_code)]
+        value: String,
+    },
     UnsetConfigDir,
     UnsetNestedEnv,
 }
@@ -74,7 +91,9 @@ enum FixtureEnvOp {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FixtureWrap {
+    #[allow(dead_code)]
     order: i64,
+    #[allow(dead_code)]
     prelude: String,
 }
 
@@ -121,48 +140,25 @@ mod tests {
     #[test]
     fn rust_payload_rendering_matches_the_typescript_golden_byte_for_byte() {
         let f = fixture();
-        let nested: Vec<&str> = f.nested_env_keys.iter().map(String::as_str).collect();
         let mut mismatches = Vec::new();
-        for c in &f.cases {
-            let env: Vec<EnvOp> = c
-                .env
-                .iter()
-                .map(|op| match op {
-                    FixtureEnvOp::ExportConfigDir { value } => EnvOp::ExportConfigDir { value },
-                    FixtureEnvOp::ExportModel { value } => EnvOp::ExportModel { value },
-                    FixtureEnvOp::UnsetConfigDir => EnvOp::UnsetConfigDir,
-                    FixtureEnvOp::UnsetNestedEnv => EnvOp::UnsetNestedEnv { keys: &nested },
-                })
-                .collect();
-            let args: Vec<&str> = c.args.iter().map(String::as_str).collect();
-            let wrap: Vec<WrapSpec> = c
-                .wrap
-                .iter()
-                .map(|w| WrapSpec {
-                    order: w.order,
-                    prelude: &w.prelude,
-                })
-                .collect();
-            let got = render_payload(&PayloadSpec {
-                env: &env,
-                cwd: c.cwd.as_deref(),
-                launcher: &c.launcher,
-                args: &args,
-                wrap: &wrap,
-            })
-            .unwrap_or_else(|e| format!("<Err: {e}>"));
-            if got != c.payload {
+        for c in f.cases {
+            let name = c.name.clone();
+            let want = c.payload.clone();
+            // ★ 跑**生产命令本体**（`render_launch_payload`），不是自己重搭 `PayloadSpec`。
+            let got = match crate::launch_cli_cmd::render_launch_payload(c.req) {
+                Ok(p) => p,
+                Err(e) => format!("<Err: {e}>"),
+            };
+            if got != want {
                 mismatches.push(format!(
-                    "  用例「{}」\n    TS  : {:?}\n    Rust: {:?}",
-                    c.name, c.payload, got
+                    "  用例「{name}」\n    TS  : {want:?}\n    Rust: {got:?}"
                 ));
             }
         }
         assert!(
             mismatches.is_empty(),
-            "{} / {} 条载荷两侧不一致：\n{}",
+            "{} 条载荷两侧不一致：\n{}",
             mismatches.len(),
-            f.cases.len(),
             mismatches.join("\n")
         );
     }

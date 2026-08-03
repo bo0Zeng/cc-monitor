@@ -24,7 +24,7 @@ import { renderFallback } from "./launch-render-fallback";
 // U8c-2c-2：`tryRenderCli` **不再是生产渲染器**（那一支已切到 Rust）——
 // 它降级为「只供 `launch-cli-golden.ts` 生成夹具」，删在 U8c-3。
 import type { CliRenderResult } from "./launch-render-cli";
-import type { CliRenderRequest } from "./launch-cli-wire.ts";
+import type { CliRenderRequest, PayloadRenderRequest } from "./launch-cli-wire.ts";
 import type { CcmProbeResult } from "./ccm-probe.ts";
 import { sanitizeRemoteLauncher } from "./shell-quote.ts";
 import { probeCcm } from "./ccm-probe";
@@ -69,18 +69,7 @@ async function renderLaunchCommand(
   // （`session-backend.ts`），而 §33b 写死了「搬它之前必须先回答三件事」⇒ U8c-3。
   if (plan.container.kind === "none" && plan.action.kind !== "attach") {
     try {
-      return await commands.render_launch_payload({
-        req: {
-          env: plan.env,
-          cwd: plan.cwd,
-          launcher: sanitizeRemoteLauncher(plan.launcher),
-          args:
-            plan.action.kind === "resume"
-              ? [AGENT_PROFILE.resumeFlag, plan.action.sid, ...plan.args]
-              : [...plan.args],
-          nestedEnv: [...AGENT_PROFILE.nestedEnvVars],
-        },
-      });
+      return await commands.render_launch_payload({ req: buildPayloadRenderRequest(plan) });
     } catch (e) {
       // 后端拒了（非法 configDir / 会裂的 arg）⇒ **不静默用 TS 版糊过去**：
       // 那等于把一次 fail-closed 变成 fail-open。原样抛给调用方的 catch（它会 toast）。
@@ -102,7 +91,32 @@ async function renderCliViaBackend(
   plan: LaunchPlan,
   probe: CcmProbeResult,
 ): Promise<CliRenderResult> {
-  const req: CliRenderRequest = {
+  const req = buildCliRenderRequest(ctx, plan, probe);
+  try {
+    const res = await commands.render_ccm_launch({ req });
+    return res.ok && res.cmd !== null
+      ? { ok: true, cmd: res.cmd }
+      : { ok: false, reason: res.reason ?? "后端未给降级理由" };
+  } catch (e) {
+    return { ok: false, reason: `IPC 渲染失败，走兜底：${String(e)}` };
+  }
+}
+
+/** U8a-2c-pre 复盘（判据体系审计）：**请求构造抽出来，好让夹具用同一份代码产它**。
+ *
+ *  ⚠ 抽之前，`renderCliViaBackend` 里这 22 行**零判据** —— 审计实测三个变异全绿：
+ *  成功分支整个作废 · `isSsh` 恒 false（CLI 路径永久死掉）· `ccmSid`/`model` 恒 null
+ *  （两个维度静默消失）。它们静默的形态都一样：**回落 TS 兜底渲染器，功能不变砖、门禁全绿**。
+ *
+ *  现在 `launch-cli-golden.ts` 用这同一个函数产夹具里的 `req`，Rust 侧拿**生产 wire 类型**
+ *  反序列化它、跑**生产命令**、与 TS 渲染器的产物逐字节比 ⇒ 上面那三个变异各自会让
+ *  `req` 变形 ⇒ Rust 产出变 ⇒ 与 `out` 不一致 ⇒ 红。 */
+export function buildCliRenderRequest(
+  ctx: LaunchContext,
+  plan: LaunchPlan,
+  probe: CcmProbeResult,
+): CliRenderRequest {
+  return {
     isSsh: plan.transport.kind === "ssh",
     caps: probe.installed ? [...probe.capabilities] : null,
     action:
@@ -125,14 +139,21 @@ async function renderCliViaBackend(
     launcher: sanitizeRemoteLauncher(plan.launcher),
     defaultLauncher: AGENT_PROFILE.defaultLauncher,
   };
-  try {
-    const res = await commands.render_ccm_launch({ req });
-    return res.ok && res.cmd !== null
-      ? { ok: true, cmd: res.cmd }
-      : { ok: false, reason: res.reason ?? "后端未给降级理由" };
-  } catch (e) {
-    return { ok: false, reason: `IPC 渲染失败，走兜底：${String(e)}` };
-  }
+}
+
+/** 同 [`buildCliRenderRequest`]：抽出来好让夹具用同一份代码产 `req`。 */
+export function buildPayloadRenderRequest(plan: LaunchPlan): PayloadRenderRequest {
+  return {
+    env: plan.env,
+    cwd: plan.cwd,
+    launcher: sanitizeRemoteLauncher(plan.launcher),
+    args:
+      plan.action.kind === "resume"
+        ? [AGENT_PROFILE.resumeFlag, plan.action.sid, ...plan.args]
+        : [...plan.args],
+    nestedEnv: [...AGENT_PROFILE.nestedEnvVars],
+    wrap: plan.wrap.map((w) => ({ order: w.order, prelude: w.prelude })),
+  };
 }
 
 interface LaunchToasts {

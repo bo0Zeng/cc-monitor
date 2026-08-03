@@ -15,6 +15,7 @@ import { tryRenderCli } from "./launch-render-cli.ts";
 import { AGENT_PROFILE } from "./agent-profile.ts";
 import type { LaunchContext } from "./launch-plan.ts";
 import type { CcmProbeResult } from "./ccm-probe.ts";
+import { buildCliRenderRequest } from "./remote-launch-run.ts";
 
 /** 能力齐全的探测结果（`shared/ccm --ccm-probe` 今天真实吐出的那一串）。 */
 const ALL_CAPS = [
@@ -88,11 +89,16 @@ export function renderCliGoldenFixture(): string {
       _: "由 src/launch-cli-golden.ts 生成，勿手改。重生成：npm run gen:payload-golden",
       defaultLauncher: AGENT_PROFILE.defaultLauncher,
       cases: CLI_GOLDEN_CASES.map((c) => {
-        const r = tryRenderCli(buildLaunchPlan(c.ctx), c.ctx, probeOf(c.caps));
+        const plan = buildLaunchPlan(c.ctx);
+        const probe = probeOf(c.caps);
+        const r = tryRenderCli(plan, c.ctx, probe);
         return {
           name: c.name,
-          caps: c.caps,
-          ctx: c.ctx,
+          // ★ `req` 由**生产代码**构造（`buildCliRenderRequest`，`renderCliViaBackend` 用的同一个）。
+          // Rust 侧拿**生产 wire 类型**反序列化它、跑**生产命令**，再与 `out` 比 ——
+          // 于是「字段名对不对 / `deny_unknown_fields` 在不在 / 映射臂对不对 / 请求构造漏没漏字段」
+          // 四件事一次覆盖，而且是**行为对拍不是文本对拍**。
+          req: buildCliRenderRequest(c.ctx, plan, probe),
           ok: r.ok,
           out: r.ok ? r.cmd : r.reason,
         };
