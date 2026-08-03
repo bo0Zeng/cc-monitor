@@ -825,6 +825,67 @@ attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建�
 "账号有 configDir 但无名字"（老式直调路径，见 `launch-requests.ts::accountOf` 头注）
 断言 `ok:false` 且**结果里没有 `cmd` 字段**。
 
+## 33a. `ccm --print` 是平价预言机——它对**环境变量**说的必须逐条等于真跑做的（U9a / unified-backend）
+
+**它是什么**：`shared/ccm` 的 `--print` 打印「将要执行的命令」而不执行。整个仓把它当
+**离线预言机**用——`e2e/ccm-print-parity.sh` 的头注写着，这是「唯一能在没有真远端机器的
+场景下验证 CLI 渲染器真的会让 ccm 干对事」的手段。`ccm-cli` 的 44 条契约断言也全建立在它上面。
+
+**病根**：`--print` 那段与真 exec 那段（`do_print` 分支 vs 其后的「非容器路径」段）是
+**两份手写副本**。两份副本各自演化，而**没有任何判据比对过它们** —— 既有五套 ccm e2e 里，
+`ccm-cli` 只跑 `--print`、`ccm-print-parity` 只验「渲染器意图能被接住」、
+另三套验真 tmux 行为，**没有一套把「说的」与「做的」放在一起比**。
+
+**实测到的第一例（U9a 2026-08-02）**：codex + 已在 tmux 内时，exec 路 `export CC_BUS_ID=<会话名>`
+（cc-bus 身份，`agent_needs_bus_id`），而 `--print` 只字未提。预言机对那一格说得不全，
+**而且不会红**。
+
+### 铁律（范围严格限定在「ccm 自己决定的环境变量」）
+
+1. 凡是真 exec 路会设置的、**ccm 自己决定的环境变量**，`--print` **必须**说出来，且**顺序对齐**。
+2. **`--print` 仍然必须是纯的** —— 不查实时 tmux 状态、不写文件、输出对宿主环境逐字节稳定
+   （这条比本节更老，写在 `shared/ccm` 的 `--tmux` 撞名段与预信任段头注里）。
+   两条铁律**不冲突**，因为：值不知道就**打印配方**（把那段判断原样搬进串里、执行时才求值）。
+   `BUS_ID_RECIPE` 就是这么做的。
+   ⚠ **反面教材（U9a 自己先踩了一次）**：第一版让 `--print` 直接查 tmux 把值烘进去，
+   于是 `ccm-cli` 的 codex 黄金串在开发者的 tmux 里与 CI 上不一样 ——
+   我当时的「修法」是给测试加 `env -u TMUX`，**那是为实现让路去改判据**。改成配方形态后，
+   那条补丁不再需要，已撤销。
+3. 判据是 `e2e/ccm-contract-parity.sh`（A 组差分 + 绝对断言 + B 组 `CCM_ENV` + C 组 probe 契约）。
+   **差分不能单独用**（三条独立理由，都是审计变异实证的）：
+   - 两份副本**一起**坏掉时差分是绿的 ⇒ 每条保住项**同时**要有一条绝对断言；
+   - 两边**都为空**时差分也是绿的 ⇒ 每条 `pair` 先跑一条「真跑确实产出了环境」自检；
+   - 比较前做了 `sort` ⇒ 差分对**顺序**结构性失明 ⇒ 顺序类断言必须 exec 侧、print 侧**各钉一条**
+     （只钉 exec 侧时，把 print 里的 `$CCM_ENV` 挪到会话级 env 之后 ⇒ 预言机吐出一条
+     **落错账号**的命令串而全绿）。
+
+### `--print` **刻意**不说的两件事（别去「修」它们）
+
+铁律 1 的范围是**环境变量**，不是「exec 路发生的一切」。以下两件 `--print` 故意不反映，
+理由都是铁律 2（保持纯）：
+
+| 它不说什么 | 为什么 |
+|---|---|
+| **撞名避让**（`--tmux` 无名时真跑会退到 `-2`/`-3`） | 要知道退到第几个必须 `tmux has-session` 查实时状态。`--print` 展示**基名**；真行为由 `ccm-acceptance` 场景 5/5bis 在真 tmux 里钉住 |
+| **预信任副作用**（新目录写 `~/.claude.json` / `~/.codex/config.toml`） | `--print` 不许写文件。真行为由 `ccm-pretrust-acceptance` 钉住 |
+
+**为什么不把两份副本合成一份代码**：exec 那条路是真正跑用户会话的路径，
+为了消副本给它引入 `eval` 是拿生产路径换整洁。且配方（文本）与函数（代码）本就无法
+真正共用一处 —— 那条串跑在别人的 shell 里，看不见 ccm 的函数。
+**副本留着，但它们不一致时会红。**
+
+### 顺带钉住的跨语言契约（同一套件 C 组）
+
+`--ccm-probe` 的首行必须逐字 `name=ccm`（`src-tauri/src/ccm_probe.rs::parse_probe_output`
+靠它判「装没装」），`capabilities=` 必须**覆盖** `src/launch-render-cli.ts::CLI_REQUIRED_CAPS`
+（少一项 ⇒ app 静默退到兜底渲染器，用户看不见）。覆盖是 `⊇` 不是 `==`
+（ccm 多声明能力是允许的，今天就多 6 项），别有人把它收紧成相等。
+
+⚠ **精确说法**：这两处的消费方此前只对**手写 fixture** 测过，但真脚本的 probe 输出
+**并非全无覆盖** —— `cc-spawn-uplift` 主流程不设 `CCM_BIN`，`cc-spawn` 因而解析到真
+`shared/ccm` 并对 `detach`/`tmux-size` 两项 fail-closed。**真正零覆盖的是**：
+首行 `name=ccm` · `version=` · `agents=` · TS 侧那 7 项 `CLI_REQUIRED_CAPS`。
+
 ## 34. tmux 破坏性/半破坏性命令三道门 + 原子 verify+act（F04 / unify-launch / R10）
 
 **背景**：F04 根治 R10——过去 `kill_remote_tmux`/`tmux_send_keys` 只有一道门（`is_ccm_tmux_name`
