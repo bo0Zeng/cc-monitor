@@ -334,6 +334,51 @@ mod tests {
         assert_eq!(slugify_account_name(&long).len(), 32);
     }
 
+    /// ★ U8c-2a-fix：**把 `account_usage` 那一行接线钉住**（上一轮如实登记为「仍未做完」的债）。
+    ///
+    /// 上一轮抽出纯函数只把接缝从「一整段」缩成一行一个 token —— 代码审计实测，把
+    /// `config_dir.as_deref()` 改成 `None`（恒当账号 0）或写死别的号，
+    /// **731 条 Rust + 1168 条 TS 全绿**。那正是这套设计从头到尾要防的形态：
+    /// **探到别的号、UI 标成本账号 = 静默串号**。
+    ///
+    /// # 为什么是源码守卫，以及它证明不了什么
+    ///
+    /// 「这个 async tauri 命令有没有把它收到的参数转发下去」**在 Rust 类型里表达不了**
+    /// —— 换成任何一层包装，变异只会跟着下移一层（审计试过两种写法，都杀不掉）。
+    /// 真正的行为判据要让 `usage-probe` 的 e2e 由真接线驱动，而那条路今天走不通：
+    /// e2e 用的是 `FAKECLAUDE` stand-in，而 `probe_payload_for` 里的启动器来自
+    /// `agent.default_launcher()`（恒 `claude`）—— 沙箱里没有真 claude。
+    ///
+    /// ⇒ 退而求其次：**钉住那一行的源码形态**。它是**约定不是事实**（同
+    /// `protocol_doc_guard` 的 `doc_anchor`、`TS_HALF` 那一族），能挡住的是
+    /// 「顺手把参数换成常量」这一类改动，挡不住「换个名字继续错」。**比没有强，但别读成证明。**
+    #[test]
+    fn account_usage_actually_forwards_the_config_dir_it_received() {
+        let src = guard_core::production_code(include_str!("account_usage.rs"));
+        // 只数**调用点** —— `fn probe_command_for(` 那个定义也含同一串，不能算进来。
+        let calls: Vec<&str> = src
+            .match_indices("probe_command_for(")
+            .filter(|(i, _)| !src[..*i].ends_with("fn "))
+            .map(|(i, _)| {
+                let rest = &src[i + "probe_command_for(".len()..];
+                &rest[..rest.find(')').unwrap_or(rest.len())]
+            })
+            .collect();
+        assert_eq!(
+            calls.len(),
+            1,
+            "生产段里 `probe_command_for` 的调用点不是恰好一个（实得 {}）—— \
+             多一个就说明有第二条路绕过了这条判据",
+            calls.len()
+        );
+        assert!(
+            calls[0].contains("config_dir"),
+            "`account_usage` 没有把它收到的 `config_dir` 转发下去（实参：`{}`）—— \
+             恒当账号 0 或写死别的号 = 静默串号，而其余全部判据都会保持绿",
+            calls[0]
+        );
+    }
+
     /// ★ U8c-2a（代码审计 R1–R4 的收口）：**两态各自的载荷逐字节钉住**。
     ///
     /// 这条杀掉的是「载荷编译搬进 Rust 之后接线没人管」那一类：审计实测
