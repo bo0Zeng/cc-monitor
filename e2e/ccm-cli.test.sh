@@ -37,8 +37,13 @@ ck "--resume <sid> 与 resume <sid> **等价**（cc-monitor 今天的拼法，�
 ck "--resume=<sid> 等号形式" \
    "$(ccm resume abc-123 --cwd /p --print)" \
    "$(ccm --resume=abc-123 --cwd /p --print)"
-ck "--agent codex：换启动器 + 无嵌套 env" \
-   "cd '/p' && exec codex" \
+# U9a 2026-08-02：codex 的黄金串多了 cc-bus 身份注入那一段。
+# **它一直都在真 exec 那条路上**（`shared/ccm::derive_bus_id`，codex 沙箱够不着 tmux socket ⇒
+# 会话名必须经 env 透进去），只是 `--print` 从来没说 —— 而整个仓拿 `--print` 当离线预言机。
+# 打印的是**配方不是值**（`TMUX` 判断留在串里、执行时才求值），所以这条串对宿主 `TMUX`
+# 仍然逐字节稳定，不需要给这个 helper 加 `env -u TMUX`（那就成了为实现让路改判据）。
+ck "--agent codex：换启动器 + 无嵌套 env + cc-bus 身份配方" \
+   "if [ -n \"\${TMUX:-}\" ]; then _ccm_bus=\"\$(tmux display-message -p \"#S\" 2>/dev/null)\"; [ -n \"\$_ccm_bus\" ] && export CC_BUS_ID=\"\$_ccm_bus\"; unset _ccm_bus; fi; cd '/p' && exec codex" \
    "$(ccm --agent codex --cwd /p --print)"
 ck "--agent codex 不支持 resume → 报错" \
    "ccm: agent=codex 不支持 resume（无 resume flag）" \

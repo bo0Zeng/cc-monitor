@@ -132,6 +132,34 @@ agent_has_identity()     { case "$1" in claude) return 0 ;; *) return 1 ;; esac;
 #     （见 `cc-spawn:104-109` 的同一判断）。
 agent_needs_bus_id()     { case "$1" in codex) return 0 ;; *) return 1 ;; esac; }
 
+# ===== cc-bus 身份注入：一段逻辑、两种表示（U9a）=====
+#
+# **病**：这段派生原先只长在真 exec 那条路上，`--print` 一个字都没说。而 `--print` 的定位是
+# **平价预言机**（「打印将要执行的命令」，`e2e/ccm-print-parity.sh` 拿它当唯一能离线验证
+# 渲染器意图的手段）——于是 codex + 已在 tmux 内那一格，预言机漏报了一个真的会被 export 的
+# 变量，且**没有任何判据会因此变红**。
+#
+# **为什么不能让 `--print` 直接把值打出来**：那会当场破掉本文件另一条更老的纪律
+#（见下方 `--tmux` 撞名那段的头注：「`--print` 必须是**纯的**…不能依赖实时 tmux 状态」）。
+# 值只有运行时才知道 ⇒ **打印的是配方，不是值**，求值推迟到那条串真正被执行的时候。
+# 这样 `--print` 对宿主 `TMUX` 仍然逐字节稳定，44 条黄金串不需要为实现让路。
+#
+# ⚠ 于是这段逻辑有**两种表示**：函数（exec 路用）与文本（print 路用）。它们**无法真正
+#   共用一处** —— 那条串跑在别人的 shell 里，看不见本文件的函数。保证二者一致的是
+#   差分判据 `e2e/ccm-contract-parity.sh` A 组（同一组 flag，print 串跑出来的环境
+#   必须逐字等于真跑出来的环境），**不是人的记性**。
+#
+# 判空不能省：`[ -n "$v" ] && export` —— tmux 查不到时若照样 export 一个空串，
+# `cc-whoami:10` 会拿到一个「最高优先级的空身份」，比不设更坏。
+derive_bus_id() {
+  agent_needs_bus_id "$1" && [ -n "${TMUX:-}" ] || { printf ''; return 0; }
+  tmux display-message -p '#S' 2>/dev/null
+  return 0   # tmux 缺失时 rc=127 会透出去；本文件今天没有 set -e，但别把这个留给以后
+}
+# 上面那个函数的文本表示（只在 `--print` 里用）。是否输出它由 `agent_needs_bus_id` 决定 ——
+# 那是纯的（只看 flag），`TMUX` 判断留在串里、执行时才求值。
+BUS_ID_RECIPE='if [ -n "${TMUX:-}" ]; then _ccm_bus="$(tmux display-message -p "#S" 2>/dev/null)"; [ -n "$_ccm_bus" ] && export CC_BUS_ID="$_ccm_bus"; unset _ccm_bus; fi;'
+
 # ===== 默认值 =====
 action=new
 sid=""
@@ -409,6 +437,11 @@ if [ "$use_tmux" = 1 ]; then
     #
     # **只在真建会话时查**：`--print` 必须是**纯的**（F03 要拿它做渲染等价断言），
     # 不能依赖实时 tmux 状态。`--print` 展示基名；真跑时撞名会退让到 `-N`。
+    # ⚠ U9a 2026-08-02 **确认这条纪律仍然有效、没有例外**：`CC_BUS_ID` 那次是靠
+    #   **打印配方而不是打印值**（`BUS_ID_RECIPE`）来同时满足「说全」与「保持纯」的。
+    #   避让为什么不能照办：配方要判的是「这个名字被占没被占」，那**必须**在真跑时查，
+    #   而查到的结果会改变**名字本身** —— 名字是黄金串的主体，不是可以推迟求值的一段 env。
+    #   ⇒ 撞名避让归 `ccm-acceptance` 场景 5/5bis（真 tmux）管，见 `doc/INVARIANTS.md` §33a。
     if [ "$do_print" != 1 ] && tmux has-session -t "=$tmux_name:" 2>/dev/null; then
       _n=2
       while tmux has-session -t "=$tmux_name-$_n:" 2>/dev/null; do
@@ -579,6 +612,9 @@ fi
 if [ "$do_print" = 1 ]; then
   line=""
   [ -n "$CCM_ENV" ] && line="$line$CCM_ENV; "
+  # 顺序与下面真 exec 那条路逐条对齐（CCM_ENV → CC_BUS_ID → 会话级 env → cd → exec）。
+  # **输出的是配方不是值** —— 见 `BUS_ID_RECIPE` 头注：这样 `--print` 仍然不查实时 tmux 状态。
+  agent_needs_bus_id "$agent" && line="$line$BUS_ID_RECIPE "
   [ -n "$config_dir" ] && line="${line}export CLAUDE_CONFIG_DIR=$(sq "$config_dir"); "
   [ "$use_base" = 1 ] && line="${line}unset CLAUDE_CONFIG_DIR; "
   [ -n "$model" ] && line="${line}export ANTHROPIC_MODEL=$(sq "$model"); "
@@ -599,11 +635,9 @@ fi
 # `CC_BUS_ID=<name> ` env 前缀，那是**永远覆盖**。语义差别的后果不只是 `FROM` 写错：
 # `cc-whoami:10` 把 `$CC_BUS_ID` 排在最高优先级，子 agent 的 Stop 钩子会去读**父 agent 的
 # inbox**——身份冒用 + 抢信。会话名是这个会话身份的唯一事实来源，继承来的值一律不作数。
-if agent_needs_bus_id "$agent" && [ -n "${TMUX:-}" ]; then
-  _sname="$(tmux display-message -p '#S' 2>/dev/null)"
-  [ -n "$_sname" ] && export CC_BUS_ID="$_sname"
-  unset _sname
-fi
+_sname="$(derive_bus_id "$agent")"   # ← 与 `--print` 共用同一处派生（见 derive_bus_id 头注）
+[ -n "$_sname" ] && export CC_BUS_ID="$_sname"
+unset _sname
 # 会话级 env。--base 显式清残留（就地复用已存在 shell 时必需，见 issue #75）。
 [ -n "$config_dir" ] && export CLAUDE_CONFIG_DIR="$config_dir"
 [ "$use_base" = 1 ] && unset CLAUDE_CONFIG_DIR

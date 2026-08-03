@@ -216,13 +216,13 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 | S7 | **daemon argv 面** | 三类；`split_stream_flags` + `every_capability_token_is_strippable` 同步扩。⚠ **起点比以为的更糟**：现有的二分表本身就漏了 5 条子命令（`--tmux-notify` / `--resolve` / `--fork-session` / `--account-trust-zero` / `--read-session-from-offset`），其中 `--account-trust-zero` 漏登记**出过 v3.4.0 事故** | U6 |
 | S8 | **`BUILD_ID` 单源链条**<br>**U-1 已交付**：① `ssh_source.rs::embedded_build_id_single_source_wired` 断言 ≠ `"unknown"`；② `build.rs` 三条硬 panic（抠不到源码 `BUILD_ID` / 有二进制但缺清单 / 清单与源码不符）；③ 半 bump **真修掉**（两个 arch 从 p1v 源码现编，`rust-lld` 零安装）。<br>⚠ **措辞订正**：原写「缺文件从 warn 改 fail」不准 —— 三条 panic 都以「`embedded-daemons/` 里真有二进制」为前提；**整个目录缺失时仍是优雅降级**（那是 dev/CI 常态），兜那一档的是①不是 `build.rs`。发版链两头都够得着（`release.yml:56-58` 写清单、`:113-118` 再对拍） | U-1 · U13 |
 | S9 | **读面七组 → 四组**（§0.1 三类） | monitor 侧退役 | U7a–U7e |
-| S10 | **`shared/ccm`** | 零决策执行臂。**保住**：三个 exec 出口 · `eval "$CCM_ENV"` · `--detach` · `--ccm-probe` 首行 · codex `CC_BUS_ID` 无条件覆盖 · **`@ccm_sid` 回填（§0.5-5）** · `ccm:264-279` 的撞名分叉 | U9 |
+| S10 | **`shared/ccm`** | 零决策执行臂。**保住**（七项）：三个 exec 出口 · `eval "$CCM_ENV"` · `--detach` · `--ccm-probe` 首行 · codex `CC_BUS_ID` 无条件覆盖 · **`@ccm_sid` 回填（§0.5-5）** · `ccm:264-279` 的撞名分叉。<br>**U9a 2026-08-02 已把这张散文清单变成机检**（迁移前钉基线，与 U1a 同一条纪律）：逐条实测覆盖后发现**七项里两项没有任何钉子** —— ② `CCM_ENV` **全仓零覆盖**、④ `--ccm-probe` 首行只被**手写 fixture** 测过（`ccm_probe.rs:18` 靠它判「装没装」、`launch-render-cli.ts::CLI_REQUIRED_CAPS` 靠 `capabilities=` 决定走 CLI 还是兜底，**没有任何判据读过真脚本的输出**）。两项已由 `e2e/ccm-contract-parity.sh` 补上。<br>⚠ **顺带查出并修掉一处预言机失真**：`--print`（`ccm:579-`）与真 exec 路（`ccm:594-`）是**两份手写副本**，codex + 已在 tmux 内时 exec 路 `export CC_BUS_ID` 而 `--print` 只字未提 —— 而整个仓拿 `--print` 当离线预言机。派生已收成一处 `derive_bus_id()`，两条路共用；差分对拍见 `doc/INVARIANTS.md` §33a。<br>**副本刻意不合并**：exec 那条是真跑用户会话的路，为消副本给它引入 `eval` 是拿生产路径换整洁 ⇒ **副本留着，但不一致时会红** | U9a ✅ · U9b |
 | S11 | **`sftp.rs::ccm_cli_has_required_elements`**<br>**U1a 已交付前半（基线）**：强度读数由 `ccm_cli_contract::measure()` **单一产出**，迁移前后同一函数跑两份脚本文本 —— **`needles`/`channel_a`/`t_targets_checked` 三个 `>=`，`t_violations` 是 `<=`（必须 0）**。⚠ 最后这半句不能少：Phase D 审计实测，只比前三个字段时「4 处精确目标全改裸目标」四字段一字不变、全绿。5 条**编译期**钉子（`const _: () = assert!`）钉住基线与阈值两个旋钮。<br>**U9 的迁移清单（现在写死，免得只搬一半）**：`measure()` 喂新构造点文本 · **`require()` 必须一起搬**（它看 violations，读数是它的镜子不是替身）· `pin_t_def()` · `doc/INVARIANTS.md:686` 的指向 | 迁移后逐条对拍 = U9；护栏按新边界重钉 = U1b |
 | S12 | **会话名生成** | 两族各一个函数 + 计数守卫 == 2。⚠ **守卫挂 U11 不是 U8**（ccm 到 U9、cc-spawn 到 U11 才收编，挂 U8 是**做完必红**的 DoD） | U8 · U9 · U11 |
 | S13 | **`parity_ledger`**<br>**U-1 已交付**：`command_signatures()` 改递归 + `files.sort()`（不排序时「首个胜」会让同名命令随文件系统顺序漂）。实测 `adapter/` 下两文件的 `#[tauri::command]` 命中数都是 **0** ⇒ 递归当下是**纯预防性**，`LEDGER.len()==123` 与 `checked==68` 都没变 | 本区天然验收面。⚠ 它只钉命令**这一层**，别把「数字没动」读成「读面没搬成」 | U-1 · U7 |
 | S14 | **`--resolve`** | 吸收进 backend 的计划面；线上形状逐字不变（aterm 契约 2026-07-18 冻结）；`sessionName` 漂移随之消失 | U6 · U8 |
 | S15 | **本机分发链** | Tauri sidecar，**与 `embed_daemons` 完全另一套**；⚠ `sftp.rs:1262` 的 `assert_eq!(…, b"\x7fELF")` 与 `:1252` 的 arch 表会被 Windows PE 打红 | U5 |
-| S19 | **`npm test` 套件链 + tsx 套件登记表**（U0 新增；⚠ **原编号 S16 与「入方向命令面」撞号**，U8a-2a 改号 —— 那一轮恰好同时碰了这两条，撞号让「本轮碰了哪几条」无法唯一指称）<br>**U0 已交付**：`src/node-suite-registry-guard.vitest.ts` 六条判据（条数 / 全仓总量地板 / 集合 / 路径 / 链路+`&&` / 失败收尾）。⚠ **U8c 退役两个 TS 渲染器时必须同步改四处**：`NODE_SUITES` · `TOTAL_FLOOR` · `package.json` 的 `test:*` 定义 · `npm test` 链。被碰到的是 3 个套件：`test:launch-render-cli`(26, **整删**) · `test:launch-dimensions`(28, **整删**) · `test:remote-launch`(40, **改不删**)。只删一半会当场红 —— 这正是本条要的效果 | U0 · U8c · U8a-2a（新增 `inbound-frames` 套件：`package.json` `test:inbound-frames` · `ci.yml` 地板 15 · G-A 覆盖面 15→16 三处 · shellcheck 覆盖面 39→40） |
+| S19 | **`npm test` 套件链 + tsx 套件登记表**（U0 新增；⚠ **原编号 S16 与「入方向命令面」撞号**，U8a-2a 改号 —— 那一轮恰好同时碰了这两条，撞号让「本轮碰了哪几条」无法唯一指称）<br>**U0 已交付**：`src/node-suite-registry-guard.vitest.ts` 六条判据（条数 / 全仓总量地板 / 集合 / 路径 / 链路+`&&` / 失败收尾）。⚠ **U8c 退役两个 TS 渲染器时必须同步改四处**：`NODE_SUITES` · `TOTAL_FLOOR` · `package.json` 的 `test:*` 定义 · `npm test` 链。被碰到的是 3 个套件：`test:launch-render-cli`(26, **整删**) · `test:launch-dimensions`(28, **整删**) · `test:remote-launch`(40, **改不删**)。只删一半会当场红 —— 这正是本条要的效果 | U0 · U8c · U8a-2a（新增 `inbound-frames` 套件：`package.json` `test:inbound-frames` · `ci.yml` 地板 15 · G-A 覆盖面 15→16 三处 · shellcheck 覆盖面 39→40） <br>⚠ **U9a 2026-08-02 追加第五处**：`e2e/ccm-contract-parity.sh` 的 C 组用 `sed` 从 `src/launch-render-cli.ts` 抽 `CLI_REQUIRED_CAPS`（要求它是单行 `const … = [...] as const;`）。**U8c 一删这个文件，抽取器自检（`TS_N >= 5`）当场红** —— fail-closed 是对的，但下一个人会以为是误红。U8c 必须同时把这条**重指**到真正剩下的消费方（`cc-spawn` 的 `detach`/`tmux-size` + `ccm_probe.rs::parse_probe_output` 的 `name=ccm`） |
 
 | S20 | **共享 crate 家族的约定**（U8a-2a 新登记）<br>今天四个：`branch-core` / `usage-core` / `acct-core` / `guard-core` | 零（或仅 `serde_json`）依赖 · 平台无关 · 单向 path dep（不制造 workspace 成员关系）· **新增一个就要在 `ci.yml` 补 test/fmt/clippy 三样**（那条纪律 `ci.yml` 里早写着，U7-2/U7-3 两次没跟，U8a-2a 补齐）。<br>⚠ `guard-core` 是唯一**带 fs 遍历 + panic 语义**的一个，也是唯一**两侧都只作 dev-dependency**的（守卫全在 `cfg(test)`，不进发布二进制）—— 头注里已写明这条例外，别照抄错家族不变量 | U8a-2a ✅ · 新增 crate 时 |
 | S21 | **monitor 侧那条长连接的写半边**（U8a-2a 新登记）<br>今天只许经 `inbound_client::split_and_park` 出手；`ssh_source` 生产段**既不切流也不写流** | 由 `write_half_guard` 两条**零命中型**护栏钉住（不许出现 `tokio::io::split(` + 不许出现任何写方法/UFCS），外加一条「共享剥法 vs 便宜近似」的扫描面自检。<br>⚠ 判据形状换过一次：原来是「每处 split 后 240 字符内要有 park」，D 审计用**尾随注释**和**split 后先偷写一句**两种普通写法绕过 ⇒ 改成把切与停收成一个函数、判据改零命中。<br>⚠ **最终形态**：`inbound_client` 落 `control/`、帧类型单拎 wire 模块之后，这条护栏要跟着模块边界重钉（同 S1 的形状），归 U1b | U8a-2a ✅ · U1b |
@@ -235,6 +235,7 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 | S25 | **平面 ③（本机开窗面）的 POSIX 取舍**（U8b 新登记）<br>L1 裁决：POSIX 上**刻意不开 GUI 终端窗口**（没有「唯一的终端」，挑一个是会在别人机器上错的决定；会话容器是 tmux） | 由 `launch.rs::no_terminal_emulator_is_ever_spawned_from_this_file` **零命中**钉住（挡的是很自然的一次「顺手改进」）；文案由 `POSIX_NO_TERMINAL_WINDOW` 单点出，前端按标记分档、`the_posix_marker_is_the_one_the_frontend_matches_on` 跨轨对拍。<br>⚠ **今天的不对称**：本机 resume 有 OS 分派、远端没有 ⇒ POSIX 上只复制命令。补它与 **U8a-2c** 同一个阻塞（渲染好的串拆不回「只建不接」），**别单独硬补** —— fire-and-forget 会静默失败 | U8b ✅ · U8a-2c |
 
 | S26 | **`control/`/`observe/` 的 serde 类型**（U8a-2d 新登记）<br>今天 6 个：`resolve_query` 4（aterm 冻结契约）· `fork_write::ForkResult`（一次性子命令出参）· `accounts_query::RawAccount`（**文件 schema，根本不是 wire**） | **登记制**（逐条列举 + 写明它是什么 + 机检 + 幽灵条目检查），形状照 `spawn_registry`。<br>⚠ 设计稿原提的是「白名单恰好一条」——**实测那个前提错了**，而且后两个搬进 `wire/` 是错误归类。<br>⚠ 「上线类型收进 `src/wire/` 目录树」等**真出现第二个流协议类型文件**时再做（今天只有 `wire.rs` 一个，为一个文件建目录树是空转） | U8a-2d ✅ |
+| S27 | **`CC_BUS_ID` 派生**（U9a 新登记）<br>唯一一处：`shared/ccm::derive_bus_id`（exec 路）+ 它的文本表示 `BUS_ID_RECIPE`（`--print` 路）。`cc-spawn` 自己那份**已删**（B02 收编时）。消费方 `cc-whoami:10` 是**最高优先级**来源 ⇒ 取错 = 身份冒用 + 抢信 | 判据：`ccm-contract-parity` A 组三条绝对断言（codex 有 / claude 没有 / `--print` 也要说）+ `cc-spawn-uplift` [7][8]（含父环境污染可复现反例）。<br>⚠ **两种表示无法真正共用一处**（配方跑在别人的 shell 里，看不见本文件的函数）⇒ 一致性由 A 组差分保证，不由人的记性保证。<br>⚠ **U11 收编 cc-spawn 时不许再造第三处** | U9a ✅ · U11 |
 
 ### 跨工作区冲突协议
 
@@ -307,7 +308,8 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 | **U8b** | frontend 按 OS 分的开窗实现 | 顺带修 `launch.rs:304` 那个真 bug |
 | **U8c** | 两个 TS 渲染器 + IR 退役 | 牵 E24（五个导出生产零调用点却塑造了 IR 类型） |
 | **U8d** | 换号重启编排（`account-restart.ts`）+ SFTP 开终端 + 账号 step 的归属 | v2 遗漏的三条路 |
-| **U9** | thin ccm 零决策执行臂 | S10 的保住清单；预信任仍以 shell 串形态由 `control/` 产出（§1.3 已登记例外） |
+| **U9a** ✅ | **S10 保住清单变机检**（U9 拆出的可做半边） | 迁移前钉行为基线（与 U1a 钉护栏强度同纪律）。新套件 `ccm-contract-parity` 21 条：`--print` 说的 == 真跑做的（差分 + 绝对断言双层，**差分单用挡不住两边一起坏**）· `CCM_ENV` 补零覆盖 · `--ccm-probe` 跨语言契约首次被真脚本验证 |
+| **U9b** ⛔ | thin ccm 零决策执行臂（**本体，阻塞**） | **2026-08-02 摸底 + 审计订正**：真正的阻塞是**排期 + 一条物理缺失**，不是三条 —— ⓪ **首要原因是排期**：依赖图上 U9 排在 U8c/U8d/U7e 之后，三个都没做；① ~~daemon 零监听代码~~ **这条被审计打掉**：数字属实（全仓 0 命中）但不支撑结论，见解锁条件 ②；② `tauri.conf.json` **既无 `externalBin` 也无 `resources`** ⇒ **本机**装不到 backend（开放-6 的一般形态，落点 U5，用户已划界「sidecar/启停/自愈那部分我自己搞」）—— ⚠ 但这只挡**本机**那半，**远端两个二进制今天就并存**；③ **这条才是硬的** —— Rust 侧唯一的 planner `control/resolve_query` **与仓外 aterm 冻结在 2026-07-18**，只产 `<base> --resume <sid>` + 一个纯派生的名字，**账号/cwd/容器/预信任/model/bus-id 一个都不在里面**；`control/launch` 执行**给定**载荷、也不产出载荷。<br>**解锁条件（两条都要）**：① `control/` 有产出**完整载荷**的权威（账号/cwd/容器/预信任/model/bus-id）—— 那是 **U8c** 的产物；② 载荷**送得到 ccm 手上**。⚠ ②**不必然要求监听型传输**（审计打掉了我第一版的这条断言）：daemon 的 `--resolve` 已经确立了「一次性 exec + stdin/stdout JSON、天然 1:1、无 request-id」这个**无状态查询**形态，而 §1.2「stdio 出局」论证的是**长生命周期观测通道**够不着 ccm，对「ccm 自己 fork 一个进程、喂一行拿一行」不适用。远端两个二进制今天就并存（`tool_registry.rs` 里 ccm = `RemoteHomeRelative` + `HostScope::Remote`，daemon 走 SFTP）⇒ **远端可以先落地，本机那半等 U5**。**两条都满足前不许动 `shared/ccm` 的决策段。**<br>S11 的迁移清单（`measure()` + **`require()` 必须一起搬** + `pin_t_def()` + `doc/INVARIANTS.md:686` 指向）是 U9b 的事 —— 今天没有新构造点可喂 |
 | **U10** | 停 / 接 / send-keys / 用量探针 | 三道门原样保住；⚠ **TOCTOU 不会因为同机而消失** |
 | **U11** | 分叉 + cc-spawn 收编 + **会话名计数守卫落地** | ⚠ 先与 aterm 对 `--fork-session` |
 
@@ -327,8 +329,14 @@ U-1 ─► U0 ─► U1a ─► U2 ─► U3 ─► U1b ─┬─► U4 ─► U
                                       │              ├─► U6 ─► U7a ─► U7b ─► U7c ─► U7d ─┐
                                       └──────────────┘                                    │
    ┌────────────────────────────────────────────────────────────────────────────────────┘
-   └─► U8a ─► U8b ─► U8c ─► U8d ─► U7e ─► U9 ─► U10 ─► U11 ─► U12 ─► U13 ─► U14 ─► U15
+   └─► U8a ─► U8b ─► U8c ─► U8d ─► U7e ─► U9b ─► U10 ─► U11 ─► U12 ─► U13 ─► U14 ─► U15
+        （U9a 与本链**正交**，已于 2026-08-02 完成：它只钉基线、不搬决策，无前置）
 ```
+
+⚠ **U9b / U10 / U11 全在 U8c 下游**（工程审计 2026-08-02 的原话，我接受）：
+U8c 未做之前从第六梯队里挑任务，只会反复得到「阻塞」这个结论。
+U8c（两个 TS 渲染器退役 + 前端发结构化请求）**才是「决策移到后端」真正发生的那一步**，
+U8a-2c / U8b 缺的那半 / U9b 三件都卡在它上面。**下一轮做 U8c，不再往下游找软的。**
 
 **每批的可交付中间价值**（v3 补，v2 的批次③曾是净负值）：
 ① U-1/U0/U1a：门禁真的在守 · ② U2/U3/U1b：daemon 内部可读、护栏钉准 ·
@@ -893,3 +901,27 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   **登记在案的例外**（与 aterm 的一次性契约冻结在 2026-07-18，改它会破坏那份契约）。
 - 2026-08-02 账本：**S16 改写**（命令面从「N 处副本互相对拍」→「注册表 + 三条派生 + 一面镜子」）；
   新增 **S26**（`control`/`observe` 的 serde 类型登记制）。
+- 2026-08-02 **U9 拆成 U9a / U9b（铁律 4：摸底发现前提不成立，先改计划再动手）**。
+  U9b 的三条前提**各自独立地缺**（daemon 零监听代码 · 包里无 `externalBin`/`resources` ·
+  `resolve_query` 与 aterm 冻结且不含 ccm 的任何一项决策），解锁条件已写死在 §3 的 U9b 行里。
+  **这是近五轮第五次打掉一条既定前提** —— 摸底纪律在持续兑现。
+- 2026-08-02 **U9a 交付**：S10 的七项保住清单从散文变机检，实测**两项此前零钉子**
+  （`CCM_ENV` 全仓零覆盖 · `--ccm-probe` 首行只测过手写 fixture）。
+  ⚠ 顺带修掉一处**预言机失真**：`--print` 与真 exec 是两份手写副本，codex + 已在 tmux 内那一格
+  `--print` 漏说 `export CC_BUS_ID`。新增 `doc/INVARIANTS.md` §33a 钉住这条。
+  ⚠ 同时暴露出 `e2e/ccm-cli.test.sh` 的基座 helper **一直没隔离 `TMUX`**（该文件另两处早就隔离了），
+  在开发者的 tmux 里与 CI 上会给出不同结果 —— 已补，属该文件自己头注里那条「别让结果随谁在跑而漂移」。
+- 2026-08-02 账本：**S10 改写**（保住清单 → 逐项覆盖状态 + 「副本刻意不合并」的理由）。
+- 2026-08-02 **U9a 过两轮审计后的自我订正**（并行两个 agent，都咬了人）：
+  ① **`--print` 的「纯」被我第一版打破了** —— 我让它直接查 tmux 把 `CC_BUS_ID` 的值烘进去，
+     结果 `ccm-cli` 的 codex 黄金串在开发者 tmux 里与 CI 上不一样，而我当时的「修法」是
+     **给测试加 `env -u TMUX`** —— 那是为实现让路去改判据。改成**打印配方**之后，
+     `--print` 重新对宿主 `TMUX` 逐字节稳定，那条测试补丁已撤销。
+  ② 新套件自己**没兑现**它同一轮写进 §33a 的铁律 3：`--model`/`--base` 只有差分没有绝对断言
+     （两边一起坏 ⇒ 全绿，审计变异实证）· `pair` 对「两边都空」无自检 · 差分做了 `sort`
+     ⇒ 对**顺序**失明（把 print 里的 `$CCM_ENV` 挪到会话级 env 之后 ⇒ 预言机吐出一条
+     **落错账号**的串而全绿）。三条都已补，断言 21 → **31**。
+  ③ **「U9 三条前提都缺」这个说法被打掉一条半**：daemon 无监听传输**不支撑**「ccm 够不着」
+     （`--resolve` 已经是一次性 exec + stdin/stdout 的无状态查询形态）；本机装不到 backend
+     只挡**本机**那半，**远端两个二进制今天就并存**。真正硬的只有「没有决策权威可搬」+ 排期。
+     U9b 的解锁条件已据此改写 —— 照我第一版的字面执行，**它会永远等一个其实不需要的东西**。
