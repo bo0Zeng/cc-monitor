@@ -72,13 +72,14 @@ mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半�
 mod polling_registry; // U7-P：前端 + shared/ccm 的周期唤醒清账（daemon 那条零定时器护栏点名要「单独论证」的那半）
 mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只许有一个实现（账本 S5）
 #[cfg(test)]
+mod session_name_registry; // U11 摸底：会话名产出点清账 + 递减棘轮（账本 S12 的落地形态）
+#[cfg(test)]
 mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 —— 从散文变机检
 #[cfg(test)]
 mod structural_scan;
 mod subagent;
 mod tasks;
 mod tmux;
-#[cfg(test)]
 mod tmux_daemon_gate_guard; // U10 裁决：daemon 侧没有身份守卫之前，send-keys/kill 不许改走 daemon
 mod tmux_reconcile;
 mod tool_registry; // T01：受管工具声明（只声明，不改各工具行为）
