@@ -2,10 +2,11 @@
 name = "launch-core"
 version = "0.1.0"
 edition = "2021"
-description = "「起一个会话」的载荷编译器——env 前缀 / cd / argv / wrap 的唯一 Rust 真相源。今天只有 monitor 用；U8c-2 起远端 daemon 共用（写「两侧共用」是将来时）。"
+description = "POSIX 单引号 quote 的唯一 Rust 实现。monitor 5 处 + daemon 1 处都调它（收口前是五份逐字节相同的副本，靠巧合保持一致）。⚠ crate 名还叫 launch-core 是 P4b 的过渡态，改名单列 P4c。"
 
 # **只依赖同族共享 crate**。同 branch-core / usage-core / acct-core / guard-core 的约束：
 # daemon 是 Linux-only 的静态 musl 二进制、且刻意不在 monitor 的 workspace 里；
 # 一旦引入平台相关的东西，共享就破了。
+# **零依赖**。P4b 起本 crate 只剩 `posix_quote` —— 原来的 `acct-core` 依赖是
+# `is_command_unsafe_char` 带来的，它已随载荷一族搬进 monitor 的 `backend/control/payload.rs`。
 [dependencies]
-acct-core = { path = "../acct-core" }
