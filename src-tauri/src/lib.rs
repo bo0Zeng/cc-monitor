@@ -69,6 +69,8 @@ mod launch_payload_parity; // U8c-1：launch-core 的载荷渲染 ↔ TS 黄金�
 #[cfg(test)]
 mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半；内部整体 cfg(test)）
 #[cfg(test)]
+mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只许有一个实现（账本 S5）
+#[cfg(test)]
 mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 —— 从散文变机检
 #[cfg(test)]
 mod structural_scan;

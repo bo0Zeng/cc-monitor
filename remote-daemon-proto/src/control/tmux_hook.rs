@@ -51,7 +51,9 @@ pub(crate) const HOOK_EVENTS: [&str; 3] = ["session-created", "session-closed", 
 /// POSIX 单引号包裹。**只用于我们自己产生的路径/数字**（exe 路径、pid、starttime），
 /// 不用于任何来自 tmux 或用户的字符串 —— 那条路本设计里根本不存在（见模块头注）。
 fn sq(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
+    // U8c-2b-0（账本 S5）：实现收进 `launch-core` —— 此前全仓有**四份逐字节相同**的
+    // POSIX 单引号 quote。保留本地名字，调用点零改。
+    launch_core::posix_quote(s)
 }
 
 /// 一条 hook 的 tmux 命令参数（不含 `tmux` 本身），供 `Command::args` 直接用。

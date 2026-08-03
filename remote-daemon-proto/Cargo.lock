@@ -47,6 +47,7 @@ dependencies = [
  "acct-core",
  "branch-core",
  "guard-core",
+ "launch-core",
  "libc",
  "notify",
  "notify-debouncer-mini",
@@ -157,6 +158,13 @@ checksum = "07293a4e297ac234359b510362495713f75ea345d5307140414f20c69ffeb087"
 dependencies = [
  "bitflags 2.11.1",
  "libc",
+]
+
+[[package]]
+name = "launch-core"
+version = "0.1.0"
+dependencies = [
+ "acct-core",
 ]
 
 [[package]]
