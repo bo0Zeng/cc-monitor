@@ -78,12 +78,13 @@ async fn exec_collect(cfg: &RemoteConfig, cmd: &str) -> Result<String, String> {
 
 /// POSIX 单引号包裹（远端路径进 shell）。
 ///
-/// U8c-2b-0（账本 S5）：实现收进 `launch-core` —— 这是收口时**守卫当场抓到的第五份**
+/// U8c-2b-0（账本 S5）：实现收进 `shell-quote-core`（P4c 前叫 `launch-core`）——
+/// 这是收口时**守卫当场抓到的第五份**
 /// （我摸底只数出四份，S5 记的也是四份）。五份**逐字节相同**、从来没红过，
 /// 靠巧合保持一致 —— 这正是那条守卫要防的东西。
 pub(crate) fn sq(s: &str) -> String {
     // `pub(crate)` 只为让 `quote_singleton_guard` 的行为对拍够得着它。
-    launch_core::posix_quote(s)
+    shell_quote_core::posix_quote(s)
 }
 
 /// 探测远端有没有装 `cc-acct-iso`（`command -v`）。**非交互 ssh 的 PATH 常不含 `~/.local/bin`**，

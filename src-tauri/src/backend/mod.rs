@@ -5,7 +5,7 @@
 //! daemon 内部有 §1.1 的三分（`platform/` · `observe/` · `control/`），而 monitor 侧
 //! **一个边界都没有** —— `src-tauri/src/` 是平铺的五十多个 `.rs`，唯一子目录是 `adapter/`。
 //! 于是 U8c 一族要给「起会话的渲染」找个家时，只剩共享 crate 一条路 ⇒
-//! **`launch-core` 的存在是「因为没有第二个地方，才造了第三个地方」**
+//! **那个共享 crate（当时叫 `launch-core`）的存在是「因为没有第二个地方，才造了第三个地方」**
 //! （架构审计 2026-08-03 实测：daemon 对整个 crate 的用量只有一行 `posix_quote`）。
 //!
 //! # 顶层架构里它是谁

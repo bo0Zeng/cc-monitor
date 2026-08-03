@@ -40,10 +40,11 @@ code-picture-core = { path = "vendor/code-picture-core" }
 branch-core = { path = "crates/branch-core" }
 usage-core = { path = "crates/usage-core" }
 acct-core = { path = "crates/acct-core" }
-# U8c-1：载荷编译器（env 前缀 / cd / argv / wrap）。今天只有 `history.rs` 的 POSIX 分支用它，
-# 且只用到前缀那一段；完整载荷路径要等 U8c-2 前端改发结构化请求。
-# **daemon 侧刻意还没加这条依赖** —— 它今天用不到，加了就是一条没人用的 dep。U8c-2 再加。
-launch-core = { path = "crates/launch-core" }
+# P4c：**POSIX 单引号 quote 的唯一 Rust 实现**（P4b 之前叫 `launch-core`，那时它还持有
+# 载荷编译器与 ccm 调用行的决策内核 —— 那两样 P4b 已归位 `src/backend/control/`）。
+# ⚠ 原注释说「daemon 侧刻意还没加这条依赖」已经过期两轮：U8c-2b-0 起 daemon 的
+# `control/tmux_hook.rs::sq` 就在调它，那也是它今天唯一的 daemon 用量。
+shell-quote-core = { path = "crates/shell-quote-core" }
 
 notify = "6"
 notify-debouncer-mini = "0.4"

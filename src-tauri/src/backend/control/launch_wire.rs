@@ -38,7 +38,7 @@ pub struct CliRenderRequest {
     pub account: WireAccount,
     pub ccm_sid: Option<String>,
     pub model: Option<String>,
-    /// 已 sanitize 的 launcher（sanitize 仍在 TS，见 `launch-core` 头注）。
+    /// 已 sanitize 的 launcher（sanitize 仍在 TS，见 `super::payload` 头注）。
     pub launcher: String,
     pub default_launcher: String,
 }

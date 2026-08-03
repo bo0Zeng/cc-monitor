@@ -13,7 +13,7 @@
 //! | 项 | daemon 用量 | 结论 |
 //! |---|---|---|
 //! | `posix_quote` | `control/tmux_hook.rs::sq` 一处 | **留** |
-//! | `config_dir_command_safe` / `UNSET_CONFIG_DIR_PREFIX` / 载荷一族 / `cli` 决策内核 | **零** | 搬进 `backend/control/` |
+//! | `config_dir_command_safe` / `UNSET_CONFIG_DIR_PREFIX` / 载荷一族 / `cli` 决策内核 | **零** | 搬进 `backend/control/`（P4b） |
 //!
 //! ⚠ **「渲染一条 shell 命令串」永远属于开终端的那一侧**：§1.3 把最终 exec 钉在用户自己的
 //! 终端进程里，而 U8a-2b 把 daemon 的执行面定成 **argv 直传、不过 shell**。
@@ -25,8 +25,12 @@
 //! 两侧（monitor 5 处 + daemon 1 处）都要它，而两个二进制不共享源码树 ⇒ 共享 crate 是唯一载体。
 //! 「只许一个实现」由 monitor 侧的 `quote_singleton_guard` 机检（它把本文件钉为 `SOLE_HOME`）。
 //!
-//! ⚠ **crate 名还叫 `launch-core` 是过渡态** —— 改名牵动 `Cargo.toml`×2 / `ci.yml` 三步 /
-//! 全部 `launch_core::` 引用，单列成 **P4c**，别和搬家混在一轮。
+//! # 名字（P4c）
+//!
+//! **P4b 之前它叫 `launch-core`** —— 那时它持有决策内核，名字还说得过去。缩到只剩 quote 之后
+//! 那个名字就成了说谎，P4c 改成 `shell-quote-core`：与 TS `src/shell-quote.ts`、
+//! `shared/ccm::sq` 同族，**一眼看出这三份是同一件事**（跨语言那两份由黄金串夹具对拍）。
+//! ⚠ 计划文档（`.claude/planned-build/`）里的 `launch-core` 是当时的实况，刻意没改。
 
 /// POSIX 单引号 quote：整体 `'…'` 包裹，内部 `'` 断开为 `'\''`。
 ///

@@ -30,10 +30,10 @@ describe("fetchAccountUsage", () => {
   //
   // 那三件事**一件都没丢**，只是判据换了地方：
   //   ① 账号隔离真的生效（不是裸 claude ⇒ 探到错账号且看起来完全正常）
-  //      → `launch_core::usage_probe_payload_is_two_states_and_never_bare`（**两态都断言带前缀**）
+  //      → `backend::control::payload 的 usage_probe_payload_is_two_states_and_never_bare`（**两态都断言带前缀**）
   //   ② 嵌套 env 被清掉 → 同上（载荷里必有 `unset <嵌套env>`），键表两侧一致由
   //      `agent-profile-parity.vitest.ts` 钉
-  //   ③ 引号形态 → `launch_core::posix_quote` 单测 + 黄金串夹具对拍
+  //   ③ 引号形态 → `shell_quote_core::posix_quote` 单测 + 黄金串夹具对拍
   // 这里剩下的职责是**「账号表态被原样送过去」**，见下面两条。
   it("IPC 上只送账号表态，不送渲染好的载荷（U8c-2a）", async () => {
     invokeMock.mockResolvedValue({ captured: true, raw: "50%", error: null });
@@ -83,7 +83,7 @@ describe("fetchAccountUsage", () => {
 
   // U8c-2a：载荷不再由 TS 渲染 ⇒ 这里改钉「**账号表态被原样送到 Rust**」。
   // 「两态、绝不裸载荷、空串是坏数据」那三条 fail-closed 纪律现在由
-  // `launch_core::usage_probe_payload_is_two_states_and_never_bare` 钉住。
+  // `backend::control::payload 的 usage_probe_payload_is_two_states_and_never_bare` 钉住。
   it("★ 账号 0 的表态原样送到 Rust（configDir 必须是字面 null，不能被省成 undefined）", async () => {
     invokeMock.mockResolvedValue({ captured: true, raw: "30%", error: null });
     await fetchAccountUsage("aya", "0", null);

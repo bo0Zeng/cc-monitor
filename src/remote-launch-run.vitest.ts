@@ -47,7 +47,7 @@ function mockInvoke(launchTerminal: () => Promise<unknown>): void {
       return Promise.resolve({ installed: false, version: null, capabilities: [] });
     }
     // U8a-2c-pre：兜底那支的 `container:"none"` 载荷现在由 **Rust** 渲染
-    // （`launch_core::render_payload`）。本文件的题目是 toast/剪贴板分支，不是渲染 ——
+    // （`backend::control::payload::render_payload`）。本文件的题目是 toast/剪贴板分支，不是渲染 ——
     // 但下面几条断言要看命令内容，所以这里给一个**忠实的最小镜像**。
     // ⚠ 它不是第三份实现：渲染的正确性由 `src/backend/control/fixtures/payload-golden.json`
     // 的跨语言逐字节对拍钉住，这里只是让 IPC 桩吐出形状对的串。

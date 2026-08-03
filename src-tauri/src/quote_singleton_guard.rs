@@ -4,13 +4,13 @@
 //!
 //! 收口前全仓有**五份逐字节相同**的实现：`launch.rs::posix_quote` ·
 //! `ssh_source.rs::shell_quote` · daemon `tmux_hook.rs::sq` ·
-//! **`launch-core::posix_quote`（U8c-1 自己新加的第四份）** ·
+//! **`shell-quote-core::posix_quote`（U8c-1 自己新加的第四份；那时 crate 叫 `launch-core`）** ·
 //! **`acct_iso_deploy.rs::sq`（第五份 —— 我摸底只数出四份、账本 S5 记的也是四份，
 //! 是这条守卫第一次跑就当场抓出来的）**。
 //!
 //! 账本 S5 原本记着「`common/` 收不了 quote」，而 U8c-1 造出了共享 crate 这个载体、
 //! 却在里面又加了一份 —— **拆分制造新副本、账本没跟**的典型形状。S5 当时就写下了
-//! 「要么收进 `launch-core` 让三处调它，要么开一条对拍。今天两样都没有」。本模块是那条收口。
+//! 「要么收进那个共享 crate 让三处调它，要么开一条对拍。今天两样都没有」。本模块是那条收口。
 //!
 //! # 为什么值得一条守卫而不只是「改完就算」
 //!
@@ -21,7 +21,7 @@
 //! # 它查什么、查不了什么
 //!
 //! 查的是「`'\''` 这个 POSIX 逃逸序列出现在几个**生产**文件里」。
-//! `launch-core` 是唯一允许的那个；其余文件出现即红。
+//! `shell-quote-core` 是唯一允许的那个；其余文件出现即红。
 //!
 //! ⚠ **查不了「换个写法的等价实现」**（比如手写 char 循环而不用 `replace`）——
 //! 那属于「换个名字继续错」，与本仓其它约定型守卫同一档。**比没有强，别读成证明。**
@@ -37,7 +37,7 @@ mod tests {
     const ESCAPE_PLAIN: &str = r#""'\\''""#;
 
     /// 唯一允许持有这个实现的文件（相对仓根）。
-    const SOLE_HOME: &str = "src-tauri/crates/launch-core/src/lib.rs";
+    const SOLE_HOME: &str = "src-tauri/crates/shell-quote-core/src/lib.rs";
 
     fn repo_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -86,7 +86,7 @@ mod tests {
         );
     }
 
-    /// ★ 本模块的正题：`'\''` 只许出现在 `launch-core` 的**生产段**里。
+    /// ★ 本模块的正题：`'\''` 只许出现在 `shell-quote-core` 的**生产段**里。
     ///
     /// 测试段与注释不算 —— 用 `guard_core::production_code` 剥掉（它就是为这件事存在的：
     /// 便宜的 `split("\n#[cfg(test)]")` 近似在大文件上会把扫描面砍掉三分之二）。
@@ -111,7 +111,7 @@ mod tests {
         assert!(
             offenders.is_empty(),
             "又出现了第二份 POSIX 单引号 quote 实现（收口前有**五份**、逐字节相同、从来没红过）。\n\
-             唯一的家是 `{SOLE_HOME}`，请调 `launch_core::posix_quote`。\n\
+             唯一的家是 `{SOLE_HOME}`，请调 `shell_quote_core::posix_quote`。\n\
              命中：{offenders:?}"
         );
     }
@@ -121,9 +121,9 @@ mod tests {
     /// # 复盘审计说它是仪式性的，实测判定：**不是，留**
     ///
     /// 分两种情形量过（2026-08-03）：
-    /// - **把实现挖空**（换成不逃逸的实现）⇒ 全仓红 **27 条**（launch-core 自己 7 条 +
+    /// - **把实现挖空**（换成不逃逸的实现）⇒ 全仓红 **27 条**（那个 crate 自己 7 条 +
     ///   monitor 20 条）。这一情形本条确实是重复的。
-    /// - **行为等价、但源码里不再出现那个字面量**（改成逐 char push）⇒ launch-core 36 条
+    /// - **行为等价、但源码里不再出现那个字面量**（改成逐 char push）⇒ 那个 crate 当时 36 条
     ///   全绿、monitor 737 条全绿，**只有本条红**。
     ///
     /// 第二种才是本条真正的岗位：那时零命中守卫会**零命中地绿**，从此对「下一个人再复制一份
@@ -131,7 +131,7 @@ mod tests {
     /// 零命中守卫的唯一锚点。**（同 `the_source_scan_actually_finds_rust_files` 一族。）
     #[test]
     fn the_sole_home_really_holds_the_implementation() {
-        let src = fs::read_to_string(repo_root().join(SOLE_HOME)).expect("launch-core 读不到");
+        let src = fs::read_to_string(repo_root().join(SOLE_HOME)).expect("shell-quote-core 读不到");
         let prod = guard_core::production_code(&src);
         assert!(
             prod.contains(ESCAPE_RAW) || prod.contains(ESCAPE_PLAIN),
@@ -162,7 +162,7 @@ mod tests {
             "a\nb",
             "$(id)",
         ] {
-            let core = launch_core::posix_quote(s);
+            let core = shell_quote_core::posix_quote(s);
             assert_eq!(
                 crate::ssh_source::shell_quote(s),
                 core,

@@ -65,14 +65,14 @@ export async function fetchAccountUsage(
 
   let outcome: AccountUsageOutcome;
   try {
-    // U8c-2a：只报「哪个账号」，载荷由 Rust 内核（`launch-core`）编译。
+    // U8c-2a：只报「哪个账号」，载荷由 Rust 内核（`backend::control::payload`）编译。
     // `configDir === null` 就是**账号 0** 的显式表态 —— 原样透给 Rust，不在这里做任何渲染。
     //
     // **configDir 的校验留在 TS，这是纵深防御不是重复**（同 `resolve_query.rs` 的 B2 纪律：
     // 「权威也保留本地校验」）。搬走的是**渲染**，不是**前置条件**：
     //   · 空串是坏数据（空值 ≠ 未设，账号 0 请传 null）；
     //   · 非法 configDir（引号 / 元字符 / 相对路径 / 路径穿越）⇒ **连问都不该问**。
-    // Rust 侧也会各自再拒一道（`launch_core::config_dir_command_safe`，而且用的是更严的并集），
+    // Rust 侧也会各自再拒一道（`backend::control::payload::config_dir_command_safe`，而且用的是更严的并集），
     // 但那要多一次 IPC 往返，且既有 6 条测试逐字记着「探测不发起」。
     if (configDir === "") {
       throw new Error("用量探针需要显式 configDir（账号 0 请传 null，空串是坏数据）");

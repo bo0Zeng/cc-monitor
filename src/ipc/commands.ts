@@ -596,11 +596,11 @@ export const commands = {
   config_surface_report: () => invoke<ConfigSurfaceReport>("config_surface_report"),
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
   drift_ledger_report: () => invoke<DriftFaceReport[]>("drift_ledger_report"),
-  // U8c-2c-2：`ccm 调用行`改由 Rust 渲染（`launch_core::cli`）。
+  // U8c-2c-2：`ccm 调用行`改由 Rust 渲染（`backend::control::ccm_invocation`）。
   // **`ok:false` 不是错误，是诚实降级** —— 调用方拿着 `reason` 去走兜底渲染器（§33）。
   render_ccm_launch: (args: { req: CliRenderRequest }) =>
     invoke<CliRenderResponse>("render_ccm_launch", args),
-  // U8a-2c-pre：兜底那支 `container:"none"` 的载荷也由 Rust 渲染（`launch_core::render_payload`）。
+  // U8a-2c-pre：兜底那支 `container:"none"` 的载荷也由 Rust 渲染（`backend::control::payload::render_payload`）。
   // 非法输入（空 configDir / shell 元字符 / 会裂的 arg）⇒ Rust 侧 `Err` ⇒ 这里 reject。
   render_launch_payload: (args: { req: PayloadRenderRequest }) =>
     invoke<string>("render_launch_payload", args),

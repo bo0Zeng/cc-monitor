@@ -65,7 +65,7 @@ import {
 export const CLAUDE_NESTED_ENV_VARS = AGENT_PROFILE.nestedEnvVars.join(" ");
 
 // U8c-2a：`buildUsageProbePayload` **已退役** —— 用量探针的载荷改由 Rust 内核
-// `launch_core::usage_probe_payload` 编译（账本 S28 的第 ② 份产出点就此消失）。
+// `backend::control::payload::usage_probe_payload` 编译（账本 S28 的第 ② 份产出点就此消失）。
 // 那条「两态、绝不裸载荷、空串是坏数据」的 fail-closed 纪律原样搬了过去并有测试；
 // 前端只报 `configDir`（`null` = 账号 0）。
 

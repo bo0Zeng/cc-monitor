@@ -1,8 +1,8 @@
-//! U8c-1：`launch-core` 的载荷渲染 **↔** TS `launch-render-fallback.ts` 的**逐字节对拍**。
+//! U8c-1：`backend::control::payload` 的载荷渲染 **↔** TS `launch-render-fallback.ts` 的**逐字节对拍**。
 //!
 //! # 为什么这条判据活在 `src-tauri` 而不在 crate 里
 //!
-//! `launch-core` 是**零外部依赖**的共享 crate（同 branch-core / usage-core / acct-core /
+//! 渲染器**曾经**在零外部依赖的共享 crate 里（同 branch-core / usage-core / acct-core /
 //! guard-core 的约束：daemon 是 Linux-only 静态 musl 二进制，一旦引入平台相关的东西共享就破了）。
 //! 读夹具要 `serde_json`，而 `src-tauri` 本来就有。⇒ 内核保持纯，判据放在有依赖的这一侧。
 //!
@@ -20,7 +20,7 @@
 //! 入库夹具照样全绿（复盘审计用变异实测过）。夹具挡的是**单侧静默漂移**，不是两侧同错。
 //!
 //! 真正挡「两侧同错」的是**各侧自己的语义判据**：TS 的 `launch-render-*.test.ts` +
-//! Rust 的 `launch-core` 自测（`cli.rs` 那半到 UB-复盘2 才有，此前是 0 条）。
+//! Rust 侧自己的单测（`ccm_invocation.rs` 那半到 UB-复盘2 才有，此前是 0 条）。
 //! ⚠ 而 TS 那半**排期在 U8c-3 被删** —— 那天一到，本对拍只剩「Rust 跟上次一样」的快照意义。
 
 use serde::Deserialize;

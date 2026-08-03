@@ -57,7 +57,7 @@ mod tests {
     /// `ci.yml` 里**真的会跑**的那些行 —— 注释行剔掉。
     ///
     /// ⚠ 实测（2026-08-03 复盘 P3）：本模块此前直接对整份 `ci.yml` 做 `contains`，
-    /// 把 `cargo test -p launch-core` **注释掉**之后守卫**照旧全绿**（3 passed）。
+    /// 把 `cargo test -p shell-quote-core` **注释掉**之后守卫**照旧全绿**（3 passed）。
     /// 而「注释掉一步」正是本模块要防的那个病的最省事形态 —— 它连 diff 都很小。
     /// 顺带：文件头那段散文注释里也写着这套纪律的命令形态，散文不该当证据。
     fn ci_live_lines() -> String {
@@ -73,7 +73,7 @@ mod tests {
     fn the_crate_scan_actually_finds_crates() {
         let n = shared_crate_names().len();
         // 地板从 4 棘到 5（实测 5：branch-core / usage-core / acct-core / guard-core /
-        // launch-core）。差一个的地板意味着「少抽到一个 crate」不会红 —— 而少抽到的那个
+        // shell-quote-core）。差一个的地板意味着「少抽到一个 crate」不会红 —— 而少抽到的那个
         // 恰好就是没人管 CI 的那个。删共享 crate 时来改这个数，是刻意的摩擦。
         assert!(
             n >= 5,
