@@ -989,23 +989,12 @@ pub enum LaunchAccount {
 #[cfg(any(windows, test))]
 const SHELL_META_COMMON: &str = "'\"`$;|&<>*?()!";
 
-/// 会被用来伪装路径的不可见 / 双向控制字符。
-///
-/// ⚠ **U8c-1 起这张表只剩 Windows 那条路在用**（`validate_config_dir_ps`）。
-/// POSIX 侧已改调 `launch_core::config_dir_command_safe`（建立在 `acct_core::is_deceptive_char`
-/// 的并集上）。**这张表是 U7-3 之前的旧集合**，缺 `U+1680` · `U+2000..200A` · `U+202F` ·
-/// `U+205F` · `U+2060..2064` · `U+3000`。
-///
-/// **为什么不顺手把 PS 侧也换掉**：Windows 的账号目录长成 `C:\Users\z\.claude-accts\z`，
-/// 「什么算绝对路径」与「`\` 算不算危险字符」两侧结论相反 —— `acct-core` 头注已经为同族的
-/// `is_safe_config_dir` 裁决过「**是刻意的平台特化，不是漂移** ⇒ 不合」。
-/// 硬合只能二选一地牺牲一个平台。⇒ **登记在案，留给 U4b（真机）或 U8c-3**，不假装做完了。
-#[cfg(any(windows, test))]
-const SPOOFABLE: &[char] = &[
-    '\u{00a0}', '\u{200b}', '\u{200c}', '\u{200d}', '\u{200e}', '\u{200f}', '\u{2028}', '\u{2029}',
-    '\u{202a}', '\u{202b}', '\u{202c}', '\u{202d}', '\u{202e}', '\u{2066}', '\u{2067}', '\u{2068}',
-    '\u{2069}', '\u{feff}',
-];
+// U8c-3-alt（账本 S18 收口）：这里原本有一张 `SPOOFABLE` 表 —— **U7-3 之前的旧集合**，
+// 18 项，缺 `U+1680` · `U+2000..200A` · `U+202F` · `U+205F` · `U+2060..2064` · `U+3000`。
+// 它在 U8c-1 之后只剩 Windows 那条路在用；本轮 Windows 也改调 `acct_core::is_deceptive_char`
+// （「什么算视觉欺骗」是**平台无关**的判断，与 `is_safe_config_dir` 那条「`\` 与盘符」的
+// 平台特化不是一回事 —— `acct-core` 头注对后者的「不合」裁决不适用于这里）。
+// ⇒ 那张表**删掉**，不是留着不用：留着就是「旧集合还在仓里等下一个人复制」。
 
 #[cfg(any(windows, test))]
 fn has_bad_chars(dir: &str, extra: &str) -> bool {
@@ -1014,7 +1003,11 @@ fn has_bad_chars(dir: &str, extra: &str) -> bool {
             || ('\u{0080}'..='\u{009f}').contains(&c)
             || SHELL_META_COMMON.contains(c)
             || extra.contains(c)
-            || SPOOFABLE.contains(&c)
+            // U8c-3-alt（账本 S18 收口）：这里原本用本文件那张 **U7-3 之前的旧表**。
+            // 换成共享并集 —— 「什么算视觉欺骗」是**平台无关**的判断，
+            // 与 `is_safe_config_dir` 那条「`\` 与盘符」的平台特化不是一回事
+            // （`acct-core` 头注对后者的「不合」裁决不适用于这里）。
+            || acct_core::is_deceptive_char(c)
     })
 }
 
