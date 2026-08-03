@@ -183,6 +183,29 @@ F01（`-t` 全改 `=名:`，修了正在杀错会话的真 bug）· F04（`@ccm_
 **只剩「在用户桌面上开一个终端窗口」**。窗口里跑什么由 backend 给（沿用 `--resolve` 的 `CommandPlan` 形状）。
 ⇒ TS 两个渲染器整体退役；顺带修掉 Linux 宿主拉不起终端那个真 bug。
 
+### 1.4b monitor 侧也要有 `backend/` 边界（**用户 2026-08-03 选 A**）
+
+**病**：daemon 内部有 §1.1 的三分，**monitor 侧一个边界都没有** —— `src-tauri/src/` 是平铺的
+54 个 `.rs`，唯一子目录是 `adapter/`。于是 U8c 一族要给「起会话的渲染」找个家时，
+只剩共享 crate 一条路 ⇒ **`launch-core` 的存在是「因为没有第二个地方，才造了第三个地方」**。
+用户 2026-08-01 否决 v1 的原话「否则分了个 crate 和宿主出来反而架构不清」，
+以另一种形态部分兑现了（架构审计 2026-08-03 实测：`launch-core::cli` 的 `DIMENSION_ORDER`
++ `render_ccm_invocation` **就是决策内核**，而 daemon 对整个 crate 的用量只有一行 `posix_quote`）。
+
+**裁决（A）**：
+
+1. **monitor 侧划出 `src-tauri/src/backend/`**，内部沿用 §1.1 的能力线：`backend/control/`（写/控制）
+   与 `backend/observe/`（读）。`render_payload` / `render_ccm_invocation` / wire 适配层迁进
+   `backend/control/`。
+2. **`launch-core` 缩回真·两侧共用的原语**：`posix_quote` · `config_dir_command_safe` ·
+   `UNSET_CONFIG_DIR_PREFIX`（外加它们的直接依赖）。**不再持有决策**。
+3. ⚠ **这一层与 §1.2 是两件事，不许互相顶账**：§1.2 是「同一个二进制、两种交付/生命周期」，
+   共享 crate 是「两个不同的二进制、共享库」。**抽 crate 的进度不能记成 §1.2 的进度**
+   （同理：抽 `usage-core`/`acct-core` 是「消副本」，**不是 S9 的读面合流** —— 那两个
+   30KB/31KB 的 monitor 侧读面今天一行没少）。
+
+**排期**：在「生产层的判据补齐」之后做（见下），因为它要搬的正是那批今天零判据的代码。
+
 ### 1.5 三条已定的技术决策
 
 | | 决定 | 含义 |
@@ -1006,3 +1029,13 @@ daemon job 加 `--target x86_64-pc-windows-msvc` 的 clippy（与 U4 的 check �
   ⚠ **切换初版没有任何判据** —— 两个变异（切回 TS / 静默 fail-open）**都存活**，
   是提交前的变异检查逼出来的。补了两条接缝判据后逐条转红。
   这是 U8c-2a 咬过我的同一形状，区别是这次**在提交前自己抓到了**。
+- 2026-08-03 **三视角复盘（架构漂移 / 微架构整洁度 / 判据体系）**，结论按严重性：
+  ① **方向在偏移** —— 主计划要的是「控制从 monitor 移到 daemon」，而这九个 commit 完成的是
+  「渲染从 TS 移到 monitor 的 Rust」。两者中间产物几乎一样、终点不同；今天后者全绿、
+  **前者仍是零**（`control/launch.rs` 零生产调用方）。
+  ② **判据的注意力跟着「哪里好写」走** —— 46 个变异**存活 30 个**。被钉死的是纯函数+夹具那层；
+  **唯一真正改变生产行为的那层（tauri 命令本体 / 请求构造 / wire 反序列化）判据是零**，
+  那层 12 个变异全部存活，其中「TS 把嵌套字段改个名 ⇒ 每次 tmux 拉起静默回退」
+  正是相关头注逐字声称要防的形态。
+  ③ **§1.4b 裁决（用户选 A）**：monitor 侧划 `backend/`，`launch-core` 缩回三个原语。
+  ⚠ **新纪律：在 ② 补齐之前，不再扩大任何生产切换面、不再往 `launch-core` 加东西。**

@@ -146,6 +146,23 @@ pub struct PayloadRenderRequest {
     pub args: Vec<String>,
     /// 嵌套 env 键表（TS `AGENT_PROFILE.nestedEnvVars`）—— `unset-nested-env` 用。
     pub nested_env: Vec<String>,
+    /// `( <prelude>; exec <inner> )` 包裹（§39 给 F04 rbind 留的槽）。
+    ///
+    /// ⚠ **这个字段是复盘补的。** 初版 wire 里根本没有它，`render_launch_payload` 硬写
+    /// `wrap: &[]` ⇒ **静默丢**。两个审计各自独立点名（「内核为未来功能建好了，wire 却把它
+    /// 挡在门外 —— 将来接上时不会有任何东西红」），而**新的生产命令对拍第一次跑就红了**：
+    /// 夹具里那条 wrap 折叠用例的 TS 产物带包裹、Rust 产物没有。
+    /// 今天 `plan.wrap` 恒空所以无生产影响；补上之后那条用例才真的在验生产路径。
+    #[serde(default)]
+    pub wrap: Vec<WireWrap>,
+}
+
+/// 与 TS `WrapSpec` 同构（`id` 只用于 TS 侧排错，不参与渲染）。
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WireWrap {
+    pub order: i64,
+    pub prelude: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -171,11 +188,19 @@ pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String
         })
         .collect();
     let args: Vec<&str> = req.args.iter().map(String::as_str).collect();
+    let wrap: Vec<launch_core::WrapSpec> = req
+        .wrap
+        .iter()
+        .map(|w| launch_core::WrapSpec {
+            order: w.order,
+            prelude: &w.prelude,
+        })
+        .collect();
     launch_core::render_payload(&launch_core::PayloadSpec {
         env: &env,
         cwd: req.cwd.as_deref(),
         launcher: &req.launcher,
         args: &args,
-        wrap: &[],
+        wrap: &wrap,
     })
 }
