@@ -26,7 +26,7 @@
 | 件 | 内容 | 状态 |
 |---|---|---|
 | **U8c-2c-1（本件）** | `tryRenderCli` 的 Rust 实现进 `launch-core` + 跨语言逐字节对拍。**不切生产** | 本轮 |
-| **U8c-2c-2** | 生产切换：`remote-launch-run.ts` 改调 Rust（需新 tauri 命令 + IR 上线形状） | 待做 |
+| **U8c-2c-2** ✅ | 生产切换：**CLI 那一支已切到 Rust**（`render_ccm_launch`）。兜底那支仍在 TS —— 它要 `session-backend.ts`，而 §33b 有三个未答问题 | 2026-08-02 |
 | **U8c-3** | 删 TS 两个渲染器 + IR + `session-behavior`；收敛 §33/§35/§37/§38；重指 S19 第五处 | 待做 |
 
 **为什么先做内核后切生产**：U8c-1 已经验证过这条路 —— 反过来做等于**在没有逐字节判据的

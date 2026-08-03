@@ -21,7 +21,12 @@ import {
 } from "./launch-requests";
 import type { LaunchModifiers } from "./launch-plan";
 import { renderFallback } from "./launch-render-fallback";
-import { tryRenderCli } from "./launch-render-cli";
+// U8c-2c-2：`tryRenderCli` **不再是生产渲染器**（那一支已切到 Rust）——
+// 它降级为「只供 `launch-cli-golden.ts` 生成夹具」，删在 U8c-3。
+import type { CliRenderResult } from "./launch-render-cli";
+import type { CliRenderRequest } from "./launch-cli-wire.ts";
+import type { CcmProbeResult } from "./ccm-probe.ts";
+import { sanitizeRemoteLauncher } from "./shell-quote.ts";
 import { probeCcm } from "./ccm-probe";
 import { getBehavior } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
@@ -43,7 +48,14 @@ async function renderLaunchCommand(
     // R04①：一次调用同时回答"能不能"与"渲染成什么"。拿不到 `ok:true` 就走兜底——
     // 不存在"渲染出来了但悄悄丢了某个修饰"这个中间态（改造前 `renderCli` 对 `cliFlags` 返回
     // `null` 是静默跳过的，安全性全靠调用方记得先问 `canRenderCli`）。
-    const r = tryRenderCli(plan, ctx, probe);
+    //
+    // **U8c-2c-2：这一支已切到 Rust**（`launch_core::cli::render_ccm_invocation`）。
+    // 前端只发结构化请求，命令由后端渲染 —— 这是本工作区第一条真正切过去的渲染路径。
+    // TS 的 `tryRenderCli` **没删**，降级为「只供夹具对拍」（删在 U8c-3）。
+    //
+    // ⚠ **兜底那支仍在 TS**：`container: tmux` 时它要外层 tmux 命令（`session-backend.ts`），
+    // 而 §33b 写死了「搬它之前必须先回答三件事」。⇒ 那支归 U8c-3。
+    const r = await renderCliViaBackend(ctx, plan, probe);
     if (r.ok) return r.cmd;
     // R04① 的第二条收益（Phase D 审计指出它此前"只活在测试里"，生产侧零消费者）：
     // 把**为什么**降级说出来。刻意用 `console.debug` 而非 toast/`console.warn`——
@@ -53,6 +65,51 @@ async function renderLaunchCommand(
     console.debug(`[launch] CLI 渲染器降级 → 兜底渲染器（origin=${origin}）: ${r.reason}`);
   }
   return renderFallback(plan);
+}
+
+/** U8c-2c-2：把 `{ctx, plan, probe}` 摊成上线形状，交给 Rust 渲染 `ccm …` 调用行。
+ *
+ *  **`ok:false` 不是错误，是诚实降级**（§33）—— 调用方拿着 `reason` 去走兜底渲染器，
+ *  与切换前 `tryRenderCli` 的语义逐字相同。
+ *
+ *  ⚠ IPC 本身失败（后端崩/参数被拒）与「渲染器说渲染不出来」是**两件事**：
+ *  前者 catch 成一条带 `IPC` 字样的 reason，照样降级 —— 拉起功能永不因为渲染器选择而变砖。 */
+async function renderCliViaBackend(
+  ctx: LaunchContext,
+  plan: LaunchPlan,
+  probe: CcmProbeResult,
+): Promise<CliRenderResult> {
+  const req: CliRenderRequest = {
+    isSsh: plan.transport.kind === "ssh",
+    caps: probe.installed ? [...probe.capabilities] : null,
+    action:
+      plan.action.kind === "resume"
+        ? { kind: "resume", sid: plan.action.sid }
+        : plan.action.kind === "attach"
+          ? { kind: "attach", name: plan.action.name }
+          : { kind: "new" },
+    container:
+      plan.container.kind === "tmux"
+        ? { kind: "tmux", name: plan.container.name, send_into: plan.container.mode === "send-into" }
+        : { kind: "none" },
+    cwd: plan.cwd,
+    account:
+      ctx.account.kind === "account"
+        ? { kind: "account", name: ctx.account.name ?? null }
+        : { kind: "base" },
+    ccmSid: ctx.ccmSid ?? null,
+    model: ctx.modelOverride ?? null,
+    launcher: sanitizeRemoteLauncher(plan.launcher),
+    defaultLauncher: AGENT_PROFILE.defaultLauncher,
+  };
+  try {
+    const res = await commands.render_ccm_launch({ req });
+    return res.ok && res.cmd !== null
+      ? { ok: true, cmd: res.cmd }
+      : { ok: false, reason: res.reason ?? "后端未给降级理由" };
+  } catch (e) {
+    return { ok: false, reason: `IPC 渲染失败，走兜底：${String(e)}` };
+  }
 }
 
 interface LaunchToasts {
