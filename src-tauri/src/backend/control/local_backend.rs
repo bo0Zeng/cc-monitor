@@ -59,7 +59,6 @@
 //! 真进程行为由 `e2e/local-backend-supervise.sh` 验：它**显式**把二进制路径喂给
 //! [`supervise`]，并强制私有 `TMUX_TMPDIR`，绝不碰用户真实 tmux server。
 
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -260,6 +259,23 @@ pub fn supervise(
             if let Ok(mut g) = child.lock() {
                 *g = Some(spawned);
             }
+            // ★ **F16 关窗**：`stopping` 原来只在循环顶部与 EOF 之后检查 ⇒ 存在一个窗口 ——
+            // 刚过顶部检查就 `spawn`，此刻 `stop()` 执行：它置位 `stopping`，但锁里还是 `None`
+            // ⇒ **一个字节的 kill 都没发**；线程接着把子进程存进锁、进 `io::copy` 永久阻塞
+            // （daemon 对 stdin 关闭刻意不敏感、也不会自己退）⇒ **monitor 退了、daemon 还在跑，
+            // 而且没人再能 kill 它** —— 那正是 `stop()` 头注说的「游魂进程」。
+            // 触发条件：启动后极短时间内退出（single-instance 第二实例、启动即关窗）。
+            if stopping.load(Ordering::SeqCst) {
+                if let Ok(mut g) = child.lock() {
+                    if let Some(c) = g.as_mut() {
+                        let _ = c.kill();
+                        let _ = c.wait();
+                    }
+                    *g = None;
+                }
+                pid.store(0, Ordering::SeqCst);
+                return;
+            }
             let attempt = attempts.fetch_add(1, Ordering::SeqCst) + 1;
             on_event(SuperviseEvent::Started {
                 pid: this_pid,
@@ -267,19 +283,34 @@ pub fn supervise(
             });
 
             // ★ 等它死：读到 EOF。**这不是定时器，也不是轮询** —— 没有「隔多久看一眼」。
+            //
+            // ⚠ **F16 修**：原来是 `read_to_end(&mut Vec::new())` —— 那会把被监护 daemon 的
+            // **全部 stdout 攒在一个永不释放的 `Vec` 里**，而它是**持续产帧**的
+            // （那正是本模块头注用来论证「它不会关掉 stdout」的理由）⇒ 增长速度 =
+            // 本机所有会话的 jsonl 产出速度，且没有任何消费者。
+            // 今天不咬人只因为 `resolve_beside_this_exe` 恒 `Missing`（`tauri.conf.json` 里没有
+            // `externalBin`）—— **离生效只差一个配置项**，而 `e2e/local-backend-supervise.sh`
+            // 那条真进程路径现在就在跑它。
+            // ⇒ `io::copy` 到 `io::sink()`：**EOF 语义完全不变**，但一个字节都不留。
             if let Some(mut o) = out {
-                let mut sink = Vec::new();
-                let _ = o.read_to_end(&mut sink);
+                let _ = std::io::copy(&mut o, &mut std::io::sink());
             }
-            // EOF 之后收尸：此刻它已经死了（或正被 kill），`wait()` 不会久等。
-            let code = child
-                .lock()
-                .ok()
-                .and_then(|mut g| g.as_mut().and_then(|c| c.wait().ok()))
+            // EOF 之后收尸。
+            //
+            // ⚠ **F16 修**：原来是 `child.lock().ok().and_then(|mut g| … c.wait())` ——
+            // guard 活在闭包里 ⇒ **`wait()` 整段都持着锁**。而「子进程关掉 stdout 但继续活着」
+            // 是本模块**已登记的诚实边界**（见头注），那时 `wait()` 会久等，后果不是
+            // 「误判它死了」而是：`stop()` 第一件事就是 `self.child.lock()`，而它跑在
+            // **主线程**（`lib.rs` 的 `RunEvent::Exit`）⇒ **窗口关了、进程退不出去，只能 kill -9**。
+            // ⇒ 先把 `Child` 从锁里 **`take()` 出来**，再在锁外 `wait()`。
+            // ⚠ 并发上安全：此刻已过 EOF，子进程要么死了要么正被 kill；
+            // 一个并发的 `stop()` 看到 `None` 只是不再重复 kill，它设的 `stopping`
+            // 仍会被下面那条检查读到。
+            let mut reaped = child.lock().ok().and_then(|mut g| g.take());
+            let code = reaped
+                .as_mut()
+                .and_then(|c| c.wait().ok())
                 .and_then(|s| s.code());
-            if let Ok(mut g) = child.lock() {
-                *g = None;
-            }
             pid.store(0, Ordering::SeqCst);
             on_event(SuperviseEvent::Exited { code, attempt });
 
@@ -290,7 +321,12 @@ pub fn supervise(
             let decision = {
                 let mut g = crashes.lock().expect("crash 账被 poison");
                 g.push(t);
-                decide(&g, t, limits)
+                let d = decide(&g, t, limits);
+                // ⚠ **F16 顺手修**：原来只 push 不修剪 ⇒ 崩溃间隔大于窗口时向量单调增长，
+                // 且每次决策都 O(n) 全扫（每 20s 崩一次跑一个月 ≈ 13 万条）。
+                // `decide` 本来只看窗口内的那些 ⇒ 修剪**不改语义**（由 `decide` 的单测钉着）。
+                g.retain(|x| t.saturating_sub(*x) < limits.window_ms);
+                d
             };
             match decision {
                 Decision::Restart => continue,
@@ -691,5 +727,195 @@ mod tests {
         let _ = std::process::Command::new("taskkill")
             .args(["/PID", &pid.to_string(), "/T", "/F"])
             .status();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // F16：三处失败模式（都是 F05a 我自己写的代码，F12 的 `/full-audit` 逐行核出来的）
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 监护线程「等它死 + 收尸」那一段的生产源码。
+    fn wait_section() -> String {
+        let prod = guard_core::production_code(include_str!("local_backend.rs"));
+        let at = prod
+            .find("pub fn supervise(")
+            .expect("找不到 `supervise` —— 改名了就把下面三条一起改");
+        prod[at..].to_string()
+    }
+
+    /// ★ ①「等它死」不许把 stdout 攒起来。
+    ///
+    /// 原来是 `read_to_end(&mut Vec::new())` —— 被监护的 daemon **持续产帧**
+    /// （那正是头注用来论证「它不会关 stdout」的理由）⇒ 那个 `Vec` 单调增长且没有消费者。
+    /// ⚠ 今天不咬人只因为 `resolve_beside_this_exe` 恒 `Missing` —— **离生效只差一个配置项**。
+    #[test]
+    fn waiting_for_death_never_accumulates_the_child_stdout() {
+        let sec = wait_section();
+        // 运行时拼，免得命中本文件自己的说明。
+        let bad = format!("read_to{}", "_end");
+        assert!(
+            !sec.contains(bad.as_str()),
+            "`supervise` 里又出现了把 stdout 读进内存的写法 —— 被监护对象是**持续产帧**的，\n\
+             那个缓冲区会随本机使用时长单调增长、且没有任何消费者。\n\
+             ⇒ 用 `io::copy` 到 `io::sink()`：**EOF 语义完全不变**，但一个字节都不留。"
+        );
+        assert!(
+            sec.contains("std::io::copy(") && sec.contains("std::io::sink()"),
+            "找不到 `io::copy(… , io::sink())` —— 那是本条要求的那个形态"
+        );
+    }
+
+    /// ★★ ②`wait()` 不许在持锁的情况下调。
+    ///
+    /// 「子进程关掉 stdout 但继续活着」是本模块**已登记的诚实边界**；那时 `wait()` 会久等，
+    /// 而 `stop()` 第一件事就是 `self.child.lock()` 且它跑在**主线程**（`RunEvent::Exit`）
+    /// ⇒ 持锁 `wait()` 会把「误判它死了」升级成**应用退不出去**。
+    #[test]
+    fn reaping_never_holds_the_child_lock_while_it_waits() {
+        let sec = wait_section();
+        // 先把子进程从锁里 `take()` 出来，再在锁外 `wait()`。
+        let take_at = sec
+            .find("child.lock().ok().and_then(|mut g| g.take())")
+            .expect(
+                "收尸段不再先 `take()` 出来 —— 那意味着 `wait()` 可能又回到了锁里面。\n\
+                 后果不是「误判它死了」，是 `stop()` 在主线程永久阻塞、窗口关了进程退不出去。",
+            );
+        // ⚠ **不能只写 `sec.find(".wait()")`** —— 那会命中**关窗块**里那个
+        //   `c.kill(); c.wait();`（它在 `take()` 之前，且它是对的：那处本来就持锁、
+        //   而子进程刚被 kill、不会久等）。第一版就是这么写的，**判据自己当场红了**。
+        //   ★ 又一次「锚点指到了第一处同名的东西」而不是那一处。
+        //   ⇒ 钉的是「**被 wait 的那个东西是从锁里 take 出来的**」：`reaped` 之后紧跟 `.wait()`。
+        let after_take = &sec[take_at..(take_at + 260).min(sec.len())];
+        assert!(
+            after_take.contains("reaped") && after_take.contains(".wait()"),
+            "`take()` 之后没紧跟着对取出来的那个 `Child` 调 `wait()` —— 实得这一段：{after_take:?}"
+        );
+        // ★ 反向：`wait()` 那一行不许再出现在 `lock()` 的链式调用里。
+        for l in sec.lines() {
+            let t = l.trim_start();
+            if t.starts_with("//") {
+                continue;
+            }
+            assert!(
+                !(l.contains(".lock()") && l.contains(".wait()")),
+                "这一行同时有 `.lock()` 与 `.wait()` ⇒ 又变成持锁等了：{l}"
+            );
+        }
+    }
+
+    /// ★★ ③`spawn` 与「登记进锁」之间那个窗口必须关上。
+    ///
+    /// 原来 `stopping` 只在循环顶部与 EOF 之后检查 ⇒ 刚过顶部检查就 `spawn` 时，
+    /// 一个并发的 `stop()` 会看到锁里还是 `None`、**一个字节的 kill 都没发**，
+    /// 而线程接着把子进程存进锁并进 `io::copy` 永久阻塞
+    /// ⇒ **monitor 退了、daemon 还在跑且没人能 kill 它** —— `stop()` 头注说的「游魂进程」。
+    #[test]
+    fn the_window_between_spawn_and_registration_is_closed() {
+        let sec = wait_section();
+        let reg_at = sec
+            .find("*g = Some(spawned);")
+            .expect("找不到「把子进程存进锁」那一行");
+        let after = &sec[reg_at..];
+        // 存完之后、发 `Started` 之前，必须再读一次 `stopping`。
+        let started_at = after
+            .find("SuperviseEvent::Started")
+            .expect("找不到 `Started` 事件");
+        let window = &after[..started_at];
+        assert!(
+            window.contains("stopping.load("),
+            "登记子进程之后没有复查 `stopping` —— 那个窗口还开着：\n\
+             `stop()` 落在里面就是一个**没人能 kill 的游魂 daemon**。\n\
+             实得这一段：{window:?}"
+        );
+        assert!(
+            window.contains("kill()"),
+            "复查到 `stopping` 之后没有就地 kill —— 只 return 的话子进程留下来了"
+        );
+    }
+
+    /// ★ **反向断言（「让它发生」那一半）**：改成 `io::copy` 之后，
+    /// 「子进程写了远超任何缓冲区的量再退出」这条路**仍然**能被检测到死亡。
+    ///
+    /// ⚠ 只断言「没攒内存」是不够的 —— 那与「机制根本没跑」区分不开（F14 的 e2e 差点空绿）。
+    /// 本条让它**真的发生一次**：8 MiB stdout + 正常退出 ⇒ `Exited` 必须来。
+    #[test]
+    fn a_child_that_floods_stdout_and_exits_is_still_detected_as_dead() {
+        let (tx, rx) = std::sync::mpsc::channel::<SuperviseEvent>();
+        let h = supervise(
+            PathBuf::from("sh"),
+            vec![
+                "-c".into(),
+                // 8 MiB 到 stdout，然后正常退出。
+                "dd if=/dev/zero bs=1024 count=8192 2>/dev/null; exit 3".into(),
+            ],
+            vec![],
+            CrashLimits {
+                max_crashes: 1,
+                window_ms: 60_000,
+            },
+            Arc::new(|| 0),
+            Arc::new(move |e| {
+                let _ = tx.send(e);
+            }),
+        );
+        let mut saw_exit = None;
+        for _ in 0..6 {
+            match rx.recv_timeout(std::time::Duration::from_secs(20)) {
+                Ok(SuperviseEvent::Exited { code, .. }) => {
+                    saw_exit = Some(code);
+                    break;
+                }
+                Ok(_) => continue,
+                Err(e) => panic!("20s 内没等到 `Exited` —— EOF 语义被改坏了：{e}"),
+            }
+        }
+        h.stop();
+        assert_eq!(
+            saw_exit,
+            Some(Some(3)),
+            "写了 8 MiB 之后退出的子进程没被正确收尸（或退出码丢了）"
+        );
+    }
+
+    /// ★★ **反向断言**：子进程**关掉 stdout 但继续活着**时，`stop()` 必须**及时返回**。
+    ///
+    /// 这条是 ② 那个死锁链的行为面：持锁 `wait()` 会让这里永久卡住。
+    /// ⚠ 测试里用 `recv_timeout`/带上限的等待是允许的 —— C12 的「零定时器」管的是
+    /// **backend 生产代码**里不许有自己醒过来的构件，不是测试的等待上限。
+    #[test]
+    fn stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on() {
+        let (tx, rx) = std::sync::mpsc::channel::<SuperviseEvent>();
+        let h = supervise(
+            PathBuf::from("sh"),
+            // 关掉 stdout（制造 EOF）但继续活着 —— 那正是已登记的那个诚实边界。
+            vec!["-c".into(), "exec 1>&-; sleep 30".into()],
+            vec![],
+            CrashLimits {
+                max_crashes: 1,
+                window_ms: 60_000,
+            },
+            Arc::new(|| 0),
+            Arc::new(move |e| {
+                let _ = tx.send(e);
+            }),
+        );
+        // 等它真的起来（否则我们可能在 spawn 之前就 stop，测不到那条链）。
+        match rx.recv_timeout(std::time::Duration::from_secs(20)) {
+            Ok(SuperviseEvent::Started { .. }) => {}
+            other => panic!("没等到 `Started`：{other:?}"),
+        }
+        // ★ `stop()` 在另一个线程上跑，主线程带上限地等它回来。
+        let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+        let hh = std::sync::Arc::new(h);
+        let h2 = hh.clone();
+        std::thread::spawn(move || {
+            h2.stop();
+            let _ = done_tx.send(());
+        });
+        done_rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect(
+                "`stop()` 10s 没回来 —— 监护线程正持着 `child` 锁等一个还活着的子进程。\n\
+                 生产上它跑在**主线程**（`RunEvent::Exit`）⇒ 窗口关了、进程退不出去，只能 kill -9。",
+            );
     }
 }
