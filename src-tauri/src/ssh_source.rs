@@ -3773,6 +3773,64 @@ mod f032_idle_tests {
         );
     }
 
+    /// ★ **F01b：本地那条路今天安全，靠的是一个巧合 —— 把那个巧合钉住。**
+    ///
+    /// # 摸底发现
+    ///
+    /// `Superseded` 今天**只从远端帧来**（本地 diff 全部产 `Gone`，`RemovedSid::superseded()`
+    /// 那个构造器生产零调用方、已在 F01b 删掉）。那么本地 `/branch` 为什么没出
+    /// 「永远消不掉的灰点」那个 bug？
+    ///
+    /// **不是因为本地也发 `Superseded`**（`session_map.rs` 原来那句注释这么写，是假的），
+    /// 而是因为**本地 sid 根本进不了 `tmux_raw_registry`** —— 那张表只在 SSH 连接路径
+    /// 按 `host_label` 写（本文件两处写入点都在 `stream_loop` / 断连清理里）。
+    /// ⇒ `find_tmux_origin_for_sid` 对本地 sid 恒 `None` ⇒ `classify_removed(None, Gone)`
+    /// = `Archive`。**结论对、理由是个巧合。**
+    ///
+    /// # 本条钉什么
+    ///
+    /// 钉那个巧合的**前提**：`tmux_raw_registry` 的写入点**只在远端路径**。
+    /// 哪天有人让本地会话也进那张表（比如 F10「本机读面退役」把本机走成同一条路），
+    /// 本地 `/branch` 就会变成 `(Some(origin), Gone)` ⇒ `Idle` ⇒ **那个灰点 bug 回来**，
+    /// 而 `superseded_always_archives_*` 那条**照样绿**（它只管 `Superseded` 那一格）。
+    ///
+    /// ⚠ 所以这不是重复：那条钉「Superseded 走对了」，本条钉「Gone 那一格今天为什么也安全」。
+    /// **F10 动手时本条会红，那是设计** —— 那时要么给本地也发 `Superseded`，
+    /// 要么让 `classify_removed` 不再依赖那份缓存。
+    #[test]
+    fn the_local_path_is_safe_only_because_local_sids_never_enter_the_tmux_cache() {
+        let src = guard_core::production_code(include_str!("ssh_source.rs"));
+        // 抽取器自检：真的抽到了那张表的写入点。
+        let writes = src.matches("tmux_raw_registry()").count();
+        assert!(
+            writes >= 3,
+            "只抽到 {writes} 处 `tmux_raw_registry()` —— 抽取器坏了，本条会零命中地绿"
+        );
+        // ★ 正题：**每一处写入都必须在远端上下文里**（用 `host_label` / `origin_label` 做键）。
+        // 出现一处用本地 sid 或裸常量当键的写入 ⇒ 那个巧合没了。
+        for seg in src.split("tmux_raw_registry()").skip(1) {
+            let head = &seg[..seg.len().min(160)];
+            if !head.contains("insert") {
+                continue; // 只看写入点（读/remove 不改变「谁进得去」）
+            }
+            assert!(
+                head.contains("host_label") || head.contains("origin_label"),
+                "发现一处 `tmux_raw_registry` 的写入不是按远端标签做键：\n{head}\n\
+                 ⇒ 本地 sid 可能进那张表了。那样本地 `/branch` 会变成 (Some(origin), Gone)\n\
+                 ⇒ classify_removed 判 Idle ⇒ 「永远消不掉、也 attach 不上的灰点」那个 bug 回来。\n\
+                 F01b 实测：本地路径今天安全**靠的就是这个巧合**，不是靠 Superseded。"
+            );
+        }
+        // 反向锚点：本地那条 diff 确实只产 `Gone` —— 否则上面的推理换了前提。
+        let sm = guard_core::production_code(include_str!("session_map.rs"));
+        let verb = format!("RemovedSid::{}", "superseded");
+        assert!(
+            !sm.contains(verb.as_str()),
+            "`session_map.rs` 又开始产 `Superseded` 了 —— 那是好事（本地也明说了），\n\
+             但本条的推理前提（本地只产 Gone）变了，回 F01b 重新裁定。"
+        );
+    }
+
     /// ★ S0：`Superseded` 恒归档 —— **且不看 tmux 快照**。
     ///
     /// 这条钉的是用户 2026-07-30 实测的那个 bug：`/branch` 之后原 tab 变成一个永远
