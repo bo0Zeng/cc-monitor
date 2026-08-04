@@ -87,6 +87,15 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
          往 tmux server 装全局 hook 且没有开关（F05 摸底 §2.5）",
     ),
     (
+        "control/local_query.rs",
+        "control",
+        "F10a：**本机一次性查询的传输** —— 「本地 = 不走 ssh 的远端」那一跳的本地版。\
+         daemon 的读面是 14 条一次性子命令，**不在常驻通道上**（hello 的 `commands` 里\
+         一条读命令都没有）⇒ 切读面 = exec 一次 sidecar 拿 stdout。协议一个字不改。\
+         ⚠ 今天**零生产调用方**（F10b 接线），由它自己那条前提触发器盯着 —— \
+         一有调用方就红，逼 `local_read_surface_registry` 的棘轮跟着往下拧",
+    ),
+    (
         "control/launch_wire.rs",
         "control",
         "前端结构化请求 → wire 适配 → ccm 调用行 / 裸载荷（两个 tauri 命令）",
