@@ -104,12 +104,6 @@ mod tests {
             "适配器层的 `records_dir`/`tasks_dir` 解析（哪个 agent 的记录目录）。退役归 F10 本体。",
         ),
         (
-            "src/local_accounts.rs",
-            "reader",
-            3,
-            "本机账号库：`resolve_claude_dir` + 读 `sessions/`。退役归 F10 本体。",
-        ),
-        (
             "src/tasks.rs",
             "reader",
             3,
@@ -296,12 +290,16 @@ mod tests {
         }
         // 抽取器自检：一条 reader 都没认出来时上面全空转。
         assert_eq!(
-            readers, 9,
+            readers, 8,
             "`reader` 条数变了（实测 10 条）。这个数就是 **F10 的真实工作面** —— \
              多一条要说明为什么又加了直读点，少一条说明退役了一处（把棘轮往下拧）。\n\
              ⚠ 棘轮史：11 → **10**（F10b 第一批，`usage.rs` 退役 —— 它改走本机后端的 `--usage`）\n\
              → **9**（F10b 第二批：`accounts.rs` **改分类**为 `remote` —— 它本来就不是本机读面，\n\
-             ⚠ **那一格不算退役、不算工作量减少**，只是把误分类改对，理由写在它自己那条登记里）。\n\
+             ⚠ **那一格不算退役、不算工作量减少**，只是把误分类改对，理由写在它自己那条登记里）\n\
+             → **8**（F10b 第二批·下半：`local_accounts.rs` **真退役** —— 那 3 个命中全属\n\
+             `list_local_session_accounts` 一个函数，它改走 sidecar 的 `--session-accounts`；\n\
+             顺带删掉 `proc_claude_config_dir`/`pid_alive` 两个**平台原语的第二份实现**，\n\
+             它们的家在 daemon 的 `platform/proc.rs`）。\n\
              ⚠ **别把这个数往上调**：往上调等于承认又加了直读点，那要先说清为什么。"
         );
     }
