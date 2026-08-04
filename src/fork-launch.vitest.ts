@@ -120,8 +120,11 @@ describe("describeSlot", () => {
 });
 
 describe("forkTmuxName", () => {
+  // ⚠ F13：`taken` 的默认值 `= []` **已删**，所以这些用例现在必须**显式**写 `[]`。
+  // 那不是噪音 —— 旧默认值让「这个用例假设没有任何撞名」这件事**看不见**，
+  // 而生产调用方少传一个参数也照样编得过（避让形同虚设）。现在两者都被 `tsc` 挡住。
   it("★ 必须与原会话不同 —— 同名会让新会话 attach 进原窗口，毁掉「两条都活着」", () => {
-    const n = forkTmuxName("myproj-cc");
+    const n = forkTmuxName("myproj-cc", []);
     expect(n).not.toBe("myproj-cc");
     expect(n).toBe("myproj-fork-cc");
   });
@@ -136,9 +139,9 @@ describe("forkTmuxName", () => {
   });
 
   it("保持 `<X>-cc` 后缀形状（ccm 靠它认自己的会话）", () => {
-    expect(forkTmuxName("a-cc").endsWith("-cc")).toBe(true);
+    expect(forkTmuxName("a-cc", []).endsWith("-cc")).toBe(true);
     // 原名没有 -cc 后缀时也补上，不产出 ccm 认不出的名字
-    expect(forkTmuxName("bare")).toBe("bare-fork-cc");
+    expect(forkTmuxName("bare", [])).toBe("bare-fork-cc");
   });
 
   /**
@@ -153,14 +156,14 @@ describe("forkTmuxName", () => {
   it("★★ 拿 cwd 当基名也必须产出合法名（真正的判据：planResumeTmux 收得下）", () => {
     const SID = "0473c3a0-1111-2222-3333-444455556666";
     for (const src of ["/home/pi/proj", "/tmp/e2e-remote", "/p/my proj", "/", "", "中文目录"]) {
-      const n = forkTmuxName(src);
+      const n = forkTmuxName(src, []);
       expect(() => planResumeTmux(SID, "/p", "cc", n), `基名 ${JSON.stringify(src)} 产出了非法名 ${n}`).not.toThrow();
       expect(n.endsWith("-cc"), `${n} 丢了 -cc 形状`).toBe(true);
     }
   });
 
   it("净化后为空（如 cwd 是 `/`）→ 退回 session，与 deriveTmuxName 的兜底一致", () => {
-    expect(forkTmuxName("/")).toBe("session-fork-cc");
-    expect(forkTmuxName("")).toBe("session-fork-cc");
+    expect(forkTmuxName("/", [])).toBe("session-fork-cc");
+    expect(forkTmuxName("", [])).toBe("session-fork-cc");
   });
 });

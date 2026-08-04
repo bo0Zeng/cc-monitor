@@ -13,6 +13,7 @@ import {
   buildResumeTmuxCmd,
   buildResumeIntoExistingTmuxCmd,
   pickFreshTmuxName,
+  mintTmuxName,
   buildOpenTerminalCmd,
   isValidTmuxName,
   isValidNewTmuxName,
@@ -135,7 +136,7 @@ test("buildResumeDirectCmd：非法 sid throw", () => {
 test("buildResumeTmuxCmd:完整幂等形态(new-session && set-option @ccm_sid && send-keys; attach)", () => {
   const payload = `${UNSET}claude --resume abc-123`;
   eq(
-    buildResumeTmuxCmd("abc-123", "/home/pi/proj"),
+    buildResumeTmuxCmd("abc-123", "/home/pi/proj", undefined, "abc-123-cc"),
     `tmux new-session -d -s abc-123-cc -c '/home/pi/proj' 2>/dev/null && ` +
       `(tmux set-option -t =abc-123-cc: @ccm_sid abc-123 2>/dev/null || true) && ` + // #72
       TITLE("abc-123-cc") + // F03.4 甲′
@@ -146,7 +147,7 @@ test("buildResumeTmuxCmd:完整幂等形态(new-session && set-option @ccm_sid &
 test("buildResumeTmuxCmd:空 cwd 省 -c", () => {
   const payload = `${UNSET}claude --resume s1`;
   eq(
-    buildResumeTmuxCmd("s1", ""),
+    buildResumeTmuxCmd("s1", "", undefined, "s1-cc"),
     `tmux new-session -d -s s1-cc 2>/dev/null && ` +
       `(tmux set-option -t =s1-cc: @ccm_sid s1 2>/dev/null || true) && ` + // #72
       TITLE("s1-cc") + // F03.4 甲′
@@ -157,12 +158,12 @@ test("buildResumeTmuxCmd:空 cwd 省 -c", () => {
 test("buildResumeTmuxCmd:自定义 launcher 透传 / 注入 fail-closed claude", () => {
   const p1 = `${UNSET}cct --resume s1`;
   eq(
-    buildResumeTmuxCmd("s1", "", "cct"),
+    buildResumeTmuxCmd("s1", "", "cct", "s1-cc"),
     `tmux new-session -d -s s1-cc 2>/dev/null && (tmux set-option -t =s1-cc: @ccm_sid s1 2>/dev/null || true) && ${TITLE("s1-cc")}tmux send-keys -t =s1-cc: '${p1}' Enter; tmux attach -t =s1-cc:`,
   );
   const p2 = `${UNSET}claude --resume s1`; // 注入 → claude
   eq(
-    buildResumeTmuxCmd("s1", "", "cct; curl evil"),
+    buildResumeTmuxCmd("s1", "", "cct; curl evil", "s1-cc"),
     `tmux new-session -d -s s1-cc 2>/dev/null && (tmux set-option -t =s1-cc: @ccm_sid s1 2>/dev/null || true) && ${TITLE("s1-cc")}tmux send-keys -t =s1-cc: '${p2}' Enter; tmux attach -t =s1-cc:`,
   );
 });
@@ -202,7 +203,7 @@ test("buildResumeIntoExistingTmuxCmd:非法 sid / 非 cc 名 throw", () => {
 test("buildResumeTmuxCmd:cwd 含空格/单引号 → posixQuote", () => {
   const payload = `${UNSET}claude --resume s1`;
   eq(
-    buildResumeTmuxCmd("s1", "/home/pi/my proj"),
+    buildResumeTmuxCmd("s1", "/home/pi/my proj", undefined, "s1-cc"),
     `tmux new-session -d -s s1-cc -c '/home/pi/my proj' 2>/dev/null && ` +
       `(tmux set-option -t =s1-cc: @ccm_sid s1 2>/dev/null || true) && ` + // #72
       TITLE("s1-cc") + // F03.4 甲′
@@ -210,13 +211,13 @@ test("buildResumeTmuxCmd:cwd 含空格/单引号 → posixQuote", () => {
   );
   // cwd 含单引号：-c 段 posixQuote 逃逸
   eq(
-    buildResumeTmuxCmd("s1", "/a'b").includes(`-c '/a'\\''b'`),
+    buildResumeTmuxCmd("s1", "/a'b", undefined, "s1-cc").includes(`-c '/a'\\''b'`),
     true,
   );
 });
 
 test("#72 buildResumeTmuxCmd:@ccm_sid 用**完整 sid**(非会话名前 8),且在 create 分支(new-session 后、send-keys 前)", () => {
-  const cmd = buildResumeTmuxCmd("deadbeef-1234-5678", "");
+  const cmd = buildResumeTmuxCmd("deadbeef-1234-5678", "", undefined, "deadbeef-cc");
   // 会话名取前 8(deadbeef-cc),但 @ccm_sid = 完整 sid（读取侧 findClaudeTmux 全等匹配的是完整 sid）
   // 非阻断包裹 `(… 2>/dev/null || true)`(审计 建议-1:身份标记不得阻断 resume);在 create 分支
   // (new-session 后、send-keys 前) → 会话已存在时随 `&&` 短路一并跳过(不重设)。
@@ -234,28 +235,52 @@ test("#72 buildResumeTmuxCmd:@ccm_sid 用**完整 sid**(非会话名前 8),且�
   );
 });
 
-test("buildResumeTmuxCmd:sid>8 位 → 会话名取前 8（S4b-3b 后缀形 `<sid8>-cc`）", () => {
+test("F13 mintTmuxName:基名没被占 → 原样返回", () => {
+  eq(mintTmuxName("proj-cc", new Set()), "proj-cc");
+  eq(mintTmuxName("proj-cc", new Set(["other-cc"])), "proj-cc");
+});
+
+test("F13 mintTmuxName:被占 → 从 -2 起找第一个空位（数字在末段）", () => {
+  eq(mintTmuxName("proj-cc", new Set(["proj-cc"])), "proj-cc-2");
+  eq(mintTmuxName("proj-cc", new Set(["proj-cc", "proj-cc-2"])), "proj-cc-3");
+  // 中间有空位就用它，不一味往后长
+  eq(mintTmuxName("proj-cc", new Set(["proj-cc", "proj-cc-3"])), "proj-cc-2");
+});
+
+test("★ F13 mintTmuxName:产名与避让不可分离 —— 它是全仓唯一的铸名口", () => {
+  // 撞名的根因不是「忘了检查」，是**两件事被拆开了**：五个产出点里只有两个带避让，
+  // 而带避让的那个避让的正好是不带避让的那个会产的名字。
+  // 这条钉住「老产出点现在从这里出名」：给同一个 existing，避让行为必须逐字一致。
+  const taken = new Set(["deadbeef-cc"]);
+  eq(pickFreshTmuxName("deadbeef-1234", taken), mintTmuxName("deadbeef-cc", taken));
+  // `existing` 是必填参数（无默认值）—— 少传会被 tsc 挡住，那是编译期那一层的判据；
+  // 这里钉「空集合与非空集合确实走不同分支」，证明它真的读了这个参数、不是摆设。
+  eq(mintTmuxName("deadbeef-cc", new Set()) !== mintTmuxName("deadbeef-cc", taken), true);
+});
+
+test("F13 铸名口:`<sid8>-cc` 的基名只由 pickFreshTmuxName 产（buildResumeTmuxCmd 逐字用传进来的名）", () => {
+  // ⚠ **本条替代了原来那两条**（「sid>8 位 → 取前 8」与「省略 name 时的默认名 == pickFreshTmuxName 的基名」）。
+  // 那两条钉的是 `planResumeTmux` **自己那个默认值**的形状，而 F13 把那个默认值**删掉了**：
+  // 会话名一律由调用方过 `mintTmuxName` 铸出来再传进来。⇒ 它们钉的性质**不复存在**，
+  // 不是被放宽（铁律 13：删判据前先证明它恒绿 —— 这里是「被测对象没了」，比恒绿更彻底）。
+  //
+  // 接手那个性质的是本条 + `session_name_registry` 的递减棘轮（全仓「谁在产 `-cc` 名」的账）。
+  const sid = "deadbeef-1234-5678";
+  const base = pickFreshTmuxName(sid, new Set());
+  eq(base, "deadbeef-cc"); // 基名形状仍由那唯一的产地钉住
+  // 撞名时往后排，而且**这一段是 mintTmuxName 干的**（产名与避让不可分离）。
+  eq(pickFreshTmuxName(sid, new Set(["deadbeef-cc"])), "deadbeef-cc-2");
+  // 渲染器逐字用传进来的名字，不自己派生任何东西。
+  eq(buildResumeTmuxCmd(sid, "", undefined, base).includes(`-s ${base} `), true);
   eq(
-    buildResumeTmuxCmd("deadbeef-1234-5678", "").startsWith(
-      "tmux new-session -d -s deadbeef-cc ",
-    ),
+    buildResumeTmuxCmd(sid, "", undefined, "totally-other-cc").includes("-s totally-other-cc "),
     true,
   );
 });
 
-test("S4b-3b 对拍:省略 name 时的默认会话名 == pickFreshTmuxName 的基名（两处同源，别只改一边）", () => {
-  // 2026-08-01：`launch-requests.ts::planResumeTmux` 的默认值曾是漏改的 `cc-<sid8>` 前缀形，
-  // 而 `pickFreshTmuxName` 早已是 `<sid8>-cc` 后缀形。当时线上没冒出来只是因为三条真实调用
-  // 路径都传了显式 name —— 这条断言把「两处必须同形」钉死，不再靠调用方碰巧都传参兜着。
-  const sid = "deadbeef-1234-5678";
-  const base = pickFreshTmuxName(sid, new Set());
-  eq(base, "deadbeef-cc");
-  eq(buildResumeTmuxCmd(sid, "").includes(`-s ${base} `), true, `默认名应为 ${base}`);
-});
-
 test("buildResumeTmuxCmd:非法 sid throw", () => {
-  throws(() => buildResumeTmuxCmd("a; rm -rf /", "/p"));
-  throws(() => buildResumeTmuxCmd("", "/p"));
+  throws(() => buildResumeTmuxCmd("a; rm -rf /", "/p", undefined, "x-cc"));
+  throws(() => buildResumeTmuxCmd("", "/p", undefined, "x-cc"));
 });
 
 test("F74 buildResumeTmuxCmd:显式 name → 用它作会话名(灰会话 fresh resume 不撞漂移名)", () => {

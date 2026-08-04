@@ -254,7 +254,9 @@ export async function runRemoteResumeTmux(
   sid: string,
   cwd: string,
   launcher: string,
-  name?: string,
+  // F13：`name` 改必填（原为 `name?`）。生产三个调用点本来都传，但类型允许省略 ——
+  // 而省略就意味着走一个**不做撞名避让**的默认值。让 `tsc` 把「碰巧没人省略」变成「不可能省略」。
+  name: string,
   mods: LaunchModifiers = {}, // R03：正交修饰 bag（configDir/accountName/modelOverride），见 launch-plan.ts
 ): Promise<boolean> {
   let cmd: string;

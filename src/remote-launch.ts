@@ -101,7 +101,9 @@ export function buildResumeTmuxCmd(
   sid: string,
   cwd: string,
   launcher = AGENT_PROFILE.defaultLauncher,
-  name?: string,
+  // F13：`name` 改必填 —— 会话名必须由调用方过 `mintTmuxName` 铸出来，
+  // 本函数是纯渲染器，拿不到「现有会话名集合」，也就无从避让。
+  name: string,
   configDir?: string,
 ): string {
   return renderFallback(planResumeTmux(sid, cwd, launcher, name, { configDir }).plan);
@@ -131,14 +133,37 @@ export function buildResumeIntoExistingTmuxCmd(
  * resume 一定新建自己的 tmux 跑 `--resume <sid>` → 落进原会话,绝不 attach 进漂移的别人。
  * (纯函数,`existing` = 当前 tmux 会话名集合;sid 合法性由 `buildResumeTmuxCmd` 兜底校验。)
  */
-export function pickFreshTmuxName(sid: string, existing: Set<string>): string {
-  // S4b-3b：命名从 `cc-<X>` 反转成 `<X>-cc`（用户 2026-07-31）。撞名后缀仍追加在最后
-  // （`<sid8>-cc-2`）—— 让「第几个」始终是名字的末段，读起来是「哪个会话的第几份」。
-  const base = `${sid.slice(0, 8)}-cc`;
+/**
+ * F13（用户 2026-08-03：「为什么会撞名? 要撞名检查」「所有的东西都要集成整合成一条路径」）：
+ * **tmux 会话名的唯一铸造口** —— 给一个基名，回一个**不撞现有名**的最终名。
+ *
+ * # 为什么「产名」与「避让」必须是同一个函数
+ *
+ * 摸底量到撞名的根因**不是**忘了检查，是**两件事被拆开了**：
+ * 五个产出点里只有两个带避让，而**带避让的那个避让的正好是不带避让的那个会产的名字**
+ * （`pickFreshTmuxName` 精心让出 `<sid8>-cc-2`，而 `launch-requests` 的默认值直接产
+ * `<sid8>-cc` 撞上去）。原注释只钉了「基名字符串相同，别只改一边」，
+ * **没钉「避让也要相同」**。
+ *
+ * ⇒ 收成一个函数，且 **`existing` 是必填参数、没有默认值**。
+ * 默认成空集就等于「有检查的样子、没有检查的事实」——
+ * `forkTmuxName` 此前正是 `taken: readonly string[] = []`，那个默认值让它的避让形同虚设。
+ * **这条由 `tsc` 在编译期钉住**（少传一个参数就编不过），不靠自觉。
+ *
+ * 撞名后缀**追加在最后**（`<base>-2/-3`）—— 让「第几个」始终是名字的末段，
+ * 读起来是「哪个会话的第几份」。
+ */
+export function mintTmuxName(base: string, existing: ReadonlySet<string>): string {
   if (!existing.has(base)) return base;
   let i = 2;
   while (existing.has(`${base}-${i}`)) i += 1;
   return `${base}-${i}`;
+}
+
+export function pickFreshTmuxName(sid: string, existing: Set<string>): string {
+  // S4b-3b：命名从 `cc-<X>` 反转成 `<X>-cc`（用户 2026-07-31）。
+  // F13：避让那一半搬进 `mintTmuxName` —— **全仓唯一的铸造口**，别在这里重写一遍。
+  return mintTmuxName(`${sid.slice(0, 8)}-cc`, existing);
 }
 
 /**
@@ -147,6 +172,11 @@ export function pickFreshTmuxName(sid: string, existing: Set<string>): string {
  *
  * **S4b-3b（用户 2026-07-31）：`cc-` 前缀改成 `-cc` 后缀。** 与 `shared/ccm::derive_tmux_name`
  * 逐字同规则（跨语言双写点，由 `e2e/ccm-cli.test.sh` 的真值对拍钉住，见 E49）。
+ *
+ * ⚠ **F13 定位：它只产「基名建议」，不产最终名。** 最终名一律过 [`mintTmuxName`]
+ * （那里才有撞名避让）。摸底实测：`machine-card` 的「开新 Claude」此前直接拿它当最终名
+ * ⇒ 同一个 cwd 点两次「开始」会产出同名，撞上 create-or-attach 的幂等闸
+ * ⇒ **静默接进第一个会话，而用户以为开了新的**（issue #76 那一族）。
  */
 export function deriveTmuxName(cwd: string): string {
   // 净化那一段已抽进 `shell-quote.ts::tmuxNameSegment`——`forkTmuxName` 要用同一份

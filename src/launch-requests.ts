@@ -57,21 +57,26 @@ export function planResumeTmux(
   sid: string,
   cwd: string,
   launcher = AGENT_PROFILE.defaultLauncher,
-  name?: string,
+  name: string,
   mods: LaunchModifiers = {},
 ): LaunchPlanBuild {
   const { configDir, accountName, modelOverride } = mods;
   if (!isValidSessionId(sid)) {
     throw new Error(`非法 sessionId（拒绝拼入命令）: ${JSON.stringify(sid)}`);
   }
-  // S4b-3b（用户 2026-07-31）：会话名是 `<X>-cc` 后缀形，不是 `cc-<X>` 前缀形。
-  // **这一处是那次反转漏掉的最后一个生产生成点**（2026-08-01 用户复查时揪出）：
-  // 三条真实调用路径都传显式 name（`tabs.ts` 走 `pickFreshTmuxName`、`account-restart.ts`
-  // 复用既有会话名、`fork-flow.ts` 有非空守卫），所以旧形态**当时没在线上冒出来** ——
-  // 但它是个公开导出 API 的默认值，下一个省略 name 的调用方就会静默拿到旧前缀。
-  // 与 `remote-launch.ts::pickFreshTmuxName` 的基名逐字相同，由 `remote-launch.test.ts`
-  // 的对拍断言钉死（两处同源，别只改一边）。
-  const tmuxName = name ?? `${sid.slice(0, 8)}-cc`;
+  // F13（用户 2026-08-03：「要撞名检查」）：**这里原本有一个产名的默认值，已删。**
+  //
+  // 它是撞名的根因之一：它产的 `<sid8>-cc` 与 `pickFreshTmuxName` 的基名**逐字相同**，
+  // 而它**不做撞名避让** —— 也就是说另一处精心让出 `<sid8>-cc-2`，这里直接产
+  // `<sid8>-cc` 撞上去。旧注释只钉了「两处同源，别只改一边」，没钉「避让也要相同」。
+  //
+  // 删它是**零行为改动**，但理由要说准（我第一版说错了，`tsc` 当场证伪）：
+  // **生产上三个真实调用点都传了 name**（`tabs.ts` 传 `pickFreshTmuxName(sid, existing)`、
+  // `account-restart.ts` 传复用的既有名、`fork-flow.ts` 有 `a.tmuxName` 非空守卫）——
+  // 但两个 **wrapper 的类型**（`buildResumeTmuxCmd` / `runRemoteResumeTmux`）当时写的是
+  // `name?: string`，所以「省略 name」在**类型上是允许的**，只是碰巧没人这么调。
+  // ⇒ 把这一路的 `name` 全改成必填，让 `tsc` 把「碰巧」变成「不可能」。
+  const tmuxName = name;
   if (!/^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(tmuxName)) {
     throw new Error(`非法 tmux 会话名（拒绝拼入命令）: ${JSON.stringify(tmuxName)}`);
   }
