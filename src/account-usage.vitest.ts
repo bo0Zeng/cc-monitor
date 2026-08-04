@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { REPO_ROOT } from "./test-support/repo-root.ts";
+import { stripComments } from "./test-support/strip-comments.ts";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const invokeMock = vi.fn();
@@ -147,5 +151,30 @@ describe("fetchAccountUsage", () => {
     await fetchAccountUsage("aya", "z", "/h/.claude-accts/z"); // 缓存已清 → 重新 invoke
     await fetchAccountUsage("aya", "b", "/h/.claude-accts/b"); // 缓存仍在 → 不重新 invoke
     expect(invokeMock).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("F08 接线：本机用量探针真的被调用", () => {
+  // ⚠ **为什么要这条**：把那个分支摘掉之后，`tsc` 会因为 `LOCAL_ORIGIN` 变成未用 import 而红 ——
+  // 但那是**偶然**接住的：把 import 一起删掉就全绿了。
+  // 与 F05a 那次「靠 clippy 的 dead_code 偶然守着」同一族。**靠一条告警守着，等于没守。**
+  const src = stripComments(
+    readFileSync(resolve(REPO_ROOT, "src/account-usage.ts"), "utf8"),
+    "ts",
+  );
+
+  it("★ 生产段真的调了 `account_usage_local`，且按 LOCAL_ORIGIN 分支", () => {
+    expect(src, "没有调本机那条命令 —— 补平了 Rust 侧却没人用，前端仍只走远端").toContain(
+      "commands.account_usage_local(",
+    );
+    expect(src, "没有按 LOCAL_ORIGIN 分支 —— 那就分不出本机与远端").toContain("LOCAL_ORIGIN");
+    // 顺序/形状：本机那条**不许**带 origin 参数（本机就是这台机，带了就是多一个无意义入参）。
+    expect(src).toMatch(/account_usage_local\(\{\s*accountName/);
+  });
+
+  it("★ 远端那条**没有被顺手删掉**（补平不是替换）", () => {
+    expect(src, "远端那条不见了 —— F08 是补平，不是把远端换成本机").toContain(
+      "commands.account_usage({",
+    );
   });
 });

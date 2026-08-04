@@ -118,6 +118,26 @@ ck "延迟 2s 渲染的面板仍被抓到（不是抓回渲染前的屏）" "tru
   "$(printf '%s' "$OUT" | grep -q '38%' && echo true || echo false)"
 ck "慢速场景也用完即清" "" "$(sessions)"
 
+# ── F08：**本机执行面**（`account_usage_local`）—— 与上面那些场景是两件事 ────────
+# 上面验「那条命令串在真 tmux 上干了什么」；这一段验「本机执行面能不能把它跑起来、
+# 把 stdout 收回来、并与远端用同一条 `NO_TMUX` 判据」。
+# ⚠ 它**不起 tmux、不起 claude** —— 只喂一条最小载荷（`printf`），因为要验的是执行面。
+echo
+echo "-- F08 本机执行面 --"
+LOG="$SP/f08.log"
+(cd "$REPO/src-tauri" && CCM_E2E_FAKE_MARKER=CCMF08OK \
+  cargo test --lib -- --ignored --nocapture e2e_the_local_execution_surface 2>&1) > "$LOG"
+RC=$?
+# ⚠ 读数：`--nocapture` 会让 `ok` 换行、也会让第一条 println 不在行首 ⇒
+#   认权威那一行 `test result: ok. N passed`，标记用 `grep -o` 不锚行首。
+RAN=$(sed -n 's/^test result: [A-Za-z]*\. \([0-9]*\) passed.*/\1/p' "$LOG" | tail -1)
+if [ "${RAN:-0}" -ge 1 ]; then
+  while IFS= read -r line; do ck "${line#E2E-OK }" "x" "x"; done < <(grep -o 'E2E-OK .*' "$LOG")
+else
+  echo "  BROKEN F08 那条 ignore 测试一条都没跑成（rc=$RC）"; tail -15 "$LOG"; exit 2
+fi
+[ "$RC" -eq 0 ] || { echo "  FAIL F08 本机执行面 rc=$RC"; FAIL=$((FAIL+1)); grep -E '^(thread|assertion)' "$LOG" | head -5; }
+
 echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
 [ "$FAIL" -eq 0 ]

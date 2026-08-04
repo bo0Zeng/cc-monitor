@@ -1072,6 +1072,8 @@ pub fn run() {
             tmux::kill_remote_tmux,
             tmux::tmux_send_keys,
             account_usage::account_usage,
+            // F08：本机侧同一份载荷、另一个执行面（补平 parity_ledger 的 usage.per-account）。
+            account_usage::account_usage_local,
             ccm_probe::probe_ccm_cli,
             // Batch15-P1：code-picture 代码全景后端命令族（per-repo Engine 池,只读查询）
             panorama::panorama_index,

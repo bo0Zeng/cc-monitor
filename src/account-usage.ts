@@ -7,6 +7,8 @@
  */
 import { isValidConfigDir } from "./shell-quote.ts";
 import { commands } from "./ipc/commands";
+// F08：本机那条路的 origin 哨兵（ 的单一真相源，别在这里重定义）。
+import { LOCAL_ORIGIN } from "./accounts.ts";
 import { parseUsageCapture, type AccountUsageParseResult } from "./account-usage-parse.ts";
 
 export type AccountUsageOutcome =
@@ -80,7 +82,14 @@ export async function fetchAccountUsage(
     if (configDir !== null && !isValidConfigDir(configDir)) {
       throw new Error(`非法 CLAUDE_CONFIG_DIR（拒绝发起探测）: ${JSON.stringify(configDir)}`);
     }
-    const result = await commands.account_usage({ origin, accountName, configDir });
+    // F08：**本机走本机那条**（补平后两侧都有了）。
+    // 两条路的载荷逐字相同（Rust 侧同一个 `probe_command_for`，由
+    // `the_local_and_remote_probes_use_the_very_same_command` 钉住）——
+    // 这里分的只是「谁去执行」：本机 `sh -c`，远端 SSH exec。
+    const result =
+      origin === LOCAL_ORIGIN
+        ? await commands.account_usage_local({ accountName, configDir })
+        : await commands.account_usage({ origin, accountName, configDir });
     outcome = result.captured
       ? parseUsageCapture(result.raw ?? "")
       : { status: "probe-failed", error: result.error ?? "探测失败（原因未知）" };

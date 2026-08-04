@@ -375,7 +375,7 @@ jobs:
           [ "${N:-0}" -ge 19 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 19）——有套件被改回裸 npm run 或被删掉"; exit 1; }
           # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
           for pair in "tmux-target 26" "ccm-cli 44" "ccm-print-parity 12" "ccm-acceptance 19" \
-                      "ccm-pretrust 13" "cc-spawn-uplift 21" "tmux-guarded 14" "usage-probe 9" \
+                      "ccm-pretrust 13" "cc-spawn-uplift 21" "tmux-guarded 14" "usage-probe 11" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
                       "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 29" \
                       "ccm-contract-parity 31" "daemon-gate2 35" "local-backend 7"; do
@@ -511,7 +511,7 @@ jobs:
         run: bash e2e/assert-pass-floor.sh tmux-guarded 14
 
       - name: 用量探针（F10）
-        run: bash e2e/assert-pass-floor.sh usage-probe 9
+        run: bash e2e/assert-pass-floor.sh usage-probe 11
 
       # G-C：这三套要一个**真 daemon 二进制**（daemon-wrapper.sh 默认取
       # `remote-daemon-proto/target/debug/cc-monitor-remote`）。主计划把「怎么把 daemon 产物

@@ -308,6 +308,8 @@ mod tests {
         ),
         ("check_account_trust", "accounts.trust", Side::Remote),
         ("account_usage", "usage.per-account", Side::Remote),
+        // F08：补平那条 ParityDebt —— 与远端**逐字用同一条命令串**，只换执行面。
+        ("account_usage_local", "usage.per-account", Side::Local),
         ("deploy_remote_acct_iso", "acct-iso.deploy", Side::Remote),
         ("check_remote_acct_iso", "acct-iso.check", Side::Remote),
         (
@@ -348,7 +350,7 @@ mod tests {
         ("ssh.host-config", Asym::NaturallyAsymmetric, "本地按 §40 的定义就是「**不走 ssh** 的远端」⇒ ssh 目标的枚举/解析/导入/连通性测试/公钥推送在本地没有对应物。"),
         ("subagent.load", Asym::ParityDebt, "**实测**：`load_subagent` 拿 `parent_jsonl_path` 建 `PathBuf` 并 `is_dir()`，读的是**本机**文件系统 ⇒ 远端会话的 subagent 展不开。"),
         ("tmux.manage", Asym::ParityDebt, "§40 表里已列：`ccm` 全套修饰本地「无」，并注明「**POSIX 本地（§40 主体）落地后自动就有**」。归 L1/L2。"),
-        ("usage.per-account", Asym::ParityDebt, "per-account 用量窗口只有远端有——同 accounts.* 一族。归 L3。"),
+
     ];
 
     /// 读 `lib.rs` 的 `generate_handler!`，取出前端真能调到的命令名。
@@ -587,10 +589,11 @@ mod tests {
         // 反向自检：一条都没检到 = 签名采集坏了。**等号而不是 `>=`**（T04 审计重要 5：
         // 写 `>= N` 恰好容忍一次静默降级）。
         assert_eq!(
-            checked, 69,
-            "检到 {checked} 条 Local/Both 命令（真实应为 69 = Local 47 + Both 22；\
+            checked, 70,
+            "检到 {checked} 条 Local/Both 命令（真实应为 70 = Local 48 + Both 22；\
              E79 的 `list_local_session_accounts` 是 +1；U-CC1 的 `drift_ledger_report` 是 +1，\
-             它是 Both —— 本地行与远端行都经同一个 `parse_line` 喂进同一个进程内账本）\
+             它是 Both —— 本地行与远端行都经同一个 `parse_line` 喂进同一个进程内账本；\
+             **F08 的 `account_usage_local` 是 +1** —— 它补平了 `usage.per-account` 那条 ParityDebt）\
              ——改 LEDGER 就要来确认这个数"
         );
     }
@@ -602,11 +605,11 @@ mod tests {
         // 而 U8a-2c-pre（`57dba2a`）把这四个数各 +1 时，只改了数、一条尾注都没动。
         // ⇒ 尾注把 U8a-2c-pre 的增量记在了 U8c-2c-2 名下。**尾注的用处就是说清「谁加的」，
         // 归属错了就不如没有。**
-        assert_eq!(LEDGER.len(), 127, "命令总数变了"); // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）
+        assert_eq!(LEDGER.len(), 128, "命令总数变了"); // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）
         let sides = capability_sides();
         assert_eq!(sides.len(), 54, "能力总数变了"); // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：本机不经 IR，§36）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）
         let asym = asymmetric_capabilities();
-        assert_eq!(asym.len(), 21, "不对称能力数变了"); // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
+        assert_eq!(asym.len(), 20, "不对称能力数变了"); // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
         let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
         for (_, k, _) in ASYMMETRY_REASONS {
             *kinds
@@ -618,7 +621,7 @@ mod tests {
                 .or_default() += 1;
         }
         assert_eq!(kinds.get("natural"), Some(&9), "天然不对称条数变了"); // U8c-2c-2 +1（launch.render-cli：本地不经 IR，§36+R07）；U8a-2c-pre +1（launch.render-payload：同上）
-        assert_eq!(kinds.get("debt"), Some(&9), "平价欠账条数变了"); // G6 -1；E79 -1
+        assert_eq!(kinds.get("debt"), Some(&8), "平价欠账条数变了"); // F08 -1（usage.per-account 补平） // G6 -1；E79 -1
         assert_eq!(kinds.get("undecided"), Some(&3), "未裁定条数变了"); // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
     }
 }

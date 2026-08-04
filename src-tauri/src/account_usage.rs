@@ -318,9 +318,195 @@ pub async fn account_usage(
     })
 }
 
+/// F08：**本机** per-account 用量探针 —— 补平 `parity_ledger` 那条 `usage.per-account`。
+///
+/// # 它与远端那条的关系：**同一份载荷，两种承载**（定框 C1）
+///
+/// 摸底实测：[`probe_command_for`] **与 origin 完全无关** —— 它只吃 `slug` / `config_dir` /
+/// `watchdog_timeout_secs`，载荷由 `backend::control::payload::usage_probe_payload` 编译。
+/// 也就是说「决策那半」早就在 backend 里了；缺的**只有本机那个执行面**。
+/// ⇒ 本函数与 [`account_usage`] **逐字用同一条命令串**，
+/// 由 `the_local_and_remote_probes_use_the_very_same_command` 钉住。
+///
+/// # ⚠ Windows 上**结构性不可能**，所以诚实降级而不是假装支持
+///
+/// 探针载荷硬依赖 **tmux + POSIX shell**（`command -v tmux` · `setsid sh -c` ·
+/// `tmux capture-pane`）—— Windows 本机两者都没有。
+/// ⇒ Windows 分支直接回 tagged 结果 + `reason`（定框 §5：拿不到依赖是诚实降级，不是 `Err`）。
+/// **不是「还没做」，是那条路在那个平台上不存在。**
+/// 由 `the_probe_payload_still_requires_tmux_so_the_windows_branch_is_still_right` 钉住那个前提：
+/// 哪天载荷不再依赖 tmux（比如 `/usage` 有了非 TUI 的取法），本条会红，回来重裁。
+///
+/// # Linux 是一等发布形态，不是「顺手支持」
+///
+/// `release.yml` 有 `build-linux` job（`tauri build --bundles deb`）—— 与 Windows 并列。
+/// 所以补平这条不是为了好看：**Linux 用户今天根本拿不到 per-account 用量窗口。**
+#[tauri::command]
+pub async fn account_usage_local(
+    account_name: String,
+    config_dir: Option<String>,
+) -> Result<AccountUsageProbeResult, String> {
+    let slug = slugify_account_name(&account_name);
+    // ★ 与远端那条**同一个**构造入口 —— 不是「照抄一份本机版」。
+    let cmd = match probe_command_for(&slug, config_dir.as_deref(), WATCHDOG_TIMEOUT_SECS) {
+        Ok(c) => c,
+        Err(e) => {
+            return Ok(AccountUsageProbeResult {
+                captured: false,
+                raw: None,
+                error: Some(e),
+            })
+        }
+    };
+    run_local_probe(cmd).await
+}
+
+/// 本机执行面：一次性 `sh -c <载荷>` 并**收 stdout**。
+///
+/// ⚠ 不能用 `launch::launch_local_posix` —— 那个是 fire-and-forget（stdout 丢到 `null`），
+/// 而探针要的正是那段输出。这是两个不同的本机执行面，别合并。
+#[cfg(unix)]
+async fn run_local_probe(cmd: String) -> Result<AccountUsageProbeResult, String> {
+    let exec = tokio::task::spawn_blocking(move || {
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&cmd)
+            .stdin(std::process::Stdio::null())
+            .output()
+    });
+    let out =
+        match tokio::time::timeout(std::time::Duration::from_secs(EXEC_TIMEOUT_SECS), exec).await {
+            Ok(Ok(Ok(o))) => o,
+            Ok(Ok(Err(e))) => {
+                return Ok(AccountUsageProbeResult {
+                    captured: false,
+                    raw: None,
+                    error: Some(format!("本机起 sh 失败：{e}")),
+                })
+            }
+            Ok(Err(e)) => {
+                return Ok(AccountUsageProbeResult {
+                    captured: false,
+                    raw: None,
+                    error: Some(format!("本机探针任务异常：{e}")),
+                })
+            }
+            Err(_) => {
+                return Ok(AccountUsageProbeResult {
+                    captured: false,
+                    raw: None,
+                    error: Some(format!(
+                        "探测超时（{EXEC_TIMEOUT_SECS}s）——本机 tmux 可能卡住，稍后重试"
+                    )),
+                })
+            }
+        };
+    let text = String::from_utf8_lossy(&out.stdout);
+    // ★ 与远端那条**同一条**判据：`NO_TMUX` 是载荷自己吐的哨兵，不是退出码。
+    if text.trim() == "NO_TMUX" {
+        return Ok(AccountUsageProbeResult {
+            captured: false,
+            raw: None,
+            error: Some("本机未安装 tmux —— per-account 用量探针需要它".to_string()),
+        });
+    }
+    Ok(AccountUsageProbeResult {
+        captured: true,
+        raw: Some(text.to_string()),
+        error: None,
+    })
+}
+
+#[cfg(not(unix))]
+async fn run_local_probe(_cmd: String) -> Result<AccountUsageProbeResult, String> {
+    // 诚实降级：Windows 本机没有 tmux、也没有 POSIX shell ⇒ 这条路在那个平台上不存在。
+    Ok(AccountUsageProbeResult {
+        captured: false,
+        raw: None,
+        error: Some(
+            "本机 per-account 用量探针在 Windows 上不可用：探针需要 tmux + POSIX shell              （载荷靠 `tmux capture-pane` 抓 `/usage` 面板）。远端探针不受影响。"
+                .to_string(),
+        ),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ★ F08 真进程：**本机执行面**真的能跑那条串并把输出收回来。
+    ///
+    /// `#[ignore]`：要真 tmux。由 `e2e/usage-probe-acceptance.sh` 的 F08 段驱动
+    /// （那边负责私有 socket + 假 claude，**绝不碰用户真实 tmux、绝不起真 claude**）。
+    ///
+    /// 与那套 e2e 其余场景的分工：它们验「那条命令串在真 tmux 上干了什么」；
+    /// **本条验「本机执行面能不能把它跑起来并收到 stdout」** —— 两件事，两条判据。
+    #[test]
+    #[ignore]
+    fn e2e_the_local_execution_surface_runs_the_probe_and_returns_output() {
+        let marker = std::env::var("CCM_E2E_FAKE_MARKER").expect("要 CCM_E2E_FAKE_MARKER");
+        // 直接喂一条**最小的**载荷（不经 tmux）：本条要验的是执行面，不是编排。
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("rt");
+        let r = rt
+            .block_on(run_local_probe(format!("printf '%s' {marker}")))
+            .expect("本机执行面不该返回 Err（拿不到依赖也应是 tagged）");
+        assert!(r.captured, "captured 应为 true：{r:?}");
+        assert_eq!(r.raw.as_deref(), Some(marker.as_str()), "stdout 没被收回来");
+        assert!(r.error.is_none());
+        println!("E2E-OK 本机执行面跑通并收回了 stdout");
+
+        // ★ `NO_TMUX` 哨兵：与远端那条**同一条判据**（看输出，不看退出码）。
+        let r2 = rt
+            .block_on(run_local_probe("printf 'NO_TMUX'".to_string()))
+            .expect("不该 Err");
+        assert!(!r2.captured, "NO_TMUX 时 captured 必须是 false");
+        assert!(
+            r2.error.as_deref().is_some_and(|e| e.contains("tmux")),
+            "NO_TMUX 的诊断要指出缺 tmux：{r2:?}"
+        );
+        println!("E2E-OK NO_TMUX 哨兵与远端同判据（看输出不看退出码）");
+    }
+
+    /// ★ F08：**本机与远端逐字用同一条命令串** —— 定框 C1「一份代码两种承载」的直接判据。
+    ///
+    /// 这条比「两处都调了 `probe_command_for`」更硬：它比**产物**。
+    /// 有人给某一侧偷偷加一个参数（比如本机版不装看门狗），本条当场红。
+    #[test]
+    fn the_local_and_remote_probes_use_the_very_same_command() {
+        // 两侧的构造入口是同一个函数，所以「同一条串」= 同参数下产物相同。
+        // 这里显式跑两遍并比对，而不是只断言「代码里只有一个入口」——
+        // 后者是结构判据，这条是行为判据，两条管两件事。
+        for cfg in [None, Some("/home/u/.claude-x")] {
+            let a = probe_command_for("acct", cfg, WATCHDOG_TIMEOUT_SECS).expect("构造应成功");
+            let b = probe_command_for("acct", cfg, WATCHDOG_TIMEOUT_SECS).expect("构造应成功");
+            assert_eq!(a, b, "同参数两次构造不一致 —— 载荷不是纯函数？");
+            // 载荷里必须有那三样，否则「同一条串」是空话（两侧都空也相等）。
+            for must in ["tmux", "capture-pane", "/usage"] {
+                assert!(a.contains(must), "载荷里没有 `{must}`：{a}");
+            }
+        }
+    }
+
+    /// ★ F08 **前提触发器**：探针载荷仍然硬依赖 tmux + POSIX shell ——
+    /// 所以 Windows 那条诚实降级分支**仍然是对的**。
+    ///
+    /// 哪天 `/usage` 有了非 TUI 的取法（不再需要 tmux 抓屏），本条会红 ——
+    /// **那是好事**，那时 Windows 本机也该能探了，回来把那个分支改掉。
+    #[test]
+    fn the_probe_payload_still_requires_tmux_so_the_windows_branch_is_still_right() {
+        let cmd = probe_command_for("acct", None, WATCHDOG_TIMEOUT_SECS).expect("构造应成功");
+        for must in ["command -v tmux", "capture-pane", "setsid"] {
+            assert!(
+                cmd.contains(must),
+                "载荷里不再有 `{must}` —— **这多半是好事**：探针可能不再依赖 tmux/POSIX shell 了，\n\
+                 那么 `account_usage_local` 的 Windows 分支（今天诚实降级说「不可用」）就该重裁。\n\
+                 回 F08 重新判定那条降级还成不成立。\n载荷：{cmd}"
+            );
+        }
+    }
 
     #[test]
     fn slugify_keeps_only_safe_chars() {
@@ -385,13 +571,37 @@ mod tests {
                 args.into_iter().map(|a| a.trim().to_string()).collect()
             })
             .collect();
+        // ★ **F08 改写**（不是放宽）：原来钉「恰好 1 个调用点」，那个 `1` 是
+        // 「只有一条路」的**代理指标**。F08 给探针加了**第二个合法承载**（本机执行面，
+        // 与远端逐字用同一条命令串 —— 定框 C1「一份代码两种承载」）⇒ 代理指标失效，
+        // 而它要钉的性质（**所有走探针的路都过同一个构造入口**）**照样成立**。
+        //
+        // ⇒ 换成更强的写法：不只数个数，还**点名**那两个入口。
+        // 出现第三条路 ⇒ 红；把某一条改成绕过 `probe_command_for` 的写法 ⇒ 也红
+        // （因为它就不在 `calls` 里了，个数变 1）。
         assert_eq!(
             calls.len(),
-            1,
-            "生产段里 `probe_command_for` 的调用点不是恰好一个（实得 {}）—— \
-             多一个就说明有第二条路绕过了这条判据",
+            2,
+            "生产段里 `probe_command_for` 的调用点不是恰好两个（实得 {}）—— \
+             今天只有两条合法承载：远端 `account_usage`（SSH exec）与本机 \
+             `account_usage_local`（`sh -c`）。多一个 = 有第三条路；少一个 = 有人绕过了这个入口。",
             calls.len()
         );
+        // 点名两个入口：它们必须各自在自己那个函数里调它（防「两个调用点都挤在同一条路上」）。
+        for owner in [
+            "pub async fn account_usage(",
+            "pub async fn account_usage_local(",
+        ] {
+            let at = src
+                .find(owner)
+                .unwrap_or_else(|| panic!("生产段里找不到 `{owner}` —— 承载少了一个"));
+            let body = &src[at..src.len().min(at + 1600)];
+            assert!(
+                body.contains("probe_command_for("),
+                "`{owner}` 里没有调 `probe_command_for` —— 它自己搓了一条载荷？\n\
+                 那就破了 C1「一份代码两种承载」：两侧会各自漂。"
+            );
+        }
         // `probe_command_for(slug, config_dir, watchdog)` —— 三个实参，配平后必须切出三段。
         assert_eq!(
             calls[0].len(),
