@@ -89,12 +89,36 @@ describe("U8a-2c-1 send-into：send-keys 半边走 daemon", () => {
     expect(cmd, `终端串里还带着 send-keys：${cmd}`).not.toContain("send-keys");
   });
 
-  it("② daemon 说没键入 ⇒ 逐字回落到今天那条整串（send-keys + attach）", async () => {
-    sendIntoReply = { typed: false, reason: "会话已不存在" };
+  // ★★ F14 把这条一分为二。原来它写「daemon 说没键入 ⇒ 逐字回落」，而 F14 之后
+  // 「没键入」分成两种：**能证明没发出去**（可回落）与 **daemon 说过话 / 无法证明**（不许回落）。
+  // 原夹具 `{typed:false, reason}` 缺 `mayFallBack` ⇒ 改完当天它**红了**，那是设计：
+  // 生产上 Rust 恒设该字段，所以缺字段的夹具是**生产不可能的形状**（同 F03 那次 `e2e-si-fixed`）。
+  it("② 能证明没发出去（mayFallBack:true）⇒ 逐字回落到今天那条整串（send-keys + attach）", async () => {
+    sendIntoReply = { typed: false, reason: "没有可用的控制通道", mayFallBack: true };
     const ok = await runRemoteResumeIntoExistingTmux("h1", SID, NAME, "claude");
     expect(ok).toBe(true);
     expect(launchedCmd()).toContain("send-keys");
     expect(launchedCmd()).toContain("attach");
+  });
+
+  it("★ ②b daemon 说过话（mayFallBack:false）⇒ **绝不回落**，就地失败", async () => {
+    sendIntoReply = { typed: false, reason: "拒绝就地 resume：目标未通过身份守卫", mayFallBack: false };
+    const ok = await runRemoteResumeIntoExistingTmux("h1", SID, NAME, "claude");
+    expect(ok, "被门拒绝时不该报成功").toBe(false);
+    // 实测：一次都没发起 launch 时 `launchedCmd()` 是 `undefined`（不是空串）。
+    expect(
+      launchedCmd(),
+      "回落了 —— 那条整串没有 §34 的门，等于把一次门拒绝洗成另一条路的成功",
+    ).toBeUndefined();
+  });
+
+  it("★ ②c 读不出 mayFallBack ⇒ **按 fail-closed 当成不许回落**", async () => {
+    // 生产上 Rust 恒设该字段；但协议漂移/旧版本时读不出来。
+    // 这一档必须**保守**：宁可就地失败，也不要用一条无门的路重做一次可能已经执行的动作。
+    sendIntoReply = { typed: false, reason: "字段缺失" };
+    const ok = await runRemoteResumeIntoExistingTmux("h1", SID, NAME, "claude");
+    expect(ok, "读不出该字段时不该乐观回落").toBe(false);
+    expect(launchedCmd()).toBeUndefined();
   });
 
   it("② IPC 整个抛了也回落，不是报错收场", async () => {
