@@ -72,12 +72,17 @@ mod tests {
     #[test]
     fn the_crate_scan_actually_finds_crates() {
         let n = shared_crate_names().len();
-        // 地板从 4 棘到 5（实测 5：branch-core / usage-core / acct-core / guard-core /
-        // shell-quote-core）。差一个的地板意味着「少抽到一个 crate」不会红 —— 而少抽到的那个
-        // 恰好就是没人管 CI 的那个。删共享 crate 时来改这个数，是刻意的摩擦。
+        // 地板 4 → 5 → **6**（F12 棘：实测 6 —— acct-core / branch-core / **gate-core** /
+        // guard-core / shell-quote-core / usage-core）。差一个的地板意味着「少抽到一个 crate」
+        // 不会红 —— 而少抽到的那个恰好就是没人管 CI 的那个。删共享 crate 时来改这个数，是刻意的摩擦。
+        //
+        // ⚠ **它落后过一次，而且正好落后一个**：F03 新增 `gate-core` 时补了 CI 三样、
+        // 却没回来棘这个数 ⇒ 从 F03 到 F12 之间，「抽取器少认一个包」这件事**不会红**，
+        // 而那正是上面这段注释逐字警告的场景。是 Phase G 的 `/full-audit` 把它逮出来的。
+        // ⇒ 一般化：**「新增一个 X 要补 N 处」的清单里，必须包含「回来棘那条自检的地板」。**
         assert!(
-            n >= 5,
-            "只从 crates/*/Cargo.toml 抽到 {n} 个包名（实测应为 5）—— 抽取器坏了，\
+            n >= 6,
+            "只从 crates/*/Cargo.toml 抽到 {n} 个包名（F12 实测应为 6）—— 抽取器坏了，\
              下面那条「三样都在 CI 里」会零命中零失败地绿"
         );
     }
@@ -150,10 +155,11 @@ mod tests {
                 ghosts.push(referenced.to_string());
             }
         }
-        // 抽取器自检：三种形态 × 5 个 crate = 15 行。扫不到就是取名方式跟 ci.yml 分家了。
+        // 抽取器自检：三种形态 × **6** 个 crate = 18 行（F12 棘，同上：F03 加了 gate-core
+        // 而这个数没跟）。扫不到就是取名方式跟 ci.yml 分家了。
         assert!(
-            scanned >= 15,
-            "只扫到 {scanned} 处 crate 引用（三种形态 × 5 个 crate 应有 15 处）—— \
+            scanned >= 18,
+            "只扫到 {scanned} 处 crate 引用（三种形态 × 6 个 crate 应有 18 处）—— \
              要么有一步被注释/删掉了，要么本抽取器的取名方式与 ci.yml 分家了。\
              两种都得看一眼：后者会让下面那条零命中变绿"
         );

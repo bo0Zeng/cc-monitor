@@ -55,9 +55,14 @@ mod tests {
             .to_path_buf()
     }
 
-    fn rust_sources(root: &Path) -> Vec<PathBuf> {
+    fn scanned_sources(root: &Path) -> Vec<PathBuf> {
         let mut out = Vec::new();
-        for base in ["src-tauri/src", "remote-daemon-proto/src"] {
+        // ⚠ **F12 加 `doc/`**：`/full-audit` 逮到 —— 本守卫要杀的两句
+        // （「每 ~8s 推」「帧最长 8s 陈旧」）**活在 `doc/INVARIANTS.md:478/:492`**，
+        // 而 F01 建它时的普查**只看了 Rust**。⇒ 「同一句假话住四处」那次普查本身
+        // 就漏了一整个目录，而**耐久文档恰恰是那句话最有害的住处**（它是权威）。
+        // ★ 「扫描面画小了」在本仓第四次；这一次漏的不是一个文件，是一个**目录族**。
+        for base in ["src-tauri/src", "remote-daemon-proto/src", "doc"] {
             walk(&root.join(base), &mut out);
         }
         out
@@ -72,7 +77,7 @@ mod tests {
                     continue;
                 }
                 walk(&p, out);
-            } else if p.extension().is_some_and(|x| x == "rs") {
+            } else if p.extension().is_some_and(|x| x == "rs" || x == "md") {
                 // 排除本文件：它的头注逐字引用了被禁说法（见头注最后一段）。
                 if p.file_name().is_some_and(|n| n == "frame_cadence_guard.rs") {
                     continue;
@@ -85,9 +90,13 @@ mod tests {
     /// ★ 抽取器自检：扫不到文件时下面那条会零命中地绿。
     #[test]
     fn the_scan_actually_reads_both_crates() {
-        let n = rust_sources(&repo_root()).len();
+        let n = scanned_sources(&repo_root()).len();
         // 地板按「排除本文件后」的实测值定。
-        assert!(n >= 90, "只扫到 {n} 个 .rs（实测应约 100）—— 扫描器坏了");
+        // F12：扫描面加了 `doc/**.md`（11 份）⇒ 地板从 90 抬到 100。
+        assert!(
+            n >= 100,
+            "只扫到 {n} 个源文件（.rs + doc/**.md，F12 实测应 >110）—— 扫描器坏了"
+        );
     }
 
     /// ★ 反向锚点：**真机制必须还写在某处** —— 否则本条退化成「谁都没提过 8s」的空守卫。
@@ -118,7 +127,7 @@ mod tests {
         let root = repo_root();
         let pats = forbidden();
         let mut offenders = Vec::new();
-        for f in rust_sources(&root) {
+        for f in scanned_sources(&root) {
             let rel = f
                 .strip_prefix(&root)
                 .unwrap_or(&f)
