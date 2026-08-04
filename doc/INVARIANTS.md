@@ -911,7 +911,7 @@ U8c-1 摸底后拆成三步：
 | 产出方 | 实况 |
 |---|---|
 | `session-backend.ts`（TS） | **生产远端主路**，天天在跑 |
-| `control/launch.rs`（Rust argv，U8a-2b 建的） | **零生产调用方** —— 全仓 `.call("launch", …)` 只有一处且在 `#[cfg(test)]` 里，`ssh_source.rs` 还专门断言 `!client.accepts("launch")`。切过去归 **U8a-2c**，STATUS 早已登记为阻塞 |
+| `control/launch.rs`（Rust argv，U8a-2b 建的） | ⚠ **F11 2026-08-04 订正：这一格原写「零生产调用方 —— 全仓 `.call("launch", …)` 只有一处且在 `#[cfg(test)]` 里」，那句已经假了。**〔机检〕生产段 `.call("launch")` 处数：2 处（`backend/control/daemon_launch.rs` 的 `send-into` = U8a-2c-1 · `backend/control/daemon_send_keys.rs` 的 send-keys = F04c）。⚠ **这两处都不是「又切了一格起会话」**——`create-or-attach` 与 attach 两格仍未切。⚠ `ssh_source.rs:2208` 那条 `!client.accepts("launch")` 仍在，但它断言的是「某个 hello 没声明 launch」，**不是「生产不调 launch」**（F07 已订正过同一句话在三问表里的那一份 —— **这一格当时漏了**）。⚠ 那个「2」**只有这一个家**：`doc_claim_registry::the_doc_number_for_production_launch_calls_matches_reality` 从这里把它读出来与现场数比，多一处调用而不改这里就红 |
 | `account_usage.rs::build_usage_probe_cmd`（Rust shell 串） | 用量探针，**生产在跑**（`tmux kill-session … new-session … send-keys … capture-pane`） |
 | `shared/ccm` | 用户终端那条路 |
 
@@ -922,13 +922,14 @@ U8c-1 摸底后拆成三步：
 
 | # | 问题 | 答案 |
 |---|---|---|
-| ① | 生产切到 daemon 的 `launch` 了吗 | ⚠ **F07 2026-08-04 订正为「部分是」**（原写「否 —— 全仓只有一处且在 `cfg(test)` 里」，那句**已过期**）：实测**生产段有一处** `backend/control/daemon_launch.rs:111`（U8a-2c-1 交付的 `daemon_send_into`）⇒ **`send-into` 那一格已切**；`create-or-attach` 与 **attach** 两格未切。`ssh_source.rs:2208` 那条 `!accepts("launch")` 仍在，但它断言的是「某个 hello 没声明 launch」，**不是「生产不调 launch」** —— 两件事。〔原文续〕**U8a-2c 未做** |
+| ① | 生产切到 daemon 的 `launch` 了吗 | ⚠ **F07 2026-08-04 订正为「部分是」**（原写「否 —— 全仓只有一处且在 `cfg(test)` 里」，那句**已过期**）：实测**生产段有一处** `backend/control/daemon_launch.rs:111`（U8a-2c-1 交付的 `daemon_send_into`）⇒ **`send-into` 那一格已切**；`create-or-attach` 与 **attach** 两格未切。`ssh_source.rs:2208` 那条 `!accepts("launch")` 仍在，但它断言的是「某个 hello 没声明 launch」，**不是「生产不调 launch」** —— 两件事。〔原文续〕~~U8a-2c 未做~~ ⚠ **F11 2026-08-04 再订正：这半句也已过期** —— **U8a-2c-1 已交付**（`daemon_send_into`，`send-into` 那一格），F04c 又接了 `send-keys`（不是「起会话」的格）。仍未切的是 **`create-or-attach` 与 attach 两格** ⇒ 该说「U8a-2c **未做完**」，不是「未做」 |
 | ② | attach 那条串归谁产 | **一半有答案**：装了 ccm 的主机 U8c-2c-2 起已是 Rust 产（`ccm attach <名>`）；**没装 ccm 的仍靠 `session-backend.ts::attach`** |
 | ③ | daemonless 的远端还要不要能起会话 | **未决** —— U12 仍是待做项 |
 
-⇒ **①「否」+ ③「未决」⇒ 今天删不得**：硬删会把「没装 ccm 的远端」与「daemonless 的远端」
+⇒ ⚠ **F11 2026-08-04 订正这条推论的依据**：原写「①「否」+ ③「未决」」，而 ① 早在 F07 就订正成了「**部分是**」（`send-into` 那一格已切）。**结论没变**，但依据要换成还量得准的那两条：**`create-or-attach` 与 attach 两格仍未切**（①的剩余面）**＋ ③「未决」** ⇒ 今天删不得：硬删会把「没装 ccm 的远端」与「daemonless 的远端」
 两类主机的起会话能力直接删掉，而那两类今天都还成立。
-**U8c-3 的真前置不是文档，是 U8a-2c 与 U12 两件未做的功能。**
+**U8c-3 的真前置不是文档，是 U8a-2c 与 U12 两件功能** —— ⚠ **F11 订正：U8a-2c 是「未做完」不是「未做」**（`send-into` 那一格 U8a-2c-1 已交付；剩 `create-or-attach` 与 attach）。
+⚠ **本节这三处（914 · 925 末 · 本段）与 F07 订正的那一处说的是同一句话。**F07 只订正了手头那一处 ⇒ **同族的三处又活了一轮**。**订正一句假话时，先把它的全部副本找出来**（F01 的四处「每 ~8s」是同一个病）——这条纪律由 `doc_claim_registry` 把可数的那部分变成机检。
 
 ### 六条不变量各自的命运（U8c-1 逐条判定，别到 U8c-3 才现想）
 
