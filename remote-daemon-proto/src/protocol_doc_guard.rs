@@ -759,6 +759,164 @@ mod tests {
         }
     }
 
+    /// F06c：`wire.rs` 的 `enum Frame` **段界内**的变体名 → 线上 `kind`（snake_case）。
+    ///
+    /// ⚠ **必须先框段界再数**：`wire.rs` 里不止一个枚举，
+    /// 摸底时用「行首缩进 + 大写开头」的正则数出 **14**，真值 **11** —— 多出来的是别的枚举。
+    fn frame_variants() -> Vec<String> {
+        let src = crate::guard_support::production_code(include_str!("wire.rs"));
+        // 运行时拼，免得命中本文件自己的说明文字。
+        let needle = format!("pub enum {}", "Frame");
+        let at = src
+            .find(needle.as_str())
+            .unwrap_or_else(|| panic!("`wire.rs` 里找不到 `{needle}` —— 抽取坏了或枚举改名了"));
+        let open = src[at..]
+            .find('{')
+            .map(|k| at + k)
+            .expect("`enum Frame` 后面没有花括号");
+        // 花括号配平框出段界（变体体里还有嵌套花括号）。
+        let bytes = src.as_bytes();
+        let mut depth = 0usize;
+        let mut end = open;
+        for (i, c) in bytes.iter().enumerate().skip(open) {
+            match *c {
+                b'{' => depth += 1,
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        assert!(
+            end > open + 100,
+            "`enum Frame` 段界只框出 {} 字节 —— 配平坏了",
+            end - open
+        );
+        let span = &src[open + 1..end];
+        // 只取**深度 1** 的变体名：行首（去缩进后）是大写字母开头的标识符，后跟 `{` 或 `,`。
+        let mut out = Vec::new();
+        let mut depth = 0usize;
+        for line in span.lines() {
+            let t = line.trim();
+            if depth == 0 {
+                if let Some(name) = t
+                    .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                    .next()
+                    .filter(|w| !w.is_empty() && w.starts_with(char::is_uppercase))
+                {
+                    let rest = t[name.len()..].trim_start();
+                    if rest.starts_with('{') || rest.starts_with(',') || rest.is_empty() {
+                        let mut snake = String::new();
+                        for (i, ch) in name.chars().enumerate() {
+                            if ch.is_uppercase() && i > 0 {
+                                snake.push('_');
+                            }
+                            snake.extend(ch.to_lowercase());
+                        }
+                        out.push(snake);
+                    }
+                }
+            }
+            depth += t.matches('{').count();
+            depth = depth.saturating_sub(t.matches('}').count());
+        }
+        out
+    }
+
+    /// F06c：§10 **那张帧表**的数据行首格（= 已文档化的 `kind`）。
+    ///
+    /// ⚠ 锚点是**表头里含 `` `kind` `` 的那一张**，不是「首格是反引号标识符的任意行」——
+    /// 摸底时用后者抽出 **17** 个，里面混进了 `id`/`cmd`/`args`/`ok`/`data` 这些**字段名**。
+    /// ★ 「别在一张表里混装两种角色」这条纪律**也适用于抽取器本身**。
+    fn documented_frame_kinds() -> Vec<String> {
+        let sec = DOC
+            .find("## 10. 远端 daemon wire 协议")
+            .expect("文档里找不到 §10");
+        let sec_end = DOC[sec..]
+            .find("\n## ")
+            .map(|k| sec + k)
+            .unwrap_or(DOC.len());
+        let section = &DOC[sec..sec_end];
+        let head_mark = format!("| `{}` | 字段 | 说明 |", "kind");
+        let at = section.find(head_mark.as_str()).unwrap_or_else(|| {
+            panic!("§10 里找不到帧表的表头 {head_mark:?} —— 表头措辞变了，本条会零命中地绿")
+        });
+        let mut out = Vec::new();
+        // 跳过表头行与分隔行，逐行取首格，直到遇到不以 `|` 开头的行。
+        for line in section[at..].lines().skip(2) {
+            if !line.starts_with('|') {
+                break;
+            }
+            let first = line.trim_start_matches('|').split('|').next().unwrap_or("");
+            let name = first.trim().trim_matches('`').trim();
+            if !name.is_empty() {
+                out.push(name.to_string());
+            }
+        }
+        out
+    }
+
+    /// ★★ **F06c**：`wire.rs` 的**每一个帧 kind** 都必须在 §10 的帧表里**有一行**。
+    ///
+    /// # 它闭掉的洞（aterm 的 DN-6）
+    ///
+    /// 仓外 aterm 通报过「`IPC-PROTOCOL.md §10` 落后于 `wire.rs`」，而**它说对了一半**：
+    /// 逐条量下来，11 个 kind 在 §10 里**全都被提到过**，但 `reply` / `cancelled`
+    /// **只活在「入方向」那段正文与线上示例里、帧表里没有它们的行**。
+    ///
+    /// 为什么「提到过」不够：那张表是**唯一的帧清册**，客户端实现者按表逐行对。
+    /// 一个 kind 只在别处的示例里出现，等于让实现者靠通读全节发现它 ——
+    /// aterm 的 KDoc 里那个「6 帧」的错数字就是这么来的（它数的是表）。
+    ///
+    /// ⚠ 与同族既有那条 `every_wire_field_appears_in_the_protocol_doc` 的区别：
+    /// 那条要求**字段名**在 §10 的代码跨度里出现；本条要求**帧 kind 在帧表里有行**。
+    /// 前者管「有没有写」，本条管「有没有登记在清册上」。
+    ///
+    /// ⚠ 本条**不检查行的内容对不对**（那需要逐字段对拍，已有别的判据管字段）。
+    /// 它只钉「清册不许漏」——如实说明，别读成「表里那行是对的」。
+    #[test]
+    fn every_wire_frame_kind_has_a_row_in_the_frame_table() {
+        let mut variants = frame_variants();
+        let mut documented = documented_frame_kinds();
+        // 中间量自检：两个抽取器都必须真的抽到东西，否则本条零命中地绿。
+        assert!(
+            variants.len() >= 9,
+            "只从 `enum Frame` 抽到 {} 个变体 —— 抽取坏了（摸底实测 11 个）：{variants:?}",
+            variants.len()
+        );
+        assert!(
+            documented.len() >= 9,
+            "只从 §10 的帧表抽到 {} 行 —— 表头锚点或表结构变了：{documented:?}",
+            documented.len()
+        );
+        variants.sort();
+        documented.sort();
+        let missing: Vec<&String> = variants
+            .iter()
+            .filter(|v| !documented.contains(v))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "这些帧 kind 在 `wire.rs` 里存在，但 §10 的**帧表**里没有行：{missing:?}\n\
+             ⚠ 「§10 里提到过」不算 —— 那张表是唯一的帧清册，客户端实现者按表逐行对，\n\
+             只在示例或正文里出现的 kind 会被漏掉（仓外 aterm 的 KDoc 里那个错的帧数就是这么来的）。\n\
+             ⇒ 给它补一行，说明可以只写一句 + 指向它详细语义所在的小节。"
+        );
+        let stale: Vec<&String> = documented
+            .iter()
+            .filter(|d| !variants.contains(d))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "§10 的帧表里有这些行，而 `wire.rs` 里没有对应变体：{stale:?}\n\
+             ⇒ 帧被删/改名了而表没跟（那比漏写更糟：照它实现的客户端在等一个永不到来的 kind）。"
+        );
+    }
+
     /// ★ 文档必须提到 wire 的每一个字段。
     #[test]
     fn every_wire_field_appears_in_the_protocol_doc() {
