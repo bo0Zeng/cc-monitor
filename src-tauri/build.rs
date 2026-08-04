@@ -169,6 +169,12 @@ fn emit_daemon_build_id() {
         .and_then(|s| extract_build_id(&s))
         .unwrap_or_else(|| "unknown".to_string());
     println!("cargo:rustc-env=DAEMON_BUILD_ID={build_id}");
+    // F05a：本机 sidecar 的文件名是 `<stem>-<target-triple>`（Tauri `externalBin` 的规矩），
+    // 而 std 里没有「当前 target triple」这个常量 —— 只有 build script 拿得到 `TARGET`。
+    println!(
+        "cargo:rustc-env=CCM_TARGET_TRIPLE={}",
+        std::env::var("TARGET").unwrap_or_else(|_| "unknown-target".into())
+    );
 }
 
 /// 从源码里抠出 `const BUILD_ID: &str = "<x>";` 的 `<x>`。

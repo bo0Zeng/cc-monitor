@@ -49,6 +49,7 @@
     "test:usage-probe": "bash e2e/usage-probe-acceptance.sh",
     "test:daemon-fork": "bash e2e/daemon-fork-session.sh",
     "test:daemon-gate2": "bash e2e/daemon-gate2-acceptance.sh",
+    "test:local-backend": "bash e2e/local-backend-supervise.sh",
     "test:ccm-rbind-title": "bash e2e/ccm-rbind-title.sh",
     "test:graylight": "bash e2e/graylight-suite.sh",
     "test:graylight-frames": "bash e2e/graylight-daemon-frames.sh",

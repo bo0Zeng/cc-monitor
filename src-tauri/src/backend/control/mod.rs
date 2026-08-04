@@ -14,6 +14,7 @@
 pub mod ccm_invocation;
 pub mod daemon_launch;
 pub mod launch_wire;
+pub mod local_backend;
 pub mod payload;
 
 #[cfg(test)]

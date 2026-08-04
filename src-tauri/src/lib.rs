@@ -67,6 +67,10 @@ mod ssh_source;
 mod ccm_cli_contract;
 mod frame_cadence_guard; // F01：帧节奏说法的零命中守卫（P5 后 daemon 零定时器；被禁措辞见模块头注）
 mod gate_singleton_guard; // F03：§34 Gate 2 的身份判定在 Rust 侧只许有一个家（`gate-core`）
+
+/// F05a：本机后端监护句柄。存起来是为了退出前 `stop()`（不 stop 就是游魂进程）。
+static LOCAL_BACKEND: std::sync::OnceLock<backend::control::local_backend::SuperviseHandle> =
+    std::sync::OnceLock::new();
 #[cfg(test)]
 #[cfg(test)]
 #[cfg(test)]
@@ -365,6 +369,32 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
+            // F05a（定框 C7：没有 daemonless）：起并看住**本机后端进程**。
+            //
+            // ⚠ 今天恒走「诚实降级」那一支 —— 安装包里还没有 sidecar（`externalBin` 归 F05b）。
+            // 这**不是**「接线没做」：接线在这里，只是依赖还没到位，两者的区别就在那个
+            // tagged 返回值上。它**刻意不扫仓库 dev 产物** —— daemon 一起来就无条件往
+            // tmux server 装三条全局 hook 且没有开关，扫到 dev 产物就起它 = 去改用户真实
+            // tmux 的状态（F05 摸底 §2.5）。
+            {
+                use backend::control::local_backend::{self, Resolved};
+                let (resolved, sup) = local_backend::start_if_present(
+                    env!("CCM_TARGET_TRIPLE"),
+                    std::sync::Arc::new(|e| tracing::info!("本机后端: {e:?}")),
+                );
+                match &resolved {
+                    Resolved::Found(p) => tracing::info!("本机后端 sidecar: {}", p.display()),
+                    Resolved::Missing { reason, looked_at } => {
+                        tracing::info!("本机后端未启动: {reason}；找过 {looked_at:?}")
+                    }
+                }
+                // 句柄存起来：进程退出前要 `stop()`，否则被监护的 daemon 成游魂
+                // （它对「stdin 写端关闭」刻意不敏感）。
+                if let Some(h) = sup {
+                    let _ = LOCAL_BACKEND.set(h);
+                }
+            }
+
             // Debug build 自动开 DevTools(CCM_NO_DEVTOOLS=1 抑制——远程实测/E2E 时省半屏)
             #[cfg(debug_assertions)]
             if std::env::var("CCM_NO_DEVTOOLS").is_err() {
@@ -1081,8 +1111,26 @@ pub fn run() {
             ssh_source::import_ssh_hosts,
             ssh_source::test_remote_connection,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        // F05a：**退出前收掉本机后端。** 被监护的 daemon 对「stdin 写端关闭」刻意不敏感
+        // ⇒ 不显式 `stop()` 它就活过 monitor，成游魂进程。
+        //
+        // ⚠ 这一段是 **clippy 的 dead_code 抓出来的**：`stop()` / `attempts()` / `current_pid()`
+        // 三个方法全被报「never used」，也就是说我把句柄存进了 `LOCAL_BACKEND` 却从没用过它 ——
+        // 而模块头注里逐字写着「不杀就成了游魂进程」。**注释说了、代码没做，靠一条告警才发现。**
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                if let Some(h) = LOCAL_BACKEND.get() {
+                    tracing::info!(
+                        "退出：收掉本机后端 pid={:?}（起过 {} 次）",
+                        h.current_pid(),
+                        h.attempts()
+                    );
+                    h.stop();
+                }
+            }
+        });
 }
 
 fn extract_cwd(rec: &messages::JsonlRecord) -> Option<String> {
