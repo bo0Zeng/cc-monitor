@@ -377,8 +377,8 @@ jobs:
           for pair in "tmux-target 26" "ccm-cli 44" "ccm-print-parity 12" "ccm-acceptance 19" \
                       "ccm-pretrust 13" "cc-spawn-uplift 21" "tmux-guarded 14" "usage-probe 9" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
-                      "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 28" \
-                      "ccm-contract-parity 31" "daemon-gate2 28" "local-backend 7"; do
+                      "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 29" \
+                      "ccm-contract-parity 31" "daemon-gate2 35" "local-backend 7"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
               || { echo "::error::找不到调用行 'assert-pass-floor.sh $pair' —— 套件或地板被改了"; exit 1; }
           done
@@ -523,12 +523,12 @@ jobs:
       # U8a-2a：入方向（控制通道）的真进程端到端。此前那条通道**从没有真进程验证过**——
       # daemon 侧全是单测夹具，monitor 侧一个字节都没发过。
       - name: 入方向 daemon 帧（U8a-2a）
-        run: bash e2e/assert-pass-floor.sh inbound-frames 28
+        run: bash e2e/assert-pass-floor.sh inbound-frames 29
 
       # F03：§34 Gate 2 在 daemon 侧的真机验收。用例逐行来自那张唯一的判定表
       # `src-tauri/src/backend/control/fixtures/gate2-golden.tsv`（三条轨道同一份）。
       - name: Gate 2 daemon 真机验收（F03）
-        run: bash e2e/assert-pass-floor.sh daemon-gate2 28
+        run: bash e2e/assert-pass-floor.sh daemon-gate2 35
 
       # F05a：本机后端监护的真进程验收（起-杀-自愈 / 必崩即判死 / 缺 sidecar 诚实降级）。
       # 数字地板**只在这一行**（定框 §4：同一个数不许两侧各写一份）；脚本里只有导出式自检。

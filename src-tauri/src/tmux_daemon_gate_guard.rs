@@ -24,8 +24,12 @@
 //!    daemon 今天有 Gate 2、**没有 Gate 3**（`windows==1`，只约束破坏性动作），
 //!    而且**根本没有 kill 命令**。切路由是 **F04** 的活，连同 Gate 3 与平价对账一起做。
 //!    定框 C6 逐字写着：**先搬 Gate 2，再切 kill / send-keys —— 顺序不可反。**
-//! 3. **Gate 3 的前提触发器**：daemon 一旦出现 `session_windows`（Gate 3 的形状），
-//!    说明 F04 动工了 ⇒ 本模块该整体退役，主动红一次提醒。
+//! 3. ~~Gate 3 的前提触发器~~ **已在 F04a 触发并改写**：daemon 现在**有** Gate 3
+//!    （`control/gate.rs::admit_destructive` + `control/kill.rs`）。那条触发器
+//!    「daemon 一出现 `session_windows`/`kill-session` 就红」**如设计般红了一次**
+//!    （`出现了 Gate 3 / kill 的标志 ["session_windows", "kill-session"] —— 这多半是好事`），
+//!    于是按它自己的要求翻面：从「不许出现」改成 [`the_daemon_now_has_gate3`]（**不许消失**）。
+//!    ⚠ **它红了不是误报，是它的岗位。** 删掉它才是错的处置（铁律 13）。
 //!
 //! ⚠ **约定型守卫**（同 `readonly_guard` 一族）：查的是符号名的源码形态，
 //! 挡得住「顺手把这两条改走 daemon」，挡不住「换个名字继续错」。**比没有强，别读成证明。**
@@ -42,7 +46,8 @@ mod tests {
     /// （`control/gate.rs::admit` 回 `wrong_owner` + `CCM_GUARD_REJECTED …`）。
     const DAEMON_GATE_MARKERS: &[&str] = &["CCM_GUARD_REJECTED", "wrong_owner"];
 
-    /// Gate 3（`windows==1`，只约束破坏性动作）在 daemon 侧的形状。**今天一个都不该有。**
+    /// Gate 3（`windows==1`，只约束破坏性动作）在 daemon 侧的形状。
+    /// **F04a 起：必须存在**（此前是「一个都不该有」）。
     const DAEMON_GATE3_MARKERS: &[&str] = &["session_windows", "kill-session"];
 
     /// monitor 侧**不许**在这两个命令里出现的东西（那是 daemon 通道）。
@@ -202,26 +207,65 @@ mod tests {
         );
     }
 
-    /// ★ Gate 3 的前提触发器：daemon 一旦出现 `windows==1` / `kill-session`，
-    /// 说明 F04 动工了 ⇒ 下面那条禁令的理由不再成立，回来重新裁定。
+    /// ★ **F04a 起翻面：daemon 的 Gate 3 必须还在**（此前钉的是「不许出现」）。
+    ///
+    /// # 这条触发器完整走过了一遍它设计的生命周期
+    ///
+    /// U10 立它时钉「不许出现」——因为那时 daemon 没有 Gate 3，下面那条路由禁令
+    /// 靠的就是这个前提。F04a 把 Gate 3 搬进来，它**如设计般红了一次**：
+    /// `出现了 Gate 3 / kill 的标志 ["session_windows", "kill-session"] —— 这多半是好事`。
+    ///
+    /// ⚠ 那时正确的处置**不是删掉它**（铁律 13：删判据前先证明它恒绿），
+    /// 而是**改写**：前提变了 ⇒ 换成钉新前提。现在它钉「Gate 3 不许消失」。
     #[test]
-    fn the_daemon_still_has_no_gate3_so_the_routing_ban_below_still_applies() {
-        let all: String = daemon_control_production()
+    fn the_daemon_now_has_gate3() {
+        let files = daemon_control_production();
+        let all: String = files
             .iter()
             .map(|(_, s)| s.as_str())
             .collect::<Vec<_>>()
             .join("\n");
-        let found: Vec<&str> = DAEMON_GATE3_MARKERS
+        let missing: Vec<&str> = DAEMON_GATE3_MARKERS
             .iter()
             .copied()
-            .filter(|m| all.contains(m))
+            .filter(|m| !all.contains(m))
             .collect();
         assert!(
-            found.is_empty(),
-            "daemon 的 control 面出现了 Gate 3 / kill 的标志 {found:?} —— **这多半是好事**，\n\
-             但它意味着下面那条禁令（`send-keys`/`kill` 不许改走 daemon）的前提变了：\n\
-             那是 **F04** 的活。请连同「三道门在 daemon 侧怎么复现」与平价对账一起裁定，\n\
-             然后把本模块整体退役。"
+            missing.is_empty(),
+            "daemon 的 control 面**找不到** Gate 3 的标志 {missing:?} ——\n\
+             §34 的第三道门（`windows == 1`，防误杀多窗口会话）在 daemon 侧没了。\n\
+             F04a 把它装在 `control/gate.rs::admit_destructive`；`control/kill.rs` 走它。"
+        );
+        // 门必须**在路上**（F+02 的教训：模块存在 ≠ 模块被调用）。
+        let kill_rs = files
+            .iter()
+            .find(|(n, _)| n == "kill.rs")
+            .map(|(_, s)| s.as_str())
+            .unwrap_or("");
+        assert!(
+            kill_rs.contains("admit_destructive"),
+            "`control/kill.rs` 的生产段没有调 `admit_destructive` ——\n\
+             门还在仓里但不在路上：kill 会绕过 Gate 2/3 直接杀。"
+        );
+        // Gate 3 **只给破坏性动作**：非破坏性的 `admit` 不许看窗口数。
+        let gate_rs = files
+            .iter()
+            .find(|(n, _)| n == "gate.rs")
+            .map(|(_, s)| s.as_str())
+            .unwrap_or("");
+        let plain = gate_rs
+            .split("pub(crate) fn admit(")
+            .nth(1)
+            .and_then(|t| t.split("pub(crate) fn admit_destructive").next())
+            .unwrap_or("");
+        assert!(
+            !plain.is_empty(),
+            "抽不到非破坏性 `admit` 的函数体 —— 抽取器坏了，下面那条会零命中地绿"
+        );
+        assert!(
+            !plain.contains("windows != 1") && !plain.contains("p.windows"),
+            "非破坏性的 `admit` 里出现了窗口数判断 —— `send-keys` 不删除任何东西，\n\
+             给它加 Gate 3 会让「往一个多窗口会话里打字」被误拒（monitor 侧 F04 Phase D 审计修过这个错法）。"
         );
     }
 
@@ -242,11 +286,14 @@ mod tests {
         }
         assert!(
             offenders.is_empty(),
-            "`send-keys`/`kill` 被改走了 daemon 通道 —— 那是 **F04**，不是现在。\n\
-             F03 已经把 §34 的 Gate 2 搬进 daemon `control/gate.rs`，但 daemon 今天\n\
-             **没有 Gate 3**（`windows==1`，防误杀多窗口会话）、**也没有 kill 命令**；\n\
-             而且切路由要连 `parity_ledger` 的平价账一起改。\n\
-             定框 C6：**先搬 Gate 2，再切 kill / send-keys —— 顺序不可反。**\n{}",
+            "`send-keys`/`kill` 被改走了 daemon 通道 —— 那是 **F04b**，不是现在。\n\
+             ⚠ **理由已经换过两次，这是第三版**（前两版的前提都被后续功能推翻了）：\n\
+             · U10 版：「daemon 没有身份门」⇒ F03 装了 Gate 2，前提失效；\n\
+             · F04a 版前：「daemon 没有 Gate 3、也没有 kill」⇒ F04a 都搬了，前提又失效。\n\
+             **今天的理由**：三道门齐了，但 ① `parity_ledger` 的平价账还没改（那是计数地板，\n\
+             改它要说清多了什么）② 切过去之后**真远端那一跳本机结构性验不了**\n\
+             （ROADMAP §5 既有边界）⇒ 它是独立一件，要单独摸底、单独签收。\n\
+             定框 C6 的顺序（先搬门、再切路由）已经走到最后一步，**别在这里顺手切完。**\n{}",
             offenders.join("\n")
         );
     }

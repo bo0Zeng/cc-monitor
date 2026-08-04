@@ -150,6 +150,49 @@ if wait_for '"id":"e2e-gate2-exp"'; then
   fi
 else bad "_expect 场景 5s 内无应答"; fi
 
+# ── F04a：Gate 3（`windows == 1`，**只给破坏性动作**）的真机验收 ───────────
+# 与 Gate 2 的用例表分开：Gate 3 的轴是**窗口数**，不是身份，塞进那张表会让两个轴混在一起。
+echo
+echo "-- F04a Gate 3（kill）--"
+g3() { # <场景名> <会话名> <设不设sid> <开几个窗口> <期望码|OK>
+  local what="$1" name="$2" sid="$3" wins="$4" want="$5" rid="e2e-g3-$6"
+  "$TMUX_BIN" kill-server 2>/dev/null || true; sleep 0.2
+  "$TMUX_BIN" new-session -d -s "$name" 2>/dev/null || { bad "$what：建不出会话"; return; }
+  [ "$sid" = yes ] && "$TMUX_BIN" set-option -t "=$name:" @ccm_sid abc123 >/dev/null 2>&1
+  local i=1; while [ "$i" -lt "$wins" ]; do "$TMUX_BIN" new-window -t "=$name:" >/dev/null 2>&1; i=$((i+1)); done
+  send "{\"id\":\"$rid\",\"cmd\":\"kill\",\"args\":{\"name\":\"$name\"}}"
+  wait_for "\"id\":\"$rid\"" || { bad "$what：5s 内无应答"; return; }
+  local R; R="$(reply_of "$rid")"
+  sleep 0.3
+  local alive=no; "$TMUX_BIN" has-session -t "=$name:" 2>/dev/null && alive=yes
+  if [ "$want" = OK ]; then
+    if printf '%s' "$R" | grep -qF '"killed":true' && [ "$alive" = no ]; then ok "$what → 真的杀掉了"
+    else bad "$what：期望杀掉，实得 $R（alive=$alive）"; fi
+  else
+    # 拒绝这一档要同时满足：应答带那个码，**且会话还活着**（只看应答会漏掉「回了错但已经杀了」）
+    if printf '%s' "$R" | grep -qF "$want" && [ "$alive" = yes ]; then ok "$what → 拒绝（$want），会话仍存活"
+    else bad "$what：期望 $want 且会话存活，实得 $R（alive=$alive）"; fi
+  fi
+}
+g3 "本工具会话 + 单窗口" "g3-owned-cc" no 1 OK 1
+g3 "本工具会话 + 2 窗口（Gate 3 挡）" "g3-owned-cc" no 2 too_many_windows 2
+g3 "非本工具会话 + 单窗口（Gate 2 就挡住）" "someones-box" no 1 wrong_owner 3
+g3 "自定义名 + @ccm_sid + 单窗口" "g3-custom" yes 1 OK 4
+g3 "自定义名 + @ccm_sid + 3 窗口（Gate 3 挡）" "g3-custom" yes 3 too_many_windows 5
+"$TMUX_BIN" kill-server 2>/dev/null || true; sleep 0.2
+send '{"id":"e2e-g3-nos","cmd":"kill","args":{"name":"g3-nope-cc"}}'
+if wait_for '"id":"e2e-g3-nos"'; then
+  R="$(reply_of e2e-g3-nos)"
+  if printf '%s' "$R" | grep -qF 'no_such_session'; then ok "目标不存在 → no_such_session（Gate 3 没吞掉这一档）"
+  else bad "目标不存在的应答不对：$R"; fi
+else bad "kill 不存在目标：5s 内无应答"; fi
+send '{"id":"e2e-g3-bad","cmd":"kill","args":{"name":"a:b"}}'
+if wait_for '"id":"e2e-g3-bad"'; then
+  R="$(reply_of e2e-g3-bad)"
+  if printf '%s' "$R" | grep -qF 'invalid_args'; then ok "名字含 \`:\` → invalid_args（形状门在三道门之前）"
+  else bad "形状门没挡住 \`a:b\`：$R"; fi
+else bad "kill 形状门：5s 内无应答"; fi
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail SKIP=$skip ====="
 # ⚠ **这里刻意不写数字地板。** 定框 §4：「e2e 各套通过数（CI 两处 + 本地脚本），

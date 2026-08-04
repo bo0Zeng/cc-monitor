@@ -436,6 +436,12 @@ mod spawn_registry {
              与用户在终端里手敲同一条命令没有区别（D1 裁决的正例）",
         ),
         (
+            "control/kill.rs",
+            "tmux",
+            "F04a：`kill-session`（argv 直传）。**破坏性**，但改的是 **tmux server 的运行期状态**，\
+             不是 daemon 自己写用户既有数据；且必须先过 §34 三道门（Gate 3 = 单窗口）",
+        ),
+        (
             "control/gate.rs",
             "tmux",
             "F03：§34 Gate 2 的探测（`display-message -p` 取 `@ccm_sid` + `#{session_id}`）。\

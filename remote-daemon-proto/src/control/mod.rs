@@ -9,6 +9,8 @@
 //!   `@ccm_sid` 与 `#{session_id}` 句柄，判定本身在共享的 `gate-core`（定框 C1）。
 //!   它**只读** tmux，但归 control/ —— 因为它是「能不能改这个会话」这个**决策**的一部分
 //!   （定框 C13：区别不在进程在哪，在它有没有决策权）。
+//! - [`kill`]（F04a）：**杀一个 tmux 会话**。过 §34 三道门（Gate 3 = `windows==1` 只给它），
+//!   对 `#{session_id}` 句柄下手而不是名字。⚠ 本模块落地 ≠ monitor 那条路已切过来（那是 F04b，C6 顺序）。
 //! - [`launch`]（U8a-2b）：**起 tmux 会话 / 往已有会话键入载荷**（U8a 分解里的「平面 ②」）。
 //!   起进程（`tmux`，argv 直传不过 shell），已登记进 `readonly_guard::spawn_registry`。
 //!   **不 attach** —— 那是平面 ③，daemon 在远端开不了你面前的窗。
@@ -25,6 +27,7 @@
 
 pub(crate) mod fork_write;
 pub(crate) mod gate;
+pub(crate) mod kill;
 pub(crate) mod launch;
 pub(crate) mod resolve_query;
 pub(crate) mod tmux_hook;

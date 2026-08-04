@@ -49,11 +49,20 @@ pub(crate) struct Probed {
     /// 通道 A 只写意图，只有通道 B（poller 独立读会话文件确认后）才写事实，
     /// 而**破坏性动作只认事实**。放宽到 `_expect` 就是把这道门拆了。
     pub(crate) ccm_sid: String,
+    /// `#{session_windows}`。**Gate 3 只给破坏性动作用**（见 [`admit_destructive`]）。
+    /// 解析不出来 ⇒ `0`，而 Gate 3 要求恰好 `1` ⇒ **fail closed**（不会误杀）。
+    pub(crate) windows: u32,
 }
 
-/// 探测格式串。两个字段用 TAB 分隔 —— `session_id` 恒是 `$<数字>`、不含 TAB，
-/// `@ccm_sid` 的字符集在 `launch::parse_request` 里收到了 `[A-Za-z0-9_-]`。
-const PROBE_FMT: &str = "#{session_id}\t#{@ccm_sid}";
+/// 探测格式串。**三个**字段用 TAB 分隔 —— `session_id` 恒是 `$<数字>`、不含 TAB，
+/// `@ccm_sid` 的字符集在 `launch::parse_request` 里收到了 `[A-Za-z0-9_-]`，
+/// `session_windows` 对一个存在的会话恒为正整数。
+///
+/// ⚠ **F04a 加了 `#{session_windows}`（Gate 3 用）—— 刻意加在同一次探测里**：
+/// 多一次 `display-message` 就多一个 TOCTOU 窗口，而本模块的立身之本就是把那个窗口关掉。
+/// 非破坏性动作（`admit`）**不看**这个字段，但照样取回来 —— 与 monitor 侧同一条纪律
+/// （那边的 `build_guarded_tmux_cmd` 头注写着「**总是**在格式串里带 `#{session_windows}`」）。
+const PROBE_FMT: &str = "#{session_id}\t#{@ccm_sid}\t#{session_windows}";
 
 /// 跑一次 `tmux display-message -p -t <target> '<fmt>'` 并把 stdout 取回来。
 ///
@@ -75,16 +84,24 @@ fn probe(target: &str) -> Result<Option<Probed>, CmdErr> {
     if line.is_empty() {
         return Ok(None);
     }
-    // `split('\t')` 而不是 `splitn(2)`：多出一段就是格式串被人动过了，宁可判不存在也不猜。
+    // 逐段切。**多出一段就是格式串被人动过了**，宁可判不存在也不猜。
     let mut it = line.split('\t');
     let session_id = it.next().unwrap_or_default().to_string();
     let ccm_sid = it.next().unwrap_or_default().to_string();
+    // 解析不出来 ⇒ 0。Gate 3 要求恰好 1 ⇒ **fail closed**（拿不到窗口数就不许杀）。
+    let windows = it
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .parse::<u32>()
+        .unwrap_or(0);
     if session_id.is_empty() || it.next().is_some() {
         return Ok(None);
     }
     Ok(Some(Probed {
         session_id,
         ccm_sid,
+        windows,
     }))
 }
 
@@ -112,6 +129,50 @@ pub(crate) fn admit(name: &str, target: &str) -> Result<String, CmdErr> {
                 "CCM_GUARD_REJECTED sid= —— 会话 {name:?} 既不是本工具的命名形状，\
                  远端 `@ccm_sid` 也没设 ⇒ 拒绝键入（§34 Gate 2）。\
                  这道门挡的是「往一个不是本工具管理的 tmux 会话里打字」。"
+            ),
+        ));
+    }
+    Ok(p.session_id)
+}
+
+/// **破坏性动作的门**：Gate 2（身份）**再加** Gate 3（`windows == 1`）。
+///
+/// # 为什么破坏性动作要多一道门
+///
+/// Gate 2 只回答「这是不是本工具的会话」。但一个**本工具建的**会话也可能被用户
+/// 自己扩出了额外窗口（在里面开了别的东西）——把它整个杀掉就连带毁掉用户的活。
+/// ⇒ Gate 3：**只杀「干净的单窗口会话」**。多窗口 ⇒ 拒绝，让用户自己去那个 tmux 里处理。
+///
+/// 与 monitor 侧逐条同义（`tmux.rs::build_guarded_tmux_cmd` 的 `[ "$w" = "1" ]`），
+/// 拒绝码也保持同族（`CCM_GUARD_REJECTED windows=<n>`）。
+///
+/// ⚠ **Gate 3 只给破坏性动作**：`send-keys` 不删除任何东西，窗口数与它无关 ——
+/// 给它加 Gate 3 会让「往一个多窗口会话里打字」被误拒（monitor 侧 F04 Phase D
+/// 审计专门修过这个错法）。所以本函数与 [`admit`] **是两个入口，不是一个带 flag 的**。
+pub(crate) fn admit_destructive(name: &str, target: &str) -> Result<String, CmdErr> {
+    let Some(p) = probe(target)? else {
+        return Err((
+            "no_such_session",
+            format!("会话 {name:?} 不存在；没有可杀的目标"),
+        ));
+    };
+    if !gate_core::gate2(name, Some(&p.ccm_sid)).allowed() {
+        return Err((
+            "wrong_owner",
+            format!(
+                "CCM_GUARD_REJECTED sid= —— 会话 {name:?} 既不是本工具的命名形状，\
+                 远端 `@ccm_sid` 也没设 ⇒ 拒绝杀它（§34 Gate 2）"
+            ),
+        ));
+    }
+    if p.windows != 1 {
+        return Err((
+            "too_many_windows",
+            format!(
+                "CCM_GUARD_REJECTED windows={} —— 会话 {name:?} 有 {} 个窗口，\
+                 不是干净的单窗口会话 ⇒ 拒绝杀它（§34 Gate 3）。\
+                 用户可能在里面开了别的东西；请到那个 tmux 里自行处理",
+                p.windows, p.windows
             ),
         ));
     }
@@ -190,22 +251,48 @@ mod tests {
     #[test]
     fn a_probe_line_parses_into_a_handle_and_a_sid() {
         // 直接构造探测输出的解析结果，不起进程（起进程是 e2e 的事）。
-        let line = "$3\tabc123";
+        let line = "$3\tabc123\t1";
         let mut it = line.split('\t');
         let p = Probed {
             session_id: it.next().unwrap().to_string(),
             ccm_sid: it.next().unwrap().to_string(),
+            // F04a：第三段是 `#{session_windows}`。**解析不出来 ⇒ 0**，而 Gate 3 要求恰好 1
+            // ⇒ fail closed（拿不到窗口数就不许杀）。
+            windows: it.next().unwrap_or_default().parse().unwrap_or(0),
         };
         assert_eq!(p.session_id, "$3");
         assert_eq!(p.ccm_sid, "abc123");
+        assert_eq!(p.windows, 1);
         assert!(
             p.session_id.starts_with('$'),
             "tmux 的 session_id 恒是 `$N` —— 不是这个形状就说明格式串被动过了"
         );
     }
 
-    /// ★ 格式串里必须**同时**有句柄与 sid：少了句柄就退回「对名字下手」＝TOCTOU 回归，
-    /// 少了 sid 就等于没有门。
+    /// ★ F04a：**Gate 3 拿不到窗口数时 fail closed**（解析失败 ⇒ 0 ⇒ 拒绝）。
+    ///
+    /// 反向的错法（解析失败当 1）会把「探测被截断」变成「放行一次 kill」——
+    /// 那是本仓最不能接受的一类默认值。
+    #[test]
+    fn gate3_fails_closed_when_the_window_count_is_unreadable() {
+        for line in ["$1\tsid", "$1\tsid\t", "$1\tsid\tnot-a-number"] {
+            let mut it = line.split('\t');
+            it.next();
+            it.next();
+            let w: u32 = it.next().unwrap_or_default().trim().parse().unwrap_or(0);
+            assert_ne!(
+                w, 1,
+                "{line:?} 解析出的窗口数不该等于 1（那会放行一次 kill）"
+            );
+        }
+        let mut it = "$1\tsid\t1".split('\t');
+        it.next();
+        it.next();
+        assert_eq!(it.next().unwrap().parse::<u32>().unwrap(), 1);
+    }
+
+    /// ★ 格式串里必须**同时**有句柄、sid 与窗口数：少了句柄就退回「对名字下手」＝TOCTOU 回归，
+    /// 少了 sid 就等于没有 Gate 2，少了窗口数就等于没有 Gate 3。
     #[test]
     fn the_probe_format_asks_for_both_fields() {
         assert!(
@@ -215,6 +302,10 @@ mod tests {
         assert!(
             PROBE_FMT.contains("#{@ccm_sid}"),
             "少了 sid ⇒ 这道门就是空的"
+        );
+        assert!(
+            PROBE_FMT.contains("#{session_windows}"),
+            "少了窗口数 ⇒ Gate 3 没有输入，破坏性动作会误杀多窗口会话"
         );
         assert!(
             !PROBE_FMT.contains("@ccm_sid_expect"),

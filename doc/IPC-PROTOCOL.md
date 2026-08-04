@@ -484,6 +484,33 @@ monitor 永远不会发的形状。
 
 **今天有三条命令**：`ping` / `cancel`（骨架验收用）+ **`resolve`**（第一条真业务命令，见下），它们随 `hello` 的 `commands` 字段上线 —— 那是与分派表**同一份真相源**（`hello_commands_match_the_dispatch_table` 钉住：声明了却不接 ⇒ 客户端发过去石沉大海；接了却不声明 ⇒ 客户端不知道能用）。真业务命令从 `--resolve` 吸收开始。
 
+#### `kill`：杀一个 tmux 会话（F04a，**第一条破坏性入方向命令**）
+
+```text
+→ {"id":"K1","cmd":"kill","args":{"name":"1a2b3c4d-cc"}}
+← {"kind":"reply","id":"K1","ok":true,"data":{"session":"1a2b3c4d-cc","killed":true}}
+```
+
+**它必须过 §34 的三道门**，逐条对应 monitor 侧 `tmux.rs::kill_remote_tmux` 那条 shell 路：
+
+| 门 | 判据 | 不通过的错误码 |
+|---|---|---|
+| Gate 1 | `=name:` 精确匹配（`exact_target`）；`name` 不许含 `:` / `=` / 控制字符 | `invalid_args` |
+| Gate 2 | 名字命中 `cc-*`／`<X>-cc` **或** 远端 `@ccm_sid` 已设 | `wrong_owner` |
+| Gate 3 | `session_windows == 1`（**只给破坏性动作**） | `too_many_windows` |
+
+目标不存在 ⇒ `no_such_session`；起不来 tmux ⇒ `no_tmux`；过了门却没杀成 ⇒ `kill_failed`。
+
+**两件它刻意这么做的事**：
+
+1. **杀的是 `#{session_id}` 句柄，不是名字。** 三道门与 `kill-session` 是两次 tmux 调用，
+   之间有窗口；对句柄下手 ⇒ 名字被重新绑定也杀不到别人。**破坏性动作尤其不能对名字下手。**
+2. **Gate 3 只给它。** `send-keys` 不删除任何东西，窗口数与它无关 ——
+   给 `send-into` 加 Gate 3 会让「往多窗口会话里打字」被误拒。
+   所以 `admit`（非破坏性）与 `admit_destructive` 是**两个入口，不是一个带 flag 的**。
+
+⚠ **本命令存在 ≠ monitor 已经改走它。** 定框 C6：先搬门、再切路由 —— 切路由是 **F04b**。
+
 #### `launch`：平面 ②（远端执行面）——真的建 tmux 会话（U8a-2b）
 
 ```text
