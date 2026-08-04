@@ -25,7 +25,8 @@ import { parseAddressLines } from "../remote-config";
 // E80：`ConnectStage` 直连生成物，不再绕道 `remote-section`（那条绕道是 import 环的一半）。
 import type { ConnectStage } from "../generated/ConnectStage";
 import { AGENT_PROFILE } from "../agent-profile";
-import { deriveTmuxName } from "../remote-launch";
+// F13：默认名要过铸名口（`mintTmuxName`），`deriveTmuxName` 只产**基名建议**。
+import { deriveTmuxName, mintTmuxName } from "../remote-launch";
 import {
   fetchAccounts,
   isSelectable,
@@ -919,15 +920,37 @@ export class MachineCard {
     start.className = "settings-btn settings-btn-primary";
     start.textContent = "开始";
     start.addEventListener("click", () => {
+      void (async () => {
       const cwd = cwdInput.value.trim();
-      const name = nameInput.value.trim() || deriveTmuxName(cwd);
+      // F13（用户 2026-08-03：「为什么会撞名? 要撞名检查」）：**默认名必须过铸名口。**
+      //
+      // 摸底实测的缺陷：这里此前直接拿 `deriveTmuxName(cwd)` 当最终名，**不查撞名**
+      // ⇒ 同一个 cwd 点两次「开始」会产出同名，撞上远端 `create-or-attach` 的幂等闸
+      // ⇒ **静默接进第一个会话，而用户以为开了新的**（issue #76 那一族）。
+      //
+      // 用户显式填的名字**不动**（那是他的意思，撞了也是他要的复用）；
+      // 只有**我们替他派生**的那个默认名才过 `mintTmuxName` 避让。
+      // 拿不到会话列表（远端不可达等）⇒ 用空集合**诚实降级**：与改之前逐字同行为，不更差。
+      const typed = nameInput.value.trim();
+      let name = typed;
+      if (!name) {
+        let taken: ReadonlySet<string> = new Set();
+        try {
+          const sessions = await commands.list_remote_tmux({ origin });
+          taken = new Set((sessions ?? []).map((s) => s.name));
+        } catch {
+          // 诚实降级：列不出来就不避让（等于改之前的行为），不因为查询失败挡住启动
+        }
+        name = mintTmuxName(deriveTmuxName(cwd), taken);
+      }
       const command = cmdInput.value.trim() || AGENT_PROFILE.defaultLauncher;
       const accName = acctSelect.value; // "" = 不指定
       back.remove();
       // A4：新会话无 sid → 不记 lastAccount；withAccount 统一解析注入（不可选则退化默认起）。
-      void withAccount(origin, accName || null, (mods) =>
+      await withAccount(origin, accName || null, (mods) =>
         runRemoteLauncher(origin, cwd, name, command, mods),
       );
+      })();
     });
     foot.append(cancel, start);
     box.appendChild(foot);

@@ -72,7 +72,7 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   ["test:api-error", "src/cards/api-error.test.ts", 5],
   ["test:bash", "src/cards/bash.test.ts", 20],
   ["test:remote-health", "src/remote-health.test.ts", 5],
-  ["test:remote-launch", "src/remote-launch.test.ts", 40],
+  ["test:remote-launch", "src/remote-launch.test.ts", 42],
   ["test:format", "src/format.test.ts", 10],
   ["test:history-cache", "src/views/history-cache.test.ts", 8],
   ["test:history-prefs", "src/views/history-prefs.test.ts", 18],
@@ -92,7 +92,7 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
  * 这是它相对 a 条的全部价值：a 比的是「文件 vs 登记」，登记本身是可编辑的；
  * 这条比的是「磁盘 vs 一个常量」。
  */
-const TOTAL_FLOOR = 242;
+const TOTAL_FLOOR = 244; // F13：242 → 244（棘轮往上拧 = 加强）
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;

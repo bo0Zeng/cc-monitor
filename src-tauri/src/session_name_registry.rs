@@ -42,16 +42,11 @@ mod tests {
             "src/remote-launch.ts",
             "producer-target",
             2,
-            "两族本体：`pickFreshTmuxName`（sid 派生 + 撞名后缀，F74）· `deriveTmuxName`（cwd 派生）。\
-             **S12 的目标就是最后只剩这两个。**",
-        ),
-        (
-            "src/launch-requests.ts",
-            "producer-duplicate",
-            1,
-            "`<sid8>-cc` 的**第二份** —— 与 `pickFreshTmuxName` 的 base 逐字相同，\
-             **但不做撞名检查**。⚠ 本轮普查**新发现**，且它可能是真缺陷（F74 存在的理由就是撞名）\
-             —— **登记为待查，不盲改**。退役归 **U11 本体**（改调 `pickFreshTmuxName`）。",
+            "两族本体：`pickFreshTmuxName`（sid 派生）· `deriveTmuxName`（cwd 派生**基名建议**）。\
+             **这两条是真的两族**（一个从 sid 来、一个从 cwd 来），不是副本 —— 目标就是只剩这两个。\
+             ⚠ **F13 起，撞名避让不在它们里面** —— 收进了 `mintTmuxName`（全仓唯一铸名口，\
+             `existing` 必填、无默认值，少传被 `tsc` 挡住）。它本身不含 `-cc` 字面量，\
+             故不出现在本表里；本表数的是「谁在产 `-cc` 基名」。",
         ),
         (
             "src/fork-launch.ts",
@@ -207,6 +202,12 @@ mod tests {
 
     /// ★ 递减棘轮：目录内容 == 登记表，**连每个文件的命中数一起钉**。
     ///
+    /// ⚠ **F13（2026-08-04）往下拧了一格：5 → 4 个文件。**
+    /// 消灭的是 `src/launch-requests.ts` 那个 `<sid8>-cc` 默认值 —— 它与 `pickFreshTmuxName`
+    /// 的基名逐字相同却**不做撞名避让**，正是用户问的「为什么会撞名」的根因之一。
+    /// **是本条棘轮的「少一处也红」提醒我来拧的**（不是我记得）——
+    /// 只挡回潮的棘轮不会自己往下走，那半句的价值就在这里。
+    ///
     /// 多一处 ⇒ 红（防回潮）；少一处 ⇒ 也红（提醒把棘轮往下拧 + 核对 S12 的账）。
     #[test]
     fn the_session_name_producers_match_the_registry_count_for_count() {
@@ -250,8 +251,12 @@ mod tests {
             targets, 1,
             "S12 的两族应当同住一个文件（`remote-launch.ts`）"
         );
+        // F13（2026-08-04）：4 → 3。退役的是 `src/launch-requests.ts` 那个 `<sid8>-cc` 默认值
+        // （与 `pickFreshTmuxName` 基名逐字相同却不做撞名避让 —— 用户问的「为什么会撞名」的根因之一）。
+        // 剩下 3 份：`fork-launch.ts`（→ F13 已改调铸名口，仍自产基名）·`shared/ccm`（→ F06）·
+        // `cc-spawn`（→ F13a，等本机后端）。
         assert_eq!(
-            dups, 4,
+            dups, 3,
             "副本数变了 —— 退役了就把棘轮往下拧，并更新 S12 的账"
         );
     }

@@ -26,6 +26,8 @@
 
 // tmux 名的净化器与 `deriveTmuxName` **共用一份**（`forkTmuxName` 头注写了为什么）。
 import { tmuxNameSegment } from "./shell-quote";
+// F13：撞名避让只有一个家（`mintTmuxName`）—— 别在这里重写。
+import { mintTmuxName } from "./remote-launch";
 
 /** 某个维度的取值：知道（带来源）或不知道（带原因）。 */
 export type Slot<T> =
@@ -122,12 +124,10 @@ export function describeSlot(k: keyof ForkLaunchFacts, f: ForkLaunchFacts): stri
  * ⇒ 基名一律过 `tmuxNameSegment`（与 `deriveTmuxName` **同一个**净化器，不是另写一份）。
  * 净化后为空（如 cwd 是 `/`）→ 退回 `session`，与 `deriveTmuxName` 的兜底一致。
  */
-export function forkTmuxName(sourceName: string, taken: readonly string[] = []): string {
+export function forkTmuxName(sourceName: string, taken: readonly string[]): string {
+  // F13：⚠ **`taken` 的默认值 `= []` 已删。** 那个默认值让本函数的避让形同虚设 ——
+  // 调用方不传就等于没检查，而它「看起来有检查」。少传一个参数现在会被 `tsc` 挡住。
+  // 避让本身搬进 `mintTmuxName`（全仓唯一铸造口），这里只负责基名形状。
   const base = tmuxNameSegment(sourceName.replace(/-cc$/, "")) || "session";
-  const used = new Set(taken);
-  const first = `${base}-fork-cc`;
-  if (!used.has(first)) return first;
-  let n = 2;
-  while (used.has(`${first}-${n}`)) n += 1;
-  return `${first}-${n}`;
+  return mintTmuxName(`${base}-fork-cc`, new Set(taken));
 }
