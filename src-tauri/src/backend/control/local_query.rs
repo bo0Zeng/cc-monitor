@@ -23,12 +23,11 @@
 //! 调用方必须能分开「后端不在」（该回落/该提示装）与「后端在但这条查询失败了」（该报原因）。
 //! 把两者压成一个 `Err(String)` 就是让上层猜 —— 那正是 F14 那次「静默回落」的形状。
 //!
-//! # ⚠ 它今天**零生产调用方**（如实说）
+//! # 调用方与账本必须同步（F10b）
 //!
-//! F10a 只交付传输与它的判据；把那 5 个**有对侧**的 reader 迁过来是 **F10b**。
-//! 下面 `the_first_production_caller_must_move_the_ratchet` 是一条**前提触发器**：
-//! 它一有生产调用方就红，逼下一个人回来把 `local_read_surface_registry` 的棘轮往下拧
-//! —— 否则会出现「切了后端但棘轮没动」的假账。
+//! F10a 交付传输，F10b 逐批把那 5 个**有对侧**的 reader 迁过来（第一批：`usage.rs`）。
+//! 下面那条判据钉住**每一个调用方都已经从「未退役」账上下来了** ——
+//! 一个文件既在调后端、又还记在账上，就是「切了后端但棘轮没动」的假账。
 
 use std::path::PathBuf;
 
@@ -64,7 +63,7 @@ pub(crate) fn classify(code: Option<i32>, stdout: String, stderr: String) -> Que
 ///
 /// ⚠ **不做重试、不做超时**：这两件都属调用方的策略（历史面愿意等、UI 探针不愿意），
 /// 而在这一层写死会让两种调用方之一必然错。如实记为诚实边界。
-#[allow(dead_code)] // 零生产调用方（F10b 接线）——见模块头注与那条前提触发器
+// F10b 第一批起有生产调用方（`usage.rs`），不再需要 `allow(dead_code)`。
 pub(crate) fn run_query(target_triple: &str, args: &[&str]) -> QueryOutcome {
     let bin: PathBuf = match super::local_backend::resolve_beside_this_exe(target_triple) {
         super::local_backend::Resolved::Found(p) => p,
@@ -137,16 +136,26 @@ mod tests {
         assert!(!matches!(missing, QueryOutcome::Failed { .. }));
     }
 
-    /// ★ **前提触发器**：本模块今天零生产调用方；**一有调用方就红**。
+    /// ★ **前提触发器 —— 已经触发过一次，这是它的后继形态**（F10b 第一批，2026-08-04）。
     ///
-    /// 它逼的是一件很具体的事：`local_read_surface_registry` 那条递减棘轮
-    /// （`reader` 条数，今天 11）**必须跟着往下拧**。否则会出现
-    /// 「读面切了后端、而账上还记着 11 处没退役」的假账 —— 那种假账比不切更糟，
-    /// 因为它让下一个人以为工作量还在。
+    /// # 原形是什么、为什么换
+    ///
+    /// 原形：断言本模块**零生产调用方**，一有调用方就红并喊「回去把棘轮往下拧」。
+    /// F10b 第一批（`usage.rs` 改走 `--usage`）时它**确实红了**，而且红得对 ——
+    /// 棘轮当场从 11 拧到 10、`usage.rs` 那条登记删掉。
+    ///
+    /// ⇒ 换成后继形态：**每一个调用方都必须是「已退役」的那批**。
+    /// 判定不靠手写清单：拿本模块的生产调用方集合，与
+    /// `local_read_surface_registry::REGISTERED` 里**还挂着 `reader`** 的文件集合求交 ——
+    /// **交集必须为空**。一个文件既在调后端、又还记在「未退役」账上，那就是假账。
+    ///
+    /// ⚠ **这不是降强度**：原形只能红**一次**（第一个调用方），此后永远绿；
+    /// 后继形态对**每一批迁移**都有效，而且它钉的是更难的那件事
+    /// （「棘轮跟着动了」而不只是「有人调了」）。
     ///
     /// ⚠ 判定用的是**遍历 `src/` 生产段找 `run_query(`**，不是手写清单。
     #[test]
-    fn the_first_production_caller_must_move_the_ratchet() {
+    fn every_caller_of_this_transport_is_already_off_the_read_surface_ledger() {
         let src_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         // 运行时拼，免得命中本文件自己。
         let verb = format!("run_{}(", "query");
@@ -203,13 +212,36 @@ mod tests {
             scanned > 200_000,
             "剥完生产段只扫到 {scanned} 字节 —— 连顶层都没读到，遍历彻底坏了"
         );
+        // 后继形态：调用方**不许**还挂在「未退役」账上。
+        // ⚠ 账本的真相源是那个模块自己的 `REGISTERED`，这里**不抄一份文件名单** ——
+        // 读它的源码把还标着 `reader` 的文件名抽出来（同一个数/同一张表只有一个家，定框 §4）。
+        let ledger = std::fs::read_to_string(src_root.join("local_read_surface_registry.rs"))
+            .expect("读不到 local_read_surface_registry.rs");
+        let mut still_on_ledger: Vec<&String> = Vec::new();
+        for c in &callers {
+            // 登记表里的键是 `src/<rel>`。
+            let key = format!("\"src/{c}\"");
+            if let Some(at) = ledger.find(key.as_str()) {
+                // 该条目的类别就在文件名之后不远处；只要它还标着 reader 就算「未退役」。
+                let window = &ledger[at..(at + 120).min(ledger.len())];
+                if window.contains("\"reader\"") {
+                    still_on_ledger.push(c);
+                }
+            }
+        }
         assert!(
-            callers.is_empty(),
-            "本机查询传输有了生产调用方：{callers:?}\n\
-             **这多半是好事**（F10b 开工了）⇒ 回 `local_read_surface_registry` 把那条递减棘轮\n\
-             （`reader` 条数）往下拧，并把被迁走那个文件的登记删掉。\n\
-             ⚠ 别只删断言里的数字：那个数只有一个家\n\
-             （`every_registered_file_declares_what_kind_of_read_it_is`），别在别处抄第二份。"
+            still_on_ledger.is_empty(),
+            "这些文件**既在调本机后端、又还挂在「未退役」账上**：{still_on_ledger:?}\n\
+             ⇒ 那是假账，而且是最坏的那种：它让下一个人以为工作量还在。\n\
+             正解：把它那条登记删掉，并把 `local_read_surface_registry` 的递减棘轮往下拧一格\n\
+             （那个数只有一个家 —— `every_registered_file_declares_what_kind_of_read_it_is`，\n\
+             别在别处抄第二份）。"
+        );
+        // 反向锚点：抽取器真的读到了账本，否则上面那条零命中地绿。
+        assert!(
+            ledger.contains("\"reader\"") && ledger.len() > 3000,
+            "账本只读到 {} 字节或里面没有 `reader` —— 抽取坏了，本条在空转",
+            ledger.len()
         );
     }
 }

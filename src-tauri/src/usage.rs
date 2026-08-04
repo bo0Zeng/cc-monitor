@@ -77,6 +77,16 @@ pub struct SessionUsageRow {
 /// - **正解 = per-requestId 逐字段 MAX**（`max_with`）：prompt 侧近恒定 max 无害、output 单调 max=终结值。
 ///   `msgs` 按「每请求 +1」（一次请求 = 一条 assistant 轮次）。requestId 缺失（旧版 CC，实测 0.05%）→ 回退 uuid。
 ///   `/branch` 祖先复制保留 requestId → 跨会话按 requestId 去重（`seen_requests`），同旧 uuid 去重的意图。
+// ─── F10b 第一批：以下这批本地聚合实现**只剩测试在用** ───────────────────
+// 生产路已改走本机后端的 `--usage`（见 `aggregate_usage_all`）。
+// ⚠ 刻意**不删**（铁律 13：别因「暂时没人用」删掉一个形态）—— 它是那套语义的
+// **参照实现**：跨会话 `seen_requests` 去重、按 requestId 逐字段 MAX，都由它的单测钉着，
+// 而 daemon 侧共用的正是同一个 `usage_core::accumulate`。
+// ⚠ 代价如实记：迁移让它们变成 **7 条 dead_code 告警**（`monitor` lib 39 → 46）。
+// 试过给它们加 `cfg(test)`（同 `lib.rs` 对 `ccm_cli_contract` 的做法），
+// 但这批函数跨两个模块（`usage.rs` 与 `codex_record.rs` 的三个 `pub fn`），
+// 加一半只把告警账搅乱（46 → 47、duplicates 口径也变了）⇒ **回滚了那次尝试**，
+// 改为如实登记新基线 + 把「收干净」列成 F10b 余下批的顺手活。
 fn accumulate_usage(
     lines: impl Iterator<Item = String>,
     seen_requests: &mut HashSet<String>,
@@ -240,63 +250,77 @@ fn analyze_usage_in_session(
 }
 
 /// F88a：聚合本地全部会话的用量，流式发行（每会话一行）。前端 drop channel → 取消。
-/// 纯读、不需 SessionMap。走 history 同款项目/会话遍历骨架（`history.rs:141-162/221-237`）。
+///
+/// # F10b 第一批：**它不再自己走 `~/.claude`**（C7 / C1）
+///
+/// 从前这里自己 `resolve_claude_dir()` + `records_dir()` + 两层 `read_dir`，
+/// 现在**问本机后端**：`exec 一次 sidecar --usage`，逐行 JSON 反序列化成 [`SessionUsageRow`]。
+///
+/// ⚠ **为什么不把 `claude_dir` 传给 sidecar**（那样看起来更「稳」）：
+/// 递减棘轮的探针集就是 `claude_dir` / `records_dir` 这些词 ——
+/// 「退役」的本意是 **monitor 不再知道数据在哪**。传过去等于没退。
+/// 两侧都认 `CLAUDE_CONFIG_DIR`（monitor `paths.rs` · daemon `main.rs`），
+/// 而 `Command::output()` 继承父进程环境 ⇒ 同一个数据目录。
+///
+/// ⚠ 对拍**由构造保证**，不是靠我对齐：算 token 的核 `usage_core::accumulate` 两侧共用；
+/// 跨会话 `seen_requests` 去重（防 `/branch` 复制的祖先记录重复计）两侧都在文件循环**之外**
+/// 声明（daemon 那边头注逐字写着「同 usage.rs」，并有专门的跨会话去重测试）；
+/// Codex 那半 daemon 侧是 DG5，镜像同一套。
+///
+/// ⚠ **诚实边界**（如实记，别读成「完全等价」）：
+/// - **进度粒度变了**：从前是边走边发，现在是查询回来后一次性发。行内容不变、计数不变。
+/// - **`CLAUDE_CONFIG_DIR` 指向不存在的路径时**：monitor 从前会**回落到 `~/.claude`**
+///   （`paths.rs` 那条 warn），sidecar 不会 —— 那种情形下它返回空。极少见，但不是零。
+/// - **文件遍历顺序**：跨会话去重让「哪个会话认领共享 requestId」与顺序有关。
+///   两侧顺序不保证逐字节一致 ⇒ 同一个 requestId 可能挂在另一个会话行上，**总量不变**。
+///   ⚠ 这条差异在本件之前就存在于「本地 vs 远端」之间，不是本件引入的。
 #[tauri::command]
 pub async fn aggregate_usage_all(on_row: Channel<SessionUsageRow>) -> Result<u32, String> {
     tokio::task::spawn_blocking(move || {
         let started = std::time::Instant::now();
-        let claude_dir = crate::paths::resolve_claude_dir().ok_or("claude dir not found")?;
-        let projects_dir = crate::adapter::records_dir(&claude_dir);
-        if !projects_dir.exists() {
-            return Ok(0);
-        }
+        let outcome = crate::backend::control::local_query::run_query(
+            env!("CCM_TARGET_TRIPLE"),
+            &["--usage"],
+        );
+        let stdout = match outcome {
+            crate::backend::control::local_query::QueryOutcome::Ok(s) => s,
+            // 诚实降级：把「后端不在」原样交给用户（定框 §5），不假装 0 个会话。
+            crate::backend::control::local_query::QueryOutcome::NoBackend(reason) => {
+                return Err(format!("本机后端不在，拿不到用量：{reason}"));
+            }
+            crate::backend::control::local_query::QueryOutcome::Failed { code, stderr } => {
+                return Err(format!(
+                    "本机后端的用量查询失败（退出码 {code:?}）：{}",
+                    stderr.trim()
+                ));
+            }
+        };
         let mut count = 0u32;
-        // 跨全部会话文件的 requestId(缺→uuid) 去重集（防 /branch 复制的祖先记录重复计，见 accumulate_usage）。
-        let mut seen_requests: HashSet<String> = HashSet::new();
-        let proj_iter = std::fs::read_dir(&projects_dir)
-            .map_err(|e| format!("read {}: {e}", projects_dir.display()))?;
-        for proj in proj_iter.flatten() {
-            let proj_path = proj.path();
-            if !proj_path.is_dir() {
+        for line in stdout.lines() {
+            let line = line.trim();
+            if line.is_empty() {
                 continue;
             }
-            let files = match std::fs::read_dir(&proj_path) {
-                Ok(d) => d,
-                Err(_) => continue,
-            };
-            for f in files.flatten() {
-                let p = f.path();
-                if !crate::adapter::has_record_ext(&p) {
-                    continue;
-                }
-                if let Some(row) = analyze_usage_in_session(&p, &mut seen_requests) {
+            match serde_json::from_str::<SessionUsageRow>(line) {
+                Ok(row) => {
                     if on_row.send(row).is_err() {
                         tracing::info!("aggregate_usage_all: cancelled at {count} sessions");
                         return Ok(count);
                     }
                     count += 1;
                 }
-            }
-        }
-        // Codex 会话用量（per-kind token_count 路；无 `~/.codex/sessions` → 枚举返空、零成本、零回归）。
-        // Claude 侧上面完全不动（用量双写 parity 红线）；Codex 各会话独立、不共享 seen_requests。
-        for info in crate::history::enumerate_codex_sessions() {
-            if let Some(row) = analyze_codex_usage(&info) {
-                if on_row.send(row).is_err() {
-                    tracing::info!("aggregate_usage_all: cancelled at {count} sessions (codex)");
-                    return Ok(count);
-                }
-                count += 1;
+                // 单行坏了不该毁掉整次聚合（同远端那条路的做法，`remote_history` 逐行跳过）。
+                Err(e) => tracing::warn!("--usage 行解析失败（跳过）: {e}"),
             }
         }
         tracing::info!(
-            "aggregate_usage_all: {count} sessions in {}ms",
-            started.elapsed().as_millis()
+            "aggregate_usage_all: {count} sessions in {:?}（经本机后端）",
+            started.elapsed()
         );
         Ok(count)
     })
     .await
-    .map_err(|e| format!("spawn_blocking join: {e}"))?
+    .map_err(|e| format!("join: {e}"))?
 }
 
 #[cfg(test)]
