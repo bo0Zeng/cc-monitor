@@ -6,6 +6,17 @@ edition = "2021"
 # Standalone crate, intentionally NOT part of a workspace. There is no root
 # Cargo.toml: a workspace would pull this Linux-only daemon into the Windows
 # CI `cargo test --all` and break the build. Build this natively on the target.
+#
+# F20（2026-08-04）：「standalone」到底 standalone 到什么程度 —— 实测答案，别再猜：
+#   · `cargo build`  **真的独立**。把两条 daemon→monitor 的 `include_str!` 路径打断，
+#     `cargo build` 仍然 exit=0 / 0 error ⇒ 目标机原生构建**不需要**旁边那棵 `src-tauri/`。
+#   · `cargo test`   **不独立**。它需要 `../src-tauri/` 在 —— 两条判据要跨轨对拍
+#     （`control/gate.rs` 读 Gate 2 的黄金夹具 · `control/launch.rs` 读 monitor 的
+#     `tmux.rs` 断言 `format!("={target}:")` 两侧同形）。打断后 `cargo test --no-run`
+#     exit=101，两条都被逐字点名。
+# 这两条边**刻意保留**：跨轨对拍是「两侧不许偷偷漂开」的唯一保障，而它只在判据里，
+# 不影响部署。由 monitor 侧 `cross_half_edge_registry` 逐条登记 + 钉住
+# 「一条都不许长到生产段」（真长过去，上面那句 standalone 就变假了）。
 
 [[bin]]
 name = "cc-monitor-remote"
