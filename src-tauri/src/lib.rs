@@ -66,6 +66,7 @@ mod ssh_source;
 #[cfg(test)]
 mod ccm_cli_contract;
 mod frame_cadence_guard; // F01：帧节奏说法的零命中守卫（P5 后 daemon 零定时器；被禁措辞见模块头注）
+mod gate_singleton_guard; // F03：§34 Gate 2 的身份判定在 Rust 侧只许有一个家（`gate-core`）
 #[cfg(test)]
 #[cfg(test)]
 #[cfg(test)]

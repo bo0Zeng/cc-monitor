@@ -17,6 +17,8 @@ pub mod launch_wire;
 pub mod payload;
 
 #[cfg(test)]
+mod gate2_parity;
+#[cfg(test)]
 mod launch_cli_parity;
 #[cfg(test)]
 mod launch_payload_parity;

@@ -487,26 +487,15 @@ pub async fn tmux_send_keys(
 /// 是远端半支（`build_guarded_tmux_cmd` 里核验）。命中此判据即可跳过远端核验（零 IO，覆盖今天
 /// 100% 的真实流量）；未命中不代表拒绝，只代表"需要问远端 `@ccm_sid`"。**不删除**——F02 之前的
 /// 老 `cc-*` 会话没有 `@ccm_sid`，只靠这条前缀判据仍必须可 kill/send-keys，否则是向后兼容回归。
+///
+/// **F03：实现搬进 `gate-core`**（定框 C1「一份代码、两种承载」）—— daemon 的
+/// `control/gate.rs` 调的是同一份。本地保留这个名字是为了调用点零改，
+/// 同 `shell_quote_core::posix_quote` 的收口手法。
+/// ⚠ **不许在这里重新实现一遍** —— `gate_singleton_guard` 机检钉着「全仓只有一份」。
 fn is_ccm_tmux_name(name: &str) -> bool {
-    // S4b-3b（用户 2026-07-31）：新会话叫 `<X>-cc`（撞名时 `<X>-cc-2`）。
-    // **老的 `cc-` 前缀一并保留、绝不删** —— 本函数头注逐字写着理由：F02 之前的老 `cc-*`
-    // 会话没有 `@ccm_sid`，只靠这条前缀判据仍必须可 kill/send-keys。删了就是把用户
-    // **正在跑的**会话变成 issue #76 那种「失管会话」。
-    let charset_ok = name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    let old_prefix = name.starts_with("cc-") && name.len() > 3;
-    // 后缀形态：`<X>-cc` 或 `<X>-cc-<N>`（撞名避让）。要求 `<X>` 非空，
-    // 否则裸 `-cc` 这种退化名也会命中。
-    let new_suffix = name
-        .split("-cc")
-        .next()
-        .is_some_and(|head| !head.is_empty() && head.len() < name.len())
-        && (name.ends_with("-cc")
-            || name
-                .rsplit_once("-cc-")
-                .is_some_and(|(_, n)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())));
-    charset_ok && (old_prefix || new_suffix)
+    // S4b-3b（用户 2026-07-31）的新形 `<X>-cc` 与老形 `cc-*` 都在那边认；
+    // 「老形绝不删」的理由（issue #76 失管会话）也逐字写在那边的头注里。
+    gate_core::is_ccm_tmux_name(name)
 }
 
 /// daemon 侧 `watcher.rs` 的源码路径 —— **跨 crate 硬路径的单一落点**。

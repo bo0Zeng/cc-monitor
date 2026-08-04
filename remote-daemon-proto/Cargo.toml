@@ -25,6 +25,9 @@ acct-core = { path = "../src-tauri/crates/acct-core" }
 # U8c-2b-0：POSIX 单引号 quote 的唯一实现（账本 S5 收口）。
 # 本 crate 只用它一处（`control/tmux_hook::sq`）；U8c-2c 起载荷渲染也走它。
 shell-quote-core = { path = "../src-tauri/crates/shell-quote-core" }
+# F03：§34 Gate 2 的唯一实现。**生产依赖**——这道门要在 `control/` 的生产段真的执行，
+# 不是只在测试里比对（那样就成了「门在测试里、路在生产里」）。
+gate-core = { path = "../src-tauri/crates/gate-core" }
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",

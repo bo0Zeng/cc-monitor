@@ -758,7 +758,7 @@ mod tests {
             encode_request(
                 "e2e-si-1",
                 "launch",
-                &launch_args("send-into", "e2e-si-fixed", "true", None, None)
+                &launch_args("send-into", "e2e-si-fixed-cc", "true", None, None)
             ),
             "\ne2e 脚本喂给真 daemon 的 send-into 行与 monitor 编码器的产物不一致。\n\
              `launch_args` 的键名/键序改了就把脚本里那条 `INBOUND_SEND_INTO_LINE` 一起改 ——\n\
