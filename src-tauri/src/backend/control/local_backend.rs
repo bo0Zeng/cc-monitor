@@ -531,6 +531,63 @@ mod tests {
     /// 摸底量到 daemon 一启动就无条件往 tmux server 装全局 hook 且没有开关 ⇒
     /// 扫到 dev 产物就起它会去改用户真实 tmux 的状态。这条钉住那个前提：
     /// 候选路径里**只能有 exe 同目录**，出现任何 `target`/`debug`/仓库相对路径就红。
+    /// ★★ **F05b 接线钉：每一个打包 job 都必须给 sidecar 备好料。**
+    ///
+    /// # 为什么这条是「遍历发现」而不是「数一遍」
+    ///
+    /// `externalBin` 一旦注入，`tauri build` 就要求**当前 target** 的那份二进制存在，
+    /// 少了它整个 job 以 `resource path ... doesn't exist` 失败（本机实测过）。
+    /// ⇒ 发版流水线里**每一处** `tauri build` 都得配三件：原生编 daemon · 按 triple 命名放好 ·
+    /// `--config` 注入补丁。少任何一件那个 job 就红，而**发版红是最贵的红**（tag 已经打出去了）。
+    ///
+    /// 所以发现机制是**遍历 workflow 里所有 `tauri build` 调用**，不是手写「有两个 job」。
+    ///
+    /// ⚠ 中间量自检：先断言真的找到了 `tauri build` 调用（找不到 = 抽取器坏了，本条零命中地绿）。
+    #[test]
+    fn every_bundle_job_stages_the_sidecar_before_building() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级");
+        let wf = root.join(".github/workflows/release.yml");
+        let src = std::fs::read_to_string(&wf).expect("读不到 release.yml");
+        // 运行时拼，免得命中本文件自己的说明文字。
+        let verb = format!("{} build", "tauri");
+        let calls: Vec<&str> = src
+            .lines()
+            .filter(|l| l.contains(&verb) && l.trim_start().starts_with("run:"))
+            .collect();
+        assert!(
+            calls.len() >= 2,
+            "在 release.yml 里只找到 {} 处 `{verb}` 调用 —— 抽取器坏了或流水线变形了\n\
+             （实测两处：Windows 的 nsis+msi 与 Linux 的 deb）。本条会零命中地绿。",
+            calls.len()
+        );
+        for c in &calls {
+            assert!(
+                c.contains("tauri.sidecar.conf.json"),
+                "这处打包没有注入 sidecar 补丁配置：{}\n\
+                 ⇒ 安装包里不会带本机后端（C7），而 `local_backend` 会恒走诚实降级。",
+                c.trim()
+            );
+        }
+        // 三件里的另外两件：原生编 + 按 triple 命名。逐个 job 数得太脆，
+        // 这里钉「整份 workflow 里这两件各至少与打包调用数一样多」。
+        let native = src.matches("Build local backend sidecar").count();
+        let staged = src.matches("Stage sidecar for externalBin").count();
+        assert!(
+            native >= calls.len() && staged >= calls.len(),
+            "打包调用 {} 处，而「原生编 daemon」{native} 处、「按 triple 放好」{staged} 处 —— \n\
+             有 job 会以 `resource path ... doesn't exist` 失败，而那是**发版时**才炸。",
+            calls.len()
+        );
+        // sidecar 的名字只有一个家：这里不抄它，从 Rust 侧读。
+        assert!(
+            src.contains(super::SIDECAR_STEM),
+            "release.yml 里没有出现 `{}` —— 拷过去的名字与消费侧对不上",
+            super::SIDECAR_STEM
+        );
+    }
+
     #[test]
     fn candidates_never_point_into_a_build_tree() {
         let c = sidecar_candidates(Path::new("/opt/app"), "x86_64-unknown-linux-gnu", "");

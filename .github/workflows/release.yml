@@ -138,9 +138,37 @@ jobs:
           }
           Write-Host "Version OK: $tag (package.json / tauri.conf / Cargo.toml / Cargo.lock all agree)"
 
+      # F05b：**本机后端 sidecar**（C7「没有 daemonless，本机也要有后端进程」）。
+      #
+      # 与上面那批 embedded-daemons 是**两件事**：那些是远端 SFTP 部署用的 musl 二进制
+      # （`build.rs` 用 `include_bytes!` 内嵌进 monitor）；这一份是**装在用户自己机器上**、
+      # 由 monitor 起来看住的本机后端（Tauri `externalBin` 打包，装完落在 monitor.exe 旁边）。
+      #
+      # ⚠ 必须原生编：daemon 在 Windows 上真编得过（2026-08-04 真机实测 exit=0、
+      # release 2.6 MB，且跑起来发完整 hello；tmux 那半诚实发 `observation:"unobservable"`）。
+      # ⚠ 名字必须带 target triple —— Tauri 的 sidecar 约定是「构建期带 triple、打包时剥掉」，
+      # 而消费侧 `local_backend::resolve_with` 正是先找带 triple 的、再找裸名。
+      - name: Build local backend sidecar (native)
+        working-directory: remote-daemon-proto
+        run: cargo build --release
+      - name: Stage sidecar for externalBin
+        shell: pwsh
+        run: |
+          $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
+          New-Item -ItemType Directory -Force src-tauri/binaries | Out-Null
+          Copy-Item remote-daemon-proto/target/release/cc-monitor-remote.exe `
+            "src-tauri/binaries/cc-monitor-remote-$triple.exe" -Force
+          Get-ChildItem src-tauri/binaries | ForEach-Object { Write-Host "$($_.Name) $($_.Length)" }
+
       # tauri build 会顺序：npm run build (vite) → cargo build --release → bundle (msi + nsis)
+      #
+      # ⚠ `--config src-tauri/tauri.sidecar.conf.json` 是 F05b 刻意选的形态：`externalBin`
+      # **不进主配置** —— `tauri-build` 要求当前 target 的 sidecar 在**编译期**就存在，
+      # 进主配置会让 `cargo test` 也需要一份 daemon 二进制（实测报错
+      # `resource path binaries/cc-monitor-remote-<triple> doesn't exist`），
+      # 那等于把两半在构建期绑死，正是 C2 反面禁的事。⇒ 只在发版这一步注入。
       - name: tauri build
-        run: npx tauri build --bundles nsis,msi
+        run: npx tauri build --config src-tauri/tauri.sidecar.conf.json --bundles nsis,msi
 
       - name: Compute SHA256 checksums
         shell: pwsh
@@ -236,8 +264,23 @@ jobs:
       - name: npm ci
         run: npm ci
 
+      # F05b：本机后端 sidecar（理由同 build-windows 那两步，见那里的头注）。
+      # ⚠ Linux 侧同样必须做 —— `externalBin` 一旦注入，`tauri build` 就要求**当前 target**
+      # 的那份二进制存在；少了它这一步会以 `resource path ... doesn't exist` 直接失败。
+      - name: Build local backend sidecar (native)
+        working-directory: remote-daemon-proto
+        run: cargo build --release
+      - name: Stage sidecar for externalBin
+        run: |
+          set -euo pipefail
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          mkdir -p src-tauri/binaries
+          cp remote-daemon-proto/target/release/cc-monitor-remote \
+             "src-tauri/binaries/cc-monitor-remote-$triple"
+          ls -l src-tauri/binaries
+
       - name: tauri build (deb)
-        run: npx tauri build --bundles deb
+        run: npx tauri build --config src-tauri/tauri.sidecar.conf.json --bundles deb
 
       - name: Compute SHA256 checksums (Linux)
         run: |

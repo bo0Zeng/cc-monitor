@@ -10,3 +10,7 @@
 # 发版前用 `cargo zigbuild --target *-unknown-linux-musl` 产出后放进来（见 doc/REMOTE-PHASE0-DEPLOY）。
 # build.rs 缺失时优雅降级（不内嵌 → 自动部署 no-op），故 dev/CI 无此二进制也能编译。
 /embedded-daemons/
+# F05b：本机后端 sidecar。与 embedded-daemons 同族（都是 CI 产物、都不进 git），
+# 但用途不同：embedded-daemons 是**远端 SFTP 部署**用的 musl 二进制（build.rs 的
+# `include_bytes!` 内嵌），binaries/ 是 **本机** sidecar（Tauri `externalBin` 打包）。
+/binaries/

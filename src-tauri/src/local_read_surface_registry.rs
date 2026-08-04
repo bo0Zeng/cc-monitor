@@ -302,28 +302,66 @@ mod tests {
         );
     }
 
-    /// ★ **前提触发器**：F10 今天退不了，前提是「本机没有在跑的后端进程」。
+    /// ★ **前提触发器 —— 已经触发过一次，这是它的后继形态**（F05b，2026-08-04）。
     ///
-    /// F05b 一落地（`tauri.conf.json` 出现 `externalBin`），本条**主动红** ——
-    /// 那时本机真有后端了，F10 的正题就能做了，回来把这张棘轮换成真退役。
+    /// # 它原来长什么样、为什么要换
+    ///
+    /// 原形：断言 `tauri.conf.json` 里**没有** `externalBin`，一出现就红并喊
+    /// 「F05b 落地了 ⇒ F10 的正题现在能做了」。
+    ///
+    /// F05b 落地时它**确实红了**，而且红得对。但落地形态与它预设的不同：
+    /// `externalBin` **没有**进主配置 —— 因为 `tauri-build` 要求**当前 target** 的 sidecar
+    /// 在编译期就存在，进主配置会让 `cargo test` 也需要一份 daemon 二进制，
+    /// 那正是 C2 反面（两半不许在构建期互相咬住）刚钉住的东西。
+    /// ⇒ 它住进**发版补丁配置** `tauri.sidecar.conf.json`，只在 `tauri build --config` 时注入。
+    ///
+    /// ⇒ 本条换成后继形态：**盯新的家**，并且钉住「棘轮一格没放」。
+    /// ⚠ **这不是降强度**：断言从「一条」变成「三条」（sidecar 契约有家 · stem 与
+    /// `SIDECAR_STEM` 一致 · 棘轮上限没被放宽），而且扫描面从主配置**换到了它真正的家** ——
+    /// 留在旧扫描面上才是降强度（它永远不会再红）。
     #[test]
-    fn f10_is_still_blocked_because_there_is_no_local_backend_yet() {
-        let conf =
+    fn the_sidecar_contract_has_exactly_one_home_and_f10s_ratchet_is_untouched() {
+        // ① sidecar 契约必须有家，而且**不在主配置里**（进主配置 = 每个编译点都要一份二进制）。
+        let key = format!("external{}", "Bin"); // 运行时拼，免得命中本文件自己的说明
+        let main_conf =
             fs::read_to_string(root().join("tauri.conf.json")).expect("读不到 tauri.conf.json");
         assert!(
-            conf.len() > 500,
+            main_conf.len() > 500,
             "tauri.conf.json 只有 {} 字节，抽错了？",
-            conf.len()
+            main_conf.len()
         );
-        // 运行时拼，免得命中本文件自己的说明。
-        let key = format!("external{}", "Bin");
         assert!(
-            !conf.contains(key.as_str()),
-            "`tauri.conf.json` 出现了 `{key}` —— **这多半是好事**：F05b 落地了，\n\
-             本机终于有在跑的后端进程 ⇒ **F10 的正题现在能做了**。\n\
-             请回 F10 把这张递减棘轮换成真正的退役（把 `reader` 那 10 处切到后端），\n\
-             并注意 F01b 留的死限：本地 sid 一进 `tmux_raw_registry`，\n\
-             `/branch` 的灰点 bug 会回来（`the_local_path_is_safe_only_because_*` 会红）。"
+            !main_conf.contains(key.as_str()),
+            "`{key}` 回到了主配置 —— 那会让 `cargo test` 也需要一份当前 target 的 daemon 二进制\n\
+             （实测报错：`resource path binaries/cc-monitor-remote-<triple> doesn't exist`），\n\
+             等于把两半在**构建期**绑死。它的家是 `tauri.sidecar.conf.json`，只在发版时 `--config` 注入。"
         );
+        let patch = fs::read_to_string(root().join("tauri.sidecar.conf.json"))
+            .expect("读不到 tauri.sidecar.conf.json —— sidecar 契约没有家了");
+        assert!(
+            patch.contains(key.as_str()),
+            "发版补丁配置里没有 `{key}` —— 那安装包里就不会带上本机后端（C7）"
+        );
+
+        // ② stem 与 Rust 侧的 `SIDECAR_STEM` 必须是同一个（同一个名字不许两侧各写一份，定框 §4）。
+        let stem = crate::backend::control::local_backend::SIDECAR_STEM;
+        assert!(
+            patch.contains(&format!("binaries/{stem}")),
+            "补丁配置里的 sidecar 路径与 Rust 侧的 `SIDECAR_STEM`（{stem:?}）对不上 —— \n\
+             消费侧 `resolve_with` 找的是 `{stem}-<triple>` 与裸 `{stem}`，\n\
+             两边写不一样 ⇒ 安装包里带了一个谁也找不到的文件。"
+        );
+
+        // ⚠ **刻意不在这里再钉一遍 `reader` 的条数。**
+        // 那个数（今天 11）已经由同模块的
+        // `every_registered_file_declares_what_kind_of_read_it_is` 钉着；
+        // 在这里抄第二份就是「判据存了真相源的副本」（定框 §4 逐字禁止）——
+        // F11 的 E4 变异就是被那种副本骗过去的。
+        //
+        // ⇒ F10 的交接写在本条头注与 `ROADMAP` 里，不写成第二个数字：
+        // **F05b 已落地、本机后端真的起起来了**（真机实测日志逐字为
+        // `本机后端: Started { pid: 6072, attempt: 1 }`），所以 F10 的正题现在能做 ——
+        // 把那些 `reader` 直读点切到后端，然后把那条棘轮往下拧。
+        // 注意 F01b 留的死限：本地 sid 一进 `tmux_raw_registry`，`/branch` 的灰点 bug 会回来。
     }
 }
