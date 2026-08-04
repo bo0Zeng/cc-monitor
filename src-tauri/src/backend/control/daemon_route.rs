@@ -184,18 +184,21 @@ mod tests {
     const SENDERS: &[(&str, Verdict)] = &[
         ("daemon_kill.rs", Verdict::UsesRouter),
         ("daemon_send_keys.rs", Verdict::UsesRouter),
-        // ⚠ **刻意例外 + 理由 + 归属**（不是「忘了改」）：
-        // 它的返回值是 tagged 的 `SendIntoResponse{typed, reason}`，**只有两态**，
-        // 表达不出「不许回落」——而改成三态要动 `remote-launch-run.ts` 的回落契约，
-        // 那是一次**生产行为改动**，不是 Phase G 的收尾动作。
-        // ⇒ 已开成 **F14**（ROADMAP 待规划），解锁条件与 U8c-3/U12 同族。
-        ("daemon_launch.rs", Verdict::ExemptPendingF14),
+        // ✅ **F14 已收进来**：`SendIntoResponse` 加了第三个字段 `may_fall_back`
+        // （两态表达不出「不许回落」），分流本体改调 `route_call_error`。
+        // ⚠ 上一版把它记成 `ExemptPendingF14`，而那条判据断言例外那格**不**用分流器
+        // ⇒ 改好的当天它**如设计般红了一次**，逼人回来把登记改对。**那是它的岗位。**
+        ("daemon_launch.rs", Verdict::UsesRouter),
     ];
 
     #[cfg(test)]
     #[derive(PartialEq, Eq, Debug)]
     enum Verdict {
         UsesRouter,
+        /// ⚠ **今天零个成员**（F14 之后）。**刻意保留这一档**：
+        /// 它是「带理由的刻意例外」这个形态本身，下一个发送端要走例外时有地方落。
+        /// 删掉它 = 逼下一个人要么硬改要么偷偷绕过登记表（铁律 13：别因「暂时没人用」删判据形态）。
+        #[allow(dead_code)]
         ExemptPendingF14,
     }
 

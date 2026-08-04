@@ -275,40 +275,56 @@ export async function runRemoteResumeTmux(
   });
 }
 
-/** U8a-2c-1：把 `send-keys` 那半边交给**远端 daemon**（`control/launch.rs`，`mode:"send-into"`）。
+/** U8a-2c-1 + **F14**：把 `send-keys` 那半边交给**远端 daemon**（`control/launch.rs`，`mode:"send-into"`）。
  *
- *  @returns `true` = 载荷**真的键入了** ⇒ 终端只需 `attach`；`false` = 回落到今天那条整串。
+ *  @returns 三态 —— `"typed"` = 载荷**真的键入了** ⇒ 终端只需 `attach`；
+ *  `"fallback"` = **能证明什么都没发出去** ⇒ 照今天那条整串走；
+ *  `"refused"` = daemon 说过话了（或我们无法证明它没执行）⇒ **绝不许回落**。
  *
- *  # 任何一步不顺都回落，而且回落后**行为逐字不变**
+ *  # ★★ F14 为什么把两态改成三态
  *
- *  拿不到控制通道（daemon 不在场 / 长连接未握手）· daemon 回报未键入（会话已不存在）·
- *  载荷渲染被后端拒 · IPC 本身异常 —— 一律 `false`，调用方照今天那条
- *  `send-keys …; attach …` 整串走。**所以这条切换在没有 daemon 的远端上是零影响的。**
+ *  原来「任何一步不顺都回落」。而那条整串（`session-backend.ts` 的
+ *  `tmux send-keys -t '=name:' … ; tmux attach …`）**没有 §34 的门** —— 既无 `display-message`
+ *  探测也无 `CCM_GUARD_REJECTED`。于是：
  *
- *  ⚠ **诚实登记一处 fail-open**：载荷渲染被 Rust 拒（非法 configDir / 会裂的 arg）时这里也回落，
- *  而兜底渲染器（TS）对同样的输入**未必拒**。那不是本件引入的 —— 这一格今天**根本不经
- *  Rust 渲染**（`renderLaunchCommand` 对 send-into 恒走 `renderFallback`），所以「回落=今天」
- *  才是零行为变化的那个选择。要把它收成 fail-closed 得连兜底渲染器一起收 ⇒ U8c-3。
+ *  - 一次 `wrong_owner`（门说「这不是本工具的会话」）会被那条**无门**的路重做一遍；
+ *  - 更实的一条：daemon **已经过门并键入成功**，但应答排在出方向帧后面、慢链路下 >10s
+ *    ⇒ monitor 侧超时 ⇒ 回落 ⇒ **载荷第二次被键入**，而这次落进一个**已经在跑 claude 的 pane**
+ *    ⇒ 那条 `env … claude --resume …` 被当成 **prompt 提交**、写进对话历史、**不可撤销**。
  *
- *  ⚠ **绝不 toast** 回落 —— 用户看不到区别（两条路都把会话就地 resume 起来了），
- *  弹一个「降级了」的提示只会制造噪音。理由走 `console.debug`，同 `renderCliViaBackend`。 */
+ *  ⇒ 分流判定**不在这里**，它住 Rust 侧的 `backend/control/daemon_route.rs`（与 `kill`/`send-keys`
+ *  共用一份），这里只读它翻出来的 `mayFallBack`。
+ *
+ *  ⚠ **`"refused"` 要 toast**（改了原来那条「绝不 toast」的纪律）：回落是用户看不出区别的，
+ *  所以不该吵；而**拒绝**意味着这次就地 resume 没做成，用户必须知道 —— 否则他会以为成功了。
+ *
+ *  ⚠ **诚实登记一处仍然 fail-open**：载荷渲染被 Rust 拒（非法 configDir / 会裂的 arg）时走
+ *  `"fallback"`，而兜底渲染器（TS）对同样输入**未必拒**。那不是本件引入的（这一格今天根本不经
+ *  Rust 渲染）；收成 fail-closed 要连兜底渲染器一起收 ⇒ U8c-3。 */
 async function sendIntoViaDaemon(
   origin: string,
   name: string,
   plan: LaunchPlan,
-): Promise<boolean> {
+): Promise<{ verdict: "typed" | "fallback" | "refused"; reason?: string }> {
   try {
     const payload = await commands.render_launch_payload({
       req: buildPayloadRenderRequest(plan),
     });
     const res = await commands.daemon_send_into({ req: { origin, name, payload } });
-    if (!res.typed) {
-      console.debug(`[U8a-2c-1] send-into 回落到整串：${res.reason ?? "daemon 未给理由"}`);
+    if (res.typed) return { verdict: "typed" };
+    const reason = res.reason ?? "daemon 未给理由";
+    if (res.mayFallBack) {
+      console.debug(`[F14] send-into 回落到整串（证明没发出去）：${reason}`);
+      return { verdict: "fallback", reason };
     }
-    return res.typed;
+    // ★ 不许回落：daemon 说过话，或我们无法证明它没执行。
+    console.debug(`[F14] send-into 被拒，**不回落**：${reason}`);
+    return { verdict: "refused", reason };
   } catch (e) {
-    console.debug(`[U8a-2c-1] send-into 回落到整串（通道异常）：${String(e)}`);
-    return false;
+    // 走到这里 = IPC/序列化异常或载荷渲染被拒 —— 两者都在 daemon 那一跳**之前**
+    // ⇒ 能证明什么都没发出去 ⇒ 可回落。
+    console.debug(`[F14] send-into 回落到整串（通道异常，尚未发出）：${String(e)}`);
+    return { verdict: "fallback", reason: String(e) };
   }
 }
 
@@ -334,7 +350,14 @@ export async function runRemoteResumeIntoExistingTmux(
     //   拿不到控制通道 / daemon 回报未键入 ⇒ 原样回落到整串（**行为逐字不变**），
     //   所以这条切换在没有 daemon 的远端上是零影响的。
     const sent = await sendIntoViaDaemon(origin, name, plan);
-    if (sent) {
+    if (sent.verdict === "refused") {
+      // ★ F14：**不许回落**。那条整串没有 §34 的门 ⇒ 回落等于用一条无门的路把
+      //   「被门拒绝」或「可能已经键入过」重做一遍（后者会把载荷第二次提交给正在跑的 claude）。
+      //   ⇒ 就地失败，并且**要让用户看见** —— 这次就地 resume 没做成。
+      showActionFailureToast("就地 resume 未执行", sent.reason ?? "远端拒绝，且无法确认是否已执行");
+      return false;
+    }
+    if (sent.verdict === "typed") {
       const attach = planAttach(name);
       cmd = await renderLaunchCommand(origin, attach.ctx, attach.plan);
       viaDaemon = true;

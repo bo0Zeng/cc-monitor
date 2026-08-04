@@ -59,20 +59,59 @@ pub struct SendIntoRequest {
     pub payload: String,
 }
 
-/// 结局。`typed == false` 时 `reason` 必有值 —— 那是调用方回落的唯一线索。
+/// 结局。`typed == false` 时 `reason` 必有值 —— 那是调用方的唯一线索。
+///
+/// # ★★ F14 加了第三个字段 `may_fall_back`：两态表达不出「不许回落」
+///
+/// 原来只有 `{typed, reason}` 两态，调用方把 `typed:false` **一律**读成「回落到整串」。
+/// 而那条整串（`session_backend` 的 `send-keys …; attach …`）**没有 §34 的门** ⇒
+/// 一次 `wrong_owner` 或一次「daemon 已键入但应答超时」都会被那条无门的路**重做一遍**：
+/// 后者的后果是**载荷第二次被键入进一个已经在跑 claude 的 pane** ——
+/// 那条 `env … claude --resume …` 会被当成 **prompt 提交**、写进对话历史、**不可撤销**。
+/// （F12 的 `/full-audit` 三个视角独立指向这里。）
+///
+/// ⇒ 分流判定收进 [`super::daemon_route`]（与 `kill`/`send-keys` 共用一份），
+/// 这里只把它翻成线上的一个布尔。**`may_fall_back` 的语义严格是**：
+/// 「**能证明这条命令根本没发出去**」，不是「失败了」。
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SendIntoResponse {
     /// 载荷是否**真的键入了**。daemon 的 `typed` 逐字转发，不做乐观解读。
     pub typed: bool,
     pub reason: Option<String>,
+    /// **调用方可不可以回落到那条整串。** 只有「能证明没发出去」才 `true`。
+    /// ⚠ TS 侧那个类型是**手写**的（`src/launch-cli-wire.ts`）⇒ 字段名两侧必须手动同步，
+    /// 由 `refused_never_falls_back_to_the_whole_string` 钉住。
+    pub may_fall_back: bool,
 }
 
 impl SendIntoResponse {
-    fn degraded(reason: impl Into<String>) -> Self {
+    /// 能证明没发出去 ⇒ 允许回落（C7 过渡期那条路）。
+    fn unsent(reason: impl Into<String>) -> Self {
         Self {
             typed: false,
             reason: Some(reason.into()),
+            may_fall_back: true,
+        }
+    }
+    /// daemon 说过话了，**或者**我们无法证明它没执行 ⇒ **不许回落**。
+    fn refused(reason: impl Into<String>) -> Self {
+        Self {
+            typed: false,
+            reason: Some(reason.into()),
+            may_fall_back: false,
+        }
+    }
+    /// `Routed` → 线上结局。**分流不在这里做**，只在这里翻译。
+    fn from_routed(r: super::daemon_route::Routed) -> Self {
+        match r {
+            super::daemon_route::Routed::Done => Self {
+                typed: true,
+                reason: None,
+                may_fall_back: false,
+            },
+            super::daemon_route::Routed::NoChannel(why) => Self::unsent(why),
+            super::daemon_route::Routed::Refused(why) => Self::refused(why),
         }
     }
 }
@@ -92,19 +131,30 @@ pub(crate) fn typed_from_reply(reply: Option<&serde_json::Value>) -> Result<bool
     }
 }
 
+/// daemon 的错误码 → 用户看的话。与 `kill`/`send-keys` 两条同形。
+fn refusal_text(code: &str, message: &str) -> String {
+    match code {
+        "no_tmux" => "远端未安装 tmux".to_string(),
+        "no_such_session" => "远端会话已不存在（可能已被终止）".to_string(),
+        "wrong_owner" => {
+            format!("拒绝就地 resume：目标未通过身份守卫（{message}）——可能不是本工具管理的会话")
+        }
+        "typed_unconfirmed" => format!("载荷未必送达（{message}）—— 会话在，但 send-keys 失败"),
+        _ => format!("远端就地 resume 失败（{code}）：{message}"),
+    }
+}
+
 /// **U8a-2c-1：往已存在的远端 tmux 会话里键入载荷（`send-keys` 那半边走 daemon）。**
 ///
 /// `attach` 那半边**不在这里** —— 见模块头注（§1.3）。
 #[tauri::command]
 pub async fn daemon_send_into(req: SendIntoRequest) -> SendIntoResponse {
     if req.name.trim().is_empty() || req.payload.is_empty() {
-        return SendIntoResponse::degraded("会话名或载荷为空 —— 拒绝发出（坏数据不是缺省）");
+        // ⚠ **坏数据不许回落**：拿一个空载荷去渲染整串只会产出一条无意义的 shell 命令。
+        return SendIntoResponse::refused("会话名或载荷为空 —— 拒绝发出（坏数据不是缺省）");
     }
     let Some(client) = crate::inbound_client::client_for(&req.origin) else {
-        return SendIntoResponse::degraded(format!(
-            "[{}] 没有可用的控制通道（daemon 未在场或长连接未握手）",
-            req.origin
-        ));
+        return SendIntoResponse::from_routed(super::daemon_route::no_channel(&req.origin));
     };
     let args = crate::inbound_client::launch_args("send-into", &req.name, &req.payload, None, None);
     match client
@@ -112,17 +162,23 @@ pub async fn daemon_send_into(req: SendIntoRequest) -> SendIntoResponse {
         .await
     {
         Ok(reply) => match typed_from_reply(reply.as_ref()) {
-            Ok(typed) => SendIntoResponse {
-                typed,
-                reason: if typed {
-                    None
-                } else {
-                    Some("daemon 回报未键入（会话可能已不存在）".into())
-                },
+            Ok(true) => SendIntoResponse {
+                typed: true,
+                reason: None,
+                may_fall_back: false,
             },
-            Err(e) => SendIntoResponse::degraded(e),
+            // daemon 对 `send-into` 只在真键入时回 `typed:true`，否则回错误码 ⇒
+            // `Ok(false)` 是协议漂移，而漂移时**我们不知道它键没键入** ⇒ 不许回落。
+            Ok(false) => SendIntoResponse::refused(
+                "daemon 回报未键入却没给错误码 —— 协议漂移，不再用另一条路重做",
+            ),
+            Err(e) => SendIntoResponse::refused(format!(
+                "{e} —— ⚠ 应答形状不认识时无法判断载荷有没有落进去，因此不再用另一条路重键入"
+            )),
         },
-        Err(e) => SendIntoResponse::degraded(format!("daemon launch 调用失败：{e}")),
+        Err(e) => {
+            SendIntoResponse::from_routed(super::daemon_route::route_call_error(&e, refusal_text))
+        }
     }
 }
 
@@ -234,5 +290,90 @@ mod tests {
                 "daemon 的 launch 没有声明字段 `{f}`，而本模块在发它：{body}"
             );
         }
+    }
+
+    /// ★★ **F14 的核心性质**：只有「能证明这条命令根本没发出去」的档才许回落。
+    ///
+    /// 反过来错法（把 `Refused` 也映射成 `mayFallBack:true`）会让调用方用那条**无门**的整串
+    /// 把一次门拒绝、或一次「daemon 可能已经键入过」重做一遍 —— 后者的后果是
+    /// **载荷第二次被键入进一个正在跑 claude 的 pane**、被当成 prompt 提交、不可撤销。
+    #[test]
+    fn only_the_provably_unsent_cases_may_fall_back() {
+        use super::super::daemon_route::Routed;
+        let done = SendIntoResponse::from_routed(Routed::Done);
+        assert!(done.typed && !done.may_fall_back && done.reason.is_none());
+
+        let unsent = SendIntoResponse::from_routed(Routed::NoChannel("没通道".into()));
+        assert!(
+            !unsent.typed && unsent.may_fall_back,
+            "「证明没发出去」那档必须允许回落 —— 否则没有 daemon 的远端全都用不了（C7 过渡期）"
+        );
+        assert!(unsent.reason.is_some(), "回落时 reason 是调用方唯一的线索");
+
+        for why in ["拒绝：wrong_owner", "等应答超时", "协议漂移"] {
+            let r = SendIntoResponse::from_routed(Routed::Refused(why.into()));
+            assert!(
+                !r.typed && !r.may_fall_back,
+                "`Refused({why})` 被判成了可回落 —— 那条整串**没有 §34 的门**，\n\
+                 回落等于用一条无门的路把「被门拒绝」或「可能已经键入过」重做一遍。"
+            );
+        }
+        // 坏数据那一档也不许回落：拿空载荷去渲染整串只会产出无意义的命令。
+        let bad = SendIntoResponse::refused("会话名或载荷为空");
+        assert!(!bad.may_fall_back);
+    }
+
+    /// ★★ **生产接线（跨语言）**：TS 侧真的按三态分流，`refused` 那支**不许**落到整串。
+    ///
+    /// # 为什么这条判据长在 Rust 侧
+    ///
+    /// `SendIntoResponse` 的 TS 类型是**手写**的（`src/launch-cli-wire.ts`，不是 ts-rs 生成）
+    /// ⇒ 字段名两侧靠人同步。而「回落契约」这件事**只有两侧一起看才成立**：
+    /// Rust 说了 `may_fall_back:false`，TS 不读它就等于没说。
+    #[test]
+    fn refused_never_falls_back_to_the_whole_string() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级");
+        let read = |rel: &str| {
+            let p = root.join(rel);
+            assert!(p.is_file(), "读不到 {rel} —— 读不到的文件只会静默返回空串");
+            std::fs::read_to_string(p).unwrap_or_default()
+        };
+
+        // ① 跨语言字段名：手写类型里必须有 serde camelCase 后的那个名字。
+        let wire = read("src/launch-cli-wire.ts");
+        assert!(
+            wire.contains("mayFallBack"),
+            "`src/launch-cli-wire.ts` 的手写 `SendIntoResponse` 里没有 `mayFallBack` ——\n\
+             Rust 侧发了这个字段而 TS 侧读不到 ⇒ 回落契约单方面失效（`undefined` 是 falsy，\n\
+             恰好会被读成「不许回落」，所以它是 fail-closed 的 —— 但那是巧合，不是设计）。"
+        );
+
+        // ② 三态分流真的在生产路径上。
+        let run = read("src/remote-launch-run.ts");
+        for needle in ["\"refused\"", "\"typed\"", "mayFallBack"] {
+            assert!(
+                run.contains(needle),
+                "`remote-launch-run.ts` 里找不到 {needle} —— 三态分流没接上"
+            );
+        }
+        // ③ ★ `refused` 那支必须**在**回落之前就地返回。
+        let at = run
+            .find("sent.verdict === \"refused\"")
+            .expect("上面已断言过存在");
+        let arm = &run[at..(at + 700).min(run.len())];
+        assert!(
+            arm.contains("return false"),
+            "`refused` 那支没有就地 `return` —— 它会穿到下面的整串回落。\n\
+             那条整串（`session-backend.ts` 的 `send-keys …; attach …`）**没有 §34 的门**。\n\
+             实得这一段：{arm:?}"
+        );
+        // ④ 而且必须让用户看见（回落可以静默，**拒绝不行** —— 否则他以为成功了）。
+        assert!(
+            arm.contains("showActionFailureToast"),
+            "`refused` 那支没有 toast —— 用户会以为就地 resume 成功了。\n\
+             ⚠ 这与「回落绝不 toast」那条纪律**不矛盾**：回落用户看不出区别，拒绝是真没做成。"
+        );
     }
 }
