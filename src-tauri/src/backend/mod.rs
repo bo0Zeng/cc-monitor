@@ -58,6 +58,13 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "前端结构化请求 → wire 适配 → ccm 调用行 / 裸载荷（两个 tauri 命令）",
     ),
     (
+        "control/agent_profile_parity.rs",
+        "control",
+        "F06：agent 适配表（`fixtures/agent-profile-golden.tsv`）的跨语言对拍 —— \
+         **C4「ccm 变零决策」的前置**：搬之前先证明三份副本逐字一致。\
+         另钉两条前提：ccm 独有的两个决策仍无 Rust 对侧 · ccm 仍拒绝 codex 的 subcommand 形 resume",
+    ),
+    (
         "control/gate2_parity.rs",
         "control",
         "F03：§34 Gate 2 判定表（`fixtures/gate2-golden.tsv`）在 monitor 这一侧的独立对拍。\
