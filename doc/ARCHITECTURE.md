@@ -91,145 +91,160 @@
 
 ---
 
-## 2. 设计分层
+### 1.1 ⚠ 上面那张图只画了**本机**那两个源 —— 另外两条链（F19 补）
+
+原图（`Claude Code CLI` + `PowerShell session`）会让新人以为 **monitor 只读本机文件**。
+今天的主战场是另外两条：
 
 ```
-src-tauri/src/
-├── 入口层      lib.rs        Tauri builder + setup + invoke_handler 注册
-├── 边界层      paths.rs      claudeDir 三级解析
-│              bridge.rs     IPC 事件常量 + payload schema（前后端契约的单一来源）
-├── 读取层      watcher.rs    notify_debouncer 监听 projects + active filter
-│              parser.rs     单行 JSONL → JsonlRecord（剥 BOM）
-│              messages.rs   JsonlRecord enum + ApiMessage schema
-│              session_map.rs  读 sessions/<PID>.json + Win32 进程探活
-│              subagent.rs   按需加载 subagents/*.meta.json
-│              adapter.rs    F-MA agent 适配层（会话布局/解析/活性/resume 假设收敛到 AgentAdapter，CC 是第一个实例；`enabled_kinds()` 按 `~/.codex/sessions` 存在性 dark-launch 门控 Codex）
-│              adapter/claude_code.rs  Claude Code 适配器（第一个实例，零行为变化包旧逻辑）
-│              adapter/codex.rs + codex_record.rs  Codex 适配器（AgentKind::Codex，第二个实例；~/.codex/sessions 存在才启用，零回归门控）
-├── 业务层      event_replay.rs  内存 buffer + 出锁 batch emit（v2.6；顺序靠前端 seq，非持锁，见 §event_replay 顺序保证）
-│              history.rs    两级懒加载 + metadata + 物理删除 + resume + F62 从某轮建分支（G3b-1 起 resume 可带 `CLAUDE_CONFIG_DIR`）
-│              remote_branch.rs  G6 远端分叉：经 ssh 调 daemon `--fork-session`（**只收 sid 不收路径**）。
-│                            与只读的 `remote_history.rs` 分家 —— 那个模块头注自称只读，塞进去就是让注释说谎
-│              launch.rs     终端拉起（wt.exe→PowerShell 单一入口）+ 远端 ssh 拉起（B14-F41）。
-│                            **U8a 三平面分解**：① 计划面「跑什么命令」→ daemon `control/resolve_query`；
-│                            ② 远端执行面「在远端真的建 tmux」→ daemon `control/launch`（U8a-2b，argv 不过 shell）；
-│                            ③ **本机开窗面** → **只能是 monitor**（daemon 在远端，开不了你面前的窗，这条永远搬不走）。
-│                            ⚠ **平面 ③ 在 POSIX 上刻意不开 GUI 终端窗口**：那儿没有「唯一的终端」，
-│                            挑一个是平白引入一个会在别人机器上错的决定；会话容器本来就是 tmux，
-│                            命令直接跑、会话留在 tmux 里等 attach（`launch_local_posix`）。
-│                            由 `no_terminal_emulator_is_ever_spawned_from_this_file` 零命中钉住。
-│                            ⚠ **今天的不对称**：本机 resume 有 OS 分派（`history.rs::launch_local`），
-│                            **远端没有**（一律 PowerShell ⇒ POSIX 上只复制命令）。补它要等前端发结构化请求
-│                            之后走 daemon 的 `launch`，登记 U8a-2c
-│              tasks.rs      v2.3 CLI task tracker 读 + watcher + emit task-update
-│              search.rs     issue #6 历史全文搜索（后台建内存索引 + substring 两级匹配）
-│              usage.rs      F88a 用量聚合（按会话/模型/天分桶，每 requestId 逐字段 MAX 后累加 token；只算不写）
-│              mcp.rs        F87 MCP 管理（跨 scope 宽容读 / 只写项目 .mcp.json，SS-14 读写分界）
-│              panorama.rs   Batch15 code-picture 代码全景后端（per-repo Engine 池，只读查询）
-│              accounts.rs   A2 多账号只读查询（list_remote_accounts / list_remote_session_accounts / check_account_trust；账号=一个 CLAUDE_CONFIG_DIR，纯只读经 daemon，#68/#69）
-├── 远端 daemon  remote-daemon-proto/  **它不在上面这棵树里** —— 是独立 crate、刻意**不是 workspace 成员**
-│                            （`remote-daemon-proto/Cargo.toml:6-8`：进了 workspace 就会把 Linux-only 的
-│                            daemon 拖进 Windows CI）。U2（2026-08-01）起有了内部分层：`platform/`
-│                            （平台原语与平台 cfg）+ `common/`（平台无关的纯工具）。
-│                            **U3 起再分 `observe/`（读）与 `control/`（改变世界）** —— 两层之间只许
-│                            observe→control 一个方向、且接口面**恰好一个符号**，由 `layering_guard` 机检。
-│                            仍有 3 处平台 cfg 在 `main.rs`（组装根，可辩护）；清单与理由见 daemon README。
-│                            模块图见 [`remote-daemon-proto/README.md`](../remote-daemon-proto/README.md)。
-├── 共享 crate  crates/branch-core/  分支记录变换（祖先回溯）——monitor 与远端 daemon **共用一份**。
-│                            **path 依赖、非 workspace 成员** ⇒ 不进 `cargo test --all`，
-│                            CI 与发版 checklist 都要单独 `-p branch-core`（test / fmt / clippy 三样）
-├── 集成层      bind.rs       cc 集成绑定核心（ps-await/registry/SidHwndCache）
-│              profile_installer.rs  PowerShell profile 块插入/卸载
-│              auto_launch.rs  auto-launch monitor 开关
-├── 远端层      ssh_source.rs  russh 远端数据源（连接/鉴权/流帧解析 + 版本协商 + 测试连接 + Batch5-F17 Line 帧攒批 Batcher——snapshot 聚批走 chunked 路径）。
-│                            **U8a-2a 起这条流是双工的**：写半边经 `inbound_client::split_and_park` 交出去，本文件生产段自己不切流、不写流（`write_half_guard` 两条零命中型护栏钉住）
-│              inbound_client.rs  U8a-2a 入方向（控制通道）客户端：同一条长连接的**写半边**发命令、按 `id` 收 `reply`/`cancelled`。
-│                            「hello 之前不许写」是类型上的事实——`ParkedWriter` 没有任何写方法，换出客户端要一帧真 Hello。
-│                            超时/重试/并发上限全在客户端（daemon 零定时器铁律不变）。今天的生产调用方是「测试连接」的控制通道往返探测；
-│                            长连接（`stream_loop`）上的客户端已登记进注册表，第一个读者是 U8a-2b 的 `launch`
-│              remote_history.rs  远端历史浏览 + 全文搜索查询（一次性 exec daemon 子命令；多台 join_all 并发 fan-out，墙钟 Σ→max）
-│              (Batch8) ssh_source 内快照拉取：SnapshotQueue+dispatcher+fetch——
-│              tail-only 下每会话独立连接 --read-session-tail 旁路拉历史（尾部优先+行号 seq 缝合）
-│              sftp.rs       SS-D SFTP 写层（daemon 自动部署 + 手动安装/卸载 + 远端删除 + ccm 安装/卸载）
-│              sftp_pool.rs  B14-F47 SFTP 文件面板 utility 连接池 + 浏览/传输/写命令 + 小文件编辑
-│              pubkey.rs     B14-F50 公钥一键推送 authorized_keys（防注入 + 幂等去重）
-│              port_forward.rs  B14-F58 本地端口转发(-L)管理台（复用 SSH 连接隧道 direct-tcpip）
-│              tmux.rs       B14-F51/F60 tmux 反查 attach + capture-pane 画面预览快照
-│              tmux_reconcile.rs  F74c(#60-A) tmux 存活对账 poller（带外杀 tmux → tab 有界变灰；retire 送 remote_tx 单写者）
-├── 持久层      config.rs     monitor config.json R/W（Windows MoveFileExW 原子）
-└── 透明化      data_paths.rs  issue #3 枚举 monitor 所有持久数据路径 + WebView2（设置面板「数据」区，只读）
+  ┌─ 远端主机 ─────────────────────────────┐
+  │  常驻 daemon（remote-daemon-proto）      │
+  │   observe/watcher  ──► JSONL 帧 ──┐      │
+  │   control/{launch,kill,gate}      │      │   ← monitor 从这条**长连接**发控制命令
+  └───────────────────────────────────┼──────┘      （inbound_client：请求/应答 + 背压）
+                                      │ stdout（一条 SSH channel）
+                                      ▼
+        ssh_source.rs::stream_loop ──► 与本机同一套 emitter / event_replay
+                                      （帧种类见 doc/IPC-PROTOCOL.md）
+
+  ┌─ POSIX 本机 ──────────────────────────┐
+  │  「本地 = 不走 ssh 的远端」——同一套分解，  │  ← 会话容器就是 tmux，
+  │  只是没有 SSH 那一跳                     │     平面 ③ 刻意不开 GUI 终端（见 2.1）
+  └──────────────────────────────────────┘
 ```
 
-```
-src/
-├── 入口        main.ts       快捷键、HMR full reload、behavior 初始化
-├── 事件        events.ts     订阅 + 批量调度 + onBatchStart/End 哨兵（v2.6 删 source/onChunk）
-│              remote-health.ts  订阅 remote-health 事件 + 按 origin 节流弹 toast（overflow/version）
-├── 状态        tabs.ts       TabManager 状态机 + switchTo manual/auto + userActive
-│              stream.ts     MessageStream（insertNode + 守卫式 snap；重放消抖 § 5）
-│              session-status.ts  F91 红绿灯语义共享座（tab-bar 与 grid 共用活动灯纯逻辑）
-│              agents-panel.ts  #23 subagent 面板（status-bar chip + popover，每 agent 独立状态灯）
-│              usage-hud.ts  F88b 用量 HUD chip（活跃会话 context 占用%，≥80% 预警）
-├── 渲染        render.ts     marked + KaTeX + hljs + DOMPurify（v2.6 opts.lazy 参数）
-│              cards/        折叠卡组件（slash / bash / diff / api-error / interactive / compact / subagent / tool）
-│                            cards/index.ts::stripInternalNoise 剥 CLI 注入 + ESC 中断
-│ ⭐ v2.6 新模块  record-timeline.ts  按 seq binary insert + DOM 挂载，消除 inPrependMode
-│              render-stream-record.ts  三 caller 共享渲染管线 + tool-group 后处理合并
-│              local-storage.ts  LS_KEYS 集中 + safeGet/safeSet
-│              format.ts  formatTimestampShort/Smart + formatBytes 合并
-├── 视图        views/history.ts  历史浏览器（v2.6 fixed overlay 不替换 streamRoot）
-│              views/session-viewer.ts  只读会话查看器
-│              views/pane-preview.ts  B14-F60 远端 tmux 画面只读预览 overlay（capture-pane 快照）
-│              views/port-forward.ts  B14-F58 本地端口转发(-L)管理台 overlay
-│              views/grid-monitor.ts  F91 多 agent 并排监控（跨机只读 mission-control grid overlay）
-│              views/command-bar.ts  F84 命令栏（Ctrl-K 命令面板 overlay，首刀只列只读命令）
-│              tasks-panel.ts  v2.3 Tab stream 顶部 sticky task 折叠卡
-├── 设置        settings/panel.ts   总控（F82a 起挂独立 `settings` 窗口，windowMode + 跨窗广播同步）
-│              settings/cc_integration.ts  PowerShell 集成区
-│              settings/info-icon.ts  portal tooltip 组件
-│              settings/data-section.ts  v2.3 数据存储透明化
-│              settings/mcp-section.ts  F87 MCP 段（跨 scope 读 / 只写项目 .mcp.json，SS-14）
-├── 配置        config.ts     invoke load/save_config
-│              paths.ts      claudeDir 字段读写
-│              theme.ts      CSS token 应用
-│              behavior.ts   v2.4 autoFollowUserActive / bringMonitorToFront toggles
-├── 通知        turn-notify.ts  turn-end 系统通知（B14-F42；批量/新鲜度/防抖/聚焦四门 + 插件权限懒检查）
-├── 远端拉起    remote-launch.ts  远端命令构造纯函数（B14-F41；sid 白名单/launcher denylist/POSIX 引号/嵌套 env unset；F48 buildOpenTerminalCmd；F51 buildAttachCmd/isValidTmuxName；F52 buildResumeTmuxCmd；F53 buildLauncherCmd/deriveTmuxName）
-│              remote-launch-run.ts  拉起执行器（invoke launch_remote_terminal → 失败回退复制命令）
-├── SFTP 面板   sftp/panel.ts  SFTP 文件面板 overlay（B14-F48/F49；浏览/传输/写/书签/在此打开终端/小文件编辑；F54 openSftpPanel(cfg,revealPath) 会话工具卡→文件定位高亮；消费 F47 sftp_* 命令，不碰 TabManager）
-│              sftp/paths.ts  面板纯路径逻辑（面包屑/join/parent/basename/排序/书签，可单测）
-├── 适配        agent-profile.ts  F-MA「哪个 AI」画像（CC 工具名/进程名/嵌套 env 收敛，对应 Rust adapter）
-│              session-backend.ts  F90/SS-12「哪个多路复用器」座（tmux 命令语法收敛；阶段①唯一后端 tmux）
-├── 全景        views/panorama.ts  Batch15 代码全景视图（纯 canvas，子系统聚类气泡 + 脊柱圆 + 入口描环）
-│              panorama/     全景前端纯逻辑：api(invoke 封装)/layout(坐标·命中·打包)/types/session-files(抽本轮改动文件喂高亮)
-├── 账号        account-chip.ts  A3 账号徽章 + 切号菜单（chip + mismatch/align 状态判定）
-│              account-commands.ts  A4 按会话选账号起 / Resume（withAccount：账号解析 + lastAccount 记账）
-│              account-restart.ts  A5 换号**破坏性**重启编排（[compact]→kill→resume 同 sid，失败语义严格照 DESIGN §5.2：compact 失败不阻断 / kill 失败必中止）
-│              account-color.ts  账号色板（名→稳定色 slot，CVD-safe）
-│              settings/acct-deploy.ts  A6 app 内账号部署向导（分步跑 cc-acct-iso 隔离/同步管线）
-├── 快捷键      keybindings/  issue #5 dispatcher(registry)+Action 清单(actions)+编辑器(editor)+持久化(store)
-└── 样式        styles.css    全部样式 + token 系统
-```
+⚠ 三条链**共用同一个前端管线**（`event_replay` → `jsonl-line` / `jsonl-batch` → 前端按 `seq` 排序）
+—— 那是「一份代码、两种承载」在数据流这一侧的样子：**换的是源，不是管线**。
 
 ---
 
-## 3. Tauri State 注册矩阵
+## 2. 层边界（不放逐文件模块表 —— 见本节末）
 
-`src-tauri/src/lib.rs::run().setup()` 注册 7 个 Arc-shared State：
+> ⚠ **F19 重写**（2026-08-04）。原来这一节是一张 **122 行的逐文件模块树**，而：
+> - 它与 `src-tauri/README.md` 的目录树**各存一份**，**两份都缺 `backend/`**；
+> - 本文件自己在开头与结尾**两次**把「模块表」委派给子目录 README —— 它自己就说过不该放；
+> - 更要紧的是：**本工作区最大的两件结构性事实在它里面不存在** ——
+>   `backend` 这个词全文只出现过 **1 次**（且指的是前端的 `session-backend.ts`），
+>   「轮询」**0 次**。真架构住进了 1517 行的 `INVARIANTS.md` ⇒ **分层倒挂**。
+>
+> ⇒ 本节只写**层边界与它们的理由**；逐文件清单去子目录 README。
+> ⚠ 那张树里**嵌着几条真正的架构理由**（U8a 三平面、平面 ③ 搬不走…）——
+> 它们**没被删掉**，被提到下面各条里了。
 
-| State 类型 | 持有者 | 喂给的 IPC 命令 |
+### 2.1 两半：frontend 与 backend
+
+**backend = 读（`observe/`）+ 控制（`control/`）**，**一份代码、两种承载**：
+**远端进程** = `remote-daemon-proto/`（独立 crate，**不是 workspace 成员**，见 2.6）·
+**本机进程** = `src-tauri/src/backend/`。
+
+两侧都该有 `platform/` `observe/` `control/` `common/` 四层。**远端四层齐全；本机只有一层** ——
+下表是**今天真实的落地进度**，且**每一格都由判据现场量**
+（`doc_claim_registry::each_registered_status_still_matches_reality`；
+⚠ 判据**不存这一列的副本**，它从本文件读这一列、再去代码里量，两边不一致就红）：
+
+| backend 分层（定框 §5） | 远端（daemon）有吗 | monitor 侧今天的状态 |
 |---|---|---|
-| `Arc<SessionMap>` | setup 闭包 + `session-changes-emitter` 线程 + active-filter 闭包 + `app.manage` | `list_history_projects` / `stream_history_sessions_in_project` |
-| `Arc<EventReplay>` | setup 闭包 + frontend-ready listener + jsonl async pump + `app.manage` | `forget_session` |
-| `Arc<BindRegistry>` | setup 闭包 + `bind-await-watcher` 线程 + `bind-heartbeat` 线程 + `session-changes-emitter` 线程 + `app.manage` | `cc_integration_status` |
-| `Arc<SidHwndCache>` | setup 闭包 + `session-changes-emitter` 线程 + `app.manage` | `bring_terminal_to_front` |
-| `Arc<LoggingState>` (v2.0.0+) | `run()` 局部（持有 WorkerGuard） + setup 闭包（install_error_emitter 注入 closure） + `app.manage` | `get_diagnostics_config` / `set_diagnostics_config` / `get_log_file_info` / `open_log_file` / `open_log_dir` |
-| `Arc<SearchIndex>` (issue #6) | setup 闭包 + `search-index-build` 后台线程（`build_blocking`） + `app.manage` | `search_history` / `get_search_index_status` / `rebuild_search_index` |
-| `Arc<RemoteHwndCache>` (issue #18) | setup 闭包 + `remote-session-emitter` 线程（每 sid scan 子线程 `try_bind` / removed 时 `forget`） + `app.manage` | `bring_remote_terminal_to_front` |
+| `control/` | 有 | **已交付** —— 两条改状态的远端 tmux 命令都走它（见 2.3） |
+| `observe/` | 有 | **待做** —— **刻意未建**，谁来叫醒见 2.2 |
+| `platform/` | 有 | **待做** —— 平台原语还散在 `bind.rs`/`utils.rs`（见 2.4） |
+| `common/` | 有 | **待做** —— **刻意不建**：monitor 侧的共用面住 `src-tauri/crates/*`（见 2.6） |
 
-详细 consumer 矩阵 + 修改规则 → [STATE-MATRIX.md](STATE-MATRIX.md)。
+⚠ 这张表量的是「**这一层在 monitor 侧落地了没有**」，**不是**「平台原语已经收敛干净了」——
+后者是 C10 的判据（跨 target 编译）的事，今天**不成立**，见 2.4。
 
-**约束**：撤回任何 State 必须先 grep 所有 `State<'_, Arc<X>>` 消费者；漏 `manage` 不会被 `cargo check` 抓住，运行时 panic。
+**frontend 只剩「在用户桌面上开一个终端窗口」**，窗口里跑什么由 backend 给。
+
+⚠ **那条搬不动的边界**：最后那次 `exec` **必须**在用户自己的终端进程里
+（pid 要等于 pidfile 名 · tty 与 Ctrl-C 要落在 agent 上 · `tmux attach` 要占住调用者终端）。
+⇒ 「起一个会话」被拆成 **U8a 三平面**：
+① **计划面**「跑什么命令」→ daemon `control/resolve` ·
+② **远端执行面**「在远端真的建 tmux」→ daemon `control/launch`（**argv 直传、不过 shell**）·
+③ **本机开窗面** → **只能是 monitor**（daemon 在远端，开不了你面前的窗）—— **这条永远搬不走**。
+
+⚠ **平面 ③ 在 POSIX 上刻意不开 GUI 终端窗口**：那儿没有「唯一的终端」，挑一个就是平白引入
+一个会在别人机器上错的决定；会话容器本来就是 tmux ⇒ 命令直接跑、会话留在 tmux 里等 attach。
+由 `no_terminal_emulator_is_ever_spawned_from_this_file` 零命中钉住。
+
+### 2.2 `observe/` vs `control/`：**按用途分，不按读写分**
+
+- **任何改状态的 tmux 命令**（`set-hook` / `set-option` / `new-session` / `kill` / `send-keys`）
+  一律归 `control/`；
+- **只喂控制决策的只读查询也归 `control/`**（`control/gate.rs` 探 `@ccm_sid` / `session_windows`
+  —— 它不产观测帧）；
+- **只有产出观测帧的读**才归 `observe/`。
+
+⚠ 反面很具体：按「读/写」分的话，那次 `@ccm_sid` 探测会被判给 `observe/`，
+而它唯一的调用方在 `control/` ⇒ **凭空造出一条 `control → observe` 的边**，
+而 `layering_guard` 逐字禁止反向依赖（实测：照做时它当场红）。
+
+⚠ **monitor 侧的 `observe/` 今天刻意未建**：那批读面（`config_surface.rs` 1596 行 ·
+`search.rs` 1171 · `local_accounts.rs` 707 …共 13 个 reader 文件）正是要**退役**的那批 ——
+先搬进来再删掉是纯搬运。**谁来叫醒这个决定**：`local_read_surface_registry` 里那条前提触发器
+（`tauri.conf.json` 一出现 `externalBin` 就红）。
+
+### 2.3 控制面今天真的在 backend 了
+
+两条**改状态**的远端 tmux 命令都已切到 daemon：`kill_remote_tmux` → `control/kill.rs` ·
+`tmux_send_keys` → `control/launch.rs` 的 `send-into` / `send-keys-raw`。
+一次性 SSH 那两条降为**过渡期回落**，且**过门被拒绝一律不回落**
+（回落到 shell 路 = 把一次被门拒绝洗成另一条路的成功）。
+「能不能回落」的判定**只有一份**（`backend/control/daemon_route.rs`）。
+
+### 2.4 `platform/`：daemon 侧是唯一落点，**monitor 侧还没落地**
+
+`platform/` 应当是**唯一**允许平台原语与平台 cfg 的地方，判据是**跨 target 编译**
+（不是 cfg 位置扫描）。daemon 侧成立；**monitor 侧今天不成立** ——
+平台原语散在 `bind.rs` / `utils.rs`。⚠ 这条是**如实记下的欠账**，不是「已经做到了」。
+
+### 2.5 零轮询：一律事件驱动，**四张账本覆盖四块**
+
+「不许轮询」不是一句口号，它由**四张登记表**覆盖：
+
+| 账本 | 管哪一块 |
+|---|---|
+| `no_timer_guard`（daemon 侧） | daemon 里不许有「自己醒过来」的构件（零容忍） |
+| `polling_registry` | 前端 TS 与 `shared/ccm` |
+| `rust_timer_registry::REGISTERED` | monitor **Rust 级**的 `sleep` / `interval` |
+| `rust_timer_registry::SHELL_WAKES` | monitor Rust **拼出来的 shell 循环**（前三张都看不见它） |
+
+⚠ **口径是「每一处都说清事件源在哪、谁退役它」，不是「一处轮询都没有」** ——
+实测有两处**今天根本没有内核事件源**（pane 内容变化 · 别人改了账号），
+把它们改成等帧只会做出一个永远等超时的东西 ⇒ 如实记未排期。
+
+⚠ **唯一登记在案的例外**：预信任的「等信任框」没有内核事件源 ⇒ `control/` 继续以
+**shell 字符串形态**产出它（由目标 shell 执行，因此与「零定时器」共存）。
+
+### 2.6 共享 crate：为什么 daemon **不进** workspace
+
+`src-tauri/crates/*`（6 个）是 monitor 与 daemon 的共同实现落点（判定只许有一个家）。
+而 **daemon crate 刻意不是 workspace 成员** —— 它要能在目标机上**原生构建**。
+
+⚠ **代价是实的、要写下来**：在 `src-tauri` 里跑 `cargo fmt --all` / `cargo test`
+**覆不到 daemon**（曾因此漏过一次 fmt 红）⇒ 门禁读数必须**八处分别跑**
+（monitor · daemon · 6 个共享 crate）。
+
+### 2.7 逐文件清单去哪了
+
+- Rust 侧：`src-tauri/README.md`
+- 前端：`src/README.md`
+- `backend/` 内部：`src-tauri/src/backend/mod.rs` 的 `BACKEND_FILES` 登记表
+  （**加文件不写理由就红** —— 那是这个目录不再变成平铺堆的机制）
+
+---
+
+## 3. Tauri State 注册矩阵 → **只有一个家：`doc/STATE-MATRIX.md`**
+
+〔F19〕这里原本有一张 7 行的 State 表，而 **`doc/STATE-MATRIX.md` 里有严格更全的同一张表**
+（多出「注册位置 / 创建位置 / Arc 所有权」三列 + 逐命令 consumer 清单），
+且原文自己就写着「详细 consumer 矩阵 → STATE-MATRIX.md」——
+**它自己承认家在那边，却又存了一份摘要。** 两份副本必漂 ⇒ 摘要删除，这里只留指针。
+
+⇒ **改 State 前后都读 [STATE-MATRIX.md](STATE-MATRIX.md)**，它是撤回/修改任何 IPC 命令的强制 checklist。
+
+**为什么这件事值得一整份文档**（这条是架构性的，所以留在这里）：
+漏一次 `app.manage()` **不会被 `cargo check` 抓住** —— 命令签名照样编译过，
+**运行时第一次调用才 panic**。Tauri 的 State 注入是运行期按类型查表的，
+编译器在这条路上帮不了你 ⇒ 只能靠一份人维护的清单兜着。
 
 ---
 
@@ -430,7 +445,9 @@ v1.6.x 试过的"从 claude PID 走 parent chain + WT 进程 + 终端类进程 +
 
 ## 7. 入门读图
 
-- 想理解整体数据流：本文 § 1 + 5
+- 想理解整体数据流：本文 § 1（**三条链**：本机 / 远端 daemon / POSIX）+ § 5
+- 想知道 frontend / backend 的边界在哪、哪一半还没搬完：本文 § 2
+  （§2.1 那张表是**今天真实的落地进度**，且由判据现场量 —— 它不会停在某个旧的「今天」）
 - 想加新 jsonl 类型：见 [CONTRIBUTING.md](CONTRIBUTING.md) § 添加 jsonl 类型
 - 想改/加跨进程协议文件：见 [IPC-PROTOCOL.md](IPC-PROTOCOL.md)
 - 想加新 IPC 命令：见 [CONTRIBUTING.md](CONTRIBUTING.md) § 添加 IPC + [STATE-MATRIX.md](STATE-MATRIX.md)
