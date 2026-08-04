@@ -314,4 +314,160 @@ mod tests {
              抽到的函数体：{body}"
         );
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // F17：**monitor Rust 自己拼出来的 shell 周期唤醒**（三张表此前都看不见的那一族）
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// shell 形态的周期唤醒登记表：`(路径, 形态, 类别, 处数, 为什么 + 谁退役它)`。
+    ///
+    /// # ⚠ 为什么要**另开一张**，不并进 `REGISTERED`
+    ///
+    /// `REGISTERED` 的「处数」是由 [`wake_hits`] 数出来的（**Rust 级** `thread::sleep` 一族），
+    /// 两者是同一条双向断言的两端。把 shell 那族混进来会让那个数失去意义。
+    /// ⇒ 另开一张表 + 另一个扫描器，两张各自双向。
+    ///
+    /// # 它补的是哪个洞（F12 的 `/full-audit` 逮到的）
+    ///
+    /// `account_usage.rs` 在 Rust 里**拼出**一条 shell 轮询循环
+    /// （`while [ $i -lt N ]; do sleep 0.5; tmux capture-pane …`），而：
+    ///
+    /// - 本模块原来的 [`wake_hits`] 只认 **Rust 级**的 `sleep`/`interval` ⇒ 看不见它；
+    /// - `polling_registry` 只管 TS 与 `shared/ccm` ⇒ 不管 Rust；
+    /// - daemon 那条「外部节拍」子扫描要求 `format!` 与循环词**同行**，
+    ///   而这处的 `format!(` 在一行、`while [` 在下一行 ⇒ **照抄它也会漏**。
+    ///
+    /// ⇒ 于是「零轮询」那条成功标准的勾曾经建立在一个**看不见它**的读数上（F12 已撤勾）。
+    ///
+    /// # ⚠ 模式面为什么只收「只可能是 shell」的形态
+    ///
+    /// 摸底时我先用宽模式量了一遍，`for i in` 当场误命中 `search.rs` 的 **Rust** `for i in 0..n`。
+    /// ⇒ 模式面只留 shell 独有的写法（见 [`shell_wake_hits`]）。**先量后写**，不然扫描面
+    /// 要么画小（漏）要么画大（噪音），而两种都会让这张表失去意义。
+    const SHELL_WAKES: &[(&str, &str, &str, usize, &str)] = &[
+        (
+            "src/account_usage.rs",
+            "画面稳定轮询（quiescence_wait）",
+            "wait-for-condition",
+            2,
+            "抓屏内容连续 N 次不变即 break，**有上限**（startup 12 次 / render 20 次 × 0.5s ⇒ 6s / 10s）。             ⚠ **事件源与 F02 已登记的那条同根**：tmux **没有** 「pane 内容变化」这种 hook，             能想到的路只有轮询 `capture-pane` 或让 claude 自己上报 ⇒ **今天无人认领，如实记未排期**。             ⚠ 它跑在**远端主机**上（由 SSH 带过去的 shell 串执行），不是 monitor 进程自己醒 ——             但那不改变「它是一处周期唤醒」这件事，所以照样登记。             ⚠ 它本地已有 5 条判据钉着**形状**（两次 send-keys 之间必须有稳定轮询 · `$same -ge N` ·              上限容得下两倍静止时长 · 改 MS 常量 sleep 字面量必须跟着变）——              **那些钉的是「轮询长得对不对」，不是「它作为一处周期唤醒被登记了」**。两件事。",
+        ),
+        (
+            "src/account_usage.rs",
+            "自毁看门狗（setsid sleep N; kill-session）",
+            "startup-delay",
+            1,
+            "一次性延时后强杀探针会话，是「万一跑不完」的保险丝（30s）。             **一次性、不循环** ⇒ 归 `startup-delay` 那一类（延时一次就结束）。             ⚠ 它刻意用 `setsid` 脱离本次 SSH 通道 ⇒ **通道断了它照样会清场**，那是它存在的理由。             退役条件：探针改成由 daemon 托管（届时进程生命周期由 daemon 的 pidfd 管）⇒ **未排期**。",
+        ),
+    ];
+
+    /// shell 形态的周期唤醒。**只收「只可能是 shell」的写法** —— 见 `SHELL_WAKES` 头注。
+    fn shell_wake_hits(prod: &str) -> usize {
+        // 判据串运行时拼，免得命中本文件自己的说明。
+        let pats = [
+            format!("while {}", "[ "),
+            format!("while {}", "true"),
+            format!("until{}", " "),
+            format!("sleep{}", " "),
+            format!("us{}", "leep"),
+            format!("$(s{}", "eq "),
+        ];
+        prod.lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("//") && pats.iter().any(|p| l.contains(p.as_str()))
+            })
+            .count()
+    }
+
+    /// ★ 抽取器自检：模式面既没画小也没画大。
+    #[test]
+    fn the_shell_wake_scan_is_neither_too_narrow_nor_too_wide() {
+        let files = rust_files();
+        assert!(
+            files.len() >= 60,
+            "只扫到 {} 个 .rs —— 遍历坏了（与 `REGISTERED` 那条共用同一个遍历器）",
+            files.len()
+        );
+        // ★ **画大了会怎样**：摸底时 `for i in` 误命中了 `search.rs` 的 Rust `for i in 0..n`。
+        //   这条把那次教训钉住 —— 模式面不许收到 Rust 的循环写法。
+        let search = files
+            .iter()
+            .find(|(f, _)| f == "src/search.rs")
+            .map(|(_, raw)| production(raw))
+            .unwrap_or_default();
+        assert!(
+            search.contains(&format!("for i in 0{}n", "..")),
+            "`search.rs` 里那个 Rust `for i in 0..n` 不见了 —— 下面那条反向断言失去了标的"
+        );
+        assert_eq!(
+            shell_wake_hits(&search),
+            0,
+            "模式面把 `search.rs` 的 **Rust** 循环也收进来了 —— 那是摸底时踩过的那个错法\n\
+             （画大了 ⇒ 这张表被噪音填满 ⇒ 与画小了一样失去意义）"
+        );
+    }
+
+    /// ★★ **两个方向**：每一处 shell 周期唤醒都登记了；登记表里没有已经不存在的。
+    ///
+    /// ⚠ 发现机制是**遍历**（`rust_files()`），不是手写清单 ——
+    /// 「一组同类东西都必须满足 X」的判据，清单只能用来**表态**（F12 在另一个守卫脚下逮到过我）。
+    #[test]
+    fn every_shell_shaped_periodic_wake_is_registered() {
+        let mut want: Vec<(String, usize)> = Vec::new();
+        for (f, _, _, n, _) in SHELL_WAKES {
+            match want.iter_mut().find(|(k, _)| k == f) {
+                Some((_, acc)) => *acc += n,
+                None => want.push(((*f).to_string(), *n)),
+            }
+        }
+        want.sort();
+        let mut got: Vec<(String, usize)> = rust_files()
+            .into_iter()
+            .filter_map(|(rel, raw)| {
+                let n = shell_wake_hits(&production(&raw));
+                (n > 0).then_some((rel, n))
+            })
+            .collect();
+        got.sort();
+        assert_eq!(
+            got, want,
+            "\nmonitor Rust **拼出来的 shell 周期唤醒**，实际分布与登记表对不上。\n\
+             **多一处** = 新拼了一条没登记 —— 先回答它属哪一类，以及\n\
+             「它等的那个条件有没有内核事件源；没有就如实记未排期」。\n\
+             **少一处** = 退役了 —— 删登记并把处数拧下来。\n\
+             ⚠ 这一族此前**三张表一张都看不见**（本模块只认 Rust 级 sleep · `polling_registry` 不管 Rust ·\n\
+             daemon 那条子扫描要求 `format!` 与循环词同行而这处跨行）—— F17 补的就是它。"
+        );
+    }
+
+    /// ★ shell 那张表也守同一条类别纪律；且 `ticker` 必须写明事件源与退役归属。
+    #[test]
+    fn every_shell_wake_names_its_class_and_who_retires_it() {
+        assert!(
+            !SHELL_WAKES.is_empty(),
+            "登记表空了 —— 上面那条会零命中地绿"
+        );
+        for (f, form, kind, n, why) in SHELL_WAKES {
+            assert!(
+                matches!(
+                    *kind,
+                    "ticker" | "wait-for-condition" | "throttle" | "startup-delay"
+                ),
+                "{f} / {form} 的类别 `{kind}` 不在四类里"
+            );
+            assert!(*n > 0, "{f} / {form} 的处数是 0");
+            // 四类**都**要说清「等什么 / 上界从哪来」；这一族全都跑在远端 shell 里，
+            // 谁退役它更容易被忘 ⇒ 这张表对四类一律要求写「退役」或「未排期」。
+            assert!(
+                why.contains("退役") || why.contains("未排期"),
+                "{f} / {form} 没说谁退役它（没人认领也要写「未排期」，别留空）"
+            );
+            assert!(
+                why.contains("事件源") || why.contains("一次性"),
+                "{f} / {form} 既没说事件源在哪、也没说它是一次性的 —— \
+                 那两者之一必须写，否则「它为什么还得靠轮询」无从判断"
+            );
+        }
+    }
 }

@@ -33,8 +33,23 @@
 //! remove-orphan-cleanup.md` 因"UX 审计 footgun：把别窗口/实例正跑的活会话误列孤儿劝杀"而
 //! 删除），本模块的探针生命周期管理是自包含、确定性的，不重蹈覆辙。
 //!
-//! **不新增轮询**：探针只在前端按需调用时触发（面板"查看用量"按钮/chip 菜单展开），没有
-//! 任何 `setInterval`/定时任务。
+//! **不新增周期性后台负载**：探针只在前端按需调用时触发（面板"查看用量"按钮/chip 菜单展开），
+//! 没有任何 `setInterval`/定时任务。
+//!
+//! ⚠ **F17 订正这个小标题的措辞**（原写「不新增**轮询**」）。逐字读的话，
+//! 「没有 `setInterval`/定时任务」这半**是真的**；但小标题「不新增轮询」**会误导** ——
+//! 本模块**确实产出一段轮询**：[`quiescence_wait`] 拼的
+//! `while [ $i -lt N ]; do sleep 0.5; tmux capture-pane …`（远端 shell 执行，有上限），
+//! 外加一个 `setsid sleep 30; kill-session` 的自毁看门狗。
+//!
+//! ⚠ 而它此前**三张「周期唤醒」账本一张都看不见**（`rust_timer_registry` 只认 Rust 级
+//! `sleep`/`interval` · `polling_registry` 只管 TS 与 `shared/ccm` · daemon 那条「外部节拍」
+//! 子扫描要求 `format!` 与循环词**同行**，而这里是跨行的）—— Phase G 的 `/full-audit` 逮到的。
+//! ⇒ F17 已把这两处登记进 `rust_timer_registry::SHELL_WAKES` 并配了**遍历式**的双向机检。
+//!
+//! ★ 这条订正的一般化：**「陈述为假」与「措辞误导」是两件事，别混说** ——
+//! 这一处属后者，而后者一样有害：它让读者以为「本模块与轮询无关」，
+//! 于是三张账本谁都没来认领它。
 
 use crate::ssh_source;
 use tokio::io::{AsyncReadExt, BufReader};
