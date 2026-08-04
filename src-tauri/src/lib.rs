@@ -65,6 +65,7 @@ mod ssh_source;
 /// 没有 `-D warnings` ⇒ **不会红**。是 Phase D 审计数出「dead_code 正好 +5」才发现的。
 #[cfg(test)]
 mod ccm_cli_contract;
+mod frame_cadence_guard; // F01：帧节奏说法的零命中守卫（P5 后 daemon 零定时器；被禁措辞见模块头注）
 #[cfg(test)]
 #[cfg(test)]
 #[cfg(test)]
@@ -641,7 +642,8 @@ pub fn run() {
                                     //   - Some(origin)=tmux 会话尚在（空 shell）→ **idle-tmux 灰灯**：mark_idle +
                                     //     emit SESSION_IDLE + **不 forget 绑定**（登录 shell 的 ssh 窗仍活、↗ 拉前有效）。
                                     //   - None=tmux 也没了 → **archived**（原逻辑）：clear_idle + forget + SESSION_ENDED。
-                                    // 判据 command-agnostic（见 ssh_source::tmux_origin_for_sid）：帧 ≤8s 陈旧，退出
+                                    // 判据 command-agnostic（见 ssh_source::tmux_origin_for_sid）：帧的新鲜度**由 hook 决定**
+                                    // （P5 删 ticker 后 daemon 零定时器）——hook 覆盖到的近乎即时，覆盖不到的可能**永不刷新**。退出
                                     // 瞬间 command 列可能仍是 claude，故用 daemon-removed 判"claude 死"、@ccm_sid
                                     // present 判"tmux 在"。**§24**：removed sid 已在上方从 remote_active 移出，idle 天然
                                     // 在集合外；idle 只写独立 REMOTE_IDLE（唯一写者=本 emitter），**不新增 remote_active 写点**。
@@ -740,7 +742,7 @@ pub fn run() {
                     });
                 }
                 // audit-fixes F03.2：tmux 存活对账**从 8s poller 改为收帧驱动**（甲-evented，零轮询）——
-                // 收割器现落在 `ssh_source::stream_loop` 的 `TmuxSessions` 帧臂（daemon 每 ~8s 推帧即算），
+                // 收割器现落在 `ssh_source::stream_loop` 的 `TmuxSessions` 帧臂（daemon **事件驱动**推帧即算），
                 // 复用 `tmux_reconcile::reconcile_step`。故此处不再 spawn poller（`run_tmux_reconcile_poller` 已删）。
             }
 

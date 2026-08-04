@@ -1105,7 +1105,8 @@ pub fn snapshot_idle_by_origin(
 
 /// audit-fixes F03.2（**纯函数**，idle 判定核心，Linux 可单测）：给「origin → tmux ls 原文」账本，
 /// 找 `@ccm_sid == sid` 出现在哪个 origin 的帧里。**只认 @ccm_sid 列**（`parse_tmux_ls` 的 `sid`
-/// 字段），**不看 command**——command-agnostic：`TmuxSessions` 帧最长 8s 陈旧，claude 退出瞬间那帧
+/// 字段），**不看 command**——command-agnostic：`TmuxSessions` 帧的新鲜度**由 hook 决定**（P5 后零定时器；
+/// hook 覆盖到的近乎即时，覆盖不到的可能**永不刷新** —— 见 `classify_removed` 头注那个 `/branch` 洞），claude 退出瞬间那帧
 /// 的 command 列可能仍是 claude，卡 `command!=claude` 会正常退出高频误判 archived、丢灰灯。故改用
 /// 「claude 死」由 daemon-removed（emitter 触发边沿）判、「tmux 在」由 `@ccm_sid` present 判（claude
 /// 退出后 wrapper watcher 停写但**不 unset**，session 级 option 恒 present——aya 已实测）。`NO_TMUX`/空跳过。
@@ -3235,7 +3236,7 @@ async fn stream_loop(
             }
             Some(InboundFrame::TmuxSessions { raw, observation }) => {
                 // audit-fixes F03.2（收帧驱动 tmux 存活收割器，取代已删的 8s poller = 甲-evented 零轮询）：
-                // daemon 每 ~8s 推本 origin 最新 `tmux ls` 原文；收到即对账——把 tmux 后端已消失的 tracked
+                // daemon **事件驱动**推本 origin 最新 `tmux ls` 原文（tmux hook → SIGUSR1 → Poke）；收到即对账——把 tmux 后端已消失的 tracked
                 // sid 去抖 retire → 当 removed 送 emitter（emitter 再判 None→archived+clear_idle）。tracked =
                 // 本连接 announced（live 会话）∪ 本 origin idle 会话（后者使 idle→archived 有产出者，补齐红线④）。
                 //
