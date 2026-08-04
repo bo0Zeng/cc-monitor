@@ -65,6 +65,7 @@ mod ssh_source;
 /// 没有 `-D warnings` ⇒ **不会红**。是 Phase D 审计数出「dead_code 正好 +5」才发现的。
 #[cfg(test)]
 mod ccm_cli_contract;
+mod doc_claim_registry; // F11：耐久文档里「描述当下」的字段与代码对拍（状态列逐格登记 + ★ 判据从文档里读那个数，代码里不留第二份）
 mod frame_cadence_guard; // F01：帧节奏说法的零命中守卫（P5 后 daemon 零定时器；被禁措辞见模块头注）
 mod gate_singleton_guard; // F03：§34 Gate 2 的身份判定在 Rust 侧只许有一个家（`gate-core`）
 
