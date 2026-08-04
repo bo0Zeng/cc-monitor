@@ -58,8 +58,20 @@ mod tests {
             "src/history.rs",
             "reader",
             15,
-            "最大的一块：会话历史列表/读取/元数据。**F10 的主要工作量在这里**。\
-             退役归 F10 本体（要本机后端在跑，即 F05b）。",
+"最大的一块，但**那 15 个命中是三种角色，不是一类活**〔F10b 末批逐函数量过〕：\
+             ① **reader 6 处**（`list_history_projects` 168/169/232 · \
+             `stream_history_sessions_in_project` 430/431 · `stream_read_session_jsonl` 499）—— \
+             命令层有对侧（`--list-projects` / `--list-sessions` / `--read-session*`）；\
+             ② **写操作 4 处**（`delete_history_session` 621/622 · `create_branch_session` 744/745）\
+             —— 它们**恰好也读 claude_dir 来定位文件**，但性质是写。⚠ 删会话 **daemon 侧无对侧**\
+             （14 条一次性子命令里没有删）；分叉有 `--fork-session`；\
+             ③ **payload 5 处**（`validate_config_dir_posix` 1031 · `validate_config_dir_ps` 1054/1057 · \
+             `config_dir_prefix_ps` 1102/1111）—— 把 `CLAUDE_CONFIG_DIR` 拼进**启动命令串**，\
+             按本表自己的定义属 `payload`：**随 F06/F07 走，不属读面**。\
+             ★ **因此这条登记不会因为「读面迁完」而消失**，`readers` 也不会因此降 —— \
+             到那一天该做的是**把本条的类别改成 `payload`**（那时它剩下的命中确实只有那一类）。\
+             ⚠ 那也暴露了本表的记账形状：**它按「文件 × 单一类别」记，配不上一个文件承载多种角色**。\
+             退役归 F10 本体（reader 那 6 处），其余两族各归其主。",
         ),
         (
             "src/ssh_source.rs",
