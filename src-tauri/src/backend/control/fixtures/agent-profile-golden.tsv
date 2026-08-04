@@ -1,0 +1,33 @@
+# F06：**agent 适配表的唯一真相源** —— 那张表今天有**三份副本**，形状还不一样。
+#
+# 三份：
+#   1. monitor Rust  `adapter::for_kind(..)`（claude + codex 两个 adapter 模块）
+#   2. `shared/ccm`   五个 `agent_*` shell 函数（claude + codex）
+#   3. 前端 TS       `src/agent-profile.ts::AGENT_PROFILE`（**只有 claude**，是单 profile）
+#
+# ⚠ 为什么要这张表：**C4 要 ccm 变零决策执行臂** —— 而「搬决策」的前置是
+#   「**先证明两侧今天逐字一致**」。不一致的话搬完不知道搬没搬对，
+#   而且那种不一致**今天不会红**（三份各自的测试都过）。
+#
+# ⚠⚠ **本表刻意描述「语义」而不是「某一侧的表示」**（首版栽在这上面）：
+#   首版有一列 `resume_flag`，直接拿 ccm 的 `agent_resume_flag` 与 Rust 的 `resume_flag()` 对拍
+#   —— 判据当场红，而**那不是漂移，是我把两个不同语义的字段当成了一个**：
+#     · Rust 存的是「resume 的**调用形态**」：claude 用 flag `--resume`，codex 用**子命令** `resume`；
+#     · ccm 存的是「resume **flag**」，且**拿空值当「不支持 resume」的哨兵**（`ccm:250` 会 `die`）。
+#   ⇒ 拆成 `resume_kind`（flag/subcommand）+ `resume_token`（那个字面量），两侧各自映射。
+#   **「同名不同物」在本工作区是第三次**（daemon `--usage` vs 用量探针 · 远端 claude_dir vs 本机读面）。
+#
+# 读它的三方（各自独立读，绝不一侧运行时调另一侧）：
+#   · Rust  `backend/control/agent_profile_parity.rs`
+#   · ccm   由 `ccm-cli` / `ccm-print-parity` 的**行为**对拍间接覆盖（见功能件 §3）
+#   · TS    只有 claude 那一格适用
+#
+# 列：agent <TAB> key <TAB> value（value 为空写 `<empty>`）
+claude	default_launcher	claude
+claude	resume_kind	flag
+claude	resume_token	--resume
+claude	nested_env	CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION
+codex	default_launcher	codex
+codex	resume_kind	subcommand
+codex	resume_token	resume
+codex	nested_env	<empty>

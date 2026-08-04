@@ -18,6 +18,8 @@ pub mod local_backend;
 pub mod payload;
 
 #[cfg(test)]
+mod agent_profile_parity;
+#[cfg(test)]
 mod gate2_parity;
 #[cfg(test)]
 mod launch_cli_parity;
