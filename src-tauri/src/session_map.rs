@@ -43,7 +43,19 @@ use std::time::Duration;
 /// 之所以要这个类型，而不是继续只传 sid：monitor 收到 removed 后要在「灰点（tmux 会话
 /// 还在，用户可以回去 attach）」和「归档」之间二选一，原先靠**查自己缓存的那份
 /// `tmux ls` 原文里 `@ccm_sid` 还在不在**来猜。`/branch` 场景这个猜法必错——见
-/// [`Superseded`](RemovalCause::Superseded)。远端由 daemon 在帧里明说，本地由 diff 得出。
+/// [`Superseded`](RemovalCause::Superseded)。
+///
+/// ⚠ **F01b 订正**：原文写「远端由 daemon 在帧里明说，**本地由 diff 得出**」——
+/// **后半句是假的**。实测本地那条 diff（`session_map.rs` 的两处）**全部产 `Gone`**，
+/// 一处 `Superseded` 都没有；`Superseded` 今天**只从远端帧来**
+/// （`ssh_source.rs` 解析 `"cause":"superseded"` 后直接构造）。
+///
+/// 那么本地 `/branch` 为什么没出「永远消不掉的灰点」那个 bug？
+/// **理由不是文档说的那个** —— 是本地 sid **根本不进 `tmux_raw_registry`**
+/// （那张表只在 SSH 连接路径按 `host_label` 写）⇒ `find_tmux_origin_for_sid` 恒 `None`
+/// ⇒ `classify_removed(None, Gone)` = `Archive`。**结论对、理由是个巧合。**
+/// 由 `ssh_source::the_local_path_is_safe_only_because_local_sids_never_enter_the_tmux_cache`
+/// 钉住那个巧合 —— 哪天本地会话进了那张表，bug 就回来了。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RemovalCause {
     /// 真的没了：pidfile 被删 / 进程退出 / 连接断开时兜底归档。**默认值。**
@@ -71,13 +83,9 @@ impl RemovedSid {
             cause: RemovalCause::Gone,
         }
     }
-    /// 被顶替（原地换 sid）。
-    pub fn superseded(sid: impl Into<String>) -> Self {
-        Self {
-            sid: sid.into(),
-            cause: RemovalCause::Superseded,
-        }
-    }
+    // F01b：`superseded()` 构造器**已删** —— 它生产段零调用方，而它的存在会让人以为
+    // 「本地也会产 Superseded」（那正是上面订正掉的那句假陈述）。
+    // `Superseded` 今天只从远端帧来，`ssh_source.rs` 直接 `RemovedSid { sid, cause }` 构造。
 }
 
 #[derive(Debug, Clone)]
