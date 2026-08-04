@@ -146,7 +146,7 @@
 |---|---|---|
 | `control/` | 有 | **已交付** —— 两条改状态的远端 tmux 命令都走它（见 2.3） |
 | `observe/` | 有 | **待做** —— **刻意未建**，谁来叫醒见 2.2 |
-| `platform/` | 有 | **待做** —— 平台原语还散在 `bind.rs`/`utils.rs`（见 2.4） |
+| `platform/` | 有 | **待做** —— 但 backend 那一半今天**零平台面**，所以还不需要它（见 2.4） |
 | `common/` | 有 | **待做** —— **刻意不建**：monitor 侧的共用面住 `src-tauri/crates/*`（见 2.6） |
 
 ⚠ 这张表量的是「**这一层在 monitor 侧落地了没有**」，**不是**「平台原语已经收敛干净了」——
@@ -190,11 +190,31 @@
 （回落到 shell 路 = 把一次被门拒绝洗成另一条路的成功）。
 「能不能回落」的判定**只有一份**（`backend/control/daemon_route.rs`）。
 
-### 2.4 `platform/`：daemon 侧是唯一落点，**monitor 侧还没落地**
+### 2.4 `platform/`：backend 那一半今天**零平台面**，所以还不需要它
 
 `platform/` 应当是**唯一**允许平台原语与平台 cfg 的地方，判据是**跨 target 编译**
-（不是 cfg 位置扫描）。daemon 侧成立；**monitor 侧今天不成立** ——
-平台原语散在 `bind.rs` / `utils.rs`。⚠ 这条是**如实记下的欠账**，不是「已经做到了」。
+（不是 cfg 位置扫描）。
+
+⚠ 〔F18 实测订正〕这一节原来写「monitor 侧今天不成立 —— 平台原语散在 `bind.rs`/`utils.rs`」。
+**那句把两半混说了**：
+
+- **backend 那一半（`src-tauri/src/backend/`）生产段零平台 cfg、零平台原语** ——
+  唯一那 3 处 `#[cfg(unix)]`/`#[cfg(windows)]` 全在 `local_backend.rs` 的**测试段**
+  （夹具在收拾自己起的子进程）。⇒ 这条纪律在它该管的范围里**已经成立**，
+  由 `backend::tests::the_backend_half_stays_platform_agnostic` 钉住不许退化，
+  另有一条**反向锚点**证明那套形态不是瞎的。
+  **⇒ 今天不需要 `backend/platform/`；真需要那天，判据会先红着告诉你。**
+- **另一半确实有平台代码**（`bind.rs` 的窗口把手 · `launch.rs` 的开窗 ·
+  `session_map.rs` 的进程身份，实测 47 处原语命中）—— **那是 C9 的活，不是欠账**：
+  「在用户桌面上开一个终端窗口」本身就是平台特定的，把它搬进 `platform/`
+  不会让它变可移植，只会让这条纪律变成一句摆设。
+
+⚠ 真正的欠账是**判据形态**那一半：daemon 侧 CI 有一步
+`cargo check --all-targets --target x86_64-pc-windows-msvc`（逐字标着「平台线的真判据」），
+**monitor 照抄不了** —— 本机实测 `exit=101`，挡路的不是 monitor 的代码
+（252 个 `.rmeta` 已产出），是某个 C 依赖的 build script 要 `lib.exe`。
+⇒ monitor 侧「两个平台都编得过」由 **CI 两个 OS 各自原生编**承担
+（`rust` job 在 windows-latest 跑 `cargo test --all` · `linux-app-build` 在 ubuntu-latest 跑 `cargo build`）。
 
 ### 2.5 零轮询：一律事件驱动，**四张账本覆盖四块**
 
