@@ -898,7 +898,7 @@ U8c-1 摸底后拆成三步：
 | **U8c-2a** ✅ | 用量探针的载荷进内核（`render_payload` 的第一个生产调用方） | 2026-08-02 |
 | **U8c-2b-0** ✅ | 账本 S5：POSIX quote 五处合一 + 零命中守卫 | 2026-08-02 |
 | **U8c-2c-1** ✅ | **ccm 调用行**进内核（**P4b 起**在 `backend::control::ccm_invocation::render_ccm_invocation`；交付时在共享 crate 的 `launch_core::cli`）+ 跨语言对拍。**不切生产** | 2026-08-02 |
-| **U8c-2c-2** | 生产切换：`remote-launch-run.ts` 改调 Rust（需 tauri 命令 + IR 上线形状） | 待做 |
+| **U8c-2c-2** | 生产切换：`remote-launch-run.ts` 改调 Rust（需 tauri 命令 + IR 上线形状） | **已交付**（F07 2026-08-04 实测订正：本列此前写「待做」，是**过期陈述** —— 实测两条 tauri 命令 `render_ccm_launch`/`render_launch_payload` 都已注册，生产 TS 三处在调（`remote-launch-run.ts:72,96,301`），`parity_ledger` 也有 `launch.render-cli`/`launch.render-payload` 两条能力） |
 | **U8c-3** | 删 TS 渲染器 + IR，收敛下面六条 | 待做 |
 
 ### 外层容器那半为什么本轮不搬（**不是因为它没了** —— 我第一版就是这么写的，被工程审计证伪）
@@ -922,7 +922,7 @@ U8c-1 摸底后拆成三步：
 
 | # | 问题 | 答案 |
 |---|---|---|
-| ① | 生产切到 daemon 的 `launch` 了吗 | **否** —— 全仓 `.call("launch")` 只有一处且在 `#[cfg(test)]` 里，`ssh_source.rs` 还断言 `!accepts("launch")`。**U8a-2c 未做** |
+| ① | 生产切到 daemon 的 `launch` 了吗 | ⚠ **F07 2026-08-04 订正为「部分是」**（原写「否 —— 全仓只有一处且在 `cfg(test)` 里」，那句**已过期**）：实测**生产段有一处** `backend/control/daemon_launch.rs:111`（U8a-2c-1 交付的 `daemon_send_into`）⇒ **`send-into` 那一格已切**；`create-or-attach` 与 **attach** 两格未切。`ssh_source.rs:2208` 那条 `!accepts("launch")` 仍在，但它断言的是「某个 hello 没声明 launch」，**不是「生产不调 launch」** —— 两件事。〔原文续〕**U8a-2c 未做** |
 | ② | attach 那条串归谁产 | **一半有答案**：装了 ccm 的主机 U8c-2c-2 起已是 Rust 产（`ccm attach <名>`）；**没装 ccm 的仍靠 `session-backend.ts::attach`** |
 | ③ | daemonless 的远端还要不要能起会话 | **未决** —— U12 仍是待做项 |
 

@@ -206,3 +206,128 @@ pub fn render_launch_payload(req: PayloadRenderRequest) -> Result<String, String
         wrap: &wrap,
     })
 }
+
+#[cfg(test)]
+mod f07_main_path_tests {
+    //! F07（出口③ 早已交付）：**远端起会话主路的决策已经在 backend 渲染** —— 把它钉住。
+    //!
+    //! # 摸底结论
+    //!
+    //! F07 的题目是「远端起会话主路走 backend」。逐段量下来**决策那半已经切完了**：
+    //!
+    //! | 段 | 今天在哪 |
+    //! |---|---|
+    //! | 会话名 | F13 的铸名口（`mintTmuxName`，避让不可分离） |
+    //! | §34 三道门 | F03 + F04a 已搬进 daemon `control/` |
+    //! | 内层载荷 | `backend::control::payload`（P4b） |
+    //! | ccm 调用行 | `backend::control::ccm_invocation`（P4b） |
+    //! | **生产切换** | ✅ `remote-launch-run.ts` 三处在调 `render_ccm_launch` / `render_launch_payload` |
+    //!
+    //! 剩下的**只有「删 TS 那两个渲染器」**，而那是 U8c-3 的题目、不是 F07 的
+    //! —— F07 要的是「走 backend」，不是「删旧的」。
+    //!
+    //! # ⚠ 摸底在 `doc/INVARIANTS.md §33b` 里抓到**两处过期陈述**
+    //!
+    //! **过期一**：那张表把 **U8c-2c-2 写成「待做」** —— 实测已交付
+    //! （两条 tauri 命令注册 + 生产 TS 三处在调 + `parity_ledger` 两条能力）。
+    //!
+    //! **过期二**：三问的答案① 写「**否** —— 全仓 `.call("launch")` 只有一处且在 `cfg(test)` 里」，
+    //! 实测**生产段有一处**（`daemon_launch.rs`，U8a-2c-1 的 `daemon_send_into`）⇒ 应为「**部分是**」。
+    //!
+    //! ⚠ **结论仍然对**（U8c-3 今天删不得：③ U12 未决 + attach 那格仍在 TS），**但依据过期了**。
+    //! 这是本工作区「**理由过期而结论仍对**」的第二次（F01 那次是四处「每 ~8s」）——
+    //! 最难发现的一类，因为**结论对，所以没人会去查理由**。
+
+    /// ★ **生产接线钉**：主路真的调那两条 backend 渲染命令。
+    ///
+    /// 一旦有人把它改回「TS 自己渲染」，本条红 —— 而那种回退**功能不变砖**
+    /// （TS 兜底渲染器还在），门禁也不会因为别的原因红。
+    #[test]
+    fn the_remote_launch_main_path_really_calls_the_backend_renderers() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级");
+        let ts = std::fs::read_to_string(root.join("src/remote-launch-run.ts"))
+            .expect("读不到 remote-launch-run.ts");
+        assert!(
+            ts.len() > 5000,
+            "remote-launch-run.ts 只有 {} 字节，抽错了？",
+            ts.len()
+        );
+        // 剥整行注释 + 行尾注释（F10 那次学到的：行尾注释里的提及不算数）。
+        let prod: String = ts
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//") && !l.trim_start().starts_with('*'))
+            .map(|l| match l.find("//") {
+                Some(i) => &l[..i],
+                None => l,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        for needle in [
+            "commands.render_ccm_launch(",
+            "commands.render_launch_payload(",
+        ] {
+            assert!(
+                prod.contains(needle),
+                "`remote-launch-run.ts` 的生产段里找不到 `{needle}` ——\n\
+                 远端起会话主路不再走 backend 渲染了。\n\
+                 ⚠ 这种回退**功能不变砖**（TS 兜底渲染器还在），所以除了本条没人会红。"
+            );
+        }
+    }
+
+    /// ★ **前提触发器**：U8c-3（删 TS 渲染器）今天删不得的**两条依据**仍然成立。
+    ///
+    /// 依据一：**attach 那格仍在 TS** —— `session-backend.ts` 仍被生产 import。
+    /// 依据二：**`create-or-attach` 那格仍未切** —— 生产段的 `.call("launch")` 只有
+    /// `daemon_send_into` 那一处（`send-into` 模式），没有第二处。
+    ///
+    /// 任一条变了 ⇒ **主动红**：那时 U8c-3 的前置动了，回来重裁 F07 的剩余面。
+    #[test]
+    fn the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级");
+        // 依据一：attach 那格
+        let run = std::fs::read_to_string(root.join("src/remote-launch-run.ts")).expect("读不到");
+        let fallback = std::fs::read_to_string(root.join("src/launch-render-fallback.ts"))
+            .expect("读不到 launch-render-fallback.ts");
+        assert!(
+            fallback.contains("session-backend") || run.contains("session-backend"),
+            "生产 TS 里再也找不到 `session-backend` —— **这多半是好事**：\n\
+             attach 那格可能已经搬走了 ⇒ U8c-3 的依据一没了，回 F07/U8c-3 重裁。"
+        );
+        // 依据二：生产段 `.call("launch")` 的处数。**运行时拼，免得命中本文件自己的说明。**
+        let verb = format!(".call(\"{}\"", "launch");
+        let mut prod_hits = 0usize;
+        let mut stack = vec![std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&d) else {
+                continue;
+            };
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.extension().and_then(|x| x.to_str()) != Some("rs") {
+                    continue;
+                }
+                if p.file_name().is_some_and(|n| n == "launch_wire.rs") {
+                    continue; // 本文件的说明里逐字写着那个串
+                }
+                let src =
+                    guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
+                prod_hits += src.matches(verb.as_str()).count();
+            }
+        }
+        assert_eq!(
+            prod_hits, 1,
+            "生产段 `.call(\"launch\")` 的处数从 1 变成了 {prod_hits} —— **这多半是好事**：\n\
+             daemon 的 `launch` 可能又接了一格（今天只有 `daemon_send_into` 的 `send-into`）\n\
+             ⇒ `INVARIANTS §33b` 三问的答案① 又变了，回 F07/U8c-3 重裁「删 TS 渲染器」的前置。"
+        );
+    }
+}
