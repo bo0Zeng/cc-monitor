@@ -101,7 +101,7 @@ pub fn reconcile_step(
 }
 
 // audit-fixes F03.2：原 `run_tmux_reconcile_poller`（8s 轮询）已删——收割逻辑改为**收帧驱动**，
-// 调用点落在 `ssh_source::stream_loop` 的 `TmuxSessions` 帧臂（daemon 每 ~8s 推帧即算，cc-monitor
+// 调用点落在 `ssh_source::stream_loop` 的 `TmuxSessions` 帧臂（daemon **事件驱动**推帧即算，cc-monitor
 // 侧零轮询）。空 backend / `NO_TMUX` 守卫、per-连接 state、tracked=announced∪idle 均在该调用点。
 // 本模块只保留**纯决策** `reconcile_step` + `ReconcileState`（source-agnostic、可 CI 单测、F90 可 lift）。
 
