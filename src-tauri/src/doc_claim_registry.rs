@@ -213,6 +213,27 @@ mod tests {
     #[test]
     fn the_doc_number_for_production_launch_calls_matches_reality() {
         let marker = "〔机检〕生产段 `.call(\"launch\")` 处数：";
+        // ⚠ **F12 扩扫描面**：第一版只读 `INVARIANTS.md` 一份 ⇒
+        // `/full-audit` 逮到**第四份副本**住在 `doc/IPC-PROTOCOL.md:584`（「生产路径今天还没切过来」），
+        // 而它**结构上永远不会红**。⇒ 先扫全 `doc/**`，任何一份里出现同一句旧断言都要红。
+        {
+            let stale = "生产路径今天还没切过来";
+            let mut offenders: Vec<String> = Vec::new();
+            for p in doc_files() {
+                if std::fs::read_to_string(&p)
+                    .map(|t| t.contains(stale))
+                    .unwrap_or(false)
+                {
+                    offenders.push(p.file_name().unwrap().to_string_lossy().to_string());
+                }
+            }
+            assert!(
+                offenders.is_empty(),
+                "这些耐久文档还写着「{stale}」：{offenders:?} —— 那句话在 U8a-2c-1 之后就假了。\n\
+                 ⚠ **它是同一句话的第四份副本**，而 F11 的机检只读 `INVARIANTS.md` ⇒ 它结构上够不着。\n\
+                 这正是本模块头注那条纪律的反例：**订正一句假话时先把它的全部副本找出来。**"
+            );
+        }
         let at = INVARIANTS.find(marker).unwrap_or_else(|| {
             panic!(
                 "`INVARIANTS.md` 里找不到锚点 {marker:?} —— 那句话被改写了。\n\
@@ -311,10 +332,20 @@ mod tests {
                         .contains("backend::control::payload::usage_probe_payload"),
                     "用量探针在调载荷内核的 `usage_probe_payload` 入口",
                 ),
+                // ⚠ **F12 订正**：第一版左支读的是 `src-tauri/src/shell_quote.rs` —— **那个文件不存在**
+                // ⇒ 左支恒 false，整条判据只靠右支撑着（`/full-audit` 逮到的）。
+                // 这正是「判据自己会不会错」那一问要问的东西：**读一个不存在的文件不会报错，
+                // 只会静默返回空串**，而 `||` 让它看起来像「两条都在查」。
+                // ⇒ 改成读真正的家，并加一条「文件必须存在」的断言，杜绝同样的静默空转。
                 "posix-quote-has-one-home" => (
-                    prod("src-tauri/src/shell_quote.rs").contains("shell_quote_core::posix_quote")
-                        || prod("src-tauri/src/ssh_source.rs")
-                            .contains("shell_quote_core::posix_quote"),
+                    {
+                        let host = "src-tauri/src/ssh_source.rs";
+                        assert!(
+                            repo_root().join(host).is_file(),
+                            "量法读的 {host} 不存在 —— 读不到的文件只会静默返回空串"
+                        );
+                        prod(host).contains("shell_quote_core::posix_quote")
+                    },
                     "Rust 侧的 POSIX quote 收在共享 crate（另有 `quote_singleton_guard` 单点守卫）",
                 ),
                 "ccm-invocation-kernel-exists" => (

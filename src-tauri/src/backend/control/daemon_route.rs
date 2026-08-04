@@ -9,7 +9,9 @@
 //! 今天两条路的门恰好等价（都是 §34 三道门）所以功能上看不出差别 —— **那正是它危险的地方**。
 //!
 //! ⇒ 同 `gate-core` 的手法（定框 C1「一份代码、两种承载」的同一条纪律）：判定收成一份，
-//! 调用方只负责给「拒绝该怎么对用户说」。由 `both_daemon_commands_use_this_one_router` 钉住。
+//! 调用方只负责给「拒绝该怎么对用户说」。由 `every_daemon_sender_is_registered_and_uses_the_one_router`
+//! 钉住 —— ⚠ **它的发现机制是遍历目录，不是手写清单**（F12 的 `/full-audit` 逮到手写那版
+//! 漏掉了第三个发送端，见那条判据的头注）。
 //!
 //! # 分界线不是「成功/失败」，是「**能不能证明这条命令根本没发出去**」
 //!
@@ -160,28 +162,111 @@ mod tests {
         }
     }
 
-    /// ★ **零命中守卫：分流规则不许有第二份实现。**
+    /// `backend/control/` 里每个**走 daemon 的发送端**的判定。
     ///
-    /// 两个消费方（`daemon_kill` / `daemon_send_keys`）都必须调本模块，
-    /// 且**不许自己 match `CallError`** —— 那就是漂的起点。
+    /// # ⚠ 为什么这里是登记表而不是一句「都必须用分流器」
+    ///
+    /// 第一版是**手写的两条清单**（`daemon_kill.rs` / `daemon_send_keys.rs`）——
+    /// Phase G 的 `/full-audit` 当场指出：同一个目录里**第三个**走 daemon 的发送端
+    /// `daemon_launch.rs::daemon_send_into`（U8a-2c-1，早于本工作区）**不在清单里**，
+    /// 于是它自己 match 一整套 `CallError`、把**每一档**都折成「诚实降级」，
+    /// 而调用方拿到降级就**回落到 TS 渲染的整串**（那条串没有 §34 的 Gate 2）。
+    ///
+    /// ⇒ **一次 `wrong_owner`（门说「这不是本工具的会话」）会被回落成一条无门的 shell 路。**
+    /// 那正是本模块开头声称要挡的「把被门拒绝洗成另一条路的成功」，
+    /// **而它就发生在守卫脚下** —— 因为守卫的发现机制是手写清单。
+    ///
+    /// ★ 「硬编码清单 vs 递归遍历」这一族在本仓这是**第三个模块**
+    /// （`readonly_guard::spawn_registry` · `tmux_daemon_gate_guard` 的两文件表 · 本条），
+    /// 而这一次是**我自己本轮亲手挖的**。⇒ 改成**遍历 + 登记表**：
+    /// 目录里每个 `.call(` 的文件都必须在下表里，要么用分流器、要么是**带理由的刻意例外**。
+    #[cfg(test)]
+    const SENDERS: &[(&str, Verdict)] = &[
+        ("daemon_kill.rs", Verdict::UsesRouter),
+        ("daemon_send_keys.rs", Verdict::UsesRouter),
+        // ⚠ **刻意例外 + 理由 + 归属**（不是「忘了改」）：
+        // 它的返回值是 tagged 的 `SendIntoResponse{typed, reason}`，**只有两态**，
+        // 表达不出「不许回落」——而改成三态要动 `remote-launch-run.ts` 的回落契约，
+        // 那是一次**生产行为改动**，不是 Phase G 的收尾动作。
+        // ⇒ 已开成 **F14**（ROADMAP 待规划），解锁条件与 U8c-3/U12 同族。
+        ("daemon_launch.rs", Verdict::ExemptPendingF14),
+    ];
+
+    #[cfg(test)]
+    #[derive(PartialEq, Eq, Debug)]
+    enum Verdict {
+        UsesRouter,
+        ExemptPendingF14,
+    }
+
+    /// ★★ **零命中守卫：分流规则不许有第二份实现 —— 而发现机制是遍历，不是手写清单。**
     #[test]
-    fn both_daemon_commands_use_this_one_router() {
-        for (name, src) in [
-            ("daemon_kill.rs", include_str!("daemon_kill.rs")),
-            ("daemon_send_keys.rs", include_str!("daemon_send_keys.rs")),
-        ] {
-            let prod = guard_core::production_code(src);
-            assert!(
-                prod.contains("route_call_error"),
-                "`{name}` 的生产段没有调 `route_call_error` —— 分流规则被就地重写了一份"
+    fn every_daemon_sender_is_registered_and_uses_the_one_router() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/backend/control");
+        // 目录里所有「走 daemon」的文件：生产段出现 `.call(` 的。
+        let verb = format!(".call({}", "");
+        let mut senders: Vec<String> = Vec::new();
+        for e in std::fs::read_dir(&dir)
+            .expect("读不到 backend/control/")
+            .flatten()
+        {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) != Some("rs") {
+                continue;
+            }
+            let prod =
+                guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
+            if prod.contains(verb.as_str()) {
+                senders.push(p.file_name().unwrap().to_string_lossy().to_string());
+            }
+        }
+        senders.sort();
+        // ★ 抽取器自检：遍历坏掉时下面几条会零命中地绿。
+        assert!(
+            senders.len() >= 3,
+            "只扫到 {} 个走 daemon 的发送端（{senders:?}）—— 遍历坏了。\n\
+             F12 实测是 3 个：daemon_kill.rs · daemon_launch.rs · daemon_send_keys.rs",
+            senders.len()
+        );
+        let mut registered: Vec<String> = SENDERS.iter().map(|(f, _)| f.to_string()).collect();
+        registered.sort();
+        assert_eq!(
+            senders, registered,
+            "`backend/control/` 里走 daemon 的发送端与登记表对不上。\n\
+             ⚠ **新增一个发送端就必须在这里表态**：要么用共用分流器 `route_call_error`，\n\
+             要么写成带理由的刻意例外。**手写清单看不见新文件** —— 那正是 F12 的\n\
+             `/full-audit` 在本守卫身上逮到的东西（第三个发送端整个逃出了扫描面）。"
+        );
+        for (name, verdict) in SENDERS {
+            let prod = guard_core::production_code(
+                &std::fs::read_to_string(dir.join(name)).unwrap_or_default(),
             );
+            let uses = prod.contains("route_call_error");
             // 运行时拼，免得命中本行自己。
             let needle = format!("CallError::{}", "");
-            assert!(
-                !prod.contains(needle.as_str()),
-                "`{name}` 的生产段自己在 match `CallError` —— 那是分流规则的第二份实现。\n\
-                 它一旦与本模块漂开，一次 `wrong_owner` 就可能被另一条路重做一遍。"
-            );
+            let own = prod.contains(needle.as_str());
+            match verdict {
+                Verdict::UsesRouter => {
+                    assert!(
+                        uses,
+                        "`{name}` 登记为用分流器，生产段却没有 `route_call_error`"
+                    );
+                    assert!(
+                        !own,
+                        "`{name}` 的生产段自己在 match `CallError` —— 那是分流规则的第二份实现。\n\
+                         它一旦与本模块漂开，一次 `wrong_owner` 就可能被另一条路重做一遍。"
+                    );
+                }
+                Verdict::ExemptPendingF14 => {
+                    // ★ **例外也要钉**：它今天确实还没用分流器（那是 F14 的活）；
+                    // 一旦它改好了，本条会红 —— 逼人把登记改成 `UsesRouter`。
+                    assert!(
+                        !uses,
+                        "`{name}` 已经在用 `route_call_error` 了 —— **这多半是好事**（F14 做完了）：\n\
+                         把它的登记从 `ExemptPendingF14` 改成 `UsesRouter`，并关掉 ROADMAP 的 F14。"
+                    );
+                }
+            }
         }
     }
 }

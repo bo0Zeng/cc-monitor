@@ -129,7 +129,17 @@ export async function restartWithAccount(opts: RestartWithAccountOpts): Promise<
   //      `new-session -d ... 2>/dev/null && send-keys` 短路成只 attach 到没有 claude 的旧 shell）+ 优雅
   //      退出超时时的**兜底 SIGKILL**。**失败 → 中止不续 ⑤**（避免新旧两进程抢同一会话；§5.2 ④ 语义不变）。
   try {
-    await commands.tmux_send_keys({ origin, target: tmuxName, keys: "Escape", enter: false });
+    // ⚠ **F12 修一条 F04c 引入的回归**：`Escape` 走 daemon 的新 mode `send-keys-raw`，
+    // 旧版本 daemon 不认它 ⇒ `invalid_args` ⇒ 按 `daemon_route` 的规则判 `Refused`（**不回落**）
+    // ⇒ 这里 throw。而它与下面的 `/exit` 原本共用一个 `try` ⇒ **`/exit` 整段被跳过**，
+    // 直接落到 ④c 强杀 —— CC 没机会 flush jsonl / 释放锁。
+    // 那与 ④a 逐字写着的「send-keys 发不出去**不中止**」直接矛盾：**代码与它自己声明的意图不符**
+    // （Phase G 的 `/full-audit` 逮到的）。⇒ `Escape` 是 best-effort，它失败**不许**影响 `/exit`。
+    try {
+      await commands.tmux_send_keys({ origin, target: tmuxName, keys: "Escape", enter: false });
+    } catch (e) {
+      console.debug(`[F12] Escape（打断当前回合）发不出去，继续走 /exit：${String(e)}`);
+    }
     await delay(EXIT_INTERRUPT_GAP_MS);
     await commands.tmux_send_keys({ origin, target: tmuxName, keys: "/exit", enter: true });
     const exited = opts.awaitExit

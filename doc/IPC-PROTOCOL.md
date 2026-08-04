@@ -581,9 +581,7 @@ monitor 的 `tmux_send_keys(…, enter=false)` 生产上唯一的用途是**优�
 已经握着这台机器 SSH 会话的对端，它本来就能在这台机器上跑任意命令。这里只回答
 「这组参数能不能构成一次有意义的 tmux 调用」，缺字段/空/超长/含控制字符 ⇒ 结构化错误。
 
-**生产路径今天还没切过来**：monitor 的 tauri 命令 `launch_remote_terminal(origin, remote_cmd)`
-收到的已经是一条**渲染好的 shell 串**，拆不回结构化计划。切换要等前端改成发结构化请求
-（U8c 两个 TS 渲染器 + IR 退役），登记为 **U8a-2c**。
+⚠ **F12 2026-08-04 订正**：本段原来断言「这条路的生产切换还没发生、登记为 U8a-2c」——**那句自 U8a-2c-1 起就假了**，而 F07/F11 连着订正了 `INVARIANTS §33b` 里的**三份副本**、**唯独漏了这一份**（是 Phase G 的 `/full-audit` 逮到的）。今天的实况：生产段 `.call("launch")` **2 处**（`backend/control/daemon_launch.rs` 的 `send-into` = U8a-2c-1 · `backend/control/daemon_send_keys.rs` 的 send-keys = F04c）；仍未切的是 **`create-or-attach` 与 attach 两格**。⚠ 那个「2」的唯一家在 `INVARIANTS §33b` 的〔机检〕锚点上，由 `doc_claim_registry` 读它与现场比；本文件从 F12 起也在那条判据的扫描面里 —— 同族副本再写回来就会红。
 
 #### `resolve`：一次性 exec 与流命令**并存**（U6b-3）
 
