@@ -30,6 +30,115 @@
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空、零运行期开销、不改 daemon 行为。
 
 #[cfg(test)]
+mod f09_external_beat {
+    //! F09（定框 C12 的那条 ⚠ 点名的活）：**「周期跑一次外部命令」也算自己醒过来。**
+    //!
+    //! C12 的 ⚠ 逐字写着：「护栏今天只钉『构件的源码形态』，**没钉住『周期跑一次外部命令』**
+    //! —— 那是 F09 的活。」那个形态是：不用 `sleep`/`interval`，而是**产出一段带循环的
+    //! shell 串**交给别人执行，靠外部进程提供节拍 —— daemon 侧的护栏一个字都看不见。
+    //!
+    //! # 实测：daemon 侧**今天零实例**
+    //!
+    //! F09 摸底逐个查过 daemon 的 shell 串产出点，**没有一处含循环关键字**。
+    //! 所以本条今天是**预防性**的零命中守卫。
+    //!
+    //! ⚠ 那它会不会是个「谁都没写过」的空守卫？**不会** —— 它有一个真实的反向锚点：
+    //! C14 登记的那个例外（预信任的「等信任框」，本质就是轮询、以 shell 串形态产出）
+    //! **确实存在，但它住 `shared/ccm`，不在 daemon**。
+    //! 也就是说「这种形态真实存在于本仓，只是刻意不在 daemon 侧」——
+    //! 本条钉的正是那条边界。
+
+    /// 循环关键字：shell 里提供节拍的三种写法。
+    fn loop_words() -> Vec<String> {
+        // 运行时拼，免得命中本模块自己的说明文字。
+        [("whi", "le"), ("unti", "l"), ("fo", "r ")]
+            .iter()
+            .map(|(a, b)| format!("{a}{b}"))
+            .collect()
+    }
+
+    /// daemon 生产段里**产出给别人执行的字符串字面量**。
+    fn shell_string_literals() -> Vec<(String, String)> {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut out = Vec::new();
+        let mut stack = vec![dir.clone()];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&d) else {
+                continue;
+            };
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.extension().and_then(|x| x.to_str()) != Some("rs") {
+                    continue;
+                }
+                let rel = p
+                    .strip_prefix(&dir)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                // 本模块自己的说明里逐字写着那三个关键字 —— 排除掉（同族坑记过四次）。
+                if rel == "no_timer_guard.rs" {
+                    continue;
+                }
+                let prod =
+                    guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
+                for line in prod.lines() {
+                    if line.contains('"')
+                        && (line.contains("sh -c")
+                            || line.contains("run-shell")
+                            || line.contains("format!"))
+                    {
+                        out.push((rel.clone(), line.trim().to_string()));
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// ★ 抽取器自检：抽不到候选行时下面那条会零命中地绿。
+    #[test]
+    fn the_shell_string_scan_finds_candidates() {
+        let n = shell_string_literals().len();
+        assert!(
+            n >= 3,
+            "只抽到 {n} 行可能的 shell 串 —— 抽取器坏了，下面那条会空转变绿"
+        );
+    }
+
+    /// ★ 正题：daemon 产出的 shell 串里不许有循环 —— 那是「靠外部节拍反复跑」的形态。
+    #[test]
+    fn no_daemon_produced_shell_string_carries_its_own_loop() {
+        let words = loop_words();
+        let mut bad = Vec::new();
+        for (f, line) in shell_string_literals() {
+            for w in &words {
+                // 只看引号内的部分（`while let` 这类 Rust 语法不算）。
+                if let Some(q) = line.find('"') {
+                    if line[q..].contains(w.as_str()) {
+                        bad.push(format!("  {f}: {line}"));
+                        break;
+                    }
+                }
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "daemon 产出的 shell 串里出现了循环关键字 —— 那是 C12 的 ⚠ 点名的\n\
+             「**周期跑一次外部命令**」形态：不用 sleep/interval，而是让别人的 shell 提供节拍，\n\
+             于是本 crate 的零定时器护栏一个字都看不见。\n\
+             ⚠ C14 登记的那个例外（预信任「等信任框」）**住 `shared/ccm`，不在 daemon** ——\n\
+             真要在 daemon 侧开这种口子，先回定框把 C12/C14 的边界重新裁定。\n{}",
+            bad.join("\n")
+        );
+    }
+}
+
+#[cfg(test)]
 mod tests {
     /// 会让线程/任务**自己醒过来**的构件。命中即违规。
     ///
