@@ -130,6 +130,10 @@ export const commands = {
   // `configDir: null` = 账号 0（Rust 侧产出 `unset CLAUDE_CONFIG_DIR; `），不是「不表态」。
   account_usage: (args: { origin: string; accountName: string; configDir: string | null }) =>
     invoke<AccountUsageProbeResult>("account_usage", args),
+  // F08：**本机**那一侧（补平 `parity_ledger` 的 `usage.per-account`）。
+  // 与远端逐字用同一条命令串，只换执行面 —— 故**没有 `origin` 参数**（本机就是这台机）。
+  account_usage_local: (args: { accountName: string; configDir: string | null }) =>
+    invoke<AccountUsageProbeResult>("account_usage_local", args),
 
   /**
    * 远端 daemon 服务端聚合的用量行（非流式，一次返 `Vec`）。返回值字段被真消费 ⇒ 生成物（桶③）。
