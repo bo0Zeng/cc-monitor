@@ -45,6 +45,14 @@ const STATUS_CELLS: &[(&str, &str)] = &[
     ("U8c-2c-1", "ccm-invocation-kernel-exists"),
     ("U8c-2c-2", "production-ts-calls-the-rust-renderers"),
     ("U8c-3", "ts-renderer-still-there"),
+    // 〔F19〕`doc/ARCHITECTURE.md` §2.1 的「backend 四层在 monitor 侧落地到哪一步」表。
+    // ⚠ 它是**本条判据族第一次被一张新表触发**：F19 往 ARCHITECTURE 写下这张表时，
+    // `the_doc_scan_actually_reads_the_durable_docs` 当场红（表张数 1 → 2），
+    // 逼着这四格各配一条现场量法 —— 那正是这条判据存在的目的。
+    ("`control/`", "monitor-backend-control-landed"),
+    ("`observe/`", "monitor-backend-observe-landed"),
+    ("`platform/`", "monitor-backend-platform-landed"),
+    ("`common/`", "monitor-backend-common-landed"),
 ];
 
 #[cfg(test)]
@@ -135,9 +143,12 @@ mod tests {
             "`doc/` 总共只剩 {total} 行 —— 路径或读法坏了（摸底实测 4158 行）"
         );
         let tables = status_tables();
+        // 〔F19〕1 → **2**：`doc/ARCHITECTURE.md` §2.1 新增「backend 四层落地」表。
+        // ⚠ 这不是「为了绿而改数字」——改数字的**前提**是那张表的每一格都已登记进
+        // `STATUS_CELLS` 并配了现场量法（本条的报错文案逐字要求的就是这件事）。
         assert_eq!(
             tables.len(),
-            1,
+            2,
             "「表头含状态」的表张数变了（实得 {:?}）—— **这不是让你改数字**：\n\
              新出现一张就把它的每一格登记进 `STATUS_CELLS` 并配一条现场量法；\n\
              少了一张就说明表被删了或表头措辞变了（那本条会零命中地绿，所以它必须红）。",
@@ -363,6 +374,29 @@ mod tests {
                 "ts-renderer-still-there" => (
                     !root.join("src/session-backend.ts").is_file(),
                     "TS 渲染器已经删了",
+                ),
+                // 〔F19〕四层落地量法。⚠ 量的是「**这一层在 monitor 侧落地了没有**」，
+                // **不是**「它内部已经干净了」——后者各有各的判据（`platform/` 是 C10 的
+                // 跨 target 编译，今天不成立）。把两件事混进一格会让这一格永远说不清。
+                //
+                // ⚠ `control/` 那格刻意不是裸 `is_dir`：目录空着也算「有目录」，
+                // 而这一格要主张的是**控制面真的住进来了** ⇒ 钉住那个唯一的分流器在里面。
+                "monitor-backend-control-landed" => (
+                    root.join("src-tauri/src/backend/control/daemon_route.rs")
+                        .is_file(),
+                    "monitor 侧 `backend/control/` 在，且那个唯一的回落分流器住在里面",
+                ),
+                "monitor-backend-observe-landed" => (
+                    root.join("src-tauri/src/backend/observe").is_dir(),
+                    "monitor 侧 `backend/observe/` 目录存在",
+                ),
+                "monitor-backend-platform-landed" => (
+                    root.join("src-tauri/src/backend/platform").is_dir(),
+                    "monitor 侧 `backend/platform/` 目录存在",
+                ),
+                "monitor-backend-common-landed" => (
+                    root.join("src-tauri/src/backend/common").is_dir(),
+                    "monitor 侧 `backend/common/` 目录存在",
                 ),
                 other => panic!("`{item}` 的量法键 {other:?} 没有实现 —— 登记表与实现漂了"),
             };

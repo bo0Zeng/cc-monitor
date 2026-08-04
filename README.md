@@ -281,7 +281,7 @@ cc-monitor/
 |---|---|---|
 | **本 README** | 用户 / 新贡献者第一站 | 安装 / 使用 / 故障排查 / 项目结构 |
 | [CHANGELOG.md](CHANGELOG.md) | 升级用户 | 版本变更历史 |
-| [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) | 新贡献者深入第一站 | 数据流图 + 模块表 + 设计分层 |
+| [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) | 新贡献者深入第一站 | 数据流三条链 + 层边界（backend / 零轮询）+ 「为什么不能用别的方案」 |
 | [doc/IPC-PROTOCOL.md](doc/IPC-PROTOCOL.md) | 改协议的贡献者 | 跨进程文件 IPC + sessions/status + 远端 wire 完整 schema + 握手时序 |
 | [doc/REMOTE-PHASE0-DEPLOY.md](doc/REMOTE-PHASE0-DEPLOY.md) | 部署远端的人 | SSH 远端 daemon 自动部署（#29）+ 手动部署 runbook（issue #15） |
 | [doc/INVARIANTS.md](doc/INVARIANTS.md) | 全员 | 全局不变量清单（零侵入 / 编码 / ACL / 顺序保证 / seq 单调） |
