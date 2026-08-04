@@ -14,6 +14,8 @@
 pub mod ccm_invocation;
 pub mod daemon_kill;
 pub mod daemon_launch;
+pub mod daemon_route;
+pub mod daemon_send_keys;
 pub mod launch_wire;
 pub mod local_backend;
 pub mod payload;

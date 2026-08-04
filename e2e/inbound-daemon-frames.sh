@@ -283,6 +283,44 @@ else
     bad "编码器产的 send-into 行没有应答"
   fi
 
+  # ★★ F04c：`send-keys-raw` **不附尾 Enter** —— 真 tmux 上的两步证明
+  #
+  # 这是本件唯一能在真 tmux 上直接看见的性质，也是它存在的全部理由：
+  # 生产上走这条路的是「优雅退出发 `Escape` 打断当前回合」，多一个回车就变成
+  # **提交用户输入框里排队的文本**。
+  #
+  # 步骤一：发一条会 touch 文件的命令、**不带回车** ⇒ 文件**不该**出现（它还在命令行上排队）。
+  # 步骤二：单独发一个 `Enter` 键（tmux 的 send-keys 会把它当键名解析）⇒ 排队那行才执行。
+  # 两步一起才说明「没附回车」——只做步骤一的话，「命令写错了」也会让文件不出现。
+  RAWMARK="$WORK/rawmark"
+  send "{\"id\":\"e2e-raw-1\",\"cmd\":\"launch\",\"args\":{\"mode\":\"send-keys-raw\",\"name\":\"$SESS\",\"payload\":\"touch '$RAWMARK'\"}}"
+  if wait_for '"id":"e2e-raw-1"'; then
+    R="$(grep -F '"id":"e2e-raw-1"' "$OUT" | head -1)"
+    if printf '%s' "$R" | grep -qF '"ok":true' && printf '%s' "$R" | grep -qF '"typed":true'; then
+      ok "send-keys-raw 被真 daemon 接受"
+    else
+      bad "send-keys-raw 被拒了：$R"
+    fi
+  else
+    bad "send-keys-raw 没有应答"
+  fi
+  sleep 0.5
+  if [ -f "$RAWMARK" ]; then
+    bad "**send-keys-raw 附了回车** —— 那一行被直接执行了。生产上这就是把 Escape 变成提交"
+  else
+    ok "send-keys-raw 没有附回车（那一行还在命令行上排队，没执行）"
+  fi
+  # 步骤二：补一个 Enter 键 ⇒ 排队那行才跑起来（同时证明步骤一真的把内容打进去了）
+  send "{\"id\":\"e2e-raw-2\",\"cmd\":\"launch\",\"args\":{\"mode\":\"send-keys-raw\",\"name\":\"$SESS\",\"payload\":\"Enter\"}}"
+  wait_for '"id":"e2e-raw-2"' || bad "补 Enter 那条没有应答"
+  got_raw=0
+  for _ in $(seq 1 60); do [ -f "$RAWMARK" ] && { got_raw=1; break; }; sleep 0.05; done
+  if [ "$got_raw" = 1 ]; then
+    ok "补一个 Enter 键之后排队那行才执行（证明步骤一真的打进去了）"
+  else
+    bad "补了 Enter 也没执行 —— 步骤一多半根本没打进去，上面那条「没附回车」是空的"
+  fi
+
   # attach 不归 daemon（平面 ③）
   send '{"id":"e2e-launch-5","cmd":"launch","args":{"mode":"attach-only","name":"x","payload":"y"}}'
   if wait_for '"id":"e2e-launch-5"'; then

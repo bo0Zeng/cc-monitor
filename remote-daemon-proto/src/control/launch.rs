@@ -63,6 +63,19 @@ pub(crate) enum Mode {
     CreateOrAttach,
     /// 往一个**已存在**的会话键入载荷。不存在 ⇒ 报错，**绝不新建**。
     SendInto,
+    /// F04c：往一个**已存在**的会话发**裸键**——与 [`Mode::SendInto`] 的唯一区别是
+    /// **不附尾 `Enter`**。
+    ///
+    /// # 为什么这必须是一个新 **mode 名**，而不是给 `send-into` 加一个 `enter` 字段
+    ///
+    /// [`parse_request`] 是**手工从 `Map` 取键**的，**不 deny unknown fields** ⇒
+    /// 旧版本 daemon 收到一个它不认识的 `enter` 字段会**静默忽略**，照样附 `Enter`。
+    /// 而 monitor 唯一会发 `enter=false` 的地方是「优雅退出时发 `Escape` 打断当前回合」——
+    /// 多一个 `Enter` 就把它变成「**提交用户输入框里排队的文本**」。
+    /// 换成新 mode 名则天然 **fail-closed**：旧 daemon 的 [`Mode::parse`] 返回 `None`
+    /// ⇒ `invalid_args` ⇒ monitor 拿到明确错误、干净回落到一次性 SSH。
+    /// **能力协商在这里是免费的，不需要新机制。**
+    SendKeysRaw,
 }
 
 impl Mode {
@@ -70,6 +83,7 @@ impl Mode {
         match s {
             "create-or-attach" => Some(Mode::CreateOrAttach),
             "send-into" => Some(Mode::SendInto),
+            "send-keys-raw" => Some(Mode::SendKeysRaw),
             _ => None,
         }
     }
@@ -123,11 +137,11 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
 
     let mode_raw = get_str("mode").ok_or((
         "invalid_args",
-        "缺 `mode`（create-or-attach / send-into）".to_string(),
+        "缺 `mode`（create-or-attach / send-into / send-keys-raw）".to_string(),
     ))?;
     let mode = Mode::parse(mode_raw).ok_or((
         "invalid_args",
-        format!("未知 mode `{mode_raw}` —— 只有 create-or-attach / send-into；attach 是平面 ③，不归 daemon"),
+        format!("未知 mode `{mode_raw}` —— 只有 create-or-attach / send-into / send-keys-raw；attach 是平面 ③，不归 daemon"),
     ))?;
 
     let name = get_str("name")
@@ -232,6 +246,18 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
                 typed: true,
             })
         }
+        Mode::SendKeysRaw => {
+            // 与 `SendInto` **同一道门、同一个顺序**（F03 的 Gate 2）——发裸键也是往别人的
+            // 会话里打字，身份门一视同仁。⚠ 不给它 Gate 3：`send-keys` 不删除任何东西
+            // （monitor 侧 F04 Phase D 审计修过「给非破坏性动作加 Gate 3」那个错法）。
+            let handle = super::gate::admit(&req.name, &t)?;
+            // ★ 唯一的区别：**不附 `Enter`**。由 `send_keys_raw_never_appends_enter` 钉住。
+            type_keys_raw(&handle, &req.payload)?;
+            Ok(LaunchOutcome {
+                created: false,
+                typed: true,
+            })
+        }
         Mode::CreateOrAttach => {
             let mut new_args: Vec<&str> = vec!["new-session", "-d", "-s", &req.name];
             if let Some(cwd) = &req.cwd {
@@ -290,6 +316,23 @@ fn type_payload(target: &str, payload: &str) -> Result<(), CmdErr> {
     Err((
         "typed_unconfirmed",
         format!("会话 {target:?} 在，但 send-keys 失败 —— 载荷未必落进去了；别重试新建"),
+    ))
+}
+
+/// F04c：发**裸键**，**不附尾 `Enter`**。
+///
+/// tmux 的 `send-keys` 对每个参数**先试着当键名解析**（`Escape` / `C-c` / `Enter` …），
+/// 解析不出来才按字面串敲。所以同一个位置既能发 `/compact` 这种文本、也能发 `Escape`
+/// 这种键 —— 区别只在**要不要再补一下回车**。
+///
+/// 失败仍是 `typed_unconfirmed`（同 [`type_payload`]）：会话在，键未必落。
+fn type_keys_raw(target: &str, keys: &str) -> Result<(), CmdErr> {
+    if tmux(&["send-keys", "-t", target, keys])? {
+        return Ok(());
+    }
+    Err((
+        "typed_unconfirmed",
+        format!("会话 {target:?} 在，但 send-keys（裸键）失败 —— 键未必落进去了"),
     ))
 }
 
@@ -385,6 +428,43 @@ mod tests {
         assert!(r.payload.contains('"'));
     }
 
+    /// 切出 `run()` 里某一个 `Mode::X =>` 分支的源码。
+    ///
+    /// ⚠ **收尾锚点必须是「下一个 `Mode::` 分支头」，不能写死某一个分支名。**
+    /// F04c 实测踩到：新分支 `Mode::SendKeysRaw` 插在 `SendInto` 与 `CreateOrAttach` 之间，
+    /// 而那两条判据的收尾锚点写死了 `Mode::CreateOrAttach =>` ⇒ 它们把**两个分支当成一个**
+    /// 扫，断言照样全绿（249 条一条没红）。**扫到了东西，但扫的不是那件事** —— 本仓这一族
+    /// 的又一次（`tmux_daemon_gate_guard` 的硬编码文件表是同一个病）。
+    /// 「收尾行」与「枚举头」两个针 —— **运行时拼，源码里不留不配对的大括号**。
+    ///
+    /// ⚠ `readonly_guard::no_test_code_leaks_into_any_production_section` 的剥法是**数括号**：
+    /// 字符串字面量里一个孤立的大括号会让 `mod tests` 那一层被提前配平收尾，
+    /// 于是测试属性「泄漏」进生产段。它本轮当场逮到我（`[("launch.rs", 2)]`），
+    /// 而它的报错文案逐字预言了这个形状。**别去改剥法，改措辞。**
+    fn tail_brace() -> String {
+        // 码点 7d 就是右大括号。**用码点写、不写字面大括号** —— `\u{..}` 自带一对，
+        // 于是这一行的括号收支为 0（详见上面 `tail_brace` 头注那段病史）。
+        format!("\n{}\n", '\u{7d}')
+    }
+    fn enum_mode_head() -> String {
+        format!("pub(crate) enum Mode {}", '\u{7b}')
+    }
+
+    fn arm_of<'a>(src: &'a str, head: &str) -> &'a str {
+        let at = src
+            .find(head)
+            .unwrap_or_else(|| panic!("找不到分支 `{head}` —— 抽取坏了，断言会空转"));
+        let rest = &src[at + head.len()..];
+        let end = rest.find("Mode::").unwrap_or(rest.len());
+        let arm = &src[at..at + head.len() + end];
+        assert!(
+            arm.len() > 150,
+            "`{head}` 只切出 {} 字节 —— 抽取坏了",
+            arm.len()
+        );
+        arm
+    }
+
     /// `=name:` 的形状必须与 monitor 侧一致（F01：裸 `-t` 会打到兄弟会话上）。
     #[test]
     fn exact_target_shape_matches_the_monitor_side() {
@@ -412,19 +492,7 @@ mod tests {
     #[test]
     fn send_into_never_creates_a_session() {
         let src = crate::guard_support::production_code(include_str!("launch.rs"));
-        let at = src
-            .find("Mode::SendInto =>")
-            .expect("找不到 SendInto 分支 —— 抽取坏了，本断言在空转");
-        let end = src[at..]
-            .find("Mode::CreateOrAttach =>")
-            .map(|k| at + k)
-            .expect("找不到分支收尾锚点");
-        let arm = &src[at..end];
-        assert!(
-            arm.len() > 200,
-            "只切出 {} 字节的分支 —— 抽取坏了",
-            arm.len()
-        );
+        let arm = arm_of(&src, "Mode::SendInto =>");
         let verb = format!("new-{}", "session");
         assert!(
             !arm.contains(&verb),
@@ -450,12 +518,7 @@ mod tests {
     #[test]
     fn the_send_into_arm_admits_before_it_types() {
         let src = crate::guard_support::production_code(include_str!("launch.rs"));
-        let at = src.find("Mode::SendInto =>").expect("找不到 SendInto 分支");
-        let end = src[at..]
-            .find("Mode::CreateOrAttach =>")
-            .map(|k| at + k)
-            .expect("找不到分支收尾锚点");
-        let arm = &src[at..end];
+        let arm = arm_of(&src, "Mode::SendInto =>");
         let admit_at = arm.find("gate::admit").expect("分支里没有 `gate::admit`");
         let type_at = arm.find("type_payload").expect("分支里没有 `type_payload`");
         assert!(
@@ -478,10 +541,11 @@ mod tests {
     #[test]
     fn create_or_attach_never_types_into_a_session_it_did_not_just_create() {
         let src = crate::guard_support::production_code(include_str!("launch.rs"));
-        let at = src
-            .find("Mode::CreateOrAttach =>")
-            .expect("找不到 CreateOrAttach 分支");
-        let arm = &src[at..];
+        // ⚠ F04c 改用 `arm_of`：原来是 `&src[at..]`（一直切到文件末尾）——
+        // 那不是「这个分支」，是「这个分支之后的全部生产代码」。
+        // 本轮新加的 `every_mode_variant_…` 当场点名了它（**它是最后一个分支，所以一直没出事**，
+        // 但只要有人在它后面再加一个 mode，断言面就会静默串到别人身上）。
+        let arm = arm_of(&src, "Mode::CreateOrAttach =>");
         let early = arm
             .find("created: false,")
             .expect("找不到「已存在 ⇒ 早返回」那一档");
@@ -512,5 +576,151 @@ mod tests {
         assert_ne!(created, idempotent);
         assert_ne!(created, sent);
         assert_ne!(idempotent, sent);
+    }
+
+    // ===== F04c：`send-keys-raw`（发裸键、不附 Enter）=====
+
+    /// 新 mode 名解析得出来，而且**旧的两个没被顺手改掉**。
+    #[test]
+    fn the_new_mode_name_parses_and_the_old_ones_still_do() {
+        assert_eq!(Mode::parse("send-keys-raw"), Some(Mode::SendKeysRaw));
+        assert_eq!(Mode::parse("send-into"), Some(Mode::SendInto));
+        assert_eq!(Mode::parse("create-or-attach"), Some(Mode::CreateOrAttach));
+        // ★ **fail-closed 的那一半**：未知 mode 必须回 `None` ⇒ `invalid_args`。
+        // 这正是「为什么是新 mode 名而不是新字段」的全部理由 —— 旧 daemon 会走到这里。
+        for unknown in ["send-keys", "attach-only", "SendKeysRaw", "", "send-into "] {
+            assert_eq!(Mode::parse(unknown), None, "{unknown:?} 不该被认出来");
+        }
+        let e = parse_request(&serde_json::json!({
+            "mode": "send-keys", "name": "x-cc", "payload": "Escape"
+        }))
+        .expect_err("未知 mode 必须被拒");
+        assert_eq!(e.0, "invalid_args");
+        assert!(
+            e.1.contains("send-keys-raw"),
+            "错误文案没列出真正的 mode 集合，旧 daemon 的使用者会不知道该升级什么：{}",
+            e.1
+        );
+    }
+
+    /// ★★ **本件的核心性质：裸键分支绝不附 `Enter`。**
+    ///
+    /// 附上了就把「打断当前回合」（`Escape`）变成「**提交用户输入框里排队的文本**」。
+    /// 双向钉：裸键那条不许有 `Enter`，而 `send-into` 那条**必须**还有
+    /// （否则是把两个语义合并成一个 —— 那才是这一整件要拆开的东西）。
+    #[test]
+    fn send_keys_raw_never_appends_enter() {
+        let src = crate::guard_support::production_code(include_str!("launch.rs"));
+        let arm = arm_of(&src, "Mode::SendKeysRaw =>");
+        assert!(
+            arm.contains("type_keys_raw(&handle"),
+            "裸键分支没走 `type_keys_raw`（或没对句柄下手）：{arm}"
+        );
+        // 抠出两个键入函数的函数体，逐个查 `Enter`。
+        let key = "\"Enter\"";
+        let raw_body = {
+            let at = src
+                .find("fn type_keys_raw(")
+                .expect("找不到 `type_keys_raw` —— 改名了就把本条一起改");
+            let rest = &src[at..];
+            &rest[..rest
+                .find(tail_brace().as_str())
+                .map(|k| k + 3)
+                .unwrap_or(rest.len())]
+        };
+        assert!(
+            !raw_body.contains(key),
+            "`type_keys_raw` 里出现了 {key} —— 那就不是裸键了。\n\
+             生产上唯一会走这条路的是「优雅退出发 `Escape` 打断当前回合」，\n\
+             多一个回车 = **提交用户输入框里排队的文本**（`tmux.rs` 头注逐字警告过）。"
+        );
+        let payload_body = {
+            let at = src.find("fn type_payload(").expect("找不到 `type_payload`");
+            let rest = &src[at..];
+            &rest[..rest
+                .find(tail_brace().as_str())
+                .map(|k| k + 3)
+                .unwrap_or(rest.len())]
+        };
+        assert!(
+            payload_body.contains(key),
+            "`type_payload` 不再附 {key} 了 —— 那两个 mode 的区别就消失了，\
+             而这一整件存在的理由就是把它们**分开**"
+        );
+    }
+
+    /// 裸键分支与 `send-into` **同一道门、同一个顺序**；且不许顺手建会话。
+    #[test]
+    fn the_send_keys_raw_arm_admits_before_it_types_and_never_creates() {
+        let src = crate::guard_support::production_code(include_str!("launch.rs"));
+        let arm = arm_of(&src, "Mode::SendKeysRaw =>");
+        let admit_at = arm
+            .find("gate::admit")
+            .expect("裸键分支不过 `gate::admit` —— 发裸键也是往别人的会话里打字");
+        let type_at = arm
+            .find("type_keys_raw")
+            .expect("分支里没有 `type_keys_raw`");
+        assert!(
+            admit_at < type_at,
+            "键入排在过门之前 —— 门就没意义了（同 `the_send_into_arm_admits_before_it_types`）"
+        );
+        let verb = format!("new-{}", "session");
+        assert!(!arm.contains(&verb), "裸键分支里出现了建会话");
+        // ⚠ Gate 3 **不许**出现：`send-keys` 不删除任何东西。
+        // monitor 侧 F04 Phase D 审计修过「给非破坏性动作加 Gate 3」那个错法。
+        assert!(
+            !arm.contains("admit_destructive"),
+            "裸键分支走了带 Gate 3 的门 —— 那会让「往一个多窗口会话里打字」被误拒"
+        );
+    }
+
+    /// ★★ **覆盖地板（本件补的通用防线）：每个 `Mode` 变体都必须有分支、有解析、被判据扫过。**
+    ///
+    /// F04c 实测：新增一个变体时，既有那几条「扫某个分支源码」的判据**一条都不会红** ——
+    /// 它们只认自己写死的那个分支名。⇒ 加一条**枚举驱动**的判据：变体表变了就红，
+    /// 逼人回来给新变体配判据。（同族：`tmux_daemon_gate_guard` 的硬编码文件表。）
+    #[test]
+    fn every_mode_variant_has_an_arm_and_a_parse_and_is_named_in_some_judge() {
+        let raw = include_str!("launch.rs");
+        let src = crate::guard_support::production_code(raw);
+        // 从 Mode 枚举体里抽变体名。
+        let at = src
+            .find(enum_mode_head().as_str())
+            .expect("找不到 Mode 枚举");
+        let body = &src[at..at + src[at..].find(tail_brace().as_str()).expect("枚举没有收尾")];
+        let variants: Vec<&str> = body
+            .lines()
+            .map(str::trim)
+            .filter(|l| {
+                l.ends_with(',')
+                    && !l.contains(' ')
+                    && l.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+            })
+            .map(|l| l.trim_end_matches(','))
+            .collect();
+        assert_eq!(
+            variants.len(),
+            3,
+            "`Mode` 变体数变了（实得 {variants:?}）—— **这不是让你改数字**：\n\
+             新增一个 mode 至少要补三样 —— `Mode::parse` 的一支、`run()` 的一个分支、\n\
+             以及一条**扫那个分支源码**的判据（既有那几条只认自己写死的分支名，\n\
+             新分支对它们是隐形的）。补完再把这个数棘上来。"
+        );
+        for v in &variants {
+            assert!(
+                src.contains(&format!("Mode::{v} =>")),
+                "`Mode::{v}` 在 `run()` 里没有分支（或分支头写法不同）"
+            );
+            assert!(
+                src.contains(&format!("Some(Mode::{v})")),
+                "`Mode::{v}` 不在 `Mode::parse` 的映射里 —— 那它永远收不到请求"
+            );
+            // 判据面：整份文件（含 `#[cfg(test)]`）里必须有人点名扫过这个分支。
+            assert!(
+                raw.contains(&format!("arm_of(&src, \"Mode::{v} =>\")")),
+                "没有任何判据用 `arm_of` 扫过 `Mode::{v}` 的分支 —— \n\
+                 那个分支可以被改成任何样子而一条判据都不红"
+            );
+        }
     }
 }

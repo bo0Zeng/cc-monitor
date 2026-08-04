@@ -513,13 +513,13 @@ monitor 永远不会发的形状。
    给 `send-into` 加 Gate 3 会让「往多窗口会话里打字」被误拒。
    所以 `admit`（非破坏性）与 `admit_destructive` 是**两个入口，不是一个带 flag 的**。
 
-⚠ **本命令存在 ≠ monitor 已经改走它。** 定框 C6：先搬门、再切路由 —— 切路由是 **F04b**。
+⚠ ~~本命令存在 ≠ monitor 已经改走它~~ **F04b 2026-08-04：monitor 已经改走它了**（`tmux.rs::kill_remote_tmux` 主路调 `backend::control::daemon_kill`；一次性 SSH 那条降为 **C7 过渡期回落**，且**过门被拒绝一律不回落**）。定框 C6 的顺序（先搬门、再切路由）到 **F04c** 走完。
 
 #### `launch`：平面 ②（远端执行面）——真的建 tmux 会话（U8a-2b）
 
 ```text
 → {"id":"L1","cmd":"launch","args":{
-     "mode":"create-or-attach" | "send-into",
+     "mode":"create-or-attach" | "send-into" | "send-keys-raw",
      "name":"cc-1a2b3c4d",
      "payload":"cd '/x' && claude --resume …",
      "cwd":"/x",             // 可选，仅 create-or-attach
@@ -536,8 +536,25 @@ monitor 永远不会发的形状。
    引号 / 转义 / 注入这一整类问题在这条路上**不存在**，不是「被挡住了」。
    ⇒ monitor `launch.rs` 里那条「禁双引号」是 **PowerShell 专属**（`wt.exe` 传参畸变），
    **这条路上不成立、也不许照抄**。
-3. **`send-into` 时不新建会话。** 会话不存在 ⇒ 回 `no_such_session`。
+3. **`send-into` / `send-keys-raw` 时不新建会话。** 会话不存在 ⇒ 回 `no_such_session`。
    顺手新建就是 #76 的反向：用户以为在复用那个 idle 会话，实际被丢进一个新建的空 shell。
+
+##### ★ `send-keys-raw`（F04c）：发裸键、**不附尾 `Enter`**
+
+与 `send-into` 的**唯一**区别就是那个回车。它存在的理由不是「更灵活」，而是：
+monitor 的 `tmux_send_keys(…, enter=false)` 生产上唯一的用途是**优雅退出时发 `Escape`
+打断当前回合**，多一个 `Enter` 就变成「**提交用户输入框里排队的文本**」。
+
+⚠ **为什么是一个新 mode 名，而不是给 `launch` 加一个 `enter` 字段**：
+`parse_request` 是手工从 `Map` 取键的、**不 deny unknown fields** ⇒ 旧版本 daemon 会
+**静默忽略**那个字段、照样附 `Enter`（静默做错）。而未知 **mode** 会回 `invalid_args`
+⇒ 客户端拿到明确错误、可以干净回落。**能力协商在 mode 名上是免费的。**
+
+⚠ 它与 `send-into` **同一道门**（§34 Gate 2），**没有** Gate 3 ——
+`send-keys` 不删除任何东西，给它加窗口数判断会让「往多窗口会话里打字」被误拒。
+
+⚠ 客户端侧：`enter=true` 用的是**既有**的 `send-into` ⇒ 旧 daemon 也接得住；
+只有 `Escape` 那一支需要新版本 daemon。**兼容面不是全有全无。**
 
 **`data` 三字段就是失败语义**（能分辨「没起成」与「起了但没确认」）：
 
@@ -545,9 +562,9 @@ monitor 永远不会发的形状。
 |---|---|---|---|
 | 新建 + 键入 | true | — | true / true |
 | 会话已存在（幂等短路，**不重复 resume**） | true | — | false / false |
-| `send-into` 键入成功 | true | — | false / true |
+| `send-into` / `send-keys-raw` 键入成功 | true | — | false / true |
 | tmux 不在 PATH | false | `no_tmux` | 没起成 |
-| `send-into` 但会话不存在 | false | `no_such_session` | 没起成 |
+| `send-into` / `send-keys-raw` 但会话不存在 | false | `no_such_session` | 没起成 |
 | 建不出来且也不存在 | false | `create_failed` | 没起成 |
 | 会话在，`send-keys` 失败 | false | `typed_unconfirmed` | **起了但没确认** —— 别重试新建 |
 | 形状不合 | false | `invalid_args` | 没起成 |

@@ -1,5 +1,5 @@
-//! **§34 Gate 2 的两侧账**：daemon 侧的身份门必须在；monitor 侧 **kill 必须已切过去、
-//! send-keys 还不许切**（F04b 把这条禁令的一半翻了面）。
+//! **§34 Gate 2 的两侧账**：daemon 侧的身份门必须在；monitor 侧 **kill 与 send-keys
+//! 都必须已切过去**（F04b 翻了 kill 那半，F04c 翻了另一半 —— 那条禁令整个翻完了）。
 //!
 //! # 病史：U10 立的那条前提触发器，F03 让它红了 —— 可它没红
 //!
@@ -21,13 +21,15 @@
 //!
 //! 1. **反向锚点**：daemon 侧的身份门**必须还在**。删了它就红 ——
 //!    从「不许出现」翻成「必须存在」，是 F03 之后前提变了的直接后果。
-//! 2. **禁令的两半今天分道了**（F04b）。
-//!    **kill 已切，且不许退回**（[`tests::kill_now_routes_through_the_daemon`]）——
-//!    定框 C6「先搬 Gate 2，再切 kill / send-keys」走到了最后一步。
-//!    **send-keys 仍不许切**，但理由换到**第四版**，而这一版不是排期问题、是
-//!    **实测的表达力缺口**：daemon 的 `type_payload` 恒附 `Enter`，而本命令有一支
-//!    `enter=false`（优雅退出的 `Escape`）。切过去就是把「打断当前回合」变成
-//!    「提交用户排队的文本」。归 **F04c**。
+//! 2. **禁令整个翻面了**（F04b 切 kill、**F04c 切 send-keys**）：定框 C6
+//!    「先搬 Gate 2，再切 kill / send-keys」**走完了**。今天钉的是反向 ——
+//!    **两条命令都必须走 daemon，不许退回**
+//!    （[`tests::kill_now_routes_through_the_daemon`] /
+//!    [`tests::send_keys_now_routes_through_the_daemon`]）。
+//!    ⚠ F04c 的表达力缺口是**补掉**的、不是绕开的：daemon 多了一个 mode 名
+//!    `send-keys-raw`（发裸键、不附 `Enter`）。**必须是 mode 名而不是字段** ——
+//!    `parse_request` 不 deny unknown fields ⇒ 旧 daemon 会静默忽略字段照样附 `Enter`，
+//!    把「打断当前回合」变成「提交用户输入框里排队的文本」。
 //! 3. ~~Gate 3 的前提触发器~~ **已在 F04a 触发并改写**：daemon 现在**有** Gate 3
 //!    （`control/gate.rs::admit_destructive` + `control/kill.rs`）。那条触发器
 //!    「daemon 一出现 `session_windows`/`kill-session` 就红」**如设计般红了一次**
@@ -54,8 +56,8 @@ mod tests {
     /// **F04a 起：必须存在**（此前是「一个都不该有」）。
     const DAEMON_GATE3_MARKERS: &[&str] = &["session_windows", "kill-session"];
 
-    /// monitor 侧**不许**在这两个命令里出现的东西（那是 daemon 通道）。
-    const DAEMON_CHANNEL_MARKERS: &[&str] = &["inbound_client", "daemon_send_into"];
+    /// **必须**出现在这两个命令里的东西（走 daemon 的标志）。F04c 起是「必须有」而不是「不许有」。
+    const DAEMON_CHANNEL_MARKERS: &[&str] = &["daemon_route::Routed"];
 
     /// 要看住的两个命令。
     const GUARDED_COMMANDS: &[&str] = &[
@@ -315,17 +317,14 @@ mod tests {
     /// 今天两条路的门恰好等价（都是 §34 三道门）所以功能上看不出差别 ——
     /// **那正是它危险的地方**：哪天有一侧漂了，没有任何判据会红。
     ///
-    /// 分流规则本体由 `daemon_kill::only_the_errors_that_prove_nothing_was_sent_allow_a_fallback`
-    /// 钉住（纯函数）；本条钉的是**生产段真的按三态分了流**，而不是把三态压成两态。
+    /// 分流规则本体由 `daemon_route::only_the_errors_that_prove_nothing_was_sent_allow_a_fallback`
+    /// 钉住（纯函数，F04c 起 `kill` 与 `send-keys` 共用一份）；
+    /// 本条钉的是**生产段真的按三态分了流**，而不是把三态压成两态。
     #[test]
     fn a_gate_rejection_is_never_laundered_into_the_ssh_fallback() {
         let body =
             guard_core::production_code(&body_of(MONITOR_TMUX, "pub async fn kill_remote_tmux("));
-        for arm in [
-            "KillVerdict::Killed",
-            "KillVerdict::Refused",
-            "KillVerdict::NoChannel",
-        ] {
+        for arm in ["Routed::Done", "Routed::Refused", "Routed::NoChannel"] {
             assert!(
                 body.contains(arm),
                 "`kill_remote_tmux` 的生产段没有 `{arm}` 分支 —— 三态被压成了两态。\n\
@@ -333,7 +332,7 @@ mod tests {
             );
         }
         // `Refused` 必须**当场 return Err**，不许穿到下面的回落段。
-        let at = body.find("KillVerdict::Refused").expect("上面已断言过存在");
+        let at = body.find("Routed::Refused").expect("上面已断言过存在");
         let arm = &body[at..(at + 120).min(body.len())];
         assert!(
             arm.contains("return Err"),
@@ -343,40 +342,71 @@ mod tests {
         );
     }
 
-    /// ★ 正题的另一半：**`send-keys` 仍不许**改走 daemon 通道。
+    /// ★ **F04c 起翻面：`send-keys` 也必须走 daemon 通道**（此前钉的是「不许走」）。
     ///
-    /// # ⚠ 理由换到第四版了，而这一版是**实测的表达力缺口**，不是排期问题
+    /// # 这条禁令的四版理由，全部被后续功能推翻，最后它自己翻了面
     ///
-    /// F04b 摸底量到：daemon 的 `launch.rs::type_payload` 逐字是
-    /// `["send-keys", "-t", target, payload, "Enter"]` —— **Enter 恒附**。
-    /// 而 `tmux_send_keys` 有一支 `enter=false`（生产上恰好一处：
-    /// `account-restart.ts` 优雅退出时的 `Escape`），本文件另一处头注逐字写着它的后果：
-    /// 「**不能带尾回车，否则可能误提交输入框里的队列文本**」。
+    /// · U10 版：「daemon 没有身份门」⇒ F03 装了 Gate 2；
+    /// · F04a 版前：「daemon 没有 Gate 3、也没有 kill」⇒ F04a 都搬了；
+    /// · F04a 版：「平价账没改 + 真远端那跳验不了 ⇒ 独立一件」⇒ F04b 就是那一件；
+    /// · F04b 版：「daemon 的 `type_payload` **恒附 `Enter`**，`enter=false` 表达不出来」
+    ///   ⇒ **F04c 给 daemon 补了一个 mode 名**（`send-keys-raw`），缺口没了。
     ///
-    /// ⇒ 今天切过去 = 把一个「打断当前回合」变成「提交用户排队的文本」。**不是排期，是做不到。**
-    ///
-    /// 补法只有一种是 fail-closed 的：**加新 mode 名**（`Mode::parse` 未知值回 `invalid_args`，
-    /// 老 daemon 干净报错）。**加字段不行** —— `parse_request` 手工从 `Map` 取键、
-    /// 不 deny unknown fields ⇒ 老 daemon **静默忽略**那个字段、照样附 Enter。
-    /// 那是 F04c 的活。
+    /// ⚠ **四版理由都是真的、都在当时成立** —— 前提触发器的价值就在这里：
+    /// 它让每一次「前提变了」都必须回来重裁一次，而不是让一条过期的禁令继续挡路，
+    /// 也不是让人悄悄绕过它。**它红了不是误报，是它的岗位。**
     #[test]
-    fn send_keys_does_not_route_through_the_daemon_yet() {
+    fn send_keys_now_routes_through_the_daemon() {
         let body =
             guard_core::production_code(&body_of(MONITOR_TMUX, "pub async fn tmux_send_keys("));
-        let offenders: Vec<&str> = DAEMON_CHANNEL_MARKERS
-            .iter()
-            .copied()
-            .filter(|m| body.contains(m))
-            .collect();
         assert!(
-            offenders.is_empty(),
-            "`tmux_send_keys` 被改走了 daemon 通道（命中 {offenders:?}）—— 那是 **F04c**。\n\
-             ⚠ **理由已经换过三次，这是第四版**，而这一版是**实测的表达力缺口**：\n\
-             daemon 的 `type_payload` 恒附 `Enter`，而本命令有一支 `enter=false`\n\
-             （生产上一处：优雅退出的 `Escape`）。今天切过去 =\n\
-             把「打断当前回合」变成「**提交用户输入框里排队的文本**」。\n\
-             先给 daemon 补一个**新 mode 名**（不是新字段 —— 老 daemon 会静默忽略字段），\n\
-             再切这一半。"
+            body.contains("daemon_send_keys::daemon_send_keys("),
+            "`tmux_send_keys` 的生产段没有调 `daemon_send_keys::daemon_send_keys(` ——\n\
+             主路退回了「monitor 自己拼一条 SSH 串往别人会话里打字」，那是 C5 逐字禁止的。\n\
+             ⚠ 定框 C6 的顺序到 F04c 已经走完，退回去就是把它走反。"
         );
+        // 回落那条必须还在（C7 过渡期），且仍过 Gate 1/2。
+        assert!(
+            body.contains("connect_and_exec_cmd") && body.contains("build_send_keys_remote_cmd"),
+            "`tmux_send_keys` 里没有过渡期回落（或回落不再过 `build_send_keys_remote_cmd`）——\n\
+             C7：回落路径在过渡期必须留（旧版机器上还没有 daemon）。"
+        );
+        // ★ `enter` 必须真的传给 **daemon 那条路** —— 不传就等于把 `Escape` 也当成「提交」。
+        //
+        // ⚠ **这条判据的第一版是恒绿的，变异复验才把它抓出来。**
+        // 第一版写的是 `body.contains("&keys, enter,") || body.contains("&keys, enter)")` ——
+        // 那个 `||` 是为了「容忍 rustfmt 的换行」加的，结果第二个分支命中了**回落那条**
+        // （`build_send_keys_remote_cmd(&target, &keys, enter)?`）⇒ 把 daemon 那处改成
+        // 硬编码 `true` 时它照样绿。**「扫到了东西，但扫的不是那件事」的又一次**，
+        // 而且这次是我自己为了「稳」加的容错造出来的。⇒ 改成**先切出 daemon 那次调用的实参段**
+        // 再看，容错去掉。
+        let call = "daemon_send_keys::daemon_send_keys(";
+        let at = body.find(call).expect("上面已断言过存在");
+        let args_seg = &body[at + call.len()..];
+        let args = &args_seg[..args_seg.find(')').expect("找不到实参段的收尾括号")];
+        assert!(
+            args.contains("enter") && !args.contains("true") && !args.contains("false"),
+            "`enter` 没有传给 daemon 那条路（实参段是 {args:?}）—— 那么 `Escape`\n\
+             （打断当前回合）会被当成「键入并提交」，把用户输入框里排队的文本发出去。"
+        );
+    }
+
+    /// ★ **两条命令都必须走同一个分流器**（不许各写一份「什么时候可以回落」）。
+    ///
+    /// 这条与 `daemon_route::both_daemon_commands_use_this_one_router` 不重复：
+    /// 那条查**发送端**是不是自己 match `CallError`，本条查**命令体**是不是按同一套三态分流。
+    #[test]
+    fn both_commands_branch_on_the_same_three_way_verdict() {
+        for sig in GUARDED_COMMANDS {
+            let body = guard_core::production_code(&body_of(MONITOR_TMUX, sig));
+            for m in DAEMON_CHANNEL_MARKERS {
+                assert!(
+                    body.contains(m),
+                    "`{sig}` 的生产段里找不到 `{m}` —— 它要么没走 daemon，\n\
+                     要么自己另写了一套「什么时候可以回落」。后者更危险：\n\
+                     一次 `wrong_owner` 被判成「daemon 不可用」就会被另一条路重做一遍。"
+                );
+            }
+        }
     }
 }

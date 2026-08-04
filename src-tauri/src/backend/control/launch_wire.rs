@@ -279,11 +279,26 @@ mod f07_main_path_tests {
 
     /// ★ **前提触发器**：U8c-3（删 TS 渲染器）今天删不得的**两条依据**仍然成立。
     ///
-    /// 依据一：**attach 那格仍在 TS** —— `session-backend.ts` 仍被生产 import。
-    /// 依据二：**`create-or-attach` 那格仍未切** —— 生产段的 `.call("launch")` 只有
-    /// `daemon_send_into` 那一处（`send-into` 模式），没有第二处。
+    /// 依据一：**attach 那格仍在 TS** —— `session-backend.ts` 仍被生产 import
+    /// （daemon 的 `control/launch.rs` 头注逐字写着「本模块**不 attach**，一次都不」）。
+    /// 依据二：**`create-or-attach` 那格仍未切** —— 生产段一次都不发这个 mode。
     ///
     /// 任一条变了 ⇒ **主动红**：那时 U8c-3 的前置动了，回来重裁 F07 的剩余面。
+    ///
+    /// # ⚠ F04c 订正了依据二的**度量方式**（结论没变）
+    ///
+    /// 原来数的是「生产段 `.call("launch")` 的处数 == 1」。F04c 让它变成 **2** 而当场报红 ——
+    /// **它红得对**（前提确实动了，该回来重裁），**但重裁的结论是「依据二仍成立」**：
+    /// 新增那一处是 `daemon_send_keys` 发的 `send-into` / `send-keys-raw`，那是
+    /// **`tmux_send_keys` 这条命令**改走 daemon，**不是「起会话」又切了一格**。
+    ///
+    /// ⇒ **`.call("launch")` 的处数是个过期的代理指标**：它把「有几条代码路径用 launch 命令」
+    /// 和「起会话有几格切到了 daemon」混成一个数。改成直接量后者 ——
+    /// **生产段发不发 `create-or-attach`**。
+    ///
+    /// ★ 这是「**依据/度量过期而结论仍对**」在本工作区的**第三次**
+    /// （F01 四处「每 ~8s」· F07 `§33b` 两处 · 本条）。三次的处置都一样：
+    /// **把结论留住，把依据换成还量得准的那个**。
     #[test]
     fn the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -298,10 +313,12 @@ mod f07_main_path_tests {
             "生产 TS 里再也找不到 `session-backend` —— **这多半是好事**：\n\
              attach 那格可能已经搬走了 ⇒ U8c-3 的依据一没了，回 F07/U8c-3 重裁。"
         );
-        // 依据二：生产段 `.call("launch")` 的处数。**运行时拼，免得命中本文件自己的说明。**
-        let verb = format!(".call(\"{}\"", "launch");
-        let mut prod_hits = 0usize;
+        // 依据二：**起会话那格**有没有切过去 —— 直接量「生产段发不发 `create-or-attach`」。
+        // **运行时拼，免得命中本文件自己的说明。**
+        let mode = format!("\"create-or-{}\"", "attach");
+        let mut hits: Vec<String> = Vec::new();
         let mut stack = vec![std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")];
+        let mut scanned = 0usize;
         while let Some(d) = stack.pop() {
             let Ok(rd) = std::fs::read_dir(&d) else {
                 continue;
@@ -318,16 +335,68 @@ mod f07_main_path_tests {
                 if p.file_name().is_some_and(|n| n == "launch_wire.rs") {
                     continue; // 本文件的说明里逐字写着那个串
                 }
+                scanned += 1;
                 let src =
                     guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
-                prod_hits += src.matches(verb.as_str()).count();
+                if src.contains(mode.as_str()) {
+                    hits.push(p.file_name().unwrap().to_string_lossy().to_string());
+                }
+            }
+        }
+        // ★ 抽取器自检：扫描面没缩水（否则下面那条零命中地绿）。
+        assert!(
+            scanned >= 50,
+            "只扫到 {scanned} 个 .rs —— 遍历坏了，下面那条断言会零命中地绿"
+        );
+        assert!(
+            hits.is_empty(),
+            "生产段开始发 `create-or-attach` 了（{hits:?}）—— **这多半是好事**：\n\
+             「起会话」那格可能切到 daemon 了 ⇒ `INVARIANTS §33b` 三问的答案① 又变了，\n\
+             回 F07/U8c-3 重裁「删 TS 渲染器」的前置。"
+        );
+    }
+
+    /// ★ **F04c 补：`send-keys` 那两个 mode 只许从一个地方发出去。**
+    ///
+    /// 上面那条不再数 `.call("launch")` 的处数了，于是「谁在发 launch」这件事少了一道账。
+    /// 本条把它补回来，但量的是**对的东西**：走 daemon 的 `send-keys` 语义
+    /// （`send-into` / `send-keys-raw`）在生产段只许有**一个**产出点
+    /// （`daemon_send_keys::mode_for`）—— 多一处就是「同一个决策两份实现」的起点，
+    /// 而这个决策错了的后果是**把「打断当前回合」变成「提交用户排队的文本」**。
+    #[test]
+    fn the_send_keys_mode_names_have_exactly_one_production_home() {
+        let raw = format!("\"send-keys-{}\"", "raw");
+        let mut homes: Vec<String> = Vec::new();
+        let mut stack = vec![std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&d) else {
+                continue;
+            };
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.extension().and_then(|x| x.to_str()) != Some("rs") {
+                    continue;
+                }
+                if p.file_name().is_some_and(|n| n == "launch_wire.rs") {
+                    continue;
+                }
+                let src =
+                    guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
+                if src.contains(raw.as_str()) {
+                    homes.push(p.file_name().unwrap().to_string_lossy().to_string());
+                }
             }
         }
         assert_eq!(
-            prod_hits, 1,
-            "生产段 `.call(\"launch\")` 的处数从 1 变成了 {prod_hits} —— **这多半是好事**：\n\
-             daemon 的 `launch` 可能又接了一格（今天只有 `daemon_send_into` 的 `send-into`）\n\
-             ⇒ `INVARIANTS §33b` 三问的答案① 又变了，回 F07/U8c-3 重裁「删 TS 渲染器」的前置。"
+            homes,
+            vec!["daemon_send_keys.rs".to_string()],
+            "`send-keys-raw` 这个 mode 名的生产段落点不止一个（或搬走了）：{homes:?}\n\
+             它必须只有一个家（`daemon_send_keys::mode_for`）—— 两处就会漂，\n\
+             而这个决策漂了的后果是把 `Escape`（打断当前回合）当成「键入并提交」。"
         );
     }
 }
