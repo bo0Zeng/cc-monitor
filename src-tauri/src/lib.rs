@@ -71,6 +71,7 @@ mod gate_singleton_guard; // F03：§34 Gate 2 的身份判定在 Rust 侧只许
 /// F05a：本机后端监护句柄。存起来是为了退出前 `stop()`（不 stop 就是游魂进程）。
 static LOCAL_BACKEND: std::sync::OnceLock<backend::control::local_backend::SuperviseHandle> =
     std::sync::OnceLock::new();
+mod local_read_surface_registry; // F10（出口④）：本机读面清账 + 递减棘轮（正题被 F05b 挡着）
 #[cfg(test)]
 #[cfg(test)]
 #[cfg(test)]
