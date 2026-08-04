@@ -534,6 +534,37 @@ mod tests {
         );
     }
 
+    /// ★ **接线钉之二：退出路径真的收尸。**
+    ///
+    /// ⚠ 这条是 **F+02 回看抓出来的洞**，而不是 F05a 自己想到的：
+    /// F05a 当时把退出钩子整段删掉做变异，**815 条测试全绿**，CI 也不会红
+    /// （本仓 clippy 只报警告、不带 `-D warnings`）。
+    /// 也就是说「不 `stop()` 就成游魂进程」这条性质当时**只被 clippy 的 `dead_code` 偶然覆盖**
+    /// —— 一旦别处也用到 `stop()`，那条告警就消失，这条性质彻底失守。
+    ///
+    /// **「靠一条告警守着」等于没守。** 上一条接线钉只钉了「入口被调用」，
+    /// 这条钉「出口也被接上」——同一件事的两半，缺一半就是游魂进程。
+    #[test]
+    fn the_exit_path_really_stops_the_local_backend() {
+        let prod = guard_core::production_code(include_str!("../../lib.rs"));
+        for needle in ["RunEvent::Exit", "LOCAL_BACKEND", ".stop()"] {
+            assert!(
+                prod.contains(needle),
+                "`lib.rs` 的生产段里找不到 `{needle}` —— 退出时不收本机后端。\n\
+                 被监护的 daemon 对「stdin 写端关闭」刻意不敏感 ⇒ 它会活过 monitor，成游魂进程。\n\
+                 ⚠ 这条洞**不会被别的判据抓到**（实测：删掉整段钩子，815 条测试全绿），\
+                 而 clippy 的 dead_code 只是偶然覆盖。"
+            );
+        }
+        // 顺序：`RunEvent::Exit` 必须在 `.stop()` 之前 —— 否则是「启动时就 stop」那种错法。
+        let exit_at = prod.find("RunEvent::Exit").expect("上面已断言存在");
+        let stop_at = prod.rfind(".stop()").expect("上面已断言存在");
+        assert!(
+            exit_at < stop_at,
+            "`.stop()` 排在 `RunEvent::Exit` 之前 —— 那不是退出时收尸"
+        );
+    }
+
     // ── 真进程（`#[ignore]`，由 e2e/local-backend-supervise.sh 驱动）──────────
 
     /// ★ 起真 daemon → 杀它 → 看它自己回来。
