@@ -366,4 +366,82 @@ mod tests {
             );
         }
     }
+
+    /// ★★ **F12 全局变异抽样抓到的缺口**：文档里**枚举的一组标识符**没人对拍。
+    ///
+    /// # 它是怎么被发现的
+    ///
+    /// Phase G 的全局变异抽样里，把 daemon `inbound.rs` 的 `unknown_command`
+    /// **三处一起改名**成 `unknown_cmd` —— **daemon 253 条全绿**。
+    /// 而 `doc/IPC-PROTOCOL.md` 逐条列着六个**协议级**错误码，语义是
+    /// 「客户端代码写错了，别重试」—— 那是**仓外可见的契约**（`resolve` 那条已经与 aterm 冻结）。
+    ///
+    /// ⚠ F11 建这个登记表时扫的是「状态列」与「可数的实测断言」两族，
+    /// **漏了第三种形状：文档里枚举的一组标识符**。
+    /// 那不是「F11 做漏了」——是**摸底时的分族本身不完整**，
+    /// 而**只有跨模块的变异抽样能发现这种「整族缺口」**（本工作区自己的判据都在
+    /// 各自那件的范围里看，看不到「有一族根本没人管」）。
+    ///
+    /// ⇒ 这条也是 skill 那句「**变异存活分布不会说谎**」在本工作区拿到的实货。
+    #[test]
+    fn the_protocol_level_error_codes_in_the_doc_are_the_ones_the_daemon_uses() {
+        const IPC: &str = include_str!("../../doc/IPC-PROTOCOL.md");
+        let marker = "**协议级**由 `inbound.rs` 独占 ——";
+        let at = IPC.find(marker).unwrap_or_else(|| {
+            panic!(
+                "`IPC-PROTOCOL.md` 里找不到锚点 {marker:?} —— 那句话被改写了。\n\
+                 本条判据的价值是「那份清单只有一个家（文档）」，改措辞就把它变成零命中地绿。"
+            )
+        });
+        // ⚠ 收尾锚点是**清单本身的收尾**（`，语义是`），不是段落结束 ——
+        // 第一版切到空行，把后面几句里的 `invalid_args`/`launch`/`resolve` 也收进来了
+        // （抽到 9 个而真值 6 个）。**抽取器自检当场把它拦下来了**，这就是它的岗位。
+        let seg = &IPC[at..];
+        let end = seg
+            .find("，语义是")
+            .expect("找不到清单的收尾锚点「，语义是」—— 那句话被改写了");
+        let seg = &seg[..end];
+        let mut in_doc: Vec<&str> = Vec::new();
+        let mut rest = seg;
+        while let Some(a) = rest.find('`') {
+            rest = &rest[a + 1..];
+            let Some(b) = rest.find('`') else { break };
+            let word = &rest[..b];
+            rest = &rest[b + 1..];
+            // 只收「像错误码」的词：全小写 + 下划线，且不是模块名。
+            if !word.is_empty()
+                && word.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+                && word != "inbound"
+            {
+                in_doc.push(word);
+            }
+        }
+        in_doc.sort();
+        in_doc.dedup();
+        // ★ 抽取器自检：这一段里就该有六个码；抽不到就说明剥法坏了。
+        assert_eq!(
+            in_doc.len(),
+            6,
+            "从文档那一段只抽到 {} 个协议级错误码（{in_doc:?}）—— 剥法坏了，\n\
+             下面那条会零命中地绿。文档实测是六个：bad_request · line_too_long ·\n\
+             unknown_command · duplicate_id · handler_panicked · not_cancellable。",
+            in_doc.len()
+        );
+        let daemon =
+            std::fs::read_to_string(repo_root().join("remote-daemon-proto/src/inbound.rs"))
+                .expect("读不到 daemon 的 inbound.rs");
+        let prod = guard_core::production_code(&daemon);
+        let missing: Vec<&&str> = in_doc
+            .iter()
+            .filter(|c| !prod.contains(&format!("\"{c}\"")))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "`IPC-PROTOCOL.md` 列着这些协议级错误码，而 daemon 生产段里**找不到**：{missing:?}\n\
+             ⚠ 它是**仓外可见的契约**（`resolve` 那条已经与仓外 aterm 冻结）——\n\
+             改名 = 静默毁约：对端拿到一个它不认识的码，而两侧的测试都不会红\n\
+             （F12 的全局变异抽样就是这么把这个缺口逮出来的：三处一起改名，daemon 253 条全绿）。\n\
+             要改就两侧一起改，并想清楚仓外消费方。"
+        );
+    }
 }
