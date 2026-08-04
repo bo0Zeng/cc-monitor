@@ -377,10 +377,36 @@ fn build_kill_session_cmd(target: &str) -> Result<String, String> {
 /// F79(#38)：杀死远端 tmux 会话（`tmux kill-session -t <target>`）。**破坏性操作**——前端二次确认后才调。
 /// `target` 经 `shell_quote`（来自 `list_remote_tmux` 的真实会话名，仍防御转义）。杀完 tab 变灰由 #60-A
 /// 的 tmux 存活对账兜（本命令不主动 archive，守 §24）。成功无输出；失败（会话不存在等）经 `2>&1` 捕获报错。
+///
+/// # ★ F04b：**主路已经切到 daemon** —— 下面那条 SSH 串是**过渡期回落**（C7）
+///
+/// 定框 C5 逐字写着「任何改状态的 tmux 命令一律归 `control/`」，C6 写着「先搬 Gate 2，
+/// 再切 kill / send-keys —— 顺序不可反」。F03 搬 Gate 2、F04a 搬 Gate 3 + daemon 侧 `control/kill.rs`，
+/// **本函数是那条顺序的最后一步**。
+///
+/// 切过去换来的是实的：daemon 那条先 `admit_destructive` 拿 `#{session_id}` **句柄**再杀，
+/// 而下面这条 SSH 串杀的是 `=name:`（**名字**）—— 破坏性动作对名字下手就把 TOCTOU 窗口留着。
+///
+/// ⚠ **三态分流，不是「失败就回落」**：只有能**证明**那条命令根本没发出去时才回落
+/// （`backend::control::daemon_kill` 的头注逐档列了理由）。把一次 `wrong_owner` /
+/// `too_many_windows` 当成「daemon 不可用」而转头用 SSH 再杀一次，等于**把被门拒绝洗成
+/// 另一条路的成功** —— 今天两条路的门恰好等价所以看不出来，哪天一侧漂了就是静默旁路。
+///
+/// ⚠ 回落那条**仍然带满三道门**（`build_kill_session_cmd`）—— 回落不等于降级安全性。
 #[tauri::command]
 pub async fn kill_remote_tmux(origin: String, target: String) -> Result<(), String> {
-    // 命令构造（含 Gate 1/2 本地半支）先于配置查找——本地校验失败不该先花一次配置查找。
+    // 命令构造（含 Gate 1/2 本地半支）先于一切 IO——本地校验失败不该先花一次往返。
+    // 同时它也是回落那条路要用的串。
     let cmd = build_kill_session_cmd(&target)?;
+    // ★ 主路：走 backend 的 daemon 通道。
+    match crate::backend::control::daemon_kill::daemon_kill(&origin, &target).await {
+        crate::backend::control::daemon_kill::KillVerdict::Killed => return Ok(()),
+        crate::backend::control::daemon_kill::KillVerdict::Refused(why) => return Err(why),
+        // 证明没发出去 ⇒ 过渡期回落（C7）。`why` 只做诊断，不参与分流。
+        crate::backend::control::daemon_kill::KillVerdict::NoChannel(why) => {
+            tracing::debug!("[{origin}] kill 回落到一次性 SSH：{why}");
+        }
+    }
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
     let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;

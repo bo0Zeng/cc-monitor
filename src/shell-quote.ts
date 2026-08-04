@@ -149,6 +149,21 @@ export function tmuxNameSegment(raw: string): string {
     .replace(/^-+|-+$/g, ""); // 截断后再剥首尾 `-`，避免第 32 位恰为 `-` 留尾
 }
 
+/**
+ * ★ F04b 追加 `=`：**别创建一个主路杀不掉的名字。**
+ *
+ * kill 的主路从 F04b 起走 daemon（`remote-daemon-proto/src/control/kill.rs`），
+ * 而它的形状门逐字拒绝 `:` 与 `=`（「它们是 tmux 目标语法」）。
+ * `isValidTmuxName` 已经禁了 `:`，但 **`=` 是允许的** —— 于是一个像 `proj=x-cc`
+ * 的名字**建得出来、却在主路上杀不掉**（daemon 回 `invalid_args`）。
+ *
+ * 处置选的是「**改结构让问题不存在**」那一条（同仓 U3 的先例）：不在 kill 那边开特例
+ * 回落到 shell 路（那等于把一次形状拒绝洗成另一条路的成功），而是**不让它被建出来**。
+ * ⚠ `isValidTmuxName`（attach 已有会话那条）**刻意不跟着改** —— 那些名字不是我们建的，
+ * 禁它只会把「attach 到一个已存在的 `a=b`」从可用变成 throw，挡不住任何东西。
+ * 由 Rust 侧 `backend::control::daemon_kill::the_creation_path_cannot_mint_a_name_the_main_path_cannot_kill`
+ * 跨轨钉住。
+ */
 export function isValidNewTmuxName(name: string): boolean {
-  return isValidTmuxName(name) && !/[*?]/.test(name);
+  return isValidTmuxName(name) && !/[*?=]/.test(name);
 }

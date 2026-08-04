@@ -72,7 +72,8 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   ["test:api-error", "src/cards/api-error.test.ts", 5],
   ["test:bash", "src/cards/bash.test.ts", 20],
   ["test:remote-health", "src/remote-health.test.ts", 5],
-  ["test:remote-launch", "src/remote-launch.test.ts", 42],
+  // F04b +1：`isValidNewTmuxName` 也禁 `=`（别创建一个主路杀不掉的名字）。
+  ["test:remote-launch", "src/remote-launch.test.ts", 43],
   ["test:format", "src/format.test.ts", 10],
   ["test:history-cache", "src/views/history-cache.test.ts", 8],
   ["test:history-prefs", "src/views/history-prefs.test.ts", 18],
