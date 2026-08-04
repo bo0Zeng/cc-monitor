@@ -45,6 +45,14 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "U8a-2c-1：daemon `launch` 的发送端（`send-into` 那半边；attach 留在用户终端）",
     ),
     (
+        "control/local_backend.rs",
+        "control",
+        "F05a：本机后端进程的「起与看住」。决策那半（sidecar 路径解析 + 崩溃频率上限）是纯函数；\
+         监护器用 `std::process::Command`，等子进程死靠**读它 stdout 到 EOF**（零定时器，C12）。\
+         ⚠ 今天只认打包进安装包的 sidecar、不扫 dev 产物 —— 理由是 daemon 一起来就无条件\
+         往 tmux server 装全局 hook 且没有开关（F05 摸底 §2.5）",
+    ),
+    (
         "control/launch_wire.rs",
         "control",
         "前端结构化请求 → wire 适配 → ccm 调用行 / 裸载荷（两个 tauri 命令）",
