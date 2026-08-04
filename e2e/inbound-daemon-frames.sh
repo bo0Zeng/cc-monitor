@@ -99,7 +99,9 @@ if wait_for '"kind":"hello"'; then ok "daemon 发出 hello"; else
   bad "10s 内没等到 hello"; echo "--- stderr ---"; tail -20 "$ERR"
 fi
 HELLO="$(head -1 "$OUT")"
-for c in ping cancel resolve launch; do
+# F04a：新增 kill（第一条破坏性入方向命令）—— 这一行与 daemon 的 `inbound::COMMANDS`
+# 由 monitor 侧 `the_e2e_command_list_matches_the_daemon_command_table` 逐项钉住，两处要一起动。
+for c in ping cancel resolve launch kill; do
   if printf '%s' "$HELLO" | grep -qF "\"$c\""; then ok "hello.commands 声明了 $c"; else
     bad "hello 里没有 $c：$HELLO"
   fi

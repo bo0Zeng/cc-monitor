@@ -69,7 +69,7 @@ pub const REPLY_CHANNEL_CAPACITY: usize = 256;
 ///
 /// **这是单一真相源** —— `hello` 从这里取值，`dispatch` 必须恰好处理这些。
 /// 两者由 `hello_commands_match_the_dispatch_table` 钉住，不许各写各的。
-pub const COMMANDS: &[&str] = &["cancel", "launch", "ping", "resolve"];
+pub const COMMANDS: &[&str] = &["cancel", "kill", "launch", "ping", "resolve"];
 
 /// 在跑的命令登记表：`id` → 取消句柄。
 ///
@@ -363,6 +363,22 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
         codes: &[],
         fields: &["target"],
         run: Run::Builtin,
+    },
+    // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
+    // 对句柄下手不对名字。⚠ monitor 侧改走这条路是 **F04b**（定框 C6 的顺序）。
+    CommandSpec {
+        name: "kill",
+        doc_anchor: Some("#### `kill`"),
+        codes: &[
+            "invalid_args",
+            "no_tmux",
+            "no_such_session",
+            "wrong_owner",
+            "too_many_windows",
+            "kill_failed",
+        ],
+        fields: &["killed", "name", "session"],
+        run: Run::Blocking(|r| crate::control::kill::kill_for_inbound(&r.args).map(Some)),
     },
     CommandSpec {
         name: "launch",
@@ -782,7 +798,7 @@ mod tests {
         assert!(matches!(d("nope"), Disposition::Reply(..)));
 
         // 计数自检：每条已声明的命令都被上面覆盖到了（新增命令必须来这里表态）。
-        let covered = ["launch", "ping", "resolve", "cancel"];
+        let covered = ["launch", "kill", "ping", "resolve", "cancel"];
         let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
         assert!(
             missing.is_empty(),
@@ -1107,7 +1123,8 @@ mod structure_guards {
     fn every_registered_command_declares_its_run_kind() {
         use super::Run;
         for spec in super::REGISTRY {
-            let expected_blocking = matches!(spec.name, "launch");
+            // F04a：`kill` 也是阻塞档 —— 它要起 tmux 子进程（探测 + kill-session）。
+            let expected_blocking = matches!(spec.name, "launch" | "kill");
             let is_blocking = matches!(spec.run, Run::Blocking(_));
             assert_eq!(
                 is_blocking, expected_blocking,
@@ -1124,7 +1141,7 @@ mod structure_guards {
         }
         // 计数自检：新增命令而这里没表态 ⇒ 上面那条 `expected_blocking` 会把它当非阻塞，
         // 于是真加了一条阻塞命令却没登记时会红。这里再加一条显式的覆盖面断言。
-        let known = ["cancel", "launch", "ping", "resolve"];
+        let known = ["cancel", "kill", "launch", "ping", "resolve"];
         let missing: Vec<&str> = super::REGISTRY
             .iter()
             .map(|s| s.name)
