@@ -51,9 +51,14 @@ mod tests {
         (
             "src/main.ts",
             "data-poll",
-            "10s 拉一次 `refreshSessionAccounts`（会话↔账号映射）。**事件源已经存在** ——\
-             daemon 起会话时就知道账号（§1.5「daemon 起的就记账」）；退役归 **U7e**，\
-             而 U7e 按 §1.5 必须排在 U8 之后（U7↔U8 之间 Windows 上会话账号全未知的那个窗口）。",
+            "10s 拉一次 `refreshSessionAccounts`（会话↔账号映射）。\
+             ⚠ **F02 订正**：原文写「事件源已经存在」，实测**只有一半成立** —— \
+             本 UI 自己切号确实有回调（`onDefaultChanged → refreshSessionAccounts`），\
+             但「**别人**（另一个 monitor / 终端里的 ccm）改了账号」**没有事件源**：\
+             daemon 的帧集合里**没有任何账号帧**（`Hello/Line/TmuxSessions/SessionAdded/…` 十四种，\
+             逐个数过），`--session-accounts` 是**一次性子命令查询**、不是帧。\
+             ⇒ 这 10s 补的正是那一块。退役归 **U7e**，而 U7e 的前提是**先有一种账号事件** \
+             （新帧或文件事件），不是「已经有了」。",
         ),
         (
             "src/views/grid-monitor.ts",
@@ -65,9 +70,17 @@ mod tests {
             "src/tabs.ts",
             "data-poll",
             "`awaitExitFor`：等 claude 退出时每 1s 拉一次 `list_remote_tmux`（有 timeout 上限）。\
-             **事件源已经存在** —— daemon 的会话/判活帧（U7d 已交付本机判活）；\
-             退役归 **U10**（停/接搬进 `control/` 时，「等它真的退了」应当由帧推回来）。\
-             ⚠ 这一处是本轮普查**新发现**的：它用递归 `setTimeout` 而不是 `setInterval`，\
+             ⚠⚠ **F02 订正：原文那句「事件源已经存在」是错的。** 它等的**不是会话消失**，\
+             是 `claudeExited` —— 「目标 sid 不再被精确命中」，也就是**前台命令从 claude 变回 shell**\
+             （会话还在）。而 daemon 只装三条 hook：`session-created` / `session-closed` / \
+             `session-renamed`（`control/tmux_hook.rs::HOOK_EVENTS`，逐个数过）——\
+             **「pane 里的命令变了」一条都不覆盖**，而 P5 之后 daemon 零定时器 ⇒ \
+             那种情形下帧**可能永不刷新**。改等帧会永远等到超时再降级 kill。\
+             ⇒ 这 1s 轮询**正在补 hook 覆盖不到的那一块**，今天**不能退役**。\
+             **退役归**「先造一个『pane 前台命令变化』的事件源」这件事本身 —— \
+             tmux 没有这种 hook，能想到的路只有轮询 `capture-pane` 或让 claude 自己上报；\
+             **今天无人认领，如实登记为未排期**（不写一个假的 owner 让它看起来有人管）。\
+             ⚠ 这一处是普查**新发现**的：它用递归 `setTimeout` 而不是 `setInterval`，\
              此前任何地方都没登记过。",
         ),
         (
@@ -78,6 +91,64 @@ mod tests {
              退役归 **U9b**（thin ccm 变零决策执行臂）。⚠ 一个文件两类，故按文件登记。",
         ),
     ];
+
+    /// ★ **前提触发器**：上面两条「今天不能退役」的理由，前提是
+    /// **daemon 只装那三条 hook**（`session-created` / `session-closed` / `session-renamed`）。
+    ///
+    /// hook 覆盖面一变（多一条、少一条、换名字）⇒ 本条**主动红**，逼人回来重新裁定
+    /// 「哪些轮询现在可以退役了」。这是好事：多一条 hook 往往正好解锁一处轮询。
+    ///
+    /// ⚠ 它挡不住「hook 装上了但 tmux 那个事件本身覆盖面变了」（tmux 版本差异）——
+    /// 那属于外部世界，本仓钉不了。**比没有强，别读成证明。**
+    #[test]
+    fn the_hook_coverage_that_these_reasons_rest_on_has_not_changed() {
+        const DAEMON_HOOKS: &str =
+            include_str!("../../remote-daemon-proto/src/control/tmux_hook.rs");
+        let prod = guard_core::production_code(DAEMON_HOOKS);
+        // 判据串运行时拼，免得命中本文件自己上面那两段说明。
+        let want: Vec<String> = ["created", "closed", "renamed"]
+            .iter()
+            .map(|e| format!("session-{e}"))
+            .collect();
+        for w in &want {
+            assert!(
+                prod.contains(w.as_str()),
+                "daemon 的 hook 里找不到 `{w}` —— 覆盖面缩小了。\n\
+                 上面 `src/tabs.ts` / `src/main.ts` 两条「今天不能退役」的理由建立在\
+                 「只有这三条 hook」之上，覆盖面一变就要重新裁定。"
+            );
+        }
+        // 反向：**不许多**。多一条就可能解锁一处轮询 ⇒ 主动红提醒。
+        let found = prod.matches("session-").count()
+            + prod.matches("window-").count()
+            + prod.matches("pane-").count();
+        assert!(
+            found > 0,
+            "一条 hook 名都没扫到 —— 剥法或路径坏了，本条会零命中地绿"
+        );
+        let hook_events = prod
+            .split("HOOK_EVENTS")
+            .nth(1)
+            .unwrap_or("")
+            .split("];")
+            .next()
+            .unwrap_or("");
+        assert!(
+            !hook_events.is_empty(),
+            "抽不到 `HOOK_EVENTS` 数组 —— 抽取器坏了"
+        );
+        let n = hook_events.matches("session-").count()
+            + hook_events.matches("window-").count()
+            + hook_events.matches("pane-").count()
+            + hook_events.matches("client-").count();
+        assert_eq!(
+            n, 3,
+            "daemon 装的 hook 从 3 条变成了 {n} 条 —— **这多半是好事**，\n\
+             但它意味着上面两条「今天不能退役」的理由前提变了：\n\
+             请回 F02 重新裁定哪些轮询可以改等帧了（多一条 hook 常常正好解锁一处）。\n\
+             抽到的数组：{hook_events}"
+        );
+    }
 
     /// **明令不许有周期唤醒**的文件（把两处散文纪律变成机检）。
     const NO_PERIODIC_WAKE: &[(&str, &str)] = &[
