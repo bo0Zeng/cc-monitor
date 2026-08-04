@@ -543,158 +543,82 @@ mod tests {
 // E79：本机的「某个 sid 现在跑在哪个账号下」
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 扫 `sessions/*.json` 的上限（照 daemon 侧 `accounts_query::MAX_SESSION_FILES`）。
-const MAX_LOCAL_SESSION_FILES: usize = 500;
-/// 单个 pidfile 读取上限（正常几百字节）。
-const MAX_LOCAL_SESSION_FILE_BYTES: u64 = 1024 * 1024;
+// 〔F10b 第二批·下半〕`MAX_LOCAL_SESSION_FILES` / `MAX_LOCAL_SESSION_FILE_BYTES` **已删** ——
+// 它们是 daemon 侧同名上限的**第二份**（`observe/accounts_query.rs:47/:49`，值逐字相同：
+// 500 个文件 / 1 MiB）。唯一的用处随 `list_local_session_accounts` 改走 sidecar 一起消失
+// ⇒ 留着就是「同一个数两处各写一份」（定框 §4）。上限现在只有一个家：daemon 那边，
+// 且由它自己的测试与 `read_regular_capped` 钉着。
 
-/// 从 `/proc/<pid>/environ` 抠 `CLAUDE_CONFIG_DIR`（**只这一个键**）。
-///
-/// 判据与 daemon 侧 `accounts_query::proc_claude_config_dir` 逐字同源 ——
-/// 这是本机/远端**同一个问题**的两侧实现，口径不许分叉。
-///
-/// **非 Linux 恒 `None`**：Windows 上读另一个进程的环境块要 `NtQueryInformationProcess`
-/// + 跨进程读内存（还要提权），代价与收益完全不成比例。**如实返回「查不出来」**，
-/// 而不是编一个值 —— 上层（分叉的追问小窗）本来就有「不知道就问一次」这条路。
-fn proc_claude_config_dir(pid: u32) -> Option<String> {
-    #[cfg(target_os = "linux")]
-    {
-        let bytes = std::fs::read(format!("/proc/{pid}/environ")).ok()?;
-        for entry in bytes.split(|b| *b == 0) {
-            if entry.is_empty() {
-                continue;
-            }
-            let s = String::from_utf8_lossy(entry);
-            if let Some(v) = s.strip_prefix("CLAUDE_CONFIG_DIR=") {
-                if v.is_empty() {
-                    return None;
-                }
-                return Some(v.to_string());
-            }
-        }
-        None
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = pid;
-        None
-    }
-}
-
-/// 进程还在不在。**只判存在性**，不做 procStart 比对 —— 这里不是判活路径
-///（那是 `session_map` 的活），只是给「这个 pidfile 还算数吗」一个粗过滤。
-fn pid_alive(pid: u32) -> bool {
-    #[cfg(unix)]
-    {
-        std::path::Path::new(&format!("/proc/{pid}")).exists()
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = pid;
-        true // 非 Linux 上本查询本来就答不出账号，存活与否不影响结论
-    }
-}
+// 〔F10b 第二批〕`proc_claude_config_dir` 与 `pid_alive` **已删** ——
+// 它们是 daemon 侧 `platform/proc.rs` 那两个（`:19` / `:80`）的**第二份实现**，
+// 而本文件的头注原本就写着「判据与 daemon 侧逐字同源」。
+// 唯一的调用方（`list_local_session_accounts`）已改走 sidecar 的 `--session-accounts`
+// ⇒ 留着就是「同一件事两处各写一份」（定框 §4），且平台原语该住 `platform/`（C10）。
+// ⚠ 不是「暂时没人用就删」（铁律 13 禁的那种）：它们没有判据、没有测试、
+//   也不是任何东西的唯一锚点 —— 语义的家在 daemon 那边，且由它自己的测试钉着。
 
 /// E79：**本机**版的「某会话跑在哪个账号下」——`--session-accounts` 的对侧实现。
 ///
-/// # 为什么需要它
+/// # F10b 第二批：**它不再自己读 `~/.claude` 与 `/proc`**（C1 / C7）
 ///
-/// 这条查询此前**只有远端有**（daemon 的 `--session-accounts`），`local_accounts.rs`
-/// 只枚举账号、不认会话。后果是：本机分叉一个**正跑着的**会话时，monitor 明明够得着
-/// 那个 pidfile，却只能按「查不出来」处理、白弹一次追问小窗。
+/// 从前这里自己 `resolve_claude_dir()` + 读 `sessions/` 的 pidfile + 从
+/// `/proc/<pid>/environ` 抠 `CLAUDE_CONFIG_DIR`。现在**问本机后端**：
+/// exec 一次 sidecar `--session-accounts`，逐行 JSON 反序列化成 [`crate::accounts::SessionAccount`]。
 ///
-/// # 平台
+/// ★ 这一迁把 **C1「一份代码、两种承载」在这条查询上做实了**：
+/// 本函数与 `accounts::list_remote_session_accounts` 现在是**同一套解析、不同传输** ——
+/// 远端那条走 `ssh host <daemon> --session-accounts`，本机这条直接 exec 同一个二进制。
+/// 类型（`SessionAccount` / `SessionAccountsResult`）与逐行跳过坏行的做法都照它抄，没新造。
 ///
-/// **Linux 有，Windows 没有**，且这件事在返回值里说清楚（`available:false` + `error`），
-/// 不是静默返回空表。Windows 上读另一个进程的环境块要 `NtQueryInformationProcess`
-/// + 跨进程读内存（多半还要提权），代价与收益不成比例。
+/// # 平台差异搬到了该管它的那一侧
 ///
-/// # 边界（照抄 daemon 侧那套，不放宽）
+/// 「Linux 有 `/proc`、Windows 没有」这件事**从此由 daemon 回答**，不再在 monitor 里判
+/// （从前这里有一句 `if !cfg!(target_os = "linux")`）。daemon 侧读 `/proc/<pid>/environ`
+/// 的那段在 `platform/proc.rs`，而 `platform/fallback_guard` 逐字禁止非目标平台的分支
+/// 凭空返回成功值 ⇒ Windows 上它诚实说「观测不到」而不是伪造空表。
+/// ⚠ **如实说**：本轮**没有**在真 Windows 上跑过这条（F05b 那次真机验的是 `--list-accounts`
+/// 与流模式）⇒ Windows 行为是**从那条护栏推出来的**，不是实测。已进 `ROADMAP §5`。
 ///
-/// - `/proc/<pid>/environ` **只抠 `CLAUDE_CONFIG_DIR` 一个键**，绝不回传整个环境快照
-///   （那里面有用户全部的密钥类环境变量）。
-/// - `configDir` 过 `is_safe_config_dir` 白名单后才回；不合格的丢弃而不是原样透出。
-/// - 只读，不起进程，不 shell out。
+/// # 边界（`available:false` + `error` 这个形状本来就是为这类事准备的）
+///
+/// - **sidecar 不在**（开发树）⇒ `available:false` + 「本机后端不在…（找过哪些路径）」。
+/// - **查询失败** ⇒ `available:false` + 退出码与 stderr 原样带出（定框 §5：诚实降级）。
+/// - 零行是合法的（本机没有活会话）—— 同远端那条的判断，不额外区分「旧 daemon」。
+/// - ⚠ 只抠 `CLAUDE_CONFIG_DIR` 一个键、`configDir` 过白名单 —— 那两条现在由 daemon 侧守
+///   （它的 `observe/accounts_query.rs` 头注逐字写着同一套边界）。
 #[tauri::command]
 pub async fn list_local_session_accounts() -> Result<crate::accounts::SessionAccountsResult, String>
 {
+    use crate::backend::control::local_query::{run_query, QueryOutcome};
     tokio::task::spawn_blocking(|| {
-        if !cfg!(target_os = "linux") {
-            return crate::accounts::SessionAccountsResult {
-                available: false,
-                error: Some(
-                    "本机查不出「某会话属于哪个账号」：这条判据要读进程的环境块，\
-                     只有 Linux 上有便宜的做法（/proc/<pid>/environ）。"
-                        .into(),
-                ),
-                sessions: Vec::new(),
-            };
-        }
-        let Some(claude_dir) = crate::paths::resolve_claude_dir() else {
-            return crate::accounts::SessionAccountsResult {
-                available: false,
-                error: Some("取不到 claude 数据目录".into()),
-                sessions: Vec::new(),
-            };
+        let unavailable = |msg: String| crate::accounts::SessionAccountsResult {
+            available: false,
+            error: Some(msg),
+            sessions: Vec::new(),
         };
-        let accts = local_accts_dir();
-        // configDir → 账号名（查不到就是 None，**不猜**）
-        let name_of = |dir: &str| -> Option<String> {
-            let a = accts.as_ref()?;
-            let r = list_from_dir(a);
-            r.accounts
-                .into_iter()
-                .find(|x| x.config_dir.as_deref().map(norm_dir) == Some(norm_dir(dir)))
-                .map(|x| x.name)
+        let stdout = match run_query(env!("CCM_TARGET_TRIPLE"), &["--session-accounts"]) {
+            QueryOutcome::Ok(s) => s,
+            QueryOutcome::NoBackend(reason) => {
+                return unavailable(format!("本机后端不在，查不出会话属于哪个账号：{reason}"));
+            }
+            QueryOutcome::Failed { code, stderr } => {
+                return unavailable(format!(
+                    "本机后端的会话账号查询失败（退出码 {code:?}）：{}",
+                    stderr.trim()
+                ));
+            }
         };
-
         let mut sessions = Vec::new();
-        let dir = claude_dir.join("sessions");
-        let Ok(rd) = std::fs::read_dir(&dir) else {
-            // 目录不在 = 没有活跃会话，是**正常状态**，不是错误。
-            return crate::accounts::SessionAccountsResult {
-                available: true,
-                error: None,
-                sessions,
-            };
-        };
-        for entry in rd.take(MAX_LOCAL_SESSION_FILES) {
-            let Ok(entry) = entry else { continue };
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+        for line in stdout.lines() {
+            let line = line.trim();
+            if line.is_empty() {
                 continue;
             }
-            let Some(pid) = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .and_then(|s| s.parse::<u32>().ok())
-            else {
-                continue;
-            };
-            let Ok(bytes) = read_capped(&path, MAX_LOCAL_SESSION_FILE_BYTES) else {
-                continue;
-            };
-            let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
-                continue;
-            };
-            let str_of = |k: &str| v.get(k).and_then(|x| x.as_str()).map(str::to_string);
-            let alive = pid_alive(pid);
-            let raw_dir = if alive {
-                proc_claude_config_dir(pid)
-            } else {
-                None
-            };
-            let config_dir = raw_dir.filter(|d| is_safe_config_dir(d));
-            sessions.push(crate::accounts::SessionAccount {
-                pid,
-                session_id: str_of("sessionId"),
-                cwd: str_of("cwd"),
-                account: config_dir.as_deref().and_then(name_of),
-                // 活着却没设 CLAUDE_CONFIG_DIR = 账号 0（基座）。
-                bare: alive && config_dir.is_none(),
-                config_dir,
-                alive,
-            });
+            match serde_json::from_str::<crate::accounts::SessionAccount>(line) {
+                Ok(s) => sessions.push(s),
+                // 单行坏了不该毁掉整次查询（照远端那条的做法）。
+                Err(e) => tracing::warn!("本机 session-accounts 行解析失败（跳过）: {e}"),
+            }
         }
         crate::accounts::SessionAccountsResult {
             available: true,
