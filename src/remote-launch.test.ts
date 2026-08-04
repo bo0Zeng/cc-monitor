@@ -355,6 +355,17 @@ test("F01 isValidNewTmuxName:创建路径额外禁 glob 元字符（第二道防
   eq(isValidNewTmuxName("proj.git"), false);
 });
 
+test("F04b isValidNewTmuxName:`=` 也拒 —— 别创建一个主路杀不掉的名字", () => {
+  // kill 的主路从 F04b 起走 daemon，而它的形状门拒 `:` 与 `=`（tmux 目标语法）。
+  // 切之前 SSH 那条路杀得掉 `proj=x-cc`，切之后 daemon 回 `invalid_args` ⇒
+  // 那是一条真的（虽然窄的）回归。处置是「不让它被建出来」，不是给 kill 开回落特例。
+  eq(isValidNewTmuxName("proj=x-cc"), false, "= 拒（daemon 的 kill 形状门不认它）");
+  eq(isValidNewTmuxName("a=b"), false, "同上");
+  // ⚠ attach 那条**刻意不跟着改**：那些名字不是我们建的，禁它只会把
+  // 「attach 到一个已存在的 a=b」从可用变成 throw，而挡不住任何东西。
+  eq(isValidTmuxName("a=b"), true, "attach 路径仍放行（名字不是我们建的）");
+});
+
 test("F01 buildLauncherCmd:glob 名 throw（创建路径用 isValidNewTmuxName）/ buildAttachCmd 放行", () => {
   throws(() => buildLauncherCmd("", "a*b", "claude"), "创建路径拒 glob 名");
   throws(() => buildLauncherCmd("", "a?b", "claude"), "创建路径拒 glob 名");

@@ -45,6 +45,14 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "U8a-2c-1：daemon `launch` 的发送端（`send-into` 那半边；attach 留在用户终端）",
     ),
     (
+        "control/daemon_kill.rs",
+        "control",
+        "F04b：daemon `kill` 的发送端（C6 那条顺序的最后一步）。★ 结局是**三态**而不是两态 —— \
+         分界线是「能不能证明这条命令根本没发出去」：能证明才许回落到过渡期的 SSH 路（C7），\
+         否则一律不回落。把 `wrong_owner`/`too_many_windows` 当成「daemon 不可用」而回落，\
+         等于把一次**被门拒绝**洗成另一条路的成功",
+    ),
+    (
         "control/local_backend.rs",
         "control",
         "F05a：本机后端进程的「起与看住」。决策那半（sidecar 路径解析 + 崩溃频率上限）是纯函数；\

@@ -491,7 +491,11 @@ monitor 永远不会发的形状。
 ← {"kind":"reply","id":"K1","ok":true,"data":{"session":"1a2b3c4d-cc","killed":true}}
 ```
 
-**它必须过 §34 的三道门**，逐条对应 monitor 侧 `tmux.rs::kill_remote_tmux` 那条 shell 路：
+**它必须过 §34 的三道门**，逐条对应 monitor 侧 `tmux.rs::kill_remote_tmux` 那条 shell 路
+（⚠ **F04b 2026-08-04 订正**：那条 shell 路已从**主路**降为 **C7 过渡期回落** ——
+`kill_remote_tmux` 现在先走本命令，只有能**证明**命令没发出去时才回落；
+`wrong_owner`/`too_many_windows` 这类**过门被拒绝一律不回落**，否则就是把一次门拒绝
+洗成另一条路的成功。分流规则见 `backend/control/daemon_kill.rs` 头注那张表）：
 
 | 门 | 判据 | 不通过的错误码 |
 |---|---|---|

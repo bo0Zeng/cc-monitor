@@ -50,7 +50,7 @@ cc-monitor 已有的 usage（#52，F88a/F88b）**只做 jsonl 里的 token 会�
 - **改动面**：纯前端新模块（编排：起临时会话→等 ready→/usage→等加载→capture→展示→Esc+kill）+ 复用 `tmux_send_keys`/`capture_remote_pane`/`pane-preview` overlay/`accounts` store。**零新增 daemon/Rust 命令**（capture_remote_pane/tmux_send_keys 均已注册）。设置「账号」组每行加个「查用量」按钮（挨着 A6 的「登录终端」）。
 - **工作量**：中（编排 + 两处轮询 ready/loaded + overlay 复用 + 纯逻辑单测）。
 - **风险**：中——① `/usage` 面板布局/字样随 CC 版本变，抓屏文本**能给人看、但结构化解析脆**（MVP 只展示原文规避）；② **API 限流**：`/usage` plan 条会被限流，故只做**手动 on-demand**、别轮询；③ ready/loaded 的可判定信号是启发式（同 DESIGN §1 V3 的 TUI-ready 难题）——超时兜底 + 直接展示当前屏。
-- **安全**：`capture-pane` 抓的是**用量 %/条**，`/usage` **不显凭据 token** → 无泄漏；临时会话用该号既有凭据登录（**不搬/不读/不回显 token**）；send-keys/capture/kill 全走一次性 ssh、**daemon 不参与**（只读铁律不破）；不碰用户 `~/.claude`（临时会话的 config-dir 是账号库里已存在的，只读起进程）。
+- **安全**：`capture-pane` 抓的是**用量 %/条**，`/usage` **不显凭据 token** → 无泄漏；临时会话用该号既有凭据登录（**不搬/不读/不回显 token**）；send-keys/capture 走一次性 ssh；⚠ **F04b 2026-08-04 订正：`kill` 那半的主路已经是 daemon**（`control/kill.rs`，三道门在 daemon 侧复现，一次性 ssh 降为 C7 过渡期回落）—— 原文「daemon 不参与」对 kill 已不成立。**安全结论不变**：daemon 那条路的门更严（对 `#{session_id}` 句柄下手，不对名字）；不碰用户 `~/.claude`（临时会话的 config-dir 是账号库里已存在的，只读起进程）。
 
 ## 5. 后续（非 MVP）
 
