@@ -45,6 +45,9 @@ acct-core = { path = "crates/acct-core" }
 # ⚠ 原注释说「daemon 侧刻意还没加这条依赖」已经过期两轮：U8c-2b-0 起 daemon 的
 # `control/tmux_hook.rs::sq` 就在调它，那也是它今天唯一的 daemon 用量。
 shell-quote-core = { path = "crates/shell-quote-core" }
+# F03：**§34 Gate 2（identity）的唯一实现**——「这个 tmux 会话是不是本工具管的」。
+# monitor 与 daemon 共用同一份判定（定框 C1），防「把 send-keys/kill 搬进后端时静默丢掉一道门」。
+gate-core = { path = "crates/gate-core" }
 
 notify = "6"
 notify-debouncer-mini = "0.4"
