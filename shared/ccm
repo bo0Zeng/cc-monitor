@@ -422,7 +422,18 @@ if [ "$use_tmux" = 1 ]; then
     # 与前端 `isValidNewTmuxName` 同一套判据（`src/remote-launch.ts`）。
     case "$tmux_name" in
       ""|-*)        die "非法 tmux 会话名（空或以 - 开头）: '$tmux_name'" ;;
-      *[*?.:]*)     die "非法 tmux 会话名（含 glob 或 tmux 保留字 * ? . :）: '$tmux_name'" ;;
+      # ★ F15 在下面那行加了 `=`：**别创建一个主路杀不掉的名字。**
+      #   kill 的主路从 F04b 起走 daemon（`remote-daemon-proto/src/control/kill.rs`），它的形状门
+      #   逐字拒 `:` 与 `=`（「它们是 tmux 目标语法」），且**按设计不回落**（回落到 shell 路 =
+      #   把一次形状拒绝洗成另一条路的成功）。而这里原本只禁 `. : * ?`，加上 `--tmux=*` 的取值是
+      #   `${1#*=}`（剥到第一个 `=`）⇒ `ccm --tmux=proj=x` 能建出 `proj=x`，通道 B 还会给它写真
+      #   `@ccm_sid` ⇒ Gate 2 通过、正常出现在 monitor 列表里，而「结束会话」永远 `invalid_args`
+      #   ⇒ **那个会话在 UI 上杀不掉**（F04b 之前那条 SSH 串杀得掉它）。实测过：改之前
+      #   `ccm new --tmux=proj=x --print` 产的就是 `new-session -d -s 'proj=x'`。
+      # ⚠ 上面那句「与前端 `isValidNewTmuxName` 同一套判据」—— **F04b 之后曾经是假的**
+      #   （F04b 只给 TS 那份加了 `=`，跨轨钉也只读了 TS 那一份）。加上这个字符之后它重新成立，
+      #   并由 Rust 侧那条**遍历式**的创建路径登记表钉住（见 `daemon_kill.rs`）。
+      *[*?.:=]*)     die "非法 tmux 会话名（含 glob 或 tmux 目标语法 * ? . : =）: '$tmux_name'" ;;
       *[[:cntrl:]]*) die "非法 tmux 会话名（含控制字符）: '$tmux_name'" ;;
     esac
     # 显式名到此为止 —— **不做派生、不做避让**。调用方（cc-monitor）传显式名正是因为它

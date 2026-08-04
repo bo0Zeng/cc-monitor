@@ -124,46 +124,242 @@ mod tests {
         assert!(killed_from_reply(None).is_err());
     }
 
-    /// ★★ **跨轨钉（本件 D 审计自己抓出来的）：创建路径不许铸出主路杀不掉的名字。**
+    /// 「创建路径」的登记表：`(路径, 判定, 理由)`。
     ///
-    /// # 它抓的是什么
+    /// # ⚠ 发现机制是**遍历**，这张表只用来**表态**
     ///
-    /// daemon 的 `kill.rs::parse_name` 拒 `:` 与 `=`（「它们是 tmux 目标语法」）。
-    /// TS 侧 `isValidTmuxName` 只禁了 `:`，**`=` 是允许的** ⇒ F04b 切完之后，
-    /// 一个像 `proj=x-cc` 的名字**建得出来、却在主路上杀不掉**（daemon 回 `invalid_args`）。
-    /// 那是一条真的（虽然窄的）回归：切之前 SSH 那条路杀得掉它。
+    /// F04b 建这条判据时**只读了 TS 那一份**（`isValidNewTmuxName`）—— 于是 F12 的
+    /// `/full-audit` 逮到 `shared/ccm` 那条创建路径**也允许 `=`**：`--tmux=*` 的取值是
+    /// `${1#*=}`（剥到第一个 `=`）⇒ `ccm --tmux=proj=x` 建得出 `proj=x`，通道 B 还给它写真
+    /// `@ccm_sid` ⇒ Gate 2 通过、正常出现在列表里，而「结束会话」永远 `invalid_args`
+    /// ⇒ **那个会话在 UI 上杀不掉**。（改之前实测：`ccm new --tmux=proj=x --print` 产的就是
+    /// `new-session -d -s 'proj=x'`。）
     ///
-    /// 处置选的是「**改结构让问题不存在**」（同仓 U3 的先例）：不给 kill 开
-    /// 「形状拒绝就回落 shell 路」的特例（那正是本模块要挡的洗白），
-    /// 而是把 `=` 加进**创建**路径的禁字集。
+    /// ⇒ F15 把发现机制换成**遍历**：扫全仓生产段里真正产 `tmux new-session` 的文件
+    /// （摸底实测 **4 个**；收窄前 `new-session` 这个词还会命中测试夹具与 UI 动作 id ——
+    /// **扫描面画大了会被噪音填满，与画小了一样失去意义**）。
+    /// 每个都必须在下表里表态：要么**自己校验**禁字集，要么**名字来自已校验的上游**并说清是谁。
+    #[cfg(test)]
+    const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
+        (
+            "shared/ccm",
+            CreationVerdict::ValidatesItself,
+            "显式 `--tmux=<名>` 那条创建路径的 `case` 校验 —— **F15 给它加的 `=`**",
+        ),
+        (
+            "remote-daemon-proto/src/control/launch.rs",
+            CreationVerdict::UpstreamValidated,
+            "名字来自入方向 `parse_request`，它自己就拒 `:`/`=`（那正是本判据的字符集来源）",
+        ),
+        (
+            "src-tauri/src/account_usage.rs",
+            CreationVerdict::UpstreamValidated,
+            "探针会话名是 `ccm-usage-<slug>`，`slug` 由账号名 sanitize 而来、**不是用户自由输入**；\
+             且它自己 `kill-session` 收尾、不经 daemon 的 kill 主路",
+        ),
+        (
+            "src/session-backend.ts",
+            CreationVerdict::UpstreamValidated,
+            "它只是**渲染器**：名字由上游 `mintTmuxName` 产、由 `src/shell-quote.ts::isValidNewTmuxName` 校验（见 `VALIDATORS`）",
+        ),
+    ];
+
+    /// **校验器**登记表：`(路径, 它是谁)`。
     ///
-    /// ⚠ 本条钉的是「**两侧的禁字集不许再漂开**」：daemon 拒的每个字符，
-    /// 创建路径都必须拒。反过来不要求（创建路径可以更严，比如 glob）。
+    /// # ⚠ 为什么是两张表
+    ///
+    /// 第一版我把 `src/shell-quote.ts` 塞进了 `CREATION_PATHS` —— 而**它不产 `new-session`**，
+    /// 它是**校验器**。判据当场红（遍历只找到 4 个产出方，登记表却有 5 条）。
+    /// ⇒ 两张表各司其职：
+    ///
+    /// - `CREATION_PATHS`：**谁在创建**（发现机制 = 遍历 `tmux new-session`）；
+    /// - `VALIDATORS`：**谁在校验**（这些文件必须真的拒 daemon 拒的每个字符）。
+    ///
+    /// ★ 一般化：**「一张表混装两种角色」是它自己会红的那种错** ——
+    /// 因为两种角色的**发现机制不同**（一个能遍历，一个不能），混在一张表里必然对不上。
+    /// `(路径, **禁字集表达式的字面量**, 它是谁)`。
+    ///
+    /// # ⚠ 第二列不是装饰 —— 没有它这条判据是恒真的
+    ///
+    /// 第一版我写的是 `src.contains('=')`（整个文件里有没有那个字符）。
+    /// **变异 P1（把 `=` 从 `shared/ccm` 的禁字集里拿掉）当场存活** ——
+    /// 因为一个 shell 脚本里到处都是 `=`（变量赋值、`--tmux=*`…）⇒ 那个断言**恒真**。
+    ///
+    /// ★ 「判据自己会不会错」那一问的教科书形态：**它匹配到了别处**。
+    /// ⇒ 改成钉**禁字集表达式本身**：字面量必须逐字出现在文件里，且它必须含 daemon 拒的每个字符。
+    /// 两个方向都活：拿掉 `=` ⇒ 字面量不再出现 ⇒ 红；daemon 新增禁字 ⇒ 字面量缺它 ⇒ 红。
+    #[cfg(test)]
+    const VALIDATORS: &[(&str, &str, &str)] = &[
+        (
+            "src/shell-quote.ts",
+            "[*?=]",
+            "`isValidNewTmuxName` 的 glob/目标语法禁字集（F04b 给它加的 `=`）；\
+             `:` 由它调的 `isValidTmuxName` 那条字符类禁，本判据单独查",
+        ),
+        (
+            "shared/ccm",
+            "*[*?.:=]*)",
+            "显式 `--tmux=<名>` 的 `case` 校验（**F15 给它加的 `=`**）—— 它既创建也自校验，两张表都在",
+        ),
+    ];
+
+    #[cfg(test)]
+    #[derive(PartialEq, Eq, Debug)]
+    enum CreationVerdict {
+        /// 这条路径**自己**校验禁字集。
+        ValidatesItself,
+        /// 名字来自已校验的上游 ⇒ 本路径不必再校验，但**必须说清上游是谁**。
+        UpstreamValidated,
+    }
+
+    /// ★★ **创建路径不许铸出主路杀不掉的名字** —— 发现机制是遍历，不是手写清单。
     #[test]
-    fn the_creation_path_cannot_mint_a_name_the_main_path_cannot_kill() {
-        let kill_rs = include_str!("../../../../remote-daemon-proto/src/control/kill.rs");
-        let kill_prod = guard_core::production_code(kill_rs);
-        // 反向锚点：daemon 那条形状门还在（它没了本条就在空转）。
-        assert!(
-            kill_prod.contains("name.contains(':')") && kill_prod.contains("name.contains('=')"),
-            "daemon 的 `parse_name` 不再拒 `:`/`=` 了 —— 本条判据的前提没了，回来重裁"
+    fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级");
+
+        // ── ① 反向锚点：daemon 那条形状门还在（它没了本判据就在空转）──────────
+        let kill_prod = guard_core::production_code(include_str!(
+            "../../../../remote-daemon-proto/src/control/kill.rs"
+        ));
+        let forbidden: Vec<char> = [':', '=']
+            .into_iter()
+            .filter(|c| kill_prod.contains(&format!("name.contains('{c}')")))
+            .collect();
+        assert_eq!(
+            forbidden,
+            vec![':', '='],
+            "daemon 的 `parse_name` 不再同时拒 `:` 与 `=` 了 —— 本判据的字符集来源变了，回来重裁"
         );
-        let ts = include_str!("../../../../src/shell-quote.ts");
-        let at = ts
-            .find("export function isValidNewTmuxName")
-            .expect("找不到创建路径的校验函数 —— 改名了就把本条一起改");
-        let body = &ts[at..(at + 200).min(ts.len())];
+
+        // ── ② 遍历：谁在生产段真正产 `tmux new-session` ────────────────────────
+        // ⚠ 模式收窄到 `tmux new-session` 与 argv 形态；**只写 `new-session` 会命中
+        //   测试夹具与 UI 动作 id**（摸底实测：宽模式 10 个文件，收窄后 4 个）。
+        let verb = format!("new-{}", "session");
+        let wide = format!("tmux {verb}");
+        let argv = format!("\"{verb}\", \"-d\"");
+        let mut found: Vec<String> = Vec::new();
+        let mut scanned = 0usize;
+        let mut stack: Vec<std::path::PathBuf> =
+            ["src-tauri/src", "remote-daemon-proto/src", "src", "shared"]
+                .iter()
+                .map(|d| root.join(d))
+                .collect();
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&d) else {
+                continue;
+            };
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                let name = p
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                if name.contains(".test.") || name.contains(".vitest.") {
+                    continue;
+                }
+                let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
+                if !matches!(ext, "rs" | "ts" | "sh" | "") {
+                    continue;
+                }
+                let Ok(raw) = std::fs::read_to_string(&p) else {
+                    continue;
+                };
+                scanned += 1;
+                let body = if ext == "rs" {
+                    guard_core::production_code(&raw)
+                } else {
+                    raw
+                };
+                let hit = body.lines().any(|l| {
+                    let t = l.trim_start();
+                    !t.starts_with("//")
+                        && !t.starts_with('#')
+                        && !t.starts_with('*')
+                        && (l.contains(wide.as_str()) || l.contains(argv.as_str()))
+                });
+                if hit {
+                    found.push(
+                        p.strip_prefix(root)
+                            .unwrap_or(&p)
+                            .to_string_lossy()
+                            .replace('\\', "/"),
+                    );
+                }
+            }
+        }
+        found.sort();
+        // ★ 抽取器自检：遍历坏了下面几条会零命中地绿。
         assert!(
-            body.contains("isValidTmuxName(name)"),
-            "创建路径不再走 `isValidTmuxName` —— `:` 那一半的禁令没了：{body:?}"
+            scanned >= 300,
+            "只扫到 {scanned} 个文件 —— 遍历坏了（四个根目录实测远超 300）"
         );
+        let mut registered: Vec<String> = CREATION_PATHS
+            .iter()
+            .map(|(f, _, _)| (*f).to_string())
+            .collect();
+        registered.sort();
+        assert_eq!(
+            found, registered,
+            "\n真正产 `tmux new-session` 的文件与创建路径登记表对不上。\n\
+             **多一处** = 新增了一条创建路径没表态 ⇒ 要么让它自己校验禁字集，\n\
+             要么写清「名字来自哪个已校验的上游」。\n\
+             **少一处** = 那条路没了 ⇒ 删登记。\n\
+             ⚠ F04b 那版是**手写两个文件名**，于是 `shared/ccm` 整条路径逃出了扫描面（F12 逮到）。"
+        );
+
+        // ── ③ 每条创建路径都要有非空理由；自己校验的那条必须在 `VALIDATORS` 里 ──
+        for (f, verdict, why) in CREATION_PATHS {
+            assert!(!why.trim().is_empty(), "{f} 的理由是空的");
+            if *verdict == CreationVerdict::ValidatesItself {
+                assert!(
+                    VALIDATORS.iter().any(|(v, _, _)| v == f),
+                    "`{f}` 记成「自己校验」，却不在 `VALIDATORS` 表里 —— \
+                     那下面那条「真的拒了那些字符」就不会查它"
+                );
+            }
+        }
+
+        // ── ④ 校验器必须真的拒 daemon 拒的每个字符 ───────────────────────────
         assert!(
-            body.contains('='),
-            "创建路径的禁字集里没有 `=` —— 于是它能铸出 `proj=x-cc` 这种\n\
-             **建得出来、主路杀不掉**的名字（daemon 的 kill 形状门拒 `=`）。\n\
-             ⚠ 正确的处置不是让 kill 在形状拒绝时回落到 shell 路 ——\n\
-             那是把一次拒绝洗成另一条路的成功。实得这一段：{body:?}"
+            !VALIDATORS.is_empty(),
+            "校验器表空了 —— 下面这段会零命中地绿"
         );
+        for (f, class_expr, who) in VALIDATORS {
+            assert!(!who.trim().is_empty(), "{f} 没说它是谁");
+            let src = std::fs::read_to_string(root.join(f))
+                .unwrap_or_else(|_| panic!("读不到 {f} —— 读不到的文件只会静默返回空串"));
+            // ★ 钉**禁字集表达式本身**，不是「文件里有没有那个字符」——
+            //   后者对 shell 脚本恒真（变异 P1 当场存活，见 `VALIDATORS` 头注）。
+            assert!(
+                src.contains(class_expr),
+                "校验器 `{f}` 里找不到禁字集表达式 `{class_expr}` ——\n\
+                 要么它被改了（那就同时改这张表，并想清新表达式还拒不拒 {forbidden:?}），\n\
+                 要么**某个禁字被拿掉了** ⇒ 这条路径能铸出一个**建得出来、主路杀不掉**的名字\n\
+                 （daemon 的 kill 形状门拒它，且**按设计不回落**）。"
+            );
+            for c in &forbidden {
+                // `:` 在 TS 那条由 `isValidTmuxName` 的另一条正则禁（不在本表达式里）⇒ 单独查。
+                if *c == ':' && *f == "src/shell-quote.ts" {
+                    assert!(
+                        src.contains("[.:"),
+                        "`{f}` 里找不到 `isValidTmuxName` 那条禁 `.`/`:` 的字符类"
+                    );
+                    continue;
+                }
+                assert!(
+                    class_expr.contains(*c),
+                    "`{f}` 的禁字集表达式 `{class_expr}` 里没有 `{c}` —— \
+                     daemon 的 kill 形状门拒它，而这条创建路径放它进来"
+                );
+            }
+        }
     }
 
     /// ★ **前提触发器：耐久文档里那句「过渡期回落」不许比代码活得久。**
