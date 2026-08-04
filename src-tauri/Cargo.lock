@@ -1639,6 +1639,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "gate-core"
+version = "0.1.0"
+
+[[package]]
 name = "gdk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2819,6 +2823,7 @@ dependencies = [
  "code-picture-core",
  "dirs 5.0.1",
  "futures",
+ "gate-core",
  "guard-core",
  "notify",
  "notify-debouncer-mini",

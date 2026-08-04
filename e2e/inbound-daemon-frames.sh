@@ -65,7 +65,14 @@ INBOUND_PING_LINE='{"id":"e2e-ping-1","cmd":"ping","args":null}'
 # 上面那条 ping 只证明「daemon 认得 monitor 编的信封」；这一条证明的是
 # **monitor 真正会发的那条业务命令**（`daemon_send_into` 唯一会说的 `send-into`）。
 # 值全是写死的（不插值），否则钉不住。
-INBOUND_SEND_INTO_LINE='{"id":"e2e-si-1","cmd":"launch","args":{"mode":"send-into","name":"e2e-si-fixed","payload":"true"}}'
+#
+# ⚠ **名字必须是本工具的命名形状**（`<X>-cc`）。F03 给 daemon 的 `send-into` 装上 §34 Gate 2
+#   之后，`e2e-si-fixed`（旧名）当场被 `wrong_owner` 拒了 —— 而**生产上根本不会出现那种名字**：
+#   `daemon_send_into` 收的是 `launch-requests.ts` 产的 `<sid8>-cc`。
+#   也就是说这个夹具此前用的是一个**生产永远不会产生的值**：跨轨钉钉住了「编码形状」，
+#   钉不住「值是否真实」。改名后两侧必须 lockstep（只改一侧 ⇒ monitor 的
+#   `the_e2e_send_into_line_is_exactly_what_the_encoder_produces` 当场红，实测过）。
+INBOUND_SEND_INTO_LINE='{"id":"e2e-si-1","cmd":"launch","args":{"mode":"send-into","name":"e2e-si-fixed-cc","payload":"true"}}'
 
 echo "== U8a-2a 入方向真进程端到端 =="
 echo "daemon: $DAEMON"
@@ -261,7 +268,7 @@ else
   # ★ U8a-2c-1：**monitor 真正会发的那条 send-into**（逐字节由 monitor 侧钉住）打在真 tmux 上。
   # 与上面 e2e-launch-3 的区别：那条是本脚本手写+插值的，这条是**编码器的产物**——
   # 手写那条只证明 daemon 认得我写的形状，证明不了 monitor 发的形状。
-  tmux new-session -d -s e2e-si-fixed
+  tmux new-session -d -s e2e-si-fixed-cc
   send "$INBOUND_SEND_INTO_LINE"
   if wait_for '"id":"e2e-si-1"'; then
     R="$(grep -F '"id":"e2e-si-1"' "$OUT" | head -1)"

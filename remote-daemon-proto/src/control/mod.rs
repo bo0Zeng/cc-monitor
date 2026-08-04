@@ -5,6 +5,10 @@
 //! - [`fork_write`]：**写文件系统**（`O_EXCL` 新建一个 `<new-sid>.jsonl`）。
 //!   全 crate **唯一**的写盘白名单模块，红线 I7 的那个洞口。
 //! - [`tmux_hook`]：**改 tmux server 状态**（`tmux set-hook -g`）+ **发信号**（`SIGUSR1`）。
+//! - [`gate`]（F03）：**§34 Gate 2（identity）在本侧的承载** —— 探一次 tmux 拿回
+//!   `@ccm_sid` 与 `#{session_id}` 句柄，判定本身在共享的 `gate-core`（定框 C1）。
+//!   它**只读** tmux，但归 control/ —— 因为它是「能不能改这个会话」这个**决策**的一部分
+//!   （定框 C13：区别不在进程在哪，在它有没有决策权）。
 //! - [`launch`]（U8a-2b）：**起 tmux 会话 / 往已有会话键入载荷**（U8a 分解里的「平面 ②」）。
 //!   起进程（`tmux`，argv 直传不过 shell），已登记进 `readonly_guard::spawn_registry`。
 //!   **不 attach** —— 那是平面 ③，daemon 在远端开不了你面前的窗。
@@ -20,6 +24,7 @@
 //! 反向边自然消失。铁律 6：改结构让问题不存在。
 
 pub(crate) mod fork_write;
+pub(crate) mod gate;
 pub(crate) mod launch;
 pub(crate) mod resolve_query;
 pub(crate) mod tmux_hook;

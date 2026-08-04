@@ -1,0 +1,42 @@
+# §34 Gate 2 的**唯一判定表** —— 三条轨道各自独立读它，谁漂谁红。
+#
+# 读它的三方：
+#   1. monitor  src-tauri/src/backend/control/gate2_parity.rs   （Rust，调 gate_core）
+#   2. daemon   remote-daemon-proto/src/control/gate.rs 的测试   （Rust，调 gate_core）
+#   3. e2e      e2e/daemon-gate2-acceptance.sh                   （bash，跑真 daemon 二进制 + 真 tmux）
+#
+# ⚠ **绝不许一侧在运行时去调另一侧** —— 那样两侧一起错也全绿。三方都只跟这张表对。
+# ⚠ 用 TSV 不用 JSON：第三方是 bash，`cut -f` 零依赖；JSON 得拖一个解析器进 e2e。
+#   同目录另两份 `*-golden.json` 只有 Rust/TS 两轨在读，不受此影响。
+#
+# 列：case_id <TAB> name <TAB> remote_sid <TAB> expect
+#   remote_sid：`<none>` = 没问/问不到 · `<unset>` = 问了但没设 · 其余 = 设了这个值
+#   expect：allowed_by_name | allowed_by_remote_sid | rejected
+#
+# ⚠ `remote_sid` 指的是 `@ccm_sid`，**不是 `@ccm_sid_expect`**（见 gate-core 头注：
+#   通道 A 只写意图，破坏性动作只认通道 B 确认过的事实）。
+old_prefix	cc-abc12345	<none>	allowed_by_name
+old_prefix_bare	cc-proj	<none>	allowed_by_name
+old_prefix_collision	cc-abc12345-2	<none>	allowed_by_name
+old_prefix_no_body	cc-	<none>	rejected
+new_suffix	abc12345-cc	<none>	allowed_by_name
+new_suffix_collision	abc12345-cc-2	<none>	allowed_by_name
+new_suffix_dashed	my-proj-cc	<none>	allowed_by_name
+new_suffix_empty_head	-cc	<none>	rejected
+near_miss_ccx	foo-ccx	<none>	rejected
+near_miss_infix	foo-cc-bar	<none>	rejected
+near_miss_prefix	mycc-x	<none>	rejected
+users_own_session	web	<none>	rejected
+cc_bus_underscore	foo_cc	<none>	rejected
+name_wins_over_missing_sid	cc-abc12345	<unset>	allowed_by_name
+name_wins_over_set_sid	cc-abc12345	deadbeef	allowed_by_name
+custom_with_sid	e2e-custom	abc123	allowed_by_remote_sid
+custom_without_sid	e2e-custom	<unset>	rejected
+custom_unprobed	e2e-custom	<none>	rejected
+users_session_with_sid	web	abc123	allowed_by_remote_sid
+meta_space	cc-a b	<none>	rejected
+meta_semicolon	cc-a;rm	<none>	rejected
+meta_dollar	cc-a$x	<none>	rejected
+meta_colon	cc-a:b	<none>	rejected
+meta_equals	=cc-a	<none>	rejected
+meta_with_sid_still_allowed	cc-a;rm	abc123	allowed_by_remote_sid

@@ -436,6 +436,13 @@ mod spawn_registry {
              与用户在终端里手敲同一条命令没有区别（D1 裁决的正例）",
         ),
         (
+            "control/gate.rs",
+            "tmux",
+            "F03：§34 Gate 2 的探测（`display-message -p` 取 `@ccm_sid` + `#{session_id}`）。\
+             **只读 tmux**，不改任何状态；登记在 control/ 是因为它是「能不能改这个会话」\
+             这个决策的一部分（定框 C13）",
+        ),
+        (
             "observe/watcher.rs",
             "sh",
             "跑 `command -v tmux && tmux ls`（两处：探测 + 取观测）。**只读**，\

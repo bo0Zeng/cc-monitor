@@ -76,11 +76,14 @@ mod tests {
              退役归 **U11 本体**。",
         ),
         (
-            "src-tauri/src/tmux.rs",
+            "src-tauri/crates/gate-core/src/lib.rs",
             "consumer",
             2,
             "`is_ccm_tmux_name` —— 只**判**名字形状（§34 Gate 2 的本地那半），**不产名**。\
-             登记它是为了让上面那条「多一处就红」不会被消费点噪音淹掉。",
+             登记它是为了让上面那条「多一处就红」不会被消费点噪音淹掉。\
+             ⚠ **F03 从 `src-tauri/src/tmux.rs` 搬到这里**：判定收进共享 crate，\
+             monitor 与 daemon 共用同一份（定框 C1）。本条棘轮当场红了 —— \
+             **它就该红**：被测对象搬家，判据要跟着走，而不是让它悄悄少扫一处。",
         ),
     ];
 
@@ -129,6 +132,9 @@ mod tests {
         files.sort();
         for extra in [
             "src-tauri/src/tmux.rs",
+            // F03：`is_ccm_tmux_name` 的实现搬到了这里。**tmux.rs 仍留在扫描面** ——
+            // 它是最可能又冒出一个产名点的地方，扫它零命中比不扫它便宜得多。
+            "src-tauri/crates/gate-core/src/lib.rs",
             "shared/ccm",
             "shared/cc-bus/scripts/cc-spawn",
         ] {
@@ -188,6 +194,7 @@ mod tests {
         );
         for f in [
             "src-tauri/src/tmux.rs",
+            "src-tauri/crates/gate-core/src/lib.rs",
             "shared/ccm",
             "shared/cc-bus/scripts/cc-spawn",
         ] {

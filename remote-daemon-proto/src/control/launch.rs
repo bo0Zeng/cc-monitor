@@ -216,18 +216,17 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
     let t = exact_target(&req.name);
     match req.mode {
         Mode::SendInto => {
-            // ★ 会话不存在 ⇒ 报错，**绝不顺手新建**。顺手新建就是 #76 的反向：
-            //   用户以为在复用那个 idle 会话，实际被丢进一个新建的空 shell。
-            if !tmux(&["has-session", "-t", &t])? {
-                return Err((
-                    "no_such_session",
-                    format!(
-                        "会话 {:?} 不存在；send-into 只往**已存在**的会话键入，不新建",
-                        req.name
-                    ),
-                ));
-            }
-            type_payload(&t, &req.payload)?;
+            // ★ **过 §34 的 Gate 2**（F03）。`admit` 一次探测同时办三件事：
+            //   1. 会话不存在 ⇒ `no_such_session`，**绝不顺手新建**（顺手新建就是 #76 的反向：
+            //      用户以为在复用那个 idle 会话，实际被丢进一个新建的空 shell）；
+            //   2. 名字不是本工具形状、`@ccm_sid` 也没设 ⇒ `wrong_owner`，拒绝键入；
+            //   3. 通过则回 `#{session_id}` 句柄 —— **后面一律对句柄下手，不对名字**，
+            //      名字在窗口期内被重新绑定也打不到别人身上（见 `gate` 模块头注）。
+            //
+            // ⚠ 顺序不可反：`admit` 必须在 `type_payload` **之前**。
+            // 由 `the_send_into_arm_admits_before_it_types` 钉住。
+            let handle = super::gate::admit(&req.name, &t)?;
+            type_payload(&handle, &req.payload)?;
             Ok(LaunchOutcome {
                 created: false,
                 typed: true,
@@ -433,9 +432,65 @@ mod tests {
              用户以为在复用那个 idle 会话，实际被丢进一个新建的空 shell。\n\
              会话不存在时**报错**（`no_such_session`），别顺手建。"
         );
+        // F03：存在性检查从 `has-session` 换成了 `gate::admit`（同一次探测顺带取回
+        // `@ccm_sid` 与句柄）。**保证没变**：不存在仍回 `no_such_session`，
+        // 由 `admit` 里那条 `let Some(p) = probe(target)? else` 兜着。
         assert!(
-            arm.contains("has-session"),
-            "`send-into` 分支没有先查会话在不在 —— 那就没法报 `no_such_session`"
+            arm.contains("gate::admit"),
+            "`send-into` 分支不过 `gate::admit` —— 那就既没查会话在不在（`no_such_session`），\
+             也没过 §34 的 Gate 2"
+        );
+    }
+
+    /// ★ **生产接线（顺序钉）**：`admit` 必须在 `type_payload` **之前**。
+    ///
+    /// 这条与上面那条不是重复：上面钉「过不过门」，这条钉「门在不在路上」。
+    /// 反过来（先键入再核验）＝ 门形同虚设、而两条测试都会因为「函数被调用了」而绿。
+    /// 顺序错的形态在本仓出现过（`launch_wire` 的 env 顺序），是**最容易被 review 漏掉**的一类。
+    #[test]
+    fn the_send_into_arm_admits_before_it_types() {
+        let src = crate::guard_support::production_code(include_str!("launch.rs"));
+        let at = src.find("Mode::SendInto =>").expect("找不到 SendInto 分支");
+        let end = src[at..]
+            .find("Mode::CreateOrAttach =>")
+            .map(|k| at + k)
+            .expect("找不到分支收尾锚点");
+        let arm = &src[at..end];
+        let admit_at = arm.find("gate::admit").expect("分支里没有 `gate::admit`");
+        let type_at = arm.find("type_payload").expect("分支里没有 `type_payload`");
+        assert!(
+            admit_at < type_at,
+            "`type_payload` 排在 `gate::admit` 前面 —— 载荷先打出去了，门再判就没意义了"
+        );
+        // 键入的目标必须是 `admit` 回的**句柄**，不是名字/`t`。见 `gate` 模块头注的 TOCTOU 那段。
+        assert!(
+            arm.contains("type_payload(&handle"),
+            "键入的目标不是 `admit` 回的句柄 —— 对名字下手就把 TOCTOU 窗口放回来了"
+        );
+    }
+
+    /// ★ `create-or-attach` **刻意不过门**，且理由必须仍然成立：
+    /// 它只在 `new-session` 成功（＝会话是本次刚建的）时才键入；
+    /// 建失败但会话已存在时**早返回、根本不键入**。
+    ///
+    /// 这条是「刻意无机检 + 理由」的反面 —— 理由可机检就机检：
+    /// 一旦有人让这个分支在「会话已存在」时也去 `type_payload`，本条就红。
+    #[test]
+    fn create_or_attach_never_types_into_a_session_it_did_not_just_create() {
+        let src = crate::guard_support::production_code(include_str!("launch.rs"));
+        let at = src
+            .find("Mode::CreateOrAttach =>")
+            .expect("找不到 CreateOrAttach 分支");
+        let arm = &src[at..];
+        let early = arm
+            .find("created: false,")
+            .expect("找不到「已存在 ⇒ 早返回」那一档");
+        let types = arm.find("type_payload").expect("分支里没有 type_payload");
+        assert!(
+            early < types,
+            "「会话已存在 ⇒ 早返回」不再排在键入之前 —— 那就会往一个**不是自己刚建的**\n\
+             会话里键入，而这个分支没有 Gate 2（F03 刻意只给 send-into 装门，理由就是这条）。\n\
+             要么把早返回放回去，要么这里也得过 `gate::admit`。"
         );
     }
 
