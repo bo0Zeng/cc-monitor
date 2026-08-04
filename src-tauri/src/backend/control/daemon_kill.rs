@@ -19,52 +19,22 @@
 //!
 //! # ★★ 三态而不是两态：为什么「过门被拒」不许回落
 //!
-//! C7 允许过渡期的回落（「回落路径是**过渡期**的」），但回落有一个**危险的错法**：
-//! 把 daemon 的一次**拒绝**（`wrong_owner` / `too_many_windows`）当成「daemon 不可用」，
-//! 转头用 SSH 那条路再杀一次。那等于**把一次被门拒绝洗成另一条路的成功**——
-//! 今天两条路的门恰好等价，所以看不出问题；哪天有一侧漂了，这就是一个静默的权限旁路。
+//! C7 允许过渡期的回落，但回落有一个**危险的错法**：把 daemon 的一次**拒绝**
+//! （`wrong_owner` / `too_many_windows`）当成「daemon 不可用」，转头用 SSH 那条路再杀一次。
+//! 那等于**把一次被门拒绝洗成另一条路的成功** —— 今天两条路的门恰好等价，所以看不出问题；
+//! 哪天有一侧漂了，这就是一个静默的权限旁路。
 //!
-//! 所以本模块的结局是三态，分界线**不是**「成功/失败」，而是：
-//!
-//! > **能不能证明这条命令根本没发出去？**
-//!
-//! 能证明 ⇒ [`KillVerdict::NoChannel`]（允许回落）；不能证明 ⇒ [`KillVerdict::Refused`]（不许回落）。
-//! 逐档实测（读 `inbound_client::call` 的源码，不是猜）：
-//!
-//! | 档 | 在 `call` 里的位置 | 判定 |
-//! |---|---|---|
-//! | `client_for(origin) == None` | 连 client 都没有，一个字节没发 | **证明没发出去** ⇒ 回落 |
-//! | `Unsupported` | `call` 第一行 `if !self.accepts(cmd)`，早于 `next_id`/`register`/`send` | **证明没发出去** ⇒ 回落（旧 daemon） |
-//! | `TooManyPending` | `register(&id)` 失败，仍早于 `writes.send` | **证明没发出去** ⇒ 回落 |
-//! | `Disconnected` | **两个产地**：写队列 send 失败（没入队）**或** 等应答时 `rx` 掉了（已发出） | 分不开 ⇒ 按最坏算 ⇒ **不回落** |
-//! | `Timeout` | **两个产地**：写入段超时（源码逐字写着「daemon 没见过这条命令」）**或** 等应答段超时（可能已执行） | 分不开 ⇒ 按最坏算 ⇒ **不回落** |
-//! | `Cancelled` / `Remote{..}` | daemon 说过话了 | **不回落** |
-//!
-//! ⚠ **诚实边界**：`CallError::Timeout` 与 `Disconnected` 各有两个产地，一个能证明没发出去、
-//! 一个不能，而**类型上分不开**。本模块只能按最坏的那个处理 ⇒ 一次写入段超时会让用户
-//! 拿到错误而不是回落。要修得在 `inbound_client` 那边把两个产地分成两个变体
-//! （那是它自己的活，不是本件的）。**记在这里，别让下一个人以为是漏了。**
+//! ⚠ **分流规则本身不在这里** —— F04c 把它搬进了 [`super::daemon_route`]，
+//! 与 `send-keys` 那条命令共用**一份**（两份必漂，而漂开的后果就是上面那条）。
+//! 本模块只负责「拒绝该怎么对用户说」。
 
 use std::time::Duration;
 
-use crate::inbound_client::CallError;
+use super::daemon_route::{no_channel, route_call_error, Routed};
 
 /// 一次 `kill` 的往返上限。同 `daemon_launch::CALL_TIMEOUT_SECS` 的理由：
 /// §41「零定时器」管的是 daemon 侧不许等，客户端侧的等待本来就归客户端。
 const CALL_TIMEOUT_SECS: u64 = 10;
-
-/// 结局。**三态**，分界线是「能不能证明这条命令根本没发出去」——见模块头注。
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum KillVerdict {
-    /// daemon 确认杀掉了。
-    Killed,
-    /// **证明**这条命令没发出去 ⇒ 调用方可以回落到过渡期的 SSH 路径（C7）。
-    /// 带上原因只为诊断，不参与分流判断。
-    NoChannel(String),
-    /// daemon 说了话（拒绝 / 失败），**或者**我们无法证明它没执行 ⇒
-    /// **不许回落**，把这句话原样交给用户。
-    Refused(String),
-}
 
 /// 从 daemon 的 `kill` 应答里读出 `killed`。
 ///
@@ -80,28 +50,6 @@ pub(crate) fn killed_from_reply(reply: Option<&serde_json::Value>) -> Result<boo
         Some(serde_json::Value::Bool(b)) => Ok(*b),
         Some(other) => Err(format!("kill 应答里的 killed 不是 bool：{other}")),
         None => Err(format!("kill 应答里没有 killed 字段：{v}")),
-    }
-}
-
-/// `CallError` → 三态。**抠成纯函数是为了可断言** —— 分流规则是本模块的核心性质，
-/// 而它一旦长在 `async` 命令体里就只能靠真远端才验得到。
-pub(crate) fn verdict_for_call_error(e: &CallError) -> KillVerdict {
-    match e {
-        // 以下三档都在 `call()` 真正写出去**之前**返回 —— 见模块头注那张表。
-        CallError::Unsupported { offered, .. } => KillVerdict::NoChannel(format!(
-            "远端 daemon 没声明 `kill` 能力（它声明的是 {offered:?}）—— 多半是旧版本"
-        )),
-        CallError::TooManyPending => {
-            KillVerdict::NoChannel("入方向同时在等的命令已达上限，这条没入队".into())
-        }
-        // 以下都不能证明「没发出去」⇒ 按最坏算，不回落。
-        CallError::Disconnected | CallError::Timeout { .. } | CallError::Cancelled => {
-            KillVerdict::Refused(format!(
-                "{e} —— ⚠ 无法确认远端是否已经杀过这个会话，因此**不**再用另一条路重杀一次；\
-                 请刷新会话列表后再决定"
-            ))
-        }
-        CallError::Remote { code, message } => KillVerdict::Refused(refusal_text(code, message)),
     }
 }
 
@@ -127,11 +75,9 @@ fn refusal_text(code: &str, message: &str) -> String {
 ///
 /// 不是 `#[tauri::command]` —— 前端**够不着才对**（C9：frontend 只剩开窗）。
 /// 唯一调用方是 `tmux.rs::kill_remote_tmux`，它按三态分流。
-pub(crate) async fn daemon_kill(origin: &str, name: &str) -> KillVerdict {
+pub(crate) async fn daemon_kill(origin: &str, name: &str) -> Routed {
     let Some(client) = crate::inbound_client::client_for(origin) else {
-        return KillVerdict::NoChannel(format!(
-            "[{origin}] 没有可用的控制通道（daemon 未在场或长连接未握手）"
-        ));
+        return no_channel(origin);
     };
     let args = serde_json::json!({ "name": name });
     match client
@@ -140,15 +86,15 @@ pub(crate) async fn daemon_kill(origin: &str, name: &str) -> KillVerdict {
     {
         Ok(reply) => match killed_from_reply(reply.as_ref()) {
             // daemon 只在真杀掉时回 `killed:true`（`kill.rs::kill_for_inbound`）。
-            Ok(true) => KillVerdict::Killed,
-            Ok(false) => KillVerdict::Refused(
+            Ok(true) => Routed::Done,
+            Ok(false) => Routed::Refused(
                 "daemon 回报未杀掉，但也没给错误码 —— 协议漂移，不再用另一条路重试".into(),
             ),
-            Err(e) => KillVerdict::Refused(format!(
+            Err(e) => Routed::Refused(format!(
                 "{e} —— ⚠ 应答形状不认识时无法判断它杀没杀，因此不再用另一条路重杀"
             )),
         },
-        Err(e) => verdict_for_call_error(&e),
+        Err(e) => route_call_error(&e, refusal_text),
     }
 }
 
@@ -176,58 +122,6 @@ mod tests {
             assert!(r.is_err(), "{bad} 应当报协议漂移，而不是被读成 false");
         }
         assert!(killed_from_reply(None).is_err());
-    }
-
-    /// ★★ **本模块的核心性质**：只有「能证明没发出去」的三档才允许回落。
-    ///
-    /// 反过来错法（把 `Remote{wrong_owner}` 也当成 `NoChannel`）会让一次**被门拒绝**
-    /// 转头走 SSH 再杀一次 —— 那是把门拒绝洗成另一条路的成功。
-    #[test]
-    fn only_the_errors_that_prove_nothing_was_sent_allow_a_fallback() {
-        let fallback_ok = [
-            CallError::Unsupported {
-                cmd: "kill".into(),
-                offered: vec!["ping".into()],
-            },
-            CallError::TooManyPending,
-        ];
-        for e in &fallback_ok {
-            assert!(
-                matches!(verdict_for_call_error(e), KillVerdict::NoChannel(_)),
-                "{e:?} 是在写出去之前返回的，应当允许回落"
-            );
-        }
-        let no_fallback = [
-            CallError::Disconnected,
-            CallError::Timeout {
-                after: Duration::from_secs(1),
-            },
-            CallError::Cancelled,
-            CallError::Remote {
-                code: "wrong_owner".into(),
-                message: "sid=".into(),
-            },
-            CallError::Remote {
-                code: "too_many_windows".into(),
-                message: "windows=3".into(),
-            },
-            CallError::Remote {
-                code: "kill_failed".into(),
-                message: "boom".into(),
-            },
-            CallError::Remote {
-                code: "no_such_session".into(),
-                message: "".into(),
-            },
-        ];
-        for e in &no_fallback {
-            assert!(
-                matches!(verdict_for_call_error(e), KillVerdict::Refused(_)),
-                "{e:?} **不能证明**这条命令没发出去（或 daemon 已经说了话）——\n\
-                 允许回落就等于在未知状态上再做一次破坏性动作，\
-                 而 `wrong_owner`/`too_many_windows` 更是把门拒绝洗成另一条路的成功"
-            );
-        }
     }
 
     /// ★★ **跨轨钉（本件 D 审计自己抓出来的）：创建路径不许铸出主路杀不掉的名字。**

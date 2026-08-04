@@ -45,6 +45,20 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "U8a-2c-1：daemon `launch` 的发送端（`send-into` 那半边；attach 留在用户终端）",
     ),
     (
+        "control/daemon_route.rs",
+        "control",
+        "F04c：「这条命令能不能回落」的**唯一**判定（`kill` 与 `send-keys` 共用）。\
+         分界线是「能不能**证明**这条命令根本没发出去」，不是「成功/失败」。\
+         两份实现必漂，而漂开的后果是把一次**被门拒绝**洗成另一条路的成功",
+    ),
+    (
+        "control/daemon_send_keys.rs",
+        "control",
+        "F04c：daemon `send-keys` 的发送端。★ `enter` 落在**两个 mode 名**上而不是一个字段 —— \
+         `parse_request` 不 deny unknown fields ⇒ 旧 daemon 会静默忽略字段照样附 `Enter`，\
+         把「打断当前回合」变成「提交用户输入框里排队的文本」",
+    ),
+    (
         "control/daemon_kill.rs",
         "control",
         "F04b：daemon `kill` 的发送端（C6 那条顺序的最后一步）。★ 结局是**三态**而不是两态 —— \

@@ -132,6 +132,28 @@ if wait_for '"id":"e2e-gate2-nos"'; then
   fi
 else bad "目标不存在场景 5s 内无应答"; fi
 
+# ── 场景 N+1b（F04c）：**新 mode `send-keys-raw` 也过同一道 Gate 2** ────────────
+# 一个新 mode 绕过身份门，是「加功能顺手开个后门」最典型的形状：功能测试全绿，
+# 而「往别人的 tmux 会话里打字」这道门只对旧 mode 生效。
+# 拒绝这一档同样要**两件事都满足**：应答说 false，**且 pane 真的没被污染**。
+"$TMUX_BIN" kill-server 2>/dev/null || true; sleep 0.2
+"$TMUX_BIN" new-session -d -s notours   # 不是本工具的命名形状，且不设 @ccm_sid
+send '{"id":"e2e-gate2-raw","cmd":"launch","args":{"mode":"send-keys-raw","name":"notours","payload":"printf %s CCMGATE_RAW"}}'
+if wait_for '"id":"e2e-gate2-raw"'; then
+  R="$(reply_of e2e-gate2-raw)"
+  sleep 0.4
+  P="$($TMUX_BIN capture-pane -p -t '=notours:' 2>/dev/null || true)"
+  if printf '%s' "$R" | grep -qF '"ok":false' && printf '%s' "$R" | grep -qF 'wrong_owner'; then
+    if printf '%s' "$P" | grep -q CCMGATE_RAW; then
+      bad "send-keys-raw 回了 wrong_owner，**但键已经打进去了** —— 门在动作之后"
+    else
+      ok "send-keys-raw 也过 Gate 2（非本工具会话 → wrong_owner，pane 未被污染）"
+    fi
+  else
+    bad "send-keys-raw 没被 Gate 2 拒（期望 wrong_owner）：$R"
+  fi
+else bad "send-keys-raw 的 Gate 2 场景 5s 内无应答"; fi
+
 # ── 场景 N+2：`@ccm_sid_expect` 已设但 `@ccm_sid` 未设 ⇒ **照样拒绝** ───────────
 # 这条不在判定表里（表是纯判定，不认识 tmux option 名），但它是本门最容易被放宽的一处：
 # 「通道 A 声明了意图」不等于「通道 B 确认了事实」，而破坏性动作只认事实。

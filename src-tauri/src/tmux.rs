@@ -400,10 +400,10 @@ pub async fn kill_remote_tmux(origin: String, target: String) -> Result<(), Stri
     let cmd = build_kill_session_cmd(&target)?;
     // ★ 主路：走 backend 的 daemon 通道。
     match crate::backend::control::daemon_kill::daemon_kill(&origin, &target).await {
-        crate::backend::control::daemon_kill::KillVerdict::Killed => return Ok(()),
-        crate::backend::control::daemon_kill::KillVerdict::Refused(why) => return Err(why),
+        crate::backend::control::daemon_route::Routed::Done => return Ok(()),
+        crate::backend::control::daemon_route::Routed::Refused(why) => return Err(why),
         // 证明没发出去 ⇒ 过渡期回落（C7）。`why` 只做诊断，不参与分流。
-        crate::backend::control::daemon_kill::KillVerdict::NoChannel(why) => {
+        crate::backend::control::daemon_route::Routed::NoChannel(why) => {
             tracing::debug!("[{origin}] kill 回落到一次性 SSH：{why}");
         }
     }
@@ -470,6 +470,18 @@ fn build_send_keys_remote_cmd(target: &str, keys: &str, enter: bool) -> Result<S
 /// `@ccm_sid` 已设）——`build_send_keys_remote_cmd` 内部处理；非 `cc-*` 名不再在客户端提前拒绝
 /// （F02 允许 `--tmux=<自定义名>`，这类会话是 `ccm` 拥有的、只是名字不含前缀，必须走远端核验
 /// 而非按名字形状一刀切拒绝，否则是新引入的向后不兼容）。
+/// # ★ F04c：**主路已经切到 daemon** —— 下面那条 SSH 串是**过渡期回落**（C7）
+///
+/// `enter` 落在 daemon 的**两个 mode 名**上，不是一个字段：
+/// `true` → 既有的 `send-into`（旧 daemon 也接得住）· `false` → F04c 新增的 `send-keys-raw`。
+/// **为什么不能是字段**：daemon 的 `parse_request` 手工取键、不 deny unknown fields ⇒
+/// 旧版本会**静默忽略**它、照样附 `Enter` ⇒ 把「打断当前回合」变成
+/// 「**提交用户输入框里排队的文本**」（就是上面那段警告的后果）。
+/// 新 mode 名则天然 fail-closed：旧 daemon 回 `invalid_args`，我们拿到明确错误。
+///
+/// ⚠ **三态分流，不是「失败就回落」**：只有能**证明**那条命令根本没发出去时才回落
+/// （规则住 `backend::control::daemon_route`，与 `kill` 共用一份）。
+/// ⚠ 回落那条**仍然带满 Gate 1/2**（`build_send_keys_remote_cmd`）—— 回落不等于降级安全性。
 #[tauri::command]
 pub async fn tmux_send_keys(
     origin: String,
@@ -477,8 +489,21 @@ pub async fn tmux_send_keys(
     keys: String,
     enter: Option<bool>,
 ) -> Result<(), String> {
-    // 缺省（前端旧调用不传）→ true，与 A5 原行为逐字节等价。命令构造先于配置查找（同 kill）。
-    let cmd = build_send_keys_remote_cmd(&target, &keys, enter.unwrap_or(true))?;
+    // 缺省（前端旧调用不传）→ true，与 A5 原行为逐字节等价。命令构造先于一切 IO（同 kill）。
+    let enter = enter.unwrap_or(true);
+    let cmd = build_send_keys_remote_cmd(&target, &keys, enter)?;
+    // ★ 主路：走 backend 的 daemon 通道。
+    match crate::backend::control::daemon_send_keys::daemon_send_keys(
+        &origin, &target, &keys, enter,
+    )
+    .await
+    {
+        crate::backend::control::daemon_route::Routed::Done => return Ok(()),
+        crate::backend::control::daemon_route::Routed::Refused(why) => return Err(why),
+        crate::backend::control::daemon_route::Routed::NoChannel(why) => {
+            tracing::debug!("[{origin}] send-keys 回落到一次性 SSH：{why}");
+        }
+    }
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
     let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
