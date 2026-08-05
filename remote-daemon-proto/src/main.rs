@@ -131,12 +131,17 @@ const PROTO_VERSION: u32 = 1;
 ///   报同一个 id ⇒ 判 `Skip` ⇒ 已部署的旧 daemon **整个控制面静默不可用**。
 ///   本轮把通道面纳入指纹并 bump；**本条 bump 本身就是那笔欠账的偿付** ——
 ///   报 `p1v` 的远端从此会被判 stale 并重装。CLI 那一面**一字未改**。
+/// - p1x-overflow-identity = **audit-0805 F03**：`Overflow` additive 加 `lost` / `lost_truncated`。
+///   出方向那条通道此前对 11 种帧一视同仁地 `try_send` 丢弃，而「丢一帧可恢复」**只对内容帧成立** ——
+///   `session_added`/`session_removed`/`tmux_session_closed` 是一次差分的结果、别处不存在，
+///   客户端拿着「丢了 N 条」没法重同步。现在不可恢复的那些会带 `kind`+`subject` 出来（有界 64）。
+///   ⚠ wire additive、**不 bump `PROTO_VERSION`**；但二进制行为变了 ⇒ 照 p1v 的先例 bump build_id。
 ///   `session_kind` 此前把两件事压在一个轴上 —— ①「该不该在 UI 出现」②「attach 进去对人有没有
 ///   意义」。SDK / 脚本驱动的会话正好「①要②不要」：它**有** tmux、`@ccm_sid` 也对，但
 ///   `stdin=DEVNULL`，用户敲的字会被脚本吃掉。省略 = true（存量零迁移）。
 ///   **必须 bump**：monitor 要靠新 daemon 才拿得到这个字段；不 bump 就不判 stale、不重装。
 ///   （wire 是 additive、旧 monitor 忽略未知字段 ⇒ **不 bump PROTO_VERSION**。）
-const BUILD_ID: &str = "p1w-inbound-in-fingerprint";
+const BUILD_ID: &str = "p1x-overflow-identity";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
@@ -436,7 +441,8 @@ async fn main() {
     // （此前是一条比较 `main.rs` 里两个字符串字节位置的机检，被一次普通的函数抽取绕过，已删。
     //  U8a-2a 顺带订正了本注释与 `doc/IPC-PROTOCOL.md` 里对那条已删机检的指名。）
     //
-    // 应答走**独立通道**：出方向丢一帧可恢复（`Overflow` 会说丢了多少，行还在远端 jsonl），
+    // 应答走**独立通道**：出方向丢一条**内容帧**可恢复（行还在远端 jsonl 里），
+    // ⚠ 而**状态增量帧**丢了别处没有 —— 那半靠 `Overflow.lost` 带身份让客户端重同步（audit-0805 F03），
     // 丢一条应答会让客户端永远等下去。混在一个通道里，实时行的洪峰会把应答挤掉。
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
     let inbound_task = inbound::spawn(tokio::io::stdin(), reply_tx.clone(), hello_flushed);

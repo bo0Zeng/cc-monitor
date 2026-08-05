@@ -12,6 +12,7 @@
 //!   [`Frame`]s into the channel via [`FrameSink`]. It uses `try_send`, so a full
 //!   channel drops the frame rather than ever blocking the notify callback — but
 //!   it **counts** the dropped frames and emits a [`Frame::Overflow`] signal once
+//!   （audit-0805 F03：**不可恢复**的那些还会带上身份 `lost`，见 `LOST_IDENTITY_CAP`）
 //!   the channel drains (#32), so the client can warn that live lines were lost.
 //! - the **writer** ([`crate::main`]'s stdout task) drains the channel and
 //!   writes one wire line per frame. A slow SSH pipe back-pressures the channel
@@ -41,7 +42,7 @@
 //! this daemon reads via one `fs::read` snapshot and gives up the whole pass
 //! (cursor untouched). Both are at-least-once-safe.
 
-use crate::wire::{Frame, RemovalCause, SeqCounter};
+use crate::wire::{Frame, LostFrame, RemovalCause, SeqCounter};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult};
 use std::collections::{HashMap, HashSet};
@@ -1469,11 +1470,34 @@ struct FrameSink {
     tx: mpsc::Sender<Frame>,
     /// Frames dropped since the last successfully-sent `Overflow` signal.
     dropped: u64,
+    /// 〔audit-0805 F03〕那批丢帧里**不可恢复**的那些的身份。
+    ///
+    /// 只有计数的 `Overflow` 对内容帧够用（行还在远端 jsonl 里），对状态增量帧不够：
+    /// 它是一次差分的结果、别处不存在，客户端拿着「丢了 N 条」没法重同步。
+    lost: Vec<LostFrame>,
+    /// 身份表触顶过（超出 [`LOST_IDENTITY_CAP`] 的那些只计数、不留身份）。
+    lost_truncated: bool,
 }
+
+/// 丢帧身份表的上限〔audit-0805 F03，定框 **E5**：上限与超限语义成对定义〕。
+///
+/// **超限语义**：超出的那些**仍然计入 `dropped`**，只是不再留身份，并置 `lost_truncated`
+/// 让客户端知道「这份清单不全」——**不是**静默截断（那正是本区在治的病）。
+///
+/// ⚠ **为什么必须有界**：通道卡死时 `dropped` 会一直涨，如果身份表跟着无界增长，
+/// 就等于把 `CHANNEL_CAPACITY` 想防的内存增长从帧**挪到了 `Overflow` 自己身上**。
+/// 64 的取法：一次拥塞里真正值得逐个重同步的会话数量级是「几个到几十个」；
+/// 再多时客户端理性的做法本来就是整体重取快照，而 `lost_truncated` 恰好告诉它该这么做。
+const LOST_IDENTITY_CAP: usize = 64;
 
 impl FrameSink {
     fn new(tx: mpsc::Sender<Frame>) -> Self {
-        FrameSink { tx, dropped: 0 }
+        FrameSink {
+            tx,
+            dropped: 0,
+            lost: Vec::new(),
+            lost_truncated: false,
+        }
     }
 
     /// Send `frame`, first flushing any owed overflow signal.
@@ -1487,13 +1511,24 @@ impl FrameSink {
         if self.dropped > 0 {
             match self.tx.try_send(Frame::Overflow {
                 dropped: self.dropped,
+                lost: self.lost.clone(),
+                lost_truncated: self.lost_truncated,
             }) {
                 Ok(()) => {
                     tracing::warn!(
-                        "recovered from frame-channel overflow; signalled {} dropped frame(s)",
-                        self.dropped
+                        "recovered from frame-channel overflow; signalled {} dropped frame(s), \
+                         {} unrecoverable identities{}",
+                        self.dropped,
+                        self.lost.len(),
+                        if self.lost_truncated {
+                            " (identity list truncated)"
+                        } else {
+                            ""
+                        }
                     );
                     self.dropped = 0;
+                    self.lost.clear();
+                    self.lost_truncated = false;
                 }
                 // Still wedged: keep owing the count, retry on the next send.
                 Err(mpsc::error::TrySendError::Full(_)) => {}
@@ -1502,12 +1537,23 @@ impl FrameSink {
         }
         match self.tx.try_send(frame) {
             Ok(()) => {}
-            Err(mpsc::error::TrySendError::Full(_)) => {
+            Err(mpsc::error::TrySendError::Full(frame)) => {
                 self.dropped += 1;
+                // 〔audit-0805 F03〕**不可恢复的那些要留下身份**，否则客户端只知道
+                // 「丢了 N 条」，而状态增量帧丢了别处没有、它无从重同步。
+                // 有界：超出 `LOST_IDENTITY_CAP` 的仍计入 `dropped`，只是不再留身份并置位标志。
+                if !frame.loss_is_recoverable() {
+                    if self.lost.len() < LOST_IDENTITY_CAP {
+                        self.lost.push(frame.loss_identity());
+                    } else {
+                        self.lost_truncated = true;
+                    }
+                }
                 tracing::warn!(
                     "frame channel full (cap {CHANNEL_CAPACITY}); dropping frame \
-                     ({} dropped since last overflow signal)",
-                    self.dropped
+                     ({} dropped since last overflow signal, {} unrecoverable identities kept)",
+                    self.dropped,
+                    self.lost.len()
                 );
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
@@ -3567,7 +3613,7 @@ mod tests {
         });
         assert_eq!(sink.dropped, 0, "overflow signal flushed, counter reset");
         assert!(
-            matches!(rx.try_recv(), Ok(Frame::Overflow { dropped: 3 })),
+            matches!(rx.try_recv(), Ok(Frame::Overflow { dropped: 3, .. })),
             "overflow signal carries the dropped count and arrives first"
         );
         assert!(
@@ -3590,6 +3636,137 @@ mod tests {
             waiting_for: None,
         });
         assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
+    }
+
+    /// ★★ **丢的是「别处没有」的帧时，`Overflow` 必须带上身份**〔audit-0805 F03，定框 E4〕。
+    ///
+    /// 只有计数的 `Overflow` 对**内容帧**够用（行还在远端 jsonl 里），对**状态增量帧**不够：
+    /// 它是一次差分的结果、别处不存在，客户端拿着「丢了 N 条」**没法重同步**。
+    ///
+    /// ⚠ 这条钉的是**行为**，不是「代码里有没有那个字段」——
+    /// 塞满通道、真丢一条 `SessionRemoved`，再看排空后那条 `Overflow` 认不认得它。
+    #[test]
+    fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
+        let (tx, mut rx) = mpsc::channel::<Frame>(1);
+        let mut sink = FrameSink::new(tx);
+
+        // 占满（cap 1）。
+        sink.send(Frame::Line {
+            session_id: "occupy".into(),
+            path: "/p".into(),
+            seq: 0,
+            raw: "{}".into(),
+            byte_offset: 0,
+        });
+        // 丢一条内容帧（可恢复 ⇒ 只计数、不留身份）与一条状态增量帧（不可恢复 ⇒ 留身份）。
+        sink.send(Frame::Line {
+            session_id: "content-lost".into(),
+            path: "/p".into(),
+            seq: 1,
+            raw: "{}".into(),
+            byte_offset: 1,
+        });
+        sink.send(Frame::SessionRemoved {
+            sid: "sid-gone".into(),
+            cause: RemovalCause::Gone,
+        });
+        assert_eq!(sink.dropped, 2, "两条都该计入 dropped");
+
+        // 排空后下一次 send 会先补 Overflow。
+        assert!(matches!(rx.try_recv(), Ok(Frame::Line { .. })));
+        sink.send(Frame::TurnEnd {
+            session_id: "x".into(),
+            uuid: "u".into(),
+        });
+        match rx.try_recv() {
+            Ok(Frame::Overflow {
+                dropped,
+                lost,
+                lost_truncated,
+            }) => {
+                assert_eq!(dropped, 2);
+                assert!(!lost_truncated, "才两条，远没到上限");
+                assert_eq!(
+                    lost,
+                    vec![crate::wire::LostFrame {
+                        kind: "session_removed",
+                        subject: Some("sid-gone".into()),
+                    }],
+                    "只有不可恢复的那条留身份；内容帧丢了别处还有，不该占位"
+                );
+            }
+            other => panic!("期望带身份的 Overflow，实得 {other:?}"),
+        }
+    }
+
+    /// 身份表**有界**，且超限**不是静默截断**〔定框 E5：上限与超限语义成对定义〕。
+    ///
+    /// 没有这个界，就等于把 `CHANNEL_CAPACITY` 想防的内存增长从帧挪到了 `Overflow` 自己身上。
+    #[test]
+    fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
+        let (tx, mut rx) = mpsc::channel::<Frame>(1);
+        let mut sink = FrameSink::new(tx);
+        sink.send(Frame::Line {
+            session_id: "occupy".into(),
+            path: "/p".into(),
+            seq: 0,
+            raw: "{}".into(),
+            byte_offset: 0,
+        });
+        let over = LOST_IDENTITY_CAP + 5;
+        for i in 0..over {
+            sink.send(Frame::SessionRemoved {
+                sid: format!("sid-{i}"),
+                cause: RemovalCause::Gone,
+            });
+        }
+        assert_eq!(sink.dropped, over as u64, "超出上限的仍然计入 dropped");
+        assert_eq!(sink.lost.len(), LOST_IDENTITY_CAP, "身份表不许越界增长");
+        assert!(sink.lost_truncated, "截断了就要说出来，不许静默");
+
+        assert!(matches!(rx.try_recv(), Ok(Frame::Line { .. })));
+        sink.send(Frame::TurnEnd {
+            session_id: "x".into(),
+            uuid: "u".into(),
+        });
+        match rx.try_recv() {
+            Ok(Frame::Overflow {
+                lost,
+                lost_truncated,
+                ..
+            }) => {
+                assert_eq!(lost.len(), LOST_IDENTITY_CAP);
+                assert!(lost_truncated, "标志要真的上线，不能只留在 sink 里");
+            }
+            other => panic!("期望 Overflow，实得 {other:?}"),
+        }
+    }
+
+    /// 分类表**不许用 `_ =>` 兜底**〔LEDGER S1 的钉法〕。
+    ///
+    /// 穷尽 `match` 的全部价值就在于**新增帧种时编译期躲不掉**。
+    /// 有人图省事加一条 `_ => true`，编译照过、而新帧种就此默认「丢了没关系」——
+    /// 那正是 B-3 的原样复发。⇒ 用零命中守卫钉住源码形态。
+    #[test]
+    fn the_recoverability_table_has_no_catch_all_arm() {
+        let src = guard_core::production_code(include_str!("../wire.rs"));
+        let begin = src
+            .find("pub fn loss_is_recoverable")
+            .expect("找不到 loss_is_recoverable —— 抽取器坏了，本条会零命中地绿");
+        let end = src[begin..]
+            .find("\n    }\n")
+            .expect("找不到函数结尾 —— 抽取器坏了");
+        let body = &src[begin..begin + end];
+        assert!(
+            body.contains("Frame::Line"),
+            "抽到的函数体里连 `Frame::Line` 都没有 —— 切错范围了，本条会零命中地绿"
+        );
+        assert!(
+            !body.contains("_ =>"),
+            "`loss_is_recoverable` 里出现了 `_ =>` 兜底臂。\n\
+             穷尽 match 的全部价值就是**新增帧种时编译期躲不掉**；加了兜底 = 新帧种默认\n\
+             「丢了没关系」，而那正是 audit-0805 B-3 的原样复发。逐个列出来，别偷懒。"
+        );
     }
 
     #[cfg(target_os = "linux")]

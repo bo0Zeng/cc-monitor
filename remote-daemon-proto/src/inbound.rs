@@ -57,7 +57,9 @@ pub const MAX_LINE_BYTES: usize = 1 << 20;
 
 /// 应答通道容量。**刻意与出方向的 `CHANNEL_CAPACITY`（10_000）分开**。
 ///
-/// 出方向丢一帧是可恢复的（`Overflow` 会告诉客户端丢了多少，行还在远端 jsonl 里）；
+/// 出方向丢一条**内容帧**是可恢复的（行还在远端 jsonl 里）；⚠ **这句话此前写成「丢一帧可恢复」，
+/// 那是假的** —— `session_added`/`session_removed`/`tmux_session_closed` 是一次差分的结果、
+/// 别处不存在（audit-0805 B-3）。那半今天靠 `Overflow.lost` 带身份让客户端重同步；
 /// **丢一条应答会让客户端永远等下去**。两者混在同一个通道里，实时行的洪峰会把应答挤掉。
 /// 所以给应答一条独立的小通道，writer 两边都收。
 pub const REPLY_CHANNEL_CAPACITY: usize = 256;
