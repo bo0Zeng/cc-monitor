@@ -305,11 +305,15 @@ mod tests {
             .filter_map(|l| l.strip_prefix("run: "))
             .map(str::trim)
             .collect();
-        // 抽取器自检 ②：一条 `run:` 都没抽到 ⇒ 下面的比对会零命中地绿。
+        // 抽取器自检 ②：**只挡「一条都没抽到」**。
+        // ⚠ Phase D 审计抓到的：这里原本写 `runs.len() >= 4`，于是「删掉一步」这个
+        //    最省事的错法**先撞上自检**、拿到的是「抽取器坏了」这条**误导性诊断**，
+        //    而下面那段精心写的「删掉等于把 Windows 编译信号交出去」在删除场景下**不可达**。
+        //    计划里四条变异全部落进了这个坑 —— 它们确实红了，但**红的理由是错的**。
+        //    ⇒ 自检只管「零命中」，「少了一条」交给下面的正文断言去说。
         assert!(
-            runs.len() >= 4,
-            "从 `daemon:` job 只抽到 {} 条 `run:` 行（应 ≥4）—— 抽取器坏了，本条会零命中地绿：{runs:?}",
-            runs.len()
+            !runs.is_empty(),
+            "从 `daemon:` job 一条 `run:` 行都没抽到 —— 抽取器坏了，本条会零命中地绿"
         );
         for want in [
             "cargo fmt --check",
@@ -321,12 +325,62 @@ mod tests {
         ] {
             assert!(
                 runs.contains(&want),
-                "`ci.yml` 的 `daemon:` job 里没有（未注释的）`run: {want}` —— daemon 四步少了一条。\n\
+                "`ci.yml` 的 `daemon:` job 里没有（未注释的）`run: {want}`。\n\
                  今天抽到的 run 行：{runs:?}\n\
-                 ⚠ 若少的是那条跨 target check：它是 `ci.yml` 自己写的\n\
+                 两种可能，看上面那行就能分辨：\n\
+                 ① 这一步真的被删/被注释/被改了；\n\
+                 ② 它改成了本抽取器不认的写法 —— **只认单行 `run: <命令>`**，\n\
+                    多行 `run: |` 与裸 `- run: <命令>` 都抽不到（方向 fail-safe：假红不假绿）。\n\
+                 ⚠ 若涉及那条跨 target check：它是 `ci.yml` 自己写的\n\
                  「§1.1 第一条解耦线（平台线）的唯一真判据」，删掉等于把 Windows 编译信号交出去。"
             );
         }
+    }
+
+    /// ★★★ **Windows 信号的锚是 `runs-on:` 那一行，它自己也得有人守**〔audit-0805 F01 的 Phase D〕。
+    ///
+    /// # 这条是审计打脸打出来的
+    ///
+    /// 上面那条刚给 daemon 四步补完守卫，Phase D 立刻指出：**更中心的那一行仍然零守卫** ——
+    /// 把 `rust` job 的 `runs-on` 从 `windows-latest` 改成 `ubuntu-latest`，
+    /// **全仓一条判据都不红**（审计变异实测：改完 `cargo test --lib` 仍 888 passed / 0 failed）。
+    /// 而那个 job 是**生产平台唯一的编译与测试信号** —— 换掉 runner 等于把它整个交出去，
+    /// 且交出去之后所有门禁**依旧全绿**，比删掉一步隐蔽得多。
+    ///
+    /// 全仓读 `.github/workflows` 的只有两处（本文件 + `local_backend.rs:719` 读 `release.yml`），
+    /// **两处都不看 `runs-on`**；`windows-latest` 这个字面量在仓里其余命中全是散文注释。
+    ///
+    /// ⚠ 本条**不管** daemon job 在哪跑（它在 ubuntu 上跨 target check，那是刻意的、
+    /// `ci.yml:159-161` 有论证）—— 只钉「那个真跑 Windows 的 job 还在 Windows 上跑」。
+    #[test]
+    fn the_only_windows_signal_still_runs_on_a_windows_runner() {
+        let block = ci_job_block("rust");
+        // 抽取器自检：切不出块就零命中地绿。
+        assert!(
+            block.lines().count() >= 10,
+            "从 ci.yml 切 `rust:` job 只得到 {} 行 —— job 名或缩进变了，本条会零命中地绿",
+            block.lines().count()
+        );
+        let runs_on: Vec<&str> = block
+            .lines()
+            .map(str::trim)
+            .filter_map(|l| l.strip_prefix("runs-on: "))
+            .map(str::trim)
+            .collect();
+        assert_eq!(
+            runs_on.len(),
+            1,
+            "`rust:` job 里抽到 {} 条 `runs-on:`（应恰好 1）—— 抽取器坏了或 job 形状变了：{runs_on:?}",
+            runs_on.len()
+        );
+        assert_eq!(
+            runs_on[0], "windows-latest",
+            "`rust:` job 的 runner 变成了 `{}` —— 它是**生产平台唯一的编译与测试信号**。\n\
+             换掉之后所有门禁依旧全绿（审计实测：改成 ubuntu 后 `cargo test --lib` 888 passed），\n\
+             ⇒ 这条判据存在的全部理由就是让这个改动红一次。\n\
+             真要换平台：先在 `audit-0805/ROADMAP §5` 写清「此后没有 Windows 证据」再改这里。",
+            runs_on[0]
+        );
     }
 
     /// 反过来也要成立：`[workspace] members` 里列的目录必须真的存在。
