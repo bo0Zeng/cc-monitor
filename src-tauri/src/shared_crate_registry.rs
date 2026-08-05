@@ -78,6 +78,39 @@ mod tests {
             .join("\n")
     }
 
+    /// 切出某个顶层 job 的行范围（同样剔注释）。
+    ///
+    /// 顶层 job 键的形状是**两个空格 + 名字 + 冒号**（`  daemon:`），下一个同缩进的键即块尾。
+    /// ⚠ 用它而不是整份 `contains` 的理由见 [`ci_actually_runs_the_daemon_four_steps`]：
+    /// 有的步骤命令是别的 job 里某条命令的**子串**，整份查会被盖住。
+    fn ci_job_block(name: &str) -> String {
+        let head = format!("  {name}:");
+        let yml = ci_yml();
+        let mut out = Vec::new();
+        let mut inside = false;
+        for line in yml.lines() {
+            if line == head {
+                inside = true;
+                continue;
+            }
+            if inside {
+                // 同缩进的下一个键 = 块尾（两空格开头、非空白第三字符、以冒号结尾）。
+                let is_next_key = line.len() > 2
+                    && line.starts_with("  ")
+                    && !line.as_bytes()[2].is_ascii_whitespace()
+                    && line.trim_end().ends_with(':')
+                    && !line.trim_start().starts_with('#');
+                if is_next_key {
+                    break;
+                }
+                if !line.trim_start().starts_with('#') {
+                    out.push(line);
+                }
+            }
+        }
+        out.join("\n")
+    }
+
     /// ★ 抽取器自检：`crates/` 下一个都没抽到时，下面那条会零命中零失败地绿。
     #[test]
     fn the_crate_scan_actually_finds_crates() {
@@ -222,6 +255,76 @@ mod tests {
             assert!(
                 ci.contains(needle),
                 "`ci.yml` 里找不到（未注释的）`{needle}` —— 收敛后的门禁少了一条"
+            );
+        }
+    }
+
+    /// ★★ **daemon job 那四步也必须真的在跑**〔audit-0805 F01〕。
+    ///
+    /// # 为什么单开一条（而不是往上面那条的 needle 表里加）
+    ///
+    /// 上面那条钉的四条 needle **全部命中 monitor job**，与 daemon job 的四步**一条都不重叠**。
+    /// 实测（`audit-0805` 的只读核实）：全仓读 `.github/workflows` 的**只有两处**
+    /// （本文件 + `backend/control/local_backend.rs:719` 读 `release.yml`），
+    /// `actionlint` / `yamllint` **全仓零命中** ⇒ **把 `cargo check --target …` 那一步注释掉，
+    /// 今天全仓门禁一条都不会红。** 而 `ci.yml` 在那一步上方逐字写着
+    /// 「**§1.1 第一条解耦线（平台线）的唯一真判据**」——
+    /// 一条自称唯一真判据的步骤，自己没有任何东西守着。
+    ///
+    /// # 为什么按 job 块切 + 只看 `run:` 行 + **精确相等**
+    ///
+    /// 这条判据自己被变异抓过**两次**，每次都是同一族的「匹配到了别的地方」：
+    ///
+    /// 1. **整份 `contains` 会被别的 job 的子串盖住**：daemon 那步是**裸** `cargo test`，
+    ///    而它是 monitor 那条 `cargo test --workspace --exclude code-picture-core` 的子串
+    ///    ⇒ 注释掉 daemon 那步，整份 `contains("cargo test")` 照样命中（实测全文件 10 处命中）。
+    ///    ⇒ 先切 job 块。
+    /// 2. ★ **切了块还不够：needle 会匹配到步骤名那一行。** 第一版切了块、但用
+    ///    `block.contains("cargo test")`，而块里有 `- name: cargo test` ⇒
+    ///    **把 `run: cargo test` 注释掉，判据照样绿**（变异实测落地了、判据没红）。
+    ///    ⇒ 只收集 `run:` 行，且**精确相等**而不是 `contains`。
+    ///
+    /// 一般化：**判据要钉的是那条真的会被执行的行，不是恰好长得像它的那些字**。
+    #[test]
+    fn ci_actually_runs_the_daemon_four_steps() {
+        let block = ci_job_block("daemon");
+        // 抽取器自检 ①：切不出块 / 切错块时，下面四条会零命中地绿。
+        assert!(
+            block.lines().count() >= 10,
+            "从 ci.yml 切 `daemon:` job 只得到 {} 行 —— job 名或缩进变了，本条会零命中地绿",
+            block.lines().count()
+        );
+        assert!(
+            block.contains("working-directory: remote-daemon-proto"),
+            "切出来的块里没有 `working-directory: remote-daemon-proto` —— 切错 job 了，本条会零命中地绿"
+        );
+        // 只取真会被执行的那些行（`run: <单行命令>`），并剥成纯命令。
+        let runs: Vec<&str> = block
+            .lines()
+            .map(str::trim)
+            .filter_map(|l| l.strip_prefix("run: "))
+            .map(str::trim)
+            .collect();
+        // 抽取器自检 ②：一条 `run:` 都没抽到 ⇒ 下面的比对会零命中地绿。
+        assert!(
+            runs.len() >= 4,
+            "从 `daemon:` job 只抽到 {} 条 `run:` 行（应 ≥4）—— 抽取器坏了，本条会零命中地绿：{runs:?}",
+            runs.len()
+        );
+        for want in [
+            "cargo fmt --check",
+            // ★ 平台线的唯一真判据。`--all-targets` 是其中一半：不加只编生产段，
+            //   而 U4a 实测 12 个错里有 1 个在测试段（`libc::getuid`）。
+            "cargo check --all-targets --target x86_64-pc-windows-msvc",
+            "cargo clippy --all-targets",
+            "cargo test",
+        ] {
+            assert!(
+                runs.contains(&want),
+                "`ci.yml` 的 `daemon:` job 里没有（未注释的）`run: {want}` —— daemon 四步少了一条。\n\
+                 今天抽到的 run 行：{runs:?}\n\
+                 ⚠ 若少的是那条跨 target check：它是 `ci.yml` 自己写的\n\
+                 「§1.1 第一条解耦线（平台线）的唯一真判据」，删掉等于把 Windows 编译信号交出去。"
             );
         }
     }
