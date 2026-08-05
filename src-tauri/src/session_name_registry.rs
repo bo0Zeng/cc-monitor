@@ -254,7 +254,12 @@ mod tests {
         // F13（2026-08-04）：4 → 3。退役的是 `src/launch-requests.ts` 那个 `<sid8>-cc` 默认值
         // （与 `pickFreshTmuxName` 基名逐字相同却不做撞名避让 —— 用户问的「为什么会撞名」的根因之一）。
         // 剩下 3 份：`fork-launch.ts`（→ F13 已改调铸名口，仍自产基名）·`shared/ccm`（→ F06）·
-        // `cc-spawn`（→ F13a，等本机后端）。
+        // `cc-spawn`（→ F13a）。⚠ **〔F13a 摸底订正 08-04〕它等的不是「本机后端」** ——
+        // 实测：`cc-spawn` 已经**走 `ccm`**（`CCM_BIN --detach`，还带 `--ccm-probe` 能力协商），
+        // 它走的是**命令行**、不是 monitor 的进程内通道 ⇒ 本机后端跑不跑起来与它**无关**。
+        // 它真正等的是 **F06b**：`ccm` 去调 daemon 的 `--resolve` 拿 argv/名字。
+        // ⚠ 而 daemon 侧 `--resolve` **早就做好了**（`control/resolve_query.rs`：
+        // stdin `ResumeSpec` → stdout `CommandPlan`）—— 缺的是 **`ccm` 那一侧的调用**。
         assert_eq!(
             dups, 3,
             "副本数变了 —— 退役了就把棘轮往下拧，并更新 S12 的账"
