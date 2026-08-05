@@ -662,7 +662,12 @@ mod tests {
     fn the_hello_witness_can_only_come_from_a_hello_frame() {
         assert!(DaemonHello::from_hello_frame(&hello_frame(&["ping"])).is_some());
         assert!(
-            DaemonHello::from_hello_frame(&InboundFrame::Overflow { dropped: 1 }).is_none(),
+            DaemonHello::from_hello_frame(&InboundFrame::Overflow {
+                dropped: 1,
+                lost: Vec::new(),
+                lost_truncated: false
+            })
+            .is_none(),
             "非 Hello 帧换出了见证 —— 「Hello 之前不许写」就破了"
         );
     }
