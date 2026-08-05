@@ -291,6 +291,31 @@ fn build_capture_pane_cmd(target: &str) -> Result<String, String> {
 ///
 /// `need_sid=false && need_windows=false` 时退化成今天的精确原样一行（零改动、零额外 round
 /// trip）——覆盖 100% 的现有真实流量（`cc-*` 命名的 send-keys）。
+/// ★★ **Gate 2 的 shell 表示** —— 抽成独立函数是为了它**可被真跑一遍**〔G2-1〕。
+///
+/// # 它与 `gate_core::gate2` 的关系（Phase G 审计那句话要精确一格）
+///
+/// 审计报的是「`tmux.rs` 是 Gate 2 判定的**第三份实现**、游离在金表对拍外」。
+/// 量下去要修正一半：**name 那半没有第三份** —— 调用点算 `need_sid = !name_owned`，
+/// 而 `name_owned` 走的正是 [`is_ccm_tmux_name`]（转调 `gate_core`，且
+/// `gate_singleton_guard` 钉着「全仓只有一份」）。
+/// **手写的只有 `@ccm_sid` 那半**（这条表达式），它对应 `gate2` 里
+/// 「`remote_sid` 非空 ⇒ `AllowedByRemoteSid`，否则 `Rejected`」那一支。
+///
+/// ⇒ 所以补的不是「再抄一份判定」（那会变成真正的第三份），而是
+/// **拿金表逐行真跑这条 shell 表达式**，看它的裁决与 `gate_core::gate2` 是否一致。
+/// 判据见 `tests::the_shell_gate_expression_agrees_with_the_golden_table`。
+///
+/// ⚠ `need_windows` 那半是 **Gate 3**（多窗口保护），不属 Gate 2，金表不管它。
+fn gate_guard_expr(need_sid: bool, need_windows: bool) -> &'static str {
+    match (need_sid, need_windows) {
+        (true, true) => "[ -n \"$sid\" ] && [ \"$w\" = \"1\" ]",
+        (true, false) => "[ -n \"$sid\" ]",
+        (false, true) => "[ \"$w\" = \"1\" ]",
+        (false, false) => unreachable!("已在上面的退化分支处理"),
+    }
+}
+
 fn build_guarded_tmux_cmd(
     target: &str,
     need_sid: bool,
@@ -314,12 +339,7 @@ fn build_guarded_tmux_cmd(
     } else {
         "w=\"$info\";"
     };
-    let guard = match (need_sid, need_windows) {
-        (true, true) => "[ -n \"$sid\" ] && [ \"$w\" = \"1\" ]",
-        (true, false) => "[ -n \"$sid\" ]",
-        (false, true) => "[ \"$w\" = \"1\" ]",
-        (false, false) => unreachable!("已在上面的退化分支处理"),
-    };
+    let guard = gate_guard_expr(need_sid, need_windows);
     // F04 Phase D 审计发现：`reject_msg` 曾恒带 `windows=%s`（只要 `need_sid`），即便 send-keys
     // （`need_windows=false`）根本不受 Gate 3 约束——`$w` 只是existence-marker、从未参与 guard
     // 判断，混进拒绝消息会让用户误以为 windows 数也影响了 send-keys 的拒绝判断。按
@@ -576,6 +596,80 @@ macro_rules! daemon_watcher_src {
 
 #[cfg(test)]
 mod tests {
+
+    /// ★★ **那条 shell 判定必须与金表逐行一致**〔G2-1，Phase G 整体设计审计 D1 的产物〕。
+    ///
+    /// # 为什么是「真跑 shell」而不是「再写一份 Rust 判定」
+    ///
+    /// 金表 `fixtures/gate2-golden.tsv` 今天有**两个**独立读者
+    /// （daemon 的 `control/gate.rs` · monitor 的 `backend/control/gate2_parity.rs`），
+    /// 靠「两侧各自读同一张表」防漂移。而 [`gate_guard_expr`] 那条 shell 表达式
+    /// **谁也没在读它** —— 金表改了它不会红。
+    ///
+    /// ⚠ 补的方式**不能是再写一个 Rust 版求值器**：那就成了真正的第三份实现，
+    /// 而漂移正是「多一份实现」造出来的。⇒ **把真正会被执行的那条串，交给真 `/bin/sh` 跑一遍**
+    /// （同 `e2e/ccm-contract-parity.sh` A 组的手法：比的是「跑出来的行为」，不是文本）。
+    ///
+    /// # 口径
+    ///
+    /// 金表每行 `(name, remote_sid, expected)`。生产调用点算 `need_sid = !name_owned`，
+    /// 所以这里照同一条路算；`w` 固定喂 `"1"`（**Gate 3 恒过**，本条只管 Gate 2 那一半）。
+    /// 断言：shell 的退出状态（0=放行）必须等于 `gate2(..) != Rejected`。
+    #[test]
+    fn the_shell_gate_expression_agrees_with_the_golden_table() {
+        let tsv = include_str!("backend/control/fixtures/gate2-golden.tsv");
+        let mut checked = 0usize;
+        let mut mismatches = Vec::new();
+        for line in tsv.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let cols: Vec<&str> = line.split('\t').collect();
+            if cols.len() < 4 {
+                continue;
+            }
+            let (label, name, sid_raw, expected) = (cols[0], cols[1], cols[2], cols[3]);
+            let sid = if sid_raw == "<none>" { "" } else { sid_raw };
+            // 与生产调用点同一条路：name 那半走 gate_core，不在这里重写。
+            let need_sid = !is_ccm_tmux_name(name);
+            let expr = gate_guard_expr(need_sid, true);
+            let script = format!("sid={}; w=1; if {expr}; then exit 0; else exit 1; fi", {
+                // sid 值要安全地塞进 sh —— 用单引号包并转义内部单引号。
+                let q = sid.replace('\'', "'\\''");
+                format!("'{q}'")
+            });
+            let out = std::process::Command::new("/bin/sh")
+                .arg("-c")
+                .arg(&script)
+                .output()
+                .expect("跑不了 /bin/sh —— 本条无从判断，别读成绿");
+            let shell_allows = out.status.success();
+            let gate_allows = gate_core::gate2(name, if sid.is_empty() { None } else { Some(sid) })
+                != gate_core::Gate2::Rejected;
+            checked += 1;
+            if shell_allows != gate_allows {
+                mismatches.push(format!(
+                    "  {label}: name={name:?} sid={sid:?} ⇒ shell {} / 金表 {expected}",
+                    if shell_allows { "放行" } else { "拒绝" }
+                ));
+            }
+        }
+        // 抽取器自检：金表实测 25 条数据行。少了就是解析与表分家了，本条会零命中地绿。
+        assert_eq!(
+            checked, 25,
+            "只跑了 {checked} 行金表（实测应为 25）。两种可能，都得看一眼：\n\
+             ① 少了 ⇒ 解析与表分家了，本条在空转（危险）；\n\
+             ② 多了 ⇒ 金表加了新行而这个数没跟 —— **这是刻意的摩擦**，\n\
+             加行时回来改这个数，顺便确认新行在 shell 那侧也对（同 `the_crate_scan…` 的地板）。"
+        );
+        assert!(
+            mismatches.is_empty(),
+            "那条 shell 判定与金表不一致 —— 它是 Gate 2 在 C7 回落路径上的表示，\n\
+             与 daemon/monitor 两侧读的是同一张表，不许分家：\n{}",
+            mismatches.join("\n")
+        );
+    }
     use super::*;
 
     // ---------- P1（zero-poll-liveness）：观测分类 ----------

@@ -135,6 +135,68 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("src/backend")
     }
 
+    /// ★★ 住在 `backend/` **之外**、但属于 backend 那一半的文件 —— 必须一起受两道守卫管。
+    ///
+    /// # 为什么需要这张表〔G2，Phase G 整体设计审计的产物〕
+    ///
+    /// 两道守卫（宿主无关 / 平台无关）此前只扫 `src/backend` 子树。
+    /// 而 `inbound_client.rs` **物理位置在 `src/` 顶层** ⇒ **整个在扫描面之外**。
+    /// 审计当天实测它是干净的（无 `AppHandle` / `State<` / `.emit(`）——
+    /// **但那是巧合，不是被钉住**。它承担的正是 **C1**「一份代码两种承载」里
+    /// 「本机进程」那一半最关键的传输层（`daemon_kill` / `daemon_launch` /
+    /// `daemon_send_keys` 共同依赖它）。它一旦长出宿主耦合，backend 的护栏体系**整体看不见**。
+    ///
+    /// ⚠ **为什么是加进扫描面而不是挪文件**：挪 1183 行的文件会动到一大批 `use` 路径与
+    /// `mod` 声明，半径远大于收益，且与 `cross_half_edge_registry` 的边登记表相互作用。
+    /// **先把它纳入管辖，挪不挪是另一件事**（若将来挪进 `backend/`，把这一行删掉即可）。
+    const EXTRA_BACKEND_FILES: &[(&str, &str)] = &[(
+        "inbound_client.rs",
+        "daemon 流通道的 wire 客户端 —— C1「本机进程」那一半的传输层，\
+         被 daemon_kill / daemon_launch / daemon_send_keys 共同依赖。\
+         它不在 backend/ 下是历史位置，不是它不属于这一半。",
+    )];
+
+    /// 两道守卫共同的扫描面：`backend/` 全部 `.rs` + [`EXTRA_BACKEND_FILES`]。
+    /// 返回 `(展示名, 绝对路径)`。
+    fn guarded_files() -> Vec<(String, PathBuf)> {
+        let root = backend_dir();
+        let mut out: Vec<(String, PathBuf)> = backend_files()
+            .into_iter()
+            .map(|f| {
+                let p = root.join(&f);
+                (f, p)
+            })
+            .collect();
+        let src_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        for (f, _) in EXTRA_BACKEND_FILES {
+            out.push((format!("（表外）{f}"), src_root.join(f)));
+        }
+        out
+    }
+
+    /// ★ 表外那几个必须真的存在 —— 挡「文件改名/挪走后登记留成僵尸」。
+    /// 僵尸的后果不是红，是**那一行悄悄不再扫任何东西**（扫描面缩水且无人知道）。
+    #[test]
+    fn the_extra_backend_files_are_not_ghosts() {
+        let src_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        assert!(
+            !EXTRA_BACKEND_FILES.is_empty(),
+            "表空了 —— 若真的把它们都挪进了 `backend/`，连这条一起删；\n\
+             但别留一张空表假装还有人管"
+        );
+        for (f, why) in EXTRA_BACKEND_FILES {
+            assert!(
+                src_root.join(f).is_file(),
+                "`src/{f}` 不存在 —— 登记成了僵尸，那一行从此不扫任何东西"
+            );
+            assert!(
+                why.len() > 30,
+                "`{f}` 的理由太短（{} 字）—— 这张表的价值全在「为什么它属于 backend 那一半」",
+                why.len()
+            );
+        }
+    }
+
     /// `backend/` 下的所有 `.rs`，路径相对 `backend/`，`/` 分隔。
     fn backend_files() -> Vec<String> {
         let root = backend_dir();
@@ -242,12 +304,10 @@ mod tests {
             "Emitter",
             "Manager",
         ];
-        let root = backend_dir();
         let mut offenders = Vec::new();
         let mut scanned = 0usize;
-        for f in backend_files() {
-            let src =
-                guard_core::production_code(&fs::read_to_string(root.join(&f)).unwrap_or_default());
+        for (f, path) in guarded_files() {
+            let src = guard_core::production_code(&fs::read_to_string(&path).unwrap_or_default());
             scanned += src.len();
             for needle in FORBIDDEN {
                 if src.contains(needle) {
@@ -338,11 +398,10 @@ mod tests {
     /// 挡不住「往 backend 里塞一段 `#[cfg]` 分叉、两边各编一半」——那才是 C10 真正怕的。
     #[test]
     fn the_backend_half_stays_platform_agnostic() {
-        let root = backend_dir();
         let mut offenders = Vec::new();
         let mut scanned = 0usize;
-        for f in backend_files() {
-            let raw = fs::read_to_string(root.join(&f)).unwrap_or_default();
+        for (f, path) in guarded_files() {
+            let raw = fs::read_to_string(&path).unwrap_or_default();
             let prod = guard_core::production_code(&raw);
             guard_core::assert_no_test_code(&f, &prod);
             scanned += prod.len();

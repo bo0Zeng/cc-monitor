@@ -146,6 +146,65 @@ mod tests {
         );
     }
 
+    /// ★★ **每个 path 依赖的 `Cargo.toml` 都必须已被 git 跟踪**〔G2-3〕。
+    ///
+    /// # 它是那个真事故的**结构性**修法
+    ///
+    /// 事故原文（`scripts/verify-committed-state.sh` 头注）：`gate-core` 这条依赖
+    /// **从没被提交过** ⇒ **committed `main` 连续约 20 轮编不过**，而每一次「全绿」
+    /// 都来自我的工作树。根因是「排除用户改动」那半做了、「blob-replay 我方那几行」那半没做。
+    ///
+    /// # 为什么不接 pre-push 钩子（本轮裁的，理由进 `DECISIONS §2`）
+    ///
+    /// **本工作流的红线是「从不 push」** —— 那正是 `verify-committed-state.sh` 存在的理由：
+    /// 它是 CI 的本地替身。⇒ **pre-push 钩子永远不会触发**，接了等于没接。
+    /// 而 pre-commit 挂那个脚本要 80–150 秒，每次提交都付这个代价不现实。
+    /// ⇒ 真正的修法不是找个钩子挂它，是**把检查从「记得跑那个慢脚本」搬进「总会跑的快套件」**。
+    /// 本条就是那一步：它跑在 `cargo test` 里，**每轮门禁必过**，耗时几十毫秒。
+    ///
+    /// ⚠ 它**不取代**那个脚本：脚本做的是「在干净检出上真跑 `cargo check`」，
+    /// 覆盖面更宽（任何编译错误）。本条只钉**那一类**最阴的错
+    /// —— 依赖声明在、而被依赖的东西根本没进版本库。**两者并存，不是二选一。**
+    #[test]
+    fn every_path_dependency_is_actually_committed() {
+        let toml = fs::read_to_string(root().join("Cargo.toml")).expect("Cargo.toml 读不到");
+        // 抽 `path = "…"` 的值。
+        let mut paths: Vec<String> = Vec::new();
+        for (i, _) in toml.match_indices("path = \"") {
+            let rest = &toml[i + "path = \"".len()..];
+            if let Some(end) = rest.find('"') {
+                paths.push(rest[..end].to_string());
+            }
+        }
+        // 抽取器自检：至少要抽到那 6 个共享 crate + vendor = 7 条（按实测）。
+        assert!(
+            paths.len() >= 7,
+            "只从 Cargo.toml 抽到 {} 条 path 依赖（应 ≥7）—— 抽取坏了，本条会零命中地绿：{paths:?}",
+            paths.len()
+        );
+        let mut untracked = Vec::new();
+        for rel in &paths {
+            let manifest = format!("src-tauri/{rel}/Cargo.toml");
+            let out = std::process::Command::new("git")
+                .args(["ls-files", "--error-unmatch", "--", &manifest])
+                .current_dir(root().parent().expect("仓根"))
+                .output();
+            match out {
+                Ok(o) if o.status.success() => {}
+                Ok(_) => untracked.push(manifest),
+                // git 不在 / 不是仓 ⇒ 本条无从判断。**不许静默绿**，直接说出来。
+                Err(e) => panic!("跑不了 git（{e}）—— 本条无从判断，别把它读成绿"),
+            }
+        }
+        assert!(
+            untracked.is_empty(),
+            "这些 path 依赖的 `Cargo.toml` **没有被 git 跟踪**：{untracked:?}\n\
+             ⇒ 别人（和 CI）检出这个提交会直接编不过，而你的工作树一切正常。\n\
+             这正是 `scripts/verify-committed-state.sh` 头注记的那个真事故\n\
+             （`gate-core` 从没被提交，committed main 连续约 20 轮编不过）。"
+        );
+    }
+
     /// ★ CI 必须真的在用那三条收敛后的命令（不是把它们注释掉了）。
     ///
     /// ⚠ 用 [`ci_live_lines`]（剔注释）—— 复盘 P3 实测过：直接对整份 `ci.yml` 做
