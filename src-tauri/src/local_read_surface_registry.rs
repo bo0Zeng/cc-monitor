@@ -21,6 +21,8 @@
 //! | `reader` | 真的去读文件内容 | **这些才是要退役的** |
 //! | `payload` | 只把路径拼进要给别人执行的命令串 | 随 F06/F07 走，不属读面 |
 //! | `remote` | 说的是**远端主机**的 claude 目录（daemon hello 的字段、远端 shell 串） | **根本不是本机读面**，不属 F10 |
+//! | `fence` | **路径围栏** —— 解析 records 根只为验「这个路径在不在里面」，不读内容 | **刻意保留**（纵深防御）：即使读交给后端，围栏也该在两侧各有一道 |
+//! | `write` | 写操作（删/分叉）**恰好也读 dir 来定位文件** | 不属读面；各归其主（删无对侧、分叉走 `--fork-session`） |
 //! | `non-read` | 只出现那个名字（契约清单 / 登记表文案），不读文件 | 不属读面 |
 //!
 //! ⚠ 只数「有几处提到 `claude_dir`」会把三类混成一个数，而**只有 `reader` 那一类是 F10 的活**。
@@ -54,24 +56,43 @@ mod tests {
     /// 多一处 ⇒ 下面那条红（防「F10 还没做而直读点增长」）；
     /// 少一处 ⇒ **也红**（退役了要把棘轮往下拧）。
     const REGISTERED: &[(&str, &str, usize, &str)] = &[
+        // 〔F10b 末批〕`history.rs` **按角色拆成四条** —— 逐函数量过，那 15 个命中不是一类活。
+        // ★ 拆条的理由：登记表原本按「文件 × 单一类别」记账，而这个文件承载四种角色 ⇒
+        // 「读面迁完」时那条登记不会消失、`readers` 也不会降，账就成了假的。
+        // ⚠ 四条的**处数之和仍是 15**，与实测那一侧的口径一致（比较逻辑已改成「按文件求和」）。
         (
             "src/history.rs",
             "reader",
-            15,
-"最大的一块，但**那 15 个命中是三种角色，不是一类活**〔F10b 末批逐函数量过〕：\
-             ① **reader 6 处**（`list_history_projects` 168/169/232 · \
-             `stream_history_sessions_in_project` 430/431 · `stream_read_session_jsonl` 499）—— \
-             命令层有对侧（`--list-projects` / `--list-sessions` / `--read-session*`）；\
-             ② **写操作 4 处**（`delete_history_session` 621/622 · `create_branch_session` 744/745）\
-             —— 它们**恰好也读 claude_dir 来定位文件**，但性质是写。⚠ 删会话 **daemon 侧无对侧**\
-             （14 条一次性子命令里没有删）；分叉有 `--fork-session`；\
-             ③ **payload 5 处**（`validate_config_dir_posix` 1031 · `validate_config_dir_ps` 1054/1057 · \
-             `config_dir_prefix_ps` 1102/1111）—— 把 `CLAUDE_CONFIG_DIR` 拼进**启动命令串**，\
-             按本表自己的定义属 `payload`：**随 F06/F07 走，不属读面**。\
-             ★ **因此这条登记不会因为「读面迁完」而消失**，`readers` 也不会因此降 —— \
-             到那一天该做的是**把本条的类别改成 `payload`**（那时它剩下的命中确实只有那一类）。\
-             ⚠ 那也暴露了本表的记账形状：**它按「文件 × 单一类别」记，配不上一个文件承载多种角色**。\
-             退役归 F10 本体（reader 那 6 处），其余两族各归其主。",
+            5,
+            "列目录/列会话：`list_history_projects`(168/169 + codex 变体 232) · \
+             `stream_history_sessions_in_project`(430/431)。\
+             命令层对侧 `--list-projects` / `--list-sessions`。退役归 F10 本体。",
+        ),
+        (
+            "src/history.rs",
+            "fence",
+            1,
+            "`stream_read_session_jsonl`(499) 的**路径围栏** —— 它解析 records 根**只为验\
+             `target.starts_with(&root)`（拒绝越界路径），不读内容。\
+             ⚠ **刻意保留、不属退役范围**：即使把读交给后端，围栏也该两侧各有一道\
+             （daemon 侧自己也有 canonicalize 前缀校验）—— 那是纵深防御，同 `remote_branch.rs` \
+             那句「两个 id 已过白名单，仍照常 shell_quote」。",
+        ),
+        (
+            "src/history.rs",
+            "write",
+            4,
+            "写操作**恰好也读 dir 来定位文件**：`delete_history_session`(621/622) · \
+             `create_branch_session`(744/745)。⚠ **不属读面** —— 删会话 **daemon 侧无对侧**\
+             （14 条一次性子命令里没有删）；分叉走 `--fork-session`。",
+        ),
+        (
+            "src/history.rs",
+            "payload",
+            5,
+            "把 `CLAUDE_CONFIG_DIR` 拼进**启动命令串**：`validate_config_dir_posix`(1031) · \
+             `validate_config_dir_ps`(1054/1057) · `config_dir_prefix_ps`(1102/1111)。\
+             ⚠ **不属读面**，随 F06/F07 走。",
         ),
         (
             "src/ssh_source.rs",
@@ -264,10 +285,14 @@ mod tests {
     /// ★ 递减棘轮：目录内容 == 登记表，**连每个文件的行数一起钉**。
     #[test]
     fn the_local_read_surface_matches_the_registry_line_for_line() {
-        let mut want: Vec<(String, usize)> = REGISTERED
-            .iter()
-            .map(|(f, _, n, _)| ((*f).to_string(), *n))
-            .collect();
+        // 〔F10b 末批〕**按角色分条之后，同一个文件可以有多条登记** ⇒ 这里先按文件把处数**加起来**
+        // 再与实测比。⚠ 这不是放宽：实测那一侧仍然是「文件 → 命中行数」，两边的口径必须一致，
+        // 而分条改变的是**登记的粒度**，不是被比的量。
+        let mut sum: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+        for (f, _, n, _) in REGISTERED {
+            *sum.entry((*f).to_string()).or_default() += *n;
+        }
+        let mut want: Vec<(String, usize)> = sum.into_iter().collect();
         want.sort();
         let mut got: Vec<(String, usize)> = rust_files()
             .into_iter()
@@ -294,7 +319,10 @@ mod tests {
         let mut readers = 0;
         for (f, kind, _, why) in REGISTERED {
             assert!(
-                matches!(*kind, "hub" | "reader" | "payload" | "remote" | "non-read"),
+                matches!(
+                    *kind,
+                    "hub" | "reader" | "payload" | "remote" | "non-read" | "fence" | "write"
+                ),
                 "{f} 的类别 `{kind}` 不在三类里 —— 新类别要先在模块头注那张表里定义"
             );
             match *kind {
