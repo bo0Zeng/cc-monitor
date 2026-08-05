@@ -123,12 +123,20 @@ const PROTO_VERSION: u32 = 1;
 ///   「版本过旧，请重新部署」。**这条是 Phase G 审计当场抓出来的** —— 上面 p1r/p1t 两段
 ///   逐字写着这课，本轮仍然漏了，说明「加子命令」这一步该有机检而不是靠记性（登记 E77）。
 /// - p1v-attachable = **E73**：`SessionAdded` 帧 additive 加 `attachable`（来自 pidfile 的同名布尔）。
+/// - p1w-inbound-in-fingerprint = **audit-0805 F02**：**结清一笔从 08-02 起就欠着的 bump**。
+///   `inbound::COMMANDS` 从零条长到 5 条（`cancel`/`ping`/`resolve` 08-02、`kill` 08-04），
+///   而 `build_id_guard` 的指纹只看 `main.rs` 的 `Some("--`（一次性子命令那一面）
+///   ⇒ **加了整整一个命令面，一次 bump 都没被逼出来**。
+///   ⚠ 后果不是纸面的：`sftp.rs::deploy_decision` 的唯一判据是 build_id 字符串，
+///   报同一个 id ⇒ 判 `Skip` ⇒ 已部署的旧 daemon **整个控制面静默不可用**。
+///   本轮把通道面纳入指纹并 bump；**本条 bump 本身就是那笔欠账的偿付** ——
+///   报 `p1v` 的远端从此会被判 stale 并重装。CLI 那一面**一字未改**。
 ///   `session_kind` 此前把两件事压在一个轴上 —— ①「该不该在 UI 出现」②「attach 进去对人有没有
 ///   意义」。SDK / 脚本驱动的会话正好「①要②不要」：它**有** tmux、`@ccm_sid` 也对，但
 ///   `stdin=DEVNULL`，用户敲的字会被脚本吃掉。省略 = true（存量零迁移）。
 ///   **必须 bump**：monitor 要靠新 daemon 才拿得到这个字段；不 bump 就不判 stale、不重装。
 ///   （wire 是 additive、旧 monitor 忽略未知字段 ⇒ **不 bump PROTO_VERSION**。）
-const BUILD_ID: &str = "p1v-attachable";
+const BUILD_ID: &str = "p1w-inbound-in-fingerprint";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜

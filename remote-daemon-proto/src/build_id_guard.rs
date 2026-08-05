@@ -53,9 +53,25 @@ mod tests {
             "--account-trust\n--account-trust-zero\n--list-accounts\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage",
         ),
         // p1u：G2/G6 加 --fork-session（daemon 第一次有写盘能力）。
+        // ⚠ 这一行（及上一行）是**指纹只覆盖 CLI 那一面**时代的记录，没有 `#channel` 段。
+        //   扩面之后它们永远不会再等于当前指纹 —— 那是对的：它们记的就是「那时候只有这一面」。
         (
             "p1u-fork-session",
             "--account-trust\n--account-trust-zero\n--fork-session\n--list-accounts\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage",
+        ),
+        // ★ p1w：**指纹第一次覆盖两个命令面**〔audit-0805 F02〕。
+        //
+        // CLI 那面与 p1u **一字未改**；变的是把 `inbound::COMMANDS` 纳进来了。
+        // ⚠ **这一行不是「新加了 5 条通道命令」的记录** —— 那 5 条是 08-02/08-04 加的，
+        //   当时 `BUILD_ID` 是 `p1v-attachable` 且**没有 bump**，而指纹看不见它们。
+        //   本行记的是「从此以后看得见了」，同时把那笔欠账结清：p1w 之后报 p1v 的远端
+        //   会被判 stale 并重装 —— 这正是 08-02 起就该发生、却因为指纹半瞎而没发生的事。
+        // ⚠ **没有 p1v 行**是刻意的：p1v 那一版的真实通道面是**空集**，
+        //   而我们没有一个能证明「某个 p1v 二进制到底带不带通道面」的可靠办法
+        //   （本机那份实测是空的，但那只是本机那一份）。造一行假历史比缺一行更坏。
+        (
+            "p1w-inbound-in-fingerprint",
+            "--account-trust\n--account-trust-zero\n--fork-session\n--list-accounts\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
     ];
 
@@ -73,6 +89,38 @@ mod tests {
     /// `stream_flag_tests` 里那份副本，不是 `:275-291` 的真 dispatch。**
     /// （两个 bug 凑出一个看起来正确的结果：不剥 ⇒ 真 dispatch 也在里面 ⇒ 一直绿。）
     /// 换成逐个剥测试模块之后，指纹来自真 dispatch，**集合实测不变**（同为那九个）。
+    /// ★★★ **两个命令面都要进指纹**〔audit-0805 F02〕。
+    ///
+    /// # 它此前只覆盖一半，而漏掉的那半从 0 长到了 5
+    ///
+    /// 本函数原来只抠 `main.rs` 里的 `Some("--`，也就是**一次性子命令**那一面。
+    /// 而 daemon 还有第二个命令面：[`crate::inbound::COMMANDS`]（常驻通道命令）。
+    /// 实测（`audit-0805` 的只读核实）：
+    ///
+    /// - `BUILD_ID` 从 `4617f34`（07-31，`p1v-attachable`）之后**再没变过**；
+    /// - 而入方向从**零条**长到 **5 条**：`cancel`/`ping`/`resolve`（`8a13ba9`+`a361ff9`，08-02）、
+    ///   `kill`（`899538a`，08-04）。`git merge-base --is-ancestor` 三条全 YES。
+    ///
+    /// ⇒ **加了整整一个命令面，一次 bump 都没被逼出来**，因为指纹结构上看不见它。
+    /// 而 `sftp.rs::deploy_decision` 判「远端要不要换 daemon」的**唯一**判据就是 build_id 字符串
+    /// ⇒ 已部署的旧 daemon 报同一个 id ⇒ 判 `Skip` ⇒ **整个控制面在远端静默不可用**。
+    ///
+    /// # 这不只是结构缺陷，本机实测到了它的后果
+    ///
+    /// 本机 `embedded-daemons/cc-monitor-remote-x86_64`（08-01 构建）里
+    /// **找不到入方向那一面会发射的任何一个错误码**（`not_cancellable` / `unknown_command` /
+    /// `duplicate_id` / `handler_panicked` / `wrong_owner` / `too_many_windows`，`.rodata` 全 0 命中），
+    /// 而它的清单写着 `p1v-attachable` = 期望值。
+    /// ⚠ 那次探测**带对照组才算数**：同一批里「**会被发射**的串」9/9 全命中
+    /// （`session_removed`/`overflow`/`hello`/`capabilities`…），
+    /// 而「只被比较、从不发射」的串命中不稳（`--list-projects` 就是 0）——
+    /// 上面那批错误码属前者（它们是写进应答 JSON 的值），所以 0 命中是可信的。
+    ///
+    /// # 为什么通道那半直接引用 const，而不照 CLI 那半去 scrape 文本
+    ///
+    /// CLI 那面只能 scrape（`main.rs` 的 dispatch 是 `match` 字面量，没有集中的 const）。
+    /// 通道那面**有**单一真相源常量 ⇒ 直接引用它更强：**没有抽取器可坏**，
+    /// 改名/增删会自动反映到指纹里。两半的取法不同是刻意的，不是遗漏。
     fn subcommand_fingerprint() -> String {
         let prod = production_code(include_str!("main.rs"));
         // 反向自检：剥完还得剩下真代码，否则下面数出来的空集会「恰好等于」某个错误期望。
@@ -99,7 +147,22 @@ mod tests {
             "只抠到 {} 个子命令（{subs:?}）—— 抠法坏了",
             subs.len()
         );
-        subs.join("\n")
+        // ── 第二个命令面：常驻通道命令（`inbound::COMMANDS` 是它的单一真相源）──────
+        // 排序后写成 `ch:<名>`，与 `--x` 那一面在同一个字符串里但**不会混淆**。
+        let mut chans: Vec<String> = crate::inbound::COMMANDS
+            .iter()
+            .map(|c| format!("ch:{c}"))
+            .collect();
+        chans.sort_unstable();
+        // 反向自检：通道面空了 ⇒ 指纹会退化回「只覆盖一半」那个老样子而没人发现。
+        assert!(
+            !chans.is_empty(),
+            "`inbound::COMMANDS` 抽到空集 —— 指纹会静默退回只覆盖 CLI 那一面"
+        );
+        let mut out = subs.join("\n");
+        out.push_str("\n#channel\n");
+        out.push_str(&chans.join("\n"));
+        out
     }
 
     /// ★ E77 的正题。
