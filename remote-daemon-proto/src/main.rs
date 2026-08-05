@@ -658,6 +658,61 @@ mod argv_table_guard {
         crate::protocol_doc_guard::dispatched_subcommands()
     }
 
+    /// ★★ **每条调度臂都必须真的调到一个实现**〔G1，Phase G 变异抽样 A2 的产物〕。
+    ///
+    /// # 为什么需要这条：隔壁那条名字里写着它该抓这个，但它没验
+    ///
+    /// [`every_listed_subcommand_is_actually_dispatched`] 靠
+    /// [`crate::protocol_doc_guard::dispatched_subcommands`] 抽 **臂上的 token**
+    /// （`"--resolve"` 这个字面量）。变异 A2 把
+    /// `Some("--resolve") => control::resolve_query::run(…)` 换成 `Some("--resolve") => 2,`
+    /// —— **token 还在，那条判据全绿**，而 `--resolve` 已经彻底不工作了。
+    /// ⇒ 名字里的 **"actually dispatched"** 它没验；它验的是「有一条臂」。
+    ///
+    /// ★ 一般化（判据覆盖面**第④格·性质面**）：**判据比的必须是它声称的那个性质本身。**
+    /// 「臂上有 token」与「臂真的调了实现」是两件事，正如「同一个值」≠「同一个来源」。
+    ///
+    /// # 本条钉什么
+    ///
+    /// 逐条取调度块里每一条臂 `=>` 右边的**臂体**，断言它是**一次调用**
+    /// （含 `::` 与 `(`），而不是常量/裸表达式。
+    ///
+    /// ⚠ 抽取器自检：臂数必须 ≥ 7（**按实测写**，今天恰好 7 —— 6 条具名 + 1 条 `_`）。
+    /// 少于它就是块界找错或剥测试剥过头，本条会零命中地绿。
+    #[test]
+    fn every_dispatch_arm_actually_calls_an_implementation() {
+        let src = crate::guard_support::production_code(include_str!("main.rs"));
+        let beg = src
+            .find("let code = match args.first()")
+            .expect("找不到一次性查询的调度块 —— 块界锚点变了");
+        let end = src[beg..]
+            .find("std::process::exit(code);")
+            .expect("找不到调度块的结尾锚点")
+            + beg;
+        let block = &src[beg..end];
+        let arms: Vec<&str> = block
+            .lines()
+            .filter_map(|l| l.split_once("=>"))
+            .map(|(_, body)| body.trim())
+            .collect();
+        assert!(
+            arms.len() >= 7,
+            "只抽到 {} 条调度臂（应 ≥7：6 条具名 + 1 条 `_`）—— 块界找错或剥过头，本条在空转：{arms:?}",
+            arms.len()
+        );
+        for body in &arms {
+            let b = body.trim_end_matches(',').trim();
+            assert!(
+                b.contains("::") && b.contains('('),
+                "调度臂的臂体不是一次调用：{b:?}\n\
+                 ⇒ 这条子命令的 token 还挂在那儿，但它已经不调任何实现了 —— \n\
+                 v3.4.0 出过同型事故（`--account-trust-zero` 漏列 ⇒ 落进 `_` 臂）。\n\
+                 ⚠ 隔壁 `every_listed_subcommand_is_actually_dispatched` **看不见这种错**：\n\
+                 它抽的是臂上的 token，不是臂体。"
+            );
+        }
+    }
+
     /// ★ 每个被分派的 token 都必须在三分表里。
     #[test]
     fn every_dispatched_token_is_classified() {
