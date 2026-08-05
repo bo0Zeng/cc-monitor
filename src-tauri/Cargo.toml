@@ -1,3 +1,25 @@
+# G2（Phase G 代码工程审计）：**这六个 crate 此前不是真 workspace member。**
+# 实测 `cargo metadata` 的 `workspace_members` 只有 `monitor` 一项 —— `cargo test -p branch-core`
+# 之所以能跑，靠的是 cargo 允许 `-p` 选中**依赖图里的非 member 包**，不是 workspace 机制。
+# 代价：门禁得在八个地方分别跑（~17 条 `--manifest-path`/`-p`），且每个 crate 单独 test 时
+# 会各落一个游离 `Cargo.lock`（`.gitignore` 为此打过补丁）。
+#
+# ⚠ `vendor/code-picture-core` **刻意 exclude**：它是 vendor 进来的第三方内核，
+# 不该被 `--workspace` 的 fmt/clippy/test 扫到（也不该因为我们的 lint 设置而红）。
+# ⚠ `remote-daemon-proto` **不在这里** —— 它有自己独立的 `Cargo.lock`，
+# 那条隔离是真架构约束（Linux/Windows CI runner），见它自己的 `Cargo.toml` 头注。
+[workspace]
+members = [
+    ".",
+    "crates/acct-core",
+    "crates/branch-core",
+    "crates/gate-core",
+    "crates/guard-core",
+    "crates/shell-quote-core",
+    "crates/usage-core",
+]
+exclude = ["vendor/code-picture-core"]
+
 [package]
 name = "monitor"
 version = "3.6.0"

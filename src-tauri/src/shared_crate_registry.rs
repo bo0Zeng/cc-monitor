@@ -1,4 +1,14 @@
-//! U8c-1：把「新增共享 crate 时 CI 三样都要补」从**散文**变成机检。
+//! U8c-1：把「新增共享 crate 时别漏跑」从**散文**变成机检。
+//!
+//! ⚠⚠ **G2（2026-08-04）换了机制，本模块整体改写** —— 原来的形态是「每个 crate 必须在
+//! `ci.yml` 里出现在 test / fmt / clippy **三处**」。那条纪律存在的唯一原因是
+//! **`src-tauri/Cargo.toml` 当时没有 `[workspace]` 表**：六个 crate 只是 path 依赖，
+//! `--all` 覆不到，只能一个个手工列。
+//! **现在它们是真 workspace member**，`cargo fmt --all` / `--workspace` 自动覆盖 ⇒
+//! 「补三处」这条纪律**消失了**，取而代之的是「**必须在 members 里**」。
+//! ⇒ 判据跟着换靶：不再数 CI 步骤，改钉 `[workspace] members`。
+//! ★ 这两条**不是被删的**（铁律 13：删判据前先证明它恒绿）——它们是**被改写成继任者**的：
+//! 同一个失效模式（「静默少跑」），换了一个载体。
 //!
 //! # 为什么这条值得一个判据
 //!
@@ -87,85 +97,120 @@ mod tests {
         );
     }
 
-    /// ★ 每个共享 crate 都必须在 `ci.yml` 里出现在 test / fmt / clippy **三处**。
+    /// ★ 每个共享 crate 都必须在 `src-tauri/Cargo.toml` 的 `[workspace] members` 里。
+    ///
+    /// 违反它**不会红，只会静默少跑** —— `cargo test --workspace` 覆不到非成员，
+    /// 而那个 crate 的测试就此从门禁里**消失**（不是失败，是不存在）。
+    /// 这正是 G2 之前 `branch-core`（漏 fmt/clippy）与 `usage-core`/`acct-core`
+    /// （三样全漏、漏了两轮）那两次事故的形状，只是载体从「CI 步骤」变成了「members 列表」。
+    ///
+    /// ⚠ **必须先切出 `[workspace]` 段再找** —— 直接全文 `contains("crates/gate-core")`
+    /// 会匹配到**依赖声明行**（`gate-core = { path = "crates/gate-core" }`），
+    /// 于是「从 members 里删掉一个」这种变异**照样绿**（G2 实测，变异 V1 第一版就这么活的）。
+    /// ★ 判据覆盖面**第④格·性质面**：它比的必须是它声称的那个性质。
     #[test]
-    fn every_shared_crate_gets_all_three_ci_steps() {
-        let ci = ci_live_lines();
-        let mut missing = Vec::new();
-        for name in shared_crate_names() {
-            for (what, needle) in [
-                ("cargo test", format!("cargo test -p {name}")),
-                (
-                    "cargo fmt",
-                    format!("cargo fmt --check --manifest-path crates/{name}/Cargo.toml"),
-                ),
-                (
-                    "cargo clippy",
-                    format!("cargo clippy --manifest-path crates/{name}/Cargo.toml"),
-                ),
-            ] {
-                if !ci.contains(&needle) {
-                    missing.push(format!("  {name}: 缺 {what}（找不到 `{needle}`）"));
-                }
-            }
-        }
+    fn every_shared_crate_is_a_workspace_member() {
+        let toml = fs::read_to_string(root().join("Cargo.toml")).expect("Cargo.toml 读不到");
+        assert!(
+            toml.contains("[workspace]"),
+            "`src-tauri/Cargo.toml` 的 `[workspace]` 没了 —— 六个共享 crate 会退回\n\
+             「path 依赖但非成员」，`--workspace` 从此静默少测它们"
+        );
+        let beg = toml.find("[workspace]").expect("上面刚断言过");
+        let end = toml[beg + 1..]
+            .find("\n[")
+            .map(|k| beg + 1 + k)
+            .unwrap_or(toml.len());
+        let ws = &toml[beg..end];
+        // 段界自检：切出来的必须真是那一段（含 members、不含 dependencies、不过长）。
+        assert!(
+            ws.contains("members") && !ws.contains("[dependencies]") && ws.len() < 2_000,
+            "`[workspace]` 段界切错了（{} 字节）—— 本条会在全文里瞎找",
+            ws.len()
+        );
+        let missing: Vec<String> = shared_crate_names()
+            .into_iter()
+            .filter(|n| !ws.contains(&format!("\"crates/{n}\"")))
+            .collect();
         assert!(
             missing.is_empty(),
-            "共享 crate 的 CI 三样没配齐 —— 违反它不会红，只会静默少跑：\n{}",
-            missing.join("\n")
+            "这些共享 crate 不在 `[workspace] members` 里：{missing:?}\n\
+             ⇒ `cargo test --workspace` 覆不到它们，测试会**静默地**从门禁里消失。"
+        );
+        // vendor 那条 exclude 不许没掉：没了它，vendor 的 25 条会掺进 `--workspace` 的读数。
+        // ⚠ 它**挡不住** vendor 成为成员（`exclude` 对成员的 path 依赖不生效，G2 实测）——
+        //    真正把它挡在外面的是 CI 命令行上的 `--exclude`，本条钉的是「这个意图还在」。
+        assert!(
+            ws.contains("exclude = [\"vendor/code-picture-core\"]"),
+            "`[workspace] exclude` 里的 vendor 那条没了"
         );
     }
 
-    /// 反过来也要成立：`ci.yml` 里提到的 crate 必须真的存在。
-    /// 挡的是「crate 改名/删除后 CI 步骤留成僵尸」。
+    /// ★ CI 必须真的在用那三条收敛后的命令（不是把它们注释掉了）。
     ///
-    /// ⚠ 复盘 P3 订正：这条的说明写着「如果有人把 test 那步顺手删掉而不删对应的
-    /// fmt/clippy，覆盖面就悄悄缩水了」，**而它此前只扫 `cargo test -p` 那一种形态** ——
-    /// 也就是它声称担心的 fmt/clippy 僵尸行，它自己看不见。现在**三种形态都扫**。
+    /// ⚠ 用 [`ci_live_lines`]（剔注释）—— 复盘 P3 实测过：直接对整份 `ci.yml` 做
+    /// `contains`，把某一步**注释掉**之后守卫照旧全绿，而「注释掉一步」正是最省事的错法。
     #[test]
-    fn ci_does_not_reference_crates_that_no_longer_exist() {
-        let names = shared_crate_names();
-        let mut ghosts = Vec::new();
+    fn ci_actually_runs_the_three_converged_commands() {
+        let ci = ci_live_lines();
+        for needle in [
+            "cargo fmt --all --check",
+            "cargo clippy --workspace --exclude code-picture-core --all-targets",
+            "cargo test --workspace --exclude code-picture-core",
+            // vendor 仍单独一步（红线：别误伤 vendor，它不进 `--workspace`）。
+            "cargo test -p code-picture-core",
+        ] {
+            assert!(
+                ci.contains(needle),
+                "`ci.yml` 里找不到（未注释的）`{needle}` —— 收敛后的门禁少了一条"
+            );
+        }
+    }
+
+    /// 反过来也要成立：`[workspace] members` 里列的目录必须真的存在。
+    /// 挡的是「crate 改名/删除后 members 留成僵尸」——那会让 `cargo` 直接报错，
+    /// 但**在本地没人跑 workspace 命令时**可以潜伏很久。
+    ///
+    /// ⚠ G2 换靶说明：这条原先扫的是 `ci.yml` 里的 `cargo test -p <名>` /
+    /// `--manifest-path crates/<名>/` 三种形态（那时僵尸长在 CI 步骤里）。
+    /// 收敛后 CI 不再逐个点名 ⇒ 僵尸只能长在 `members` 里，靶子跟着搬。
+    #[test]
+    fn workspace_members_do_not_reference_crates_that_no_longer_exist() {
+        let toml = fs::read_to_string(root().join("Cargo.toml")).expect("Cargo.toml 读不到");
+        let beg = toml.find("[workspace]").expect("`[workspace]` 不见了");
+        let end = toml[beg + 1..]
+            .find("\n[")
+            .map(|k| beg + 1 + k)
+            .unwrap_or(toml.len());
+        let ws = &toml[beg..end];
         let mut scanned = 0usize;
-        for line in ci_live_lines().lines() {
-            // 两种 YAML 写法都要认：`run: |` 块里独立成行的命令，与内联的
-            // `run: cargo test -p branch-core`。⚠ 初版只认前者 ⇒ 自检报「只扫到 14 处」，
-            // 而**分家的是我这个抽取器、不是 ci.yml**（`branch-core` 那三步是内联写法）。
-            // 那条自检第一次跑就抓到了它自己上游的这个错，值。
-            let t = line
-                .trim()
-                .trim_start_matches("- ")
-                .trim_start_matches("run: ")
-                .trim();
-            // 三种步骤形态各自的取名方式。
-            let referenced = if let Some(rest) = t.strip_prefix("cargo test -p ") {
-                rest.split_whitespace().next().unwrap_or("")
-            } else if let Some(at) = t.find("--manifest-path crates/") {
-                let rest = &t[at + "--manifest-path crates/".len()..];
-                rest.split('/').next().unwrap_or("")
-            } else {
+        let mut ghosts = Vec::new();
+        for line in ws.lines() {
+            let t = line.trim().trim_matches(',').trim_matches('"');
+            let Some(name) = t.strip_prefix("crates/") else {
                 continue;
             };
-            // vendored 的 code-picture-core 不在 crates/ 下，走自己的一步。
-            if referenced == "code-picture-core" || referenced.is_empty() {
-                continue;
-            }
+            let name = name.trim_matches('"');
             scanned += 1;
-            if !names.iter().any(|n| n == referenced) {
-                ghosts.push(referenced.to_string());
+            if !root()
+                .join("crates")
+                .join(name)
+                .join("Cargo.toml")
+                .is_file()
+            {
+                ghosts.push(name.to_string());
             }
         }
-        // 抽取器自检：三种形态 × **6** 个 crate = 18 行（F12 棘，同上：F03 加了 gate-core
-        // 而这个数没跟）。扫不到就是取名方式跟 ci.yml 分家了。
+        // 抽取器自检：members 里应有 **6** 条 `crates/…`（与 `the_crate_scan_actually_finds_crates`
+        // 的地板同源）。扫不到就是取名方式与 Cargo.toml 的写法分家了。
         assert!(
-            scanned >= 18,
-            "只扫到 {scanned} 处 crate 引用（三种形态 × 6 个 crate 应有 18 处）—— \
-             要么有一步被注释/删掉了，要么本抽取器的取名方式与 ci.yml 分家了。\
-             两种都得看一眼：后者会让下面那条零命中变绿"
+            scanned >= 6,
+            "只从 `[workspace] members` 扫到 {scanned} 条 `crates/…`（应 ≥6）—— \
+             要么真少了，要么本抽取器与 Cargo.toml 的写法分家了。后者会让下面那条零命中变绿"
         );
         assert!(
             ghosts.is_empty(),
-            "ci.yml 引用了 crates/ 下不存在的包：{ghosts:?}"
+            "`[workspace] members` 里列了不存在的 crate：{ghosts:?}"
         );
     }
 }

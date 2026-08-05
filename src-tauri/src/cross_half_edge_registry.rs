@@ -118,6 +118,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
 
 #[cfg(test)]
 mod tests {
+
     use super::CROSS_EDGES;
     use std::path::{Path, PathBuf};
 

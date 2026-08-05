@@ -36,15 +36,29 @@ jobs:
           workspaces: src-tauri
 
       # fmt 已经过项目历史校准，强制约束
-      - name: cargo fmt --check
-        run: cargo fmt --check
+      # G2（Phase G 代码工程审计）：这六个共享 crate 现在是**真 workspace member**
+      # （`src-tauri/Cargo.toml` 的 `[workspace]`）。收敛前它们只是 path 依赖 ——
+      # `cargo metadata` 的 `workspace_members` 只有 `monitor` 一项，`-p` 能跑靠的是
+      # cargo 允许选中依赖图里的非 member 包，**不是 workspace 机制**。
+      # ⇒ 原来 ~17 条 `--manifest-path`/`-p` 收敛成下面三条。
+      #
+      # ⚠ 收敛前的教训留在这里，别当成历史：`branch-core` 曾**进了 test 门禁却没进
+      # fmt/clippy**（当时正好有 3 处未格式化）；`usage-core`/`acct-core` 曾**一条 CI
+      # 步骤都没有**，它们的 8+4 条测试在 CI 里等于不存在。根因就是没有 `[workspace]`
+      # —— 每加一个 crate 都要人记得补三处。**现在补不补由 cargo 自己决定。**
+      #
+      # ⚠ `--exclude code-picture-core`：vendor 那个 crate 是成员的 path 依赖，
+      # cargo 会把它也算成 workspace 成员（`[workspace] exclude` 对 path 依赖**不生效**，
+      # 实测）。这里显式排除 ⇒ **不动 vendor 一个字节**（红线），它自己那 25 条测试
+      # 仍由下面那条独立步骤跑。
+      - name: cargo fmt --check（整个 workspace）
+        run: cargo fmt --all --check
 
-      # clippy 仅警告，不强制（项目尚未做完整 lint 整治）
-      - name: cargo clippy
-        run: cargo clippy --all-targets
+      - name: cargo clippy（整个 workspace，vendor 除外）
+        run: cargo clippy --workspace --exclude code-picture-core --all-targets
 
-      - name: cargo test
-        run: cargo test --all
+      - name: cargo test（整个 workspace，vendor 除外；实测 922 = monitor 882 + 六 crate 40）
+        run: cargo test --workspace --exclude code-picture-core
 
       # C05（rust-ts-boundary）：**生成物必须最新**。上一步的 `cargo test --all` 会跑
       # `ts-rs` 的导出测试、把 `src/generated/**` 重新写一遍；这里断言它与已提交的版本一致。
@@ -72,51 +86,6 @@ jobs:
       # 不动 vendor crate 源码/Cargo.toml（红线：别误伤 vendor）。
       - name: cargo test (vendor code-picture-core)
         run: cargo test -p code-picture-core
-
-      # G1（branch-anywhere）：`branch-core` 同理是 path 依赖、**非** workspace 成员
-      # ⇒ `--all` 同样测不到它。它是分叉的记录变换，monitor 与远端 daemon **共用同一份**，
-      # 里面那条 `branch_matches_native_fork_shape` 是「落盘格式 == 官方 /branch」的机检
-      # —— 不显式跑，这条判据在 CI 里等于不存在。
-      - name: cargo test (shared branch-core)
-        run: cargo test -p branch-core
-
-      # Phase G 审计：`branch-core` **进了 test 门禁却没进 fmt/clippy** —— 而它当时就是
-      # 未格式化的（3 处 diff）。根因：全仓没有 `[workspace]` 表，上面那条
-      # `cargo fmt --check` 跑在 `working-directory: src-tauri`，只覆盖 `monitor` 一个包。
-      # **新增 path 依赖 crate 时三样都要补**（test / fmt / clippy），不是只补 test。
-      - name: cargo fmt --check (shared branch-core)
-        run: cargo fmt --check --manifest-path crates/branch-core/Cargo.toml
-
-      - name: cargo clippy (shared branch-core)
-        run: cargo clippy --manifest-path crates/branch-core/Cargo.toml --all-targets
-
-      # ★ U8a-2a 补账：`usage-core`（U7-2）与 `acct-core`（U7-3）**当时一条 CI 步骤都没补** ——
-      # 它们的 8 + 4 条测试在 CI 里等于不存在，而上面那段注释逐字写着「新增 path 依赖 crate
-      # 时三样都要补」。是本轮加 `guard-core` 时照着这段注释走才发现的。
-      # 这两个 crate 恰恰是「改内核一处 ⇒ 三侧同时红」那条验收标准的载体，漏跑等于把它关掉。
-      - name: cargo test (shared usage-core / acct-core / guard-core / shell-quote-core)
-        run: |
-          cargo test -p usage-core
-          cargo test -p acct-core
-          cargo test -p guard-core
-          cargo test -p shell-quote-core
-          cargo test -p gate-core
-
-      - name: cargo fmt --check (shared usage-core / acct-core / guard-core / shell-quote-core)
-        run: |
-          cargo fmt --check --manifest-path crates/usage-core/Cargo.toml
-          cargo fmt --check --manifest-path crates/acct-core/Cargo.toml
-          cargo fmt --check --manifest-path crates/guard-core/Cargo.toml
-          cargo fmt --check --manifest-path crates/shell-quote-core/Cargo.toml
-          cargo fmt --check --manifest-path crates/gate-core/Cargo.toml
-
-      - name: cargo clippy (shared usage-core / acct-core / guard-core / shell-quote-core)
-        run: |
-          cargo clippy --manifest-path crates/usage-core/Cargo.toml --all-targets
-          cargo clippy --manifest-path crates/acct-core/Cargo.toml --all-targets
-          cargo clippy --manifest-path crates/guard-core/Cargo.toml --all-targets
-          cargo clippy --manifest-path crates/shell-quote-core/Cargo.toml --all-targets
-          cargo clippy --manifest-path crates/gate-core/Cargo.toml --all-targets
 
   frontend:
     name: Frontend typecheck + build
