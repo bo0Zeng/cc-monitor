@@ -173,6 +173,58 @@ pair_argv "resume（本组的正题：F06b 要接 --resolve 的就是这条）" 
 pair_argv "resume + --model（修饰不许只落一边）"                  resume abc-123 --agent claude --model opus
 pair_argv "new（对照组：证明差分不是只对 resume 有效）"            --agent claude
 
+# ===== A′-daemon：daemon 在位时的那条路（F06b-1c 接的就是它）=====
+# ⚠ 上面三对**看不见新路**：它们靠 `--launcher argvstub` 才能观察 argv，而 ccm 里
+#   「显式 `--launcher` 优先于 daemon 建议」⇒ 一给 launcher 就绕开 daemon 了。
+#   ⇒ 观察 daemon 那条路只能换个法子：**让假 daemon 自己回一条以 argvstub 为首的命令**。
+#   这条是接线当天就发现的洞（网立好了，却盖不住自己要接的那条路）。
+cat > "$W/bin/faux-daemon" <<STUB
+#!/usr/bin/env bash
+cat >/dev/null
+printf '{"command":"$W/bin/argvstub --resume FROM-DAEMON","mode":"PtyInject"}\n'
+STUB
+chmod +x "$W/bin/faux-daemon"
+
+actual_argv_d() {
+  base_env CCM_DAEMON_BIN="$W/bin/faux-daemon" bash "$CCM" "$@" --cwd "$CWD" > "$W/ad.out" 2>&1
+  grep '^ARGV|' "$W/ad.out" | head -1
+}
+predicted_argv_d() {
+  base_env CCM_DAEMON_BIN="$W/bin/faux-daemon" bash "$CCM" "$@" --cwd "$CWD" --print > "$W/pd.line" 2>&1
+  base_env CCM_DAEMON_BIN="$W/bin/faux-daemon" bash -c "$(cat "$W/pd.line")" > "$W/pd.out" 2>&1
+  grep '^ARGV|' "$W/pd.out" | head -1
+}
+AD="$(actual_argv_d resume abc-123 --agent claude)"
+ck "A′d · 真跑确实产出了 argv（差分自检）" "yes" "$([ -n "$AD" ] && echo yes || echo no)"
+ck "A′d · print↔exec argv 一致（daemon 在位）" "$AD" "$(predicted_argv_d resume abc-123 --agent claude)"
+# 绝对断言：证明 argv **真的来自 daemon**，不是「配方写了但没人走」。
+ck "A′d · daemon 在位时 argv 必须来自 daemon（不是本地那条）" "ARGV|--resume FROM-DAEMON" "$AD"
+# ★ 反向：**同一条命令、只是 daemon 不在**，必须落回本地那条（诚实降级，不是报错）。
+#   这条与上一条成对 —— 只有上一条时，「永远走 daemon」也能绿。
+#
+# ⚠⚠ **不能用 `actual_argv`**（第一版就这么写，变异 Y2「拿不到就 die」**存活**）：
+#   `actual_argv` 靠 `--launcher argvstub` 观察 argv，而显式 `--launcher` 恰好**绕开整个
+#   daemon 块** ⇒ 那条判据**结构上就走不到降级路**，它测的是另一条路。
+#   ★ 一般化：**观察手段本身改变了被观察的那条路** —— 判据的探针不许是被测分支的开关。
+#   ⇒ 改用 PATH 上的 `claude` shim 观察：不给 `--launcher`，走的就是真实的默认启动器那条。
+cat > "$W/bin/claude" <<'STUB'
+#!/usr/bin/env bash
+printf 'ARGV|%s\n' "$*"
+STUB
+chmod +x "$W/bin/claude"
+actual_argv_nolauncher() {   # 不给 --launcher ⇒ 默认启动器 = PATH 上的 claude shim
+  base_env bash "$CCM" "$@" --cwd "$CWD" > "$W/an.out" 2>&1
+  grep '^ARGV|' "$W/an.out" | head -1
+}
+ck "A′d · 降级观察面自检：不给 --launcher 时确实观察得到 argv" "ARGV|--resume abc-123" \
+   "$(actual_argv_nolauncher resume abc-123 --agent claude)"
+ck "A′d · daemon 不在时必须落回本地（诚实降级，不是报错）" "ARGV|--resume abc-123" \
+   "$(env -u CCM_DAEMON_BIN bash -c 'true'; actual_argv_nolauncher resume abc-123 --agent claude)"
+# ★ 显式 --launcher 必须压过 daemon 的建议（不许静默失效）。
+ck "A′d · 显式 --launcher 优先于 daemon 建议" "ARGV|--resume abc-123" \
+   "$(base_env CCM_DAEMON_BIN="$W/bin/faux-daemon" bash "$CCM" resume abc-123 --agent claude \
+        --cwd "$CWD" --launcher "$W/bin/argvstub" 2>&1 | grep '^ARGV|' | head -1)"
+
 # 绝对断言：差分两边一起坏掉时的最后一道。
 ck "A′ · resume 真跑的 argv 必须逐字带 --resume <sid>" "ARGV|--resume abc-123" \
    "$(actual_argv resume abc-123 --agent claude)"

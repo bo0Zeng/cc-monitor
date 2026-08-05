@@ -25,11 +25,21 @@ ccm() { env -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexis
 UNSET="unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION"
 
 echo "===== 契约：动作 × 修饰 ====="
+# F06b-1c（C4）：resume 的 exec 段现在是一段**配方** —— `--print` 打的是配方不是值
+# （见 `shared/ccm` 的 `resolve_recipe` 头注：求值推迟到那条串真正被执行时，`--print` 才
+# 保持纯的）。下面**手写一份期望文本**，⚠ **刻意不从 ccm 里取** —— 从 ccm 取就是同义反复，
+# 实现怎么变期望就怎么变，这三条黄金串等于不存在。
+# ⚠ 它仍是**逐字等值**断言，没有降成 `contains`：三条断言各自的意图
+#（`--resume <sid>` 拼对了 / `--model` 被 export / resume 不做 auto 解析）在新串里逐字可见。
+RECIPE() { # RECIPE <sid> <本地兜底的 exec 串>
+  printf '%s' '_ccm_c=""; if [ -n "${CCM_DAEMON_BIN:-}" ] && [ -x "$CCM_DAEMON_BIN" ]; then _ccm_c="$(printf '"'"'%s'"'"' '"'"'{"sessionId":"'"$1"'"}'"'"' | "$CCM_DAEMON_BIN" --resolve 2>/dev/null | grep -o '"'"'"command":"[^"]*"'"'"' | head -1 | cut -d'"'"'"'"'"' -f4)"; fi; if [ -n "$_ccm_c" ]; then exec $_ccm_c; else '"$2"'; fi'
+}
+
 ck "零修饰（--cwd .）：最终 exec 与今天 ccm() 逐字节一致" \
    "$UNSET; cd '.' && exec claude" \
    "$(ccm --cwd . --print)"
 ck "resume <sid>" \
-   "$UNSET; cd '/p' && exec claude --resume abc-123" \
+   "$UNSET; cd '/p' && $(RECIPE abc-123 "exec claude --resume abc-123")" \
    "$(ccm resume abc-123 --cwd /p --print)"
 ck "--resume <sid> 与 resume <sid> **等价**（cc-monitor 今天的拼法，零改动即正确）" \
    "$(ccm resume abc-123 --cwd /p --print)" \
@@ -55,7 +65,7 @@ ck "--base：显式 unset CLAUDE_CONFIG_DIR（#75 逃生口）" \
    "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec claude" \
    "$(ccm --cwd /p --base --print)"
 ck "--model：export ANTHROPIC_MODEL（F08，闭合 R14）" \
-   "export ANTHROPIC_MODEL='opus'; $UNSET; cd '/p' && exec claude --resume s1" \
+   "export ANTHROPIC_MODEL='opus'; $UNSET; cd '/p' && $(RECIPE s1 "exec claude --resume s1")" \
    "$(ccm resume s1 --cwd /p --model opus --print)"
 ck "--model=<名> 等号形式" \
    "$(ccm resume s1 --cwd /p --model opus --print)" \
@@ -112,7 +122,7 @@ rm -rf "$ACCTMP"
 echo
 echo "===== 动作/目录语义（D 审计：auto 只对 new 生效）====="
 ck "resume 不做 auto 解析（cc-monitor 已 cd 到会话目录，再解析会跑到 git 仓父目录）" \
-   "$UNSET; cd '$PWD' && exec claude --resume s1" \
+   "$UNSET; cd '$PWD' && $(RECIPE s1 "exec claude --resume s1")" \
    "$(ccm --resume s1 --print)"
 ck "resume 后跟 flag → 报错（别把 --tmux 当 sid）" \
    "ccm: resume 需要 <sid>" \
