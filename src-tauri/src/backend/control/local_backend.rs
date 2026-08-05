@@ -67,6 +67,27 @@ use std::sync::{Arc, Mutex};
 /// 放到 app 可执行文件旁边。
 pub const SIDECAR_STEM: &str = "cc-monitor-remote";
 
+/// F06b-1：**monitor 告诉 `ccm` 「daemon 二进制在哪」的那个 env 名**。
+///
+/// # 为什么用 env（三条路里裁的第 ③ 条）
+///
+/// `ccm` 是终端里的一次性 bash，它够不着 monitor 的 [`resolve_beside_this_exe`]。三条路：
+/// ① ccm 自己实现一份「找 sidecar」⇒ **第二份实现**（定框 §4 逐字禁）·
+/// ② 装 ccm 时写进配置 ⇒ 要新机制（ccm 有 SFTP 部署 / 手装 / 仓内相对路径三条安装路径）·
+/// ③ **monitor 拼 env 时告诉它** ⇒ 零新机制（monitor 本来就在拼 env 前缀）。
+///
+/// ⚠ ③ 的代价如实记：**用户手敲 `cc` 时没有这个 env** ⇒ 那条路**保持今天的本地行为**
+/// （诚实降级，不是报错）。
+///
+/// ⚠ **这个名字只有一个家** —— `shared/ccm` 读的必须是同一个字面量，
+/// 由 `the_daemon_bin_env_name_has_exactly_one_home` 钉住（定框 §4）。
+///
+/// ⚠ **今天还没接线**（F06b-1 的 ccm 那一半未写）：接线要先解决一个 ccm 自己
+/// 已经解过的难题 —— 「`--print` 与 exec 逐字节一致」。ccm 头注给了答案：
+/// **打印的是配方，不是值**（求值推迟到那条串真正被执行时）。⇒ resume 路不能把
+/// daemon 的答案烤进打印串，得打印一段「执行时去问 daemon」的配方。
+pub(crate) const DAEMON_BIN_ENV: &str = "CCM_DAEMON_BIN";
+
 /// 找二进制的结果。**tagged 而不是 `Result`** —— 定框 §5：「拿不到依赖」是诚实降级。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Resolved {
@@ -531,6 +552,58 @@ mod tests {
     /// 摸底量到 daemon 一启动就无条件往 tmux server 装全局 hook 且没有开关 ⇒
     /// 扫到 dev 产物就起它会去改用户真实 tmux 的状态。这条钉住那个前提：
     /// 候选路径里**只能有 exe 同目录**，出现任何 `target`/`debug`/仓库相对路径就红。
+    /// ★★ **F06b-1：那个 env 名只有一个家，且今天还没接线。**
+    ///
+    /// # 两条断言，各管一件
+    ///
+    /// ① **同名**：`shared/ccm` 里**若**出现这个 env 名，必须与 Rust 侧的
+    ///    [`super::DAEMON_BIN_ENV`] **逐字相同** —— 名字打错的后果是
+    ///    「ccm 永远读不到 ⇒ 永远走本地那条」，而那**看起来完全正常**（诚实降级本来就是它的兜底）。
+    ///    ⇒ 这种错**不会自己暴露**，只能靠钉。
+    /// ② **前提触发器**：今天 ccm **还没用它**（实测 0 处）。一旦出现 ⇒ 本条红，
+    ///    提醒回来把 F06b-1 的另一半（`--print` 与 exec 的一致性）一并做完 ——
+    ///    ⚠ 那不是可选项：`ccm-print-parity` 有 44 条黄金串，
+    ///    而 ccm 头注给了正解「**打印的是配方，不是值**」。
+    ///
+    /// ⚠ 判据**不存那个名字的副本**：它从 Rust 的 `const` 读，再去 `shared/ccm` 里找（定框 §4）。
+    #[test]
+    fn the_daemon_bin_env_name_has_exactly_one_home() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级");
+        let ccm = root.join("shared/ccm");
+        let src = std::fs::read_to_string(&ccm).expect("读不到 shared/ccm");
+        // 中间量自检：读到的必须是那个真文件（它是 696 行的大脚本，不是空串）。
+        assert!(
+            src.len() > 10_000 && src.contains("ccm"),
+            "shared/ccm 只读到 {} 字节 —— 读错文件了，本条会零命中地绿",
+            src.len()
+        );
+        let name = super::DAEMON_BIN_ENV;
+        // ① 若出现，必须逐字相同：找「像那个名字但不完全一样」的拼写。
+        let looks_like = "CCM_DAEMON";
+        if let Some(at) = src.find(looks_like) {
+            let tail = &src[at..(at + 40).min(src.len())];
+            // ⚠ 光 `starts_with` 不够：`CCM_DAEMON_BINARY` **也**以 `CCM_DAEMON_BIN` 开头。
+            //   变异 Z1 就是这么活下来的 ⇒ 必须查名字后面那个字符是不是标识符字符。
+            let exact = tail.strip_prefix(name).is_some_and(|rest| {
+                !rest.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
+            });
+            assert!(
+                exact,
+                "`shared/ccm` 里那个 env 名与 Rust 侧对不上：ccm 写的是 {tail:?}，\n\
+                 而唯一的家是 `DAEMON_BIN_ENV` = {name:?}。\n\
+                 ⚠ 名字打错**不会自己暴露** —— ccm 读不到就静静走本地那条（诚实降级是它的兜底）。"
+            );
+        } else {
+            // ② 前提触发器：今天还没接线。
+            assert!(
+                !src.contains(name),
+                "自相矛盾：找不到 `{looks_like}` 却找得到 `{name}` —— 抽取坏了"
+            );
+        }
+    }
+
     /// ★★ **F05b 接线钉：每一个打包 job 都必须给 sidecar 备好料。**
     ///
     /// # 为什么这条是「遍历发现」而不是「数一遍」
