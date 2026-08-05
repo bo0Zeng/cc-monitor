@@ -62,11 +62,17 @@ mod tests {
         // ⚠ 四条的**处数之和仍是 15**，与实测那一侧的口径一致（比较逻辑已改成「按文件求和」）。
         (
             "src/history.rs",
-            "reader",
+            "no-counterpart",
             2,
-            "**真读面只剩这两处**：`list_history_projects`(168/169) 解析 records 根并遍历它列项目。\
-             对侧 `--list-projects`。⚠ 迁它不是纯直通 —— 本函数还吃 `SessionMap`（活状态）\
-             与 `load_metadata()`，只有「遍历目录」那半能搬。退役归 F10 本体。",
+            "`list_history_projects`(168/169) 遍历 records 根列项目。\
+             ⚠ **今天的查询集下迁不了、不属能退役的范围** —— 逐字段量过：\
+             daemon `--list-projects` 每行只给 `dirName` / `projectPath` / `sessionCount` / \
+             `lastActivityMs` **四个字段**，而本函数还要 `starred_count` / `hidden_count`（本机\
+             metadata，**按会话 sid 查**）与 `has_live`（`SessionMap` 活状态）—— \
+             `analyze_project_dir` 正是靠 `read_dir` + 从文件名推 sid 才算得出它们。\
+             ⇒ 要么 daemon 补「每项目的会话 sid 清单」，要么每个项目再来一次 `--list-sessions`\
+             （N 次进程 spawn，而这是用户常开的界面）。\
+             ★ **退役条件：daemon 的 `--list-projects` 每行带上会话 sid 清单**（或等价字段）。",
         ),
         (
             "src/history.rs",
@@ -362,8 +368,9 @@ mod tests {
         }
         // 抽取器自检：一条 reader 都没认出来时上面全空转。
         assert_eq!(
-            readers, 8,
-            "`reader` 条数变了（实测 10 条）。这个数就是 **F10 的真实工作面** —— \
+            readers, 7,
+            "`reader` 条数变了（**实测 7 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
+             而这段文案一直写着「实测 10 条」，是 S11 那族出现在**判据自己的报错文案**里）。这个数就是 **F10 的真实工作面** —— \
              多一条要说明为什么又加了直读点，少一条说明退役了一处（把棘轮往下拧）。\n\
              ⚠ 棘轮史：11 → **10**（F10b 第一批，`usage.rs` 退役 —— 它改走本机后端的 `--usage`）\n\
              → **9**（F10b 第二批：`accounts.rs` **改分类**为 `remote` —— 它本来就不是本机读面，\n\
@@ -372,6 +379,10 @@ mod tests {
              `list_local_session_accounts` 一个函数，它改走 sidecar 的 `--session-accounts`；\n\
              顺带删掉 `proc_claude_config_dir`/`pid_alive` 两个**平台原语的第二份实现**，\n\
              它们的家在 daemon 的 `platform/proc.rs`）。\n\
+             → **7**（F10b 末批：`history.rs` 的 reader 条**转成 `no-counterpart`** ——\n\
+             ⚠ **那不是退役**，是量清「今天的查询集下它迁不了」并写明退役条件。\n\
+             ★ 至此本机读面**在现有 daemon 查询集下已无可退**：剩下的每一处都有\n\
+             有名有姓的缺口（缺字段 / 缺索引 / 缺 codex 支持 / 根本不是读面）。\n\
              ⚠ **别把这个数往上调**：往上调等于承认又加了直读点，那要先说清为什么。"
         );
     }
