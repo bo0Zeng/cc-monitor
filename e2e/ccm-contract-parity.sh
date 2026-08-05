@@ -128,6 +128,58 @@ pair "claude + --base + --model（#75 逃生口）" --agent claude --base --mode
 BASE_EXTRA=()
 
 echo
+echo "===== A′ 组：print↔exec 的 **argv** 一致（A 组只比 env，且六格全是 new）====="
+# ★ 这一组的开张理由是一个**存活的反例**（F06b-1b，2026-08-04）：
+# 往 `--print` 的非容器出口里塞一句「现在就去问 daemon 要 command」，打印串从
+# `exec claude --resume abc-123` 变成 `exec claude --resume STUB-FROM-DAEMON`
+# —— 而 `ccm-print-parity`(12) 与本套件(31) **两套全绿**。
+#
+# 两个洞，都真：
+#   ① `ccm-print-parity` 的 resume 场景全是 `--tmux` 的，`--print` 只展示**外层 tmux
+#      编排命令**，在容器出口就 exit 了 ⇒ **非容器 resume 的打印路一条判据都没走到过**。
+#   ② A 组比的是 `ccm_keys`（**环境键**），argv 分家它看不见；六个 pair 又全是默认动作
+#      `new`，**resume 那条路本身没有任何 print↔exec 差分**。
+#
+# ⇒ 于是「把 `--resolve` 接进 resume」这件事今天**没有任何安全网**：print 与 exec 各接
+# 一半、或只接一边，两套 e2e 都会安静地绿。本组就是接线之前先立的那张网。
+# ⚠ 同 A 组：差分不能单独用（两边一起坏掉时是绿的）⇒ 每格都配一条**绝对断言**。
+cat > "$W/bin/argvstub" <<'STUB'
+#!/usr/bin/env bash
+printf 'ARGV|%s\n' "$*"
+STUB
+chmod +x "$W/bin/argvstub"
+
+# 真跑：`--launcher argvstub` ⇒ 最终 `exec argvstub …` ⇒ stdout 就是**真实** argv。
+actual_argv() {
+  # ⚠ 动作（resume/new/attach）**必须是第一个位置参数**，所以 `"$@"` 排在 flag 前面
+  #   —— 第一版写反了，ccm 当场 die「多余的位置参数」，被下面那条差分自检逮住。
+  base_env bash "$CCM" "$@" --cwd "$CWD" --launcher "$W/bin/argvstub" > "$W/aa.out" 2>&1
+  grep '^ARGV|' "$W/aa.out" | head -1
+}
+# 预言：同一组 flag 的 `--print` 串，在同一个基础环境里跑一遍。
+predicted_argv() {
+  base_env bash "$CCM" "$@" --cwd "$CWD" --launcher "$W/bin/argvstub" --print > "$W/pa.line" 2>&1
+  base_env bash -c "$(cat "$W/pa.line")" > "$W/pa.out" 2>&1
+  grep '^ARGV|' "$W/pa.out" | head -1
+}
+pair_argv() { # pair_argv <标签> <flags…>
+  local label="$1" a; shift
+  a="$(actual_argv "$@")"
+  # 差分自检：两边都空时差分是绿的（ccm 整体 die 就是这个形状）。先证明「有东西可比」。
+  ck "A′ · 真跑确实产出了 argv（差分自检）：$label" "yes" "$([ -n "$a" ] && echo yes || echo no)"
+  ck "A′ · print↔exec argv 一致：$label" "$a" "$(predicted_argv "$@")"
+}
+pair_argv "resume（本组的正题：F06b 要接 --resolve 的就是这条）" resume abc-123 --agent claude
+pair_argv "resume + --model（修饰不许只落一边）"                  resume abc-123 --agent claude --model opus
+pair_argv "new（对照组：证明差分不是只对 resume 有效）"            --agent claude
+
+# 绝对断言：差分两边一起坏掉时的最后一道。
+ck "A′ · resume 真跑的 argv 必须逐字带 --resume <sid>" "ARGV|--resume abc-123" \
+   "$(actual_argv resume abc-123 --agent claude)"
+ck "A′ · resume 的 --print 串也必须说出同一句" "ARGV|--resume abc-123" \
+   "$(predicted_argv resume abc-123 --agent claude)"
+
+echo
 echo "===== A 组绝对断言（差分两边一起坏掉时它们才是最后一道）====="
 ck "codex 在 tmux 内：真跑必须 export CC_BUS_ID=<会话名>" "CC_BUS_ID=faux-sess" \
    "$(actual_env --agent codex | tr '|' '\n' | grep '^CC_BUS_ID=')"
