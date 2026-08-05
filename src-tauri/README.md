@@ -4,6 +4,19 @@ Rust + Tauri 2。crate 名 `monitor`（lib 名 `monitor_lib`）。
 
 本文件做"开发者打开 src-tauri/ 后第一眼看到的导航"。前端结构见 [`../src/README.md`](../src/README.md)。
 
+> ## ⚠ `src/backend/` 的逐文件清单**不在本文件里**〔G3 加〕
+>
+> 它住 **`src-tauri/src/backend/mod.rs` 的 `BACKEND_FILES` 登记表** —— 那是**机检**的：
+> 往 `backend/` 加文件而不在表里写明「属哪条能力线、为什么在这里」，`cargo test` **当场红**
+> （`every_file_under_backend_is_registered_with_a_reason`）。`doc/ARCHITECTURE.md §2.7` 就是这么分派的。
+>
+> ⇒ **本文件刻意不复制那份清单**：复制出来的第二份没有机检看着，
+> 而本仓反复治的正是「同一个事实两处各写一份然后漂移」。
+> 本文件收录的是 `backend/` **之外**那些模块。
+>
+> ⚠ 顺带说清一件容易读错的事：`backend/` 下今天有 11 个 `.rs`（控制面搬进后端的产物），
+> 它们在下面两张表里**看不到**，那**不是遗漏**，是分派。
+
 ## 目录结构
 
 ```

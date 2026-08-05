@@ -278,6 +278,25 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 
 ### 2.7 改远端会话后端命令（tmux attach / new / send-keys）
 
+> ⚠⚠ **G3 订正（2026-08-04）：本节的「阶段②」已经是现在时了。**
+> 下面第 4 步把「取命令方式转 daemon RPC」写成**未来动作**，而 **F04b（kill）与 F04c（send-keys）
+> 已经把生产主路切到 daemon RPC**：`src-tauri/src/backend/control/daemon_kill.rs` /
+> `daemon_send_keys.rs`（分流判定在 `daemon_route.rs`，三态而非二态）。
+> `src/session-backend.ts` 那条 shell 串**已降级为 C7 过渡期回落**
+> （`tmux_daemon_gate_guard.rs` 反过来钉着「回落必须还在」）。
+>
+> ⇒ **今天要改 kill / send-keys 的行为，先改 Rust 那侧的主路**；
+> 只改 `session-backend.ts` 会改到一条**多数情况下走不到**的路径。
+> ⚠ 但 `attach` / `new-session` 那两条**仍然**走本节原来的路（它们没搬）——
+> **所以本节不是整节作废，是「按命令分叉」**：
+>
+> | 命令 | 今天的主路 | 改哪里 |
+> |---|---|---|
+> | `kill` | daemon RPC（F04b） | `backend/control/daemon_kill.rs`；`session-backend.ts` 只是回落 |
+> | `send-keys` | daemon RPC（F04c） | `backend/control/daemon_send_keys.rs`；同上 |
+> | `attach` / `new-session` | **仍是** `session-backend.ts` 那条 shell 串 | 照本节原步骤 |
+
+
 **目标**：改「在远端起/接会话」的命令（resume/launcher/attach）。守 **INVARIANTS §31（SS-12）**：
 前端**绝不硬编码后端命令字面量**，命令语法一律经 `src/session-backend.ts` 座（`SESSION_BACKEND`）。
 
