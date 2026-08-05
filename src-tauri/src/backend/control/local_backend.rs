@@ -371,6 +371,37 @@ pub fn supervise(
 ///
 /// `current_exe()` 不是 GUI 把手（不违反宿主无关那条机检）——
 /// 它是「我这个二进制装在哪」这一条**部署事实**，正是 sidecar 该在的位置。
+/// F06b-1d（**C9** 的逐字落地）：给 backend 亲手开的那个终端窗口，配上 daemon 路径。
+///
+/// # 为什么是「给窗口设 env」而不是「拼进启动串」
+///
+/// C9 逐字：frontend 只剩「在用户桌面上**开一个终端窗口**」，**窗口里跑什么由 backend 给**。
+/// 而开窗这一步本来就在 backend 手里（`launch.rs::launch_local_posix` /
+/// `launch_powershell_window`）⇒ **backend 直接把环境交给它开的窗口**，是这条原则最直接的形态。
+///
+/// 另外三条候选都要**把一个后端事实塞进前端**（`payload.rs` 编译的 `EnvOp` 由 TS 经 wire 送来）
+/// —— 那正对着 **C2**（backend 是 monitor 自己的一半，不是外部依赖）。⇒ 裁 ⑤，理由进 `DECISIONS.md §2`。
+///
+/// # 返回 `None` 的含义
+///
+/// **sidecar 不在就不设** —— 导一个指向空处的路径不会让 ccm 更聪明（它那边 `[ -x ]` 一样过不了），
+/// 只会让「这台机到底有没有本机后端」这个问题多一个假阳性来源。⇒ 空值 ≠ 未设（Z01 那条支点）。
+pub(crate) fn daemon_bin_env_for_window(target_triple: &str) -> Option<(&'static str, String)> {
+    env_from_resolved(resolve_beside_this_exe(target_triple))
+}
+
+/// 上面那个函数的**纯**内核 —— 抽出来是为了两个分支都测得到。
+///
+/// ⚠ 不抽的话判据只走得到 `Missing`（测试环境旁边没有 sidecar），
+/// 于是「`Found` 时用的是 [`DAEMON_BIN_ENV`] 这个名字」这半**永远验不了** ——
+/// 那正是「判据的探针改变了被观察的路」的近亲：**探针到不了的分支等于没判据**。
+fn env_from_resolved(r: Resolved) -> Option<(&'static str, String)> {
+    match r {
+        Resolved::Found(p) => Some((DAEMON_BIN_ENV, p.to_string_lossy().into_owned())),
+        _ => None,
+    }
+}
+
 pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
     let exe_dir = match std::env::current_exe()
         .ok()
@@ -558,6 +589,36 @@ mod tests {
     /// 摸底量到 daemon 一启动就无条件往 tmux server 装全局 hook 且没有开关 ⇒
     /// 扫到 dev 产物就起它会去改用户真实 tmux 的状态。这条钉住那个前提：
     /// 候选路径里**只能有 exe 同目录**，出现任何 `target`/`debug`/仓库相对路径就红。
+    /// ★★ **F06b-1d：给窗口的那份 env —— 名字从唯一的家来，sidecar 不在就不设。**
+    ///
+    /// 判据形态：**纯函数**（跑法：单测 · 钉的性质：wire/边界映射 —— 两维分开写，见 `ROADMAP §4`
+    /// 登记的计量缺陷）。它钉两件：
+    /// ① `Found` ⇒ 键**必须**是 [`super::DAEMON_BIN_ENV`]（不是另抄一个字面量），值是那条真路径；
+    /// ② `Missing` ⇒ **`None`，不是 `Some((名, ""))`** —— 导一个指向空处的路径不会让 ccm 更聪明
+    ///    （它那边 `[ -x ]` 一样过不了），只会给「这台机有没有本机后端」多一个假阳性来源。
+    #[test]
+    fn the_window_env_uses_the_one_home_and_stays_silent_without_a_sidecar() {
+        let found = super::env_from_resolved(super::Resolved::Found("/tmp/x/ccm-remote".into()));
+        let (k, v) = found.expect("Found 必须给出一对 env");
+        assert_eq!(
+            k,
+            super::DAEMON_BIN_ENV,
+            "给窗口的 env 名没走唯一的家 —— 有人另抄了一个字面量"
+        );
+        assert_eq!(v, "/tmp/x/ccm-remote", "值必须是解析出来的那条真路径");
+
+        let missing = super::env_from_resolved(super::Resolved::Missing {
+            reason: "测试".into(),
+            looked_at: vec![],
+        });
+        assert!(
+            missing.is_none(),
+            "sidecar 不在时必须**什么都不设**，而不是设一个空值 —— \n\
+             空值 ≠ 未设（Z01 那条支点）：ccm 那边 `[ -x ]` 照样过不了，\n\
+             却给「这台机有没有本机后端」多造了一个假阳性来源。"
+        );
+    }
+
     /// ★★ **那个 env 名只有一个家**〔F06b-1 立，F06b-1c 起转为实断言〕。
     ///
     /// # 两条断言，各管一件
@@ -618,6 +679,19 @@ mod tests {
         //    ccm 一用它就红。它**如期红过一次**，本轮把接线做完，于是它转成一条实断言：
         //    名字必须真出现在 `shared/ccm` 里 —— 接线要是被谁整段删了，本条红。
         //    ⚠ **地板按实测写**：当时 7 处（第一版顺手写了 4，是猜的 —— 实测 7）。
+        // ★★ **「唯一的家」只能用源码扫描钉，值比较钉不住**〔W3 存活教的，F06b-1d〕：
+        //    判据原先只有 `assert_eq!(k, DAEMON_BIN_ENV)`，而**副本的值按定义就相等** ——
+        //    把 `DAEMON_BIN_ENV` 换成字面量 `"CCM_DAEMON_BIN"`，那条断言照样绿。
+        //    ⇒ **「同一个值」与「同一个来源」是两回事**；要钉来源，就得去源码里数它出现几次。
+        let me = guard_core::production_code(include_str!("local_backend.rs"));
+        let lit = format!("\"{name}\"");
+        let n_lit = me.matches(lit.as_str()).count();
+        assert_eq!(
+            n_lit, 1,
+            "`local_backend.rs` 的生产代码里字面量 {lit} 出现了 {n_lit} 次 —— \n\
+             唯一的家是那个 `const`，其余一律引用它。\n\
+             ⚠ 值相等的断言**看不见副本**（副本的值按定义就相等），只有数源码才看得见。"
+        );
         assert!(
             seen >= 7,
             "`shared/ccm` 里只找到 {seen} 处 `{looks_like}` —— \n\

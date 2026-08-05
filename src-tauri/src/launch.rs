@@ -136,6 +136,13 @@ pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<(), String> {
     if let Some(d) = cwd.filter(|c| std::path::Path::new(c).is_dir()) {
         builder.current_dir(d);
     }
+    // F06b-1d（C9）：backend 把 daemon 路径交给它亲手开的这个窗口 —— 窗口里那次 `ccm resume`
+    // 据此去调 `--resolve`（`shared/ccm::resolve_from_daemon`）。sidecar 不在就不设。
+    if let Some((k, v)) =
+        crate::backend::control::local_backend::daemon_bin_env_for_window(env!("CCM_TARGET_TRIPLE"))
+    {
+        builder.env(k, v);
+    }
     builder
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -248,7 +255,19 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     for a in ps_args {
         wt_args.push(a.into());
     }
-    if Command::new("wt.exe").args(&wt_args).spawn().is_ok() {
+    // F06b-1d（C9）：同 POSIX 那条 —— 见 `daemon_bin_env_for_window` 头注。
+    // ⚠ **这一格的诚实边界**：`wt.exe` 多半只是把请求转交给**已在跑的** Windows Terminal 进程，
+    //   新标签的环境来自那个进程、不是本次 spawn ⇒ **这里设的 env 未必落得进去**。
+    //   下面 Plan B（CREATE_NEW_CONSOLE 直起 powershell）是真正会继承的那条。
+    let daemon_env = crate::backend::control::local_backend::daemon_bin_env_for_window(env!(
+        "CCM_TARGET_TRIPLE"
+    ));
+    let mut wt = Command::new("wt.exe");
+    wt.args(&wt_args);
+    if let Some((k, v)) = daemon_env.clone() {
+        wt.env(k, v);
+    }
+    if wt.spawn().is_ok() {
         tracing::info!("launch: powershell window via wt.exe");
         return Ok(());
     }
@@ -257,6 +276,10 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     let mut builder = Command::new("powershell.exe");
     builder.args(ps_args);
     builder.creation_flags(CREATE_NEW_CONSOLE);
+    // F06b-1d（C9）：同上。这一格是**真新起的进程**，env 一定继承。
+    if let Some((k, v)) = daemon_env {
+        builder.env(k, v);
+    }
     if let Some(d) = start_dir {
         builder.current_dir(d);
     }
@@ -357,6 +380,65 @@ mod tests {
     /// 原文案「拉起终端窗口仅支持 Windows（v1）」里那个 `(v1)` 在撒谎 —— L1 早就裁决过
     /// 反方向（`launch_local_posix` 头注：开窗要先猜终端模拟器，是平白引入一个会在别人
     /// 机器上错的决定）。用户在 Linux 上每次点 ↗ 都会读到那句话。
+    /// ★★ **F06b-1d（C9）：backend 开的每一个终端窗口都必须带上 daemon 路径。**
+    ///
+    /// 判据形态：**零命中守卫**（跑法：单测扫生产源码 · 钉的性质：**生产接线** ——
+    /// 两维分开写，见 `ROADMAP §4` 登记的计量缺陷）。
+    ///
+    /// # 它防的是什么
+    ///
+    /// 「给窗口设 env」这件事**没有集中落点**：本文件有三个各自 spawn 的开窗点
+    /// （POSIX 一个、Windows 的 `wt.exe` 与 conhost 兜底各一个）。**新加第四个而忘了带 env**，
+    /// 后果是那条路上的 `ccm resume` **静默地**永远走本地 —— 与名字打错同一族的静默失败。
+    /// ⇒ 用「`Command::new(` 的总数」当触发器：多一个就红，逼人回来看这条。
+    ///
+    /// ⚠ **别手搓剥测试的尺子**：用 `guard_core::production_code`（仓里已有那把）。
+    /// 不剥的话，下面那两条**测试里的字符串字面量** `"Command::new(\"gnome-terminal\")"`
+    /// 会被数进去 —— 实测裸数是 6，生产里只有 4。
+    #[test]
+    fn every_terminal_window_backend_opens_carries_the_daemon_path() {
+        let src = include_str!("launch.rs");
+        let prod = guard_core::production_code(src);
+        let spawns = prod.matches("Command::new(").count();
+        // ⚠ 钉**真正的动作** `.env(k, v)`，不是 helper 的调用次数：
+        //    Windows 那个函数**只调一次 helper**，把结果给两个 spawn 点共用
+        //    ⇒ 按 helper 数写地板会写成 3，实测 2（第一版就这么错的，被本条自己逮住）。
+        let helper = prod.matches("daemon_bin_env_for_window(").count();
+        let carried = prod.matches(".env(k, v)").count();
+        // 抽取器自检：剥完必须还看得见东西，且**确实剥掉了**测试里那两条字面量。
+        assert!(
+            prod.len() > 5_000,
+            "剥完只剩 {} 字节 —— 剥过头了，本条会零命中地绿",
+            prod.len()
+        );
+        assert!(
+            !prod.contains("gnome-terminal"),
+            "测试段没剥干净（`gnome-terminal` 只出现在测试的字符串字面量里）"
+        );
+        // 生产里 4 个：三个开窗点 + 一个 `where.exe` 探测（它不是开窗，不需要 env）。
+        assert_eq!(
+            spawns, 4,
+            "`launch.rs` 生产代码里的 `Command::new(` 从 4 变成了 {spawns}。\n\
+             若新增的是**开终端窗口**，它必须也带上 `daemon_bin_env_for_window(...)` 的 env，\n\
+             否则那条路上的 `ccm resume` 会**静默地**永远走本地（与名字打错同一族的静默失败）；\n\
+             若新增的只是探测进程（如 `where.exe`），把本条的数字与这句说明一起更新。"
+        );
+        assert_eq!(
+            carried, 3,
+            "真的把 env 交给窗口的 spawn 点从 3 变成了 {carried} —— 有开窗点漏了，或有人删了它"
+        );
+        assert_eq!(
+            helper, 2,
+            "解析 sidecar 路径的调用点从 2 变成了 {helper}（POSIX 一次 · Windows 一次给两个 spawn 共用）"
+        );
+        // 那个不带 env 的必须是探测，不是开窗：钉住它的身份，别让「探测」变成豁免借口。
+        assert!(
+            prod.contains("Command::new(\"where.exe\")"),
+            "唯一允许不带 daemon env 的 `Command::new` 是 `where.exe` 探测；它不见了 ⇒ \n\
+             要么被改名，要么 4-3=1 这个差额现在对应的是一个**真开窗点**"
+        );
+    }
+
     #[test]
     fn the_posix_message_states_a_decision_not_a_missing_feature() {
         let m = POSIX_NO_TERMINAL_WINDOW;
