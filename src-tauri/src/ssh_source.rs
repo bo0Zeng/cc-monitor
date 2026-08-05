@@ -1726,6 +1726,17 @@ pub fn shell_quote(s: &str) -> String {
 /// 而是用 schema-agnostic 的方式（serde_json::Value + 读 `kind`）解析，只取 Phase-0 需要的
 /// 字段。这样：协议演进（daemon 加 `build_id` / 加新 kind）不会 break 解析 —— 未知 kind /
 /// 多余字段一律忽略（见 `parse_frame`）。
+/// 一条**丢了就不可恢复**的帧的身份〔audit-0805 F21〕。
+///
+/// 与 daemon 侧 `wire::LostFrame` 对应。**故意不共用类型**：那是 daemon crate 的私有 wire
+/// 形状，monitor 这边是从 JSON 现解的，共用会把两个 crate 绑死在一个结构体上，
+/// 而 additive 演进恰恰要求两边能各自容忍对方多/少字段。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LostFrameInfo {
+    pub kind: String,
+    pub subject: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum InboundFrame {
     /// 握手帧：连接建立后 daemon 发一次。`v` = 协议大版本，`build_id` = daemon 构建标识
@@ -1783,8 +1794,17 @@ pub enum InboundFrame {
         cause: RemovalCause,
     },
     /// issue #32：远端 daemon 发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）。
-    /// monitor 收到后经 SS-F remote-health 通道提示用户可能丢实时行。
-    Overflow { dropped: u64 },
+    /// monitor 收到后经 SS-F remote-health 通道提示用户。
+    ///
+    /// ★ `lost` / `lost_truncated`〔audit-0805 F21，additive〕：那批丢帧里**不可恢复**的
+    /// 那些的身份。⚠ **它们的有无决定了要对用户说哪句话** —— 丢内容帧「重开会话可看完整
+    /// 历史」是真的；丢状态增量帧**不是**（它是一次差分的结果、别处不存在）。
+    /// 旧 daemon 不发这两个字段 ⇒ 空集 / false，行为退回从前。
+    Overflow {
+        dropped: u64,
+        lost: Vec<LostFrameInfo>,
+        lost_truncated: bool,
+    },
     /// B2：daemon 在远端本地跑 `tmux ls` 的原始 stdout（或哨兵 `NO_TMUX`）——喂 tmux 对账，
     /// 替掉每 8s 新建 SSH 的刷屏轮询。`raw` 由 `tmux::parse_tmux_ls` 解析（`NO_TMUX`→无 tmux）。
     ///
@@ -1809,6 +1829,51 @@ pub enum InboundFrame {
     },
     /// U6b-1 / U8a-2a：某条在跑的入方向命令**已被取消**。
     Cancelled { id: String },
+}
+
+/// 拥塞提示的**措辞**：有没有不可恢复的丢失，说法完全不同〔audit-0805 F21〕。
+///
+/// # 为什么要一个纯函数
+///
+/// 这句话是**用户唯一能看到的东西**，而它此前是错的（对状态增量帧说「重开会话可看完整
+/// 历史」）。抽成纯函数是为了让它**可判据** —— 消费点那一整块要真 `AppHandle`、
+/// 测不了；措辞对不对却恰恰是本件的正题。
+///
+/// 三档（定框 **E4**：静默失败要给身份、且要抬到调用方能判定的那一层）：
+/// - **只丢了内容帧**（`lost` 空）：老说法成立，行还在远端 jsonl 里。
+///   ⚠ 旧 daemon（`p1x` 之前）不发 `lost` ⇒ 也落这一档，**行为与从前逐字相同**。
+/// - **有不可恢复的丢失**：点名主体，并**明说重开会话补不回来**。
+/// - **身份表还被截断了**：再加一句「清单不全」，暗示理性做法是整体重取。
+fn overflow_health_message(
+    host_label: &str,
+    dropped: u64,
+    lost: &[LostFrameInfo],
+    lost_truncated: bool,
+) -> String {
+    if lost.is_empty() {
+        return format!(
+            "远端 [{host_label}] 管道拥塞，可能丢失约 {dropped} 条实时行；重开该会话可看完整历史。"
+        );
+    }
+    // 主体去重后点名（同一个会话可能连丢好几帧）。
+    let mut subjects: Vec<&str> = lost.iter().filter_map(|l| l.subject.as_deref()).collect();
+    subjects.sort_unstable();
+    subjects.dedup();
+    let named = if subjects.is_empty() {
+        String::new()
+    } else {
+        format!("（{}）", subjects.join(" / "))
+    };
+    let truncated_note = if lost_truncated {
+        "；受影响清单**不全**，建议刷新该来源"
+    } else {
+        ""
+    };
+    format!(
+        "远端 [{host_label}] 管道拥塞，丢了约 {dropped} 条帧，其中 {} 条是**会话状态变化**{named}\
+         —— 这部分**重开会话补不回来**，请手动刷新该来源{truncated_note}。",
+        lost.len()
+    )
 }
 
 /// 把 daemon 发来的一行（已去掉行尾 `\n`）解析成 [`InboundFrame`]。
@@ -1917,7 +1982,35 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
         "overflow" => {
             // issue #32：dropped 必需且为数字；缺/错则当坏帧跳过（不 panic）。
             let dropped = obj.get("dropped")?.as_u64()?;
-            Some(InboundFrame::Overflow { dropped })
+            // 〔audit-0805 F21〕additive：**缺字段必须仍能解析** —— 旧 daemon 还在跑，
+            // 把它们当必需会让整帧变成坏帧、连 `dropped` 都丢掉，比不认识更糟。
+            let lost: Vec<LostFrameInfo> = obj
+                .get("lost")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|it| {
+                            let o = it.as_object()?;
+                            Some(LostFrameInfo {
+                                kind: o.get("kind")?.as_str()?.to_string(),
+                                subject: o
+                                    .get("subject")
+                                    .and_then(|x| x.as_str())
+                                    .map(str::to_string),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let lost_truncated = obj
+                .get("lost_truncated")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            Some(InboundFrame::Overflow {
+                dropped,
+                lost,
+                lost_truncated,
+            })
         }
         // P5：additive 新帧。缺 `name` / 非字符串 → 坏帧跳过（不 panic），
         // 与其余帧同一口径。**旧 daemon 不发它** ⇒ 这条分支永不命中，行为退回快照+miss。
@@ -2218,6 +2311,98 @@ mod seam_tests {
 
         inbound_client::unregister(origin, &client);
         assert!(inbound_client::client_for(origin).is_none());
+    }
+
+    /// ★★ **有不可恢复的丢失时，不许再对用户说「重开会话可看完整历史」**〔audit-0805 F21，E4〕。
+    ///
+    /// 那句话对**内容帧**是真的（行还在远端 jsonl 里），对**状态增量帧**是**假的** ——
+    /// 它是一次差分的结果、别处不存在。这句 message 是用户唯一看得见的东西，
+    /// 所以它对不对本身就是本件的正题。
+    #[test]
+    fn the_overflow_message_stops_lying_when_state_was_lost() {
+        let lost = vec![
+            super::LostFrameInfo {
+                kind: "session_removed".into(),
+                subject: Some("sid-a".into()),
+            },
+            super::LostFrameInfo {
+                kind: "session_added".into(),
+                subject: Some("sid-b".into()),
+            },
+        ];
+        let m = super::overflow_health_message("box1", 7, &lost, false);
+        assert!(
+            !m.contains("重开该会话可看完整历史"),
+            "丢了状态增量帧还说「重开会话可看完整历史」—— 那是假话。实得：{m}"
+        );
+        assert!(
+            m.contains("sid-a") && m.contains("sid-b"),
+            "要点名受影响的会话：{m}"
+        );
+        assert!(m.contains("补不回来"), "要说清这部分补不回来：{m}");
+        assert!(!m.contains("清单**不全**"), "没截断就别说截断：{m}");
+    }
+
+    /// 只丢内容帧时**逐字沿用老说法** —— 旧 daemon（`p1x` 之前）不发 `lost`，
+    /// 也落这一档，行为必须与从前一字不差。
+    #[test]
+    fn the_overflow_message_is_byte_identical_when_only_lines_were_lost() {
+        let m = super::overflow_health_message("box1", 3, &[], false);
+        assert_eq!(
+            m,
+            "远端 [box1] 管道拥塞，可能丢失约 3 条实时行；重开该会话可看完整历史。"
+        );
+    }
+
+    /// 身份表被截断时要**再说一句**（暗示理性做法是整体重取）。
+    #[test]
+    fn the_overflow_message_says_so_when_the_identity_list_was_truncated() {
+        let lost = vec![super::LostFrameInfo {
+            kind: "session_removed".into(),
+            subject: Some("sid-a".into()),
+        }];
+        let m = super::overflow_health_message("box1", 99, &lost, true);
+        assert!(m.contains("不全"), "截断了就要说出来：{m}");
+    }
+
+    /// ★ **旧 daemon 的 overflow 帧必须照旧能解析**〔additive 的真正代价在这里〕。
+    ///
+    /// 把 `lost` 当必需字段会让整帧变成坏帧、**连 `dropped` 都丢掉** —— 比不认识新字段更糟。
+    #[test]
+    fn overflow_from_an_old_daemon_still_parses() {
+        match parse_frame(r#"{"kind":"overflow","dropped":5}"#) {
+            Some(InboundFrame::Overflow {
+                dropped,
+                lost,
+                lost_truncated,
+            }) => {
+                assert_eq!(dropped, 5);
+                assert!(lost.is_empty(), "旧 daemon 不发 lost ⇒ 空集");
+                assert!(!lost_truncated);
+            }
+            other => panic!("旧 daemon 的 overflow 解析不出来了：{other:?}"),
+        }
+    }
+
+    /// 新 daemon 的 `lost` / `lost_truncated` 要真的被读进来。
+    #[test]
+    fn overflow_identity_fields_are_actually_parsed() {
+        let json = r#"{"kind":"overflow","dropped":2,"lost":[{"kind":"session_removed","subject":"sid-x"},{"kind":"tmux_sessions"}],"lost_truncated":true}"#;
+        match parse_frame(json) {
+            Some(InboundFrame::Overflow {
+                dropped,
+                lost,
+                lost_truncated,
+            }) => {
+                assert_eq!(dropped, 2);
+                assert!(lost_truncated);
+                assert_eq!(lost.len(), 2, "两条身份都要收进来");
+                assert_eq!(lost[0].kind, "session_removed");
+                assert_eq!(lost[0].subject.as_deref(), Some("sid-x"));
+                assert_eq!(lost[1].subject, None, "没有 subject 的那条也要留住 kind");
+            }
+            other => panic!("带身份的 overflow 解析失败：{other:?}"),
+        }
     }
 
     /// MU12 的回归钉：`reply` / `cancelled` 真的被路由回等待者。
@@ -3175,19 +3360,30 @@ async fn stream_loop(
                     tracing::warn!("ssh_source session_removed send failed: {e}");
                 }
             }
-            Some(InboundFrame::Overflow { dropped }) => {
+            Some(InboundFrame::Overflow {
+                dropped,
+                lost,
+                lost_truncated,
+            }) => {
                 // issue #32：远端管道拥塞丢了 dropped 帧。warn + 经 SS-F remote-health
-                // 通道提示用户（前端按 origin 节流弹 toast）。丢的实时行仍在远端 jsonl
-                // 文件里，重开该会话即可看完整历史（不做实时补齐，见计划 R5）。
+                // 通道提示用户（前端按 origin 节流弹 toast）。
+                //
+                // ★〔audit-0805 F21〕**这里此前对用户说了一句假话**：「重开该会话可看完整
+                // 历史」只对**内容帧**成立。状态增量帧（session_added/session_removed/
+                // tmux_session_closed/session_status）是一次差分的结果、**别处不存在**，
+                // 重开会话补不回来 —— 那正是 B-3 的正题。daemon 从 `p1x` 起会把这些帧的
+                // 身份放进 `Overflow.lost`；有身份就说实话，并点名是哪几个会话。
                 tracing::warn!(
-                    "ssh_source remote [{host_label}] overflow: daemon dropped {dropped} frame(s)"
+                    "ssh_source remote [{host_label}] overflow: daemon dropped {dropped} frame(s), \
+                     {} unrecoverable{}",
+                    lost.len(),
+                    if lost_truncated { " (list truncated)" } else { "" }
                 );
+                let message = overflow_health_message(&host_label, dropped, &lost, lost_truncated);
                 let payload = crate::bridge::RemoteHealthPayload {
                     origin: Some(host_label.clone()),
                     kind: "overflow".to_string(),
-                    message: format!(
-                        "远端 [{host_label}] 管道拥塞，可能丢失约 {dropped} 条实时行；重开该会话可看完整历史。"
-                    ),
+                    message,
                 };
                 if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
                     tracing::warn!("ssh_source remote-health emit failed: {e}");
@@ -5183,7 +5379,14 @@ mod parse_frame_tests {
     #[test]
     fn parses_overflow_and_rejects_bad_dropped() {
         let frame = parse_frame(r#"{"kind":"overflow","dropped":12}"#).expect("overflow parses");
-        assert_eq!(frame, InboundFrame::Overflow { dropped: 12 });
+        assert_eq!(
+            frame,
+            InboundFrame::Overflow {
+                dropped: 12,
+                lost: Vec::new(),
+                lost_truncated: false
+            }
+        );
         // 缺 dropped → None
         assert_eq!(parse_frame(r#"{"kind":"overflow"}"#), None);
         // dropped 类型错（字符串）→ None
