@@ -82,9 +82,15 @@ pub const SIDECAR_STEM: &str = "cc-monitor-remote";
 /// ⚠ **这个名字只有一个家** —— `shared/ccm` 读的必须是同一个字面量，
 /// 由 `the_daemon_bin_env_name_has_exactly_one_home` 钉住（定框 §4）。
 ///
-/// ⚠ **今天还没接线**（F06b-1 的 ccm 那一半未写）：接线要先解决一个 ccm 自己
-/// 已经解过的难题 —— 「`--print` 与 exec 逐字节一致」。ccm 头注给了答案：
-/// **打印的是配方，不是值**（求值推迟到那条串真正被执行时）。⇒ resume 路不能把
+/// ⚠ **ccm 那一半已接**〔F06b-1c〕：`shared/ccm` 的 `resolve_from_daemon`（函数，exec 路用）
+/// 与 `resolve_recipe`（文本，print 路用），照该文件里 `derive_bus_id`/`BUS_ID_RECIPE` 的先例写；
+/// 一致性由 `e2e/ccm-contract-parity.sh` 的 **A′/A′d 组**钉住（print↔exec 的 argv 差分）。
+///
+/// ⚠ **monitor 这一半还没接**：本 `const` 今天**没有生产调用点**（只有判据读它，
+/// 于是 `dead_code` 警告仍在 —— 那个警告就是「没接上」的诚实标记，刻意不 `#[allow]`）。
+/// 挡在前面的是一条**架构题**，不是工作量：`payload.rs` 编译的 `EnvOp` 由 **TS 前端经 wire
+/// 送来**（`launch_wire.rs`），而 daemon 路径是**后端的知识**（[`resolve_beside_this_exe`]）
+/// ⇒ 让前端携带它正对着 C2 与 C9。裁这道题是 F06b-1d 的第一件事。⇒ resume 路不能把
 /// daemon 的答案烤进打印串，得打印一段「执行时去问 daemon」的配方。
 pub(crate) const DAEMON_BIN_ENV: &str = "CCM_DAEMON_BIN";
 
@@ -552,7 +558,7 @@ mod tests {
     /// 摸底量到 daemon 一启动就无条件往 tmux server 装全局 hook 且没有开关 ⇒
     /// 扫到 dev 产物就起它会去改用户真实 tmux 的状态。这条钉住那个前提：
     /// 候选路径里**只能有 exe 同目录**，出现任何 `target`/`debug`/仓库相对路径就红。
-    /// ★★ **F06b-1：那个 env 名只有一个家，且今天还没接线。**
+    /// ★★ **那个 env 名只有一个家**〔F06b-1 立，F06b-1c 起转为实断言〕。
     ///
     /// # 两条断言，各管一件
     ///
@@ -560,9 +566,10 @@ mod tests {
     ///    [`super::DAEMON_BIN_ENV`] **逐字相同** —— 名字打错的后果是
     ///    「ccm 永远读不到 ⇒ 永远走本地那条」，而那**看起来完全正常**（诚实降级本来就是它的兜底）。
     ///    ⇒ 这种错**不会自己暴露**，只能靠钉。
-    /// ② **前提触发器**：今天 ccm **还没用它**（实测 0 处）。一旦出现 ⇒ 本条红，
-    ///    提醒回来把 F06b-1 的另一半（`--print` 与 exec 的一致性）一并做完 ——
-    ///    ⚠ 那不是可选项，但**理由不是「会撞红黄金串」**〔订正 F06b-1b·实测〕：
+    /// ② **原先是前提触发器**（「今天 ccm 还没用它」），它**如期红过一次** ——
+    ///    F06b-1c 接线时 `shared/ccm` 一出现这个名字，本条当场红，提醒把一致性一并做完。
+    ///    做完后它转成**实断言**：名字必须真出现在 `shared/ccm` 里（≥7 处，按实测）。
+    ///    ⚠ 一致性那件事**理由不是「会撞红黄金串」**〔订正 F06b-1b·实测〕：
     ///    真把答案烤进打印串时，`ccm-print-parity`(12) 与 `ccm-contract-parity`(31)
     ///    **两套全绿** —— 前者的 resume 场景全走 `--tmux`（碰不到非容器打印路），
     ///    后者的 A 组比的是**环境键**、六格又全是 `new`。**当时根本没有网。**
@@ -585,28 +592,37 @@ mod tests {
             src.len()
         );
         let name = super::DAEMON_BIN_ENV;
-        // ① 若出现，必须逐字相同：找「像那个名字但不完全一样」的拼写。
+        // ① 每一处「像那个名字」的拼写都必须逐字相同 —— **逐处查，不是只查第一处**：
+        //    ccm 里现在有好几处（函数、配方、头注），打错任何一处都是静默失败。
         let looks_like = "CCM_DAEMON";
-        if let Some(at) = src.find(looks_like) {
-            let tail = &src[at..(at + 40).min(src.len())];
+        let mut seen = 0usize;
+        for (at, _) in src.match_indices(looks_like) {
+            seen += 1;
+            // ⚠ **不许 `&src[at..at + 40]`** —— 那是**按字节切**，而这后面紧跟中文注释，
+            //   会切在字符中间直接 panic（第一版就是这么炸的）。切片必须落在字符边界上。
+            let after = &src[at..];
             // ⚠ 光 `starts_with` 不够：`CCM_DAEMON_BINARY` **也**以 `CCM_DAEMON_BIN` 开头。
             //   变异 Z1 就是这么活下来的 ⇒ 必须查名字后面那个字符是不是标识符字符。
-            let exact = tail.strip_prefix(name).is_some_and(|rest| {
+            let exact = after.strip_prefix(name).is_some_and(|rest| {
                 !rest.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
             });
+            let tail: String = after.chars().take(40).collect();
             assert!(
                 exact,
                 "`shared/ccm` 里那个 env 名与 Rust 侧对不上：ccm 写的是 {tail:?}，\n\
                  而唯一的家是 `DAEMON_BIN_ENV` = {name:?}。\n\
                  ⚠ 名字打错**不会自己暴露** —— ccm 读不到就静静走本地那条（诚实降级是它的兜底）。"
             );
-        } else {
-            // ② 前提触发器：今天还没接线。
-            assert!(
-                !src.contains(name),
-                "自相矛盾：找不到 `{looks_like}` 却找得到 `{name}` —— 抽取坏了"
-            );
         }
+        // ② **接线已发生**〔F06b-1c〕：F06b-1 时这里是「今天还没接线」的前提触发器，
+        //    ccm 一用它就红。它**如期红过一次**，本轮把接线做完，于是它转成一条实断言：
+        //    名字必须真出现在 `shared/ccm` 里 —— 接线要是被谁整段删了，本条红。
+        //    ⚠ **地板按实测写**：当时 7 处（第一版顺手写了 4，是猜的 —— 实测 7）。
+        assert!(
+            seen >= 7,
+            "`shared/ccm` 里只找到 {seen} 处 `{looks_like}` —— \n\
+             F06b-1c 的接线（`resolve_from_daemon` + `resolve_recipe`）是不是被删了？"
+        );
     }
 
     /// ★★ **F05b 接线钉：每一个打包 job 都必须给 sidecar 备好料。**

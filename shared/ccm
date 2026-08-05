@@ -160,6 +160,44 @@ derive_bus_id() {
 # 那是纯的（只看 flag），`TMUX` 判断留在串里、执行时才求值。
 BUS_ID_RECIPE='if [ -n "${TMUX:-}" ]; then _ccm_bus="$(tmux display-message -p "#S" 2>/dev/null)"; [ -n "$_ccm_bus" ] && export CC_BUS_ID="$_ccm_bus"; unset _ccm_bus; fi;'
 
+# ===== F06b（C4）：resume 的 argv 向 daemon 要 —— 同样是「一段逻辑、两种表示」=====
+#
+# C4：ccm 只上报上下文 → **拿 argv** → 设 env → `exec`。daemon 侧 `--resolve` 早已做好
+# （`remote-daemon-proto/src/control/resolve_query.rs`：stdin `ResumeSpec`{`sessionId` 必填}
+# → stdout `CommandPlan`{`command` 是**唯一可信的一项**}）。缺的一直是 ccm 这一侧的调用。
+#
+# ⚠ **照上面 `derive_bus_id`/`BUS_ID_RECIPE` 的先例写**，一个字都不新发明：
+#   函数给 exec 路用、文本给 print 路用，**是否输出配方**由**纯的**条件决定
+#   （那里是 `agent_needs_bus_id`，这里是 `action=resume` 且没显式 `--launcher`），
+#   而**运行时才知道的那部分**（那里是 `$TMUX`，这里是 `$CCM_DAEMON_BIN` 在不在）
+#   **留在串里、执行时才求值**。⇒ `--print` 仍然是纯的。
+#
+# ⚠ **显式 `--launcher` 优先于 daemon 的建议**〔自 08-04，理由进 DECISIONS §2〕：
+#   `--launcher` 是调用方当场写下的覆盖，daemon 给的是它对这个 sid 的**建议**。
+#   让远端建议压掉本地显式覆盖，等于让 `--launcher` 在 resume 上静默失效 —— 而
+#   「写了个修饰、看起来生效了、其实被吃掉」正是本文件反复消灭的病（见 `attach` 那段头注）。
+#
+# ⚠ **拿不到就走本地那条，不报错**（定框 §5：诚实降级）。daemon 没装 / 没起 / 答非所问，
+#   `ccm resume` 都必须照今天的样子跑起来 —— 这条失败是**静默**的，钉它的是
+#   `e2e/ccm-contract-parity.sh` A′ 组的两条**绝对断言**（逐字钉住本地行为）。
+resolve_from_daemon() {   # $1=sid → stdout: daemon 给的 command 串（拿不到就空）
+  [ -n "${CCM_DAEMON_BIN:-}" ] && [ -x "${CCM_DAEMON_BIN}" ] || { printf ''; return 0; }
+  printf '{"sessionId":"%s"}' "$1" | "$CCM_DAEMON_BIN" --resolve 2>/dev/null \
+    | grep -o '"command":"[^"]*"' | head -1 | cut -d'"' -f4
+  return 0
+}
+# 上面那个函数的文本表示（只在 `--print` 里用）—— 与函数体逐行同构，改一边必须改另一边。
+# 保证二者一致的是 `e2e/ccm-contract-parity.sh` **A′ 组**（print↔exec 的 argv 差分），
+# 不是人的记性。⚠ 那一组是 F06b-1b 专为本次接线先立的网：立网之前，接一半都会安静地绿。
+# 用法：`resolve_recipe <sid> <本地兜底的 exec 串>` → stdout 一行 shell。
+resolve_recipe() {
+  local sid_json="{\"sessionId\":\"$1\"}"
+  printf '%s' "_ccm_c=\"\"; if [ -n \"\${CCM_DAEMON_BIN:-}\" ] && [ -x \"\$CCM_DAEMON_BIN\" ]; then"
+  printf '%s' " _ccm_c=\"\$(printf '%s' $(sq "$sid_json") | \"\$CCM_DAEMON_BIN\" --resolve 2>/dev/null"
+  printf '%s' " | grep -o '\"command\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)\"; fi;"
+  printf '%s' " if [ -n \"\$_ccm_c\" ]; then exec \$_ccm_c; else $2; fi"
+}
+
 # ===== 默认值 =====
 action=new
 sid=""
@@ -373,6 +411,9 @@ elif [ "$use_base" != 1 ] && [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then
 fi
 
 # ===== L3/L4：启动器与参数 =====
+# 显式 `--launcher` 要优先于 daemon 的建议（见 resolve_from_daemon 头注）——
+# 必须在填默认值**之前**记下来，填完就分不清「用户写的」与「默认的」了。
+launcher_explicit=0; [ -n "$launcher" ] && launcher_explicit=1
 [ -n "$launcher" ] || launcher="$(agent_default_launcher "$agent")"
 nested="$(agent_nested_env "$agent")"
 
@@ -631,8 +672,14 @@ if [ "$do_print" = 1 ]; then
   [ -n "$model" ] && line="${line}export ANTHROPIC_MODEL=$(sq "$model"); "
   [ -n "$nested" ] && line="${line}unset $nested; "
   [ -n "$cwd" ] && line="${line}cd $(sq "$cwd") && "
-  line="${line}exec"
-  for a in "${argv[@]}"; do line="$line $(qarg "$a")"; done
+  # 本地那条（今天的行为）先拼好 —— 它同时是配方里的兜底分支。
+  local_exec="exec"
+  for a in "${argv[@]}"; do local_exec="$local_exec $(qarg "$a")"; done
+  if [ "$action" = resume ] && [ "$launcher_explicit" = 0 ]; then
+    line="$line$(resolve_recipe "$sid" "$local_exec")"
+  else
+    line="$line$local_exec"
+  fi
   printf '%s\n' "$line"
   exit 0
 fi
@@ -704,4 +751,12 @@ if agent_has_identity "$agent"; then
   ) &
 fi
 
+# C4：resume 的 argv 向 daemon 要（拿不到就走本地那条）。
+# ⚠ 与 `resolve_recipe` 逐行同构 —— A′ 组差分负责它们不许分家。
+if [ "$action" = resume ] && [ "$launcher_explicit" = 0 ]; then
+  _ccm_c="$(resolve_from_daemon "$sid")"
+  # 故意不加引号：daemon 给的是一条**命令串**，要按词拆成 argv（C4 的「拿 argv」）。
+  # shellcheck disable=SC2086
+  [ -n "$_ccm_c" ] && exec $_ccm_c
+fi
 exec "${argv[@]}"
