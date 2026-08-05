@@ -63,10 +63,26 @@ mod tests {
         (
             "src/history.rs",
             "reader",
-            5,
-            "列目录/列会话：`list_history_projects`(168/169 + codex 变体 232) · \
-             `stream_history_sessions_in_project`(430/431)。\
-             命令层对侧 `--list-projects` / `--list-sessions`。退役归 F10 本体。",
+            2,
+            "**真读面只剩这两处**：`list_history_projects`(168/169) 解析 records 根并遍历它列项目。\
+             对侧 `--list-projects`。⚠ 迁它不是纯直通 —— 本函数还吃 `SessionMap`（活状态）\
+             与 `load_metadata()`，只有「遍历目录」那半能搬。退役归 F10 本体。",
+        ),
+        (
+            "src/history.rs",
+            "fence",
+            2,
+            "`stream_history_sessions_in_project`(430/431) 的**路径围栏** —— 它解析 records 根\
+             **只为验前端传来的 `project_dir` 在不在里面**（`refuse: … outside …`），与 499 同形。\
+             ⚠ **刻意保留、不属退役范围**（纵深防御，理由同那条 `fence`）。",
+        ),
+        (
+            "src/history.rs",
+            "no-counterpart",
+            1,
+            "`list_history_projects` 的 **codex 变体**(232)。⚠ **不属**「今天能退役」的范围：\
+             实测 daemon 的 `history_query.rs` 里 **codex / kinds / agent_kind 零命中** ——\
+             `--list-projects` 只服务 claude。退役条件 = daemon 侧补上 codex 的项目枚举（DG3 那一族）。",
         ),
         (
             "src/history.rs",
@@ -321,7 +337,14 @@ mod tests {
             assert!(
                 matches!(
                     *kind,
-                    "hub" | "reader" | "payload" | "remote" | "non-read" | "fence" | "write"
+                    "hub"
+                        | "reader"
+                        | "payload"
+                        | "remote"
+                        | "non-read"
+                        | "fence"
+                        | "write"
+                        | "no-counterpart"
                 ),
                 "{f} 的类别 `{kind}` 不在三类里 —— 新类别要先在模块头注那张表里定义"
             );
