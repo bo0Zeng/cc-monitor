@@ -34,6 +34,25 @@ impl RemovalCause {
     }
 }
 
+/// 一条**丢了就不可恢复**的帧的身份〔audit-0805 F03〕。
+///
+/// `Overflow` 原来只说「丢了 N 条」。对**内容帧**那没问题（行还在远端 jsonl 里，
+/// 重开会话就补上）；对**状态增量帧**（`session_added`/`session_removed`/`tmux_session_closed`）
+/// 就不行 —— 它是一次差分的结果，**别处不存在**，客户端只知道「丢了 N 条」是没法重同步的。
+/// ⇒ 本结构给那些帧带上身份，让客户端能精确地重新问那几个主体。
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LostFrame {
+    /// 帧种（与 `kind` tag 同一套 snake_case 名字）。
+    pub kind: &'static str,
+    /// 主体：会话 sid / tmux 会话名。取不到就是 `None`（如 `hello`）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Frame {
@@ -233,7 +252,17 @@ pub enum Frame {
     /// drains enough to accept it, so the client can warn the user that live
     /// lines were lost (#32). `dropped` counts frames dropped since the last
     /// overflow signal.
-    Overflow { dropped: u64 },
+    Overflow {
+        dropped: u64,
+        /// 〔audit-0805 F03，**additive**〕那批丢帧里**不可恢复**的那些的身份。
+        /// 空集时**不序列化** ⇒ 旧客户端看到的字节与从前一字不差。
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        lost: Vec<LostFrame>,
+        /// 身份表是**有界**的（见 `watcher.rs` 的 `LOST_IDENTITY_CAP`）。触顶后置位。
+        /// ⚠ 没有这个界，就等于把 `CHANNEL_CAPACITY` 想防的内存增长从帧挪到了 `Overflow` 自己身上。
+        #[serde(skip_serializing_if = "is_false")]
+        lost_truncated: bool,
+    },
 
     /// U6b-1：**入方向命令的应答**。`id` 是客户端给的不透明串，daemon **原样回显、不解析**。
     ///
@@ -257,6 +286,76 @@ pub enum Frame {
     /// U6b-1：某个在跑的命令**已被取消**。取消是一条普通命令（`cmd:"cancel"`）、不是带外信号——
     /// 带外要么另开通道要么发明转义序列，两者都要新的解析纪律，而取消排队等一下并无妨。
     Cancelled { id: String },
+}
+
+impl Frame {
+    /// **丢了还能不能恢复**〔audit-0805 F03〕。
+    ///
+    /// # 这条判据是对的，此前错的是「它没有被应用到出方向」
+    ///
+    /// 仓里对同一类问题已经推理过一次，而且完全正确 —— 只是给 `reply` 帧做的：
+    /// `inbound.rs` 让应答走**独立通道**且用 `.send().await` 阻塞背压，
+    /// 头注逐字「丢一条应答会让客户端永远等下去」。
+    /// **判据是「可恢复的才允许丢」，而出方向那条 10 000 容量的通道里混着两种性质完全不同的东西**，
+    /// 丢弃策略却是**按通道**定的、不是按帧种类定的。本函数补的就是这个分类。
+    ///
+    /// # 拿不准的一律按「不可恢复」算
+    ///
+    /// 两种错判的代价**不对称**：错判成「可恢复」= 真丢了还没人知道（静默数据丢失）；
+    /// 错判成「不可恢复」= 多报一条身份（`Overflow` 载荷大一点，仅此而已）。
+    /// ⇒ 只有**能说清「它别处还在」**的才算可恢复。
+    ///
+    /// ⚠ **穷尽 `match`，不许 `_ =>`** —— 新增帧种时**编译期**就被逼着表态。
+    /// 这正是 `audit-0805/LEDGER` **S1** 定下的钉法：判据不是「有没有登记」，
+    /// 是「新增一个种类时你躲不掉」。
+    pub fn loss_is_recoverable(&self) -> bool {
+        match self {
+            // 内容帧：行确实还在远端 jsonl 里，重开会话/重读就补上。
+            Frame::Line { .. } => true,
+            // 派生自某一行 jsonl（`turn_detect` 只看那条记录）⇒ 与 `Line` 同命。
+            Frame::TurnEnd { .. } => true,
+            // 整份快照，下一次 tmux 探测会重发一份完整的 ⇒ 丢一份不损失信息。
+            Frame::TmuxSessions { .. } => true,
+
+            // ↓ 以下都是「丢了别处没有」或「拿不准」，一律按不可恢复算。
+            //
+            // 一次差分的结果，别处不存在 —— 这三个正是 B-3 的正题。
+            Frame::SessionAdded { .. } => false,
+            Frame::SessionRemoved { .. } => false,
+            Frame::TmuxSessionClosed { .. } => false,
+            // 状态变迁；没有「下一次必然重发」的保证 ⇒ 保守。
+            Frame::SessionStatus { .. } => false,
+            // 握手帧丢了这条连接就没有身份了。
+            Frame::Hello { .. } => false,
+            // 它自己就是「丢了东西」的信号，丢了它等于连丢失都没人知道。
+            Frame::Overflow { .. } => false,
+            // ⚠ 这两个**根本不走出方向那条通道**（应答走 `REPLY_CHANNEL_CAPACITY` 那条独立小通道，
+            //   且是阻塞 `send().await`）。列在这里**只为穷尽** —— 真走到这条路上说明接线错了，
+            //   按不可恢复算是保守的那一侧。
+            Frame::Reply { .. } => false,
+            Frame::Cancelled { .. } => false,
+        }
+    }
+
+    /// 丢帧时给客户端用来**重同步**的身份：帧种 + 主体（sid / tmux 会话名）。
+    ///
+    /// ⚠ 与 [`Self::loss_is_recoverable`] 同样是穷尽 `match`：新增帧种时两处一起被逼着表态。
+    pub fn loss_identity(&self) -> LostFrame {
+        let (kind, subject) = match self {
+            Frame::Hello { .. } => ("hello", None),
+            Frame::Line { session_id, .. } => ("line", Some(session_id.clone())),
+            Frame::SessionAdded { sid, .. } => ("session_added", Some(sid.clone())),
+            Frame::SessionStatus { sid, .. } => ("session_status", Some(sid.clone())),
+            Frame::SessionRemoved { sid, .. } => ("session_removed", Some(sid.clone())),
+            Frame::TurnEnd { session_id, .. } => ("turn_end", Some(session_id.clone())),
+            Frame::TmuxSessionClosed { name, .. } => ("tmux_session_closed", Some(name.clone())),
+            Frame::TmuxSessions { .. } => ("tmux_sessions", None),
+            Frame::Overflow { .. } => ("overflow", None),
+            Frame::Reply { id, .. } => ("reply", Some(id.clone())),
+            Frame::Cancelled { id } => ("cancelled", Some(id.clone())),
+        };
+        LostFrame { kind, subject }
+    }
 }
 
 /// U6b-1：**入方向**请求信封。只 `Deserialize` —— daemon 是读的那一方。
@@ -463,7 +562,14 @@ mod tests {
                 },
                 "turn_end",
             ),
-            (Frame::Overflow { dropped: 7 }, "overflow"),
+            (
+                Frame::Overflow {
+                    dropped: 7,
+                    lost: Vec::new(),
+                    lost_truncated: false,
+                },
+                "overflow",
+            ),
             (
                 Frame::TmuxSessions {
                     raw: "s1\t/p\tclaude\t1\t2\tsid-a".into(),
@@ -497,7 +603,12 @@ mod tests {
 
     #[test]
     fn overflow_frame_serializes_with_dropped_count() {
-        let line = to_line(&Frame::Overflow { dropped: 42 }).expect("serialize");
+        let line = to_line(&Frame::Overflow {
+            dropped: 42,
+            lost: Vec::new(),
+            lost_truncated: false,
+        })
+        .expect("serialize");
         let body = line.strip_suffix('\n').unwrap();
         let v: Value = serde_json::from_str(body).expect("valid json");
         assert_eq!(v["kind"], "overflow");
