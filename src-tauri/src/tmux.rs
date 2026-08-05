@@ -615,7 +615,25 @@ mod tests {
     /// 金表每行 `(name, remote_sid, expected)`。生产调用点算 `need_sid = !name_owned`，
     /// 所以这里照同一条路算；`w` 固定喂 `"1"`（**Gate 3 恒过**，本条只管 Gate 2 那一半）。
     /// 断言：shell 的退出状态（0=放行）必须等于 `gate2(..) != Rejected`。
+    ///
+    /// # 为什么在 Windows 上 `ignore`〔audit-0805 F01，2026-08-05〕
+    ///
+    /// 它要一个真 `/bin/sh`，而 `rust` job 跑在 **`windows-latest`** 上、根本没有 `/bin/sh`
+    /// ⇒ 那句 `.expect("跑不了 /bin/sh …")` 直接 panic。
+    /// **这是 push 之后第一次 CI 才暴露的**（`ci.yml` 此前已 108 个提交没跑过，
+    /// 而本条从建立起就没在 Windows 上执行过一次）。
+    ///
+    /// ⚠ 用 `ignore` 而不是 `#[cfg(unix)]`：`cfg` 会让它在 Windows 上**整个消失**、
+    /// 计数里看不见；`ignore` 在测试输出里留一行 `ignored`，**「这台机器上没验过」是可见的**。
+    /// 这与本仓 `platform/pidwatch/fallback.rs` 那种「诚实空壳」同一条纪律。
+    ///
+    /// ⚠ 被 ignore 掉的**不是**一个 Windows 性质：那条 shell 表达式是给**远端 POSIX 机器**执行的，
+    /// 宿主是什么系统与它无关。它在 Linux CI 与开发机上照跑，性质不因此少一份证据。
     #[test]
+    #[cfg_attr(
+        windows,
+        ignore = "要真 /bin/sh；rust job 在 windows-latest 上没有。被测性质属远端 POSIX，Linux 侧照跑"
+    )]
     fn the_shell_gate_expression_agrees_with_the_golden_table() {
         let tsv = include_str!("backend/control/fixtures/gate2-golden.tsv");
         let mut checked = 0usize;

@@ -274,6 +274,7 @@ jobs:
         run: |
           set -euo pipefail
           FILES=$(printf '%s\n' e2e/*.sh shared/cc-bus/scripts/* shared/ccm \
+            scripts/*.sh \
             src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso \
             src-tauri/vendor/cc-acct-iso/scripts/lib.sh \
             src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso-install.sh \
@@ -289,7 +290,15 @@ jobs:
           # cc-bus 13 + ccm 1 + vendored 4 未变）。
           # **2026-08-02 U9a 棘到 41** —— 实测 41（e2e 23：新增 `ccm-contract-parity.sh`；
           # 其余三组未变）。
-          [ "$N" -ge 41 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 41）"; exit 1; }
+          # **2026-08-05 audit-0805 F01 棘到 44**，同时补进 `scripts/*.sh`。两件事：
+          # ① **地板又落后了 2**：写下 41 之后 e2e 从 23 长到 **25**，那段时间可以少扫 2 个文件而不报警
+          #    —— 这已经是同一条地板第三次落后（37→39→41 每次都是事后补），⇒ 见 `audit-0805` I-8。
+          # ② ★ **`scripts/verify-committed-state.sh` 此前既没被 lint 也没被测**，而
+          #    `shared_crate_registry.rs:155-167` 逐字称它是「**CI 的本地替身**」——
+          #    一个被当作门禁替身的脚本自己在所有门禁之外。今天实测构成：
+          #    **44 = e2e 25 + cc-bus 13 + ccm 1 + scripts 1 + vendored 4**。
+          # ⚠ `scripts/run.ps1` 仍**零 lint**（全仓无 PowerShell linter）⇒ 记为诚实边界，见 ROADMAP §5。
+          [ "$N" -ge 44 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 44）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
