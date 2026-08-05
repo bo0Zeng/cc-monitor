@@ -88,12 +88,38 @@ mod tests {
     use super::*;
 
     /// 三态各自的判定口径。
+    ///
+    /// ⚠ **本条的名字是个全称命题**（"zero is the **only** success"），
+    /// 所以用例面**不许只挑几个好数**〔G1 补，Phase G 变异抽样 B1 的产物〕：
+    /// 原先只测了 `Some(0)` / `Some(2)` / `None` —— **恰恰漏了 `Some(1)`**，
+    /// 而那是最常见的失败码。变异 `code.map(|c| if c == 1 { 0 } else { c })`
+    /// 把 1 悄悄映射成 0，本条**照样绿**。
+    /// ★ 覆盖面**第②格·用例面**：判据声称全称，用例却有洞，洞还开在最常走的那个值上。
     #[test]
     fn exit_zero_is_the_only_success_and_stderr_survives_failure() {
         assert_eq!(
             classify(Some(0), "line1\nline2\n".into(), String::new()),
             QueryOutcome::Ok("line1\nline2\n".into())
         );
+        // ★ `Some(1)`：最常见的失败码，也是原先唯一没测的那个（见头注）。
+        assert_eq!(
+            classify(Some(1), "half\n".into(), "nope\n".into()),
+            QueryOutcome::Failed {
+                code: Some(1),
+                stderr: "nope\n".into()
+            }
+        );
+        // ★ 全称命题要按全称验：**除 0 以外一个都不许算成功**。
+        //   逐个跑一遍常见退出码，别只挑样本 —— 「只挑几个好数」正是 B1 活下来的形状。
+        for c in [1i32, 2, 3, 42, 101, 126, 127, 130, 255, -1] {
+            assert!(
+                matches!(
+                    classify(Some(c), "x\n".into(), "e\n".into()),
+                    QueryOutcome::Failed { .. }
+                ),
+                "退出码 {c} 被判成了非 Failed —— 而本条的名字声称「只有 0 是成功」"
+            );
+        }
         // ⚠ 退出码非 0 时 stdout 里可能**也有内容**（daemon 边写边失败），但那不是成功。
         assert_eq!(
             classify(Some(2), "partial\n".into(), "boom\n".into()),
