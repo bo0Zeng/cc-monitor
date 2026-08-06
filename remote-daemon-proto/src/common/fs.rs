@@ -26,6 +26,20 @@ pub(crate) fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, Stri
     if !meta.is_file() {
         return Err("不是常规文件（可能是 FIFO/设备/目录）".into());
     }
+    // ★〔audit-0805 F06〕**先看长度再决定读不读**。
+    //
+    // 这里本来就已经 `metadata()` 了（上面判 `is_file`），却没用 `meta.len()` ——
+    // 于是拒绝一个 5 GB 文件之前要先把 `cap + 1`（256 MiB）读进内存，
+    // 而这条路存在的全部理由就是「别让巨型文件吃爆内存」。**安全拒绝本身成了 OOM 候选。**
+    //
+    // ⚠ 早退**不取代**下面那道 `take(cap + 1)`：`metadata` 与 `read_to_end` 之间文件还会长
+    //   （TOCTOU），长过头时仍要靠 `take` 兜住。两道一起才完整。
+    // ★ 顺带把一个**测不出来的问题整个绕开**了：报告怀疑「拒绝路径上 `Vec` 倍增会瞬时
+    //   同时持有 1×+2×」，V1 在 glibc 上实测不成立，但 daemon 是 **musl** 交叉编译的、
+    //   musl 的 realloc 行为没测出来（`ROADMAP §5-4`）。走这条早退就根本不分配。
+    if meta.len() > cap {
+        return Err(format!("超过 {cap} 字节上限（文件 {} 字节）", meta.len()));
+    }
     let f = std::fs::File::open(path).map_err(|e| format!("{e}"))?;
     let mut buf = Vec::new();
     // take(cap+1)：读到 cap+1 就知道超限了，不必读满整个（可能无界的）文件
@@ -36,4 +50,40 @@ pub(crate) fn read_regular_capped(path: &Path, cap: u64) -> Result<Vec<u8>, Stri
         return Err(format!("超过 {cap} 字节上限"));
     }
     Ok(buf)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ★ **超限要在「读之前」就拒**〔audit-0805 F06〕。
+    ///
+    /// 这条路存在的全部理由是「别让巨型文件吃爆内存」，而它此前要先把 `cap + 1` 字节
+    /// 读进内存才发现该拒 —— **安全拒绝本身成了 OOM 候选**。
+    ///
+    /// ⚠ 判据用**小 cap**（`cap` 是入参）而不是造一个 256 MiB 的文件：
+    /// 要证的是「**先看长度**」这个顺序，不是「256 这个数」。
+    #[test]
+    fn an_oversized_file_is_rejected_before_it_is_read() {
+        let dir = std::env::temp_dir().join(format!("ccm-f06-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("建临时目录");
+        let path = dir.join("big.jsonl");
+        std::fs::write(&path, vec![b'x'; 100]).expect("写夹具");
+
+        let err = read_regular_capped(&path, 10).expect_err("100 字节 > cap 10，必须拒");
+        assert!(
+            err.contains("超过 10 字节上限"),
+            "拒绝信息要说清上限，实得：{err}"
+        );
+        assert!(
+            err.contains("100"),
+            "★ 要报出**实际大小** —— 只说「超限」，用户不知道差多少、也不知道该不该清理。实得：{err}"
+        );
+
+        // 不超限的照常读回来（防「早退写成恒拒」）。
+        let ok = read_regular_capped(&path, 1000).expect("100 字节 < cap 1000，该放行");
+        assert_eq!(ok.len(), 100);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
