@@ -228,6 +228,19 @@ mod tests {
             .to_path_buf()
     }
 
+    /// ★ **小到这个数以下的就不当体量看**〔audit-0805 §5 1y，08-06 给它一个名字〕。
+    ///
+    /// 这条过滤本身是个取舍：名字里带 `MAX`/`CAP`/`LIMIT`/`BYTES` 的小整数，绝大多数是
+    /// 「条数 / 次数 / 重试上限」而不是字节体量；真出现一个比它还小的**体量**上限，
+    /// 会被**静默跳过**（1y 逐字登记着这一点，并说明只有 `the_exclusion_list_is_not_dead_wood`
+    /// 间接盯着它）。
+    ///
+    /// ⚠ 从裸字面量提成常量，是为了让 §5 那一行**只留名字、不抄值** ——
+    /// 抄进计划里的值没有任何东西读它，改了这里它就成了假陈述（`plan-lint` 判据 3.9）。
+    /// 名字**刻意不含** `MAX`/`CAP`/`LIMIT`/`BYTES`：那几个词正是上面 `scan()` 的钩子，
+    /// 含了就会让本常量把自己当成一处待登记的上限。
+    const SMALLEST_PLAUSIBLE_SIZE: u64 = 1024;
+
     /// 从源码里把 `const NAME: ty = <expr>;` 的字节数算出来。
     ///
     /// 只认本仓在用的两种写法：`A * 1024 * 1024` 与 `1 << N`。
@@ -299,10 +312,12 @@ mod tests {
                     if NOT_A_SIZE_CAP.iter().any(|(n, _)| *n == name) {
                         continue;
                     }
-                    // 下界 1024：更小的多半是「条数 / 次数」而不是体量。
+                    // 下界见 `SMALLEST_PLAUSIBLE_SIZE`：更小的多半是「条数 / 次数」而不是体量。
                     // ⚠ 这条过滤本身是个取舍，`the_exclusion_list_is_not_dead_wood` 盯着它。
                     match eval_cap(expr) {
-                        Some(v) if v >= 1024 => out.push((rel.clone(), name.to_string(), Some(v))),
+                        Some(v) if v >= SMALLEST_PLAUSIBLE_SIZE => {
+                            out.push((rel.clone(), name.to_string(), Some(v)))
+                        }
                         Some(_) => {}
                         None => out.push((rel.clone(), name.to_string(), None)),
                     }
