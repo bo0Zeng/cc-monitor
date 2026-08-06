@@ -46,9 +46,21 @@
 //! ⚠ **第 2 层保证的是「没有未分类的调度点」，不是「分类都对」** ——
 //! 分类是人写的，写错了机器看不出来。**比没有强，别读成证明。**
 //!
-//! ⚠ **monitor 的 Rust 侧刻意不在范围内**：那边的 `thread::sleep` 大多是「等一个一次性条件」
-//! 而不是节拍（`bind.rs` 的重试、`launch.rs` 的窗口等待…），逐条论证是另一件事。
-//! **如实登记为未做，不假装覆盖了。**
+//! # monitor 的 Rust 侧：**不在本模块范围内，但已经有人管了**
+//!
+//! 本模块只覆盖 **TS 与 `shared/ccm`**。Rust 那半的家是 **`rust_timer_registry`**（F09 建），
+//! 同一套分类词汇（`ticker` / `wait-for-condition` / `throttle` / `startup-delay`）。
+//!
+//! ⚠⚠ **这段话此前是一句假陈述**，而且是最难被怀疑的那一种 —— 它原文写着：
+//! 「monitor 的 Rust 侧刻意不在范围内…**如实登记为未做，不假装覆盖了**」。
+//! 那句话在写下时是真的；F09 把那半做掉之后它就烂了，而**没有任何东西会因此变红**。
+//! ★ **一句自称诚实的话烂掉，比一个错数字更贵**：它读起来像是「这里有人想过了」，
+//! 于是下一个人不会去查。（audit-0805 F14 §4 复核时才发现。）
+//! ⇒ 现在由 `the_other_half_of_the_sweep_still_has_a_home` 钉着：
+//! `rust_timer_registry` 一旦消失，这段指针立刻变红。
+//!
+//! ⚠ 那半一上岗就抓到**两个真节拍器**（`bind.rs::run_heartbeat` 10s ·
+//! `ssh_source.rs` daemonless 2s），两个都**如实记为未排期** —— 别读成「已经清干净了」。
 
 #[cfg(test)]
 mod tests {
@@ -106,6 +118,57 @@ mod tests {
              退役归 **U9b**（thin ccm 变零决策执行臂）。⚠ 一个文件两类，故按文件登记。",
         ),
     ];
+
+    /// ★ **前提触发器**：本模块头注说「Rust 那半的家是 `rust_timer_registry`」——
+    /// 那句话只在**它真的还在**时成立。
+    ///
+    /// # 为什么这条值得单独存在
+    ///
+    /// 这段指针的**上一版**是「Rust 侧刻意不在范围内，如实登记为未做，不假装覆盖了」。
+    /// 那句话在写下时是真的，F09 把那半做掉之后它就烂了 —— 而**没有任何东西会因此变红**，
+    /// 直到 audit-0805 F14 §4 复核时才发现。
+    ///
+    /// ★ **一句自称诚实的话烂掉，比一个错数字更贵**：错数字会被人核对，
+    /// 而「我如实记了未做」读起来像「这里有人想过了」，下一个人就不会去查。
+    /// ⇒ 指针必须有判据看着，跟散文数字一样（定框 E12）。
+    #[test]
+    fn the_other_half_of_the_sweep_still_has_a_home() {
+        let root = repo_root();
+        let other = root.join("src-tauri/src/rust_timer_registry.rs");
+        let body = fs::read_to_string(&other).unwrap_or_default();
+        // ⚠ `contains_word` 不是 `contains`：变异实测把 `REGISTERED` 改名成 `REGISTERED_X`，
+        // 裸 `contains` **照样绿**（前缀）。那正是 F24 那一族 —— 而它在这条**新写的**判据里
+        // 又复发了一次，说明「知道有这个坑」不等于不踩。原语在手就别手写匹配。
+        assert!(
+            guard_core::contains_word(&body, "REGISTERED"),
+            "`rust_timer_registry` 不见了（或不再是登记表）。\n\
+             本模块头注逐字说着「Rust 那半的家是它」—— 那句话此刻是假的。\n\
+             ★ 要么把那半的新家写进头注，要么把头注改回「未做」；\n\
+             **不许留着一句指向空处的指针** —— 那比没有注释更坏（skill 铁律 14）。"
+        );
+        let me = fs::read_to_string(root.join("src-tauri/src/polling_registry.rs"))
+            .expect("读不到本文件");
+        // ⚠ **只看头注那半**（`production_source` 把 `#[cfg(test)]` 段剥掉）。
+        // 变异实测：拿整份文件 `contains` 时，**本条自己的代码里就写着这个名字**
+        // （上面那个路径 join、下面那个 `mod` 断言）⇒ 散文里的指针被删光了它照样绿。
+        // 那是 F23 那一族「判据匹配到自己」—— 在这条**新写的**判据里又复发了一次。
+        let head_note = guard_core::production_source(&me);
+        // 反向：头注真的指过去了才算。只留判据不改散文，读的人还是被那句旧话骗。
+        assert!(
+            guard_core::contains_word(&head_note, "rust_timer_registry"),
+            "本模块头注里找不到 `rust_timer_registry` —— 指针被删了而本条还绿着，\n\
+             说明本条钉的是「那半存在」而不是「这里指着它」。两件都要。"
+        );
+        // 那半必须真的被编进来（`mod` 声明），否则它是一份没人跑的死代码。
+        let lib = fs::read_to_string(root.join("src-tauri/src/lib.rs")).expect("读不到 lib.rs");
+        // `find_pinned`：恰好一处 + 两侧有边界。裸 `contains` 会被
+        // `mod rust_timer_registry_v2` 之类喂饱，而那时「那半有人管」已经不成立了。
+        assert!(
+            guard_core::find_pinned(&lib, "mod rust_timer_registry;").is_ok(),
+            "`rust_timer_registry` 没有在 `lib.rs` 里声明 ⇒ 它根本不参与编译与测试，\n\
+             「那半有人管」这句话就成了空头支票。"
+        );
+    }
 
     /// ★ **前提触发器**：上面两条「今天不能退役」的理由，前提是
     /// **daemon 只装那三条 hook**（`session-created` / `session-closed` / `session-renamed`）。
