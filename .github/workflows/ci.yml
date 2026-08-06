@@ -359,7 +359,7 @@ jobs:
           echo "带地板的 e2e 步骤数 = ${N:-0}"
           [ "${N:-0}" -ge 19 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 19）——有套件被改回裸 npm run 或被删掉"; exit 1; }
           # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
-          for pair in "tmux-target 26" "ccm-cli 46" "ccm-print-parity 12" "ccm-acceptance 19" \
+          for pair in "tmux-target 26" "ccm-cli 53" "ccm-print-parity 12" "ccm-acceptance 19" \
                       "ccm-pretrust 13" "cc-spawn-uplift 21" "tmux-guarded 14" "usage-probe 11" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
                       "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 32" \
@@ -375,6 +375,8 @@ jobs:
   # R00③：**真机行为验收进 CI**。**E82（2026-08-01）订正这段散文里的数**：地板值本身一直是对的
   # （下面有逐个 grep 的反向自检兜着），只是这几行注释没跟 —— 实际调用行是
   # `ccm-acceptance 19` / `usage-probe 9`，不是 15 / 7；套数也从 8 长到了 15（跨两个 job）。
+  # ⚠ audit-0805 F14 第六刀把 ccm-cli 棘到 53（新增 7 条：身份 poller 的 sid 解析——
+  #   抽取器自检 1 + 取值 4 + 「文件不存在 stderr 必须为空」1 + 「不残留上一次」1）。
   # ⚠ audit-0805 F10 把 ccm-cli 棘到 46（新增两条：I-11 的 resume×daemon×passthru 那一格，
   #   以及它的反向「不带 -- 时配方逐字不变」）。下面这段是 2026-07-29 的原文，数字已过期。
   # 原文（2026-07-29 实测**共 152 条**断言：tmux-target 26 · ccm-cli 44 · ccm-print-parity 12 ·
@@ -417,7 +419,7 @@ jobs:
         run: bash e2e/assert-pass-floor.sh tmux-target 26
 
       - name: ccm CLI 契约（F02）
-        run: bash e2e/assert-pass-floor.sh ccm-cli 46
+        run: bash e2e/assert-pass-floor.sh ccm-cli 53
 
       - name: ccm --print 平价预言机（F03）
         run: bash e2e/assert-pass-floor.sh ccm-print-parity 12

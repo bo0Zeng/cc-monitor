@@ -470,6 +470,63 @@ mod tests {
         }
     }
 
+    /// ★ **每秒醒一次的循环，每次醒来不许起外部进程**〔audit-0805 F14 第六刀〕。
+    ///
+    /// `shared/ccm` 的身份 poller 是本仓**唯一一条与会话同寿的每秒循环**，而且它
+    /// **每会话一条、跑在远端机器上**。它醒来做什么，代价要乘以「会话数 × 会话时长」。
+    ///
+    /// 原来那一行是 `s="$(grep -o … | head -1 | cut -d'"' -f4)"`。
+    /// 实测（`strace -f -c -e trace=execve,clone,clone3`，101 轮减 1 轮除以 100）：
+    /// **每 tick 7 次** clone/execve（三个外部进程 + 命令替换的子 shell）；
+    /// 换成纯 builtin 的 `_ccm_sid_from_file` 之后 **0 次**。
+    /// 加上 `sleep 1` 固定的 2 次 ⇒ 每 tick 从 **9 次降到 2 次**。
+    ///
+    /// ⚠ 本条钉的是「**每次醒来的代价**」，不是「醒不醒」。
+    /// 「别每秒醒」要 inotify，得动 ccm 的进程模型 —— 如实登记为未做，见 `F14 §17`。
+    #[test]
+    fn the_per_second_identity_poller_spawns_nothing_per_tick() {
+        let ccm = fs::read_to_string(repo_root().join("shared/ccm"))
+            .expect("shared/ccm 读不到 —— 路径变了就把这条一起改");
+        let start = ccm
+            .find("while kill -0 ")
+            .expect("找不到身份 poller 的循环头 —— 它被改写或搬走了，本条会零命中地绿");
+        let body_start = start + ccm[start..].find('\n').expect("循环头没换行");
+        let end = ccm[body_start..]
+            .find("\n    done")
+            .expect("找不到循环尾 `done` —— 缩进变了？本条会把整份文件当循环体");
+        let body = &ccm[body_start..body_start + end];
+        // 抽取器自检：抽出来的必须像个循环体，不能是空的、也不能是整份文件。
+        assert!(
+            (3..40).contains(&body.lines().count()),
+            "抽到 {} 行，不像那个循环体（抽取器坏了）：\n{body}",
+            body.lines().count()
+        );
+        assert!(
+            body.contains("sleep 1"),
+            "抽出来的段里没有 `sleep 1` —— 抽错地方了"
+        );
+
+        // 剥掉整行注释再判（头注里就写着 `grep -o …` 那一行原文）。
+        // ⚠ 再把**算术展开** `$((…))` 换掉：它长得像命令替换但是 builtin、不 fork。
+        // 本条第一次跑就是被 `n=$((n+1))` 误伤的 —— 诊断把循环体原文打出来才看出来。
+        let prod: String = body
+            .lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n")
+            .replace("$((", "«arith»");
+        for bad in ["$(", "grep ", "head ", "cut ", "sed ", "awk ", "cat "] {
+            assert!(
+                !prod.contains(bad),
+                "身份 poller 的循环体里出现了 `{bad}` —— 它每秒跑一轮、与会话同寿、\n\
+                 每会话一条且在远端机器上。实测一条 `grep|head|cut` 管道 = **每 tick 7 次** \n\
+                 clone/execve；纯 builtin 是 0 次。解析请走 `_ccm_sid_from_file`（纯 builtin，\n\
+                 结果写 `$_ccm_sid_out`，**不要用命令替换取回**——那本身就要 fork 一个子 shell）。\n\
+                 循环体逐字：\n{prod}"
+            );
+        }
+    }
+
     /// ★ 把两处**散文纪律**变成机检：这两个文件里一处周期唤醒都不许有。
     #[test]
     fn the_files_that_forbid_polling_really_have_none() {
