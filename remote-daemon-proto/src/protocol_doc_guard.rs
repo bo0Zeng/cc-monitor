@@ -877,6 +877,94 @@ mod tests {
     /// 前者管「有没有写」，本条管「有没有登记在清册上」。
     ///
     /// ⚠ 本条**不检查行的内容对不对**（那需要逐字段对拍，已有别的判据管字段）。
+    /// ★★ **`EMITS` 必须是 `Frame` 变体的子集，且缺席的三个要有名有姓**
+    /// 〔audit-0805 F18 / 报告 §4.2〕。
+    ///
+    /// # 它此前**一条判据都没有**
+    ///
+    /// `protocol_doc_guard` 有三条双向对拍（帧种 ↔ 帧表 · 入方向命令 ↔ 文档 · 子命令 ↔ 文档），
+    /// **唯独 `EMITS` 没人管** —— 它全仓只在 `main.rs` 被读一次（塞进 hello）。
+    ///
+    /// # 而它的**定义与值对不上**
+    ///
+    /// `doc/IPC-PROTOCOL.md` 原本把它定义成「本 daemon **会发射的帧 kind 集**」，
+    /// 而 `EMITS` 8 项**不含** `hello`/`reply`/`cancelled` —— 这三个 daemon **确实会发**。
+    /// ⇒ 按字面读，它是错的；按意图读，它是「**门控用**帧集」（握手与应答不需要门控：
+    /// `hello` 是首帧、客户端必然收；`reply`/`cancelled` 是**应答**，只在你发过命令之后才来）。
+    /// 本条把那个意图钉住：**子集 + 缺席者必须逐个有理由**。
+    ///
+    /// ⚠ 这不是「补个数字」——按定框 **E12**，散文数字的修法只有两种：
+    /// 送进一条会红的判据，或删副本只留指针。本条是前者。
+    #[test]
+    fn emits_is_a_subset_of_frame_kinds_with_named_exemptions() {
+        let variants = frame_variants();
+        assert!(
+            variants.len() >= 9,
+            "只从 `enum Frame` 抽到 {} 个变体 —— 抽取坏了，本条会零命中地绿",
+            variants.len()
+        );
+
+        // 从 main.rs 生产段抠 `const EMITS: &[&str] = &[ "a", "b", … ];`
+        let prod = guard_core::production_code(include_str!("main.rs"));
+        let start = prod
+            .find("const EMITS")
+            .expect("找不到 `const EMITS` —— 抽取器坏了，本条会零命中地绿");
+        let end = prod[start..]
+            .find("];")
+            .expect("`const EMITS` 没有结尾 —— 抽取器坏了");
+        let body = &prod[start..start + end];
+        let emits: Vec<String> = body
+            .match_indices('"')
+            .map(|(i, _)| i)
+            .collect::<Vec<_>>()
+            .chunks(2)
+            .filter(|c| c.len() == 2)
+            .map(|c| body[c[0] + 1..c[1]].to_string())
+            .collect();
+        assert!(
+            emits.len() >= 5,
+            "只从 `EMITS` 抠到 {} 项（实测应为 8）—— 抠法坏了：{emits:?}",
+            emits.len()
+        );
+
+        // ① 子集：`EMITS` 里每一项都得是真帧种（防写错名字后没人发现）。
+        for e in &emits {
+            assert!(
+                variants.contains(e),
+                "`EMITS` 里的 `{e}` 不是任何一个 `Frame` 变体的 kind。\n\
+                 消费侧（aterm）拿它**门控消费** —— 声明一个不存在的帧种，\n\
+                 对面会去等一个永远不来的东西。今天的变体：{variants:?}"
+            );
+        }
+
+        // ② 缺席者必须逐个有名有姓，且理由写在这里（不是随便少几个）。
+        const EXEMPT: &[(&str, &str)] = &[
+            ("hello", "首帧、客户端必然收到，不需要门控"),
+            (
+                "reply",
+                "应答：只在客户端发过命令之后才来，由 `commands` 那一轴管",
+            ),
+            ("cancelled", "同 `reply`，属入方向应答族"),
+        ];
+        let missing: Vec<&String> = variants.iter().filter(|v| !emits.contains(v)).collect();
+        for m in &missing {
+            assert!(
+                EXEMPT.iter().any(|(k, _)| *k == m.as_str()),
+                "帧种 `{m}` 既不在 `EMITS` 里、也不在本条的豁免表里。\n\
+                 ★ 要么它该进 `EMITS`（daemon 会发它、消费侧要据此门控），\n\
+                 要么它是握手/应答那一族 —— **那就把理由写进 `EXEMPT`**。\n\
+                 两者都不做 = `emits` 这个声明对下游又变回一句不可信的话。"
+            );
+        }
+        // ③ 豁免表本身不许长草：列了却其实在 `EMITS` 里，说明表过期了。
+        for (k, _) in EXEMPT {
+            assert!(
+                !emits.iter().any(|e| e == k),
+                "`{k}` 已经在 `EMITS` 里了，却还留在豁免表 —— 豁免表过期了"
+            );
+        }
+    }
+
     /// 它只钉「清册不许漏」——如实说明，别读成「表里那行是对的」。
     #[test]
     fn every_wire_frame_kind_has_a_row_in_the_frame_table() {
