@@ -141,6 +141,34 @@ export class HistoryView {
   /** 全量加载并发上限（控制对后端 IPC 的瞬时压力） */
   private static readonly LOAD_ALL_CONCURRENCY = 4;
 
+  // ===== audit-0805 F07 下半（报告 B-6 前四环）：三个放大器 =====
+  //
+  // 这三件互相叠乘，所以放在一起改：
+  //   ① 搜索框 `input` **无防抖** ⇒ 每敲一个字符走一遍下面两条；
+  //   ② `renderList` **自我扇出** —— `appendProjectGroup` 里 `.then(() => this.renderList())`
+  //      写在 per-project 循环里，搜索激活时 `expanded` 恒 true ⇒ **P 个未缓存项目各触发一次
+  //      完整 renderList**，而每次 renderList 又会再走一遍这个循环；
+  //   ③ 那 P 个 `loadProjectSessions` **无并发上限** ⇒ 一次按键 P 条 IPC 齐发（远端项目还含 SSH）。
+  //
+  // ⇒ 一次按键的代价是 ①×②×③ 相乘，而不是相加。三条各自的判据见
+  // `history-fanout.vitest.ts`。
+  /** ① 搜索输入去抖句柄。 */
+  private searchDebounce: ReturnType<typeof setTimeout> | null = null;
+  /** ① 去抖窗口。250ms 照 `views/panorama.ts:382` 的现成范式，不另发明一个数。 */
+  private static readonly SEARCH_DEBOUNCE_MS = 250;
+  /** ② 「已排程重画」去重位。范式取自 `tabs.ts:713-737`（schedule-once），不是 `:2714` 那个裸 rAF。 */
+  private renderScheduled = false;
+  /** ③ 懒加载队列 + 在飞计数 + 去重集（同一项目不重复入队）。 */
+  private lazyQueue: HistoryProject[] = [];
+  private lazyActive = 0;
+  private lazyQueued = new Set<string>();
+  /** 入队时登记的「这一项加载完之后要做的事」（`details` 展开要重画自己的 body）。 */
+  private lazyDone = new Map<string, () => void>();
+  /** 等「队列抽干」的人。`loadAll` / 全展开都靠它拿完成信号。 */
+  private lazyIdle: (() => void)[] = [];
+  /** 判据用：合并之后**真正**跑了几次 renderList / 起了几条 load。 */
+  private fanoutStats = { renders: 0, loads: 0, peakConcurrent: 0 };
+
   // issue #6: 全文搜索状态
   /** 当前模式：项目树过滤 / 内容全文搜索。默认树。 */
   private searchMode: SearchMode = "tree";
@@ -409,16 +437,12 @@ export class HistoryView {
     this.sessionCache.set(key, entries);
 
     const channel = new Channel<HistorySessionEntry>();
-    let rafPending = false;
     channel.onmessage = (entry) => {
       entries.push(entry);
-      if (rafPending) return;
-      rafPending = true;
-      requestAnimationFrame(() => {
-        rafPending = false;
-        // 重画一次列表 —— 当前项目已在 expandedProjects 时其 body 会跟着重画
-        if (this.isOpen) this.renderList();
-      });
+      // F07（台账没点到的第四个放大器）：这里原来是**每个项目各一个** `rafPending` 布尔 ——
+      // 去重只在单个项目内部生效，P 个项目同时流式回来时**一帧里仍可能重画 P 次**。
+      // 改走视图级的 `scheduleRender()`：去重位是整个视图共用的一个。
+      this.scheduleRender();
     };
 
     // issue #16：远端项目走 stream_remote_history_sessions（独立 SSH 连接一次性
@@ -502,13 +526,19 @@ export class HistoryView {
     this.searchInput.className = "history-search";
     // placeholder 在 updateSearchPlaceholder 里根据模式 / loadedAll 动态设
     this.searchInput.addEventListener("input", () => {
-      if (this.searchMode === "tree") {
-        this.filter = this.searchInput.value.trim().toLowerCase();
-        this.renderList();
-      } else if (this.searchInput.value.trim() === "") {
-        // 全文模式清空 → 清结果
-        this.runFullTextSearch();
-      }
+      // F07：**去抖**。此前每敲一个字符都同步走一遍 `renderList()`，而 `renderList` 自己
+      // 还会扇出 P 条懒加载、每条回来再触发一次 renderList —— 三个放大器叠乘。
+      if (this.searchDebounce !== null) clearTimeout(this.searchDebounce);
+      this.searchDebounce = setTimeout(() => {
+        this.searchDebounce = null;
+        if (this.searchMode === "tree") {
+          this.filter = this.searchInput.value.trim().toLowerCase();
+          this.renderList();
+        } else if (this.searchInput.value.trim() === "") {
+          // 全文模式清空 → 清结果
+          this.runFullTextSearch();
+        }
+      }, HistoryView.SEARCH_DEBOUNCE_MS);
     });
     this.searchInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && this.searchMode === "fulltext") {
@@ -978,6 +1008,7 @@ export class HistoryView {
   // === 列表渲染 ===
 
   private renderList(): void {
+    this.fanoutStats.renders += 1;
     this.listEl.replaceChildren();
     this.renderOriginFilter(); // F03：同步来源筛选 chip 行
     if (this.projects.length === 0) {
@@ -1046,8 +1077,77 @@ export class HistoryView {
     const expanded = searchActive || this.expandedProjects.has(projectKey(proj));
     parent.appendChild(this.buildProjectGroup(proj, expanded));
     if (searchActive && expanded && !this.sessionCache.has(projectKey(proj))) {
-      void this.loadProjectSessions(proj).then(() => this.renderList());
+      // F07：原来是 `.then(() => this.renderList())` —— **P 个项目各触发一次全树重建**，
+      // 而每次重建又会再走一遍本循环。改成入队：去重 + 有上限 + 批末合并重画一次。
+      this.enqueueLazyLoad(proj);
     }
+  }
+
+  /**
+   * F07：搜索触发的懒加载 —— **去重 + 有上限**。
+   *
+   * 同一个项目重复入队会被挡掉（`renderList` 会被反复调用，每次都想加载同一批未缓存项目）。
+   */
+  private enqueueLazyLoad(proj: HistoryProject, onDone?: () => void): void {
+    const k = projectKey(proj);
+    if (this.lazyQueued.has(k) || this.sessionCache.has(k)) return;
+    this.lazyQueued.add(k);
+    this.lazyQueue.push(proj);
+    if (onDone) this.lazyDone.set(k, onDone);
+    this.pumpLazy();
+  }
+
+  /** F07：把队列抽干，同时在飞不超过 `LOAD_ALL_CONCURRENCY`。 */
+  private pumpLazy(): void {
+    while (
+      this.lazyActive < HistoryView.LOAD_ALL_CONCURRENCY &&
+      this.lazyQueue.length > 0
+    ) {
+      const proj = this.lazyQueue.shift();
+      if (!proj) break;
+      this.lazyActive += 1;
+      this.fanoutStats.loads += 1;
+      this.fanoutStats.peakConcurrent = Math.max(
+        this.fanoutStats.peakConcurrent,
+        this.lazyActive,
+      );
+      void this.loadProjectSessions(proj).finally(() => {
+        this.lazyActive -= 1;
+        const k = projectKey(proj);
+        this.lazyQueued.delete(k);
+        const done = this.lazyDone.get(k);
+        this.lazyDone.delete(k);
+        done?.();
+        this.scheduleRender();
+        this.pumpLazy();
+        if (this.lazyActive === 0 && this.lazyQueue.length === 0) {
+          const waiters = this.lazyIdle;
+          this.lazyIdle = [];
+          for (const w of waiters) w();
+        }
+      });
+    }
+  }
+
+  /** F07：等队列抽干。队列本来就空 ⇒ 立即 resolve。 */
+  private lazyDrained(): Promise<void> {
+    if (this.lazyActive === 0 && this.lazyQueue.length === 0) return Promise.resolve();
+    return new Promise<void>((r) => this.lazyIdle.push(r));
+  }
+
+  /**
+   * F07：**批末合并重画** —— 已排程就不重排（schedule-once）。
+   *
+   * ⚠ 范式取自 `tabs.ts:713-737`（`materializeScheduled` 布尔 + rIC），**不是** `:2714` 那个
+   * 裸 rAF —— 后者没有去重位，连排多个 rAF（核实台账 I6′ 逐字记过这一格）。
+   */
+  private scheduleRender(): void {
+    if (this.renderScheduled) return;
+    this.renderScheduled = true;
+    requestAnimationFrame(() => {
+      this.renderScheduled = false;
+      if (this.isOpen) this.renderList();
+    });
   }
 
   /** F02：来源排序——本地（undefined）优先，远端按 label 字母序。 */
@@ -1254,8 +1354,11 @@ export class HistoryView {
         this.expandedProjects.add(projectKey(proj));
         if (!this.sessionCache.has(projectKey(proj))) {
           renderBody(); // 显示 "加载中…"
-          void this.loadProjectSessions(proj).then(() => {
-            // 加载完后再画一次 body
+          // F07（★ 判据实测抓到的第五个放大器，核实台账没点到）：这里原来是裸
+          // `loadProjectSessions(...)`。平时用户一次只展开一个，看不出问题；**「全展开」会把
+          // P 个 `details` 一起置 open ⇒ P 个 toggle 事件齐发 ⇒ P 条 IPC 同时出去**，
+          // 把「加载全部」那条路的上限整个绕过去。现在三条路共用同一条有上限的队列。
+          this.enqueueLazyLoad(proj, () => {
             if (details.isConnected) renderBody();
           });
         } else {
@@ -1300,23 +1403,18 @@ export class HistoryView {
     const baseLabel = this.loadAllBtn.textContent;
     const total = pending.length;
     let done = 0;
-    const queue = pending.slice();
-
-    const worker = async (): Promise<void> => {
-      while (queue.length > 0) {
-        const proj = queue.shift();
-        if (!proj) break;
-        await this.loadProjectSessions(proj);
-        done += 1;
-        this.statusEl.textContent = `加载中 ${done}/${total} …`;
-        this.loadAllBtn.textContent = `加载 ${done}/${total}`;
-      }
-    };
-
     try {
-      await Promise.all(
-        Array.from({ length: HistoryView.LOAD_ALL_CONCURRENCY }, () => worker()),
-      );
+      // F07：与搜索懒加载、全展开**共用同一条队列、同一个上限**。
+      // 此前这里有自己的工作池、全展开是裸 `Promise.all(map)`、`details.toggle` 又是第三条路
+      // ⇒ 三条路各自为政，其中两条无上限，而「全展开」会同时踩到两条 ⇒ 上限被绕过去。
+      for (const proj of pending) {
+        this.enqueueLazyLoad(proj, () => {
+          done += 1;
+          this.statusEl.textContent = `加载中 ${done}/${total} …`;
+          this.loadAllBtn.textContent = `加载 ${done}/${total}`;
+        });
+      }
+      await this.lazyDrained();
       this.loadedAll = true;
       this.updateSearchPlaceholder();
       // 重画一次以应用搜索匹配（如果用户已经在搜索框输入）
@@ -1345,7 +1443,9 @@ export class HistoryView {
     );
     if (toLoad.length > 0) {
       this.statusEl.textContent = `加载 ${toLoad.length} 个项目的会话…`;
-      await Promise.all(toLoad.map((p) => this.loadProjectSessions(p)));
+      // F07：原来是 `Promise.all(toLoad.map(…))` —— **无上限**。改走同一条队列。
+      for (const proj of toLoad) this.enqueueLazyLoad(proj);
+      await this.lazyDrained();
       this.renderList();
     }
   }
