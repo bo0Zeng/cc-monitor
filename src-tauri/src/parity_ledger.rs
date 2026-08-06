@@ -424,28 +424,23 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let attr = format!("#[tauri::{}]", "command");
         let mut out = BTreeMap::new();
-        let mut files: Vec<std::path::PathBuf> = Vec::new();
-        let mut stack = vec![root];
-        while let Some(dir) = stack.pop() {
-            for entry in std::fs::read_dir(&dir).expect("read src dir") {
-                let path = entry.expect("dir entry").path();
-                if path.is_dir() {
-                    stack.push(path);
-                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-                    files.push(path);
-                }
-            }
-        }
+        // ★ F23 第二刀：改用 `scan_tree!` —— 它**按构造**摘除调用者自己（拿 `file!()`）。
+        //
+        // 原来这里是裸 `read_dir` + 下面一句写死文件名的跳过（`== Some("parity_ledger.rs")`）。
+        // 那种摘除**改名即静默失效**，而失效之后看起来和没失效一模一样 ——
+        // `scan_tree!` 的头注逐字警告过这个形态（「别手写 `file!()` 以外的东西当 caller_file」）。
+        // 本文件的说明文字里必然含 `#[tauri::command]` 这些子串，摘除一旦失效就会把
+        // 自己的散文当成命令签名读进来。
+        let mut files: Vec<std::path::PathBuf> = guard_core::scan_tree!(&root, &["rs"])
+            .into_iter()
+            .map(|(p, _)| p)
+            .collect();
         // Phase E 审计 R5：**必须排序。** 目录栈的产出顺序是文件系统给的，而下面
         // `out.entry(name).or_insert(params)` 是**首个胜** —— 两个子模块出现同名
         // `#[tauri::command] fn` 时，取到哪一份就随机器而变（同一个仓在不同机器上拿到不同签名）。
         // 今天 `src/` 只有一层平目录 + 空的 `adapter/`，影响为零；但递归本就是为将来的多子目录准备的。
         files.sort();
         for path in files {
-            // 跳过本护栏自身：它的说明文字里必然含这些子串。
-            if path.file_name().and_then(|n| n.to_str()) == Some("parity_ledger.rs") {
-                continue;
-            }
             let src = strip_line_comments(&std::fs::read_to_string(&path).expect("read rs"));
             for (i, _) in src.match_indices(&attr) {
                 let rest = &src[i..];

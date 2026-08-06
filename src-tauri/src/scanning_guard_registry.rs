@@ -22,8 +22,28 @@
 //! 本模块要求：**测试段里不许再出现裸的目录遍历** —— 要么走 `scan_tree!`，
 //! 要么在下面这张存量清单里，而清单**只许变短**。
 //!
-//! ⚠ 清单是**存量盘点，不是逐条论证**：31 个文件里哪些真的自匹配、哪些只是碰巧安全，
-//! 逐条判要单独一轮。本条的契约只有两句：**新增的不许出现；存量只许降。**
+//! # ★ 存量已**逐条判过真伪**（08-06 第二刀）
+//!
+//! 判准是**「它靠什么读不到自己」**，四类穷尽（下面 `PENDING` 每一行都属其一）：
+//!
+//! | 类 | 数 | 它凭什么安全 |
+//! |---|---|---|
+//! | **生产 / 夹具 IO** | 5 | 遍历的根本不是源码树（`.claude/projects` 的 jsonl · 标注池 · tempdir · `.ssh` · PowerShell profile）。**自匹配这个概念对它们不成立** |
+//! | **剥生产段（构造性摘除）** | 21 | 只扫 `production_code`/`production_source` 的产物；判据自己住在 `#[cfg(test)]` 里 ⇒ **按构造读不到自己** |
+//! | **显式摘除自身** | 2 | `SELF` 常量 / `replace(&own, "")`（`atomic_replace_registry` · `doc_copy_registry`） |
+//! | **扫的树不含自己** | 2 | `frame_cadence_guard` 只扫 `.md`（自己是 `.rs`）· `shared_crate_registry` 扫 `crates/` 与 `Cargo.toml`（自己在 `src-tauri/src`） |
+//!
+//! ⇒ **30 个存量里没有一个是「会自匹配却没防住」的**。它们不是 30 个待修的 bug，
+//! 是 30 个**已分类的、各有安全理由的**遍历。棘轮继续挡**新增**，而不再暗示这里有一堆债。
+//!
+//! ⚠ 第二刀唯一动过的一个是 `parity_ledger.rs`：它原来靠**写死文件名**跳过自己
+//! （`== Some("parity_ledger.rs")`）—— 那种摘除**改名即静默失效**，而失效后看起来和没失效
+//! 一模一样（`scan_tree!` 头注逐字警告过这个形态）。已换成 `scan_tree!`（按 `file!()` 摘除）。
+//! ★ **但要如实说**：把那个摘除关掉，**没有任何判据变红** —— 真正挡住它自匹配的是
+//! 另一招（`attr` 运行时拼 `format!("#[tauri::{}]", "command")`，于是字面量不在自己源码里）。
+//! ⇒ 这一改**去掉的是一个改名即失效的形态，不是修了一个活缺陷**。别把它读成后者。
+//!
+//! 本条的契约仍是两句：**新增的不许出现；存量只许降。**
 
 #[cfg(test)]
 mod tests {
@@ -51,7 +71,6 @@ mod tests {
         "src-tauri/src/gate_singleton_guard.rs",
         "src-tauri/src/local_read_surface_registry.rs",
         "src-tauri/src/panorama.rs",
-        "src-tauri/src/parity_ledger.rs",
         "src-tauri/src/parser.rs",
         "src-tauri/src/polling_registry.rs",
         "src-tauri/src/profile_installer.rs",
@@ -71,7 +90,7 @@ mod tests {
     ];
 
     /// 存量上限（**递减棘轮**）。
-    const PENDING_CEILING: usize = 31;
+    const PENDING_CEILING: usize = 30;
 
     fn repo_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -110,7 +129,20 @@ mod tests {
             //（F14 第六刀 `[ -r ]` 不能省 · F12 `uiStrings` 两道都不能省 · 本条）。
             for (f, src) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let regs = test_regions(&src);
-                if RAW_WALKS.iter().any(|w| regs.contains(w)) && !regs.contains("scan_tree!") {
+                // ★ F23 第二刀：**去掉了 `&& !regs.contains("scan_tree!")` 那半**。
+                //
+                // 它是**整份文件级的豁免**：只要测试段里出现过一次 `scan_tree!`，
+                // 这个文件里**再多裸遍历也不会被标记**。豁免的粒度是「文件」，
+                // 而事实的粒度是「那一处遍历」—— 又一次**匹配单位与事实不同级**
+                // （F24 那一族的反面：这次是单位比事实**大**）。
+                //
+                // 变异实测：给 `byte_cap_registry`（它用 `scan_tree!`）的测试段加一处裸
+                // `read_dir`，**本条照样绿**。去掉那半之后当场红。
+                // ⚠ 先证明它恒绿再删（E11）：去掉后**一个文件都没被新标记** ——
+                // 说明今天没有「既用 `scan_tree!` 又裸遍历」的文件，那半是纯死重。
+                // 而 `scan_tree!` 的调用文本里本来就不含 `RAW_WALKS` 的四个字面量，
+                // 所以只用 `scan_tree!` 的文件本来也不会被标记 —— 那半从来没起过作用。
+                if RAW_WALKS.iter().any(|w| regs.contains(w)) {
                     out.push(
                         f.strip_prefix(&root)
                             .unwrap_or(&f)
