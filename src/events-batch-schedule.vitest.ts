@@ -186,6 +186,77 @@ describe("events.ts 批量调度状态机（audit-0805 F17 下半的三条分支
     expect(h.onBatchEnd, "归零之后下一次定时器该正常收尾").toHaveBeenCalledTimes(1);
   });
 
+  // ── audit-0805 §5 2v：钉住一次**真实发生过**的事故形态 ──────────────────
+  //
+  // `events.ts:313-317` 那个 `catch` 的注释逐字记着：
+  // 「v2.1.0 踩过：computeMainBranch stack overflow → drain 异常逃逸 → **后续上千条
+  // record 永远不渲染**」。v2.1.1 加了这道 try/catch 兜住它。
+  //
+  // ★ 而它**今天没有任何东西验它** —— 那一行在覆盖率里是零执行。
+  // 一道「防止整条队列冻死」的护栏自己没被验过，正是本区一直在治的形状。
+  //
+  // ⚠ 本组不追覆盖率数字：`events.ts` 还有十几行没覆盖（各类 session-* 分支），
+  // 那些是**转发**，错了看得见；这一条不同 —— 它错了的表现是**后面什么都不来了**。
+  // ⚠ 变异复验时的一个细节，写下来免得下次误读：拿掉那个 `catch` 之后，本条**不是**靠
+  // 我写的断言红的，而是**异常直接逃到 vitest**（`Error: computeMainBranch 炸了`）。
+  // 那也是一次干净的击杀 —— 但**诊断文案不是我的**。若将来它改成「吞掉但不继续」，
+  // 才会走到下面那句「四条 payload 只走到第 N 条」。两种红都要认得。
+  it("★ 单条 handler 抛异常 → 后面的行照常处理（drain 不冻死）", async () => {
+    const h = await bind();
+    let calls = 0;
+    h.onLine.mockImplementation(() => {
+      calls += 1;
+      if (calls === 2) throw new Error("computeMainBranch 炸了（模拟 v2.1.0）");
+    });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    h.chunk(0, [1, 2, 3, 4]);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(
+      calls,
+      `四条 payload 只走到第 ${calls} 条 —— **异常逃逸出 drain 了**。\n` +
+        "★ 这正是 v2.1.0 那次事故：一条 record 出错，后续上千条永远不渲染。\n" +
+        "v2.1.1 的 try/catch 就是为它加的（`events.ts:313-317`）。",
+    ).toBe(4);
+    expect(
+      err.mock.calls.flat().join(" "),
+      "吞了异常却没留痕迹 —— 那是**静默失败**（定框 E4）。丢一条 record 可以，" +
+        "但要说得出丢了哪一条。",
+    ).toContain("handler threw");
+    await vi.advanceTimersByTimeAsync(400);
+    expect(h.onBatchEnd, "出过错之后 batch 模式还要能正常收尾").toHaveBeenCalledTimes(1);
+  });
+
+  it("★ onBatchStart / onBatchEnd 自己抛异常 → 状态机不许卡住", async () => {
+    const h = await bind();
+    h.onBatchStart.mockImplementation(() => {
+      throw new Error("TabManager 进 batch 时炸了");
+    });
+    h.onBatchEnd.mockImplementation(() => {
+      throw new Error("TabManager 出 batch 时炸了");
+    });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    h.chunk(0, [1, 2]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.onLine, "onBatchStart 抛了之后 payload 就不 drain 了 —— 异常逃出了状态机").toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(400);
+    expect(h.onBatchEnd, "grace 满了却没试着收尾").toHaveBeenCalledTimes(1);
+
+    // ★ 关键：onBatchEnd 抛了之后**还要能再进一次 batch** —— 否则 inBatchMode 卡在 true，
+    // 后面每一块历史都会被当成 live 逐条渲染（F15 治的正是那个代价）。
+    h.chunk(0, [3]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(
+      h.onBatchStart,
+      "第二块没能重新进 batch 模式 —— `inBatchMode` 多半卡在 true 了。" +
+        "那之后每块历史都走 live 逐条渲染。",
+    ).toHaveBeenCalledTimes(2);
+    expect(err.mock.calls.flat().join(" ")).toContain("threw");
+  });
+
   it("★★ 在途计数**卡死**时，5 分钟防呆上限必须真的踢开（这条分支真机上多半从没跑过）", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const h = await bind();
