@@ -268,5 +268,44 @@ else
 fi
 
 echo
+echo "===== 身份 poller 的 sid 解析（audit-0805 F14 第六刀，报告 I-5 最后一条）====="
+# 这段解析跑在 ccm 的**每秒一轮、与会话同寿**的身份 poller 里，且 poller 是**每会话一条、
+# 跑在远端机器上**。原形态 `grep -o … | head -1 | cut` 实测每 tick 起 7 次 clone/execve；
+# 换成纯 builtin 之后 0 次（`sleep 1` 固定的 2 次不动）。
+#
+# ⚠ 这里**从 `shared/ccm` 里抽出函数定义再 eval**，不重写一份 —— 重写一份就是同义反复，
+# 实现怎么变期望就怎么变。抽取器自检在下面第一条。
+eval "$(sed -n '/^_ccm_sid_from_file() {/,/^}/p' "$CCM")"
+ck "抽取器自检：_ccm_sid_from_file 真的从 ccm 里抽出来了（否则下面全部零命中地绿）" \
+   "function" "$(type -t _ccm_sid_from_file || echo none)"
+
+SIDTMP="$(mktemp -d)"
+printf '%s' '{"cwd":"/x","sessionId":"abc-123","model":"opus"}' > "$SIDTMP/ok.json"
+printf '%s' '{"sessionId" : "sp aced"}'                          > "$SIDTMP/spaced.json"
+printf '%s' '{"cwd":"/x"}'                                       > "$SIDTMP/nofield.json"
+printf '%s' 'not json at all'                                    > "$SIDTMP/garbage.json"
+
+_ccm_sid_from_file "$SIDTMP/ok.json"
+ck "正常取出 sessionId" "abc-123" "$_ccm_sid_out"
+_ccm_sid_from_file "$SIDTMP/spaced.json"
+ck "键与冒号之间有空格、值里有空格 —— 照样取对" "sp aced" "$_ccm_sid_out"
+_ccm_sid_from_file "$SIDTMP/nofield.json"
+ck "★ 没有 sessionId 字段 → 空，且**不许残留上一次的值**（残留比读不到更坏：会拿旧 sid 去打标）" \
+   "" "$_ccm_sid_out"
+_ccm_sid_from_file "$SIDTMP/garbage.json"
+ck "整个文件不是 JSON → 空，不炸" "" "$_ccm_sid_out"
+
+# ★ 这一条是换形态时**自测撞出来的真回归**：会话元数据文件在 claude 真写出来之前**不存在**，
+# 而那正是这条 poller 最常见的早期状态。`< "$1"` 的重定向失败由 **shell 自己**报到 stderr，
+# `2>/dev/null` 挡不住 ⇒ 少了 `[ -r ]` 那道门就会**每秒喷一行**。旧的 grep 形态没有这个问题。
+_ccm_sid_from_file "$SIDTMP/ok.json"   # 先垫一个非空值，验下一行会不会残留
+ERRTXT="$( { _ccm_sid_from_file "$SIDTMP/does-not-exist.json"; } 2>&1 >/dev/null )"
+ck "★ 文件不存在 → stderr 必须一个字都没有（poller 每秒跑一轮，喷一行就是每秒一行）" \
+   "" "$ERRTXT"
+_ccm_sid_from_file "$SIDTMP/does-not-exist.json"
+ck "文件不存在 → 结果为空，不残留上一次" "" "$_ccm_sid_out"
+rm -rf "$SIDTMP"
+
+echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
 [ "$FAIL" -eq 0 ]
