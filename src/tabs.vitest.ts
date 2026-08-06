@@ -9,6 +9,20 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// ★ audit-0805 F15 第 1 步：**先让「每行调了几次」变得可测**。
+//
+// 这个文件此前把 `BranchFolder` 整个 stub 成空壳（每个方法 no-op），于是全仓**没有任何东西**
+// 能证明 live 模式下每来一行调了几次 —— 而 V5 已经指出这条性质「行为上与不改完全等价
+// （同样的行、同样的结果）」，**慢不会让任何测试变红**。
+// ⇒ 不先建量具就动性能，改完无从证明改对了。计数器挂在既有 stub 上，成本近零。
+//
+// ⚠⚠ **但本轮实测：光有计数器还建不起判据** —— 见 `audit-0805/features/F15-*.md §2`。
+//   `routeMetaAndBranch` 在本文件里被 mock 成**不调 `sink.onBranchRecord`**（`:77-84`），
+//   于是 `recordAdded` 在这套 mock 下**永远是 0**。
+//   ★ **让 tabs.ts 可测的那批 mock，恰好把「调了几次」这件事也 mock 没了。**
+//   计数器先留着（零成本、零行为影响），判据要等那批 mock 被改成「保真到调用次数」那一层。
+const f15 = vi.hoisted(() => ({ recordAdded: 0, rebuildNow: 0 }));
+
 // --- 把重/IPC 协作者 mock 掉，让 TabManager 能在 jsdom 下实例化（避免拉 marked/katex/IPC）---
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
@@ -52,9 +66,14 @@ vi.mock("./branch-fold", () => ({
     constructor(_el: unknown) {}
     setBatchMode(): void {}
     flushPending(): void {}
-    recordAdded(): void {}
+    // F15：计数，不做事 —— 量的是「被调了几次」，不是它做了什么。
+    recordAdded(): void {
+      f15.recordAdded++;
+    }
     unwrapAll(): void {}
-    rebuildNow(): void {}
+    rebuildNow(): void {
+      f15.rebuildNow++;
+    }
     dispose(): void {}
   },
 }));
