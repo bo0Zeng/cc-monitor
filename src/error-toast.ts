@@ -9,7 +9,11 @@
  * - 多条 ERROR 用 `.ccm-toast-stack` 容器**垂直堆叠**显示（不互相覆盖）；
  *   每个 toast 6s 自动消失
  * - 点击 toast → 调 `open_log_file` IPC，跳到 log 文件供详细查看
- * - 后端已经做了 60s/20 条限频，前端不再额外限制
+ * - 后端已经做了 60s/20 条限频〔据本注释，**没有判据读它**〕，前端不再额外**限频**
+ *   ⚠ audit-0805 F07：**限频不等于聚合**。限频拦的是「同一个发射点短时间内刷很多条」；
+ *   拦不住「**N 台远端同一瞬间各报一条**」—— 那是 N 个不同的 ERROR，一条都不该被丢，
+ *   但它们不该占 N 个位置。所以前端做的是**合流**（同标题并成一条 + `×N` 计数），
+ *   不是限频：**一条都没少报，只是不再刷屏**。
  *
  * 参照 INVARIANT § 12（alert 不算错误反馈）落实：error toast 取代未来本可能用
  * 的 alert 成为关键失败默认反馈机制
@@ -78,7 +82,61 @@ interface ToastSpec {
   title?: string;
 }
 
+/** 一条**还活着**的 toast，用于同标题合流。 */
+interface LiveToast {
+  el: HTMLElement;
+  bodyEl: HTMLElement;
+  countEl: HTMLElement;
+  count: number;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+/**
+ * `(level, headline)` → 活着的那一条。
+ *
+ * # 为什么要合流〔audit-0805 F07 下半第二刀，报告 B-6 环 5〕
+ *
+ * 报告说环 5「逐台失败**UI 无任何信号**」—— **核实后不成立**，信号有四处。
+ * 真缺陷是**信号无聚合**：`appendToast` 原来无条件新建一个节点。
+ *
+ * 而「N 台 = N 个 toast」的路径**不是**报告暗示的历史扇出（那条已经聚合过了：
+ * `history.ts` 是 `failedHosts.join("、")` 一条），是这两条：
+ *   ① **后端 `monitor-error` 事件**：每台远端各报一条 ERROR ⇒ 各弹一个（`bindErrorToast`）；
+ *   ② **`remote-health` 的节流键含 `origin`**（`remote-health.ts` 的 `${origin}|${kind}`）——
+ *      它防的是「**同一台**重复弹」，**不防「多台各弹一个」**。5 台同时 overflow = 5 个
+ *      同标题 toast，每个 8 秒。
+ *
+ * ⇒ 合流键取 `(level, headline)`：同一类提示只占一个位置，带 `×N` 计数、body 显示**最新**那条。
+ * ⚠ **`level` 必须进键**：红色 error 与灰色 info 是两种严重度，合成一条会把其中一种的
+ * 视觉语义抹掉。
+ */
+const liveToasts = new Map<string, LiveToast>();
+
+function toastKey(level: ToastSpec["level"], headline: string): string {
+  return `${level}\u0000${headline}`;
+}
+
+/** 重新计时。合流时**必须**重置 —— 否则最后一条刚合进来就被上一条的计时器抹掉。 */
+function armDismiss(key: string, t: LiveToast, durationMs: number): void {
+  if (t.timer !== null) clearTimeout(t.timer);
+  t.timer = setTimeout(() => {
+    t.el.remove();
+    liveToasts.delete(key);
+  }, durationMs);
+}
+
 function appendToast(spec: ToastSpec): void {
+  const key = toastKey(spec.level, spec.headline);
+  const existing = liveToasts.get(key);
+  if (existing) {
+    existing.count += 1;
+    existing.bodyEl.textContent = spec.body; // 显示最新一条，不是卡在第一条
+    existing.countEl.textContent = `×${existing.count}`;
+    existing.countEl.hidden = false;
+    armDismiss(key, existing, spec.durationMs);
+    return;
+  }
+
   const stack = ensureStack();
 
   const toast = document.createElement("div");
@@ -88,6 +146,10 @@ function appendToast(spec: ToastSpec): void {
   const headline = document.createElement("div");
   headline.className = "ccm-toast-headline";
   headline.textContent = spec.headline;
+  const countEl = document.createElement("span");
+  countEl.className = "ccm-toast-count";
+  countEl.hidden = true; // 只有真合流过才显示
+  headline.appendChild(countEl);
   toast.appendChild(headline);
 
   const body = document.createElement("div");
@@ -95,16 +157,21 @@ function appendToast(spec: ToastSpec): void {
   body.textContent = spec.body;
   toast.appendChild(body);
 
+  const live: LiveToast = { el: toast, bodyEl: body, countEl, count: 1, timer: null };
+
   if (spec.onClick) {
     const cb = spec.onClick;
     toast.addEventListener("click", () => {
       cb();
+      if (live.timer !== null) clearTimeout(live.timer);
+      liveToasts.delete(key);
       toast.remove();
     });
   }
 
   stack.insertBefore(toast, stack.firstChild);
-  window.setTimeout(() => toast.remove(), spec.durationMs);
+  liveToasts.set(key, live);
+  armDismiss(key, live, spec.durationMs);
 }
 
 /**
