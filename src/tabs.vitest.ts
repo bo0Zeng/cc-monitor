@@ -21,7 +21,31 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 //   于是 `recordAdded` 在这套 mock 下**永远是 0**。
 //   ★ **让 tabs.ts 可测的那批 mock，恰好把「调了几次」这件事也 mock 没了。**
 //   计数器先留着（零成本、零行为影响），判据要等那批 mock 被改成「保真到调用次数」那一层。
-const f15 = vi.hoisted(() => ({ recordAdded: 0, rebuildNow: 0 }));
+const f15 = vi.hoisted(() => ({
+  recordAdded: 0,
+  rebuildNow: 0,
+  /**
+   * ★ `renderContentRecord` 的**保真默认实现**（往 timeline 里塞一条）。
+   *
+   * 提到这里是因为文件里有两处测试会临时改这个 mock 的实现，改完再「恢复」——
+   * 而它们此前恢复成的是空 `() => {}`，**把保真实现永久打回空壳**，
+   * 于是后面所有测试里 `tabs.ts:891` 的 `inserted` 都恒假。
+   * 这是 F15 §2 那个族的第三次：**量具被别处悄悄改没了，而且看起来一切正常**。
+   * ⇒ 恢复一律用本函数，别再手写 `() => {}`（那不是「恢复」，是「换成另一种坏」）。
+   */
+  insertingRender: (
+    payload: { seq: number },
+    _ctx: unknown,
+    sink?: { timeline?: { insert?: (e: unknown) => void } },
+  ) => {
+    sink?.timeline?.insert?.({
+      seq: payload.seq,
+      element: document.createElement("div"),
+      kind: "card",
+      toolGroup: null,
+    });
+  },
+}));
 
 // --- 把重/IPC 协作者 mock 掉，让 TabManager 能在 jsdom 下实例化（避免拉 marked/katex/IPC）---
 vi.mock("@tauri-apps/api/core", () => ({
@@ -47,14 +71,25 @@ vi.mock("./record-timeline", () => ({
     constructor(_s: unknown) {}
     /** 测试可写:R-1 中部插入判定读它(真实现=最高已渲染 seq) */
     _maxSeq = Number.NEGATIVE_INFINITY;
+    /**
+     * ★ F15 第 2 步：**`size` 必须真会涨**。
+     *
+     * 此前 `size` 恒返回 0 ⇒ `tabs.ts:891` 的 `inserted`（`timeline.size > beforeSize`）
+     * **恒假** ⇒ 后台 tab 那条 `refreshTabBar()`（`:896`）在本文件的 mock 下**永远走不到**。
+     * 于是「后台 tab 每来一行刷一次 tab bar」这条性质**无法被任何判据看见** ——
+     * 那正是 F15 §2 记的第二种成因：**量具把它测没了**（不是没人写判据）。
+     * 这里只补「进来几条」这一个维度，不复刻真实现的去重/排序（那是 record-timeline 自己的单测）。
+     */
+    _seqs = new Set<number>();
     insert(e: { seq: number }): void {
       // 闭合「直渲推高 maxSeq → 老块落缓冲」反馈链(D 审计 S-4)
       this._maxSeq = Math.max(this._maxSeq, e.seq);
+      this._seqs.add(e.seq);
     }
     removeByElement(): void {}
     dispose(): void {}
     get size(): number {
-      return 0;
+      return this._seqs.size;
     }
     get maxSeq(): number {
       return this._maxSeq;
@@ -80,12 +115,44 @@ vi.mock("./branch-fold", () => ({
 // F40a:tabs.ts 消费两段式入口(routeMetaAndBranch 判 meta / renderContentRecord 建卡)。
 // mock 按 message.type 粗判 consumed/content,与真实现语义对齐(防未来 meta 用例静默走错路)
 vi.mock("./render-stream-record", () => ({
-  routeMetaAndBranch: vi.fn((payload: { message?: { type?: string } }) =>
-    ["ai-title", "custom-title", "queue-operation"].includes(payload.message?.type ?? "")
-      ? "consumed"
-      : "content",
+  // ★ F15 第 1 步：mock 必须**真调 `sink.onBranchRecord`**。
+  //
+  // 此前它只返回 `"consumed"`/`"content"`、一次都不碰 sink ⇒ `tab.branchFolder.recordAdded`
+  // （`tabs.ts:810` 挂在 sink 上）在本文件里**永远是 0 次** ⇒ 「live 每来一行喂一次
+  // BranchFolder」这条性质**无法被任何判据看见**。
+  // 这里镜像真实现的**分支判定**（`branching.ts:282-291`：类型在集合内 + 有 uuid + 有 timestamp），
+  // 不复刻它构造出的 `BranchRecord` 内容 —— 本文件量的是**次数**，不是那条记录长什么样。
+  routeMetaAndBranch: vi.fn(
+    (
+      payload: {
+        message?: { type?: string; uuid?: string | null; timestamp?: string | null };
+      },
+      sink?: { onBranchRecord?: (rec: unknown) => void },
+    ) => {
+      const m = payload.message;
+      const t = m?.type ?? "";
+      if (["ai-title", "custom-title", "queue-operation"].includes(t)) return "consumed";
+      const isBranchKind = [
+        "user",
+        "assistant",
+        "attachment",
+        "system",
+        "cc-monitor-unrecognized",
+      ].includes(t);
+      if (isBranchKind && m?.uuid && m?.timestamp) {
+        sink?.onBranchRecord?.({ uuid: m.uuid, parentUuid: null, timestamp: m.timestamp });
+      }
+      return "content";
+    },
   ),
-  renderContentRecord: vi.fn(),
+  // ★ F15 第 3 步：mock 必须**真往 timeline 里塞**。
+  //
+  // 上面把 `RecordTimeline.size` 改成真会涨之后还不够 —— 真正调 `timeline.insert` 的是
+  // 这个函数（`render-stream-record.ts:173-179` 的 `card` 分支），而它此前是个空 `vi.fn()`。
+  // 三处 mock 里少任何一处，`tabs.ts:891` 的 `inserted` 都恒假。
+  // ⇒ 「量具把它测没了」这件事**是三处叠出来的**，只修一处会让人以为修完了却仍然零命中。
+  // 这里只塞「一条记录 = 一个 seq」，不复刻真实现的 tool-group 合并（那有自己的单测）。
+  renderContentRecord: vi.fn(f15.insertingRender),
 }));
 vi.mock("./cards", () => ({
   reconcilePendingToolResults: vi.fn(() => []),
@@ -649,7 +716,7 @@ describe("TabManager 生命周期", () => {
     tm.onBatchEnd();
     tm.switchTo("mat"); // virgin → 同步物化
     expect(order.join(",")).toContain("unwrap,render,render,reconcile,rebuild");
-    spy.mockImplementation(() => {});
+    spy.mockImplementation(f15.insertingRender); // ★ 不是 `() => {}`：见 `f15.insertingRender` 头注
     vi.mocked(reconcilePendingToolResults).mockImplementation(() => []);
   });
 
@@ -682,7 +749,13 @@ describe("TabManager 生命周期", () => {
     tm.onLine(mkContent("r1b", 200, "rb-mid2"));
     expect(spy.mock.calls.length).toBe(0);
     expect(bg.midBatchBuffer.map((p) => p.seq)).toEqual([300, 200]);
-    expect(bg.unread).toBe(2); // 离线期真新消息照计
+    // ★ F15 订正：原写 2，那个 2 是**量具缺陷的产物**。
+    // `:742` 那行（seq 100）直渲进后台 tab r1b，生产里 `timeline.size` 会涨 ⇒
+    // `tabs.ts:891` 的 `inserted` 为真 ⇒ unread 该 +1；而旧 stub 的 `size` **恒返回 0**，
+    // 那一次自增在测试里根本不存在。三条真新消息（100 / 300 / 200）⇒ **3**。
+    // ⚠ 这条值得记：量具把一条性质测没了之后，**依赖它的既有断言会跟着长出一个假数**，
+    // 而那个假数看起来完全正常（谁会怀疑一个跑了几百次的绿断言？）。
+    expect(bg.unread).toBe(3); // 离线期真新消息照计（3 条：seq 100 / 300 / 200）
     tm.onLine(mkContent("r1b", 600, "rb-tail")); // >maxSeq…但 mock maxSeq 恒 500 → 600≥500?
     // 600 > maxSeq(500) → 不缓冲,直渲
     expect(spy.mock.calls.length).toBe(1);
@@ -759,7 +832,7 @@ describe("TabManager 生命周期", () => {
     t.streamEl.dispatchEvent(new Event("scroll"));
     // 只弹一批 200(嵌套触发被 renderingFill 挡;若守卫失效会连弹到 0)
     expect(t.window.pendingCount).toBe(100);
-    spy.mockImplementation(() => {});
+    spy.mockImplementation(f15.insertingRender); // ★ 不是 `() => {}`：见 `f15.insertingRender` 头注
     selSpy.mockRestore();
   });
 
@@ -2639,5 +2712,71 @@ describe("tmux 取数点的三态契约（audit-0805 F14 第五刀）", () => {
       probe(tm).tmuxCache.has("box1"),
       "★ 一次 ssh 抖动被写进缓存 ⇒ 之后 8s 内的重试全被抑制（D-Sug3 就是防这个）",
     ).toBe(false);
+  });
+});
+
+// ═══ audit-0805 F15：每来一行，到底调了几次 ═══════════════════════════════
+//
+// 这一组是**现状基线**（characterization）：它先把「每行的代价」变成一个**可判定的数**，
+// 合批本体改完之后再把这些数收紧。没有它，V5 那句话就成立 ——
+// 「行为上与不改完全等价（同样的行、同样的结果），**慢不会让任何测试变红**」。
+//
+// ⚠ 上一轮建不起来，不是因为没人写，是因为**三处 mock 叠在一起把它测没了**：
+//   ① `routeMetaAndBranch` 不调 `sink.onBranchRecord` ② `renderContentRecord` 不塞 timeline
+//   ③ `RecordTimeline.size` 恒 0。三处少改一处，下面每条都会零命中地绿。
+describe("F15 每行代价的现状基线", () => {
+  let tm: TabManager;
+  beforeEach(() => {
+    tm = makeTM();
+    f15.recordAdded = 0;
+    f15.rebuildNow = 0;
+  });
+
+  const line = (sid: string, seq: number) => ({
+    session_id: sid,
+    cwd: "/w",
+    path: `/w/${sid}.jsonl`,
+    seq,
+    message: { type: "assistant", uuid: `u-${seq}`, timestamp: "2026-08-06T00:00:00Z" },
+  });
+
+  it("★ live 每来一行，BranchFolder 就被喂一次", () => {
+    tm.ensureTab("s1", "/w", "/w/s1.jsonl", 0, null);
+    for (let i = 1; i <= 5; i++) tm.onLine(line("s1", i) as never);
+    // 抽取器自检：三处 mock 只要有一处退回空壳，这里就是 0 —— 那不是「合批做好了」。
+    expect(
+      f15.recordAdded,
+      "`recordAdded` 一次都没被调到 —— 不是合批生效了，是 `routeMetaAndBranch` 的 mock " +
+        "又不调 `sink.onBranchRecord` 了（F15 §2 那个坑）。先修量具再读这个数。",
+    ).toBeGreaterThan(0);
+    expect(
+      f15.recordAdded,
+      "喂 5 行、BranchFolder 被调的次数变了。今天是**逐行**：5 行 = 5 次。" +
+        "合批做完之后这个数应当下降 —— 那时把这条一起改，并在功能件里写清新数的来历。",
+    ).toBe(5);
+  });
+
+  it("★ 后台 tab 每来一行，tab bar 就整刷一次", () => {
+    tm.ensureTab("front", "/w", "/w/front.jsonl", 0, null);
+    tm.ensureTab("bg", "/w", "/w/bg.jsonl", 0, null);
+    tm.switchTo("front");
+    let refreshes = 0;
+    const inner = peek(tm) as unknown as { refreshTabBar: () => void };
+    const real = inner.refreshTabBar.bind(inner);
+    inner.refreshTabBar = () => {
+      refreshes++;
+      real();
+    };
+    for (let i = 1; i <= 4; i++) tm.onLine(line("bg", i) as never);
+    expect(
+      refreshes,
+      "后台 tab 收到 4 行，tab bar 一次都没刷 —— 多半是 `tabs.ts:891` 的 `inserted` 又恒假了" +
+        "（`renderContentRecord` 不塞 timeline / `size` 恒 0）。那时这条是零命中地绿。",
+    ).toBeGreaterThan(0);
+    expect(
+      refreshes,
+      "后台 tab 每来一行整刷一次 tab bar（今天 4 行 = 4 次）。这是 unread 计数那条路" +
+        "（`tabs.ts:893-897`），合批之后应当降下来。",
+    ).toBe(4);
   });
 });
