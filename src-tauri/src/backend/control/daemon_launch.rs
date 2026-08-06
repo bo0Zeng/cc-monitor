@@ -76,7 +76,14 @@ pub struct SendIntoRequest {
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SendIntoResponse {
-    /// 载荷是否**真的键入了**。daemon 的 `typed` 逐字转发，不做乐观解读。
+    /// daemon 报的 `typed`，**逐字转发，不做乐观解读**。
+    ///
+    /// ⚠⚠ **它只有 `tmux send-keys` 的退出码那么强**〔audit-0805 F10 下半，报告 I-3〕。
+    /// 本行原先断言载荷已确凿落地 —— 那是**替证据说大话**：
+    /// pane 处于 copy-mode 时 `send-keys` **照样退 0**，键被键表吃掉、载荷没进应用。
+    /// 而下游把 `typed:true` 读成「不必回落」（`launch-cli-wire.ts:63` 逐字：
+    /// `typed:false` 时的 `reason` 是回落的**唯一线索**）⇒ 载荷静默消失。
+    /// 由 daemon 侧 `typed_is_only_as_strong_as_the_send_keys_exit_code` 钉住。
     pub typed: bool,
     pub reason: Option<String>,
     /// **调用方可不可以回落到那条整串。** 只有「能证明没发出去」才 `true`。

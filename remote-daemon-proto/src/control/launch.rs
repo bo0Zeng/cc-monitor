@@ -104,7 +104,10 @@ pub(crate) struct LaunchRequest {
 pub(crate) struct LaunchOutcome {
     /// 本次是否**新建**了会话（幂等短路时为 false）。
     pub(crate) created: bool,
-    /// 载荷是否键入了（幂等短路时为 false —— 会话已在，不重复 resume）。
+    /// `send-keys` **退出码为 0**（幂等短路时为 false —— 会话已在，不重复 resume）。
+    ///
+    /// ⚠ **不是「载荷真的落进应用了」**：pane 在 copy-mode 时 `send-keys` 照样退 0。
+    /// 由 `typed_is_only_as_strong_as_the_send_keys_exit_code` 钉住语义边界。
     pub(crate) typed: bool,
 }
 
@@ -722,5 +725,130 @@ mod tests {
                  那个分支可以被改成任何样子而一条判据都不红"
             );
         }
+    }
+
+    /// ★ **`typed` 只有 `send-keys` 退出码那么强**〔audit-0805 F10 下半，报告 I-3〕。
+    ///
+    /// # 它治的不是「没做探测」，是**替证据说大话**
+    ///
+    /// `type_payload` / `type_keys_raw` 的全部依据就是 `tmux(&["send-keys", …])?` ——
+    /// **退 0 就 `Ok`**。而 tmux 在 pane 处于 **copy-mode** 时照样退 0：键被键表吃掉，
+    /// 载荷根本没进应用（`pane_in_mode` / `copy-mode` / `-X cancel` 全仓零命中）。
+    ///
+    /// 后果是链式的，且**每一环都在放大上一环的乐观**：
+    /// `send-keys` 退 0 → daemon 回 `typed:true` → `daemon_launch.rs` 逐字转发 →
+    /// 前端 `launch-cli-wire.ts:63` 逐字「`typed:false` 时 `reason` 必有值 ——
+    /// **那是回落到整串走终端的唯一线索**」⇒ `typed:true` **不回落** ⇒ 用户的载荷静默消失。
+    ///
+    /// # 本条钉什么、不钉什么
+    ///
+    /// **不钉**「探测做了没有」—— 那要真 tmux 才验得了（红线禁），
+    /// 而「加个看起来对的探测却没人能证明它管用」正是本区一直在批评的形状（功能件 §4）。
+    ///
+    /// **钉的是**：那两个函数里**除了退出码之外没有第二种确认**。
+    /// 这句话今天成立，而契约与两处注释此前都在说「键入成功 / 真的键入了」——
+    /// 那是**替证据说大话**（定框 **E4**：静默失败要给身份；说大话是它的反面：
+    /// 把没有身份的成功说成确凿的成功）。
+    #[test]
+    fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
+        let src = crate::guard_support::production_code(include_str!("launch.rs"));
+        for f in ["fn type_payload(", "fn type_keys_raw("] {
+            let at = src.find(f).unwrap_or_else(|| panic!("找不到 `{f}` —— 改名了就把本条一起改"));
+            let rest = &src[at..];
+            let body = &rest[..rest
+                .find(tail_brace().as_str())
+                .map(|k| k + 3)
+                .unwrap_or(rest.len())];
+            // 抽取器自检：抽出来的得像个函数体。
+            assert!(
+                (3..30).contains(&body.lines().count()),
+                "从 `{f}` 抽出 {} 行，不像函数体（抽取器坏了）",
+                body.lines().count()
+            );
+            // 若将来真加了确认（capture-pane 核对 / display-message 读模态 / -X cancel），
+            // 本条会红 —— 那时**要连契约与那两处注释一起改回「真的键入了」**。
+            for confirm in ["capture-pane", "display-message", "pane_in_mode", "-X"] {
+                assert!(
+                    !body.contains(confirm),
+                    "`{f}` 里出现了 `{confirm}` —— 看起来加了第二种确认。\n\
+                     ★ 那是**好事**，但契约与注释此刻还写着「只有退出码那么强」：\n\
+                     `doc/IPC-PROTOCOL.md` 的 `typed` 那几行 · 本文件 `LaunchOutcome::typed` \n\
+                     · monitor 侧 `daemon_launch.rs::SendIntoResponse::typed`。**一起改。**"
+                );
+            }
+        }
+    }
+
+    /// ★ **契约必须自己说清 `typed` 有多强** —— 删掉那段警示就等于把无条件断言放回来。
+    ///
+    /// 上一条是**禁词**（不许说大话），本条是**正向要求**（必须说清边界）。
+    /// 两条缺一不可：只禁词的话，把那句话删了不写替代，契约就退回「什么都没说」，
+    /// 而消费方默认会按字面把 `typed:true` 读成确凿落地 —— 那正是报告 I-3 的起点。
+    #[test]
+    fn the_contract_says_how_strong_typed_actually_is() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("仓根");
+        let doc = std::fs::read_to_string(root.join("doc/IPC-PROTOCOL.md"))
+            .expect("IPC-PROTOCOL.md 读不到");
+        assert!(
+            doc.len() > 10_000,
+            "IPC-PROTOCOL.md 只读到 {} 字节 —— 抽取器坏了",
+            doc.len()
+        );
+        for needle in [
+            "只有 `send-keys` 的退出码那么强",
+            "copy-mode",
+            "typed_is_only_as_strong_as_the_send_keys_exit_code",
+        ] {
+            assert!(
+                doc.contains(needle),
+                "契约里找不到 `{needle}` —— `typed` 的语义边界那段被删了或改写了。\n\
+                 ★ 删掉它，契约就退回「什么都没说」，而消费方默认按字面把 `typed:true` \n\
+                 读成载荷确凿落地（`launch-cli-wire.ts:63`：那是回落的**唯一线索**）。\n\
+                 要改措辞可以，但**三样都得留**：多强 · 已知反例 · 判据名。"
+            );
+        }
+    }
+
+    /// ★ 契约与两处注释**不许再声称载荷「真的键入了」**。
+    ///
+    /// 依据只有退出码时，那句话是假的（见上一条）。要改回去，得先有第二种确认。
+    /// ⚠ needle **运行时拼**，否则本条会在自己的注释里找到它而恒红（F23 那一族的镜像）。
+    #[test]
+    fn no_doc_claims_the_payload_really_landed() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("仓根");
+        let overclaim = format!("{}键入了", "真的");
+        let files = [
+            "doc/IPC-PROTOCOL.md",
+            "src-tauri/src/backend/control/daemon_launch.rs",
+        ];
+        let mut total = 0usize;
+        let mut hits = Vec::new();
+        for f in files {
+            let body = std::fs::read_to_string(root.join(f))
+                .unwrap_or_else(|e| panic!("{f} 读不到：{e} —— 文件搬了就把本条一起改"));
+            total += body.len();
+            let n = body.matches(overclaim.as_str()).count();
+            if n > 0 {
+                hits.push(format!("  {f}：{n} 处"));
+            }
+        }
+        assert!(
+            total > 20_000,
+            "两份文件只读到 {total} 字节 —— 抽取器坏了，本条此刻是空转的"
+        );
+        assert!(
+            hits.is_empty(),
+            "这些地方还在声称载荷「真的落进去了」，而依据只有 `send-keys` 的退出码：\n{}\n\n\
+             ★ tmux 在 pane 处于 copy-mode 时**照样退 0**（键被键表吃掉）⇒ \n\
+             `typed:true` ⇒ 前端不回落（`launch-cli-wire.ts:63` 逐字：那是回落的**唯一线索**）\n\
+             ⇒ 用户的载荷静默消失。**这是报告 I-3 那条链。**\n\
+             要说「真的键入了」，先给它第二种确认（探测模态 / 回读），\n\
+             而那要真 tmux 才验得了 —— 登记在 `ROADMAP §5`，留给 e2e tier2。",
+            hits.join("\n")
+        );
     }
 }
