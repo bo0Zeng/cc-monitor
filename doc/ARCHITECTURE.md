@@ -162,7 +162,12 @@
 ③ **本机开窗面** → **只能是 monitor**（daemon 在远端，开不了你面前的窗）—— **这条永远搬不走**。
 
 ⚠ **平面 ③ 在 POSIX 上刻意不开 GUI 终端窗口**：那儿没有「唯一的终端」，挑一个就是平白引入
-一个会在别人机器上错的决定；会话容器本来就是 tmux ⇒ 命令直接跑、会话留在 tmux 里等 attach。
+一个会在别人机器上错的决定。⚠ 本句原先还接着「而容器一定是 tmux ⇒ 会话留在那儿等 attach」——
+**那是假的**〔audit-0805 F08 下半〕：POSIX 远端 `↺` 走 `planResumeDirect`，那里逐字是
+`container: { kind: "none" }`（`launch-requests.ts:45`，全文件唯一一个 `none`）。
+走 tmux 的是 `planResumeTmux`（F52）那条**另一条路**。判据见
+`launch-requests.vitest.ts` 的「远端 resume 的会话容器」组 + `launch.rs` 的
+`no_prose_claims_the_session_container_is_always_tmux` 零命中守卫。
 由 `no_terminal_emulator_is_ever_spawned_from_this_file` 零命中钉住。
 
 ### 2.2 `observe/` vs `control/`：**按用途分，不按读写分**

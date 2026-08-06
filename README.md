@@ -36,7 +36,7 @@
 - **远端历史删除**（SFTP 移除 + 二次确认）/ **一键 resume**：tab 右键 / 历史 `↺` 直接拉起远端终端跑 `claude --resume`（wt.exe 优先，失败才回退复制命令到剪贴板）
   - ⚠ **Linux / macOS 上不开终端窗口**，而是把命令复制给你 —— 这是**既定设计**，不是没做完：
     POSIX 上没有「唯一的终端」，替你挑一个（gnome-terminal / konsole / alacritty…）是个会在别人机器上错的决定。
-    会话容器本来就是 tmux，你在自己的终端里粘贴执行即可。**本机** resume 则不受影响（不开窗，命令直接跑、会话留 tmux）
+    你在自己的终端里粘贴执行即可。⚠ 这里原先写着「容器一定是 tmux」——**那是假的**：`↺` 复制的是**不进容器**的命令（判据见 `launch-requests.vitest.ts`）；要 tmux 得走 tab 右键那条（F52）。**本机** resume 则不受影响（不开窗，命令直接跑）
 - **设置面板每台机器卡片**：一键 **安装 / 卸载 daemon**、**装 / 卸 ccm 助手**（写进远端 `~/.bashrc`），并有**安装位置提示**告诉你装到哪（daemon→`~/.cc-monitor/bin/`、ccm→`~/.bashrc` 标记块）；卡片可折叠成机器名
 - **版本协商**（#33）+ **慢消费者 overflow 信号**（#32）：daemon/client build_id 不符或管道拥塞 → 远端健康 toast 提示
 - 远端 Tab 也能 ↗ 拉前对应终端（issue #18）

@@ -119,7 +119,7 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
 /// 三处设计：
 /// - **不开 GUI 终端窗口**。POSIX 上没有「唯一的终端」这种东西：开窗口要先猜用户用哪个
 ///   终端模拟器，是平白引入一个会在别人机器上错的决定。
-///   ⚠⚠ **这条原本还有半句「而会话容器本来就是 tmux（`ccm --tmux` 自己会建）」—— 那是假的**
+///   ⚠⚠ **这条原本还有半句，断言容器一定是 tmux（`ccm --tmux` 自己会建）—— 那是假的**
 ///   〔audit-0805 F08 / 报告 B-2〕：生产构造出来的是 `cc --resume <sid>`，**不带 `--tmux`**
 ///   （带 `--tmux` 的别名是 `cct`），而 `shared/ccm` 的 `use_tmux` 默认 0
 ///   ⇒ 走的是非容器分支 `exec "${argv[@]}"`。加上这里 stdio 全 null，
@@ -305,7 +305,15 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
 ///
 /// POSIX 上没有「唯一的终端」这种东西。要开窗就得先猜用户用哪个终端模拟器
 /// （gnome-terminal / konsole / alacritty / kitty / wezterm / …），**那是一个平白引入的、
-/// 会在别人机器上错的决定**。而会话容器本来就是 tmux —— 命令跑完，会话留在那儿等 attach。
+/// 会在别人机器上错的决定**。
+///
+/// ⚠⚠ **本段原先还接着「而容器一定是 tmux —— 命令跑完，会话留在那儿等 attach」，那是假的**
+/// 〔audit-0805 F08 下半〕。本函数服务的正是**远端**那条路，而它走
+/// `runRemoteResume` → `planResumeDirect`，那里逐字是 `container: { kind: "none" }`
+/// （`launch-requests.ts:45`，全文件唯一一个 `none`；其余四个 plan 才是 tmux）。
+/// ⇒ 「不开终端窗口」这个决定**站得住**（POSIX 没有唯一的终端，这条理由本身没问题），
+/// 但**不能拿「反正在 tmux 里」当理由** —— 那个前提不成立。
+/// 要 tmux 得走 `planResumeTmux`（F52）那条**另一条路**。
 ///
 /// ⚠ **原文案是「拉起终端窗口仅支持 Windows（v1）」，那个 `(v1)` 在撒谎**：
 /// 它暗示「v2 会支持」，而实际上这件事**没排期、而且方向是反的**（U8b 订正）。
@@ -445,6 +453,58 @@ mod tests {
             prod.contains("Command::new(\"where.exe\")"),
             "唯一允许不带 daemon env 的 `Command::new` 是 `where.exe` 探测；它不见了 ⇒ \n\
              要么被改名，要么 4-3=1 这个差额现在对应的是一个**真开窗点**"
+        );
+    }
+
+    /// ★ **「容器一定是 tmux」这个无条件说法不许出现在散文里**〔audit-0805 F08 下半〕。
+    ///
+    /// 它今天在三处散文里当**理由**用（解释 POSIX 为什么不开终端窗口），而代码说的相反：
+    /// POSIX 远端 `↺` 走 `runRemoteResume` → `planResumeDirect`，
+    /// 那里逐字写着 `container: { kind: "none" }`（`launch-requests.ts:45`，
+    /// 是全文件唯一一个 `none`，其余四个 plan 才是 tmux）。
+    ///
+    /// F08 上半订正过**两条**同源假头注（`launch.rs:122` 与 `src/fork-start.ts`），
+    /// 但**漏了这三处** —— 因为它们在**另一条路**（远端）上，看起来像是另一件事。
+    /// ⇒ 复核时才发现（E1：台账是筛子不是免检章）。
+    ///
+    /// ⚠ 这不是说「远端永远不进 tmux」：`planResumeTmux`（F52）那条**就是** tmux。
+    /// 假的是**无条件的那个说法**，以及拿它当「不开终端窗口」的理由。
+    /// 要说容器，就得说清是哪条路。
+    ///
+    /// ⚠ needle **运行时拼**：写成字面量的话，本条会在**自己的注释里**找到它 ⇒ 恒红
+    /// （F23 那一族的镜像）。
+    #[test]
+    fn no_prose_claims_the_session_container_is_always_tmux() {
+        let needle = format!("会话容器{}是 tmux", "本来就");
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("仓根");
+        let files = ["README.md", "doc/ARCHITECTURE.md", "src-tauri/src/launch.rs"];
+        let mut total = 0usize;
+        let mut hits = Vec::new();
+        for f in files {
+            let body = std::fs::read_to_string(root.join(f))
+                .unwrap_or_else(|e| panic!("{f} 读不到：{e} —— 文件搬了就把本条一起改"));
+            total += body.len();
+            let n = body.matches(needle.as_str()).count();
+            if n > 0 {
+                hits.push(format!("  {f}：{n} 处"));
+            }
+        }
+        // 抽取器自检：三份文件都读到了才算数（读空了下面会零命中地绿）。
+        assert!(
+            total > 20_000,
+            "三份散文只读到 {total} 字节 —— 抽取器坏了，本条此刻是空转的"
+        );
+        assert!(
+            hits.is_empty(),
+            "这三处还在无条件断言「会话容器就是 tmux」，而代码说的相反：\n{}\n\n\
+             POSIX 远端 `↺` 走 `planResumeDirect`，那里是 `container: {{ kind: \"none\" }}`\n\
+             （`launch-requests.ts:45`，全文件唯一一个 `none`）。判据在\n\
+             `launch-requests.vitest.ts` 的「远端 resume 的会话容器」那一组。\n\
+             ★ 要说 tmux，就得说清**是哪条路**（`planResumeTmux` 那条才是）——\n\
+             无条件的说法是假的，而它今天正被当成「POSIX 不开终端窗口」的理由。",
+            hits.join("\n")
         );
     }
 
