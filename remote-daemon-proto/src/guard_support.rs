@@ -60,7 +60,9 @@ mod tests {
         // 地板 = **实测值**（2026-08-02：34 个 .rs）。原先是 10，松了 24 个文件。
         guard_core::assert_tree_strips_clean(
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
-            34,
+            // ★ audit-0805 F16：34 → **37**（今日实测）。余量 3 恰好等于
+            // `platform/pidwatch/` 的文件数 —— 那一整个目录掉出去也不会红。
+            37,
         );
     }
 

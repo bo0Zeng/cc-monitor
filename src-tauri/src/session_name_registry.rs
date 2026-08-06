@@ -183,7 +183,9 @@ mod tests {
         let mut ts = Vec::new();
         collect_ts(&root.join("src"), &mut ts);
         assert!(
-            ts.len() >= 60,
+            // ★ audit-0805 F16：60 → **190**（今日实测）。落后 130 意味着
+            // 前端 `.ts` 少掉三分之二都不会红 —— 这条地板此前几乎不构成约束。
+            ts.len() >= 190,
             "只扫到 {} 个前端 .ts —— 遍历器坏了",
             ts.len()
         );

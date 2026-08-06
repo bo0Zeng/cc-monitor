@@ -238,7 +238,11 @@ mod tests {
         // （同 `ci.yml` 那条 shellcheck 覆盖面棘轮的教条：棘的时候把实测构成一起写下）。
         guard_core::assert_tree_strips_clean(
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
-            52,
+            // ★ audit-0805 F16：52 → **80**（今日实测）。
+            // 余量 28 的时候，`backend/`(15) + `adapter/`(2) **整体掉出扫描面仍会绿** ——
+            // 而「扫描面缩水」正是这条地板存在的全部理由。
+            // ⚠ 棘轮纪律：只许升不许降；要降必须带「副本真退役」的证据。
+            80,
         );
     }
 
