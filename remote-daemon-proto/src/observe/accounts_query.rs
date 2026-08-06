@@ -436,7 +436,21 @@ fn session_accounts(claude_dir: &Path, accts_dir: &Path) -> Vec<String> {
         seen += 1;
         let bytes = match read_regular_capped(&path, MAX_SESSION_FILE_BYTES) {
             Ok(b) => b,
-            Err(_) => continue,
+            Err(e) => {
+                // ★〔audit-0805 §5 1x〕**跳过要说清是谁**。
+                //
+                // 这里原来是 `Err(_) => continue` —— 一个超过 `MAX_SESSION_FILE_BYTES`
+                // 的 pidfile 会被**静默丢掉**，那个会话就永远不归属到任何账号，
+                // 而没有任何东西说得出是哪一个。
+                // ⚠ 而**同一个函数里** `MAX_SESSION_FILES` 超限是会 warn 的
+                // （上面几行）—— 同一个函数里两种上限、两种态度。
+                //
+                // 登记表把它记成「硬报错」，那是**假的**：真实处置是跳过。
+                // 定框 **E4**：静默失败一律给身份。⇒ 给它身份，并把登记改成实话
+                // （新语义「跳过+说清」，与被刻意排除的「静默截断」的分界就在这个 warn）。
+                tracing::warn!("会话文件 {} 读不了，跳过（不归属该会话）：{e}", path.display());
+                continue;
+            }
         };
         let v: serde_json::Value = match serde_json::from_slice(&bytes) {
             Ok(v) => v,
