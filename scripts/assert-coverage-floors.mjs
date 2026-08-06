@@ -33,25 +33,35 @@ const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SUMMARY = resolve(REPO, "coverage/coverage-summary.json");
 
 /**
- * 核心模块的逐文件语句覆盖地板。
+ * 核心模块的逐文件覆盖地板：**语句 + 分支**。
  *
- * `[文件, 地板%, 写下时的实测%（08-06）]` —— **实测值一起写下**，
- * 照 `vitest.config.ts` 那条棘紧纪律：只改数字不写实测，下一个人看不出它过期没过期。
+ * `[文件, 语句地板%, 写下时实测%, 分支地板%, 写下时实测%]`（08-06）——
+ * **实测值一起写下**，照 `vitest.config.ts` 那条棘紧纪律：
+ * 只改数字不写实测，下一个人看不出它过期没过期。
+ *
+ * # 为什么加分支那一列〔audit-0805 §5 2b〕
+ *
+ * 2b 逐字写着「一个模块 statements 不掉、branches 掉光，本判据看不见」。
+ * 量下去证实这不是假设：`views/panorama.ts` 今天 statements **56.5%** 而 branches
+ * 只有 **24.8%** —— 一半以上的分支从没被走过，而语句地板一点反应都没有。
+ *
+ * ⚠ 分支地板同样设在**当前值下方 ~5 点**（与语句同一套纪律），只挡明显回归；
+ * 分支覆盖比语句更容易被 v8 版本差与用例增删扰动，余量不能收得太紧。
  */
 const PER_FILE_FLOORS = [
-  ["src/tabs.ts", 64, 69.9],
-  ["src/views/history.ts", 63, 68.8],
-  ["src/views/panorama.ts", 51, 56.5],
-  ["src/settings/panel.ts", 75, 80.6],
-  ["src/settings/accounts-section.ts", 75, 80.7],
-  ["src/settings/remote-section.ts", 60, 65.6],
-  ["src/settings/mcp-section.ts", 58, 63.5],
-  ["src/settings/cc-bus-section.ts", 90, 95.7],
-  ["src/views/grid-monitor.ts", 89, 94.7],
-  ["src/views/usage-view.ts", 81, 86.2],
-  ["src/accounts.ts", 83, 88.9],
+  ["src/tabs.ts", 64, 69.9, 54, 59.7],
+  ["src/views/history.ts", 63, 68.8, 45, 50.0],
+  ["src/views/panorama.ts", 51, 56.5, 19, 24.8],
+  ["src/settings/panel.ts", 75, 80.6, 50, 55.6],
+  ["src/settings/accounts-section.ts", 75, 80.7, 49, 54.2],
+  ["src/settings/remote-section.ts", 60, 65.6, 40, 45.1],
+  ["src/settings/mcp-section.ts", 58, 63.5, 49, 54.5],
+  ["src/settings/cc-bus-section.ts", 90, 95.7, 70, 75.0],
+  ["src/views/grid-monitor.ts", 89, 94.7, 84, 89.3],
+  ["src/views/usage-view.ts", 81, 86.2, 63, 68.4],
+  ["src/accounts.ts", 83, 88.9, 83, 88.1],
   // F17 下半：批量调度状态机三条分支落地（53.33 → 84.44）。它决定整个重放期是 batch 还是 live。
-  ["src/events.ts", 79, 84.4],
+  ["src/events.ts", 79, 84.4, 62, 67.0],
 ];
 
 /**
@@ -96,25 +106,31 @@ if (files.length < 150) {
   process.exit(2);
 }
 
-const pctOf = (rel) => {
-  const hit = files.find(([k]) => k.endsWith(`/${rel}`) || k === rel);
-  return hit ? hit[1].statements.pct : null;
-};
+const entryOf = (rel) => files.find(([k]) => k.endsWith(`/${rel}`) || k === rel)?.[1] ?? null;
 
 const problems = [];
 
-for (const [rel, floor, measured] of PER_FILE_FLOORS) {
-  const pct = pctOf(rel);
-  if (pct === null) {
+for (const [rel, floor, measured, bFloor, bMeasured] of PER_FILE_FLOORS) {
+  const v = entryOf(rel);
+  if (v === null) {
     problems.push(
       `  ${rel}：在覆盖率报告里找不到 —— 文件搬了/改名了就把这条一起改（别让它悄悄消失）`,
     );
     continue;
   }
-  if (pct < floor) {
+  if (v.statements.pct < floor) {
     problems.push(
-      `  ${rel}：${pct}% < 地板 ${floor}%（写下这条时实测 ${measured}%）\n` +
+      `  ${rel}：语句 ${v.statements.pct}% < 地板 ${floor}%（写下这条时实测 ${measured}%）\n` +
         "    ★ 聚合阈值看不见这种单模块回归 —— 187 个文件里掉一个，总数只动零点几个点。",
+    );
+  }
+  // ★〔audit-0805 §5 2b〕**分支单独判**：语句不掉、分支掉光时，上面那条一点反应都没有。
+  // 实测样本：`views/panorama.ts` 语句 56.5% 而分支只有 24.8%。
+  if (v.branches.pct < bFloor) {
+    problems.push(
+      `  ${rel}：分支 ${v.branches.pct}% < 地板 ${bFloor}%（写下这条时实测 ${bMeasured}%）\n` +
+        "    ★ **语句地板看不见这种回归**：删掉一条 `if` 的一侧、或让某个错误分支再没人走到，\n" +
+        "      语句覆盖几乎不动，而那条分支从此无人验证。2b 说的正是这个。",
     );
   }
 }
@@ -153,6 +169,6 @@ if (problems.length > 0) {
 }
 
 console.log(
-  `[coverage-floors] ${PER_FILE_FLOORS.length} 个核心模块全部在地板之上；` +
+  `[coverage-floors] ${PER_FILE_FLOORS.length} 个核心模块的**语句与分支**都在地板之上；` +
     `0% 文件 ${zeroNow.length}/${ZERO_COUNT_CEILING}（棘轮，只许降）`,
 );

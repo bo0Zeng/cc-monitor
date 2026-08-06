@@ -11,7 +11,10 @@ export default defineConfig({
     // F08b：覆盖率**设地板阈值（下方 thresholds）**——`npm run coverage` 与 CI 的 `coverage floor`
     // 步骤（ci.yml，**无 `|| true`=真·阻断门禁**）都吃它，低于地板即红。**不是** advisory、不是只报告。
     // 只设「地板」不追「85% 全局」：覆盖只统计本 vitest(jsdom) 套件，`*.test.ts`(tsx node) 不计入，
-    // 全局高目标会误红——故用「当前值下方 ~2-3% 的地板」只挡明显回归。收紧留后续按核心 DOM 模块 per-file。
+    // 全局高目标会误红——故用「当前值下方 ~2-3% 的地板」只挡明显回归。
+    // ⚠ 「收紧留后续按核心 DOM 模块 per-file」那半**已经做了**（`scripts/assert-coverage-floors.mjs`，
+    //   F17 下半建语句地板、08-06 §5 2b 补上分支地板）—— 本行原先还写着「留后续」，
+    //   做完之后没人回来改。留着不改就是下一处「未做自陈的腐坏」（audit-0805 F25 那一族）。
     coverage: {
       provider: "v8",
       reporter: ["text-summary", "json-summary"],
