@@ -98,14 +98,29 @@ fn cfg_is_test_only(attr: &str) -> bool {
 /// 讽刺的是这正是本模块要消灭的那类 bug，且它**由本模块的引入本身**制造。
 /// ⇒ 匹配到锚点后必须看那一行：以左大括号收尾才是模块体、才剥；否则原样保留、跳过继续找。
 pub fn production_source(src: &str) -> String {
+    let mut out = String::with_capacity(src.len());
+    let mut i = 0usize;
+    for (start, end) in test_module_ranges(src) {
+        out.push_str(&src[i..start]);
+        i = end;
+    }
+    out.push_str(&src[i..]);
+    out
+}
+
+/// 每个「带花括号体的 `#[cfg(test)] mod X { … }`」在 `src` 里的字节区间。
+///
+/// [`production_source`] 与 [`test_source`] **共用这一份判定** —— 它们是同一个事实的
+/// 两半，各写一份迟早漂（本仓 E3：一个事实恰好一个权威源）。
+/// 判定规则与它们各自的头注一致，改这里之前先读那两段。
+fn test_module_ranges(src: &str) -> Vec<(usize, usize)> {
     // 转义写法 ⇒ 与真正的换行不相等 ⇒ 不会匹配到本行自己。
     let open = "\n#[cfg(";
     let close = "\n}";
-    let mut out = String::with_capacity(src.len());
+    let mut out = Vec::new();
     let mut i = 0usize;
     loop {
         let Some(rel) = src[i..].find(open) else {
-            out.push_str(&src[i..]);
             return out;
         };
         let j = i + rel;
@@ -127,22 +142,42 @@ pub fn production_source(src: &str) -> String {
             && mod_line.ends_with('{');
         if !is_test_mod {
             // 不是测试模块（非 test 的 cfg / 无花括号体的 `mod x;` 声明 / cfg 挂在别的 item 上）
-            // ⇒ 原样保留，从属性行之后继续找。
+            // ⇒ 不成区间，从属性行之后继续找。
             //
             // ★「无花括号体」那一条是 Phase D 审计逮出来的：`#[cfg(test)] mod guard_support;`
             //   若被当成模块体，「列 0 的右大括号」会一路吞到下一个顶层 item 的收尾，
             //   把中间**全部生产代码**当测试段丢掉（daemon main.rs 曾整段 26–179 行消失）。
-            out.push_str(&src[i..attr_end]);
             i = attr_end;
             continue;
         }
-        out.push_str(&src[i..j]);
         match src[j..].find(close) {
-            // 没收尾 ⇒ 文件结束前都算测试段，丢弃剩余。
-            None => return out,
-            Some(rel_end) => i = j + rel_end + close.len(),
+            // 没收尾 ⇒ 文件结束前都算测试段。
+            None => {
+                out.push((j, src.len()));
+                return out;
+            }
+            Some(rel_end) => {
+                let end = j + rel_end + close.len();
+                out.push((j, end));
+                i = end;
+            }
         }
     }
+}
+
+/// [`production_source`] 的**补集**：只留测试段。
+///
+/// 谁需要它：以「判据本身」为对象的元判据（F23 的裸遍历棘轮、F24 的匹配单位棘轮）——
+/// 它们要扫的恰恰是别人的 `#[cfg(test)]` 里写了什么。
+///
+/// ⚠ 用它之前先想清楚**为什么不是整份文件**：拿整份文件扫，生产代码里的同形写法会混进来，
+/// 而生产代码里那些多半是正常的（`watcher.rs` 的 `read_dir` 是它的本职）。
+pub fn test_source(src: &str) -> String {
+    let mut out = String::new();
+    for (start, end) in test_module_ranges(src) {
+        out.push_str(&src[start..end]);
+    }
+    out
 }
 
 /// `production_source` + 剥掉行注释。
@@ -304,6 +339,147 @@ macro_rules! scan_tree {
     ($root:expr, $exts:expr) => {
         $crate::scan_tree_excluding_self($root, $exts, file!())
     };
+}
+
+
+/// 一个字符算不算「标识符的一部分」——匹配单位的边界由它定义。
+///
+/// 含**非 ASCII 字母**（`起流` 的下一个字 `程` 必须算，否则中文短语一律判成有边界）
+/// 与**连字符**（`remote-daemon-proto` 的下一段 `-X` 必须算，crate 名/YAML 值大量是连字符形）。
+///
+/// ⚠ 与 [`cfg_is_test_only`] 里那个 ASCII 版**刻意不共用**：那里判的是 Rust 属性里的标识符
+/// （只可能是 ASCII），这里判的是任意源码文本里的「词」。合成一个会让其中一处变松。
+fn ident_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '-'
+}
+
+/// **把一个事实钉在恰好一处，且那一处不许被撑大**〔audit-0805 F24〕。
+///
+/// # 它治的族：匹配单位比事实小
+///
+/// 裸 `hay.contains(needle)` 的匹配单位是**子串**，而判据想钉的事实通常是
+/// **一整行 / 一个完整签名 / 一个具体的词**。子串比事实小 ⇒ 任何把事实撑大的改动
+/// 都从缝里溜过去，判据照样绿。audit-0805 实测三次：
+///
+/// | 何处 | needle | 撑大成 | 后果 |
+/// |---|---|---|---|
+/// | F05 | `起流` | `起流程` | 阶段埋点判据认错阶段 |
+/// | F16 | `remote-daemon-proto` | `remote-daemon-proto-X` | 「跨 target check 走 daemon 的 lock」这个前提没了却不红 |
+/// | F19 | `exe_suffix: &str` | 另一个函数的**同名参数** | 断言指的不是它自称的那个函数 |
+///
+/// ★ **三次没有一次是被「判据变红」发现的**，全靠变异。这一族的默认结局同样是恒绿。
+///
+/// # 判据
+///
+/// 1. **恰好一处**（F19 那种「匹配到别处」当场红）；
+/// 2. 那一处**两侧都有边界** —— needle 首字符是标识符字符时前一个字符不许是，
+///    末字符是标识符字符时后一个字符不许是（F05/F16 那种「被撑大」当场红）。
+///
+/// 「被撑大的那些命中」**不计入唯一性计数**：`sleep 1` 与 `sleep 10` 同时存在时，
+/// 前者仍然是唯一的干净命中。诊断里会把撑大的那些一并打出来，因为它们常常正是**下一次**的病灶。
+///
+/// # 返回
+///
+/// `Ok(字节偏移)`，或 `Err(诊断)` —— 诊断带上实际看到的上下文，照 F01 Phase D 的教训：
+/// **变异要连诊断文案一起读**，只写「不匹配」的判据在变异时看不出落地没落地。
+pub fn find_pinned(hay: &str, needle: &str) -> Result<usize, String> {
+    if needle.is_empty() {
+        return Err("needle 为空 —— 那会匹配到任何地方，等于关掉判据".into());
+    }
+    let first_is_ident = needle.chars().next().is_some_and(ident_char);
+    let last_is_ident = needle.chars().next_back().is_some_and(ident_char);
+    let mut clean: Vec<usize> = Vec::new();
+    let mut stretched: Vec<String> = Vec::new();
+    let mut from = 0usize;
+    while let Some(rel) = hay[from..].find(needle) {
+        let at = from + rel;
+        let end = at + needle.len();
+        let before_ok = !first_is_ident || !hay[..at].chars().next_back().is_some_and(ident_char);
+        let after_ok = !last_is_ident || !hay[end..].chars().next().is_some_and(ident_char);
+        if before_ok && after_ok {
+            clean.push(at);
+        } else {
+            let lo = hay[..at].char_indices().rev().nth(10).map_or(0, |(i, _)| i);
+            let hi = hay[end..]
+                .char_indices()
+                .nth(12)
+                .map_or(hay.len(), |(i, _)| end + i);
+            stretched.push(hay[lo..hi].replace('\n', "\\n"));
+        }
+        // 按字符步进，别按 needle 长度 —— 重叠命中也要数到。
+        from = at + hay[at..].chars().next().map_or(1, char::len_utf8);
+    }
+    match clean.len() {
+        1 => Ok(clean[0]),
+        0 if stretched.is_empty() => Err(format!(
+            "`{needle}` 一处都找不到 —— 事实没了，或者抽取面画错了（本条此刻是空转的）"
+        )),
+        0 => Err(format!(
+            "`{needle}` 只出现在**被撑大的**位置，没有一处是完整的词：{stretched:?}\n\
+             ★ 这就是「匹配单位比事实小」：裸 `contains` 在这里会绿，而它指的根本不是那个事实。"
+        )),
+        n => Err(format!(
+            "`{needle}` 命中 {n} 处（偏移 {clean:?}）—— 断言指不明是哪一处。\n\
+             ★ F19 就栽在这里：`exe_suffix: &str` 同时出现在另一个函数的参数表里，\n\
+             于是「已收敛到单点」那句话锚定的是别人。把 needle 扩到能唯一确定那个事实的大小。"
+        )),
+    }
+}
+
+/// 「hay 里有没有 needle 这个**完整的词**」—— 不要求唯一，只要求有边界。
+///
+/// [`find_pinned`] 要求恰好一处；有些场合事实本身就会出现多次（一个变量名在函数里用了五次），
+/// 那时要的是本函数。边界判定与 [`find_pinned`] 共用 [`ident_char`]（E3：一个事实一个权威源）。
+pub fn contains_word(hay: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    let first_is_ident = needle.chars().next().is_some_and(ident_char);
+    let last_is_ident = needle.chars().next_back().is_some_and(ident_char);
+    let mut from = 0usize;
+    while let Some(rel) = hay[from..].find(needle) {
+        let at = from + rel;
+        let end = at + needle.len();
+        let before_ok = !first_is_ident || !hay[..at].chars().next_back().is_some_and(ident_char);
+        let after_ok = !last_is_ident || !hay[end..].chars().next().is_some_and(ident_char);
+        if before_ok && after_ok {
+            return true;
+        }
+        from = at + hay[at..].chars().next().map_or(1, char::len_utf8);
+    }
+    false
+}
+
+/// **把一个事实钉成一整行**（trim 后逐字相等，且恰好一行）〔audit-0805 F24〕。
+///
+/// [`find_pinned`] 的边界判据挡不住「同一行被加长」中的一类：分隔符不是标识符字符时
+/// （`working-directory: remote-daemon-proto` 后面接 `/sub`）边界看起来是干净的。
+/// 凡事实本身就是「**某个文件里有这么一行**」，用本函数，别用子串。
+///
+/// 返回命中的**行号（0 基）**。
+pub fn pin_line(hay: &str, line: &str) -> Result<usize, String> {
+    let hits: Vec<usize> = hay
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| l.trim() == line)
+        .map(|(i, _)| i)
+        .collect();
+    match hits.len() {
+        1 => Ok(hits[0]),
+        0 => {
+            let near: Vec<&str> = hay
+                .lines()
+                .filter(|l| l.contains(line))
+                .take(3)
+                .map(|l| l.trim())
+                .collect();
+            Err(format!(
+                "没有任何一行 trim 之后等于 `{line}`。\n\
+                 包含它但**不等于**它的行（这正是「事实被撑大了」的样子）：{near:?}"
+            ))
+        }
+        n => Err(format!("有 {n} 行都等于 `{line}` —— 断言指不明是哪一行（行号 {hits:?}）")),
+    }
 }
 
 #[cfg(test)]
@@ -503,6 +679,127 @@ mod tests {
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
             1,
         );
+    }
+
+    /// ★ `production_source` 与 `test_source` 必须是**互补的两半**。
+    ///
+    /// 它们共用 `test_module_ranges`，这条钉的是「共用」这件事真的成立：
+    /// 两半拼起来的长度等于原文（区间不重叠、不漏），且各自只装该装的东西。
+    #[test]
+    fn production_and_test_halves_partition_the_source() {
+        let src = "fn a() {}\n#[cfg(test)]\nmod m1 {\n    fn t1() {}\n}\nfn b() {}\n\
+                   #[cfg(test)]\nmod m2 {\n    fn t2() {}\n}\nfn c() {}\n";
+        let prod = production_source(src);
+        let test = test_source(src);
+        assert_eq!(
+            prod.len() + test.len(),
+            src.len(),
+            "两半拼不回原文 —— 区间重叠或漏了：\nprod={prod:?}\ntest={test:?}"
+        );
+        for t in ["fn t1()", "fn t2()"] {
+            assert!(test.contains(t), "{t} 不在测试段里：{test:?}");
+            assert!(!prod.contains(t), "{t} 漏进了生产段：{prod:?}");
+        }
+        for pcode in ["fn a()", "fn b()", "fn c()"] {
+            assert!(prod.contains(pcode), "{pcode} 不在生产段里：{prod:?}");
+            assert!(!test.contains(pcode), "{pcode} 漏进了测试段：{test:?}");
+        }
+    }
+
+    // ── F24：匹配单位比事实小 ────────────────────────────────────────────
+    //
+    // 下面每一条都配一句**对照**：先证明裸 `contains` 在同一份输入上是绿的，
+    // 再证明 `find_pinned` / `pin_line` 是红的。没有对照那半，就分不清
+    // 「判据抓到了」和「输入本来就不含那个串」。
+
+    /// `contains_word` 不要求唯一，但仍然要求有边界。
+    #[test]
+    fn contains_word_needs_a_boundary_but_not_uniqueness() {
+        assert!(contains_word("let ccm = x; ccm.len(); ccm", "ccm"), "多次出现不该拒绝");
+        assert!(!contains_word("let ccm_raw = 1;", "ccm"), "`ccm_raw` 不是 `ccm` 这个词");
+        assert!("let ccm_raw = 1;".contains("ccm"), "对照组前提不成立：裸 contains 在这里是绿的");
+        assert!(!contains_word("anything", ""), "空 needle 一律否");
+    }
+
+    /// ★ F05 的形状：中文短语被撑大（`起流` ⊂ `起流程`）。
+    #[test]
+    fn a_cjk_needle_that_got_stretched_is_rejected() {
+        let hay = "[perf] 起流程 耗时 12ms";
+        assert!(hay.contains("起流"), "对照组前提不成立：输入里本来就没有那个子串");
+        let e = find_pinned(hay, "起流").expect_err("被撑大的命中必须红");
+        assert!(e.contains("被撑大"), "诊断没点明是被撑大：{e}");
+        // 反向：真的是 `起流` 时不许红。
+        assert!(find_pinned("[perf] 起流 耗时", "起流").is_ok());
+    }
+
+    /// ★ F16 的形状：连字符续接（`remote-daemon-proto` ⊂ `remote-daemon-proto-X`）。
+    #[test]
+    fn a_hyphen_extension_is_rejected() {
+        let hay = "working-directory: remote-daemon-proto-X\n";
+        assert!(hay.contains("remote-daemon-proto"), "对照组前提不成立");
+        assert!(find_pinned(hay, "remote-daemon-proto").is_err());
+        assert!(find_pinned("working-directory: remote-daemon-proto\n", "remote-daemon-proto").is_ok());
+    }
+
+    /// ★ `polling_registry` 的活样本：`sleep 1` ⊂ `sleep 10`。
+    ///
+    /// 判据名与头注都写着「**每秒**」，而 `sleep 10` 让裸 `contains` 照样绿 ——
+    /// 事实（每秒）变了，判据不知道。
+    #[test]
+    fn sleep_one_does_not_match_sleep_ten() {
+        let ten = "    while :; do\n      sleep 10\n    done\n";
+        assert!(ten.contains("sleep 1"), "对照组前提不成立：裸 contains 在这里本该是绿的");
+        assert!(find_pinned(ten, "sleep 1").is_err(), "`sleep 10` 被当成了 `sleep 1`");
+        let one = "    while :; do\n      sleep 1\n    done\n";
+        assert!(find_pinned(one, "sleep 1").is_ok(), "真的是每秒时不许红");
+    }
+
+    /// ★ F19 的形状：needle 不唯一 ⇒ 断言指不明是哪一处。
+    #[test]
+    fn a_needle_that_matches_two_places_is_rejected() {
+        let hay = "fn a(exe_suffix: &str) {}\nfn b(exe_suffix: &str) {}\n";
+        assert!(hay.contains("exe_suffix: &str"), "对照组前提不成立");
+        let e = find_pinned(hay, "exe_suffix: &str").expect_err("两处命中必须红");
+        assert!(e.contains("命中 2 处"), "诊断没说清有几处：{e}");
+    }
+
+    /// 空 needle 会匹配到任何地方 ⇒ 拒绝，不许静默 `Ok`。
+    #[test]
+    fn an_empty_needle_is_rejected() {
+        assert!(find_pinned("whatever", "").is_err());
+    }
+
+    /// 一处都没有时的诊断要说「空转」，不能只说「不匹配」——
+    /// 抽取面画错和事实真没了是两回事，诊断得让人分得出来。
+    #[test]
+    fn a_missing_needle_says_the_guard_is_idling() {
+        let e = find_pinned("nothing here", "absent_token").expect_err("找不到必须红");
+        assert!(e.contains("空转"), "诊断没提醒可能是抽取面画错了：{e}");
+    }
+
+    /// ★ `pin_line`：`find_pinned` 的边界判据挡不住「同一行被加长」中分隔符非标识符的那类。
+    #[test]
+    fn pin_line_catches_what_the_boundary_check_cannot() {
+        let hay = "defaults:\n  working-directory: remote-daemon-proto/sub\n";
+        // `/` 不是标识符字符 ⇒ 边界看起来是干净的，`find_pinned` 会放过。
+        assert!(
+            find_pinned(hay, "working-directory: remote-daemon-proto").is_ok(),
+            "本条的前提是 find_pinned 在这里放过 —— 前提变了就把这条一起改"
+        );
+        let e = pin_line(hay, "working-directory: remote-daemon-proto")
+            .expect_err("整行判据必须红");
+        assert!(e.contains("撑大"), "诊断没点明事实被撑大：{e}");
+        assert!(
+            pin_line("  working-directory: remote-daemon-proto\n", "working-directory: remote-daemon-proto").is_ok(),
+            "trim 之后相等的行不许红"
+        );
+    }
+
+    /// `pin_line` 的两行同名情形。
+    #[test]
+    fn pin_line_rejects_two_identical_lines() {
+        let e = pin_line("a\nx\nb\nx\n", "x").expect_err("两行相同必须红");
+        assert!(e.contains("有 2 行"), "诊断没说有几行：{e}");
     }
 
     /// `assert_tree_strips_clean` 的计数自检真的会咬人。
