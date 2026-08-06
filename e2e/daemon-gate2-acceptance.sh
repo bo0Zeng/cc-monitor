@@ -84,6 +84,21 @@ while IFS=$'\t' read -r id name sid expect; do
   "$TMUX_BIN" new-session -d -s "$name" 2>/dev/null \
     || "$TMUX_BIN" new-session -d -s -- "$name" 2>/dev/null \
     || { skipped "$id：tmux 建不出这个名字的会话（$name）"; continue; }
+  # ★ audit-0805 F20：**建完要验它真的以那个名字存在**。
+  #
+  # 起因：CI 上 `meta_dollar`（`cc-a$x`）报的是 daemon 的 `no_such_session`，而不是本例期望的
+  # `wrong_owner` —— 也就是说**会话没按那个名字建起来**，而上面那条 `||` 链**返回了 0**
+  # （某一步「成功」了，只是建出来的东西不叫这个名字）。于是用例继续往下跑，
+  # 最后给出一个**指向错误方向**的失败：看起来像「Gate 2 判错了」，实际是「夹具没准备好」。
+  #
+  # ⇒ 这里用 `=name:` 精确匹配复核一次（同 daemon 侧 `launch::exact_target` 的形状）。
+  # 不存在就**诚实 skip 并把 tmux 实况打出来**，而不是让下游去猜。
+  # ⚠ 本机 tmux 3.6 上这条恒真（所以本地看不到差别）；它是给**别的 tmux 版本**准备的。
+  if ! "$TMUX_BIN" has-session -t "=$name:" 2>/dev/null; then
+    skipped "$id：建完之后 tmux 里找不到 \"$name\"（这台 tmux 对这个名字的处理与本机不同）。\
+实际会话：[$("$TMUX_BIN" ls -F '#{session_name}' 2>/dev/null | tr '\n' ' ')]"
+    continue
+  fi
   case "$sid" in
     '<none>'|'<unset>') : ;;   # 两者在真机上都是「@ccm_sid 没设」
     *) "$TMUX_BIN" set-option -t "=$name:" @ccm_sid "$sid" >/dev/null 2>&1 || true ;;
