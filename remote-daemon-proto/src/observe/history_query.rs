@@ -342,9 +342,20 @@ fn created_ms_or_mtime(p: &Path) -> i64 {
 }
 
 /// 从 jsonl 头部（前 40 行）提取首个带 cwd 的记录的 cwd。
+/// ⚠〔audit-0805 F07 / 报告 I-10〕**只看前 40 行，就别整读**。
+///
+/// 这里原本是 `read_to_string(p)` —— 一个 257 MB 的会话会被整份读进内存，
+/// 而下一行就是 `.take(40)`。`--list-projects` 对**每个项目**都会调它一次。
+///
+/// ★ 对照：monitor 侧同名功能 `src-tauri/src/history.rs::quick_extract_cwd` 一直是
+/// `BufReader` + `take(30)` 早返回，**连注释都写着「早返回省 IO」** ——
+/// 又一处「强机器流式、弱机器整读，正好反了」（同 B-4）。
 fn extract_cwd_from_head(p: &Path) -> Option<String> {
-    let content = std::fs::read_to_string(p).ok()?;
-    for line in content.lines().take(40) {
+    use std::io::BufRead;
+    let file = std::fs::File::open(p).ok()?;
+    let reader = std::io::BufReader::new(file);
+    for line in reader.lines().map_while(Result::ok).take(40) {
+        let line = line.as_str();
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
             if let Some(cwd) = v.get("cwd").and_then(|c| c.as_str()) {
                 if !cwd.is_empty() {
@@ -375,8 +386,14 @@ fn analyze_session(p: &Path) -> serde_json::Value {
     // 记录级 sessionKind:"bg" 是官方 resume 选择器同款识别信号（内部字段无兼容
     // 承诺，缺失=false 安全降级）。历史列表标 ⚙ 徽标防 resume 选错克隆。
     let mut is_bg = false;
-    if let Ok(content) = std::fs::read_to_string(p) {
-        for line in content.lines() {
+    // 〔audit-0805 F07 / 报告 B-6 第 5 环〕**流式**。原来是 `read_to_string(p)` 整读：
+    // `--list-sessions` 对该项目**每个** jsonl 都调它一次，43 个项目 / 2.4 GB 的机器上
+    // 一次列表就是把 2.4 GB 读进内存再逐行解析。头注自己也写着「整文件扫描，跑在远端 CPU 上」——
+    // 扫描是必须的（要数行、要判 bg），**但不必先整份进内存**。
+    if let Ok(file) = std::fs::File::open(p) {
+        use std::io::BufRead;
+        let reader = std::io::BufReader::new(file);
+        for line in reader.lines().map_while(Result::ok) {
             let trimmed = line.trim_start_matches('\u{feff}').trim();
             if trimmed.is_empty() {
                 continue;
@@ -672,5 +689,46 @@ mod tail_tests {
         assert_eq!(meta_of(&meta), (3, 2));
         assert_eq!(tail, b"{\"a\":2}\n");
         assert_eq!(head, b"{\"a\":0}\n\n{\"a\":1}\n");
+    }
+}
+
+#[cfg(test)]
+mod f07_tests {
+    /// ★ **历史查询那几条读路不许整读 jsonl**〔audit-0805 F07 / 报告 I-10 与 B-6 第 5 环〕。
+    ///
+    /// 两处此前都是 `read_to_string`：
+    /// - `extract_cwd_from_head` —— 下一行就 `.take(40)`，却先把 257 MB 整份读进来；
+    ///   `--list-projects` 对**每个项目**调它一次。
+    /// - `analyze_session` —— `--list-sessions` 对该项目**每个** jsonl 调它一次；
+    ///   43 个项目 / 2.4 GB 的机器上，一次列表就是把 2.4 GB 读进内存再逐行解析。
+    ///
+    /// 扫描本身是必须的（要数行、要判 bg），**但不必先整份进内存**。
+    /// ⚠ 「慢/费内存」**不会让任何测试变红** ⇒ 只能靠源码形态钉（同 F04 那条）。
+    #[test]
+    fn the_history_readers_stream_instead_of_slurping() {
+        let src = guard_core::production_code(include_str!("history_query.rs"));
+        for (name, sig) in [
+            ("extract_cwd_from_head", "fn extract_cwd_from_head("),
+            ("analyze_session", "fn analyze_session("),
+        ] {
+            let begin = src
+                .find(sig)
+                .unwrap_or_else(|| panic!("找不到 {name} —— 抽取器坏了，本条会零命中地绿"));
+            let end = src[begin..]
+                .find("\n}\n")
+                .unwrap_or_else(|| panic!("找不到 {name} 的结尾 —— 抽取器坏了"));
+            let body = &src[begin..begin + end];
+            assert!(
+                body.contains("BufReader"),
+                "{name} 里没有 `BufReader` —— 要么切错范围（本条会零命中地绿），要么它被改回整读了"
+            );
+            assert!(
+                !body.contains("read_to_string("),
+                "{name} 又在整读 jsonl 了。\n\
+                 `--list-projects` / `--list-sessions` 会对**每个**项目/会话文件调它一次，\n\
+                 而 43 个项目 / 2.4 GB 的机器上那就是一次列表读 2.4 GB。\n\
+                 慢不会让任何测试变红 —— 所以这条只能靠源码形态钉。"
+            );
+        }
     }
 }
