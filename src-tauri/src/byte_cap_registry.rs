@@ -56,10 +56,9 @@ mod tests {
             "CHANNEL_CAPACITY",
             "**条数**不是体量（mpsc 通道能排多少帧）。它的溢出语义由 `Overflow` 帧管，见 F03。",
         ),
-        (
-            "MIN_SCANNED_CODE_BYTES",
-            "**地板**不是上限 —— 它要求「至少扫到这么多字节」，方向相反（`no_timer_guard` 的抽取器自检）。",
-        ),
+        // ⚠ `MIN_SCANNED_CODE_BYTES` 那条已删（08-06）：它是**测试段里的地板**，
+        //    本表原来扫整份文件才需要排它；扫描面收窄到生产段之后它成了死规则，
+        //    而本表自己的 `the_exclusion_list_is_not_dead_wood` 当场要求删。
     ];
 
     /// `(相对仓根的路径, 常量名, 字节数, 它管的是什么量, 超限怎么办)`。
@@ -245,7 +244,11 @@ mod tests {
         let root = repo_root();
         let mut out = Vec::new();
         for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
-            for (f, body) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
+            for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
+                // ★ 只扫**生产段**〔08-06〕：本条原来扫整份文件，于是**测试里的夹具常量**
+                // 也被当成生产上限（`common/fs.rs` 的顺序判据里那个 `const CAP` 当场被误报）。
+                // 判据扫生产段是本仓通行做法（`guard_core` 头注那一族）—— 这里此前是例外。
+                let body = guard_core::production_source(&raw);
                 let rel = f
                     .strip_prefix(&root)
                     .unwrap_or(&f)
@@ -431,7 +434,8 @@ mod tests {
         let root = repo_root();
         let mut all = String::new();
         for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
-            for (_, body) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
+            for (_, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
+                let body = guard_core::production_source(&raw);
                 all.push_str(&body);
             }
         }
