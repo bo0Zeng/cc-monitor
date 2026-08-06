@@ -580,4 +580,88 @@ mod f06_tests {
             "★ 要告诉用户完整历史还在（这条与丢帧不同：数据没丢，是没读完）：{m}"
         );
     }
+
+    /// ★ **上限检查还接在路径上，不只是「登记过」**〔audit-0805 §5 1g，08-06 补〕。
+    ///
+    /// # 先量后写：1g 那句话对，但它给的理由只挡住一半
+    ///
+    /// §5 1g 逐字写着「把检测拆成 `if false` 全仓没有任何判据会红」。08-06 真做了这次变异
+    /// （把下面那个条件换成 `if false {`）：monitor 全量 **passed=989 failed=0** ——
+    /// 那句话在**行为层**成立。
+    ///
+    /// 但它给的**理由**是「住在吃真 SSH 流的 async 函数里，红线内造不出 >256 MiB 的远端流」。
+    /// 这次变异与流有多大**毫无关系** —— 那个理由挡住的只是「撞到上限时运行起来真的会 Err」，
+    /// 挡不住「判断被整个摘掉」。**阻塞四问 ①「挡住的是整件还是一部分」又一次命中。**
+    ///
+    /// 顺带说清另一件容易误读的事：`byte_cap_registry` 里**登记了**这处上限，
+    /// 但它管的是「上限有没有被登记 + 语义有没有声明」，**不是「检查会不会触发」** ——
+    /// 「有个登记表覆盖着」不等于「这条路上有人守着」。
+    ///
+    /// # 钉什么、不钉什么
+    ///
+    /// 钉**源码形态的三段链**，每一段单独被摘掉，静默截断都会回来：
+    ///
+    /// | 段 | 摘掉它会怎样 |
+    /// |---|---|
+    /// | `take(…+ 1)` 里的 **`+ 1`** | 到限时 `read_line` 返回 0，与正常 EOF **完全同形** ⇒ 无声截断 |
+    /// | 那个 `read_bytes >` 条件 | 判断没了，读到 cap 就当读完了 |
+    /// | 那一支的 `return Err(…)` | 换成 `break` 就是「读完了」，前端拿到一份看起来完整的历史 |
+    ///
+    /// **不钉**「撞到上限时运行起来真的会 Err」—— 那要把读循环从这个吃真 SSH 流的
+    /// async fn 里抽出来（连 `tauri::ipc::Channel` 那个出口一起抽象）。本轮不做，
+    /// §5 1g **保留**，但范围缩小到行为层那一半。
+    ///
+    /// # 对照组是自带的，不是另写一条
+    ///
+    /// 本判据的 needle 在**未剥测试段**的源码里有两处：生产一处 + 本测试的字面量一处。
+    /// 下面第一条断言的就是「剥完之后它变少了」—— 于是「有人把 `production_source` 拿掉」
+    /// 会当场红，而不是让本条静默地读到自己（F23 那一族，本区已犯过三次）。
+    #[test]
+    fn the_cap_check_is_still_wired_not_just_declared() {
+        let raw = include_str!("remote_history.rs");
+        let prod = guard_core::production_source(raw);
+
+        const COND: &str = "if read_bytes > MAX_SESSION_BYTES {";
+        assert!(
+            raw.matches(COND).count() > prod.matches(COND).count(),
+            "★ 对照组：剥掉测试段之后这个 needle 应当变少（本测试自己的字面量被剥走了）。\n\
+             没变少 ⇒ `production_source` 没在起作用，下面三条就是在**读自己**、恒绿。"
+        );
+
+        // ① `+ 1`：它是「到限」与「正好读完」唯一的区分手段。
+        guard_core::pin_line(
+            &prod,
+            "let mut reader = BufReader::new(stream.take(MAX_SESSION_BYTES + 1));",
+        )
+        .expect(
+            "★ `take(MAX_SESSION_BYTES + 1)` 这一行不在了（或写法变了）。\n\
+             只 take(MAX) 的话，到限时 read_line 返回 0，与正常 EOF **完全同形** ——\n\
+             下面两条即使都在，也再没有任何东西能分辨「读完了」和「读到上限」。",
+        );
+
+        // ② 条件本身：这一条正是 08-06 那次 `if false` 变异摘掉的东西。
+        let at = guard_core::pin_line(&prod, COND).expect(
+            "★ 上限判断不在生产段里了。08-06 实测：把它换成 `if false {`，\n\
+             monitor 全量 989 条**一条都不会红** —— 本条就是为那个洞补的。",
+        );
+
+        // ③ 那一支必须**报错**，不能是 break/continue：后者等于「读完了」。
+        let body = prod
+            .lines()
+            .skip(at + 1)
+            .find(|l| {
+                let t = l.trim();
+                !t.is_empty() && !t.starts_with("//")
+            })
+            .unwrap_or("");
+        assert!(
+            body.trim()
+                .starts_with("return Err(session_truncated_message("),
+            "★ 撞上限那一支的第一句是 `{}`，不是 `return Err(session_truncated_message(…))`。\n\
+             换成 break/continue 就是「读完了」：前端拿到一份**看起来完整**的历史，\n\
+             而同一份数据走 daemon 的 `--fork-session` 会硬报错 —— 同一份数据两条路两个答案，\n\
+             正是定框 E5 要消灭的那种不一致。",
+            body.trim()
+        );
+    }
 }
