@@ -736,7 +736,10 @@ mod tests {
         // 用户已有自定义 function cc 时只装 __ccm_bind helper，不生成 function cc
         let out = render_cc_code("cc", false);
         assert!(out.contains("__ccm_bind"));
-        assert!(!out.contains("function cc"));
+        // 按词，不按子串〔§5 2l〕：同族的 `strip_block_removes_only_block` 已实测过
+        // 这个陷阱 —— 语料里一出现 `function ccm`，`contains` 就假红。这里今天还碰不到，
+        // 但**同一种写法只该有一个答案**，不留一处等着下次踩。
+        assert!(!guard_core::contains_word(&out, "function cc"));
         assert!(!out.contains("{{CC_FUNCTION_BLOCK}}"));
         assert!(out.contains("BEGIN v2"));
     }
@@ -823,6 +826,7 @@ $PSDefaultParameterValues = @{}
     #[test]
     fn strip_block_removes_only_block() {
         let existing = r#"Set-Alias g git
+function ccm { Write-Host "我自己的，别动" }
 # === cc-monitor BEGIN v1 ===
 function cc { Write-Host hi }
 # === cc-monitor END ===
@@ -832,7 +836,14 @@ $PSDefaultParameterValues = @{}
         assert!(out.contains("Set-Alias g git"));
         assert!(out.contains("$PSDefaultParameterValues"));
         assert!(!out.contains("BEGIN"));
-        assert!(!out.contains("function cc"));
+        // ★ **`contains` 不行，要按词**〔audit-0805 §5 2l，08-06〕：
+        // 用户自己那句 `function ccm` 会让 `contains("function cc")` 命中 ⇒ **假红**
+        // （代码是对的：strip_block 只该删自己的块，用户的同前缀函数必须原样留着）。
+        // 上面那行语料就是为这条加的 —— 换回 `contains` 会当场红。
+        assert!(!guard_core::contains_word(&out, "function cc"));
+        // 反向：用户那个同前缀的函数**必须还在**。少了这一条，上面那句会被人
+        // 「顺手」改回 contains 再把语料删掉，于是两边一起退回原样。
+        assert!(out.contains("function ccm"), "用户自己的同前缀函数被删掉了");
     }
 
     #[test]
