@@ -331,6 +331,37 @@ test("F63 ★ 白名单拒 unrecognized → 上游用户提问被误折（这就
   eqSet(on2, ["a1"], "X 不进链 → 只剩孤零零的回复 a1，提问 u1 丢失");
 });
 
+
+// ═══ Phase G 全局变异抽样的产物：白名单**逐个类型**都要有钉 ═══════════════
+//
+// 抽样时把 `extractBranchRecord` 白名单里的 `system` 换成恒真（= 把 system 踢出分支链），
+// **vitest 与本文件都全绿** —— 变异存活。
+//
+// 查下去发现：白名单五个类型里只有 `cc-monitor-unrecognized` 有回归钉（F63 那两条），
+// 其余四个**裸奔**。而 `system` 正是本文件自己在用的链节点
+// （`:99` 逐字「/compact 边界 = system root」）—— 算法那半在测，**准入那半没测**。
+// ★ 这是典型的**缝**：过滤器与算法各自有测，而「过滤器放进来的东西正是算法需要的」没人管。
+test("Phase G：白名单五个类型逐个进链", () => {
+  for (const t of ["user", "assistant", "attachment", "system", "cc-monitor-unrecognized"]) {
+    const got = extractBranchRecord({ type: t, uuid: "u1", parentUuid: null, timestamp: "t1" });
+    if (got === null) {
+      throw new Error(
+        `白名单类型 \`${t}\` 被 extractBranchRecord 拒了 —— 它会从分支链里消失。` +
+          `链完整性靠「即使 render 会 skip 也要 feed」（render-stream-record.ts:130）；` +
+          `少一个类型 = 少一个链节点 = 上游可能被误折。`,
+      );
+    }
+  }
+});
+
+test("Phase G 反向：非白名单类型逐个被拒", () => {
+  for (const t of ["summary", "ai-title", "queue-operation"]) {
+    if (extractBranchRecord({ type: t, uuid: "u1", parentUuid: null, timestamp: "t1" }) !== null) {
+      throw new Error(`非白名单类型 \`${t}\` 被收进了分支链 —— 上面那条就只是在说「什么都收」`);
+    }
+  }
+});
+
 if (failed > 0) {
   console.error(`\n${failed} branching test(s) failed`);
   throw new Error(`branching.test.ts: ${failed} failed`);

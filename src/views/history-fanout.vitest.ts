@@ -140,6 +140,36 @@ describe("历史视图的三个放大器（audit-0805 F07 下半，报告 B-6）
     view.close();
   });
 
+  // ═══ Phase G 全局变异抽样的产物 ═══════════════════════════════════════
+  //
+  // 抽样把 `SEARCH_DEBOUNCE_MS` 从 250 改成 **0**，**全套 1258 条全绿** —— 变异存活。
+  //
+  // 原因是上面那条「连敲 8 个字符 → 只重画一次」把 8 次按键**同步**发出去：
+  // 同一 tick 内，`setTimeout(fn, 0)` 与 `setTimeout(fn, 250)` 的合批效果**一模一样**
+  // （都靠那个 schedule-once 的 timer 句柄）。⇒ 它钉住的是「同一 tick 内合批」，
+  // **完全没有碰到那个窗口值**。而真实打字是每次相隔几十到几百毫秒的。
+  //
+  // ★ 一般化：**常量被判据「覆盖」不等于它被判据钉住** —— 得让那个常量真的参与判定。
+  it("★ ① 真实打字节奏（每 100ms 一下）仍只重画一次 —— 钉的是那个窗口值本身", async () => {
+    const { view, inner } = await openSearching(3);
+    inner.searchMode = "tree";
+    for (const ch of "abcd") {
+      inner.searchInput.value += ch;
+      inner.searchInput.dispatchEvent(new Event("input"));
+      await vi.advanceTimersByTimeAsync(100); // < 250ms 窗口 ⇒ 每次都该续期
+    }
+    expect(
+      inner.fanoutStats.renders,
+      `按 100ms 的节奏敲了 4 下，窗口还没满就已经重画了 ${inner.fanoutStats.renders} 次 —— ` +
+        "去抖窗口比击键间隔还短（把 `SEARCH_DEBOUNCE_MS` 调到 0 就是这个样子，" +
+        "而那个变异在 Phase G 抽样里**存活过**）。",
+    ).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(300);
+    expect(inner.fanoutStats.renders, "停手之后该重画恰好一次").toBe(1);
+    view.close();
+  });
+
   it("★ ① 反向：去抖不许变成「永远不搜」", async () => {
     const { view, inner } = await openSearching(2);
     inner.searchMode = "tree";
