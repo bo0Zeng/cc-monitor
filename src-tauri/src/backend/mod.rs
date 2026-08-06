@@ -532,6 +532,26 @@ mod tests {
     ///
     /// ⚠ 锚点按实测选（F18 摸底逐文件数过）：`bind.rs` 平台 cfg 21 处 / 原语 9 处 ·
     /// `session_map.rs` 原语 18 处。**这两处不是 bug** —— 它们是 C9 那一半，本来就该有平台代码。
+    ///
+    /// # ★ 「平台 cfg 有多少处」的**口径**（08-06 补：此前只有数，没有数法）
+    ///
+    /// ```text
+    /// grep -rEc '#\[cfg.*(windows|unix|target_os)' --include=*.rs src-tauri/src
+    /// ```
+    ///
+    /// 即**按行数**、`#[cfg…]` 里出现那三个词之一就算一处。别的数法会给出别的答案：
+    /// 只认 `cfg(windows)`/`cfg(unix)`/`cfg(target_os…)` 三种完整形态的话，同一份
+    /// `bind.rs` 只有一半左右 —— 差在 `#[cfg(all(…))]`/`#[cfg(any(…))]`/`#[cfg(not(…))]`
+    /// 这些复合写法上。
+    ///
+    /// 上面 `bind.rs` 那个数就是用这个口径量的，它同时是**校准锚点**：换个数法对不上 21，
+    /// 说明用错了口径。
+    ///
+    /// ⚠ **总数刻意不写在这里，也不写进计划**：它每加一个平台分支就变，
+    /// 而没有任何判据读它 ⇒ 抄到哪里就在哪里腐（`plan-lint` 判据 3.9 那一族）。
+    /// 计划侧（`ROADMAP §5 2h`、`features/F19-*`）只说「C9 那一半占绝大多数」并指到这里。
+    /// 08-06 实测顺带纠正一处口误：那个数是**全 `src-tauri/src` 的总量**，
+    /// 不是「backend 之外那一半」—— 后者要再减掉 backend 测试段里的那几处。
     #[test]
     fn the_platform_needles_actually_match_the_platform_heavy_half() {
         let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
