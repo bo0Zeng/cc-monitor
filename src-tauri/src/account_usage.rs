@@ -447,6 +447,84 @@ async fn run_local_probe(_cmd: String) -> Result<AccountUsageProbeResult, String
 
 #[cfg(test)]
 mod tests {
+
+    /// ★★ **monitor 自己建 tmux 的地方必须逐个登记为 C13/D3 的例外**
+    /// 〔audit-0805 F19 / 报告 §4.1「边界越界的两处」〕。
+    ///
+    /// # 它此前没有任何登记
+    ///
+    /// **C13**：最后那次 `exec` 必须在**用户那个终端进程**里。
+    /// **D3 的例外只有一条** —— daemon 在**自己管的 tmux 容器**里起会话（`launch`）。
+    /// 而 `account_usage.rs` 自己拼 `tmux new-session -d -s ccm-usage-<slug>; send-keys …;
+    /// capture-pane; kill-session` —— **它建的 tmux 不是 daemon 管的**。
+    ///
+    /// 报告的倾向判定（本轮采信）：**它正当** —— 那是**无头测量**，不是用户会话：
+    /// 起完就 `capture-pane` 取输出、随即 `kill-session`，没有人会 attach 进去。
+    /// ⇒ 问题不在「它做了这件事」，在「**这件事没有被登记成例外**」。
+    ///
+    /// ⚠ 它今天确实出现在 `daemon_kill.rs::CREATION_PATHS` 里，**但那张表管的是会话名校验**
+    /// （`CreationVerdict`），不是「谁可以绕开 C13/D3」。**两件事，两张表。**
+    ///
+    /// # 判据形态
+    ///
+    /// 扫**整棵 monitor 源码树**的生产段，找真正会跑 `tmux new-session` 的地方；
+    /// 每一处都必须在下面这张表里，且**带理由**。新增一处 ⇒ 它指名道姓地要求写下理由，
+    /// 而不是让「monitor 又多了一个自己起会话的地方」悄悄发生。
+    #[test]
+    fn every_monitor_side_tmux_creation_is_a_registered_d3_exception() {
+        /// (文件, 为什么它可以绕开 C13/D3)
+        const D3_EXCEPTIONS: &[(&str, &str)] = &[(
+            "account_usage.rs",
+            "无头测量而非用户会话：起完即 capture-pane 取输出、随即 kill-session，无人 attach。             会话名 ccm-usage-<slug> 由账号名 sanitize 而来，另有 CREATION_PATHS 管它的字符集。",
+        )];
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut found: Vec<String> = Vec::new();
+        let mut stack = vec![root.clone()];
+        while let Some(dir) = stack.pop() {
+            for e in std::fs::read_dir(&dir)
+                .expect("读不到 monitor src")
+                .flatten()
+            {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    let src = std::fs::read_to_string(&p).unwrap_or_default();
+                    let prod = guard_core::production_code(&src);
+                    // 只认「真的在拼命令串」的形态：`tmux new-session` 出现在非注释代码里。
+                    if prod.contains("tmux new-session") {
+                        found.push(p.file_name().unwrap().to_string_lossy().into_owned());
+                    }
+                }
+            }
+        }
+        // 抽取器自检：一处都没扫到 ⇒ 剥法或遍历坏了，本条会零命中地绿。
+        assert!(
+            !found.is_empty(),
+            "全树扫不到任何 `tmux new-session` 的生产段 —— 抽取器坏了，本条会零命中地绿"
+        );
+
+        for f in &found {
+            assert!(
+                D3_EXCEPTIONS.iter().any(|(k, _)| k == f),
+                "`{f}` 在 monitor 生产段里建 tmux 会话，却不在 D3 例外表里。\n\
+                 ★ **C13**：最后那次 `exec` 必须在用户那个终端进程里；\n\
+                 **D3 的例外今天只有一条**（daemon 在自己管的容器里起会话）。\n\
+                 monitor 自己建一个 daemon 管不到的 tmux ⇒ 要么它不该这么做，\n\
+                 要么**把「为什么它正当」写进 D3_EXCEPTIONS** —— 两者都不做，\n\
+                 就是让「monitor 又多了一个自己起会话的地方」悄悄发生。\n\
+                 今天扫到的：{found:?}"
+            );
+        }
+        // 反向：例外表不许长草（列了却已经不再建会话）。
+        for (k, _) in D3_EXCEPTIONS {
+            assert!(
+                found.iter().any(|f| f == k),
+                "`{k}` 还留在 D3 例外表里，但它已经不建 tmux 会话了 —— 例外表过期了"
+            );
+        }
+    }
     use super::*;
 
     /// ★ F08 真进程：**本机执行面**真的能跑那条串并把输出收回来。
