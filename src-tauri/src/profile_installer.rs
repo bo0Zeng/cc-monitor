@@ -950,7 +950,14 @@ $PSDefaultParameterValues = @{}
         assert!(!p.exists());
         install_to_profile(&p, "cc", true).unwrap();
         let content = std::fs::read_to_string(&p).unwrap();
-        assert!(content.contains("function cc"));
+        // ★ **带边界**〔audit-0805 F24 存量清账〕：`contains("function cc")` 是**正向事实钉**，
+        // 而 `function ccm` 也含有它 —— 安装器若改成生成 `function ccm`（同文件 `:727` 就有
+        // 那个形态），本条**照样绿**。这是「匹配单位比事实小」里最贵的那种：假绿。
+        assert!(
+            guard_core::contains_word(&content, "function cc"),
+            "装出来的 profile 里没有 `function cc` 这个**完整的词** —— \
+             若是改成了 `function ccm` 之类，本条与它保护的行为都要一起重判"
+        );
         assert!(content.contains("__ccm_bind"));
         let _ = std::fs::remove_file(&p);
     }
