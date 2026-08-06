@@ -85,7 +85,7 @@ const ZERO_TODAY = [
 /** 0% 文件总数的棘轮地板（含上面没逐个列出的小文件）。**只许降。** */
 // ⚠ 08-06 F15 把 `src/branch-fold.ts` 从 0% 里领走了（它此前**一条专属单测都没有**，
 // 而那条 O(N²) 主线重算就住在里面）⇒ 上限 17→16。**只许降**。
-const ZERO_COUNT_CEILING = 16;
+const ZERO_COUNT_CEILING = 14;
 
 let summary;
 try {
