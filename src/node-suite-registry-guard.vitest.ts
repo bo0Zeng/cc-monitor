@@ -68,7 +68,7 @@ import { stripComments } from "./test-support/strip-comments.ts";
  */
 const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   ["test:diff", "src/cards/diff.test.ts", 17],
-  ["test:branching", "src/branching.test.ts", 19],
+  ["test:branching", "src/branching.test.ts", 21],
   ["test:api-error", "src/cards/api-error.test.ts", 5],
   ["test:bash", "src/cards/bash.test.ts", 20],
   ["test:remote-health", "src/remote-health.test.ts", 5],
