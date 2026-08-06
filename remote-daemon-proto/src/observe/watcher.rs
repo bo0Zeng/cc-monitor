@@ -1024,6 +1024,40 @@ pub fn read_new_lines_at(
     key: &str,
     seqs: &mut SeqCounter,
 ) -> (Vec<ReadLine>, ReadCursor) {
+    let (lines, _, cursor) = scan_new_lines(chunk, chunk_start, file_len, cursor, key, seqs, true);
+    (lines, cursor)
+}
+
+/// 同上，但**只数不建**〔audit-0805 F04 第 3 步〕。
+///
+/// `prime_file_cursor` 要的只有「有多少行」——它把每行单独 `to_string` 建成 `Vec<ReadLine>`，
+/// 然后**只用了 `.len()`**（一条 `tracing::debug!`）。首次 prime 时「新增那一段」就是整份文件，
+/// 于是一份 257 MB 的会话会被物化成另一份 257 MB 的 `String` 堆，用完即扔。
+///
+/// ⚠ 它与 [`read_new_lines_at`] **共用同一段扫描逻辑**（`scan_new_lines`），不是抄一份 ——
+/// torn-tail 延后、`seen_len` 高水位、seq 推进这些语义抄一份迟早漂。
+pub fn count_new_lines_at(
+    chunk: &[u8],
+    chunk_start: u64,
+    file_len: u64,
+    cursor: ReadCursor,
+    key: &str,
+    seqs: &mut SeqCounter,
+) -> (usize, ReadCursor) {
+    let (_, n, cursor) = scan_new_lines(chunk, chunk_start, file_len, cursor, key, seqs, false);
+    (n, cursor)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn scan_new_lines(
+    chunk: &[u8],
+    chunk_start: u64,
+    file_len: u64,
+    cursor: ReadCursor,
+    key: &str,
+    seqs: &mut SeqCounter,
+    collect: bool,
+) -> (Vec<ReadLine>, usize, ReadCursor) {
     assert_eq!(
         chunk_start + chunk.len() as u64,
         file_len,
@@ -1053,6 +1087,7 @@ pub fn read_new_lines_at(
     }
 
     let mut out = Vec::new();
+    let mut n_lines: usize = 0;
     let mut consumed: u64 = 0;
     if start < len {
         let slice = &chunk[(start - chunk_start) as usize..];
@@ -1079,12 +1114,17 @@ pub fn read_new_lines_at(
             if !is_blank {
                 // Seq from the never-reset per-path counter. Blank lines do not
                 // call `next`, so they do not consume a seq.
+                // seq **必须照常推进**（哪怕不收集）——它是 per-path 单调且永不重置的，
+                // 少推一次会让后续所有行的 seq 与整读那条路错开。
                 let seq = seqs.next(key);
-                out.push(ReadLine {
-                    seq,
-                    raw: raw.to_string(),
-                    byte_offset: start + line_end as u64,
-                });
+                n_lines += 1;
+                if collect {
+                    out.push(ReadLine {
+                        seq,
+                        raw: raw.to_string(),
+                        byte_offset: start + line_end as u64,
+                    });
+                }
             }
             pos = line_end;
         }
@@ -1095,6 +1135,7 @@ pub fn read_new_lines_at(
     // window is still detected as truncation.
     (
         out,
+        n_lines,
         ReadCursor {
             consumed: start + consumed,
             seen_len: len,
@@ -1444,7 +1485,9 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
     let Some((chunk, chunk_start, file_len)) = read_tail_from(path, prev) else {
         return 0;
     };
-    let (lines, cursor) = read_new_lines_at(
+    // F04 第 3 步：**只数不建**。此前这里把每行 `to_string` 成 `Vec<ReadLine>`，
+    // 而下面只用了 `.len()`（一条 debug 日志）—— 首次 prime 时那一段就是整份文件。
+    let (n_lines, cursor) = count_new_lines_at(
         &chunk,
         chunk_start,
         file_len,
@@ -1456,7 +1499,7 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
     tracing::debug!(
         "primed {key_str}: cursor→{} (+{} lines suppressed, tail seq starts here)",
         cursor.consumed,
-        lines.len()
+        n_lines
     );
     // Batch8 审计 D-I2：返回 prime 后的行号计数器现值（= 完整行总数 L），
     // session_added 帧带给 monitor 做快照完整性校验（拉到的行数 < L = 快照
@@ -3746,6 +3789,93 @@ mod tests {
             waiting_for: None,
         });
         assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
+    }
+
+    /// ★★ **「只数不建」必须与「建了再数」得出同一个数、同一个游标、同一批 seq**
+    /// 〔audit-0805 F04 第 3 步〕。
+    ///
+    /// 最容易错的是 **seq**：不收集时很容易顺手把 `seqs.next(key)` 一起省掉，
+    /// 而它是 per-path 单调且**永不重置**的 —— 少推一次，后续所有行的 seq 就与整读那条路
+    /// **错开一位**，而**结果仍然像一份合理的输出**（行数对、内容对，只有编号悄悄偏了）。
+    #[test]
+    fn counting_only_agrees_with_collecting_on_count_cursor_and_seq() {
+        let data = b"{\"a\":1}\n{\"b\":2}\r\n\n{\"c\":3}\n{\"torn\":";
+        let mut s_collect = SeqCounter::default();
+        let (lines, cur_collect) = read_new_lines_at(
+            data,
+            0,
+            data.len() as u64,
+            ReadCursor::default(),
+            "k",
+            &mut s_collect,
+        );
+        let mut s_count = SeqCounter::default();
+        let (n, cur_count) = count_new_lines_at(
+            data,
+            0,
+            data.len() as u64,
+            ReadCursor::default(),
+            "k",
+            &mut s_count,
+        );
+
+        assert!(!lines.is_empty(), "夹具没产出行 —— 本条会零命中地绿");
+        assert_eq!(
+            n,
+            lines.len(),
+            "行数不一致：只数 {n} vs 建了再数 {}",
+            lines.len()
+        );
+        assert_eq!(cur_collect, cur_count, "游标不一致");
+
+        // ★ seq 推进必须一样。⚠ **必须用同一个 key** —— `SeqCounter` 是 per-path 的，
+        //   用两个不同的 key 去比等于两边都从 0 开始，这条判据就恒真了。
+        //   （第一版就是这么写错的：变异「不收集时省掉 seqs.next」照样绿。）
+        let more = b"{\"d\":4}\n";
+        let (l_after_collect, _) = read_new_lines_at(
+            more,
+            0,
+            more.len() as u64,
+            ReadCursor::default(),
+            "k",
+            &mut s_collect,
+        );
+        let (l_after_count, _) = read_new_lines_at(
+            more,
+            0,
+            more.len() as u64,
+            ReadCursor::default(),
+            "k",
+            &mut s_count,
+        );
+        assert_eq!(
+            l_after_collect[0].seq, l_after_count[0].seq,
+            "同一个 key 上两条路推进的 seq 不同步 —— 只数不建时把 `seqs.next` 省掉了。\n\
+             它是 per-path 单调且永不重置的：少推一次，后续所有行的编号就与整读那条路错开一位，\n\
+             而**结果仍然像一份合理的输出**（行数对、内容对，只有编号悄悄偏了）。"
+        );
+    }
+
+    /// prime 那条路**不许再走收集入口**〔源码形态钉，防回退〕。
+    #[test]
+    fn prime_does_not_build_the_line_vector() {
+        let src = guard_core::production_code(include_str!("watcher.rs"));
+        let begin = src
+            .find("fn prime_file_cursor(")
+            .expect("找不到 prime_file_cursor —— 抽取器坏了，本条会零命中地绿");
+        let end = src[begin..]
+            .find("\n}\n")
+            .expect("找不到结尾 —— 抽取器坏了");
+        let body = &src[begin..begin + end];
+        assert!(
+            body.contains("count_new_lines_at"),
+            "prime_file_cursor 没走「只数不建」那条入口 —— 要么切错范围，要么改回去了"
+        );
+        assert!(
+            !body.contains("read_new_lines_at"),
+            "prime_file_cursor 又在走收集入口了。它只要行数（一条 debug 日志），\n\
+             而首次 prime 时「新增那一段」就是整份文件 —— 257 MB 会被物化成另一份 String 堆用完即扔。"
+        );
     }
 
     /// ★★ **两条 tail 读路不许再整读会话 jsonl**〔audit-0805 F04 第 2 步〕。
