@@ -23,7 +23,7 @@
 //! 本模块要求：**测试段里，凡是拿「从磁盘读来的语料」去做的裸 `contains("…")`，
 //! 只许比今天少。** 新写的判据请走上面三个。
 //!
-//! ⚠ 清单是**存量盘点，不是逐条论证** —— 63 处里哪些真的危险、哪些碰巧安全，
+//! ⚠ 清单是**存量盘点，不是逐条论证** —— 35 处里哪些真的危险、哪些碰巧安全，
 //! 逐条判要单独一轮。本条的契约只有一句：**只许降**。
 //!
 //! # ⚠ 本模块自己就是这一族的高危户
@@ -58,7 +58,12 @@ mod tests {
     /// 摸底实测（收窄到 34 个扫描型判据文件时）：含它们 73 处，只留磁盘种子 59 处。
     const CORPUS_SEEDS: &[&str] = &["read_to_string(", "scan_tree!"];
 
-    /// ★ **递减棘轮的上限**（08-06 全树实测 63 处）。
+    /// ★ **递减棘轮的上限**（08-06 全树实测 **35** 处）。
+    ///
+    /// ⚠⚠ **它从 63 降到 35 不是因为还了债，是因为量准了。**
+    /// 原来的传递闭包按「RHS 里**提及**了语料变量」传，会跑飞（见 `is_direct_derivation`）；
+    /// 收紧成「直接派生」之后，28 处**本来就不属这一族**的命中退出了计数。
+    /// 记下这一句是因为「上限降了」默认会被读成「有人修了 28 处」——那是假的。
     ///
     /// ⚠ 这个数里**有假阳性**：语料变量的传递闭包只看 `let` 那一行的右侧，
     /// 于是「先从磁盘读了点什么、后面又 `let` 了个提到它的变量」会被一并算进来
@@ -66,7 +71,7 @@ mod tests {
     /// 新增一处仍然会越界。逐条判真伪归下一轮，见 `ROADMAP §5` 诚实边界。
     ///
     /// 只许降。修一处就把这个数调下来，**不许调上去让今天好过**。
-    const BARE_CONTAINS_CEILING: usize = 63;
+    const BARE_CONTAINS_CEILING: usize = 35;
 
     /// 一个 `let` 绑定的名字与右侧表达式（右侧只取本行，多行 `let` 的首行足够判种子）。
     fn let_binding(line: &str) -> Option<(&str, &str)> {
@@ -81,6 +86,19 @@ mod tests {
         {
             return None;
         }
+        // ★ `_` **不是变量**，不许当传递闭包的中转站〔08-06 F05 下半撞出来的〕。
+        //
+        // 实测：`let _ = std::fs::read_to_string(…)` 会把 `_` 写进语料变量集，
+        // 而 `_` 作为**独立词**在闭包参数里遍地都是（`|_| …`、`|_, _|`）⇒
+        // 下一轮闭包把**几乎每一个** `let` 都卷进来（一个文件里从 0 个语料变量涨到 150 个），
+        // 计数从 63 暴涨到 71，判据从「量这一族」退化成「量所有 `contains`」。
+        //
+        // ⚠ 这是**判据自己跑飞**，不是被测代码变坏 —— 而它的表现和真红一模一样。
+        // 修法是「`_` 不是变量」这条**语言事实**，不是「把 `_` 加进黑名单」那种魔法名单
+        // （本模块头注刻意反对名单：名单挡不住第 N+1 个名字）。
+        if name.chars().all(|c| c == '_') {
+            return None;
+        }
         Some((name, &rest[eq + 1..]))
     }
 
@@ -88,16 +106,30 @@ mod tests {
     ///
     /// ⚠ 刻意**不用魔法变量名单**（`body` / `src` / `all` …）：那本身就是一次
     /// 「匹配单位比事实小」—— 名单挡不住第 N+1 个名字，而且它错了看不出来。
+    /// 传递**只走一层**（种子 → 直接派生），不做不动点。
+    ///
+    /// ★ 原来是跑到不动点的，08-06 撞出它会**跑飞**：
+    /// `let n = prod.matches(…).count()` 把一个**数**写进了语料变量集，
+    /// 而 `n` 这种短名在 RHS 里遍地都是 ⇒ 下一轮几乎每个 `let` 都被卷进来
+    /// （一个文件里 0 → 166 个语料变量，全树计数 63 → 71）。
+    /// 根因是传递**不看派生出来的还是不是文本**，而「是不是文本」在这个层面判不了。
+    ///
+    /// ⇒ 只走一层：`let body = &ccm[..]` 这种直接切片仍然认得，更深的链认不到。
+    /// **欠算是已登记的诚实边界**（本模块头注：这个数是下界不是全集）；
+    /// 而跑飞不是欠算 —— 它让判据**从「量这一族」退化成「量所有 `contains`」**，
+    /// 表现却和真红一模一样。宁可欠算。
+    const DERIVE_DEPTH: usize = 2;
+
     fn corpus_vars(test_src: &str) -> BTreeSet<String> {
         let mut vars: BTreeSet<String> = BTreeSet::new();
-        for _ in 0..8 {
+        for _ in 0..DERIVE_DEPTH {
             let before = vars.len();
             for line in test_src.lines() {
                 let Some((name, rhs)) = let_binding(line) else {
                     continue;
                 };
                 let seeded = CORPUS_SEEDS.iter().any(|s| rhs.contains(s));
-                let derived = vars.iter().any(|v| guard_core::contains_word(rhs, v));
+                let derived = vars.iter().any(|v| is_direct_derivation(rhs, v));
                 if seeded || derived {
                     vars.insert(name.to_string());
                 }
@@ -107,6 +139,32 @@ mod tests {
             }
         }
         vars
+    }
+
+    /// RHS 是不是**从 `var` 这份文本直接切/借出来的**。
+    ///
+    /// ★ 原来的规则是「RHS 里**提及**了 `var`」，08-06 撞出它会**跑飞**：
+    /// 一个大文件里总有某个 `let` 提到语料变量，而短名（`n` / `s` / `t` / `q`）一旦进集合，
+    /// 下一轮就把几乎所有 `let` 都卷进来（实测一个文件 0 → 166 个语料变量，
+    /// 全树计数 63 → 71）。**判据从「量这一族」退化成「量所有 `contains`」，
+    /// 而它的表现和真红一模一样。**
+    ///
+    /// ⇒ 收紧成「**直接派生**」：RHS 去掉前导 `&`/`*`/空格后，**以 `var` 开头**，
+    /// 且紧跟的是非标识符字符（`[` / `.` / `,` / `)` / 空白 / 结尾）。
+    /// 覆盖真实形状 `&ccm[a..b]` / `body.trim()` / `src[at..]`；
+    /// 不覆盖 `format!("{a}{corpus}")` 这类拼接（**欠算**，已在头注登记为下界）。
+    ///
+    /// ⚠ 用「以它开头」而不是「包含它」—— 那正是本区 **F24** 那一族：
+    /// 匹配单位（提及）比事实（派生）大，把不相干的也吃了进来。
+    fn is_direct_derivation(rhs: &str, var: &str) -> bool {
+        let body = rhs.trim_start_matches([' ', '&', '*']);
+        let Some(after) = body.strip_prefix(var) else {
+            return false;
+        };
+        !after
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
     }
 
     /// `<接收者>.contains("` 里的接收者标识符（紧挨在点号前的那个词）。
@@ -180,7 +238,7 @@ mod tests {
         assert!(
             hits <= BARE_CONTAINS_CEILING,
             "语料变量上的裸 `contains(\"…\")` 有 {hits} 处 > 棘轮上限 \
-             {BARE_CONTAINS_CEILING}（08-06 全树实测 63）。\n\
+             {BARE_CONTAINS_CEILING}（08-06 全树实测 35）。\n\
              ★ 匹配单位（子串）比事实（整行 / 完整签名 / 一个词）小时，把事实撑大的改动\n\
              会从缝里溜过去而判据照样绿。本区实测四次，前三次都只在造变异时才看得见。\n\
              改用 `guard_core::find_pinned`（恰好一处 + 两侧有边界）/ `pin_line`（整行相等）/\n\
@@ -197,7 +255,7 @@ mod tests {
 
     /// 抽取器的**行为**自检：喂一份人造测试段，它必须只数该数的那一处。
     ///
-    /// 没有这条，上面那个 63 只是「今天碰巧数出来的一个数」——
+    /// 没有这条，上面那个 35 只是「今天碰巧数出来的一个数」——
     /// 数错方向（比如把纯字面量夹具也算进来）时它照样在上限之下。
     #[test]
     fn the_extractor_counts_only_disk_corpora() {
@@ -218,6 +276,17 @@ mod tests {
         assert!(
             !vars.contains("fixture_only"),
             "把纯字面量夹具当成磁盘语料了：{vars:?}"
+        );
+        // ★ 08-06 撞出的跑飞形状：**提及**不算派生。
+        let mention = "\
+            let disk = std::fs::read_to_string(p).unwrap();\n\
+            let msg = format!(\"{disk} 之外的话\");\n\
+            let sliced = &disk[1..];\n";
+        let mv = corpus_vars(mention);
+        assert!(mv.contains("sliced"), "直接切片该算派生：{mv:?}");
+        assert!(
+            !mv.contains("msg"),
+            "**提及**被当成了派生：{mv:?} —— 那正是让闭包跑飞的规则（一个文件 0 → 166 个语料变量）"
         );
         assert_eq!(
             bare_contains_on_corpus(fixture),

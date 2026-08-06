@@ -74,6 +74,84 @@ fn should_reset_backoff(saw_hello: bool, lived: Duration) -> bool {
     saw_hello && lived >= MIN_HEALTHY_UPTIME
 }
 
+/// 冷启动预检的**自证记忆**〔audit-0805 F05 下半，报告「可选 12」〕。
+///
+/// # 冷启动今天付三条 SSH 连接，其中两条常常是白付的
+///
+/// 实测（08-06 读码逐条对上）：
+///
+/// | # | 连接 | 谁发起 |
+/// |---|---|---|
+/// | ① | `uname -m` 一次性 exec（选内嵌二进制的 arch） | `sftp::probe_remote_arch` |
+/// | ② | SFTP 连接（读远端 `.build_id` marker） | `sftp::connect_sftp` |
+/// | ③ | exec daemon 起流 | `connect_and_exec` |
+///
+/// ①② 同属 `ensure_daemon_deployed`。**即使远端已经是当前 build、什么都不用部署，
+/// 每次重连也照付这两条**（各含一次 TCP + 握手 + 指纹校验 + auth）。
+///
+/// # 记什么：hello **自报**的 build_id，不是预检算出来的结论
+///
+/// 报告的原提法是「把 `arch`/`build_id` 记进 memo」。**记预检结论是猜，记 hello 是自证** ——
+/// 只有 daemon 自己说「我是 D」才写进来。于是这份记忆的含义是
+/// 「**这台机器上一次真的跑起来的 daemon 就是当前期望的那个**」，
+/// 而不是「上一次我们检查时它看起来是对的」。
+///
+/// # 为什么这样跳预检是保守的
+///
+/// 跳的条件**只有一个**：记忆里那台机器的 build_id **恰好等于** [`EXPECTED_DAEMON_BUILD_ID`]。
+/// 其余一律照跑（无记忆 / 记的是别的 build）—— 那些情况本来就**可能需要部署**，不能跳。
+///
+/// ⚠ 功能件 §8 把「缓存 miss 时 caps 决策必须保守」写成了这件事的阻塞。
+/// 逐字复核之后：那句话约束的是 **miss 路径**，而 miss 路径的答案**早就在代码里** ——
+/// `caps` 的三级阶梯（`hello_confirmed` → 部署侧确认 → **空集全降级**）本身就是保守的。
+/// ⇒ 它挡住的是一部分（miss 怎么办），**不是整件**（hit 能不能跳）。
+///
+/// # 记忆过期怎么办（**如实写在这里**）
+///
+/// 远端二进制被人删掉/换旧、而记忆还说「是期望 build」时，本轮会跳过预检直接起流 ⇒
+/// **exec 失败**。失败路径清掉记忆 ⇒ **下一轮重新预检并重新部署**。
+/// 代价是**多一次重连**，不是永久坏掉。这是本设计唯一的退化，写下来不藏着。
+static VERIFIED_BUILD: Mutex<Option<std::collections::HashMap<String, String>>> =
+    Mutex::new(None);
+
+/// 纯函数：这一轮**能不能跳过**那两条预检连接。
+///
+/// `verified` = [`VERIFIED_BUILD`] 里这台机器的记录（`None` = 没记过）。
+/// 判据是**逐字相等**，不是包含 —— 前缀相等会让 `abc123` 与 `abc123-dirty` 混为一谈
+/// （本区 F24 那一族）。
+fn preflight_can_be_skipped(verified: Option<&str>, expected: &str) -> bool {
+    matches!(verified, Some(v) if v == expected)
+}
+
+/// 读这台机器的自证记录。
+fn verified_build_of(origin: &str) -> Option<String> {
+    VERIFIED_BUILD
+        .lock()
+        .ok()?
+        .as_ref()?
+        .get(origin)
+        .cloned()
+}
+
+/// 记下「这台机器上一次真的跑起来的 daemon 是 `build_id`」。
+///
+/// ⚠ **只许在收到 hello 的那一处调**（daemon 自报）。别处调就把「自证」变回了「猜」。
+fn record_verified_build(origin: &str, build_id: &str) {
+    if let Ok(mut g) = VERIFIED_BUILD.lock() {
+        g.get_or_insert_with(std::collections::HashMap::new)
+            .insert(origin.to_string(), build_id.to_string());
+    }
+}
+
+/// 抹掉这台机器的自证记录（连接没起来 / daemon 换了身份）。
+fn forget_verified_build(origin: &str) {
+    if let Ok(mut g) = VERIFIED_BUILD.lock() {
+        if let Some(m) = g.as_mut() {
+            m.remove(origin);
+        }
+    }
+}
+
 /// 纯函数：把当前退避翻倍并封顶到 [`RECONNECT_MAX`]。run() 的重连循环在"仍未连上"时调用。
 fn next_backoff(cur: Duration) -> Duration {
     (cur * 2).min(RECONNECT_MAX)
@@ -838,6 +916,128 @@ fn decide_stream_flags(capabilities: &[String], show_bg: bool) -> (bool, bool) {
 fn should_upgrade_reconnect(cur: (bool, bool), next: (bool, bool)) -> bool {
     let ((cur_bg, cur_tail), (next_bg, next_tail)) = (cur, next);
     (next_tail && !cur_tail) || (next_bg && !cur_bg)
+}
+
+#[cfg(test)]
+mod coldstart_preflight_guard {
+    //! ★〔audit-0805 F05 下半，报告「可选 12」〕**冷启动的三条 SSH 连接合并**。
+    //!
+    //! 正题见 [`super::VERIFIED_BUILD`] 的头注。本模块钉三件事：
+    //! 判定本身（纯函数真值表）· 记忆**只在 hello 那一处写**· 失败路径**真的抹掉**。
+    //!
+    //! ⚠ **钉不了「真的少连了两次」** —— 那要真 SSH（红线禁）。
+    //! 本模块钉的是**结构**：那两条连接被一个门控包着、门控的输入只来自 hello 自证。
+    //! **别把它读成性能判据**（同 `coldstart_perf_guard` 的边界）。
+
+    use super::{
+        forget_verified_build, preflight_can_be_skipped, record_verified_build,
+        verified_build_of, EXPECTED_DAEMON_BUILD_ID,
+    };
+
+    fn prod() -> String {
+        let f = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ssh_source.rs");
+        guard_core::production_source(&std::fs::read_to_string(f).expect("读不到本文件"))
+    }
+
+    /// ★ 纯函数真值表：**只有逐字相等才许跳**。
+    #[test]
+    fn only_an_exact_build_match_may_skip_the_preflight() {
+        let e = "abc123";
+        assert!(preflight_can_be_skipped(Some("abc123"), e), "自证过就是期望 build ⇒ 该跳");
+        assert!(!preflight_can_be_skipped(None, e), "没记过 ⇒ 必须跑（可能要部署）");
+        assert!(
+            !preflight_can_be_skipped(Some("def456"), e),
+            "记的是**别的** build ⇒ 必须跑 —— 那台机器上装的不是当前版本，正是要部署的情形"
+        );
+        // ★ F24 那一族：前缀相等不算相等。
+        assert!(
+            !preflight_can_be_skipped(Some("abc123-dirty"), e),
+            "`abc123-dirty` 被当成了 `abc123` —— 判据写成了前缀/包含匹配。\
+             那会让一个**改过的** daemon 冒充期望 build 并跳过部署"
+        );
+        assert!(
+            !preflight_can_be_skipped(Some("abc"), e),
+            "反方向的前缀也不许 —— `abc` 不是 `abc123`"
+        );
+    }
+
+    /// 记忆的存 / 取 / 抹。
+    #[test]
+    fn the_memo_round_trips_and_can_be_forgotten() {
+        let host = "f05-guard-host";
+        forget_verified_build(host);
+        assert_eq!(verified_build_of(host), None, "起点该是空的");
+        record_verified_build(host, "build-X");
+        assert_eq!(verified_build_of(host).as_deref(), Some("build-X"));
+        forget_verified_build(host);
+        assert_eq!(
+            verified_build_of(host),
+            None,
+            "抹不掉的话，一台 daemon 被删的机器会**每一轮都跳预检、每一轮都失败**"
+        );
+    }
+
+    /// ★ **写入点恰好一处**，而且在收到 hello 之后。
+    ///
+    /// 记忆的全部安全性都压在「它只记 daemon **自报**的身份」上。
+    /// 多一处写入 = 把自证换回了猜。
+    #[test]
+    fn the_memo_is_written_in_exactly_one_place() {
+        let prod = prod();
+        guard_core::find_pinned(&prod, "record_verified_build(&host_label, &build_id);")
+            .unwrap_or_else(|e| {
+                panic!(
+                    "自证记忆的写入点不是恰好一处：{e}\n\
+                     ★ 这份记忆的全部安全性压在「只记 daemon **自报**的身份」上 —— \n\
+                     多一处写入就把自证换回了猜（比如拿预检结论去写）。"
+                )
+            });
+        // 反向：它得在 hello 分支里（`build_id` 这个变量只有那里有）。
+        assert!(
+            guard_core::contains_word(&prod, "build_id"),
+            "`build_id` 不在生产段里了 —— 上面那条锚点还在，说明它锚的不是 hello 那一处"
+        );
+    }
+
+    /// ★ 跳过预检时，`confirmed_build` **必须**给期望值。
+    ///
+    /// 给 `None` 的话 caps 阶梯会掉进「③ 空集全降级」—— 省两条连接换来
+    /// **一轮降级 + 一轮升级重连**，比不跳还糟。
+    #[test]
+    fn skipping_the_preflight_still_feeds_the_capability_ladder() {
+        let prod = prod();
+        guard_core::find_pinned(&prod, "Some(EXPECTED_DAEMON_BUILD_ID.to_string())")
+            .unwrap_or_else(|e| {
+                panic!(
+                    "跳过预检那一支没有把 `confirmed_build` 置成期望值：{e}\n\
+                     ★ 置 `None` 会让 caps 掉进「空集全降级」⇒ 省下两条连接、换来一轮降级\n\
+                     加一轮升级重连（`should_upgrade_reconnect`）—— **比不跳还糟**。"
+                )
+            });
+    }
+
+    /// ★ 失败路径必须抹记忆，而且**不止一处**（起流失败 + hello 身份不符）。
+    #[test]
+    fn every_failure_path_forgets_the_memo() {
+        let prod = prod();
+        let n = prod.matches("forget_verified_build(&host_label)").count();
+        assert!(
+            n >= 2,
+            "生产段只有 {n} 处 `forget_verified_build` —— 该有两处：\n\
+             ① 跳过预检后**起流失败**（daemon 被删/被换旧）；\n\
+             ② 收到 hello 但 **build_id 不是期望值**（装的不是当前 build）。\n\
+             少一处，那台机器就会一直跳预检、一直失败，永远等不到重新部署。"
+        );
+    }
+
+    /// 期望 build_id 不是空串（否则真值表全塌）。
+    #[test]
+    fn the_expected_build_id_is_not_empty() {
+        assert!(
+            !EXPECTED_DAEMON_BUILD_ID.is_empty(),
+            "`EXPECTED_DAEMON_BUILD_ID` 是空串 —— 上面那些判据会退化"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -3135,18 +3335,29 @@ async fn stream_loop(
     // issue #29（F08）：连接前确保远端 daemon 已（自动）部署到 cfg.daemon_path。
     // 嵌入二进制就位前（F08b 未做）daemon_binary() 返回 None → ensure_daemon_deployed
     // 优雅 no-op。**best-effort**：部署失败仅 warn，不阻断——手动部署的 daemon 仍可连。
-    let confirmed_build = match crate::sftp::ensure_daemon_deployed(cfg).await {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::warn!(
-                "ssh_source [{host_label}] daemon 自动部署失败（继续尝试连接已有 daemon）: {e}"
-            );
-            None
+    // ★ F05 下半：**上一次这台机器的 daemon 自报过就是期望 build ⇒ 跳过预检那两条连接**。
+    // 判据与记忆的语义见 `VERIFIED_BUILD` 头注（记的是 hello 自证，不是预检结论）。
+    // 跳过时 `confirmed_build` 直接给 `EXPECTED` —— 若给 `None`，下面的 caps 阶梯会掉进
+    // ③ 空集全降级，那就**比不跳还糟**（省两条连接换来一轮降级 + 一轮升级重连）。
+    let verified = verified_build_of(&host_label);
+    let skip_preflight =
+        preflight_can_be_skipped(verified.as_deref(), EXPECTED_DAEMON_BUILD_ID);
+    let confirmed_build = if skip_preflight {
+        Some(EXPECTED_DAEMON_BUILD_ID.to_string())
+    } else {
+        match crate::sftp::ensure_daemon_deployed(cfg).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    "ssh_source [{host_label}] daemon 自动部署失败（继续尝试连接已有 daemon）: {e}"
+                );
+                None
+            }
         }
     };
     tracing::info!(
         "[perf] ssh_source [{host_label}] 部署预检 {}ms（ensure_daemon_deployed；\
-         confirmed_build={:?}）",
+         confirmed_build={:?}；skip={skip_preflight}）",
         t_connect_start.elapsed().as_millis(),
         confirmed_build.as_deref()
     );
@@ -3170,7 +3381,21 @@ async fn stream_loop(
     });
     let (with_bg, tail_only) = decide_stream_flags(&caps, crate::load_show_bg_sessions());
     let t_exec = std::time::Instant::now();
-    let stream = connect_and_exec(cfg, with_bg, tail_only).await?;
+    // ★ F05 下半：起流失败就抹掉自证记忆 —— 否则一台 daemon 被删/被换旧的机器会
+    // **每一轮都跳预检、每一轮都失败**，永远等不到重新部署。代价是多一次重连，
+    // 那正是 `VERIFIED_BUILD` 头注里如实写下的那个退化。
+    let stream = match connect_and_exec(cfg, with_bg, tail_only).await {
+        Ok(s) => s,
+        Err(e) => {
+            if skip_preflight {
+                tracing::warn!(
+                    "ssh_source [{host_label}] 跳过预检后起流失败，抹掉自证记忆，下一轮重新预检: {e}"
+                );
+                forget_verified_build(&host_label);
+            }
+            return Err(e);
+        }
+    };
     tracing::info!(
         "[perf] ssh_source [{host_label}] 起流 {}ms（SSH 登录 + exec daemon；\
          with_bg={with_bg} tail_only={tail_only}）· 自本轮连接开始 T+{}ms",
@@ -3371,6 +3596,14 @@ async fn stream_loop(
                      caps={capabilities:?}",
                     t_connect_start.elapsed().as_millis()
                 );
+                // ★ F05 下半：**自证记忆的唯一写入点**。daemon 自己说它是谁，我们才记。
+                // build_id 不是期望值 ⇒ **抹掉**（这台机器上装的不是当前 build，
+                // 下一轮必须照跑预检去部署），不是「留着上次的」。
+                if build_id == EXPECTED_DAEMON_BUILD_ID {
+                    record_verified_build(&host_label, &build_id);
+                } else {
+                    forget_verified_build(&host_label);
+                }
                 if !tail_only {
                     let show_bg = crate::load_show_bg_sessions();
                     let next = decide_stream_flags(&capabilities, show_bg);
