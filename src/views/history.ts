@@ -248,6 +248,15 @@ export class HistoryView {
 
   close(): void {
     if (!this.isOpen) return;
+    // ★ audit-0805 F14：**关掉视图必须掐断那条 1 秒重试链**。
+    //
+    // 全文搜索在 `status === "indexing"` 时挂一个 `setTimeout(…, 1000)` 重跑
+    // `runFullTextSearch()`，而它内含 `search_remote_all` ⇒ **对每台远端各一条 SSH**。
+    // 那个回调的存活判据是 `seq === this.ftSeq`，而 `close()` 此前**不动 ftSeq**
+    //（复位在 `open()`）⇒ 视图关掉、`root` 已 `remove()` 之后那条链**照跑**，
+    // 每秒继续对所有远端扇出，并把结果写进已 detach 的 DOM。
+    // 递增一次代际号就够了 —— 挂着的回调下一次醒来时 `seq !== this.ftSeq`，自行终止。
+    this.ftSeq++;
     this.closeViewer();
     this.closeEntryMenu(); // F96：菜单挂 document.body（不在 root 内），销毁视图须显式清，防 DOM+监听器泄漏
     this.root.remove();
