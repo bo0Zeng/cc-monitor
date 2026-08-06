@@ -83,10 +83,56 @@ export class BranchFolder {
     this.seenUuids.add(rec.uuid);
     this.records.push(rec);
     if (this.batchMode) return; // batch 模式：延后到 flush
-    const next = this.computeMain();
-    if (setsEqual(next, this.lastMainBranch)) return;
-    this.lastMainBranch = next;
-    this.rebuild();
+    this.scheduleLiveRecompute();
+  }
+
+  /**
+   * live 模式的**帧末合批**〔audit-0805 F15〕。
+   *
+   * 原来这里是逐条同步 `computeMain()` + 可能 `rebuild()`。两者都 **O(N)**
+   * （`computeMainBranch` 是扫全部 records 的 Kahn 拓扑），⇒ N 条记录 **O(N²)**。
+   * 而本类头注写着 live 的契约是「每条 **1 帧内**反映 fold 状态」——
+   * **帧内算一次就满足这个契约**，逐条算是它的一种（最贵的）实现。
+   *
+   * ⚠ 仓里已确诊过同族后果：`events.ts:150-152` 逐字「每条 record 都走 per-record O(N)
+   * `computeMainBranch` ⇒ 启动后明显第二次卡顿（用户报告「先快一会儿然后变慢」）」。
+   *
+   * 排程范式照抄同仓 `tabs.ts` 的 `scheduleIdleMaterialize`：**排一次位**（`liveScheduled`）
+   * + 无 rAF 时 `setTimeout` 兜底。`pendingLive` 与它分开是因为调用方可能中途自己
+   * 同步刷了（`flushPending` / `rebuildNow` / `setRecordsAndRebuild`）——
+   * 那时待办要清掉，否则帧末还会**再白算一遍 O(N)**，合批只省一半。
+   */
+  private liveScheduled = false;
+  private pendingLive = false;
+  private disposed = false;
+
+  private scheduleLiveRecompute(): void {
+    this.pendingLive = true;
+    if (this.liveScheduled) return;
+    this.liveScheduled = true;
+    const run = (): void => {
+      this.liveScheduled = false;
+      if (this.disposed || this.batchMode || !this.pendingLive) return;
+      this.pendingLive = false;
+      const next = this.computeMain();
+      if (setsEqual(next, this.lastMainBranch)) return;
+      this.lastMainBranch = next;
+      this.rebuild();
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(run);
+    } else {
+      setTimeout(run, 0);
+    }
+  }
+
+  /**
+   * 帧末那次合批**还欠着吗**。供调用方在需要立刻看到最终态时先同步刷一把。
+   *
+   * ⚠ 不导出「取消」——取消等于把这一批记录的折叠结果丢掉。
+   */
+  hasPendingLiveRecompute(): boolean {
+    return this.pendingLive;
   }
 
   /**
@@ -94,6 +140,7 @@ export class BranchFolder {
    * 然后调一次 rebuildAll。比逐条 recordAdded 省一堆中间 rebuild。
    */
   setRecordsAndRebuild(records: ReadonlyArray<BranchRecord>): void {
+    this.pendingLive = false; // 同上（F15）
     // issue #25：与 recordAdded 同等拒重（去重后存，保首见）
     this.seenUuids = new Set();
     this.records = [];
@@ -140,6 +187,7 @@ export class BranchFolder {
    * 也可在 live 模式手动调（等价于 setRecordsAndRebuild 但保持现有 records）。
    */
   flushPending(): void {
+    this.pendingLive = false; // 已同步刷过 ⇒ 帧末那次别再白算一遍 O(N)（F15）
     const next = this.computeMain();
     if (setsEqual(next, this.lastMainBranch)) return;
     this.lastMainBranch = next;
@@ -152,12 +200,18 @@ export class BranchFolder {
    * 增量渲染路径(插卡前必须 unwrapAll)插完一律走这里。
    */
   rebuildNow(): void {
+    this.pendingLive = false; // 已同步刷过 ⇒ 帧末那次别再白算一遍 O(N)（F15）
     this.lastMainBranch = this.computeMain();
     this.rebuild();
   }
 
   /** Tab 销毁时调，断 GC 引用 */
   dispose(): void {
+    // F15：已排程的帧末重算不能在 dispose 之后还去动 DOM（容器可能已被摘掉）。
+    // 只置标志、不取消回调 —— rAF 的 handle 类型在两种环境下不一致，
+    // 而一个「醒来发现自己该闭嘴」的回调比一个可能取消错对象的 handle 安全。
+    this.disposed = true;
+    this.pendingLive = false;
     this.records = [];
     this.seenUuids.clear();
     this.lastMainBranch = new Set();

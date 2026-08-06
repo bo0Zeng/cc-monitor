@@ -7,7 +7,7 @@
 // 渲染 / Tauri IPC），无法像现有 *.test.ts 那样在裸 node 里测。这里用 jsdom 提供真 DOM、
 // 把重协作者 mock 成空壳，于是能在真 TabManager 实例上断言状态翻转。
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ★ audit-0805 F15 第 1 步：**先让「每行调了几次」变得可测**。
 //
@@ -2727,9 +2727,13 @@ describe("tmux 取数点的三态契约（audit-0805 F14 第五刀）", () => {
 describe("F15 每行代价的现状基线", () => {
   let tm: TabManager;
   beforeEach(() => {
+    vi.useFakeTimers();
     tm = makeTM();
     f15.recordAdded = 0;
     f15.rebuildNow = 0;
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   const line = (sid: string, seq: number) => ({
@@ -2751,8 +2755,10 @@ describe("F15 每行代价的现状基线", () => {
     ).toBeGreaterThan(0);
     expect(
       f15.recordAdded,
-      "喂 5 行、BranchFolder 被调的次数变了。今天是**逐行**：5 行 = 5 次。" +
-        "合批做完之后这个数应当下降 —— 那时把这条一起改，并在功能件里写清新数的来历。",
+      "喂 5 行、BranchFolder 被调的次数变了（该是 5）。⚠ 这个数**不因合批而降**：" +
+        "F15 的合批做在 `BranchFolder` **内部**（帧末只算一次主线），而本文件把 " +
+        "`BranchFolder` 整个 stub 掉了，量到的是「被喂了几次」。" +
+        "真正省下的那次 O(N) 由 `branch-fold-batching.vitest.ts` 钉。",
     ).toBe(5);
   });
 
@@ -2768,15 +2774,23 @@ describe("F15 每行代价的现状基线", () => {
       real();
     };
     for (let i = 1; i <= 4; i++) tm.onLine(line("bg", i) as never);
+    // ★ 合批之后：**帧内一次都不刷**。
     expect(
       refreshes,
-      "后台 tab 收到 4 行，tab bar 一次都没刷 —— 多半是 `tabs.ts:891` 的 `inserted` 又恒假了" +
-        "（`renderContentRecord` 不塞 timeline / `size` 恒 0）。那时这条是零命中地绿。",
-    ).toBeGreaterThan(0);
+      `后台 tab 连来 4 行，帧内就刷了 ${refreshes} 次 tab bar —— ` +
+        "unread 那条路（`tabs.ts:893-897`）又变回逐行整刷了。",
+    ).toBe(0);
+    // 抽取器自检：unread 真的涨了，才说明这条链走到了（否则下面是零命中地绿）。
     expect(
-      refreshes,
-      "后台 tab 每来一行整刷一次 tab bar（今天 4 行 = 4 次）。这是 unread 计数那条路" +
-        "（`tabs.ts:893-897`），合批之后应当降下来。",
+      peek(tm).tabs.get("bg")!.unread,
+      "后台 tab 的 unread 一条都没涨 —— 多半是 `tabs.ts:891` 的 `inserted` 又恒假了" +
+        "（`renderContentRecord` 不塞 timeline / `size` 恒 0）。那时这条判据什么也没量。",
     ).toBe(4);
+    vi.advanceTimersByTime(50);
+    expect(
+      refreshes,
+      `帧末刷了 ${refreshes} 次（该是 1）。0 = 合批变成了「永远不刷」，徽标永远不更新；` +
+        ">1 = 排一次位没生效。",
+    ).toBe(1);
   });
 });

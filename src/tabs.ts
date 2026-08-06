@@ -893,7 +893,13 @@ export class TabManager {
     // unread 计数：只有真新 entry 入 timeline 才算（tool-group 合并到旧 group 不算）
     if (inserted && this.activeId !== tab.sessionId) {
       tab.unread += 1;
-      this.refreshTabBar();
+      // ★ F15：**帧末合批**，不是逐行整刷。
+      // 这里是 live 路上每来一行都会走到的地方，而 `refreshTabBar` 是整条 bar 的重刷；
+      // 徽标上的数字攒到帧末一次性更新，用户看到的结果一模一样。
+      // ⚠ 只合批**这一处** —— 其余十几个 `refreshTabBar()` 调用点是用户动作触发的
+      // （切 tab / 关 tab / 改名…），一帧最多一次，合批对它们没有收益，
+      // 反而会把「点完立刻看到」变成「下一帧才看到」。
+      this.scheduleTabBarRefresh();
     }
   }
 
@@ -2761,6 +2767,29 @@ export class TabManager {
    *   .tab .tab-badge { display: none }
    *   .tab.has-unread:not(.active) .tab-badge { display: inline-block }
    */
+  /**
+   * `refreshTabBar` 的**帧末合批**入口〔audit-0805 F15〕。
+   *
+   * 排一次位（`tabBarRefreshScheduled`）+ 无 rAF 时 `setTimeout` 兜底，
+   * 范式与同文件的 `scheduleIdleMaterialize` 一致。
+   * ⚠ 只给 live 路那一处用，别把用户动作触发的调用点也改过来（理由写在调用处）。
+   */
+  private tabBarRefreshScheduled = false;
+
+  private scheduleTabBarRefresh(): void {
+    if (this.tabBarRefreshScheduled) return;
+    this.tabBarRefreshScheduled = true;
+    const run = (): void => {
+      this.tabBarRefreshScheduled = false;
+      this.refreshTabBar();
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(run);
+    } else {
+      window.setTimeout(run, 0);
+    }
+  }
+
   private refreshTabBar(): void {
     // 1. 删
     const wanted = new Set(this.orderedIds);
