@@ -181,4 +181,85 @@ mod tests {
              说明 `Tracking` 的某个方法漏了记账（realloc 最容易漏）"
         );
     }
+
+    /// ★ **用这个量具的测试，一律不许是 multi_thread**〔audit-0805 §5 1k，08-06 结案〕。
+    ///
+    /// # 它治的是一次「静默变哑」
+    ///
+    /// 本量具是 **thread-local** 的（`LIVE`/`PEAK` 都在 `thread_local!` 里）。
+    /// 被测代码若跑在别的线程上，`peak_since` 量到的是**测试线程自己**的峰值 ——
+    /// 也就是**几乎为零**，于是「内存没涨」这个断言**恒真**。
+    /// ⚠ 它不会报错、不会 panic，只会**永远绿**。
+    ///
+    /// 风险不是假设的：`inbound.rs` 那条内存判据是 `#[tokio::test]`（current-thread），
+    /// 而**同一个文件里**就有 `#[tokio::test(flavor = "multi_thread", worker_threads = 4)]`。
+    /// 照抄邻居的属性 = 把量具关掉，而**没有任何东西会红**。
+    ///
+    /// `ROADMAP §5` 的 1k 逐字写着「**这是本件已知没堵上的洞**，不是『测不了』而是『还没钉』」。
+    /// 本条把它钉上。
+    ///
+    /// ⚠ needle 用 `reset_peak(` 而不是模块名：模块名在**本文件到处都是**（头注、函数名），
+    /// 而调用点必然带括号。这是 F23/F24 两族的教训 —— 匹配单位要对得上事实。
+    #[test]
+    fn every_test_that_uses_this_probe_stays_single_threaded() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let files = guard_core::scan_tree!(&root, &["rs"]);
+        assert!(
+            files.len() >= 10,
+            "只扫到 {} 个 .rs —— 遍历坏了，本条此刻是空转的",
+            files.len()
+        );
+        let mut users = 0usize;
+        let mut bad = Vec::new();
+        for (path, raw) in &files {
+            // ★ **先剥注释再扫**〔本条第一次跑就栽在这里〕。
+            //
+            // `common/fs.rs` 的头注里逐字写着「改成 `#[tokio::test(flavor = "multi_thread")]`
+            // 会让它静默变哑」—— 那是一句**警告**，而本条把它当成了真属性、当场误报。
+            // ⚠ 「判据数到注释」在本区已是第三次（F12 跨语言对拍 · F24 的裸 contains 计数 ·
+            // 本条）。**写下来提醒自己无效**：剥注释要写进代码，不是写进注释。
+            let src: String = raw
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let src = &src;
+            let mut from = 0usize;
+            while let Some(rel) = src[from..].find("reset_peak(") {
+                let at = from + rel;
+                from = at + 1;
+                // 定义处不算（`pub fn reset_peak(`）。
+                if src[..at].ends_with("pub fn ") {
+                    continue;
+                }
+                users += 1;
+                // 往前找最近的测试属性行。
+                let head = &src[..at];
+                let Some(a) = head.rfind("#[tokio::test").or_else(|| head.rfind("#[test]")) else {
+                    bad.push(format!("  {}：找不到它所在测试的属性行", path.display()));
+                    continue;
+                };
+                let line_end = src[a..].find('\n').map_or(src.len(), |k| a + k);
+                let attr = &src[a..line_end];
+                if attr.contains("multi_thread") {
+                    bad.push(format!("  {}：{attr}", path.display()));
+                }
+            }
+        }
+        // 抽取器自检：一个用户都没扫到时，下面那条会零命中地绿。
+        assert!(
+            users >= 2,
+            "只扫到 {users} 处 `reset_peak(` 调用（08-06 实测：`inbound.rs` 与 `common/fs.rs` 各一处）\
+             —— 抽取器坏了或量具没人用了，两种都要人来看"
+        );
+        assert!(
+            bad.is_empty(),
+            "这些用本量具的测试跑在 **multi_thread** 运行时上：\n{}\n\n\
+             ★ 量具是 **thread-local** 的 —— 被测代码跑在别的线程时，`peak_since` 量到的是\n\
+             测试线程自己的峰值（≈0），于是「内存没涨」**恒真**。\n\
+             它不会报错、不会 panic，**只会永远绿**。\n\
+             ⚠ 真要在多线程下量，得先给量具加跨线程聚合 —— 那是另一件事，别先改属性。",
+            bad.join("\n")
+        );
+    }
 }
