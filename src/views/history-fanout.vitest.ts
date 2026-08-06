@@ -19,6 +19,7 @@
  * 但那是**另一条**链（渲染），本件只管历史视图这条。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockResolvedValue([]),
@@ -235,5 +236,32 @@ describe("历史视图的三个放大器（audit-0805 F07 下半，报告 B-6）
     await vi.advanceTimersByTimeAsync(50);
     void inner;
     view.close();
+  });
+});
+
+// ═══ audit-0805 §5 1u 结案（08-06）：单次重算的代价**量过了，不该 memo** ═══
+//
+// 1u 挂了一条待办「`buildSessionTree`/`sortTree` 单次重算仍是全量」。按第四问去量：
+// 单个项目 200 / 1000 / 5000 / 20000 个会话 ⇒ 0.18 / 0.35 / 1.39 / 5.85 ms。
+// 现实量级（几十到几百）是**亚毫秒**，而 F15 之后每帧只重画一次 ⇒ 加 memo 换来亚毫秒、
+// 代价是一块新状态和它的失效 bug。**出口③：本来就不该做。**
+//
+// ★ 但那个结论**有前提**：`buildSessionTree` 是**按项目**调的，所以 N 是单项目会话数。
+// 改成对全部项目建一棵大树，N 就变成总会话数，上面那张表要重量。
+// 本条钉住调用点**恰好一处** —— 挪动它的人会被迫回到 `history.ts` 那段头注。
+describe("§5 1u 结案的前提：树是按项目建的", () => {
+  it("★ `buildSessionTree` 的调用点恰好一处", () => {
+    const src = readFileSync("src/views/history.ts", "utf8");
+    // 抽取器自检：读到的得是那个文件（它是几千行的大文件，不是空串）。
+    expect(src.length, "history.ts 只读到几个字节 —— 路径变了，本条会零命中地绿").toBeGreaterThan(50_000);
+    const calls = src.match(/buildSessionTree\(/g)?.length ?? 0;
+    const defs = src.match(/function buildSessionTree\(/g)?.length ?? 0;
+    expect(
+      calls - defs,
+      `\`buildSessionTree\` 有 ${calls - defs} 个调用点（该是 1）。\n` +
+        "★ §5 1u 的结案结论（单次代价亚毫秒、不值得 memo）**建立在「按项目调」之上** ——\n" +
+        "N 是单个项目的会话数。多一个调用点、或改成对全部项目建一棵树，那个结论就要重量。\n" +
+        "请回 `history.ts::buildSessionTree` 头注看那张实测表，量完再改。",
+    ).toBe(1);
   });
 });
