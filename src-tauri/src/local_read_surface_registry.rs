@@ -289,7 +289,8 @@ mod tests {
     fn the_scan_actually_reads_the_monitor_tree() {
         let files = rust_files();
         assert!(
-            files.len() >= 60,
+            // ★ audit-0805 F16：60 → **80**（今日实测，与 `structural_scan` 同一棵树）。
+            files.len() >= 80,
             "只扫到 {} 个 .rs —— 遍历器坏了",
             files.len()
         );
