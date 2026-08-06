@@ -2805,6 +2805,15 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   font-size: 12px;
 }
 
+/* audit-0805 F07：同标题合流时的计数徽章（`×N`）。默认 `hidden`，只有真合流过才显示 ——
+   没合流时不该出现一个孤零零的 `×1`。 */
+.ccm-toast-count {
+  margin-left: 6px;
+  opacity: 0.7;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
 .ccm-toast-body {
   color: var(--text, #d6cfc6);
 }
