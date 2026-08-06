@@ -39,8 +39,18 @@
 //!
 //! Known non-parity (accepted): on a mid-read I/O error the monitor keeps the
 //! complete lines it already consumed and advances the cursor past them, while
-//! this daemon reads via one `fs::read` snapshot and gives up the whole pass
-//! (cursor untouched). Both are at-least-once-safe.
+//! this daemon gives up the whole pass (cursor untouched). Both are
+//! at-least-once-safe.
+//!
+//! ⚠ 这段话此前写的是 "reads via one `fs::read` snapshot" —— 那**曾经是真的**，
+//! 而它只评了**错误语义**那一面，对**内存与 IO 后果一个字没记**（audit-0805 B-4）：
+//! 每个 debounce 事件把整份 jsonl 读进内存，257 MB 的活跃会话 ⇒ 每次读 257 MB，
+//! 只为提取约 500 字节的新行；而本地 monitor 同一件事一直是 `seek` + `read_until`
+//! ⇒ **强机器流式、弱机器整读，正好反了**（daemon 住树莓派那类小机器）。
+//! F04 已改成只读新字节（`read_tail_from` + `read_new_lines_at`），
+//! 由 `the_two_tail_readers_do_not_slurp_the_whole_session_file` 钉住不许改回去。
+//! ★ 留这段话是因为**「未登记的缺陷」比「登记过的取舍」更难发现** ——
+//! 当时那条头注读起来完全像一条深思熟虑的取舍。
 
 use crate::wire::{Frame, LostFrame, RemovalCause, SeqCounter};
 use notify::RecursiveMode;
@@ -970,6 +980,14 @@ pub struct ReadCursor {
 /// - strip a leading UTF-8 BOM (`\u{feff}`) and skip blank lines;
 /// - the returned `raw` is the original (untrimmed) line, exactly as
 ///   `watcher.rs` pushes `line` (not `trimmed`) into the batch.
+///
+/// F04 之后这是 **test-only** 的：两个生产调用点都改走 [`read_new_lines_at`] 了。
+///
+/// 留着它不是为了兼容，而是因为它是那条等价性判据
+/// (`the_chunked_entry_agrees_with_the_whole_file_entry_byte_for_byte`) 的一半：
+/// 「分块读」与「整读」得出同样结果，这件事只有两条路都在才证得了。
+/// 它今天的身份是参照实现；删了它，那条判据就只剩一条路、无从对拍。
+#[cfg(test)]
 pub fn read_new_lines(
     bytes: &[u8],
     cursor: ReadCursor,
@@ -1084,6 +1102,39 @@ pub fn read_new_lines_at(
     )
 }
 
+/// 只读新字节：从游标处 `seek` 到 EOF〔audit-0805 F04 第 2 步〕。
+///
+/// 返回 `(chunk, chunk_start, file_len)`，直接喂 [`read_new_lines_at`]。
+///
+/// # 两件必须想清楚的事
+///
+/// 1. **截断时退回整读。** `read_new_lines_at` 的断言②要求判定为截断时 `chunk_start == 0`，
+///    因为截断的语义就是「从头重来、重发 seq」。这里先用 `metadata` 的长度判一次。
+/// 2. ★ **`file_len` 用「真读到多少」算，不用 `metadata` 那个数。**
+///    `metadata()` 与 `read_to_end()` 之间文件还在被 CC 追加 —— 拿元数据那个长度当 `file_len`
+///    会让断言①（chunk 必须覆盖到 EOF）在**完全正常的并发追加**下炸。
+///    改用 `start + chunk.len()`：多读到的字节这一轮就一起处理掉，天然自洽。
+///    ⚠ 反过来（读的时候文件缩了）也自洽：`file_len` 变小 ⇒ 下一次事件 `file_len < seen_len`
+///    ⇒ 判截断 ⇒ 整读重来。**两个方向都不需要额外分支。**
+fn read_tail_from(path: &Path, cursor: ReadCursor) -> Option<(Vec<u8>, u64, u64)> {
+    use std::io::{Read, Seek, SeekFrom};
+    let meta_len = std::fs::metadata(path).ok()?.len();
+    let truncated = meta_len < cursor.seen_len;
+    let start = if truncated {
+        0
+    } else {
+        cursor.consumed.min(meta_len)
+    };
+    let mut f = std::fs::File::open(path).ok()?;
+    if start > 0 {
+        f.seek(SeekFrom::Start(start)).ok()?;
+    }
+    let mut chunk = Vec::new();
+    f.read_to_end(&mut chunk).ok()?;
+    let file_len = start + chunk.len() as u64;
+    Some((chunk, start, file_len))
+}
+
 /// Read a JSONL file incrementally and send a [`Frame::Line`] per new line.
 fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
     let Some(session_id) = file_stem_str(path) else {
@@ -1094,14 +1145,22 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
     if !state.active_sids.contains(&session_id) {
         return;
     }
-    let bytes = match std::fs::read(path) {
-        Ok(b) => b,
-        Err(_) => return,
-    };
     let key = path_key(path);
     let key_str = key.to_string_lossy().into_owned();
     let prev_cursor = state.offsets.get(&key).copied().unwrap_or_default();
-    let (lines, new_cursor) = read_new_lines(&bytes, prev_cursor, &key_str, &mut state.seqs);
+    // F04：只读新字节（截断时 `read_tail_from` 自己退回整读）。此前是 `fs::read` 整读 ——
+    // 257 MB 会话的每一次文件事件都要把整份读进内存，只为提取约 500 字节的新行。
+    let Some((chunk, chunk_start, file_len)) = read_tail_from(path, prev_cursor) else {
+        return;
+    };
+    let (lines, new_cursor) = read_new_lines_at(
+        &chunk,
+        chunk_start,
+        file_len,
+        prev_cursor,
+        &key_str,
+        &mut state.seqs,
+    );
     state.offsets.insert(key, new_cursor);
     let path_str = path.to_string_lossy().into_owned();
     for line in lines {
@@ -1378,13 +1437,21 @@ fn prime_file_cursor(path: &Path, state: &mut ReaderState) -> u64 {
     if !state.active_sids.contains(&session_id) {
         return 0;
     }
-    let Ok(bytes) = std::fs::read(path) else {
-        return 0;
-    };
     let key = path_key(path);
     let key_str = key.to_string_lossy().into_owned();
     let prev = state.offsets.get(&key).copied().unwrap_or_default();
-    let (lines, cursor) = read_new_lines(&bytes, prev, &key_str, &mut state.seqs);
+    // F04：同 `process_jsonl`，只读新字节。
+    let Some((chunk, chunk_start, file_len)) = read_tail_from(path, prev) else {
+        return 0;
+    };
+    let (lines, cursor) = read_new_lines_at(
+        &chunk,
+        chunk_start,
+        file_len,
+        prev,
+        &key_str,
+        &mut state.seqs,
+    );
     state.offsets.insert(key, cursor);
     tracing::debug!(
         "primed {key_str}: cursor→{} (+{} lines suppressed, tail seq starts here)",
@@ -3679,6 +3746,50 @@ mod tests {
             waiting_for: None,
         });
         assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
+    }
+
+    /// ★★ **两条 tail 读路不许再整读会话 jsonl**〔audit-0805 F04 第 2 步〕。
+    ///
+    /// # 为什么不能笼统禁 `fs::read`
+    ///
+    /// 同一个文件里 `process_session_added` **正当地**整读 pidfile
+    /// （`sessions/<PID>.json`，几百字节）。一条「本文件不许出现 `fs::read`」的守卫
+    /// 会把它一起禁掉，于是下一个人要么绕过守卫、要么把它加进豁免名单 ——
+    /// **两条路都会让这条判据失去意义**。⇒ 精确钉**那两个函数的函数体**。
+    ///
+    /// # 它防的是什么
+    ///
+    /// 「改回整读」是最容易发生的回退：整读的代码更短、也照样能跑（只是 257 MB 会话的
+    /// 每一次文件事件都要把整份读进内存）。**慢不会让任何测试变红** —— 所以只能靠源码形态钉。
+    #[test]
+    fn the_two_tail_readers_do_not_slurp_the_whole_session_file() {
+        let src = guard_core::production_code(include_str!("watcher.rs"));
+        for (name, sig) in [
+            ("process_jsonl", "fn process_jsonl("),
+            ("prime_file_cursor", "fn prime_file_cursor("),
+        ] {
+            let begin = src
+                .find(sig)
+                .unwrap_or_else(|| panic!("找不到 {name} —— 抽取器坏了，本条会零命中地绿"));
+            let end = src[begin..]
+                .find("\n}\n")
+                .unwrap_or_else(|| panic!("找不到 {name} 的结尾 —— 抽取器坏了"));
+            let body = &src[begin..begin + end];
+            assert!(
+                body.contains("read_tail_from"),
+                "{name} 里没有调 `read_tail_from` —— 要么切错范围（本条会零命中地绿），\n\
+                 要么它被改回整读了。"
+            );
+            for slurp in ["fs::read(", "read_to_string("] {
+                assert!(
+                    !body.contains(slurp),
+                    "{name} 里出现了 `{slurp}` —— 会话 jsonl 又被整读了。\n\
+                     257 MB 的活跃会话每来一行就要整份读进内存，而**慢不会让任何测试变红**，\n\
+                     所以这条只能靠源码形态钉。要读整份得说明白为什么（pidfile 那种小文件除外，\n\
+                     它在 `process_session_added` 里、不在本条管辖内）。"
+                );
+            }
+        }
     }
 
     /// ★★ **分块入口与整读入口必须逐字节同解**〔audit-0805 F04 第 1 步〕。
