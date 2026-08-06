@@ -50,6 +50,8 @@ const PER_FILE_FLOORS = [
   ["src/views/grid-monitor.ts", 89, 94.7],
   ["src/views/usage-view.ts", 81, 86.2],
   ["src/accounts.ts", 83, 88.9],
+  // F17 下半：批量调度状态机三条分支落地（53.33 → 84.44）。它决定整个重放期是 batch 还是 live。
+  ["src/events.ts", 79, 84.4],
 ];
 
 /**
