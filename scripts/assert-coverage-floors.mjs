@@ -15,7 +15,7 @@
  *
  * 1. **核心模块的逐文件地板**：语句数大、且今天已有可观覆盖的那批，各自不许掉下去。
  *    地板设在**当前值下方 ~5 点**（吸收 v8 版本差与用例增删的抖动），只挡明显回归。
- * 2. **0% 文件递减棘轮**：今天有 17 个文件 0%，逐个登记。
+ * 2. **0% 文件递减棘轮**：逐个登记（08-06 实测 16 个；数字以 `ZERO_COUNT_CEILING` 为准）。
  *    - **新文件掉进 0% ⇒ 红**（那正是聚合阈值看不见的那格）；
  *    - **0% 文件数只许降**。
  *
@@ -53,7 +53,9 @@ const PER_FILE_FLOORS = [
 ];
 
 /**
- * 今天仍是 0% 的文件（08-06 实测 17 个）。**这是欠账清单，不是豁免清单。**
+ * 今天仍是 0% 的文件。**这是欠账清单，不是豁免清单。**
+ * ⚠ 条数**刻意不抄在这里** —— 它的家是 `ZERO_COUNT_CEILING`；
+ *   同一个数在两处各存一份，改一处就是下一个假陈述（定框 E12，本仓已实测多次）。
  *
  * ⚠ 台账 §5.4 那张表已被 V4 订正过一次（`cards/index.ts` 今天是 5.8% 不是 0%），
  * 本轮重测又对上两处：`main.ts` 是 **594** 语句不是 611（F14 第三刀搬走了一圈轮询）。
@@ -65,12 +67,13 @@ const ZERO_TODAY = [
   "src/views/session-viewer.ts",
   "src/keybindings/editor.ts",
   "src/settings/data-section.ts",
-  "src/branch-fold.ts",
   "src/tasks-panel.ts",
 ];
 
 /** 0% 文件总数的棘轮地板（含上面没逐个列出的小文件）。**只许降。** */
-const ZERO_COUNT_CEILING = 17;
+// ⚠ 08-06 F15 把 `src/branch-fold.ts` 从 0% 里领走了（它此前**一条专属单测都没有**，
+// 而那条 O(N²) 主线重算就住在里面）⇒ 上限 17→16。**只许降**。
+const ZERO_COUNT_CEILING = 16;
 
 let summary;
 try {
@@ -136,7 +139,7 @@ if (newZeroBig.length > 0) {
 
 if (zeroNow.length > ZERO_COUNT_CEILING) {
   problems.push(
-    `  0% 文件数 ${zeroNow.length} > 棘轮上限 ${ZERO_COUNT_CEILING}（08-06 实测 17）\n` +
+    `  0% 文件数 ${zeroNow.length} > 棘轮上限 ${ZERO_COUNT_CEILING}\n` +
       "    ★ 这是**递减棘轮**：只许降。补了测试就把上限一起调下来，\n" +
       "      **不许把上限调上去让今天好过**。",
   );
