@@ -23,9 +23,32 @@ const LIST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// 读单会话：不设整体超时（会话可能大、流式合法耗时），但 (a) 每次 read_line 加
 /// 单次超时，防"连接活着却永不来数据"卡死；(b) 总字节上限兜底，防无 EOF / 无换行
-/// 的巨型损坏文件吃爆内存。正常会话毫秒级、远小于上限。
+/// 的巨型损坏文件吃爆内存。
+///
+/// ⚠〔audit-0805 F06〕**这里原本还有一句「正常会话毫秒级、远小于上限」——那句今天是假的。**
+/// 实测本机最大会话 **270,103,105 字节 / 92,967 行**（就是那次审计对话本身），
+/// 已经**越过** 256 MiB 这条线 1,667,649 字节；57 MB 以上的会话有 5 个，不是孤例。
+/// ⇒ 上限**会被真实数据打到**，所以「打到之后怎么办」不能是静默。
 const READ_LINE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 const MAX_SESSION_BYTES: u64 = 256 * 1024 * 1024;
+
+/// 超限时给用户的话〔audit-0805 F06，定框 **E4/E5**〕。
+///
+/// # 它此前是**静默**的
+///
+/// 读法是 `stream.take(MAX_SESSION_BYTES)` + `if n == 0 { break; }` ——
+/// 到限之后 `read_line` 返回 0，与**正常 EOF 完全同形** ⇒ 前端拿到一份「看起来完整」的历史，
+/// 而后面的内容**无声消失**。同一份数据走 daemon 的 `--fork-session` 那条路会**硬报错**
+/// （`common/fs.rs`），走这条路却什么都不说 —— 这正是定框 **E5** 要消灭的
+/// 「同一份数据走不同路得到不同答案」。
+///
+/// 抽成纯函数是为了让它可判据：外面那圈是真 SSH 流，测不了。
+fn session_truncated_message(read_bytes: u64, lines_shown: u32) -> String {
+    format!(
+        "这个会话超过 {MAX_SESSION_BYTES} 字节上限，只读到前 {read_bytes} 字节（{lines_shown} 行）；\
+         后面的内容**没有显示**。完整历史仍在远端那个 jsonl 文件里。"
+    )
+}
 
 fn require_cfg_by_label(label: &str) -> Result<RemoteConfig, String> {
     crate::load_remote_config_by_label(label)
@@ -394,7 +417,10 @@ pub async fn stream_read_remote_session(
     let args = format!("--read-session {}", ssh_source::shell_quote(&jsonl_path));
     let cmd = format!("{} {}", ssh_source::shell_quote(&cfg.daemon_path), args);
     let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
-    let mut reader = BufReader::new(stream.take(MAX_SESSION_BYTES));
+    // F06：`+ 1` 是为了**能分辨「到限」与「正好读完」** —— 只 take(MAX) 的话，
+    // 到限时 read_line 返回 0，与正常 EOF 完全同形，于是静默截断。
+    let mut reader = BufReader::new(stream.take(MAX_SESSION_BYTES + 1));
+    let mut read_bytes: u64 = 0;
     let mut buf = String::new();
     let mut cwd_seen: Option<String> = None;
     let mut chunk: Vec<crate::bridge::JsonlLinePayload> = Vec::with_capacity(CHUNK_SIZE);
@@ -409,6 +435,12 @@ pub async fn stream_read_remote_session(
             .map_err(|e| format!("读取远端会话失败: {e}"))?;
         if n == 0 {
             break;
+        }
+        read_bytes += n as u64;
+        if read_bytes > MAX_SESSION_BYTES {
+            // F06：**不许静默截断**。同一份数据走 daemon 的 `--fork-session` 会硬报错，
+            // 走这条路却假装读完了 —— 定框 E5 要的是「同一份数据走不同路得到同一个答案」。
+            return Err(session_truncated_message(read_bytes, total));
         }
         let trimmed = buf.trim();
         if trimmed.is_empty() {
@@ -518,5 +550,34 @@ mod tests {
             "'/a/b c.jsonl'"
         );
         assert_eq!(crate::ssh_source::shell_quote("a'b"), r"'a'\''b'");
+    }
+}
+
+#[cfg(test)]
+mod f06_tests {
+    use super::*;
+
+    /// ★ **超限必须说话，而且要说清「少了什么」**〔audit-0805 F06，定框 E4/E5〕。
+    ///
+    /// 此前是 `take(MAX)` + `if n == 0 { break; }` —— 到限与正常 EOF **完全同形**，
+    /// 前端拿到一份「看起来完整」的历史而后面的内容无声消失。
+    /// 而同一份数据走 daemon 的 `--fork-session` 会**硬报错**（`common/fs.rs`）：
+    /// **同一份数据走两条路得到两个答案**，正是 E5 要消灭的。
+    #[test]
+    fn the_truncation_message_says_what_is_missing_and_where_it_still_is() {
+        let m = session_truncated_message(MAX_SESSION_BYTES + 1, 92_967);
+        assert!(m.contains("上限"), "要说清是撞了上限：{m}");
+        assert!(
+            m.contains("92967") || m.contains("92_967"),
+            "★ 要报出**已显示多少行** —— 用户得知道自己看到的是哪一截：{m}"
+        );
+        assert!(
+            m.contains("没有显示"),
+            "★ 要明说后面的内容没显示 —— 不说这句就等于还是在静默：{m}"
+        );
+        assert!(
+            m.contains("仍在远端"),
+            "★ 要告诉用户完整历史还在（这条与丢帧不同：数据没丢，是没读完）：{m}"
+        );
     }
 }
