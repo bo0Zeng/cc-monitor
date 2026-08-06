@@ -23,8 +23,23 @@
 //! 本模块要求：**测试段里，凡是拿「从磁盘读来的语料」去做的裸 `contains("…")`，
 //! 只许比今天少。** 新写的判据请走上面三个。
 //!
-//! ⚠ 清单是**存量盘点，不是逐条论证** —— 35 处里哪些真的危险、哪些碰巧安全，
-//! 逐条判要单独一轮。本条的契约只有一句：**只许降**。
+//! # ★ 存量已**逐条判过真伪**（08-06，Phase G 之后那一轮）
+//!
+//! 判准是一条**可复用的规则**，不是逐条品味：
+//!
+//! | 形态 | 危不危险 | 为什么 |
+//! |---|---|---|
+//! | **存在性断言 / 抽取器自检** | **不危险** | 它只需要「有」。needle 小一点仍然为真 —— 结论不依赖唯一性（`src.len() > 10_000 && src.contains("ccm")`、段界自检 `ws.contains("members")`、逐文件 `prod.contains("route_call_error")` 都是这类） |
+//! | **正向事实钉** | ★ **危险** | 它声称「就是这个」。needle 被撑大时**照样绿** = 假绿 |
+//! | **负向断言**（`!x.contains(…)`） | 另一族 | 撑大导致的是**假红**，不是假绿。本刀不治，登记在 `ROADMAP §5` |
+//!
+//! 逐条过完 34 处的结论：**只有一处是正向事实钉** ——
+//! `profile_installer::install_to_nonexistent_path_creates_file` 的
+//! `content.contains("function cc")`（同文件模板能生成 `function ccm` 形态 ⇒ 改名后照样绿）。
+//! **已改用 `contains_word`**，变异复验过（把模板改成 `function {0}X` ⇒ 当场红）。
+//!
+//! 其余全部是**存在性/自检**：needle 小不影响结论。⇒ **剩下的 33 处不是欠账，是分类完毕的存量**；
+//! 棘轮继续挡「新增」，而不再暗示「这里还有 33 个 bug」。
 //!
 //! # ⚠ 本模块自己就是这一族的高危户
 //!
@@ -58,7 +73,7 @@ mod tests {
     /// 摸底实测（收窄到 34 个扫描型判据文件时）：含它们 73 处，只留磁盘种子 59 处。
     const CORPUS_SEEDS: &[&str] = &["read_to_string(", "scan_tree!"];
 
-    /// ★ **递减棘轮的上限**（08-06 全树实测 **35** 处）。
+    /// ★ **递减棘轮的上限**（08-06 全树实测 **33** 处）。
     ///
     /// ⚠⚠ **它从 63 降到 35 不是因为还了债，是因为量准了。**
     /// 原来的传递闭包按「RHS 里**提及**了语料变量」传，会跑飞（见 `is_direct_derivation`）；
@@ -71,7 +86,7 @@ mod tests {
     /// 新增一处仍然会越界。逐条判真伪归下一轮，见 `ROADMAP §5` 诚实边界。
     ///
     /// 只许降。修一处就把这个数调下来，**不许调上去让今天好过**。
-    const BARE_CONTAINS_CEILING: usize = 35;
+    const BARE_CONTAINS_CEILING: usize = 33;
 
     /// 一个 `let` 绑定的名字与右侧表达式（右侧只取本行，多行 `let` 的首行足够判种子）。
     fn let_binding(line: &str) -> Option<(&str, &str)> {
@@ -220,7 +235,21 @@ mod tests {
         let mut hits = 0usize;
         let mut by_file: Vec<(String, usize)> = Vec::new();
         for (path, src) in &files {
-            let test_src = guard_core::test_source(src);
+            // ★ **剥掉注释再数**〔08-06 Phase G 后续：逐条判真伪时撞出来的〕。
+            //
+            // 不剥的话，一条**解释「这里原来是裸 contains」的注释**会被算成一处欠账
+            // （`polling_registry` 那条 F24 的更正注释就是：它逐字写着
+            // `body.contains("sleep 1")`，而那处早已改成 `pin_line`）。
+            // ⇒ 判据把**自己留下的病历**当成了病。
+            //
+            // ⚠ 这是 F12 那条老病（判据数到注释）在本扫描器里的复发 ——
+            // 而它这次的方向是**假阳性**（虚高欠账），不是假绿。虚高一样有害：
+            // 它让棘轮的那个数不再等于「还欠多少」，于是「只许降」失去意义。
+            let test_src: String = guard_core::test_source(src)
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
             all_contains += test_src.matches(".contains(\"").count();
             let n = bare_contains_on_corpus(&test_src);
             if n > 0 {
@@ -238,7 +267,7 @@ mod tests {
         assert!(
             hits <= BARE_CONTAINS_CEILING,
             "语料变量上的裸 `contains(\"…\")` 有 {hits} 处 > 棘轮上限 \
-             {BARE_CONTAINS_CEILING}（08-06 全树实测 35）。\n\
+             {BARE_CONTAINS_CEILING}（08-06 全树实测 33）。\n\
              ★ 匹配单位（子串）比事实（整行 / 完整签名 / 一个词）小时，把事实撑大的改动\n\
              会从缝里溜过去而判据照样绿。本区实测四次，前三次都只在造变异时才看得见。\n\
              改用 `guard_core::find_pinned`（恰好一处 + 两侧有边界）/ `pin_line`（整行相等）/\n\
@@ -255,7 +284,7 @@ mod tests {
 
     /// 抽取器的**行为**自检：喂一份人造测试段，它必须只数该数的那一处。
     ///
-    /// 没有这条，上面那个 35 只是「今天碰巧数出来的一个数」——
+    /// 没有这条，上面那个 33 只是「今天碰巧数出来的一个数」——
     /// 数错方向（比如把纯字面量夹具也算进来）时它照样在上限之下。
     #[test]
     fn the_extractor_counts_only_disk_corpora() {
