@@ -351,10 +351,34 @@ mod tests {
             format!("{}::Win32", "windows"),
             format!("{}::core", "windows"),
             format!("use {}::", "windows"),
+            // ⚠ **第四批，audit-0805 F19 下半补的**：`std::env::consts::*` 是
+            // **没有 `cfg` 的平台原语** —— `EXE_SUFFIX` 在 Windows 上是 `.exe`、别处是空串。
+            // 上面那十几条形态一个都匹配不上它，于是 `local_backend.rs:421` 那处
+            // **在生产段里逃逸了整整一轮**（F19 §4 点过名，但当时归因成「管辖面太窄」，
+            // 实际是**形态集太窄**）。
+            // ★ 这已经是形态集第二次被扩：第三批是反向锚点逼出来的，这批是逐条读代码读出来的。
+            format!("env::{}::", "consts"),
         ]
     }
 
     /// 一份源码里命中的平台形态。
+    /// **平台原语的单点例外**：`(文件, 形态, 为什么允许, 「已收敛」的机检锚点)`。
+    ///
+    /// ⚠ 这不是豁免清单 —— 每条都要满足两件事，各有一条判据看着：
+    /// ① **单点**（该形态在该文件生产段里恰好出现 **1** 次）；
+    /// ② **「已收敛」不是散文** —— 第四列是那句话的机检锚点，锚点没了就红。
+    #[allow(clippy::type_complexity)]
+    const PLATFORM_EXCEPTIONS: &[(&str, &str, &str, &str)] = &[(
+        "control/local_backend.rs",
+        "env::consts::",
+        "`EXE_SUFFIX` 是**没有 cfg 的平台原语**（Windows `.exe` / 别处空串）。         它没被搬进 `platform/`，但**平台差异已经收敛成一个注入参数**：         `resolve_beside_this_exe` 把它读出来喂给 `resolve_with`，         而 `resolve_with`（逻辑那半）与平台无关、在任何平台上都能测。         ⇒ 出路②「建 backend/platform/」为它一个常量建一层目录不划算；走出路③，登记在此。",
+        // ⚠ 锚点要**不含糊**：第一版写的是 `"exe_suffix: &str"`，而同文件的
+        // `sidecar_candidates` 也有同名参数 ⇒ 把 `resolve_with` 的参数改名，
+        // 判据**照样绿**（变异实测）。改成多行签名片段。
+        // ★ 与 F05「起流/起流程」、F16「remote-daemon-proto/-X」同族：**匹配单位比事实小**。
+        "pub fn resolve_with(\n    exe_dir: &Path,\n    target_triple: &str,\n    exe_suffix: &str,",
+    )];
+
     fn platform_hits(prod: &str) -> Vec<String> {
         platform_needles()
             .into_iter()
@@ -406,6 +430,12 @@ mod tests {
             guard_core::assert_no_test_code(&f, &prod);
             scanned += prod.len();
             for hit in platform_hits(&prod) {
+                let excused = PLATFORM_EXCEPTIONS
+                    .iter()
+                    .any(|(ef, en, _, _)| f.ends_with(ef) && hit.contains(en));
+                if excused {
+                    continue;
+                }
                 offenders.push(format!("  {f}: `{hit}`"));
             }
         }
@@ -421,6 +451,76 @@ mod tests {
              ② 它真是 backend 要的平台原语 ⇒ 建 `backend/platform/` 并把它收进去；\n\
              ③ 都不是 ⇒ 说清为什么，进诚实边界总账。",
             offenders.join("\n")
+        );
+    }
+
+    /// ★ 例外必须是**单点**，而且「已收敛」那句话得有锚点。
+    ///
+    /// 没有这条，例外表就是豁免清单：写一行理由，那个文件里就能随便加平台代码。
+    #[test]
+    fn every_platform_exception_is_a_single_point_and_its_claim_is_anchored() {
+        let root = backend_dir();
+        for (file, needle, why, anchor) in PLATFORM_EXCEPTIONS {
+            let raw = fs::read_to_string(root.join(file))
+                .unwrap_or_else(|e| panic!("例外表里的 {file} 读不到：{e} —— 搬走了就把这条删掉"));
+            let prod = guard_core::production_code(&raw);
+            let n = prod.matches(needle).count();
+            assert_eq!(
+                n, 1,
+                "`{file}` 的生产段里 `{needle}` 出现 {n} 次 —— 例外**只许单点**。\n\
+                 多出一处就不再是「平台差异收敛在一个注入点」，而是「这个文件开始长平台分支了」\n\
+                 ⇒ 回去走出路①/②（搬回 frontend / 建 `backend/platform/`），别在例外表里加行。"
+            );
+            assert!(
+                prod.contains(anchor),
+                "`{file}` 里找不到锚点 `{anchor}` —— 例外的理由是「平台差异已收敛成一个注入参数」，\n\
+                 而那句话的**唯一证据**就是这个签名。锚点没了，理由就成了散文。\n\
+                 理由原文：{why}"
+            );
+        }
+    }
+
+    /// ★ 例外的形态必须**真的在形态集里** —— 否则这条例外是句空话，
+    /// 而且「那个形态压根不被扫」这件事会**悄悄回来**。
+    ///
+    /// ⚠ 变异实测：把 `env::consts::` 从 `platform_needles()` 里删掉，
+    /// 主判据与两条例外判据**全都照样绿** —— 因为例外只描述「允许什么」，
+    /// 不保证「那东西真的被扫」。这条补上那一格。
+    #[test]
+    fn every_exception_names_a_needle_that_is_actually_scanned_for() {
+        let needles = platform_needles();
+        for (file, needle, ..) in PLATFORM_EXCEPTIONS {
+            assert!(
+                needles
+                    .iter()
+                    .any(|n| n.contains(needle) || needle.contains(n.as_str())),
+                "例外表给 `{file}` 登记的形态 `{needle}` **不在 `platform_needles()` 里**。\n\
+                 ⇒ 这条例外是句空话：那个形态根本不被扫，写不写都一样。\n\
+                 更糟的是**它反过来也成立** —— 有人把形态从集合里删掉时，\n\
+                 主判据会安静地少扫一类东西，而例外表看起来还好好的。"
+            );
+        }
+    }
+
+    /// 例外表不许长草：登记的形态必须**真的还在命中**（否则它是条死规则）。
+    #[test]
+    fn the_platform_exception_table_is_not_dead_wood() {
+        let root = backend_dir();
+        for (file, needle, ..) in PLATFORM_EXCEPTIONS {
+            let raw = fs::read_to_string(root.join(file)).unwrap_or_default();
+            let prod = guard_core::production_code(&raw);
+            assert!(
+                prod.contains(needle),
+                "例外表里的 `{file}` 已经不含 `{needle}` 了 —— 删掉这条。\n\
+                 留着就是一条永远不匹配的死规则，而死规则会在下次真有人写它时**悄悄放行**。"
+            );
+        }
+        // 例外只许少不许多（**递减棘轮**）。
+        assert!(
+            PLATFORM_EXCEPTIONS.len() <= 1,
+            "平台例外涨到 {} 条了 —— 只许降。C10 的意思是「平台原语有唯一的家」，\
+             例外每多一条，那句话就弱一分。",
+            PLATFORM_EXCEPTIONS.len()
         );
     }
 
