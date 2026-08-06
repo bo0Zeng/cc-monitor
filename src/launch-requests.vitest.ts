@@ -122,3 +122,34 @@ describe("R03：修饰只能以命名字段传入（类型层）", () => {
     expect(planResumeDirect("abc-123", "/p", "claude", {}).ctx.account).toEqual({ kind: "base" });
   });
 });
+
+// ═══ audit-0805 F08 下半：远端 resume 的**会话容器** ═══════════════════════
+//
+// 本仓有三处散文（`README.md` · `doc/ARCHITECTURE.md` · `launch.rs` 的 POSIX 桩头注）
+// 拿「会话容器反正是 tmux」当**理由**，去解释 POSIX 上为什么不开终端窗口。
+// 代码说的相反：POSIX 远端 `↺` 走 `runRemoteResume` → `planResumeDirect`，
+// 而那里逐字是 `container: { kind: "none" }`。
+//
+// ⚠ F08 上半订正过**两条**同源假头注，但漏了这三处 —— 它们在**另一条路**（远端）上，
+// 看起来像是另一件事。复核时才发现（E1：台账是筛子不是免检章）。
+//
+// 「不开终端窗口」这个决定本身站得住（POSIX 没有唯一的终端）；站不住的是**那个理由**。
+describe("F08 下半：远端 resume 的会话容器", () => {
+  it("★ `planResumeDirect` 不进任何容器 —— 散文不能拿「反正在 tmux 里」当理由", () => {
+    const { ctx } = planResumeDirect("abc-123", "/p", "claude");
+    expect(
+      ctx.container,
+      "远端直连 resume 的容器不是 `none` 了。若这是**有意**改的，" +
+        "那三处散文（README / ARCHITECTURE / launch.rs 的 POSIX 桩）要跟着改回来，" +
+        "并把 `no_prose_claims_the_session_container_is_always_tmux` 一起调整。",
+    ).toEqual({ kind: "none" });
+  });
+
+  it("对照组：`planResumeTmux` 才是 tmux（否则上面那条只是「所有 plan 都 none」）", () => {
+    const { ctx } = planResumeTmux("abc-123", "/p", "claude", "cc-p");
+    expect(
+      ctx.container.kind,
+      "连 tmux 那条路都不是 tmux 了 —— 那上面那条判据什么也没证明",
+    ).toBe("tmux");
+  });
+});
