@@ -79,7 +79,6 @@ mod atomic_replace_registry; // audit-0805 F13：原子替换的两套 Win32 语
 #[cfg(test)]
 mod byte_cap_registry; // audit-0805 F06：字节上限登记表（管什么量 + 超限怎么办 + 跨 crate 对拍）
 #[cfg(test)]
-#[cfg(test)]
 mod doc_copy_registry; // audit-0805 F18：散文里的数字副本清账（E12 的第二条路变成机检）
 mod local_read_surface_registry; // F10（出口④）：本机读面清账 + 递减棘轮（正题被 F05b 挡着）
 #[cfg(test)]
@@ -89,6 +88,9 @@ mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半�
 mod polling_registry; // U7-P：前端 + shared/ccm 的周期唤醒清账（daemon 那条零定时器护栏点名要「单独论证」的那半）
 mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只许有一个实现（账本 S5）
 mod rust_timer_registry; // F09：monitor **Rust 侧**周期唤醒清账（`polling_registry` 明确留下的那半）
+#[cfg(test)]
+#[cfg(test)]
+mod scanning_guard_registry; // audit-0805 F23：扫描型判据不许裸遍历（自匹配这一族的收口）
 mod session_name_registry; // U11 摸底：会话名产出点清账 + 递减棘轮（账本 S12 的落地形态）
 #[cfg(test)]
 mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 —— 从散文变机检

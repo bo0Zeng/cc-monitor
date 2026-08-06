@@ -30,7 +30,6 @@
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
     use std::path::{Path, PathBuf};
 
     /// 超限之后怎么办。**刻意是个封闭集合** —— 多出第四种就得回来论证。
@@ -238,20 +237,21 @@ mod tests {
     }
 
     /// 扫两棵树，抠出所有「像字节上限」的常量：名字含 MAX/CAP/LIMIT/BYTES 且值里有 1024 或 `<<`。
+    ///
+    /// ⚠ 走 `guard_core::scan_tree!` 而不是自己 `read_dir` —— 它**按构造摘除调用者自己那份**。
+    /// 本文件的 `CAPS` 表里就写着一堆 `MAX_*` 名字；今天它们的类型不是 `u64/usize` 所以扫不中，
+    /// 但那是**运气**不是设计。〔audit-0805 **F23**：这一族已实测栽过五次〕
     fn scan() -> Vec<(String, String, Option<u64>)> {
         let root = repo_root();
         let mut out = Vec::new();
         for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
-            let mut files = Vec::new();
-            collect_rs(&root.join(sub), &mut files);
-            files.sort();
-            for f in files {
+            for (f, body) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let rel = f
                     .strip_prefix(&root)
                     .unwrap_or(&f)
                     .to_string_lossy()
                     .replace('\\', "/");
-                for line in fs::read_to_string(&f).unwrap_or_default().lines() {
+                for line in body.lines() {
                     let t = line.trim();
                     let Some(rest) = t
                         .strip_prefix("pub(crate) const ")
@@ -291,18 +291,6 @@ mod tests {
         }
         out.sort();
         out
-    }
-
-    fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) {
-        let Ok(rd) = fs::read_dir(dir) else { return };
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                collect_rs(&p, out);
-            } else if p.extension().is_some_and(|x| x == "rs") {
-                out.push(p);
-            }
-        }
     }
 
     /// ★ 正题一：**每一处字节上限都得登记它管什么量、超限怎么办**。
@@ -443,10 +431,8 @@ mod tests {
         let root = repo_root();
         let mut all = String::new();
         for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
-            let mut files = Vec::new();
-            collect_rs(&root.join(sub), &mut files);
-            for f in files {
-                all.push_str(&fs::read_to_string(&f).unwrap_or_default());
+            for (_, body) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
+                all.push_str(&body);
             }
         }
         assert!(

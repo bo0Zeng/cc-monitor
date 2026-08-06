@@ -214,9 +214,142 @@ pub fn assert_tree_strips_clean(root: &std::path::Path, min_files: usize) {
     );
 }
 
+/// 遍历源码树，**按构造摘除调用者自己那一份**。
+///
+/// # 它防的是本 crate 头注那一族的**兄弟病**
+///
+/// 头注治的是「**抽取面画小了**」（剥法把扫描面砍没）。这里治的是反过来那半：
+/// **抽取面画大了 —— 把判据自己也扫进去了**。
+///
+/// 症状永远一样：判据在**自己的**登记表 / 注释 / 常量里找到了自己要找的东西 ⇒ **恒绿**。
+/// audit-0805 实测**五次**：
+///
+/// | 何处 | 判据在自己的什么东西里找到了自己 |
+/// |---|---|
+/// | F12 | 跨语言对拍匹配到自己的**注释** |
+/// | F13 | 原子替换登记表匹配到自己的 `RULE` **常量**（里面写着两个符号的调用示例） |
+/// | F18 | 文档副本判据匹配到自己的**登记表**（`HAS_A_GUARD` 里写着那些判据名） |
+/// | F05 | 函数体抽取的**锚点**命中了自己 `PHASES` 表里的字符串 |
+/// | F05 | 棘轮 `matches()` **数到自己**：6 vs 真实 4 |
+///
+/// ★ **五次没有一次是被「判据变红」发现的** —— 四次靠变异、一次靠 clippy。
+/// 也就是说这一类缺陷的**默认结局是恒绿**。⇒ 修法不是「再检测一遍」，
+/// 是**让它写不出来**：调用方拿不到「包含自己」的那份语料。
+///
+/// # 用法
+///
+/// ```ignore
+/// let files = guard_core::scan_tree!(&root, &["rs"]);   // 自动摘除调用者所在文件
+/// ```
+///
+/// ⚠ 直接调本函数也行，但**别手写 `file!()` 以外的东西**当 `caller_file` ——
+/// 那等于把摘除关掉，而关掉之后看起来和没关一模一样。
+///
+/// # Panics
+///
+/// 目录读不了 / 文件读不了时 panic（守卫语义，只在测试里调）。
+pub fn scan_tree_excluding_self(
+    root: &std::path::Path,
+    exts: &[&str],
+    caller_file: &str,
+) -> Vec<(std::path::PathBuf, String)> {
+    // `file!()` 给的是相对编译单元根的路径（如 `src/byte_cap_registry.rs`）；
+    // 扫到的是绝对路径 ⇒ 用**后缀**比对。空串会退化成「摘除一切」，直接拒绝。
+    assert!(
+        !caller_file.is_empty(),
+        "caller_file 为空 —— 摘除会退化成把整棵树都摘掉，那比不摘更坏（静默空集）"
+    );
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let rd = match std::fs::read_dir(&d) {
+            Ok(rd) => rd,
+            Err(e) => panic!("读目录 {d:?} 失败: {e}"),
+        };
+        for entry in rd {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let ok_ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| exts.contains(&e));
+            if !ok_ext {
+                continue;
+            }
+            if path
+                .to_string_lossy()
+                .replace('\\', "/")
+                .ends_with(caller_file)
+            {
+                continue; // ← 就是这一行：调用者自己那份进不来
+            }
+            let src =
+                std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读 {path:?} 失败: {e}"));
+            out.push((path, src));
+        }
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
+/// 遍历源码树并**摘除调用者自己**。见 [`scan_tree_excluding_self`]。
+///
+/// ⚠ 用宏而不是让调用方自己传 `file!()`：传参那种写法**允许写错**，
+/// 而写错之后判据看起来照样绿 —— 这一族的全部危险就在「错了看不出来」。
+#[macro_export]
+macro_rules! scan_tree {
+    ($root:expr, $exts:expr) => {
+        $crate::scan_tree_excluding_self($root, $exts, file!())
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ★ 摘除自身**真的生效** —— 与下一条互为**对照组**。
+    ///
+    /// 本 crate 的 `src/` 里只有 `lib.rs` 一个文件，也就是**只有调用者自己**：
+    /// 摘除生效 ⇒ 结果恰好为空；摘除失效 ⇒ 结果里会有 `lib.rs`。
+    /// 「恰好为空」在这里是**信号**不是零命中 —— 由下一条的非空证明。
+    #[test]
+    fn the_caller_never_gets_its_own_source_back() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let files = scan_tree!(&root, &["rs"]);
+        assert!(
+            files.is_empty(),
+            "本 crate 的 src/ 只有 lib.rs（= 调用者自己），摘除生效时结果该为空，\
+             实得 {:?} —— 摘除没生效。\
+             ★ 那正是 audit-0805 五次「判据匹配到自己」的成因：判据要读的东西\
+             和判据本身写在同一片文本里。",
+            files.iter().map(|(p, _)| p).collect::<Vec<_>>()
+        );
+    }
+
+    /// ★ 对照组：把摘除条件换成一个匹配不上的名字 ⇒ `lib.rs` 必须回来。
+    ///
+    /// 没有这一条，上面那条「结果为空」可能只是**遍历本来就坏了**。
+    #[test]
+    fn without_the_exclusion_the_caller_would_be_included() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let files = scan_tree_excluding_self(&root, &["rs"], "does-not-match-anything.rs");
+        assert!(
+            files.iter().any(|(p, _)| p.ends_with("lib.rs")),
+            "换成匹配不上的摘除名之后 `lib.rs` **仍然**不在结果里 —— \
+             说明遍历本来就坏了，上一条的「为空」是假信号（零命中地绿）"
+        );
+    }
+
+    /// 空 `caller_file` 会退化成「摘除一切」⇒ 必须拒绝，不许静默给空集。
+    #[test]
+    #[should_panic(expected = "caller_file 为空")]
+    fn an_empty_caller_file_is_rejected_not_silently_swallowed() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let _ = scan_tree_excluding_self(&root, &["rs"], "");
+    }
 
     /// 坑 2 的回归钉：测试模块在**文件中段**时，它后面的生产代码必须留下。
     #[test]
