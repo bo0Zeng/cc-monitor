@@ -37,6 +37,14 @@ export interface TurnNotifyPayload {
     timestamp?: string | null;
     /** 旧版 CC 会把 subagent 行写进主文件——子 agent 完成≠主轮结束，须跳过。 */
     isSidechain?: boolean;
+    /**
+     * ★ API 错误消息〔audit-0805 F12 / 报告 §4.1〕。
+     *
+     * **此前这个字段在最小契约里根本不存在** —— 而生成物 `generated/JsonlRecord.ts` 的
+     * assistant 变体里一直有它（`isApiErrorMessage: boolean`）。数据在线上、没人看。
+     * daemon 侧 `observe/turn_detect.rs` 的四条件里有它，TS 这份少一条 ⇒ 两个探测器口径不同。
+     */
+    isApiErrorMessage?: boolean;
     message?: { stop_reason?: string | null };
   };
 }
@@ -85,6 +93,9 @@ export class TurnEndNotifier {
     const rec = payload?.message;
     if (!rec || rec.type !== "assistant") return;
     if (rec.isSidechain) return; // 旧版 CC 的 subagent 行：子 agent 完成≠主轮结束
+    // F12：API 错误带 end_turn 时**不是**一轮真的结束。daemon 侧 `turn_detect.rs` 一直有这条，
+    // TS 这份少了 ⇒ 两个探测器口径不同（报告 §4.1 的「turn-end 判定两份」）。
+    if (rec.isApiErrorMessage) return;
     if (rec.message?.stop_reason !== "end_turn") return;
     const now = this.deps.now();
     const ts = rec.timestamp ? Date.parse(rec.timestamp) : NaN;
