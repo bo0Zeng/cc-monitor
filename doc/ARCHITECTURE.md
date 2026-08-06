@@ -178,7 +178,9 @@
 而 `layering_guard` 逐字禁止反向依赖（实测：照做时它当场红）。
 
 ⚠ **monitor 侧的 `observe/` 今天刻意未建**：那批读面（`config_surface.rs` 1596 行 ·
-`search.rs` 1171 · `local_accounts.rs` 707 …共 13 个 reader 文件）正是要**退役**的那批 ——
+`search.rs` 1171 …）正是要**退役**的那批 —— **有几个 reader 刻意不写在这里**，
+以 `local_read_surface_registry` 的机检为准（那条曾写 13，而机器数是 7；点名的
+`local_accounts.rs` 早已不是 reader，它 `:564-565` 自陈「现在问本机后端」）——
 先搬进来再删掉是纯搬运。**谁来叫醒这个决定**：`local_read_surface_registry` 里那条前提触发器
 （`tauri.conf.json` 一出现 `externalBin` 就红）。
 

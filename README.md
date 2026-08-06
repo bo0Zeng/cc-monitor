@@ -84,17 +84,24 @@
   - `↺` 恢复（v2.8.1：新 **PowerShell** 窗口跑 `cc --resume`，无 `cc` 时回退 `claude`；加载 profile 故代理 / env 生效）
   - `✕` 物理删除（二次确认；jsonl 文件被真删）
 - 点击会话条目进入**只读消息查看器**
-- **从这一轮创建分支（F62）**：只读查看器里 hover 任意一轮（你的提问 / Claude 回复）卡片 → 右上角浮现 `⑂`，点它把「开头 → 这一轮」复制成一个**新会话**（对齐 Claude 原生 `/branch` 的 `forkedFrom` 格式，**原会话零改动**），弹提示可一键在新终端 `resume` 从该轮岔开。补上内置 `/branch` 只能从当前进度分叉的缺口。仅本地会话（远端会话不显示）
+- **从这一轮创建分支（F62）**：只读查看器里 hover 任意一轮（你的提问 / Claude 回复）卡片 → 右上角浮现 `⑂`，点它把「开头 → 这一轮」复制成一个**新会话**（对齐 Claude 原生 `/branch` 的 `forkedFrom` 格式，**原会话零改动**），弹提示可一键在新终端 `resume` 从该轮岔开。补上内置 `/branch` 只能从当前进度分叉的缺口。**本地与远端会话都支持**（G6 起；daemon 侧 `--fork-session`，e2e `daemon-fork` 在 CI 里）
 
 ### 设置面板（,）
 
-5 大折叠分组（除「行为」默认展开）：
+**三页 + 机器详情子页**（落地在「机器」页）。
+⚠ **每页有哪些块、共几块，家在 `src/settings/panel-groups.vitest.ts`**
+—— 那里是逐页完整清单（机检，用完整相等断言，搬丢一块会红）。
+本节**刻意不复制那份清单**：它此前按「N 大折叠分组」逐条列出，而那套 IA 在 v3.5.0 重做后
+已不存在，「数据源 & 集成」里的 MCP 管理也早已搬去机器详情页 —— 一份没人看着的结构描述
+就是这个下场。
 
-- **行为**：自动跟随用户在终端的输入切 Tab、是否拉前 monitor 窗口
-- **快捷键**：打开编辑器自定义全部 28 个可用 action 的 chord
-- **数据源 & 集成**：Claude 数据目录（三级回退：设置 > `$CLAUDE_CONFIG_DIR` > `~/.claude`）+ PowerShell `__ccm_bind` 一键装 + **MCP 服务器管理**（F87：跨 scope 查看 user / local / 项目的 MCP server，写只改项目 `.mcp.json`）
-- **外观**：13 个 token（字体 + 颜色），实时预览，持久化到 `~/.claude/claudecode-frontend/config.json`
-- **诊断 & 存储**：tracing 等级 toggle + log 文件路径 + 所有持久化路径透明展示
+- **应用**：行为（自动跟随切 Tab、是否拉前 monitor 窗口）· 快捷键（编辑器里自定义 action 的 chord，
+  **可用 action 数以 `src/keybindings/actions.ts` 的 `ACTIONS` 为准**）· 外观（字体 + 颜色 token，
+  **几个以 `src/theme.ts` 的 `TOKENS` 为准**，实时预览，持久化到 `~/.claude/claudecode-frontend/config.json`）·
+  日志与数据（Claude 数据目录三级回退：设置 > `$CLAUDE_CONFIG_DIR` > `~/.claude`；tracing 等级 toggle +
+  log 路径 + 所有持久化路径透明展示）
+- **机器**：机器列表；每台机器的详情子页里是连接、**PowerShell `__ccm_bind` 一键装**、
+  **MCP 服务器管理**（F87：跨 scope 查看 user / local / 项目的 MCP server，写只改项目 `.mcp.json`）等
 
 ### 终端跳焦（可选）
 - 每个 live Tab 有 ↗ 按钮 / `反引号` 调出对应终端窗口
