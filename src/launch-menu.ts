@@ -71,7 +71,14 @@ export async function enumerateAccountModifiers(origin: string): Promise<Account
   }
   if (!accountsAvailable || selectable.length < 1) return [];
 
-  const options: AccountModifierOption[] = [{ kind: "base", label: "不指定账号（用已登录的那个）" }];
+  // ⚠ audit-0805 F12：原文案「不指定账号（用已登录的那个）」**在主路径上是假的** ——
+  // `kind: "base"` 经 `ACCOUNT_DIMENSION`（`applies` 恒真）必发 `--base`，而 ccm 收到
+  // `--base` 会 **unset `CLAUDE_CONFIG_DIR`** ⇒ 落 `~/.claude` 基座，不是「已登录的那个」。
+  // 与 `settings/machine-card.ts` 那句是**同一个事实的两份副本**，一起改（LEDGER：订正一句
+  // 假话时先找出它的全部副本）。判据在 `account-base-semantics.vitest.ts`。
+  const options: AccountModifierOption[] = [
+    { kind: "base", label: "不指定账号（用远端 ~/.claude 那套凭据，不跟随当前账号）" },
+  ];
   if (selectable.length >= 2) {
     options.push(...selectable.map((a) => ({ kind: "account" as const, name: a.name, label: a.name })));
   }

@@ -890,8 +890,22 @@ export class MachineCard {
         const none = document.createElement("option");
         none.value = "";
         // U8：说清后果——「不指定」= 用远端 ~/.claude 那套基座凭据，**不受当前账号影响**。
+        //
+        // ⚠ audit-0805 F12：这段注释一直是对的，**它下面那句给用户看的文案却是错的** ——
+        // 原文写「用远端已登录的那个，不注入 CLAUDE_CONFIG_DIR」，两处都不准：
+        //   ① 「不注入」**弱于事实**：CLI 路会发 `--base`，而 ccm 收到 `--base` 是
+        //      **`unset CLAUDE_CONFIG_DIR`**（`shared/ccm:674` 送进 tmux 的载荷行 + `:709`
+        //      会话级 env，两处都 unset）。远端 shell 里若有 `cc-acct-iso shellinit` 生成的
+        //      `export CLAUDE_CONFIG_DIR=<某账号>`，「不注入」会继承它，「unset」则落回基座
+        //      —— **两者落到的是不同的账号**。
+        //   ② 「已登录的那个」**在主路径上是假的**：它落 `~/.claude`，而基座常常没凭据。
+        // ⇒ 改成描述事实。判据 `account-base-semantics.vitest.ts` 钉住它不许说回去。
+// ⚠ **不许写「基座」**：那是内部叫法，`settings/base-wording-guard.vitest.ts`（S8）明令禁止。
+//   两条判据是互补的 —— S8 钉**词汇**（别用内部黑话），本轮这条钉**真伪**（别说假话）。
+        // ⚠ 兜底渲染路（不发 `--base`）才是**真的不注入**（继承 rc / tmux server 的值）；
+        //   文案按**主路径**（CLI 渲染，`ACCOUNT_DIMENSION.applies` 恒真 ⇒ 必发 flag）写。
         none.textContent =
-          "不指定账号（用远端已登录的那个，不注入 CLAUDE_CONFIG_DIR）";
+          "不指定账号（用远端 ~/.claude 那套凭据 —— 会清掉继承的 CLAUDE_CONFIG_DIR）";
         acctSelect.appendChild(none);
         for (const a of sel) {
           const opt = document.createElement("option");
