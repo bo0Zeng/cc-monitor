@@ -43,6 +43,13 @@ function setupIndexing(): void {
   invokeMock.mockImplementation((cmd: string) => {
     if (cmd === "search_history")
       return Promise.resolve({ status: "indexing", indexedSessions: 3, results: [] });
+    if (cmd === "get_search_index_status")
+      return Promise.resolve({
+        ready: false,
+        indexedSessions: 3,
+        indexedMessages: 0,
+        builtAtMs: 0,
+      });
     if (cmd === "list_history_projects") return Promise.resolve([]);
     if (cmd === "list_remote_history_projects")
       return Promise.resolve({ projects: [], failedHosts: [] });
@@ -92,7 +99,7 @@ describe("关掉历史视图之后，那条 1 秒远端重试链必须停（audi
     ).toBe(afterFirst);
   });
 
-  it("没关的时候它照常重试（防把上面写成「永远不重试」）", async () => {
+  it("没关的时候它照常等（防把上面写成「永远不等」）", async () => {
     const view = new HistoryView();
     await view.open();
     const inner = view as unknown as Internals;
@@ -100,14 +107,29 @@ describe("关掉历史视图之后，那条 1 秒远端重试链必须停（audi
     inner.searchInput.value = "kw";
 
     await inner.runFullTextSearch();
-    const afterFirst = invokeMock.mock.calls.filter((c) => c[0] === "search_history").length;
-    expect(afterFirst, "夹具没触发搜索 —— 本条会零命中地绿").toBeGreaterThan(0);
+    const searchAfterFirst = invokeMock.mock.calls.filter(
+      (c) => c[0] === "search_history",
+    ).length;
+    expect(searchAfterFirst, "夹具没触发搜索 —— 本条会零命中地绿").toBeGreaterThan(0);
+    const statusBefore = invokeMock.mock.calls.filter(
+      (c) => c[0] === "get_search_index_status",
+    ).length;
+
     await vi.advanceTimersByTimeAsync(1500);
-    const afterWait = invokeMock.mock.calls.filter((c) => c[0] === "search_history").length;
+
+    // ⚠ F14 第四刀改了**等待的机制**：不再每秒重跑整条搜索，改成每秒问一次本地索引状态。
+    // 这条判据的**意图没变**（不许写成「永远不等」），判的东西跟着机制换。
+    const statusAfter = invokeMock.mock.calls.filter(
+      (c) => c[0] === "get_search_index_status",
+    ).length;
     expect(
-      afterWait,
-      "视图还开着却不再重试 —— 索引建好之前用户会一直看着「索引构建中」不动",
-    ).toBeGreaterThan(afterFirst);
+      statusAfter,
+      "视图还开着却连状态都不问了 —— 索引建好之后用户会一直看着「索引构建中」不动",
+    ).toBeGreaterThan(statusBefore);
+    expect(
+      invokeMock.mock.calls.filter((c) => c[0] === "search_history").length,
+      "等待期间又去重跑整条搜索了 —— 那条路含 search_remote_all，等于每秒对每台远端一条 SSH",
+    ).toBe(searchAfterFirst);
     view.close();
   });
 });

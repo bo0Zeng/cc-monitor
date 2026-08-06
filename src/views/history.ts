@@ -757,12 +757,7 @@ export class HistoryView {
       if (seq !== this.ftSeq || this.searchMode !== "fulltext") return; // 过期 / 已切模式
       if (resp.status === "indexing") {
         this.resultsEl.replaceChildren();
-        this.statusEl.textContent = `索引构建中…（已 ${resp.indexedSessions} 个会话），1 秒后自动重试`;
-        window.setTimeout(() => {
-          if (seq === this.ftSeq && this.searchMode === "fulltext") {
-            void this.runFullTextSearch();
-          }
-        }, 1000);
+        this.waitForIndexThenSearch(seq, resp.indexedSessions, 1);
         return;
       }
       this.renderSearchResults(resp, query);
@@ -770,6 +765,74 @@ export class HistoryView {
       if (seq !== this.ftSeq) return;
       this.statusEl.textContent = `搜索失败：${String(e)}`;
     }
+  }
+
+  /**
+   * 索引就绪等待的上限。120 × 1s = 2 分钟。
+   *
+   * ⚠ 上限与超限语义**成对定义**（定框 E5）：超了不是继续、也不是静默停 ——
+   * 是**停下来并说清为什么停、用户能做什么**（E4：静默失败给身份）。
+   * 此前这条链**一个上限都没有**：索引若永远建不好，它会一直转下去。
+   */
+  private static readonly INDEX_WAIT_MAX_TICKS = 120;
+
+  /**
+   * 索引没建好时的等待。★ **只问本地索引状态，不再每秒重跑整条搜索**〔audit-0805 F14〕。
+   *
+   * # 它改掉了什么
+   *
+   * 原来是每 1 秒重跑一次 `runFullTextSearch()`，而 `search_history` 在 Rust 侧
+   * （`search.rs:848-860`）是**无条件** `tokio::join!(本地索引, search_remote_all)` ——
+   * 没有「本地还在建索引就别问远端」这一说 ⇒ **每秒对每台远端各一条 SSH**。
+   *
+   * 而且它只在**远端一条都没命中**时才会继续转：`merge_search_results` 一旦拿到非空远端结果
+   * 就直接返回 `status: "ready"`。⇒ 这条链的实际形态是
+   * 「**每秒问一遍所有远端，每秒得到「没有」，然后再问一遍**」。
+   *
+   * 现在等待期间只调 `get_search_index_status`（`search.rs:890`，只有一次 `RwLock::read`、
+   * 无 `.await`、**零 SSH**），就绪后**再跑一次完整搜索**（那一次照常含远端）。
+   *
+   * # 诚实边界：indexing 期间不再问远端，这是**刻意的**
+   *
+   * 代价：若某台远端**在等待期间**新增了匹配（或从不可达变回可达），用户看到它的时刻
+   * 从「1 秒内」推迟到「本地索引建好之后」。接受这个代价的理由是三条：
+   * ① 首次那一发已经问过一遍远端了；② 这条链存在的理由是「**本地**索引没好」，
+   * 不是「远端可能会变」；③ 用户敲一下回车就能强制重问。
+   * ⇒ 换来的是从「每秒 N 条 SSH」降到 0。
+   */
+  private waitForIndexThenSearch(seq: number, indexedSessions: number, tick: number): void {
+    if (tick > HistoryView.INDEX_WAIT_MAX_TICKS) {
+      this.statusEl.textContent =
+        `索引构建中…（已 ${indexedSessions} 个会话）—— 等了 ` +
+        `${HistoryView.INDEX_WAIT_MAX_TICKS} 秒仍未就绪，已停止自动重试。` +
+        `可以先用「按项目」模式浏览，或稍后重新搜索。`;
+      return;
+    }
+    this.statusEl.textContent = `索引构建中…（已 ${indexedSessions} 个会话），${tick}s 后自动重试`;
+    window.setTimeout(() => {
+      // 存活判据与原来一致：`close()` 会递增 `ftSeq`（F14 第一刀），挂着的回调自行终止。
+      if (seq !== this.ftSeq || this.searchMode !== "fulltext") return;
+      void (async () => {
+        let ready = false;
+        let seen = indexedSessions;
+        try {
+          const st = await commands.get_search_index_status();
+          ready = st.ready;
+          seen = st.indexedSessions;
+        } catch (e) {
+          // 查状态都失败了 ⇒ 说清楚再停，不要装作还在等（E4）。
+          if (seq !== this.ftSeq) return;
+          this.statusEl.textContent = `索引状态查询失败：${String(e)}`;
+          return;
+        }
+        if (seq !== this.ftSeq || this.searchMode !== "fulltext") return;
+        if (ready) {
+          void this.runFullTextSearch();
+          return;
+        }
+        this.waitForIndexThenSearch(seq, seen, tick + 1);
+      })();
+    }, 1000);
   }
 
   private renderSearchResults(resp: SearchResponse, query: string): void {
