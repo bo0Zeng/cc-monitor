@@ -977,9 +977,52 @@ pub fn read_new_lines(
     seqs: &mut SeqCounter,
 ) -> (Vec<ReadLine>, ReadCursor) {
     let len = bytes.len() as u64;
+    read_new_lines_at(bytes, 0, len, cursor, key, seqs)
+}
+
+/// 同上，但**文件长度是显式入参**，`chunk` 只需覆盖 `[chunk_start, file_len)`
+/// 〔audit-0805 F04 第 1 步〕。
+///
+/// # 为什么必须先有这个入口
+///
+/// 上面那个入口的契约是「给我**整个文件**的字节」，而它把 `bytes.len()` **当成文件长度**用 ——
+/// 截断高水位判定 `len < cursor.seen_len` 整个压在这一点上。
+/// ⇒ **直接给它喂一段「只有新字节」的切片会当场把它骗坏**：`len` 变成增量长度、必然小于
+/// `seen_len`、于是每次都判「文件被截断」、`start` 归零、按 `INVARIANTS §25` 重发全部 seq。
+/// **那不是慢，是行为错，比整读更糟。** 所以「改成 seek 只读新字节」这件事的第一步
+/// 不是改调用点，是把「文件长度」从切片长度里摘出来。
+///
+/// # 调用方的义务（**违反即 panic，不静默**）
+///
+/// `chunk` 必须一直覆盖到 **EOF**：`chunk_start + chunk.len() == file_len`。
+/// 少一截会让 torn-tail 判定把「还没读到的字节」误当成「写了一半」，
+/// 于是游标停在半路且**再也不前进**（下一次又从同一处读起、又差同一截）。
+/// ⚠ 这类错**无声且自洽** —— 所以这里用 `assert!` 而不是 `debug_assert!`。
+pub fn read_new_lines_at(
+    chunk: &[u8],
+    chunk_start: u64,
+    file_len: u64,
+    cursor: ReadCursor,
+    key: &str,
+    seqs: &mut SeqCounter,
+) -> (Vec<ReadLine>, ReadCursor) {
+    assert_eq!(
+        chunk_start + chunk.len() as u64,
+        file_len,
+        "read_new_lines_at: chunk 必须覆盖到 EOF（chunk_start {chunk_start} + len {} != file_len {file_len}）\n\
+         少一截会让 torn-tail 判定把「还没读到的字节」误当成「写了一半」，游标就此永远停在半路。",
+        chunk.len()
+    );
+    let len = file_len;
     // Truncation guard against the high-water mark (see ReadCursor docs).
     let truncated = len < cursor.seen_len;
     let start = if truncated { 0 } else { cursor.consumed };
+    assert!(
+        !truncated || chunk_start == 0,
+        "read_new_lines_at: 判定为截断（file_len {len} < seen_len {}）时要从头重读，\n\
+         但 chunk 从 {chunk_start} 起 —— 调用方必须在这种情况下整读。",
+        cursor.seen_len
+    );
     if truncated && len > 0 {
         // Parity with the monitor's truncation warn (INVARIANTS §25: re-reads
         // hand out new seqs — must leave a trace; silence made an old
@@ -994,7 +1037,7 @@ pub fn read_new_lines(
     let mut out = Vec::new();
     let mut consumed: u64 = 0;
     if start < len {
-        let slice = &bytes[start as usize..];
+        let slice = &chunk[(start - chunk_start) as usize..];
         // Only the region ending at the last '\n' is complete; a torn tail
         // (mid-write, possibly mid-multibyte) is deferred to the next event.
         let complete_end = slice.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
@@ -3636,6 +3679,72 @@ mod tests {
             waiting_for: None,
         });
         assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
+    }
+
+    /// ★★ **分块入口与整读入口必须逐字节同解**〔audit-0805 F04 第 1 步〕。
+    ///
+    /// 这条判据存在的全部理由：`read_new_lines` 把 `bytes.len()` 当文件长度用，
+    /// 而「改成 seek 只读新字节」的**第一步**就是把长度摘出来。摘的过程里最容易错的
+    /// 是那个相对索引（`start - chunk_start`），而错了之后**结果仍然像一份合理的输出** ——
+    /// 行还在、seq 还在涨，只是内容错位。⇒ 用同一份数据两条路对拍，逐字段比。
+    #[test]
+    fn the_chunked_entry_agrees_with_the_whole_file_entry_byte_for_byte() {
+        let data = b"{\"a\":1}\n{\"b\":2}\r\n\n{\"c\":3}\n{\"torn\":";
+        // 先各自消费前一段，制造一个非零的 consumed。
+        let mut seqs_a = SeqCounter::default();
+        let (_, cur_a) = read_new_lines(&data[..8], ReadCursor::default(), "k", &mut seqs_a);
+        let mut seqs_b = SeqCounter::default();
+        let (_, cur_b) = read_new_lines(&data[..8], ReadCursor::default(), "k", &mut seqs_b);
+        assert_eq!(cur_a, cur_b, "前置状态本身要一致");
+
+        // 整读入口：喂全文件。
+        let (lines_whole, cur_whole) = read_new_lines(data, cur_a, "k", &mut seqs_a);
+        // 分块入口：只喂 [consumed, EOF) 那一段。
+        let start = cur_b.consumed;
+        let (lines_chunk, cur_chunk) = read_new_lines_at(
+            &data[start as usize..],
+            start,
+            data.len() as u64,
+            cur_b,
+            "k",
+            &mut seqs_b,
+        );
+
+        assert_eq!(cur_whole, cur_chunk, "游标必须一致（consumed / seen_len）");
+        assert_eq!(
+            lines_whole.len(),
+            lines_chunk.len(),
+            "行数必须一致：整读 {lines_whole:?} vs 分块 {lines_chunk:?}"
+        );
+        for (w, c) in lines_whole.iter().zip(lines_chunk.iter()) {
+            assert_eq!(w.raw, c.raw, "内容错位了");
+            assert_eq!(
+                w.byte_offset, c.byte_offset,
+                "byte_offset 错位了（这是相对索引算错时最典型的表现）：{w:?} vs {c:?}"
+            );
+            assert_eq!(w.seq, c.seq, "seq 不一致");
+        }
+        assert!(!lines_whole.is_empty(), "夹具没产出行 —— 本条会零命中地绿");
+    }
+
+    /// 分块没读到 EOF 时**必须炸**，不许静默〔定框 E4〕。
+    ///
+    /// 少一截会让 torn-tail 判定把「还没读到的字节」误当成「写了一半」，
+    /// 游标停在半路且再也不前进 —— 这类错**无声且自洽**，所以是 `assert!` 不是 `debug_assert!`。
+    #[test]
+    #[should_panic(expected = "chunk 必须覆盖到 EOF")]
+    fn a_chunk_that_stops_short_of_eof_panics_instead_of_silently_wedging() {
+        let data = b"{\"a\":1}\n{\"b\":2}\n";
+        let mut seqs = SeqCounter::default();
+        // 谎报 file_len：说文件更长，但只给了前半段。
+        read_new_lines_at(
+            &data[..8],
+            0,
+            data.len() as u64,
+            ReadCursor::default(),
+            "k",
+            &mut seqs,
+        );
     }
 
     /// ★★ **丢的是「别处没有」的帧时，`Overflow` 必须带上身份**〔audit-0805 F03，定框 E4〕。
