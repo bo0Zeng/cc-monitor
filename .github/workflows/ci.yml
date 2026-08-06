@@ -137,6 +137,14 @@ jobs:
       - name: coverage floor (vitest jsdom)
         run: npm run coverage
 
+      # audit-0805 F17：**逐文件**地板 + 0% 文件递减棘轮。
+      # 上一步那个阈值是**聚合值** —— 187 个文件里单个模块掉到 0%，总数只动零点几个点，
+      # 而地板留着 2-3 点余量 ⇒ 门禁一声不响。`vitest.config.ts` 那段注释自己就写着
+      # 「收紧留后续按核心 DOM 模块 per-file」，这一步就是那个「后续」。
+      # ⚠ 同样**无 `|| true`**：它是真阻断，不是 advisory。
+      - name: coverage per-file floors + zero-coverage ratchet
+        run: node scripts/assert-coverage-floors.mjs
+
       # vite build 验证产物可生成（不打包 exe，那个 5+ 分钟太慢；
       # 完整 tauri build 留给 tag 触发的 release 工作流）
       - name: vite build (dist/)
