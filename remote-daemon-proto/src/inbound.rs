@@ -706,42 +706,42 @@ mod tests {
                 std::task::Poll::Ready(Ok(()))
             }
         }
-        /// 进程 RSS **高水位**（`VmHWM`）—— 内核维护、单调不降。
-        ///
-        /// 必须用高水位，不能用当前 RSS：
-        /// - 读完再量 ⇒ 那块大 buffer 已经 free，glibc 把它 munmap 还给系统，RSS 掉回去了；
-        /// - 边跑边采也不行 ⇒ `Flood` 永远 Ready，reader 在**一次 poll 里**读完 256 MiB，
-        ///   采样循环根本插不进去。
-        ///
-        /// 这两种写法我都试过，**都是安慰剂**：把「全程累积、读完再判」这个真正的旧形状
-        /// 变异回去，两版都照样绿。
-        fn hwm_bytes() -> usize {
-            std::fs::read_to_string("/proc/self/status")
-                .unwrap_or_default()
-                .lines()
-                .find_map(|l| l.strip_prefix("VmHWM:"))
-                .and_then(|v| v.split_whitespace().next()?.parse::<usize>().ok())
-                .unwrap_or(0)
-                * 1024
+        const FLOOD: usize = 256 * 1024 * 1024; // 256 MiB，是上限的 256 倍
+
+        // 跑一次洪流。
+        async fn flood_once() -> tokio::sync::mpsc::Receiver<crate::wire::Frame> {
+            let (tx, rx) = chan();
+            let h = spawn(
+                Flood {
+                    left: FLOOD,
+                    nl_sent: false,
+                },
+                tx,
+                crate::wire::HelloFlushed::for_tests(),
+            );
+            h.await.expect("reader task");
+            rx
         }
 
-        const FLOOD: usize = 256 * 1024 * 1024; // 256 MiB，是上限的 256 倍
-        let before = hwm_bytes();
-        assert!(before > 0, "读不到 VmHWM —— 本断言在空转（非 Linux？）");
-        let (tx, mut rx) = chan();
-        let h = spawn(
-            Flood {
-                left: FLOOD,
-                nl_sent: false,
-            },
-            tx,
-            crate::wire::HelloFlushed::for_tests(),
-        );
-        h.await.expect("reader task");
-        let grew = hwm_bytes().saturating_sub(before);
+        // 量具：**本线程**「已分配未释放」字节数的高水位，见 `crate::alloc_probe`。
+        //
+        // ⚠ 这里曾经读 `/proc/self/status` 的 `VmHWM`，那是**进程级**的，
+        //   而 `cargo test` 在同一进程内并行跑测试 ⇒ 邻居的一次性大分配被算进来
+        //   ⇒ 本条在 F07/F09/F11/F18 四件里各制造过一次假红。换线程级量具后成因消失。
+        //   走过的弯路（「跑两遍只判第二遍」为什么是哑的）记在 `alloc_probe` 头注里。
+        //
+        // ⚠ 必须量**峰值**不是终值：那块 buffer 在 reader 返回前就 drop 了，
+        //   终值看不见它。这也是最初不用当前 RSS 的同一个理由。
+        let base = crate::alloc_probe::reset_peak();
+        let mut rx = flood_once().await;
+        let grew = crate::alloc_probe::peak_since(base);
+        // 上限 2 MiB。实测峰值 **1_066_728 字节**（≈1.02 MiB，就是 `MAX_LINE_BYTES` 那块 buf
+        // 本身加杂项），连跑三次**一字节不差** —— 线程级量具是确定的，所以余量可以收得很紧。
+        // **余量意味着什么**：剩下的不到 1 MiB **放不下第二块整行**（`MAX_LINE_BYTES` = 1 MiB），
+        // 所以任何「多留了一份整行」的回归都会顶穿它，不用等到 256 MiB 那种极端形状。
         assert!(
-            grew < 16 * 1024 * 1024,
-            "喂 {} MiB 无换行的流，RSS 高水位涨了 {} MiB —— 上限是「读完再判」的，\n\
+            grew < 2 * 1024 * 1024,
+            "喂 {} MiB 无换行的流，本线程分配峰值涨了 {} MiB —— 上限是「读完再判」的，\n\
              它在整行进内存之后才生效（D 审计实测涨满 512 MiB）。",
             FLOOD / 1024 / 1024,
             grew / 1024 / 1024
