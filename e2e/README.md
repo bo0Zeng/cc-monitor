@@ -27,20 +27,24 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 
 ### 哪些进 CI、哪些不进（G-A/G-C，2026-07-30）
 
-**15 套带断言数地板进了 CI**（U0 2026-08-01 订正：正文原写「13 套」，而下表列的一直是 9+6=**15** 套，`ci.yml:318` 的元门禁也是按 15 对；三处「13」都是 G2 加了两套之后没跟的副本），每步都经 `e2e/assert-pass-floor.sh <套件> <地板>` 跑
-（地板值写在 `ci.yml` 的调用行上；抓不到 `合计 PASS=<n>` 那行也判红，见该脚本头注）：
+真机套件**每一套都带断言数地板进 CI**，都经 `e2e/assert-pass-floor.sh <套件> <地板>` 跑
+（抓不到 `合计 PASS=<n>` 那行也判红，见该脚本头注）。
 
-| job | 套件（地板） |
+> ★ **套数与地板值一律不抄在这里** —— 单一事实源是 `ci.yml` 里那些
+> `run: bash e2e/assert-pass-floor.sh <套件> <地板>` 调用行。
+> **本表只列套件名**，而「这份名单与 `ci.yml` 一致」由 `doc_copy_registry` 的
+> `the_e2e_readme_suite_list_matches_ci` 机检（多一个、少一个、改名都红）。
+>
+> ⚠ 为什么不再留数字：本节此前逐字写着「副本漂了不会让任何东西变红，**所以只能靠这条提醒**」
+> —— 然后它就又漂了三次（套数 15→19 · `ccm-cli` 44→53 · `usage-probe` 9→11），
+> 而且上一轮 E82 订正时**也是这么写的**。**散文纪律等于没有纪律**（定框 E12）。
+
+| job | 套件 |
 |---|---|
-| `e2e-tmux` | tmux-target 26 · ccm-cli 44 · ccm-print-parity 12 · ccm-acceptance **19** · ccm-pretrust 13 · cc-spawn-uplift 21 · restart 24 · resume 17 · **ccm-rbind-title 8** |
-| `e2e-tmux-rust` | tmux-guarded 14 · usage-probe **9** · graylight-frames **12** · restart-frames 5 · resume-frames 7 · **daemon-fork 10** |
+| `e2e-tmux` | tmux-target · ccm-cli · ccm-print-parity · ccm-acceptance · ccm-pretrust · ccm-contract-parity · cc-spawn-uplift · restart · resume · ccm-rbind-title |
+| `e2e-tmux-rust` | tmux-guarded · usage-probe · inbound-frames · daemon-gate2 · local-backend · graylight-frames · restart-frames · resume-frames · daemon-fork |
 
-> **E82（2026-08-01）订正**：上表原写 `ccm-acceptance 15` / `usage-probe 7` / `graylight-frames 5`，
-> 与 `ci.yml` 里真正的调用行（19 / 9 / 12）对不上，且漏了 G2 新增的两套。
-> **地板值的单一事实源是 `ci.yml` 的调用行**（那里有逐个 grep 的反向自检）；本表是给人读的副本，
-> 改地板时**两处都要动** —— 副本漂了不会让任何东西变红，所以只能靠这条提醒。
-
-**这 15 套刻意都不进本地 `npm test`**（`gate-integrity` 开放问题 1 的决定）：
+**这些套件刻意都不进本地 `npm test`**（`gate-integrity` 开放问题 1 的决定）：
 `npm test` 要保持「不需要 tmux / 不需要 daemon 就能跑」，否则每个开发动作都变重。
 
 > **代价，如实写在这里**：**本地改了 `shared/ccm`（或 `src/account-restart.ts` /
@@ -49,11 +53,11 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 > 想连地板一起验就 `bash e2e/assert-pass-floor.sh restart 24`。
 > 不手跑的话，**第一次发现是在 CI 上**。
 
-**`graylight-suite`（全链级）不在这 15 套里**：它断言的是**正在跑的 dev app** 写的
+**`graylight-suite`（全链级）不在上表那些套件里**：它断言的是**正在跑的 dev app** 写的
 `monitor.*.log`，需要 GUI runner + 起整个 app —— 与本文件开头「跑法」那段要 Xvfb 的
 原因相同（`ci.yml` 也已就 DOM e2e 论证过「大投入低 ROI」）。它**仍然可以本地跑**。
 
-**`f40-suite`（渲染/滚动管线级）同样不在这 15 套里，理由同规格**（U0 2026-08-01 补写）：
+**`f40-suite`（渲染/滚动管线级）同样不在上表里，理由同规格**（U0 2026-08-01 补写）：
 它要 Xvfb + 一个**正在跑的 `tauri dev`**（见本文件开头「跑法」），断言的是整机渲染行为
 （启动门控 / 贴底 / 上翻补批 / fork 折叠 / 抖动密度绊线）。GUI runner 的投入
 与 `graylight-suite` 是同一笔账。

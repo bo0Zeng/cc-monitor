@@ -510,10 +510,24 @@ mod spawn_registry {
                 from = at;
             }
         }
-        assert!(
-            found.len() >= 4,
-            "只扫到 {} 处起进程 —— 抽取坏了，本断言在空转：{found:?}\n\
-             （实测生产段今天有 4 处：tmux_hook 的 tmux + watcher 的两处 sh + launch 的 tmux）",
+        // ★ **相等，不是地板**〔audit-0805 F18 下半〕。
+        //
+        // 原来这里是 `found.len() >= 4`。V6 逐行核出：**地板式判据在「数字变大」这个方向上
+        // 不会红**，而这里恰恰是变大 —— 真值早已是 6，而它旁边那两段散文
+        // （`INVARIANTS.md` 与本条报错文案）一直停在 4，两年没人发现。
+        // 相等之后，加一处而不改这个数就会红；那正是「让人非看见不可」的地方。
+        //
+        // ⚠ 这个数**刻意不再枚举是哪几处** —— 那份清单的家是 `ALLOWED`，
+        // 在报错文案里再抄一遍就是下一处会腐的散文（定框 E12）。
+        const SPAWN_SITES_TODAY: usize = 6;
+        assert_eq!(
+            found.len(),
+            SPAWN_SITES_TODAY,
+            "生产段扫到 {} 处起进程，登记时是 {SPAWN_SITES_TODAY} 处。\n\
+             变少 ⇒ 多半是**抽取坏了**，本断言在空转；变多 ⇒ 新增了起进程的面。\n\
+             两种都要人来看：把它加进 `ALLOWED` 并写明「做什么、为什么不违反收窄后的铁律」，\n\
+             然后把这个数一起改。**不许改回地板** —— 地板在变大方向上是瞎的。\n\
+             实际扫到：{found:?}",
             found.len()
         );
         let unregistered: Vec<&(String, String)> = found

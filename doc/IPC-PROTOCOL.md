@@ -39,7 +39,7 @@ monitor 自己的设置（主题 / 字体 / claudeDir override / 诊断）。
 ```json
 {
   "claudeDir": "C:\\Users\\you\\.claude",   // 可选；用户在设置面板 override
-  "theme": {                                  // 可选；前端 theme.ts 定义的 13 个 token
+  "theme": {                                  // 可选；前端 theme.ts 定义的 token（数量见下方指针）
     "bg": "#1f1b16",
     "text": "#d6cfc6",
     "font-base": "Inter, ...",

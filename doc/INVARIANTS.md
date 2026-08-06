@@ -69,8 +69,9 @@
 **强制条件（与裁决同时生效，不是建议）**：起进程的面**逐条登记**，且登记是**机检**不是散文：
 `readonly_guard::spawn_registry::every_process_spawn_in_production_is_registered`
 —— 生产段每一处 `Command::new` 都必须在清单里并写明「做什么、为什么不违反收窄后的铁律」。
-今天清单上有 **4 处**（`control/tmux_hook.rs` 起 `tmux` 装 hook；`observe/watcher.rs` 两处起 `sh`
-跑 `command -v tmux && tmux ls`，只读；**`control/launch.rs` 起 `tmux` 建会话 / send-keys**，U8a-2b 新增）。
+**清单本身就是家**（`readonly_guard.rs` 的 `ALLOWED`），本节**刻意不复制它有几条、是哪几处** ——
+这一句原先存了一个固定处数并逐个列出，而当时真值已经比它多两处
+（漏了 `control/gate.rs` 与 `control/kill.rs`）。**清单是对的，错的是它旁边这段散文**（audit-0805 V6 逐行核出）。
 新增一处而不登记 ⇒ **红**（已变异复验）。
 
 **U8a-2b 的写面（第 4 处）逐条**：`tmux new-session -d` / `set-option @ccm_sid` /

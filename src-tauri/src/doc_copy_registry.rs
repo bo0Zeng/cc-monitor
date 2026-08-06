@@ -20,6 +20,7 @@
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
 
     fn repo_root() -> PathBuf {
@@ -37,6 +38,13 @@ mod tests {
         "doc/CONTRIBUTING.md",
         "doc/DEVELOPMENT.md",
         "doc/ARCHITECTURE.md",
+        // F18 下半新纳入的四份 —— 上半只覆盖了 V6 十六行里前五行涉及的文件，
+        // 而剩下十一行的副本大半住在这四份里（`doc_claim_registry` 的文件集
+        // 只有 `doc/` **直接子层**，`e2e/README.md` 连它都够不着）。
+        "doc/INVARIANTS.md",
+        "doc/IPC-PROTOCOL.md",
+        "doc/REMOTE-PHASE0-DEPLOY.md",
+        "e2e/README.md",
     ];
 
     /// 已按 **E12 第二条路**处置（删副本、只留指针）的事实。
@@ -69,6 +77,25 @@ mod tests {
             "`.github/workflows/ci.yml` 的 job 列表本身",
         ),
         (
+            "daemon 生产段起进程的处数",
+            &["今天清单上有 ", "清单上共 "],
+            "清单本身就是家",
+            "`readonly_guard.rs` 的 `ALLOWED` + 那条 `SPAWN_SITES_TODAY` 相等断言（不是地板）",
+        ),
+        (
+            "e2e 各套件的断言数地板",
+            &[
+                "tmux-target ",
+                "ccm-cli ",
+                "ccm-acceptance ",
+                "usage-probe ",
+                "daemon-gate2 ",
+                "graylight-frames ",
+            ],
+            "套数与地板值一律不抄在这里",
+            "`ci.yml` 里 `run: bash e2e/assert-pass-floor.sh <套件> <地板>` 那 19 行",
+        ),
+        (
             "`backend/` 下 `.rs` 的个数",
             &["`backend/` 下今天有 "],
             "刻意不写它有几个",
@@ -95,10 +122,26 @@ mod tests {
             "wire 帧 kind 清单",
             "every_wire_frame_kind_has_a_row_in_the_frame_table",
         ),
+        // ⚠ 「e2e 套件名单」那条判据 **住在本文件里**，而本文件在扫描时被摘除
+        // （否则表里写着的符号名会让每一条都在自己身上找到自己 —— F23 那一族）。
+        // ⇒ 它不进这张表：住在本文件里的判据由**编译**保证还在，不需要再查一遍。
+        ("daemon 生产段起进程的处数", "SPAWN_SITES_TODAY"),
+        ("设置面板逐页清单", "pageTitles"),
     ];
 
     /// V6 那张表的总行数（台账标题写「十八行」，实际列出 **16**）。
     const TOTAL_ROWS: usize = 16;
+
+    /// V6 十六行里**刻意不做**的，连理由一起登记。
+    ///
+    /// ⚠ 这张表存在的意义是：**「没处置」与「决定不处置」是两回事**。
+    /// 少了它，棘轮就得靠「已处置数 == 全表数」收尾，而那会逼人去改不该改的东西。
+    const NOT_DOING: &[(&str, &str)] = &[(
+        "#10 `build_local_ps_command` 行号的第三份副本",
+        "那份副本住在 `项目审阅报告-PhaseG-2026-07-29.md` —— **带日期的历史报告**。\
+         改它等于篡改当时的记录；报告是快照，不是活文档。\
+         另两份活副本已在 F18 上半处置。",
+    )];
 
     /// ★ **棘轮的地板**：已处置行数只许涨。
     ///
@@ -106,15 +149,25 @@ mod tests {
     /// （`this assertion has a constant value`）—— 常量与自己比永远成立，
     /// 那不是棘轮，是一句装饰。与 F06 那次被 clippy 咬中的同义反复**同一个形状**。
     /// ⇒ 改成从**表**导出：`DONE_ROWS` 的真实条数与这个地板比，加一行才降得下未处置数。
-    const DONE_FLOOR: usize = 5;
+    const DONE_FLOOR: usize = 15;
 
-    /// V6 十六行里已处置的（本轮 5 行）。未处置数 = `TOTAL_ROWS` − 本表条数。
+    /// V6 十六行里已处置的。未处置数 = `TOTAL_ROWS` − 本表条数 − `NOT_DOING` 条数。
     const DONE_ROWS: &[&str] = &[
         "#1 门禁怎么跑（`--all` 缺 vendor 排除 → 已订正为 `--workspace --exclude`）",
         "#2 workspace 测试总数（删副本留指针）",
+        "#3 node 套件组数（★ F18 上半顺手做掉但没登记 —— 下半复核时才发现，台账是筛子不是免检章）",
         "#4 vitest DOM 数（删副本留指针）",
         "#5 CI job 数（删副本留指针）",
+        "#6 e2e 套数与逐套地板（删副本留指针 + 新增套件名单机检）",
+        "#7 reader 文件数（`local_read_surface_registry` 头注 11 vs 同文件机检 7 —— 一个文件内部自相矛盾；已删副本留指针）",
+        "#8 daemon 生产 `Command::new` 处数（散文删副本；★ 判据从地板 `>= 4` 收紧为相等 —— 地板在变大方向上是瞎的）",
         "#9 `backend/` 下 `.rs` 数（删副本留指针）",
+        "#11 主题 token 数（README 与 IPC-PROTOCOL 两处 13 → 删副本，家在 `theme.ts` 的 `TOKENS`，实为 14）",
+        "#12 `__ccm_rbind`（`REMOTE-PHASE0-DEPLOY.md` 仍在教用户调一个全仓没有定义的函数 → 已改写）",
+        "#13 远端 `↺` 行为（「monitor 无法在远端开交互 TTY」已假 → 已改写并指向 README 权威条）",
+        "#14 远端分叉支持（README「仅本地会话」已假 → 已订正）",
+        "#15 设置面板结构（「5 大折叠分组」在 v3.5.0 IA 重做后已不存在 → 整节重写为指针）",
+        "#16 Tauri State 矩阵（**本来就是做对了的样本** —— 无副本、只有指针，复核后如实登记）",
     ];
 
     /// 本文件自己的路径 —— 扫符号时要摘出去（表里写着那些符号名）。
@@ -125,15 +178,41 @@ mod tests {
             .unwrap_or_else(|e| panic!("{rel} 读不到：{e} —— 文件搬了就把这条一起改"))
     }
 
-    /// `prefix` 之后（跳过空格）紧跟阿拉伯数字 ⇒ 返回那一小段原文。
+    /// 数字前后可能垫着的**排版字符** —— markdown 粗体星号、反引号、空格。
+    ///
+    /// ⚠ 这一条是 F18 下半补的洞：上一版只跳空格，于是 `今天清单上有 **4 处**`
+    /// （粗体包着数字）**探不到** —— 而那正是本轮要治的副本之一。
+    /// 与 F24 同一个族：**匹配单位比事实小**，这里小在「没算上排版字符」。
+    const PAD: &[char] = &[' ', '*', '`'];
+
+    /// 把字节下标往前挪到最近的字符边界（截取上下文用，宁可多取一点）。
+    fn snap_down(hay: &str, i: usize) -> usize {
+        let i = i.min(hay.len());
+        (0..=i).rev().find(|k| hay.is_char_boundary(*k)).unwrap_or(0)
+    }
+
+    /// 把字节下标往后挪到最近的字符边界。
+    fn snap_up(hay: &str, i: usize) -> usize {
+        let i = i.min(hay.len());
+        (i..=hay.len())
+            .find(|k| hay.is_char_boundary(*k))
+            .unwrap_or(hay.len())
+    }
+
+    /// `prefix` 之后（跳过排版字符）紧跟阿拉伯数字 ⇒ 返回那一小段原文。
     fn digit_after(hay: &str, prefix: &str) -> Option<String> {
         let mut from = 0;
         while let Some(i) = hay[from..].find(prefix) {
             let at = from + i + prefix.len();
-            let rest = hay[at..].trim_start_matches(' ');
+            let rest = hay[at..].trim_start_matches(PAD);
             if rest.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-                let start = (from + i).saturating_sub(12);
-                let end = (at + 14).min(hay.len());
+                // ⚠ **必须回到字符边界再切**：这里是字节算术，中文文档里
+                // `saturating_sub(12)` 会落在一个汉字中间，`hay[start..end]` 当场 panic。
+                // F18 上半这段一直没炸，只是因为当时的文件集里没有触发它的位置 ——
+                // 下半把文件集从 6 份扩到 10 份，第一次跑就炸在 `INVARIANTS.md` 的「铁」字上。
+                // ⇒ 一条判据在**没跑到的输入**上是什么行为，不能靠「它一直是绿的」推断。
+                let start = snap_down(hay, (from + i).saturating_sub(12));
+                let end = snap_up(hay, at + 14);
                 let snippet: String = hay[start..end].chars().filter(|c| *c != '\n').collect();
                 return Some(snippet);
             }
@@ -141,6 +220,56 @@ mod tests {
         }
         None
     }
+
+    /// `suffix` **之前**（跳过排版字符）紧挨阿拉伯数字 ⇒ 返回那一小段原文。
+    ///
+    /// 中文里数量词多半是「**数字在前**」（`14 个 token` / `15 套` / `5 大折叠分组`），
+    /// 只有 [`digit_after`] 一个方向时这类副本一条都探不到。
+    fn digit_before(hay: &str, suffix: &str) -> Option<String> {
+        let mut from = 0;
+        while let Some(i) = hay[from..].find(suffix) {
+            let at = from + i;
+            let head = hay[..at].trim_end_matches(PAD);
+            if head.chars().next_back().is_some_and(|c| c.is_ascii_digit()) {
+                let start = snap_down(hay, head.len().saturating_sub(14));
+                let end = snap_up(hay, at + suffix.len() + 6);
+                return Some(hay[start..end].chars().filter(|c| *c != '\n').collect());
+            }
+            from = at + suffix.len();
+        }
+        None
+    }
+
+    /// 同 [`POINTER_ONLY`]，但形态是「**数字在前**」。
+    ///
+    /// `(事实, 不许再出现的后缀, 必须留着的指针片段, 家在哪)`
+    #[allow(clippy::type_complexity)]
+    const POINTER_ONLY_SUFFIX: &[(&str, &[&str], &str, &str)] = &[
+        (
+            "主题 token 数",
+            &[" 个 token"],
+            "以 `src/theme.ts` 的 `TOKENS` 为准",
+            "`src/theme.ts` 的 `TOKENS` 数组本身（今天 14 条）",
+        ),
+        (
+            "reader 文件数",
+            &[" 个 reader"],
+            "以 `local_read_surface_registry` 的机检为准",
+            "`local_read_surface_registry` 里那条 `assert_eq!(readers, …)`（机器数 7）",
+        ),
+        (
+            "设置面板的折叠分组数",
+            &[" 大折叠分组"],
+            "家在 `src/settings/panel-groups.vitest.ts`",
+            "`panel-groups.vitest.ts` 的逐页完整清单（完整相等断言，搬丢一块会红）",
+        ),
+        (
+            "进 CI 的 e2e 套数",
+            &[" 套带断言", " 套真机套件"],
+            "套数与地板值一律不抄在这里",
+            "`ci.yml` 里的 `assert-pass-floor.sh` 调用行；名单一致性由 `the_e2e_readme_suite_list_matches_ci` 机检",
+        ),
+    ];
 
     /// ★ 正题：**声明「只剩指针」的事实，数字副本不许再回来**。
     #[test]
@@ -165,6 +294,18 @@ mod tests {
                 }
             }
         }
+        for (fact, suffixes, _, home) in POINTER_ONLY_SUFFIX {
+            for rel in PROSE_FILES {
+                let body = read(rel);
+                for q in *suffixes {
+                    if let Some(snip) = digit_before(&body, q) {
+                        back.push(format!(
+                            "  {rel}：「…{snip}…」（事实：{fact}；家在 {home}）"
+                        ));
+                    }
+                }
+            }
+        }
         assert!(
             back.is_empty(),
             "有已经删掉的数字副本又被写回散文里了：\n{}\n\n\
@@ -179,7 +320,7 @@ mod tests {
     /// 指针句必须**还在** —— 否则「删副本」会退化成「把整段删了」，读者连去哪查都不知道。
     #[test]
     fn the_pointer_that_replaced_the_copy_is_still_there() {
-        for (fact, _, pointer, home) in POINTER_ONLY {
+        for (fact, _, pointer, home) in POINTER_ONLY.iter().chain(POINTER_ONLY_SUFFIX.iter()) {
             let found = PROSE_FILES.iter().any(|rel| read(rel).contains(*pointer));
             assert!(
                 found,
@@ -229,16 +370,85 @@ mod tests {
         // `.iter().filter().count()` 而不是 `.len()` —— 后者会被常量折叠成恒真断言，
         // 那正是 clippy 咬掉第一版的原因。这里的值来自**表本身**，加一行才动得了它。
         let done = DONE_ROWS.iter().filter(|s| !s.is_empty()).count();
+        let parked = NOT_DOING.len();
         assert!(
-            done <= TOTAL_ROWS,
-            "已处置 {done} 行 > 全表 {TOTAL_ROWS} 行 —— 表加行了就把 `TOTAL_ROWS` 一起改"
+            done + parked <= TOTAL_ROWS,
+            "已处置 {done} + 明确不做 {parked} > 全表 {TOTAL_ROWS} 行 —— \
+             表加行了就把 `TOTAL_ROWS` 一起改"
         );
         assert!(
             done >= DONE_FLOOR,
             "已处置的散文副本行数从 {DONE_FLOOR} 掉到 {done} 了 —— 这是**棘轮，只许涨**。\
-             还剩 {} 行没处置；处置一行就把它写进 `DONE_ROWS` 并把 `DONE_FLOOR` 抬上去，\
-             **不许把已处置的挪走来让数字好看**。",
-            TOTAL_ROWS - done
+             还剩 {} 行既没处置也没登记为不做；处置一行就把它写进 `DONE_ROWS` 并把 \
+             `DONE_FLOOR` 抬上去，**不许把已处置的挪走来让数字好看**。",
+            TOTAL_ROWS - done - parked
+        );
+        // 「明确不做」必须**带理由**，否则它就成了「没做」的体面写法。
+        for (row, why) in NOT_DOING {
+            assert!(
+                why.len() > 30,
+                "`{row}` 登记为不做，但理由只有 {} 字节 —— 一句话的理由挡不住下一个人重开它",
+                why.len()
+            );
+        }
+    }
+
+    /// ★ 把 `e2e/README.md` 那句「**只能靠这条提醒**」变成一条会红的判据〔F18 下半〕。
+    ///
+    /// 那份表原先连**套数**带**逐套地板**一起抄，并在旁边逐字写着
+    /// 「副本漂了不会让任何东西变红，所以只能靠这条提醒」—— 然后它漂了三次
+    /// （套数 15→19 · `ccm-cli` 44→53 · `usage-probe` 9→11），
+    /// 而且上一轮 E82 订正时**也是这么写的**。**散文纪律等于没有纪律**（定框 E12）。
+    ///
+    /// 地板值走 **E12 第二条路**（删副本、只留指针，由上面那张表看着不许回来）；
+    /// **套件名单**走第一条路 —— 就是本条：与 `ci.yml` 的调用行**集合相等**。
+    #[test]
+    fn the_e2e_readme_suite_list_matches_ci() {
+        let ci = read(".github/workflows/ci.yml");
+        let mark = "run: bash e2e/assert-pass-floor.sh ";
+        let in_ci: BTreeSet<String> = ci
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix(mark))
+            .filter_map(|rest| rest.split_whitespace().next())
+            .map(str::to_string)
+            .collect();
+        // 抽取器自检：抓不到调用行时两边都会是空集，本条就成了一句废话。
+        assert!(
+            in_ci.len() >= 15,
+            "只从 `ci.yml` 抓到 {} 条 `assert-pass-floor` 调用行（08-06 实测 19）—— \
+             抽取器坏了，本条此刻是空转的：{in_ci:?}",
+            in_ci.len()
+        );
+
+        let readme = read("e2e/README.md");
+        let in_doc: BTreeSet<String> = readme
+            .lines()
+            .filter(|l| l.starts_with("| `e2e-tmux"))
+            .flat_map(|l| {
+                l.split('|')
+                    .nth(2)
+                    .unwrap_or("")
+                    .split('·')
+                    .map(|c| c.trim().trim_matches('`').trim().to_string())
+                    .collect::<Vec<_>>()
+            })
+            .filter(|c| !c.is_empty())
+            .collect();
+        assert!(
+            in_doc.len() >= 15,
+            "从 `e2e/README.md` 的表里只解析出 {} 个套件名 —— 表的形状变了就把本条一起改：{in_doc:?}",
+            in_doc.len()
+        );
+
+        let missing: Vec<&String> = in_ci.difference(&in_doc).collect();
+        let extra: Vec<&String> = in_doc.difference(&in_ci).collect();
+        assert!(
+            missing.is_empty() && extra.is_empty(),
+            "`e2e/README.md` 的套件表与 `ci.yml` 的调用行对不上。\n\
+             CI 有而文档没有：{missing:?}\n\
+             文档有而 CI 没有：{extra:?}\n\
+             ★ 地板值**不在**本条管辖内 —— 那些已按 E12 第二条路删掉副本，\
+             单一事实源就是 `ci.yml` 的调用行。本条只钉**名单**。"
         );
     }
 
