@@ -569,10 +569,39 @@ fn is_process_alive(pid: u32, expected_proc_start: Option<&str>) -> bool {
     let Ok(raw) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
         return false; // 进程不在（或读不到）⇒ 判死。fail-safe：宁可少显示，不显示僵尸
     };
+    liveness_from_stat(&raw, expected_proc_start)
+}
+
+/// 拿到 `/proc/<pid>/stat` 原文之后的判定〔audit-0805 F13 / 报告 I-14〕。
+///
+/// # 抽出来是为了让它可判据
+///
+/// 上面那半要真 `/proc`，测不了；而**判定规则本身**恰恰是本条要修的东西。
+///
+/// # 它此前与 daemon 那份**方向相反**
+///
+/// 原来最后一行是 `proc_stat_starttime(&raw).is_some_and(|got| got == want)` ——
+/// **字段解析不出时 `is_some_and` 给 `false` ⇒ 判死**。
+/// 而 daemon 侧 `platform/liveness.rs` 对同一格逐字写着：
+/// 「current unreadable right now: existence is all we can assert.
+/// **Do not archive a still-existing PID on missing start info.**」
+///
+/// ⇒ 同一件事两个方向。**而这一格的语义很清楚**：`/proc/<pid>/stat` 都读到了，
+/// 就说明那个 pid **还在**；解析不出 starttime 只是「我认不出它是不是同一个进程」，
+/// 不是「它不在了」。判死会让一个**活着的会话**被归档。
+///
+/// ⚠ 保守方向的代价也要说清：这样改之后，「pid 被复用且 starttime 恰好解析不出」会误判成活。
+/// 那比误杀活会话轻 —— 而且 daemon 侧一直是这么选的，两边现在口径一致。
+#[cfg(target_os = "linux")]
+fn liveness_from_stat(raw: &str, expected_proc_start: Option<&str>) -> bool {
     let Some(want) = expected_proc_start else {
-        return true; // 缺 procStart ⇒ 退到存在性，同 Windows 侧
+        return true; // 缺 procStart ⇒ 退到存在性，同 Windows 侧与 daemon 侧
     };
-    proc_stat_starttime(&raw).is_some_and(|got| got == want)
+    match proc_stat_starttime(raw) {
+        Some(got) => got == want,
+        // F13：解析不出 ≠ 进程不在。/proc 读到了就说明它还在。
+        None => true,
+    }
 }
 
 /// 从 `/proc/<pid>/stat` 原文里取第 22 字段（starttime）。
@@ -950,5 +979,55 @@ mod tests {
         assert_eq!(info.pid, 22832);
         assert_eq!(info.session_id, "2bb6394f-xx");
         assert!(info.proc_start.is_none());
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod f13_tests {
+    use super::liveness_from_stat;
+
+    /// 一份形状正常的 `/proc/<pid>/stat`：第 22 字段是 starttime。
+    fn stat_with_starttime(start: &str) -> String {
+        let mut f: Vec<String> = (1..=51).map(|i| i.to_string()).collect();
+        f[1] = "(claude)".into(); // comm 带括号，解析要能跨过去
+        f[21] = start.into(); // 第 22 字段（0-based 21）
+        f.join(" ")
+    }
+
+    /// ★★ **「字段解析不出」不等于「进程不在」**〔audit-0805 F13 / 报告 I-14〕。
+    ///
+    /// 原来最后一行是 `proc_stat_starttime(&raw).is_some_and(|got| got == want)` ——
+    /// 解析不出时给 `false` ⇒ **判死**。而 daemon 侧 `platform/liveness.rs` 对同一格逐字写着
+    /// 「Do not archive a still-existing PID on missing start info.」⇒ **同一件事两个方向**。
+    ///
+    /// `/proc/<pid>/stat` 都读到了就说明那个 pid **还在**；解析不出只是「我认不出它是不是
+    /// 同一个进程」。判死会让一个**活着的会话被归档** —— 用户看到它无故变灰。
+    #[test]
+    fn an_unparseable_starttime_does_not_archive_a_living_process() {
+        // 读到了 /proc，但内容不成形 ⇒ 解析不出 starttime。
+        assert!(
+            liveness_from_stat("garbage without fields", Some("12345")),
+            "★ 解析不出 starttime 就判死 —— 那会把一个活着的会话归档。\n\
+             /proc 都读到了就说明进程还在；解析不出只是「认不出是不是同一个」。\n\
+             daemon 侧 platform/liveness.rs 逐字：Do not archive a still-existing PID on \n\
+             missing start info. 两边必须同向。"
+        );
+    }
+
+    /// 反向三条：**别把上面写成恒真**。
+    #[test]
+    fn the_starttime_comparison_still_discriminates() {
+        assert!(
+            liveness_from_stat(&stat_with_starttime("999"), Some("999")),
+            "抽取器自检：连正常匹配都判死，说明夹具或解析器不对"
+        );
+        assert!(
+            !liveness_from_stat(&stat_with_starttime("111"), Some("999")),
+            "starttime 对不上 = pid 被复用给了别的进程 ⇒ 必须判死，否则 PID 复用检测形同虚设"
+        );
+        assert!(
+            liveness_from_stat(&stat_with_starttime("111"), None),
+            "没有 baseline ⇒ 退到存在性（同 Windows 侧与 daemon 侧）"
+        );
     }
 }
