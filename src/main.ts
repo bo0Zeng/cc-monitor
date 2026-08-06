@@ -34,6 +34,11 @@ import { bindRemoteHealthToast } from "./remote-health";
 // F83（#39）：顶栏 SFTP 入口——按远端主机数 0/1/N 分支打开现有 SFTP 模态。
 import { openSftpPanel } from "./sftp/panel";
 import { readRemoteConfig, sftpEligibleHosts } from "./remote-config";
+import {
+  collectAccountRows,
+  createGatedPoller,
+  type GatedPoller,
+} from "./session-accounts-poll";
 import { TasksPanel } from "./tasks-panel";
 import { AgentsPanel } from "./agents-panel";
 import { getBehavior, setBehavior } from "./behavior";
@@ -206,6 +211,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   // audit-fixes I4：refreshSessionAccounts 无重入/顺序保护 → 慢的旧快照可覆盖新快照（把切号后刚
   // 关上的"反向窗口"从并发侧重开）。加 in-flight 递增序号门：每次进入 ++refreshSeq 取本地 mySeq，
   // 写 setSessionAccounts 前若 refreshSeq 已被更晚一次进入推大（mySeq !== refreshSeq）→ 丢弃本次。
+  // ⚠ 句柄留着：F14 第三刀之前这个 interval 的句柄是**丢掉的**，全仓没人停得了它。
+  let sessionAccountsPoller: GatedPoller | null = null;
   let refreshSeq = 0;
   const refreshSessionAccounts = async (): Promise<void> => {
     const mySeq = ++refreshSeq;
@@ -216,27 +223,14 @@ window.addEventListener("DOMContentLoaded", async () => {
         tabs.setSessionAccounts([], new Map());
         return;
       }
-      const rows: import("./accounts").SessionAccount[] = [];
-      const emailByName = new Map<string, string>();
-      const readyOrigins = new Set<string>();
-      // account-ux U5：origin → 当前账号名，供 tab 徽章「信息才显」比对（会话账号==它 → 不挂徽章）。
-      const currentByOrigin = new Map<string, string>();
-      for (const h of cfg.hosts) {
-        if (h.daemonless) continue;
-        const origin = h.label || h.host;
-        const [sessions, state] = await Promise.all([
-          fetchSessionAccounts(origin),
-          fetchAccounts(origin),
-        ]);
-        rows.push(...sessions);
-        for (const a of state.accounts) if (a.email) emailByName.set(a.name, a.email);
-        // §7：账号确实可查询（available）的 origin 才算 ready——徽章只在这些 origin 上显。
-        if (state.available) readyOrigins.add(origin);
-        // account-ux U6（D 审计）：过 isSelectable —— 不可选的当前账号不能拿去判定徽章的
-        // "不一致"（否则会指着一个系统永远不会 follow 过去的账号说"你不一致"）。语义见该纯函数。
-        const cur = currentAccountForBadge(state);
-        if (cur) currentByOrigin.set(origin, cur.name);
-      }
+      // audit-0805 F14 第三刀（报告 I-5）：这圈扇出原来是**串行**的（`for` 里直接 `await`，
+      // `Promise.all` 只并行同一台的两条）⇒ N 台远端的一轮 = N 次往返串起来。
+      // 现在走 `collectAccountRows`：**有上限（4）、保序**。判据在
+      // `session-accounts-poll.vitest.ts`，`readyOrigins` / `currentByOrigin` 的语义原样搬过去。
+      const { rows, emailByName, readyOrigins, currentByOrigin } = await collectAccountRows(
+        cfg.hosts,
+        { fetchSessionAccounts, fetchAccounts, currentAccountForBadge },
+      );
       // A4：sid → lastAccount（源②）。本机 history-metadata 读一次（远端会话的 lastAccount 也
       // 由 cc-monitor 记在本机），live 探测不到时徽章兜底显「上次用本工具起」。失败 → 空表降级。
       let lastByS = new Map<string, string>();
@@ -252,8 +246,15 @@ window.addEventListener("DOMContentLoaded", async () => {
       console.warn("refreshSessionAccounts failed:", e);
     }
   };
-  void refreshSessionAccounts();
-  window.setInterval(() => void refreshSessionAccounts(), 10_000);
+  // audit-0805 F14 第三刀：原来是 `void refresh(); window.setInterval(…, 10_000)` ——
+  // 句柄丢弃（全仓 `clearInterval` 只有 grid-monitor 一处）、无重入锁（单轮 >10s 会摞轮次）、
+  // 无可见性门控（`document.hidden` 全仓零命中）。三条都由 `createGatedPoller` 接管。
+  // ⚠ 不是新增周期唤醒（定框 E6）：**替换**了原来那一个，且净减少唤醒。
+  sessionAccountsPoller = createGatedPoller({
+    intervalMs: 10_000,
+    tick: refreshSessionAccounts,
+  });
+  sessionAccountsPoller.start();
 
   // Batch5-F19（G 验收）：用户手动切过 tab 后，迟到的远端宣告不再补切抢焦点
   tabs.onManualSwitch = () => {
