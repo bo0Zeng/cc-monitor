@@ -384,7 +384,7 @@ mod tests {
                 _ => {}
             }
         }
-        strip_line_comments(&src[open + 1..end])
+        guard_core::strip_comment_lines(&src[open + 1..end])
             .split(',')
             .map(str::trim)
             .filter(|s| !s.is_empty())
@@ -396,19 +396,6 @@ mod tests {
     /// 这类判据字面量（实测 5 处），不剥就会多数出一堆不存在的命令。
     /// 更阴的一种：文档注释里写了这个属性、紧接着下一行就是个私有 helper 的 `fn`，
     /// 天真的正则会把那个 helper 认成命令（L5 开工复测时实测踩到过一次）。
-    fn strip_line_comments(s: &str) -> String {
-        s.lines()
-            .map(|l| {
-                if l.trim_start().starts_with("//") {
-                    ""
-                } else {
-                    l
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-
     /// 采集每条命令的**参数列表**（剥注释后），供结构反证用。跳过本文件自身。
     ///
     /// **递归**（U-1，2026-08-01）：原来是单层 `read_dir`，而目录没有扩展名 ⇒ 被整个跳过。
@@ -441,7 +428,7 @@ mod tests {
         // 今天 `src/` 只有一层平目录 + 空的 `adapter/`，影响为零；但递归本就是为将来的多子目录准备的。
         files.sort();
         for path in files {
-            let src = strip_line_comments(&std::fs::read_to_string(&path).expect("read rs"));
+            let src = guard_core::strip_comment_lines(&std::fs::read_to_string(&path).expect("read rs"));
             for (i, _) in src.match_indices(&attr) {
                 let rest = &src[i..];
                 let Some(fpos) = rest.find("fn ") else {

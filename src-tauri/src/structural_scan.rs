@@ -246,6 +246,75 @@ mod tests {
         );
     }
 
+    /// ★ **剥注释只许有一个权威实现**〔audit-0805 §5 3h，08-06〕。
+    ///
+    /// # 它挡的是什么
+    ///
+    /// 「判据数到注释」在本区犯过三次（F12 跨语言对拍 · F24 的裸 `contains` 计数 ·
+    /// 1k 的属性回溯）。三次的补法都是**在自己文件里现写一个剥注释的小函数** ——
+    /// 于是 08-06 一数：**四个具名私有实现**，而 §5 3h 当时写的是「三处」。
+    ///
+    /// 更糟的是它们**语义不同**：两份整行删、一份整行留空、一份按 marker 截断。
+    /// 「同一个词在四个地方各是一个意思」正是 E3 要消灭的形状。
+    ///
+    /// # 今天的唯一例外，以及它凭什么是例外
+    ///
+    /// `profile_installer::strip_comments(src, marker)` 按**第一个 marker 截断整行**，
+    /// 因此能吃掉**行尾注释**；共享原语刻意不这么做（会砍坏 `"http://host"` 这类字面量，
+    /// 详见 `guard_core::strip_comment_lines` 头注）。它扫的是**自己生成的** shell/rc 片段，
+    /// 语料可控 ⇒ 那个风险在它那里不存在。**这不是豁免，是另一种语义。**
+    ///
+    /// ⚠ 想再加一个 ⇒ 先问「共享原语为什么不够」，答得出来才加进下面这张表。
+    #[test]
+    fn comment_stripping_has_exactly_one_shared_implementation() {
+        const REGISTERED: &[(&str, &str)] = &[(
+            "profile_installer.rs",
+            "按 marker 截断整行（能吃行尾注释），语料是自己生成的 shell/rc 片段、无 `://` 字面量风险",
+        )];
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut found: Vec<String> = Vec::new();
+        for (f, raw) in guard_core::scan_tree!(&root, &["rs"]) {
+            // 只看生产段之外也一样：私有剥法一律住在测试模块里，所以扫整份。
+            for l in raw.lines() {
+                let t = l.trim_start();
+                if t.starts_with("fn strip_line_comments")
+                    || t.starts_with("fn strip_comments")
+                    || t.starts_with("fn without_comments")
+                {
+                    found.push(
+                        f.file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("?")
+                            .to_string(),
+                    );
+                }
+            }
+        }
+        found.sort();
+        found.dedup();
+
+        // 抽取器自检：连登记在册的那一个都扫不到 ⇒ 遍历或形态坏了，下面的对拍会空绿。
+        assert!(
+            found.contains(&"profile_installer.rs".to_string()),
+            "连 `profile_installer.rs` 里那个已登记的实现都没扫到 —— 遍历或形态坏了，\n\
+             那样「没有新增」这个结论是零命中得来的，不是真的"
+        );
+
+        let extra: Vec<&String> = found
+            .iter()
+            .filter(|f| !REGISTERED.iter().any(|(r, _)| *r == f.as_str()))
+            .collect();
+        assert!(
+            extra.is_empty(),
+            "又出现了私有的剥注释实现：{extra:?}\n\
+             ★ 先用 `guard_core::strip_comment_lines` —— 08-06 已把三份重复迁过去。\n\
+             它**确实不够**时才加进本表，并写清是哪种语义上的不够（行尾注释？保行号？\n\
+             别的注释语法？）。⚠ 只写文件名不算理由。\n\
+             已登记：{REGISTERED:?}"
+        );
+    }
+
     /// tmux `-t` 目标的性质：**紧跟的那个 token 里**先出现 `=` 再出现 `:`。
     /// （T01 审计 S2：看整个窗口时，同一行的 `A=b:c` 诱饵能让裸目标零违规。）
     fn exact_target(win: &str) -> Result<(), String> {

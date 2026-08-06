@@ -82,16 +82,6 @@ mod tests {
     }
 
     /// 剥掉整行注释 —— 本文件与 `mcp.rs` / `profile_installer.rs` 的**头注里就写着这两个符号**。
-    fn strip_line_comments(src: &str) -> String {
-        src.lines()
-            .filter(|l| {
-                let t = l.trim_start();
-                !(t.starts_with("//") || t.starts_with("*") || t.starts_with("/*"))
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-
     fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) {
         let Ok(rd) = fs::read_dir(dir) else { return };
         for e in rd.flatten() {
@@ -125,7 +115,7 @@ mod tests {
             if rel == SELF {
                 continue;
             }
-            let src = strip_line_comments(&fs::read_to_string(&f).unwrap_or_default());
+            let src = guard_core::strip_comment_lines(&fs::read_to_string(&f).unwrap_or_default());
             for sym in ["MoveFileExW", "ReplaceFileW"] {
                 let n = src.matches(&format!("{sym}(")).count();
                 if n > 0 {
