@@ -232,8 +232,12 @@ fn arm_pid_watcher(key: &Path, pid: u32, expected_start: Option<u64>, state: &mu
     let Some(tx) = state.events_tx.clone() else {
         return;
     };
-    if !state.pid_watched.insert((key.to_path_buf(), pid)) {
-        return; // 这个 (pidfile, pid) 已经挂过了
+    // F11：键含 `expected_start` ⇒ **同 pid 但换了进程实例（PID 复用）也会重新挂**。
+    if !state
+        .pid_watched
+        .insert((key.to_path_buf(), pid, expected_start))
+    {
+        return; // 这个 (pidfile, pid, starttime) 已经挂过了
     }
     spawn_pid_watcher(
         PidWatchTarget::Session {
@@ -900,7 +904,13 @@ struct ReaderState {
     /// **按对而不是按路径**：同路径换了 pid（`/clear` 原地换 sid、PID 复用写同路径）
     /// 要能重新挂；而按对存就不必在任何移除路径上做清理（陈旧条目至多一个/对，
     /// 且 daemon 生命周期 ⊆ 一次 SSH 连接）。
-    pid_watched: HashSet<(PathBuf, u32)>,
+    /// 已挂过 pidfd 看守的 **(pidfile 路径, pid, 进程启动时刻)**〔audit-0805 F11 / 报告 I-7〕。
+    ///
+    /// ⚠ 第三元 `start` 是 F11 补的。此前键是 `(路径, pid)` 两元 ——
+    /// 「同路径换 pid」能重新挂（有测试钉着），**而「同路径、同 pid、不同进程实例」落进去重、
+    /// 不再挂**。那恰好就是 **PID 复用**本身，也正是 `spawn_pid_watcher` 头注声称要处理的那格。
+    /// 区分进程实例的东西（`starttime`）本来就在 `arm_pid_watcher` 的参数里，只是没进键。
+    pid_watched: HashSet<(PathBuf, u32, Option<u64>)>,
     /// Fast membership for the active-session filter: sids currently streaming.
     /// Mirrors the local watcher's `active_filter` — only sessions whose PID is
     /// alive on this host stream; historical jsonl is NOT pulled (that is the
@@ -1949,6 +1959,50 @@ mod tests {
             rx.recv_timeout(Duration::from_secs(2)).is_ok(),
             "同路径换 pid 必须重新挂看守"
         );
+    }
+
+    /// ★★ **PID 复用：同路径、同 pid、不同进程实例，必须重新挂**〔audit-0805 F11 / 报告 I-7〕。
+    ///
+    /// # 上面那条测的是「换 pid」，而这一格是「**没换 pid**」
+    ///
+    /// `spawn_pid_watcher` 的头注声称要处理「PID 复用写同路径」，而去重键此前是
+    /// `(路径, pid)` 两元 —— PID 被复用时**这两元都没变**，于是落进去重、**不再挂看守**。
+    /// **头注声称能处理的那格，恰是它处理不了的那格。**
+    ///
+    /// 区分进程实例的东西（`starttime`）本来就在参数里，只是没进键。F11 把它加进去了。
+    #[test]
+    fn a_recycled_pid_at_the_same_path_gets_a_fresh_watcher() {
+        let mut st = ReaderState::new(PathBuf::from("/tmp/ccm-f11-proj"), false, false);
+        let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
+        st.events_tx = Some(tx);
+        let key = PathBuf::from("/tmp/ccm-f11-fixture/reuse.json");
+
+        let mut child = spawn_target();
+        let dead = child.id();
+        child.kill().expect("kill");
+        child.wait().expect("reap");
+
+        // 同一个 pid、同一个路径，但**两个不同的 starttime** = PID 被复用了。
+        arm_pid_watcher(&key, dead, Some(1_000), &mut st);
+        assert!(
+            rx.recv_timeout(Duration::from_secs(2)).is_ok(),
+            "抽取器自检：第一次都没挂上，本条后面的判定无意义"
+        );
+        arm_pid_watcher(&key, dead, Some(2_000), &mut st);
+        assert!(
+            rx.recv_timeout(Duration::from_secs(2)).is_ok(),
+            "★ 同路径 + 同 pid + **不同 starttime** 没有重新挂看守。\n\
+             那正是 PID 复用：pid 数字被回收给了另一个进程，而 (路径, pid) 两元键看不出区别\n\
+             ⇒ 新进程死了没人报，会话永远停在「活着」。\n\
+             `spawn_pid_watcher` 的头注声称处理这一格 —— 别让它继续说假话。"
+        );
+
+        // 反向：**同 starttime** 仍然要去重（防把上面写成「每次都挂」）。
+        arm_pid_watcher(&key, dead, Some(2_000), &mut st);
+        match rx.recv_timeout(Duration::from_millis(400)) {
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            _ => panic!("同 (路径, pid, starttime) 三元不该挂第二条看守 —— 去重被写坏了"),
+        }
     }
 
     /// `events_tx` 为 `None`（单元测试默认）时 `arm_pid_watcher` 什么都不做——
