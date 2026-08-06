@@ -312,4 +312,92 @@ mod tests {
             "**只认 `@ccm_sid`** —— `_expect` 是「声明了但未必跑起来」的意图，不是事实"
         );
     }
+
+    // ── audit-0805 F20 下半：把「skip 不是通过」那个刻意决定钉住 ──────────────
+    //
+    // F20 的处境：`meta_dollar`（会话名 `cc-a$x`）在 CI 上报 `no_such_session`，
+    // **根因至今未知** —— 复现要那台机器的 tmux，红线禁真 tmux、且已裁定不再推 CI。
+    // 上半做的是「把一条误导性的失败改成一条**会自证**的失败」：建完用 `=name:` 复核，
+    // 找不到就 **skip 并打出 tmux 实况**。
+    //
+    // 而 §3 那个决定 —— **地板不动（36），skip 会让 PASS 少一个 ⇒ 地板照样红** ——
+    // 今天**只是一段散文**。有人为了让 CI 变绿把 36 改成 35，这个意图就静默消失了，
+    // 而那正是本区 F25 那一族（一个刻意的决定没有判据看着）。
+    //
+    // ⚠ 本组**不修根因，也不假装修了** —— 它只保证那个决定不会被悄悄推翻。
+
+    fn repo_root() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("仓根")
+            .to_path_buf()
+    }
+
+    /// ★ `daemon-gate2` 的地板**只许涨**，而且必须**盖得住判定表的行数**。
+    ///
+    /// 地板低于用例数时，「有一格没验到」就不会让任何东西变红 —— skip 变成了免费的。
+    #[test]
+    fn the_gate2_floor_still_makes_a_skip_hurt() {
+        let root = repo_root();
+        let ci = std::fs::read_to_string(root.join(".github/workflows/ci.yml"))
+            .expect("ci.yml 读不到");
+        let mark = "assert-pass-floor.sh daemon-gate2 ";
+        let at = ci
+            .find(mark)
+            .expect("ci.yml 里没有 `assert-pass-floor.sh daemon-gate2 <地板>` 调用行");
+        let floor: usize = ci[at + mark.len()..]
+            .split_whitespace()
+            .next()
+            .and_then(|t| t.trim().parse().ok())
+            .expect("地板值解析不出来 —— 调用行的形状变了");
+
+        let golden = std::fs::read_to_string(
+            root.join("src-tauri/src/backend/control/fixtures/gate2-golden.tsv"),
+        )
+        .expect("判定表读不到");
+        let rows = golden
+            .lines()
+            .filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty())
+            .count();
+        // 抽取器自检：判定表解析不出行时，下面那条会零命中地绿。
+        assert!(
+            rows >= 20,
+            "判定表只解析出 {rows} 行（08-06 实测 25）—— 抽取器坏了，下面那条此刻是空转的"
+        );
+
+        // ★ 只许涨。08-06 实测 36：判定表 25 行 + 抽取器自检 + 其余固定项。
+        const FLOOR_TODAY: usize = 36;
+        assert!(
+            floor >= FLOOR_TODAY,
+            "`daemon-gate2` 的地板被降到了 {floor}（08-06 是 {FLOOR_TODAY}）。\n\
+             ★ **降它就是把「skip 不是通过」这个决定推翻了**：`meta_dollar` 在某些 tmux 上会 skip，\n\
+             PASS 因此少一个；地板不动 ⇒ 红 ⇒ 「有一格没验到」看得见。\n\
+             地板降下去，那一格就静默消失了 —— 而**根因至今未知**（F20 §2）。\n\
+             真要降，先把根因查清并说明为什么那一格不必再验。"
+        );
+        assert!(
+            floor > rows,
+            "地板 {floor} 没盖住判定表的 {rows} 行 —— skip 一格也不会让它红，\n\
+             那个决定就成了空话。加用例时地板要跟着抬。"
+        );
+    }
+
+    /// ★ 那个决定的**前提**：脚本里那条「建完复核、找不到就 skip 并打实况」还在。
+    ///
+    /// 它一没，失败就退回**误导性**的那种（看起来像 Gate 2 判错，实际是夹具没准备好）——
+    /// 那正是 F20 上半修掉的东西。
+    #[test]
+    fn the_selfevidencing_skip_branch_is_still_there() {
+        let sh = std::fs::read_to_string(repo_root().join("e2e/daemon-gate2-acceptance.sh"))
+            .expect("e2e 脚本读不到");
+        for needle in ["has-session -t \"=$name:\"", "实际会话："] {
+            assert!(
+                sh.contains(needle),
+                "e2e 脚本里找不到 `{needle}` —— 「建完复核 + skip 时打出 tmux 实况」那段没了。\n\
+                 ★ 它一没，`meta_dollar` 的失败就退回**误导性**的那种：\n\
+                 看起来像「Gate 2 判错了」，实际是「夹具没准备好」。那是 F20 上半修掉的东西。\n\
+                 ⚠ 同时上面那条地板判据也失去意义 —— 它保护的正是这条 skip 的可见性。"
+            );
+        }
+    }
 }
