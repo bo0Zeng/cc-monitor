@@ -74,12 +74,14 @@ mod gate_singleton_guard; // F03：§34 Gate 2 的身份判定在 Rust 侧只许
 /// F05a：本机后端监护句柄。存起来是为了退出前 `stop()`（不 stop 就是游魂进程）。
 static LOCAL_BACKEND: std::sync::OnceLock<backend::control::local_backend::SuperviseHandle> =
     std::sync::OnceLock::new();
+#[cfg(test)]
+#[cfg(test)]
+mod atomic_replace_registry; // audit-0805 F13：原子替换的两套 Win32 语义，谁用哪一套
 mod local_read_surface_registry; // F10（出口④）：本机读面清账 + 递减棘轮（正题被 F05b 挡着）
 #[cfg(test)]
 #[cfg(test)]
 #[cfg(test)]
 mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半；内部整体 cfg(test)）
-#[cfg(test)]
 mod polling_registry; // U7-P：前端 + shared/ccm 的周期唤醒清账（daemon 那条零定时器护栏点名要「单独论证」的那半）
 mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只许有一个实现（账本 S5）
 mod rust_timer_registry; // F09：monitor **Rust 侧**周期唤醒清账（`polling_registry` 明确留下的那半）
