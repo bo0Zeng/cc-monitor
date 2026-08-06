@@ -569,6 +569,14 @@ monitor 的 `tmux_send_keys(…, enter=false)` 生产上唯一的用途是**优�
 | `send-into` / `send-keys-raw` 但会话不存在 | false | `no_such_session` | 没起成 |
 | 建不出来且也不存在 | false | `create_failed` | 没起成 |
 | 会话在，`send-keys` 失败 | false | `typed_unconfirmed` | **起了但没确认** —— 别重试新建 |
+
+⚠⚠ **`typed:true` 只有 `send-keys` 的退出码那么强**〔audit-0805 F10，报告 I-3〕。
+pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样退 0**，
+而键被 copy-mode 的键表吃掉、载荷根本没进应用。daemon 侧**没有第二种确认**
+（`pane_in_mode` / `-X cancel` 全仓零命中），由
+`launch.rs::typed_is_only_as_strong_as_the_send_keys_exit_code` 钉住这个语义边界。
+⇒ **消费方别把 `typed:true` 读成「载荷确凿落地」**。补第二种确认要真 tmux 才验得了，
+登记在 `ROADMAP §5` 的诚实边界，留给 e2e tier2。
 | 形状不合 | false | `invalid_args` | 没起成 |
 
 **错误码分两层**（U8a-2b 定，趁 `launch` 还没有仓外消费方）：
