@@ -117,9 +117,18 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
 /// `ssh -t host -- 'bash -lic <cmd>'`，本地就是把 `ssh` 那一跳**去掉**，其余不变。
 ///
 /// 三处设计：
-/// - **不开 GUI 终端窗口**。POSIX 上没有「唯一的终端」这种东西，而会话容器本来就是
-///   tmux（`ccm --tmux` 自己会建）。开窗口要先猜用户用哪个终端模拟器，是平白引入一个
-///   会在别人机器上错的决定。⇒ 命令直接跑，会话留在 tmux 里等 attach。
+/// - **不开 GUI 终端窗口**。POSIX 上没有「唯一的终端」这种东西：开窗口要先猜用户用哪个
+///   终端模拟器，是平白引入一个会在别人机器上错的决定。
+///   ⚠⚠ **这条原本还有半句「而会话容器本来就是 tmux（`ccm --tmux` 自己会建）」—— 那是假的**
+///   〔audit-0805 F08 / 报告 B-2〕：生产构造出来的是 `cc --resume <sid>`，**不带 `--tmux`**
+///   （带 `--tmux` 的别名是 `cct`），而 `shared/ccm` 的 `use_tmux` 默认 0
+///   ⇒ 走的是非容器分支 `exec "${argv[@]}"`。加上这里 stdio 全 null，
+///   **产出的是一个无 tty、无 tmux 的进程**，不是「留在 tmux 里等 attach」。
+///   ★ 同一条推理本仓在别处写对过：`doc/IPC-PROTOCOL.md` 逐字
+///   「决定性的事实是 `stdin` 不接键盘（`stdin=DEVNULL`）—— 用户敲进去的字会被脚本吃掉」。
+///   ⚠ 现状由 `history.rs::the_local_resume_payload_has_no_session_container_today` 钉住；
+///   **要改成进容器，改那条判据的同时把本段与 `src/fork-start.ts` 那条一起改。**
+///   功能后果（claude 在 `stdin=/dev/null` 下具体怎么表现）红线内**没实测**，是推的。
 /// - **脱离 app 的进程组**（`process_group(0)`）+ stdio 全 null：
 ///   否则子进程会跟着 app 的 Ctrl-C 一起走，也会把 app 的 stdio 占住。
 /// - **起一条线程收尸**。`process_group` 不改变父子关系 ⇒ 不 `wait` 就留僵尸。

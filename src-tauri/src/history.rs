@@ -1639,6 +1639,50 @@ fn iso_to_ms(iso: &str) -> i64 {
 
 #[cfg(test)]
 mod tests {
+
+    /// ★★ **把「本机 resume 到底跑什么」钉在真构造器上**〔audit-0805 F08 / 报告 B-2〕。
+    ///
+    /// # 此前那条判据在替代码说好话
+    ///
+    /// `launch.rs::local_and_remote_share_the_same_payload` 用的是**手写夹具**
+    /// `"… && ccm --tmux claude --resume s1"`，而它**从不调用**真正的 payload 构造器。
+    /// 那个夹具里有 `--tmux`，生产里没有 —— **判据恰好体现了生产违反的那个假设**。
+    ///
+    /// # 本条钉的是**现状**，不是理想
+    ///
+    /// 它断言生产 payload 里**确实没有容器**（既无 `--tmux` 也无 `cct`）。
+    /// 这不是在祝福这个行为 —— 是让它**不能再悄悄变、也不能再被一条漂亮的夹具盖住**。
+    /// 真要改成进容器，改完这条会红，那时才是带着证据做决定的时刻。
+    ///
+    /// ⚠ 功能后果（claude 在 `stdin=/dev/null` 下具体怎么表现）**红线内测不了**，
+    /// 本条只钉**命令串**这一层可判据的事实。
+    #[test]
+    fn the_local_resume_payload_has_no_session_container_today() {
+        let choice = local_launch_choice(&LocalPsAction::Resume("s1".into()), None)
+            .expect("resume s1 应该能构造出来");
+        let rendered = match &choice {
+            LocalLaunchChoice::Fixed(c) => c.clone(),
+            LocalLaunchChoice::Probe {
+                preferred,
+                fallback,
+                ..
+            } => format!("{preferred} | {fallback}"),
+        };
+        assert!(
+            rendered.contains("--resume") && rendered.contains("s1"),
+            "抽取器自检：构造出来的串里连 `--resume s1` 都没有 —— 切错东西了：{rendered}"
+        );
+        assert!(
+            !rendered.contains("--tmux") && !rendered.split_whitespace().any(|w| w == "cct"),
+            "★ 本机 resume 的命令串里出现了会话容器（`--tmux` / `cct`）—— **现状变了**。\n\
+             这是好事，但本条钉的是「今天没有容器」这个事实（报告 B-2）：\n\
+             `launch.rs` 那边 stdio 全 null、不开终端模拟器，而 `ccm` 默认 `use_tmux=0`\n\
+             ⇒ 产出的是一个**无 tty、无 tmux**的进程。\n\
+             真要改成进容器，请连同 `launch.rs:120-122` 与 `src/fork-start.ts:87-88`\n\
+             那两条**互相矛盾且都与代码不符**的头注一起改，并把本条改成钉新行为。\n\
+             实得：{rendered}"
+        );
+    }
     use super::*;
 
     /// Phase 2 F1a-3：Codex 会话按 cwd 分组成合成 HistoryProject（count/max-mtime/name/键/has_live）。
