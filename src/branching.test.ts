@@ -245,6 +245,49 @@ test("#36C 命中集合但有子女（挂了 interrupt 叶）→ 非裸叶不豁
   if (out.has("q")) throw new Error("非裸叶不该被豁免");
 });
 
+// === Phase G M5 补钉（audit-0805，08-06）：白名单**五个类型逐个**都要有回归钉 ===
+//
+// # 为什么补
+//
+// Phase G 的全局变异抽样里，M5「白名单踢掉 `system`」**存活**：全仓 1272 条测试
+// 一条都不红。当时记的诊断是对的 —— 五个类型里只有 `cc-monitor-unrecognized` 有回归钉，
+// 其余四个裸奔；算法那半在测、准入那半没测，而「过滤器放进来的东西正是算法需要的」没人管。
+//
+// ⚠ 但那一轮**只把诊断写下来了，钉并没有补上**：08-06 复跑同一个变异，`system` 那条
+// **仍然存活**（而同批的 M8 已被杀掉）。Phase G 记录里那句「两条都补了钉并反向复验」
+// 对 M5 是**假的** —— 这一族（做完的自陈与实际不符）在本区已出现十次，
+// 这次犯在**它自己的对账单**上，而对账单正是用来发现这种事的。
+//
+// # 钉什么
+//
+// 两个方向都要：**五个都进得来**（少一个就红，且诊断点名是哪个），
+// **未知的进不来**（防止有人把白名单放宽成「全收」来让上面那条变绿）。
+const F63_WHITELIST = ["user", "assistant", "attachment", "system", "cc-monitor-unrecognized"];
+
+test("Phase G M5：白名单五个类型逐个都要进得来（少一个就红）", () => {
+  for (const type of F63_WHITELIST) {
+    const r = extractBranchRecord({ type, uuid: `u-${type}`, parentUuid: "p", timestamp: "T" });
+    if (!r) {
+      throw new Error(
+        `type="${type}" 被挡在链外了。★ 白名单这五个是**准入面**，算法那半（computeMainBranch）` +
+          `有测不代表准入这半有测 —— Phase G 的 M5 变异（踢掉 system）当时就是这么活下来的。` +
+          `真要去掉某个类型，先说清「它不在 parent 链上」再改这里。`,
+      );
+    }
+    if (r.uuid !== `u-${type}` || r.parentUuid !== "p") {
+      throw new Error(`type="${type}" 进链了但身份没原样带出`);
+    }
+  }
+});
+
+test("Phase G M5 反向：不在白名单里的类型必须被挡住", () => {
+  // 没有这一条，上面那条可以靠「把白名单放宽成全收」变绿 —— 那不是修，是把门拆了。
+  const r = extractBranchRecord({ type: "definitely-not-a-known-type", uuid: "x", timestamp: "T" });
+  if (r !== null) {
+    throw new Error("未知类型进链了 —— 白名单被放宽成了「全收」，那等于没有白名单");
+  }
+});
+
 // === F63 (issue #49)：看不懂的记录进链 —— 防孤儿化 ===
 
 test("F63 extractBranchRecord 接受 cc-monitor-unrecognized（带身份）", () => {
