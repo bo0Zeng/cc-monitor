@@ -61,9 +61,12 @@ mod tests {
     /// 而且知道它归谁」的账。
     const REGISTERED: &[(&str, &str, &str)] = &[
         (
-            "src/main.ts",
+            "src/session-accounts-poll.ts",
             "data-poll",
             "10s 拉一次 `refreshSessionAccounts`（会话↔账号映射）。\
+             ⚠ **F14 第三刀搬家**：原来住 `main.ts`（那里一个 export 都没有 ⇒ 三条性质一条都测不了）。\
+             搬过来之后扇出有上限（4，保序）、有重入锁、窗口不可见时跳过、`stop()` 停得掉。\
+             **周期本身没变，仍是 10s**，所以这条登记照旧成立。\
              ⚠ **F02 订正**：原文写「事件源已经存在」，实测**只有一半成立** —— \
              本 UI 自己切号确实有回调（`onDefaultChanged → refreshSessionAccounts`），\
              但「**别人**（另一个 monitor / 终端里的 ccm）改了账号」**没有事件源**：\
@@ -363,7 +366,7 @@ mod tests {
         ("src/e2e-probe.ts", "requestAnimationFrame", 2, "★ **rAF 自链**：`sample` 每帧重排自己（起点 1 处 + 链内 1 处）。退出条件是 `stopReplayJitterProbe` 显式 `cancelAnimationFrame`。只在 e2e 探针里启用，不在正常路径上。"),
         ("src/error-toast.ts", "setTimeout", 1, "`durationMs` 后移除 toast。一次性。"),
         ("src/events.ts", "setTimeout", 3, "① `scheduleBatchEnd` 的 batch-end 哨兵（每次重排前 `clearTimeout`，且有 `BATCH_HOLD_MAX_MS` 5min 防呆上限）② ③ `setTimeout(drain, 0)` —— **队列 drain 自链**，退出条件是 `queue.length === 0`，由 `scheduled` 标志防重入。不是节拍器：没有队列就不会再排。"),
-        ("src/main.ts", "setInterval", 1, "10s `refreshSessionAccounts` —— **真 data-poll**，详见上面 `REGISTERED` 那条（事件源与退役去处都在那里）。"),
+        ("src/session-accounts-poll.ts", "setInterval", 1, "10s `refreshSessionAccounts` —— **真 data-poll**，详见上面 `REGISTERED` 那条（事件源与退役去处都在那里）。⚠ F14 第三刀从 `main.ts` 搬来：唯一的一处，且句柄留着（`stop()`）。"),
         ("src/main.ts", "setTimeout", 3, "① 0ms 下一拍挂 sftp 主机选择器的关闭监听 ② ③ 1.2s 后把「已复制」还原成「复制」。全是一次性 UI 反馈。"),
         ("src/settings/cc_integration.ts", "setTimeout", 1, "500ms 后撤掉状态徽章的高亮描边。一次性。"),
         ("src/settings/config-surface-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
