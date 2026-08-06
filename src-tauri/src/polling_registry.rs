@@ -253,16 +253,6 @@ mod tests {
     /// ⚠ 必须剥：`account-usage.ts` 与 `cc-bus-section.ts` 的头注里**就写着**
     /// `setInterval` 这个词（写的是「不许有」）。不剥的话它们会被自己的纪律说明命中 ——
     /// 与 `launch-cli-wire.vitest.ts` 那次「文档注释里就写着 `deny_unknown_fields`」同一个坑。
-    fn strip_line_comments(src: &str) -> String {
-        src.lines()
-            .filter(|l| {
-                let t = l.trim_start();
-                !(t.starts_with("//") || t.starts_with("*") || t.starts_with("/*"))
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-
     /// 一行里有没有周期唤醒的形态。
     fn is_periodic(line: &str, is_shell: bool) -> bool {
         if is_shell {
@@ -290,7 +280,7 @@ mod tests {
                 .to_string_lossy()
                 .replace('\\', "/");
             let is_shell = rel == "shared/ccm";
-            let src = strip_line_comments(&fs::read_to_string(&f).unwrap_or_default());
+            let src = guard_core::strip_comment_lines(&fs::read_to_string(&f).unwrap_or_default());
             let n = src.lines().filter(|l| is_periodic(l, is_shell)).count();
             if n > 0 {
                 out.push((rel, n));
@@ -353,7 +343,7 @@ mod tests {
         // 剥注释不能把整份文件剥空。
         let ccm = fs::read_to_string(root.join("shared/ccm")).unwrap_or_default();
         assert!(
-            strip_line_comments(&ccm).len() * 2 > ccm.len(),
+            guard_core::strip_comment_lines(&ccm).len() * 2 > ccm.len(),
             "剥注释后 shared/ccm 只剩不到一半 —— 剥法太狠"
         );
     }
@@ -468,7 +458,7 @@ mod tests {
                 .unwrap_or(&f)
                 .to_string_lossy()
                 .replace('\\', "/");
-            let src = strip_line_comments(&fs::read_to_string(&f).unwrap_or_default());
+            let src = guard_core::strip_comment_lines(&fs::read_to_string(&f).unwrap_or_default());
             for api in APIS {
                 // 只认调用（`api(`），不认散文里提到的名字。允许 `api  (`。
                 let needle = format!("{api}(");
@@ -611,7 +601,7 @@ mod tests {
             let raw = fs::read_to_string(root.join(f))
                 .unwrap_or_else(|e| panic!("{f} 读不到：{e} —— 文件搬了就把这条一起改"));
             assert!(raw.len() > 500, "{f} 只有 {} 字节，像是抽错了", raw.len());
-            let prod = strip_line_comments(&raw);
+            let prod = guard_core::strip_comment_lines(&raw);
             let hits: Vec<&str> = prod
                 .lines()
                 .filter(|l| is_periodic(l, false))
