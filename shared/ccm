@@ -189,13 +189,16 @@ resolve_from_daemon() {   # $1=sid → stdout: daemon 给的 command 串（拿�
 # 上面那个函数的文本表示（只在 `--print` 里用）—— 与函数体逐行同构，改一边必须改另一边。
 # 保证二者一致的是 `e2e/ccm-contract-parity.sh` **A′ 组**（print↔exec 的 argv 差分），
 # 不是人的记性。⚠ 那一组是 F06b-1b 专为本次接线先立的网：立网之前，接一半都会安静地绿。
-# 用法：`resolve_recipe <sid> <本地兜底的 exec 串>` → stdout 一行 shell。
+# 用法：`resolve_recipe <sid> <本地兜底的 exec 串> [已 quote 的透传参数串]` → stdout 一行 shell。
+# ⚠ 第 3 个参数是 F10 补的：daemon 给的串里不可能带用户的 `--` 透传（协议无此字段），
+#   而 `exec $_ccm_c` 是整条换掉 argv ⇒ 不补就丢参数。**与 exec 路逐行同构**。
 resolve_recipe() {
   local sid_json="{\"sessionId\":\"$1\"}"
   printf '%s' "_ccm_c=\"\"; if [ -n \"\${CCM_DAEMON_BIN:-}\" ] && [ -x \"\$CCM_DAEMON_BIN\" ]; then"
   printf '%s' " _ccm_c=\"\$(printf '%s' $(sq "$sid_json") | \"\$CCM_DAEMON_BIN\" --resolve 2>/dev/null"
   printf '%s' " | grep -o '\"command\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)\"; fi;"
-  printf '%s' " if [ -n \"\$_ccm_c\" ]; then exec \$_ccm_c; else $2; fi"
+  # F10：与 exec 路逐行同构 —— 透传参数由调用方作为第 3 个参数传进来（空则不加）。
+  printf '%s' " if [ -n \"\$_ccm_c\" ]; then exec \$_ccm_c$3; else $2; fi"
 }
 
 # ===== 默认值 =====
@@ -676,7 +679,12 @@ if [ "$do_print" = 1 ]; then
   local_exec="exec"
   for a in "${argv[@]}"; do local_exec="$local_exec $(qarg "$a")"; done
   if [ "$action" = resume ] && [ "$launcher_explicit" = 0 ]; then
-    line="$line$(resolve_recipe "$sid" "$local_exec")"
+    # F10：透传参数单独 quote 成一串，喂给配方（空则为空串，配方逐字与从前相同）。
+    pt=""
+    if [ ${#passthru[@]} -gt 0 ]; then
+      for a in "${passthru[@]}"; do pt="$pt $(qarg "$a")"; done
+    fi
+    line="$line$(resolve_recipe "$sid" "$local_exec" "$pt")"
   else
     line="$line$local_exec"
   fi
@@ -756,7 +764,14 @@ fi
 if [ "$action" = resume ] && [ "$launcher_explicit" = 0 ]; then
   _ccm_c="$(resolve_from_daemon "$sid")"
   # 故意不加引号：daemon 给的是一条**命令串**，要按词拆成 argv（C4 的「拿 argv」）。
+  # ⚠⚠ audit-0805 F10 / 报告 I-11：**`--` 之后的透传参数必须补回去**。
+  #    daemon 的 `--resolve` 只收 `{"sessionId":...}`（协议里根本没有 passthru 这个字段），
+  #    所以它给的串里**不可能**带用户那些参数；而这里 `exec $_ccm_c` 是**整条换掉 argv**
+  #    ⇒ `ccm resume <sid> -- --xxx` 在**装了 daemon 时丢参数、没装时不丢**。
+  #    实测（fake daemon）：传进去的 flag 直接消失。
   # shellcheck disable=SC2086
-  [ -n "$_ccm_c" ] && exec $_ccm_c
+  if [ -n "$_ccm_c" ]; then
+    if [ ${#passthru[@]} -gt 0 ]; then exec $_ccm_c "${passthru[@]}"; else exec $_ccm_c; fi
+  fi
 fi
 exec "${argv[@]}"

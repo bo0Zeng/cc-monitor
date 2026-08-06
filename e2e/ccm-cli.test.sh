@@ -73,6 +73,26 @@ ck "--model=<名> 等号形式" \
 ck "-- 之后透传给 agent，含特殊字符正确 quote" \
    "$UNSET; cd '/p' && exec claude 'a b' 'x'\''y'" \
    "$(ccm --cwd /p --print -- "a b" "x'y")"
+
+# ★★ audit-0805 F10 / 报告 I-11：**resume × daemon × passthru 这一格此前零覆盖**。
+#
+# `ccm resume` 且未显式 --launcher 时，argv 向 daemon 的 `--resolve` 要；而 daemon 的协议里
+# **根本没有 passthru 这个字段**（`ResumeSpec` 六个字段无它）⇒ 它给的串不可能带用户的透传参数。
+# 而那条路是 `exec $_ccm_c`，**整条换掉 argv** ⇒ `ccm resume <sid> -- --xxx`
+# **装了 daemon 就丢参数、没装就不丢**。
+#
+# 上面那条既有用例走的是 `new` 路、无 daemon ⇒ 覆盖不到这一格。
+ck "resume 走 daemon 配方时，-- 透传不许被整条换掉（I-11）" \
+   "1 1" \
+   "$(r="$(ccm resume s1 --cwd /p --print -- --flag-x)"; \
+      printf '%s %s' \
+        "$(printf '%s' "$r" | grep -c 'exec \$_ccm_c --flag-x')" \
+        "$(printf '%s' "$r" | grep -c 'exec claude --resume s1 --flag-x')")"
+
+# 反向：不带 `--` 时配方必须**逐字与从前相同**（防「补透传」写成无条件加东西）。
+ck "resume 不带 -- 时配方里不许多出任何参数" \
+   "0" \
+   "$(ccm resume s1 --cwd /p --print | grep -c 'exec \$_ccm_c ')"
 ck "--account 与 --base 互斥" \
    "ccm: --account 与 --base 互斥" \
    "$(ccm --cwd /p --account z --base --print)"
