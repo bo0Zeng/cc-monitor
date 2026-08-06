@@ -2586,3 +2586,58 @@ describe("E73：attachable 门控", () => {
     expect(tm.isAttachable("s1")).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// audit-0805 F14 第五刀（报告 I9′）：`fetchTmuxFresh` 是类内唯一取数点，
+// 「取数」与「写缓存」在语法上是同一件事。这里钉它的**三态契约** ——
+// 结构守卫（`tmux-cache-single-writer.vitest.ts`）只能证明「只剩一个取数点」，
+// 证不了「那一个取数点做对了」。
+// ---------------------------------------------------------------------------
+describe("tmux 取数点的三态契约（audit-0805 F14 第五刀）", () => {
+  interface TmuxProbe {
+    fetchTmuxFresh(origin: string): Promise<unknown>;
+    tmuxCache: Map<string, { ts: number; sessions: unknown }>;
+  }
+  const probe = (tm: TabManager): TmuxProbe => tm as unknown as TmuxProbe;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("查到会话 → 返回列表，并把它写进缓存", async () => {
+    const tm = makeTM();
+    const list = [{ name: "cc-a", ccmSid: "s1" }];
+    vi.mocked(invoke).mockResolvedValueOnce(list);
+    const got = await probe(tm).fetchTmuxFresh("box1");
+    expect(got).toEqual(list);
+    expect(
+      probe(tm).tmuxCache.get("box1")?.sessions,
+      "取了数却没写缓存 —— 报告 I9′ 那条毛病就是这么来的",
+    ).toEqual(list);
+  });
+
+  it("★ NO_TMUX（null）是**确定答案**，照样写缓存", async () => {
+    const tm = makeTM();
+    vi.mocked(invoke).mockResolvedValueOnce(null);
+    const got = await probe(tm).fetchTmuxFresh("box1");
+    expect(got).toBeNull();
+    expect(
+      probe(tm).tmuxCache.has("box1"),
+      "「远端确实没有 tmux」是查到了的结果，不写缓存等于每次都要重问一遍",
+    ).toBe(true);
+  });
+
+  it("★ 查询失败 → undefined 且**不写缓存**（三态不许压成两态）", async () => {
+    const tm = makeTM();
+    vi.mocked(invoke).mockRejectedValueOnce(new Error("ssh 抖了一下"));
+    const got = await probe(tm).fetchTmuxFresh("box1");
+    expect(
+      got,
+      "把失败压成 null 会让「远端确实没有会话」和「我没问到」变得无法区分",
+    ).toBeUndefined();
+    expect(
+      probe(tm).tmuxCache.has("box1"),
+      "★ 一次 ssh 抖动被写进缓存 ⇒ 之后 8s 内的重试全被抑制（D-Sug3 就是防这个）",
+    ).toBe(false);
+  });
+});

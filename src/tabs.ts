@@ -2107,13 +2107,8 @@ export class TabManager {
     // 8s 缓存里的 @ccm_sid 可能已被 /branch 漂移（快照记 N=A，N 此刻跑 B）→ 据陈旧快照 attach
     // 又会撞进漂移会话，正是本刀要修的 bug。故这里**总是新查、不读缓存**（用户主动 resume，一次
     // ssh 可接受；与 resolveAttachMenuItem 的 attach 一律新查对齐），查回来仍写缓存惠及其它路径。
-    let sessions: TmuxSession[] | null = null;
-    try {
-      sessions = await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
-      this.tmuxCache.set(origin, { ts: Date.now(), sessions });
-    } catch {
-      sessions = null; // 查询失败 → 走下面 fresh 分支（沿用旧幂等 resume 名，退化不变砖）
-    }
+    // 查询失败（undefined）→ 当作没有会话，走下面 fresh 分支（沿用旧幂等 resume 名，退化不变砖）。
+    const sessions = (await this.fetchTmuxFresh(origin)) ?? null;
     // ① 目标 sid 正活在某 tmux（@ccm_sid 命中）→ 直接 attach 它，回到活的后端，别重开一个。
     // F04（R10）：命中 ≥2 个时**仍 attach 到第一个**（resume 非破坏性、可撤销：重新点一次就能换
     // 目标，不像 kill 一旦选错代价不可逆），但诚实告知——不静默假装只有一个。分级理由见 F04
@@ -2209,18 +2204,51 @@ export class TabManager {
    * command==="claude"` 反查该 tab 的 Claude 所在 tmux 会话。命中 → 把禁用占位「检测中」
    * 换成可点的 Attach;无 tmux / 无匹配 / 查询失败 → 移除占位。菜单已关则 update/remove no-op。
    */
+  /**
+   * ★ **`list_remote_tmux` 在 TabManager 里的唯一取数点**〔audit-0805 F14 第五刀，报告 I9′〕。
+   *
+   * # 为什么要收成一个
+   *
+   * 此前类内有**四处**各自 `invoke("list_remote_tmux")`，其中**三处顺手写了缓存、一处没写**
+   * （`awaitExitFor` 的轮询 tick）—— 而那一处恰好是**唯一会反复取数的**：
+   * 它每秒查一遍同一个 origin，却一次都不喂缓存。
+   * ⇒ 报告 I9′ 说的「3 写 1 读」，真正的毛病不是读少，是**取数点与写缓存点没有绑在一起**：
+   * 只要还能「取而不写」，下一个新增的取数点就会再漏一次。
+   *
+   * 收成一个之后，「取数」与「写缓存」**在语法上就是同一件事**，漏不了。
+   * 判据 `tmux-cache-single-writer.vitest.ts` 钉住这一点（定框 **E3**：权威源恰好一个）。
+   *
+   * # 返回值三态，不许压成两态
+   *
+   * - `TmuxSession[]` —— 查到了，有会话
+   * - `null` —— 查到了，**远端没装 tmux / 没有会话**（`NO_TMUX`）
+   * - `undefined` —— **查询本身失败**（ssh 抖动）
+   *
+   * ⚠ 后两者必须分开：`null` 是**确定的答案**（会写进缓存），`undefined` 是**没有答案**
+   * （不写缓存 —— 免得一次 ssh 抖动把 8s 内的重试全抑制掉，D-Sug3）。
+   * 把它们压成一个 `null` 会让「远端确实没有会话」和「我没问到」变得无法区分。
+   */
+  private async fetchTmuxFresh(
+    origin: string,
+  ): Promise<TmuxSession[] | null | undefined> {
+    try {
+      const sessions = await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
+      // 只缓存确定结果（成功列表 / NO_TMUX=null）；瞬时 ssh 失败不缓存，免 8s 内抑制重试（D-Sug3）。
+      this.tmuxCache.set(origin, { ts: Date.now(), sessions });
+      return sessions;
+    } catch {
+      return undefined;
+    }
+  }
+
   private async resolveAttachMenuItem(
     origin: string,
     cwd: string,
     sid: string,
   ): Promise<void> {
     const gen = tabMenuGeneration; // 捕获发起查询的那一代菜单(R-1 守卫)
-    let sessions: TmuxSession[] | null;
-    try {
-      sessions = await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
-      // 只缓存确定结果(成功列表 / NO_TMUX=null);瞬时 ssh 失败不缓存,免 8s 内抑制重试(D-Sug3)。
-      this.tmuxCache.set(origin, { ts: Date.now(), sessions });
-    } catch {
+    const got = await this.fetchTmuxFresh(origin);
+    if (got === undefined) {
       // 查询失败(纯 ssh exec 抖动)→ 移除占位,不缓存。
       if (gen === tabMenuGeneration) {
         removeTabContextMenuItem("attach");
@@ -2229,6 +2257,7 @@ export class TabManager {
       }
       return;
     }
+    const sessions = got;
     // 菜单已换/已关(新代次)→ 别动别的菜单(R-1 跨 tab 串味)。
     if (gen !== tabMenuGeneration) return;
     const match = findClaudeTmux(sessions, sid, cwd);
@@ -2458,14 +2487,11 @@ export class TabManager {
         const timer = setTimeout(() => stop(false), timeoutMs);
         const tick = async (): Promise<void> => {
           if (stopped) return;
-          let sessions: TmuxSession[] | null = null;
-          let ok = false;
-          try {
-            sessions = await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
-            ok = true;
-          } catch {
-            ok = false; // list 失败 → 本轮跳过（不误判已退出）
-          }
+          // ★ F14：走唯一取数点 ⇒ **这一轮轮询顺带把缓存刷新了**。
+          // 此前这里是四处取数点里唯一不写缓存的一处，而它恰好是唯一会反复取数的。
+          const got = await this.fetchTmuxFresh(origin);
+          const ok = got !== undefined; // 查询失败 → 本轮跳过（不误判已退出）
+          const sessions = ok ? got : null;
           if (stopped) return;
           if (ok && claudeExited(sessions, sid, cwd)) {
             stop(true);
@@ -2533,13 +2559,7 @@ export class TabManager {
     const cwd = tab.cwd ?? "";
     const behavior = await getBehavior();
     // 解析该会话当前 tmux 名，一律新查（对齐 resumeTabTmux：attach/重启对新鲜度最敏感，防据陈旧快照误伤）。
-    let sessions: TmuxSession[] | null = null;
-    try {
-      sessions = await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
-      this.tmuxCache.set(origin, { ts: Date.now(), sessions });
-    } catch {
-      sessions = null;
-    }
+    const sessions = (await this.fetchTmuxFresh(origin)) ?? null;
     // F04（R10）：破坏性重启必须精确命中**恰好一个**同 sid 的活会话——`findClaudeTmuxMatches`
     // 不折叠成第一个。`matches.length===0` 沿用旧"无法定位"文案；`matches.length>1` 是新增的
     // 拒绝分支：错误的那次操作代价不可逆（可能杀掉了对的那个、留下错的那个继续跑），与
