@@ -1850,6 +1850,76 @@ mod tests {
         assert_eq!(got[2].get("c").and_then(|v| v.as_i64()), Some(3));
     }
 
+    /// 〔audit-0805 08-06〕**同一个问题，本地与远端给两个答案**（E3 + §40）。
+    ///
+    /// # 实测到的两处分歧
+    ///
+    /// 「从 jsonl 头部取 cwd」这件事有两处实现：
+    /// - monitor：`quick_extract_cwd` —— 窗口 **30** 行，且**只认 `JsonlRecord::User`** 且 cwd 非空；
+    /// - daemon：`observe/history_query.rs::extract_cwd_from_head` —— 窗口 **40** 行，
+    ///   且认**任何**带非空 `cwd` 字段的记录。
+    ///
+    /// 后果是具体的：**首个带 cwd 的记录落在第 31–40 行时，远端报得出 cwd、本地报不出**；
+    /// 若那条记录不是 `user` 类型，差别还要更大。同一份文件、同一个问题、两个答案。
+    ///
+    /// ⚠ daemon 那边的头注**已经在做这个对照**了 —— 但它只对照了「流式 vs 整读」，
+    /// **没提窗口和记录类型不一样**。⇒ 又一次「订正手头那一处，不等于订正那句话」。
+    ///
+    /// # 为什么本轮只钉不改
+    ///
+    /// §40 是〔用 2026-07-29〕拍的方向（「把本地当成不走 ssh 的远端」），照它推**本地该对齐远端**。
+    /// 但「窗口取 30 还是 40」「要不要放宽到任意记录类型」是**会改变行为**的设计决定
+    /// （放宽后 cwd 可能来自非 user 记录），不该由我顺手定。⇒ 走档①：**登记 + 钉住，不擅自对齐**。
+    /// 差异与解锁条件记在 `ROADMAP §5`；本条保证它**不会再悄悄变宽或变窄**。
+    #[test]
+    fn the_two_cwd_extractors_still_disagree_exactly_as_registered() {
+        // 本地那一侧：从自己的生产段里抽，不写死。
+        let own = guard_core::production_code(include_str!("history.rs"));
+        let local = own
+            .lines()
+            .find(|l| l.contains("reader.lines().map_while(Result::ok).take("))
+            .and_then(|l| l.split(".take(").nth(1))
+            .and_then(|s| s.split(')').next())
+            .and_then(|s| s.trim().parse::<usize>().ok())
+            .expect("抽不到本地那侧的窗口 —— 读法坏了，本条会零命中地绿");
+
+        // 远端那一侧：读 daemon 源码（同 `agent_profile_parity` 的既有做法）。
+        let daemon_src = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .expect("仓根")
+                .join("remote-daemon-proto/src/observe/history_query.rs"),
+        )
+        .expect("读不到 daemon 的 history_query.rs");
+        let remote = guard_core::production_code(&daemon_src)
+            .lines()
+            .find(|l| l.contains("reader.lines().map_while(Result::ok).take("))
+            .and_then(|l| l.split(".take(").nth(1))
+            .and_then(|s| s.split(')').next())
+            .and_then(|s| s.trim().parse::<usize>().ok())
+            .expect("抽不到远端那侧的窗口 —— daemon 那边改形了，读法要跟着改");
+
+        // ★ 登记今天的实况。**这不是「应该这样」，是「今天就是这样」** ——
+        //   两边一旦有任何一侧动了，本条就红，逼人做那个被推迟的设计决定。
+        assert_eq!(
+            (local, remote),
+            (30, 40),
+            "本地/远端的 cwd 提取窗口变了（实得 本地={local} 远端={remote}）。\n\
+             ⚠ 这两个数今天**故意不一致**且已登记（`ROADMAP §5`）：\n\
+             首个带 cwd 的记录落在第 31–40 行时，远端报得出、本地报不出。\n\
+             §40〔用 2026-07-29〕的方向是「把本地当成不走 ssh 的远端」⇒ 该对齐，\n\
+             但选哪个数、要不要同时放宽记录类型，是会改行为的设计决定。\n\
+             ⇒ 改之前先把那个决定做掉并更新本条，别让它无声地漂到第三个值。"
+        );
+
+        // 记录类型那一半也钉住：本地限定 `User`，远端不限定。
+        assert!(
+            own.contains("JsonlRecord::User { cwd: Some(c), .. }"),
+            "本地那侧不再限定 `JsonlRecord::User` 了 —— 那正是与远端的第二处分歧，\n\
+             它变了就说明有人在对齐（好事），请连同上面那条一起更新。"
+        );
+    }
+
     /// 〔audit-0805 08-06〕**`quick_extract_cwd` 只看前 30 行 —— 这个上限此前无声也无判据。**
     ///
     /// 它是「列历史项目时快速拿到 cwd」的探针，`take(30)` 是**成本与命中率的折中**：
