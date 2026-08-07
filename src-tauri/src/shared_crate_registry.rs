@@ -568,4 +568,115 @@ mod tests {
              改名也要红 —— 名字变了就该有人重新回答一次「本地跑不跑它」。"
         );
     }
+
+    /// 〔audit-0805 08-06〕**`package.json` 里每个 `test*` 脚本，要么 CI 会跑它，
+    /// 要么在这里登记成「手测」并写清原因。**
+    ///
+    /// 与上一条是同一族的**另一个方向**：那条问「CI 有的步骤本地数过没有」，
+    /// 本条问「**仓里写好的套件，有没有谁会去跑**」。
+    ///
+    /// **为什么建它**（实测撞见的，不是设想）：`e2e/graylight-suite.sh` 是一整套
+    /// 跨进程整链 e2e（130 行，驱 gray-light 生命周期、断言 `[e2e] tab-state` 序列），
+    /// 而 **CI 一次都不跑它** —— CI 跑的是名字很像的另一个 `graylight-daemon-frames.sh`。
+    /// 它的前置逐字写着「Xvfb 上跑着 `npx tauri dev`」⇒ 结构上确实进不了 CI，这没问题；
+    /// **问题是 `doc/RELEASING.md` 里零处提到它**：`test:f40` 好歹进了发版手测清单，它没有。
+    /// ⇒ 于是这套件的唯一触发条件是「有人想起来」。
+    ///
+    /// ⚠ 顺带澄清一处容易误读的历史：最后改它的提交叫「G-C：三族 e2e 进 CI」，
+    /// 查过那次 diff —— 进 CI 的是 `graylight-frames` 等五条，**不含本套件**，提交没说假话。
+    ///
+    /// 与 `src/node-suite-registry-guard.vitest.ts` 不冲突（E3）：那条钉的是
+    /// 「16 个 tsx 套件各自有断言地板」，本条钉的是「套件有没有人调」——两个事实。
+    #[test]
+    fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
+        /// 手测套件：**CI 结构上跑不了**的，逐条写清为什么、以及谁会去跑它。
+        const MANUAL: &[(&str, &str)] = &[
+            (
+                "test:f40",
+                "需 Xvfb 上跑着 `npx tauri dev`（真 WebView）⇒ 结构上进不了 CI。\
+                 `doc/RELEASING.md § 1` 已把它列进发版手测清单",
+            ),
+            (
+                "test:graylight",
+                "同 f40 契约（脚本头注逐字「前置同 e2e/f40-suite.sh」）⇒ 同样进不了 CI。\
+                 ⚠ 但**发版清单里此前没有它** —— 这条例外就是那笔欠账的落点：\
+                 谁要删这条例外，得先说清楚它改由谁来跑",
+            ),
+        ];
+
+        let pkg = std::fs::read_to_string(root().parent().unwrap().join("package.json"))
+            .expect("读不到 package.json");
+        // 只取顶层 "scripts" 里 `"test…": "…"` 这种行，不引 json 依赖。
+        let scripts: Vec<(String, String)> = pkg
+            .lines()
+            .filter_map(|l| {
+                let t = l.trim();
+                let rest = t.strip_prefix('"')?;
+                let (name, rest) = rest.split_once("\": \"")?;
+                if !name.starts_with("test") {
+                    return None;
+                }
+                let cmd = rest.trim_end_matches(',').trim_end_matches('"');
+                Some((name.to_string(), cmd.to_string()))
+            })
+            .collect();
+        // ★ 抽取器自检：脚本条数掉下来 ⇒ 剥法坏了，下面会零命中地绿。
+        assert!(
+            scripts.len() >= 30,
+            "从 `package.json` 只剥到 {} 个 `test*` 脚本 —— 剥法坏了（建判据当天实测 40 个）",
+            scripts.len()
+        );
+
+        let ci = ci_live_lines();
+        // `npm test` 用 `&&` 串起来的那些，也算「CI 会跑」。
+        let chained = scripts
+            .iter()
+            .find(|(n, _)| n == "test")
+            .map(|(_, c)| c.clone())
+            .unwrap_or_default();
+        let run_by_ci = |name: &str, cmd: &str| -> bool {
+            if name == "test" {
+                return ci.contains("npm test");
+            }
+            if chained.contains(&format!("npm run {name}")) && ci.contains("npm test") {
+                return true;
+            }
+            if ci.contains(&format!("npm run {name}")) {
+                return true;
+            }
+            // ① `assert-pass-floor.sh <后缀>`；② CI 直接 `bash e2e/xxx.sh`（`exec-bits` 就是这样）。
+            if let Some(suffix) = name.strip_prefix("test:") {
+                if ci.contains(&format!("assert-pass-floor.sh {suffix} ")) {
+                    return true;
+                }
+            }
+            !cmd.is_empty() && ci.contains(cmd)
+        };
+
+        // ★ 登记表保鲜（两个方向）。
+        for (name, why) in MANUAL {
+            let Some((_, cmd)) = scripts.iter().find(|(n, _)| n == name) else {
+                panic!("登记成手测的 `{name}` 在 `package.json` 里已经没有了 —— 删掉这一行。（当初的理由：{why}）");
+            };
+            assert!(
+                !run_by_ci(name, cmd),
+                "`{name}` 现在**CI 会跑了** —— 把它从手测登记表里删掉。\n\
+                 （当初的理由：{why}）"
+            );
+        }
+
+        let orphan: Vec<String> = scripts
+            .iter()
+            .filter(|(n, c)| !run_by_ci(n, c) && !MANUAL.iter().any(|(m, _)| m == n))
+            .map(|(n, c)| format!("  {n}  =  {c}"))
+            .collect();
+        assert!(
+            orphan.is_empty(),
+            "这些套件**没有任何人会去跑**（CI 不跑，也没登记成手测）：\n{}\n\n\
+             ⚠ 写好一套 e2e 却没人调它，比没写更坏：它看起来像一层防护。\n\
+             两条出路：① 接进 `ci.yml`；② 登记进本条的 `MANUAL` 并写清\
+             「为什么 CI 跑不了」+「那谁来跑」。",
+            orphan.join("\n")
+        );
+    }
 }
