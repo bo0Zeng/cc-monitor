@@ -30,6 +30,12 @@
       > **⚠ 三条都以「目录里真有二进制」为前提**（Phase E 审计 R3 订正）：干净 clone / CI 里该目录不存在，
       > 走的是优雅降级、`DAEMON_BUILD_ID` 静默变 `"unknown"`；兜那一档的是 monitor 侧的
       > `ssh_source.rs::embedded_build_id_single_source_wired`，不是 `build.rs`。
+- [ ] **需要人手跑的 e2e 套件**：权威清单是判据
+      `shared_crate_registry.rs::every_test_script_is_either_run_by_ci_or_registered_as_manual`
+      的 `MANUAL` 表 —— **这里不抄第二份**。那张表会因「仓里有套件没人跑」而变红，
+      而抄下来的清单只会漂（v3.1→v3.4 那四次漏改 README 就是抄的那份漂了）。
+      > 建这条时实测：`e2e/graylight-suite.sh` 是一整套跨进程整链 e2e，**CI 不跑、本清单也没有它**，
+      > 唯一触发条件是「有人想起来」。它已进 `MANUAL` 表。
 - [ ] [CONTRIBUTING.md § 1.5](CONTRIBUTING.md#15-发版前) 列出的关键 UI 入口手测
 
 ---
