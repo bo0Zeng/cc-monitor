@@ -269,13 +269,6 @@ mod tests {
     /// 第一版就是这么写的，实测**永远不会红**（把两处真实现换成空壳它照样绿）。
     #[test]
     fn the_platform_blocks_are_still_a_mixed_population() {
-        /// 「这个平台上答不上来」的诚实表达。
-        fn is_honest_stub(tail: &str) -> bool {
-            tail == "false"
-                || tail == "None"
-                || tail.starts_with("unimplemented!")
-                || tail.starts_with("todo!")
-        }
         let mut stub = 0usize;
         let mut real = 0usize;
         for (_, code) in platform_sources() {
