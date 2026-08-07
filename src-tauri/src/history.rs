@@ -986,8 +986,11 @@ pub enum LaunchAccount {
 /// ⚠ **U8c-1 起只剩 Windows / 测试期在用**（POSIX 侧已改调 `backend::control::payload`）。
 /// cfg 与它唯一的消费者 [`validate_config_dir_ps`] 对齐 —— 不加就是三条 `never used`
 /// 警告，而 `cargo build` 不带 `-D warnings` ⇒ **不会红**（clippy 集合差抓到的）。
-#[cfg(any(windows, test))]
-const SHELL_META_COMMON: &str = "'\"`$;|&<>*?()!";
+// 〔audit-0805 08-06〕**这份副本删了**（E3：一个事实恰好一个权威源）。
+// 权威源是 `backend::control::payload::SHELL_META_COMMON`，经 `is_command_unsafe_char` 派生。
+// ⚠ 不是理论风险：`payload.rs` 的头注逐字记着，本文件此前那张**不可见字符表**就漂过 ——
+// 缺 `U+1680` · `U+2000..200A` · `U+202F` · `U+205F` · `U+2060..2064` · `U+3000`，
+// 是一处纵深防御缺口。同一个文件、同一族副本，这次连元字符表一起收掉。
 
 // U8c-3-alt（账本 S18 收口）：这里原本有一张 `SPOOFABLE` 表 —— **U7-3 之前的旧集合**，
 // 18 项，缺 `U+1680` · `U+2000..200A` · `U+202F` · `U+205F` · `U+2060..2064` · `U+3000`。
@@ -998,17 +1001,10 @@ const SHELL_META_COMMON: &str = "'\"`$;|&<>*?()!";
 
 #[cfg(any(windows, test))]
 fn has_bad_chars(dir: &str, extra: &str) -> bool {
-    dir.chars().any(|c| {
-        c.is_control()
-            || ('\u{0080}'..='\u{009f}').contains(&c)
-            || SHELL_META_COMMON.contains(c)
-            || extra.contains(c)
-            // U8c-3-alt（账本 S18 收口）：这里原本用本文件那张 **U7-3 之前的旧表**。
-            // 换成共享并集 —— 「什么算视觉欺骗」是**平台无关**的判断，
-            // 与 `is_safe_config_dir` 那条「`\` 与盘符」的平台特化不是一回事
-            // （`acct-core` 头注对后者的「不合」裁决不适用于这里）。
-            || acct_core::is_deceptive_char(c)
-    })
+    // 逐项与权威源等价：`is_command_unsafe_char` = 控制字符 | C1 段 | 元字符 | 视觉欺骗字符；
+    // 本函数额外多一个调用点自带的 `extra` 集合（今天唯一调用点传空串）。
+    dir.chars()
+        .any(|c| crate::backend::control::payload::is_command_unsafe_char(c) || extra.contains(c))
 }
 
 /// POSIX 侧校验：必须是**绝对 POSIX 路径**，且不含反斜杠（那边的路径里不该有）。
@@ -1709,10 +1705,10 @@ mod tests {
         // ③ shell 元字符 —— **逐个**过，不是抽一个代表。
         //    ★ 自检：集合非空，否则这个循环是空转的。
         assert!(
-            !SHELL_META_COMMON.is_empty(),
+            !crate::backend::control::payload::SHELL_META_COMMON.is_empty(),
             "`SHELL_META_COMMON` 空了 —— 下面这轮是空转的"
         );
-        for c in SHELL_META_COMMON.chars() {
+        for c in crate::backend::control::payload::SHELL_META_COMMON.chars() {
             let bad = format!("/home/z{c}/x");
             assert!(
                 validate_config_dir_ps(&bad).is_err(),

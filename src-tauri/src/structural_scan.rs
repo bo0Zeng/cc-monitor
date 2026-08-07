@@ -495,4 +495,68 @@ mod tests {
         assert!(e.contains("$bare"), "要报窗口内容");
         assert!(e.contains("共检查 1 处"));
     }
+
+    /// 〔audit-0805 08-06〕**拼命令用的 shell 元字符黑名单，权威源恰好一处**（E3）。
+    ///
+    /// # 它不是理论风险 —— 同一族已经漂过一次
+    ///
+    /// `backend/control/payload.rs` 的头注逐字记着：U7-3 把**不可见字符表**收进 `acct-core`
+    /// 让两个读 manifest 的地方共用，**而「拼命令」那条路当时没跟上** ——
+    /// `history.rs` 一直用自己那张 U7-3 之前的旧表，缺 `U+1680` · `U+2000..200A` ·
+    /// `U+202F` · `U+205F` · `U+2060..2064` · `U+3000`，是一处**纵深防御缺口**。
+    ///
+    /// 08-06 顺着「只被一处调用的生产函数」这条先验查到：**元字符表也是两份逐字副本**
+    /// （`history.rs` 与 `payload.rs`），而**没有任何东西对拍它们**。
+    /// ⇒ 按 E3 收成一处：`history.rs` 那份删掉、改为派生 `payload::is_command_unsafe_char`；
+    /// 本条钉住「以后也只有一处」。
+    ///
+    /// ⚠ E3 逐字要求「判据钉的是**权威源恰好一个**，不是『有没有登记』」——
+    /// 所以这里数的是**定义处数**，不是「两处内容一不一样」。
+    /// 后者在两份都改错时照样绿，前者不会。
+    #[test]
+    fn the_shell_metachar_blacklist_has_exactly_one_home() {
+        const NEEDLE: &str = "const SHELL_META_COMMON";
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut homes: Vec<String> = Vec::new();
+        let mut scanned = 0usize;
+        for (path, src) in guard_core::scan_tree!(&root.join("src"), &["rs"]) {
+            scanned += 1;
+            let prod = guard_core::production_code(&src);
+            if prod.lines().any(|l| {
+                l.trim_start().starts_with(NEEDLE)
+                    || l.trim_start().starts_with(&format!("pub(crate) {NEEDLE}"))
+                    || l.trim_start().starts_with(&format!("pub {NEEDLE}"))
+            }) {
+                homes.push(
+                    path.strip_prefix(root)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .to_string(),
+                );
+            }
+        }
+        // ★ 抽取器自检：遍历坏了会让下面「恰好一处」变成「恰好零处」也叫不出来。
+        // ⚠ 地板是**实测**的：`src-tauri/src` 下 86 个 `.rs`，`scan_tree!` 摘除调用者自己 ⇒ 85。
+        //   第一版我拍了个 100 —— 判据一建就红。**拍出来的数与抄来的数一样会腐**，
+        //   本会话已在别处记过多次，这次犯在自己刚写的自检上。
+        assert!(
+            scanned >= 80,
+            "只扫到 {scanned} 个 .rs —— 遍历坏了，下面那条会零命中地绿（建判据当日实测 85）"
+        );
+        assert_eq!(
+            homes.len(),
+            1,
+            "拼命令用的元字符黑名单**不是恰好一处**，实得：{homes:?}\n\n\
+             ⚠ 同一族已经漂过一次：`payload.rs` 头注记着，`history.rs` 那张**不可见字符表**\n\
+             曾停在 U7-3 之前的旧版本，缺六段 Unicode —— 一处纵深防御缺口。\n\
+             ⇒ 要新增消费者就**派生**（`payload::is_command_unsafe_char`），别再抄一份表。\n\
+             E3：判据钉的是「权威源恰好一个」，不是「两份内容一不一样」——\n\
+             后者在两份都改错时照样绿。"
+        );
+        assert!(
+            homes[0].ends_with("backend/control/payload.rs"),
+            "权威源搬家了（现在在 {:?}）—— 搬可以，但请顺手把本条与两处头注的指向一起改。",
+            homes[0]
+        );
+    }
 }

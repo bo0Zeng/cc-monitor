@@ -41,7 +41,9 @@ use std::fmt::Write as _;
 /// （那边的路径里不该有反斜杠），而 Windows 侧的账号目录长成 `C:\Users\z\.claude-accts\z`，
 /// 把 `\` 一律禁掉等于禁掉整个平台。它在两种 shell 的**单引号**里都是字面量
 /// （POSIX `'…'` 无转义；PowerShell `'…'` 无插值），真正要挡的是能提前闭合引号或另起命令的那几个。
-const SHELL_META_COMMON: &str = "'\"`$;|&<>*?()!";
+/// 〔audit-0805 08-06〕提为 `pub(crate)`：它是**权威源**，
+/// `history.rs` 那份逐字副本已删（E3），判据也要遍历这一份而不是再抄一遍。
+pub(crate) const SHELL_META_COMMON: &str = "'\"`$;|&<>*?()!";
 
 /// 一个字符能不能出现在**要拼进命令**的 config dir 里。
 ///
