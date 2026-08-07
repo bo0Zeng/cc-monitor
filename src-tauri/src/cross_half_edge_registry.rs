@@ -18,7 +18,13 @@
 //! | `cargo build` | **exit=0，0 error** | ★ **部署路径完全不受影响** —— 目标机原生构建走的就是这条 |
 //! | `cargo test --no-run` | exit=101，两条边都被逐字点名 | 判据路径才咬住 |
 //!
-//! ⇒ **`10` 这个数对得上**（monitor→daemon 8 · daemon→monitor 2），
+//! ⇒ **`10` 这个数当时对得上**（monitor→daemon 8 · daemon→monitor 2），
+//!
+//! ⚠ **08-06 订正：真实是 11 条**（monitor→daemon **9** · daemon→monitor 2）。
+//! 多出来的那条是 `tmux.rs → observe/watcher.rs`，它**从一开始就在**，
+//! 只是路径藏在 `macro_rules! daemon_watcher_src` 里，而抽取器只认 `(` 之后紧跟的引号。
+//! ⇒ 「10 对得上」这个结论当时是**用一个看不见它的量具**得出的 ——
+//! 量具与被量对象一起决定了那个数，而结论只写了数。
 //! 但「编不过」说的是 **`cargo test`**，不是 `cargo build`。
 //! daemon 的 `Cargo.toml` 逐字写的是「Standalone crate, intentionally NOT part of a
 //! workspace」—— 那句**没有假**：它讲的是 workspace 成员身份与构建。
@@ -48,7 +54,19 @@
 /// 实测这十对**两两不同**，所以「文件对」是够用且稳定的键。
 #[cfg(test)]
 const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
-    // ── monitor → daemon（8 条）：monitor 的判据去读 daemon 的源码 ────────────
+    // ── monitor → daemon（9 条）：monitor 的判据去读 daemon 的源码 ───────
+    (
+        "monitor→daemon",
+        "src-tauri/src/tmux.rs",
+        "remote-daemon-proto/src/observe/watcher.rs",
+        "★〔audit-0805 08-06 新发现，此前整条不在本表里〕两条对拍守卫读 daemon 的 \
+         `watcher.rs`：`tmux ls` 的 `-F` 格式串双写点、以及那个 const 的 TAB 转义。\
+         **路径藏在 `macro_rules! daemon_watcher_src` 里** —— `include_str!` 只接字面量 token，\
+         用宏是为了「单一落点」（`tmux.rs` 自己写着这个理由，是个好做法）， \
+         而它恰好让这条边从本护栏的抽取器视野里消失了：抽取器只认 `(` 之后紧跟的 `\"`。 \
+         ⇒ **减少重复的好做法，可以顺手把一条边变隐形** —— 这不是谁写错了，\
+         是「护栏认字面量、代码认语义」这个落差的必然产物。抽取器已补上单臂宏展开。",
+    ),
     (
         "monitor→daemon",
         "src-tauri/src/backend/control/daemon_kill.rs",
@@ -187,6 +205,58 @@ mod tests {
         includes_of("", text)
     }
 
+    /// 编译期把别的文件**拉进本 crate** 的三个宏。运行时拼，免得命中本文件自己的说明。
+    ///
+    /// ⚠ 〔audit-0805 08-06〕**`include!` 是补上的** —— 它与另外两个同族
+    /// （都是编译期边，都会让「一半的源码布局变了另一半编不过」），
+    /// 而原来的动词表只有两个。今天全仓零命中，所以补它是**堵明天**，不是修今天。
+    fn verbs() -> Vec<String> {
+        vec![
+            format!("include_{}!", "str"),
+            format!("include_{}!", "bytes"),
+            format!("inclu{}!", "de"),
+        ]
+    }
+
+    /// 一个文件里 `include_*!` 的**调用次数**（后面跟 `(` 的才算，散文里提到名字不算）。
+    fn include_invocations(raw: &str) -> usize {
+        let mut n = 0usize;
+        for verb in verbs() {
+            let mut from = 0usize;
+            while let Some(at) = raw[from..].find(verb.as_str()) {
+                let i = from + at;
+                from = i + verb.len();
+                if raw[from..].trim_start().starts_with('(') {
+                    n += 1;
+                }
+            }
+        }
+        n
+    }
+
+    /// 参数形如 `some_macro!()` 时，从**同一文件**里找 `macro_rules! some_macro`
+    /// 的单臂展开体，取其中第一个字符串字面量。
+    ///
+    /// 只认单臂、只认同文件 —— 够用且不会误判：本仓这个形态今天恰好两处，都在 `tmux.rs`。
+    /// 认不出来就返回 `None`，那一处会落进 `NON_LITERAL_INCLUDES` 的对拍里逼人登记。
+    fn macro_arm_literal(whole: &str, tail: &str) -> Option<String> {
+        let name: String = tail
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() || !tail[name.len()..].trim_start().starts_with('!') {
+            return None;
+        }
+        let at = whole.find(&format!("macro_rules! {name}"))?;
+        let body = &whole[at..];
+        let end = body.find("\n}\n").map_or(body.len(), |e| e);
+        let seg = &body[..end];
+        let q = seg.find('"')?;
+        let rest = &seg[q + 1..];
+        let e = rest.find('"')?;
+        Some(rest[..e].to_string())
+    }
+
     fn includes_of(rel: &str, raw: &str) -> Vec<(String, String)> {
         let mut out = Vec::new();
         // 运行时拼，免得命中本文件自己的说明文字。
@@ -195,10 +265,7 @@ mod tests {
         // 直接消失了**（`daemon_kill.rs` 与 `daemon_send_keys.rs` 的路径太长，被折成
         // `include_str!(\n    "…"\n)`）—— 抽取器读出 8 条，真值 10 条。
         // 那个洞**只被「条数自检」那一条断言逮住**，别的断言都会跟着一起错得很一致。
-        for verb in [
-            format!("include_{}!", "str"),
-            format!("include_{}!", "bytes"),
-        ] {
+        for verb in verbs() {
             let mut from = 0usize;
             while let Some(at) = raw[from..].find(verb.as_str()) {
                 let mut s = from + at + verb.len();
@@ -214,6 +281,29 @@ mod tests {
                     s += 1;
                 }
                 if s >= b.len() || b[s] != b'"' {
+                    // 〔audit-0805 08-06〕**参数是同文件里的单臂宏时，把它展开**。
+                    //
+                    // `tmux.rs` 有两处 `include_str!(daemon_watcher_src!())`，
+                    // 而那个宏展开成 `"../../remote-daemon-proto/src/observe/watcher.rs"` ——
+                    // **两条真的 monitor→daemon 跨界边**，此前整条不在登记表里。
+                    // 讽刺的是 `tmux.rs` 自己写着为什么要用宏：`include_str!` 只接字面量 token，
+                    // 用宏是为了「单一落点」—— 一个为了减少重复的好做法，
+                    // 恰好把这条边从本护栏的视野里摘了出去。
+                    if let Some(lit) = macro_arm_literal(raw, &raw[s..]) {
+                        let dir = Path::new(rel).parent().unwrap_or(Path::new(""));
+                        let joined = dir.join(&lit).to_string_lossy().replace('\\', "/");
+                        let mut parts: Vec<&str> = Vec::new();
+                        for c in joined.split('/') {
+                            match c {
+                                "." | "" => {}
+                                ".." => {
+                                    parts.pop();
+                                }
+                                other => parts.push(other),
+                            }
+                        }
+                        out.push((lit, parts.join("/")));
+                    }
                     from = at + from + verb.len();
                     continue;
                 }
@@ -291,6 +381,71 @@ mod tests {
     }
 
     /// ★★ 遍历发现的边 == 登记表，**两个方向都查**。
+    /// ★〔audit-0805 08-06〕**解析不出路径的 `include_*!` 必须登记**（默认拒绝）。
+    ///
+    /// # 它补的洞
+    ///
+    /// 抽取器要求宏参数是**字面量**（`(` 之后跳过空白必须是 `"`）。
+    /// 不是字面量的（`concat!(env!("OUT_DIR"), "/x")` 这种）**被静默跳过** ——
+    /// 跳过是对的，但**没有任何东西记着跳过了几处**。
+    /// 于是 `include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../remote-daemon-proto/src/wire.rs"))`
+    /// 这样一条**真的跨界边**会整条隐形，而它与今天已经在用的写法只差一个路径。
+    ///
+    /// ⚠ 这不是假想形态：本仓**今天就有两处** `include_bytes!(concat!(env!("OUT_DIR"), …))`。
+    /// 它们读的是 build script 的产物、不是对面那一半的源码，所以**不是**跨界边 ——
+    /// 但那是**读了才知道**的，而此前没有任何地方写着这件事。
+    ///
+    /// ⇒ 改成默认拒绝：解析不出来的每一处都要在 [`NON_LITERAL_INCLUDES`] 里登记 + 说明理由。
+    /// 新写一处非字面量 include ⇒ 红 ⇒ 逼人回答「它指向哪一半」。
+    #[test]
+    fn every_non_literal_include_is_registered_with_a_reason() {
+        /// 解析不出字面量路径的 `include_*!`：`(文件, 处数, 为什么不是跨界边)`。
+        const NON_LITERAL_INCLUDES: &[(&str, usize, &str)] = &[(
+            "src-tauri/src/sftp.rs",
+            2,
+            "`include_bytes!(concat!(env!(\"OUT_DIR\"), \"/daemon-<arch>\"))` —— 读的是 \
+             build script 放进 `OUT_DIR` 的**产物**（内嵌 daemon 二进制），\
+             不是对面那一半的**源码** ⇒ 不属两半编译期互咬。\
+             ⚠ 但它确实是一条编译期边：`OUT_DIR` 里没有那个文件就编不过 —— \
+             那条边由 `build.rs` 与 `shared_crate_registry` 的 CI 步骤那侧管。",
+        )];
+        let mut found: Vec<(String, usize)> = Vec::new();
+        let mut total_invocations = 0usize;
+        for rel in both_halves() {
+            // 本文件自己要排除：上面那段说明里逐字写着两种**非字面量**的调用示例，
+            // 不排除就会把自己的病历当成病（F23 那一族，本区第六次）。
+            if rel.ends_with("cross_half_edge_registry.rs") {
+                continue;
+            }
+            let raw = std::fs::read_to_string(repo_root().join(&rel)).unwrap_or_default();
+            let inv = include_invocations(&raw);
+            total_invocations += inv;
+            let parsed = includes_of(&rel, &raw).len();
+            if inv > parsed {
+                found.push((rel, inv - parsed));
+            }
+        }
+        // 抽取器自检：调用数为零 ⇒ 下面的对拍会两边都空地绿。
+        assert!(
+            total_invocations >= 20,
+            "两半里只数到 {total_invocations} 个 `include_*!` 调用（08-06 实测 40+）—— 计数器坏了"
+        );
+        found.sort();
+        let mut want: Vec<(String, usize)> = NON_LITERAL_INCLUDES
+            .iter()
+            .map(|(f, n, _)| ((*f).to_string(), *n))
+            .collect();
+        want.sort();
+        assert_eq!(
+            found, want,
+            "\n解析不出路径的 `include_*!` 与登记表对不上。\n\
+             **多出来的**：抽取器跳过了它，而跳过是**静默**的 —— 先回答「它指向哪一半」。\n\
+             指向对面那一半 ⇒ 那是一条跨界边，得进 `CROSS_EDGES`；\n\
+             指向 `OUT_DIR` / 本半自己 ⇒ 登记进 `NON_LITERAL_INCLUDES` 并写明理由。\n\
+             **少了的**：那处改成字面量了或没了 ⇒ 把登记删掉（登记表腐烂比没有登记更糟）。"
+        );
+    }
+
     #[test]
     fn every_cross_half_edge_is_registered_with_a_reason() {
         let mut found: Vec<(String, String, String)> = discovered_edges();
