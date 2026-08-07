@@ -131,19 +131,9 @@ fn list_sessions(claude_dir: &Path, project_dir: &str) -> Result<(), String> {
     // 与 read_session 对齐（也兑现本文件头部"canonicalize 后前缀校验"的承诺）：名字
     // 合法但 projects/ 下若有指向外部的 symlink 目录，read_dir 会跟随逃逸出 projects/
     // ——canonicalize 解析 symlink 后做前缀校验挡住。
-    let root = projects_root(claude_dir)
-        .canonicalize()
-        .map_err(|e| format!("projects root unavailable: {e}"))?;
-    let dir = root
-        .join(project_dir)
-        .canonicalize()
-        .map_err(|e| format!("project dir unavailable: {e}"))?;
-    if !dir.starts_with(&root) {
-        return Err(format!(
-            "refusing to list outside projects dir: {}",
-            dir.display()
-        ));
-    }
+    // 〔audit-0805 08-06〕**改调共享围栏**（E3）：此前这里是一份内联副本，
+    // 注释写着「与 `read_session` 对齐」—— 靠手工对齐的两份迟早会漂。
+    let dir = fence_under_projects(claude_dir, Path::new(project_dir))?;
     let entries =
         std::fs::read_dir(&dir).map_err(|e| format!("read_dir {} failed: {e}", dir.display()))?;
     let stdout = std::io::stdout();
@@ -161,22 +151,44 @@ fn list_sessions(claude_dir: &Path, project_dir: &str) -> Result<(), String> {
 
 /// `--read-session <jsonl_path>`：路径校验后原样透传文件内容。
 /// 透传而非逐行解析：monitor 侧本就有完整的 parse_line 管线，daemon 不重复造。
+/// **围栏：全文件唯一的一处 `canonicalize` + 前缀校验**〔audit-0805 08-06，定框 E3〕。
+///
+/// # 为什么抽出来
+///
+/// 此前这套「canonicalize root → canonicalize 目标 → `starts_with(root)`」有**两份**：
+/// [`validate_session_path`]（三条 read 路共用）与 `list_sessions` 里的**内联副本**，
+/// 而那份副本的注释逐字写着「与 `read_session` 对齐」—— **靠手工对齐的两份**。
+/// 谁强化了一边（比如将来要挡一种新的逃逸形态），另一边不会跟。
+/// ⇒ E3：定唯一权威源，其余派生。两边各自的附加检查留在各自那里
+///（`.jsonl` 后缀属文件路；`/` `\` `..` 预检属目录名）。
+///
+/// `candidate` 相对路径按 root 拼；绝对路径直接用。
+fn fence_under_projects(claude_dir: &Path, candidate: &Path) -> Result<std::path::PathBuf, String> {
+    let root = projects_root(claude_dir)
+        .canonicalize()
+        .map_err(|e| format!("projects root unavailable: {e}"))?;
+    let joined = if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        root.join(candidate)
+    };
+    let target = joined
+        .canonicalize()
+        .map_err(|e| format!("path unavailable: {e}"))?;
+    if !target.starts_with(&root) {
+        return Err(format!(
+            "refusing to access outside projects dir: {}",
+            target.display()
+        ));
+    }
+    Ok(target)
+}
+
 fn validate_session_path(
     claude_dir: &Path,
     jsonl_path: &str,
 ) -> Result<std::path::PathBuf, String> {
-    let root = projects_root(claude_dir)
-        .canonicalize()
-        .map_err(|e| format!("projects root unavailable: {e}"))?;
-    let target = Path::new(jsonl_path)
-        .canonicalize()
-        .map_err(|e| format!("session path unavailable: {e}"))?;
-    if !target.starts_with(&root) {
-        return Err(format!(
-            "refusing to read outside projects dir: {}",
-            target.display()
-        ));
-    }
+    let target = fence_under_projects(claude_dir, Path::new(jsonl_path))?;
     if target.extension().is_none_or(|e| e != "jsonl") {
         return Err("refusing to read non-jsonl file".into());
     }
@@ -539,6 +551,49 @@ mod tests {
         std::fs::write(&g, "{\"type\":\"user\",\"uuid\":\"u1\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}\n").unwrap();
         assert_eq!(analyze_session(&g)["isBg"], false);
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    /// ★ 围栏只许有一处〔audit-0805 08-06，定框 E3〕。
+    ///
+    /// # 它钉的不是「拒绝逃逸」，是「**只有一个地方在判逃逸**」
+    ///
+    /// 上面那几条各自断言某条读路会 `is_err()` —— 那是**行为**。
+    /// 但行为对了不等于结构对了：此前 `list_sessions` 有一份**内联副本**，
+    /// 注释逐字写着「与 `read_session` 对齐」，也就是**靠手工对齐的两份**。
+    /// 两份都能通过各自的行为判据，而**强化其中一份时另一份不会跟** ——
+    /// 那正是本区 E3 反复要挡的形状。
+    ///
+    /// 判准取「`canonicalize()` 在生产段出现在几处」：它是这套围栏的**核心动作**，
+    /// 收成一处之后，任何新写的「自己解析一下路径再判」都会让这个数变大。
+    #[test]
+    fn path_resolution_has_exactly_one_home() {
+        let prod = crate::guard_support::production_code(include_str!("history_query.rs"));
+        let n = prod.matches("canonicalize()").count();
+        // 抽取器自检：剥过头 / 抠不到 ⇒ 下面那条会零命中地绿。
+        assert!(
+            prod.len() > 3_000,
+            "剥完生产段只剩 {} 字节 —— 剥法坏了，本条此刻无效",
+            prod.len()
+        );
+        assert_eq!(
+            n, 2,
+            "`canonicalize()` 在生产段出现了 {n} 处（应恰好 2：`fence_under_projects` 里\n\
+             一次解析 root、一次解析目标）。\n\
+             多出来 = 又有人自己解析了一遍路径 —— 那就是第二份围栏，\n\
+             它今天可能与 `fence_under_projects` 等价，但**强化一边时另一边不会跟**（E3）。\n\
+             少了 = 围栏被简化了，去看它是不是还挡得住 symlink 逃逸。"
+        );
+        // 反向锚点：那两处确实在围栏函数里，不是散落在别处凑够了数。
+        let f = prod
+            .find("fn fence_under_projects")
+            .expect("找不到围栏函数 —— 上面那个计数就失去了意义");
+        let body_end = prod[f..].find("\n}\n").map_or(prod.len(), |k| f + k);
+        assert_eq!(
+            prod[f..body_end].matches("canonicalize()").count(),
+            2,
+            "两处 `canonicalize()` 不在 `fence_under_projects` 里 —— 计数凑对了，位置没对"
+        );
     }
 
     #[test]
