@@ -235,7 +235,10 @@ mod tests {
                 users += 1;
                 // 往前找最近的测试属性行。
                 let head = &src[..at];
-                let Some(a) = head.rfind("#[tokio::test").or_else(|| head.rfind("#[test]")) else {
+                let Some(a) = head
+                    .rfind("#[tokio::test")
+                    .or_else(|| head.rfind("#[test]"))
+                else {
                     bad.push(format!("  {}：找不到它所在测试的属性行", path.display()));
                     continue;
                 };

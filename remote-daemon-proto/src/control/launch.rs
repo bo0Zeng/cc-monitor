@@ -756,7 +756,9 @@ mod tests {
     fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
         let src = crate::guard_support::production_code(include_str!("launch.rs"));
         for f in ["fn type_payload(", "fn type_keys_raw("] {
-            let at = src.find(f).unwrap_or_else(|| panic!("找不到 `{f}` —— 改名了就把本条一起改"));
+            let at = src
+                .find(f)
+                .unwrap_or_else(|| panic!("找不到 `{f}` —— 改名了就把本条一起改"));
             let rest = &src[at..];
             let body = &rest[..rest
                 .find(tail_brace().as_str())

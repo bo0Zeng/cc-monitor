@@ -428,7 +428,8 @@ mod tests {
         // 今天 `src/` 只有一层平目录 + 空的 `adapter/`，影响为零；但递归本就是为将来的多子目录准备的。
         files.sort();
         for path in files {
-            let src = guard_core::strip_comment_lines(&std::fs::read_to_string(&path).expect("read rs"));
+            let src =
+                guard_core::strip_comment_lines(&std::fs::read_to_string(&path).expect("read rs"));
             for (i, _) in src.match_indices(&attr) {
                 let rest = &src[i..];
                 let Some(fpos) = rest.find("fn ") else {

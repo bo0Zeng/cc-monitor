@@ -341,7 +341,6 @@ macro_rules! scan_tree {
     };
 }
 
-
 /// 一个字符算不算「标识符的一部分」——匹配单位的边界由它定义。
 ///
 /// 含**非 ASCII 字母**（`起流` 的下一个字 `程` 必须算，否则中文短语一律判成有边界）
@@ -517,7 +516,9 @@ pub fn pin_line(hay: &str, line: &str) -> Result<usize, String> {
                  包含它但**不等于**它的行（这正是「事实被撑大了」的样子）：{near:?}"
             ))
         }
-        n => Err(format!("有 {n} 行都等于 `{line}` —— 断言指不明是哪一行（行号 {hits:?}）")),
+        n => Err(format!(
+            "有 {n} 行都等于 `{line}` —— 断言指不明是哪一行（行号 {hits:?}）"
+        )),
     }
 }
 
@@ -754,9 +755,18 @@ mod tests {
     /// `contains_word` 不要求唯一，但仍然要求有边界。
     #[test]
     fn contains_word_needs_a_boundary_but_not_uniqueness() {
-        assert!(contains_word("let ccm = x; ccm.len(); ccm", "ccm"), "多次出现不该拒绝");
-        assert!(!contains_word("let ccm_raw = 1;", "ccm"), "`ccm_raw` 不是 `ccm` 这个词");
-        assert!("let ccm_raw = 1;".contains("ccm"), "对照组前提不成立：裸 contains 在这里是绿的");
+        assert!(
+            contains_word("let ccm = x; ccm.len(); ccm", "ccm"),
+            "多次出现不该拒绝"
+        );
+        assert!(
+            !contains_word("let ccm_raw = 1;", "ccm"),
+            "`ccm_raw` 不是 `ccm` 这个词"
+        );
+        assert!(
+            "let ccm_raw = 1;".contains("ccm"),
+            "对照组前提不成立：裸 contains 在这里是绿的"
+        );
         assert!(!contains_word("anything", ""), "空 needle 一律否");
     }
 
@@ -764,7 +774,10 @@ mod tests {
     #[test]
     fn a_cjk_needle_that_got_stretched_is_rejected() {
         let hay = "[perf] 起流程 耗时 12ms";
-        assert!(hay.contains("起流"), "对照组前提不成立：输入里本来就没有那个子串");
+        assert!(
+            hay.contains("起流"),
+            "对照组前提不成立：输入里本来就没有那个子串"
+        );
         let e = find_pinned(hay, "起流").expect_err("被撑大的命中必须红");
         assert!(e.contains("被撑大"), "诊断没点明是被撑大：{e}");
         // 反向：真的是 `起流` 时不许红。
@@ -777,7 +790,11 @@ mod tests {
         let hay = "working-directory: remote-daemon-proto-X\n";
         assert!(hay.contains("remote-daemon-proto"), "对照组前提不成立");
         assert!(find_pinned(hay, "remote-daemon-proto").is_err());
-        assert!(find_pinned("working-directory: remote-daemon-proto\n", "remote-daemon-proto").is_ok());
+        assert!(find_pinned(
+            "working-directory: remote-daemon-proto\n",
+            "remote-daemon-proto"
+        )
+        .is_ok());
     }
 
     /// ★ `polling_registry` 的活样本：`sleep 1` ⊂ `sleep 10`。
@@ -787,8 +804,14 @@ mod tests {
     #[test]
     fn sleep_one_does_not_match_sleep_ten() {
         let ten = "    while :; do\n      sleep 10\n    done\n";
-        assert!(ten.contains("sleep 1"), "对照组前提不成立：裸 contains 在这里本该是绿的");
-        assert!(find_pinned(ten, "sleep 1").is_err(), "`sleep 10` 被当成了 `sleep 1`");
+        assert!(
+            ten.contains("sleep 1"),
+            "对照组前提不成立：裸 contains 在这里本该是绿的"
+        );
+        assert!(
+            find_pinned(ten, "sleep 1").is_err(),
+            "`sleep 10` 被当成了 `sleep 1`"
+        );
         let one = "    while :; do\n      sleep 1\n    done\n";
         assert!(find_pinned(one, "sleep 1").is_ok(), "真的是每秒时不许红");
     }
@@ -825,11 +848,15 @@ mod tests {
             find_pinned(hay, "working-directory: remote-daemon-proto").is_ok(),
             "本条的前提是 find_pinned 在这里放过 —— 前提变了就把这条一起改"
         );
-        let e = pin_line(hay, "working-directory: remote-daemon-proto")
-            .expect_err("整行判据必须红");
+        let e =
+            pin_line(hay, "working-directory: remote-daemon-proto").expect_err("整行判据必须红");
         assert!(e.contains("撑大"), "诊断没点明事实被撑大：{e}");
         assert!(
-            pin_line("  working-directory: remote-daemon-proto\n", "working-directory: remote-daemon-proto").is_ok(),
+            pin_line(
+                "  working-directory: remote-daemon-proto\n",
+                "working-directory: remote-daemon-proto"
+            )
+            .is_ok(),
             "trim 之后相等的行不许红"
         );
     }
