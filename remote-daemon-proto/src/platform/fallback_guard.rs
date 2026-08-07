@@ -85,6 +85,36 @@ mod tests {
         "#[cfg(target_os = \"macos\")]",
     ];
 
+    /// 主分支（Linux 原生实现）。**只有这两种**；其余平台 cfg 一律按回退处理。
+    const PRIMARY_CFGS: &[&str] = &["#[cfg(target_os = \"linux\")]", "#[cfg(unix)]"];
+
+    /// 一份源码里全部**平台**条件编译属性（`#[cfg(test)]` 之类不算）。
+    fn platform_cfgs(code: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut from = 0usize;
+        while let Some(rel) = code[from..].find("#[cfg(") {
+            let i = from + rel;
+            let Some(end) = code[i..].find(")]") else {
+                break;
+            };
+            let attr = &code[i..i + end + 2];
+            from = i + end + 2;
+            let mentions_platform = ["windows", "unix", "target_os", "target_family"]
+                .iter()
+                .any(|k| attr.contains(k));
+            if !mentions_platform || attr.contains("test") {
+                continue;
+            }
+            if PRIMARY_CFGS.contains(&attr) {
+                continue;
+            }
+            if !out.contains(&attr.to_string()) {
+                out.push(attr.to_string());
+            }
+        }
+        out
+    }
+
     fn platform_sources() -> Vec<(String, String)> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("src")
@@ -170,6 +200,32 @@ mod tests {
     }
 
     #[test]
+    /// ★ 派生口径的**回归锚点**〔audit-0805 08-06〕。
+    ///
+    /// [`FALLBACK_CFGS`] 是换成派生之前那份手写清单。**不删它**（铁律 13：
+    /// 删之前先证明它恒绿——而它这里恰恰不是恒绿的，它现在的岗位是回归锚）：
+    /// 断言那 6 个历史已知形态在新口径下**仍被判为回退**。
+    /// 派生逻辑哪天收窄（比如有人给 `platform_cfgs` 加一条过滤），这条当场红。
+    #[test]
+    fn the_derived_population_still_covers_every_historically_known_form() {
+        for cfg in FALLBACK_CFGS {
+            let synthetic = format!("{cfg}\nfn x() {{}}\n");
+            assert!(
+                platform_cfgs(&synthetic).iter().any(|c| c == cfg),
+                "历史已知的回退形态 `{cfg}` 在派生口径下不再被认成回退 —— 口径收窄了"
+            );
+        }
+        // 反向：主分支不许被当成回退（否则 Linux 原生实现会被要求「诚实降级」）。
+        for cfg in PRIMARY_CFGS {
+            let synthetic = format!("{cfg}\nfn x() {{}}\n");
+            assert!(
+                platform_cfgs(&synthetic).is_empty(),
+                "主分支 `{cfg}` 被当成了回退分支"
+            );
+        }
+    }
+
+    #[test]
     fn fallback_branches_must_not_fabricate_success() {
         let files = platform_sources();
         // 采集面自检：`platform/` 至少 5 个文件（proc/paths/signal/liveness/pidwatch/mod）。
@@ -181,7 +237,19 @@ mod tests {
         let mut bad: Vec<String> = Vec::new();
         let mut checked = 0usize;
         for (name, code) in &files {
-            for cfg in FALLBACK_CFGS {
+            // 〔audit-0805 08-06〕**人群改成派生 + 默认拒绝**。
+            //
+            // 原来是 `FALLBACK_CFGS` 那 6 个**精确字符串**。实测：往 `proc.rs` 写
+            //   `#[cfg(any(windows, target_os = "macos"))] fn probe(..) -> bool { true }`
+            // ——一个在非 Linux 平台上**假装进程还活着**的回退，正是本护栏要挡的东西 ——
+            // **四条判据全绿**，因为那个复合 cfg 不在清单里。
+            //
+            // 现在：扫出 `platform/` 里**每一个**平台条件编译属性，
+            // 凡不是[`PRIMARY_CFGS`]登记的主分支，**一律按回退处理**。
+            // ⇒ 新写法（复合 cfg / `target_family` / 别的组合）天然落网，
+            // 不需要谁想起来把它加进清单。
+            for cfg in platform_cfgs(code) {
+                let cfg = cfg.as_str();
                 let mut from = 0usize;
                 while let Some(rel) = code[from..].find(cfg) {
                     let i = from + rel;
@@ -230,10 +298,17 @@ mod tests {
         // 同一个仓、连续两个 commit 里的双标，比文件名那条实质得多。
         //
         // 这里独立数一遍「`platform/` 生产段里 FALLBACK_CFGS 出现了几次」，与 `checked` 比。
+        // 〔audit-0805 08-06〕**这个独立计数也要用同一份派生人群**。
+        //
+        // 它原来数的是 `FALLBACK_CFGS` 那 6 个字符串的出现次数，而上面的循环
+        // 已改成派生 ⇒ 两侧口径脱节：加一条复合 cfg 时，上面数 11、这里数 10，
+        // 于是**红是红了，红的却是「计数对不上」而不是「伪造成功」** —— 诊断指错方向。
+        // ⚠ 这正是本会话反复记的那条：**自检必须量被测者实际用的那个对象**，
+        // 不能量一个「同样构造」的副本；副本一旦与本体分叉，红灯就开始骗人。
         let mut occurrences = 0usize;
         for (_, code) in &files {
-            for cfg in FALLBACK_CFGS {
-                occurrences += code.matches(cfg).count();
+            for cfg in platform_cfgs(code) {
+                occurrences += code.matches(cfg.as_str()).count();
             }
         }
         assert_eq!(
@@ -272,7 +347,9 @@ mod tests {
         let mut stub = 0usize;
         let mut real = 0usize;
         for (_, code) in platform_sources() {
-            for cfg in FALLBACK_CFGS {
+            // 〔audit-0805 08-06〕同上：切到派生人群，免得同一模块留两套口径。
+            for cfg in platform_cfgs(code.as_str()) {
+                let cfg = cfg.as_str();
                 let mut from = 0usize;
                 while let Some(rel) = code[from..].find(cfg) {
                     let i = from + rel;
