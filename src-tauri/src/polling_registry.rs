@@ -439,6 +439,39 @@ mod tests {
         ("src/views/usage-view.ts", "requestAnimationFrame", 1, "合并重画用量列表，`rafPending` 防重入 + `seq` 世代守卫。一次性。"),
     ];
 
+    /// 数一个调度 API 在源码里的**调用**次数（散文里提到名字不算）。
+    ///
+    /// # 〔audit-0805 08-06〕原来是 `matches("{api}(")`，而它旁边的注释写着「允许 `api  (`」
+    ///
+    /// **代码不允许，注释说允许** —— 两者对不上，而对不上的那一边正是漏洞：
+    /// 把 `requestAnimationFrame (tick)`（**自链**，正是 E6 禁的连续唤醒）写进
+    /// `views/usage-view.ts`，本条与 `every_periodic_wake_is_registered_with_an_owner`
+    /// **两条都不响**（后者的 `is_periodic` 根本不看 rAF，只看 `setInterval` 与带 `poll` 的
+    /// `setTimeout`）⇒ 一个空格就能把「全部调度调用点」这条枚举式白名单的人群缩小。
+    ///
+    /// ⚠ 对照：同一轮里 `setInterval (…)` **被抓住了**，但那是隔壁那条判据的裸 `contains`
+    /// 顺手接住的，不是本条的功劳 —— **纵深防御会掩盖单条判据的洞**，
+    /// 所以变异要看「是谁红的」，不能只看有没有红。
+    ///
+    /// 现在的口径：名字必须是**完整的一个词**（`myRequestAnimationFrame` 不算，
+    /// `window.setInterval` 算），其后允许任意空白，然后必须是 `(`。
+    fn count_calls(src: &str, api: &str) -> usize {
+        let mut n = 0usize;
+        let mut from = 0usize;
+        while let Some(rel) = src[from..].find(api) {
+            let i = from + rel;
+            from = i + api.len();
+            let starts_word = !src[..i]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+            if starts_word && src[from..].trim_start().starts_with('(') {
+                n += 1;
+            }
+        }
+        n
+    }
+
     /// 扫描面：**全部**调度调用点（不只是「看起来像周期」的那些）。
     fn scan_all_scheduling_sites() -> Vec<(String, String, usize)> {
         const APIS: [&str; 4] = [
@@ -460,12 +493,7 @@ mod tests {
                 .replace('\\', "/");
             let src = guard_core::strip_comment_lines(&fs::read_to_string(&f).unwrap_or_default());
             for api in APIS {
-                // 只认调用（`api(`），不认散文里提到的名字。允许 `api  (`。
-                let needle = format!("{api}(");
-                let n: usize = src
-                    .lines()
-                    .map(|l| l.matches(&needle).count())
-                    .sum::<usize>();
+                let n = count_calls(&src, api);
                 if n > 0 {
                     out.push((rel.clone(), api.to_string(), n));
                 }
@@ -482,6 +510,33 @@ mod tests {
     /// 两条都要 —— 只有前者时，一处新写的 rAF 自链可以一声不响地进仓。
     #[test]
     fn every_scheduling_call_site_is_classified() {
+        // 匹配单位自检（〔audit-0805 08-06〕，两个方向都要钉）：
+        // 放松的那一侧 —— 带空白的调用要数进来（本轮的洞就在这里）。
+        assert_eq!(
+            count_calls("requestAnimationFrame (tick);", "requestAnimationFrame"),
+            1,
+            "带空格的调用没被数进来 —— 一个空格就能把这条判据的人群缩小"
+        );
+        assert_eq!(count_calls("setInterval\n  (f, 9);", "setInterval"), 1);
+        // 收紧的那一侧 —— 别把不是调用的东西也数进来，否则新口径会误红好代码。
+        // ⚠ 这条第一版写的是 `mySetInterval(` —— 里面是大写 `S`，**根本不含 `setInterval`**，
+        // 于是把词边界整段删掉它照样绿（变异实测）。**负向断言最容易写成恒绿的**：
+        // 它要求你先造出「真的会被误命中」的输入，而那一步很容易糊弄过去。
+        assert_eq!(
+            count_calls("my_setInterval(f, 9);", "setInterval"),
+            0,
+            "`my_setInterval` 被当成了 `setInterval` —— 词边界没守住"
+        );
+        assert_eq!(
+            count_calls("const h = setInterval; use(h);", "setInterval"),
+            0,
+            "只是提到名字、没有调用，不该计数"
+        );
+        assert_eq!(
+            count_calls("window.setInterval(f, 9);", "setInterval"),
+            1,
+            "`window.setInterval(` 是调用，必须数"
+        );
         let found = scan_all_scheduling_sites();
         // 抽取器自检：扫不到东西时下面的对拍会两边都空、静默变绿。
         let total: usize = found.iter().map(|(_, _, n)| *n).sum();

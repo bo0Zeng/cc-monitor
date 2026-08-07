@@ -920,7 +920,6 @@ mod tests {
     /// 本条是那条诚实边界（`ROADMAP §5`）的**前提触发器**：前提一旦消失就红，逼人回来重判。
     #[test]
     fn the_windows_cross_target_signal_covers_only_the_daemon() {
-        let ci = ci_live_lines();
         const NEEDLE: &str = "--target x86_64-pc-windows-msvc";
 
         // ① daemon 那一步还在吗（E7 点名的真判据，本仓唯一一处）。
