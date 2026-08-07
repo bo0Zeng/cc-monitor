@@ -152,6 +152,54 @@ mod tests {
     ///   （去抖窗口是毫秒级，超时上限也不该出现在 reader 路径上）
     ///
     /// **不在表里的**：`Duration` 本身、`Duration::from_millis`（见 `REGISTERED_DURATION_USES`）。
+    /// 行里有没有 `name(` 这个**调用**（`name` 要是完整的词）。
+    ///
+    /// 与 monitor 侧 `rust_timer_registry::is_call_of` 同形 —— 两侧各一份是刻意的：
+    /// 两个 crate 之间没有共享测试工具的通道（跨 crate 够不着 `guard_core` 的测试模块）。
+    fn is_call_of(line: &str, name: &str) -> bool {
+        let ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+        let mut from = 0usize;
+        while let Some(i) = line[from..].find(name) {
+            let at = from + i;
+            from = at + name.len();
+            if line[..at].chars().next_back().is_some_and(ident) {
+                continue;
+            }
+            if line[from..].trim_start().starts_with('(') {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// ★ 调用匹配器的**负向**自检〔audit-0805 08-06〕。
+    ///
+    /// ⚠ 加它是因为一次实测：把 `is_call_of` 的词边界整段删掉，**六条判据照样绿** ——
+    /// 也就是说这个匹配器的收紧那一侧当时**没有任何断言在行使**。
+    /// 词边界松掉的后果是误红（`do_sleep(3)` 被当成周期唤醒），
+    /// 而误红最省事的消法是把这条判据删掉。
+    /// ⇒ 本区第四次踩「负向断言写不出来就等于没有」，这次在当轮就补上并验了。
+    #[test]
+    fn the_call_matcher_does_not_fire_on_lookalikes() {
+        assert!(is_call_of("    sleep(d).await;", "sleep"), "真调用没认出来");
+        assert!(
+            is_call_of("    tokio::time::sleep(d);", "sleep"),
+            "带路径的调用也要认"
+        );
+        assert!(
+            !is_call_of("    let x = do_sleep(3);", "sleep"),
+            "`do_sleep(` 被当成了 `sleep(` —— 词边界没守住"
+        );
+        assert!(
+            !is_call_of("    self.my_interval(2);", "interval"),
+            "`my_interval(` 被当成了 `interval(` —— 词边界没守住"
+        );
+        assert!(
+            !is_call_of("    let sleep_ms = 5;", "sleep"),
+            "只是同名变量、后面不是 `(`，不该算调用"
+        );
+    }
+
     fn periodic_wake_patterns() -> Vec<String> {
         // 判据**运行时拼**：直接写字面量的话，本文件自己就会被下面的扫描命中
         //（同类自指陷阱在 P4 连踩七次，其中一次让守卫变成了安慰剂）。
@@ -372,6 +420,41 @@ mod tests {
                 "src/ 下有含 .rs 的子目录，但扫到的全是顶层文件 —— 遍历退化成非递归了：{:?}",
                 files.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>()
             );
+        }
+        // ★〔audit-0805 08-06〕**再按「调用」扫一遍** —— 上面那批针全是路径拼法。
+        //
+        // 实测：往 `inbound.rs` 写
+        //   `use tokio::time::{self as _t, sleep};`
+        //   `async fn probe() { loop { sleep(Duration::new(5, 0)).await; } }`
+        // ——一个货真价实的无限周期唤醒，**六条判据全绿**：
+        // `time::sleep` 对不上（导入写成了花括号组）、`Duration::from_` 也对不上
+        //（用的是 `Duration::new`）⇒ 两道防线**同时**被同一种改写绕过去。
+        //
+        // 补的是**调用形态**（名字要是完整的词、后面紧跟 `(`），与怎么导入无关。
+        // ⚠ 补之前量过误红面：这八个名字在 daemon 生产段今天**全为 0 处**。
+        for (name, code) in &files {
+            for call in [
+                "sleep",
+                "interval",
+                "interval_at",
+                "recv_timeout",
+                "park_timeout",
+                "wait_timeout",
+                "timeout",
+                "tick",
+            ] {
+                if let Some(line) = code.lines().find(|l| {
+                    let t = l.trim_start();
+                    !t.starts_with("//") && is_call_of(l, call)
+                }) {
+                    panic!(
+                        "零定时器护栏违规（P6，**按调用形态**逮到）：生产代码 {name} 里有 `{call}(` 调用：\n  {}\n\
+                         daemon 的判活全部由内核事件驱动（inotify / pidfd / tmux hook）。\n\
+                         ⚠ 换个 import 写法或换个 `Duration` 构造器**绕不过这一条** —— 它只看调用。",
+                        line.trim()
+                    );
+                }
+            }
         }
         for (name, code) in &files {
             for pat in periodic_wake_patterns() {
