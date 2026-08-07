@@ -446,6 +446,15 @@ mod tests {
     #[test]
     fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
         /// 整个 job 结构上跑不了 —— 理由**逐 job 一条**，且下面有前提触发器盯着它别过期。
+        ///
+        /// ⚠ **08-06 订正：这条豁免曾经过宽。** 它当初写成「整个 job 跑不了」，
+        /// 而实测（用一个只会报错的 `tmux` 桩遮住 PATH，谁碰谁当场失败）发现
+        /// 这两个 job 里有**四套根本不碰 tmux**、在本机跑得通且全过：
+        /// `ccm-cli`(53) · `ccm-contract-parity`(45) · `ccm-print-parity`(12) · `daemon-fork`(10)
+        /// —— 合计 **120 条断言**，此前被我按 job 一刀切成「结构上跑不了」。
+        /// 那四套的名字登记在 [`LOCALLY_RUNNABLE`]，本地门禁要跑它们。
+        /// ⇒ 教训：**豁免的粒度要贴着「为什么跑不了」的粒度**。job 级理由（装 tmux）
+        /// 不等于步骤级理由（这一步用不用 tmux）。
         const BLANKET: &[(&str, &str)] = &[
             (
                 "e2e-tmux",
@@ -454,6 +463,23 @@ mod tests {
             (
                 "e2e-tmux-rust",
                 "同上（红线：真 tmux server）——它还额外装整套 Tauri Linux 依赖",
+            ),
+        ];
+        /// **住在 blanket job 里、但本机跑得通**的那几套（08-06 用 tmux 桩实测）。
+        /// 它们不需要 tmux，红线挡不住它们 —— 登记在这里是为了**别让 job 级豁免把它们盖住**。
+        const LOCALLY_RUNNABLE: &[(&str, &str)] = &[
+            ("ccm CLI 契约（F02）", "`npm run test:ccm-cli` —— 全走 `--print` 断言命令串，实测 PASS=53"),
+            (
+                "ccm 契约差分对拍（U9a · S10 保住清单）",
+                "`npm run test:ccm-contract-parity` —— 实测 PASS=45",
+            ),
+            (
+                "ccm --print 平价预言机（F03）",
+                "`npm run test:ccm-print-parity` —— 实测 PASS=12",
+            ),
+            (
+                "daemon 分叉（G2 `--fork-session`）",
+                "`npm run test:daemon-fork` —— 脚本头注逐字「不需要 tmux、不需要 ssh」，实测 PASS=10",
             ),
         ];
         /// 其余每一步逐条登记：`(步骤名, 本地跑不跑, 说法)`。
@@ -538,6 +564,22 @@ mod tests {
                 block.contains("install -y tmux"),
                 "job `{j}` **不再装 tmux 了** —— 那么「红线挡住、结构上跑不了」这个豁免理由就没了，\n\
                  请重新逐步登记它（当初的理由：{why}）"
+            );
+        }
+
+        // ★ 登记表保鲜：`LOCALLY_RUNNABLE` 里的步骤必须仍住在 blanket job 里。
+        // 哪天它被挪出去（或改名），本地门禁那份清单就该跟着改 —— 不许它悄悄失联。
+        for (step, how) in LOCALLY_RUNNABLE {
+            let at = found.iter().find(|(_, n)| n == step).unwrap_or_else(|| {
+                panic!(
+                    "`{step}` 在 `ci.yml` 里找不到了 —— 本地门禁那份清单要跟着改。（跑法：{how}）"
+                )
+            });
+            assert!(
+                BLANKET.iter().any(|(b, _)| *b == at.0),
+                "`{step}` 已经不在 blanket job 里了（现在在 `{}`）—— \n\
+                 那它就该按普通步骤逐条登记，而不是靠 `LOCALLY_RUNNABLE` 兜着。（跑法：{how}）",
+                at.0
             );
         }
 
