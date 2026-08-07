@@ -613,10 +613,39 @@ mod tests {
 
         // ── 收 doc/ 里的 `file.rs::symbol`
         let mut refs: Vec<(String, usize, String, String)> = Vec::new();
-        for p in doc_files() {
+        // 〔08-06 扩面〕**不止 `doc/`**：各目录的 `README.md` 同样在教人「去看哪条判据」，
+        // 而它们此前不在扫描面里 —— 我当天就在 `e2e/README.md` 里写下一个指针，
+        // 于是那个指针**没有任何东西守着**。⇒ 把入口 README 一并收进来。
+        // 实测扩面当日：这些 README 里共 11 处这种引用，**解析不到 0 处**（不误红）。
+        let mut targets: Vec<PathBuf> = doc_files();
+        let base = targets.len();
+        for extra in [
+            "README.md",
+            "e2e/README.md",
+            "scripts/README.md",
+            "src/README.md",
+            "src-tauri/README.md",
+            "remote-daemon-proto/README.md",
+            "e2e/tier2/README.md",
+        ] {
+            let q = repo_root().join(extra);
+            if q.is_file() {
+                targets.push(q);
+            }
+        }
+        // ★ 扩面自检：入口 README 收不到 ⇒ 路径写错了，扩面等于没做。
+        assert!(
+            targets.len() >= base + 5,
+            "入口 README 只收到 {} 个（doc/ 之外）—— 路径写错了，扩面是空转的",
+            targets.len() - base
+        );
+        for p in targets {
+            // ⚠ 用**仓相对路径**而不是裸文件名：扩面后有七个 `README.md`，
+            // 裸名会让诊断把 `e2e/README.md` 打印成 `doc/README.md` —— 指错地方的诊断
+            // 比没有诊断更费时间（本会话反复吃过「读诊断」的亏）。
             let fname = p
-                .file_name()
-                .expect("doc 文件名")
+                .strip_prefix(repo_root())
+                .unwrap_or(&p)
                 .to_string_lossy()
                 .to_string();
             let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读 {p:?} 失败: {e}"));
@@ -655,8 +684,8 @@ mod tests {
         }
         // ★ 抽取器自检 2：`doc/` 里本来就有几十处 —— 抽到个位数就是剥法坏了。
         assert!(
-            refs.len() >= 60,
-            "`doc/` 里只抽到 {} 处 `file.rs::symbol` —— 剥法坏了（建判据当天实测 73 处）",
+            refs.len() >= 70,
+            "只抽到 {} 处 `file.rs::symbol` —— 剥法坏了（`doc/` 当日 73 处，扩面后另加各 README 11 处）",
             refs.len()
         );
 
@@ -684,10 +713,10 @@ mod tests {
             .filter(|r| !EXCEPTIONS.iter().any(|(s, _)| *s == r.3))
             .filter_map(|(f, ln, base, sym)| match decl.get(sym) {
                 None => Some(format!(
-                    "doc/{f}:{ln}  `{base}::{sym}` —— **全仓找不到这个符号**（改名或删了）"
+                    "{f}:{ln}  `{base}::{sym}` —— **全仓找不到这个符号**（改名或删了）"
                 )),
                 Some(fs) if !fs.contains(base) => Some(format!(
-                    "doc/{f}:{ln}  `{base}::{sym}` —— 符号还在，但**搬家了**：现住 {:?}",
+                    "{f}:{ln}  `{base}::{sym}` —— 符号还在，但**搬家了**：现住 {:?}",
                     fs.iter().collect::<Vec<_>>()
                 )),
                 _ => None,
