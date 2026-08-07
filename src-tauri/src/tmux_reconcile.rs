@@ -304,6 +304,72 @@ mod tests {
 /// —— `/branch` 原地换 sid 时，那份快照对这个场景**恒错**。
 #[cfg(test)]
 mod source_of_truth_guard {
+    /// ★★ 〔audit-0805 08-06〕**把「不许」的对象从一个名字换成一族入口**。
+    ///
+    /// # 原来那条漏了什么
+    ///
+    /// 它禁的是字面量 `list_remote_tmux`。而**轮询回潮的真实形状不必用那个名字** ——
+    /// 08-06 实测：在本模块生产段里直接写
+    /// `ssh_source::connect_and_exec_cmd(cfg, "tmux ls …")`，**monitor 1013 条全绿**。
+    /// 也就是说这条护栏防的那件事（每 8s 一条新 SSH）可以原样回来而它不响。
+    ///
+    /// # 改法：危险集合**从 `ssh_source` 的公开面派生**，不写死
+    ///
+    /// 本仓的原则是「枚举式白名单优于黑名单」（`structural_scan.rs` 头注）。
+    /// 这里做不到纯白名单（生产段该引用什么无法穷举），但能把黑名单**从固定名单
+    /// 换成派生集合**：扫 `ssh_source.rs` 的 `pub (async) fn`，凡名字里带
+    /// `exec` / `connect` / `list_remote` 的都算「能开 SSH 的入口」。
+    /// ⇒ **将来新增一个 exec 入口，自动被纳入** —— 这正是固定 needle 做不到的。
+    ///
+    /// 实测：今天派生出 4 个入口，而本模块生产代码里对 `ssh_source::` 的引用
+    /// **剥掉注释后是零处**。
+    #[test]
+    fn the_reconcile_path_touches_no_ssh_exec_entry_point() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let ssh =
+            std::fs::read_to_string(root.join("ssh_source.rs")).expect("读不到 ssh_source.rs");
+        let mut entries: Vec<String> = Vec::new();
+        for l in guard_core::production_code(&ssh).lines() {
+            let t = l.trim();
+            let Some(rest) = t
+                .strip_prefix("pub async fn ")
+                .or_else(|| t.strip_prefix("pub fn "))
+            else {
+                continue;
+            };
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if name.contains("exec") || name.contains("connect") || name.contains("list_remote") {
+                entries.push(name);
+            }
+        }
+        entries.sort();
+        entries.dedup();
+        // ★ 派生自检：一个都派生不出来 ⇒ 下面这条是空转的。
+        assert!(
+            entries.len() >= 3,
+            "从 `ssh_source` 只派生出 {} 个 SSH 入口 —— 派生坏了（08-06 实测 4 个）：{entries:?}",
+            entries.len()
+        );
+
+        let me = guard_core::production_code(include_str!("tmux_reconcile.rs"));
+        let used: Vec<&String> = entries
+            .iter()
+            .filter(|e| me.contains(format!("ssh_source::{e}").as_str()))
+            .collect();
+        assert!(
+            used.is_empty(),
+            "对账模块的生产段用了这些 SSH 入口：{used:?}\n\n\
+             ⇒ 「对账拿不到数据时顺手 exec 一下」正是 B2 治好的那件事的回潮形状\n\
+             （每 8s 一条新 SSH，远端 sshd 日志刷屏）。\n\
+             ★ 与上面那条的区别：那条只禁一个名字 `list_remote_tmux`，\n\
+             而 08-06 实测**换个入口自己拼 `tmux ls` 就能绕过去**（全绿）。\n\
+             本条的危险集合从 `ssh_source` 的公开面派生，新增入口自动纳入。"
+        );
+    }
+
     /// ★ 对账路径不许自己去开 SSH 拉 tmux。
     #[test]
     fn the_reconcile_path_never_execs_its_own_tmux_listing() {
