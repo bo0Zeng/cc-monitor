@@ -1006,7 +1006,12 @@ mod coldstart_preflight_guard {
     #[test]
     fn skipping_the_preflight_still_feeds_the_capability_ladder() {
         let prod = prod();
-        guard_core::find_pinned(&prod, "Some(EXPECTED_DAEMON_BUILD_ID.to_string())")
+        // ⚠ 用 `pin_line`（整行相等）而不是 `find_pinned`（子串 + 标识符边界）〔08-06，§5 3u〕：
+        //   这个 needle 以 `)` 收尾 —— **不是标识符字符**，于是 `find_pinned` 的边界检查对它
+        //   根本不起作用。实测对照（同一处撑大 `.map(|s| s)`）：`find_pinned` **通过**，
+        //   `pin_line` **红**并报「没有任何一行 trim 之后等于…」。
+        //   生产段那一行整行就是这个串，所以整行相等是**能用且更强**的写法。
+        guard_core::pin_line(&prod, "Some(EXPECTED_DAEMON_BUILD_ID.to_string())")
             .unwrap_or_else(|e| {
                 panic!(
                     "跳过预检那一支没有把 `confirmed_build` 置成期望值：{e}\n\
