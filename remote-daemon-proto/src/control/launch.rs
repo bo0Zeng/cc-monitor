@@ -733,7 +733,10 @@ mod tests {
     ///
     /// `type_payload` / `type_keys_raw` 的全部依据就是 `tmux(&["send-keys", …])?` ——
     /// **退 0 就 `Ok`**。而 tmux 在 pane 处于 **copy-mode** 时照样退 0：键被键表吃掉，
-    /// 载荷根本没进应用（`pane_in_mode` / `copy-mode` / `-X cancel` 全仓零命中）。
+    /// 载荷根本没进应用（`pane_in_mode` / `copy-mode` / `-X cancel` 在**生产函数体**里零命中 ——
+    /// ⚠ 措辞 08-06 改准：原写「全仓零命中」，而这几个词今天在**本注释与下面那条判据的
+    /// needle 表**里都出现着，字面上早已不成立。下面那条判据扫的是抽出来的函数体，
+    /// 所以它自己不会自匹配 —— 但**说法要跟着判据的真实扫描面走**，否则就是 F23 那一族。）
     ///
     /// 后果是链式的，且**每一环都在放大上一环的乐观**：
     /// `send-keys` 退 0 → daemon 回 `typed:true` → `daemon_launch.rs` 逐字转发 →
