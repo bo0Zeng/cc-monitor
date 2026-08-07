@@ -429,4 +429,143 @@ mod tests {
             "`[workspace] members` 里列了不存在的 crate：{ghosts:?}"
         );
     }
+
+    /// 〔audit-0805 08-06〕**`ci.yml` 的每一个 `run:` 步骤都要有归属**：
+    /// 要么本地必跑，要么写清「结构上为什么跑不了」。
+    ///
+    /// **为什么建它**（实测，不是设想）：Windows 信号定格后 72 个提交没有任何一次 CI 执行，
+    /// 而本地那一路的门禁命令**只有 `cargo test`**。08-06 第一次把 `cargo fmt --all --check`
+    /// 补进去，**两侧当场都红**（13 个文件，`blame` 落在十来个不同提交上）——
+    /// 也就是说 CI 的**第一个 Rust 步骤**已经红了很久，而每一轮的结论都写着「全绿」。
+    ///
+    /// 病根不是「漏跑一条命令」，是**本地门禁的度量面比 CI 小，而小了多少没人数过**。
+    /// 上面那几条 `ci_actually_runs_*` 守的是反方向（CI 里别把步骤悄悄删了）；
+    /// 本条守的是这一侧：**CI 里有而本地没数过的步骤，一步都不许有。**
+    ///
+    /// ⇒ 新增 / 改名一个 CI 步骤就会红，直到有人回答「本地跑不跑它」。
+    #[test]
+    fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
+        /// 整个 job 结构上跑不了 —— 理由**逐 job 一条**，且下面有前提触发器盯着它别过期。
+        const BLANKET: &[(&str, &str)] = &[
+            (
+                "e2e-tmux",
+                "本区红线〔用〕：绝不用真 tmux server。该 job 逐字 `apt-get install -y tmux` 并起真 server",
+            ),
+            (
+                "e2e-tmux-rust",
+                "同上（红线：真 tmux server）——它还额外装整套 Tauri Linux 依赖",
+            ),
+        ];
+        /// 其余每一步逐条登记：`(步骤名, 本地跑不跑, 说法)`。
+        /// 「跑不了」那几条要写**结构性**理由，不许写「太慢」这种可以克服的话。
+        const STEPS: &[(&str, bool, &str)] = &[
+            // ── job rust
+            ("cargo fmt --check（整个 workspace）", true, "`cd src-tauri && cargo fmt --all --check`"),
+            ("cargo clippy（整个 workspace，vendor 除外）", true, "同名命令；无 `-D warnings` ⇒ 只有真错才红"),
+            ("cargo test（整个 workspace，vendor 除外）", true, "本区门禁主命令"),
+            ("生成物必须最新（C05；改了 Rust 就得重新生成并提交）", true, "`git diff --exit-code -- ../src/generated/`"),
+            ("cargo test (vendor code-picture-core)", true, "只**读地跑**；实测跑完 `git status` 对 vendor 零改动 ⇒ 不违反红线"),
+            // ── job frontend
+            ("npm audit (production deps, high)", true, "同名命令"),
+            ("eslint (advisory, baseline)", true, "同名命令。⚠ 它带 `|| true` ⇒ **结构上不会红**；登记它是为了别把「不会红」误当成「跑过了」"),
+            ("stylelint (advisory, baseline)", true, "同上，也带 `|| true`"),
+            ("unit tests (node pure-fn + vitest DOM)", true, "`npm test`"),
+            ("coverage floor (vitest jsdom)", true, "`npm run coverage`"),
+            ("coverage per-file floors + zero-coverage ratchet", true, "`node scripts/assert-coverage-floors.mjs`"),
+            ("vite build (dist/)", true, "`npm run build`"),
+            // ── job daemon
+            ("cargo fmt --check", true, "`cd remote-daemon-proto && cargo fmt --check`"),
+            ("cargo check（跨 target：Windows 编得过 —— 平台线的真判据）", true, "E7 的真判据；本机装了 `x86_64-pc-windows-msvc` target，实测跑得通"),
+            ("cargo clippy", true, "同名命令"),
+            ("cargo test", true, "同名命令"),
+            // ── job linux-app-build
+            ("Install Linux build deps", false, "apt 装系统依赖：本机已装，且要 sudo ⇒ 属于**环境准备**不是判据"),
+            ("npm ci", false, "按 lockfile **重装** node_modules：本地等价物是既有依赖树，重跑改变的是环境不是结论"),
+            ("npm run build (tsc + vite)", true, "与 frontend job 同一条命令"),
+            ("cargo build (full app binary, not --lib)", true, "`cd src-tauri && cargo build` —— 它编的是 bin，`--lib` 那条盖不住"),
+            // ── job e2e-smoke
+            ("shellcheck (errors only)", true, "本机装了 shellcheck；步骤体从 `ci.yml` 原样抽出来跑"),
+            ("vendored cc-acct-iso self-tests (sandboxed, 294 assertions)", true, "沙箱内自测；vendor 是 `cc-acct-iso` 不是红线点名的 `code-picture-core`"),
+            ("python syntax compile", true, "`python3 -m py_compile e2e/*.py`"),
+            ("G-A/G-C 覆盖面地板（19 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
+            ("exec-bit guard (shared/** shebang files must be 100755 in git)", true, "`bash e2e/exec-bit-guard.sh`"),
+        ];
+
+        // ── 解析：(job, 步骤名)
+        let yml = ci_yml();
+        let mut found: Vec<(String, String)> = Vec::new();
+        let mut job = String::new();
+        let mut name: Option<String> = None;
+        for line in yml.lines() {
+            if line.trim_start().starts_with('#') {
+                continue;
+            }
+            let t = line.trim_end();
+            if t.len() > 2
+                && t.starts_with("  ")
+                && !t.as_bytes()[2].is_ascii_whitespace()
+                && t.ends_with(':')
+            {
+                job = t.trim().trim_end_matches(':').to_string();
+                name = None;
+                continue;
+            }
+            if let Some(rest) = line.trim_start().strip_prefix("- name: ") {
+                name = Some(rest.trim().to_string());
+                continue;
+            }
+            if line.trim_start().starts_with("run:") {
+                if let Some(n) = name.take() {
+                    found.push((job.clone(), n));
+                }
+            }
+        }
+        // ★ 抽取器自检：数量掉下来就说明 YAML 形态变了、下面整条会零命中地绿。
+        assert!(
+            found.len() >= 40,
+            "只从 `ci.yml` 解析到 {} 个带名字的 `run:` 步骤 —— 解析坏了（建判据当天实测 47 个）",
+            found.len()
+        );
+
+        // ★ 前提触发器：blanket 豁免的理由是「这个 job 要真 tmux」——理由没了就得重判。
+        for (j, why) in BLANKET {
+            let block = ci_job_block(j);
+            assert!(
+                !block.trim().is_empty(),
+                "`ci.yml` 里已经没有 job `{j}` 了 —— 删掉这条整 job 豁免（它当初的理由：{why}）"
+            );
+            assert!(
+                block.contains("install -y tmux"),
+                "job `{j}` **不再装 tmux 了** —— 那么「红线挡住、结构上跑不了」这个豁免理由就没了，\n\
+                 请重新逐步登记它（当初的理由：{why}）"
+            );
+        }
+
+        let unregistered: Vec<String> = found
+            .iter()
+            .filter(|(j, _)| !BLANKET.iter().any(|(b, _)| b == j))
+            .filter(|(_, n)| !STEPS.iter().any(|(s, _, _)| s == n))
+            .map(|(j, n)| format!("  [{j}] {n}"))
+            .collect();
+        assert!(
+            unregistered.is_empty(),
+            "`ci.yml` 里这些步骤**没人回答「本地跑不跑」**：\n{}\n\n\
+             ⚠ 这正是 fmt 那条溜掉的方式：CI 里加了一步、本地门禁不知道，\n\
+             于是「本地全绿」与「CI 全绿」之间的差距**一直在长而没人数**。\n\
+             登记进 `STEPS`：能跑就写下本地怎么跑，跑不了就写**结构性**理由（「慢」不算）。",
+            unregistered.join("\n")
+        );
+
+        // ★ 登记表保鲜：登记了一条 `ci.yml` 里已经没有的步骤 ⇒ 它在替真判据挡枪。
+        let stale: Vec<&str> = STEPS
+            .iter()
+            .map(|(s, _, _)| *s)
+            .filter(|s| !found.iter().any(|(_, n)| n == s))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "登记表里这些步骤 `ci.yml` 里已经找不到了（改名或删了）：{stale:?}\n\
+             改名也要红 —— 名字变了就该有人重新回答一次「本地跑不跑它」。"
+        );
+    }
 }
