@@ -981,4 +981,193 @@ mod tests {
             off.join("\n")
         );
     }
+
+    /// 〔audit-0805 08-06〕**文档里写成 `CONST = 数` 的，代码里那个常量必须真是这个数。**
+    ///
+    /// **这是定框 E12 自己点名的洞**：E12 的 ⚠ 逐字写着「那四个准确的细节数
+    /// （`CHUNK_SIZE=600` 等）**一个都不在它的扫描面里**」—— 本模块此前只管
+    /// 「状态列」与几种极窄形态，`CONST = 数` 这一族**没人读**。
+    ///
+    /// **变异实证（先红后信的反面：它当时是绿的）**：把 daemon 生产常量
+    /// `REPLY_BURST` 从 8 改成 3 —— daemon 全套 + monitor 全套**都绿**，
+    /// 而 `IPC-PROTOCOL.md` 逐字写着「`main.rs::REPLY_BURST = 8`，连发 8 条后强制让位一次」。
+    /// 也就是说：**协议文档里的一个行为常量，代码改了不会有任何东西红。**
+    ///
+    /// 手法沿用本模块的核心做法：**判据不自己写那个数**，从文档里抽出来再与代码比 ——
+    /// 于是那个数只有一个家（文档），改代码不改文档就红，改文档不改代码也红。
+    #[test]
+    fn every_constant_value_quoted_in_the_docs_matches_the_code() {
+        /// 长得像常量、其实不是 Rust 常量的。逐条写清它是什么。
+        const EXCEPTIONS: &[(&str, &str)] = &[
+            (
+                "CLAUDECODE",
+                "**环境变量**（`CLAUDECODE=1`），不是 Rust 常量",
+            ),
+            ("CLAUDE_CODE_CHILD_SESSION", "同上，环境变量"),
+        ];
+
+        /// 从一行里抽 `NAME = 数`（大写标识符 ≥4 字符）。反引号可有可无。
+        fn scan_line(line: &str) -> Vec<(String, String)> {
+            let b: Vec<char> = line.chars().collect();
+            let mut out = Vec::new();
+            let mut i = 0usize;
+            while i < b.len() {
+                if !(b[i].is_ascii_uppercase()) {
+                    i += 1;
+                    continue;
+                }
+                let s = i;
+                while i < b.len()
+                    && (b[i].is_ascii_uppercase() || b[i].is_ascii_digit() || b[i] == '_')
+                {
+                    i += 1;
+                }
+                let name: String = b[s..i].iter().collect();
+                if name.len() < 4 {
+                    continue;
+                }
+                let mut j = i;
+                while j < b.len() && (b[j] == '`' || b[j] == ' ') {
+                    j += 1;
+                }
+                if j >= b.len() || (b[j] != '=' && b[j] != '：' && b[j] != ':') {
+                    continue;
+                }
+                j += 1;
+                while j < b.len() && (b[j] == '`' || b[j] == ' ') {
+                    j += 1;
+                }
+                let vs = j;
+                while j < b.len() && (b[j].is_ascii_digit() || b[j] == '_') {
+                    j += 1;
+                }
+                if j > vs {
+                    let v: String = b[vs..j].iter().filter(|c| **c != '_').collect();
+                    out.push((name, v));
+                }
+                i = j;
+            }
+            out
+        }
+
+        let mut claims: Vec<(String, usize, String, String)> = Vec::new();
+        for p in doc_files() {
+            let fname = p
+                .file_name()
+                .expect("doc 文件名")
+                .to_string_lossy()
+                .to_string();
+            let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读 {p:?} 失败: {e}"));
+            for (i, line) in text.lines().enumerate() {
+                for (n, v) in scan_line(line) {
+                    claims.push((fname.clone(), i + 1, n, v));
+                }
+            }
+        }
+        // ★ 自检 1 + 锚点：只有数量地板不够（本会话实测过「人群被换掉、地板照样过」）。
+        assert!(
+            claims.len() >= 5,
+            "`doc/` 里只抽到 {} 处 `CONST = 数` —— 剥法坏了（建判据当天实测 6 处）",
+            claims.len()
+        );
+        // ⚠ 锚点**只认名字、不认值** —— 第一版把 `&& v == "8"` 也写进来了，
+        // 于是判据自己成了那个数的第二份副本（正是本模块头注警告的形态）：
+        // 合法地把常量改成别的数时，红的会是锚点而不是对拍，诊断指错方向。
+        assert!(
+            claims.iter().any(|(_, _, n, _)| n == "REPLY_BURST"),
+            "锚点 `REPLY_BURST` 不在抽到的清单里 —— 收的多半不是这一类了。\n\
+             （它是本条的立项样本：改代码不改文档时，全仓一条都不会红。）"
+        );
+
+        // ── 代码侧：常量名 → 它被定义成的那些值
+        let mut defined: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
+            std::collections::BTreeMap::new();
+        let mut srcs: Vec<(PathBuf, String)> = Vec::new();
+        for root in [
+            "src-tauri/src",
+            "src-tauri/crates",
+            "remote-daemon-proto/src",
+        ] {
+            srcs.extend(guard_core::scan_tree!(&repo_root().join(root), &["rs"]));
+        }
+        for (_, raw) in &srcs {
+            for line in guard_core::strip_comment_lines(raw).lines() {
+                let t = line.trim();
+                let rest = match t
+                    .strip_prefix("const ")
+                    .or_else(|| t.strip_prefix("static "))
+                {
+                    Some(r) => r,
+                    None => match t
+                        .strip_prefix("pub const ")
+                        .or_else(|| t.strip_prefix("pub static "))
+                    {
+                        Some(r) => r,
+                        None => continue,
+                    },
+                };
+                let Some((name, tail)) = rest.split_once(':') else {
+                    continue;
+                };
+                let name = name.trim();
+                if name.is_empty()
+                    || !name
+                        .chars()
+                        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+                {
+                    continue;
+                }
+                let Some((_, val)) = tail.split_once('=') else {
+                    continue;
+                };
+                let v: String = val
+                    .trim()
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit() || *c == '_')
+                    .filter(|c| *c != '_')
+                    .collect();
+                if !v.is_empty() {
+                    defined.entry(name.to_string()).or_default().insert(v);
+                }
+            }
+        }
+        // ★ 自检 2：代码侧一个常量都收不到 ⇒ 下面会把每条都判成「代码里没有」。
+        assert!(
+            defined.len() >= 20,
+            "全仓只收到 {} 个数值常量定义 —— 剥法坏了",
+            defined.len()
+        );
+
+        // ★ 自检 3：例外保鲜。
+        for (name, why) in EXCEPTIONS {
+            assert!(
+                claims.iter().any(|(_, _, n, _)| n == name),
+                "例外 `{name}` 在 `doc/` 里已经没人写了 —— 删掉这一行。（当初的理由：{why}）"
+            );
+            assert!(
+                !defined.contains_key(*name),
+                "例外 `{name}` 现在**真是一个 Rust 常量了** —— 删掉这条例外，让它进对拍。（当初的理由：{why}）"
+            );
+        }
+
+        let bad: Vec<String> = claims
+            .iter()
+            .filter(|(_, _, n, _)| !EXCEPTIONS.iter().any(|(e, _)| e == n))
+            .filter_map(|(f, ln, n, v)| match defined.get(n) {
+                None => None, // 代码里没有同名常量：可能是别的语言/外部约定，不在本条管辖内
+                Some(vs) if !vs.contains(v) => Some(format!(
+                    "  doc/{f}:{ln}  文档说 `{n} = {v}`，代码里实为 {:?}",
+                    vs.iter().collect::<Vec<_>>()
+                )),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            bad.is_empty(),
+            "文档写死的常量值与代码对不上：\n{}\n\n\
+             ⚠ 立项样本就是这么溜掉的：`REPLY_BURST` 8→3，daemon 与 monitor **两套全绿**。\n\
+             修法（E12）：① 把文档改对；② 或者那句话本就不该写死数字 —— 改成指常量名。",
+            bad.join("\n")
+        );
+    }
 }
