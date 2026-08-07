@@ -265,6 +265,139 @@ mod tests {
     /// 语料可控 ⇒ 那个风险在它那里不存在。**这不是豁免，是另一种语义。**
     ///
     /// ⚠ 想再加一个 ⇒ 先问「共享原语为什么不够」，答得出来才加进下面这张表。
+    /// ★〔audit-0805 08-06〕**按「函数做了什么」再扫一遍剥注释实现**（默认拒绝）。
+    ///
+    /// # 它补的洞
+    ///
+    /// 下面那条按**函数名的三种拼法**取样（`strip_line_comments` / `strip_comments` /
+    /// `without_comments`）。实测：往 `utils.rs` 加一个逐字同形、只是改名叫
+    /// `fn drop_comments` 的实现 ⇒ **那条判据全绿**。
+    /// 「只许有一份共享实现」这条纪律，此前只对**三个名字**成立。
+    ///
+    /// # 人群怎么定的（量了两轮才收住）
+    ///
+    /// 第一轮按行为取样（函数体里有 `//` / `#` 过滤）⇒ **29 处**，
+    /// 绝大多数是各判据**内联**的一次性过滤（`hits` / `wake_hits` / `ci_live_lines` …），
+    /// 它们不是「另一份剥法」，红它们只会淹掉信号。
+    /// 第二轮收紧成「**返回 String / Vec 的转换器**」⇒ **14 处**，其中确实混着
+    /// 四个非剥法（表格解析、CI 段落抽取、host 别名解析、字段解析）——
+    /// 于是不猜，**逐个登记**：是剥法的写明「共享原语为什么不够」，不是的写明它在做什么。
+    ///
+    /// ⚠ 登记时读出一处**真事**：`tool_registry::production_code` 用的是
+    /// **按 `//` 截断整行**的语义，而共享原语头注逐字写着刻意不这么做
+    ///（会砍坏 `"http://host"` 这类字面量）。今天那个文件里没有 `://` 字面量所以没事，
+    /// 但那是**运气**，不是设计 —— 现在它至少被登记着。
+    #[test]
+    fn every_comment_stripping_transformer_is_registered() {
+        /// `(文件::函数, 它是什么 / 共享原语为什么不够)`。
+        const TRANSFORMERS: &[(&str, &str)] = &[
+            ("lib.rs::strip_comment_lines", "★ **共享原语本体**（`guard_core`）"),
+            ("lib.rs::production_code", "共享原语：剥注释 + 剥测试段"),
+            ("lib.rs::test_source", "共享原语的对侧：只取测试段"),
+            (
+                "cc_bus.rs::non_test_code",
+                "本地剥法：只服务本文件自己的零命中守卫，语料是本文件源码。⚠ 与共享原语重复，登记为待收口",
+            ),
+            (
+                "hooks_diag.rs::non_test_code",
+                "同 cc_bus：本文件自用。⚠ 与共享原语重复，登记为待收口",
+            ),
+            (
+                "tmux_hook.rs::prod_code",
+                "daemon 侧本地剥法（跨 crate 够不着 monitor 的 `guard_core`）",
+            ),
+            (
+                "tool_registry.rs::production_code",
+                "⚠ **按 `//` 截断整行**——共享原语刻意不这么做（会砍坏 `\"http://host\"`）。\
+                 本文件今天没有 `://` 字面量所以没事，但那是运气不是设计。登记为待收口",
+            ),
+            (
+                "session_name_registry.rs::production",
+                "**多语言**剥法（`.rs` 走共享原语，`.ts`/shell 各有注释语法）——共享原语只管 Rust",
+            ),
+            ("agent_profile_parity.rs::rows", "不是剥法：解析对拍表的行"),
+            ("gate2_parity.rs::rows", "不是剥法：解析 golden 表的行"),
+            ("gate.rs::golden_rows", "不是剥法：daemon 侧解析同一张 golden 表"),
+            ("shared_crate_registry.rs::ci_yml", "不是剥法：读 `ci.yml` 原文"),
+            ("shared_crate_registry.rs::ci_live_lines", "不是剥法：抽 CI 的有效行"),
+            ("shared_crate_registry.rs::ci_job_block", "不是剥法：抽某个 job 的段落"),
+            ("ssh_source.rs::parse_host_aliases", "不是剥法：解析 ssh config 的 Host 别名"),
+            ("tool_registry.rs::declared_fields_of", "不是剥法：解析结构体字段声明"),
+        ];
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("仓根");
+        let mut found: Vec<String> = Vec::new();
+        for sub in [
+            "src-tauri/src",
+            "src-tauri/crates",
+            "remote-daemon-proto/src",
+        ] {
+            for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
+                let file = f
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("?")
+                    .to_string();
+                let mut from = 0usize;
+                while let Some(i) = raw[from..].find("fn ") {
+                    let at = from + i + 3;
+                    from = at;
+                    let name: String = raw[at..]
+                        .chars()
+                        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                        .collect();
+                    if name.is_empty() {
+                        continue;
+                    }
+                    let after = &raw[at + name.len()..];
+                    let Some(arrow) = after.find("->") else {
+                        continue;
+                    };
+                    if arrow > 200 {
+                        continue;
+                    }
+                    let ret = after[arrow + 2..].trim_start();
+                    if !(ret.starts_with("String") || ret.starts_with("Vec<")) {
+                        continue;
+                    }
+                    let body_at = at + name.len() + arrow;
+                    // ⚠ **按 char 取，不按字节切** —— 本仓 `digit_after` 头注逐字记过这个坑
+                    // （中文注释里按字节 `saturating_sub` 会落在汉字中间当场 panic），
+                    // 而我这一版还是先写成了字节切片，跑起来立刻炸在「残」字上。
+                    let body: String = raw[body_at..].chars().take(700).collect();
+                    let body = body.as_str();
+                    let dq = '"';
+                    let strips = body.contains(&format!("starts_with({dq}//{dq})"))
+                        || body.contains(&format!("find({dq}//{dq})"))
+                        || body.contains("starts_with('#')")
+                        || body.contains(&format!("trim_start_matches({dq}//{dq})"));
+                    if strips {
+                        found.push(format!("{file}::{name}"));
+                    }
+                }
+            }
+        }
+        found.sort();
+        found.dedup();
+        // 抽取器自检：连共享原语本体都扫不到 ⇒ 遍历或形态坏了。
+        assert!(
+            found.contains(&"lib.rs::strip_comment_lines".to_string()),
+            "连共享原语 `strip_comment_lines` 都没扫到 —— 抽取器坏了，下面的对拍会空绿：{found:?}"
+        );
+        let mut want: Vec<String> = TRANSFORMERS.iter().map(|(n, _)| (*n).to_string()).collect();
+        want.sort();
+        assert_eq!(
+            found, want,
+            "\n「返回 String/Vec 且会剥注释」的函数与登记表对不上。\n\
+             **多出来的**：先问「共享原语 `guard_core::strip_comment_lines` 为什么不够」——\n\
+             答得出来就登记进 `TRANSFORMERS` 并写明理由；答不出来就改成调它。\n\
+             ⚠ 名字叫什么**不是判据**：换个名字的同一份剥法仍然是第二份剥法。\n\
+             **少了的**：它被收口了 ⇒ 把登记删掉（登记表腐烂比没有登记更糟）。"
+        );
+    }
+
     #[test]
     fn comment_stripping_has_exactly_one_shared_implementation() {
         const REGISTERED: &[(&str, &str)] = &[(
