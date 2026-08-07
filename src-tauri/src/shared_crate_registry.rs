@@ -1017,4 +1017,93 @@ mod tests {
             }
         }
     }
+
+    /// 〔audit-0805 08-06〕**跑不了的那批 e2e，静态断言条数只许涨不许掉。**
+    ///
+    /// # 为什么需要它
+    ///
+    /// 那些套件的运行期地板（`assert-pass-floor.sh <套件> <N>`）住在 `ci.yml` 里，
+    /// 而 `ci.yml` 只在 `push`/`pull_request` 触发、〔用 08-05〕停推后至今没跑过
+    /// ⇒ **地板今天是惰的**。同时这几套本机也跑不了（真 tmux / 写 `~/.claude/`）。
+    /// 于是「有人删掉几条断言」在本地和 CI **都不会红** —— 它们是仓里最没人看着的一批断言。
+    ///
+    /// 本条是它们唯一活着的保护：**把源码里的断言调用数钉成递增棘轮**。
+    ///
+    /// # 为什么只钉一部分（先量人群再决定，别一刀切）
+    ///
+    /// 实测 14 个跑不了的套件，静态计数与运行期地板的关系分成两族：
+    /// - **`ck` 族**：静态数与地板几乎逐个相等（19/19 · 13/13 · 14/14 · 26/26 · 9→11）
+    ///   ⇒ 静态计数是有意义的代理，钉它。
+    /// - **`ok` 族**：静态 0–12 而地板 5–36（断言写在循环与 helper 里）
+    ///   ⇒ 静态计数**不是**那个量的代理，钉 0 是个空转的地板。如实登记为「静态无信号」，
+    ///   并配前提触发器：哪天它们的静态数追上地板，说明改成了内联写法、该挪进棘轮。
+    #[test]
+    fn dormant_e2e_suites_keep_their_assertions() {
+        /// `(套件, 脚本名, 断言助手, 当日静态条数)` —— **只许涨**。
+        const RATCHET: &[(&str, &str, &str, usize)] = &[
+            ("ccm-acceptance", "ccm-acceptance.sh", "ck", 19),
+            ("ccm-pretrust", "ccm-pretrust-acceptance.sh", "ck", 13),
+            ("tmux-guarded", "tmux-guarded-acceptance.sh", "ck", 14),
+            ("tmux-target", "tmux-target-acceptance.sh", "ck", 26),
+            ("usage-probe", "usage-probe-acceptance.sh", "ck", 9),
+        ];
+        /// 静态计数不是那个量的代理的套件 —— `(脚本名, 助手, 当日静态数, CI 地板)`。
+        const NO_STATIC_SIGNAL: &[(&str, &str, usize, usize)] = &[
+            ("cc-spawn-uplift.sh", "-", 0, 21),
+            ("ccm-rbind-title.sh", "ok", 0, 8),
+            ("daemon-gate2-acceptance.sh", "ok", 3, 36),
+            ("graylight-daemon-frames.sh", "ok", 9, 12),
+            ("inbound-daemon-frames.sh", "ok", 12, 32),
+            ("restart-suite.sh", "ok", 0, 24),
+            ("restart-daemon-frames.sh", "ok", 0, 5),
+            ("resume-suite.sh", "ok", 2, 17),
+            ("resume-daemon-frames.sh", "ok", 1, 7),
+        ];
+
+        let e2e = root().parent().expect("仓根").join("e2e");
+        let count = |script: &str, helper: &str| -> (usize, String) {
+            let txt = std::fs::read_to_string(e2e.join(script))
+                .unwrap_or_else(|e| panic!("读不到 e2e/{script}: {e}"));
+            let n = txt
+                .lines()
+                .filter(|l| {
+                    let s = l.trim_start();
+                    s.starts_with(&format!("{helper} ")) || s.starts_with(&format!("{helper}\t"))
+                })
+                .count();
+            (n, txt)
+        };
+
+        for (suite, script, helper, base) in RATCHET {
+            let (n, txt) = count(script, helper);
+            // ★ 自检：助手还在定义。改了名字会让计数掉成 0，那时该看到的是这句而不是「掉了」。
+            assert!(
+                txt.contains(&format!("{helper}()")),
+                "`e2e/{script}` 里找不到断言助手 `{helper}()` 的定义 —— 它被改名了，\n\
+                 本条的计数会跟着失真。先把登记里的助手名改对，再谈条数。"
+            );
+            assert!(
+                n >= *base,
+                "`{suite}`（e2e/{script}）的断言从 {base} 条掉到 {n} 条。\n\
+                 ⚠ 这一批是**仓里最没人看着的断言**：它们的运行期地板住在 `ci.yml`，\n\
+                 而停推后 CI 一次没跑；本机也跑不了（真 tmux / 写 `~/.claude/`）。\n\
+                 ⇒ 删掉它们在本地与 CI **都不会红**，只有本条会。\n\
+                 真要减，先说清楚那条性质改由谁接。"
+            );
+        }
+
+        // ★ 前提触发器：「静态无信号」的理由是静态数远低于地板。追上了就该重判。
+        for (script, helper, base, floor) in NO_STATIC_SIGNAL {
+            if *helper == "-" {
+                continue;
+            }
+            let (n, _) = count(script, helper);
+            assert!(
+                n < *floor,
+                "`e2e/{script}` 的静态断言数已达 {n}（当初 {base}，CI 地板 {floor}）——\n\
+                 「静态计数不是那个量的代理」这个理由不成立了：它多半改成了内联写法。\n\
+                 ⇒ 把它从 `NO_STATIC_SIGNAL` 挪进 `RATCHET`，让它也受棘轮保护。"
+            );
+        }
+    }
 }
