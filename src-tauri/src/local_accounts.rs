@@ -336,6 +336,72 @@ mod tests {
         }
     }
 
+    /// 〔audit-0805 08-06〕**`read_capped` 的三种失败必须仍然分得开**，外加上限的边界语义。
+    ///
+    /// # 为什么这条值得钉
+    ///
+    /// `ROADMAP §5` 的 3j 复核结论逐字是：这三种（文件不存在 / 不是普通文件 / 过大）
+    /// 走的是同一个 `Err` 臂，**但理由串是分得开的**，而设置面板真的把它渲染出来
+    /// （`renderNotEnabled` 那行「原因：…」）。⇒ 那句「分得开」**此前没有任何判据读它** ——
+    /// 谁把三条消息合成一句「读不了」，前端就退回一个没有身份的失败（E4 要治的正是这个），
+    /// 而**没有东西会红**。
+    ///
+    /// 顺带钉上限的边界：`meta.len() > cap` ⇒ **正好等于 cap 是放行的**。
+    /// E5 要求「上限与超限语义成对定义」，而 `>` 与 `>=` 的差别正是这一对里最容易滑的一格。
+    ///
+    /// ⚠ 全程在 `Sandbox` 的临时目录里，**绝不碰用户真实的 `~/.claude-accts`**（同本文件既有约定）。
+    #[test]
+    fn read_capped_keeps_its_three_failures_distinguishable() {
+        let sb = Sandbox::new();
+
+        // ① 不存在：理由里要有路径，且**不能**冒充另外两种。
+        let missing = sb.0.join("nope.json");
+        let e = read_capped(&missing, 1024).expect_err("不存在的文件必须是 Err");
+        assert!(
+            e.contains("nope.json"),
+            "理由里没有路径，用户看不出是哪一个：{e}"
+        );
+        assert!(
+            !e.contains("不是普通文件") && !e.contains("过大"),
+            "「不存在」被说成了另一种失败：{e}"
+        );
+
+        // ② 不是普通文件（目录）。
+        let dir = sb.0.join("adir");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let e = read_capped(&dir, 1024).expect_err("目录必须是 Err");
+        assert!(e.contains("不是普通文件"), "目录没有得到自己那条理由：{e}");
+
+        // ③ 过大：理由里要带**实际字节数**（不然用户不知道差多少）。
+        let big = sb.0.join("big.json");
+        std::fs::write(&big, vec![b'x'; 10]).expect("write");
+        let e = read_capped(&big, 4).expect_err("超限必须是 Err");
+        assert!(e.contains("过大"), "超限没有得到自己那条理由：{e}");
+        assert!(e.contains("10"), "理由里没带实际字节数：{e}");
+
+        // ④ 三条理由**两两不同** —— 合并成一句就在这里红。
+        let e_missing = read_capped(&missing, 1024).unwrap_err();
+        let e_dir = read_capped(&dir, 1024).unwrap_err();
+        let e_big = read_capped(&big, 4).unwrap_err();
+        assert!(
+            e_missing != e_dir && e_dir != e_big && e_missing != e_big,
+            "三种失败给了相同的理由串，前端只能显示一个没有身份的「读不了」：\n               不存在={e_missing}\n  目录={e_dir}\n  过大={e_big}"
+        );
+
+        // ⑤ 边界：正好等于上限**放行**（`>` 不是 `>=`）；差一个字节就拒。
+        let exact = sb.0.join("exact.json");
+        std::fs::write(&exact, vec![b'y'; 8]).expect("write");
+        assert_eq!(
+            read_capped(&exact, 8).expect("正好等于上限应当放行"),
+            vec![b'y'; 8],
+            "读回来的内容与写进去的不一致"
+        );
+        assert!(
+            read_capped(&exact, 7).is_err(),
+            "超出一个字节没被拒 —— 上限那一格滑了"
+        );
+    }
+
     #[test]
     fn no_manifest_is_not_an_error_just_disabled() {
         let sb = Sandbox::new();
