@@ -456,7 +456,20 @@ mod tests {
         );
     }
 
-    /// ★ **「容器一定是 tmux」这个无条件说法不许出现在散文里**〔audit-0805 F08 下半〕。
+    /// ★ **那一句无条件断言不许出现在散文里**〔audit-0805 F08 下半〕
+    ///
+    /// ⚠ **08-06 把这条标题收窄了**：原来写的是「『容器一定是 tmux』这个**无条件说法**
+    /// 不许出现」—— 那比它实际做的宽。实测两个洞：
+    /// ① **同义改写不认**：往被扫文件里写「远端会话的容器一定是 tmux」，本条**不红**
+    ///    （needle 是一个精确短语，不是「无条件说法」这个语义）；
+    /// ② **扫描面是洞**（已修）：把**原句**写进 `doc/DEVELOPMENT.md`（原先只扫三份）也**不红**。
+    ///
+    /// ①**刻意不追**，理由是量过的：想把它翻成本仓偏好的枚举式白名单
+    /// （「每一行同时出现『容器』与 tmux 的散文都必须说清是哪条路」），
+    /// 实测 11 行里 **9 行会误红** —— 那 9 行大多是**订正句**（「那是假的」）与本守卫自己的代码。
+    /// 又一次「人群不同质」（同 `platform/fallback_guard` 那条）：
+    /// 关于同一话题的散文里混着**断言、订正、判据本身**三类，白名单分不开它们。
+    /// ⇒ 保留精确 needle，但**把话说准**：它挡的是那一句原文的回潮，不是一族说法。。
     ///
     /// 它今天在三处散文里当**理由**用（解释 POSIX 为什么不开终端窗口），而代码说的相反：
     /// POSIX 远端 `↺` 走 `runRemoteResume` → `planResumeDirect`，
@@ -479,30 +492,47 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("仓根");
-        let files = [
-            "README.md",
-            "doc/ARCHITECTURE.md",
-            "src-tauri/src/launch.rs",
-        ];
-        let mut total = 0usize;
-        let mut hits = Vec::new();
-        for f in files {
+        // 〔08-06 扩面〕原来只扫三份。实测：把**原句**写进 `doc/DEVELOPMENT.md`
+        // （不在那三份里）**不会红** —— 扫描面本身就是个洞。⇒ 改成「全 `doc/` + 两份 README + 本文件」。
+        //
+        // ⚠ 用 `scan_tree!` 而**不是裸 `read_dir`**：`scanning_guard_registry` 那条元判据
+        // 当场把裸遍历拦下了（理由是「判据在自己那份里找到自己 ⇒ 恒绿」，实测五次）。
+        // 这里扫的是 `doc/` 的 md、与本文件不同族，但**规矩就是规矩** —— 而且它本来就更省事。
+        let mut files: Vec<(String, String)> = Vec::new();
+        for (q, body) in guard_core::scan_tree!(&root.join("doc"), &["md"]) {
+            files.push((
+                format!("doc/{}", q.file_name().expect("文件名").to_string_lossy()),
+                body,
+            ));
+        }
+        for f in ["README.md", "README.en.md", "src-tauri/src/launch.rs"] {
             let body = std::fs::read_to_string(root.join(f))
                 .unwrap_or_else(|e| panic!("{f} 读不到：{e} —— 文件搬了就把本条一起改"));
+            files.push((f.to_string(), body));
+        }
+        // ★ 扩面自检：`doc/` 一个都没收到 ⇒ 路径错了，扩面等于没做。
+        assert!(
+            files.len() >= 12,
+            "只收到 {} 份散文（doc/ + 三份）—— 扩面是空转的",
+            files.len()
+        );
+        let mut total = 0usize;
+        let mut hits = Vec::new();
+        for (f, body) in &files {
             total += body.len();
             let n = body.matches(needle.as_str()).count();
             if n > 0 {
                 hits.push(format!("  {f}：{n} 处"));
             }
         }
-        // 抽取器自检：三份文件都读到了才算数（读空了下面会零命中地绿）。
+        // 抽取器自检：全部散文都读到了才算数（读空了下面会零命中地绿）。
         assert!(
             total > 20_000,
             "三份散文只读到 {total} 字节 —— 抽取器坏了，本条此刻是空转的"
         );
         assert!(
             hits.is_empty(),
-            "这三处还在无条件断言「会话容器就是 tmux」，而代码说的相反：\n{}\n\n\
+            "这些散文还在无条件断言「会话容器就是 tmux」，而代码说的相反：\n{}\n\n\
              POSIX 远端 `↺` 走 `planResumeDirect`，那里是 `container: {{ kind: \"none\" }}`\n\
              （`launch-requests.ts:45`，全文件唯一一个 `none`）。判据在\n\
              `launch-requests.vitest.ts` 的「远端 resume 的会话容器」那一组。\n\
