@@ -306,4 +306,83 @@ mod tests {
         strong.t_targets_checked += 3;
         assert_at_least(&strong, &BASELINE, "夹具（强度上涨）");
     }
+
+    /// 〔audit-0805 08-06〕**凡是要值的 flag 都必须过 `need_val`。**
+    ///
+    /// # 它治的是一个真机踩过的事故，而那个修法此前没有守卫
+    ///
+    /// `shared/ccm` 自己的头注逐字记着：盲取下一个 token 会把后面的 flag 当成值吃掉 ——
+    /// **`ccm --tmux --account --print` 里 `--account` 吞掉了 `--print`，账号名变成字面量
+    /// `"--print"`，会话照建、claude 照起，用户只在一闪而过的一行里看到报错。**
+    /// 修法是给每个带值 flag 加一道 `need_val`。
+    ///
+    /// 08-06 变异实测：把 `--account` 那行的 `need_val "--account" "${1:-}";` **删掉** ——
+    /// monitor 1000 · vitest 1288 · shellcheck **三样全绿**。
+    /// ⇒ 事故修了，但「修法还在不在」没有任何东西看着，改回去不会红。
+    ///
+    /// # 判法：按**形状**而不是按 flag 名单
+    ///
+    /// 名单挡不住第 N+1 个 flag（`needle_anchor_registry` 头注反复记过这一点）。
+    /// 这里钉的是形状：**参数解析段里凡是 `shift;` 消费下一个 token 的分支，
+    /// 同一行必须出现 `need_val`** —— 新加一个带值 flag 时照抄邻居就自动满足，
+    /// 而「顺手写成盲取」会当场红。
+    #[test]
+    fn every_value_taking_flag_goes_through_need_val() {
+        /// 合法地 `shift` 却不取值的分支，逐条写清为什么。
+        const EXCEPTIONS: &[(&str, &str)] = &[(
+            "--)",
+            "POSIX 的「选项到此为止」：它 `shift` 之后把**剩下全部**收进 passthru，             不是取一个值，没有「下一个 token 是不是 flag」这个问题",
+        )];
+
+        let src = crate::sftp::CCM_CLI_SCRIPT;
+        // 只看参数解析那一段 —— 别处的 `shift` 与本条无关。
+        let beg = src.find("while [ $# -gt 0 ]; do").unwrap_or_else(|| {
+            panic!("`shared/ccm` 里找不到参数解析循环的开头 —— 段界读法坏了，本条会零命中地绿")
+        });
+        let end = src[beg..]
+            .find("\n  esac")
+            .map(|k| beg + k)
+            .unwrap_or_else(|| panic!("找不到参数解析 `case` 的收尾 —— 段界读法坏了"));
+        let block = &src[beg..end];
+
+        let shifting: Vec<&str> = block
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.starts_with('#') && l.contains("shift;"))
+            .collect();
+        // ★ 抽取器自检 ①：数量地板。
+        assert!(
+            shifting.len() >= 8,
+            "参数解析段里只抽到 {} 个 `shift;` 分支 —— 剥法坏了（建判据当天实测 10 个）",
+            shifting.len()
+        );
+        // ★ 抽取器自检 ②：锚点。只有地板不够 —— 本会话实测过「人群被换掉、地板照样过」。
+        assert!(
+            shifting.iter().any(|l| l.starts_with("--account)")),
+            "锚点 `--account)` 分支不在抽到的清单里 —— 收的多半不是解析分支了。\n\
+             （它正是那次真机事故里被 `--print` 撑坏的那个 flag。）"
+        );
+
+        let bad: Vec<&&str> = shifting
+            .iter()
+            .filter(|l| !l.contains("need_val"))
+            .filter(|l| !EXCEPTIONS.iter().any(|(e, _)| l.starts_with(e)))
+            .collect();
+        assert!(
+            bad.is_empty(),
+            "这些分支 `shift` 之后**盲取**下一个 token，没过 `need_val`：\n  {:?}\n\n\
+             ⚠ 真机踩过：`ccm --tmux --account --print` 里 `--account` 吞掉 `--print`，\n\
+             账号名变成字面量 `\"--print\"`，**会话照建、claude 照起**，\n\
+             用户只在一闪而过的一行里看到报错。照邻居那行写上 `need_val \"<flag>\" \"${{1:-}}\";`。",
+            bad
+        );
+
+        // ★ 例外保鲜：例外是欠账不是免检章。
+        for (pat, why) in EXCEPTIONS {
+            assert!(
+                shifting.iter().any(|l| l.starts_with(pat)),
+                "例外 `{pat}` 在解析段里已经找不到了 —— 删掉这一行。（当初的理由：{why}）"
+            );
+        }
+    }
 }
