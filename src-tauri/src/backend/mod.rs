@@ -415,9 +415,17 @@ mod tests {
     /// 逐字标着「平台线的真判据」。**monitor 照抄不了**：本机实测 exit=101 ——
     /// 挡路的**不是 monitor 的代码**（252 个 `.rmeta` 已经产出），
     /// 是某个 C 依赖的 build script 要 `lib.exe`（MSVC 的库工具），Linux 上没有。
-    /// ⇒ monitor 侧「两个平台都编得过」这条性质由 **CI 的两个 OS 各自原生编**承担：
-    /// `rust` job 在 windows-latest 跑 `cargo test --all` ·
+    /// ⇒ monitor 侧「两个平台都编得过」这条性质**本来**由 CI 的两个 OS 各自原生编承担：
+    /// `rust` job 在 windows-latest 跑 `cargo test --workspace --exclude code-picture-core` ·
     /// `linux-app-build` job 在 ubuntu-latest 跑 `cargo build`。
+    ///
+    /// ⚠ **「本来」两个字是 08-06 补的，它现在不成立**：`ci.yml` 只在 `push` / `pull_request`
+    /// 上触发，而〔用 08-05〕裁定不再 push ⇒ 至今 70+ 个提交**一次都没跑过**。
+    /// 也就是说 monitor 的 Windows 面已经很久没有被任何编译器看过，
+    /// 而这段头注原文会让人以为它有人管。**这不是判据的洞，是判据的前提没了。**
+    /// 实况与解锁条件记在 `ROADMAP §5` 的 3y；前提本身由
+    /// `shared_crate_registry::the_windows_cross_target_signal_covers_only_the_daemon`
+    /// 盯着（daemon 那步被删 / monitor 那侧补上 / vendor 依赖变 optional，三种都会红）。
     /// 本条是它的**源码形态那一半**：编译只能证明「今天两边都过」，
     /// 挡不住「往 backend 里塞一段 `#[cfg]` 分叉、两边各编一半」——那才是 C10 真正怕的。
     #[test]
