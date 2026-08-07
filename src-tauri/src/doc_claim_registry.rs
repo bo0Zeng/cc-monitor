@@ -855,4 +855,98 @@ mod tests {
             bad.join("\n")
         );
     }
+
+    /// 〔audit-0805 08-06〕**发版版本号六处必须一致**（`package.json` 是权威源，其余对拍）。
+    ///
+    /// **为什么建它**：`doc/RELEASING.md` 自己逐字记着 ——
+    /// 「v3.1→v3.4 **连续四次**发版漏改 README，于是 README 的『当前版本』长期落后一个大版本；
+    /// BACKLOG 早把『checklist 里没有 README 这一条』点名为**机制性根因**，
+    /// 而根因没修 ⇒ 第四次照样复发」。
+    ///
+    /// 那次的修法是**在 checklist 里加一行散文**。散文接不住它：第四次复发时 checklist 已经在了。
+    /// ⇒ 这正是 E12 ①「送进一条会红的判据」该管的形状，也是 E3 的标准解
+    /// （一个事实六个副本 ⇒ 定权威源 + 其余对拍）。
+    ///
+    /// ⚠ 本条**故意在发版中途也会红**：改了 `package.json` 而 README 还没跟上时它就红 ——
+    /// 那不是误报，那是它的岗位（`RELEASING` 的 checklist 要求这几处一起改）。
+    ///
+    /// ⚠ 建判据当天六处全部是 `3.6.0`，**一处不差** —— 又是「今天干净、但没人守着」：
+    /// 这个位置**已经腐过四次**，靠的是人记得，不是机制。
+    #[test]
+    fn the_release_version_is_the_same_in_all_six_places() {
+        /// 从 `hay` 里按 `needle` 抠出紧随其后的 `X.Y.Z`。
+        /// **needle 必须恰好命中一次** —— 命中零次（那行被改写）或多次（抠错地方）都当场红，
+        /// 否则这条判据会在「读不到东西」的时候安静地绿。
+        fn pick(who: &str, hay: &str, needle: &str) -> String {
+            let n = hay.matches(needle).count();
+            assert_eq!(
+                n, 1,
+                "在 {who} 里，锚点 {needle:?} 命中 {n} 次（要求恰好 1 次）——\n\
+                 那一行被改写或挪走了。**先修锚点再谈版本对不对**，否则本条会零命中地绿。"
+            );
+            let at = hay.find(needle).expect("上面已断言命中一次") + needle.len();
+            let rest = &hay[at..];
+            let end = rest
+                .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+                .unwrap_or(rest.len());
+            let v = &rest[..end];
+            assert!(
+                v.split('.').count() == 3 && v.split('.').all(|s| !s.is_empty()),
+                "{who} 在锚点之后抠到的是 {v:?} —— 形状不像 `X.Y.Z`"
+            );
+            v.to_string()
+        }
+
+        let root = repo_root();
+        let rd = |p: &str| {
+            std::fs::read_to_string(root.join(p)).unwrap_or_else(|e| panic!("读 {p} 失败: {e}"))
+        };
+        let (pkg, cargo, conf, readme, readme_en) = (
+            rd("package.json"),
+            rd("src-tauri/Cargo.toml"),
+            rd("src-tauri/tauri.conf.json"),
+            rd("README.md"),
+            rd("README.en.md"),
+        );
+
+        // 权威源（E3）：npm 包清单。其余五处都只是它的副本。
+        let authority = pick("package.json", &pkg, "\n  \"version\": \"");
+        let others: [(&str, String); 5] = [
+            (
+                "src-tauri/Cargo.toml",
+                pick("src-tauri/Cargo.toml", &cargo, "\nversion = \""),
+            ),
+            (
+                "src-tauri/tauri.conf.json",
+                pick("src-tauri/tauri.conf.json", &conf, "\n  \"version\": \""),
+            ),
+            (
+                "README.md 抬头那行",
+                pick("README.md 抬头那行", &readme, "当前版本: v"),
+            ),
+            (
+                "README.md 「项目当前状态」块",
+                pick("README.md 「项目当前状态」块", &readme, "- **版本**：v"),
+            ),
+            (
+                "README.en.md 抬头那行",
+                pick("README.en.md 抬头那行", &readme_en, "| Current: v"),
+            ),
+        ];
+
+        let off: Vec<String> = others
+            .iter()
+            .filter(|(_, v)| *v != authority)
+            .map(|(who, v)| format!("  {who}：{v}"))
+            .collect();
+        assert!(
+            off.is_empty(),
+            "版本号对不上。权威源 `package.json` = {authority}，而这几处是别的数：\n{}\n\n\
+             ⚠ 这个位置**已经连续腐过四次**（v3.1→v3.4 每次发版都漏改 README，\n\
+             `doc/RELEASING.md` 自己记着这件事）。当时的修法是往 checklist 里加一行散文，\n\
+             而第四次复发时那行散文已经在了 —— 所以现在由本条判据接着。\n\
+             修法：把落后的那几处改成 {authority}（`RELEASING.md § 1` 的 checklist 列了全部落点）。",
+            off.join("\n")
+        );
+    }
 }
