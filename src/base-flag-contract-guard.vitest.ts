@@ -81,4 +81,45 @@ describe("Z02：`--base` 跨语言契约（monitor ↔ shared/ccm）", () => {
     } as unknown as LaunchContext;
     expect(ACCOUNT_DIMENSION.cliFlags?.(ctx)).toEqual(["--account", "z"]);
   });
+
+/**
+ * ★ **`tmux new-session` 必须带 `-d`**〔audit-0805 08-06，E10 那一族〕。
+ *
+ * # 它是被一次变异抽样逼出来的
+ *
+ * Phase G 的全局抽样覆盖了 monitor Rust / daemon / 前端 / bash 四面，**没抽 e2e 那一面**。
+ * 08-06 补抽时造了一条 E10 点名的 argv 变异：把 `shared/ccm` 里
+ * `tmux new-session -d -s …` 的 **`-d` 去掉**。结果 —— **红线内跑得动的四层一条都没红**：
+ * `ccm-print-parity` 12/0 · monitor cargo 991/0 · vitest 1272/1272 ·
+ * node `session-backend` exit 0（它断言的是 **TS 侧**构造的命令串，不是 ccm 本体）。
+ *
+ * 能抓住它的 e2e 套件**都要真 tmux server**（红线禁）⇒ 在本环境里它是一条真 SURVIVED。
+ *
+ * # 为什么 `-d` 要紧
+ *
+ * 没有它，`tmux new-session` 会**在当前终端里 attach**。ccm 那条串是
+ * `new-session -d … 2>/dev/null && … && send-keys … && tmux attach`：
+ * 幂等接回、先建后打字、最后才 attach 这套顺序，整个建立在「建的时候不 attach」之上。
+ *
+ * # 形态与边界
+ *
+ * 与本文件其余几条同一套做法：**只读另一侧的源文件**（`shared/ccm` 是红线，不改本体）。
+ * ⚠ 它钉的是**命令串的形态**，不是「真跑起来确实 detached」—— 后者要真 tmux。
+ */
+it("★ ccm 建会话必须是 detached（`new-session -d`）—— 08-06 抽样发现它此前无人看守", () => {
+  // ⚠ **只认真正构造命令的那一行**：ccm 里有好几处**注释**也提到 `tmux new-session`，
+  //   第一版用 `includes` 直接 find，命中的是注释行 ⇒ 判据在未变异的源码上就红了。
+  //   （F24 那一族：匹配单位比事实小 —— 这次是「行的选择」而不是「串的长度」。）
+  const line = ccm
+    .split("\n")
+    .find((l) => !l.trim().startsWith("#") && l.includes('seq="tmux new-session'));
+  // 抽取器自检：连那一行都找不到 ⇒ ccm 换了写法，下面的断言会零命中地绿。
+  expect(line, "在 `shared/ccm` 里找不到 `tmux new-session` 那一行 —— 抽取器坏了或 ccm 改了形态").toBeTruthy();
+  expect(
+    line,
+    "`tmux new-session` 没带 `-d` —— 建会话会**在当前终端 attach**，而 ccm 那条串的整个顺序\n" +
+      "（幂等接回 → send-keys 打字 → 最后 attach）都建立在「建的时候不 attach」之上。\n" +
+      "★ 这条判据是 08-06 变异抽样逼出来的：去掉 `-d` 之后，红线内跑得动的四层**一条都没红**。",
+  ).toContain(" -d ");
+});
 });
