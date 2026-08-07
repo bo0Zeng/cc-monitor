@@ -85,7 +85,7 @@ Five collapsible groups (only "Behavior" expanded by default):
 - **Behavior**: auto-follow which tab the user is typing into; whether to bring monitor window to front on auto-switch
 - **Shortcuts**: built-in editor to customize all 28 available action chords
 - **Data sources & integration**: configurable Claude data location (three-tier fallback: settings > `$CLAUDE_CONFIG_DIR` > `~/.claude`) + one-click install for the PowerShell `__ccm_bind` helper
-- **Appearance**: 13 tokens (fonts + colors), live preview, persisted to `~/.claude/claudecode-frontend/config.json`
+- **Appearance**: font + color tokens (count is whatever `src/theme.ts`'s `TOKENS` says), live preview, persisted to `~/.claude/claudecode-frontend/config.json`
 - **Diagnostics & storage**: tracing level toggle + log file path + transparent listing of every persisted data path
 
 ### Terminal focus (optional)

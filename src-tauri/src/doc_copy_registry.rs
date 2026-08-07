@@ -171,6 +171,143 @@ mod tests {
     ];
 
     /// 本文件自己的路径 —— 扫符号时要摘出去（表里写着那些符号名）。
+    /// 「事实 → 关键词」：**数量形态**出现即红，不管连接词怎么写。
+    ///
+    /// # 〔audit-0805 08-06〕它补的是 [`POINTER_ONLY`] 的**锚点腐坏**那一面
+    ///
+    /// 那张表按**精确前缀**取样（`"CI 共 "` / `"今天清单上有 "` …）。实测：
+    /// 把同一个副本写成 `CI 一共 7 个 job` / `CI 目前有 7 个 job` / `本仓 CI 是 7 个 job`，
+    /// **三种自然改写全部逃逸**，而 `CI 共 7 个 job` 当场被逮。
+    ///
+    /// ⇒ 这正是本区刚归纳出的那个形状：**被测对象正常演进的方向会系统性地把成员移出人群。**
+    /// 而散文的正常演进就是**改写措辞** —— 按措辞取样的判据，注定随改写静默失效。
+    ///
+    /// # 人群怎么定的（先量后定，两次）
+    ///
+    /// 第一版想按「关键词 ±14 字符内出现数字」取样 —— 量完**否掉**：
+    /// `e2e` / `Batch7` / `jsdom` / `14 项` 这类无关数字全被卷进来，噪声压过信号。
+    /// 收紧成**数量形态**（数字与关键词紧邻，中间只许量词/连接符）后，
+    /// 12 个候选关键词在今天的 10 份散文里**零误红**（逐个量过），三种改写仍全部命中。
+    const QUANTITY_KEYWORDS: &[(&str, &str)] = &[
+        ("CI job 数", "job"),
+        ("各套测试的条数", "vitest"),
+        ("各套测试的条数", "cargo"),
+        ("e2e 各套件的断言数地板", "tmux-target"),
+        ("e2e 各套件的断言数地板", "ccm-cli"),
+        ("e2e 各套件的断言数地板", "ccm-acceptance"),
+        ("e2e 各套件的断言数地板", "usage-probe"),
+        ("e2e 各套件的断言数地板", "daemon-gate2"),
+        ("e2e 各套件的断言数地板", "graylight-frames"),
+        ("reader 文件数", "reader"),
+        ("主题 token 数", "token"),
+    ];
+
+    /// 关键词紧邻数字（前：`7 个 job`；后：`job：7`）⇒ 返回那一小段上下文。
+    fn quantity_form_hit(hay: &str, kw: &str) -> Option<String> {
+        let ident = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
+        let mut from = 0usize;
+        while let Some(i) = hay[from..].find(kw) {
+            let at = from + i;
+            from = at + kw.len();
+            // 词边界：`jobId` / `subtoken` 不算。
+            //
+            // ⚠ **英文复数要放行**（`13 tokens` / `7 jobs`）。第一版没放行，
+            // 于是 `README.en.md` 里那句 `**Appearance**: 13 tokens` 逃了 ——
+            // 而**整份英文文档本来就是盲区**：上面那张前缀表的锚点全是中文措辞
+            //（`"CI 共 "` / `" 个 token"`），英文散文里一条都对不上。
+            // 是造变异时读诊断才看见的：那次红的不是我的自检，是这处真副本。
+            let mut tail_at = from;
+            if hay[tail_at..].starts_with('s') {
+                let nxt = hay[tail_at + 1..].chars().next();
+                if !nxt.is_some_and(ident) {
+                    tail_at += 1;
+                }
+            }
+            if hay[..at].chars().next_back().is_some_and(ident)
+                || hay[tail_at..].chars().next().is_some_and(ident)
+            {
+                continue;
+            }
+            // 往前：跳空白 → 可选量词 → 跳空白 → 必须是数字。
+            let mut head: Vec<char> = hay[..at].chars().collect();
+            while head.last().is_some_and(|c| c.is_whitespace()) {
+                head.pop();
+            }
+            if head.last().is_some_and(|c| "个条套项".contains(*c)) {
+                head.pop();
+                while head.last().is_some_and(|c| c.is_whitespace()) {
+                    head.pop();
+                }
+            }
+            let before = head.last().is_some_and(|c| c.is_ascii_digit());
+            // 往后：跳空白 → 可选连接符 → 跳空白 → 必须是数字。
+            let tail: Vec<char> = hay[tail_at..].chars().collect();
+            let mut k = 0usize;
+            while tail.get(k).is_some_and(|c| c.is_whitespace()) {
+                k += 1;
+            }
+            if tail.get(k).is_some_and(|c| "共计：:".contains(*c)) {
+                k += 1;
+                while tail.get(k).is_some_and(|c| c.is_whitespace()) {
+                    k += 1;
+                }
+            }
+            let after = tail.get(k).is_some_and(|c| c.is_ascii_digit());
+            if before || after {
+                let start = snap_down(hay, at.saturating_sub(18));
+                let end = snap_up(hay, tail_at + 10);
+                return Some(hay[start..end].chars().filter(|c| *c != '\n').collect());
+            }
+        }
+        None
+    }
+
+    /// ★ 数量形态的副本一律不许进散文 —— **锚点不再是「我当时写的那句话」**。
+    #[test]
+    fn no_quantity_form_of_a_pointer_only_fact_appears_in_prose() {
+        // 匹配器自检（先证明它两个方向都认、且不乱认）：
+        for (s, kw) in [
+            ("CI 一共 7 个 job。", "job"),
+            ("本仓 CI 是 7 个 job", "job"),
+            ("套件 tmux-target：45", "tmux-target"),
+        ] {
+            assert!(
+                quantity_form_hit(s, kw).is_some(),
+                "数量形态没被认出来：{s:?} / {kw}"
+            );
+        }
+        for (s, kw) in [
+            ("CI job 全绿（rust / node）", "job"),
+            ("响应里带 jobId 3 号", "job"),
+            ("先看 job 的日志再说", "job"),
+        ] {
+            assert!(
+                quantity_form_hit(s, kw).is_none(),
+                "把不是计数的写法当成了副本：{s:?} / {kw}"
+            );
+        }
+        let mut offenders = Vec::new();
+        for rel in PROSE_FILES {
+            if *rel == SELF {
+                continue;
+            }
+            let hay = read(rel);
+            for (fact, kw) in QUANTITY_KEYWORDS {
+                if let Some(sn) = quantity_form_hit(&hay, kw) {
+                    offenders.push(format!("  {rel}：「…{sn}…」（事实：{fact}）"));
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "散文里又出现了这些事实的**数量形态**副本：\n{}\n\
+             ⚠ 与上面那条按前缀取样的判据不同，本条**不管连接词怎么写** ——\n\
+             因为散文的正常演进就是改写措辞，而按措辞取样的判据会随改写静默失效。\n\
+             改法同 E12：删掉这个数、只留指针（各事实的家见 `POINTER_ONLY` 那一列）。",
+            offenders.join("\n")
+        );
+    }
+
     const SELF: &str = "src-tauri/src/doc_copy_registry.rs";
 
     fn read(rel: &str) -> String {
@@ -252,7 +389,7 @@ mod tests {
             "主题 token 数",
             &[" 个 token"],
             "以 `src/theme.ts` 的 `TOKENS` 为准",
-            "`src/theme.ts` 的 `TOKENS` 数组本身（今天 14 条）",
+            "`src/theme.ts` 的 `TOKENS` 数组本身（**刻意不抄条数** —— 原写「今天 14 条」，实为 15，本模块 police 的正是这个形状）",
         ),
         (
             "reader 文件数",
