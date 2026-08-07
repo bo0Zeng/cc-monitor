@@ -188,7 +188,10 @@ mod tests {
     /// 把字节下标往前挪到最近的字符边界（截取上下文用，宁可多取一点）。
     fn snap_down(hay: &str, i: usize) -> usize {
         let i = i.min(hay.len());
-        (0..=i).rev().find(|k| hay.is_char_boundary(*k)).unwrap_or(0)
+        (0..=i)
+            .rev()
+            .find(|k| hay.is_char_boundary(*k))
+            .unwrap_or(0)
     }
 
     /// 把字节下标往后挪到最近的字符边界。

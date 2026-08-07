@@ -339,8 +339,8 @@ mod tests {
     #[test]
     fn the_gate2_floor_still_makes_a_skip_hurt() {
         let root = repo_root();
-        let ci = std::fs::read_to_string(root.join(".github/workflows/ci.yml"))
-            .expect("ci.yml 读不到");
+        let ci =
+            std::fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("ci.yml 读不到");
         let mark = "assert-pass-floor.sh daemon-gate2 ";
         let at = ci
             .find(mark)

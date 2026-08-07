@@ -94,11 +94,7 @@ mod tests {
         let rest = rest.strip_prefix("mut ").unwrap_or(rest);
         let eq = rest.find('=')?;
         let name = rest[..eq].split(':').next()?.trim();
-        if name.is_empty()
-            || !name
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_')
-        {
+        if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
             return None;
         }
         // ★ `_` **不是变量**，不许当传递闭包的中转站〔08-06 F05 下半撞出来的〕。

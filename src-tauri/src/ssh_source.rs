@@ -111,8 +111,7 @@ fn should_reset_backoff(saw_hello: bool, lived: Duration) -> bool {
 /// 远端二进制被人删掉/换旧、而记忆还说「是期望 build」时，本轮会跳过预检直接起流 ⇒
 /// **exec 失败**。失败路径清掉记忆 ⇒ **下一轮重新预检并重新部署**。
 /// 代价是**多一次重连**，不是永久坏掉。这是本设计唯一的退化，写下来不藏着。
-static VERIFIED_BUILD: Mutex<Option<std::collections::HashMap<String, String>>> =
-    Mutex::new(None);
+static VERIFIED_BUILD: Mutex<Option<std::collections::HashMap<String, String>>> = Mutex::new(None);
 
 /// 纯函数：这一轮**能不能跳过**那两条预检连接。
 ///
@@ -125,12 +124,7 @@ fn preflight_can_be_skipped(verified: Option<&str>, expected: &str) -> bool {
 
 /// 读这台机器的自证记录。
 fn verified_build_of(origin: &str) -> Option<String> {
-    VERIFIED_BUILD
-        .lock()
-        .ok()?
-        .as_ref()?
-        .get(origin)
-        .cloned()
+    VERIFIED_BUILD.lock().ok()?.as_ref()?.get(origin).cloned()
 }
 
 /// 记下「这台机器上一次真的跑起来的 daemon 是 `build_id`」。
@@ -930,8 +924,8 @@ mod coldstart_preflight_guard {
     //! **别把它读成性能判据**（同 `coldstart_perf_guard` 的边界）。
 
     use super::{
-        forget_verified_build, preflight_can_be_skipped, record_verified_build,
-        verified_build_of, EXPECTED_DAEMON_BUILD_ID,
+        forget_verified_build, preflight_can_be_skipped, record_verified_build, verified_build_of,
+        EXPECTED_DAEMON_BUILD_ID,
     };
 
     fn prod() -> String {
@@ -943,8 +937,14 @@ mod coldstart_preflight_guard {
     #[test]
     fn only_an_exact_build_match_may_skip_the_preflight() {
         let e = "abc123";
-        assert!(preflight_can_be_skipped(Some("abc123"), e), "自证过就是期望 build ⇒ 该跳");
-        assert!(!preflight_can_be_skipped(None, e), "没记过 ⇒ 必须跑（可能要部署）");
+        assert!(
+            preflight_can_be_skipped(Some("abc123"), e),
+            "自证过就是期望 build ⇒ 该跳"
+        );
+        assert!(
+            !preflight_can_be_skipped(None, e),
+            "没记过 ⇒ 必须跑（可能要部署）"
+        );
         assert!(
             !preflight_can_be_skipped(Some("def456"), e),
             "记的是**别的** build ⇒ 必须跑 —— 那台机器上装的不是当前版本，正是要部署的情形"
@@ -1011,14 +1011,15 @@ mod coldstart_preflight_guard {
         //   根本不起作用。实测对照（同一处撑大 `.map(|s| s)`）：`find_pinned` **通过**，
         //   `pin_line` **红**并报「没有任何一行 trim 之后等于…」。
         //   生产段那一行整行就是这个串，所以整行相等是**能用且更强**的写法。
-        guard_core::pin_line(&prod, "Some(EXPECTED_DAEMON_BUILD_ID.to_string())")
-            .unwrap_or_else(|e| {
+        guard_core::pin_line(&prod, "Some(EXPECTED_DAEMON_BUILD_ID.to_string())").unwrap_or_else(
+            |e| {
                 panic!(
                     "跳过预检那一支没有把 `confirmed_build` 置成期望值：{e}\n\
                      ★ 置 `None` 会让 caps 掉进「空集全降级」⇒ 省下两条连接、换来一轮降级\n\
                      加一轮升级重连（`should_upgrade_reconnect`）—— **比不跳还糟**。"
                 )
-            });
+            },
+        );
     }
 
     /// ★ 失败路径必须抹记忆，而且**不止一处**（起流失败 + hello 身份不符）。
@@ -3345,8 +3346,7 @@ async fn stream_loop(
     // 跳过时 `confirmed_build` 直接给 `EXPECTED` —— 若给 `None`，下面的 caps 阶梯会掉进
     // ③ 空集全降级，那就**比不跳还糟**（省两条连接换来一轮降级 + 一轮升级重连）。
     let verified = verified_build_of(&host_label);
-    let skip_preflight =
-        preflight_can_be_skipped(verified.as_deref(), EXPECTED_DAEMON_BUILD_ID);
+    let skip_preflight = preflight_can_be_skipped(verified.as_deref(), EXPECTED_DAEMON_BUILD_ID);
     let confirmed_build = if skip_preflight {
         Some(EXPECTED_DAEMON_BUILD_ID.to_string())
     } else {

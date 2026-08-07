@@ -479,7 +479,11 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("仓根");
-        let files = ["README.md", "doc/ARCHITECTURE.md", "src-tauri/src/launch.rs"];
+        let files = [
+            "README.md",
+            "doc/ARCHITECTURE.md",
+            "src-tauri/src/launch.rs",
+        ];
         let mut total = 0usize;
         let mut hits = Vec::new();
         for f in files {

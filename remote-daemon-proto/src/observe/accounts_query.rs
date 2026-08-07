@@ -448,7 +448,10 @@ fn session_accounts(claude_dir: &Path, accts_dir: &Path) -> Vec<String> {
                 // 登记表把它记成「硬报错」，那是**假的**：真实处置是跳过。
                 // 定框 **E4**：静默失败一律给身份。⇒ 给它身份，并把登记改成实话
                 // （新语义「跳过+说清」，与被刻意排除的「静默截断」的分界就在这个 warn）。
-                tracing::warn!("会话文件 {} 读不了，跳过（不归属该会话）：{e}", path.display());
+                tracing::warn!(
+                    "会话文件 {} 读不了，跳过（不归属该会话）：{e}",
+                    path.display()
+                );
                 continue;
             }
         };
