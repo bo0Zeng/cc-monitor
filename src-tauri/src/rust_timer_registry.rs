@@ -193,18 +193,56 @@ mod tests {
         out
     }
 
-    /// 一处「周期唤醒」的源码形态。**刻意不含 `Duration::from_`** —— 见模块头注。
+    /// 行里有没有 `name(` 这个**调用**（`name` 要是完整的词）。
+    fn is_call_of(line: &str, name: &str) -> bool {
+        let ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+        let mut from = 0usize;
+        while let Some(i) = line[from..].find(name) {
+            let at = from + i;
+            from = at + name.len();
+            if line[..at].chars().next_back().is_some_and(ident) {
+                continue;
+            }
+            if line[from..].trim_start().starts_with('(') {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// 一处「周期唤醒」的源码形态 —— 按**调用**取样，不按路径拼法取样。
+    ///
+    /// # 〔audit-0805 08-06〕原来锚的是路径，于是锚点其实落在 `use` 那一行
+    ///
+    /// 旧口径是三个带路径的串（`thread::sleep` / `time::sleep` / `time::interval`）。
+    /// 那意味着：只要**导入形态**变一下，整处唤醒就隐形。实测：
+    ///
+    /// | 写法 | 旧口径 | 现在 |
+    /// |---|---|---|
+    /// | `use tokio::time::sleep;` + `sleep(d).await` | 抓到（`use` 行含 `time::sleep`） | 抓到 |
+    /// | **`use tokio::time::{self as _t, sleep};`** | **全绿** | 抓到 |
+    /// | **`use tokio::time::*;`** + `sleep(d)` | **全绿** | 抓到 |
+    ///
+    /// 两个逃逸的都是**一个真的无限循环 + sleep**（`loop { sleep(5s).await }`），
+    /// 也就是定框 E6 逐字要挡的东西。
+    ///
+    /// ⇒ 与本区反复记的那条同源：**判据锚在「怎么写」上，而不是锚在「做了什么」上**。
+    /// 改成按调用取样（`sleep(` / `interval(`，名字要是完整的词），
+    /// 与 `use` 怎么写、有没有别名、是不是 glob 导入统统无关。
+    ///
+    /// ⚠ 换口径前量过误红面：新口径下**每个文件的命中数与旧口径完全一致**
+    /// （登记表一行没改），说明今天没有靠路径拼法躲着的、也没有新卷进来的。
+    /// ⚠ 仍**刻意不含** `Duration::from_`（那是取值不是唤醒）—— 见模块头注。
     fn wake_hits(prod: &str) -> usize {
         // 判据串运行时拼，免得命中本文件自己的说明。
-        let pats = [
-            format!("thread::{}", "sleep"),
-            format!("time::{}", "sleep"),
-            format!("time::{}", "interval"),
-        ];
+        let names = [format!("{}", "sleep"), format!("{}", "interval")];
         prod.lines()
             .filter(|l| {
                 let t = l.trim_start();
-                !t.starts_with("//") && pats.iter().any(|p| l.contains(p.as_str()))
+                if t.starts_with("//") {
+                    return false;
+                }
+                names.iter().any(|n| is_call_of(l, n))
             })
             .count()
     }
@@ -212,6 +250,43 @@ mod tests {
     /// ★ 抽取器自检：扫不到文件 / 剥太狠时，下面几条会零命中地绿。
     #[test]
     fn the_scan_actually_reads_the_monitor_rust_tree() {
+        // 匹配器自检（〔audit-0805 08-06〕两个方向都钉）：
+        for s in [
+            "        sleep(Duration::from_secs(5)).await;",
+            "    let mut t = interval(Duration::from_secs(1));",
+            "    tokio::time::sleep(d).await;",
+        ] {
+            assert!(
+                is_call_of(s, "sleep") || is_call_of(s, "interval"),
+                "调用形态没被认出来：{s:?}"
+            );
+        }
+        // ⚠ 注释过滤住在 `wake_hits` 而不是 `is_call_of` —— 自检要按**真契约**写：
+        // 第一版把「注释里提到 sleep(d)」当成 `is_call_of` 的负例，当场红，
+        // 而那是我搞错了分层，不是匹配器有问题。**自检写错契约与判据写错一样会误导人。**
+        assert_eq!(
+            wake_hits("    // sleep(d) 只是注释里提到\n"),
+            0,
+            "注释行被当成了周期唤醒"
+        );
+        // ⚠ 这一组的**第一版三条全是恒绿的**：`no_sleep_here` / `asleep` 后面都不是 `(`，
+        // 所以它们为假与词边界无关 —— 把词边界整段删掉，三条照样过（变异实测）。
+        // 真要触发边界，反例必须是「前面接着标识符字符**而且**后面就是 `(`」。
+        // ★ 本区第二次踩同一个坑（上次是 `mySetInterval`）：
+        // **负向断言最容易写成恒绿的**，因为构造「真会被误命中」的输入比想象中难。
+        for s in [
+            "    let x = do_sleep(3);",
+            "    self.my_interval(2);",
+            "    let no_sleep_here = 1;",
+            "    struct Sleeper;",
+            "    let asleep = true;",
+        ] {
+            assert!(
+                !(is_call_of(s, "sleep") || is_call_of(s, "interval")),
+                "把不是调用的东西当成了周期唤醒：{s:?}"
+            );
+        }
+
         let files = rust_files();
         assert!(
             files.len() >= 60,
