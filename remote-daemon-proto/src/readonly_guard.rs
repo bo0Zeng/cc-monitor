@@ -392,6 +392,104 @@ mod tests {
             "真调用必须满足必需项"
         );
     }
+    /// ★★ 〔audit-0805 08-06〕**把只读红线从「列坏 API」翻成「列好 API」。**
+    ///
+    /// # 原来那条漏了什么（实测，不是设想）
+    ///
+    /// `FS_MUTATION_PATTERNS` 是**固定 11 项**的黑名单。08-06 在 daemon 生产段里写下
+    /// `std::os::unix::fs::symlink(a, b)` 与 `std::fs::set_permissions(b, …)` ——
+    /// 两个货真价实的文件系统变更 —— **daemon 281 条全过**。
+    /// 原因：表里写的是 `fs::soft_link`（那是**早已废弃的旧名**），而真 API 叫 `symlink`；
+    /// `set_permissions` 则**根本没列**。
+    /// ⇒ 它守的是「daemon 对 `~/.claude` 只读」这条**用户级红线**，而绕过它只需要用一个
+    /// 没被想到的 API 名字 —— 这正是本仓 `structural_scan.rs` 头注说的黑名单通病。
+    ///
+    /// # 改法：枚举生产段里**每一处** `fs::` / `File::` 调用，要求它在只读白名单里
+    ///
+    /// 同 `config_surface` 那条已验证的形态（08-06 实测：往那边加一处 `std::fs::write`
+    /// 当场红）。白名单的好处是**新增的写 API 自动被挡**，不需要有人先想到它的名字。
+    ///
+    /// 允许集合来自实测：`File` / `File::open` / `metadata` / `read` / `read_dir` /
+    /// `read_to_string`（纯只读）+ 两个仓内 helper（`mtime_ms` / `read_regular_capped`），
+    /// 以及**只准出现在 [`WRITE_WHITELIST_MODULE`] 里**的 `OpenOptions`。
+    #[test]
+    fn every_fs_call_in_daemon_production_is_read_only() {
+        /// 只读动词 + 仓内只读 helper。**新增写 API 不在这里 ⇒ 自动红。**
+        const READ_ONLY: &[&str] = &[
+            "File",
+            "File::open",
+            "metadata",
+            "read",
+            "read_dir",
+            "read_to_string",
+            "mtime_ms",
+            "read_regular_capped",
+        ];
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut bad: Vec<String> = Vec::new();
+        let mut seen = 0usize;
+        for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let prod = guard_core::production_code(&src);
+            for line in prod.lines() {
+                let l = line.trim();
+                if l.starts_with("//") {
+                    continue;
+                }
+                for (pat, kind) in [("fs::", "fs"), ("File::", "File")] {
+                    let mut from = 0usize;
+                    while let Some(k) = l[from..].find(pat) {
+                        let at = from + k + pat.len();
+                        let verb: String = l[at..]
+                            .chars()
+                            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                            .collect();
+                        from = at.max(from + 1);
+                        if verb.is_empty() {
+                            continue;
+                        }
+                        let full = if kind == "File" {
+                            format!("File::{verb}")
+                        } else {
+                            verb.clone()
+                        };
+                        seen += 1;
+                        if READ_ONLY.contains(&full.as_str()) {
+                            continue;
+                        }
+                        // 唯一的写口，且只准住在那一个模块里。
+                        if full == "OpenOptions" && rel == WRITE_WHITELIST_MODULE {
+                            continue;
+                        }
+                        bad.push(format!("  {rel}: {pat}{verb}"));
+                    }
+                }
+            }
+        }
+        // ★ 枚举自检：扫不到足够多的 fs 调用 ⇒ 剥法或遍历坏了，下面是空转的。
+        assert!(
+            seen >= 25,
+            "daemon 生产段只扫到 {seen} 处 `fs::`/`File::` 调用 —— 枚举坏了（08-06 实测 39 处）"
+        );
+        bad.sort();
+        bad.dedup();
+        assert!(
+            bad.is_empty(),
+            "daemon 生产段出现了**不在只读白名单里**的文件系统调用：\n{}\n\n\
+             ⚠ 红线（主计划 I7）：daemon 对被观测文件系统**必须只读**。\n\
+             ★ 本条是白名单 —— 它挡的不只是已知的写 API，也挡**没人想到过**的那些：\n\
+             08-06 实测，上面那条黑名单放过了 `os::unix::fs::symlink` 与 `fs::set_permissions`\n\
+             （表里写的是早已废弃的 `soft_link`，而 `set_permissions` 根本没列）。\n\
+             要新增只读调用就把动词加进 `READ_ONLY`；要写盘只有一条路：\n\
+             进 `{}`（那条路自己另有护栏）。",
+            bad.join("\n"),
+            WRITE_WHITELIST_MODULE
+        );
+    }
 }
 
 /// U8a-2 / **D1 裁决的代码强制**：daemon 起进程的**受管例外清单**。
