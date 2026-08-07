@@ -875,7 +875,10 @@ mod tests {
         let cargo = std::fs::read_to_string(root().join("Cargo.toml")).expect("读不到 Cargo.toml");
         let dep_line = cargo
             .lines()
-            .find(|l| l.trim_start().starts_with("code-picture-core") && l.contains("path"))
+            .find(|l| {
+                l.trim_start().starts_with("code-picture-core")
+                    && guard_core::contains_word(l, "path")
+            })
             .unwrap_or_else(|| {
                 panic!(
                     "`src-tauri/Cargo.toml` 里找不到 `code-picture-core` 的 path 依赖行 ——\n\
@@ -884,7 +887,7 @@ mod tests {
                 )
             });
         assert!(
-            !dep_line.contains("optional"),
+            !guard_core::contains_word(dep_line, "optional"),
             "`code-picture-core` 变成 optional 依赖了 —— 那么 `--no-default-features` 之类\n\
              也许就能在本机做 monitor 的跨 target check。**理由变了，结论要重量。**\n\
              （当初的实测：12 个 error 全是 `tree-sitter-*` 的 `cc-rs: lib.exe`，我们自己的代码零 error。）"
