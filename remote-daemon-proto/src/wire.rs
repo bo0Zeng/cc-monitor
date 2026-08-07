@@ -577,12 +577,71 @@ mod tests {
                 },
                 "tmux_sessions",
             ),
+            // 〔audit-0805 08-06〕补上此前**测试段零构造**的三个变体。
+            // `Reply` 的上线形另有 `inbound.rs` 钉着；`TmuxSessionClosed` / `Cancelled`
+            // 此前**只有 monitor 侧「解析成 None」的负向断言** —— 那是消费方的行为，
+            // 不是 daemon 序列化形态：改掉 kind 标签或字段名，两边都不会红。
+            (
+                Frame::TmuxSessionClosed {
+                    name: "cc-1".into(),
+                },
+                "tmux_session_closed",
+            ),
+            (
+                Frame::Reply {
+                    id: "r1".into(),
+                    ok: true,
+                    code: None,
+                    message: None,
+                    data: None,
+                },
+                "reply",
+            ),
+            (Frame::Cancelled { id: "r1".into() }, "cancelled"),
         ];
 
-        for (frame, expected_kind) in cases {
-            let line = to_line(&frame).expect("serialize");
-            assert_eq!(parse_kind(&line), expected_kind);
+        // ★ 人群自检：**样本必须覆盖 `Frame` 的每一个变体**〔audit-0805 08-06〕。
+        //
+        // 原来这里是一张**手写清单**：11 个变体只列了 8 个，而加第 12 个变体时
+        // **没有任何东西会红** —— 一条上线契约帧就那样进了协议。
+        // ⇒ 把人群换成**枚举本身**：从源码数 `pub enum Frame` 的变体数，
+        // 与样本产出的**去重 kind 数**对拍。加变体不补样本 ⇒ 当场红。
+        let src = include_str!("wire.rs");
+        let beg = src.find("pub enum Frame").expect("找不到 Frame 枚举");
+        let end = src[beg..].find("\n}\n").expect("找不到枚举结尾") + beg;
+        let variant_count = src[beg..end]
+            .lines()
+            .filter(|l| {
+                let t = l.trim_end();
+                t.starts_with("    ")
+                    && !t.starts_with("     ")
+                    && t.trim_start().starts_with(|c: char| c.is_ascii_uppercase())
+                    && (t.contains('{') || t.ends_with(','))
+            })
+            .count();
+        assert!(
+            variant_count >= 10,
+            "只数出 {variant_count} 个 Frame 变体（08-06 实测 11）—— 抽取坏了，下面的对拍会空转"
+        );
+
+        let mut kinds: Vec<&str> = Vec::new();
+        for (frame, expected_kind) in &cases {
+            let line = to_line(frame).expect("serialize");
+            assert_eq!(&parse_kind(&line), expected_kind);
+            if !kinds.contains(expected_kind) {
+                kinds.push(expected_kind);
+            }
         }
+        assert_eq!(
+            kinds.len(),
+            variant_count,
+            "样本覆盖 {} 个 kind，而 `Frame` 有 {variant_count} 个变体 —— \n\
+             新增变体没补样本：它的上线形态（kind 标签 / 字段名 / 单行）此刻无人钉。\n\
+             ⚠ 这是**契约帧**，`daemon-api` 的 D6 写着「暴露给第三方 = 契约冻结成本」，\n\
+             而 aterm 正在消费这条流。\n\
+             已覆盖：{kinds:?}",
+            kinds.len()
+        );
     }
 
     /// daemon-09：TurnEnd 上线形——`{"kind":"turn_end","session_id","uuid"}`，**无 byte_offset**
