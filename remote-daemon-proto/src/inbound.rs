@@ -1223,6 +1223,70 @@ mod structure_guards {
     /// 没有小节就没地方钉字段名 —— 那正是设计审计 P2 说的
     /// 「帧的字段有对拍，命令的载荷没有」。
     #[test]
+    /// ★〔audit-0805 08-06〕**「声明零字段」不许成为免检开关**。
+    ///
+    /// # 它补的洞
+    ///
+    /// 两条判据（本文件这条 + `protocol_doc_guard` 的
+    /// `every_command_payload_field_appears_in_its_own_doc_section`）**开头都是**
+    /// `if spec.fields.is_empty() { continue; }`。
+    /// ⇒ 一条命令只要把 `fields` 声明成 `&[]`，就**同时**从两条判据里消失 ——
+    /// 而没有任何东西检查那个声明是不是诚实的。**声明本身成了豁免开关。**
+    ///
+    /// ⚠ `resolve` 今天就是「有 `doc_anchor`、`fields: &[]`」。逐字读过它的文档段之后
+    /// 判定**它是诚实的**：载荷记作 `{ResumeSpec}`，按**结构体引用**写、不逐字段列。
+    /// ⇒ 所以本条不写成「有文档段就不许零字段」（那会当场误红），
+    /// 而写成**默认拒绝 + 豁免登记**：零字段可以，但要写明为什么。
+    #[test]
+    fn declaring_zero_fields_needs_a_reason() {
+        /// `(命令名, 为什么它可以声明零载荷字段)`。
+        const ZERO_FIELD_REASONS: &[(&str, &str)] = &[(
+            "resolve",
+            "载荷是 `ResumeSpec` **结构体**，文档段按结构体引用记（`args:{ResumeSpec}`）\
+             而不逐字段列；字段契约由那个 struct 的定义与它自己的序列化测试守。\
+             ⇒ 在这里列一份字段清单反而会造出第二个真相源（E3）。",
+        )];
+        let mut unexplained: Vec<&str> = Vec::new();
+        let mut zero_with_doc = 0usize;
+        for spec in super::REGISTRY {
+            if !spec.fields.is_empty() {
+                continue;
+            }
+            if spec.doc_anchor.is_none() {
+                continue;
+            }
+            zero_with_doc += 1;
+            if !ZERO_FIELD_REASONS.iter().any(|(n, _)| *n == spec.name) {
+                unexplained.push(spec.name);
+            }
+        }
+        assert!(
+            zero_with_doc >= 1,
+            "没有任何命令处于「有文档段 + 零字段声明」状态 —— 本条在空转。\
+             若确实全都列了字段，请把本条连同 `ZERO_FIELD_REASONS` 一起删掉（别留空转的判据）"
+        );
+        assert!(
+            unexplained.is_empty(),
+            "这些命令有自己的文档小节，却把 `fields` 声明成空：{unexplained:?}\n\
+             ⚠ 空声明会让它**同时**从两条判据里消失（本文件这条 + `protocol_doc_guard` 那条，\n\
+             两条开头都是 `if spec.fields.is_empty() {{ continue; }}`）——\n\
+             也就是说**声明本身是免检开关**。\n\
+             要么把载荷字段列出来，要么在 `ZERO_FIELD_REASONS` 里写明为什么它没有可列的字段。"
+        );
+        for (name, _) in ZERO_FIELD_REASONS {
+            let spec = super::REGISTRY
+                .iter()
+                .find(|s| s.name == *name)
+                .unwrap_or_else(|| panic!("`ZERO_FIELD_REASONS` 里的 `{name}` 已经不在注册表里"));
+            assert!(
+                spec.fields.is_empty(),
+                "`{name}` 现在列了 {} 个字段，豁免登记该删了（登记表腐烂比没有登记更糟）",
+                spec.fields.len()
+            );
+        }
+    }
+
+    #[test]
     fn a_command_with_a_payload_must_own_a_doc_section() {
         for spec in super::REGISTRY {
             if spec.fields.is_empty() {
