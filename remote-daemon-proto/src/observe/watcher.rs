@@ -1791,6 +1791,63 @@ fn file_stem_str(p: &Path) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// ★ **事件分派不许有兜底臂**〔audit-0805 08-06〕。
+    ///
+    /// # 它钉的是一个「没人盯的前提」，不是一个缺陷
+    ///
+    /// 本文件 87 条判据里，七个 `WatchEvent` 变体**每一个都被构造过** ——
+    /// 抽样时逐个数过（`Notify` 3 · `TmuxServerGone` 4 · `PidDied` 6 ·
+    /// `TmuxObserved` 4 · `TmuxProbeDue` 5 · `Poke` 5 · `Shutdown` 4）。
+    /// 而「加第八个变体时会不会被漏掉」靠的**不是**这些判据，
+    /// 是**编译器**：顶层分派是一条没有兜底臂的 `match`，少一个变体就编不过。
+    ///
+    /// ⚠ 那是一个**前提**，而且今天没人盯着它：谁在那条 `match` 上加一条兜底臂，
+    /// 穷尽性当场消失，新变体从此被静默吞掉 —— 而**所有既有判据仍然全绿**
+    ///（它们各测各的变体，没有一条会因为「多了一个没人处理的变体」而红）。
+    /// 本会话反复量到的正是这个形状：**一条纪律的成立依赖另一条，而那条依赖没人盯。**
+    ///
+    /// ⇒ 本条只做一件事：钉住那条 `match` 里**没有兜底臂**。
+    #[test]
+    fn the_event_dispatch_has_no_catch_all_arm() {
+        let prod = crate::guard_support::production_code(include_str!("watcher.rs"));
+        let anchor = "WatchEvent::Notify(Ok(events)) =>";
+        let at = prod
+            .find(anchor)
+            .expect("找不到事件分派的锚点臂 —— 分派改形了，本条要跟着改");
+        // 从锚点臂往后取到分派块结束：按缩进找同级臂，遇到缩进更浅的行即出块。
+        let indent = prod[..at].rfind('\n').map_or(0, |k| at - k - 1);
+        let mut arms: Vec<String> = Vec::new();
+        for line in prod[at - indent..].lines() {
+            let cur = line.len() - line.trim_start().len();
+            if line.trim().is_empty() {
+                continue;
+            }
+            if cur < indent {
+                break;
+            }
+            if cur == indent {
+                let head: String = line.trim_start().chars().take(24).collect();
+                if head.starts_with("WatchEvent::") || head.starts_with('_') {
+                    arms.push(head);
+                }
+            }
+        }
+        // 抽取器自检：抠不到臂 ⇒ 下面那条会零命中地绿。
+        assert!(
+            arms.len() >= 6,
+            "只抠到 {} 条分派臂（08-06 实测 7）—— 抽取坏了，本条此刻是空转的：{arms:?}",
+            arms.len()
+        );
+        assert!(
+            !arms.iter().any(|a| a.starts_with('_')),
+            "事件分派里出现了兜底臂：{arms:?}\n\
+             ⚠ 它一加上，`match` 的穷尽性就没了 —— 新增的 `WatchEvent` 变体会被**静默吞掉**，\n\
+             而本文件既有的判据**不会有一条因此变红**（它们各测各的变体）。\n\
+             daemon 的判活全靠这七路信号；被吞掉的那一路不会报错，只会「什么都不发生」。\n\
+             ⇒ 要新增变体就在这里显式处理它；确实无事可做也请写成具名臂加一句注释。"
+        );
+    }
     use super::*;
 
     // ---------- P2（zero-poll-liveness）：pidfd 判活 ----------
