@@ -825,4 +825,69 @@ mod tests {
             orphan.join("\n")
         );
     }
+
+    /// 〔audit-0805 08-06〕**跨 target（Windows）编译信号今天只覆盖 daemon，不覆盖 monitor
+    /// —— 把这个不对称本身钉住，让它不能悄悄变。**
+    ///
+    /// 定框 **E7** 逐字写着「C10 的**真判据是跨 target 编得过**
+    /// （`cargo check --all-targets --target x86_64-pc-windows-msvc`），**不是 cfg 位置扫描**」。
+    /// 所以本条**刻意不去数 `#[cfg(windows)]` 的位置**——那会与 E7 相悖。它只钉「真判据在不在」。
+    ///
+    /// **实测到的实况**（08-06）：
+    /// - daemon 有那一步，本机跑得通（exit 0）；
+    /// - **monitor 没有**。它的 Windows 面只由跑在 `windows-latest` 的 `rust` job 编译，
+    ///   而〔用 08-05〕停推后 `ci.yml` 至今 72 个提交一次没跑 ⇒ **那 31 处 `cfg(windows)`
+    ///   已经很久没有被任何编译器看过**。
+    /// - 本机补不上：`cargo check --target x86_64-pc-windows-msvc -p monitor` 挂在
+    ///   `tree-sitter-*` 的 C build script 上（`cc-rs: failed to find tool "lib.exe"`，12 个 error
+    ///   全是它，**我们自己的代码零 error**），而那些 crate 来自 vendor `code-picture-core`——
+    ///   它是 monitor 的**无条件 path 依赖**，且 vendor 是本区红线，不许动。
+    ///
+    /// ⚠ 顺带一条方法论（本轮变异抽样撞出来的）：**`#[cfg(windows)]` 里的变异在 Linux 上
+    /// 连编译错误都不报**（实证：往里写一个不存在的标识符，`cargo build` **零 error**）。
+    /// ⇒ 对那片代码做变异抽样得到的「SURVIVED」**没有信息量**，那是方法的盲区不是门禁的漏洞。
+    ///
+    /// 本条是那条诚实边界（`ROADMAP §5`）的**前提触发器**：前提一旦消失就红，逼人回来重判。
+    #[test]
+    fn the_windows_cross_target_signal_covers_only_the_daemon() {
+        let ci = ci_live_lines();
+        const NEEDLE: &str = "--target x86_64-pc-windows-msvc";
+
+        // ① daemon 那一步还在吗（E7 点名的真判据，本仓唯一一处）。
+        let daemon_block = ci_job_block("daemon");
+        assert!(
+            daemon_block.contains(NEEDLE),
+            "`daemon` job 里的跨 target check 不见了 —— 那是 E7 逐字点名的**真判据**，\n\
+             删它等于把平台线上唯一还活着的编译信号也关掉。"
+        );
+
+        // ② monitor 那侧仍然没有 —— 有了就说明边界过期了，本条要红。
+        let rust_block = ci_job_block("rust");
+        assert!(
+            !rust_block.contains(NEEDLE),
+            "`rust` job（monitor）现在**有跨 target check 了** —— 好事，但请顺手：\n\
+             ① 删掉 `ROADMAP §5` 里「monitor 的 Windows 面没有编译信号」那条诚实边界；\n\
+             ② 删掉本条判据（它的全部意义就是钉住这个不对称）。"
+        );
+
+        // ③ 那条「本机补不上」的理由还成立吗：vendor 仍是**无条件** path 依赖。
+        //    哪天它变成 optional / 被摘掉，本机就可能 check 得动 ⇒ 理由消失，必须重判。
+        let cargo = std::fs::read_to_string(root().join("Cargo.toml")).expect("读不到 Cargo.toml");
+        let dep_line = cargo
+            .lines()
+            .find(|l| l.trim_start().starts_with("code-picture-core") && l.contains("path"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "`src-tauri/Cargo.toml` 里找不到 `code-picture-core` 的 path 依赖行 ——\n\
+                     「本机跨 target check 被 vendor 的 C build script 挡住」这个理由可能已经不成立，\n\
+                     请重新试一次 `cargo check --target x86_64-pc-windows-msvc -p monitor`。"
+                )
+            });
+        assert!(
+            !dep_line.contains("optional"),
+            "`code-picture-core` 变成 optional 依赖了 —— 那么 `--no-default-features` 之类\n\
+             也许就能在本机做 monitor 的跨 target check。**理由变了，结论要重量。**\n\
+             （当初的实测：12 个 error 全是 `tree-sitter-*` 的 `cc-rs: lib.exe`，我们自己的代码零 error。）"
+        );
+    }
 }
