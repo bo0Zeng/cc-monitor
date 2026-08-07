@@ -427,6 +427,79 @@ mod tests {
         ];
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut bad: Vec<String> = Vec::new();
+        // ★〔audit-0805 08-06〕**先堵逃生口**：把 `std::fs` 的条目导入进作用域，
+        // 调用点就不再带 `fs::` 前缀，下面那套按 `fs::` / `File::` 锚定的白名单**整条看不见**。
+        //
+        // 实测：往 `inbound.rs` 写
+        //   `use std::fs::{self as _f, write};`
+        //   `fn probe(p: &Path) -> io::Result<()> { write(p, b"x") }`
+        // ——一次货真价实的写盘，**六条判据全绿**。而这守的是用户级只读红线。
+        //
+        // 分类法照搬 `layering_guard`（那里禁的是层别名，同一个道理）：
+        // `use std::fs;` **合法**（调用点仍写 `fs::read_to_string`，白名单看得见）；
+        // `use std::fs::<条目>` / `use std::fs::{..}` / `use std::fs::*` / `use std::fs as X`
+        // **一律禁** —— 它们把动词从调用点上摘掉了。
+        //
+        // ⚠ 量过误红面：daemon 生产段今天只有 3 处 `use ... fs ...`，
+        // 全是 crate 内部的只读助手（`crate::common::fs::read_regular_capped` /
+        // `crate::observe::fs::mtime_ms`），没有一处 `std::fs` 或 `tokio::fs` 导入 ⇒ 零误红。
+        // 分类逻辑的常驻自检：真代码里今天**没有** `use std::fs;` 这种样本，
+        // 于是「模块导入放行」那一支平时没人行使 —— 不钉住的话它可以被改成「一律放行」
+        // 而不会有任何信号（本区第五次踩「负向断言没有输入就等于没有」）。
+        fn is_hatch(line: &str) -> bool {
+            let l = line.trim();
+            if !l.starts_with("use ") {
+                return false;
+            }
+            ["std::fs", "tokio::fs"].iter().any(|base| {
+                l.find(base)
+                    .is_some_and(|k| !l[k + base.len()..].trim_start().starts_with(';'))
+            })
+        }
+        assert!(
+            is_hatch("use std::fs::{self as _f, write};"),
+            "条目导入没被判成逃生口"
+        );
+        assert!(is_hatch("use std::fs::write;"), "单条目导入没被判成逃生口");
+        assert!(is_hatch("use std::fs as f;"), "别名没被判成逃生口");
+        assert!(is_hatch("use tokio::fs::write;"), "tokio 那侧同样要认");
+        assert!(
+            !is_hatch("use std::fs;"),
+            "模块导入被误判 —— 调用点仍带 `fs::`，白名单看得见"
+        );
+        assert!(
+            !is_hatch("use crate::common::fs::read_regular_capped;"),
+            "crate 内部的只读助手被误判"
+        );
+
+        let mut hatches: Vec<String> = Vec::new();
+        for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let prod = guard_core::production_code(&src);
+            for line in prod.lines() {
+                let l = line.trim();
+                if !l.starts_with("use ") {
+                    continue;
+                }
+                if is_hatch(l) {
+                    hatches.push(format!("  {rel}: {l}"));
+                }
+            }
+        }
+        assert!(
+            hatches.is_empty(),
+            "daemon 生产段把 `std::fs` / `tokio::fs` 的条目导入了作用域：\n{}\n\
+             ⚠ 这会让调用点不再带 `fs::` 前缀，于是下面那套只读白名单**整条看不见** ——\n\
+             实测一次 `use std::fs::{{self as _f, write}};` + 裸 `write(..)` 就绕过了六条判据。\n\
+             写法要求：`use std::fs;` 可以（调用点写 `fs::read_to_string`），\n\
+             导入条目 / 起别名 / glob 一律不行。真要写盘只有一条路，见下面那条诊断。",
+            hatches.join("\n")
+        );
+
         let mut seen = 0usize;
         for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
             let rel = path
