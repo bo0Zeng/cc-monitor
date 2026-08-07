@@ -509,4 +509,186 @@ mod tests {
              要改就两侧一起改，并想清楚仓外消费方。"
         );
     }
+
+    /// 〔audit-0805 08-06〕**`doc/` 里点名的代码符号必须解析得到，且住在文档说的那个文件里。**
+    ///
+    /// **为什么建它**：08-06 把本会话逮到的每一处文档/计划腐坏按机制归了族，主力是
+    /// **停滞式** —— 世界变了、文本一个字没动（改代码的那个提交**碰过**那份文件，
+    /// 却把已假的那句原样留着）。这一族**结构上救不了**靠「改法纪律」：留痕是「怎么改」的规矩，
+    /// 而这族的定义就是没人来改。能接住它的只有一样：**一条会红的判据读到那句散文**（E12 ①）。
+    ///
+    /// `file.rs::symbol` 是 `doc/` 里**最可机检**的一族散文：改名 / 删除 / 搬家都让它变假，
+    /// 而**没有任何东西会红**。建判据当天实测 **73 处引用、真腐 0**——
+    /// ⚠ **「今天全对」正是建它的理由，不是不建的理由**：干净是纪律攒出来的，
+    /// 而纪律不在门禁里就只是运气，`doc/` 这四个文件此前**一条判据都没读过**。
+    ///
+    /// **口径**（比「符号存在」严一档，建时实测不误红）：文档写 `a.rs::foo`，
+    /// 就要求 `foo` 的声明**出现在 `a.rs` 里** —— 只对符号名会放过「搬到别的文件」，
+    /// 而搬家恰恰是本仓重构的常见形态。
+    ///
+    /// ⚠ 抽取器摘除调用者自己（`scan_tree!` 按构造如此）⇒ 只在 `doc/` 引用本文件里的符号时
+    /// 才会误红，而 `doc/` 引用一个测试登记表本身就说明有别的问题。
+    #[test]
+    fn every_code_symbol_named_in_the_docs_still_resolves() {
+        /// 例外表：**每条都写清「为什么它解析不到却是对的」**。
+        /// 下面有一条自检把「已经不需要的例外」揪出来 —— 例外表自己也会腐。
+        const EXCEPTIONS: &[(&str, &str)] = &[
+            (
+                "setup",
+                "tauri 的 `.setup(move |app| …)` 钩子闭包 —— 是真东西，但不是一处声明",
+            ),
+            (
+                "monitor_get_active_ids",
+                "`CONTRIBUTING.md` 里的**示例占位符**（教人「照这样加一行」），本就不指向真符号",
+            ),
+            (
+                "run_tmux_reconcile_poller",
+                "`INVARIANTS.md` 那句逐字写着它**已删**（audit-fixes F03.2）—— 历史句，\
+                 删掉反而丢掉「为什么今天没有 poller」的解释",
+            ),
+        ];
+        const KW: &[&str] = &[
+            "fn", "struct", "enum", "const", "static", "trait", "mod", "type",
+        ];
+
+        // ── 收全仓声明：符号名 → 它出现在哪些文件名里
+        let mut srcs: Vec<(PathBuf, String)> = Vec::new();
+        for root in [
+            "src-tauri/src",
+            "src-tauri/crates",
+            "remote-daemon-proto/src",
+        ] {
+            srcs.extend(guard_core::scan_tree!(&repo_root().join(root), &["rs"]));
+        }
+        // `build.rs` 是单文件、不在任何被扫的目录下 —— 第一版就漏了它，
+        // 于是 `build.rs::emit_daemon_build_id` 被当成「腐了」。**抽取器的扫描面要自己说清楚。**
+        let br = repo_root().join("src-tauri/build.rs");
+        let br_src = std::fs::read_to_string(&br).expect("读不到 src-tauri/build.rs");
+        srcs.push((br, br_src));
+
+        let mut decl: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
+            std::collections::BTreeMap::new();
+        for (p, raw) in &srcs {
+            let fname = p
+                .file_name()
+                .expect("源文件名")
+                .to_string_lossy()
+                .to_string();
+            // 注释里的 `fn foo` 不算声明 —— 否则「注掉一个函数」这种变异会被判据放过。
+            let stripped = guard_core::strip_comment_lines(raw);
+            for line in stripped.lines() {
+                let mut it = line.split_whitespace().peekable();
+                while let Some(tok) = it.next() {
+                    if !KW.contains(&tok) {
+                        continue;
+                    }
+                    let Some(next) = it.peek() else { continue };
+                    let ident: String = next
+                        .chars()
+                        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                        .collect();
+                    if !ident.is_empty() {
+                        decl.entry(ident).or_default().insert(fname.clone());
+                    }
+                }
+            }
+        }
+        // ★ 抽取器自检 1：收不到足够多的声明 ⇒ 遍历坏了，下面整条会零命中地绿。
+        assert!(
+            decl.len() > 2000,
+            "全仓只抽到 {} 个声明符号 —— 遍历或剥法坏了（建判据当天实测 3073 个 / 133 个源文件）",
+            decl.len()
+        );
+
+        // ── 收 doc/ 里的 `file.rs::symbol`
+        let mut refs: Vec<(String, usize, String, String)> = Vec::new();
+        for p in doc_files() {
+            let fname = p
+                .file_name()
+                .expect("doc 文件名")
+                .to_string_lossy()
+                .to_string();
+            let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读 {p:?} 失败: {e}"));
+            for (i, line) in text.lines().enumerate() {
+                let b = line.as_bytes();
+                let mut from = 0usize;
+                while let Some(k) = line[from..].find(".rs::") {
+                    let at = from + k;
+                    // 往前收路径：只走 ASCII 路径字符 ⇒ 遇到中文（多字节）自然停在字符边界上。
+                    let mut s = at;
+                    while s > 0 && {
+                        let c = b[s - 1] as char;
+                        c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '/' || c == '-'
+                    } {
+                        s -= 1;
+                    }
+                    let base = line[s..at + 3]
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or_default()
+                        .to_string();
+                    let mut e = at + 5;
+                    while e < b.len() && {
+                        let c = b[e] as char;
+                        c.is_ascii_alphanumeric() || c == '_'
+                    } {
+                        e += 1;
+                    }
+                    let sym = line[at + 5..e].to_string();
+                    if !sym.is_empty() && !base.is_empty() {
+                        refs.push((fname.clone(), i + 1, base, sym));
+                    }
+                    from = at + 5;
+                }
+            }
+        }
+        // ★ 抽取器自检 2：`doc/` 里本来就有几十处 —— 抽到个位数就是剥法坏了。
+        assert!(
+            refs.len() >= 60,
+            "`doc/` 里只抽到 {} 处 `file.rs::symbol` —— 剥法坏了（建判据当天实测 73 处）",
+            refs.len()
+        );
+
+        // ★ 自检 3：例外表保鲜。例外是**欠账**，不是免检章。
+        for (sym, why) in EXCEPTIONS {
+            let used: Vec<&(String, usize, String, String)> =
+                refs.iter().filter(|r| r.3 == *sym).collect();
+            assert!(
+                !used.is_empty(),
+                "例外表里的 `{sym}` 在 `doc/` 里已经没人写了 —— 删掉这一行。\n\
+                 （它当初的理由：{why}）"
+            );
+            let still_needed = used
+                .iter()
+                .any(|r| !matches!(decl.get(&r.3), Some(fs) if fs.contains(&r.2)));
+            assert!(
+                still_needed,
+                "例外 `{sym}` 现在**解析得到了** —— 删掉这条例外，别让例外表替真判据挡枪。\n\
+                 （它当初的理由：{why}）"
+            );
+        }
+
+        let bad: Vec<String> = refs
+            .iter()
+            .filter(|r| !EXCEPTIONS.iter().any(|(s, _)| *s == r.3))
+            .filter_map(|(f, ln, base, sym)| match decl.get(sym) {
+                None => Some(format!(
+                    "doc/{f}:{ln}  `{base}::{sym}` —— **全仓找不到这个符号**（改名或删了）"
+                )),
+                Some(fs) if !fs.contains(base) => Some(format!(
+                    "doc/{f}:{ln}  `{base}::{sym}` —— 符号还在，但**搬家了**：现住 {:?}",
+                    fs.iter().collect::<Vec<_>>()
+                )),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            bad.is_empty(),
+            "`doc/` 点名了这些代码符号，而它们今天对不上：\n{}\n\n\
+             ⚠ 这是**停滞式腐坏**的典型形态：改代码的人不会回来改文档，而在本判据之前
+             **没有任何东西会因此变红**。两条修法（E12）：① 把文档改对；\
+             ② 那句话若只是历史，就写清「已删 / 已改名」并进本条的例外表（带理由）。",
+            bad.join("\n")
+        );
+    }
 }
