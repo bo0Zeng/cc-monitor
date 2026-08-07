@@ -51,7 +51,16 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 > `src/remote-launch.ts` 这类被上面套件驱动的真源）时，`npm test` 不会有任何反应。**
 > 要拿到信号得手跑，例如 `npm run test:restart` / `npm run test:ccm-cli`；
 > 想连地板一起验就 `bash e2e/assert-pass-floor.sh restart 24`。
-> 不手跑的话，**第一次发现是在 CI 上**。
+> ~~不手跑的话，**第一次发现是在 CI 上**。~~
+>
+> ⚠ **08-06 订正：那句已经不成立。**〔用 08-05〕裁定**不再 push**，而 `ci.yml` 只在
+> `push` / `pull_request` 上触发 ⇒ **CI 至今没跑过**。今天不手跑的后果不是「CI 上才发现」，
+> 是**没有任何一次发现**。这个前提由
+> `shared_crate_registry.rs::the_premise_behind_three_honesty_boundaries_still_holds` 盯着
+> （谁加了 `workflow_dispatch`/`schedule`，这句话与另外三条诚实边界都要一起重判）。
+>
+> ★ 而且**这些套件并非都要真 tmux**：实测有几套零依赖跑得通（清单与跑法以判据里的
+> `LOCALLY_RUNNABLE` 为准，**此处不抄**）。所以「手跑」的成本比这段话当初以为的低。
 
 **`graylight-suite`（全链级）不在上表那些套件里**：它断言的是**正在跑的 dev app** 写的
 `monitor.*.log`，需要 GUI runner + 起整个 app —— 与本文件开头「跑法」那段要 Xvfb 的
