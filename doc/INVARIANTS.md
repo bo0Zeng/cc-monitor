@@ -504,7 +504,7 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 3. **wire additive**：`TmuxSessions` 帧加 `observation: Option<String>`（`"zero_sessions"` / `"no_tmux"` / `"unobservable"`），**有会话时省略** ⇒ `raw` 载荷与之前逐字节一致 ⇒ **旧 monitor 行为零变化**（空 raw 照旧保守跳过）。**不 bump `PROTO_VERSION`**。取值集是 monitor↔daemon 的**第三个双写点**（前两个：`TMUX_LS_FMT` · `NO_TMUX`），由 `tmux.rs::observation_tokens_double_write_point_stays_in_sync` 钉住。
 4. **monitor 把那条内联 if 提成纯函数** `tmux::classify_tmux_observation`（原判断住在需要真远端连接的 `async fn` 里、单测碰不到）。`ZeroSessions` ⇒ 返回**空集但有效**的 `Backend(∅)` ⇒ 照常进 `reconcile_step` 累计缺失；`NoTmux`/`Unobservable` 才跳过。
 
-**修完后的延迟**：该场景从「永不（卡到断连）」变成 **`RETIRE_MISS_THRESHOLD`(2) × daemon 推帧间隔(8s) ≈ 16s**——**是有界化，不是即时化**。
+**修完后的延迟**：该场景从「永不（卡到断连）」变成 **`RETIRE_MISS_THRESHOLD`(2) × **当时**的推帧节拍（P5 前那个 ticker，已删）≈ 16s**——**是有界化，不是即时化**。
 
 > **已落地（2026-07-30，P3/P5）**：8s 推帧间隔本身**已删**，四路信号全部事件驱动 ⇒ 该场景走 tmux server 的 `pidfd`，**实测 27ms**（跨 cgroup 整锅 SIGKILL 30ms）。「多个中杀一个」走 hook→SIGUSR1 + 正向死亡帧，**实测 126ms**（对照组：拆掉 hook 5042ms）。详见 **§41**。
 
