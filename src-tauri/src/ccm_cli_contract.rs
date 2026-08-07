@@ -385,4 +385,69 @@ mod tests {
             );
         }
     }
+
+    /// 〔audit-0805 08-06〕**`cc-spawn` 找 `ccm` 时必须 `-f` —— 只 `-x` 会被同名目录劫持。**
+    ///
+    /// # 为什么这条住在「ccm 的契约」里
+    ///
+    /// 它钉的不是 cc-bus 的内部逻辑，是**别人怎么找到 ccm 这个二进制** —— 那是 ccm
+    /// 对外契约的一部分：解析错了，后面整条 CLI 契约都无从谈起。
+    ///
+    /// # 事故与修法（脚本自己记着，逐字）
+    ///
+    /// 真实部署形态下 `~/.local/bin/cc-spawn` 经 `readlink -f` 后
+    /// `SELFDIR = ~/.claude/skills/cc-bus/scripts`，于是 `../../ccm` = **`~/.claude/skills/ccm`**
+    /// —— 碰撞面是 skills 目录。而 **`[ -x <目录> ]` 为真**，`skills/` 下全是目录，
+    /// 「哪天有人装个名叫 `ccm` 的 skill 就会劫持解析（实测报『是一个目录』然后整体失败）」。
+    /// ⇒ 修法是同时要 `-f`。
+    ///
+    /// # 08-06 实测：修法在，守卫没有
+    ///
+    /// 把那行改回只 `-x` —— `shellcheck` 0 · monitor 1001 · vitest 1288 **三样全绿**。
+    /// 而这个脚本**跑不了**（要真 tmux，红线禁）⇒ 行为判据在这里不可能有，只能钉源码形态。
+    ///
+    /// # 为什么**不**做成「全 `shared/` 的 `-x` 必须配 `-f`」的通用形状判据
+    ///
+    /// 先量了人群再决定：`shared/` 下带 shebang 的脚本里 `[ -x ]` 一共 **3 处**，
+    /// 另两处（`shared/ccm` 的 `CCM_DAEMON_BIN`）**不是同一个坑** ——
+    /// 那两处后面跟着 `2>/dev/null` 且**有本地回落**，指到目录只会得到空输出、
+    /// 然后按定框 §5「诚实降级」走本地那条；而 cc-spawn 这处**没有回落分支**，
+    /// 目录会让整体失败。⇒ 3 个人群里 2 个要写例外，那种判据是仪式不是防护。
+    #[test]
+    fn cc_spawn_resolves_a_real_ccm_file_not_a_directory() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级")
+            .join("shared/cc-bus/scripts/cc-spawn");
+        let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}: {e}"));
+        // ★ 抽取器自检：文件被掏空/改名时，下面那条会零命中地绿。
+        assert!(
+            src.lines().count() >= 50,
+            "`cc-spawn` 只剩 {} 行 —— 读法坏了或文件被掏空",
+            src.lines().count()
+        );
+        // ⚠ **钉性质不钉拼法**〔第一版是 `pin_line` 整行相等，变异当场暴露它过严〕：
+        // 把顺序换成 `[ -x X ] && [ -f X ]` 语义完全一样、同样安全，而整行相等会误红。
+        // 本会话立过的标准是「合法微调不许误红」（bash 折叠阈值那条），这里照它办：
+        // 只要求**两个测试都落在解析那一行上**，先后随意。
+        for probe in ["-f \"$SELFDIR/../../ccm\"", "-x \"$SELFDIR/../../ccm\""] {
+            guard_core::find_pinned(&src, probe).unwrap_or_else(|e| {
+                panic!(
+                    "{e}\n\
+                     ⇒ `cc-spawn` 解析 `ccm` 时缺了 `{probe}` 这一半。**只 `-x` 不够**：\n\
+                     `[ -x <目录> ]` 为真，而它找的 `../../ccm` 落在 `~/.claude/skills/` 下、那里全是目录，\n\
+                     装一个名叫 `ccm` 的 skill 就会劫持解析（脚本头注记着实测：报「是一个目录」后整体失败）。\n\
+                     这一处**没有本地回落分支**，所以失败是硬的，不是诚实降级。"
+                )
+            });
+        }
+        // 两个测试必须在**同一行**：分散到两处会让「其中一处被删」看起来仍然合规。
+        let same_line = src.lines().any(|l| {
+            l.contains("-f \"$SELFDIR/../../ccm\"") && l.contains("-x \"$SELFDIR/../../ccm\"")
+        });
+        assert!(
+            same_line,
+            "`-f` 与 `-x` 不在同一行了 —— 解析分支被拆开，其中一半可能已经不在那条判断上。"
+        );
+    }
 }
