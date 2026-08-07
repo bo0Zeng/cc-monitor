@@ -588,7 +588,11 @@ mod tests {
         let f = prod
             .find("fn fence_under_projects")
             .expect("找不到围栏函数 —— 上面那个计数就失去了意义");
-        let body_end = prod[f..].find("\n}\n").map_or(prod.len(), |k| f + k);
+        // ⚠ **本文件里不许写「只含右大括号、没有左大括号」的字符串或注释**：
+        // 括号配平扫描面里，一个不配对的大括号会把它的剥法提前收尾，
+        // 于是测试段泄进「生产段」——第一版就是这么写的，当场把两条判据打红。
+        // 改用「下一个顶层 fn」当边界，绕开大括号。
+        let body_end = prod[f..].find("\nfn ").map_or(prod.len(), |k| f + k);
         assert_eq!(
             prod[f..body_end].matches("canonicalize()").count(),
             2,
