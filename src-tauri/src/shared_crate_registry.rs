@@ -679,4 +679,150 @@ mod tests {
             orphan.join("\n")
         );
     }
+
+    /// 〔audit-0805 08-06〕**每条 `#[ignore]` 测试都要真有人来触发它。**
+    ///
+    /// 本族第三条（前两条：CI 步骤本地数过没有 · 套件有没有人调）。这条问最里面那层：
+    /// **被 `#[ignore]` 挡在常规门禁之外的测试，说好的那个「触发者」还在吗。**
+    ///
+    /// **为什么建它**：这七条的头注都写着「由 `e2e/xxx.sh` 驱动」，而那是一句**散文**。
+    /// e2e 脚本靠 `cargo test --lib -- --ignored <过滤串>` 点名它们 ——
+    /// **改个测试名，过滤串就一个都匹配不上，而 `cargo test` 跑零条测试是 exit 0**。
+    /// 于是链断了、两边都绿。本条把那句散文变成会红的东西。
+    ///
+    /// ⚠ 08-06 逐条核过，七条的自称**当时全部成立**（脚本都在、过滤串都对得上）。
+    /// 又是「今天干净但没人守着」—— 与本会话另外三处同形。
+    ///
+    /// ⚠ 更要紧的实况（不是本条能修的，记在这里免得误读绿灯）：那三个脚本都要
+    /// **真 tmux server**（`local-backend-supervise.sh` 还自导 `TMUX_TMPDIR`），撞本区红线 ⇒
+    /// 本机跑不了；而 `ci.yml` 只在 `push`/`pull_request` 上触发，〔用 08-05〕停推后
+    /// **至今 72 个提交一次都没跑过**。⇒ **这七条自 `1eeb4bf` 起实际执行次数为零。**
+    /// 本条守的是「链还连着」，**不是**「它们跑过了」——两件事别混。
+    #[test]
+    fn every_ignored_test_still_has_someone_who_triggers_it() {
+        /// 不由 e2e 驱动、**刻意手动**的，逐条写清谁在什么时候跑它。
+        const MANUAL: &[(&str, &str)] = &[(
+            "f63_real_data_ledger",
+            "不是 e2e：它要本机真实历史数据（头注记着 771 会话 / 643MB 的基线），\
+             跑法写在自己的头注里，属于「改 F63 解析时人工重算的台账」",
+        )];
+
+        let repo = root().parent().expect("仓根").to_path_buf();
+        // ── 收 `#[ignore]` 测试：(文件名 stem, fn 名)
+        let mut ignored: Vec<(String, String)> = Vec::new();
+        for (path, src) in guard_core::scan_tree!(&repo.join("src-tauri/src"), &["rs"]) {
+            let stem = path
+                .file_stem()
+                .expect("文件名")
+                .to_string_lossy()
+                .to_string();
+            let lines: Vec<&str> = src.lines().collect();
+            for (i, l) in lines.iter().enumerate() {
+                if !l.trim_start().starts_with("#[ignore") {
+                    continue;
+                }
+                let Some(f) = lines[i + 1..i + 5.min(lines.len() - i)]
+                    .iter()
+                    .find_map(|x| x.split_once("fn ").map(|(_, r)| r))
+                else {
+                    continue;
+                };
+                let name: String = f
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                if !name.is_empty() {
+                    ignored.push((stem.clone(), name));
+                }
+            }
+        }
+        // ★ 自检 1：一条都收不到 ⇒ 剥法坏了（下面会零命中地绿）。
+        assert!(
+            ignored.len() >= 5,
+            "全仓只收到 {} 条 `#[ignore]` 测试 —— 剥法坏了（建判据当天实测 7 条）",
+            ignored.len()
+        );
+
+        // ── 收 e2e 脚本里的触发过滤串
+        let mut filters: Vec<(String, String)> = Vec::new();
+        for e in std::fs::read_dir(repo.join("e2e"))
+            .expect("读不到 e2e/")
+            .flatten()
+        {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) != Some("sh") {
+                continue;
+            }
+            let Ok(sh) = std::fs::read_to_string(&p) else {
+                continue;
+            };
+            let who = p.file_name().expect("脚本名").to_string_lossy().to_string();
+            for line in sh.lines() {
+                let t = line.trim_start();
+                // 注释里也写着同样的命令串（那是说明，不是触发）——**必须剔掉**，
+                // 否则「把真调用删了只留注释」这种最省事的断链会被判据放过。
+                if t.starts_with('#') || !t.contains("--ignored") {
+                    continue;
+                }
+                for tok in t.split_whitespace().skip_while(|w| *w != "--nocapture") {
+                    if tok.starts_with('-') || tok == "--nocapture" {
+                        continue;
+                    }
+                    let tok: String = tok
+                        .chars()
+                        .take_while(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_')
+                        .collect();
+                    if tok.len() >= 4 {
+                        filters.push((who.clone(), tok));
+                        break;
+                    }
+                }
+            }
+        }
+        // ★ 自检 2：过滤串收不到 ⇒ 下面每条都会被判成「没人触发」，看起来像大面积腐坏，
+        //   实际是抽取器坏了。两种坏法要能分开。
+        assert!(
+            filters.len() >= 3,
+            "从 `e2e/*.sh` 只收到 {} 个 `--ignored` 触发过滤串 —— 抽取器坏了（建判据当天实测 4 个）：{filters:?}",
+            filters.len()
+        );
+
+        let covered = |stem: &str, name: &str| -> Option<String> {
+            filters
+                .iter()
+                .find(|(_, f)| name.contains(f.as_str()) || stem.contains(f.as_str()))
+                .map(|(who, f)| format!("{who}（过滤串 `{f}`）"))
+        };
+
+        // ★ 自检 3：手测登记表保鲜 —— 登记的那条若已被 e2e 接管，就该把它删掉。
+        for (name, why) in MANUAL {
+            assert!(
+                ignored.iter().any(|(_, n)| n == name),
+                "登记成手动的 `{name}` 已经不是 `#[ignore]` 测试了 —— 删掉这一行。（当初的理由：{why}）"
+            );
+            let (stem, _) = ignored
+                .iter()
+                .find(|(_, n)| n == name)
+                .expect("上面已断言存在");
+            assert!(
+                covered(stem, name).is_none(),
+                "`{name}` 现在**已有 e2e 触发它**了 —— 把它从手动登记表里删掉。（当初的理由：{why}）"
+            );
+        }
+
+        let orphan: Vec<String> = ignored
+            .iter()
+            .filter(|(_, n)| !MANUAL.iter().any(|(m, _)| m == n))
+            .filter(|(s, n)| covered(s, n).is_none())
+            .map(|(s, n)| format!("  {s}.rs::{n}"))
+            .collect();
+        assert!(
+            orphan.is_empty(),
+            "这些 `#[ignore]` 测试**没有任何 e2e 脚本会点名它们**：\n{}\n\n\
+             ⚠ 断链的典型走法是**改测试名**：e2e 里的过滤串一个都匹配不上，\n\
+             而 `cargo test` 跑零条测试**退出码是 0** —— 两边都绿，测试其实再没执行过。\n\
+             两条出路：① 把 e2e 里的过滤串改对；② 登记进本条 `MANUAL` 并写清谁在什么时候跑它。",
+            orphan.join("\n")
+        );
+    }
 }
