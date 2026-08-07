@@ -133,6 +133,157 @@ mod tests {
         }
     }
 
+    /// 远端 tmux 命令里**只读**的动词。不在这张表里的一律按「有破坏性」处理。
+    ///
+    /// ⚠ **默认拒绝是本条的全部要点**：加一个新动词（`respawn-pane` / `kill-pane` /
+    /// `paste-buffer` / `set-option` …）不需要谁想起来把它登记成危险的 ——
+    /// 它天然就落在网里，除非有人**明确**把它写进这张只读表并为此负责。
+    const READ_ONLY_VERBS: &[&str] = &[
+        "ls",
+        "list-sessions",
+        "list-windows",
+        "capture-pane",
+        "display-message",
+        "show-option",
+        "has-session",
+    ];
+
+    /// 走 Gate 的唯一入口（Gate 2 远端半支与被守护的命令拼成**一条原子命令**）。
+    const GATE_BUILDER: &str = "build_guarded_tmux_cmd";
+
+    /// 取 `at` 所在的那个**顶层函数**（名字，函数体）。
+    fn enclosing_fn(src: &str, at: usize) -> (String, String) {
+        let head = &src[..at];
+        let start = [
+            head.rfind("\nfn "),
+            head.rfind("\npub fn "),
+            head.rfind("\npub async fn "),
+            head.rfind("\nasync fn "),
+            head.rfind("\npub(crate) fn "),
+        ]
+        .into_iter()
+        .flatten()
+        .max()
+        .unwrap_or(0);
+        let rest = &src[start..];
+        let end = rest.find("\n}\n").map(|k| k + 3).unwrap_or(rest.len());
+        let body = rest[..end].to_string();
+        let name = body
+            .split_once("fn ")
+            .map(|(_, t)| {
+                t.chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect::<String>()
+            })
+            .unwrap_or_default();
+        (name, body)
+    }
+
+    /// ★ **正题（〔audit-0805 08-06〕新增）**：monitor 侧发出的每一条远端 tmux 命令，
+    /// 要么动词是只读的，要么它所在的函数**走 Gate**。
+    ///
+    /// # 它补的是哪个洞
+    ///
+    /// 本模块原来只看住**两个写死的签名**（[`GUARDED_COMMANDS`]）。
+    /// 实测：往 `tmux.rs` 追加一条
+    /// `pub async fn tmux_respawn_pane(..)`，里面直接 `format!("tmux respawn-pane -k -t {..}")`
+    /// 再 `connect_and_exec_cmd` —— **`respawn-pane -k` 会杀掉 pane 里正在跑的进程**，
+    /// 是彻头彻尾的破坏性操作，而且**完全不经 §34 的任何一道 Gate**。
+    /// 全量 `cargo test --workspace`：**985 条全绿，一条都没响。**
+    ///
+    /// ⇒ 病根还是那一个：**用手写清单描述人群**。看住的是「今天这两个函数」，
+    /// 不是「所有会对远端下命令的地方」。加第三个就出圈，而且没有任何信号。
+    ///
+    /// # 人群与判准（先量后定，量到的都写在这）
+    ///
+    /// 人群 = `tmux.rs` 生产段里每一处 `tmux <动词>` 字符串（今天 7 处 / 5 个动词：
+    /// `ls` · `capture-pane` · `display-message` · `kill-session`×2 · `send-keys`×2）。
+    /// 判准 = 动词 ∈ [`READ_ONLY_VERBS`]，或所在函数含 [`GATE_BUILDER`]。
+    ///
+    /// ⚠ **人群里混了两处错误消息串**（`format!("tmux kill-session: {..}")` 这种）。
+    /// 刻意不去区分「命令串」与「消息串」—— 文本上分不干净，而多算这两处**没有代价**：
+    /// 它们所在的函数本来就走 Gate。真要出问题的形态（**非 Gate 函数里出现破坏性动词**）
+    /// 一次都不会被漏掉。写下来是因为「判据的人群比它自称的略大」也是一种要交代的事。
+    #[test]
+    fn every_remote_tmux_verb_is_either_read_only_or_routed_through_the_gate() {
+        let prod = guard_core::production_code(MONITOR_TMUX);
+        // 「走 Gate 的函数」不是手写的一张表，是**派生 + 求闭包**：
+        // 直接含 `build_guarded_tmux_cmd` 的算；调用了这样一个函数的也算。
+        // （今天就有一层间接：`kill_remote_tmux` → `build_kill_session_cmd` → Gate。
+        //  第一版没求闭包，那两处当场误红 —— 留着这句是因为「判据太严」和「判据太松」
+        //  一样会让人去改错的东西：误红最省事的消法是把动词塞进只读表。）
+        let mut gated: Vec<String> = Vec::new();
+        loop {
+            let before = gated.len();
+            let mut from = 0usize;
+            while let Some(rel) = prod[from..].find(GATE_BUILDER) {
+                let i = from + rel;
+                from = i + GATE_BUILDER.len();
+                let (name, _) = enclosing_fn(&prod, i);
+                if !name.is_empty() && !gated.contains(&name) {
+                    gated.push(name);
+                }
+            }
+            for g in gated.clone() {
+                let mut f2 = 0usize;
+                while let Some(rel) = prod[f2..].find(&g) {
+                    let i = f2 + rel;
+                    f2 = i + g.len();
+                    let (name, _) = enclosing_fn(&prod, i);
+                    if !name.is_empty() && !gated.contains(&name) {
+                        gated.push(name);
+                    }
+                }
+            }
+            if gated.len() == before {
+                break;
+            }
+        }
+        assert!(
+            gated.iter().any(|g| g == GATE_BUILDER),
+            "派生「走 Gate 的函数集」时连 `{GATE_BUILDER}` 自己都没找到 —— 抽取器坏了"
+        );
+        let mut seen_read_only = 0usize;
+        let mut seen_gated = 0usize;
+        let mut bad: Vec<String> = Vec::new();
+        let mut from = 0usize;
+        while let Some(rel) = prod[from..].find("tmux ") {
+            let i = from + rel;
+            from = i + "tmux ".len();
+            let verb: String = prod[from..]
+                .chars()
+                .take_while(|c| c.is_ascii_lowercase() || *c == '-')
+                .collect();
+            if verb.is_empty() {
+                continue;
+            }
+            let (fname, fbody) = enclosing_fn(&prod, i);
+            if READ_ONLY_VERBS.contains(&verb.as_str()) {
+                seen_read_only += 1;
+            } else if gated.iter().any(|g| fbody.contains(g.as_str())) {
+                seen_gated += 1;
+            } else {
+                bad.push(format!("  {fname}() 里的 `tmux {verb}`"));
+            }
+        }
+        // 抽取器自检：两条分支各自都被走到过，否则本条可能是在空转。
+        assert!(
+            seen_read_only >= 2 && seen_gated >= 2,
+            "分类只走到一边（只读 {seen_read_only} / 走 Gate {seen_gated}）—— \
+             抽取器或剥生产段那步坏了，本条此刻量不到东西"
+        );
+        assert!(
+            bad.is_empty(),
+            "有远端 tmux 命令**既不是只读动词、所在函数也不走 Gate**：\n{}\n\
+             §34 的三道门（Gate 1 exact_target · Gate 2 `@ccm_sid` 归属 · Gate 3 `windows==1`）\
+             存在的理由就是「别把破坏性命令发到不属于我们的会话上」。\n\
+             ⚠ **别把动词加进 `READ_ONLY_VERBS` 来消红** —— 那张表只收真正不改变远端状态的动词。\n\
+             正确动作：让这条命令走 `{GATE_BUILDER}`（它把归属检查与命令拼成一条原子命令，\
+             不给「查完再动手」之间留竞态窗口）。",
+            bad.join("\n")
+        );
+    }
+
     /// ★ 抽取器自检 B：daemon `control/` 的**递归**扫描面没缩水。
     ///
     /// 这条就是 F03 补上的那一条 —— 上一版没有它，扫描面从 5 个文件缩到 2 个也不会红。
