@@ -1779,6 +1779,130 @@ mod tests {
     }
     use super::*;
 
+    /// 每个测试独占的临时目录（仓库约定不引 `tempfile`，用 pid + 计数器保唯一）。
+    /// **绝不碰用户真实的 `~/.claude`** —— 全部在 `std::env::temp_dir()` 下。
+    struct TmpDir(PathBuf);
+    static TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    impl TmpDir {
+        fn new() -> Self {
+            let p = std::env::temp_dir().join(format!(
+                "hist-{}-{}",
+                std::process::id(),
+                TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            ));
+            std::fs::create_dir_all(&p).expect("mkdir");
+            TmpDir(p)
+        }
+        fn write(&self, name: &str, body: &str) -> PathBuf {
+            let f = self.0.join(name);
+            std::fs::write(&f, body).expect("write");
+            f
+        }
+    }
+    impl Drop for TmpDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// 一行合法的 user 记录（形状照 `messages.rs` 的黄金样本）。
+    fn user_line(cwd: &str) -> String {
+        format!(
+            r#"{{"type":"user","uuid":"u-1","timestamp":"2026-05-20T01:23:45.678Z","cwd":"{cwd}","message":{{"role":"user","content":"hi"}}}}"#
+        )
+    }
+
+    /// 〔audit-0805 08-06〕**`read_jsonl_values` 的两个无声决定**：剥 BOM · 静默丢弃坏行。
+    ///
+    /// 它全仓出现 2 次、所在文件测试段 0 次（先验：只被一处调用的生产函数）。
+    /// 两个决定都是**成心的**，也都**没人钉**：
+    /// - **剥 BOM**（`trim_start_matches('\u{feff}')`）：Windows 上的文件常带 BOM，
+    ///   不剥就是第一行永远 parse 不了 —— 而它的表现是「历史少一条」，不报错。
+    /// - **坏行静默丢弃**（`if let Ok(v)`）：一条损坏的行不该让整个历史读不出来。
+    ///   这是**刻意的韧性**，但它同时意味着「丢了多少」没人知道 ⇒ 至少要钉住
+    ///   「好行一条不少」，否则哪天连好行一起丢也不会红。
+    #[test]
+    fn read_jsonl_values_strips_bom_and_drops_only_the_broken_lines() {
+        let tmp = TmpDir::new();
+        let body = format!(
+            "\u{feff}{}\n\n   \n{}\n{{ 这行不是 JSON \n{}\n",
+            r#"{"a":1}"#, r#"{"b":2}"#, r#"{"c":3}"#
+        );
+        let f = tmp.write("x.jsonl", &body);
+        // ★ 夹具自检：文件里确实有坏行与空行，否则下面在测别的东西。
+        assert!(
+            body.lines().count() >= 6 && body.contains("这行不是 JSON"),
+            "夹具没造出「坏行 + 空行」的场面"
+        );
+
+        let got = read_jsonl_values(&f).expect("读不该失败 —— 坏行是丢弃不是报错");
+        assert_eq!(
+            got.len(),
+            3,
+            "好行应当一条不少（BOM 那条也算）；实得 {:?}",
+            got
+        );
+        assert_eq!(
+            got[0].get("a").and_then(|v| v.as_i64()),
+            Some(1),
+            "第一行没解析出来 —— BOM 多半没被剥掉"
+        );
+        assert_eq!(got[2].get("c").and_then(|v| v.as_i64()), Some(3));
+    }
+
+    /// 〔audit-0805 08-06〕**`quick_extract_cwd` 只看前 30 行 —— 这个上限此前无声也无判据。**
+    ///
+    /// 它是「列历史项目时快速拿到 cwd」的探针，`take(30)` 是**成本与命中率的折中**：
+    /// 超出 30 行就放弃、返回 `None`（调用方另有兜底）。
+    /// 问题是这个数**没有任何东西读它** —— 改成 3 或改成 300 都不会红，
+    /// 前者让一批会话拿不到 cwd（表现为「项目名不对」，不是报错），后者让列表变慢。
+    /// ⇒ 钉住边界本身：**第 30 行还在窗口内、第 31 行不在**。
+    #[test]
+    fn quick_extract_cwd_stops_after_the_thirtieth_line() {
+        let tmp = TmpDir::new();
+
+        // ① 正路：靠前的 user 记录能拿到 cwd。
+        let f = tmp.write("early.jsonl", &format!("{}\n", user_line("/w/early")));
+        assert_eq!(
+            quick_extract_cwd(&f),
+            Some("/w/early".to_string()),
+            "靠前的记录都拿不到 —— 夹具或解析坏了，下面两条会变成空转"
+        );
+
+        // ② 边界：**正好第 30 行**仍在窗口内。
+        let at30 = format!("{}{}\n", "\n".repeat(29), user_line("/w/at30"));
+        let f30 = tmp.write("at30.jsonl", &at30);
+        assert_eq!(
+            at30.lines().count(),
+            30,
+            "夹具没把记录放在第 30 行，边界这条在测别的位置"
+        );
+        assert_eq!(
+            quick_extract_cwd(&f30),
+            Some("/w/at30".to_string()),
+            "第 30 行被排除了 —— 窗口比 `take(30)` 小"
+        );
+
+        // ③ 边界外：第 31 行拿不到（这正是 `take(30)` 的语义）。
+        let at31 = format!("{}{}\n", "\n".repeat(30), user_line("/w/at31"));
+        let f31 = tmp.write("at31.jsonl", &at31);
+        assert_eq!(at31.lines().count(), 31, "夹具没把记录放在第 31 行");
+        assert_eq!(
+            quick_extract_cwd(&f31),
+            None,
+            "第 31 行也被读了 —— 窗口比 `take(30)` 大，列历史会变慢而没人知道"
+        );
+
+        // ④ 空 cwd 不算命中，要继续往后找。
+        let mixed = format!("{}\n{}\n", user_line(""), user_line("/w/real"));
+        let fm = tmp.write("mixed.jsonl", &mixed);
+        assert_eq!(
+            quick_extract_cwd(&fm),
+            Some("/w/real".to_string()),
+            "空 cwd 被当成了命中 —— 调用方会拿到空串当项目路径"
+        );
+    }
+
     /// Phase 2 F1a-3：Codex 会话按 cwd 分组成合成 HistoryProject（count/max-mtime/name/键/has_live）。
     /// 测试用：把一个 configDir 包成具名账号。
     fn named(d: &str) -> LaunchAccount {
