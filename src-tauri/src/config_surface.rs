@@ -459,7 +459,15 @@ fn row(
                     suffix,
                 } => Some(format!("{}/{prefix}*{suffix}", dir.display())),
                 PathResolution::EitherHost(_) => Some(describe_target(r)),
-                _ => None,
+                // 〔audit-0805 08-06〕**兜底臂换成四条显式臂**（零行为变更）。
+                // 原来是 `_ => None`：新增一种解析形态会**静默显示为空**，
+                // 而这一页是「配置面审计」——「显示为空」与「这一项不存在」
+                // 在界面上长得一模一样，用户读不出区别。
+                // 写成具名臂之后，第 8 个变体会**编译失败**，逼人回答它该显示什么。
+                PathResolution::Remote(_) => None,
+                PathResolution::NeedsProjectDir(_) => None,
+                PathResolution::WindowsProfile => None,
+                PathResolution::NeedsUserConfig { .. } => None,
             };
             (shown, observe(r, fs))
         }
@@ -1521,6 +1529,62 @@ mod tests {
     /// **本模块只准读，不准写**（红线）。守法是**白名单**而不是"不许出现哪些写法"
     /// ——本会话的教训：黑名单版本被审计用五种我没想到的写法绕过，
     /// 而白名单枚举每一处 `fs::` 用法并要求它们**都**在允许集合里，新写法自动被拦。
+    /// ★ **`PathResolution` 的分派不许有兜底臂**〔audit-0805 08-06〕。
+    ///
+    /// # 它钉的是「谁是被偶然守住的」那一类
+    ///
+    /// 本页（配置面审计）把每一项的解析结果渲染给用户。原来那条 match 是
+    /// `_ => None` —— 七个变体里**四个**落进兜底、显示为空，而这在界面上与
+    /// 「这一项不存在」**长得一模一样**：用户读不出区别，判据也不会红。
+    ///
+    /// 已把兜底换成四条具名臂（零行为变更）。⇒ 第 8 个变体会**编译失败**。
+    /// 但「靠编译器」本身是个**没人盯的前提**：谁再加一条 `_`，穷尽性当场消失。
+    /// 本条就钉这一件事，与 `watcher.rs` 那条同型（daemon 侧七路信号分派）。
+    #[test]
+    fn the_path_resolution_dispatch_has_no_catch_all_arm() {
+        // 与隔壁 `this_module_only_reads` 用同一种剥法（按首个 cfg-test 切），
+        // 免得同一文件里出现第二套口径。
+        let src = include_str!("config_surface.rs");
+        let prod = src
+            .split(concat!("#[cfg", "(test)]"))
+            .next()
+            .unwrap_or(src)
+            .to_string();
+        let prod = prod.as_str();
+        let anchor = "PathResolution::Local(p) =>";
+        let at = prod
+            .find(anchor)
+            .expect("找不到解析分派的锚点臂 —— 分派改形了，本条要跟着改");
+        let indent = prod[..at].rfind('\n').map_or(0, |k| at - k - 1);
+        let mut arms: Vec<String> = Vec::new();
+        for line in prod[at - indent..].lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let cur = line.len() - line.trim_start().len();
+            if cur < indent {
+                break;
+            }
+            if cur == indent {
+                let head: String = line.trim_start().chars().take(26).collect();
+                if head.starts_with("PathResolution::") || head.starts_with('_') {
+                    arms.push(head);
+                }
+            }
+        }
+        assert!(
+            arms.len() >= 6,
+            "只抠到 {} 条分派臂（08-06 实测 7）—— 抽取坏了，本条此刻是空转的：{arms:?}",
+            arms.len()
+        );
+        assert!(
+            !arms.iter().any(|a| a.starts_with('_')),
+            "`PathResolution` 的分派里出现了兜底臂：{arms:?}\n\
+             ⚠ 后果不是报错，是**这一项在审计页上显示为空** —— 与「它不存在」看起来一样。\n\
+             新增变体请写成具名臂；确实不显示也请显式写 `=> None` 并加一句为什么。"
+        );
+    }
+
     #[test]
     fn this_module_only_reads() {
         let src = include_str!("config_surface.rs");
