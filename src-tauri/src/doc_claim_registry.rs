@@ -1282,18 +1282,55 @@ mod tests {
              新人照入口文档做会得到一个**少测**的读数，而它长得和全量读数一模一样。\n\
              ⇒ 命令的唯一的家是 `ci.yml`，文档要与它逐字一致（本条不持有第三份副本）。"
         );
-        // ★ 反向：那条会误导的旧写法不许再回来。
+        // ★ 反向，且**扫全 `doc/` 而不只是这一份**〔08-06 第二刀〕。
         //
-        // ⚠ 针**只认代码块里的注释形态**（`--lib` 后跟 `# 全部…`），不是「同一行出现两个词」。
-        // 第一版就是后者，于是它**当场命中了我自己写的那句订正**
-        // （「别用 `cargo test --lib` 当『全部』」）—— F23「更正时引用旧措辞 = 把它复制一份」
-        // 在本仓已是**第三次**（前两次见 F08 下半、F10 §6）。
-        // ⇒ 收紧到真正的缺陷形态：它被当成命令的**自我说明**写在代码块里。
+        // 第一刀只查了 `DEVELOPMENT.md`，而同一条少测命令在 `CONTRIBUTING.md` 里**还有三处**
+        // （删完跑 / 发版前 checklist / 新 IPC 命令后的检查）。
+        // ⇒ 那正是本仓 F07 记过的「**订正手头那一处，不等于订正那句话**」，我又犯一次。
+        //
+        // 判法：**裸的 `cargo test --lib`**（后面既没有过滤串也没有 `--`）在 `doc/` 里一处都不许有。
+        // 带过滤（`cargo test --lib parser`）与带 `--`（`-- --nocapture` / `-- --ignored`）是
+        // 合法的部分跑法，不误伤 —— 建判据当日实测：合法的四处、裸的三处，分得干净。
+        //
+        // ⚠ 顺带记：第一版的针（同一行出现 `--lib` 与「全部」）**当场命中了我自己的订正句**，
+        // 这一版的针（裸命令）**又一次命中它** —— F23「更正时引用旧措辞」在本仓已第四次。
+        // 处置沿用仓里既有的那条：**改写订正句，别让它复现原命令**（已改成「`--lib` 那种跑法不是全量」）。
+        let mut bare: Vec<String> = Vec::new();
+        for p in doc_files() {
+            let name = p
+                .file_name()
+                .expect("doc 文件名")
+                .to_string_lossy()
+                .to_string();
+            let text = std::fs::read_to_string(&p).unwrap_or_default();
+            for (i, l) in text.lines().enumerate() {
+                let Some((_, after)) = l.split_once("cargo test --lib") else {
+                    continue;
+                };
+                let next = after
+                    .trim_start()
+                    .split(|c: char| c.is_whitespace())
+                    .next()
+                    .unwrap_or("");
+                let is_partial = !next.is_empty()
+                    && !next.starts_with('`')
+                    && !next.starts_with('|')
+                    && !next.starts_with('+')
+                    && !next.starts_with('）')
+                    && !next.starts_with(')');
+                if !is_partial {
+                    bare.push(format!("  doc/{name}:{}  {}", i + 1, l.trim()));
+                }
+            }
+        }
         assert!(
-            !dev.lines()
-                .any(|l| l.contains("cargo test --lib") && l.contains("# 全部")),
-            "`doc/DEVELOPMENT.md` 的代码块里又把 `cargo test --lib` 注释成「全部」了 ——\n\
-             那正是 08-06 订正掉的那句：它只覆盖根包，六个共享 crate 一条都不跑。"
+            bare.is_empty(),
+            "`doc/` 里这些地方把**裸的** `cargo test --lib` 当成全量跑法：\n{}\n\n\
+             ⚠ 它只覆盖**根包**，六个共享 crate 一条都不跑，而读数长得和全量一模一样\n\
+             （都是「ok. N passed」）—— 照文档做的人不会察觉自己少测了。\n\
+             ⇒ 换成 `ci.yml` 里那条 `--workspace --exclude …`；\n\
+             真要跑部分，请带过滤串（`cargo test --lib <模块>`）或 `--`（`-- --nocapture`）。",
+            bare.join("\n")
         );
     }
 }

@@ -125,7 +125,7 @@ cargo test --lib profile_installer                   # 单个模块
 cargo test --lib -- --nocapture                      # 看 println! 输出
 ```
 
-> ⚠ **别用 `cargo test --lib` 当「全部」**〔08-06 订正〕：它只覆盖**根包**，
+> ⚠ **`--lib` 那种跑法不是全量**〔08-06 订正〕：它只覆盖**根包**，
 > 六个共享 crate（`guard-core` / `gate-core` / `shell-quote-core` / …）一条都不跑。
 > 上面那条 `--workspace --exclude code-picture-core` 与 `ci.yml` 的 `rust` job **逐字相同**，
 > 由 `doc_claim_registry.rs::the_backend_test_command_in_the_docs_matches_ci` 钉住。

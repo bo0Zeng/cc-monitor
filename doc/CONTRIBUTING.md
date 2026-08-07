@@ -36,7 +36,7 @@ cd .. && grep -rn 'invoke<.*"cc_integration_status"' src/
 grep -rn 'ps-await\|ps-registry' src-tauri/src/ src/
 
 # 6. 删完跑：
-cd src-tauri && cargo check && cargo test --lib
+cd src-tauri && cargo check && cargo test --workspace --exclude code-picture-core
 cd .. && npm run build
 
 # !! cargo check 不能挡 State 漏 manage 的运行时 panic !!
@@ -87,7 +87,7 @@ powershell -NoProfile -File scripts\run.ps1 dev
       > 时是优雅降级，那一档由 `ssh_source.rs::embedded_build_id_single_source_wired` 兜。
       > 详见 [REMOTE-PHASE0-DEPLOY.md § 发版构建](REMOTE-PHASE0-DEPLOY.md#发版构建交叉编译--内嵌-daemon-二进制f08b)。
 - [ ] [CHANGELOG.md](../CHANGELOG.md) 加新版本段（写法见 [RELEASING.md](RELEASING.md)）
-- [ ] `cargo fmt --check + cargo check + cargo test --lib + npm run build` 全绿
+- [ ] `cargo fmt --all --check + cargo check + cargo test --workspace --exclude code-picture-core + npm run build` 全绿
       （`.github/workflows/ci.yml` 第一步就是 `cargo fmt --check` 严格 verify；
       本地写完代码先 `cargo fmt` 一次再发版，避免 tag 推完才发现 CI 红需要补
       style commit 的尴尬。v2.0.0 就踩过这个坑）
@@ -155,7 +155,7 @@ const activeIds = await invoke<string[]>("monitor_get_active_ids");
 ```
 
 5. **检查**：
-- [ ] `cargo check + cargo test --lib`
+- [ ] `cargo check + cargo test --workspace --exclude code-picture-core`
 - [ ] `npm run build` TS 编译过
 - [ ] dev mode 实测命令真的能从前端 invoke 到（State 漏 manage 才能挡住）
 - [ ] [STATE-MATRIX.md § 2](STATE-MATRIX.md) 表已更新
