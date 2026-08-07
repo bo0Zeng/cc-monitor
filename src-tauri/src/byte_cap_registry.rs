@@ -22,6 +22,13 @@
 //! ⇒ 最终形态改成：
 //!
 //! 1. **每一处都说清它管的是什么量、超限怎么办**（新增没登记的就红）；
+//!    ⚠ **08-06 收窄这句话**：它只对**具名常量**成立 —— 扫描面是「名字含 MAX/CAP/LIMIT/BYTES
+//!    且类型是 u64/usize/u32 的 const」。**内联字面量上限整个溜过**。
+//!    实测人群：这样的内联上限全仓只有 **1 处** —— `cc_bus.rs` 的 `stream.take(4096)`
+//!    （查 agent 在线：`tmux has-session … && echo ONLINE || echo OFFLINE`，预期输出 ~7 字节）。
+//!    它是**防御性读上限**（防远端吐出无界输出），超限语义就是「读到上限就停」，
+//!    与本表担心的「用户数据被静默截断」不同族 ⇒ **不收进表**，但也不假装已覆盖。
+//!    人群只有 1 时不值得为它建通用扫描器（那是仪式）—— 由下面的前提触发器盯着它别变成 2。
 //! 2. **同一个量只许有一处权威**，跨 crate 的那几对**靠机检不靠人抄**；
 //! 3. **超限语义不许有「静默」那一种**（F06 上半已经修掉最后一处）。
 //!
@@ -615,6 +622,80 @@ mod tests {
              若真实处置是跳过，**必须同时给它身份**（`warn!` 说清是哪一个），\n\
              才够得上「跳过+说清」那一档。**没有身份的跳过不许登记。**",
             bad.join("\n")
+        );
+    }
+
+    /// 〔audit-0805 08-06〕**前提触发器：内联字面量上限只许有那一处。**
+    ///
+    /// 本表的扫描面只认**具名常量**（见头注）。这不是缺陷，是**范围**——
+    /// 但范围要成立，得有个东西盯着「范围外那一族别长大」。
+    ///
+    /// 实测人群 **1**：`cc_bus.rs` 的 `stream.take(4096)`（防御性读上限，超限即停）。
+    /// 人群是 1 时，为它建通用扫描器是仪式；人群变 2 的那天，这个判断就该重做 ——
+    /// 本条就是那个闹钟。
+    #[test]
+    fn inline_literal_byte_caps_are_still_just_the_one() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut found: Vec<String> = Vec::new();
+        for sub in ["src", "../remote-daemon-proto/src"] {
+            let dir = root.join(sub);
+            if !dir.is_dir() {
+                continue;
+            }
+            for (path, src) in guard_core::scan_tree!(&dir, &["rs"]) {
+                let prod = guard_core::production_code(&src);
+                // 形态：`.take(<字面量>)` 之后跟着 `read_to_end`（即按字节读的上限）。
+                let mut it = prod.match_indices(".take(");
+                while let Some((i, _)) = it.next() {
+                    // ⚠ 两处都是**匹配单位**的坑，第一版各犯一次：
+                    //   ① 不能按字节切（中文注释里会切在多字节字符中间直接 panic）；
+                    //   ② 不能用「120 字符窗口内出现 read_to_end」当判据 —— 那会把
+                    //      **邻近另一行**的读操作算进来（实测抓出三个假阳：`take(32)`/`take(4)`）。
+                    //   ⇒ 要求 `.take(<字面量>)` **紧邻**着 `.read_to_end` / `.read_exact`。
+                    let tail: String = prod[i..].chars().take(120).collect();
+                    let digits: String = tail
+                        .chars()
+                        .skip(6)
+                        .take_while(|c| c.is_ascii_digit())
+                        .collect();
+                    let after: String = tail
+                        .chars()
+                        .skip(6 + digits.chars().count())
+                        .skip_while(|c| *c == ')' || c.is_whitespace())
+                        .take(14)
+                        .collect();
+                    let is_bytes =
+                        after.starts_with(".read_to_end") || after.starts_with(".read_exact");
+                    if is_bytes && !digits.is_empty() {
+                        found.push(format!(
+                            "{}: take({digits})",
+                            path.strip_prefix(root).unwrap_or(&path).to_string_lossy()
+                        ));
+                    }
+                }
+            }
+        }
+        // 诊断按方向分开写 —— 「变多」与「变没」要采取的动作完全不同，
+        // 一句通用的「处数变了」会让人看着诊断还得再想一遍。
+        assert!(
+            !found.is_empty(),
+            "内联字面量字节上限现在**一处都没有**了。\n\
+             多半是那处已改成具名常量 —— **那是好事**：它会自然进本表的主扫描面。\n\
+             ⇒ 请**删掉本条**（它的全部意义是盯着范围外那一族），并确认新常量已在主表登记。"
+        );
+        assert_eq!(
+            found.len(),
+            1,
+            "内联字面量字节上限**变多了**（实得 {found:?}）。\n\n\
+             ⚠ 本表的扫描面**只认具名常量**，这一族在范围外。人群是 1 时不建扫描器（那是仪式）；\n\
+             变成 2 就说明它在长大 —— 请重做那个判断：要么把这一族也纳入扫描面，\n\
+             要么把新增那处改成具名常量（那样它自然进表）。"
+        );
+        assert!(
+            found[0].contains("cc_bus.rs"),
+            "那唯一一处不再是 `cc_bus.rs` 了（现在是 {}）—— 换了地方就换了语境，\n\
+             请重新判断它的超限语义是不是仍然「读到上限就停」这种无害形态。",
+            found[0]
         );
     }
 }
