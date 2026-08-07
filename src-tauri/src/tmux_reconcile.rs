@@ -30,6 +30,9 @@ pub const RETIRE_MISS_THRESHOLD: u32 = 2;
 /// ★ 承重下限：threshold **必须 ≥ 2**——`/branch` 漂移有 ~1s 竞态窗（daemon 退旧 sid A 晚一拍：
 /// 某轮 A 仍在 `announced_live` 但 backend 已是新 sid B）。threshold=1 会在这单轮把还活着、只是
 /// 换了 sid 的会话 A 误 retire。真机标定绝不能调到 1——编译期兜死（改小于 2 直接编译失败）。
+// ★〔audit-0805 08-06 复核〕**「编译期兜死」这句话已实测验过**（此前只是断言）：
+// 把上面的常量改成 1 ⇒ `cargo build` 失败，逐字
+// `error[E0080]: evaluation panicked: assertion failed: RETIRE_MISS_THRESHOLD >= 2`。
 const _: () = assert!(RETIRE_MISS_THRESHOLD >= 2);
 // B2 起：对账读 daemon 帧推来的 in-memory tmux 状态（`snapshot_tmux_by_origin`），不再 SSH——
 // 故去掉原 `LIST_TIMEOUT`（SSH 超时保护已无对象）。
