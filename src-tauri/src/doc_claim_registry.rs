@@ -526,8 +526,9 @@ mod tests {
     /// 就要求 `foo` 的声明**出现在 `a.rs` 里** —— 只对符号名会放过「搬到别的文件」，
     /// 而搬家恰恰是本仓重构的常见形态。
     ///
-    /// ⚠ 抽取器摘除调用者自己（`scan_tree!` 按构造如此）⇒ 只在 `doc/` 引用本文件里的符号时
-    /// 才会误红，而 `doc/` 引用一个测试登记表本身就说明有别的问题。
+    /// ⚠ ~~抽取器摘除调用者自己（`scan_tree!` 按构造如此）⇒ 只在 `doc/` 引用本文件里的符号时
+    /// 才会误红~~ —— **08-06 当天就误红了一次**（`DEVELOPMENT.md` 指向本文件里的一条判据）。
+    /// 现在本文件自己也进扫描面（见下方 `srcs.push`）。**「只在极少数情况下会错」不是边界，是欠账。**
     #[test]
     fn every_code_symbol_named_in_the_docs_still_resolves() {
         /// 例外表：**每条都写清「为什么它解析不到却是对的」**。
@@ -560,6 +561,16 @@ mod tests {
         ] {
             srcs.extend(guard_core::scan_tree!(&repo_root().join(root), &["rs"]));
         }
+        // 〔08-06 第二次补扫描面〕**把本文件自己也收进来**。
+        // `scan_tree!` 按构造摘除调用者（那是 F23「判据读到自己」的防护），
+        // 但这里收的是**声明**不是语料 —— 摘掉自己会让「`doc/` 指向本文件里的符号」被误判成腐。
+        // ⚠ 这不是假设：头注原本写着「只在这种情况下才会误红」，而 08-06 当天就发生了
+        // （`DEVELOPMENT.md` 指向本文件的 `the_backend_test_command_in_the_docs_matches_ci`）。
+        // ⇒ 把「已知的例外」变成「已修的缺陷」，头注那句警告随之删掉。
+        srcs.push((
+            PathBuf::from("doc_claim_registry.rs"),
+            include_str!("doc_claim_registry.rs").to_string(),
+        ));
         // `build.rs` 是单文件、不在任何被扫的目录下 —— 第一版就漏了它，
         // 于是 `build.rs::emit_daemon_build_id` 被当成「腐了」。**抽取器的扫描面要自己说清楚。**
         let br = repo_root().join("src-tauri/build.rs");
@@ -1215,6 +1226,74 @@ mod tests {
              08-06 实测：那张表当时只有 `run.ps1`，于是照它找不到 `verify-committed-state.sh`，\n\
              而那是全仓**唯一量「提交状态」且必须在本机跑**的门。\n\
              ⇒ 加一行就行；细节写在脚本自己的头注里，别在 README 里抄第二份。"
+        );
+    }
+
+    /// 〔audit-0805 08-06〕**开发者入口文档里的后端测试命令，必须与 `ci.yml` 逐字相同。**
+    ///
+    /// # 逮到的是「照它做会少测」
+    ///
+    /// `doc/DEVELOPMENT.md` 的「跑测试」节此前逐字写着
+    /// `cargo test --lib          # 全部单元测试` —— 而 `--lib` **只覆盖根包**，
+    /// 六个共享 crate 一条都不跑。新人照入口文档做，得到的是一个**少测**的读数，
+    /// 而它长得和全量读数一模一样（都是「ok. N passed」）。
+    ///
+    /// 这一条属于本会话新命名的那类缺陷：**产物没错，通往它的路是错的**
+    /// —— 没有任何测试会因为文档里写错命令而变红。
+    ///
+    /// # 手法：不在判据里写那个命令
+    ///
+    /// 命令的**唯一的家是 `ci.yml`**。本条从两边各抽一次再比 ——
+    /// 于是改 CI 而不改文档会红，改文档而不改 CI 也会红，
+    /// 而判据自己**不持有第三份副本**（`STATUS_CELLS` 那次的教训，见本模块头注）。
+    #[test]
+    fn the_backend_test_command_in_the_docs_matches_ci() {
+        let ci = std::fs::read_to_string(repo_root().join(".github/workflows/ci.yml"))
+            .expect("读不到 ci.yml");
+        // `rust` job 里那条 `cargo test …` —— 剔注释，只认真会跑的行。
+        let cmd = ci
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.starts_with('#'))
+            .find_map(|l| l.strip_prefix("run: "))
+            .into_iter()
+            .chain(
+                ci.lines()
+                    .map(str::trim)
+                    .filter(|l| !l.starts_with('#'))
+                    .filter_map(|l| l.strip_prefix("run: ")),
+            )
+            .find(|c| c.starts_with("cargo test --workspace"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "`ci.yml` 里找不到 `cargo test --workspace …` 那一步 —— \n\
+                     命令的家变了，本条的读法要跟着改（否则它会零命中地绿）。"
+                )
+            })
+            .to_string();
+
+        let dev = std::fs::read_to_string(repo_root().join("doc/DEVELOPMENT.md"))
+            .expect("读不到 doc/DEVELOPMENT.md");
+        assert!(
+            dev.lines().any(|l| l.contains(cmd.as_str())),
+            "`doc/DEVELOPMENT.md` 的「跑测试」节里没有 CI 那条命令：\n  {cmd}\n\n\
+             ⚠ 它此前写的是 `cargo test --lib` 并标成「全部单元测试」——\n\
+             而 `--lib` **只覆盖根包**，六个共享 crate 一条都不跑。\n\
+             新人照入口文档做会得到一个**少测**的读数，而它长得和全量读数一模一样。\n\
+             ⇒ 命令的唯一的家是 `ci.yml`，文档要与它逐字一致（本条不持有第三份副本）。"
+        );
+        // ★ 反向：那条会误导的旧写法不许再回来。
+        //
+        // ⚠ 针**只认代码块里的注释形态**（`--lib` 后跟 `# 全部…`），不是「同一行出现两个词」。
+        // 第一版就是后者，于是它**当场命中了我自己写的那句订正**
+        // （「别用 `cargo test --lib` 当『全部』」）—— F23「更正时引用旧措辞 = 把它复制一份」
+        // 在本仓已是**第三次**（前两次见 F08 下半、F10 §6）。
+        // ⇒ 收紧到真正的缺陷形态：它被当成命令的**自我说明**写在代码块里。
+        assert!(
+            !dev.lines()
+                .any(|l| l.contains("cargo test --lib") && l.contains("# 全部")),
+            "`doc/DEVELOPMENT.md` 的代码块里又把 `cargo test --lib` 注释成「全部」了 ——\n\
+             那正是 08-06 订正掉的那句：它只覆盖根包，六个共享 crate 一条都不跑。"
         );
     }
 }
