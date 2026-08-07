@@ -20,11 +20,18 @@
 //!
 //! # 它查什么、查不了什么
 //!
-//! 查的是「`'\''` 这个 POSIX 逃逸序列出现在几个**生产**文件里」。
+//! 查的是「POSIX 逃逸序列出现在几个**生产**文件里」。
 //! `shell-quote-core` 是唯一允许的那个；其余文件出现即红。
 //!
-//! ⚠ **查不了「换个写法的等价实现」**（比如手写 char 循环而不用 `replace`）——
-//! 那属于「换个名字继续错」，与本仓其它约定型守卫同一档。**比没有强，别读成证明。**
+//! ⚠ **08-06 订正：此前只查 `'\''` 一种写法。** POSIX 在单引号串里嵌单引号
+//! **恰好有两种**做法（`'\''` 与 `'"'"'`），两种都正确、都常见，
+//! 而用第二种写出来的**功能完整的第二份实现**当时四条判据全绿（实测）。
+//! ⇒ 「只许有一个实现」这条纪律，此前只对一半的写法成立。两种现在都在人群里。
+//!
+//! ⚠ **仍查不了**「连字面量都不出现的等价实现」（例如按字节码拼出那个序列）。
+//! 与本仓其它约定型守卫同一档。**比没有强，别读成证明。**
+//! ⚠ 也**不查 PowerShell 的 `''` 转义**（`launch.rs::ps_quote`）—— 那是另一门语言的正确写法，
+//! 不属本条管辖。摸底时差点把它算进来，见 `ESCAPE_ALT_RAW` 头注记的那次弯路。
 
 #[cfg(test)]
 mod tests {
@@ -35,6 +42,27 @@ mod tests {
     /// raw string `r"'\''"` 与普通串 `"'\\''"`。
     const ESCAPE_RAW: &str = r#"r"'\''""#;
     const ESCAPE_PLAIN: &str = r#""'\\''""#;
+
+    /// 〔audit-0805 08-06〕**同一件事的第二种标准写法**：`'"'"'`。
+    ///
+    /// # 为什么它必须在人群里
+    ///
+    /// POSIX shell 里「在单引号串中间嵌一个单引号」**恰好只有两种**做法：
+    /// 闭合后用反斜杠转义（`'\''`），或闭合后用双引号包一个单引号（`'"'"'`）。
+    /// 两种都正确、都常见。本守卫原来只认第一种 ——
+    /// 实测：往 `ssh_source.rs` 加一份
+    /// `format!("'{}'", s.replace('\'', "'\"'\"'"))`（**功能完整的第二份实现**），
+    /// 四条判据**全绿**；换成第一种写法则当场红。
+    ///
+    /// ⇒ 「只许有一个实现」这条纪律，此前只对**一半的写法**成立。
+    /// 人群边界该由**域**给定（POSIX 就这两种），不是由写判据那天想起来的那一种给定。
+    ///
+    /// ⚠ 走过一次弯路，记下来：我先想按「动作」派生人群（凡是替换单引号字符的都算）。
+    /// 量了之后否掉 —— 它**够不着唯一的家**（那里是逐 char `push_str`，根本没有 `replace`），
+    /// 却会**误伤 `launch.rs::ps_quote`**（PowerShell 的 `''` 转义，是另一门语言的正确写法）。
+    /// **派生不是万能的：派生错了人群，比手写清单更糟，因为它看起来更有原则。**
+    const ESCAPE_ALT_RAW: &str = r#"'"'"'"#;
+    const ESCAPE_ALT_PLAIN: &str = r#"'\"'\"'"#;
 
     /// 唯一允许持有这个实现的文件（相对仓根）。
     const SOLE_HOME: &str = "src-tauri/crates/shell-quote-core/src/lib.rs";
@@ -104,7 +132,11 @@ mod tests {
                 continue;
             }
             let src = guard_core::production_code(&fs::read_to_string(&f).unwrap_or_default());
-            if src.contains(ESCAPE_RAW) || src.contains(ESCAPE_PLAIN) {
+            if src.contains(ESCAPE_RAW)
+                || src.contains(ESCAPE_PLAIN)
+                || src.contains(ESCAPE_ALT_RAW)
+                || src.contains(ESCAPE_ALT_PLAIN)
+            {
                 offenders.push(rel);
             }
         }
