@@ -150,6 +150,11 @@ mod tests {
         //    `--list-projects` / `--list-sessions` / `--read-session*` 这几条**改了也不会让指纹变**。
         //    也就是说 E77 的正题（「加了子命令就必须 bump」）对其中 5 条**本来就不成立**。
         //
+        // 〔audit-0805 08-06 复核〕**这个前提已被实测验过，不再只是断言**：
+        // 把一条子命令的 token 字面量搬到 `DISPATCH_FILES` 之外（`wire.rs`）再分派，
+        // `protocol_doc_guard::dispatch_registry_is_complete` **当场红** ——
+        // 因为「哪些文件参与分派」那一层是**派生**的，不是手写清单。
+        // ⚠ 边界：token 连 `"--` 字面量都不出现（`concat!` 拼）时全绿，已登记（见那边头注）。
         // `SUBCOMMANDS` 是那一面的权威登记表，而且**有人守着它别漏**：
         // `argv_table_guard::every_dispatched_token_is_classified` 要求每个被分派的 token
         // 都在 `SUBCOMMANDS` / `SUBCOMMAND_OPTIONS` / `STREAM_FLAGS` 三张表之一里。
