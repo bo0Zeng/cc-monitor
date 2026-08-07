@@ -60,7 +60,7 @@ jobs:
       - name: cargo test（整个 workspace，vendor 除外）
         run: cargo test --workspace --exclude code-picture-core
 
-      # C05（rust-ts-boundary）：**生成物必须最新**。上一步的 `cargo test --all` 会跑
+      # C05（rust-ts-boundary）：**生成物必须最新**。上一步的 `cargo test --workspace` 会跑
       # `ts-rs` 的导出测试、把 `src/generated/**` 重新写一遍；这里断言它与已提交的版本一致。
       #
       # **为什么这一半在这个 job、另一半在 frontend job**：这个性质要

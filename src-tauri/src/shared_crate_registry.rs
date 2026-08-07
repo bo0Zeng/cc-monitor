@@ -893,4 +893,58 @@ mod tests {
              （当初的实测：12 个 error 全是 `tree-sitter-*` 的 `cc-rs: lib.exe`，我们自己的代码零 error。）"
         );
     }
+
+    /// 〔audit-0805 08-06〕**三条诚实边界压在同一个前提上：「CI 今天不会跑」——把这个前提钉住。**
+    ///
+    /// `ROADMAP §5` 的 3w（release.yml 的版本 guard 不触发）· 3x（七条 `#[ignore]` 执行次数为零）·
+    /// 3y（monitor 的 Windows 面没有编译信号），**三条的成立都只因为一件事**：
+    /// 两个 workflow 都只在 `push` / `pull_request` 上触发，而〔用 08-05〕裁定不再 push。
+    ///
+    /// 这个前提**没人盯**。谁加一个 `workflow_dispatch`（手点就能跑）或 `schedule`（定时跑），
+    /// 三条边界当天就该重判 —— 而在本条之前，它们会**继续以「已登记的诚实边界」的样子留在表里**，
+    /// 那正是本会话反复量到的**停滞式腐坏**：世界变了、文本一个字没动。
+    ///
+    /// ⚠ 本条**不断言 CI 应该怎么触发**（那是〔用〕的裁决）。它只断言
+    /// 「触发方式没变过」——变了就红，逼人回来把那三条边界重新过一遍。
+    #[test]
+    fn the_premise_behind_three_honesty_boundaries_still_holds() {
+        /// 会让 workflow **在没有 push 的情况下也能跑起来**的触发器。
+        const SELF_STARTING: &[&str] = &["workflow_dispatch", "schedule", "repository_dispatch"];
+
+        let root = root().parent().expect("仓根").to_path_buf();
+        for wf in ["ci.yml", "release.yml"] {
+            let text = std::fs::read_to_string(root.join(".github/workflows").join(wf))
+                .unwrap_or_else(|e| panic!("读不到 {wf}: {e}"));
+            // 只看 `on:` 到 `jobs:` 之间那一段，且剔注释 —— 别把说明文字当触发器。
+            let at = text.find("\non:").map(|i| i + 1).unwrap_or_else(|| {
+                panic!("{wf} 里找不到顶层 `on:` —— 触发面的读法坏了，本条会零命中地绿")
+            });
+            let end = text[at..]
+                .find("\njobs:")
+                .map(|k| at + k)
+                .unwrap_or(text.len());
+            let seg: String = text[at..end]
+                .lines()
+                .filter(|l| !l.trim_start().starts_with('#'))
+                .collect::<Vec<_>>()
+                .join("\n");
+            // ★ 抽取器自检：这一段里至少要有 `push:`，否则说明切错了地方。
+            assert!(
+                seg.lines().any(|l| l.trim() == "push:"),
+                "{wf} 的 `on:` 段里连 `push:` 都没有 —— 段界切错了（切到 {} 字节）",
+                seg.len()
+            );
+            for trig in SELF_STARTING {
+                assert!(
+                    !seg.lines().any(|l| l.trim().starts_with(trig)),
+                    "{wf} 新增了 `{trig}` 触发器 —— **CI 从此可以在没有 push 的情况下跑起来**。\n\
+                     ⇒ `ROADMAP §5` 的 3w / 3x / 3y 三条诚实边界的**前提当场消失**，必须重判：\n\
+                     · 3w：release.yml 的版本一致性 guard 又会跑了；\n\
+                     · 3x：七条 `#[ignore]` 的 e2e 触发路重新接通；\n\
+                     · 3y：monitor 的 Windows 面重新有编译信号。\n\
+                     本条不反对加触发器 —— 它只是不许**加了而没人回来改那三条**。"
+                );
+            }
+        }
+    }
 }
