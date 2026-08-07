@@ -36,6 +36,23 @@
 //! **允许什么**：`false`（保守方向，如 `send_sigusr1` —— 发不出去当没发，调用方本就容忍）·
 //! `None`（「不知道」的正确表达）· `unimplemented!()` / `todo!()`（大声说没做）。
 //!
+//! # 为什么它是黑名单，而本仓的原则偏好白名单〔08-06 实测答复〕
+//!
+//! `structural_scan.rs` 头注写着本仓的偏好：**结构性扫描天然是白名单** ——
+//! 枚举每一处出现、要求它们都满足好性质，新增的自动被纳入；黑名单则要求
+//! 「预先想全所有坏写法」，审计曾用五种没想到的写法绕过 B04 那条守卫。
+//! 按这条原则，本守卫（列坏值：`true` / `Some(..)` / `Ok(..)`）**看起来该改成白名单**。
+//!
+//! 08-06 量了一次：**改不了，因为人群不同质。** `platform/` 的 `#[cfg(平台)]` 块混着两类 ——
+//! 一类是**诚实空壳**（`proc.rs` 的 `None` 与多行 `unimplemented!(…)`、`signal.rs` 的 `false`），
+//! 另一类是**真正的平台实现**（`paths.rs` 的 `p.to_path_buf()` / `PathBuf::from(...)`）。
+//! 白名单「块的值必须是 `false`/`None`/`unimplemented!()`」会把后者一律误红。
+//!
+//! ⇒ 结论不是「原则错了」，是**它有前提：枚举式白名单要求被枚举的人群同质**。
+//! 这里不同质，所以黑名单是对的选择，代价（列不全）如实记在下面。
+//! 那个前提由 `the_platform_blocks_are_still_a_mixed_population` 盯着：
+//! 哪天这些块只剩诚实空壳一类，白名单就做得成了，那时回来改。
+//!
 //! **它挡不住什么**（如实登记，别再宣称完备 —— U3 在 `layering_guard` 上栽过这一次）：
 //! - **等价改写绕得过**：`!false` / `1 == 1` / 任何恒真表达式。08-06 实测确认
 //!   （把 `signal.rs` 的 `false` 改成 `!false`，全绿）。这条**刻意不追** ——
@@ -237,6 +254,80 @@ mod tests {
              · `unimplemented!()` / `todo!()`（大声说没做，且给后来人一个编译器帮忙找的落点）\n\
              `pid_alive` 曾经就是这里的 `true`，它让会话永不归档且毫无信号，在仓里活了很久。",
             bad.join("\n  ")
+        );
+    }
+
+    /// 〔audit-0805 08-06〕**前提触发器：`platform/` 的 cfg 块仍是混合人群。**
+    ///
+    /// 本守卫用黑名单而不是本仓偏好的白名单，理由只有一个：被枚举的人群不同质
+    /// （诚实空壳 + 真正的平台实现混在一起，见头注）。这条盯着那个理由。
+    ///
+    /// ⚠ 它**自带一份取尾逻辑**，不复用上面那条的 —— 因为两者要的东西不同：
+    /// 上面那条只看「块的值是不是 `Some(..)`/`Ok(..)`」，最后一行足够；
+    /// 本条要**分类**，而诚实空壳里有**多行宏**（`unimplemented!(` 换行 `"…"` 换行 `)`），
+    /// 只看最后一行会拿到收尾的 `)` 并把它误判成「真实现」——
+    /// 第一版就是这么写的，实测**永远不会红**（把两处真实现换成空壳它照样绿）。
+    #[test]
+    fn the_platform_blocks_are_still_a_mixed_population() {
+        /// 「这个平台上答不上来」的诚实表达。
+        fn is_honest_stub(tail: &str) -> bool {
+            tail == "false"
+                || tail == "None"
+                || tail.starts_with("unimplemented!")
+                || tail.starts_with("todo!")
+        }
+        let mut stub = 0usize;
+        let mut real = 0usize;
+        for (_, code) in platform_sources() {
+            for cfg in FALLBACK_CFGS {
+                let mut from = 0usize;
+                while let Some(rel) = code[from..].find(cfg) {
+                    let i = from + rel;
+                    if let Some(body) = block_after(code.as_str(), i + cfg.len()) {
+                        // 分三类，前两类都不算「真实现」：
+                        // ① **item 声明**（`mod fallback;` / `pub(crate) use …`）—— 没有块体，
+                        //    `block_after` 返回的是声明本身。不算。
+                        // ② **诚实空壳** —— `false` / `None`，或块体里出现 `unimplemented!(` / `todo!(`。
+                        //    ⚠ 宏要**看整个块体**而不是最后一行：`proc.rs` 那处是多行宏，
+                        //    回溯只会拿到宏里的**消息字符串**（第一版就这么把它误判成「真实现」，
+                        //    于是本条永远不会红 —— 变异实测确认过）。
+                        // ③ 其余 = 真正的平台实现。
+                        let is_item = !body.trim_start().starts_with('{');
+                        let has_macro = body.contains("unimplemented!(") || body.contains("todo!(");
+                        let last = body
+                            .lines()
+                            .map(str::trim)
+                            .filter(|l| {
+                                !l.is_empty() && !l.starts_with("//") && *l != "{" && *l != "}"
+                            })
+                            .next_back()
+                            .unwrap_or("")
+                            .trim_end_matches([';', '}'])
+                            .trim();
+                        if is_item {
+                            // 不计入任何一类
+                        } else if has_macro || last == "false" || last == "None" {
+                            stub += 1;
+                        } else {
+                            real += 1;
+                        }
+                    }
+                    from = i + cfg.len();
+                }
+            }
+        }
+        // ★ 自检：两类都数不到就是取块坏了，下面的判断没有意义。
+        assert!(
+            stub + real >= 4,
+            "只从 `platform/` 取到 {} 个有值的 cfg 块 —— 取块坏了（08-06 实测：空壳 6 + 实现 2 = 8）",
+            stub + real
+        );
+        assert!(
+            real > 0,
+            "`platform/` 的 cfg 块**只剩诚实空壳一类了**（空壳 {stub} · 实现 {real}）。\n\
+             ⇒ 人群变同质了，本守卫可以从**黑名单**（列坏值）改成本仓偏好的**白名单**\n\
+             （枚举每个块、要求它的值是 `false`/`None`/`unimplemented!()` 之一）——\n\
+             那样「等价改写绕得过」那个洞会一起消失。请回来改，并删掉本条。"
         );
     }
 }
