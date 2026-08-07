@@ -70,8 +70,17 @@ mod tests {
         //   而我们没有一个能证明「某个 p1v 二进制到底带不带通道面」的可靠办法
         //   （本机那份实测是空的，但那只是本机那一份）。造一行假历史比缺一行更坏。
         (
+        // ★ U-2（08-06）：**指纹的 CLI 那半换了抽取口径 —— 子命令集本身一条没动。**
+        //
+        // 旧口径从 `main.rs` 里 scrape `Some("--`，只抠到 **9** 条；
+        // 新口径直接读权威登记表 `crate::SUBCOMMANDS`，是 **14** 条。
+        // 差的 5 条（`--list-projects` / `--list-sessions` / `--read-session{,-from-offset,-tail}`）
+        // 分别是 07-03 与 08-02 进表的，**都早于 p1w（08-05）** ——
+        // 即：报 p1w/p1x 的二进制本来就带着它们，本行改的是**量法**，不是历史。
+        // ⇒ 因此**不 bump `BUILD_ID`**：没有「已部署的远端缺这些能力」这笔欠账，
+        //   而无谓的 bump 会让所有远端被判 stale、白重装一轮（那是 F02 那次才该付的代价）。
             "p1w-inbound-in-fingerprint",
-            "--account-trust\n--account-trust-zero\n--fork-session\n--list-accounts\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
+            "--account-trust\n--account-trust-zero\n--fork-session\n--list-accounts\n--list-projects\n--list-sessions\n--read-session\n--read-session-from-offset\n--read-session-tail\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
     ];
 
@@ -132,19 +141,26 @@ mod tests {
         // 反向自检之二：**测试段真的剥掉了**。旧的 `len` 自检光靠剥注释就满足，
         // 与测试段有没有剥掉毫无关系 —— 那正是本护栏扫了几个月测试代码没人发现的原因。
         assert_no_test_code("build_id_guard/main.rs", &prod);
-        let needle = format!("{}(\"--", "Some");
-        let mut subs: Vec<&str> = Vec::new();
-        for (i, _) in prod.match_indices(needle.as_str()) {
-            let rest = &prod[i + needle.len() - 2..]; // 回退到 `--`
-            if let Some(end) = rest[2..].find('"') {
-                subs.push(&rest[..end + 2]);
-            }
-        }
+        // 〔audit-0805 08-06〕**改用权威登记表 `SUBCOMMANDS`，不再自己抠 `Some("--`。**
+        //
+        // 原来那种抠法有两个洞，都是实测出来的：
+        // ① **只认一种写法**：把新子命令写成 `Some(x) if x == "--foo" =>`，指纹不变
+        //    （本条全绿；逮住它的是隔壁 `argv_table_guard` 与 `protocol_doc_guard`）；
+        // ② **更要命的一条**：那种抠法今天只抠到 **9** 条，而 `SUBCOMMANDS` 登记着 **14** ——
+        //    `--list-projects` / `--list-sessions` / `--read-session*` 这几条**改了也不会让指纹变**。
+        //    也就是说 E77 的正题（「加了子命令就必须 bump」）对其中 5 条**本来就不成立**。
+        //
+        // `SUBCOMMANDS` 是那一面的权威登记表，而且**有人守着它别漏**：
+        // `argv_table_guard::every_dispatched_token_is_classified` 要求每个被分派的 token
+        // 都在 `SUBCOMMANDS` / `SUBCOMMAND_OPTIONS` / `STREAM_FLAGS` 三张表之一里。
+        // ⇒ 新子命令必须先进那张表，才轮得到本条 —— 「漏一条」这件事从此有两道门。
+        let mut subs: Vec<String> = crate::SUBCOMMANDS.iter().map(|s| s.to_string()).collect();
         subs.sort_unstable();
         subs.dedup();
+        // 反向自检：登记表被掏瘪 ⇒ 指纹退化，本护栏静默失效。
         assert!(
-            subs.len() >= 5,
-            "只抠到 {} 个子命令（{subs:?}）—— 抠法坏了",
+            subs.len() >= 10,
+            "从 `SUBCOMMANDS` 只拿到 {} 条子命令 —— 登记表被掏了（08-06 实测 14 条）：{subs:?}",
             subs.len()
         );
         // ── 第二个命令面：常驻通道命令（`inbound::COMMANDS` 是它的单一真相源）──────
