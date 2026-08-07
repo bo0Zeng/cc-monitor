@@ -639,14 +639,20 @@ mod tests {
         const MANUAL: &[(&str, &str)] = &[
             (
                 "test:f40",
-                "需 Xvfb 上跑着 `npx tauri dev`（真 WebView）⇒ 结构上进不了 CI。\
-                 `doc/RELEASING.md § 1` 已把它列进发版手测清单",
+                "需 Xvfb 上跑着 `npx tauri dev`（真 WebView）⇒ 结构上进不了 CI；\
+                 `doc/RELEASING.md § 1` 已把它列进发版手测清单。\
+                 ★ **08-06 实测补一条更硬的理由**：它 `PROJ_DIR=\"$HOME/.claude/projects/-tmp-e2e-fork\"`、\
+                 `PIDFILE=\"$HOME/.claude/sessions/…\"` —— **固有地往 `~/.claude/` 写**，\
+                 而本区红线是「`~/.claude/` 只读」⇒ **本机绝不能跑它，带不带 tmux 桩都不行**。\
+                 （实测那次它建了 fixture 目录、随后被自己的 trap 清掉，无残留；但那一瞬是真写。）",
             ),
             (
                 "test:graylight",
                 "同 f40 契约（脚本头注逐字「前置同 e2e/f40-suite.sh」）⇒ 同样进不了 CI。\
                  ⚠ 但**发版清单里此前没有它** —— 这条例外就是那笔欠账的落点：\
-                 谁要删这条例外，得先说清楚它改由谁来跑",
+                 谁要删这条例外，得先说清楚它改由谁来跑。\
+                 ★ 08-06 实测：带 tmux 桩跑，**第一次碰 tmux 就被拒（exit 99）** ⇒ 它要真 tmux；\
+                 但它的 claude_dir 在 `/tmp` 下，**不碰 `~/.claude/`**（与 f40 的红线情形不同）",
             ),
         ];
 
@@ -708,6 +714,21 @@ mod tests {
                 !run_by_ci(name, cmd),
                 "`{name}` 现在**CI 会跑了** —— 把它从手测登记表里删掉。\n\
                  （当初的理由：{why}）"
+            );
+        }
+
+        // ★ 前提触发器〔08-06〕：f40 那条例外的**硬理由**是「它往 `~/.claude/` 写」。
+        // 哪天它改用临时目录，这条理由就消失、它可能变成本机跑得动的 —— 必须回来重判。
+        {
+            let f40 =
+                std::fs::read_to_string(root().parent().expect("仓根").join("e2e/f40-suite.sh"))
+                    .expect("读不到 e2e/f40-suite.sh");
+            assert!(
+                f40.lines()
+                    .any(|l| !l.trim_start().starts_with('#') && l.contains("$HOME/.claude/")),
+                "`e2e/f40-suite.sh` 不再往 `$HOME/.claude/` 写了 —— \n\
+                 那么「它撞红线所以本机绝不能跑」这个理由就没了，请重新判它能不能进本地门禁\n\
+                 （另一半理由「需 Xvfb + 跑着的 tauri dev」要单独核，别一起默认还成立）。"
             );
         }
 
