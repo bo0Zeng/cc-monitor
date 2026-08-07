@@ -691,4 +691,168 @@ mod tests {
             bad.join("\n")
         );
     }
+
+    /// 〔audit-0805 08-06〕**`doc/` 里点名的仓内文件路径必须解析得到。**
+    ///
+    /// 与上一条（`file.rs::symbol`）同族、更宽一档：符号那条只看得见 `.rs`，
+    /// 而 `doc/` 里点名的还有 `.ts` / `.sh` / `.mjs` / `.json` / `.yml`。
+    /// 建判据当天实测 **119 处**带目录的路径引用，逐条核完**真腐 1 处**：
+    /// `INVARIANTS.md` 里的 `remote-daemon-proto/src/accounts_query.rs`
+    /// —— 那个文件早已搬进 `observe/`，而**没有任何东西会因此变红**（本条即为此建）。
+    ///
+    /// ⚠ **解析口径用 `git ls-files` 而不是磁盘**：磁盘会把「本机生成、CI 里还不存在」的
+    /// 生成物也算成解析得到（`src-tauri/gen/schemas/**` 就是），那样判据在两个环境里结论不同 ——
+    /// 而**结论随环境变的判据比没有判据更坏**。生成物走例外表，理由写明。
+    ///
+    /// ⚠ 匹配用**后缀**：文档常按「隐含根」写（`control/gate.rs` 指的是
+    /// `remote-daemon-proto/src/control/gate.rs`）。第一版用全路径相等，
+    /// 一口气误报 36 处 —— 又一次**匹配单位比事实小**。
+    #[test]
+    fn every_repo_path_named_in_the_docs_still_resolves() {
+        /// 例外：**解析不到却是对的**。三种形状，每种都在本仓真实出现过。
+        const EXCEPTIONS: &[(&str, &str)] = &[
+            (
+                "src-tauri/gen/schemas/acl-manifests.json",
+                "tauri 构建生成物 + gitignore：磁盘上有、`git ls-files` 里没有，且不同环境有无不定",
+            ),
+            (
+                "shared/ccm-wrapper.sh",
+                "**历史句**：原文逐字写着「取代已删除的 …」——删掉它反而丢掉「今天为什么没有 wrapper」",
+            ),
+            (
+                "src/cards/memory-recall.ts",
+                "**示例占位**：原文是「通常新建 `…`」，教人照着建一个，本就不指向现存文件",
+            ),
+            (
+                "code-picture/doc/agents/claude-code.md",
+                "**跨仓引用**：另一个仓的语料，本仓解析不到是正常的",
+            ),
+            (
+                "agents/claude-code.md",
+                "同上（同一句里的简写形）",
+            ),
+            (
+                "account-ux/MASTERPLAN.md",
+                "**计划工作区**住在 `.claude/planned-build/`（另一个 git 仓）",
+            ),
+            (
+                "unify-launch/MASTERPLAN.md",
+                "同上",
+            ),
+            (
+                ".claude/planned-build/account-isolation/DESIGN-account-switching.md",
+                "同上：计划仓里的设计稿，不在本仓",
+            ),
+            (
+                "/.mcp.json",
+                "指的是**用户项目目录**下的 `.mcp.json`（MCP 项目配置），不是本仓文件",
+            ),
+        ];
+        const EXTS: &[&str] = &["rs", "ts", "sh", "mjs", "json", "yml", "toml", "md", "py"];
+
+        let tracked: Vec<String> = {
+            let out = std::process::Command::new("git")
+                .args(["ls-files"])
+                .current_dir(repo_root())
+                .output()
+                .expect("跑不动 `git ls-files` —— 本判据的解析口径就是它");
+            assert!(out.status.success(), "`git ls-files` 非零退出");
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .map(|s| s.to_string())
+                .collect()
+        };
+        // ★ 自检 1：文件清单太短 ⇒ 口径坏了，下面会把一切都判成「指不到」。
+        assert!(
+            tracked.len() > 300,
+            "`git ls-files` 只列出 {} 个文件 —— 口径坏了（本仓实测上千个）",
+            tracked.len()
+        );
+
+        // ── 抽 `doc/` 里反引号包着、**带目录**的路径
+        let mut refs: Vec<(String, usize, String)> = Vec::new();
+        for p in doc_files() {
+            let fname = p
+                .file_name()
+                .expect("doc 文件名")
+                .to_string_lossy()
+                .to_string();
+            let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读 {p:?} 失败: {e}"));
+            for (i, line) in text.lines().enumerate() {
+                for chunk in line.split('`').skip(1).step_by(2) {
+                    let c = chunk.trim();
+                    if !c.contains('/') || c.contains(' ') || c.contains("::") {
+                        continue;
+                    }
+                    let Some(ext) = c.rsplit('.').next() else {
+                        continue;
+                    };
+                    if !EXTS.contains(&ext) || c.starts_with("http") {
+                        continue;
+                    }
+                    if !c
+                        .chars()
+                        .all(|ch| ch.is_ascii_alphanumeric() || "_./-".contains(ch))
+                    {
+                        continue;
+                    }
+                    refs.push((fname.clone(), i + 1, c.to_string()));
+                }
+            }
+        }
+        // ★ 自检 2：数量地板 **+ 锚点**。
+        //
+        // ⚠ 只有数量地板是**不够**的，这一条是变异当场量出来的：把「带目录才算」那个条件反过来
+        // （于是收的是 `lib.rs` 这类**不带目录**的名字），`refs.len()` 照样过 90 ——
+        // **地板对「收的是不是同一类东西」完全是瞎的**，它只数个数。
+        // 补一个必须在场的锚点，人群换了就当场红。
+        assert!(
+            refs.len() >= 90,
+            "`doc/` 里只抽到 {} 处带目录的路径引用 —— 剥法坏了（建判据当天实测 119 处）",
+            refs.len()
+        );
+        const CANARY: &str = "src/session-backend.ts";
+        assert!(
+            refs.iter().any(|(_, _, c)| c == CANARY),
+            "抽到了 {} 条，但**锚点 `{CANARY}` 不在里面** —— 收的多半不是「带目录的仓内路径」这一类了。\n\
+             （数量地板只数个数，换一群东西照样能喂饱它。）",
+            refs.len()
+        );
+
+        // `doc/` 在仓根下一层 ⇒ 文中的 `../src/README.md` 说的就是仓根的 `src/README.md`。
+        // 不归一化就会把五处**完全正确**的相对写法判成腐 —— 判据误报比漏报更快被人关掉。
+        let resolves = |c: &str| {
+            let c = c.trim_start_matches("../");
+            tracked
+                .iter()
+                .any(|t| t == c || t.ends_with(&format!("/{c}")))
+        };
+
+        // ★ 自检 3：例外表保鲜 —— 例外是欠账不是免检章。
+        for (path, why) in EXCEPTIONS {
+            assert!(
+                refs.iter().any(|(_, _, c)| c == path),
+                "例外表里的 `{path}` 在 `doc/` 里已经没人写了 —— 删掉这一行。（当初的理由：{why}）"
+            );
+            assert!(
+                !resolves(path),
+                "例外 `{path}` 现在**解析得到了** —— 删掉这条例外，别让例外表替真判据挡枪。\n\
+                 （当初的理由：{why}）"
+            );
+        }
+
+        let bad: Vec<String> = refs
+            .iter()
+            .filter(|(_, _, c)| !EXCEPTIONS.iter().any(|(e, _)| e == c))
+            .filter(|(_, _, c)| !resolves(c))
+            .map(|(f, ln, c)| format!("  doc/{f}:{ln}  `{c}`"))
+            .collect();
+        assert!(
+            bad.is_empty(),
+            "`doc/` 点名了这些仓内路径，而 `git ls-files` 里找不到（含后缀匹配）：\n{}\n\n\
+             ⚠ 同 `file.rs::symbol` 那条：**搬家 / 改名 / 删除都让它变假，而此前没有东西会红**。\n\
+             修法（E12）：① 把路径改对；② 若那句只是历史或示例，写清楚并进例外表（带理由）。",
+            bad.join("\n")
+        );
+    }
 }
