@@ -1640,6 +1640,104 @@ fn iso_to_ms(iso: &str) -> i64 {
 #[cfg(test)]
 mod tests {
 
+    /// 〔audit-0805 08-06〕**防命令注入的那道校验，此前一条判据都没有。**
+    ///
+    /// # 怎么找到的
+    ///
+    /// 新先验：抽「只被一处调用」的生产函数。`has_bad_chars` 在全仓只出现两次
+    /// （定义 + 一处调用），顺着它找到唯一消费者 [`validate_config_dir_ps`] ——
+    /// 而它 5 处出现里**没有一处是测试**。
+    ///
+    /// 它守的是「**拒绝拼入命令**：非法 CLAUDE_CONFIG_DIR」，也就是把一个用户可控的
+    /// 目录名塞进 PowerShell 命令串之前的最后一道闸。失效形态是**静默放行**：
+    /// 校验松掉不会让任何测试变红，而后果是命令串里多了一个 `;` 或 `$(...)`。
+    ///
+    /// ⚠ 它 `#[cfg(any(windows, test))]` —— **Linux 的测试构建里是编译的**，
+    /// 所以这一族与 `ROADMAP §5` 的 3y（Windows-only 代码本机连编译都不碰）**不同**：
+    /// 这里没有平台借口，只是没人写。
+    ///
+    /// # 用例挑的是「每一条拒绝理由各一发 + 两条不许误拒」
+    ///
+    /// 不许误拒那两条是有来历的：头注逐字记着 Phase G 审计抓出的真 bug ——
+    /// 早先两边共用「必须 `/` 开头 + 禁 `\`」，于是真实的 Windows 账号目录
+    /// `C:\Users\z\.claude-accts\z` **必被拒**，「本机分叉时选具名账号」在主平台 100% 失败。
+    /// ⇒ 反向用例把那个回归钉住。
+    #[test]
+    fn the_config_dir_validator_rejects_every_injection_shape() {
+        // ★ 先证明夹具走得通：两种平台的合法绝对路径都必须过。
+        for ok in [
+            "/home/z/.claude",
+            "C:\\Users\\z\\.claude-accts\\z",
+            "\\\\server\\share\\claude",
+        ] {
+            assert!(
+                validate_config_dir_ps(ok).is_ok(),
+                "合法路径被拒了：{ok:?} —— 这正是 Phase G 抓出的那个真 bug 的形状\n\
+                 （早先禁 `\\` ⇒ 每个 Windows 账号目录都过不去，主平台 100% 失败）"
+            );
+        }
+
+        // ① 非绝对 / 根 / `..` 穿越（两种分隔符、中间与结尾各一）
+        for bad in [
+            "relative/path",
+            ".claude",
+            "/",
+            "/home/../etc",
+            "/home/..",
+            "C:\\a\\..\\b",
+            "C:\\a\\..",
+        ] {
+            assert!(
+                validate_config_dir_ps(bad).is_err(),
+                "路径形态没被拒：{bad:?}"
+            );
+        }
+
+        // ② 控制字符与 C1 段（`\u{85}` 在很多终端里不可见）
+        for bad in [
+            "/home/z\u{0}/x",
+            "/home/z\n/x",
+            "/home/z\u{85}/x",
+            "/home/z\u{9f}/x",
+        ] {
+            assert!(
+                validate_config_dir_ps(bad).is_err(),
+                "控制字符没被拒：{bad:?}"
+            );
+        }
+
+        // ③ shell 元字符 —— **逐个**过，不是抽一个代表。
+        //    ★ 自检：集合非空，否则这个循环是空转的。
+        assert!(
+            !SHELL_META_COMMON.is_empty(),
+            "`SHELL_META_COMMON` 空了 —— 下面这轮是空转的"
+        );
+        for c in SHELL_META_COMMON.chars() {
+            let bad = format!("/home/z{c}/x");
+            assert!(
+                validate_config_dir_ps(&bad).is_err(),
+                "shell 元字符 {c:?} 没被拒 —— 它会被原样拼进命令串"
+            );
+        }
+
+        // ④ 同形欺骗字符（走 `acct_core::is_deceptive_char` 那条并集）
+        //    先确认这个字符确实被那张表认得，否则用例本身可能选错了字。
+        // ★ 这条自检当场救过一次：第一版选的是 `\u{2044}`（FRACTION SLASH，肉眼像 `/`），
+        //   它**不在** `acct_core` 那张表里 —— 若没有这条自检，下面那条会因为别的原因红/绿，
+        //   而我会以为「欺骗字符这一支验过了」。
+        for deceptive in ['\u{200B}', '\u{202E}', '\u{FEFF}', '\u{00A0}'] {
+            assert!(
+                acct_core::is_deceptive_char(deceptive),
+                "样本字符 {deceptive:?} 不在 `acct_core` 的欺骗字符表里 —— \
+                 换一个，否则下面那条在测别的东西"
+            );
+            assert!(
+                validate_config_dir_ps(&format!("/home/z{deceptive}etc")).is_err(),
+                "同形/不可见字符 {deceptive:?} 没被拒 —— 它在终端里看不见，却会原样进命令串"
+            );
+        }
+    }
+
     /// ★★ **把「本机 resume 到底跑什么」钉在真构造器上**〔audit-0805 F08 / 报告 B-2〕。
     ///
     /// # 此前那条判据在替代码说好话
