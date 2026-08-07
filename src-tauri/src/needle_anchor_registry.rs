@@ -88,6 +88,24 @@ mod tests {
     /// 只许降。修一处就把这个数调下来，**不许调上去让今天好过**。
     const BARE_CONTAINS_CEILING: usize = 33;
 
+    /// 「匹配单位比事实小」这一族的**全部**原语，各带各的递减棘轮上限。
+    ///
+    /// 〔audit-0805 08-06〕原来只有 `contains` 一条。本表把族圈全 ——
+    /// 判据的人群应当是**这个族**，不是族里最好数的那一种（本轮逮到的洞用的是 `matches`）。
+    /// 数字是 **08-06 全树实测值**，不是估的（先置 0 跑一次，从诊断里读出来再钉）。
+    /// ⚠ 这 24 处**没有**像 `contains` 那 34 处一样被逐条判过真伪 —— 那要另开一件。
+    /// 棘轮的意义在此刻就是「别再长」；分类是后补的活，不是立棘轮的前提。
+    const MATCHER_CEILINGS: &[(&str, usize)] = &[
+        (".contains(", BARE_CONTAINS_CEILING),
+        (".matches(", 13),
+        (".find(", 8),
+        (".rfind(", 0),
+        (".starts_with(", 0),
+        (".ends_with(", 2),
+        (".split(", 1),
+        (".strip_prefix(", 0),
+    ];
+
     /// 一个 `let` 绑定的名字与右侧表达式（右侧只取本行，多行 `let` 的首行足够判种子）。
     fn let_binding(line: &str) -> Option<(&str, &str)> {
         let rest = line.trim_start().strip_prefix("let ")?;
@@ -190,13 +208,26 @@ mod tests {
         chars.into_iter().collect()
     }
 
-    /// 一份测试段里，「语料变量上的裸 `contains(\"…\")`」有几处。
-    fn bare_contains_on_corpus(test_src: &str) -> usize {
+    /// 一份测试段里，「语料变量上的裸 `<原语>(\"…\")`」有几处。
+    ///
+    /// # 〔audit-0805 08-06〕原来这里把 `.contains(` 写死了
+    ///
+    /// 本模块治的族叫「**匹配单位比事实小**」，而 `contains` 只是这个族的**一个成员**：
+    /// `matches` / `find` / `starts_with` / `ends_with` / `split` / `strip_prefix` 拿字符串字面量
+    /// 去够语料时，**风险一模一样**（needle 被撑大 ⇒ 照样绿）。
+    ///
+    /// 实测这不是理论风险：**本轮在 `polling_registry` 逮到的那个洞用的正是 `matches`**
+    /// （`src.matches("{api}(")`，一个空格就出圈），而本模块**从头到尾看不见它** ——
+    /// 治这一族的判据，自己的人群只取了族里的一种形态。
+    ///
+    /// 全树测试段实测：`contains` 555 · `find` 104 · `starts_with` 88 · `matches` 35 ·
+    /// `strip_prefix` 28 · `ends_with` 25 · `split` 14 · `rfind` 6。
+    /// ⇒ 只盯 `contains` 等于放掉一半以上的族成员。
+    fn bare_matcher_on_corpus(test_src: &str, mark: &str) -> usize {
         let vars = corpus_vars(test_src);
         if vars.is_empty() {
             return 0;
         }
-        let mark = ".contains(";
         test_src
             .match_indices(mark)
             .filter(|(i, _)| {
@@ -230,6 +261,7 @@ mod tests {
         let mut all_contains = 0usize;
         let mut hits = 0usize;
         let mut by_file: Vec<(String, usize)> = Vec::new();
+        let mut per_prim: std::collections::BTreeMap<&str, usize> = Default::default();
         for (path, src) in &files {
             // ★ **剥掉注释再数**〔08-06 Phase G 后续：逐条判真伪时撞出来的〕。
             //
@@ -247,10 +279,15 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n");
             all_contains += test_src.matches(".contains(\"").count();
-            let n = bare_contains_on_corpus(&test_src);
-            if n > 0 {
-                by_file.push((path.to_string_lossy().into_owned(), n));
-                hits += n;
+            for (mark, _) in MATCHER_CEILINGS {
+                let n = bare_matcher_on_corpus(&test_src, mark);
+                if n > 0 {
+                    by_file.push((format!("{} {mark}", path.to_string_lossy()), n));
+                    *per_prim.entry(*mark).or_insert(0) += n;
+                    if *mark == ".contains(" {
+                        hits += n;
+                    }
+                }
             }
         }
         assert!(
@@ -275,6 +312,28 @@ mod tests {
                 .map(|(f, n)| format!("  {n:3}  {f}"))
                 .collect::<Vec<_>>()
                 .join("\n")
+        );
+
+        // ★〔audit-0805 08-06〕**族里其余原语各自一条棘轮**。
+        //
+        // 它们没有像 `contains` 那 34 处那样被逐条判过真伪 —— 那要另开一件。
+        // 但**棘轮不需要分类，只需要一个今天的数**：先把「只许降」立起来，
+        // 挡住这一族继续长；分类可以后补。
+        // ⇒ 这是「降级做」，不是把标准放低：覆盖面从 1 种原语扩到 8 种。
+        let over: Vec<String> = MATCHER_CEILINGS
+            .iter()
+            .filter(|(mark, _)| *mark != ".contains(") // 上面那条已经管了，且带完整诊断
+            .filter_map(|(mark, ceiling)| {
+                let n = per_prim.get(mark).copied().unwrap_or(0);
+                (n > *ceiling).then(|| format!("  {mark}\"…\")  {n} 处 > 上限 {ceiling}"))
+            })
+            .collect();
+        assert!(
+            over.is_empty(),
+            "语料变量上的裸匹配又长了（与 `contains` 同族同险：**needle 被撑大时照样绿**）：\n{}\n\
+             改用 `guard_core::find_pinned`（恰好一处 + 两侧有边界）/ `pin_line`（整行相等）/\n\
+             `contains_word`（有边界）。⚠ **不许把上限调上去让今天好过** —— 这是递减棘轮。",
+            over.join("\n")
         );
     }
 
@@ -314,7 +373,7 @@ mod tests {
             "**提及**被当成了派生：{mv:?} —— 那正是让闭包跑飞的规则（一个文件 0 → 166 个语料变量）"
         );
         assert_eq!(
-            bare_contains_on_corpus(fixture),
+            bare_matcher_on_corpus(fixture, ".contains("),
             2,
             "该数的是 `disk.contains(\"a\")` 与 `derived.contains(\"b\")` 两处：\
              字面量夹具那处不算，`contains(&other)`（needle 不是字面量）也不算"
