@@ -28,6 +28,14 @@ cd "$REPO" || exit 1
 ALLOWLIST=(
   e2e/fake-claude          # 作为 launcher 路径喂进 tmux 命令串与 daemonPath，被直接 exec
   e2e/daemon-wrapper.sh    # 作为 daemonPath 由 app 直接执行
+  # 〔audit-0805 08-06〕**同一失效类的第三例，被这条守卫漏了三天**：
+  # `scripts/verify-committed-state.sh` 自 08-04 首次提交起 git 里就是 **100644**，
+  # 而它自己的用法行逐字是 `scripts/verify-committed-state.sh [git-ref]`（**直接执行**）
+  # ⇒ 干净 checkout 上就是 `Permission denied`。本地照跑是因为 `core.fileMode=false`
+  # ——与上面 vendored 那次一模一样的「盘上看不出、只有干净 checkout 会咬」。
+  # ⚠ 它还偏偏是全仓**唯一量「提交状态」**的门：一个专门检查干净检出的脚本，
+  # 自己在干净检出上跑不起来。
+  scripts/verify-committed-state.sh
 )
 
 # E67②（2026-07-31）：**vendored `cc-acct-iso` 是第三个作用域**，而且是被这条守卫漏掉、

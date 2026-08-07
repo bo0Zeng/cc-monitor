@@ -3,6 +3,13 @@
 | 脚本 | 作用 |
 |---|---|
 | [`run.ps1`](run.ps1) | 自动注入 MSVC dev shell 环境后跑 tauri 命令 |
+| [`verify-committed-state.sh`](verify-committed-state.sh) | 从**提交状态**（不是工作树）编一次。★ **本仓不 push ⇒ CI 见不到这些 commit，这道门只能在本机跑**；理由与那次「约二十轮编不过」的事故见它自己的头注 |
+| [`assert-coverage-floors.mjs`](assert-coverage-floors.mjs) | 逐文件覆盖率地板 + 0% 文件递减棘轮（聚合阈值看不见单模块归零）。跑法与登记见它自己的头注 |
+
+> ⚠ **这张表由判据钉住**：`doc_claim_registry.rs::every_script_in_the_directory_is_listed_in_its_readme`
+> —— 往 `scripts/` 放新文件而不登记就会红。
+> 它是补出来的：08-06 之前这张表**只有 `run.ps1`**，于是照 README 找不到
+> 「唯一量提交状态、且必须本机跑」的那道门。
 
 另有一份 PowerShell 模板存在 `src-tauri/scripts/`（编译时 `include_str!` 进 Rust 二进制，不在本目录）：
 
