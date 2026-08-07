@@ -16,6 +16,29 @@
 //! 硬编码 "0"。它的 config dir 是共享库（`sharedStore`）、`.claude.json` 在 `$HOME`。
 //! **空串不算缺席**：`is_safe_config_dir("")` 会挡掉它（空值 ≠ 未设）。
 //!
+//! # ⚠ 谓词的作用面**不对称**，这里如实写下〔audit-0805 08-06 抽样核实〕
+//!
+//! `is_safe_config_dir` 今天有三处调用点，全部在**清单侧**（`--list-accounts` /
+//! `--account-trust` 那几条路：源是 accounts manifest）。而 `--session-accounts`
+//! 那条路的 `configDir` 来自 **`/proc/<pid>/environ`**（`proc_claude_config_dir`），
+//! **没有过谓词**就作为帧字段发给 monitor。
+//!
+//! ## 为什么**不**顺手给它套上谓词
+//!
+//! 逐条量过后果，套上去**更糟**：
+//! - **归属那一半已经是安全的** —— 进程侧的值只拿去与 `by_dir` 比对，
+//!   而 `by_dir` 只装清单侧、已过谓词的目录 ⇒ 不安全的值匹配不上，`account` 恒 `None`；
+//! - 而若把不安全值直接丢弃（置 `None`），那条会话就会变成 `bare: true` ——
+//!   **语义上等同于「账号 0」**，于是一个可疑会话反而被贴成默认账号。
+//!   那不是收紧，是把一种坏结果换成另一种更坏的。
+//! - 真要处理，得给帧加一个「configDir 不可信」的状态位 ——
+//!   那是**改上线契约**（D6：暴露给第三方 = 契约冻结成本），不属本区范围（只修缺陷，不加能力）。
+//!
+//! ⇒ 结论：**归属安全、展示未净化**。登记在 `ROADMAP §5`，
+//! 解锁条件 = 帧契约允许新增状态位时，把「不可信的 configDir」表达成一个显式状态，
+//! 而不是让它退化成 `bare`。
+
+//!
 //! 输出协议同 `history_query`：每行一个 JSON 对象（**不是** wire::Frame）。
 //! 成功 exit 0；`--account-trust` 的硬错误 exit 2 + stderr 纯 `{code,message}` JSON
 //! （照 `resolve_query` 的结构化错误约定，客户端可整段 parse）。
