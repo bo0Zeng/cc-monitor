@@ -113,6 +113,84 @@ mod tests {
         out
     }
 
+    /// 「扫描面 + 登记表」型判据的**反向那半**必须在（〔audit-0805 08-06〕裁决件产出）。
+    ///
+    /// # 它钉的是一个被实测证明**今天成立**的前提，不是一个缺陷
+    ///
+    /// 本轮怀疑过两件事，量下去**两件都不成立**：
+    ///
+    /// 1. **「自检重建了扫描面副本」是不是缺陷** —— 不是。`polling_registry` 与
+    ///    `session_name_registry` 的自检确实各自又走了一遍遍历器，但
+    ///    ① 把 `scan()` 的根整个打瞎 ⇒ 棘轮的**反向那半**当场红
+    ///    （逐字「登记表里的 `src/session-accounts-poll.ts` 已经没有周期唤醒了」）；
+    ///    ② 局部缩水（静默跳过一个子目录）⇒ 自检的地板红（`118 < 170`），
+    ///    因为自检与 `scan()` **共用同一个 walker 函数**，函数体坏了两边一起坏。
+    /// 2. **是不是有登记表只做单向对拍** —— 没有。六个登记表逐个变异验过，
+    ///    模拟「某个调用点退役了」都会红（`atomic_replace_registry` 逐字
+    ///    「登记表里的 `config.rs [MoveFileExW]` 已经不在了 —— 删掉这条」）。
+    ///
+    /// ⇒ 于是**第 1 条的安全性整个压在第 2 条上**：反向那半一旦被削成单向，
+    /// 「打瞎扫描面」就再没有人接住，而自检那份副本**照样绿**。
+    /// 这正是本区反复记的形状：**一条纪律的成立依赖另一条，而那条依赖没人盯。**
+    ///
+    /// # 它查得动什么、查不动什么
+    ///
+    /// 查的是**存在性**：每个带登记表的判据文件里，必须至少有一种反向那半的形态
+    /// （`assert_eq!` 双向对拍，或显式的「登记了但实测没有」诊断）。
+    /// ⚠ **查不动「反向那半是否真的在被执行」** —— 有人可以留着字样却把逻辑绕开。
+    /// 这是**前提触发器**，不是证明：它挡的是「顺手删掉反向那半」，
+    /// 那是实际会发生的动作（改判据时嫌它啰嗦），而不是蓄意伪装。
+    #[test]
+    fn every_registry_guard_keeps_its_reverse_half() {
+        let root = repo_root();
+        /// 反向那半的两种合法形态。
+        const REVERSE: &[&str] = &["assert_eq!(", "已经不在了", "已经没有"];
+        /// 判定「这是一个带登记表的判据文件」的声明形态。
+        const TABLE_DECLS: &[&str] = &[
+            "const REGISTERED:",
+            "const SITES:",
+            "const SCHEDULING_SITES:",
+        ];
+        let mut population: Vec<String> = Vec::new();
+        let mut missing: Vec<String> = Vec::new();
+        for (f, src) in guard_core::scan_tree!(&root.join("src-tauri/src"), &["rs"]) {
+            let rel = f
+                .strip_prefix(&root)
+                .unwrap_or(&f)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let regs = test_regions(&src);
+            if !TABLE_DECLS.iter().any(|d| regs.contains(d)) {
+                continue;
+            }
+            population.push(rel.clone());
+            if !REVERSE.iter().any(|m| regs.contains(m)) {
+                missing.push(rel);
+            }
+        }
+        // 抽取器自检①：人群不能空 —— 空了下面那条会零命中地绿。
+        assert!(
+            population.len() >= 5,
+            "只认出 {} 个带登记表的判据文件（08-06 实测 6）—— 抽取器坏了，本条此刻是空转的：{population:?}",
+            population.len()
+        );
+        // 抽取器自检②（负向）：**不带登记表的文件不许进人群**，
+        // 否则「人群够大」这个自检可以靠把整棵树算进来而恒真。
+        assert!(
+            !population.iter().any(|p| p.ends_with("src/tmux.rs")),
+            "`tmux.rs` 没有登记表却被算进人群 —— 判别式太松，人群数就不再说明任何事"
+        );
+        assert!(
+            missing.is_empty(),
+            "这些登记表型判据**没有反向那半**（登记了但实测已经没有 ⇒ 也该红）：\n  {}\n\
+             ★ 单向对拍只挡「多一处」，挡不住「登记表腐烂」——\n\
+             而本仓另有一条纪律**整个压在它上面**：扫描面被打瞎时，\n\
+             接住的正是反向那半（自检那份副本照样绿，实测过）。\n\
+             ⇒ 删它之前先想清楚谁来接「扫描面悄悄不扫了」这件事。",
+            missing.join("\n  ")
+        );
+    }
+
     /// 今天仍在裸遍历的文件（相对仓根）。
     fn raw_walkers() -> Vec<String> {
         let root = repo_root();
