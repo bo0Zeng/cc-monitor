@@ -43,7 +43,14 @@
 //! # 它查什么、查不了什么
 //!
 //! 查 monitor Rust **生产段**里提到 `claude_dir` / `CLAUDE_CONFIG_DIR` / `.claude/projects` /
-//! `records_dir` 的行数，按文件逐个对账。
+//! `records_dir` / **`.claude`** 的行数，按文件逐个对账。
+//!
+//! ⚠ 最后那个针是 08-06 补的，补之前这张表**数字比事实小 18 行**：
+//! `home.join(".claude")` · `~/.claude/settings.json` · `.claude.json` 这些写法一个都不在人群里。
+//! ★ 值得记的是**漏的形状**：没有漏掉任何一个文件 —— 五个文件本来就在表上，
+//! 漏的是**它们内部没被数到的行**。于是这张表**看起来是全的**（文件集正确），
+//! 数字却偏小，而 F10 的工作量正是按这个数估的。
+//! ⇒ 「登记表覆盖了哪些文件」与「登记表的数对不对」是两件事，前者绿不代表后者绿。
 //!
 //! ⚠ **查不了「换个名字读同一批文件」**（比如把路径先存进一个不叫 `claude_dir` 的变量）——
 //! 与本仓其它约定型守卫同一档。**比没有强，别读成证明。**
@@ -138,7 +145,7 @@ mod tests {
         (
             "src/paths.rs",
             "hub",
-            7,
+            9,
             "**路径真相源** —— 只回答「`~/.claude` 与它的子目录在哪」，自己不读内容。\
              切后端之后它**仍然要在** ⇒ **不属**退役范围。",
         ),
@@ -191,8 +198,10 @@ mod tests {
         (
             "src/mcp.rs",
             "reader",
-            2,
-            "读 `.claude.json` 里的 MCP 服务器声明。退役归 F10 本体。",
+            7,
+            "读 `.claude.json` 里的 MCP 服务器声明。退役归 F10 本体。\
+             ⚠ 08-06 从 2 改到 7：`.claude.json` 的**三个候选路径**（项目 / 上级 / 家目录）\
+             与本地·远端两个来源标签此前都不在针里 —— 也就是说这条读面的**大部分**没被数到。",
         ),
         (
             "src/adapter/claude_code.rs",
@@ -203,14 +212,17 @@ mod tests {
         (
             "src/config_surface.rs",
             "reader",
-            1,
+            3,
             "T02 配置面审计视图（只读、不轮询）。退役归 F10 本体。",
         ),
         (
             "src/hooks_diag.rs",
             "reader",
-            1,
-            "hooks 诊断读 settings。退役归 F10 本体。",
+            7,
+            "hooks 诊断读 settings。退役归 F10 本体。\
+             ⚠ 08-06 从 1 改到 7：原先只数到 `CLAUDE_CONFIG_DIR` 那一行，\
+             而**真正读盘的那几行**（`~/.claude/settings.json` 的三条失败诊断文案 · \
+             `home.join(\".claude\")` 兜底路径 · 远端探测串 · 来源标签）全在针外。",
         ),
         (
             "src/ccm_cli_contract.rs",
@@ -221,7 +233,7 @@ mod tests {
         (
             "src/tool_registry.rs",
             "non-read",
-            1,
+            4,
             "T01 受管工具登记表的一句**文案**里提到它，不读文件 ⇒ **不属**读面。",
         ),
     ];
@@ -238,6 +250,16 @@ mod tests {
             format!("CLAUDE_CONFIG_DIR"),
             format!(".{c}/projects"),
             "records_dir".to_string(),
+            // 〔audit-0805 08-06〕**`.claude` 这个目录名本身也要算**。
+            //
+            // 原来四个针里最"宽"的是 `.claude/projects` —— 于是
+            // `home.join(".claude")`、`~/.claude/settings.json`、`.claude.json`
+            // 这些**同样是本机 claude 面**的写法一个都不在人群里。
+            // 实测加上它之后：本机读面从 60 行涨到 78 行（+18），
+            // **没有新文件**，全落在已登记的五个文件上 ——
+            // 也就是说漏的不是"某个没人知道的模块"，而是**已登记文件里没被数到的那些行**。
+            // 那更坏：登记表看起来是全的，数字却比事实小，而 F10 的工作量正是按这个数估的。
+            format!(".{c}"),
         ]
     }
 
