@@ -120,23 +120,29 @@ mod tests {
     }
 
     /// 扫描面：`src/**/*.ts`（排除测试）+ `src-tauri/src/tmux.rs` + 两个 shell 脚本。
-    fn scan() -> Vec<(String, usize)> {
+    /// 扫描面本体 —— **单独抽出来，好让自检量的是「真正被扫的那一份」**。
+    ///
+    /// 〔audit-0805 08-06〕这一步不是重构洁癖：上一版自检自己又走了一遍遍历器，
+    /// 于是把 `scan()` 里的根路径改坏之后**自检照样绿**（实测 4 passed），
+    /// 而「未扫文件里的产名点」那个洞当场重新打开。
+    /// ⇒ **自检必须量被测者实际用的那个对象**，不能量一个「同样构造」的副本。
+    fn scan_files() -> Vec<PathBuf> {
         let root = repo_root();
         let mut files: Vec<PathBuf> = Vec::new();
         collect_ts(&root.join("src"), &mut files);
         files.sort();
-        for extra in [
-            "src-tauri/src/tmux.rs",
-            // F03：`is_ccm_tmux_name` 的实现搬到了这里。**tmux.rs 仍留在扫描面** ——
-            // 它是最可能又冒出一个产名点的地方，扫它零命中比不扫它便宜得多。
-            "src-tauri/crates/gate-core/src/lib.rs",
-            "shared/ccm",
-            "shared/cc-bus/scripts/cc-spawn",
-        ] {
+        collect_rs(&root.join("src-tauri/src"), &mut files);
+        collect_rs(&root.join("src-tauri/crates"), &mut files);
+        for extra in ["shared/ccm", "shared/cc-bus/scripts/cc-spawn"] {
             files.push(root.join(extra));
         }
+        files
+    }
+
+    fn scan() -> Vec<(String, usize)> {
+        let root = repo_root();
         let mut out = Vec::new();
-        for f in files {
+        for f in scan_files() {
             let rel = f
                 .strip_prefix(&root)
                 .unwrap_or(&f)
@@ -151,6 +157,22 @@ mod tests {
             }
         }
         out
+    }
+
+    /// Rust 侧也递归遍历 —— 与 TS 侧同一口径（`target/` 除外）。
+    fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(rd) = fs::read_dir(dir) else { return };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                if p.file_name().is_some_and(|n| n == "target") {
+                    continue;
+                }
+                collect_rs(&p, out);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                out.push(p);
+            }
+        }
     }
 
     fn collect_ts(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -188,6 +210,20 @@ mod tests {
             ts.len() >= 190,
             "只扫到 {} 个前端 .ts —— 遍历器坏了",
             ts.len()
+        );
+        // 〔audit-0805 08-06〕Rust 侧改成递归之后，**它自己也要有地板** ——
+        // 否则新加的覆盖面可以静默消失：实测把 `collect_rs` 的根指到一个不存在的目录，
+        // 本条**照样绿**（4 passed），而「未扫文件里的产名点」那个洞当场重新打开。
+        // ⇒ 扩了扫描面就要同步扩它的自检，这两步是一件事的两半。
+        let rs: Vec<_> = scan_files()
+            .into_iter()
+            .filter(|p| p.extension().is_some_and(|x| x == "rs"))
+            .collect();
+        assert!(
+            rs.len() >= 90,
+            "只扫到 {} 个 monitor 侧 .rs（08-06 实测 100+）—— Rust 那半的遍历器坏了，\
+             产名点会重新变成「只看两个文件」",
+            rs.len()
         );
         for f in [
             "src-tauri/src/tmux.rs",
