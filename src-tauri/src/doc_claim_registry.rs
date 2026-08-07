@@ -69,13 +69,61 @@ mod tests {
             .to_path_buf()
     }
 
+    /// `doc/` 下**递归**收 `.md`。
+    ///
+    /// 〔audit-0805 08-06〕原来用非递归 `read_dir` —— 今天 `doc/` 恰好是平的（11 份、零子目录），
+    /// 所以那不是活缺陷；但**新建一个 `doc/design/` 就整目录隐形**，而且不会有任何信号。
     fn doc_files() -> Vec<PathBuf> {
-        let mut v: Vec<PathBuf> = std::fs::read_dir(repo_root().join("doc"))
-            .expect("读不到 doc/")
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "md"))
-            .collect();
+        let mut v: Vec<PathBuf> = Vec::new();
+        let mut stack = vec![repo_root().join("doc")];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&d) else {
+                continue;
+            };
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.extension().is_some_and(|x| x == "md") {
+                    v.push(p);
+                }
+            }
+        }
+        v.sort();
+        v
+    }
+
+    /// 全仓的入口 `README*.md`（**派生，不是手写清单**）。
+    ///
+    /// # 〔audit-0805 08-06〕这张表原来是我手写的七条，而仓里有八份
+    ///
+    /// 少的那一份是 **`README.en.md`** —— 于是英文入口文档里的符号引用与路径引用
+    /// **一处都没人守**。同一个文件在本会话里已经是第二次成为盲区
+    ///（上一次是 `doc_copy_registry` 那边：它带着一个陈旧的 `13 tokens`，
+    /// 而那张表的锚点全是中文措辞，英文散文一条都对不上）。
+    ///
+    /// ⇒ 病根与本会话反复量到的同一条：**手写清单描述人群**。
+    /// 改成扫出来：仓根往下找 `README*.md`，摘掉 vendor / 依赖 / 构建产物。
+    fn entry_readmes() -> Vec<PathBuf> {
+        const SKIP: &[&str] = &["node_modules", "target", "dist", "vendor", ".git"];
+        let mut v: Vec<PathBuf> = Vec::new();
+        let mut stack = vec![repo_root()];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&d) else {
+                continue;
+            };
+            for e in rd.flatten() {
+                let p = e.path();
+                let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                if p.is_dir() {
+                    if !SKIP.contains(&name) {
+                        stack.push(p);
+                    }
+                } else if name.starts_with("README") && name.ends_with(".md") {
+                    v.push(p);
+                }
+            }
+        }
         v.sort();
         v
     }
@@ -619,20 +667,7 @@ mod tests {
         // 实测扩面当日：这些 README 里共 11 处这种引用，**解析不到 0 处**（不误红）。
         let mut targets: Vec<PathBuf> = doc_files();
         let base = targets.len();
-        for extra in [
-            "README.md",
-            "e2e/README.md",
-            "scripts/README.md",
-            "src/README.md",
-            "src-tauri/README.md",
-            "remote-daemon-proto/README.md",
-            "e2e/tier2/README.md",
-        ] {
-            let q = repo_root().join(extra);
-            if q.is_file() {
-                targets.push(q);
-            }
-        }
+        targets.extend(entry_readmes());
         // ★ 扩面自检：入口 README 收不到 ⇒ 路径写错了，扩面等于没做。
         assert!(
             targets.len() >= base + 5,
