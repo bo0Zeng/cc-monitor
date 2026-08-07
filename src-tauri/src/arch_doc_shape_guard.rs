@@ -236,6 +236,86 @@ mod tests {
         );
     }
 
+    /// 行里反引号包住的「代码单元」token（路径 / 模块名 / 文件名）。
+    fn code_units(line: &str) -> Vec<&str> {
+        let mut out = Vec::new();
+        let mut rest = line;
+        while let Some(i) = rest.find('`') {
+            let after = &rest[i + 1..];
+            let Some(j) = after.find('`') else { break };
+            let tok = &after[..j];
+            rest = &after[j + 1..];
+            let shaped = tok.len() > 3
+                && tok
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '/' | '-' | '.'))
+                && (tok.contains('/')
+                    || tok.contains('_')
+                    || tok.ends_with(".rs")
+                    || tok.ends_with(".ts"));
+            if shaped {
+                out.push(tok);
+            }
+        }
+        out
+    }
+
+    /// ★ 形状钉之二：**换成「模块表」也不许长回来**〔audit-0805 08-06〕。
+    ///
+    /// # 它补的洞
+    ///
+    /// 隔壁那条按 `.rs` / `.ts` **后缀**数文件名提及。实测：往 `ARCHITECTURE.md` 追加一张
+    /// **30 行的「模块 | 职责」表**（`backend/control` / `observe/watcher` / `common/fs` …），
+    /// 文件名提及**一处没涨**、也没有 `├── ` 树枝 ⇒ **五条判据全绿**。
+    ///
+    /// 而模块表与文件表是**同一个病**：本模块头注自己写着
+    /// 「一份顶层文档不该靠列文件来解释自己」—— 去掉后缀并不改变那句话。
+    /// ⇒ 判据锚在**怎么写**（后缀）上，而不是锚在**做了什么**（用表格枚举代码单元）上。
+    ///
+    /// # 天花板量出来的
+    ///
+    /// 今天 **12 行**（`backend/` 四行子目录表 · 两行守卫表 · 六行文件归属表 —— 都是正当的）。
+    /// 天花板 **25**：给正常增长两倍余量，而一张三十行的清单塞不进去。
+    /// 地板 **6**：抽取器坏掉时返回一个小得离谱的数，本条必须红而不是零命中地绿。
+    #[test]
+    fn the_top_level_doc_never_turns_into_a_table_of_code_units() {
+        // 抽取器自检：喂人造行，两个方向都要对。
+        assert_eq!(
+            code_units("| `backend/control` | 控制面 |").len(),
+            1,
+            "表格行里的模块名没被认出来"
+        );
+        assert!(
+            code_units("| 状态 | 说明 |").is_empty(),
+            "没有代码单元的表格行被误认"
+        );
+        assert!(
+            code_units("正文里提到 `observe/watcher` 不算表格行").len() == 1,
+            "抽 token 这一步本身要认得它（是否算数由调用方按「是不是表格行」决定）"
+        );
+
+        let src = arch_doc();
+        let rows: Vec<&str> = src
+            .lines()
+            .filter(|l| l.trim_start().starts_with('|') && !code_units(l).is_empty())
+            .collect();
+        assert!(
+            rows.len() >= 6,
+            "只数出 {} 行带代码单元的表格行（08-06 实测 12）—— 抽取器多半坏了，\
+             本条会零命中地绿",
+            rows.len()
+        );
+        assert!(
+            rows.len() <= 25,
+            "`doc/ARCHITECTURE.md` 里「用表格枚举代码单元」的行涨到 {} 行（天花板 25，实测 12）——\n\
+             逐**模块**清单正在长回来。它与逐**文件**清单是同一个病：\n\
+             顶层文档不该靠列代码单元来解释自己，那些清单的家是各目录 README 与 `BACKEND_FILES`。\n\
+             ⚠ 别把这条的天花板调上去 —— 隔壁那条按后缀数的判据看不见模块表，\n\
+             把它调松等于这一整类清单重新无人看守。",
+            rows.len()
+        );
+    }
+
     /// ★ 形状钉：**逐文件模块表不许长回来。**
     ///
     /// # 天花板是量出来的，不是猜的
