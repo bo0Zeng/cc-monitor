@@ -80,6 +80,38 @@ mod tests {
             "CHANNEL_CAPACITY",
             "**条数**不是体量（mpsc 通道能排多少帧）。它的溢出语义由 `Overflow` 帧管，见 F03。",
         ),
+        // ── 〔audit-0805 08-06〕默认拒绝上线后，把「名字没关键词的尺寸类常量」逐个判过。
+        // **七个全都不是字节上限** —— 也就是说旧的名字关键词过滤今天恰好完整；
+        // 本表登记的是**这个判断本身**，好让下一个不叫 `*_CAP` 的真上限没法悄悄溜过去。
+        (
+            "CHUNK",
+            "**传输步长**不是上限：SFTP 每次读写多少字节，读完继续读，没有「超了怎么办」。\
+             ⚠ 它是这七个里最像字节量的一个 —— 正因如此才要写下来为什么不算。",
+        ),
+        (
+            "PROGRESS_EVERY",
+            "**进度上报间隔**（每传够这么多字节报一次进度），量的是节奏不是容量。",
+        ),
+        (
+            "NET_EPOCH_TO_WIN32_FILETIME_TICKS",
+            "**时间纪元差**（.NET 与 Win32 FILETIME 的起点相差多少个 100ns tick）。单位是时间不是字节。",
+        ),
+        (
+            "PROC_START_TOLERANCE_TICKS",
+            "**时间容差**（判进程是不是同一个时允许的启动时刻误差）。单位是时间不是字节。",
+        ),
+        (
+            "STARTTIME_IDX_AFTER_COMM",
+            "**字段下标**（`/proc/<pid>/stat` 里 `starttime` 在 `comm` 之后的第几个字段）。不是量。",
+        ),
+        (
+            "CREATE_NEW_CONSOLE",
+            "**Win32 进程创建标志位**（`CreateProcess` 的 flag）。是位掩码不是尺寸。",
+        ),
+        (
+            "CREATE_NO_WINDOW",
+            "同上：Win32 进程创建标志位。",
+        ),
         // ⚠ `MIN_SCANNED_CODE_BYTES` 那条已删（08-06）：它是**测试段里的地板**，
         //    本表原来扫整份文件才需要排它；扫描面收窄到生产段之后它成了死规则，
         //    而本表自己的 `the_exclusion_list_is_not_dead_wood` 当场要求删。
@@ -277,6 +309,102 @@ mod tests {
     /// ⚠ 走 `guard_core::scan_tree!` 而不是自己 `read_dir` —— 它**按构造摘除调用者自己那份**。
     /// 本文件的 `CAPS` 表里就写着一堆 `MAX_*` 名字；今天它们的类型不是 `u64/usize` 所以扫不中，
     /// 但那是**运气**不是设计。〔audit-0805 **F23**：这一族已实测栽过五次〕
+    /// 生产段里**全部**尺寸类 const：`const NAME: u64|usize|u32 = <expr>`。
+    ///
+    /// 〔audit-0805 08-06〕**抽成共享量具**：`scan()` 是它按名字关键词过滤后的子集，
+    /// 而下面那条默认拒绝判据量的是它本身 —— 两者共用同一份遍历，
+    /// 免得「自检量了一份副本」（本会话在 `session_name_registry` 上刚踩过）。
+    fn size_typed_consts() -> Vec<(String, String, Option<u64>)> {
+        let root = repo_root();
+        let mut out = Vec::new();
+        for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
+            for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
+                let body = guard_core::production_source(&raw);
+                let rel = f
+                    .strip_prefix(&root)
+                    .unwrap_or(&f)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                for line in body.lines() {
+                    let t = line.trim();
+                    let Some(rest) = t
+                        .strip_prefix("pub(crate) const ")
+                        .or_else(|| t.strip_prefix("pub const "))
+                        .or_else(|| t.strip_prefix("const "))
+                    else {
+                        continue;
+                    };
+                    let Some((name, tail)) = rest.split_once(':') else {
+                        continue;
+                    };
+                    let Some((ty, expr)) = tail.split_once('=') else {
+                        continue;
+                    };
+                    if !matches!(ty.trim(), "u64" | "usize" | "u32") {
+                        continue;
+                    }
+                    match eval_cap(expr) {
+                        Some(v) if v >= SMALLEST_PLAUSIBLE_SIZE => {
+                            out.push((rel.clone(), name.trim().to_string(), Some(v)))
+                        }
+                        Some(_) => {}
+                        None => out.push((rel.clone(), name.trim().to_string(), None)),
+                    }
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    /// ★〔audit-0805 08-06〕**默认拒绝**：尺寸类常量要么进人群，要么登记为「不是体量」。
+    ///
+    /// # 它补的洞
+    ///
+    /// `scan()` 的人群靠**名字里有没有 MAX/CAP/LIMIT/BYTES**。那是**按怎么写取样** ——
+    /// 一个叫 `TRUNCATE_AT` / `CEILING` / `ROOM` 的字节上限整条隐形，而没有任何信号。
+    ///
+    /// ⚠ 实测**今天没有活的漏网**：名字不含关键词的尺寸类常量只有 4 个，
+    /// 逐个读过都不是字节上限（Win32 时间纪元 · SFTP 传输步长 · 进度上报间隔 · 时间容差）。
+    /// 所以本条钉的是**明天**。
+    ///
+    /// # 为什么不按「用法」派生（量过之后否掉的）
+    ///
+    /// 试过「被拿去和长度比较 / 截断的常量才算」：实测它**漏掉最像字节量的那个**
+    ///（`CHUNK`，因为它用在 `read_exact` 的缓冲区长度上而不是比较里），
+    /// 却**圈进两个时间常量**（`PROGRESS_EVERY` / `PROC_START_TOLERANCE_TICKS` 都用 `>=` 比）。
+    /// ⇒ 派生错人群比手写清单更糟（本会话第四次量到同一条），改走默认拒绝：
+    /// **人群取可机判的超集**（所有 ≥1024 的尺寸类 const），
+    /// 「是不是字节上限」这个语义判断**登记成人的答案**，而不是猜。
+    #[test]
+    fn every_size_typed_constant_is_either_a_cap_or_registered_as_not_one() {
+        let all = size_typed_consts();
+        assert!(
+            all.len() >= 10,
+            "只扫到 {} 个尺寸类常量（08-06 实测 20+）—— 抽取器坏了，本条会零命中地绿",
+            all.len()
+        );
+        let mut unclassified = Vec::new();
+        for (rel, name, v) in &all {
+            let in_population = ["MAX", "CAP", "LIMIT", "BYTES"]
+                .iter()
+                .any(|k| name.contains(k));
+            let excused = NOT_A_SIZE_CAP.iter().any(|(n, _)| n == name);
+            if !in_population && !excused {
+                unclassified.push(format!("  {rel}: {name} = {v:?}"));
+            }
+        }
+        assert!(
+            unclassified.is_empty(),
+            "这些尺寸类常量既不在字节上限人群里（名字没有 MAX/CAP/LIMIT/BYTES），\n\
+             也没登记为「不是体量」：\n{}\n\
+             ⚠ **名字不是判据** —— 一个叫 `TRUNCATE_AT` 的字节上限同样是字节上限。\n\
+             要么改名进人群并在 `CAPS` 里说清「限什么 / 超了怎么办」（定框 E5 要求成对），\n\
+             要么加进 `NOT_A_SIZE_CAP` 并写明它量的是什么（条数 / 时间 / 步长 …）。",
+            unclassified.join("\n")
+        );
+    }
+
     fn scan() -> Vec<(String, String, Option<u64>)> {
         let root = repo_root();
         let mut out = Vec::new();
