@@ -75,6 +75,24 @@ mod tests {
     /// | **`use crate::observe as ob;`** + `ob::accounts_query::run(..)` | **全绿** | 抓到 |
     /// | **`super::super::observe::accounts_query::run(..)`** | **全绿** | 抓到 |
     ///
+    /// # 而那次修法只补了两根针，没有把人群圈出来 —— 于是漏的是**最朴素的一种**
+    ///
+    /// 〔audit-0805 08-06〕接着上表往下变异，三条里两条**全绿**：
+    ///
+    /// | 拼法 | 上表那版 | 现在 |
+    /// |---|---|---|
+    /// | **`use crate::observe;`** + `observe::accounts_query::run(..)` | **全绿** | 抓到 |
+    /// | **`use crate::{observe, wire};`** | **全绿** | 抓到 |
+    /// | `use crate::observe as obs;` | 抓到 | 抓到 |
+    ///
+    /// 讽刺的地方在于：上一版**专门禁了层别名**，理由逐字写着「建立之后所有用法都绕过本护栏」——
+    /// 而 `use crate::observe;` **性质完全一样**（后面全是裸 `observe::…`），只是不用起别名，
+    /// 更常见、更省事，却不在针里。⇒ 手写「拼法清单」这件事本身就是漏洞来源：
+    /// 补一条只是把清单变长，下一种写法照样在清单外。
+    ///
+    /// 本轮改成**从层名派生**：`crate::<layer>` / `super::super::<layer>` 每一处出现都要分类
+    ///（后面是 `::` ⇒ 符号路径；否则 ⇒ 模块级引入，与别名同罪），外加成组导入单独一路。
+    ///
     /// 中间那一栏不是理论风险：审计在**真放进一条反向边**（control 调 observe 的 `run`）的状态下
     /// 跑了全量 `cargo test`，**199 passed / RC=0**，没有一条门禁叫。
     ///
@@ -89,53 +107,89 @@ mod tests {
     /// - 更曲折的间接（把符号先 `pub use` 到第三个模块再引）扫不到。
     ///   真判据得上 `syn` 级解析，成本远超本仓需要；写在这里，别让人以为它是完备的。
     fn refs_to_layer(code: &str, layer: &str) -> Vec<String> {
-        let mut hits = refs_by_needle(code, &format!("crate::{layer}::"));
-        // `super::super::<layer>::` —— 从 `observe/x.rs` 看，`super::super` 就是 crate 根。
-        for h in refs_by_needle(code, &format!("super::super::{layer}::")) {
-            let norm = h.replacen(
-                &format!("super::super::{layer}::"),
-                &format!("crate::{layer}::"),
-                1,
-            );
-            if !hits.contains(&norm) {
-                hits.push(norm);
+        let mut hits: Vec<String> = Vec::new();
+        // 〔audit-0805 08-06〕**不再一种拼法一根针，改成从层名派生**（理由见上面那张表末行）。
+        //
+        // 做法：找出每一处 `crate::<layer>` / `super::super::<layer>`，**按紧随其后的字符分类** ——
+        // 后面是 `::` 就是符号路径（照旧抠符号），否则就是**模块级引入**（`;` / `,` / ` as ` / `}`）。
+        // 这样「怎么把这一层弄进来」的写法是被**枚举**出来的，不靠人再想起第四种。
+        for root in ["crate::", "super::super::"] {
+            let anchor = format!("{root}{layer}");
+            let mut from = 0usize;
+            while let Some(rel) = code[from..].find(&anchor) {
+                let i = from + rel;
+                from = i + anchor.len();
+                let tail = &code[from..];
+                // `crate::observed` / `crate::observe_helpers` 不是本层，别误命中。
+                if tail.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_') {
+                    continue;
+                }
+                if let Some(rest) = tail.strip_prefix("::") {
+                    let end = rest
+                        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == ':'))
+                        .unwrap_or(rest.len());
+                    let mut sym = format!("crate::{layer}::{}", &rest[..end]);
+                    while sym.ends_with(':') {
+                        sym.pop();
+                    }
+                    if !hits.contains(&sym) {
+                        hits.push(sym);
+                    }
+                } else {
+                    let mark = format!(
+                        "{anchor}（**模块级引入**：引进来之后用法都是裸 `{layer}::…`，\
+                         本护栏再也看不见 ⇒ 与层别名同性质，一样禁）"
+                    );
+                    if !hits.contains(&mark) {
+                        hits.push(mark);
+                    }
+                }
             }
         }
-        // `use crate::<layer> as X;` —— 别名一旦建立，后面怎么用都扫不到，所以**禁掉别名本身**。
-        for pat in [
-            format!("use crate::{layer} as "),
-            format!("use super::super::{layer} as "),
-        ] {
-            if code.contains(&pat) {
-                hits.push(format!(
-                    "{pat}…（**层别名**：建立之后所有用法都绕过本护栏 ⇒ 直接禁）"
-                ));
+        // 成组导入 `use crate::{observe, wire};` —— 层名被包进花括号，上面的锚点一个都对不上。
+        // 实测：这一行放进 `control/gate.rs`，三条判据全绿。
+        for prefix in ["use crate::{", "use super::super::{"] {
+            let mut from = 0usize;
+            while let Some(rel) = code[from..].find(prefix) {
+                let i = from + rel;
+                from = i + prefix.len();
+                let stmt = &code[i..];
+                let end = stmt.find(';').map(|e| e + 1).unwrap_or(stmt.len());
+                let group = &stmt[..end];
+                if group_names_layer(group, layer) {
+                    let mark = format!(
+                        "{}（**成组导入**：层名在花括号里 ⇒ 按层拆成一行一个，别让它藏在组里）",
+                        group.replace('\n', " ")
+                    );
+                    if !hits.contains(&mark) {
+                        hits.push(mark);
+                    }
+                }
             }
         }
         hits.sort();
         hits
     }
 
-    /// 按一个完整前缀抽路径。
-    fn refs_by_needle(code: &str, needle: &str) -> Vec<String> {
-        let mut hits: Vec<String> = Vec::new();
+    /// 成组导入里，`layer` 是不是**顶层的一个组员**（`{observe, wire}` 里的 `observe`）。
+    ///
+    /// 只认前面紧挨着 `{` / `,` / 空白的那种，免得 `crate::{common::observe_helpers}` 误命中。
+    fn group_names_layer(group: &str, layer: &str) -> bool {
         let mut from = 0usize;
-        while let Some(rel) = code[from..].find(needle) {
+        while let Some(rel) = group[from..].find(layer) {
             let i = from + rel;
-            let tail = &code[i..];
-            let end = tail
-                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == ':'))
-                .unwrap_or(tail.len());
-            let mut sym = tail[..end].to_string();
-            while sym.ends_with(':') {
-                sym.pop();
+            from = i + layer.len();
+            let before_ok = group[..i]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c == '{' || c == ',' || c.is_whitespace());
+            let after_ok =
+                !group[from..].starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_');
+            if before_ok && after_ok {
+                return true;
             }
-            if !hits.contains(&sym) {
-                hits.push(sym);
-            }
-            from = i + needle.len();
         }
-        hits
+        false
     }
 
     /// 采集面自检 —— **照抄 `no_timer_guard` 的做法，不自己另发明一套弱的**。
@@ -270,5 +324,28 @@ mod tests {
         // 不该误命中别的层。
         assert!(refs_to_layer("crate::common::fs::read", "observe").is_empty());
         assert!(refs_to_layer("crate::platform::proc::x", "control").is_empty());
+        // 〔audit-0805 08-06〕**模块级引入的三种写法都要认**（上面第二张表）。
+        for form in [
+            "use crate::observe;",
+            "use crate::observe as ob;",
+            "use super::super::observe;",
+        ] {
+            assert!(
+                refs_to_layer(form, "observe")
+                    .iter()
+                    .any(|h| h.contains("模块级引入")),
+                "`{form}` 没被判成模块级引入 —— 引进来之后用法都是裸 `observe::…`，扫不到"
+            );
+        }
+        // 成组导入：层名在花括号里。
+        assert!(
+            refs_to_layer("use crate::{observe, wire};", "observe")
+                .iter()
+                .any(|h| h.contains("成组导入")),
+            "`use crate::{{observe, wire}};` 没被抓到 —— 层名藏在组里，锚点对不上"
+        );
+        // 反向：名字**只是前缀相同**的模块不许误命中（否则新判据会把好代码判红）。
+        assert!(refs_to_layer("use crate::observe_helpers;", "observe").is_empty());
+        assert!(refs_to_layer("use crate::{common::observe_helpers};", "observe").is_empty());
     }
 }
