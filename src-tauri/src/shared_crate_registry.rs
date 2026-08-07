@@ -481,6 +481,10 @@ mod tests {
                 "daemon 分叉（G2 `--fork-session`）",
                 "`npm run test:daemon-fork` —— 脚本头注逐字「不需要 tmux、不需要 ssh」，实测 PASS=10",
             ),
+            (
+                "本机后端监护真进程验收（F05a）",
+                "`npm run test:local-backend` —— 实测 PASS=7，且它**执行了 `local_backend.rs` 的三条                  `#[ignore]`**（真起了一个 daemon 进程）。                 ⚠ **只许带 tmux 桩跑**：脚本会 `export TMUX_TMPDIR`（本区红线括号里点名的动作），                 带桩时没有任何 tmux 进程能起来，裸跑则不然",
+            ),
         ];
         /// 其余每一步逐条登记：`(步骤名, 本地跑不跑, 说法)`。
         /// 「跑不了」那几条要写**结构性**理由，不许写「太慢」这种可以克服的话。
@@ -735,10 +739,13 @@ mod tests {
     /// ⚠ 08-06 逐条核过，七条的自称**当时全部成立**（脚本都在、过滤串都对得上）。
     /// 又是「今天干净但没人守着」—— 与本会话另外三处同形。
     ///
-    /// ⚠ 更要紧的实况（不是本条能修的，记在这里免得误读绿灯）：那三个脚本都要
-    /// **真 tmux server**（`local-backend-supervise.sh` 还自导 `TMUX_TMPDIR`），撞本区红线 ⇒
-    /// 本机跑不了；而 `ci.yml` 只在 `push`/`pull_request` 上触发，〔用 08-05〕停推后
-    /// **至今 72 个提交一次都没跑过**。⇒ **这七条自 `1eeb4bf` 起实际执行次数为零。**
+    /// ⚠ 实况（不是本条能修的，记在这里免得误读绿灯）—— **08-06 订正过一次**：
+    /// 原文写「这七条自 `1eeb4bf` 起执行次数为零」，理由是三个触发脚本都要真 tmux。
+    /// **那句话对其中三条是假的**：用一个只会报错的 `tmux` 桩遮住 PATH 实测，
+    /// `local-backend-supervise.sh` **零次碰 tmux 就跑完**（PASS=7），
+    /// 并且**真的执行了 `local_backend.rs` 的那三条**（`3 passed`，还起了一个真 daemon 进程）。
+    /// ⇒ 今天的准确说法：**七条里三条在本机跑得动（带桩）、四条仍要真 tmux**；
+    /// 而后四条确实自 `1eeb4bf` 起零执行（`ci.yml` 只在 push/PR 触发，停推后没跑过）。
     /// 本条守的是「链还连着」，**不是**「它们跑过了」——两件事别混。
     #[test]
     fn every_ignored_test_still_has_someone_who_triggers_it() {
