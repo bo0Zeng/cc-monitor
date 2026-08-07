@@ -88,7 +88,14 @@ const ZERO_TODAY = [
 /** 0% 文件总数的棘轮地板（含上面没逐个列出的小文件）。**只许降。** */
 // ⚠ 08-06 F15 把 `src/branch-fold.ts` 从 0% 里领走了（它此前**一条专属单测都没有**，
 // 而那条 O(N²) 主线重算就住在里面）⇒ 上限 17→16。**只许降**。
-const ZERO_COUNT_CEILING = 14;
+//
+// ⚠ **08-06 再棘一格：16→…→14→13。** 本会话给三个此前零覆盖的模块补了 vitest
+// （`cards/bash.ts` 的折叠阈值 · `cards/interactive.ts` 的「等你决定」不许折叠 ·
+// `views/pane-preview.ts` 的过期守卫），它们从 0% 集合里走了出来。
+// ★ 棘紧这一步**不是顺手做的**：跑完 `assert-coverage-floors.mjs` 读到
+// 「0% 文件 13/14」——**余量出现的那一刻就该收掉**，否则下一个掉进 0% 的文件
+// 会被这一格余量悄悄吃掉（定框 §3「每加一条判据都要顺手棘紧」）。
+const ZERO_COUNT_CEILING = 13;
 
 let summary;
 try {
