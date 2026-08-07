@@ -14,6 +14,18 @@
 //!   真机 `icacls` ACL 断言，不是扫描面）；
 //! - `fenced_block.rs:5-12` 那张「哪些范式已经共享」的清单里，**原子替换这一族根本没列**。
 //!
+//! # ⚠ 08-06 订正：这张表此前只覆盖了 §4 规则的三分之二
+//!
+//! `doc/INVARIANTS.md §4` 那句话的原文是「不能用 **`std::fs::rename`** / `MoveFileExW`
+//! 直接覆盖用户文件」，而本登记表原来只扫两个 **Win32** 符号 ——
+//! **规则里第一个被点名的写法根本不在人群里**。
+//! 于是「把 §4 从散文变成机检」（定框 E12）这件事，只做到了它自己声称的一部分。
+//!
+//! 实测补上之后多出 **11 处 / 6 个文件**（含两份 `atomic_replace_path` 副本的 POSIX 分支、
+//! config/logging 的 `cfg(not(windows))` 对侧、SFTP 的远端 rename、下载落盘）。
+//! ⇒ 这些**没有一处是错的**，但此前**没有一处被看住** ——
+//! 而「本机随手 rename 一个用户文件」与它们在文本上一模一样。
+//!
 //! ⇒ 修法从「收成一份」改成「**登记表 + 扫描守卫**」：
 //! 新增一处没登记的调用点就红，而**红的时候把选择规则原样打给写代码的人看**。
 //! 这同时把 `INVARIANTS §4` 从散文变成机检（定框 **E12**：判准是「有没有一条会红的判据读它」）。
@@ -75,6 +87,61 @@ mod tests {
             "同上，且**ACL 真的被保留**这一条由同文件 `cfg(test)` 里那条真机 `icacls` 断言钉着 —— \
              那是本族唯一一条能证明「语义选对了」的判据，别删。",
         ),
+        // ── 〔audit-0805 08-06〕补上 `rename` 那一半（§4 规则原话里第一个被禁的写法）
+        (
+            "profile_installer.rs",
+            "rename",
+            2,
+            "**用户文件**（PowerShell profile）—— 但这两处**就是正确路径本身**",
+            "581：Windows 上 `dst` 不存在时 `ReplaceFileW` 会失败，首次安装直接 rename\
+             （新文件 ACL 继承父目录，没有 explicit ACE 可保留）；599：`cfg(not(windows))` 分支，\
+             POSIX 没有 §4 要防的那个 ACL 丢失问题。⇒ 登记它们不是因为它们错，\
+             而是因为**它们与「别处随手 rename 一个用户文件」在文本上一模一样** —— \
+             没有登记表就分不出哪一处是深思熟虑、哪一处是图省事。",
+        ),
+        (
+            "utils.rs",
+            "rename",
+            2,
+            "**用户文件**（`atomic_replace_path` 的第二份副本）",
+            "与 profile_installer 那两处逐行同形（Windows 首装分支 + POSIX 分支）。\
+             ⚠ 副本是**刻意**的（模块头注论证过不建统一写入器：两类文件的正确行为本来就不同），\
+             但刻意复制的代价就是**两处都得被看住** —— 这正是登记表存在的理由。",
+        ),
+        (
+            "config.rs",
+            "rename",
+            1,
+            "**monitor 自己的** config.json（POSIX 分支）",
+            "同文件那条 `MoveFileExW` 的 `cfg(not(windows))` 对侧。写的是我们自己的配置，\
+             POSIX 上 rename 即原子替换，无 ACL 顾虑。",
+        ),
+        (
+            "logging.rs",
+            "rename",
+            1,
+            "**monitor 自己的** 日志轮转（POSIX 分支）",
+            "同文件那条 `MoveFileExW` 的 `cfg(not(windows))` 对侧，理由同 config.rs。",
+        ),
+        (
+            "sftp.rs",
+            "rename",
+            2,
+            "**远端主机上的用户文件**（不是本机，§4 的 ACL 论证不适用）",
+            "上传落地的两步：先把旧文件 rename 成 `.bak`（备份），再把 `.tmp` rename 成正名。\
+             §4 讲的是 Windows 本机 ACL/ADS 保留，而这两处走的是 SFTP 协议、写的是远端文件系统\
+             ⇒ **不属本机原子替换那条分工**。登记它是为了让下一个人不必再判一次。",
+        ),
+        (
+            "sftp_pool.rs",
+            "rename",
+            3,
+            "**monitor 自己的**下载落盘 + **远端主机上的用户文件**",
+            "415：下载先写 `<local>.part` 再 rename 落地（半成品不冒充成品，失败即删）；\
+             529/641：远端 SFTP rename，同 sftp.rs 那两处。\
+             ⚠ 本行是**混类**的，刻意不拆：拆了会让「按文件求和」的对拍口径与实测那侧不一致，\
+             而这条登记的用途是「让人看懂为什么这里可以 rename」，不是精确到行。",
+        ),
     ];
 
     fn src_root() -> PathBuf {
@@ -97,6 +164,23 @@ mod tests {
     /// 本文件自己要排除 —— `RULE` 里写着两个符号的**调用示例**，那是字符串不是注释，
     /// 剥注释剥不掉。⚠ 第一次跑就是被这个咬红的（判据匹配到自己的文本，与 F12 那次同族）。
     /// 改名了也不会静默失效：新名字会以「未登记」的身份出现在下面那条里。
+    /// 被扫的原子替换原语：`(显示名, 匹配串)`。
+    ///
+    /// 〔audit-0805 08-06〕**补上 `rename`** —— `doc/INVARIANTS.md §4` 那条规则的原话是
+    /// 「不能用 `std::fs::rename` / `MoveFileExW` 直接覆盖用户文件」，
+    /// 而本登记表此前只扫两个 **Win32** 符号 ⇒ **规则里第一个被点名的写法根本不在人群里**。
+    /// 于是「把 §4 从散文变成机检」（定框 E12）这件事只做到了三分之二。
+    ///
+    /// ⚠ 匹配串刻意是**调用形态**而不是裸 `rename(`：后者会命中函数**定义**
+    /// `pub async fn sftp_rename(` —— 摸底时实测多数出一处，正是本区反复记的 F24
+    /// （匹配单位比事实小/大）的镜像半。
+    const SCANNED: &[(&str, &str)] = &[
+        ("MoveFileExW", "MoveFileExW("),
+        ("ReplaceFileW", "ReplaceFileW("),
+        ("rename", "::rename("),
+        ("rename", ".rename("),
+    ];
+
     const SELF: &str = "atomic_replace_registry.rs";
 
     /// 生产段（剥注释后）里**调用形态**的命中：`Symbol(`。`use` 那行没有括号，不算。
@@ -116,10 +200,13 @@ mod tests {
                 continue;
             }
             let src = guard_core::strip_comment_lines(&fs::read_to_string(&f).unwrap_or_default());
-            for sym in ["MoveFileExW", "ReplaceFileW"] {
-                let n = src.matches(&format!("{sym}(")).count();
+            for (name, pat) in SCANNED {
+                let n = src.matches(pat).count();
                 if n > 0 {
-                    out.push((rel.clone(), sym.to_string(), n));
+                    match out.iter_mut().find(|(f, s, _)| f == &rel && s == name) {
+                        Some((_, _, acc)) => *acc += n,
+                        None => out.push((rel.clone(), (*name).to_string(), n)),
+                    }
                 }
             }
         }
