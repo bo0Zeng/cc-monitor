@@ -57,7 +57,7 @@ jobs:
       - name: cargo clippy（整个 workspace，vendor 除外）
         run: cargo clippy --workspace --exclude code-picture-core --all-targets
 
-      - name: cargo test（整个 workspace，vendor 除外；实测 922 = monitor 882 + 六 crate 40）
+      - name: cargo test（整个 workspace，vendor 除外）
         run: cargo test --workspace --exclude code-picture-core
 
       # C05（rust-ts-boundary）：**生成物必须最新**。上一步的 `cargo test --all` 会跑
