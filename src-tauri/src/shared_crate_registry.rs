@@ -1106,4 +1106,61 @@ mod tests {
             );
         }
     }
+
+    /// 〔audit-0805 08-06〕**唯一量「提交状态」的那道门，本身没人守着。**
+    ///
+    /// `scripts/verify-committed-state.sh` 的头注逐字写着它为什么必须存在：
+    /// 2026-08-04 实测，`gate-core` 那条 path 依赖**一次都没落盘**，
+    /// 提交状态的 `main` 在任何平台上都编不过，**持续了约二十轮** ——
+    /// 而每一轮的 `cargo test` / fmt / clippy 读数**都是真的**，
+    /// 因为它们量的是**工作树**。「工作树绿」与「提交状态绿」是两件事。
+    /// 它同时写着「本仓红线是不 push ⇒ CI 从来没见过这些 commit，**这道门必须在本机跑**」。
+    ///
+    /// # 本条钉什么
+    ///
+    /// 08-06 查到：`ci.yml` 里**只有一句注释**提到这个脚本（不是步骤），
+    /// 而仓里**没有任何判据读它的内容** ⇒ 三项检查被删掉一项不会红。
+    /// 本条钉住那三项还在：`monitor-lib` · `daemon` · `daemon-win`。
+    ///
+    /// ⚠ **如实记一处局限**（免得把它的绿读大）：monitor 那项是 `cargo check --lib`，
+    /// **不编测试段**。所以「提交状态编得过」不等于「提交状态的测试编得过」。
+    /// 真要覆盖那一半得改成 `--all-targets`，代价是本机每次多编一大块 —— 不在本轮做，
+    /// 写在这里让下一个人看得见。
+    #[test]
+    fn the_only_gate_that_measures_committed_state_still_does_all_three_checks() {
+        let path = root()
+            .parent()
+            .expect("仓根")
+            .join("scripts/verify-committed-state.sh");
+        let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}: {e}"));
+        // ★ 抽取器自检：文件被掏空/改名时，下面三条会零命中地绿。
+        assert!(
+            src.lines().count() >= 40,
+            "`verify-committed-state.sh` 只剩 {} 行 —— 读法坏了或被掏空",
+            src.lines().count()
+        );
+
+        // `(检查名, 那一行还必须含什么)` —— 钉性质不钉整行，留出改写空间。
+        const CHECKS: &[(&str, &str)] = &[
+            ("run monitor-lib", "cargo check"),
+            ("run daemon ", "cargo check --all-targets"),
+            ("run daemon-win", "x86_64-pc-windows-msvc"),
+        ];
+        for (head, must) in CHECKS {
+            let hit = src
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.starts_with('#'))
+                .any(|l| l.starts_with(head) && l.contains(must));
+            assert!(
+                hit,
+                "`verify-committed-state.sh` 里找不到 `{head}` 那一项（且含 `{must}`）。\n\
+                 ⚠ 这是**唯一量「提交状态」的门**：其余门禁量的都是工作树。\n\
+                 它存在的理由是一次真事故 —— 一条 path 依赖没落盘，提交状态的 `main`\n\
+                 **约二十轮编不过**，而每一轮的工作树读数都是真的。\n\
+                 而且本仓不 push ⇒ CI 见不到这些 commit，这道门**只能在本机跑**。\n\
+                 删掉一项之前，先说清楚那半由谁接。"
+            );
+        }
+    }
 }
