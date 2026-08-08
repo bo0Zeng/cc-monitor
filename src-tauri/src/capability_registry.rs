@@ -195,4 +195,118 @@ mod tests {
              加一个模式 = 把能力发给一类新窗口，要有人看一眼。"
         );
     }
+    /// ★★ **构建／安装期的执行面**〔audit-0805 08-08，Phase G 第 83 件〕。
+    ///
+    /// 上面几条钉的是**运行时**谁能扩大执行面（webview 权限 · CSP · 全局 Tauri）。
+    /// 本条钉**更早的那一段**：从 `npm install` 到 `cargo build` 到 `tauri build`，
+    /// 有哪些地方能让代码在开发者机器上跑起来。08-08 逐个量过，三处**全是零判据**：
+    ///
+    /// | 面 | 今天 | 谁在管 |
+    /// |---|---|---|
+    /// | `src-tauri/build.rs` | 起 `sh`/`git`、往 `OUT_DIR` 写 | **08-08 刚并进** `write_site_registry`（第 82 件） |
+    /// | `tauri.conf.json` 的 `before*Command` | `npm run dev` / `npm run build` | 本条 |
+    /// | `package.json` 的 npm **生命周期钩子** | 一个都没有 | 本条 |
+    /// | `.cargo/config.toml` 的 `runner` | 文件不存在 | 本条 |
+    ///
+    /// ★ 后两行钉的是**「今天没有」这件事**。它们的危险恰恰在于「加一条就自动执行」：
+    /// `postinstall` 在**每一次 `npm install`** 上跑（含 CI、含任何人 clone 之后第一件事）；
+    /// `[target.*.runner]` 会让 **`cargo test` 去执行任意二进制**。
+    /// 「今天没有」不是判据 —— 没人钉的话，加进来的那天没有任何信号（本会话反复量到的
+    /// 「没人守着」与「碰巧没坏」是两回事）。
+    #[test]
+    fn the_build_time_execution_surface_stays_registered() {
+        // ① `tauri.conf.json` 的构建前置命令：登记值 + 理由。
+        const BEFORE: &[(&str, &str, &str)] = &[
+            ("beforeDevCommand", "npm run dev", "起前端 dev server；`tauri dev` 会执行它"),
+            (
+                "beforeBuildCommand",
+                "npm run build",
+                "打包前构建前端产物；`tauri build` 会执行它 —— 改这里等于改「发版时在构建机上跑什么」",
+            ),
+        ];
+        let v: serde_json::Value =
+            serde_json::from_str(&capability_json_sibling("tauri.conf.json"))
+                .expect("tauri.conf.json 不是合法 JSON");
+        let build = v
+            .get("build")
+            .expect("`tauri.conf.json` 里没有 `build` 段 —— 形状变了，本条会零命中地绿");
+        for (key, want, why) in BEFORE {
+            let got = build.get(key).and_then(|x| x.as_str()).unwrap_or("<缺失>");
+            assert_eq!(
+                got, *want,
+                "`build.{key}` 现在是 {got:?}，登记的是 {want:?}（{why}）。\n\
+                 ★ 这一格是**构建期的执行面**：`tauri dev`/`tauri build` 会原样执行它。\n\
+                 真要改，就把新值和理由一起写进本条的 `BEFORE` 表 —— 改值不改表 = 没人看过。"
+            );
+        }
+
+        // ② npm 生命周期钩子：**默认拒绝**（今天一个都没有）。
+        const LIFECYCLE: &[&str] = &[
+            "preinstall",
+            "install",
+            "postinstall",
+            "prepare",
+            "prepublish",
+            "prepublishOnly",
+            "prepack",
+            "postpack",
+        ];
+        let pkg: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .expect("仓根")
+                    .join("package.json"),
+            )
+            .expect("读不到 package.json"),
+        )
+        .expect("package.json 不是合法 JSON");
+        let scripts = pkg
+            .get("scripts")
+            .and_then(|s| s.as_object())
+            .expect("`package.json` 里没有 `scripts` —— 形状变了，本条会零命中地绿");
+        // 抽取器自检：脚本表塌了的话下面那条就是废话。
+        assert!(
+            scripts.len() >= 20,
+            "`package.json` 只解析出 {} 条 script（08-08 实测 60+）—— 读法坏了",
+            scripts.len()
+        );
+        let hooks: Vec<&str> = LIFECYCLE
+            .iter()
+            .copied()
+            .filter(|k| scripts.contains_key(*k))
+            .collect();
+        assert!(
+            hooks.is_empty(),
+            "`package.json` 里出现了 npm **生命周期钩子**：{hooks:?}\n\
+             ★ 它们**不需要谁去调**：`postinstall`/`prepare` 在每一次 `npm install` 上自动跑 ——\n\
+             包括 CI，也包括任何人 clone 之后的第一条命令。⇒ 那是本仓最省事的一条\n\
+             「让代码在别人机器上执行」的路，而在本条之前**没有任何判据看着它**。\n\
+             真要加：把它和理由写进本条（并想清楚「为什么它不能是一条普通的 `npm run xxx`」）。"
+        );
+
+        // ③ `.cargo/config.toml`：它能设 `runner`，让 `cargo test` 去执行任意二进制。
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("仓根")
+            .to_path_buf();
+        let cargo_cfgs: Vec<String> = [
+            ".cargo/config.toml",
+            ".cargo/config",
+            "src-tauri/.cargo/config.toml",
+            "src-tauri/.cargo/config",
+            "remote-daemon-proto/.cargo/config.toml",
+        ]
+        .iter()
+        .filter(|rel| root.join(rel).exists())
+        .map(|rel| rel.to_string())
+        .collect();
+        assert!(
+            cargo_cfgs.is_empty(),
+            "仓里出现了 cargo 配置文件：{cargo_cfgs:?}\n\
+             ★ 它能设 `[target.*.runner]` —— 那会让 **`cargo test` 把测试二进制交给另一个程序去跑**，\n\
+             也能设 `rustflags`/`linker`。本仓今天一个都没有，所以「跑测试」这件事没有中间人。\n\
+             真要加（比如交叉测试需要 runner）：写进本条并说清它执行的是什么。"
+        );
+    }
 }
