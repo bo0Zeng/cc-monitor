@@ -293,7 +293,11 @@ mod tests {
         const TRANSFORMERS: &[(&str, &str)] = &[
             ("lib.rs::strip_comment_lines", "★ **共享原语本体**（`guard_core`）"),
             ("lib.rs::production_code", "共享原语：剥注释 + 剥测试段"),
-            ("lib.rs::test_source", "共享原语的对侧：只取测试段"),
+            // 08-08 删掉 `lib.rs::test_source`：它**根本不剥注释**（只是把测试段拼起来）。
+            // 它当初被检出，是因为旧检测器取「函数体起点后 700 字符」的定长窗口，
+            // 一路吃进了它的邻居 `production_code`（那个才剥）。⇒ **这一行是误登记**，
+            // 而误登记的害处是具体的：登记表是「已知的第二份剥法」清单，
+            // 混进一条不是剥法的，下一个人会照它去找一份并不存在的实现。
             (
                 "cc_bus.rs::non_test_code",
                 "本地剥法：只服务本文件自己的零命中守卫，语料是本文件源码。⚠ 与共享原语重复，登记为待收口",
@@ -319,7 +323,7 @@ mod tests {
             ("agent_profile_parity.rs::rows", "不是剥法：解析对拍表的行"),
             ("gate2_parity.rs::rows", "不是剥法：解析 golden 表的行"),
             ("gate.rs::golden_rows", "不是剥法：daemon 侧解析同一张 golden 表"),
-            ("shared_crate_registry.rs::ci_live_lines", "不是剥法：抽 CI 的有效行"),
+            ("shared_crate_registry.rs::live_lines", "不是剥法：抽 CI 的有效行（08-08 从 `mod tests` 搬进 `ci_yaml`，让别的模块也能借到）"),
             // 08-07：原 `ci_job_block`/`ci_yml` 搬进同文件的 `pub(crate) mod ci_yaml`
             // （E3：`ci.yml` 的读取与切块只有一个家，`lockfile_conflict_guard` 也要用）。
             // 搬家当场被本条逮住（多出 `job_block`、少了那两个）—— 这正是默认拒绝该有的样子。
@@ -369,7 +373,38 @@ mod tests {
                     // ⚠ **按 char 取，不按字节切** —— 本仓 `digit_after` 头注逐字记过这个坑
                     // （中文注释里按字节 `saturating_sub` 会落在汉字中间当场 panic），
                     // 而我这一版还是先写成了字节切片，跑起来立刻炸在「残」字上。
-                    let body: String = raw[body_at..].chars().take(700).collect();
+                    // ⚠ **切到函数真正的结尾**，不是「起点后 700 字符」〔08-08〕：
+                    // 定长窗口会一路吃进**下一个函数**。实测：把 `live_lines` 插在 `yml` 后面，
+                    // `yml`（一句 `read_to_string` 而已）当场被判成「在剥注释」——
+                    // 窗口里装的是它邻居的身体。**匹配单位比事实大**，本仓治了一轮又一轮的那一族。
+                    // 按大括号配平切；配不平（宏里带不成对括号之类）就退回定长窗口，
+                    // 那时宁可**多判**——多判会被登记表逼着看一眼，少判是静默漏。
+                    let body: String = {
+                        let rest: Vec<char> = raw[body_at..].chars().take(3000).collect();
+                        let mut depth = 0i32;
+                        let mut end = None;
+                        for (i, c) in rest.iter().enumerate() {
+                            match c {
+                                '{' => depth += 1,
+                                '}' => {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        end = Some(i + 1);
+                                        break;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        rest[..end.unwrap_or(rest.len().min(700))].iter().collect()
+                    };
+                    // ⚠ **先剥掉整行注释再找**〔08-08〕：本检测器找的是「这段代码在剥注释」，
+                    // 而它原来拿**函数体原文**去找 —— 于是**一句解释性注释里写出那个形态就会被算成实现**。
+                    // 实测：`e2e_gate_registry::floored` 里有一行注释写着「第一版在这里内联了一个
+                    // `starts_with('#')` 过滤」，本条当场把它判成第二份剥法，还建议我去登记它。
+                    // ⇒ 与 plan-lint 判据 7 同一个教训：**判据要看围栏，不是看围栏的说明书**。
+                    // 用共享原语剥（它认 `//` 那套 Rust 形态，正是这里要去掉的东西）。
+                    let body = guard_core::strip_comment_lines(&body);
                     let body = body.as_str();
                     let dq = '"';
                     let strips = body.contains(&format!("starts_with({dq}//{dq})"))

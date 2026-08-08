@@ -51,6 +51,21 @@ pub(crate) mod ci_yaml {
             .expect("ci.yml 读不到")
     }
 
+    /// `ci.yml` 的**有效行**（整行注释剔掉）。
+    ///
+    /// ⚠ 住在这里而不是各判据自己写一遍：`ci.yml` 怎么读、怎么剔注释是**一个事实**（E3）。
+    /// 08-08 `e2e_gate_registry` 要用同一件事时，`structural_scan` 的「剥注释转换器必须登记」
+    /// 当场逮住了那份新拷贝 —— 于是把原来住在 `mod tests` 里的 `ci_live_lines` 搬到这里，
+    /// **是收口不是新增**（共享原语 `guard_core::strip_comment_lines` 接不住这一半：
+    /// 它认的是 `//` / `/*` 那套 Rust/TS 形态，而 YAML 的注释是 `#`）。
+    pub(crate) fn live_lines() -> String {
+        yml()
+            .lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     /// 切出某个顶层 job 的行范围（剔注释）。
     ///
     /// 顶层 job 键的形状是**两个空格 + 名字 + 冒号**（`  daemon:`），下一个同缩进的键即块尾。
@@ -87,6 +102,7 @@ pub(crate) mod ci_yaml {
 
 #[cfg(test)]
 mod tests {
+    use super::ci_yaml;
     use super::ci_yaml::{job_block as ci_job_block, yml as ci_yml};
     use std::fs;
     use std::path::Path;
@@ -123,14 +139,6 @@ mod tests {
     /// 把 `cargo test -p shell-quote-core` **注释掉**之后守卫**照旧全绿**（3 passed）。
     /// 而「注释掉一步」正是本模块要防的那个病的最省事形态 —— 它连 diff 都很小。
     /// 顺带：文件头那段散文注释里也写着这套纪律的命令形态，散文不该当证据。
-    fn ci_live_lines() -> String {
-        ci_yml()
-            .lines()
-            .filter(|l| !l.trim_start().starts_with('#'))
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-
     /// ★ 抽取器自检：`crates/` 下一个都没抽到时，下面那条会零命中零失败地绿。
     #[test]
     fn the_crate_scan_actually_finds_crates() {
@@ -260,11 +268,11 @@ mod tests {
 
     /// ★ CI 必须真的在用那三条收敛后的命令（不是把它们注释掉了）。
     ///
-    /// ⚠ 用 [`ci_live_lines`]（剔注释）—— 复盘 P3 实测过：直接对整份 `ci.yml` 做
+    /// ⚠ 用 [`ci_yaml::live_lines`]（剔注释）—— 复盘 P3 实测过：直接对整份 `ci.yml` 做
     /// `contains`，把某一步**注释掉**之后守卫照旧全绿，而「注释掉一步」正是最省事的错法。
     #[test]
     fn ci_actually_runs_the_three_converged_commands() {
-        let ci = ci_live_lines();
+        let ci = ci_yaml::live_lines();
         for needle in [
             "cargo fmt --all --check",
             "cargo clippy --workspace --exclude code-picture-core --all-targets",
@@ -770,7 +778,7 @@ mod tests {
             scripts.len()
         );
 
-        let ci = ci_live_lines();
+        let ci = ci_yaml::live_lines();
         // `npm test` 用 `&&` 串起来的那些，也算「CI 会跑」。
         let chained = scripts
             .iter()
