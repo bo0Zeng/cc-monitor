@@ -189,6 +189,10 @@ mod tests {
         // ⚠ 上一版把它记成 `ExemptPendingF14`，而那条判据断言例外那格**不**用分流器
         // ⇒ 改好的当天它**如设计般红了一次**，逼人回来把登记改对。**那是它的岗位。**
         ("daemon_launch.rs", Verdict::UsesRouter),
+        // ★ 08-08 扩面当场逮出来的**第四个真实发送端**（此前整个在扫描面之外）。
+        // 它发的是 `probe_daemon` 里那条 `ping`：只把成败渲染成 `control=ok(..ms)` /
+        // `control=failed(..)` 的诊断串，**不做任何回落决策** ⇒ 没有「该不该回落」这个问题。
+        ("ssh_source.rs", Verdict::ProbeOnlyNoFallbackDecision),
     ];
 
     #[cfg(test)]
@@ -200,27 +204,39 @@ mod tests {
         /// 删掉它 = 逼下一个人要么硬改要么偷偷绕过登记表（铁律 13：别因「暂时没人用」删判据形态）。
         #[allow(dead_code)]
         ExemptPendingF14,
+        /// **探测型发送端**：只把成败渲染成诊断文本，不决定「要不要回落到别的路」。
+        ///
+        /// ⚠ 与上面那一档**刻意分开**：`ExemptPendingF14` 说的是「本该走分流器、
+        /// 但今天还差一步」，这一档说的是「**根本没有回落这回事**」。
+        /// 合成一档会让「欠着」与「不适用」长得一样。
+        ProbeOnlyNoFallbackDecision,
     }
 
     /// ★★ **零命中守卫：分流规则不许有第二份实现 —— 而发现机制是遍历，不是手写清单。**
     #[test]
     fn every_daemon_sender_is_registered_and_uses_the_one_router() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/backend/control");
+        // ⚠⚠ **08-08：发现机制原本只扫 `src/backend/control/` 这一个目录**，而本模块头注
+        //   声称的是「monitor 侧走 daemon 的**所有**控制命令共用」。实测：把一个 `.call(`
+        //   发送端放在 `tmux.rs`（目录之外）并让它自己判回落，**全仓 989 条判据一条不红**
+        //   —— **声称的范围与人群的范围不是同一个**。改扫整棵 monitor 源码树。
+        //   ★ 扩面当场逮出**第四个真实发送端**（`ssh_source.rs` 的探测 ping），此前整个在扫描面之外。
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         // 目录里所有「走 daemon」的文件：生产段出现 `.call(` 的。
         let verb = format!(".call({}", "");
         let mut senders: Vec<String> = Vec::new();
-        for e in std::fs::read_dir(&dir)
-            .expect("读不到 backend/control/")
-            .flatten()
-        {
-            let p = e.path();
-            if p.extension().and_then(|x| x.to_str()) != Some("rs") {
-                continue;
-            }
-            let prod =
-                guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
+        // ⚠ 发现阶段就把生产段留下：下面按名字取时**不能再用 `dir.join(name)`**，
+        //   扩面之后 `dir` 是整棵 `src/`，而发送端散在子目录里（第一版就栽在这，
+        //   报「daemon_kill.rs 生产段却没有 route_call_error」—— 其实是文件根本没读到）。
+        let mut by_name: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for (p, src) in guard_core::scan_tree!(&dir, &["rs"]) {
+            let prod = guard_core::production_code(&src);
             if prod.contains(verb.as_str()) {
                 senders.push(p.file_name().unwrap().to_string_lossy().to_string());
+                by_name.insert(
+                    p.file_name().unwrap().to_string_lossy().to_string(),
+                    prod.clone(),
+                );
             }
         }
         senders.sort();
@@ -241,9 +257,9 @@ mod tests {
              `/full-audit` 在本守卫身上逮到的东西（第三个发送端整个逃出了扫描面）。"
         );
         for (name, verdict) in SENDERS {
-            let prod = guard_core::production_code(
-                &std::fs::read_to_string(dir.join(name)).unwrap_or_default(),
-            );
+            let prod = by_name.get(*name).unwrap_or_else(|| {
+                panic!("`{name}` 在登记表里但发现阶段没扫到 —— 上面那条已保证不会")
+            });
             let uses = prod.contains("route_call_error");
             // 运行时拼，免得命中本行自己。
             let needle = format!("CallError::{}", "");
@@ -258,6 +274,21 @@ mod tests {
                         !own,
                         "`{name}` 的生产段自己在 match `CallError` —— 那是分流规则的第二份实现。\n\
                          它一旦与本模块漂开，一次 `wrong_owner` 就可能被另一条路重做一遍。"
+                    );
+                }
+                Verdict::ProbeOnlyNoFallbackDecision => {
+                    // ★ **「不做回落决策」这件事本身也要钉**：不许自己 match `CallError`
+                    //   去分流（那就是第二份分流规则），也不必调分流器。
+                    //   只写「它是探测」而不判任何东西 = 把登记表变成免检章。
+                    assert!(
+                        !uses,
+                        "`{name}` 登记为「探测型、不做回落决策」，却在用 `route_call_error` —— \
+                         那说明它其实有回落决策，登记该改成 `UsesRouter`"
+                    );
+                    assert!(
+                        !own,
+                        "`{name}` 登记为「探测型、不做回落决策」，却自己在 match `CallError` —— \
+                         那就是第二份分流规则。要么改用 `route_call_error`，要么说清它判的不是回落。"
                     );
                 }
                 Verdict::ExemptPendingF14 => {

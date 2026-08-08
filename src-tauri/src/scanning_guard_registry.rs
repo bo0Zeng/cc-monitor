@@ -60,7 +60,6 @@ mod tests {
         "src-tauri/src/account_usage.rs",
         "src-tauri/src/atomic_replace_registry.rs",
         "src-tauri/src/backend/control/daemon_kill.rs",
-        "src-tauri/src/backend/control/daemon_route.rs",
         "src-tauri/src/backend/control/launch_wire.rs",
         "src-tauri/src/backend/control/local_query.rs",
         "src-tauri/src/backend/mod.rs",
@@ -90,7 +89,9 @@ mod tests {
     ];
 
     /// 存量上限（**递减棘轮**）。
-    const PENDING_CEILING: usize = 30;
+    // 08-08：`daemon_route.rs` 的裸遍历迁到了 `guard_core::scan_tree!`（那一轮把它的
+    // 发现面从一个目录扩到整棵树，顺带就该换掉手写遍历）⇒ 清单少一行，上限一起降。
+    const PENDING_CEILING: usize = 29;
 
     fn repo_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
