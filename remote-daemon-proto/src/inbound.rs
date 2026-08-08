@@ -589,6 +589,54 @@ mod tests {
     ///
     /// ⚠ 只钉「不是单 worker」，**不钉具体 worker 数**：那由机器决定，钉了就是把
     /// 环境写进判据（本工作区反复在治的「把会腐的当前值抄进来」）。
+    /// ★ **「先摘登记再回应答」是一条真的时序约束**〔audit-0805 08-08，Phase G 第 79 件〕。
+    ///
+    /// # 它不只是「白 abort 一个空壳」
+    ///
+    /// 那行注释写的是：反过来的话，客户端收到应答后立刻发 `cancel`，
+    /// 可能命中一个已经跑完但还没摘掉的句柄。而**上面那段「拒重复 `id`」把后果抬高了一档**：
+    /// `dispatch` 见到登记表里已有同名 `id` 就**直接拒绝**。
+    /// ⇒ 「收到应答 ⇒ 这个 id 可以再用」这句话，正是靠 `remove` 排在 `send` 前面才成立的。
+    /// 调换两行，客户端**按应答办事**地复用 id 会被 daemon 拒掉 —— 一个只在时序上出现、
+    /// 客户端侧无从解释的失败。
+    ///
+    /// # 这条透镜（08-08「顺序」类声称）的结果一并记在这里
+    ///
+    /// 全仓生产段扫出 31 处「顺序」声称，逐个查过：`launch.rs` 三条（`SendInto` /
+    /// `SendKeysRaw` / `CreateOrAttach`）· `kill.rs` 的门在 kill 之前 · `payload.rs` 的
+    /// `cd` 位次（逐字节 golden 对拍抓过一次）· `sanitize` 先于 `wrap`（F54 已钉接线）·
+    /// `fs.rs` 先看长度再读（F06）——**都已经有判据**。
+    /// **只有这一条没有**：实测把两行对调，daemon 294 条一条不红。
+    #[test]
+    fn the_handle_is_deregistered_before_the_reply_goes_out() {
+        let src = crate::guard_support::production_code(include_str!("inbound.rs"));
+        // 两个锚点各自的唯一性先量过：`remove` 那句只有一处；`replies.send(frame)` 有两处
+        // （另一处在下面的监督臂里），所以**取第一处**并断言它就在 `remove` 之后。
+        let remove_at = src
+            .find("lock(&running_for_task).remove(")
+            .expect("找不到摘登记那一句 —— 改写了就把本条一起改（本条会零命中地绿）");
+        let send_at = src
+            .find("replies.send(frame)")
+            .expect("找不到回应答那一句 —— 同上");
+        assert!(
+            remove_at < send_at,
+            "回应答排在摘登记之前了。\n\
+             ★ 后果不是「白 abort 一个空壳」那么轻：本文件上面那段**拒重复 `id`** 意味着\n\
+             「收到应答 ⇒ 这个 id 可以再用」，而那句话正是靠 `remove` 排在 `send` 前面才成立。\n\
+             调换之后，客户端**按应答办事**地复用 id 会被 daemon 直接拒掉 ——\n\
+             一个只在时序上出现、客户端侧无从解释的失败。\n\
+             ⚠ 真要先回应答（比如为了延迟），得先把「拒重复 id」那条规则一起重新设计。"
+        );
+        // 反向自检：两句必须在**同一个** task 体里，否则「谁在前」这个问题本身就没意义。
+        let between = &src[remove_at..send_at];
+        assert!(
+            between.len() < 400 && !between.contains("tokio::spawn"),
+            "摘登记与回应答之间隔了 {} 字节（且中间还起了新 task）—— \
+             它们已经不在同一段代码里，本条比的不再是原来那个顺序，先修锚点",
+            between.len()
+        );
+    }
+
     #[test]
     fn the_daemon_runtime_keeps_more_than_one_worker() {
         let src = include_str!("main.rs");
