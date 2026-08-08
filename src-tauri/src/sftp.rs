@@ -1314,6 +1314,104 @@ mod tests {
         assert!(daemon_binary("riscv64").is_none(), "未知 arch → None");
     }
 
+    /// ★★ **发版流水线必须为 `build.rs` 期待的每一个 arch 都备好料**〔audit-0805 08-08〕。
+    ///
+    /// # 缺一个 arch 的后果是**静默的**，而且已经出货过
+    ///
+    /// `build.rs` 的 `embed_daemons` 缺件时只 `cargo:warning=`（**不是 error**）：
+    ///
+    /// > 缺少内嵌 daemon {arch} —— 远端自动部署将关闭
+    ///
+    /// 而它旁边的注释逐字记着这条路的历史：「原来这里**连 warn 都没有** —— 缺二进制就
+    /// 静默不置 cfg、`daemon_binary()` 返回 None、远端自动部署整个消失而无人知晓。
+    /// **那正是 v2.19–v2.22 那批安装包的事故形状**」。
+    ///
+    /// 警告是**刻意**的（本机开发树本来就常常只有一个 arch —— 今天就是：
+    /// `embedded-daemons/` 里只有 x86_64）。⇒ **保证「出货的那份两个 arch 都在」的，
+    /// 只剩 `release.yml` 一处**，而在本条之前没有任何判据读它那几行。
+    ///
+    /// # 人群从 `build.rs` 派生
+    ///
+    /// 不手写 `["x86_64", "aarch64"]`（隔壁 `embedded_daemon_binaries_present_and_valid`
+    /// 就是手写的，而且它带 `#[cfg(embedded_daemons)]` —— 本机缺一个 arch 时**整条不编译**，
+    /// 平时没人走）。这里读 `build.rs` 那个 `for arch in [...]`：**谁将来加第三个 arch，
+    /// 本条当天就会要求流水线跟上**。
+    #[test]
+    fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let build_rs = std::fs::read_to_string(root.join("build.rs")).expect("读不到 build.rs");
+        let rel = std::fs::read_to_string(
+            root.parent()
+                .expect("仓根")
+                .join(".github/workflows/release.yml"),
+        )
+        .expect("读不到 release.yml");
+
+        // 人群：`embed_daemons` 里那个 `for arch in [...]`。
+        let arches: Vec<String> = build_rs
+            .lines()
+            .find_map(|l| {
+                let t = l.trim();
+                let rest = t.strip_prefix("for arch in [")?;
+                Some(
+                    rest.trim_end_matches(|c| c == '{' || c == ' ' || c == ']')
+                        .split(',')
+                        .map(|s| s.trim().trim_matches('"').to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .unwrap_or_else(|| {
+                panic!("`build.rs` 里找不到 `for arch in [...]` —— 写法变了，本条会零命中地绿")
+            });
+        // 抽取器自检：抠不到就别拿一个空表去「全部通过」。
+        assert!(
+            arches.len() >= 2,
+            "从 `build.rs` 只抠到 {} 个 arch（08-08 实测 2：x86_64 / aarch64）—— 抽取器坏了",
+            arches.len()
+        );
+        assert!(
+            rel.lines().count() >= 100,
+            "`release.yml` 只剩 {} 行 —— 读法坏了或流水线被掏空",
+            rel.lines().count()
+        );
+
+        for arch in &arches {
+            for (needle, why) in [
+                (
+                    format!("--target {arch}-unknown-linux-musl"),
+                    "没有为这个 arch 交叉编译",
+                ),
+                (
+                    format!("staged/cc-monitor-remote-{arch}"),
+                    "编了但没按 `build.rs` 期待的名字放进 staged/",
+                ),
+                (
+                    format!("staged/cc-monitor-remote-{arch}.build_id"),
+                    "少了旁挂的 .build_id 清单（没有它，运行时只能回退到会误拒正品的启发式）",
+                ),
+            ] {
+                assert!(
+                    rel.contains(&needle),
+                    "`release.yml` 里找不到 `{needle}` —— {why}。\n\
+                     ★ 后果是**静默的**：`build.rs` 缺件时只 `cargo:warning=`（刻意如此，\n\
+                     因为本机开发树常常只有一个 arch），于是**安装包照出，只是远端自动部署\n\
+                     对这个 arch 悄悄关闭** —— v2.19–v2.22 那批安装包就是这个形状。\n\
+                     ⚠ 人群是从 `build.rs` 的 `for arch in [...]` 派生的：要么让流水线跟上，\n\
+                     要么先把那一行改掉（改它会逼你想清楚「不再支持这个 arch」这件事）。"
+                );
+            }
+        }
+
+        // fail-closed 那一半：一个都没 stage 到时，上传步骤必须当场失败而不是传个空包。
+        assert!(
+            rel.contains("if-no-files-found: error"),
+            "上传 `embedded-daemons` 的那一步没有 `if-no-files-found: error` —— \n\
+             staged/ 空了它会**成功地上传一个空 artifact**，下游 job 下载到空目录，\n\
+             最后出的安装包不带任何内嵌 daemon。这正是本条要挡的那个事故的上游一环。"
+        );
+    }
+
     #[test]
     fn deploy_decision_truth_table() {
         // 无标记 → 部署
