@@ -1020,8 +1020,17 @@ mod tests {
             .position(|l| l.trim() == "steps:")
             .unwrap_or_else(|| panic!("`build-linux` 里找不到 `steps:` —— 段界读法坏了"));
         let head = lines[at..at + head_end].join("\n");
+        // ⚠ 不用裸 `contains`：`needle_anchor` 棘轮当场把本条判为「语料上的裸匹配」（33→35），
+        // 而它是对的 —— 「文件里某处有 `needs:`、某处有 `build-windows`」和
+        // 「**那条 needs 上有 build-windows**」是两回事（前者被两行毫不相干的字就满足了）。
+        // 改成：先取出那一条 `needs:` 行，再在**那一行**里按词匹配。
+        let needs_line = lines[at..at + head_end]
+            .iter()
+            .find(|l| l.trim_start().starts_with("needs:"))
+            .copied()
+            .unwrap_or("");
         assert!(
-            head.contains("needs:") && head.contains("build-windows"),
+            guard_core::contains_word(needs_line, "build-windows"),
             "`build-linux` 不再依赖 `build-windows` 了。它的头部现在是：\n{head}\n\n\
              ★ 两件事同时发生，且都不会有人说话：\n\
              1. **`.deb` 的版本再没人查** —— 那道「四处版本号与 tag 一致」的检查只住在 \n\
@@ -1037,7 +1046,7 @@ mod tests {
         // 那道 guard 仍然**只有一处**：既没被删，也没被「顺手也加到 Linux」。
         let guard_steps = lines
             .iter()
-            .filter(|l| l.contains("Verify version consistency with tag"))
+            .filter(|l| guard_core::contains_word(l, "Verify version consistency with tag"))
             .count();
         assert_eq!(
             guard_steps, 1,
