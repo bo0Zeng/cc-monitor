@@ -659,6 +659,113 @@ mod tests {
     }
 
     #[test]
+    /// ★★ **那两句「唯一入口 / 唯一出口」必须有人读**〔audit-0805 08-07，Phase G 第 45 件〕。
+    ///
+    /// 本模块头注逐字写着「`DaemonHello` 的**唯一构造入口**是 `from_hello_frame`」
+    /// 与「`ParkedWriter` 的**唯一出口**是 `into_client`，而它要一个 `DaemonHello`」。
+    /// 整条「Hello 之前不许写」的类型保证就压在这两句上 ——
+    /// `ssh_source` 那两条判据的诊断也是这么写的（「在这里直接写 = 静默绕过那条类型保证」）。
+    ///
+    /// # 而它们是散文
+    ///
+    /// 08-07 实测：给 `DaemonHello` 加 `pub fn forged(commands) -> Self`（凭空造见证）、
+    /// 给 `ParkedWriter` 加 `pub fn into_inner(self) -> W`（不要见证就把写半边取回来），
+    /// **全仓 976 条判据一条不红**。旁边那条 `the_hello_witness_can_only_come_from_a_hello_frame`
+    /// 是**单函数行为测试**（Hello→Some / 非 Hello→None），它只管那一扇门开得对不对，
+    /// **不管有没有第二扇门**。
+    ///
+    /// ⇒ 定框 **E12**：判准是「有没有一条**会红**的判据读它」。本条就是那条。
+    ///
+    /// # 钉法
+    ///
+    /// 人群从 `impl` 块**派生**（不手写清单），默认拒绝：两个类型各自的公开关联函数
+    /// 必须恰好是登记的那一个。顺带钉住 `ParkedWriter` 那扇门**要见证**（签名里有 `DaemonHello`）。
+    #[test]
+    fn each_type_has_exactly_one_door_and_the_exit_needs_the_witness() {
+        let prod = guard_core::production_code(include_str!("inbound_client.rs"));
+
+        // 取某个 `impl` 块（从签名行到下一个顶格行）里的 `pub fn` 名。
+        // ⚠ 顶格行做边界、不写花括号字面量：本文件会被按括号配平剥，
+        //   落单的右花括号会打坏那个配平（本工作区真踩过一次）。
+        let doors = |head: &str| -> Vec<String> {
+            let at = prod
+                .find(head)
+                .unwrap_or_else(|| panic!("生产段里找不到 `{head}` —— 抽取器坏了，本条此刻无效"));
+            let mut out = Vec::new();
+            for (i, line) in prod[at..].lines().enumerate() {
+                // ⚠ 顶格的 `where` / `)` / `{` 是**头的一部分**，不是边界。
+                //   第一版漏了 `where`，于是 `impl<W> ParkedWriter<W>` 的块被切在签名处、
+                //   抽出空清单 —— 「我以为的对象 ≠ 切片圈住的对象」这一族，本会话第三次。
+                let header_cont =
+                    line.starts_with("where") || line.starts_with(')') || line.trim() == "{";
+                if i > 0
+                    && !line.is_empty()
+                    && !line.starts_with(char::is_whitespace)
+                    && !header_cont
+                {
+                    break;
+                }
+                if let Some(rest) = line.trim().strip_prefix("pub fn ") {
+                    out.push(
+                        rest.chars()
+                            .take_while(|c| c.is_alphanumeric() || *c == '_')
+                            .collect::<String>(),
+                    );
+                }
+            }
+            out
+        };
+
+        let witness_doors = doors("impl DaemonHello {");
+        assert_eq!(
+            witness_doors,
+            vec!["from_hello_frame".to_string()],
+            "`DaemonHello` 的公开关联函数不再只有 `from_hello_frame`。\n\
+             多出来的那个**就是第二个构造入口** —— 见证一旦能凭空造出来，\n\
+             `ParkedWriter::into_client` 那道门就形同虚设，「Hello 之前不许写」当场破。\n\
+             ⚠ 08-07 实测：加一个 `pub fn forged(..) -> Self`，全仓判据一条不红。\n\
+             真要加，先想清楚它凭什么能证明「daemon 已经打过招呼」。"
+        );
+
+        let exit_doors = doors("impl<W> ParkedWriter<W>");
+        assert_eq!(
+            exit_doors,
+            vec!["into_client".to_string()],
+            "`ParkedWriter` 的公开关联函数不再只有 `into_client`。\n\
+             多出来的那个**很可能是不要见证的第二个出口**（例如 `into_inner`）——\n\
+             调用方一旦能拿回裸写半边，本模块存在的理由就没了。\n\
+             ⚠ 08-07 实测：加一个 `pub fn into_inner(self) -> W`，全仓判据一条不红。"
+        );
+
+        // 那扇唯一的出口必须**要见证**。
+        let exit_sig = prod
+            .lines()
+            .find(|l| l.contains("pub fn into_client("))
+            .expect("上面已确认它存在");
+        assert!(
+            exit_sig.contains("DaemonHello"),
+            "`into_client` 的签名里不再要 `DaemonHello`（实得 {exit_sig:?}）——\n\
+             门还在，但不查票了。整条保证靠的就是「换写能力必须交出见证」。"
+        );
+
+        // 见证类型不许有 `Default`：那是一条**不经过任何函数**的构造路。
+        assert!(
+            !prod.contains("impl Default for DaemonHello"),
+            "`DaemonHello` 实现了 `Default` —— 那是第三条路：`DaemonHello::default()` \
+             凭空就是一个见证，而它连一扇门都不用走。"
+        );
+        let derive_line = prod
+            .lines()
+            .zip(prod.lines().skip(1))
+            .find(|(_, next)| next.starts_with("pub struct DaemonHello"))
+            .map(|(d, _)| d)
+            .expect("找不到 DaemonHello 的 derive 行 —— 抽取器坏了");
+        assert!(
+            !derive_line.contains("Default"),
+            "`DaemonHello` 的 derive 里出现了 `Default`（{derive_line:?}）—— 同上，那是不走门的构造路。"
+        );
+    }
+
     fn the_hello_witness_can_only_come_from_a_hello_frame() {
         assert!(DaemonHello::from_hello_frame(&hello_frame(&["ping"])).is_some());
         assert!(
