@@ -54,7 +54,18 @@
 /// 实测这十对**两两不同**，所以「文件对」是够用且稳定的键。
 #[cfg(test)]
 const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
-    // ── monitor → daemon（9 条）：monitor 的判据去读 daemon 的源码 ───────
+    // ── monitor → daemon（10 条）：monitor 的判据去读 daemon 的源码 ───────
+    (
+        "monitor→daemon",
+        "src-tauri/src/usage.rs",
+        "remote-daemon-proto/src/observe/usage_query.rs",
+        "★ **跨轨对拍**：`the_usage_kou_jing_has_exactly_one_home` 要断言\
+         「两侧都调 `usage_core::accumulate`、且都不再自己解析 token 字段」。\
+         那是一条**关于两侧同形**的性质，只能同时读两侧的源码才验得了 —— \
+         正是本表第四列认可的那种理由（不是「顺手方便」）。\
+         ⚠ 这条边是 08-06 加那条判据时**由本护栏当场逮出来的**（实得 12 / 登记 11），\
+         而不是我记得来登记的 —— 那正是这张表存在的意义。",
+    ),
     (
         "monitor→daemon",
         "src-tauri/src/tmux.rs",
