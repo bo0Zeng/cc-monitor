@@ -1110,12 +1110,23 @@ mod tests {
             // ⚠ **整行形状**，不是「提到过」。第一版写 `contains("!{fence}(")`，
             //   于是 `if false && !is_safe_…(…)` 这种短路**照样绿** —— 变异当场证伪。
             //   F24 那一族：我要的事实是「围栏在做判定」，而我匹配了「围栏出现过」。
-            let gated = body
+            // ⚠ **每一处调用都必须是判定行**，不是「有一处就行」。
+            //   `remove_remote_file` 是**双重守卫**（canonicalize 前后各一道）；
+            //   第一版写 `.any(...)`，于是短路其中一道、另一道还在 ⇒ 照样绿。
+            //   **同一条判据在同一轮里被变异证伪两次**（先是「提到过 vs 在判定」，
+            //   再是「有一处 vs 每一处」）—— 记在这里，因为两次都是我先写完才发现的。
+            let calls = body
                 .lines()
-                .any(|l| l.trim().starts_with(&format!("if !{fence}(")));
+                .filter(|l| l.contains(&format!("{fence}(")))
+                .count();
+            let gates = body
+                .lines()
+                .filter(|l| l.trim().starts_with(&format!("if !{fence}(")))
+                .count();
             assert!(
-                gated,
-                "`{f}` 里没有一行是 `if !{fence}(…)` —— 围栏要么被删了，要么被短路了\n\
+                calls >= 1 && gates == calls,
+                "`{f}` 里 `{fence}` 被调 {calls} 次，其中只有 {gates} 次是判定行。\n\
+                 围栏要么被删了，要么被短路了\n\
                  （`if false && !…` 这种改法留着调用、却不再判定）。\n\
                  它下一步会去删用户远端机器上的文件。\n\
                  ⚠ 本条只看「那一行的形状」（源码层，理由见头注）：\n\
