@@ -73,6 +73,16 @@ pub struct SendIntoRequest {
 /// ⇒ 分流判定收进 [`super::daemon_route`]（与 `kill`/`send-keys` 共用一份），
 /// 这里只把它翻成线上的一个布尔。**`may_fall_back` 的语义严格是**：
 /// 「**能证明这条命令根本没发出去**」，不是「失败了」。
+/// ⚠⚠ **三个字段刻意不 `pub`**〔audit-0805 08-08〕：整条回落契约压在
+/// 「哪一档配哪个 `may_fall_back`」上，而在此之前**任何模块都能直接写一个字面量**
+/// 绕过 [`SendIntoResponse::unsent`] / [`SendIntoResponse::refused`]。
+/// 实测：把「协议漂移」那档改成直接构造 `may_fall_back: true`，
+/// **monitor 1003 + vitest 1294 一条都不红** —— 而那条路的后果是不可撤销的
+/// （载荷第二次键进正在跑 claude 的 pane、被当成 prompt 提交）。
+///
+/// 字段私有 ⇒ **别的模块由编译器挡住**（全仓实测：外部零读点，它只经 serde 上线）；
+/// 模块**自己**这一半编译器管不着（同文件的 `mod tests` 与后来新增的分支都够得着），
+/// 由 `may_fall_back_true_lives_in_exactly_one_place` 钉。两层失效模式不同 ⇒ 是真纵深。
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SendIntoResponse {
@@ -84,12 +94,12 @@ pub struct SendIntoResponse {
     /// 而下游把 `typed:true` 读成「不必回落」（`launch-cli-wire.ts:63` 逐字：
     /// `typed:false` 时的 `reason` 是回落的**唯一线索**）⇒ 载荷静默消失。
     /// 由 daemon 侧 `typed_is_only_as_strong_as_the_send_keys_exit_code` 钉住。
-    pub typed: bool,
-    pub reason: Option<String>,
+    typed: bool,
+    reason: Option<String>,
     /// **调用方可不可以回落到那条整串。** 只有「能证明没发出去」才 `true`。
     /// ⚠ TS 侧那个类型是**手写**的（`src/launch-cli-wire.ts`）⇒ 字段名两侧必须手动同步，
     /// 由 `refused_never_falls_back_to_the_whole_string` 钉住。
-    pub may_fall_back: bool,
+    may_fall_back: bool,
 }
 
 impl SendIntoResponse {
@@ -297,6 +307,78 @@ mod tests {
                 "daemon 的 launch 没有声明字段 `{f}`，而本模块在发它：{body}"
             );
         }
+    }
+
+    /// ★★ **`may_fall_back: true` 只许出现在一处**〔audit-0805 08-08，Phase G 第 77 件〕。
+    ///
+    /// 上面那条（`only_the_provably_unsent_cases_may_fall_back`）钉的是**语义**：
+    /// 每一档翻译得对不对。旁边那条钉的是**接线**：TS 侧真的按三态分流。
+    /// ★ 两条都不管**第三件事**：**谁能构造出一个可回落的结局**。
+    ///
+    /// 08-08 实测：把「协议漂移」那档从 `SendIntoResponse::refused(…)` 改成直接写字面量
+    /// `SendIntoResponse { typed: false, reason: …, may_fall_back: true }`，
+    /// **monitor 1003 + vitest 1294 一条都不红**。而那正是模块头注逐字警告的那件事：
+    /// 漂移时我们**不知道它键没键入**，回落等于用一条**没有 §34 门**的整串重做一遍，
+    /// 后果不可撤销（载荷第二次键进正在跑 claude 的 pane、被当成 prompt 提交、写进历史）。
+    ///
+    /// # 修法两层，失效模式不同
+    ///
+    /// 1. **字段私有**（本轮一并做）—— 别的模块由**编译器**挡住；
+    /// 2. **本条** —— 模块自己这一半编译器管不着（同文件的分支与 `mod tests` 都够得着），
+    ///    于是钉：生产段里 `may_fall_back: true` **恰好一处**，且那一处在 `fn unsent` 体内。
+    ///
+    /// ⚠ 为什么不钉「所有构造都必须走两个构造器」：`Routed::Done` 那档本来就是直接写字面量
+    /// （`typed: true`，它既不是 unsent 也不是 refused），硬要求走构造器会逼人再造一个
+    /// `fn done()` —— 那是**为判据改代码形状**，而真正要守的性质只有一句：
+    /// **可回落只能从「能证明没发出去」那一档产出**。
+    #[test]
+    fn may_fall_back_true_lives_in_exactly_one_place() {
+        let src = std::fs::read_to_string(file!())
+            .or_else(|_| {
+                std::fs::read_to_string(
+                    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("src/backend/control/daemon_launch.rs"),
+                )
+            })
+            .expect("读不到本模块源码");
+        let prod = guard_core::production_code(&src);
+        // 运行时拼，免得命中本条自己的说明文字（F58 在这上面栽过两次）。
+        let needle = format!("may_fall_back: {}", "true");
+        let hits: Vec<&str> = prod
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.contains(&needle))
+            .collect();
+        assert_eq!(
+            hits.len(),
+            1,
+            "生产段里 `{needle}` 出现 {} 处（应恰好 1 处，在 `fn unsent` 里）：\n{}\n\n\
+             ★ 多出来的那处意味着**有一档不经「能证明没发出去」这个判断就允许了回落**。\n\
+             那条回落走的整串没有 §34 的门 ⇒ 一次门拒绝、或一次「daemon 可能已经键入过」\n\
+             会被原样重做一遍；后者**不可撤销**（载荷第二次进正在跑 claude 的 pane，\n\
+             被当成 prompt 提交并写进对话历史）。\n\
+             ⇒ 新的一档要允许回落，就让它走 `SendIntoResponse::unsent(...)`，\n\
+             并先回答一句「凭什么能证明这条命令根本没发出去」。\n\
+             ⚠ 0 处 = `unsent` 那一处被改写了 ⇒ 没有 daemon 的远端全都用不了（C7 过渡期），\n\
+             那是另一个方向的坏，同样要红。",
+            hits.len(),
+            hits.join("\n")
+        );
+
+        // 那一处必须**在 `fn unsent` 体内** —— 否则「只有一处」可以被搬到任何地方去满足。
+        let at = prod
+            .find("fn unsent(")
+            .expect("`fn unsent` 不见了 —— 本条的锚点没了");
+        let end = prod[at..]
+            .find("\n    }")
+            .map(|k| at + k)
+            .unwrap_or(prod.len());
+        assert!(
+            prod[at..end].contains(&needle),
+            "唯一那处 `{needle}` 不在 `fn unsent` 体内了。\n\
+             「恰好一处」这件事本身不够 —— 它可以被搬进任何一档去满足计数，\n\
+             而语义要求它只能从「能证明没发出去」那一档产出。"
+        );
     }
 
     /// ★★ **F14 的核心性质**：只有「能证明这条命令根本没发出去」的档才许回落。
