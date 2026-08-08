@@ -251,7 +251,7 @@ mod tests {
         registered.sort();
         assert_eq!(
             senders, registered,
-            "`backend/control/` 里走 daemon 的发送端与登记表对不上。\n\
+            "**整棵 monitor 源码树**里走 daemon 的发送端与登记表对不上。\n\
              ⚠ **新增一个发送端就必须在这里表态**：要么用共用分流器 `route_call_error`，\n\
              要么写成带理由的刻意例外。**手写清单看不见新文件** —— 那正是 F12 的\n\
              `/full-audit` 在本守卫身上逮到的东西（第三个发送端整个逃出了扫描面）。"
