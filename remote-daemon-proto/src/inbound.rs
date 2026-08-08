@@ -596,10 +596,15 @@ mod tests {
         // 运行时拼：写成字面量会命中本条自己的诊断文案（F58/F62 记过）。
         let attr = format!("#[tokio::{}]", "main");
         let single = format!("current{}thread", "_");
+        // ⚠ 自检只问「有没有起 runtime 这件事」，**不问它是不是裸的** ——
+        //   后者是主断言的活。第一版自检写成 `contains("#[tokio::main]")`，
+        //   于是「改成单 worker」这一刀先撞上它，红出来的话是
+        //   「找不到裸 attr，抽取器可能坏了」 —— **红对了位置、讲错了成因**
+        //   （F42/F53 记过两次的同一形态：两条判据抢同一个变异，先响的讲错话）。
         assert!(
-            prod.contains(attr.as_str()),
-            "`main.rs` 生产段里找不到裸 `{attr}` —— 要么 runtime 的起法变了，\
-             要么抽取器坏了。两种都要人来看一眼，本条此刻无效。"
+            prod.contains("tokio::main"),
+            "`main.rs` 生产段里找不到 `tokio::main` —— runtime 的起法整个变了，\
+             或者抽取器坏了。两种都要人来看一眼，本条此刻无效。"
         );
         let offenders: Vec<&str> = prod
             .lines()
