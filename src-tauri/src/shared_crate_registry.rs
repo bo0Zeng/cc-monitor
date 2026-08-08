@@ -59,11 +59,7 @@ pub(crate) mod ci_yaml {
     /// **是收口不是新增**（共享原语 `guard_core::strip_comment_lines` 接不住这一半：
     /// 它认的是 `//` / `/*` 那套 Rust/TS 形态，而 YAML 的注释是 `#`）。
     pub(crate) fn live_lines() -> String {
-        yml()
-            .lines()
-            .filter(|l| !l.trim_start().starts_with('#'))
-            .collect::<Vec<_>>()
-            .join("\n")
+        guard_core::strip_hash_comment_lines(&yml())
     }
 
     /// 切出某个顶层 job 的行范围（剔注释）。

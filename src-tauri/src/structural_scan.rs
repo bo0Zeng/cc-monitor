@@ -323,7 +323,14 @@ mod tests {
             ("agent_profile_parity.rs::rows", "不是剥法：解析对拍表的行"),
             ("gate2_parity.rs::rows", "不是剥法：解析 golden 表的行"),
             ("gate.rs::golden_rows", "不是剥法：daemon 侧解析同一张 golden 表"),
-            ("shared_crate_registry.rs::live_lines", "不是剥法：抽 CI 的有效行（08-08 从 `mod tests` 搬进 `ci_yaml`，让别的模块也能借到）"),
+            // 08-08 第二刀：`live_lines` 已变成一句委托（改调 `strip_hash_comment_lines`）⇒
+            // 它不再是一份剥法，登记删掉。**同一天里这张表两次告诉我「你在写第二份剥法」**：
+            // 一次是内联的 `#` 过滤（登记表逮的），一次是 `sftp.rs` 读 `release.yml`（变异逮的）。
+            (
+                "lib.rs::strip_hash_comment_lines",
+                "**共享原语本体**：`strip_comment_lines` 的 YAML/shell 兄弟（`#` 整行注释）。\
+                 两个都住 guard-core —— 判据要读 `.yml`/`.sh` 时借这一份，别再各写一遍",
+            ),
             // 08-07：原 `ci_job_block`/`ci_yml` 搬进同文件的 `pub(crate) mod ci_yaml`
             // （E3：`ci.yml` 的读取与切块只有一个家，`lockfile_conflict_guard` 也要用）。
             // 搬家当场被本条逮住（多出 `job_block`、少了那两个）—— 这正是默认拒绝该有的样子。
