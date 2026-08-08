@@ -861,6 +861,178 @@ mod tests {
     /// **扫源码的守卫必须先剥注释**——本轮我有两条守卫栽在这上面：一条把文档注释里提到的
     /// 命令名也数进去（3 != 1），另一条把错误消息里的 `format!` 当成命令构造。
     /// 守卫扫错东西 = 假红，和恒绿一样坏。
+    /// 抠出一段源码里所有普通字符串字面量（**保留源码形态**：`\"` 与 `{{` 原样留着，
+    /// 这样拿它回头在源码里数出现次数才对得上）。
+    fn string_literals(body: &str) -> Vec<String> {
+        let b: Vec<char> = body.chars().collect();
+        let (mut out, mut i) = (Vec::new(), 0usize);
+        while i < b.len() {
+            if b[i] == '"' {
+                let (mut j, mut lit) = (i + 1, String::new());
+                while j < b.len() && b[j] != '"' {
+                    if b[j] == '\\' && j + 1 < b.len() {
+                        lit.push(b[j]);
+                        lit.push(b[j + 1]);
+                        j += 2;
+                        continue;
+                    }
+                    lit.push(b[j]);
+                    j += 1;
+                }
+                out.push(lit);
+                i = j + 1;
+                continue;
+            }
+            i += 1;
+        }
+        out
+    }
+
+    /// 一个 `format!` 模板里**最长的静态片段** —— 占位符 `{…}` 是变的，静态片段才是
+    /// 「这条命令长什么样」。`{{` / `}}` 是转义的花括号，算静态。
+    fn longest_static_run(lit: &str) -> String {
+        let c: Vec<char> = lit.chars().collect();
+        let (mut best, mut cur, mut i) = (String::new(), String::new(), 0usize);
+        while i < c.len() {
+            if c[i] == '{' && i + 1 < c.len() && c[i + 1] == '{' {
+                cur.push_str("{{");
+                i += 2;
+                continue;
+            }
+            if c[i] == '}' && i + 1 < c.len() && c[i + 1] == '}' {
+                cur.push_str("}}");
+                i += 2;
+                continue;
+            }
+            if c[i] == '{' {
+                if cur.chars().count() > best.chars().count() {
+                    best = cur.clone();
+                }
+                cur.clear();
+                while i < c.len() && c[i] != '}' {
+                    i += 1;
+                }
+                i += 1;
+                continue;
+            }
+            cur.push(c[i]);
+            i += 1;
+        }
+        if cur.chars().count() > best.chars().count() {
+            best = cur;
+        }
+        best
+    }
+
+    /// 取 `fn <name>` 的函数体：从签名那行起，**到下一个顶格行为止**。
+    ///
+    /// ⚠ 第一版写成「到下一个顶格 `fn ` 为止」，于是 `build_spawn_cmd` 的体一路吃到了
+    /// 它下面那个 struct 的属性里，把 `"../../src/generated/"` 当成了命令模板（出现 4 次）。
+    /// **同一族的错第 N 次**：我以为的那个对象，与切片实际圈住的那个对象不是同一个。
+    /// 顶格行 = 函数自己的收尾行，或下一个顶层项 —— 两者都是正确的边界。
+    ///
+    /// ⚠ 刻意**不写花括号字面量**来找收尾：本文件会被 `production_code` 一族按括号配平剥，
+    /// 而一个落单的右花括号会打坏那个配平（本工作区真踩过一次，红了整轮）。
+    fn fn_body(code: &str, name: &str) -> String {
+        let start = code
+            .find(&format!("fn {name}"))
+            .unwrap_or_else(|| panic!("生产段里没有 fn {name} —— 抽取器坏了"));
+        let mut out = Vec::new();
+        for (i, line) in code[start..].lines().enumerate() {
+            // ⚠ 多行签名的收尾行 `) -> Result<…> {` 也顶格 —— 它是**头的一部分**，
+            // 不是边界。第一版漏了这条，`build_spawn_cmd` 的体被切在签名处、抠出空串
+            // （长度自检当场报出来了 —— 自检存在的意义就在这里）。
+            let top_level = !line.is_empty()
+                && !line.starts_with(char::is_whitespace)
+                && !line.starts_with(')');
+            if i > 0 && top_level {
+                break;
+            }
+            out.push(line);
+        }
+        out.join("\n")
+    }
+
+    /// ★★ **每条远端命令模板都只准构造一处**〔audit-0805 08-07，Phase G 第 39 件〕。
+    ///
+    /// # 它补的是一个「只挡住了自己那一条」的 singleton
+    ///
+    /// 隔壁 `online_check_has_exactly_one_command_construction` 钉的是
+    /// **`tmux has-session -t` 这一个字面量只准出现一次** —— 那条是对的，
+    /// 但它的人群是**当初出事的那一条路**（阻塞-2：有人内联复制了一份在线检查）。
+    /// 另外三个构造器（inbox / send / spawn）**一个都没被这条性质覆盖**。
+    ///
+    /// 08-07 实测：在生产段内联一份
+    /// `format!("cc-send {id} {text} 2>&1")`（绕开 `build_send_cmd` 的 id 白名单
+    /// **与** `shell_quote` 引用），全仓 **973 条判据一条都不红**。
+    /// 而这条路把**任意用户文本**送进远端 shell —— 它是本模块里赌注最高的一条。
+    ///
+    /// # 人群从构造器本身派生
+    ///
+    /// 不手写模板清单（手写清单就是下一个「只挡住我列的那几条」）：
+    /// 扫出所有 `fn build_*_cmd`，从每个的字符串字面量里取**最长静态片段**
+    /// （占位符是变的，静态片段才是「这条命令长什么样」），要求它在生产段恰好出现一次。
+    #[test]
+    fn every_remote_command_template_is_built_in_exactly_one_place() {
+        let code = non_test_code();
+        // 人群 = 生产段里所有命令构造器（派生，不是手写清单）。
+        let names: Vec<String> = code
+            .match_indices("fn build_")
+            .map(|(i, _)| {
+                code[i + 3..]
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect::<String>()
+            })
+            .collect();
+        // ★ 抽取器自检：抓不到构造器时下面整条空转。
+        assert!(
+            names.len() >= 4,
+            "生产段只找到 {} 个 `build_*_cmd`（08-07 实测 4：online/inbox/send/spawn）\
+             —— 抽取器坏了或构造器改名了，本条此刻无效：{names:?}",
+            names.len()
+        );
+
+        for name in &names {
+            let body = fn_body(&code, name);
+            let body = body.as_str();
+            // 两道语义过滤，否则挑中的是**错误消息**而不是命令模板：
+            // ① 跳过错误路径那几行（`build_send_cmd` 最长的字面量其实是那句
+            //    「非法 agent id（拒绝拼入命令）」，三个构造器共用 ⇒ 出现 3 次；
+            //    这一版第一次跑就被自己逮出来了）；
+            // ② 命令模板要送进**远端 shell**，必然是 ASCII —— 带中文的一定不是它。
+            // ⚠ 两道都只会把候选**变少**：过滤过头 ⇒ 下面那条长度自检当场红（不是静默变绿）。
+            let prod_lines: String = body
+                .lines()
+                .filter(|l| !l.contains("Err("))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let run = string_literals(&prod_lines)
+                .iter()
+                .map(|l| longest_static_run(l))
+                .filter(|s| s.is_ascii())
+                .max_by_key(|s| s.chars().count())
+                .unwrap_or_default();
+            // 自检：片段太短就不足以标识一条命令，本条对它是空转。
+            assert!(
+                run.chars().count() >= 8,
+                "`{name}` 里抠不出足够长的命令静态片段（实得 {:?}）—— \
+                 要么它不再用 `format!` 拼命令，要么抽取器坏了。两种都要人来看一眼。",
+                run
+            );
+            assert_eq!(
+                code.matches(run.as_str()).count(),
+                1,
+                "命令模板 {run:?}（属于 `{name}`）在生产段出现了 {} 次，应当恰好 1 次。\n\
+                 多出来的那处 = **又内联复制了一份命令构造**，而复制品不会带上构造器里的\n\
+                 那几道防线（id 白名单 / `shell_quote` 引用 / 空值拒绝）。\n\
+                 ⚠ 这正是阻塞-2 的形状，只是当时只在 `build_online_cmd` 那一条上补了判据。\n\
+                 修法是**调用 `{name}`**，不是把这条判据放宽。",
+                code.matches(run.as_str()).count()
+            );
+        }
+    }
+
     fn non_test_code() -> String {
         let src = include_str!("cc_bus.rs");
         let code = src.split(concat!("#[cfg", "(test)]")).next().unwrap_or(src);
