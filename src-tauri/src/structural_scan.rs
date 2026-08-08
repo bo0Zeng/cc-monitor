@@ -737,4 +737,107 @@ mod tests {
             homes[0]
         );
     }
+    /// ★★ **位置比较型判据的三种坏法，做成一条常驻元判据**〔audit-0805 08-08，Phase G 第 81 件〕。
+    ///
+    /// 08-08 透镜五横扫全仓「比源码位置」的顺序断言，**四条老的里两条是洞**，
+    /// 一般化出三种坏法，每一种都有活样本：
+    ///
+    /// | 坏法 | 活样本 | 后果 |
+    /// |---|---|---|
+    /// | ① 比的是**注释**不是代码 | `watcher.rs` 拿 `// --- Phase 1 …` 当扫描锚点 | 真扫描搬到注入之前、注释不动 ⇒ 判据全绿，而启动时活着的会话一个 pidfd 看守都没有 |
+    /// | ② 比的是**任意一处**不是**那一处** | `local_backend.rs` 的 `rfind(".stop()")` · `kill.rs` 的裸 `kill-session`（生产段两处） | 退出臂里删掉 `.stop()`、别处留一处 ⇒ 全绿，daemon 变游魂进程 |
+    /// | ③ **文本顺序 ≠ 执行顺序** | `inbound.rs` 把 `remove` 搬进新 task | 文本上仍在前面，实际什么时候跑没人保证 |
+    ///
+    /// ⇒ 本条把①②做成机检（③ 没有可靠的文本特征，留在各判据自己的反向自检里）：
+    /// 语料必须过 `production_code`（不许比注释）· 不许 `rfind`（那是「任意一处」）·
+    /// 锚点必须被**界定**（切一段 `arm_of`，或当场核一次唯一性）。
+    ///
+    /// ⚠ **人群刻意收窄到「语料是本仓 Rust 源码」**：全仓还有 4 条位置比较判据比的是
+    /// **生成的命令串 / PowerShell 模板 / 文档**（`account_usage` 两条 · `profile_installer` 两条）——
+    /// 对它们来说「过 `production_code`」根本不成立。先量误红面再定人群，
+    /// 这是本工作区反复吃亏的地方（人群取宽 ⇒ 逼人往豁免表里塞条目 ⇒ 判据变废纸）。
+    #[test]
+    fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("仓根")
+            .to_path_buf();
+        let mut files = guard_core::scan_tree!(&root.join("src-tauri/src"), &["rs"]);
+        files.extend(guard_core::scan_tree!(
+            &root.join("remote-daemon-proto/src"),
+            &["rs"]
+        ));
+
+        let mut population = 0usize;
+        let mut bad: Vec<String> = Vec::new();
+        for (path, src) in &files {
+            let name = path.to_string_lossy().replace('\\', "/");
+            for body in src.split("\n    fn ").skip(1) {
+                let fname = body.split('(').next().unwrap_or("").trim();
+                let finds = body.matches(".find(").count() + body.matches(".rfind(").count();
+                if finds < 2 {
+                    continue;
+                }
+                // 比位置：`x < y` 这种形状（`_at` 命名或 assert! 里直接比两个局部）。
+                let compares = body.contains("_at < ")
+                    || body
+                        .lines()
+                        .any(|l| l.trim().starts_with("assert!(") && l.contains(" < "))
+                    || body.lines().any(|l| {
+                        let t = l.trim();
+                        t.ends_with(" < types,")
+                            || t.ends_with(" < scan_at,")
+                            || t.ends_with(" < act,")
+                    });
+                if !compares {
+                    continue;
+                }
+                // 语料是不是本仓 Rust 源码（否则「过 production_code」这条要求不成立）。
+                let rust_corpus = body.contains("production_code(") || body.contains(".rs\")");
+                if !rust_corpus {
+                    continue;
+                }
+                population += 1;
+                let mut why = Vec::new();
+                if !body.contains("production_code(") {
+                    why.push("语料没过 `production_code` ⇒ 它在比**注释**的位置（坏法①）");
+                }
+                if body.contains("rfind(") {
+                    why.push("用了 `rfind` ⇒ 比的是**任意一处**，不是**那一处**（坏法②）");
+                }
+                let bounded = body.contains("arm_of(")
+                    || (body.contains("matches(") && body.contains(".count()"));
+                if !bounded {
+                    why.push(
+                        "锚点没被界定 ⇒ 没切段（`arm_of`）也没核唯一性，\
+                         第二处同名字面量出现时它会比到别处去（坏法②的另一半）",
+                    );
+                }
+                if !why.is_empty() {
+                    bad.push(format!(
+                        "  {name}::{fname}\n      - {}",
+                        why.join("\n      - ")
+                    ));
+                }
+            }
+        }
+        // 抽取器自检：人群塌了的话下面那条就是一句废话。
+        assert!(
+            population >= 5,
+            "只识别出 {population} 条「比源码位置」的判据（08-08 实测 6）—— \
+             识别口径坏了，本条会零命中地绿"
+        );
+        assert!(
+            bad.is_empty(),
+            "这些位置比较型判据没守住三条纪律：\n{}\n\n\
+             ★ 三种坏法各有活样本（08-08 实测，逐条写在本条头注的表里）：\n\
+             ① 比注释（`watcher.rs` 曾拿一行 `// --- Phase 1 …` 当扫描锚点）；\n\
+             ② 比任意一处（`local_backend.rs` 的 `rfind(\".stop()\")`；`kill.rs` 的裸 `kill-session` \n\
+                在生产段有两处，命中对的那处**是排序运气**）；\n\
+             ③ 文本顺序 ≠ 执行顺序（`inbound.rs` 把 `remove` 搬进新 task 就绕过去了）。\n\
+             ⇒ 修法：语料先过 `production_code`；别用 `rfind`；\n\
+             锚点要么切一段（`arm_of`）、要么当场核一次唯一性（`matches(..).count() == 1`）。",
+            bad.join("\n")
+        );
+    }
 }

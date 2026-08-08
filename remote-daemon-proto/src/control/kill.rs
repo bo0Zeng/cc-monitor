@@ -127,10 +127,18 @@ mod tests {
         let admit = src
             .find("gate::admit_destructive")
             .expect("生产段里没有 `gate::admit_destructive` —— 这条 kill 没过门");
-        let verb = format!("kill-{}", "session");
-        let act = src
-            .find(verb.as_str())
-            .expect("生产段里没有 kill-session —— 抽取坏了");
+        // ⚠ **锚在调用形态上，不是那个词**〔08-08〕：生产段里 `kill-session` 有**两处**
+        //（真调用 + 一句错误消息「kill-session 失败…」），`find` 取首处 —— 今天命中对的
+        // 那一处**是排序运气**。换成 `.args([` 那个形状（唯一），并当场核一次唯一性。
+        let verb = format!(".args([\"kill-{}\"", "session");
+        let n = src.matches(verb.as_str()).count();
+        assert_eq!(
+            n, 1,
+            "生产段里 `{verb}` 出现 {n} 次（应恰好 1 次）—— \
+             0 次 = 调用写法变了（本条会零命中地绿）；≥2 次 = 有第二条 kill 路，\
+             那就得逐条问「它过门了吗」，而不是只比第一处的位置"
+        );
+        let act = src.find(verb.as_str()).expect("上面已断言恰好一处");
         assert!(
             admit < act,
             "`kill-session` 排在过门之前 —— 先杀再判，门就没意义了"
