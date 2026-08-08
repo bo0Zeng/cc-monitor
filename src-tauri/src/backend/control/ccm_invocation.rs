@@ -501,6 +501,59 @@ mod tests {
     /// 这是**钉住**，不是推导 —— 这几句字符串是与 TS 侧的契约（夹具逐字节比的就是它们）。
     /// 其中六条另有跨语言夹具背书（下一条测试对着入库文件核）；
     /// **`AttachNeedsTmux` 是唯一没有夹具用例的那条**，所以 R4 才存活。
+    /// `Refusal` 的**变体名**，从源码里的枚举定义派生。
+    ///
+    /// ⚠ 08-08 之前，两条降级理由判据的人群都是**手写清单**，连「Refusal 有七个变体」
+    /// 这个数也是手写的。实测：给枚举加第八个变体、并像真人那样补上它的 `reason()` 臂，
+    /// **全仓 988 条判据一条不红** —— 那句新的用户可见文案就此无人看管，
+    /// 而本模块头注写着「渲染失败**必须带理由**，`reason` 是生产文案」。
+    /// ⇒ 与 F24（`wire.rs` 手写帧清单）同一族：**人群要从枚举本身取**。
+    /// 某个变体的**代表性降级理由**（带占位的用夹具里真实出现的那一份）。
+    fn sample_reason(variant: &str) -> String {
+        match variant {
+            "MissingCap" => Refusal::MissingCap("tmux".into()).reason(),
+            "DimensionCannotSpeak" => Refusal::DimensionCannotSpeak("account".into()).reason(),
+            "DimensionNeedsCap" => Refusal::DimensionNeedsCap {
+                dim: "model".into(),
+                cap: "model".into(),
+            }
+            .reason(),
+            "NotInstalled" => Refusal::NotInstalled.reason(),
+            "NotSsh" => Refusal::NotSsh.reason(),
+            "SendIntoHasNoCliForm" => Refusal::SendIntoHasNoCliForm.reason(),
+            "AttachNeedsTmux" => Refusal::AttachNeedsTmux.reason(),
+            other => panic!(
+                "变体 `{other}` 没有代表样本 —— 新变体要在这里给一个，\
+                 否则夹具对拍认不出它（这一步刻意不自动化：带占位的理由要人来选值）"
+            ),
+        }
+    }
+
+    fn refusal_variants() -> Vec<String> {
+        let src = include_str!("ccm_invocation.rs");
+        let at = src
+            .find("pub enum Refusal {")
+            .expect("找不到 `pub enum Refusal` —— 抽取器坏了，两条判据此刻无效");
+        let mut out = Vec::new();
+        for line in src[at..].lines().skip(1) {
+            if !line.is_empty() && !line.starts_with(char::is_whitespace) {
+                break; // 顶格行 = 枚举收尾
+            }
+            let s = line.trim();
+            if s.starts_with("///") || s.starts_with("//") || s.is_empty() {
+                continue;
+            }
+            let name: String = s
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() && name.starts_with(char::is_uppercase) {
+                out.push(name);
+            }
+        }
+        out
+    }
+
     #[test]
     fn every_refusal_reason_is_pinned_byte_for_byte() {
         let pairs: &[(Refusal, &str)] = &[
@@ -524,7 +577,32 @@ mod tests {
                 "维度 model 需要远端 ccm 能力 model，但它不支持",
             ),
         ];
-        assert_eq!(pairs.len(), 7, "Refusal 有七个变体，这张表要全覆盖");
+        // ★ 人群**从枚举派生**，不再手写「七个」这个数。
+        let variants = refusal_variants();
+        assert!(
+            variants.len() >= 7,
+            "只从 `Refusal` 抽到 {} 个变体（08-08 实测 7）—— 抽取器坏了，本条此刻无效：{variants:?}",
+            variants.len()
+        );
+        assert_eq!(
+            pairs.len(),
+            variants.len(),
+            "`Refusal` 有 {} 个变体，而这张逐字表只列了 {} 条 —— 新变体的**用户可见文案**没人看管。\n\
+             ⚠ 08-08 实测：加第八个变体并补上它的 `reason()` 臂，全仓判据一条不红。\n\
+             本模块头注写着「渲染失败必须带理由，`reason` 是生产文案」—— 那句话要有人读。\n\
+             变体：{variants:?}",
+            variants.len(),
+            pairs.len()
+        );
+        // 每个变体都要在表里出现（改名也要红）。
+        for v in &variants {
+            assert!(
+                pairs
+                    .iter()
+                    .any(|(r, _)| format!("{r:?}").starts_with(v.as_str())),
+                "变体 `{v}` 不在逐字表里 —— 是新加的，还是改了名？两种都要人来看一眼"
+            );
+        }
         for (r, want) in pairs {
             assert_eq!(&r.reason(), want, "{r:?} 的降级理由变了");
         }
@@ -539,16 +617,39 @@ mod tests {
         // 而不是运行时才发现（同两条 parity 判据的纪律）。
         let fx = include_str!("fixtures/cli-golden.json");
         assert!(fx.len() > 1000, "夹具只有 {} 字节，像是坏了", fx.len());
-        for want in [
-            "远端未装 ccm",
-            "本地路径不走 CLI 渲染器",
-            "远端 ccm 缺能力 tmux",
-            "send-into（idle-tmux 就地复用）无 CLI 等价语法，诚实降级",
-            "维度 account 无法用 CLI 语法表达（cliFlags 返回 null）",
-            "维度 model 需要远端 ccm 能力 model，但它不支持",
-        ] {
-            assert!(fx.contains(want), "夹具里找不到这句降级理由：{want}");
+        // ★ 人群**从枚举派生**：每个变体的降级理由都要在夹具里出现，
+        //   除非它登记在下面这张豁免表里并写明「谁顶了它」。**默认拒绝。**
+        const NO_FIXTURE_CASE: &[(&str, &str)] = &[(
+            "AttachNeedsTmux",
+            "夹具没有这条用例（模块头注逐字记着它是唯一一条）—— \
+             由行为判据 `attaching_into_a_non_tmux_container_is_refused` 顶着",
+        )];
+        let variants = refusal_variants();
+        assert!(
+            variants.len() >= 7,
+            "只从 `Refusal` 抽到 {} 个变体 —— 抽取器坏了，本条此刻无效",
+            variants.len()
+        );
+        let mut checked = 0usize;
+        for v in &variants {
+            if let Some((_, why)) = NO_FIXTURE_CASE.iter().find(|(n, _)| n == v) {
+                let _ = why;
+                continue;
+            }
+            checked += 1;
+            let want = sample_reason(v);
+            assert!(
+                fx.contains(&want),
+                "夹具里找不到变体 `{v}` 的降级理由：{want:?}\n\
+                 ⚠ 那句话是**生产文案**（TS 那边 `{{ok:false, reason}}` 直接上屏）。\n\
+                 要么给它补一条夹具用例，要么登记进 `NO_FIXTURE_CASE` 并写明谁顶了它。"
+            );
         }
+        // 常驻自检：豁免表把人群吃空时，上面整段空转。
+        assert!(
+            checked >= 5,
+            "只核了 {checked} 个变体（08-08 实测 6）—— 豁免表是不是被塞大了？"
+        );
     }
 
     // ── attach 分支 ─────────────────────────────────────────────────────────
