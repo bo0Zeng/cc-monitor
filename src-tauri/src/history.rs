@@ -2307,6 +2307,49 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// ★★ **建分支入口真的过了围栏吗**〔audit-0805 08-07，Phase G 第 48 件〕。
+    ///
+    /// 与删除那条**同一族的第二例**。`validate_branch_source` 有两条穿越防护判据
+    /// （`..` 穿越 · 软链逃逸），都是实的，但主语同样是**围栏本身**。
+    /// 08-07 实测：把 `branch_impl` 里那行换成 `PathBuf::from(source_jsonl_path)`，
+    /// **全仓 979 条判据一条不红** —— 而那条路会去**读**调用方给的任意文件，
+    /// 再把内容拷进 `projects` 目录（该函数头注自陈「安全承诺全在这层」）。
+    ///
+    /// ⇒ 一族两例，说明这不是某个人某次疏忽：**「围栏有判据」与「那条路过了围栏」
+    /// 是两件事，而写判据的注意力天然落在前者**（后者要跑真路，前者只要调个函数）。
+    ///
+    /// 本条比删除那条更干净：`branch_impl` 可注入 `projects_dir` ⇒ 临时目录**同时**
+    /// 充当「projects」与「界外」，一个字节都不碰用户的目录。
+    #[test]
+    fn the_branch_entry_point_actually_goes_through_the_fence() {
+        let base = std::env::temp_dir().join(format!(
+            "ccm-branch-fence-probe-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let projects = base.join("projects");
+        std::fs::create_dir_all(&projects).expect("建临时 projects");
+        // 源文件放在 projects **之外**：围栏在的话必须拒。
+        let outsider = base.join("outsider.jsonl");
+        std::fs::write(&outsider, "{\"type\":\"user\"}\n").expect("造界外源文件");
+
+        let r = branch_impl(&outsider.to_string_lossy(), "uuid-x", &projects);
+        let _ = std::fs::remove_dir_all(&base);
+
+        let err = r.err().unwrap_or_else(|| {
+            panic!(
+                "`branch_impl` 接受了一个 **`projects` 之外**的源路径 —— 围栏没接上。\n\
+                 那条路会去读调用方给的任意文件，再把内容拷进 projects 目录。"
+            )
+        });
+        // 红要红对成因：必须是**围栏**拒的，不是后面某步偶然失败。
+        assert!(
+            err.contains("refuse branch"),
+            "拒绝了，但不是围栏拒的（错误：{err}）—— \
+             本条没真跑到围栏那一步，等于空转。"
+        );
+    }
+
     /// ★★ **删除入口真的过了围栏吗**〔audit-0805 08-07，Phase G 第 47 件〕。
     ///
     /// 下面五条穿越防护判的都是 `validate_delete_target` **这个函数本身**。它们是实的，
