@@ -169,10 +169,27 @@ mod spawn_sites {
             .filter(|(f, n, _, _)| !found.iter().any(|(ff, nn)| ff == f && nn == n))
             .map(|(f, n, _, _)| format!("  {f}::{n}"))
             .collect();
+        // ⚠ **红了还要讲对成因**〔08-08〕：死行有两种完全不同的来路 ——
+        // ① 那处代码真的改名/删了；② **扫描面缩了**（语料不再包含那个文件）。
+        // 实测把 `build.rs` 从语料里拿掉，旧诊断说「已经不起进程了（改名或删了）」，
+        // 而 `build.rs` 里那两处一个字没动 —— 照它去查会查错方向。
+        // 本区反复吃过这个亏（「讲错成因的红灯比不红更坏」），所以这里先分辨再说话。
+        let scanned: Vec<String> = files
+            .iter()
+            .filter_map(|(p, _)| p.file_name().and_then(|s| s.to_str()).map(str::to_string))
+            .collect();
+        let out_of_corpus: Vec<&str> = SPAWNS
+            .iter()
+            .map(|(f, _, _, _)| *f)
+            .filter(|f| !scanned.iter().any(|s| s == f))
+            .collect();
         assert!(
             stale.is_empty(),
-            "申报表里这些落点已经不起进程了（改名或删了）：\n{}\n\
-             改名也要红 —— 名字变了就该有人重新看一眼它起的是什么。",
+            "申报表里这些落点在语料里找不到了：\n{}\n\
+             ★ 两种来路，先分清再动手：\n\
+             ① 那处代码真的改名/删了 ⇒ 更新登记（改名也要红 —— 名字变了就该有人重新看一眼它起的是什么）；\n\
+             ② **扫描面缩了** —— 这些文件压根不在本次语料里：{out_of_corpus:?}\n\
+                （非空就说明是这一种：去看 `corpus()` 少扫了什么，别去改登记表）",
             stale.join("\n")
         );
     }
