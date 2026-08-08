@@ -972,6 +972,82 @@ mod tests {
     /// 而 UI 报告「已重启」。**尾冒号不能省**：`send-keys`/`capture-pane` 收 target-pane，
     /// `=名`（无冒号）在那条路径上 rc=1 完全失效。
     #[test]
+    /// ★ **每一处 `-t {…}` 的目标都必须出自 `exact_target`**〔audit-0805 08-07〕。
+    ///
+    /// # 它补的是一条**传递来的**覆盖
+    ///
+    /// 隔壁 `tmux_targets_use_exact_match` 拿三个构造器的**产物**做断言，覆盖是实的 ——
+    /// 08-07 实测：把 `build_guarded_tmux_cmd` 里的 `exact_target` 换成裸目标，
+    /// 三条判据当场红。但它红是因为 `build_guarded_tmux_cmd` **恰好内嵌在**
+    /// kill/send-keys 的命令里；哪天有个构造器用了它却不经这两条路（或者 capture-pane
+    /// 这类不走 Gate 的入口再添一个），那份覆盖就**静默变窄**，而没有东西会说话。
+    ///
+    /// ⇒ 本条改判**源码层**：生产段里每一处把目标插进命令的地方，所在函数必须调
+    /// `exact_target(`。与隔壁那条失效模式不同（行为 vs 源码）⇒ 是纵深不是重复。
+    #[test]
+    fn every_target_placeholder_comes_from_exact_target() {
+        let prod = guard_core::production_code(include_str!("tmux.rs"));
+        let lines: Vec<&str> = prod.lines().collect();
+        let mut sites: Vec<(String, &str)> = Vec::new();
+        for (i, line) in lines.iter().enumerate() {
+            if !line.contains("-t {") {
+                continue;
+            }
+            // 往回找最近的 `fn 名字`，再取它的体（到下一个顶格行；
+            // `where` / `)` 顶格的是头的一部分 —— 这一族本会话已栽过三次）。
+            let mut s = i;
+            while s > 0 && !lines[s].contains("fn ") {
+                s -= 1;
+            }
+            let name: String = lines[s]
+                .split(" fn ")
+                .nth(1)
+                .or_else(|| lines[s].strip_prefix("fn "))
+                .unwrap_or("")
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            let mut body = Vec::new();
+            for (k, l) in lines[s..].iter().enumerate() {
+                let cont = l.starts_with("where") || l.starts_with(')') || l.trim() == "{";
+                if k > 0 && !l.is_empty() && !l.starts_with(char::is_whitespace) && !cont {
+                    break;
+                }
+                body.push(*l);
+            }
+            sites.push((name, Box::leak(body.join("\n").into_boxed_str())));
+        }
+        // 抽取器自检：一处都没抓到 ⇒ 下面整条空转。
+        assert!(
+            sites.len() >= 4,
+            "生产段只找到 {} 处 `-t {{…}}`（08-07 实测 4：capture-pane / display-message / \
+             kill-session / send-keys）—— 抽取器坏了，本条此刻无效",
+            sites.len()
+        );
+        // 受托者：它**自己也在人群里**，本条同样要求它调 `exact_target(` ⇒ 委托是闭环，不是缺口。
+        const DELEGATE: &str = "build_guarded_tmux_cmd(";
+        let delegate_ok = sites
+            .iter()
+            .any(|(n, b)| n == "build_guarded_tmux_cmd" && b.contains("exact_target("));
+        assert!(
+            delegate_ok,
+            "受托者 `build_guarded_tmux_cmd` 不在人群里、或它自己没调 `exact_target(` —— \
+             那下面「委托也算」这条就不成立了，闭环断了。"
+        );
+        for (name, body) in &sites {
+            assert!(
+                body.contains("exact_target(") || body.contains(DELEGATE),
+                "`{name}` 把目标插进了 tmux 命令，却没调 `exact_target(`。\n\
+                 裸目标会走 tmux 的「精确→名字开头→glob」三级解析 —— \n\
+                 `cc-abc12345` 会命中 `cc-abc12345-2`，于是**打到兄弟会话上**（F01 实测过）。\n\
+                 ⚠ 隔壁那条 `tmux_targets_use_exact_match` 只断言三个构造器的产物；\n\
+                 新加的构造器不在它人群里，本条才是按「谁插了目标」取的。\n\
+                 合法的第二条路：把闭包交给 `build_guarded_tmux_cmd`（它给的 `t` 已经过 \
+                 `exact_target`，而它自己也在本条人群里 —— 那是闭环，不是绕过）。"
+            );
+        }
+    }
+
     fn tmux_targets_use_exact_match() {
         // **三个命令构造点全钉死**（D 审计：此前只钉了 send-keys，另两处改回裸目标测试仍全绿）。
         let sk = build_send_keys_remote_cmd("cc-abc12345", "/exit", true).unwrap();
