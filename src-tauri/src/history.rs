@@ -2307,6 +2307,57 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// ★★ **删除入口真的过了围栏吗**〔audit-0805 08-07，Phase G 第 47 件〕。
+    ///
+    /// 下面五条穿越防护判的都是 `validate_delete_target` **这个函数本身**。它们是实的，
+    /// 但它们的主语是**围栏**，不是「那条路真的过了围栏」——
+    /// 08-07 实测：把 `delete_history_session` 里那行换成
+    /// `let target = PathBuf::from(&jsonl_path);`（整个跳过围栏），
+    /// **全仓 978 条判据一条不红**，而那条路是 `fs::remove_file`：
+    /// 前端传什么就删什么，用户机器上任意文件。
+    ///
+    /// ⇒ 与 F27（`history_query` 那两份围栏）同族，也是 F+ 第二问反复报的那个形状：
+    /// **纯函数层钉满、接线层为零**。
+    ///
+    /// # 为什么做成端到端而不是扫源码
+    ///
+    /// 扫「函数体里有没有 `validate_delete_target(`」只是**代理**（上一件刚记过这条）。
+    /// 这里能直接跑真路：造一个**在 `projects` 之外**的真临时文件，要求入口拒绝**且文件还在**。
+    /// 围栏一旦被绕过，这条会把那个临时文件真删掉 —— 于是「文件还在」这半当场红。
+    /// ⚠ 只碰自己造的临时目录；`~/.claude/` 一个字节都不写（红线）。
+    #[test]
+    fn the_delete_entry_point_actually_goes_through_the_fence() {
+        let dir = std::env::temp_dir().join(format!(
+            "ccm-delete-fence-probe-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).expect("建临时目录");
+        let victim = dir.join("victim.jsonl");
+        std::fs::write(&victim, "not yours").expect("造临时文件");
+
+        let r = delete_history_session("sid".into(), victim.to_string_lossy().into_owned());
+        let still_there = victim.exists();
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let err = r.expect_err(
+            "`delete_history_session` 接受了一个 **`projects` 之外**的路径 —— \
+             围栏没接上，前端传什么就删什么。",
+        );
+        assert!(
+            still_there,
+            "那个临时文件**真被删了**（错误：{err}）—— 围栏被绕过，\
+             `fs::remove_file` 直接落在了调用方给的路径上。"
+        );
+        // ★ 红要红对成因：必须是**围栏**拒的，不能是「claude dir not found」之类前置失败，
+        //   否则本条会在一个根本没跑到围栏的环境里假绿。
+        assert!(
+            err.contains("refuse delete") || err.contains("outside"),
+            "拒绝了，但不是围栏拒的（错误：{err}）—— \
+             本条在这个环境里没真跑到围栏那一步，等于空转。"
+        );
+    }
+
     // === Batch4-F15：validate_delete_target 穿越防护 ===
 
     /// 独立临时 projects 目录（惯例同 utils.rs / watcher.rs 测试）。
