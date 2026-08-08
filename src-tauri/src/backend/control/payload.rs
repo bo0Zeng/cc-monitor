@@ -337,6 +337,60 @@ pub fn usage_probe_payload(
 
 #[cfg(test)]
 mod tests {
+
+    /// ★★ **载荷的拼装只许有一份 Rust 实现**〔audit-0805 08-08，Phase G 第 62 件，E3〕。
+    ///
+    /// 本模块头注第一行逐字写着「`env 前缀 → cd → argv → wrap` 那一段串的
+    /// **唯一 Rust 真相源**」。那句话撑着一条真实性质：载荷会被 `send-keys` 原样
+    /// 键进会话，拼装一旦有第二份，两份的**引用规则与拼接顺序**就会各自演化 ——
+    /// 而那正是本工作区反复在治的「同一职责多处落地」（E3）。
+    ///
+    /// ⇒ 而它**只是散文**（08-08 横扫「唯一」类声称时逮到：没有任何判据读它）。
+    ///
+    /// # 钉法
+    ///
+    /// 人群 = 整棵 monitor 源码树的生产段里，每一处拼 `cd <目录> && ` 这个**载荷片段**
+    /// 的地方。今天恰好一处（本模块的 `render_payload`）。先量过误红面：全树只此一处。
+    ///
+    /// ⚠ **不钉 argv / wrap 那两段**：它们没有同样窄的特征串，硬造一个匹配单位
+    /// 会比事实大（F24 那一族）。**只钉钉得住的那一段**，并把这句话留在这里 ——
+    /// 别让后来者以为整条拼装都被守住了。
+    #[test]
+    fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
+        // 运行时拼：写成字面量的话，本条自己的诊断文案也会被数进去（F58 记过两次）。
+        let frag = format!("cd {}{} && ", "{}", "");
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut sites: Vec<String> = Vec::new();
+        let mut files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["rs"]);
+        // ⚠ `scan_tree!` 摘除调用者自己，而唯一那处就在本文件里（F60 栽过一次）。
+        files.push((
+            std::path::PathBuf::from("payload.rs"),
+            include_str!("payload.rs").to_string(),
+        ));
+        for (path, src) in files {
+            let name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap()
+                .to_string();
+            for line in guard_core::production_code(&src).lines() {
+                if line.contains(frag.as_str()) {
+                    sites.push(format!("{name}: {}", line.trim()));
+                }
+            }
+        }
+        assert_eq!(
+            sites.len(),
+            1,
+            "载荷的 `cd <目录> && ` 片段在 monitor 生产段里出现了 {} 处（应恰好 1）：\n  {}\n\n\
+             ⚠ 头注第一行写着本模块是「那一段串的**唯一 Rust 真相源**」。\n\
+             第二份拼装会与这一份各自演化引用规则与拼接顺序，而载荷是**原样键进会话**的 —— \n\
+             漂开的后果不是「样式不一致」，是**一边转义、一边不转义**。\n\
+             真要复用，调 `render_payload`。",
+            sites.len(),
+            sites.join("\n  ")
+        );
+    }
     use super::*;
 
     /// ★ 本 crate 存在的理由之一：命令面校验必须用 `acct-core` 的**并集**，
