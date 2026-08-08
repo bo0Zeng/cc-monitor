@@ -157,6 +157,52 @@ pub async fn push_public_key(
 
 #[cfg(test)]
 mod tests {
+
+    /// ★★ **推公钥的入口真的净化过公钥吗**〔audit-0805 08-08，Phase G 第 54 件下半〕。
+    ///
+    /// `sanitize_public_key` 有直接的行为判据，但主语是**净化函数本身**。
+    /// 08-08 实测：把 `push_public_key` 里那句 `let key = sanitize_public_key(&raw)?;`
+    /// 换成 `let key = raw.clone();`，**全仓 986 条判据一条不红** ——
+    /// 而那个 `key` 下一步就被 `build_authorized_keys_cmd` 拼进远端命令并 exec。
+    ///
+    /// 净化在任何 I/O 之前 ⇒ 本条跑真路：喂一个**空**的公钥文件，
+    /// 要求**零网络**就被拒（净化第一条就是「公钥为空」）。
+    /// 净化没接上的话，它会带着空 key 往下走去连一个不存在的主机 —— 两句话分得开。
+    #[tokio::test]
+    async fn the_push_entry_point_actually_sanitizes_the_key() {
+        let dir = std::env::temp_dir().join(format!(
+            "ccm-pubkey-fence-probe-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).expect("建临时目录");
+        let empty = dir.join("id_probe.pub");
+        std::fs::write(&empty, "").expect("造空公钥");
+
+        let cfg = crate::ssh_source::RemoteConfig {
+            host: "这个主机一定不存在-audit0805".into(),
+            label: "probe".into(),
+            port: 1,
+            user: "nobody".into(),
+            key_path: None,
+            daemon_path: "/tmp/nope".into(),
+            host_key_fingerprint: None,
+            addresses: Vec::new(),
+            jump: None,
+            daemonless: false,
+        };
+        let r = push_public_key(cfg, Some(empty.to_string_lossy().into_owned())).await;
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let err = r
+            .err()
+            .unwrap_or_else(|| panic!("空公钥竟然一路走通了 —— 净化没接上"));
+        assert!(
+            err.contains("公钥为空"),
+            "拒绝了，但不是净化拒的（错误：{err}）—— \
+             说明它带着未净化的 key 越过了这一步，而下一步就是拼进远端命令 exec。"
+        );
+    }
     use super::*;
 
     #[test]
