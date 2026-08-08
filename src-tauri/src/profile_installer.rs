@@ -65,6 +65,64 @@ pub struct ProfileScan {
 /// **自动识别**：
 ///   - PS 5.1 永远显示（Windows 自带）
 ///   - PS 7.x 只在 `Documents/PowerShell/` 目录存在时显示（说明用户装过且至少跑过一次）
+/// **路径围栏：profile 只能落在用户 home 之内**〔audit-0805 08-08，Phase G 第 86 件〕。
+///
+/// # 为什么需要它
+///
+/// 三条 `cc_integration_*` 命令收的是 **webview 给的字符串**（前端那一格是用户可输入的
+/// 文本框），此前**原样** `PathBuf::from` 就交给了安装器：`install` 往那里写、
+/// 文件不存在还会创建；`uninstall` 会重写它；`scan_path` 是任意路径的存在性/大小探针。
+/// 而**远端**那条同名功能一直有围栏（`sftp.rs`：「profile 只能是 home 下的文件名」）。
+///
+/// # 为什么是「home 之内」而不是「home 下的裸文件名」
+///
+/// [`discover_profiles`] 自己就会返回 `~/WindowsPowerShell/…ps1` 这种**子目录**里的路径，
+/// 而 [`ProfileKind::Custom`] 是产品特性（用户可以指 `~/.config/fish/config.fish`）。
+/// ⇒ 围栏只挡「跑出 home」这一类，**不缩小功能**。
+///
+/// 三条规则：① `~` / `~/x` 先展开（用户会手打这种）；② 必须是绝对路径；
+/// ③ 不许含 `..`（不做「消解后再看」——直接拒绝更简单也更难绕）；④ 前缀必须是 home。
+/// 另外：父目录若已存在，用它的 canonical 形态再查一次前缀 —— 挡掉
+/// `~/link -> /etc` 这种**符号链接逃逸**（`install` 会跟着链接写过去）。
+pub fn fence_profile_path(raw: &str) -> Result<PathBuf, String> {
+    let home =
+        dirs::home_dir().ok_or_else(|| "找不到 home 目录 —— 拒绝写任何 profile".to_string())?;
+    let expanded: PathBuf = if raw == "~" {
+        home.clone()
+    } else if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {
+        home.join(rest)
+    } else {
+        PathBuf::from(raw)
+    };
+    if !expanded.is_absolute() {
+        return Err(format!(
+            "refuse profile path: 必须是绝对路径（实得 {raw:?}）"
+        ));
+    }
+    if expanded
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(format!("refuse profile path: 不许含 `..`（实得 {raw:?}）"));
+    }
+    if !expanded.starts_with(&home) {
+        return Err(format!(
+            "refuse profile path: 只能落在 home 之内（实得 {raw:?}，home 是 {home:?}）"
+        ));
+    }
+    // 符号链接逃逸：父目录已存在时用它的真身再查一次。
+    if let Some(parent) = expanded.parent() {
+        if let (Ok(real_parent), Ok(real_home)) = (parent.canonicalize(), home.canonicalize()) {
+            if !real_parent.starts_with(&real_home) {
+                return Err(format!(
+                    "refuse profile path: 父目录经符号链接跑出了 home（{raw:?} → {real_parent:?}）"
+                ));
+            }
+        }
+    }
+    Ok(expanded)
+}
+
 pub fn discover_profiles() -> Vec<(ProfileKind, PathBuf)> {
     let Some(home) = dirs::document_dir() else {
         return Vec::new();
@@ -601,6 +659,123 @@ fn atomic_replace_path(src: &std::path::Path, dst: &std::path::Path) -> std::io:
 
 #[cfg(test)]
 mod tests {
+    /// ★ 围栏本身的行为：**跑出 home 的一律拒绝，home 之内的照常放行**。
+    ///
+    /// ⚠ 正例那一半不是凑数：围栏收得太紧会**悄悄砍掉 `ProfileKind::Custom`**
+    /// （用户指 `~/.config/fish/config.fish` 这种），那是把一个洞换成一个回归。
+    #[test]
+    fn the_profile_fence_keeps_writes_inside_home() {
+        let home = dirs::home_dir().expect("测试需要 home");
+        // 正例：home 下的裸文件名 · home 子目录 · `~` 前缀（用户会手打）· 不存在的新文件
+        for ok in [
+            home.join(".bashrc").to_string_lossy().to_string(),
+            home.join(".config/fish/config.fish")
+                .to_string_lossy()
+                .to_string(),
+            "~/.zshrc".to_string(),
+            home.join("no-such-file-yet.rc")
+                .to_string_lossy()
+                .to_string(),
+        ] {
+            assert!(
+                super::fence_profile_path(&ok).is_ok(),
+                "围栏拒了一个合法路径：{ok:?} —— 收太紧会砍掉 `ProfileKind::Custom` 这个特性"
+            );
+        }
+        // 反例：绝对路径跑出 home · 相对路径 · `..` 逃逸
+        for bad in [
+            "/etc/profile".to_string(),
+            "/tmp/x.rc".to_string(),
+            ".bashrc".to_string(),
+            format!("{}/../../etc/profile", home.to_string_lossy()),
+        ] {
+            let r = super::fence_profile_path(&bad);
+            assert!(
+                r.is_err(),
+                "围栏放行了 {bad:?} —— 那三条命令会往它写/重写/探测存在性"
+            );
+            assert!(
+                r.unwrap_err().starts_with("refuse profile path"),
+                "拒绝理由要能一眼看出是围栏拒的（调用方与用户都要读它）"
+            );
+        }
+    }
+
+    /// ★★ **三条 `cc_integration_*` 命令都必须先过路径围栏**〔audit-0805 08-08，Phase G 第 86 件〕。
+    ///
+    /// # 洞：本机这条路没有围栏，而远端那条有
+    ///
+    /// `cc_integration_install(path: String, command_name: String, …)` 把 webview 给的路径
+    /// **原样** `PathBuf::from` 交给 [`install_to_profile`]（文件不存在就创建 —— 本文件
+    /// 另有一条判据逐字叫 `install_to_nonexistent_path_creates_file`），
+    /// `cc_integration_uninstall` 会**重写**那个文件，`cc_integration_scan_path` 是任意路径的
+    /// **存在性/大小探针**。三条都不看路径。
+    ///
+    /// 而**远端**那条同名功能有围栏：`sftp.rs` 逐字「profile 只能是 home 下的文件名
+    ///（如 `.bashrc` / `.zshrc`）」。⇒ **同一形态在另一半有围栏、这一半没有**
+    ///（F52/F44 同族；后果那一侧与 F47「任意本机文件删除」同族）。
+    ///
+    /// ⚠ 写进去的内容也不是全常量：`command_name` 来自调用方，会被渲进那段 shell 代码。
+    ///
+    /// # 围栏取「在 home 之内」，不取「home 下的裸文件名」
+    ///
+    /// 远端那条可以严到「裸文件名」，本机不行：`discover_profiles()` 自己就会返回
+    /// `~/WindowsPowerShell/Microsoft.PowerShell_profile.ps1` 这种**子目录**里的路径，
+    /// 而 `ProfileKind::Custom` 是产品特性（用户可以指 `~/.config/fish/config.fish`）。
+    /// ⇒ 围栏只挡「跑出 home」这一类，**不缩小功能**。
+    #[test]
+    fn every_profile_command_passes_through_the_fence() {
+        let lib = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"),
+        )
+        .expect("读不到 lib.rs");
+        let prod = guard_core::production_code(&lib);
+        const CMDS: &[&str] = &[
+            "cc_integration_install",
+            "cc_integration_uninstall",
+            "cc_integration_scan_path",
+        ];
+        let fence = format!("{}_profile_path", "fence");
+        for cmd in CMDS {
+            let at = prod
+                .find(&format!("fn {cmd}("))
+                .unwrap_or_else(|| panic!("`lib.rs` 里找不到 `{cmd}` —— 命令改名了就把本条一起改"));
+            // 切到该命令函数体的收尾（花括号配平；两个字符字面量成对出现）。
+            let bytes = prod.as_bytes();
+            let open = (at..bytes.len())
+                .find(|&i| bytes[i] == b'{')
+                .expect("找不到函数体起点");
+            let mut depth = 0i32;
+            let mut end = bytes.len();
+            for i in open..bytes.len() {
+                if bytes[i] == b'{' {
+                    depth += 1;
+                } else if bytes[i] == b'}' {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = i + 1;
+                        break;
+                    }
+                }
+            }
+            let body = &prod[open..end];
+            assert!(
+                body.len() > 40,
+                "`{cmd}` 切出来只有 {} 字节 —— 配平切错了，本条会零命中地绿",
+                body.len()
+            );
+            assert!(
+                body.contains(&fence),
+                "`{cmd}` 没有过路径围栏 `{fence}`。\n\
+                 ★ 它收的是 **webview 给的任意路径**：`install` 会往那里写（不存在就创建）、\n\
+                 `uninstall` 会重写它、`scan_path` 是存在性/大小探针。\n\
+                 ⚠ 远端那条同名功能**有**围栏（`sftp.rs`：「profile 只能是 home 下的文件名」）——\n\
+                 同一形态在另一半有围栏、这一半没有，正是本区反复逮到的形状。\n\
+                 实得这一段：{body:?}"
+            );
+        }
+    }
+
     /// **围栏损坏时中止，而不是吃掉用户内容**（T04 第二步修的真 bug）。
     ///
     /// 修前实测：`装一次` 走追加分支（用户代码还在），`装两次` 时那个损坏的 BEGIN
