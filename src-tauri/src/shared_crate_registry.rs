@@ -443,6 +443,13 @@ mod tests {
     /// 本条守的是这一侧：**CI 里有而本地没数过的步骤，一步都不许有。**
     ///
     /// ⇒ 新增 / 改名一个 CI 步骤就会红，直到有人回答「本地跑不跑它」。
+    ///
+    /// ⚠⚠ **08-07：本条自己也犯了它要防的那个病。** 人群原本是「带 `- name:` 的 `run:` 步骤」——
+    /// 按**怎么写的**取，而 GitHub Actions 的步骤不要求有名字。50 条 `run:` 里它只看得见 47 条。
+    /// 隐形的四条中三条是 `- run: npm ci`（环境步骤，无害），**第四条是 `- run: npx tsc --noEmit`**
+    /// —— 一条**真门禁命令**，一直在 CI 里跑、本地也一直在跑，但**从来没被本条数过**。
+    /// 也就是说：本条自陈守的是「本地度量面比 CI 小了多少」，而它自己的度量面就小了一块。
+    /// ⇒ 人群改按「它是不是 `steps:` 里的一条 `run:`」取，无名步骤用命令首行当标识。
     #[test]
     fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
         /// 整个 job 结构上跑不了 —— 理由**逐 job 一条**，且下面有前提触发器盯着它别过期。
@@ -519,14 +526,36 @@ mod tests {
             ("python syntax compile", true, "`python3 -m py_compile e2e/*.py`"),
             ("G-A/G-C 覆盖面地板（19 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
             ("exec-bit guard (shared/** shebang files must be 100755 in git)", true, "`bash e2e/exec-bit-guard.sh`"),
+            // ── 无名步骤（`- run: <命令>`，08-07 人群扩到它们之后才第一次可见）。
+            // 标识是命令本身，多个 job 里同一条命令共用这一行登记。
+            ("run: npm ci", false, "按 lockfile **重装** node_modules（三个 job 各一条无名步骤）：本地等价物是既有依赖树，重跑改变的是环境不是结论 —— 与上面那条有名字的 `npm ci` 同一个理由"),
+            // ★ 这一条是人群扩面**当场**逮出来的，而且不是无害的环境步骤：它是一条**真门禁命令**。
+            // 它一直在 CI 里跑、本地也一直在跑（本区每轮门禁都有它），但**从来没被这条判据数过** ——
+            // 「没人守着」与「碰巧没坏」是两回事，本仓第二次在同一句话上撞到实例。
+            ("run: npx tsc --noEmit", true, "`npx tsc --noEmit`（仓根）—— 本区门禁固定项之一"),
         ];
 
-        // ── 解析：(job, 步骤名)
+        // ── 解析：(job, 步骤标识)
+        //
+        // ⚠⚠ **08-07 订正：人群原本是「带 `- name:` 的 `run:` 步骤」** ——
+        // 那是按**怎么写的**取人群，而 GitHub Actions 的步骤**根本不要求有名字**。
+        // 实测：`ci.yml` 的 50 条 `run:` 里，判据看得见 47 条，
+        // **三条 `- run: npm ci`（三个不同 job）整个在人群之外** ——
+        // 也就是说往 CI 里加一步 `- run: cargo something`（不写 name）
+        // 本条**一个字都不会说**，而它存在的全部理由正是「CI 里有而本地没数过的步骤，一步都不许有」。
+        // ⇒ 人群改按**「它是不是一个步骤」**取：`steps:` 之内的每一条 `run:` 都算，
+        //   有名字用名字当标识，没名字用 `run: <命令首行>`。
+        //
+        // ⚠ `defaults:` 底下那三条 `run:`（`working-directory` / `shell` 的容器）**不是步骤** ——
+        //   靠 `steps:` 之内这个条件排除，不靠「它没名字」。
         let yml = ci_yml();
+        let src: Vec<&str> = yml.lines().collect();
         let mut found: Vec<(String, String)> = Vec::new();
         let mut job = String::new();
         let mut name: Option<String> = None;
-        for line in yml.lines() {
+        let mut in_steps = false;
+        let mut unnamed_seen = 0usize;
+        for (i, line) in src.iter().enumerate() {
             if line.trim_start().starts_with('#') {
                 continue;
             }
@@ -538,23 +567,60 @@ mod tests {
             {
                 job = t.trim().trim_end_matches(':').to_string();
                 name = None;
+                in_steps = false;
+                continue;
+            }
+            if t.trim() == "steps:" {
+                in_steps = true;
                 continue;
             }
             if let Some(rest) = line.trim_start().strip_prefix("- name: ") {
                 name = Some(rest.trim().to_string());
                 continue;
             }
-            if line.trim_start().starts_with("run:") {
-                if let Some(n) = name.take() {
-                    found.push((job.clone(), n));
+            if !in_steps {
+                continue;
+            }
+            let trimmed = line.trim_start();
+            // 两种步骤写法：`- name:` 之后的 `run:`，与直接内联的 `- run:`。
+            let inline = trimmed.strip_prefix("- run:");
+            if trimmed.starts_with("run:") || inline.is_some() {
+                match name.take() {
+                    Some(n) => found.push((job.clone(), n)),
+                    None => {
+                        // 无名步骤：拿命令首行当标识。`|` / `>` 块标量则往下看一行。
+                        let raw = inline.unwrap_or_else(|| {
+                            trimmed.strip_prefix("run:").expect("上面已判过前缀")
+                        });
+                        let head = match raw.trim() {
+                            "" | "|" | ">" | "|-" | ">-" => src
+                                .get(i + 1)
+                                .map(|l| l.trim())
+                                .unwrap_or("(空)")
+                                .to_string(),
+                            other => other.to_string(),
+                        };
+                        unnamed_seen += 1;
+                        found.push((job.clone(), format!("run: {head}")));
+                    }
                 }
             }
         }
         // ★ 抽取器自检：数量掉下来就说明 YAML 形态变了、下面整条会零命中地绿。
         assert!(
-            found.len() >= 40,
-            "只从 `ci.yml` 解析到 {} 个带名字的 `run:` 步骤 —— 解析坏了（建判据当天实测 47 个）",
+            found.len() >= 50,
+            "只从 `ci.yml` 解析到 {} 个 `run:` 步骤 —— 解析坏了（08-07 改成按步骤取人群后实测 50 个：\
+             47 条带名字 + 3 条无名 `- run:`）",
             found.len()
+        );
+        // ★ **常驻自检：无名那一支必须真的被行使过**。
+        // 它是本次订正新长出来的分支，而「新分支平时没人走」在本仓已连着栽过五次 ——
+        // 哪天三条 `- run: npm ci` 都补上名字，这里会红，提醒人确认那一支还认得出无名步骤
+        // （处置：造一条无名步骤当样本，或确认这条自检已无意义再撤）。
+        assert!(
+            unnamed_seen >= 1,
+            "解析结果里一条**无名步骤**都没有 —— 要么 ci.yml 里真的不剩无名步骤了，\n\
+             要么无名那一支又不认识它们了（那正是 08-07 之前的状态：三条 `- run: npm ci` 隐形）。"
         );
 
         // ★ 前提触发器：blanket 豁免的理由是「这个 job 要真 tmux」——理由没了就得重判。
