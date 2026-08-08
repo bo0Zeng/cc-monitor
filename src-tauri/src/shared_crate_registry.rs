@@ -28,8 +28,66 @@
 //! ⚠ **`vendor/` 下的不算** —— 那是 vendored 第三方（`code-picture-core`），
 //! 有自己的一套（`ci.yml` 单独一步），不受本约定管。
 
+/// ★ `ci.yml` 的**读取与切块只有一个家**〔audit-0805 08-07，定框 E3〕。
+///
+/// 抽出来的原因是实测撞见的：`lockfile_conflict_guard` 的前提判据要问的是
+/// 「跨 target check **和** `working-directory: remote-daemon-proto` 在不在同一个 job」，
+/// 而它当时只能在整份文件里各找一次字符串 ⇒ 两件事各自成立、关系没人钉。
+/// 要钉那个关系就得会切 job 块，而切块的实现当时住在本文件的 `mod tests` 里、别人够不着 ——
+/// **判据之间借不到量具，就会各写一份近似的**，那正是 E3 要防的。
+#[cfg(test)]
+pub(crate) mod ci_yaml {
+    use std::path::Path;
+
+    fn repo_root() -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级 = 仓根")
+            .to_path_buf()
+    }
+
+    pub(crate) fn yml() -> String {
+        std::fs::read_to_string(repo_root().join(".github/workflows/ci.yml"))
+            .expect("ci.yml 读不到")
+    }
+
+    /// 切出某个顶层 job 的行范围（剔注释）。
+    ///
+    /// 顶层 job 键的形状是**两个空格 + 名字 + 冒号**（`  daemon:`），下一个同缩进的键即块尾。
+    /// ⚠ 用它而不是整份 `contains` 的理由见 `ci_actually_runs_the_daemon_four_steps`：
+    /// 有的步骤命令是别的 job 里某条命令的**子串**，整份查会被盖住。
+    pub(crate) fn job_block(name: &str) -> String {
+        let head = format!("  {name}:");
+        let yml = yml();
+        let mut out = Vec::new();
+        let mut inside = false;
+        for line in yml.lines() {
+            if line == head {
+                inside = true;
+                continue;
+            }
+            if inside {
+                // 同缩进的下一个键 = 块尾（两空格开头、非空白第三字符、以冒号结尾）。
+                let is_next_key = line.len() > 2
+                    && line.starts_with("  ")
+                    && !line.as_bytes()[2].is_ascii_whitespace()
+                    && line.trim_end().ends_with(':')
+                    && !line.trim_start().starts_with('#');
+                if is_next_key {
+                    break;
+                }
+                if !line.trim_start().starts_with('#') {
+                    out.push(line);
+                }
+            }
+        }
+        out.join("\n")
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::ci_yaml::{job_block as ci_job_block, yml as ci_yml};
     use std::fs;
     use std::path::Path;
 
@@ -59,11 +117,6 @@ mod tests {
         names
     }
 
-    fn ci_yml() -> String {
-        fs::read_to_string(root().parent().unwrap().join(".github/workflows/ci.yml"))
-            .expect("ci.yml 读不到")
-    }
-
     /// `ci.yml` 里**真的会跑**的那些行 —— 注释行剔掉。
     ///
     /// ⚠ 实测（2026-08-03 复盘 P3）：本模块此前直接对整份 `ci.yml` 做 `contains`，
@@ -76,39 +129,6 @@ mod tests {
             .filter(|l| !l.trim_start().starts_with('#'))
             .collect::<Vec<_>>()
             .join("\n")
-    }
-
-    /// 切出某个顶层 job 的行范围（同样剔注释）。
-    ///
-    /// 顶层 job 键的形状是**两个空格 + 名字 + 冒号**（`  daemon:`），下一个同缩进的键即块尾。
-    /// ⚠ 用它而不是整份 `contains` 的理由见 [`ci_actually_runs_the_daemon_four_steps`]：
-    /// 有的步骤命令是别的 job 里某条命令的**子串**，整份查会被盖住。
-    fn ci_job_block(name: &str) -> String {
-        let head = format!("  {name}:");
-        let yml = ci_yml();
-        let mut out = Vec::new();
-        let mut inside = false;
-        for line in yml.lines() {
-            if line == head {
-                inside = true;
-                continue;
-            }
-            if inside {
-                // 同缩进的下一个键 = 块尾（两空格开头、非空白第三字符、以冒号结尾）。
-                let is_next_key = line.len() > 2
-                    && line.starts_with("  ")
-                    && !line.as_bytes()[2].is_ascii_whitespace()
-                    && line.trim_end().ends_with(':')
-                    && !line.trim_start().starts_with('#');
-                if is_next_key {
-                    break;
-                }
-                if !line.trim_start().starts_with('#') {
-                    out.push(line);
-                }
-            }
-        }
-        out.join("\n")
     }
 
     /// ★ 抽取器自检：`crates/` 下一个都没抽到时，下面那条会零命中零失败地绿。
