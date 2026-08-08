@@ -54,6 +54,7 @@
  * - **不以 `test:` 开头的脚本名**（`unit:foo`）整个绕过 b。
  * - `d` 只看收尾**在不在**，不看它是否真的能被触达（比如被 `if (false)` 包住）。
  */
+import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { describe, it, expect } from "vitest";
@@ -368,5 +369,78 @@ describe("覆盖率地板表的自洽", () => {
         `${file}: 分支地板 ${bf} 离实测 ${bn} 差了 ${(bn - bf).toFixed(1)} 点（纪律是 ~5）`,
       ).toBeLessThanOrEqual(SLACK);
     }
+  });
+});
+
+// ★★ **`.mjs` 这一类今天零强制检查**〔audit-0805 08-08，Phase G 第 84 件〕。
+//
+// 08-08 沿「扫描面之外还有谁」量到最后一格。**先核先纠正了我自己上一轮记的话**：
+// `.mts` 其实**在 tsc 范围内**（`tsconfig.json` 的 `include` 是 `["src", "e2e"]`，
+// 实测往 `e2e/tmux-target-emit.mts` 塞一个类型错，`tsc --noEmit` 当场报 TS2322）。
+//
+// 而 `.mjs` **不在**：`allowJs` 没开 ⇒ tsc 整类不看。实测把
+// `scripts/assert-coverage-floors.mjs` 结尾塞一个不闭合的对象字面量，
+// **tsc 绿、vitest 1294 全绿** —— 而那个文件是 CI 覆盖率门禁的执行体。
+//
+// ⚠ 「CI 会跑它、跑挂了就知道」这句话在本仓**不成立**：〔用 08-05〕裁定不再 push，
+// CI 结构上不会跑（`shared_crate_registry` 有一条判据专门钉这个前提）。
+// 而 `e2e/tier2/*.mjs` 那两个连 CI 都不跑（tier2 是 Windows VM 上手跑的）。
+//
+// ⇒ 补一条**本地**判据：`node --check` 是语法层的最小闸门（与 CI 里那条
+// `python3 -m py_compile e2e/*.py` 是同一族的先例）。人群从文件系统派生，不手写清单。
+describe("`.mjs` 与 `.mts` 的最小闸门", () => {
+  const mjsFiles = (() => {
+    const skip = new Set([".git", "node_modules", "target", "dist", "coverage", ".vite"]);
+    const out: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) {
+          if (!skip.has(e.name) && !dir.includes("vendor")) walk(`${dir}/${e.name}`);
+        } else if (e.name.endsWith(".mjs")) {
+          out.push(`${dir}/${e.name}`);
+        }
+      }
+    };
+    walk(REPO_ROOT);
+    return out.sort();
+  })();
+
+  it("每个 .mjs 都过 `node --check`（tsc 整类看不见它们）", () => {
+    // 抽取器自检：遍历塌了的话下面那条就是零命中地绿。
+    expect(
+      mjsFiles.length,
+      "全仓一个 .mjs 都没扫到（08-08 实测 6 个）—— 遍历坏了，本条此刻无效",
+    ).toBeGreaterThanOrEqual(4);
+    const broken: string[] = [];
+    for (const f of mjsFiles) {
+      try {
+        execFileSync(process.execPath, ["--check", f], { stdio: "pipe" });
+      } catch (e) {
+        broken.push(`${f.slice(REPO_ROOT.length + 1)}: ${String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 200)}`);
+      }
+    }
+    expect(
+      broken,
+      "这些 .mjs 连语法都不过：\n" +
+        broken.join("\n") +
+        "\n★ tsc 整类看不见它们（allowJs 没开），vitest 也不导入它们 ——\n" +
+        "  在本条之前，一个语法错能一路留到「有人真去跑它」那一刻。\n" +
+        "  而本仓不 push ⇒ CI 结构上不会跑；tier2 那两个连 CI 都不跑。",
+    ).toEqual([]);
+  });
+
+  // 前提触发器：`.mts` 那一半是靠 tsconfig 的 include 覆盖的 —— 那句话一旦不成立，
+  // 上面这条只管了 `.mjs`，而 `.mts` 会**悄悄**变成同样的盲区。
+  it("tsconfig 仍然把 e2e 收进 include（`.mts` 那半靠它）", () => {
+    const raw = readFileSync(resolve(REPO_ROOT, "tsconfig.json"), "utf8");
+    const include = /"include"\s*:\s*\[([^\]]*)\]/.exec(raw);
+    expect(include, "`tsconfig.json` 里找不到 `include` —— 读法坏了").not.toBeNull();
+    expect(
+      include![1],
+      "`tsconfig.json` 的 include 不再收 `e2e` —— `.mts` 那一批（08-08 实测 3 个：\n" +
+        "`tmux-target-emit` / `ccm-print-parity-emit` / `launch-payload-golden-emit`）\n" +
+        "会**悄悄**退出类型检查，变成和 `.mjs` 一样的盲区。要么把它们并进别的 include，\n" +
+        "要么把它们也纳入上面那条 `node --check`（但那只挡语法，挡不住类型）。",
+    ).toContain("e2e");
   });
 });
