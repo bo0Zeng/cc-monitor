@@ -292,8 +292,10 @@ mod tests {
     /// # 为什么单开一条（而不是往上面那条的 needle 表里加）
     ///
     /// 上面那条钉的四条 needle **全部命中 monitor job**，与 daemon job 的四步**一条都不重叠**。
-    /// 实测（`audit-0805` 的只读核实）：全仓读 `.github/workflows` 的**只有两处**
-    /// （本文件 + `backend/control/local_backend.rs:719` 读 `release.yml`），
+    /// 实测（`audit-0805` 的只读核实）：当时全仓读 `.github/workflows` 的**只有两处**
+    /// （本文件 + `backend/control/local_backend.rs:719` 读 `release.yml`；
+    /// ⚠ **08-08 起是三处** —— `sftp.rs` 新增了「发版流水线要为每个 arch 备料」那条，
+    /// 这句话记的是**建本条当天**的度量面，别当成今天的事实），
     /// `actionlint` / `yamllint` **全仓零命中** ⇒ **把 `cargo check --target …` 那一步注释掉，
     /// 今天全仓门禁一条都不会红。** 而 `ci.yml` 在那一步上方逐字写着
     /// 「**§1.1 第一条解耦线（平台线）的唯一真判据**」——
@@ -375,7 +377,7 @@ mod tests {
     /// 而那个 job 是**生产平台唯一的编译与测试信号** —— 换掉 runner 等于把它整个交出去，
     /// 且交出去之后所有门禁**依旧全绿**，比删掉一步隐蔽得多。
     ///
-    /// 全仓读 `.github/workflows` 的只有两处（本文件 + `local_backend.rs:719` 读 `release.yml`），
+    /// 全仓读 `.github/workflows` 的只有两处（本文件 + `local_backend.rs:719` 读 `release.yml`），（08-08 起三处，见上一条的订正）
     /// **两处都不看 `runs-on`**；`windows-latest` 这个字面量在仓里其余命中全是散文注释。
     ///
     /// ⚠ 本条**不管** daemon job 在哪跑（它在 ubuntu 上跨 target check，那是刻意的、
