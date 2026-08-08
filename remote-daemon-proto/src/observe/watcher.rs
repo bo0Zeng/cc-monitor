@@ -2084,15 +2084,32 @@ mod tests {
     ///
     /// **P2 初版真犯了这个错**（channel 建在 "Phase 2: live watch" 处），是被 clippy 的
     /// 「field `start` is never read」间接暴露出来的——不是被任何测试抓到的。所以补这条。
+    /// ⚠⚠ **08-08 订正：这条原来比的是一行注释的位置。**
+    ///
+    /// 原实现拿 `// --- Phase 1: synchronous initial scan. ---` 当「初始扫描」的锚点。
+    /// 实测：把**真扫描那一块**（`if sessions.is_dir()` 那段）搬到 `events_tx` 注入之前、
+    /// **注释原地不动**，本条照样绿 —— 而那正是它自陈要挡的那个静默回归。
+    /// ⇒ 「文本顺序 ≠ 执行顺序」这一族里还有更基础的一层：**判据得先比对代码，
+    /// 而不是比对描述代码的那句话**（本会话第四次撞上同一形状）。
+    ///
+    /// 另一半也一起修：注释若被重排/改写，原实现会红在一个**与语义无关**的位置上
+    /// （把注入挪到注释之后、真扫描之前，语义完全正确却会红）。
+    /// 现在锚在 `WalkDir::new(&sessions)`（生产段唯一一处，扫描真正开始的地方）。
     #[test]
     fn events_channel_is_created_before_the_initial_scan() {
-        let src = include_str!("watcher.rs");
+        let src = crate::guard_support::production_code(include_str!("watcher.rs"));
         let tx_at = src
             .find("state.events_tx = Some(events_tx.clone());")
             .expect("找不到 events_tx 注入点——守卫锚点漂了，先修锚点别改断言");
         let scan_at = src
-            .find("// --- Phase 1: synchronous initial scan. ---")
-            .expect("找不到 Phase 1 锚点——守卫锚点漂了");
+            .find("WalkDir::new(&sessions)")
+            .expect("找不到初始扫描的锚点（`WalkDir::new(&sessions)`）——扫描改写了就把本条一起改");
+        // 锚点唯一性：两个都必须**恰好一处**，否则「谁在前」比的可能是别处那一份。
+        assert_eq!(
+            src.matches("WalkDir::new(&sessions)").count(),
+            1,
+            "初始扫描的锚点在生产段里不止一处 —— 本条会比到别的那一份上去"
+        );
         assert!(
             tx_at < scan_at,
             "events_tx 必须在 Phase 1 初始扫描**之前**注入，否则启动时已在跑的会话拿不到 \
