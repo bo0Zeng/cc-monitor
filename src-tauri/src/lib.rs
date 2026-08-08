@@ -81,6 +81,7 @@ mod byte_cap_registry; // audit-0805 F06：字节上限登记表（管什么量 
 mod capability_registry;
 #[cfg(test)]
 mod doc_copy_registry; // audit-0805 F18：散文里的数字副本清账（E12 的第二条路变成机检）
+mod e2e_gate_registry; // audit-0805 08-08：每一套 e2e 要么进门禁要么登记为什么不进
 mod exec_site_registry;
 mod local_read_surface_registry; // F10（出口④）：本机读面清账 + 递减棘轮（正题被 F05b 挡着）
 #[cfg(test)]
