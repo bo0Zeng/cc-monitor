@@ -6033,6 +6033,138 @@ mod parse_frame_tests {
 mod tier1_tests {
     use super::*;
 
+    /// ★★ **本机 `~/.ssh` 的读面：恰好一处，且只读 `config`**〔audit-0805 08-08，Phase G 第 85 件〕。
+    ///
+    /// # 「谁能读」这一侧此前只有半张表
+    ///
+    /// 本会话把「谁能**写**」（`write_site_registry`）、「谁能**执行**」
+    /// （`exec_site_registry` / 本机起进程 / 构建期执行面）都钉成了默认拒绝，
+    /// 而**读**那一侧只有两块：daemon 的 `readonly_guard`（整个 crate 不许写），
+    /// 与 monitor 的 `local_read_surface_registry` —— 而后者的人群是**五个手写针**，
+    /// 全部对着 **claude 目录**（`claude_dir` / `CLAUDE_CONFIG_DIR` / `.claude` …）。
+    ///
+    /// ⇒ 用户机器上**别的**敏感目录不在任何人群里。08-08 实测：monitor 生产段里
+    /// 碰本机 `.ssh` 的只有**一处**（本文件读 `~/.ssh/config` 列别名给前端），
+    /// 而**没有任何判据钉住它保持一处** —— 加一句读 `~/.ssh/id_ed25519` 或
+    /// `known_hosts`，全仓判据一条不会红。
+    ///
+    /// ⚠ `pubkey.rs` 里那段 `$HOME/.ssh` **刻意不在人群里**：它是拼给**远端**执行的
+    /// shell 串（往远端 `authorized_keys` 追加公钥），归 `exec_site_registry` 管。
+    /// 人群只取**本机路径构造**（`join(".ssh")` / `expand_tilde("~/.ssh`），
+    /// 不取字符串里出现的 `.ssh` —— 否则「远端的事」会被算成「读了用户本机的东西」。
+    #[test]
+    fn the_local_ssh_read_surface_is_exactly_one_site() {
+        /// `(文件, 碰的是谁的 `.ssh`, 读/写的是什么, 为什么可以)`。**默认拒绝**。
+        ///
+        /// ⚠ 人群按**目录名本身**取（下面用 `contains_word(".ssh")`），
+        /// 不按「路径是怎么拼的」取 —— 08-08 第一版按 `join(".ssh"` / `~/.ssh` 两种**写法**
+        /// 取样，被 `needle_anchor` 棘轮当场判为「语料上的裸匹配」。棘轮是对的：
+        /// 按写法取样正是本工作区一直在治的病（`join(SSH_DIR)` 换个常量就绕过去了）。
+        /// ⇒ 人群取「谁提到了这个目录」，**本机还是远端由登记回答**，不由语法判。
+        const SSH_SITES: &[(&str, &str, &str, &str)] = &[
+            (
+                "ssh_source.rs",
+                "本机（用户自己的机器）",
+                "读 `~/.ssh/config`",
+                "Tier 1 的「导入别名」：只解析 Host 行拿到一份可点的别名清单，\
+                 不展开 Include、不解析 Match、**不碰任何密钥文件**；真正的参数解析交给 `ssh -G`",
+            ),
+            (
+                "pubkey.rs",
+                "**远端**（用户的服务器）",
+                "拼一段往远端 `~/.ssh/authorized_keys` 追加公钥的 shell 串",
+                "免密登录的安装动作；命令串本身由 `exec_site_registry` 管（它是 `Builder` 类），\
+                 这里登记是为了让「谁碰 .ssh」这张表**没有沉默的第二类**",
+            ),
+        ];
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let files = guard_core::scan_tree!(&root, &["rs"]);
+        assert!(
+            files.len() >= 40,
+            "只扫到 {} 个 .rs —— 遍历坏了，本条会零命中地绿",
+            files.len()
+        );
+        // 本文件被 `scan_tree!` 按构造摘掉了（它是调用者）⇒ 手动补回：人群里必须有它。
+        // ⚠ **变量名刻意不叫 `me`**：`needle_anchor` 棘轮按**文件文本**推断「语料变量」，
+        // 而本文件另一条判据里有一句刻意演示旧近似的 `me.split("\n#[cfg(test)]")`（见 2890 行附近）。
+        // 叫 `me` 会让那处旧 split 被算成「语料变量上的裸匹配」，棘轮当场红 —— 08-08 实测过。
+        // 名字影响判据结果，这件事本身值得写下来。
+        let self_src = std::fs::read_to_string(root.join("ssh_source.rs")).expect("读不到本文件");
+        let mut corpus: Vec<(String, String)> = files
+            .iter()
+            .map(|(p, s)| {
+                (
+                    p.file_name().unwrap().to_string_lossy().to_string(),
+                    s.clone(),
+                )
+            })
+            .collect();
+        corpus.push(("ssh_source.rs".to_string(), self_src));
+
+        let dot = format!(".{}", "ssh");
+        let mut found: Vec<String> = Vec::new();
+        for (name, src) in &corpus {
+            for l in guard_core::production_code(src).lines() {
+                // `contains_word`：`.sshx` 之类不算，而 `~/.ssh/config`、`join(".ssh")`、
+                // `"$HOME/.ssh"` 都算 —— 它认的是**那个目录名**，不是某一种拼法。
+                if guard_core::contains_word(l, &dot) {
+                    found.push(name.clone());
+                }
+            }
+        }
+        found.sort();
+        found.dedup();
+        let mut declared: Vec<String> =
+            SSH_SITES.iter().map(|(f, _, _, _)| f.to_string()).collect();
+        declared.sort();
+        assert_eq!(
+            found, declared,
+            "本机 `~/.ssh` 的读面变了。\n\
+             实测：{found:?}    登记：{declared:?}\n\
+             ★ 多出来的：那是**用户机器上最敏感的目录之一** —— 私钥、`known_hosts`、\n\
+             `authorized_keys` 都在里面。要读就登记，并说清「读的是什么、为什么可以读」。\n\
+             ⚠ 少了的：本文件那一处若被改写/挪走，说明「导入别名」这条路变了形，\n\
+             上面那三条 `parse_host_aliases` 的行为判据可能已经不在生产路径上。\n\
+             ⚠ 人群按**目录名**取，本机/远端由登记的第二列回答 —— \n\
+             别再退回按拼法取样（那是 `needle_anchor` 棘轮 08-08 当场拦下的写法）。"
+        );
+    }
+
+    /// ★ 那一处读出来的东西**只许是别名**：配置里的敏感值一个都不许流出去。
+    ///
+    /// 既有三条行为判据钉的是「别名抽得对」；本条钉反面 ——
+    /// 把 `IdentityFile` / `HostName` / `ProxyCommand` / `User` 一起喂进去，
+    /// 输出里**不许出现它们的值**。改法一旦变成「收集每条指令的第二个 token」，
+    /// 私钥路径与跳板机命令就会经 `list_ssh_host_aliases` 一路到前端。
+    #[test]
+    fn parse_host_aliases_never_leaks_sensitive_values() {
+        let cfg = "\
+Host box
+    HostName 10.0.0.7
+    User alice
+    IdentityFile ~/.ssh/id_ed25519_secret
+    ProxyCommand ssh -W %h:%p jump.example.com
+    Port 2222
+";
+        let aliases = parse_host_aliases(cfg);
+        assert_eq!(aliases, vec!["box"], "只该抽出别名本身");
+        for leak in [
+            "10.0.0.7",
+            "alice",
+            "id_ed25519_secret",
+            "jump.example.com",
+            "2222",
+        ] {
+            assert!(
+                !aliases.iter().any(|a| a.contains(leak)),
+                "别名清单里出现了 `{leak}` —— 那是 `~/.ssh/config` 里的敏感值，\n\
+                 它会经 `list_ssh_host_aliases` 直接到前端（并被渲染/记日志）。\n\
+                 抽取规则只该看 `Host` 行。"
+            );
+        }
+    }
+
     /// host 别名解析：取 Host 行 token、排除通配 / `!`、去重保序、跳过非 Host 指令。
     #[test]
     fn parse_host_aliases_basics() {
