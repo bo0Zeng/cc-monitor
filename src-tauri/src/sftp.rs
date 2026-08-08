@@ -1037,6 +1037,83 @@ pub async fn install_remote_ccm_helper(
 
 #[cfg(test)]
 mod tests {
+
+    fn probe_cfg() -> crate::ssh_source::RemoteConfig {
+        crate::ssh_source::RemoteConfig {
+            host: "这个主机一定不存在-audit0805".into(),
+            label: "probe".into(),
+            port: 1,
+            user: "nobody".into(),
+            key_path: None,
+            daemon_path: "/tmp/nope".into(),
+            host_key_fingerprint: None,
+            addresses: Vec::new(),
+            jump: None,
+            daemonless: false,
+        }
+    }
+
+    /// ★★ **删远端文件的入口真的过了围栏吗**〔audit-0805 08-08，Phase G 第 53 件〕。
+    ///
+    /// 本文件有三条 `is_safe_remote_*` 围栏，各自都有直接的行为判据 ——
+    /// **但主语是围栏本身**。08-08 实测：把 `uninstall_remote_daemon` 与
+    /// `remove_remote_file` 里那三处 `if !is_safe_…` 全部短路，
+    /// **全仓 984 条判据一条不红**。而那两条路紧接着是
+    /// `sftp.remove_file(...)` —— **删用户远端机器上的文件**。
+    /// 与 F47（本机删除路）/ F48（建分支路）同一族，这次在远端。
+    ///
+    /// # 这条能跑真路
+    ///
+    /// 第一道围栏在 `connect_sftp` **之前**：喂一个非法远端路径 ⇒ 应当在
+    /// **零网络**的情况下被拒。围栏没接上的话，它会往下走去连一个不存在的主机，
+    /// 报的是连接错 —— 两句话分得开。
+    ///
+    /// ⚠ 第二道围栏（`canonicalize` **之后**那处）跑不了真路：要到那一步得先连上。
+    /// 那半只能靠源码判，已写在下面并如实标注。
+    #[tokio::test]
+    async fn the_remote_delete_entry_point_actually_goes_through_the_fence() {
+        let cfg = probe_cfg();
+        let err = remove_remote_file(&cfg, "/etc/passwd")
+            .await
+            .expect_err("非法远端路径竟然没被拒 —— 围栏没接上");
+        assert!(
+            err.contains("refuse") || err.contains("jsonl"),
+            "拒绝了，但不是围栏拒的（错误：{err}）—— \
+             说明它已经越过围栏去连主机了，而下一步是 `sftp.remove_file`。"
+        );
+    }
+
+    /// ★ 第二道围栏（canonicalize 之后）与卸载路的围栏：**源码层**判据。
+    ///
+    /// ⚠ 跑不了真路（要先连上远端 / 红线不许起真连接）⇒ 只判「那行还在」。
+    /// **判源码是代理不是标的**（F41 记过）：挡得住「短路 / 删掉」，
+    /// 挡不住「围栏还在但被喂了洗过的路径」。后者进 `ROADMAP §5`。
+    #[test]
+    fn both_remote_path_sinks_still_ask_their_fence() {
+        let prod = guard_core::production_code(include_str!("sftp.rs"));
+        for (f, fence) in [
+            ("uninstall_remote_daemon", "is_safe_remote_daemon_path"),
+            ("remove_remote_file", "is_safe_remote_jsonl"),
+        ] {
+            let at = prod
+                .find(&format!("fn {f}"))
+                .unwrap_or_else(|| panic!("生产段里没有 `{f}` —— 抽取器坏了，本条此刻无效"));
+            let mut body = Vec::new();
+            for (i, line) in prod[at..].lines().enumerate() {
+                let cont = line.starts_with("where") || line.starts_with(')') || line.trim() == "{";
+                if i > 0 && !line.is_empty() && !line.starts_with(char::is_whitespace) && !cont {
+                    break;
+                }
+                body.push(line);
+            }
+            let body = body.join("\n");
+            assert!(
+                body.contains(&format!("!{fence}(")),
+                "`{f}` 不再用 `{fence}` 拒绝非法路径 —— 它下一步会去删用户远端机器上的文件。\n\
+                 ⚠ 本条只看「那行还在」（源码层，理由见头注）。"
+            );
+        }
+    }
     use super::*;
 
     /// 单一来源漂移守卫①：写进远端 profile 的**别名块**。
