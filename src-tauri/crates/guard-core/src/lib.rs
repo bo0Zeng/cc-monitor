@@ -364,7 +364,10 @@ pub fn strip_hash_comment_lines(src: &str) -> String {
 /// # Panics
 ///
 /// 目录读不了时 panic（守卫语义，只在测试里调）。
-pub fn shell_scripts(root: &std::path::Path) -> Vec<String> {
+/// 走整棵树、按谓词收文件（相对 `root` 的路径，已排序）。
+///
+/// 跳过的目录是构建与依赖产物；它们里面的东西不是本仓的产物，扫进来只会制造噪音。
+fn walk_repo(root: &std::path::Path, keep: &dyn Fn(&std::path::Path, &str) -> bool) -> Vec<String> {
     const SKIP: &[&str] = &[
         ".git",
         "target",
@@ -392,21 +395,7 @@ pub fn shell_scripts(root: &std::path::Path) -> Vec<String> {
                 }
                 continue;
             }
-            let is_shell = if name.ends_with(".sh") {
-                true
-            } else if name.contains('.') {
-                false
-            } else {
-                // 只读首行：二进制文件也可能没有扩展名，别整份读进来。
-                std::fs::read(&path)
-                    .map(|b| String::from_utf8_lossy(&b[..b.len().min(64)]).to_string())
-                    .map(|head| {
-                        let first = head.lines().next().unwrap_or_default().to_string();
-                        first.starts_with("#!") && first.contains("sh")
-                    })
-                    .unwrap_or(false)
-            };
-            if is_shell {
+            if keep(&path, &name) {
                 out.push(
                     path.strip_prefix(root)
                         .unwrap_or(&path)
@@ -418,6 +407,34 @@ pub fn shell_scripts(root: &std::path::Path) -> Vec<String> {
     }
     out.sort();
     out
+}
+
+/// 整棵树里所有 `<ext>` 后缀的文件（相对 `root`，已排序）。
+///
+/// ⚠ 与 [`scan_tree_excluding_self`] 的区别：那个**读文件内容**、按扩展名筛、
+/// 并摘除调用者自己（防自匹配）；这个只要路径，用于「这一类文件今天有哪些」的清点。
+pub fn files_by_extension(root: &std::path::Path, ext: &str) -> Vec<String> {
+    let suffix = format!(".{ext}");
+    walk_repo(root, &|_, name| name.ends_with(&suffix))
+}
+
+pub fn shell_scripts(root: &std::path::Path) -> Vec<String> {
+    walk_repo(root, &|path, name| {
+        if name.ends_with(".sh") {
+            return true;
+        }
+        if name.contains('.') {
+            return false;
+        }
+        // 只读首行：二进制文件也可能没有扩展名，别整份读进来。
+        std::fs::read(path)
+            .map(|b| String::from_utf8_lossy(&b[..b.len().min(64)]).to_string())
+            .map(|head| {
+                let first = head.lines().next().unwrap_or_default().to_string();
+                first.starts_with("#!") && first.contains("sh")
+            })
+            .unwrap_or(false)
+    })
 }
 
 /// 遍历源码树并**摘除调用者自己**。见 [`scan_tree_excluding_self`]。
