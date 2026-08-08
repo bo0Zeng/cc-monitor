@@ -1314,6 +1314,99 @@ mod tests {
         assert!(daemon_binary("riscv64").is_none(), "未知 arch → None");
     }
 
+    /// ★★ **「字节身份可信」这个见证不许写死**〔audit-0805 08-08，Phase G 第 78 件〕。
+    ///
+    /// # 它是本仓第二个（也是最后一个）「见证型布尔」
+    ///
+    /// 08-08 沿「保证压在构造面」这条透镜横扫，人群定义是**文档自称证明了什么、
+    /// 且真被分支读**的布尔 —— 全仓（monitor + daemon 生产段）**恰好两个**：
+    /// `daemon_launch::may_fall_back`（上一件做了）与这里的 `id_from_manifest`。
+    /// ⇒ 人群这么窄，不建登记表，直接把这一个钉住。
+    ///
+    /// # 写死它会关掉什么
+    ///
+    /// `id_from_manifest: true` 的意思是「`build_id` 来自旁挂的 `.build_id` 清单，
+    /// 字节真实身份可信」⇒ `deploy_embedded_daemon` 里那道
+    /// `!bin.id_from_manifest && !bytes_contain(…)` 的兜底**整个跳过**，
+    /// 于是身份未确认的字节会被**部署到用户的远端机器**。
+    ///
+    /// ★ 而这不是一个假想的手滑：它旁边的注释逐字写着那道启发式
+    /// 「**可能误拒正品**（编译器可把 BUILD_ID 优化成立即数、字节不连续）」——
+    /// 被误拒过一次的人，最省事的修法就是把这行改成 `true`。
+    /// 实测：把 x86_64 那处写死成 `true`，**monitor 1004 一条都不红**。
+    ///
+    /// ⇒ 钉的是**来源**而不是值：这一格只能由「那份清单在不在」推出来
+    /// （`!env!("DAEMON_EMBEDDED_ID_<ARCH>").is_empty()`），不许出现字面量。
+    ///
+    /// 顺带钉住 arch 那条跨文件契约的**另一半**：`build.rs` 期待的每个 arch，
+    /// 这里都必须真有一份 `DaemonBinary`（漏一个 ⇒ `daemon_binary()` 对它返回 `None`，
+    /// 远端自动部署对那个 arch **悄悄关闭** —— 与上一条判据守的是同一个事故形状的两端）。
+    #[test]
+    fn the_identity_witness_is_derived_from_the_manifest_not_written_by_hand() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let src = std::fs::read_to_string(root.join("src/sftp.rs")).expect("读不到 sftp.rs");
+        let prod = guard_core::production_code(&src);
+        // 运行时拼，免得命中本条自己的说明文字。
+        let field = format!("{}_from_manifest:", "id");
+        let inits: Vec<&str> = prod
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with(&field))
+            .collect();
+        assert!(
+            inits.len() >= 2,
+            "生产段里只找到 {} 处 `{field}` 初始化（08-08 实测 2：X86 / ARM）—— \
+             抽取器坏了或那两个 static 被改写了，本条会零命中地绿",
+            inits.len()
+        );
+        for l in &inits {
+            assert!(
+                l.contains("env!(\"DAEMON_EMBEDDED_ID_") && l.contains("is_empty()"),
+                "这一格没有从清单推出来：{l}\n\
+                 ★ 它的意思是「字节真实身份可信」，写死 `true` 会让 \n\
+                 `deploy_embedded_daemon` 里那道 `bytes_contain` 兜底**整个跳过** ⇒ \n\
+                 身份未确认的字节被部署到**用户的远端机器**。\n\
+                 ⚠ 而这正是最省事的错法：旁边的注释逐字写着那道启发式「可能误拒正品」，\n\
+                 被误拒过一次的人第一反应就是把这行改成 `true`。\n\
+                 真要处理误拒，改的是**清单为什么没生成**（`release.yml` 的 Stage binaries \n\
+                 或本机 build.rs 那段），不是把见证写死。"
+            );
+        }
+
+        // 跨文件契约的另一半：`build.rs` 期待的每个 arch，这里都要真有一份。
+        let build_rs = std::fs::read_to_string(root.join("build.rs")).expect("读不到 build.rs");
+        let arches: Vec<String> = build_rs
+            .lines()
+            .find_map(|l| {
+                let rest = l.trim().strip_prefix("for arch in [")?;
+                Some(
+                    rest.trim_end_matches(|c| c == '{' || c == ' ' || c == ']')
+                        .split(',')
+                        .map(|s| s.trim().trim_matches('"').to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .unwrap_or_else(|| {
+                panic!("`build.rs` 里找不到 `for arch in [...]` —— 与上一条判据同一个锚点，一起修")
+            });
+        assert!(
+            arches.len() >= 2,
+            "从 `build.rs` 只抠到 {} 个 arch",
+            arches.len()
+        );
+        for arch in &arches {
+            assert!(
+                prod.contains(&format!("DAEMON_EMBEDDED_ID_{}", arch.to_uppercase())),
+                "`build.rs` 会为 `{arch}` 嵌入二进制并发 `DAEMON_EMBEDDED_ID_{}`，\n\
+                 而 `sftp.rs` 生产段里没有对应的 `DaemonBinary` ⇒ `daemon_binary(\"{arch}\")` 返回 `None`，\n\
+                 **远端自动部署对这个 arch 悄悄关闭**（`build.rs` 那侧只 `cargo:warning=`，不会红）。\n\
+                 与「发版流水线要为每个 arch 备料」那条守的是同一个事故形状的两端。",
+                arch.to_uppercase()
+            );
+        }
+    }
+
     /// ★★ **发版流水线必须为 `build.rs` 期待的每一个 arch 都备好料**〔audit-0805 08-08〕。
     ///
     /// # 缺一个 arch 的后果是**静默的**，而且已经出货过
