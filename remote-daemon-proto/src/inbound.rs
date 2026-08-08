@@ -574,6 +574,47 @@ async fn send(replies: &mpsc::Sender<Frame>, frame: Frame) {
 
 #[cfg(test)]
 mod tests {
+
+    /// ★★ **daemon 的 runtime 必须是多 worker 的**〔audit-0805 08-08，Phase G 第 63 件〕。
+    ///
+    /// `Disposition::SpawnBlocking` 的头注逐字写着：`main` 是**裸** `#[tokio::main]`
+    /// （worker 数 = 可用核数），所以「一条在跑的阻塞命令占住一个 worker」这件事
+    /// 只在**单核机器**（Pi 那一档）上才会饿死 `writer_task`；症状是
+    /// 「远端还活着但一句话不说」，而观测 watcher 在 `std::thread` 上不受影响，
+    /// 所以看起来更像网络问题 —— **极难排查**。
+    ///
+    /// ⇒ 那整段论证压在「裸 `#[tokio::main]`」这五个字上，而**没人钉它**。
+    /// 08-08 实测：改成 `#[tokio::main(flavor = "current_thread")]`，
+    /// **daemon 293 条判据一条不红** —— 而那一改会把单核才有的饿死**推广到所有机器**。
+    ///
+    /// ⚠ 只钉「不是单 worker」，**不钉具体 worker 数**：那由机器决定，钉了就是把
+    /// 环境写进判据（本工作区反复在治的「把会腐的当前值抄进来」）。
+    #[test]
+    fn the_daemon_runtime_keeps_more_than_one_worker() {
+        let src = include_str!("main.rs");
+        let prod = guard_core::production_code(src);
+        // 运行时拼：写成字面量会命中本条自己的诊断文案（F58/F62 记过）。
+        let attr = format!("#[tokio::{}]", "main");
+        let single = format!("current{}thread", "_");
+        assert!(
+            prod.contains(attr.as_str()),
+            "`main.rs` 生产段里找不到裸 `{attr}` —— 要么 runtime 的起法变了，\
+             要么抽取器坏了。两种都要人来看一眼，本条此刻无效。"
+        );
+        let offenders: Vec<&str> = prod
+            .lines()
+            .filter(|l| l.contains("tokio::main") && l.contains(single.as_str()))
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "daemon 的 runtime 被改成了单 worker：{offenders:?}\n\
+             ⚠ `SpawnBlocking` 那一档的整段论证前提是「worker 数 = 可用核数」——\n\
+             单 worker 之下，**一条在跑的阻塞命令就占住唯一的 worker**，\n\
+             `writer_task`（出方向帧的唯一出口）随即饿死：远端还活着但一句话不说，\n\
+             而观测 watcher 在 `std::thread` 上照常工作 ⇒ 看起来像网络问题，极难排查。\n\
+             真要改 runtime 形态，先把 `Disposition::SpawnBlocking` 的头注一起改。"
+        );
+    }
     use super::*;
 
     fn chan() -> (mpsc::Sender<Frame>, mpsc::Receiver<Frame>) {
