@@ -492,8 +492,12 @@ mod tests {
                 } else if p.extension().is_some_and(|x| x == "rs") {
                     let src = std::fs::read_to_string(&p).unwrap_or_default();
                     let prod = guard_core::production_code(&src);
-                    // 只认「真的在拼命令串」的形态：`tmux new-session` 出现在非注释代码里。
-                    if prod.contains("tmux new-session") {
+                    // ★ 发现口径不在这里各写一份 —— 问唯一那个家（E3）。
+                    //   08-08 实测：这里原本只认命令串，argv 形态建的会话本条看不见，
+                    //   而 `daemon_kill` 那张表看得见 ⇒ 两张问同一件事的表口径不一致。
+                    if crate::backend::control::daemon_kill::creation_detect::creates_a_session(
+                        &prod,
+                    ) {
                         found.push(p.file_name().unwrap().to_string_lossy().into_owned());
                     }
                 }

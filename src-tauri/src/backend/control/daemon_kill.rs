@@ -98,6 +98,35 @@ pub(crate) async fn daemon_kill(origin: &str, name: &str) -> Routed {
     }
 }
 
+/// ★ **「怎么算一处 tmux 建会话」只有一个家**〔audit-0805 08-08，E3〕。
+///
+/// 本文件的创建路径登记表与 `account_usage.rs` 的 D3 例外表问的是同一件事，
+/// 而 08-08 实测它们的**发现口径不一样**：这里同时认命令串与 argv 两种形态，
+/// 那边只认命令串。于是用 argv 形态（`Command::new("tmux").args(["new-session","-d",…])`）
+/// 新建一处会话时，**这里红、那边不红** —— 那边的表可以静默变得不完整。
+///
+/// ⇒ 与其在两处各写一份近似的口径（那是下一个漂移源），不如让它们问同一个函数。
+#[cfg(test)]
+pub(crate) mod creation_detect {
+    /// 一段**生产代码**里有没有「建 tmux 会话」的形态。
+    ///
+    /// 两种都算：shell 命令串 `tmux new-session …`，与 argv 元素 `"new-session", "-d"`。
+    /// ⚠ 只写 `new-session` 这个词会命中测试夹具与 UI 动作 id（摸底实测：宽模式 10 个
+    /// 文件、收窄后 4 个），所以两种形态都带上下文。
+    pub(crate) fn creates_a_session(prod: &str) -> bool {
+        let verb = format!("new-{}", "session");
+        let wide = format!("tmux {verb}");
+        let argv = format!("\"{verb}\", \"-d\"");
+        prod.lines().any(|l| {
+            let t = l.trim_start();
+            !t.starts_with("//")
+                && !t.starts_with('#')
+                && !t.starts_with('*')
+                && (l.contains(wide.as_str()) || l.contains(argv.as_str()))
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,13 +306,7 @@ mod tests {
                 } else {
                     raw
                 };
-                let hit = body.lines().any(|l| {
-                    let t = l.trim_start();
-                    !t.starts_with("//")
-                        && !t.starts_with('#')
-                        && !t.starts_with('*')
-                        && (l.contains(wide.as_str()) || l.contains(argv.as_str()))
-                });
+                let hit = super::creation_detect::creates_a_session(&body);
                 if hit {
                     found.push(
                         p.strip_prefix(root)
