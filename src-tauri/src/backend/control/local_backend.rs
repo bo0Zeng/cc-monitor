@@ -828,6 +828,64 @@ mod tests {
 
     // ── 真进程（`#[ignore]`，由 e2e/local-backend-supervise.sh 驱动）──────────
 
+    /// ★★ **起真 daemon 的 e2e 必须 fail-closed 地要一个私有 tmux 目录**
+    /// 〔audit-0805 08-08，Phase G 第 51 件〕。
+    ///
+    /// 本模块头注逐字写着「**绝不让被监护的 daemon 碰用户真实的 tmux server**」。
+    /// 那道保护今天全靠下面那句 `.expect("要 CCM_E2E_TMUX_TMPDIR")` ——
+    /// 裸跑 `cargo test -- --ignored` 会 panic 而不是去连真 server，形态是对的。
+    ///
+    /// **但没人钉它**：08-08 实测把那句换成 `.unwrap_or_default()`，
+    /// **全仓 982 条判据一条不红**；此后任何一次 `--ignored` 都会把真 daemon
+    /// 接到用户的 tmux server 上。`#[ignore]` 测试平时不跑 ⇒ 它坏了也没人知道，
+    /// 正是「新分支平时没人走」那一族（本仓已栽过六次）。
+    ///
+    /// 人群**从源码派生**：本文件里 `#[ignore]` 且体内出现 `CCM_E2E_DAEMON`
+    /// （= 真的要一个 daemon 二进制）的测试。用假二进制的那条不在其中。
+    #[test]
+    fn every_real_daemon_e2e_demands_a_private_tmux_dir() {
+        const REAL: &str = "CCM_E2E_DAEMON";
+        const PRIVATE_TMUX: &str = "CCM_E2E_TMUX_TMPDIR";
+        let src = include_str!("local_backend.rs");
+        let chunks: Vec<&str> = src.split("    #[test]").collect();
+        let real_e2e: Vec<&&str> = chunks
+            .iter()
+            .filter(|c| c.contains("#[ignore]") && c.contains(REAL))
+            .collect();
+        // 抽取器自检：一条都没抓到 ⇒ 下面整条空转。
+        assert!(
+            !real_e2e.is_empty(),
+            "本文件里找不到「`#[ignore]` 且要 {REAL}」的测试（08-08 实测 1 条）—— \
+             抽取器坏了或那条 e2e 被删了，本条此刻无效"
+        );
+        for c in real_e2e {
+            let name = c
+                .split("fn ")
+                .nth(1)
+                .unwrap_or("<未知>")
+                .split('(')
+                .next()
+                .unwrap_or("<未知>");
+            let line = c
+                .lines()
+                .find(|l| l.contains(PRIVATE_TMUX))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "`{name}` 会起一个**真** daemon，却没要 `{PRIVATE_TMUX}` —— \
+                         它会连上用户真实的 tmux server。本模块头注写的是「绝不」。"
+                    )
+                });
+            assert!(
+                line.contains(".expect("),
+                "`{name}` 拿 `{PRIVATE_TMUX}` 的那行不是 fail-closed 的：\n  {}\n\
+                 ⚠ `unwrap_or_default()` / `unwrap_or(..)` 会让**没设这个变量时静默用真 tmux**。\n\
+                 这条 e2e 平时被 `#[ignore]` 挡着不跑，坏了也没人知道 —— \
+                 所以它必须在**缺变量时当场炸**，而不是降级。",
+                line.trim()
+            );
+        }
+    }
+
     /// ★ 起真 daemon → 杀它 → 看它自己回来。
     #[test]
     #[ignore]
