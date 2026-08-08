@@ -817,12 +817,46 @@ mod tests {
                  而 clippy 的 dead_code 只是偶然覆盖。"
             );
         }
-        // 顺序：`RunEvent::Exit` 必须在 `.stop()` 之前 —— 否则是「启动时就 stop」那种错法。
-        let exit_at = prod.find("RunEvent::Exit").expect("上面已断言存在");
-        let stop_at = prod.rfind(".stop()").expect("上面已断言存在");
+        // ⚠⚠ **08-08 订正：原来这里比的是「文件里最后一个 `.stop()` 在不在 Exit 之后」。**
+        //
+        // 实测：把退出臂里的 `h.stop()` 拿掉、在文件别处留一处，本条**照样绿** ——
+        // 而它自陈要挡的正是「出口没接上 ⇒ 游魂进程」，头注还写着「删掉整段钩子，
+        // 815 条测试全绿」。`rfind` 取的是**任意一处**，不是**这一处**。
+        // ⇒ 改成把退出臂的**体**切出来，`.stop()` 必须在**体内**。
+        let arm_at = prod.find("RunEvent::Exit").expect("上面已断言存在");
+        let body = {
+            // 从锚点往后找第一个左花括号，再按配平切到它的收尾。
+            let bytes = prod.as_bytes();
+            let open = (arm_at..bytes.len())
+                .find(|&i| bytes[i] == b'{')
+                .expect("`RunEvent::Exit` 之后找不到块起点 —— 形状变了，先修锚点");
+            let mut depth = 0i32;
+            let mut end = bytes.len();
+            for i in open..bytes.len() {
+                if bytes[i] == b'{' {
+                    depth += 1;
+                } else if bytes[i] == b'}' {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = i + 1;
+                        break;
+                    }
+                }
+            }
+            &prod[open..end]
+        };
         assert!(
-            exit_at < stop_at,
-            "`.stop()` 排在 `RunEvent::Exit` 之前 —— 那不是退出时收尸"
+            body.len() > 40 && body.len() < 4000,
+            "切出来的退出臂只有 {} 字节 —— 配平切错了，本条会零命中地绿",
+            body.len()
+        );
+        assert!(
+            body.contains(".stop()"),
+            "退出臂里没有 `.stop()`。\n\
+             ★ 「文件里某处有一个 `.stop()`」不算 —— 本条要的是**这一处**：\n\
+             退出事件到来时真的去收本机后端。被监护的 daemon 对「stdin 写端关闭」\n\
+             刻意不敏感 ⇒ 它会活过 monitor，成为游魂进程。\n\
+             ⚠ 08-08 实测：把这一句拿掉、在别处留一个 `.stop()`，旧版本条照样绿。"
         );
     }
 
