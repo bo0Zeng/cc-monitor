@@ -102,6 +102,112 @@ mod tests {
           与它自己的判据守着（本条只负责让这个落点**有人认领**，不重复判围栏）"),
     ];
 
+    /// 一行 `use ... fs ...` 该放行还是该拦。`Ok(())` = 放行。
+    ///
+    /// # 为什么要有这道
+    ///
+    /// 本模块的人群靠 **`fs::` 这个前缀**认写盘调用（`WRITE_CALLS` 每一条都带它），
+    /// `hooks_diag::this_module_never_writes` 的白名单也是扫 `fs::`。
+    /// 两条判据因此**共享同一个前提**：`std::fs` 只能以带前缀的形态出现。
+    ///
+    /// 08-07 实测这个前提没人守：往 `hooks_diag.rs` 里加
+    /// `use std::fs as sysio;` + `sysio::write(p, s)`（一个名叫
+    /// `this_module_never_writes` 的模块里真写一次盘），全仓 **974 条判据一条不红** ——
+    /// 连本模块上一轮刚建的写点人群都漏掉了。⚠ 头一次变异我把别名取成 `ffs`，
+    /// 而 `ffs::write(` 里**含有** `fs::write(` 子串 ⇒ 两条判据都红了，
+    /// 差点被我读成「有人守着」。**变异要造得像，巧合的红比不红更骗人。**
+    ///
+    /// 修法照 daemon 侧 `readonly_guard` 的先例：**堵逃生口**，别去追那些改写形态。
+    fn fs_import_verdict(line: &str) -> Result<(), String> {
+        let s = line.trim();
+        if !s.starts_with("use ") || !s.contains("fs") {
+            return Ok(());
+        }
+        // 放行两种，两种今天都真实存在（各自的理由写在这里，不是「看着眼熟」）：
+        // · `use std::fs;`      —— 调用处必然写成 `fs::xxx(`，前缀还在
+        // · `use std::fs::File;` —— File 的写入口 `File::create(` 自己就在 `WRITE_CALLS` 里
+        if s == "use std::fs;" || s == "use std::fs::File;" {
+            return Ok(());
+        }
+        if s.contains("std::fs as ") || s.contains("fs as ") {
+            return Err("别名导入：调用处不再带 `fs::` 前缀，两条判据同时瞎掉".into());
+        }
+        if s.contains("std::fs::*") {
+            return Err("glob 导入：写函数变成裸名字，前缀扫描扫不到".into());
+        }
+        if s.contains("std::fs::") {
+            return Err("条目导入：`use std::fs::write;` 之后 `write(..)` 不带前缀".into());
+        }
+        Ok(())
+    }
+
+    /// ★★ **没有一种导入形态能让写盘调用丢掉 `fs::` 前缀**〔audit-0805 08-07〕。
+    ///
+    /// 这是上面那条人群、以及 `hooks_diag::this_module_never_writes` 白名单的**共同前提**。
+    /// 前提没人守的时候，两条判据会**同时**瞎掉且都保持绿色 —— 08-07 实测过（见
+    /// [`fs_import_verdict`] 的头注）。
+    #[test]
+    fn no_alias_or_item_import_can_hide_a_write_call() {
+        // ① 常驻正反例：真代码里今天**没有**违规样本，那一支平时没人行使 ——
+        //    本仓已连着五次栽在「新分支平时没人走」上，所以样本写死在这里。
+        for ok in [
+            "use std::fs;",
+            "use std::fs::File;",
+            "use std::path::Path;",
+            "let x = 1;",
+        ] {
+            assert!(
+                fs_import_verdict(ok).is_ok(),
+                "{ok:?} 该放行却被拦了 —— 分类器过严会逼人去改合法代码"
+            );
+        }
+        for bad in [
+            "use std::fs as sysio;",
+            "use std::fs as f;",
+            "use std::fs::*;",
+            "use std::fs::write;",
+            "use std::fs::{self, write};",
+        ] {
+            assert!(
+                fs_import_verdict(bad).is_err(),
+                "{bad:?} 该被拦却放行了 —— 这正是 08-07 那次真写盘溜过去的形态"
+            );
+        }
+
+        // ② 全树扫描。
+        let files = guard_core::scan_tree!(&src_root(), &["rs"]);
+        let mut checked = 0usize;
+        let mut offenders = Vec::new();
+        for (path, src) in &files {
+            let prod = guard_core::production_code(src);
+            for line in prod.lines() {
+                if line.trim().starts_with("use ") && line.contains("fs") {
+                    checked += 1;
+                    if let Err(why) = fs_import_verdict(line) {
+                        offenders.push(format!("  {}: {} —— {why}", path.display(), line.trim()));
+                    }
+                }
+            }
+        }
+        // 抽取器自检：一条 `use ... fs ...` 都没扫到 ⇒ 上面整段在空转。
+        assert!(
+            checked >= 3,
+            "全树只扫到 {checked} 行含 fs 的 `use`（08-07 实测 5：`use std::fs;` ×1 + `use std::fs::File;` ×4）\
+             —— 剥法或扫描面坏了，本条此刻无效"
+        );
+        assert!(
+            offenders.is_empty(),
+            "这些导入会让写盘调用**丢掉 `fs::` 前缀**：\n{}\n\n\
+             ⚠ 前缀一没，两条判据同时瞎掉且都保持绿色：\n\
+             · 本模块的写点人群（`WRITE_CALLS` 每一条都带 `fs::`）；\n\
+             · `hooks_diag::this_module_never_writes` 的白名单（它扫的就是 `fs::`）。\n\
+             08-07 实测：`use std::fs as sysio;` + `sysio::write(p, s)` 放进 `hooks_diag.rs`，\n\
+             974 条判据一条不红 —— 而那个模块判据的名字逐字写着「never writes」。\n\
+             修法：用 `use std::fs;` 走全前缀，或直接写 `std::fs::xxx(`。别改本条去迁就它。",
+            offenders.join("\n")
+        );
+    }
+
     fn src_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
     }

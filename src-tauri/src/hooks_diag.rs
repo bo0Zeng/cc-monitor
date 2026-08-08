@@ -1160,6 +1160,19 @@ mod tests {
     fn this_module_never_writes() {
         let code = non_test_code();
 
+        // ★ **前提触发器**〔audit-0805 08-07〕：下面 ① 的白名单认的是 `fs::` **前缀**，
+        // 而 `use std::fs as X;` 之后调用处根本不带这个前缀 ⇒ 本条会**静默瞎掉**。
+        // 实测：往本文件放 `use std::fs as sysio;` + `sysio::write(p, s)`
+        // （模块名逐字写着 never writes），全仓 974 条判据一条不红。
+        // 那个前提由 `write_site_registry` 那条导入禁令保证 —— 它要是被删了，本条也就没了根。
+        assert!(
+            include_str!("write_site_registry.rs")
+                .contains("fn no_alias_or_item_import_can_hide_a_write_call"),
+            "`write_site_registry::no_alias_or_item_import_can_hide_a_write_call` 不见了 —— \
+             本条 `fs::` 前缀白名单的前提就没了（别名导入能让写盘调用整个隐形）。\
+             要么把那条找回来，要么本条改成不依赖前缀的写法，别让它绿着。"
+        );
+
         // ① std::fs:: 的白名单——只准读
         let fs_uses: Vec<&str> = code
             .match_indices("fs::")
