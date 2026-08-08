@@ -60,10 +60,28 @@ run() { # run <名字> <目录> <命令...>
 run monitor-lib   "$WT/src-tauri"           cargo check --lib
 run daemon        "$WT/remote-daemon-proto" cargo check --all-targets
 # 跨 target：daemon 是纯 Rust，`check` 不需要链接器（monitor 不行 —— 它有 C 依赖要 lib.exe）。
+skipped=""
 if rustup target list --installed | grep -q x86_64-pc-windows-msvc; then
   run daemon-win  "$WT/remote-daemon-proto" cargo check --all-targets --target x86_64-pc-windows-msvc
 else
-  echo "   skip daemon-win（没装 x86_64-pc-windows-msvc target）"
+  skipped="daemon-win（没装 x86_64-pc-windows-msvc target）"
+  echo "   skip $skipped"
 fi
 
-[ "$fail" -eq 0 ] && echo "== 提交状态编得过 ==" || { echo "== 提交状态编不过 =="; exit 1; }
+# ★ **跳过必须改变结论，不能只多打一行**〔audit-0805 08-08〕。
+#
+# 08-08 真路实测：把机器上的 windows target 拿掉之后，本脚本打完 `skip daemon-win`
+# 仍然原样输出「== 提交状态编得过 ==」并 exit 0 —— 而读门禁的人（和 loop 里的我）
+# 读的就是最后那一行。**三项还在** ≠ **三项都跑了**。
+#
+# 定框 E8 逐字写着：没有当次的 Windows 证据时，任何「全绿」结论只许写成
+# 「Linux 上全绿」。跨 target check 在本机只有这一处真跑（`ci.yml` 那条要 push 才动，
+# 而本仓红线是不 push）⇒ 它一跳过，Windows 那半**本次就是没量**，结论必须自己说出来。
+if [ "$fail" -ne 0 ]; then
+  echo "== 提交状态编不过 =="
+  exit 1
+elif [ -n "$skipped" ]; then
+  echo "== 提交状态在 Linux 上编得过 —— ⚠ 跳过了 $skipped，Windows 那半本次没量（定框 E8）=="
+else
+  echo "== 提交状态编得过 =="
+fi

@@ -1253,4 +1253,88 @@ mod tests {
             );
         }
     }
+
+    /// 〔audit-0805 08-08〕**三项还在 ≠ 三项都跑了**。
+    ///
+    /// 上一条钉的是那三项检查**存在**。而 `daemon-win` 那项包在
+    /// `if rustup target list --installed | grep -q x86_64-pc-windows-msvc` 里 ——
+    /// ★ 08-08 **真路实测**（临时放一个假 `rustup` 到 `PATH` 前面、让它报「什么都没装」）：
+    ///
+    /// ```text
+    ///    ok   monitor-lib
+    ///    ok   daemon
+    ///    skip daemon-win（没装 x86_64-pc-windows-msvc target）
+    /// == 提交状态编得过 ==            ← 与三项全跑时**一字不差**，exit 0
+    /// ```
+    ///
+    /// 而读门禁的人（以及 loop 里的我，习惯是 `| tail -2`）读的就是最后那一行 ⇒
+    /// **Windows 那半没量这件事，在结论里没有任何痕迹**，上一条判据照旧全绿。
+    ///
+    /// 这正是本区反复逮到的那个形状在门禁自己身上的一例：
+    /// 「围栏有判据 ≠ 那条路过了围栏」——这次是「检查在 ≠ 检查跑」。
+    ///
+    /// # 为什么它比一般的静默降级更要紧（E8）
+    ///
+    /// 定框 E8 逐字规定：没有当次 Windows 证据时，「全绿」只许写成「Linux 上全绿」。
+    /// 而跨 target check 在**本机**只有这一处真跑 —— `ci.yml` 那条要 push 才动，
+    /// 本仓红线是**不 push**。⇒ 这一跳过，E8 所说的那个前提就整个没了。
+    ///
+    /// # 本条是**源码层代理**，如实写明
+    ///
+    /// 真路今天由人跑（改前/改后各一次，输出见上）。没做成自动判据的理由具体：
+    /// 它要在临时 worktree 里真编两遍 cargo check（约一分钟），
+    /// 放进 `cargo test` 等于每轮门禁多编一遍全仓。⇒ 登记进 `ROADMAP §5`。
+    /// 本条能挡的是「有人把降级那一支改回成和成功一样的结论」；
+    /// 挡不住的是「`run` 函数本身坏掉但文本还在」。
+    #[test]
+    fn a_skipped_windows_check_cannot_look_like_a_full_pass() {
+        let path = root()
+            .parent()
+            .expect("仓根")
+            .join("scripts/verify-committed-state.sh");
+        let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}: {e}"));
+        // ⚠ **只看非注释行**：本脚本的头注里逐字引用着那句成功结论（讲的就是这次事故），
+        // 连注释一起数，下面「恰好一处」当场变成两处 —— 08-08 写这条时就差点踩上。
+        let code: Vec<&str> = src
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.starts_with('#'))
+            .collect();
+        assert!(
+            code.len() >= 25,
+            "剥注释后只剩 {} 行 —— 读法坏了，下面几条会零命中地绿",
+            code.len()
+        );
+
+        let plain = code
+            .iter()
+            .filter(|l| l.contains("提交状态编得过") && !l.contains("Linux"))
+            .count();
+        assert_eq!(
+            plain, 1,
+            "无保留的成功结论「提交状态编得过」在可执行部分出现 {plain} 次（应为 1）。\n\
+             ⚠ 出现 0 次 = 结论措辞被换掉了，本条其余几款都在空转；\n\
+             出现 2 次以上 = 很可能降级那一支也在打同一句话 —— 那就等于没降级。"
+        );
+
+        assert!(
+            code.iter()
+                .any(|l| l.starts_with("skipped=") && l.contains("daemon-win")),
+            "跳过 `daemon-win` 那一支没有把这件事**记进变量**（找不到 `skipped=…daemon-win…`）。\n\
+             ⚠ 只 `echo` 一行「skip」是不够的：结论行不读它，读门禁的人只看最后一行。\n\
+             08-08 真路实测过这个状态：skip 打了，最后一行仍是「== 提交状态编得过 ==」、exit 0。"
+        );
+        assert!(
+            code.iter().any(|l| l.contains("-n \"$skipped\"")),
+            "结论没有分支到 `$skipped` 上 —— 那个变量记了也没人读，等于没记。"
+        );
+        let degraded = code.iter().filter(|l| l.contains("Linux 上编得过")).count();
+        assert_eq!(
+            degraded, 1,
+            "降级结论（含「Linux 上编得过」）出现 {degraded} 次（应为 1）。\n\
+             ★ 定框 E8 逐字写着：没有当次 Windows 证据时，结论只许写成「Linux 上全绿」。\n\
+             而跨 target check 在**本机**只有这一处真跑（`ci.yml` 那条要 push，本仓不 push）\n\
+             ⇒ 它一跳过，E8 的前提就整个没了，结论必须自己把这件事说出来。"
+        );
+    }
 }
