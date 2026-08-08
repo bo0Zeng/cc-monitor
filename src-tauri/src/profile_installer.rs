@@ -688,6 +688,14 @@ mod tests {
             "/tmp/x.rc".to_string(),
             ".bashrc".to_string(),
             format!("{}/../../etc/profile", home.to_string_lossy()),
+            // ⚠ **这一条是变异逼出来的**：上一行那种 `..` 逃逸其实是被**符号链接那条腿**
+            // 接住的（父目录 `/etc` 存在 ⇒ canonicalize 成功 ⇒ 前缀检查发现跑出去了）。
+            // 把上级目录检查整个删掉，判据**照样绿** —— 因为反例挑得不对。
+            // 父目录**不存在**时 canonicalize 会失败、那条腿被跳过，只剩这一条挡着：
+            format!(
+                "{}/no-such-dir/../../../etc/profile",
+                home.to_string_lossy()
+            ),
         ] {
             let r = super::fence_profile_path(&bad);
             assert!(
