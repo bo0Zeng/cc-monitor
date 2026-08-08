@@ -492,6 +492,43 @@ mod tests {
     /// 表达力缺口没了，但**语义陷阱还在**：顺手新建就是 #76 的反向。
     ///
     /// 这条扫的是 `run()` 的 `SendInto` 分支源码：它里面不许出现 `new-session`。
+    /// ★ **建会话必须是后台建**〔audit-0805 08-07〕。
+    ///
+    /// `-d` 不是可有可无的旗标，它**就是**「后台建会话」这件事：没有它，
+    /// `tmux new-session` 会去 attach 当前终端，而 daemon 这条路上根本没有终端。
+    ///
+    /// # 为什么这条到今天才有
+    ///
+    /// 定框 **E10** 逐字举证过「`-d` 去掉 …… SURVIVED `cargo test`，只有 shell e2e 抓住」。
+    /// 08-07 重跑那份举证：**B（`@ccm_sid` 改名）与 C（Gate 3 门限放松）今天仍然 SURVIVED**，
+    /// 而 A（去掉 `-d`）**会红** —— 但读诊断就知道那是**假信号**：红的是
+    /// `daemon_kill` 的创建路径人群探测器（它的发现口径恰好含 `-d`），
+    /// 诊断说的是「那条路没了 ⇒ 删登记」，照做反而会把这条路移出人群。
+    ///
+    /// ⇒ E10 说结构守卫**钉得住顺序与字面量**，那这一条就该有人写。本条补上。
+    /// 它不改变 E10 的结论（argv 的**语义**仍要 e2e），只是把能钉的那半钉住。
+    #[test]
+    fn the_create_argv_is_detached_and_names_the_session() {
+        let src = include_str!("launch.rs");
+        let prod = src
+            .split(concat!("#[cfg", "(test)]"))
+            .next()
+            .expect("生产段");
+        // 抽取器自检：切没了就零命中地绿。
+        assert!(
+            prod.contains("fn run"),
+            "切出来的生产段里没有 `fn run` —— 切点变了，本条会零命中地绿"
+        );
+        assert!(
+            prod.contains(r#"vec!["new-session", "-d", "-s""#),
+            "创建分支的 argv 不再是 `[\"new-session\", \"-d\", \"-s\", …]`。\n\
+             `-d` 一去掉，tmux 就会去 attach 当前终端 —— daemon 这条路上没有终端，\n\
+             会话建不起来或挂住，而**除了真二进制 e2e 没人会发现**（E10 举证过）。\n\
+             顺序也钉在这里：`-s` 必须紧跟在 `-d` 之后、名字紧跟 `-s`。\n\
+             真要改形态，先想清楚谁来接住它 —— 别指望现有 cargo test。"
+        );
+    }
+
     #[test]
     fn send_into_never_creates_a_session() {
         let src = crate::guard_support::production_code(include_str!("launch.rs"));

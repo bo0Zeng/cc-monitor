@@ -305,12 +305,38 @@ mod tests {
             .map(|(f, _, _)| (*f).to_string())
             .collect();
         registered.sort();
+        // ★★ **「少一处」有两种成因，而它们的处置相反** 〔audit-0805 08-07〕。
+        //
+        // 发现口径是 `"new-session", "-d"` 这个 argv 形态 —— 它把 `-d` 这个**可选旗标**
+        // 当成了识别特征。08-07 实测：把 `launch.rs` 的 `-d` 去掉，本条当场红，
+        // 而诊断说的是「那条路没了 ⇒ 删登记」。**照它做就是把一条真实创建路径移出人群**，
+        // 于是判据回绿、盲区永久化 —— 一个讲错成因的红灯，比不红更坏。
+        // ⇒ 登记在册却掉出人群时，先看它**是不是还在产 new-session**，再给处置。
+        let verb_only = registered
+            .iter()
+            .filter(|r| !found.contains(r))
+            .filter(|r| {
+                std::fs::read_to_string(root.join(r))
+                    .map(|s| s.contains(&verb))
+                    .unwrap_or(false)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        assert!(
+            verb_only.is_empty(),
+            "\n这些文件**还在产 `{verb}`，只是不再匹配发现口径** `{argv}`：{verb_only:?}\n\
+             ⚠ **别删登记** —— 那条路还在。多半是 argv 形态被改了（例如 `-d` 被去掉，\n\
+             而 `-d` 正是「后台建会话」本身：没有它 tmux 会去 attach 当前终端，\n\
+             daemon 那条路上根本没有终端）。\n\
+             先确认那个改动是不是本意；是本意就同步改这里的发现口径，不是就改回去。"
+        );
         assert_eq!(
             found, registered,
             "\n真正产 `tmux new-session` 的文件与创建路径登记表对不上。\n\
              **多一处** = 新增了一条创建路径没表态 ⇒ 要么让它自己校验禁字集，\n\
              要么写清「名字来自哪个已校验的上游」。\n\
-             **少一处** = 那条路没了 ⇒ 删登记。\n\
+             **少一处** = 那条路没了 ⇒ 删登记。⚠ 但先读上面那条：**还在产 `{verb}` 的**\n\
+             属于「形态变了」不是「路没了」，处置相反。\n\
              ⚠ F04b 那版是**手写两个文件名**，于是 `shared/ccm` 整条路径逃出了扫描面（F12 逮到）。"
         );
 
