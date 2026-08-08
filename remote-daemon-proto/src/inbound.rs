@@ -595,7 +595,15 @@ mod tests {
         let prod = guard_core::production_code(src);
         // 运行时拼：写成字面量会命中本条自己的诊断文案（F58/F62 记过）。
         let attr = format!("#[tokio::{}]", "main");
-        let single = format!("current{}thread", "_");
+        // ⚠ **两种单 worker 写法都要认**。第一版只认 `current_thread`，
+        //   而 `#[tokio::main(worker_threads = 1)]` 是等价的另一种 —— 变异当场证伪
+        //   （本会话反复的那个病：判据锚在**一种写法**上）。
+        //   这次能枚举是因为 tokio 的 runtime 属性是**封闭上游 API**：
+        //   限成单 worker 只有这两条路，版本升级才会变、变了编译期就报（同 F43 的理由）。
+        let single_forms = [
+            format!("current{}thread", "_"),
+            format!("worker_threads{}= 1", " "),
+        ];
         // ⚠ 自检只问「有没有起 runtime 这件事」，**不问它是不是裸的** ——
         //   后者是主断言的活。第一版自检写成 `contains("#[tokio::main]")`，
         //   于是「改成单 worker」这一刀先撞上它，红出来的话是
@@ -608,8 +616,20 @@ mod tests {
         );
         let offenders: Vec<&str> = prod
             .lines()
-            .filter(|l| l.contains("tokio::main") && l.contains(single.as_str()))
+            .filter(|l| {
+                l.contains("tokio::main") && single_forms.iter().any(|f| l.contains(f.as_str()))
+            })
             .collect();
+        // 匹配器自检：**独立手写**的样本，不用 needle 自己拼（F43 的纪律）。
+        for sample in [
+            "#[tokio::main(flavor = \"current_thread\")]",
+            "#[tokio::main(worker_threads = 1)]",
+        ] {
+            assert!(
+                single_forms.iter().any(|f| sample.contains(f.as_str())),
+                "单 worker 的匹配器漏了这种写法：{sample:?} —— 那条路照旧能把 writer_task 饿死"
+            );
+        }
         assert!(
             offenders.is_empty(),
             "daemon 的 runtime 被改成了单 worker：{offenders:?}\n\
