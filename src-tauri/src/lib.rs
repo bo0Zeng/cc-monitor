@@ -108,6 +108,7 @@ mod tool_registry; // T01：受管工具声明（只声明，不改各工具行�
 mod usage;
 mod utils;
 mod watcher;
+mod write_site_registry; // audit-0805 08-07：每个会写用户机器的落点都要申报（关掉 §5 4b 一半）
 
 use std::path::PathBuf;
 use std::sync::Arc;
