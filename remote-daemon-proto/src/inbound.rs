@@ -594,7 +594,6 @@ mod tests {
         let src = include_str!("main.rs");
         let prod = guard_core::production_code(src);
         // 运行时拼：写成字面量会命中本条自己的诊断文案（F58/F62 记过）。
-        let attr = format!("#[tokio::{}]", "main");
         // ⚠ **两种单 worker 写法都要认**。第一版只认 `current_thread`，
         //   而 `#[tokio::main(worker_threads = 1)]` 是等价的另一种 —— 变异当场证伪
         //   （本会话反复的那个病：判据锚在**一种写法**上）。
