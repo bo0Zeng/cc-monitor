@@ -283,6 +283,52 @@ pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Resu
 
 #[cfg(test)]
 mod tests {
+
+    /// ★ **shellinit 入口真的过了围栏吗**〔audit-0805 08-07，Phase G 第 49 件下半〕。
+    ///
+    /// 下面那几条判的是 `validate_shellinit_output` **这个函数本身**（截断、空、缺标记）。
+    /// 08-07 实测：把 `remote_acct_iso_shellinit` 的尾表达式换成 `Ok(out)`（跳过围栏），
+    /// **全仓 980 条判据一条不红** —— 与删除路 / 建分支路 / 端口转发同一族的第四例。
+    ///
+    /// # ⚠ 本条是**源码层**，不是真路 —— 这是刻意的降级，理由写在这里
+    ///
+    /// 姐妹三条都能跑真路（围栏在 I/O 之前）。**这一条不行**：围栏在远端
+    /// `exec_collect` **之后**，跑真路就得有一台远端 —— 本区红线不许起真进程。
+    /// ⇒ 只能判「那行还在」，而**判源码是代理不是标的**（第 41 件刚记过这条教训）。
+    ///
+    /// 它挡得住：有人把尾表达式改成 `Ok(out)`、或把围栏调用整个删掉。
+    /// 它挡不住：围栏还在但被喂了别的值（例如先把 `out` 洗一遍再交给它）。
+    /// 后者进 `ROADMAP §5`，解锁条件 = 把远端 exec 抽成可注入的 trait，那时能跑真路。
+    #[test]
+    fn the_shellinit_entry_point_still_ends_with_the_fence() {
+        let src = include_str!("acct_iso_deploy.rs");
+        let prod = guard_core::production_code(src);
+        // 抽取器自检：切没了就零命中地绿。
+        assert!(
+            prod.contains("pub async fn remote_acct_iso_shellinit"),
+            "生产段里没有 `remote_acct_iso_shellinit` —— 切点变了，本条会零命中地绿"
+        );
+        // 取那个函数的体（到下一个顶格行；`where` / `)` 顶格的算头 —— 本会话栽过三次）。
+        let at = prod
+            .find("pub async fn remote_acct_iso_shellinit")
+            .expect("上面已确认它存在");
+        let mut body = Vec::new();
+        for (i, line) in prod[at..].lines().enumerate() {
+            let cont = line.starts_with("where") || line.starts_with(')') || line.trim() == "{";
+            if i > 0 && !line.is_empty() && !line.starts_with(char::is_whitespace) && !cont {
+                break;
+            }
+            body.push(line);
+        }
+        let body = body.join("\n");
+        assert!(
+            body.contains("validate_shellinit_output("),
+            "`remote_acct_iso_shellinit` 不再调 `validate_shellinit_output` —— \n\
+             远端输出会**原样**回到前端，而那正是围栏存在的理由（fail-closed）。\n\
+             ⚠ 本条只看「那行还在」（源码层，理由见头注）；\n\
+             围栏还在却被喂了洗过的值，本条看不见 —— 那一半已进 `ROADMAP §5`。"
+        );
+    }
     use super::*;
 
     /// ★ Z05 跨语言双写点守卫：`SHELLINIT_FENCE_BEGIN` 必须与 vendored `cc-acct-iso`
