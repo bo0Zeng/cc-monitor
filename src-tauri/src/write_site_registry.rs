@@ -35,6 +35,40 @@
 //! ③ 通过 `Command` 起外部进程间接写盘（本条只看 Rust 侧的 `fs::` 调用面）。
 //! ⚠ ③ 是真缺口，不是措辞：`ccm` 的部署有一部分走 shell。已进 `ROADMAP §5`。
 
+/// ★ **「谁在写」的唯一权威源**〔audit-0805 08-07〕，供只读模块的守卫复用。
+///
+/// 只读模块（`config_surface` / `hooks_diag`）的守卫扫的是 `fs::` 前缀 ——
+/// 那只认「自己写」，认不出**把写交给别人**：08-07 实测，两个模块各加一句
+/// `crate::utils::atomic_write_json(p, v)`，**全仓 982 条判据一条不红**，
+/// 而它们的判据名逐字写着 `only_reads` / `never_writes`。
+///
+/// ⇒ 与其在每个只读模块里各写一张「已知写者」清单（那是下一个漂移源），
+/// 不如让它们都问同一张表：**本模块的 `WRITE_SITES` 就是那张表**。
+#[cfg(test)]
+pub(crate) mod writers {
+    /// 所有会写盘的函数名（去重）。**从 `WRITE_SITES` 派生**，不是手写。
+    pub(crate) fn names() -> Vec<&'static str> {
+        let mut v: Vec<&'static str> = super::tests::WRITE_SITES
+            .iter()
+            .map(|(_, f, _, _)| *f)
+            .collect();
+        v.sort_unstable();
+        v.dedup();
+        v
+    }
+
+    /// 一段生产代码里调到的写者。`self_file` 是调用方自己的文件名 ——
+    /// 它自己的写点不算「委托」（那由 `WRITE_SITES` 直接管）。
+    pub(crate) fn called_by(prod: &str, self_file: &str) -> Vec<&'static str> {
+        super::tests::WRITE_SITES
+            .iter()
+            .filter(|(f, _, _, _)| *f != self_file)
+            .map(|(_, fname, _, _)| *fname)
+            .filter(|fname| prod.contains(&format!("{fname}(")))
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
@@ -69,7 +103,7 @@ mod tests {
     /// ⚠ **默认拒绝**：人群从源码派生，没在这张表里的落点当场红。
     /// 「谁进人群」由机器定，「它是不是安装动作」才是人的答案。
     #[allow(clippy::type_complexity)]
-    const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
+    pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
         // ── 安装动作：写的是**用户既有的环境/配置**，且对应声明表里的一个工具
         ("profile_installer.rs", "install_to_profile", Some("ccm"),
          "往用户 shell profile 的 BEGIN/END 块里装 ccm 启动器（写前先备份）"),

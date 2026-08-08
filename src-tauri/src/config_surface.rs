@@ -1629,6 +1629,30 @@ mod tests {
                 uses.push(name);
             }
         }
+
+        // ★★ **「把写交给别人」也算写**〔audit-0805 08-07〕。
+        //
+        // 上面扫的是 `fs::` 前缀 —— 那只认「自己写」。08-07 实测：本模块加一句
+        // `crate::utils::atomic_write_json(p, v)`，**全仓 982 条判据一条不红**，
+        // 而本条的名字逐字写着「只读 / 不写」。与 F44（`tokio::io::copy` 绕过写流判据）
+        // 同一族：**动作类判据锚在「这个动作长什么样」上，就漏掉别的做法**。
+        //
+        // 「谁在写」不在这里各写一张清单（那是下一个漂移源），而是问唯一那张表：
+        // `write_site_registry::WRITE_SITES`。它自己由默认拒绝的人群守着。
+        let delegated =
+            crate::write_site_registry::writers::called_by(&stripped, "config_surface.rs");
+        assert!(
+            delegated.is_empty(),
+            "本模块调了已登记的**写者**：{delegated:?}\n\
+             ⚠ 前缀扫描看不见这种写法 —— 写发生在被调方，本文件里一个 `fs::` 都不出现。\n\
+             真要写盘：先想清楚本模块「只读」这条性质还成不成立，\n\
+             再把落点登记进 `write_site_registry::WRITE_SITES`。"
+        );
+        // 自检：那张表非空，否则上面一句是空转。
+        assert!(
+            !crate::write_site_registry::writers::names().is_empty(),
+            "`WRITE_SITES` 是空的 —— 上面那条在空转"
+        );
         // 允许集合就这三个，全部只读
         for u in &uses {
             assert!(

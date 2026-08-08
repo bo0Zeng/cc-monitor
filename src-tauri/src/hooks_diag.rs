@@ -1196,6 +1196,23 @@ mod tests {
             "一处 fs 用法都没扫到，守卫在空转"
         );
 
+        // ★★ **「把写交给别人」也算写**〔audit-0805 08-07〕。
+        //
+        // ① 扫的是 `fs::` 前缀，只认「自己写」。08-07 实测：本模块加一句
+        // `crate::utils::atomic_write_json(p, v)`，**全仓 982 条判据一条不红**，
+        // 而本条的名字逐字写着 never writes。与 F44 同族（动作类判据锚在写法上）。
+        // 「谁在写」问唯一那张表：`write_site_registry::WRITE_SITES`（它自己由默认拒绝守着）。
+        let delegated = crate::write_site_registry::writers::called_by(&code, "hooks_diag.rs");
+        assert!(
+            delegated.is_empty(),
+            "本模块调了已登记的**写者**：{delegated:?}\n\
+             ⚠ 前缀扫描看不见这种写法 —— 写发生在被调方，本文件里一个 `fs::` 都不出现。"
+        );
+        assert!(
+            !crate::write_site_registry::writers::names().is_empty(),
+            "`WRITE_SITES` 是空的 —— 上面那条在空转"
+        );
+
         // ② 其它写/执行入口一律不准（这些不经 fs:: 前缀）
         for bad in [
             concat!("File::", "create"),
