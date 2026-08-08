@@ -128,6 +128,44 @@ mod tests {
             .unwrap_or_else(|| panic!("地板行解析不出数字：{line}"))
     }
 
+    /// **PowerShell 那一半：今天全仓零 lint，而没人盯着它别长大**〔08-08〕。
+    ///
+    /// `ci.yml` 逐字写着「两个 `.ps1` 仍**零 lint**（全仓无 PowerShell linter）」，
+    /// `ROADMAP §5 1c` 也登记着同一件事（08-06 复核成立：`pwsh`/`powershell` 都不在 PATH，
+    /// 引一个 linter 属扩范围）。08-08 再复核：**仍是这两个、仍无 linter** —— 边界没漂。
+    ///
+    /// ⇒ 本条不要求给它们上 lint（那是扩范围，且理由没变），只钉**这一族别悄悄长大**：
+    /// 多出第三个 `.ps1` 时，① 那个新脚本一行 lint 也没有；② `§5 1c` 那句「两个」当天过期。
+    /// 两件事都不会有人发现 —— 除非这里红一次。
+    const POWERSHELL_TODAY: &[(&str, &str)] = &[
+        ("scripts/run.ps1", "Windows 上的本地跑法入口"),
+        (
+            "e2e/tier2/run-in-session1.ps1",
+            "tier2 e2e：跳到已登录 session1 里跑（SSH 落 session0 没有桌面）",
+        ),
+    ];
+
+    #[test]
+    fn the_powershell_family_has_not_grown() {
+        let found = guard_core::files_by_extension(&repo_root(), "ps1");
+        // ⚠ 两边都排序：登记表按「先重要后次要」写给人看，而 walker 按路径序返回。
+        // 08-08 第一版直接比，红在**顺序**上 —— 那种红会让人以为集合变了。
+        let mut known: Vec<String> = POWERSHELL_TODAY
+            .iter()
+            .map(|(p, _)| p.to_string())
+            .collect();
+        known.sort();
+        assert_eq!(
+            found, known,
+            "全仓 `.ps1` 的集合变了。\n\
+             ★ 多出来的那些**一行 lint 都没有**：全仓没有 PowerShell linter（`pwsh` 不在 PATH），\n\
+             而 `ci.yml` 与 `ROADMAP §5 1c` 都把「就这两个」当成已登记的诚实边界写着。\n\
+             ⇒ 两条路：① 这一族真长大了 ⇒ 该重新问一次「要不要引 PSScriptAnalyzer」，\n\
+             并把 `§5 1c` 那句「两个」改掉；② 只是挪了位置 ⇒ 更新这张表。\n\
+             ⚠ 别把它当成登记表填一填就完 —— 本条存在的理由正是「零 lint 这件事不许悄悄变大」。"
+        );
+    }
+
     /// ★ 正题：**每个 shell 脚本要么被 shellcheck 扫到，要么登记豁免**。
     #[test]
     fn every_shell_script_is_either_linted_or_registered_as_exempt() {
