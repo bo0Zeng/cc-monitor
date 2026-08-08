@@ -315,6 +315,7 @@ mod tests {
                 "session_name_registry.rs::production",
                 "**多语言**剥法（`.rs` 走共享原语，`.ts`/shell 各有注释语法）——共享原语只管 Rust",
             ),
+            ("ccm_invocation.rs::refusal_variants", "不是剥法：从 `enum Refusal` 的定义里抽变体名（跳过 doc 行只是为了不把注释当变体）"),
             ("agent_profile_parity.rs::rows", "不是剥法：解析对拍表的行"),
             ("gate2_parity.rs::rows", "不是剥法：解析 golden 表的行"),
             ("gate.rs::golden_rows", "不是剥法：daemon 侧解析同一张 golden 表"),
