@@ -274,3 +274,51 @@ describe("覆盖率那两步的有效性", () => {
     ).toBe(true);
   });
 });
+
+// ★★ **覆盖率地板的「只许降」纪律本身是散文**〔audit-0805 08-08，Phase G 第 68 件〕。
+//
+// `scripts/assert-coverage-floors.mjs` 是一条递减棘轮：逐文件地板 + 0% 文件数上限，
+// 头注逐字写着「**只许降**」「地板设在**当前值下方 ~5 点**」「实测值一起写下，
+// 只改数字不写实测，下一个人看不出它过期没过期」。
+//
+// 那三句撑着整条棘轮，而**没人读它们**。08-08 实测：把 `src/tabs.ts` 的地板从
+// `64/54` 调到 `10/5`（实测那两列原样不动），**monitor 993 + vitest 1292 全绿** ——
+// 棘轮从此形同虚设，而它自己的诊断照旧说「地板通过」。
+//
+// ⇒ 钉的是**表自身的自洽**：既然每行都带着「写下时实测%」，就要求地板不许离它太远。
+// 这不需要跑覆盖率，纯读表 —— 与那条真的跑覆盖率的门禁互补（一条在 CI 里跑、
+// 一条在单测里读，失效模式不同）。
+describe("覆盖率地板表的自洽", () => {
+  it("每行地板都在「写下时实测」下方 ~5 点以内，且不高于实测", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const src = readFileSync(resolve(ROOT, "scripts/assert-coverage-floors.mjs"), "utf8");
+    // 人群 = 表里每一行 `["<路径>", 语句地板, 实测, 分支地板, 实测],`
+    const rows = [...src.matchAll(/\[\s*"([^"]+)"\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\]/g)];
+    expect(
+      rows.length,
+      "从 `PER_FILE_FLOORS` 抽不到足够的行（08-08 实测 6 行）—— 抽取坏了，本条此刻无效",
+    ).toBeGreaterThanOrEqual(4);
+    const SLACK = 8; // 纪律写的是 ~5 点，留一点余量给 v8 版本差
+    for (const [, file, sFloor, sNow, bFloor, bNow] of rows) {
+      const [sf, sn, bf, bn] = [sFloor, sNow, bFloor, bNow].map(Number);
+      expect(
+        sf,
+        `${file}: 语句地板 ${sf} 高于写下时实测 ${sn} —— 那不是地板，是天花板`,
+      ).toBeLessThanOrEqual(sn);
+      expect(
+        sn - sf,
+        `${file}: 语句地板 ${sf} 离实测 ${sn} 差了 ${(sn - sf).toFixed(1)} 点（纪律是 ~5）。\n` +
+          "⚠ 头注逐字写着「只许降」——余量一放大，棘轮就形同虚设而诊断照旧说「通过」。\n" +
+          "真要放宽：先说清为什么，并把实测那一列一起更新（不然下一个人看不出它过期没过期）。",
+      ).toBeLessThanOrEqual(SLACK);
+      expect(bf, `${file}: 分支地板 ${bf} 高于写下时实测 ${bn}`).toBeLessThanOrEqual(bn);
+      expect(
+        bn - bf,
+        `${file}: 分支地板 ${bf} 离实测 ${bn} 差了 ${(bn - bf).toFixed(1)} 点（纪律是 ~5）`,
+      ).toBeLessThanOrEqual(SLACK);
+    }
+  });
+});
