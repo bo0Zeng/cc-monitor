@@ -1551,37 +1551,47 @@ mod tests {
             .unwrap_or(src)
             .to_string();
         let prod = prod.as_str();
-        let anchor = "PathResolution::Local(p) =>";
-        let at = prod
-            .find(anchor)
-            .expect("找不到解析分派的锚点臂 —— 分派改形了，本条要跟着改");
-        let indent = prod[..at].rfind('\n').map_or(0, |k| at - k - 1);
-        let mut arms: Vec<String> = Vec::new();
-        for line in prod[at - indent..].lines() {
-            if line.trim().is_empty() {
+        // ⚠ **第一版锚在 `PathResolution::Local(p) =>` 上，而那个字符串在本文件里
+        //   出现两次** —— 它命中的是更早的另一处 match，于是判据一直在看错对象：
+        //   给我真正要守的那处加回兜底臂，本条**照样绿**（变异实测）。
+        //   ⇒ 与 F19 同族（断言指的不是它自称的那个东西）。
+        //   改成扫**所有** `PathResolution` 分派，不再挑一个锚点。
+        let lines: Vec<&str> = prod.lines().collect();
+        let ind = |l: &str| l.len() - l.trim_start().len();
+        let mut arms = 0usize;
+        let mut offenders: Vec<usize> = Vec::new();
+        for (n, l) in lines.iter().enumerate() {
+            if l.trim_start().starts_with("PathResolution::") {
+                arms += 1;
                 continue;
             }
-            let cur = line.len() - line.trim_start().len();
-            if cur < indent {
-                break;
+            if !l.trim_start().starts_with("_ =>") {
+                continue;
             }
-            if cur == indent {
-                let head: String = line.trim_start().chars().take(26).collect();
-                if head.starts_with("PathResolution::") || head.starts_with('_') {
-                    arms.push(head);
+            let d = ind(l);
+            for k in (0..n).rev() {
+                let prev = lines[k];
+                if prev.trim().is_empty() {
+                    continue;
+                }
+                if ind(prev) < d {
+                    break;
+                }
+                if ind(prev) == d && prev.trim_start().starts_with("PathResolution::") {
+                    offenders.push(n + 1);
+                    break;
                 }
             }
         }
         assert!(
-            arms.len() >= 6,
-            "只抠到 {} 条分派臂（08-06 实测 7）—— 抽取坏了，本条此刻是空转的：{arms:?}",
-            arms.len()
+            arms >= 8,
+            "只扫到 {arms} 条 `PathResolution::` 臂（08-06 实测 10+）—— 抽取坏了，本条此刻是空转的"
         );
         assert!(
-            !arms.iter().any(|a| a.starts_with('_')),
-            "`PathResolution` 的分派里出现了兜底臂：{arms:?}\n\
+            offenders.is_empty(),
+            "`PathResolution` 的分派里出现了兜底臂（生产段第 {offenders:?} 行）。\n\
              ⚠ 后果不是报错，是**这一项在审计页上显示为空** —— 与「它不存在」看起来一样。\n\
-             新增变体请写成具名臂；确实不显示也请显式写 `=> None` 并加一句为什么。"
+             新增变体请写成具名臂；确实不显示也请显式写出来并加一句为什么。"
         );
     }
 
