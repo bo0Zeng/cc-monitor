@@ -48,10 +48,84 @@ mod tests {
     /// 继承这套权限的窗口模式。改动它 = 改动「谁拿到这些能力」。
     const WINDOWS: &[&str] = &["main", "viewer-*", "settings"];
 
+    /// 读 `src-tauri/` 下的一个同级配置文件。
+    fn capability_json_sibling(name: &str) -> String {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(name);
+        std::fs::read_to_string(&p)
+            .unwrap_or_else(|e| panic!("读不到 {p:?}：{e} —— 路径变了就把本条一起改"))
+    }
+
     fn capability_json() -> String {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities/default.json");
         std::fs::read_to_string(&p)
             .unwrap_or_else(|e| panic!("读不到 {p:?}：{e} —— 路径变了就把本条一起改"))
+    }
+
+    /// ★★ **前端的执行面（CSP + 全局 Tauri）也是那三张表的前提**
+    /// 〔audit-0805 08-08，Phase G 第 66 件〕。
+    ///
+    /// 上面那条钉的是「webview 被授予哪些能力」。**还有一半**：webview 里跑的
+    /// **代码本身**从哪来。本产品渲染的是**不受信的会话文本**（Claude 的输出、
+    /// 远端 tmux 的 capture-pane），一旦脚本源被放开，注入的内容就能直接 `invoke`
+    /// 我们所有的命令 —— 那同样绕过写盘 / 远端执行 / 起进程那三张表。
+    ///
+    /// 今天的形态是对的（CSP 无 `script-src 'unsafe-inline'`、无远端源，
+    /// `withGlobalTauri: false`），**但没人钉**：08-08 实测把 CSP 放开成
+    /// `default-src 'self' 'unsafe-inline' *` 并打开 `withGlobalTauri`，
+    /// **monitor 992 + vitest 1290 全绿**。
+    ///
+    /// ⚠ 只钉**会扩大执行面**的那几件，不逐字钉整条 CSP：
+    /// 逐字钉会把「加一个 `img-src` 源」这种无关改动也判红，
+    /// 而误红最省事的消法是把判据放宽 —— 那条路本工作区走过太多次了。
+    #[test]
+    fn the_webview_execution_surface_stays_closed() {
+        let raw = capability_json_sibling("tauri.conf.json");
+        let v: serde_json::Value =
+            serde_json::from_str(&raw).expect("tauri.conf.json 不是合法 JSON");
+        let app = v
+            .get("app")
+            .expect("找不到 `app` —— 配置形状变了，本条此刻无效");
+
+        // ① 全局 Tauri 注入：打开的话，任何在页面里跑起来的脚本都能直接 `invoke`。
+        let global = app.get("withGlobalTauri").and_then(|g| g.as_bool());
+        assert_eq!(
+            global,
+            Some(false),
+            "`withGlobalTauri` 不再是 `false`（实得 {global:?}）。\n\
+             ⚠ 打开它 = 把 `invoke` 挂到 `window` 上 —— 页面里任何跑起来的脚本都能调\n\
+             我们的全部命令，绕过写盘 / 远端执行 / 起进程那三张登记表。"
+        );
+
+        // ② CSP 必须存在，且不许放开**脚本**执行面。
+        let csp = app
+            .get("security")
+            .and_then(|s| s.get("csp"))
+            .and_then(|c| c.as_str())
+            .expect("`app.security.csp` 不见了 —— 没有 CSP 等于执行面全开");
+        assert!(
+            csp.contains("default-src 'self'"),
+            "CSP 的 `default-src` 不再是 `'self'`（实得 {csp:?}）—— 那是兜底源，放开它等于全放开"
+        );
+        for bad in [
+            "script-src 'unsafe-inline'",
+            "'unsafe-eval'",
+            "default-src 'self' *",
+        ] {
+            assert!(
+                !csp.contains(bad),
+                "CSP 里出现了 {bad:?}：{csp}\n\
+                 ⚠ 本产品渲染的是**不受信的会话文本**（Claude 输出、远端 capture-pane）。\n\
+                 脚本执行面一放开，注入的内容就能直接 `invoke` 我们的命令。\n\
+                 `style-src 'unsafe-inline'` 是**刻意允许**的（样式不是执行面），别把它一起收掉。"
+            );
+        }
+        // 常驻自检：那条刻意允许的样式豁免必须还在，否则上面这组禁词是在一个
+        // 「CSP 已经被整个换掉」的文本上空转。
+        assert!(
+            csp.contains("style-src 'self' 'unsafe-inline'"),
+            "CSP 里那条**刻意允许**的 `style-src 'unsafe-inline'` 不见了（实得 {csp:?}）—— \
+             要么 CSP 被整个换掉了（那上面几条禁词就是在空转），要么样式策略真改了。两种都要人看一眼。"
+        );
     }
 
     #[test]
