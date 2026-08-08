@@ -2966,6 +2966,20 @@ mod write_half_guard {
         .map(|s| format!(".{s}"))
         .collect();
         let ufcs = format!("AsyncWrite{}::", "Ext");
+        // ★★ **把流交给别人写**也算自己写〔audit-0805 08-07〕。
+        //
+        // 上面两个 needle 认的是「点调用」，`ufcs` 认的是 UFCS —— 三者都盯着
+        // **写这个动作长什么样**。而 `tokio::io::copy(&mut src, stream)` 一个字都不沾，
+        // 却实实在在把字节写进了流。08-07 实测：加这么一处，全仓 **976 条判据一条不红**。
+        //
+        // ⚠ 这次为什么可以枚举：`copy` 家族是 **tokio 的一个封闭上游 API 集合**
+        // （`copy` / `copy_buf` / `copy_bidirectional` / `copy_bidirectional_with_sizes`），
+        // 版本升级才会变，而且变了会**编译期**报出来。
+        // 这与「枚举写法拼写」不是一回事 —— 后者的空间是无限的，这个是有边界的。
+        let copy_family: Vec<String> = ["copy", "copy_buf", "copy_bidirectional"]
+            .iter()
+            .map(|f| format!("io::{f}("))
+            .collect();
 
         // ── 匹配器自检 ────────────────────────────────────────────────────────
         //
@@ -2980,6 +2994,18 @@ mod write_half_guard {
             "let _ = w.write_u8(1).await;",
             "let _ = w.shutdown().await;",
         ];
+        // copy 家族的独立样本（同样**手写**，不用 needle 自己拼 —— 那种自检数学上不会失败）。
+        let copy_samples = [
+            "let n = tokio::io::copy(&mut src, stream).await?;",
+            "tokio::io::copy_buf(&mut r, &mut w).await?;",
+            "let (a, b) = tokio::io::copy_bidirectional(&mut x, &mut y).await?;",
+        ];
+        for sample in copy_samples {
+            assert!(
+                copy_family.iter().any(|n| sample.contains(n.as_str())),
+                "copy 家族的匹配器漏了这种写法：{sample:?} —— 那条路照旧能把流写满"
+            );
+        }
         for sample in samples {
             assert!(
                 needles.iter().any(|n| sample.contains(n.as_str())),
@@ -3004,6 +3030,56 @@ mod write_half_guard {
         if prod.contains(ufcs.as_str()) {
             hits.push(ufcs);
         }
+        // 把流交给 copy 家族去写，同样算。
+        hits.extend(
+            copy_family
+                .iter()
+                .filter(|n| prod.contains(n.as_str()))
+                .cloned(),
+        );
+        // ★ 堵逃生口：`use tokio::io::copy;` 之后裸写 `copy(..)`，上面三路都认不出。
+        // 今天全文件只有一处 `use tokio::io::{AsyncBufReadExt, BufReader};`（都不是写能力）
+        // ⇒ 这条零误红。放行清单写死在这里，新导入必须有人看一眼。
+        // ★ 堵逃生口：`use tokio::io::copy;` 之后裸写 `copy(..)`，上面三路都认不出。
+        //
+        // ⚠ 放行清单是**用判据自己的 `prod()` 量出来的**。我第一版用「首个 `#[cfg(test)]`
+        //   切生产段」去量，只得到一条 —— 本文件有多个测试模块，那个切法在本工作区
+        //   已记过四次。**量具要用被测者那一套**，这是第五次。
+        const ALLOWED_IO_IMPORTS: &[&str] = &[
+            "use tokio::io::{AsyncBufReadExt, BufReader};",
+            "use tokio::io::AsyncBufReadExt;",
+            "use tokio::io::AsyncReadExt;",
+        ];
+        let io_imports: Vec<&str> = prod
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("use ") && l.contains("tokio::io"))
+            .collect();
+        // 自检：一条都没扫到 ⇒ 下面那句「不许有没登记的」是空转。
+        assert!(
+            !io_imports.is_empty(),
+            "生产段里一条 `tokio::io` 导入都没扫到 —— 剥法坏了，本段此刻无效"
+        );
+        let bad_imports: Vec<&&str> = io_imports
+            .iter()
+            .filter(|l| !ALLOWED_IO_IMPORTS.contains(l))
+            .collect();
+        assert!(
+            bad_imports.is_empty(),
+            "本文件新增/改动了 `tokio::io` 导入：{bad_imports:?}\n\
+             ⚠ 条目导入会让写能力变成**裸名字**（`use tokio::io::copy;` 之后 `copy(..)`），\n\
+             上面那三路匹配器一个都认不出。要么用全路径 `tokio::io::xxx(`，\n\
+             要么确认这条导入不带写能力之后把它加进 `ALLOWED_IO_IMPORTS`。"
+        );
+        // 反向锚点：放行清单不许留死行 —— 腐掉的清单看着像有人守，实则没有。
+        for allowed in ALLOWED_IO_IMPORTS {
+            assert!(
+                io_imports.contains(allowed),
+                "放行清单里的 {allowed:?} 在生产段里已经不存在了 —— 删掉它，\
+                 否则下次有人写出同名导入会被静默放行。"
+            );
+        }
+
         assert!(
             hits.is_empty(),
             "ssh_source 的生产段又开始自己写流了（{hits:?}）。\n\
