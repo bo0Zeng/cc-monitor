@@ -318,9 +318,11 @@ mod tests {
             ("agent_profile_parity.rs::rows", "不是剥法：解析对拍表的行"),
             ("gate2_parity.rs::rows", "不是剥法：解析 golden 表的行"),
             ("gate.rs::golden_rows", "不是剥法：daemon 侧解析同一张 golden 表"),
-            ("shared_crate_registry.rs::ci_yml", "不是剥法：读 `ci.yml` 原文"),
             ("shared_crate_registry.rs::ci_live_lines", "不是剥法：抽 CI 的有效行"),
-            ("shared_crate_registry.rs::ci_job_block", "不是剥法：抽某个 job 的段落"),
+            // 08-07：原 `ci_job_block`/`ci_yml` 搬进同文件的 `pub(crate) mod ci_yaml`
+            // （E3：`ci.yml` 的读取与切块只有一个家，`lockfile_conflict_guard` 也要用）。
+            // 搬家当场被本条逮住（多出 `job_block`、少了那两个）—— 这正是默认拒绝该有的样子。
+            ("shared_crate_registry.rs::job_block", "不是剥法：抽某个 job 的段落"),
             ("ssh_source.rs::parse_host_aliases", "不是剥法：解析 ssh config 的 Host 别名"),
             ("tool_registry.rs::declared_fields_of", "不是剥法：解析结构体字段声明"),
         ];
