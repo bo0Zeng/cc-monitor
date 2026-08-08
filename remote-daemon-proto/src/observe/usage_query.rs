@@ -6,12 +6,18 @@
 //! `origin`——monitor 收到后盖上主机 label）：
 //! `{sessionId, projectPath, projectName, buckets:[{model, day, totals:{input,cacheCreation,cacheRead,output,msgs}}]}`
 //!
-//! ★ **口径与本地 `../src-tauri/src/usage.rs::accumulate_usage` 一字对齐**（daemon 无 `parse_line`/
-//! `JsonlRecord`，故在 `serde_json::Value` 上抽取，同 `search.rs`↔`search_query.rs` 的移植先例）：
-//! **per-requestId（缺→uuid）逐字段 MAX**——一次 API 请求在 jsonl 落成多条 assistant 记录，`input`/
-//! `cache_*` 请求级逐行重复、`output` 流式（前占位、终结记录真总量）→ 逐字段 MAX（prompt 侧 max 无害、
-//! output max=终结值）；`msgs` 每请求 +1；`/branch` 祖先复制保留 requestId → 跨会话按 requestId 去重。
-//! **改口径必须同步改本地 usage.rs（双写点）。**
+//! ★ **口径的唯一实现在共享 crate `usage-core`**（`usage_core::accumulate`）——
+//! 本文件与本地 `src-tauri/src/usage.rs` **都调它**，不各写一遍。
+//! 抽取仍在 `serde_json::Value` 上做（daemon 不引 `JsonlRecord`），同 `search.rs`↔`search_query.rs`。
+//! **per-requestId（缺→uuid）逐字段 MAX**——一次 API 请求在 jsonl 落成多行时取各字段最大值；
+//! `cache_*` 请求级逐行重复、`output` 流式（前占位、终结记录真总量）；`msgs` 每请求 +1。
+//!
+//! ⚠ **本段 08-06 订正过**：原文逐字写着「口径与本地 `usage.rs::accumulate_usage` 一字对齐」
+//! 和「**改口径必须同步改本地 usage.rs（双写点）**」—— 那是 **U7-2 收口之前**的状态。
+//! 收口之后口径只剩一处，而**这两句话没人回来改**：照它做的人会去维护一份
+//! 根本不该存在的副本。⇒ 停滞式腐坏（世界变了、文本没动），本区反复记的那一族。
+//! 现由 `the_usage_kou_jing_has_exactly_one_home` 钉着：两侧都必须调那个共享函数，
+//! 且**两侧生产段都不许再出现 token 字段字面量**（那些字面量是口径本身，它们只许住在 `usage-core`）。
 //!
 //! 安全：路径严格限 `<claude_dir>/projects/`（canonicalize 前缀校验，复刻 history/search_query）；
 //! 只读铁律（cc-monitor 不写远端）成立——本模块只 read_dir / read。

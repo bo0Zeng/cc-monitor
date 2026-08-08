@@ -324,6 +324,85 @@ pub async fn aggregate_usage_all(on_row: Channel<SessionUsageRow>) -> Result<u32
 }
 
 #[cfg(test)]
+mod kou_jing_singleton {
+    //! ★ **token 口径只有一个家**〔audit-0805 08-06〕。
+    //!
+    //! # 它补的是一处**已经修过、却没留下判据**的地方
+    //!
+    //! U7-2 之前，口径在 daemon 的 `observe/usage_query.rs` 与本文件里**各写一遍**，
+    //! 而 daemon 那份头注逐字写着「改口径必须同步改本地 usage.rs（**双写点**）」——靠人手对齐。
+    //! U7-2 把它收进共享 crate `usage-core`，两侧改为都调 `usage_core::accumulate`。
+    //!
+    //! ⚠ 但**收口没有留下判据**，而且那两句「双写点」一直挂在 daemon 头注里到 08-06
+    //! 才被抽样读出来：照它做的人会去维护一份根本不该存在的副本。
+    //! ⇒ 「停滞式腐坏」的一个新载体：腐的是**一次已完成的收口**。
+    //!
+    //! # 钉法
+    //!
+    //! token 字段名**就是口径本身**。判准取「这些字面量不许出现在两侧的生产段」：
+    //! 谁再在那里解析它们，就是第二份口径 —— 而两份漂开时**用量数字会静默不一致**。
+    /// 口径字段的**解析形态**：带引号的 JSON key。
+    ///
+    /// ⚠ **必须带引号**：第一版只比裸名字，于是 `let (input_tokens, cached, output) = …`
+    /// 这个**局部变量名**当场把判据打红（本文件第 165 行）——
+    /// 匹配单位比事实**大**，是 F24 的镜像半。判据要认的是「谁在解析这个 JSON 字段」，
+    /// 而不是「谁提到过这个词」。
+    fn fields() -> Vec<String> {
+        let t = "tokens";
+        vec![
+            format!("\"input_{t}\""),
+            format!("\"output_{t}\""),
+            format!("\"cache_creation_input_{t}\""),
+            format!("\"cache_read_input_{t}\""),
+            format!("\"cached_input_{t}\""),
+        ]
+    }
+
+    #[test]
+    fn the_usage_kou_jing_has_exactly_one_home() {
+        // ① 共享 crate 确实持有口径 —— 否则下面那条退化成「哪里都没有」。
+        let core = guard_core::production_code(include_str!("../crates/usage-core/src/lib.rs"));
+        let held = fields()
+            .iter()
+            .filter(|f| core.contains(f.as_str()))
+            .count();
+        assert!(
+            held >= 4,
+            "`usage-core` 生产段里只找到 {held} 个口径字段（08-06 实测 4+）—— \
+             口径搬走了还是抽取坏了？本条此刻无效"
+        );
+
+        // ② 两侧都必须**调**那个共享函数，且自己不许再解析口径字段。
+        for (name, raw) in [
+            (
+                "daemon observe/usage_query.rs",
+                include_str!("../../remote-daemon-proto/src/observe/usage_query.rs"),
+            ),
+            ("monitor src/usage.rs", include_str!("usage.rs")),
+        ] {
+            let prod = guard_core::production_code(raw);
+            assert!(
+                prod.contains("usage_core::accumulate"),
+                "{name} 不再调 `usage_core::accumulate` —— 它要么自己算了一遍（第二份口径），\n\
+                 要么口径搬家了而本条没跟。U7-2 收口前那两处各写一遍、靠头注里一句\n\
+                 「双写点」提醒人手对齐 —— 那正是本条要防的回潮。"
+            );
+            let leaked: Vec<String> = fields()
+                .into_iter()
+                .filter(|f| prod.contains(f.as_str()))
+                .collect();
+            assert!(
+                leaked.is_empty(),
+                "{name} 的生产段里出现了口径字段字面量：{leaked:?}\n\
+                 ⚠ 那些字段名**就是口径本身**，只许住在 `usage-core`。\n\
+                 在这里解析它们 = 又开了第二份口径，而两份漂开时**用量数字会静默不一致**\n\
+                 （本地一个数、远端另一个数，谁都不报错）。"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
