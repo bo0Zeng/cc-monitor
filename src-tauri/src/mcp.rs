@@ -485,6 +485,73 @@ pub async fn remove_remote_mcp_server(
 
 #[cfg(test)]
 mod tests {
+
+    /// ★★ **写侧只许有一个出口**〔audit-0805 08-08，Phase G 第 61 件，SS-14〕。
+    ///
+    /// 本文件头注与 `mcp_json_path` 的注释都写着「写侧唯一出口，硬编码 `.mcp.json`，
+    /// 杜绝误写 `~/.claude.json` / `settings.json`」，并且逐字提到
+    /// 「**grep 门禁：本文件写路径只此一处**」。
+    ///
+    /// ⇒ **那条门禁不存在**。08-08 实测：在本文件加一个
+    /// `fn settings_json_path(dir) -> …join("settings.json")`，**全仓 989 条判据一条不红**。
+    /// 与 F58 同族（散文指着一条并不存在／已被删掉的机检），只是这次它从未存在过。
+    ///
+    /// # 钉法
+    ///
+    /// 人群 = 生产段里**每一处把文件名拼进项目目录**的地方（`join("…")` / `format!("{d}/…")`），
+    /// 逐个要求那个文件名是 `.mcp.json`。**读侧那一处也算**（它同样只许碰 `.mcp.json`；
+    /// 头注第 2 行「读：项目 `<dir>/.mcp.json`」说的就是它）。
+    #[test]
+    fn every_project_file_name_this_module_builds_is_mcp_json() {
+        let prod = guard_core::production_code(include_str!("mcp.rs"));
+        // 运行时拼，免得命中本条自己的诊断文案。
+        let want = format!(".mcp{}", ".json");
+        let mut sites: Vec<(usize, String)> = Vec::new();
+        for (i, line) in prod.lines().enumerate() {
+            let t = line.trim();
+            if t.starts_with("//") {
+                continue;
+            }
+            // ⚠ **判准是「接收者是不是项目目录」**，不是「有没有 join」。
+            //   第一版只看 `join("…")`，于是把读用户配置那三处
+            //   （`home.join(".claude.json")` 等）也圈了进来 —— 而头注第 2 行逐字写着
+            //   「读：用户 `~/.claude.json` 顶层」，那是**合法的读**。
+            //   人群取宽会逼人把合法写法加进豁免，那正是把判据变成废纸的路。
+            //   项目侧的形态只有两种：`Path::new(<项目目录变量>).join("…")` 与 `format!("{d}/…")`。
+            if let Some(a) = t.find("Path::new(") {
+                let after = &t[a..];
+                if let Some(j) = after.find(".join(\"") {
+                    let rest = &after[j + ".join(\"".len()..];
+                    if let Some(b) = rest.find('"') {
+                        sites.push((i + 1, rest[..b].to_string()));
+                    }
+                }
+            }
+            if let Some(a) = t.find("format!(\"{d}/") {
+                let rest = &t[a + "format!(\"{d}/".len()..];
+                if let Some(b) = rest.find('"') {
+                    sites.push((i + 1, rest[..b].to_string()));
+                }
+            }
+        }
+        // 抽取器自检：一处都没抓到 ⇒ 下面整条空转。
+        assert!(
+            sites.len() >= 3,
+            "只抓到 {} 处「往项目目录里拼文件名」（08-08 实测 3：读侧 1 + 本机写侧 1 + 远端写侧 1）\
+             —— 抽取器坏了，本条此刻无效：{sites:?}",
+            sites.len()
+        );
+        for (line, name) in &sites {
+            assert_eq!(
+                name, &want,
+                "第 {line} 行往项目目录里拼的是 {name:?}，不是 {want:?}。\n\
+                 ⚠ SS-14 铁律：本模块**只**碰 `<dir>/.mcp.json`，绝不写 `~/.claude.json` / \
+                 `settings.json`。\n\
+                 头注里那句「grep 门禁：本文件写路径只此一处」**在 08-08 之前是不存在的** —— \
+                 本条就是那条门禁。真要碰别的文件，先改头注那条铁律，别悄悄加一个出口。"
+            );
+        }
+    }
     use super::*;
     use serde_json::json;
 
