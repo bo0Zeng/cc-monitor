@@ -748,6 +748,34 @@ mod tests {
              门还在，但不查票了。整条保证靠的就是「换写能力必须交出见证」。"
         );
 
+        // ★★ **字段必须私有** —— 这是变异复验当场逮出来的第四条路。
+        //
+        // 08-07：为了验「出口不查票」那一刀，我连调用方一起改，结果编译器三重拦住
+        // （参数类型 · **字段私有** · 跨模块可见性）。⇒ 那一刀说明**字段私有才是真保障**，
+        // 而本条当时只钉关联函数与 `Default`，没钉它。
+        // 实测把 `commands` 改成 `pub`：全仓 **977 条判据一条不红**，而从此
+        // 任何模块都能 `DaemonHello { commands: vec![] }` 凭空造见证 —— 连一扇门都不用走。
+        // ⇒ **验一条判据的时候，编译器替你挡住的那些，正是没人写下来的那些。**
+        let witness_fields: Vec<&str> = prod
+            .lines()
+            .skip_while(|l| !l.starts_with("pub struct DaemonHello"))
+            .skip(1)
+            .take_while(|l| l.starts_with(char::is_whitespace) || l.is_empty())
+            .filter(|l| l.contains(':'))
+            .collect();
+        assert!(
+            !witness_fields.is_empty(),
+            "抽不到 `DaemonHello` 的字段 —— 抽取器坏了，下面那条在空转"
+        );
+        for f in &witness_fields {
+            assert!(
+                !f.trim().starts_with("pub "),
+                "`DaemonHello` 的字段 {f:?} 是 `pub` 的 —— 那是第四条路：\n\
+                 任何模块都能 `DaemonHello {{ … }}` 凭空造一个见证，连一扇门都不用走。\n\
+                 整条「Hello 之前不许写」压在这个字段的私有性上，别把它打开。"
+            );
+        }
+
         // 见证类型不许有 `Default`：那是一条**不经过任何函数**的构造路。
         assert!(
             !prod.contains("impl Default for DaemonHello"),
