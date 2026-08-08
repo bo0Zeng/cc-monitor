@@ -316,8 +316,18 @@ mod tests {
             .iter()
             .filter(|r| !found.contains(r))
             .filter(|r| {
+                // ⚠ **必须与发现口径读同一段源码**：第一版读整份文件，于是测试夹具里的
+                // `new-session` 让「已经改名、真的不再创建」的文件被判成「还在产」——
+                // 一条讲错成因的诊断，被它自己的变异当场逮出来（08-07）。
                 std::fs::read_to_string(root.join(r))
-                    .map(|s| s.contains(&verb))
+                    .map(|s| {
+                        let body = if r.ends_with(".rs") {
+                            guard_core::production_code(&s)
+                        } else {
+                            s
+                        };
+                        body.contains(&verb)
+                    })
                     .unwrap_or(false)
             })
             .cloned()
