@@ -473,6 +473,98 @@ impl Default for SeqCounter {
 
 #[cfg(test)]
 mod tests {
+
+    /// ★★ **`HelloFlushed` 的构造面必须只有一个出口**〔audit-0805 08-08，Phase G 第 58 件〕。
+    ///
+    /// 本文件头注逐字写着：见证「**只能由真的写出并 flush 了 Hello 的那条路才能产出**
+    /// （构造函数私有，唯一出口是 `write_and_flush_hello`）」，并据此**把一条旧机检整条删掉**
+    /// （原来那条按「两个字符串的字节位置」判 reader 顺序，被 D 审计用一次搬函数绕过了）。
+    ///
+    /// ⇒ 于是整条「Hello 之前不许起 inbound」的保证，**全压在这个类型的构造面上**。
+    /// 08-08 实测：给它加一个 `pub fn assume() -> Self`，**两侧 291 + 989 条判据一条不红**。
+    /// 与 F45（monitor 侧 `DaemonHello` / `ParkedWriter`）**同一形态在另一半**。
+    ///
+    /// 钉三件（第三件是 F45 的变异逼出来的：编译器替你挡住的，正是没人写下来的）：
+    /// ① 生产段里 `HelloFlushed(` 的构造恰好一处；② `impl` 里除 `for_tests` 外没有别的
+    /// 关联函数，且 `for_tests` 必须带 `#[cfg(test)]`；③ 元组字段必须私有。
+    #[test]
+    fn the_hello_witness_has_exactly_one_way_to_exist() {
+        let src = include_str!("wire.rs");
+        let prod = guard_core::production_code(src);
+
+        // ① 构造点恰好一处。
+        // ⚠ 运行时拼：写成字面量的话，**本条自己的诊断文案**里那个串也会被数进去
+        //   （第一版就栽在这，报「出现了 2 次」）。判据扫自己所在的文件时，
+        //   它写下的每一个例子都会变成语料 —— 这一族本仓已记过多次。
+        let ctor_form = format!("HelloFlushed{}", "(()");
+        // ⚠ 再收窄一层：`pub struct HelloFlushed(());` 这行**声明**也含同一个串。
+        //   要数的是「构造表达式」，不是「这串字符」——匹配单位比事实大的第二次（F24 族）。
+        let ctors = prod
+            .lines()
+            .filter(|l| l.contains(ctor_form.as_str()) && !l.contains("struct "))
+            .count();
+        assert_eq!(
+            ctors, 1,
+            "生产段里那个元组构造出现了 {ctors} 次（应恰好 1，在 `write_and_flush_hello` 里）。\n\
+             多一处 = 多一条不经「真的写出并 flush 了 Hello」的产出路 —— \n\
+             而旧的顺序机检**已经因为这条类型保证被删掉了**，没有第二层。"
+        );
+        assert!(
+            prod.contains("fn write_and_flush_hello"),
+            "生产段里没有 `write_and_flush_hello` —— 抽取器坏了，本条此刻无效"
+        );
+
+        // ② `impl HelloFlushed` 里的关联函数：只许 `for_tests`，且必须 cfg(test)。
+        let at = src
+            .find("impl HelloFlushed {")
+            .expect("找不到 `impl HelloFlushed` —— 抽取器坏了");
+        let mut fns = Vec::new();
+        let mut cfg_test_seen = false;
+        for (i, line) in src[at..].lines().enumerate() {
+            if i > 0 && !line.is_empty() && !line.starts_with(char::is_whitespace) {
+                break;
+            }
+            if line.trim() == concat!("#[cfg(te", "st)]") {
+                cfg_test_seen = true;
+            }
+            if let Some(rest) = line.trim().strip_prefix("pub fn ") {
+                let n: String = rest
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                fns.push((n, cfg_test_seen));
+                cfg_test_seen = false;
+            }
+        }
+        assert_eq!(
+            fns.len(),
+            1,
+            "`impl HelloFlushed` 里有 {} 个 `pub fn`（应恰好 1 个 `for_tests`）：{fns:?}\n\
+             多出来的那个就是第二条产出路 —— 见证一旦能凭空造，`inbound::spawn` 那道\n\
+             「拿不到见证就调不了」的编译期门就形同虚设。",
+            fns.len()
+        );
+        assert_eq!(
+            fns[0].0, "for_tests",
+            "唯一那个 `pub fn` 不叫 `for_tests`：{fns:?}"
+        );
+        assert!(
+            fns[0].1,
+            "`for_tests` 上没有 `#[cfg(test)]` —— 那它在 release 里也存在，\
+             「生产路径拿不到见证」这句话当场不成立"
+        );
+
+        // ③ 字段必须私有（F45 那轮的教训：编译器替你挡住的，正是没人写下来的）。
+        let decl = prod
+            .lines()
+            .find(|l| l.contains("struct HelloFlushed"))
+            .expect("找不到结构体声明 —— 抽取器坏了");
+        assert!(
+            !decl.contains("pub ("),
+            "`HelloFlushed` 的元组字段被改成了 `pub`（{decl:?}）—— \
+             那样任何模块都能 `HelloFlushed(())` 凭空造见证，连函数都不用走。"
+        );
+    }
     use super::*;
     use serde_json::Value;
 
