@@ -2927,10 +2927,70 @@ mod write_half_guard {
     #[test]
     fn ssh_source_never_splits_a_stream_itself() {
         // 运行时拼，避免命中本行自己。
-        let marker = format!("tokio::io::spl{}", "it(");
+        //
+        // ⚠⚠ **08-07：原来只有这一个 needle，而它只认「一种切法」。**
+        // `TcpStream` 自带 `into_split()` / `split()`，那才是更常用的写法 ——
+        // 实测往生产段加一处 `stream.into_split()`，全仓 **976 条判据一条不红**。
+        // ⇒ 与上一件（写流判据漏 `tokio::io::copy`）同一族：
+        // **动作类判据锚在「这个动作长什么样」上，就会漏掉别的做法。**
+        //
+        // 补两路，两路都不是「枚举拼写」：
+        // · **切法**是 tokio 的封闭上游集合（自由函数 + `TcpStream` 的两个方法）；
+        // · **持有物**才是这条判据真正关心的东西 —— 它的诊断自己写着
+        //   「中间留 `WriteHalf` 就等于留了一个『Hello 之前能写』的窗口」。
+        //   类型名这一路能接住「用 `let (r, w) = …` 推导、一个切法名都不写」的情形。
+        let split_apis: Vec<String> = vec![
+            format!("tokio::io::spl{}", "it("),
+            format!(".into_spl{}", "it("),
+            format!("TcpStream::spl{}", "it("),
+        ];
+        let half_types: Vec<String> = vec![
+            format!("Owned{}Half", "Write"),
+            format!("Owned{}Half", "Read"),
+        ];
         let prod = prod();
+        // 匹配器自检：**独立手写**的样本，不用 needle 自己拼。
+        for (sample, why) in [
+            ("let (r, w) = tokio::io::split(stream);", "自由函数切法"),
+            (
+                "let (r, w) = stream.into_split();",
+                "TcpStream 的 owned 切法",
+            ),
+            (
+                "let (r, w) = tokio::net::TcpStream::split(&mut s);",
+                "TcpStream 的借用切法",
+            ),
+        ] {
+            assert!(
+                split_apis.iter().any(|n| sample.contains(n.as_str())),
+                "切法匹配器漏了「{why}」：{sample:?} —— 那条路照旧能切出 WriteHalf"
+            );
+        }
+        for (sample, why) in [
+            ("fn f(w: OwnedWriteHalf) {}", "持有 owned 写半边"),
+            ("let r: OwnedReadHalf = x;", "持有 owned 读半边"),
+        ] {
+            assert!(
+                half_types.iter().any(|n| sample.contains(n.as_str())),
+                "持有物匹配器漏了「{why}」：{sample:?}"
+            );
+        }
+        let mut split_hits: Vec<String> = split_apis
+            .iter()
+            .chain(half_types.iter())
+            .filter(|n| prod.contains(n.as_str()))
+            .cloned()
+            .collect();
+        split_hits.dedup();
         assert!(
-            !prod.contains(marker.as_str()),
+            split_hits.is_empty(),
+            "ssh_source 的生产段自己切流 / 自己持有流的一半了（{split_hits:?}）。\n\
+             切分与停放必须是同一步（`inbound_client::split_and_park`）—— 中间留一个 \
+             写半边就等于留了一个「Hello 之前能写」的窗口，而那正是那一步要消掉的东西。\n\
+             ⚠ 08-07 起本条同时认**切法**与**持有物**：只堵一种切法挡不住 `into_split()`。"
+        );
+        assert!(
+            !prod.contains(split_apis[0].as_str()),
             "ssh_source 的生产段自己切流了。\n\
              切分与停放必须是同一步（`inbound_client::split_and_park`）—— 中间留一个裸\n\
              `WriteHalf` 就等于留了一个「Hello 之前能写」的窗口，而那正是本轮要消灭的东西。"
