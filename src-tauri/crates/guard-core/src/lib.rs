@@ -330,6 +330,78 @@ pub fn scan_tree_excluding_self(
     out
 }
 
+/// 列出整棵树里的 **shell 脚本**（相对 `root` 的路径，已排序）〔audit-0805 08-08〕。
+///
+/// 判「是不是 shell 脚本」按**两种真实形态**取，不按后缀一种取：
+/// `*.sh`，**或**「没有扩展名 + 首行 shebang 里带 `sh`」。后者不是边角料 ——
+/// `shared/ccm`、`e2e/fake-claude`、vendored `cc-acct-iso` 都是这一形，
+/// 而 CI 的 shellcheck 列表里逐个手写着它们。
+///
+/// ⚠ 与 [`scan_tree_excluding_self`] 不同，**本函数不摘除调用者**：调用者是 `.rs`，
+/// 扫的树里没有它 —— 属「扫的树不含自己」那一类（`scanning_guard_registry` 头注的第四类），
+/// 自匹配这个概念对它不成立。
+///
+/// 跳过的目录是构建与依赖产物；它们里面的脚本不是本仓的产物，扫进来只会制造噪音。
+///
+/// # Panics
+///
+/// 目录读不了时 panic（守卫语义，只在测试里调）。
+pub fn shell_scripts(root: &std::path::Path) -> Vec<String> {
+    const SKIP: &[&str] = &[
+        ".git",
+        "target",
+        "node_modules",
+        "dist",
+        "coverage",
+        ".vite",
+    ];
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let rd = match std::fs::read_dir(&d) {
+            Ok(rd) => rd,
+            Err(e) => panic!("读目录 {d:?} 失败: {e}"),
+        };
+        for entry in rd {
+            let path = entry.expect("dir entry").path();
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if path.is_dir() {
+                if !SKIP.contains(&name.as_str()) {
+                    stack.push(path);
+                }
+                continue;
+            }
+            let is_shell = if name.ends_with(".sh") {
+                true
+            } else if name.contains('.') {
+                false
+            } else {
+                // 只读首行：二进制文件也可能没有扩展名，别整份读进来。
+                std::fs::read(&path)
+                    .map(|b| String::from_utf8_lossy(&b[..b.len().min(64)]).to_string())
+                    .map(|head| {
+                        let first = head.lines().next().unwrap_or_default().to_string();
+                        first.starts_with("#!") && first.contains("sh")
+                    })
+                    .unwrap_or(false)
+            };
+            if is_shell {
+                out.push(
+                    path.strip_prefix(root)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                );
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 /// 遍历源码树并**摘除调用者自己**。见 [`scan_tree_excluding_self`]。
 ///
 /// ⚠ 用宏而不是让调用方自己传 `file!()`：传参那种写法**允许写错**，

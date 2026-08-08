@@ -99,6 +99,7 @@ mod scanning_guard_registry; // audit-0805 F23：扫描型判据不许裸遍历�
 mod session_name_registry; // U11 摸底：会话名产出点清账 + 递减棘轮（账本 S12 的落地形态）
 #[cfg(test)]
 mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 —— 从散文变机检
+mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shellcheck 要么登记豁免
 #[cfg(test)]
 mod structural_scan;
 mod subagent;
