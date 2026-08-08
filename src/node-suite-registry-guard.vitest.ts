@@ -263,10 +263,14 @@ describe("覆盖率那两步的有效性", () => {
     const { fileURLToPath } = await import("node:url");
     const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     const cfg = readFileSync(resolve(ROOT, "vitest.config.ts"), "utf8");
+    // ⚠ 要认的是**配置键**，不是「这个词出现过」：同一文件的注释里就写着
+    //   「设地板阈值（下方 thresholds）」，只查词的话把 key 改名照样绿 ——
+    //   变异当场证伪（F24 那一族，本会话第 N 次）。
+    const keyed = cfg.split("\n").some((l) => /^\s*thresholds\s*:/.test(l));
     expect(
-      cfg,
-      "`vitest.config.ts` 里找不到 `thresholds` —— 那么 --coverage 也不会让谁红，\n" +
-        "上面那条就是在守一件不存在的事（本条此刻无效）。",
-    ).toContain("thresholds");
+      keyed,
+      "`vitest.config.ts` 里找不到 `thresholds:` 这个**配置键**（注释里提到不算）—— \n" +
+        "那么 --coverage 也不会让谁红，上面那条就是在守一件不存在的事（本条此刻无效）。",
+    ).toBe(true);
   });
 });
