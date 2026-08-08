@@ -222,3 +222,51 @@ describe("U0：tsx node 套件的机检地板", () => {
     ).toEqual([]);
   });
 });
+
+// ★★ **CI 里那两步的「有效性」压在两个 npm 脚本的内容上**
+// 〔audit-0805 08-08，Phase G 第 67 件〕。
+//
+// `ci.yml` 有两步：`coverage floor (vitest jsdom)` → `npm run coverage`，
+// 随后 `coverage per-file floors + zero-coverage ratchet` → 读覆盖率产物。
+// `shared_crate_registry` 已经钉住「这两步在 CI 里还在」，
+// 隔壁那条也钉住「每个套件都真的挂在 `npm test` 链上」。
+//
+// **但没人读 `coverage` 脚本本身**。08-08 实测：把它从 `vitest run --coverage`
+// 改成 `vitest run`，**monitor 993 + vitest 1290 全绿** ——
+// 而 `vitest.config.ts` 里那组 `thresholds` **只在 `--coverage` 时生效**，
+// 下一步要读的覆盖率产物也不会生成。步骤名还在、CI 照旧绿，门槛整个不再执行。
+//
+// ⇒ 与 F58/F61 同族（散文/步骤名指着一件其实没在发生的事），这次载体是 npm 脚本。
+describe("覆盖率那两步的有效性", () => {
+  it("`npm run coverage` 必须真的带 --coverage", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const pkg = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8"));
+    const script = pkg.scripts?.coverage;
+    expect(script, "`package.json` 里没有 `coverage` 脚本 —— 抽取坏了或它被删了").toBeTypeOf(
+      "string",
+    );
+    expect(
+      script,
+      `\`coverage\` 脚本是 ${JSON.stringify(script)}，没带 --coverage。\n` +
+        "⚠ `vitest.config.ts` 里那组 thresholds **只在 --coverage 时生效**，\n" +
+        "而 CI 下一步 `assert-coverage-floors.mjs` 要读的覆盖率产物也不会生成。\n" +
+        "结果是：CI 那两步照跑、照绿，而覆盖率门槛整个不再执行。",
+    ).toContain("--coverage");
+  });
+
+  it("阈值确实写在 vitest 配置里（否则上面那条守的是一件不存在的事）", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const cfg = readFileSync(resolve(ROOT, "vitest.config.ts"), "utf8");
+    expect(
+      cfg,
+      "`vitest.config.ts` 里找不到 `thresholds` —— 那么 --coverage 也不会让谁红，\n" +
+        "上面那条就是在守一件不存在的事（本条此刻无效）。",
+    ).toContain("thresholds");
+  });
+});
