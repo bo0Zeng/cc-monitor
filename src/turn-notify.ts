@@ -40,9 +40,12 @@ export interface TurnNotifyPayload {
     /**
      * ★ API 错误消息〔audit-0805 F12 / 报告 §4.1〕。
      *
-     * **此前这个字段在最小契约里根本不存在** —— 而生成物 `generated/JsonlRecord.ts` 的
+     * **F12 之前这个字段在最小契约里根本不存在** —— 而生成物 `generated/JsonlRecord.ts` 的
      * assistant 变体里一直有它（`isApiErrorMessage: boolean`）。数据在线上、没人看。
-     * daemon 侧 `observe/turn_detect.rs` 的四条件里有它，TS 这份少一条 ⇒ 两个探测器口径不同。
+     * 当时 daemon 侧 `observe/turn_detect.rs` 的判词里有它、TS 这份少一条 ⇒ 两个口径。
+     *
+     * ⚠ 声明它**不等于**判它：本文件的 `observe()` 里那行 `if` 才是判据的标的，
+     * 跨语言对拍因此只看实现区（08-07：原版拿整份文件做主语，被这条声明喂饱）。
      */
     isApiErrorMessage?: boolean;
     message?: { stop_reason?: string | null };
@@ -93,8 +96,9 @@ export class TurnEndNotifier {
     const rec = payload?.message;
     if (!rec || rec.type !== "assistant") return;
     if (rec.isSidechain) return; // 旧版 CC 的 subagent 行：子 agent 完成≠主轮结束
-    // F12：API 错误带 end_turn 时**不是**一轮真的结束。daemon 侧 `turn_detect.rs` 一直有这条，
-    // TS 这份少了 ⇒ 两个探测器口径不同（报告 §4.1 的「turn-end 判定两份」）。
+    // F12 补上的：API 错误带 end_turn 时**不是**一轮真的结束。daemon 侧 `turn_detect.rs`
+    // 一直有这条、TS 这份**曾经少了** ⇒ 那就是报告 §4.1「turn-end 判定两份」那一行。
+    // 现在两份的合取项由 `turn-notify.vitest.ts` 的跨语言对拍逐条钉住（人群从 daemon 派生）。
     if (rec.isApiErrorMessage) return;
     if (rec.message?.stop_reason !== "end_turn") return;
     const now = this.deps.now();
