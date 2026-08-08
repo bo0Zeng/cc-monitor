@@ -289,6 +289,54 @@ describe("覆盖率那两步的有效性", () => {
 // 这不需要跑覆盖率，纯读表 —— 与那条真的跑覆盖率的门禁互补（一条在 CI 里跑、
 // 一条在单测里读，失效模式不同）。
 describe("覆盖率地板表的自洽", () => {
+  // ★ 棘轮的**另一半**：0% 文件数上限。08-08 实测把 `ZERO_COUNT_CEILING` 从 13 抬到 40
+  // （「只许降」那段历史注释一字不改），**vitest 1293 + monitor 15 套全绿** —— 一个数字
+  // 的静默编辑就能把整条棘轮松掉一倍多。
+  //
+  // 这一半没法像地板那样对着「写下时实测」判（0% 文件数要跑完覆盖率才知道）。
+  // 能钉的是**它与自己那段递减记录的关系**：注释里逐格记着 `17→16`、`16→…→14→13`，
+  // 而常数是 13。要求「常数 = 记录的最后一格」，于是抬上限**必须同时把这一格写进记录** ——
+  // 一次静默的数字编辑就变成一次要过 review 的显式改写。这与地板那条同一个手法：
+  // **让表自己带着的信息去判表**。
+  it("0% 文件数上限等于那段递减记录的最后一格，且记录本身不回头", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { resolve, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const src = readFileSync(resolve(ROOT, "scripts/assert-coverage-floors.mjs"), "utf8");
+
+    const decl = /const ZERO_COUNT_CEILING = (\d+);/.exec(src);
+    expect(decl, "`scripts/assert-coverage-floors.mjs` 里找不到 `ZERO_COUNT_CEILING` 的声明了").not.toBeNull();
+    const ceiling = Number(decl![1]);
+
+    // 递减记录 = 声明**紧上方**那段注释里的箭头链（`17→16`、`16→…→14→13`）。
+    // ⚠ 区域必须收到 `ZERO_TODAY` 的 `];` 之后：整个文件里还有别的箭头
+    //（`PER_FILE_FLOORS` 那句「53.33 → 84.44」是覆盖率提升，不是棘轮记录）——
+    // 08-08 第一版取「声明之前的全部」，就把它扫了进来，诊断说「33 → 84 回头了」。
+    const record = src.slice(src.lastIndexOf("];", decl!.index), decl!.index);
+    const chains = [...record.matchAll(/(?:\d+|…)(?:\s*→\s*(?:\d+|…))+/g)].map((m) => m[0]);
+    const steps = chains.flatMap((c) => [...c.matchAll(/\d+/g)].map((m) => Number(m[0])));
+    expect(
+      steps.length,
+      "抽不到那条递减记录的箭头链（08-08 实测 `17→16` 与 `16→…→14→13` 共 5 格）——\n" +
+        "记录的写法变了（比如换了箭头字符），本条会零命中地绿，先修抽取器。",
+    ).toBeGreaterThanOrEqual(4);
+
+    for (let i = 1; i < steps.length; i++) {
+      expect(
+        steps[i],
+        `递减记录回头了：${steps[i - 1]} → ${steps[i]}。棘轮的话逐字是「**只许降**」。`,
+      ).toBeLessThanOrEqual(steps[i - 1]);
+    }
+    expect(
+      ceiling,
+      `\`ZERO_COUNT_CEILING\` 是 ${ceiling}，而那段递减记录停在 ${steps[steps.length - 1]}。\n` +
+        "⚠ 08-08 实测：把上限从 13 静默抬到 40，两侧门禁一声不吭全绿。\n" +
+        "⇒ 改这个数**必须同时把新的一格写进上面那段记录**（`…→13→12` 这样），\n" +
+        "  抬高更要写清为什么 —— 不然下一个人看不出这条棘轮是被棘紧的还是被松开的。",
+    ).toBe(steps[steps.length - 1]);
+  });
+
   it("每行地板都在「写下时实测」下方 ~5 点以内，且不高于实测", async () => {
     const { readFileSync } = await import("node:fs");
     const { resolve, dirname } = await import("node:path");
