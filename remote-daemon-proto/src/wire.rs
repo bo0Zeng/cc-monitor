@@ -474,6 +474,96 @@ impl Default for SeqCounter {
 #[cfg(test)]
 mod tests {
 
+    /// ★★ **出方向帧只许有一个写者**〔audit-0805 08-08，Phase G 第 60 件，D6〕。
+    ///
+    /// `inbound.rs` 头注逐字写着「`writer_task`（**出方向帧的唯一出口**）」。
+    /// 那句话撑着 NDJSON 在线上的完整性：两个写者并发写同一个 stdout，
+    /// 帧就会**互相撕开**（半行 + 半行），而这条流**仓外 aterm 正在消费**（D6 契约冻结）。
+    ///
+    /// ⇒ 而它只是散文。08-08 实测：在 `inbound.rs` 加一个自己 `tokio::io::stdout()`
+    /// 并 `write_all` 的函数，**daemon 292 条判据一条不红**。
+    ///
+    /// # 人群与豁免
+    ///
+    /// 人群 = **流式那条路**（`main.rs` / `inbound.rs` / `wire.rs`）生产段里所有
+    /// `write_all(`。今天恰好两处，各自登记：
+    /// · `wire.rs::write_and_flush_hello` —— 握手前那一帧，写完才产出 `HelloFlushed`；
+    ///   它按定义发生在 writer_task 起来**之前**，不存在并发。
+    /// · `main.rs::write_frame` —— writer_task 的出口本体。
+    ///
+    /// ⚠ `observe/*_query.rs` 那些 `stdout()` **不在人群里**：它们是一次性 CLI 子命令
+    /// （打完就退，没有 writer_task），与流式路不共享那个 stdout 的生命周期。
+    #[test]
+    fn the_outbound_stream_has_exactly_one_writer() {
+        const STREAMING: &[(&str, &str)] = &[
+            (
+                "wire.rs",
+                "write_and_flush_hello：握手帧，发生在 writer_task 起来之前",
+            ),
+            ("main.rs", "write_frame：writer_task 的出口本体"),
+        ];
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let verb = format!("write_{}(", "all");
+        let mut found: Vec<(String, usize)> = Vec::new();
+        // ⚠ `scan_tree!` **刻意摘除调用者自己**（那是它防「守卫扫不到自己」的设计），
+        //   而本条的人群里**必须有 `wire.rs`** —— 握手帧就写在这里。
+        //   第一版直接用它，于是反向锚点当场报「登记的写者 wire.rs 找不到」：
+        //   **摘除自己这件事，在「我自己也是被测对象」时会反过来咬人。**
+        let mut files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["rs"]);
+        files.push((
+            std::path::PathBuf::from("wire.rs"),
+            include_str!("wire.rs").to_string(),
+        ));
+        for (path, src) in files {
+            let name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap()
+                .to_string();
+            // 只看流式那条路的三个文件；`observe/*_query.rs` 是一次性子命令，理由见头注。
+            if !matches!(name.as_str(), "wire.rs" | "main.rs" | "inbound.rs") {
+                continue;
+            }
+            let n = guard_core::production_code(&src)
+                .lines()
+                .filter(|l| l.contains(verb.as_str()))
+                .count();
+            if n > 0 {
+                found.push((name, n));
+            }
+        }
+        found.sort();
+        // 抽取器自检：一处都没扫到 ⇒ 下面整条空转。
+        assert!(
+            !found.is_empty(),
+            "流式路上一处 `write_all(` 都没扫到 —— 抽取器坏了，本条此刻无效"
+        );
+        for (name, n) in &found {
+            let known = STREAMING.iter().find(|(f, _)| f == name);
+            let (_, why) = known.unwrap_or_else(|| {
+                panic!(
+                    "`{name}` 在流式路上写出方向帧，却不是登记的那两个写者之一。\n\
+                     ⚠ 两个写者并发写同一个 stdout ⇒ 帧互相撕开（半行 + 半行），\n\
+                     而这条流**仓外 aterm 正在消费**（D6：暴露给第三方 = 契约冻结成本）。\n\
+                     真要发帧，走 `writer_task` 那个出口。"
+                )
+            });
+            assert_eq!(
+                *n, 1,
+                "`{name}` 里有 {n} 处 `write_all(`（应恰好 1）。登记说法：{why}\n\
+                 多出来的那处就是第二个出口 —— 同一个文件里也一样会撕帧。"
+            );
+        }
+        // 反向锚点：登记的两个写者必须都还在（少一个 = 流式路被改形了，得重判）。
+        for (f, why) in STREAMING {
+            assert!(
+                found.iter().any(|(n, _)| n == f),
+                "登记的写者 `{f}` 在流式路上找不到 `write_all(` 了（说法：{why}）—— \
+                 结构变了就回来重判，别让本条在半个人群上绿着。"
+            );
+        }
+    }
+
     /// ★★ **`HelloFlushed` 的构造面必须只有一个出口**〔audit-0805 08-08，Phase G 第 58 件〕。
     ///
     /// 本文件头注逐字写着：见证「**只能由真的写出并 flush 了 Hello 的那条路才能产出**
