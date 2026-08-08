@@ -1,0 +1,211 @@
+//! ★ **每一个会写用户机器的落点都要申报**〔audit-0805 08-07，Phase G 第 38 件〕。
+//!
+//! # 它关掉的是 `ROADMAP §5 4b` 那条诚实边界的一半
+//!
+//! 4b 逐字写着：`tool_registry` 的 15 条判据全是**声明表内部的自洽**，
+//! **人群是「声明了的工具」，不是「真实发生的安装动作」** ——
+//! 「今天表里 6 条看着全，那是**人现在记得**，不是有东西钉着」。
+//!
+//! 它当初还写明了为什么不做机检：试过一条口径——**扫生产段的安装落点字面量**，
+//! 实测 21 个命中里绝大多数是用户可见文案与探测命令，真落点只有两三个
+//! ⇒ 噪声压过信号。那个判断当时是对的。
+//!
+//! ## 但那是**错的人群**
+//!
+//! 「路径字面量」是按**怎么写的**取样（一个字符串长得像不像路径），
+//! 而要钉的事实是**做了什么**（这段代码有没有往用户机器上写东西）。
+//! 换成后者之后人群当场干净：08-07 实测**生产段写盘调用 36 处、分布在 9 个文件**，
+//! 每一处都机器可判、零文案噪声。
+//!
+//! ⇒ 这正是本工作区反复收敛出的那条：**判据锚在「怎么写」上就会又漏又吵；
+//! 换成「做了什么」之后，原本被判为「做不了」的机检往往当场可行。**
+//! ⚠ 教训的另一半：**「刻意不做」也会过期**。4b 的解锁条件写的是
+//! 「安装动作先收敛到一个可枚举的落点」——今天回头量，它**早就成立了**，
+//! 只是没人回来重量一次。
+//!
+//! # 它守什么、不守什么
+//!
+//! **守**：新增一个写盘落点（新文件、新函数）而不申报 ⇒ 当场红。
+//! 申报为「安装动作」的必须点名 `tool_registry::TOOLS` 里**真实存在**的 `id`，
+//! 于是「真实动作 ↔ 声明表」这条连线第一次有东西钉着。
+//!
+//! **不守**：① 一个已申报函数**内部**多写一个文件（人群键是「文件::函数」，
+//! 不是逐次调用）——那要判语义，且同一个函数里多一次 `create_dir_all` 是常态；
+//! ② 写的**内容**对不对（那是各模块自己的行为判据）；
+//! ③ 通过 `Command` 起外部进程间接写盘（本条只看 Rust 侧的 `fs::` 调用面）。
+//! ⚠ ③ 是真缺口，不是措辞：`ccm` 的部署有一部分走 shell。已进 `ROADMAP §5`。
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    /// 写盘调用的**形态清单**。人群按「做了什么」取：这些是 Rust 侧真正落盘的动作。
+    ///
+    /// ⚠ 只读的 `fs::read*` / `metadata` / `exists` **不在其中** —— 本条钉的是「写」。
+    const WRITE_CALLS: &[&str] = &[
+        "fs::write(",
+        "fs::create_dir_all(",
+        "fs::create_dir(",
+        "fs::copy(",
+        "fs::remove_file(",
+        "fs::remove_dir_all(",
+        "fs::remove_dir(",
+        // ⚠ 这一个**刻意不带左括号**。带上就成了 `::rename(`，而
+        // `atomic_replace_registry` 正是按那个形态数「原子替换调用点」——
+        // 本文件一加它当场红（实测）。往那张表里塞一条豁免是最省事的消法，
+        // 但那会把它变成废纸；去掉括号后：我这边照样认得出真调用，
+        // 而**哪天有人在本文件里真写了一次 `fs::rename(...)`，那张表仍会逮住它**。
+        // 代价是这个 needle 稍宽（会命中 `fs::rename_xxx` 之类），今天全树无此形态。
+        "fs::rename",
+        "File::create(",
+    ];
+
+    /// 每个落点的申报：`(文件, 函数, 属于哪个已声明工具, 说法)`。
+    ///
+    /// 第三列 `Some(id)` = **这是那个工具的安装/卸载动作**，`id` 必须在
+    /// `tool_registry::TOOLS` 里真实存在（下面有对拍）；`None` = **不是安装动作**，
+    /// 第四列要写清它写的是什么。
+    ///
+    /// ⚠ **默认拒绝**：人群从源码派生，没在这张表里的落点当场红。
+    /// 「谁进人群」由机器定，「它是不是安装动作」才是人的答案。
+    #[allow(clippy::type_complexity)]
+    const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
+        // ── 安装动作：写的是**用户既有的环境/配置**，且对应声明表里的一个工具
+        ("profile_installer.rs", "install_to_profile", Some("ccm"),
+         "往用户 shell profile 的 BEGIN/END 块里装 ccm 启动器（写前先备份）"),
+        ("profile_installer.rs", "uninstall_from_profile", Some("ccm"),
+         "从 profile 里摘掉那个块（同样先备份）"),
+        ("profile_installer.rs", "atomic_write_string", Some("ccm"),
+         "上面两个动作唯一的落盘漏斗：临时文件 + rename"),
+        ("profile_installer.rs", "atomic_replace_path", Some("ccm"),
+         "跨设备回退的 rename。⚠ 这是**四份平台原语副本之一**，四份都已登记在 `atomic_replace_registry`（承接 C10）——本条不重复判它，只记它是个写点"),
+        ("mcp.rs", "write_json_atomic", Some("project-mcp"),
+         "写项目级 MCP 服务器配置（`TOOLS` 里 `project-mcp` 那条的真落点）"),
+        // ── 不是安装动作：写的是 monitor 自己的东西
+        ("bind.rs", "spawn", None, "monitor 自己的运行时目录/落地文件"),
+        ("bind.rs", "process_await_file", None, "monitor 自己的等待文件"),
+        ("bind.rs", "cleanup_dead", None, "清理 monitor 自己留下的死文件"),
+        ("config.rs", "save_config", None, "monitor 自己的配置文件"),
+        ("config.rs", "atomic_replace", None, "原子替换原语的本地副本（同上，归 `atomic_replace_registry` 判）"),
+        ("lib.rs", "open_log_dir", None, "打开日志目录前确保它存在"),
+        ("logging.rs", "build_rolling_appender", None, "monitor 自己的滚动日志"),
+        ("logging.rs", "write_diagnostics_to_config", None, "把诊断信息写进 monitor 自己的配置"),
+        ("logging.rs", "atomic_replace", None, "原子替换原语的本地副本（头注自陈是从 config.rs 复制的）"),
+        ("session_map.rs", "run_watcher", None, "monitor 自己的会话映射状态"),
+        ("sftp_pool.rs", "download_inner", None, "把远端文件落到本地缓存；写的不是用户既有环境"),
+        ("utils.rs", "atomic_write_json", None, "通用原子写原语，调用方各自申报"),
+        ("utils.rs", "atomic_replace_path", None, "同上，原语的本地副本"),
+        // ── 既不是安装、也不是「monitor 自己的」：**删用户数据**
+        ("history.rs", "delete_history_session", None,
+         "★ 删的是用户 `~/.claude/projects/**` 下的会话文件（用户主动发起）。\
+          它不是安装动作，但也不是 monitor 自己的东西 —— 围栏由 `validate_delete_target` \
+          与它自己的判据守着（本条只负责让这个落点**有人认领**，不重复判围栏）"),
+    ];
+
+    fn src_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+    }
+
+    /// 从一份源码的**生产段**里抠出「有写盘调用的 (函数名)」。
+    ///
+    /// ⚠ 归属按「上一处 `fn 名字`」判 —— 粗，但**只会把落点归给更靠前的函数**，
+    /// 归错了会让申报表里出现一个对不上的名字，那是**会红**的方向（不是静默变绿）。
+    fn write_fns(src: &str) -> Vec<String> {
+        let prod = guard_core::production_code(src);
+        let mut cur = String::new();
+        let mut out: Vec<String> = Vec::new();
+        for line in prod.lines() {
+            if let Some(rest) = line
+                .split(" fn ")
+                .nth(1)
+                .or_else(|| line.strip_prefix("fn "))
+            {
+                let name: String = rest
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                if !name.is_empty() {
+                    cur = name;
+                }
+            }
+            if WRITE_CALLS.iter().any(|c| line.contains(c))
+                && !cur.is_empty()
+                && !out.contains(&cur)
+            {
+                out.push(cur.clone());
+            }
+        }
+        out
+    }
+
+    /// ★ 正题：**每个写盘落点都得申报**，安装动作那一类还要点名真实存在的工具。
+    #[test]
+    fn every_write_site_is_declared_and_installers_name_a_real_tool() {
+        let files = guard_core::scan_tree!(&src_root(), &["rs"]);
+        let mut found: Vec<(String, String)> = Vec::new();
+        for (path, src) in &files {
+            let stem = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .expect("文件名")
+                .to_string();
+            for f in write_fns(src) {
+                found.push((stem.clone(), f));
+            }
+        }
+        // ★ 抽取器自检：扫不到东西时下面整条会零命中地绿。
+        assert!(
+            found.len() >= 15,
+            "全树只找到 {} 个写盘落点（08-07 实测 19 个「文件::函数」）—— 抽取器坏了，本条此刻无效",
+            found.len()
+        );
+
+        let missing: Vec<String> = found
+            .iter()
+            .filter(|(f, n)| !WRITE_SITES.iter().any(|(sf, sn, _, _)| sf == f && sn == n))
+            .map(|(f, n)| format!("  {f}::{n}"))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "这些地方**会往盘上写东西，但没人申报它是不是安装动作**：\n{}\n\n\
+             ⚠ `ROADMAP §5 4b` 记的正是这个缺口：`tool_registry` 只守声明表自洽，\n\
+             人群是「声明了的工具」而不是「真实发生的安装动作」——\n\
+             于是新增一个写点，声明表可以一直不知道。\n\
+             登记进 `WRITE_SITES`：是某个工具的安装动作就点名它的 `id`（要在 `TOOLS` 里真实存在），\n\
+             不是就写清它写的是什么（例如「monitor 自己的缓存」）。",
+            missing.join("\n")
+        );
+
+        // ★ 反向锚点：申报了一个已经不存在的落点 ⇒ 它在替真判据挡枪。
+        let stale: Vec<String> = WRITE_SITES
+            .iter()
+            .filter(|(f, n, _, _)| !found.iter().any(|(ff, nn)| ff == f && nn == n))
+            .map(|(f, n, _, _)| format!("  {f}::{n}"))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "申报表里这些落点**已经不写盘了**（改名、收口或删掉了）：\n{}\n\
+             改名也要红 —— 名字变了就该有人重新回答一次「它是不是安装动作」。",
+            stale.join("\n")
+        );
+
+        // ★★ 4b 要的那条连线：安装动作必须点名 `TOOLS` 里真实存在的 id。
+        let table = guard_core::production_code(include_str!("tool_registry.rs"));
+        let mut checked = 0usize;
+        for (f, n, tool, _) in WRITE_SITES {
+            let Some(id) = tool else { continue };
+            checked += 1;
+            assert!(
+                table.contains(&format!("id: \"{id}\"")),
+                "`{f}::{n}` 申报成工具 `{id}` 的安装动作，但 `tool_registry::TOOLS` 里没有这个 id。\n\
+                 要么 id 写错了，要么那个工具被删了而真实的安装动作还留着 —— 后者更值得查。"
+            );
+        }
+        // 常驻自检：一条安装动作都没有时，上面那个循环空转，而它看起来照样绿。
+        assert!(
+            checked >= 3,
+            "申报表里只有 {checked} 条「安装动作」（08-07 实测 5）—— \
+             要么真收口了（那很好，把这个数调下来），要么有人把它们改成了 `None` 绕过对拍。"
+        );
+    }
+}
