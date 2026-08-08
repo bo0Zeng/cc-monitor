@@ -1812,7 +1812,7 @@ async fn cc_integration_install(
     include_cc_function: bool,
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        let p = PathBuf::from(path);
+        let p = profile_installer::fence_profile_path(&path)?;
         profile_installer::install_to_profile(&p, &command_name, include_cc_function)
     })
     .await
@@ -1826,7 +1826,7 @@ async fn cc_integration_scan_path(
     command_name: String,
 ) -> Result<profile_installer::ProfileScan, String> {
     tokio::task::spawn_blocking(move || {
-        let p = PathBuf::from(path);
+        let p = profile_installer::fence_profile_path(&path)?;
         Ok(profile_installer::scan_path(&p, &command_name))
     })
     .await
@@ -1851,7 +1851,7 @@ fn cc_set_auto_launch(enabled: bool) -> Result<(), String> {
 #[tauri::command]
 async fn cc_integration_uninstall(path: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        let p = PathBuf::from(path);
+        let p = profile_installer::fence_profile_path(&path)?;
         profile_installer::uninstall_from_profile(&p)
     })
     .await
