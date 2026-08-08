@@ -80,6 +80,7 @@ mod atomic_replace_registry; // audit-0805 F13：原子替换的两套 Win32 语
 mod byte_cap_registry; // audit-0805 F06：字节上限登记表（管什么量 + 超限怎么办 + 跨 crate 对拍）
 #[cfg(test)]
 mod doc_copy_registry; // audit-0805 F18：散文里的数字副本清账（E12 的第二条路变成机检）
+mod exec_site_registry;
 mod local_read_surface_registry; // F10（出口④）：本机读面清账 + 递减棘轮（正题被 F05b 挡着）
 #[cfg(test)]
 #[cfg(test)]
@@ -108,7 +109,7 @@ mod tool_registry; // T01：受管工具声明（只声明，不改各工具行�
 mod usage;
 mod utils;
 mod watcher;
-mod write_site_registry; // audit-0805 08-07：每个会写用户机器的落点都要申报（关掉 §5 4b 一半）
+mod write_site_registry; // audit-0805 08-07：每个会写用户机器的落点都要申报（关掉 §5 4b 一半） // audit-0805 08-07：每处远端执行都要申报命令来历
 
 use std::path::PathBuf;
 use std::sync::Arc;
