@@ -979,6 +979,75 @@ mod tests {
     ///
     /// ★ 它差一点就成了本仓最讨厌的那种东西：**一条永远不会红的判据**。
     /// 逮住它的不是「测试失败」，是**变异之后诊断栏一个字都没有** —— 只看 exit code 会当它绿了。
+    /// **那道版本 guard 被 Linux job「继承」这件事，压在一条 `needs:` 边上**〔08-08〕。
+    ///
+    /// `release.yml` 的 `build-linux` 头上逐字写着为什么它串在 Windows 之后：
+    ///
+    /// > `build-windows` 里那道**四处版本号与 tag 一致**的检查因此**被继承** —— 版本漂了
+    /// > 先失败，本 job 根本不会起。**不重复实现那道检查**（重复 = 又一个会漂的副本）。
+    ///
+    /// 那是一条**正确的 E3 决定**（别造第二个权威源），而它的正确性**整个压在
+    /// `needs: [build-daemons, build-windows]` 这一行上**。谁为了「发版快一点」把
+    /// `build-windows` 从 needs 里摘掉，两件事同时发生，且都不会有人说话：
+    ///
+    /// 1. **`.deb` 的版本再没人查** —— 那道 guard 正是「防 v2.4.2 漂移事故复发」加的；
+    /// 2. 两个 job 会**同时** `action-gh-release`，竞争同一个 release（那正是当初串起来的理由 ①）。
+    ///
+    /// ⇒ 本条钉两件：那条边还在 · 那道 guard**仍然只有一处**（没被人「顺手也加到 Linux」，
+    /// 那会变成第二个会漂的副本，正是上面那段论证要避免的）。
+    ///
+    /// ⚠ 与上一条的分工：上一条比的是**六处副本彼此一致**（权威是 `package.json`），
+    /// 本条不看版本号，只看**那道以 tag 为权威的检查还罩不罩得住 Linux 产物**。
+    #[test]
+    fn the_linux_job_still_inherits_the_version_guard() {
+        let rel = guard_core::strip_hash_comment_lines(
+            &std::fs::read_to_string(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .expect("仓根")
+                    .join(".github/workflows/release.yml"),
+            )
+            .expect("读不到 release.yml"),
+        );
+        let lines: Vec<&str> = rel.lines().collect();
+        let at = lines
+            .iter()
+            .position(|l| l.trim_end() == "  build-linux:")
+            .unwrap_or_else(|| panic!("`release.yml` 里找不到 `build-linux:` job —— job 名变了或它被删了，本条会零命中地绿"));
+        // `needs:` 必须在这个 job 的头部（`steps:` 之前）——不然读到的是别人的。
+        let head_end = lines[at..]
+            .iter()
+            .position(|l| l.trim() == "steps:")
+            .unwrap_or_else(|| panic!("`build-linux` 里找不到 `steps:` —— 段界读法坏了"));
+        let head = lines[at..at + head_end].join("\n");
+        assert!(
+            head.contains("needs:") && head.contains("build-windows"),
+            "`build-linux` 不再依赖 `build-windows` 了。它的头部现在是：\n{head}\n\n\
+             ★ 两件事同时发生，且都不会有人说话：\n\
+             1. **`.deb` 的版本再没人查** —— 那道「四处版本号与 tag 一致」的检查只住在 \n\
+                `build-windows` 里，而 `build-linux` 头注逐字写着「因此被继承 …… \n\
+                **不重复实现那道检查**（重复 = 又一个会漂的副本）」。那道 guard 是\n\
+                「防 v2.4.2 漂移事故复发」加的。\n\
+             2. 两个 job 会**同时** `action-gh-release`，竞争同一个 release —— \n\
+                那正是当初把它们串起来的理由 ①。\n\
+             ⇒ 真要并行，就得先解决这两件（比如把版本检查提成独立 job 让两边都 needs 它），\n\
+             而不是只删这条边。"
+        );
+
+        // 那道 guard 仍然**只有一处**：既没被删，也没被「顺手也加到 Linux」。
+        let guard_steps = lines
+            .iter()
+            .filter(|l| l.contains("Verify version consistency with tag"))
+            .count();
+        assert_eq!(
+            guard_steps, 1,
+            "「Verify version consistency with tag」这道步骤在 `release.yml` 里出现 {guard_steps} 次（应为 1）。\n\
+             0 次 = 它被删了（那道 guard 是防 v2.4.2 漂移事故复发的，删之前先说清谁接）；\n\
+             ≥2 次 = 有人在 Linux 那边**重复实现**了它 —— 那正是 `build-linux` 头注逐字反对的\n\
+             「又一个会漂的副本」（E3）。真要两边都查，就把它提成一个独立 job。"
+        );
+    }
+
     #[test]
     fn the_release_version_is_the_same_in_all_six_places() {
         /// 从 `hay` 里按 `needle` 抠出紧随其后的 `X.Y.Z`。
