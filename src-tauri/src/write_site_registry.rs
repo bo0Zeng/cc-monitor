@@ -98,8 +98,10 @@ mod tests {
         // ── 既不是安装、也不是「monitor 自己的」：**删用户数据**
         ("history.rs", "delete_history_session", None,
          "★ 删的是用户 `~/.claude/projects/**` 下的会话文件（用户主动发起）。\
-          它不是安装动作，但也不是 monitor 自己的东西 —— 围栏由 `validate_delete_target` \
-          与它自己的判据守着（本条只负责让这个落点**有人认领**，不重复判围栏）"),
+          它不是安装动作，但也不是 monitor 自己的东西。⚠ **08-07 订正**：本行原写「围栏由 \
+          `validate_delete_target` 与它自己的判据守着」—— 那句只对一半：围栏函数有五条穿越 \
+          防护判据，但**没有任何东西钉住那条路真的过了围栏**（实测跳过围栏，全仓 978 条不红）。 \
+          现由 `history.rs::the_delete_entry_point_actually_goes_through_the_fence` 端到端钉住"),
     ];
 
     /// 一行 `use ... fs ...` 该放行还是该拦。`Ok(())` = 放行。
