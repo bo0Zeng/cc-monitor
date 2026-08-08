@@ -330,6 +330,24 @@ pub fn scan_tree_excluding_self(
     out
 }
 
+/// 剥掉 **`#` 整行注释**（YAML / shell 那一套）〔audit-0805 08-08〕。
+///
+/// [`strip_comment_lines`] 的兄弟：那个认的是 `//` / `/*`（Rust、TS），
+/// 接不住 `.yml` 与 `.sh`。⚠ **两个都要有，而且都要住在这里** ——
+/// 08-08 实测同一天里有两条判据各自在自己文件里内联了一份 `#` 剥法，
+/// 第一份被 `structural_scan` 的登记表当场逮住，第二份（`sftp.rs` 读 `release.yml`）
+/// 是被**变异**逮住的：把 `cargo zigbuild --target aarch64-…` 那行**注释掉**，
+/// 判据照样绿 —— 它读的是原文，命中的是那行注释自己。
+///
+/// ⚠ 只剥**整行**注释：行尾注释（`run: foo   # 说明`）保留。要剥行尾的话，
+/// YAML 里 `#` 可以合法出现在引号内，那需要真解析器 —— 不在这里假装能做。
+pub fn strip_hash_comment_lines(src: &str) -> String {
+    src.lines()
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// 列出整棵树里的 **shell 脚本**（相对 `root` 的路径，已排序）〔audit-0805 08-08〕。
 ///
 /// 判「是不是 shell 脚本」按**两种真实形态**取，不按后缀一种取：

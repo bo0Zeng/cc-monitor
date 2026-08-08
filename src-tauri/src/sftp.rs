@@ -1340,12 +1340,17 @@ mod tests {
     fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let build_rs = std::fs::read_to_string(root.join("build.rs")).expect("读不到 build.rs");
-        let rel = std::fs::read_to_string(
-            root.parent()
-                .expect("仓根")
-                .join(".github/workflows/release.yml"),
-        )
-        .expect("读不到 release.yml");
+        // ⚠ **只看非注释行**〔08-08 变异逼出来的〕：第一版读原文，于是把那行
+        // `cargo zigbuild --target aarch64-…` **注释掉**，本条照样绿 —— 它命中的是
+        // 那行注释自己。「判据看的是围栏，还是围栏的说明书」，本会话第三次。
+        let rel = guard_core::strip_hash_comment_lines(
+            &std::fs::read_to_string(
+                root.parent()
+                    .expect("仓根")
+                    .join(".github/workflows/release.yml"),
+            )
+            .expect("读不到 release.yml"),
+        );
 
         // 人群：`embed_daemons` 里那个 `for arch in [...]`。
         let arches: Vec<String> = build_rs
