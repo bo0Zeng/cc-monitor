@@ -44,6 +44,116 @@
 ///
 /// ⇒ 与其在每个只读模块里各写一张「已知写者」清单（那是下一个漂移源），
 /// 不如让它们都问同一张表：**本模块的 `WRITE_SITES` 就是那张表**。
+/// ★ **本机起进程的落点也要申报**〔audit-0805 08-08，Phase G 第 52 件〕。
+///
+/// 写盘那一侧（本模块正题）与远端执行那一侧（`exec_site_registry`）都已经有人数了，
+/// **本机 `Command::new` 这一侧没有** —— 08-08 实测：往 `session_map.rs` 加一句
+/// `Command::new("sh").arg("-c").arg(arg)`，**全仓 983 条判据一条不红**。
+///
+/// ⚠ 先核查出关键一半：**daemon 侧早就有这张表**（`readonly_guard` 的 `ALLOWED` +
+/// `SPAWN_SITES_TODAY`），monitor 侧从来没有。又是「同一形态在另一半原样存在」，
+/// 只是这次缺的是 monitor（第 34、44 件是反过来）。
+///
+/// 两半各有一张表**不违反 E3**：「谁在本半起进程」本来就是两个事实，
+/// 各自的权威源在各自那一半。这里只对齐**形状**，不共享清单。
+#[cfg(test)]
+mod spawn_sites {
+    use std::path::{Path, PathBuf};
+
+    /// `(文件, 函数, 起的是什么, 为什么必须起进程)`。**默认拒绝**：人群从源码派生。
+    const SPAWNS: &[(&str, &str, &str, &str)] = &[
+        ("account_usage.rs", "run_local_probe", "`sh -c <载荷>`",
+         "本机用量探针：载荷由 `probe_command_for` 构造并引用过（`exec_site_registry` 里那条 Builder 行管它）"),
+        ("launch.rs", "launch_local_posix", "用户配置的终端 argv[0]",
+         "在用户的终端里起会话 —— 承接 C13「最后那次 exec 在用户终端里」，这是本产品的主用途"),
+        ("launch.rs", "launch_powershell_window", "`wt.exe` / `powershell.exe`",
+         "Windows 侧同上；两个名字都是常量，不吃用户输入"),
+        ("launch.rs", "ssh_client_available", "探测用的 `ssh`",
+         "只探测「本机有没有 ssh」，不带用户参数"),
+        ("lib.rs", "open_with_os", "`cmd` / `open` / `xdg-open`",
+         "按平台打开日志目录：三个名字都是常量，路径是 monitor 自己的目录"),
+        ("local_backend.rs", "supervise", "被监护的 daemon 二进制",
+         "本机后端监护：二进制路径来自 `candidates`（有 `candidates_never_point_into_a_build_tree` 守着）"),
+        ("local_query.rs", "run_query", "daemon 二进制 + 只读子命令",
+         "本机只读查询：`bin` 同上来自候选表，`args` 是本模块构造的固定子命令"),
+        ("ssh_source.rs", "resolve_ssh_host", "`ssh -G <host>`",
+         "解析 ssh_config 的别名 —— 只读一次配置，不建连接"),
+    ];
+
+    fn src_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+    }
+
+    /// 某一行所在的函数名（往回找最近的 `fn`）。
+    fn enclosing_fn(lines: &[&str], at: usize) -> String {
+        for l in lines[..=at].iter().rev() {
+            if let Some(rest) = l.split(" fn ").nth(1).or_else(|| l.strip_prefix("fn ")) {
+                let n: String = rest
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                if !n.is_empty() {
+                    return n;
+                }
+            }
+        }
+        "<找不到外层函数>".to_string()
+    }
+
+    #[test]
+    fn every_local_spawn_is_declared() {
+        let files = guard_core::scan_tree!(&src_root(), &["rs"]);
+        let mut found: Vec<(String, String)> = Vec::new();
+        for (path, src) in &files {
+            let prod = guard_core::production_code(src);
+            let lines: Vec<&str> = prod.lines().collect();
+            let stem = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap()
+                .to_string();
+            for (i, l) in lines.iter().enumerate() {
+                if l.contains(concat!("Command::", "new(")) {
+                    found.push((stem.clone(), enclosing_fn(&lines, i)));
+                }
+            }
+        }
+        found.sort();
+        found.dedup();
+        assert!(
+            found.len() >= 5,
+            "全树只找到 {} 处本机起进程（08-08 实测 8 个「文件::函数」）—— 抽取器坏了，本条此刻无效",
+            found.len()
+        );
+
+        let missing: Vec<String> = found
+            .iter()
+            .filter(|(f, n)| !SPAWNS.iter().any(|(sf, sn, _, _)| sf == f && sn == n))
+            .map(|(f, n)| format!("  {f}::{n}"))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "这些地方**会在用户机器上起一个进程，但没人申报**：\n{}\n\n\
+             ⚠ 08-08 实测：往生产段加一句 `Command::new(\"sh\").arg(\"-c\")`，全仓判据一条不红。\n\
+             登记进 `SPAWNS`：写清**起的是什么**、**为什么必须起进程**。\n\
+             daemon 侧同类表在 `readonly_guard`（`ALLOWED` + `SPAWN_SITES_TODAY`）。",
+            missing.join("\n")
+        );
+
+        let stale: Vec<String> = SPAWNS
+            .iter()
+            .filter(|(f, n, _, _)| !found.iter().any(|(ff, nn)| ff == f && nn == n))
+            .map(|(f, n, _, _)| format!("  {f}::{n}"))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "申报表里这些落点已经不起进程了（改名或删了）：\n{}\n\
+             改名也要红 —— 名字变了就该有人重新看一眼它起的是什么。",
+            stale.join("\n")
+        );
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod writers {
     /// 所有会写盘的函数名（去重）。**从 `WRITE_SITES` 派生**，不是手写。
