@@ -719,6 +719,55 @@ mod linux_liveness {
 
 #[cfg(test)]
 mod tests {
+
+    /// ★★ **心跳分支不许重读文件**〔audit-0805 08-08，Phase G 第 57 件，E12〕。
+    ///
+    /// `diff_sessions` 的头注逐字写着「scan → 本函数，是状态变化的**唯一检出点**
+    /// （心跳分支不重读文件）」。那句话撑着一条真实的性能与语义契约：
+    /// 心跳每 2s 一次，只做 `is_process_alive` 探活；一旦它也去 `scan_dir`，
+    /// 就变成**每 2s 一次全目录读盘**，而且状态变化会有两个检出点、各自发一份事件。
+    ///
+    /// ⇒ 而它**只是散文**（E12 的判准是「有没有一条会红的判据读它」）。本条就是那条。
+    ///
+    /// 钉法：`run_watcher` 的**心跳分支**（`} else {` 之后到函数收尾）里不许出现
+    /// `scan_dir(`；同时要求 `scan` 分支里**确实有**一处，否则本条在「两边都没有」
+    /// 的退化状态下会零命中地绿。
+    #[test]
+    fn the_heartbeat_branch_never_rereads_the_directory() {
+        let prod = guard_core::production_code(include_str!("session_map.rs"));
+        let at = prod
+            .find("fn run_watcher")
+            .expect("生产段里没有 `fn run_watcher` —— 抽取器坏了，本条此刻无效");
+        let body: Vec<&str> = prod[at..]
+            .lines()
+            .take_while(|l| {
+                let cont = l.starts_with("where") || l.starts_with(')') || l.trim() == "{";
+                l.is_empty() || l.starts_with(char::is_whitespace) || cont || l.starts_with("fn ")
+            })
+            .collect();
+        // 心跳分支的起点：那句 `} else {`（`if scan {` 的否定支）。
+        let split = body
+            .iter()
+            .position(|l| l.trim() == "} else {")
+            .expect("找不到 `} else {` —— `run_watcher` 的双触发结构变了，本条此刻无效");
+        let (scan_half, beat_half) = body.split_at(split);
+        // 自检：扫描分支里确实读了目录，否则下面那句是空转。
+        assert!(
+            scan_half.iter().any(|l| l.contains("scan_dir(")),
+            "`if scan` 分支里找不到 `scan_dir(` —— 双触发结构变了，本条此刻无效"
+        );
+        let offenders: Vec<&&str> = beat_half
+            .iter()
+            .filter(|l| l.contains("scan_dir("))
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "心跳分支里出现了 `scan_dir(`：{offenders:?}\n\
+             ⚠ 心跳每 2s 一次。它一旦重读目录，就是**每 2s 一次全目录读盘**；\n\
+             而且状态变化从此有两个检出点，同一次变化会被发两遍事件。\n\
+             `diff_sessions` 的头注逐字写着「心跳分支不重读文件」—— 那句话由本条守着。"
+        );
+    }
     use super::*;
 
     /// Batch7-F24：scan_dir 的开关双分支——开（默认）保留 bg 且 kind/name 透传；
