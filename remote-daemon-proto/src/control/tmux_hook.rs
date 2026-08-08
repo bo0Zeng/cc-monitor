@@ -244,6 +244,21 @@ mod tests {
     /// `readonly_guard` 已经全局扫一遍，这里再钉一次是因为**本文件是最可能复发的地方**。
     #[test]
     fn no_filesystem_writes_in_this_module() {
+        // ★ **前提触发器**〔audit-0805 08-07〕：下面那张表是**黑名单**（列出已知的写 API），
+        // 它天然漏掉没列的那些 —— 实测把 `std::fs::remove_file` 放进本模块生产段，
+        // 本条**不红**（删除/改名/复制都不在表里）。
+        //
+        // 真正的保障是 `readonly_guard::every_fs_call_in_daemon_production_is_read_only`：
+        // 那条是**白名单**（默认拒绝），上面那一刀正是它逮住的。
+        // 两层失效模式相反（黑名单漏新写法 / 白名单误伤新读法）⇒ 留着这层是纵深，不是重复；
+        // 但**别把这张黑名单读成保障**。它一旦成了唯一的一层，本模块就没人守了。
+        assert!(
+            include_str!("../readonly_guard.rs")
+                .contains("fn every_fs_call_in_daemon_production_is_read_only"),
+            "`readonly_guard::every_fs_call_in_daemon_production_is_read_only` 不见了 —— \
+             本模块只剩下面那张**黑名单**，而它挡不住没列进去的写 API（08-07 实测：\
+             `fs::remove_file` 在本条下是绿的）。要么把那条白名单找回来，要么本条改成白名单。"
+        );
         let src = prod_code();
         for pat in [
             format!("fs::{}", "write"),
