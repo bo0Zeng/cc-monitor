@@ -62,6 +62,14 @@ mod spawn_sites {
 
     /// `(文件, 函数, 起的是什么, 为什么必须起进程)`。**默认拒绝**：人群从源码派生。
     const SPAWNS: &[(&str, &str, &str, &str)] = &[
+        // ── 构建期（`build.rs`）：**每次 `cargo build`／`cargo check` 都在开发者机器上真跑**。
+        // 08-08 并进本表之前，它整个在所有登记表的扫描面之外。
+        ("build.rs", "check_vendor_freshness", "`git`（读 vendor 目录的最后一次改动）",
+         "vendor 新鲜度自检：只读地问 git，参数是仓内固定路径、不吃用户输入。\
+          它必须起进程是因为「vendor 目录相对上游有没有漂」这件事只有 git 知道"),
+        ("build.rs", "check_acct_iso_vendor_freshness", "`sh -c`（算 vendored 脚本的指纹）",
+         "同上的第二半，对 `cc-acct-iso` 那份 vendor 算摘要；命令串是常量，\
+          唯一的变量是仓内路径。⚠ 它跑在**构建期**，比运行时的任何一处都早"),
         ("account_usage.rs", "run_local_probe", "`sh -c <载荷>`",
          "本机用量探针：载荷由 `probe_command_for` 构造并引用过（`exec_site_registry` 里那条 Builder 行管它）"),
         ("launch.rs", "launch_local_posix", "用户配置的终端 argv[0]",
@@ -84,6 +92,22 @@ mod spawn_sites {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
     }
 
+    /// 语料 = `src/` 整棵树 **+ `build.rs`**〔audit-0805 08-08〕。
+    ///
+    /// ★ 为什么非把 `build.rs` 并进来：本表问的是「**谁能碰这台机器**」，
+    /// 而构建脚本每次 `cargo build`／`cargo check` 都在开发者机器上真跑
+    /// （它起 `sh` 与 `git`、往 `OUT_DIR` 复制内嵌 daemon）。
+    /// 08-08 实测：全仓所有登记表/守卫的扫描根都是 `src-tauri/src` · `remote-daemon-proto/src`
+    /// · `src-tauri/crates` · `src` · `doc` —— **`src-tauri/build.rs` 一张表都没扫到**，
+    /// 它是这些扫描面共同的盲点（与 F65「三张表共享同一个没写下来的前提」同族）。
+    fn corpus() -> Vec<(PathBuf, String)> {
+        let mut files = guard_core::scan_tree!(&src_root(), &["rs"]);
+        let bs = Path::new(env!("CARGO_MANIFEST_DIR")).join("build.rs");
+        let src = std::fs::read_to_string(&bs).expect("读不到 build.rs —— 它是本表的一部分");
+        files.push((bs, src));
+        files
+    }
+
     /// 某一行所在的函数名（往回找最近的 `fn`）。
     fn enclosing_fn(lines: &[&str], at: usize) -> String {
         for l in lines[..=at].iter().rev() {
@@ -102,7 +126,7 @@ mod spawn_sites {
 
     #[test]
     fn every_local_spawn_is_declared() {
-        let files = guard_core::scan_tree!(&src_root(), &["rs"]);
+        let files = corpus();
         let mut found: Vec<(String, String)> = Vec::new();
         for (path, src) in &files {
             let prod = guard_core::production_code(src);
@@ -214,6 +238,13 @@ mod tests {
     /// 「谁进人群」由机器定，「它是不是安装动作」才是人的答案。
     #[allow(clippy::type_complexity)]
     pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
+        // ── 构建期写盘：**不碰用户既有环境**，只往 `OUT_DIR` 放构建产物。
+        // 单列在这里是因为它此前**整个在扫描面之外**（08-08 并入），
+        // 而它确实在开发者机器上写文件 —— 「不是安装动作」得由人说出来，不是靠没人看见。
+        ("build.rs", "embed_daemons", None,
+         "把 `embedded-daemons/cc-monitor-remote-<arch>` 复制进 `OUT_DIR`，\
+          供 `include_bytes!` 内嵌。写的是 cargo 自己的构建目录，不碰用户环境；\
+          ⚠ 它读的那份清单由 `sftp.rs` 的身份见证判据守着（`id_from_manifest` 不许写死）"),
         // ── 安装动作：写的是**用户既有的环境/配置**，且对应声明表里的一个工具
         ("profile_installer.rs", "install_to_profile", Some("ccm"),
          "往用户 shell profile 的 BEGIN/END 块里装 ccm 启动器（写前先备份）"),
@@ -321,7 +352,7 @@ mod tests {
         }
 
         // ② 全树扫描。
-        let files = guard_core::scan_tree!(&src_root(), &["rs"]);
+        let files = corpus();
         let mut checked = 0usize;
         let mut offenders = Vec::new();
         for (path, src) in &files {
@@ -356,6 +387,22 @@ mod tests {
 
     fn src_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+    }
+
+    /// 语料 = `src/` 整棵树 **+ `build.rs`**〔audit-0805 08-08〕。
+    ///
+    /// ★ 为什么非把 `build.rs` 并进来：本表问的是「**谁能碰这台机器**」，
+    /// 而构建脚本每次 `cargo build`／`cargo check` 都在开发者机器上真跑
+    /// （它起 `sh` 与 `git`、往 `OUT_DIR` 复制内嵌 daemon）。
+    /// 08-08 实测：全仓所有登记表/守卫的扫描根都是 `src-tauri/src` · `remote-daemon-proto/src`
+    /// · `src-tauri/crates` · `src` · `doc` —— **`src-tauri/build.rs` 一张表都没扫到**，
+    /// 它是这些扫描面共同的盲点（与 F65「三张表共享同一个没写下来的前提」同族）。
+    fn corpus() -> Vec<(PathBuf, String)> {
+        let mut files = guard_core::scan_tree!(&src_root(), &["rs"]);
+        let bs = Path::new(env!("CARGO_MANIFEST_DIR")).join("build.rs");
+        let src = std::fs::read_to_string(&bs).expect("读不到 build.rs —— 它是本表的一部分");
+        files.push((bs, src));
+        files
     }
 
     /// 从一份源码的**生产段**里抠出「有写盘调用的 (函数名)」。
@@ -393,7 +440,7 @@ mod tests {
     /// ★ 正题：**每个写盘落点都得申报**，安装动作那一类还要点名真实存在的工具。
     #[test]
     fn every_write_site_is_declared_and_installers_name_a_real_tool() {
-        let files = guard_core::scan_tree!(&src_root(), &["rs"]);
+        let files = corpus();
         let mut found: Vec<(String, String)> = Vec::new();
         for (path, src) in &files {
             let stem = path
