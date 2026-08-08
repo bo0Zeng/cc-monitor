@@ -847,10 +847,30 @@ mod tests {
         const REAL: &str = "CCM_E2E_DAEMON";
         const PRIVATE_TMUX: &str = "CCM_E2E_TMUX_TMPDIR";
         let src = include_str!("local_backend.rs");
-        let chunks: Vec<&str> = src.split("    #[test]").collect();
-        let real_e2e: Vec<&&str> = chunks
+        // ⚠ **不在语料串上做裸 `split`**：`needle_anchor_registry` 的递减棘轮把它
+        //   判为「匹配单位比事实小」的一族，且**不许调上限**（本条第一版就栽在这）。
+        //   改成按行扫、遇到下一处 `#[test]` 收尾 —— 边界是「行」，比子串确定。
+        let mut chunks: Vec<String> = Vec::new();
+        let mut cur: Vec<&str> = Vec::new();
+        for line in src.lines() {
+            if line.trim() == concat!("#[te", "st]") {
+                if !cur.is_empty() {
+                    chunks.push(cur.join("\n"));
+                    cur.clear();
+                }
+                continue;
+            }
+            cur.push(line);
+        }
+        chunks.push(cur.join("\n"));
+        // ⚠ 认属性要**整行相等**，不能 `contains` —— 本条的**文档注释里**就写着
+        //   `#[ignore]` 与 `CCM_E2E_DAEMON`，第一版因此把自己也算进了人群，
+        //   然后拿自己的 `const` 行去判 fail-closed，当场自红。
+        //   （F24 那一族：匹配单位比事实大；这次事实是「一条属性」，而我匹配了「提到过」。）
+        let is_ignored = |c: &String| c.lines().any(|l| l.trim() == concat!("#[ig", "nore]"));
+        let real_e2e: Vec<&String> = chunks
             .iter()
-            .filter(|c| c.contains("#[ignore]") && c.contains(REAL))
+            .filter(|c| is_ignored(c) && c.contains(REAL))
             .collect();
         // 抽取器自检：一条都没抓到 ⇒ 下面整条空转。
         assert!(
@@ -860,11 +880,10 @@ mod tests {
         );
         for c in real_e2e {
             let name = c
-                .split("fn ")
-                .nth(1)
-                .unwrap_or("<未知>")
-                .split('(')
-                .next()
+                .lines()
+                .find_map(|l| l.trim().strip_prefix("fn "))
+                .and_then(|r| r.split_once('('))
+                .map(|(n, _)| n)
                 .unwrap_or("<未知>");
             let line = c
                 .lines()
