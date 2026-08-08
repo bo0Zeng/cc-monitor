@@ -162,10 +162,10 @@ fn accumulate_codex_usage(
             }
             cx::CodexRecordKind::TokenCount => {
                 if let Some(u) = cx::token_usage_last(&v) {
-                    let (input_tokens, cached, output) = cx::token_usage_fields(u);
+                    let d = usage_core::codex_delta(u);
                     // 全零 token_count（真机见会话起始、turn_context 前的 no-op 事件）→ 跳：非真轮次，
                     // 否则造 `("unknown",天)` 全零 ghost 桶且虚增 msgs（总量不变但噪音）。
-                    if input_tokens == 0 && cached == 0 && output == 0 {
+                    if d.is_noop() {
                         continue;
                     }
                     let day = cx::envelope_ts(&v)
@@ -174,9 +174,9 @@ fn accumulate_codex_usage(
                         .unwrap_or("")
                         .to_string();
                     let b = buckets.entry((current_model.clone(), day)).or_default();
-                    b.input += input_tokens.saturating_sub(cached);
-                    b.cache_read += cached;
-                    b.output += output;
+                    b.input += d.input;
+                    b.cache_read += d.cache_read;
+                    b.output += d.output;
                     b.msgs += 1;
                 }
             }
@@ -367,26 +367,51 @@ mod kou_jing_singleton {
             .filter(|f| core.contains(f.as_str()))
             .count();
         assert!(
-            held >= 4,
-            "`usage-core` 生产段里只找到 {held} 个口径字段（08-06 实测 4+）—— \
-             口径搬走了还是抽取坏了？本条此刻无效"
+            held >= 5,
+            "`usage-core` 生产段里只找到 {held} 个口径字段（08-07 实测 5：Claude 4 + Codex 的 \
+             cached_input_tokens）—— 口径搬走了还是抽取坏了？本条此刻无效"
         );
 
-        // ② 两侧都必须**调**那个共享函数，且自己不许再解析口径字段。
-        for (name, raw) in [
+        // ② 四处都必须**调**那个共享函数，且自己不许再解析口径字段。
+        //
+        // ⚠ 人群原本只有下面头两行 —— 那是**累加点**。而 Codex 的口径住在**提取器**
+        // （daemon `observe/codex.rs` / monitor `codex_record.rs`）里，恰好落在人群之外，
+        // 于是本条在 Codex 双写点上**一直是绿的**（08-07 抽样才读出来：两侧各写一遍
+        // `input−cached`、逐字相同、无一条判据钉住）。
+        // 教训：人群按「口径可能住在哪」取，不是按「当初改的是哪两个文件」取。
+        for (name, raw, must_call) in [
             (
                 "daemon observe/usage_query.rs",
                 include_str!("../../remote-daemon-proto/src/observe/usage_query.rs"),
+                &["usage_core::accumulate"][..],
             ),
-            ("monitor src/usage.rs", include_str!("usage.rs")),
+            (
+                "monitor src/usage.rs",
+                include_str!("usage.rs"),
+                &["usage_core::accumulate", "usage_core::codex_delta"][..],
+            ),
+            (
+                "daemon observe/codex.rs",
+                include_str!("../../remote-daemon-proto/src/observe/codex.rs"),
+                &["usage_core::codex_delta"][..],
+            ),
+            // 提取器：收口后它一个口径函数都不该调（累加点在 usage.rs）。
+            // 仍留在人群里是为了 ③ —— 谁把三元组抽取搬回来，字面量就会在这里冒出来。
+            (
+                "monitor src/codex_record.rs",
+                include_str!("codex_record.rs"),
+                &[][..],
+            ),
         ] {
             let prod = guard_core::production_code(raw);
-            assert!(
-                prod.contains("usage_core::accumulate"),
-                "{name} 不再调 `usage_core::accumulate` —— 它要么自己算了一遍（第二份口径），\n\
-                 要么口径搬家了而本条没跟。U7-2 收口前那两处各写一遍、靠头注里一句\n\
-                 「双写点」提醒人手对齐 —— 那正是本条要防的回潮。"
-            );
+            for call in must_call {
+                assert!(
+                    prod.contains(call),
+                    "{name} 不再调 `{call}` —— 它要么自己算了一遍（第二份口径），\n\
+                     要么口径搬家了而本条没跟。收口前那几处各写一遍、靠头注里一句\n\
+                     「双写点」提醒人手对齐 —— 那正是本条要防的回潮。"
+                );
+            }
             let leaked: Vec<String> = fields()
                 .into_iter()
                 .filter(|f| prod.contains(f.as_str()))

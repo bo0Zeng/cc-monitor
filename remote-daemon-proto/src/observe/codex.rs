@@ -100,17 +100,16 @@ pub fn is_token_count(v: &Value) -> bool {
     matches!(unwrap_envelope(v), Some(("event_msg", p)) if payload_type(p) == Some("token_count"))
 }
 
-/// token_count 的 `payload.info.last_token_usage` 三元组 `(input_tokens, cached_input_tokens, output_tokens)`。
-/// 缺→None。**Codex `input_tokens` 含 cached**——映射时 `input−cached` 防与 cacheRead 重复计（见 usage_query）。
+/// token_count 的 `payload.info.last_token_usage` 映射成 Claude 口径增量。缺→None。
+///
+/// ⚠ 字段名与减法**不在这里** —— 它们住 `usage_core::codex_delta`（唯一权威源）。
+/// 本函数只负责「从信封里把那个子对象挖出来」。这一层与 monitor 的
+/// `codex_record.rs` 各自挖各自的（信封形状本就是两侧各读各的文件），
+/// 但**口径必须同一份**：收口前两侧各写一遍减法、逐字相同、无判据钉住。
 /// **实测 total_token_usage 严格单调、final==Σlast**、且偶发不可靠（某会话首事件 total=0）→ SUM last 更稳。
-pub fn last_token_usage_fields(v: &Value) -> Option<(u64, u64, u64)> {
+pub fn last_token_delta(v: &Value) -> Option<usage_core::CodexDelta> {
     let usage = unwrap_envelope(v)?.1.get("info")?.get("last_token_usage")?;
-    let g = |k: &str| usage.get(k).and_then(Value::as_u64).unwrap_or(0);
-    Some((
-        g("input_tokens"),
-        g("cached_input_tokens"),
-        g("output_tokens"),
-    ))
+    Some(usage_core::codex_delta(usage))
 }
 
 /// turn_context 的 `payload.model`（用量按模型归桶；session_meta 只有 model_provider、model 在 turn_context）。

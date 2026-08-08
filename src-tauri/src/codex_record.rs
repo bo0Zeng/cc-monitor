@@ -124,18 +124,10 @@ pub fn turn_context_model(v: &Value) -> Option<&str> {
     unwrap_envelope(v)?.1.get("model").and_then(Value::as_str)
 }
 
-/// 从 token 用量子对象（last_token_usage/total_token_usage）读 `(input_tokens, cached_input_tokens,
-/// output_tokens)`。缺字段→0。**Codex `input_tokens` 含 cached**——映射进 Claude 口径时须 `input -= cached`
-/// 防重复计（见 usage.rs `accumulate_codex_usage`）。`reasoning_output_tokens` 是 output 子集、`total_tokens`
-/// 冗余 → 不单列。
-pub fn token_usage_fields(usage: &Value) -> (u64, u64, u64) {
-    let g = |k: &str| usage.get(k).and_then(Value::as_u64).unwrap_or(0);
-    (
-        g("input_tokens"),
-        g("cached_input_tokens"),
-        g("output_tokens"),
-    )
-}
+// 此处原有 `token_usage_fields`：从 token 用量子对象读三元组、由调用方各自做
+// `input -= cached`。它与 daemon `observe/codex.rs` 的那份**逐字相同却各写一遍**
+// ——U7-2 收 Claude 口径时漏了 Codex 这半。现已收进 `usage_core::codex_delta`
+// （唯一权威源），调用方直接拿映射好的增量。由 `usage.rs::kou_jing_singleton` 钉住。
 
 /// response_item.message 的 `payload.role`（user/assistant/developer；F7 渲染用）。
 pub fn message_role(v: &Value) -> Option<&str> {

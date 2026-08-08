@@ -226,18 +226,17 @@ fn analyze_codex_session(path: &Path) -> Option<Value> {
             current_model = m.to_string();
         }
         if crate::observe::codex::is_token_count(&v) {
-            if let Some((inp, cached, out_tok)) = crate::observe::codex::last_token_usage_fields(&v)
-            {
-                if inp == 0 && cached == 0 && out_tok == 0 {
+            if let Some(d) = crate::observe::codex::last_token_delta(&v) {
+                if d.is_noop() {
                     continue; // 全零 no-op（真机见会话起始 turn_context 前）→ 跳，免 ghost 桶
                 }
                 let day: String = crate::observe::codex::envelope_ts(&v)
                     .map(|t| t.chars().take(10).collect())
                     .unwrap_or_default();
                 let b = buckets.entry((current_model.clone(), day)).or_default();
-                b.input += inp.saturating_sub(cached);
-                b.cache_read += cached;
-                b.output += out_tok;
+                b.input += d.input;
+                b.cache_read += d.cache_read;
+                b.output += d.output;
                 b.msgs += 1;
             }
         }
