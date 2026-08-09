@@ -4,8 +4,17 @@
  * `buildLaunchPlan` 阶段摊平完毕，本模块只做"结构 → 文本"的编译，不再向维度提问。
  *
  * **sanitize 必须先于 wrap**（MASTERPLAN 设计债 #2）：`renderArgv()` 内部先调用
- * `sanitizeRemoteLauncher`，其**返回值**才作为 `applyWraps()` 的输入——函数组合上的结构
- * 保证，不是注释纪律。F03 阶段 `plan.wrap` 恒空数组，折叠逻辑独立可测，给 F04 的 rbind
+ * `sanitizeRemoteLauncher`，其**返回值**才作为 `applyWraps()` 的输入。
+ *
+ * ⚠ **08-08 订正**：这段原写「函数组合上的**结构保证**，不是注释纪律」——**当时不成立**。
+ * 两个函数收发的都是 `string`，写 `applyWraps(plan.launcher, …)` 照样编得过，
+ * 而且**全仓没有任何判据读这件事**（今天 `plan.wrap` 恒空，行为测试也测不出差别）。
+ * 「结构保证」当时只是**两处调用点碰巧写成了嵌套**。
+ *
+ * ⇒ 现在把它变成**真的**结构保证：`renderArgv` 返回带标记的 `SanitizedArgv`，
+ * `applyWraps` 只收这个类型 —— 传裸 `string` 进去是**编译错误**
+ *（08-08 实测：把调用改成 `applyWraps(plan.launcher, …)` ⇒ `TS2345`）。
+ * 这是本会话反复撞到的那条：**编译器替你挡住的，才是不用靠人记着的**。F03 阶段 `plan.wrap` 恒空数组，折叠逻辑独立可测，给 F04 的 rbind
  * 包裹留好落点。
  */
 import { AGENT_PROFILE } from "./agent-profile.ts";
@@ -41,12 +50,19 @@ function renderEnvOps(ops: EnvOp[]): string {
     .join("");
 }
 
-function renderArgv(plan: LaunchPlan): string {
+/**
+ * 已 sanitize 过的 argv 串。**只有 [`renderArgv`] 产得出**（它内部调
+ * `sanitizeRemoteLauncher`），[`applyWraps`] 只收它 —— 于是「sanitize 先于 wrap」
+ * 由**类型**保证，不再靠调用点写得对。
+ */
+type SanitizedArgv = string & { readonly __sanitizedArgv: unique symbol };
+
+function renderArgv(plan: LaunchPlan): SanitizedArgv {
   const launcher = sanitizeRemoteLauncher(plan.launcher); // sanitize 先于 wrap（设计债 #2）
   const parts = [launcher];
   if (plan.action.kind === "resume") parts.push(AGENT_PROFILE.resumeFlag, plan.action.sid);
   parts.push(...plan.args);
-  return parts.join(" ");
+  return parts.join(" ") as SanitizedArgv;
 }
 
 /**
@@ -64,10 +80,12 @@ function renderArgv(plan: LaunchPlan): string {
  * 因 `plan.wrap` 零生产者，此刻改 call-site 零风险；仍满足「sanitize 先于 wrap」
  * （sanitize 在 `renderArgv` 内部完成，wrap 在其外）。
  */
-function applyWraps(inner: string, wraps: WrapSpec[]): string {
+function applyWraps(inner: SanitizedArgv, wraps: WrapSpec[]): string {
   return [...wraps]
     .sort((a, b) => a.order - b.order)
-    .reduce((s, w) => `( ${w.prelude}; exec ${s} )`, inner);
+    // 累加器显式标 `string`：初值是 `SanitizedArgv`，而包一层之后就不再是「未包裹的
+    // 已净化 argv」了 —— 让类型如实退回 `string`，免得 wrap 的产物被当成还能再喂给 wrap。
+    .reduce<string>((s, w) => `( ${w.prelude}; exec ${s} )`, inner);
 }
 
 function tmuxTarget(container: Extract<LaunchContainer, { kind: "tmux" }>): TmuxTarget {
