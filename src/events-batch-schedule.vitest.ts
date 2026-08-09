@@ -335,6 +335,11 @@ describe("bindEvents 的接线", () => {
     ).toEqual([]);
   });
 
+  // ⚠ **如实记这条腿的性质**〔08-08 变异实测〕：最小变异（去掉 `async`）**编不过** ——
+  // 函数体里有 `await`，编译器先拦下了，vitest 连收集都做不到。
+  // 也就是说本条挡的**不是**那一刀，而是「有人把注册真改成同步」那种**成套重构**：
+  // 那时它会红，逼人回来重判上面那条 await 判据还成不成立。
+  // 按铁律 13 不删（「难造变异」不是删除依据），但也不假称它被变异验过。
   it("前提：`bindEvents` 仍然是 async（不然 await 这件事本身就没意义）", () => {
     const src = readFileSync(resolve(REPO_ROOT, "src/events.ts"), "utf8");
     expect(
