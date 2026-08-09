@@ -409,13 +409,26 @@ describe("启动接线：记忆与骨架的先后", () => {
   });
 
   it("骨架期抑制写回：`persistLastActive=false` 在前、恢复 `=true` 在后", () => {
-    const off = at("tabs.persistLastActive = false", 2);
+    // ⚠ **别让计数自检抢在真故事前面**〔08-08 变异实测〕：第一版写成 `at(…, 2)`，
+    // 于是「把骨架期那句抑制删掉」这一刀红在「锚点漂了，先修锚点」上 ——
+    // **红对了，但会把人引去查抽取器**，而真事是「抑制没了」。本会话第 N 次同形。
+    // ⇒ 计数放宽成范围自检（只挡「一处都找不到」这种抽取器塌掉），
+    // 先后与存在性由下面两条各自讲自己的故事。
+    const offAll = code.split("tabs.persistLastActive = false").length - 1;
+    expect(
+      offAll,
+      `\`tabs.persistLastActive = false\` 一处都找不到（08-08 实测 2 处：骨架期 + viewer 窗口）——
+` +
+        "抽取器塌了，或者**抑制写回这件事整个不存在了**。先看 main.ts 再谈顺序。",
+    ).toBeGreaterThanOrEqual(1);
+    const off = code.indexOf("tabs.persistLastActive = false");
     const skeleton = at("commands.list_active_sessions()", 1);
     const on = at("tabs.persistLastActive = true", 1);
     expect(
       off < skeleton,
-      "抑制写回排到建骨架之后（或被删了）—— 那是 main.ts 说的「双保险」那一半：\n" +
-        "  骨架期的自动切换会把记忆写成清单首个 sid。",
+      "骨架期的抑制写回不在建骨架之前了（被挪走或删掉）。\n" +
+        "★ 那是 main.ts 说的「双保险」那一半：骨架期的自动切换会经 switchTo 把记忆\n" +
+        "  写成清单首个 sid —— 读记忆那半即使还在前面，也会被这一路覆写掉。",
     ).toBe(true);
     expect(
       skeleton < on,
