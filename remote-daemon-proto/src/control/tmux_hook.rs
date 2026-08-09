@@ -252,13 +252,34 @@ mod tests {
         // 那条是**白名单**（默认拒绝），上面那一刀正是它逮住的。
         // 两层失效模式相反（黑名单漏新写法 / 白名单误伤新读法）⇒ 留着这层是纵深，不是重复；
         // 但**别把这张黑名单读成保障**。它一旦成了唯一的一层，本模块就没人守了。
-        assert!(
-            include_str!("../readonly_guard.rs")
-                .contains("fn every_fs_call_in_daemon_production_is_read_only"),
-            "`readonly_guard::every_fs_call_in_daemon_production_is_read_only` 不见了 —— \
-             本模块只剩下面那张**黑名单**，而它挡不住没列进去的写 API（08-07 实测：\
-             `fs::remove_file` 在本条下是绿的）。要么把那条白名单找回来，要么本条改成白名单。"
-        );
+        // ⚠⚠ **08-08 订正：光查名字挡不住「掏空」**。实测把 `readonly_guard` 那条白名单的
+        // 函数体清空、名字原样留着 ⇒ 本触发器**照样绿**，而本模块就只剩下面那张黑名单了。
+        // 「符号在 ≠ 它还在做那件事」——本区 08-08 在两条前提触发器上连撞两次。
+        // ⇒ 三条腿：名字在 · 它还在堵**导入逃生口**（`is_hatch`）· 它还有**默认拒绝**那半。
+        let guard = include_str!("../readonly_guard.rs");
+        for (needle, why) in [
+            (
+                "fn every_fs_call_in_daemon_production_is_read_only",
+                "那条白名单整个不见了",
+            ),
+            (
+                "fn is_hatch",
+                "白名单还在，但**堵逃生口那一段没了** —— `use std::fs::{…}` 之后调用点不带前缀，\
+                 白名单会整个瞎掉（08-06 实测：那样一次真写盘，六条判据全绿）",
+            ),
+            (
+                "bad.is_empty()",
+                "白名单还在，但**不再对违规集合下断言** —— 大概率被掏空了",
+            ),
+        ] {
+            assert!(
+                guard.contains(needle),
+                "`readonly_guard` 那条白名单：{why}（找 `{needle}`）。\n\
+                 ★ 本模块只剩下面那张**黑名单**，而它挡不住没列进去的写 API\n\
+                 （08-07 实测：`fs::remove_file` 在本条下是绿的）。\n\
+                 要么把那条白名单找回来/补全，要么本条改成默认拒绝，别让它绿着。"
+            );
+        }
         let src = prod_code();
         for pat in [
             format!("fs::{}", "write"),
