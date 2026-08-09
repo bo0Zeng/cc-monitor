@@ -1094,15 +1094,23 @@ mod tests {
                 .filter(|l| !l.trim_start().starts_with('#'))
                 .collect::<Vec<_>>()
                 .join("\n");
-            // ★ 抽取器自检：这一段里至少要有 `push:`，否则说明切错了地方。
+            // ★ 抽取器自检：这一段里至少要提到 `push`，否则说明切错了地方。
+            //
+            // ⚠ **两种 YAML 写法都要认**〔08-08 变异证伪〕：原来只认**块写法**
+            //（行首是 `push:` / `workflow_dispatch:`）。把触发面改成**序列写法**
+            // `on: [push, pull_request, workflow_dispatch]` —— 一种 GitHub 完全支持、
+            // 也很可能被真人写出来的形态 —— 本条确实红了，**但红在抽取器自检上**，
+            // 诊断说「段界切错了」。照它去查的人会去修切块逻辑，
+            // 而真实事件是 **CI 从此可以手点运行**、三条诚实边界的前提当场消失。
+            // 「讲错成因的红灯比不红更坏」，本会话第 N 次。⇒ 改按**词**匹配。
             assert!(
-                seg.lines().any(|l| l.trim() == "push:"),
-                "{wf} 的 `on:` 段里连 `push:` 都没有 —— 段界切错了（切到 {} 字节）",
+                guard_core::contains_word(&seg, "push"),
+                "{wf} 的 `on:` 段里连 `push` 都没提 —— 段界切错了（切到 {} 字节）",
                 seg.len()
             );
             for trig in SELF_STARTING {
                 assert!(
-                    !seg.lines().any(|l| l.trim().starts_with(trig)),
+                    !guard_core::contains_word(&seg, trig),
                     "{wf} 新增了 `{trig}` 触发器 —— **CI 从此可以在没有 push 的情况下跑起来**。\n\
                      ⇒ `ROADMAP §5` 的 3w / 3x / 3y 三条诚实边界的**前提当场消失**，必须重判：\n\
                      · 3w：release.yml 的版本一致性 guard 又会跑了；\n\
