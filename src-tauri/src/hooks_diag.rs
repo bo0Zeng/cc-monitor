@@ -1165,13 +1165,34 @@ mod tests {
         // 实测：往本文件放 `use std::fs as sysio;` + `sysio::write(p, s)`
         // （模块名逐字写着 never writes），全仓 974 条判据一条不红。
         // 那个前提由 `write_site_registry` 那条导入禁令保证 —— 它要是被删了，本条也就没了根。
-        assert!(
-            include_str!("write_site_registry.rs")
-                .contains("fn no_alias_or_item_import_can_hide_a_write_call"),
-            "`write_site_registry::no_alias_or_item_import_can_hide_a_write_call` 不见了 —— \
-             本条 `fs::` 前缀白名单的前提就没了（别名导入能让写盘调用整个隐形）。\
-             要么把那条找回来，要么本条改成不依赖前缀的写法，别让它绿着。"
-        );
+        // ⚠⚠ **08-08 订正：光查名字挡不住「掏空」**。实测把那条禁令的函数体清空
+        // （名字原样留着），本条**照样绿** —— 而别名导入从此又能让写盘调用整个隐形。
+        // 「散文说有、实际没有」这一族的又一例，只是这次「说」的是一个函数名。
+        // ⇒ 三条腿：名字在 · 它真在判导入 · 反例那一半还在。
+        let ban = include_str!("write_site_registry.rs");
+        for (needle, why) in [
+            (
+                "fn no_alias_or_item_import_can_hide_a_write_call",
+                "那条禁令整个不见了",
+            ),
+            (
+                "fs_import_verdict",
+                "禁令还在，但它不再调那个判导入的函数 —— 大概率被掏空了",
+            ),
+            (
+                "is_err()",
+                "禁令里没有「坏样本必须被拒」那一半 —— 只剩正例的守卫是恒绿的",
+            ),
+        ] {
+            assert!(
+                ban.contains(needle),
+                "`write_site_registry` 那条导入禁令：{why}（找 `{needle}`）。\n\
+                 ★ 本条 `fs::` 前缀白名单的前提就压在它身上：`use std::fs as X;` 之后\n\
+                 调用处根本不带这个前缀 ⇒ 本条会**静默瞎掉**（08-07 实测：往本文件放\n\
+                 `use std::fs as sysio;` + `sysio::write(p, s)`，全仓 974 条判据一条不红）。\n\
+                 要么把那条找回来/补全，要么本条改成不依赖前缀的写法，别让它绿着。"
+            );
+        }
 
         // ① std::fs:: 的白名单——只准读
         let fs_uses: Vec<&str> = code
