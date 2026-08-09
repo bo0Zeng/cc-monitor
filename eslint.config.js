@@ -88,4 +88,27 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // V7-3（2026-08-09 `/full-audit`）：`scripts/` 下的 `.mjs` **掉进了 E83 修过的同一个洞**。
+    //
+    // ⚠ 时间线是这条的全部要害（`git log` 实测，不是推的）：
+    // E83 在 **07-31**（`a02f340`）把 `npm run lint` 从 `eslint src` 放开到 `eslint .`，
+    // 当场实测「全仓 7 个，与 `eslint src` 的基线一致」；而 `scripts/assert-coverage-floors.mjs`
+    // 是 **08-06**（`cab8a75`）才新建的 —— **晚 6 天**。它一进来就带 7 条 `no-undef`
+    // （`console`/`process`，纯缺一段 globals），基线**从 7 静默变成 14**，
+    // 而 `eslint.config.js` 与 `ci.yml` 里那两句「全仓实测仍是 7 项」**没人回来改**。
+    //
+    // ⇒ 这不是「E83 修漏了」，是**修法本身的形状问题**：`ignores` 是仓级的（全集），
+    // 而 globals 是**按目录枚举**的（`src/**`、`e2e/**`）—— 于是每新增一个带脚本的目录，
+    // 洞就复发一次，且**没有任何判据数着那个基线**（对比 shellcheck 的文件数被
+    // `shell_lint_registry` 钉成等号、e2e 套数被 `e2e_gate_registry` 四份副本对拍）。
+    // 补这一块只是止血；钉住「下次再有新目录」那半在 `eslint-baseline.vitest.ts`。
+    //
+    // ★ 最该记住的一点：那 7 条**长在覆盖率门禁自己的执行体上** ——
+    // 替我们数别人的那个脚本，自己没被数。
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
 );
