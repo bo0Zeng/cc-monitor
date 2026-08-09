@@ -349,3 +349,77 @@ describe("bindEvents 的接线", () => {
     ).toContain("export async function bindEvents");
   });
 });
+
+// ★★ **启动接线：先读「上次活跃」的记忆，再建骨架**〔audit-0805 08-08，Phase G 第 90 件〕。
+//
+// `main.ts` 逐字写着这件事与它的后果：
+//
+// > **先读记忆再建骨架** —— 第一个骨架的自动切换会经 `switchTo` 写回 localStorage，
+// > 读晚了就把用户记忆覆写成清单首个 sid（**F19 主路径在「本地有会话」的常见场景下
+// > 整体失效**）。骨架期同时抑制写回双保险。
+//
+// 而没人钉它：`tabs.vitest.ts` 钉的是**单元**（`switchTo` 写回 + `persistLastActive` 开关），
+// 而这件事是 `main.ts` 里的**接线顺序**；`main.ts` 又正好在 0% 覆盖那一族里
+//（`scripts/assert-coverage-floors.mjs` 的 `ZERO_TODAY` 第一行就是它）。
+// ⇒ 把 `safeGet` 挪到建骨架之后、或删掉那句抑制写回：**tsc 绿、vitest 绿，而「恢复上次
+// 活跃 tab」在最常见的场景下静默失效**。
+//
+// # 为什么是源码层判据
+//
+// 行为层要把整个 `main()` 启动路径跑起来（Tauri invoke + DOM + localStorage 全套）。
+// **如实说**：本条判的是「那三行的先后」，挡得住「有人把读记忆挪到骨架之后 / 删掉抑制」，
+// **挡不住**「`switchTo` 自己改了写回时机」——那半由 `tabs.vitest.ts` 那条单元判据看着。
+//
+// ⚠⚠ **锚点第一版就踩了自己刚立的元判据**：我拿 `createSkeletonTab(` 当「建骨架」的锚，
+// 而它在 `main.ts` 里有 **3 处**，最早两处是**事件处理器体内**的（`remote-session-added` 那批，
+// 注册在前、**执行在后**）⇒ 判据当场红，说「读记忆排到建骨架之后了」——**红对了位置、讲错了事**。
+// 这正是 08-08 那条元判据点名的两种坏法叠在一起：**比的是任意一处**（坏法②）+
+// **文本顺序 ≠ 执行顺序**（坏法③）。
+// ⇒ 改锚**启动那一批**本身：`commands.list_active_sessions()`（生产段唯一一处，
+// 它下面那个 for 循环才是启动骨架）。三条纪律照旧：剥注释 · 不兜任意一处 · 每个锚点先核唯一性。
+describe("启动接线：记忆与骨架的先后", () => {
+  const code = (() => {
+    const src = productionTsFiles("src").find((f) => f.file.endsWith("src/main.ts"));
+    if (!src) throw new Error("扫不到 src/main.ts —— 遍历坏了，本条会零命中地绿");
+    return src.text
+      .split("\n")
+      .filter((l) => {
+        const s = l.trim();
+        return !s.startsWith("//") && !s.startsWith("*") && !s.startsWith("/*");
+      })
+      .join("\n");
+  })();
+
+  const at = (needle: string, want: number): number => {
+    const n = code.split(needle).length - 1;
+    expect(n, `\`${needle}\` 在 main.ts 生产段出现 ${n} 次（08-08 实测 ${want}）—— 锚点漂了，先修锚点`).toBe(want);
+    return code.indexOf(needle);
+  };
+
+  it("读 last-active 记忆排在启动骨架批之前", () => {
+    const read = at("safeGet(LS_KEYS.lastActiveSid)", 1);
+    const skeleton = at("commands.list_active_sessions()", 1);
+    expect(
+      read < skeleton,
+      "读记忆排到建骨架之后了。\n" +
+        "★ 后果 main.ts 自己写着：第一个骨架的自动切换会经 switchTo 写回 localStorage，\n" +
+        "  读晚了就把用户记忆覆写成清单首个 sid ⇒ **F19「恢复上次活跃 tab」在最常见的\n" +
+        "  场景（本地有会话）下整体失效**，而 tsc / vitest 全绿。",
+    ).toBe(true);
+  });
+
+  it("骨架期抑制写回：`persistLastActive=false` 在前、恢复 `=true` 在后", () => {
+    const off = at("tabs.persistLastActive = false", 2);
+    const skeleton = at("commands.list_active_sessions()", 1);
+    const on = at("tabs.persistLastActive = true", 1);
+    expect(
+      off < skeleton,
+      "抑制写回排到建骨架之后（或被删了）—— 那是 main.ts 说的「双保险」那一半：\n" +
+        "  骨架期的自动切换会把记忆写成清单首个 sid。",
+    ).toBe(true);
+    expect(
+      skeleton < on,
+      "恢复 `persistLastActive = true` 排到了建骨架之前 —— 抑制窗口空了，等于没抑制。",
+    ).toBe(true);
+  });
+});
