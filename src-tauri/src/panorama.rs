@@ -375,11 +375,36 @@ mod tests {
             let at = src.find(&format!("pub fn {m}(")).unwrap_or_else(|| {
                 panic!("vendor 里找不到 `{m}` —— 换版了，本条与 `panorama.rs` 一起复核")
             });
-            // ⚠ **按 char 取，别按字节切**：vendor 源码里全是中文注释，
-            // `&src[at..at+400]` 会落在汉字中间当场 panic（本仓 `digit_after` 头注记过这个坑，
-            // 08-08 我又踩了一次）。
-            let body: String = src[at..].chars().take(400).collect();
+            // ⚠ 两件事一起做对，缺一个就白写：
+            // ① **按 char 取，别按字节切** —— vendor 源码里全是中文注释，
+            //    `&src[at..at+400]` 会落在汉字中间当场 panic（`digit_after` 头注记过）；
+            // ② **切到方法真正的结尾**，不是「起点后 N 个字符」——
+            //    ⚠ 08-08 变异实测：定长窗口把守卫删掉后**照样绿**，因为窗口
+            //    一路吃进了下一个方法 `remove_doc_link`，那里还有一句 `guard_rel`。
+            //    同一个缺陷两轮前刚在 `structural_scan` 修过，这次犯在自己新写的判据上。
+            let body: String = {
+                let rest: Vec<char> = src[at..].chars().take(4000).collect();
+                let mut depth = 0i32;
+                let mut end = rest.len();
+                for (i, c) in rest.iter().enumerate() {
+                    if *c == '{' {
+                        depth += 1;
+                    } else if *c == '}' {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = i + 1;
+                            break;
+                        }
+                    }
+                }
+                rest[..end].iter().collect()
+            };
             let body = body.as_str();
+            assert!(
+                body.len() > 40 && body.lines().count() < 40,
+                "从 `{m}` 切出 {} 行，不像一个方法体（配平切错了，本条会零命中地绿）",
+                body.lines().count()
+            );
             assert!(
                 guard_core::contains_word(body, "guard_rel"),
                 "vendor 的 `{m}` 不再调 `guard_rel` 了。\n\
