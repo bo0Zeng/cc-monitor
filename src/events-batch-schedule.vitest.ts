@@ -24,7 +24,11 @@
  * 钉**时序与次数**：onBatchStart/onBatchEnd 各被调了几次、在第几毫秒。
  * 不钉「渲染快不快」（那要真机）。
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { REPO_ROOT } from "./test-support/repo-root.ts";
+import { productionTsFiles } from "./test-support/production-sources.ts";
 
 type Cb = (e: { payload: unknown }) => void;
 const subs = new Map<string, Cb>();
@@ -278,5 +282,65 @@ describe("events.ts 批量调度状态机（audit-0805 F17 下半的三条分支
       "强制清零时没有留下痕迹 —— 这是「静默失败要给身份」那条（定框 E4）：" +
         "被上限踢开说明后端计数出过问题，得有人看得见。",
     ).toContain("snapshot-inflight");
+  });
+});
+
+// ★★ **`bindEvents` 的每一处调用都必须 `await`**〔audit-0805 08-08，Phase G 第 89 件〕。
+//
+// # 症状是实测过的，而没人钉着它
+//
+// `events.ts` 与 `main.ts` 两侧都逐字写着同一件事：
+//
+// > **必须 await**：listener 注册完成前调 replay 会丢事件（**实测白屏只剩状态栏**）。
+// > 不 await 注册就会把 1599 条历史全丢。
+//
+// 而 TypeScript **不会**因为漏 `await` 报错（`bindEvents` 是 `async`，丢弃返回的 Promise
+// 完全合法），eslint 那步又带 `|| true`（CI 步骤表里逐字登记着「结构上不会红」）。
+// ⇒ 删掉一个 `await`：tsc 绿、vitest 绿、启动时历史全丢、用户看到一屏空白。
+//
+// ⚠ 08-08 的「顺序」透镜只扫了 Rust（31 处声称逐条查过），**前端那一侧一条都没扫**——
+// 这条是补上的第一块。人群从源码派生（非测试的 `src/**.ts` 里每一处调用）。
+describe("bindEvents 的接线", () => {
+  const callSites = (() => {
+    // ⚠ **不自己再写一份遍历**：`scanning-guard-registry` 的递减棘轮当场拦过（9→10），
+    // 它要的答案是「你靠什么读不到自己」。共享 helper 的答案是**按构造**：
+    // 只收生产文件（排掉 `.vitest.`/`.test.`），而判据都住在测试文件里。
+    const out: Array<{ file: string; line: number; text: string }> = [];
+    for (const { file, text } of productionTsFiles("src")) {
+      text.split("\n").forEach((l, i) => {
+        const s = l.trim();
+        // 只认**调用**，不认定义行与文档注释。
+        if (!s.includes("bindEvents(")) return;
+        if (s.startsWith("*") || s.startsWith("//") || s.includes("function bindEvents")) return;
+        out.push({ file, line: i + 1, text: s });
+      });
+    }
+    return out;
+  })();
+
+  it("每一处调用都带 await（漏一个 = 启动时历史全丢，实测白屏只剩状态栏）", () => {
+    expect(
+      callSites.length,
+      "一处 `bindEvents(` 调用都没扫到（08-08 实测 2 处，都在 main.ts）—— 遍历或过滤坏了，本条此刻无效",
+    ).toBeGreaterThanOrEqual(2);
+    const bare = callSites.filter((c) => !c.text.startsWith("await ") && !c.text.includes("= await "));
+    expect(
+      bare.map((c) => `${c.file}:${c.line}: ${c.text}`),
+      "这些 `bindEvents` 调用没有 await：\n" +
+        bare.map((c) => `  ${c.file}:${c.line}`).join("\n") +
+        "\n★ 后果是实测过的：listener 注册完成前 replay 就发出去了 ⇒ 历史事件全丢，\n" +
+        "  用户看到一屏空白（只剩状态栏）。`events.ts` 与 `main.ts` 两侧的注释都逐字写着这件事。\n" +
+        "⚠ 编译器接不住：`bindEvents` 是 async，丢弃它返回的 Promise 完全合法；\n" +
+        "  eslint 那步又带 `|| true`（CI 步骤表里登记着「结构上不会红」）。",
+    ).toEqual([]);
+  });
+
+  it("前提：`bindEvents` 仍然是 async（不然 await 这件事本身就没意义）", () => {
+    const src = readFileSync(resolve(REPO_ROOT, "src/events.ts"), "utf8");
+    expect(
+      src,
+      "`bindEvents` 不再是 `async function` —— 上面那条在钉一件可能已经不成立的事。\n" +
+        "若它改成同步（注册在返回前完成），把上面那条一起改掉，别留着一条空转的判据。",
+    ).toContain("export async function bindEvents");
   });
 });
