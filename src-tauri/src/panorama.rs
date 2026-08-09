@@ -338,6 +338,77 @@ pub async fn panorama_remove_doc_link(
 
 #[cfg(test)]
 mod tests {
+    /// ★★ **写 doc-link 那条路的安全性整个压在 vendor 的 `guard_rel` 上**
+    /// 〔audit-0805 08-08，Phase G 第 87 件〕。
+    ///
+    /// # 先核的结果（三段，别只读结论）
+    ///
+    /// 08-08 横扫「收路径参数的 `#[tauri::command]`」得 22 条，逐条分档：
+    /// 远端那批（`sftp_pool` / `sftp` / `acct_iso_deploy` / `tmux`）操作的是**用户自己的
+    /// 远端机器**，收任意路径是功能本身；本机那侧除上一轮刚围栏的三条 `cc_integration_*`，
+    /// 只剩 panorama 这五条。
+    ///
+    /// 1. `add_annotation` / `propose_annotation` 收的 `file` **不进路径** ——
+    ///    vendor 把它当**数据**存进 `Annotation`，落盘文件名是内容哈希 ⇒ 无穿越面，
+    ///    **刻意不给它们加守卫**（加了是安慰剂）。
+    /// 2. `write_doc_link` / `remove_doc_link` 的 `doc` **真的进路径**（`repo.join(doc_rel)`），
+    ///    而 vendor **自己有围栏**：`guard_rel` / `guard_doc_rel` 拒绝绝对路径与 `..`。
+    /// 3. `repo` 本身**刻意不设围栏**：panorama 的功能就是「索引任意一个项目目录」，
+    ///    home 围栏会砍掉 `/srv/work` 这类正当用法。⇒ 登记进 `ROADMAP §5` 当诚实边界，
+    ///    而不是装一道假围栏。
+    ///
+    /// # 本条钉什么
+    ///
+    /// 我们这侧的安全性**整个压在别人家的两行守卫上**，而 vendor 是**冻结的副本**
+    ///（红线：一字节不动）——它会被**整份换新**（`build.rs` 有 `.vendor_id` 新鲜度自检，
+    /// 但那只说「副本旧了」，不说「那两行还在不在」）。
+    /// ⇒ 前提触发器：那两个方法必须仍然调 `guard_rel`，且 `guard_rel` 必须仍然
+    /// 同时拒**绝对路径**与 `..`。**只读 vendor，不改它一个字节。**
+    #[test]
+    fn the_doc_link_writes_still_go_through_the_vendor_guard() {
+        let vendor = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("vendor/code-picture-core/src/engine.rs");
+        let src = std::fs::read_to_string(&vendor)
+            .unwrap_or_else(|e| panic!("读不到 {vendor:?}：{e} —— vendor 布局变了就把本条一起改"));
+        // 我们真正调到的**写路径**方法（`panorama.rs` 里各调一次）。
+        for m in ["write_doc_link", "remove_doc_link"] {
+            let at = src.find(&format!("pub fn {m}(")).unwrap_or_else(|| {
+                panic!("vendor 里找不到 `{m}` —— 换版了，本条与 `panorama.rs` 一起复核")
+            });
+            // ⚠ **按 char 取，别按字节切**：vendor 源码里全是中文注释，
+            // `&src[at..at+400]` 会落在汉字中间当场 panic（本仓 `digit_after` 头注记过这个坑，
+            // 08-08 我又踩了一次）。
+            let body: String = src[at..].chars().take(400).collect();
+            let body = body.as_str();
+            assert!(
+                guard_core::contains_word(body, "guard_rel"),
+                "vendor 的 `{m}` 不再调 `guard_rel` 了。\n\
+                 ★ 那两行是**我们这侧唯一挡着路径穿越的东西**：`doc` 来自 webview，\n\
+                 下游是 `repo.join(doc_rel)` 然后 `fs::write`。\n\
+                 ⚠ vendor 是冻结副本、会被整份换新，而 `.vendor_id` 新鲜度自检只说\n\
+                 「副本旧了」，不说「那两行还在不在」。\n\
+                 换版后要么确认新版另有等价围栏，要么在 `panorama.rs` 这侧自己加一道。\n\
+                 实得这一段：{body:?}"
+            );
+        }
+        // 守卫本身还得真守：绝对路径与 `..` 两件都要拒。
+        let g = src
+            .find("fn guard_rel(")
+            .expect("vendor 里找不到 `guard_rel` 定义 —— 上面那两条此刻在比一个不存在的东西");
+        let gbody: String = src[g..].chars().take(300).collect();
+        let gbody = gbody.as_str();
+        // ⚠ 用 `contains_word` 而不是裸 `contains`：`needle_anchor` 棘轮当场拦过
+        // （33→34），而它指出的不只是写法 —— 裸子串在事实被撑大时照样绿。
+        for needle in ["starts_with", "\"..\""] {
+            assert!(
+                guard_core::contains_word(gbody, needle),
+                "`guard_rel` 里找不到 `{needle}` —— 它可能只剩半道围栏了。\n\
+                 两件缺一不可：绝对路径（`/etc/x.md` 直接跳出 repo）与 `..`（逐级爬出去）。\n\
+                 实得：{gbody:?}"
+            );
+        }
+    }
+
     use super::*;
 
     #[test]
