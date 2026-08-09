@@ -289,8 +289,15 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
     }
     // ★ **launcher 也要过一道**〔audit-0805 08-08〕：本函数对 `args` 逐个过白名单，
     // 而 `launcher` 此前**一个检查都没有** —— 它被直接拼进 `argv` 再 `join(" ")`。
-    // 这条路的上游是 tauri 命令 `render_launch_payload`：`launcher` 来自 webview，
-    // 渲出来的载荷会被**键进用户的会话执行**。
+    // 这条路的上游是 tauri 命令 `render_launch_payload`：`launcher` 来自 webview。
+    //
+    // ⚠⚠ **08-08 订正赌注**（本条建成的次轮先核出来的）：这道检查是**纵深，不是边界**。
+    // `daemon_send_into` 同样是注册命令，它的 `payload: String` 也来自 webview，
+    // 而 daemon 侧只查「非空 / 长度 / 无控制字符」（`check_field`）—— 也就是说
+    // **前端本来就能绕过本函数，直接送一条任意载荷去键入**。
+    // ⇒ 本检查买到的是：① 走**文档化的那条路**时不会把注入串拼进载荷（挡的是**缺陷**，
+    // 不是攻击者）；② 与同函数 `args` 那道白名单**姿态一致**（不对称本身会误导下一个人）。
+    // 真正的边界在别处：daemon 的 `admit`（会话身份）+ 前端执行面（CSP / 能力表）。
     //
     // 字符集镜像 TS 的 `sanitizeRemoteLauncher`（今天真正管着这条路的那份策略），
     // 但按本函数的既有惯例**返回 `Err` 而不是静默回落**：拒绝要让调用方看得见。
@@ -369,8 +376,13 @@ mod tests {
     ///
     /// `render_payload` 对 `args` 逐个过 `arg_is_join_safe`（白名单），而 **`launcher`
     /// 一个检查都没有** —— 它被直接 `push` 进 `argv` 再 `join(" ")`。
-    /// 而 `render_launch_payload` 是**注册过的 tauri 命令**：`launcher` 来自 webview，
-    /// 渲出来的载荷会被键进用户的会话执行。
+    /// 而 `render_launch_payload` 是**注册过的 tauri 命令**：`launcher` 来自 webview。
+    ///
+    /// ⚠⚠ **次轮先核订正了赌注**：这道检查是**纵深不是边界** —— `daemon_send_into`
+    /// 的 `payload` 同样来自 webview 且只受「非空/长度/无控制字符」约束，
+    /// 前端本来就能绕过本函数直接送任意载荷。本条挡的是**缺陷**（走文档化那条路时
+    /// 把注入串拼进载荷）与**姿态不一致**（同函数 `args` 有闸而 `launcher` 没有）。
+    /// 真边界在 daemon 的 `admit` 与前端执行面 —— 见 `ROADMAP §5` 那条登记。
     ///
     /// 该字段的头注写着「已 sanitize 过的 launcher …… 本 crate 收的是**结果**」——
     /// 那是**调用约定**，不是这一侧的保证：wire 那条路（`launch_wire.rs`）把
