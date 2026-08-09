@@ -550,6 +550,93 @@ mod tests {
         );
     }
 
+    /// ★★ **前提触发器：载荷内容至今**不是**安全边界**〔audit-0805 08-08，Phase G 第 95 件〕。
+    ///
+    /// # 它守的是 `ROADMAP §5 4h` 那条登记
+    ///
+    /// 08-08 先核出来的事实：`payload` 从 webview 一路进到这里，本 daemon 只查
+    /// **三件形状**（非空 / 长度上限 / 无控制字符），**不查它是什么命令**。
+    /// 也就是说前端能送任意载荷 —— 于是 monitor 侧 `render_payload` 里那几道字符闸
+    ///（`arg_is_join_safe` · `config_dir_command_safe` · launcher 那道）都是**纵深，不是边界**，
+    /// 而真边界是**这一条路的 `admit`**（会话身份 §34 Gate 2）与**前端执行面**（CSP/能力表）。
+    ///
+    /// ⚠ 那条登记整个压在「本函数只做形状检查」上，而**没人盯着它**：
+    /// 谁哪天给 `check_field` 加一道 shell 安全校验，或把 `payload` 换成结构化的 argv，
+    /// **边界就搬家了** —— 那是好事，但 `§5 4h` 与 monitor 那几处「纵深不是边界」的注释
+    /// 会当天变成假话，而没有任何东西会红。
+    ///
+    /// ⇒ 本条钉「今天仍然只有那三件形状检查」。它红的时候**不是坏消息**：
+    /// 诊断里直接写清「去把 4h 与那几处注释一起重判」。
+    ///
+    /// ⚠ 本条是**源码层**（读自己这份源码的函数体）：挡得住「悄悄加/减一道检查」，
+    /// 挡不住「`MAX_FIELD_BYTES` 被调大」——那是量纲不是姿态，另有 `byte_cap_registry` 管。
+    #[test]
+    fn the_payload_is_still_only_shape_checked() {
+        let src = crate::guard_support::production_code(include_str!("launch.rs"));
+        let at = src
+            .find("fn check_field(")
+            .expect("`check_field` 不见了 —— 形状检查搬家了，`ROADMAP §5 4h` 要跟着重判");
+        // 切到函数体收尾（花括号配平；两个字符字面量成对出现）。
+        let bytes = src.as_bytes();
+        let open = (at..bytes.len())
+            .find(|&i| bytes[i] == b'{')
+            .expect("找不到函数体起点");
+        let mut depth = 0i32;
+        let mut end = bytes.len();
+        for i in open..bytes.len() {
+            if bytes[i] == b'{' {
+                depth += 1;
+            } else if bytes[i] == b'}' {
+                depth -= 1;
+                if depth == 0 {
+                    end = i + 1;
+                    break;
+                }
+            }
+        }
+        let body = &src[open..end];
+        assert!(
+            (5..40).contains(&body.lines().count()),
+            "切出来的 `check_field` 有 {} 行，不像那个函数（配平切错了，本条会零命中地绿）",
+            body.lines().count()
+        );
+
+        // 今天的三件形状检查，一件都不许少（少了 = 姿态变松，也要有人看见）。
+        for (needle, what) in [
+            ("is_empty()", "非空"),
+            ("MAX_FIELD_BYTES", "长度上限"),
+            ("is_control", "无控制字符"),
+        ] {
+            assert!(
+                body.contains(needle),
+                "`check_field` 里没有「{what}」那一件了（找 `{needle}`）。\n\
+                 三件形状检查是 `ROADMAP §5 4h` 的**下界**：少一件，连「形状」都不成立了。"
+            );
+        }
+
+        // ★ 正题：**不许出现内容/shell 语义的判定**。
+        let dq = '"';
+        for probe in [
+            format!("{dq};{dq}"),
+            format!("{dq}|{dq}"),
+            format!("{dq}&{dq}"),
+            "sanitize".to_string(),
+            "shell_safe".to_string(),
+            "is_shell".to_string(),
+        ] {
+            assert!(
+                !body.contains(probe.as_str()),
+                "`check_field` 里出现了 `{probe}` —— 看起来它开始**查载荷的内容**了。\n\
+                 ★ 这不是坏消息，是**边界搬家了**：`ROADMAP §5 4h` 逐字写着\n\
+                 「载荷内容不是安全边界，monitor 侧那几道字符闸是纵深」，\n\
+                 而那句话整个压在「本函数只做形状检查」上。\n\
+                 ⇒ 请一起改：① `§5 4h` 那一行；② `payload.rs` 里 launcher 闸旁边\n\
+                 与其判据头注中「纵深不是边界」那两处；③ 想清楚新边界的**姿态**\n\
+                 （拒绝还是回落、错误文案给谁看）。别只加检查不改账。"
+            );
+        }
+    }
+
     /// ★ **生产接线（顺序钉）**：`admit` 必须在 `type_payload` **之前**。
     ///
     /// 这条与上面那条不是重复：上面钉「过不过门」，这条钉「门在不在路上」。
