@@ -615,15 +615,20 @@ mod tests {
         }
 
         // ★ 正题：**不许出现内容/shell 语义的判定**。
+        // ⚠ **两种写法都要认**〔08-08 变异证伪〕：第一版只找双引号形（`";"`），
+        // 而真去加检查的人写的是 Rust 字符字面量（`';'`）—— 变异当场存活。
+        // 「只认一种写法」是本工作区一直在治的病，这次犯在我自己的探针上。
         let dq = '"';
-        for probe in [
-            format!("{dq};{dq}"),
-            format!("{dq}|{dq}"),
-            format!("{dq}&{dq}"),
-            "sanitize".to_string(),
-            "shell_safe".to_string(),
-            "is_shell".to_string(),
-        ] {
+        let sq = '\'';
+        let mut probes: Vec<String> = Vec::new();
+        for ch in [';', '|', '&', '`', '$'] {
+            probes.push(format!("{dq}{ch}{dq}"));
+            probes.push(format!("{sq}{ch}{sq}"));
+        }
+        for name in ["sanitize", "shell_safe", "is_shell", "metachar"] {
+            probes.push(name.to_string());
+        }
+        for probe in probes {
             assert!(
                 !body.contains(probe.as_str()),
                 "`check_field` 里出现了 `{probe}` —— 看起来它开始**查载荷的内容**了。\n\
