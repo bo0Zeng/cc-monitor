@@ -309,6 +309,150 @@ mod tests {
         out
     }
 
+    /// ★★ **谁伸手进用户的 home —— 一张覆盖索引**〔audit-0805 08-08，Phase G 第 88 件〕。
+    ///
+    /// # 为什么再加一张表（它不是第四个权威源）
+    ///
+    /// 「谁能读」这一侧本会话补了两块：`.ssh`（第 85 件）与本模块的 claude 目录棘轮。
+    /// 但两块的人群都是**按目录名**取的 —— 也就是说，**下一个被伸手的目录仍然不在任何人群里**
+    ///（08-08 实测：`~/.config` / `~/.local` 本机读面今天为 0，那是「碰巧没有」不是「有人守着」）。
+    ///
+    /// ⇒ 换一个**真正派生**的人群：生产段里每一处 `home_dir()` 调用。
+    /// 它按构造覆盖 claude / `.ssh` / profile / `.codex` / 数据目录 / 将来任何新目录。
+    /// 第四列写的是**这一处归谁管** —— 本表只回答「有没有人管」，
+    /// 具体守法仍在各自那张表里（E3：本表不复制它们的内容）。
+    ///
+    /// ⚠ **扫描面只有 monitor 树**（本模块的 `rust_files()` 就是这么定的）。
+    /// daemon 侧另有 3 处 `home_dir()`（`observe/accounts_query.rs`），**刻意不并进来**：
+    /// 那是**远端那台机器上**的 home，语义不同（monitor 碰的是用户自己的机器），
+    /// 而 daemon 的写侧由它自己的 `readonly_guard` 整个禁掉。
+    /// 把两侧混进一张表会让「这一处归谁管」这一列失去意义。
+    const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
+        (
+            "codex.rs",
+            "resolve_codex_dir",
+            "`~/.codex`",
+            "Codex 那一族的用量读面；与 claude 面平行，由 usage-core 的口径判据管",
+        ),
+        (
+            "config_surface.rs",
+            "config_surface_report",
+            "配置面清单的根",
+            "只读诊断页；落点由本模块的 claude 棘轮数着",
+        ),
+        (
+            "data_paths.rs",
+            "candidate_profile_dirs",
+            "PowerShell profile 的候选目录",
+            "profile 安装面；路径围栏在 `profile_installer::fence_profile_path`",
+        ),
+        (
+            "hooks_diag.rs",
+            "diagnose_local_cc_bus_hooks",
+            "cc-bus 钩子的安装位置",
+            "只读诊断；本文件另有 `this_module_never_writes` 守着不写",
+        ),
+        (
+            "local_accounts.rs",
+            "local_accts_dir",
+            "账号隔离目录",
+            "账号面；写侧在 `write_site_registry`",
+        ),
+        (
+            "mcp.rs",
+            "claude_json_candidates",
+            "`~/.claude.json`",
+            "**读**用户配置（SS-14 只许写 `.mcp.json`，写侧由 `mcp.rs` 的项目目录判据钉）",
+        ),
+        (
+            "paths.rs",
+            "resolve_claude_dir",
+            "`~/.claude`",
+            "claude 目录真相源（`hub`）；本模块棘轮的中心",
+        ),
+        (
+            "paths.rs",
+            "resolve_monitor_data_dir",
+            "`~/.claude/claudecode-frontend`",
+            "monitor 自己的数据目录；写侧在 `write_site_registry`",
+        ),
+        (
+            "profile_installer.rs",
+            "fence_profile_path",
+            "home 本身（当**围栏基准**）",
+            "它不是「伸手拿东西」，是**拿 home 来划界** —— 第 86 件加的那道围栏",
+        ),
+        (
+            "ssh_source.rs",
+            "list_ssh_host_aliases",
+            "`~/.ssh/config`",
+            "第 85 件的 `.ssh` 读面表：恰好一处 + 只吐别名",
+        ),
+        (
+            "ssh_source.rs",
+            "expand_tilde",
+            "`~` 展开（不落到具体目录）",
+            "纯路径变换，调用方各自受自己那张表管",
+        ),
+    ];
+
+    /// ★ 正题：**每一处 `home_dir()` 都要在表里，且表里不留死行**。
+    #[test]
+    fn every_reach_into_the_user_home_is_indexed() {
+        let files = rust_files();
+        assert!(
+            files.len() >= 80,
+            "只扫到 {} 个 .rs —— 遍历器坏了，本条会零命中地绿",
+            files.len()
+        );
+        let needle = format!("home_{}()", "dir");
+        let mut found: Vec<(String, String)> = Vec::new();
+        for (rel, src) in &files {
+            let prod = guard_core::production_code(src);
+            let lines: Vec<&str> = prod.lines().collect();
+            for (i, l) in lines.iter().enumerate() {
+                if !l.contains(&needle) || l.trim_start().starts_with("fn ") {
+                    continue;
+                }
+                // 归属按「上一处 `fn 名字`」判（粗，但归错会红在名字对不上上）。
+                let mut fname = "<找不到外层函数>".to_string();
+                for prev in lines[..=i].iter().rev() {
+                    if let Some(rest) = prev
+                        .split(" fn ")
+                        .nth(1)
+                        .or_else(|| prev.strip_prefix("fn "))
+                    {
+                        fname = rest
+                            .chars()
+                            .take_while(|c| c.is_alphanumeric() || *c == '_')
+                            .collect();
+                        break;
+                    }
+                }
+                let stem = rel.rsplit('/').next().unwrap_or(rel).to_string();
+                found.push((stem, fname));
+            }
+        }
+        found.sort();
+        found.dedup();
+        let mut declared: Vec<(String, String)> = HOME_REACHES
+            .iter()
+            .map(|(f, n, _, _)| (f.to_string(), n.to_string()))
+            .collect();
+        declared.sort();
+        assert_eq!(
+            found, declared,
+            "伸手进用户 home 的落点变了。\n\
+             ★ 本表回答的是「**有没有人管**」，不是「怎么管」——多出来的那一处，\n\
+             要在第四列写清它归哪张表（claude 棘轮 / `.ssh` 读面表 / profile 围栏 / 写点表 …）。\n\
+             ⚠ 之所以按 `home_dir()` 取人群而不是按目录名：按目录名取的话，\n\
+             **下一个被伸手的目录仍然不在任何人群里** —— 08-08 实测 `~/.config`/`~/.local`\n\
+             本机读面为 0，那是「碰巧没有」不是「有人守着」。\n\
+             ⚠ 少了的：那一处被删/改名了 ⇒ 删登记；若是**扫描面缩了**（`rust_files()` 少扫了），\n\
+             先修扫描面，别改表。"
+        );
+    }
+
     /// ★ 抽取器自检。
     #[test]
     fn the_scan_actually_reads_the_monitor_tree() {
