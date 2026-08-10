@@ -35,7 +35,12 @@
 //!
 //! - 只覆盖**本线程**。被测代码若把大块内存的分配挪到别的线程上，本量具看不见。
 //!   `inbound` 的 reader 在 `#[tokio::test]`（current-thread 运行时）下与测试同线程，
-//!   这一点由 `the_probe_sees_allocations_made_by_the_reader_task` 钉着。
+//!   ⚠⚠ **这一点今天没有判据**〔devbench F04, 08-10 订正〕。本行原写「由
+//!   `the_probe_sees_allocations_made_by_the_reader_task` 钉着」—— 而那个名字**全仓只出现在
+//!   这一行自己身上**，那条判据从未存在过。
+//!   ★ **指向一个不存在的判据比没有注释更坏**：它让读者以为这一层有人守着，于是不会去查。
+//!   ⇒ 如实登记为**无判据**。要真钉它得让探针在一个受控的分配序列上跑一遍并断言计数，
+//!   而那要能从测试里驱动 reader task —— 今天做不到（那条路径要真实的 stdin 流）。
 //! - 只在 `cfg(test)` 下接管全局分配器，**生产构建里这个文件整体为空**。
 
 use std::alloc::{GlobalAlloc, Layout, System};

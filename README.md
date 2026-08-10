@@ -1,6 +1,12 @@
 # cc-monitor
 
-> **Claude Code CLI 的只读输出渲染窗口** — Tauri 2 + Vanilla TypeScript，桌面应用（Windows / Linux）
+> **Claude Code 的开发工作台** — Tauri 2 + Vanilla TypeScript，桌面应用（Windows / Linux）
+>
+> ⚠ **「只读」现在只约束一件事：Claude 的数据。** 本行原写「Claude Code CLI 的**只读输出渲染窗口**」——
+> 那个自述在 F47（SFTP 文件面板）之后就已经窄于事实了，而 `doc/INVARIANTS.md` 的铁律本来就
+> **只**说「monitor 对 `<claude_dir>/projects/**/*.jsonl` 与 `sessions/<PID>.json` 只读」。
+> ⇒ Claude 的 jsonl/pidfile **永远只读**；用户自己的文件在**明确手势**下可写
+> （SFTP 面板 · planned-build 收件箱），每一处都在 `INVARIANTS` 里有一条同口径的澄清。
 >
 > [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 · Linux（.deb） | 当前版本: v3.6.0
 

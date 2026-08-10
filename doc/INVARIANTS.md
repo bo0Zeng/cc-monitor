@@ -22,6 +22,8 @@
 
 **F47 SFTP 文件面板不在本约管辖内（澄清，非例外/非松动）**：Batch14-F47 起 cc-monitor 挂了一个**用户亲自驱动的通用 SFTP 文件传输面板**（浏览/上传/下载/改名/删除任意用户文件）。它是**独立文件传输功能**，与本约「monitor 作为监视器只读 Claude 数据源」**正交**——它写的是用户浏览到的普通文件，不是 Claude 的 jsonl/pidfile，且每次写都是面板内一次直接用户手势（绝无自动/后台写）。**防误伤守卫**（`sftp_pool::is_protected_claude_data_path`）:SFTP 写命令**拒碰** `~/.claude/projects/**/*.jsonl` 与 `~/.claude/sessions/*.json`（往正被 Claude 打开的会话文件写会损坏会话；要管这些用历史浏览器）。SFTP 面板走独立 utility 连接池，与数据源流连接分离。
 
+**F03b 收件箱编辑不在本约管辖内（澄清，非例外/非松动）**：devbench-F03b 起 cc-monitor 挂了一个**收件箱编辑面板**（读写用户自己项目里的 `.claude/planned-build/INBOX.txt` —— planned-build skill 的「结构化注入」进件口）。**口径与 F47 逐条对齐**：它写的是**用户自己项目的普通文本文件**，不是 Claude 的 jsonl/pidfile；每次写都是**面板内一次直接用户手势**（点「保存」，绝无自动/后台写）。**围栏三道**（`skill_host::resolve_editable`）：① 路径 `canonicalize` **之后**做**集合判定**，集合来自声明表 `skill_host::SKILLS` 的 `editable`（**不是一串 `if`**，也不是判字符串——`..` 与符号链接都已解开）② 过 `sftp_pool::is_protected_claude_data_path`（**纵深**：即使声明写歪也不许碰 Claude 数据）③ 目标**必须已存在**（本功能是「编辑收件箱」不是「创建任意文件」）。写本身走 `verified_write::verify_and_rollback`（备份 → 写 → 读回**逐字节**比对 → 不符即回滚），**没有自造第四份写入实现**。⇒ 写面严格等于「声明里那几个真实文件」，今天恰好一个文件名。⚠ **远端项目的收件箱不在此列**：`parity_ledger` 里 `skill.inbox` 记 `Undecided`——「要不要能编辑」没人裁定过，且远端版的第①道（`canonicalize`）在那边不成立。
+
 **A2 多账号只读查询是本约的「读」面延伸（澄清，非例外/非松动）**：`remote-daemon-proto/src/observe/accounts_query.rs` + `src-tauri/src/accounts.rs` 为「按会话切账号」新增三条**纯只读**远端查询（`--list-accounts` / `--session-accounts` / `--account-trust`），**零写入**、**不 shell out**。它把 daemon 的读面从 `<claude_dir>` 扩到三处新位置，各自有硬边界:
 
 1. **`$ACCTS_DIR/accounts.json`**（cc-acct-iso 的 manifest，契约 v1）—— 只读整份 JSON;`configDir` 视为**不可信字符串**，逐条过 shell-safe 白名单（与 cc-acct-iso 的 `path_shell_safe` 同一套字符集），不合格的账号直接丢弃。
