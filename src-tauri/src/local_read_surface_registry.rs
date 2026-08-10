@@ -236,6 +236,27 @@ mod tests {
             4,
             "T01 受管工具登记表的一句**文案**里提到它，不读文件 ⇒ **不属**读面。",
         ),
+        (
+            "src/skill_host.rs",
+            "non-read",
+            3,
+            "★ **devbench F02 新增，且这条登记本身逮到了一个真缺陷** ——\
+             不是「记上账」那么简单，值得写清楚：\n\
+             三处命中是 `discover()` 的参数名 `claude_dir`、它内部的 `claude_dir.join(\"skills\")`、\
+             以及声明表里的 `root: \".claude/planned-build\"`。**零文件内容读取** ——\
+             `discover` 只做 `Path::exists()`，`instances` 只 `read_dir` 列目录项。\
+             ⇒ 归 `non-read`，不属 F10 的退役范围。\n\
+             ⚠⚠ **本表的针把两种 `.claude` 混在一起了，这里必须点破**：一种是\
+             `~/.claude`（**Claude 的数据目录**，projects/sessions 住那儿，F10 要退役的是它）；\
+             另一种是 `<cwd>/.claude`（**项目自己的配置目录**，planned-build 的计划就住那儿）。\
+             本模块碰的是**后者**，与 Claude 的数据源无关。针只认字面 `.claude` ⇒ 两者同样命中，\
+             靠这一列的分类来分开。**这不是针的缺陷**（放宽命中面是对的），是分类该干的活。\n\
+             ★ **它逮到的真缺陷**：本模块初版写的是 `home.join(\".claude/skills\")` ——\
+             **写死了 `~/.claude`**。而本仓有多账号隔离（`cc-acct-iso`：每账号一个\
+             `CLAUDE_CONFIG_DIR`，`skills`/`memory` symlink 回共享库）⇒ **切号之后那条路径会指错**。\
+             本表报「多一处未登记」时我才去读它，才发现该用 `paths::resolve_claude_dir()`。\
+             ⇒ 已改成 `claude_dir` 入参。**这条判据的价值不止于账本完整性。**",
+        ),
     ];
 
     fn root() -> &'static Path {
