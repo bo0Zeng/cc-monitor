@@ -39,6 +39,25 @@
  *    「Rust 有而 TS 静态看不见」的那 7 个动态名逐字钉死。
  */
 import { invoke, type Channel } from "@tauri-apps/api/core";
+
+/**
+ * devbench F03：一个接入的 skill 的当前状态。
+ *
+ * ⚠ **本类型是手写的**（不是 ts-rs 生成）—— 照 `launch-cli-wire.ts` 的先例。
+ * ⇒ 字段名与 Rust 侧 `skill_host::SkillView`（serde 默认 snake_case）**必须手动同步**，
+ * 由 Rust 侧的 `the_ts_view_type_matches_this_struct` 钉住：那条判据读本文件的源码，
+ * 逐个字段对拍，漏一个就红。
+ */
+export interface SkillView {
+  id: string;
+  label: string;
+  /** `null` = 在场；否则是带身份的缺席原因（哪个 skill 的哪条前提没满足）。 */
+  missing_reason: string | null;
+  /** 实例名（planned-build 的工作区名…）。 */
+  instances: string[];
+  /** 可编辑文件的绝对路径（后端算好的，UI 直接拿去请求读/写）。 */
+  editable: string[];
+}
 // U8c-2c-2：手写 wire 镜像（不是 ts-rs 生成的）——与 Rust 的一致性由 launch-cli-wire.vitest.ts 钉。
 import type {
   CliRenderRequest,
@@ -252,6 +271,28 @@ export const commands = {
     body: string;
     author: string;
   }) => invoke<string>("panorama_add_annotation", args),
+
+  /**
+   * devbench F03：列出接入的 skill 及其状态。
+   *
+   * `missingReason` 非 null 时是**带身份的**缺席原因（哪个 skill 的哪条前提没满足）——
+   * UI 要原样显示它，不许退化成「不可用」（定框 C6）。
+   */
+  list_skills: (args: { cwd: string }) => invoke<SkillView[]>("list_skills", args),
+
+  /** devbench F03：读一个 skill 的可编辑文件（读也过写面围栏，免得变成任意文件读取口）。 */
+  read_skill_file: (args: { cwd: string; skillId: string; path: string }) =>
+    invoke<string>("read_skill_file", args),
+
+  /**
+   * devbench F03：写一个 skill 的可编辑文件。
+   *
+   * 后端三道围栏（路径 canonicalize 后做集合判定 · 过 Claude 数据保护守卫 · 目标必须已存在）
+   * + `verified_write` 的读回逐字节比对与回滚。**前端不做安全判断**，也不该做 ——
+   * 判定的真相源只有 `skill_host::resolve_editable` 一处。
+   */
+  write_skill_file: (args: { cwd: string; skillId: string; path: string; content: string }) =>
+    invoke<void>("write_skill_file", args),
 
   /** 某符号的被调者边。`depth` 是 `u32` ⇒ `number`。 */
   panorama_callees: (args: { repo: string; symbol: string; depth: number }) =>

@@ -239,12 +239,16 @@ mod tests {
         (
             "src/skill_host.rs",
             "non-read",
-            3,
+            5,
             "★ **devbench F02 新增，且这条登记本身逮到了一个真缺陷** ——\
              不是「记上账」那么简单，值得写清楚：\n\
-             三处命中是 `discover()` 的参数名 `claude_dir`、它内部的 `claude_dir.join(\"skills\")`、\
-             以及声明表里的 `root: \".claude/planned-build\"`。**零文件内容读取** ——\
-             `discover` 只做 `Path::exists()`，`instances` 只 `read_dir` 列目录项。\
+             五处命中（**F03 从 3 涨到 5**：新增 IPC 层的 `views()` 里一处\
+             `paths::resolve_claude_dir()` 调用 + 一处 `claude_dir` 局部变量）：\
+             `discover()` 的参数名与它内部的 `claude_dir.join(\"skills\")`、\
+             声明表里的 `root: \".claude/planned-build\"`，以及 IPC 那两处。\
+             ⚠ **仍然零文件内容读取 Claude 数据** —— `discover` 只 `Path::exists()`，\
+             `instances` 只 `read_dir` 列目录项，`read_skill_file` 读的是\
+             **计划目录里的 `INBOX.txt`**（用户自己项目的文件，不是 Claude 的 jsonl）。\
              ⇒ 归 `non-read`，不属 F10 的退役范围。\n\
              ⚠⚠ **本表的针把两种 `.claude` 混在一起了，这里必须点破**：一种是\
              `~/.claude`（**Claude 的数据目录**，projects/sessions 住那儿，F10 要退役的是它）；\
