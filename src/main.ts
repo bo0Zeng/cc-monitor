@@ -416,7 +416,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   settingsTrigger.className = "settings-trigger";
   settingsTrigger.title = "设置 (,)";
   settingsTrigger.setAttribute("aria-label", "打开设置");
-  settingsTrigger.textContent = "⚙";
   settingsTrigger.addEventListener("click", () => {
     void commands.open_settings_window(); // F82a：开独立设置窗口（非浮层）
   });
@@ -431,7 +430,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   historyTrigger.title = "历史会话浏览器 (H)";
   historyTrigger.setAttribute("aria-label", "打开历史会话浏览器");
   // 纯字符的时钟符号（U+25F7），避免 emoji 跨平台/字体差异
-  historyTrigger.textContent = "◷";
   historyTrigger.addEventListener("click", () => {
     if (historyView.isVisible()) {
       historyView.close();
@@ -460,7 +458,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   panoramaTrigger.className = "panorama-trigger";
   panoramaTrigger.title = "代码全景 (G)";
   panoramaTrigger.setAttribute("aria-label", "打开代码全景");
-  panoramaTrigger.textContent = "🗺";
   panoramaTrigger.addEventListener("click", () => {
     if (panoramaView.isVisible()) panoramaView.close();
     else void panoramaView.open();
@@ -475,7 +472,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   usageTrigger.className = "usage-trigger";
   usageTrigger.title = "用量（token 已花费）";
   usageTrigger.setAttribute("aria-label", "打开用量视图");
-  usageTrigger.textContent = "∑";
   usageTrigger.addEventListener("click", () => {
     if (usageView.isVisible()) usageView.close();
     else void usageView.open();
@@ -494,7 +490,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   gridTrigger.className = "grid-monitor-trigger";
   gridTrigger.title = "多 agent 监控（跨机器只读并排）";
   gridTrigger.setAttribute("aria-label", "打开多 agent 监控");
-  gridTrigger.textContent = "▦";
   gridTrigger.addEventListener("click", () => {
     if (gridMonitorView.isVisible()) gridMonitorView.close();
     else gridMonitorView.open();
@@ -508,7 +503,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   sftpTrigger.className = "sftp-trigger";
   sftpTrigger.title = "SFTP 文件（浏览 / 上传 / 下载远端文件）";
   sftpTrigger.setAttribute("aria-label", "打开 SFTP 文件面板");
-  sftpTrigger.textContent = "🗂";
   sftpTrigger.addEventListener("click", () => void openSftpFromTopbar(sftpTrigger));
   document.getElementById("app")?.appendChild(sftpTrigger);
 
@@ -578,7 +572,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     cmdkHint.className = "status-cmdk";
     const icon = document.createElement("span");
     icon.className = "status-cmdk-icon";
-    icon.textContent = "⌨"; // U+2328 键盘（默认文本呈现、单色）；不用 ⌘（Mac 专属、本项目 Linux/Win 键位是 Ctrl）
     icon.setAttribute("aria-hidden", "true"); // F84b-fix：图标纯装饰，屏读器别念 U+2328 字形名
     cmdkHint.appendChild(icon);
     const label = document.createElement("span");
