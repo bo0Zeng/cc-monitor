@@ -1,5 +1,14 @@
-//! **前端 + `shared/ccm` 的周期唤醒清账**（用户 2026-08-03：「现在又轮询吗? 尽量不要轮询，
-//! 既然都收编了那就尽量在内部进行事件驱动」）。
+//! **前端 + `shared/` 下所有 shell 的周期唤醒清账**（用户 2026-08-03：「现在又轮询吗?
+//! 尽量不要轮询，既然都收编了那就尽量在内部进行事件驱动」）。
+//!
+//! ⚠ **08-10（devbench F07）扩面**：本行原写「前端 + `shared/ccm`」，而扫描面确实只
+//! `push` 了 `shared/ccm` **一个写死的文件名** ⇒ `shared/cc-bus/` 那棵树整个在账外，
+//! 其中 `cc-busd` 是个长驻 broker、每 0.5s 扫一次队列目录（它自己的注释承认「本实现恒轮询,
+//! 未用 inotify」）。★ **这不是「另一个仓不该管」**：同仓的 `shell_lint_registry` 与
+//! `session_name_registry` **都**已把那棵树算进人群，只有本表没跟上 —— 这是「判据的人群
+//! 从已经有名字的那批派生」在本表身上的实例。
+//! ⇒ 人群改成**遍历 `shared/` 下所有 shell**（`.sh` 后缀 **或**首行有 shebang ——
+//! `cc-busd`/`cc-send` 这些没后缀），加一个脚本自动进人群，不用谁记得回来 push 一行。
 //!
 //! # 为什么是本模块，而不是把 daemon 那条护栏扩过来
 //!
@@ -24,6 +33,12 @@
 //! | `ui-clock` | 只重绘已有状态、**不取数** | 说清它不取数 |
 //! | `data-poll` | **真轮询** —— 周期性去取数据 | **必须写明事件源在哪 + 谁退役它** |
 //! | `wait-for-condition` | 等一个一次性条件（有上限，不是节拍器） | 说清没有内核事件源可用 |
+//! | `one-shot` | **压根不是周期唤醒**（键入节奏 / kill 宽限 / 启动让路） | 说清它为什么不在任何循环的每轮上 |
+//!
+//! ⚠ `one-shot` 是 08-10 扩面时加的第四类，理由是 shell 那条针**刻意保持宽**
+//! （`contains("sleep ")` 会命中一次性 sleep）。收窄针会漏掉「新加一个 `sleep 1` 在循环里」
+//! 那种真轮询 ⇒ **宁可宽松让人判断，也不要用严格的错误引入噪声**。代价是一次性的也要
+//! 登记一行，而那正是「默认拒绝」想要的：新加一处就得回答它是哪一类。
 //!
 //! # 它查什么、查不了什么
 //!
@@ -48,7 +63,7 @@
 //!
 //! # monitor 的 Rust 侧：**不在本模块范围内，但已经有人管了**
 //!
-//! 本模块只覆盖 **TS 与 `shared/ccm`**。Rust 那半的家是 **`rust_timer_registry`**（F09 建），
+//! 本模块只覆盖 **TS 与 `shared/` 下的 shell**。Rust 那半的家是 **`rust_timer_registry`**（F09 建），
 //! 同一套分类词汇（`ticker` / `wait-for-condition` / `throttle` / `startup-delay`）。
 //!
 //! ⚠⚠ **这段话此前是一句假陈述**，而且是最难被怀疑的那一种 —— 它原文写着：
@@ -61,6 +76,12 @@
 //!
 //! ⚠ 那半一上岗就抓到**两个真节拍器**（`bind.rs::run_heartbeat` 10s ·
 //! `ssh_source.rs` daemonless 2s），两个都**如实记为未排期** —— 别读成「已经清干净了」。
+//!
+//! ⚠⚠ **08-10 订正：那个数今天是 4，不是 2。** devbench F07 把 `recv_timeout` 收进那张表的针
+//! 之后，又上账两条：`watcher.rs` 的 **100ms（10Hz，全仓最快的一处）** 与 `session_map.rs` 的 2s。
+//! ★ **它们在那之前一直在跑** —— 只是那张表的针（当时只有 `sleep`/`interval`）看不见它们，
+//! 而 `doc/INVARIANTS.md:1379` 与 daemon 侧 `no_timer_guard` 的扫描面**都早已点名 `recv_timeout`**
+//! ⇒ 缺的不是认知，是针没跟上。这两条的退役各有归属（devbench F11 / F12）。
 
 #[cfg(test)]
 mod tests {
@@ -116,6 +137,43 @@ mod tests {
             "两处：① 预信任对话框等待（6 × 0.5s，**§1.3 登记在案的例外** —— 那个对话框没有\
              内核事件源，只能看屏）；② 1s 身份轮询（`sleep 1`）。**②是真 data-poll**，\
              退役归 **U9b**（thin ccm 变零决策执行臂）。⚠ 一个文件两类，故按文件登记。",
+        ),
+        // ★★ **08-10（devbench F07）扩面后逮到的一族**：`shared/cc-bus/scripts/`。
+        // 本表原来的人群是「`src/**/*.ts` + 写死的 `shared/ccm` 一个文件名」⇒ 这棵树整个在账外。
+        // ⚠ 第四类 `one-shot` 是这次新加的：shell 那条针是宽的（`contains("sleep ")`），
+        // 一次性 sleep 也会命中。**刻意不收窄针**（宁可宽松让人判断，也不要用严格的错误引入噪声）
+        // —— 收窄会漏掉「新加一个 `sleep 1` 在循环里」那种真轮询。代价是一次性的也要登记一行，
+        // 而那正是「默认拒绝」想要的：新加一处就得回答它是哪一类。
+        (
+            "shared/cc-bus/scripts/cc-busd",
+            "data-poll",
+            "★ **本表扩面当天逮到的唯一真轮询**：长驻 broker 进程，`while [ \"$running\" = 1 ]` \
+             里每 0.5s 醒一次扫队列目录（`:101` `sleep \"$POLL\"`；`:99` 是「一整轮没进展」的退避）。\
+             它**自己的注释就承认了**：`:20` 逐字「队列空时轮询间隔秒(**本实现恒轮询,未用 inotify**)」。\
+             **事件源**：`$BUS/queue` 目录的 inotify —— 队列是文件系统目录、天然可 watch，\
+             与 daemon 侧看 pidfile 的做法同构。\
+             **退役归**未排期（cc-bus 增强属 issue #77/#78 那一族，用户 08-10 明确「后面再增强」）。\
+             如实记未排期，不编一个假 owner 让它看起来有人管。\
+             ⚠ 同文件 `:115` 另有 `for _i in $(seq 1 10); do sleep 0.3; daemon_running && break; done` \
+             —— 那是 wait-for-condition（上限 ~3s，注释自陈「轮询确认最多 ~3s」），不是节拍器。",
+        ),
+        (
+            "shared/cc-bus/scripts/cc-bus-lib.sh",
+            "one-shot",
+            "`:238` 的 `sleep 0.3` 夹在 `tmux send-keys <文本>` 与 `tmux send-keys Enter` 之间 —— \
+             **键入节奏**，一次性。不是周期唤醒：它不在任何循环的每轮上，前后是一对 send-keys。",
+        ),
+        (
+            "shared/cc-bus/scripts/cc-kill",
+            "one-shot",
+            "`:18` `kill $procs; sleep 0.3; kill -9 $procs` —— **优雅退出与强杀之间的宽限**，一次性。",
+        ),
+        (
+            "shared/cc-bus/scripts/cc-spawn",
+            "one-shot",
+            "`:146` `sleep 1.5` —— **启动让路**（等被 spawn 的 agent 把自己登记上来）。一次性；\
+             同文件 `:145` 注释逐字「显式保留而非默默删掉——原先 pretrusted 成功路径上就是 \
+             sleep 1.5」，说明它是刻意留的既有行为。",
         ),
     ];
 
@@ -254,6 +312,31 @@ mod tests {
     /// `setInterval` 这个词（写的是「不许有」）。不剥的话它们会被自己的纪律说明命中 ——
     /// 与 `launch-cli-wire.vitest.ts` 那次「文档注释里就写着 `deny_unknown_fields`」同一个坑。
     /// 一行里有没有周期唤醒的形态。
+    /// `shared/` 下的 shell 脚本全集：`.sh` 后缀 **或** 首行有 shebang（`cc-busd`/`cc-send`
+    /// 这些没有后缀）。**按内容认，不按后缀认** —— 后缀是可选的，shebang 才是「它是脚本」的证据。
+    fn collect_shell(dir: &std::path::Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        let Ok(rd) = fs::read_dir(dir) else {
+            return out;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                out.extend(collect_shell(&p));
+                continue;
+            }
+            let is_sh = p.extension().and_then(|x| x.to_str()) == Some("sh");
+            let has_shebang = fs::read_to_string(&p)
+                .ok()
+                .and_then(|t| t.lines().next().map(|l| l.starts_with("#!")))
+                .unwrap_or(false);
+            if is_sh || has_shebang {
+                out.push(p);
+            }
+        }
+        out
+    }
+
     fn is_periodic(line: &str, is_shell: bool) -> bool {
         if is_shell {
             return line.contains("sleep ");
@@ -265,13 +348,26 @@ mod tests {
         line.contains("setTimeout") && line.to_lowercase().contains("poll")
     }
 
-    /// 扫描面：`src/**/*.ts`（排除测试）+ `shared/ccm`。
+    /// 扫描面：`src/**/*.ts`（排除测试）+ **`shared/` 下所有 shell 脚本**。
+    ///
+    /// ⚠ **08-10（devbench F07）扩面**：原来这里是 `files.push(root.join("shared/ccm"))`
+    /// —— **一个写死的文件名**。头注当时写的范围「TS 与 `shared/ccm`」在写下时是对的，
+    /// 而 `shared/cc-bus/` 进仓之后就成了一个没人管的角落：`shared/cc-bus/scripts/cc-busd`
+    /// 是个**长驻 broker 进程**，每 0.5s 醒一次扫队列目录，它自己的注释逐字承认
+    /// 「队列空时轮询间隔秒(**本实现恒轮询,未用 inotify**)」—— 而本表看不见它。
+    ///
+    /// ★ 这不是「另一个仓不该管」：同仓的 `shell_lint_registry`（扫描面含
+    /// `shared/cc-bus/scripts/*`）与 `session_name_registry`（点名 `cc-spawn`）**都**已经
+    /// 把那棵树算进人群了，**只有轮询这张表没跟上**。⇒ 人群改成**遍历**，
+    /// 加一个脚本自动进人群，不用谁记得回来 push 一行。
     fn scan() -> Vec<(String, usize)> {
         let root = repo_root();
         let mut files: Vec<PathBuf> = Vec::new();
         collect_ts(&root.join("src"), &mut files);
         files.sort();
-        files.push(root.join("shared/ccm"));
+        let mut shells = collect_shell(&root.join("shared"));
+        shells.sort();
+        files.extend(shells);
         let mut out = Vec::new();
         for f in files {
             let rel = f
@@ -279,7 +375,7 @@ mod tests {
                 .unwrap_or(&f)
                 .to_string_lossy()
                 .replace('\\', "/");
-            let is_shell = rel == "shared/ccm";
+            let is_shell = !rel.ends_with(".ts");
             let src = guard_core::strip_comment_lines(&fs::read_to_string(&f).unwrap_or_default());
             let n = src.lines().filter(|l| is_periodic(l, is_shell)).count();
             if n > 0 {
@@ -381,8 +477,11 @@ mod tests {
         let mut polls = 0usize;
         for (f, kind, why) in REGISTERED {
             assert!(
-                matches!(*kind, "ui-clock" | "data-poll" | "wait-for-condition"),
-                "{f} 的类别 {kind:?} 不在三类里"
+                matches!(
+                    *kind,
+                    "ui-clock" | "data-poll" | "wait-for-condition" | "one-shot"
+                ),
+                "{f} 的类别 {kind:?} 不在四类里"
             );
             if *kind == "data-poll" || why.contains("data-poll") {
                 polls += 1;
