@@ -40,6 +40,7 @@ mod profile_installer;
 mod pubkey;
 mod remote_branch; // G6：远端分叉（经 ssh 调 daemon `--fork-session`）——写面故与只读的 remote_history 分家
 mod remote_history;
+mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
 mod search;
 mod session_map;
 // devbench F02：skill 接入面（一份声明 + 通用宿主）。
