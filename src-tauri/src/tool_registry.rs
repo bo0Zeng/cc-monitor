@@ -437,6 +437,99 @@ pub const TOOLS: &[ToolSpec] = &[
     },
 ];
 
+/// ★ **反向登记：考虑过、但刻意不收进 [`TOOLS`] 的东西**〔devbench F06, 08-10〕。
+///
+/// # 为什么要有这张表
+///
+/// [`TOOLS`] 是「**装到别处**的受管工具」（看它的字段就知道：`source` / `destination` /
+/// `installable` / `touches`）。而「某个东西不在表里」有两种截然不同的原因：
+///
+/// | 原因 | 该怎么办 |
+/// |---|---|
+/// | **没人想起来** | 那是洞，补进 `TOOLS` |
+/// | **它压根不是「装到别处的工具」** | 那是分类正确 —— 但**没有任何地方记着这个判断** |
+///
+/// 第二种今天全靠口口相传：devbench F01 的清单就把 `code-picture` 记成了「不在受管工具
+/// 注册表」这个洞，而实测它**不该在**。⇒ 把判断落成表，下次有人问就有答案，
+/// 且判据钉住那个理由还在。
+///
+/// ⚠ **这张表最容易变成许愿池**（什么都往里塞、理由写「暂不支持」）。
+/// 所以判据要求每条理由**说清它为什么不属这张表的语义**，而不只是「还没做」。
+/// ⚠ 但判据**判不了论证的质量** —— 只能判「有没有在论证那件事」。如实记。
+pub const NOT_MANAGED: &[(&str, &str)] = &[
+    (
+        "code-picture",
+        "**不是「装到别处的工具」，所以不属本表的语义** —— 它是 **vendored 进 cc-monitor \
+         二进制**的 crate（`src-tauri/vendor/code-picture-core`），`panorama.rs` 直接 \
+         `use Engine` 调它画图。没有 `destination`、没有安装动作、卸载它等于重新编译 monitor。\n\
+         ⚠ 它另有一个身份是 **MCP server（code-picture 的 Agent head，给 Claude 用）**，\
+         那一个确实「装到别处」—— 但**装它走已有的 `project-mcp` 机制**（往 `.mcp.json` 加一个 \
+         server 条目），是**用法**不是新工具。仓里今天对那个 MCP head 零实现（`mcp.rs` / \
+         `config_surface.rs` 里 `code-picture` 零命中）。\n\
+         ⇒ 真要做「一键装 code-picture 的 MCP」属 **issue #51 第 1 部分**，\
+         用户 08-10 明说「cc-bus 和 code-picture 后面再增强，现在先不做」。",
+    ),
+    (
+        "planned-build",
+        "**不由 cc-monitor 安装** —— 它是用户自己装在 `<claude_dir>/skills/planned-build/` 的 \
+         skill，cc-monitor 只**读它的产物**（计划文件）并允许编辑那个收件箱。\n\
+         ⇒ 它在 `skill_host::SKILLS` 里（接入的 skill），**不在**本表里（受管工具）。\
+         ★ 这两个集合**有交集但不是同一张表**（今天交集只有 `cc-bus`）——\
+         devbench 的账本 L4 原写「同一张表的两个视图」是**错的**，已订正。\n\
+         它的 `SkillSpec.install` 如实记 `NotSupported` 并说明归 F06。",
+    ),
+];
+
+#[cfg(test)]
+mod not_managed_tests {
+    use super::{NOT_MANAGED, TOOLS};
+
+    /// ★ **反向表不许变成许愿池：每条都要论证「为什么不属这张表的语义」。**
+    ///
+    /// ⚠ 判据能判的只有「有没有在论证那件事」，**判不了论证对不对** —— 如实记在这里，
+    /// 别把它读成「这些分类判断都被验证过了」。
+    #[test]
+    fn every_not_managed_entry_argues_why_it_is_out_of_scope() {
+        assert!(
+            !NOT_MANAGED.is_empty(),
+            "反向表空了 —— 要么真没有刻意排除的东西（那就删掉这张表与本条），\
+             要么有人清空了它。本条不许零命中地绿。"
+        );
+        for (id, why) in NOT_MANAGED {
+            assert!(!id.is_empty(), "反向表里有空 id");
+            // 「不属本表语义」的论证，至少要谈到这张表管的是什么。
+            // ⚠ 关键词是**或**关系：不同的东西有不同的出局理由（不装 / 没落点 / 归别处）。
+            let argues = why.contains("语义")
+                || why.contains("不由 cc-monitor 安装")
+                || why.contains("vendored")
+                || why.contains("装到别处");
+            assert!(
+                argues,
+                "`{id}` 的理由没有论证「为什么它不属这张表的语义」，\
+                 只说了「还没做」之类 —— 那种东西属于 `installable: false`（如 cc-bus），\
+                 不属反向表。\n理由原文：{why}"
+            );
+            assert!(
+                why.len() > 80,
+                "`{id}` 的理由只有 {} 字节 —— 分类判断要写清楚，否则下一个人还得重新查一遍",
+                why.len()
+            );
+        }
+    }
+
+    /// ★ **反向表与正表不许重叠** —— 一个 id 只能在一边。
+    #[test]
+    fn not_managed_never_overlaps_the_managed_table() {
+        for (id, _) in NOT_MANAGED {
+            assert!(
+                !TOOLS.iter().any(|t| t.id == *id),
+                "`{id}` 同时在 `TOOLS` 与 `NOT_MANAGED` 里 —— \
+                 「受管」与「刻意不收」是互斥的，两边都写等于没有判断"
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
