@@ -405,6 +405,64 @@ mod tests {
         );
     }
 
+    /// ★ **F12 的解锁闹钟**〔devbench F12 摸底，08-10〕。
+    ///
+    /// # 它盯的是什么
+    ///
+    /// `session_map.rs` 那条 2s 心跳的退役归 **F12**，而 F12 被 **U4b** 挡着：
+    /// daemon 侧 `platform/pidwatch/fallback.rs` 在非 Linux 上是**一个诚实的空壳**
+    /// （头注原话），`on_dead` 永远不会被调用。而那条心跳治的 bug 恰恰是 Windows 场景
+    /// （关终端窗口 ⇒ `claude.exe` 被强杀 ⇒ pidfile 不会被删 ⇒ 死 Tab 永远 live）。
+    ///
+    /// ⇒ **U4b 落地的那一刻就是 F12 能开工的那一刻**，而在本条之前
+    /// **没有任何东西会在那一刻说话** —— 只能靠人回来重读一遍计划。
+    ///
+    /// # ★ 摸底顺带查出：U4b **只剩一半**
+    ///
+    /// 「Windows 判活」在本仓**已经有一份在生产跑的实现** —— `session_map.rs` 的
+    /// `cfg(windows)` 那支：`OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` +
+    /// `GetExitCodeProcess`（`STILL_ACTIVE`）+ `GetProcessTimes` 与 `procStart` 比
+    /// （`PROC_START_TOLERANCE_TICKS`，防 PID 复用）。
+    ///
+    /// 那是**轮询形态**（问一次「它还在吗」）；daemon 要的是**事件形态**
+    /// （`watch_pid_until_exit`，阻塞等到它死）。⇒ 两者不能互相替代，
+    /// 但**身份校验那一半可以直接搬**，U4b 真正缺的只是 `WaitForSingleObject` 那一段。
+    /// ⚠ 这条订正很要紧：计划里 U4b 一直被当成「从零写 + 要真机验证」，
+    /// 而实际上它的一半已经在 Windows 用户机上跑了很久。
+    ///
+    /// # 失效模式（如实登记）
+    ///
+    /// ⚠ 第一版按「`fallback.rs` 里出现 `OpenProcess`/`WaitForSingleObject` 这两个名字」判，
+    /// **首跑就假红** —— 那两个词逐字写在它自己的 `tracing::error!` **文案**里
+    /// （「真实现见 U4b（OpenProcess + WaitForSingleObject）」），而文案是代码不是注释。
+    /// ⇒ 又一次「针打在字面量上」。改成按**行为性质**判：
+    /// 空壳的定义就是它头注承诺的那句 ——「`on_dead` **永远不会被调用**」。
+    ///
+    /// 本条按「`on_dead` 有没有被调用」判。若 U4b 换个文件落地
+    /// （比如新开 `windows.rs` + 改 `mod.rs` 的 `cfg`），本条**看不见** ——
+    /// 那时 `mod.rs` 的 `cfg` 会变，而本条不读它。⇒ 它是个闹钟，不是围栏。
+    #[test]
+    fn the_windows_pidwatch_is_still_an_honest_no_op() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("仓根");
+        let p = root.join("remote-daemon-proto/src/platform/pidwatch/fallback.rs");
+        let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| {
+            panic!(
+                "{} 读不到：{e}\n                 ★ 文件搬走/删掉本身就可能意味着 U4b 落地了 —— 回去读 F12。",
+                p.display()
+            )
+        });
+        let prod = guard_core::production_code(&raw);
+        // ★ 判的是**行为**不是名字：空壳的定义是「`on_dead` 永远不会被调用」。
+        // 拼出来的，免得命中本条自己的说明。
+        let called = format!("on_{}()", "dead");
+        assert!(
+            !prod.contains(&called),
+            "★ **U4b 落地了** —— daemon 的非 Linux pidwatch 不再是空壳。\n\n             那意味着 **F12 可以开工了**：`session_map.rs` 那条 2s 心跳等的\n             「进程死了但 pidfile 还在」现在有真事件源了。\n\n             要做的两件事：\n             ① 把 `pidwatch` 抽成两侧共用的 crate（今天它住在 daemon crate 里，\n                而 daemon crate 刻意不在 workspace 里、有独立 lockfile）；\n             ② `session_map.rs` 改用它，删掉 `recv_timeout(2s)` 那条心跳，\n                并把上面 `REGISTERED` 里 `src/session_map.rs` 那条**删掉**\n                （`the_ticker_count_is_pinned` 会红在「少一条」上 —— 那是退役的验收证据）。\n\n             ⚠ 顺带读一下：Windows **轮询**判活本仓早就有（`session_map.rs` 的 `cfg(windows)` 支，\n             `OpenProcess` + `GetExitCodeProcess` + `GetProcessTimes` 比 procStart）——\n             身份校验那一半可以直接搬，别重写。"
+        );
+    }
+
     /// ★ `bind.rs` 那个真节拍器的**形态**没变：还是「无限循环 + 周期 sleep」。
     ///
     /// ⚠ **函数名里的 `the_one_real_ticker` 是历史措辞，别读成「全仓唯一」** —— 08-10 起
