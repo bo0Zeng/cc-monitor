@@ -1391,6 +1391,28 @@ fn tmux_raw_registry() -> &'static std::sync::Mutex<std::collections::HashMap<St
 
 /// B2：快照「origin → 最新 tmux ls 原文」，供 tmux 对账 poller 读（零 SSH）。缺该 origin = 尚未推来
 /// tmux 状态（daemon 未发 / 连接刚起 / 断连已清）→ poller 本轮跳过该 origin（同「观测无效不累计缺失」）。
+///
+/// # ⚠ 刻意**不开** IPC 出口〔devbench F08, 08-10〕
+///
+/// 有人（包括一份审计清单）会看到「daemon 推来的 `tmux_sessions` 帧只进这张表、前端却每 1s
+/// 新建一条 SSH 跑 `list_remote_tmux`」，然后得出「开个 `#[tauri::command]` 把它暴露给前端
+/// 就能消掉那条轮询」。**那个因果不成立**，理由是这份快照的**刷新时机**：
+///
+/// - daemon 的 `TmuxProbeDue` **只在 `initial_tmux_probe` 发一次**（一次性初探）；
+///   之后每一拍由 `Poke` 驱动，而 `Poke` 来自 tmux hook，**hook 只有 3 条**：
+///   `session-created` / `session-closed` / `session-renamed`（`control/tmux_hook.rs::HOOK_EVENTS`）。
+/// - 而 `tabs.ts` 的 `awaitExitFor` 等的是「**pane 前台命令从 claude 变回 shell**」——
+///   会话还在，只是里面的命令换了。**那个变化不触发任何一条 hook** ⇒ 这份快照在那个场景下
+///   **永不刷新** ⇒ 改读它 = 每次都等到 10s 超时再降级 kill，**功能退化**。
+///
+/// ⇒ 今天开出口**没有消费者**：另两个真实调用点（`fork-flow.ts` · `settings/machine-card.ts`）
+/// 是**一次性查询**、不是轮询，走 SSH 没问题。开一个没人用的出口是装饰。
+///
+/// **解锁条件**（真出现了再回来开，别提前开）：
+/// 先有一个「pane 前台命令变化」的事件源 —— tmux 没有这种 hook，能想到的路只有
+/// 轮询 `capture-pane`（拿一个轮询换另一个）或让 claude 自己上报。
+/// 那条轮询的账在 `polling_registry` 的 `src/tabs.ts` 一条里，**已如实登记为未排期**，
+/// 本处只指过去、不抄一份。
 pub fn snapshot_tmux_by_origin() -> std::collections::HashMap<String, String> {
     tmux_raw_registry().lock().unwrap().clone()
 }
@@ -7090,6 +7112,44 @@ mod frame_dispatch_shape {
              「daemon 明明发了，界面没反应」，而既有判据一条都不会红。\n\
              这条流同时被仓外 aterm 消费（D6：契约冻结成本）。\n\
              新增帧请写成具名臂；确实不处理也请显式写出来并加一句为什么。"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tmux_snapshot_exposure_tests {
+    /// ★ **前提触发器：`snapshot_tmux_by_origin` 刻意没有 IPC 出口。**
+    ///
+    /// # 它的价值不在「拦住谁」，在**它红的时候会说什么**
+    ///
+    /// 这是一条「今天没有」型断言 —— 没人加出口它就一直绿，天然容易被读成仪式。
+    /// 但真有人去开那个出口时（一份审计清单就会这么建议），诊断要立刻把
+    /// 「**快照不刷新、`awaitExitFor` 用不了**」摆到他眼前，逼他先回答「消费者是谁」。
+    ///
+    /// ⚠ 如实记：它**挡不住**「有人加了出口且顺手把这条判据也改了」——那时只剩评审。
+    #[test]
+    fn the_tmux_snapshot_stays_out_of_the_ipc_surface() {
+        let src = guard_core::production_code(include_str!("ssh_source.rs"));
+        let needle = "fn snapshot_tmux_by_origin";
+        let at = src
+            .find(needle)
+            .expect("找不到 `snapshot_tmux_by_origin` —— 它被改名或删了，本条会零命中地绿");
+        // 往前看 200 字节：`#[tauri::command]` 属性若存在，必然紧贴在函数签名之前。
+        let before = &src[at.saturating_sub(200)..at];
+        assert!(
+            !before.contains("tauri::command"),
+            "`snapshot_tmux_by_origin` 被包成 Tauri 命令了。\n\
+             \n\
+             ⚠ **开这个出口之前先回答：消费者是谁？**\n\
+             最常见的动机是「让 `tabs.ts` 的 `awaitExitFor` 改读快照，省掉每 1s 一条 SSH」——\n\
+             **那条路走不通**：daemon 的 `TmuxProbeDue` 只在初探发一次，之后每一拍靠 tmux hook，\n\
+             而 hook 只有 session-created/closed/renamed 三条。`awaitExitFor` 等的是\n\
+             「pane 前台命令从 claude 变回 shell」——**那个变化一条 hook 都不覆盖** ⇒\n\
+             快照在那个场景下永不刷新 ⇒ 改读它 = 每次等到 10s 超时再降级 kill，**功能退化**。\n\
+             \n\
+             解锁条件：先有一个「pane 前台命令变化」的事件源。那条轮询的账已在\n\
+             `polling_registry` 的 `src/tabs.ts` 一条里如实登记为未排期。\n\
+             详见 `snapshot_tmux_by_origin` 的头注与 devbench F08。"
         );
     }
 }
