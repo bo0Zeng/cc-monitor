@@ -6791,3 +6791,83 @@ body.settings-window-mode .grid-monitor-trigger {
   border-left: 3px solid var(--border-strong);
   padding-left: 8px;
 }
+
+/* ── 收件箱 overlay（devbench F03b）────────────────────────────────────────
+ * body-level fixed overlay，与历史浏览器/全景同层级（都是「跳出实时流」的面板）。
+ * 只有一个文本框 + 保存 —— 定框 C2：做进 UI 的只许是「结构化注入」这个机制本身，
+ * skill 的阶段名/命令名/schema 一律不进 UI（那些会随 skill 改版全废）。
+ */
+.inbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 45%);
+}
+.inbox-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(760px, 88vw);
+  height: min(560px, 78vh);
+  padding: 14px 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  visibility: visible;
+}
+.inbox-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  color: var(--text);
+}
+.inbox-close,
+.inbox-save {
+  padding: 4px 12px;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+}
+.inbox-close:hover,
+.inbox-save:hover {
+  background: var(--overlay-hover);
+}
+.inbox-save:disabled {
+  opacity: 50%;
+  cursor: default;
+}
+/* 状态行：每个 skill 一句。缺席时这里显示后端给的**带身份**原因（定框 C6）。 */
+.inbox-status {
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.inbox-path {
+  color: var(--text-3, var(--text-2));
+  font-family: var(--mono, monospace);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.inbox-text {
+  flex: 1;
+  padding: 10px;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--mono, monospace);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: none;
+}
+.inbox-foot {
+  display: flex;
+  justify-content: flex-end;
+}

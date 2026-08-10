@@ -24,6 +24,7 @@ import { listen } from "@tauri-apps/api/event";
 import { HistoryView } from "./views/history";
 import { SessionViewer } from "./views/session-viewer"; // F77：点 agent 看记录复用只读会话查看器
 import { PanoramaView } from "./views/panorama";
+import { InboxView } from "./views/inbox-view";
 import { UsageView } from "./views/usage-view";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
@@ -442,6 +443,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Batch15-P2：代码全景入口 —— 顶栏右侧，紧邻历史按钮左边。自挂 body 作 fixed overlay
   // （照 HistoryView），对活跃**本地**会话的 cwd 建 code-picture 索引画代码库地图。
   const panoramaView = new PanoramaView(() => tabs.activeRepoInfo());
+  // devbench F03b：收件箱 overlay —— 与 panorama 同一个 cwd 取法（活跃 tab）。
+  const inboxView = new InboxView(() => tabs.activeRepoInfo());
   // F70（护城河）：右键 tab「在全景高亮本会话改动」→ 切到该会话 → 打开全景 → 高亮它改过的
   // 节点。TabManager 不直接持有 PanoramaView，走注入回调（同 onManualSwitch 范式）。
   tabs.requestPanoramaHighlight = (sid) => {
@@ -527,6 +530,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     const cmds: Command[] = [
       { id: "open-history", title: "打开历史浏览器", keywords: "history 历史", hint: chordHint("app.toggle-history"), run: () => { if (!historyView.isVisible()) void historyView.open(); } },
       { id: "open-panorama", title: "打开代码全景", keywords: "panorama 全景 code", hint: chordHint("app.toggle-panorama"), run: () => { if (!panoramaView.isVisible()) void panoramaView.open(); } },
+      // devbench F03b：**开 overlay 属命令面板首刀允许的只读动作**（写发生在 overlay 内的保存上）。
+      { id: "open-inbox", title: "打开收件箱", keywords: "inbox 收件箱 计划 planned-build 注入", run: () => { if (!inboxView.isVisible()) void inboxView.open(); } },
       { id: "open-usage", title: "打开用量视图", keywords: "usage token 用量", run: () => { if (!usageView.isVisible()) void usageView.open(); } },
       { id: "open-cc-bus", title: "打开 cc-bus 驾驶舱", keywords: "cc-bus bus agent 驾驶舱 通信", run: () => { if (!ccBusView.isVisible()) ccBusView.open(); } },
       { id: "open-grid", title: "打开多 agent 监控", keywords: "grid monitor 监控 agent 并排", run: () => { if (!gridMonitorView.isVisible()) gridMonitorView.open(); } },
