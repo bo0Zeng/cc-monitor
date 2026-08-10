@@ -84,6 +84,11 @@ mod tests {
         ("replay_session_to_window", "app.window.session", Side::Both),
         ("open_settings_window", "app.window.settings", Side::Both),
         ("bring_monitor_to_front", "app.window.self", Side::Both),
+        // devbench F03：skill 接入面（列出 skill / 读写那个「人手写的注入文件」）。
+        // 三条共用一个能力键 —— 它们是同一件事的三个动作（先例：`app.window.session` 也是两条共键）。
+        ("list_skills", "skill.inbox", Side::Local),
+        ("read_skill_file", "skill.inbox", Side::Local),
+        ("write_skill_file", "skill.inbox", Side::Local),
         ("cc_get_auto_launch", "app.auto-launch", Side::Both),
         ("cc_set_auto_launch", "app.auto-launch", Side::Both),
         ("frontend_perf_log", "app.diagnostics", Side::Both),
@@ -333,6 +338,7 @@ mod tests {
         ("accounts.trust", Asym::ParityDebt, "同 accounts.list：预信任检查只有远端有。归 L3。"),
         ("acct-iso.check", Asym::ParityDebt, "本机同样需要「这台装没装 cc-acct-iso」的检测（切号要靠它），今天只能查远端。归 L3。"),
         ("acct-iso.deploy", Asym::NaturallyAsymmetric, "vendored 副本要**传到**远端才能用；本地就在本机、不存在传输这一步。这条不对称是传输本身造成的，不是能力缺失。"),
+        ("skill.inbox", Asym::Undecided, "devbench F03：skill 接入面今天只读写**本机工作目录**下的 `.claude/planned-build/INBOX.txt`。远端项目也可能有同一份结构（那边的 `.claude/` 一样在），技术上走 SFTP 就能读写 —— **但「远端项目的收件箱要不要能在这里编辑」没人裁定过**。⇒ 刻意记 `Undecided` 而不是 `NaturallyAsymmetric`：后者会替产品做主说「本地不需要」，而事实是**没想过**。⚠ 若将来要做，写面围栏那三道得先想清楚远端版怎么算（`canonicalize` 在远端不成立）。"),
         ("acct-iso.shellinit", Asym::ParityDebt, "本机切号同样要 shellinit 文本，今天只能给远端生成。归 L3。"),
         ("audit.config-surface", Asym::ParityDebt, "**反向缺口**（本地能答、远端答不出）——§40 表里已逐行记明：本页明写不连 SSH，10 行里 7 行对远端恒返回「未确定」。"),
         ("cc-bus.cockpit", Asym::ParityDebt, "cc_bus.rs 的 5 个 IPC **全走 origin+ssh、零本机读取路径**（`config_surface.rs` 的钉死表已把 `~/.cc-bus/` 记为 Remote）。而本机 cc-bus 是存在的——`diagnose_local_cc_bus_hooks` 就在诊断它 ⇒ 驾驶舱管不了本机的 agent，是真欠账。"),
@@ -572,8 +578,10 @@ mod tests {
         // 反向自检：一条都没检到 = 签名采集坏了。**等号而不是 `>=`**（T04 审计重要 5：
         // 写 `>= N` 恰好容忍一次静默降级）。
         assert_eq!(
-            checked, 70,
-            "检到 {checked} 条 Local/Both 命令（真实应为 70 = Local 48 + Both 22；\
+            checked, 73,
+            "检到 {checked} 条 Local/Both 命令（真实应为 73 = Local 51 + Both 22；\
+             devbench F03 的 skill 接入面是 +3（list_skills / read_skill_file / write_skill_file，\
+             都 Local）；\
              E79 的 `list_local_session_accounts` 是 +1；U-CC1 的 `drift_ledger_report` 是 +1，\
              它是 Both —— 本地行与远端行都经同一个 `parse_line` 喂进同一个进程内账本；\
              **F08 的 `account_usage_local` 是 +1** —— 它补平了 `usage.per-account` 那条 ParityDebt）\
@@ -588,11 +596,11 @@ mod tests {
         // 而 U8a-2c-pre（`57dba2a`）把这四个数各 +1 时，只改了数、一条尾注都没动。
         // ⇒ 尾注把 U8a-2c-pre 的增量记在了 U8c-2c-2 名下。**尾注的用处就是说清「谁加的」，
         // 归属错了就不如没有。**
-        assert_eq!(LEDGER.len(), 128, "命令总数变了"); // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）
+        assert_eq!(LEDGER.len(), 131, "命令总数变了"); // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）
         let sides = capability_sides();
-        assert_eq!(sides.len(), 54, "能力总数变了"); // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：本机不经 IR，§36）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）
+        assert_eq!(sides.len(), 55, "能力总数变了"); // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：本机不经 IR，§36）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）
         let asym = asymmetric_capabilities();
-        assert_eq!(asym.len(), 20, "不对称能力数变了"); // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
+        assert_eq!(asym.len(), 21, "不对称能力数变了"); // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
         let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
         for (_, k, _) in ASYMMETRY_REASONS {
             *kinds
@@ -605,6 +613,6 @@ mod tests {
         }
         assert_eq!(kinds.get("natural"), Some(&9), "天然不对称条数变了"); // U8c-2c-2 +1（launch.render-cli：本地不经 IR，§36+R07）；U8a-2c-pre +1（launch.render-payload：同上）
         assert_eq!(kinds.get("debt"), Some(&8), "平价欠账条数变了"); // F08 -1（usage.per-account 补平） // G6 -1；E79 -1
-        assert_eq!(kinds.get("undecided"), Some(&3), "未裁定条数变了"); // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
+        assert_eq!(kinds.get("undecided"), Some(&4), "未裁定条数变了"); // devbench F03 +1（skill.inbox：远端项目的收件箱要不要能编辑，没人裁定过） // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
     }
 }

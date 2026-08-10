@@ -262,6 +262,19 @@ mod tests {
          "把 `embedded-daemons/cc-monitor-remote-<arch>` 复制进 `OUT_DIR`，\
           供 `include_bytes!` 内嵌。写的是 cargo 自己的构建目录，不碰用户环境；\
           ⚠ 它读的那份清单由 `sftp.rs` 的身份见证判据守着（`id_from_manifest` 不许写死）"),
+        // ── devbench F03：skill 接入面的收件箱写入。**不是安装动作**。
+        ("skill_host.rs", "write_skill_file", None,
+         "写用户**自己项目里**的 `.claude/planned-build/INBOX.txt`（planned-build skill 的\
+          「结构化注入」进件口）。**不碰 Claude 的数据、不碰用户环境、不装任何东西。**\n\
+          分界沿用 `doc/INVARIANTS.md:23` 那条 F47 澄清的口径：用户亲自驱动、\
+          每次写都是面板内一次直接手势、写的不是 Claude 的 jsonl/pidfile。\n\
+          三道围栏（`skill_host::resolve_editable`）：① 路径 `canonicalize` **之后**\
+          做集合判定（集合来自声明表的 `editable`，不是一串 if）② 过\
+          `sftp_pool::is_protected_claude_data_path` 纵深③ 目标必须**已存在**\
+          （本功能是「编辑收件箱」不是「创建任意文件」）。\n\
+          写本身走 `verified_write::verify_and_rollback`（备份 → 写 → 读回逐字节比对 →\
+          不符即回滚），**没有自造第四份写入实现** —— 那个模块头注记着本仓曾有 4 处\
+          独立实现且校验强度不一致（两处只比长度）。"),
         // ── 安装动作：写的是**用户既有的环境/配置**，且对应声明表里的一个工具
         ("profile_installer.rs", "install_to_profile", Some("ccm"),
          "往用户 shell profile 的 BEGIN/END 块里装 ccm 启动器（写前先备份）"),

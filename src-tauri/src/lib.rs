@@ -1101,6 +1101,11 @@ pub fn run() {
             account_usage::account_usage_local,
             ccm_probe::probe_ccm_cli,
             // Batch15-P1：code-picture 代码全景后端命令族（per-repo Engine 池,只读查询）
+            // devbench F03：skill 接入面（列出 / 读 / 写那个「人手写的注入文件」）。
+            // ⚠ 写走 `skill_host::resolve_editable` 的三道围栏 + `verified_write` 读回比对。
+            skill_host::list_skills,
+            skill_host::read_skill_file,
+            skill_host::write_skill_file,
             panorama::panorama_index,
             panorama::panorama_reindex,
             panorama::panorama_status,

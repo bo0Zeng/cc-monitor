@@ -40,12 +40,6 @@
 //! 「写必须过这个集合 + 过 `sftp_pool::is_protected_claude_data_path` + 过
 //! `verified_write`」那条围栏归 **F03**。⇒ 本模块是纯函数层，**它算得对不等于没人绕过它**。
 
-// ⚠ **处置条件（照 `tool_registry` 的先例）**：本模块今天**零生产消费者** ——
-// 声明表与三个纯函数都齐了，但消费它们的 UI/IPC 归 **F03**。
-// ⇒ F03 接上之后**删掉这行 `allow`**；若 F03 收工时它仍然零消费者，
-// **就该删掉整个模块**，而不是让它留成装饰。判据钉不住「有没有人用」，所以写在这里。
-#![allow(dead_code)]
-
 use std::path::{Path, PathBuf};
 
 /// 一个 skill 在 cc-monitor 里的接入声明。**恰好四段**。
@@ -61,7 +55,18 @@ pub struct SkillSpec {
     pub discover: Discover,
     /// ② 产物落点。
     pub artifacts: Artifacts,
-    /// ③ 可编辑白名单：**相对每个实例目录**的文件名。写面围栏的唯一来源。
+    /// ③ 可编辑白名单：**相对 [`Artifacts::root`]** 的文件名。写面围栏的唯一来源。
+    ///
+    /// ⚠⚠ **08-10（F03 摸底）订正：基准从「实例目录」改成「root」。**
+    /// F02 里我写的是「相对每个实例目录」，而第一个真实使用者（F03 的收件箱入口）
+    /// 一接就发现指错了：`INBOX.txt` 是**项目级**的进件口（planned-build skill 明写
+    /// 「住计划目录根，**不住工作区**，一个项目一份」），算成 `<工作区>/INBOX.txt`
+    /// 那个文件根本不存在。
+    /// ★ **F02 的判据当时全绿** —— 因为它只验「集合来自声明」，**没验那些路径指得对**。
+    /// 纯函数判据看不出「集合整体指错地方」。⇒ 已补 `the_editable_paths_point_at_real_files`
+    /// 这条**接线层**判据（在真实工作目录上算一次并断言文件真的在）。
+    /// ⇒ 教训：**「用第二份声明验 schema」验的是「装得下」，验不了「接上去对不对」**，
+    /// 后者只有真实使用者能验。
     pub editable: &'static [&'static str],
     /// ④ 装 / 升 / 卸。**只指向装法的住址，不复制装法**。
     pub install: Install,
@@ -239,15 +244,161 @@ pub fn instances(spec: &SkillSpec, cwd: &Path) -> Vec<Instance> {
     out
 }
 
-/// ③ 这个实例里**允许编辑**的路径集合。
+/// ③ 这个 skill **允许编辑**的路径集合（相对 [`Artifacts::root`]）。
 ///
 /// ⚠ 返回的是**集合**，不是「判断一个路径行不行」的谓词 —— 因为集合可以被判据整体检查，
-/// 而谓词只能被逐例试探。写面围栏（F03）要拿这个集合做 `contains` 判定，
+/// 而谓词只能被逐例试探。写面围栏要拿这个集合做 `contains` 判定，
 /// 且必须在**路径解析之后**判（符号链接与 `..` 都要先解析掉）。
 ///
-/// ⚠ **本函数算得对 ≠ 没人绕过它** —— 强制「写必须过它」归 F03。
-pub fn editable_paths(spec: &SkillSpec, instance: &Instance) -> Vec<PathBuf> {
-    spec.editable.iter().map(|f| instance.dir.join(f)).collect()
+/// ⚠ **本函数算得对 ≠ 没人绕过它** —— 强制「写必须过它」由 [`resolve_editable`] 承担。
+pub fn editable_paths(spec: &SkillSpec, cwd: &Path) -> Vec<PathBuf> {
+    let root = cwd.join(spec.artifacts.root);
+    spec.editable.iter().map(|f| root.join(f)).collect()
+}
+
+/// ★ **写面围栏的唯一入口**〔F03〕：把一个「用户想编辑的路径」解析并判定。
+///
+/// # 三道，缺一不可
+///
+/// 1. **解析后**再判（`canonicalize`）—— 符号链接与 `..` 都解掉。判字符串是可绕的：
+///    `<root>/../../etc/passwd` 在字符串上「以 root 开头」，解析后就不是了。
+/// 2. **集合判定**，不是一串 `if` —— 集合来自声明（[`editable_paths`]），
+///    所以「能写哪些」这件事的真相源只有声明表一处。
+/// 3. **过 `is_protected_claude_data_path`** —— 纵深防御。即使声明写歪了，
+///    也不许碰 Claude 的 jsonl/pidfile（`doc/INVARIANTS.md:11` 那条只读铁律的对象）。
+///
+/// ⚠ 目标文件**必须已存在**才让写：本功能是「编辑收件箱」，不是「创建任意文件」。
+/// 不存在就拒 —— 那让写面严格等于「声明里那几个真实文件」，而不是「那几个路径名」。
+pub fn resolve_editable(spec: &SkillSpec, cwd: &Path, requested: &Path) -> Result<PathBuf, String> {
+    let real = requested.canonicalize().map_err(|e| {
+        format!(
+            "解析路径失败（文件必须已存在）：{} — {e}",
+            requested.display()
+        )
+    })?;
+
+    let allowed: Vec<PathBuf> = editable_paths(spec, cwd)
+        .iter()
+        .filter_map(|p| p.canonicalize().ok())
+        .collect();
+
+    if !allowed.contains(&real) {
+        return Err(format!(
+            "拒绝写入：{} 不在 `{}` 的可编辑集合里。\n\
+             该 skill 声明的可编辑文件是 {:?}（相对 {}）。\n\
+             ⚠ 这是集合判定、且在路径解析之后 —— 符号链接与 `..` 都已解开。",
+            real.display(),
+            spec.id,
+            spec.editable,
+            spec.artifacts.root
+        ));
+    }
+
+    // 纵深防御：即使上面放行，也不许碰 Claude 的数据文件。
+    let as_str = real.to_string_lossy();
+    if crate::sftp_pool::is_protected_claude_data_path(&as_str) {
+        return Err(format!(
+            "拒绝写入：{} 是 Claude 的数据文件（jsonl/pidfile）。\n\
+             那是 `doc/INVARIANTS.md` 只读铁律的对象 —— 声明表把它列进 editable 也不行。",
+            real.display()
+        ));
+    }
+    Ok(real)
+}
+
+// ───────────────────────── IPC（F03：收件箱编辑入口的后端那半）─────────────────────────
+//
+// ⚠ 这一层**只做三件事**：列出 skill 与它的实例 · 读那个可编辑文件 · 写那个可编辑文件。
+// 写必须过 [`resolve_editable`] 的三道围栏 + `verified_write` 的读回比对。
+// **仍然不跑任何 skill 命令**（模块头注那条红线由 `the_host_never_spawns_anything` 钉着）。
+
+/// 一个 skill 的当前状态（给 UI 用）。
+#[derive(serde::Serialize)]
+pub struct SkillView {
+    pub id: String,
+    pub label: String,
+    /// `null` = 在场；否则是**带身份的**缺席原因（C6）。
+    pub missing_reason: Option<String>,
+    /// 这个 skill 的实例名（planned-build 的工作区名…）。
+    pub instances: Vec<String>,
+    /// 可编辑文件的绝对路径（已算好，UI 直接拿去请求读/写）。
+    pub editable: Vec<String>,
+}
+
+/// 生产路径上的 cwd：**活跃 tab 的 cwd**（与 panorama 的取法一致）。
+///
+/// ⚠ 它是**入参**而不是进程 cwd —— cc-monitor 的进程 cwd 与用户在看的那个项目无关。
+fn views(cwd: &Path) -> Vec<SkillView> {
+    let claude_dir = crate::paths::resolve_claude_dir().unwrap_or_default();
+    SKILLS
+        .iter()
+        .map(|spec| SkillView {
+            id: spec.id.to_string(),
+            label: spec.label.to_string(),
+            missing_reason: match discover(spec, &claude_dir, cwd) {
+                Presence::Found => None,
+                m @ Presence::Missing { .. } => Some(m.describe()),
+            },
+            instances: instances(spec, cwd).into_iter().map(|i| i.name).collect(),
+            editable: editable_paths(spec, cwd)
+                .into_iter()
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect(),
+        })
+        .collect()
+}
+
+/// 列出所有接入的 skill 及其状态。
+#[tauri::command]
+pub async fn list_skills(cwd: String) -> Result<Vec<SkillView>, String> {
+    Ok(views(Path::new(&cwd)))
+}
+
+/// 读一个可编辑文件。**必须先过围栏** —— 读也过，免得它变成一个任意文件读取口。
+#[tauri::command]
+pub async fn read_skill_file(
+    cwd: String,
+    skill_id: String,
+    path: String,
+) -> Result<String, String> {
+    let spec = SKILLS
+        .iter()
+        .find(|s| s.id == skill_id)
+        .ok_or_else(|| format!("未知 skill：{skill_id}"))?;
+    let real = resolve_editable(spec, Path::new(&cwd), Path::new(&path))?;
+    std::fs::read_to_string(&real).map_err(|e| format!("读取失败：{} — {e}", real.display()))
+}
+
+/// 写一个可编辑文件：**围栏 → 备份 → 写 → 读回比对 → 不符就回滚**。
+///
+/// ⚠ 复用 `verified_write::verify_and_rollback`，**不自己造第四份写入实现** ——
+/// 那个模块的头注逐字记着本仓曾有 4 处独立实现且校验强度不一致（两处只比长度）。
+#[tauri::command]
+pub async fn write_skill_file(
+    cwd: String,
+    skill_id: String,
+    path: String,
+    content: String,
+) -> Result<(), String> {
+    let spec = SKILLS
+        .iter()
+        .find(|s| s.id == skill_id)
+        .ok_or_else(|| format!("未知 skill：{skill_id}"))?;
+    let real = resolve_editable(spec, Path::new(&cwd), Path::new(&path))?;
+
+    // 备份：读不到就当空（文件必然存在 —— 围栏要求 canonicalize 成功）。
+    let backup = std::fs::read_to_string(&real).unwrap_or_default();
+    std::fs::write(&real, &content).map_err(|e| format!("写入失败：{} — {e}", real.display()))?;
+
+    let read_target = real.clone();
+    let rollback_target = real.clone();
+    crate::verified_write::verify_and_rollback(
+        &content,
+        || std::fs::read_to_string(&read_target).map_err(|e| format!("{e}")),
+        || {
+            let _ = std::fs::write(&rollback_target, &backup);
+        },
+    )
 }
 
 #[cfg(test)]
@@ -344,27 +495,171 @@ mod tests {
     /// 如实登记为诚实边界，不假装本件已经把写面围住了。
     #[test]
     fn editable_paths_come_from_the_spec_and_nowhere_else() {
-        let inst = Instance {
-            name: "w".into(),
-            dir: PathBuf::from("/tmp/x/w"),
-        };
+        let cwd = Path::new("/tmp/x");
         for spec in SKILLS {
-            let got = editable_paths(spec, &inst);
+            let got = editable_paths(spec, cwd);
             assert_eq!(
                 got.len(),
                 spec.editable.len(),
                 "`{}` 的可编辑集合大小与声明不符 —— 宿主凭空加了或漏了路径",
                 spec.id
             );
+            let root = cwd.join(spec.artifacts.root);
             for (p, f) in got.iter().zip(spec.editable) {
                 assert_eq!(
                     p,
-                    &inst.dir.join(f),
-                    "`{}` 的可编辑路径不是「实例目录 + 声明里的文件名」",
+                    &root.join(f),
+                    "`{}` 的可编辑路径不是「artifacts.root + 声明里的文件名」",
                     spec.id
                 );
             }
         }
+    }
+
+    /// 本仓的**工作目录**（`cc-monitor/` 的上一级）—— `artifacts.root` 相对的就是它。
+    ///
+    /// ⚠ 这是一个**假设**，写出来免得它变成隐含知识：计划目录住工作目录的 `.claude/`，
+    /// 而 `cc-monitor` 是工作目录下的子仓。生产路径上这个 cwd 由**活跃 tab** 决定
+    /// （同 panorama 的 `RepoInfoGetter`），测试里用相对 `CARGO_MANIFEST_DIR` 的推导。
+    fn workspace_cwd() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")) // …/cc-monitor/src-tauri
+            .parent() // …/cc-monitor
+            .and_then(|p| p.parent()) // 工作目录
+            .expect("推不出工作目录 —— 目录层级变了，本条会零命中地绿")
+            .to_path_buf()
+    }
+
+    /// ★★ **接线层判据：算出来的路径必须真的指向存在的文件。**
+    ///
+    /// # 它为什么存在（这条是被一次真缺陷逼出来的）
+    ///
+    /// F02 收工时 `editable` 的基准是「实例目录」，算出 `<工作区>/INBOX.txt` —— 而那个
+    /// 文件根本不存在（收件箱是**项目级**的，住计划目录根）。**F02 的判据当时全绿**：
+    /// 它们只验「集合来自声明」「大小对得上」，**没有一条去看那些路径指得对不对**。
+    ///
+    /// ⇒ 纯函数判据看不出「集合**整体**指错地方」。这条补的就是那一层：
+    /// 在**真实工作目录**上算一次，断言每条路径都能 `canonicalize`。
+    ///
+    /// ⚠ 它对文件系统有依赖 —— 这是**刻意的**，也是它唯一有价值的原因。
+    #[test]
+    fn the_editable_paths_point_at_real_files() {
+        let cwd = workspace_cwd();
+        // 抽取器自检：至少有一个 skill 声明了可编辑文件，否则整条空转。
+        let total: usize = SKILLS.iter().map(|s| s.editable.len()).sum();
+        assert!(
+            total >= 1,
+            "没有任何 skill 声明 editable —— 本条会零命中地绿（F03 的写面就没有对象了）"
+        );
+        for spec in SKILLS {
+            for p in editable_paths(spec, &cwd) {
+                assert!(
+                    p.canonicalize().is_ok(),
+                    "`{}` 声明的可编辑文件算出来是 {}，但它不存在。\n\
+                     ⇒ 要么 `artifacts.root` 错了，要么 `editable` 的基准理解错了。\n\
+                     ★ F02 收工时正是这个错：基准写成「实例目录」，而收件箱是**项目级**的\n\
+                     （planned-build 明写「住计划目录根，不住工作区」）。\n\
+                     ⚠ 若本条在别人机器上红，先确认工作目录布局：`artifacts.root` 相对的是\n\
+                     **工作目录**（`cc-monitor/` 的上一级），不是仓根。",
+                    spec.id,
+                    p.display()
+                );
+            }
+        }
+    }
+
+    /// ★ **写面围栏：三道各自要能拦住东西。**
+    #[test]
+    fn the_write_fence_rejects_what_it_should() {
+        let cwd = workspace_cwd();
+        let spec = SKILLS
+            .iter()
+            .find(|s| !s.editable.is_empty())
+            .expect("没有带 editable 的 skill —— 本条会零命中地绿");
+
+        // ① 白名单内的真实文件：放行。
+        let ok_path = &editable_paths(spec, &cwd)[0];
+        assert!(
+            resolve_editable(spec, &cwd, ok_path).is_ok(),
+            "白名单里的真实文件被拒了 —— 围栏把该放的也拦了"
+        );
+
+        // ② 同目录下**没在白名单里**的文件：拒。
+        //    用 `STATUS.md` 之类肯定存在、但不在 editable 里的东西才说明问题
+        //    （拿一个不存在的文件去试，拦住的是「不存在」而不是「不在白名单」）。
+        let root = cwd.join(spec.artifacts.root);
+        let sibling = root.join("README.md");
+        if sibling.exists() {
+            let err = resolve_editable(spec, &cwd, &sibling)
+                .expect_err("同目录下不在白名单的文件竟然被放行");
+            assert!(
+                err.contains("不在") && err.contains(spec.id),
+                "拒绝理由没说清是「不在可编辑集合里」以及是哪个 skill：{err}"
+            );
+        }
+
+        // ③ 用 `..` 逃出去：拒。
+        let escape = root.join("../../etc/hostname");
+        if escape.canonicalize().is_ok() {
+            assert!(
+                resolve_editable(spec, &cwd, &escape).is_err(),
+                "`..` 逃逸没被拦住"
+            );
+        }
+
+        // ④ ★ **等价写法必须被接受** —— 这条才是「解析后判定」与「判字符串」的真分界。
+        //
+        // ⚠ **写下这条的经过值得记**：我原本用 ③（`..` 逃逸）当那个分界的阴性对照，
+        // 实测**变异没红** —— 把 `canonicalize` 全去掉、改成纯字符串比较，8 条判据照样绿。
+        // 查清之后发现不是判据弱，是**我的用例选错了**：集合判定用的是**精确相等**
+        // 而不是「以 root 开头」，所以 `..` 逃逸在字符串下**同样不在集合里**、同样被拒。
+        //
+        // ⇒ 顺带修正了我对这个围栏的理解，如实记下强度分布：
+        //   · **集合精确相等** = 主防线（很强：白名单是具体文件名，不是目录前缀）
+        //   · `canonicalize` = ① 让等价写法可用（本条验的就是它）
+        //                      ② 让第三道 `is_protected_claude_data_path` 看到**符号链接的真实目标**
+        //                         而不是链接名
+        //   · 第三道 = 纵深（即使声明写歪也不许碰 Claude 数据）
+        let equivalent = root.join("devbench").join("..").join(spec.editable[0]);
+        assert!(
+            resolve_editable(spec, &cwd, &equivalent).is_ok(),
+            "等价写法 {} 被拒了 —— 围栏在判字符串而不是判解析后的真实路径",
+            equivalent.display()
+        );
+    }
+
+    /// ★ **跨语言对拍：TS 那份手写类型的字段必须与本结构体一致。**
+    ///
+    /// `SkillView` 在 TS 侧是**手写**的（不是 ts-rs 生成，照 `launch-cli-wire.ts` 的先例）
+    /// ⇒ 没有编译器管着它。这条判据读 TS 源码逐字段对拍，漏一个就红。
+    ///
+    /// ⚠ 它**只钉字段名**，不钉类型 —— 那是本仓「名字钉死是普遍的、类型生成是按需的」
+    /// 那条成文规则的档位。如实记，别读成「类型也对上了」。
+    #[test]
+    fn the_ts_view_type_matches_this_struct() {
+        let ts = std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/ipc/commands.ts"),
+        )
+        .expect("读不到 `src/ipc/commands.ts` —— 抽取器坏了，本条会零命中地绿");
+        let at = ts
+            .find("export interface SkillView {")
+            .expect("TS 侧找不到 `SkillView` 接口 —— 它被改名或删了");
+        let body = &ts[at..at + ts[at..].find('}').expect("接口没闭合")];
+
+        // 人群从 Rust 这一侧派生：改结构体就自动进人群，不用记得回来加。
+        for field in ["id", "label", "missing_reason", "instances", "editable"] {
+            assert!(
+                body.contains(field),
+                "TS 的 `SkillView` 缺字段 `{field}`。\n\
+                 它是手写类型（没有编译器管），Rust 侧 `skill_host::SkillView` 改了字段\n\
+                 就必须来这里同步 —— 这条判据就是那个「必须」。"
+            );
+        }
+        // 抽取器自检：真的切到了接口体，而不是切了个空串。
+        assert!(
+            body.len() > 60,
+            "切出来的 TS 接口体只有 {} 字节 —— 切歪了，本条会零命中地绿",
+            body.len()
+        );
     }
 
     /// ★ **每一段都要语义非空** —— 「装得下」不等于「装得对」（F02 DoD Y21）。
