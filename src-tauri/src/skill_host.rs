@@ -108,7 +108,13 @@ pub struct Artifacts {
 
 /// 装法的住址。**本模块不实现装，只说它归谁。**
 pub enum Install {
-    /// 归 `tool_registry::TOOLS` 里这个 id（同一张表的两个视图，不是两份数据）。
+    /// 归 `tool_registry::TOOLS` 里这个 id —— **只指向装法的住址，不复制装法**。
+    ///
+    /// ⚠⚠ **F06 订正**：这里原写「同一张表的两个视图，不是两份数据」，**那句是错的**。
+    /// [`SKILLS`]（接入的 skill）与 `TOOLS`（受管工具：装到别处的东西）是
+    /// **两个不同集合，有交集** —— 今天交集只有 `cc-bus`。`planned-build` 在这边不在那边
+    /// （它不由 cc-monitor 装），而 `ccm`/`cc-acct-iso`/… 在那边不在这边（它们不是 skill）。
+    /// ⇒ 该钉的是「`ManagedTool(id)` ⇒ id ∈ TOOLS」这**一个方向**，反方向是假命题。
     ManagedTool(&'static str),
     /// 本轮不支持装，带理由。**如实登记，不假装可装。**
     NotSupported(&'static str),
@@ -624,6 +630,37 @@ mod tests {
             resolve_editable(spec, &cwd, &equivalent).is_ok(),
             "等价写法 {} 被拒了 —— 围栏在判字符串而不是判解析后的真实路径",
             equivalent.display()
+        );
+    }
+
+    /// ★ **两个集合的交集项，两边 id 必须逐字一致**〔devbench F06〕。
+    ///
+    /// # 它们不是「同一张表的两个视图」
+    ///
+    /// [`SKILLS`]（接入的 skill：cc-monitor 显示它的产物、编辑它的注入文件）与
+    /// `tool_registry::TOOLS`（受管工具：**装到别处**的东西）是**两个不同集合，有交集**。
+    /// 今天交集只有 `cc-bus` 一个：`planned-build` 在这边不在那边（它不由 cc-monitor 装），
+    /// 而 `ccm`/`cc-acct-iso`/`remote-daemon`/`project-mcp`/`powershell-profile`
+    /// 在那边不在这边（它们不是 skill）。
+    ///
+    /// ⚠ **反方向刻意不钉**（「TOOLS 里的每个工具都该是一个 skill」）—— 那句话是假的，
+    /// 钉它等于把一个错误的概念做成判据。devbench 的账本 L4 原写「同一张表的两个视图」
+    /// 就是这个错，F06 已订正。
+    #[test]
+    fn the_intersection_uses_the_same_id_on_both_sides() {
+        let reg = guard_core::production_code(include_str!("tool_registry.rs"));
+        let mut intersect = 0usize;
+        for spec in SKILLS {
+            if reg.contains(&format!("id: {:?}", spec.id)) {
+                intersect += 1;
+            }
+        }
+        // 抽取器自检：交集为 0 说明要么抽取坏了，要么两张表真的毫无关系
+        // （那时 `Install::ManagedTool` 那条判据也会红，两条互相印证）。
+        assert!(
+            intersect >= 1,
+            "`SKILLS` 与 `TOOLS` 交集为 0 —— 抽取器坏了，或 `cc-bus` 从某一边消失了。\n\
+             本条会零命中地绿，所以它必须先红。"
         );
     }
 

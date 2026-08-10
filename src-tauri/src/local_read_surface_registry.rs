@@ -233,8 +233,11 @@ mod tests {
         (
             "src/tool_registry.rs",
             "non-read",
-            4,
-            "T01 受管工具登记表的一句**文案**里提到它，不读文件 ⇒ **不属**读面。",
+            5,
+            "T01 受管工具登记表的一句**文案**里提到它，不读文件 ⇒ **不属**读面。\
+             ⚠ **08-10（devbench F06）4 → 5**：新增的 `NOT_MANAGED` 反向登记表里，\
+             `planned-build` 那条理由写着它装在 `<claude_dir>/skills/planned-build/`。\
+             仍是**文案**（说明它为什么不由 cc-monitor 装），零文件读取。",
         ),
         (
             "src/skill_host.rs",
