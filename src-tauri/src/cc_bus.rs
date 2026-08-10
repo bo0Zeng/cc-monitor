@@ -143,7 +143,8 @@ pub fn split_combined<'a>(raw: &'a str, marker: &str) -> (&'a str, &'a str) {
 // 为什么是「按需读」而不是订阅/轮询：cc-bus 的状态全在远端本机 `~/.cc-bus/`，cc-monitor
 // 跑在 Windows 只能经 SSH 看。两条备选——复用 daemon 既有 inotify watcher（**违反 daemon
 // 零改红线**，且要新增协议帧），或按需刷新。取后者，形状逐条对齐 `mcp.rs`：
-// 定值命令（零用户输入拼接 → 零注入面）、30s 超时、32MB 上限、宽容解析（缺/坏 → 空）、
+// 定值命令（零用户输入拼接 → 零注入面）、30s 超时、32MB 上限、
+// **超限拒收**（devbench F10b：不再是「读满就停」的静默截断）、宽容解析（缺/坏 → 空）、
 // 大解析进 `spawn_blocking`。**无 setInterval、无后台定时任务**（红线）。
 
 /// 一条**定值**命令读回两个文件，中间插分隔标记 —— 省一次 SSH 往返。
@@ -408,17 +409,34 @@ const CONTROL_REPLY_CAP: u64 = 64 * 1024;
 
 /// 三条命令共用的「连上去、跑、读回」。抽出来是因为它们的超时/上限/措辞各不相同，
 /// 而**连接与读取的形状必须一致**（同 `mcp.rs` 的既有纪律）。
+/// 超限怎么办。**两档的分界是「截断有没有毒」，不是「哪个更严格」**〔G 审计逼出来的〕。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OnOverflow {
+    /// 读的是**数据**，半份会被当完整的用 ⇒ 拒收+回错。
+    Reject,
+    /// 读的是**回显**（一句确认），或调用方本来就按「坏行跳过」处理 ⇒ 截断+说清。
+    ///
+    /// ★ 为什么必须有这一档：`cc_bus_send` / `cc_bus_spawn` 的命令**有副作用** ——
+    /// 远端 agent 已经起来了、消息已经投递了，此时因为回显太长回一个 Err，
+    /// 用户看到「失败」会重试 ⇒ **起两个 agent 在真烧额度**。
+    /// 截断一句确认从来不影响副作用是否发生。
+    Truncate,
+}
+
 async fn exec_read(
     cfg: &crate::ssh_source::RemoteConfig,
     cmd: &str,
     cap: u64,
     secs: u64,
     what: &str,
+    on_overflow: OnOverflow,
 ) -> Result<String, String> {
     use tokio::io::AsyncReadExt;
+    let mut overflowed = false;
     let read = async {
         let stream = crate::ssh_source::connect_and_exec_cmd(cfg, cmd).await?;
         let mut buf = Vec::new();
+        let mut overflowed = false;
         // `+ 1` 见 remote-daemon-proto/src/common/fs.rs：不多读一个字节就分不清
         // 「刚好读满」与「其实还有」，而**分不清就只能静默截断**。
         stream
@@ -427,16 +445,37 @@ async fn exec_read(
             .await
             .map_err(|e| format!("{what}失败: {e}"))?;
         if buf.len() as u64 > cap {
-            return Err(format!(
-                "{what}的输出超过 {cap} 字节上限 —— 拒收，不拿截断的结果当完整的用"
-            ));
+            match on_overflow {
+                OnOverflow::Reject => {
+                    return Err(format!(
+                        "{what}的输出超过 {cap} 字节上限 —— 拒收，不拿截断的结果当完整的用"
+                    ));
+                }
+                OnOverflow::Truncate => {
+                    // 截断到上限，**并说清** —— 定框 E4：静默失败要给身份。
+                    buf.truncate(cap as usize);
+                    tracing::warn!(
+                        "{what}的输出超过 {cap} 字节上限，已截断（副作用已发生，不当失败报）"
+                    );
+                    overflowed = true;
+                }
+            }
         }
-        Ok::<Vec<u8>, String>(buf)
+        Ok::<(Vec<u8>, bool), String>((buf, overflowed))
     };
-    let raw = tokio::time::timeout(std::time::Duration::from_secs(secs), read)
+    let (raw, over) = tokio::time::timeout(std::time::Duration::from_secs(secs), read)
         .await
         .map_err(|_| format!("远端 '{}' {what}超时（{secs}s）", cfg.origin_label()))??;
-    Ok(String::from_utf8_lossy(&raw).into_owned())
+    overflowed = over;
+    let mut out = String::from_utf8_lossy(&raw).into_owned();
+    if overflowed {
+        // 说给**用户**听，不只写日志：这条串是要显示出去的。
+        out.push_str(&format!(
+            "\n[cc-monitor] ⚠ 远端输出超过 {cap} 字节上限，以上内容已截断。\
+             命令本身已经执行完毕，**不要重试**。"
+        ));
+    }
+    Ok(out)
 }
 
 fn cfg_of(origin: &str) -> Result<crate::ssh_source::RemoteConfig, String> {
@@ -449,7 +488,15 @@ fn cfg_of(origin: &str) -> Result<crate::ssh_source::RemoteConfig, String> {
 pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMessage>, String> {
     let cmd = build_inbox_cmd(&id)?;
     let cfg = cfg_of(&origin)?;
-    let raw = exec_read(&cfg, &cmd, INBOX_READ_CAP, 30, "读 inbox").await?;
+    let raw = exec_read(
+        &cfg,
+        &cmd,
+        INBOX_READ_CAP,
+        30,
+        "读 inbox",
+        OnOverflow::Truncate,
+    )
+    .await?;
     tokio::task::spawn_blocking(move || parse_inbox_jsonl(&raw).0)
         .await
         .map_err(|e| format!("spawn_blocking: {e}"))
@@ -460,7 +507,15 @@ pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMe
 pub async fn cc_bus_send(origin: String, id: String, text: String) -> Result<String, String> {
     let cmd = build_send_cmd(&id, &text)?;
     let cfg = cfg_of(&origin)?;
-    let out = exec_read(&cfg, &cmd, CONTROL_REPLY_CAP, 30, "发消息").await?;
+    let out = exec_read(
+        &cfg,
+        &cmd,
+        CONTROL_REPLY_CAP,
+        30,
+        "发消息",
+        OnOverflow::Truncate,
+    )
+    .await?;
     Ok(out.trim().to_string())
 }
 
@@ -479,7 +534,15 @@ pub async fn cc_bus_spawn(
     let acct = account.as_deref().filter(|a| !a.is_empty());
     let cmd = build_spawn_cmd(&tool, &dir, &task, acct)?;
     let cfg = cfg_of(&origin)?;
-    let out = exec_read(&cfg, &cmd, CONTROL_REPLY_CAP, 60, "spawn").await?;
+    let out = exec_read(
+        &cfg,
+        &cmd,
+        CONTROL_REPLY_CAP,
+        60,
+        "spawn",
+        OnOverflow::Truncate,
+    )
+    .await?;
     Ok(out.trim().to_string())
 }
 

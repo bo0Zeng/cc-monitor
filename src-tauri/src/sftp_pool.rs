@@ -6,6 +6,9 @@
 //! （2026-07-10 用户拍板:SFTP 属独立文件传输功能,不算 monitor 写)。防误伤守卫见
 //! [`is_protected_claude_data_path`]:SFTP 写命令拒碰 Claude 数据源文件(往正被 Claude
 //! 打开的 jsonl 写会损坏会话)——这是防手滑,不是合规。
+//! ★〔devbench F10c〕这条承诺**现在有牙了**：五个写入口都过 `guard_write` 这件事由
+//! `remote_write_registry::a_user_chosen_remote_write_passes_the_claude_data_fence` 钉着。
+//! 在那之前它零判据 —— 删掉任一处 `guard_write?`，全仓一条不红。
 //!
 //! ## 连接分离 + 已知取舍
 //! SFTP 面板连接走**独立 utility 池**,与 daemon 数据源流连接(`ssh_source` 长连接)

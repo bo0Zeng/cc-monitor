@@ -71,17 +71,32 @@ pub(crate) async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec
         let stream = ssh_source::connect_and_exec_cmd(cfg, &cmd).await?;
         let mut reader = BufReader::new(stream);
         let mut lines = Vec::new();
-        let mut buf = String::new();
+        // ★〔G 审计〕原来是无界 `read_line` —— 与 F10b 修掉的那三处**同一个量**
+        // （daemon 出方向单行），只是当时的人群只扫了 `ssh_source.rs`。
+        // 外面那层 `LIST_TIMEOUT` 拦不住它：对端 30s 内不吐换行地灌字节，
+        // `buf` 就是无界堆分配（daemon 侧同形态实测 RSS 6 MiB → 518 MiB）。
+        let mut buf: Vec<u8> = Vec::new();
         loop {
-            buf.clear();
-            let n = reader
-                .read_line(&mut buf)
-                .await
-                .map_err(|e| format!("读取远端输出失败: {e}"))?;
-            if n == 0 {
-                break; // EOF = 命令结束
-            }
-            let line = buf.trim();
+            let text = match ssh_source::read_capped_line(
+                &mut reader,
+                &mut buf,
+                ssh_source::DAEMON_FRAME_LINE_CAP,
+            )
+            .await
+            .map_err(|e| format!("读取远端输出失败: {e}"))?
+            {
+                ssh_source::CappedLine::Eof => break, // EOF = 命令结束
+                // 一次性查询的输出行是 JSON 记录，超上限说明对端不对劲。
+                // **拒收+回错**：这条路有调用方接得住错，不像帧读那样只能横向报告。
+                ssh_source::CappedLine::TooLong(bytes) => {
+                    return Err(format!(
+                        "远端输出的单行 {bytes} 字节，超过上限 {} —— 拒收，不拿截断的结果当完整的用",
+                        ssh_source::DAEMON_FRAME_LINE_CAP
+                    ));
+                }
+                ssh_source::CappedLine::Line => String::from_utf8_lossy(&buf).into_owned(),
+            };
+            let line = text.trim();
             if line.is_empty() {
                 continue;
             }
@@ -422,20 +437,46 @@ pub async fn stream_read_remote_session(
     let mut reader = BufReader::new(stream.take(MAX_SESSION_BYTES + 1));
     let mut read_bytes: u64 = 0;
     let mut buf = String::new();
+    let mut line_buf: Vec<u8> = Vec::new();
     let mut cwd_seen: Option<String> = None;
     let mut chunk: Vec<crate::bridge::JsonlLinePayload> = Vec::with_capacity(CHUNK_SIZE);
     let mut total = 0u32;
     let mut next_seq: u64 = 0;
     let mut first_line = true;
     loop {
-        buf.clear();
-        let n = tokio::time::timeout(READ_LINE_TIMEOUT, reader.read_line(&mut buf))
-            .await
-            .map_err(|_| "读取远端会话超时（单次读取卡住）".to_string())?
-            .map_err(|e| format!("读取远端会话失败: {e}"))?;
-        if n == 0 {
-            break;
-        }
+        // ★〔G 审计〕原来是无界 `read_line`。下面那条 `MAX_SESSION_BYTES` 是**总量**且
+        // **读完再判** —— 一条 10 GiB 的行会在 `read_line` 返回**之前**就把内存吃光，
+        // 那条总量检查根本轮不到跑。这正是 daemon 侧 `inbound.rs` 头注逐字警告的
+        // 「上限必须在**读的时候**生效，不能读完再判」，而当时那次实测是 RSS 6 MiB → 518 MiB。
+        // ⇒ 补一层**单行**上限（与 daemon 出方向单行同量），总量那条保持不动。
+        let n = match tokio::time::timeout(
+            READ_LINE_TIMEOUT,
+            ssh_source::read_capped_line(
+                &mut reader,
+                &mut line_buf,
+                ssh_source::DAEMON_FRAME_LINE_CAP,
+            ),
+        )
+        .await
+        .map_err(|_| "读取远端会话超时（单次读取卡住）".to_string())?
+        .map_err(|e| format!("读取远端会话失败: {e}"))?
+        {
+            ssh_source::CappedLine::Eof => break,
+            // 超单行上限与超总量**同一档处置**（截断+说清）：都是「这份会话读不完整了，
+            // 而且明说为什么」。措辞分开，因为用户要采取的动作不同。
+            ssh_source::CappedLine::TooLong(bytes) => {
+                return Err(format!(
+                    "远端会话里有一行 {bytes} 字节，超过单行上限 {} —— 已停止读取。\
+                     这不是会话太大（那会报另一句），是**单条记录**异常巨大，多半该直接看源文件。",
+                    ssh_source::DAEMON_FRAME_LINE_CAP
+                ));
+            }
+            ssh_source::CappedLine::Line => {
+                buf.clear();
+                buf.push_str(&String::from_utf8_lossy(&line_buf));
+                buf.len()
+            }
+        };
         read_bytes += n as u64;
         if read_bytes > MAX_SESSION_BYTES {
             // F06：**不许静默截断**。同一份数据走 daemon 的 `--fork-session` 会硬报错，

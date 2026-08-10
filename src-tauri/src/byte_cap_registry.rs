@@ -236,14 +236,22 @@ mod tests {
             "INBOX_READ_CAP",
             4 * 1024 * 1024,
             "读某个 agent 的 inbox",
-            "拒收+回错",
+            // ★〔G 审计改档〕原登记「拒收+回错」，那是**行为回归**：命令是 `tail -n 200`，
+            // 而 `parse_inbox_jsonl` 的契约逐字是「坏行跳过并计数，不因坏行丢好行」——
+            // 旧的截断行为下末行被跳过、前 199 条照常显示；改成回错之后**一条都不显示**。
+            // 这是唯一一处调用方**明确**依赖宽容降级的地方。
+            "截断+说清",
         ),
         (
             "src-tauri/src/cc_bus.rs",
             "CONTROL_REPLY_CAP",
             64 * 1024,
             "发消息 / spawn 的回显（是一句确认，不是数据）",
-            "拒收+回错",
+            // ★★〔G 审计改档〕原登记「拒收+回错」，那是**危险的行为回归**：
+            // 这两条命令**有副作用**（agent 已经起来了 / 消息已经投递了），
+            // 此时因回显太长回 Err，用户看到「失败」会重试 ⇒ **起两个 agent 在真烧额度**。
+            // ⇒ 分界不是「哪个更严格」，是**截断有没有毒**：回显的截断从来不影响副作用。
+            "截断+说清",
         ),
         (
             "src-tauri/src/mcp.rs",
@@ -871,6 +879,15 @@ mod tests {
             "同上一条。**退役归 F10d**。",
         ),
         (
+            "src-tauri/src/sftp.rs",
+            "远端 `uname -m` 架构探针的 stdout（`probe_remote_arch`）",
+            "★〔G 审计扩针后才进人群〕同上一条族。预期输出 ~8 字节，但**没有上限**。\
+             ⚠ 它此前不在人群里，因为第一版的针只认 `.read_to_end` / `.read_to_string`，\
+             而它用的是 `.read_line` ——**判据的人群恰好排除了触发本件立项的那种拼法**。\
+             ⚠ 注意 `sftp.rs` 同时也在 `REMOTE_WRITES` 里，两张表管的是它的两个不同面\
+             （这张管「读进内存多少」，那张管「往谁的机器写」）。**退役归 F10d**。",
+        ),
+        (
             "src-tauri/src/pubkey.rs",
             "远端读公钥的 stdout",
             "同上一条。**退役归 F10d**。",
@@ -1048,6 +1065,24 @@ mod tests {
         let mut population = 0usize;
         let mut orphans = Vec::new();
         let root = repo_root();
+        // ★★〔G 审计逮到的〕**第一版这里只有 `read_to_end` / `read_to_string`。**
+        //
+        // 而 F10b 修掉的那三处，原来的写法是 `reader.read_line(&mut buf)` ——
+        // 也就是说：**这条判据的人群，恰好排除了触发它立项的那一种拼法。**
+        // 头注把「把一整条流读进内存」（事实）与「`.read_to_end`」（拼法）写成了等号，
+        // 而本文件上方刚花十几行论证过同一个病根。**同一个 commit 里，同一句话又犯了一次。**
+        //
+        // 漏出来的是活的：`remote_history.rs::run_list_query` 无界 `read_line`
+        // （只有外层 30s 超时兜着），三个 `#[tauri::command]` 调用方，生产路径；
+        // 以及 `stream_read_remote_session` —— 它有 `MAX_SESSION_BYTES` 总量，
+        // 但那是**读完再判**，一条超大行在 `read_line` 返回前就把内存吃光了。
+        // 两处都已改走 `ssh_source::read_capped_line`。
+        //
+        // ⇒ 针按**读的动作**取，不按某一个方法名取。
+        let reads: Vec<String> = ["to_end", "to_string", "line", "until"]
+            .iter()
+            .map(|m| format!(".read_{m}("))
+            .collect();
         for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
             for (path, src) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let prod = guard_core::production_code(&src);
@@ -1058,7 +1093,7 @@ mod tests {
                     .replace('\\', "/");
                 let lines: Vec<&str> = prod.lines().collect();
                 for (i, l) in lines.iter().enumerate() {
-                    if !l.contains(".read_to_end(") && !l.contains(".read_to_string(") {
+                    if !reads.iter().any(|r| l.contains(r.as_str())) {
                         continue;
                     }
                     let lo = i.saturating_sub(4);
@@ -1079,8 +1114,8 @@ mod tests {
             }
         }
         assert!(
-            population >= 10,
-            "只扫到 {population} 处异步流整读（08-10 实测 13）—— 抽取器坏了，本条此刻是空转的"
+            population >= 14,
+            "只扫到 {population} 处异步流读（08-10 G 审计后实测 18）—— 抽取器坏了，本条此刻是空转的"
         );
         assert!(
             orphans.is_empty(),
