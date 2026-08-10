@@ -532,6 +532,9 @@ pub fn parse_remote_probe(probe_part: &str) -> (Vec<String>, SnippetProbe) {
     (lenient, probe)
 }
 
+/// 读远端 `~/.claude/settings.json` 的上限〔devbench F10b 提成具名常量〕。
+const REMOTE_SETTINGS_CAP: u64 = 4 * 1024 * 1024;
+
 /// 诊断**远端**的 `~/.claude/settings.json`。只读，绝不写远端任何文件。
 #[tauri::command]
 pub async fn diagnose_remote_cc_bus_hooks(origin: String) -> Result<HooksReport, String> {
@@ -541,11 +544,18 @@ pub async fn diagnose_remote_cc_bus_hooks(origin: String) -> Result<HooksReport,
     let read = async {
         let stream = crate::ssh_source::connect_and_exec_cmd(&cfg, REMOTE_HOOKS_CMD).await?;
         let mut buf = Vec::new();
+        // `+ 1` 见 remote-daemon-proto/src/common/fs.rs：截断的 settings.json 解析失败之后
+        // 用户看到的是「解析失败」而不是「超限」，那是误导性的错误。
         stream
-            .take(4 * 1024 * 1024)
+            .take(REMOTE_SETTINGS_CAP + 1)
             .read_to_end(&mut buf)
             .await
             .map_err(|e| format!("读远端 settings.json 失败: {e}"))?;
+        if buf.len() as u64 > REMOTE_SETTINGS_CAP {
+            return Err(format!(
+                "远端 settings.json 超过 {REMOTE_SETTINGS_CAP} 字节上限 —— 拒收，不拿截断的 JSON 去解析"
+            ));
+        }
         Ok::<Vec<u8>, String>(buf)
     };
     let raw = tokio::time::timeout(std::time::Duration::from_secs(30), read)

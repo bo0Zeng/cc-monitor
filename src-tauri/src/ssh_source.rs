@@ -2015,6 +2015,124 @@ pub struct RemoteExec {
 /// 上限只是防「远端吐无穷字节」吃爆内存，正常路径远够不到。
 const EXEC_CAPTURE_MAX_BYTES: usize = 4 * 1024 * 1024;
 
+/// daemon **出方向单行**的字节上限〔devbench F10b〕。
+///
+/// # ★ 这个数**刻意不等于** daemon 侧的 `inbound::MAX_LINE_BYTES`（1 MiB）
+///
+/// 那一条限的是**入方向命令信封**（`inbound.rs` 逐字「命令信封比 `ResumeSpec` 还小，
+/// 1 MiB 已是极宽松的上限」）。本条限的是**出方向内容帧** —— 一帧 = 一条 Claude jsonl 行。
+/// **两者不是同一个量**，抄过来就是把不同的东西按数字凑到一起
+/// （`byte_cap_registry` 头注对账本 S3 那次订正逐字写过这句）。
+///
+/// 实测本机 `~/.claude/projects/**/*.jsonl` 全量 **525,132 行**：最长一行
+/// **3,117,370 字节（2.97 MiB）**，其中 **78 行超过 1 MiB**
+/// （> 1 MiB 且 ≤ 2 MiB 有 75 条，> 2 MiB 有 3 条）。
+/// ⇒ 抄 1 MiB 会在本机丢掉 78 条**真实**行，而超限语义是「丢弃 + 报告」——
+/// 用户会看到一条「丢了帧」的健康提示，而那不是拥塞，是我们自己把上限设小了。
+///
+/// 取 64 MiB = 实测最长行的 21 倍。留这么大余量的理由有两条：
+/// 帧内换行被 daemon 转义成 `\n` 两字符（最坏接近翻倍），以及工具输出体量只会变大。
+///
+/// # 超限语义：**丢弃 + 带身份报告**，不许静默
+///
+/// 走 `REMOTE_HEALTH` + `kind: "line_too_long"`，与 `overflow_health_message` 那条
+/// 现成的路同一个出口（定框 E4：静默失败要给身份、且抬到调用方能判定的那一层）。
+const DAEMON_FRAME_LINE_CAP: usize = 64 * 1024 * 1024;
+
+/// 一次有界读行的结果。
+#[derive(Debug)]
+enum CappedLine {
+    /// 读到一行（内容在 `buf` 里，**不含**行尾 `\n`；可能是 EOF 前的残行）。
+    Line,
+    /// 这一行超过 [`DAEMON_FRAME_LINE_CAP`]，**已整行丢弃**。
+    /// 带上它到底有多少字节 —— 超限之后只数不存，所以这个数是准的而内存是 O(上限) 的。
+    TooLong(u64),
+    /// 对端关了写半边，且没有残行。
+    Eof,
+}
+
+/// 按 `\n` 读一行，**上限在读的时候生效**。
+///
+/// # ★ 为什么不是 `read_line` 加一句长度判断
+///
+/// 那是 daemon 侧栽过的坑，逐字记在 `remote-daemon-proto/src/inbound.rs` 头注里：
+/// 第一版用无界 `read_until`、读完再看长度，D 审计实测**喂 512 MiB 无换行的流 ⇒
+/// RSS 从 6 MiB 涨到 518 MiB**，而它照样回了一条 `line_too_long`「看起来对」。
+/// ⇒ 机制必须是 `fill_buf`/`consume`：超限之后**只找换行、不再往 buf 里塞字节**，
+/// 整行的内存占用与行长无关。本函数是那段机制在 monitor 侧的同构实现
+/// （**上限值不同、机制相同** —— 见 [`DAEMON_FRAME_LINE_CAP`] 头注）。
+///
+/// ⚠ **不是 cancellation-safe**：中途取消会丢掉 `overflowed`/计数状态，
+/// 而 `buf` 里的半行留着。调用方要么把它放进独立 task（主帧读那样），
+/// 要么取消之后就**不再复用这个 reader**（探测那两处那样）。
+///
+/// ★ `cap` **是参数而不是直接读常量**：生产调用点全传 [`DAEMON_FRAME_LINE_CAP`]，
+/// 而测试要能传一个小数。否则「超限之后内存不涨」这条性质就只能靠量 RSS 来证
+/// （daemon 侧当年正是那么发现问题的），而**那种证法进不了单测**。
+/// 传小 cap 之后同一条性质可以直接判：见 `over_limit_stops_growing_the_buffer`。
+async fn read_capped_line<R>(
+    rd: &mut R,
+    buf: &mut Vec<u8>,
+    cap: usize,
+) -> std::io::Result<CappedLine>
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+{
+    // `fill_buf`/`consume` 走文件顶部那条 `AsyncBufReadExt` 导入 ——
+    // ⚠ 别在这里再本地 `use` 一次：本文件有一条判据把 `tokio::io` 导入清单钉死了
+    // （`ALLOWED_IO_IMPORTS`，含反向锚点「放行清单不许留死行」），
+    // 顶部那条一旦没人用就会被 `unused_imports` 逼着删，而删掉它那条判据当场红。
+    buf.clear();
+    let mut overflowed = false;
+    let mut seen: u64 = 0;
+    loop {
+        let chunk = rd.fill_buf().await?;
+        if chunk.is_empty() {
+            // EOF。有残行就当一行交出去（`read_line` 旧行为逐字如此），否则报 EOF。
+            return Ok(if seen == 0 {
+                CappedLine::Eof
+            } else if overflowed {
+                CappedLine::TooLong(seen)
+            } else {
+                CappedLine::Line
+            });
+        }
+        let (take, done) = match chunk.iter().position(|&c| c == b'\n') {
+            Some(i) => (i, true),
+            None => (chunk.len(), false),
+        };
+        seen += take as u64;
+        if !overflowed {
+            if buf.len() + take > cap {
+                overflowed = true;
+                buf.clear();
+                buf.shrink_to_fit();
+            } else {
+                buf.extend_from_slice(&chunk[..take]);
+            }
+        }
+        let consumed = if done { take + 1 } else { take };
+        rd.consume(consumed);
+        if done {
+            return Ok(if overflowed {
+                CappedLine::TooLong(seen)
+            } else {
+                CappedLine::Line
+            });
+        }
+    }
+}
+
+/// 超限那一行的用户可见说法。**抽成纯函数**的理由与 [`overflow_health_message`] 逐字相同：
+/// 消费点要真 `AppHandle` 测不了，而措辞对不对恰恰是要钉的东西。
+fn line_too_long_health_message(host_label: &str, bytes: u64) -> String {
+    format!(
+        "远端 [{host_label}] 发来一行 {bytes} 字节，超过单行上限 {DAEMON_FRAME_LINE_CAP} 字节，\
+         这一行**已整行丢弃**。这不是网络拥塞 —— 要么该会话里有异常巨大的一条记录，\
+         要么对端不是本工具的 daemon。重开该会话可看完整历史。"
+    )
+}
+
 /// exec 一条命令并**收全** stdout / stderr / 退出码（见 [`RemoteExec`]）。
 ///
 /// 与 `connect_and_exec_cmd` 一样每次独立连接（一次性查询语义），
@@ -3608,15 +3726,18 @@ async fn stream_loop(
     // recv 上帧零丢失。reader task 在 EOF/读错时投递 Err 后退出；本函数返回
     // （重连）时 rx drop → task 的 send 失败 → task 自然退出，不泄漏。
     let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<Result<String, String>>(1024);
+    let reader_app = app.clone();
+    let reader_host = host_label.clone();
     tauri::async_runtime::spawn(async move {
         let mut reader = BufReader::new(stream);
-        // tokio LinesStream-free：read_line 复用 buffer，按 `\n` 切（协议保证每帧
-        // 一行、帧内换行已被 daemon 转义成 `\n` 两字符，见 remote-daemon-proto/src/wire.rs）。
-        let mut buf = String::new();
+        // 按 `\n` 切（协议保证每帧一行、帧内换行已被 daemon 转义成 `\n` 两字符，
+        // 见 remote-daemon-proto/src/wire.rs）。
+        // ★ F10b：从无界 `read_line` 换成 [`read_capped_line`] —— 无界读遇「一条永远不结束
+        // 的行」就是无界堆分配，而对端是**远端进程**（它坏掉或不是我们的 daemon 都可能）。
+        let mut buf: Vec<u8> = Vec::new();
         loop {
-            buf.clear();
-            match reader.read_line(&mut buf).await {
-                Ok(0) => {
+            match read_capped_line(&mut reader, &mut buf, DAEMON_FRAME_LINE_CAP).await {
+                Ok(CappedLine::Eof) => {
                     // EOF：daemon 退出 / channel 关闭。明确报错，不静默冻结。
                     let _ = frame_tx
                         .send(Err(
@@ -3625,8 +3746,27 @@ async fn stream_loop(
                         .await;
                     break;
                 }
-                Ok(_) => {
-                    let line = buf.trim_end_matches(['\n', '\r']);
+                Ok(CappedLine::TooLong(bytes)) => {
+                    // 超限语义 = **丢弃 + 带身份报告**，绝不静默（定框 E4）。
+                    // ⚠ 走 REMOTE_HEALTH 而不是 frame_tx 的 Err 臂 —— Err 会被主循环
+                    // 当成致命错误去重连，而超长行只是**这一行**坏了，连接本身没问题。
+                    tracing::warn!(
+                        "ssh_source remote [{reader_host}] line too long: {bytes} bytes \
+                         (cap {DAEMON_FRAME_LINE_CAP}); line dropped"
+                    );
+                    let payload = crate::bridge::RemoteHealthPayload {
+                        origin: Some(reader_host.clone()),
+                        kind: "line_too_long".to_string(),
+                        message: line_too_long_health_message(&reader_host, bytes),
+                    };
+                    if let Err(e) = reader_app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                        tracing::warn!("ssh_source line-too-long emit failed: {e}");
+                    }
+                }
+                Ok(CappedLine::Line) => {
+                    // 非 UTF-8 不该让整条连接死掉（与全批 exec 输出读取同一取舍）。
+                    let text = String::from_utf8_lossy(&buf);
+                    let line = text.trim_end_matches(['\n', '\r']);
                     if line.is_empty() {
                         continue;
                     }
@@ -5380,15 +5520,29 @@ async fn probe_daemon(
     let (rh, parked) = crate::inbound_client::split_and_park(channel.into_stream());
     let mut reader = BufReader::new(rh);
 
-    let mut line = String::new();
-    let read = tokio::time::timeout(Duration::from_secs(8), reader.read_line(&mut line)).await;
+    // ★ F10b：与主帧读同一个量（daemon 出方向单行）⇒ 同一个上限、同一个机制。
+    // 取消（超时）之后本函数直接返回，reader 不再复用 ⇒ 满足 `read_capped_line` 的使用条件。
+    let mut line: Vec<u8> = Vec::new();
+    let read = tokio::time::timeout(
+        Duration::from_secs(8),
+        read_capped_line(&mut reader, &mut line, DAEMON_FRAME_LINE_CAP),
+    )
+    .await;
 
     match read {
         Err(_elapsed) => Ok(None), // 超时
         Ok(Err(e)) => Err(format!("读 daemon stdout 出错: {e}")),
-        Ok(Ok(0)) => Ok(None), // EOF（daemon 立即退出 / 未输出）
-        Ok(Ok(_)) => {
-            let trimmed = line.trim_end_matches(['\n', '\r']);
+        Ok(Ok(CappedLine::Eof)) => Ok(None), // EOF（daemon 立即退出 / 未输出）
+        // 握手行超限 ⇒ 与「非 hello 帧」同一档：daemon 未正常握手。
+        // ⚠ 这里**不**发 REMOTE_HEALTH —— 探测阶段还没有 host_label 语境，
+        // 且返回 `None` 本身就会被调用方当成「没握上手」如实报出去。
+        Ok(Ok(CappedLine::TooLong(bytes))) => {
+            tracing::warn!("probe_daemon: hello 行 {bytes} 字节超上限，判未握手");
+            Ok(None)
+        }
+        Ok(Ok(CappedLine::Line)) => {
+            let text = String::from_utf8_lossy(&line);
+            let trimmed = text.trim_end_matches(['\n', '\r']);
             match parse_frame(trimmed) {
                 Some(frame @ InboundFrame::Hello { .. }) => {
                     let head = describe_hello(&frame);
@@ -5483,14 +5637,20 @@ async fn pump_inbound_replies<R>(
 ) where
     R: tokio::io::AsyncRead + Unpin,
 {
-    let mut buf = String::new();
+    // ★ F10b：同一个量（daemon 出方向单行）⇒ 同一个上限。
+    // 超限那一行**丢掉继续泵** —— 它不可能是本泵关心的 `reply`/`cancelled`
+    // （那两种帧都是几百字节量级），而整个泵是探测期临时物、`pump.abort()` 就撤。
+    let mut buf: Vec<u8> = Vec::new();
     loop {
-        buf.clear();
-        match reader.read_line(&mut buf).await {
-            Ok(0) | Err(_) => break,
-            Ok(_) => {}
-        }
-        match parse_frame(buf.trim_end_matches(['\n', '\r'])) {
+        let text = match read_capped_line(&mut reader, &mut buf, DAEMON_FRAME_LINE_CAP).await {
+            Ok(CappedLine::Eof) | Err(_) => break,
+            Ok(CappedLine::TooLong(bytes)) => {
+                tracing::warn!("pump_inbound_replies: 丢掉一行 {bytes} 字节（超上限）");
+                continue;
+            }
+            Ok(CappedLine::Line) => String::from_utf8_lossy(&buf).into_owned(),
+        };
+        match parse_frame(text.trim_end_matches(['\n', '\r'])) {
             Some(InboundFrame::Reply {
                 id,
                 ok,
@@ -7219,5 +7379,147 @@ mod snapshot_tests {
                 .unwrap()
                 .is_none()
         );
+    }
+}
+
+/// 有界读行的**行为**对拍〔devbench F10b〕。
+///
+/// # 为什么必须有这一组
+///
+/// 判据那半（`byte_cap_registry` 的四条）钉的全是**形态**：常量进表了没、
+/// 处置臂说话了没。它们**判不出**「上限到底生不生效」——
+/// 而 daemon 侧栽的那次正是这个缺口：上限写着 1 MiB、`line_too_long` 也回了，
+/// 可它是**读完再判**，实测 RSS 从 6 MiB 涨到 518 MiB。头注逐字记着
+/// 「常数抄了先例，**机制没抄**」。
+///
+/// ⇒ 本组直接喂 reader，用**小 cap**，把那条「超限之后内存不涨」判成断言。
+#[cfg(test)]
+mod capped_line_tests {
+    use super::{read_capped_line, CappedLine};
+    use tokio::io::BufReader;
+
+    /// 正常一行：内容不含行尾 `\n`。
+    #[tokio::test]
+    async fn a_normal_line_comes_back_without_its_newline() {
+        let data: &[u8] = b"hello\n";
+        let mut rd = BufReader::new(data);
+        let mut buf = Vec::new();
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 64).await.unwrap(),
+            CappedLine::Line
+        ));
+        assert_eq!(buf, b"hello");
+    }
+
+    /// **恰好等于上限**的一行必须过 —— 边界差一格就是「合法数据被丢」。
+    #[tokio::test]
+    async fn a_line_exactly_at_the_cap_is_still_accepted() {
+        let line = vec![b'x'; 16];
+        let mut data = line.clone();
+        data.push(b'\n');
+        let mut rd = BufReader::new(&data[..]);
+        let mut buf = Vec::new();
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 16).await.unwrap(),
+            CappedLine::Line
+        ));
+        assert_eq!(buf.len(), 16);
+    }
+
+    /// 超一个字节就该丢，且**报出真实字节数**。
+    #[tokio::test]
+    async fn one_byte_over_the_cap_is_dropped_and_counted() {
+        let mut data = vec![b'x'; 17];
+        data.push(b'\n');
+        let mut rd = BufReader::new(&data[..]);
+        let mut buf = Vec::new();
+        match read_capped_line(&mut rd, &mut buf, 16).await.unwrap() {
+            CappedLine::TooLong(n) => assert_eq!(n, 17, "报出的字节数要是真实长度"),
+            other => panic!("该判超限，实得 {other:?}"),
+        }
+        assert!(buf.is_empty(), "超限的行不许留在 buf 里被当数据用");
+    }
+
+    /// ★ **超限之后不许继续往 buf 里塞字节**（daemon 那次 518 MiB 的正题）。
+    ///
+    /// 喂一条 100_000 字节的行、上限 16。若机制是「读完再判」，
+    /// `buf` 的容量会涨到 10 万量级；正确实现下它应当在超限那一刻就被清掉并归还。
+    #[tokio::test]
+    async fn over_limit_stops_growing_the_buffer() {
+        let mut data = vec![b'x'; 100_000];
+        data.push(b'\n');
+        let mut rd = BufReader::new(&data[..]);
+        let mut buf = Vec::new();
+        match read_capped_line(&mut rd, &mut buf, 16).await.unwrap() {
+            CappedLine::TooLong(n) => assert_eq!(n, 100_000),
+            other => panic!("该判超限，实得 {other:?}"),
+        }
+        assert!(
+            buf.capacity() < 1024,
+            "超限之后 buf 容量涨到了 {} —— 说明字节还在往里塞（那正是 daemon 侧 518 MiB 的形状）",
+            buf.capacity()
+        );
+    }
+
+    /// ★ **超限之后的下一行必须还读得到** —— 丢一行不许连带丢掉整条流。
+    ///
+    /// ⚠ 超长那一行**必须跨多个 `fill_buf` 块**（这里 20_000 > `BufReader` 默认 8 KiB）。
+    /// 第一版用 50 字节，一次 `fill_buf` 就连着 `\n` 一起读完了 ——
+    /// 于是「超限之后继续找换行」那条**续读路径压根没被走到**：
+    /// 实测把机制改成「超限就立刻返回」，本条照样绿，只有 100_000 那条抓住了。
+    /// ⇒ 短数据让本条退化成了 `one_byte_over_the_cap_is_dropped_and_counted` 的副本。
+    #[tokio::test]
+    async fn the_line_after_an_over_long_one_is_still_delivered() {
+        let mut data = vec![b'x'; 20_000];
+        data.push(b'\n');
+        data.extend_from_slice(b"after\n");
+        let mut rd = BufReader::new(&data[..]);
+        let mut buf = Vec::new();
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 16).await.unwrap(),
+            CappedLine::TooLong(20_000)
+        ));
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 16).await.unwrap(),
+            CappedLine::Line
+        ));
+        assert_eq!(buf, b"after");
+    }
+
+    /// 流尽而无残行 ⇒ `Eof`；有残行（末尾没 `\n`）⇒ 当一行交出去（`read_line` 旧行为）。
+    #[tokio::test]
+    async fn eof_and_trailing_partial_keep_the_old_read_line_behaviour() {
+        let empty: &[u8] = b"";
+        let mut rd = BufReader::new(empty);
+        let mut buf = Vec::new();
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 16).await.unwrap(),
+            CappedLine::Eof
+        ));
+
+        let partial: &[u8] = b"tail";
+        let mut rd = BufReader::new(partial);
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 16).await.unwrap(),
+            CappedLine::Line
+        ));
+        assert_eq!(buf, b"tail");
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 16).await.unwrap(),
+            CappedLine::Eof
+        ));
+    }
+
+    /// 空行（连着两个 `\n`）不该被当成 EOF。
+    #[tokio::test]
+    async fn an_empty_line_is_a_line_not_an_eof() {
+        let data: &[u8] = b"\nx\n";
+        let mut rd = BufReader::new(data);
+        let mut buf = Vec::new();
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 16).await.unwrap(),
+            CappedLine::Line
+        ));
+        assert!(buf.is_empty());
     }
 }
