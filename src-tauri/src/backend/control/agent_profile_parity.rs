@@ -20,7 +20,17 @@
 //! | 前端 `AGENT_PROFILE` | **只有 claude** | 单 profile 常量 |
 //!
 //! ⚠ 第三份**只有 claude** —— 那不是漏，是它今天只服务 claude 那条路。
-//! 本模块只对拍 Rust 那一轨与夹具；TS 那轨由 `src/agent-profile.vitest.ts` 自己读同一份夹具。
+//! 本模块只对拍 Rust 那一轨与夹具。
+//!
+//! ⚠⚠ **TS 那一轨的描述原先整句两半都假**〔devbench F04, 08-10 订正〕。原文写着
+//! 「TS 那轨由 `src/agent-profile.vitest.ts` 自己读同一份夹具」——
+//! ① 那个文件**不存在**（真实文件名是 `src/agent-profile-parity.vitest.ts`）；
+//! ② 它也**不读这份夹具** —— 它 `readFileSync` 读的是 `adapter/claude_code.rs` 的**源码**，
+//!    从里面抽字段值来对拍。夹具（`fixtures/agent-profile-golden.tsv`）只被 Rust 这一侧读。
+//! ⇒ 如实改写：**TS 那轨与 Rust 这轨走的是两条不同的对拍路径**，
+//! 一条读源码、一条读夹具，**它们之间没有共享的真相源**。
+//! ★ 这正是「指向不存在的东西比没有注释更坏」那一族（铁律 14）：
+//! 原措辞让人以为两侧共享一份夹具，于是不会去查那条链其实是断的。
 //!
 //! # ★ 两项 ccm **独有**的决策，Rust 侧根本没有对侧
 //!
