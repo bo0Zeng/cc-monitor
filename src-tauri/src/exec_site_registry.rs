@@ -31,6 +31,8 @@
 //! ④ `PassThrough` **不追调用链**：`cc_bus::exec_read` 的三个调用方各走 `build_*_cmd`，
 //!    那是它们自己那条 singleton 判据在守，本条只确认转发者自己不构造；
 //! ⑤ 走 SFTP / 本机 `Command` 的路（本条只管 `connect_and_exec_cmd` 这一个扼流点）。
+//!    ★〔devbench F10c〕**SFTP 那半已经有人接了**：`remote_write_registry` 按「谁拿得到
+//!    SFTP 会话」取样，接的正是本条划出去的这道缝。**`Command` 那半仍无人接。**
 
 #[cfg(test)]
 mod tests {

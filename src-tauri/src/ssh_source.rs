@@ -2037,11 +2037,11 @@ const EXEC_CAPTURE_MAX_BYTES: usize = 4 * 1024 * 1024;
 ///
 /// 走 `REMOTE_HEALTH` + `kind: "line_too_long"`，与 `overflow_health_message` 那条
 /// 现成的路同一个出口（定框 E4：静默失败要给身份、且抬到调用方能判定的那一层）。
-const DAEMON_FRAME_LINE_CAP: usize = 64 * 1024 * 1024;
+pub(crate) const DAEMON_FRAME_LINE_CAP: usize = 64 * 1024 * 1024;
 
 /// 一次有界读行的结果。
 #[derive(Debug)]
-enum CappedLine {
+pub(crate) enum CappedLine {
     /// 读到一行（内容在 `buf` 里，**不含**行尾 `\n`；可能是 EOF 前的残行）。
     Line,
     /// 这一行超过 [`DAEMON_FRAME_LINE_CAP`]，**已整行丢弃**。
@@ -2070,7 +2070,7 @@ enum CappedLine {
 /// 而测试要能传一个小数。否则「超限之后内存不涨」这条性质就只能靠量 RSS 来证
 /// （daemon 侧当年正是那么发现问题的），而**那种证法进不了单测**。
 /// 传小 cap 之后同一条性质可以直接判：见 `over_limit_stops_growing_the_buffer`。
-async fn read_capped_line<R>(
+pub(crate) async fn read_capped_line<R>(
     rd: &mut R,
     buf: &mut Vec<u8>,
     cap: usize,

@@ -82,6 +82,15 @@
 //! ★ **它们在那之前一直在跑** —— 只是那张表的针（当时只有 `sleep`/`interval`）看不见它们，
 //! 而 `doc/INVARIANTS.md:1379` 与 daemon 侧 `no_timer_guard` 的扫描面**都早已点名 `recv_timeout`**
 //! ⇒ 缺的不是认知，是针没跟上。这两条的退役各有归属（devbench F11 / F12）。
+//!
+//! ⚠⚠⚠ **上面那句「今天是 4」当天就过期了 —— 08-10 收官时是 3**〔G 审计逮到〕。
+//! devbench **F11 真的把 `watcher.rs` 那条退役了**（两条通道合成一个 `WatchEvent` enum、
+//! 主循环改无超时 `recv()`），于是 4 → 3。
+//! ★ 这条陈账的形状值得记：**A 模块的头注在描述 B 模块的状态，而指针那一侧没有判据。**
+//! F11 只改了 `rust_timer_registry.rs` + `watcher.rs` 两个文件，没人会回来改这里。
+//! ⇒ **别在散文里抄那个数** —— 权威在 `rust_timer_registry::the_ticker_count_is_pinned`
+//! 的 `assert_eq!`，它自己会说话（本文件下面那条 `the_other_half_of_the_sweep_still_has_a_home`
+//! 已经在钉「指针目标存在」，但**没钉那个数**）。
 
 #[cfg(test)]
 mod tests {

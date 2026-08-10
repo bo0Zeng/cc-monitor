@@ -226,7 +226,26 @@ mod tests {
         out
     }
 
-    /// 「持有远端写能力」= 源码里出现 SFTP 会话类型。**这是人群的根**。
+    /// 「持有远端写能力」= **拿到过一个 SFTP 会话**。这是人群的根。
+    ///
+    /// ★★〔G 审计逮到的〕**第一版按「源码里出现 SFTP 会话类型名」判，恒绿。**
+    ///
+    /// 漏掉的是 `acct_iso_deploy.rs`：它 `let conn = connect_sftp(&cfg).await?;`
+    /// `let sftp = &conn.sftp;` 然后往**用户给的 `dest_dir`** 写文件
+    /// （`#[tauri::command] deploy_remote_acct_iso`）——**类型靠推断，那个名字一次都没写出来**。
+    ///
+    /// ⇒ 又一次「按拼法取样」，而本条的 doc 注释里逐字写着
+    /// 「**凡「本条是某一族唯一的哨兵」的判据，人群必须按事实取样，因为它没有第二道网**」。
+    /// **写下那句话的判据，自己犯了那句话说的错** —— 本区第三次量到同一条。
+    ///
+    /// ⇒ 改成按**能力从哪来**取样：SFTP 会话在本仓只有两个出处 ——
+    /// `sftp::connect_sftp()`（自己开一条）与 `sftp_pool::with_sftp()`（从池里借）。
+    /// 拿不到会话就写不了远端，这是结构事实，绕不过去。
+    /// 类型名仍然留在针里（`sftp.rs`/`sftp_pool.rs` 自己要靠它进人群）。
+    ///
+    /// ⚠ 仍然失效的形态如实登记：把会话再包一层自己的 newtype 传出去，本条看不见那一层。
+    /// 真要堵死得走可见性（`pub(in crate::sftp) struct RemoteWriter(SftpSession)`），
+    /// 那样「远端写能力在哪几个模块」就是**编译器答案**而不是 grep 答案。已登记，未做。
     fn capability_holders() -> Vec<String> {
         let root = repo_root().join("src-tauri/src");
         let mut out = Vec::new();
@@ -234,7 +253,14 @@ mod tests {
             let prod = guard_core::production_code(&src);
             // 拼出来的，免得命中本文件自己的说明。
             let ty = format!("Sftp{}", "Session");
-            if prod.contains(&ty) || prod.contains("russh_sftp") {
+            // 会话的两个出处：自己开一条 / 从池里借。拿不到会话就写不了远端。
+            let opens = format!("connect_{}(", "sftp");
+            let borrows = format!("with_{}(", "sftp");
+            if prod.contains(&ty)
+                || prod.contains("russh_sftp")
+                || prod.contains(&opens)
+                || prod.contains(&borrows)
+            {
                 out.push(
                     path.strip_prefix(&root)
                         .unwrap_or(&path)
@@ -309,6 +335,24 @@ mod tests {
         }
     }
 
+    /// 一个顶层 `fn` 的函数体到哪一行为止。
+    ///
+    /// ★ 用**第一行行首的 `}`** 判 —— 那是 rustfmt 下顶层项的真实收尾。
+    /// ⚠ 第一版用「下一行以 `pub ` 或 `#[tauri::command]` 开头」，两个洞：
+    /// ① 非 `pub` 的顶层 `fn`（本仓的 `fn guard_write` / `async fn upload_inner`）不终止窗口
+    ///    ⇒ `sftp_write_text` 的窗口吞进了 `guard_write` 的**定义**，判据当场假绿；
+    /// ② `sftp_upload` 的窗口宽到 109 行、把整个 `upload_inner` 吞了进去。
+    /// ⇒ 又一次「终止条件按拼法列白名单」。
+    fn fn_body_end(lines: &[&str], start: usize) -> usize {
+        lines
+            .iter()
+            .enumerate()
+            .skip(start + 1)
+            .find(|(_, l)| l.starts_with('}'))
+            .map(|(i, _)| i + 1)
+            .unwrap_or(lines.len())
+    }
+
     /// ★ 正题三：**用户选路径的远端写必须过 Claude 数据防误伤围栏**。
     ///
     /// # 它补的洞
@@ -356,15 +400,17 @@ mod tests {
             };
             checked += 1;
             // 函数体到下一个顶层 `fn` / `#[tauri::command]` 为止。
-            let end = lines
-                .iter()
-                .enumerate()
-                .skip(start + 1)
-                .find(|(_, l)| l.starts_with("pub ") || l.starts_with("#[tauri::command]"))
-                .map(|(i, _)| i)
-                .unwrap_or(lines.len());
+            let end = fn_body_end(&lines, start);
             let body = lines[start..end].join("\n");
-            if !body.contains("guard_write") {
+            // ⚠ **必须排除定义行**〔G 审计逮到的〕：`fn guard_write(path: &str) …`
+            // 里也含 `guard_write`。第一版只判 `body.contains("guard_write")`，
+            // 而窗口终止条件又漏掉了非 `pub` 的顶层 `fn` ⇒ `sftp_write_text` 的窗口
+            // 把 `guard_write` 的**定义**吞了进来 ⇒ 删掉它真正那次调用，本条**照样绿**。
+            // 那正是本条自称要消灭的假绿，五处里有一处没修上。
+            let called = body
+                .lines()
+                .any(|l| l.contains("guard_write(") && !l.trim_start().starts_with("fn "));
+            if !called {
                 unfenced.push(format!("  sftp_pool.rs::{entry}"));
             }
         }
@@ -411,6 +457,15 @@ mod tests {
                 "delete_remote_history_session",
                 "remove_remote_file",
             ),
+            // ★〔G 审计补的两条〕它们都持会话 / 往用户给的路径写远端，却因为
+            // 「自己不调裸写原语」而进不了按能力边界派生的人群 ——
+            // **正是本条（接线层）存在的理由**：两个层，一条边。
+            (
+                "acct_iso_deploy.rs",
+                "deploy_remote_acct_iso",
+                "ensure_dir_all",
+            ),
+            ("sftp.rs", "uninstall_remote_ccm_helper", "upload_atomic"),
         ];
         for (file, entry, target) in ROUTES {
             // 转发目标必须是本表登记过的写点 —— 否则这条边指向账外。
@@ -429,13 +484,7 @@ mod tests {
             else {
                 panic!("`{file}` 里找不到入口 `{entry}` —— 改名/搬走了就把路由表一起改");
             };
-            let end = lines
-                .iter()
-                .enumerate()
-                .skip(start + 1)
-                .find(|(_, l)| l.starts_with("pub ") || l.starts_with("#[tauri::command]"))
-                .map(|(i, _)| i)
-                .unwrap_or(lines.len());
+            let end = fn_body_end(&lines, start);
             let body = lines[start..end].join("\n");
             assert!(
                 guard_core::contains_word(&body, target),
@@ -446,31 +495,36 @@ mod tests {
         }
     }
 
-    /// ★ 正题五：**前提触发器** —— 远端写能力仍然只在那三个文件里。
+    /// ★ 正题五：**前提触发器** —— 拿得到远端写能力的文件仍然只有那四个。
     ///
-    /// 本表的人群根是「哪些文件持有 SFTP 会话」。那个根一旦长大，
+    /// 本表的人群根是「谁拿得到一个 SFTP 会话」。那个根一旦长大，
     /// 上面四条判据的覆盖面就跟着变，而**没有任何东西会提醒**。
     ///
-    /// ⚠ 本条**按事实取样**（源码里出现 SFTP 会话类型），不按文件名列白名单 ——
-    /// 这是 F10b 那条假绿哨兵（按拼法数字面量、人群 6 数出 1、绿了五轮）留下的教训：
-    /// **凡「本条是某一族唯一的哨兵」的判据，人群必须按事实取样，因为它没有第二道网。**
+    /// ⚠⚠ **第一版按「源码里出现会话类型名」判，恒绿，被 G 审计逮到**
+    /// （`acct_iso_deploy.rs` 靠类型推断，那个名字一次都没写出来，
+    /// 而它往用户给的 `dest_dir` 写 8 个文件 + 2 个目录）。
+    /// 而本条的注释当时就逐字写着「凡『唯一的哨兵』的判据人群必须按事实取样」——
+    /// **写下那句话的判据自己犯了那句话说的错**，本区第三次。
+    /// ⇒ 现在按**能力从哪来**取样（`connect_sftp` / `with_sftp` 两个出处），见
+    /// [`capability_holders`] 的头注。
     #[test]
     fn the_remote_write_capability_is_still_confined_to_three_files() {
         let holders = capability_holders();
         assert_eq!(
             holders,
             vec![
+                "acct_iso_deploy.rs".to_string(),
                 "mcp.rs".to_string(),
                 "sftp.rs".to_string(),
                 "sftp_pool.rs".to_string()
             ],
             "持有 SFTP 会话的文件变了（实得 {holders:?}）。\n\n\
-             ★ **那是本表人群的根** —— 多一个文件就意味着「往别人机器上写」这个能力\n\
-             扩散到了一个本表没在看的地方。请：\n\
-             ① 把新文件加进这里，并让它的写点进 `REMOTE_WRITES`；\n\
-             ② 如果它只**读**（`mcp.rs` 就是这样，它持会话但零写原语），\n\
-                在登记里写明这一点 —— 「持有能力但不用它写」本身是个值得记的事实。\n\
-             ⚠ 少一个也红：那说明某处远端写退役了，登记要跟着删（别留僵尸账）。"
+                     ★ **那是本表人群的根** —— 多一个文件就意味着「往别人机器上写」这个能力\n\
+                     扩散到了一个本表没在看的地方。请：\n\
+                     ① 把新文件加进这里，并让它的写点进 `REMOTE_WRITES`；\n\
+                     ② 如果它只**读**（`mcp.rs` 就是这样，它持会话但零写原语），\n\
+                        在登记里写明这一点 —— 「持有能力但不用它写」本身是个值得记的事实。\n\
+                     ⚠ 少一个也红：那说明某处远端写退役了，登记要跟着删（别留僵尸账）。"
         );
     }
 }

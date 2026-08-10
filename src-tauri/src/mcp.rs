@@ -190,7 +190,9 @@ pub async fn read_remote_mcp_servers(origin: String) -> Result<Vec<McpServerEntr
 const REMOTE_CLAUDE_JSON_CAP: u64 = 32 * 1024 * 1024;
 
 /// F87b③ 抽出（F89a 复用）：SSH exec `cat` 远端 `~/.claude.json` → 宽容解析（缺/坏 → None）。**只读**。
-/// 定值命令、无用户输入拼接 → 零注入面；多候选（CLAUDE_CONFIG_DIR 优先、否则 $HOME）；30s 超时 + 32MB 上限；
+/// 定值命令、无用户输入拼接 → 零注入面；多候选（CLAUDE_CONFIG_DIR 优先、否则 $HOME）；30s 超时 + 32MB 上限
+/// （⚠ **超限是拒收+回错**，devbench F10b —— 不是「宽容解析」那一档：截断的 JSON 解析失败会
+/// 报「解析失败」而不是「超限」，那是误导性的错误）；
 /// 大解析进 spawn_blocking（对齐 §10）。
 async fn fetch_remote_claude_json(
     cfg: &crate::ssh_source::RemoteConfig,
