@@ -42,7 +42,12 @@ mod remote_branch; // G6：远端分叉（经 ssh 调 daemon `--fork-session`）
 mod remote_history;
 mod search;
 mod session_map;
+// devbench F02：skill 接入面（一份声明 + 通用宿主）。
+// ⚠ **今天零生产消费者**（UI 归 F03）—— 照 `tool_registry` 的先例如实登记并写处置条件：
+// F03 接上之后删掉那个模块级 `#[allow(dead_code)]`；若 F03 收工时它仍零消费者，
+// 就该删掉整个模块，而不是让它当装饰。
 mod sftp_pool;
+mod skill_host;
 mod verified_write; // T01：统一的「备份→写→读回比对→回滚」；本机侧从长度比对升级为内容比对
                     // SS-D 统一 SFTP 写层（issue #29 自动部署 F08；后续 F11/F10 复用）。
 mod sftp;
