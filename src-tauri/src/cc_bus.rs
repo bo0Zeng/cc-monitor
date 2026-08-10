@@ -156,16 +156,27 @@ const CC_BUS_CAT_CMD: &str = concat!(
     r#"printf '\n@@CCMON-CCBUS-SPLIT@@\n'; cat "$B/spawned.tsv" 2>/dev/null; true"#
 );
 
+/// 读远端 `agents.tsv` + `spawned.tsv` 的合计上限〔devbench F10b 提成具名常量〕。
+const CC_BUS_TSV_CAP: u64 = 32 * 1024 * 1024;
+
 async fn fetch_remote_cc_bus(cfg: &crate::ssh_source::RemoteConfig) -> Result<String, String> {
     use tokio::io::AsyncReadExt;
     let read = async {
         let stream = crate::ssh_source::connect_and_exec_cmd(cfg, CC_BUS_CAT_CMD).await?;
         let mut buf = Vec::new();
+        // `+ 1` 的用意见 remote-daemon-proto/src/common/fs.rs 那条既有注释：
+        // 多读一个字节就能分辨「刚好读满」与「其实还有」，否则超限会**静默截断**
+        // ——而截断的 TSV 会被下面的解析当成一份完整清单，最后一行悄悄少掉或变形。
         stream
-            .take(32 * 1024 * 1024)
+            .take(CC_BUS_TSV_CAP + 1)
             .read_to_end(&mut buf)
             .await
             .map_err(|e| format!("读取远端 ~/.cc-bus 失败: {e}"))?;
+        if buf.len() as u64 > CC_BUS_TSV_CAP {
+            return Err(format!(
+                "远端 ~/.cc-bus 的登记表超过 {CC_BUS_TSV_CAP} 字节上限 —— 拒收，不拿截断的清单当完整的用"
+            ));
+        }
         Ok::<Vec<u8>, String>(buf)
     };
     let raw = tokio::time::timeout(std::time::Duration::from_secs(30), read)
@@ -199,6 +210,9 @@ pub async fn read_cc_bus_state(origin: String) -> Result<CcBusState, String> {
     .map_err(|e| format!("spawn_blocking: {e}"))
 }
 
+/// 查在线的输出上限〔devbench F10b 提成具名常量〕。预期输出是 `ONLINE\n` / `OFFLINE\n`。
+const ONLINE_PROBE_CAP: u64 = 4096;
+
 /// B03 批一：查**单个** agent 是否真在线（`tmux has-session`）。
 ///
 /// **这是刻意的第二次往返**：`agents.tsv` 只证明"登记过"，实测最早的条目是 10 天前的
@@ -222,10 +236,18 @@ pub async fn check_cc_bus_agent_online(origin: String, id: String) -> Result<boo
         let stream = crate::ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
         let mut buf = Vec::new();
         stream
-            .take(4096)
+            .take(ONLINE_PROBE_CAP + 1)
             .read_to_end(&mut buf)
             .await
             .map_err(|e| format!("查在线失败: {e}"))?;
+        if buf.len() as u64 > ONLINE_PROBE_CAP {
+            // 预期输出 ~7 字节。真吐这么多说明对端在打招呼横幅之类的东西，
+            // 而**截断之后 `contains("ONLINE")` 的答案是碰运气的** ——
+            // 上限落在末尾就读成「不在线」。宁可报错也不给一个碰运气的布尔。
+            return Err(format!(
+                "远端查在线的输出超过 {ONLINE_PROBE_CAP} 字节 —— 对端不像只回了 ONLINE/OFFLINE，拒收"
+            ));
+        }
         Ok::<Vec<u8>, String>(buf)
     };
     let raw = tokio::time::timeout(std::time::Duration::from_secs(15), read)
@@ -377,6 +399,13 @@ pub fn parse_inbox_jsonl(text: &str) -> (Vec<CcBusMessage>, usize) {
     (out, skipped)
 }
 
+/// 读某个 agent inbox 的上限〔devbench F10b 提成具名常量〕。
+const INBOX_READ_CAP: u64 = 4 * 1024 * 1024;
+
+/// 控制类命令（发消息 / spawn）回显的上限〔devbench F10b 提成具名常量〕。
+/// 两处共用一个数：它们回的都是「一句人读的确认」，不是数据。
+const CONTROL_REPLY_CAP: u64 = 64 * 1024;
+
 /// 三条命令共用的「连上去、跑、读回」。抽出来是因为它们的超时/上限/措辞各不相同，
 /// 而**连接与读取的形状必须一致**（同 `mcp.rs` 的既有纪律）。
 async fn exec_read(
@@ -390,11 +419,18 @@ async fn exec_read(
     let read = async {
         let stream = crate::ssh_source::connect_and_exec_cmd(cfg, cmd).await?;
         let mut buf = Vec::new();
+        // `+ 1` 见 remote-daemon-proto/src/common/fs.rs：不多读一个字节就分不清
+        // 「刚好读满」与「其实还有」，而**分不清就只能静默截断**。
         stream
-            .take(cap)
+            .take(cap + 1)
             .read_to_end(&mut buf)
             .await
             .map_err(|e| format!("{what}失败: {e}"))?;
+        if buf.len() as u64 > cap {
+            return Err(format!(
+                "{what}的输出超过 {cap} 字节上限 —— 拒收，不拿截断的结果当完整的用"
+            ));
+        }
         Ok::<Vec<u8>, String>(buf)
     };
     let raw = tokio::time::timeout(std::time::Duration::from_secs(secs), read)
@@ -413,7 +449,7 @@ fn cfg_of(origin: &str) -> Result<crate::ssh_source::RemoteConfig, String> {
 pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMessage>, String> {
     let cmd = build_inbox_cmd(&id)?;
     let cfg = cfg_of(&origin)?;
-    let raw = exec_read(&cfg, &cmd, 4 * 1024 * 1024, 30, "读 inbox").await?;
+    let raw = exec_read(&cfg, &cmd, INBOX_READ_CAP, 30, "读 inbox").await?;
     tokio::task::spawn_blocking(move || parse_inbox_jsonl(&raw).0)
         .await
         .map_err(|e| format!("spawn_blocking: {e}"))
@@ -424,7 +460,7 @@ pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMe
 pub async fn cc_bus_send(origin: String, id: String, text: String) -> Result<String, String> {
     let cmd = build_send_cmd(&id, &text)?;
     let cfg = cfg_of(&origin)?;
-    let out = exec_read(&cfg, &cmd, 64 * 1024, 30, "发消息").await?;
+    let out = exec_read(&cfg, &cmd, CONTROL_REPLY_CAP, 30, "发消息").await?;
     Ok(out.trim().to_string())
 }
 
@@ -443,7 +479,7 @@ pub async fn cc_bus_spawn(
     let acct = account.as_deref().filter(|a| !a.is_empty());
     let cmd = build_spawn_cmd(&tool, &dir, &task, acct)?;
     let cfg = cfg_of(&origin)?;
-    let out = exec_read(&cfg, &cmd, 64 * 1024, 60, "spawn").await?;
+    let out = exec_read(&cfg, &cmd, CONTROL_REPLY_CAP, 60, "spawn").await?;
     Ok(out.trim().to_string())
 }
 

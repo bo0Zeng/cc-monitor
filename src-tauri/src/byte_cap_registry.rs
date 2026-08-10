@@ -7,6 +7,9 @@
 //! | 报告 B-5 | **3** 处 |
 //! | 核实台账（V1）| **6** 处（`accounts_query` ×3 · `fork_write` · `remote_history` · `ssh_source`）|
 //! | 本轮系统扫描 | **14** 处 |
+//! | 〔devbench F10b，08-10〕| **26** 处 —— 多出来的 12 里有 7 处是把**内联字面量**提成具名的
+//!   （那一族此前整个在扫描面外，而盯着它的那条「前提触发器」一直在假绿，详见本文件末尾），
+//!   另有 `DAEMON_FRAME_LINE_CAP` 是**压根没有上限**的那处补上的。
 //!
 //! 台账漏掉的八处里，`ssh_source.rs` 自己就还有三处（`EXEC_CAPTURE_MAX_BYTES` /
 //! `DAEMONLESS_READ_CAP` / `DAEMONLESS_DISCOVER_CAP`）。
@@ -69,6 +72,15 @@ mod tests {
         // 与「manifest 超限」（异常），两者被合并成同一种降级 —— 分开报要动账号错误面的
         // UX，超出 1x 的范围，进 `ROADMAP §5`。
         "降级+说清",
+        // ⚠ 第八种，同样**论证后**加〔devbench F10b〕：daemon 出方向单行超限时
+        // **丢掉那一行**，并往 `REMOTE_HEALTH` 发一条带 origin 的说明。
+        //
+        // ★ 它与「跳过+说清」的分界是**谁被告知**：那一档告的是**日志**（`warn!`），
+        // 而这一档告的是**用户**（前端能看见的类型化事件）。为什么必须多这一档：
+        // 帧读跑在一个后台 task 里，**没有调用方可以回错**（回 `Err` 会被主循环当成
+        // 致命错误去重连，而超长行只是这一行坏了）；而只写日志的话用户看到的是
+        // 「这条会话少了一行」且无从得知为什么。⇒ 两者都不够，需要一个新名字。
+        "丢弃+带身份报告",
     ];
 
     /// 扫到了但**不是体量上限**的，逐条写清为什么排除。
@@ -193,6 +205,70 @@ mod tests {
             4_000,
             "单条 tool 文本进索引的**字符**数",
             "索引截断（不丢数据）",
+        ),
+        // ── 〔devbench F10b〕以下七条此前**全都不在本表的扫描面里**。
+        // 前六条是**内联字面量**（`.take(32 * 1024 * 1024)` 这种），本表头注把那一族
+        // 划在范围外、交给一条「前提触发器」盯着别长大 —— 而那条触发器**一直在假绿**
+        // （它抠 `.take(` 之后的连续数字再要求紧跟 `.read_to_end`，
+        // `32 * 1024 * 1024` 抠出 `"32"`、后面是 `" * 1024"` ⇒ 形态不匹配 ⇒ 不计数）。
+        // ⇒ F10b 把六处提成具名常量（于是自然进主扫描面），并把触发器改成按事实取样。
+        //
+        // ★ 更要紧的是：它们的超限语义此前**全是「静默截断」** —— `.take(N).read_to_end()`
+        // 读满就停、缓冲区里是半份数据，而调用方拿它当完整的用。那正是本表这个封闭集合
+        // **刻意排除**的那一种。⇒ 六处一律改成「多读一个字节 + 超了就回错」
+        // （形态照抄 `remote-daemon-proto/src/common/fs.rs` 那条既有注释）。
+        (
+            "src-tauri/src/cc_bus.rs",
+            "CC_BUS_TSV_CAP",
+            32 * 1024 * 1024,
+            "读远端 cc-bus 的两份登记表（`agents.tsv` + `spawned.tsv`）",
+            "拒收+回错",
+        ),
+        (
+            "src-tauri/src/cc_bus.rs",
+            "ONLINE_PROBE_CAP",
+            4096,
+            "查单个 agent 是否在线的输出（预期 ~7 字节）",
+            "拒收+回错",
+        ),
+        (
+            "src-tauri/src/cc_bus.rs",
+            "INBOX_READ_CAP",
+            4 * 1024 * 1024,
+            "读某个 agent 的 inbox",
+            "拒收+回错",
+        ),
+        (
+            "src-tauri/src/cc_bus.rs",
+            "CONTROL_REPLY_CAP",
+            64 * 1024,
+            "发消息 / spawn 的回显（是一句确认，不是数据）",
+            "拒收+回错",
+        ),
+        (
+            "src-tauri/src/mcp.rs",
+            "REMOTE_CLAUDE_JSON_CAP",
+            32 * 1024 * 1024,
+            "读远端 `.claude.json`",
+            "拒收+回错",
+        ),
+        (
+            "src-tauri/src/hooks_diag.rs",
+            "REMOTE_SETTINGS_CAP",
+            4 * 1024 * 1024,
+            "读远端 `settings.json`",
+            "拒收+回错",
+        ),
+        // 第七条不是内联字面量，是**压根没有上限**：daemon 出方向单行此前走无界 `read_line`。
+        // ⚠ 它的数**刻意不等于** daemon 侧的 `MAX_LINE_BYTES`（1 MiB，入方向命令信封）——
+        // 实测本机 525,132 行 jsonl 里有 78 行超过 1 MiB、最长 2.97 MiB，
+        // 抄过去就是丢真实数据。理由全文在 `ssh_source.rs::DAEMON_FRAME_LINE_CAP` 头注。
+        (
+            "src-tauri/src/ssh_source.rs",
+            "DAEMON_FRAME_LINE_CAP",
+            64 * 1024 * 1024,
+            "daemon **出方向单行**（一帧 = 一条 Claude jsonl 行）",
+            "丢弃+带身份报告",
         ),
         // ---- daemon 侧 ----
         (
@@ -470,7 +546,7 @@ mod tests {
         // 抽取器自检：抠不到东西时下面的对拍会两边都空、静默变绿。
         assert!(
             found.len() >= 12,
-            "全仓只扫到 {} 个字节上限常量（08-06 实测 14）—— 抽取器坏了",
+            "全仓只扫到 {} 个字节上限常量（08-10 实测 26；08-06 那次是 14，F10b 把七处内联的提成了具名）—— 抽取器坏了",
             found.len()
         );
 
@@ -753,77 +829,364 @@ mod tests {
         );
     }
 
-    /// 〔audit-0805 08-06〕**前提触发器：内联字面量上限只许有那一处。**
+    /// 内联读上限里**实参不是具名常量**的那些。
+    /// `(相对仓根的路径, `take` 的实参逐字, 为什么它不必进 `CAPS`)`
     ///
-    /// 本表的扫描面只认**具名常量**（见头注）。这不是缺陷，是**范围**——
-    /// 但范围要成立，得有个东西盯着「范围外那一族别长大」。
+    /// 只有一种正当情况：上限是**参数**，真值由调用方给（而调用方给的是具名常量）。
+    const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
+        (
+            "src-tauri/src/cc_bus.rs",
+            "cap + 1",
+            "`exec_read` 是三条命令共用的助手，上限是入参。三个调用点给的都是具名常量\
+             （`INBOX_READ_CAP` / `CONTROL_REPLY_CAP` ×2），那三个已在 `CAPS` 里。",
+        ),
+        (
+            "remote-daemon-proto/src/common/fs.rs",
+            "cap + 1",
+            "`read_file_capped` 是 daemon 侧共用的有界读助手，上限是入参；\
+             调用方给的是 `MAX_CLAUDE_JSON_BYTES` / `MAX_MANIFEST_BYTES` 等具名常量。",
+        ),
+    ];
+
+    /// 异步流整读里**压根没有上限**的那些。
+    /// `(相对仓根的路径:行, 读的是谁的输出, 为什么今天不加 + 谁退役它)`
     ///
-    /// 实测人群 **1**：`cc_bus.rs` 的 `stream.take(4096)`（防御性读上限，超限即停）。
-    /// 人群是 1 时，为它建通用扫描器是仪式；人群变 2 的那天，这个判断就该重做 ——
-    /// 本条就是那个闹钟。
+    /// ⚠ **这不是豁免清单**：第三格必须写「退役归」（下面 `every_uncapped_stream_read_has_an_owner`
+    /// 钉着），照 `polling_registry` 的先例。
+    const UNCAPPED_STREAM_READS: &[(&str, &str, &str)] = &[
+        (
+            "src-tauri/src/account_usage.rs",
+            "远端 `ccm` 用量探针的 stdout",
+            "远端 SSH exec 输出，无 e2e 覆盖 ⇒ 改完无法验。正确修法是抽一个 \
+             `exec_read_capped` 共享助手而不是撒八个 `.take()`，那是重构。**退役归 F10d**。",
+        ),
+        (
+            "src-tauri/src/acct_iso_deploy.rs",
+            "远端 `cc-acct-iso` 部署脚本的 stdout",
+            "同上一条。**退役归 F10d**。",
+        ),
+        (
+            "src-tauri/src/ccm_probe.rs",
+            "远端 `ccm` 探针的 stdout",
+            "同上一条。**退役归 F10d**。",
+        ),
+        (
+            "src-tauri/src/pubkey.rs",
+            "远端读公钥的 stdout",
+            "同上一条。**退役归 F10d**。",
+        ),
+        (
+            "src-tauri/src/tmux.rs",
+            "远端 `tmux ls` / `capture-pane` 等四处的 stdout",
+            "同上一条；四处同一族同一文件，故按文件登记（照 `polling_registry` 的口径）。\
+             **退役归 F10d**。",
+        ),
+    ];
+
+    /// ★ **前提触发器的重写**〔devbench F10b〕。
+    ///
+    /// # 它替掉的那条判据**一直在假绿**
+    ///
+    /// 旧条叫 `inline_literal_byte_caps_are_still_just_the_one`，自述逐字：
+    /// 「本表的扫描面只认具名常量…范围要成立，得有个东西盯着『范围外那一族别长大』…
+    /// 实测人群 **1**…人群变 2 的那天这个判断就该重做 —— **本条就是那个闹钟**」。
+    ///
+    /// 它抠 `.take(` 之后的 `is_ascii_digit()` 连续段，再要求**紧接着**是 `.read_to_end`。
+    /// 于是 `.take(32 * 1024 * 1024)` 抠出 `"32"`、后面是 `" * 1024 …"` ⇒ 形态不匹配 ⇒ **不计数**。
+    /// 实测那一族当时已有 **6 处**，它只看得见 1 处。**闹钟响过五次，一次都没听见。**
+    ///
+    /// ★ 病根与本仓反复记的那一条同族：**它按「一种拼法」取样，而事实是「有没有上限」**。
+    /// 而它自己的注释里逐字写过这个失效模式（「匹配单位（一种拼法）比事实小」）——
+    /// 写下那句话的判据，自己犯了那句话说的错。
+    ///
+    /// # 重写后的取样：按**事实**
+    ///
+    /// 人群 = 生产段里每一处「`.take(<任意实参>)` 紧邻一个字节读」。实参怎么拼不影响入群。
+    /// 入群之后**默认拒绝**：实参要么是已登记的具名常量（`CAPS` 管它），
+    /// 要么在 [`PARAMETRIC_READ_CAPS`] 里说清为什么不必进表。
     #[test]
-    fn inline_literal_byte_caps_are_still_just_the_one() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let mut found: Vec<String> = Vec::new();
-        for sub in ["src", "../remote-daemon-proto/src"] {
-            let dir = root.join(sub);
-            if !dir.is_dir() {
+    fn every_inline_read_cap_resolves_to_something_registered() {
+        let sites = inline_read_cap_sites();
+        // 自检：抠不到东西时下面的默认拒绝是空转的。
+        assert!(
+            sites.len() >= 6,
+            "只扫到 {} 处内联读上限（08-10 实测 7：cc-bus ×3 · mcp · hooks_diag · daemon 的 fs 助手 · `--resolve` stdin）—— 抽取器坏了，本条此刻是空转的。\n\
+             ⚠ 旧版就是**在这个位置**假绿了五次：它数的是「裸十进制字面量」而不是「有没有上限」。",
+            sites.len()
+        );
+        let mut unresolved = Vec::new();
+        for (file, arg) in &sites {
+            // 剥掉 `+ 1`（「多读一个字节好分辨刚好读满与其实还有」那个惯用形态）。
+            let bare = arg.split('+').next().unwrap_or(arg).trim().to_string();
+            let is_named_const = !bare.is_empty()
+                && bare
+                    .chars()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+                && bare.chars().next().is_some_and(|c| c.is_ascii_uppercase());
+            if is_named_const {
+                if CAPS.iter().any(|(_, n, ..)| *n == bare) {
+                    continue;
+                }
+                unresolved.push(format!(
+                    "  {file}: .take({arg}) —— `{bare}` 是具名常量但**不在 CAPS 里**"
+                ));
                 continue;
             }
-            for (path, src) in guard_core::scan_tree!(&dir, &["rs"]) {
+            if PARAMETRIC_READ_CAPS
+                .iter()
+                .any(|(f, a, _)| f == file && a == arg)
+            {
+                continue;
+            }
+            unresolved.push(format!(
+                "  {file}: .take({arg}) —— 实参不是具名常量，也没登记"
+            ));
+        }
+        assert!(
+            unresolved.is_empty(),
+            "这些内联读上限没法追溯到任何登记：\n{}\n\n\
+             ★ **裸字面量上限是本表五次假绿的病灶** —— 它不在主扫描面里，\n\
+             所以「限什么量 / 超限怎么办」两问都没人回答，而实测那六处的答案全是\n\
+             **静默截断**（`.take(N).read_to_end()` 读满就停、半份数据被当完整的用），\n\
+             那正是 `ALLOWED_SEMANTICS` 刻意排除的那一种。\n\
+             两条路：① 提成具名常量（那样它自然进主表，两问必须回答）；\n\
+             ② 若上限真是**入参**，登记进 `PARAMETRIC_READ_CAPS` 并写清调用方给的是哪些具名常量。",
+            unresolved.join("\n")
+        );
+        // 反向：登记不许留死行。
+        for (file, arg, _) in PARAMETRIC_READ_CAPS {
+            assert!(
+                sites.iter().any(|(f, a)| f == file && a == arg),
+                "`PARAMETRIC_READ_CAPS` 里的 `{file}: .take({arg})` 已经不在源码里了 —— \
+                 删掉这条，别留死规则"
+            );
+        }
+    }
+
+    /// 抠出生产段里所有「`.take(<实参>)` 紧邻一个字节读」的位置。
+    ///
+    /// 返回 `(相对仓根的路径, 实参逐字)`。
+    ///
+    /// ⚠ 两个坑是旧版注释里逐字记过的，这里照样避开：
+    /// ① **不能按字节切**（中文注释里会切在多字节字符中间直接 panic）⇒ 走 `Vec<char>`；
+    /// ② **不能用宽窗口**（会把邻近另一行的读算进来，旧版实测抓出三个假阳）⇒ 要求紧邻。
+    /// ⚠ 但**不再按拼法取实参** —— 走括号配平，`32 * 1024 * 1024` / `cap + 1` / `FOO` 一视同仁。
+    fn inline_read_cap_sites() -> Vec<(String, String)> {
+        const READS: &[&str] = &[".read_to_end", ".read_exact", ".read_to_string"];
+        let root = repo_root();
+        let mut out = Vec::new();
+        for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
+            for (path, src) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let prod = guard_core::production_code(&src);
-                // 形态：`.take(<字面量>)` 之后跟着 `read_to_end`（即按字节读的上限）。
-                let mut it = prod.match_indices(".take(");
-                while let Some((i, _)) = it.next() {
-                    // ⚠ 两处都是**匹配单位**的坑，第一版各犯一次：
-                    //   ① 不能按字节切（中文注释里会切在多字节字符中间直接 panic）；
-                    //   ② 不能用「120 字符窗口内出现 read_to_end」当判据 —— 那会把
-                    //      **邻近另一行**的读操作算进来（实测抓出三个假阳：`take(32)`/`take(4)`）。
-                    //   ⇒ 要求 `.take(<字面量>)` **紧邻**着 `.read_to_end` / `.read_exact`。
-                    let tail: String = prod[i..].chars().take(120).collect();
-                    let digits: String = tail
-                        .chars()
-                        .skip(6)
-                        .take_while(|c| c.is_ascii_digit())
-                        .collect();
-                    let after: String = tail
-                        .chars()
-                        .skip(6 + digits.chars().count())
-                        .skip_while(|c| *c == ')' || c.is_whitespace())
-                        .take(14)
-                        .collect();
-                    let is_bytes =
-                        after.starts_with(".read_to_end") || after.starts_with(".read_exact");
-                    if is_bytes && !digits.is_empty() {
-                        found.push(format!(
-                            "{}: take({digits})",
-                            path.strip_prefix(root).unwrap_or(&path).to_string_lossy()
-                        ));
+                let rel = path
+                    .strip_prefix(&root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let cs: Vec<char> = prod.chars().collect();
+                let needle: Vec<char> = ".take(".chars().collect();
+                let mut i = 0usize;
+                while i + needle.len() <= cs.len() {
+                    if cs[i..i + needle.len()] != needle[..] {
+                        i += 1;
+                        continue;
                     }
+                    // 括号配平取实参。
+                    let mut j = i + needle.len();
+                    let mut depth = 1usize;
+                    let mut arg = String::new();
+                    while j < cs.len() && depth > 0 {
+                        match cs[j] {
+                            '(' => {
+                                depth += 1;
+                                arg.push('(');
+                            }
+                            ')' => {
+                                depth -= 1;
+                                if depth > 0 {
+                                    arg.push(')');
+                                }
+                            }
+                            c => arg.push(c),
+                        }
+                        j += 1;
+                    }
+                    // 紧邻：跳过空白之后必须直接是一个字节读。
+                    let mut k = j;
+                    while k < cs.len() && cs[k].is_whitespace() {
+                        k += 1;
+                    }
+                    let tail: String = cs[k..(k + 16).min(cs.len())].iter().collect();
+                    if READS.iter().any(|r| tail.starts_with(r)) {
+                        out.push((rel.clone(), arg.trim().to_string()));
+                    }
+                    i = j.max(i + 1);
                 }
             }
         }
-        // 诊断按方向分开写 —— 「变多」与「变没」要采取的动作完全不同，
-        // 一句通用的「处数变了」会让人看着诊断还得再想一遍。
+        out.sort();
+        out
+    }
+
+    /// ★ **默认拒绝：异步流整读要么有上限，要么有主人**〔devbench F10b〕。
+    ///
+    /// # 它补的洞
+    ///
+    /// 本表此前登记的是「**哪里有上限**」。而「**哪里该有却没有**」在任何表里都不存在 ——
+    /// 与 `tool_registry` 那次（`NOT_MANAGED` 反向表）同一个形状：
+    /// **一个东西不在表里，有「没人想起来」与「不属这张表」两种截然不同的原因，
+    /// 而没有任何地方记着这个区分。**
+    ///
+    /// 人群取「把一整条**流**读进内存」这个事实：`.read_to_end` / `.read_to_string`
+    /// 且紧邻处有 `.await`（同步的那些是 `std::fs::read_to_string(path)` 自由函数，
+    /// 读的是**本机文件**、体量由磁盘兜着，不同族）。
+    ///
+    /// ⚠ 失效模式如实登记：① 先 `let fut = …;` 再 `await` 就漏出人群；
+    /// ② 「附近有 `.take(`」是窗口启发式 —— 隔太远的真上限会假红、邻行的无关 `take` 会假绿。
+    #[test]
+    fn every_uncapped_stream_read_has_an_owner() {
+        let mut population = 0usize;
+        let mut orphans = Vec::new();
+        let root = repo_root();
+        for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
+            for (path, src) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
+                let prod = guard_core::production_code(&src);
+                let rel = path
+                    .strip_prefix(&root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let lines: Vec<&str> = prod.lines().collect();
+                for (i, l) in lines.iter().enumerate() {
+                    if !l.contains(".read_to_end(") && !l.contains(".read_to_string(") {
+                        continue;
+                    }
+                    let lo = i.saturating_sub(4);
+                    let hi = (i + 3).min(lines.len());
+                    let window = lines[lo..hi].join("\n");
+                    if !window.contains(".await") {
+                        continue; // 同步读本机文件，不同族
+                    }
+                    population += 1;
+                    if window.contains(".take(") {
+                        continue;
+                    }
+                    if UNCAPPED_STREAM_READS.iter().any(|(f, ..)| *f == rel) {
+                        continue;
+                    }
+                    orphans.push(format!("  {rel}:{}", i + 1));
+                }
+            }
+        }
         assert!(
-            !found.is_empty(),
-            "内联字面量字节上限现在**一处都没有**了。\n\
-             多半是那处已改成具名常量 —— **那是好事**：它会自然进本表的主扫描面。\n\
-             ⇒ 请**删掉本条**（它的全部意义是盯着范围外那一族），并确认新常量已在主表登记。"
-        );
-        assert_eq!(
-            found.len(),
-            1,
-            "内联字面量字节上限**变多了**（实得 {found:?}）。\n\n\
-             ⚠ 本表的扫描面**只认具名常量**，这一族在范围外。人群是 1 时不建扫描器（那是仪式）；\n\
-             变成 2 就说明它在长大 —— 请重做那个判断：要么把这一族也纳入扫描面，\n\
-             要么把新增那处改成具名常量（那样它自然进表）。"
+            population >= 10,
+            "只扫到 {population} 处异步流整读（08-10 实测 13）—— 抽取器坏了，本条此刻是空转的"
         );
         assert!(
-            found[0].contains("cc_bus.rs"),
-            "那唯一一处不再是 `cc_bus.rs` 了（现在是 {}）—— 换了地方就换了语境，\n\
-             请重新判断它的超限语义是不是仍然「读到上限就停」这种无害形态。",
-            found[0]
+            orphans.is_empty(),
+            "这些地方把一整条**流**读进内存，既没有上限也没有主人：\n{}\n\n\
+             ★ 对端是**远端进程** —— 它坏掉、或者压根不是我们的 daemon，都会让\n\
+             「无界读」变成「无界堆分配」。daemon 侧为此栽过一次实测：\n\
+             喂 512 MiB 无换行的流 ⇒ RSS 从 6 MiB 涨到 518 MiB\n\
+             （见 `remote-daemon-proto/src/inbound.rs` 头注）。\n\
+             两条路：① 加上限（`.take(CAP + 1)` + 超了回错，形态见 `common/fs.rs`）；\n\
+             ② 登记进 `UNCAPPED_STREAM_READS` 并写明**谁退役它**。",
+            orphans.join("\n")
         );
+        // 反向：登记不许留死行。
+        for (f, ..) in UNCAPPED_STREAM_READS {
+            assert!(
+                root.join(f).is_file(),
+                "`UNCAPPED_STREAM_READS` 里的 `{f}` 已经不在了 —— 删掉这条"
+            );
+        }
+    }
+
+    /// ★ **「丢弃+带身份报告」那一档的行为对拍**〔devbench F10b〕。
+    ///
+    /// # 为什么它需要一条**专属**判据
+    ///
+    /// 隔壁 `a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site` 是
+    /// 「从常量被提到的那一行往下看 N 行找 marker」。那个形状对本档**不成立**：
+    /// `DAEMON_FRAME_LINE_CAP` 在三个地方被提到（有界读的判断处 · 措辞函数 · 消费点的
+    /// `warn!`），而报告只发生在**第三处** —— 按每处提及去要求 marker 会造出两条假红。
+    ///
+    /// ⇒ 换个取样单位：**处置分支本身**。人群 = `ssh_source.rs` 生产段里每一处
+    /// `CappedLine::TooLong` 的处置臂。要求：
+    /// ① 每一臂都得说点什么（至少 `warn!`）—— 定框 **E4**：静默失败要给身份；
+    /// ② **至少有一臂**把它抬到用户能看见的那一层（`REMOTE_HEALTH`）——
+    ///    那正是本档与「跳过+说清」的分界（告日志 vs 告用户）。
+    ///
+    /// ⚠ 失效模式如实登记：臂体窗口是 **12 行**的启发式。臂特别长 ⇒ 假红；
+    /// 紧邻的别的语句里恰好有 marker ⇒ 假绿。与隔壁那条同源取舍。
+    #[test]
+    fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
+        let root = repo_root();
+        let raw = std::fs::read_to_string(root.join("src-tauri/src/ssh_source.rs"))
+            .expect("ssh_source.rs 读不到 —— 文件搬了就把这条一起改");
+        let prod = guard_core::production_code(&raw);
+        let lines: Vec<&str> = prod.lines().collect();
+        let mut arms = 0usize;
+        let mut silent = Vec::new();
+        let mut reported = 0usize;
+        for (i, l) in lines.iter().enumerate() {
+            // ⚠ **必须同时要求 `=>`**〔本条首跑就红在这里〕：`CappedLine::TooLong` 既是
+            // **构造**（有界读函数里 `return Ok(… CappedLine::TooLong(seen) …)`）也是
+            // **模式**（处置臂 `Ok(CappedLine::TooLong(bytes)) => {`）。
+            // 第一版只按名字取样，于是把有界读里那两处构造当成了「什么都没说的处置臂」——
+            // **匹配单位（名字出现）比事实（这是一处处置）大**，本仓那一族的又一次。
+            if !l.contains("CappedLine::TooLong") || !l.contains("=>") {
+                continue;
+            }
+            arms += 1;
+            const WINDOW: usize = 12;
+            let body = lines[i..(i + WINDOW).min(lines.len())].join("\n");
+            if !body.contains("warn!") {
+                silent.push(format!("  ssh_source.rs:{}", i + 1));
+            }
+            if body.contains("REMOTE_HEALTH") {
+                reported += 1;
+            }
+        }
+        assert!(
+            arms >= 3,
+            "只找到 {arms} 处超限处置臂（08-10 实测 3：主帧读 / 握手 / 应答泵）—— \
+             抽取器坏了，本条此刻是空转的"
+        );
+        assert!(
+            silent.is_empty(),
+            "这些超限处置臂什么都没说：\n{}\n\n\
+             ★ 丢一行**不说**就是静默失败，而 `ALLOWED_SEMANTICS` 刻意排除了那一种。\n\
+             用户看到的会是「这条会话少了一行」且无从得知为什么。",
+            silent.join("\n")
+        );
+        assert!(
+            reported >= 1,
+            "没有任何一处超限把话说到**用户**那一层（`REMOTE_HEALTH`）。\n\
+             ★ 那是「丢弃+带身份报告」与「跳过+说清」的**唯一分界** —— \n\
+             只写 `warn!` 的话本档就该改登记成「跳过+说清」，别占一个更强的名字。"
+        );
+    }
+
+    /// ★ 登记「无上限」不许变成永久豁免：每条必须写**谁退役它**。
+    ///
+    /// 钉法照 `polling_registry` 的先例（那张表对 `data-poll` 也要求逐字「退役归」）。
+    #[test]
+    fn an_uncapped_read_is_not_a_permanent_exemption() {
+        assert!(
+            !UNCAPPED_STREAM_READS.is_empty(),
+            "登记表空了 —— 若那八处真都加上上限了，请**删掉这条判据与那张表**"
+        );
+        for (f, what, why) in UNCAPPED_STREAM_READS {
+            assert!(
+                why.contains("退役归"),
+                "`{f}` 登记成「无上限」却没说**谁退役它** —— \
+                 没有主人的登记就是豁免清单，而豁免清单会一直在那里（{what}）"
+            );
+            assert!(
+                what.chars().count() > 5,
+                "`{f}` 没说清读的是**谁的输出**：「{what}」"
+            );
+        }
     }
 }

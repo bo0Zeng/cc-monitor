@@ -186,6 +186,9 @@ pub async fn read_remote_mcp_servers(origin: String) -> Result<Vec<McpServerEntr
     Ok(collect_entries(claude_json.as_ref(), &src, None, "", None))
 }
 
+/// 读远端 `~/.claude.json` 的上限〔devbench F10b 提成具名常量〕。
+const REMOTE_CLAUDE_JSON_CAP: u64 = 32 * 1024 * 1024;
+
 /// F87b③ 抽出（F89a 复用）：SSH exec `cat` 远端 `~/.claude.json` → 宽容解析（缺/坏 → None）。**只读**。
 /// 定值命令、无用户输入拼接 → 零注入面；多候选（CLAUDE_CONFIG_DIR 优先、否则 $HOME）；30s 超时 + 32MB 上限；
 /// 大解析进 spawn_blocking（对齐 §10）。
@@ -197,11 +200,19 @@ async fn fetch_remote_claude_json(
     let read = async {
         let stream = crate::ssh_source::connect_and_exec_cmd(cfg, CMD).await?;
         let mut buf = Vec::new();
+        // `+ 1` 见 remote-daemon-proto/src/common/fs.rs：不多读一个字节就分不清
+        // 「刚好读满」与「其实还有」。⚠ 截断的 JSON 会在下面解析失败，用户看到的是
+        // 「解析失败」而不是「超限」—— 那是**误导性的错误**，不是诚实的降级。
         stream
-            .take(32 * 1024 * 1024)
+            .take(REMOTE_CLAUDE_JSON_CAP + 1)
             .read_to_end(&mut buf)
             .await
             .map_err(|e| format!("读取远端 ~/.claude.json 失败: {e}"))?;
+        if buf.len() as u64 > REMOTE_CLAUDE_JSON_CAP {
+            return Err(format!(
+                "远端 ~/.claude.json 超过 {REMOTE_CLAUDE_JSON_CAP} 字节上限 —— 拒收，不拿截断的 JSON 去解析"
+            ));
+        }
         Ok::<Vec<u8>, String>(buf)
     };
     let raw = tokio::time::timeout(std::time::Duration::from_secs(30), read)
