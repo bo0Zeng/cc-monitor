@@ -78,6 +78,17 @@
   color: var(--text);
   background: var(--bg);
   color-scheme: dark;
+
+  /* === 顶栏图标（devbench F09）：data-URI SVG，零字体依赖 ===
+   * 定义并进这个已有的 `:root` 而不是另开一个 —— stylelint 的
+   * `no-duplicate-selectors` 会红，而它是对的：两个 `:root` 迟早分叉。 */
+  --icon-settings: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 6h5.2a3 3 0 0 1 5.6 0H21v2h-7.2a3 3 0 0 1-5.6 0H3V6zm0 10h11.2a3 3 0 0 1 5.6 0H21v2h-1.2a3 3 0 0 1-5.6 0H3v-2z'/%3E%3C/svg%3E");
+  --icon-history: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zm-1 3v6l5 3 .9-1.6L13 12V7h-2z'/%3E%3C/svg%3E");
+  --icon-panorama: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 4.5 13.6 8l-.5 1.9-7.6-3.5.5-1.9zM7.6 12.6l6-3.3 1 1.8-6 3.3-1-1.8z'/%3E%3Ccircle cx='5' cy='5.5' r='3'/%3E%3Ccircle cx='16' cy='9.5' r='3'/%3E%3Ccircle cx='7' cy='16.5' r='3'/%3E%3Ccircle cx='18' cy='19' r='3'/%3E%3Cpath d='M9.4 15.4l6.6 2.6-.7 1.9-6.6-2.6.7-1.9z'/%3E%3C/svg%3E");
+  --icon-usage: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 20V10h4v10H4zm6 0V4h4v16h-4zm6 0v-7h4v7h-4z'/%3E%3C/svg%3E");
+  --icon-grid: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z'/%3E%3C/svg%3E");
+  --icon-folder: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 5h6.6l2 2H21a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z'/%3E%3C/svg%3E");
+  --icon-keyboard: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 6h20a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zm3 3v2h2V9H5zm4 0v2h2V9H9zm4 0v2h2V9h-2zm4 0v2h2V9h-2zM5 13v2h2v-2H5zm4 0v2h6v-2H9zm8 0v2h2v-2h-2z'/%3E%3C/svg%3E");
 }
 
 * {
@@ -349,6 +360,92 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   background: var(--overlay-hover);
   color: var(--text);
 }
+
+/* ── 顶栏图标：内联 SVG（devbench F09，2026-08-10）──────────────────────────
+ *
+ * 用户实测报告（08-10）：「右上角那些不显示 emoji，反而显示一些奇怪的东西，
+ * 根本不知道是什么」。他在 Linux 上跑，而本项目原本 Windows 优先 ——
+ * 作者本机有 Segoe UI Symbol / Segoe UI Emoji，所以那几个字符一直看着是好的。
+ *
+ * ★ 成因是**两类字符混在一起**，都会变豆腐块但原因不同：
+ *   · `⚙ ◷ ▦ ∑ ⌨` **不是 emoji**，是数学/几何符号 —— 靠系统**正文字体**覆盖
+ *   · `🗺 🗂` 才是真 emoji —— 要**emoji 字体**（Noto Color Emoji 之类）
+ *   换成「另一个符号」只是换一个赌注，所以改成不依赖任何字体的 SVG。
+ *
+ * 为什么是 CSS mask 而不是把 SVG 塞进 DOM：
+ *   ① 本项目有避免 `innerHTML` 的纪律（`command-bar.ts` 头注逐字「全 textContent，
+ *      无 innerHTML」），塞 SVG 要么用 innerHTML 要么写一堆 `createElementNS`
+ *   ② mask + `background-color: currentColor` ⇒ **图标自动跟随 `color`**，
+ *      hover 与主题切换一行都不用改（这些按钮本来就靠 `color: var(--text-2)` 变色）
+ *   ③ data URI 打进 bundle，离线可用、零额外请求
+ *
+ * ⚠ 图标形状**没有判据**（诚实边界 5g：机检管不了「画得好不好看」，靠人看）。
+ * 有判据的是两件事：TS 侧不许再用字符当图标 · 每个 trigger 都要有这里的图标定义。
+ */
+.settings-trigger::before,
+.history-trigger::before,
+.panorama-trigger::before,
+.usage-trigger::before,
+.grid-monitor-trigger::before,
+.sftp-trigger::before,
+.status-cmdk-icon::before {
+  content: "";
+  display: block;
+  width: 17px;
+  height: 17px;
+  background-color: currentColor;
+  /* stylelint-disable property-no-vendor-prefix -- `-webkit-mask-*` 在这里是**必要的**，
+     不是历史遗留：Tauri 在 Linux 上用 **WebKitGTK**，而 WebKit 对无前缀 `mask` 简写的支持
+     直到很近才跟上。删掉前缀 ⇒ 图标在 Linux 上不显示，而本件治的 bug（用户 08-10 实测
+     「右上角那些…根本不知道是什么」）**正是在 Linux 上报的** —— 那等于把它原样复发一遍。
+     ⚠ 豁免范围刻意只包这一个块（`stylelint-enable` 紧跟在末尾），不放开整份文件。 */
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+/* 设置：滑块（三条带钮的横线）—— 比齿轮好画且在小尺寸下更清楚 */
+.settings-trigger::before {
+  -webkit-mask-image: var(--icon-settings);
+  mask-image: var(--icon-settings);
+}
+/* 历史：时钟 */
+.history-trigger::before {
+  -webkit-mask-image: var(--icon-history);
+  mask-image: var(--icon-history);
+}
+/* 代码全景：图谱（三个节点 + 连线）—— 刻意与「监控」的方格阵区分开 */
+.panorama-trigger::before {
+  -webkit-mask-image: var(--icon-panorama);
+  mask-image: var(--icon-panorama);
+}
+/* 用量：柱状图 */
+.usage-trigger::before {
+  -webkit-mask-image: var(--icon-usage);
+  mask-image: var(--icon-usage);
+}
+/* 多 agent 监控：2×2 网格 */
+.grid-monitor-trigger::before {
+  -webkit-mask-image: var(--icon-grid);
+  mask-image: var(--icon-grid);
+}
+/* SFTP 文件面板：文件夹 */
+.sftp-trigger::before {
+  -webkit-mask-image: var(--icon-folder);
+  mask-image: var(--icon-folder);
+}
+/* 命令面板提示：键盘 */
+.status-cmdk-icon::before {
+  -webkit-mask-image: var(--icon-keyboard);
+  mask-image: var(--icon-keyboard);
+  width: 15px;
+  height: 15px;
+}
+/* stylelint-enable property-no-vendor-prefix */
+
 
 /* 历史浏览器入口 —— 紧邻设置按钮左边 */
 .history-trigger {
