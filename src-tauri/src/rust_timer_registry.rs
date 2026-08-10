@@ -153,6 +153,42 @@ mod tests {
             "两处 `CHUNK_PAUSE_MS`：分块 emit 之间让 UI 喘一口。\
              **上界是 `chunk_total`**（`if idx + 1 < chunk_total` 才 sleep），最后一块不停。",
         ),
+        (
+            "src/watcher.rs",
+            "ticker",
+            1,
+            "★★ **本表第一次把 `recv_timeout` 那一族收进来时逮到的两处之一**〔devbench F07, 08-10〕。\
+             `recv_timeout(100ms)` = **10Hz，无终止条件**（只有 `Disconnected => break`），\
+             是全仓频率最高的一处周期唤醒。**它自己的注释就写着「轮询」**：\
+             `:166` 逐字「主循环：用 recv_timeout 100ms **轮询** notify 事件，每轮 try_recv \
+             rescan 请求」、`:167`「**100ms 轮询额外延迟是为兼容 rescan 通道**」。\
+             ⇒ **事件源不缺，缺的是把两条通道合成一条**：它每 100ms 醒来的唯一理由是轮第二条\
+             通道（`rescan_rx`），而超时臂 `Err(Timeout) => {}` 是空操作。\
+             **退役归属：`devbench` F11**（两条通道合成一个统一 enum 事件 + 主循环无超时 `recv()`，\
+             照 daemon 侧 `watch_loop` 消费单一 `mpsc<WatchEvent>` 的现成形状）。\
+             ⚠ 退役附带收益：注释自陈「再加 100ms 总延迟 ~200ms」⇒ 流式渲染延迟直接砍一半。",
+        ),
+        (
+            "src/session_map.rs",
+            "ticker",
+            1,
+            "★★ 同上那两处的另一处〔devbench F07, 08-10〕。`recv_timeout(2s)`，无终止条件；\
+             超时臂走**心跳分支**，对 `by_id` 里**每个**条目跑 `is_process_alive`。\
+             它治的 bug 逐字在 `:405-408`：「用户关闭终端窗口导致 `claude.exe` 被强杀时，\
+             `sessions/<PID>.json` **不会被删**（Claude Code 的退出 hook 没跑）→ 文件事件永不触发 \
+             → **死 session 的 Tab 永远 live**」。\
+             ⇒ **事件源存在但住在别的 crate**：daemon 侧 `platform/pidwatch/linux.rs` 用 \
+             `pidfd_open(2)` + 无超时 `poll(2)` 绑**进程实例**解掉了同一个问题（PID 复用骗不过它）。\
+             ⚠ **但 daemon 侧的 Windows 那格是空壳** —— `platform/pidwatch/fallback.rs` 头注逐字\
+             「非 Linux 的看守形态 —— **一个诚实的空壳，不是一个假实现**」，真形态 \
+             `OpenProcess` + `WaitForSingleObject` 登记为 **U4b**（`unified-backend` 区，\
+             标「要用户跑真 Windows 机」）。而本条治的 bug **恰恰是 Windows 场景**。\
+             **退役归属：`devbench` F12，被 U4b 挡着。** 实测依据（08-10）：monitor 侧\
+             `cargo check --lib --target x86_64-pc-windows-msvc` ⇒ \
+             `failed to find tool \"lib.exe\"`（monitor 有 C 依赖，交叉编译要 MSVC 工具链），\
+             而 daemon 侧同一条能过 ⇒ **平台代码该住 daemon 侧，不该在 monitor 侧再抽一层**\
+             （原设计那样做是在造第二份实现，已否）。",
+        ),
     ];
 
     fn root() -> &'static Path {
@@ -235,7 +271,11 @@ mod tests {
     /// ⚠ 仍**刻意不含** `Duration::from_`（那是取值不是唤醒）—— 见模块头注。
     fn wake_hits(prod: &str) -> usize {
         // 判据串运行时拼，免得命中本文件自己的说明。
-        let names = [format!("{}", "sleep"), format!("{}", "interval")];
+        let names = [
+            format!("{}", "sleep"),
+            format!("{}", "interval"),
+            format!("{}", "recv_timeout"),
+        ];
         prod.lines()
             .filter(|l| {
                 let t = l.trim_start();
@@ -363,14 +403,23 @@ mod tests {
         }
         // 抽取器自检：一条 ticker 都没认出来时上面的断言全空转。
         assert_eq!(
-            tickers, 2,
-            "登记表里的 ticker 条数变了（实测 2 条：`bind.rs::run_heartbeat` 与 \
-             `ssh_source.rs` 的 daemonless 2s 轮询）。\n\
-             多一条 ⇒ 新增了真节拍器，必须单独论证；少一条 ⇒ 退役了，把账拧下来。"
+            tickers, 4,
+            "登记表里的 ticker 条数变了（实测 4 条：`bind.rs::run_heartbeat` 10s · \
+             `ssh_source.rs` 的 daemonless 2s · **`watcher.rs` 的 100ms** · \
+             **`session_map.rs` 的 2s**）。\n\
+             多一条 ⇒ 新增了真节拍器，必须单独论证；少一条 ⇒ 退役了，把账拧下来。\n\
+             ⚠ 后两条是 2026-08-10（devbench F07）把 `recv_timeout` 收进针时**才第一次上账的** —— \
+             它们在那之前一直在跑，只是本表的针（当时只有 `sleep`/`interval`）看不见它们。\
+             ⇒ **这个数从 2 变 4 不是回归，是可见性变了。** 两条的退役各有归属（F11 / F12）。"
         );
     }
 
-    /// ★ 那个真节拍器的**形态**没变：还是「无限循环 + 周期 sleep」。
+    /// ★ `bind.rs` 那个真节拍器的**形态**没变：还是「无限循环 + 周期 sleep」。
+    ///
+    /// ⚠ **函数名里的 `the_one_real_ticker` 是历史措辞，别读成「全仓唯一」** —— 08-10 起
+    /// 登记表里有 **4 条** ticker（见上一条判据的诊断）。本条只查 `bind.rs` 这一个，
+    /// 因为它是唯一「事件源都还没有」的那个；另三条各自有事件源与退役归属。
+    /// 不改函数名是刻意的：改名会牵动引用它的地方，而误导用一句头注就消掉了。
     ///
     /// 它一旦被改成事件驱动（或加上终止条件），本条会红 —— **那是好事**，
     /// 提醒把登记表那条从 `ticker` 降级到别的类。
