@@ -75,8 +75,43 @@ pub type BatchHandler = Arc<dyn Fn(Vec<JsonlLine>) + Send + Sync + 'static>;
 /// return，且不会自动重扫；外部（lib.rs）从 session-added 信号驱动这个通道
 /// 触发一次重扫作为安全网。
 pub struct WatcherHandle {
-    pub force_rescan_tx: std::sync::mpsc::Sender<String>,
+    pub force_rescan_tx: RescanSender,
     pub initial_scan_done: Arc<AtomicBool>,
+}
+
+/// watcher 主循环消费的**唯一**事件类型〔devbench F11, 08-10〕。
+///
+/// # 为什么要有它
+///
+/// 这个循环原先有**两条**通道：`notify_rx`（文件事件）与 `rescan_rx`（外部请求重扫）。
+/// `mpsc::Receiver` 没有 select，于是它靠 `recv_timeout(100ms)` **周期醒来**去
+/// `try_recv` 第二条 —— 那句注释自己写着「100ms 轮询额外延迟是为兼容 rescan 通道」。
+/// ⇒ **10Hz、无终止条件、与 jsonl-watcher 线程同寿**，是全仓最快的一处周期唤醒。
+///
+/// 合成一条之后主循环阻塞在**无超时 `recv()`** 上，形态与 daemon 侧 `watch_loop`
+/// （消费单一 `mpsc<WatchEvent>`，四类事件源全是事件）一致 —— 那边是先例，这边是补齐。
+///
+/// ★ **附带收益不是次要的**：原注释算过「jsonl-line 已有 notify_debouncer 100ms
+/// debounce，再加 100ms 总延迟 ~200ms」⇒ 去掉这一跳，**流式渲染的固定延迟直接砍一半**。
+#[derive(Debug)]
+pub enum WatchEvent {
+    /// 文件系统事件（debouncer 产）。
+    Notify(DebounceEventResult),
+    /// 外部请求重扫某个 session 的 jsonl（修 Bug 2-A 的安全网）。
+    Rescan(String),
+}
+
+/// 对外只暴露「请求重扫某个 sid」这一个动作 —— **内部它与文件事件走同一条通道**。
+///
+/// ⚠ 刻意包一层而不是把 `Sender<WatchEvent>` 直接公开：调用方（`lib.rs` 的
+/// session-changes emitter）关心的是「通知 watcher 重扫这个 sid」，不该知道
+/// 它和文件事件共用一条队列。包装之后调用点**一个字都不用改**。
+pub struct RescanSender(std::sync::mpsc::Sender<WatchEvent>);
+
+impl RescanSender {
+    pub fn send(&self, sid: String) -> Result<(), std::sync::mpsc::SendError<WatchEvent>> {
+        self.0.send(WatchEvent::Rescan(sid))
+    }
 }
 
 /// 递归监听 `root` 下所有 `*.jsonl` 文件。每次 process_file 读完一个文件后
@@ -90,7 +125,8 @@ pub struct WatcherHandle {
 ///
 /// 初始全量扫描也走 active 过滤，避免冷启动时回放死 session 的历史。
 pub fn spawn_watcher(root: PathBuf, active: ActiveFilter, on_batch: BatchHandler) -> WatcherHandle {
-    let (rescan_tx, rescan_rx) = std::sync::mpsc::channel::<String>();
+    // F11：**一条**通道。文件事件与 rescan 请求都从这里进来 ⇒ 主循环无超时阻塞。
+    let (evt_tx, evt_rx) = std::sync::mpsc::channel::<WatchEvent>();
     let offsets: Arc<Mutex<HashMap<PathBuf, FileCursor>>> = Arc::new(Mutex::new(HashMap::new()));
     // P5.1：per-file next seq 计数器。跟 offsets 共生命周期；同一文件多次 process
     // 跨调用单调递增。
@@ -99,9 +135,14 @@ pub fn spawn_watcher(root: PathBuf, active: ActiveFilter, on_batch: BatchHandler
 
     // spawn 失败不要 panic 整个 app（生产场景应该日志降级，让 UI 至少能开）
     let scan_flag = initial_scan_done.clone();
+    let notify_tx = evt_tx.clone();
     if let Err(e) = std::thread::Builder::new()
         .name("jsonl-watcher".into())
-        .spawn(move || run_watcher(root, offsets, seqs, on_batch, active, rescan_rx, scan_flag))
+        .spawn(move || {
+            run_watcher(
+                root, offsets, seqs, on_batch, active, evt_rx, notify_tx, scan_flag,
+            )
+        })
     {
         tracing::error!(
             "spawn jsonl-watcher thread failed: {e}; \
@@ -112,18 +153,20 @@ pub fn spawn_watcher(root: PathBuf, active: ActiveFilter, on_batch: BatchHandler
     }
 
     WatcherHandle {
-        force_rescan_tx: rescan_tx,
+        force_rescan_tx: RescanSender(evt_tx),
         initial_scan_done,
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_watcher(
     root: PathBuf,
     offsets: Arc<Mutex<HashMap<PathBuf, FileCursor>>>,
     seqs: Arc<Mutex<HashMap<PathBuf, u64>>>,
     on_batch: BatchHandler,
     active: ActiveFilter,
-    rescan_rx: std::sync::mpsc::Receiver<String>,
+    evt_rx: std::sync::mpsc::Receiver<WatchEvent>,
+    notify_tx: std::sync::mpsc::Sender<WatchEvent>,
     initial_scan_done: Arc<AtomicBool>,
 ) {
     if !root.exists() {
@@ -150,8 +193,13 @@ fn run_watcher(
     );
     initial_scan_done.store(true, Ordering::Release);
 
-    let (notify_tx, notify_rx) = std::sync::mpsc::channel::<DebounceEventResult>();
-    let mut debouncer = match new_debouncer(Duration::from_millis(100), notify_tx) {
+    // F11：debouncer 不再拿一条专属通道，而是把每个事件包成 `WatchEvent::Notify`
+    // 投进那条统一通道。`new_debouncer` 接受任何 `FnMut(DebounceEventResult) + Send`
+    // （`impl<F> DebounceEventHandler for F`），所以这一层**不需要额外线程**。
+    let mut debouncer = match new_debouncer(Duration::from_millis(100), move |res| {
+        // 主循环退出后这里会 send 失败 —— 那是正常收摊，不是错误。
+        let _ = notify_tx.send(WatchEvent::Notify(res));
+    }) {
         Ok(d) => d,
         Err(e) => {
             tracing::error!("debouncer init failed: {e}");
@@ -163,36 +211,38 @@ fn run_watcher(
         return;
     }
 
-    // 主循环：用 recv_timeout 100ms 轮询 notify 事件，每轮 try_recv rescan 请求。
-    // 100ms 轮询额外延迟是为兼容 rescan 通道；jsonl-line 已有 notify_debouncer 100ms
-    // debounce，再加 100ms 总延迟 ~200ms，对流式渲染可接受。
-    use std::sync::mpsc::RecvTimeoutError;
-    loop {
-        match notify_rx.recv_timeout(Duration::from_millis(100)) {
-            Ok(evt) => {
-                let Ok(events) = evt else { continue };
+    // 主循环〔F11〕：**无超时** `recv()` —— 两类事件都从同一条通道来，没有第二条要轮。
+    //
+    // ⚠ 这里原先是 `recv_timeout(100ms)` + 每轮 `try_recv` 第二条通道，注释自陈
+    // 「100ms 轮询额外延迟是为兼容 rescan 通道」⇒ 10Hz、无终止条件。合成一条之后
+    // 那个理由消失了，延迟也少了一跳（原注释算的「总延迟 ~200ms」现在只剩 debouncer 那 100ms）。
+    // 退出条件仍然只有一个：通道断开（所有 sender 都 drop）。
+    while let Ok(evt) = evt_rx.recv() {
+        match evt {
+            WatchEvent::Notify(res) => {
+                let Ok(events) = res else { continue };
                 for ev in events {
                     if crate::adapter::is_record_file(&ev.path) {
                         process_file(&ev.path, &offsets, &seqs, &on_batch, &active);
                     }
                 }
             }
-            Err(RecvTimeoutError::Timeout) => {}
-            Err(RecvTimeoutError::Disconnected) => break,
-        }
-
-        // Drain 所有待办 rescan 请求（修 Bug 2-A）。新加入的 session 可能因为
-        // jsonl 行先到的竞态没被 emit；这里强制重扫该 session 的所有 jsonl 文件
-        // （offset 没更新过的就 process，更新过的就跳过——process_file 内部判断）
-        while let Ok(sid) = rescan_rx.try_recv() {
-            tracing::info!("forced jsonl rescan for session {sid}");
-            for entry in WalkDir::new(&root).into_iter().filter_map(Result::ok) {
-                let p = entry.path();
-                if p.is_file()
-                    && crate::adapter::is_record_file(p)
-                    && crate::adapter::session_id_from_path(p).as_deref() == Some(sid.as_str())
-                {
-                    process_file(p, &offsets, &seqs, &on_batch, &active);
+            // 修 Bug 2-A：新加入的 session 可能因为 jsonl 行先到的竞态没被 emit；
+            // 强制重扫该 session 的所有 jsonl 文件（offset 没更新过的就 process，
+            // 更新过的就跳过 —— `process_file` 内部判断）。
+            //
+            // ⚠ 原先这里是 `while let Ok(sid) = rescan_rx.try_recv()` 的 drain 循环。
+            // 现在一条一条来即可：它们本来就在同一个队列里排着，不需要「攒一批再处理」。
+            WatchEvent::Rescan(sid) => {
+                tracing::info!("forced jsonl rescan for session {sid}");
+                for entry in WalkDir::new(&root).into_iter().filter_map(Result::ok) {
+                    let p = entry.path();
+                    if p.is_file()
+                        && crate::adapter::is_record_file(p)
+                        && crate::adapter::session_id_from_path(p).as_deref() == Some(sid.as_str())
+                    {
+                        process_file(p, &offsets, &seqs, &on_batch, &active);
+                    }
                 }
             }
         }

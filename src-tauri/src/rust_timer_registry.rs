@@ -154,21 +154,6 @@ mod tests {
              **上界是 `chunk_total`**（`if idx + 1 < chunk_total` 才 sleep），最后一块不停。",
         ),
         (
-            "src/watcher.rs",
-            "ticker",
-            1,
-            "★★ **本表第一次把 `recv_timeout` 那一族收进来时逮到的两处之一**〔devbench F07, 08-10〕。\
-             `recv_timeout(100ms)` = **10Hz，无终止条件**（只有 `Disconnected => break`），\
-             是全仓频率最高的一处周期唤醒。**它自己的注释就写着「轮询」**：\
-             `:166` 逐字「主循环：用 recv_timeout 100ms **轮询** notify 事件，每轮 try_recv \
-             rescan 请求」、`:167`「**100ms 轮询额外延迟是为兼容 rescan 通道**」。\
-             ⇒ **事件源不缺，缺的是把两条通道合成一条**：它每 100ms 醒来的唯一理由是轮第二条\
-             通道（`rescan_rx`），而超时臂 `Err(Timeout) => {}` 是空操作。\
-             **退役归属：`devbench` F11**（两条通道合成一个统一 enum 事件 + 主循环无超时 `recv()`，\
-             照 daemon 侧 `watch_loop` 消费单一 `mpsc<WatchEvent>` 的现成形状）。\
-             ⚠ 退役附带收益：注释自陈「再加 100ms 总延迟 ~200ms」⇒ 流式渲染延迟直接砍一半。",
-        ),
-        (
             "src/session_map.rs",
             "ticker",
             1,
@@ -403,14 +388,20 @@ mod tests {
         }
         // 抽取器自检：一条 ticker 都没认出来时上面的断言全空转。
         assert_eq!(
-            tickers, 4,
-            "登记表里的 ticker 条数变了（实测 4 条：`bind.rs::run_heartbeat` 10s · \
-             `ssh_source.rs` 的 daemonless 2s · **`watcher.rs` 的 100ms** · \
-             **`session_map.rs` 的 2s**）。\n\
+            tickers, 3,
+            "登记表里的 ticker 条数变了（实测 3 条：`bind.rs::run_heartbeat` 10s · \
+             `ssh_source.rs` 的 daemonless 2s · **`session_map.rs` 的 2s**）。\n\
              多一条 ⇒ 新增了真节拍器，必须单独论证；少一条 ⇒ 退役了，把账拧下来。\n\
-             ⚠ 后两条是 2026-08-10（devbench F07）把 `recv_timeout` 收进针时**才第一次上账的** —— \
-             它们在那之前一直在跑，只是本表的针（当时只有 `sleep`/`interval`）看不见它们。\
-             ⇒ **这个数从 2 变 4 不是回归，是可见性变了。** 两条的退役各有归属（F11 / F12）。"
+             ⚠ **这个数最近走过 2 → 4 → 3，三次都不是回归**，值得一并读懂：\n\
+             · 2 → 4（08-10 devbench **F07**）：把 `recv_timeout` 收进针时 `watcher.rs` 的 100ms \
+             与 `session_map.rs` 的 2s **第一次上账**。它们在那之前一直在跑，只是针看不见它们 \
+             ⇒ **可见性变了，不是新增了轮询**。\n\
+             · 4 → 3（08-10 devbench **F11**）：`watcher.rs` 那条**真退役了** —— 两条通道\
+             （文件事件 + rescan 请求）合成一个 `WatchEvent` enum，主循环改无超时 `recv()`。\
+             ★ **本条判据就是那次退役的验收证据**：改完代码后它先红在「少一处 = 退役了」上，\
+             删掉登记才绿 —— 退役不是靠人说「我改好了」。\n\
+             · 剩下的 `session_map.rs` 那条退役归 **F12**，被 `unified-backend` 的 **U4b** 挡着\
+             （daemon 侧 Windows 判活是诚实空壳，而本条治的 bug 恰恰是 Windows 场景）。"
         );
     }
 
