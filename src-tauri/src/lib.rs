@@ -709,10 +709,27 @@ pub fn run() {
                                     // 且那份快照在 P5 删掉 ticker 后没有任何事件路径会刷新它
                                     // ⇒ 永久灰点、按旧 sid 也 attach 不上（用户实测「杀不掉」）。
                                     // 故 cause 先于快照裁决，见 `classify_removed` 的文档注释。
-                                    match ssh_source::classify_removed(
-                                        ssh_source::find_tmux_origin_for_sid(&sid),
+                                    //
+                                    // ★ P0（#60）：**这条 `info!` 只回答一个问题 —— 这条 removed 到没到这段。**
+                                    // 病史：`control-parity` 前身 `issue-triage` 的 T7 把 #60 的现象 1
+                                    // （带外杀掉后 tab 不变灰）全链级稳定复现 2/2，而 claude 死的那一刻
+                                    // 日志里**四条归宿日志一条都没有**（`remote session idle-tmux` /
+                                    // `remote session ended` / 两条 emit 失败的 warn）⇒ 只能推断
+                                    // `classify_removed` 没跑到，但**分不清是帧没到、还是到了却在更上游被丢**。
+                                    //
+                                    // ⚠ **它不回答「帧为什么没到」** —— 只把搜索面从「整条链」砍成
+                                    // 「上游 or 分类」两半。别把它当成 #60 的根因定位。
+                                    //
+                                    // ⚠ 两个入参**先绑定再打印再移交**，不是为了打日志多调一次
+                                    // `find_tmux_origin_for_sid`（那会是行为改动：它读的是共享快照）。
+                                    // `RemovalCause` 是 `Copy`，`tmux_origin` 打印时只借用。
+                                    let tmux_origin = ssh_source::find_tmux_origin_for_sid(&sid);
+                                    tracing::info!(
+                                        "remote removed 到达: sid={sid} cause={:?} tmux_origin={:?}",
                                         removed.cause,
-                                    ) {
+                                        tmux_origin
+                                    );
+                                    match ssh_source::classify_removed(tmux_origin, removed.cause) {
                                         ssh_source::RemovedDisposition::Idle { origin } => {
                                             ssh_source::mark_idle(&origin, &sid);
                                             let payload = bridge::SessionIdlePayload {
