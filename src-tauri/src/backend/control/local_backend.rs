@@ -798,12 +798,54 @@ mod tests {
         );
 
         let home = std::env::temp_dir().join(format!("p2-local-inbound-{}", std::process::id()));
-        std::fs::create_dir_all(home.join(".claude").join("projects")).expect("建沙箱 HOME");
+        let cfg_dir = home.join(".claude");
+        std::fs::create_dir_all(cfg_dir.join("projects")).expect("建沙箱 HOME");
+        // ⚠⚠ **只设 `HOME` 不够，而且这条是实测逼出来的**（P2s 摸底 08-11）：
+        // daemon 的 `resolve_claude_dir()` 逐字「`$CLAUDE_CONFIG_DIR` if set, else `$HOME/.claude`」
+        // ⇒ 继承来的 `CLAUDE_CONFIG_DIR` **压过** `HOME`。本条第一版只设 HOME，
+        // 那一跑 daemon 读的其实是**真实**的配置目录（只读 tail，没有写，但隔离是假的）。
+        let envs = vec![
+            ("HOME".to_string(), home.display().to_string()),
+            (
+                "CLAUDE_CONFIG_DIR".to_string(),
+                cfg_dir.display().to_string(),
+            ),
+        ];
+
+        // 隔离**必须是断言，不能是假设**：起一趟一次性的，从 hello 帧里把 daemon 自陈的
+        // `claude_dir` 读回来对一遍。上面那次教训就是「我以为设了 HOME 就隔离了」。
+        {
+            use std::io::BufRead;
+            let mut probe = std::process::Command::new(&bin)
+                .arg("--tail-only")
+                .envs(envs.iter().map(|(k, v)| (k.clone(), v.clone())))
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .spawn()
+                .expect("起探针失败");
+            let mut line = String::new();
+            std::io::BufReader::new(probe.stdout.take().expect("有 stdout"))
+                .read_line(&mut line)
+                .expect("读 hello 失败");
+            let _ = probe.kill();
+            let _ = probe.wait();
+            let frame = crate::ssh_source::parse_frame(&line).expect("首帧该是 hello");
+            let crate::ssh_source::InboundFrame::Hello { claude_dir, .. } = &frame else {
+                panic!("首帧不是 hello：{line}");
+            };
+            assert_eq!(
+                Path::new(claude_dir),
+                cfg_dir,
+                "daemon 自陈的 claude_dir 不在沙箱里 —— 这一跑读的是**真实**配置目录。\n\
+                 `resolve_claude_dir()` 是 `$CLAUDE_CONFIG_DIR` 优先、`$HOME/.claude` 兜底，\n\
+                 两个都要设。（只设 HOME 那版跑起来一切正常，隔离却是假的。）"
+            );
+        }
 
         let h = supervise_with_stdio(
             bin,
             vec!["--tail-only".into()],
-            vec![("HOME".into(), home.display().to_string())],
+            envs,
             CrashLimits::default(),
             Arc::new(|| {
                 std::time::SystemTime::now()
