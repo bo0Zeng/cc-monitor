@@ -125,6 +125,46 @@ describe("F41 runRemoteResume", () => {
     expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
   });
 
+  // ★★ P1：`sendIntoViaDaemon` 的 catch 此前把**两件事**混成一件 ——
+  // IPC/序列化异常 与 载荷渲染被拒。它的注释推理「都在 daemon 那一跳之前 ⇒ 能证明什么都没
+  // 发出去 ⇒ 可回落」**对一半错一半**：没发出去只说明重做不会重复执行，**不说明重做走的那条
+  // 路也会拒**。而回落那条正是 TS 兜底渲染器，它对同样输入未必拒 ⇒ 一次 Rust 侧的 fail-closed
+  // 被那个 catch 变成 fail-open。分法 = Rust 侧 `payload::refuse()` 打的 `REFUSE:` 标。
+  it("★ P1：载荷渲染被拒（带 REFUSE 标）→ refused，不回落到兜底渲染器", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "probe_ccm_cli")
+        return Promise.resolve({ installed: false, version: null, capabilities: [] });
+      // Rust 侧 `refuse()` 的产物形态：`REFUSE: <人读原因>`
+      if (cmd === "render_launch_payload")
+        return Promise.reject("REFUSE: 拒绝拼入命令：非法 CLAUDE_CONFIG_DIR \"/x;rm\"");
+      return Promise.resolve(undefined);
+    });
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const ok = await runRemoteResumeIntoExistingTmux("aya", "sid-p1", "cc-p1", "");
+    expect(ok).toBe(false);
+    // 用户必须看见（这次就地 resume 没做成），且 toast 带得上原因
+    expect(toastMock.mock.calls[0][0]).toBe("就地 resume 未执行");
+    expect(String(toastMock.mock.calls[0][1])).toContain("REFUSE:");
+    // ★ 最要紧的一格：**没有**发起拉起 —— 也就是没有回落到兜底渲染器那条整串
+    expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
+  });
+
+  it("★ P1 对照：IPC 异常（无 REFUSE 标）→ 仍然回落，行为逐字不变", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "probe_ccm_cli")
+        return Promise.resolve({ installed: false, version: null, capabilities: [] });
+      // 通道问题，与载荷本身无关 ⇒ 重做是安全的、且兜底那条路能成
+      if (cmd === "daemon_send_into") return Promise.reject("ipc closed");
+      return Promise.resolve(undefined);
+    });
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const ok = await runRemoteResumeIntoExistingTmux("aya", "sid-p1b", "cc-p1b", "");
+    expect(ok).toBe(true);
+    // 回落成功 ⇒ 走到了真正的拉起，而且**没有**弹「就地 resume 未执行」
+    expect(invokeMock.mock.calls.map((c) => c[0])).toContain("launch_remote_terminal");
+    expect(toastMock.mock.calls.map((c) => c[0])).not.toContain("就地 resume 未执行");
+  });
+
   it("invoke 失败 → 剪贴板写入完整命令 + toast 含原因与命令", async () => {
     mockInvoke(() => Promise.reject("未找到远端配置"));
     const writeText = vi.fn().mockResolvedValue(undefined);

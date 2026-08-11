@@ -33,6 +33,31 @@
 //! - TS 侧还剩 `launch-render-fallback.ts` 一个产出点（U8c-3 删除）。跨语言一致性由
 //!   `fixtures/payload-golden.json` 的**逐字节对拍**保证（TS 生成并入库、Rust 读同一份自己渲染再比）。
 
+/// P1：**业务拒绝的唯一构造口** —— 所有「渲染不出来，且这是坏输入」的 `Err` 都必须经这里。
+///
+/// # 为什么要打标（不是为了好看）
+///
+/// TS 侧 `sendIntoViaDaemon` 的 catch 此前把两件事混成一件：**IPC 异常**（后端崩/序列化坏）
+/// 与**载荷渲染被拒**。它的注释推理「两者都在 daemon 那一跳之前 ⇒ 能证明什么都没发出去
+/// ⇒ 可回落」——**对一半错一半**：没发出去只说明**重做不会重复执行**，
+/// **不说明重做走的那条路也会拒**。而回落那条路是 TS 兜底渲染器，
+/// 它对同样输入**未必拒**（`remote-launch-run.ts` 自己逐字承认过）。
+/// ⇒ 一次 Rust 侧的 fail-closed 被那个 catch 变成了 fail-open。
+///
+/// 打标之后 TS 侧按标记分流：带标记 ⇒ `refused`（不回落 + toast）；不带 ⇒ IPC 异常 ⇒ `fallback`。
+///
+/// # 它不是什么
+///
+/// ⚠ 这是**字符串约定不是类型**（诚实边界 9a）：有人手写一个带同样前缀的普通错误串，
+/// 就会被 TS 当成业务拒绝。要靠类型分开得让 command 的错误结构化 —— 那是 `U6`，单独立项。
+/// 全仓实测：**70 个 tauri command 的错误类型 100% 是 `String`**，本件不在这里开第一个口。
+pub(crate) const REFUSE_TAG: &str = "REFUSE:";
+
+/// 见 [`REFUSE_TAG`]。判据 `every_business_rejection_is_tagged` 钉住「渲染路径上不许裸 `Err`」。
+pub(crate) fn refuse(msg: impl std::fmt::Display) -> String {
+    format!("{REFUSE_TAG} {msg}")
+}
+
 use std::fmt::Write as _;
 
 /// 两种 shell 共用的元字符黑名单。
@@ -102,10 +127,10 @@ pub fn config_dir_prefix_posix(account: Option<&Account>) -> Result<String, Stri
             let d = config_dir.trim();
             // 空串**不是**账号 0，是坏数据（空值 ≠ 未设 —— Z01 起整套设计的支点）。
             if d.is_empty() {
-                return Err("具名账号的 configDir 是空的（账号 0 请用 base）".into());
+                return Err(refuse("具名账号的 configDir 是空的（账号 0 请用 base）"));
             }
             if !config_dir_command_safe(d) {
-                return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {d:?}"));
+                return Err(refuse(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {d:?}")));
             }
             Ok(format!("export CLAUDE_CONFIG_DIR='{d}'; "))
         }
@@ -198,10 +223,10 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
             EnvOp::ExportConfigDir { value } => {
                 // ★ 与 `config_dir_prefix_posix` 同一道闸 —— 两个入口不许安全姿态相反。
                 if value.is_empty() {
-                    return Err("configDir 是空串（账号 0 请用 UnsetConfigDir）".into());
+                    return Err(refuse("configDir 是空串（账号 0 请用 UnsetConfigDir）"));
                 }
                 if !config_dir_command_safe(value) {
-                    return Err(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {value:?}"));
+                    return Err(refuse(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {value:?}")));
                 }
                 let _ = write!(
                     out,
@@ -219,7 +244,7 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
             EnvOp::UnsetConfigDir => out.push_str(UNSET_CONFIG_DIR_PREFIX),
             EnvOp::UnsetNestedEnv { keys } => {
                 if keys.is_empty() {
-                    return Err("嵌套 env 键表是空的 ⇒ 会渲染出裸 `unset ; `".into());
+                    return Err(refuse("嵌套 env 键表是空的 ⇒ 会渲染出裸 `unset ; `"));
                 }
                 let _ = write!(out, "unset {}; ", keys.join(" "));
             }
@@ -279,12 +304,12 @@ fn apply_wraps(inner: String, wraps: &[WrapSpec]) -> String {
 pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
     for a in spec.args {
         if !arg_is_join_safe(a) {
-            return Err(format!(
+            return Err(refuse(format!(
                 "拒绝拼入命令：参数 {a:?} 不在放行集里 —— 载荷是 `join(\" \")` 拼的，\
                  空白会让它裂成多个参数、shell 元字符会另起一条命令。\n\
                  放行集是 `[A-Za-z0-9] + -_.:/=,@+`；**非 ASCII 也一律拒**（已知过严，\
                  且与 `config_dir_command_safe` 放行中文不对称，见 `arg_is_join_safe` 头注）"
-            ));
+            )));
         }
     }
     // ★ **launcher 也要过一道**〔audit-0805 08-08〕：本函数对 `args` 逐个过白名单，
@@ -308,17 +333,17 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
         .chars()
         .find(|c| matches!(c, ';' | '|' | '&' | '$' | '`' | '<' | '>' | '\n' | '\r'))
     {
-        return Err(format!(
+        return Err(refuse(format!(
             "拒绝拼入命令：launcher {:?} 含注入字符 {c:?} —— 载荷会被键进会话执行，\n\
              一个 `;` 或 `|` 就能另起一条命令。合法形态是命令名或路径（可带空格分段）。",
             spec.launcher
-        ));
+        )));
     }
     let mut argv = vec![spec.launcher];
     argv.extend_from_slice(spec.args);
     let inner = argv.join(" ");
     let cd = match spec.cwd {
-        Some("") => return Err("cwd 是空串 —— 空值 ≠ 未设；不加 cd 请用 None".into()),
+        Some("") => return Err(refuse("cwd 是空串 —— 空值 ≠ 未设；不加 cd 请用 None")),
         Some(c) => format!("cd {} && ", shell_quote_core::posix_quote(c)),
         None => String::new(),
     };
@@ -355,7 +380,7 @@ pub fn usage_probe_payload(
     let account = match config_dir {
         None => EnvOp::UnsetConfigDir,
         Some("") => {
-            return Err("用量探针需要显式 configDir（账号 0 请传 None，空串是坏数据）".into())
+            return Err(refuse("用量探针需要显式 configDir（账号 0 请传 None，空串是坏数据）"))
         }
         Some(dir) => EnvOp::ExportConfigDir { value: dir },
     };
@@ -370,6 +395,95 @@ pub fn usage_probe_payload(
 
 #[cfg(test)]
 mod tests {
+    /// P1：**`REFUSE_TAG` 是跨语言双写点，两侧必须逐字一致**。
+    ///
+    /// 照仓里现成的形状写（`launch.rs::the_posix_marker_is_the_one_the_frontend_matches_on`）——
+    /// `include_str!` 读前端那份，把字面量抠出来对拍。改一边不改另一边 ⇒ 红。
+    ///
+    /// 为什么非钉不可：前端靠这个标区分「载荷渲染被拒」（不许回落）与「IPC 异常」（可回落）。
+    /// 标不一致 ⇒ 业务拒绝被当成通道异常 ⇒ **回落到兜底渲染器**，
+    /// 而它对同样输入未必拒 ⇒ 一次 fail-closed 悄悄变回 fail-open，**且没有任何东西会报错**。
+    #[test]
+    fn the_refuse_tag_is_the_same_string_on_both_sides() {
+        const RUNNER: &str = include_str!("../../../../src/remote-launch-run.ts");
+        let key = "const REFUSE_TAG = \"";
+        let at = RUNNER
+            .find(key)
+            .expect("前端找不到 REFUSE_TAG —— 抽取坏了，本断言在空转");
+        let rest = &RUNNER[at + key.len()..];
+        let front = &rest[..rest.find('"').expect("字面量没收尾")];
+        assert!(
+            front.chars().count() >= 4,
+            "抽到的标太短（{front:?}）—— 抽取坏了"
+        );
+        assert_eq!(
+            front, super::REFUSE_TAG,
+            "\n前端按 {front:?} 认业务拒绝，而后端打的是 {:?} —— 两侧漂了。\n\
+             后果不是报错，是**静默回落**：业务拒绝被当成 IPC 异常 ⇒ 走兜底渲染器 ⇒ \n\
+             一次 fail-closed 变回 fail-open。两边必须一起改。",
+            super::REFUSE_TAG
+        );
+    }
+
+    /// P1-Y2：**渲染路径上的业务拒绝，一条都不许裸写** —— 必须经 [`refuse`] 打标。
+    ///
+    /// # 为什么钉「构造方式」而不是「哪些串是拒绝」
+    ///
+    /// 后者就是 `topbar-icons.vitest.ts` 头注骂过的「**按字符黑名单取样**」：
+    /// 判据去猜哪些文案算拒绝 ⇒ 新增一条忘了登记就漏。钉构造口则相反 ——
+    /// **新增拒绝理由忘了打标，这条会红**，不靠人记得。
+    ///
+    /// # 它逮到过什么（不是假想）
+    ///
+    /// 本件第一遍改写时**漏了两处多行 `Err(format!(…))`**（参数放行集 / launcher 注入字符），
+    /// 正是这条判据的目标形状 —— 单行的好改，多行的容易漏。
+    ///
+    /// # 它管不了什么（诚实边界 9a/9b）
+    ///
+    /// ⚠ 人群限于**本文件**。拒绝理由若长到别的文件里，这条看不见 ——
+    /// 所以下面带一条**人群自检**：本文件必须真的是渲染路径的拒绝所在地（`refuse` 有调用者）。
+    /// ⚠ 打标是**字符串约定不是类型**：手写一个带同样前缀的普通错误串也会被 TS 当成业务拒绝（`U6`）。
+    #[test]
+    fn every_business_rejection_is_tagged() {
+        let src = guard_core::production_code(include_str!("payload.rs"));
+        // 人群自检：本文件若一处 `refuse(` 都没有，下面那条断言会零命中地绿。
+        let tagged = src.matches("refuse(").count();
+        assert!(
+            tagged >= 2,
+            "本文件生产段里 `refuse(` 只出现 {tagged} 次 —— 人群塌了。\n\
+             要么拒绝点被搬走了（那这条判据该跟着搬），要么打标被摘了。"
+        );
+        // ⚠ **第一版是假绿的，形状记下来**：原来扫的是「以 `return Err(` **开头**的行」，
+        // 而 `Some("x") => return Err(…)` 这种 `match` 臂里 `return` 不在行首 ⇒ **漏**。
+        // 变异当场证伪（造了一处裸 `Err` 而判据照样绿）。
+        // ⇒ 改成扫**每一处 `Err(`**，看它后面紧跟的是不是 `refuse(`，与它在行里的位置无关。
+        let mut offenders = Vec::new();
+        for (i, line) in src.lines().enumerate() {
+            let t = line.trim_start();
+            // `Err(` 的每一次出现（一行可能有多次）
+            for (col, _) in t.match_indices("Err(") {
+                let rest = &t[col + "Err(".len()..];
+                // 打了标 = 紧跟 `refuse(`；`Ok(`/`.map_err(`/类型位置的 `Err` 不在此列
+                if rest.trim_start().starts_with("refuse(") {
+                    continue;
+                }
+                // 排除非「构造一个错误值」的出现：`Err(e) =>` 这类是**模式匹配**不是构造。
+                if rest.starts_with("e)") || rest.starts_with("err)") || rest.starts_with("r)") {
+                    continue;
+                }
+                offenders.push(format!("{}: {}", i + 1, t.chars().take(72).collect::<String>()));
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "渲染路径上有**没打标**的业务拒绝：\n  {}\n\n\
+             全部要经 `refuse(...)`（见它的头注）。不打标 ⇒ TS 侧 `sendIntoViaDaemon` 分不出\n\
+             「载荷渲染被拒」与「IPC 异常」⇒ 会**回落到兜底渲染器**，而它对同样输入未必拒\n\
+             ⇒ 一次 Rust 侧的 fail-closed 当场变成 fail-open。",
+            offenders.join("\n  ")
+        );
+    }
+
     /// ★★ **`launcher` 也要拒绝注入字符**〔audit-0805 08-08，Phase G 第 93 件〕。
     ///
     /// # 先核出来的不对称
