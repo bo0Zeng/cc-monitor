@@ -805,7 +805,13 @@ mod tests {
                 if body.contains("rfind(") {
                     why.push("用了 `rfind` ⇒ 比的是**任意一处**，不是**那一处**（坏法②）");
                 }
+                // `find_pinned` = **恰好一处 + 两侧有边界**（`guard_core`）。它比这里原有的两种
+                // 界定法都强：`arm_of` 只切段（段内仍可能有第二处），`matches().count()` 只核数量
+                // 而不管边界。⇒ 认它〔08-11，P2s 翻面那条判据用的就是它〕。
+                // ⚠ 补它不是放宽：不认的话，用更强原语的判据反而被判不合格，
+                // 那会把人推回 `matches().count()` —— 而那条又踩 `needle_anchor_registry` 的棘轮。
                 let bounded = body.contains("arm_of(")
+                    || body.contains("find_pinned(")
                     || (body.contains("matches(") && body.contains(".count()"));
                 if !bounded {
                     why.push(

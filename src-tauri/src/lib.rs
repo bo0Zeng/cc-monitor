@@ -27,6 +27,7 @@ mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生
                 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
 mod inbound_client;
+mod daemon_policy; // P2s（C8）：每台机一份 daemon 策略（生效值住内存，持久化归前端）
 mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
 mod launch;
 mod local_accounts; // L3a：本机多账号枚举（只读）——`accounts.rs` 的本地对侧
@@ -1023,6 +1024,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            daemon_policy::set_daemon_kill_on_exit,
             config::load_config,
             config::save_config,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
@@ -1188,12 +1190,22 @@ pub fn run() {
         .run(|_app, event| {
             if let tauri::RunEvent::Exit = event {
                 if let Some(h) = LOCAL_BACKEND.get() {
+                    // P2s（C8②③）：**杀不杀由这台机自己的策略说了算**，缺省不杀。
+                    //
+                    // ⚠ 原来这里是无条件 `stop()`，理由写着「不杀就成了游魂进程」。
+                    // 那个理由**实测不成立**〔08-11，P2s §0a〕：daemon 是纯 stdio 子进程，
+                    // monitor 一退读端就断，它 **153 毫秒**内自己 broken-pipe 退出。
+                    // ⇒ 不杀不会留游魂；这条策略的真实语义是「立刻杀」与「让它自己死」之差。
+                    // （真要让它活下去得先给 daemon 一个监听口 —— `P2d` / 待决 `U7`。）
+                    let kill = daemon_policy::kill_on_exit(inbound_client::LOCAL_ORIGIN);
                     tracing::info!(
-                        "退出：收掉本机后端 pid={:?}（起过 {} 次）",
+                        "退出：本机后端 pid={:?}（起过 {} 次）kill_on_exit={kill}",
                         h.current_pid(),
                         h.attempts()
                     );
-                    h.stop();
+                    if kill {
+                        h.stop();
+                    }
                 }
             }
         });
