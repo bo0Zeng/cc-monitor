@@ -28,6 +28,7 @@ mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
 mod inbound_client;
 mod daemon_policy; // P2s（C8）：每台机一份 daemon 策略（生效值住内存，持久化归前端）
+mod local_daemon; // P2s（C8）：本机 daemon 的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
 mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
 mod launch;
 mod local_accounts; // L3a：本机多账号枚举（只读）——`accounts.rs` 的本地对侧
@@ -79,9 +80,6 @@ mod doc_claim_registry; // F11：耐久文档里「描述当下」的字段与�
 mod frame_cadence_guard; // F01：帧节奏说法的零命中守卫（P5 后 daemon 零定时器；被禁措辞见模块头注）
 mod gate_singleton_guard; // F03：§34 Gate 2 的身份判定在 Rust 侧只许有一个家（`gate-core`）
 
-/// F05a：本机后端监护句柄。存起来是为了退出前 `stop()`（不 stop 就是游魂进程）。
-static LOCAL_BACKEND: std::sync::OnceLock<backend::control::local_backend::SuperviseHandle> =
-    std::sync::OnceLock::new();
 #[cfg(test)]
 mod atomic_replace_registry; // audit-0805 F13：原子替换的两套 Win32 语义，谁用哪一套
 #[cfg(test)]
@@ -403,7 +401,7 @@ pub fn run() {
             // tmux server 装三条全局 hook 且没有开关，扫到 dev 产物就起它 = 去改用户真实
             // tmux 的状态（F05 摸底 §2.5）。
             {
-                use backend::control::local_backend::{self, Resolved};
+                use backend::control::local_backend::Resolved;
                 // P2z（定框 C10）：exe 旁边没有 sidecar 时，把**已内嵌**的那份释放到本机再起 ——
                 // 「单 exe 也能起 daemon 进程」那句话的落点。
                 //
@@ -412,29 +410,11 @@ pub fn run() {
                 //     ⇒ 与远端那份结构上不可能撞（理由见 `extract_embedded_to` 头注的 D1 段）。
                 //   · 当前 arch：`sftp::daemon_binary` 按它挑内嵌字节；缺内嵌（`cfg(embedded_daemons)`
                 //     未置）时给 None，函数会诚实降级、不伪造理由。
-                let extract_dir = dirs::home_dir()
-                    .map(|h| h.join(".cc-monitor").join("bin"))
-                    .unwrap_or_else(|| std::path::PathBuf::from("/tmp/.cc-monitor/bin"));
-                let embedded = sftp::daemon_binary(std::env::consts::ARCH)
-                    .map(|d| (d.build_id, d.bytes));
-                let (resolved, sup) = local_backend::start_or_extract(
-                    env!("CCM_TARGET_TRIPLE"),
-                    &extract_dir,
-                    embedded,
-                    // C10：平台知识由宿主注入，backend 那半不认识 `#[cfg(unix)]`。
-                    &crate::platform_fs::make_executable,
-                    std::sync::Arc::new(|e| tracing::info!("本机后端: {e:?}")),
-                );
-                match &resolved {
+                match local_daemon::start_local_backend() {
                     Resolved::Found(p) => tracing::info!("本机后端 sidecar: {}", p.display()),
                     Resolved::Missing { reason, looked_at } => {
                         tracing::info!("本机后端未启动: {reason}；找过 {looked_at:?}")
                     }
-                }
-                // 句柄存起来：进程退出前要 `stop()`，否则被监护的 daemon 成游魂
-                // （它对「stdin 写端关闭」刻意不敏感）。
-                if let Some(h) = sup {
-                    let _ = LOCAL_BACKEND.set(h);
                 }
             }
 
@@ -1025,6 +1005,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             daemon_policy::set_daemon_kill_on_exit,
+            local_daemon::daemon_status,
             config::load_config,
             config::save_config,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
@@ -1189,7 +1170,10 @@ pub fn run() {
         // 而模块头注里逐字写着「不杀就成了游魂进程」。**注释说了、代码没做，靠一条告警才发现。**
         .run(|_app, event| {
             if let tauri::RunEvent::Exit = event {
-                if let Some(h) = LOCAL_BACKEND.get() {
+                // ⚠ 锁在这里取、句柄不克隆：`SuperviseHandle` 刻意不是 `Clone`
+                // （克隆出去的那份 `stop()` 谁都能调，就没有「一个句柄一条命」这回事了）。
+                let guard = local_daemon::LOCAL_BACKEND.lock();
+                if let Some(h) = guard.as_ref().ok().and_then(|g| g.as_ref()) {
                     // P2s（C8②③）：**杀不杀由这台机自己的策略说了算**，缺省不杀。
                     //
                     // ⚠ 原来这里是无条件 `stop()`，理由写着「不杀就成了游魂进程」。

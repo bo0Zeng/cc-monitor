@@ -588,7 +588,10 @@ pub fn start_if_present(
 /// # 不缓冲
 ///
 /// 逐行读、读完即弃。daemon 是持续产帧的，攒任何东西都是无界增长。
-fn local_stdio_consumer(stdin: std::process::ChildStdin, stdout: std::process::ChildStdout) {
+pub(crate) fn local_stdio_consumer(
+    stdin: std::process::ChildStdin,
+    stdout: std::process::ChildStdout,
+) {
     use std::io::BufRead;
 
     let stdin = match tauri::async_runtime::block_on(async move {
@@ -789,6 +792,7 @@ mod tests {
     #[cfg(all(embedded_daemons, target_os = "linux", target_arch = "x86_64"))]
     #[test]
     fn the_local_daemon_really_registers_an_inbound_client() {
+        let _guard = crate::inbound_client::local_origin_test_lock();
         let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("embedded-daemons")
             .join("cc-monitor-remote-x86_64");
@@ -1284,7 +1288,17 @@ mod tests {
     /// ⇒ 将来再改入口名，这条仍会红，除非同时在这张清单里登记 —— 那正是要的。
     #[test]
     fn the_startup_path_really_calls_this_module() {
-        let prod = guard_core::production_code(include_str!("../../lib.rs"));
+        // ⚠ **P2s 搬过一次家**：接线原来住 `lib.rs` 的 `run()` 里，P2s 把它抽进
+        // `local_daemon.rs`（理由是结构性的：`#[tauri::command]` 不能与 `generate_handler!`
+        // 同模块）。⇒ 语料从「一个文件」变成「启动路径这两个文件」。
+        // **这不是把判据放宽**：仍然要求「至少一个已知入口被接上」，只是接线可以住这两处之一；
+        // 两个文件都不接，照样红（M8 变异实测）。
+        let prod = format!(
+            "{}\n{}",
+            guard_core::production_code(include_str!("../../lib.rs")),
+            guard_core::production_code(include_str!("../../local_daemon.rs")),
+        );
+        let prod = prod.as_str();
         let me = guard_core::production_code(include_str!("local_backend.rs"));
         // 本模块今天对外的生产入口清单。加入口 = 往这里加一条（**不许**留空清单）。
         assert!(!ENTRIES.is_empty(), "抽取器自检：入口清单空了 ⇒ 下面两条断言都会零命中地绿");

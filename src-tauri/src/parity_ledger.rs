@@ -100,6 +100,9 @@ mod tests {
         // P2s（C8）：daemon 策略是 **per-host** 的（入参带 origin，本机 = `<local>`）⇒ `Both`。
         // 一个命令服务两侧，正是 C1「本地要和远端一样」在命令面上的样子。
         ("set_daemon_kill_on_exit", "app.daemon-policy", Side::Both),
+        // P2s：状态两侧同源 —— 「这台机的 daemon 通道在不在」读的是 `inbound_client` 那**一张**
+        // 登记表（远端 hello 后登记，本机 P2 之后也在 hello 后登记）。⇒ `Both`，且只有一条命令。
+        ("daemon_status", "daemon.status", Side::Both),
         ("load_config", "app.config", Side::Both),
         ("save_config", "app.config", Side::Both),
         ("get_data_paths", "app.data-paths", Side::Both),
@@ -560,11 +563,19 @@ mod tests {
     /// ⚠ 但**不能直接把 `origin:` 从禁列里删掉** —— 那样一条真·远端命令声明成 `Both`
     /// 就再也没人拦。⇒ 改成：吃 `origin:` 的 `Local`/`Both` 命令必须**在本表里登记并写明理由**。
     /// `RemoteConfig` 仍是**绝对禁**（它天然只描述一台远端机）。
-    const ORIGIN_TAKING_BOTH: &[(&str, &str)] = &[(
-        "set_daemon_kill_on_exit",
-        "P2s：daemon 策略是 per-host 的，本机的 origin 就是 `<local>`。\
-         命令体对 origin **不做任何远端假设**（它只是一张表的键），所以两侧共用一条命令 —— 这正是 C1。",
-    )];
+    const ORIGIN_TAKING_BOTH: &[(&str, &str)] = &[
+        (
+            "set_daemon_kill_on_exit",
+            "P2s：daemon 策略是 per-host 的，本机的 origin 就是 `<local>`。\
+             命令体对 origin **不做任何远端假设**（它只是一张表的键），所以两侧共用一条命令 —— 这正是 C1。",
+        ),
+        (
+            "daemon_status",
+            "P2s：状态按 origin 查 `inbound_client` 的登记表，那张表两侧共用。\
+             `pid`/`attempts` 只有本机有 —— 那是**天然不对称**（远端进程在别人机器上），\
+             所以它们是 `Option` 而不是「远端填 0」。",
+        ),
+    ];
 
     /// ★ 断言 3（有牙的那条）：声明 `Local` / `Both` 的命令，签名里**不许**出现远端专用参数。
     ///
@@ -602,14 +613,14 @@ mod tests {
         // 反向自检：一条都没检到 = 签名采集坏了。**等号而不是 `>=`**（T04 审计重要 5：
         // 写 `>= N` 恰好容忍一次静默降级）。
         assert_eq!(
-            checked, 74,
-            "检到 {checked} 条 Local/Both 命令（真实应为 74 = Local 51 + Both 23；\
+            checked, 75,
+            "检到 {checked} 条 Local/Both 命令（真实应为 75 = Local 51 + Both 24；\
              devbench F03 的 skill 接入面是 +3（list_skills / read_skill_file / write_skill_file，\
              都 Local）；\
              E79 的 `list_local_session_accounts` 是 +1；U-CC1 的 `drift_ledger_report` 是 +1，\
              它是 Both —— 本地行与远端行都经同一个 `parse_line` 喂进同一个进程内账本；\
              **F08 的 `account_usage_local` 是 +1** —— 它补平了 `usage.per-account` 那条 ParityDebt；\
-             **P2s 的 `set_daemon_kill_on_exit` 是 +1**，Both —— per-host daemon 策略，本机 origin 是 `<local>`（C1））\
+             **P2s 的 `set_daemon_kill_on_exit` / `daemon_status` 是 +2**，都是 Both —— per-host daemon 策略与状态，本机 origin 是 `<local>`（C1））\
              ——改 LEDGER 就要来确认这个数"
         );
     }
@@ -621,9 +632,9 @@ mod tests {
         // 而 U8a-2c-pre（`57dba2a`）把这四个数各 +1 时，只改了数、一条尾注都没动。
         // ⇒ 尾注把 U8a-2c-pre 的增量记在了 U8c-2c-2 名下。**尾注的用处就是说清「谁加的」，
         // 归属错了就不如没有。**
-        assert_eq!(LEDGER.len(), 132, "命令总数变了"); // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +1（set_daemon_kill_on_exit：per-host daemon 策略，C8）**
+        assert_eq!(LEDGER.len(), 133, "命令总数变了"); // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +2（set_daemon_kill_on_exit / daemon_status，C8）**
         let sides = capability_sides();
-        assert_eq!(sides.len(), 56, "能力总数变了"); // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：本机不经 IR，§36）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +1（app.daemon-policy，Both）**
+        assert_eq!(sides.len(), 57, "能力总数变了"); // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：本机不经 IR，§36）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +2（app.daemon-policy / daemon.status，都是 Both）**
         let asym = asymmetric_capabilities();
         assert_eq!(asym.len(), 21, "不对称能力数变了"); // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
         let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
