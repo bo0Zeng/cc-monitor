@@ -28,6 +28,7 @@ mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
 mod inbound_client;
 mod daemon_policy; // P2s（C8）：每台机一份 daemon 策略（生效值住内存，持久化归前端）
+mod daemon_control; // P2s（C8）：每台机一个开关的命令层——只认 origin，不认 ssh 也不认进程监护
 mod local_daemon; // P2s（C8）：本机 daemon 的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
 mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
 mod launch;
@@ -797,20 +798,34 @@ pub fn run() {
                         cfg.host,
                         cfg.port
                     );
+                    // P2s（C8②）：起法包成**闭包**，把手交给 `daemon_control` ——
+                    // 那一层只按 origin 找把手，不认识 ssh（也不该认识）。
+                    // 原来这里是直接 `spawn` 且**把 JoinHandle 丢掉** ⇒ 远端流起了就再也停不下来，
+                    // 「每台机一个开关」在远端那侧根本无从谈起。
+                    let origin = cfg.origin_label();
                     let replay_for_ssh = replay.clone();
                     let app_for_ssh = app.handle().clone();
                     let tx_for_ssh = remote_tx.clone();
-                    let connected = Arc::new(std::sync::atomic::AtomicBool::new(true));
-                    tauri::async_runtime::spawn(async move {
-                        let label = cfg.origin_label();
-                        if let Err(e) =
-                            ssh_source::run(cfg, replay_for_ssh, app_for_ssh, tx_for_ssh, connected)
-                                .await
-                        {
-                            // S8/S9 会把"connection dropped"做成显眼的前端提示；先大声 log。
-                            tracing::error!("ssh_source::run [{label}] exited: {e}");
-                        }
-                    });
+                    let spawn_one = move || {
+                        let cfg = cfg.clone();
+                        let replay = replay_for_ssh.clone();
+                        let app = app_for_ssh.clone();
+                        let tx = tx_for_ssh.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let label = cfg.origin_label();
+                            // `connected` 每条流各一份：重起的那条不许继承上一条的健康状态，
+                            // 否则「上次连上过 ⇒ 立即快速重连」这个判断会拿着旧账做决定。
+                            let connected = Arc::new(std::sync::atomic::AtomicBool::new(true));
+                            if let Err(e) =
+                                ssh_source::run(cfg, replay, app, tx, connected).await
+                            {
+                                // S8/S9 会把"connection dropped"做成显眼的前端提示；先大声 log。
+                                tracing::error!("ssh_source::run [{label}] exited: {e}");
+                            }
+                        })
+                    };
+                    let first = spawn_one();
+                    daemon_control::register_remote(origin, Box::new(spawn_one), first);
                 }
                 // audit-fixes F03.2：tmux 存活对账**从 8s poller 改为收帧驱动**（甲-evented，零轮询）——
                 // 收割器现落在 `ssh_source::stream_loop` 的 `TmuxSessions` 帧臂（daemon **事件驱动**推帧即算），
@@ -1005,7 +1020,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             daemon_policy::set_daemon_kill_on_exit,
-            local_daemon::daemon_status,
+            daemon_control::daemon_status,
+            daemon_control::daemon_start,
+            daemon_control::daemon_stop,
             config::load_config,
             config::save_config,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）

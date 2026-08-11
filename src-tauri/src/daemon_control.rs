@@ -1,0 +1,226 @@
+//! P2s（定框 `C8`）：**每台机一个 daemon 开关** —— 状态 / 起 / 停，本机与远端**同一个契约**。
+//!
+//! # 这一层认识什么、不认识什么
+//!
+//! 它只认识 **origin**（本机是 [`crate::inbound_client::LOCAL_ORIGIN`]，远端是用户配的 label）。
+//! 它**不认识 ssh、不认识进程监护** —— 那两样分别住 `ssh_source` 与 `local_daemon`。
+//! 远端怎么起，由 `lib.rs` 在启动时注册一个**重起闭包**（把 replay / app handle / tx 那几个
+//! 克隆关进去），本层只按 origin 找把手。
+//!
+//! ⇒ 「本地要和远端一样，只是远端走 ssh、本地不走」（`C1`）在命令面上的落点就是这一层：
+//! **三个口各只有一条命令**，差别全部塞进各自的实现里。
+//!
+//! # ⚠ 「停」在两侧不是同一个动作（诚实边界 11c）
+//!
+//! 本机：杀掉被监护的子进程。远端：**断掉那条 SSH 流** —— 远端 daemon 随之因管道破裂退出
+//! （与本机 153ms 自杀同一个机制，见 P2s §0a）。两者结果相同、路径不同，本层不为时序差异作保。
+
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+use crate::inbound_client::LOCAL_ORIGIN;
+
+/// 一台远端的「怎么再起」+ 「现在这条流的把手」。
+struct RemoteSlot {
+    /// 重起闭包：`lib.rs` 注册时把该台机需要的全部上下文关进来。
+    respawn: Box<dyn Fn() -> tauri::async_runtime::JoinHandle<()> + Send + Sync>,
+    handle: Option<tauri::async_runtime::JoinHandle<()>>,
+}
+
+fn remotes() -> &'static Mutex<HashMap<String, RemoteSlot>> {
+    static R: std::sync::OnceLock<Mutex<HashMap<String, RemoteSlot>>> = std::sync::OnceLock::new();
+    R.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// `lib.rs` 启动时每台远端注册一次：给出**怎么起**，并把第一条流的把手交进来。
+///
+/// ⚠ 注册的是**闭包不是配置** —— 本层不认识 `RemoteConfig`，也不该认识。
+pub fn register_remote(
+    origin: String,
+    respawn: Box<dyn Fn() -> tauri::async_runtime::JoinHandle<()> + Send + Sync>,
+    first: tauri::async_runtime::JoinHandle<()>,
+) {
+    let mut g = remotes().lock().expect("远端把手表锁毒化");
+    g.insert(
+        origin,
+        RemoteSlot {
+            respawn,
+            handle: Some(first),
+        },
+    );
+}
+
+fn is_local(origin: &str) -> bool {
+    origin == LOCAL_ORIGIN
+}
+
+fn check_origin(origin: &str) -> Result<(), String> {
+    if origin.trim().is_empty() {
+        return Err("origin 不许为空 —— 开关是 per-host 的，没有「全局」这一档".into());
+    }
+    Ok(())
+}
+
+/// P2s（`C8`②）：**这台机的 daemon 现在什么状态**。
+///
+/// # 为什么「通道在不在」是两侧共用的那个真相
+///
+/// `inbound_client` 的登记表按 origin 存活着的通道 —— 远端在 hello 之后登记，
+/// 本机（P2 之后）也在 hello 之后登记，**同一张表、同一个时机**。
+/// ⇒ 问「这台机的 daemon 在不在」不需要两套实现，那正是 `C1`。
+///
+/// `pid` / `attempts` 只有本机有（远端的进程在别人机器上，我们手里只有一条流）——
+/// 这**不是欠账，是天然不对称**，所以它们是 `null` 而不是「远端那边填 0」。
+#[tauri::command]
+pub fn daemon_status(origin: String) -> Result<serde_json::Value, String> {
+    check_origin(&origin)?;
+    let channel = crate::inbound_client::client_for(&origin).is_some();
+    let (pid, attempts) = if is_local(&origin) {
+        crate::local_daemon::local_pid_and_attempts()?
+    } else {
+        (None, None)
+    };
+    Ok(serde_json::json!({
+        "origin": origin,
+        "channel": channel,
+        "pid": pid,
+        "attempts": attempts,
+        "killOnExit": crate::daemon_policy::kill_on_exit(&origin),
+    }))
+}
+
+/// P2s（`C8`②）：**起这台机的 daemon**。已经在跑就是 no-op（`C8`①：每台机只许一个）。
+#[tauri::command]
+pub fn daemon_start(origin: String) -> Result<String, String> {
+    check_origin(&origin)?;
+    if is_local(&origin) {
+        return Ok(match crate::local_daemon::start_local_backend() {
+            crate::backend::control::local_backend::Resolved::Found(p) => {
+                format!("已起：{}", p.display())
+            }
+            crate::backend::control::local_backend::Resolved::Missing { reason, .. } => reason,
+        });
+    }
+    let mut g = remotes().lock().map_err(|e| format!("锁毒化: {e}"))?;
+    let slot = g
+        .get_mut(&origin)
+        .ok_or_else(|| format!("没有这台机的把手：{origin}（启动时没注册过？）"))?;
+    if slot.handle.is_some() {
+        return Ok(format!("{origin} 的流已经在跑（C8①：每台机只许一个）"));
+    }
+    slot.handle = Some((slot.respawn)());
+    Ok(format!("{origin} 的流已重起"))
+}
+
+/// P2s（`C8`②）：**停这台机的 daemon**。
+///
+/// ⚠ 远端这一侧是 `abort()` 那条流 —— 远端 daemon 随之因管道破裂退出。
+/// 本层**不等它退**（我们在这台机上看不见那个进程），所以返回的是「已断流」不是「已停进程」。
+/// **文案不许把这两件事写成一件**（P2s-Y5）。
+#[tauri::command]
+pub fn daemon_stop(origin: String) -> Result<String, String> {
+    check_origin(&origin)?;
+    if is_local(&origin) {
+        return crate::local_daemon::stop_local_backend();
+    }
+    let mut g = remotes().lock().map_err(|e| format!("锁毒化: {e}"))?;
+    let slot = g
+        .get_mut(&origin)
+        .ok_or_else(|| format!("没有这台机的把手：{origin}（启动时没注册过？）"))?;
+    match slot.handle.take() {
+        Some(h) => {
+            h.abort();
+            Ok(format!("{origin} 的流已断（远端 daemon 随管道破裂退出，本机看不见它）"))
+        }
+        None => Ok(format!("{origin} 的流本来就没在跑")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// P2s-Y1（acceptor: 机检）：**三个口各只有一条命令，且都吃 `origin`**。
+    ///
+    /// 防的是「本机一套名字、远端另一套名字」—— 那样两侧就长出两套语义，
+    /// 正是 `C1` 排除掉的做法（也是 #58 门⑤ 要防的形态）。
+    #[test]
+    fn the_three_ports_are_one_command_each_and_all_take_origin() {
+        let src = guard_core::production_code(include_str!("daemon_control.rs"));
+        const PORTS: &[&str] = &["daemon_status", "daemon_start", "daemon_stop"];
+        for p in PORTS {
+            let sig = format!("pub fn {p}(origin: String)");
+            let at = guard_core::find_pinned(&src, &sig).unwrap_or_else(|e| {
+                panic!(
+                    "`{p}` 不是「恰好一处、且第一个参数是 origin」的形状（{e}）。\n\
+                     ★ 三个口必须**各只有一条命令**且都按 origin 分派 —— 本机一套、远端一套\n\
+                     就是两套语义（`C1` 明说排除这条路）。"
+                )
+            });
+            // ★★ **逐口切体，不数全局**。
+            //
+            // 第一版写的是「`is_local(&origin)` 全局出现 >= 2 处」。变异实测：
+            // 把 `daemon_stop` 里那一支整个摘掉，**判据照样绿** —— 因为另外两口还各有一处，
+            // 计数仍然 >= 2。⇒ 计数型自检在「人群有多个成员」时天然逮不到「某一个成员塌了」。
+            let body: String = src[at..]
+                .lines()
+                .skip(1)
+                .take_while(|l| *l != "}")
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert!(
+                body.len() > 30,
+                "`{p}` 切出来的函数体只有 {} 字节 —— 切错了，本条在空转",
+                body.len()
+            );
+            guard_core::find_pinned(&body, "is_local(&origin)").unwrap_or_else(|e| {
+                panic!(
+                    "`{p}` 里没有恰好一处 `is_local(&origin)` 分派（{e}）——\n\
+                     ⇒ 这一口没接上本机那侧（或接了两次），`C1`「本地要和远端一样」在这口上落空。"
+                )
+            });
+        }
+    }
+
+    /// ★ **接线钉（远端那半）**：`lib.rs` 起每台远端时**真的**把把手注册进来。
+    ///
+    /// 不注册的后果**不是编译错，是运行时一句「没有把手」** —— 而本模块的单测全都照样绿
+    /// （它们不需要真把手）。这正是 F03 那个坑：「模块存在 ≠ 模块被调用」。
+    ///
+    /// ⚠ 还要钉「把手不是被丢掉的」：原来那处逐字是 `tauri::async_runtime::spawn(async move {…});`
+    /// —— **JoinHandle 直接丢**，于是远端流起了就再也停不下来。
+    #[test]
+    fn the_startup_path_really_registers_remote_handles() {
+        let prod = guard_core::production_code(include_str!("lib.rs"));
+        guard_core::find_pinned(&prod, "daemon_control::register_remote(").unwrap_or_else(|e| {
+            panic!(
+                "`lib.rs` 的生产段里没有恰好一处 `register_remote(`（{e}）。\n\
+                 ⇒ 远端那侧的起/停在运行时只会回一句「没有这台机的把手」，\n\
+                 而本模块的单测**全都照样绿**（它们不需要真把手）。"
+            )
+        });
+    }
+
+    #[test]
+    fn an_empty_origin_is_refused_by_every_port() {
+        for r in [
+            daemon_status("  ".into()).map(|_| ()),
+            daemon_start(" ".into()).map(|_| ()),
+            daemon_stop("".into()).map(|_| ()),
+        ] {
+            assert!(
+                r.is_err(),
+                "空 origin 被放过了 —— 那会造出一档谁都读不到的「全局」，设了没反应且不报错"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unknown_remote_origin_says_so_instead_of_pretending() {
+        let e = daemon_stop("从没注册过的机器".into()).unwrap_err();
+        assert!(
+            e.contains("没有这台机的把手"),
+            "对不认识的 origin 应当明说没有把手，而不是返回一句像成功的话：{e}"
+        );
+    }
+}
