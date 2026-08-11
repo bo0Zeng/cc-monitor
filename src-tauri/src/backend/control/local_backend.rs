@@ -294,6 +294,14 @@ pub fn supervise_with_stdio(
                 return;
             }
             let mut cmd = std::process::Command::new(&bin);
+            // ★★ **`TMUX` 一律不继承**〔事故订正 08-11〕。
+            //
+            // 被监护的 daemon 会跑 `tmux ls`。tmux 客户端在 `TMUX` 有值时**按它给的 socket 走，
+            // `TMUX_TMPDIR` 完全不起作用** —— 那正是「私有 socket 隔离」被绕过的机制。
+            // 我在一次探针里漏了这一条，结果用户 9 个真实 tmux 会话没了。
+            // ⇒ 这里无条件清掉：daemon 该按自己的 `TMUX_TMPDIR`（或默认 socket）解析，
+            // 而不是继承「monitor 恰好从哪个 tmux 里被启动」这个偶然。
+            cmd.env_remove("TMUX");
             cmd.args(&args)
                 // P2：有消费者才接 stdin。无消费者时**逐字维持 `null`** ——
                 // 「本机 daemon 收不了入方向命令」是 C4 量出来的缺口，
@@ -612,14 +620,24 @@ pub(crate) fn local_stdio_consumer(
 
     for line in std::io::BufReader::new(stdout).lines() {
         let Ok(line) = line else { break };
-        // 只在**还没登记**时才解帧找 hello；登记之后本消费者对帧内容没有兴趣
-        // （本机的 observe 那半今天不走这条路）。**但仍要把流读到底** —— 那是判死信号。
-        if parked.is_none() {
-            continue;
-        }
         let Some(frame) = crate::ssh_source::parse_frame(&line) else {
             continue;
         };
+        // P3 刀 1：**本机的 tmux 帧也要收**。daemon 的 `watch_loop` 周期跑本机 `tmux ls`
+        // 并推 `TmuxSessions` 帧（daemon 侧 `EMITS "tmux_sessions"` 逐字「登记=承诺真发」）。
+        // P2 写这个消费者时只需要通道，把非 hello 帧全丢了 ——
+        // 于是**本机 tmux 会话对 monitor 不可见，不是拿不到，是我们扔了**。
+        //
+        // ⚠ 收它有前置：本地 sid 进这张表之后，`/branch` 会走 `(Some(origin), …)`
+        // ⇒ 必须先有「本地也判得出 `Superseded`」（P3 刀 0）。没有刀 0 就收帧 =
+        // 把「永远消不掉的灰点」那个 bug 请回来。
+        if let crate::ssh_source::InboundFrame::TmuxSessions { raw, .. } = &frame {
+            crate::ssh_source::record_tmux_raw(crate::inbound_client::LOCAL_ORIGIN, raw.clone());
+        }
+        // 下面只在**还没登记**时才找 hello；登记之后不再看它。
+        if parked.is_none() {
+            continue;
+        }
         let Some(witness) = crate::inbound_client::DaemonHello::from_hello_frame(&frame) else {
             continue;
         };
@@ -718,6 +736,143 @@ mod tests {
     /// —— 各存一份迟早分叉：新增入口时只想得起改一处。
     const ENTRIES: &[&str] = &["start_if_present", "start_or_extract"];
 
+    /// P3-Y1（acceptor: **实测**）：**本机 daemon 的 tmux 帧真的进了账本**。
+    ///
+    /// # 为什么必须从账本那一侧读
+    ///
+    /// DoD 自陈的失效方式逐字：「**「消费者收到了」不等于「账本里有」**」。
+    /// 消费者里加一行 `tracing::info!` 也能让人以为通了。
+    /// ⇒ 本条读的是 `snapshot_tmux_by_origin()`，即 emitter 判 idle/archived 时读的那一份。
+    ///
+    /// # 隔离：私有 `TMUX_TMPDIR` + 跑前跑后比对（`C7e`）
+    ///
+    /// daemon 跑 `tmux ls`。给它一个**私有的 `TMUX_TMPDIR`** ⇒ 它只看得见本条自己建的那台
+    /// tmux server，碰不到用户真实的那台。
+    /// ⚠ **比对本身就是判据的一部分，不是附带步骤** —— 隔离若没做对（比如忘了私有目录），
+    /// 测试会连进用户的 server 而**照样通过**：通过与否与隔离无关。
+    /// ⚠⚠ **默认不跑（`#[ignore]`）—— 08-11 事故之后的处置。**
+    ///
+    /// 我在写这条时，配套的 shell 探针漏了 `unset TMUX`，`TMUX_TMPDIR` 被压过，
+    /// 命令打到了用户真实的 tmux server 上，**9 个真实会话没了**。
+    ///
+    /// 代码这一侧的坑已经堵掉（`-S` 显式 socket · 不用 `kill-server` · `supervise` 一律清 `TMUX`），
+    /// 但「在一台跑着真实会话的机器上，让自动化去起 / 杀 tmux」这件事本身值得先停下来。
+    /// ⇒ 本条改成显式触发：`cargo test -- --ignored the_local_tmux_frames_really_land_in_the_ledger`。
+    ///
+    /// **这是降级不是放弃**：P3-Y1 因此今天**没有实测证据**，如实登记在件的 §0h / 12e，
+    /// 不拿「判据绿」冒充「验过了」。
+    #[cfg(all(embedded_daemons, target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    #[ignore = "会起真 tmux；08-11 出过误伤用户会话的事故，改成显式触发"]
+    fn the_local_tmux_frames_really_land_in_the_ledger() {
+        use std::time::Duration;
+
+        let _guard = crate::inbound_client::local_origin_test_lock();
+        let user_tmux_before = std::process::Command::new("tmux")
+            .arg("ls")
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+            .unwrap_or_default();
+
+        let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("embedded-daemons")
+            .join("cc-monitor-remote-x86_64");
+        let base = std::env::temp_dir().join(format!("p3-tmux-{}", std::process::id()));
+        let home = base.join("home");
+        let cfg_dir = home.join(".claude");
+        let tmux_tmp = base.join("tmux");
+        std::fs::create_dir_all(cfg_dir.join("projects")).expect("建沙箱 HOME");
+        std::fs::create_dir_all(&tmux_tmp).expect("建私有 TMUX_TMPDIR");
+
+        let sess = format!("ccm-p3-{}", std::process::id());
+        // ★★ **socket 用 `-S` 显式给死**〔事故订正 08-11〕。
+        //
+        // 原来只给 `TMUX_TMPDIR` + `env_remove("TMUX")`。那样**只要漏掉后者**，
+        // `TMUX` 就会压过 `TMUX_TMPDIR`，命令直接打到用户真实的 server 上 ——
+        // 我在一次 shell 探针里正是漏了它，用户 9 个会话没了。
+        // `-S <绝对路径>` 不受 `TMUX` 影响，**漏一个环境变量也不会打偏**。
+        let sock = tmux_tmp.join("p3.sock");
+        let tmux = |args: &[&str]| {
+            let mut c = std::process::Command::new("tmux");
+            c.arg("-S").arg(&sock);
+            c.args(args).env_remove("TMUX").output()
+        };
+        let made = tmux(&["new-session", "-d", "-s", &sess]).expect("起私有 tmux 失败");
+        assert!(
+            made.status.success(),
+            "私有 tmux 起不来：{}",
+            String::from_utf8_lossy(&made.stderr)
+        );
+
+        let cleanup = |h: Option<&SuperviseHandle>| {
+            if let Some(h) = h {
+                h.stop();
+            }
+            // ⚠ **不用 `kill-server`** —— 那是个打整台 server 的大锤；
+            // 一旦 socket 解析出偏差，它毁掉的是用户的全部会话（08-11 就是这么出的事）。
+            // `kill-session -t <本条自己建的名字>` 最坏情况也只影响一个同名会话。
+            let _ = tmux(&["kill-session", "-t", &sess]);
+            let _ = std::fs::remove_dir_all(&base);
+        };
+
+        let h = supervise_with_stdio(
+            bin,
+            vec!["--tail-only".into()],
+            vec![
+                ("HOME".into(), home.display().to_string()),
+                ("CLAUDE_CONFIG_DIR".into(), cfg_dir.display().to_string()),
+                // daemon 内部用默认 socket 名，所以它看的是 `<TMUX_TMPDIR>/tmux-<uid>/default`；
+                // 上面客户端用 `-S <tmux_tmp>/p3.sock`。**两者不是同一个 socket** ——
+                // 这条实测因此今天验不到帧（见件里 §0h 的如实登记），但它**不会碰用户的 server**。
+                ("TMUX_TMPDIR".into(), tmux_tmp.display().to_string()),
+            ],
+            CrashLimits::default(),
+            Arc::new(|| {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0)
+            }),
+            Arc::new(|e| println!("[P3 实测] {e:?}")),
+            Some(Arc::new(local_stdio_consumer)),
+        );
+
+        let mut seen = false;
+        for _ in 0..150 {
+            let snap = crate::ssh_source::snapshot_tmux_by_origin();
+            if snap
+                .get(crate::inbound_client::LOCAL_ORIGIN)
+                .is_some_and(|raw| raw.contains(sess.as_str()))
+            {
+                seen = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+
+        let user_tmux_after = std::process::Command::new("tmux")
+            .arg("ls")
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+            .unwrap_or_default();
+        cleanup(Some(&h));
+        // 摘掉本条写进去的那一份，别留给同批别的用例。
+        crate::ssh_source::record_tmux_raw(crate::inbound_client::LOCAL_ORIGIN, String::new());
+
+        assert_eq!(
+            user_tmux_before, user_tmux_after,
+            "★ `C7e`：用户真实的 tmux 变了。\n\
+             隔离没做对（私有 `TMUX_TMPDIR` 没生效 / `TMUX` 没清）⇒ 本条刚才操作的是用户的 server。\n\
+             ⚠ 这条比对**不是附带步骤**：隔离坏掉时上面那条断言**照样会过**。"
+        );
+        assert!(
+            seen,
+            "15s 内账本里没出现 `{sess}` —— 本机 tmux 帧没进 `snapshot_tmux_by_origin()`。\n\
+             ★ 「消费者收到了」不算：消费者里加一行日志也能让人以为通了。\n\
+             本条读的是 emitter 真正会读的那一份。"
+        );
+    }
+
     /// P2-Y1b（acceptor: 机检）：**生产入口真的把消费者传下去了**。
     ///
     /// 上面那条实测直接调 `supervise_with_stdio` 并自己传 `Some(local_stdio_consumer)`。
@@ -743,7 +898,10 @@ mod tests {
             // 而本文件另一条判据早就有 `body.contains(".stop()")`。叫 `body` 会让那处
             // 被追认成「语料上的裸 contains」，把递减棘轮顶红 —— 明明我一行匹配都没加。
             let entry_src: String = lines
-                .take_while(|l| *l != "}")
+                // ⚠ 收尾行**不写字面量右花括号** —— 本仓有判据用「花括号配平」剥测试段
+                // （`ssh_source::strip_cfg_test`），源码里多一个孤立的右花括号会让它**提前闭合**（`b'…'` 的字符字面量也算，我第一次「修」时就还带着一个），
+                // 测试段整段泄漏进「生产段」⇒ 别的判据当场误报（08-11 实测：单写者守卫红了）。
+                .take_while(|l| *l != "\u{7d}")
                 .collect::<Vec<_>>()
                 .join("\n");
             let entry_src = entry_src.as_str();
@@ -823,6 +981,7 @@ mod tests {
             let mut probe = std::process::Command::new(&bin)
                 .arg("--tail-only")
                 .envs(envs.iter().map(|(k, v)| (k.clone(), v.clone())))
+                .env_remove("TMUX") // 同上：不许继承「测试进程恰好在哪个 tmux 里」
                 .stdin(std::process::Stdio::piped())
                 .stdout(std::process::Stdio::piped())
                 .spawn()

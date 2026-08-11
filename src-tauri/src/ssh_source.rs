@@ -1413,6 +1413,24 @@ fn tmux_raw_registry() -> &'static std::sync::Mutex<std::collections::HashMap<St
 /// 轮询 `capture-pane`（拿一个轮询换另一个）或让 claude 自己上报。
 /// 那条轮询的账在 `polling_registry` 的 `src/tabs.ts` 一条里，**已如实登记为未排期**，
 /// 本处只指过去、不抄一份。
+/// **这张表唯一的写入口**（P3 刀 1）。
+///
+/// # 为什么要收成一个函数
+///
+/// 原来远端那处是就地 `tmux_raw_registry().lock().unwrap().insert(host_label, raw)`。
+/// 刀 1 要让**本机**也写这张表，两处各写各的迟早分叉（一边存原文一边存解析后的、
+/// 一边清一边不清）。⇒ 收成一个口，两侧共用 —— 这正是 `C1` 在数据面上的样子。
+///
+/// `origin` 的取值域**只有两类**：远端的 `host_label`/`origin_label`，
+/// 或本机的 [`crate::inbound_client::LOCAL_ORIGIN`]。
+/// 由 `the_local_path_is_safe_only_because_local_sids_never_enter_the_tmux_cache` 钉住。
+pub(crate) fn record_tmux_raw(origin: &str, raw: String) {
+    tmux_raw_registry()
+        .lock()
+        .unwrap()
+        .insert(origin.to_string(), raw);
+}
+
 pub fn snapshot_tmux_by_origin() -> std::collections::HashMap<String, String> {
     tmux_raw_registry().lock().unwrap().clone()
 }
@@ -4178,10 +4196,7 @@ async fn stream_loop(
                     }
                 }
                 // 存最新一份原文（emitter 判 idle/archived 时经 snapshot_tmux_by_origin 读；仅存最新）。
-                tmux_raw_registry()
-                    .lock()
-                    .unwrap()
-                    .insert(host_label.clone(), raw);
+                record_tmux_raw(&host_label, raw);
             }
             // U8a-2a：入方向应答 —— 交给本连接的客户端按 `id` 路由回请求方。
             Some(f @ (InboundFrame::Reply { .. } | InboundFrame::Cancelled { .. })) => {
@@ -4675,81 +4690,105 @@ mod f032_idle_tests {
         );
     }
 
-    /// ★ **F01b + P3 刀 0：这张表的写入点只许在远端路径；本地的安全已不再靠巧合。**
+    /// ★ **F01b → P3 刀 0 → 刀 1：这张表的三代裁定，都留在这里。**
     ///
-    /// ⚠ **名字没改，因为它仍然钉着同一件事的一半**（写入点只在远端）。
-    /// 变的是**另一半的方向**：原来钉「本地不产 `Superseded`」（那是巧合成立的证据），
-    /// 现在钉「本地**确实**产 `Superseded`」（巧合不再是唯一依靠）。详见下方。
+    /// # 名字换过一次（原 `the_local_path_is_safe_only_because_local_sids_never_enter_the_tmux_cache`）
     ///
+    /// 那个名字现在**主动误导** —— 本地 sid **已经进表了**（刀 1 故意让它进的）。
+    /// 换名不是换判据：下面三条性质是原来那两条的**超集**。
     ///
-    /// # 摸底发现
+    /// # 三代的账
     ///
-    /// `Superseded` 今天**只从远端帧来**（本地 diff 全部产 `Gone`，`RemovedSid::superseded()`
-    /// 那个构造器生产零调用方、已在 F01b 删掉）。那么本地 `/branch` 为什么没出
-    /// 「永远消不掉的灰点」那个 bug？
+    /// | 代 | 本地路径为什么安全 | 本条钉什么 |
+    /// |---|---|---|
+    /// | F01b | **巧合**：本地 sid 进不了这张表 ⇒ `find_tmux_origin_for_sid` 恒 `None` | 写入点只在远端 + 本地不产 `Superseded` |
+    /// | 刀 0 | 本地**自己判得出** `Superseded` | 锚点翻正：本地**确实**产 `Superseded` |
+    /// | 刀 1 | 本地进表了，靠的是刀 0 那条真保证 | 写入口**唯一** + 键的取值域只有 origin |
     ///
-    /// **不是因为本地也发 `Superseded`**（`session_map.rs` 原来那句注释这么写，是假的），
-    /// 而是因为**本地 sid 根本进不了 `tmux_raw_registry`** —— 那张表只在 SSH 连接路径
-    /// 按 `host_label` 写（本文件两处写入点都在 `stream_loop` / 断连清理里）。
-    /// ⇒ `find_tmux_origin_for_sid` 对本地 sid 恒 `None` ⇒ `classify_removed(None, Gone)`
-    /// = `Archive`。**结论对、理由是个巧合。**
+    /// ★ 每一代都是**上一代的失败信息叫我来改的** ——
+    /// F01b 那条逐字写着「回 F01b 重新裁定」，这是它多写那三句话的全部价值。
     ///
-    /// # 本条钉什么
+    /// # 为什么钉「唯一写入口」而不是「每处写入都按远端标签做键」
     ///
-    /// 钉那个巧合的**前提**：`tmux_raw_registry` 的写入点**只在远端路径**。
-    /// 哪天有人让本地会话也进那张表（比如 F10「本机读面退役」把本机走成同一条路），
-    /// 本地 `/branch` 就会变成 `(Some(origin), Gone)` ⇒ `Idle` ⇒ **那个灰点 bug 回来**，
-    /// 而 `superseded_always_archives_*` 那条**照样绿**（它只管 `Superseded` 那一格）。
-    ///
-    /// ⚠ 所以这不是重复：那条钉「Superseded 走对了」，本条钉「Gone 那一格今天为什么也安全」。
-    /// **F10 动手时本条会红，那是设计** —— 那时要么给本地也发 `Superseded`，
-    /// 要么让 `classify_removed` 不再依赖那份缓存。
+    /// 后者是上一代的形态，它今天**必然红**（本机那处的键就不是远端标签）。
+    /// 但真正要防的东西没变：**这张表的键必须是 origin**，不许是裸 sid、不许是常量。
+    /// ⇒ 收成一个写入口 + 钉住那个口的调用方，比「逐处看键长什么样」更硬。
     #[test]
-    fn the_local_path_is_safe_only_because_local_sids_never_enter_the_tmux_cache() {
+    fn the_tmux_cache_has_one_writer_and_only_origin_keys() {
         let src = guard_core::production_code(include_str!("ssh_source.rs"));
-        // 抽取器自检：真的抽到了那张表的写入点。
-        let writes = src.matches("tmux_raw_registry()").count();
+        // 抽取器自检：真的抽到了那张表。
+        let touches = src.matches("tmux_raw_registry()").count();
         assert!(
-            writes >= 3,
-            "只抽到 {writes} 处 `tmux_raw_registry()` —— 抽取器坏了，本条会零命中地绿"
+            touches >= 3,
+            "只抽到 {touches} 处 `tmux_raw_registry()` —— 抽取器坏了，本条会零命中地绿"
         );
-        // ★ 正题：**每一处写入都必须在远端上下文里**（用 `host_label` / `origin_label` 做键）。
-        // 出现一处用本地 sid 或裸常量当键的写入 ⇒ 那个巧合没了。
+
+        // ① 写入口唯一：`insert` 只许出现在 `record_tmux_raw` 里。
+        let mut inserts = 0usize;
         for seg in src.split("tmux_raw_registry()").skip(1) {
-            let head = &seg[..seg.len().min(160)];
-            if !head.contains("insert") {
-                continue; // 只看写入点（读/remove 不改变「谁进得去」）
+            if seg[..seg.len().min(160)].contains("insert") {
+                inserts += 1;
             }
-            assert!(
-                head.contains("host_label") || head.contains("origin_label"),
-                "发现一处 `tmux_raw_registry` 的写入不是按远端标签做键：\n{head}\n\
-                 ⇒ 本地 sid 可能进那张表了。那样本地 `/branch` 会变成 (Some(origin), Gone)\n\
-                 ⇒ classify_removed 判 Idle ⇒ 「永远消不掉、也 attach 不上的灰点」那个 bug 回来。\n\
-                 F01b 实测：本地路径今天安全**靠的就是这个巧合**，不是靠 Superseded。"
-            );
         }
-        // ★★ **P3 刀 0 的重新裁定（本条自己叫我来的）**。
-        //
-        // 原来这里是**反向**锚点：断言 `session_map.rs` **不**产 `Superseded`
-        // ——因为当时本地路径的安全**全靠那个巧合**（本地 sid 进不了这张表）。
-        // 那条断言的失败信息逐字写着「那是好事……但本条的推理前提变了，回 F01b 重新裁定」。
-        // P3 刀 0 让本地真的开始产 `Superseded` 了，所以现在照它说的裁定：
-        //
-        // **锚点翻正**：断言本地**确实**产 `Superseded`。
-        // 安全的理由因此从「巧合」换成「本地自己判得对」——
-        // 后者由 `session_map::diff_detects_superseded_only_with_positive_identity_evidence` 钉，
-        // 加上 `superseded_always_archives_*` 钉「判对了下游也不会错」。两条合起来不再需要巧合。
-        //
-        // ⚠ 上面那半（写入点必须按远端标签做键）**一个字不动** —— 它还是要拦住
-        // 「本地 sid 悄悄进表」。P3 后面几刀要**故意**让它进表，那时本条会红，那也是设计：
-        // 到那一刻才轮到「巧合彻底不需要了」这个结论。
+        assert_eq!(
+            inserts, 1,
+            "`tmux_raw_registry` 的写入点有 {inserts} 处 —— 只许有一处（`record_tmux_raw`）。\n\
+             两处各写各的迟早分叉：一边存原文一边存解析后的、一边清一边不清。"
+        );
+        // ⚠ 这一段第一版是**空转**的：写成 `src.find(…).unwrap_or(usize::MAX)` 再比大小 ——
+        // 找不到时 `usize::MAX > at` 恒真 ⇒ 断言永远过。改成**按行切函数体**再看。
+        let at = guard_core::find_pinned(&src, "pub(crate) fn record_tmux_raw(")
+            .expect("唯一写入口 `record_tmux_raw` 不在了 —— 名字改了就来改本条");
+        let body: String = src[at..]
+            .lines()
+            .skip(1)
+            // ⚠ 收尾行**不写字面量右花括号** —— 本仓有判据用「花括号配平」剥测试段
+            // （`ssh_source::strip_cfg_test`），源码里多一个孤立的右花括号会让它**提前闭合**（`b'…'` 的字符字面量也算，我第一次「修」时就还带着一个），
+            // 测试段整段泄漏进「生产段」⇒ 别的判据当场误报（08-11 实测：单写者守卫红了）。
+            .take_while(|l| *l != "\u{7d}")
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            body.len() > 20,
+            "`record_tmux_raw` 切出来的函数体只有 {} 字节 —— 切错了，本条在空转",
+            body.len()
+        );
+        guard_core::find_pinned(&body, "tmux_raw_registry()").unwrap_or_else(|e| {
+            panic!(
+                "唯一写入口 `record_tmux_raw` 里没有恰好一处 `tmux_raw_registry()`（{e}）——\n\
+                 那么上面数出来的那一处 `insert` 是在别的地方，写入口并不唯一。"
+            )
+        });
+
+        // ② 键的取值域：调用方只许传远端标签或本机那个常量。
+        let local_origin = crate::inbound_client::LOCAL_ORIGIN;
+        for f in [
+            guard_core::production_code(include_str!("ssh_source.rs")),
+            guard_core::production_code(include_str!("backend/control/local_backend.rs")),
+        ] {
+            for seg in f.split("record_tmux_raw(").skip(1) {
+                let head = &seg[..seg.len().min(120)];
+                let ok = head.contains("host_label")
+                    || head.contains("origin_label")
+                    || head.contains("LOCAL_ORIGIN")
+                    || head.contains("origin: &str"); // 定义那一行
+                assert!(
+                    ok,
+                    "有人拿一个既不是远端标签也不是 `{local_origin}` 的键写这张表：\n{head}\n\
+                     ⇒ 键的取值域一破，`find_tmux_origin_for_sid` 就会按一个没人认识的 origin 返回值，\n\
+                     而下游 `classify_removed` 拿它当「有 tmux 格子」用。"
+                );
+            }
+        }
+
+        // ③ 本地进表的**前置**必须还在：本地要判得出 `Superseded`。
         let sm = guard_core::production_code(include_str!("session_map.rs"));
         let verb = format!("RemovedSid::{}", "superseded");
         assert!(
             sm.contains(verb.as_str()),
-            "`session_map.rs` 又不产 `Superseded` 了 —— 那是**倒退**。\n\
-             本地 `/branch` 会重新只靠「本地 sid 进不了 tmux 缓存」这个巧合活着，\n\
-             而 P3 后面几刀正要把那个巧合拆掉。"
+            "`session_map.rs` 不产 `Superseded` 了，而本地 sid **已经在这张表里**。\n\
+             ⇒ `/branch` 会走 `(Some(<local>), Gone)` = `Idle` ⇒ 「永远消不掉、也 attach 不上的灰点」回来。\n\
+             这正是 F01b 当年那个 bug。刀 0 是刀 1 的硬前置，**不许只回退刀 0**。"
         );
     }
 
