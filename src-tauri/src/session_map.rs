@@ -54,8 +54,14 @@ use std::time::Duration;
 /// **理由不是文档说的那个** —— 是本地 sid **根本不进 `tmux_raw_registry`**
 /// （那张表只在 SSH 连接路径按 `host_label` 写）⇒ `find_tmux_origin_for_sid` 恒 `None`
 /// ⇒ `classify_removed(None, Gone)` = `Archive`。**结论对、理由是个巧合。**
-/// 由 `ssh_source::the_local_path_is_safe_only_because_local_sids_never_enter_the_tmux_cache`
-/// 钉住那个巧合 —— 哪天本地会话进了那张表，bug 就回来了。
+///
+/// ★★ **P3 刀 0（08-11）：那个巧合不再是唯一依靠。**
+/// `diff_sessions` 现在按 `pid + procStart` 判得出 `Superseded`（要正面证据，
+/// `procStart` 缺席退回 `Gone`）。上面那句「F01b 订正」里的
+/// 「本地那条 diff 全部产 `Gone`」**从此不成立** —— 留着它是因为它记录了当时的实测，
+/// 而**推翻它的过程比结论有用**。
+/// 钉住新事实的是 `session_map::diff_detects_superseded_only_with_positive_identity_evidence`；
+/// `ssh_source` 那条同名判据的锚点也随之从「本地不产 Superseded」翻成「本地确实产」。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RemovalCause {
     /// 真的没了：pidfile 被删 / 进程退出 / 连接断开时兜底归档。**默认值。**
@@ -83,9 +89,17 @@ impl RemovedSid {
             cause: RemovalCause::Gone,
         }
     }
-    // F01b：`superseded()` 构造器**已删** —— 它生产段零调用方，而它的存在会让人以为
-    // 「本地也会产 Superseded」（那正是上面订正掉的那句假陈述）。
-    // `Superseded` 今天只从远端帧来，`ssh_source.rs` 直接 `RemovedSid { sid, cause }` 构造。
+    /// 被顶替：同一条命（pid + `procStart` 都相同）在这一轮里换了个 sid。
+    ///
+    /// ⚠ **这个构造器 F01b 删过一次，P3 又加回来了** —— 删它的理由是「生产段零调用方，
+    /// 留着会让人以为本地也会产 `Superseded`」。那个理由当时**成立**；现在不成立了，
+    /// 因为本地真的开始产它了（`diff_sessions`）。**加回来不是推翻 F01b，是它的前提变了。**
+    pub fn superseded(sid: impl Into<String>) -> Self {
+        Self {
+            sid: sid.into(),
+            cause: RemovalCause::Superseded,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -341,13 +355,36 @@ fn diff_sessions(
     prev: &HashMap<String, SessionInfo>,
     next: &HashMap<String, SessionInfo>,
 ) -> SessionChange {
-    // S0：本地 diff 只会得出「sid 集合里少了一个」= 真死。本地路径没有远端那条
-    // 「同 pidfile 原地换 sid」的信息（那是 daemon 才看得见的 per-pidfile 视角），
-    // 也不需要——本地没有 idle-tmux 灰点（`SESSION_IDLE` 是远端专有，见 bridge.rs）。
+    // ★★ **P3 刀 0：本地也判 `Superseded`。**
+    //
+    // 原注释逐字写着「本地路径**没有**远端那条『同 pidfile 原地换 sid』的信息
+    // （那是 daemon 才看得见的 per-pidfile 视角）」—— **那句话是假的**：
+    // `SessionInfo` 自己就带 `pid` 与 `procStart`，而本地会话文件正是 `sessions/<PID>.json`。
+    // 信息一直在，只是**没人算**。
+    //
+    // 为什么现在必须算（`session_map.rs` 头注那条巧合）：本地 sid 至今不进
+    // `tmux_raw_registry` ⇒ `find_tmux_origin_for_sid` 恒 `None` ⇒ 两种 cause 都归档
+    // ⇒ `/branch` 的灰点 bug 碰巧没出现。「**结论对、理由是个巧合**」。
+    // P3 后面几刀要让本机 tmux 进那张表，巧合一破 bug 就回来 —— 所以先补这一条。
+    //
+    // ⚠ **要正面证据才敢说「同一条命」**：`procStart` 缺席（实测某些启动路径不写它）时
+    // **退回 `Gone`**，不拿「pid 相同」单独一条就断言。pid 是会被复用的；
+    // 判错方向的代价不对称 —— 误判 `Superseded` 会让一个真死的会话不归档（留个消不掉的条目），
+    // 而误判 `Gone` 只是回到今天的行为。
+    let identity = |i: &SessionInfo| i.proc_start.as_deref().map(|ps| (i.pid, ps.to_string()));
+    let next_by_identity: HashMap<(u32, String), &str> = next
+        .iter()
+        .filter_map(|(sid, i)| identity(i).map(|k| (k, sid.as_str())))
+        .collect();
     let removed: Vec<RemovedSid> = prev
-        .keys()
-        .filter(|k| !next.contains_key(*k))
-        .map(RemovedSid::gone)
+        .iter()
+        .filter(|(k, _)| !next.contains_key(*k))
+        .map(|(sid, info)| {
+            match identity(info).and_then(|k| next_by_identity.get(&k).copied()) {
+                Some(new_sid) if new_sid != sid.as_str() => RemovedSid::superseded(sid.clone()),
+                _ => RemovedSid::gone(sid.clone()),
+            }
+        })
         .collect();
     let added: Vec<String> = next
         .keys()
@@ -965,6 +1002,77 @@ mod tests {
         assert!(c.added.is_empty() && c.removed.is_empty());
         assert_eq!(c.status_changed.len(), 1);
         assert_eq!(c.status_changed[0].status.as_deref(), Some("idle"));
+    }
+
+    /// 同 `mk`，但能指定 pid 与 `procStart` —— P3 刀 0 要的正是这两个字段。
+    fn mk_id(sid: &str, pid: u32, proc_start: Option<&str>) -> SessionInfo {
+        SessionInfo {
+            pid,
+            session_id: sid.to_string(),
+            cwd: "x".into(),
+            proc_start: proc_start.map(String::from),
+            status: None,
+            waiting_for: None,
+            name: None,
+            kind: None,
+        }
+    }
+
+    /// ★★ **P3-Y0：本地也判得出 `Superseded`**（`/branch` / `/clear` 那一格）。
+    ///
+    /// # 为什么钉 cause 本身，而不是钉它下游的归档决定
+    ///
+    /// 本地 sid 至今不进 `tmux_raw_registry` ⇒ `find_tmux_origin_for_sid` 恒 `None`
+    /// ⇒ `classify_removed(None, Gone)` 与 `classify_removed(None, Superseded)`
+    /// **今天给出同一个结果**（都归档）。
+    /// ⇒ 测下游**证明不了任何事** —— 把本函数改回全产 `Gone`，那种测试照样绿。
+    /// 本条因此直接断言 `cause`。
+    ///
+    /// # 为什么要求正面证据
+    ///
+    /// `procStart` 缺席时**退回 `Gone`**。pid 会被复用；判错方向的代价不对称 ——
+    /// 误判 `Superseded` 让一个真死的会话不归档（留个消不掉的条目），
+    /// 误判 `Gone` 只是回到今天的行为。
+    #[test]
+    fn diff_detects_superseded_only_with_positive_identity_evidence() {
+        // ① 同一条命（pid + procStart 都相同）换了 sid ⇒ 被顶替
+        let prev = as_map(vec![mk_id("old", 42, Some("13300000000000000"))]);
+        let next = as_map(vec![mk_id("new", 42, Some("13300000000000000"))]);
+        let c = diff_sessions(&prev, &next);
+        assert_eq!(
+            c.removed,
+            vec![RemovedSid::superseded("old")],
+            "同 pid + 同 procStart 换 sid 没判成 Superseded ——\n\
+             那正是 `/branch` 的形状；判成 Gone 会在本机 tmux 进表之后变成永远消不掉的灰点。"
+        );
+
+        // ② procStart 缺席 ⇒ 证据不足 ⇒ Gone（不拿 pid 单独一条就断言同一条命）
+        let prev = as_map(vec![mk_id("old", 42, None)]);
+        let next = as_map(vec![mk_id("new", 42, None)]);
+        assert_eq!(
+            diff_sessions(&prev, &next).removed,
+            vec![RemovedSid::gone("old")],
+            "没有 procStart 也敢判 Superseded —— pid 是会被复用的，\n\
+             两个毫无关系的进程会被说成「同一条命换了个 sid」。"
+        );
+
+        // ③ pid 相同但 procStart 不同（= pid 被复用）⇒ Gone
+        let prev = as_map(vec![mk_id("old", 42, Some("13300000000000000"))]);
+        let next = as_map(vec![mk_id("new", 42, Some("13399999999999999"))]);
+        assert_eq!(
+            diff_sessions(&prev, &next).removed,
+            vec![RemovedSid::gone("old")],
+            "pid 复用被当成了同一条命 —— procStart 就是用来区分这个的"
+        );
+
+        // ④ 真死（那条命在 next 里整个不见了）⇒ Gone
+        let prev = as_map(vec![mk_id("old", 42, Some("13300000000000000"))]);
+        let next = as_map(vec![]);
+        assert_eq!(
+            diff_sessions(&prev, &next).removed,
+            vec![RemovedSid::gone("old")],
+            "会话真的没了却判成 Superseded —— 那会让它永远不归档"
+        );
     }
 
     #[test]

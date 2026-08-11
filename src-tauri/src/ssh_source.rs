@@ -4675,7 +4675,12 @@ mod f032_idle_tests {
         );
     }
 
-    /// ★ **F01b：本地那条路今天安全，靠的是一个巧合 —— 把那个巧合钉住。**
+    /// ★ **F01b + P3 刀 0：这张表的写入点只许在远端路径；本地的安全已不再靠巧合。**
+    ///
+    /// ⚠ **名字没改，因为它仍然钉着同一件事的一半**（写入点只在远端）。
+    /// 变的是**另一半的方向**：原来钉「本地不产 `Superseded`」（那是巧合成立的证据），
+    /// 现在钉「本地**确实**产 `Superseded`」（巧合不再是唯一依靠）。详见下方。
+    ///
     ///
     /// # 摸底发现
     ///
@@ -4723,13 +4728,28 @@ mod f032_idle_tests {
                  F01b 实测：本地路径今天安全**靠的就是这个巧合**，不是靠 Superseded。"
             );
         }
-        // 反向锚点：本地那条 diff 确实只产 `Gone` —— 否则上面的推理换了前提。
+        // ★★ **P3 刀 0 的重新裁定（本条自己叫我来的）**。
+        //
+        // 原来这里是**反向**锚点：断言 `session_map.rs` **不**产 `Superseded`
+        // ——因为当时本地路径的安全**全靠那个巧合**（本地 sid 进不了这张表）。
+        // 那条断言的失败信息逐字写着「那是好事……但本条的推理前提变了，回 F01b 重新裁定」。
+        // P3 刀 0 让本地真的开始产 `Superseded` 了，所以现在照它说的裁定：
+        //
+        // **锚点翻正**：断言本地**确实**产 `Superseded`。
+        // 安全的理由因此从「巧合」换成「本地自己判得对」——
+        // 后者由 `session_map::diff_detects_superseded_only_with_positive_identity_evidence` 钉，
+        // 加上 `superseded_always_archives_*` 钉「判对了下游也不会错」。两条合起来不再需要巧合。
+        //
+        // ⚠ 上面那半（写入点必须按远端标签做键）**一个字不动** —— 它还是要拦住
+        // 「本地 sid 悄悄进表」。P3 后面几刀要**故意**让它进表，那时本条会红，那也是设计：
+        // 到那一刻才轮到「巧合彻底不需要了」这个结论。
         let sm = guard_core::production_code(include_str!("session_map.rs"));
         let verb = format!("RemovedSid::{}", "superseded");
         assert!(
-            !sm.contains(verb.as_str()),
-            "`session_map.rs` 又开始产 `Superseded` 了 —— 那是好事（本地也明说了），\n\
-             但本条的推理前提（本地只产 Gone）变了，回 F01b 重新裁定。"
+            sm.contains(verb.as_str()),
+            "`session_map.rs` 又不产 `Superseded` 了 —— 那是**倒退**。\n\
+             本地 `/branch` 会重新只靠「本地 sid 进不了 tmux 缓存」这个巧合活着，\n\
+             而 P3 后面几刀正要把那个巧合拆掉。"
         );
     }
 
