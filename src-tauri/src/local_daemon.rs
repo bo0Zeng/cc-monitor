@@ -70,40 +70,29 @@ pub fn start_local_backend() -> Resolved {
     resolved
 }
 
-/// P2s（`C8`②）：**这台机的 daemon 现在什么状态**。本机与远端**同一个口**。
-///
-/// # 为什么「通道在不在」是两侧共用的那个真相
-///
-/// `inbound_client` 的登记表按 origin 存活着的通道 —— 远端在 hello 之后登记，
-/// 本机（P2 之后）也在 hello 之后登记，**同一张表、同一个时机**。
-/// ⇒ 问「这台机的 daemon 在不在」不需要两套实现，那正是 `C1`。
-///
-/// `pid` / `attempts` 只有本机有（远端的进程在别人机器上，我们手里只有一条流）——
-/// 这**不是欠账，是天然不对称**，所以它们是 `Option`，不是「远端那边填 0」。
-#[tauri::command]
-pub fn daemon_status(origin: String) -> Result<serde_json::Value, String> {
-    if origin.trim().is_empty() {
-        return Err("origin 不许为空 —— 状态是 per-host 的，没有「全局」这一档".into());
-    }
-    let channel = crate::inbound_client::client_for(&origin).is_some();
-    let (pid, attempts) = if origin == crate::inbound_client::LOCAL_ORIGIN {
-        let g = LOCAL_BACKEND.lock().map_err(|e| format!("锁毒化: {e}"))?;
-        match g.as_ref() {
-            Some(h) => (h.current_pid(), Some(h.attempts())),
-            None => (None, None),
-        }
-    } else {
-        (None, None)
-    };
-    Ok(serde_json::json!({
-        "origin": origin,
-        "channel": channel,
-        "pid": pid,
-        "attempts": attempts,
-        "killOnExit": crate::daemon_policy::kill_on_exit(&origin),
-    }))
+/// 本机独有的两个读数（远端没有对应物：那个进程在别人机器上）。
+pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
+    let g = LOCAL_BACKEND.lock().map_err(|e| format!("锁毒化: {e}"))?;
+    Ok(match g.as_ref() {
+        Some(h) => (h.current_pid(), Some(h.attempts())),
+        None => (None, None),
+    })
 }
 
+/// P2s（`C8`②）：停本机后端。**句柄取走**（`take`）而不是留着 ——
+/// `stop()` 之后那个句柄就是死的（`stopping` 永久置位），留着只会让下一次「起」
+/// 误以为还在跑。
+pub fn stop_local_backend() -> Result<String, String> {
+    let mut g = LOCAL_BACKEND.lock().map_err(|e| format!("锁毒化: {e}"))?;
+    match g.take() {
+        Some(h) => {
+            let pid = h.current_pid();
+            h.stop();
+            Ok(format!("本机后端已停（pid={pid:?}）"))
+        }
+        None => Ok("本机后端本来就没在跑".into()),
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -181,7 +170,7 @@ mod tests {
         // ── 起 ────────────────────────────────────────────────────────
         *LOCAL_BACKEND.lock().expect("锁") = Some(spawn());
         assert!(wait_channel(true), "5s 内通道没登记上 —— daemon 没起来");
-        let pid1 = daemon_status(crate::inbound_client::LOCAL_ORIGIN.into())
+        let pid1 = crate::daemon_control::daemon_status(crate::inbound_client::LOCAL_ORIGIN.into())
             .expect("查状态")
             .get("pid")
             .and_then(|v| v.as_u64())
@@ -213,7 +202,7 @@ mod tests {
         // ── 再起：必须是**新的**一条命 ────────────────────────────────
         *LOCAL_BACKEND.lock().expect("锁") = Some(spawn());
         assert!(wait_channel(true), "停了之后起不回来 —— 那就只有「停」没有「起」");
-        let pid2 = daemon_status(crate::inbound_client::LOCAL_ORIGIN.into())
+        let pid2 = crate::daemon_control::daemon_status(crate::inbound_client::LOCAL_ORIGIN.into())
             .expect("查状态")
             .get("pid")
             .and_then(|v| v.as_u64())
