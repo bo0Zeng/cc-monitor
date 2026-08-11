@@ -41,6 +41,7 @@ import {
 } from "./remote-section";
 import { DataSection } from "./data-section";
 import { RemoteSection } from "./remote-section";
+import { DaemonSection } from "./daemon-section"; // P2s（C8）：每台机一个 daemon 开关
 import { getBehavior, setBehavior, type BehaviorConfig } from "../behavior";
 import {
   diagnoseRemoteLauncher,
@@ -234,6 +235,8 @@ export class SettingsPanel {
   private dataSection?: DataSection;
   /** issue #15 (S6): 远端 (SSH) 配置区。打开面板时 refresh 一次拉最新 config */
   private remoteSection?: RemoteSection;
+  /** P2s（C8）：daemon 开关区。打开面板时 refresh 一次，重拉每台机的状态。 */
+  private daemonSection?: DaemonSection;
 
   // v2.4 issue #2: 行为类 toggle
   private autoFollowCheckbox!: HTMLInputElement;
@@ -321,6 +324,8 @@ export class SettingsPanel {
     this.dataSection?.refresh();
     // issue #15 (S6): 每次打开重拉 config.json 的 remote 子对象，跟外部改动对齐
     void this.remoteSection?.refresh();
+    // P2s：状态是**运行期**的东西，每次打开都要重拉 —— 缓存住等于给用户看一张旧照片。
+    void this.daemonSection?.refresh();
     // issue #5: 同步快捷键覆盖数 chip（编辑器关闭时也可能改了）
     this.refreshKbChip();
     // S2：每次打开回落地页。**刻意不记忆上次停在哪一页** —— 既然计划把「机器」定为落地页，
@@ -628,6 +633,17 @@ export class SettingsPanel {
     // 四份互不同步）。有 origin 选择器 = 它改的是某台机器的状态。
     // S4 会把这四份选择器换成「当前在哪台机器页」这个上下文。
     const machinesPage = document.createElement("div");
+    // P2s（C8）：daemon 开关排在「连接（远端）」**之前** —— 它管的是**每台机**（含本机），
+    // 而下面那块是远端专有的 SSH 配置面。本机在这一区的第一行，
+    // 不为它造特例（`C1`：本地只是不走 ssh 的那一台）。
+    // 同样进 `safeBlock`：它构造时会发 IPC，失败不该把整个设置面板炸穿。
+    machinesPage.appendChild(
+      this.safeBlock("daemon 开关", () => {
+        const sec = new DaemonSection({ headless: true });
+        this.daemonSection = sec;
+        return sec.element;
+      }),
+    );
     // **T07 审计阻塞 1**：这里必须在 `safeBlock` 里——`RemoteSection` 正是唯一活的同步
     // throw 宿主（构造路径含 `remote-section.ts` 那个三句话必填的 `throw`）。审计真造它抛过：
     // 裸构造会让 `new SettingsPanel` 直接炸穿、**什么都没上屏**。

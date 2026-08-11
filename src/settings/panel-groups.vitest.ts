@@ -179,7 +179,7 @@ describe("S2 设置面板分页结构", () => {
   /** 等 RemoteSection 那边异步注册完本机页（真实实现是在 `refresh()` 里注册的）。 */
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
-  it("★ 逐页完整清单 —— 15 个叶子块一个不少、一个不错位", async () => {
+  it("★ 逐页完整清单 —— 16 个叶子块一个不少、一个不错位", async () => {
     // 这是本轮最重要的一条：S2 只搬不改，**搬丢一块 = 一个功能凭空消失**，
     // 而它在 UI 上的表现只是「某个设置项找不到了」，不会报错。
     // 用**完整相等**而不是 `toContain`：后者对「多出一块」和「顺序乱了」都是瞎的。
@@ -197,8 +197,10 @@ describe("S2 设置面板分页结构", () => {
       "诊断",
       "数据存储",
     ]);
-    // ★ S4b-2：这四块**已从列表页搬到机器详情页**。「机器」这一页现在只剩机器列表本身。
-    expect(pageTitles("machines")).toEqual(["连接（远端）"]);
+    // ★ S4b-2：那四块**已从列表页搬到机器详情页**。
+    // ★ P2s：「daemon 开关」是这一页的新成员，且**排在「连接（远端）」之前** ——
+    // 它管的是每台机（含本机），而「连接（远端）」是远端专有的 SSH 配置面。
+    expect(pageTitles("machines")).toEqual(["daemon 开关", "连接（远端）"]);
     // 它们跟着「当前在看哪台机器」走；初始落在本机页上（与 machine-context 的初始值对齐）。
     expect(pageTitles("machine:（本机）")).toEqual([
       "账号",
@@ -293,6 +295,7 @@ describe("S2 设置面板分页结构", () => {
     new SettingsPanel({ windowMode: true });
     // **不等** tick：此刻本机页还没注册，等价于 RemoteSection 挂掉的处境。
     expect(pageTitles("machines")).toEqual([
+      "daemon 开关",
       "连接（远端）",
       "账号",
       "终端集成",
