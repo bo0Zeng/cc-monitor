@@ -384,8 +384,8 @@ mod tests {
             "只读诊断；本文件另有 `this_module_never_writes` 守着不写",
         ),
         (
-            "lib.rs",
-            "run",
+            "local_daemon.rs",
+            "start_local_backend",
             "`~/.cc-monitor/bin`（P2z 自释放内嵌 daemon 的落点）",
             "**不是伸手拿用户的东西**：这是 monitor 自己的缓存目录，只有我们写、只有我们读。\
              它用 `home_dir()` 只是为了「每个用户各一份」。写侧登记在 `write_site_registry` 的\

@@ -654,6 +654,20 @@ pub fn unregister(origin: &str, mine: &Arc<InboundClient>) {
 /// 尖括号是刻意的 —— 它不是合法的 ssh host 名，撞名要故意才做得到。
 pub const LOCAL_ORIGIN: &str = "<local>";
 
+/// **测试期 `<local>` 的独占锁**。
+///
+/// 登记表是**进程内全局**的，而 cargo 默认并行跑用例 ⇒ 两条都在 `<local>` 键上起真 daemon
+/// 的用例会互相看见对方登记的通道。实测形态：一条用例的 `等通道出现` 立刻为真
+/// （其实是另一条登记的），随后 `起来了却没有 pid`。
+///
+/// ⚠ 中毒也要拿到锁（`into_inner`）：一条用例 panic 不该把其余的全变成「锁中毒」，
+/// 那会把**一个**真失败放大成一片假失败，反而盖住原因。
+#[cfg(test)]
+pub(crate) fn local_origin_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static L: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    L.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 pub fn client_for(origin: &str) -> Option<Arc<InboundClient>> {
     lock(registry()).get(origin).cloned()
 }
