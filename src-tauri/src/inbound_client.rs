@@ -738,6 +738,33 @@ mod tests {
     /// 人群从 `impl` 块**派生**（不手写清单），默认拒绝：两个类型各自的公开关联函数
     /// 必须恰好是登记的那一个。顺带钉住 `ParkedWriter` 那扇门**要见证**（签名里有 `DaemonHello`）。
     #[test]
+    /// P2s：**`<local>` 在两侧必须是同一个串**。
+    ///
+    /// 漂了**不会报错** —— 前端的本机开关会去操作一个谁都没登记过的 origin：
+    /// `set_daemon_kill_on_exit("<localhost>", …)` 存进一张没人读的表，
+    /// `daemon_status` 永远回 `channel: false`。**设了没反应，且不报错。**
+    ///
+    /// 照仓里现成的跨语言对拍形状写（`payload.rs` 的 `REFUSE_TAG` 那条 / `launch.rs` 的
+    /// POSIX marker 那条）：`include_str!` 读前端那份、抠出字面量、逐字比。
+    fn the_local_origin_is_the_same_string_on_both_sides() {
+        let ts = include_str!("../../src/daemon-policy.ts");
+        let line = ts
+            .lines()
+            .find(|l| l.trim_start().starts_with("export const LOCAL_ORIGIN"))
+            .expect("前端那份里找不到 `export const LOCAL_ORIGIN` —— 名字改了就来改这条");
+        let lit = line
+            .split('"')
+            .nth(1)
+            .expect("那一行不是 `export const LOCAL_ORIGIN = \"…\";` 的形状");
+        assert_eq!(
+            lit, LOCAL_ORIGIN,
+            "两侧的本机 origin 漂了：前端 {lit:?} / 后端 {:?}。\n\
+             ⚠ 这种漂**不会有任何东西报错** —— 本机开关会去操作一个谁都没登记过的 origin。",
+            LOCAL_ORIGIN
+        );
+    }
+
+    #[test]
     /// P2-Y2：**造一个 `InboundClient` 的路只有 `into_client` 一条**。
     ///
     /// # 为什么钉构造点而不是数 `register(` 的调用点

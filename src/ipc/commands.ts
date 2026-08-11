@@ -735,6 +735,26 @@ export const commands = {
    */
   load_config: () => invoke<Record<string, unknown>>("load_config"),
 
+  /**
+   * P2s（C8）：这台机的 daemon，monitor 退出时结不结束它。Rust 返回 `Result<(), String>` ⇒ **桶①**。
+   * `origin` 本机是 `"<local>"`（见 `daemon-policy.ts` 的 `LOCAL_ORIGIN`，两侧有判据对拍）。
+   */
+  set_daemon_kill_on_exit: (args: { origin: string; kill: boolean }) =>
+    invoke<void>("set_daemon_kill_on_exit", args),
+
+  /**
+   * P2s（C8）：这台机的 daemon 现在什么状态。Rust 那边是不透明 JSON（同 `load_config` 那处的
+   * 结构性缺口）⇒ **桶②**：不为没人消费的字段造生成物。
+   */
+  daemon_status: (args: { origin: string }) =>
+    invoke<Record<string, unknown>>("daemon_status", args),
+
+  /** P2s（C8）：起这台机的 daemon。返回一句人话（已起 / 已经在跑 / 起不来的理由）⇒ **桶②**。 */
+  daemon_start: (args: { origin: string }) => invoke<string>("daemon_start", args),
+
+  /** P2s（C8）：停这台机的 daemon。⚠ 远端返回的是「已断流」不是「已停进程」⇒ **桶②**。 */
+  daemon_stop: (args: { origin: string }) => invoke<string>("daemon_stop", args),
+
   /** 在某目录起一个新的本地会话。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   new_local_session: (args: { cwd: string; launcher: string | null }) =>
     invoke<void>("new_local_session", args),

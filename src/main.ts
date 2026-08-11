@@ -9,6 +9,7 @@
  * 另持有启动 perf 测量（`window.__ccmPerf`，与后端 lib.rs 的 t0 互补看完整启动管线）。
  * HMR 走 full reload（不引框架，原生 DOM，强制整页重载简化心智模型）。
  */
+import { initDaemonPolicy } from "./daemon-policy";
 import "./styles.css";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
@@ -139,6 +140,14 @@ window.addEventListener("DOMContentLoaded", async () => {
     console.error("layout containers missing");
     return;
   }
+
+  // P2s（C8）：把盘上的 daemon 策略推给 Rust。**必须在这里推**——Rust 那边只持有生效值，
+  // 不读 config.json（避免同一个文件两个写者，见 daemon-policy.ts 头注）。
+  // 不推的后果不是报错，是**每台机都退回缺省**：用户设过的「退出时结束它」静默失效。
+  // 失败不拦启动：策略是附加功能，读不到不该让主界面起不来。
+  void initDaemonPolicy().catch((e) => {
+    console.warn(`[P2s] daemon 策略推送失败，本次运行按缺省（不结束）走：${String(e)}`);
+  });
 
   status.innerHTML = "";
   const statusMsg = document.createElement("span");
