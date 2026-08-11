@@ -34,6 +34,14 @@ import { AGENT_PROFILE } from "./agent-profile";
 import { deriveTmuxName } from "./remote-launch";
 import type { LaunchContext, LaunchPlan } from "./launch-plan";
 
+/** P1：Rust 侧 `payload::refuse()` 给业务拒绝打的标。**跨语言双写点** ——
+ *  Rust 那侧是 `backend::control::payload::REFUSE_TAG`，两处必须逐字一致。
+ *  由 Rust 判据 `the_refuse_tag_is_the_same_string_on_both_sides` 钉住（改一侧会红）。
+ *
+ *  用途：区分「载荷渲染被拒」（坏输入，换条路渲染只会糊过去 ⇒ 不许回落）
+ *  与「IPC/序列化异常」（通道问题，与载荷无关 ⇒ 可回落）。 */
+const REFUSE_TAG = "REFUSE:";
+
 /** 挑渲染器：`forceLegacyLaunchRenderer` 手动逃生口（MASTERPLAN R2）短路到兜底；否则探测到 ccm
  *  且该 plan 的全部维度都能表达成 CLI 语法 → 走 CLI；探测失败/未装/能力不足/含 CLI 表达不了的
  *  维度（如账号、idle-tmux 复用）→ 安全降级，绝不因为渲染器选择本身而让启动失败。 */
@@ -321,10 +329,27 @@ async function sendIntoViaDaemon(
     console.debug(`[F14] send-into 被拒，**不回落**：${reason}`);
     return { verdict: "refused", reason };
   } catch (e) {
-    // 走到这里 = IPC/序列化异常或载荷渲染被拒 —— 两者都在 daemon 那一跳**之前**
-    // ⇒ 能证明什么都没发出去 ⇒ 可回落。
-    console.debug(`[F14] send-into 回落到整串（通道异常，尚未发出）：${String(e)}`);
-    return { verdict: "fallback", reason: String(e) };
+    // ★★ P1：这里原来把**两件事**混成一件，注释是这么写的 ——
+    //   「两者都在 daemon 那一跳之前 ⇒ 能证明什么都没发出去 ⇒ 可回落」
+    // **对一半错一半**：「没发出去 ⇒ 重做不会重复执行」对；「所以可以回落」错 ——
+    // 没发出去只说明**重做是安全的**，**不说明重做走的那条路也会拒**。
+    // 而回落那条路是 TS 兜底渲染器，它对同样输入**未必拒**（本文件上面那格逐字承认过）。
+    // ⇒ 一次 Rust 侧的 fail-closed，被这个 catch 变成了 fail-open。
+    //
+    // 分法：Rust 的**业务拒绝**都经 `payload::refuse()` 打了 `REFUSE:` 标
+    //（那侧有判据 `every_business_rejection_is_tagged` 钉住「一条都不许裸写」）。
+    // 带标 ⇒ 坏输入，换条路渲染只会把坏输入糊过去 ⇒ **refused，不回落**。
+    // 不带标 ⇒ IPC/序列化异常 ⇒ 通道问题，与载荷本身无关 ⇒ 照旧 fallback。
+    //
+    // ⚠ 诚实边界：这是**字符串约定不是类型**（全仓 70 个 tauri command 的错误都是 `String`，
+    // 本件不在这里开第一个结构化的口 —— 那是 `U6`）。手写一个带同样前缀的普通错误串会被误判。
+    const raw = String(e);
+    if (raw.includes(REFUSE_TAG)) {
+      console.debug(`[P1] send-into 载荷渲染被拒，**不回落**（回落会用兜底渲染器糊过去）：${raw}`);
+      return { verdict: "refused", reason: raw };
+    }
+    console.debug(`[F14] send-into 回落到整串（通道异常，尚未发出）：${raw}`);
+    return { verdict: "fallback", reason: raw };
   }
 }
 
