@@ -402,8 +402,23 @@ pub fn run() {
             // tmux 的状态（F05 摸底 §2.5）。
             {
                 use backend::control::local_backend::{self, Resolved};
-                let (resolved, sup) = local_backend::start_if_present(
+                // P2z（定框 C10）：exe 旁边没有 sidecar 时，把**已内嵌**的那份释放到本机再起 ——
+                // 「单 exe 也能起 daemon 进程」那句话的落点。
+                //
+                // 两样宿主知识在这里给（backend 层不认识它们）：
+                //   · 落点 `~/.cc-monitor/bin`：与远端自部署同一个目录，但**文件名带 build_id**
+                //     ⇒ 与远端那份结构上不可能撞（理由见 `extract_embedded_to` 头注的 D1 段）。
+                //   · 当前 arch：`sftp::daemon_binary` 按它挑内嵌字节；缺内嵌（`cfg(embedded_daemons)`
+                //     未置）时给 None，函数会诚实降级、不伪造理由。
+                let extract_dir = dirs::home_dir()
+                    .map(|h| h.join(".cc-monitor").join("bin"))
+                    .unwrap_or_else(|| std::path::PathBuf::from("/tmp/.cc-monitor/bin"));
+                let embedded = sftp::daemon_binary(std::env::consts::ARCH)
+                    .map(|d| (d.build_id, d.bytes));
+                let (resolved, sup) = local_backend::start_or_extract(
                     env!("CCM_TARGET_TRIPLE"),
+                    &extract_dir,
+                    embedded,
                     std::sync::Arc::new(|e| tracing::info!("本机后端: {e:?}")),
                 );
                 match &resolved {

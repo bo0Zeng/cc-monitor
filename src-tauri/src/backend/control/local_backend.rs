@@ -423,6 +423,65 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
     )
 }
 
+/// P2z（定框 C10）：**单 exe 自释放** —— 把 app 里**已经内嵌**的那份 musl daemon
+/// 写到 `dir` 下，文件名**带 build_id**，返回落点。
+///
+/// # 为什么文件名必须带 build_id（自批 D1，别改成和远端部署同一个文件）
+///
+/// 远端自部署的落点也是 `~/.cc-monitor/bin/`（`sftp.rs` 头注 F08）。**实测 08-11**：本机那份
+/// `.build_id` 是 `p1r-event-liveness`（别的 monitor 把这台当远端连时装的，当时还有进程跑在上面），
+/// 而本机源码是 `p1x-overflow-identity`。两边对同一个文件有**不同期望** ⇒ 各自判对方 stale、
+/// 互相覆盖 ⇒ **无限重装循环**。`build.rs` 那段 panic 逐字警告过同一个形状：
+/// 「装上去之后**永远判 stale** ⇒ 无限重装循环。这不是「慢一点」，是坏的。」
+/// ⇒ 本机这条路**按 build_id 命名**，与远端那条**结构上不可能撞**（不是靠「配置别配成一样」）。
+///
+/// # 宿主知识留调用方
+///
+/// `dir` 由调用方给（`lib.rs` 那侧算 `~/.cc-monitor/bin`）——同 `resolve_beside_this_exe`
+/// 把 exe 目录留给调用方的理由，本模块过 `backend::tests::the_backend_layer_stays_host_agnostic`。
+///
+/// # 它不做什么
+///
+/// **不校验写完的字节是不是真能跑** —— `deploy_decision` 只回答「要不要装」，不回答「装完对不对」。
+/// 起不起得来由监护层（[`supervise`]）的崩溃计数说话。
+/// 本机释放的**文件名**（唯一真相源）。
+///
+/// ⚠ 抽成函数不是为了好看：判据 `the_local_extract_path_is_build_id_scoped` 要断言这条命名规则，
+/// 而如果判据自己**抄一份** `format!` 就成了「测自己的副本」—— 改了这里判据照样绿。
+/// 本仓在别处栽过同族（`strip-comments` 那次两份手抄语义漂移）。⇒ 两边共用这一个。
+pub fn local_extract_name(build_id: &str) -> String {
+    format!("cc-monitor-local-{build_id}")
+}
+
+pub fn extract_embedded_to(
+    dir: &Path,
+    build_id: &str,
+    bytes: &[u8],
+) -> Result<PathBuf, String> {
+    let dest = dir.join(local_extract_name(build_id));
+    // 已经在且大小对得上 ⇒ 幂等跳过（不重写，省一次 IO，也不动 mtime）。
+    if let Ok(m) = std::fs::metadata(&dest) {
+        if m.is_file() && m.len() == bytes.len() as u64 {
+            return Ok(dest);
+        }
+    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("建目录 {} 失败: {e}", dir.display()))?;
+    // 先写临时文件再 rename：半截文件不许被当成可执行的 daemon（rename 在同一文件系统上原子）。
+    let tmp = dir.join(format!(".{}.partial", local_extract_name(build_id)));
+    std::fs::write(&tmp, bytes).map_err(|e| format!("写 {} 失败: {e}", tmp.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o700))
+            .map_err(|e| format!("置可执行位失败: {e}"))?;
+    }
+    std::fs::rename(&tmp, &dest).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("rename 到 {} 失败: {e}", dest.display())
+    })?;
+    Ok(dest)
+}
+
 /// **生产入口**：找得到就起并看住；找不到就**诚实降级**（定框 §5）。
 ///
 /// ⚠ 今天恒走降级那一支 —— 安装包里还没有 sidecar（`externalBin` 是 F05b）。
@@ -452,12 +511,121 @@ pub fn start_if_present(
     (r, Some(h))
 }
 
+/// P2z（定框 C10）：**生产入口的自释放版** —— exe 旁边找不到 sidecar 时，
+/// 把内嵌的那份释放到 `extract_dir` 再起。这就是「单 exe 也能起 daemon 进程」那句话的落点。
+///
+/// 顺序刻意是 **先找旁边、再释放**：开发构建里 `target/debug/` 旁边就有一个**更新**的二进制，
+/// 那条路径优先于内嵌那份（内嵌的是打包时的快照）。
+///
+/// ⚠ **这个顺序也是 P2z-Y1 的验收陷阱**：dev 构建里第一步恒命中 ⇒ 不把旁边那个挪开，
+/// 测到的是旧路径，而读数看起来和「释放成功」一模一样。
+///
+/// `embedded` 由调用方给（`sftp::daemon_binary(arch)` 的产物）—— 本模块不认识 `sftp`，
+/// 也不认识「当前是什么 arch」，那都是宿主知识。
+pub fn start_or_extract(
+    target_triple: &str,
+    extract_dir: &Path,
+    embedded: Option<(&str, &[u8])>,
+    on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
+) -> (Resolved, Option<SuperviseHandle>) {
+    let beside = resolve_beside_this_exe(target_triple);
+    let bin = match &beside {
+        Resolved::Found(p) => p.clone(),
+        Resolved::Missing { .. } => {
+            let Some((build_id, bytes)) = embedded else {
+                // 没内嵌（`cfg(embedded_daemons)` 未置：某个 arch 的二进制缺席）⇒
+                // 诚实降级，把 `beside` 的 reason/looked_at 原样交回，别伪造一个新理由。
+                return (beside, None);
+            };
+            match extract_embedded_to(extract_dir, build_id, bytes) {
+                Ok(p) => p,
+                Err(e) => {
+                    return (
+                        Resolved::Missing {
+                            reason: format!("exe 旁无 sidecar，且释放内嵌 daemon 失败: {e}"),
+                            looked_at: match beside {
+                                Resolved::Missing { looked_at, .. } => looked_at,
+                                Resolved::Found(_) => Vec::new(),
+                            },
+                        },
+                        None,
+                    );
+                }
+            }
+        }
+    };
+    let h = supervise(
+        bin.clone(),
+        vec!["--tail-only".into()],
+        Vec::new(),
+        CrashLimits::default(),
+        Arc::new(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0)
+        }),
+        on_event,
+    );
+    (Resolved::Found(bin), Some(h))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn never(_: &Path) -> bool {
         false
+    }
+
+    /// P2z-Y2（自批 D1）：**本机释放点与远端部署点结构上不许撞**。
+    ///
+    /// 钉的是**构造方式**不是两个字面量不相等 —— 后者一改配置就绕过去了
+    /// （远端落点由 `cfg.daemon_path` 给，是**运行期**的值，编译期比不了）。
+    /// 所以断言：那条路径必须由 `build_id` 拼出来。
+    ///
+    /// 病史：实测 08-11 本机 `~/.cc-monitor/bin/.build_id` = `p1r-event-liveness`
+    /// （别的 monitor 把这台当远端连时装的），而本机源码是 `p1x-overflow-identity`
+    /// ⇒ 同名会让两个 monitor 互判 stale、互相覆盖 ⇒ **无限重装循环**。
+    #[test]
+    fn the_local_extract_path_is_build_id_scoped() {
+        // ★ 用**生产函数**，不是判据自己抄一份 `format!`（那就成了「测自己的副本」）。
+        let a = local_extract_name("p1x-overflow-identity");
+        let b = local_extract_name("p1r-event-liveness");
+        assert_ne!(
+            a, b,
+            "两个不同 build_id 竟然产出同一个文件名 —— 那就等于回到「同路径互相覆盖」"
+        );
+        for (id, name) in [("p1x-overflow-identity", &a), ("p1r-event-liveness", &b)] {
+            assert!(
+                name.contains(id),
+                "本机释放文件名 `{name}` 里没有 build_id `{id}`。\n\
+                 ⚠ 这条钉的是**构造方式**：远端自部署落点同为 `~/.cc-monitor/bin/`，\n\
+                 只有把 build_id 拼进文件名才能让两条路**结构上**撞不上。\n\
+                 改成固定名 = 把「无限重装循环」装回来（见 `extract_embedded_to` 头注 D1 段）。"
+            );
+        }
+        assert!(
+            !a.contains("cc-monitor-remote"),
+            "本机释放名不许长成远端那个名字（`cc-monitor-remote`）—— 那正是要避开的那个文件"
+        );
+    }
+
+    /// P2z-Y3：**本机那条路不许自己写版本比较** —— 复用 `sftp::deploy_decision`（纯函数）。
+    ///
+    /// 它会失效的地方（如实写）：`deploy_decision` 只回答「要不要装」，
+    /// **不回答「装完对不对」**。本条只挡「另写一套比较逻辑」，不是完整校验。
+    #[test]
+    fn the_local_path_does_not_hand_roll_version_comparison() {
+        let src = guard_core::production_code(include_str!("local_backend.rs"));
+        // 判据串运行时拼，免得命中本文件自己的头注。
+        let bad = format!("{}_id !=", "build");
+        assert!(
+            !src.contains(&bad),
+            "生产段出现了手写的 build_id 比较（`{bad}`）。\n\
+             版本比对只有一个真相源：`sftp::deploy_decision`（纯函数，可单测）。\n\
+             另写一套 ⇒ 两处判「要不要装」的逻辑迟早分叉，而分叉的后果是无限重装。"
+        );
     }
 
     #[test]
@@ -773,21 +941,47 @@ mod tests {
         }
     }
 
-    /// ★ **生产接线钉**：`lib.rs` 的启动路径**真的**调了 `start_if_present`。
+    /// ★ **生产接线钉**：`lib.rs` 的启动路径**真的**调了本模块的生产入口。
     ///
     /// 这条是 F03 教训的直接产物：「模块存在 ≠ 模块被调用」。
     /// 本模块写得再全，只要 `lib.rs` 里没那一行，本机后端就永远不会被起 ——
-    /// 而上面 9 条单测**全都照样绿**。
+    /// 而上面那些单测**全都照样绿**。
+    ///
+    /// ⚠ **P2z 改过一次口径，记下为什么不是「改弱」**：原来钉的是字面量
+    /// `local_backend::start_if_present`。P2z 把接线换成了 `start_or_extract`
+    /// （exe 旁边没有就释放内嵌那份），那条字面量当场红 —— **它在做它的岗位**。
+    /// 改法不是把它删掉、也不是换成两个名字任选其一（那会让「一个都没接」漏网），
+    /// 而是钉「**至少接了一个已知生产入口，且那个入口确实存在于本模块**」。
+    /// ⇒ 将来再改入口名，这条仍会红，除非同时在这张清单里登记 —— 那正是要的。
     #[test]
     fn the_startup_path_really_calls_this_module() {
         let prod = guard_core::production_code(include_str!("../../lib.rs"));
-        for needle in ["local_backend::start_if_present", "CCM_TARGET_TRIPLE"] {
+        let me = guard_core::production_code(include_str!("local_backend.rs"));
+        // 本模块今天对外的生产入口清单。加入口 = 往这里加一条（**不许**留空清单）。
+        const ENTRIES: &[&str] = &["start_if_present", "start_or_extract"];
+        assert!(!ENTRIES.is_empty(), "抽取器自检：入口清单空了 ⇒ 下面两条断言都会零命中地绿");
+        for e in ENTRIES {
             assert!(
-                prod.contains(needle),
-                "`lib.rs` 的生产段里找不到 `{needle}` —— 本机后端没有被接上启动路径。\n\
-                 判据全绿而功能从不运行，正是「模块存在 ≠ 模块被调用」那个坑。"
+                me.contains(&format!("pub fn {e}(")),
+                "入口清单里的 `{e}` 在本模块生产段里不存在 —— 清单腐了。\n\
+                 （这条防的是「把清单写宽以求绿」：写一个不存在的名字进去也不许过。）"
             );
         }
+        let wired: Vec<&str> = ENTRIES
+            .iter()
+            .copied()
+            .filter(|e| prod.contains(&format!("local_backend::{e}")))
+            .collect();
+        assert!(
+            !wired.is_empty(),
+            "`lib.rs` 的生产段里一个本模块生产入口都没有（找过 {ENTRIES:?}）—— \n\
+             本机后端没有被接上启动路径。判据全绿而功能从不运行，\n\
+             正是「模块存在 ≠ 模块被调用」那个坑。"
+        );
+        assert!(
+            prod.contains("CCM_TARGET_TRIPLE"),
+            "`lib.rs` 生产段里找不到 `CCM_TARGET_TRIPLE` —— 接线缺了 target triple 这个宿主知识"
+        );
         // 句柄必须被存下来：不存就没人能 `stop()`，被监护的 daemon 成游魂进程。
         assert!(
             prod.contains("LOCAL_BACKEND"),
