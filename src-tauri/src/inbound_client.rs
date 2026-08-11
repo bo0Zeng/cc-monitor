@@ -197,6 +197,38 @@ where
     ParkedWriter { inner: w }
 }
 
+/// P2（定框 C1/C4）：**停住一个「本来就独立、没有对应『切』动作」的写端**。
+///
+/// # 它和 [`park`] 的 `#[cfg(test)]` 不是一回事 —— 别把这里读成「把那道门拆了」
+///
+/// 上面那道门防的是**从双工流里切出来、却忘了停**的裸 WriteHalf：切与停必须由
+/// [`split_and_park`] 一步做完，否则会出现「有人能在 hello 之前写」的窗口。
+///
+/// 而本函数的入参**不是从任何流切出来的**。本机 daemon 是 `std::process::Child`，
+/// 它的 `ChildStdin` / `ChildStdout` 是**两条本来就独立的管道** —— 这条路上
+/// **压根没有「切」这个动作**，因此也没有「切了忘了停」这个失效模式可防。
+///
+/// ⇒ 本函数承认的是**结构差异**，不是给「切了不停」开后门。它仍然产出 [`ParkedWriter`]，
+/// 也就是说「hello 之前不许写」那条性质**照旧由类型保证**（要拿到可写的 client，
+/// 唯一的路仍是 [`ParkedWriter::into_client`]，而它要一个 [`DaemonHello`] 见证）。
+///
+/// # 为什么远端那条路用不了
+///
+/// `attach_inbound_client`（`ssh_source.rs`）本身是泛型、传输无关的，本可直接复用；
+/// 卡住的是它要的 [`ParkedWriter`] 只能由 [`split_and_park`] 产出，而那个函数要一个
+/// **可切的双工流**（SSH channel 读写同体）。本机没有。
+///
+/// # 诚实边界
+///
+/// ⚠ 这是**新开的一个合法口**，它本身没有判据钉「只许本机用」。
+/// 有人拿它去停一个真的从双工流切出来的写端，就绕过了上面那道门（登记在 P2 的 10b）。
+pub fn park_owned_writer<W>(w: W) -> ParkedWriter<W>
+where
+    W: AsyncWrite + Unpin + Send + 'static,
+{
+    ParkedWriter { inner: w }
+}
+
 impl<W> ParkedWriter<W>
 where
     W: AsyncWrite + Unpin + Send + 'static,
@@ -611,6 +643,17 @@ pub fn unregister(origin: &str, mine: &Arc<InboundClient>) {
 /// **今天只有测试在读**：注册表由 `stream_loop` 填，第一个生产读者是 U8a-2b 的 `launch`
 /// （起会话要在长连接上发命令）。这一条如实登记，不假装它已经在线上被用。
 #[allow(dead_code)]
+/// P2：**本机后端在 registry 里的 key**。
+///
+/// 远端用 `cfg.origin_label()`（用户配的机器名）。本机没有「机器名」这个概念 ——
+/// 前端表示本机是 `origin === null`（`bridge.rs:95` 逐字记着线上约定是**省略**而不是 `null`），
+/// 而 registry 的 key 是 `String` ⇒ 需要一个约定值。
+///
+/// ⚠ **诚实边界**：用户理论上可以把某台远端机器的 label 起成这个名字，两者就撞了。
+/// 不做防御（加校验 = 在用户的命名自由上开一个没人会撞的洞），如实登记在 P2 的诚实边界里。
+/// 尖括号是刻意的 —— 它不是合法的 ssh host 名，撞名要故意才做得到。
+pub const LOCAL_ORIGIN: &str = "<local>";
+
 pub fn client_for(origin: &str) -> Option<Arc<InboundClient>> {
     lock(registry()).get(origin).cloned()
 }
@@ -680,6 +723,75 @@ mod tests {
     ///
     /// 人群从 `impl` 块**派生**（不手写清单），默认拒绝：两个类型各自的公开关联函数
     /// 必须恰好是登记的那一个。顺带钉住 `ParkedWriter` 那扇门**要见证**（签名里有 `DaemonHello`）。
+    #[test]
+    /// P2-Y2：**造一个 `InboundClient` 的路只有 `into_client` 一条**。
+    ///
+    /// # 为什么钉构造点而不是数 `register(` 的调用点
+    ///
+    /// 件里的 DoD 原写「`register(` 的生产调用方只许有远端那处 + 本机那处」。
+    /// 那条判据数的是**调用点**，而调用点数量随功能增长天然会变（P3 之后可能有第三条传输）
+    /// ⇒ 它会退化成一条要人反复放宽的白名单（铁律 16 骂的正是这个）。
+    ///
+    /// 真正保证「本机与远端拿到的是同一种 client」的性质是：**两边都经 `into_client`**。
+    /// 而 `into_client` 要求交出 `DaemonHello` 见证（`the_hello_witness_can_only_come_from_a_hello_frame`
+    /// 守着见证只能来自真 hello 帧）⇒ 钉住构造点唯一，整条链就闭合了。
+    ///
+    /// # 这不是抽样，是完备的
+    ///
+    /// `InboundClient` 的字段**全部私有** ⇒ 本文件之外的代码**编译期就构造不出**它。
+    /// 所以只扫本文件不是「取样」，是把全部可能的构造点都覆盖了。
+    /// （不另加一条「别的文件不许出现 `InboundClient {`」——那条恒绿，铁律 16 不许留。）
+    fn the_only_way_to_build_an_inbound_client_is_into_client() {
+        let src = include_str!("inbound_client.rs");
+        // ⚠ 边界**不能**自己手搓。第一版取「第一个 `#[cfg(test)]`」—— 而 `park()` 本身就挂着
+        // 那个属性、且住在 `into_client` **之前** ⇒ 那样切会把构造点整个切掉，判据扫了个空
+        // （人群自检当场逮到；没有自检它会绿着挂在这里）。第二版改扫 `mod tests` 的位置，
+        // 那是**语料上的裸 `.find`**，`needle_anchor_registry` 的递减棘轮不许再长。
+        // ⇒ 用仓里共享的剥法，它自己有反向自检（剥完不许再出现测试属性）。
+        let prod = guard_core::production_code(src);
+        let prod = prod.as_str();
+
+        // 人群：构造点 = `InboundClient {` 的字面量出现（排掉 `pub struct InboundClient {` 那处定义）。
+        let sites: Vec<usize> = prod
+            .match_indices("InboundClient {")
+            .map(|(i, _)| i)
+            // 排掉**声明**（`pub struct InboundClient {` / `impl InboundClient {`）——
+            // 它们与构造长得一样，但不是构造。第一版只排了 `struct`，`impl` 那处混进人群把计数顶成 2。
+            .filter(|i| {
+                let before = prod[..*i].trim_end();
+                !before.ends_with("struct") && !before.ends_with("impl")
+            })
+            .collect();
+
+        assert!(
+            !sites.is_empty(),
+            "人群塌了：生产段一个 `InboundClient {{` 构造点都没扫到。\n\
+             要么构造被搬走了，要么写法变了（比如改用 `Self {{`）—— 无论哪种，本判据都已失守。"
+        );
+        assert_eq!(
+            sites.len(),
+            1,
+            "`InboundClient` 的构造点不止一处（实得 {} 处）。\n\
+             多一处 = 多一条不经 `DaemonHello` 见证就能造出 client 的路 ⇒\n\
+             本机与远端拿到的 client 可能语义不同，而没有任何东西会响。",
+            sites.len()
+        );
+
+        // 那唯一一处必须住在 `into_client` 里 —— 往前找最近的 `fn `。
+        let before = &prod[..sites[0]];
+        let fn_at = before.rfind("fn ").expect("构造点之前总有一个 fn");
+        let name: String = prod[fn_at + 3..]
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        assert_eq!(
+            name, "into_client",
+            "唯一的构造点跑到了 `{name}` 里，而不是 `into_client`。\n\
+             `into_client` 的签名要 `DaemonHello`（那是「换写能力必须交出见证」的门）；\n\
+             构造搬到别的函数里 = 那道门被绕开了。"
+        );
+    }
+
     #[test]
     fn each_type_has_exactly_one_door_and_the_exit_needs_the_witness() {
         let prod = guard_core::production_code(include_str!("inbound_client.rs"));

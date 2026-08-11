@@ -57,6 +57,15 @@ mod tests {
     /// ⚠ **登记表不是豁免清单**：新增一处没登记的 ⇒ 下面那条红，并把 `RULE` 原样打出来。
     const SITES: &[(&str, &str, usize, &str, &str)] = &[
         (
+            "backend/control/local_backend.rs",
+            "rename",
+            1,
+            "monitor 自己的缓存（自释放出来的 daemon 二进制）",
+            "P2z 的自释放：先写 `.partial` 再 rename，防的是**半截文件被当成可执行的 daemon 起起来**。\
+             §4 把 `ReplaceFileW` 的要求限定在**用户文件**（要保 ACL/ADS），这里写的是 monitor 自己\
+             刚建的新文件、dst 通常压根不存在 ⇒ 没有要保留的 ACL，`rename` 的语义正合适。",
+        ),
+        (
             "config.rs",
             "MoveFileExW",
             1,

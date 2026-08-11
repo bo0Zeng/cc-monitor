@@ -27,6 +27,7 @@ mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生
                 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
 mod inbound_client;
+mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
 mod launch;
 mod local_accounts; // L3a：本机多账号枚举（只读）——`accounts.rs` 的本地对侧
 mod logging;
@@ -419,6 +420,8 @@ pub fn run() {
                     env!("CCM_TARGET_TRIPLE"),
                     &extract_dir,
                     embedded,
+                    // C10：平台知识由宿主注入，backend 那半不认识 `#[cfg(unix)]`。
+                    &crate::platform_fs::make_executable,
                     std::sync::Arc::new(|e| tracing::info!("本机后端: {e:?}")),
                 );
                 match &resolved {
