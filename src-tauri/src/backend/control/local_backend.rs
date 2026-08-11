@@ -236,6 +236,24 @@ impl SuperviseHandle {
 ///
 /// `envs` 是给子进程的环境变量 —— e2e 用它强制私有 `TMUX_TMPDIR`，
 /// **绝不让被监护的 daemon 碰用户真实的 tmux server**。
+/// P2：每次 spawn 之后，把这一条命的 **stdin 写端 + stdout 读端**交给调用方。
+///
+/// # 为什么是「消费者」而不是「把 stdout 拿走」
+///
+/// `supervise` 判死的唯一事件源是 **stdout 读到 EOF**（头注逐字「这不是定时器，也不是轮询」）。
+/// 入方向通道要的是**读帧**。二者看起来在抢同一个 stdout —— **其实是同一个事件**：
+/// 「读帧一直读到流结束」就是 EOF。远端那条路正是这么干的（`stream_loop` 一边解帧一边靠断流判掉线）。
+/// ⇒ 不夺所有权，而是让调用方**替 supervise 把它读到底**：消费者返回 = 流结束 = 判死。
+///
+/// # 缺省行为一个字节不变
+///
+/// 不给消费者时仍是 `io::copy(&mut o, &mut io::sink())` —— F16 修的那条
+/// （「不许把持续产帧的 stdout 攒进一个永不释放的 `Vec`」）**性质不变**。
+/// 给了消费者，就由它自己负责不缓冲。
+pub type StdioSink = Arc<
+    dyn Fn(std::process::ChildStdin, std::process::ChildStdout) + Send + Sync,
+>;
+
 pub fn supervise(
     bin: PathBuf,
     args: Vec<String>,
@@ -243,6 +261,20 @@ pub fn supervise(
     limits: CrashLimits,
     now_ms: Arc<dyn Fn() -> u64 + Send + Sync>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
+) -> SuperviseHandle {
+    supervise_with_stdio(bin, args, envs, limits, now_ms, on_event, None)
+}
+
+/// 见 [`StdioSink`]。`stdio` 为 `None` 时与 [`supervise`] 逐字等价。
+#[allow(clippy::too_many_arguments)]
+pub fn supervise_with_stdio(
+    bin: PathBuf,
+    args: Vec<String>,
+    envs: Vec<(String, String)>,
+    limits: CrashLimits,
+    now_ms: Arc<dyn Fn() -> u64 + Send + Sync>,
+    on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
+    stdio: Option<StdioSink>,
 ) -> SuperviseHandle {
     let stopping = Arc::new(AtomicBool::new(false));
     let child: Arc<Mutex<Option<std::process::Child>>> = Arc::new(Mutex::new(None));
@@ -263,7 +295,14 @@ pub fn supervise(
             }
             let mut cmd = std::process::Command::new(&bin);
             cmd.args(&args)
-                .stdin(std::process::Stdio::null())
+                // P2：有消费者才接 stdin。无消费者时**逐字维持 `null`** ——
+                // 「本机 daemon 收不了入方向命令」是 C4 量出来的缺口，
+                // 但没人要那根管子时接出来只会多一个没人写的 fd。
+                .stdin(if stdio.is_some() {
+                    std::process::Stdio::piped()
+                } else {
+                    std::process::Stdio::null()
+                })
                 // ★ stdout 必须是管道：它的 EOF 就是「进程死了」这个事件的来源。
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::null());
@@ -282,6 +321,8 @@ pub fn supervise(
             let this_pid = spawned.id();
             // 把 stdout 拿走（独立 owned handle），Child 本体交给锁 —— 见模块头注。
             let out = spawned.stdout.take();
+            // P2：只有接了消费者时这里才是 Some（上面 `stdin(…)` 按 `stdio` 分流）。
+            let in_ = spawned.stdin.take();
             pid.store(this_pid, Ordering::SeqCst);
             if let Ok(mut g) = child.lock() {
                 *g = Some(spawned);
@@ -319,8 +360,15 @@ pub fn supervise(
             // `externalBin`）—— **离生效只差一个配置项**，而 `e2e/local-backend-supervise.sh`
             // 那条真进程路径现在就在跑它。
             // ⇒ `io::copy` 到 `io::sink()`：**EOF 语义完全不变**，但一个字节都不留。
-            if let Some(mut o) = out {
-                let _ = std::io::copy(&mut o, &mut std::io::sink());
+            match (&stdio, out, in_) {
+                // P2：消费者**负责把 stdout 读到底** —— 它返回就等于流结束（EOF），
+                // 判死语义与缺省那支逐字相同。
+                (Some(f), Some(o), Some(i)) => f(i, o),
+                // 缺省：F16 那条 —— EOF 语义不变，一个字节都不留。
+                (_, Some(mut o), _) => {
+                    let _ = std::io::copy(&mut o, &mut std::io::sink());
+                }
+                (_, None, _) => {}
             }
             // EOF 之后收尸。
             //
@@ -457,6 +505,7 @@ pub fn extract_embedded_to(
     dir: &Path,
     build_id: &str,
     bytes: &[u8],
+    make_executable: &dyn Fn(&Path) -> Result<(), String>,
 ) -> Result<PathBuf, String> {
     let dest = dir.join(local_extract_name(build_id));
     // 已经在且大小对得上 ⇒ 幂等跳过（不重写，省一次 IO，也不动 mtime）。
@@ -469,12 +518,11 @@ pub fn extract_embedded_to(
     // 先写临时文件再 rename：半截文件不许被当成可执行的 daemon（rename 在同一文件系统上原子）。
     let tmp = dir.join(format!(".{}.partial", local_extract_name(build_id)));
     std::fs::write(&tmp, bytes).map_err(|e| format!("写 {} 失败: {e}", tmp.display()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o700))
-            .map_err(|e| format!("置可执行位失败: {e}"))?;
-    }
+    // C10：**「怎么置可执行位」是平台知识，不许住在 backend**。
+    // 这里只知道「写完要让它可执行」，那句话在本平台上怎么落由宿主注入
+    // （`platform_fs::make_executable`）。原来这处是个 `#[cfg(unix)]` 块，
+    // `the_backend_half_stays_platform_agnostic` 逮到了它。
+    make_executable(&tmp)?;
     std::fs::rename(&tmp, &dest).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         format!("rename 到 {} 失败: {e}", dest.display())
@@ -495,7 +543,9 @@ pub fn start_if_present(
     let Resolved::Found(bin) = &r else {
         return (r, None);
     };
-    let h = supervise(
+    // P2：本机后端**起来就带入方向通道** —— 这一步不是可选项，也不由宿主决定。
+    // 「本机 = 不走 ssh 的远端」（`INVARIANTS §40`）：远端一连上就 attach 通道，本机同理。
+    let h = supervise_with_stdio(
         bin.clone(),
         vec!["--tail-only".into()],
         Vec::new(),
@@ -507,9 +557,93 @@ pub fn start_if_present(
                 .unwrap_or(0)
         }),
         on_event,
+        Some(Arc::new(local_stdio_consumer)),
     );
     (r, Some(h))
 }
+
+/// P2（定框 C1/C4）：**本机后端的 stdio 消费者** —— 把这条命的 stdin/stdout 接成入方向通道。
+///
+/// # 它做的事只有一点胶水
+///
+/// 按行读 stdout → `parse_frame` → **首帧是 hello** 就 `park_owned_writer(stdin).into_client(见证)`
+/// + `register(LOCAL_ORIGIN, …)`；其余帧丢弃；读到 EOF 返回 ——
+/// **返回就等于流结束，也就是 `supervise` 的判死信号**（与缺省那支 `io::copy → sink` 同一个事件）。
+///
+/// # 复用边界（为什么不用 `stream_loop`）
+///
+/// `ssh_source::stream_loop` **不是泛型**：它吃 `&RemoteConfig` + `&tauri::AppHandle`，
+/// 还管重放 / 会话变更 / 连接状态 / hello 确认。本机没有那些。
+/// 但它下面那三个零件**是纯的**，本函数复用的正是它们：
+/// `parse_frame(&str) -> Option<InboundFrame>` · `DaemonHello::from_hello_frame(&InboundFrame)` ·
+/// `ParkedWriter::into_client(DaemonHello)`。
+/// ⇒ 复用**纯零件**，不把一个绑传输的循环硬掰成泛型。
+///
+/// # 为什么要 `block_on` 一下
+///
+/// `tokio::process::ChildStdin::from_std` 要**把 fd 注册进 IO driver**，因此必须在 runtime
+/// 上下文里调。而 `supervise` 那条是**裸 `std::thread`**（模块头注说明了它为什么不是异步的）。
+/// ⇒ 借 `tauri::async_runtime::block_on` 进一次上下文，**只包住这一次转换**，不把整条循环异步化。
+///
+/// # 不缓冲
+///
+/// 逐行读、读完即弃。daemon 是持续产帧的，攒任何东西都是无界增长。
+fn local_stdio_consumer(stdin: std::process::ChildStdin, stdout: std::process::ChildStdout) {
+    use std::io::BufRead;
+
+    let stdin = match tauri::async_runtime::block_on(async move {
+        tokio::process::ChildStdin::from_std(stdin)
+    }) {
+        Ok(w) => w,
+        Err(e) => {
+            // 转换失败 ⇒ 写不出去，但**stdout 还得读到底**（那是判死信号）。
+            tracing::warn!("本机 stdin 转 tokio 失败（{e}）；入方向通道不登记，仍读完 stdout");
+            let mut o = stdout;
+            let _ = std::io::copy(&mut o, &mut std::io::sink());
+            return;
+        }
+    };
+    let mut parked = Some(crate::inbound_client::park_owned_writer(stdin));
+    // 留一份副本给 `unregister` —— 它要 `&Arc` 比对身份（「不摘别人的 client」）。
+    let mut registered: Option<std::sync::Arc<crate::inbound_client::InboundClient>> = None;
+
+    for line in std::io::BufReader::new(stdout).lines() {
+        let Ok(line) = line else { break };
+        // 只在**还没登记**时才解帧找 hello；登记之后本消费者对帧内容没有兴趣
+        // （本机的 observe 那半今天不走这条路）。**但仍要把流读到底** —— 那是判死信号。
+        if parked.is_none() {
+            continue;
+        }
+        let Some(frame) = crate::ssh_source::parse_frame(&line) else {
+            continue;
+        };
+        let Some(witness) = crate::inbound_client::DaemonHello::from_hello_frame(&frame) else {
+            continue;
+        };
+        // 日志取自**帧**而不是 client —— `InboundClient` 的 `commands` 是私有的，
+        // 为了打一行日志去开访问器是把封装换成方便。帧的字段本来就是公开的。
+        let (build_id, commands) = match &frame {
+            crate::ssh_source::InboundFrame::Hello {
+                build_id, commands, ..
+            } => (build_id.clone(), commands.clone()),
+            // `from_hello_frame` 只对 `Hello` 返回 `Some` ⇒ 走不到这里。
+            _ => (String::new(), Vec::new()),
+        };
+        let client = parked.take().expect("上面刚判过 is_some").into_client(witness);
+        crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
+        registered = Some(client);
+        tracing::info!(
+            "本机入方向通道已登记：origin={} build_id={build_id} commands={commands:?}",
+            crate::inbound_client::LOCAL_ORIGIN
+        );
+    }
+
+    // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。
+    if let Some(mine) = registered {
+        crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &mine);
+    }
+}
+
 
 /// P2z（定框 C10）：**生产入口的自释放版** —— exe 旁边找不到 sidecar 时，
 /// 把内嵌的那份释放到 `extract_dir` 再起。这就是「单 exe 也能起 daemon 进程」那句话的落点。
@@ -526,6 +660,7 @@ pub fn start_or_extract(
     target_triple: &str,
     extract_dir: &Path,
     embedded: Option<(&str, &[u8])>,
+    make_executable: &dyn Fn(&Path) -> Result<(), String>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
 ) -> (Resolved, Option<SuperviseHandle>) {
     let beside = resolve_beside_this_exe(target_triple);
@@ -537,7 +672,7 @@ pub fn start_or_extract(
                 // 诚实降级，把 `beside` 的 reason/looked_at 原样交回，别伪造一个新理由。
                 return (beside, None);
             };
-            match extract_embedded_to(extract_dir, build_id, bytes) {
+            match extract_embedded_to(extract_dir, build_id, bytes, make_executable) {
                 Ok(p) => p,
                 Err(e) => {
                     return (
@@ -554,7 +689,9 @@ pub fn start_or_extract(
             }
         }
     };
-    let h = supervise(
+    // P2：本机后端**起来就带入方向通道** —— 不是可选项，也不由宿主决定。
+    // 「本机 = 不走 ssh 的远端」（`INVARIANTS §40`）：远端一连上就 attach 通道，本机同理。
+    let h = supervise_with_stdio(
         bin.clone(),
         vec!["--tail-only".into()],
         Vec::new(),
@@ -566,12 +703,162 @@ pub fn start_or_extract(
                 .unwrap_or(0)
         }),
         on_event,
+        Some(Arc::new(local_stdio_consumer)),
     );
     (Resolved::Found(bin), Some(h))
 }
 
 #[cfg(test)]
 mod tests {
+    /// 本模块的**全部启动入口**。两条判据共用这一份人群
+    /// （`the_startup_path_really_calls_this_module` 与 `the_production_entry_hands_the_stdio_consumer_down`）
+    /// —— 各存一份迟早分叉：新增入口时只想得起改一处。
+    const ENTRIES: &[&str] = &["start_if_present", "start_or_extract"];
+
+    /// P2-Y1b（acceptor: 机检）：**生产入口真的把消费者传下去了**。
+    ///
+    /// 上面那条实测直接调 `supervise_with_stdio` 并自己传 `Some(local_stdio_consumer)`。
+    /// 而生产走的是 `start_or_extract`。两者之间那根线**没有任何东西守着** ——
+    /// 有人把它改回 `supervise(…)`（少一个参数、默认 `None`），实测照样全绿，
+    /// 线上却一条入方向通道都不会登记。本条钉的就是那根线。
+    ///
+    /// ⚠ 它是**文本判据**，只证明「那行代码长这样」，不证明运行时真跑到。
+    /// 运行时那半由上面的实测证；两条合起来才闭合，单独任何一条都不够。
+    #[test]
+    fn the_production_entry_hands_the_stdio_consumer_down() {
+        let src = include_str!("local_backend.rs");
+        // 人群 = 本模块的**全部启动入口**，与 `the_startup_path_really_calls_this_module`
+        // 那条用的是同一个清单。只钉「今天 lib.rs 在调的那一个」= 给下一个用另一个入口的人留坑。
+        for name in ENTRIES {
+            // 按**行**取函数体：从 `pub fn <name>(` 那行起，到第一行**恰好是 `}`** 为止。
+            // 不用 `src.find("\n}\n")` —— 那是语料上的裸 `.find`，`needle_anchor_registry`
+            // 的递减棘轮不许再长；而且逐行判「整行等于 `}`」本来就比子串匹配更贴事实。
+            let head = format!("pub fn {name}(");
+            let mut lines = src.lines().skip_while(|l| !l.starts_with(&head)).peekable();
+            assert!(lines.peek().is_some(), "人群塌了：入口 `{name}` 不在了");
+            // ⚠ 变量名**刻意不叫 `body`**：`needle_anchor_registry` 按**名字**认语料变量，
+            // 而本文件另一条判据早就有 `body.contains(".stop()")`。叫 `body` 会让那处
+            // 被追认成「语料上的裸 contains」，把递减棘轮顶红 —— 明明我一行匹配都没加。
+            let entry_src: String = lines
+                .take_while(|l| *l != "}")
+                .collect::<Vec<_>>()
+                .join("\n");
+            let entry_src = entry_src.as_str();
+            // 用 `find_pinned`（恰好一处 + 两侧有边界）而不是裸 `contains`：
+            // 后者在 `needle_anchor_registry` 的递减棘轮里，而且它的病正是「needle 被撑大时照样绿」。
+            guard_core::find_pinned(entry_src, "supervise_with_stdio(").unwrap_or_else(|e| {
+                panic!(
+                    "`{name}` 不再恰好调一次 `supervise_with_stdio`（{e}）——\n\
+                     十有八九被改回了 `supervise(`，那一支的 `stdio` 恒为 `None`\n\
+                     ⇒ 本机 stdin 又变回 `Stdio::null()`（正是 C4 量出的那个缺口）。"
+                )
+            });
+            guard_core::find_pinned(entry_src, "Some(Arc::new(local_stdio_consumer))").unwrap_or_else(
+                |e| {
+                    panic!(
+                        "`{name}` 调了 `supervise_with_stdio`，但没把 `local_stdio_consumer` 传下去（{e}）。\n\
+                         管子接出来了却没人读 ⇒ hello 帧没人解 ⇒ `client_for(<local>)` 恒 None，\n\
+                         且不会报任何错。"
+                    )
+                },
+            );
+        }
+    }
+
+    /// P2-Y1 + P2-Y3（acceptor: **实测**）：起**真的** daemon 二进制，
+    /// 看入方向通道是不是真的登记上了；再关写端，看 daemon 是不是**还活着**。
+    ///
+    /// # 为什么不起 GUI
+    ///
+    /// 要验的性质是「本机后端起来 ⇒ `client_for(LOCAL_ORIGIN)` 拿得到通道」。
+    /// 这条链的全部零件都在本模块 + `inbound_client` 里，GUI 一个字都不参与。
+    /// 起整个 app 只会把「哪一步坏了」这个信息埋掉。
+    ///
+    /// # 沙箱 HOME 只给子进程
+    ///
+    /// daemon 会 tail `$HOME/.claude/projects`。用 `envs` 参数给**子进程**单独设 `HOME`
+    /// ⇒ 测试进程自己的 env 一个字不动（`std::env::set_var` 是进程全局的，
+    /// cargo 又是多线程跑测试 ⇒ 那样会污染同批别的用例）。
+    ///
+    /// # ⚠ 这条测试在缺内嵌二进制时**不存在**（诚实边界 10c）
+    ///
+    /// `cfg(embedded_daemons)` 由 `build.rs` 在 `embedded-daemons/` 齐全时才置，而那个目录是
+    /// gitignore 的 ⇒ 干净 clone 上本条**不编译进去**，`cargo test` 照样全绿。
+    /// 不做成「缺了就 red」是因为那会让干净 clone 无法跑测试；缺失不是静默的 ——
+    /// `build.rs` 那处 `cargo:warning=缺少内嵌 daemon` 会喊（U-1 那次事故之后加的）。
+    #[cfg(all(embedded_daemons, target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    fn the_local_daemon_really_registers_an_inbound_client() {
+        let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("embedded-daemons")
+            .join("cc-monitor-remote-x86_64");
+        assert!(
+            bin.exists(),
+            "`cfg(embedded_daemons)` 置了但 {bin:?} 不在 —— build.rs 与磁盘不一致"
+        );
+
+        let home = std::env::temp_dir().join(format!("p2-local-inbound-{}", std::process::id()));
+        std::fs::create_dir_all(home.join(".claude").join("projects")).expect("建沙箱 HOME");
+
+        let h = supervise_with_stdio(
+            bin,
+            vec!["--tail-only".into()],
+            vec![("HOME".into(), home.display().to_string())],
+            CrashLimits::default(),
+            Arc::new(|| {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0)
+            }),
+            Arc::new(|e| println!("[P2 实测] {e:?}")),
+            Some(Arc::new(local_stdio_consumer)),
+        );
+
+        // 轮询而不是睡死：进程起来 + 发 hello 的耗时不确定，睡固定值要么慢要么飘。
+        let mut client = None;
+        for _ in 0..100 {
+            if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) {
+                client = Some(c);
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let cleanup = |h: &SuperviseHandle| {
+            h.stop();
+            let _ = std::fs::remove_dir_all(&home);
+        };
+        let Some(client) = client else {
+            cleanup(&h);
+            panic!(
+                "5s 内 `client_for(<local>)` 仍是 None —— 本机入方向通道没登记上。\n\
+                 ⚠ 「没报错」不算数：远端那条路的头注记着一次审计变异 ——\n\
+                 把注册整段删掉（写半边永不解冻）`cargo test` 照样全绿。所以这里必须**看到通道**。"
+            );
+        };
+
+        // P2-Y1：登记了还得是**能用的** —— daemon 声明的入方向命令要在。
+        assert!(
+            client.accepts("launch") && client.accepts("kill"),
+            "通道登记了，但 daemon 没声明接受 launch/kill ⇒ P3 接过来也发不出去"
+        );
+
+        // P2-Y3：关写端**不许**把 daemon 带走（C8 裁定「默认不 kill、daemon 继续跑」）。
+        // 单独观测，不顺带看一眼 —— 件里 §0d 把这条从「推断」改成了实测，就是这个意思。
+        let pid = h.current_pid().expect("已经收到 hello 了，进程必然在");
+        client.close_write();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let alive = Path::new(&format!("/proc/{pid}")).exists();
+        crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
+        cleanup(&h);
+        assert!(
+            alive,
+            "关掉 stdin 写端之后 daemon（pid={pid}）没了。\n\
+             这与 C8「默认不 kill」直接冲突，也推翻了 local_backend.rs:221 那句\n\
+             「daemon 对 stdin 关闭刻意不敏感」——那句注释得改，不是这条测试得改。"
+        );
+    }
+
     use super::*;
 
     fn never(_: &Path) -> bool {
@@ -958,7 +1245,6 @@ mod tests {
         let prod = guard_core::production_code(include_str!("../../lib.rs"));
         let me = guard_core::production_code(include_str!("local_backend.rs"));
         // 本模块今天对外的生产入口清单。加入口 = 往这里加一条（**不许**留空清单）。
-        const ENTRIES: &[&str] = &["start_if_present", "start_or_extract"];
         assert!(!ENTRIES.is_empty(), "抽取器自检：入口清单空了 ⇒ 下面两条断言都会零命中地绿");
         for e in ENTRIES {
             assert!(

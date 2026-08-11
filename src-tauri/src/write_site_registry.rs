@@ -80,8 +80,10 @@ mod spawn_sites {
          "只探测「本机有没有 ssh」，不带用户参数"),
         ("lib.rs", "open_with_os", "`cmd` / `open` / `xdg-open`",
          "按平台打开日志目录：三个名字都是常量，路径是 monitor 自己的目录"),
-        ("local_backend.rs", "supervise", "被监护的 daemon 二进制",
-         "本机后端监护：二进制路径来自 `candidates`（有 `candidates_never_point_into_a_build_tree` 守着）"),
+        ("local_backend.rs", "supervise_with_stdio", "被监护的 daemon 二进制",
+         "本机后端监护：二进制路径来自 `candidates`（有 `candidates_never_point_into_a_build_tree` 守着）。\
+          ⚠ P2 起它的 stdin 可能是 `piped()` 而不再恒为 `null` —— 那是本机入方向通道的管子\
+          （`local_stdio_consumer`）。`supervise` 只是它 `stdio=None` 的薄壳，真正 spawn 的是这一个"),
         ("local_query.rs", "run_query", "daemon 二进制 + 只读子命令",
          "本机只读查询：`bin` 同上来自候选表，`args` 是本模块构造的固定子命令"),
         ("ssh_source.rs", "resolve_ssh_host", "`ssh -G <host>`",
@@ -255,6 +257,11 @@ mod tests {
     /// 「谁进人群」由机器定，「它是不是安装动作」才是人的答案。
     #[allow(clippy::type_complexity)]
     pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
+        // ── P2z：单 exe 自释放内嵌 daemon。**不是安装动作** —— 它写的是 monitor 自己的缓存。
+        ("local_backend.rs", "extract_embedded_to", None,
+         "把内嵌的 daemon 二进制释放到 `~/.cc-monitor/bin/cc-monitor-local-<build_id>`，\
+          供 `start_or_extract` 在 exe 旁没有 sidecar 时起进程。写的是 monitor 自己的目录，\
+          不碰用户既有环境、不注册到任何用户配置里；按 build_id 命名 ⇒ 幂等、不覆盖别的版本"),
         // ── 构建期写盘：**不碰用户既有环境**，只往 `OUT_DIR` 放构建产物。
         // 单列在这里是因为它此前**整个在扫描面之外**（08-08 并入），
         // 而它确实在开发者机器上写文件 —— 「不是安装动作」得由人说出来，不是靠没人看见。
