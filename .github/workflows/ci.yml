@@ -321,7 +321,11 @@ jobs:
           #   「≥」正是它落后三次的成因 —— 加脚本时它不响，于是没人回来棘。
           # ⚠ 两个 `.ps1` 仍**零 lint**（全仓无 PowerShell linter）：`scripts/run.ps1` 与
           #    `e2e/tier2/run-in-session1.ps1` ⇒ 记为诚实边界（`audit-0805/ROADMAP §5`）。
-          [ "$N" -ge 45 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 45）"; exit 1; }
+          # **2026-08-11 P3t-Y5 棘到 46**：新增 `e2e/p3t-local-tmux.sh`（本机拉起真的建出 tmux 会话）。
+          # ★ 这次**不是事后补**——改成等号之后它当场就红了，加脚本的同一拍就回来棘。
+          #   那正是把「≥」改成等号买到的东西：前三次落后（37→39→41）全是「≥ 不响，没人回来」。
+          #   今天实测构成：**46 = e2e 26 + fake-claude 1 + cc-bus 13 + ccm 1 + scripts 1 + vendored 4**。
+          [ "$N" -ge 46 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 46）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
