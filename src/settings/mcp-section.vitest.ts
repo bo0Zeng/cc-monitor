@@ -18,6 +18,7 @@ import {
   type McpServerEntry,
 } from "./mcp-section";
 import { invoke } from "@tauri-apps/api/core";
+import { setCurrentMachine } from "./machine-context";
 
 const ent = (scope: McpServerEntry["scope"], name: string, server: unknown): McpServerEntry => ({
   scope,
@@ -211,5 +212,114 @@ describe("F89b 库 UI（累积 + 已在本项目 + 注册）", () => {
     regBtns[0].click();
     await flush();
     expect(writes.some((w) => w.name === "a" && w.projectDir === "/p2")).toBe(true); // a 注册进 /p2
+  });
+});
+
+// ===== P6b：工作目录做成可浏览的清单 =====
+//
+// ★ 判据钉的是**可见清单**，不是 `datalist` 的 option 数 —— 后者今天就有，钉它等于什么都没验。
+
+describe("P6b MCP 工作目录清单", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  const chips = (root: HTMLElement) =>
+    [...root.querySelectorAll<HTMLButtonElement>(".mcp-dir-chip")].map((b) => b.textContent);
+
+  it("★ P6b-Y1：本机的工作目录逐条列出来，点一条 = 填进输入框并读取", async () => {
+    document.body.replaceChildren();
+    const reads: string[] = [];
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "list_mcp_project_dirs") return ["/a/proj1", "/b/proj2"];
+      if (cmd === "read_mcp_servers") {
+        reads.push(String((args as { projectDir?: string } | undefined)?.projectDir ?? ""));
+        return [];
+      }
+      return [];
+    });
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush();
+
+    // 清单是**可见元素**，不是 datalist 的 option。
+    expect(chips(section.element)).toEqual(["/a/proj1", "/b/proj2"]);
+    // datalist 仍要喂（手填时的自动补全没被砍掉）。
+    expect(section.element.querySelectorAll("#mcp-project-dirs option").length).toBe(2);
+
+    reads.length = 0;
+    section.element.querySelectorAll<HTMLButtonElement>(".mcp-dir-chip")[1].click();
+    await flush();
+    const dirInput = section.element.querySelector<HTMLInputElement>('input[placeholder^="项目目录"]')!;
+    expect(dirInput.value).toBe("/b/proj2");
+    // 点了要**真的去读那一格** —— 只填输入框不读，等于让用户再点一次「读取」。
+    expect(reads).toContain("/b/proj2");
+  });
+
+  it("★ P6b-Y1b：一个目录都没有 ⇒ 说清是「没用过」，不是「加载失败」", async () => {
+    document.body.replaceChildren();
+    vi.mocked(invoke).mockImplementation(async () => []);
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush();
+    expect(chips(section.element)).toEqual([]);
+    const empty = section.element.querySelector(".mcp-dirs-empty");
+    expect(empty?.textContent).toContain("还没有用过的项目目录");
+  });
+
+  it("★ P6b-Y2b：**本机那条**同样要守 —— 迟到的本机结果不许盖住远端的清单", async () => {
+    document.body.replaceChildren();
+    // ⚠ 这一条是**变异逼出来的**：只测「远端迟到」时，把本机那条守卫拿掉照样全绿
+    //（本机 mock 立即 resolve，根本没有可切走的窗口）。
+    // 而本机那条今天也是 `await`，共用 store 是别处也能改的 ⇒ 窗口真实存在。
+    let releaseLocal: (v: string[]) => void = () => {};
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "list_remote_mcp_project_dirs") return ["/remote/dir"];
+      if (cmd === "list_mcp_project_dirs")
+        return new Promise<string[]>((r) => {
+          releaseLocal = r;
+        });
+      return [];
+    });
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush(); // 本机枚举挂住
+
+    setCurrentMachine("aya");
+    await flush();
+    expect(chips(section.element)).toEqual(["/remote/dir"]);
+
+    releaseLocal(["/local/late"]); // 本机那次现在才回来
+    await flush();
+    expect(chips(section.element)).toEqual(["/remote/dir"]);
+  });
+
+  it("★ P6b-Y2：切走之后，迟到的枚举结果不许覆盖新机器的清单", async () => {
+    document.body.replaceChildren();
+    // 让**远端**那次枚举挂住，好复现真实形状：那是一整趟 SSH（30s 超时），
+    // 在这期间切机器是完全正常的操作。本机那条是本地读文件，测不出这个竞态。
+    let releaseRemote: (v: string[]) => void = () => {};
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "list_mcp_project_dirs") return ["/local/only"];
+      if (cmd === "list_remote_mcp_project_dirs")
+        return new Promise<string[]>((r) => {
+          releaseRemote = r;
+        });
+      return [];
+    });
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush();
+    expect(chips(section.element)).toEqual(["/local/only"]);
+
+    setCurrentMachine("aya"); // 去远端（枚举挂住）
+    await flush();
+    setCurrentMachine(null); // 还没回来就切回本机
+    await flush();
+    expect(chips(section.element)).toEqual(["/local/only"]);
+
+    releaseRemote(["/remote/late"]); // 远端那次现在才回来
+    await flush();
+    // 它属于**已经切走的那台机器** —— 一条都不许出现。
+    expect(chips(section.element)).toEqual(["/local/only"]);
   });
 });

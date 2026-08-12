@@ -117,6 +117,8 @@ export class McpSection {
   private dirRow!: HTMLElement;
   private dirInput!: HTMLInputElement;
   private datalist!: HTMLDataListElement;
+  /** P6b：可浏览的工作目录清单（与 `datalist` 同源，见 `renderDirCandidates`）。 */
+  private dirsBox!: HTMLElement;
   private listBox!: HTMLElement;
   /** F87b②：project scope 加/改表单的输入引用——「编辑」按钮预填用（每次 reload 重建时刷新）。 */
   private addNameInput: HTMLInputElement | null = null;
@@ -179,6 +181,13 @@ export class McpSection {
     row.append(this.dirInput, this.datalist, readBtn);
     root.appendChild(row);
 
+    // P6b：工作目录**清单**。`datalist` 是自动补全 —— 你得先敲出点什么它才帮你补，
+    // 而实测本机 12 个项目里只有 4 个真有 `.mcp.json` ⇒ 用户只能「猜一个、点进去、
+    // 发现是空的、再猜下一个」。清单把「先知道路径」这个前提去掉。
+    this.dirsBox = document.createElement("div");
+    this.dirsBox.className = "mcp-dirs";
+    root.appendChild(this.dirsBox);
+
     this.listBox = document.createElement("div");
     this.listBox.className = "mcp-list";
     root.appendChild(this.listBox);
@@ -186,15 +195,48 @@ export class McpSection {
     return root;
   }
 
+  /**
+   * P6b：候选目录的**唯一渲染口** —— `datalist`（自动补全）与可见清单**同源**。
+   *
+   * 两处各写一遍就是「一段逻辑、两种表示」：加一台机器的路径来源时，
+   * 很容易只喂了其中一个，而**少喂的那个不会报错，只是少了几项**。
+   */
+  private renderDirCandidates(dirs: string[]): void {
+    this.datalist.replaceChildren();
+    this.dirsBox.replaceChildren();
+    for (const d of dirs) {
+      const opt = document.createElement("option");
+      opt.value = d;
+      this.datalist.appendChild(opt);
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "settings-btn settings-btn-secondary mcp-dir-chip";
+      chip.textContent = d;
+      chip.title = d; // 路径可能很长（实测最长 111 字符），悬停看全
+      chip.addEventListener("click", () => {
+        this.dirInput.value = d;
+        void this.refresh();
+      });
+      this.dirsBox.appendChild(chip);
+    }
+    if (dirs.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "settings-hint mcp-dirs-empty";
+      // 说清是「这台机器没用过项目」，不是「加载失败」——两者的下一步完全不同。
+      empty.textContent = "这台机器还没有用过的项目目录 —— 上面可以手填任意路径。";
+      this.dirsBox.appendChild(empty);
+    }
+  }
+
   private async loadProjectCandidates(): Promise<void> {
+    // ★ **本机这条也要守竞态**〔P6b-Y2〕：它同样是 `await`，
+    // 而 `origin` 可能在这期间被切走（共用 store 是别处也能改的）。
+    // 远端那条早就有这个守卫（`if (this.origin !== origin) return;`），本机那条**漏了**。
+    const want = this.origin;
     try {
       const dirs = await commands.list_mcp_project_dirs();
-      this.datalist.replaceChildren();
-      for (const d of dirs) {
-        const opt = document.createElement("option");
-        opt.value = d;
-        this.datalist.appendChild(opt);
-      }
+      if (this.origin !== want) return; // 期间切走
+      this.renderDirCandidates(dirs);
     } catch {
       /* 候选补全拿不到不影响手填 */
     }
@@ -268,12 +310,7 @@ export class McpSection {
       /* 拿不到不影响手填 */
     }
     if (this.origin !== origin) return; // 期间切走
-    this.datalist.replaceChildren();
-    for (const d of dirs) {
-      const opt = document.createElement("option");
-      opt.value = d;
-      this.datalist.appendChild(opt);
-    }
+    this.renderDirCandidates(dirs);
   }
 
   /** F89a：读+管理远端某项目的 `.mcp.json`（project scope 可写）。切走/改目录 → 丢弃。 */
