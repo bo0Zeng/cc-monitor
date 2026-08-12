@@ -143,7 +143,7 @@ const PROTO_VERSION: u32 = 1;
 ///   `stdin=DEVNULL`，用户敲的字会被脚本吃掉。省略 = true（存量零迁移）。
 ///   **必须 bump**：monitor 要靠新 daemon 才拿得到这个字段；不 bump 就不判 stale、不重装。
 ///   （wire 是 additive、旧 monitor 忽略未知字段 ⇒ **不 bump PROTO_VERSION**。）
-const BUILD_ID: &str = "p1y-cli-control-face";
+const BUILD_ID: &str = "p1z-list-subagents";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
@@ -219,6 +219,7 @@ const SUBCOMMANDS: &[&str] = &[
     "--kill",
     "--launch",
     "--list-accounts",
+    "--list-subagents",
     "--list-projects",
     "--list-sessions",
     "--ping",
@@ -390,6 +391,8 @@ async fn main() {
             // P4b：hook 子进程走这条 —— 校验身份后给 daemon 发 SIGUSR1，**不碰文件系统**。
             Some("--tmux-notify") => control::tmux_hook::notify(&args),
             Some("--search") => observe::search_query::run(&claude_dir, &args),
+            // P7c-1：列一个父会话的 subagent 候选。**只列不挑**（匹配与排序留在 monitor）。
+            Some("--list-subagents") => observe::history_query::list_subagents(&claude_dir, &args),
             Some("--usage") => observe::usage_query::run(&claude_dir, &args),
             Some("--resolve") => control::resolve_query::run(&claude_dir, &args),
             // G2（branch-anywhere）：从指定消息处分叉出一个新会话文件。

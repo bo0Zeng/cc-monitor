@@ -279,7 +279,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
 
   // F77（#53）：点 agents 面板某行 → load_subagent 拿子 agent jsonl 路径 → SessionViewer 只读展示该
-  // agent 的记录。远端会话不支持（子 agent jsonl 在远端机器，同 subagent 卡片）。
+  // agent 的记录。★ P7c-1（08-12）起**远端会话也支持**（同 subagent 卡片：origin 传下去，
+  // daemon 的 `--list-subagents` 只列候选，挑选留后端本侧）。
   let agentViewer: SessionViewer | null = null;
   let agentViewerMount: HTMLElement | null = null;
   const closeAgentViewer = (): void => {
@@ -295,14 +296,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   agentsPanel.onAgentOpen = (entry) => {
     const actx = tabs.getActiveSubagentContext();
     if (!actx) return;
-    if (actx.origin) {
-      showActionFailureToast(
-        "远端会话暂不支持",
-        `子 agent 的记录在远端机器 [${actx.origin}] 上，暂不支持点开查看。`,
-        { level: "info" },
-      );
-      return;
-    }
     void (async () => {
       try {
         // C04d 批 5b：这里原来写 `invoke<{ path: string }>` —— **同一个命令在全仓有两种 TS 类型**
@@ -312,6 +305,8 @@ window.addEventListener("DOMContentLoaded", async () => {
           parentJsonlPath: actx.parentPath,
           description: entry.desc, // ★ 用 trim 后的原始 desc（非展示 label）——load_subagent 精确匹配
           toolUseTimestamp: entry.timestamp,
+          // P7c-1：远端会话也能展开了（daemon `--list-subagents` 只列候选，挑选留后端本侧）。
+          origin: actx.origin ?? null,
         });
         closeAgentViewer(); // 关掉上一个（单例语义）
         agentViewerMount = document.createElement("div");

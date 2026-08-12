@@ -95,6 +95,15 @@ mod tests {
             "p1y-cli-control-face",
             "--account-trust\n--account-trust-zero\n--daemon-probe\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
+        // ★ p1z（P7c-1，08-12）：新增 `--list-subagents` —— 列一个父会话的 subagent 候选。
+        //
+        // ⚠ **必须 bump**：远端会话的 subagent 展开就靠这一条；旧 daemon 没有它，
+        //   而 monitor 判 stale 只看 build_id ⇒ 不 bump 就不重装，功能在已部署的机器上休眠。
+        // ★ 它**只列不挑**：description 匹配与时间戳排序留在 monitor（定框 C1：别长第二套语义）。
+        (
+            "p1z-list-subagents",
+            "--account-trust\n--account-trust-zero\n--daemon-probe\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
     ];
 
     use crate::guard_support::{assert_no_test_code, production_code};

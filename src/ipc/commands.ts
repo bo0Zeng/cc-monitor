@@ -704,6 +704,8 @@ export const commands = {
     parentJsonlPath: string;
     description: string;
     toolUseTimestamp: string;
+    /** P7c-1：远端会话的 subagent 记录在远端机器上 —— 后端按它分流。`null` = 本机。 */
+    origin: string | null;
   }) => invoke<SubagentLoadResult>("load_subagent", args),
 
   /**
