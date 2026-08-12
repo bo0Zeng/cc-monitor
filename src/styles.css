@@ -6942,3 +6942,9 @@ body.settings-window-mode .grid-monitor-trigger {
   flex-wrap: wrap;
   gap: 4px;
 }
+
+/* P7a-2 D 补审：拖动排序的落点指示。被拖的那块会插到这个 tab **之前**。
+   只搬不指示的话，「拖动排序」是一次盲操作 —— 松手前不知道会落在哪。 */
+.tab.drop-before {
+  box-shadow: inset 0 2px 0 0 var(--accent, #6aa9ff);
+}

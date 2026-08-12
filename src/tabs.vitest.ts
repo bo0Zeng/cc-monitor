@@ -3129,6 +3129,44 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
     expect(order()).toEqual(["host", "bg1", "bg2", "other"]);
   });
 
+  it("★ P7a2-D：拖动时**落点看得见**，撕离那一路不指示，拖完必须清掉", () => {
+    tm.ensureTab("a", "/c1", "p", 0, null);
+    tm.ensureTab("b", "/c2", "p", 0, null);
+    tm.ensureTab("c", "/c3", "p", 0, null);
+    flushBar();
+    stubRects();
+    const roots = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+    const marked = (): number => bar.querySelectorAll(".tab.drop-before").length;
+
+    roots[2].dispatchEvent(
+      new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 0, bubbles: true }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mousemove", { buttons: 1, clientX: 10, clientY: 10, bubbles: true }),
+    );
+    // 落点 = 第一条（a）之前。
+    expect(marked()).toBe(1);
+    expect(roots[0].classList.contains("drop-before")).toBe(true);
+
+    // 拖出右缘 ⇒ armed，那一路根本不重排 ⇒ 不许再指一条不会发生的落点。
+    document.dispatchEvent(
+      new MouseEvent("mousemove", { buttons: 1, clientX: 9999, clientY: 10, bubbles: true }),
+    );
+    expect(marked(), "撕离那一路不指示落点").toBe(0);
+
+    // ⚠ **必须先拖回非 armed 让标记重新挂上**，否则松手时本来就没标记，
+    // 「拖完清干净」那句是恒真的（实测：拿掉 teardown 里的清理，判据照样绿）。
+    document.dispatchEvent(
+      new MouseEvent("mousemove", { buttons: 1, clientX: 10, clientY: 10, bubbles: true }),
+    );
+    expect(marked(), "拖回栏内应重新指示").toBe(1);
+
+    document.dispatchEvent(
+      new MouseEvent("mouseup", { clientX: 10, clientY: 10, bubbles: true }),
+    );
+    expect(marked(), "拖完必须清干净，标记不许挂在那儿").toBe(0);
+  });
+
   it("★ P7a2-Y2：armed（拖出右缘）时**顺序一个字不动**", () => {
     tm.ensureTab("a", "/c", "p", 0, null);
     tm.ensureTab("b", "/c2", "p", 0, null);

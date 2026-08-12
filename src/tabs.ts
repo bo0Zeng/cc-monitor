@@ -1993,6 +1993,10 @@ export class TabManager {
     // P7a-2：**纵向那根轴今天一个消费者都没有** —— arm 只看 `clientX`（见下一行）。
     // 所以栏内重排走 `clientY`，与 tear-off 天然不争同一根轴。
     d.dropBefore = this.dropTargetAt(e.clientY, d.sid);
+    // ★ **落点要看得见**〔D 阶段补审〕：只搬不指示的话，「拖动排序」是一次盲操作 ——
+    // 用户松手前不知道会落在哪，只能松开看结果、错了再拖一次。
+    // armed（拖出右缘）时不指示：那一路根本不重排，指一条不会发生的落点是在骗人。
+    this.markDropTarget(e.clientX > d.barRight + 16 ? null : d.dropBefore);
 
     // arm：指针拖离竖栏右缘一段距离 = 松手即弹独立窗口（F33 前是下缘判定）。
     const armed = e.clientX > d.barRight + 16;
@@ -2049,6 +2053,13 @@ export class TabManager {
     return out;
   }
 
+  /** P7a-2 D 补审：给落点那个 tab 打标（`null` = 落到末尾 ⇒ 谁都不标）。 */
+  private markDropTarget(beforeSid: string | null): void {
+    for (const [sid, refs] of this.tabButtons) {
+      refs.root.classList.toggle("drop-before", sid === beforeSid);
+    }
+  }
+
   /** P7a-2：把拖动的结果落实到 `orderedIds` 并重画。 */
   private applyReorder(sid: string, beforeSid: string | null): void {
     const next = moveTabBlock(this.orderedIds, this.dragBlockOf(sid), beforeSid);
@@ -2064,6 +2075,7 @@ export class TabManager {
     if (!d) return;
     document.removeEventListener("mousemove", d.onMove);
     document.removeEventListener("mouseup", d.onUp);
+    this.markDropTarget(null); // 拖拽结束必须清掉落点标记，否则它会挂在那儿
     d.ghost?.remove();
     d.root.classList.remove("dragging");
     this.drag = null;
