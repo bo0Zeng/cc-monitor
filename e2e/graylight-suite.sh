@@ -75,6 +75,44 @@ ARCH_WAIT="${E2E_ARCH_WAIT:-40}"    # 归档:kill-session 后 TmuxSessions 帧 +
 
 [ -f "$LOG" ] || { echo "monitor 日志不存在:$LOG(dev 实例在跑吗?)"; exit 1; }
 
+# ★★★ **开跑前自证台架**〔P0b 08-12〕。**不满足一律 `ABORT`（exit 2），不许 FAIL。**
+#
+# 病史：查 #60 时**连着六次**跑出「1 过 2 败」，而**每一次的成因都不是 #60** ——
+#   ① 陈旧 pidfile（读到上一跑的残骸，kill 打给死 pid）
+#   ② `daemonPath` 指向真 daemon 而非本 wrapper（daemon 盯 `~/.claude` 不是 fixture）
+#   ③ wrapper 副本搬出仓外后 `$REPO` 推错 ⇒ 回落到陈旧 daemon
+#   ④ 跑的是 `target/debug/monitor` 而非 `npx tauri dev` ⇒ **DEV 探针整支被 vite 消除**
+#   ⑤ `P0d` 换 socket 隔离后 daemon 与套件**分家**（daemon 在 SSH 那头，不吃 shim）
+#   ⑥ dev 实例在跑套件之前就挂了
+#
+# ★ 它们**失败起来长得一模一样**（都是「没变灰」）⇒ 「测不到」一路伪装成「测到了缺陷」，
+#   而每修好一条只会露出下一条。**这就是为什么台架有效性必须每跑自证，不能靠一次推断**
+#   （`P0` 当初那句「台架处于有效状态」正是那样的一次推断）。
+#
+# 三格，各挡上面一族：
+_abort() { echo "  ABORT $1"; echo "        —— 台架不成立，本跑测不到任何东西。**这不是 FAIL**。"; exit 2; }
+
+# 甲：app 活着且**正在写这份日志**（挡 ⑥）。日志尾行时间戳与现在差太远 = 它已经不写了。
+_last_ts="$(tail -200 "$LOG" | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}' | tail -1)"
+if [ -n "$_last_ts" ]; then
+  _age=$(( $(date +%s) - $(date -u -d "${_last_ts}Z" +%s 2>/dev/null || echo 0) ))
+  [ "$_age" -lt 600 ] || _abort "monitor 日志已 ${_age}s 没有新行（dev 实例挂了？）：$LOG"
+fi
+
+# 乙：daemon **握手过且盯的是 fixture 目录**（挡 ②③⑤）。
+_hello="$(grep 'daemon hello' "$LOG" | tail -1)"
+[ -n "$_hello" ] || _abort "日志里一条 daemon hello 都没有 —— 远端没连上，本跑与 #60 无关"
+case "$_hello" in
+  *"claude_dir=$CLAUDE_DIR"*) : ;;
+  *) _abort "daemon 盯的不是 fixture 目录（要 $CLAUDE_DIR）：$_hello" ;;
+esac
+
+# 丙：DEV 探针**真的在**（挡 ④）。它是本套件两条主断言的唯一数据源；
+#     生产构建里 `import.meta.env.DEV` 恒 false、整支被 vite 消除 ⇒ 断言永不可能通过。
+grep -q '\[e2e\]' "$LOG" || _abort "日志里一条 [e2e] 行都没有 —— 跑的不是 \`npx tauri dev\`？DEV 探针不存在，两条主断言永不可能通过"
+
+echo "  OK   台架自证通过（app 在写日志 · daemon 盯 $CLAUDE_DIR · DEV 探针在）"
+
 SID="$(cat /proc/sys/kernel/random/uuid)"; SID8="${SID:0:8}"
 SESSION="cc-$SID8"; KEEP="cc-e2ekeep-$$"
 
