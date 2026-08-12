@@ -727,6 +727,20 @@ describe("P4c 广播与收掉", () => {
     expect(calls("cc_bus_kill")[0][1]).toMatchObject({ origin: "aya", id: "a_cc" });
   });
 
+  it("★ P4c-D：武装了 A 再点 B，**A 那颗必须复位**（两颗都显示「确认」是在骗人）", async () => {
+    // 本文件 :53 的注释记过同型病：「原实现只有 `spawnArmed: boolean`，且只在成功执行时复位」。
+    const s = await boot();
+    const kills = s.element.querySelectorAll<HTMLButtonElement>(".cc-bus-kill");
+    expect(kills.length).toBe(2);
+    kills[0].click();
+    await flush();
+    expect(kills[0].textContent).toContain("a_cc");
+    kills[1].click();
+    await flush();
+    expect(kills[1].textContent).toContain("b_cc");
+    expect(kills[0].textContent, "上一颗必须复位成「收掉」").toBe("收掉");
+  });
+
   it("★ P4c-Y3：广播的确认**带数字**（不带数字的「确定吗」等于没问）", async () => {
     const s = await boot();
     const input = s.element.querySelector<HTMLInputElement>(".cc-bus-broadcast-input")!;

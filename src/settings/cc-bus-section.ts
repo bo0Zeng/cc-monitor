@@ -56,6 +56,8 @@ export class CcBusSection {
   private armedFor: string | null = null;
   /** P4c：收掉那颗按钮的两步确认状态（与 spawn 的 `armedFor` 分开 —— 两件事各自武装）。 */
   private killArmedFor: string | null = null;
+  /** 武装中的那颗按钮本身 —— 只记 id 复位不了它（见 `killOne` 的 D 阶段补审）。 */
+  private killArmedBtn: HTMLButtonElement | null = null;
   private broadcastInput!: HTMLInputElement;
   private broadcastBtn!: HTMLButtonElement;
   /** 已加载过的状态；null = 还没读过（**不在构造时预取**）。 */
@@ -249,6 +251,7 @@ export class CcBusSection {
       if (this.originSel.value === want) return;
       this.originSel.value = want;
       this.disarmSpawn();
+      this.disarmKill(); // 切了机器，上一台那颗武装中的「收掉」必须失效
       this.syncLocalAffordances();
       if (want !== LOCAL_ORIGIN) void this.loadAccounts(want);
     });
@@ -536,13 +539,17 @@ export class CcBusSection {
     const origin = this.originSel.value;
     if (!origin) return;
     if (this.killArmedFor !== id) {
+      // ★ **先把上一颗复位**〔D 阶段补审〕：只记 id 不记按钮的话，
+      // 武装 A 之后再点 B，A 那颗仍显示「确认收掉 A」—— **两颗都像武装着**，面板在骗人。
+      // 本文件 `:53` 的注释记过同型病：「原实现只有 `spawnArmed: boolean`，且只在成功执行时复位」。
+      this.disarmKill();
       this.killArmedFor = id;
+      this.killArmedBtn = btn;
       // 回显真名 —— 一屏几十个 agent，不带名字的「确认」很容易杀错那一个。
       btn.textContent = `确认收掉 ${id}`;
       return;
     }
-    this.killArmedFor = null;
-    btn.textContent = "收掉";
+    this.disarmKill();
     btn.disabled = true;
     try {
       const out = await commands.cc_bus_kill({ origin, id });
@@ -575,6 +582,13 @@ export class CcBusSection {
     } finally {
       this.broadcastBtn.disabled = false;
     }
+  }
+
+  /** P4c D 补审：把武装中的「收掉」复位。切机器 / 重载 / 武装另一颗时都要调。 */
+  private disarmKill(): void {
+    if (this.killArmedBtn) this.killArmedBtn.textContent = "收掉";
+    this.killArmedBtn = null;
+    this.killArmedFor = null;
   }
 
   private disarmSpawn(): void {

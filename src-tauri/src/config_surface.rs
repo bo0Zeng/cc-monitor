@@ -1127,8 +1127,9 @@ mod tests {
         // **等号而不是 `>=`**（T04 审计重要 5）：真实是 5 条，写 `>= 4` 恰好容忍一次
         // 静默降级——审计实测单独改一条 host 就是全绿。改 TOOLS 时要来改这个数。
         assert_eq!(
-            checked, 5,
-            "Remote 条目数变了（真实应为 5）——改 TOOLS 就要来确认这个数"
+            checked, 4,
+            "Remote 条目数变了（真实应为 4）——改 TOOLS 就要来确认这个数。\
+             ★ P4c（08-12）5→4：`~/.cc-bus/` 转 Either（`P4a` 把读面做成本机可用）"
         );
     }
 
@@ -1155,8 +1156,10 @@ mod tests {
             // 钩子诊断真有本机+远端两条路径（`diagnose_local_/remote_cc_bus_hooks`）
             ("cc-bus", "~/.claude/settings.json", Either),
             ("cc-bus", "~/.local/bin/cc-*", Either),
-            // 但 `cc_bus.rs` 的 5 个 IPC 全走 origin+ssh，**零本机读取路径** → Remote
-            ("cc-bus", "~/.cc-bus/", Remote),
+            // ★ P4c 订正（08-12）：原写「5 个 IPC 全走 origin+ssh，**零本机读取路径** → Remote」
+            //   —— `P4a` 把读面三条做成了本机可用（同一条串、不包 ssh），下拉也加了「本机」档
+            //   ⇒ `Either`。理由的长版住 `tool_registry.rs` 那条 `TouchedFile`。
+            ("cc-bus", "~/.cc-bus/", Either),
             ("cc-acct-iso", "$ACCT_ISO_DEST", Remote),
             // 列举走远端 ssh，但本机 CLAUDE_CONFIG_DIR 会指进来 → 两端皆可
             ("cc-acct-iso", "~/.claude-accts/", Either),
@@ -1211,10 +1214,25 @@ mod tests {
             .filter(|(_, hosts)| hosts.len() >= 2)
             .map(|(d, hosts)| (d.clone(), hosts.len()))
             .collect();
+        // ★★ **门槛从 2 降到 1（P4c 08-12），账写在这里** —— 这不是为了让测试变绿。
+        //
+        // 本条命名的性质是「**`host` 不是 `destination` 的函数**」，
+        // 而那句话被证伪当且仅当**每个** destination 都只映到一个 host。
+        // 「≥2 个变体各多 host」是当年按**当时那张表**选的门槛，比性质本身更严。
+        //
+        // 今天真实变了一格：`P4a` 把 cc-bus 读面做成本机可用 ⇒ `~/.cc-bus/` 从
+        // `Remote` 改成 `Either`（理由的长版住 `tool_registry.rs`）。
+        // 于是 `LocalHomeRelative` 只剩 `{Either}`，多 host 的变体从 2 个降到 1 个
+        // （`UserConfiguredPath` 仍同时映 `Remote` 与 `Either`）。
+        //
+        // ⇒ **字段没有退化成冗余标签**（头注那条「变回 1:1 就该删字段」的准则未触发），
+        // 只是余量少了一格。降门槛的同时把这句话留下：**再少一格就真的是 1:1**，
+        // 那时按头注办 —— 删字段，别留着装样子。
         assert!(
-            multi.len() >= 2,
-            "至少要有两个 destination 变体各映到 ≥2 个 host，否则 host 就是 destination 的函数、\
-             那条跨字段守卫等于同义反复（T02 删掉的那颗钉子就是这个病）。实得 {multi:?}，\
+            !multi.is_empty(),
+            "没有任何 destination 变体映到 ≥2 个 host ⇒ `host` 就是 `destination` 的函数、\
+             这条跨字段守卫等于同义反复（T02 删掉的那颗钉子就是这个病）。\
+             **此时该删掉 `host` 字段，而不是留着装样子**（见本条头注）。实得 {multi:?}，\
              全表 {by_dest:?}"
         );
     }
