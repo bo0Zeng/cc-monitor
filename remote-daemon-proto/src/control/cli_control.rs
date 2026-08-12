@@ -53,8 +53,22 @@ use std::io::Read;
 /// ⇒ 多读一个字节，超了就说超了。
 const MAX_CLI_STDIN: u64 = 1024 * 1024;
 
-/// 能力探测口〔P4d-Y2〕。范式抄 `ccm --ccm-probe` —— monitor 侧
-/// `ccm_probe::parse_probe_output` 已经会解析那个形状。
+/// 能力探测口〔P4d-Y2〕。
+///
+/// # ⚠ 「范式抄 `ccm --ccm-probe`」抄的是**理念**，不是**线格式**〔E 阶段订正 08-12〕
+///
+/// 本件 `Y2` 的原话是「范式抄 `ccm --ccm-probe`，而 monitor 侧
+/// `ccm_probe::parse_probe_output` **已经会解析那个形状**」——**后半句是假的**，
+/// 而且是写下时就没验过的那种假（`P3b §0b` 的 B 类）。实测：
+/// `parse_probe_output` 认的是 **`key=value` 行**（首行必须逐字 `name=ccm`，
+/// 然后 `version=` / `capabilities=a,b,c`），而本口出的是 **JSON**。两者对不上。
+///
+/// 保留 JSON 而不是去迁就那个解析器，理由有账：`§0c` ① 是用户对 cc-bus 的不满逐字
+/// 「五个命令**全无 `--json`**，输出是定宽 `printf` + 中文表头」⇒ **JSON 进 JSON 出，
+/// 第一天就有**。而 `parse_probe_output` 是 **`ccm` 专用**的（实测：daemon 侧零消费者，
+/// monitor 也不用 CLI 面 —— 它走帧），让 daemon 去说 ccm 的方言只会多一种方言。
+///
+/// ⇒ 真正抄过来的是那条**理念**：集成方按**能力**兼容，不按版本号。
 pub(crate) const PROBE_FLAG: &str = "--daemon-probe";
 
 /// 本入口回显给命令的 `id`。**帧面的 `id` 由客户端发号且不透明**，而一次性 exec
