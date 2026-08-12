@@ -31,7 +31,7 @@ const scenarios: Record<string, LaunchContext> = {
   resumeTmuxWithIdentity: {
     transport: { kind: "ssh" },
     action: { kind: "resume", sid: "p1" },
-    container: { kind: "tmux", name: "cc-p1", nameQuoting: "raw", mode: "create-or-attach" },
+    container: { kind: "tmux", name: "cc-p1", nameQuoting: "raw", mode: "create" },
     cwd: "/tmp",
     account: { kind: "base" },
     launcherOverride: "claude",
@@ -40,7 +40,7 @@ const scenarios: Record<string, LaunchContext> = {
   newTmuxCustomLauncher: {
     transport: { kind: "ssh" },
     action: { kind: "new" },
-    container: { kind: "tmux", name: "cc-proj", nameQuoting: "quoted", mode: "create-or-attach" },
+    container: { kind: "tmux", name: "cc-proj", nameQuoting: "quoted", mode: "create" },
     cwd: "/home/pi/my proj",
     account: { kind: "base" },
     launcherOverride: "CCMPROBE",
@@ -60,7 +60,7 @@ const scenarios: Record<string, LaunchContext> = {
   resumeTmuxWithModel: {
     transport: { kind: "ssh" },
     action: { kind: "resume", sid: "p1" },
-    container: { kind: "tmux", name: "cc-p1", nameQuoting: "raw", mode: "create-or-attach" },
+    container: { kind: "tmux", name: "cc-p1", nameQuoting: "raw", mode: "create" },
     cwd: "/tmp",
     account: { kind: "base" },
     launcherOverride: "claude",

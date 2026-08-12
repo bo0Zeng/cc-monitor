@@ -44,7 +44,7 @@ console.log("launch-dimensions.test.ts");
 const baseCtx: LaunchContext = {
   transport: { kind: "ssh" },
   action: { kind: "resume", sid: "abc-123" },
-  container: { kind: "tmux", name: "cc-abc12345", nameQuoting: "raw", mode: "create-or-attach" },
+  container: { kind: "tmux", name: "cc-abc12345", nameQuoting: "raw", mode: "create" },
   cwd: "/p",
   account: { kind: "base" },
   launcherOverride: "claude",
@@ -69,7 +69,7 @@ test("identity：非法 ccmSid → throw（拒绝拼入命令）", () => {
 });
 
 test("env-reset：仅在 tmux send-into 且无账号时生效", () => {
-  eq(ENV_RESET_DIMENSION.applies(baseCtx), false, "create-or-attach 不生效");
+  eq(ENV_RESET_DIMENSION.applies(baseCtx), false, "create 不生效");
   const sendInto: LaunchContext = { ...baseCtx, container: { kind: "tmux", name: "cc-x", nameQuoting: "raw", mode: "send-into" } };
   eq(ENV_RESET_DIMENSION.applies(sendInto), true);
   const withAccount: LaunchContext = { ...sendInto, account: { kind: "account", name: "z", configDir: "/home/u/.claude-accts/z" } };
@@ -222,7 +222,7 @@ test("buildLaunchPlan：账号 + 模型偏好 → env 顺序是 export-config-di
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
     action: { kind: "resume", sid: "s1" },
-    container: { kind: "tmux", name: "cc-s1", nameQuoting: "raw", mode: "create-or-attach" },
+    container: { kind: "tmux", name: "cc-s1", nameQuoting: "raw", mode: "create" },
     cwd: null,
     account: { kind: "account", name: "z", configDir: "/home/u/.claude-accts/z" },
     launcherOverride: "claude",
@@ -240,7 +240,7 @@ test("buildLaunchPlan：新建 + 已知 sid → identity 生效", () => {
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
     action: { kind: "resume", sid: "s1" },
-    container: { kind: "tmux", name: "cc-s1", nameQuoting: "raw", mode: "create-or-attach" },
+    container: { kind: "tmux", name: "cc-s1", nameQuoting: "raw", mode: "create" },
     cwd: "/p",
     account: { kind: "base" },
     launcherOverride: "claude",

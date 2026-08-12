@@ -111,7 +111,7 @@ export function renderFallback(plan: LaunchPlan): string {
   const target = tmuxTarget(plan.container);
   const quotedCwd = plan.cwd ? posixQuote(plan.cwd) : null;
   switch (plan.container.mode) {
-    case "create-or-attach":
+    case "create":
       return SESSION_BACKEND.createRunAttach({
         target,
         quotedCwd,

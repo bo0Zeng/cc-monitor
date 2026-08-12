@@ -36,7 +36,7 @@ function ctxOf(overrides: Partial<LaunchContext>): LaunchContext {
   return {
     transport: { kind: "ssh" },
     action: { kind: "resume", sid: "abc-123" },
-    container: { kind: "tmux", name: "cc-abc12345", nameQuoting: "raw", mode: "create-or-attach" },
+    container: { kind: "tmux", name: "cc-abc12345", nameQuoting: "raw", mode: "create" },
     cwd: "/p",
     account: { kind: "base" },
     launcherOverride: "claude",

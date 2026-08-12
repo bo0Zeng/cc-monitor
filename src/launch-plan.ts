@@ -19,7 +19,10 @@
  */
 import { LAUNCH_DIMENSIONS } from "./launch-dimensions.ts";
 
-export type TmuxMode = "create-or-attach" | "send-into" | "attach-only";
+/** `C14`〔用 08-12〕：**起会话就是起会话，attach 就是 attach，不要 `or`**。
+ *  `create-or-attach` 那一档已删 —— 它把「建」与「接」的决定藏进一段 shell 短路里，
+ *  而调用方**在上游已经决定过一次**（issue #76 就是两处不一致时的产物）。 */
+export type TmuxMode = "create" | "send-into" | "attach-only";
 
 export type LaunchContainer =
   | { kind: "none" }

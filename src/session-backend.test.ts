@@ -29,8 +29,9 @@ test("TMUX_BACKEND.createRunAttach：带 cwd → new-session -c + send-keys + at
       quotedCwd: "'/home/u/proj'",
       quotedPayload: "'unset X; claude --resume abc'",
     }),
-    "tmux new-session -d -s cc-1234abcd -c '/home/u/proj' 2>/dev/null && " +
-      "tmux send-keys -t =cc-1234abcd: 'unset X; claude --resume abc' Enter; " +
+    "tmux new-session -d -s cc-1234abcd -c '/home/u/proj' && " +
+      // C14：`create` 不再无条件 attach —— 建失败就不接（原来这里是 `Enter; `）。
+      "tmux send-keys -t =cc-1234abcd: 'unset X; claude --resume abc' Enter && " +
       "tmux attach -t =cc-1234abcd:",
   );
 });
@@ -42,7 +43,7 @@ test("TMUX_BACKEND.createRunAttach：quotedCwd=null → 省 -c 标志", () => {
       quotedCwd: null,
       quotedPayload: "'p'",
     }),
-    "tmux new-session -d -s cc-x 2>/dev/null && tmux send-keys -t =cc-x: 'p' Enter; tmux attach -t =cc-x:",
+    "tmux new-session -d -s cc-x && tmux send-keys -t =cc-x: 'p' Enter && tmux attach -t =cc-x:",
   );
 });
 
@@ -53,7 +54,7 @@ test("TMUX_BACKEND.createRunAttach：target 可为 posixQuote 名（F53 含空�
       quotedCwd: null,
       quotedPayload: "'p'",
     }),
-    "tmux new-session -d -s 'my sess' 2>/dev/null && tmux send-keys -t '=my sess:' 'p' Enter; tmux attach -t '=my sess:'",
+    "tmux new-session -d -s 'my sess' && tmux send-keys -t '=my sess:' 'p' Enter && tmux attach -t '=my sess:'",
   );
 });
 
@@ -70,11 +71,11 @@ test("#72 + F03.4甲′ createRunAttach：ccmSid → create 分支插 @ccm_sid +
       quotedPayload: "'p'",
       ccmSid: "1234abcd-full-sid",
     }),
-    "tmux new-session -d -s cc-1234abcd 2>/dev/null && " +
+    "tmux new-session -d -s cc-1234abcd && " +
       "(tmux set-option -t =cc-1234abcd: @ccm_sid 1234abcd-full-sid 2>/dev/null || true) && " +
       "(tmux set-option -t =cc-1234abcd: set-titles on 2>/dev/null || true) && " +
       "(tmux set-option -t =cc-1234abcd: set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && " +
-      "tmux send-keys -t =cc-1234abcd: 'p' Enter; tmux attach -t =cc-1234abcd:",
+      "tmux send-keys -t =cc-1234abcd: 'p' Enter && tmux attach -t =cc-1234abcd:",
   );
 });
 
