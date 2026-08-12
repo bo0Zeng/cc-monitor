@@ -36,16 +36,33 @@ pub static LOCAL_BACKEND: std::sync::Mutex<Option<SuperviseHandle>> =
 ///
 /// **已经在跑就不重复起**：`C8`① 是「每台机各一个」。
 pub fn start_local_backend() -> Resolved {
-    {
-        let g = LOCAL_BACKEND.lock().expect("LOCAL_BACKEND 锁毒化");
-        if let Some(h) = g.as_ref() {
-            if h.current_pid().is_some() {
-                return Resolved::Missing {
-                    reason: "本机后端已经在跑（C8①：每台机只许一个）".into(),
-                    looked_at: Vec::new(),
-                };
-            }
-        }
+    // ★★ **锁全程持有**〔D 阶段补审 08-11 修，原版是阻塞级缺陷〕。
+    //
+    // # 原来错在哪
+    //
+    // 原判据是 `h.current_pid().is_some()`，而 `pid` 由 **supervise 线程**在 `cmd.spawn()`
+    // 成功之后才 `store` —— 本函数返回时那个线程往往还没跑到那一行，`pid` 仍是 0。
+    // ⇒ **串行点两下「起」就够**：第二次进来 `current_pid()` 是 `None`，门放行，
+    // 起出 h2 并**覆盖** h1。h1 的句柄被 drop，但 `stopping`/`child` 都是 `Arc`
+    // ⇒ 它的 supervise 线程照常活、子进程照常跑、崩了照常重起，**再没有任何代码能 `stop()` 它**。
+    // 之后按「停」只 take 到 h2 ⇒ `daemon_status` 回 `channel: true` / `pid: null`，
+    // **「状态说停了」与「进程真没了」当场分叉** —— 正是 `P2s-Y2` 自陈要守的那件事，
+    // 而 Y2 的实测走的是被绕开的另一条路径（它自己 spawn，不经本函数）。
+    //
+    // # 现在的不变量
+    //
+    // **句柄在表里 = 在跑**（`stop_local_backend` 会把它 `take` 走）⇒ 判据不再问 pid。
+    // 并且**锁横跨整个起的过程**，把「检查」与「存句柄」之间那个窗口关掉。
+    //
+    // ⚠ 代价如实登记：`extract_embedded_to` 会在持锁期间同步写 ~10MB，
+    // 期间 `daemon_status` / `daemon_stop` 会短暂阻塞。这是**用一次可见的等待换掉一个
+    // 起不掉也杀不掉的幽灵进程**；把释放挪出命令线程是另一件事（补审建议 C4）。
+    let mut g = LOCAL_BACKEND.lock().expect("LOCAL_BACKEND 锁毒化");
+    if g.is_some() {
+        return Resolved::Missing {
+            reason: "本机后端已经在跑（C8①：每台机只许一个）".into(),
+            looked_at: Vec::new(),
+        };
     }
     // 两样宿主知识在这里给（backend 层不认识它们）：
     //   · 落点 `~/.cc-monitor/bin`：与远端自部署同一个目录，但**文件名带 build_id**
@@ -65,7 +82,7 @@ pub fn start_local_backend() -> Resolved {
         std::sync::Arc::new(|e| tracing::info!("本机后端: {e:?}")),
     );
     if let Some(h) = sup {
-        *LOCAL_BACKEND.lock().expect("LOCAL_BACKEND 锁毒化") = Some(h);
+        *g = Some(h);
     }
     resolved
 }
@@ -221,28 +238,68 @@ mod tests {
         let _ = std::fs::remove_dir_all(&home);
     }
 
-    /// P2s（`C8`①）：**已经在跑就不重复起**。
+    /// P2s（`C8`①）：**已经在跑就不重复起** —— 钉的是**机制**，不是那句诊断文案。
     ///
-    /// 不起真进程 —— 只验「有一个活着的句柄时，`start_local_backend` 直接返回、不 spawn」。
-    /// ⚠ 因此它**只覆盖幂等这一条**，不覆盖起进程那条路（那条由上面的实测管）。
+    /// # 这条判据被补审判过一次死刑
+    ///
+    /// 原版全部内容是「`find_pinned(prod, "本机后端已经在跑…")` + 位置在函数头之后」。
+    /// 审计逐字：「它不验 `return`、不验条件、不验「不 spawn」、甚至不验那句话在
+    /// `start_local_backend` 体内」。骗过它的改法（幂等当场失效而判据全绿）：
+    ///
+    /// ```text
+    /// if h.current_pid().is_some() {
+    ///     tracing::warn!("本机后端已经在跑（C8①：每台机只许一个）");   // 不 return
+    /// }
+    /// ```
+    ///
+    /// # 现在钉三件（都在切出来的函数体内）
+    ///
+    /// ① 判据是 **`g.is_some()`**，不是 `current_pid()` —— 后者有竞态：
+    ///    `pid` 由 supervise 线程在 spawn 后才写，本函数返回时它还是 0，门形同虚设。
+    /// ② 体内**只许出现一次** `LOCAL_BACKEND.lock()` —— 两次就意味着锁被放开过，
+    ///    「检查」与「存句柄」之间又有窗口。
+    /// ③ 那一支必须 **`return`** —— 只打日志不返回等于没有门。
     #[test]
     fn starting_twice_does_not_spawn_a_second_local_daemon() {
-        let src = include_str!("local_daemon.rs");
-        let prod = guard_core::production_code(src);
-        let at = // 锚点取**带引号的完整字面量** —— 只写中文那段的话，左边紧挨着汉字，
-        // `find_pinned` 判它「被撑大」（两侧要有边界）。引号就是边界。
-        guard_core::find_pinned(&prod, "\"本机后端已经在跑（C8①：每台机只许一个）\"").unwrap_or_else(
-            |e| {
-                panic!(
-                    "`start_local_backend` 里没有「已经在跑就直接返回」那一支（{e}）。\n\
-                     没有它，开关每按一次「起」就多一个 daemon —— 与 `C8`① 直接冲突。"
-                )
-            },
-        );
-        let head = guard_core::find_pinned(&prod, "pub fn start_local_backend(").expect("入口在");
+        let prod = guard_core::production_code(include_str!("local_daemon.rs"));
+        let at = guard_core::find_pinned(&prod, "pub fn start_local_backend(")
+            .expect("入口不在了 —— 改了名就来改本条");
+        let body: String = prod[at..]
+            .lines()
+            .skip(1)
+            .take_while(|l| *l != "\u{7d}")
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(
-            head < at,
-            "那一支跑到 `start_local_backend` 之前去了 —— 抽取面画错了，本条在空转"
+            body.len() > 200,
+            "切出来的函数体只有 {} 字节 —— 切错了，本条在空转",
+            body.len()
+        );
+
+        guard_core::find_pinned(&body, "if g.is_some() {").unwrap_or_else(|e| {
+            panic!(
+                "`start_local_backend` 的幂等判据不是 `if g.is_some()`（{e}）。\n\
+                 ⚠ 若换回了 `current_pid()`：那是**竞态**判据 —— `pid` 由 supervise 线程在 spawn\n\
+                 之后才写，本函数返回时仍是 0 ⇒ 串行点两下就能起出第二个 daemon，\n\
+                 而第一个句柄被覆盖、**再没有任何代码能 stop 它**。"
+            )
+        });
+
+        let locks = body.matches("LOCAL_BACKEND.lock()").count();
+        assert_eq!(
+            locks, 1,
+            "体内出现 {locks} 次 `LOCAL_BACKEND.lock()` —— 只许一次。\n\
+             多于一次 = 锁在「检查」与「存句柄」之间被放开过，那个窗口正是双起的入口。"
+        );
+
+        let guard_at = body.find("if g.is_some() {").expect("上面刚 pin 过");
+        let tail = &body[guard_at..];
+        let ret = tail.find("return").unwrap_or(usize::MAX);
+        let close = tail.find("\n    ").unwrap_or(0);
+        assert!(
+            ret < tail.len() && ret < close.max(ret + 1) + 400,
+            "幂等那一支里找不到 `return` —— 只打日志不返回等于没有门（补审给的就是这个骗法）"
         );
     }
+
 }
