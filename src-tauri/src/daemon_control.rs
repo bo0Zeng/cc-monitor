@@ -61,6 +61,31 @@ fn check_origin(origin: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// P2s（`C8`①）：**开关面该列哪几台机** —— 由后端说了算。
+///
+/// # 为什么不能让前端自己算〔D 阶段补审 08-11，A5〕
+///
+/// 前端原来用 `hostKey(h) = h.label.trim() || h.host` 自己拼清单，与 Rust 侧分叉四处：
+///
+/// | # | 分叉 | 后果 |
+/// |---|---|---|
+/// | 1 | 前端 `trim()`，Rust 的 `origin_label()` **不 trim** | label 是 `"  "` 时两边分别得到 `host` 与 `"  "` |
+/// | 2 | **Rust 侧对重复 label 做后缀化**（`"pi" → "pi (#2)"`）并按后缀化后的名字注册 | 重复 label 的第二台，起/停恒回「没有这台机的把手」 |
+/// | 3 | 前端忽略 `cfg.enabled` | 远端总开关关着时 `load_remote_configs` 直接返回空 ⇒ 一个都没注册，而 UI 照样列出全部 |
+/// | 4 | `register_remote` 只在 `setup()` 跑一次 | 启动之后新增的远端机永远不会被注册，却会出现在列表里 |
+///
+/// ⇒ **注册表本身就是真相源**：本命令直接倒它。前端只负责画。
+/// 本机（`<local>`）**永远在第一行** —— 它不是「另一种机器」，只是不走 ssh 的那一台（`C1`）。
+#[tauri::command]
+pub fn daemon_machines() -> Result<Vec<String>, String> {
+    let mut out = vec![LOCAL_ORIGIN.to_string()];
+    let g = remotes().lock().map_err(|e| format!("锁毒化: {e}"))?;
+    let mut names: Vec<String> = g.keys().cloned().collect();
+    names.sort();
+    out.extend(names);
+    Ok(out)
+}
+
 /// P2s（`C8`②）：**这台机的 daemon 现在什么状态**。
 ///
 /// # 为什么「通道在不在」是两侧共用的那个真相

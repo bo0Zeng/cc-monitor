@@ -21,7 +21,6 @@
 
 import { commands } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
-import { readRemoteConfig, hostKey } from "../remote-config";
 import {
   LOCAL_ORIGIN,
   initDaemonPolicy,
@@ -82,19 +81,31 @@ export class DaemonSection {
     }
   }
 
-  /** 本机永远在第一行 —— 它不是「另一种机器」，只是不走 ssh 的那一台（§40 / C1）。 */
+  /**
+   * 机器清单**问后端要**，不自己算〔D 阶段补审 08-11，A5〕。
+   *
+   * 原版自己拼（那个 helper 叫 hostKey，**这里刻意不带括号写** —— 下面那条判据扫的就是
+   * 「带括号的调用形态」，写全会把这句解释算成一次调用；本轮已被自己的散文绊到四次）：
+   * 它是 `h.label.trim() || h.host`，与 Rust 的 origin 分叉四处：
+   * ① 前端 `trim()` 而 `origin_label()` 不 trim；② Rust 对**重复 label 做后缀化**
+   * （`"pi" → "pi (#2)"`）并按后缀化后的名字注册 ⇒ 第二台起/停恒回「没有这台机的把手」；
+   * ③ 前端忽略 `cfg.enabled`，远端总开关关着时一个都没注册而 UI 照样列全部；
+   * ④ `register_remote` 只在启动时跑一次，之后新增的机器永远不在注册表里。
+   *
+   * ⇒ 注册表就是真相源。本机永远在第一行 —— 它不是「另一种机器」，
+   * 只是不走 ssh 的那一台（§40 / C1）。
+   */
   private async machines(): Promise<Machine[]> {
-    const out: Machine[] = [{ origin: LOCAL_ORIGIN, title: "本机" }];
     try {
-      const cfg = await readRemoteConfig();
-      for (const h of cfg.hosts) {
-        const origin = hostKey(h);
-        if (origin) out.push({ origin, title: origin });
-      }
+      const origins = await commands.daemon_machines();
+      return origins.map((origin) => ({
+        origin,
+        title: origin === LOCAL_ORIGIN ? "本机" : origin,
+      }));
     } catch (e) {
-      console.warn(`[P2s] 读远端清单失败，只显示本机：${String(e)}`);
+      console.warn(`[P2s] 问后端要机器清单失败，只显示本机：${String(e)}`);
+      return [{ origin: LOCAL_ORIGIN, title: "本机" }];
     }
-    return out;
   }
 
   private buildRow(m: Machine): HTMLElement {

@@ -105,6 +105,8 @@ mod tests {
         ("daemon_status", "daemon.status", Side::Both),
         // P2s：起/停也是**一条命令管两侧** —— 本机杀子进程、远端断那条 SSH 流。
         // 两者「结果相同、路径不同」，差别塞在实现里而不是塞成两条命令（`C1`）。
+        // P2s（A5）：开关面该列哪几台机，由**注册表**说了算（前端自己算会与 origin 分叉四处）。
+        ("daemon_machines", "daemon.lifecycle", Side::Both),
         ("daemon_start", "daemon.lifecycle", Side::Both),
         ("daemon_stop", "daemon.lifecycle", Side::Both),
         ("load_config", "app.config", Side::Both),
@@ -627,8 +629,8 @@ mod tests {
         // 反向自检：一条都没检到 = 签名采集坏了。**等号而不是 `>=`**（T04 审计重要 5：
         // 写 `>= N` 恰好容忍一次静默降级）。
         assert_eq!(
-            checked, 77,
-            "检到 {checked} 条 Local/Both 命令（真实应为 77 = Local 51 + Both 26；\
+            checked, 78,
+            "检到 {checked} 条 Local/Both 命令（真实应为 78 = Local 51 + Both 27；\
              devbench F03 的 skill 接入面是 +3（list_skills / read_skill_file / write_skill_file，\
              都 Local）；\
              E79 的 `list_local_session_accounts` 是 +1；U-CC1 的 `drift_ledger_report` 是 +1，\
@@ -646,7 +648,7 @@ mod tests {
         // 而 U8a-2c-pre（`57dba2a`）把这四个数各 +1 时，只改了数、一条尾注都没动。
         // ⇒ 尾注把 U8a-2c-pre 的增量记在了 U8c-2c-2 名下。**尾注的用处就是说清「谁加的」，
         // 归属错了就不如没有。**
-        assert_eq!(LEDGER.len(), 135, "命令总数变了"); // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +4（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop，C8）**
+        assert_eq!(LEDGER.len(), 136, "命令总数变了"); // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines，C8）**
         let sides = capability_sides();
         assert_eq!(sides.len(), 58, "能力总数变了"); // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：本机不经 IR，§36）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.daemon-policy / daemon.status / daemon.lifecycle，都是 Both）**
         let asym = asymmetric_capabilities();

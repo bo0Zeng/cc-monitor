@@ -749,6 +749,13 @@ export const commands = {
   daemon_status: (args: { origin: string }) =>
     invoke<Record<string, unknown>>("daemon_status", args),
 
+  /**
+   * P2s（C8）：**开关面该列哪几台机** —— 由后端的注册表说了算，前端不自己算。
+   * 前端自己拼会与 Rust 的 origin 分叉四处（trim / 重复 label 后缀化 / 忽略 enabled /
+   * 启动后新增的没注册），见 `daemon_control::daemon_machines` 头注。⇒ **桶②**。
+   */
+  daemon_machines: () => invoke<string[]>("daemon_machines"),
+
   /** P2s（C8）：起这台机的 daemon。返回一句人话（已起 / 已经在跑 / 起不来的理由）⇒ **桶②**。 */
   daemon_start: (args: { origin: string }) => invoke<string>("daemon_start", args),
 
