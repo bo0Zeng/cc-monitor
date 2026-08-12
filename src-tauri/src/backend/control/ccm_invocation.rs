@@ -108,6 +108,12 @@ pub enum CliAccount<'a> {
 #[derive(Debug, Clone)]
 pub struct CliSpec<'a> {
     pub is_ssh: bool,
+    /// P3t（`C12`）：**本机是不是 POSIX** —— 宿主告诉 backend 的，backend 自己不问平台。
+    ///
+    /// `backend/` 那一半不许有平台 cfg（`backend-split` 的 C10），所以这条是**注入的数据**，
+    /// 与 `platform_fs::make_executable` 同款。缺省 `false` = **fail-closed**：
+    /// 没人告诉过它就当不是 POSIX ⇒ 照旧拒 ⇒ 与本件之前的行为逐字相同。
+    pub local_posix: bool,
     pub action: Action<'a>,
     pub container: Container<'a>,
     pub cwd: Option<&'a str>,
@@ -274,7 +280,24 @@ pub fn render_ccm_invocation(
     if !installed {
         return Err(Refusal::NotInstalled);
     }
-    if !spec.is_ssh {
+    // ★★ **P3t（`C12`）：POSIX 本机放行，Windows 本机仍拒**。
+    //
+    // # 原来这里是「一律拒本机」，而那比 §36 说的宽
+    //
+    // `doc/INVARIANTS.md` 的 §36 逐字是「本地（**Windows**）路径不经 IR」，
+    // 而 `launch_wire.rs` 的注释写成泛指的「本机」、代码按注释的宽度实现。三者不一致。
+    // §36 那一行的「说明」列讲的全是 Windows 分支（`config_dir_prefix_ps` /
+    // `validate_config_dir_ps`）与「`\` 与盘符」问题 —— **那些理由在 POSIX 上一条都不适用**。
+    // ⇒ 本件采信「代码窄了」：放行 POSIX 是**在兑现 §36 的原意**，不是破例（P3t-Y4）。
+    //
+    // # 为什么必须放行（不是「为了对齐而对齐」）
+    //
+    // 不放行 ⇒ 本机走 `history.rs` 那条旧路 ⇒ 产出 `cc --resume <sid>` **不带 `--tmux`**
+    // ⇒ ccm 走非容器分支 `exec`，加上 `launch_local_posix` 的 stdio 全 null
+    // ⇒ **一个无 tty、无 tmux 的 claude 进程，用户敲进去的字会被脚本吃掉**
+    //（`launch_local_posix` 头注与 `doc/IPC-PROTOCOL.md` 各记了一份）。
+    // ⇒ 本件不是「加个容器求平价」，是**修一个今天就坏的东西**。
+    if !spec.is_ssh && !spec.local_posix {
         return Err(Refusal::NotSsh);
     }
     for c in CLI_REQUIRED_CAPS {
@@ -353,9 +376,40 @@ pub fn render_ccm_invocation(
 mod tests {
     use super::*;
 
+    /// ★★ **P3t-Y1**：POSIX 本机放行、**Windows 本机仍拒**（`C12` 逐字「windows不要tmux」）。
+    ///
+    /// 纯函数判据 —— 直接喂 `CliSpec.local_posix`，**不碰那个进程内全局量**
+    /// （碰它会与金串对拍那条并行干扰，08-11 实测栽过一次）。
+    #[test]
+    fn posix_local_is_allowed_windows_local_is_not() {
+        // 用同模块既有的 `render`（它带全量 caps）—— 自己拼 caps 会漏掉必需项，
+        // 那样「远端也被拒」会被误读成「我改坏了远端」（第一版就是这么假红的）。
+        let mut s = base_spec();
+        assert!(render(&s).is_ok(), "远端那支被改坏了");
+
+        // ② 本机 + POSIX：**放行**（本件的正题）
+        s.is_ssh = false;
+        s.local_posix = true;
+        assert!(
+            render(&s).is_ok(),
+            "POSIX 本机仍被拒 —— 那么本机还是走旧路，产出的是一个**无 tty、无 tmux** 的进程，\n\
+             用户敲进去的字会被脚本吃掉（`launch_local_posix` 头注与 `doc/IPC-PROTOCOL.md` 各记了一份）。"
+        );
+
+        // ③ 本机 + 非 POSIX（Windows）：**仍拒**
+        s.local_posix = false;
+        assert_eq!(
+            render(&s),
+            Err(Refusal::NotSsh),
+            "Windows 本机被放行了 —— `C12` 逐字「windows不要tmux」。\n\
+             ★ 这一格正是「翻面翻成更弱的判据」最容易丢的那半（P2s-Y3 / P3 刀 0 各栽过一次）。"
+        );
+    }
+
     fn base_spec() -> CliSpec<'static> {
         CliSpec {
             is_ssh: true,
+            local_posix: false,
             action: Action::New,
             container: Container::None,
             cwd: None,
