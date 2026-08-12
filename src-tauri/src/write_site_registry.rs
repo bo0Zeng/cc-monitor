@@ -78,6 +78,14 @@ mod spawn_sites {
           `bash -lic` 那层与远端同语义（PATH/别名/函数按交互终端解析），`ccm` 正是靠它才被找到。\
           ⚠ **命令是参数**（D 阶段补审为了能测「挂住」而开）——生产侧唯一实参是 `CCM_PROBE_CMD`，\
           由 `the_only_production_probe_command_is_the_constant` 按源码钉住，别读成「这里能跑任意命令」"),
+        ("cc_bus.rs", "local_shell_read", "`bash -lc <cc-bus 的读串>`",
+         "P4a-Y1：本机 cc-bus 的**读**面（清单 / 在线 / inbox）。必须起进程的理由是\
+          **不许有第二份文件布局知识** —— `CC_BUS_CAT_CMD` 逐字知道 `~/.cc-bus/agents.tsv` 长什么样，\
+          本机若自己 `read_to_string` 那两个文件，仓里就有了同一件事的两种表示，而它们会各自漂。\
+          ⇒ 照 `P3t-Y2` 的先例：**同一条串，远端包进 ssh，本机交给 bash**（`C1` 逐字「只是远端走 ssh」）。\
+          ⚠ **命令是参数**，但生产侧的三个实参各有来历：`CC_BUS_CAT_CMD`（常量）· `build_online_cmd` · \
+          `build_inbox_cmd`（两个构造器都过 `is_valid_bus_id`），由 `exec_site_registry` 那条按源码钉住。\
+          用 `-lc` 而不是 `-lic`：只要 `$HOME`/`$CC_BUS_HOME`，不需要交互式 rc"),
         ("account_usage.rs", "run_local_probe", "`sh -c <载荷>`",
          "本机用量探针：载荷由 `probe_command_for` 构造并引用过（`exec_site_registry` 里那条 Builder 行管它）"),
         ("launch.rs", "launch_local_posix", "用户配置的终端 argv[0]",

@@ -194,9 +194,22 @@ async fn fetch_remote_cc_bus(cfg: &crate::ssh_source::RemoteConfig) -> Result<St
 /// 放在用户点某一行的「检查」上，不在这里默认全量查（见 features/B03-*.md §三）。
 #[tauri::command]
 pub async fn read_cc_bus_state(origin: String) -> Result<CcBusState, String> {
-    let cfg = crate::load_remote_config_by_label(&origin)
-        .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
-    let raw = fetch_remote_cc_bus(&cfg).await?;
+    // P4a-Y1：本机跑同一条 `CC_BUS_CAT_CMD`，只是不包进 ssh。
+    let raw = if origin == crate::inbound_client::LOCAL_ORIGIN {
+        local_shell_read(
+            CC_BUS_CAT_CMD,
+            CC_BUS_TSV_CAP,
+            30,
+            "读 ~/.cc-bus",
+            // 读的是**数据**（清单），半份会被当完整的用 —— 与远端那条同档。
+            OnOverflow::Reject,
+        )
+        .await?
+    } else {
+        let cfg = crate::load_remote_config_by_label(&origin)
+            .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
+        fetch_remote_cc_bus(&cfg).await?
+    };
     tokio::task::spawn_blocking(move || {
         let (a, s) = split_combined(&raw, CC_BUS_SPLIT_MARKER);
         let (agents, sk1) = parse_agents_tsv(a);
@@ -230,6 +243,12 @@ pub async fn check_cc_bus_agent_online(origin: String, id: String) -> Result<boo
     // 这直接证伪了我自己写的「删掉任何一处校验，对应测试立刻红」。抽取纯函数是为了让断言
     // 落在调用点上，结果抽完没接上去，等于白抽。
     let cmd = build_online_cmd(&id)?;
+    // P4a-Y1：本机跑同一条 `build_online_cmd` 产出的串。
+    // 截断的 `contains("ONLINE")` 是碰运气的答案 ⇒ 与远端同档，超限拒收。
+    if origin == crate::inbound_client::LOCAL_ORIGIN {
+        let raw = local_shell_read(&cmd, ONLINE_PROBE_CAP, 15, "查在线", OnOverflow::Reject).await?;
+        return Ok(raw.contains("ONLINE"));
+    }
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
     let read = async {
@@ -479,24 +498,134 @@ async fn exec_read(
 }
 
 fn cfg_of(origin: &str) -> Result<crate::ssh_source::RemoteConfig, String> {
+    // ★ **兜底，不是主路**〔P4a-Y2〕。三个调用方今天都在它之前分了本机
+    //   （`read_cc_bus_inbox` 走本机臂直接返回；`cc_bus_send`/`cc_bus_spawn` 先过 `refuse_local_write`）。
+    //
+    // 那为什么还要这一条？因为「所有调用方都守规矩」是一个**承诺**，不是结构 ——
+    // 下一个人加第四个调用方时，那个承诺对他不可见，而 `<local>` 掉进下面那句的后果是
+    // 报「远端 `<local>` 未配置或未启用」：一句与真实原因毫无关系的话
+    // （`P4d-Y5` 收口的正是这一族，`local_origin_registry` 按**位置**盯着它）。
+    if origin == crate::inbound_client::LOCAL_ORIGIN {
+        return Err(
+            "本机没有「远端配置」这种东西 —— 这条路是远端专属的。\n\
+             cc-bus 的读面本机已经通了（走同一条命令串，只是不包进 ssh）；\n\
+             写面还没做，归 `P4b`。"
+                .to_string(),
+        );
+    }
     crate::load_remote_config_by_label(origin)
         .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))
+}
+
+/// P4a-Y1：**本机跑同一条串** —— [`exec_read`] 的孪生兄弟，差别只有「谁来跑它」。
+///
+/// # 为什么不是在这里重写一遍 cc-bus 的文件布局
+///
+/// `CC_BUS_CAT_CMD` 逐字知道 `~/.cc-bus/agents.tsv` 长什么样。本机要是自己去 `read_to_string`
+/// 那两个文件，仓里就有了**两份**同一件事的表示，而它们会各自漂 ——
+/// 这个仓管这叫「一段逻辑、两种表示」，`ccm` 的 `resolve_from_daemon`/`resolve_recipe`
+/// 那对孪生函数专门为此立了一条 e2e 对拍。
+///
+/// ⇒ 照 `P3t-Y2` 的先例办（`exec_site_registry` 逐字记着「起本机探针与它**共用同一个常量**」）：
+/// **同一条命令串，远端包进 ssh，本机交给 `bash -lc`。** 这就是 `C1`〔用 08-11〕
+/// 「本地要和远端一样，只是远端走 ssh，本地不走」在这一族上的落点。
+///
+/// # 三件套一件都不许少
+///
+/// 远端那条有**上限 + 超时 + 溢出处置**。本机看着「自家文件、能出什么事」——
+/// 但 `agents.tsv` 是只增文件、`inbox` 更是，而 monitor 与它跑在同一台机器上，
+/// 撑爆的是**用户正在用的那个进程**。⇒ 逐件对称，由
+/// `the_local_cc_bus_read_keeps_every_guard_the_remote_one_has` 钉住。
+///
+/// ⚠ 用 `bash -lc` 而不是 `-lic`：这里只要 `$HOME` / `$CC_BUS_HOME`，不需要交互式 rc
+/// （`ccm_probe` 那条要 `-lic` 是因为它得到用户 PATH 里找 `ccm`，需求不同，别互抄）。
+async fn local_shell_read(
+    cmd: &str,
+    cap: u64,
+    secs: u64,
+    what: &str,
+    on_overflow: OnOverflow,
+) -> Result<String, String> {
+    use tokio::io::AsyncReadExt;
+    let read = async {
+        let mut child = tokio::process::Command::new("bash")
+            .args(["-lc", cmd])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| format!("本机{what}失败（起不了 bash）: {e}"))?;
+        let mut out = child
+            .stdout
+            .take()
+            .ok_or_else(|| format!("本机{what}失败：拿不到 stdout"))?;
+        let mut buf = Vec::new();
+        // `+ 1` 的用意同远端那条：不多读一个字节就分不清「刚好读满」与「其实还有」，
+        // 而分不清就只能静默截断。
+        (&mut out)
+            .take(cap + 1)
+            .read_to_end(&mut buf)
+            .await
+            .map_err(|e| format!("本机{what}失败: {e}"))?;
+        // 读够了就别再等它 —— 否则 `cat` 一个超大文件时我们会陪它跑完。
+        let _ = child.start_kill();
+        let _ = child.wait().await;
+        if buf.len() as u64 > cap {
+            match on_overflow {
+                OnOverflow::Reject => {
+                    return Err(format!(
+                        "本机{what}的输出超过 {cap} 字节上限 —— 拒收，不拿截断的当完整的用"
+                    ));
+                }
+                OnOverflow::Truncate => {
+                    buf.truncate(cap as usize);
+                    tracing::warn!("本机{what}的输出超过 {cap} 字节，已截断");
+                }
+            }
+        }
+        Ok::<Vec<u8>, String>(buf)
+    };
+    let raw = tokio::time::timeout(std::time::Duration::from_secs(secs), read)
+        .await
+        .map_err(|_| format!("本机{what}超时（{secs}s）"))??;
+    // 非 UTF-8 不报错：理由同远端那条（`~/.cc-bus/` 里的目录名实测含各种字节）。
+    Ok(String::from_utf8_lossy(&raw).into_owned())
+}
+
+/// 写面对 `<local>` 的诚实拒绝〔P4a-Y2〕。
+///
+/// 不加这一条的话，`<local>` 会掉进 `cfg_of`，报「远端 `<local>` 未配置或未启用」——
+/// 又一句与真实原因毫无关系的话（`P4d-Y5` 收口的正是这一族）。
+fn refuse_local_write(origin: &str, what: &str) -> Option<String> {
+    if origin != crate::inbound_client::LOCAL_ORIGIN {
+        return None;
+    }
+    Some(format!(
+        "本机还不能{what}：cc-bus 的**写**面在本机没有对侧。\n\
+         读面（清单 / 在线 / inbox）本机已经通了，写面归 `P4b`（cc-bus 改调 daemon 原语）——\n\
+         用户 08-12 已裁「先把确切的命令组件做出来，然后 cc-bus 可以去调用」。"
+    ))
 }
 
 /// B03 批二：读某个 agent 的 inbox（**只读**）。
 #[tauri::command]
 pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMessage>, String> {
     let cmd = build_inbox_cmd(&id)?;
-    let cfg = cfg_of(&origin)?;
-    let raw = exec_read(
-        &cfg,
-        &cmd,
-        INBOX_READ_CAP,
-        30,
-        "读 inbox",
-        OnOverflow::Truncate,
-    )
-    .await?;
+    // P4a-Y1：本机跑同一条 `build_inbox_cmd` 产出的串（`tail`，零副作用）。
+    let raw = if origin == crate::inbound_client::LOCAL_ORIGIN {
+        local_shell_read(&cmd, INBOX_READ_CAP, 30, "读 inbox", OnOverflow::Truncate).await?
+    } else {
+        let cfg = cfg_of(&origin)?;
+        exec_read(
+            &cfg,
+            &cmd,
+            INBOX_READ_CAP,
+            30,
+            "读 inbox",
+            OnOverflow::Truncate,
+        )
+        .await?
+    };
     tokio::task::spawn_blocking(move || parse_inbox_jsonl(&raw).0)
         .await
         .map_err(|e| format!("spawn_blocking: {e}"))
@@ -505,6 +634,9 @@ pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMe
 /// B03 批二：给某个 agent 发消息。**这是本模块唯一的写操作**（其余全只读）。
 #[tauri::command]
 pub async fn cc_bus_send(origin: String, id: String, text: String) -> Result<String, String> {
+    if let Some(why) = refuse_local_write(&origin, "发消息") {
+        return Err(why);
+    }
     let cmd = build_send_cmd(&id, &text)?;
     let cfg = cfg_of(&origin)?;
     let out = exec_read(
@@ -532,6 +664,9 @@ pub async fn cc_bus_spawn(
     account: Option<String>,
 ) -> Result<String, String> {
     let acct = account.as_deref().filter(|a| !a.is_empty());
+    if let Some(why) = refuse_local_write(&origin, "spawn 一个 agent") {
+        return Err(why);
+    }
     let cmd = build_spawn_cmd(&tool, &dir, &task, acct)?;
     let cfg = cfg_of(&origin)?;
     let out = exec_read(
@@ -1190,6 +1325,113 @@ mod tests {
         assert_eq!(rows[0].task, "part1\tpart2\tpart3", "多余字段不得丢");
     }
 
+    /// ★ P4a-Y1：**本机那条跑的是同一条串** —— 命令只有一个构造点。
+    ///
+    /// 钉「有本机分支」很容易，钉不住「它跑的是同一条串」：本机臂里自己拼一句
+    /// `cat ~/.cc-bus/agents.tsv` 照样绿，而那就是**第二份文件布局知识**，
+    /// 两份会各自漂（这个仓管这叫「一段逻辑、两种表示」）。
+    ///
+    /// ⇒ 判据钉**构造点唯一**：三条读面命令各自的构造器在生产段只准出现一次
+    /// （定义处不算），且生产段不许长出新的 `.tsv` 字面量。
+    #[test]
+    fn the_local_read_path_runs_the_very_same_command_string() {
+        let code = non_test_code();
+        for builder in ["build_online_cmd(&id)", "build_inbox_cmd(&id)"] {
+            assert_eq!(
+                code.matches(builder).count(),
+                1,
+                "`{builder}` 在生产段出现了不止一次 —— 多半是本机臂自己又构了一条命令。\n\
+                 本机与远端必须用**同一个 `cmd`**：构造在分支之前，分支只决定谁来跑它。"
+            );
+        }
+        // `.tsv` 只准出现在 `CC_BUS_CAT_CMD` 那个常量里（两次：agents / spawned）。
+        assert_eq!(
+            code.matches(".tsv").count(),
+            2,
+            "生产段出现了新的 `.tsv` 字面量 —— cc-bus 的文件布局只准有一份表示，\n\
+             它住在 `CC_BUS_CAT_CMD` 里。本机要读同一批文件，就跑同一条串。"
+        );
+    }
+
+    /// ★ P4a-Y2：**写面两条必须在 `cfg_of` 之前就把本机挡掉。**
+    ///
+    /// ⚠ 本条是**变异逼出来的**：M5（拿掉 `cc_bus_send` 的本机拒绝）第一次跑
+    /// **照样绿** —— 因为 `local_origin_registry` 只扫**直接**调
+    /// `load_remote_config_by_label(` 的地方，而这两条走的是 `cfg_of` 这个**包装**。
+    /// ⇒ 那条护栏对「隔了一层包装」是瞎的（已在它的头注里登记）。
+    ///
+    /// 钉**位置**而不是「有没有这句话」：拒绝必须在 `cfg_of` 之前，
+    /// 否则用户拿到的是 `cfg_of` 那句通用话，而不是「写面归 P4b」这个真实原因。
+    #[test]
+    fn the_write_face_refuses_local_before_it_asks_for_a_remote_config() {
+        let code = non_test_code();
+        let mut checked = 0usize;
+        for (name, what) in [
+            ("pub async fn cc_bus_send(", "发消息"),
+            ("pub async fn cc_bus_spawn(", "spawn 一个 agent"),
+        ] {
+            let at = code
+                .find(name)
+                .unwrap_or_else(|| panic!("生产段找不到 {name} —— 判据在空转"));
+            let body: String = code[at..].chars().take(1400).collect();
+            let refuse = body.find("refuse_local_write(&origin, \"").unwrap_or_else(|| {
+                panic!("{name} 没有本机拒绝 —— `<local>` 会掉进 `cfg_of` 拿到一句通用话")
+            });
+            let cfg = body
+                .find("cfg_of(&origin)")
+                .unwrap_or_else(|| panic!("{name} 里找不到 `cfg_of(&origin)` —— 判据的参照物没了"));
+            assert!(
+                refuse < cfg,
+                "{name} 的本机拒绝排在 `cfg_of` **后面** —— 那就永远走不到，\n\
+                 用户看到的仍是「远端 `<local>` 未配置或未启用」。"
+            );
+            assert!(
+                body[refuse..].contains(what),
+                "{name} 的拒绝文案没点名它在拒绝什么（应含 {what:?}）——\n\
+                 一句不说清是哪件事做不了的错误，与那句「未找到远端配置」是同一族。"
+            );
+            checked += 1;
+        }
+        assert_eq!(checked, 2, "只核到 {checked} 条写面命令 —— 本断言在空转");
+    }
+
+    /// ★ P4a-Y3：**本机那条执行口，远端有的守卫一件都不许少。**
+    ///
+    /// 本机看着「自家文件、能出什么事」—— 但 `agents.tsv` / `inbox` 都是只增文件，
+    /// 而 monitor 与它跑在**同一台机器**上，撑爆的是用户正在用的那个进程。
+    ///
+    /// ⇒ 逐件对着远端那条核：上限（多读一字节才分得清「刚好满」与「其实还有」）·
+    /// 超时 · 溢出两档各自有处置。
+    #[test]
+    fn the_local_cc_bus_read_keeps_every_guard_the_remote_one_has() {
+        let code = non_test_code();
+        let body = |name: &str| -> String {
+            let at = code
+                .find(name)
+                .unwrap_or_else(|| panic!("生产段找不到 {name} —— 判据在空转"));
+            // 取到下一个顶层 `}` 之后一点，够覆盖函数体即可。
+            code[at..].chars().take(2600).collect()
+        };
+        let local = body("async fn local_shell_read(");
+        let remote = body("async fn exec_read(");
+        for (what, needle) in [
+            ("上限（多读一字节）", "take(cap + 1)"),
+            ("超时", "tokio::time::timeout"),
+            ("溢出·拒收", "OnOverflow::Reject"),
+            ("溢出·截断", "OnOverflow::Truncate"),
+        ] {
+            assert!(
+                remote.contains(needle),
+                "远端那条 `exec_read` 里找不到{what}（`{needle}`）—— 本判据的参照物没了，它此刻在空转"
+            );
+            assert!(
+                local.contains(needle),
+                "本机那条 `local_shell_read` 缺{what}（`{needle}`）。\n\
+                 远端有而本机没有 = 「本地 = 不走 ssh 的远端」这句话在这一格是假的。"
+            );
+        }
+    }
+
     /// **重要-6 的守卫**：「定值命令零插值」此前断言打在常量上，
     /// 没有任何东西守「`fetch_remote_cc_bus` 原样把它交出去」。往里塞一个 `format!` 就穿了。
     #[test]
@@ -1203,11 +1445,44 @@ mod tests {
             code.contains("connect_and_exec_cmd(cfg, CC_BUS_CAT_CMD)"),
             "定值命令必须原样交给 SSH（不得包 format!/push_str）"
         );
-        // 非测试代码里这个常量只准出现两次：定义处 + 那唯一一个调用点
+        // ★ P4a（08-12）：**从「那一处长这样」升成「每一处都是原样传参」**。
+        //
+        // 本条原来钉的是一个**硬编码的调用形状**（`connect_and_exec_cmd(cfg, CC_BUS_CAT_CMD)`）
+        // 加一个计数 2。P4a 给本机加了第二条传输路（同一条串，只是不包进 ssh）之后，
+        // 计数当场红 —— **那是对的**，它逐字问的正是「是否多了第二条构造路径」。
+        // 但答案是「多了第二条**传输**路、串没变」，⇒ 光把 2 改成 3 会让本条退回
+        // 「只盯着远端那一处」：本机那处塞个 `format!` 它照样绿。
+        //
+        // 现在逐处核**用法**：每一次出现要么是定义处，要么是**裸着当实参传**
+        // （前面是 `(`/`,`/空白，后面是 `,`/`)`）。拼接、`format!`、`push_str` 都会破坏这个形状。
+        let mut sites = 0usize;
+        let mut from = 0usize;
+        while let Some(rel) = code[from..].find("CC_BUS_CAT_CMD") {
+            let at = from + rel;
+            let end = at + "CC_BUS_CAT_CMD".len();
+            from = end;
+            let before = code[..at].chars().next_back().unwrap_or(' ');
+            let after = code[end..].chars().next().unwrap_or(' ');
+            // 定义处：`const CC_BUS_CAT_CMD: &str = …`
+            if after == ':' {
+                continue;
+            }
+            sites += 1;
+            assert!(
+                matches!(before, '(' | ',' | ' ' | '\n' | '\t'),
+                "`CC_BUS_CAT_CMD` 第 {sites} 处用法前面是 {before:?} —— 它被拼进了别的东西，\n\
+                 而本条的全部意义是「定值命令原样到达执行口」。"
+            );
+            assert!(
+                matches!(after, ',' | ')'),
+                "`CC_BUS_CAT_CMD` 第 {sites} 处用法后面是 {after:?} —— 同上，它没有裸着当实参传。"
+            );
+        }
+        // 计数仍然守着「有没有人新开一条路」——只是现在它不再是唯一的防线。
         assert_eq!(
-            code.matches("CC_BUS_CAT_CMD").count(),
-            2,
-            "常量出现次数变了，检查是否多了第二条构造路径"
+            sites, 2,
+            "传输路条数变了（今天两条：远端 ssh + 本机 bash）。\n\
+             新增一条要回来改这个数，并确认它也是**原样传参**。"
         );
     }
 
