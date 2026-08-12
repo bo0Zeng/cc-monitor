@@ -88,7 +88,7 @@ mod spawn_sites {
           用 `-lc` 而不是 `-lic`：只要 `$HOME`/`$CC_BUS_HOME`，不需要交互式 rc"),
         ("account_usage.rs", "run_local_probe", "`sh -c <载荷>`",
          "本机用量探针：载荷由 `probe_command_for` 构造并引用过（`exec_site_registry` 里那条 Builder 行管它）"),
-        ("launch.rs", "launch_local_posix", "用户配置的终端 argv[0]",
+        ("launch.rs", "launch_local_posix_via", "用户配置的终端 argv[0]",
          "在用户的终端里起会话 —— 承接 C13「最后那次 exec 在用户终端里」，这是本产品的主用途"),
         ("launch.rs", "launch_powershell_window", "`wt.exe` / `powershell.exe`",
          "Windows 侧同上；两个名字都是常量，不吃用户输入"),
