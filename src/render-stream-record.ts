@@ -101,6 +101,19 @@ export type MetaSink = Pick<
  * - "content":其余记录(含 render 后会 skip 的 attachment/空 user——它们仍占链节点,
  *   branch record 已在本函数喂送,issue #8 链完整性)。
  */
+/** P0c：一条 `remove` 的 content 算不算「用户说的话」。
+ *
+ *  ⚠ **这是白名单式排除，不是黑名单** —— 今天只排掉一种已知的系统注入。
+ *  实测本会话 38 条 `remove` 里 **25 条是 `<task-notification>`**（后台任务完成通知），
+ *  只有 16 条是用户真实输入。把前者当成「用户说的话」渲染出来是错的。
+ *
+ *  ⚠ **刻意不拿「以 `<` 开头」当判据** —— 用户真可能以 `<` 开头打字。钉具名标签，
+ *  新的注入类型出现时**回来加一条**，别把它放宽成前缀匹配（那会开始吃掉用户的话）。 */
+function isQueuedUserSpeech(content: string | null): content is string {
+  if (!content || !content.trim()) return false;
+  return !content.trimStart().startsWith("<task-notification>");
+}
+
 export function routeMetaAndBranch(
   payload: JsonlLinePayload,
   sink: MetaSink,
@@ -117,11 +130,30 @@ export function routeMetaAndBranch(
     return "consumed";
   }
 
-  // 1.5 issue #36：queue-operation 路由——enqueue 的 content 喂给折叠豁免集合，
-  //     不渲染、无 uuid 不进链。
+  // 1.5 queue-operation 路由。**两件事，别混着读**：
+  //
+  // ① issue #36（旧）：`enqueue` 的 content 喂折叠豁免集合 —— 防止排队消息被当成
+  //    「ESC 弃稿」误折叠。它**不建卡**。
+  // ② P0c（新）：`remove` 的 content **要建卡** —— 因为它是那句话在 jsonl 里**唯一的存在**。
+  //
+  // ★★ 为什么只有 `remove` 建卡（08-12 实测，本会话 279 条 queue-operation）：
+  //   · `dequeue`（101 条）= 排队消息**独立成一轮** ⇒ 随后就有 `user` 记录 ⇒
+  //     这里再建一张就是**同一句话显示两遍**；
+  //   · `remove`（38 条）= 被**插进正在跑的那一轮** ⇒ CC **不写 `user` 记录** ⇒
+  //     不在这里建卡，用户说的话就**整条消失**。本会话实测丢了 16 条用户真实输入，
+  //     **全是打断时说的**（含「往后排」「spawn 不该复用活会话」这类最关键的指令）。
+  //   · 判定**不需要跨记录对账**：逐条核过 16/16，`remove` 零产出 `user` 记录，无例外。
+  //     （第一遍量出「5 条有」是假匹配 —— 同文被 `dequeue` 那次产出的记录命中。）
   if (message.type === "queue-operation") {
     if (message.operation === "enqueue" && message.content) {
       sink.onQueueOperation?.(message.content);
+      return "consumed";
+    }
+    if (message.operation === "remove" && isQueuedUserSpeech(message.content)) {
+      // ⚠ **不喂 branch**：它没有 `uuid`/`parentUuid`，喂进去等于给分叉折叠算法
+      // 一个没有父子关系的节点（issue #8 的链完整性）。⇒ 建卡但不进链，
+      // 由 `queued_user_message_never_enters_the_branch_chain` 钉住。
+      return "content";
     }
     return "consumed";
   }

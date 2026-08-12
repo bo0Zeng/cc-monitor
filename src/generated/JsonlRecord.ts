@@ -2,7 +2,16 @@
 import type { ApiMessage } from "./ApiMessage";
 import type { ForkedFrom } from "./ForkedFrom";
 
-export type JsonlRecord = { "type": "user", uuid: string, timestamp: string, message: ApiMessage, cwd: string | null, sessionId: string | null, isSidechain: boolean, isMeta: boolean, parentUuid: string | null, forkedFrom: ForkedFrom | null, } | { "type": "assistant", uuid: string, timestamp: string, message: ApiMessage, sessionId: string | null, isSidechain: boolean, requestId: string | null, parentUuid: string | null, forkedFrom: ForkedFrom | null, isApiErrorMessage: boolean, error: unknown, apiErrorStatus: number | null, } | { "type": "ai-title", aiTitle: string, sessionId: string, } | { "type": "custom-title", customTitle: string, sessionId: string, } | { "type": "system", subtype: string | null, durationMs: number | null, messageCount: number | null, timestamp: string, sessionId: string | null, uuid: string | null, parentUuid: string | null, level: string | null, retryAttempt: number | null, maxRetries: number | null, error: unknown, } | { "type": "attachment", uuid: string, timestamp: string, parentUuid: string | null, } | { "type": "queue-operation", operation: string | null, content: string | null, } | { "type": "permission-mode", } | { "type": "last-prompt", } | { "type": "file-history-snapshot", } | { "type": "cc-monitor-unrecognized", uuid: string | null, parentUuid: string | null, timestamp: string | null, 
+export type JsonlRecord = { "type": "user", uuid: string, timestamp: string, message: ApiMessage, cwd: string | null, sessionId: string | null, isSidechain: boolean, isMeta: boolean, parentUuid: string | null, forkedFrom: ForkedFrom | null, } | { "type": "assistant", uuid: string, timestamp: string, message: ApiMessage, sessionId: string | null, isSidechain: boolean, requestId: string | null, parentUuid: string | null, forkedFrom: ForkedFrom | null, isApiErrorMessage: boolean, error: unknown, apiErrorStatus: number | null, } | { "type": "ai-title", aiTitle: string, sessionId: string, } | { "type": "custom-title", customTitle: string, sessionId: string, } | { "type": "system", subtype: string | null, durationMs: number | null, messageCount: number | null, timestamp: string, sessionId: string | null, uuid: string | null, parentUuid: string | null, level: string | null, retryAttempt: number | null, maxRetries: number | null, error: unknown, } | { "type": "attachment", uuid: string, timestamp: string, parentUuid: string | null, } | { "type": "queue-operation", operation: string | null, content: string | null, 
+/**
+ * P0c：**`remove` 那一支要建卡，卡上要有时间**。
+ *
+ * 原来这个变体只留 `operation` + `content`（issue #36 只需要 content 喂折叠豁免集合）。
+ * 而 `remove` 是**用户打断时说的那句话在 jsonl 里唯一的存在** ——
+ * 它没有 `user` 记录、没有 `uuid`、没有 `parentUuid`，
+ * 时间戳是它**仅有的**可用于排序与展示的元数据，原文里一直有，只是我们没收。
+ */
+timestamp: string | null, } | { "type": "permission-mode", } | { "type": "last-prompt", } | { "type": "file-history-snapshot", } | { "type": "cc-monitor-unrecognized", uuid: string | null, parentUuid: string | null, timestamp: string | null, 
 /**
  * 原文里的 `type`（若有）——诊断 / 记账按它分类
  */

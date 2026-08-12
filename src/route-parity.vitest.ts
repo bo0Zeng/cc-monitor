@@ -20,6 +20,52 @@ function recordingSink() {
   return { got, sink };
 }
 
+// ★★ P0c：打断我时说的那句话，在 jsonl 里**只有 queue-operation 一条记录**。
+//
+// 三条判据的失败方式完全不同，所以正反都钉：
+// ① `remove` 要建卡 —— 不建就整条消失（本会话实测丢 16 条用户真实输入）；
+// ② `dequeue` **不许**建卡 —— 它随后就有 `user` 记录，建了就是同一句显示两遍
+//    （光钉①，改成「三种都渲染」它照样绿，而那会让 101 条正常消息各显示两遍）；
+// ③ 一条都不许喂 branch —— 它没有 uuid/parentUuid，喂进去等于给分叉折叠算法
+//    一个没有父子关系的节点（issue #8 链完整性）。
+describe("P0c 排队消息：remove 要建卡，dequeue 不许", () => {
+  const qop = (operation: string, content: string | null) =>
+    mk({ type: "queue-operation", operation, content, timestamp: "2026-08-12T09:51:06.664Z" });
+
+  it("remove + 用户真实输入 → content（会走到建卡那条路）", () => {
+    const { got, sink } = recordingSink();
+    expect(routeMetaAndBranch(qop("remove", "现在的计划还是围绕 Windows 前端对吧?"), sink)).toBe(
+      "content",
+    );
+    // ★ 建卡归建卡，**链一条都不许多**。
+    expect(got.branches).toBe(0);
+  });
+
+  it("dequeue → consumed（它随后有 user 记录，建卡就是同一句显示两遍）", () => {
+    const { got, sink } = recordingSink();
+    expect(routeMetaAndBranch(qop("dequeue", "同一句话"), sink)).toBe("consumed");
+    expect(got.queued).toEqual([]); // 也不该喂折叠豁免集合（那是 enqueue 的活）
+  });
+
+  it("enqueue → consumed + 喂折叠豁免集合（issue #36 那条，行为不变）", () => {
+    const { got, sink } = recordingSink();
+    expect(routeMetaAndBranch(qop("enqueue", "排队的话"), sink)).toBe("consumed");
+    expect(got.queued).toEqual(["排队的话"]);
+  });
+
+  it("remove + <task-notification> → consumed（系统注入不是用户说的话）", () => {
+    const { sink } = recordingSink();
+    const note = "<task-notification>\n<task-id>abc</task-id>\n</task-notification>";
+    expect(routeMetaAndBranch(qop("remove", note), sink)).toBe("consumed");
+  });
+
+  it("remove + 空/纯空白 → consumed（没有内容就没有卡）", () => {
+    const { sink } = recordingSink();
+    expect(routeMetaAndBranch(qop("remove", "   "), sink)).toBe("consumed");
+    expect(routeMetaAndBranch(qop("remove", null), sink)).toBe("consumed");
+  });
+});
+
 describe("routeMetaAndBranch 路由表", () => {
   it("ai-title / custom-title → consumed + onTitleUpdate", () => {
     const { got, sink } = recordingSink();

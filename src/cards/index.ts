@@ -278,9 +278,40 @@ export function renderMessage(rec: JsonlRecord, ctx: RenderContext): RenderResul
     case "ai-title":
     case "custom-title":
       return { kind: "skip" };
+    // ★★ P0c：`remove` 那一支是**用户打断时说的那句话在 jsonl 里唯一的存在**。
+    //
+    // 它没有 `user` 记录、没有 `uuid`、没有 `parentUuid` —— 只有这条 `queue-operation`。
+    // 不在这里建卡，用户说的话就整条消失（本会话实测丢了 16 条，全是打断时说的）。
+    //
+    // ⚠ 走到这里的**只有** `remove` 且非系统注入那一格（`routeMetaAndBranch` 把
+    // `enqueue`/`dequeue` 都判 `"consumed"` 了）—— 那个判定连同它的实测读数写在那边，
+    // 本处不抄第二份。
+    case "queue-operation": {
+      const text = (rec.content ?? "").trim();
+      if (!text) return { kind: "skip" };
+      return { kind: "card", element: buildQueuedUserCard(text, rec.timestamp) };
+    }
     default:
       return { kind: "skip" };
   }
+}
+
+/** P0c：排队消息的用户卡。
+ *
+ *  与普通用户卡**刻意长得不一样**：多一个「排队」标记。
+ *  理由不是装饰 —— 这条消息在会话链上**没有位置**（无 uuid/parentUuid），
+ *  它与前后消息的先后只由 `seq` 保证。让读的人知道「这条是插进来的」，
+ *  比让它伪装成一条普通用户消息诚实。 */
+function buildQueuedUserCard(text: string, timestamp: string | null): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "card card-user card-user-queued";
+  card.appendChild(cardHeader("用户（排队时发出）", timestamp ?? ""));
+
+  const body = document.createElement("div");
+  body.className = "card-body";
+  body.innerHTML = renderPlainText(text);
+  card.appendChild(body);
+  return card;
 }
 
 /** 工具组外层折叠卡 —— TabManager 维护一组，连续的 tool-group 都追加进来 */
