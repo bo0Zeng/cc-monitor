@@ -3222,6 +3222,47 @@ describe("P7a-3 集合分组渲染", () => {
     expect(loose).toHaveLength(1);
   });
 
+  it("★★ P7a3-E：**没拉过集合的实例不许写集合** —— viewer 窗口会把用户已有的全冲掉", () => {
+    // 撕离出来的 viewer 窗口也用 TabManager（`main.ts:938`，tab 栏由 .viewer-mode 隐藏），
+    // 但它**从不 loadCollections** ⇒ `collections` 恒空。右键菜单里若还留着「新建集合…」，
+    // 点一下就把「只含这一个」的列表写回 config.json —— 用户已有的集合全没了。
+    // 同族先例就在旁边一行：「viewer 窗口共享 localStorage，禁写 last-active（防污染主窗口记忆）」。
+    tm.ensureTab("a", "/c1", "p", 0, null);
+    flushBar();
+    const root = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
+    root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+    const labels = [...document.querySelectorAll(".tab-context-menu button")].map(
+      (e) => e.textContent ?? "",
+    );
+    expect(labels.length, "菜单要真的开出来（否则本判据在空转）").toBeGreaterThan(0);
+    expect(labels.join("|"), "没拉过集合就不给集合入口").not.toContain("加入集合");
+  });
+
+  it("★ P7a3-E 反面：**拉过了就必须给入口**（否则「永远不给」也能过）", async () => {
+    tm.ensureTab("a", "/c1", "p", 0, null);
+    await tm.loadCollections(); // mock 的 config 是空的 ⇒ 集合为空，但「拉过」为真
+    flushBar();
+    const root = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
+    root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+    const labels = [...document.querySelectorAll(".tab-context-menu button")].map(
+      (e) => e.textContent ?? "",
+    );
+    expect(labels.join("|")).toContain("加入集合");
+  });
+
+  it("★ P7a3-D：组在前、未归组的在后（DoD 逐字如此，实现不许自己反过来）", () => {
+    tm.ensureTab("a", "/c1", "p", 0, null); // 归组
+    tm.ensureTab("b", "/c2", "p", 0, null); // 散的
+    setCols([{ id: "g1", name: "白天", members: ["a"] }]);
+    flushBar();
+    const kids = [...bar.children];
+    const gi = kids.findIndex((e) => e.classList.contains("tab-group"));
+    const ti = kids.findIndex((e) => e.classList.contains("tab"));
+    expect(gi, "组容器要在").toBeGreaterThanOrEqual(0);
+    expect(ti, "散 tab 要在").toBeGreaterThanOrEqual(0);
+    expect(gi, "组排在未归组的之前").toBeLessThan(ti);
+  });
+
   it("★ P7a3-Y2b：归档优先于集合 —— 灰 tab 进抽屉，不进组", () => {
     tm.ensureTab("a", "/c1", "p", 0, null);
     tm.ensureTab("b", "/c2", "p", 0, null);
