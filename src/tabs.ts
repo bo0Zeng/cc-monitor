@@ -2934,7 +2934,17 @@ export class TabManager {
       this.refreshTabBar();
     });
     wrap.append(toggle, list);
-    this.barEl.parentElement?.insertBefore(wrap, this.barEl.nextSibling);
+    // ★★ **拿不到父节点就整个不启用归档区**〔D 阶段补审〕。
+    //
+    // 抽屉是 `barEl` 的**兄弟**，要插进 `barEl.parentElement`。原来这里写的是
+    // `?.insertBefore(...)` 然后照样把三个字段存下来 ⇒ 拿不到父节点时，
+    // `archiveList` 是一个**孤儿容器**，而下面的分流会把归档的 tab 挪进去
+    // ⇒ **它从文档里整个消失**。而「灰着但还在」正是用户对归档的全部期待。
+    //
+    // ⇒ 宁可退回改之前的样子（归档 tab 灰着留在主栏），也不要让它凭空不见。
+    const parent = this.barEl.parentElement;
+    if (!parent) return;
+    parent.insertBefore(wrap, this.barEl.nextSibling);
     this.archiveWrap = wrap;
     this.archiveToggle = toggle;
     this.archiveList = list;
@@ -2953,6 +2963,7 @@ export class TabManager {
    * 那比「灰着但还在」坏得多。
    */
   private belongsInArchive(sid: string, tab: { status: TabStatus }): boolean {
+    if (!this.archiveList) return false; // 归档区没建起来（见 `ensureArchiveUi`）⇒ 不分流
     return tab.status === "archived" && sid !== this.activeId;
   }
 
@@ -3003,9 +3014,10 @@ export class TabManager {
       else prevBar = refs.root;
     }
     if (this.archiveToggle && this.archiveList && this.archiveWrap) {
+      // ▸ = 点开，▾ = 已展开（收起）。方向别反：箭头指的是**点下去会发生什么**。
       this.archiveToggle.textContent = collapsed
-        ? `已归档 ${archived}`
-        : `已归档 ${archived} ▾`;
+        ? `▸ 已归档 ${archived}`
+        : `▾ 已归档 ${archived}`;
       this.archiveToggle.title = archived
         ? "已结束的会话搬到这里，内容还在 —— 点开就能捞回来"
         : "还没有已归档的会话";
