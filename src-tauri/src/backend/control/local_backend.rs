@@ -565,7 +565,7 @@ pub fn start_if_present(
                 .unwrap_or(0)
         }),
         on_event,
-        Some(Arc::new(local_stdio_consumer)),
+        Some(Arc::new(local_stdio_consumer_guarded)),
     );
     (r, Some(h))
 }
@@ -748,6 +748,39 @@ pub(crate) fn local_stdio_consumer(
     }
 }
 
+/// [`local_stdio_consumer`] 的**兜底外壳**〔D 阶段补审 08-11 新增，B3〕。
+///
+/// # 为什么要它
+///
+/// 消费者跑在 `supervise` 的裸 `std::thread` 上，那里**没有 `catch_unwind`**。
+/// 它体内任何一次 panic（锁中毒、切片越界、`expect`）都会 unwind 出去，于是：
+/// `child` 锁里还留着活的 `Child` · `pid` 没归 0 · `unregister` 被跳过
+/// ⇒ 没人读 daemon 的 stdout ⇒ 管道缓冲填满 ⇒ **daemon 阻塞在 write 上冻死**。
+/// 而 `daemon_status` 照回 `channel: true` + 活 pid，`start_local_backend` 也拒绝重起。
+/// **全绿的死锁态，没有任何一处会响。**
+///
+/// # 它做什么、不做什么
+///
+/// 只保证**「消费者返回」这件事一定发生**（返回 = 流结束 = `supervise` 的判死信号）。
+/// 它**不**吞掉问题：panic 照样 LOUD 记一条 error。
+/// ⚠ 它也**不**保证 `unregister` 跑过 —— panic 点可能在登记之后、摘除之前。
+/// 那一格由 `inbound_client::register` 的「后来者顶掉前一个」兜住（诚实边界，见 11i）。
+fn local_stdio_consumer_guarded(
+    stdin: std::process::ChildStdin,
+    stdout: std::process::ChildStdout,
+) {
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        local_stdio_consumer(stdin, stdout);
+    }));
+    if r.is_err() {
+        tracing::error!(
+            "本机 stdio 消费者 panic —— 已兜住并按流结束处理。\n\
+             ⚠ 不兜的话它会 unwind 出 supervise 线程，留下一个「状态全绿的死人」：\n\
+             daemon 还活着但没人读它的 stdout ⇒ 管道填满冻死，而 UI 显示一切正常。"
+        );
+    }
+}
+
 
 /// P2z（定框 C10）：**生产入口的自释放版** —— exe 旁边找不到 sidecar 时，
 /// 把内嵌的那份释放到 `extract_dir` 再起。这就是「单 exe 也能起 daemon 进程」那句话的落点。
@@ -807,7 +840,7 @@ pub fn start_or_extract(
                 .unwrap_or(0)
         }),
         on_event,
-        Some(Arc::new(local_stdio_consumer)),
+        Some(Arc::new(local_stdio_consumer_guarded)),
     );
     (Resolved::Found(bin), Some(h))
 }
@@ -917,7 +950,7 @@ mod tests {
                     .unwrap_or(0)
             }),
             Arc::new(|e| println!("[P3 实测] {e:?}")),
-            Some(Arc::new(local_stdio_consumer)),
+            Some(Arc::new(local_stdio_consumer_guarded)),
         );
 
         let mut seen = false;
@@ -1039,10 +1072,12 @@ mod tests {
                      ⇒ 本机 stdin 又变回 `Stdio::null()`（正是 C4 量出的那个缺口）。"
                 )
             });
-            guard_core::find_pinned(entry_src, "Some(Arc::new(local_stdio_consumer))").unwrap_or_else(
+            guard_core::find_pinned(entry_src, "Some(Arc::new(local_stdio_consumer_guarded))").unwrap_or_else(
                 |e| {
                     panic!(
-                        "`{name}` 调了 `supervise_with_stdio`，但没把 `local_stdio_consumer` 传下去（{e}）。\n\
+                        "`{name}` 没把**兜底版**消费者 `local_stdio_consumer_guarded` 传下去（{e}）。\n\
+                         ⚠ 传裸的 `local_stdio_consumer` 也不行：它体内一次 panic 会 unwind 出 supervise 线程，\n\
+                         留下「daemon 活着但没人读它 stdout」的**全绿死锁态**（补审 B3）。\n\
                          管子接出来了却没人读 ⇒ hello 帧没人解 ⇒ `client_for(<local>)` 恒 None，\n\
                          且不会报任何错。"
                     )
@@ -1142,7 +1177,7 @@ mod tests {
                     .unwrap_or(0)
             }),
             Arc::new(|e| println!("[P2 实测] {e:?}")),
-            Some(Arc::new(local_stdio_consumer)),
+            Some(Arc::new(local_stdio_consumer_guarded)),
         );
 
         // 轮询而不是睡死：进程起来 + 发 hello 的耗时不确定，睡固定值要么慢要么飘。
