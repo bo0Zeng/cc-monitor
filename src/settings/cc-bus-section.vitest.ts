@@ -188,13 +188,22 @@ describe("B03 脏数据如实呈现", () => {
     expect(txt).toContain("ssh timeout");
   });
 
-  it("无远端时禁用读取并说明原因", async () => {
+  it("★ P4a：无远端时**仍能读本机**，只是说清没有远端", async () => {
+    // ⚠ 本条原来钉「无远端 ⇒ 禁用读取」。那在当时是对的：读面只有远端一条路。
+    // P4a 之后本机也能读（同一条命令串，不包进 ssh）⇒ **禁用就成了假的**：
+    // 明明有东西可读，却告诉用户读不了。
     mockInvoke.mockImplementation(async () => []);
     const s = new CcBusSection();
     document.body.appendChild(s.element);
     await flush();
-    expect((s.element.querySelector(".cc-bus-read") as HTMLButtonElement).disabled).toBe(true);
+    expect((s.element.querySelector(".cc-bus-read") as HTMLButtonElement).disabled).toBe(false);
     expect(s.element.querySelector(".cc-bus-status")?.textContent).toContain("未配置远端");
+    // 唯一的可选项就是本机。
+    const sel = s.element.querySelector(".cc-bus-origin") as HTMLSelectElement;
+    expect([...sel.options].map((o) => o.value)).toEqual(["<local>"]);
+    // 写面仍然没有本机对侧 ⇒ 派生禁用且说明原因。
+    const spawn = s.element.querySelector(".cc-bus-spawn-go") as HTMLButtonElement;
+    expect(spawn.disabled).toBe(true);
   });
 
   it("spawn 派生与自行登记要区分开", async () => {

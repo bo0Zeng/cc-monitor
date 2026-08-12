@@ -553,6 +553,17 @@ async fn local_shell_read(
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
+            // ★★ **超时那条路全靠它**〔D 阶段补审 08-12〕。
+            //
+            // 下面那句显式 `start_kill()` 只在**成功路径**上；超时是
+            // `tokio::time::timeout` 把整个 future 丢掉，走不到那里。而 tokio 的 `Child`
+            // **默认不因句柄被 drop 而杀子进程** ⇒ 每超时一次漏一个 `sleep`/`cat`。
+            //
+            // 本会话已经因为「我自己留下的孤儿进程」栽过一次：`#60` 的八轮实测里，
+            // 有五个孤儿 daemon 把读数全带偏了，我却先后猜了七个错误的病因。
+            // ⇒ 教训的产物不是「以后小心」，是
+            // `a_timed_out_local_read_does_not_leave_an_orphan_behind` 那条判据。
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| format!("本机{what}失败（起不了 bash）: {e}"))?;
         let mut out = child
@@ -1350,6 +1361,40 @@ mod tests {
             2,
             "生产段出现了新的 `.tsv` 字面量 —— cc-bus 的文件布局只准有一份表示，\n\
              它住在 `CC_BUS_CAT_CMD` 里。本机要读同一批文件，就跑同一条串。"
+        );
+    }
+
+    /// ★ D 阶段补审：**超时之后，那个子进程还在不在。**
+    ///
+    /// `local_shell_read` 的显式 `start_kill()` 只在**成功路径**上。超时那条路是
+    /// `tokio::time::timeout` 把整个 future 丢掉 —— 而 tokio 的 `Child`
+    /// **默认不因句柄被 drop 而杀掉子进程**（全仓 `kill_on_drop` 命中曾是 0）。
+    ///
+    /// ⇒ 一次超时留一个孤儿 `bash`。这与本会话在 `#60` 上栽的那次同族：
+    /// **我自己留下的孤儿进程**把后面八轮实测全带偏了。那次的教训不是「以后小心」，
+    /// 是「留一条判据去数它」。
+    ///
+    /// 本条真起进程、真等超时（~1.3s）—— 起的是 `sleep`，不是任何会烧额度的东西。
+    #[tokio::test]
+    async fn a_timed_out_local_read_does_not_leave_an_orphan_behind() {
+        // ⚠ marker **不能只写在注释里**：`bash -lc '<单条命令>'` 会 **exec 掉自己**，
+        // 于是注释从任何 cmdline 上都消失，`pgrep` 数到 0 ⇒ **本判据首跑就是假绿**
+        // （实测栽过一次）。⇒ 把 marker 放进那个必然存活的进程**自己的 argv** 里。
+        let marker = format!("30.{}", std::process::id());
+        let cmd = format!("sleep {marker}");
+        let r = local_shell_read(&cmd, 4096, 1, "超时探针", OnOverflow::Reject).await;
+        assert!(r.is_err(), "1 秒上限跑 sleep 30 竟然没超时 —— 本判据在空转");
+        // 给 tokio 的收尸队一点时间。
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        let out = std::process::Command::new("pgrep")
+            .args(["-fc", &format!("sleep {marker}")])
+            .output()
+            .expect("pgrep 跑不起来");
+        let n: usize = String::from_utf8_lossy(&out.stdout).trim().parse().unwrap_or(0);
+        assert_eq!(
+            n, 0,
+            "超时之后还留着 {n} 个子进程（marker={marker}）—— 每超时一次漏一个。\n\
+             显式 `start_kill()` 只在成功路径上；超时那条要靠 `kill_on_drop(true)`。"
         );
     }
 
