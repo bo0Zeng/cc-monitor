@@ -171,21 +171,46 @@ describe("F41 runRemoteResume", () => {
     expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
   });
 
-  it("P3 刀3 本机：typed → 成功，且把 attach 命令交给用户（POSIX 刻意不挑终端模拟器）", async () => {
+  // 〔用户裁定 08-12：attach 用纯 linux bash / windows 的 PowerShell + Windows Terminal〕
+  // ⇒ 本机 attach **与远端共用同一条路**（`launch_remote_terminal` + 那条复制回退），
+  //   两侧分档由后端那句 `POSIX_NO_TERMINAL_WINDOW` 决定，前端不自己再写一份。
+  it("P3 刀3 本机 typed + Linux（后端不开窗口）→ 仍算成功，命令交给用户在自己 bash 里跑", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
       if (cmd === "daemon_send_into") return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
+      // 后端在非 Windows 上的既定回答（含跨语言标记）。
+      if (cmd === "launch_remote_terminal")
+        return Promise.reject(`本机不是 Windows：cc-monitor **${POSIX_NO_WINDOW_MARKER}**（会话容器是 tmux）`);
       return Promise.resolve(undefined);
     });
     const writeText = vi.fn().mockResolvedValue(undefined);
     stubClipboard(writeText);
     const ok = await runLocalResumeIntoExistingTmux("sid-l2", "l2-cc", "");
+    // ★ 就地 resume 成了；**attach 开不开得了窗口不改变这个结论**（两件事别混成一件）。
     expect(ok).toBe(true);
     // attach 命令用 `=name:` 精确形态（§31a），且**没有** ssh 那一跳。
     expect(writeText.mock.calls[0][0]).toBe("tmux attach -t '=l2-cc:'");
     expect(String(writeText.mock.calls[0][0])).not.toContain("ssh");
-    // 本机同样不开终端窗口 —— 那是既定设计，文案要这么说，不许报成失败。
-    expect(String(toastMock.mock.calls[0][1])).toContain(POSIX_NO_WINDOW_MARKER);
+    // 标题按后端的声明分档成「既定设计」，不是「拉起失败」。
+    expect(String(toastMock.mock.calls[0][0])).toContain("本机不开终端窗口");
+    // 正文不许照抄远端那句「到远端 [...] 的 ssh 终端粘贴执行」。
+    expect(String(toastMock.mock.calls[0][1])).toContain("在你自己的 bash 里执行");
+    expect(String(toastMock.mock.calls[0][1])).not.toContain("ssh 终端");
+  });
+
+  it("P3 刀3 本机 typed + Windows（wt + PowerShell 起来了）→ 不复制、不弹既定设计文案", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "render_launch_payload") return Promise.resolve("payload");
+      if (cmd === "daemon_send_into") return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
+      if (cmd === "launch_remote_terminal") return Promise.resolve(undefined); // 窗口开成了
+      return Promise.resolve(undefined);
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubClipboard(writeText);
+    const ok = await runLocalResumeIntoExistingTmux("sid-l3", "l3-cc", "");
+    expect(ok).toBe(true);
+    expect(writeText).not.toHaveBeenCalled();
+    expect(String(toastMock.mock.calls[0][0])).toBe("已就地 resume");
   });
 
   it("★ P1 对照：IPC 异常（无 REFUSE 标）→ 仍然回落，行为逐字不变", async () => {

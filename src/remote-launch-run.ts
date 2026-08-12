@@ -217,9 +217,12 @@ async function invokeLaunchOrCopyFallback(
       : copied
         ? toasts.failureCopied
         : toasts.failureNotCopied;
+    // ★ 本机没有 ssh 那一跳，文案不能照抄远端那句〔08-12〕。
+    const where =
+      origin === LOCAL_ORIGIN ? "在你自己的 bash 里执行：" : `到远端 [${origin}] 的 ssh 终端粘贴执行：`;
     showActionFailureToast(
       headline,
-      `${String(err)}\n到远端 [${origin}] 的 ssh 终端粘贴执行：\n${cmd}`,
+      `${String(err)}\n${where}\n${cmd}`,
       { level: "info", durationMs: 10000 },
     );
     return false;
@@ -455,21 +458,24 @@ export async function runLocalResumeIntoExistingTmux(
     );
     return false;
   }
-  // ★ attach 那半交给用户。**不是没做完，是 POSIX 上刻意不替你挑终端模拟器**
-  //（同 `POSIX_NO_WINDOW_MARKER` 那条既定设计）。命令用 `=name:` 精确形态（§31a）。
+  // ★ attach 那半**与远端共用同一条路**〔用户裁定 08-12：「attach 暂时就用纯 linux bash
+  //   以及 windows 的 PowerShell + Windows Terminal」〕。
+  //
+  //   `invokeLaunchOrCopyFallback` 里那两条分档正好就是裁定的两侧：
+  //   · Windows → `launch_remote_terminal` 走 `launch_powershell_window`（PowerShell + WT）；
+  //   · Linux   → 那条回 `POSIX_NO_TERMINAL_WINDOW`，前端按 `POSIX_NO_WINDOW_MARKER`
+  //     把标题分档成「本机不开终端窗口，命令已复制」，正文给出在自己 bash 里执行的命令。
+  //   ⇒ 本机不再自己写一份复制逻辑 —— 写第二份就是 `C1` 排除的那件事。
+  //   命令用 `=name:` 精确形态（§31a）。
   const attachCmd = `tmux attach -t '=${name}:'`;
-  let copied = true;
-  try {
-    await navigator.clipboard.writeText(attachCmd);
-  } catch {
-    copied = false;
-  }
-  showActionFailureToast(
-    copied ? "已就地 resume，attach 命令已复制" : "已就地 resume，请手动复制 attach 命令",
-    `本机 tmux 会话「${name}」里已就地 resume（复用、不新建）。\n` +
-      `cc-monitor **${POSIX_NO_WINDOW_MARKER}**，请在你自己的终端里执行：\n${attachCmd}`,
-    { level: "info", durationMs: 10000 },
-  );
+  await invokeLaunchOrCopyFallback(LOCAL_ORIGIN, attachCmd, {
+    success: "已就地 resume",
+    successDetail: `本机 tmux 会话「${name}」里已就地 resume（复用、不新建），终端窗口正在接上它。`,
+    failureCopied: "已就地 resume，attach 命令已复制",
+    failureNotCopied: "已就地 resume，请手动复制 attach 命令",
+  });
+  // ★ 就地 resume 本身已经成了（`typed`）——**attach 开不开得了窗口不改变这个结论**。
+  //   返回 `false` 会让调用方以为这次 resume 没做成，那是把两件事混成一件。
   return true;
 }
 
