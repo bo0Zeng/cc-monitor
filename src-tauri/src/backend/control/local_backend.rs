@@ -34,7 +34,7 @@
 //! | 路 | 代价 |
 //! |---|---|
 //! | `try_wait()` 轮着看 | **那是轮询** —— 违反 C12，本模块的立身之本就没了 |
-//! | 引 `libc::kill` / spawn 一个 `kill` 命令 | 为了一个 `stop()` 引入平台 cfg（C10）或多起一个进程 |
+//! | 引 `libc::kill` / spawn 一个 `kill` 命令 | 为了一个 `stop()` 引入平台 cfg（`backend-split` 的 C10）或多起一个进程 |
 //! | ⭐ **读子进程 stdout 到 EOF** | 进程一死管道就 EOF，**事件驱动**；而 `Child` 本体可以留在 `Mutex` 里给 `stop()` 用 |
 //!
 //! 选第三条。`stdout` 是一个**独立的 owned handle**（`child.stdout.take()`），
@@ -517,7 +517,7 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
     )
 }
 
-/// P2z（定框 C10）：**单 exe 自释放** —— 把 app 里**已经内嵌**的那份 musl daemon
+/// P2z（`control-parity` 的定框 C10 —— 单 exe 那一条，不是 `backend-split` 那条平台原语）：**单 exe 自释放** —— 把 app 里**已经内嵌**的那份 musl daemon
 /// 写到 `dir` 下，文件名**带 build_id**，返回落点。
 ///
 /// # 为什么文件名必须带 build_id（自批 D1，别改成和远端部署同一个文件）
@@ -564,7 +564,7 @@ pub fn extract_embedded_to(
     // 先写临时文件再 rename：半截文件不许被当成可执行的 daemon（rename 在同一文件系统上原子）。
     let tmp = dir.join(format!(".{}.partial", local_extract_name(build_id)));
     std::fs::write(&tmp, bytes).map_err(|e| format!("写 {} 失败: {e}", tmp.display()))?;
-    // C10：**「怎么置可执行位」是平台知识，不许住在 backend**。
+    // `backend-split` 的 C10：**「怎么置可执行位」是平台知识，不许住在 backend**。
     // 这里只知道「写完要让它可执行」，那句话在本平台上怎么落由宿主注入
     // （`platform_fs::make_executable`）。原来这处是个 `#[cfg(unix)]` 块，
     // `the_backend_half_stays_platform_agnostic` 逮到了它。
@@ -831,7 +831,7 @@ fn local_stdio_consumer_guarded(
 }
 
 
-/// P2z（定框 C10）：**生产入口的自释放版** —— exe 旁边找不到 sidecar 时，
+/// P2z（`control-parity` 的定框 C10）：**生产入口的自释放版** —— exe 旁边找不到 sidecar 时，
 /// 把内嵌的那份释放到 `extract_dir` 再起。这就是「单 exe 也能起 daemon 进程」那句话的落点。
 ///
 /// 顺序刻意是 **先找旁边、再释放**：开发构建里 `target/debug/` 旁边就有一个**更新**的二进制，
