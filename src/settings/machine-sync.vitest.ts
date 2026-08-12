@@ -81,7 +81,9 @@ describe("S4a 跨分节机器同步", () => {
 
     const busSel = selOf(bus.element, "cc-bus-origin");
     // 前置：驾驶舱那块拿到了机器清单（否则下面的同步无从谈起）
-    expect([...busSel.options].map((o) => o.value)).toEqual(ORIGINS);
+    // P4a：驾驶舱的清单 = 远端们 + **末尾一项「本机」**（后端读面已支持 `<local>`）。
+    // 追加在末尾是刻意的：`select` 默认取第一项，放开头会顺带改掉「默认看哪台」。
+    expect([...busSel.options].map((o) => o.value)).toEqual([...ORIGINS, "<local>"]);
     // E59：hooks 那块不再有下拉，只有只读显示
     expect(hooks.element.querySelector("select.cc-bus-hooks-origin")).toBeNull();
 
@@ -106,10 +108,12 @@ describe("S4a 跨分节机器同步", () => {
     expect(hooks.element.querySelector(".cc-bus-hooks-origin")?.textContent).toBe("nano");
   });
 
-  it("★ 切到「本机」时，只列远端的分节**原地不动**（不乱选一台）", async () => {
-    // 已知的半截状态：这两块的下拉只列远端，表示不了本机。乱选一台比不动更糟
-    // ——用户会以为自己在看本机，其实在对某台远端下命令。
-    // S4b 的机器详情页会从根上解决（本机那一页不含只对远端有意义的分节）。
+  it("★ P4a：切到「本机」时，驾驶舱**跟着切**（它已经表示得了本机）", async () => {
+    // ⚠ 本条原来钉的是「原地不动」，而它自己的注释逐字承认那是**已知的半截状态**：
+    // 「这两块的下拉只列远端，**表示不了本机**……乱选一台比不动更糟」。
+    // P4a 把驾驶舱那半补上了（后端读面支持 `<local>`，下拉多了「本机」一项）
+    // ⇒ 半截状态在这一块不存在了，「原地不动」也就不再是对的行为：
+    // store 说切本机、而面板还显示着某台远端，那才是在骗人。
     const bus = new CcBusSection();
     await settle();
     const busSel = selOf(bus.element, "cc-bus-origin");
@@ -119,8 +123,30 @@ describe("S4a 跨分节机器同步", () => {
 
     setCurrentMachine(null);
     await settle();
-    expect(busSel.value).toBe("nano"); // 原地不动
-    expect(getCurrentMachine()).toBeNull(); // store 本身照实记录
+    expect(busSel.value).toBe("<local>"); // 跟着切到「本机」
+    expect(getCurrentMachine()).toBeNull(); // store 仍用 null 表示本机（换算只在一处）
+    // 写面在本机没有对侧 ⇒ 派生按钮当场禁用，并说明为什么（别把人引过去再吃后端错误）。
+    const spawn = bus.element.querySelector(".cc-bus-spawn-go") as HTMLButtonElement;
+    expect(spawn.disabled).toBe(true);
+    expect(spawn.title).toContain("写面");
+  });
+
+  it("hooks 那块切到本机时**明说这是本机页**（它早就诚实表示了本机）", async () => {
+    // ⚠ 本条第一版我写的是「hooks 仍原地不动，半截状态只补了一半」——
+    // **那个前提是我猜的，实测是假的**：它切到本机时显示「（本机页：无远端可诊断）」。
+    // 记在这里是因为教训比结论有用：**先量再写断言**，否则判据钉的是我的想象。
+    const bus = new CcBusSection();
+    const hooks = new CcBusHooksSection();
+    await settle();
+    selOf(bus.element, "cc-bus-origin").value = "nano";
+    selOf(bus.element, "cc-bus-origin").dispatchEvent(new Event("change"));
+    await settle();
+    expect(hooks.element.querySelector(".cc-bus-hooks-origin")?.textContent).toBe("nano");
+    setCurrentMachine(null);
+    await settle();
+    const txt = hooks.element.querySelector(".cc-bus-hooks-origin")?.textContent ?? "";
+    expect(txt).toContain("本机");
+    expect(txt).not.toBe("nano"); // 绝不能还停在某台远端上 —— 那才是骗人
   });
 
   it("切到清单里没有的机器 → 原地不动（清单还没加载 / 那台已被删）", async () => {

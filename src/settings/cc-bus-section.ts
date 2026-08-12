@@ -1,8 +1,10 @@
 // B03：cc-bus 驾驶舱（批一只读 + 批二派活/收信/图形化 spawn）。
 //
 // 三条硬约束决定了这个形状：
-//  ① **不新增轮询**（红线）。cc-bus 的状态全在远端本机 `~/.cc-bus/`，cc-monitor 跑在
-//     Windows 只能经 SSH 看。复用 daemon 的 inotify watcher 要改 daemon（零改红线），
+//  ① **不新增轮询**（红线）。cc-bus 的状态在**跑着 cc-bus 的那台机**的 `~/.cc-bus/`。
+//     ⚠ 原文写「cc-monitor 跑在 Windows 只能经 SSH 看」——**那是把一种部署当成了全部**：
+//     cc-monitor 也跑在 Linux 上，而那台机器上 `~/.cc-bus/` 就在本地（P4a 实测 86 行 agents）。
+//     ⇒ P4a 起，读面三条支持 `<local>`（后端走同一条命令串、只是不包进 ssh）。复用 daemon 的 inotify watcher 要改 daemon（零改红线），
 //     所以只能按需读。**本文件里不得出现 setInterval / setTimeout 轮询 / 后台定时任务。**
 //  ② **登记 ≠ 在线**。`agents.tsv` 只证明它登记过——实测最早的条目是 10 天前的，进程早没了。
 //     判在线要另查 `tmux has-session`，那是**第二次往返**，所以放在用户点某一行的「检查」上，
@@ -23,6 +25,11 @@ import { commands } from "../ipc/commands";
 // L2：账号选择复用既有封装——`fetchAccounts` 带 TTL 缓存、`selectableAccounts` 是
 // 「可选账号」的单一判据（`accounts.ts:130` 注释明写"别各处再 filter 一遍"）。
 import { fetchAccounts, selectableAccounts } from "../accounts";
+// ⚠ **本机 origin 必须从 `daemon-policy` 导**，不是从上面那个 `../accounts`：
+// 仓里有**两个** `LOCAL_ORIGIN` —— `daemon-policy.ts` 的是 `"<local>"`（与 Rust 侧
+// `inbound_client::LOCAL_ORIGIN` 逐字相同，跨语言钉住），`accounts.ts` 的是 `"__local__"`
+// （账号面的标记）。导错了**不会报错**，只会让后端那条本机分支永远走不到。
+import { LOCAL_ORIGIN } from "../daemon-policy";
 
 // C04d 批 5a：四个类型换成生成物（源 `cc_bus.rs`）。手写版与生成物**逐字等价** ⇒ 零漂移，
 // 价值是防将来漂。`CcBusState.skipped` 在 Rust 侧是 `usize`
@@ -185,39 +192,49 @@ export class CcBusSection {
       /* 拿不到就当没有远端，不影响面板其余部分 */
     }
     this.originSel.replaceChildren();
-    if (origins.length === 0) {
-      const opt = document.createElement("option");
-      opt.textContent = "（未配置远端）";
-      opt.value = "";
-      this.originSel.appendChild(opt);
-      this.originSel.disabled = true;
-      this.readBtn.disabled = true;
-      this.spawnBtn.disabled = true;
-      this.statusEl.textContent = "未配置远端。cc-bus 跑在远端机器上，先在「远端」分节配一台。";
-      return;
-    }
+    // P4a：**本机永远在列表里**。cc-monitor 跑在哪台机器上，那台机器的 `~/.cc-bus/`
+    // 就在本地 —— 后端读面已经支持 `<local>`（同一条命令串，不包进 ssh）。
+    // ⇒ 「没有可选项」这种状态不再存在，那条 `origins.length === 0` 的死路去掉了。
     for (const o of origins) {
       const opt = document.createElement("option");
       opt.value = o;
       opt.textContent = o;
       this.originSel.appendChild(opt);
     }
+    // ⚠ **追加在末尾，不是插在开头**：`select` 的默认值是第一项 ——
+    // 放开头会把「配了远端的人打开面板默认看哪台」这件事一起改了，
+    // 而那不是本件要动的东西（P4a 的正题是「本机也能看」，不是「默认改看本机」）。
+    {
+      const opt = document.createElement("option");
+      opt.value = LOCAL_ORIGIN;
+      opt.textContent = "本机";
+      this.originSel.appendChild(opt);
+    }
+    if (origins.length === 0) {
+      this.statusEl.textContent = "未配置远端 —— 可以先看本机的 cc-bus。";
+    }
     // 账号随机器变——换台机器，上一台的账号名多半不适用
     this.originSel.addEventListener("change", () => {
       // S4a：写进共用 store；实际切换由订阅统一处理。
-      setCurrentMachine(this.originSel.value || null);
+      // ⚠ 共用 store 用 `null` 表示本机，而本选择器用 `LOCAL_ORIGIN`（后端认的那个串）——
+      // 两套表示各有各的理由，**换算只准在这一处发生**。
+      const v = this.originSel.value;
+      setCurrentMachine(v && v !== LOCAL_ORIGIN ? v : null);
+      this.syncLocalAffordances();
     });
-    // S4a：跟随共用 store。本分节只列远端，收到 `null`（本机）就原地不动
-    //（cc-bus 跑在远端机器上，本机这一格本来就没有意义）。
+    // S4a：跟随共用 store。`null` = 本机 —— **P4a 起它不再是「原地不动」**：
+    // 本机这一格今天有意义了（读面已通），所以跟着切到「本机」那一项。
     subscribeMachine((origin) => {
-      if (origin === null) return;
-      if (![...this.originSel.options].some((o) => o.value === origin)) return;
-      if (this.originSel.value === origin) return;
-      this.originSel.value = origin;
+      const want = origin === null ? LOCAL_ORIGIN : origin;
+      if (![...this.originSel.options].some((o) => o.value === want)) return;
+      if (this.originSel.value === want) return;
+      this.originSel.value = want;
       this.disarmSpawn();
-      void this.loadAccounts(origin);
+      this.syncLocalAffordances();
+      if (want !== LOCAL_ORIGIN) void this.loadAccounts(want);
     });
-    void this.loadAccounts(this.originSel.value);
+    this.syncLocalAffordances();
+    if (this.originSel.value !== LOCAL_ORIGIN) void this.loadAccounts(this.originSel.value);
   }
 
   /** 渲染账号下拉。第一项恒为「基座」——**不替用户默认选一个会花钱的号**。 */
@@ -237,6 +254,18 @@ export class CcBusSection {
 
   /** 取该远端的可选账号。**拿不到就只留「基座」**——宁可少一个选项，
    *  也不能让用户以为选了某个号而其实没生效。 */
+  /** P4a：本机只有**读**面。写面（派生 / 发消息）在本机没有对侧，归 `P4b`。
+   *
+   *  ⚠ 与其让用户点下去再吃一个后端错误，不如**当场说清为什么点不了** ——
+   *  后端那句拒绝仍然留着（它是结构，不是文案），这里只是别把人引过去。 */
+  private syncLocalAffordances(): void {
+    const isLocal = this.originSel.value === LOCAL_ORIGIN;
+    this.spawnBtn.disabled = isLocal;
+    this.spawnBtn.title = isLocal
+      ? "本机还不能派生 agent：cc-bus 的写面在本机没有对侧（归 P4b）。读面（清单 / 在线 / inbox）可以用。"
+      : "";
+  }
+
   private async loadAccounts(origin: string): Promise<void> {
     try {
       const st = await fetchAccounts(origin);
