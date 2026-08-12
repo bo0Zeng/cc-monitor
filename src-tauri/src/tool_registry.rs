@@ -304,8 +304,20 @@ pub const TOOLS: &[ToolSpec] = &[
             repo_path: "shared/cc-bus",
         },
         destination: ToolDestination::LocalHomeRelative(".claude/skills/cc-bus"),
-        // 部署尚未实现（B01 只做了"搬进仓固化为基线"）——**如实声明 false**，
-        // 不因为"计划里写了要做"就先标 true。
+        // ★★ **不是「实现一下就能翻 true」——落点被只读铁律排除**〔PS1 重摸底 08-12〕。
+        //
+        // 原注释只写「部署尚未实现（B01 只做了"搬进仓固化为基线"）」，那是**浅一层**的理由，
+        // 会让下一个人以为补个递归拷贝就行。真实的墙在 `doc/INVARIANTS.md` 开头：
+        // 「`monitor` 对 `<claude_dir>/…` **只读**」，后附**穷举**的 6 条例外 ——
+        // **没有一条覆盖「往 `~/.claude/skills/` 装东西」**，而第 2 条逐字写着
+        // 「只写 cc-monitor 自己的 bin 目录，**绝不碰** `~/.claude/`」。
+        //
+        // ⇒ 把 cc-bus 装到上面那个 `destination`，需要给那条铁律**开第 7 条豁免** ——
+        // 那是**裁定**，不是实现工作。要开的话，配套应照既有 6 条的形状：
+        // 用户**显式**动作 + 独立 realpath 白名单 + 幂等 + 可撤销。
+        //
+        // ⚠ 这堵墙今天已经在收账：`P4b` 改的是仓内那份 `cc-spawn`，而 `~/.local/bin/cc-*`
+        // 指向的是 `~/.claude/skills/cc-bus/`（实测两份差 167 行）—— **改动到不了本机**。
         installable: false,
         uninstallable: false,
         touches: &[
@@ -1068,6 +1080,29 @@ mod tests {
     /// 必须出现在 `touches` 里。改任一边就会红。
     /// （`installable: false` 的 cc-bus 豁免——它的 `destination` 目前是**愿景**，
     ///  部署还没实现，硬要它出现在 touches 里就得给一个假的 effect，那正是阻塞 2 的病。）
+    /// ★ PS1（重摸底 08-12）：cc-bus 的 `installable: false` **必须写着深一层的理由**。
+    ///
+    /// 浅理由（「部署尚未实现」）会让下一个人以为补个递归拷贝就能翻 true；
+    /// 而真实的墙是 `doc/INVARIANTS.md` 那条只读铁律 —— 落点 `~/.claude/skills/` 不在
+    /// 它穷举的 6 条例外里。**那是裁定，不是实现工作。**
+    ///
+    /// 这是「禁词守卫」的反面：**必需词**守卫。删掉那段话的人会被拦一次。
+    #[test]
+    fn cc_bus_says_why_it_is_not_installable_at_the_real_depth() {
+        let me = include_str!("tool_registry.rs");
+        // ⚠ **数次数，不是 `contains`** —— 本判据自己的字面量也在这个文件里
+        //（本会话已经栽过三次：`P3s-Y2` / `P4d-Y4` / `P4b-Y3`）。
+        for must in ["开第 7 条豁免", "绝不碰"] {
+            assert!(
+                me.matches(must).count() >= 2,
+                "cc-bus 那条 `installable: false` 的注释里少了 {must:?}。\n\
+                 只写「部署尚未实现」是**浅一层**的理由 —— 真实的墙是只读铁律\n\
+                 （`~/.claude/skills/` 不在它穷举的 6 条例外里）。\n\
+                 删掉它，下一个人会以为补个递归拷贝就能翻 true。"
+            );
+        }
+    }
+
     #[test]
     fn installable_tools_declare_where_they_land() {
         for t in TOOLS {
