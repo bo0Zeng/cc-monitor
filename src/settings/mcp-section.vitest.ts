@@ -1,5 +1,5 @@
 // F87（#50+#51）MCP 管理纯函数断言：groupByScope / serverSummary / parseServerConfig。
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../error-toast", () => ({ showActionFailureToast: vi.fn() }));
 
@@ -221,6 +221,11 @@ describe("F89b 库 UI（累积 + 已在本项目 + 注册）", () => {
 
 describe("P6b MCP 工作目录清单", () => {
   const flush = () => new Promise((r) => setTimeout(r, 0));
+  // ⚠ `machine-context` 的当前机器是**模块级共享状态**，跨测试残留。
+  // 不归位的话，上一条测完停在 `"aya"` ⇒ 下一条里的 `setCurrentMachine("aya")`
+  // 是个**空操作**（`selectMachine` 第一句就是 `if (origin === this.origin) return`）
+  // ⇒ 判据测的是一次根本没发生的切换。实测栽过一次。
+  beforeEach(() => setCurrentMachine(null));
   const chips = (root: HTMLElement) =>
     [...root.querySelectorAll<HTMLButtonElement>(".mcp-dir-chip")].map((b) => b.textContent);
 
@@ -290,6 +295,60 @@ describe("P6b MCP 工作目录清单", () => {
     releaseLocal(["/local/late"]); // 本机那次现在才回来
     await flush();
     expect(chips(section.element)).toEqual(["/remote/dir"]);
+  });
+
+  it("★ P6b-E：读不到清单 ⇒ 说「读不到」，不许说成「没用过」，更不许永远停在「读取中」", async () => {
+    document.body.replaceChildren();
+    // 两件事的下一步完全不同：「没用过」⇒ 手填一个新路径；「没读到」⇒ 去看那台机器连没连上。
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "list_mcp_project_dirs") throw new Error("boom-local");
+      if (cmd === "list_remote_mcp_project_dirs") throw new Error("boom-remote");
+      return [];
+    });
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush();
+    const txt = () => section.element.querySelector(".mcp-dirs")?.textContent ?? "";
+    expect(txt()).toContain("读不到");
+    expect(txt()).not.toContain("还没有用过");
+
+    setCurrentMachine("aya");
+    await flush();
+    expect(txt()).toContain("读不到");
+    // 最要紧的一条：不许**永远停在**「读取中…」。
+    expect(txt()).not.toContain("读取中");
+  });
+
+  it("★ P6b-D：切了机器、结果还没回来的这段时间，**不许还挂着上一台的路径**", async () => {
+    document.body.replaceChildren();
+    // `selectMachine` 的注释逐字：「本机/远端项目路径**不通用**，切机器清空」——
+    // 它清了输入框，却没清候选。改之前那是不可见的 datalist；P6b 把它变成了
+    // **可见且可点**的清单 ⇒ 切到 B 机后仍展示 A 机的路径，点一下就是拿 A 的路径去读 B。
+    let releaseRemote: (v: string[]) => void = () => {};
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "list_mcp_project_dirs") return ["/local/a", "/local/b"];
+      if (cmd === "list_remote_mcp_project_dirs")
+        return new Promise<string[]>((r) => {
+          releaseRemote = r;
+        });
+      return [];
+    });
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush();
+    expect(chips(section.element)).toEqual(["/local/a", "/local/b"]);
+
+    setCurrentMachine("aya");
+    await flush();
+    // 远端还没回来 —— 此刻一条本机路径都不许还挂在那儿。
+    expect(chips(section.element)).toEqual([]);
+    expect(section.element.querySelector(".mcp-dirs")?.textContent).toContain("读取中");
+
+    releaseRemote(["/remote/x"]);
+    await flush();
+    expect(chips(section.element)).toEqual(["/remote/x"]);
   });
 
   it("★ P6b-Y2：切走之后，迟到的枚举结果不许覆盖新机器的清单", async () => {
