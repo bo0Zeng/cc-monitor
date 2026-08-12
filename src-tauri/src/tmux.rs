@@ -119,7 +119,7 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
     Ok(Some(parse_visible_tmux_sessions(&out)))
 }
 
-/// P3t-Y2b：**本机今天占着哪些 tmux 会话名** —— 只答这一个问题。
+/// P3-刀2-UI：**本机今天有哪些 tmux 会话** —— 与远端 `list_remote_tmux` 同形。
 ///
 /// # 为什么不是 `list_remote_tmux` 加一条本机分支
 ///
@@ -142,22 +142,30 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
 ///
 /// # 为什么必须有它
 ///
-/// 会话名只许由前端 `mintTmuxName` 铸（全仓唯一带**撞名避让**的铸造口，F13），
-/// 而它要一个 `existing` 集合。远端那侧从 `list_remote_tmux` 拿；
-/// **本机没有 SSH 那条路**，不给它一个读口，本机就只能「不避让」——
-/// 那正是 issue #76「静默接进第一个会话，而用户以为开了新的」。
+/// 两个消费者，问的是同一件事的两半：
+/// ① **铸名**（P3t-Y2b）：`mintTmuxName` 要一个 `existing` 集合。远端从 `list_remote_tmux` 拿；
+///    本机没有 SSH 那条路，不给读口就只能「不避让」= issue #76。
+/// ② **杀会话的菜单**（P3 刀 2 的 UI 半）：要认出「哪个 tmux 跑着本 tab 的 sid」。
+///    这一格**必须有 `@ccm_sid`，光有名字不行** —— 按 `<sid8>-cc` 前缀去猜，
+///    与 `INVARIANTS §30` 逐字禁的「按目录回退猜」是同一类错（都是拿命名巧合当身份）。
 ///
-/// 拿不到快照（本机 daemon 通道没起 / 还没推过帧）⇒ 回 `None`，**不是空集**：
-/// 空集会让调用方以为「没有任何名字被占」从而放心铸名，那是把「不知道」当成「知道没有」。
+/// ★★ **它从「只回名字」放宽到「回整条会话」是 P3 刀 2 的 scope-changed**，理由如上 ②。
+/// 放宽**没有**碰 devbench F08 锁住的那扇门 —— 那条锁的是「拿这份快照替换 `awaitExitFor`
+/// 那个 1s 轮询」，而 `awaitExitFor` 等的是 **pane 前台命令**变化（无 hook ⇒ 快照对它永不刷新）。
+/// 本条的两个消费者都不问那个：①问名字集合、②问 `@ccm_sid` 归属，
+/// 而这两样都由 `session-created/closed/renamed` 三条 hook 覆盖。
+///
+/// ⚠ **诚实边界**：返回值里的 `command` 那一列**可能是陈旧的**（它正是无 hook 的那一列）。
+/// 后果是菜单上「杀死会话」与「kill 空 tmux」的**文案**可能选错一个，kill 本身照样打得中。
+/// ⇒ 依赖 `command` 判活的流程（换号重启的 `awaitExitFor`）**不许**改读本机这条，
+/// 它今天由 `tabs.ts` 的 `origin === null` 闸挡着（A7 前不支持本地重启）。
+///
+/// 拿不到快照（本机 daemon 通道没起 / 还没推过帧）⇒ 回 `None`，**不是空表**：
+/// 空表会让调用方以为「一个会话都没有」，那是把「不知道」当成「知道没有」。
 #[tauri::command]
-pub fn local_tmux_names() -> Option<Vec<String>> {
+pub fn list_local_tmux() -> Option<Vec<TmuxSession>> {
     let raw = ssh_source::tmux_raw_for(crate::inbound_client::LOCAL_ORIGIN)?;
-    Some(
-        parse_visible_tmux_sessions(&raw)
-            .into_iter()
-            .map(|s| s.name)
-            .collect(),
-    )
+    Some(parse_visible_tmux_sessions(&raw))
 }
 
 /// `tmux ls` 原始输出 → **前端可见**的会话列表：解析 + 滤掉一次性用量探针会话（F10）。

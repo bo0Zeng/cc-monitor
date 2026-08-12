@@ -46,6 +46,10 @@ import {
   runRemoteResumeIntoExistingTmux,
   runRemoteAttach,
 } from "./remote-launch-run";
+// ⚠ **两个同名常量**：本文件要的是 `daemon-policy` 那个（`"<local>"`，与 Rust
+// `inbound_client::LOCAL_ORIGIN` 逐字节相同、有跨语言判据钉着）；`accounts.ts` 里那个是
+// `"__local__"`，是账号面自己的标记，**不是 daemon origin**。导错一个不会红，只会静默查不到。
+import { LOCAL_ORIGIN } from "./daemon-policy";
 import { commands } from "./ipc/commands";
 import { pickFreshTmuxName } from "./remote-launch";
 import { collectEditedFiles } from "./panorama/session-files";
@@ -2081,8 +2085,8 @@ export class TabManager {
     //「静默接进第一个会话，而用户以为开了新的」。
     let tmuxName: string | null = null;
     try {
-      const names = await commands.local_tmux_names();
-      if (names) tmuxName = pickFreshTmuxName(sid, new Set(names));
+      const sessions = await commands.list_local_tmux();
+      if (sessions) tmuxName = pickFreshTmuxName(sid, new Set(sessions.map((s) => s.name)));
     } catch {
       // 读不到就当不知道 —— 与上面同一条纪律，绝不退化成空集。
       tmuxName = null;
@@ -2262,13 +2266,64 @@ export class TabManager {
     origin: string,
   ): Promise<TmuxSession[] | null | undefined> {
     try {
-      const sessions = await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
+      // ★ P3 刀 2 UI：本机走自己的读口 —— 它读的是 daemon 推来的快照，不走 SSH
+      //（`<local>` 拿去查远端配置只会报「未找到远端配置」，与真实原因毫无关系）。
+      // 这就是 `C1`「差别只允许出现在传输这一跳」在读面上的样子：同一个返回类型、同一批消费者。
+      const sessions =
+        origin === LOCAL_ORIGIN
+          ? await commands.list_local_tmux()
+          : await invoke<TmuxSession[] | null>("list_remote_tmux", { origin });
       // 只缓存确定结果（成功列表 / NO_TMUX=null）；瞬时 ssh 失败不缓存，免 8s 内抑制重试（D-Sug3）。
       this.tmuxCache.set(origin, { ts: Date.now(), sessions });
       return sessions;
     } catch {
       return undefined;
     }
+  }
+
+  /** ★ P3 刀 2 的 UI 半：本机 tab 的「杀死会话」。
+   *
+   *  与远端那条（`resolveAttachMenuItem`）**共用同一批判定函数**（`findClaudeTmuxMatches`）——
+   *  这就是 `C1`「差别只允许出现在传输这一跳」：读口不同（daemon 快照 vs 一次性 SSH），
+   *  之后的一切逐字相同。
+   *
+   *  ⚠ **按 `@ccm_sid` 认，不按名字前缀猜。** 本机会话名今天确实长成 `<sid8>-cc`，
+   *  但拿那个去匹配就是「用命名巧合当身份」—— `INVARIANTS §30` 逐字禁的正是这一类
+   *  （它禁的是按 cwd 猜，同一个错的另一种写法）。名字会被 `/branch` 漂移、会被用户改名。
+   */
+  private async resolveLocalKillMenuItem(sid: string): Promise<void> {
+    const gen = tabMenuGeneration;
+    const got = await this.fetchTmuxFresh(LOCAL_ORIGIN);
+    if (gen !== tabMenuGeneration) return;
+    // `undefined` = 读口抛了；`null` = **本机 daemon 通道不在**（不知道，不是「没有」）。
+    // 两种都不该留一个假装能用的菜单项 —— 移除它，别让用户点一个必失败的破坏性动作。
+    if (got === undefined || got === null) {
+      removeTabContextMenuItem("kill");
+      return;
+    }
+    const matches = findClaudeTmuxMatches(got, sid);
+    if (matches.length === 0) {
+      removeTabContextMenuItem("kill");
+      return;
+    }
+    // F04（R10）同款分级：破坏性动作命中 ≥2 个就**拒绝**，不折叠成第一个。
+    if (matches.length > 1) {
+      updateTabContextMenuItem("kill", {
+        id: "kill",
+        label: `杀死会话（检测到 ${matches.length} 个同身份会话，拒绝）`,
+        enabled: false,
+        danger: true,
+        onClick: () => {},
+      });
+      return;
+    }
+    const name = matches[0].name;
+    updateTabContextMenuItem("kill", {
+      id: "kill",
+      label: `杀死会话（kill tmux ${name}）`,
+      danger: true,
+      onClick: () => this.killRemoteTmux(LOCAL_ORIGIN, name, false),
+    });
   }
 
   private async resolveAttachMenuItem(
@@ -2654,24 +2709,30 @@ export class TabManager {
       : "";
     // idle-tmux（灰 tab）：claude 已退、只剩空 shell，文案别再说"正在运行的 Claude"；
     // 杀掉这个残留 tmux → tab 转归档（archived）→ 即可 Resume（给灰态一个出口，治 UX 审计 #1）。
+    // ★ P3 刀 2 UI：本机也会走到这里 ⇒ 文案不能再写死「远端」。
+    // 这不是措辞洁癖：一个说「将终止**远端**……」的确认框，用在本机会话上是**在说假话**，
+    // 而它恰好是个不可恢复的破坏性动作的最后一道人工闸。
+    const isLocal = origin === LOCAL_ORIGIN;
+    const where = isLocal ? "本机" : "远端";
     const body = opts?.idle
       ? "该会话里 Claude 已退出（只剩空 tmux shell）；kill 掉这个残留会话。杀掉后 tab 转归档、可 Resume（若是该机唯一会话，可能要等下次重连对账才归档）。"
-      : "将终止远端这个 tmux 会话里正在运行的 Claude，未保存的交互会中断。";
+      : `将终止${where}这个 tmux 会话里正在运行的 Claude，未保存的交互会中断。`;
     // auto-e2e F-E4：可注入 confirm seam（对齐 account-restart.ts 的 `opts.confirm ?? window.confirm`）。
     // 默认（不传 opts）走 `window.confirm`，交互零变化——headless e2e/DEV 才注入 ()=>true/false。
     const confirmFn = opts?.confirm ?? ((m: string) => window.confirm(m));
     const ok = confirmFn(
-      `杀死会话「${tmuxName}」（机器 ${origin}）？\n\n${body}\n此操作不可恢复。${caveat}`,
+      `杀死会话「${tmuxName}」（机器 ${isLocal ? "本机" : origin}）？\n\n${body}\n此操作不可恢复。${caveat}`,
     );
     if (!ok) return;
     void (async () => {
       try {
         await invoke("kill_remote_tmux", { origin, target: tmuxName });
+        const who = isLocal ? "本机" : `远端 [${origin}]`;
         showActionFailureToast(
           "已杀死会话",
           opts?.idle
-            ? `远端 [${origin}] 的 tmux 会话「${tmuxName}」已终止；tab 随后转归档、可 Resume（唯一会话时可能要等下次对账）。`
-            : `远端 [${origin}] 的 tmux 会话「${tmuxName}」已终止；tab 稍后自动变灰。`,
+            ? `${who} 的 tmux 会话「${tmuxName}」已终止；tab 随后转归档、可 Resume（唯一会话时可能要等下次对账）。`
+            : `${who} 的 tmux 会话「${tmuxName}」已终止；tab 稍后自动变灰。`,
           { level: "info", durationMs: 6000 },
         );
       } catch (err) {
@@ -3072,9 +3133,28 @@ export class TabManager {
           needAsyncAttach = true;
         }
       }
+      // ★ P3 刀 2 的 UI 半：**本机 tab 也给「杀死会话」**。
+      //
+      // 只加 kill 这一格 —— attach / 预览那两格本机今天还没有对象可接
+      //（前者要本机 attach 路径、后者要 `capture_remote_pane` 的本机对侧），归后面的刀。
+      // 一次只开一格，是为了让「哪一格已经通了」这件事在菜单上就是可见的。
+      let needAsyncLocalKill = false;
+      if (origin === null && t?.status !== "archived") {
+        items.push({
+          id: "kill",
+          label: "杀死会话（检测 tmux…）",
+          enabled: false,
+          danger: true,
+          onClick: () => {},
+        });
+        needAsyncLocalKill = true;
+      }
       showTabContextMenu(e.clientX, e.clientY, items);
       if (needAsyncAttach && origin !== null && cwd) {
         void this.resolveAttachMenuItem(origin, cwd, sid);
+      }
+      if (needAsyncLocalKill) {
+        void this.resolveLocalKillMenuItem(sid);
       }
       // A4/A5：远端 tab → 异步追加账号项（归档=「把此会话切到账号 X（resume）」/ 活=「…（重启）」）。
       if (origin !== null && t) {

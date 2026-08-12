@@ -1013,7 +1013,11 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
   it("P3t-Y2b 本地 resume：拿到本机 tmux 名单 → 铸一个不撞的名字传给后端", async () => {
     (invoke as unknown as Mock).mockImplementation(async (cmd: string) => {
       // 基名 `l1abcdef-cc` 已被占 ⇒ `mintTmuxName` 必须让到 `-2`。
-      if (cmd === "local_tmux_names") return ["l1abcdef-cc", "unrelated"];
+      if (cmd === "list_local_tmux")
+        return [
+          { name: "l1abcdef-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: null },
+          { name: "unrelated", path: "/p", command: "bash", attached: false, windows: 1, sid: null },
+        ];
       return undefined;
     });
     tm.ensureTab("l1abcdef", "/home/u/p", "/p/l1abcdef.jsonl", 0, null);
@@ -1291,6 +1295,58 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     );
   };
   const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+  // ★★ P3 刀 2 的 UI 半：**本机 tab 也有「杀死会话」**。
+  //
+  // 三格各钉一条，因为它们**失败方式完全不同**：
+  // ① 通道不在（`null`）⇒ 不许留一个能点的破坏性菜单项 —— `null` 是「不知道」，
+  //    留着它等于让用户点一个必失败的 kill。
+  // ② 命中恰好一个 ⇒ 按 `@ccm_sid` 认，**不按名字前缀猜**（下面那条埋了名字诱饵）。
+  // ③ 命中 ≥2 个 ⇒ 拒绝，不折叠成第一个（F04 R10 同款分级：破坏性动作代价不可逆）。
+  it("P3 刀2-UI 本机 tab 右键：daemon 通道不在（null）→ kill 项消失，不留必失败的破坏性动作", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_local_tmux" ? Promise.resolve(null) : Promise.resolve(undefined),
+    );
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, null);
+    rightClick("k1abcdef");
+    expect(killBtn()?.textContent).toContain("检测 tmux");
+    await flush();
+    expect(killBtn()).toBeNull();
+  });
+
+  it("P3 刀2-UI 本机 tab 右键：按 @ccm_sid 认出唯一那个（名字前缀是诱饵）", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_local_tmux"
+        ? Promise.resolve([
+            // ★ 名字长得就是本 tab 的 `<sid8>-cc`，但 `@ccm_sid` 是别人的 —— **诱饵**。
+            //   按名字前缀猜就会中它，那是「拿命名巧合当身份」（§30 禁的那一类）。
+            { name: "k1abcdef-cc", path: "/home/u/p", command: "claude", attached: false, windows: 1, sid: "someone-else" },
+            { name: "unrelated-cc", path: "/home/u/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef" },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, null);
+    rightClick("k1abcdef");
+    await flush();
+    expect(killBtn()?.textContent).toContain("unrelated-cc");
+    expect(killBtn()?.textContent).not.toContain("k1abcdef-cc");
+  });
+
+  it("P3 刀2-UI 本机 tab 右键：同身份命中 2 个 → 拒绝，不折叠成第一个", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_local_tmux"
+        ? Promise.resolve([
+            { name: "a-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef" },
+            { name: "b-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef" },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, null);
+    rightClick("k1abcdef");
+    await flush();
+    expect(killBtn()?.textContent).toContain("拒绝");
+    expect(killBtn()?.disabled).toBe(true);
+  });
 
   it("远端 tab 右键 → 反查命中 claude 会话 → attach 项由禁用占位就绪为可点", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) =>
