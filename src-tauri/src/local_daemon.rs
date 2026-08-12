@@ -15,7 +15,11 @@
 //!
 //! 那边是**平台无关的监护机制**（起、看住、判死、重起）。这边是**宿主知识**：
 //! 落点目录在哪、当前 arch 是什么、平台怎么置可执行位、句柄存哪。
-//! `C10` 要求前者不认识后者，所以两边不能合并。
+//! **`backend-split` 的 C10**〔用 08-01〕要求前者不认识后者，所以两边不能合并。
+//!
+//! ⚠ **编号在跨工作区之间会撞**：`control-parity` 也有一条 C10，讲的是**单 exe 内嵌自释放**
+//! （完全不同的事）。一次补审就是因为只读了后者的定框，把这里的引用判成了「引错 charter」。
+//! ⇒ 代码里引 charter **一律带工作区名**，裸编号在几个月后没人分得清指哪一条。
 
 use crate::backend::control::local_backend::{self, Resolved, SuperviseHandle};
 
@@ -101,7 +105,7 @@ pub fn start_local_backend() -> Resolved {
         env!("CCM_TARGET_TRIPLE"),
         &extract_dir,
         embedded,
-        // C10：平台知识由宿主注入，backend 那半不认识 `#[cfg(unix)]`。
+        // `backend-split` 的 C10：平台知识由宿主注入，backend 那半不认识 `#[cfg(unix)]`。
         &crate::platform_fs::make_executable,
         std::sync::Arc::new(|e| tracing::info!("本机后端: {e:?}")),
     );
