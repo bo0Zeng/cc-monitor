@@ -81,7 +81,7 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   ["test:history-actions", "src/views/history-actions.test.ts", 10],
   ["test:usage-pivot", "src/views/usage-pivot.test.ts", 14],
   ["test:pricing", "src/views/pricing.test.ts", 6],
-  ["test:session-backend", "src/session-backend.test.ts", 9],
+  ["test:session-backend", "src/session-backend.test.ts", 10], // P3s-Y2 +1（新造名字必须过铸造口）
   ["test:panorama-session-files", "src/panorama/session-files.test.ts", 7],
   ["test:launch-dimensions", "src/launch-dimensions.test.ts", 28],
   ["test:launch-render-cli", "src/launch-render-cli.test.ts", 26],
