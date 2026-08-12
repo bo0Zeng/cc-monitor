@@ -269,7 +269,8 @@ mod tests {
         ),
         ("get_search_index_status", "search.index", Side::Local),
         ("rebuild_search_index", "search.index", Side::Local),
-        ("load_subagent", "subagent.load", Side::Local),
+        // P7c-1（08-12）：远端会话的 subagent 展开做出来了 ⇒ 两侧都服务。
+        ("load_subagent", "subagent.load", Side::Both),
         ("get_session_tasks", "session.tasks", Side::Local),
         ("config_surface_report", "audit.config-surface", Side::Local),
         // U-CC1：漂移记账是**进程内**的全局账本，本地行与远端行都经同一个
@@ -400,7 +401,7 @@ mod tests {
         ("session.tasks", Asym::ParityDebt, "**实测**：`get_session_tasks` 走 `tasks_root_for_current_claude_dir()` → `paths::resolve_claude_dir()`，读的是**本机**目录。远端会话的任务在远端机器上 ⇒ 远端 tab 拿不到任务列表。"),
         ("sftp.file-panel", Asym::NaturallyAsymmetric, "§40 天然不对称白名单第 1 条：本地有操作系统的文件管理器，不需要它。"),
         ("ssh.host-config", Asym::NaturallyAsymmetric, "本地按 §40 的定义就是「**不走 ssh** 的远端」⇒ ssh 目标的枚举/解析/导入/连通性测试/公钥推送在本地没有对应物。"),
-        ("subagent.load", Asym::ParityDebt, "**实测**：`load_subagent` 拿 `parent_jsonl_path` 建 `PathBuf` 并 `is_dir()`，读的是**本机**文件系统 ⇒ 远端会话的 subagent 展不开。"),
+        
         ("tmux.manage", Asym::ParityDebt, "★★ **P3b E 阶段重量（08-12）：那句预言「POSIX 本地落地后自动就有」——三分之三对、四分之一错。** 原文只写「`ccm` 全套修饰本地『无』」+ 那句预言，没说是哪几条命令。逐条量：① `list_remote_tmux` ⇒ **本机已有对侧** `list_local_tmux`（P3t-Y2b + P3 刀2-UI，读 daemon 推来的快照）；② `kill_remote_tmux` ⇒ **本机已通**（P3 刀 2 后端：`daemon_kill` 传输无关，且本机专属错误文案已加）；③ `tmux_send_keys` ⇒ **本机已通**（同款 `daemon_route` 分流）；④ `capture_remote_pane` ⇒ **仍无本机对侧**。⚠ **P4d-Y5（08-12）改了它的一半**：原文接着写「它 `load_remote_config_by_label(&origin)`，对 `<local>` 会报「未找到远端配置」」—— **那半句今天已经假了**，本机分支已补上，报的是真实原因（本机 tmux 快照只带会话名不带屏幕内容，要预览得现抓一次 pane）。⇒ 假话没了，**欠账没结**：能不能预览这件事一点没变，仍等 daemon 出原语。★ 这条订正本身是 `P3b §0b` 的 A 类（过期）活样本，而制造它的正是 P4d 那一刀 —— 改了行为不回来改理由，账本当天就开始撒谎。⇒ 欠账**只剩画面预览这一格**，而它不是「自动就有」的：预览要么现跑 `capture-pane`（本机可以，但那是第二条取数路），要么等 daemon 出原语（`P4d`）。归 **P4d**，不再归 L1/L2。"),
 
     ];
@@ -605,6 +606,12 @@ mod tests {
     /// `RemoteConfig` 仍是**绝对禁**（它天然只描述一台远端机）。
     const ORIGIN_TAKING_BOTH: &[(&str, &str)] = &[
         (
+            "load_subagent",
+            "P7c-1：远端那条让 daemon **只列候选**（`--list-subagents`），\
+             description 匹配与按时间戳挑最近**留在本侧**，与本机那条共用同一个 `pick_closest`。\
+             命令体对 origin 不做远端假设 —— 它只用 origin 决定「候选从哪来」。",
+        ),
+        (
             "read_cc_bus_state",
             "P4a：本机跑**同一条 `CC_BUS_CAT_CMD`**，只是不包进 ssh（`C1` 逐字「只是远端走 ssh，本地不走」）。\
              命令体对 origin 不做远端假设 —— 它只用 origin 决定「谁来跑这条串」。",
@@ -749,8 +756,9 @@ mod tests {
         let sides = capability_sides();
         assert_eq!(sides.len(), 59, "能力总数变了"); // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.daemon-policy / daemon.status / daemon.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）
         let asym = asymmetric_capabilities();
-        assert_eq!(asym.len(), 21, "不对称能力数变了"); // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
+        assert_eq!(asym.len(), 20, "不对称能力数变了"); // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
         // P3t-Y2b +1（tmux.local-census）；**P3b -1（launch.send-into 结清：P3 刀 3 让本机真的在用它 ⇒ Both，不再不对称）**
+        // **P7c-1 -1（subagent.load 结清：远端展开做出来了 ⇒ Both）** —— daemon 只列候选，挑选留本侧（C1）
         let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
         for (_, k, _) in ASYMMETRY_REASONS {
             *kinds
@@ -762,7 +770,7 @@ mod tests {
                 .or_default() += 1;
         }
         assert_eq!(kinds.get("natural"), Some(&10), "天然不对称条数变了"); // U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）。★ P3t-Y4：这两条的**理由**换过（原来引 §36 说「本地不经 IR」——§36 只绑 Windows，且那个理由已被本机探针实测证伪），但 `natural` 的**条数没变**。P3t-Y2b +1（tmux.name-census）
-        assert_eq!(kinds.get("debt"), Some(&8), "平价欠账条数变了"); // F08 -1（usage.per-account 补平） // G6 -1；E79 -1
+        assert_eq!(kinds.get("debt"), Some(&7), "平价欠账条数变了"); // F08 -1（usage.per-account 补平） // G6 -1；E79 -1；**P7c-1 -1（subagent.load 结清：远端展开做出来了）**
         assert_eq!(kinds.get("undecided"), Some(&3), "未裁定条数变了"); // devbench F03 +1（skill.inbox：远端项目的收件箱要不要能编辑，没人裁定过） // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
         // P3b -1（launch.send-into：它的「还没裁定」被 C1/C8 + P2 + P3 刀 3 三重证伪）
     }

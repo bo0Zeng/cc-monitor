@@ -50,7 +50,7 @@ fn session_truncated_message(read_bytes: u64, lines_shown: u32) -> String {
     )
 }
 
-fn require_cfg_by_label(label: &str) -> Result<RemoteConfig, String> {
+pub(crate) fn require_cfg_by_label(label: &str) -> Result<RemoteConfig, String> {
     crate::load_remote_config_by_label(label)
         .ok_or_else(|| format!("远端 '{label}' 未配置或未启用"))
 }

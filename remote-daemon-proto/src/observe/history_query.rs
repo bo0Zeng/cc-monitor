@@ -184,6 +184,93 @@ fn fence_under_projects(claude_dir: &Path, candidate: &Path) -> Result<std::path
     Ok(target)
 }
 
+/// P7c-1：列一个父会话的 **subagent 候选**。
+///
+/// # ★ 它**完全不做匹配**，这是全部要点
+///
+/// 最容易的写法是把 monitor 的 `load_subagent` 整套搬过来（推目录 → 按 description 精确匹配
+/// → 按时间戳挑最近 → 读）。**那会长出第二套语义** —— 定框 `C1` 逐字排除，
+/// 而本轮已经在那个 `or` 上数出**四份**实现。
+///
+/// ⇒ 这里只做 daemon 独有的那件事：**列候选**。筛选与挑选留在 monitor，
+/// 与本机那条路**共用同一份** `pick_closest`。
+/// 由 `the_daemon_never_matches_or_ranks_subagents` 钉住（生产段零 `description ==`、零时间戳比较）。
+///
+/// 围栏**复用既有的** `fence_under_projects` —— subagent 目录本来就在
+/// `<claude_dir>/projects/<slug>/<sid>/subagents/` 里（实测），不用放宽任何东西。
+///
+/// 出：每行一个 `{"path","description","timestamp"}`（description/timestamp 拿不到就给 null，
+/// **不猜**）。错：exit 2 + stderr `{code,message}`，与 `--resolve` 同形。
+pub fn list_subagents(claude_dir: &Path, args: &[String]) -> i32 {
+    let Some(parent) = args.get(1) else {
+        eprintln!(
+            "{}",
+            serde_json::json!({"code":"invalid_args","message":"用法: --list-subagents <父会话 jsonl 路径>"})
+        );
+        return 2;
+    };
+    let parent_path = match fence_under_projects(claude_dir, Path::new(parent)) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("{}", serde_json::json!({"code":"path_refused","message":e}));
+            return 2;
+        }
+    };
+    // 目录推法与 monitor 侧逐字同形：`<父 jsonl 去后缀>/subagents`。
+    let Some(dir) = parent_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .and_then(|stem| parent_path.parent().map(|d| d.join(stem).join("subagents")))
+    else {
+        eprintln!(
+            "{}",
+            serde_json::json!({"code":"bad_parent","message":"父路径推不出 subagents 目录"})
+        );
+        return 2;
+    };
+    // 目录不在 = 这个会话没有 subagent，**不是错**：回空、exit 0。
+    let Ok(rd) = std::fs::read_dir(&dir) else {
+        return 0;
+    };
+    for entry in rd.flatten() {
+        let meta_path = entry.path();
+        let Some(name) = meta_path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let Some(stem) = name.strip_suffix(".meta.json") else {
+            continue;
+        };
+        let jsonl = meta_path.with_file_name(format!("{stem}.jsonl"));
+        if !jsonl.is_file() {
+            continue;
+        }
+        let description = std::fs::read_to_string(&meta_path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+            .and_then(|v| v.get("description")?.as_str().map(str::to_string));
+        // 只读**首行** —— subagent jsonl 可能很大，为一个时间戳整读是白费。
+        let timestamp = std::fs::File::open(&jsonl)
+            .ok()
+            .and_then(|f| {
+                use std::io::BufRead;
+                let mut line = String::new();
+                std::io::BufReader::new(f).read_line(&mut line).ok()?;
+                Some(line)
+            })
+            .and_then(|l| serde_json::from_str::<serde_json::Value>(l.trim()).ok())
+            .and_then(|v| v.get("timestamp")?.as_str().map(str::to_string));
+        println!(
+            "{}",
+            serde_json::json!({
+                "path": jsonl.to_string_lossy(),
+                "description": description,
+                "timestamp": timestamp,
+            })
+        );
+    }
+    0
+}
+
 fn validate_session_path(
     claude_dir: &Path,
     jsonl_path: &str,
@@ -753,6 +840,49 @@ mod tail_tests {
 
 #[cfg(test)]
 mod f07_tests {
+    /// ★ P7c1-Y2：**daemon 不许自己匹配或排序 subagent**。
+    ///
+    /// 最容易的写法是把 monitor 的 `load_subagent` 整套搬过来。那会长出第二套语义
+    /// —— 定框 `C1` 逐字排除，而本轮已经在那个 `or` 上数出**四份**实现。
+    /// ⇒ 这里只列候选；`description` 精确匹配与按时间戳挑最近**留在 monitor**。
+    #[test]
+    fn the_daemon_never_matches_or_ranks_subagents() {
+        let prod = crate::guard_support::production_code(include_str!("history_query.rs"));
+        let at = prod
+            .find("pub fn list_subagents(")
+            .expect("找不到 list_subagents —— 判据在空转");
+        let body: String = prod[at..].chars().take(2600).collect();
+        for banned in ["description ==", "sort_by", "sort_by_key", "parse_iso8601", ".abs()"] {
+            assert!(
+                !body.contains(banned),
+                "`list_subagents` 里出现了 {banned:?} —— 它开始自己**挑**了。\n\
+                 挑选逻辑只准有一份，住 monitor 的 `pick_closest`（`C1`：别长第二套语义）。"
+            );
+        }
+        // 反面：它必须真的**用了那条既有围栏**，而不是自己写一套路径检查。
+        assert!(
+            body.contains("fence_under_projects("),
+            "`list_subagents` 没走 `fence_under_projects` —— \n\
+             那是全文件**唯一**的 canonicalize + 前缀校验（audit-0805 定框 E3），别再造一份。"
+        );
+    }
+
+    /// ★ P7c1-Y1：越界路径必须被拒。
+    #[test]
+    fn listing_subagents_refuses_paths_outside_projects() {
+        let tmp = std::env::temp_dir().join(format!("p7c1-{}", std::process::id()));
+        let projects = tmp.join("projects");
+        std::fs::create_dir_all(&projects).expect("建目录");
+        let outside = tmp.join("outside.jsonl");
+        std::fs::write(&outside, "{}\n").expect("写文件");
+        let code = super::list_subagents(
+            &tmp,
+            &["--list-subagents".to_string(), outside.to_string_lossy().into_owned()],
+        );
+        assert_eq!(code, 2, "projects/ 之外的路径必须被围栏拒绝");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     /// ★ **历史查询那几条读路不许整读 jsonl**〔audit-0805 F07 / 报告 I-10 与 B-6 第 5 环〕。
     ///
     /// 两处此前都是 `read_to_string`：

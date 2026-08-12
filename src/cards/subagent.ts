@@ -70,18 +70,13 @@ export function buildAgentCard(
       d.appendChild(bodyEl);
     }
     bodyEl.replaceChildren();
-    // Batch9-F29：远端会话降级——subagent jsonl 在远端机器，本地 load_subagent
-    // 必然失败（盘点 #2）。明确提示替代报错+假重试；真·远端拉取留 backlog
-    // （daemon --read-subagent 协议扩容）。放在 loading=true 之前——早退不经
-    // finally，别让 loading 卡 true（审计 D 建议）。
-    if (ctx.origin) {
-      const note = document.createElement("div");
-      note.className = "block-agent-error";
-      note.textContent = `远端会话（[${ctx.origin}]）暂不支持展开 subagent——其记录在远端机器上。`;
-      bodyEl.appendChild(note);
-      loaded = true; // 不再重试
-      return;
-    }
+    // ★ P7c-1（08-12）：**远端会话现在也能展开了**。
+    //
+    // 这里原来是一条降级：「远端会话（[origin]）暂不支持展开 subagent——其记录在远端机器上」，
+    // 尾注还写着「真·远端拉取留 backlog（daemon `--read-subagent` 协议扩容）」——那件事做了，
+    // 只是形状不同：daemon 出 `--list-subagents` **只列候选**，
+    // description 匹配与按时间戳挑最近**留在后端本侧**，与本机那条共用同一个 `pick_closest`
+    //（定框 `C1`：别长第二套语义）。⇒ 这里只需把 origin 传下去。
     loading = true;
     bodyEl.textContent = "加载 subagent…";
 
@@ -90,6 +85,7 @@ export function buildAgentCard(
         parentJsonlPath: ctx.parentPath,
         description: desc,
         toolUseTimestamp: timestamp,
+        origin: ctx.origin ?? null,
       });
       bodyEl.replaceChildren();
       renderSubagentBody(bodyEl, result, renderChild);

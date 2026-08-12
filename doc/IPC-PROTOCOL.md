@@ -655,6 +655,13 @@ rc=2
 - `--fork-session <args>`（G2 branch-anywhere，`remote-daemon-proto/src/control/fork_write.rs`）→ 从指定消息处分叉出一个新会话文件。**daemon 唯一的写盘入口**——其余一切子命令只读；`readonly_guard` 的写白名单按路径单独盯着 `control/fork_write.rs` 这一个文件（`doc/INVARIANTS.md` §41.6）
 - `--tmux-notify <daemon_pid> <daemon_starttime>`（P4b zero-poll-liveness）→ **不是查询**，是 tmux hook 子进程走的通路：校验身份后给正在跑的 daemon 发一个信号叫它立刻重扫 tmux，**完全不碰文件系统**。两个参数缺一或非整数 ⇒ exit 2。**必须同时比对 starttime 而不只看 pid 存在**：daemon 退出后那个 pid 可能已被别的进程占用，误发信号轻则无效、重则打断无关进程（很多程序把该信号当自定义控制信号，默认处置直接终止）。身份对不上 ⇒ **静默 exit 0，不做事**
 
+- `--list-subagents <父会话 jsonl 路径>`（P7c-1，p1z）→ 列该会话的 **subagent 候选**，
+  每行一个 `{path, description, timestamp}`（拿不到就 `null`，**不猜**）。目录不存在 = 该会话没有
+  subagent ⇒ **回空 + exit 0**，不是错。路径走**与读会话族同一条围栏**
+  （`fence_under_projects`，subagent 目录本来就在 `<claude_dir>/projects/` 内）。
+  ★ **它只列不挑**：按 description 精确匹配、按 `tool_use_timestamp` 挑最近的那一步**留在客户端**
+  —— 那套逻辑本机远端共用一份，别在两侧各写一遍。挑中之后用**既有的** `--read-session` 取内容。
+
 #### 控制面的 CLI 那一半（P4d，p1y）
 
 上面那些都是**读面**。控制面（起会话 / 杀会话）此前**只走流连接的命令信封**，
