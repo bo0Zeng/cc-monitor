@@ -53,6 +53,70 @@ describe("P0c 排队消息：remove 要建卡，dequeue 不许", () => {
     expect(got.queued).toEqual(["排队的话"]);
   });
 
+  // ★★ D 阶段补审：卡上的时间必须是**用户打字的时刻**，不是被插进去的时刻。
+  //
+  // 实测本会话 16 条：两者中位数差 **25.4s**，最大 **125.4s**。
+  // 标一个晚两分钟的时间 = 告诉读的人「他是那时候说的」，那是假的。
+  it("卡上的时间取 enqueue（打字时刻），不是 remove（被插入时刻）", () => {
+    const { sink } = recordingSink();
+    const text = "打断说的话";
+    routeMetaAndBranch(
+      mk({ type: "queue-operation", operation: "enqueue", content: text, timestamp: "2026-08-12T09:51:06.664Z" }),
+      sink,
+    );
+    const rm = mk({
+      type: "queue-operation",
+      operation: "remove",
+      content: text,
+      timestamp: "2026-08-12T09:51:51.359Z", // 晚 45 秒
+    });
+    expect(routeMetaAndBranch(rm, sink)).toBe("content");
+    expect((rm.message as { timestamp: string }).timestamp).toBe("2026-08-12T09:51:06.664Z");
+  });
+
+  it("配不上 enqueue（那条没到）→ 退回用 remove 的时刻，不空着", () => {
+    const { sink } = recordingSink();
+    const rm = mk({
+      type: "queue-operation",
+      operation: "remove",
+      content: "没有对应 enqueue 的话",
+      timestamp: "2026-08-12T10:00:00.000Z",
+    });
+    expect(routeMetaAndBranch(rm, sink)).toBe("content");
+    // 晚 25 秒的时间仍比没有时间有用，且卡上「排队时发出」已在提示读者。
+    expect((rm.message as { timestamp: string }).timestamp).toBe("2026-08-12T10:00:00.000Z");
+  });
+
+  // ★ 上界是**真的有界**，不是注释里说说。
+  //
+  // 这条是 D 阶段变异逼出来的：去掉裁剪那一行，上面两条判据**照样绿** ——
+  // 也就是「有界」这个说法当时没有任何东西守着，而一个无上界的进程内 map
+  // 在长会话里就是慢性泄漏。
+  it("打字时刻缓存有上界：撑爆之后最老的那条被丢掉，退回用 remove 的时刻", () => {
+    const { sink } = recordingSink();
+    const oldest = "最老的那句话";
+    routeMetaAndBranch(
+      mk({ type: "queue-operation", operation: "enqueue", content: oldest, timestamp: "2026-01-01T00:00:00.000Z" }),
+      sink,
+    );
+    // 再灌 200 条把它挤出去（上界 200）。
+    for (let i = 0; i < 200; i++) {
+      routeMetaAndBranch(
+        mk({ type: "queue-operation", operation: "enqueue", content: `填充-${i}`, timestamp: "2026-01-02T00:00:00.000Z" }),
+        sink,
+      );
+    }
+    const rm = mk({
+      type: "queue-operation",
+      operation: "remove",
+      content: oldest,
+      timestamp: "2026-08-12T10:00:00.000Z",
+    });
+    expect(routeMetaAndBranch(rm, sink)).toBe("content");
+    // 配不上了 ⇒ 退回 remove 的时刻（而不是拿到那个 2026-01-01）。
+    expect((rm.message as { timestamp: string }).timestamp).toBe("2026-08-12T10:00:00.000Z");
+  });
+
   it("remove + <task-notification> → consumed（系统注入不是用户说的话）", () => {
     const { sink } = recordingSink();
     const note = "<task-notification>\n<task-id>abc</task-id>\n</task-notification>";

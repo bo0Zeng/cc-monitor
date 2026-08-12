@@ -101,6 +101,30 @@ export type MetaSink = Pick<
  * - "content":其余记录(含 render 后会 skip 的 attachment/空 user——它们仍占链节点,
  *   branch record 已在本函数喂送,issue #8 链完整性)。
  */
+/** P0c：content → 用户**打字**的时刻（`enqueue` 那一刻）。
+ *
+ *  ⚠ **有界**：只留最近 200 条。这是个进程内缓存，不是账本 ——
+ *  没有上界的 map 在长会话里就是一个慢性泄漏，而它的价值只在「几十秒内配上」。
+ *  超出就丢，丢了退回用 `remove` 的时刻（见调用点）。 */
+const QUEUED_AT = new Map<string, string>();
+const QUEUED_AT_CAP = 200;
+
+function rememberQueuedAt(content: string, at: string | null): void {
+  if (!at) return;
+  // 后写覆盖先写：同一句话重发时，要的是**最近一次**打字时刻。
+  QUEUED_AT.delete(content);
+  QUEUED_AT.set(content, at);
+  while (QUEUED_AT.size > QUEUED_AT_CAP) {
+    const oldest = QUEUED_AT.keys().next().value;
+    if (oldest === undefined) break;
+    QUEUED_AT.delete(oldest);
+  }
+}
+
+function queuedAtOf(content: string): string | null {
+  return QUEUED_AT.get(content) ?? null;
+}
+
 /** P0c：一条 `remove` 的 content 算不算「用户说的话」。
  *
  *  ⚠ **这是白名单式排除，不是黑名单** —— 今天只排掉一种已知的系统注入。
@@ -147,9 +171,25 @@ export function routeMetaAndBranch(
   if (message.type === "queue-operation") {
     if (message.operation === "enqueue" && message.content) {
       sink.onQueueOperation?.(message.content);
+      // ★★ **顺手记下打字时刻**〔D 阶段补审 08-12〕。
+      //
+      // 下面 `remove` 那一支建卡时，手上只有 `remove` 的时间戳 ——
+      // 而那是「被插进正在跑的那一轮」的时刻，**不是用户打字的时刻**。
+      // 实测本会话 16 条：中位数差 **25.4s**，最大 **125.4s**。
+      // 卡上标一个晚两分钟的时间，等于告诉读的人「他是那时候说的」——**那是假的**。
+      //
+      // 而打字时刻就在 `enqueue` 这条记录上，我们本来就读到了，只是没用。
+      // ⇒ 按 content 记一份，`remove` 时取回来。**不做配对/去重**：
+      // 同一句话重发时后写覆盖先写，取到的是最近一次打字时刻 —— 那正是想要的。
+      rememberQueuedAt(message.content, message.timestamp);
       return "consumed";
     }
     if (message.operation === "remove" && isQueuedUserSpeech(message.content)) {
+      // 把打字时刻贴回记录上 —— 下游 `renderMessage` 只认 `timestamp` 这一个字段。
+      // 取不到（enqueue 那条没到 / 已被挤出）⇒ 原样用 `remove` 的时刻，**不空着**：
+      // 一个晚 25 秒的时间仍然比没有时间有用，而卡上「排队时发出」那句已经在提示读者。
+      const typedAt = queuedAtOf(message.content);
+      if (typedAt) message.timestamp = typedAt;
       // ⚠ **不喂 branch**：它没有 `uuid`/`parentUuid`，喂进去等于给分叉折叠算法
       // 一个没有父子关系的节点（issue #8 的链完整性）。⇒ 建卡但不进链，
       // 由 `queued_user_message_never_enters_the_branch_chain` 钉住。
