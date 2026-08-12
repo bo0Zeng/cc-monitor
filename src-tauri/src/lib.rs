@@ -29,6 +29,7 @@ mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制�
 mod inbound_client;
 mod daemon_policy; // P2s（C8）：每台机一份 daemon 策略（生效值住内存，持久化归前端）
 mod daemon_control; // P2s（C8）：每台机一个开关的命令层——只认 origin，不认 ssh 也不认进程监护
+mod local_origin_registry;
 mod local_daemon; // P2s（C8）：本机 daemon 的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
 mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
 mod launch;
