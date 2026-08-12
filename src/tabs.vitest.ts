@@ -3187,3 +3187,76 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
     expect(order(), "撕窗口那一路不许顺带重排").toEqual(before);
   });
 });
+
+// ===== P7a-3（#61）：标签页集合的**渲染**那半 =====
+describe("P7a-3 集合分组渲染", () => {
+  let tm: TabManager;
+  let bar: HTMLElement;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    tm = makeTM();
+    bar = document.body.firstElementChild as HTMLElement;
+  });
+  const flushBar = (): void =>
+    (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
+  const setCols = (cols: unknown): void => {
+    (tm as unknown as { collections: unknown }).collections = cols;
+  };
+  const order = (): string[] => (tm as unknown as { orderedIds: string[] }).orderedIds;
+
+  it("★ P7a3-Y2：成员进它的组，非成员照常直接挂主栏", () => {
+    tm.ensureTab("a", "/c1", "p", 0, null);
+    tm.ensureTab("b", "/c2", "p", 0, null);
+    tm.ensureTab("c", "/c3", "p", 0, null);
+    setCols([{ id: "g1", name: "白天", members: ["a", "c"] }]);
+    flushBar();
+
+    const group = bar.querySelector<HTMLElement>(".tab-group")!;
+    expect(group, "组容器要在").toBeTruthy();
+    expect(group.querySelector(".tab-group-name")!.textContent).toBe("白天");
+    // 成员真的在组里（两个），非成员一个都不在。
+    expect(group.querySelectorAll(".tab-group-list > .tab")).toHaveLength(2);
+    // 非成员直挂主栏（不是任何组的子孙）。
+    const loose = [...bar.children].filter((e) => e.classList.contains("tab"));
+    expect(loose).toHaveLength(1);
+  });
+
+  it("★ P7a3-Y2b：归档优先于集合 —— 灰 tab 进抽屉，不进组", () => {
+    tm.ensureTab("a", "/c1", "p", 0, null);
+    tm.ensureTab("b", "/c2", "p", 0, null);
+    tm.switchTo("b");
+    tm.archiveTab("a");
+    setCols([{ id: "g1", name: "白天", members: ["a"] }]);
+    flushBar();
+    expect(bar.querySelectorAll(".tab-group-list > .tab")).toHaveLength(0);
+    expect(
+      document.querySelectorAll(".tab-archive-list > .tab"),
+      "归档那条分流优先",
+    ).toHaveLength(1);
+  });
+
+  it("★ P7a3-Y3：解散集合**一个会话都不许少**", () => {
+    tm.ensureTab("a", "/c1", "p", 0, null);
+    tm.ensureTab("b", "/c2", "p", 0, null);
+    setCols([{ id: "g1", name: "白天", members: ["a"] }]);
+    flushBar();
+    const before = [...order()];
+    expect(bar.querySelector(".tab-group")).toBeTruthy();
+
+    (bar.querySelector(".tab-group-del") as HTMLButtonElement).click();
+    flushBar();
+    // 「没删掉会话」是**没有发生的事** ⇒ 钉逐项相等，不是钉「没崩」。
+    expect(order(), "集合是个视图，不是容器").toEqual(before);
+    expect(bar.querySelector(".tab-group"), "组容器该没了").toBeNull();
+    expect([...bar.children].filter((e) => e.classList.contains("tab"))).toHaveLength(2);
+  });
+
+  it("空集合也留着 —— 刚建的集合不该看不见", () => {
+    tm.ensureTab("a", "/c1", "p", 0, null);
+    setCols([{ id: "g1", name: "空的", members: [] }]);
+    flushBar();
+    expect(bar.querySelector(".tab-group")).toBeTruthy();
+    expect(bar.querySelectorAll(".tab-group-list > .tab")).toHaveLength(0);
+  });
+});

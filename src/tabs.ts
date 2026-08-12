@@ -41,6 +41,18 @@ import { isAgentTool } from "./cards/subagent";
 import type { AgentsPanel, AgentEntry } from "./agents-panel";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 import {
+  addMember,
+  collectionOf,
+  createCollection,
+  deleteCollection,
+  getCollections,
+  newCollectionId,
+  removeMember,
+  renameCollection,
+  setCollections,
+  type TabCollection,
+} from "./tab-collections";
+import {
   runRemoteResume,
   runRemoteResumeTmux,
   runLocalResumeIntoExistingTmux,
@@ -446,6 +458,11 @@ export class TabManager {
    * 三个元素由本类自己建（不改构造签名：那有两个生产调用点 + 一批夹具），
    * 挂在 `barEl` 之后，作为它的兄弟。
    */
+  /** P7a-3（#61）：标签页集合。**零自动归组**〔用 08-11「纯手动」〕。 */
+  private collections: TabCollection[] = [];
+  /** 每个集合在主栏里的容器（组头 + 成员列表）。 */
+  private groupEls = new Map<string, { wrap: HTMLElement; head: HTMLElement; list: HTMLElement }>();
+
   private archiveWrap: HTMLElement | null = null;
   private archiveToggle: HTMLButtonElement | null = null;
   private archiveList: HTMLElement | null = null;
@@ -3044,6 +3061,23 @@ export class TabManager {
     this.archiveList = list;
   }
 
+  /** P7a-3：从 `config.json` 拉一次集合并重画。宿主启动时调一次。 */
+  async loadCollections(): Promise<void> {
+    this.collections = await getCollections();
+    this.refreshTabBar();
+  }
+
+  /** P7a-3：落盘 + 重画。**先改内存再落盘** —— 让 UI 立刻响应，落盘失败只记日志。 */
+  private async commitCollections(next: TabCollection[]): Promise<void> {
+    this.collections = next;
+    this.refreshTabBar();
+    try {
+      await setCollections(next);
+    } catch (e) {
+      console.warn("[tab-collections] 落盘失败:", e);
+    }
+  }
+
   private archiveCollapsed(): boolean {
     return safeGet(LS_KEYS.tabArchiveCollapsed) !== "0";
   }
@@ -3061,6 +3095,48 @@ export class TabManager {
     return tab.status === "archived" && sid !== this.activeId;
   }
 
+  /**
+   * P7a-3：拿到某集合在主栏里的容器（没有就建）。
+   *
+   * 组头点一下改名、右侧 `×` 解散。**解散只去掉分组，一个 tab 都不动** ——
+   * 集合是个视图，不是容器。
+   */
+  private groupElFor(col: TabCollection): HTMLElement {
+    let g = this.groupEls.get(col.id);
+    if (!g) {
+      const wrap = document.createElement("div");
+      wrap.className = "tab-group";
+      const head = document.createElement("div");
+      head.className = "tab-group-head";
+      const name = document.createElement("button");
+      name.type = "button";
+      name.className = "tab-group-name";
+      name.addEventListener("click", () => {
+        const cur = this.collections.find((x) => x.id === col.id);
+        const next = window.prompt("集合名:", cur?.name ?? "");
+        if (next === null) return;
+        void this.commitCollections(renameCollection(this.collections, col.id, next));
+      });
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "tab-group-del";
+      del.textContent = "×";
+      del.title = "解散这个集合（只去掉分组，会话一个都不会关）";
+      del.addEventListener("click", () => {
+        void this.commitCollections(deleteCollection(this.collections, col.id));
+      });
+      head.append(name, del);
+      const list = document.createElement("div");
+      list.className = "tab-group-list";
+      wrap.append(head, list);
+      this.barEl.appendChild(wrap);
+      g = { wrap, head, list };
+      this.groupEls.set(col.id, g);
+    }
+    (g.head.firstElementChild as HTMLElement).textContent = col.name;
+    return g.list;
+  }
+
   private refreshTabBar(): void {
     // 1. 删
     const wanted = new Set(this.orderedIds);
@@ -3072,11 +3148,22 @@ export class TabManager {
       }
     }
 
-    // 2 + 3 + 4. 创建 / 更新 / 排序（P7a-1：**两个容器各一个游标**）
+    // 2 + 3 + 4. 创建 / 更新 / 排序
+    // P7a-1：主栏 / 归档抽屉两个容器；P7a-3：主栏里再按集合分若干组
+    // ⇒ 推广成「**每容器一个游标**」。
     this.ensureArchiveUi();
     const collapsed = this.archiveCollapsed();
-    let prevBar: ChildNode | null = null;
-    let prevArc: ChildNode | null = null;
+    // 组容器按集合顺序先摆好（空集合也留着 —— 用户刚建的集合不该看不见）。
+    const liveIds = new Set(this.orderedIds);
+    for (const [id, g] of this.groupEls) {
+      if (!this.collections.some((x) => x.id === id)) {
+        g.wrap.remove();
+        this.groupEls.delete(id);
+      }
+    }
+    for (const col of this.collections) this.groupElFor(col);
+    void liveIds;
+    const cursors = new Map<HTMLElement, ChildNode | null>();
     let archived = 0;
     for (const sid of this.orderedIds) {
       const tab = this.tabs.get(sid);
@@ -3089,23 +3176,20 @@ export class TabManager {
       this.updateTabButton(refs, sid, tab);
       const toArchive = this.belongsInArchive(sid, tab);
       if (toArchive) archived += 1;
-      const host = toArchive ? this.archiveList! : this.barEl;
-      // 排序：希望此 button 出现在同容器内前一个之后。
-      // ⚠ **直接引用那两个 `let`，别先塞进一个 `const`**：首轮两个游标都还是 `null`，
-      // TS 会把 `const prev = a ? b : c` 的类型窄成 `null` ⇒ 真值分支成 `never`
-      // （实测 `Property 'nextSibling' does not exist on type 'never'`）。
-      const targetNext: ChildNode | null = toArchive
-        ? prevArc
-          ? prevArc.nextSibling
-          : host.firstChild
-        : prevBar
-          ? prevBar.nextSibling
-          : host.firstChild;
+      // 归档优先于集合：灰 tab 进抽屉，不进组（`P7a-1` 的分流优先）。
+      const col = toArchive ? null : collectionOf(this.collections, sid);
+      const host = toArchive
+        ? this.archiveList!
+        : col
+          ? this.groupElFor(col)
+          : this.barEl;
+      // 排序：希望此 button 出现在**同容器内**前一个之后。
+      const prev = cursors.get(host) ?? null;
+      const targetNext: ChildNode | null = prev ? prev.nextSibling : host.firstChild;
       if (refs.root !== targetNext || refs.root.parentElement !== host) {
         host.insertBefore(refs.root, targetNext);
       }
-      if (toArchive) prevArc = refs.root;
-      else prevBar = refs.root;
+      cursors.set(host, refs.root);
     }
     if (this.archiveToggle && this.archiveList && this.archiveWrap) {
       // ▸ = 点开，▾ = 已展开（收起）。方向别反：箭头指的是**点下去会发生什么**。
@@ -3226,6 +3310,34 @@ export class TabManager {
       const items: TabMenuItem[] = [
         { label: "在新窗口打开", onClick: () => void this.openInNewWindow(sid) },
       ];
+      // P7a-3（#61）：集合 —— **纯手动**〔用 08-11「手动建, 不要自动, 纯手动」〕。
+      // 二级 flyout：现有集合各一条 + 「新建集合…」；已归组的再给一条「移出集合」。
+      const here = collectionOf(this.collections, sid);
+      const joinItems: TabMenuItem[] = this.collections
+        .filter((col) => col.id !== here?.id)
+        .map((col) => ({
+          label: col.name,
+          onClick: () => void this.commitCollections(addMember(this.collections, col.id, sid)),
+        }));
+      joinItems.push({
+        label: "新建集合…",
+        onClick: () => {
+          const name = window.prompt("新集合名:");
+          if (!name?.trim()) return;
+          const id = newCollectionId();
+          const withNew = createCollection(this.collections, name, id);
+          // 名字空/到上界时 `createCollection` 原样返回 ⇒ 别再往一个不存在的集合里塞成员。
+          if (withNew.length === this.collections.length) return;
+          void this.commitCollections(addMember(withNew, id, sid));
+        },
+      });
+      items.push({ label: "加入集合", submenu: joinItems });
+      if (here) {
+        items.push({
+          label: `移出「${here.name}」`,
+          onClick: () => void this.commitCollections(removeMember(this.collections, sid)),
+        });
+      }
       // F70（护城河）：本地会话 + 有改动集 → 「在全景高亮本会话改动」。远端（代码不在本机、
       // code-picture 索引不到）/ 无改动 都不显示（门控之一，另两道在 touchedFilesFor + highlightSession）。
       if (t && t.origin === null && t.touchedFiles.size > 0) {
