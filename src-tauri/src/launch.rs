@@ -336,10 +336,17 @@ pub fn launch_powershell_window(_ps_command: &str, _local_cwd: Option<&str>) -> 
 
 /// 非 Windows 上「不开终端窗口」的**唯一**说法。前后端共用同一句话的口径
 /// （前端据 `hostOs` 决定标题，正文原样带上这句）。
+///
+/// ⚠ **「刻意不替你挑终端模拟器」这半句是跨语言标记，不许换措辞**：
+/// 前端 `POSIX_NO_WINDOW_MARKER` 按它判「这是既定设计」，换了用户会退回去看到「拉起失败」
+/// （`the_posix_marker_is_the_one_the_frontend_matches_on` 当场判红 —— 08-12 实测撞过）。
+/// 08-12 用户裁定「attach 暂时就用纯 linux bash」⇒ 只把「你自己的终端」**说实成**
+/// 「你自己的 bash」，标记那半句原样保留。**不挑终端模拟器**与**shell 用 bash**
+/// 是两件事，不冲突。
 #[cfg(any(not(windows), test))]
 pub const POSIX_NO_TERMINAL_WINDOW: &str =
     "本机不是 Windows：cc-monitor **刻意不替你挑终端模拟器**（会话容器是 tmux）——\
-     命令已复制，在你自己的终端里粘贴执行即可。这是既定设计，不是没做完。";
+     命令已复制，在你自己的 bash 里粘贴执行即可。这是既定设计，不是没做完。";
 
 /// Windows 本机 ssh.exe 可用性预检：缺 OpenSSH 客户端时 spawn 出的窗口只会报
 /// "not recognized"（spawn 本身成功→前端误报成功）——预检失败直接 Err 走剪贴板回退。
@@ -358,6 +365,26 @@ fn ssh_client_available() -> bool {
 /// （控制字符 / 双引号 / 长度）——双层防线。
 #[tauri::command]
 pub async fn launch_remote_terminal(origin: String, remote_cmd: String) -> Result<(), String> {
+    // ★★ **本机也走这条**〔用户裁定 08-12：「attach 暂时就用纯 linux bash 以及 windows 的
+    // PowerShell + Windows Terminal」〕。
+    //
+    // 在此之前 `<local>` 会掉进下面那句 `load_remote_config_by_label`，报
+    // **「未找到远端配置: "<local>"」** —— 与真实原因毫无关系的一句话。
+    // 同一族错误文案本轮第四次遇到（前三次：`daemon_kill` · `list_remote_tmux` · 本条）。
+    //
+    // 两侧各按裁定走，**没有 ssh 那一跳**：
+    // · Windows → `launch_powershell_window`（PowerShell + Windows Terminal，与远端同一个函数）；
+    // · POSIX   → 那个函数的非 Windows 臂回 `POSIX_NO_TERMINAL_WINDOW`，前端据此把命令交给用户
+    //   在自己的 bash 里执行。**这不是失败**，前端有专门的标题分档（`POSIX_NO_WINDOW_MARKER`）。
+    if origin == crate::inbound_client::LOCAL_ORIGIN {
+        return tokio::task::spawn_blocking(move || {
+            launch_powershell_window(&remote_cmd, None)?;
+            tracing::info!("launch: local terminal (no ssh)");
+            Ok::<(), String>(())
+        })
+        .await
+        .map_err(|e| format!("拉起终端任务失败: {e}"))?;
+    }
     // §10（Phase G 对齐）:体含 `where.exe .output()`(阻塞)+ 进程 spawn 等阻塞 OS 调用,
     // 挪到阻塞线程池,不堵 IPC 派发线程(与本地 resume 命令 issue #12 同处理,批内唯一
     // 遗留的 sync tauri 命令——F41 从 history.rs 抽 launch.rs 时漏跟)。
