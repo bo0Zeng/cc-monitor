@@ -971,7 +971,6 @@ mod tests {
     /// 删掉 `exact_target` 会让换号重启把 `/exit` 敲进**兄弟会话里还活着的 claude** 并 kill 它，
     /// 而 UI 报告「已重启」。**尾冒号不能省**：`send-keys`/`capture-pane` 收 target-pane，
     /// `=名`（无冒号）在那条路径上 rc=1 完全失效。
-    #[test]
     /// ★ **每一处 `-t {…}` 的目标都必须出自 `exact_target`**〔audit-0805 08-07〕。
     ///
     /// # 它补的是一条**传递来的**覆盖
@@ -1048,6 +1047,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn tmux_targets_use_exact_match() {
         // **三个命令构造点全钉死**（D 审计：此前只钉了 send-keys，另两处改回裸目标测试仍全绿）。
         let sk = build_send_keys_remote_cmd("cc-abc12345", "/exit", true).unwrap();

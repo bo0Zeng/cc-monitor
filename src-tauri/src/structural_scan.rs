@@ -225,6 +225,140 @@ pub fn pin_definition(
 mod tests {
     use super::*;
 
+    /// ★★ **两个 `#[test]` 叠在同一个函数上 ⇒ 另一个函数悄悄不是测试了。**
+    ///
+    /// # 这不是洁癖，是本仓两天内出现两次的真实事故
+    ///
+    /// | 谁 | 代价 |
+    /// |---|---|
+    /// | `inbound_client.rs`（08-11，P2s 插判据时插错位置） | `the_hello_witness_can_only_come_from_a_hello_frame` **一个属性都没有 = 死代码**，而 `the_only_way_to_build_an_inbound_client_is_into_client` 的闭合论证逐字压在它身上 |
+    /// | `tmux.rs`（`4d8cfc2`，更早） | `tmux_targets_use_exact_match` 同样掉了属性；实测 `cargo test tmux_targets_use_exact_match` 回 **`0 passed`** —— 它根本不存在 |
+    ///
+    /// # 为什么编译器拦不住
+    ///
+    /// `duplicate_macro_attributes` 只是 **warn**，而本仓 clippy 不带 `-D warnings`
+    /// （`local_backend.rs` 自己记着这条）。⇒ 编得过、跑得过、**少跑一条判据没人知道**。
+    ///
+    /// # 本条扫什么
+    ///
+    /// 本仓风格是 `#[test]` 写在**头注之前**（`#[test]` → `/// …` → `fn`），
+    /// 这让「按 fn 名找锚点再往前插」这种改法极易把新块插进「属性与它的 fn」之间。
+    /// ⇒ 判据：一个 `#[test]` 之后，跳过头注/其它属性/空行，**下一行必须是 `fn`**。
+    /// 若又遇到一个 `#[test]`，就是这个形态。
+    #[test]
+    fn no_two_test_attributes_land_on_the_same_function() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let files = guard_core::scan_tree_excluding_self(&root, &["rs"], file!());
+        let mut offenders: Vec<String> = Vec::new();
+        let mut seen = 0usize;
+        for (path, src) in &files {
+            let lines: Vec<&str> = src.lines().collect();
+            for (i, l) in lines.iter().enumerate() {
+                if l.trim() != "#[test]" {
+                    continue;
+                }
+                seen += 1;
+                for next in lines.iter().skip(i + 1) {
+                    let t = next.trim();
+                    if t.is_empty() || t.starts_with("///") || t.starts_with("//") {
+                        continue;
+                    }
+                    if t == "#[test]" {
+                        offenders.push(format!(
+                            "  {}:{} —— 这个 `#[test]` 之后又是一个 `#[test]`",
+                            path.file_name().unwrap_or_default().to_string_lossy(),
+                            i + 1
+                        ));
+                        break;
+                    }
+                    if t.starts_with("#[") {
+                        continue; // 别的属性（`#[cfg(...)]` / `#[ignore]`）合法
+                    }
+                    break; // 落到 `fn` 或别的东西：本条只管 `#[test]` 连着 `#[test]`
+                }
+            }
+        }
+        // 抽取器自检：真的扫到了测试（否则本条会零命中地绿）。
+        assert!(
+            seen > 200,
+            "只扫到 {seen} 个 `#[test]` —— 扫描面坏了，本条在空转（08-11 实测全树 {} 个文件）",
+            files.len()
+        );
+        // ── 第二半：**直接钉伤害**，不只钉症状 ────────────────────────────
+        //
+        // 上面那半认的是「`#[test]` 后面又是 `#[test]`」这个**形状**。
+        // 但真正的伤害是「某个 `fn` 没有属性、于是不是测试」——两者不等价：
+        // 08-11 我修完第一处之后，另一处照样掉了属性，而上面那半**一声不吭**。
+        //
+        // ⚠ 判据形状按实测收敛过两次：
+        // ① 第一版往回扫时遇到非 `#[` 行就停 ⇒ 多行 `#[cfg_attr(…)]` 的 `)]` 把它挡住，
+        //    把一条**活着的**判据（`tmux.rs` 的 `the_shell_gate_expression_agrees_with_the_golden_table`）
+        //    报成死的。真阳率 0% ⇒ 按铁律 18 那种版本不许留。
+        // ② 现版改成「往回扫到空行 / `}` / 上一个 fn 为止，这一段里有没有 `#[test]`」，
+        //    全树实测 **0 误报**。
+        //
+        // 人群限「`mod …test… {` 之后」+「无参无返回的 `fn 名()`」——
+        // 那正是判据的形状；带参的是夹具（`hello_frame(commands: &[&str])` 之类），不在人群里。
+        let mut orphans: Vec<String> = Vec::new();
+        for (path, src) in &files {
+            let lines: Vec<&str> = src.lines().collect();
+            let Some(start) = lines.iter().position(|l| {
+                let t = l.trim();
+                t.starts_with("mod ") && t.contains("test") && t.ends_with('{')
+            }) else {
+                continue;
+            };
+            for (i, l) in lines.iter().enumerate().skip(start) {
+                let t = l.trim();
+                if !(t.starts_with("fn ") && t.ends_with("() {")) {
+                    continue;
+                }
+                let mut k = i;
+                let mut has_attr = false;
+                while k > 0 {
+                    let prev = lines[k - 1].trim();
+                    if prev.is_empty()
+                        || prev == "\u{7d}"
+                        || prev.starts_with("fn ")
+                        || prev.starts_with("pub fn ")
+                    {
+                        break;
+                    }
+                    if prev.contains("#[test]") {
+                        has_attr = true;
+                        break;
+                    }
+                    k -= 1;
+                }
+                if !has_attr {
+                    orphans.push(format!(
+                        "  {}:{} —— `{}` 在测试段里、长得像判据，却没有 `#[test]`",
+                        path.file_name().unwrap_or_default().to_string_lossy(),
+                        i + 1,
+                        t.trim_start_matches("fn ").trim_end_matches("() {")
+                    ));
+                }
+            }
+        }
+        assert!(
+            orphans.is_empty(),
+            "这些函数住在测试段里、长得像判据，但**没有 `#[test]`，从不运行**：\n{}\n\n\
+             ⇒ 它和别的判据长得一模一样，读的人会以为那条性质有人守着。\n\
+             08-11 全树逮到三条这样的死判据（`the_hello_witness_can_only_come_from_a_hello_frame`、\n\
+             `tmux_targets_use_exact_match`、以及一条我自己修出来的），最久的从 `4d8cfc2` 起就是死的。",
+            orphans.join("\n")
+        );
+
+        assert!(
+            offenders.is_empty(),
+            "这些地方两个 `#[test]` 叠在同一个函数上：\n{}\n\n\
+             ⇒ 后面某个 `fn` 因此**没有属性、不是测试、从不运行**，而它看起来和别的判据一模一样。\n\
+             `duplicate_macro_attributes` 只是 warn，本仓 clippy 不带 `-D warnings` ⇒ 编得过、跑得过、没人知道。\n\
+             修法：把被顶开的那段头注搬回它自己的 `fn` 前，并给掉了属性的那个 `fn` 补回 `#[test]`。",
+            offenders.join("\n")
+        );
+    }
+
     /// U8a-2a：monitor 的每个源文件都要能被共享剥法（`guard_core`）剥干净。
     ///
     /// 与 daemon 侧 `every_daemon_file_strips_clean` 同一条，只是换了一棵树。

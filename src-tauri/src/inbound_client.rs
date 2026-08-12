@@ -716,28 +716,6 @@ mod tests {
     }
 
     #[test]
-    /// ★★ **那两句「唯一入口 / 唯一出口」必须有人读**〔audit-0805 08-07，Phase G 第 45 件〕。
-    ///
-    /// 本模块头注逐字写着「`DaemonHello` 的**唯一构造入口**是 `from_hello_frame`」
-    /// 与「`ParkedWriter` 的**唯一出口**是 `into_client`，而它要一个 `DaemonHello`」。
-    /// 整条「Hello 之前不许写」的类型保证就压在这两句上 ——
-    /// `ssh_source` 那两条判据的诊断也是这么写的（「在这里直接写 = 静默绕过那条类型保证」）。
-    ///
-    /// # 而它们是散文
-    ///
-    /// 08-07 实测：给 `DaemonHello` 加 `pub fn forged(commands) -> Self`（凭空造见证）、
-    /// 给 `ParkedWriter` 加 `pub fn into_inner(self) -> W`（不要见证就把写半边取回来），
-    /// **全仓 976 条判据一条不红**。旁边那条 `the_hello_witness_can_only_come_from_a_hello_frame`
-    /// 是**单函数行为测试**（Hello→Some / 非 Hello→None），它只管那一扇门开得对不对，
-    /// **不管有没有第二扇门**。
-    ///
-    /// ⇒ 定框 **E12**：判准是「有没有一条**会红**的判据读它」。本条就是那条。
-    ///
-    /// # 钉法
-    ///
-    /// 人群从 `impl` 块**派生**（不手写清单），默认拒绝：两个类型各自的公开关联函数
-    /// 必须恰好是登记的那一个。顺带钉住 `ParkedWriter` 那扇门**要见证**（签名里有 `DaemonHello`）。
-    #[test]
     /// P2s：**`<local>` 在两侧必须是同一个串**。
     ///
     /// 漂了**不会报错** —— 前端的本机开关会去操作一个谁都没登记过的 origin：
@@ -833,6 +811,27 @@ mod tests {
         );
     }
 
+    /// ★★ **那两句「唯一入口 / 唯一出口」必须有人读**〔audit-0805 08-07，Phase G 第 45 件〕。
+    ///
+    /// 本模块头注逐字写着「`DaemonHello` 的**唯一构造入口**是 `from_hello_frame`」
+    /// 与「`ParkedWriter` 的**唯一出口**是 `into_client`，而它要一个 `DaemonHello`」。
+    /// 整条「Hello 之前不许写」的类型保证就压在这两句上 ——
+    /// `ssh_source` 那两条判据的诊断也是这么写的（「在这里直接写 = 静默绕过那条类型保证」）。
+    ///
+    /// # 而它们是散文
+    ///
+    /// 08-07 实测：给 `DaemonHello` 加 `pub fn forged(commands) -> Self`（凭空造见证）、
+    /// 给 `ParkedWriter` 加 `pub fn into_inner(self) -> W`（不要见证就把写半边取回来），
+    /// **全仓 976 条判据一条不红**。旁边那条 `the_hello_witness_can_only_come_from_a_hello_frame`
+    /// 是**单函数行为测试**（Hello→Some / 非 Hello→None），它只管那一扇门开得对不对，
+    /// **不管有没有第二扇门**。
+    ///
+    /// ⇒ 定框 **E12**：判准是「有没有一条**会红**的判据读它」。本条就是那条。
+    ///
+    /// # 钉法
+    ///
+    /// 人群从 `impl` 块**派生**（不手写清单），默认拒绝：两个类型各自的公开关联函数
+    /// 必须恰好是登记的那一个。顺带钉住 `ParkedWriter` 那扇门**要见证**（签名里有 `DaemonHello`）。
     #[test]
     fn each_type_has_exactly_one_door_and_the_exit_needs_the_witness() {
         let prod = guard_core::production_code(include_str!("inbound_client.rs"));
@@ -947,6 +946,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn the_hello_witness_can_only_come_from_a_hello_frame() {
         assert!(DaemonHello::from_hello_frame(&hello_frame(&["ping"])).is_some());
         assert!(

@@ -29,7 +29,11 @@ cleanup() {
   set +e
   # 收掉可能残留的被监护进程（测试自己会 stop()，这里是兜底）
   pkill -f "$DAEMON" 2>/dev/null
-  [ -n "${TMUX_TMPDIR:-}" ] && tmux kill-server 2>/dev/null
+  # C7i 红线〔08-11 事故后〕：**socket 用 `-S` 显式给死**，不靠 `unset TMUX` + `TMUX_TMPDIR`。
+  # 那条依赖是「漏一次就出事」的形态 —— 我在一条探针里漏了 unset，打到用户真实 server 上，
+  # 9 个真实会话没了。`-S <绝对路径>` 不受 $TMUX 影响，漏什么都打不偏。
+  # （形状抄 graylight-suite.sh:36，那里早就是这么写的。）
+  [ -n "${TMUX_TMPDIR:-}" ] && /usr/bin/tmux -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null
   rm -rf -- "$WORK" "$TMUX_TMPDIR"
 }
 trap cleanup EXIT
