@@ -1133,7 +1133,7 @@ pub fn run() {
             sftp_pool::sftp_write_text,
             pubkey::push_public_key,
             tmux::list_remote_tmux,
-            tmux::local_tmux_names,
+            tmux::list_local_tmux,
             tmux::capture_remote_pane,
             tmux::kill_remote_tmux,
             tmux::tmux_send_keys,

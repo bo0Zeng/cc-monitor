@@ -581,12 +581,17 @@ export const commands = {
     tmuxName?: string | null;
   }) => invoke<void>("resume_history_session", args),
 
-  /** P3t-Y2b：**本机今天占着哪些 tmux 会话名** —— 给 `mintTmuxName` 当 `existing` 用。
+  /** **本机今天有哪些 tmux 会话** —— 与远端 `list_remote_tmux` 同形（本机没有 SSH 那一跳）。
    *
-   *  ⚠ `null` 是「**不知道**」（本机 daemon 通道没起 / 还没推过帧），**不是**「一个都没占」。
-   *  拿 `null` 当空集去铸名 = 不避让 = issue #76 那一族（静默接进第一个会话）。
-   *  远端同一个问题走 `list_remote_tmux`；本机没有 SSH 那一跳，所以有这条自己的口。 */
-  local_tmux_names: () => invoke<string[] | null>("local_tmux_names"),
+   *  两个消费者：① 铸名时当 `existing`（P3t-Y2b）② 杀会话的菜单按 `@ccm_sid` 认归属（P3 刀 2 UI）。
+   *
+   *  ⚠ `null` 是「**不知道**」（本机 daemon 通道没起 / 还没推过帧），**不是**「一个都没有」。
+   *  拿 `null` 当空表：铸名那侧会不避让（issue #76），菜单那侧会说「没有会话」而其实有。
+   *
+   *  ⚠ **`command` 那一列可能陈旧**：它由 tmux hook 驱动刷新，而 hook 只有
+   *  `session-created/closed/renamed` 三条 —— pane 前台命令从 claude 变回 shell **不触发任何一条**。
+   *  ⇒ 依赖它判活的流程（换号重启的 `awaitExitFor`）**不许**改读本机这条。 */
+  list_local_tmux: () => invoke<TmuxSession[] | null>("list_local_tmux"),
 
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
   get_session_tasks: (args: { sessionId: string }) =>
