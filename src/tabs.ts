@@ -43,12 +43,14 @@ import { LS_KEYS, safeSet } from "./local-storage";
 import {
   runRemoteResume,
   runRemoteResumeTmux,
+  runLocalResumeIntoExistingTmux,
   runRemoteResumeIntoExistingTmux,
   runRemoteAttach,
 } from "./remote-launch-run";
 // ⚠ **两个同名常量**：本文件要的是 `daemon-policy` 那个（`"<local>"`，与 Rust
 // `inbound_client::LOCAL_ORIGIN` 逐字节相同、有跨语言判据钉着）；`accounts.ts` 里那个是
 // `"__local__"`，是账号面自己的标记，**不是 daemon origin**。导错一个不会红，只会静默查不到。
+import { AGENT_PROFILE } from "./agent-profile";
 import { LOCAL_ORIGIN } from "./daemon-policy";
 import { commands } from "./ipc/commands";
 import { pickFreshTmuxName } from "./remote-launch";
@@ -2299,13 +2301,43 @@ export class TabManager {
     // 两种都不该留一个假装能用的菜单项 —— 移除它，别让用户点一个必失败的破坏性动作。
     if (got === undefined || got === null) {
       removeTabContextMenuItem("kill");
+      removeTabContextMenuItem("resume-into");
+      return;
+    }
+    // ★★ P3 刀 3：**空 tmux（claude 已退、只剩交互 shell）→ 就地 resume**。
+    //
+    // 先判这一格，因为它与下面那格互斥：有活 claude 就不是空壳。
+    // E73 同款前提：明说不可 attach 的会话**不算空壳** —— 它前台不是 claude 恰恰是因为
+    // 里面跑着别的东西，不是没人。
+    const idle = this.isAttachable(sid) ? findIdleTmux(got, sid) : undefined;
+    if (idle) {
+      const behavior = await getBehavior();
+      updateTabContextMenuItem("kill", {
+        id: "kill",
+        label: `杀死会话（kill 空 tmux ${idle.name}）`,
+        danger: true,
+        onClick: () => this.killRemoteTmux(LOCAL_ORIGIN, idle.name, false, { idle: true }),
+      });
+      // 就地 resume 是**非破坏性**的，与 kill 并列给出（远端那侧同样两格并列）。
+      updateTabContextMenuItem("resume-into", {
+        id: "resume-into",
+        label: `就地 resume（复用空 tmux ${idle.name}）`,
+        onClick: () =>
+          void runLocalResumeIntoExistingTmux(
+            sid,
+            idle.name,
+            behavior.resumeCommandLocal || AGENT_PROFILE.defaultLauncher,
+          ),
+      });
       return;
     }
     const matches = findClaudeTmuxMatches(got, sid);
     if (matches.length === 0) {
       removeTabContextMenuItem("kill");
+      removeTabContextMenuItem("resume-into");
       return;
     }
+    removeTabContextMenuItem("resume-into");
     // F04（R10）同款分级：破坏性动作命中 ≥2 个就**拒绝**，不折叠成第一个。
     if (matches.length > 1) {
       updateTabContextMenuItem("kill", {
@@ -3145,6 +3177,13 @@ export class TabManager {
           label: "杀死会话（检测 tmux…）",
           enabled: false,
           danger: true,
+          onClick: () => {},
+        });
+        // P3 刀 3 的占位：查回来是空 tmux 才留下，否则移除。
+        items.push({
+          id: "resume-into",
+          label: "就地 resume（检测 tmux…）",
+          enabled: false,
           onClick: () => {},
         });
         needAsyncLocalKill = true;

@@ -11,6 +11,10 @@
  * （`runRemoteResumeTmux` 的位置参数签名被 `e2e/restart-cmd-driver.ts` 经 `account-restart.ts`
  * 传递性锁死）。
  */
+// ⚠ 仓里有**两个 `LOCAL_ORIGIN`**：这个是 daemon origin（`"<local>"`，与 Rust
+// `inbound_client::LOCAL_ORIGIN` 逐字节相同、有跨语言判据钉着）；`accounts.ts` 里那个是
+// `"__local__"`，账号面自己的标记。导错不会红，只会静默查不到通道。
+import { LOCAL_ORIGIN } from "./daemon-policy";
 import { commands } from "./ipc/commands";
 import {
   planResumeDirect,
@@ -401,6 +405,72 @@ export async function runRemoteResumeIntoExistingTmux(
     failureCopied: "拉起失败，已复制就地 resume 命令",
     failureNotCopied: "拉起失败，请手动复制以下命令",
   });
+}
+
+/**
+ * ★★ P3 刀 3：**本机**就地 resume —— 往一个已存在的空 tmux 送载荷，不 new-session。
+ *
+ * 治的是 issue #76 的根因：不复用就会产 `<sid8>-cc-2` 孤儿，
+ * 而用户以为自己回到了原会话。远端那半（`runRemoteResumeIntoExistingTmux`）早就在做这件事。
+ *
+ * # 与远端那条的差别只有两处，其余逐字共用
+ *
+ * ① **载荷那半共用**：同一个 `planResumeIntoExistingTmux` + 同一个 `sendIntoViaDaemon`
+ *    + 同一条 `daemon_send_into`（它 `client_for(&origin)`，**本来就传输无关**）。
+ *    这就是 `C1`「差别只允许出现在传输这一跳」的样子。
+ * ② **attach 那半本机做不到，而且是结构性的**：`launch_remote_terminal` 只会
+ *    `ssh + PowerShell`，而 POSIX 本机 `launch.rs` 逐字「**不开 GUI 终端窗口**」——
+ *    「开窗口要先猜用户用哪个终端模拟器，是平白引入一个会在别人机器上错的决定」。
+ *    ⇒ 送完载荷就把 attach 命令交给用户（与远端 POSIX 宿主上**同一种**处置：
+ *    `POSIX_NO_WINDOW_MARKER` 那条路早就在这么做）。
+ *
+ * # 为什么本机这条**一条回落都没有**
+ *
+ * 远端那条在 `verdict === "fallback"` 时会回落去渲染整串（走 ssh 重做一遍）。
+ * 本机没有那条路 —— 也**不该造**一条：`C1` 逐字排除「给本地单写一套控制逻辑」。
+ * ⇒ 只要不是 `typed`，就诚实失败并让用户看见，绝不用另一条路把「可能已经键入过」重做一遍
+ *（那会把载荷第二次提交给正在跑的 claude —— F14 逐字记着这个后果）。
+ */
+export async function runLocalResumeIntoExistingTmux(
+  sid: string,
+  name: string,
+  launcher: string,
+  mods: LaunchModifiers = {},
+): Promise<boolean> {
+  let plan: LaunchPlan;
+  try {
+    ({ plan } = planResumeIntoExistingTmux(sid, name, launcher, mods));
+  } catch (err) {
+    showActionFailureToast("无法构造就地 resume 命令", String(err));
+    return false;
+  }
+  const sent = await sendIntoViaDaemon(LOCAL_ORIGIN, name, plan);
+  if (sent.verdict !== "typed") {
+    // `fallback` 与 `refused` 在本机是**同一种处置** —— 见头注：本机没有第二条路，
+    // 而造一条就是 `C1` 排除的那件事。两者的 `reason` 都原样交给用户。
+    showActionFailureToast(
+      "就地 resume 未执行",
+      `${sent.reason ?? "本机 daemon 通道不在，无法确认是否已执行"}\n` +
+        "（本机没有第二条路可回落 —— 造一条就会长出第二套控制语义）",
+    );
+    return false;
+  }
+  // ★ attach 那半交给用户。**不是没做完，是 POSIX 上刻意不替你挑终端模拟器**
+  //（同 `POSIX_NO_WINDOW_MARKER` 那条既定设计）。命令用 `=name:` 精确形态（§31a）。
+  const attachCmd = `tmux attach -t '=${name}:'`;
+  let copied = true;
+  try {
+    await navigator.clipboard.writeText(attachCmd);
+  } catch {
+    copied = false;
+  }
+  showActionFailureToast(
+    copied ? "已就地 resume，attach 命令已复制" : "已就地 resume，请手动复制 attach 命令",
+    `本机 tmux 会话「${name}」里已就地 resume（复用、不新建）。\n` +
+      `cc-monitor **${POSIX_NO_WINDOW_MARKER}**，请在你自己的终端里执行：\n${attachCmd}`,
+    { level: "info", durationMs: 10000 },
+  );
+  return true;
 }
 
 /**

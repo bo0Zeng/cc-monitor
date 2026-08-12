@@ -1332,6 +1332,50 @@ describe("F51 tab 右键 attach 反查（异步就绪 + 跨 tab 竞态守卫 R-1
     expect(killBtn()?.textContent).not.toContain("k1abcdef-cc");
   });
 
+  // ★★ P3 刀 3：本机**空 tmux**（claude 已退、只剩交互 shell）→ 就地 resume。
+  //
+  // 两条：正面（空壳 ⇒ 两格都在）与反面（有活 claude ⇒ 就地那格必须**不在**）。
+  // 光有正面不够：把「空壳判定」删掉、无条件给这一格，正面照样绿 ——
+  // 而那样会往一个**正在跑 claude** 的会话里再送一遍载荷（F14 逐字记着这个后果）。
+  const resumeIntoBtn = (): HTMLButtonElement | null => {
+    const menu = document.body.querySelector(".tab-context-menu");
+    const items = [...(menu?.querySelectorAll(".tab-context-menu-item") ?? [])];
+    return (
+      (items as HTMLButtonElement[]).find((b) => b.textContent?.includes("就地 resume")) ?? null
+    );
+  };
+
+  it("P3 刀3 本机空 tmux → 给「就地 resume」，且 kill 文案改成「kill 空 tmux」", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_local_tmux"
+        ? Promise.resolve([
+            // command 不是 claude ⇒ 空壳（claude 已退、只剩交互 shell）。
+            { name: "i1-cc", path: "/p", command: "bash", attached: false, windows: 1, sid: "k1abcdef" },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, null);
+    rightClick("k1abcdef");
+    await flush();
+    expect(resumeIntoBtn()?.textContent).toContain("i1-cc");
+    expect(killBtn()?.textContent).toContain("空 tmux");
+  });
+
+  it("P3 刀3 反面：会话里还跑着 claude → **不给**就地 resume（别往活会话再送一遍载荷）", async () => {
+    vi.mocked(invoke).mockImplementation((cmd: string) =>
+      cmd === "list_local_tmux"
+        ? Promise.resolve([
+            { name: "i1-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: "k1abcdef" },
+          ])
+        : Promise.resolve(undefined),
+    );
+    tm.ensureTab("k1abcdef", "/home/u/p", "/p/k1.jsonl", 0, null);
+    rightClick("k1abcdef");
+    await flush();
+    expect(resumeIntoBtn()).toBeNull();
+    expect(killBtn()?.textContent).toContain("kill tmux i1-cc");
+  });
+
   it("P3 刀2-UI 本机 tab 右键：同身份命中 2 个 → 拒绝，不折叠成第一个", async () => {
     vi.mocked(invoke).mockImplementation((cmd: string) =>
       cmd === "list_local_tmux"
