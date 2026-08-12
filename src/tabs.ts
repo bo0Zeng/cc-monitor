@@ -460,6 +460,17 @@ export class TabManager {
    */
   /** P7a-3（#61）：标签页集合。**零自动归组**〔用 08-11「纯手动」〕。 */
   private collections: TabCollection[] = [];
+  /**
+   * P7a-3 E 阶段补审：**这个实例拉过集合没有。**
+   *
+   * 撕离出来的 viewer 窗口也用 `TabManager`（`main.ts:938`，tab 栏由 `.viewer-mode` 隐藏），
+   * 但它**从不 `loadCollections`** ⇒ `collections` 恒空。右键菜单里若还留着「新建集合…」，
+   * 点一下就把「只含这一个」的列表写回 `config.json` —— **用户已有的集合全没了**。
+   *
+   * 同族先例就在旁边一行：「viewer 窗口共享 localStorage，**禁写 last-active**（防污染主窗口记忆）」。
+   * ⇒ 没拉过就不给入口。这不是把功能藏起来，是**没有那份真相就没有资格改它**。
+   */
+  private collectionsLoaded = false;
   /** 每个集合在主栏里的容器（组头 + 成员列表）。 */
   private groupEls = new Map<string, { wrap: HTMLElement; head: HTMLElement; list: HTMLElement }>();
 
@@ -3064,6 +3075,7 @@ export class TabManager {
   /** P7a-3：从 `config.json` 拉一次集合并重画。宿主启动时调一次。 */
   async loadCollections(): Promise<void> {
     this.collections = await getCollections();
+    this.collectionsLoaded = true;
     this.refreshTabBar();
   }
 
@@ -3154,7 +3166,6 @@ export class TabManager {
     this.ensureArchiveUi();
     const collapsed = this.archiveCollapsed();
     // 组容器按集合顺序先摆好（空集合也留着 —— 用户刚建的集合不该看不见）。
-    const liveIds = new Set(this.orderedIds);
     for (const [id, g] of this.groupEls) {
       if (!this.collections.some((x) => x.id === id)) {
         g.wrap.remove();
@@ -3162,8 +3173,17 @@ export class TabManager {
       }
     }
     for (const col of this.collections) this.groupElFor(col);
-    void liveIds;
     const cursors = new Map<HTMLElement, ChildNode | null>();
+    // ★ **未归组的排在所有组之后**〔D 阶段补审〕。
+    //
+    // `barEl` 的游标若从 `firstChild` 起，散 tab 会插到**组容器之前** ——
+    // 而 `P7a3-Y2` 逐字写的是「未归组的照常**在后面**」。
+    // 实现与自己的 DoD 措辞不符，是那种「读起来都对、跑起来是另一回事」的差错。
+    // ⇒ 把 `barEl` 的起点定在最后一个组容器上（没有组则回到 `firstChild` 语义）。
+    const lastGroup = [...this.barEl.children]
+      .filter((e) => e.classList.contains("tab-group"))
+      .pop();
+    if (lastGroup) cursors.set(this.barEl, lastGroup);
     let archived = 0;
     for (const sid of this.orderedIds) {
       const tab = this.tabs.get(sid);
@@ -3312,7 +3332,7 @@ export class TabManager {
       ];
       // P7a-3（#61）：集合 —— **纯手动**〔用 08-11「手动建, 不要自动, 纯手动」〕。
       // 二级 flyout：现有集合各一条 + 「新建集合…」；已归组的再给一条「移出集合」。
-      const here = collectionOf(this.collections, sid);
+      const here = this.collectionsLoaded ? collectionOf(this.collections, sid) : null;
       const joinItems: TabMenuItem[] = this.collections
         .filter((col) => col.id !== here?.id)
         .map((col) => ({
@@ -3331,7 +3351,7 @@ export class TabManager {
           void this.commitCollections(addMember(withNew, id, sid));
         },
       });
-      items.push({ label: "加入集合", submenu: joinItems });
+      if (this.collectionsLoaded) items.push({ label: "加入集合", submenu: joinItems });
       if (here) {
         items.push({
           label: `移出「${here.name}」`,
