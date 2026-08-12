@@ -924,7 +924,7 @@ mod tests {
     /// 但「在一台跑着真实会话的机器上，让自动化去起 / 杀 tmux」这件事本身值得先停下来。
     /// ⇒ 本条改成显式触发：`cargo test -- --ignored the_local_tmux_frames_really_land_in_the_ledger`。
     ///
-    /// **这是降级不是放弃**：P3-Y1 因此今天**没有实测证据**，如实登记在件的 §0h / 12e，
+    /// **这是降级不是放弃**：P3-Y1 因此今天**没有实测证据**，如实登记在件的 §0h / 12e-1，
     /// 不拿「判据绿」冒充「验过了」。
     #[cfg(all(embedded_daemons, target_os = "linux", target_arch = "x86_64"))]
     #[test]
