@@ -70,12 +70,42 @@ export async function initDaemonPolicy(): Promise<DaemonPolicy> {
  * 顺序是刻意的 —— 推失败就不落盘，否则盘上写着 A 而运行中是 B，
  * 下次启动才「自动修好」，中间那段时间用户看到的开关是骗人的。
  */
+/**
+ * 写盘串行链〔D 阶段补审 08-11，A3〕。
+ *
+ * # 原来错在哪
+ *
+ * `setKillOnExit` 是 `push → loadConfig → 改 → saveConfig(整份)`，**四个 await 之间没有锁**。
+ * 同一个复选框快点两下（或先后点两台机）：
+ *
+ * 1. T1 `push(A=true)` 到达 Rust；
+ * 2. T2 `push(A=false)` 到达 Rust ⇒ **Rust 表 = false**；
+ * 3. T2 的读—改—写先完成，盘上 = false；
+ * 4. T1 的 `saveConfig` 后完成，**用它那份陈旧 cfg 覆盖回 true** ⇒ 盘上 = true。
+ *
+ * 结果：UI 勾 = false、运行时 = false、**盘上 = true**
+ * ⇒ 下次启动 `initDaemonPolicy` 把 true 推回去，**开关自己翻过来**。
+ * 而且 `saveConfig(cfg)` 是整份写，会连带把这期间别的设置区写入的键一起回滚。
+ *
+ * ★ 讽刺的是本文件头注花了 8 行论证「不能有两个写者」—— 第二个写者出现在了
+ * **前端自己的并发点击**里。
+ *
+ * ⇒ 用一条 promise 链把写盘串起来：**同一时刻只有一个读—改—写在跑**。
+ * ⚠ 它**不跨进程**（另一个 monitor 实例照样能覆盖），那一格如实登记在件里。
+ */
+let writeChain: Promise<unknown> = Promise.resolve();
+
 export async function setKillOnExit(origin: string, kill: boolean): Promise<void> {
   if (!origin.trim()) throw new Error("origin 不许为空 —— 策略是每台机各一份的");
-  await commands.set_daemon_kill_on_exit({ origin, kill });
-  const cfg = (await loadConfig()) as Record<string, unknown>;
-  const policy = readPolicy(cfg);
-  policy[origin] = kill;
-  cfg[KEY] = policy;
-  await saveConfig(cfg);
+  // 前一笔失败不该卡住后一笔 ⇒ 链上先吞掉错误再排队；错误仍原样抛给**本次**调用方。
+  const run = writeChain.catch(() => {}).then(async () => {
+    await commands.set_daemon_kill_on_exit({ origin, kill });
+    const cfg = (await loadConfig()) as Record<string, unknown>;
+    const policy = readPolicy(cfg);
+    policy[origin] = kill;
+    cfg[KEY] = policy;
+    await saveConfig(cfg);
+  });
+  writeChain = run.catch(() => {});
+  return run;
 }

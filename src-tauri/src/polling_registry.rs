@@ -526,6 +526,12 @@ mod tests {
         ("src/branch-fold.ts", "requestAnimationFrame", 1, "★ F15：live 模式主线重算的**帧末合批**（`scheduleLiveRecompute`）。排一次位（`liveScheduled`）⇒ **不是自链**：回调里不再排下一次，只有新记录到达才会再排。原来这里是逐条同步跑 `computeMainBranch`（扫全部 records 的 Kahn 拓扑）⇒ N 条记录 O(N²)。"),
         ("src/branch-fold.ts", "setTimeout", 1, "★ F15：上面那条的**无 rAF 兜底**（`typeof requestAnimationFrame !== \"function\"` 时）。0ms，一次性。"),
         ("src/branch-button.ts", "setTimeout", 1, "2s 后把按钮文字恢复成 `⑂`。一次性 UI 反馈。"),
+        // P2s（补审 A4）：**有退出条件的自链**，不是 data-poll。
+        ("src/settings/daemon-section.ts", "setTimeout", 1,
+         "起/停一台机之后轮询状态到落定。**上限 30 次 × 100ms**、由用户动作触发、\
+          落定即停 ⇒ 有退出条件的自链，不进 `REGISTERED`。\
+          ⚠ 不轮询的后果很具体：两个命令都是「发出去就返回」（`daemon_start` 只 spawn 了监护线程、\
+          `daemon_stop` 只发 SIGKILL），命令一返回就画等于**每次操作后都显示操作前的状态**。"),
         ("src/e2e-probe.ts", "requestAnimationFrame", 2, "★ **rAF 自链**：`sample` 每帧重排自己（起点 1 处 + 链内 1 处）。退出条件是 `stopReplayJitterProbe` 显式 `cancelAnimationFrame`。只在 e2e 探针里启用，不在正常路径上。"),
         ("src/error-toast.ts", "setTimeout", 1, "`durationMs` 后移除 toast。一次性。"),
         ("src/events.ts", "setTimeout", 3, "① `scheduleBatchEnd` 的 batch-end 哨兵（每次重排前 `clearTimeout`，且有 `BATCH_HOLD_MAX_MS` 5min 防呆上限）② ③ `setTimeout(drain, 0)` —— **队列 drain 自链**，退出条件是 `queue.length === 0`，由 `scheduled` 标志防重入。不是节拍器：没有队列就不会再排。"),

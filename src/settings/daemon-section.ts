@@ -20,6 +20,10 @@
  */
 
 import { commands } from "../ipc/commands";
+
+/** 起/停之后轮询状态的次数与间隔 —— 命令是「发出去就返回」的，不轮询看到的是操作前的状态。 */
+const SETTLE_TRIES = 30;
+const SETTLE_INTERVAL_MS = 100;
 import { showActionFailureToast } from "../error-toast";
 import {
   LOCAL_ORIGIN,
@@ -146,7 +150,26 @@ export class DaemonSection {
     return row;
   }
 
+  /**
+   * 起 / 停一台机〔D 阶段补审 08-11 重写，A4〕。
+   *
+   * # 原来错在哪
+   *
+   * 命令返回后**立刻**重绘 —— 而两个命令都是「发出去就返回」：
+   * `daemon_start` 只是 spawn 了监护线程（子进程还没起、hello 更没到）⇒ 屏上写「未连上」；
+   * `daemon_stop` 只发 SIGKILL 就返回（消费者要等 EOF 才 `unregister`）
+   * ⇒ `channel` 多半仍是 true 而 `pid` 因句柄已被 take 而是 null ⇒ 屏上写「**已连上**（无 pid）」。
+   *
+   * **即每次操作后看到的都是操作前的状态。** 而且按钮全程不 disable，
+   * 直接喂给「双起」那个窗口（补审 A1）。
+   *
+   * ⇒ 现在：操作期间**禁用本行按钮**，然后**轮询到状态落定**（或超时）再放开。
+   * ⚠ 超时不是失败：远端断流后对面进程什么时候退，我们在本机看不见（诚实边界 11c）。
+   */
   private async act(origin: string, what: "start" | "stop"): Promise<void> {
+    const row = this.rows.get(origin);
+    const btns = row ? [...row.querySelectorAll("button")] : [];
+    for (const b of btns) b.disabled = true;
     try {
       const msg =
         what === "start"
@@ -156,7 +179,16 @@ export class DaemonSection {
     } catch (e) {
       showActionFailureToast(what === "start" ? "起 daemon 失败" : "停 daemon 失败", String(e));
     }
-    await this.paintStatus(origin);
+    await this.settleStatus(origin, what === "start");
+    for (const b of btns) b.disabled = false;
+  }
+
+  /** 轮询到「通道在不在」与期望一致，或超时。每次都重绘，用户看得到中间态。 */
+  private async settleStatus(origin: string, want: boolean): Promise<void> {
+    for (let i = 0; i < SETTLE_TRIES; i++) {
+      if ((await this.paintStatus(origin)) === want) return;
+      await new Promise((r) => setTimeout(r, SETTLE_INTERVAL_MS));
+    }
   }
 
   private async toggleKill(origin: string, box: HTMLInputElement): Promise<void> {
@@ -171,20 +203,23 @@ export class DaemonSection {
     }
   }
 
-  private async paintStatus(origin: string): Promise<void> {
+  /** 画一次状态，并把「通道在不在」返回给 `settleStatus` 判落定。查不到回 `null`。 */
+  private async paintStatus(origin: string): Promise<boolean | null> {
     const row = this.rows.get(origin);
-    if (!row) return;
+    if (!row) return null;
     const state = row.querySelector<HTMLElement>(".daemon-row-state");
-    if (!state) return;
+    if (!state) return null;
     try {
       const st = await commands.daemon_status({ origin });
       const on = st.channel === true;
       const pid = typeof st.pid === "number" ? `（pid ${st.pid}）` : "";
       state.textContent = on ? `已连上${pid}` : "未连上";
       state.dataset.on = String(on);
+      return on;
     } catch (e) {
       state.textContent = "状态查不到";
       console.warn(`[P2s] ${origin} 状态查询失败：${String(e)}`);
+      return null;
     }
   }
 }
