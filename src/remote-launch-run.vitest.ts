@@ -12,6 +12,7 @@ import { showActionFailureToast } from "./error-toast";
 import {
   runRemoteResume,
   runRemoteResumeTmux,
+  runLocalResumeIntoExistingTmux,
   runRemoteResumeIntoExistingTmux,
   runRemoteLauncher,
   runRemoteAttach, POSIX_NO_WINDOW_MARKER } from "./remote-launch-run";
@@ -147,6 +148,44 @@ describe("F41 runRemoteResume", () => {
     expect(String(toastMock.mock.calls[0][1])).toContain("REFUSE:");
     // ★ 最要紧的一格：**没有**发起拉起 —— 也就是没有回落到兜底渲染器那条整串
     expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
+  });
+
+  // ★★ P3 刀 3：**本机**就地 resume。它与上面那条远端的分水岭只有一处 ——
+  // 远端在 `fallback` 时会去渲染整串重做一遍；**本机没有那条路，也不许造**
+  //（`C1` 逐字排除「给本地单写一套控制逻辑」）。
+  it("P3 刀3 本机：daemon 回报可回落 → 仍然诚实失败，绝不另找一条路重做", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "render_launch_payload") return Promise.resolve("payload");
+      // `mayFallBack: true` = 证明没发出去。远端据此回落；**本机不许**。
+      if (cmd === "daemon_send_into")
+        return Promise.resolve({ typed: false, reason: "本机 daemon 通道不在", mayFallBack: true });
+      return Promise.resolve(undefined);
+    });
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const ok = await runLocalResumeIntoExistingTmux("sid-l1", "l1-cc", "");
+    expect(ok).toBe(false);
+    expect(toastMock.mock.calls[0][0]).toBe("就地 resume 未执行");
+    expect(String(toastMock.mock.calls[0][1])).toContain("本机 daemon 通道不在");
+    // ★ 最要紧的一格：**一次拉起都没发起**。发起了就说明它去走了第二条路，
+    //   而那条路会把可能已经键入过的载荷再提交给正在跑的 claude 一次（F14）。
+    expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
+  });
+
+  it("P3 刀3 本机：typed → 成功，且把 attach 命令交给用户（POSIX 刻意不挑终端模拟器）", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "render_launch_payload") return Promise.resolve("payload");
+      if (cmd === "daemon_send_into") return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
+      return Promise.resolve(undefined);
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubClipboard(writeText);
+    const ok = await runLocalResumeIntoExistingTmux("sid-l2", "l2-cc", "");
+    expect(ok).toBe(true);
+    // attach 命令用 `=name:` 精确形态（§31a），且**没有** ssh 那一跳。
+    expect(writeText.mock.calls[0][0]).toBe("tmux attach -t '=l2-cc:'");
+    expect(String(writeText.mock.calls[0][0])).not.toContain("ssh");
+    // 本机同样不开终端窗口 —— 那是既定设计，文案要这么说，不许报成失败。
+    expect(String(toastMock.mock.calls[0][1])).toContain(POSIX_NO_WINDOW_MARKER);
   });
 
   it("★ P1 对照：IPC 异常（无 REFUSE 标）→ 仍然回落，行为逐字不变", async () => {
