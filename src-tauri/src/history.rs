@@ -3265,6 +3265,118 @@ mod tests {
         }
     }
 
+    /// ★★ **P3t-Y0：Windows 那条路本件一个字不动 —— 而钉的是「该活下来的性质」，不是字节。**
+    ///
+    /// `C12` 逐字「windows不要tmux」。用内容哈希钉「一个字没改」看着更严，其实更坏：
+    /// 将来任何一次正当的 Windows 改动都会让它假红，而假红久了就会被人加豁免 ——
+    /// 那时它连性质都不守了。⇒ 钉性质：**Windows 本机的渲染器自己永远不产会话容器**。
+    ///
+    /// ⚠ `launcher` 必须传 `None`。用户显式指定 `cct`（F34）时输出里当然会有 `cct`，
+    /// 那是**用户自己要的**，不是本工具替他加的 —— `posix_renderer_mirrors_the_powershell_one`
+    /// 正是拿 `Some("cct")` 在对拍。人群划错这一格，本条会变成「禁止用户用 cct」。
+    ///
+    /// # 射程（`reach`）
+    ///
+    /// 够得到：Windows 渲染器的**输出里没有容器**。
+    /// **够不到**：Windows 那条路今天还跑不跑得起来 —— 没有 Windows 机器，
+    /// 「没改」证明不了「还能跑」。那一格归 `auto-e2e`（本件 §4 已登记）。
+    #[test]
+    fn the_windows_local_path_never_grows_a_session_container() {
+        let sid = "01998f2a-1234-7abc-9def-0123456789ab";
+        let named = LaunchAccount::Named {
+            config_dir: "C:\\Users\\z\\.claude-accts\\z".into(),
+        };
+        let accounts: [Option<&LaunchAccount>; 3] = [None, Some(&LaunchAccount::Base), Some(&named)];
+        let mut checked = 0usize;
+        for action in [LocalPsAction::New, LocalPsAction::Resume(sid.to_string())] {
+            for acct in accounts {
+                let cmd = build_local_ps_command(&action, None, acct)
+                    .expect("这几组形状都该渲染得出来");
+                checked += 1;
+                assert!(
+                    !cmd.contains("--tmux"),
+                    "Windows 渲染器吐了 `--tmux` —— `C12` 逐字「windows不要tmux」。实得：{cmd}"
+                );
+                assert!(
+                    !cmd.split_whitespace().any(|w| w == "cct"),
+                    "Windows 渲染器自己挑了带 tmux 的别名 `cct`（用户没指定）。实得：{cmd}"
+                );
+            }
+        }
+        // 完备性自检：人群空掉时「全过」与「没测」长得一模一样。
+        assert_eq!(checked, 6, "只渲了 {checked} 组，人群跑偏了");
+
+        // ★ 结构半：`launch_local` 的 Windows 那支**不许调渲染器**。
+        // 光有上面的行为半不够 —— 渲染器可以在 `launch_local` 里被调、把容器加在
+        // `build_local_ps_command` **之外**，那样上面六组照样全绿。
+        let prod = guard_core::production_code(include_str!("history.rs"));
+        let at = guard_core::find_pinned(&prod, "#[cfg(windows)]")
+            .unwrap_or_else(|e| panic!("`#[cfg(windows)]` 不是恰好一处，先修锚点：{e}"));
+        let arm = {
+            let b = prod.as_bytes();
+            let open = (at..b.len()).find(|&i| b[i] == b'{').expect("找不到块起点");
+            let (mut depth, mut end) = (0i32, b.len());
+            for i in open..b.len() {
+                if b[i] == b'{' {
+                    depth += 1;
+                } else if b[i] == b'}' {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = i + 1;
+                        break;
+                    }
+                }
+            }
+            &prod[open..end]
+        };
+        assert!(
+            arm.len() > 60 && arm.len() < 1500,
+            "切出来的 Windows 臂只有 {} 字节 —— 配平切错了，本条会零命中地绿",
+            arm.len()
+        );
+        assert!(
+            !arm.contains("render_local_ccm"),
+            "`launch_local` 的 Windows 臂调了 CLI 渲染器 —— 那条路会带 `--tmux`。实得：{arm}"
+        );
+        assert!(
+            arm.contains("build_local_ps_command"),
+            "`launch_local` 的 Windows 臂不再走 `build_local_ps_command` —— 换路了。实得：{arm}"
+        );
+    }
+
+    /// ★★ **P3t-Y5 的出口**：把生产渲染器的**真输出**吐给 e2e。
+    ///
+    /// e2e 要证「这条命令在真 tmux 上干了什么」。若脚本里手抄一份命令串，证的就是手抄那份 ——
+    /// 渲染器改了、脚本没改，实测照样绿。⇒ 串必须从**这里**出去。
+    ///
+    /// `#[ignore]` 是因为它不是判据（不断言任何事），只是个数据出口；
+    /// 跑法：`cargo test --lib emit_local_launch_command_for_e2e -- --ignored --nocapture`。
+    #[test]
+    #[ignore]
+    #[cfg(not(windows))]
+    fn emit_local_launch_command_for_e2e() {
+        let sid = std::env::var("P3T_E2E_SID").unwrap_or_else(|_| "s1abcdef".into());
+        let name = std::env::var("P3T_E2E_TMUX").unwrap_or_else(|_| "s1abcdef-cc".into());
+        // ★★ launcher 由 e2e 指定，而且必须是个**独一无二的名字**（实测逼出来的）。
+        //
+        // 第一版让 e2e 拿 PATH shim 顶掉 `claude`。**那在生产送法下不成立**：
+        // `launch_local_posix` 用的是 `bash -lic`，**登录 shell 会重跑 profile 并把
+        // `~/.local/bin` 重排到 PATH 最前** ⇒ shim 被顶掉、解析到的是用户**真实的 claude**
+        // （C7d 逐字禁的那件事，实测真起了两次）。
+        // 用一个只在隔离目录里存在的名字，PATH 谁在前都盖不住它 —— 这是结构保证，不是纪律。
+        let launcher = std::env::var("P3T_E2E_LAUNCHER").ok();
+        let cmd = render_local_ccm_with(
+            &LocalPsAction::Resume(sid),
+            launcher.as_deref(),
+            Some(&LaunchAccount::Base),
+            Some(&name),
+            &caps_of_a_current_ccm(),
+            true,
+        )
+        .expect("渲染不出来 —— e2e 无对象可跑");
+        println!("P3T_CMD<<<{cmd}>>>");
+    }
+
     /// ★ L1：**sid 校验与注入防线在 POSIX 那条路上同样生效**。
     ///
     /// 主计划点名这道校验「要保留——那是一道独立防线，不是重复」。
