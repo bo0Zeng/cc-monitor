@@ -6989,3 +6989,18 @@ body.settings-window-mode .grid-monitor-trigger {
   flex-direction: column;
   gap: 2px;
 }
+
+/* P7b（全景 P4，#79）：多跳调用子图 / 影响面。
+   **按需拉** —— 子图是双向邻域，depth 每加一跳节点数按扇出幂增，
+   不该在打开详情时白拉一次。 */
+.panorama-subgraph-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.panorama-layer-head {
+  color: var(--fg-dim, #9a9a9a);
+  font-size: 11px;
+  margin: 6px 0 2px;
+}
