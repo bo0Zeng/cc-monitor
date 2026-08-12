@@ -175,7 +175,9 @@ export function pickFreshTmuxName(sid: string, existing: Set<string>): string {
  *
  * ⚠ **F13 定位：它只产「基名建议」，不产最终名。** 最终名一律过 [`mintTmuxName`]
  * （那里才有撞名避让）。摸底实测：`machine-card` 的「开新 Claude」此前直接拿它当最终名
- * ⇒ 同一个 cwd 点两次「开始」会产出同名，撞上 create-or-attach 的幂等闸
+ * ⇒ 同一个 cwd 点两次「开始」会产出同名，撞上当时那个 `create-or-attach` 的幂等闸
+ * （**该模式 `C14` 已删**：起会话不再吞 `new-session` 的错、不再无条件 attach。
+ *  ⇒ 今天同名的后果从「静默接回」变成「**建失败、看得见**」，而铸名口正是为了让它不发生）
  * ⇒ **静默接进第一个会话，而用户以为开了新的**（issue #76 那一族）。
  */
 export function deriveTmuxName(cwd: string): string {

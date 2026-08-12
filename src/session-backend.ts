@@ -126,11 +126,30 @@ export const TMUX_BACKEND: SessionBackend = {
         `(tmux set-option -t ${t} set-titles-string ccm-rbind-#{@ccm_sid} 2>/dev/null || true) && `
       : "";
 
+    // ★★★ **`C14`〔用 08-12〕：起会话就是起会话，不要 `or`。**
+    //
+    // 这一支原来是「幂等 create-or-attach」，而那个 `or` 藏在**三个符号**里：
+    //   `2>/dev/null`  —— 会话已存在时 `new-session` 报错被**吞掉**；
+    //   `&&`           —— 于是短路，**载荷不送**；
+    //   `; tmux attach`—— 而这一句无条件执行，**照样把你接进去**。
+    // 合起来 = 「会话已存在时静默接回，且不告诉你载荷没送」。
+    //
+    // 它戳中的是**同一个问题被决定了两次**：`tabs.ts::resumeTabTmux` 已经先按
+    // `@ccm_sid` 查过、决定了「attach 还是起新的」；而发出去的这条命令**底下又决定一次**，
+    // 用的是**另一套判据**（按名字在不在）。两个决定点、两套判据 ⇒ 可以不一致 ——
+    // 不一致的那一刻就是 issue #76「静默接进第一个会话，而用户以为开了新的」。
+    //
+    // ⇒ 现在**不吞错**：`new-session` 失败就让它失败，整条命令非零退出、调用方看得见。
+    //   撞名由 `mintTmuxName`（全仓唯一带避让的铸造口）在**上游**保证不发生 ——
+    //   `C14` 第二问用户已裁「**自动让**」。这条从「保险」变成「必需」。
+    //
+    // ⚠ 尾部 `attach` **保留**：起完就接回去是这条路的正题（`§1.3`：最终 exec 在用户终端里），
+    //   但它现在挂在 `&&` 后面 —— **建失败就不 attach**，而不是「无论如何都接」。
     return (
-      `tmux new-session -d -s ${targetToken(target)}${cflag} 2>/dev/null && ` + // `-s` 是名字，不加 `=`/`:`
+      `tmux new-session -d -s ${targetToken(target)}${cflag} && ` + // `-s` 是名字，不加 `=`/`:`
       setSid +
       setTitle +
-      `tmux send-keys -t ${t} ${quotedPayload} Enter; ` +
+      `tmux send-keys -t ${t} ${quotedPayload} Enter && ` +
       `tmux attach -t ${t}`
     );
   },

@@ -10,12 +10,12 @@
  *    （调用方只有 `configDir` 没有账号「名字」）；F05 后账号名已线通，`cliFlags` 对 `account`/
  *    `base` 两态都吐实际 flag、不再返回 `null`——这条规则本身留给未来任何"半成品"维度当安全网。
  *  - `container.mode === "send-into"` → 强制走兜底。**这条是防 #76 复发的关键**：`shared/ccm`
- *    的 `--tmux` 只有幂等 create-or-attach 一种形态，没有「就地复用已存在 idle tmux、不新建」
+ *    的 `--tmux` 只有一种容器形态，没有「就地复用已存在 idle tmux、不新建」
  *    的模式；硬套会让 #76（claude 已退出但 tmux 还在时短路跳过 send-keys、把用户 attach 进空
  *    shell）以 CLI 路径的新形式复发。**诚实放弃，不近似**。
  *    **`attach-only` 不在此列**——`ccm attach <名>` 与 `shared/ccm` 源码核对，就是
  *    `exec tmux attach -t "=$名:"`，与兜底渲染器的 `SESSION_BACKEND.attach()` 逐字同构，没有
- *    #76 那种「幂等 create-or-attach vs 就地复用」的歧义，可以安全走 CLI 渲染器（F03 Phase D
+ *    #76 那种「建还是接」的歧义，可以安全走 CLI 渲染器（F03 Phase D
  *    架构审计发现：早期实现把这两种模式并入同一把闸门，导致 `renderCli` 的 attach 分支和
  *    `CLI_REQUIRED_CAPS` 里的 `"attach"` 在生产路径上永不可达——已收窄）。
  */
@@ -77,7 +77,7 @@ export function tryRenderCli(
   for (const c of CLI_REQUIRED_CAPS) {
     if (!probe.capabilities.has(c)) return { ok: false, reason: `远端 ccm 缺能力 ${c}` };
   }
-  // #76 防线：仅挡 idle-tmux 就地复用（attach-only 与 create-or-attach 都安全，见文件头注）。
+  // #76 防线：仅挡 idle-tmux 就地复用（`attach-only` 与 `create` 都安全，见文件头注）。
   if (plan.container.kind === "tmux" && plan.container.mode === "send-into") {
     return { ok: false, reason: "send-into（idle-tmux 就地复用）无 CLI 等价语法，诚实降级" };
   }

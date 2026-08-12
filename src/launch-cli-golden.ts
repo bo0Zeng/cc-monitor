@@ -49,7 +49,7 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
   { name: "new + 具名账号", caps: ALL_CAPS, ctx: base({ account: { kind: "account", name: "z", configDir: ACCT } }) },
   { name: "resume + tmux + 具名账号", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "abc-123" },
-      container: { kind: "tmux", name: "cc-abc123", nameQuoting: "raw", mode: "create-or-attach" },
+      container: { kind: "tmux", name: "cc-abc123", nameQuoting: "raw", mode: "create" },
       account: { kind: "account", name: "z", configDir: ACCT },
     }) },
   { name: "resume + cwd + model", caps: ALL_CAPS, ctx: base({

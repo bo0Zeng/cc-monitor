@@ -83,7 +83,7 @@ export function planResumeTmux(
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
     action: { kind: "resume", sid },
-    container: { kind: "tmux", name: tmuxName, nameQuoting: "raw", mode: "create-or-attach" },
+    container: { kind: "tmux", name: tmuxName, nameQuoting: "raw", mode: "create" },
     cwd: cwd.trim() || null,
     account: accountOf(configDir, accountName),
     launcherOverride: launcher,
@@ -135,7 +135,7 @@ export function planLauncher(
   const ctx: LaunchContext = {
     transport: { kind: "ssh" },
     action: { kind: "new" },
-    container: { kind: "tmux", name, nameQuoting: "quoted", mode: "create-or-attach" },
+    container: { kind: "tmux", name, nameQuoting: "quoted", mode: "create" },
     cwd: cwd.trim() || null,
     account: accountOf(configDir, accountName),
     launcherOverride: command,

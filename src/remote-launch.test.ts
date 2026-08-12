@@ -137,10 +137,10 @@ test("buildResumeTmuxCmd:完整幂等形态(new-session && set-option @ccm_sid &
   const payload = `${UNSET}claude --resume abc-123`;
   eq(
     buildResumeTmuxCmd("abc-123", "/home/pi/proj", undefined, "abc-123-cc"),
-    `tmux new-session -d -s abc-123-cc -c '/home/pi/proj' 2>/dev/null && ` +
+    `tmux new-session -d -s abc-123-cc -c '/home/pi/proj' && ` +
       `(tmux set-option -t =abc-123-cc: @ccm_sid abc-123 2>/dev/null || true) && ` + // #72
       TITLE("abc-123-cc") + // F03.4 甲′
-      `tmux send-keys -t =abc-123-cc: '${payload}' Enter; tmux attach -t =abc-123-cc:`,
+      `tmux send-keys -t =abc-123-cc: '${payload}' Enter && tmux attach -t =abc-123-cc:`,
   );
 });
 
@@ -148,10 +148,10 @@ test("buildResumeTmuxCmd:空 cwd 省 -c", () => {
   const payload = `${UNSET}claude --resume s1`;
   eq(
     buildResumeTmuxCmd("s1", "", undefined, "s1-cc"),
-    `tmux new-session -d -s s1-cc 2>/dev/null && ` +
+    `tmux new-session -d -s s1-cc && ` +
       `(tmux set-option -t =s1-cc: @ccm_sid s1 2>/dev/null || true) && ` + // #72
       TITLE("s1-cc") + // F03.4 甲′
-      `tmux send-keys -t =s1-cc: '${payload}' Enter; tmux attach -t =s1-cc:`,
+      `tmux send-keys -t =s1-cc: '${payload}' Enter && tmux attach -t =s1-cc:`,
   );
 });
 
@@ -159,12 +159,12 @@ test("buildResumeTmuxCmd:自定义 launcher 透传 / 注入 fail-closed claude",
   const p1 = `${UNSET}cct --resume s1`;
   eq(
     buildResumeTmuxCmd("s1", "", "cct", "s1-cc"),
-    `tmux new-session -d -s s1-cc 2>/dev/null && (tmux set-option -t =s1-cc: @ccm_sid s1 2>/dev/null || true) && ${TITLE("s1-cc")}tmux send-keys -t =s1-cc: '${p1}' Enter; tmux attach -t =s1-cc:`,
+    `tmux new-session -d -s s1-cc && (tmux set-option -t =s1-cc: @ccm_sid s1 2>/dev/null || true) && ${TITLE("s1-cc")}tmux send-keys -t =s1-cc: '${p1}' Enter && tmux attach -t =s1-cc:`,
   );
   const p2 = `${UNSET}claude --resume s1`; // 注入 → claude
   eq(
     buildResumeTmuxCmd("s1", "", "cct; curl evil", "s1-cc"),
-    `tmux new-session -d -s s1-cc 2>/dev/null && (tmux set-option -t =s1-cc: @ccm_sid s1 2>/dev/null || true) && ${TITLE("s1-cc")}tmux send-keys -t =s1-cc: '${p2}' Enter; tmux attach -t =s1-cc:`,
+    `tmux new-session -d -s s1-cc && (tmux set-option -t =s1-cc: @ccm_sid s1 2>/dev/null || true) && ${TITLE("s1-cc")}tmux send-keys -t =s1-cc: '${p2}' Enter && tmux attach -t =s1-cc:`,
   );
 });
 
@@ -204,10 +204,10 @@ test("buildResumeTmuxCmd:cwd 含空格/单引号 → posixQuote", () => {
   const payload = `${UNSET}claude --resume s1`;
   eq(
     buildResumeTmuxCmd("s1", "/home/pi/my proj", undefined, "s1-cc"),
-    `tmux new-session -d -s s1-cc -c '/home/pi/my proj' 2>/dev/null && ` +
+    `tmux new-session -d -s s1-cc -c '/home/pi/my proj' && ` +
       `(tmux set-option -t =s1-cc: @ccm_sid s1 2>/dev/null || true) && ` + // #72
       TITLE("s1-cc") + // F03.4 甲′
-      `tmux send-keys -t =s1-cc: '${payload}' Enter; tmux attach -t =s1-cc:`,
+      `tmux send-keys -t =s1-cc: '${payload}' Enter && tmux attach -t =s1-cc:`,
   );
   // cwd 含单引号：-c 段 posixQuote 逃逸
   eq(
@@ -287,10 +287,10 @@ test("F74 buildResumeTmuxCmd:显式 name → 用它作会话名(灰会话 fresh 
   const payload = `${UNSET}claude --resume s1`;
   eq(
     buildResumeTmuxCmd("s1", "", "claude", "s1-cc-2"),
-    `tmux new-session -d -s s1-cc-2 2>/dev/null && ` +
+    `tmux new-session -d -s s1-cc-2 && ` +
       `(tmux set-option -t =s1-cc-2: @ccm_sid s1 2>/dev/null || true) && ` + // #72:目标显式名 s1-cc-2,@ccm_sid 仍完整 sid s1
       TITLE("s1-cc-2") + // F03.4 甲′
-      `tmux send-keys -t =s1-cc-2: '${payload}' Enter; tmux attach -t =s1-cc-2:`,
+      `tmux send-keys -t =s1-cc-2: '${payload}' Enter && tmux attach -t =s1-cc-2:`,
   );
 });
 
@@ -395,8 +395,8 @@ test("buildLauncherCmd:完整形态(启动新会话,无 --resume)", () => {
   const payload = `${UNSET}claude`;
   eq(
     buildLauncherCmd("/home/pi/proj", "cc-proj"),
-    `tmux new-session -d -s 'cc-proj' -c '/home/pi/proj' 2>/dev/null && ` +
-      `tmux send-keys -t '=cc-proj:' '${payload}' Enter; tmux attach -t '=cc-proj:'`,
+    `tmux new-session -d -s 'cc-proj' -c '/home/pi/proj' && ` +
+      `tmux send-keys -t '=cc-proj:' '${payload}' Enter && tmux attach -t '=cc-proj:'`,
   );
   eq(buildLauncherCmd("/p", "cc-proj").includes("--resume"), false, "启动版无 --resume");
 });
@@ -405,17 +405,17 @@ test("buildLauncherCmd:空 cwd 省 -c / 自定义命令 / 命令注入 fail-clos
   const p1 = `${UNSET}claude`;
   eq(
     buildLauncherCmd("", "cc-x"),
-    `tmux new-session -d -s 'cc-x' 2>/dev/null && tmux send-keys -t '=cc-x:' '${p1}' Enter; tmux attach -t '=cc-x:'`,
+    `tmux new-session -d -s 'cc-x' && tmux send-keys -t '=cc-x:' '${p1}' Enter && tmux attach -t '=cc-x:'`,
   );
   const p2 = `${UNSET}claude --model opus`;
   eq(
     buildLauncherCmd("", "cc-x", "claude --model opus"),
-    `tmux new-session -d -s 'cc-x' 2>/dev/null && tmux send-keys -t '=cc-x:' '${p2}' Enter; tmux attach -t '=cc-x:'`,
+    `tmux new-session -d -s 'cc-x' && tmux send-keys -t '=cc-x:' '${p2}' Enter && tmux attach -t '=cc-x:'`,
   );
   const p3 = `${UNSET}claude`; // 注入 → claude
   eq(
     buildLauncherCmd("", "cc-x", "claude; rm -rf /"),
-    `tmux new-session -d -s 'cc-x' 2>/dev/null && tmux send-keys -t '=cc-x:' '${p3}' Enter; tmux attach -t '=cc-x:'`,
+    `tmux new-session -d -s 'cc-x' && tmux send-keys -t '=cc-x:' '${p3}' Enter && tmux attach -t '=cc-x:'`,
   );
 });
 
