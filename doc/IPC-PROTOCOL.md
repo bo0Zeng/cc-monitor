@@ -655,6 +655,30 @@ rc=2
 - `--fork-session <args>`（G2 branch-anywhere，`remote-daemon-proto/src/control/fork_write.rs`）→ 从指定消息处分叉出一个新会话文件。**daemon 唯一的写盘入口**——其余一切子命令只读；`readonly_guard` 的写白名单按路径单独盯着 `control/fork_write.rs` 这一个文件（`doc/INVARIANTS.md` §41.6）
 - `--tmux-notify <daemon_pid> <daemon_starttime>`（P4b zero-poll-liveness）→ **不是查询**，是 tmux hook 子进程走的通路：校验身份后给正在跑的 daemon 发一个信号叫它立刻重扫 tmux，**完全不碰文件系统**。两个参数缺一或非整数 ⇒ exit 2。**必须同时比对 starttime 而不只看 pid 存在**：daemon 退出后那个 pid 可能已被别的进程占用，误发信号轻则无效、重则打断无关进程（很多程序把该信号当自定义控制信号，默认处置直接终止）。身份对不上 ⇒ **静默 exit 0，不做事**
 
+#### 控制面的 CLI 那一半（P4d，p1y）
+
+上面那些都是**读面**。控制面（起会话 / 杀会话）此前**只走流连接的命令信封**，
+bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入口：
+
+- `--launch`（stdin `args` JSON → stdout 应答 JSON）→ 建 tmux 会话 / 往已有会话键入载荷。
+- `--kill`（同上）→ 杀一个 tmux 会话，仍过 §34 三道门。
+- `--ping`（stdin 可空）→ 存活探测，回 `{}`。
+- `--daemon-probe`（不读 stdin）→ **能力探测口**，回 `{proto, buildId, commands}`；
+  `commands` 是这台 daemon **真能派发**的 CLI 控制面子命令清单。
+  集成方按**能力**兼容，不要按版本号 —— 范式与 `ccm --ccm-probe` 一致。
+
+★ **这四条不引入任何新语义**：`--launch` / `--kill` / `--ping` 的实现就是流连接上
+`launch` / `kill` / `ping` 那几条命令自己的处理器（`control/cli_control.rs` 从
+`inbound::REGISTRY` 派发），**一份实现、两个入口**。因此它们的 `args` 字段、错误码
+与流那面**逐字相同**，见「入方向：流连接上的命令信封」。
+
+★ `cancel` **不在** CLI 面：它取消的是同一条连接上在飞的另一条命令，而一次性 exec
+是「1 请求 1 响应 1 退出、无 request-id」，本进程里没有第二条命令可取消。
+要停一条 CLI 命令：杀那个进程。
+
+信封与 `--resolve` 同形：stdin 一段 JSON、stdout 一行紧凑 JSON、exit 0；
+错则 exit 2 + stderr 一行 `{code, message}`。
+
 错误写 stderr + 退出码 2（`--account-trust` 用 `--resolve` 那套结构化 `{code,message}` JSON）。**读会话那一族**（`--read-session` / `--read-session-tail` / `--read-session-from-offset` / `--fork-session`）的路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**账号一族不走这条**，各有各的判据：`--accts-dir <p>` 解析到 `~/.cc-acct-iso/config` 或 `$HOME/.claude-accts`；`--account-trust <configDir>` 靠「逐字 ∈ manifest」而非 projects 前缀；`--tmux-notify` 根本不碰文件系统。**旧 daemon 兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
 
 ### 10.1 ★ `--resolve` 的返回值里**哪些是探测出来的、哪些是派生的**（E71）

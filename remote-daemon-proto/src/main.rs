@@ -143,7 +143,7 @@ const PROTO_VERSION: u32 = 1;
 ///   `stdin=DEVNULL`，用户敲的字会被脚本吃掉。省略 = true（存量零迁移）。
 ///   **必须 bump**：monitor 要靠新 daemon 才拿得到这个字段；不 bump 就不判 stale、不重装。
 ///   （wire 是 additive、旧 monitor 忽略未知字段 ⇒ **不 bump PROTO_VERSION**。）
-const BUILD_ID: &str = "p1x-overflow-identity";
+const BUILD_ID: &str = "p1y-cli-control-face";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
@@ -210,10 +210,18 @@ const STREAM_FLAGS: &[&str] = &["--with-bg", "--tail-only"];
 const SUBCOMMANDS: &[&str] = &[
     "--account-trust",
     "--account-trust-zero",
+    // ── P4d：控制面的 CLI 面。**它们不在这里各写一条实现** ——
+    // 分派臂按 `cli_control::spec_for` 派生（见下面那条臂），实现落在 `inbound::REGISTRY`。
+    // 登记在这张表里是因为 `is_query_mode` 与 `argv_table_guard` 都读它，
+    // 而且 `build_id_guard` 的指纹也取自它 ⇒ 加在这里会**逼出一次 BUILD_ID bump**，那正是要的。
+    "--daemon-probe",
     "--fork-session",
+    "--kill",
+    "--launch",
     "--list-accounts",
     "--list-projects",
     "--list-sessions",
+    "--ping",
     "--read-session",
     "--read-session-from-offset",
     "--read-session-tail",
@@ -397,6 +405,16 @@ async fn main() {
             | Some("--session-accounts")
             | Some("--account-trust")
             | Some("--account-trust-zero") => observe::accounts_query::run(&claude_dir, &args),
+            // ★ P4d：控制面的 CLI 入口。**这条臂刻意不写命令字面量** ——
+            // 认哪些 flag 由 `cli_control::spec_for` 从 `inbound::REGISTRY` 派生，
+            // 于是「帧面加一条命令」不需要回来改这里。上面 `--resolve` 那条臂**故意留在前面**：
+            // 它的信封与仓外 aterm 冻结在 2026-07-18，走原路一个字节都不动
+            // （两条路的输出实为同一个 `CommandPlan`，但冻结的契约不拿「实际上一样」去赌）。
+            // ⚠ **必须写成单行臂**：`argv_table_guard::every_dispatch_arm_actually_calls_an_implementation`
+            // 按**行**取 `=>` 右边的臂体，块体臂会被抽成 `""` 当场红（实测）。
+            // 那条约束是保守的（宁可假红），照它写就是了 —— 单行形式下它钉的
+            // 「臂体是一次真调用」也确实成立。
+            Some(f) if control::cli_control::handles(f) => control::cli_control::run(&args).await,
             _ => observe::history_query::run(&claude_dir, &args),
         };
         std::process::exit(code);
