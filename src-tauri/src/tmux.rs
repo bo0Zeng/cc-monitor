@@ -424,6 +424,20 @@ pub async fn kill_remote_tmux(origin: String, target: String) -> Result<(), Stri
         crate::backend::control::daemon_route::Routed::Refused(why) => return Err(why),
         // 证明没发出去 ⇒ 过渡期回落（C7）。`why` 只做诊断，不参与分流。
         crate::backend::control::daemon_route::Routed::NoChannel(why) => {
+            // ★★ **本机没有「回落到一次性 SSH」这条路**〔P3 刀 2，08-11〕。
+            //
+            // `daemon_kill` 本身完全传输无关（只 `client_for(origin)`），所以本机走 daemon
+            // 那半今天就通。但下面那条回落是 **SSH 专属**：对 `<local>` 它会去
+            // `load_remote_config_by_label("<local>")` 拿不到东西，然后报
+            // **「未找到远端配置: "<local>"」** —— 一句与真实原因毫无关系的错。
+            //
+            // 真实原因只有一个：**本机 daemon 的入方向通道不在**。就这么说。
+            if origin == crate::inbound_client::LOCAL_ORIGIN {
+                return Err(format!(
+                    "本机 daemon 通道不在，杀不了 `{target}`：{why}\n\
+                     （本机没有 SSH 回落那条路 —— 那条是远端专属的过渡期兜底）"
+                ));
+            }
             tracing::debug!("[{origin}] kill 回落到一次性 SSH：{why}");
         }
     }
@@ -1045,6 +1059,41 @@ mod tests {
                  `exact_target`，而它自己也在本条人群里 —— 那是闭环，不是绕过）。"
             );
         }
+    }
+
+    /// ★ **P3 刀 2：本机 kill 不许回落到 SSH**〔08-11〕。
+    ///
+    /// `daemon_kill` 完全传输无关（只 `client_for(origin)`）⇒ 本机走 daemon 那半今天就通。
+    /// 但 `kill_remote_tmux` 的回落是 **SSH 专属**：对 `<local>` 它会去查远端配置、
+    /// 报一句 **「未找到远端配置: "<local>"」** —— 与真实原因（本机通道不在）毫无关系。
+    ///
+    /// ⚠ 射程：本条钉的是「**那条 SSH 回落之前有本机的早退**」，
+    /// 不证明本机 kill 真的杀得掉（那要 daemon 在、且有一个真 tmux 会话）。
+    /// 后者今天**没有 UI 入口**（见件里 §0j），所以也没有实测。
+    #[test]
+    fn the_local_kill_never_falls_back_to_ssh() {
+        let prod = guard_core::production_code(include_str!("tmux.rs"));
+        let at = guard_core::find_pinned(&prod, "pub async fn kill_remote_tmux(")
+            .expect("kill 入口不在了");
+        let body: String = prod[at..]
+            .lines()
+            .skip(1)
+            .take_while(|l| *l != "\u{7d}")
+            .collect::<Vec<_>>()
+            .join("\n");
+        let local_at = guard_core::find_pinned(&body, "LOCAL_ORIGIN").unwrap_or_else(|e| {
+            panic!(
+                "`kill_remote_tmux` 里没有本机的早退（{e}）——\n\
+                 那么对 `<local>` 它会掉进 SSH 回落，报「未找到远端配置」，\n\
+                 而真实原因是本机 daemon 通道不在。**错的诊断比没有诊断更贵**。"
+            )
+        });
+        let ssh_at = guard_core::find_pinned(&body, "connect_and_exec_cmd(")
+            .expect("SSH 回落不在了 —— 形状变了就来改本条");
+        assert!(
+            local_at < ssh_at,
+            "本机早退跑到 SSH 回落**之后**去了 —— 那就等于没有早退。"
+        );
     }
 
     #[test]
