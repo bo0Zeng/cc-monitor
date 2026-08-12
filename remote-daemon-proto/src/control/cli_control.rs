@@ -81,6 +81,20 @@ pub(crate) fn spec_for(flag: &str) -> Option<&'static CommandSpec> {
         .find(|s| cli_exposed(s) && flag_of(s.name) == flag)
 }
 
+/// 这条命令要不要读 stdin —— **从 `REGISTRY` 的 `fields` 派生**。
+///
+/// # 它修的是一条真缺陷：存活探测口会挂死
+///
+/// 第一版无条件读 stdin。实测（stdin 接一条不关的管道，也就是 skill 直接
+/// `cc-monitor-remote --ping` 时的形状）：**`--ping` 永远不返回**。
+/// 而这是所有失败里最坏的一种 —— 问「你活着吗」的那条命令，答案是挂住。
+///
+/// `fields` 的头注逐字：「本命令 `args` / `data` 的字段名。**空 = 无载荷（如 `ping`）**」。
+/// ⇒ 判据现成，不用我再手写一张「哪些命令不读 stdin」的表。
+pub(crate) fn reads_stdin(spec: &CommandSpec) -> bool {
+    !spec.fields.is_empty()
+}
+
 /// 本入口认不认这个 flag。`main` 的分派臂只问它，**不写命令字面量** ——
 /// 于是「帧面加一条命令」不需要回来改 `main`。
 pub(crate) fn handles(flag: &str) -> bool {
@@ -124,18 +138,20 @@ pub(crate) async fn run(args: &[String]) -> i32 {
         return emit_err("unknown_command", format!("CLI 控制面不认识 {flag}"));
     };
     let mut input = String::new();
-    // 多读一个字节，好把「刚好装满」与「超了」分开 —— 只读上限那么多是分不开的。
-    if let Err(e) = std::io::stdin()
-        .take(MAX_CLI_STDIN + 1)
-        .read_to_string(&mut input)
-    {
-        return emit_err("stdin_read_failed", format!("read stdin failed: {e}"));
-    }
-    if input.len() as u64 > MAX_CLI_STDIN {
-        return emit_err(
-            "args_too_large",
-            format!("args JSON 超过 {MAX_CLI_STDIN} 字节上限，已拒收（不截断：截半的 JSON 会被报成 bad_request，那句话与真实原因无关）"),
-        );
+    if reads_stdin(spec) {
+        // 多读一个字节，好把「刚好装满」与「超了」分开 —— 只读上限那么多是分不开的。
+        if let Err(e) = std::io::stdin()
+            .take(MAX_CLI_STDIN + 1)
+            .read_to_string(&mut input)
+        {
+            return emit_err("stdin_read_failed", format!("read stdin failed: {e}"));
+        }
+        if input.len() as u64 > MAX_CLI_STDIN {
+            return emit_err(
+                "args_too_large",
+                format!("args JSON 超过 {MAX_CLI_STDIN} 字节上限，已拒收（不截断：截半的 JSON 会被报成 bad_request，那句话与真实原因无关）"),
+            );
+        }
     }
     let trimmed = input.trim();
     let cli_args: serde_json::Value = if trimmed.is_empty() {
@@ -293,6 +309,41 @@ mod tests {
                 "{flag} 能派发却没进探测口清单 —— skill 会以为这台不支持它"
             );
         }
+    }
+
+    /// ★ D 阶段补审：**无载荷的命令不许读 stdin**，否则存活探测口会挂死。
+    ///
+    /// 钉的是**决定**（`reads_stdin`），不是「跑起来没挂」—— 后者要真起进程 + 一条不关的
+    /// 管道，在单测里做不了；而钉决定 + 钉 `run` 用的就是这个决定，两条合起来够。
+    #[test]
+    fn a_command_with_no_payload_never_waits_on_stdin() {
+        let mut checked = 0usize;
+        for spec in REGISTRY.iter().filter(|s| cli_exposed(s)) {
+            if spec.fields.is_empty() {
+                assert!(
+                    !reads_stdin(spec),
+                    "{} 无载荷（`fields` 空）却要读 stdin —— 它会挂在那儿等 EOF",
+                    spec.name
+                );
+                checked += 1;
+            } else {
+                assert!(
+                    reads_stdin(spec),
+                    "{} 有载荷字段却不读 stdin —— args 永远是 {{}}",
+                    spec.name
+                );
+            }
+        }
+        assert!(
+            checked >= 1,
+            "一条无载荷命令都没扫到 —— 本断言在空转（08-12 实测 `ping` 是这种）"
+        );
+        // `run` 必须用的就是上面那个决定，不是另写一份判断。
+        let prod = crate::guard_support::production_code(include_str!("cli_control.rs"));
+        assert!(
+            prod.contains("if reads_stdin(spec) {"),
+            "`run` 不再按 `reads_stdin` 决定读不读 stdin —— 上面那条断言此刻钉的是一个没人用的函数"
+        );
     }
 
     /// ★ P4d-Y4：帧入口那条安全边界的**理由**不许被搬到这里。
