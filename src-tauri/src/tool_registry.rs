@@ -325,19 +325,24 @@ pub const TOOLS: &[ToolSpec] = &[
             },
             TouchedFile {
                 path: "~/.cc-bus/",
-                // **`Remote` 而不是 `Either`**（T04 审计阻塞 2）：`cc_bus.rs` 的全部 5 个 IPC
-                // （`read_cc_bus_state` / `check_cc_bus_agent_online` / `read_cc_bus_inbox` /
-                //  `cc_bus_send` / `cc_bus_spawn`）都以 `origin` 入参走 `cfg_of` → ssh 远端 exec，
-                // **一条本机读取路径都没有**；驾驶舱的 origin 下拉来自 `list_remote_mcp_origins`，
-                // 连"本机"这一档都没有。
+                // ★★ **P4c 订正（08-12）：这段理由整个过期了，而过期的是 `P4a` 那一刀造成的。**
                 //
-                // 标 `Either` 的后果是**用一个新的假阳性换掉旧的假阴性**：本机恰好有
-                // `~/.cc-bus/`（开发机上就有）时，这一行会**确定地**说「本机存在（目录）」，
-                // 配上 `IndirectWrite` 那句"你在 cc-monitor 里的操作会让它被写"——
-                // 而我们写的是**远端**那个。把用户不关心的那台的目录冒充成"我们会动的那个"。
-                host: HostScope::Remote,
+                // 原文（T04 审计阻塞 2）写「`cc_bus.rs` 的全部 5 个 IPC……都以 `origin` 入参走
+                // `cfg_of` → ssh 远端 exec，**一条本机读取路径都没有**；驾驶舱的 origin 下拉
+                // 来自 `list_remote_mcp_origins`，连"本机"这一档都没有」。
+                //
+                // 两句今天都不成立：`P4a`（08-12）把**读面三条**做成了本机可用
+                // （同一条命令串，只是不包进 ssh），并给驾驶舱的下拉**加了「本机」那一档**。
+                //
+                // ⇒ 改 `Either`。原文担心的那个「用新的假阳性换掉旧的假阴性」今天不成立了：
+                // 本机确实会被读（`P4a`），所以说「本机存在」不再是冒充。
+                // ⚠ 但 `IndirectWrite` 那句仍要留神：**写**面（`cc_bus_send`/`_spawn`/
+                // `_broadcast`/`_kill`）至今**只动远端**（`refuse_local_write`），
+                // 所以 note 里把「读」与「写」分开说，别让人以为本机那个也会被写。
+                host: HostScope::Either,
                 note: Some(
-                    "运行期状态：inbox / 名册 / 队列 / 日志。                     驾驶舱读它；但你在驾驶舱点「发消息」/「派活」会让 cc-send / cc-spawn 往这里追加",
+                    "运行期状态：inbox / 名册 / 队列 / 日志。驾驶舱**读**它（P4a 起本机也读）；\
+                     但**写**面（发消息 / 派活 / 广播 / 收掉）至今只动**远端**那份 —— 本机没有对侧",
                 ),
                 effect: TouchEffect::IndirectWrite,
             },
