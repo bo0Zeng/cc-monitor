@@ -117,13 +117,36 @@ echo "-- fixture 已建:$SESSION(等 fake-claude 落 pidfile → app 经 daemon 
 
 # fake-claude 在 tmux 内**异步**起,pidfile 晚于 gen-idle-tmux 返回 → 必须**轮询等它出现**
 # 再读 pid(否则 glob 竞态读空 → 杀不到 → 不变灰,首跑实测踩中)。pidfile 落地 = live 前置成立。
+#
+# ★★★ **P0b 实测（08-12）：这里原来是 `ls …/*.json | head -1` —— 取目录里字典序第一个，
+#     既不认本跑的 sid、也不验那个进程还活不活。**
+#
+# 后果是整套**空真**：`/tmp/e2e-remote-claude/sessions/` 不跨跑清理，于是
+#   ① 「pidfile 落地」PASS —— 但拿到的是**上一跑的残骸**（实测两跑读到同一个 pid=1667736，
+#      而两个 pid 早就都死了）；
+#   ② 「kill fake-claude」打给一个已死的 pid ⇒ **no-op**；
+#   ③ 「30s 内未见灰灯」FAIL —— 而 claude **根本没在这一跑里死过**。
+# ⇒ **一次什么都没测的跑，失败起来和真的 #60 一模一样。**
+#
+# 这也意味着：凡是拿这套件读数当前提的结论（含 `P0` 那两跑推出的
+# 「daemon 发出 → monitor 收到 那一段有缺口」），**台架有效性都还没被证成**。
+#
+# 修法两条，缺一不可：
+#   · **先清**本跑要用的目录（陈旧 pidfile 是这一族的根）；
+#   · 认 pidfile 只认**本跑的 sid**，并**校验进程还活着**（`kill -0`）——
+#     两道都要，因为清理可能被上一跑的 trap 漏掉（那正是 08-12 撞到的形态）。
+rm -rf -- "$CLAUDE_DIR/sessions"
+mkdir -p "$CLAUDE_DIR/sessions"
 FAKE_PID=""
 for _ in $(seq 1 20); do
-  PF="$(ls "$CLAUDE_DIR"/sessions/*.json 2>/dev/null | head -1 || true)"
-  if [ -n "$PF" ]; then
-    FAKE_PID="$(awk -F'[:,]' '{for(i=1;i<=NF;i++) if($i ~ /"pid"/){print $(i+1); exit}}' "$PF")"
-    break
-  fi
+  for PF in "$CLAUDE_DIR"/sessions/*.json; do
+    [ -f "$PF" ] || continue
+    grep -q "\"$SID\"" "$PF" 2>/dev/null || continue   # 只认本跑的 sid
+    _pid="$(awk -F'[:,]' '{for(i=1;i<=NF;i++) if($i ~ /"pid"/){print $(i+1); exit}}' "$PF")"
+    # ★ 进程必须**真的活着** —— 陈旧 pidfile 会让整套空真（见上）。
+    if [ -n "$_pid" ] && kill -0 "$_pid" 2>/dev/null; then FAKE_PID="$_pid"; break; fi
+  done
+  [ -n "$FAKE_PID" ] && break
   sleep 0.5
 done
 [ -n "$FAKE_PID" ] \
