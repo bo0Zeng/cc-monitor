@@ -49,7 +49,27 @@ pub static LOCAL_BACKEND: std::sync::Mutex<Option<SuperviseHandle>> =
 /// `#[cfg(windows)]` 注册**（`lib.rs` 那处）⇒ **Linux/macOS 上两个 monitor 天然能并存**，
 /// 连那道兜底都没有。它们会撞同一个 `~/.cc-monitor/bin/.<name>.partial`（补审 C2）。
 /// ⇒ 真正的「每台机一个」要等 `P2d`（daemon 自己有监听口 + 起时认已有实例）。
-pub fn start_local_backend() -> Resolved {
+/// 起本机后端的结局 —— **三态，不是两态**〔D 阶段补审 08-11 新增，A6〕。
+///
+/// 原来三种结局全塞在 `Resolved` 里：`Found` 与两种 `Missing`（「已经在跑」与「起不来」）。
+/// 而 `daemon_control::daemon_start` 把 `Missing{reason}` 当 `Ok(reason)` 返回
+/// ⇒ 「没内嵌 daemon」「释放失败」「已经在跑」三种完全不同的结局在前端**都走 `console.info`**，
+/// **一个 toast 都不弹**（补审 A6）。
+///
+/// 要分开就得在类型上分开 —— 靠 `reason` 字符串去猜是哪一种，是下一个人一定会写错的东西。
+pub enum StartOutcome {
+    /// 起来了。
+    Started(std::path::PathBuf),
+    /// 已经在跑（`C8`①）—— **不是失败**。
+    AlreadyRunning,
+    /// 起不来：没内嵌 / 释放失败 / exe 旁边也没有。
+    Failed {
+        reason: String,
+        looked_at: Vec<std::path::PathBuf>,
+    },
+}
+
+pub fn start_local_backend() -> StartOutcome {
     // ★★ **锁全程持有**〔D 阶段补审 08-11 修，原版是阻塞级缺陷〕。
     //
     // # 原来错在哪
@@ -73,10 +93,7 @@ pub fn start_local_backend() -> Resolved {
     // 起不掉也杀不掉的幽灵进程**；把释放挪出命令线程是另一件事（补审建议 C4）。
     let mut g = LOCAL_BACKEND.lock().expect("LOCAL_BACKEND 锁毒化");
     if g.is_some() {
-        return Resolved::Missing {
-            reason: "本机后端已经在跑（C8①：每台机只许一个）".into(),
-            looked_at: Vec::new(),
-        };
+        return StartOutcome::AlreadyRunning;
     }
     // 两样宿主知识在这里给（backend 层不认识它们）：
     //   · 落点 `~/.cc-monitor/bin`：与远端自部署同一个目录，但**文件名带 build_id**
@@ -122,7 +139,10 @@ pub fn start_local_backend() -> Resolved {
     if let Some(h) = sup {
         *g = Some(h);
     }
-    resolved
+    match resolved {
+        Resolved::Found(p) => StartOutcome::Started(p),
+        Resolved::Missing { reason, looked_at } => StartOutcome::Failed { reason, looked_at },
+    }
 }
 
 /// 本机独有的两个读数（远端没有对应物：那个进程在别人机器上）。

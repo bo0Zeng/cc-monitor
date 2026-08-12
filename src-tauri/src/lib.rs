@@ -411,9 +411,15 @@ pub fn run() {
                 //     ⇒ 与远端那份结构上不可能撞（理由见 `extract_embedded_to` 头注的 D1 段）。
                 //   · 当前 arch：`sftp::daemon_binary` 按它挑内嵌字节；缺内嵌（`cfg(embedded_daemons)`
                 //     未置）时给 None，函数会诚实降级、不伪造理由。
+                use local_daemon::StartOutcome;
                 match local_daemon::start_local_backend() {
-                    Resolved::Found(p) => tracing::info!("本机后端 sidecar: {}", p.display()),
-                    Resolved::Missing { reason, looked_at } => {
+                    StartOutcome::Started(p) => {
+                        tracing::info!("本机后端 sidecar: {}", p.display())
+                    }
+                    StartOutcome::AlreadyRunning => {
+                        tracing::info!("本机后端已经在跑（启动路径不重复起）")
+                    }
+                    StartOutcome::Failed { reason, looked_at } => {
                         tracing::info!("本机后端未启动: {reason}；找过 {looked_at:?}")
                     }
                 }

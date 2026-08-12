@@ -94,18 +94,33 @@ pub fn daemon_status(origin: String) -> Result<serde_json::Value, String> {
 pub fn daemon_start(origin: String) -> Result<String, String> {
     check_origin(&origin)?;
     if is_local(&origin) {
-        return Ok(match crate::local_daemon::start_local_backend() {
-            crate::backend::control::local_backend::Resolved::Found(p) => {
-                format!("已起：{}", p.display())
+        // A6：**失败要回 `Err`**。原来三种结局都走 `Ok(reason)`，前端一律 `console.info`，
+        // 「没内嵌 daemon」「释放失败」这两种真失败**一个 toast 都不弹**。
+        use crate::local_daemon::StartOutcome;
+        return match crate::local_daemon::start_local_backend() {
+            StartOutcome::Started(p) => Ok(format!("已起：{}", p.display())),
+            StartOutcome::AlreadyRunning => {
+                Ok("本机后端已经在跑（C8①：每台机只许一个）".into())
             }
-            crate::backend::control::local_backend::Resolved::Missing { reason, .. } => reason,
-        });
+            StartOutcome::Failed { reason, looked_at } => {
+                Err(format!("{reason}；找过 {looked_at:?}"))
+            }
+        };
     }
     let mut g = remotes().lock().map_err(|e| format!("锁毒化: {e}"))?;
     let slot = g
         .get_mut(&origin)
         .ok_or_else(|| format!("没有这台机的把手：{origin}（启动时没注册过？）"))?;
-    if slot.handle.is_some() {
+    // ⚠ **A2**：`JoinHandle` 完成之后**不会变成 `None`**〔D 阶段补审 08-11 修〕。
+    // 原来判据是 `slot.handle.is_some()` ⇒ `ssh_source::run` 一旦返回（`lib.rs` 记 error 后
+    // task 结束），此后每次点「起」都恒回「已经在跑」，而实际上**一条流都没有**；
+    // 用户只能先点「停」（abort 一个已结束的 handle）再点「起」。
+    // ⇒ 改问 tokio 句柄的 `is_finished()`：**跑着才算在跑**。
+    if slot
+        .handle
+        .as_ref()
+        .is_some_and(|h| !h.inner().is_finished())
+    {
         return Ok(format!("{origin} 的流已经在跑（C8①：每台机只许一个）"));
     }
     slot.handle = Some((slot.respawn)());
@@ -183,6 +198,48 @@ mod tests {
                 )
             });
         }
+    }
+
+    /// ★★ **两条「说成功其实没成」的形态**〔D 阶段补审 08-11 新增，A2 + A6〕。
+    ///
+    /// | # | 原形态 | 后果 |
+    /// |---|---|---|
+    /// | A2 | 远端「起」的判据是 `slot.handle.is_some()` | `JoinHandle` 完成后**不会变 `None`** ⇒ 流早就结束了，每次「起」仍恒回「已经在跑」；用户只能先「停」再「起」 |
+    /// | A6 | `daemon_start` 把 `Resolved::Missing{reason}` 当 `Ok(reason)` | 「没内嵌 daemon」「释放失败」两种**真失败**在前端只走 `console.info`，**一个 toast 都不弹** |
+    ///
+    /// 本条钉：① 远端那支必须问 `is_finished()`（不是 `is_some()`）；
+    /// ② 本机那支必须有 `Failed` ⇒ `Err` 那一格（三态各有去处，不靠 `reason` 字符串猜）。
+    #[test]
+    fn starting_reports_failure_as_failure_and_finished_streams_as_not_running() {
+        let src = guard_core::production_code(include_str!("daemon_control.rs"));
+        let at = guard_core::find_pinned(&src, "pub fn daemon_start(origin: String)")
+            .expect("起口不在了");
+        let body: String = src[at..]
+            .lines()
+            .skip(1)
+            .take_while(|l| *l != "\u{7d}")
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(body.len() > 200, "切出来的体只有 {} 字节 —— 切错了", body.len());
+
+        guard_core::find_pinned(&body, "is_finished()").unwrap_or_else(|e| {
+            panic!(
+                "远端「起」不再问 `is_finished()`（{e}）。\n\
+                 若换回 `handle.is_some()`：`JoinHandle` 完成后不会变 `None`\n\
+                 ⇒ 流早就结束了，「起」仍恒回「已经在跑」，用户只能先「停」再「起」。"
+            )
+        });
+        guard_core::find_pinned(&body, "StartOutcome::Failed").unwrap_or_else(|e| {
+            panic!(
+                "本机「起」没有把 `Failed` 单独接出来（{e}）。\n\
+                 三种结局（起了 / 已经在跑 / 起不来）必须各有去处 ——\n\
+                 全塞进 `Ok(reason)` 的话，真失败在前端只走 `console.info`，一个 toast 都不弹。"
+            )
+        });
+        assert!(
+            body.contains("Err(format!"),
+            "本机「起」的失败那一格不回 `Err` —— 那就是把失败说成了成功。"
+        );
     }
 
     /// ★ **接线钉（远端那半）**：`lib.rs` 起每台远端时**真的**把把手注册进来。
