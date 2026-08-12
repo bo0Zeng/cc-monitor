@@ -26,4 +26,35 @@ if [ ! -x "$CCM_E2E_DAEMON" ]; then
     if [ -x "$c" ]; then CCM_E2E_DAEMON="$c"; break; fi
   done
 fi
+# ★★★ **P0b（08-12）：daemon 也要落在套件那个私有 tmux socket 上。**
+#
+# `P0d` 把套件的 tmux 隔离从 `TMUX_TMPDIR` 换成 `-L <名>` shim（C7i 红线），
+# 这一步是对的 —— 但它**把一个功能前提悄悄拿掉了**：
+# 套件把会话建在 `-L e2eGray` 上，而 **daemon 跑在 SSH 那头、不继承本 shell 的 PATH**
+# ⇒ 它 `tmux ls` 读的是**默认 socket**，**看不见 fixture 会话**
+# ⇒ `session_added` 根本不发 ⇒ 全链套件从此测不到任何东西。
+#
+# ★ `P0d` 当时的判据为什么没抓到：它验的是「隔离生效 + 帧级套件 12/0」，
+#   而**帧级那套的 daemon 与 tmux 在同一个 shell 里**（都吃 shim）⇒ 绿；
+#   全链那套的 daemon 在 SSH 那头 ⇒ 断。**判据的射程比它自称的窄，
+#   而窄的那一格恰好是全链。**
+#
+# ⇒ 由调用方经 `CCM_E2E_TMUX_SOCK` 告诉它用哪个 socket，wrapper 在这里造一份同款 shim
+#   塞进 daemon 的 PATH。**不设就退回默认 socket**（与本改动之前逐字同行为）——
+#   帧级那套不传它，照旧工作。
+# 默认值不能省：本脚本经 SSH exec 时 env 不带 CCM_E2E_*（头注第 19 行的既定纪律）
+# ⇒ 靠调用方传 env 行不通，必须像 CCM_E2E_CLAUDE_DIR 那样给一个与套件约定一致的默认。
+# e2eGray = graylight-suite.sh 用的那个名字（两处是双写点，改一处要改两处）。
+: "${CCM_E2E_TMUX_SOCK:=e2eGray}"
+if [ -n "${CCM_E2E_TMUX_SOCK:-}" ]; then
+  _real_tmux=$(command -v tmux 2>/dev/null)
+  if [ -n "$_real_tmux" ]; then
+    _shim=$(mktemp -d /tmp/e2e-daemon-tmuxshim.XXXXXX) || _shim=""
+    if [ -n "$_shim" ]; then
+      printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$_real_tmux" "$CCM_E2E_TMUX_SOCK" > "$_shim/tmux"
+      chmod +x "$_shim/tmux"
+      PATH="$_shim:$PATH"; export PATH
+    fi
+  fi
+fi
 exec env CLAUDE_CONFIG_DIR="$CCM_E2E_CLAUDE_DIR" "$CCM_E2E_DAEMON" "$@"
