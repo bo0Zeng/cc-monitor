@@ -70,6 +70,12 @@ mod spawn_sites {
         ("build.rs", "check_acct_iso_vendor_freshness", "`sh -c`（算 vendored 脚本的指纹）",
          "同上的第二半，对 `cc-acct-iso` 那份 vendor 算摘要；命令串是常量，\
           唯一的变量是仓内路径。⚠ 它跑在**构建期**，比运行时的任何一处都早"),
+        ("ccm_probe.rs", "probe_local_ccm", "`bash -lic <常量探测串>`",
+         "P3t-Y2：本机 ccm 的**能力集**探测。命令串是 `CCM_PROBE_CMD` —— 与远端那条**逐字同一个常量**，\
+          零插值。必须起进程的理由是「本机装没装 ccm、装的是哪一版」只有这台机器自己知道；\
+          而 shell 里的 `command -v` 那种探法只答得了「在不在」，答不了能力集，\
+          拿它当依据渲染就会在老 ccm 上渲出带未知 flag 的命令且**已经没有回落可走**（fail-open）。\
+          `bash -lic` 那层与远端同语义（PATH/别名/函数按交互终端解析），`ccm` 正是靠它才被找到"),
         ("account_usage.rs", "run_local_probe", "`sh -c <载荷>`",
          "本机用量探针：载荷由 `probe_command_for` 构造并引用过（`exec_site_registry` 里那条 Builder 行管它）"),
         ("launch.rs", "launch_local_posix", "用户配置的终端 argv[0]",
