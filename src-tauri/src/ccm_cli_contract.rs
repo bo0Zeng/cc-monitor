@@ -413,12 +413,83 @@ mod tests {
     /// 那两处后面跟着 `2>/dev/null` 且**有本地回落**，指到目录只会得到空输出、
     /// 然后按定框 §5「诚实降级」走本地那条；而 cc-spawn 这处**没有回落分支**，
     /// 目录会让整体失败。⇒ 3 个人群里 2 个要写例外，那种判据是仪式不是防护。
-    #[test]
-    fn cc_spawn_resolves_a_real_ccm_file_not_a_directory() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+    /// 仓内那份 `cc-spawn` 的路径。
+    ///
+    /// ★★ **诚实边界（P4b-Y3）：它钉的是仓内那份，而本机真正在跑的不是它。**
+    ///
+    /// 实测：`~/.local/bin/cc-*` 全是指向 `~/.claude/skills/cc-bus/scripts/` 的 symlink，
+    /// 而那份是 07-18 的 7699 字节；仓内这份是 08-07 的 9713 字节 —— **两者差 167 行**。
+    /// `tool_registry.rs` 声明了 `shared/cc-bus` → `.claude/skills/cc-bus` 的部署映射，
+    /// 但按 `PS1` 的读数那张表是**纯声明表**，**没有任何东西真的按它部署**。
+    ///
+    /// ⇒ 本文件里所有读这个路径的判据，**证明的是仓内那份的性质，不是本机行为**。
+    /// 别把它们读成「机器上就是这样」。两份何时同步是 `U9` 第二问 + `PS1` 的题目。
+    fn cc_spawn_path() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("src-tauri 的上级")
-            .join("shared/cc-bus/scripts/cc-spawn");
+            .join("shared/cc-bus/scripts/cc-spawn")
+    }
+
+    /// ★ P4b-Y1/Y2（`C14`〔用 08-12〕「spawn 就是起, 就是 creat」）。
+    ///
+    /// 那个 `or` 的**第四份**实现住在这里：`P3s` 数出两份（`ccm` 的、TS 的），
+    /// `P4d` 的冒烟又撞出 daemon 的 wire mode（第三份），这里是第四份。
+    ///
+    /// **删复用与留避让必须同时钉**：把「不复用」做成「不避让」的话，同名直接建会撞上
+    /// 别人的会话 —— 那正是 `C14` 要消灭的东西的另一面。
+    #[test]
+    fn cc_spawn_creates_it_never_reuses_a_live_session() {
+        let src = std::fs::read_to_string(cc_spawn_path()).expect("读 cc-spawn");
+        assert!(
+            src.lines().count() >= 50,
+            "`cc-spawn` 只剩 {} 行 —— 读法坏了或文件被掏空",
+            src.lines().count()
+        );
+        // ① 复用那条路必须没了。钉的是**形状**不是某句文案：
+        //    「探到活会话就 `exit 0`」这条路一旦回来，下面任一条都会命中。
+        for gone in ["复用已有会话", "new_flag"] {
+            assert!(
+                !src.contains(gone),
+                "`cc-spawn` 里又出现了 {gone:?} —— 默认复用回潮了。\n                 `C14`〔用 08-12〕逐字：「所有起会话就是起会话……**spawn 就是起, 就是 creat**」。"
+            );
+        }
+        // ② 命名避让必须还在（不复用 ≠ 不避让）。
+        guard_core::find_pinned(&src, "while tmux has-session").unwrap_or_else(|e| {
+            panic!(
+                "{e}\n                 ⇒ 命名避让没了。把「不复用」做成「不避让」会让同名直接建、撞上别人的会话，\n                 那正是 `C14` 要消灭的东西的另一面。"
+            )
+        });
+        // ③ `--new` 保留为 no-op：外面可能有人在传，让它报错等于把别人的脚本弄坏。
+        // ⚠ needle 要**唯一确定那个事实**：`--new` 在用法串与注释里也出现
+        //（`find_pinned` 当场报「命中 2 处，断言指不明是哪一处」）。钉那条 case 臂本身。
+        guard_core::find_pinned(&src, "--new)  shift;;").unwrap_or_else(|e| {
+            panic!("{e}\n⇒ `--new` 整个删掉了。它该留成 no-op —— 兼容外面已有的调用方。")
+        });
+    }
+
+    /// ★ P4b-Y3：那条诚实边界**必须写在源码里**，不能只活在计划文件里。
+    ///
+    /// 这是「禁词守卫」的反面 —— **必需词**守卫：删掉那段话的人会被拦一次。
+    /// 它防的不是笔误，是**下一个人把这些判据读成「机器上就是这样」**。
+    #[test]
+    fn the_cc_spawn_judges_say_out_loud_they_pin_the_repo_copy_not_the_running_one() {
+        let me = include_str!("ccm_cli_contract.rs");
+        // ⚠ **数次数，不是 `contains`**：本判据自己的数组里就写着这两句
+        // ⇒ `contains` 恒真，改掉头注它照样绿（实测 `M4` 第一次就是这么绿的）。
+        // 本会话已经第三次栽在「判据被自己要钉的名字命中」上（`P3s-Y2` / `P4d-Y4`）。
+        // ⇒ 要求出现 **≥ 2 次**：一次是这里的字面量，另一次必须在头注里。
+        for must in ["本机真正在跑的不是它", "没有任何东西真的按它部署"] {
+            assert!(
+                me.matches(must).count() >= 2,
+                "`cc_spawn_path` 的头注里少了 {must:?}。\n                 那段话记的是一条**结构性假绿**：判据钉的是仓内那份，而 `~/.local/bin/cc-*` \n                 指向的是 `~/.claude/skills/` 那份（实测差 167 行）。删掉它，\n                 下一个人就会把这些判据读成「机器上就是这样」。"
+            );
+        }
+    }
+
+    #[test]
+    fn cc_spawn_resolves_a_real_ccm_file_not_a_directory() {
+        let path = cc_spawn_path();
         let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}: {e}"));
         // ★ 抽取器自检：文件被掏空/改名时，下面那条会零命中地绿。
         assert!(
