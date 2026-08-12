@@ -201,6 +201,31 @@ export class McpSection {
    * 两处各写一遍就是「一段逻辑、两种表示」：加一台机器的路径来源时，
    * 很容易只喂了其中一个，而**少喂的那个不会报错，只是少了几项**。
    */
+  /** P6b：候选**没读到**时的样子〔E 阶段补审〕。
+   *
+   * ⚠ 不许说成「这台机器还没有用过的项目目录」—— 那是一句与真实原因无关的话，
+   * 而这两件事的下一步完全不同：「没用过」⇒ 手填一个新路径；「没读到」⇒ 看看那台机器连没连上。
+   * 本工作区整轮都在收口这一族（`P4d-Y5` 的「未找到远端配置: `<local>`」是同一个病）。
+   */
+  private renderDirCandidatesFailed(): void {
+    this.datalist.replaceChildren();
+    this.dirsBox.replaceChildren();
+    const hint = document.createElement("div");
+    hint.className = "settings-hint mcp-dirs-empty";
+    hint.textContent = "读不到这台机器的项目清单 —— 上面仍可手填任意路径。";
+    this.dirsBox.appendChild(hint);
+  }
+
+  /** P6b：候选还没回来时的样子 —— **空着并说清在读**，绝不留上一台的路径。 */
+  private renderDirCandidatesLoading(): void {
+    this.datalist.replaceChildren();
+    this.dirsBox.replaceChildren();
+    const hint = document.createElement("div");
+    hint.className = "settings-hint mcp-dirs-empty";
+    hint.textContent = "读取中…";
+    this.dirsBox.appendChild(hint);
+  }
+
   private renderDirCandidates(dirs: string[]): void {
     this.datalist.replaceChildren();
     this.dirsBox.replaceChildren();
@@ -238,7 +263,9 @@ export class McpSection {
       if (this.origin !== want) return; // 期间切走
       this.renderDirCandidates(dirs);
     } catch {
-      /* 候选补全拿不到不影响手填 */
+      // ★ 不能什么都不做〔E 阶段补审〕：`selectMachine` 已经把清单换成「读取中…」，
+      // 这里静默返回 ⇒ 面板**永远停在「读取中…」**。
+      if (this.origin === want) this.renderDirCandidatesFailed();
     }
   }
 
@@ -285,6 +312,13 @@ export class McpSection {
     this.origin = origin;
     this.dirRow.style.display = ""; // F89a：远端也显目录行（可填项目管理远端 .mcp.json）
     this.dirInput.value = ""; // 本机/远端项目路径不通用，切机器清空
+    // ★ **候选清单也要一起清**〔P6b D 阶段补审 08-12〕。
+    //
+    // 上面那句注释说的「路径不通用」对候选同样成立，而在 P6b 之前它不显眼：候选只进
+    // 不可见的 `datalist`。P6b 把它变成了**可见且可点**的清单 ⇒ 不清的话，
+    // 切到 B 机后面板仍挂着 A 机的路径，点一下就是**拿 A 的路径去读 B**。
+    // 远端那趟是一整趟 SSH（30s 超时），这个窗口一点都不短。
+    this.renderDirCandidatesLoading();
     // E59：按钮没了，改成更新那行只读显示。
     const name = this.machineRow.querySelector<HTMLElement>(".mcp-machine-name");
     if (name) name.textContent = origin ?? "本机";
@@ -303,14 +337,17 @@ export class McpSection {
 
   /** F89a：读远端某项目的 datalist 候选（远端 `~/.claude.json` projects 键）。 */
   private async loadRemoteProjectCandidates(origin: string): Promise<void> {
-    let dirs: string[] = [];
+    let dirs: string[] | null = null;
     try {
       dirs = await commands.list_remote_mcp_project_dirs({ origin });
     } catch {
-      /* 拿不到不影响手填 */
+      // ★ `null` 与 `[]` 是**两件事**〔E 阶段补审〕：原来这里 catch 之后 `dirs` 仍是 `[]`，
+      // 于是读失败会显示「这台机器还没有用过的项目目录」—— 一句与真实原因无关的话。
+      dirs = null;
     }
     if (this.origin !== origin) return; // 期间切走
-    this.renderDirCandidates(dirs);
+    if (dirs === null) this.renderDirCandidatesFailed();
+    else this.renderDirCandidates(dirs);
   }
 
   /** F89a：读+管理远端某项目的 `.mcp.json`（project scope 可写）。切走/改目录 → 丢弃。 */
