@@ -1425,9 +1425,20 @@ fn tmux_raw_registry() -> &'static std::sync::Mutex<std::collections::HashMap<St
 /// 或本机的 [`crate::inbound_client::LOCAL_ORIGIN`]。
 /// 由 `the_local_path_is_safe_only_because_local_sids_never_enter_the_tmux_cache` 钉住。
 pub(crate) fn record_tmux_raw(origin: &str, raw: String) {
+    // ⚠ **中毒也要拿到锁**〔D 阶段补审 08-11 修，B3〕。
+    //
+    // 原来是 `.lock().unwrap()`。本函数**跑在本机消费者那条裸 `std::thread` 上**
+    // （`local_backend::local_stdio_consumer`），而那个线程没有 `catch_unwind`：
+    // 一次锁中毒 panic 会 unwind 出整个消费者闭包 ⇒ `child` 锁里还留着活的 `Child`、
+    // `pid` 没归 0、`unregister` 被跳过 ⇒ 没人再读 daemon 的 stdout ⇒ 管道缓冲填满
+    // ⇒ **daemon 阻塞在 write 上冻死**；而 `daemon_status` 照回 `channel: true` + 一个活 pid，
+    // `start_local_backend` 也会以「已经在跑」拒绝重起。**全绿的死锁态，没有一处会响。**
+    //
+    // 处置对齐本仓既定做法（`inbound_client` 的两处 `unwrap_or_else(|e| e.into_inner())`）：
+    // 一条陈旧的 `tmux ls` 原文远好过把整条读帧路炸掉。
     tmux_raw_registry()
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .insert(origin.to_string(), raw);
 }
 
