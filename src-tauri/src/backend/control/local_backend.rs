@@ -570,6 +570,77 @@ pub fn start_if_present(
     (r, Some(h))
 }
 
+/// [`local_stdio_consumer`] 用的**同步有界读行** —— 远端 `ssh_source::read_capped_line` 的孪生。
+///
+/// # 为什么不复用那一份
+///
+/// 那一份是 `async`（吃 `AsyncBufRead`），而本机消费者跑在**裸 `std::thread`** 上。
+/// 机制可以同构，代码跨不了 sync/async 这道边。
+/// ⇒ **共用的是上限常量**（`ssh_source::DAEMON_FRAME_LINE_CAP`），那才是会漂的东西；
+/// 机制各写一份，两边头注互指。
+///
+/// # 机制：`fill_buf`/`consume`，超限之后只找换行、不再往 buf 里塞字节
+///
+/// 逐字抄远端那条头注记的教训：daemon 侧第一版用无界 `read_until`、读完再看长度，
+/// D 审计实测**喂 512 MiB 无换行的流 ⇒ RSS 从 6 MiB 涨到 518 MiB**，
+/// 而它照样回了一条「看起来对」的 `line_too_long`。
+///
+/// # 返回
+///
+/// `Ok(None)` = EOF（**判死信号**）· `Ok(Some(s))` = 一行（超限的整行丢弃，回空串）·
+/// `Err` = 真的读错误。
+///
+/// ⚠ **字节转字符串走 `from_utf8_lossy`**〔D 阶段补审 08-11 修〕：
+/// 原版用 `BufReader::lines()`，那是 **UTF-8 严格**的，一个坏字节就回 `InvalidData`，
+/// 而调用方把它和 EOF 一起 `break` ⇒ daemon 被我们读死、还被记成一次「崩溃」，
+/// 三次之后**整个进程周期不再起来**，日志写「崩了 3 次」——**一个错误的诊断**。
+/// 远端那条路早就明确取了相反的取舍（`ssh_source` 里 `from_utf8_lossy`，注释逐字
+/// 「非 UTF-8 不该让整条连接死掉」），本机这条当时把它漏了。
+fn read_capped_line_sync<R: std::io::BufRead>(
+    rd: &mut R,
+    cap: usize,
+) -> std::io::Result<Option<String>> {
+    let mut buf: Vec<u8> = Vec::new();
+    let mut seen: usize = 0;
+    let mut overflowed = false;
+    loop {
+        let chunk = match rd.fill_buf() {
+            Ok(c) => c,
+            Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        if chunk.is_empty() {
+            return Ok(if seen == 0 {
+                None // 真 EOF
+            } else if overflowed {
+                Some(String::new())
+            } else {
+                Some(String::from_utf8_lossy(&buf).into_owned())
+            });
+        }
+        let (take, done) = match chunk.iter().position(|&c| c == b'\n') {
+            Some(i) => (i, true),
+            None => (chunk.len(), false),
+        };
+        seen += take;
+        if seen > cap {
+            overflowed = true;
+        }
+        if !overflowed {
+            buf.extend_from_slice(&chunk[..take]);
+        }
+        let consume = if done { take + 1 } else { take };
+        rd.consume(consume);
+        if done {
+            return Ok(if overflowed {
+                Some(String::new())
+            } else {
+                Some(String::from_utf8_lossy(&buf).into_owned())
+            });
+        }
+    }
+}
+
 /// P2（定框 C1/C4）：**本机后端的 stdio 消费者** —— 把这条命的 stdin/stdout 接成入方向通道。
 ///
 /// # 它做的事只有一点胶水
@@ -618,8 +689,20 @@ pub(crate) fn local_stdio_consumer(
     // 留一份副本给 `unregister` —— 它要 `&Arc` 比对身份（「不摘别人的 client」）。
     let mut registered: Option<std::sync::Arc<crate::inbound_client::InboundClient>> = None;
 
-    for line in std::io::BufReader::new(stdout).lines() {
-        let Ok(line) = line else { break };
+    let mut rd = std::io::BufReader::new(stdout);
+    loop {
+        let line = match read_capped_line_sync(&mut rd, crate::ssh_source::DAEMON_FRAME_LINE_CAP) {
+            Ok(Some(l)) => l,
+            Ok(None) => break, // EOF = 流结束 = 判死
+            Err(e) => {
+                // 真读错误（不是坏字节 —— 那条已被 `from_utf8_lossy` 吸收）。
+                tracing::warn!("本机后端 stdout 读错误（{e}）；按流结束处理");
+                break;
+            }
+        };
+        if line.is_empty() {
+            continue; // 超长行已整行丢弃，或空行
+        }
         let Some(frame) = crate::ssh_source::parse_frame(&line) else {
             continue;
         };
@@ -871,6 +954,48 @@ mod tests {
              ★ 「消费者收到了」不算：消费者里加一行日志也能让人以为通了。\n\
              本条读的是 emitter 真正会读的那一份。"
         );
+    }
+
+    /// ★★ **本机读帧不许被一个坏字节杀死，也不许无界**〔D 阶段补审 08-11 新增〕。
+    ///
+    /// 补审在同一个读循环上逮到两条：
+    ///
+    /// | # | 原版 | 后果 |
+    /// |---|---|---|
+    /// | B1 | `BufReader::lines()`（**UTF-8 严格**）+ `let Ok(line) = line else { break }` | 一个坏字节 ⇒ `InvalidData` 与 EOF 同路 ⇒ 消费者返回 = 判死 ⇒ daemon 因 EPIPE 自杀 ⇒ 记一次「崩溃」，三次后**整个进程周期不再起来**，日志写「崩了 3 次」——**一个错误的诊断** |
+    /// | B2 | `read_line` 语义 ⇒ **完全无界** | 远端有 `read_capped_line`（64 MiB 上限，头注记着 daemon 侧「512 MiB 无换行流 ⇒ RSS 6→518 MiB」的实测）。同一个对端、同一种失效模式，只有本机这侧没上限 |
+    ///
+    /// 本条钉三件：① 不许再出现 `.lines()` 那条严格路 ② 必须走 `read_capped_line_sync`
+    /// ③ **上限必须取远端那个常量**（两边各写一份机制，但值不许漂）。
+    #[test]
+    fn the_local_frame_reader_is_bounded_and_lossy() {
+        let src = include_str!("local_backend.rs");
+        let prod = guard_core::production_code(src);
+        let at = guard_core::find_pinned(&prod, "fn local_stdio_consumer(")
+            .expect("消费者不在了 —— 改了名就来改本条");
+        let body: String = prod[at..]
+            .lines()
+            .skip(1)
+            .take_while(|l| *l != "\u{7d}")
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(body.len() > 400, "切出来的体只有 {} 字节 —— 切错了", body.len());
+
+        assert!(
+            !body.contains(concat!(".li", "nes()")),
+            "本机读帧又用回了按行迭代器 —— 那是 **UTF-8 严格**的，\n\
+             一个坏字节会被当成 EOF ⇒ 把 daemon 读死，还记成一次「崩溃」，三次后永久放弃。\n\
+             远端那条路早就取了相反的取舍（`from_utf8_lossy`，注释逐字「非 UTF-8 不该让整条连接死掉」）。"
+        );
+        guard_core::find_pinned(&body, "read_capped_line_sync(").unwrap_or_else(|e| {
+            panic!("本机读帧没走有界读行（{e}）—— 无界读遇一条永不结束的行就是无界堆分配")
+        });
+        guard_core::find_pinned(&body, "DAEMON_FRAME_LINE_CAP").unwrap_or_else(|e| {
+            panic!(
+                "本机读帧的上限不是远端那个常量（{e}）。\n\
+                 两边机制各写一份（sync/async 跨不过去），但**值不许漂** —— 漂了就没人知道哪边先炸。"
+            )
+        });
     }
 
     /// P2-Y1b（acceptor: 机检）：**生产入口真的把消费者传下去了**。
