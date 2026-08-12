@@ -177,6 +177,14 @@ pub enum JsonlRecord {
         operation: Option<String>,
         #[serde(default)]
         content: Option<String>,
+        /// P0c：**`remove` 那一支要建卡，卡上要有时间**。
+        ///
+        /// 原来这个变体只留 `operation` + `content`（issue #36 只需要 content 喂折叠豁免集合）。
+        /// 而 `remove` 是**用户打断时说的那句话在 jsonl 里唯一的存在** ——
+        /// 它没有 `user` 记录、没有 `uuid`、没有 `parentUuid`，
+        /// 时间戳是它**仅有的**可用于排序与展示的元数据，原文里一直有，只是我们没收。
+        #[serde(default)]
+        timestamp: Option<String>,
     },
     #[serde(rename = "permission-mode")]
     PermissionMode {},
@@ -353,9 +361,15 @@ mod tests {
             r#"{"type": "queue-operation", "operation": "enqueue", "timestamp": "2026-07-05T06:12:29.248Z", "sessionId": "0cbbdbae", "content": "这是登录门户"}"#,
         );
         match &r {
-            JsonlRecord::QueueOperation { operation, content } => {
+            JsonlRecord::QueueOperation {
+                operation,
+                content,
+                timestamp,
+            } => {
                 assert_eq!(operation.as_deref(), Some("enqueue"));
                 assert_eq!(content.as_deref(), Some("这是登录门户"));
+                // P0c：时间戳原文里一直有，只是此前没收。`remove` 那一支要拿它建卡。
+                assert_eq!(timestamp.as_deref(), Some("2026-07-05T06:12:29.248Z"));
             }
             other => panic!("expected QueueOperation, got {other:?}"),
         }
