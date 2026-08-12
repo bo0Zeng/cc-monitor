@@ -128,6 +128,8 @@ vi.mock("../behavior", () => ({
     notifyTurnEnd: false,
     resumeCommandLocal: "",
     resumeCommandRemote: "",
+    resumeCommandLocalPresets: [],
+    resumeCommandRemotePresets: [],
   }),
   setBehavior: vi.fn().mockResolvedValue(undefined),
 }));

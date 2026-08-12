@@ -1054,6 +1054,21 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 /* F87（#50+#51）：MCP 管理段样式（原缺、名字与摘要糊在一起——业务二审 gap#7 修）。 */
 /* P6b：工作目录清单。`datalist` 是自动补全（要先敲才补），这排 chip 是**可浏览**的 ——
    实测本机 12 个项目里只有 4 个真有 .mcp.json，没有清单就只能一个个猜着点。 */
+/* P6c：resume 命令预设条。与 .mcp-dirs 同形（一排可点的 chip），
+   但**刻意不共用一个类名** —— 两处的语义不同（一个是目录、一个是命令），
+   将来任一处要单独调样式时，共用的类会逼人先做一次拆分。 */
+.settings-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+.settings-preset {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .mcp-dirs {
   display: flex;
   flex-wrap: wrap;
