@@ -88,6 +88,12 @@ async fn load_subagent_remote(
     let picked_str = picked.to_string_lossy().into_owned();
     let agent_id = extract_agent_id(&picked).unwrap_or_default();
     // 内容走**既有的** `--read-session`（原样透传字节，本侧走既有解析）。
+    //
+    // ⚠ **一条如实登记的边界**〔D 阶段补审〕：`run_list_query` 带 **30s 超时**与每行上限，
+    // 而本机那条（`read_jsonl`）**没有超时**。subagent 通常是短命的侧任务、文件很小，
+    // 但一个长跑的 subagent 可能撞上那 30s。
+    // 真要收得把 `load_subagent` 改成**流式**（同 `stream_read_remote_session` 那条 channel 路），
+    // 那会改它对前端的返回形状 —— 是另一件事，不在本件里顺手做。
     let raw = crate::remote_history::run_list_query(
         &cfg,
         &format!("--read-session {}", crate::ssh_source::shell_quote(&picked_str)),
