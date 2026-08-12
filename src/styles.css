@@ -6948,3 +6948,44 @@ body.settings-window-mode .grid-monitor-trigger {
 .tab.drop-before {
   box-shadow: inset 0 2px 0 0 var(--accent, #6aa9ff);
 }
+
+/* P7a-3（#61）：标签页集合。**纯手动**建、手动命名 —— 组头点一下改名、× 解散。
+   ⚠ 解散只去掉分组，一个会话都不会关：集合是个视图，不是容器。 */
+.tab-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0;
+}
+.tab-group-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+}
+.tab-group-name {
+  background: transparent;
+  border: 0;
+  color: var(--fg-dim, #9a9a9a);
+  cursor: pointer;
+  flex: 1;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.tab-group-del {
+  background: transparent;
+  border: 0;
+  color: var(--fg-dim, #9a9a9a);
+  cursor: pointer;
+  padding: 0 2px;
+}
+.tab-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
