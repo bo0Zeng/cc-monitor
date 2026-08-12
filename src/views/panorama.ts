@@ -20,6 +20,13 @@
  */
 
 import * as api from "../panorama/api";
+import {
+  clampDepth,
+  layerImpact,
+  layerSubGraph,
+  MAX_DEPTH,
+  type Layer,
+} from "../panorama/subgraph-layers";
 import type { Overview, NodeView, Symbol, Edge, Confidence } from "../panorama/types";
 import {
   computeLayout,
@@ -931,6 +938,13 @@ export class PanoramaView implements OverlayHandle {
       this.edgeSection("被调用（callers）", nv.callers, "from"),
     );
 
+    // P7b（全景 P4，#79）：**多跳**子图 / 影响面。
+    // 上面那两节是**一跳**（`nv.callers`/`nv.callees`，早就有了）；
+    // 带 depth 的那四条后端命令此前**零消费者**（类型定义自陈「P2 未用（留 P4）」）。
+    // ⚠ 用 `this.repo` 而不是外面那个 `repo` 局部：本方法是 `renderNodeDetail`，
+    // 那个局部住在 `openNodeDetail` 里，够不到（tsc 当场逮住）。
+    if (this.repo) detail.appendChild(this.subgraphSection(this.repo, s.id));
+
     // 关联文档
     if (nv.docs.length > 0) {
       const sec = document.createElement("div");
@@ -1053,6 +1067,100 @@ export class PanoramaView implements OverlayHandle {
   }
 
   /** callers/callees 一节：每条边显示对端符号 id + confidence + 调用行，可点击钻取。 */
+  /**
+   * P7b：多跳子图 / 影响面。**按需拉**（点了才发请求）——
+   * 子图是双向邻域，depth 每加一跳节点数按扇出幂增，不该在打开详情时白拉一次。
+   */
+  private subgraphSection(repo: string, symbol: string): HTMLElement {
+    const sec = document.createElement("div");
+    sec.className = "panorama-node-section panorama-subgraph";
+    const h = document.createElement("div");
+    h.className = "panorama-node-section-title";
+    h.textContent = "调用子图 / 影响面";
+    sec.appendChild(h);
+
+    const bar = document.createElement("div");
+    bar.className = "panorama-subgraph-bar";
+    const depthSel = document.createElement("select");
+    depthSel.className = "panorama-subgraph-depth";
+    for (let d = 1; d <= MAX_DEPTH; d++) {
+      const o = document.createElement("option");
+      o.value = String(d);
+      o.textContent = `${d} 跳`;
+      depthSel.appendChild(o);
+    }
+    const out = document.createElement("div");
+    out.className = "panorama-subgraph-out";
+
+    const render = (layers: Layer[], empty: string): void => {
+      out.replaceChildren();
+      if (layers.length === 0) {
+        const e = document.createElement("div");
+        e.className = "panorama-edge-empty";
+        e.textContent = empty;
+        out.appendChild(e);
+        return;
+      }
+      for (const l of layers) {
+        const head = document.createElement("div");
+        head.className = "panorama-layer-head";
+        // ⚠ 截断必须**说清**：截了不说，用户会把半份当成全部。
+        head.textContent =
+          l.truncated > 0
+            ? `第 ${l.depth} 跳（${l.ids.length} 条，还有 ${l.truncated} 条没显示）`
+            : `第 ${l.depth} 跳（${l.ids.length} 条）`;
+        out.appendChild(head);
+        for (const id of l.ids) {
+          const row = document.createElement("button");
+          row.type = "button";
+          row.className = "panorama-edge-row";
+          row.textContent = id;
+          row.title = id;
+          row.addEventListener("click", () => void this.openNodeDetail(id));
+          out.appendChild(row);
+        }
+      }
+    };
+
+    const run = async (what: "subgraph" | "impact"): Promise<void> => {
+      out.replaceChildren();
+      const loading = document.createElement("div");
+      loading.className = "panorama-edge-empty";
+      loading.textContent = "读取中…";
+      out.appendChild(loading);
+      try {
+        if (what === "subgraph") {
+          const depth = clampDepth(Number(depthSel.value));
+          render(layerSubGraph(await api.subgraph(repo, symbol, depth), symbol), "（邻域为空）");
+        } else {
+          render(layerImpact(await api.impact(repo, symbol)), "（没有反向可达的调用者）");
+        }
+      } catch (e) {
+        out.replaceChildren();
+        const err = document.createElement("div");
+        err.className = "panorama-edge-empty";
+        // 「读不到」与「就是空的」是两件事，下一步完全不同 —— 别说成同一句。
+        err.textContent = `读不到：${String(e)}`;
+        out.appendChild(err);
+      }
+    };
+
+    const goSub = document.createElement("button");
+    goSub.type = "button";
+    goSub.className = "panorama-subgraph-go";
+    goSub.textContent = "展开子图";
+    goSub.addEventListener("click", () => void run("subgraph"));
+    const goImp = document.createElement("button");
+    goImp.type = "button";
+    goImp.className = "panorama-impact-go";
+    goImp.textContent = "影响面";
+    goImp.title = "改这个符号会波及谁（反向可达的**全部**传递调用者，不是一跳）";
+    goImp.addEventListener("click", () => void run("impact"));
+    bar.append(depthSel, goSub, goImp);
+    sec.append(bar, out);
+    return sec;
+  }
+
   private edgeSection(title: string, edges: Edge[], endKey: "to" | "from"): HTMLElement {
     const sec = document.createElement("div");
     sec.className = "panorama-node-section";
