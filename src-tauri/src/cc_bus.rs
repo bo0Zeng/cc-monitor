@@ -330,6 +330,33 @@ fn build_send_cmd(id: &str, text: &str) -> Result<String, String> {
 /// **刻意不提供"什么都不传"这一档**（L2 / B03 审计重要-5）：不传的话 ccm 会落 manifest 的
 /// 默认号，于是从驾驶舱点两下就在默认账号上起真 agent 烧额度，而用户既没选过也不知道用了
 /// 哪个号。让调用方**必须表态**——选一个号，或显式说"就用基座"。
+/// P4c：广播。**只收消息文本**（无 id 可校验），文本过 `shell_quote`。
+///
+/// ⚠ 它走的是与 `cc-send` **同一条路由管线** —— `cc-broadcast` 头注逐字
+/// 「实现=循环调 `cc-send --broadcast`，因此**自动继承整条路由管线**(ACL/限流/去抖/队列/daemon)，不绕过」。
+/// ⇒ 本处不必也不该再加一层自己的限流。
+fn build_broadcast_cmd(text: &str) -> Result<String, String> {
+    if text.trim().is_empty() {
+        return Err("消息为空".to_string());
+    }
+    Ok(format!(
+        "cc-broadcast {} 2>&1",
+        crate::ssh_source::shell_quote(text)
+    ))
+}
+
+/// P4c：收掉一个 agent。**破坏性且不可撤销**（`cc-kill` 头注逐字「杀会话+进程树 + 清名册/台账」）。
+///
+/// ⚠ `id` 会被拼进命令串 ⇒ 必须过 `is_valid_bus_id`。
+/// `cc-kill` 自己也校验，但**调用方不能靠对端校验** —— 那是 `build_send_cmd` 头注立的规矩，
+/// 而它的理由在这里更硬：这一条的后果是杀掉一棵进程树。
+fn build_kill_cmd(id: &str) -> Result<String, String> {
+    if !is_valid_bus_id(id) {
+        return Err(format!("非法 agent id（拒绝拼入命令）: {id:?}"));
+    }
+    Ok(format!("cc-kill {id} 2>&1"))
+}
+
 fn build_spawn_cmd(
     tool: &str,
     dir: &str,
@@ -656,6 +683,49 @@ pub async fn cc_bus_send(origin: String, id: String, text: String) -> Result<Str
         CONTROL_REPLY_CAP,
         30,
         "发消息",
+        OnOverflow::Truncate,
+    )
+    .await?;
+    Ok(out.trim().to_string())
+}
+
+/// P4c（#77/#78）：向**所有**已登记 agent 广播一条消息。
+///
+/// 面板此前只能给**单个**收件人发。⚠ 爆炸半径：实测本机 `agents.tsv` 有 86 行 ——
+/// UI 侧的确认必须**带数字**，一个不带数字的「确定吗」等于没问。
+#[tauri::command]
+pub async fn cc_bus_broadcast(origin: String, text: String) -> Result<String, String> {
+    if let Some(why) = refuse_local_write(&origin, "广播") {
+        return Err(why);
+    }
+    let cmd = build_broadcast_cmd(&text)?;
+    let cfg = cfg_of(&origin)?;
+    let out = exec_read(
+        &cfg,
+        &cmd,
+        CONTROL_REPLY_CAP,
+        30,
+        "广播",
+        OnOverflow::Truncate,
+    )
+    .await?;
+    Ok(out.trim().to_string())
+}
+
+/// P4c（#77/#78）：收掉一个 agent。**破坏性，不可撤销** —— UI 侧必须两步确认（同 spawn）。
+#[tauri::command]
+pub async fn cc_bus_kill(origin: String, id: String) -> Result<String, String> {
+    if let Some(why) = refuse_local_write(&origin, "收掉 agent") {
+        return Err(why);
+    }
+    let cmd = build_kill_cmd(&id)?;
+    let cfg = cfg_of(&origin)?;
+    let out = exec_read(
+        &cfg,
+        &cmd,
+        CONTROL_REPLY_CAP,
+        30,
+        "收掉 agent",
         OnOverflow::Truncate,
     )
     .await?;
@@ -1438,6 +1508,68 @@ mod tests {
             checked += 1;
         }
         assert_eq!(checked, 2, "只核到 {checked} 条写面命令 —— 本断言在空转");
+    }
+
+    /// ★ P4c-Y1：两条新命令的**构造器**逐条打校验。
+    ///
+    /// ⚠ 只测 happy path 是不够的 —— 那正是 `cc_bus_send` 那次变异实测的教训：
+    /// 「断言测的是谓词本身，而不是**命令构造真的调了它**」。
+    #[test]
+    fn broadcast_and_kill_commands_validate_before_they_build() {
+        // 广播：空消息不许构造出命令（对 86 个 agent 发一条空消息是纯噪声）。
+        assert!(build_broadcast_cmd("").is_err());
+        assert!(build_broadcast_cmd("   ").is_err());
+        let ok = build_broadcast_cmd("hi there").expect("正常消息该能构造");
+        assert!(ok.starts_with("cc-broadcast "), "命令名不对: {ok}");
+        // 文本必须过引用 —— 否则一条带引号的消息就能拼出别的命令。
+        //
+        // ⚠ 第一版我禁的是 `"; rm -rf /'"` 这个子串 —— **那条断言本身是错的**：
+        // `shell_quote` 的正确产物就是 `'a'\''b; rm -rf /'`，它合法地以 `/'` 结尾。
+        // ⇒ 钉「引用**真的发生了**」：内嵌单引号被转义成 `'\''`，那是 POSIX 单引号法的指纹。
+        let quoted = build_broadcast_cmd("a'b; rm -rf /").expect("该能构造");
+        assert!(
+            quoted.contains("'\\''"),
+            "文本没过 shell_quote（内嵌单引号没被转义）: {quoted}"
+        );
+        // 且危险字符全在引号里 —— 命令名之后只有一个 shell 词。
+        assert!(
+            quoted.starts_with("cc-broadcast '") && quoted.ends_with("' 2>&1"),
+            "载荷不是一个被完整引起来的词: {quoted}"
+        );
+
+        // 收掉：非法 id 拒绝构造。**不能靠对端校验** —— 这一条的后果是杀掉一棵进程树。
+        for bad in ["", "a b", "--help", "x;y", "../etc"] {
+            assert!(
+                build_kill_cmd(bad).is_err(),
+                "非法 id {bad:?} 竟然构造出了命令 —— 它会被拼进 `cc-kill` 的命令串"
+            );
+        }
+        assert_eq!(build_kill_cmd("proj_cc").unwrap(), "cc-kill proj_cc 2>&1");
+    }
+
+    /// ★ P4c：两条新命令与既有写面**同样**对 `<local>` 诚实拒绝。
+    ///
+    /// 钉**位置**：拒绝必须在 `cfg_of` 之前（同 `P4a-Y2` 的理由 —— 排在后面就永远走不到）。
+    #[test]
+    fn the_new_write_commands_refuse_local_before_asking_for_a_remote_config() {
+        let code = non_test_code();
+        for (name, what) in [
+            ("pub async fn cc_bus_broadcast(", "广播"),
+            ("pub async fn cc_bus_kill(", "收掉 agent"),
+        ] {
+            let at = code
+                .find(name)
+                .unwrap_or_else(|| panic!("生产段找不到 {name} —— 判据在空转"));
+            let body: String = code[at..].chars().take(1200).collect();
+            let refuse = body
+                .find("refuse_local_write(&origin, \"")
+                .unwrap_or_else(|| panic!("{name} 没有本机拒绝"));
+            let cfg = body
+                .find("cfg_of(&origin)")
+                .unwrap_or_else(|| panic!("{name} 里找不到 `cfg_of(&origin)`"));
+            assert!(refuse < cfg, "{name} 的本机拒绝排在 `cfg_of` 后面 —— 永远走不到");
+            assert!(body[refuse..].contains(what), "{name} 的拒绝没点名它在拒绝什么");
+        }
     }
 
     /// ★ P4a-Y3：**本机那条执行口，远端有的守卫一件都不许少。**

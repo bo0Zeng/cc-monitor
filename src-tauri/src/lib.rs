@@ -1039,6 +1039,8 @@ pub fn run() {
             cc_bus::check_cc_bus_agent_online,
             cc_bus::read_cc_bus_inbox,
             cc_bus::cc_bus_send,
+            cc_bus::cc_bus_broadcast,
+            cc_bus::cc_bus_kill,
             cc_bus::cc_bus_spawn,
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
             config_surface::config_surface_report,

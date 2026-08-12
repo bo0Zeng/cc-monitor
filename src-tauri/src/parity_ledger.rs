@@ -367,11 +367,16 @@ mod tests {
         ("capture_remote_pane", "tmux.manage", Side::Remote),
         ("kill_remote_tmux", "tmux.manage", Side::Remote),
         ("tmux_send_keys", "tmux.manage", Side::Remote),
-        ("read_cc_bus_state", "cc-bus.cockpit", Side::Remote),
-        ("check_cc_bus_agent_online", "cc-bus.cockpit", Side::Remote),
-        ("read_cc_bus_inbox", "cc-bus.cockpit", Side::Remote),
+        // P4a（08-12）：读面三条**已经支持本机**（同一条命令串，只是不包进 ssh）⇒ 转 Both。
+        ("read_cc_bus_state", "cc-bus.cockpit", Side::Both),
+        ("check_cc_bus_agent_online", "cc-bus.cockpit", Side::Both),
+        ("read_cc_bus_inbox", "cc-bus.cockpit", Side::Both),
+        // 写面仍是远端专属（本机对侧未做，见 `cc_bus.rs::refuse_local_write`）。
         ("cc_bus_send", "cc-bus.cockpit", Side::Remote),
         ("cc_bus_spawn", "cc-bus.cockpit", Side::Remote),
+        // P4c（08-12，#77/#78）：广播 + 收掉。同为写面 ⇒ 同样远端专属。
+        ("cc_bus_broadcast", "cc-bus.cockpit", Side::Remote),
+        ("cc_bus_kill", "cc-bus.cockpit", Side::Remote),
     ];
 
     /// **不对称能力的理由**。键集合必须**恰好等于**从 `LEDGER` 算出来的不对称集合。
@@ -383,7 +388,7 @@ mod tests {
         ("tmux.local-census", Asym::NaturallyAsymmetric, "「本机今天有哪些 tmux 会话」。★ P3 刀 2 的 UI 半把它从「只回名字」放宽到「回整条会话」——杀会话的菜单必须按 `@ccm_sid` 认归属，按 `<sid8>-cc` 前缀猜与 §30 逐字禁的「按目录回退猜」是同一类错。**反向缺口，且是天然的**：远端问同一个问题**已经有答案** —— `list_remote_tmux` 一次性 SSH `tmux ls` 就是它，前端 `pickFreshTmuxName(sid, existing)` 拿的正是那份。本机没有 SSH 那一跳，所以要一个自己的口；开它不是本机多了什么能力，是**把远端本来就有的那一格在本机补上**。⇒ 记 `NaturallyAsymmetric` 而不是 `ParityDebt`：欠的是本机这一侧，而本行一落地就已经补平，没有留下去处。★ 它读的是 daemon 推来的 tmux 快照而不是现跑 `tmux ls`，理由与射程见 `tmux.rs::local_tmux_names` 头注：那份快照由 `session-created/closed/renamed` 三条 hook 驱动，**恰好就是改变名字集合的那三件事** ⇒ 对这个问题它是权威的，对「pane 前台命令变了没有」才是陈旧的（那条已被 devbench F08 裁定不开口）。"),
         ("acct-iso.shellinit", Asym::ParityDebt, "本机切号同样要 shellinit 文本（`cc-acct-iso shellinit` 那句 `export CLAUDE_CONFIG_DIR=<默认账号>`），今天只能给远端生成 —— 命令面零本机对侧。归 L3。"),
         ("audit.config-surface", Asym::ParityDebt, "**反向缺口**（本地能答、远端答不出）——§40 表里已逐行记明：本页明写不连 SSH，10 行里 7 行对远端恒返回「未确定」。"),
-        ("cc-bus.cockpit", Asym::ParityDebt, "cc_bus.rs 的 5 个 IPC **全走 origin+ssh、零本机读取路径**（`config_surface.rs` 的钉死表已把 `~/.cc-bus/` 记为 Remote）。而本机 cc-bus 是存在的——`diagnose_local_cc_bus_hooks` 就在诊断它 ⇒ 驾驶舱管不了本机的 agent，是真欠账。"),
+        ("cc-bus.cockpit", Asym::ParityDebt, "★ **P4c 订正（08-12）：原理由已经过期，而过期的正是 `P4a` 那一刀造成的。** 原文写「cc_bus.rs 的 **5 个 IPC** 全走 origin+ssh、**零本机读取路径**」——`P4a`（08-12）把**读面三条**（`read_cc_bus_state` / `check_cc_bus_agent_online` / `read_cc_bus_inbox`）做成了本机可用（同一条命令串，只是不包进 ssh；本机 `~/.cc-bus/agents.tsv` 实测 86 行），它们今天是 `Both`。⇒ 「零本机读取路径」是假的，「5 个」也变成了 7 个（`P4c` 加了 `cc_bus_broadcast` / `cc_bus_kill`）。**今天真正的欠账只剩写面**：`cc_bus_send` / `cc_bus_spawn` / `cc_bus_broadcast` / `cc_bus_kill` 四条对 `<local>` 走 `refuse_local_write`，本机没有对侧（`P4a §0c` 量过代价：本机写面归 `P4b`，而 `P4b` 签收的是 cc-spawn 的复用那一刀，没交付写面）。★ 这条订正本身是 `P3b §0b` 的 **A 类（过期）**活样本，而制造它的是 `P4a` —— **改了行为没回来改理由，账本当天就开始撒谎**，本轮第二次（第一次是 `P4d-Y5` 改 `capture_remote_pane` 那次）。"),
         ("ccm.install-ui", Asym::Undecided, "本机安装向导有「扫 PATH 选装到哪」+「预览要写的文本」两步；远端 `install_remote_ccm_helper(cfg, profile)` 一步到位、没有这两步。**是欠账还是刻意简化，需要产品判断**——本表不替它裁定。"),
         ("daemon.deploy", Asym::NaturallyAsymmetric, "★★ **P3b 结清（08-12）：理由整个换掉 —— 原来那句是假的。** 原文写「§40 天然不对称白名单第 3 条：本地会话由 `watcher.rs` 直接读 jsonl，**根本不需要 daemon**」，被 P2z + P2 + P2s 三件直接证伪：本机**需要** daemon（入方向通道、每台机开关、tmux 帧都靠它），而且**已经会自部署** —— `local_backend.rs::extract_embedded_to`（exe 旁没有 sidecar 就把内嵌那份释放到 `~/.cc-monitor/bin`）。真正的不对称只剩一格：**本机那次释放不经一条 IPC 命令**，是宿主启动时自己做的（`lib.rs` 的启动段），所以命令面上没有本机对侧。⇒ 记 `natural` 记的是「不需要一条命令」，不是「不需要 daemon」。"),
         ("launch.render-payload", Asym::NaturallyAsymmetric, "兜底那支（`container:\"none\"`）的载荷渲染。本机走 `history.rs::build_local_*_command` —— P3t 之后那是**渲染器拒了才走的回落**，不是并列的第二条路。⚠ P3t-Y4 订正：原文引 §36 当依据，那是把一条讲 **Windows**、逐字禁「本地渲染器读 `plan.env`」的窄铁律读宽了。"),
@@ -600,6 +605,19 @@ mod tests {
     /// `RemoteConfig` 仍是**绝对禁**（它天然只描述一台远端机）。
     const ORIGIN_TAKING_BOTH: &[(&str, &str)] = &[
         (
+            "read_cc_bus_state",
+            "P4a：本机跑**同一条 `CC_BUS_CAT_CMD`**，只是不包进 ssh（`C1` 逐字「只是远端走 ssh，本地不走」）。\
+             命令体对 origin 不做远端假设 —— 它只用 origin 决定「谁来跑这条串」。",
+        ),
+        (
+            "check_cc_bus_agent_online",
+            "P4a：同上，跑的是同一个 `build_online_cmd` 产出的串（`tmux has-session`）。",
+        ),
+        (
+            "read_cc_bus_inbox",
+            "P4a：同上，跑的是同一个 `build_inbox_cmd` 产出的串（`tail`，零副作用）。",
+        ),
+        (
             "set_daemon_kill_on_exit",
             "P2s：daemon 策略是 per-host 的，本机的 origin 就是 `<local>`。\
              命令体对 origin **不做任何远端假设**（它只是一张表的键），所以两侧共用一条命令 —— 这正是 C1。",
@@ -658,8 +676,10 @@ mod tests {
         // 反向自检：一条都没检到 = 签名采集坏了。**等号而不是 `>=`**（T04 审计重要 5：
         // 写 `>= N` 恰好容忍一次静默降级）。
         assert_eq!(
-            checked, 80,
-            "检到 {checked} 条 Local/Both 命令（真实应为 80 = Local 52 + Both 28；\
+            checked, 83,
+            "检到 {checked} 条 Local/Both 命令（真实应为 83 = Local 52 + Both 31；\
+             ★ P4a（08-12）把 cc-bus **读面三条**从 Remote 转成 Both（本机跑同一条命令串，\
+             只是不包进 ssh）⇒ Both 28→31、总数 80→83；\
              devbench F03 的 skill 接入面是 +3（list_skills / read_skill_file / write_skill_file，\
              都 Local）；\
              E79 的 `list_local_session_accounts` 是 +1；U-CC1 的 `drift_ledger_report` 是 +1，\
@@ -725,7 +745,7 @@ mod tests {
         // 而 U8a-2c-pre（`57dba2a`）把这四个数各 +1 时，只改了数、一条尾注都没动。
         // ⇒ 尾注把 U8a-2c-pre 的增量记在了 U8c-2c-2 名下。**尾注的用处就是说清「谁加的」，
         // 归属错了就不如没有。**
-        assert_eq!(LEDGER.len(), 137, "命令总数变了"); // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines，C8）**；P3t-Y2b +1（list_local_tmux）
+        assert_eq!(LEDGER.len(), 139, "命令总数变了"); // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines，C8）**；P3t-Y2b +1（list_local_tmux）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）**
         let sides = capability_sides();
         assert_eq!(sides.len(), 59, "能力总数变了"); // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.daemon-policy / daemon.status / daemon.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）
         let asym = asymmetric_capabilities();

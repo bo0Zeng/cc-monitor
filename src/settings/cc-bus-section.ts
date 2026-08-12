@@ -54,6 +54,10 @@ export class CcBusSection {
    *  「武装 → 改目录/改 tool → 再点」会**用新值执行**，用户确认过的那句话描述的是一个
    *  从未发生的操作。这里改成存下确认时的参数快照，点第二次时比对，不一致就重新武装。 */
   private armedFor: string | null = null;
+  /** P4c：收掉那颗按钮的两步确认状态（与 spawn 的 `armedFor` 分开 —— 两件事各自武装）。 */
+  private killArmedFor: string | null = null;
+  private broadcastInput!: HTMLInputElement;
+  private broadcastBtn!: HTMLButtonElement;
   /** 已加载过的状态；null = 还没读过（**不在构造时预取**）。 */
   private state: CcBusState | null = null;
 
@@ -86,6 +90,21 @@ export class CcBusSection {
     this.originSel = document.createElement("select");
     this.originSel.className = "settings-input cc-bus-origin";
     row.appendChild(this.originSel);
+
+    // P4c（#77/#78）：广播 —— 面板此前只能给**单个**收件人发。
+    const bcast = document.createElement("input");
+    bcast.type = "text";
+    bcast.className = "settings-input cc-bus-broadcast-input";
+    bcast.placeholder = "广播给所有 agent…";
+    this.broadcastInput = bcast;
+    row.appendChild(bcast);
+    const bcastBtn = document.createElement("button");
+    bcastBtn.type = "button";
+    bcastBtn.className = "settings-btn settings-btn-secondary cc-bus-broadcast";
+    bcastBtn.textContent = "广播";
+    bcastBtn.addEventListener("click", () => void this.doBroadcast());
+    this.broadcastBtn = bcastBtn;
+    row.appendChild(bcastBtn);
 
     this.readBtn = document.createElement("button");
     this.readBtn.type = "button";
@@ -407,6 +426,16 @@ export class CcBusSection {
     sendBtn.addEventListener("click", () => void this.sendTo(a.id, msg, detail, sendBtn));
     row.appendChild(sendBtn);
 
+    // P4c（#77/#78）：收掉这个 agent。**破坏性且不可撤销**（cc-kill 头注逐字：杀会话+进程树）
+    // ⇒ 两步确认，抄 spawn 那条先例；第二步的文案**逐字带上 id**（回显真名，别让人杀错）。
+    const killBtn = document.createElement("button");
+    killBtn.type = "button";
+    killBtn.className = "settings-btn settings-btn-secondary cc-bus-kill";
+    killBtn.textContent = "收掉";
+    killBtn.title = "杀掉这个 agent 的会话与进程树 —— 不可撤销";
+    killBtn.addEventListener("click", () => void this.killOne(a.id, detail, killBtn));
+    row.appendChild(killBtn);
+
     return row;
   }
 
@@ -495,6 +524,57 @@ export class CcBusSection {
   /** 确认文案里要点名账号——「消耗额度」不说清是哪个号的额度等于没说。 */
   private acctLabel(): string {
     return this.spawnAcct.value ? `账号 ${this.spawnAcct.value}` : "不指定账号";
+  }
+
+  /**
+   * P4c：收掉一个 agent。**两步确认** —— 第一次点只武装，第二次才真发。
+   *
+   * ⚠ 第一次点**一条命令都不许发出去**：发出去的那条才是杀人的，
+   * 「弹了确认」和「没发命令」是两件事（判据钉的是后者）。
+   */
+  private async killOne(id: string, detail: HTMLElement, btn: HTMLButtonElement): Promise<void> {
+    const origin = this.originSel.value;
+    if (!origin) return;
+    if (this.killArmedFor !== id) {
+      this.killArmedFor = id;
+      // 回显真名 —— 一屏几十个 agent，不带名字的「确认」很容易杀错那一个。
+      btn.textContent = `确认收掉 ${id}`;
+      return;
+    }
+    this.killArmedFor = null;
+    btn.textContent = "收掉";
+    btn.disabled = true;
+    try {
+      const out = await commands.cc_bus_kill({ origin, id });
+      detail.textContent = out || `已收掉 ${id}`;
+      await this.reload();
+    } catch (e) {
+      detail.textContent = `收掉失败: ${String(e)}`;
+      btn.disabled = false;
+    }
+  }
+
+  /**
+   * P4c：广播。**确认必须带数字** —— 一个不带数字的「确定吗」等于没问：
+   * 用户点确认时并不知道有多少人会收到（实测本机 `agents.tsv` 86 行）。
+   */
+  private async doBroadcast(): Promise<void> {
+    const origin = this.originSel.value;
+    if (!origin) return;
+    const text = this.broadcastInput.value.trim();
+    if (!text) return;
+    const n = this.state?.agents.length ?? 0;
+    if (!window.confirm(`广播给 ${n} 个 agent？\n\n${text}`)) return;
+    this.broadcastBtn.disabled = true;
+    try {
+      const out = await commands.cc_bus_broadcast({ origin, text });
+      this.statusEl.textContent = out || `已广播给 ${n} 个`;
+      this.broadcastInput.value = "";
+    } catch (e) {
+      this.statusEl.textContent = `广播失败: ${String(e)}`;
+    } finally {
+      this.broadcastBtn.disabled = false;
+    }
   }
 
   private disarmSpawn(): void {

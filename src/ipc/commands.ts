@@ -174,6 +174,11 @@ export const commands = {
   /** 往 bus 上某个 agent 发一条消息。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
   cc_bus_send: (args: { origin: string; id: string; text: string }) =>
     invoke<string>("cc_bus_send", args),
+  /** P4c（#77/#78）：向**所有**已登记 agent 广播。爆炸半径大 —— UI 侧确认必须带数字。 */
+  cc_bus_broadcast: (args: { origin: string; text: string }) =>
+    invoke<string>("cc_bus_broadcast", args),
+  /** P4c（#77/#78）：收掉一个 agent。**破坏性且不可撤销** —— UI 侧两步确认。 */
+  cc_bus_kill: (args: { origin: string; id: string }) => invoke<string>("cc_bus_kill", args),
 
   /**
    * 在某目录派生一个协作 agent。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。

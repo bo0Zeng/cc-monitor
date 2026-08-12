@@ -681,3 +681,73 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
     expect(opts[0].value).toBe("");
   });
 });
+
+// ===== P4c（#77/#78）：广播 + 收掉 =====
+describe("P4c 广播与收掉", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  const STATE2 = {
+    agents: [
+      { id: "a_cc", target: "a_cc:0.0", ts: "2026-08-01T00:00:00Z" },
+      { id: "b_cc", target: "b_cc:0.0", ts: "2026-08-01T00:00:00Z" },
+    ],
+    spawned: [],
+    skipped: 0,
+  };
+  const boot = async (): Promise<CcBusSection> => {
+    document.body.replaceChildren();
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "read_cc_bus_state") return STATE2;
+      return "ok";
+    });
+    const s = new CcBusSection();
+    document.body.appendChild(s.element);
+    await flush();
+    (s.element.querySelector(".cc-bus-read") as HTMLButtonElement).click();
+    await flush();
+    return s;
+  };
+  const calls = (name: string) => mockInvoke.mock.calls.filter((c) => c[0] === name);
+
+  it("★ P4c-Y2：收掉是两步 —— **第一次点一条命令都不发**", async () => {
+    const s = await boot();
+    const kill = s.element.querySelectorAll<HTMLButtonElement>(".cc-bus-kill")[0];
+    expect(kill, "每行要有「收掉」").toBeTruthy();
+    mockInvoke.mockClear();
+    kill.click();
+    await flush();
+    // 「弹了确认」与「没发命令」是两件事 —— 发出去的那条才是杀人的。
+    expect(calls("cc_bus_kill")).toHaveLength(0);
+    // 第二步的文案必须**逐字带 id**（一屏几十个 agent，别让人杀错那一个）。
+    expect(kill.textContent).toContain("a_cc");
+
+    kill.click();
+    await flush();
+    expect(calls("cc_bus_kill")).toHaveLength(1);
+    expect(calls("cc_bus_kill")[0][1]).toMatchObject({ origin: "aya", id: "a_cc" });
+  });
+
+  it("★ P4c-Y3：广播的确认**带数字**（不带数字的「确定吗」等于没问）", async () => {
+    const s = await boot();
+    const input = s.element.querySelector<HTMLInputElement>(".cc-bus-broadcast-input")!;
+    input.value = "全体注意";
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    mockInvoke.mockClear();
+    (s.element.querySelector(".cc-bus-broadcast") as HTMLButtonElement).click();
+    await flush();
+    expect(confirmSpy).toHaveBeenCalled();
+    // 当前面板上是 2 个 agent ⇒ 文案里必须出现那个数字。
+    expect(String(confirmSpy.mock.calls[0][0])).toContain("2");
+    expect(calls("cc_bus_broadcast")[0][1]).toMatchObject({ origin: "aya", text: "全体注意" });
+  });
+
+  it("★ P4c-Y3b：确认框点取消 ⇒ 一条都不发", async () => {
+    const s = await boot();
+    s.element.querySelector<HTMLInputElement>(".cc-bus-broadcast-input")!.value = "x";
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    mockInvoke.mockClear();
+    (s.element.querySelector(".cc-bus-broadcast") as HTMLButtonElement).click();
+    await flush();
+    expect(calls("cc_bus_broadcast")).toHaveLength(0);
+  });
+});
