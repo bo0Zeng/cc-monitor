@@ -2990,6 +2990,24 @@ describe("P7a-1 独立归档区", () => {
     expect([...drawer.children].filter((e) => e.classList.contains("tab"))).toHaveLength(1);
   });
 
+  it("★ P7a1-D：`barEl` 没有父节点时，归档的 tab **不许消失**", () => {
+    // 抽屉是 `barEl` 的兄弟 ⇒ 要插进 `barEl.parentElement`。拿不到父节点时若仍把
+    // tab 挪进那个**孤儿**容器，它就从文档里整个不见了 —— 而「灰着但还在」正是
+    // 用户对归档的全部期待。⇒ 拿不到父节点就**别分流**，留在主栏（灰着，与改之前一样）。
+    document.body.innerHTML = "";
+    const orphanBar = document.createElement("div"); // 刻意不 append 到 body
+    const streamRootEl = document.createElement("div");
+    document.body.append(streamRootEl);
+    const tm2 = new TabManager(orphanBar, streamRootEl);
+    tm2.ensureTab("a", "/c", "p", 0, null);
+    tm2.ensureTab("b", "/c", "p", 0, null);
+    tm2.switchTo("a");
+    tm2.archiveTab("b");
+    (tm2 as unknown as { refreshTabBar: () => void }).refreshTabBar();
+    const inBar = [...orphanBar.children].filter((e) => e.classList.contains("tab"));
+    expect(inBar, "两个都该还在主栏 —— 一个都不许被挪进孤儿容器").toHaveLength(2);
+  });
+
   it("★ P7a1-Y3：抽屉里的 tab 不挂 tear-off 拖拽（那条判定线对它没意义）", () => {
     tm.ensureTab("a", "/c", "p", 0, null);
     tm.ensureTab("b", "/c", "p", 0, null);
