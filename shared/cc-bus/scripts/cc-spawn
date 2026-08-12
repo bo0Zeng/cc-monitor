@@ -6,13 +6,12 @@ set -euo pipefail
 BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
 SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 # 旗标可在 <目录> 前任意顺序出现。
-new_flag=0
 tool=""
 acct=""
 use_base=0
 while true; do
   case "${1:-}" in
-    --new)  new_flag=1; shift;;                                   # 强制新建(否则默认复用同目录已有活会话)
+    --new)  shift;;                                               # P4b 后**默认就是新建**,本旗标是 no-op。保留它是因为外面可能有人在传——让它报错等于把别人的脚本弄坏
     --tool) tool="${2:-}"; shift 2 2>/dev/null || { echo "cc-spawn: --tool 需要参数(claude|codex)" >&2; exit 2; };;  # 派生哪个 CLI
     # L2(unify-launch B03 审计):显式指定账号。**不加这个的话** ccm 会落 manifest 的默认号,
     # 于是从驾驶舱点两下就在默认账号上起真 agent 烧额度,而用户无从选择也无从得知用了哪个号。
@@ -80,15 +79,17 @@ absdir=$(cd "$dir" 2>/dev/null && pwd) || { echo "cc-spawn: 目录不存在: $di
 bn=$(basename "$absdir")
 base="$(printf '%s' "$bn" | tr -c 'A-Za-z0-9_-' '_' | sed 's/^-*//; s/-*$//')_cc"
 
-# 默认【到就用、没有才建】:该目录已有活会话(且非 --new)→ 复用它,别重复开
-if [ "$new_flag" != 1 ] && tmux has-session -t "=$base" 2>/dev/null; then
-  rpane=$(tmux list-panes -t "$base" -F '#{pane_id}' 2>/dev/null | head -1)
-  [ -n "${rpane:-}" ] && TMUX_PANE="$rpane" "$SELFDIR/cc-register" "$base" >/dev/null 2>&1 || true
-  [ -n "$task" ] && "$SELFDIR/cc-send" "$base" "$task" >/dev/null 2>&1 || true
-  echo "复用已有会话: $base${task:+(已把任务发给它)}"
-  echo "  跟它聊: cc-send $base \"...\"    看它: tmux attach -t $base    要开全新的: 加 --new"
-  exit 0
-fi
+# ★★ P4b（C14〔用 08-12〕）:**spawn 就是起,就是 creat** —— 默认复用整个删掉。
+#
+# 原来这里是「到就用、没有才建」:同目录已有活会话(且非 --new)就复用它。用户逐字裁定
+# 「**所有起会话就是起会话. attach就是attach, 不要or / 分离开 / spawn就是起, 就是creat**」
+# 与「**cc-spawn 不应该复用活会话**」。
+#
+# ⚠ 这是那个 `or` 的**第四份**实现:P3s 数出两份(ccm 的、TS 的),P4d 的冒烟又撞出
+# daemon 的 wire mode(第三份),这里是第四份。「我数完了」这句话在这个仓里已经错过三次。
+#
+# 下面的**命名避让**必须留着:不复用 ≠ 不避让。同名直接建会撞上别人的会话,
+# 那正是 C14 要消灭的东西的另一面。
 
 # 新建:同名加后缀(= 精确,防前缀误判)
 name="$base"; k=2
