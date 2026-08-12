@@ -123,10 +123,21 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
 /// ⇒ **绝不在这里列 gnome-terminal / konsole / alacritty 之类的具名终端**。
 /// 那才是「挑」，也正是「会在别人机器上错」的来源。
 ///
-/// ⚠ 顺序有意义：`xdg-terminal-exec` 是较新的规范（尊重用户在桌面里选的默认终端），
-/// `x-terminal-emulator` 是 Debian alternatives（实测本机指向 `ptyxis`）。前者优先。
+/// # ★★ 为什么表里**只有一个**（D 阶段补审 08-12）
+///
+/// 第一版还放了 `x-terminal-emulator`。D 阶段核参数约定时发现**它们的约定未必一样**：
+/// · `xdg-terminal-exec` 的用法串逐字 `[options] [--] [command [arguments ...]]` ⇒ `--` **已核实**；
+/// · `x-terminal-emulator` 是 **Debian alternatives 的间接层** —— 本机指向 `ptyxis`
+///   （man 逐字 `[-- PROGRAM ARGUMENTS]`，且「In general, you should use `--`」，对得上），
+///   但**别的机器上它可能指向 `xterm`/`gnome-terminal`，那些的传统约定是 `-e <command>`**。
+///
+/// ⇒ 用一个**未核实**的约定去开窗，失败形态正是原判据担心的那个：
+/// 终端开出来了、命令没跑，用户看到一个空白窗口且极难归因。
+/// **宁可少覆盖一台机器，也不要开一个空白窗口。**
+///
+/// 要加回来的话，正确形状是「每个出口带自己的参数构造器」，而不是共用一个 `--`。
 #[cfg(not(windows))]
-const TERMINAL_EXITS: &[&str] = &["xdg-terminal-exec", "x-terminal-emulator"];
+const TERMINAL_EXITS: &[&str] = &["xdg-terminal-exec"];
 
 /// P5L-Y1：挑一个存在的终端出口。都不在 ⇒ `None`（调用方诚实降级，见 `launch_local_posix`）。
 ///
@@ -763,14 +774,17 @@ mod tests {
             Some("xdg-terminal-exec")
         );
         // 只有第二个在 ⇒ 取第二个。
+        // 只有它不在 ⇒ `None`（表里今天只有一个，见 `TERMINAL_EXITS` 的 D 阶段补审）。
         assert_eq!(
             pick_terminal_exit_from(TERMINAL_EXITS, &|c| c == "x-terminal-emulator"),
-            Some("x-terminal-emulator")
+            None
         );
         // 一个都不在 ⇒ `None`，调用方据此诚实降级（`P5L-Y2`）。
         assert_eq!(pick_terminal_exit_from(TERMINAL_EXITS, &|_| false), None);
         // 表本身：**只准放规范化出口**，一个具名终端都不许有。
-        assert_eq!(TERMINAL_EXITS, &["xdg-terminal-exec", "x-terminal-emulator"]);
+        // ⚠ **每加一个出口都要先核它的参数约定**（D 阶段补审：`--` 只对 `xdg-terminal-exec`
+        // 与 ptyxis 核实过；`x-terminal-emulator` 在别的机器上可能是 `-e`）。
+        assert_eq!(TERMINAL_EXITS, &["xdg-terminal-exec"]);
     }
 
     /// ★ P5L-Y1：**载荷原样进终端的参数位** —— 本件只加「怎么开窗」，不碰「开什么」。
