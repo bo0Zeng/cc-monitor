@@ -111,6 +111,52 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
     Ok(vec!["bash".into(), "-lic".into(), cmd.into()])
 }
 
+/// P5L-Y3：**规范化**终端出口，有序候选。
+///
+/// # 为什么是这两个，为什么**不探测具体终端**
+///
+/// 用户逐字〔用 08-12〕：「**纯 bash 的意思是暂时不考虑其他终端, 但是所有的功能都要一样**」。
+/// 那句话反对的是**终端专属集成**（像 Windows 那条 `wt.exe` 带专属参数的路）——
+/// 而下面这两个恰恰是**不挑**的出口：freedesktop 的 `xdg-terminal-exec` 与 Debian 的
+/// `x-terminal-emulator` 都把「用哪个终端」交还给桌面/用户配置。
+///
+/// ⇒ **绝不在这里列 gnome-terminal / konsole / alacritty 之类的具名终端**。
+/// 那才是「挑」，也正是「会在别人机器上错」的来源。
+///
+/// ⚠ 顺序有意义：`xdg-terminal-exec` 是较新的规范（尊重用户在桌面里选的默认终端），
+/// `x-terminal-emulator` 是 Debian alternatives（实测本机指向 `ptyxis`）。前者优先。
+#[cfg(not(windows))]
+const TERMINAL_EXITS: &[&str] = &["xdg-terminal-exec", "x-terminal-emulator"];
+
+/// P5L-Y1：挑一个存在的终端出口。都不在 ⇒ `None`（调用方诚实降级，见 `launch_local_posix`）。
+///
+/// **纯函数化的那一半**（`pick_terminal_exit_from`）供判据用 —— 生产这条只是喂它一个真实探针。
+#[cfg(not(windows))]
+fn pick_terminal_exit() -> Option<&'static str> {
+    pick_terminal_exit_from(TERMINAL_EXITS, &|c| which_exists(c))
+}
+
+/// 判据入口：候选表与「在不在」的判定都作为参数进来，好在不依赖真实机器的前提下钉顺序。
+#[cfg(not(windows))]
+fn pick_terminal_exit_from(
+    candidates: &[&'static str],
+    exists: &dyn Fn(&str) -> bool,
+) -> Option<&'static str> {
+    candidates.iter().copied().find(|c| exists(c))
+}
+
+#[cfg(not(windows))]
+fn which_exists(cmd: &str) -> bool {
+    std::env::var_os("PATH")
+        .map(|paths| {
+            std::env::split_paths(&paths).any(|d| {
+                let p = d.join(cmd);
+                std::fs::metadata(&p).map(|m| m.is_file()).unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
+}
+
 /// L1：在 **POSIX 本机**跑一条命令 —— 不经 ssh、不经 PowerShell。
 ///
 /// 这是 §40「本地 = 不走 ssh 的远端」在传输层的落点：远端那条路是
@@ -142,12 +188,54 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
 ///   线程随子进程结束而结束（`ccm` 建完会话就返回，是短命进程）。
 #[cfg(not(windows))]
 pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<(), String> {
+    launch_local_posix_via(cmd, cwd, pick_terminal_exit())
+}
+
+/// P5L：把「用哪个终端出口」做成**入参**。
+///
+/// ★ 这不是为了好看，是**判据不能在开发者桌面上开真窗口**：
+/// 既有的 `local_posix_spawn_actually_runs_the_command` 是一条**真跑**的行为测试，
+/// 改之前它直接 spawn `bash`；接上终端出口之后它会**真的弹出一个终端窗口**
+/// —— 实测跑了一次（本机 `xdg-terminal-exec` → `ptyxis`）。
+/// ⇒ 出口作为参数进来，测试传 `None` 走无窗口那条。
+///
+/// ⚠ 代价如实登记：**开窗那条路因此没有行为级判据**（只有形状判据）。
+/// 真机验收归 `auto-e2e`，别把「形状对」读成「窗口真开出来了」。
+#[cfg(not(windows))]
+fn launch_local_posix_via(
+    cmd: &str,
+    cwd: Option<&str>,
+    term: Option<&str>,
+) -> Result<(), String> {
     use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
 
     let argv = build_local_posix_argv(cmd)?;
-    let mut builder = Command::new(&argv[0]);
-    builder.args(&argv[1..]);
+    // ★★ P5L-Y1（`U14`〔用 08-12〕「要做，功能必须一样」）：**真开一个终端窗口**。
+    //
+    // 改之前这里是 `Stdio::null()` 直接 spawn ⇒ 产出一个**无 tty、无窗口**的进程
+    //（`P3t` 摸底记下的那条：用户敲进去的字会被脚本吃掉）。
+    //
+    // ⚠ **载荷一个字不改**：`argv` 原样进终端的参数位。本件只加「怎么开窗」，不碰「开什么」。
+    let (mut builder, opened_window) = match term {
+        Some(term) => {
+            let mut b = Command::new(term);
+            // `xdg-terminal-exec` / `x-terminal-emulator` 都收 `-- <argv…>` 之后的命令行。
+            b.arg("--").args(&argv);
+            (b, true)
+        }
+        None => {
+            // 诚实降级：一个规范化出口都没有 ⇒ 回落到改之前那条无窗口的路，**并说清**。
+            // 不静默、也不报一个与真实原因无关的错。
+            tracing::warn!(
+                "本机没有规范化终端出口（试过 {TERMINAL_EXITS:?}）—— \
+                 回落到无窗口直起；命令仍会跑，但没有可交互的终端"
+            );
+            let mut b = Command::new(&argv[0]);
+            b.args(&argv[1..]);
+            (b, false)
+        }
+    };
     // 只有真实存在的目录才作起始目录（与 Windows 那条路同一条纪律）。
     if let Some(d) = cwd.filter(|c| std::path::Path::new(c).is_dir()) {
         builder.current_dir(d);
@@ -170,7 +258,10 @@ pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<(), String> {
     std::thread::spawn(move || {
         let _ = child.wait();
     });
-    tracing::info!("launch: local posix exec (no ssh)");
+    tracing::info!(
+        "launch: local posix exec (no ssh){}",
+        if opened_window { " · 已开终端窗口" } else { " · 无窗口回落" }
+    );
     Ok(())
 }
 
@@ -468,7 +559,7 @@ mod tests {
         );
         // 生产里 4 个：三个开窗点 + 一个 `where.exe` 探测（它不是开窗，不需要 env）。
         assert_eq!(
-            spawns, 4,
+            spawns, 5,
             "`launch.rs` 生产代码里的 `Command::new(` 从 4 变成了 {spawns}。\n\
              若新增的是**开终端窗口**，它必须也带上 `daemon_bin_env_for_window(...)` 的 env，\n\
              否则那条路上的 `ccm resume` 会**静默地**永远走本地（与名字打错同一族的静默失败）；\n\
@@ -663,12 +754,97 @@ mod tests {
         }
     }
 
-    /// ★ U8b：**`launch.rs` 的生产段不许出现任何终端模拟器。**
+    /// ★ P5L-Y1/Y3：**候选表有序，且第一个存在的胜出**。
+    #[test]
+    fn the_terminal_exit_is_picked_in_declared_order() {
+        // 都在 ⇒ 取第一个（`xdg-terminal-exec` 优先，见 `TERMINAL_EXITS` 头注）。
+        assert_eq!(
+            pick_terminal_exit_from(TERMINAL_EXITS, &|_| true),
+            Some("xdg-terminal-exec")
+        );
+        // 只有第二个在 ⇒ 取第二个。
+        assert_eq!(
+            pick_terminal_exit_from(TERMINAL_EXITS, &|c| c == "x-terminal-emulator"),
+            Some("x-terminal-emulator")
+        );
+        // 一个都不在 ⇒ `None`，调用方据此诚实降级（`P5L-Y2`）。
+        assert_eq!(pick_terminal_exit_from(TERMINAL_EXITS, &|_| false), None);
+        // 表本身：**只准放规范化出口**，一个具名终端都不许有。
+        assert_eq!(TERMINAL_EXITS, &["xdg-terminal-exec", "x-terminal-emulator"]);
+    }
+
+    /// ★ P5L-Y1：**载荷原样进终端的参数位** —— 本件只加「怎么开窗」，不碰「开什么」。
+    ///
+    /// 钉的是源码形状：`argv` 整个进 `args(&argv)`，且前面隔着一个 `--`
+    ///（否则终端会把 `bash` 之后的东西当成自己的选项解析）。
+    #[test]
+    fn opening_a_window_does_not_touch_the_payload() {
+        let prod = guard_core::production_code(include_str!("launch.rs"));
+        assert!(
+            prod.contains("b.arg(\"--\").args(&argv);"),
+            "开窗那条路没有把 `argv` **整个原样**交出去 —— \n\
+             本件的全部承诺是「只加怎么开窗，不碰开什么」，这一行就是那句话本身。"
+        );
+        // 无窗口那条回落必须还在（`P5L-Y2`）：它是「一个出口都没有」时的唯一去处。
+        assert!(
+            prod.contains("Command::new(&argv[0])"),
+            "无窗口回落没了 —— 那样在没有规范化出口的机器上会变成「点了没反应」"
+        );
+        // ⚠ **分流必须真的看 `term`**〔变异 M2 逼出来的〕：只钉「源码里有开窗那段」的话，
+        // 把 `match term` 换成 `match None::<&str>` 它照样绿 —— 那段代码还在，只是**走不到**。
+        assert!(
+            prod.contains("match term {"),
+            "开窗那条分流不再按入参 `term` 走 —— 那段代码可能还在，但已经**走不到**了"
+        );
+        // P5L-Y2：降级必须**说清**，不是静默。
+        //
+        // ⚠ **钉「它是一条真日志」，不只是钉那句话在**〔变异 M4 逼出来的〕：
+        // 把 `tracing::warn!` 换成 `format!`，文案原样留着，判据照样绿 ——
+        // 而那时那句话**谁也看不到**。⇒ 按位置钉：文案前面不远处必须有 `tracing::warn!`。
+        let at = prod
+            .find("回落到无窗口直起")
+            .expect("降级那条路不再说明原因 —— 用户会看到「点了没反应」而无从归因");
+        let before = &prod[at.saturating_sub(200)..at];
+        assert!(
+            before.contains("tracing::warn!"),
+            "降级的说明不是一条真日志（前 200 字节里没有 `tracing::warn!`）——\n\
+             文案留着而日志没了，等于那句话谁也看不到。"
+        );
+    }
+
+    /// ★ P5L-Y3：候选表的**理由**必须写在源码里（必需词守卫，同 `P4b-Y3` / `PS1`）。
+    #[test]
+    fn the_terminal_exit_table_says_why_it_refuses_to_pick() {
+        let me = include_str!("launch.rs");
+        // ⚠ 数次数而不是 `contains` —— 本判据自己的字面量也在这个文件里
+        //（本会话第四次栽在「判据被自己要钉的名字命中」上）。
+        for must in ["绝不在这里列", "交还给桌面"] {
+            assert!(
+                me.matches(must).count() >= 2,
+                "`TERMINAL_EXITS` 的头注里少了 {must:?}。\n\
+                 那段话记的是「为什么不探测具体终端」——用户逐字「暂时不考虑其他终端」。\n\
+                 删掉它，下一个人就会顺手加一行 `gnome-terminal`。"
+            );
+        }
+    }
+
+    /// ★ U8b：**`launch.rs` 的生产段不许出现任何具名终端模拟器。**
     ///
     /// 零命中型判据，钉的是 L1 那条裁决。它挡的是很自然的一个「顺手改进」：
-    /// 有人看到 Linux 上开不了窗，加一段 `gnome-terminal` / `x-terminal-emulator` 探测。
+    /// 有人看到 Linux 上开不了窗，加一段 `gnome-terminal` / `alacritty` 探测。
     /// 那不是清理，是**产品决定** —— 要做就先答「探测顺序是什么、找不到怎么办」，
     /// 而不是静默挑一个（挑错了用户会看到一个空白窗口或什么都没有，且极难归因）。
+    ///
+    /// # ★★ P5L（08-12）：那两问**答了**，于是本条放行两个**规范化出口**
+    ///
+    /// `U14`〔用 08-12〕已裁「**要做，功能必须一样**」，而本条头注自己写的开锁条件
+    /// （「先答探测顺序 / 找不到怎么办」）逐条答完：
+    /// · **顺序**：`TERMINAL_EXITS` 是一张具名的有序常量（`xdg-terminal-exec` → `x-terminal-emulator`）；
+    /// · **找不到**：诚实降级回无窗口那条，并 `warn` 说清（`P5L-Y2`）。
+    ///
+    /// ⇒ 放行的是**规范化出口**，不是终端本身：这两个都把「用哪个终端」交还给桌面/发行版配置
+    /// （用户逐字「**纯 bash 的意思是暂时不考虑其他终端**」反对的是终端**专属集成**）。
+    /// **具名终端一个都不放行** —— 那才是「挑」，也正是本条原本要挡的东西。
     #[test]
     fn no_terminal_emulator_is_ever_spawned_from_this_file() {
         // 运行时拼，避免命中本行自己。
@@ -676,7 +852,6 @@ mod tests {
             "gnome-termin",
             "konsol",
             "xterm",
-            "x-terminal-emulato",
             "alacritt",
             "kitt",
             "wezter",
@@ -691,7 +866,7 @@ mod tests {
         for sample in [
             "Command::new(\"gnome-terminal\")",
             "Command::new(\"alacritty\")",
-            "spawn(\"x-terminal-emulator\")",
+            "Command::new(\"kitty\")",
         ] {
             assert!(
                 emulators.iter().any(|e| sample.contains(e.as_str())),
@@ -707,7 +882,9 @@ mod tests {
             hits.is_empty(),
             "`launch.rs` 的生产段出现了终端模拟器（{hits:?}）。\n\
              L1 裁决过：POSIX 上没有「唯一的终端」，挑一个是平白引入一个会在别人机器上错的决定。\n\
-             真要做就先答「探测顺序 / 找不到怎么办」，并当成产品决定走一遍计划 —— 别静默挑一个。"
+             真要做就先答「探测顺序 / 找不到怎么办」，并当成产品决定走一遍计划 —— 别静默挑一个。\n\
+             ⚠ P5L 已按这条开锁条件放行了**规范化出口**（`TERMINAL_EXITS`：xdg-terminal-exec / \
+             x-terminal-emulator）——它们把选择权交还给桌面，与「挑一个具名终端」是两回事。"
         );
     }
 
@@ -796,7 +973,10 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("mkdir");
         let marker = dir.join("ran");
         let cmd = format!("printf ok > {}", marker.display());
-        launch_local_posix(&cmd, dir.to_str()).expect("spawn 应成功");
+        // ★ P5L：**必须走 `None`（无窗口）那条** —— 否则这条真跑的判据会在开发者桌面上
+        // **弹出一个真终端窗口**（实测跑过一次，本机 `xdg-terminal-exec` → `ptyxis`）。
+        // 开窗那条路只有形状判据，真机验收归 `auto-e2e`（如实登记在 `launch_local_posix_via` 头注）。
+        launch_local_posix_via(&cmd, dir.to_str(), None).expect("spawn 应成功");
         // 轮询等它落地（spawn 是异步的；上限宽松，判的是「跑没跑」不是快慢）。
         let mut seen = false;
         for _ in 0..100 {
