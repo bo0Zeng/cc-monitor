@@ -30,6 +30,14 @@
 //! - **不挡**：分了本机但**分错了**（本机分支自己的逻辑是坏的）。本护栏只保证
 //!   「本机这条路被单独想过一次」，不保证想对了。这条边界写在这里，
 //!   免得下一个人以为它保证了更多。
+//! - **不挡（08-12 由变异逼出来的第二格）**：**隔了一层包装的调用**。
+//!   `cc_bus.rs::cfg_of` 就是这种 —— 它自己直接调，所以本护栏看得见它；
+//!   而 `cc_bus_send` / `cc_bus_spawn` 调的是 `cfg_of`，**本护栏对它们是瞎的**。
+//!   实测：拿掉 `cc_bus_send` 的本机拒绝，本条**照样绿**（P4a 的变异 M5）。
+//!   ⇒ 那两条今天由两样东西兜着：`cfg_of` 自己的兜底分支（结构）+
+//!   `cc_bus::tests::the_write_face_refuses_local_before_it_asks_for_a_remote_config`（位置）。
+//!   要把包装那一层也纳进来，得先有一份「哪些函数是远端配置的包装」的表 ——
+//!   **今天没有，就别假装有。**
 
 #[cfg(test)]
 const CALL: &str = "load_remote_config_by_label(";
@@ -40,7 +48,7 @@ const CALL: &str = "load_remote_config_by_label(";
 #[cfg(test)]
 const REMOTE_ONLY: &[(&str, &str, &str)] = &[];
 
-/// ★★ **本轮没有逐条量过的存量**（P4d-Y5，08-12）。
+/// ★★ **本轮没有逐条量过的存量**（`P4d-Y5` 08-12 立表 19 条；`P4a` 08-12 还掉 3 条 ⇒ 16）。
 ///
 /// # 为什么它不是 [`REMOTE_ONLY`] 的一部分
 ///
@@ -58,9 +66,6 @@ const REMOTE_ONLY: &[(&str, &str, &str)] = &[];
 const TRIAGE_DEBT: &[(&str, &str)] = &[
     ("account_usage.rs", "account_usage"),
     ("accounts.rs", "cfg_for"),
-    ("cc_bus.rs", "cfg_of"),
-    ("cc_bus.rs", "check_cc_bus_agent_online"),
-    ("cc_bus.rs", "read_cc_bus_state"),
     ("ccm_probe.rs", "probe_ccm_cli"),
     ("hooks_diag.rs", "diagnose_remote_cc_bus_hooks"),
     ("launch.rs", "build_remote_ssh_ps_command"),
@@ -220,7 +225,7 @@ mod tests {
         // ★ 存量表**只许变短**：等号不是地板。
         // 地板在「变大」这个方向上是瞎的 —— 这个仓因为这件事栽过三次
         // （`shell_lint_registry` 的账逐字：「`≥` 正是它落后三次的成因」）。
-        const TRIAGE_DEBT_TODAY: usize = 19;
+        const TRIAGE_DEBT_TODAY: usize = 16;
         assert_eq!(
             TRIAGE_DEBT.len(),
             TRIAGE_DEBT_TODAY,
