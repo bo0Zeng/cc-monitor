@@ -468,6 +468,35 @@ mod tests {
         });
     }
 
+    /// ★ P4b D 阶段补审：**`SKILL.md` 不许再教「复用」**。
+    ///
+    /// 那份文件是 agent 会读的**指令**，而它逐字写着「默认"到就用、没有才建"……
+    /// 该目录已有活会话就**复用**……**不会误建重复会话**」——
+    /// 删掉代码里的复用之后，这句话当天就成了假话，而**读它的是自动化，不是人**。
+    ///
+    /// 这正是本仓一路在治的「散文与代码说的不是一件事」。⇒ 立一条禁词守卫。
+    #[test]
+    fn the_cc_bus_skill_no_longer_teaches_session_reuse() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级")
+            .join("shared/cc-bus/SKILL.md");
+        let src = std::fs::read_to_string(&path).expect("读 cc-bus SKILL.md");
+        assert!(
+            src.lines().count() >= 20,
+            "`SKILL.md` 只剩 {} 行 —— 读法坏了或文件被掏空",
+            src.lines().count()
+        );
+        // ⚠ 钉的是**关于 cc-spawn 的那句教法**，不是「复用」这两个字本身 ——
+        // `cc-busd` / `cc-bus-lib.sh` 里讲「PID 被复用」是另一回事，禁掉它是误伤。
+        for banned in ["到就用、没有才建", "已有活会话就"] {
+            assert!(
+                !src.contains(banned),
+                "`cc-bus/SKILL.md` 里又出现了 {banned:?} —— 那是 `cc-spawn` 复用活会话的教法，\n                 而代码里那条路已经删了（`C14`〔用 08-12〕「spawn 就是起, 就是 creat」）。\n                 ★ 读这份文件的是**自动化**，不是人：一句过期的指令会让 agent 按不存在的行为办事。"
+            );
+        }
+    }
+
     /// ★ P4b-Y3：那条诚实边界**必须写在源码里**，不能只活在计划文件里。
     ///
     /// 这是「禁词守卫」的反面 —— **必需词**守卫：删掉那段话的人会被拦一次。
