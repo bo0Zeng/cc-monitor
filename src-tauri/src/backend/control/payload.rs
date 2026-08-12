@@ -446,12 +446,23 @@ mod tests {
     #[test]
     fn every_business_rejection_is_tagged() {
         let src = guard_core::production_code(include_str!("payload.rs"));
-        // 人群自检：本文件若一处 `refuse(` 都没有，下面那条断言会零命中地绿。
-        let tagged = src.matches("refuse(").count();
+        // 人群自检 —— **不数定义行**〔D 阶段补审 08-11 订正〕。
+        //
+        // 原版是 `src.matches("refuse(").count() >= 2`，而生产段实得 **10** 处，
+        // 其中 **1 处是 `pub(crate) fn refuse(` 定义行自己** ⇒ 阈值实际只要求
+        // 「有 1 个调用方」。诊断词却写着「要么拒绝点被搬走了」——**搬走 8 处它不知道**。
+        // ⇒ 排掉定义行，阈值按今天的真实调用点数取（**只许降到这个数以上**，
+        // 少了就说明拒绝点在流失，那正是要红的时刻）。
+        let callers = src
+            .lines()
+            .filter(|l| !l.contains("fn refuse("))
+            .map(|l| l.matches("refuse(").count())
+            .sum::<usize>();
         assert!(
-            tagged >= 2,
-            "本文件生产段里 `refuse(` 只出现 {tagged} 次 —— 人群塌了。\n\
-             要么拒绝点被搬走了（那这条判据该跟着搬），要么打标被摘了。"
+            callers >= 8,
+            "本文件生产段里 `refuse(` 的**调用点**只剩 {callers} 处（08-11 实测 9）—— 人群在流失。\n\
+             要么拒绝点被搬走了（那这条判据该跟着搬），要么打标被摘了。\n\
+             ⚠ 原版把定义行也算进去、阈值又只有 2，等于「有一个调用方就算数」。"
         );
         // ⚠ **第一版是假绿的，形状记下来**：原来扫的是「以 `return Err(` **开头**的行」，
         // 而 `Some("x") => return Err(…)` 这种 `match` 臂里 `return` 不在行首 ⇒ **漏**。
@@ -467,13 +478,28 @@ mod tests {
                 if rest.trim_start().starts_with("refuse(") {
                     continue;
                 }
-                // 排除非「构造一个错误值」的出现：`Err(e) =>` 这类是**模式匹配**不是构造。
-                if rest.starts_with("e)") || rest.starts_with("err)") || rest.starts_with("r)") {
-                    continue;
-                }
+                // ⚠ **原来这里无条件排除 `Err(e)` / `Err(err)` / `Err(r)`**（本意是排模式匹配）。
+                // 实测：本文件生产段被它排掉的是 **0 处** —— 它今天一个真实用途都没有，
+                // 却给未来开了个口：`let e = format!("坏输入 {x:?}"); return Err(e);`
+                // **构造一个裸错误值也会被跳过**，而那不是刁钻写法，是最常见的重构结果。
+                // ⇒ 删掉。真出现模式匹配再按**那一处的形状**精确排除（`=>` 在同一行之类），
+                // 不预先开一个按标识符名字放行的口。
                 offenders.push(format!("{}: {}", i + 1, t.chars().take(72).collect::<String>()));
             }
         }
+        // ★ **另外三条出口**〔D 阶段补审 08-11 新增〕：判据原来只看 `Err(`，
+        // 而这三种同样能产出一个未打标的业务拒绝，且今天生产段**各 0 处** ——
+        // 这是**禁令**不是抽样：它们一旦出现就绕过了整条打标纪律。
+        for verb in ["ok_or_else(", "ok_or(", ".map_err("] {
+            let n = src.matches(verb).count();
+            assert_eq!(
+                n, 0,
+                "生产段出现了 `{verb}`（{n} 处）—— 它能产出一个**没经 `refuse()`** 的错误串。\n\
+                 TS 侧按 `REFUSE:` 标分流；不打标的拒绝会被当成 IPC 异常 ⇒ **回落到兜底渲染器**\n\
+                 ⇒ 一次 fail-closed 当场变 fail-open。要用它就先让它经 `refuse(...)`。"
+            );
+        }
+
         assert!(
             offenders.is_empty(),
             "渲染路径上有**没打标**的业务拒绝：\n  {}\n\n\
