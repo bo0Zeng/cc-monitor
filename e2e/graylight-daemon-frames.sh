@@ -17,23 +17,51 @@ set -euo pipefail
 # 此前这套件裸调 tmux ⇒ 在开发者机器上会**直接操作默认 socket 上的真实会话**，
 # 所以它既进不了 CI 也不敢在有活会话的机器上跑（E41）。
 #
-# **两件事都必须做，缺一就不隔离**（2026-07-30 本机实测）：
-#   ① `unset TMUX` —— 从 tmux 会话里跑这套件时，`$TMUX` 会让客户端连**外层那台 server**
-#      并**完全忽略 `TMUX_TMPDIR`**（实测：设了 TMUX_TMPDIR 仍在默认 socket 上建出了会话）。
-#      **这才是 E41 的实质**：不只是「缺 `-L`」，是「继承了 `$TMUX`」。
-#   ② `TMUX_TMPDIR` 必须是**短路径** —— unix socket 路径上限 108 字节，指向长目录时
-#      tmux 报 `File name too long`（实测在 scratchpad 那种长路径上必踩）。
+# ⚠⚠ **这里原有一整段头注，逐字写着「两件事都必须做，缺一就不隔离」（`unset TMUX` +
+# `TMUX_TMPDIR`）—— 已删，因为那段话把一个会出事的形态写成了纪律。** 它自己都记着
+# 「设了 `TMUX_TMPDIR` 仍在默认 socket 上建出了会话」，结论却是「所以两件都要做」；
+# 而正确的结论是「**别靠环境变量做隔离**」。08-11 的事故正是漏了那两件里的一件。
+# 保留这几行是为了让下一个人知道**为什么不能改回去**。
 #
-# 这样做的好处是**零调用点改动**：套件里 84 处裸 `tmux` 一个都不用改，
-# 也自动覆盖它 shell out 出去的东西（`ccm` / `cc-spawn` 内部也是裸调 tmux）。
+# ★★★ **C7i 红线改造〔08-12〕：隔离改成 `-L` shim，不再靠环境变量。**
+#
+# 上面那段（已删）逐字写着「两件事都必须做，缺一就不隔离」——`unset TMUX` + `TMUX_TMPDIR`。
+# **那个形态本身就是病灶**：2026-08-11 实测事故 —— 一条探针写了 `TMUX_TMPDIR=… tmux kill-server`
+# 却漏了 `unset TMUX`，`$TMUX` 有值时 tmux **按它给的 socket 走、`TMUX_TMPDIR` 完全不起作用**
+# ⇒ 那条命令打到用户真实 server 上，**9 个真实 tmux 会话没了**。
+#
+# ⇒ C7i 立为红线：**tmux 命令一律带 socket 选择器（`-S <绝对路径>` 或 `-L <名>`），
+#   禁止靠 `TMUX_TMPDIR`/`unset TMUX` 做隔离。**
+#
+# 现在的形态：把 `$BIN/tmux` 放进 PATH 最前，它 `exec` 真 tmux 并**强插 `-L e2eGrayFrames`**。
+# · 漏什么环境变量都打不偏 —— 选择器写死在 shim 里，不依赖「记得清某个变量」；
+# · 零调用点改动的好处**原样保留**：套件里的裸 `tmux` 一个不用改，
+#   连它 shell out 出去的东西（`ccm` / `cc-spawn` 内部也裸调 tmux）也一并覆盖；
+# · `unset TMUX` **仍然保留**，但它现在只是「让被测行为发生」（tmux 内会退化成就地起），
+#   **不再是隔离手段** —— 隔离由 shim 独自负责。
 unset TMUX TMUX_PANE
-TMUX_TMPDIR="$(mktemp -d /tmp/e2e-sock.XXXXXX)"; export TMUX_TMPDIR
-# 收尾：只用 **`-S <私有 socket>`** 收自己那台（**绝不裸 `kill-server`** —— 万一上面的
-# 隔离没生效，裸的那个会打到用户的 server 上）。server 无会话时本就会自己退，这条是兜底。
+_GC_SOCK="e2eGrayFrames"
+_GC_REAL_TMUX="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
+_GC_BIN="$(mktemp -d /tmp/e2e-tmuxshim.XXXXXX)"
+printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$_GC_REAL_TMUX" "$_GC_SOCK" > "$_GC_BIN/tmux"
+chmod +x "$_GC_BIN/tmux"
+export PATH="$_GC_BIN:$PATH"
+
+# ★ 前置断言**经登录 shell 问** —— 08-12 实测教训：在外层 shell 量 `command -v tmux` 会报 PASS，
+#   而命令真正跑在 `bash -lic` 里（PATH 被 profile 重排过）⇒「隔离没生效」以 PASS 的形式呈现。
+_gc_probe="$(bash -lic 'command -v tmux' 2>/dev/null | tail -1)"
+if [ "$_gc_probe" != "$_GC_BIN/tmux" ]; then
+  echo "  ABORT 隔离没生效：登录 shell 里的 tmux 是 '$_gc_probe'，不是 shim $_GC_BIN/tmux"
+  echo "        绝不降级裸跑 —— 那会打到用户真实 tmux server 上（C7i 红线）。"
+  rm -rf -- "$_GC_BIN"
+  exit 2
+fi
+
+# 收尾：只收自己那台（`-L` 选择器在，绝不裸 `kill-server`）。
 _gc_sock_cleanup() {
   set +e
-  [ -n "${TMUX_TMPDIR:-}" ] && /usr/bin/tmux -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null
-  [ -n "${TMUX_TMPDIR:-}" ] && rm -rf -- "$TMUX_TMPDIR"
+  [ -n "${_GC_REAL_TMUX:-}" ] && "$_GC_REAL_TMUX" -L "$_GC_SOCK" kill-server 2>/dev/null
+  [ -n "${_GC_BIN:-}" ] && rm -rf -- "$_GC_BIN"
 }
 # ─────────────────────────────────────────────────────────────────────────────
 
