@@ -42,7 +42,12 @@ import {
 import { DataSection } from "./data-section";
 import { RemoteSection } from "./remote-section";
 import { DaemonSection } from "./daemon-section"; // P2s（C8）：每台机一个 daemon 开关
-import { getBehavior, setBehavior, type BehaviorConfig } from "../behavior";
+import {
+  getBehavior,
+  setBehavior,
+  withResumePreset,
+  type BehaviorConfig,
+} from "../behavior";
 import {
   diagnoseRemoteLauncher,
   buildAliasGeneratorSection,
@@ -245,6 +250,11 @@ export class SettingsPanel {
   // F34：自定义 resume 命令（本地 / 远端）
   private resumeLocalInput!: HTMLInputElement;
   private resumeRemoteInput!: HTMLInputElement;
+  /** P6c：两格各自的预设条（chip 行）与当前列表。 */
+  private resumeLocalPresetsBox!: HTMLElement;
+  private resumeRemotePresetsBox!: HTMLElement;
+  private resumeLocalPresets: string[] = [];
+  private resumeRemotePresets: string[] = [];
   private remoteLauncherWarning!: HTMLElement; // F08：越层启动器诊断提示（只诊断，不代改）
   private bringFrontCheckbox!: HTMLInputElement;
   /** F03（unify-launch）：`forceLegacyLaunchRenderer` 无 UI 暴露（手改 config.json 的逃生口），
@@ -314,6 +324,12 @@ export class SettingsPanel {
     this.notifyTurnEndCheckbox.checked = behavior.notifyTurnEnd;
     this.resumeLocalInput.value = behavior.resumeCommandLocal;
     this.resumeRemoteInput.value = behavior.resumeCommandRemote;
+    // ⚠ `?? []` 不是防 `getBehavior`（它总会填缺省），是防**这一排 chip 掀翻整个面板**：
+    // 实测缺字段时 `renderResumePresets` 抛错 ⇒ `open()` 整个中断 ⇒ 面板停在错误的页。
+    // 一个装饰性的候选条不该有那种权力。
+    this.resumeLocalPresets = behavior.resumeCommandLocalPresets ?? [];
+    this.resumeRemotePresets = behavior.resumeCommandRemotePresets ?? [];
+    this.renderResumePresets();
     this.updateRemoteLauncherWarning();
     this.forceLegacyLaunchRenderer = behavior.forceLegacyLaunchRenderer;
     this.updateBringFrontEnabled();
@@ -352,6 +368,40 @@ export class SettingsPanel {
     this.remoteLauncherWarning.style.display = msg ? "block" : "none";
   }
 
+  /**
+   * P6c：把两格的预设渲染成可点的 chip。
+   *
+   * ⚠ **远端那格点完必须走同一条越层诊断**（`updateRemoteLauncherWarning`）。
+   * 理由在远端输入框自己的 tooltip 里逐字写着：「别填 `cct` 这类自己建 tmux 的命令」——
+   * 手打错一次是一次，**存成预设是把错误固化成一键**。预设是个放大器，
+   * 不让它走诊断的话，本件是净减安全性。
+   */
+  private renderResumePresets(): void {
+    const fill = (
+      box: HTMLElement,
+      list: readonly string[],
+      input: HTMLInputElement,
+      remote: boolean,
+    ): void => {
+      box.replaceChildren();
+      for (const cmd of list) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "settings-btn settings-btn-secondary settings-preset";
+        chip.textContent = cmd;
+        chip.title = cmd;
+        chip.addEventListener("click", () => {
+          input.value = cmd;
+          if (remote) this.updateRemoteLauncherWarning();
+          void this.onBehaviorToggle();
+        });
+        box.appendChild(chip);
+      }
+    };
+    fill(this.resumeLocalPresetsBox, this.resumeLocalPresets, this.resumeLocalInput, false);
+    fill(this.resumeRemotePresetsBox, this.resumeRemotePresets, this.resumeRemoteInput, true);
+  }
+
   /** v2.4 issue #2: 任一行为 toggle 改 → 立即 save + 通知 TabManager 同步 */
   private async onBehaviorToggle(): Promise<void> {
     this.updateBringFrontEnabled();
@@ -361,11 +411,25 @@ export class SettingsPanel {
       showBgSessions: this.showBgCheckbox.checked,
       resumeCommandLocal: this.resumeLocalInput.value.trim(),
       resumeCommandRemote: this.resumeRemoteInput.value.trim(),
+      // P6c：**保存时记一次**，不猜。空值不进（空 = 用默认，不是一条命令）——
+      // 那条规则住在 `withResumePreset` 里，这里不重写一遍。
+      resumeCommandLocalPresets: withResumePreset(
+        this.resumeLocalPresets,
+        this.resumeLocalInput.value,
+      ),
+      resumeCommandRemotePresets: withResumePreset(
+        this.resumeRemotePresets,
+        this.resumeRemoteInput.value,
+      ),
       notifyTurnEnd: this.notifyTurnEndCheckbox.checked,
       forceLegacyLaunchRenderer: this.forceLegacyLaunchRenderer,
     };
     try {
       await setBehavior(next);
+      // 存成功了才更新内存里那份并重画 —— 存失败还改了 UI，就是让面板说一件没发生的事。
+      this.resumeLocalPresets = next.resumeCommandLocalPresets;
+      this.resumeRemotePresets = next.resumeCommandRemotePresets;
+      this.renderResumePresets();
       // E62：`showBgSessions` 是**重启生效**的（`behavior.ts` 的字段注释逐字写着：
       // 后端启动时读一次 —— 本地扫描过滤 + 远端 daemon `--with-bg`）。改了却不供货，
       // 用户就只能靠记性知道「我刚才改的那个还没生效」。
@@ -879,6 +943,9 @@ export class SettingsPanel {
     );
     this.resumeLocalInput = localInput;
     group.appendChild(localRow);
+    this.resumeLocalPresetsBox = document.createElement("div");
+    this.resumeLocalPresetsBox.className = "settings-presets resume-presets-local";
+    group.appendChild(this.resumeLocalPresetsBox);
     const [remoteRow, remoteInput] = mkResumeRow(
       "远端 resume 命令",
       "默认：claude",
@@ -890,6 +957,9 @@ export class SettingsPanel {
     );
     this.resumeRemoteInput = remoteInput;
     group.appendChild(remoteRow);
+    this.resumeRemotePresetsBox = document.createElement("div");
+    this.resumeRemotePresetsBox.className = "settings-presets resume-presets-remote";
+    group.appendChild(this.resumeRemotePresetsBox);
     // F08：越层启动器诊断——只诊断+引导，不自动改这个输入框的值（MASTERPLAN 设计原则#7）。
     this.remoteLauncherWarning = document.createElement("div");
     this.remoteLauncherWarning.className = "settings-launcher-warning";

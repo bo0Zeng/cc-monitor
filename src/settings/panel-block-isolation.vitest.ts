@@ -5,7 +5,9 @@ import { describe, it, expect, vi } from "vitest";
 
 // refresh spy 守 F82b 段移动没丢 this.remoteSection/this.dataSection 字段（丢了 open() 的
 // `?.refresh()` 会静默 no-op）。vi.hoisted 让 spy 在被提升的 vi.mock 工厂里可见。
-const { remoteRefresh, dataRefresh, boom } = vi.hoisted(() => ({
+const { remoteRefresh, dataRefresh, boom, behaviorStub } = vi.hoisted(() => ({
+  // P6c：让单条测试能改预设（`vi.mock` 的工厂被提升，引不到普通顶层变量）。
+  behaviorStub: { localPresets: [] as string[], remotePresets: [] as string[] },
   remoteRefresh: vi.fn(),
   dataRefresh: vi.fn(),
   boom: { remote: false, mcp: false, kb: false } as {
@@ -111,15 +113,25 @@ vi.mock("../paths", () => ({
   setClaudeDirOverride: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../behavior", () => ({
-  getBehavior: vi.fn().mockResolvedValue({
+  // ⚠ **必须是 `mockImplementation` 不是 `mockResolvedValue`**：后者的对象字面量
+  // 只在建 mock 时求值**一次** ⇒ 单条测试后来改 `behaviorStub` 它看不见（实测栽过一次，
+  // chips 恒为空）。现取才让「每条测试自带一份预设」这件事成立。
+  getBehavior: vi.fn(async () => ({
     autoFollowUserActive: false,
     bringMonitorToFrontOnUserActive: false,
     showBgSessions: false,
     notifyTurnEnd: false,
     resumeCommandLocal: "",
     resumeCommandRemote: "",
-  }),
+    resumeCommandLocalPresets: behaviorStub.localPresets,
+    resumeCommandRemotePresets: behaviorStub.remotePresets,
+  })),
   setBehavior: vi.fn().mockResolvedValue(undefined),
+  withResumePreset: (list: readonly string[], cmd: string) => {
+    const v = cmd.trim();
+    if (!v) return [...list];
+    return [v, ...list.filter((x) => x !== v)].slice(0, 12);
+  },
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
@@ -129,6 +141,7 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 import { SettingsPanel } from "./panel";
 import { __setHostOsForTests } from "./host-os";
+import { setBehavior } from "../behavior";
 import { beforeEach, afterEach } from "vitest";
 
 // S9：jsdom 的 UA 含 `linux`，非 Windows 上「终端集成」那块**根本不构造**
@@ -218,5 +231,62 @@ describe("T07 分区块隔离（真行为）", () => {
     void p;
     // `open()` 里是 `this.remoteSection?.refresh()`，天然容错——这条钉住它
     await expect(p.open()).resolves.toBeUndefined();
+  });
+});
+
+// ===== P6c：resume 命令预设（#69 b/c）=====
+describe("P6c resume 命令预设", () => {
+  beforeEach(() => {
+    behaviorStub.localPresets = [];
+    behaviorStub.remotePresets = [];
+    document.body.textContent = "";
+  });
+  // 面板自己把 DOM 挂到 document（windowMode）—— 与本文件其余判据同一种查法。
+  const chips = (cls: string) =>
+    [...document.querySelectorAll<HTMLButtonElement>(`.${cls} .settings-preset`)];
+
+  it("★ P6c-Y1：点一条预设 ⇒ 输入框变成它，并**真的走保存路径**", async () => {
+    behaviorStub.localPresets = ["cct", "claude"];
+    const p = new SettingsPanel({ windowMode: true });
+    await p.open();
+    void p;
+    const list = chips("resume-presets-local");
+    expect(list.map((b) => b.textContent)).toEqual(["cct", "claude"]);
+
+    const input = [...document.querySelectorAll<HTMLInputElement>("input")].find(
+      (i) => i.placeholder === "默认：检测 cc，回退 claude",
+    )!;
+    expect(input).toBeTruthy();
+    vi.mocked(setBehavior).mockClear();
+    list[1].click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(input.value).toBe("claude");
+    // 只填输入框不保存 ⇒ 用户以为选了、其实没存。**必须钉保存真的发生了。**
+    expect(vi.mocked(setBehavior)).toHaveBeenCalled();
+    const saved = vi.mocked(setBehavior).mock.calls.at(-1)![0];
+    expect(saved.resumeCommandLocal).toBe("claude");
+  });
+
+  it("★ P6c-Y3：点**远端**预设要走同一条越层诊断（预设是放大器，不是绕过口）", async () => {
+    // 远端输入框的 tooltip 逐字：「别填 cct 这类自己建 tmux 的命令」——
+    // 手打错一次是一次，存成预设是把错误**固化成一键**。
+    behaviorStub.remotePresets = ["cct"];
+    const p = new SettingsPanel({ windowMode: true });
+    await p.open();
+    const warn = document.querySelector<HTMLElement>(".settings-launcher-warning")!;
+    expect(warn.style.display).toBe("none"); // 起手没有警告
+
+    chips("resume-presets-remote")[0].click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(warn.style.display).toBe("block");
+    expect(warn.textContent ?? "").not.toBe("");
+  });
+
+  it("★ P6c-Y1b：没有预设时不留空盒子（一排看不见的元素只会挡布局）", async () => {
+    const p = new SettingsPanel({ windowMode: true });
+    await p.open();
+    expect(chips("resume-presets-local")).toHaveLength(0);
+    expect(chips("resume-presets-remote")).toHaveLength(0);
   });
 });
