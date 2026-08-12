@@ -72,7 +72,31 @@ pub fn start_local_backend() -> Resolved {
     let extract_dir = dirs::home_dir()
         .map(|h| h.join(".cc-monitor").join("bin"))
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp/.cc-monitor/bin"));
-    let embedded = crate::sftp::daemon_binary(std::env::consts::ARCH).map(|d| (d.build_id, d.bytes));
+    // ★★ **内嵌的那两份是 musl LINUX 二进制，本机不是 Linux 就一份都不能用**
+    // 〔D 阶段补审 08-11 修，原版是阻塞级缺陷〕。
+    //
+    // # 原来错在哪
+    //
+    // `sftp::daemon_binary(ARCH)` **只按 arch 分派，不看 OS**；`cfg(embedded_daemons)` 也只由
+    // `build.rs` 凭 `embedded-daemons/cc-monitor-remote-{x86_64,aarch64}`（musl Linux）在不在决定，
+    // **同样不看目标 OS**。于是在 Windows 构建上：
+    // ① 释放一个 Linux ELF 到 `%USERPROFILE%\.cc-monitor\bin\`（**没有 `.exe` 后缀**，
+    //    `platform_fs::make_executable` 在非 unix 是 no-op）；
+    // ② `start_or_extract` **返回 `Resolved::Found`** ⇒ 日志打「本机后端 sidecar: …」、
+    //    前端回「已起」；③ 真正的失败发生在 supervise 线程里（`spawn` 报错 → `GaveUp` 只进日志）。
+    //
+    // ⇒ **每次启动往用户目录写一份 10MB 级的无用二进制，UI 与日志报告启动成功，进程从来没起来过。**
+    // `Resolved::Found` 在那条路上是一个谎报 —— 它只证明「文件落地了」，不证明「那是本平台能跑的东西」。
+    //
+    // # 为什么过滤放在这里，不放进 `sftp::daemon_binary`
+    //
+    // 那个函数**同时供远端部署用**，而远端的目标就是 Linux —— 在那条路上用 musl 二进制是对的。
+    // 「本机是什么 OS」是宿主知识，本模块正是它的家。
+    let embedded = if cfg!(target_os = "linux") {
+        crate::sftp::daemon_binary(std::env::consts::ARCH).map(|d| (d.build_id, d.bytes))
+    } else {
+        None
+    };
     let (resolved, sup) = local_backend::start_or_extract(
         env!("CCM_TARGET_TRIPLE"),
         &extract_dir,
@@ -236,6 +260,44 @@ mod tests {
             h.stop();
         }
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// ★★ **本机只许用本平台能跑的二进制**〔D 阶段补审 08-11 新增〕。
+    ///
+    /// 内嵌的两份是 **musl Linux**（`build.rs` 只认 `embedded-daemons/cc-monitor-remote-{x86_64,aarch64}`），
+    /// 而 `sftp::daemon_binary(ARCH)` **只按 arch 分派、不看 OS**。
+    /// 少了这道门，Windows/macOS 上会释放一个 Linux ELF、`start_or_extract` 回 `Resolved::Found`
+    /// ⇒ **UI 与日志报告「已起」，而进程从来没起来过**（补审阻塞 C1）。
+    ///
+    /// # 为什么钉在这里而不是钉 `sftp::daemon_binary`
+    ///
+    /// 那个函数**同时供远端部署用**，目标就是 Linux ⇒ 在那条路上用 musl 二进制是对的。
+    /// 本条只钉「**本机这条取用点**必须先问 OS」。
+    ///
+    /// ⚠ 射程：它是**源码判据**，只证明那道门写在那里；证明不了「Windows 上真的不会释放」——
+    /// 那要一台 Windows（归 `auto-e2e`）。如实登记，不拿源码判据冒充跨平台实测。
+    #[test]
+    fn the_local_backend_only_takes_a_binary_this_platform_can_run() {
+        let prod = guard_core::production_code(include_str!("local_daemon.rs"));
+        let at = guard_core::find_pinned(&prod, "pub fn start_local_backend(")
+            .expect("入口不在了");
+        let body: String = prod[at..]
+            .lines()
+            .skip(1)
+            .take_while(|l| *l != "\u{7d}")
+            .collect::<Vec<_>>()
+            .join("\n");
+        let take = guard_core::find_pinned(&body, "daemon_binary(").unwrap_or_else(|e| {
+            panic!("`start_local_backend` 里没有恰好一处 `daemon_binary(`（{e}）—— 取用点变了就来改本条")
+        });
+        let head = &body[..take];
+        assert!(
+            head.contains("target_os = \"linux\""),
+            "本机取内嵌二进制之前**没有问 OS**。\n\
+             内嵌的是 musl **Linux** 二进制，而 `daemon_binary` 只按 arch 分派 ⇒\n\
+             Windows/macOS 上会释放一个跑不起来的 ELF，然后 `Resolved::Found` 让 UI 报「已起」。\n\
+             ★ 那是一句谎报：它只证明文件落地了，不证明那是本平台能跑的东西。"
+        );
     }
 
     /// P2s（`C8`①）：**已经在跑就不重复起** —— 钉的是**机制**，不是那句诊断文案。
