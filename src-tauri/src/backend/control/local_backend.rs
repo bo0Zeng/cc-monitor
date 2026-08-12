@@ -787,6 +787,13 @@ pub(crate) fn local_stdio_consumer(
     if let Some(mine) = registered {
         crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &mine);
     }
+    // ★ **本机那份 tmux 原文也要清**〔D 阶段补审 08-11，判据路〕。
+    //
+    // 远端断连早就清了（`ssh_source` 里 Batch9-F28 那处），而本机这侧流结束时
+    // **只摘入方向 client、不碰这张表** ⇒ 停掉本机 daemon 之后 `<local>` 那份原文永久留着，
+    // 成了「tmux 还在」的**陈旧证据**：`find_tmux_origin_for_sid` 仍返回 `Some(<local>)`
+    // ⇒ `classify_removed(Some(_), Gone)` = `Idle` = 那个「永远消不掉、也 attach 不上的灰点」。
+    crate::ssh_source::forget_tmux_raw(crate::inbound_client::LOCAL_ORIGIN);
     if early {
         ConsumerExit::Early
     } else {
