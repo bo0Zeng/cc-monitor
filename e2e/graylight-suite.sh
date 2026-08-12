@@ -107,11 +107,22 @@ case "$_hello" in
   *) _abort "daemon 盯的不是 fixture 目录（要 $CLAUDE_DIR）：$_hello" ;;
 esac
 
-# 丙：DEV 探针**真的在**（挡 ④）。它是本套件两条主断言的唯一数据源；
-#     生产构建里 `import.meta.env.DEV` 恒 false、整支被 vite 消除 ⇒ 断言永不可能通过。
-grep -q '\[e2e\]' "$LOG" || _abort "日志里一条 [e2e] 行都没有 —— 跑的不是 \`npx tauri dev\`？DEV 探针不存在，两条主断言永不可能通过"
+# 丙：跑的是 **dev 实例**（挡 ④）。DEV 探针（`import.meta.env.DEV` 门控）是本套件两条主断言的
+#     唯一数据源，生产构建里整支被 vite 消除 ⇒ 断言永不可能通过。
+#
+# ⚠ **不能拿「日志里有没有 `[e2e]` 行」当判据** —— 08-12 实测栽过一次：
+#   那些行**全是事件驱动**的（tab 状态转移时才打），刚起的 dev 实例一条都没有
+#   ⇒ 那条判据会把**健康的 dev 实例**判成「探针不存在」。
+#   **它想验「探针存在」，量的却是「探针已经打过」** —— 射程错了一格。
+# ⇒ 改量**结构性信号**：`tauri.conf.json` 的 `devUrl` 端口上有没有 vite。
+#   只有 `npx tauri dev` 会起它；生产构建走 `frontendDist`，那个端口是空的。
+_devport="$(grep -oE '"devUrl"[^0-9]*([0-9]+)' "$REPO/src-tauri/tauri.conf.json" | grep -oE '[0-9]+$')"
+if [ -n "$_devport" ]; then
+  curl -s -o /dev/null --max-time 3 "http://localhost:$_devport" \
+    || _abort "devUrl 端口 $_devport 上没有 vite —— 跑的不是 \`npx tauri dev\`？DEV 探针会被 vite 整支消除，两条主断言永不可能通过"
+fi
 
-echo "  OK   台架自证通过（app 在写日志 · daemon 盯 $CLAUDE_DIR · DEV 探针在）"
+echo "  OK   台架自证通过（app 在写日志 · daemon 盯 $CLAUDE_DIR · dev 实例在 :$_devport）"
 
 SID="$(cat /proc/sys/kernel/random/uuid)"; SID8="${SID:0:8}"
 SESSION="cc-$SID8"; KEEP="cc-e2ekeep-$$"
