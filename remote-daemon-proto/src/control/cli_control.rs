@@ -45,6 +45,12 @@ use crate::wire::Request;
 use std::io::Read;
 
 /// stdin 上限。理由抄 `resolve_query::MAX_RESOLVE_STDIN`：兜 DoS，不是兜格式。
+///
+/// ⚠ **超限是拒收，不是截断。** 第一版写的是 `.take(MAX_CLI_STDIN)` —— 那是**静默截断**：
+/// 截半的 JSON 解析失败 ⇒ 回一句 `bad_request: args JSON parse failed`，
+/// 而真实原因是「太大了」。`byte_cap_registry` 当场逮住这一处（本轮第十七次），
+/// 它的 `ALLOWED_SEMANTICS` 里逐字**没有「静默截断」这一项**。
+/// ⇒ 多读一个字节，超了就说超了。
 const MAX_CLI_STDIN: u64 = 1024 * 1024;
 
 /// 能力探测口〔P4d-Y2〕。范式抄 `ccm --ccm-probe` —— monitor 侧
@@ -118,11 +124,18 @@ pub(crate) async fn run(args: &[String]) -> i32 {
         return emit_err("unknown_command", format!("CLI 控制面不认识 {flag}"));
     };
     let mut input = String::new();
+    // 多读一个字节，好把「刚好装满」与「超了」分开 —— 只读上限那么多是分不开的。
     if let Err(e) = std::io::stdin()
-        .take(MAX_CLI_STDIN)
+        .take(MAX_CLI_STDIN + 1)
         .read_to_string(&mut input)
     {
         return emit_err("stdin_read_failed", format!("read stdin failed: {e}"));
+    }
+    if input.len() as u64 > MAX_CLI_STDIN {
+        return emit_err(
+            "args_too_large",
+            format!("args JSON 超过 {MAX_CLI_STDIN} 字节上限，已拒收（不截断：截半的 JSON 会被报成 bad_request，那句话与真实原因无关）"),
+        );
     }
     let trimmed = input.trim();
     let cli_args: serde_json::Value = if trimmed.is_empty() {

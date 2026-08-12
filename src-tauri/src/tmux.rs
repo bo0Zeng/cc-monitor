@@ -414,6 +414,23 @@ else printf 'NO_TMUX\\n'; fi"
 /// (来自 `list_remote_tmux` 的真实会话名,仍防御转义)。通道 B 一次性 exec,不干扰前台终端。
 #[tauri::command]
 pub async fn capture_remote_pane(origin: String, target: String) -> Result<String, String> {
+    // ★★ **本机没有画面预览这条路**〔P4d-Y5，08-12〕。
+    //
+    // 不加这一条的话，`<local>` 会掉进下面那句 `load_remote_config_by_label`，报
+    // **「未找到远端配置: `"<local>"`」** —— 一句与真实原因毫无关系的话。
+    // 这是同一族错误文案本轮第**五**次（前四处：`daemon_kill` / `list_remote_tmux` /
+    // `launch_remote_terminal` / 本处），`P3b` 的 E 阶段把它记成 `tmux.manage` 欠账仅剩的一格。
+    //
+    // 真实原因是另一回事：**本机画面预览没有对侧，而且它不是「自动就有」的。**
+    // daemon 推来的 tmux 快照里没有 pane 内容（`HOOK_EVENTS` 只覆盖会话名集合的变化），
+    // 要预览就得**现跑一次 `capture-pane`** —— 那是第二条取数路，得先有 daemon 原语。
+    // ⇒ 就这么说，别让用户去查一份根本不该存在的「远端配置」。
+    if origin == crate::inbound_client::LOCAL_ORIGIN {
+        return Err(format!(
+            "本机还看不了 `{target}` 的画面预览：本机的 tmux 快照只带会话名，不带屏幕内容，\n\
+             要预览得现抓一次 pane —— 那条路还没做（远端走的是一次性 SSH，本机没有对侧）。"
+        ));
+    }
     let cmd = build_capture_pane_cmd(&target)?;
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;

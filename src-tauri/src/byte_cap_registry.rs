@@ -301,6 +301,13 @@ mod tests {
             "截断+说清",
         ),
         (
+            "remote-daemon-proto/src/control/cli_control.rs",
+            "MAX_CLI_STDIN",
+            1 << 20,
+            "控制面 CLI 子命令（`--launch`/`--kill`/…）的 stdin args JSON",
+            "拒收+回错",
+        ),
+        (
             "remote-daemon-proto/src/inbound.rs",
             "MAX_LINE_BYTES",
             1 << 20,
