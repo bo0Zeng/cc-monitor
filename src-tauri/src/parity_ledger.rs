@@ -119,6 +119,11 @@ mod tests {
         ("update_history_metadata", "history.metadata", Side::Both),
         ("list_last_accounts", "accounts.last-used", Side::Both),
         ("search_history", "search.history", Side::Both),
+        // ⚠ **P3b 复核（08-12）：这条能力两侧都登记着，但实现是 Win32 专属。**
+        // `bind.rs` 的 `SetForegroundWindow` / `IsWindow` / `ShowWindow` 全在 `#[cfg(windows)]` 下
+        // ⇒ **Linux 上这两条命令都没有实现**（不是坏了，是没写）。
+        // 本表记的是「本地/远端平价」，不是「平台覆盖」—— 所以 `Both` 没记错；
+        // 但只读这一行会以为 Linux 也有。⇒ 平台那一维归 `U14`（用户 08-12 已裁：要做，排在后面）。
         ("bring_terminal_to_front", "terminal.focus", Side::Local),
         (
             "bring_remote_terminal_to_front",
@@ -282,10 +287,18 @@ mod tests {
         //
         // 本行仍是 `Side::Remote`，但理由换了：**POSIX 本机不需要一条 IPC 命令** ——
         // 它的渲染器就住在 Rust 里（`history.rs::render_local_ccm`），前端不必绕一圈问自己。
-        // U8a-2c-1：daemon `launch` 的发送端（`send-into` 那半边）。**Remote-only 且未裁定** ——
-        // 见 ASYMMETRY_REASONS 里那条：本机该不该也有一个「后端进程」来收这件事，
-        // 正是 §1.2 今天悬着的问题（v1 的三宿主被否决、U12 的 daemonless 未定）。
-        ("daemon_send_into", "launch.send-into", Side::Remote),
+        // ★★ **P3b 结清（08-12）：这一行从 `Remote` 变 `Both`，不再是不对称。**
+        //
+        // 它原来的注释写「Remote-only 且未裁定 —— 本机该不该也有一个后端进程来收这件事，
+        // 正是 §1.2 今天悬着的问题」。**两半都被证伪了**：
+        // ① 「还没裁定」——`C1`/`C8` 已裁（用户 08-11「本地要和远端一样」）；
+        // ② 「本机没有后端进程」——P2 交付了：`local_backend.rs:795` 逐字
+        //    `inbound_client::register(LOCAL_ORIGIN, client)`，`client_for("<local>")` 实测通。
+        // ③ 而 **P3 刀 3 让生产段真的用它了**：`runLocalResumeIntoExistingTmux`
+        //    以 `<local>` 调 `daemon_send_into` 就地 resume。
+        //
+        // ⇒ 这条不是「改个分类」，是**这条能力真的两侧都有了**。
+        ("daemon_send_into", "launch.send-into", Side::Both),
         ("render_ccm_launch", "launch.render-cli", Side::Remote),
         // 兜底那支的 `container:"none"` 载荷渲染。**Remote 侧专属**，但理由与 launch.render-cli
         // 已经不同了（P3t-Y4）：这一支本机确实还不经 IR —— 走的是
@@ -363,20 +376,19 @@ mod tests {
 
     /// **不对称能力的理由**。键集合必须**恰好等于**从 `LEDGER` 算出来的不对称集合。
     const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
-        ("accounts.trust", Asym::ParityDebt, "同 accounts.list：预信任检查只有远端有。归 L3。"),
-        ("acct-iso.check", Asym::ParityDebt, "本机同样需要「这台装没装 cc-acct-iso」的检测（切号要靠它），今天只能查远端。归 L3。"),
-        ("acct-iso.deploy", Asym::NaturallyAsymmetric, "vendored 副本要**传到**远端才能用；本地就在本机、不存在传输这一步。这条不对称是传输本身造成的，不是能力缺失。"),
+        ("accounts.trust", Asym::ParityDebt, "同 accounts.list：预信任检查只有远端有 —— 命令面实测只有 `check_account_trust`（`Side::Remote`），本机零对侧。归 L3。"),
+        ("acct-iso.check", Asym::ParityDebt, "本机同样需要「这台装没装 cc-acct-iso」的检测（切号要靠它），今天只能查远端 —— 命令面实测只有 `check_remote_acct_iso`，本机零对侧；而本机确实**用得着**它：`local_accounts.rs` 头注逐字说这份数据有三个读者，其中写侧就是 `cc-acct-iso`。归 L3。"),
+        ("acct-iso.deploy", Asym::NaturallyAsymmetric, "vendored 副本要**传到**远端才能用（`deploy_remote_acct_iso`）；本地就在本机、不存在传输这一步。⚠⚠ **P3b 标疑（08-12）：这条理由属于「从未被验证过」那一类，别当它已经核过。** 「不存在传输」是真的，但**「不存在安装」没人量过** —— 实测本机 `~/.local/bin` 下确实躺着 `cc-acct-iso`（`config_surface.rs:1062` 记着那 12 条 `cc-*`），而它是**怎么到那儿的**、要不要 monitor 管，本表从来没答过。⇒ 若答案是「要 monitor 管」，这条就该从 `natural` 变 `ParityDebt`。归 `P3b` 的后续或 `L3`。"),
         ("skill.inbox", Asym::Undecided, "devbench F03：skill 接入面今天只读写**本机工作目录**下的 `.claude/planned-build/INBOX.txt`。远端项目也可能有同一份结构（那边的 `.claude/` 一样在），技术上走 SFTP 就能读写 —— **但「远端项目的收件箱要不要能在这里编辑」没人裁定过**。⇒ 刻意记 `Undecided` 而不是 `NaturallyAsymmetric`：后者会替产品做主说「本地不需要」，而事实是**没想过**。⚠ 若将来要做，写面围栏那三道得先想清楚远端版怎么算（`canonicalize` 在远端不成立）。"),
         ("tmux.local-census", Asym::NaturallyAsymmetric, "「本机今天有哪些 tmux 会话」。★ P3 刀 2 的 UI 半把它从「只回名字」放宽到「回整条会话」——杀会话的菜单必须按 `@ccm_sid` 认归属，按 `<sid8>-cc` 前缀猜与 §30 逐字禁的「按目录回退猜」是同一类错。**反向缺口，且是天然的**：远端问同一个问题**已经有答案** —— `list_remote_tmux` 一次性 SSH `tmux ls` 就是它，前端 `pickFreshTmuxName(sid, existing)` 拿的正是那份。本机没有 SSH 那一跳，所以要一个自己的口；开它不是本机多了什么能力，是**把远端本来就有的那一格在本机补上**。⇒ 记 `NaturallyAsymmetric` 而不是 `ParityDebt`：欠的是本机这一侧，而本行一落地就已经补平，没有留下去处。★ 它读的是 daemon 推来的 tmux 快照而不是现跑 `tmux ls`，理由与射程见 `tmux.rs::local_tmux_names` 头注：那份快照由 `session-created/closed/renamed` 三条 hook 驱动，**恰好就是改变名字集合的那三件事** ⇒ 对这个问题它是权威的，对「pane 前台命令变了没有」才是陈旧的（那条已被 devbench F08 裁定不开口）。"),
-        ("acct-iso.shellinit", Asym::ParityDebt, "本机切号同样要 shellinit 文本，今天只能给远端生成。归 L3。"),
+        ("acct-iso.shellinit", Asym::ParityDebt, "本机切号同样要 shellinit 文本（`cc-acct-iso shellinit` 那句 `export CLAUDE_CONFIG_DIR=<默认账号>`），今天只能给远端生成 —— 命令面零本机对侧。归 L3。"),
         ("audit.config-surface", Asym::ParityDebt, "**反向缺口**（本地能答、远端答不出）——§40 表里已逐行记明：本页明写不连 SSH，10 行里 7 行对远端恒返回「未确定」。"),
         ("cc-bus.cockpit", Asym::ParityDebt, "cc_bus.rs 的 5 个 IPC **全走 origin+ssh、零本机读取路径**（`config_surface.rs` 的钉死表已把 `~/.cc-bus/` 记为 Remote）。而本机 cc-bus 是存在的——`diagnose_local_cc_bus_hooks` 就在诊断它 ⇒ 驾驶舱管不了本机的 agent，是真欠账。"),
         ("ccm.install-ui", Asym::Undecided, "本机安装向导有「扫 PATH 选装到哪」+「预览要写的文本」两步；远端 `install_remote_ccm_helper(cfg, profile)` 一步到位、没有这两步。**是欠账还是刻意简化，需要产品判断**——本表不替它裁定。"),
-        ("daemon.deploy", Asym::NaturallyAsymmetric, "§40 天然不对称白名单第 3 条：本地会话由 `watcher.rs` 直接读 jsonl，**根本不需要 daemon**。"),
+        ("daemon.deploy", Asym::NaturallyAsymmetric, "★★ **P3b 结清（08-12）：理由整个换掉 —— 原来那句是假的。** 原文写「§40 天然不对称白名单第 3 条：本地会话由 `watcher.rs` 直接读 jsonl，**根本不需要 daemon**」，被 P2z + P2 + P2s 三件直接证伪：本机**需要** daemon（入方向通道、每台机开关、tmux 帧都靠它），而且**已经会自部署** —— `local_backend.rs::extract_embedded_to`（exe 旁没有 sidecar 就把内嵌那份释放到 `~/.cc-monitor/bin`）。真正的不对称只剩一格：**本机那次释放不经一条 IPC 命令**，是宿主启动时自己做的（`lib.rs` 的启动段），所以命令面上没有本机对侧。⇒ 记 `natural` 记的是「不需要一条命令」，不是「不需要 daemon」。"),
         ("launch.render-payload", Asym::NaturallyAsymmetric, "兜底那支（`container:\"none\"`）的载荷渲染。本机走 `history.rs::build_local_*_command` —— P3t 之后那是**渲染器拒了才走的回落**，不是并列的第二条路。⚠ P3t-Y4 订正：原文引 §36 当依据，那是把一条讲 **Windows**、逐字禁「本地渲染器读 `plan.env`」的窄铁律读宽了。"),
-        ("launch.send-into", Asym::Undecided, "U8a-2c-1：往**已存在**的远端 tmux 会话键入载荷（`send-keys` 那半边由 daemon 做，`attach` 那半边必须留在用户终端 —— §1.3）。**刻意记 Undecided 而不是天然不对称**：本机今天没有对应能力，但那不是因为「本机不需要」，而是因为**本机该不该也有一个后端进程来收这件事还没裁定** —— §1.2 的三宿主 v1 被用户否决、U12 的 daemonless 处置未定。写成 NaturallyAsymmetric 就是替产品做主。"),
         ("launch.render-cli", Asym::NaturallyAsymmetric, "`ccm 调用行`的渲染。★★ **P3t-Y4 把这条的理由整个换了 —— 原来那个已被实测证伪。** 原文说这条不对称是「本地渲染必须在目标机器上做（要现场探 `command -v cc`，TS 无法预先渲染好交给它）」造成的。**本机就在本机**：P3t-Y2 的 `ccm_probe::probe_local_ccm()` 直接跑一次 `bash -lic` 就拿到了版本与完整能力集，比远端那条 ssh 往返还便宜 ⇒ 那个理由不成立。真正的不对称是**本机账号三态里有两态 CLI 说不出**：`Named{config_dir}` 只有目录没有名字（CLI 只会 `--account <名字>`），`None` 是「继承环境」而 CLI 语法里没有这一态（映成 `--base` 就是把继承偷换成显式清空 = #75 病灶）。那两态诚实降级回旧路。⇒ 本行仍 `natural`，但它记的是**语法窄一格**，不是「渲染必须在目标机器上做」。补不补见 ROADMAP `U10`。"),
-        ("mcp.list-origins", Asym::NaturallyAsymmetric, "「有哪些 origin」这个概念在本地不存在——本地只有一台。"),
+        ("mcp.list-origins", Asym::NaturallyAsymmetric, "`list_remote_mcp_origins` 答的是「哪几台远端有 MCP 配置」——「有哪些 origin」这个问题在本机侧退化成一台，没有可列的集合。⚠ 注意它与 `daemon_machines` 不同：那条**包含**本机（`LOCAL_ORIGIN`），因为它答的是「哪几台有 daemon」而本机也有。"),
         ("panorama.code-graph", Asym::Undecided, "**本表交出的最大一处新发现**：21 条命令全部只吃本机 `repo` 路径。远端 repo 的代码图谱既没做、也没在任何计划里登记过。**不擅自判它是天然不对称**——那需要产品判断（远端开发是不是本工具的场景）。登记待裁定。"),
         ("port-forward", Asym::NaturallyAsymmetric, "§40 天然不对称白名单第 2 条：本地没有「转发到自己」这个需求。"),
         ("search.index", Asym::NaturallyAsymmetric, "远端**不建索引**：`search_history` 对远端是实时 SSH fan-out（其头注自陈「本地内存索引查询与远端 fan-out 并发」）。索引是本机侧的实现细节，不是一项对外能力。"),
@@ -646,8 +658,8 @@ mod tests {
         // 反向自检：一条都没检到 = 签名采集坏了。**等号而不是 `>=`**（T04 审计重要 5：
         // 写 `>= N` 恰好容忍一次静默降级）。
         assert_eq!(
-            checked, 79,
-            "检到 {checked} 条 Local/Both 命令（真实应为 79 = Local 52 + Both 27；\
+            checked, 80,
+            "检到 {checked} 条 Local/Both 命令（真实应为 80 = Local 52 + Both 28；\
              devbench F03 的 skill 接入面是 +3（list_skills / read_skill_file / write_skill_file，\
              都 Local）；\
              E79 的 `list_local_session_accounts` 是 +1；U-CC1 的 `drift_ledger_report` 是 +1，\
@@ -659,6 +671,54 @@ mod tests {
     }
 
     /// ★ 断言 4：表的形状钉死。改 `LEDGER` 就要来改这几个数。
+    /// ★★ **P3b-Y3：每条不对称理由都得**可追问**。**
+    ///
+    /// `E` 阶段量到假理由有**两种假法**：
+    /// **A 过期**（写下时是真的，事实变了理由没跟）· **B 从未成立**（写下时就没验证过）。
+    /// 08-11 补审按 A 扫，逐字记「两条理由今天已经是假的」——**实际是三条**，
+    /// 第三条（`launch.render-cli` 的「本地渲染必须在目标机器上做」）是 B，
+    /// 时间线扫不到它，直到 `P3t-Y2` 顺手量了一次才发现它从头到尾没被验证过。
+    ///
+    /// # 钉法：钉**可追问性**，不钉真假
+    ///
+    /// 判语义今天做不到。退一步：每条理由必须带一处**可核实的锚** ——
+    /// 文件名 / 函数名 / 判据名 / issue 号 / 逐字引号。没有锚的理由 = 一句无从复核的断言，
+    /// 而 B 类假理由的共同外观正是「读着有道理，但没有任何东西可以去核」。
+    ///
+    /// # 它守什么、不守什么
+    ///
+    /// **守**：新增一条不对称却只写一句空泛道理 ⇒ 当场红。
+    /// **不守**：① 锚**指得对不对**（随手写个存在的文件名就能过）——本条只保证**可追问**，
+    ///   **不保证追问过**，别读成「理由都验过了」；② A 类过期 —— 那要靠人按时间线扫。
+    #[test]
+    fn every_asymmetry_reason_carries_something_you_can_go_check() {
+        // 锚的形态：反引号里的标识符（文件/函数/判据名）、`§` 段号、`#` issue 号。
+        let mut bare = Vec::new();
+        for (cap, _, why) in ASYMMETRY_REASONS {
+            let has_code_anchor = why.matches('`').count() >= 2;
+            let has_section = why.contains('§');
+            let has_issue = why.contains('#');
+            if !(has_code_anchor || has_section || has_issue) {
+                bare.push(format!("  {cap}"));
+            }
+        }
+        // 完备性自检：人群空了「全过」与「没测」长得一样。
+        assert!(
+            ASYMMETRY_REASONS.len() >= 15,
+            "只抽到 {} 条不对称理由 —— 抽取器坏了，本条此刻无效",
+            ASYMMETRY_REASONS.len()
+        );
+        assert!(
+            bare.is_empty(),
+            "这些不对称理由**没有任何可以去核的东西**（无代码锚 / 无 § 段号 / 无 issue 号）：\n{}\n\n\
+             ⚠ 本条不判理由真假，只判它**可不可追问**。\n\
+             「读着有道理但无从复核」正是 B 类假理由（从未成立）的共同外观 ——\n\
+             本区已经栽过一次：`launch.render-cli` 的「本地渲染必须在目标机器上做」\n\
+             从头到尾没人量过，直到 P3t 顺手跑了一次 `bash -lic` 才发现它比远端还便宜。",
+            bare.join("\n")
+        );
+    }
+
     #[test]
     fn ledger_shape_is_pinned() {
         // ⚠ 订正（2026-08-03 复盘）：下面四条尾注此前都**只记到 U8c-2c-2 为止** ——
@@ -669,8 +729,8 @@ mod tests {
         let sides = capability_sides();
         assert_eq!(sides.len(), 59, "能力总数变了"); // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.daemon-policy / daemon.status / daemon.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）
         let asym = asymmetric_capabilities();
-        assert_eq!(asym.len(), 22, "不对称能力数变了"); // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
-        // P3t-Y2b +1（tmux.local-census）
+        assert_eq!(asym.len(), 21, "不对称能力数变了"); // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
+        // P3t-Y2b +1（tmux.local-census）；**P3b -1（launch.send-into 结清：P3 刀 3 让本机真的在用它 ⇒ Both，不再不对称）**
         let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
         for (_, k, _) in ASYMMETRY_REASONS {
             *kinds
@@ -683,6 +743,7 @@ mod tests {
         }
         assert_eq!(kinds.get("natural"), Some(&10), "天然不对称条数变了"); // U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）。★ P3t-Y4：这两条的**理由**换过（原来引 §36 说「本地不经 IR」——§36 只绑 Windows，且那个理由已被本机探针实测证伪），但 `natural` 的**条数没变**。P3t-Y2b +1（tmux.name-census）
         assert_eq!(kinds.get("debt"), Some(&8), "平价欠账条数变了"); // F08 -1（usage.per-account 补平） // G6 -1；E79 -1
-        assert_eq!(kinds.get("undecided"), Some(&4), "未裁定条数变了"); // devbench F03 +1（skill.inbox：远端项目的收件箱要不要能编辑，没人裁定过） // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
+        assert_eq!(kinds.get("undecided"), Some(&3), "未裁定条数变了"); // devbench F03 +1（skill.inbox：远端项目的收件箱要不要能编辑，没人裁定过） // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
+        // P3b -1（launch.send-into：它的「还没裁定」被 C1/C8 + P2 + P3 刀 3 三重证伪）
     }
 }

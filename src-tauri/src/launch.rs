@@ -544,10 +544,24 @@ mod tests {
                 .unwrap_or_else(|e| panic!("{f} 读不到：{e} —— 文件搬了就把本条一起改"));
             files.push((f.to_string(), body));
         }
-        // ★ 扩面自检：`doc/` 一个都没收到 ⇒ 路径错了，扩面等于没做。
+        // ★★ 〔P3b 08-12 第二次扩面〕**加 `e2e/` 与 `src/`**。
+        //
+        // 08-06 那次（`c87d123`）的账是「扫描面本身是个洞」，扩到了 `doc/` + 两份 README。
+        // 今天再量：**洞还在，只是挪了个位置** —— `e2e/restart-cmd-driver.ts:6` 那句
+        // 「GUI 全链在 Linux 结构性不可达（launch.rs 仅 Windows→回退剪贴板）」
+        // 就躺在扫不到的地方，而 `launch.rs:144` 明明有 `launch_local_posix`。
+        //
+        // ⇒ **这不是巧合**：扫描面按「想到哪扫哪」长出来，而假话按「写在哪就在哪」分布。
+        // 两者的形状不一样，所以「上次扩过了」不等于「这次够了」。
+        for (dir, exts) in [("e2e", &["ts", "sh", "md"][..]), ("src", &["ts"][..])] {
+            for (q, body) in guard_core::scan_tree!(&root.join(dir), exts) {
+                files.push((format!("{dir}/{}", q.file_name().expect("文件名").to_string_lossy()), body));
+            }
+        }
+        // ★ 扩面自检：新纳入的两族一个都没收到 ⇒ 路径错了，扩面等于没做。
         assert!(
-            files.len() >= 12,
-            "只收到 {} 份散文（doc/ + 三份）—— 扩面是空转的",
+            files.len() >= 90,
+            "只收到 {} 份散文（doc/ + 三份 + e2e/ + src/）—— 扩面是空转的",
             files.len()
         );
         let mut total = 0usize;

@@ -3,7 +3,16 @@
 // 经 restart-shims/loader.mjs 把 Tauri IPC 边界重定向到真 tmux + fake-claude（见该 loader 头注）。
 //
 // 诚实天花板 = 命令级:真编排逻辑 + 真 tmux 效果 + 真账号解析（accountConfigDir/detectAccountMismatch
-// 都是 src/accounts.ts 真源）。GUI 全链在 Linux 结构性不可达（launch.rs 仅 Windows→回退剪贴板）。
+// 都是 src/accounts.ts 真源）。
+//
+// ⚠⚠ **P3b 订正（08-12）**：这里原本写「GUI 全链在 Linux 结构性不可达
+// （**launch.rs 仅 Windows**→回退剪贴板）」——**括号里那句是假的**：
+// `launch.rs:144` 有 `launch_local_posix`（`#[cfg(not(windows))]`），POSIX 本机拉起走的就是它。
+// 真正只在 Windows 的是**开终端窗口**（`launch_powershell_window`），而那是
+// **一个设计选择**（`C13`：Linux 暂时只认 bash、不挑终端模拟器），**不是「结构性不可达」**。
+// ⇒ 用「结构性」描述一个可改的选择，会让下一个人不再去问「那能不能改」——
+//   08-12 用户当场问了，答案是「做得到」（ROADMAP `U14` 已裁：要做，排在后面）。
+// 今天这条 e2e 的真实天花板是：**Linux 上不开终端窗口 ⇒ 走复制回退**，命令级可验、GUI 级不可验。
 //
 // 用法:
 //   restart <origin> <sid> <cwd> <tmuxName> <account> <launcher> <compactFirst> <confirm> <awaitCompact> <awaitExit>
