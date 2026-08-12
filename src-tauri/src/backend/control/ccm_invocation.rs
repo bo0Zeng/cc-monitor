@@ -282,13 +282,13 @@ pub fn render_ccm_invocation(
     }
     // ★★ **P3t（`C12`）：POSIX 本机放行，Windows 本机仍拒**。
     //
-    // # 原来这里是「一律拒本机」，而那比 §36 说的宽
+    // # 原来这里是「一律拒本机」，而那比 §36（只绑 Windows）说的宽
     //
     // `doc/INVARIANTS.md` 的 §36 逐字是「本地（**Windows**）路径不经 IR」，
     // 而 `launch_wire.rs` 的注释写成泛指的「本机」、代码按注释的宽度实现。三者不一致。
     // §36 那一行的「说明」列讲的全是 Windows 分支（`config_dir_prefix_ps` /
     // `validate_config_dir_ps`）与「`\` 与盘符」问题 —— **那些理由在 POSIX 上一条都不适用**。
-    // ⇒ 本件采信「代码窄了」：放行 POSIX 是**在兑现 §36 的原意**，不是破例（P3t-Y4）。
+    // ⇒ 本件采信「代码窄了」：放行 POSIX 是**在兑现 §36（只绑 Windows）的原意**，不是破例（P3t-Y4）。
     //
     // # 为什么必须放行（不是「为了对齐而对齐」）
     //

@@ -355,4 +355,115 @@ mod tests {
              §1 的 ASCII 数据流图不用这种树枝，所以这条不会误伤它。"
         );
     }
+
+    /// ★★ **P3t-Y4 的机检半**：引一段文字证明不了「今天的代码就是那个意思」，
+    /// 所以裁定必须配一条**机器能重跑**的检查（DoD 逐字：「那句注释不许再写成泛指的『本机』」）。
+    ///
+    /// # 裁的是什么
+    ///
+    /// `doc/INVARIANTS.md` §36 的标题后半句就是它的全部内容 ——
+    /// 「嵌套 env 污染保护已在进程启动期做完，**别在本地渲染器里重复实现**」，
+    /// 铁律那段逐字禁的是「给本地渲染器补一段读 `plan.env`、把 `unset` 翻成 PowerShell
+    /// `Remove-Item Env:\X` 的代码」；整节的论证（`config_dir_prefix_ps` /
+    /// `validate_config_dir_ps` / 「`\` 与盘符」）全是 **Windows**。
+    /// ⇒ 它**不是**「本机不许用 CLI 渲染器」。把它当成那个用，是**把一条窄铁律读宽了**。
+    ///
+    /// # 钉法
+    ///
+    /// 人群 = 全树里每一个引 §36 的**注释块 / 字面量行**（自动派生，不是白名单）。
+    /// 规则：一个块里同时出现 §36 与「本机 / 本地」时，它就是在用 §36 划范围
+    /// ⇒ **必须同时出现 `Windows`**，把范围写准。
+    ///
+    /// # 它守什么、不守什么
+    ///
+    /// **守**：下一个人（包括我）再拿 §36 当「一律拒本机」的依据时当场红。
+    /// **不守**：① 一句**不引 §36** 却照样写「本机不走 CLI 渲染器」的注释 ——
+    ///   本条按引用取样，够不着它（这是本条的射程边界，写在这里而不是假装没有）；
+    /// ② 「块里有 Windows」不等于「那句话说对了」—— 机检管得住范围词在不在，
+    ///   管不住论证对不对，那一半靠上面的裁定文字与评审。
+    #[test]
+    fn every_citation_of_invariant_36_says_which_platform_it_binds() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        // ⚠ **不剥 `#[cfg(test)]`**（第一版剥了，人群当场变 0 —— 完备性自检逮住的）。
+        // `parity_ledger` 那张平价账本整个住在测试段里：它是**登记表**，不是运行时代码。
+        // 拿「生产段」当人群 = 把本条最主要的目标全摘掉。
+        //
+        // 摘除自己走 `scan_tree_excluding_self`（防判据被自己的散文喂饱）。
+        // 本文件全文无 §36 引用 ⇒ 摘掉它**一条目标都不损失**，这正是把本条安家在这里的理由。
+        let files_src = guard_core::scan_tree_excluding_self(&root, &["rs"], file!());
+        let mut blocks: Vec<(String, String)> = Vec::new(); // (文件, 块)
+        for (path, src) in &files_src {
+            let name = path
+                .strip_prefix(&root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            // ★★ **切到句，不是切到块**（08-11 变异逼出来的第二版）。
+            //
+            // 第一版把连续注释行并成一整块。实测：把 `launch_wire` 那句读宽了的引用
+            // **原样写回去**，本条**照样绿** —— 因为那句坏话与紧跟其后的订正文字同块，
+            // 而订正文字里有 `Windows`。⇒ 那一版对它自称要抓的那次回归**真阳率为零**。
+            //
+            // 现在的单位是「一行里被句号切开的一段」：`§36` 与 `Windows` 必须落在**同一段**。
+            for line in src.lines() {
+                for seg in line.split('\u{3002}') {
+                    blocks.push((name.clone(), seg.to_string()));
+                }
+            }
+        }
+
+        // ★★ **钉切法本身**（变异 M3 逼出来的）。
+        //
+        // 实测：把切法退回「连续注释行并成一块」，再把那句读宽了的引用原样写回去 ——
+        // 本条**照样绿**。也就是说粒度一退，判据就**静默失去牙齿**，而失去牙齿的样子
+        // 与守得好好的样子在输出上完全一样。⇒ 粒度不是实现细节，是本条的射程本身，
+        // 必须自己钉住：切出来的单位里不许再有句号。
+        assert!(
+            blocks.iter().all(|(_, b)| !b.contains('\u{3002}')),
+            "切出来的单位里还有句号 —— 粒度退回块了。\n\
+             那样一句坏话只要与任何一句提到 Windows 的订正文字同块就能蒙混过关，\n\
+             本条会像第一版那样对 `launch_wire` 那次回归**零真阳**。"
+        );
+
+        let citing: Vec<&(String, String)> =
+            blocks.iter().filter(|(_, b)| b.contains("§36")).collect();
+
+        // ★ 完备性自检（`ENTRIES` 那条的教训：人群为空时「全过」与「没测」长得一模一样）。
+        assert!(
+            citing.len() >= 4,
+            "全树只找到 {} 处引 §36 —— 少于开工时的 4 处。\n\
+             要么切法把人群切没了（第一版剥生产段就剥成了 0），要么引用被删光了；\n\
+             无论哪种，本条都会零命中地绿。",
+            citing.len()
+        );
+        let files: std::collections::BTreeSet<&str> = citing.iter().map(|(f, _)| f.as_str()).collect();
+        for expect in ["parity_ledger.rs", "backend/control/ccm_invocation.rs"] {
+            assert!(
+                files.contains(expect),
+                "`{expect}` 里找不到 §36 引用 —— 人群跑偏了（实得：{files:?}）"
+            );
+        }
+
+        let mut bad = Vec::new();
+        for (f, b) in citing {
+            // **无条件要求**：引 §36 就得在同一句里写出它只绑 Windows。
+            //
+            // 第一版的规则是「这一段提到本机/本地时才要求」——那条件看着周到，其实是
+            // 给「读宽了」留了后门：一句「§36 禁了这条路」不提本机也照样把范围读宽。
+            // 而 §36 的病灶从来只有一个：**它的适用平台在转述里被丢掉**。
+            // ⇒ 直接钉平台词在不在，不去猜这句话是在主张还是在讨论。
+            if !b.contains("Windows") {
+                bad.push(format!("{f}：{}", b.trim()));
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "★ 这些句子引了 §36，却没在**同一句**里写出它只绑 Windows：\n  {}\n\n\
+             §36 逐字讲的是 Windows 分支（`config_dir_prefix_ps` / `validate_config_dir_ps`），\
+             禁的是「本地渲染器读 `plan.env`」——**不是**「本机不许用 CLI 渲染器」。\n\
+             P3t 之前整条本机路就是被这句读宽了的引用挡着的，而挡出来的后果是\
+             一个**无 tty、无 tmux** 的进程（用户敲进去的字会被脚本吃掉）。",
+            bad.join("\n  ")
+        );
+    }
 }
