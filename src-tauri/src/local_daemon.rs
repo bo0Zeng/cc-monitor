@@ -159,6 +159,18 @@ mod tests {
     /// ⚠ 本条**不调 `start_local_backend()`** —— 那个函数吃的是**真实**的 `~/.cc-monitor/bin`
     /// 且不接受环境注入 ⇒ 在测试里调它就会读用户真实的配置目录。
     /// 它那半（宿主知识 + 幂等）由下面那条机检管。
+    /// ⚠⚠ **诚实边界（补审 08-11 逮到本条没登记）**：它 `#[cfg(embedded_daemons)]` 门着，
+    /// 而 **CI 的 `cargo test` 之前一步都不铺 `src-tauri/embedded-daemons/`**
+    ///（铺它的是 `release.yml`，不是 `ci.yml`）⇒ `build.rs` 不置 cfg
+    /// ⇒ **本条在 CI 上等于不存在**。
+    ///
+    /// 姊妹条 `the_local_daemon_really_registers_an_inbound_client` 登记了这条边界（10c），
+    /// **本条当时没登记** —— 读它的人会以为 `P2s-Y2` 有持续的实测证据。今天它只在
+    /// 「开发机上、且 `embedded-daemons/` 齐」时才跑过。
+    ///
+    /// ⚠ 另一条边界：它**不调生产的 `start_local_backend` / `stop_local_backend`**
+    /// （前者读真实 `~/.cc-monitor`、不接受环境注入）⇒ **生产的停口零覆盖**，
+    /// 那一格由 `the_stop_command_really_calls_this_module` 的源码接线钉补上。
     #[cfg(all(embedded_daemons, target_os = "linux", target_arch = "x86_64"))]
     #[test]
     fn the_local_daemon_can_be_stopped_and_started_again() {
@@ -264,6 +276,41 @@ mod tests {
             h.stop();
         }
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// ★ **接线钉之三：停口**〔D 阶段补审 08-11 新增〕。
+    ///
+    /// 补审逐字：起那半有 `the_startup_path_really_calls_this_module` 钉着，
+    /// **停那半没有对称物** —— `daemon_stop → stop_local_backend` 这根线断了不会有任何东西红，
+    /// 而 `stop_local_backend` 里那句 `g.take()`（头注专门解释「不 take 会让下一次『起』
+    /// 误以为还在跑」）改成 `g.as_ref()` 也不会红。
+    ///
+    /// ⚠ 射程：本条是**源码接线钉**，只证明那根线写在那里；
+    /// 「停了进程真没了」那半由 `local_daemon::tests` 里那条实测管（而它今天 `#[cfg]` 门着，见 10c）。
+    #[test]
+    fn the_stop_command_really_calls_this_module() {
+        let dc = guard_core::production_code(include_str!("daemon_control.rs"));
+        guard_core::find_pinned(&dc, "local_daemon::stop_local_backend()").unwrap_or_else(|e| {
+            panic!(
+                "`daemon_control` 的停口没有接到 `stop_local_backend`（{e}）——\n\
+                 那么 UI 上的「停」对本机是个空动作，而它照样回一句成功的话。"
+            )
+        });
+        let me = guard_core::production_code(include_str!("local_daemon.rs"));
+        let at = guard_core::find_pinned(&me, "pub fn stop_local_backend(").expect("停口不在了");
+        let body: String = me[at..]
+            .lines()
+            .skip(1)
+            .take_while(|l| *l != "\u{7d}")
+            .collect::<Vec<_>>()
+            .join("\n");
+        guard_core::find_pinned(&body, "g.take()").unwrap_or_else(|e| {
+            panic!(
+                "`stop_local_backend` 不再把句柄 `take()` 走（{e}）。\n\
+                 ★ 留着它的后果很具体：`start_local_backend` 的判据是「句柄在表里 = 在跑」\n\
+                 ⇒ 停完之后再点「起」会被当成「已经在跑」拒绝，本机后端再也起不回来。"
+            )
+        });
     }
 
     /// ★★ **本机只许用本平台能跑的二进制**〔D 阶段补审 08-11 新增〕。

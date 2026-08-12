@@ -1677,6 +1677,53 @@ mod tests {
         let me = guard_core::production_code(include_str!("local_backend.rs"));
         // 本模块今天对外的生产入口清单。加入口 = 往这里加一条（**不许**留空清单）。
         assert!(!ENTRIES.is_empty(), "抽取器自检：入口清单空了 ⇒ 下面两条断言都会零命中地绿");
+        // ★★ **完备性自检**〔D 阶段补审 08-11 新增〕：`ENTRIES` 是**手写白名单**，
+        // 原来只校验「清单里的名字存在」与「清单非空」，**没有任何一条校验它是完备的**。
+        // ⇒ 新增第三个启动入口（不走 `supervise_with_stdio` / 不传消费者）时，
+        // `the_production_entry_hands_the_stdio_consumer_down` **逮不到**——它只遍历清单。
+        //
+        // 完备性怎么判：本模块里**每一个调了 `supervise`（含 `_with_stdio`）的 `pub fn`**
+        // 都必须在清单里。`supervise` / `supervise_with_stdio` 自己除外（它们是被调的那一方）。
+        {
+            let mut missing: Vec<String> = Vec::new();
+            let mut seen = 0usize;
+            for (i, l) in me.lines().enumerate() {
+                let t = l.trim_start();
+                if !t.starts_with("pub fn ") {
+                    continue;
+                }
+                let name: String = t["pub fn ".len()..]
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                if name == "supervise" || name == "supervise_with_stdio" {
+                    continue;
+                }
+                let body: String = me
+                    .lines()
+                    .skip(i + 1)
+                    .take_while(|l| *l != "\u{7d}")
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if !body.contains("supervise") {
+                    continue;
+                }
+                seen += 1;
+                if !ENTRIES.contains(&name.as_str()) {
+                    missing.push(name);
+                }
+            }
+            assert!(
+                seen >= 2,
+                "只扫到 {seen} 个「会起进程的 pub fn」—— 抽取面坏了，完备性自检在空转"
+            );
+            assert!(
+                missing.is_empty(),
+                "这些 `pub fn` 会起被监护的进程，却**不在 `ENTRIES` 清单里**：{missing:?}\n\
+                 ⇒ 手写白名单漏了它 ⇒ `the_production_entry_hands_the_stdio_consumer_down`\n\
+                 只遍历清单，**逮不到这条新入口没接消费者**。清单要跟着实际入口走。"
+            );
+        }
         for e in ENTRIES {
             assert!(
                 me.contains(&format!("pub fn {e}(")),
@@ -1699,11 +1746,19 @@ mod tests {
             prod.contains("CCM_TARGET_TRIPLE"),
             "`lib.rs` 生产段里找不到 `CCM_TARGET_TRIPLE` —— 接线缺了 target triple 这个宿主知识"
         );
-        // 句柄必须被存下来：不存就没人能 `stop()`，被监护的 daemon 成游魂进程。
-        assert!(
-            prod.contains("LOCAL_BACKEND"),
-            "监护句柄没被存起来 —— 退出时无法 `stop()`，daemon 会变成游魂进程"
-        );
+        // 句柄必须被**存下来**：不存就没人能 `stop()`。
+        //
+        // ⚠ **原版是恒绿的**〔D 阶段补审 08-11 逮到〕：它断言 `prod.contains("LOCAL_BACKEND")`，
+        // 而 `prod` = `lib.rs` + `local_daemon.rs` 的生产段，**那个静态量的声明就在后者里**
+        //（`pub static LOCAL_BACKEND: …`）。把「存进去」那一句删掉，字面量照样在（声明处 + 三个读者）
+        // ⇒ 绿。要让它红只能删掉静态量本身，而那会先编译错。
+        // ⇒ 改成钉**赋值那一句**（`*g = Some(h)`），那才是「存下来」这件事。
+        guard_core::find_pinned(&prod, "*g = Some(h);").unwrap_or_else(|e| {
+            panic!(
+                "监护句柄没被**存**进 `LOCAL_BACKEND`（{e}）—— 退出时无法 `stop()`。\n\
+                 ★ 别把「文件里提到过 LOCAL_BACKEND」当成证据：声明本身就提到它。"
+            )
+        });
     }
 
     /// ★ **接线钉之二：退出路径真的收尸。**
