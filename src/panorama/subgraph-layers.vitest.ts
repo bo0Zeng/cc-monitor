@@ -12,9 +12,9 @@ import type { Edge, ImpactSet, SubGraph } from "./types";
 const e = (from: string, to: string): Edge => ({
   from,
   to,
-  kind: "Call" as Edge["kind"],
+  kind: "Calls",
   call_site_line: null,
-  confidence: "High" as Edge["confidence"],
+  confidence: "Exact",
 });
 const sg = (edges: Edge[]): SubGraph => ({ symbols: [], edges });
 
