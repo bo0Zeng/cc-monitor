@@ -1862,11 +1862,36 @@ mod tests {
             "退出臂里 `.stop()` 出现在读策略**之前** —— 那就不是「按策略决定」，\n\
              而是「先杀了再查开关」。（读策略那句写在后面也可能只是打日志用。）"
         );
+        // ⚠ **原版只要求「两者之间有个 `if `」**〔D 阶段补审 08-11 逮到〕：
+        // `let kill = kill_on_exit(…); if h.current_pid().is_some() { h.stop(); }`
+        // **照样绿，而开关彻底失效**。三样东西都在，语义却不是那回事。
+        // ⇒ 改成：从 `let <名> = …kill_on_exit(` 反推出绑定名，再要求 `if <名>` ——
+        // 钉的是「**那个 if 判的就是策略值**」，而不是「有个 if」。
+        // （从绑定名反推而不是写死 `if kill`：改变量名不该假红。）
+        let bind = {
+            let line = body[..policy_at]
+                .lines()
+                .last()
+                .expect("策略那一行之前总有内容");
+            let t = line.trim_start();
+            let rest = t
+                .strip_prefix("let ")
+                .unwrap_or_else(|| panic!("读策略那一行不是 `let <名> = …` 的形状：{t:?}"));
+            rest.chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect::<String>()
+        };
         assert!(
-            body[policy_at..stop_at].contains("if "),
-            "读了策略、也有 `.stop()`，但两者之间**没有条件分支** ——\n\
-             那么策略读出来根本没被用上，`.stop()` 照样每次都跑。\n\
-             ★ 这正是「翻面翻成一条更弱的判据」的典型形态：三样东西都在，语义却没变。"
+            !bind.is_empty(),
+            "从读策略那一行抠不出绑定名 —— 抽取面画错了，本条在空转"
+        );
+        let between = &body[policy_at..stop_at];
+        assert!(
+            between.contains(&format!("if {bind}")),
+            "读了策略、也有 `.stop()`，但中间那个条件**判的不是策略值** ——\n\
+             绑定名是 `{bind}`，而这一段里没有 `if {bind}`：\n{between}\n\
+             ★ 补审给的骗法：`let kill = kill_on_exit(…); if h.current_pid().is_some() {{ h.stop(); }}`\n\
+             三样东西（读策略 / if / stop）都在，开关却彻底失效。"
         );
     }
 
