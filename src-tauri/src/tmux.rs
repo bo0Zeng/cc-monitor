@@ -119,6 +119,48 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
     Ok(Some(parse_visible_tmux_sessions(&out)))
 }
 
+/// P3t-Y2b：**本机今天占着哪些 tmux 会话名** —— 只答这一个问题。
+///
+/// # 为什么不是 `list_remote_tmux` 加一条本机分支
+///
+/// 那条今天对 `<local>` 会去 `load_remote_config_by_label("<local>")`，报
+/// **「未找到远端配置: "<local>"」** —— 一句与真实原因毫无关系的错（同 P3 刀 2 在 `daemon_kill`
+/// 那里治过的形态）。但**不能**简单地给它加一条读快照的本机分支：
+/// `tabs.ts::awaitExitFor` 等的是「**pane 前台命令**从 claude 变回 shell」，
+/// 而那个变化**不触发任何 tmux hook** ⇒ 快照在那个场景下永不刷新
+/// ⇒ 本机会退化成「每次都等到 10s 超时再降级 kill」（`ssh_source::tmux_raw_registry` 头注
+/// 逐字记着这条，devbench F08 已裁「刻意不开 IPC 出口」）。
+///
+/// # 那为什么本条可以开
+///
+/// **因为它问的是另一个问题。** 那条裁定的论据是「快照对 *pane 前台命令变化* 不刷新」；
+/// 本条要的是**会话名的集合**，而快照的刷新正由 tmux hook 驱动，
+/// `HOOK_EVENTS` 逐字是 `["session-created", "session-closed", "session-renamed"]`
+/// —— **恰好就是改变名字集合的那三件事**。
+/// ⇒ 对「哪些名字被占了」，这份快照不是陈旧的，是**权威的**。
+/// 由 `the_name_set_question_is_exactly_what_the_hooks_cover` 钉住这条推理的前提。
+///
+/// # 为什么必须有它
+///
+/// 会话名只许由前端 `mintTmuxName` 铸（全仓唯一带**撞名避让**的铸造口，F13），
+/// 而它要一个 `existing` 集合。远端那侧从 `list_remote_tmux` 拿；
+/// **本机没有 SSH 那条路**，不给它一个读口，本机就只能「不避让」——
+/// 那正是 issue #76「静默接进第一个会话，而用户以为开了新的」。
+///
+/// 拿不到快照（本机 daemon 通道没起 / 还没推过帧）⇒ 回 `None`，**不是空集**：
+/// 空集会让调用方以为「没有任何名字被占」从而放心铸名，那是把「不知道」当成「知道没有」。
+#[tauri::command]
+pub fn local_tmux_names() -> Option<Vec<String>> {
+    let raw = ssh_source::snapshot_tmux_by_origin()
+        .remove(crate::inbound_client::LOCAL_ORIGIN)?;
+    Some(
+        parse_visible_tmux_sessions(&raw)
+            .into_iter()
+            .map(|s| s.name)
+            .collect(),
+    )
+}
+
 /// `tmux ls` 原始输出 → **前端可见**的会话列表：解析 + 滤掉一次性用量探针会话（F10）。
 ///
 /// 探针会话对 `findClaudeTmux`/tab 徽章/kill 授权判据等全部下游消费者应当不可见——它们寿命

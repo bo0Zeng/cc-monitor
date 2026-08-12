@@ -7,7 +7,7 @@
 // 渲染 / Tauri IPC），无法像现有 *.test.ts 那样在裸 node 里测。这里用 jsdom 提供真 DOM、
 // 把重协作者 mock 成空壳，于是能在真 TabManager 实例上断言状态翻转。
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { type Mock, describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ★ audit-0805 F15 第 1 步：**先让「每行调了几次」变得可测**。
 //
@@ -1000,6 +1000,32 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
       sessionId: "l1",
       cwd: "/home/u/p",
       launcher: null,
+      // P3t-Y2b：读不到本机 tmux 名单（这里 `invoke` 的缺省 mock 回 undefined）⇒ **不铸名**。
+      // `null` 在这里是「不知道」，不是「没有名字被占」—— 硬铸就是不避让（issue #76）。
+      tmuxName: null,
+    });
+  });
+
+  // ★★ P3t-Y2b：本机 resume 真的把铸好的 tmux 名传下去。
+  //
+  // 上面那条只证「不知道的时候不铸」。**光有它，整个 Y2b 被回退掉也不会红**
+  //（回退之后恒 `tmuxName: null`，那条照样绿）⇒ 必须再钉正面：知道的时候要铸、且要避让。
+  it("P3t-Y2b 本地 resume：拿到本机 tmux 名单 → 铸一个不撞的名字传给后端", async () => {
+    (invoke as unknown as Mock).mockImplementation(async (cmd: string) => {
+      // 基名 `l1abcdef-cc` 已被占 ⇒ `mintTmuxName` 必须让到 `-2`。
+      if (cmd === "local_tmux_names") return ["l1abcdef-cc", "unrelated"];
+      return undefined;
+    });
+    tm.ensureTab("l1abcdef", "/home/u/p", "/p/l1abcdef.jsonl", 0, null);
+    tm.archiveTab("l1abcdef");
+    await (tm as unknown as { resumeTab(sid: string): Promise<void> }).resumeTab("l1abcdef");
+    expect(invoke).toHaveBeenCalledWith("resume_history_session", {
+      sessionId: "l1abcdef",
+      cwd: "/home/u/p",
+      launcher: null,
+      // 让到 `-2` 而不是撞上 `l1abcdef-cc` —— 撞上去就是「静默接进第一个会话，
+      // 而用户以为开了新的」（issue #76 那一族，F13 记着同一个坑）。
+      tmuxName: "l1abcdef-cc-2",
     });
   });
 });
