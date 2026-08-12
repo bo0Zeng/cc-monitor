@@ -251,8 +251,14 @@ export function renderContentRecord(
       });
       if (sink.observeForLazyEnhance) observeForEnhance(result.element);
 
-      // 真用户输入触发回调（让 TabManager 自动切 Tab）
-      if (message.type === "user") {
+      // 真用户输入触发回调（让 TabManager 自动切 Tab）。
+      //
+      // ★ P0c（E 阶段补）：**排队消息也算真用户输入** —— 它就是用户在这个会话里说的话，
+      // 只是被插进了正在跑的那一轮。此前只认 `type === "user"`，于是打断时说的话
+      // 不会把 tab 切过来 —— 而那恰恰是**最需要切过去**的时刻（用户刚插了话，
+      // 多半正等着看回应）。
+      // `userActive` 自带三道闸（设置开关 / 5s 手动保护 / batch 期守卫），不会乱切。
+      if (message.type === "user" || message.type === "queue-operation") {
         sink.onRealUserInput?.(payload.session_id);
       }
       return;
