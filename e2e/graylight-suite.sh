@@ -122,7 +122,16 @@ if [ -n "$_devport" ]; then
     || _abort "devUrl 端口 $_devport 上没有 vite —— 跑的不是 \`npx tauri dev\`？DEV 探针会被 vite 整支消除，两条主断言永不可能通过"
 fi
 
-echo "  OK   台架自证通过（app 在写日志 · daemon 盯 $CLAUDE_DIR · dev 实例在 :$_devport）"
+# 丁：**没有孤儿 daemon**（08-12 实测第七条：污染源是我自己）。
+#
+# daemon 是 app 经 SSH exec 起的 ⇒ **杀 app 不会带走它**。反复起停 app 之后盘上会攒下
+# 一堆还挂着 SSH 会话的 daemon，实测攒到 5 个、每分钟贡献 8 次 SSH 登录 ——
+# 而那个现象**看起来像「产品在疯狂重连」**，我在它上面连猜错三次。
+# ⇒ 开跑前数一次；多于一个（本轮 app 自己那个）就 ABORT，让人先清干净。
+_daemons=$(pgrep -fc 'remote-daemon-proto/target/[^ ]*/cc-monitor-remote' 2>/dev/null || echo 0)
+[ "$_daemons" -le 1 ] || _abort "盘上有 $_daemons 个 daemon 进程（孤儿？）—— 它们会贡献额外的 SSH 登录，把读数搅浑。先 pkill -f remote-daemon-proto/target"
+
+echo "  OK   台架自证通过（app 在写日志 · daemon 盯 $CLAUDE_DIR · dev 实例在 :$_devport · daemon 进程 $_daemons 个）"
 
 SID="$(cat /proc/sys/kernel/random/uuid)"; SID8="${SID:0:8}"
 SESSION="cc-$SID8"; KEEP="cc-e2ekeep-$$"
