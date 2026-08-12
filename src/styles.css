@@ -1063,6 +1063,15 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   gap: 6px;
   margin: 4px 0 8px;
 }
+/* P6c D 补审：chip + 移除口 */
+.settings-preset-wrap {
+  display: inline-flex;
+  align-items: stretch;
+}
+.settings-preset-del {
+  padding-left: 6px;
+  padding-right: 6px;
+}
 .settings-preset {
   max-width: 260px;
   overflow: hidden;
