@@ -1,6 +1,8 @@
 // F48 SftpPanel 的 jsdom 冒烟测试(D 审计建议-3:面板 DOM 关键路径此前无自动覆盖)。
 // mock 掉 IPC/webview/dialog,验证 open→列表渲染、导航→面包屑更新、书签 toggle。
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({
@@ -308,6 +310,75 @@ describe("F54 open(revealPath) 定位高亮", () => {
     // 「什么都没建」是**没有发生的事**，最容易写成恒真断言 ⇒ 两条命令都钉。
     expect(invokeMock.mock.calls.filter((c) => c[0] === "sftp_stat")).toHaveLength(0);
     expect(writes()).toHaveLength(0);
+  });
+
+  /**
+   * ★ D 阶段补审（P6a）：**每一条会写远端的路，都要先问一句「已经有了吗」。**
+   *
+   * # 为什么要这条
+   *
+   * 本文件今天有**三份**同一个 `stat` 检查（`uploadHere` / `uploadDropped` / `newFile`），
+   * 三份都对。问题不在重复本身，在于它防的是**静默数据丢失** ——
+   * 第四条写路只要有人忘了写这五行，用户的文件就会无声地被盖掉，
+   * 而那种失败**只在真出事那天出现**，测试与代码审查都不会自动提醒。
+   *
+   * ⇒ 与其抽一层（三处的上下文各不相同：一个是 open 对话框、一个是循环、一个是 prompt），
+   * 不如立一条判据把**人群**钉住：写命令的调用点，同一个函数里必须有一次 `sftp_stat`，
+   * 且 `stat` 在写之前。形状抄 `local_origin_registry` 那条位置比较。
+   *
+   * # 它挡什么、不挡什么
+   *
+   * - **挡**：新写一条写路而不先问存在性 ⇒ 红。
+   * - **不挡**：问了但**判错了**（比如把 `exists` 用反）。本条只保证「这件事被想过一次」。
+   */
+  it("★ P6a-D：每条写远端的路都先 `sftp_stat`，例外要登记理由", () => {
+    // 明知故犯、且**必须**覆盖的写路，逐条登记理由。
+    const OVERWRITE_BY_DESIGN: Array<[string, string]> = [
+      [
+        "saveEdit",
+        "**存盘**那条路的语义就是覆盖 —— 用户是点开一个已有文件改完再存的。" +
+          "它自己有确认框，显示字符数/字节数并写明「覆盖不可撤销」，比一次 stat 完整得多。",
+      ],
+    ];
+    // ⚠ 用 `__dirname` 而不是 `import.meta.url`：本套件跑在 CJS 互操作下，
+    // `import.meta.url` 不是 file scheme（实测 `TypeError: The URL must be of scheme file`）。
+    // 同仓的 `launch-cli-wire.vitest.ts` 早就是这个写法。
+    const src = readFileSync(resolve(__dirname, "panel.ts"), "utf8");
+    // 顶层方法声明的位置表（`  private async foo(` / `  private foo(`）。
+    const decls = [...src.matchAll(/^ {2}(?:private |public )?(?:async )?(\w+)\(/gm)].map((m) => ({
+      name: m[1],
+      at: m.index ?? 0,
+    }));
+    expect(decls.length, "抽不到方法声明 —— 判据在空转").toBeGreaterThan(8);
+    const owner = (at: number): string => {
+      let best = "<文件头>";
+      for (const d of decls) {
+        if (d.at < at) best = d.name;
+        else break;
+      }
+      return best;
+    };
+    const writeCalls = [...src.matchAll(/commands\.(sftp_upload|sftp_write_text)\(/g)];
+    expect(writeCalls.length, "一处写命令都没扫到 —— 判据在空转").toBeGreaterThanOrEqual(3);
+    const registered = new Set(OVERWRITE_BY_DESIGN.map(([n]) => n));
+    const offenders: string[] = [];
+    for (const w of writeCalls) {
+      const at = w.index ?? 0;
+      const fn = owner(at);
+      if (registered.has(fn)) continue;
+      // `stat` 必须出现在同一个函数里、且在这次写**之前**。
+      const fnStart = decls.filter((d) => d.at <= at).pop()?.at ?? 0;
+      if (!src.slice(fnStart, at).includes("commands.sftp_stat(")) offenders.push(fn);
+    }
+    expect(
+      offenders,
+      `这些地方直接写远端、没先问「已经有了吗」：${offenders.join(", ")}\n` +
+        "静默盖掉用户的文件是不可撤销的。要么在写之前 stat，要么进 `OVERWRITE_BY_DESIGN` 写明为什么必须覆盖。",
+    ).toEqual([]);
+    // 登记表只许有**今天真的还在覆盖**的条目（过期的理由与漏登记一样坏）。
+    for (const [name] of OVERWRITE_BY_DESIGN) {
+      expect(src.includes(`  private async ${name}(`), `登记表里的 ${name} 已经不在了`).toBe(true);
+    }
   });
 
   it("revealName 一次性:重排(renderList 再跑)不再高亮", async () => {
