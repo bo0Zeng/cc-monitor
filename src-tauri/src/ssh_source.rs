@@ -1442,6 +1442,25 @@ pub(crate) fn record_tmux_raw(origin: &str, raw: String) {
         .insert(origin.to_string(), raw);
 }
 
+/// 这张表唯一的**清除口**（与 [`record_tmux_raw`] 并列）。
+///
+/// # 为什么必须有它，且必须两侧都调
+///
+/// 断连 / 后端停掉之后那份 `tmux ls` 原文就是**陈旧证据**：
+/// `find_tmux_origin_for_sid` 仍会按它返回 `Some(origin)`，
+/// 而 `classify_removed(Some(_), Gone)` = `Idle` = **那个「永远消不掉、也 attach 不上的灰点」**。
+///
+/// ⚠ **补审 08-11 逮到本机那半从来不清**：远端断连走这条路（Batch9-F28 就写着），
+/// 而本机消费者流结束时只 `unregister` 入方向 client、不碰这张表 ⇒
+/// 停掉本机 daemon 之后 `<local>` 那份原文**永久留着**。
+/// 判据当时没发现，因为它只数 `insert`（`.remove(` 也是写者，见那条判据的订正）。
+pub(crate) fn forget_tmux_raw(origin: &str) {
+    tmux_raw_registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(origin);
+}
+
 pub fn snapshot_tmux_by_origin() -> std::collections::HashMap<String, String> {
     tmux_raw_registry().lock().unwrap().clone()
 }
@@ -3493,10 +3512,7 @@ pub async fn run(
             .remove(&cfg.origin_label());
         // B2：断连也清本 host 的 tmux 状态——防重连后、daemon 首个 TmuxSessions 帧到达前，
         // 对账 poller 读到陈旧 tmux 状态误灰（重连后由新帧重新填充）。
-        tmux_raw_registry()
-            .lock()
-            .unwrap()
-            .remove(&cfg.origin_label());
+        forget_tmux_raw(&cfg.origin_label());
         // 每轮都归档本次连接残留的 announced sid（保持原 FIX 2 归档契约）+ audit-fixes F03.2：本 origin
         // 的 idle-tmux sid 也一并归档（断连=tmux 状态已清[上方 :1853]，idle 会话也该 archived；emitter
         // 处理这些 removed 时 tmux_raw 本 host 已空 → find_tmux_origin_for_sid=None → archived+clear_idle）。
@@ -4734,17 +4750,25 @@ mod f032_idle_tests {
             "只抽到 {touches} 处 `tmux_raw_registry()` —— 抽取器坏了，本条会零命中地绿"
         );
 
-        // ① 写入口唯一：`insert` 只许出现在 `record_tmux_raw` 里。
-        let mut inserts = 0usize;
+        // ① 写口唯一 —— **写包括清**〔D 阶段补审 08-11 订正〕。
+        //
+        // 原版只数 `insert`。而 `.remove(` 同样是写者：远端断连处早就在清表，
+        // 判据看不见它 ⇒ 它自陈要防的「**一边清一边不清**」当时**就是事实**
+        //（远端清、本机从来不清 ⇒ `<local>` 那份原文永久陈旧 ⇒ 灰点）。
+        // ⇒ 三种写法一起数，允许的家有两个：`record_tmux_raw`（写）与 `forget_tmux_raw`（清）。
+        const WRITE_VERBS: &[&str] = &["insert", "remove", "clear"];
+        let mut writes = 0usize;
         for seg in src.split("tmux_raw_registry()").skip(1) {
-            if seg[..seg.len().min(160)].contains("insert") {
-                inserts += 1;
+            let head = &seg[..seg.len().min(160)];
+            if WRITE_VERBS.iter().any(|v| head.contains(v)) {
+                writes += 1;
             }
         }
         assert_eq!(
-            inserts, 1,
-            "`tmux_raw_registry` 的写入点有 {inserts} 处 —— 只许有一处（`record_tmux_raw`）。\n\
-             两处各写各的迟早分叉：一边存原文一边存解析后的、一边清一边不清。"
+            writes, 2,
+            "`tmux_raw_registry` 的写口有 {writes} 处 —— 只许两处：\n\
+             `record_tmux_raw`（写）与 `forget_tmux_raw`（清）。\n\
+             多一处就意味着有人绕过这两个口各写各的：一边存原文一边存解析后的、一边清一边不清。"
         );
         // ⚠ 这一段第一版是**空转**的：写成 `src.find(…).unwrap_or(usize::MAX)` 再比大小 ——
         // 找不到时 `usize::MAX > at` 恒真 ⇒ 断言永远过。改成**按行切函数体**再看。
@@ -4766,8 +4790,31 @@ mod f032_idle_tests {
         );
         guard_core::find_pinned(&body, "tmux_raw_registry()").unwrap_or_else(|e| {
             panic!(
-                "唯一写入口 `record_tmux_raw` 里没有恰好一处 `tmux_raw_registry()`（{e}）——\n\
-                 那么上面数出来的那一处 `insert` 是在别的地方，写入口并不唯一。"
+                "写入口 `record_tmux_raw` 里没有恰好一处 `tmux_raw_registry()`（{e}）——\n\
+                 那么上面数出来的写口在别的地方。"
+            )
+        });
+        // ② 清除口也必须在它自己的家里。
+        let forget_at = guard_core::find_pinned(&src, "pub(crate) fn forget_tmux_raw(")
+            .expect("清除口 `forget_tmux_raw` 不在了 —— 没有它，断连/停机之后那份原文就是陈旧证据");
+        let forget_body: String = src[forget_at..]
+            .lines()
+            .skip(1)
+            .take_while(|l| *l != "\u{7d}")
+            .collect::<Vec<_>>()
+            .join("\n");
+        guard_core::find_pinned(&forget_body, "tmux_raw_registry()")
+            .expect("`forget_tmux_raw` 里没有恰好一处 `tmux_raw_registry()` —— 切错了或它不再清那张表");
+
+        // ③ **两侧都要清** —— 远端断连清了、本机不清，就是补审逮到的那个真 bug。
+        let lb = guard_core::production_code(include_str!("backend/control/local_backend.rs"));
+        guard_core::find_pinned(&lb, "forget_tmux_raw(").unwrap_or_else(|e| {
+            panic!(
+                "本机那条路不清 `tmux_raw_registry`（{e}）。\n\
+                 远端断连早就清了（Batch9-F28 那处）；本机若只摘入方向 client 不清这张表，\n\
+                 停掉本机 daemon 之后 `<local>` 那份 `tmux ls` 原文**永久留着**，\n\
+                 成了「tmux 还在」的陈旧证据 ⇒ `classify_removed(Some(_), Gone)` = `Idle`\n\
+                 = 那个「永远消不掉、也 attach 不上的灰点」（F01b 那个 bug）。"
             )
         });
 
