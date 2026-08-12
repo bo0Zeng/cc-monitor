@@ -90,6 +90,26 @@ function e2eLog(line: string): void {
  */
 export type TabStatus = "live" | "archived";
 
+/**
+ * P7a-2：把 `block`（被拖的 tab **连同它的 bg 子串**）整块挪到 `beforeSid` 之前。
+ * `beforeSid === null` = 挪到末尾。**纯函数** —— 判据直接打在落位上，不必先造一次真拖拽。
+ *
+ * ⚠ 落点在块内 ⇒ **原样返回**（拖到自己身上不是一次重排，把它算成「挪到末尾」是错的）。
+ */
+export function moveTabBlock(
+  order: readonly string[],
+  block: readonly string[],
+  beforeSid: string | null,
+): string[] {
+  const set = new Set(block);
+  if (beforeSid !== null && set.has(beforeSid)) return [...order];
+  const rest = order.filter((x) => !set.has(x));
+  if (beforeSid === null) return [...rest, ...block];
+  const at = rest.indexOf(beforeSid);
+  if (at < 0) return [...rest, ...block];
+  return [...rest.slice(0, at), ...block, ...rest.slice(at)];
+}
+
 export interface Tab {
   sessionId: string;
   /** Batch7-F24：会话类型（"interactive"/"bg"/null=未知视为交互）。bg → ⚙ 标题 + 树状挂宿主后。 */
@@ -397,6 +417,8 @@ export class TabManager {
    */
   private drag: {
     sid: string;
+    /** P7a-2：松手时要插到谁之前（`null` = 末尾）。只在**未 armed** 时有意义。 */
+    dropBefore?: string | null;
     startX: number;
     startY: number;
     barRight: number;
@@ -1923,6 +1945,7 @@ export class TabManager {
       root,
       dragging: false,
       armed: false,
+      dropBefore: null,
       ghost: null,
       onMove,
       onUp,
@@ -1967,6 +1990,10 @@ export class TabManager {
       d.ghost.style.top = `${e.clientY + 8}px`;
     }
 
+    // P7a-2：**纵向那根轴今天一个消费者都没有** —— arm 只看 `clientX`（见下一行）。
+    // 所以栏内重排走 `clientY`，与 tear-off 天然不争同一根轴。
+    d.dropBefore = this.dropTargetAt(e.clientY, d.sid);
+
     // arm：指针拖离竖栏右缘一段距离 = 松手即弹独立窗口（F33 前是下缘判定）。
     const armed = e.clientX > d.barRight + 16;
     if (armed !== d.armed) {
@@ -1978,6 +2005,57 @@ export class TabManager {
           : (this.tabs.get(d.sid)?.title ?? "");
       }
     }
+  }
+
+  /**
+   * P7a-2：指针在纵向落在谁**之前**（`null` = 末尾）。
+   *
+   * 只看**主栏**里的 tab —— 归档抽屉不参与（`P7a-1` 已经关掉了它的拖拽，
+   * 而且那条 tear-off 判定线对抽屉本来就没意义）。
+   */
+  private dropTargetAt(clientY: number, draggedSid: string): string | null {
+    for (const sid of this.orderedIds) {
+      if (sid === draggedSid) continue;
+      const refs = this.tabButtons.get(sid);
+      if (!refs || refs.root.parentElement !== this.barEl) continue;
+      const r = refs.root.getBoundingClientRect();
+      if (clientY < r.top + r.height / 2) return sid;
+    }
+    return null;
+  }
+
+  /**
+   * P7a-2：被拖的那一块 —— 交互 tab 连同它**紧跟其后**的同 `(cwd, origin)` bg 子串。
+   *
+   * ★ 为什么必须带上子串：`placeInOrder` 维护的那棵树不是装饰，它表达
+   * 「这些后台任务属于那个会话」（还带着 D-R3 的审计账）。
+   * 一次拖动就把树拆散，比不能拖更坏。
+   */
+  private dragBlockOf(sid: string): string[] {
+    const host = this.tabs.get(sid);
+    if (!host) return [sid];
+    const hostIsInteractive = host.kind === null || host.kind === "interactive";
+    if (!hostIsInteractive) return [sid];
+    const out = [sid];
+    const at = this.orderedIds.indexOf(sid);
+    for (let i = at + 1; i < this.orderedIds.length; i++) {
+      const t = this.tabs.get(this.orderedIds[i]);
+      if (!t) break;
+      const isBg = t.kind !== null && t.kind !== "interactive";
+      if (isBg && t.cwd !== null && t.cwd === host.cwd && t.origin === host.origin) {
+        out.push(this.orderedIds[i]);
+      } else break;
+    }
+    return out;
+  }
+
+  /** P7a-2：把拖动的结果落实到 `orderedIds` 并重画。 */
+  private applyReorder(sid: string, beforeSid: string | null): void {
+    const next = moveTabBlock(this.orderedIds, this.dragBlockOf(sid), beforeSid);
+    if (next.length !== this.orderedIds.length) return; // 防御：块算错了就什么都不做
+    if (next.every((x, i) => x === this.orderedIds[i])) return; // 没变化
+    this.orderedIds = next;
+    this.refreshTabBar();
   }
 
   /** 收尾：拆 document listener、清 ghost / 源 Tab 变暗、清空拖拽状态。 */
@@ -2003,8 +2081,12 @@ export class TabManager {
     // 起过拖（无论 armed 与否）都抑制紧随的 click —— 拖完不该顺带切 Tab。
     this.suppressClickSid = sid;
     if (armed) {
+      // ★ P7a-2-Y2：撕窗口这一路**顺序一个字不动**。两件事都做的话，
+      // 用户撕出一个窗口的同时原栏的序被改了 —— 他没要求过那件事。
       void this.openInNewWindow(sid, e.screenX, e.screenY);
+      return;
     }
+    this.applyReorder(sid, d.dropBefore ?? null);
   }
 
   /**

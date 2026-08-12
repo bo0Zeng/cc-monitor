@@ -211,6 +211,7 @@ import {
   findIdleTmux,
   isCwdFallbackMatch,
   claudeExited,
+  moveTabBlock,
   type Tab,
 } from "./tabs";
 
@@ -3031,5 +3032,120 @@ describe("P7a-1 独立归档区", () => {
       new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 10, bubbles: true }),
     );
     expect((peek(tm) as unknown as { drag: unknown }).drag).toBeTruthy();
+  });
+});
+
+// ===== P7a-2（#61）：栏内拖动排序 =====
+//
+// ★ 摸底订正过 ROADMAP 的措辞：tear-off 的 arm 条件是 `e.clientX > barRight + 16`，
+// 而那是一条**竖栏** ⇒ 空闲的不是「横向」，是 **`clientY` 从没被用过**。
+// 重排走纵向，与撕离天然不争同一根轴。
+
+describe("P7a-2 moveTabBlock（纯）", () => {
+  it("★ P7a2-Y1：整块搬到某个 sid 之前 / 末尾，落位逐项对得上", () => {
+    const o = ["a", "b", "c", "d"];
+    expect(moveTabBlock(o, ["c"], "a")).toEqual(["c", "a", "b", "d"]);
+    expect(moveTabBlock(o, ["a"], "d")).toEqual(["b", "c", "a", "d"]);
+    expect(moveTabBlock(o, ["a"], null)).toEqual(["b", "c", "d", "a"]);
+    // 多元素的块保持内部相对序。
+    expect(moveTabBlock(o, ["b", "c"], "a")).toEqual(["b", "c", "a", "d"]);
+    // 不改原数组。
+    expect(o).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("★ P7a2-Y1b：落点在块内 ⇒ **原样返回**（拖到自己身上不是一次重排）", () => {
+    const o = ["a", "b", "c"];
+    expect(moveTabBlock(o, ["b"], "b")).toEqual(o);
+    expect(moveTabBlock(o, ["a", "b"], "b")).toEqual(o);
+    // 把它算成「挪到末尾」是错的 —— 那会让一次误触把 tab 甩到最后。
+    expect(moveTabBlock(o, ["b"], "b")).not.toEqual(["a", "c", "b"]);
+  });
+});
+
+describe("P7a-2 栏内拖动排序（真拖拽）", () => {
+  let tm: TabManager;
+  let bar: HTMLElement;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    tm = makeTM();
+    bar = document.body.firstElementChild as HTMLElement;
+  });
+  const flushBar = (): void =>
+    (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
+  const order = (): string[] => (tm as unknown as { orderedIds: string[] }).orderedIds;
+  /** jsdom 的 getBoundingClientRect 恒零 ⇒ 按主栏里的顺序给每个 tab 造一条 40px 的带。 */
+  const stubRects = (): void => {
+    const kids = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+    kids.forEach((el, i) => {
+      el.getBoundingClientRect = () =>
+        ({ top: i * 40, height: 40, bottom: i * 40 + 40, left: 0, right: 100 }) as DOMRect;
+    });
+  };
+  const dragTo = (sid: string, clientY: number, clientX = 10): void => {
+    // ⚠ tab 根元素上**没有** sid 属性（实测：`createTabButton` 只设 class）。
+    // 主栏里的 DOM 顺序 == `orderedIds` 里主栏那部分的顺序（`refreshTabBar` 保证），
+    // ⇒ 按下标取，别按文本猜。第一版按 `title.includes(sid)` 找，恒取到第一个 ⇒ 两条判据假红。
+    const roots = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+    const idx = order().indexOf(sid);
+    const root = roots[idx];
+    expect(root, `主栏里找不到 ${sid}`).toBeTruthy();
+    root.dispatchEvent(
+      new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 0, bubbles: true }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mousemove", { buttons: 1, clientX, clientY, bubbles: true }),
+    );
+    document.dispatchEvent(new MouseEvent("mouseup", { clientX, clientY, bubbles: true }));
+  };
+
+  it("★ P7a2-Y1：纵向拖动重排主栏（落位逐项对得上）", () => {
+    tm.ensureTab("a", "/c1", "p", 0, null);
+    tm.ensureTab("b", "/c2", "p", 0, null);
+    tm.ensureTab("c", "/c3", "p", 0, null);
+    flushBar();
+    stubRects();
+    expect(order()).toEqual(["a", "b", "c"]);
+    // 拖第三个（c）到最上面：clientY=10 落在第一条（0..40）的上半 ⇒ 插到 a 之前。
+    dragTo("c", 10);
+    expect(order()).toEqual(["c", "a", "b"]);
+  });
+
+  it("★ P7a2-Y3：拖交互 tab 时，它的 bg 子串**跟着走**（不许把树拆散）", () => {
+    // 造一棵真的树：宿主 + 两个同 cwd 的 bg 子项（`placeInOrder` 会把它们锚在宿主之后）。
+    tm.ensureTab("host", "/proj/a", "p", 0, null);
+    tm.createSkeletonTab("bg1", "/proj/a", null, "bg", "t1");
+    tm.createSkeletonTab("bg2", "/proj/a", null, "bg", "t2");
+    tm.ensureTab("other", "/proj/z", "p", 0, null);
+    flushBar();
+    stubRects();
+    expect(order()).toEqual(["host", "bg1", "bg2", "other"]);
+    // 把 other 拖到最上面 —— 它没有子项，只有它自己动。
+    dragTo("other", 10);
+    expect(order()).toEqual(["other", "host", "bg1", "bg2"]);
+    stubRects();
+    // 再把 host 拖到最上面：**整串跟着走**，顺序不许被打散。
+    dragTo("host", 10);
+    expect(order()).toEqual(["host", "bg1", "bg2", "other"]);
+  });
+
+  it("★ P7a2-Y2：armed（拖出右缘）时**顺序一个字不动**", () => {
+    tm.ensureTab("a", "/c", "p", 0, null);
+    tm.ensureTab("b", "/c2", "p", 0, null);
+    flushBar();
+    stubRects();
+    const before = [...order()];
+    const roots = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+    roots[0].dispatchEvent(
+      new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 0, bubbles: true }),
+    );
+    // clientX 远超 barRight+16 ⇒ armed
+    document.dispatchEvent(
+      new MouseEvent("mousemove", { buttons: 1, clientX: 9999, clientY: 100, bubbles: true }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mouseup", { clientX: 9999, clientY: 100, bubbles: true }),
+    );
+    expect(order(), "撕窗口那一路不许顺带重排").toEqual(before);
   });
 });
