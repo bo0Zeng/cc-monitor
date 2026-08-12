@@ -581,6 +581,13 @@ export const commands = {
     tmuxName?: string | null;
   }) => invoke<void>("resume_history_session", args),
 
+  /** P3t-Y2b：**本机今天占着哪些 tmux 会话名** —— 给 `mintTmuxName` 当 `existing` 用。
+   *
+   *  ⚠ `null` 是「**不知道**」（本机 daemon 通道没起 / 还没推过帧），**不是**「一个都没占」。
+   *  拿 `null` 当空集去铸名 = 不避让 = issue #76 那一族（静默接进第一个会话）。
+   *  远端同一个问题走 `list_remote_tmux`；本机没有 SSH 那一跳，所以有这条自己的口。 */
+  local_tmux_names: () => invoke<string[] | null>("local_tmux_names"),
+
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
   get_session_tasks: (args: { sessionId: string }) =>
     invoke<TaskEntry[]>("get_session_tasks", args),

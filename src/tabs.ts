@@ -46,6 +46,7 @@ import {
   runRemoteResumeIntoExistingTmux,
   runRemoteAttach,
 } from "./remote-launch-run";
+import { commands } from "./ipc/commands";
 import { pickFreshTmuxName } from "./remote-launch";
 import { collectEditedFiles } from "./panorama/session-files";
 import { openPanePreview } from "./views/pane-preview";
@@ -2064,11 +2065,34 @@ export class TabManager {
       showActionFailureToast("无法构造 resume 命令", String(err));
       return;
     }
+    // ★★ P3t-Y2b：本机 resume 也进 tmux（POSIX；Windows 那侧后端不读这个名字，`C12`）。
+    //
+    // 名字**必须**由 `pickFreshTmuxName` 铸 —— 它 = 基名 `<sid8>-cc` + `mintTmuxName` 的避让，
+    // 而 `mintTmuxName` 是全仓唯一带撞名避让的铸造口（F13）。
+    // Rust 侧刻意拒绝自己铸名：在那边补一个默认值就是 F13 修掉的坑第三次。
+    //
+    // ⚠ **这里第一版直接写了 `mintTmuxName(`${sid.slice(0,8)}-cc`, …)`** —— 那等于**又抄了一份
+    // 基名规则**，正是 F13 收敛掉的那个重复（我在上一句里刚写完「唯一铸造口」）。
+    // `session_name_registry` 当场判红（它数的就是「谁在产 `-cc` 基名」）。⇒ 改用现成的那个。
+    //
+    // `existing` 从 `local_tmux_names()` 来。⚠ 它回 `null` 表示**不知道**（本机 daemon 通道
+    // 没起 / 还没推过帧），不是「一个名字都没占」。不知道的时候**不铸名**、不传 `tmuxName`
+    // ⇒ 后端诚实降级回旧路（不进容器）。硬要铸就是「不避让」，那正是 issue #76
+    //「静默接进第一个会话，而用户以为开了新的」。
+    let tmuxName: string | null = null;
+    try {
+      const names = await commands.local_tmux_names();
+      if (names) tmuxName = pickFreshTmuxName(sid, new Set(names));
+    } catch {
+      // 读不到就当不知道 —— 与上面同一条纪律，绝不退化成空集。
+      tmuxName = null;
+    }
     try {
       await invoke("resume_history_session", {
         sessionId: sid,
         cwd: tab.cwd ?? "",
         launcher: behavior.resumeCommandLocal || null,
+        tmuxName,
       });
     } catch (err) {
       showActionFailureToast("恢复失败", String(err));
