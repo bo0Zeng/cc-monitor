@@ -151,8 +151,7 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
 /// 空集会让调用方以为「没有任何名字被占」从而放心铸名，那是把「不知道」当成「知道没有」。
 #[tauri::command]
 pub fn local_tmux_names() -> Option<Vec<String>> {
-    let raw = ssh_source::snapshot_tmux_by_origin()
-        .remove(crate::inbound_client::LOCAL_ORIGIN)?;
+    let raw = ssh_source::tmux_raw_for(crate::inbound_client::LOCAL_ORIGIN)?;
     Some(
         parse_visible_tmux_sessions(&raw)
             .into_iter()

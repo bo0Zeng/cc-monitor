@@ -1465,6 +1465,23 @@ pub fn snapshot_tmux_by_origin() -> std::collections::HashMap<String, String> {
     tmux_raw_registry().lock().unwrap().clone()
 }
 
+/// 只取**一个** origin 的那份原文〔D 阶段补审 08-12〕。
+///
+/// 两处与 [`snapshot_tmux_by_origin`] 不同，都是补审逼出来的：
+/// ① **中毒也要拿到锁**。写入口 `record_tmux_raw` 早就是 `unwrap_or_else(|e| e.into_inner())`
+///    （B3 那条：它跑在本机消费者那条没有 `catch_unwind` 的裸线程上，一次中毒 panic
+///    会滚成「全绿的死锁态」）。而这个读口若还是 `.unwrap()`，中毒之后
+///    `local_tmux_names` 就变成必 panic 的 tauri 命令 —— 等于把写侧刚补好的那道又从读侧漏掉。
+/// ② **不克隆整张表**。调用方只要本机那一份，`snapshot_tmux_by_origin` 会把所有 origin 的
+///    `tmux ls` 原文全拷一遍；那是每次本机 resume 都白付一次的钱。
+pub(crate) fn tmux_raw_for(origin: &str) -> Option<String> {
+    tmux_raw_registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(origin)
+        .cloned()
+}
+
 /// audit-fixes F03.2：idle-tmux 账本 origin → idle sids（claude 退出但 tmux 会话尚在）。
 /// **唯一写者 = remote-session-emitter**（`mark_idle`/`clear_idle` 只在 lib.rs emitter 调）；读者 =
 /// 收帧收割器（`snapshot_idle_for_origin`）、断连 flush、F5 对账（`snapshot_idle_by_origin`）均**只读**。
