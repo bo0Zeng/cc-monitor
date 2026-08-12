@@ -16,13 +16,18 @@ import { resolve } from "node:path";
 
 const calls: { name: string; args: unknown }[] = [];
 let status: Record<string, unknown> = { channel: true, pid: 42 };
+/** 按顺序喂给 `daemon_status` 的前几次读数（用完退回 `status`）。 */
+let statusQueue: Record<string, unknown>[] = [];
 let stored: Record<string, unknown> = {};
 
 vi.mock("../ipc/commands", () => ({
   commands: {
     daemon_status: (a: unknown) => {
       calls.push({ name: "daemon_status", args: a });
-      return Promise.resolve(status);
+      // ⚠ 支持「前几次还没落定」：A4 那条判据要证明它**轮询到落定**，
+      // 而不是命令一返回就画一张操作前的快照。
+      const next = statusQueue.shift();
+      return Promise.resolve(next ?? status);
     },
     daemon_start: (a: unknown) => {
       calls.push({ name: "daemon_start", args: a });
@@ -64,6 +69,7 @@ beforeEach(() => {
   calls.length = 0;
   stored = {};
   status = { channel: true, pid: 42 };
+  statusQueue = [];
 });
 
 describe("P2s daemon 开关区", () => {
@@ -121,6 +127,25 @@ describe("P2s daemon 开关区", () => {
       src.split("hostKey(").length - 1,
       "daemon-section.ts 里又出现了 hostKey( —— 那正是自己拼 origin 的做法",
     ).toBe(0);
+  });
+
+  it("★ 起完之后轮询到落定，不画一张操作前的快照（A4）", async () => {
+    const s = new DaemonSection({ headless: true });
+    await flush();
+    await flush();
+    // 起：命令返回时 daemon 还没起来（channel:false），第三次才连上。
+    statusQueue = [
+      { channel: false, pid: null },
+      { channel: false, pid: null },
+      { channel: true, pid: 7 },
+    ];
+    const btns = [...s.element.querySelectorAll<HTMLButtonElement>(".daemon-row button")];
+    btns[0].click();
+    await new Promise((r) => setTimeout(r, 400));
+    expect(
+      s.element.querySelector(".daemon-row-state")?.textContent,
+      "起完只画了一次就停手 —— 那张是操作前的快照（daemon_start 只是 spawn 了监护线程就返回）",
+    ).toContain("已连上");
   });
 
   it("★ 存不下就把勾回退——屏上写着 A 而实际是 B 比报错更坏", async () => {

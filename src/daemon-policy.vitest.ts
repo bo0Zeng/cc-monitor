@@ -15,6 +15,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const ipc: { name: string; args: unknown }[] = [];
 let stored: Record<string, unknown> = {};
+/** 每次 `load_config` 的延迟（毫秒），按调用顺序取。空 = 0。 */
+let loadDelays: number[] = [];
 
 vi.mock("./ipc/commands", () => ({
   commands: {
@@ -22,7 +24,13 @@ vi.mock("./ipc/commands", () => ({
       ipc.push({ name: "set_daemon_kill_on_exit", args });
       return Promise.resolve();
     },
-    load_config: () => Promise.resolve(stored),
+    // ⚠ **延迟是刻意的**：并发那条判据要复现「第一笔比第二笔慢」这个交错
+    // （审计给的时序里，正是先发的那笔最后落盘、用陈旧 cfg 覆盖回去）。
+    // 同步 resolve 的 mock 复现不出来 —— 判据第一版就是那样，去掉串行链它照样绿。
+    load_config: () => {
+      const d = loadDelays.shift() ?? 0;
+      return new Promise<Record<string, unknown>>((r) => setTimeout(() => r(stored), d));
+    },
     save_config: (a: { value: Record<string, unknown> }) => {
       stored = a.value;
       return Promise.resolve();
@@ -42,6 +50,7 @@ import {
 beforeEach(() => {
   ipc.length = 0;
   stored = {};
+  loadDelays = [];
 });
 
 describe("P2s 每台机一份 daemon 策略", () => {
@@ -77,6 +86,25 @@ describe("P2s 每台机一份 daemon 策略", () => {
     await expect(setKillOnExit(LOCAL_ORIGIN, true)).rejects.toThrow("IPC 挂了");
     expect(readPolicy(stored)[LOCAL_ORIGIN]).toBeUndefined();
     spy.mockRestore();
+  });
+
+  it("★ 并发点击不会让 UI/运行时/盘上三方分叉（A3：读—改—写要串行）", async () => {
+    // 两笔并发：先 true 后 false，且**让先发的那笔更慢** —— 那正是审计给的时序：
+    // 后发的先落盘，先发的最后用陈旧 cfg 覆盖回去。
+    loadDelays = [20, 0];
+    const a = setKillOnExit("甲机", true);
+    const b = setKillOnExit("甲机", false);
+    await Promise.all([a, b]);
+    expect(
+      readPolicy(stored)["甲机"],
+      "盘上不是最后一笔的值 —— 前一笔用陈旧 cfg 把后一笔覆盖回去了。\n" +
+        "后果不是「少存一次」：下次启动 initDaemonPolicy 会把盘上那个值推回去，开关自己翻过来。",
+    ).toBe(false);
+    // 推给 Rust 的顺序也要与落盘顺序一致（否则运行时与盘上仍会分叉）
+    const pushed = ipc
+      .filter((c) => c.name === "set_daemon_kill_on_exit")
+      .map((c) => (c.args as { kill: boolean }).kill);
+    expect(pushed, "推送顺序与落盘顺序不一致").toEqual([true, false]);
   });
 
   it("启动时把盘上的每一台都推给后端", async () => {
