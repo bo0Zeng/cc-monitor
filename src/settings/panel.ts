@@ -385,6 +385,8 @@ export class SettingsPanel {
     ): void => {
       box.replaceChildren();
       for (const cmd of list) {
+        const wrap = document.createElement("span");
+        wrap.className = "settings-preset-wrap";
         const chip = document.createElement("button");
         chip.type = "button";
         chip.className = "settings-btn settings-btn-secondary settings-preset";
@@ -395,11 +397,35 @@ export class SettingsPanel {
           if (remote) this.updateRemoteLauncherWarning();
           void this.onBehaviorToggle();
         });
-        box.appendChild(chip);
+        // ★ **只进不出是个缺陷**〔D 阶段补审〕：打错一个 `ccmm`，它会一直占着位子，
+        // 直到被后来的 12 条挤出去。成例抄 SFTP 书签栏那个 `×`（`sftp/panel.ts:595`）。
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "settings-btn settings-btn-secondary settings-preset-del";
+        del.textContent = "×";
+        // ⚠ **正在生效的那条不给移除**：这张表的含义是「用过的命令」，
+        // 而移除一条**此刻正在用**的命令是自相矛盾的 —— 保存时它必然又被记回来
+        // （`withResumePreset` 会把输入框里的值并进去），用户会看见「点了没反应」。
+        // 与其造那种假象，不如当场说清为什么点不了。
+        const active = input.value.trim() === cmd;
+        del.disabled = active;
+        del.title = active
+          ? `${cmd} 正在生效 —— 换成别的命令之后才能把它从预设里移除。`
+          : `从预设里移除 ${cmd}`;
+        del.addEventListener("click", () => void this.removeResumePreset(cmd, remote));
+        wrap.append(chip, del);
+        box.appendChild(wrap);
       }
     };
     fill(this.resumeLocalPresetsBox, this.resumeLocalPresets, this.resumeLocalInput, false);
     fill(this.resumeRemotePresetsBox, this.resumeRemotePresets, this.resumeRemoteInput, true);
+  }
+
+  /** P6c：把一条预设从列表里拿掉并落盘。生效中的那条到不了这里（按钮是 disabled 的）。 */
+  private async removeResumePreset(cmd: string, remote: boolean): Promise<void> {
+    if (remote) this.resumeRemotePresets = this.resumeRemotePresets.filter((x) => x !== cmd);
+    else this.resumeLocalPresets = this.resumeLocalPresets.filter((x) => x !== cmd);
+    await this.onBehaviorToggle();
   }
 
   /** v2.4 issue #2: 任一行为 toggle 改 → 立即 save + 通知 TabManager 同步 */

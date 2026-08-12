@@ -283,6 +283,47 @@ describe("P6c resume 命令预设", () => {
     expect(warn.textContent ?? "").not.toBe("");
   });
 
+  it("★ P6c-D：预设能移除，但**正在生效的那条不给移除**", async () => {
+    // 只进不出是个缺陷：打错一个 `ccmm`，它会一直占着位子直到被后来的挤出去。
+    // 而移除一条**此刻正在用**的命令是自相矛盾的 —— 保存时它必然又被记回来
+    // （`withResumePreset` 会把输入框里的值并进去），用户会看见「点了没反应」。
+    behaviorStub.localPresets = ["ccm", "claude"];
+    const p = new SettingsPanel({ windowMode: true });
+    await p.open();
+    void p;
+    const dels = [
+      ...document.querySelectorAll<HTMLButtonElement>(
+        ".resume-presets-local .settings-preset-del",
+      ),
+    ];
+    expect(dels).toHaveLength(2);
+    expect(dels.every((d) => d.textContent === "×")).toBe(true);
+
+    // 先选中 ccm 让它「正在生效」。
+    vi.mocked(setBehavior).mockClear();
+    document
+      .querySelectorAll<HTMLButtonElement>(".resume-presets-local .settings-preset")[0]
+      .click();
+    await new Promise((r) => setTimeout(r, 0));
+    const after = [
+      ...document.querySelectorAll<HTMLButtonElement>(
+        ".resume-presets-local .settings-preset-del",
+      ),
+    ];
+    const activeDel = after[0];
+    expect(activeDel.disabled, "正在生效的那条不给移除").toBe(true);
+    expect(activeDel.title).toContain("正在生效");
+    expect(after[1].disabled, "别的那条照常可移除").toBe(false);
+
+    // 移除**不在生效**的那条 ⇒ 真的从落盘的列表里没了。
+    vi.mocked(setBehavior).mockClear();
+    after[1].click();
+    await new Promise((r) => setTimeout(r, 0));
+    const saved = vi.mocked(setBehavior).mock.calls.at(-1)![0];
+    expect(saved.resumeCommandLocalPresets).not.toContain("claude");
+    expect(saved.resumeCommandLocalPresets).toContain("ccm");
+  });
+
   it("★ P6c-Y1b：没有预设时不留空盒子（一排看不见的元素只会挡布局）", async () => {
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
