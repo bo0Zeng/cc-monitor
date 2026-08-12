@@ -101,6 +101,9 @@ pub fn render_ccm_launch(req: CliRenderRequest) -> CliRenderResponse {
     };
     let spec = CliSpec {
         is_ssh: req.is_ssh,
+        // P3t：宿主在启动时告诉过 backend 本机是不是 POSIX（`host_facts`）。
+        // backend 自己**不问平台** —— 那是 `backend-split` 的 C10。
+        local_posix: super::host_facts::local_is_posix(),
         action,
         container,
         cwd: req.cwd.as_deref(),
