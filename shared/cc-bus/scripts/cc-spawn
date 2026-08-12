@@ -22,7 +22,9 @@ while true; do
     *)      break;;
   esac
 done
-dir="${1:?用法: cc-spawn [--new] [--tool claude|codex] <目录> [初始任务...]}"; shift || true
+# ⚠ 用法串里**不再宣传 `--new`**:它今天是 no-op(默认就是新建),宣传一个什么都不做的旗标
+#   等于让人以为不加它会有别的行为。旗标本身仍然接受,见上面的 case 臂。
+dir="${1:?用法: cc-spawn [--tool claude|codex] <目录> [初始任务...]}"; shift || true
 task="$*"
 
 # 定 tool:显式 --tool > 从 CCSPAWN_LAUNCH basename 推断 > 默认 claude(向后兼容)。
