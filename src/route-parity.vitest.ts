@@ -117,6 +117,17 @@ describe("P0c 排队消息：remove 要建卡，dequeue 不许", () => {
     expect((rm.message as { timestamp: string }).timestamp).toBe("2026-08-12T10:00:00.000Z");
   });
 
+  // ★ E 阶段补：排队消息**也算真用户输入** —— 它是用户在这个会话里说的话，
+  // 只是被插进了正在跑的那一轮。不触发的话，打断时说的话不会把 tab 切过来，
+  // 而那恰恰是最需要切过去的时刻。
+  //
+  // ⚠ 本条钉的是**路由层把它当 content 放行**（`renderContentRecord` 才是真正调
+  // `onRealUserInput` 的地方，那一层由 `tabs.vitest.ts` 的 DOM 用例覆盖）。
+  it("remove 走 content ⇒ 它会进到调 onRealUserInput 的那条路", () => {
+    const { sink } = recordingSink();
+    expect(routeMetaAndBranch(qop("remove", "打断时说的话"), sink)).toBe("content");
+  });
+
   it("remove + <task-notification> → consumed（系统注入不是用户说的话）", () => {
     const { sink } = recordingSink();
     const note = "<task-notification>\n<task-id>abc</task-id>\n</task-notification>";
