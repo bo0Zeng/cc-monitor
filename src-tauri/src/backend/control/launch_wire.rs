@@ -119,9 +119,22 @@ pub fn render_ccm_launch(req: CliRenderRequest) -> CliRenderResponse {
     };
     let spec = CliSpec {
         is_ssh: req.is_ssh,
-        // P3t：宿主在启动时告诉过 backend 本机是不是 POSIX（`host_facts`）。
-        // backend 自己**不问平台** —— 那是 `backend-split` 的 C10。
-        local_posix: super::host_facts::local_is_posix(),
+        // ★★ **P3t-Y3：这条上线路恒为 `false`，而这是路由事实，不是平台判断。**
+        //
+        // 本条 IPC **只有远端会走**：前端的闸是 `ctx.transport.kind === "ssh"`
+        //（`remote-launch-run.ts::renderLaunchCommand`），POSIX 本机那条路住在 Rust 里
+        //（`history.rs::render_local_ccm` 直接调渲染器），**不必绕一圈 IPC 问自己**。
+        // ⇒ 这里没有「本机是什么平台」这个问题要答。
+        //
+        // Y1 原本在这里读一个进程内全局量（`host_facts::local_is_posix()`），**那是错的**：
+        // 它让**夹具对拍变成环境依赖** —— 金串里那条 `isSsh:false` 的用例之所以绿，
+        // 靠的是「单元测试进程从不跑 `lib.rs` 的启动段，所以全局量恰好是 `false`」。
+        // 谁要是在同进程里先设了一次 `true`，那条对拍就翻，而翻的原因与被测的事毫无关系。
+        // 本会话第三次撞上同族干扰（前两次：`<local>` 注册键、`host_facts` 自己）。
+        //
+        // 写死 `false` 是**fail-closed**：将来真要让本机走这条 IPC，它会先拒、
+        // 而不是悄悄按某个没人设过的全局量放行。
+        local_posix: false,
         action,
         container,
         cwd: req.cwd.as_deref(),

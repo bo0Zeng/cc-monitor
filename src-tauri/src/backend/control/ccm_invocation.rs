@@ -55,6 +55,15 @@ impl Refusal {
     pub fn reason(&self) -> String {
         match self {
             Refusal::NotInstalled => "远端未装 ccm".into(),
+            // ⚠ **P3t 之后这句话比事实宽**（登记在案的诚实边界，不是没看见）：
+            // Rust 侧现在只在 `!is_ssh && !local_posix` 时回它，也就是**Windows 本机**。
+            // 不改它的理由有两条，都不是「懒」：
+            // ① 它与 TS `launch-render-cli.ts:76` **逐字节对拍**（金串 `cli-golden.json` 也存了这一条），
+            //    改 Rust 不改 TS 会当场红；而那个 TS 函数已降级为「只供夹具对拍」、**排期 U8c-3 删掉**。
+            // ② 它今天**产不出来**：两个活着的 Rust 调用方一个恒 `is_ssh: true`
+            //    （`launch_wire`，前端只在 ssh 时才调），一个恒 `local_posix: true`
+            //    （`history.rs::render_local_ccm`，整个函数挂在 `cfg(not(windows))` 下）。
+            // ⇒ 等 U8c-3 删掉 TS 那份时，这句连同它的金串用例一起改成「Windows 本机…」。
             Refusal::NotSsh => "本地路径不走 CLI 渲染器".into(),
             Refusal::MissingCap(c) => format!("远端 ccm 缺能力 {c}"),
             Refusal::SendIntoHasNoCliForm => {
@@ -532,6 +541,19 @@ mod tests {
         }
     }
 
+    /// ★★ **P3t-Y3 翻面**：本条的**依据换了**，测的东西没变弱。
+    ///
+    /// 原来这里是 `s.is_ssh = false;` 一句就断言 `NotSsh` —— 那在 P3t 之前成立
+    /// （`is_ssh` 是唯一的入口条件），P3t 之后**不再成立**：闸变成了
+    /// `!is_ssh && !local_posix`，`is_ssh = false` 单独一条已经**推不出**拒绝。
+    ///
+    /// 不翻会怎样：它靠 `base_spec()` 的 `local_posix: false` **偶然**继续绿，
+    /// 而它自陈钉的是「不走 ssh 就拒」。⇒ 那是一条读数正确、说法过宽的判据，
+    /// 与 Y4 刚治的 §36（只绑 Windows）转述是同一种病 —— 只不过这次病灶在判据里。
+    /// 现在把两个条件**都写出来**，并让「本条只覆盖 Windows 那一格」当场可见。
+    ///
+    /// 本条守的仍是**顺序**（`NotInstalled` 早于平台闸），POSIX/Windows 两格由
+    /// `posix_local_is_allowed_windows_local_is_not` 守 —— 两条不重叠。
     #[test]
     fn not_installed_and_not_ssh_are_checked_before_anything_else() {
         assert_eq!(
@@ -540,7 +562,12 @@ mod tests {
         );
         let mut s = base_spec();
         s.is_ssh = false;
-        assert_eq!(render(&s), Err(Refusal::NotSsh));
+        s.local_posix = false; // ← P3t 起这一条是**必需**的：光 `is_ssh = false` 推不出拒绝
+        assert_eq!(
+            render(&s),
+            Err(Refusal::NotSsh),
+            "Windows 本机（`!is_ssh && !local_posix`）没被拒 —— 平台闸破了"
+        );
         // 两者同时成立时先报「没装」—— 这两条 reason 会进 console.debug，顺序即诊断。
         assert_eq!(
             render_ccm_invocation(&s, &BTreeSet::new(), false),

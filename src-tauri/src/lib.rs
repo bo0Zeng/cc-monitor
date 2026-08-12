@@ -401,9 +401,6 @@ pub fn run() {
             // tagged 返回值上。它**刻意不扫仓库 dev 产物** —— daemon 一起来就无条件往
             // tmux server 装三条全局 hook 且没有开关，扫到 dev 产物就起它 = 去改用户真实
             // tmux 的状态（F05 摸底 §2.5）。
-            // P3t（C12）：把「本机是不是 POSIX」告诉 backend —— 它自己不许问平台
-            // （`backend-split` 的 C10）。缺省 fail-closed，所以这一行漏了只会让功能不生效。
-            backend::control::host_facts::set_local_is_posix(cfg!(unix));
             {
                 use backend::control::local_backend::Resolved;
                 // P2z（定框 C10）：exe 旁边没有 sidecar 时，把**已内嵌**的那份释放到本机再起 ——

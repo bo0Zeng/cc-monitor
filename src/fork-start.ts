@@ -90,8 +90,17 @@ export async function startForkedSession(
   // `launch.rs::launch_local_posix` 明写**不开终端模拟器**（stdio 全 null + `process_group(0)`），
   // 产出的是一个无 tty 的进程。Windows 那半（`wt.exe`）是对的。
   // ★ 这句与 `launch.rs` 那条头注**曾经互相矛盾**（一个说容器是 tmux、一个说是终端模拟器，
-  // 而代码里两个都没有）；两条已一并订正。现状由 Rust 侧
-  // `the_local_resume_payload_has_no_session_container_today` 钉住。
+  // 而代码里两个都没有）；两条已一并订正。
+  //
+  // ★★ **P3t（2026-08-11）：上面那句「本机这条路不进 tmux」正在变成过去时。**
+  // Rust 侧 `history.rs::launch_local` 现在先过 CLI 渲染器，拿到会话名就渲染
+  // `ccm resume <sid> --tmux=<名>` —— **POSIX 本机会进 tmux，Windows 不会**（用户逐字：
+  // 「windows不要tmux」）。所以下面那句「把 tmux 这格从追问清单里摘掉」**还没到该删的时候，
+  // 但它的理由已经换了**：不是「答案会被忽略」，而是**名字还传不下去** ——
+  // `resume_history_session` 的 `tmuxName` 今天没有调用点在传，
+  // 因为本机的「已占用名字」集合还不存在（ROADMAP `U11`），
+  // 而名字只许由 `mintTmuxName` 铸（全仓唯一带撞名避让的铸造口）。
+  // ⇒ P3t-Y2b 把名字接上之后，这一格要**按平台**决定摘不摘，不再是一律摘。
   // 所以本机分叉时把 tmux 这格从追问清单里摘掉：**问一个答案会被忽略的问题，
   // 比不问更坏** —— 用户会以为自己选了，而下面的 `startLocal` 压根不看。
   const slots = slotsNeedingInput(facts).filter(
