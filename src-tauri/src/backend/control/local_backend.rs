@@ -250,8 +250,24 @@ impl SuperviseHandle {
 /// 不给消费者时仍是 `io::copy(&mut o, &mut io::sink())` —— F16 修的那条
 /// （「不许把持续产帧的 stdout 攒进一个永不释放的 `Vec`」）**性质不变**。
 /// 给了消费者，就由它自己负责不缓冲。
+/// 消费者**为什么返回** —— `supervise` 据此决定要不要补一刀。
+///
+/// # 为什么由消费者说，而不是去探子进程
+///
+/// 本模块有一条已登记的不变量：**生产段不许出现「自己醒过来」的构件**
+/// （`nothing_in_the_production_path_wakes_itself_up`：等子进程死请读它 stdout 到 EOF）。
+/// B4 的第一版正是拿那个构件去探子进程死没死 —— **判据当场逮到**。
+/// ⇒ 换成这个形状：**知道原因的那一方自己报**，一次探测都不做。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConsumerExit {
+    /// 读到 EOF —— 子进程真的走了。收尸按自然退出码走。
+    Eof,
+    /// 早退（读错误 / 消费者 panic）—— **子进程可能还活着**，`supervise` 要补一刀。
+    Early,
+}
+
 pub type StdioSink = Arc<
-    dyn Fn(std::process::ChildStdin, std::process::ChildStdout) + Send + Sync,
+    dyn Fn(std::process::ChildStdin, std::process::ChildStdout) -> ConsumerExit + Send + Sync,
 >;
 
 pub fn supervise(
@@ -368,16 +384,17 @@ pub fn supervise_with_stdio(
             // `externalBin`）—— **离生效只差一个配置项**，而 `e2e/local-backend-supervise.sh`
             // 那条真进程路径现在就在跑它。
             // ⇒ `io::copy` 到 `io::sink()`：**EOF 语义完全不变**，但一个字节都不留。
-            match (&stdio, out, in_) {
-                // P2：消费者**负责把 stdout 读到底** —— 它返回就等于流结束（EOF），
-                // 判死语义与缺省那支逐字相同。
+            let exit_reason = match (&stdio, out, in_) {
+                // P2：消费者**负责把 stdout 读到底** —— 它返回就等于流结束。
+                // B4 之后它还要说清**为什么**返回（EOF 还是早退），见 `ConsumerExit`。
                 (Some(f), Some(o), Some(i)) => f(i, o),
-                // 缺省：F16 那条 —— EOF 语义不变，一个字节都不留。
+                // 缺省：F16 那条 —— EOF 语义不变，一个字节都不留。`copy` 返回即 EOF。
                 (_, Some(mut o), _) => {
                     let _ = std::io::copy(&mut o, &mut std::io::sink());
+                    ConsumerExit::Eof
                 }
-                (_, None, _) => {}
-            }
+                (_, None, _) => ConsumerExit::Eof,
+            };
             // EOF 之后收尸。
             //
             // ⚠ **F16 修**：原来是 `child.lock().ok().and_then(|mut g| … c.wait())` ——
@@ -386,10 +403,31 @@ pub fn supervise_with_stdio(
             // 「误判它死了」而是：`stop()` 第一件事就是 `self.child.lock()`，而它跑在
             // **主线程**（`lib.rs` 的 `RunEvent::Exit`）⇒ **窗口关了、进程退不出去，只能 kill -9**。
             // ⇒ 先把 `Child` 从锁里 **`take()` 出来**，再在锁外 `wait()`。
-            // ⚠ 并发上安全：此刻已过 EOF，子进程要么死了要么正被 kill；
-            // 一个并发的 `stop()` 看到 `None` 只是不再重复 kill，它设的 `stopping`
-            // 仍会被下面那条检查读到。
-            let mut reaped = child.lock().ok().and_then(|mut g| g.take());
+            // ⚠⚠ **F16 那句「此刻已过 EOF」在 P2 之后不再恒成立**〔D 阶段补审 08-11 修，B4〕。
+            //
+            // 消费者返回有三种原因，只有第一种符合那个前提：
+            // ① EOF（子进程真的走了）· ② stdout 读错误 · ③ 消费者 panic（被兜底外壳接住）。
+            // ②③ 时**子进程还活着**，而它已经被从共享 `Mutex` 里摘走 ⇒
+            // 并发的 `stop()` 看到 `None`，**一个字节的 kill 都不发**，却仍返回「本机后端已停」。
+            // 子进程要等到下一次写 stdout 拿 EPIPE 才死；`--tail-only` 空闲期那可以是很久，
+            // 期间 `wait()` 还一直阻塞着本线程。
+            //
+            // ⇒ **消费者自己报原因**（[`ConsumerExit`]）：`Early` 才补一刀，让「take 出来再 wait」
+            // 这个做法的前提**由自己保证**，而不是靠调用路径碰巧成立。
+            //
+            // ⚠ 刻意**不无条件 kill**：那会把正常退出码换成信号死，而 `decide()` 正是按退出码
+            // 分「崩溃 / 正常退出」（`ROADMAP` 风险 5d 记着「`code: Some(0)` 被计成崩溃」那次观测）。
+            // ⚠ 也刻意**不探子进程**：本模块禁「自己醒过来」的构件，见 [`ConsumerExit`] 头注 ——
+            // B4 的第一版正是拿那个构件去探，判据当场逮到。
+            let mut reaped = {
+                let mut g = child.lock().unwrap_or_else(|e| e.into_inner());
+                if exit_reason == ConsumerExit::Early {
+                    if let Some(c) = g.as_mut() {
+                        let _ = c.kill();
+                    }
+                }
+                g.take()
+            };
             let code = reaped
                 .as_mut()
                 .and_then(|c| c.wait().ok())
@@ -670,7 +708,7 @@ fn read_capped_line_sync<R: std::io::BufRead>(
 pub(crate) fn local_stdio_consumer(
     stdin: std::process::ChildStdin,
     stdout: std::process::ChildStdout,
-) {
+) -> ConsumerExit {
     use std::io::BufRead;
 
     let stdin = match tauri::async_runtime::block_on(async move {
@@ -682,12 +720,13 @@ pub(crate) fn local_stdio_consumer(
             tracing::warn!("本机 stdin 转 tokio 失败（{e}）；入方向通道不登记，仍读完 stdout");
             let mut o = stdout;
             let _ = std::io::copy(&mut o, &mut std::io::sink());
-            return;
+            return ConsumerExit::Eof;
         }
     };
     let mut parked = Some(crate::inbound_client::park_owned_writer(stdin));
     // 留一份副本给 `unregister` —— 它要 `&Arc` 比对身份（「不摘别人的 client」）。
     let mut registered: Option<std::sync::Arc<crate::inbound_client::InboundClient>> = None;
+    let mut early = false;
 
     let mut rd = std::io::BufReader::new(stdout);
     loop {
@@ -696,7 +735,9 @@ pub(crate) fn local_stdio_consumer(
             Ok(None) => break, // EOF = 流结束 = 判死
             Err(e) => {
                 // 真读错误（不是坏字节 —— 那条已被 `from_utf8_lossy` 吸收）。
-                tracing::warn!("本机后端 stdout 读错误（{e}）；按流结束处理");
+                // ⚠ **子进程可能还活着** ⇒ 报 `Early`，让 `supervise` 补一刀（B4）。
+                tracing::warn!("本机后端 stdout 读错误（{e}）；按早退处理");
+                early = true;
                 break;
             }
         };
@@ -746,6 +787,11 @@ pub(crate) fn local_stdio_consumer(
     if let Some(mine) = registered {
         crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &mine);
     }
+    if early {
+        ConsumerExit::Early
+    } else {
+        ConsumerExit::Eof
+    }
 }
 
 /// [`local_stdio_consumer`] 的**兜底外壳**〔D 阶段补审 08-11 新增，B3〕。
@@ -768,17 +814,20 @@ pub(crate) fn local_stdio_consumer(
 fn local_stdio_consumer_guarded(
     stdin: std::process::ChildStdin,
     stdout: std::process::ChildStdout,
-) {
+) -> ConsumerExit {
     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-        local_stdio_consumer(stdin, stdout);
+        local_stdio_consumer(stdin, stdout)
     }));
-    if r.is_err() {
-        tracing::error!(
+    if let Ok(reason) = r {
+        return reason;
+    }
+    tracing::error!(
             "本机 stdio 消费者 panic —— 已兜住并按流结束处理。\n\
              ⚠ 不兜的话它会 unwind 出 supervise 线程，留下一个「状态全绿的死人」：\n\
-             daemon 还活着但没人读它的 stdout ⇒ 管道填满冻死，而 UI 显示一切正常。"
-        );
-    }
+         daemon 还活着但没人读它的 stdout ⇒ 管道填满冻死，而 UI 显示一切正常。"
+    );
+    // panic 时**子进程多半还活着** ⇒ 报 `Early`，让 `supervise` 补一刀（B4）。
+    ConsumerExit::Early
 }
 
 
@@ -2008,18 +2057,70 @@ mod tests {
     fn reaping_never_holds_the_child_lock_while_it_waits() {
         let sec = wait_section();
         // 先把子进程从锁里 `take()` 出来，再在锁外 `wait()`。
-        let take_at = sec
-            .find("child.lock().ok().and_then(|mut g| g.take())")
-            .expect(
-                "收尸段不再先 `take()` 出来 —— 那意味着 `wait()` 可能又回到了锁里面。\n\
-                 后果不是「误判它死了」，是 `stop()` 在主线程永久阻塞、窗口关了进程退不出去。",
+        // ⚠ **锚点从「字面形状」改成「性质」**〔D 阶段补审 08-11，B4〕。
+        //
+        // 原来钉的是逐字的 `child.lock().ok().and_then(|mut g| g.take())`。
+        // B4 要在 take 之前按 `ConsumerExit` 补一刀（早退时子进程还活着），
+        // 那一句必然变形 ⇒ 判据当场红。**但它守的性质一个字没变**：
+        // 「持锁的那个块里不许有 `wait()`」。⇒ 改成钉那句话本身。
+        //
+        // ★ 这是「判据挡路 ≠ 把判据放宽」的又一例：形状换了，性质原样，
+        // 而且新写法**更硬** —— 原版认一串特定链式调用，现版认「块内不许 wait」。
+        let take_at = sec.find("let mut reaped = {").expect(
+            "收尸段不再是「持锁块里 take 出来、块外 wait」那个形状 ——\n\
+             那意味着 `wait()` 可能又回到了锁里面。后果不是「误判它死了」，\n\
+             是 `stop()` 在主线程永久阻塞、窗口关了进程退不出去。",
+        );
+        let held_end = {
+            let blk = &sec[take_at..];
+            let open = blk.find('{').expect("上面刚 pin 过");
+            let (mut depth, mut end) = (0i32, open);
+            for (i, c) in blk.char_indices().skip(open) {
+                match c {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = i;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let held = &blk[open..=end];
+            assert!(
+                held.len() > 30 && held.len() < 2000,
+                "切出来的持锁块 {} 字节 —— 配平切错了，本条在空转",
+                held.len()
             );
+            assert!(
+                !held.contains("wait("),
+                "持锁块里出现了 `wait(`：\n{held}\n\
+                 ⇒ `stop()` 第一件事就是拿同一把锁，而它跑在**主线程**（`RunEvent::Exit`）\n\
+                 ⇒ 持锁 `wait()` 会把「误判它死了」升级成**应用退不出去，只能 kill -9**。"
+            );
+            // ★★ **B4 的正题**：早退时必须补一刀 —— 变异实测「摘掉它全套件照样绿」，
+            // 说明我修的那件事本来没有判据。补在这里而不是新开一条：
+            // 它与「wait 不许在锁里」是**同一段代码的两条性质**，分开写会各自漂。
+            assert!(
+                held.contains("ConsumerExit::Early") && held.contains("kill()"),
+                "持锁块里没有「早退就补一刀」那一支：\n{held}\n\
+                 ⇒ 消费者因**读错误或 panic** 返回时子进程还活着，而它已被从共享锁里摘走\n\
+                 ⇒ 并发的 `stop()` 看到 `None`，**一个字节的 kill 都不发**，却仍返回「已停」。\n\
+                 ⚠ 不许改成无条件 kill：那会把正常退出码换成信号死，而 `decide()` 按退出码\n\
+                 分崩溃/正常（风险 5d）。也不许去探子进程 —— 本模块禁那类构件。"
+            );
+            take_at + end
+        };
         // ⚠ **不能只写 `sec.find(".wait()")`** —— 那会命中**关窗块**里那个
         //   `c.kill(); c.wait();`（它在 `take()` 之前，且它是对的：那处本来就持锁、
         //   而子进程刚被 kill、不会久等）。第一版就是这么写的，**判据自己当场红了**。
         //   ★ 又一次「锚点指到了第一处同名的东西」而不是那一处。
         //   ⇒ 钉的是「**被 wait 的那个东西是从锁里 take 出来的**」：`reaped` 之后紧跟 `.wait()`。
-        let after_take = &sec[take_at..(take_at + 260).min(sec.len())];
+        // ⚠ 窗口起点从持锁块**结束处**算，不是从 `take_at` 算 ——
+        // B4 让那个块变长了，固定 260 字符的窗口当场不够（判据自己红了一次）。
+        let after_take = &sec[held_end..(held_end + 260).min(sec.len())];
         assert!(
             after_take.contains("reaped") && after_take.contains(".wait()"),
             "`take()` 之后没紧跟着对取出来的那个 `Child` 调 `wait()` —— 实得这一段：{after_take:?}"
