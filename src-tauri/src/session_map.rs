@@ -55,7 +55,11 @@ use std::time::Duration;
 /// （那张表只在 SSH 连接路径按 `host_label` 写）⇒ `find_tmux_origin_for_sid` 恒 `None`
 /// ⇒ `classify_removed(None, Gone)` = `Archive`。**结论对、理由是个巧合。**
 ///
-/// ★★ **P3 刀 0（08-11）：那个巧合不再是唯一依靠。**
+/// ★★ **P3 刀 0（08-11）：那个巧合不再是唯一依靠；刀 1 已经把它拆了。**
+///
+/// ⚠ **上面那句「本地 sid 根本不进 `tmux_raw_registry`」今天是假的** ——
+/// P3 刀 1（`7226093`）让本机 tmux 帧进了那张表（键 `<local>`）。
+/// 留着原句是因为它记录的是**当时的实测**；推翻它的是下面这段，不是把它删掉。
 /// `diff_sessions` 现在按 `pid + procStart` 判得出 `Superseded`（要正面证据，
 /// `procStart` 缺席退回 `Gone`）。上面那句「F01b 订正」里的
 /// 「本地那条 diff 全部产 `Gone`」**从此不成立** —— 留着它是因为它记录了当时的实测，
@@ -362,10 +366,16 @@ fn diff_sessions(
     // `SessionInfo` 自己就带 `pid` 与 `procStart`，而本地会话文件正是 `sessions/<PID>.json`。
     // 信息一直在，只是**没人算**。
     //
-    // 为什么现在必须算（`session_map.rs` 头注那条巧合）：本地 sid 至今不进
+    // 为什么必须算（`session_map.rs` 头注那条巧合）：**刀 1 之前**本地 sid 不进
     // `tmux_raw_registry` ⇒ `find_tmux_origin_for_sid` 恒 `None` ⇒ 两种 cause 都归档
     // ⇒ `/branch` 的灰点 bug 碰巧没出现。「**结论对、理由是个巧合**」。
-    // P3 后面几刀要让本机 tmux 进那张表，巧合一破 bug 就回来 —— 所以先补这一条。
+    // P3 刀 1 已经让本机 tmux 进了那张表（`7226093`）⇒ **那个巧合已经没了**，
+    // 今天挡住 `/branch` 灰点的就是本函数这一支。
+    //
+    // ⚠ 但**它今天还没有真消费者**：`lib.rs` 的本地 emitter 逐字写着「本地路径没有
+    // idle-tmux 灰点，cause 在这里无分支意义，取 sid 即可」——它丢掉 `cause` 无条件
+    // emit `SESSION_ENDED`。⇒ 真正挡住灰点的仍是「本地 emitter 不分流」。
+    // 本支要等有人给那个 emitter 接上 `classify_removed` 才第一次生效（P3 §6 的 D1）。
     //
     // ⚠ **要正面证据才敢说「同一条命」**：`procStart` 缺席（实测某些启动路径不写它）时
     // **退回 `Gone`**，不拿「pid 相同」单独一条就断言。pid 是会被复用的；
@@ -1022,7 +1032,7 @@ mod tests {
     ///
     /// # 为什么钉 cause 本身，而不是钉它下游的归档决定
     ///
-    /// 本地 sid 至今不进 `tmux_raw_registry` ⇒ `find_tmux_origin_for_sid` 恒 `None`
+    /// **刀 1 之前**本地 sid 不进 `tmux_raw_registry` ⇒ `find_tmux_origin_for_sid` 恒 `None`
     /// ⇒ `classify_removed(None, Gone)` 与 `classify_removed(None, Superseded)`
     /// **今天给出同一个结果**（都归档）。
     /// ⇒ 测下游**证明不了任何事** —— 把本函数改回全产 `Gone`，那种测试照样绿。
