@@ -28,7 +28,25 @@ use std::collections::BTreeSet;
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct CliRenderRequest {
-    /// `false` = 本机路径。本机不走 CLI 渲染器（§36），Rust 侧也照样拒。
+    /// `false` = 本机路径。
+    ///
+    /// ★★ **P3t-Y4 订正**：这里原本写「本机不走 CLI 渲染器（§36 —— 而它只绑 Windows），
+    /// Rust 侧也照样拒」——**两半都不准**。
+    ///
+    /// ① §36 逐字管的是别的事，而且它整节只绑 Windows。它的标题后半句就是它的全部内容：
+    ///    「**嵌套 env 污染保护已在进程启动期做完，别在本地渲染器里重复实现**」，
+    ///    铁律那段逐字禁的是「给本地渲染器补一段读 `plan.env`、把 `unset` 翻成 PowerShell
+    ///    `Remove-Item Env:\X` 的代码」。它**从来不是**一条「本机不许用 CLI 渲染器」的禁令，
+    ///    而且它整节讲的是 **Windows**（`config_dir_prefix_ps` / `validate_config_dir_ps`）。
+    ///    ⇒ 拿它当「一律拒本机」的依据是**把一条窄铁律读宽了**。
+    ///
+    /// ② 「Rust 侧也照样拒」自 P3t（`C12`）起就不成立：`render_ccm_invocation` 对
+    ///    **POSIX 本机放行**（`CliSpec::local_posix`），只有 Windows 本机仍拒。
+    ///
+    /// 那么**本条上线路今天为什么仍然只见 `is_ssh: true`**？不是因为 §36 禁了（它只绑 Windows），
+    /// 是因为**前端只在 `transport.kind === "ssh"` 时才调这条 IPC** ——
+    /// POSIX 本机那条路住在 Rust 里（`history.rs::render_local_ccm`），
+    /// 不必绕一圈 IPC 问自己。⇒ 这是**路由事实**，不是禁令。
     pub is_ssh: bool,
     /// `null` = 未装 ccm。
     pub caps: Option<Vec<String>>,

@@ -51,6 +51,7 @@
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
+
     /// 一条命令服务哪一侧。`Both` = 这条命令自己就把两侧都办了
     /// （例：`search_history` 头注自陈「本地内存索引查询与远端 fan-out **并发**」）。
     #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -270,15 +271,26 @@ mod tests {
         // `parse_line`（`lib.rs::batch_to_payloads`）喂进来 ⇒ 一个读口就覆盖两侧，
         // 天然 `Both`，不需要远端对侧命令。
         ("drift_ledger_report", "audit.drift-ledger", Side::Both),
-        // U8c-2c-2：`ccm 调用行`的渲染入口。**Remote 侧专属** —— 本机路径不经 IR
-        // 产出命令（§36 + R07 已裁决），它自己有 `history.rs::build_local_*_command`。
+        // U8c-2c-2：`ccm 调用行`的渲染入口。**这一行说的是「有没有一条上线命令」，
+        // 不是「有没有这个能力」** —— 两者 P3t 起分了家，别再合着读。
+        //
+        // ★★ **P3t-Y4 订正**：原文写「本机路径不经 IR 产出命令（§36 + R07 已裁决）」，而 §36 只绑 Windows。
+        // 它整节讲的是 **Windows** 且逐字禁的是「本地渲染器读 `plan.env`」，
+        // 它管不着「POSIX 本机能不能用 ccm 调用行渲染器」。R07 那条补充给的理由
+        // （「接了也拿不到新东西」）在 CLI 渲染器这一侧**已被 P3t-Y2 证伪**：
+        // 接上去拿到的是 `--tmux`，也就是本机旧路结构上产不出来的**会话容器**。
+        //
+        // 本行仍是 `Side::Remote`，但理由换了：**POSIX 本机不需要一条 IPC 命令** ——
+        // 它的渲染器就住在 Rust 里（`history.rs::render_local_ccm`），前端不必绕一圈问自己。
         // U8a-2c-1：daemon `launch` 的发送端（`send-into` 那半边）。**Remote-only 且未裁定** ——
         // 见 ASYMMETRY_REASONS 里那条：本机该不该也有一个「后端进程」来收这件事，
         // 正是 §1.2 今天悬着的问题（v1 的三宿主被否决、U12 的 daemonless 未定）。
         ("daemon_send_into", "launch.send-into", Side::Remote),
         ("render_ccm_launch", "launch.render-cli", Side::Remote),
-        // 兜底那支的 `container:"none"` 载荷渲染。**同 launch.render-cli：Remote 侧专属**
-        // —— 本地路径不经 IR 产出命令（§36 + R07）。
+        // 兜底那支的 `container:"none"` 载荷渲染。**Remote 侧专属**，但理由与 launch.render-cli
+        // 已经不同了（P3t-Y4）：这一支本机确实还不经 IR —— 走的是
+        // `history.rs::build_local_posix_command`，那是渲染器拒了之后的回落。
+        // ⚠ 别再引 §36 当依据：§36 讲的是 **Windows** 且禁的是「本地渲染器读 `plan.env`」。
         (
             "render_launch_payload",
             "launch.render-payload",
@@ -356,9 +368,9 @@ mod tests {
         ("cc-bus.cockpit", Asym::ParityDebt, "cc_bus.rs 的 5 个 IPC **全走 origin+ssh、零本机读取路径**（`config_surface.rs` 的钉死表已把 `~/.cc-bus/` 记为 Remote）。而本机 cc-bus 是存在的——`diagnose_local_cc_bus_hooks` 就在诊断它 ⇒ 驾驶舱管不了本机的 agent，是真欠账。"),
         ("ccm.install-ui", Asym::Undecided, "本机安装向导有「扫 PATH 选装到哪」+「预览要写的文本」两步；远端 `install_remote_ccm_helper(cfg, profile)` 一步到位、没有这两步。**是欠账还是刻意简化，需要产品判断**——本表不替它裁定。"),
         ("daemon.deploy", Asym::NaturallyAsymmetric, "§40 天然不对称白名单第 3 条：本地会话由 `watcher.rs` 直接读 jsonl，**根本不需要 daemon**。"),
-        ("launch.render-payload", Asym::NaturallyAsymmetric, "同 launch.render-cli：本地按 §36 + R07 不经 IR 产出命令，它有自己的 `history.rs::build_local_*_command`。"),
+        ("launch.render-payload", Asym::NaturallyAsymmetric, "兜底那支（`container:\"none\"`）的载荷渲染。本机走 `history.rs::build_local_*_command` —— P3t 之后那是**渲染器拒了才走的回落**，不是并列的第二条路。⚠ P3t-Y4 订正：原文引 §36 当依据，那是把一条讲 **Windows**、逐字禁「本地渲染器读 `plan.env`」的窄铁律读宽了。"),
         ("launch.send-into", Asym::Undecided, "U8a-2c-1：往**已存在**的远端 tmux 会话键入载荷（`send-keys` 那半边由 daemon 做，`attach` 那半边必须留在用户终端 —— §1.3）。**刻意记 Undecided 而不是天然不对称**：本机今天没有对应能力，但那不是因为「本机不需要」，而是因为**本机该不该也有一个后端进程来收这件事还没裁定** —— §1.2 的三宿主 v1 被用户否决、U12 的 daemonless 处置未定。写成 NaturallyAsymmetric 就是替产品做主。"),
-        ("launch.render-cli", Asym::NaturallyAsymmetric, "U8c-2c-2：`ccm 调用行`的渲染。**本地按 §36 + R07 就不经 IR 产出命令** —— 它有自己的 `history.rs::build_local_posix_command` / `build_local_ps_command`（要现场探 `command -v cc` / `Get-Command cc`，TS 无法预先渲染好交给它）。这条不对称是「本地渲染必须在目标机器上做」造成的，不是能力缺失。"),
+        ("launch.render-cli", Asym::NaturallyAsymmetric, "`ccm 调用行`的渲染。★★ **P3t-Y4 把这条的理由整个换了 —— 原来那个已被实测证伪。** 原文说这条不对称是「本地渲染必须在目标机器上做（要现场探 `command -v cc`，TS 无法预先渲染好交给它）」造成的。**本机就在本机**：P3t-Y2 的 `ccm_probe::probe_local_ccm()` 直接跑一次 `bash -lic` 就拿到了版本与完整能力集，比远端那条 ssh 往返还便宜 ⇒ 那个理由不成立。真正的不对称是**本机账号三态里有两态 CLI 说不出**：`Named{config_dir}` 只有目录没有名字（CLI 只会 `--account <名字>`），`None` 是「继承环境」而 CLI 语法里没有这一态（映成 `--base` 就是把继承偷换成显式清空 = #75 病灶）。那两态诚实降级回旧路。⇒ 本行仍 `natural`，但它记的是**语法窄一格**，不是「渲染必须在目标机器上做」。补不补见 ROADMAP `U10`。"),
         ("mcp.list-origins", Asym::NaturallyAsymmetric, "「有哪些 origin」这个概念在本地不存在——本地只有一台。"),
         ("panorama.code-graph", Asym::Undecided, "**本表交出的最大一处新发现**：21 条命令全部只吃本机 `repo` 路径。远端 repo 的代码图谱既没做、也没在任何计划里登记过。**不擅自判它是天然不对称**——那需要产品判断（远端开发是不是本工具的场景）。登记待裁定。"),
         ("port-forward", Asym::NaturallyAsymmetric, "§40 天然不对称白名单第 2 条：本地没有「转发到自己」这个需求。"),
@@ -650,7 +662,7 @@ mod tests {
         // 归属错了就不如没有。**
         assert_eq!(LEDGER.len(), 136, "命令总数变了"); // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines，C8）**
         let sides = capability_sides();
-        assert_eq!(sides.len(), 58, "能力总数变了"); // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：本机不经 IR，§36）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.daemon-policy / daemon.status / daemon.lifecycle，都是 Both）**
+        assert_eq!(sides.len(), 58, "能力总数变了"); // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.daemon-policy / daemon.status / daemon.lifecycle，都是 Both）**
         let asym = asymmetric_capabilities();
         assert_eq!(asym.len(), 21, "不对称能力数变了"); // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
         let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
@@ -663,7 +675,7 @@ mod tests {
                 })
                 .or_default() += 1;
         }
-        assert_eq!(kinds.get("natural"), Some(&9), "天然不对称条数变了"); // U8c-2c-2 +1（launch.render-cli：本地不经 IR，§36+R07）；U8a-2c-pre +1（launch.render-payload：同上）
+        assert_eq!(kinds.get("natural"), Some(&9), "天然不对称条数变了"); // U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）。★ P3t-Y4：这两条的**理由**换过（原来引 §36 说「本地不经 IR」——§36 只绑 Windows，且那个理由已被本机探针实测证伪），但 `natural` 的**条数没变**
         assert_eq!(kinds.get("debt"), Some(&8), "平价欠账条数变了"); // F08 -1（usage.per-account 补平） // G6 -1；E79 -1
         assert_eq!(kinds.get("undecided"), Some(&4), "未裁定条数变了"); // devbench F03 +1（skill.inbox：远端项目的收件箱要不要能编辑，没人裁定过） // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
     }

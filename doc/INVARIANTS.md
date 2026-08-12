@@ -1072,6 +1072,25 @@ plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**�
 
 **L2 复测确认（2026-07-30，`local-as-remote`）**：本节铁律**仍然成立**，且 `local-as-remote` 主计划原本的 L2（「PowerShell 渲染器 honour `plan.env`」）**正是它禁止的那件事** ⇒ **已否决，不做**。启动期清洗的时序也实证过：`lib.rs:124` 的 `scrub_env_vars` 早于 `:161` 的 `tauri::Builder`。L2 改做的是「别让本地/远端静默漂移」这个真意图落在真实漂移点上 —— Rust `adapter` ↔ TS `AGENT_PROFILE`（`src/agent-profile-parity.vitest.ts`）。**那条守卫不违反本铁律**：它只读、不给任何渲染器加读 `plan.env` 的代码。
 
+**P3t 裁定（2026-08-11，`control-parity`）：本节只绑 Windows，别拿它当「本机不许用 CLI 渲染器」。**
+
+实测本节被**转述得越来越宽**：`launch_wire.rs` 的字段注释写成「本机不走 CLI 渲染器（§36），Rust 侧也照样拒」，
+`parity_ledger` 两行也写成「本地路径不经 IR 产出命令（§36 + R07）」——**代码就按注释的宽度实现了**（一律拒本机）。
+而本节标题后半句就是它的全部内容（「嵌套 env 污染保护已在进程启动期做完，别在本地渲染器里重复实现」），
+铁律段逐字禁的是「给本地渲染器补一段读 `plan.env`、把 `unset` 翻成 PowerShell `Remove-Item Env:\X` 的代码」，
+论证从头到尾是 Windows 分支（`config_dir_prefix_ps` / `validate_config_dir_ps` / 「`\` 与盘符」）。
+⇒ 采信「**代码窄了**」：放行 POSIX 本机走 ccm 调用行渲染器**是在兑现本节的原意**，不是破例。
+
+上面 R07 补充那句「不接是因为**接了也拿不到新东西**」，在 **CLI 渲染器**这一侧已被 P3t-Y2 证伪：
+接上去拿到的是 `--tmux`，也就是本机旧路结构上产不出来的**会话容器**。
+（那句话对**载荷 IR** 仍然成立 —— `plan.action`/`plan.cwd` 恒等于输入。两者别混着引。）
+不放行的代价不是「不够对齐」，是本机产出的是一个**无 tty、无 tmux** 的进程，
+`doc/IPC-PROTOCOL.md` 逐字：「`stdin` 不接键盘 ⇒ 用户敲进去的字会被脚本吃掉」。
+
+**机检**：`arch_doc_shape_guard::every_citation_of_invariant_36_says_which_platform_it_binds` ——
+全树每一处引 `§36` 的**句子**必须在同一句里写出 `Windows`。
+引一段文字证明不了「今天的代码就是那个意思」，所以这条裁定配了一条机器能重跑的检查。
+
 **另注（同一审计发现）**：`F06-local-path-ir.md` §1 有一条**已勾 `[x]`** 的 DoD 逐字要求
 "从产出的 `LaunchPlan` 取 `action`/`cwd`/`launcher` 三个字段映射回现有 Tauri 调用参数"
 ——**它从未实现**，且已在同文件 §3.2 被撤回（理由即上述"无信息增量"）。那条勾已就地标注撤回。
