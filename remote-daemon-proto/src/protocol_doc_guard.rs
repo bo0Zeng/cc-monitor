@@ -76,6 +76,14 @@
 /// 所以下面 `dispatch_registry_is_complete` 会**反向核对**这份名单没漏文件。
 const DISPATCH_FILES: &[(&str, &str)] = &[
     ("main.rs", include_str!("main.rs")),
+    // P4d：控制面的 CLI 入口。它**不做 match 分派**（认哪些 flag 由
+    // `cli_control::spec_for` 从 `inbound::REGISTRY` 派生），但它持有
+    // `PROBE_FLAG = "--daemon-probe"` 这个字面量 —— 派生的文件集因此把它扫了进来。
+    // ⇒ 登记在这里，`--daemon-probe` 才受 IPC-PROTOCOL.md 对拍约束。
+    (
+        "control/cli_control.rs",
+        include_str!("control/cli_control.rs"),
+    ),
     (
         "observe/history_query.rs",
         include_str!("observe/history_query.rs"),

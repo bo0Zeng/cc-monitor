@@ -82,6 +82,19 @@ mod tests {
             "p1w-inbound-in-fingerprint",
             "--account-trust\n--account-trust-zero\n--fork-session\n--list-accounts\n--list-projects\n--list-sessions\n--read-session\n--read-session-from-offset\n--read-session-tail\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
+        // ★ p1y（P4d，08-12）：**控制面开了第二个入口 —— 一次性 CLI。**
+        //
+        // 新增 4 条：`--launch` / `--kill` / `--ping`（帧面已有的命令换个调用法）
+        // 与 `--daemon-probe`（能力探测口，回 `{proto, buildId, commands}`）。
+        // ⚠ 这 4 条**都不是新语义** —— 实现仍是 `inbound::REGISTRY` 上那几条 `run`，
+        //   CLI 面只是不经 SSH 帧地调它们（`control/cli_control.rs`）。
+        // ⇒ 但**必须 bump**：已部署的旧 daemon 没有这几个口，而 skill 会按
+        //   `--daemon-probe` 的回答决定走不走新路 —— 不 bump 就不判 stale、不重装，
+        //   探测口在旧机器上直接 exit 2，整轮能力静默休眠（`branch-anywhere` 那次的形状）。
+        (
+            "p1y-cli-control-face",
+            "--account-trust\n--account-trust-zero\n--daemon-probe\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
     ];
 
     use crate::guard_support::{assert_no_test_code, production_code};
