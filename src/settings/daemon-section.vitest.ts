@@ -32,6 +32,10 @@ vi.mock("../ipc/commands", () => ({
       calls.push({ name: "daemon_stop", args: a });
       return Promise.resolve("已停");
     },
+    daemon_machines: () => {
+      calls.push({ name: "daemon_machines", args: null });
+      return Promise.resolve(["<local>", "甲机"]);
+    },
     set_daemon_kill_on_exit: (a: unknown) => {
       calls.push({ name: "set_daemon_kill_on_exit", args: a });
       return Promise.resolve();
@@ -98,6 +102,25 @@ describe("P2s daemon 开关区", () => {
       .map((c) => (c.args as { origin: string }).origin);
     expect(asked.sort()).toEqual([LOCAL_ORIGIN, "甲机"].sort());
     expect(s.element.querySelector(".daemon-row-state")?.textContent).toContain("已连上");
+  });
+
+  it("★ 机器清单问后端要，不自己算（A5：前端自己拼会与 Rust 的 origin 分叉四处）", async () => {
+    new DaemonSection({ headless: true });
+    await flush();
+    await flush();
+    expect(
+      calls.some((c) => c.name === "daemon_machines"),
+      "没调 daemon_machines —— 前端又在自己拼清单了。\n" +
+        "Rust 侧会对重复 label 后缀化（pi → pi (#2)）、会按 enabled 过滤、启动后新增的不注册；\n" +
+        "自己拼出来的名字对不上注册表，那些行的起/停恒回「没有这台机的把手」。",
+    ).toBe(true);
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(__dirname, "daemon-section.ts"), "utf8");
+    expect(
+      src.split("hostKey(").length - 1,
+      "daemon-section.ts 里又出现了 hostKey( —— 那正是自己拼 origin 的做法",
+    ).toBe(0);
   });
 
   it("★ 存不下就把勾回退——屏上写着 A 而实际是 B 比报错更坏", async () => {

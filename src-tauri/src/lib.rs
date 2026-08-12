@@ -1026,6 +1026,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             daemon_policy::set_daemon_kill_on_exit,
+            daemon_control::daemon_machines,
             daemon_control::daemon_status,
             daemon_control::daemon_start,
             daemon_control::daemon_stop,
