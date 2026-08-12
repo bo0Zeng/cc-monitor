@@ -32,7 +32,13 @@
 //!    那是它们自己那条 singleton 判据在守，本条只确认转发者自己不构造；
 //! ⑤ 走 SFTP / 本机 `Command` 的路（本条只管 `connect_and_exec_cmd` 这一个扼流点）。
 //!    ★〔devbench F10c〕**SFTP 那半已经有人接了**：`remote_write_registry` 按「谁拿得到
-//!    SFTP 会话」取样，接的正是本条划出去的这道缝。**`Command` 那半仍无人接。**
+//!    SFTP 会话」取样，接的正是本条划出去的这道缝。
+//!    ★★ **订正〔P3t-Y2，08-11〕：这里原本写「`Command` 那半仍无人接」——那句话是错的。**
+//!    `write_site_registry::spawn_sites::every_local_spawn_is_declared` 就在接它
+//!    （人群 = `src/` 整棵树 + `build.rs` 里所有 `Command::new`，默认拒绝）。
+//!    实测：本件新加一处 `Command::new("bash")` 忘了申报，**当场被那条判红**。
+//!    ⇒ 这条头注自己就是「注释声称的缝比真实的缝大」的样本；说有缝而其实有人守，
+//!    与说没缝而其实有缝一样坏 —— 它会让下一个人去补一张已经存在的表。
 
 #[cfg(test)]
 mod tests {
@@ -57,7 +63,7 @@ mod tests {
         ("cc_bus.rs", "fetch_remote_cc_bus", Origin::Const, "`CC_BUS_CAT_CMD`：读两张 tsv，零插值"),
         ("hooks_diag.rs", "diagnose_remote_cc_bus_hooks", Origin::Const, "`REMOTE_HOOKS_CMD`：只读探测"),
         ("mcp.rs", "fetch_remote_claude_json", Origin::Const, "`CMD`：读远端 ~/.claude.json"),
-        ("ccm_probe.rs", "probe_ccm_cli", Origin::Const, "`let cmd = \"command -v ccm …\"`：字面量，零插值"),
+        ("ccm_probe.rs", "probe_ccm_cli", Origin::Const, "`CCM_PROBE_CMD`：字面量，零插值。P3t-Y2 起本机探针与它**共用同一个常量**"),
         ("sftp.rs", "probe_remote_arch", Origin::Const, "`\"uname -m\"` 直接当实参"),
         // ── 受控构造器（构造器自己带校验/引用，各有行为判据）
         ("cc_bus.rs", "check_cc_bus_agent_online", Origin::Builder("build_online_cmd"), "id 过白名单"),

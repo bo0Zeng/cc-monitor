@@ -872,14 +872,26 @@ pub fn list_last_accounts() -> HashMap<String, String> {
 /// **订正**：G3b-1 当时把「缺省 / 空 = 账号 0（一个字都不注入，与 IR 的 `--base` 对齐）」
 /// 写进了这段注释 —— 那句话是错的：IR 的 `--base` 做的是 `unset`，不是「不注入」，
 /// 远端那条路也确实渲染成 `unset CLAUDE_CONFIG_DIR; `。Phase G 审计两个视角各自抓到。
+///
+/// P3t-Y2：新增 `tmux_name` —— **POSIX 本机**要把会话建进 tmux 时的会话名。
+/// 缺席（今天所有调用点都缺席）⇒ 渲染器诚实降级回旧路 ⇒ 与本参数存在之前逐字节相同。
+/// 名字必须由前端 `mintTmuxName` 铸（那是全仓唯一带撞名避让的铸造口），所以它只能传进来、
+/// 不能在 Rust 里造。Windows 那一侧**不读它**（`C12`）。
 #[tauri::command]
 pub fn resume_history_session(
     session_id: String,
     cwd: String,
     launcher: Option<String>,
     account: Option<LaunchAccount>,
+    tmux_name: Option<String>,
 ) -> Result<(), String> {
-    resume_impl(&session_id, &cwd, launcher.as_deref(), account.as_ref())
+    resume_impl(
+        &session_id,
+        &cwd,
+        launcher.as_deref(),
+        account.as_ref(),
+        tmux_name.as_deref(),
+    )
 }
 
 /// F34：用户自定义 resume 启动命令（设置面板「本地 resume 命令」）。
@@ -1205,24 +1217,143 @@ fn build_local_posix_command(
         })
 }
 
+/// P3t-Y2：**POSIX 本机**走 CLI 渲染器那一条 —— 拿不到就带理由回来。
+///
+/// 与远端那条（`remote-launch-run.ts::renderLaunchCommand`）**同一个形状**：
+/// 先探 ccm，再渲染，渲不出来就带 `reason` 降级。差别只有传输 ——
+/// 远端探测走 ssh、渲染在 monitor 这侧；本机探测直接 `bash -lic`。
+///
+/// # `tmux_name` 为 `None` 时**必须**拒
+///
+/// 会话名不许在 Rust 里铸 —— `remote-launch.ts::mintTmuxName` 是**全仓唯一的铸造口**，
+/// 撞名避让全住在那里。F13 记着这个坑的原样：另一处产 `<sid8>-cc` 却不避让，
+/// 于是「精心让出 `<sid8>-cc-2`」被直接撞掉。在这里补一个铸造口 = 第三次犯同一个错。
+/// ⇒ 名字由前端传下来（P3t-Y2b 接线）；没传 ⇒ 说不出容器 ⇒ 诚实降级回旧路。
+#[cfg(not(windows))]
+fn render_local_ccm(
+    action: &LocalPsAction,
+    launcher: Option<&str>,
+    account: Option<&LaunchAccount>,
+    tmux_name: Option<&str>,
+) -> Result<String, String> {
+    use crate::backend::control::ccm_invocation as ci;
+
+    let Some(name) = tmux_name.filter(|n| !n.is_empty()) else {
+        return Err("没有 tmux 会话名（前端未传）—— 名字只许由 `mintTmuxName` 铸".into());
+    };
+    let sanitized = sanitize_launcher(launcher)?;
+    let agent = crate::adapter::active();
+    let default_launcher = agent.default_launcher();
+    let (sid_owned, cli_action) = match action {
+        LocalPsAction::Resume(sid) => (sid.clone(), None),
+        LocalPsAction::New => (String::new(), Some(ci::Action::New)),
+    };
+    let act = cli_action.unwrap_or(ci::Action::Resume { sid: &sid_owned });
+
+    // ★★ 账号那格是本件真正的边界，把它写清楚（P3t-Y2 摸底）。
+    //
+    // 本机账号是**三态**，而 CLI 的 `account` 维度**恒真**（F05：沉默 = 意外身份切换）
+    // ⇒ 每一态都得说得出话来。逐态对：
+    //
+    // ① `Some(Base)` —— 旧路发 `unset CLAUDE_CONFIG_DIR;`，CLI 发 `--base`。**同义**，可渲染。
+    // ② `Some(Named{config_dir})` —— CLI 只会 `--account <名字>`，而 Rust 这一侧
+    //    **只有 configDir、没有名字**（`LaunchAccount::Named` 就一个字段）。
+    //    ⇒ 说不出 ⇒ §35 短路 ⇒ 降级回旧路（旧路发 `export CLAUDE_CONFIG_DIR='<dir>'`）。
+    // ③ `None` —— 旧路发**空前缀**，语义是「继承环境里现有的 `CLAUDE_CONFIG_DIR`」。
+    //    ⚠⚠ **这一态绝不能映射成 `Base`**：`--base` 是「显式不注入」，与「继承」不是一回事。
+    //    映过去 = 把用户 shell 里已有的账号悄悄清掉 —— 那正是 **#75「resume 在错数据目录
+    //    找不到会话」** 的病灶形状。CLI 语法里**没有「继承」这一态**，所以同样短路。
+    //
+    // ⇒ 今天只有 ① 渲染得出来。这不是接线没接完，是 **CLI 语法在本机账号上真的窄一格**
+    //    （②可补：从 `accounts.json` 反查名字；③是结构性的）。见 ROADMAP `U10`。
+    let acct = match account {
+        Some(LaunchAccount::Base) => ci::CliAccount::Base,
+        // ②：有 configDir 没名字 —— 正是 `CliAccount::Named{name:None}` 这一格存在的理由。
+        Some(LaunchAccount::Named { .. }) => ci::CliAccount::Named { name: None },
+        // ③：`None` 走同一条短路，但**理由不同**（不是「没名字」，是「CLI 说不出继承」）。
+        None => {
+            return Err(
+                "本机未表态账号（继承环境）—— CLI 的 account 维度恒真且无「继承」语法，诚实降级"
+                    .into(),
+            )
+        }
+    };
+
+    // ★ 探测放在**所有纯逻辑拒绝之后**（P3t-Y2）：上面三格（没名字 / 未表态账号 /
+    // 具名账号）与这台机器装没装 ccm 毫无关系，先探等于让判据的结论跟着**跑测试的机器**变。
+    // 现在那三格是纯函数，判在哪台机器上都一样；只有真要渲染时才付这一次 `bash -lic`。
+    let probe = crate::ccm_probe::probe_local_ccm();
+    let caps: std::collections::BTreeSet<String> = probe.capabilities.iter().cloned().collect();
+
+    let spec = ci::CliSpec {
+        is_ssh: false,
+        // ★★ 这里**刻意不读** `host_facts` 那个运行期全局量（P3t-Y2 订正 Y1 的形状）。
+        //
+        // `host_facts` 存在的理由是 `launch_wire` 那条 IPC 路住在 `backend/` 里、不许有平台 cfg
+        // （`backend-split` 的 C10）—— 它只能被宿主**告知**。而本文件是宿主自己，
+        // 且本函数整个挂在 `#[cfg(not(windows))]` 下 ⇒ 平台事实由**编译器**给，不是运行期给。
+        //
+        // 差别不是风格：全局量的缺省是 `false`，忘了接线只会**静默失效**。
+        // Y2 写判据时当场撞上了这一形态 —— 单元测试进程从不跑 `lib.rs` 的启动段，
+        // 于是「具名账号该按 §35 短路」被 `NotSsh` 抢先答了，判据测的根本不是它自称测的东西。
+        local_posix: true,
+        action: act,
+        container: ci::Container::Tmux {
+            name,
+            send_into: false,
+        },
+        cwd: None,
+        account: acct,
+        ccm_sid: match action {
+            LocalPsAction::Resume(sid) => Some(sid.as_str()),
+            LocalPsAction::New => None,
+        },
+        model: None,
+        launcher: sanitized.as_deref().unwrap_or(default_launcher),
+        default_launcher,
+        args: &[],
+        ccm_path: "ccm",
+    };
+    ci::render_ccm_invocation(&spec, &caps, probe.installed).map_err(|r| r.reason())
+}
+
 /// L1：按宿主平台把「本地拉起」送出去。
 ///
 /// 这就是 §40「一条路径，transport 是它唯一的差异」在本地这一侧的落点：
 /// 上面两个渲染器共享同一个决策，这里只挑一条送法。
+///
+/// ★★ **P3t-Y2：POSIX 那半的顺序是硬的 —— 渲染器在前，`build_local_posix_command` 在后。**
+/// 后者不再是并列的第二条路，而是「渲染器拒了才走」的回落。理由不是对齐，是它今天就坏：
+/// 它产的 `cc --resume <sid>` **不带 `--tmux`** ⇒ ccm 走非容器分支 `exec`，
+/// 加上 `launch_local_posix` 的 stdio 全 null ⇒ 一个**无 tty、无 tmux** 的进程，
+/// 用户敲进去的字会被脚本吃掉。顺序由 `the_local_launch_tries_the_renderer_before_the_old_path` 钉住。
 fn launch_local(
     action: &LocalPsAction,
     launcher: Option<&str>,
     cwd: Option<&str>,
     account: Option<&LaunchAccount>,
+    tmux_name: Option<&str>,
 ) -> Result<(), String> {
     #[cfg(windows)]
     {
+        // Windows 那半**逐字不动**（`C12`：「windows不要tmux」）。`tmux_name` 在这一侧
+        // 连读都不读 —— 读了就是给「Windows 也进容器」留了个口子。
+        let _ = tmux_name;
         let ps = build_local_ps_command(action, launcher, account)?;
         crate::launch::launch_powershell_window(&ps, cwd)
     }
     #[cfg(not(windows))]
     {
-        let cmd = build_local_posix_command(action, launcher, account)?;
+        let cmd = match render_local_ccm(action, launcher, account, tmux_name) {
+            Ok(rendered) => rendered,
+            Err(why) => {
+                // 与远端那条降级**同一种说法**：走回落是正常且预期的路径（没装 ccm 的机器
+                // 每次拉起都走它）⇒ `debug` 而不是 `warn`。要查「为什么这台机没进 tmux」时，
+                // 这一行是唯一线索。
+                tracing::debug!("launch: 本机 CLI 渲染器降级 → 旧路：{why}");
+                build_local_posix_command(action, launcher, account)?
+            }
+        };
         crate::launch::launch_local_posix(&cmd, cwd)
     }
 }
@@ -1248,12 +1379,14 @@ fn resume_impl(
     cwd: &str,
     launcher: Option<&str>,
     account: Option<&LaunchAccount>,
+    tmux_name: Option<&str>,
 ) -> Result<(), String> {
     launch_local(
         &LocalPsAction::Resume(session_id.to_string()),
         launcher,
         Some(cwd),
         account,
+        tmux_name,
     )?;
     tracing::info!("history: resumed sid={session_id}");
     Ok(())
@@ -1278,7 +1411,10 @@ pub fn new_local_session(cwd: String, launcher: Option<String>) -> Result<(), St
         return Err(format!("目录不存在，无法在此起新会话：{cwd}"));
     }
     // G3b：起**全新**会话不继承任何账号（那是「新开一个」的语义，不是分叉）。
-    launch_local(&LocalPsAction::New, launcher.as_deref(), Some(&cwd), None)?;
+    // P3t-Y2：起新会话这条**暂不传名字**（`None` ⇒ 渲染器诚实降级回旧路）。
+    // 名字只许由 `mintTmuxName` 铸，而这条命令今天的两个前端调用点都还没传 ——
+    // 在这里补一个默认名就是 F13 那个坑的第三次。接线归 P3t-Y2b。
+    launch_local(&LocalPsAction::New, launcher.as_deref(), Some(&cwd), None, None)?;
     tracing::info!("history: new local session in {cwd}");
     Ok(())
 }
@@ -1850,6 +1986,130 @@ mod tests {
              真要改成进容器，请连同 `launch.rs:120-122` 与 `src/fork-start.ts:87-88`\n\
              那两条**互相矛盾且都与代码不符**的头注一起改，并把本条改成钉新行为。\n\
              实得：{rendered}"
+        );
+    }
+
+    /// ★★ **P3t-Y2 给上面那条补一句射程**（不改它测什么，只改它自称守什么）。
+    ///
+    /// 上面那条量的是 `local_launch_choice` —— 也就是**回落那条路**的构造器。
+    /// P3t-Y2 之后本机拉起先过 CLI 渲染器（`render_local_ccm`），渲不出来才落到它。
+    /// ⇒ 「本机 resume 没有容器」这句话**从此不再等价于**「`local_launch_choice` 没有容器」：
+    /// 前者要看渲染器渲不渲得出来，后者只看回落。上面那条**照旧恒绿**，但它守的人群窄了。
+    ///
+    /// 本条不是重复它，是把「窄了多少」写成可执行的：今天 `render_local_ccm` 的**三格纯逻辑拒绝**
+    /// 决定了生产上谁能进容器。三格全拒 ⇒ 生产行为与 P3t 之前逐字节相同（Y2 是零行为改动的接线）。
+    /// Y2b 前端接线之后，第一格会开，那时上面那条的自陈就该改了。
+    #[test]
+    #[cfg(not(windows))]
+    fn the_local_renderer_refuses_every_shape_the_front_end_can_send_today() {
+        let base = LaunchAccount::Base;
+        let named = LaunchAccount::Named {
+            config_dir: "/home/u/.claude-accts/z".into(),
+        };
+        let act = LocalPsAction::Resume("s1".into());
+
+        // ① 没名字 —— 名字只许 `mintTmuxName` 铸，Rust 这侧不许补默认值（F13 那个坑）。
+        for no_name in [None, Some(""), Some("   ")].into_iter() {
+            let no_name = no_name.filter(|n: &&str| !n.trim().is_empty());
+            let r = render_local_ccm(&act, None, Some(&base), no_name);
+            assert!(
+                r.as_ref().is_err_and(|e| e.contains("tmux 会话名")),
+                "没有会话名时必须拒 —— 在 Rust 里铸一个名字就是 F13 修掉的撞名坑第三次。实得：{r:?}"
+            );
+        }
+
+        // ② 未表态账号（`None`）—— 旧路发**空前缀**＝继承环境，而 CLI 的 account 维度恒真、
+        //    没有「继承」这一态。映成 `--base` 会把用户 shell 里已有的账号悄悄清掉 ＝ #75 病灶。
+        let r = render_local_ccm(&act, None, None, Some("s1abcdef-cc"));
+        assert!(
+            r.as_ref().is_err_and(|e| e.contains("继承")),
+            "未表态账号必须拒且理由是「说不出继承」—— 若它被渲染成 `--base`，\n\
+             那就是把「继承环境」偷换成「显式清空」，正是 #75「resume 在错数据目录找不到会话」。实得：{r:?}"
+        );
+
+        // ③ 具名账号 —— `LaunchAccount::Named` 只有 configDir、没有名字，而 CLI 只会
+        //    `--account <名字>` ⇒ §35 短路。**理由必须是「说不出」，不是别的**：
+        //    reason 是生产侧唯一的降级线索，换一个理由就是换一条诊断。
+        let r = render_local_ccm(&act, None, Some(&named), Some("s1abcdef-cc"));
+        let reason = r.expect_err("具名账号今天渲染不出来 —— 若它成功了，请先确认 `--account` 的名字是从哪来的");
+        assert!(
+            reason.contains("account"),
+            "具名账号的降级理由该指向 account 维度（§35 短路），实得：{reason}"
+        );
+    }
+
+    /// ★★ **P3t-Y2 的顺序判据**：渲染器在前，`build_local_posix_command` 在后。
+    ///
+    /// 「两条路都在文件里」证明不了任何事 —— 本件的全部内容就是**谁先谁后**：
+    /// 旧路必须是「渲染器拒了才走」的回落，不是并列的第二条路。并列意味着
+    /// 「本机进不进 tmux」由谁先被写下来决定，那不是一个能守住的性质。
+    ///
+    /// 形状抄 `local_backend::the_exit_path_really_stops_the_local_backend`：
+    /// 锚点当场核唯一性 + 按花括号配平切体 + 切出来的体自检大小（否则会零命中地绿）。
+    #[test]
+    fn the_local_launch_tries_the_renderer_before_the_old_path() {
+        let prod = guard_core::production_code(include_str!("history.rs"));
+        // 锚点唯一性：`fn launch_local(` 全树恰好一处（`find_pinned` 自带边界检查）。
+        let at = guard_core::find_pinned(&prod, "fn launch_local(").unwrap_or_else(|e| {
+            panic!("`fn launch_local(` 不是恰好一处 —— 形状变了，先修锚点：{e}")
+        });
+        let body = {
+            let b = prod.as_bytes();
+            let open = (at..b.len())
+                .find(|&i| b[i] == b'{')
+                .expect("`fn launch_local(` 之后找不到块起点");
+            let (mut depth, mut end) = (0i32, b.len());
+            for i in open..b.len() {
+                if b[i] == b'{' {
+                    depth += 1;
+                } else if b[i] == b'}' {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = i + 1;
+                        break;
+                    }
+                }
+            }
+            &prod[open..end]
+        };
+        assert!(
+            body.len() > 200 && body.len() < 3000,
+            "切出来的 `launch_local` 体只有 {} 字节 —— 配平切错了，本条会零命中地绿",
+            body.len()
+        );
+
+        let r = body
+            .find("render_local_ccm(")
+            .expect("`launch_local` 体里找不到 `render_local_ccm(` —— 渲染器没接上，本机还是走旧路");
+        let old = body
+            .find("build_local_posix_command(")
+            .expect("`launch_local` 体里找不到 `build_local_posix_command(` —— 回落没了，渲染器拒了就无路可走");
+        assert!(
+            r < old,
+            "★ 顺序反了：`build_local_posix_command` 出现在 `render_local_ccm` **之前**。\n\
+             那样旧路就成了并列的第一条路，渲染器变成够不着的死代码 —— 本件等于没做。"
+        );
+        // 各恰好一处：两处渲染器调用意味着有一条分支绕过了顺序。
+        for (needle, n) in [
+            ("render_local_ccm(", body.matches("render_local_ccm(").count()),
+            (
+                "build_local_posix_command(",
+                body.matches("build_local_posix_command(").count(),
+            ),
+        ] {
+            assert_eq!(
+                n, 1,
+                "`launch_local` 体里 `{needle}` 出现 {n} 次 —— 不是恰好一处，顺序就管不住了"
+            );
+        }
+        // 回落必须真的住在 `Err` 那条臂里，而不是顺序碰巧靠后。
+        let err_arm = body
+            .find("Err(why)")
+            .expect("`launch_local` 体里找不到 `Err(why)` —— 回落不在降级臂里了");
+        assert!(
+            err_arm < old,
+            "`build_local_posix_command` 不在 `Err(why)` 臂内 —— 它只是碰巧写在后面，\n\
+             那不叫「渲染器拒了才走」。"
         );
     }
     use super::*;

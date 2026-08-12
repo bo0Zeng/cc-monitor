@@ -569,6 +569,16 @@ export const commands = {
      * 什么都不加会静默落到别的账号上。远端那条路一直渲染成 `unset`，本地此前不是（Phase G 修）。
      */
     account?: { kind: "base" } | { kind: "named"; configDir: string };
+    /**
+     * P3t（`C12`）：**POSIX 本机**把会话建进 tmux 时的会话名。
+     *
+     * 缺席 ⇒ 后端诚实降级回旧路（`cc --resume <sid>`，不进容器）。
+     * 传了也**只对 POSIX 本机生效** —— Windows 那一侧连读都不读（用户逐字：「windows不要tmux」）。
+     *
+     * ⚠ 只许传 `mintTmuxName` 铸出来的名字。它是全仓唯一带**撞名避让**的铸造口；
+     * 自己拼一个 `<sid8>-cc` 就是 F13 修掉的那个坑（另一处精心让出 `-2`，你直接撞上去）。
+     */
+    tmuxName?: string | null;
   }) => invoke<void>("resume_history_session", args),
 
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
