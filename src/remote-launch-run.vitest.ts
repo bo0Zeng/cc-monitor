@@ -13,6 +13,7 @@ import {
   runRemoteResume,
   runRemoteResumeTmux,
   runLocalResumeIntoExistingTmux,
+  runNewSessionRemote,
   runRemoteResumeIntoExistingTmux,
   runRemoteLauncher,
   runRemoteAttach, POSIX_NO_WINDOW_MARKER } from "./remote-launch-run";
@@ -211,6 +212,51 @@ describe("F41 runRemoteResume", () => {
     expect(ok).toBe(true);
     expect(writeText).not.toHaveBeenCalled();
     expect(String(toastMock.mock.calls[0][0])).toBe("已就地 resume");
+  });
+
+  // ★★ 08-12：「在该目录起新会话」的默认名必须过铸名口。
+  //
+  // 全仓 `deriveTmuxName` 只有两个生产调用点，`machine-card.ts` 那个 F13 修过、
+  // 这个漏了 ⇒ 同一个 cwd 点两次会派生同名 ⇒ 撞 create-or-attach 的幂等闸
+  // ⇒ 静默接进第一个会话（issue #76 那一族）。
+  //
+  // 两条：撞了要**让**；列不出来要**诚实降级**（不避让，但也别挡住起会话）。
+  it("同 cwd 已有会话 → 起新会话的名字让到 -2，不撞进幂等闸", async () => {
+    const cmds: string[] = [];
+    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      cmds.push(cmd);
+      if (cmd === "list_remote_tmux")
+        return Promise.resolve([
+          { name: "proj-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: null },
+        ]);
+      if (cmd === "launch_remote_terminal") {
+        remoteCmds.push((args as { remoteCmd: string }).remoteCmd);
+        return Promise.resolve(undefined);
+      }
+      return Promise.resolve(undefined);
+    });
+    const remoteCmds: string[] = [];
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    await runNewSessionRemote("aya", "/home/u/proj", "");
+    const sent = remoteCmds.join("\n");
+    expect(sent).toContain("proj-cc-2");
+    // ★ 不许还是那个裸基名 —— 撞上去就是「以为开了新的，其实回到了旧的」。
+    expect(sent).not.toMatch(/[^-]proj-cc[^-0-9]/);
+  });
+
+  it("列不出会话（远端不可达）→ 诚实降级用基名，不因为查询失败挡住起会话", async () => {
+    const remoteCmds: string[] = [];
+    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "list_remote_tmux") return Promise.reject("ssh 抖动");
+      if (cmd === "launch_remote_terminal") {
+        remoteCmds.push((args as { remoteCmd: string }).remoteCmd);
+        return Promise.resolve(undefined);
+      }
+      return Promise.resolve(undefined);
+    });
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    await runNewSessionRemote("aya", "/home/u/proj", "");
+    expect(remoteCmds.join("\n")).toContain("proj-cc");
   });
 
   it("★ P1 对照：IPC 异常（无 REFUSE 标）→ 仍然回落，行为逐字不变", async () => {

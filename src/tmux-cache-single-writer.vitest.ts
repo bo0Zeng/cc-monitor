@@ -55,6 +55,15 @@ const EXEMPT: ReadonlyArray<readonly [file: string, why: string]> = [
       "`tabs.ts:3360` 与 `fork-flow.ts:135`。登记在这里，免得下次又漏。",
   ],
   [
+    "remote-launch-run.ts",
+    "另一个模块，够不到 `TabManager` 的私有 `tmuxCache`（同 `fork-flow.ts` / `machine-card.ts`）。" +
+      "用途：`runNewSessionRemote` 起新会话前查一次「哪些名字被占了」，喂给 `mintTmuxName` 避让 —— " +
+      "**这一次取数的意义就是要最新的**（拿 8s 前的快照去避让，正好会让到一个刚被占掉的名字）。" +
+      "⚠ 它与 `machine-card.ts` 那处是**同一件事的两个入口**（历史页右键 / 设置面板「开新 Claude」)，" +
+      "两处都在做「派生名 → 铸名」；等 `tmux-sessions.ts` 头注说的模块级 store 落地，" +
+      "该一起收编，不是单独收这一个。",
+  ],
+  [
     "tabs.ts::explainBringFrontFailure",
     "`tabs.ts` 里的**模块级导出函数**（不是 `TabManager` 方法）⇒ 语法上就够不到 `this.tmuxCache`。" +
       "它只在**拉前失败之后**查一次用于分档诊断，happy path 零开销，取而不写代价可忽略。",
