@@ -24,6 +24,8 @@ export const LS_KEYS = {
   tasksPanelCollapsed: "cc-monitor.tasks-panel.collapsed",
   /** issue #23：agents 面板折叠状态（与 tasks 面板同形态的全局单例） */
   agentsPanelCollapsed: "cc-monitor.agents-panel.collapsed",
+  /** P7a-1（#61）：归档区折叠状态。默认折叠（缺省即 "1"），与 agents/tasks 面板同形态。 */
+  tabArchiveCollapsed: "cc-monitor.tab-archive.collapsed",
   /** v2.1.0 issue #7：每分组的折叠状态。动态生成 key。 */
   settingsCollapsed: (groupId: string) => `cc-monitor.settings.collapsed.${groupId}`,
   /** issue #12：fork 树展开状态（按 sessionId 入集合）。 */

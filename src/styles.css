@@ -6914,3 +6914,31 @@ body.settings-window-mode .grid-monitor-trigger {
   display: flex;
   justify-content: flex-end;
 }
+
+/* P7a-1（#61）：独立归档区。灰 tab 从主栏挪进这里，要用时点开捞回来。
+   ⚠ 归档区是 #tab-bar 的**兄弟**（TabManager 自己插的），不是它的子元素 ——
+   主栏那条 tear-off 判定线（barEl 的右边界）对它没有意义，故抽屉里的 tab 不挂拖拽。 */
+.tab-archive {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 6px 6px;
+}
+.tab-archive-toggle {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--border, #3a3a3a);
+  border-radius: 4px;
+  color: var(--fg-dim, #9a9a9a);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 8px;
+}
+.tab-archive-toggle:hover {
+  color: var(--fg, #ddd);
+}
+.tab-archive-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}

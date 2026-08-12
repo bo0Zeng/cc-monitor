@@ -2920,3 +2920,98 @@ describe("F15 每行代价的现状基线", () => {
     ).toBe(1);
   });
 });
+
+// ===== P7a-1（#61）：独立归档区 =====
+//
+// `#61` 正文自陈「状态机已经有了，缺的是那个「口」」。判据钉的是**分流**本身：
+// 主栏里没有它 **且** 抽屉里有它 —— 两面都钉，否则「两边各渲一份」也能过。
+
+describe("P7a-1 独立归档区", () => {
+  let tm: TabManager;
+  let bar: HTMLElement;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    tm = makeTM();
+    bar = document.body.firstElementChild as HTMLElement;
+  });
+  // 生产里由 `scheduleTabBarRefresh` 经 rAF 调；测试里直接催一次。
+  const flushBar = (): void =>
+    (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
+
+  it("★ P7a1-Y1：归档的 tab 离开主栏、进抽屉，而且只有一份", () => {
+    tm.ensureTab("a", "/c", "p", 0, null);
+    tm.ensureTab("b", "/c", "p", 0, null);
+    tm.switchTo("a"); // a 是当前，b 不是
+    tm.archiveTab("b");
+    flushBar();
+
+    const inBar = [...bar.children].filter((e) => e.classList.contains("tab"));
+    const drawer = document.querySelector<HTMLElement>(".tab-archive-list")!;
+    const inDrawer = [...drawer.children].filter((e) => e.classList.contains("tab"));
+    expect(inBar).toHaveLength(1);
+    expect(inDrawer).toHaveLength(1);
+    // 两面都钉：主栏里没有它，抽屉里有它。只钉一面的话「两边各渲一份」也能过。
+    expect(inBar[0]).not.toBe(inDrawer[0]);
+    // 抽屉默认折叠，但整块要显（有东西可捞）。
+    expect(drawer.hidden).toBe(true);
+    expect(document.querySelector<HTMLElement>(".tab-archive")!.hidden).toBe(false);
+    expect(document.querySelector(".tab-archive-toggle")!.textContent).toContain("1");
+  });
+
+  it("★ P7a1-Y2：**当前 tab 绝不进抽屉**，哪怕它已归档", () => {
+    // 用户会遇到的顺序：正看着某个会话，它跑完了 ⇒ 当场归档。
+    // 照 status 无条件分流的话，它会从主栏消失、掉进折叠的抽屉 ⇒ 界面看起来空了、内容还在。
+    tm.ensureTab("a", "/c", "p", 0, null);
+    tm.switchTo("a");
+    tm.archiveTab("a");
+    flushBar();
+
+    const inBar = [...bar.children].filter((e) => e.classList.contains("tab"));
+    expect(inBar, "当前 tab 必须还在主栏").toHaveLength(1);
+    const drawer = document.querySelector<HTMLElement>(".tab-archive-list")!;
+    expect([...drawer.children].filter((e) => e.classList.contains("tab"))).toHaveLength(0);
+    // 它仍然是归档态（本件不碰状态机），只是没被挪走。
+    expect(peek(tm).tabs.get("a")!.status).toBe("archived");
+    // 一条都没进抽屉 ⇒ 整块不显（空抽屉只占地方）。
+    expect(document.querySelector<HTMLElement>(".tab-archive")!.hidden).toBe(true);
+  });
+
+  it("★ P7a1-Y2b：切走之后，那个归档 tab 才落进抽屉", () => {
+    tm.ensureTab("a", "/c", "p", 0, null);
+    tm.ensureTab("b", "/c", "p", 0, null);
+    tm.switchTo("a");
+    tm.archiveTab("a");
+    flushBar();
+    expect([...bar.children].filter((e) => e.classList.contains("tab"))).toHaveLength(2);
+    tm.switchTo("b");
+    flushBar();
+    const drawer = document.querySelector<HTMLElement>(".tab-archive-list")!;
+    expect([...drawer.children].filter((e) => e.classList.contains("tab"))).toHaveLength(1);
+  });
+
+  it("★ P7a1-Y3：抽屉里的 tab 不挂 tear-off 拖拽（那条判定线对它没意义）", () => {
+    tm.ensureTab("a", "/c", "p", 0, null);
+    tm.ensureTab("b", "/c", "p", 0, null);
+    tm.switchTo("a");
+    tm.archiveTab("b");
+    flushBar();
+    const drawer = document.querySelector<HTMLElement>(".tab-archive-list")!;
+    const chip = [...drawer.children].find((e) => e.classList.contains("tab")) as HTMLElement;
+    expect(chip).toBeTruthy();
+    // 在抽屉里按下左键 —— 不许起一轮拖拽（`drag` 是 TabManager 的内部状态）。
+    chip.dispatchEvent(
+      new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 10, bubbles: true }),
+    );
+    expect(
+      (peek(tm) as unknown as { drag: unknown }).drag,
+      "抽屉里按下不该起拖拽：主栏那条 tear-off 判定线对抽屉没有意义",
+    ).toBeFalsy();
+    // 对照组：主栏里的那个照常能起拖拽（别把功能修没了）。
+    const inBar = [...bar.children].find((e) => e.classList.contains("tab")) as HTMLElement;
+    inBar.dispatchEvent(
+      new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 10, bubbles: true }),
+    );
+    expect((peek(tm) as unknown as { drag: unknown }).drag).toBeTruthy();
+  });
+});
