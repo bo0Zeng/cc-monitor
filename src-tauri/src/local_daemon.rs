@@ -39,6 +39,16 @@ pub static LOCAL_BACKEND: std::sync::Mutex<Option<SuperviseHandle>> =
 /// 「停了还能起回来」就无从谈起。
 ///
 /// **已经在跑就不重复起**：`C8`① 是「每台机各一个」。
+///
+/// # ⚠ 诚实边界 11b：这里的「一个」只到「**一个 monitor 进程内一份**」
+///
+/// 判据是 `LOCAL_BACKEND`（进程内的 `Mutex<Option<_>>`）⇒ 同机**两个 monitor 进程**
+/// 仍然是两个 daemon，而且互相认不到。
+///
+/// ⚠ 补审 08-11 量到这条比原先登记的更糟：`tauri_plugin_single_instance` **只在
+/// `#[cfg(windows)]` 注册**（`lib.rs` 那处）⇒ **Linux/macOS 上两个 monitor 天然能并存**，
+/// 连那道兜底都没有。它们会撞同一个 `~/.cc-monitor/bin/.<name>.partial`（补审 C2）。
+/// ⇒ 真正的「每台机一个」要等 `P2d`（daemon 自己有监听口 + 起时认已有实例）。
 pub fn start_local_backend() -> Resolved {
     // ★★ **锁全程持有**〔D 阶段补审 08-11 修，原版是阻塞级缺陷〕。
     //
