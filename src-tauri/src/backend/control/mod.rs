@@ -11,7 +11,6 @@
 //! ⇒ **「渲染一条 shell 命令串」永远属于开终端的那一侧。** 这不是权宜之计，
 //! 也不是「将来还要搬去 daemon」—— 是它本来的归属地（P4a 摸底把这条理由换硬了）。
 
-pub mod host_facts; // P3t（C12）：宿主告诉 backend 的平台事实（backend 自己不问平台）
 pub mod ccm_invocation;
 pub mod daemon_kill;
 pub mod daemon_launch;

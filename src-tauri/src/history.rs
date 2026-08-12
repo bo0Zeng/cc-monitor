@@ -1236,6 +1236,24 @@ fn render_local_ccm(
     account: Option<&LaunchAccount>,
     tmux_name: Option<&str>,
 ) -> Result<String, String> {
+    // ★ 探测与渲染**分家**（P3t-Y3）：探测是这台机器的事实，渲染是纯函数。
+    // 合在一起时，判据的结论会跟着「跑测试的机器装没装 ccm」变 —— 而「本机恰好没装
+    // ⇒ 判据静默 return ⇒ 报绿」与「真的测过了」在输出上完全一样，那是「0 passed 不是绿」同族。
+    let probe = crate::ccm_probe::probe_local_ccm();
+    let caps: std::collections::BTreeSet<String> = probe.capabilities.iter().cloned().collect();
+    render_local_ccm_with(action, launcher, account, tmux_name, &caps, probe.installed)
+}
+
+/// 上一条的纯函数半 —— 能力集与「装没装」由调用方给，本函数不碰这台机器。
+#[cfg(not(windows))]
+fn render_local_ccm_with(
+    action: &LocalPsAction,
+    launcher: Option<&str>,
+    account: Option<&LaunchAccount>,
+    tmux_name: Option<&str>,
+    caps: &std::collections::BTreeSet<String>,
+    installed: bool,
+) -> Result<String, String> {
     use crate::backend::control::ccm_invocation as ci;
 
     let Some(name) = tmux_name.filter(|n| !n.is_empty()) else {
@@ -1279,12 +1297,6 @@ fn render_local_ccm(
         }
     };
 
-    // ★ 探测放在**所有纯逻辑拒绝之后**（P3t-Y2）：上面三格（没名字 / 未表态账号 /
-    // 具名账号）与这台机器装没装 ccm 毫无关系，先探等于让判据的结论跟着**跑测试的机器**变。
-    // 现在那三格是纯函数，判在哪台机器上都一样；只有真要渲染时才付这一次 `bash -lic`。
-    let probe = crate::ccm_probe::probe_local_ccm();
-    let caps: std::collections::BTreeSet<String> = probe.capabilities.iter().cloned().collect();
-
     let spec = ci::CliSpec {
         is_ssh: false,
         // ★★ 这里**刻意不读** `host_facts` 那个运行期全局量（P3t-Y2 订正 Y1 的形状）。
@@ -1314,7 +1326,7 @@ fn render_local_ccm(
         args: &[],
         ccm_path: "ccm",
     };
-    ci::render_ccm_invocation(&spec, &caps, probe.installed).map_err(|r| r.reason())
+    ci::render_ccm_invocation(&spec, caps, installed).map_err(|r| r.reason())
 }
 
 /// L1：按宿主平台把「本地拉起」送出去。
@@ -1979,13 +1991,68 @@ mod tests {
         );
         assert!(
             !rendered.contains("--tmux") && !rendered.split_whitespace().any(|w| w == "cct"),
-            "★ 本机 resume 的命令串里出现了会话容器（`--tmux` / `cct`）—— **现状变了**。\n\
-             这是好事，但本条钉的是「今天没有容器」这个事实（报告 B-2）：\n\
-             `launch.rs` 那边 stdio 全 null、不开终端模拟器，而 `ccm` 默认 `use_tmux=0`\n\
-             ⇒ 产出的是一个**无 tty、无 tmux**的进程。\n\
-             真要改成进容器，请连同 `launch.rs:120-122` 与 `src/fork-start.ts:87-88`\n\
-             那两条**互相矛盾且都与代码不符**的头注一起改，并把本条改成钉新行为。\n\
+            "★★ **回落那条路**产出了会话容器（`--tmux` / `cct`）—— 本条不该再绿。\n\
+             \n\
+             ⚠ **P3t-Y3 翻面**：本条**测什么没变，自陈换了**。它量的从来只是\n\
+             `local_launch_choice`，也就是 **P3t 之后的回落路**（渲染器拒了才走的那条）。\n\
+             P3t 之前那等价于「本机 resume 没有容器」；**现在不等价了** ——\n\
+             本机先过 `render_local_ccm`，渲得出来就带 `--tmux`。\n\
+             ⇒ 本条现在钉的是「**回落路仍是无容器的那条**」：它是诚实降级的落点，\n\
+             不是第二条并列的路（顺序由 `the_local_launch_tries_the_renderer_before_the_old_path` 钉）。\n\
+             真要连回落也进容器，请连同 `launch.rs` 与 `src/fork-start.ts` 那两条头注一起改。\n\
              实得：{rendered}"
+        );
+    }
+
+    /// ★★ **P3t-Y3 的翻面另一半 —— 不许翻成更弱的一条。**
+    ///
+    /// 上面那条钉「回落路没有容器」。光有它，**整个 P3t 被回退掉也不会红**
+    /// （回落路本来就该没容器，回退之后它还是没容器）。
+    /// ⇒ 必须再钉正面事实：**渲染得出来的时候，那条串真的带 `--tmux`**。
+    ///
+    /// 判据怎么失效（`P2s-Y3` / `P3 刀 0` 各栽过一次）：翻面时只留「旧事实不再成立」，
+    /// 丢掉「新事实成立」。所以这里同时钉容器名**就是传进去的那个**
+    /// —— 若它被换成 Rust 自己铸的名字，`U11` 那个撞名坑就回来了。
+    /// 判据自己给能力集 —— **不问这台机器**。
+    ///
+    /// = `CLI_REQUIRED_CAPS`（每次调用都要的静态能力）**加上两条 §37 维度能力**
+    /// （`account` 恒真维度要 / `model` 条件式维度要）。第一版只给了前者，
+    /// 当场报「维度 account 需要远端 ccm 能力 account」—— 那正是 §37 把两类能力
+    /// 分开的意义：静态那张表**不是**全集，照它拼会漏。
+    ///
+    /// 缺能力时该怎样，由 `ccm_invocation` 自己那两条（`MissingCap` / `DimensionNeedsCap`）钉；
+    /// 本文件只需要一个「能力齐」的输入。
+    #[cfg(not(windows))]
+    fn caps_of_a_current_ccm() -> std::collections::BTreeSet<String> {
+        crate::backend::control::ccm_invocation::CLI_REQUIRED_CAPS
+            .iter()
+            .map(|c| (*c).to_string())
+            .chain(["account".to_string(), "model".to_string()])
+            .collect()
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn the_rendered_local_command_really_carries_the_container() {
+        let name = "s1abcdef-cc";
+        let cmd = render_local_ccm_with(
+            &LocalPsAction::Resume("s1abcdef".into()),
+            None,
+            Some(&LaunchAccount::Base),
+            Some(name),
+            &caps_of_a_current_ccm(),
+            true,
+        )
+        .expect("账号 0 + 有名字 + 能力齐 ⇒ 必须渲染得出来");
+        assert!(
+            cmd.contains("--tmux"),
+            "渲出来的本机命令里没有 `--tmux` —— 那就还是**无 tty、无 tmux** 的老样子，\n\
+             用户敲进去的字会被脚本吃掉。实得：{cmd}"
+        );
+        assert!(
+            cmd.contains(name),
+            "容器名不是传进去的那个（`{name}`）—— 名字只许由前端 `mintTmuxName` 铸，\n\
+             在 Rust 里另铸一个就是 F13 修掉的撞名坑（见 ROADMAP `U11`）。实得：{cmd}"
         );
     }
 
@@ -2011,7 +2078,7 @@ mod tests {
         // ① 没名字 —— 名字只许 `mintTmuxName` 铸，Rust 这侧不许补默认值（F13 那个坑）。
         for no_name in [None, Some(""), Some("   ")].into_iter() {
             let no_name = no_name.filter(|n: &&str| !n.trim().is_empty());
-            let r = render_local_ccm(&act, None, Some(&base), no_name);
+            let r = render_local_ccm_with(&act, None, Some(&base), no_name, &caps_of_a_current_ccm(), true);
             assert!(
                 r.as_ref().is_err_and(|e| e.contains("tmux 会话名")),
                 "没有会话名时必须拒 —— 在 Rust 里铸一个名字就是 F13 修掉的撞名坑第三次。实得：{r:?}"
@@ -2020,7 +2087,7 @@ mod tests {
 
         // ② 未表态账号（`None`）—— 旧路发**空前缀**＝继承环境，而 CLI 的 account 维度恒真、
         //    没有「继承」这一态。映成 `--base` 会把用户 shell 里已有的账号悄悄清掉 ＝ #75 病灶。
-        let r = render_local_ccm(&act, None, None, Some("s1abcdef-cc"));
+        let r = render_local_ccm_with(&act, None, None, Some("s1abcdef-cc"), &caps_of_a_current_ccm(), true);
         assert!(
             r.as_ref().is_err_and(|e| e.contains("继承")),
             "未表态账号必须拒且理由是「说不出继承」—— 若它被渲染成 `--base`，\n\
@@ -2030,7 +2097,7 @@ mod tests {
         // ③ 具名账号 —— `LaunchAccount::Named` 只有 configDir、没有名字，而 CLI 只会
         //    `--account <名字>` ⇒ §35 短路。**理由必须是「说不出」，不是别的**：
         //    reason 是生产侧唯一的降级线索，换一个理由就是换一条诊断。
-        let r = render_local_ccm(&act, None, Some(&named), Some("s1abcdef-cc"));
+        let r = render_local_ccm_with(&act, None, Some(&named), Some("s1abcdef-cc"), &caps_of_a_current_ccm(), true);
         let reason = r.expect_err("具名账号今天渲染不出来 —— 若它成功了，请先确认 `--account` 的名字是从哪来的");
         assert!(
             reason.contains("account"),

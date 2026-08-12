@@ -126,8 +126,15 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
 ///   **产出的是一个无 tty、无 tmux 的进程**，不是「留在 tmux 里等 attach」。
 ///   ★ 同一条推理本仓在别处写对过：`doc/IPC-PROTOCOL.md` 逐字
 ///   「决定性的事实是 `stdin` 不接键盘（`stdin=DEVNULL`）—— 用户敲进去的字会被脚本吃掉」。
-///   ⚠ 现状由 `history.rs::the_local_resume_payload_has_no_session_container_today` 钉住；
-///   **要改成进容器，改那条判据的同时把本段与 `src/fork-start.ts` 那条一起改。**
+///   ★★ **P3t（2026-08-11）已经改了一半，本段随之更新。**
+///   `history.rs::launch_local` 现在**先过 CLI 渲染器**（`render_local_ccm`），渲得出来就带
+///   `--tmux` ⇒ ccm 走容器分支、会话留在 tmux 里有真 tty，本函数只负责把它拉起来。
+///   上面那句「产出的是一个无 tty、无 tmux 的进程」现在只描述**回落那条路**
+///   （渲染器拒了才走的 `build_local_posix_command`），由
+///   `the_local_resume_payload_has_no_session_container_today` 继续钉；
+///   正面事实由 `the_rendered_local_command_really_carries_the_container` 钉。
+///   ⚠ **今天生产上还到不了正面那条**：会话名要由前端 `mintTmuxName` 传下来（P3t-Y2b），
+///   而本机的「已占用名字」集合还不存在（ROADMAP `U11`）⇒ 名字恒为 `None` ⇒ 恒走回落。
 ///   功能后果（claude 在 `stdin=/dev/null` 下具体怎么表现）红线内**没实测**，是推的。
 /// - **脱离 app 的进程组**（`process_group(0)`）+ stdio 全 null：
 ///   否则子进程会跟着 app 的 Ctrl-C 一起走，也会把 app 的 stdio 占住。

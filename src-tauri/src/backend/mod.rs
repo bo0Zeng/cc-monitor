@@ -114,15 +114,6 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
          同一张表另有两个读者：daemon 的 `control/gate.rs` 与 `e2e/daemon-gate2-acceptance.sh`",
     ),
     (
-        "control/host_facts.rs",
-        "control",
-        "P3t（`C12`）：**宿主告诉 backend 的平台事实**（今天只有一条：本机是不是 POSIX）。\
-         `backend/` 不许有平台 cfg，而 CLI 渲染器要按「远端 / POSIX 本机 / Windows 本机」分三档 \
-         ⇒ 平台知识由 `lib.rs` 注入，与 `platform_fs::make_executable` 同一条纪律。\
-         缺省 **fail-closed**：没人设过就当不是 POSIX、照旧拒 —— 忘了接线只会让功能不生效，\
-         不会悄悄放行",
-    ),
-    (
         "control/launch_cli_parity.rs",
         "control",
         "上面那条 ccm 调用行与 TS 黄金串的跨语言逐字节对拍",
