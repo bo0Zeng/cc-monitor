@@ -1122,7 +1122,13 @@ export class PanoramaView implements OverlayHandle {
       }
     };
 
+    // ★ **代次守卫**〔D 阶段补审〕：两个按钮各自发一次异步请求，慢的那次回来会**盖掉**
+    // 快的那次的结果 —— 用户点了「影响面」却看见子图，而且没有任何提示。
+    // 同族的病本轮在 `P6b` 上刚修过（切机器时迟到的枚举覆盖新机器的清单）；
+    // 这个文件自己也早有先例（`this.searchSeq`）。
+    let gen = 0;
     const run = async (what: "subgraph" | "impact"): Promise<void> => {
+      const mine = ++gen;
       out.replaceChildren();
       const loading = document.createElement("div");
       loading.className = "panorama-edge-empty";
@@ -1131,11 +1137,16 @@ export class PanoramaView implements OverlayHandle {
       try {
         if (what === "subgraph") {
           const depth = clampDepth(Number(depthSel.value));
-          render(layerSubGraph(await api.subgraph(repo, symbol, depth), symbol), "（邻域为空）");
+          const sgv = await api.subgraph(repo, symbol, depth);
+          if (mine !== gen) return; // 期间点了别的，这次的结果作废
+          render(layerSubGraph(sgv, symbol), "（邻域为空）");
         } else {
-          render(layerImpact(await api.impact(repo, symbol)), "（没有反向可达的调用者）");
+          const imp = await api.impact(repo, symbol);
+          if (mine !== gen) return;
+          render(layerImpact(imp), "（没有反向可达的调用者）");
         }
       } catch (e) {
+        if (mine !== gen) return;
         out.replaceChildren();
         const err = document.createElement("div");
         err.className = "panorama-edge-empty";
