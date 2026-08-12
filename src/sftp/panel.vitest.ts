@@ -241,6 +241,75 @@ describe("F54 open(revealPath) 定位高亮", () => {
     expect(panelEl().querySelectorAll(".sftp-row-reveal").length).toBe(1);
   });
 
+  // ===== P6a：新建文件（issue #65）=====
+  //
+  // ★ 这三条钉的都是**命令有没有发出去**，不是「弹没弹提示」——
+  // 毁数据的是那条 `sftp_write_text`，不是提示。
+
+  /** 打开面板并把「新建文件」的输入固定成 `name`（`null` = 用户取消）。 */
+  async function openWithNewFileName(name: string | null): Promise<SftpPanel> {
+    const p = new SftpPanel();
+    await p.open(CFG, undefined, "/home/u/proj");
+    vi.spyOn(window, "prompt").mockReturnValue(name);
+    return p;
+  }
+  const clickNewFile = (): void => {
+    const btn = [...panelEl().querySelectorAll(".sftp-btn")].find(
+      (b) => b.textContent === "新建文件",
+    ) as HTMLButtonElement;
+    expect(btn, "头部没有「新建文件」按钮").toBeTruthy();
+    btn.click();
+  };
+  const writes = (): unknown[][] =>
+    invokeMock.mock.calls.filter((c) => c[0] === "sftp_write_text");
+
+  it("★ P6a-Y1：同名已存在 ⇒ 一条写命令都不发（新建不是覆盖）", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "sftp_list_dir") return Promise.resolve([ent("notes.md", false)]);
+      if (cmd === "sftp_stat") return Promise.resolve({ size: 42 }); // 存在
+      return Promise.resolve();
+    });
+    await openWithNewFileName("notes.md");
+    clickNewFile();
+    await new Promise((r) => setTimeout(r, 0));
+    // 毁数据的是这条命令 —— 它一次都不许发出去。
+    expect(writes()).toHaveLength(0);
+    // 反面自检：`stat` 必须真的被问过（否则本条是靠「什么都没做」蒙绿的）。
+    expect(invokeMock.mock.calls.some((c) => c[0] === "sftp_stat")).toBe(true);
+  });
+
+  it("★ P6a-Y2：不存在 ⇒ 写一个**空**文件，路径拼在当前目录下", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "sftp_list_dir") return Promise.resolve([]);
+      if (cmd === "sftp_stat") return Promise.reject(new Error("no such file")); // 不存在
+      return Promise.resolve();
+    });
+    await openWithNewFileName("new.txt");
+    clickNewFile();
+    await new Promise((r) => setTimeout(r, 0));
+    const w = writes();
+    expect(w).toHaveLength(1);
+    const args = w[0][1] as { path: string; content: string };
+    expect(args.path).toBe("/home/u/proj/new.txt");
+    // 逐个钉参数：只钉「发了一条写」的话，内容写成一个换行它照样绿，
+    // 而那就不是「新建空文件」了。
+    expect(args.content).toBe("");
+  });
+
+  it("★ P6a-Y3：名字空/全空白 ⇒ 连 `stat` 都不发", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "sftp_list_dir") return Promise.resolve([]);
+      return Promise.resolve();
+    });
+    await openWithNewFileName("   ");
+    invokeMock.mockClear(); // 只看点击之后发了什么
+    clickNewFile();
+    await new Promise((r) => setTimeout(r, 0));
+    // 「什么都没建」是**没有发生的事**，最容易写成恒真断言 ⇒ 两条命令都钉。
+    expect(invokeMock.mock.calls.filter((c) => c[0] === "sftp_stat")).toHaveLength(0);
+    expect(writes()).toHaveLength(0);
+  });
+
   it("revealName 一次性:重排(renderList 再跑)不再高亮", async () => {
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "sftp_list_dir" ? Promise.resolve([ent("b.txt", false)]) : Promise.resolve(),

@@ -110,6 +110,8 @@ export class SftpPanel implements OverlayHandle {
     header.appendChild(upload);
     const newDir = mkBtn("新建目录", () => void this.newDir());
     header.appendChild(newDir);
+    const newFile = mkBtn("新建文件", () => void this.newFile());
+    header.appendChild(newFile);
     const term = mkBtn("在此打开终端", () => this.openTerminalHere());
     header.appendChild(term);
     const pin = mkBtn("★ Pin", () => this.toggleBookmark());
@@ -360,6 +362,54 @@ export class SftpPanel implements OverlayHandle {
     await this.doWrite(() =>
       commands.sftp_mkdir({ cfg: this.cfg, path: joinPath(this.cwd, name.trim()) }),
     );
+  }
+
+  /**
+   * 新建一个**空文件**（issue #65）。
+   *
+   * # ★ 为什么它不能只是「调 `sftp_write_text` 写空内容」
+   *
+   * `sftp_write_text` **零存在性检查**：`guard_write` 只拒 Claude 数据源路径，随后直接
+   * `upload_atomic`（`.tmp` → 删旧 → rename）。⇒ 在一个已有 `notes.md` 的目录里点「新建文件」、
+   * 手滑打了同一个名字，**那份文件当场变成 0 字节，没有提示，不可撤销**。
+   *
+   * 对照隔壁的「新建目录」：`sftp_mkdir` 遇到同名由**服务端**报错，天然毁不了东西。
+   * 两个按钮并排、叫法一样，而危险程度差一个量级 —— 那正是最容易出事的形状。
+   *
+   * # 存在就**拒绝**，不是问「要覆盖吗」
+   *
+   * `C14`〔用 08-12〕那条纪律的另一面：**新建就是新建，不是「新建或覆盖」**。
+   * 而且真想覆盖的人有现成的路（点开那个文件、编辑、保存），那条路上的确认框会显示
+   * 字符数/字节数并写明「覆盖不可撤销」，比在这里临时补一个弹窗完整得多。
+   *
+   * # ⚠ 两条如实登记的边界
+   *
+   * · `sftp_stat` 抛错**不严格等于「不存在」**（也可能是不可读）—— 与 `uploadHere` 逐字同一个
+   *   近似。把不可读的路径当成「可以新建」是安全的：`upload_atomic` 会自己失败并 toast，毁不了东西。
+   * · `stat` 与 `write` 之间有**竞态**（这中间别人建了同名文件 ⇒ 仍会被覆盖）。今天无解，
+   *   要收得让后端出一条「不存在才写」的原语。
+   */
+  private async newFile(): Promise<void> {
+    if (!this.cfg) return;
+    const name = window.prompt("新建文件名:");
+    // 与 `newDir` 逐字同一条门：空名连 `stat` 都不发。
+    if (!name?.trim()) return;
+    const path = joinPath(this.cwd, name.trim());
+    let exists = false;
+    try {
+      await commands.sftp_stat({ cfg: this.cfg, path });
+      exists = true;
+    } catch {
+      exists = false; // stat 失败 = 不存在(或不可读),按可新建处理
+    }
+    if (exists) {
+      showActionFailureToast(
+        "同名已存在",
+        `${name.trim()} 已经在这个目录里了 —— 新建不会覆盖它。要改内容就点开它编辑。`,
+      );
+      return;
+    }
+    await this.doWrite(() => commands.sftp_write_text({ cfg: this.cfg, path, content: "" }));
   }
 
   private async rename(e: SftpEntry): Promise<void> {
