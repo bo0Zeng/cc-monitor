@@ -686,7 +686,27 @@ fn watch_loop(
             tracing::error!("watch failed for {}: {e}", sessions.display());
         }
     } else {
-        tracing::warn!("sessions dir does not exist: {}", sessions.display());
+        // ⚠⚠ **这一支是个真缺陷，08-13 实测复现过**〔`P0b` 查 `#60` 时逮到〕：
+        // 目录不存在 ⇒ 只打这一行 `warn!`，**然后再也不重试**。
+        // 而 `<claude_dir>/sessions/` 正是**用户第一次跑 claude 时才被创建**的
+        // ⇒ daemon 起得比它早，就**永远看不到 pidfile、永远不宣告会话**。
+        //
+        // 复现（帧的 `kind` 直方图）：
+        // · fixture 目录里**有** `sessions/` ⇒ `hello · line · session_added · tmux_sessions`
+        // · **没有** `sessions/`（其余一模一样）⇒ **只有** `hello · tmux_sessions`
+        //   —— 即便它随后被 fake-claude 建出来也不补发。
+        //
+        // ⚠ **不能靠「把目录建出来」修**：`<claude_dir>` 对我们是**只读**的（`INVARIANTS` 铁律）。
+        // 正确形状是**监视父目录**（`claude_dir` 本身）等它出现再挂上去，或按需重试 ——
+        // 那是一次行为改动，要 bump `BUILD_ID` + 重编内嵌，**没在发现它的那一拍顺手做**。
+        //
+        // ⚠ 射程：这是 `#60`（灰灯不出现）的**候选机制**，**不是**已证实的根因 ——
+        // 那次全链复现用的 fixture 里 `sessions/` 是**在**的，所以它解释不了那三跑。
+        tracing::warn!(
+            "sessions dir does not exist: {} —— **本进程不会再重试挂它**（见上方注释：\
+             它若稍后才被创建，本 daemon 将永远不宣告会话）",
+            sessions.display()
+        );
     }
 
     // B2 审计（`run_tmux_ls` 无超时 → 阻塞会冻结整个 reader）：`tmux ls` 一律跑在**一次性后台
@@ -4359,5 +4379,30 @@ mod tests {
             !session_alive(me, Some(real.wrapping_add(1))),
             "a mismatched start means the PID was reused → dead"
         );
+    }
+
+    /// `P0b`：**「目录不存在就永远不重试」这条缺陷的登记**〔08-13 实测复现〕。
+    ///
+    /// 本条**不是**在断言那是对的 —— 它钉的是**那条已知缺陷的说明还在**，
+    /// 因为下一个读到那两个 `else` 分支的人，第一反应会是「打个 warn 挺合理」。
+    /// 而实测告诉我们：`<claude_dir>/sessions/` 是**用户第一次跑 claude 时才建的**，
+    /// daemon 起得早一步，就**永远不宣告会话**。
+    ///
+    /// 复现（帧的 `kind` 直方图，其余条件一模一样）：
+    /// · 有 `sessions/` ⇒ `hello · line · session_added · tmux_sessions`
+    /// · 无 `sessions/` ⇒ **只有** `hello · tmux_sessions`
+    ///
+    /// ⚠ 修掉它之后**请连同这条判据一起改** —— 它守的是「缺陷说明在」，
+    /// 缺陷没了这条就该换成守新行为的那一条。
+    #[test]
+    fn the_missing_dir_branch_still_says_it_never_retries() {
+        let src = include_str!("watcher.rs");
+        for needle in ["本进程不会再重试挂它", "永远不宣告会话"] {
+            assert!(
+                src.contains(needle),
+                "那条缺陷说明被删了（少了「{needle}」）—— 删它之前请先修掉缺陷本身，\
+                 否则下一个人会以为「打个 warn 就够了」"
+            );
+        }
     }
 }
