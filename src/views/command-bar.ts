@@ -2,11 +2,26 @@
  * F84（#57）：键盘命令栏（⌘K/Ctrl-K 命令面板）。**加分项**，守只读铁律 + 北极星。
  *
  * body-level overlay（照 HistoryView 范式）：输入框 + 子串过滤命令列表 + 方向键选 + 回车执行 + Esc/点背景关。
- * **首刀只列只读命令**（开 overlay / 窗口操作 / 导航——切会话/切 tab）；resume/new-session/attach/kill/delete 等
- * **写/驱动动作首刀排除**（守北极星，延后须 danger + 二次确认）。命令列表由 main.ts 组装后注入（`listCommands`），
+ * **只列只读命令**（开 overlay / 窗口操作 / 导航——切会话/切 tab）；resume/new-session/attach/kill/delete 等
+ * **写/驱动动作排除**（守北极星）。命令列表由 main.ts 组装后注入（`listCommands`），
  * 复用既有 view.open()/dispatcher 目标 + F91 `snapshotSessions()` 喂「切到会话…」。
  *
  * `filterCommands` 纯函数抽出可测；无 fuzzy（子串够用、与既有过滤一致）。全 textContent，无 innerHTML。
+ *
+ * ## ★★ 写动作**不是待办，是裁过的「不做」**〔`U2` 用@08-11，`P6d` 08-12 补录〕
+ *
+ * 本注释原写「**首刀**排除……**延后**须 danger + 二次确认」——那写于裁定**之前**，当时准确。
+ * 但 2026-08-11 用户裁了：**不加**。⇒ 那两个词今天会骗人：「首刀 / 延后」读起来是**排期**
+ * （下一个人以为「配好 danger 样式就能加」），而事实是**这条路被裁掉了**。
+ * 差一个量级 —— 同 `#79` 的「上游还没有 vs 我们还没做」、skill 装卸面的「不许装 vs 还没写」。
+ *
+ * ⇒ 逐字记住裁定：`#57` 正文那句「输主机名**直接 ssh / attach**」**明确不做**，
+ * **不是漏做**。要翻案得先推翻 `U2`（住址：`.claude/planned-build/control-parity/ROADMAP.md` 的 `U2`），
+ * 那是**裁定**不是实现工作。
+ *
+ * ⚠ 如实登记本件的边界：命令栏这一半（只读命令面板）**F84 就交付了**，
+ * 本段是 `P6d` 唯一补的东西 —— 因为 `U2` 逐字要求「要写进 `P6d` 的诚实边界」，
+ * 而 `P6d` 的件文件当时**根本不存在**，那句指令在账本里悬了一天没人执行。
  */
 import { dispatcher } from "../keybindings/registry";
 
