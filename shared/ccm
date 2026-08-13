@@ -207,6 +207,7 @@ sid=""
 attach_name=""
 use_tmux=0
 tmux_name=""
+tmux_base=""
 account=""
 use_base=0
 cwd_spec=auto
@@ -243,6 +244,10 @@ while [ $# -gt 0 ]; do
     --resume=*)    action=resume; sid="${1#*=}" ;;
     --tmux)        use_tmux=1 ;;
     --tmux=*)      use_tmux=1; tmux_name="${1#*=}" ;;
+    # `--tmux-base=<基名>`：第三种取名模式（`C15`〔用@08-13「cc-bus收进ccm」〕）。
+    # 见下方 `derive_tmux_name` 上面那段「撞名策略按调用方分成三条」。
+    --tmux-base)   shift; need_val "--tmux-base" "${1:-}"; use_tmux=1; tmux_base="$1" ;;
+    --tmux-base=*) use_tmux=1; tmux_base="${1#*=}" ;;
     --account)     shift; need_val "--account" "${1:-}"; account="$1" ;;
     --account=*)   account="${1#*=}" ;;
     --base)        use_base=1 ;;
@@ -261,7 +266,7 @@ while [ $# -gt 0 ]; do
     --tmux-size=*) tmux_size="${1#*=}" ;;
     --print)       do_print=1 ;;
     --ccm-probe)
-      printf 'name=ccm\nversion=%s\nself=%s\ncapabilities=new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print,detach,tmux-size\nagents=claude,codex\n' \
+      printf 'name=ccm\nversion=%s\nself=%s\ncapabilities=new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print,detach,tmux-size,tmux-base\nagents=claude,codex\n' \
         "$CCM_VERSION" "$CCM_SELF"
       exit 0 ;;
     --version)     printf 'ccm %s\n' "$CCM_VERSION"; exit 0 ;;
@@ -279,6 +284,8 @@ case "$agent" in claude|codex) : ;; *) die "未知 agent: $agent（支持 claude
 # 反复消灭的那类病（写了个修饰、看起来生效了、实际被吃掉）。
 [ "$detach" = 1 ] && [ "$use_tmux" != 1 ] && die "--detach 需要配合 --tmux（非容器路径没有会话可 detach）"
 [ -n "$tmux_size" ] && [ "$use_tmux" != 1 ] && die "--tmux-size 需要配合 --tmux"
+# 两种取名模式互斥：一个说「就要这个名」，一个说「以这个为底、撞了就退让」，同时给等于没说清要哪个。
+[ -n "$tmux_name" ] && [ -n "$tmux_base" ] && die "--tmux=<名> 与 --tmux-base=<基名> 互斥（前者不避让、后者避让，同时给等于没说清要哪个）"
 # 尺寸会被拼进 `tmux new-session -x W -y H`，**必须**只允许纯数字，否则就是一条注入面。
 if [ -n "$tmux_size" ]; then
   # 不用 extglob（本脚本没开 shopt，且要保持可移植）：逐条排除法等价于「<数字>x<数字>」
@@ -330,11 +337,63 @@ derive_tmux_name() {
   if [ -n "$s" ]; then printf '%s-cc' "$s"; else printf 'session-cc'; fi
 }
 
-# 撞名策略**按调用方分成两条**（2026-07-31 修，用户实测报障后改）：
+# ===== 名字的形状校验（**唯一一份**）=====
+# 原先只长在「显式 `--tmux=<名>`」那条分支里。`C15` 加了 `--tmux-base` 之后，基名同样会
+# 原样变成会话名（不撞时逐字相同）⇒ 校验必须是**两条路共用的一份**，
+# 不然「显式名禁 `*`」而「基名放行 `*`」，等于给同一道门开了个后门。
+# 与前端 `isValidNewTmuxName` 同一套判据（`src/remote-launch.ts`）。
+validate_tmux_name() {
+  case "$1" in
+    ""|-*)        die "非法 tmux 会话名（空或以 - 开头）: '$1'" ;;
+    # ★ F15 在下面那行加了 `=`：**别创建一个主路杀不掉的名字。**
+    #   kill 的主路从 F04b 起走 daemon（`remote-daemon-proto/src/control/kill.rs`），它的形状门
+    #   逐字拒 `:` 与 `=`（「它们是 tmux 目标语法」），且**按设计不回落**（回落到 shell 路 =
+    #   把一次形状拒绝洗成另一条路的成功）。而这里原本只禁 `. : * ?`，加上 `--tmux=*` 的取值是
+    #   `${1#*=}`（剥到第一个 `=`）⇒ `ccm --tmux=proj=x` 能建出 `proj=x`，通道 B 还会给它写真
+    #   `@ccm_sid` ⇒ Gate 2 通过、正常出现在 monitor 列表里，而「结束会话」永远 `invalid_args`
+      #   ⇒ **那个会话在 UI 上杀不掉**（F04b 之前那条 SSH 串杀得掉它）。实测过：改之前
+    #   `ccm new --tmux=proj=x --print` 产的就是 `new-session -d -s 'proj=x'`。
+    # ⚠ 上面那句「与前端 `isValidNewTmuxName` 同一套判据」—— **F04b 之后曾经是假的**
+    #   （F04b 只给 TS 那份加了 `=`，跨轨钉也只读了 TS 那一份）。加上这个字符之后它重新成立，
+    #   并由 Rust 侧那条**遍历式**的创建路径登记表钉住（见 `daemon_kill.rs`）。
+    *[*?.:=]*)     die "非法 tmux 会话名（含 glob 或 tmux 目标语法 * ? . : =）: '$1'" ;;
+    *[[:cntrl:]]*) die "非法 tmux 会话名（含控制字符）: '$1'" ;;
+  esac
+}
+
+# ===== 撞名避让（**唯一一份**）=====
+# `$1` = 基名 → 回一个当下没被占用的名字（撞了退到 `-2/-3/...`）。
+# **只在真建会话时查**：`--print` 必须是**纯的**（F03 要拿它做渲染等价断言），不能依赖实时
+# tmux 状态。`--print` 展示基名；真跑时撞名会退让到 `-N`。
+# ⚠ U9a 2026-08-02 **确认这条纪律仍然有效、没有例外**：`CC_BUS_ID` 那次是靠**打印配方而不是
+#   打印值**（`BUS_ID_RECIPE`）来同时满足「说全」与「保持纯」的。避让为什么不能照办：配方要判的是
+#   「这个名字被占没被占」，那**必须**在真跑时查，而查到的结果会改变**名字本身** ——
+#   名字是黄金串的主体，不是可以推迟求值的一段 env。
+#   ⇒ 撞名避让归 `ccm-acceptance` 场景 5/5bis（真 tmux）管，见 `doc/INVARIANTS.md` §33a。
+avoid_name_collision() {
+  local n="$1" k=2
+  if [ "$do_print" != 1 ] && tmux has-session -t "=$n:" 2>/dev/null; then
+    while tmux has-session -t "=$1-$k:" 2>/dev/null; do
+      k=$((k+1))
+    done
+    n="$1-$k"
+  fi
+  printf '%s' "$n"
+}
+
+# 撞名策略**按调用方分成三条**（2026-07-31 定两条；`C15` 08-13 加第三条）：
 #
-#   `--tmux=<名>`（显式名）→ **不避让**，幂等接回。调用方（cc-monitor）自己算好了要哪个
+#   `--tmux=<名>`（显式名）→ **不避让**。调用方（cc-monitor）自己算好了要哪个
 #     会话（如灰会话 fresh resume 的 `cc-<sid8>-2`），CLI 再改一次就错了。
+#     ⚠ 这条 08-12 起也**不再幂等接回**：`P3sc` 改成撞名就 `exit 3` 响亮失败（`C14`：spawn 就是起）。
 #   `--tmux`（无名）    → **无条件新建**，撞名就退到 `-2/-3`。
+#   `--tmux-base=<基名>` → **调用方给底、ccm 避让**（`C15`〔用@08-13「cc-bus收进ccm」〕）。
+#     为什么需要第三条：cc-spawn 的名字规则是 `<basename>_cc`，与 ccm 的 `cc-<basename>`
+#     **不同**（cc-bus 的 id 就是这个名，`cc-whoami resolve` 与之对齐）⇒ 它用不了无名那条的派生。
+#     而它又必须避让（`P4b-Y2`：不复用 ≠ 不避让）⇒ 显式名那条的「撞了就失败」也不合用。
+#     ★ 关键在于：避让的实现从此**只有一份**，且住在**建会话的人**那里 ——
+#     调用方自己 `tmux has-session` 探一遍再把名字传进来，是把同一个事实算两遍
+#     （而且那两遍之间有窗口期：探完到真建之间别人可以插进来）。
 #
 # 原先两者共用「不避让 + 幂等接回」，理由是「同目录再开一次会产孤儿（实测踩过）」。
 # **那个理由只对显式名成立。** 复核（2026-07-31）：`src/launch-render-cli.ts:95` 显示
@@ -446,7 +505,10 @@ fi
 # 不然会另建一个 detached 会话、agent 跑在用户看不见的地方，而 `tmux attach` 报
 # "sessions should be nested with care" rc=1 → 用户原地不动、什么也没拿到（实测）。
 # cc-monitor / cc-bus 用户基本常驻 tmux，这条必须有。
-if [ "$use_tmux" = 1 ] && [ -n "${TMUX:-}" ] && [ -z "$tmux_name" ]; then
+# ⚠ `--tmux-base` 也算**给了名**（`C15` 08-13）：给基名的调用方（cc-spawn）明确要的是容器 ——
+#   它随后要读 `ccm-session=` 拿回名字去登记总线。把它归进「无名」会让它在 tmux 内**就地起**，
+#   于是既没有会话名可报、`--detach` 也落空 —— 正是下面那段头注在防的语义反转。
+if [ "$use_tmux" = 1 ] && [ -n "${TMUX:-}" ] && [ -z "$tmux_name" ] && [ -z "$tmux_base" ]; then
   # B02 审计重要-4：这条分支把 `use_tmux` 清零 → 不再走容器路径 → `--detach` /
   # `--tmux-size` 双双落空。对 `--detach` 尤其危险：调用方要的是"建完就返回"，
   # 拿到的却是**阻塞式 exec**（就地把当前 shell 换成 agent），语义完全相反。
@@ -459,51 +521,28 @@ fi
 
 if [ "$use_tmux" = 1 ]; then
   command -v tmux >/dev/null 2>&1 || die "未安装 tmux"
-  if [ -n "$tmux_name" ]; then
+  if [ -n "$tmux_base" ]; then
+    # ★ `--tmux-base=<基名>`（`C15`〔用@08-13「cc-bus收进ccm」〕）：**调用方给底、ccm 避让**。
+    # 形状校验与显式名**同一份**（`validate_tmux_name`）—— 基名会原样变成会话名（不撞时），
+    # 只校验显式名那条路等于给避让路开了个后门。
+    validate_tmux_name "$tmux_base"
+    tmux_name="$(avoid_name_collision "$tmux_base")"
+  elif [ -n "$tmux_name" ]; then
     # 显式 `--tmux=<名>` 是一条**创建**路径 → 过 INVARIANTS §31a 的第二道防线：
     # 禁 glob `*`/`?`（`kill-session -t 'a*a'` 实测会命中并杀掉 `alpha`）、禁 tmux 保留字
     # `.`/`:`（session:window.pane 分隔符）、禁前导 `-`（会被当成选项）、禁控制字符与空串。
-    # 与前端 `isValidNewTmuxName` 同一套判据（`src/remote-launch.ts`）。
-    case "$tmux_name" in
-      ""|-*)        die "非法 tmux 会话名（空或以 - 开头）: '$tmux_name'" ;;
-      # ★ F15 在下面那行加了 `=`：**别创建一个主路杀不掉的名字。**
-      #   kill 的主路从 F04b 起走 daemon（`remote-daemon-proto/src/control/kill.rs`），它的形状门
-      #   逐字拒 `:` 与 `=`（「它们是 tmux 目标语法」），且**按设计不回落**（回落到 shell 路 =
-      #   把一次形状拒绝洗成另一条路的成功）。而这里原本只禁 `. : * ?`，加上 `--tmux=*` 的取值是
-      #   `${1#*=}`（剥到第一个 `=`）⇒ `ccm --tmux=proj=x` 能建出 `proj=x`，通道 B 还会给它写真
-      #   `@ccm_sid` ⇒ Gate 2 通过、正常出现在 monitor 列表里，而「结束会话」永远 `invalid_args`
-      #   ⇒ **那个会话在 UI 上杀不掉**（F04b 之前那条 SSH 串杀得掉它）。实测过：改之前
-      #   `ccm new --tmux=proj=x --print` 产的就是 `new-session -d -s 'proj=x'`。
-      # ⚠ 上面那句「与前端 `isValidNewTmuxName` 同一套判据」—— **F04b 之后曾经是假的**
-      #   （F04b 只给 TS 那份加了 `=`，跨轨钉也只读了 TS 那一份）。加上这个字符之后它重新成立，
-      #   并由 Rust 侧那条**遍历式**的创建路径登记表钉住（见 `daemon_kill.rs`）。
-      *[*?.:=]*)     die "非法 tmux 会话名（含 glob 或 tmux 目标语法 * ? . : =）: '$tmux_name'" ;;
-      *[[:cntrl:]]*) die "非法 tmux 会话名（含控制字符）: '$tmux_name'" ;;
-    esac
+    validate_tmux_name "$tmux_name"
     # 显式名到此为止 —— **不做派生、不做避让**。调用方（cc-monitor）传显式名正是因为它
     # 自己算好了要哪个会话（如灰会话 fresh resume 的 `cc-<sid8>-2`），CLI 再改一次就错了。
   else
-    tmux_name="$(derive_tmux_name "$cwd")"
+    tmux_name="$(avoid_name_collision "$(derive_tmux_name "$cwd")")"
     # **无条件避让**：名字被占就退到 `-2/-3/...`，不问它是不是同一个目录。
     #
     # 这一条同时覆盖了原先那个更窄的判据（同名但异目录：派生规则会把 basename 全非 ASCII
     # 的目录一律塌成 `cc-session`，`~/文档` 与 `~/下载/测试` 同名，不避让会**接回前者里那个
     # claude**）—— 无条件避让是它的超集，故那段单独的 cwd 比对已删。
     #
-    # **只在真建会话时查**：`--print` 必须是**纯的**（F03 要拿它做渲染等价断言），
-    # 不能依赖实时 tmux 状态。`--print` 展示基名；真跑时撞名会退让到 `-N`。
-    # ⚠ U9a 2026-08-02 **确认这条纪律仍然有效、没有例外**：`CC_BUS_ID` 那次是靠
-    #   **打印配方而不是打印值**（`BUS_ID_RECIPE`）来同时满足「说全」与「保持纯」的。
-    #   避让为什么不能照办：配方要判的是「这个名字被占没被占」，那**必须**在真跑时查，
-    #   而查到的结果会改变**名字本身** —— 名字是黄金串的主体，不是可以推迟求值的一段 env。
-    #   ⇒ 撞名避让归 `ccm-acceptance` 场景 5/5bis（真 tmux）管，见 `doc/INVARIANTS.md` §33a。
-    if [ "$do_print" != 1 ] && tmux has-session -t "=$tmux_name:" 2>/dev/null; then
-      _n=2
-      while tmux has-session -t "=$tmux_name-$_n:" 2>/dev/null; do
-        _n=$((_n+1))
-      done
-      tmux_name="$tmux_name-$_n"
-    fi
+    # （`--print` 纯度与避让的时机纪律见 `avoid_name_collision` 头注 —— 那段随实现上提了。）
   fi
 
   # F11（unify-launch）：预信任 $cwd，免 claude/codex 起来卡在信任确认框数小时（detached
