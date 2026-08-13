@@ -270,6 +270,56 @@ pub async fn cc_bus_install_state() -> Result<CcBusInstallState, String> {
     install_state_in(&claude_dir)
 }
 
+/// ★★ 装出去的 `cc-spawn` **硬依赖新 `ccm`** —— 装之前先看一眼本机那份够不够新〔08-13〕。
+///
+/// # 为什么这条非有不可
+///
+/// `C15` 之后 `cc-spawn` 把命名避让/总线登记/台账全交给了 `ccm`，并在开头做**能力协商**：
+/// 缺 `detach` / `tmux-size` / `tmux-base` / `bus-register` 任一条就 `exit 2`。
+/// ⇒ **只装 cc-bus、不同步 `ccm`，会当场打断用户的 `cc-spawn`。**
+///
+/// 08-13 实测这台机器：`~/.local/bin/ccm --ccm-probe` 报的能力是
+/// `new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print`
+/// —— **四条新能力一条都没有**（它停在 B02 之前）。也就是说「装一下 cc-bus」这个动作
+/// 今天在这台机器上就会踩中。
+///
+/// ⚠ **只警告、不拦**：用户完全可能装完 cc-bus 紧接着就同步 `ccm`（顺序本来就该是
+/// ccm 先、cc-bus 后，但反过来也只是中间有个窗口）。拦住一个合法流程比漏报更糟。
+/// ⚠ 放在**命令层**而不是 `deploy_into` 里：后者是纯函数、被一堆单测直接调，
+/// 塞个子进程进去会让那些测试依赖「本机有没有 ccm」——那正是本仓一路在治的环境依赖型假绿。
+fn warn_if_local_ccm_too_old() {
+    // ⚠ **不自己起进程探** —— `ccm_probe::probe_with` 就是「本机 ccm 的能力集探测」，
+    //   已经在 `write_site_registry::SPAWNS` 里申报过、有超时、有 `name=ccm` 首行校验
+    //   （挡 PATH 里同名但无关的用户脚本）。首版我又写了一份 `Command::new(ccm)`，
+    //   **登记表当场逮住**（「会在用户机器上起一个进程，但没人申报」）——
+    //   而它把我引到了那个更要紧的事实：**共享原语早就有了，我只是没找**。
+    //   ★ 与 08-13 早些时候 `strip_hash_comment_lines` 那次是同一族。
+    // ⚠ 走 `probe_local_ccm_uncached` 而不是内层的 `probe_with`：**命令串是它的私事**
+    //   （`the_only_production_probe_command_is_the_constant` 钉着「生产侧唯一实参是那个常量」）。
+    //   把常量暴露出来给第二个调用方用，等于给那条判据开了个后门。
+    let probe = crate::ccm_probe::probe_local_ccm_uncached(std::time::Duration::from_secs(3));
+    if !probe.installed {
+        tracing::warn!("装 cc-bus：本机探不到 `ccm` —— 装出去的 cc-spawn 会报「找不到 ccm」");
+        return;
+    }
+    let missing: Vec<&str> = CC_SPAWN_NEEDS
+        .iter()
+        .copied()
+        .filter(|c| !probe.capabilities.iter().any(|x| x == c))
+        .collect();
+    if !missing.is_empty() {
+        tracing::warn!(
+            "装 cc-bus：本机 ccm 缺能力 {missing:?} ⇒ 装出去的 `cc-spawn` 会以「ccm 版本太旧」退出。\
+             **请把 `shared/ccm` 同步过去**（顺序：ccm 先、cc-bus 后）。"
+        );
+    }
+}
+
+/// `cc-spawn` 开头那段能力协商要的东西 —— **与 `shared/cc-bus/scripts/cc-spawn` 同一份清单**。
+/// 改那边就要改这里（`the_deploy_precheck_lists_what_cc_spawn_negotiates` 钉住两边一致）。
+const CC_SPAWN_NEEDS: &[&str] = &["detach", "tmux-size", "tmux-base", "bus-register"];
+
+
 /// `PS1`：把内嵌的 cc-bus 装到本机 `<claude_dir>/skills/cc-bus/`。
 ///
 /// ★ **用户显式动作**：本命令**只**由设置页那个按钮调用，绝不在启动/后台路径上跑
@@ -278,6 +328,7 @@ pub async fn cc_bus_install_state() -> Result<CcBusInstallState, String> {
 #[tauri::command]
 pub async fn deploy_local_cc_bus() -> Result<CcBusDeployReport, String> {
     let claude_dir = crate::paths::resolve_claude_dir().ok_or("找不到 claude 目录")?;
+    warn_if_local_ccm_too_old();
     deploy_into(&claude_dir)
 }
 
@@ -430,6 +481,37 @@ mod tests {
         assert!(
             !outside.0.join("cc-bus").exists(),
             "已经往围栏外写了 —— 那正是这道围栏要挡的"
+        );
+    }
+
+    /// ★★ 装前那道能力预检**列的东西必须与 `cc-spawn` 真正协商的一致**〔08-13〕。
+    ///
+    /// 两边是**同一个事实的两份表达**（Rust 的 `CC_SPAWN_NEEDS` 与 shell 里那行 `for _c in …`）。
+    /// 抽不成一份（一个是编译进 monitor 的常量、一个是要部署出去的 shell）⇒ 只能钉一致。
+    /// ⚠ 不一致的后果是**预检说没事、装完就坏**：漏列一条，缺那条能力的机器上
+    /// 装完 `cc-spawn` 直接 `exit 2`，而部署那步一声不吭地成功了。
+    #[test]
+    fn the_deploy_precheck_lists_what_cc_spawn_negotiates() {
+        let spawn = include_str!("../../shared/cc-bus/scripts/cc-spawn");
+        let line = spawn
+            .lines()
+            .find(|l| l.trim_start().starts_with("for _c in "))
+            .expect("`cc-spawn` 里那行能力协商不见了 —— 它是这条判据的另一半");
+        // 形如：`for _c in detach tmux-size tmux-base bus-register; do`
+        let listed: Vec<&str> = line
+            .trim()
+            .trim_start_matches("for _c in ")
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .split_whitespace()
+            .collect();
+        assert!(!listed.is_empty(), "解析出空清单 —— 抽取器坏了（本条此刻是空转的）");
+        assert_eq!(
+            listed, CC_SPAWN_NEEDS,
+            "装前预检的清单与 `cc-spawn` 真正协商的对不上。\n             \
+             左=cc-spawn 实际要的，右=Rust 侧 `CC_SPAWN_NEEDS`。\n             \
+             漏列一条 ⇒ 预检说没事、装完 `cc-spawn` 直接 exit 2，而部署那步一声不吭地成功了。"
         );
     }
 

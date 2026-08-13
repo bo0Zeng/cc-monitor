@@ -51,7 +51,8 @@ fn parse_probe_output(out: &str) -> CcmProbeResult {
 /// 同一个命令串，远端包进 ssh，本机直接交给 `bash -lic`。
 /// 抽成常量不是为了省字，是为了让「两侧探的是不是同一件事」这个问题**不必靠读两遍确认**
 /// （`the_local_and_remote_probe_ask_the_same_question` 钉住它只有一处定义）。
-const CCM_PROBE_CMD: &str = "command -v ccm >/dev/null 2>&1 && ccm --ccm-probe || printf 'NO_CCM\\n'";
+const CCM_PROBE_CMD: &str =
+    "command -v ccm >/dev/null 2>&1 && ccm --ccm-probe || printf 'NO_CCM\\n'";
 
 /// 本机探测结果的缓存。TTL 与前端 `ccm-probe.ts::CCM_PROBE_TTL_MS` 同为 5 分钟 ——
 /// 用户装完 ccm 不必重启 app，但也不必每次拉起都付一次 `bash -lic` 的钱。
@@ -125,7 +126,7 @@ const LOCAL_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 /// `Command::output()` 没有超时形态（std 不提供 `wait_timeout`），所以这里自己拼：
 /// stdout 交给一条读线程（不读会在管道写满时把子进程堵死），主线程按截止时间轮询 `try_wait`。
 #[cfg(not(windows))]
-fn probe_local_ccm_uncached(timeout: std::time::Duration) -> CcmProbeResult {
+pub(crate) fn probe_local_ccm_uncached(timeout: std::time::Duration) -> CcmProbeResult {
     probe_with(timeout, CCM_PROBE_CMD)
 }
 
@@ -261,9 +262,7 @@ mod tests {
         // ⚠ 上限要**跨过 rc 加载**（本机 `bash -lic` 实测 ~130ms）：给 50ms 的话子进程
         // 还没来得及吐字就被杀了，「半截输出」那一格永远构造不出来 —— 第三版夹具卡在这儿。
         // 800ms 足够它吐完首行 + 填充，又远小于下面 5s 那道断言。
-        let r = probe_local_ccm_uncached_for_test_sleep(
-            std::time::Duration::from_millis(800),
-        );
+        let r = probe_local_ccm_uncached_for_test_sleep(std::time::Duration::from_millis(800));
         let took = t0.elapsed();
         assert!(
             took < std::time::Duration::from_secs(5),
