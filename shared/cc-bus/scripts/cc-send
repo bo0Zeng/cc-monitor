@@ -23,6 +23,21 @@ from=$("$SELFDIR/cc-whoami" 2>/dev/null || echo unknown)   # 身份自动从 tmu
 mkdir -p "$BUS/inbox" "$BUS/state" "$BUS/log" "$BUS/queue"
 route_load_config
 
+# ★★ **收件人根本不存在时要说一句**〔08-13 实测〕
+#
+# 病:`to` 只过了字符白名单,没人问过「这个名字有人认领吗」。于是把 `planner` 打成 `planer`:
+#   $ cc-send planer "把结论发给 planner"
+#   已投递(兜底:cc-busd 未运行)-> planer          ← rc=0,bus.log 还记了 DELIVER
+# 消息**真的写进了** `inbox/planer.jsonl` —— 而那个收件箱**没有任何进程会读**
+#(`cc-list` 只列 agents.tsv,里面没有它;敲门也因为查不到 pane 而静默跳过)。
+# ⇒ 发信方被告知成功,收信方压根不存在,两侧都不会再提这件事。与滞留队列同一族。
+#
+# ⚠ **不拦截、只说话**:「先发后到」是正当用法(对方待会儿才 cc-register,届时 cc-recv
+#   读得到)。所以这里既不改退出码也不改投递,只在 stderr 上问一句名字是不是打错了。
+if ! awk -F'\t' -v id="$to" '$1==id{f=1} END{exit !f}' "$BUS/agents.tsv" 2>/dev/null; then
+  echo "cc-send: ⚠ '$to' 不在已登记名单里(cc-list 看不到它)——消息照发,但**今天没有进程会读它的收件箱**;名字打错了吗?" >&2
+fi
+
 ts=$(date -Iseconds)
 id="${from}-$(date +%s%N)-${RANDOM}"
 # 因果链自动接续:若 from 最近读过 to 的消息(lastread 存在且 id≠-),本条视为回复
