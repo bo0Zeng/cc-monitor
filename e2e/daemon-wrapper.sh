@@ -63,7 +63,18 @@ fi
 # ⚠ `stdbuf -oL` 不能省：不加的话 tee 到管道会变**块缓冲**，把帧攒住、改变时序。
 # ⚠ 不设就是**原样 exec**（与本改动之前逐字同行为）——默认路径一个字节不变。
 if [ -n "${CCM_E2E_FRAME_TAP:-}" ]; then
+  # ⚠⚠ **stderr 也要抄**〔第八拍 08-13〕：daemon 的 `tracing` 日志走 stderr，
+  #   而它正是唯一会说出「watch failed / sessions dir does not exist / 我在盯哪」的地方。
+  #   只抄 stdout 的那一版实测**问不出**「daemon 自己怎么看这件事」——
+  #   全链里它 hello 之后只发一帧就沉默，而沉默的理由只可能写在 stderr 上。
+  # ⚠ 落到**另一个文件**（`.err`），别与帧混在一起：帧那份要能直接按行解析。
+  # ⚠⚠ **必须是 POSIX 写法**：本脚本的 shebang 是 `#!/bin/sh`（本机 = dash）。
+  #   第一版用了 bash 的进程替换 `2> >(tee …)` —— 而我拿 `bash -n` 验的语法，**验错了 shell**：
+  #   `sh -n` 当场报 `Syntax error: redirection unexpected`，daemon 于是**根本没起来**
+  #   （两个 tap 都是 0 行，而我差点把「空 tap」读成「daemon 沉默」）。
+  #   ⇒ stderr 直接**追加重定向到文件**：不经 tee、不丢诊断，SSH 那侧本来也不读它。
   exec env CLAUDE_CONFIG_DIR="$CCM_E2E_CLAUDE_DIR" "$CCM_E2E_DAEMON" "$@" \
+    2>> "${CCM_E2E_FRAME_TAP}.err" \
     | stdbuf -oL tee -a "$CCM_E2E_FRAME_TAP"
 fi
 exec env CLAUDE_CONFIG_DIR="$CCM_E2E_CLAUDE_DIR" "$CCM_E2E_DAEMON" "$@"
