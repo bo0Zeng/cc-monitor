@@ -292,6 +292,27 @@ chk "含空格目录：台账仍是 4 列" \
 chk "含空格目录：台账第 2 列是那个目录" \
   "$(awk -F'\t' -v n="$SPNAME" '$1==n{print $2}' "$CC_BUS_HOME/spawned.tsv")" "$SPDIR"
 
+echo "[17] 【08-13】台账**写不进去**时要说话（磁盘满/只读的现实形态）"
+# ★ 整段登记是 best-effort（`|| true`）——那是对的（台账写不了不该挡住起会话），
+#   但**原来连 stderr 一起吞了**（`>/dev/null 2>&1`）⇒ 磁盘满 / 目录只读 / 文件只读
+#   全都变成**悄悄没有台账**。本仓一路在治的那族。
+#   ⇒ 改成**只吞 stdout**：这两个脚本成功时只往 stdout 说话（cc-register 打「已登记」、
+#   cc-spawned-record 一个字不打）⇒ 不丢诊断、也不吵。
+mkdir -p "$WORK/roproj"
+# 先播一行、再把台账文件设成只读 —— 这是「磁盘满」在测试里的可控替身。
+CCM_NO_PRETRUST=1 timeout 30 "$CCSPAWN" "$WORK/roproj" "第一个" > /dev/null 2>&1
+chmod a-w "$CC_BUS_HOME/spawned.tsv"
+CCM_NO_PRETRUST=1 timeout 30 "$CCSPAWN" "$WORK/roproj" "第二个" \
+  > "$WORK/out-ro.txt" 2> "$WORK/err-ro.txt"
+chmod u+w "$CC_BUS_HOME/spawned.tsv"
+chk "台账写不进去时 spawn 仍成功" "$(grep -c '^已 spawn: ' "$WORK/out-ro.txt")" "1"
+chk "且**说出了原因**（不是悄悄没有）" \
+  "$(grep -c '权限不够\|Permission denied' "$WORK/err-ro.txt")" "1"
+# 反向：正常路径不许多出噪声（放开 stderr 之后最容易出的回归）。
+CCM_NO_PRETRUST=1 timeout 30 "$CCSPAWN" "$WORK/roproj" "第三个" \
+  > /dev/null 2> "$WORK/err-ok.txt"
+chk "正常路径 stderr 仍为空" "$(wc -l < "$WORK/err-ok.txt")" "0"
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 if [ "$fail" -eq 0 ]; then echo "===== cc-spawn 收编验收全部通过 ====="; fi
