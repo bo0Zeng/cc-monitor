@@ -101,7 +101,10 @@ if [ -n "${CCM_E2E_FRAME_TAP:-}" ]; then
   # ★ 开跑先**自报家门**:哪个二进制、什么 build_id。上面那条自愈会换二进制,
   #   不报出来的话,一次跑完你无法回答「我刚才测的是谁」。
   {
-    echo "=== wrapper 起 daemon: $CCM_E2E_DAEMON"
+    # ⚠ **argv 必须一起报**〔08-13 实测教训〕：不报的话，tap 里一串「起 daemon」分不清是
+    #   **流模式 daemon 反复重起**（严重）还是**一次性子命令每 10s 跑一次**（正常，账号查询）
+    #   —— 两个诊断天差地别，而我第一版就在这上面读岔了一次。
+    echo "=== wrapper 起 daemon: $CCM_E2E_DAEMON  argv=[$*]"
     echo "    claude_dir=$CCM_E2E_CLAUDE_DIR  pid=$$  $(date -Iseconds)"
     "$CCM_E2E_DAEMON" --daemon-probe 2>/dev/null | head -1
   } >> "${CCM_E2E_FRAME_TAP}.err" 2>&1
