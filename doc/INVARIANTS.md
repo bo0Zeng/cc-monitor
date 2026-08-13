@@ -34,6 +34,20 @@
 
 **`sessions/` 必须留在 cc-acct-iso 的共享集**：daemon 靠 `<claude_dir>/sessions/<PID>.json` 判活并拿 pid，进而探测账号。若哪天把 `sessions/` 挪进隔离集，各账号的 pidfile 会散到各自 config-dir，cc-monitor 会看不见非默认账号的会话。
 
+**★★ 第 7 条例外：往 `<claude_dir>/skills/cc-bus/` 装 cc-monitor 自带的 skill（用户 2026-08-13 裁定「开」）**：
+`PS1` 摸底逐条读完上面那 6 条例外，**没有一条覆盖它** —— 于是它当时停成一条待裁（`U10b`）。
+用户 08-13 裁「开」。⇒ 本条是**例外**，不是澄清：它**真的往 `<claude_dir>` 写**。
+落点唯一：`<claude_dir>/skills/cc-bus/`（17 个文件，`include_bytes!` 内嵌自 `shared/cc-bus/`）。
+四个配套要求**一条都不许省**，实现在 `src-tauri/src/cc_bus_deploy.rs`：
+1. **用户显式动作** —— 只由设置页那个按钮调，**绝不**在启动/后台路径上跑；
+2. **独立 realpath 白名单** —— `fenced_dest`：`canonicalize` 之后必须仍在 `claude_dir` 底下，
+   挡「`skills` 是个指向别处的软链」；判据 `a_symlinked_skills_dir_is_refused` 钉着；
+3. **幂等** —— 逐文件比内容，一致就**一个字节都不写、也不备份**；
+4. **可撤销** —— 覆盖前把旧目录整个 `rename` 成 `cc-bus.bak-<ts>`（原子、不留半份）。
+⚠ 为什么值得开这个口子：不开的话，仓内那份 cc-bus 的修复**永远到不了本机**
+（`P4b` 删掉「spawn 复用活会话」那一刀实测就卡在这里 —— 两份差的正是它改的那 2 个文件）。
+⚠ `uninstallable` 仍是 `false`：**卸载没做**，如实声明。
+
 **P8a 插件面枚举是本约「读」面的又一次延伸（澄清，非例外/非松动）**：`src-tauri/src/plugins.rs` 为
 「有哪些 Claude Code marketplace」新增一条**纯只读**的本机查询（`list_plugin_marketplaces`），
 **零写入**、**不 shell out**、**不轮询**（按需一次）。它把本机读面从 `projects/` + `sessions/`

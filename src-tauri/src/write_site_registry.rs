@@ -288,6 +288,25 @@ mod tests {
           ③ 删不掉就算了，**清扫失败绝不挡住释放**。\
           ★ 为什么会有残骸：临时名从固定名改成**带 pid**（防两个 monitor 写同一个 `.partial`）之后，\
           崩掉的那些不会再被下一次覆盖 ⇒ 得自己收。"),
+        // ── PS1：把内嵌的 cc-bus 装到 `<claude_dir>/skills/cc-bus/`。**这是安装动作**。
+        ("cc_bus_deploy.rs", "deploy_into", Some("cc-bus"),
+         "写 `<claude_dir>/skills/cc-bus/` 的 17 个文件（内嵌自 `shared/cc-bus/`）。\
+          ⚠ 这是本仓**第一处往 `<claude_dir>` 写的地方** —— 只读铁律原本禁它，\
+          `U10b`〔用@08-13〕裁「开」之后写成 `INVARIANTS` 的**第 7 条例外**，四个配套一条不省：\
+          ① **用户显式动作**（只由设置页按钮调，绝不在启动/后台路径上跑）；\
+          ② **独立 realpath 白名单**（`fenced_dest`：canonicalize 后必须仍在 claude_dir 下，\
+             挡「skills 是指向别处的软链」）；\
+          ③ **幂等**（逐文件比内容，一致就一个字节都不写、也不留备份）；\
+          ④ **可撤销**（覆盖前把旧目录整个 rename 成 `cc-bus.bak-<ts>`）。",
+        ),
+        ("cc_bus_deploy.rs", "fenced_dest", None,
+         "`mkdir -p <claude_dir>/skills` —— 只为**建出围栏要归一的那一层**（`canonicalize` 需要\
+          路径真实存在）。**不是安装动作**：它一个内容文件都不写；真正的安装在 `deploy_into`。\
+          ⚠ 它同时是那道围栏本身：归一之后必须仍在 `claude_dir` 下，否则**拒收**。"),
+        ("cc_bus_deploy.rs", "backup_existing", None,
+         "把已装的 `cc-bus` 整个 `rename` 成 `cc-bus.bak-<ts>`。**不是安装动作**，是它的\
+          **可撤销**那一格（`U10b` 第 7 条例外的四个配套之一）。\
+          ⚠ 只在**内容确有变化**时才做：全一致时不备份，否则每点一次就多一份垃圾备份。"),
         // ── 构建期写盘：**不碰用户既有环境**，只往 `OUT_DIR` 放构建产物。
         // 单列在这里是因为它此前**整个在扫描面之外**（08-08 并入），
         // 而它确实在开发者机器上写文件 —— 「不是安装动作」得由人说出来，不是靠没人看见。

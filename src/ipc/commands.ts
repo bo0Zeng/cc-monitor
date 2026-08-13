@@ -82,6 +82,7 @@ import type { CcmProbeResult } from "../generated/CcmProbeResult";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DriftFaceReport } from "../generated/DriftFaceReport";
 import type { MarketplaceSurvey } from "../generated/MarketplaceSurvey";
+import type { CcBusDeployReport } from "../generated/CcBusDeployReport";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 // **panorama 一族的返回类型指向 `src/panorama/types.ts` 的手写类型，不是生成物。**
 // 不是漏了——那 10 个类型（`Overview`/`NodeView`/`SubGraph`/`Edge`/`ImpactSet`/`Symbol`/
@@ -675,6 +676,10 @@ export const commands = {
   // ⚠ 它回答的是「有哪些 marketplace / 它**声明**了多少插件」，
   // **不是**「装了/启用了哪些插件」—— 后者今天在盘上没有真相源（待决 `U10d`）。
   list_plugin_marketplaces: () => invoke<MarketplaceSurvey>("list_plugin_marketplaces"),
+  // PS1：把内嵌的 cc-bus 装到 `<claude_dir>/skills/cc-bus/`。
+  // ⚠ **只读铁律的第 7 条例外**（`U10b` 用@08-13 裁「开」）⇒ 它是本仓**唯一**往
+  // `<claude_dir>` 写的口子，必须由**用户显式点击**触发，绝不放进任何自动路径。
+  deploy_local_cc_bus: () => invoke<CcBusDeployReport>("deploy_local_cc_bus"),
   // U8c-2c-2：`ccm 调用行`改由 Rust 渲染（`backend::control::ccm_invocation`）。
   // **`ok:false` 不是错误，是诚实降级** —— 调用方拿着 `reason` 去走兜底渲染器（§33）。
   render_ccm_launch: (args: { req: CliRenderRequest }) =>
