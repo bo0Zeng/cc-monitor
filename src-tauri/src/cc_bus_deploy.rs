@@ -533,6 +533,53 @@ mod tests {
         );
     }
 
+    /// ★ 落点被一个**普通文件**占着（用户手滑 / 旧版留下的残骸）〔08-13 复核〕。
+    ///
+    /// 两条性质一起钉，因为它们**互相制约**：
+    /// · 状态必须说 `NotInstalled` —— 说 `UpToDate` 就是骗人，那颗按钮会写着「已是最新」
+    ///   而盘上根本没有 cc-bus（`PS2` 头注逐字：把「装了旧版」说成「已装」⇒ 没人会去点）；
+    /// · 部署必须**先备份再替换** —— 直接删掉用户那个文件是不可逆的。
+    #[test]
+    fn a_regular_file_at_the_destination_is_not_installed_and_gets_backed_up() {
+        let d = tmpdir("file-at-dest");
+        std::fs::create_dir_all(d.0.join("skills")).unwrap();
+        std::fs::write(d.0.join("skills/cc-bus"), b"i am a file, not a dir").unwrap();
+        assert_eq!(
+            install_state_in(&d.0).expect("查状态"),
+            CcBusInstallState::NotInstalled,
+            "落点是**文件**时说成「已装/最新」就是骗人 —— 那颗按钮会写着已是最新，而盘上没有 cc-bus"
+        );
+        let r = deploy_into(&d.0).expect("装");
+        assert!(r.written > 0, "该装的一个都没装");
+        let bak = r.backup.expect("覆盖用户那个文件之前**必须**留备份（不可逆动作的底线）");
+        assert_eq!(
+            std::fs::read_to_string(&bak).expect("备份读得回来"),
+            "i am a file, not a dir",
+            "备份里不是原来那个文件的内容 —— 那等于没备份"
+        );
+    }
+
+    /// ★ `skills/` **不可写**（只读目录 / 磁盘满的可控替身）〔08-13 复核〕。
+    ///
+    /// ⚠ 必须是 `Err` 而不是「装了 0 个文件的 Ok」：后者会让 UI 报「已装到 …（写了 0 个）」，
+    /// 又一次「假成功比失败更坏」。
+    #[test]
+    fn an_unwritable_skills_dir_fails_loudly() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tmpdir("ro-skills");
+        let skills = d.0.join("skills");
+        std::fs::create_dir_all(&skills).unwrap();
+        std::fs::set_permissions(&skills, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let r = deploy_into(&d.0);
+        // 先恢复权限再断言 —— 否则失败时 `TmpDir::drop` 删不掉，留一地垃圾。
+        std::fs::set_permissions(&skills, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let e = r.expect_err("`skills/` 不可写时必须报错，不许返回「写了 0 个」的 Ok");
+        assert!(
+            e.contains("Permission denied") || e.contains("失败"),
+            "错误里要留下**原因**，别只说一句「装不了」。实得：{e}"
+        );
+    }
+
     /// ★ 装完就能跑：`scripts/` 下的必须可执行。
     #[cfg(unix)]
     #[test]
