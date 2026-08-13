@@ -48,6 +48,7 @@
     "test:cc-spawn-uplift": "bash e2e/cc-spawn-uplift.sh",
     "test:ccm-print-parity": "bash e2e/ccm-print-parity.sh",
     "test:usage-probe": "bash e2e/usage-probe-acceptance.sh",
+    "gate": "bash scripts/gate.sh",
     "verify:committed": "bash scripts/verify-committed-state.sh",
     "test:daemon-fork": "bash e2e/daemon-fork-session.sh",
     "test:daemon-sessions-rewatch": "bash e2e/daemon-sessions-rewatch.sh",
