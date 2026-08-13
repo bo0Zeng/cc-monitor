@@ -1168,7 +1168,7 @@ mod tests {
         ];
         /// 静态计数不是那个量的代理的套件 —— `(脚本名, 助手, 当日静态数, CI 地板)`。
         const NO_STATIC_SIGNAL: &[(&str, &str, usize, usize)] = &[
-            ("cc-spawn-uplift.sh", "-", 0, 35),
+            ("cc-spawn-uplift.sh", "-", 0, 39),
             ("ccm-rbind-title.sh", "ok", 0, 8),
             ("daemon-gate2-acceptance.sh", "ok", 3, 36),
             ("graylight-daemon-frames.sh", "ok", 9, 12),
