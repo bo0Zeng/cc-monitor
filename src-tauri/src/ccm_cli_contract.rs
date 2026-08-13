@@ -593,4 +593,57 @@ mod tests {
             "报错必须**带上是哪个名字** —— 不带名字的报错等于没报：{fail_branch}"
         );
     }
+
+    /// `P4b①` 的前置：**建会话的人要把会话名说出来**〔`C15` 08-13〕。
+    ///
+    /// # 为什么这是「收进 ccm」的第一块砖
+    ///
+    /// `C15` 要把 cc-bus 的三件（命名避让 / 总线登记 / 台账）收进 `ccm`。
+    /// 而**第一件搬走的瞬间，调用方就不知道会话叫什么了** —— `cc-spawn` 今天是
+    /// 自己算出 `$name` 再拿它去 `cc-register`、写 `spawned.tsv`、打提示。
+    /// ⇒ 名字必须由**建它的人**报出来，否则同一个事实会被两处各算一遍
+    /// （本仓一路在收的那一族）。
+    ///
+    /// # 判据钉三件
+    ///
+    /// ① 那行**在**；② 形状可解析（`ccm-session=`）；
+    /// ③ **只在 `--detach` 时打**（不 detach 那条紧接着 `exec` 进 attach，
+    ///    stdout 归被 attach 的程序，插一行会污染用户屏幕）。
+    #[test]
+    fn ccm_reports_the_session_name_it_created() {
+        let ccm = include_str!("../../shared/ccm");
+        let line = ccm
+            .lines()
+            .find(|l| !l.trim_start().starts_with('#') && l.contains("ccm-session="))
+            .expect("`ccm` 必须把建出来的会话名报出来 —— 否则 `C15` 的三件一件都搬不动");
+        assert!(
+            line.contains("$detach") && line.contains("= 1"),
+            "那行必须**只在 `--detach` 时**打：不 detach 那条随后 `exec` 进 attach，\
+             往 stdout 插一行会污染用户屏幕。实得：{line}"
+        );
+        // ③ 位置：必须排在 `exec bash -c` **之前** —— exec 之后这个进程就没了。
+        // ⚠ **按可执行行的行号比，不用 `find` 找第一处**：首版就栽了 —— `find` 命中的是
+        //   我自己写的**注释**（它比代码行更靠前/更靠后都可能），于是位置断言指的是别人。
+        //   本仓给这一族起过名字：「匹配单位比事实小」/「第一处命中是注释」，
+        //   `base-flag-contract-guard` 头注里逐字记着同一次教训。
+        let code_lines: Vec<(usize, &str)> = ccm
+            .lines()
+            .enumerate()
+            .filter(|(_, l)| !l.trim_start().starts_with('#'))
+            .collect();
+        let at = code_lines
+            .iter()
+            .find(|(_, l)| l.contains("ccm-session="))
+            .map(|(i, _)| *i)
+            .expect("上面已确认存在");
+        let exec_at = code_lines
+            .iter()
+            .find(|(_, l)| l.contains("exec bash -c"))
+            .map(|(i, _)| *i)
+            .expect("找不到那句 exec —— 抽取器坏了");
+        assert!(
+            at < exec_at,
+            "报名字那行排到了 `exec` 后面 —— exec 之后进程已被替换，永远打不出来"
+        );
+    }
 }

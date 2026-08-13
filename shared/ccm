@@ -671,6 +671,19 @@ if [ "$use_tmux" = 1 ]; then
   [ "$detach" = 1 ] || seq="$seq; tmux attach -t $t"
 
   if [ "$do_print" = 1 ]; then printf '%s\n' "$seq"; exit 0; fi
+  # ★★ 〔`P4b①` 08-13，`C15` 的前置〕**把最终会话名报出来**。
+  #
+  # 为什么非有不可：`C15` 要把 cc-bus 那三件（命名避让 / 总线登记 / 台账）收进 `ccm`，
+  # 而**第一件搬走的瞬间，调用方就不知道会话叫什么了** —— cc-spawn 今天是自己算出
+  # `$name` 再拿它去 `cc-register`、写 `spawned.tsv`、打提示。
+  # ⇒ 名字必须由**建它的人**说出来，否则「谁建的谁知道」这个事实会被拆成两处各算一遍
+  #  （而那正是本仓一路在收的「同一个事实两份实现」）。
+  #
+  # 形状：`ccm-session=<名>` 一行到 **stdout**，机器可解析（`sed -n 's/^ccm-session=//p'`）。
+  # ⚠ 只在 `--detach` 时打：不 detach 的那条路紧接着 `exec` 进 attach，
+  #   stdout 归被 attach 的程序，往里插一行会污染用户屏幕。
+  # ⚠ 排在 `exec` **之前** —— exec 之后这个进程就不存在了，再打就没机会了。
+  [ "$detach" = 1 ] && printf 'ccm-session=%s\n' "$tmux_name"
   exec bash -c "$seq"
 fi
 
