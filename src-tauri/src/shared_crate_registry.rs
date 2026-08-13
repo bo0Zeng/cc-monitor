@@ -866,6 +866,21 @@ mod tests {
     /// 而后四条确实自 `1eeb4bf` 起零执行（`ci.yml` 只在 push/PR 触发，停推后没跑过）。
     /// 本条守的是「链还连着」，**不是**「它们跑过了」——两件事别混。
     #[test]
+    /// ⚠⚠ **`ROADMAP §5 3x`「七条 `#[ignore]` 执行次数为零」这条账，08-13 已不再成立**：
+    /// 本轮把触发脚本一条条真跑了，逐条读数（每次都对照用户真实 server，**9 个会话逐字未变**）：
+    ///
+    /// | 触发脚本 | 读数 | 带动的 `#[ignore]` |
+    /// |---|---|---|
+    /// | `local-backend-supervise.sh` | **7 过 / 0 败** | **4 条** |
+    /// | `tmux-guarded-acceptance.sh` | **14 过 / 0 败** | 1 条（`emit_guarded_commands_for_e2e`） |
+    /// | `usage-probe-acceptance.sh` | **11 过 / 0 败** | 2 条（F08 段 + 命令串产出） |
+    ///
+    /// ⇒ **7 条里 7 条都跑过了**（`local_backend` 那 4 条此前一次都没跑过 ——
+    /// 其中 `the_local_tmux_frames_really_land_in_the_ledger` **首跑就是红的**，
+    /// 病根是「测试与 daemon 不在同一台 tmux server」，已修，见 `P3 §0h-2`）。
+    ///
+    /// ★ 「触发者登记在册」与「真的有人跑」是两件事 —— 本条只守前者，
+    /// 后者靠人真跑。**别把这段读成「以后会自动跑」**：它们仍不在 CI 里（要真 tmux/真进程）。
     fn every_ignored_test_still_has_someone_who_triggers_it() {
         /// 不由 e2e 驱动、**刻意手动**的，逐条写清谁在什么时候跑它。
         const MANUAL: &[(&str, &str)] = &[(
