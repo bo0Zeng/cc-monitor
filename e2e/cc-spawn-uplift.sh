@@ -313,6 +313,33 @@ CCM_NO_PRETRUST=1 timeout 30 "$CCSPAWN" "$WORK/roproj" "第三个" \
   > /dev/null 2> "$WORK/err-ok.txt"
 chk "正常路径 stderr 仍为空" "$(wc -l < "$WORK/err-ok.txt")" "0"
 
+echo "[18] 【08-13】边界：cc-bus 脚本**不可执行** · 初始任务**超长**"
+# ★ 这两格钉的都是**失败面**——`C15` 那批新代码的失败路径基本没被真跑过，
+#   而失败面正是「假成功」最爱藏的地方（本轮已在这条路上逮到三次）。
+TB="$(mktemp -d)"
+cp "$REPO/shared/cc-bus/scripts/cc-register" "$REPO/shared/cc-bus/scripts/cc-spawned-record" "$TB/"
+chmod -x "$TB/cc-spawned-record"
+chk "台账脚本不可执行 ⇒ 明说「不进 spawn 台账」" \
+  "$(CC_BUS_SCRIPTS="$TB" bash "$REPO/shared/ccm" new --tmux-base=q --detach --bus-register \
+      --print --cwd /tmp 2>&1 >/dev/null | grep -c '不进 spawn 台账')" "1"
+chmod -x "$TB/cc-register"
+chk "连定位用的 cc-register 也不可执行 ⇒ 明说「没有登记」" \
+  "$(CC_BUS_SCRIPTS="$TB" bash "$REPO/shared/ccm" new --tmux-base=q --detach --bus-register \
+      --print --cwd /tmp 2>&1 >/dev/null | grep -c '没有登记')" "1"
+rm -rf "$TB"
+# 超长任务：**干净失败**（rc≠0、零会话、零台账），不是假成功。
+# ⚠ 上界是内核的 `MAX_ARG_STRLEN` = 128 KiB（131072）——实测 131000 仍 OK、131072 报 E2BIG。
+#   这不是我们能修的东西（单个 argv 的硬上限），能保证的是**失败得干净**。
+BIGTASK="$(head -c 150000 /dev/zero | tr '\0' 'x')"
+mkdir -p "$WORK/big"
+set +e
+CCM_NO_PRETRUST=1 timeout 30 "$CCSPAWN" "$WORK/big" "$BIGTASK" > "$WORK/out-big.txt" 2>&1
+big_rc=$?
+set -e
+chk "超长任务：退出码非 0" "$([ "$big_rc" -ne 0 ] && echo yes || echo no)" "yes"
+chk "超长任务：没有留下会话" "$(tmux ls -F '#{session_name}' 2>/dev/null | grep -c '^big_cc' || true)" "0"
+chk "超长任务：没有写台账" "$(grep -c '^big_cc' "$CC_BUS_HOME/spawned.tsv" 2>/dev/null || true)" "0"
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 if [ "$fail" -eq 0 ]; then echo "===== cc-spawn 收编验收全部通过 ====="; fi
