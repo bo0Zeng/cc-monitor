@@ -220,12 +220,25 @@ BUS_ID_RECIPE='if [ -n "${TMUX:-}" ]; then _ccm_bus="$(tmux display-message -p "
 #
 # ⚠ **`--print` 仍然是纯的**：吐的是**配方**（一段常量字符串），不是查找**结果** ——
 #   与 `BUS_ID_RECIPE` 同一条纪律（U9a 2026-08-02 复核过它没有例外）。
+# ★★ **问 daemon 要加超时**〔08-13 实测〕：daemon 挂住时 `ccm resume` **永远转圈**
+#（实测 12s 掐断才停）。`P4e` 之前这条路只在 cc-monitor 注入 env 时才活；
+# 之后 ccm **自己会找到** daemon ⇒ 这条从「偶发」变成「日常」。
+#
+# ★ Rust 侧**为同一件事早就立过超时**，`ccm_probe.rs` 逐字：
+#「没有上限的话，用户点一次「恢复」就是**永远转圈、且不再有任何本机会话拉得起来**」。
+# ⇒ shell 侧补上同一条纪律，别让两侧对同一个风险有两种态度。
+#
+# ⚠ `timeout` 不是每台机都有（ccm 会被部署到任意远端）⇒ **有就用、没有就退回裸调**：
+#   退回时的行为与今天逐字相同（不引入新失败面），代价写在这儿：那种机器上仍可能转圈。
 DAEMON_BIN_RECIPE='_ccm_db=""; if [ "${CCM_NO_DAEMON:-}" != 1 ]; then for _ccm_x in "${CCM_DAEMON_BIN:-}" "$HOME/.cc-monitor/bin/cc-monitor-remote" "$(command -v cc-monitor-remote 2>/dev/null)"; do if [ -n "$_ccm_x" ] && [ -x "$_ccm_x" ]; then _ccm_db="$_ccm_x"; break; fi; done; unset _ccm_x; fi;'
 
 resolve_from_daemon() {   # $1=sid → stdout: daemon 给的 command 串（拿不到就空）
   eval "$DAEMON_BIN_RECIPE"
   [ -n "$_ccm_db" ] || { printf ''; return 0; }
-  printf '{"sessionId":"%s"}' "$1" | "$_ccm_db" --resolve 2>/dev/null \
+  # 见上方 `DAEMON_BIN_RECIPE` 头注那段「问 daemon 要加超时」：有 `timeout` 就套上，没有就裸调。
+  _to="$(command -v timeout >/dev/null 2>&1 && printf 'timeout 3 ' || true)"
+  # shellcheck disable=SC2086  # $_to 要么空、要么是 `timeout 3`，**有意不 quote**
+  printf '{"sessionId":"%s"}' "$1" | $_to "$_ccm_db" --resolve 2>/dev/null \
     | grep -o '"command":"[^"]*"' | head -1 | cut -d'"' -f4
   return 0
 }
@@ -239,7 +252,7 @@ resolve_recipe() {
   local sid_json="{\"sessionId\":\"$1\"}"
   # `P4e`：查找规则**只有一份**（`DAEMON_BIN_RECIPE`）—— 这里原样吐出它，真跑那侧 eval 它。
   printf '%s' "_ccm_c=\"\"; $DAEMON_BIN_RECIPE if [ -n \"\$_ccm_db\" ]; then"
-  printf '%s' " _ccm_c=\"\$(printf '%s' $(sq "$sid_json") | \"\$_ccm_db\" --resolve 2>/dev/null"
+  printf '%s' " _ccm_c=\"\$(printf '%s' $(sq "$sid_json") | \$(command -v timeout >/dev/null 2>&1 && printf 'timeout 3 ') \"\$_ccm_db\" --resolve 2>/dev/null"
   printf '%s' " | grep -o '\"command\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)\"; fi;"
   # F10：与 exec 路逐行同构 —— 透传参数由调用方作为第 3 个参数传进来（空则不加）。
   printf '%s' " if [ -n \"\$_ccm_c\" ]; then exec \$_ccm_c$3; else $2; fi"

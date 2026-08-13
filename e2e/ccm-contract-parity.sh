@@ -347,6 +347,28 @@ ck "capabilities= 覆盖 TS 侧全部 CLI_REQUIRED_CAPS（⊇，不是 ==）" ""
 ck "agents= 行列出 claude 与 codex" "1" \
    "$(printf '%s\n' "$PROBE" | grep -c '^agents=claude,codex$')"
 
+# ===== A′f：`P4e` 之后 daemon 是**自动**找到的 ⇒ 它坏掉的三种样子都要能兜住〔08-13〕=====
+# ★ 为什么现在才要紧：`P4e` 之前这条路只在 cc-monitor 注入 env 时才活；
+#   之后 ccm **自己会找** ⇒ 一个挂住的 daemon 会让**用户日常的 `ccm resume` 永远转圈**。
+#   实测（修之前）：12 秒掐断才停。Rust 侧 `ccm_probe.rs` 为同一件事早就立过超时，
+#   逐字「没有上限的话，用户点一次「恢复」就是永远转圈」——shell 侧补上同一条纪律。
+# ⚠ 观察手段必须用 **PATH 上的 `claude` shim**，不能用 `--launcher`：
+#   显式 `--launcher` **绕开整个 daemon 块**（A′d 那段头注逐字记着这条）。
+#   08-13 我在这上面又栽了一次——拿 `--launcher` 探，三种坏 daemon 全「正常返回」。
+printf '#!/bin/sh\nsleep 300\n'                    > "$W/bin/bad-hang";    chmod +x "$W/bin/bad-hang"
+printf '#!/bin/sh\ncat >/dev/null\necho 不是JSON\n' > "$W/bin/bad-garbage"; chmod +x "$W/bin/bad-garbage"
+printf '#!/bin/sh\nexit 9\n'                       > "$W/bin/bad-broken";  chmod +x "$W/bin/bad-broken"
+for _bad in hang garbage broken; do
+  _t0=$(date +%s)
+  _got="$(base_env CCM_DAEMON_BIN="$W/bin/bad-$_bad" bash "$CCM" resume abc-123 --agent claude \
+            --cwd "$CWD" 2>&1 | grep '^ARGV|' | head -1)"
+  _dt=$(( $(date +%s) - _t0 ))
+  ck "A′f · daemon 坏成 $_bad ⇒ 仍落回本地那条" "ARGV|--resume abc-123" "$_got"
+  # ★ 挂住那条要**自己停**：判据取「明显小于任何人的耐心」= 10s。
+  ck "A′f · daemon 坏成 $_bad ⇒ 不永远转圈（${_dt}s < 10s）" \
+     "yes" "$([ "$_dt" -lt 10 ] && echo yes || echo no)"
+done
+
 echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
 [ "$FAIL" -eq 0 ]
