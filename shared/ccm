@@ -11,8 +11,12 @@
 #     resume <sid>            恢复会话（`--resume <sid>` 是等价别名）
 #     attach <名>             接回已有 tmux 会话
 #   修饰（全部正交、可任意组合、可缺省；缺省即旧 cc/ccm 的行为）
-#     --tmux[=<名>]           容器。缺省名 = cc-<safe-basename>（同目录**幂等接回**同一会话；
-#                             同名但**异目录**会退让到 -2/-3。已在 tmux 里则就地起，不建嵌套）
+#     --tmux[=<名>]           容器。**三种取名模式**（撞名策略各不相同，见 `derive_tmux_name` 上方那段）：
+#                             · `--tmux`（无名）    → 派生 cc-<safe-basename>，**无条件避让**（撞了退 -2/-3）
+#                             · `--tmux=<名>`       → 就要这个名，**不避让**；被占就 exit 3 响亮失败（C14）
+#                             · `--tmux-base=<基名>`→ **调用方给底、ccm 避让**（C15：cc-spawn 用它）
+#                             已在 tmux 里则就地起，不建嵌套（给了名的除外）
+#     --tmux-base=<基名>      见上。最终会话名由 ccm 用 `ccm-session=<名>` 报回 stdout（配合 --detach）
 #     --account <名>          注入该账号的 CLAUDE_CONFIG_DIR
 #     --base                  显式不注入（issue #75 逃生口）
 #     --model <名>            该次会话的 ANTHROPIC_MODEL（如 opus/sonnet，或完整模型 ID）
@@ -20,12 +24,23 @@
 #     --agent claude|codex    默认 claude
 #     --launcher <cmd>        覆盖该 agent 的默认启动命令
 #     --ccm-sid <sid>         身份打标（cc-monitor 已知 sid 时传）
-#     --detach                只建会话并返回，**不** attach（配合 --tmux；给脚本化调用方用，
-#                             如 cc-spawn：建完还要拿 pane id 去登记总线、写台账、打印提示）
+#     --detach                只建会话并返回，**不** attach（配合 --tmux；给脚本化调用方用）
+#                             ⚠ 括号里原写「如 cc-spawn：建完还要拿 pane id 去登记总线、写台账」——
+#                             **C15（08-13）之后那两件已经收进 ccm 自己**（见 --bus-register），
+#                             cc-spawn 只从 `ccm-session=` 读回名字。散文跟着改，别留旧图景
 #     --tmux-size <W>x<H>     新建 tmux 会话的窗口尺寸（如 220x50）。detached 会话默认 80x24，
 #                             太窄会把 agent 输出折行；仅对**新建**生效，幂等接回既有会话时无效
+#     --bus-register          把新会话登记上 cc-bus（配合 --detach）。**格式归 cc-bus** ——
+#                             ccm 调它自己的 `cc-register` / `cc-spawned-record`，不复刻 TSV。
+#                             找不到 cc-bus 就静默 no-op，但**会往 stderr 说一句**
+#     --bus-note <文本>       写进 spawn 台账第 4 列（初始任务）。配合 --bus-register
 #   （**没有 --bus-id**：cc-bus 身份无需调用方传——见 `agent_needs_bus_id`，codex 下 ccm 自己
 #     从 tmux 会话名派生 CC_BUS_ID，与 cc-spawn 原先手动注入的值逐字相同。实测确认。）
+#   环境（不是旗标，但影响行为 —— 判据 `every_advertised_capability_has_a_usage_line` 要求
+#   `capabilities=` 里的每个 token 在这里有一行）
+#     --daemon-discover       **不是旗标**：能力 token，声明「本 ccm 会自己找本机 daemon」。
+#                             次序 $CCM_DAEMON_BIN → ~/.cc-monitor/bin/cc-monitor-remote → PATH；
+#                             `CCM_NO_DAEMON=1` 整条关掉（P4e）。resume 时用它问 daemon 要命令
 #   自省
 #     --print                 打印将要执行的命令，不执行
 #     --ccm-probe             打印 name/version/capabilities
