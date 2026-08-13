@@ -476,6 +476,47 @@ fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
     (pid, sock)
 }
 
+/// 把 watch 挂到某个目录上，**可重入**：目录没了就翻记账，在就先 `unwatch` 再 `watch`。
+///
+/// # 为什么每个挂点都要这一套
+///
+/// inotify 的 watch 绑在 **inode** 上。本仓 08-13 一天之内在**三处**踩到同一个形状：
+/// `sessions/`（第十拍）· tmux socket 目录（第二十二拍）· `projects/`（本拍）——
+/// 症状都是「目录被删掉再重建之后，那一路的帧永远不来，而且没有任何错误」。
+/// ⇒ 与其每处各写一遍，不如**只有一份**：改一处漏两处正是本仓一路在收的那族。
+///
+/// ⚠ 不做重扫：`sessions/` 那侧需要「挂上顺带把已有 pidfile 过一遍」，那是它**特有**的
+/// （见 `rewatch_sessions`）；`projects/` 的历史由 `process_jsonl` 按 sid 决定要不要读，
+/// 在这里重扫会把**整棵历史**拉一遍 —— 那正是 `P0` 立件时要消灭的行为。
+fn rewatch_dir(
+    debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+    dir: &Path,
+    watched: &mut bool,
+    mode: RecursiveMode,
+) {
+    if !dir.is_dir() {
+        if *watched {
+            tracing::info!("目录消失了 {} —— 解除记账，等它回来再挂", dir.display());
+            let _ = debouncer.watcher().unwatch(dir);
+            *watched = false;
+        }
+        return;
+    }
+    let _ = debouncer.watcher().unwatch(dir);
+    match debouncer.watcher().watch(dir, mode) {
+        Ok(()) => {
+            if !*watched {
+                tracing::info!("已（重新）挂上 watch: {}", dir.display());
+            }
+            *watched = true;
+        }
+        Err(e) => {
+            *watched = false;
+            tracing::warn!("挂 watch 失败 {}: {e}（下次事件再试）", dir.display());
+        }
+    }
+}
+
 /// ★★ `P0b-Y2` 第十六拍〔08-13〕：**tmux socket 目录的推算规则**（零 server 时唯一的耳朵）。
 ///
 /// # 病（`#60` 的根因）
@@ -772,16 +813,11 @@ fn watch_loop(
         }
     }
     // Watch projects recursively; watch sessions (flat) for PID.json add/remove.
-    if projects.is_dir() {
-        if let Err(e) = debouncer
-            .watcher()
-            .watch(&projects, RecursiveMode::Recursive)
-        {
-            tracing::error!("watch failed for {}: {e}", projects.display());
-        }
-    } else {
-        tracing::warn!("projects dir does not exist: {}", projects.display());
-    }
+    // ★★ `projects/` 也走**可重入**挂法〔08-13〕：它是 jsonl 的来源，
+    //    被换 inode 之后**行帧再也不来**（实测：删掉重建后写入，line 帧停在 1）。
+    //    这是 `sessions/`（第十拍）与 socket 目录（第二十二拍）之后的**同族第三个**。
+    let mut projects_watched = false;
+    rewatch_dir(&mut debouncer, &projects, &mut projects_watched, RecursiveMode::Recursive);
     // ★★ `P0b-Y2` 第十六拍：**零 server 时也要有耳朵** —— 监视 tmux socket 目录本身。
     // 目录不在（本机从没起过 tmux）⇒ 退一层监视它的父，等目录被创建出来。
     // 两种情况都只当「该重新探一次」的触发器，绝不拿文件存在性判活（沿用 P3 的既定纪律）。
@@ -862,6 +898,15 @@ fn watch_loop(
                     // 触发面刻意宽：`claude_dir` 里任何与 `sessions` 有关的动静都来这儿判一次
                     //（判的是**盘上此刻的样子**，不是事件类型 —— notify 会合并事件，
                     // 「删了又建」很可能只到一个事件，靠 kind 去分辨是猜）。
+                    // ★ `projects/` 换 inode 时也要重挂（同族第三个，见 `rewatch_dir` 头注）。
+                    if p == projects.as_path() {
+                        rewatch_dir(
+                            &mut debouncer,
+                            &projects,
+                            &mut projects_watched,
+                            RecursiveMode::Recursive,
+                        );
+                    }
                     if p == sessions.as_path() {
                         rewatch_sessions(
                             &mut debouncer,
