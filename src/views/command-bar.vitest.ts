@@ -11,6 +11,54 @@ vi.mock("../keybindings/registry", () => ({
 
 import { filterCommands, CommandBarView, type Command } from "./command-bar";
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+/**
+ * `P6d-Y1`：写动作那半的**裁定**必须写在头注上，且措辞是「裁定不加」而不是「延后再加」。
+ *
+ * # 为什么值得立一条判据钉一段散文
+ *
+ * `U2`〔用@08-11〕逐字：「**不加**。`P6d` 因此只做读动作那一半，`#57` 正文那句
+ * 「输主机名直接 ssh/attach」**明确不做，不是漏做** —— **要写进 `P6d` 的诚实边界**。」
+ * 而 `P6d` 的件文件**当时根本不存在**（`IDX` 声明了它却从没建过节点）⇒ 那句指令
+ * 在账本里悬着，代码这边一个字都没收到。
+ *
+ * 更糟的是头注原来写「**首刀**排除……**延后**须 danger + 二次确认」——那是**排期**口吻：
+ * 下一个人会以为「配好 danger 样式就能加」，而事实是这条路**被裁掉了**。
+ * 两者差一个量级（同 `#79` 的「上游还没有 vs 我们还没做」）。
+ *
+ * ⚠ 本条读的是 `command-bar.ts`，**不是本文件** —— 判据不会被自己的字面量喂绿
+ * （本会话第七次防同一种自伤）。
+ */
+describe("P6d-Y1：写动作是裁定不做，不是待办", () => {
+  const src = readFileSync(resolve(__dirname, "command-bar.ts"), "utf8");
+
+  it("★★ 裁定与它的住址都写在头注上", () => {
+    for (const needle of ["U2", "明确不做", "不是漏做", "ROADMAP.md"]) {
+      expect(src, `头注里少了「${needle}」`).toContain(needle);
+    }
+  });
+
+  it("★ 不许再单靠「首刀/延后」把写动作说成排期", () => {
+    // 「延后」这个词本身不禁 —— 禁的是**没有裁定在旁边**的那种用法。
+    // 判法：出现「延后」时，同一段里必须也出现「裁」。
+    const paras = src.split("\n *\n");
+    for (const p of paras) {
+      if (p.includes("延后") && !p.includes("裁")) {
+        throw new Error(
+          `这一段用「延后」描述写动作却没提裁定 —— 那正是 U2 要消灭的读法：\n${p.slice(0, 200)}`,
+        );
+      }
+    }
+  });
+
+  it("★ 反向自检：命令栏本体还在（否则上面两条会因为「文件都没了」而假绿）", () => {
+    expect(src).toContain("filterCommands");
+    expect(src).toContain("CommandBarView");
+  });
+});
+
 const cmd = (id: string, title: string, keywords?: string): Command => ({
   id,
   title,
