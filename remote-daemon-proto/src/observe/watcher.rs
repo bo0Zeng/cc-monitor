@@ -523,8 +523,17 @@ fn tmux_socket_dir() -> PathBuf {
     let base = std::env::var_os("TMUX_TMPDIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/tmp"));
+    // ⚠⚠ **`libc::getuid` 只在 unix 存在** —— daemon 是**跨平台编**的（`scripts/verify-committed-state.sh`
+    //   会对 `x86_64-pc-windows-msvc` 跑一次 `cargo check --all-targets`）。
+    //   首版直接 `unsafe { libc::getuid() }`，**本机 cargo test 全绿、Windows 侧编不过**
+    //   —— 而那道门量的是**提交状态**，本会话所有工作树读数都看不见它。
+    // ⚠ Windows 上没有 tmux，这条路本来就走不到；给个哑值只为**让它编得过**，
+    //   而不是假装那里有个 socket 目录。
+    #[cfg(unix)]
     // SAFETY: getuid 无副作用、不会失败。
     let uid = unsafe { libc::getuid() };
+    #[cfg(not(unix))]
+    let uid: u32 = 0;
     base.join(format!("tmux-{uid}"))
 }
 /// P3：一次完整探测（跑在一次性后台线程里）。
