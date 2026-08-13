@@ -156,6 +156,16 @@ mod tests {
             "只把 `CLAUDE_CONFIG_DIR` 拼进要给别人执行的载荷（`env` 前缀那一段）。\
              **不读任何文件** ⇒ **不属**读面。它随 F06/F07 走。",
         ),
+        (
+            "src/cc_bus_deploy.rs",
+            "write",
+            9,
+            "`PS1` 的部署：`fenced_dest` 解析 `<claude_dir>/skills` 并做 realpath 围栏、\
+             `deploy_into`/`deploy_local_cc_bus` 取 dir 再往下写。\
+             ⚠ **不属读面** —— 它是**写**操作（本仓第一处往 `<claude_dir>` 写的，\
+             `U10b` 裁定后的第 7 条例外），恰好也要解析 dir 来定位落点，与 `history.rs` 那条 \
+             `write` 同类。⇒ 不归 F10 的退役范围。",
+        ),
         // 〔P8a 08-12〕新增的直读点 —— **老实登记，不绕棘轮**（棘轮要的是论证，不是禁令）。
         (
             "src/plugins.rs",

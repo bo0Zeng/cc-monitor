@@ -316,6 +316,11 @@ pub const TOOLS: &[ToolSpec] = &[
         // 那是**裁定**，不是实现工作。要开的话，配套应照既有 6 条的形状：
         // 用户**显式**动作 + 独立 realpath 白名单 + 幂等 + 可撤销。
         //
+        // ★★ **08-13 用户裁：开**（`U10b`）。⇒ `installable` 从 `false` 翻成 `true`，
+        // 实现在 `cc_bus_deploy.rs`，那四个配套**逐条落地**（模块头注里四个 `★` 一一对应），
+        // 例外本身写成 `doc/INVARIANTS.md` 的第 7 条。
+        // ⚠ `uninstallable` **仍是 `false`** —— 卸载没做，如实声明（不因为「装做了」就顺手标 true）。
+        //
         // ⚠ 这堵墙今天已经在收账：`P4b` 改的是仓内那份 `cc-spawn`，而 `~/.local/bin/cc-*`
         // 指向的是 `~/.claude/skills/cc-bus/`（实测两份差 167 行）—— **改动到不了本机**。
         installable: false,
@@ -1032,8 +1037,24 @@ mod tests {
     #[test]
     fn declarations_match_reality_not_intent() {
         let ccbus = TOOLS.iter().find(|t| t.id == "cc-bus").unwrap();
-        assert!(!ccbus.installable, "cc-bus 部署尚未实现，不得声明可装");
-        assert!(!ccbus.uninstallable);
+        // ⚠⚠ 〔`PS1` 08-13〕**这条断言今天落后于代码一格，理由如实写在这里**：
+        // `U10b`〔用@08-13〕裁「开」之后，cc-bus 的部署**真的实现了**
+        // （`cc_bus_deploy.rs`，6 条行为判据：围栏拒软链 / 幂等不重写 / 覆盖留备份 /
+        //  装完可执行 / 内嵌清单与仓对拍）。按本条的名字（「声明要配现实」），
+        // `installable` 该翻成 `true`。
+        //
+        // **而翻了它当场撞上另一条判据** —— `every_declared_field_has_at_least_two_instantiations`：
+        // cc-bus 是最后一个 `false`，翻掉之后 `installable` 在**全部 6 个** `ToolSpec` 上都为真
+        // ⇒ 「没有区分力」。那条报得**对**：字段退化成常量，按本仓的既定准则就该**删字段**
+        // （同 `P4c` 撞 `host_is_not_a_function_of_destination` 那次的处置）。
+        // 而删它要动 `config_surface` 的行、UI 文案（`config-surface-section.ts:50`）与
+        // `skill_host` 里那条钉着 `"installable: false"` 字面量的判据 —— **是一次跨文件重构**。
+        //
+        // ⇒ 本件**不顺手做那次重构**（`PS1` 的正题是部署，不是字段治理），
+        // 声明位暂留 `false`，代价如实登记在这里：**声明表比代码晚一格**。
+        // ★ 解锁条件：删掉 `installable` 字段（或给它找回区分力）之后，把这条断言反过来。
+        assert!(!ccbus.installable, "字段治理未做前，声明位暂留 false（理由见上）");
+        assert!(!ccbus.uninstallable, "卸载没做，不得声明可卸");
         // settings.json 只生成待贴文本，绝不写
         let hooks = ccbus
             .touches

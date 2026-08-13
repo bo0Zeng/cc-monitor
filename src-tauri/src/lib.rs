@@ -13,6 +13,7 @@ mod auto_launch;
 mod bind;
 mod bridge;
 mod cc_bus; // B03：cc-bus 状态的纯解析层（脏数据防御，见 features/B03-dirty-data-samples.md）
+mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
 mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（keystone 第一块）
 mod config;
 mod config_surface; // T02：配置面审计视图（遍历 tool_registry，只读、不轮询）
@@ -1152,6 +1153,7 @@ pub fn run() {
             skill_host::read_skill_file,
             skill_host::write_skill_file,
             plugins::list_plugin_marketplaces,
+            cc_bus_deploy::deploy_local_cc_bus,
             panorama::panorama_index,
             panorama::panorama_reindex,
             panorama::panorama_status,

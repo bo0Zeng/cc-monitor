@@ -22,6 +22,7 @@
 // 也因此本文件**零引用 launch IR 模块**：spawn 是 fire-and-forget 的远端 exec，不开标签页。
 import { setCurrentMachine, subscribeMachine } from "./machine-context";
 import { commands } from "../ipc/commands";
+import { showActionFailureToast } from "../error-toast";
 // L2：账号选择复用既有封装——`fetchAccounts` 带 TTL 缓存、`selectableAccounts` 是
 // 「可选账号」的单一判据（`accounts.ts:130` 注释明写"别各处再 filter 一遍"）。
 import { fetchAccounts, selectableAccounts } from "../accounts";
@@ -115,6 +116,22 @@ export class CcBusSection {
     this.readBtn.addEventListener("click", () => void this.reload());
     row.appendChild(this.readBtn);
 
+    // ★ `PS1`：把内嵌的 cc-bus 装到 `<claude_dir>/skills/cc-bus/`。
+    //
+    // ⚠⚠ 这是**只读铁律的第 7 条例外**（`U10b` 用@08-13 裁「开」）——本仓唯一往
+    // `<claude_dir>` 写的口子。四个配套里的**「用户显式动作」就是这颗按钮**：
+    // 它绝不能被放进启动 / 刷新 / 任何自动路径。改动本段前先读 `cc_bus_deploy.rs` 的头注。
+    // ⚠ 不做两步确认：它**幂等且可撤销**（覆盖前留 `cc-bus.bak-<ts>`），
+    //   与 `cc-kill` 那种不可撤销的破坏性动作不是一档 —— 那里两步是必需的，这里不是。
+    const deployBtn = document.createElement("button");
+    deployBtn.type = "button";
+    deployBtn.className = "settings-btn settings-btn-secondary cc-bus-deploy";
+    deployBtn.textContent = "装到本机";
+    deployBtn.title =
+      "把仓内那份 cc-bus 装到 ~/.claude/skills/cc-bus/（幂等；覆盖前自动留备份）";
+    deployBtn.addEventListener("click", () => void this.doDeploy(deployBtn));
+    row.appendChild(deployBtn);
+
     root.appendChild(row);
 
     this.statusEl = document.createElement("div");
@@ -128,6 +145,34 @@ export class CcBusSection {
 
     root.appendChild(this.buildSpawnForm());
     return root;
+  }
+
+  /**
+   * `PS1`：装到本机。
+   *
+   * ⚠ 结果**分三种说法**，不合并 —— 用户点一次得知道到底动没动盘：
+   * · 写了 N 个 ⇒ 说写了几个、备份在哪；
+   * · 一个没写（幂等命中）⇒ 明说「已是最新」，**不假装干了活**；
+   * · 失败 ⇒ 原样把错误摆出来（围栏拒收的理由是逐字的，别吞）。
+   */
+  private async doDeploy(btn: HTMLButtonElement): Promise<void> {
+    const prev = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "装…";
+    try {
+      const r = await commands.deploy_local_cc_bus();
+      if (r.written === 0) {
+        this.statusEl.textContent = `已是最新：${r.dest}（${r.unchanged} 个文件都一致，未写盘）`;
+      } else {
+        const bak = r.backup ? `；旧的已备份到 ${r.backup}` : "";
+        this.statusEl.textContent = `已装到 ${r.dest}（写了 ${r.written} 个文件${bak}）`;
+      }
+    } catch (e) {
+      showActionFailureToast("装到本机失败", String(e));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = prev;
+    }
   }
 
   /** 批二：图形化 spawn。**调收编后的 cc-spawn，不在这里重写起会话。** */
