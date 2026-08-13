@@ -533,6 +533,62 @@ mod tests {
         );
     }
 
+    /// ★ 三态的**计数**要精确，且「清单外的文件」**故意不算**〔08-13 复核〕。
+    ///
+    /// # 四态逐个钉
+    ///
+    /// | 盘上的样子 | 该说 |
+    /// |---|---|
+    /// | 刚装完 | `UpToDate` |
+    /// | 改了 2 个文件 | `Drifted{differing:2, missing:0}` |
+    /// | **多一个清单外的文件** | `UpToDate` —— 见下方「为什么故意不算」 |
+    /// | 删了 1 个 | `Drifted{differing:0, missing:1}` |
+    ///
+    /// ⚠ 钉的是**数字**不是「是不是 Drifted」：按钮上写的是「更新（差 N 个文件）」，
+    /// N 错了跟状态错了一样骗人。
+    ///
+    /// # 为什么「多出来的文件」故意不算
+    ///
+    /// **我们自己的备份就是清单外的文件**（`cc-bus.bak-<ts>` / 08-13 实测用户那份里还有
+    /// 四份 07-18 留下的 `scripts.bak-*`）。把它们算成漂移 ⇒ 那颗按钮**永远**写着「更新」，
+    /// 而点了也不会变 —— 比不报还坏。
+    ///
+    /// ⚠ **代价如实写**：哪天有脚本从清单里**删掉**，盘上那份会一直留着而状态仍说
+    /// `UpToDate`。这属于 `P2t` 记过的「旧文件永不回收」那一族，它的处置逐字是
+    /// 「**真但未发生**」——今天清单只增不减，零实例 ⇒ 不为它造回收机制
+    /// （造了也验不出修对没修对）。**这条注释就是那个前提的住址**：清单第一次删东西时，
+    /// 来这儿把它改掉。
+    #[test]
+    fn the_three_states_count_precisely_and_ignore_extra_files() {
+        let d = tmpdir("ps2-counts");
+        deploy_into(&d.0).unwrap();
+        let dest = d.0.join("skills/cc-bus");
+        assert_eq!(install_state_in(&d.0).unwrap(), CcBusInstallState::UpToDate);
+
+        std::fs::write(dest.join("SKILL.md"), b"tampered").unwrap();
+        std::fs::write(dest.join("scripts/cc-spawn"), b"tampered").unwrap();
+        assert_eq!(
+            install_state_in(&d.0).unwrap(),
+            CcBusInstallState::Drifted { differing: 2, missing: 0 },
+            "改了两个文件就该报 2 —— 按钮上写的是「更新（差 N 个）」，N 错了跟状态错了一样骗人"
+        );
+
+        deploy_into(&d.0).unwrap();
+        std::fs::write(dest.join("scripts/cc-legacy-thing"), b"old script").unwrap();
+        assert_eq!(
+            install_state_in(&d.0).unwrap(),
+            CcBusInstallState::UpToDate,
+            "清单外的文件**故意不算** —— 我们自己的 .bak 就是清单外的，算了那颗按钮就永远写着「更新」"
+        );
+
+        std::fs::remove_file(dest.join("scripts/cc-kill")).unwrap();
+        assert_eq!(
+            install_state_in(&d.0).unwrap(),
+            CcBusInstallState::Drifted { differing: 0, missing: 1 },
+            "少一个就该报 missing:1，且不该把它算进 differing"
+        );
+    }
+
     /// ★ 落点被一个**普通文件**占着（用户手滑 / 旧版留下的残骸）〔08-13 复核〕。
     ///
     /// 两条性质一起钉，因为它们**互相制约**：
