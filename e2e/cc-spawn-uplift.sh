@@ -340,6 +340,29 @@ chk "超长任务：退出码非 0" "$([ "$big_rc" -ne 0 ] && echo yes || echo n
 chk "超长任务：没有留下会话" "$(tmux ls -F '#{session_name}' 2>/dev/null | grep -c '^big_cc' || true)" "0"
 chk "超长任务：没有写台账" "$(grep -c '^big_cc' "$CC_BUS_HOME/spawned.tsv" 2>/dev/null || true)" "0"
 
+echo "[19] 【08-13】cc-register：**读不到旧地址簿就别覆盖**"
+# ★ 真事故：`awk … || true` 失败之后**照样**追加并 mv ⇒ 地址簿被抹成只剩新登记的这一条。
+#   实测三个不同 pane 登记好之后把 agents.tsv 设成 000、再登记第四个
+#   ⇒ **3 行变 1 行，而 cc-register 照报「已登记」** —— 另外三个 agent 静默掉线。
+#   与 ccm 里 codex 预信任那条**完全同族**：失败被吞掉，而后面有人依赖它成功。
+# ⚠ 判据钉的是**旧条目还在**（数行 + 逐个名字），不是「命令失败了」——
+#   失败与否是手段，**别人的地址没被抹掉**才是要保的东西。
+mkdir -p "$WORK/reg"
+for _n in ra rb rc; do
+  tmux new-session -d -s "$_n" -c /tmp 'sleep 300'
+  _p="$(tmux list-panes -t "=$_n" -F '#{pane_id}' | head -1)"
+  TMUX_PANE="$_p" bash "$REPO/shared/cc-bus/scripts/cc-register" "${_n}_cc" >/dev/null 2>&1
+done
+chk "对照：三个不同 pane 各占一行" \
+  "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -c '^r[abc]_cc$')" "3"
+tmux new-session -d -s rd -c /tmp 'sleep 300'
+_pd="$(tmux list-panes -t '=rd' -F '#{pane_id}' | head -1)"
+chmod 000 "$CC_BUS_HOME/agents.tsv"
+TMUX_PANE="$_pd" bash "$REPO/shared/cc-bus/scripts/cc-register" rd_cc > /dev/null 2>&1 || true
+chmod 644 "$CC_BUS_HOME/agents.tsv"
+chk "★ 旧表读不动时**拒绝登记**，别人的地址一条不少" \
+  "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -c '^r[abc]_cc$')" "3"
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 if [ "$fail" -eq 0 ]; then echo "===== cc-spawn 收编验收全部通过 ====="; fi
