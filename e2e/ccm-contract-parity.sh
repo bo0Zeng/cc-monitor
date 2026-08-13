@@ -225,6 +225,47 @@ ck "A′d · 显式 --launcher 优先于 daemon 建议" "ARGV|--resume abc-123" 
    "$(base_env CCM_DAEMON_BIN="$W/bin/faux-daemon" bash "$CCM" resume abc-123 --agent claude \
         --cwd "$CWD" --launcher "$W/bin/argvstub" 2>&1 | grep '^ARGV|' | head -1)"
 
+# ===== A′e：`P4e` —— **不给 `CCM_DAEMON_BIN` 也找得到 daemon** 〔08-13〕=====
+# 病：这条接线从 F06b 就在，但那个变量的**唯一生产注入点**是 cc-monitor 起子进程时
+#     ⇒ `ccm → daemon` 只在 cc-monitor 拉起的 shell 里活着，而 skill 跑在普通 shell 里
+#     —— 恰恰是它失灵的场合，且失灵是**静默**的。
+# ⚠ 本组必须**不设** CCM_DAEMON_BIN，否则测的还是老路（`P4e §3` 提前记下的失效方式：
+#   「在 cc-monitor 拉起的 shell 里测，那个变量有值 ⇒ 判据恒绿」）。
+mkdir -p "$W/home/.cc-monitor/bin"
+cp "$W/bin/faux-daemon" "$W/home/.cc-monitor/bin/cc-monitor-remote"
+# `base_env` 把 HOME 换成 `$W/home` ⇒ 上面这一份就是查找次序里的第二档。
+AE="$(actual_argv_nolauncher resume abc-123 --agent claude)"
+ck "A′e · 不给 CCM_DAEMON_BIN 也能找到 daemon（部署落点）" "ARGV|--resume FROM-DAEMON" "$AE"
+# ★★ **配方那侧也得找得到** —— 这一格是 D 阶段变异 M17 逼出来的：
+#   把 `--print` 吐的配方偷偷退回老规则（只认 `CCM_DAEMON_BIN`），上面那条照样绿，
+#   因为它只走 exec 路。而 `--print` 是 cc-monitor 的**渲染等价面**：配方与真跑脱钩，
+#   意味着 app 渲染出来的命令与 ccm 真正会做的事**不是一回事**（F03 立那组网就是为这个）。
+predicted_argv_nolauncher() {
+  base_env bash "$CCM" "$@" --cwd "$CWD" --print > "$W/pe.line" 2>&1
+  base_env bash -c "$(cat "$W/pe.line")" > "$W/pe.out" 2>&1
+  grep '^ARGV|' "$W/pe.out" | head -1
+}
+ck "A′e · print↔exec 一致（靠 discovery 找到的 daemon）" "$AE" \
+   "$(predicted_argv_nolauncher resume abc-123 --agent claude)"
+# 逃生口：整条关掉之后必须落回本地那条。
+# ★ 这一对**成对才有区分力**：只有上一条时，「永远走 daemon」也能绿；
+#   只有下一条时，「永远不走 daemon」也能绿（今天之前它就是这样）。
+# ⚠ **数组不能做命令前缀**：`BASE_EXTRA=(X=1) some_func` 不会把它带进去（首版这么写，
+#   这条当场红 —— 它其实钉住了「前缀没生效」这个事实，报得对）。照本文件既有写法：先赋值、后复位。
+BASE_EXTRA=(CCM_NO_DAEMON=1)
+ck "A′e · CCM_NO_DAEMON=1 整条关掉，落回本地" "ARGV|--resume abc-123" \
+   "$(actual_argv_nolauncher resume abc-123 --agent claude)"
+BASE_EXTRA=()
+# `--print` 必须**纯**：同一条命令，装没装 daemon 吐出的字节必须逐字相同
+#（吐的是**配方**不是查找结果 —— 与 BUS_ID_RECIPE 同一条纪律）。
+ck "A′e · --print 不因机器上有没有 daemon 而变" "same" \
+   "$(_p1="$(base_env bash "$CCM" resume abc-123 --cwd "$CWD" --print 2>&1)"
+      BASE_EXTRA=(CCM_NO_DAEMON=1)
+      _p2="$(base_env bash "$CCM" resume abc-123 --cwd "$CWD" --print 2>&1)"
+      BASE_EXTRA=()
+      [ "$_p1" = "$_p2" ] && echo same || echo differs)"
+rm -f "$W/home/.cc-monitor/bin/cc-monitor-remote"
+
 # 绝对断言：差分两边一起坏掉时的最后一道。
 ck "A′ · resume 真跑的 argv 必须逐字带 --resume <sid>" "ARGV|--resume abc-123" \
    "$(actual_argv resume abc-123 --agent claude)"

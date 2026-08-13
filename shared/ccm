@@ -180,9 +180,37 @@ BUS_ID_RECIPE='if [ -n "${TMUX:-}" ]; then _ccm_bus="$(tmux display-message -p "
 # ⚠ **拿不到就走本地那条，不报错**（定框 §5：诚实降级）。daemon 没装 / 没起 / 答非所问，
 #   `ccm resume` 都必须照今天的样子跑起来 —— 这条失败是**静默**的，钉它的是
 #   `e2e/ccm-contract-parity.sh` A′ 组的两条**绝对断言**（逐字钉住本地行为）。
+# ★★ `P4e`〔实@08-12 立件，08-13 落地〕：**调用方找得到 daemon —— 不许只靠调用方注入 env**。
+#
+# ## 病
+#
+# 这套接线从 F06b 起就在，但 `CCM_DAEMON_BIN` 的**唯一生产注入点**是
+# `local_backend.rs`（cc-monitor 起子进程时注进去）⇒ `ccm → daemon` 这条路
+# **只在 cc-monitor 拉起的 shell 里活着**。而用户要的「以后集成的 skill 靠 daemon 兼容」，
+# 那些 skill 跑在**普通 shell** 里 —— 恰恰是这条路失灵的场合，而失灵是**静默**的。
+#
+# ## 为什么是一段**配方字符串**而不是两份实现
+#
+# 查找规则要在两处成立：本函数（真跑）与 `resolve_recipe`（`--print` 吐的那行）。
+# 照 `BUS_ID_RECIPE` 的先例本该写两份「逐行同构、改一边必须改另一边」——
+# 这次更进一步：**只写一份字符串**，真跑那侧 `eval` 它。
+# ⇒ 「同构」不再靠人的记性，而是**同一个字面量**。
+#
+# ## 顺序与逃生口
+#
+# `$CCM_DAEMON_BIN`（调用方显式覆盖，最高）→ `~/.cc-monitor/bin/cc-monitor-remote`
+#（`sftp::ensure_daemon_deployed` 的落点）→ PATH 上的 `cc-monitor-remote`。
+# `CCM_NO_DAEMON=1` **整条关掉**（照 `CCM_NO_PRETRUST` 的既有先例）——
+# 判据与套件靠它把「这台机器装没装 daemon」这个变量从测量里拿掉。
+#
+# ⚠ **`--print` 仍然是纯的**：吐的是**配方**（一段常量字符串），不是查找**结果** ——
+#   与 `BUS_ID_RECIPE` 同一条纪律（U9a 2026-08-02 复核过它没有例外）。
+DAEMON_BIN_RECIPE='_ccm_db=""; if [ "${CCM_NO_DAEMON:-}" != 1 ]; then for _ccm_x in "${CCM_DAEMON_BIN:-}" "$HOME/.cc-monitor/bin/cc-monitor-remote" "$(command -v cc-monitor-remote 2>/dev/null)"; do if [ -n "$_ccm_x" ] && [ -x "$_ccm_x" ]; then _ccm_db="$_ccm_x"; break; fi; done; unset _ccm_x; fi;'
+
 resolve_from_daemon() {   # $1=sid → stdout: daemon 给的 command 串（拿不到就空）
-  [ -n "${CCM_DAEMON_BIN:-}" ] && [ -x "${CCM_DAEMON_BIN}" ] || { printf ''; return 0; }
-  printf '{"sessionId":"%s"}' "$1" | "$CCM_DAEMON_BIN" --resolve 2>/dev/null \
+  eval "$DAEMON_BIN_RECIPE"
+  [ -n "$_ccm_db" ] || { printf ''; return 0; }
+  printf '{"sessionId":"%s"}' "$1" | "$_ccm_db" --resolve 2>/dev/null \
     | grep -o '"command":"[^"]*"' | head -1 | cut -d'"' -f4
   return 0
 }
@@ -194,8 +222,9 @@ resolve_from_daemon() {   # $1=sid → stdout: daemon 给的 command 串（拿�
 #   而 `exec $_ccm_c` 是整条换掉 argv ⇒ 不补就丢参数。**与 exec 路逐行同构**。
 resolve_recipe() {
   local sid_json="{\"sessionId\":\"$1\"}"
-  printf '%s' "_ccm_c=\"\"; if [ -n \"\${CCM_DAEMON_BIN:-}\" ] && [ -x \"\$CCM_DAEMON_BIN\" ]; then"
-  printf '%s' " _ccm_c=\"\$(printf '%s' $(sq "$sid_json") | \"\$CCM_DAEMON_BIN\" --resolve 2>/dev/null"
+  # `P4e`：查找规则**只有一份**（`DAEMON_BIN_RECIPE`）—— 这里原样吐出它，真跑那侧 eval 它。
+  printf '%s' "_ccm_c=\"\"; $DAEMON_BIN_RECIPE if [ -n \"\$_ccm_db\" ]; then"
+  printf '%s' " _ccm_c=\"\$(printf '%s' $(sq "$sid_json") | \"\$_ccm_db\" --resolve 2>/dev/null"
   printf '%s' " | grep -o '\"command\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)\"; fi;"
   # F10：与 exec 路逐行同构 —— 透传参数由调用方作为第 3 个参数传进来（空则不加）。
   printf '%s' " if [ -n \"\$_ccm_c\" ]; then exec \$_ccm_c$3; else $2; fi"
@@ -273,7 +302,7 @@ while [ $# -gt 0 ]; do
     --tmux-size=*) tmux_size="${1#*=}" ;;
     --print)       do_print=1 ;;
     --ccm-probe)
-      printf 'name=ccm\nversion=%s\nself=%s\ncapabilities=new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print,detach,tmux-size,tmux-base,bus-register\nagents=claude,codex\n' \
+      printf 'name=ccm\nversion=%s\nself=%s\ncapabilities=new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print,detach,tmux-size,tmux-base,bus-register,daemon-discover\nagents=claude,codex\n' \
         "$CCM_VERSION" "$CCM_SELF"
       exit 0 ;;
     --version)     printf 'ccm %s\n' "$CCM_VERSION"; exit 0 ;;

@@ -270,9 +270,8 @@ pub enum ConsumerExit {
     Early,
 }
 
-pub type StdioSink = Arc<
-    dyn Fn(std::process::ChildStdin, std::process::ChildStdout) -> ConsumerExit + Send + Sync,
->;
+pub type StdioSink =
+    Arc<dyn Fn(std::process::ChildStdin, std::process::ChildStdout) -> ConsumerExit + Send + Sync>;
 
 pub fn supervise(
     bin: PathBuf,
@@ -814,18 +813,19 @@ pub(crate) fn local_stdio_consumer(
 ) -> ConsumerExit {
     use std::io::BufRead;
 
-    let stdin = match tauri::async_runtime::block_on(async move {
-        tokio::process::ChildStdin::from_std(stdin)
-    }) {
-        Ok(w) => w,
-        Err(e) => {
-            // 转换失败 ⇒ 写不出去，但**stdout 还得读到底**（那是判死信号）。
-            tracing::warn!("本机 stdin 转 tokio 失败（{e}）；入方向通道不登记，仍读完 stdout");
-            let mut o = stdout;
-            let _ = std::io::copy(&mut o, &mut std::io::sink());
-            return ConsumerExit::Eof;
-        }
-    };
+    let stdin =
+        match tauri::async_runtime::block_on(
+            async move { tokio::process::ChildStdin::from_std(stdin) },
+        ) {
+            Ok(w) => w,
+            Err(e) => {
+                // 转换失败 ⇒ 写不出去，但**stdout 还得读到底**（那是判死信号）。
+                tracing::warn!("本机 stdin 转 tokio 失败（{e}）；入方向通道不登记，仍读完 stdout");
+                let mut o = stdout;
+                let _ = std::io::copy(&mut o, &mut std::io::sink());
+                return ConsumerExit::Eof;
+            }
+        };
     let mut parked = Some(crate::inbound_client::park_owned_writer(stdin));
     // 留一份副本给 `unregister` —— 它要 `&Arc` 比对身份（「不摘别人的 client」）。
     let mut registered: Option<std::sync::Arc<crate::inbound_client::InboundClient>> = None;
@@ -869,7 +869,10 @@ pub(crate) fn local_stdio_consumer(
             // `from_hello_frame` 只对 `Hello` 返回 `Some` ⇒ 走不到这里。
             _ => (String::new(), Vec::new()),
         };
-        let client = parked.take().expect("上面刚判过 is_some").into_client(witness);
+        let client = parked
+            .take()
+            .expect("上面刚判过 is_some")
+            .into_client(witness);
         crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
         registered = Some(client);
         tracing::info!(
@@ -924,14 +927,13 @@ fn local_stdio_consumer_guarded(
         return reason;
     }
     tracing::error!(
-            "本机 stdio 消费者 panic —— 已兜住并按流结束处理。\n\
+        "本机 stdio 消费者 panic —— 已兜住并按流结束处理。\n\
              ⚠ 不兜的话它会 unwind 出 supervise 线程，留下一个「状态全绿的死人」：\n\
          daemon 还活着但没人读它的 stdout ⇒ 管道填满冻死，而 UI 显示一切正常。"
     );
     // panic 时**子进程多半还活着** ⇒ 报 `Early`，让 `supervise` 补一刀（B4）。
     ConsumerExit::Early
 }
-
 
 /// P2z（`control-parity` 的定框 C10）：**生产入口的自释放版** —— exe 旁边找不到 sidecar 时，
 /// 把内嵌的那份释放到 `extract_dir` 再起。这就是「单 exe 也能起 daemon 进程」那句话的落点。
@@ -1044,13 +1046,14 @@ mod tests {
         let age_back = |p: &std::path::Path| {
             let f = std::fs::File::options().write(true).open(p).unwrap();
             let old = std::time::SystemTime::now() - std::time::Duration::from_secs(48 * 3600);
-            f.set_times(std::fs::FileTimes::new().set_modified(old)).unwrap();
+            f.set_times(std::fs::FileTimes::new().set_modified(old))
+                .unwrap();
         };
 
-        let fresh = dir.join(format!(".{name}.4242.partial"));       // 我们的、新鲜 ⇒ 留
-        let stale = dir.join(format!(".{name}.9999.partial"));       // 我们的、够老 ⇒ 收
-        let other_fresh = dir.join("someone-elses-file");            // 别人的、新鲜 ⇒ 留
-        let other_stale = dir.join("someone-elses-old-file");        // 别人的、够老 ⇒ **仍然留**
+        let fresh = dir.join(format!(".{name}.4242.partial")); // 我们的、新鲜 ⇒ 留
+        let stale = dir.join(format!(".{name}.9999.partial")); // 我们的、够老 ⇒ 收
+        let other_fresh = dir.join("someone-elses-file"); // 别人的、新鲜 ⇒ 留
+        let other_stale = dir.join("someone-elses-old-file"); // 别人的、够老 ⇒ **仍然留**
         for p in [&fresh, &stale, &other_fresh, &other_stale] {
             std::fs::write(p, b"x").unwrap();
         }
@@ -1068,7 +1071,10 @@ mod tests {
             !stale.exists(),
             "够老的残骸没被收 —— 那清扫就是个摆设（带 pid 之后它们不会再被覆盖掉）"
         );
-        assert!(other_fresh.exists(), "碰了不属于自己命名法的文件（这个目录与远端自部署共用）");
+        assert!(
+            other_fresh.exists(),
+            "碰了不属于自己命名法的文件（这个目录与远端自部署共用）"
+        );
         assert!(
             other_stale.exists(),
             "把**别人的**老文件也收了 —— 这个目录与远端自部署共用，\
@@ -1219,7 +1225,8 @@ mod tests {
         .expect("写 shim");
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).expect("chmod shim");
+            std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod shim");
         }
 
         let made = tmux(&["new-session", "-d", "-s", &sess]).expect("起私有 tmux 失败");
@@ -1254,7 +1261,14 @@ mod tests {
                 // shim `exec` 真 tmux 并强插 **`-S <同一个 sock>`** ⇒ 两边落在同一台 server 上。
                 // ⚠ 用 `-S <绝对路径>` 而不是 `-L`：本条的客户端一直用 `-S`，
                 // 而**同一个 socket** 才是这条实测的全部要害。`-S` 也不受 `$TMUX` 影响。
-                ("PATH".into(), format!("{}:{}", shim_dir.display(), std::env::var("PATH").unwrap_or_default())),
+                (
+                    "PATH".into(),
+                    format!(
+                        "{}:{}",
+                        shim_dir.display(),
+                        std::env::var("PATH").unwrap_or_default()
+                    ),
+                ),
             ],
             CrashLimits::default(),
             Arc::new(|| {
@@ -1326,7 +1340,11 @@ mod tests {
             .take_while(|l| *l != "\u{7d}")
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(body.len() > 400, "切出来的体只有 {} 字节 —— 切错了", body.len());
+        assert!(
+            body.len() > 400,
+            "切出来的体只有 {} 字节 —— 切错了",
+            body.len()
+        );
 
         assert!(
             !body.contains(concat!(".li", "nes()")),
@@ -1497,7 +1515,8 @@ mod tests {
         // 轮询而不是睡死：进程起来 + 发 hello 的耗时不确定，睡固定值要么慢要么飘。
         let mut client = None;
         for _ in 0..100 {
-            if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) {
+            if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN)
+            {
                 client = Some(c);
                 break;
             }
@@ -1826,11 +1845,26 @@ mod tests {
              唯一的家是那个 `const`，其余一律引用它。\n\
              ⚠ 值相等的断言**看不见副本**（副本的值按定义就相等），只有数源码才看得见。"
         );
+        // ★★ **地板 7 → 1**〔`P4e` 08-13〕：接线**没有缩水，是被去重了**。
+        //
+        // 原来查找规则在两处各写一遍（`resolve_from_daemon` 与 `resolve_recipe`，
+        // 「逐行同构、改一边必须改另一边」），env 名因此出现 7 次。`P4e` 把规则收成
+        // **同一个字面量** `DAEMON_BIN_RECIPE`，真跑那侧 `eval` 它 ⇒ 生产段里只剩 1 处。
+        //
+        // ⚠ **「数字降下来」在本仓通常是坏消息**（棘轮一律只许降是因为那个数是欠账）。
+        //   这里方向相反：这个数是「接线在不在」的代理，而**代理变了** ——
+        //   ⇒ 不是把地板调低让今天好过，是**把钉子挪到新家上**：下面第二条钉配方本身。
         assert!(
-            seen >= 7,
-            "`shared/ccm` 里只找到 {seen} 处 `{looks_like}` —— \n\
+            seen >= 1,
+            "`shared/ccm` 里一处 `{looks_like}` 都没有（实得 {seen}）—— \n\
              F06b-1c 的接线（`resolve_from_daemon` + `resolve_recipe`）是不是被删了？"
         );
+        // 新家：查找规则本身。删掉它 = 接线没了，而上面那条**看不见**（env 名还在注释里）。
+        let ccm_src = include_str!("../../../../shared/ccm");
+        guard_core::find_pinned(&guard_core::strip_hash_comment_lines(ccm_src), "DAEMON_BIN_RECIPE=")
+            .unwrap_or_else(|e| {
+                panic!("{e}\n⇒ `P4e` 的查找规则不在了（或有两份）。它是 `ccm → daemon` 这条路的**唯一**入口：\n   没有它，只有 cc-monitor 亲自注入 env 时才够得着 daemon，而 skill 跑在普通 shell 里。")
+            });
     }
 
     /// ★★ **F05b 接线钉：每一个打包 job 都必须给 sidecar 备好料。**
@@ -1934,7 +1968,10 @@ mod tests {
         let prod = prod.as_str();
         let me = guard_core::production_code(include_str!("local_backend.rs"));
         // 本模块今天对外的生产入口清单。加入口 = 往这里加一条（**不许**留空清单）。
-        assert!(!ENTRIES.is_empty(), "抽取器自检：入口清单空了 ⇒ 下面两条断言都会零命中地绿");
+        assert!(
+            !ENTRIES.is_empty(),
+            "抽取器自检：入口清单空了 ⇒ 下面两条断言都会零命中地绿"
+        );
         // ★★ **完备性自检**〔D 阶段补审 08-11 新增〕：`ENTRIES` 是**手写白名单**，
         // 原来只校验「清单里的名字存在」与「清单非空」，**没有任何一条校验它是完备的**。
         // ⇒ 新增第三个启动入口（不走 `supervise_with_stdio` / 不传消费者）时，
