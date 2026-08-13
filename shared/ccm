@@ -255,7 +255,7 @@ resolve_recipe() {
   printf '%s' " _ccm_c=\"\$(printf '%s' $(sq "$sid_json") | \$(command -v timeout >/dev/null 2>&1 && printf 'timeout 3 ') \"\$_ccm_db\" --resolve 2>/dev/null"
   printf '%s' " | grep -o '\"command\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4)\"; fi;"
   # F10：与 exec 路逐行同构 —— 透传参数由调用方作为第 3 个参数传进来（空则不加）。
-  printf '%s' " if [ -n \"\$_ccm_c\" ]; then exec \$_ccm_c$3; else $2; fi"
+  printf '%s' " if [ -n \"\$_ccm_c\" ]; then set -f; exec \$_ccm_c$3; else $2; fi"
 }
 
 # ===== 默认值 =====
@@ -997,8 +997,18 @@ if [ "$action" = resume ] && [ "$launcher_explicit" = 0 ]; then
   #    所以它给的串里**不可能**带用户那些参数；而这里 `exec $_ccm_c` 是**整条换掉 argv**
   #    ⇒ `ccm resume <sid> -- --xxx` 在**装了 daemon 时丢参数、没装时不丢**。
   #    实测（fake daemon）：传进去的 flag 直接消失。
+  # ★★ **`set -f` 不能省**〔08-13 实测〕：`exec $_ccm_c` 的不 quote 展开要的是**分词**，
+  #    但它同时会做**路径名展开** —— 实测 daemon 回 `echo GLOB *`、cwd 里有 `aaa`/`bbb`
+  #    ⇒ 真的跑成了 `echo GLOB aaa bbb`。也就是说 **daemon 给的命令会被当前目录的文件名改写**。
+  #    `set -f` 只关 glob，分词照旧 ⇒ 拿到的正是我们要的那一半。
+  #
+  # ★ 而**注入面是干净的**，这条要钉住别被「优化」掉：`exec` 只分词、**不解释元字符** ——
+  #   实测 daemon 回 `echo hi; touch <标记>`，跑出来是 `echo` 带三个字面参数，
+  #   标记文件**没有生成**。⇒ **绝不许把这里改成 `eval`**（那会让 `;` 真的变成分隔符，
+  #   而 daemon 可能是 PATH 上捡到的第三方二进制，见 `DAEMON_BIN_RECIPE` 的查找次序）。
   # shellcheck disable=SC2086
   if [ -n "$_ccm_c" ]; then
+    set -f
     if [ ${#passthru[@]} -gt 0 ]; then exec $_ccm_c "${passthru[@]}"; else exec $_ccm_c; fi
   fi
 fi
