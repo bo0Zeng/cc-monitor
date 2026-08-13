@@ -207,6 +207,29 @@ const OBS_UNOBSERVABLE: &str = "unobservable";
 /// `if raw.trim() != "NO_TMUX" { … if !backend.is_empty() { … } }` 内联 if——
 /// 它把**五种语义完全不同的观测压成两条路**，而且住在一个需要真远端连接的
 /// `async fn` 里、单测碰不到。提成纯函数后生产与测试走同一条路径。
+/// P8c：`Skip` 的原因。**机器可读**（进日志后要能被 grep/统计），不是给人读的句子。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SkipReason {
+    /// 远端没装 tmux（旧 daemon 的 `NO_TMUX` 哨兵，或新 daemon 的 `no_tmux`）。
+    NoTmux,
+    /// daemon **自报**这一轮观测失败（`unobservable`）—— 那正是 `#82` 想知道频率的那一格。
+    Unobservable,
+    /// 旧 daemon 的空串歧义：零会话与「`|| true` 吞掉的错」同形 ⇒ 保守跳过。
+    /// **新 daemon 走不到这里**（它零会话报 `zero_sessions`、出错报 `unobservable`）。
+    LegacyAmbiguousEmpty,
+}
+
+impl SkipReason {
+    /// 进日志用的稳定标识。
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            SkipReason::NoTmux => "no_tmux",
+            SkipReason::Unobservable => "unobservable",
+            SkipReason::LegacyAmbiguousEmpty => "legacy_ambiguous_empty",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TmuxObservation {
     /// 有效观测：某后端自报正在跑的 sid 集。
@@ -217,7 +240,18 @@ pub(crate) enum TmuxObservation {
     /// （server 随之退出、`tmux ls` 回空）⇒ 对账整段跳过 ⇒ idle 灰灯**卡到断连才清**。
     Backend(std::collections::HashSet<String>),
     /// 观测无效 ⇒ 本轮跳过、**不累计缺失**（否则 ssh 抖动会批量误灰）。
-    Skip,
+    ///
+    /// ★★ **P8c（`U3` 08-11 的裁定）：它带上「为什么」。**
+    ///
+    /// 原来三种完全不同的原因（远端没装 tmux / daemon 自报观测失败 / 旧 daemon 的空串歧义）
+    /// 被压成同一个无载荷的 `Skip` ⇒ **这一维在日志里根本不可见**。
+    /// `U3` 的读数逐字记着这件事的后果：
+    /// 「`Unobservable` 计数 = 0，而**那个 0 是瞎的** —— 日志根本不记这一维 ⇒ 分母不存在。
+    /// 『0 次』与『记不下来』在这份数据里长得一模一样，而后者才是事实」。
+    ///
+    /// ⇒ 裁定是「**先补一行可观测性，让这个数变得可测**，再拿真实使用量去裁 `#82`」。
+    /// 载荷就是那一行的原料。取值是**稳定的机器可读串**（不是给人读的措辞）。
+    Skip(SkipReason),
 }
 
 /// P1：把一帧 `TmuxSessions` 分类。`observation` = daemon 的显式分类字段
@@ -232,11 +266,14 @@ pub(crate) enum TmuxObservation {
 pub(crate) fn classify_tmux_observation(raw: &str, observation: Option<&str>) -> TmuxObservation {
     // NO_TMUX 哨兵（旧 daemon 唯一能表达的"后端不存在"）：远端没装 tmux ⇒ 无从对账。
     if raw.trim() == "NO_TMUX" {
-        return TmuxObservation::Skip;
+        return TmuxObservation::Skip(SkipReason::NoTmux);
     }
     // P1：daemon 的显式分类优先。**未知取值刻意不在此匹配** ⇒ 落回下方 raw 判据（向前兼容）。
     match observation {
-        Some(OBS_NO_TMUX) | Some(OBS_UNOBSERVABLE) => return TmuxObservation::Skip,
+        // ★ 两者压成一个 `Skip` 是对的（都不该累计缺失），但**原因必须分开记** ——
+        // `#82` 要知道的正是 `unobservable` 的频率，把它和「远端没装 tmux」混在一起就问不出来。
+        Some(OBS_NO_TMUX) => return TmuxObservation::Skip(SkipReason::NoTmux),
+        Some(OBS_UNOBSERVABLE) => return TmuxObservation::Skip(SkipReason::Unobservable),
         // 只在 raw 确实为空时认这条——帧内部自相矛盾（说零会话却带着会话行）时以
         // **数据**为准、落回 raw 判据，不凭一个字符串把明明在跑的会话判死。
         Some(OBS_ZERO_SESSIONS) if raw.trim().is_empty() => {
@@ -251,7 +288,7 @@ pub(crate) fn classify_tmux_observation(raw: &str, observation: Option<&str>) ->
     // 旧 daemon 的空串语义不可分（零会话 / `|| true` 吞掉的错，两者同形）⇒ 保守跳过。
     // **新 daemon 走不到这里**：它零会话时带 `zero_sessions`、出错时带 `unobservable`。
     if backend.is_empty() {
-        return TmuxObservation::Skip;
+        return TmuxObservation::Skip(SkipReason::LegacyAmbiguousEmpty);
     }
     TmuxObservation::Backend(backend)
 }
@@ -676,6 +713,43 @@ macro_rules! daemon_watcher_src {
 
 #[cfg(test)]
 mod tests {
+    /// ★ P8c（`U3` 08-11 裁定）：**三种 Skip 的原因必须彼此可分**。
+    ///
+    /// `U3` 的读数逐字记着不可分的后果：「`Unobservable` 计数 = 0，而**那个 0 是瞎的**
+    /// —— 日志根本不记这一维 ⇒ 分母不存在。『0 次』与『记不下来』长得一模一样」。
+    /// ⇒ 压成一个无载荷的 `Skip` 时，`#82` 想问的那个频率**问不出来**。
+    #[test]
+    fn the_three_skip_reasons_are_distinguishable() {
+        use std::collections::HashSet;
+        let reasons: HashSet<&str> = [
+            // 远端没装 tmux —— 哨兵与显式字段两条路都该给同一个原因。
+            classify_tmux_observation("NO_TMUX", None),
+            classify_tmux_observation("", Some(OBS_NO_TMUX)),
+            // daemon 自报观测失败 —— `#82` 要的就是这一格的频率。
+            classify_tmux_observation("", Some(OBS_UNOBSERVABLE)),
+            // 旧 daemon 的空串歧义。
+            classify_tmux_observation("", None),
+        ]
+        .iter()
+        .map(|v| match v {
+            TmuxObservation::Skip(r) => r.as_str(),
+            TmuxObservation::Backend(_) => panic!("这四种输入都该跳过"),
+        })
+        .collect();
+        assert_eq!(
+            reasons.len(),
+            3,
+            "三种原因必须彼此可分，实得 {reasons:?} —— 压成一个就等于这一维不可测"
+        );
+        // 标识必须是**机器可读**的稳定串（进日志后要能 grep/统计），不是给人读的句子。
+        for r in &reasons {
+            assert!(
+                r.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
+                "原因标识 {r:?} 不是机器可读的稳定串"
+            );
+        }
+    }
+
 
     /// ★★ **那条 shell 判定必须与金表逐行一致**〔G2-1，Phase G 整体设计审计 D1 的产物〕。
     ///
@@ -779,7 +853,7 @@ mod tests {
                 v.sort();
                 v
             }
-            TmuxObservation::Skip => panic!("期望 Backend，实得 Skip"),
+            TmuxObservation::Skip(r) => panic!("期望 Backend，实得 Skip({})", r.as_str()),
         }
     }
 
@@ -803,7 +877,9 @@ mod tests {
     fn old_daemon_empty_raw_still_skips() {
         assert_eq!(
             classify_tmux_observation("", None),
-            TmuxObservation::Skip,
+            // ★ P8c：连**原因**一起钉 —— 原来只钉「跳了」，而三种完全不同的原因
+            // 压成同一个无载荷的 `Skip` 正是 `#82` 问不出频率的来源。
+            TmuxObservation::Skip(SkipReason::LegacyAmbiguousEmpty),
             "旧 daemon 的空串语义不可分，必须保守跳过"
         );
     }
@@ -813,11 +889,11 @@ mod tests {
     fn no_tmux_skips_both_via_sentinel_and_field() {
         assert_eq!(
             classify_tmux_observation("NO_TMUX", None),
-            TmuxObservation::Skip
+            TmuxObservation::Skip(SkipReason::NoTmux)
         );
         assert_eq!(
             classify_tmux_observation("NO_TMUX\n", Some("no_tmux")),
-            TmuxObservation::Skip
+            TmuxObservation::Skip(SkipReason::NoTmux)
         );
     }
 
@@ -826,7 +902,7 @@ mod tests {
     fn unobservable_skips() {
         assert_eq!(
             classify_tmux_observation("", Some("unobservable")),
-            TmuxObservation::Skip,
+            TmuxObservation::Skip(SkipReason::Unobservable),
             "观测失败当成零会话会批量误灰"
         );
     }
@@ -845,7 +921,7 @@ mod tests {
     fn unknown_observation_falls_back_to_raw() {
         assert_eq!(
             classify_tmux_observation("", Some("some_future_kind")),
-            TmuxObservation::Skip
+            TmuxObservation::Skip(SkipReason::LegacyAmbiguousEmpty)
         );
         let o = classify_tmux_observation("s1\t/p\tclaude\t1\t1\tsid-a", Some("some_future_kind"));
         assert_eq!(sids(&o), vec!["sid-a".to_string()]);
@@ -858,7 +934,7 @@ mod tests {
     fn sessions_without_any_ccm_sid_still_skips() {
         assert_eq!(
             classify_tmux_observation("s1\t/p\tbash\t0\t1\t", None),
-            TmuxObservation::Skip,
+            TmuxObservation::Skip(SkipReason::LegacyAmbiguousEmpty),
             "有会话但无 @ccm_sid ≠ 零会话，不许当空集喂进对账"
         );
     }
