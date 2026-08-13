@@ -734,6 +734,48 @@ mod tests {
         );
     }
 
+    /// ★★ `ccm` 写**用户文件**的两处，形状**故意不同** —— 各自钉住〔08-13〕。
+    ///
+    /// # 为什么不进 `atomic_replace_registry`
+    ///
+    /// 那张表只扫 `src-tauri/src`（Rust）。shell 侧写用户文件的点**一共两处**，
+    /// 都在 `ccm` 的预信任里 —— 为两处扩一张跨语言登记表是过度工程
+    /// （那张表自己的头注也写着「刻意不建统一原子写入器」，理由同族：
+    /// **两类文件的正确行为本来就不同**，硬统一只会把决定藏起来）。
+    /// ⇒ 在这里钉形状，并把「为什么这两处不一样」写在明处。
+    ///
+    /// # 两处
+    ///
+    /// | 文件 | 写法 | 为什么 |
+    /// |---|---|---|
+    /// | `~/.claude.json` | **临时文件 + `jq -e` 校验 + 原子 `mv`** | 它是**整份 JSON**：写坏了 claude 起不来。原子替换 ⇒ 要么旧的要么新的，没有中间态 |
+    /// | `~/.codex/config.toml` | **追加**（`>>`）+ 备份兜底 | 它是 TOML 段落追加，重写整份要解析 TOML（shell 里没有可靠的 TOML 解析器）⇒ 只能追加；**代价**是没有原子性，所以必须有备份，且**备份不成就不许写**（08-13 修） |
+    ///
+    /// ⚠ 这条判据防的是**把两者搞混**：让 claude 那条退化成追加（写坏整份 JSON），
+    /// 或让 codex 那条在没有退路时硬写（写一半没人补）。
+    #[test]
+    fn the_two_user_file_writes_keep_their_different_shapes() {
+        let ccm = include_str!("../../shared/ccm");
+        let prod = shell_production(ccm);
+        // ① claude：必须是 temp → 校验 → 原子 mv。三件缺一不可。
+        for (needle, why) in [
+            ("$tmpj", "没有临时文件 —— 那就是就地改用户的 claude.json，写坏了他起不来"),
+            ("jq -e . \"$tmpj\"", "写完没校验 —— jq 产出坏 JSON 时会把坏文件搬过去"),
+            ("mv \"$tmpj\" \"$cj\"", "不是原子替换 —— 中间态会被 claude 读到"),
+        ] {
+            assert!(prod.contains(needle), "claude 预信任那条：{why}（找不到 `{needle}`）");
+        }
+        // ② codex：追加之前必须先备份成功。
+        guard_core::find_pinned(&prod, "if ! cp -p \"$ct\" \"$ct.bak-ccm.$$\"").unwrap_or_else(|e| {
+            panic!("{e}\n⇒ codex 预信任又变成「备份失败照样追加」了。\n                       它是**追加写**，而失败恢复依赖那份备份存在 ⇒ 备份没了就等于\n                       「写一半、没人补」（08-13 实测：用 NAME_MAX 让 cp 失败即可复现）。")
+        });
+        // ③ 反向：claude 那条**不许**退化成追加（那会把整份 JSON 写坏）。
+        assert!(
+            !prod.contains(">> \"$cj\""),
+            "claude 的 `~/.claude.json` 出现了**追加写** —— 那是整份 JSON，追加即写坏"
+        );
+    }
+
     /// ★ **`capabilities=` 报出去的每个能力，用法块里都要有一行**〔08-13〕。
     ///
     /// # 为什么这条值得钉
