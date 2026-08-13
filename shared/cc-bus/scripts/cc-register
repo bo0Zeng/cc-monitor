@@ -20,7 +20,28 @@ touch "$BUS/agents.tsv"
   tmpf="$BUS/agents.tsv.tmp.$$"
   # 删掉同名 id 或同一个 pane 的旧记录,再写新的(幂等)。用 awk 字面比较,避免
   # grep 正则把 id/target 里的 . [ ( 等当元字符(会误删甚至清空地址簿)
-  awk -F'\t' -v id="$id" -v tg="$target" '$1!=id && $2!=tg' "$BUS/agents.tsv" > "$tmpf" 2>/dev/null || true
+  # ★★ **读不到旧表就别覆盖**〔08-13 实测事故〕：这里原来是 `awk … || true`,
+  #    失败之后**照样**追加并 `mv` ⇒ 地址簿被抹成只剩新登记的这一条。
+  #    实测:三个不同 pane 登记好之后把 agents.tsv 设成 000,再登记第四个
+  #    ⇒ **3 行变 1 行,而 cc-register 照报「已登记」** —— 另外三个 agent 静默掉线
+  #   (`cc-list` 看不到、`cc-send` 石沉大海)。
+  #    ⚠ 与 ccm 里 codex 预信任那条**完全同族**:失败被吞掉,而后面有人依赖它成功。
+  #    ⇒ 旧表存在却读不动 = **拒绝这次登记**(宁可不登记,不可抹掉别人)。
+  #    ⚠ 旧表**不存在**是正常的(第一次登记)——那时 awk 失败无所谓,下面用 `[ -s ]` 分开判。
+  if [ -e "$BUS/agents.tsv" ] && [ ! -r "$BUS/agents.tsv" ]; then
+    echo "cc-register: $BUS/agents.tsv 读不动(权限?),拒绝登记 —— 硬写会把别人的地址抹掉" >&2
+    exit 1
+  fi
+  if [ -s "$BUS/agents.tsv" ]; then
+    # 旧表有内容:awk 必须成功,且结果不许莫名其妙地空掉。
+    if ! awk -F'\t' -v id="$id" -v tg="$target" '$1!=id && $2!=tg' "$BUS/agents.tsv" > "$tmpf" 2>/dev/null; then
+      rm -f "$tmpf"
+      echo "cc-register: 重写地址簿失败,拒绝登记 —— 硬写会把别人的地址抹掉" >&2
+      exit 1
+    fi
+  else
+    : > "$tmpf"
+  fi
   printf '%s\t%s\t%s\n' "$id" "$target" "$(date -Iseconds)" >> "$tmpf"
   mv "$tmpf" "$BUS/agents.tsv"
 ) 9>>"$BUS/agents.tsv.lock"
