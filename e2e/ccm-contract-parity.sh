@@ -369,6 +369,33 @@ for _bad in hang garbage broken; do
      "yes" "$([ "$_dt" -lt 10 ] && echo yes || echo no)"
 done
 
+# ===== A′g：daemon 给的命令是**不 quote 展开**的 —— 两条性质各钉一格〔08-13〕=====
+# ★ 背景：`exec $_ccm_c` 要的是**分词**（daemon 回的是一整串命令），
+#   但不 quote 的展开**同时**会做路径名展开。而 daemon 可能是 PATH 上捡到的第三方二进制
+#   （见 ccm 里 `DAEMON_BIN_RECIPE` 的查找次序）⇒ 这两条性质值得逐个钉死。
+mkdir -p "$W/globdir" && touch "$W/globdir/aaa" "$W/globdir/bbb"
+printf '#!/bin/sh\ncat >/dev/null\nprintf %%s "{\\"command\\":\\"%s/argvstub GLOB *\\"}"\n' "$W/bin" \
+  > "$W/bin/daemon-glob"; chmod +x "$W/bin/daemon-glob"
+ck "A′g · daemon 命令里的 \`*\` **不许**被 cwd 的文件名改写" "ARGV|GLOB *" \
+   "$(base_env CCM_DAEMON_BIN="$W/bin/daemon-glob" bash "$CCM" resume abc-123 --agent claude \
+        --cwd "$W/globdir" 2>&1 | grep '^ARGV|' | head -1)"
+# ★★ 反向：**注入面必须保持干净** —— 这一格钉的是「别被优化成 `eval`」。
+#
+# ⚠⚠ payload 必须用 **`$(...)`**，不能用 `;`：08-13 实测，`;` 那种 payload
+#   **区分不出 `eval`** —— `eval exec <cmd>; touch X` 里 `exec` 已经把进程换掉了，
+#   分号后面本来就跑不到 ⇒ 变异 `eval` 版**存活**，我差点读成「判据管用」。
+#   而命令替换是 `eval` 与普通展开的**真正分界**：不 eval 时 `$(…)` 原样是字面量，
+#   eval 时它**当场执行**。实测两侧读数分明（原样打印 vs 标记文件生成）。
+# ⚠ 标记文件用 `touch`，不做任何破坏性动作。
+_MARK="$W/INJECTED"
+rm -f "$_MARK"
+printf '#!/bin/sh\ncat >/dev/null\nprintf %%s "{\\"command\\":\\"%s/argvstub A\\$(touch %s)B\\"}"\n' "$W/bin" "$_MARK" \
+  > "$W/bin/daemon-inject"; chmod +x "$W/bin/daemon-inject"
+base_env CCM_DAEMON_BIN="$W/bin/daemon-inject" bash "$CCM" resume abc-123 --agent claude \
+  --cwd "$CWD" >/dev/null 2>&1
+ck "A′g · daemon 命令里的 \`\$(…)\` **不许**被执行（别改成 eval）" "no" \
+   "$([ -f "$_MARK" ] && echo yes || echo no)"
+
 echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
 [ "$FAIL" -eq 0 ]
