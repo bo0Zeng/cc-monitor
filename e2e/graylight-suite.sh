@@ -136,6 +136,28 @@ fi
 _dev_daemons=$(pgrep -fc 'remote-daemon-proto/target/[^ ]*/cc-monitor-remote' 2>/dev/null || echo 0)
 _dep_daemons=$(pgrep -fc '\.cc-monitor/bin/cc-monitor-remote' 2>/dev/null || echo 0)
 _daemons=$(( _dev_daemons + _dep_daemons ))
+# ★★ **降级档，不动判定**〔`P0b` 第三拍 08-13，待决 `U10g` 未裁前的过渡〕：
+#
+# 补齐人群之后本格变成 fail-closed —— 好处是「读数被别人污染」不会再无声通过，
+# 代价是**只要开发机上有别人的 daemon（比如用户自己的 cc-monitor），台架就永远起不来**。
+# 08-13 实测被一个跑了 8.9h、父进程是**活 sshd** 的 daemon 挡住。
+#
+# ⇒ 过渡办法：操作者可以**点名**他已经逐个核过、确认与本跑无关的 pid。
+# ⚠ 这**不是**放宽判定，是把「我核过了」写下来：
+#   · 没点名的多余 daemon **照旧 ABORT**（纪律一个字没松）；
+#   · 每个被点名的都**打印出它的 cmdline**，理由留在日志里，事后可查；
+#   · pid 不存在就**不算数**（防止拿一串陈旧 pid 蒙混过去）。
+# ⇒ 真正的判别该收窄成什么（多半是按 hello 里的 `claude_dir`），是待决 `U10g`。
+if [ -n "${E2E_ACK_DAEMONS:-}" ]; then
+  for _p in $(printf '%s' "$E2E_ACK_DAEMONS" | tr ',' ' '); do
+    if _args="$(ps -o args= -p "$_p" 2>/dev/null)" && [ -n "$_args" ]; then
+      echo "  ACK  已核过、与本跑无关的 daemon：pid=$_p  ${_args%% *}"
+      _daemons=$(( _daemons - 1 ))
+    else
+      echo "  ⚠ E2E_ACK_DAEMONS 里的 pid=$_p 已不存在 —— **不计入**（陈旧 pid 蒙混不过去）"
+    fi
+  done
+fi
 # ⚠ 处置**不再教人裸 `pkill -f`**：模式杀没有「只杀我起的那些」这个概念
 #   （`P5L` 那拍 `pkill -f xdg-terminal-exec` 把我自己的 shell 打死过）。
 #   `e2e/reap-orphan-daemons.sh` 只收 `PPID == 1` 的那些，**默认干跑**，且逐个打印。
