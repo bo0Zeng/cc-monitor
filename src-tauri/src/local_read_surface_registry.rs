@@ -159,12 +159,16 @@ mod tests {
         (
             "src/cc_bus_deploy.rs",
             "write",
-            9,
+            13,
             "`PS1` 的部署：`fenced_dest` 解析 `<claude_dir>/skills` 并做 realpath 围栏、\
              `deploy_into`/`deploy_local_cc_bus` 取 dir 再往下写。\
              ⚠ **不属读面** —— 它是**写**操作（本仓第一处往 `<claude_dir>` 写的，\
              `U10b` 裁定后的第 7 条例外），恰好也要解析 dir 来定位落点，与 `history.rs` 那条 \
-             `write` 同类。⇒ 不归 F10 的退役范围。",
+             `write` 同类。⇒ 不归 F10 的退役范围。\
+             ⚠ 〔`PS2` 08-13〕9 → **13**：本文件又加了 `install_state_in` / `cc_bus_install_state`
+             （查「本机装的是哪一版」，**纯读**）。它们**是**读面，但读的是**本模块自己刚写下去的
+             那份**（`<claude_dir>/skills/cc-bus/`），与 F10 要退役的「读 claude 的会话数据」
+             不是一回事 —— 后端化之后这一格该跟着部署那条一起走，不单独退役。",
         ),
         // 〔P8a 08-12〕新增的直读点 —— **老实登记，不绕棘轮**（棘轮要的是论证，不是禁令）。
         (

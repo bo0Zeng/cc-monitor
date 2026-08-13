@@ -1154,6 +1154,7 @@ pub fn run() {
             skill_host::write_skill_file,
             plugins::list_plugin_marketplaces,
             cc_bus_deploy::deploy_local_cc_bus,
+            cc_bus_deploy::cc_bus_install_state,
             panorama::panorama_index,
             panorama::panorama_reindex,
             panorama::panorama_status,

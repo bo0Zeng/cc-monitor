@@ -45,17 +45,29 @@ beforeEach(() => {
 });
 
 describe("B03 cc-bus 驾驶舱：不预取、不轮询", () => {
-  it("构造时只列远端，**绝不**读 cc-bus 状态", async () => {
+  // ⚠⚠ 〔`PS2` 08-13〕本条的**人群**收窄了一次，而收窄的依据是它自己的理由：
+  //   它禁的是「展开即偷偷发**一次 30s 的远端往返**」（文件头那段逐字：「一次 30s
+  //   超时的远端往返，显式触发比『展开即偷偷发』更诚实」）。
+  //   `cc_bus_install_state` 是**纯本地文件比对**（17 个文件、无 SSH、毫秒级）——
+  //   那条理由对它**不适用**，而不做它会让面板在「装着旧版」时显示「装到本机」，
+  //   正是 `PS2` 要消灭的骗人形态。
+  // ⇒ 断言从「构造时**只**有列远端那一次」改成「构造时**不许有任何远端往返**」，
+  //   本地读显式列出来。**这不是放宽**：远端那一族一个都没放进来，
+  //   而且下面那条「点「读取」才发 read_cc_bus_state」一个字没动。
+  it("构造时不发任何**远端**往返（本地状态读除外，逐条列出）", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "cc_bus_install_state") return { state: "not_installed" };
       throw new Error(`不该在构造时调用 ${cmd}`);
     });
     const s = new CcBusSection();
     document.body.appendChild(s.element);
     await flush();
     const called = mockInvoke.mock.calls.map((c) => c[0]);
-    // 账号列表经 `fetchAccounts`（已 mock），不走 invoke；这里只该看到列远端那一次
-    expect(called).toEqual(["list_remote_mcp_origins"]);
+    // 账号列表经 `fetchAccounts`（已 mock），不走 invoke。
+    expect(called.sort()).toEqual(["cc_bus_install_state", "list_remote_mcp_origins"]);
+    // ★ 正题原样保留：**远端** cc-bus 状态一次都不许预取。
+    expect(called).not.toContain("read_cc_bus_state");
     expect(called).not.toContain("read_cc_bus_state");
     expect(s.element.querySelector(".cc-bus-status")?.textContent).toContain("尚未读取");
   });

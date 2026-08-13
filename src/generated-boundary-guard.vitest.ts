@@ -134,6 +134,8 @@ describe("C01 边界生成物", () => {
       "CcBusAgent.ts", // C04d 批5a（CcBusState 的传递依赖）
       // PS1：本机部署 cc-bus 的结果（写了几个 / 跳过几个 / 备份在哪 —— 三种说法不合并）。
       "CcBusDeployReport.ts",
+      // PS2：三态（没装 / 已是最新 / 装了但不是这一版）——刻意不合并。
+      "CcBusInstallState.ts",
       "CcBusMessage.ts", // C04d 批5a
       "CcBusSpawned.ts", // C04d 批5a（CcBusState 的传递依赖）
       "CcBusState.ts", // C04d 批5a（`skipped: usize` → number，**ts-rs 对 usize 不回落 bigint**）

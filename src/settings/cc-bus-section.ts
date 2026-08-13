@@ -42,6 +42,7 @@ export class CcBusSection {
   readonly element: HTMLElement;
   private originSel!: HTMLSelectElement;
   private readBtn!: HTMLButtonElement;
+  private deployBtn?: HTMLButtonElement;
   private statusEl!: HTMLElement;
   private listBox!: HTMLElement;
   private spawnDir!: HTMLInputElement;
@@ -66,8 +67,13 @@ export class CcBusSection {
 
   constructor() {
     this.element = this.build();
-    // **刻意不在这里 invoke** 读状态。见文件头「与计划措辞的一处偏离」。
+    // **刻意不在这里 invoke** 读 cc-bus 状态。见文件头「与计划措辞的一处偏离」。
     void this.loadOrigins();
+    // ★ `PS2` 例外，且是**按那条纪律自己的理由**开的：它禁的是「展开即偷偷发**一次 30s
+    //   的远端往返**」。而本机安装状态是**纯本地文件比对**（17 个文件、无 SSH、毫秒级）——
+    //   理由不适用。⇒ 构造时算一次，否则打开面板看到的是默认文案，
+    //   而「装着旧版却显示『装到本机』」正是本件要消灭的那种骗人形态。
+    void this.refreshInstallState();
   }
 
   private build(): HTMLElement {
@@ -130,6 +136,7 @@ export class CcBusSection {
     deployBtn.title =
       "把仓内那份 cc-bus 装到 ~/.claude/skills/cc-bus/（幂等；覆盖前自动留备份）";
     deployBtn.addEventListener("click", () => void this.doDeploy(deployBtn));
+    this.deployBtn = deployBtn;
     row.appendChild(deployBtn);
 
     root.appendChild(row);
@@ -155,6 +162,38 @@ export class CcBusSection {
    * · 一个没写（幂等命中）⇒ 明说「已是最新」，**不假装干了活**；
    * · 失败 ⇒ 原样把错误摆出来（围栏拒收的理由是逐字的，别吞）。
    */
+  /**
+   * `PS2`：按**三态**说话，并让按钮的**文案跟着状态变**。
+   *
+   * ⚠ 三态刻意不合并（理由见 `cc_bus_deploy::CcBusInstallState` 的头注）：
+   * 把「装了旧版」说成「已装」，正是 `P4b` 那一刀卡了两天的形态 ——
+   * 装着的是旧的，而界面说已装，于是**没人会去点那颗按钮**。
+   * ⚠ 读失败**说读失败**，不退化成「未装」（本仓一路在收的那一族）。
+   */
+  private async refreshInstallState(): Promise<void> {
+    if (!this.deployBtn) return;
+    try {
+      const st = await commands.cc_bus_install_state();
+      if (st.state === "not_installed") {
+        this.deployBtn.textContent = "装到本机";
+        this.deployBtn.title = "本机还没装 cc-bus（装到 ~/.claude/skills/cc-bus/）";
+      } else if (st.state === "up_to_date") {
+        this.deployBtn.textContent = "已是最新";
+        this.deployBtn.title = "本机装的就是这一版（点了也不会写盘）";
+      } else {
+        const n = st.differing + st.missing;
+        this.deployBtn.textContent = `更新（差 ${n} 个文件）`;
+        this.deployBtn.title =
+          `本机装的**不是**这一版：${st.differing} 个内容不同、${st.missing} 个缺失。` +
+          "点一下更新（覆盖前自动留备份）";
+      }
+    } catch (e) {
+      // 读不到就说读不到 —— **不许**退化成「未装」，那会让用户以为要装。
+      this.deployBtn.textContent = "装到本机";
+      this.deployBtn.title = `读不到本机安装状态：${String(e)}（这不等于「没装」）`;
+    }
+  }
+
   private async doDeploy(btn: HTMLButtonElement): Promise<void> {
     const prev = btn.textContent;
     btn.disabled = true;
@@ -172,6 +211,8 @@ export class CcBusSection {
     } finally {
       btn.disabled = false;
       btn.textContent = prev;
+      // 装完立刻重算状态 —— 否则按钮还写着「更新（差 N 个）」，而盘上已经是最新的。
+      await this.refreshInstallState();
     }
   }
 
