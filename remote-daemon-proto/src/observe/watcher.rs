@@ -501,15 +501,30 @@ fn watch_sock_dir_if_present(
     sock_dir: &Path,
     watched: &mut bool,
 ) {
-    if *watched || !sock_dir.is_dir() {
+    // ★★ **目录没了要把记账翻回去**〔08-13 实测补〕：socket 目录**整个被删掉再重建**
+    //    之后是**另一个 inode**，而我们的 watch 还挂在已删的那个上 ——
+    //    与 `sessions/` 那个 inode bug **同型，只是高一层**。
+    //    实测：删掉目录、再起一个新 tmux server ⇒ daemon **一帧都收不到**（`sid-two` 命中 0）。
+    //    ⇒ `*watched` 必须跟着盘上的事实走，否则下面那个 `if *watched` 会永远短路。
+    if !sock_dir.is_dir() {
+        if *watched {
+            tracing::info!("tmux socket 目录消失了 {} —— 解除记账，等它回来再挂", sock_dir.display());
+            let _ = debouncer.watcher().unwatch(sock_dir);
+            *watched = false;
+        }
         return;
     }
+    // 目录在。**无条件先 unwatch 再 watch**（分辨不出「同 inode 的普通事件」与「换了 inode」，
+    // 而重挂同一个 inode 无害、漏挂新 inode 致命）——与 `rewatch_sessions` 同一条纪律。
+    let _ = debouncer.watcher().unwatch(sock_dir);
     match debouncer
         .watcher()
         .watch(sock_dir, RecursiveMode::NonRecursive)
     {
         Ok(()) => {
+            let first = !*watched;
             *watched = true;
+            let _ = first;
             tracing::info!(
                 "已监视 tmux socket 目录 {}（零 server 时的唯一耳朵）",
                 sock_dir.display()
@@ -869,7 +884,10 @@ fn watch_loop(
                     //   不升级的话：目录创建那一下能探到一次，但**那一瞬 server 往往还没就绪**，
                     //   而随后 socket 文件落在一个**没被监视的目录**里 ⇒ 再无事件、永远漏掉。
                     //   （e2e 第 3 格 `TMUX_TMPDIR` 实测就是这么红的。）
-                    if p == sock_dir.as_path() && !sock_dir_watched {
+                    // ⚠ 去掉 `&& !sock_dir_watched`〔08-13〕：目录**被删掉再重建**时
+                    //   `sock_dir_watched` 仍是 true ⇒ 那个条件会把重挂整个短路掉，
+                    //   于是新 inode 永远没人听（实测：新起的 server 一帧都收不到）。
+                    if p == sock_dir.as_path() || p.parent() == Some(sock_dir.as_path()) {
                         watch_sock_dir_if_present(&mut debouncer, &sock_dir, &mut sock_dir_watched);
                     }
                     if watched_socket.as_deref() == Some(p) || in_sock_dir {
@@ -3437,6 +3455,68 @@ mod tests {
         assert!(
             prod.contains("watch(&claude_dir, RecursiveMode::NonRecursive)"),
             "没有监视 `claude_dir` 本身 —— 那 `sessions/` 出现或被换掉时没有任何事件会来。"
+        );
+    }
+
+    /// ★★ socket 目录**被删掉再重建**时，watch 必须跟着换到新 inode〔08-13〕。
+    ///
+    /// # 为什么这条是结构判据而不是 e2e
+    ///
+    /// 要真跑它得有一个**私有 socket 目录**（不然就得删用户真实的 `/tmp/tmux-<uid>`），
+    /// 而私有 socket 目录只能靠 `TMUX_TMPDIR` —— 那正是 `C7i` **零例外**禁止的东西
+    /// （`e2e_gate_registry::no_e2e_suite_isolates_with_tmux_tmpdir` 拦下了 e2e 那一版）。
+    /// ⇒ 红线与覆盖面冲突时本仓选红线，**换判据落在哪一层**。
+    ///
+    /// ⚠ **如实记损失**：运行期行为 08-13 手工验过一次（删目录 → 起新 server ⇒
+    /// 修前新 server 一帧收不到、修后收得到），**没有进 CI**。这里钉的是那两处形状。
+    ///
+    /// # 钉哪两处
+    ///
+    /// ① 事件条件里**不许**再有 `&& !sock_dir_watched` —— 目录被换掉时那个标志仍是 true，
+    ///    加上它等于把重挂整个短路（这正是首版的 bug）；
+    /// ② `watch_sock_dir_if_present` 必须**先 `unwatch` 再 `watch`** ——
+    ///    分辨不出「同 inode 的普通事件」与「换了 inode」，重挂同一个无害、漏挂新的致命。
+    #[test]
+    fn the_socket_dir_watch_survives_an_inode_swap() {
+        let src = include_str!("watcher.rs");
+        let prod: String = src
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("//") && !t.starts_with("///")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        // ⚠⚠ 针**运行时拼**：写成字面量的话，**本条自己的诊断文案**里那个串也会进语料
+        //   ⇒ 判据恒红（08-13 实测栽了一次）。隔壁 `wire.rs` 的同族判据逐字记着这条：
+        //   「判据扫自己所在的文件时，它写下的每一个例子都会变成语料」。
+        //   ⚠ 而 `guard_core::production_code` 在这里**救不了**：它剥的是 `#[cfg(test)] mod`，
+        //   而本条**就住在那个 mod 里** —— 剥完连要找的生产代码一起没了（首版又栽在这）。
+        let short_circuit = format!("p == sock_dir.as_path() {} !sock_dir_watched", "&&");
+        assert!(
+            !prod.contains(short_circuit.as_str()),
+            "事件条件里又出现了 `&& !sock_dir_watched` —— 目录被删掉再重建时那个标志仍是 true，\n             \
+             这会把重挂整个短路，于是**新起的 tmux server 一帧都收不到**（08-13 实测过）。"
+        );
+        let at = prod
+            .find("fn watch_sock_dir_if_present(")
+            .expect("`watch_sock_dir_if_present` 不在了 —— 那是 socket 目录耳朵的唯一挂点");
+        let body = &prod[at..(at + 1200).min(prod.len())];
+        // ⚠ **数两处、不找第一处**：函数里有**两个** `unwatch(sock_dir)` ——
+        //   一个在「目录没了」那支（翻记账），一个在重挂之前。首版用 `find` 取第一处，
+        //   于是删掉重挂那处、变异**照样绿**（第一处顶了包）。这是本会话反复撞的
+        //   「针在窗口内不唯一」那一族。
+        let n_unwatch = body.matches("unwatch(sock_dir)").count();
+        assert_eq!(
+            n_unwatch, 2,
+            "`watch_sock_dir_if_present` 里 `unwatch(sock_dir)` 应恰好 2 处\n             \
+             （① 目录没了 ⇒ 翻记账；② 重挂之前 ⇒ 换 inode 时挂得上新的），实得 {n_unwatch}"
+        );
+        let watch_at = body.find("watch(sock_dir,").expect("没有 `watch` —— 那它什么都没挂");
+        let last_unwatch = body.rfind("unwatch(sock_dir)").expect("上面已确认有两处");
+        assert!(
+            last_unwatch < watch_at,
+            "重挂前那次 `unwatch` 必须排在 `watch` **之前** —— 反了等于先挂再解，白挂一次"
         );
     }
 
