@@ -331,7 +331,11 @@ jobs:
           #   （`C15` 把台账收进 `ccm` 时，**格式仍归 cc-bus** ⇒ 那段 flock 追加从 `cc-spawn`
           #    抽成 cc-bus 自己的一个脚本，`ccm --bus-register` 调它）。
           #   今天实测构成：**49 = e2e 28 + fake-claude 1 + cc-bus 14 + ccm 1 + scripts 1 + vendored 4**。
-          [ "$N" -ge 49 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 49）"; exit 1; }
+          #   **2026-08-13 P0b-Y2 棘到 50**：新增 `e2e/daemon-sessions-rewatch.sh`
+          #   （四组对照真跑：`sessions/` 被换 inode / 起初不存在 / 重建后立刻写 —— 那是
+          #    `#60` 台架九拍拿不到读数的原因，只有真起 daemon 才验得出来）。
+          #   今天实测构成：**50 = e2e 29 + fake-claude 1 + cc-bus 14 + ccm 1 + scripts 1 + vendored 4**。
+          [ "$N" -ge 50 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 50）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
@@ -469,6 +473,8 @@ jobs:
       # 这条自检是为了那里；CI 上是干净 runner，自检自然通过。
       - name: cc-spawn 收编等价（B02）
         run: bash e2e/assert-pass-floor.sh cc-spawn-uplift 31
+      - name: e2e - daemon sessions 重挂（P0b-Y2，#60 台架九拍的根因）
+        run: bash e2e/daemon-sessions-rewatch.sh
 
       # G-C（解 E41）：这两套只要 node + tmux（经 tsx driver 驱真编排逻辑，不碰 daemon）。
       # 它们此前进不了 CI 的原因不是「需要什么」，而是**会踩开发者机器上的真实 tmux 会话**
