@@ -686,6 +686,36 @@ fn read_capped_line_sync<R: std::io::BufRead>(
     }
 }
 
+/// P3 刀 1 的**唯一**吸收点：本机 daemon 推来的帧里，哪些要进账本。
+///
+/// # 为什么抽成函数〔`P3` 08-12〕
+///
+/// 原来这三行**长在读行循环里**，而那个循环要有一个**真的在跑的 daemon** 才进得去
+/// ⇒ `P3-Y1`（acceptor: **实测**）唯一的证据只能是一条会起真 tmux 的测试，而那条
+/// 08-11 出过**误伤用户 9 个真实会话**的事故后被 `#[ignore]` 了 ——
+/// 于是这条 DoD **至今没有兑现证据**（如实登记在件的 `§0h`：「不是『测试暂时关着』，
+/// 是这条 DoD 今天没有兑现」）。
+///
+/// 抽出来之后，「帧 → 账本」这一跳**不需要 daemon、不需要 tmux** 就能验 ——
+/// 与 `P5L` 把终端出口做成入参是同一手：**把够得到的那半做成可测，别拿够不到的当借口**。
+///
+/// ⚠ **射程如实登记**：本函数可测的是「**收到帧之后**账本里有」。
+/// 「daemon **真的会发**这个帧」仍归 daemon 侧 `EMITS "tmux_sessions"` 的登记
+/// （逐字「登记 = 承诺真发」）与协议文档守卫 —— 那一跳本判据**够不到**，
+/// 那条会起真 tmux 的实测因此**留着**（仍 `#[ignore]`），不是删掉了事。
+fn absorb_local_frame(frame: &crate::ssh_source::InboundFrame) {
+    // P3 刀 1：**本机的 tmux 帧也要收**。daemon 的 `watch_loop` 周期跑本机 `tmux ls`
+    // 并推 `TmuxSessions` 帧。P2 写这个消费者时只需要通道，把非 hello 帧全丢了 ——
+    // 于是**本机 tmux 会话对 monitor 不可见，不是拿不到，是我们扔了**。
+    //
+    // ⚠ 收它有前置：本地 sid 进这张表之后，`/branch` 会走 `(Some(origin), …)`
+    // ⇒ 必须先有「本地也判得出 `Superseded`」（P3 刀 0）。没有刀 0 就收帧 =
+    // 把「永远消不掉的灰点」那个 bug 请回来。
+    if let crate::ssh_source::InboundFrame::TmuxSessions { raw, .. } = frame {
+        crate::ssh_source::record_tmux_raw(crate::inbound_client::LOCAL_ORIGIN, raw.clone());
+    }
+}
+
 /// # 诚实边界 10a + 10e：通道**通了**，但没人往里发命令，也没验命令真能执行
 ///
 /// 10a：`client_for("<local>")` 今天的生产消费者**只有读**（`daemon_status` 问「通道在不在」）。
@@ -764,17 +794,9 @@ pub(crate) fn local_stdio_consumer(
         let Some(frame) = crate::ssh_source::parse_frame(&line) else {
             continue;
         };
-        // P3 刀 1：**本机的 tmux 帧也要收**。daemon 的 `watch_loop` 周期跑本机 `tmux ls`
-        // 并推 `TmuxSessions` 帧（daemon 侧 `EMITS "tmux_sessions"` 逐字「登记=承诺真发」）。
-        // P2 写这个消费者时只需要通道，把非 hello 帧全丢了 ——
-        // 于是**本机 tmux 会话对 monitor 不可见，不是拿不到，是我们扔了**。
-        //
-        // ⚠ 收它有前置：本地 sid 进这张表之后，`/branch` 会走 `(Some(origin), …)`
-        // ⇒ 必须先有「本地也判得出 `Superseded`」（P3 刀 0）。没有刀 0 就收帧 =
-        // 把「永远消不掉的灰点」那个 bug 请回来。
-        if let crate::ssh_source::InboundFrame::TmuxSessions { raw, .. } = &frame {
-            crate::ssh_source::record_tmux_raw(crate::inbound_client::LOCAL_ORIGIN, raw.clone());
-        }
+        // P3 刀 1：本机的 tmux 帧也要收。**理由与前置条件写在 `absorb_local_frame` 的头注上**
+        // ——〔08-12〕抽函数时这段散文一度**两处各一份**，那是第二份真相源，收敛掉。
+        absorb_local_frame(&frame);
         // 下面只在**还没登记**时才找 hello；登记之后不再看它。
         if parked.is_none() {
             continue;
@@ -924,6 +946,65 @@ mod tests {
     /// （`the_startup_path_really_calls_this_module` 与 `the_production_entry_hands_the_stdio_consumer_down`）
     /// —— 各存一份迟早分叉：新增入口时只想得起改一处。
     const ENTRIES: &[&str] = &["start_if_present", "start_or_extract"];
+
+    /// `P3-Y1` 的**兑现证据**〔08-12 补〕：帧 → 账本这一跳，**不起 daemon、不起 tmux**。
+    ///
+    /// # 它补的是什么洞
+    ///
+    /// 下面那条 `the_local_tmux_frames_really_land_in_the_ledger` 是 `P3-Y1` 原本唯一的
+    /// 证据，而它 `#[ignore]`（08-11 误伤用户 9 个真实会话之后的处置），且件的 `§0h` 逐字
+    /// 承认「**就算解开它也验不出来**」——它的客户端与 daemon 用的**不是同一个 socket**。
+    /// ⇒ 这条 DoD 一直挂着「没有兑现证据」。
+    ///
+    /// 本条走**另一条路**：既然「帧 → 账本」是 `absorb_local_frame` 一个函数，就直接喂它
+    /// 一条**真实形状**的帧，再从**账本那一侧**（`snapshot_tmux_by_origin`，也就是 emitter
+    /// 判 idle/archived 时读的那一份）读回来。
+    ///
+    /// ⚠ **射程**：本条钉的是「收到帧之后账本里有」。**daemon 真的会发**那个帧
+    /// 归 daemon 侧 `EMITS "tmux_sessions"`（逐字「登记 = 承诺真发」）；那一跳这里够不到，
+    /// 所以那条真 tmux 的实测**留着**，不是被本条替掉了。
+    #[test]
+    fn a_local_tmux_frame_lands_in_the_ledger_without_any_daemon() {
+        // 用一个本条专属的 raw，避免与别的测试抢同一个 origin 的那一格。
+        let raw = "p3y1-proof-cc: 1 windows (created Tue Aug 12 20:00:00 2026)";
+        let line = format!(r#"{{"kind":"tmux_sessions","raw":{raw:?}}}"#);
+        let frame = crate::ssh_source::parse_frame(&line).expect("这是真实帧形状，必须解析得出");
+        assert!(
+            matches!(frame, crate::ssh_source::InboundFrame::TmuxSessions { .. }),
+            "解析出来的不是 TmuxSessions —— 后面的断言就没有意义了"
+        );
+
+        absorb_local_frame(&frame);
+
+        let snap = crate::ssh_source::snapshot_tmux_by_origin();
+        let got = snap
+            .get(crate::inbound_client::LOCAL_ORIGIN)
+            .map(String::as_str);
+        assert_eq!(
+            got,
+            Some(raw),
+            "帧收到了，但**账本里没有** —— DoD 自陈的失效方式逐字：\
+             「『消费者收到了』不等于『账本里有』」。\
+             账本这一份正是 emitter 判 idle/archived 时读的那一份。"
+        );
+    }
+
+    /// `P3-Y1` 的**第二半**：读行循环**真的调**那个吸收点。
+    ///
+    /// ★ 上面那条只证明「函数管用」。把循环里那一行删掉，它**照样绿**，
+    /// 而那时本机 tmux 会话又对 monitor 不可见了 —— 与 `P2` 当初「把非 hello 帧全丢了」
+    /// 是同一个形状的退化。⇒ 位置性质要单独钉（`find_pinned`：恰好一处、有边界）。
+    #[test]
+    fn the_read_loop_really_calls_the_absorb_point() {
+        let prod = guard_core::production_code(include_str!("local_backend.rs"));
+        let at = guard_core::find_pinned(&prod, "absorb_local_frame(&frame);")
+            .expect("读行循环里必须恰好有一处 `absorb_local_frame(&frame);`");
+        let before = &prod[..at];
+        assert!(
+            before.contains("parse_frame(&line)"),
+            "吸收点必须排在**解析出帧之后** —— 顺序反了就是拿没解析的东西去收"
+        );
+    }
 
     /// P3-Y1（acceptor: **实测**）：**本机 daemon 的 tmux 帧真的进了账本**。
     ///
