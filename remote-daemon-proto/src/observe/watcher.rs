@@ -239,6 +239,17 @@ fn arm_pid_watcher(key: &Path, pid: u32, expected_start: Option<u64>, state: &mu
     {
         return; // 这个 (pidfile, pid, starttime) 已经挂过了
     }
+    // ★★ `P0b-Y2` 第十五拍〔08-13〕：**这一步原先一行日志都不打。**
+    //
+    // 第十四拍在可信台架上复现了 `#60`：全链里杀掉 claude **一帧 removed 都没有**，
+    // 而**同一个二进制离线三种旗标组合全都发得出来** ⇒ 差别在全链那条路上。
+    // 但「pidfd 看守到底有没有挂上」从外面**看不见** —— 只能推断，不能读数。
+    // ⇒ 与第十一拍「removal 那跳不可观测」同一族：先让它可观测，再谈根因。
+    // ⚠ 量级：每个会话一次（`pid_watched` 挡住重复），不会淹日志。
+    tracing::info!(
+        "pidfd 看守已挂: pid={pid} start={expected_start:?} key={}",
+        key.display()
+    );
     spawn_pid_watcher(
         PidWatchTarget::Session {
             key: key.to_path_buf(),
@@ -831,6 +842,13 @@ fn watch_loop(
             // Batch6-F22-② 的引用计数语义原样保留：经 `retire_sid_if_unreferenced`，
             // 同 sid 多 pidfile（resume 时原进程未死）任一 PID 死亡不误杀整个 sid。
             WatchEvent::PidDied { key, pid } => {
+                // ★ 同上：醒没醒、醒了之后那道 `sessions` 对账过没过，都要看得见。
+                //   两者分开报 —— 「没醒」与「醒了但被对账挡掉」是两个完全不同的诊断。
+                tracing::info!(
+                    "PidDied 醒了: pid={pid} key={} 账上是 {:?}",
+                    key.display(),
+                    state.sessions.get(&key).map(|e| e.pid)
+                );
                 if state.sessions.get(&key).map(|e| e.pid) == Some(pid) {
                     if let Some(e) = state.sessions.remove(&key) {
                         // pidfd 醒了 = 那个进程实例真的退了。
