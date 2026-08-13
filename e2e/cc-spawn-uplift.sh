@@ -253,6 +253,27 @@ chk "多行任务：那行仍是 4 列" \
 chk "多行任务：换行被转义、信息没丢" \
   "$(awk -F'\t' '$1=="multi_cc"{print $4}' "$CC_BUS_HOME/spawned.tsv")" '第一行\n第二行'
 
+echo "[15] 【08-13】**并发 spawn 同一目录**：四个都得成，名字各不相同"
+# ★ 这一格来自一次**被实测打脸的断言**：`C15` 的 commit 里我写过「让建的人自己避让
+#   把窗口期关掉了」——**错的**。避让是 `has-session` 探完再 `new-session`，中间仍有窗口，
+#   只是从「cc-spawn 探完到 ccm 建」搬到了「ccm 内部探完到建」。
+#   实测 4 个并发：**只成 1 个**，另外 3 个报「经 ccm 建会话失败」。
+#   ⇒ 处置是**调用方按 exit 3 重试**（`--tmux-base` 的语义就是「给我个新的」）。
+# ⚠ 判据钉的是**三处账目一致**，不是「有 4 个会话」——名字对不上时会话数照样是 4。
+mkdir -p "$WORK/race"
+for _i in 1 2 3 4; do
+  CCM_NO_PRETRUST=1 timeout 40 "$CCSPAWN" "$WORK/race" "并发$_i" > "$WORK/race-$_i.out" 2>&1 &
+done
+wait
+chk "四个都报成功" \
+  "$(cat "$WORK"/race-*.out | grep -c '^已 spawn: ')" "4"
+chk "会话四个、名字互不相同" \
+  "$(tmux ls -F '#{session_name}' | grep -c '^race_cc') " "$(tmux ls -F '#{session_name}' | grep '^race_cc' | sort -u | wc -l) "
+chk "台账四行" "$(grep -c '^race_cc' "$CC_BUS_HOME/spawned.tsv" 2>/dev/null || true)" "4"
+chk "总线四条、与会话名逐字对得上" \
+  "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep '^race_cc' | sort | md5sum | cut -c1-8)" \
+  "$(tmux ls -F '#{session_name}' | grep '^race_cc' | sort | md5sum | cut -c1-8)"
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 if [ "$fail" -eq 0 ]; then echo "===== cc-spawn 收编验收全部通过 ====="; fi
