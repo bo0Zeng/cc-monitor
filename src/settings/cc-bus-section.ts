@@ -206,6 +206,18 @@ export class CcBusSection {
         const bak = r.backup ? `；旧的已备份到 ${r.backup}` : "";
         this.statusEl.textContent = `已装到 ${r.dest}（写了 ${r.written} 个文件${bak}）`;
       }
+      // ★★ 装成功了、但装出来的东西现在跑不起来 —— 这句必须**显示出来**〔08-13〕。
+      //
+      // `C15` 之后 cc-spawn 硬依赖新 `ccm`（开头能力协商，缺一条就 exit 2）。
+      // 只装 cc-bus、不同步 ccm ⇒ 这一步一切正常，用户的 `cc-spawn` 当场不能用。
+      // ⚠ 后端那侧同时也写了日志 —— 但**用户不会去翻日志**：「成功 + 一句日志」
+      //   在他眼里就是纯成功，正是本仓一路在治的「假成功比失败更坏」。
+      // ⚠ 它**不是错误**（装本身做完了），所以接在成功文案后面，而不是走失败 toast。
+      if (r.warning) {
+        // ⚠ 分隔符用普通空格：全角空格会被 `no-irregular-whitespace` 判错，
+        //   而 `eslint-baseline` 那条判据是**等号**（全仓错误数就是基线那个数）—— 它当场逮住了。
+        this.statusEl.textContent += ` ⚠ ${r.warning}`;
+      }
     } catch (e) {
       showActionFailureToast("装到本机失败", String(e));
     } finally {
