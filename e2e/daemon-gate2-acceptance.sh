@@ -18,8 +18,11 @@ set -euo pipefail
 # ── 隔离（同 inbound-daemon-frames.sh 的两件事，缺一不可）──────────────────────
 #   ① unset TMUX —— 否则 $TMUX 会让客户端连外层那台 server 并**完全忽略** TMUX_TMPDIR；
 #   ② TMUX_TMPDIR 必须是短路径 —— unix socket 路径上限 108 字节。
-unset TMUX TMUX_PANE
-TMUX_TMPDIR="$(mktemp -d /tmp/e2e-gsock.XXXXXX)"; export TMUX_TMPDIR
+# `C7i` 隔离：走**共享原语**（`P0e` 08-12）。shim 强插 `-L e2eGate2`，漏什么环境变量都打不偏。
+# ⚠ 此前靠 `TMUX_TMPDIR`，那是 `C7i` 逐字禁止的形态（08-11 同形态探针打没了用户 9 个真实会话）。
+TMUX_SHIM_SOCK=e2eGate2
+# shellcheck source=e2e/tmux-shim.sh
+. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh"
 TMUX_BIN="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
 
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -37,8 +40,8 @@ cleanup() {
   exec 3>&- 2>/dev/null
   [ -n "${DAEMON_PID:-}" ] && kill "$DAEMON_PID" 2>/dev/null
   # C7i：socket 显式给死（见 local-backend-supervise.sh 的同款注释）
-  "$TMUX_BIN" -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null
-  rm -rf -- "$WORK" "$TMUX_TMPDIR"
+  "$TMUX_BIN" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null
+  rm -rf -- "$WORK"
 }
 trap cleanup EXIT
 
@@ -79,7 +82,7 @@ while IFS=$'\t' read -r id name sid expect; do
   EARLY_SHAPE=no
   case "$name" in *:*|*=*) EARLY_SHAPE=yes ;; esac
 
-  "$TMUX_BIN" -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null || true
+  "$TMUX_BIN" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null || true
   sleep 0.2
   # `--` 让 `-cc` 这种以短横开头的名字不被 tmux 的 getopt 当成选项。
   "$TMUX_BIN" new-session -d -s "$name" 2>/dev/null \
@@ -137,7 +140,7 @@ while IFS=$'\t' read -r id name sid expect; do
 done < "$GOLDEN"
 
 # ── 场景 N+1：目标不存在 ⇒ 仍是 no_such_session，新门不许把这一档吞掉 ──────────
-"$TMUX_BIN" -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null || true; sleep 0.2
+"$TMUX_BIN" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null || true; sleep 0.2
 send '{"id":"e2e-gate2-nos","cmd":"launch","args":{"mode":"send-into","name":"cc-nope","payload":"true"}}'
 if wait_for '"id":"e2e-gate2-nos"'; then
   R="$(reply_of e2e-gate2-nos)"
@@ -152,7 +155,7 @@ else bad "目标不存在场景 5s 内无应答"; fi
 # 一个新 mode 绕过身份门，是「加功能顺手开个后门」最典型的形状：功能测试全绿，
 # 而「往别人的 tmux 会话里打字」这道门只对旧 mode 生效。
 # 拒绝这一档同样要**两件事都满足**：应答说 false，**且 pane 真的没被污染**。
-"$TMUX_BIN" -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null || true; sleep 0.2
+"$TMUX_BIN" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null || true; sleep 0.2
 "$TMUX_BIN" new-session -d -s notours   # 不是本工具的命名形状，且不设 @ccm_sid
 send '{"id":"e2e-gate2-raw","cmd":"launch","args":{"mode":"send-keys-raw","name":"notours","payload":"printf %s CCMGATE_RAW"}}'
 if wait_for '"id":"e2e-gate2-raw"'; then
@@ -173,7 +176,7 @@ else bad "send-keys-raw 的 Gate 2 场景 5s 内无应答"; fi
 # ── 场景 N+2：`@ccm_sid_expect` 已设但 `@ccm_sid` 未设 ⇒ **照样拒绝** ───────────
 # 这条不在判定表里（表是纯判定，不认识 tmux option 名），但它是本门最容易被放宽的一处：
 # 「通道 A 声明了意图」不等于「通道 B 确认了事实」，而破坏性动作只认事实。
-"$TMUX_BIN" -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null || true; sleep 0.2
+"$TMUX_BIN" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null || true; sleep 0.2
 "$TMUX_BIN" new-session -d -s expectonly
 "$TMUX_BIN" set-option -t '=expectonly:' @ccm_sid_expect deadbeef >/dev/null 2>&1 || true
 send '{"id":"e2e-gate2-exp","cmd":"launch","args":{"mode":"send-into","name":"expectonly","payload":"printf %s CCMGATE_EXPECT"}}'
@@ -194,7 +197,7 @@ echo
 echo "-- F04a Gate 3（kill）--"
 g3() { # <场景名> <会话名> <设不设sid> <开几个窗口> <期望码|OK>
   local what="$1" name="$2" sid="$3" wins="$4" want="$5" rid="e2e-g3-$6"
-  "$TMUX_BIN" -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null || true; sleep 0.2
+  "$TMUX_BIN" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null || true; sleep 0.2
   "$TMUX_BIN" new-session -d -s "$name" 2>/dev/null || { bad "$what：建不出会话"; return; }
   [ "$sid" = yes ] && "$TMUX_BIN" set-option -t "=$name:" @ccm_sid abc123 >/dev/null 2>&1
   local i=1; while [ "$i" -lt "$wins" ]; do "$TMUX_BIN" new-window -t "=$name:" >/dev/null 2>&1; i=$((i+1)); done
@@ -217,7 +220,7 @@ g3 "本工具会话 + 2 窗口（Gate 3 挡）" "g3-owned-cc" no 2 too_many_wind
 g3 "非本工具会话 + 单窗口（Gate 2 就挡住）" "someones-box" no 1 wrong_owner 3
 g3 "自定义名 + @ccm_sid + 单窗口" "g3-custom" yes 1 OK 4
 g3 "自定义名 + @ccm_sid + 3 窗口（Gate 3 挡）" "g3-custom" yes 3 too_many_windows 5
-"$TMUX_BIN" -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null || true; sleep 0.2
+"$TMUX_BIN" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null || true; sleep 0.2
 send '{"id":"e2e-g3-nos","cmd":"kill","args":{"name":"g3-nope-cc"}}'
 if wait_for '"id":"e2e-g3-nos"'; then
   R="$(reply_of e2e-g3-nos)"

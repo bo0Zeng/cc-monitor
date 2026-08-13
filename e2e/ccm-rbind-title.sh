@@ -24,10 +24,13 @@ bad() { FAIL=$((FAIL+1)); printf '  FAIL %s\n     %s\n' "$1" "${2:-}"; }
 
 # ① unset TMUX：从 tmux 里跑时 $TMUX 会让客户端连**外层那台 server** 并忽略 TMUX_TMPDIR。
 # ② TMUX_TMPDIR 必须短：unix socket 路径上限 108 字节。
-unset TMUX TMUX_PANE
-TMUX_TMPDIR="$(mktemp -d /tmp/e2e-rbind.XXXXXX)"; export TMUX_TMPDIR
+# `C7i` 隔离：走**共享原语**（`P0e` 08-12）。shim 强插 `-L e2eRbind`，漏什么环境变量都打不偏。
+# ⚠ 此前靠 `TMUX_TMPDIR`，那是 `C7i` 逐字禁止的形态（08-11 同形态探针打没了用户 9 个真实会话）。
+TMUX_SHIM_SOCK=e2eRbind
+# shellcheck source=e2e/tmux-shim.sh
+. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh"
 SOCK=(-L e2e-rbind)
-cleanup() { tmux "${SOCK[@]}" kill-server 2>/dev/null || true; rm -rf "$TMUX_TMPDIR"; }
+cleanup() { tmux "${SOCK[@]}" kill-server 2>/dev/null || true; rm -rf; }
 trap cleanup EXIT
 
 SID="9d66c46d-bf88-4f99-877e-455555555555"

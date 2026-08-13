@@ -27,15 +27,14 @@ set -euo pipefail
 #
 # 这样做的好处是**零调用点改动**：套件里 84 处裸 `tmux` 一个都不用改，
 # 也自动覆盖它 shell out 出去的东西（`ccm` / `cc-spawn` 内部也是裸调 tmux）。
-unset TMUX TMUX_PANE
-TMUX_TMPDIR="$(mktemp -d /tmp/e2e-sock.XXXXXX)"; export TMUX_TMPDIR
-# 收尾：只用 **`-S <私有 socket>`** 收自己那台（**绝不裸 `kill-server`** —— 万一上面的
-# 隔离没生效，裸的那个会打到用户的 server 上）。server 无会话时本就会自己退，这条是兜底。
-_gc_sock_cleanup() {
-  set +e
-  [ -n "${TMUX_TMPDIR:-}" ] && /usr/bin/tmux -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null
-  [ -n "${TMUX_TMPDIR:-}" ] && rm -rf -- "$TMUX_TMPDIR"
-}
+# `C7i` 隔离：走**共享原语**（`P0e` 08-12 抽出来的，原本这段在各套件里各抄一份）。
+# 它把 `$BIN/tmux` shim 放进 PATH 最前、强插 `-L e2eRestart` —— 漏什么环境变量都打不偏。
+# ⚠ 本套件此前靠 `TMUX_TMPDIR` 隔离，那是 `C7i` 逐字禁止的形态
+#   （08-11 一条同形态的探针把用户 **9 个真实会话**打没了）。
+TMUX_SHIM_SOCK=e2eRestart
+# shellcheck source=e2e/tmux-shim.sh
+. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh"
+_gc_sock_cleanup() { tmux_shim_cleanup; }
 # ─────────────────────────────────────────────────────────────────────────────
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
