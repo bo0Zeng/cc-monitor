@@ -128,10 +128,20 @@ fi
 # 一堆还挂着 SSH 会话的 daemon，实测攒到 5 个、每分钟贡献 8 次 SSH 登录 ——
 # 而那个现象**看起来像「产品在疯狂重连」**，我在它上面连猜错三次。
 # ⇒ 开跑前数一次；多于一个（本轮 app 自己那个）就 ABORT，让人先清干净。
-_daemons=$(pgrep -fc 'remote-daemon-proto/target/[^ ]*/cc-monitor-remote' 2>/dev/null || echo 0)
-[ "$_daemons" -le 1 ] || _abort "盘上有 $_daemons 个 daemon 进程（孤儿？）—— 它们会贡献额外的 SSH 登录，把读数搅浑。先 pkill -f remote-daemon-proto/target"
+# ⚠⚠ **人群补齐**〔P0b 08-12 实测〕：本格原来只数 `remote-daemon-proto/target/...` 那一族，
+#     而实测盘上活着的 daemon 走的是**部署落点** `~/.cc-monitor/bin/cc-monitor-remote`
+#     （`sftp::ensure_daemon_deployed` 的落点）——**那一族当时根本不在人群里**，
+#     计数器却会安心地报 0。⇒ 两族都数。
+#     （`needle_anchor_registry` 管的就是这个：**匹配单位不许比事实小**。）
+_dev_daemons=$(pgrep -fc 'remote-daemon-proto/target/[^ ]*/cc-monitor-remote' 2>/dev/null || echo 0)
+_dep_daemons=$(pgrep -fc '\.cc-monitor/bin/cc-monitor-remote' 2>/dev/null || echo 0)
+_daemons=$(( _dev_daemons + _dep_daemons ))
+# ⚠ 处置**不再教人裸 `pkill -f`**：模式杀没有「只杀我起的那些」这个概念
+#   （`P5L` 那拍 `pkill -f xdg-terminal-exec` 把我自己的 shell 打死过）。
+#   `e2e/reap-orphan-daemons.sh` 只收 `PPID == 1` 的那些，**默认干跑**，且逐个打印。
+[ "$_daemons" -le 1 ] || _abort "盘上有 $_daemons 个 daemon 进程（dev $_dev_daemons + 部署 $_dep_daemons），孤儿？—— 它们会贡献额外的 SSH 登录，把读数搅浑。先跑 \`bash e2e/reap-orphan-daemons.sh\`（干跑）看清楚，再 \`--yes\`"
 
-echo "  OK   台架自证通过（app 在写日志 · daemon 盯 $CLAUDE_DIR · dev 实例在 :$_devport · daemon 进程 $_daemons 个）"
+echo "  OK   台架自证通过（app 在写日志 · daemon 盯 $CLAUDE_DIR · dev 实例在 :$_devport · daemon 进程 $_daemons 个 = dev $_dev_daemons + 部署 $_dep_daemons）"
 
 SID="$(cat /proc/sys/kernel/random/uuid)"; SID8="${SID:0:8}"
 SESSION="cc-$SID8"; KEEP="cc-e2ekeep-$$"
