@@ -550,7 +550,7 @@ mod tests {
             ("shellcheck (errors only)", true, "本机装了 shellcheck；步骤体从 `ci.yml` 原样抽出来跑"),
             ("vendored cc-acct-iso self-tests (sandboxed, 294 assertions)", true, "沙箱内自测；vendor 是 `cc-acct-iso` 不是红线点名的 `code-picture-core`"),
             ("python syntax compile", true, "`python3 -m py_compile e2e/*.py`"),
-            ("G-A/G-C 覆盖面地板（21 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
+            ("G-A/G-C 覆盖面地板（22 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
             ("exec-bit guard (shared/** shebang files must be 100755 in git)", true, "`bash e2e/exec-bit-guard.sh`"),
             // ── 无名步骤（`- run: <命令>`，08-07 人群扩到它们之后才第一次可见）。
             // 标识是命令本身，多个 job 里同一条命令共用这一行登记。
