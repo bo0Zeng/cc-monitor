@@ -19,6 +19,28 @@
 //! `~/.claude/claudecode-frontend/panorama/`（`panorama_store_dir`）,**不再写进用户仓**——消灭
 //! 「点🗺就在你仓里凭空建 `.codepicture/`」灰区;纯缓存、可删、与 §1 只读铁律正交。
 
+//! # `#79` 的另一半（「test 工程管理」）**不是这里的工作面**〔`P8b` 08-12 实测〕
+//!
+//! `#79` 把 code-picture 拆成两块能力：**代码分析**（这里做的）与 **test 工程管理**。
+//! 被指派「把 test 工程管理集成进来」的人会落在本文件 —— 先读这段，能省下几天：
+//!
+//! **那半不是「我们还没做」，是「上游还没有」。** 两者差一个量级：前者听起来像排期问题，
+//! 后者说明**这里根本没有可集成的东西**。实测（08-12）：
+//! 上游仓 HEAD 就是 `VENDOR.md` 记的 vendored commit（`d558e47`，07-16 至今没动）；
+//! 上游全仓搜 `test 工程 / 测试工程 / test_project / TestSuite / test_runner` **0 命中**；
+//! 三个 crate 是 `core` / `lsp` / `mcp`，**没有 test 那一块**。
+//! 而 `#79` 正文自己写的也是「（**新增，后续加入**）……**后面要加入**」——
+//! 它是一个**意向**，不是一份需求：**没有动作、没有对象、没有验收**。
+//!
+//! ⇒ 在这里动手 = 替上游发明一块它自己都还没定义的能力，而 vendored 副本是
+//! 「上游的镜子，不是分身」（`VENDOR.md` 的 SS-10 铁律：**绝不在副本里改出自己的版本**）。
+//! ⇒ 该等的绊线**已经有了**：上游一领先副本，`build.rs::check_vendor_freshness` 就发
+//! `cargo:warning`。**别新造第二份**「上游加没加」的检查。
+//! ⇒ 范围与落仓两问登记在 `control-parity` 的待决 `U10e`。
+//!
+//! ⚠ 别把这段读成「`#79` 做完了」：**代码分析那半齐了**（`P7b` 08-12 补上最后缺的
+//! 函数级调用子图 + 影响面），**整条 issue 没完** —— 缺的正是上面这半。
+
 use code_picture_core::{model, Engine, EngineOpts};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -549,5 +571,43 @@ mod tests {
         }
         std::fs::remove_dir_all(repo.join(".codepicture")).ok();
         std::fs::remove_dir_all(&store).ok();
+    }
+
+    /// `P8b-Y1`：`#79` 那半的边界必须留在本文件的头注上，且说的是
+    /// **「上游还没有」**而不是**「我们还没做」**。
+    ///
+    /// 为什么值得立一条判据钉一段散文：它省的是**几天** —— 下一个被指派这件事的人
+    /// 若不知道上游零实现，会先花时间去找「code-picture 的 test 那块 API 在哪」。
+    ///
+    /// ⚠ 读 `production_source` 而**不是** `production_code`：后者连 `//` 注释一起剥，
+    /// 而本条钉的**恰恰就是一段注释** —— 用错那个的话判据当场瞎（首跑实测：红在
+    /// 「头注里少了『上游』」，而那段字明明在）。
+    /// ⚠ 仍必须剥测试段：否则本条自己那几个字面量会把自己喂绿 —— 那是本会话犯过
+    /// **四次**的同一种自伤（`P3s-Y2` / `P4d-Y4` / `P4b-Y3`，`P8a` 时刻意绕开了一次）。
+    #[test]
+    fn the_upstream_gap_for_issue_79_is_written_down_here() {
+        let prod = guard_core::production_source(include_str!("panorama.rs"));
+        // ⚠ `别新造第二份` 是**首跑变异补进来的**：原表只钉 `check_vendor_freshness`
+        // 这个名字，而把「别新造第二份检查」那句话删掉**照样绿** —— 名字在、
+        // **可操作的那半没了**，下一个人照样会去造第二条绊线。
+        for needle in [
+            "上游",
+            "#79",
+            "check_vendor_freshness",
+            "别新造第二份",
+            "U10e",
+        ] {
+            assert!(
+                prod.contains(needle),
+                "头注里少了「{needle}」—— 那段边界是 `P8b` 唯一的交付物，删了它\
+                 下一个人就会以为这半只是「还没排期」"
+            );
+        }
+        // ★ 钉**说法本身**，不只是关键词：把「上游还没有」改写成「我们还没做」
+        // 是本件最可能的腐坏形态，而那两句话的排期含义差一个量级。
+        assert!(
+            prod.contains("不是「我们还没做」，是「上游还没有」"),
+            "那句区分被改掉了 —— 它正是本件的正题"
+        );
     }
 }
