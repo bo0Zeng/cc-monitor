@@ -235,6 +235,24 @@ chk "且没有一声不吭" "$(grep -c '没有登记' "$WORK/out-nobus.txt")" "1
 chk "没登记就真的没写进地址簿" \
   "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -cx 'nobus' || true)" "0"
 
+echo "[14] 【08-13】**多行初始任务**：登记与台账都不许丢"
+# ★ 这一格是真事故逼出来的：`cc-spawned-record` 原来**拒收**含换行的字段，
+#   而 `ccm --bus-register` 整段是 best-effort（`|| true` 把退出码吞掉）
+#   ⇒ 实测 `cc-spawn <目录> "第一行\n第二行"` = **登记上了总线、台账一行没有、一声不吭**。
+#   本仓一路在治的那族：**悄悄丢数据**。
+#   修法是让**格式的主人自己转义**（`\n`/`\t` 写进 TSV），而不是让调用方猜规则。
+mkdir -p "$WORK/multi"
+CCM_NO_PRETRUST=1 timeout 30 "$CCSPAWN" "$WORK/multi" "$(printf '第一行\n第二行')" \
+  > "$WORK/out-multi.txt" 2>&1
+waitfor "$WORK/rec-multi_cc.txt" || true
+chk "多行任务：仍上总线" "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -cx 'multi_cc' || true)" "1"
+chk "多行任务：台账恰好一行" "$(grep -c '^multi_cc	' "$CC_BUS_HOME/spawned.tsv" 2>/dev/null || true)" "1"
+# ★ 撕没撕坏 TSV 的判据是**列数**，不是「有没有那行」——撕坏时会变成两行、每行列数不对。
+chk "多行任务：那行仍是 4 列" \
+  "$(awk -F'\t' '$1=="multi_cc"{print NF}' "$CC_BUS_HOME/spawned.tsv")" "4"
+chk "多行任务：换行被转义、信息没丢" \
+  "$(awk -F'\t' '$1=="multi_cc"{print $4}' "$CC_BUS_HOME/spawned.tsv")" '第一行\n第二行'
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 if [ "$fail" -eq 0 ]; then echo "===== cc-spawn 收编验收全部通过 ====="; fi
