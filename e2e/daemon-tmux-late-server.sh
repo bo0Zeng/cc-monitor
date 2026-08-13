@@ -85,6 +85,13 @@ echo "[2] ★ 正题：daemon **先起**、tmux server 后起（#60 的根因形
 chk "late：帧里有 sid-late" "$(run_case late late)" "1"
 
 
+# ⚠⚠ **「socket 目录被删掉再重建」那一格不在这里** —— 它需要一个**私有 socket 目录**，
+#   而私有 socket 目录只能靠 `TMUX_TMPDIR`，那正是 `C7i` **零例外**禁止的东西
+#   （`e2e_gate_registry::no_e2e_suite_isolates_with_tmux_tmpdir` 当场拦下了第一版）。
+#   ⇒ 与 08-13 早些时候那次同样处置：**换判据落在哪一层**，不给红线开例外。
+#   那条性质改由 daemon 侧的结构判据钉（`the_socket_dir_watch_survives_an_inode_swap`），
+#   并**如实记下损失**：运行期行为只在 08-13 手工验过一次（读数记在 `P0b §1w`），
+#   **没有进 CI**。红线与覆盖面冲突时，本仓选红线。
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 if [ "$fail" -eq 0 ]; then echo "===== 迟到 server 验收全部通过 ====="; fi
