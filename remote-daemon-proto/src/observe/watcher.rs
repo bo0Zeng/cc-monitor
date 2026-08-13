@@ -3503,6 +3503,58 @@ mod tests {
         );
     }
 
+    /// ★★★ **每一处 `.watch(` 都要回答「目录被换 inode 了怎么办」** —— 登记表〔08-13〕。
+    ///
+    /// # 为什么立这张表
+    ///
+    /// 08-13 一天之内**同一个形状踩了三次**：`sessions/`（第十拍）· tmux socket 目录
+    ///（第二十二拍）· `projects/`（第二十三拍）。前两次是**撞出来的**，第三次是
+    /// 「把挂点全列一遍、逐个对照有没有重挂路径」**查出来的**。
+    ///
+    /// ⇒ 与其等第四次，不如把那次清点**固化**：本表锁住生产段 `.watch(` 的**处数与归属**。
+    /// 加一处就会红 —— 红了不是坏事，是让加的人**先回答那个问题**再往下写。
+    ///
+    /// ⚠ 症状为什么值得这么防：inotify 的 watch 绑在 **inode** 上，目录被删掉重建之后
+    /// 那一路的事件**永远不来，且没有任何错误**。三次的表现分别是「永不宣告会话」
+    ///「看不见新 tmux server」「会话还在但内容不动了」——**每一个都不报错**。
+    ///
+    /// # 今天的 7 处
+    ///
+    /// | 处 | 归属 | 换 inode 怎么办 |
+    /// |---|---|---|
+    /// | `rewatch_dir` | **可重入挂法本体** | 就是它负责 |
+    /// | `watch_sock_dir_if_present` | socket 目录专用（多一条「目录没了翻记账」） | 同上 |
+    /// | `rewatch_sessions` | `sessions/` 专用（多一件事：挂上顺带重扫 pidfile） | 同上 |
+    /// | `watch_loop` 里 `claude_dir` | **父目录的耳朵**（子目录出现/消失的唯一信号源） | 父目录被换掉 = 整个 claude_dir 没了，那时没有任何路可走，**不在这一族** |
+    /// | `watch_loop` 里 socket 目录的**父** | 同上（等 socket 目录出现） | 同上 |
+    /// | `watch_loop` 里 `sessions` 起步那次 | 起步挂一次，之后归 `rewatch_sessions` | 已有 |
+    /// | `watch_loop` 里 tmux socket **所在目录**（P3 复活探测） | 一次性触发器，socket 换 inode 由上面那条目录耳朵覆盖 | 已有 |
+    #[test]
+    fn every_watch_site_answers_the_inode_swap_question() {
+        let src = include_str!("watcher.rs");
+        // 生产段 = 测试模块之前（`guard_core::production_code` 在这里不能用：本条就住在测试模块里）。
+        let cut = src.find("\n#[cfg(test)]").map(|i| {
+            src[i..].find("\nmod ").map(|j| i + j).unwrap_or(i)
+        });
+        let prod = match cut {
+            Some(i) => &src[..i],
+            None => src,
+        };
+        let sites = prod.matches(".watch(").count();
+        assert_eq!(
+            sites, 7,
+            "生产段 `.watch(` 有 {sites} 处（登记表记着 7 处）。\n             \
+             ⇒ **加了一处就来回答这个问题**：那个目录被删掉重建（换 inode）之后，\n             \
+             它还收得到事件吗？收不到就走 `rewatch_dir`；确实不需要就把理由写进本条头注的表里。\n             \
+             ⚠ 08-13 同一个形状踩了三次，三次的症状都是**不报任何错**：\n             \
+             「永不宣告会话」「看不见新 tmux server」「会话还在但内容不动了」。"
+        );
+        // 三个可重入挂法必须都在（删掉任一个，上面的计数会跟着变，但报错要说得准）。
+        for f in ["fn rewatch_dir(", "fn rewatch_sessions(", "fn watch_sock_dir_if_present("] {
+            assert!(prod.contains(f), "可重入挂法 {f} 不见了 —— 那一路的重挂就没人做了");
+        }
+    }
+
     /// ★★ socket 目录**被删掉再重建**时，watch 必须跟着换到新 inode〔08-13〕。
     ///
     /// # 为什么这条是结构判据而不是 e2e
