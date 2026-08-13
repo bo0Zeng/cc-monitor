@@ -25,6 +25,7 @@ import { getClaudeDirOverride, setClaudeDirOverride } from "../paths";
 import { CcIntegrationSection } from "./cc_integration";
 import { AccountsSection } from "./accounts-section";
 import { McpSection } from "./mcp-section"; // F87：MCP 管理（集成组）
+import { PluginsSection } from "./plugins-section"; // P8a：marketplace 只读枚举（**不声称安装/启用**）
 import { CcBusHooksSection } from "./cc-bus-hooks-section"; // B04：钩子只读诊断 + 生成待贴文本（绝不写入）
 import { ConfigSurfaceSection } from "./config-surface-section"; // T02：配置面审计（只读、按需一次、不轮询）
 import { DriftLedgerSection } from "./drift-ledger-section"; // U-CC1：数据面漂移记账（只读、按需一次、不轮询）
@@ -801,6 +802,15 @@ export class SettingsPanel {
         appliesTo: "both",
         tab: "tools",
         el: this.safeBlock("MCP", () => new McpSection().element),
+      },
+      // P8a：插件面（marketplace）只读枚举。
+      // ⚠ `appliesTo: "local"` —— 它今天**只有本机口**（远端要等 daemon 的
+      // `--list-marketplaces`，欠账记在 `parity_ledger::plugins.marketplaces` 那行）。
+      // 挂成 `both` 会让远端机器上出现一个恒失败的块，那是骗人。
+      {
+        appliesTo: "local",
+        tab: "tools",
+        el: this.safeBlock("插件（marketplace）", () => new PluginsSection().element),
       },
       // B04：钩子诊断。**只读**——不替用户改 ~/.claude/settings.json（共享全局配置）。
       // 本机与远端都要诊断（§2.4 表里这一行两栏都写着「诊断 + 待贴片段」）。

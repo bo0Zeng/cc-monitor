@@ -107,10 +107,10 @@ function tsDerivingSources(): string[] {
 const TS_DERIVING_SOURCES = tsDerivingSources();
 
 describe("C01 边界生成物", () => {
-  it("派生 ts_rs::TS 的 Rust 源文件恰好 27 个（自动发现的范围自检）", () => {
+  it("派生 ts_rs::TS 的 Rust 源文件恰好 29 个（自动发现的范围自检）", () => { // ⚠ 标题里这个数腐过：曾写 27 而断言是 28
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(28); // G6 tmux.rs +1；E79 accounts.rs +1
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(29); // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -124,6 +124,8 @@ describe("C01 边界生成物", () => {
       // **按字母序**（本条是 readdir + sort 的逐项对拍，不许按功能分组打乱顺序）。
       // 每项后面标它属于哪个功能，便于回溯。
       "AccountUsageProbeResult.ts", // C04d 批2
+      // P8a：marketplace 只读枚举的两个载荷。
+      // ⚠ 顺序按目录名排序，别按加入时间摆。
       "AcctIsoStatus.ts", //          C04d 批3（**抓到漂移**：TS 原来只认 1/3 个字段）
       "ActiveSessionPayload.ts", //   C04b
       "ApiMessage.ts", //             C04c
@@ -163,6 +165,10 @@ describe("C01 边界生成物", () => {
       "LegacyProfileEntry.ts", // C04d 批5a（**非 pub**，CcStatusResponse 的传递依赖）
       "LogFileEntry.ts", // C04d 批4（LogFileInfo 的传递依赖）
       "LogFileInfo.ts", // C04d 批4（字节数 + 毫秒时间戳，两个量纲分开论证）
+      // P8a：marketplace 只读枚举的两个载荷（`declared_plugins` 刻意是可空的
+      // ——`null` 是「读不到」，`0` 是「真的一个都没声明」，两者不许合并）。
+      "MarketplaceEntry.ts",
+      "MarketplaceSurvey.ts",
       "McpServerEntry.ts", // C04d 批5b（`scope: String` 比手写的三值 union **宽**——那才是线上真相）
       "PanoramaStatus.ts", // C04d 批7（**panorama 一族唯一能生成的**——其余 10 个住 vendored，受 SS-10 铁律阻塞）
       "ProfileKind.ts", // C04d 批5a（ProfileScan 的传递依赖）

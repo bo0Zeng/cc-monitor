@@ -81,6 +81,7 @@ import type { ConnTestResult } from "../generated/ConnTestResult";
 import type { CcmProbeResult } from "../generated/CcmProbeResult";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DriftFaceReport } from "../generated/DriftFaceReport";
+import type { MarketplaceSurvey } from "../generated/MarketplaceSurvey";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 // **panorama 一族的返回类型指向 `src/panorama/types.ts` 的手写类型，不是生成物。**
 // 不是漏了——那 10 个类型（`Overview`/`NodeView`/`SubGraph`/`Edge`/`ImpactSet`/`Symbol`/
@@ -670,6 +671,10 @@ export const commands = {
   config_surface_report: () => invoke<ConfigSurfaceReport>("config_surface_report"),
   // U-CC1：数据面漂移记账（只读、按需一次，不轮询）。
   drift_ledger_report: () => invoke<DriftFaceReport[]>("drift_ledger_report"),
+  // P8a：Claude Code 的 marketplace 面（只读、按需一次，不轮询）。
+  // ⚠ 它回答的是「有哪些 marketplace / 它**声明**了多少插件」，
+  // **不是**「装了/启用了哪些插件」—— 后者今天在盘上没有真相源（待决 `U10d`）。
+  list_plugin_marketplaces: () => invoke<MarketplaceSurvey>("list_plugin_marketplaces"),
   // U8c-2c-2：`ccm 调用行`改由 Rust 渲染（`backend::control::ccm_invocation`）。
   // **`ok:false` 不是错误，是诚实降级** —— 调用方拿着 `reason` 去走兜底渲染器（§33）。
   render_ccm_launch: (args: { req: CliRenderRequest }) =>

@@ -181,7 +181,7 @@ describe("S2 设置面板分页结构", () => {
   /** 等 RemoteSection 那边异步注册完本机页（真实实现是在 `refresh()` 里注册的）。 */
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
-  it("★ 逐页完整清单 —— 16 个叶子块一个不少、一个不错位", async () => {
+  it("★ 逐页完整清单 —— 17 个叶子块一个不少、一个不错位", async () => { // P8a +1（插件（marketplace））
     // 这是本轮最重要的一条：S2 只搬不改，**搬丢一块 = 一个功能凭空消失**，
     // 而它在 UI 上的表现只是「某个设置项找不到了」，不会报错。
     // 用**完整相等**而不是 `toContain`：后者对「多出一块」和「顺序乱了」都是瞎的。
@@ -208,6 +208,9 @@ describe("S2 设置面板分页结构", () => {
       "账号",
       "终端集成",
       "MCP",
+      // P8a：marketplace 只读枚举。**只在本机页**——远端今天没有这条口
+      // （欠账记在 `parity_ledger::plugins.marketplaces`），挂到远端就是个恒失败的块。
+      "插件（marketplace）",
       "cc-bus 钩子",
     ]);
     expect(pageTitles("footprint")).toEqual(["配置面审计", "数据面漂移记账"]);
@@ -302,6 +305,7 @@ describe("S2 设置面板分页结构", () => {
       "账号",
       "终端集成",
       "MCP",
+      "插件（marketplace）",
       "cc-bus 钩子",
     ]);
   });

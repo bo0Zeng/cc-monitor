@@ -34,6 +34,19 @@
 
 **`sessions/` 必须留在 cc-acct-iso 的共享集**：daemon 靠 `<claude_dir>/sessions/<PID>.json` 判活并拿 pid，进而探测账号。若哪天把 `sessions/` 挪进隔离集，各账号的 pidfile 会散到各自 config-dir，cc-monitor 会看不见非默认账号的会话。
 
+**P8a 插件面枚举是本约「读」面的又一次延伸（澄清，非例外/非松动）**：`src-tauri/src/plugins.rs` 为
+「有哪些 Claude Code marketplace」新增一条**纯只读**的本机查询（`list_plugin_marketplaces`），
+**零写入**、**不 shell out**、**不轮询**（按需一次）。它把本机读面从 `projects/` + `sessions/`
+扩到 `<claude_dir>/plugins/`，边界两条：
+① 只读 `<claude_dir>/plugins/known_marketplaces.json` 与各 marketplace 落点下的 `<落点>/.claude-plugin/marketplace.json`
+   两种文件，**各带字节上限**（`byte_cap_registry` 里逐条登记了超限怎么办）；
+② **不解释、不校验 `.gcs-sha`**，也**不去数** `marketplaces/<id>/plugins/` 那个目录 ——
+   那是上游下载器的快照，把它当成「用户装了几个」是**说假话**（本机实测：manifest 声明 276 个、
+   快照目录里 39 个）。**「装了/启用了哪些插件」今天在盘上没有真相源**，界面明说这一点，
+   不猜（待决 `U10d`）。
+⚠ 这条读面**是新增的直读点**，已在 `local_read_surface_registry` 的递减棘轮上登记并写明退役条件
+（daemon 补 `--list-marketplaces` 后随 F10 一起退役，与 `parity_ledger` 里那笔远端欠账**同一条**）。
+
 **F62 从历史某轮建分支不在本约管辖内（澄清，非例外/非松动，用户 2026-07-12 拍板）**：`history::create_branch_session` 在用户**显式**点历史查看器里某条消息的 `⑂` 时，把 `[根…该消息]` 前缀**复制**成一个**全新** `<new-sid>.jsonl`（原生 `/branch` 的 `forkedFrom` 格式）。这与本约**正交**——本约防的是 monitor **改坏/覆盖/后台写**它正在监视的**现存**会话文件；建分支是**纯新增产出**（用户框定："复制产出一个文件，而非侵入式改动"），**原会话一字节不改**，且只写**新生成、collision-check 过的 sid**（`out_path.exists()` 则拒，绝不覆盖任何现存会话）。防越界守卫 `validate_branch_source`（canonicalize + `starts_with(projects)` + `.jsonl`）与 delete 同构。破坏性上它比已放行的「显式删除」更弱（只增不减）。
 
 **G6 远端分叉：本约的写面从「monitor 写远端」扩到「daemon 在远端写」，故单列一段（澄清 + 收窄，用户 2026-07-30 拍板「要对远端也 branch」）**：
