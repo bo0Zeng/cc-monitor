@@ -17,8 +17,13 @@
 # 跑法：bash e2e/local-backend-supervise.sh   （npm run test:local-backend）
 set -uo pipefail
 
-unset TMUX TMUX_PANE
-TMUX_TMPDIR="$(mktemp -d /tmp/e2e-lbsock.XXXXXX)"; export TMUX_TMPDIR
+# `C7i` 隔离：走**共享原语**（`P0e` 08-12）。shim 强插 `-L e2eLocalBackend`。
+# ⚠⚠ 本套件与别的不同：它还要把隔离**传给被监护的 daemon**（daemon 自己会跑 `tmux ls`）。
+#   原来传的是 `TMUX_TMPDIR` —— 而 `$TMUX` 一有值就会压过它（08-11 事故的机制）。
+#   ⇒ 改传 **shim 目录**：daemon 的 PATH 前面挂上它，它 shell out 的 tmux 一样被强插 `-L`。
+TMUX_SHIM_SOCK=e2eLocalBackend
+# shellcheck source=e2e/tmux-shim.sh
+. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh"
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/.." && pwd)"
 DAEMON="${CCM_E2E_DAEMON:-$REPO/remote-daemon-proto/target/debug/cc-monitor-remote}"
@@ -33,8 +38,8 @@ cleanup() {
   # 那条依赖是「漏一次就出事」的形态 —— 我在一条探针里漏了 unset，打到用户真实 server 上，
   # 9 个真实会话没了。`-S <绝对路径>` 不受 $TMUX 影响，漏什么都打不偏。
   # （形状抄 graylight-suite.sh:36，那里早就是这么写的。）
-  [ -n "${TMUX_TMPDIR:-}" ] && /usr/bin/tmux -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null
-  rm -rf -- "$WORK" "$TMUX_TMPDIR"
+  tmux_shim_cleanup
+  rm -rf -- "$WORK"
 }
 trap cleanup EXIT
 
@@ -42,7 +47,7 @@ trap cleanup EXIT
 
 echo "== F05a 本机后端监护 · 真进程验收 =="
 echo "daemon     : $DAEMON"
-echo "TMUX_TMPDIR: $TMUX_TMPDIR （私有，绝不碰用户真实 tmux server）"
+echo "tmux shim: $TMUX_SHIM_BIN（-L $TMUX_SHIM_SOCK，绝不碰用户真实 tmux server）"
 echo
 
 OUT="$WORK/rust.log"
@@ -50,7 +55,7 @@ OUT="$WORK/rust.log"
 (
   cd "$REPO/src-tauri" && \
   CCM_E2E_DAEMON="$DAEMON" \
-  CCM_E2E_TMUX_TMPDIR="$TMUX_TMPDIR" \
+  CCM_E2E_TMUX_SHIM_BIN="$TMUX_SHIM_BIN" \
   CCM_E2E_CLAUDE_DIR="$CLAUDE_DIR" \
   CCM_E2E_WORK="$WORK" \
   cargo test --lib -- --ignored --nocapture --test-threads=1 local_backend

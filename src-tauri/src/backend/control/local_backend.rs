@@ -57,7 +57,11 @@
 //! 零副作用。**C7 由 F05a + F05b 两件共同满足**，ROADMAP §3 就是这么记的。
 //!
 //! 真进程行为由 `e2e/local-backend-supervise.sh` 验：它**显式**把二进制路径喂给
-//! [`supervise`]，并强制私有 `TMUX_TMPDIR`，绝不碰用户真实 tmux server。
+//! [`supervise`]，并强制私有 tmux 隔离，绝不碰用户真实 tmux server。
+//! ⚠ 〔`P0e` 08-12〕隔离**换过机制**：原来靠私有 `TMUX_TMPDIR`，而 `$TMUX` 一有值就压过它
+//! （08-11 就是这么打没用户 9 个真实会话的）⇒ `C7i` 逐字禁掉那条路。
+//! 现在给 daemon 一条**前面挂着 shim 的 PATH**（`e2e/tmux-shim.sh`），它 shell out 的 tmux
+//! 被强插 `-L` —— **显式选择器压得过 `$TMUX`**。
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -2138,7 +2142,14 @@ mod tests {
     #[test]
     fn every_real_daemon_e2e_demands_a_private_tmux_dir() {
         const REAL: &str = "CCM_E2E_DAEMON";
-        const PRIVATE_TMUX: &str = "CCM_E2E_TMUX_TMPDIR";
+        // ⚠⚠ 〔`P0e` 08-12〕这个名字换过一次，**换的是机制不是名字**：
+        //   原来是 `CCM_E2E_TMUX_TMPDIR`（把私有目录传给 daemon）—— 而 `$TMUX` 一有值
+        //   就会压过它，那正是 08-11 打没用户 9 个真实会话的机制，`C7i` 因此逐字禁止
+        //   「靠 `TMUX_TMPDIR` 做隔离」。
+        //   现在传的是**带 shim 的 PATH**：daemon shell out 的 tmux 会被强插 `-L`，
+        //   **显式选择器压得过 `$TMUX`**。本条钉的性质一个字没变：
+        //   **起真 daemon 的 e2e 必须 fail-closed 地要一个私有 tmux 隔离**。
+        const PRIVATE_TMUX: &str = "CCM_E2E_TMUX_SHIM_BIN";
         let src = include_str!("local_backend.rs");
         // ⚠ **不在语料串上做裸 `split`**：`needle_anchor_registry` 的递减棘轮把它
         //   判为「匹配单位比事实小」的一族，且**不许调上限**（本条第一版就栽在这）。
@@ -2203,7 +2214,7 @@ mod tests {
     #[ignore]
     fn e2e_the_supervisor_restarts_a_real_daemon_after_it_is_killed() {
         let bin = std::env::var("CCM_E2E_DAEMON").expect("要 CCM_E2E_DAEMON");
-        let tmpdir = std::env::var("CCM_E2E_TMUX_TMPDIR").expect("要 CCM_E2E_TMUX_TMPDIR");
+        let shim = std::env::var("CCM_E2E_TMUX_SHIM_BIN").expect("要 CCM_E2E_TMUX_SHIM_BIN");
         let claude = std::env::var("CCM_E2E_CLAUDE_DIR").expect("要 CCM_E2E_CLAUDE_DIR");
         let events: Arc<Mutex<Vec<SuperviseEvent>>> = Arc::new(Mutex::new(Vec::new()));
         let ev = events.clone();
@@ -2211,7 +2222,12 @@ mod tests {
             PathBuf::from(&bin),
             vec!["--tail-only".into()],
             vec![
-                ("TMUX_TMPDIR".into(), tmpdir),
+                // `C7i`：给 daemon 一条**前面挂着 shim** 的 PATH —— 它 shell out 的 tmux
+                // 会被强插 `-L`。比传 `TMUX_TMPDIR` 硬：`$TMUX` 压不过显式选择器。
+                (
+                    "PATH".into(),
+                    format!("{shim}:{}", std::env::var("PATH").unwrap_or_default()),
+                ),
                 ("CLAUDE_CONFIG_DIR".into(), claude),
             ],
             CrashLimits::default(),

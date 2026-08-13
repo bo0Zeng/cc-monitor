@@ -362,17 +362,12 @@ mod tests {
                 .lines()
                 .filter(|l| !l.trim_start().starts_with('#'))
                 .collect();
-            // ★ 唯一的登记例外，带理由与解锁条件（不是白名单，是一条要还的账）。
-            const EXCEPTED: &[(&str, &str)] = &[(
-                "local-backend-supervise.sh",
-                "它把 `$TMUX_TMPDIR` **喂给被测的 Rust 测试**（`CCM_E2E_TMUX_TMPDIR=…`，\
-                 供 `local_backend.rs` 那三条 `#[ignore]` 用）⇒ 换 shim 要**连 Rust 那侧一起改**，\
-                 不是替换隔离块就完事。解锁条件：那三条 `#[ignore]` 改成从 `-L <名>` 取 socket。",
-            )];
+            // ★★ **零例外**〔`P0e` 第三拍 08-12〕。最后一条例外是 `local-backend-supervise.sh`
+            //   —— 它把私有目录**喂给被监护的 daemon**，所以换 shim 要连 Rust 那侧一起改。
+            //   已改：传的不再是 `TMUX_TMPDIR`，而是**带 shim 的 PATH**
+            //   （`CCM_E2E_TMUX_SHIM_BIN` → daemon 的 `PATH` 前缀）⇒ daemon shell out 的
+            //   tmux 也被强插 `-L`，而**显式选择器压得过 `$TMUX`**（后者正是 08-11 的机制）。
             let name = f.file_name().unwrap_or_default().to_string_lossy().to_string();
-            if EXCEPTED.iter().any(|(n, _)| *n == name) {
-                continue;
-            }
             if exec.iter().any(|l| l.contains("TMUX_TMPDIR=")) {
                 bad.push(format!("  {name} 自己设 TMUX_TMPDIR 当隔离"));
             }
