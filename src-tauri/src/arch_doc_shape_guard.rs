@@ -436,7 +436,8 @@ mod tests {
              无论哪种，本条都会零命中地绿。",
             citing.len()
         );
-        let files: std::collections::BTreeSet<&str> = citing.iter().map(|(f, _)| f.as_str()).collect();
+        let files: std::collections::BTreeSet<&str> =
+            citing.iter().map(|(f, _)| f.as_str()).collect();
         for expect in ["parity_ledger.rs", "backend/control/ccm_invocation.rs"] {
             assert!(
                 files.contains(expect),

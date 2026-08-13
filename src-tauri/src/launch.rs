@@ -213,11 +213,7 @@ pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<(), String> {
 /// ⚠ 代价如实登记：**开窗那条路因此没有行为级判据**（只有形状判据）。
 /// 真机验收归 `auto-e2e`，别把「形状对」读成「窗口真开出来了」。
 #[cfg(not(windows))]
-fn launch_local_posix_via(
-    cmd: &str,
-    cwd: Option<&str>,
-    term: Option<&str>,
-) -> Result<(), String> {
+fn launch_local_posix_via(cmd: &str, cwd: Option<&str>, term: Option<&str>) -> Result<(), String> {
     use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
 
@@ -271,7 +267,11 @@ fn launch_local_posix_via(
     });
     tracing::info!(
         "launch: local posix exec (no ssh){}",
-        if opened_window { " · 已开终端窗口" } else { " · 无窗口回落" }
+        if opened_window {
+            " · 已开终端窗口"
+        } else {
+            " · 无窗口回落"
+        }
     );
     Ok(())
 }
@@ -657,7 +657,10 @@ mod tests {
         // 两者的形状不一样，所以「上次扩过了」不等于「这次够了」。
         for (dir, exts) in [("e2e", &["ts", "sh", "md"][..]), ("src", &["ts"][..])] {
             for (q, body) in guard_core::scan_tree!(&root.join(dir), exts) {
-                files.push((format!("{dir}/{}", q.file_name().expect("文件名").to_string_lossy()), body));
+                files.push((
+                    format!("{dir}/{}", q.file_name().expect("文件名").to_string_lossy()),
+                    body,
+                ));
             }
         }
         // ★★ **扩面自检用「比例」不用「绝对下限」**〔D 阶段补审 08-12 自查改的〕。

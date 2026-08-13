@@ -389,12 +389,12 @@ fn diff_sessions(
     let removed: Vec<RemovedSid> = prev
         .iter()
         .filter(|(k, _)| !next.contains_key(*k))
-        .map(|(sid, info)| {
-            match identity(info).and_then(|k| next_by_identity.get(&k).copied()) {
+        .map(
+            |(sid, info)| match identity(info).and_then(|k| next_by_identity.get(&k).copied()) {
                 Some(new_sid) if new_sid != sid.as_str() => RemovedSid::superseded(sid.clone()),
                 _ => RemovedSid::gone(sid.clone()),
-            }
-        })
+            },
+        )
         .collect();
     let added: Vec<String> = next
         .keys()

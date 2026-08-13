@@ -124,9 +124,7 @@ pub fn daemon_start(origin: String) -> Result<String, String> {
         use crate::local_daemon::StartOutcome;
         return match crate::local_daemon::start_local_backend() {
             StartOutcome::Started(p) => Ok(format!("已起：{}", p.display())),
-            StartOutcome::AlreadyRunning => {
-                Ok("本机后端已经在跑（C8①：每台机只许一个）".into())
-            }
+            StartOutcome::AlreadyRunning => Ok("本机后端已经在跑（C8①：每台机只许一个）".into()),
             StartOutcome::Failed { reason, looked_at } => {
                 Err(format!("{reason}；找过 {looked_at:?}"))
             }
@@ -170,7 +168,9 @@ pub fn daemon_stop(origin: String) -> Result<String, String> {
     match slot.handle.take() {
         Some(h) => {
             h.abort();
-            Ok(format!("{origin} 的流已断（远端 daemon 随管道破裂退出，本机看不见它）"))
+            Ok(format!(
+                "{origin} 的流已断（远端 daemon 随管道破裂退出，本机看不见它）"
+            ))
         }
         None => Ok(format!("{origin} 的流本来就没在跑")),
     }
@@ -245,7 +245,11 @@ mod tests {
             .take_while(|l| *l != "\u{7d}")
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(body.len() > 200, "切出来的体只有 {} 字节 —— 切错了", body.len());
+        assert!(
+            body.len() > 200,
+            "切出来的体只有 {} 字节 —— 切错了",
+            body.len()
+        );
 
         guard_core::find_pinned(&body, "is_finished()").unwrap_or_else(|e| {
             panic!(

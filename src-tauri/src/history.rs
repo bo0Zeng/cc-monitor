@@ -1284,18 +1284,17 @@ fn render_local_ccm_with(
     //
     // ⇒ 今天只有 ① 渲染得出来。这不是接线没接完，是 **CLI 语法在本机账号上真的窄一格**
     //    （②可补：从 `accounts.json` 反查名字；③是结构性的）。见 ROADMAP `U10`。
-    let acct = match account {
-        Some(LaunchAccount::Base) => ci::CliAccount::Base,
-        // ②：有 configDir 没名字 —— 正是 `CliAccount::Named{name:None}` 这一格存在的理由。
-        Some(LaunchAccount::Named { .. }) => ci::CliAccount::Named { name: None },
-        // ③：`None` 走同一条短路，但**理由不同**（不是「没名字」，是「CLI 说不出继承」）。
-        None => {
-            return Err(
+    let acct =
+        match account {
+            Some(LaunchAccount::Base) => ci::CliAccount::Base,
+            // ②：有 configDir 没名字 —— 正是 `CliAccount::Named{name:None}` 这一格存在的理由。
+            Some(LaunchAccount::Named { .. }) => ci::CliAccount::Named { name: None },
+            // ③：`None` 走同一条短路，但**理由不同**（不是「没名字」，是「CLI 说不出继承」）。
+            None => return Err(
                 "本机未表态账号（继承环境）—— CLI 的 account 维度恒真且无「继承」语法，诚实降级"
                     .into(),
-            )
-        }
-    };
+            ),
+        };
 
     let spec = ci::CliSpec {
         is_ssh: false,
@@ -1437,7 +1436,13 @@ pub fn new_local_session(cwd: String, launcher: Option<String>) -> Result<(), St
     // P3t-Y2：起新会话这条**暂不传名字**（`None` ⇒ 渲染器诚实降级回旧路）。
     // 名字只许由 `mintTmuxName` 铸，而这条命令今天的两个前端调用点都还没传 ——
     // 在这里补一个默认名就是 F13 那个坑的第三次。接线归 P3t-Y2b。
-    launch_local(&LocalPsAction::New, launcher.as_deref(), Some(&cwd), None, None)?;
+    launch_local(
+        &LocalPsAction::New,
+        launcher.as_deref(),
+        Some(&cwd),
+        None,
+        None,
+    )?;
     tracing::info!("history: new local session in {cwd}");
     Ok(())
 }
@@ -2089,7 +2094,14 @@ mod tests {
         // ① 没名字 —— 名字只许 `mintTmuxName` 铸，Rust 这侧不许补默认值（F13 那个坑）。
         for no_name in [None, Some(""), Some("   ")].into_iter() {
             let no_name = no_name.filter(|n: &&str| !n.trim().is_empty());
-            let r = render_local_ccm_with(&act, None, Some(&base), no_name, &caps_of_a_current_ccm(), true);
+            let r = render_local_ccm_with(
+                &act,
+                None,
+                Some(&base),
+                no_name,
+                &caps_of_a_current_ccm(),
+                true,
+            );
             assert!(
                 r.as_ref().is_err_and(|e| e.contains("tmux 会话名")),
                 "没有会话名时必须拒 —— 在 Rust 里铸一个名字就是 F13 修掉的撞名坑第三次。实得：{r:?}"
@@ -2098,7 +2110,14 @@ mod tests {
 
         // ② 未表态账号（`None`）—— 旧路发**空前缀**＝继承环境，而 CLI 的 account 维度恒真、
         //    没有「继承」这一态。映成 `--base` 会把用户 shell 里已有的账号悄悄清掉 ＝ #75 病灶。
-        let r = render_local_ccm_with(&act, None, None, Some("s1abcdef-cc"), &caps_of_a_current_ccm(), true);
+        let r = render_local_ccm_with(
+            &act,
+            None,
+            None,
+            Some("s1abcdef-cc"),
+            &caps_of_a_current_ccm(),
+            true,
+        );
         assert!(
             r.as_ref().is_err_and(|e| e.contains("继承")),
             "未表态账号必须拒且理由是「说不出继承」—— 若它被渲染成 `--base`，\n\
@@ -2108,8 +2127,17 @@ mod tests {
         // ③ 具名账号 —— `LaunchAccount::Named` 只有 configDir、没有名字，而 CLI 只会
         //    `--account <名字>` ⇒ §35 短路。**理由必须是「说不出」，不是别的**：
         //    reason 是生产侧唯一的降级线索，换一个理由就是换一条诊断。
-        let r = render_local_ccm_with(&act, None, Some(&named), Some("s1abcdef-cc"), &caps_of_a_current_ccm(), true);
-        let reason = r.expect_err("具名账号今天渲染不出来 —— 若它成功了，请先确认 `--account` 的名字是从哪来的");
+        let r = render_local_ccm_with(
+            &act,
+            None,
+            Some(&named),
+            Some("s1abcdef-cc"),
+            &caps_of_a_current_ccm(),
+            true,
+        );
+        let reason = r.expect_err(
+            "具名账号今天渲染不出来 —— 若它成功了，请先确认 `--account` 的名字是从哪来的",
+        );
         assert!(
             reason.contains("account"),
             "具名账号的降级理由该指向 account 维度（§35 短路），实得：{reason}"
@@ -2156,9 +2184,9 @@ mod tests {
             body.len()
         );
 
-        let r = body
-            .find("render_local_ccm(")
-            .expect("`launch_local` 体里找不到 `render_local_ccm(` —— 渲染器没接上，本机还是走旧路");
+        let r = body.find("render_local_ccm(").expect(
+            "`launch_local` 体里找不到 `render_local_ccm(` —— 渲染器没接上，本机还是走旧路",
+        );
         let old = body
             .find("build_local_posix_command(")
             .expect("`launch_local` 体里找不到 `build_local_posix_command(` —— 回落没了，渲染器拒了就无路可走");
@@ -2169,7 +2197,10 @@ mod tests {
         );
         // 各恰好一处：两处渲染器调用意味着有一条分支绕过了顺序。
         for (needle, n) in [
-            ("render_local_ccm(", body.matches("render_local_ccm(").count()),
+            (
+                "render_local_ccm(",
+                body.matches("render_local_ccm(").count(),
+            ),
             (
                 "build_local_posix_command(",
                 body.matches("build_local_posix_command(").count(),
@@ -3297,12 +3328,13 @@ mod tests {
         let named = LaunchAccount::Named {
             config_dir: "C:\\Users\\z\\.claude-accts\\z".into(),
         };
-        let accounts: [Option<&LaunchAccount>; 3] = [None, Some(&LaunchAccount::Base), Some(&named)];
+        let accounts: [Option<&LaunchAccount>; 3] =
+            [None, Some(&LaunchAccount::Base), Some(&named)];
         let mut checked = 0usize;
         for action in [LocalPsAction::New, LocalPsAction::Resume(sid.to_string())] {
             for acct in accounts {
-                let cmd = build_local_ps_command(&action, None, acct)
-                    .expect("这几组形状都该渲染得出来");
+                let cmd =
+                    build_local_ps_command(&action, None, acct).expect("这几组形状都该渲染得出来");
                 checked += 1;
                 assert!(
                     !cmd.contains("--tmux"),

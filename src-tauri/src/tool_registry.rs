@@ -1053,7 +1053,10 @@ mod tests {
         // ⇒ 本件**不顺手做那次重构**（`PS1` 的正题是部署，不是字段治理），
         // 声明位暂留 `false`，代价如实登记在这里：**声明表比代码晚一格**。
         // ★ 解锁条件：删掉 `installable` 字段（或给它找回区分力）之后，把这条断言反过来。
-        assert!(!ccbus.installable, "字段治理未做前，声明位暂留 false（理由见上）");
+        assert!(
+            !ccbus.installable,
+            "字段治理未做前，声明位暂留 false（理由见上）"
+        );
         assert!(!ccbus.uninstallable, "卸载没做，不得声明可卸");
         // settings.json 只生成待贴文本，绝不写
         let hooks = ccbus

@@ -27,22 +27,22 @@ mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生
                 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
                 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
-mod inbound_client;
-mod daemon_policy; // P2s（C8）：每台机一份 daemon 策略（生效值住内存，持久化归前端）
 mod daemon_control; // P2s（C8）：每台机一个开关的命令层——只认 origin，不认 ssh 也不认进程监护
-mod local_origin_registry;
-mod local_daemon; // P2s（C8）：本机 daemon 的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
-mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
+mod daemon_policy; // P2s（C8）：每台机一份 daemon 策略（生效值住内存，持久化归前端）
+mod inbound_client;
 mod launch;
 mod local_accounts; // L3a：本机多账号枚举（只读）——`accounts.rs` 的本地对侧
+mod local_daemon; // P2s（C8）：本机 daemon 的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
+mod local_origin_registry;
 mod logging;
 mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
 mod messages;
 mod panorama;
 mod parser;
 mod paths;
-mod port_forward;
+mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
 mod plugins; // P8a：Claude Code marketplace 面的只读枚举（**不声称安装/启用**，见模块头注）
+mod port_forward;
 mod profile_installer;
 mod pubkey;
 mod remote_branch; // G6：远端分叉（经 ssh 调 daemon `--fork-session`）——写面故与只读的 remote_history 分家
