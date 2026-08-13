@@ -57,6 +57,20 @@ if [ -n "${CCM_E2E_TMUX_SOCK:-}" ]; then
     fi
   fi
 fi
+# ## ★★ 查 `#60` 时用这个 tap 排除到哪一步了〔`P0b` 08-13，九拍的结论〕
+#
+# 同一个 daemon 二进制、同样的 fixture 形状，三条起法的读数：
+#   · 离线直起（参数/时序/陈旧 pidfile/目录存在与否，四种变体）⇒ **正常**
+#   · **手动** `ssh 127.0.0.1 <本脚本>` ⇒ **正常**（`hello · session_added · 2× tmux_sessions`）
+#   · **app 经 SSH 起** ⇒ `hello` + 1 帧 `tmux_sessions` 之后**全哑**，stderr 也一字不说
+# ⇒ **daemon 本身、参数、时序、fixture、SSH 全被排除**；断点在 **app 那侧怎么起/怎么管这条连接**。
+#
+# 下一格该试的（差别只剩 app 特有的那几样）：
+#   ① **stdin** —— `P2`/`P4d` 之后 monitor 会把入方向命令写进 daemon 的 stdin，
+#      而手动那条 stdin 是空的。**把 stdin 接到 /dev/null 再 exec**，看是否一摘就正常；
+#   ② 连接管理（keepalive / 重连 / 与每 10s 一次的账号查询并行）；
+#   ③ `--with-bg` 子进程与父的生命周期。
+#
 # 〔`P0b` 第七拍 08-13〕**可选的帧 tap**：设了 `CCM_E2E_FRAME_TAP` 就把 daemon 的 stdout
 # 抄一份到那个文件。全链套件失败时，这是唯一能回答「**daemon 到底发了什么**」的口子 ——
 # 在它之前只能看 monitor 记了什么，而那分不清「没发」与「发了没收到」。
