@@ -65,11 +65,22 @@ const IS_TEST = (f: string): boolean => f.endsWith(".vitest.ts") || f.endsWith("
 const WALK_FORMS = ["readdirSync", "globSync", "readdir("];
 
 /**
- * ★ **今天在测试里做目录遍历的文件**（08-06 实测 9 个）。
+ * ★ **今天在测试里做目录遍历的文件**（08-06 实测 9 个 → `P9` 08-12 起 **10** 个）。
  *
  * 只许降 —— 新增一个就红，那时要么让它摘掉自己、要么把它加进来并写明凭什么安全。
+ *
+ * ⚠⚠ 〔`P9` 08-12〕**第 10 个是 `session-backend-gate.vitest.ts`，按上面那句的第二条路登记。**
+ * 凭什么安全：它扫 `src/**.ts` 时**排掉** `.vitest.ts` / `.test.ts`（`tsFiles()` 里那两行
+ * `continue`），而它自己正是 `.vitest.ts` ⇒ **扫的树不含自己**，是本文件立的第一条判准。
+ * 它另排掉 `session-backend.ts`（那是被守的「座」本身）与 `generated/`（生成物）。
+ *
+ * ⚠ 它为什么值得占这一格（棘轮要的是论证，不是禁令）：它把 `doc/INVARIANTS.md §31`
+ * 最终形态第①条从**散文里的一条手工 grep** 变成机检 —— 而那条手工 grep **只盯
+ * `remote-launch.ts` 一个文件**，`remote-launch-run.ts` 从它拆出去之后门禁没跟着拆，
+ * 于是那边躺了一句手写的 `tmux attach -t …`（`P9` 摸底当场逮到，已改成问座要）。
+ * ⇒ 这一格换的是「一条已经腐过的散文门禁」，不是又加了一个扫描器。
  */
-const WALKER_CEILING = 9;
+const WALKER_CEILING = 10;
 
 /**
  * ★ **磁盘语料上的裸 `.includes("…")`**（08-06 实测 8 处）。

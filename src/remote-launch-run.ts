@@ -31,6 +31,7 @@ import type { CliRenderResult } from "./launch-render-cli";
 import type { CliRenderRequest, PayloadRenderRequest } from "./launch-cli-wire.ts";
 import type { CcmProbeResult } from "./ccm-probe.ts";
 import { sanitizeRemoteLauncher } from "./shell-quote.ts";
+import { SESSION_BACKEND } from "./session-backend.ts";
 import { probeCcm } from "./ccm-probe";
 import { getBehavior } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
@@ -467,7 +468,16 @@ export async function runLocalResumeIntoExistingTmux(
   //     把标题分档成「本机不开终端窗口，命令已复制」，正文给出在自己 bash 里执行的命令。
   //   ⇒ 本机不再自己写一份复制逻辑 —— 写第二份就是 `C1` 排除的那件事。
   //   命令用 `=name:` 精确形态（§31a）。
-  const attachCmd = `tmux attach -t '=${name}:'`;
+  //
+  // ★★ 〔`P9` 08-12〕这里原本**手写** `tmux attach -t '=<name>:'` —— 那违反
+  //   `doc/INVARIANTS.md §31` 最终形态第①条逐字「**前端绝不硬编码后端命令**
+  //   （不准出现可执行的字面 `tmux attach` / `tmux new-session` / `tmux send-keys`）
+  //   → **问一层要**」。改成问座要，产物**逐字同构**（座的 `attach({kind:"quoted"})`
+  //   出的就是 `tmux attach -t '=<name>:'`），换的是**谁拥有这条语法**。
+  //   ⚠ 那条门禁此前只是散文里的一条手工 grep，**且只盯 `remote-launch.ts` 一个文件** ——
+  //   本文件是后来从它拆出去的，门禁没跟着拆 ⇒ 这处违反因此躺了下来。
+  //   现在它有机检了（`session-backend-gate.vitest.ts`），扫**整个前端生产段**。
+  const attachCmd = SESSION_BACKEND.attach({ kind: "quoted", value: name });
   await invokeLaunchOrCopyFallback(LOCAL_ORIGIN, attachCmd, {
     success: "已就地 resume",
     successDetail: `本机 tmux 会话「${name}」里已就地 resume（复用、不新建），终端窗口正在接上它。`,

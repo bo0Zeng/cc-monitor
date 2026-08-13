@@ -718,8 +718,16 @@ tmux → **接不上**，会话池当场劈成两半。而「桌面起、手机�
 **阶段① 落地（F90，2026-07-17）**：唯一后端 = tmux。命令语法已从 `remote-launch.ts` 收敛进纯座
 `src/session-backend.ts`（`SessionBackend` 接口 + `TMUX_BACKEND` 实现 + `SESSION_BACKEND` 活跃句柄，照
 `agent-profile.ts` 两轴正交范式：agent-profile=哪个 AI、session-backend=哪个多路复用器）。`remote-launch.ts`
-正文**无 tmux 命令字面量**（只留 doc 注释；机械 grep 门禁 `grep -nE "tmux (new-session|send-keys|attach)"
-src/remote-launch.ts` 只命中注释）。**本阶段不做后端探测/协商**（`SESSION_BACKEND` 恒等 `TMUX_BACKEND`、
+正文**无 tmux 命令字面量**（只留 doc 注释）。
+
+⚠⚠ **那条门禁腐过一次，且腐得毫无声息**〔`P9` 08-12 实测〕：本节原写的是一条**手工 grep**
+`grep -nE "tmux (new-session|send-keys|attach)" src/remote-launch.ts` —— 它**只盯一个文件**。
+而 `remote-launch-run.ts` 是后来从那个文件拆出去的，**门禁没跟着拆** ⇒ 那边躺着一句手写的
+`tmux attach -t '=<name>:'`，违反第①条而无人报警（已改成问座要）。
+⇒ 现在它是**机检**：`src/session-backend-gate.vitest.ts` 扫**整个前端生产段**（排掉座本身、
+测试文件与注释行），并反向自检「座里那些语法还在」（否则会因为「哪儿都没有」而假绿）。
+★ 教训比这条规则本身通用：**门禁写成「盯某个文件」，就会在文件被拆的那天失效**，
+而拆文件的人不会想到去改一段散文。**本阶段不做后端探测/协商**（`SESSION_BACKEND` 恒等 `TMUX_BACKEND`、
 无运行时选择）——那是阶段②（§9 轨道二 daemon 在场，才补得了 abduco/dtach 缺的 `send-keys`）。
 
 **阶段② 约束**：加任何第二后端前，先过最终形态第②③条；登记表主键守 §28（用 CC `sessionId`，不许拿
