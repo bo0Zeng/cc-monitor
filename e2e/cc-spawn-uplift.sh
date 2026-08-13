@@ -274,6 +274,24 @@ chk "总线四条、与会话名逐字对得上" \
   "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep '^race_cc' | sort | md5sum | cut -c1-8)" \
   "$(tmux ls -F '#{session_name}' | grep '^race_cc' | sort | md5sum | cut -c1-8)"
 
+echo "[16] 【08-13】目录名含**空格与中文**：quote 要穿过全链"
+# ★ 为什么值得锁：`C15` 在这条路上加了好几层 quote —— ccm 的 `sq`（拼进 seq 的 tmux 命令串）·
+#   `--bus-note` · `cc-register` 的 pane 目标 · 台账那行 TSV。任何一层漏 quote，
+#   症状都是「会话建在了错的目录」或「台账被撕成两列」，而**两者都不会报错**。
+# ⚠ 断言的是**会话真实 cwd**（`#{pane_current_path}`），不是「命令里带了那个路径」——
+#   后者只证明字符串拼对了，证明不了 tmux 真的进了那个目录。
+SPDIR="$WORK/带 空格 的目录"
+mkdir -p "$SPDIR"
+CCM_NO_PRETRUST=1 timeout 30 "$CCSPAWN" "$SPDIR" "任务 带空格" > "$WORK/out-sp.txt" 2>&1
+SPNAME="$(sed -n 's/^已 spawn: \([^ ]*\).*/\1/p' "$WORK/out-sp.txt")"
+chk "含空格目录：spawn 成功并报出名字" "$([ -n "$SPNAME" ] && echo yes || echo no)" "yes"
+chk "含空格目录：会话真实 cwd 逐字相符" \
+  "$(tmux display-message -p -t "=$SPNAME:" '#{pane_current_path}' 2>/dev/null)" "$SPDIR"
+chk "含空格目录：台账仍是 4 列" \
+  "$(awk -F'\t' -v n="$SPNAME" '$1==n{print NF}' "$CC_BUS_HOME/spawned.tsv")" "4"
+chk "含空格目录：台账第 2 列是那个目录" \
+  "$(awk -F'\t' -v n="$SPNAME" '$1==n{print $2}' "$CC_BUS_HOME/spawned.tsv")" "$SPDIR"
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 if [ "$fail" -eq 0 ]; then echo "===== cc-spawn 收编验收全部通过 ====="; fi
