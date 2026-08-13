@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# cc-spawned-record <id> <目录> [初始任务]  往 spawn 台账 `spawned.tsv` 追加一行(加锁)。
+#
+# ## 为什么单独一个脚本〔C15 08-13〕
+#
+# 这段原来长在 `cc-spawn` 里。`C15`〔用@08-13「cc-bus收进ccm」〕要把台账这件事收进 `ccm`,
+# 而**收进去 ≠ 让 ccm 复刻 cc-bus 的文件格式**:
+#   · 台账的**列、分隔符、锁文件命名**是 cc-bus 的私事(`cc-list` 等在读它);
+#   · 让 `ccm` 也写一遍 = 同一个格式两份实现,改一处漏一处 —— 正是本仓一路在收的那一族。
+# ⇒ `ccm --bus-register` 只负责**知道有这么个总线、把事实告诉它**,格式仍归 cc-bus。
+#   找不到本脚本时 `ccm` 静默 no-op(没装 cc-bus 的人不该被一个总线脚本挡住起会话)。
+set -euo pipefail
+BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
+
+id="${1:?用法: cc-spawned-record <id> <目录> [初始任务]}"
+dir="${2:?用法: cc-spawned-record <id> <目录> [初始任务]}"
+task="${3:-}"
+
+# id 会被 `cc-list` 等按字段读回去,也会拼进 tmux target ⇒ 与 `cc-register` 同一套白名单。
+case "$id" in *[!A-Za-z0-9_-]*|'') echo "cc-spawned-record: 非法/空 id '$id'" >&2; exit 2;; esac
+# 制表符/换行会**当场把 TSV 撕成另一行/另一列**(初始任务是用户自由文本,这条不是假想)。
+# ⚠ **不能写成 `*"$(printf '\n')"*`**:命令替换会把尾部换行剥光 ⇒ 模式变成 `**`,
+#   于是这道门**拦下一切**(首版实测:合法输入也被拒)。用 bash 的 `$'\n'`(shebang 就是 bash)。
+case "$id$dir$task" in *$'\t'*|*$'\n'*)
+  echo "cc-spawned-record: 字段含制表符或换行 —— 会撕坏 TSV" >&2; exit 2;; esac
+
+mkdir -p "$BUS"
+( flock 9; printf '%s\t%s\t%s\t%s\n' "$id" "$dir" "$(date -Iseconds)" "$task" >> "$BUS/spawned.tsv" ) 9>>"$BUS/spawned.tsv.lock"

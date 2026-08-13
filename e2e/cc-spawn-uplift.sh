@@ -212,6 +212,29 @@ chk "总线三条、名字对得上" \
 chk "第三次的提示报的是 dup_cc-3" \
   "$(sed -n 's/^已 spawn: \([^ ]*\).*/\1/p' "$WORK/out-dup3.txt")" "dup_cc-3"
 
+echo "[13] 【C15 08-13】总线登记 + 台账**由 ccm 做**（cc-spawn 一件专属逻辑不剩）"
+# 上面 [1]-[12] 已经在验「登记与台账的**结果**对不对」——本格验的是**谁做的**。
+# 为什么这条值得单列：把三件搬进 ccm 之后，最容易出的岔子是「两边各做一遍」
+#（cc-spawn 没删干净 + ccm 又做了一次）⇒ 台账**两行**、地址簿被后写的那次覆盖。
+# 结果上看不出来（名字一样），只有**数行数**才看得见。
+mkdir -p "$WORK/once"
+CCM_NO_PRETRUST=1 timeout 30 "$CCSPAWN" "$WORK/once" "任务O" > "$WORK/out-once.txt" 2>&1
+waitfor "$WORK/rec-once_cc.txt" || true
+chk "台账**恰好一行**（没有两边各写一遍）" \
+  "$(grep -c '^once_cc	' "$CC_BUS_HOME/spawned.tsv" 2>/dev/null || true)" "1"
+chk "地址簿恰好一条" "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -cx 'once_cc' || true)" "1"
+chk "台账第 4 列是初始任务" \
+  "$(awk -F'\t' '$1=="once_cc"{print $4}' "$CC_BUS_HOME/spawned.tsv")" "任务O"
+# 没装 cc-bus 的人不该被总线脚本挡住起会话 —— ccm 静默 no-op，但**要吭一声**。
+CC_BUS_SCRIPTS=/nonexistent CCM_NO_PRETRUST=1 timeout 30 "$REPO/shared/ccm" \
+  --tmux-base=nobus --detach --bus-register --cwd "$WORK/once" \
+  --launcher "$BIN/FAKEAGENT" > "$WORK/out-nobus.txt" 2>&1 || true
+chk "找不到 cc-bus 时会话照样建出来" \
+  "$(tmux has-session -t '=nobus' 2>/dev/null && echo YES || echo NO)" "YES"
+chk "且没有一声不吭" "$(grep -c '没有登记' "$WORK/out-nobus.txt")" "1"
+chk "没登记就真的没写进地址簿" \
+  "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -cx 'nobus' || true)" "0"
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 if [ "$fail" -eq 0 ]; then echo "===== cc-spawn 收编验收全部通过 ====="; fi
