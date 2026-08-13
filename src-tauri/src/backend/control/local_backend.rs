@@ -1197,6 +1197,31 @@ mod tests {
             c.arg("-S").arg(&sock);
             c.args(args).env_remove("TMUX").output()
         };
+        // 给 daemon 用的 shim：`exec` 真 tmux + 强插 `-S <同一个 sock>`。
+        // daemon 内部裸调 `tmux`，PATH 一挂上它就落到本条自己那台 server 上。
+        let shim_dir = base.join("bin");
+        std::fs::create_dir_all(&shim_dir).expect("建 shim 目录");
+        let real_tmux = String::from_utf8_lossy(
+            &std::process::Command::new("sh")
+                .args(["-c", "command -v tmux"])
+                .output()
+                .expect("找 tmux")
+                .stdout,
+        )
+        .trim()
+        .to_string();
+        assert!(!real_tmux.is_empty(), "本机没有 tmux，这条实测跑不了");
+        let shim = shim_dir.join("tmux");
+        std::fs::write(
+            &shim,
+            format!("#!/bin/sh\nexec {real_tmux} -S {} \"$@\"\n", sock.display()),
+        )
+        .expect("写 shim");
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755)).expect("chmod shim");
+        }
+
         let made = tmux(&["new-session", "-d", "-s", &sess]).expect("起私有 tmux 失败");
         assert!(
             made.status.success(),
@@ -1221,10 +1246,15 @@ mod tests {
             vec![
                 ("HOME".into(), home.display().to_string()),
                 ("CLAUDE_CONFIG_DIR".into(), cfg_dir.display().to_string()),
-                // daemon 内部用默认 socket 名，所以它看的是 `<TMUX_TMPDIR>/tmux-<uid>/default`；
-                // 上面客户端用 `-S <tmux_tmp>/p3.sock`。**两者不是同一个 socket** ——
-                // 这条实测因此今天验不到帧（见件里 §0h 的如实登记），但它**不会碰用户的 server**。
-                ("TMUX_TMPDIR".into(), tmux_tmp.display().to_string()),
+                // ★★ 〔`P0e` 08-13〕**这条以前验不到帧，病根就写在原注释里**：
+                // 「daemon 内部用默认 socket 名……上面客户端用 `-S <tmux_tmp>/p3.sock`。
+                //  **两者不是同一个 socket**」⇒ `seen` 恒 false（`P3 §0h` 如实登记过）。
+                //
+                // 修法与 e2e 那边同一手：给 daemon 一条**前面挂着 shim 的 PATH**，
+                // shim `exec` 真 tmux 并强插 **`-S <同一个 sock>`** ⇒ 两边落在同一台 server 上。
+                // ⚠ 用 `-S <绝对路径>` 而不是 `-L`：本条的客户端一直用 `-S`，
+                // 而**同一个 socket** 才是这条实测的全部要害。`-S` 也不受 `$TMUX` 影响。
+                ("PATH".into(), format!("{}:{}", shim_dir.display(), std::env::var("PATH").unwrap_or_default())),
             ],
             CrashLimits::default(),
             Arc::new(|| {
