@@ -318,77 +318,95 @@ mod tests {
         );
     }
 
-    /// ★★ `C7i` 红线的**存量债棘轮**〔`P0e` 08-12 实测〕：
-    /// **靠 `TMUX_TMPDIR` 做隔离的 e2e 脚本里，裸 `tmux` 调用只许变少。**
+    /// ★★ `C7i` 红线：**没有任何 e2e 套件靠 `TMUX_TMPDIR` 做隔离**〔`P0e` 08-12〕。
     ///
     /// # 红线逐字
     ///
     /// 「tmux 命令**一律带 socket 选择器**（`-S <绝对路径>` 或 `-L <名>`），
     /// `kill-server` 不许没有选择器，**禁止靠 `TMUX_TMPDIR`/`unset TMUX` 做隔离**」。
     ///
-    /// 它不是洁癖：08-11 一条探针写了 `TMUX_TMPDIR=… tmux kill-server`，
-    /// `TMUX` 被外层压过 ⇒ 命令打到用户**真实**的 server 上，**9 个真实会话没了**。
+    /// 它不是洁癖：08-11 一条探针写了 `TMUX_TMPDIR=… tmux kill-server`，`TMUX` 被外层压过
+    /// ⇒ 命令打到用户**真实**的 server 上，**9 个真实会话没了**。
     ///
-    /// # 为什么是棘轮而不是当场修光
+    /// # 这条判据的形状变过一次，值得记
     ///
-    /// `P0d` 把**三套**换成了 `-L` shim，但它的人群是「那三套 + 三套已合规」——
-    /// 今天实测**还有 4 套在人群外**（`inbound-daemon-frames` / `restart-suite` /
-    /// `resume-daemon-frames` / `resume-suite`，合计 **15 处**裸调）。
-    /// ⚠ 而 `P0d` 的 acceptor 是**一次性实测** ⇒ 既拦不住回潮，也发现不了人群外的。
+    /// 首版是**递减棘轮**（08-12 实测 4 个脚本 / 15 处，只许降）—— 因为当时以为
+    /// 「一次修光要真跑那 4 套会起 tmux 的 e2e」。而实际做下来发现：
+    /// **转 shim 是机械替换，且它的机制能用假 tmux 验证**（喂一个只打印 argv 的假 `tmux`，
+    /// 看每条命令是不是都被强插了 `-L`）⇒ 债当天就还清了，棘轮随之退役成**零容忍**。
     ///
-    /// 一次修光要**真跑这 4 套 e2e**（它们会起真 tmux）—— 而那正是 08-11 事故的形态。
-    /// ⇒ 先钉住「不许再长」，修的时候连同真跑一起做（那需要一个能盯着的窗口）。
-    ///
-    /// ⚠ **失效模式如实登记**：命令位的判定是启发式（行首 / `;` / `|` / `$(` / `&&` 之后）。
-    /// 写成 `eval "tm$x new-session"` 这类绕得过去；`echo` 里提到 tmux 会**误计**
-    /// （宁可多算：多算只会让棘轮更紧，少算才会漏）。
+    /// ⚠ 而首版的抽取器自检（`total >= 10`）**在债还清时会误报** ——
+    /// 它拿「真实存量」当自检，存量归零就分不清「判定坏了」与「真的没有了」。
+    /// ⇒ 换成**夹具自检**（下面那三条 `assert!`）：判定对不对，用合成输入问，
+    /// 不靠「盘上还欠着东西」。
     #[test]
-    fn bare_tmux_in_tmpdir_isolated_suites_only_goes_down() {
-        /// 08-12 全树实测：4 个脚本 / 15 处。**只许降。**
-        const CEILING: usize = 15;
+    fn no_e2e_suite_isolates_with_tmux_tmpdir() {
+        // ── 夹具自检：判定本身对不对（不依赖盘上有没有存量）
+        assert!(bare_tmux_call("  tmux new-session -d -s x"), "命令位上的裸调没认出来");
+        assert!(bare_tmux_call("n=$(tmux list-sessions | wc -l)"), "`$(` 之后的裸调没认出来");
+        assert!(!bare_tmux_call("tmux -L e2eX new-session -d"), "带 `-L` 的被误判成裸调");
+        assert!(!bare_tmux_call("/usr/bin/tmux -S /tmp/s kill-server"), "带路径+选择器的被误判");
+        assert!(!bare_tmux_call(r#"echo "跑一下 tmux ls 看看""#), "`echo` 里的文字被误判成调用");
 
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap()
             .join("e2e");
-        let mut total = 0usize;
-        let mut detail: Vec<String> = Vec::new();
-        // ⚠ 走 `guard_core::scan_tree!` 而不是自己 `read_dir` —— `scanning_guard_registry`
-        // 逐字要求：裸遍历的判据「在自己的登记表/注释/常量里找到自己 ⇒ **恒绿**，
-        // audit-0805 实测五次，**五次都不是被判据变红发现的**」。
-        // ★ 本条扫的是 `.sh`、自己是 `.rs`，**按构造读不到自己** —— 但仍走共享原语：
-        //   规矩是「用那把尺」，不是「证明这次不会自伤」（下一个抄这段的人可能就扫 `.rs` 了）。
+        let mut scanned = 0usize;
+        let mut bad: Vec<String> = Vec::new();
+        // ⚠ 走 `guard_core::scan_tree!` 而不是自己 `read_dir`（`scanning_guard_registry` 的规矩：
+        //   裸遍历的判据会在自己的登记表/注释里找到自己 ⇒ 恒绿）。
         for (f, src) in guard_core::scan_tree!(&dir, &["sh"]) {
+            scanned += 1;
             let exec: Vec<&str> = src
                 .lines()
                 .filter(|l| !l.trim_start().starts_with('#'))
                 .collect();
-            // 人群：**自己**设 `TMUX_TMPDIR` 的（= 拿它当隔离），不是提一句的。
-            if !exec.iter().any(|l| l.contains("TMUX_TMPDIR=")) {
+            // ★ 唯一的登记例外，带理由与解锁条件（不是白名单，是一条要还的账）。
+            const EXCEPTED: &[(&str, &str)] = &[(
+                "local-backend-supervise.sh",
+                "它把 `$TMUX_TMPDIR` **喂给被测的 Rust 测试**（`CCM_E2E_TMUX_TMPDIR=…`，\
+                 供 `local_backend.rs` 那三条 `#[ignore]` 用）⇒ 换 shim 要**连 Rust 那侧一起改**，\
+                 不是替换隔离块就完事。解锁条件：那三条 `#[ignore]` 改成从 `-L <名>` 取 socket。",
+            )];
+            let name = f.file_name().unwrap_or_default().to_string_lossy().to_string();
+            if EXCEPTED.iter().any(|(n, _)| *n == name) {
                 continue;
             }
-            let n = exec.iter().filter(|l| bare_tmux_call(l)).count();
-            if n > 0 {
-                total += n;
-                detail.push(format!("  {} : {n}", f.file_name().unwrap_or_default().to_string_lossy()));
+            if exec.iter().any(|l| l.contains("TMUX_TMPDIR=")) {
+                bad.push(format!("  {name} 自己设 TMUX_TMPDIR 当隔离"));
             }
         }
+        // 抽取器自检：扫到的文件数量级对不上 ⇒ 遍历坏了，上面那条就是零命中得来的。
+        assert!(scanned >= 15, "只扫到 {scanned} 个 e2e 脚本 —— 遍历坏了");
         assert!(
-            total <= CEILING,
-            "靠 `TMUX_TMPDIR` 隔离的套件里，裸 `tmux` 调用有 {total} 处 > 棘轮上限 {CEILING}。\n\
-             ★ `C7i` 红线逐字：**禁止靠 `TMUX_TMPDIR`/`unset TMUX` 做隔离** —— \
-             08-11 那条探针就是这么把用户 **9 个真实会话**打没的。\n\
-             正确形状抄 `P0d`：一个 `$BIN/tmux` shim（`exec` 真 tmux + 强插 `-L <私有名>`）进 PATH 最前，\
-             调用点一个字都不用改（`graylight-suite.sh` 是现成的样板）。\n\
-             ⚠ **不许把上限调上去让今天好过** —— 这是递减棘轮。\n\
-             当前分布：\n{}",
-            detail.join("\n")
+            bad.is_empty(),
+            "这些套件靠 `TMUX_TMPDIR` 做隔离，而 `C7i` 逐字禁止：\n{}\n\
+             ⇒ 改用共享原语 `e2e/tmux-shim.sh`（`TMUX_SHIM_SOCK=<私有名>` + `.` 进来），\
+             它把 shim 放进 PATH 最前并**强插 `-L`** —— 调用点一个字都不用改。",
+            bad.join("\n")
         );
-        // 抽取器自检：一处都数不出来 ⇒ 人群或判定坏了，上面那条就是空绿。
+    }
+
+    /// `C7i` 的隔离原语**只许有一份实现**。
+    ///
+    /// 抽出来之前它在三个套件里**各抄了一份** —— 红线的落地有三份实现，
+    /// 改一处漏两处正是本仓一路在收的那一族。
+    #[test]
+    fn the_tmux_shim_primitive_has_exactly_one_home() {
+        let shim = read_e2e("tmux-shim.sh");
+        // 它必须真的强插选择器 —— 这条钉的是**机制**，不是「文件在」。
         assert!(
-            total >= 10,
-            "只数出 {total} 处 —— 判定坏了（08-12 实测 15 处），\
-             那样「没超上限」是零命中得来的，不是真的"
+            // ⚠ 针的边界踩过两次坑，如实记：`exec %s -L %s` 左边紧挨着 `\n` 里那个 `n`
+            //   ⇒ `find_pinned` 判它没有左边界。⇒ 把左边界含进针里（`'#!/bin/sh` 那段）。
+            guard_core::find_pinned(&shim, r#"'#!/bin/sh\nexec %s -L %s"#).is_ok(),
+            "shim 没有强插 `-L` —— 那它就只是个包装，隔离仍然靠环境变量"
+        );
+        assert!(
+            // ⚠ 不能只钉 `kill-server`：那个词在头注里也出现（「绝不裸 `kill-server`」）
+            //   ⇒ `find_pinned` 要求恰好一处，会拒收。钉**整条带选择器的表达式**。
+            guard_core::find_pinned(&shim, r#"-L "$TMUX_SHIM_SOCK" kill-server"#).is_ok(),
+            "收尾必须自己带选择器收自己那台（`C7i`：`kill-server` 不许没有选择器）"
         );
     }
 

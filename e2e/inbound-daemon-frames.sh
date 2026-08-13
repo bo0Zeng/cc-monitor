@@ -22,13 +22,14 @@ set -euo pipefail
 # 之后每次建/关/改名会话都白起一个进程）。
 #   ① unset TMUX —— 否则 $TMUX 会让客户端连外层那台 server 并**完全忽略** TMUX_TMPDIR。
 #   ② TMUX_TMPDIR 必须是短路径 —— unix socket 路径上限 108 字节。
-unset TMUX TMUX_PANE
-TMUX_TMPDIR="$(mktemp -d /tmp/e2e-sock.XXXXXX)"; export TMUX_TMPDIR
-_sock_cleanup() {
-  set +e
-  [ -n "${TMUX_TMPDIR:-}" ] && /usr/bin/tmux -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null
-  [ -n "${TMUX_TMPDIR:-}" ] && rm -rf -- "$TMUX_TMPDIR"
-}
+# `C7i` 隔离：走**共享原语**（`P0e` 08-12 抽出来的，原本这段在各套件里各抄一份）。
+# 它把 `$BIN/tmux` shim 放进 PATH 最前、强插 `-L e2eInbound` —— 漏什么环境变量都打不偏。
+# ⚠ 本套件此前靠 `TMUX_TMPDIR` 隔离，那是 `C7i` 逐字禁止的形态
+#   （08-11 一条同形态的探针把用户 **9 个真实会话**打没了）。
+TMUX_SHIM_SOCK=e2eInbound
+# shellcheck source=e2e/tmux-shim.sh
+. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh"
+_sock_cleanup() { tmux_shim_cleanup; }
 
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/.." && pwd)"
