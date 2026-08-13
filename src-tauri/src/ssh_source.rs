@@ -3850,6 +3850,9 @@ async fn stream_loop(
     // audit-fixes F03.2：收帧驱动的 tmux 存活收割器状态（跨帧累计缺失，随本连接存活；断连=函数返回、
     // 自然重置=清账）。取代已删的 8s poller（甲-evented 零轮询）。
     let mut reconcile_state = crate::tmux_reconcile::ReconcileState::default();
+    // P8c：上一帧的观测分类（`None` = 还没收过帧）。**只用来判「变了没有」，不参与任何决策** ——
+    // 决策仍然只看 `classify_tmux_observation` 的结果，这个字段是纯观测。
+    let mut last_observation_kind: Option<String> = None;
 
     loop {
         // pending 非空 → 带静默窗口收帧：窗口内没有新帧就先 flush 再回到阻塞收。
@@ -4210,9 +4213,28 @@ async fn stream_loop(
                 // ⇒ 杀掉某 origin 最后一个 tmux 会话时灰灯卡到断连（§24bis 预登记的残留 bug）。
                 // 现在判断提成纯函数 `tmux::classify_tmux_observation`（可 CI 单测，生产与测试
                 // 同一条路径），空集也是**有效观测**、照常累计缺失。
-                if let crate::tmux::TmuxObservation::Backend(backend) =
-                    crate::tmux::classify_tmux_observation(&raw, observation.as_deref())
-                {
+                // ★★ P8c（`U3`〔自批 08-11〕的裁定）：**把这一维记进日志，让它变得可测**。
+                //
+                // `U3` 的读数逐字：「`Unobservable` 计数 = 0，而**那个 0 是瞎的** ——
+                // 日志根本不记这一维 ⇒ 分母不存在。『0 次』与『记不下来』在这份数据里
+                // 长得一模一样，而后者才是事实」。⇒ 裁定是「先补一行可观测性，再拿真实使用量去裁 `#82`」。
+                //
+                // ⚠ **只记「变化」，不是每帧都记**：帧由 tmux hook 驱动，逐帧记会把日志淹掉
+                // （而淹掉的日志与没有日志一样不可读）。记变化反而更有用 —— 它给的是
+                // 「何时进入不可观测、何时恢复」，那比一个计数更能回答 `#82`。
+                let verdict = crate::tmux::classify_tmux_observation(&raw, observation.as_deref());
+                let kind = match &verdict {
+                    crate::tmux::TmuxObservation::Backend(_) => "backend",
+                    crate::tmux::TmuxObservation::Skip(r) => r.as_str(),
+                };
+                if last_observation_kind.as_deref() != Some(kind) {
+                    tracing::info!(
+                        "tmux-observation: [{host_label}] {} → {kind}",
+                        last_observation_kind.as_deref().unwrap_or("<首帧>")
+                    );
+                    last_observation_kind = Some(kind.to_string());
+                }
+                if let crate::tmux::TmuxObservation::Backend(backend) = verdict {
                     let idle = snapshot_idle_for_origin(&host_label);
                     let tracked = reaper_tracked(announced.keys().cloned(), &idle);
                     // idle 集当 pre_bound 传入：@ccm_sid 证明绑过 tmux，播种 ever_bound，免跨线程
@@ -7529,6 +7551,42 @@ mod snapshot_tests {
 /// ⇒ 本组直接喂 reader，用**小 cap**，把那条「超限之后内存不涨」判成断言。
 #[cfg(test)]
 mod capped_line_tests {
+    /// ★ P8c：**收帧那条路真的记了观测分类**，且只记变化、只作观测。
+    ///
+    /// 钉源码形状而不是跑一条真流：那条臂住在需要真远端连接的 `async fn` 里
+    ///（`classify_tmux_observation` 当年被提成纯函数正是因为这个）。
+    ///
+    /// ⚠ 全程用 `find_pinned`（恰好一处 + 两侧有边界），**不用裸 `contains`** ——
+    /// `needle_anchor_registry` 是条**递减棘轮**，它逐字写着「不许把上限调上去让今天好过」。
+    #[test]
+    fn the_frame_arm_logs_the_observation_kind() {
+        let prod = guard_core::production_code(include_str!("ssh_source.rs"));
+        let log_at = guard_core::find_pinned(&prod, "\"tmux-observation: [{host_label}] {} → {kind}\"")
+            .unwrap_or_else(|e| {
+                panic!(
+                    "{e}\n收 `TmuxSessions` 帧时不再记观测分类 —— `U3` 裁定的那一行可观测性没了，\n\
+                     而它存在的全部理由是：不记就分不清『0 次』与『记不下来』。"
+                )
+            });
+        // 只记**变化** —— 帧由 tmux hook 驱动，逐帧记会把日志淹掉（淹掉的日志与没有一样不可读）。
+        let gate_at = guard_core::find_pinned(
+            &prod,
+            "if last_observation_kind.as_deref() != Some(kind) {",
+        )
+        .unwrap_or_else(|e| panic!("{e}\n变成逐帧记了 —— 那会把日志淹掉"));
+        assert!(gate_at < log_at, "那条日志不在「变了才记」的门里面");
+        // 它是**纯观测**：决策仍只看 `classify_tmux_observation` 的结果（`verdict`）。
+        let decide_at = guard_core::find_pinned(
+            &prod,
+            "if let crate::tmux::TmuxObservation::Backend(backend) = verdict {",
+        )
+        .unwrap_or_else(|e| panic!("{e}\n对账不再直接吃分类结果 —— 观测与决策的界线糊了"));
+        assert!(
+            log_at < decide_at,
+            "记日志排在决策**之后** —— 那样决策路径提前 return 时这一维就丢了"
+        );
+    }
+
     use super::{read_capped_line, CappedLine};
     use tokio::io::BufReader;
 
