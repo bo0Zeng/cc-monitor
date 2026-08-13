@@ -96,7 +96,10 @@ async fn load_subagent_remote(
     // 那会改它对前端的返回形状 —— 是另一件事，不在本件里顺手做。
     let raw = crate::remote_history::run_list_query(
         &cfg,
-        &format!("--read-session {}", crate::ssh_source::shell_quote(&picked_str)),
+        &format!(
+            "--read-session {}",
+            crate::ssh_source::shell_quote(&picked_str)
+        ),
     )
     .await?;
     let records = raw
@@ -119,7 +122,8 @@ pub async fn load_subagent(
 ) -> Result<SubagentLoadResult, String> {
     // P7c-1：远端会话的 subagent 记录在远端机器上 ⇒ 按 origin 分流。
     if let Some(o) = origin.as_deref().filter(|o| !o.is_empty()) {
-        return load_subagent_remote(o, &parent_jsonl_path, &description, &tool_use_timestamp).await;
+        return load_subagent_remote(o, &parent_jsonl_path, &description, &tool_use_timestamp)
+            .await;
     }
     let parent = PathBuf::from(&parent_jsonl_path);
     let subagent_dir = derive_subagent_dir(&parent)

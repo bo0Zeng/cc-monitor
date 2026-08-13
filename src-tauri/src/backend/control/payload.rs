@@ -130,7 +130,9 @@ pub fn config_dir_prefix_posix(account: Option<&Account>) -> Result<String, Stri
                 return Err(refuse("具名账号的 configDir 是空的（账号 0 请用 base）"));
             }
             if !config_dir_command_safe(d) {
-                return Err(refuse(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {d:?}")));
+                return Err(refuse(format!(
+                    "拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {d:?}"
+                )));
             }
             Ok(format!("export CLAUDE_CONFIG_DIR='{d}'; "))
         }
@@ -226,7 +228,9 @@ fn render_env_ops(ops: &[EnvOp]) -> Result<String, String> {
                     return Err(refuse("configDir 是空串（账号 0 请用 UnsetConfigDir）"));
                 }
                 if !config_dir_command_safe(value) {
-                    return Err(refuse(format!("拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {value:?}")));
+                    return Err(refuse(format!(
+                        "拒绝拼入命令：非法 CLAUDE_CONFIG_DIR {value:?}"
+                    )));
                 }
                 let _ = write!(
                     out,
@@ -380,7 +384,9 @@ pub fn usage_probe_payload(
     let account = match config_dir {
         None => EnvOp::UnsetConfigDir,
         Some("") => {
-            return Err(refuse("用量探针需要显式 configDir（账号 0 请传 None，空串是坏数据）"))
+            return Err(refuse(
+                "用量探针需要显式 configDir（账号 0 请传 None，空串是坏数据）",
+            ))
         }
         Some(dir) => EnvOp::ExportConfigDir { value: dir },
     };
@@ -417,7 +423,8 @@ mod tests {
             "抽到的标太短（{front:?}）—— 抽取坏了"
         );
         assert_eq!(
-            front, super::REFUSE_TAG,
+            front,
+            super::REFUSE_TAG,
             "\n前端按 {front:?} 认业务拒绝，而后端打的是 {:?} —— 两侧漂了。\n\
              后果不是报错，是**静默回落**：业务拒绝被当成 IPC 异常 ⇒ 走兜底渲染器 ⇒ \n\
              一次 fail-closed 变回 fail-open。两边必须一起改。",
@@ -484,7 +491,11 @@ mod tests {
                 // **构造一个裸错误值也会被跳过**，而那不是刁钻写法，是最常见的重构结果。
                 // ⇒ 删掉。真出现模式匹配再按**那一处的形状**精确排除（`=>` 在同一行之类），
                 // 不预先开一个按标识符名字放行的口。
-                offenders.push(format!("{}: {}", i + 1, t.chars().take(72).collect::<String>()));
+                offenders.push(format!(
+                    "{}: {}",
+                    i + 1,
+                    t.chars().take(72).collect::<String>()
+                ));
             }
         }
         // ★ **另外三条出口**〔D 阶段补审 08-11 新增〕：判据原来只看 `Err(`，

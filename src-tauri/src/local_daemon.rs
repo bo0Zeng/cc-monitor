@@ -29,8 +29,7 @@ use crate::backend::control::local_backend::{self, Resolved, SuperviseHandle};
 /// `SuperviseHandle::stop()` 把 `stopping` 永久置位、并杀掉当前子进程 ⇒ **那个句柄之后就是死的**，
 /// 再起必须换一个新的。`OnceLock` 写一次就锁死 ⇒ 有「停」就不可能有「再起」，
 /// 而 `C8`② 要的正是「起 / 停 / 状态」三件。
-pub static LOCAL_BACKEND: std::sync::Mutex<Option<SuperviseHandle>> =
-    std::sync::Mutex::new(None);
+pub static LOCAL_BACKEND: std::sync::Mutex<Option<SuperviseHandle>> = std::sync::Mutex::new(None);
 
 /// P2s（`C8`②）：**起本机后端并把句柄存进 `LOCAL_BACKEND`**。
 ///
@@ -288,7 +287,10 @@ mod tests {
 
         // ── 再起：必须是**新的**一条命 ────────────────────────────────
         *LOCAL_BACKEND.lock().expect("锁") = Some(spawn());
-        assert!(wait_channel(true), "停了之后起不回来 —— 那就只有「停」没有「起」");
+        assert!(
+            wait_channel(true),
+            "停了之后起不回来 —— 那就只有「停」没有「起」"
+        );
         let pid2 = crate::daemon_control::daemon_status(crate::inbound_client::LOCAL_ORIGIN.into())
             .expect("查状态")
             .get("pid")
@@ -360,8 +362,7 @@ mod tests {
     #[test]
     fn the_local_backend_only_takes_a_binary_this_platform_can_run() {
         let prod = guard_core::production_code(include_str!("local_daemon.rs"));
-        let at = guard_core::find_pinned(&prod, "pub fn start_local_backend(")
-            .expect("入口不在了");
+        let at = guard_core::find_pinned(&prod, "pub fn start_local_backend(").expect("入口不在了");
         let body: String = prod[at..]
             .lines()
             .skip(1)
@@ -444,5 +445,4 @@ mod tests {
             "幂等那一支里找不到 `return` —— 只打日志不返回等于没有门（补审给的就是这个骗法）"
         );
     }
-
 }

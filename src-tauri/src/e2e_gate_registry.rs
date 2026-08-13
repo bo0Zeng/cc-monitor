@@ -342,11 +342,26 @@ mod tests {
     #[test]
     fn no_e2e_suite_isolates_with_tmux_tmpdir() {
         // ── 夹具自检：判定本身对不对（不依赖盘上有没有存量）
-        assert!(bare_tmux_call("  tmux new-session -d -s x"), "命令位上的裸调没认出来");
-        assert!(bare_tmux_call("n=$(tmux list-sessions | wc -l)"), "`$(` 之后的裸调没认出来");
-        assert!(!bare_tmux_call("tmux -L e2eX new-session -d"), "带 `-L` 的被误判成裸调");
-        assert!(!bare_tmux_call("/usr/bin/tmux -S /tmp/s kill-server"), "带路径+选择器的被误判");
-        assert!(!bare_tmux_call(r#"echo "跑一下 tmux ls 看看""#), "`echo` 里的文字被误判成调用");
+        assert!(
+            bare_tmux_call("  tmux new-session -d -s x"),
+            "命令位上的裸调没认出来"
+        );
+        assert!(
+            bare_tmux_call("n=$(tmux list-sessions | wc -l)"),
+            "`$(` 之后的裸调没认出来"
+        );
+        assert!(
+            !bare_tmux_call("tmux -L e2eX new-session -d"),
+            "带 `-L` 的被误判成裸调"
+        );
+        assert!(
+            !bare_tmux_call("/usr/bin/tmux -S /tmp/s kill-server"),
+            "带路径+选择器的被误判"
+        );
+        assert!(
+            !bare_tmux_call(r#"echo "跑一下 tmux ls 看看""#),
+            "`echo` 里的文字被误判成调用"
+        );
 
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -367,7 +382,11 @@ mod tests {
             //   已改：传的不再是 `TMUX_TMPDIR`，而是**带 shim 的 PATH**
             //   （`CCM_E2E_TMUX_SHIM_BIN` → daemon 的 `PATH` 前缀）⇒ daemon shell out 的
             //   tmux 也被强插 `-L`，而**显式选择器压得过 `$TMUX`**（后者正是 08-11 的机制）。
-            let name = f.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let name = f
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             if exec.iter().any(|l| l.contains("TMUX_TMPDIR=")) {
                 bad.push(format!("  {name} 自己设 TMUX_TMPDIR 当隔离"));
             }
@@ -425,10 +444,7 @@ mod tests {
                 || before.ends_with('(');
             let pathish = at > 0 && b[at - 1] == b'/';
             let after = line[at + 5..].trim_start();
-            let sub_cmd = after
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_ascii_lowercase());
+            let sub_cmd = after.chars().next().is_some_and(|c| c.is_ascii_lowercase());
             let selected = after.starts_with("-L ") || after.starts_with("-S ");
             if cmd_pos && sub_cmd && !selected && !pathish {
                 return true;

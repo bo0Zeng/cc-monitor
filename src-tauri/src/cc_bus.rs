@@ -265,7 +265,8 @@ pub async fn check_cc_bus_agent_online(origin: String, id: String) -> Result<boo
     // P4a-Y1：本机跑同一条 `build_online_cmd` 产出的串。
     // 截断的 `contains("ONLINE")` 是碰运气的答案 ⇒ 与远端同档，超限拒收。
     if origin == crate::inbound_client::LOCAL_ORIGIN {
-        let raw = local_shell_read(&cmd, ONLINE_PROBE_CAP, 15, "查在线", OnOverflow::Reject).await?;
+        let raw =
+            local_shell_read(&cmd, ONLINE_PROBE_CAP, 15, "查在线", OnOverflow::Reject).await?;
         return Ok(raw.contains("ONLINE"));
     }
     let cfg = crate::load_remote_config_by_label(&origin)
@@ -552,12 +553,10 @@ fn cfg_of(origin: &str) -> Result<crate::ssh_source::RemoteConfig, String> {
     // 报「远端 `<local>` 未配置或未启用」：一句与真实原因毫无关系的话
     // （`P4d-Y5` 收口的正是这一族，`local_origin_registry` 按**位置**盯着它）。
     if origin == crate::inbound_client::LOCAL_ORIGIN {
-        return Err(
-            "本机没有「远端配置」这种东西 —— 这条路是远端专属的。\n\
+        return Err("本机没有「远端配置」这种东西 —— 这条路是远端专属的。\n\
              cc-bus 的读面本机已经通了（走同一条命令串，只是不包进 ssh）；\n\
              写面还没做，归 `P4b`。"
-                .to_string(),
-        );
+            .to_string());
     }
     crate::load_remote_config_by_label(origin)
         .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))
@@ -1479,7 +1478,10 @@ mod tests {
             .args(["-fc", &format!("sleep {marker}")])
             .output()
             .expect("pgrep 跑不起来");
-        let n: usize = String::from_utf8_lossy(&out.stdout).trim().parse().unwrap_or(0);
+        let n: usize = String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .parse()
+            .unwrap_or(0);
         assert_eq!(
             n, 0,
             "超时之后还留着 {n} 个子进程（marker={marker}）—— 每超时一次漏一个。\n\
@@ -1508,9 +1510,11 @@ mod tests {
                 .find(name)
                 .unwrap_or_else(|| panic!("生产段找不到 {name} —— 判据在空转"));
             let body: String = code[at..].chars().take(1400).collect();
-            let refuse = body.find("refuse_local_write(&origin, \"").unwrap_or_else(|| {
-                panic!("{name} 没有本机拒绝 —— `<local>` 会掉进 `cfg_of` 拿到一句通用话")
-            });
+            let refuse = body
+                .find("refuse_local_write(&origin, \"")
+                .unwrap_or_else(|| {
+                    panic!("{name} 没有本机拒绝 —— `<local>` 会掉进 `cfg_of` 拿到一句通用话")
+                });
             let cfg = body
                 .find("cfg_of(&origin)")
                 .unwrap_or_else(|| panic!("{name} 里找不到 `cfg_of(&origin)` —— 判据的参照物没了"));
@@ -1586,8 +1590,14 @@ mod tests {
             let cfg = body
                 .find("cfg_of(&origin)")
                 .unwrap_or_else(|| panic!("{name} 里找不到 `cfg_of(&origin)`"));
-            assert!(refuse < cfg, "{name} 的本机拒绝排在 `cfg_of` 后面 —— 永远走不到");
-            assert!(body[refuse..].contains(what), "{name} 的拒绝没点名它在拒绝什么");
+            assert!(
+                refuse < cfg,
+                "{name} 的本机拒绝排在 `cfg_of` 后面 —— 永远走不到"
+            );
+            assert!(
+                body[refuse..].contains(what),
+                "{name} 的拒绝没点名它在拒绝什么"
+            );
         }
     }
 

@@ -236,7 +236,10 @@ mod tests {
         );
         // ★ 表里不许有**今天已经不是问题**的条目：那是过期的登记，会让下一个人
         //   以为还有欠账没还（与 `P3b` 抓的「理由过期」同一族）。
-        let stale: Vec<&String> = registered.iter().filter(|r| !offenders.contains(r)).collect();
+        let stale: Vec<&String> = registered
+            .iter()
+            .filter(|r| !offenders.contains(r))
+            .collect();
         assert!(
             stale.is_empty(),
             "登记表里这些今天已经先分本机了：{stale:?} —— 把它们从表里删掉，并把计数改小。"
