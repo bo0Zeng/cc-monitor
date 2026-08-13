@@ -74,6 +74,34 @@ describe("#60 最后一跳：session-idle 事件真的走到 onSessionIdle", () 
     expect(onSessionEnded).not.toHaveBeenCalled();
   });
 
+  it("★ 最后那行接线在：onSessionIdle → tabs.markTmuxIdle（两个窗口各一处）", async () => {
+    // # 射程（先说清楚它够不到什么）
+    //
+    // 这条**证明不了 tab 真的画成了灰** —— 那要真机 DOM（待决 `U10i`）。
+    // 它只钉「那行接线还在、且接的是 `markTmuxIdle` 而不是别的」。
+    // 值得钉的理由：08-13 全链量到后端四跳全通、前端事件层也通（上面两条），
+    // **唯独这一行没有任何判据** —— 它是 `#60` 剩下的搜索面里唯一没人看着的一格。
+    //
+    // ⚠ 照 `daemon-policy.vitest.ts` 那条的写法**整行钉**，不做裸子串匹配：
+    //   子串匹配对 `onSessionIdle: (s) => tabs.archiveTab(s)`（接错了函数）照样绿。
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(__dirname, "main.ts"), "utf8");
+    const lines = src.split("\n").map((l) => l.trim());
+    // 主窗：无条件把该 sid 置灰。
+    expect(
+      lines.filter((l) => l === "onSessionIdle: (sessionId) => tabs.markTmuxIdle(sessionId),").length,
+      "main.ts 主窗少了那行 `onSessionIdle: (sessionId) => tabs.markTmuxIdle(sessionId),`。\n" +
+        "① 没有 ⇒ 后端喊了灰灯、前端一个字不做（`#60` 的现象 1 就长这样）；\n" +
+        "② 形状变了（接到别的函数）⇒ 灰灯变成归档或复活，UI 说的不是同一件事。",
+    ).toBe(1);
+    // 视图窗：只认自己那个 sid（多开视图窗时不许互相置灰）。
+    expect(
+      lines.filter((l) => l === "if (s === sid) tabs.markTmuxIdle(s);").length,
+      "视图窗少了 `if (s === sid) tabs.markTmuxIdle(s);` —— 它会停留在陈旧绿灯上。",
+    ).toBe(1);
+  });
+
   it("idle 与 ended 同队保序：先发的先到（灰灯不会插到该会话末行之前）", async () => {
     const order: string[] = [];
     await bindEvents({
