@@ -4059,9 +4059,7 @@ async fn stream_loop(
                 // 是另一跳（那要看前端的 `[e2e] tab-state` 探针）。**别把它读成「tab 建出来了」。**
                 // ⚠ 量级：`SessionAdded` 是**每个会话一次**，不是每帧一次 ⇒ 不会淹日志
                 //（与 `tmux-observation` 那条只记变化的理由不同：那条是逐帧的）。
-                tracing::info!(
-                    "session-added: [{host_label}] sid={sid} → 已 emit 给前端"
-                );
+                tracing::info!("session-added: [{host_label}] sid={sid} → 已 emit 给前端");
                 if let Err(e) = app.emit(crate::bridge::events::REMOTE_SESSION_ADDED, &payload) {
                     tracing::warn!("ssh_source remote-session-added emit failed: {e}");
                 }
@@ -4130,6 +4128,17 @@ async fn stream_loop(
                 }
             }
             Some(InboundFrame::SessionRemoved { sid, cause }) => {
+                // ★★ `P0b-Y2` 第十拍〔08-13〕：**这一跳原先是不可观测的。**
+                //
+                // `#60`（灰灯不出现）问的正是「死亡这件事走到哪一步丢了」，而全链实测时
+                // daemon 侧 tap 里明明有 `session_removed`、monitor 日志里**一个字都没有**
+                // ⇒ 分不清「收到了但没转发」与「根本没收到」。加了这一行才分得清。
+                // ⚠ 量级同 `SessionAdded` 那条：**每个会话一次**，不是每帧一次 ⇒ 不会淹日志。
+                // `cause` 一起打：灰灯与归档走的是**不同的 cause**（`Superseded` 直接归档），
+                // 少了它，看见一行「removed」仍答不出 UI 该变成什么样。
+                tracing::info!(
+                    "session-removed: [{host_label}] sid={sid} cause={cause:?} → 已 emit 给前端"
+                );
                 // FIX 2：已显式 removed 的 sid 从 announced 摘掉，避免连接结束时重复归档。
                 announced.remove(&sid);
                 if let Some(hm) = announced_registry().lock().unwrap().get_mut(&host_label) {
@@ -4864,8 +4873,9 @@ mod f032_idle_tests {
             .take_while(|l| *l != "\u{7d}")
             .collect::<Vec<_>>()
             .join("\n");
-        guard_core::find_pinned(&forget_body, "tmux_raw_registry()")
-            .expect("`forget_tmux_raw` 里没有恰好一处 `tmux_raw_registry()` —— 切错了或它不再清那张表");
+        guard_core::find_pinned(&forget_body, "tmux_raw_registry()").expect(
+            "`forget_tmux_raw` 里没有恰好一处 `tmux_raw_registry()` —— 切错了或它不再清那张表",
+        );
 
         // ③ **两侧都要清** —— 远端断连清了、本机不清，就是补审逮到的那个真 bug。
         let lb = guard_core::production_code(include_str!("backend/control/local_backend.rs"));
@@ -7617,22 +7627,62 @@ mod capped_line_tests {
         );
     }
 
+    /// ★ 与上一条**成对**：`SessionRemoved` 那一臂也不许静默〔`P0b-Y2` 第十拍 08-13〕。
+    ///
+    /// # 为什么成对才有用
+    ///
+    /// `#60` 问的是**灰灯**，而灰灯是「死亡」这件事的 UI 表现。只给 `added` 加日志，
+    /// 全链失败时能回答「上线那跳到没到」，**答不出「死亡那跳到没到」** ——
+    /// 08-13 实测当场撞上：daemon 侧 tap 里明明有 `session_removed`，monitor 日志里
+    /// 一个字都没有，于是「收到了没转发」与「根本没收到」分不开。补上这一行才分得开
+    /// （补完立刻量到：`cause=Gone`，两跳都通）。
+    ///
+    /// ⚠ 差点漏掉 `#[test]`：搬动代码块时属性留在了上一条身上，`cargo test` **一声不吭地
+    /// 少跑一条**（`4 passed` 里没有它）。⇒ 加判据之后要核**名字出现在跑的清单里**，
+    /// 不是只看「全绿」——本仓「0 passed 不是绿」的同一族。
+    #[test]
+    fn the_session_removed_arm_is_not_silent() {
+        let prod = guard_core::production_code(include_str!("ssh_source.rs"));
+        let at = guard_core::find_pinned(&prod, "session-removed: [{host_label}] sid={sid}")
+            .expect(
+                "`SessionRemoved` 那一臂必须留下一行「收到了」——`#60`（灰灯不出现）问的正是\n             \
+                 「死亡这件事走到哪一步丢了」，而 08-13 全链实测时 daemon 侧 tap 里明明有\n             \
+                 `session_removed`、monitor 日志里一个字都没有 ⇒ 分不清「收到了没转发」与「根本没收到」。",
+            );
+        // `cause` 必须一起打：灰灯与归档走**不同的 cause**（`Superseded` 直接归档，
+        // `Gone` 才是灰灯那条）。少了它，看见一行「removed」仍答不出 UI 该变成什么样。
+        // ⚠ 窗口内也**不许裸 `contains`**：`needle_anchor_registry` 那条递减棘轮当场拦下
+        //   第一版（与 added 那条判据 08-13 早些时候踩的是同一个坑，头注里逐字记着）。
+        let window = &prod[at..(at + 200).min(prod.len())];
+        assert!(
+            guard_core::find_pinned(window, "cause={cause:?}").is_ok(),
+            "那行日志没带 `cause` —— 灰灯与归档是两条路，只报 sid 分不出该走哪条。"
+        );
+        // 与 added 那条同样的时序要求：日志排在转发**之前**。
+        let fwd = &prod[at..(at + 700).min(prod.len())];
+        assert!(
+            guard_core::find_pinned(fwd, "session_changes.send(SessionChange {").is_ok(),
+            "那行日志与它要守的那次转发之间隔太远（或被排到了后面）——\
+             排在后面的话，转发卡住时就连「收到了」都没留下"
+        );
+    }
+
+
     #[test]
     fn the_frame_arm_logs_the_observation_kind() {
         let prod = guard_core::production_code(include_str!("ssh_source.rs"));
-        let log_at = guard_core::find_pinned(&prod, "\"tmux-observation: [{host_label}] {} → {kind}\"")
-            .unwrap_or_else(|e| {
-                panic!(
+        let log_at =
+            guard_core::find_pinned(&prod, "\"tmux-observation: [{host_label}] {} → {kind}\"")
+                .unwrap_or_else(|e| {
+                    panic!(
                     "{e}\n收 `TmuxSessions` 帧时不再记观测分类 —— `U3` 裁定的那一行可观测性没了，\n\
                      而它存在的全部理由是：不记就分不清『0 次』与『记不下来』。"
                 )
-            });
+                });
         // 只记**变化** —— 帧由 tmux hook 驱动，逐帧记会把日志淹掉（淹掉的日志与没有一样不可读）。
-        let gate_at = guard_core::find_pinned(
-            &prod,
-            "if last_observation_kind.as_deref() != Some(kind) {",
-        )
-        .unwrap_or_else(|e| panic!("{e}\n变成逐帧记了 —— 那会把日志淹掉"));
+        let gate_at =
+            guard_core::find_pinned(&prod, "if last_observation_kind.as_deref() != Some(kind) {")
+                .unwrap_or_else(|e| panic!("{e}\n变成逐帧记了 —— 那会把日志淹掉"));
         assert!(gate_at < log_at, "那条日志不在「变了才记」的门里面");
         // 它是**纯观测**：决策仍只看 `classify_tmux_observation` 的结果（`verdict`）。
         let decide_at = guard_core::find_pinned(
