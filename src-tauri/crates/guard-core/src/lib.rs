@@ -307,12 +307,23 @@ pub fn scan_tree_excluding_self(
                 stack.push(path);
                 continue;
             }
-            let ok_ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .is_some_and(|e| exts.contains(&e));
-            if !ok_ext {
-                continue;
+            // ★ **空列表 = 不按扩展名筛**〔`PS1` 08-13 补的能力〕。
+            //
+            // 为什么非补不可：`shared/cc-bus/` 那 17 个文件里，脚本（`cc-send` / `cc-spawn` / …）
+            // **没有扩展名**。原来空列表会退化成「一个都不要」——于是想扫那棵树的判据
+            // 只能自己 `read_dir`，而那正是 `scanning_guard_registry` 那条**递减棘轮**禁的，
+            // 且它逐字「**不许把上限调上去让今天好过**」。
+            // ⇒ 缺的是**原语的能力**，不是纪律的例外。补在这里，棘轮一格都不用动。
+            //
+            // ⚠ 语义刻意是「不筛」而不是「筛出无扩展名的」：调用方要的是**整棵树**。
+            if !exts.is_empty() {
+                let ok_ext = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .is_some_and(|e| exts.contains(&e));
+                if !ok_ext {
+                    continue;
+                }
             }
             if path
                 .to_string_lossy()
