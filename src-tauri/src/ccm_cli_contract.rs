@@ -725,6 +725,46 @@ mod tests {
         );
     }
 
+    /// ★ `P4e`〔实@08-12 立件，08-13 落地〕：**查找 daemon 的规则只有一份**，
+    /// 且 `--print` 吐的是**配方**而不是查找结果。
+    ///
+    /// # 为什么这条判据的正题是「一份」
+    ///
+    /// 规则要在两处成立：真跑（`resolve_from_daemon`）与 `--print`（`resolve_recipe`）。
+    /// 本仓既有的做法是「两份逐行同构、改一边必须改另一边」（`BUS_ID_RECIPE`）——
+    /// 这次改成**同一个字面量**：真跑那侧 `eval` 它。⇒ 同构不再靠人的记性。
+    ///
+    /// ⚠ D 阶段的 M17 证明了这条判据不是装饰：把配方那侧偷偷退回老规则（只认 env），
+    /// **exec 路的判据全绿** —— 因为它根本不走配方。逮住它的是「print↔exec 一致」那一格。
+    #[test]
+    fn the_daemon_lookup_rule_exists_exactly_once() {
+        let ccm = include_str!("../../shared/ccm");
+        let prod = shell_production(ccm);
+        guard_core::find_pinned(&prod, "DAEMON_BIN_RECIPE=").unwrap_or_else(|e| {
+            panic!("{e}\n⇒ 查找 daemon 的规则不是恰好一份。两份 = 改一边漏一边（`--print` 与真跑说的不是一件事）。")
+        });
+        // 真跑那侧必须**用**它，而不是自己再写一遍。
+        assert!(
+            prod.contains("eval \"$DAEMON_BIN_RECIPE\""),
+            "`resolve_from_daemon` 没 eval 那份配方 —— 那它用的是第二份规则。"
+        );
+        // 配方那侧（`--print`）也必须原样吐出它。
+        assert!(
+            prod.contains("$DAEMON_BIN_RECIPE if [ -n"),
+            "`resolve_recipe` 没把配方原样吐出来 —— `--print` 与真跑会说两件事。\n                          ★ D 阶段 M17 实测：只钉 exec 路的话，这个变异**存活**。"
+        );
+        // 逃生口在（套件靠它把「这台机器装没装 daemon」从测量里拿掉；用户靠它退回老行为）。
+        assert!(
+            prod.contains("CCM_NO_DAEMON"),
+            "`CCM_NO_DAEMON` 逃生口没了 —— 那「日常行为变更」就没有退路，\n                          判据也没法把机器状态从测量里拿掉（`P4e §3` 提前记下的失效方式）。"
+        );
+        // 查找次序里**部署落点**必须在（`P4e` 的正题：不许只靠调用方注入 env）。
+        assert!(
+            prod.contains(".cc-monitor/bin/cc-monitor-remote"),
+            "查找次序里没有部署落点 —— 那就退回「只认 `CCM_DAEMON_BIN`」，\n                          而那个变量的唯一生产注入点是 cc-monitor 起子进程时 ⇒ skill 在普通 shell 里够不着。"
+        );
+    }
+
     /// ★ `P4b①`③〔`C15` 08-13〕：**总线登记 + 台账也搬进 `ccm`**，且**格式仍归 cc-bus**。
     ///
     /// # 这条判据的正题是「没有第二份格式实现」
