@@ -433,6 +433,18 @@ mod tests {
     /// ⚠ 而首版在这里内联了一份 `filter(starts_with('#'))` —— `structural_scan` 的
     /// 「剥注释实现只许一份」登记表**当场逮住**，逐字问「共享原语为什么不够」。
     /// 答案是：**够**（`strip_hash_comment_lines` 就是给 `.sh`/`.yml` 用的那份）。⇒ 改成调它。
+    /// `ccm` 里那行**真的会被执行**的 `capabilities=`（不是散文里提到它的那些）。
+    ///
+    /// ⚠ 本会话**同一族撞了四次**：`ccm-session=` 的位置比对、`while tmux has-session` 的
+    /// 诚实注释、以及这里的两处 —— 都是「`find` 的第一处命中是**注释**」。
+    /// 前三次各自就地修，第四次才明白该做的是**把取法收成一份**：
+    /// 判据要问的是「代码里怎么写的」，而 `lines().find(contains(…))` 问的是「文件里有没有」。
+    fn capabilities_line(ccm: &str) -> &str {
+        ccm.lines()
+            .find(|l| !l.trim_start().starts_with('#') && l.contains("capabilities="))
+            .expect("`--ccm-probe` 的 capabilities= 那行 —— 它是能力协商的单一事实源")
+    }
+
     fn shell_production(src: &str) -> String {
         guard_core::strip_hash_comment_lines(src)
     }
@@ -657,10 +669,7 @@ mod tests {
         }
         // ④ 能力协商：新模式必须出现在 `capabilities=`，否则老 ccm 上 cc-spawn 报的会是
         //    `未知选项: --tmux-base` + `建会话失败`，把「版本太旧」说成「建会话失败」。
-        let caps = ccm
-            .lines()
-            .find(|l| l.contains("capabilities="))
-            .expect("`--ccm-probe` 的 capabilities= 那行");
+        let caps = capabilities_line(ccm);
         assert!(
             guard_core::contains_word(caps, "tmux-base"),
             "`capabilities=` 里没有 `tmux-base` —— 调用方无从协商。实得：{caps}"
@@ -722,6 +731,63 @@ mod tests {
         assert!(
             bails,
             "`cc-spawn` 拿不到会话名时没有停 —— 再往下 `cc-register` 与台账会写进空名字，\n                          产出一个总线上叫 \"\" 的幽灵（`cc-list` 显示在线、`cc-send` 石沉大海）。"
+        );
+    }
+
+    /// ★ **`capabilities=` 报出去的每个能力，用法块里都要有一行**〔08-13〕。
+    ///
+    /// # 为什么这条值得钉
+    ///
+    /// `capabilities=` 是**给机器看**的协商面（`cc-spawn` / TS 侧 `CLI_REQUIRED_CAPS` 都在读），
+    /// 用法块是**给人看**的。本会话一口气加了 `tmux-base` / `bus-register` 三个旗标，
+    /// **机器那面立刻齐了、人那面一个字都没有** —— 用户敲 `ccm --help` 找不到它们。
+    /// ⇒ 加旗标时「协商面」与「用法块」是同一件事的两份表达，抽不成一份 ⇒ 只能钉一致。
+    ///
+    /// ⚠ 反向不钉：用法块里可以有**不进能力集**的东西（如 `--print`、`--help` 本身、
+    /// 位置动作 `new`/`resume`/`attach`），那不是遗漏。**只钉「能力有、文档无」这一向。**
+    ///
+    /// ⚠ 例外逐条列，不放宽判据：`ccm-sid` 的用法行写作 `--ccm-sid`、`tmux-size` 写作
+    /// `--tmux-size`，token 与旗标名之间的映射就是「加两个横杠」——不成立的那几个在下面点名。
+    #[test]
+    fn every_advertised_capability_has_a_usage_line() {
+        let ccm = include_str!("../../shared/ccm");
+        let caps_line = capabilities_line(ccm);
+        let caps: Vec<&str> = caps_line
+            .split("capabilities=")
+            .nth(1)
+            .unwrap_or("")
+            .split("\\n")
+            .next()
+            .unwrap_or("")
+            .split(',')
+            .map(str::trim)
+            .filter(|c| !c.is_empty())
+            .collect();
+        assert!(caps.len() >= 10, "只解析出 {} 个能力 —— 抽取器坏了（本条此刻是空转的）", caps.len());
+        // 用法块 = 文件头那段 `#` 注释（`--help` 打的就是它）。
+        let usage: String = ccm
+            .lines()
+            .take_while(|l| l.starts_with('#') || l.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        // 这些 token 不是旗标：`new`/`resume`/`attach` 是**位置动作**，用法块里以裸词出现。
+        const POSITIONAL: &[&str] = &["new", "resume", "attach"];
+        let mut missing: Vec<&str> = Vec::new();
+        for c in &caps {
+            let ok = if POSITIONAL.contains(c) {
+                usage.contains(*c)
+            } else {
+                usage.contains(&format!("--{c}"))
+            };
+            if !ok {
+                missing.push(c);
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "`capabilities=` 报了这些能力，而**用法块里一行都没有**：{missing:?}\n             \
+             机器那面（协商）齐了、人那面（`ccm --help`）没有 ⇒ 用户找不到它们。\n             \
+             ⇒ 加旗标时两处一起加。"
         );
     }
 
