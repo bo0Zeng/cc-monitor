@@ -286,6 +286,8 @@ mod tests {
         // PS1：把内嵌 cc-bus 装到本机 `<claude_dir>/skills/`。远端那侧**早就有**
         // （`acct-iso.deploy` 那条路的同族）——但 cc-bus 的远端部署今天没做，如实记欠。
         ("deploy_local_cc_bus", "cc-bus.deploy", Side::Local),
+        // PS2：本机装的是哪一版（只读）。与部署同族、同样只有本机口。
+        ("cc_bus_install_state", "cc-bus.install-state", Side::Local),
         // U8c-2c-2：`ccm 调用行`的渲染入口。**这一行说的是「有没有一条上线命令」，
         // 不是「有没有这个能力」** —— 两者 P3t 起分了家，别再合着读。
         //
@@ -396,6 +398,7 @@ mod tests {
         ("acct-iso.deploy", Asym::NaturallyAsymmetric, "vendored 副本要**传到**远端才能用（`deploy_remote_acct_iso`）；本地就在本机、不存在传输这一步。⚠⚠ **P3b 标疑（08-12）：这条理由属于「从未被验证过」那一类，别当它已经核过。** 「不存在传输」是真的，但**「不存在安装」没人量过** —— 实测本机 `~/.local/bin` 下确实躺着 `cc-acct-iso`（`config_surface.rs:1062` 记着那 12 条 `cc-*`），而它是**怎么到那儿的**、要不要 monitor 管，本表从来没答过。⇒ 若答案是「要 monitor 管」，这条就该从 `natural` 变 `ParityDebt`。归 `P3b` 的后续或 `L3`。"),
         ("skill.inbox", Asym::Undecided, "devbench F03：skill 接入面今天只读写**本机工作目录**下的 `.claude/planned-build/INBOX.txt`。远端项目也可能有同一份结构（那边的 `.claude/` 一样在），技术上走 SFTP 就能读写 —— **但「远端项目的收件箱要不要能在这里编辑」没人裁定过**。⇒ 刻意记 `Undecided` 而不是 `NaturallyAsymmetric`：后者会替产品做主说「本地不需要」，而事实是**没想过**。⚠ 若将来要做，写面围栏那三道得先想清楚远端版怎么算（`canonicalize` 在远端不成立）。"),
         ("tmux.local-census", Asym::NaturallyAsymmetric, "「本机今天有哪些 tmux 会话」。★ P3 刀 2 的 UI 半把它从「只回名字」放宽到「回整条会话」——杀会话的菜单必须按 `@ccm_sid` 认归属，按 `<sid8>-cc` 前缀猜与 §30 逐字禁的「按目录回退猜」是同一类错。**反向缺口，且是天然的**：远端问同一个问题**已经有答案** —— `list_remote_tmux` 一次性 SSH `tmux ls` 就是它，前端 `pickFreshTmuxName(sid, existing)` 拿的正是那份。本机没有 SSH 那一跳，所以要一个自己的口；开它不是本机多了什么能力，是**把远端本来就有的那一格在本机补上**。⇒ 记 `NaturallyAsymmetric` 而不是 `ParityDebt`：欠的是本机这一侧，而本行一落地就已经补平，没有留下去处。★ 它读的是 daemon 推来的 tmux 快照而不是现跑 `tmux ls`，理由与射程见 `tmux.rs::local_tmux_names` 头注：那份快照由 `session-created/closed/renamed` 三条 hook 驱动，**恰好就是改变名字集合的那三件事** ⇒ 对这个问题它是权威的，对「pane 前台命令变了没有」才是陈旧的（那条已被 devbench F08 裁定不开口）。"),
+        ("cc-bus.install-state", Asym::ParityDebt, "`PS2`：本机 cc-bus 装的是哪一版（没装 / 已是最新 / 装了但不是这一版）。**只读**，逐文件与内嵌那 17 个字节串比。⚠ 欠的与 `cc-bus.deploy` 是**同一笔**：远端那侧同样有 `~/.claude/skills/`，要问「远端装的是哪一版」得让 daemon 出一条具名读命令（形状抄 `P4d` 那批）。⇒ 两条一起补，别分两次。★ 顺带记口径：本条能答得出来，**全靠 `U9`② 裁了「仓内那份为准」**（用@08-13）—— 没有真相源就没有「不是这一版」这个判断，`PS2` 摸底时那条判据逐字写着「加第三态之前先答版本口径」。"),
         ("cc-bus.deploy", Asym::ParityDebt, "`PS1`〔`U10b` 用@08-13 裁「开」后落地〕：把内嵌的 cc-bus 装到 **本机** `<claude_dir>/skills/cc-bus/`。⚠ 欠的是什么要写准：**不是**「远端不需要」——远端同样有 `~/.claude/skills/`，而且本仓**已经有**一条同族的远端部署路（`acct-iso.deploy` 走 SFTP 推 vendored 脚本）。欠的是**把这条本机路复制到远端**：SFTP 推 17 个文件 + 远端侧的围栏（`canonicalize` 在远端不成立，要换成 daemon 侧校验）。⇒ 如实记欠，**不假装两侧都有**。★ 顺带记一条口径：本条的落点是**用户数据目录**，与 `acct-iso.deploy` 那条「只写 cc-monitor 自己的 bin 目录」**性质不同** —— 后者不需要豁免，本条需要（`INVARIANTS` 第 7 条）。"),
         ("plugins.marketplaces", Asym::ParityDebt, "`P8a`：列 marketplace（来源 / 落点 / 更新时间 / 它**声明**的插件数）今天**只有本机**。⚠ 欠的是什么要写准：**不是**「远端不需要」——远端的 `~/.claude/plugins/` 一样在，daemon 早就会读远端 claude 目录（`--list-projects` / `--list-sessions` / `--list-subagents` 三条现成的形状）。欠的是**一条 daemon 子命令**（`--list-marketplaces`）+ 一次 BUILD_ID/协议文档/内嵌重编，那是另一件事的体量，本件是梯队 5 的只读面 ⇒ 如实记欠，**不假装两侧都有**。★ 它与 `local_read_surface_registry` 里 `plugins.rs` 那条 `reader` 的退役条件是**同一条**：daemon 补上那条子命令，本机改走后端、远端这半一起补平 —— **一件事清两笔账**。⚠ 另记一条**本行答不了的**：本行说的是「有哪些 marketplace」，**不是**「装了/启用了哪些插件」——后者今天**两侧都没有真相源**（待决 `U10d`），那不是平价问题，是那份数据在盘上根本不存在。"),
         ("acct-iso.shellinit", Asym::ParityDebt, "本机切号同样要 shellinit 文本（`cc-acct-iso shellinit` 那句 `export CLAUDE_CONFIG_DIR=<默认账号>`），今天只能给远端生成 —— 命令面零本机对侧。归 L3。"),
@@ -694,7 +697,7 @@ mod tests {
         // 反向自检：一条都没检到 = 签名采集坏了。**等号而不是 `>=`**（T04 审计重要 5：
         // 写 `>= N` 恰好容忍一次静默降级）。
         assert_eq!(
-            checked, 85,
+            checked, 86,
             "检到 {checked} 条 Local/Both 命令（真实应为 84 = Local 53 + Both 31；\
              ★ P4a（08-12）把 cc-bus **读面三条**从 Remote 转成 Both（本机跑同一条命令串，\
              只是不包进 ssh）⇒ Both 28→31、总数 80→83；\
@@ -765,11 +768,11 @@ mod tests {
         // 而 U8a-2c-pre（`57dba2a`）把这四个数各 +1 时，只改了数、一条尾注都没动。
         // ⇒ 尾注把 U8a-2c-pre 的增量记在了 U8c-2c-2 名下。**尾注的用处就是说清「谁加的」，
         // 归属错了就不如没有。**
-        assert_eq!(LEDGER.len(), 141, "命令总数变了"); // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines，C8）**；P3t-Y2b +1（list_local_tmux）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）** // **P8a +1（list_plugin_marketplaces，#70）** // **PS1 +1（deploy_local_cc_bus，U10b 裁开）**
+        assert_eq!(LEDGER.len(), 142, "命令总数变了"); // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines，C8）**；P3t-Y2b +1（list_local_tmux）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）** // **P8a +1（list_plugin_marketplaces，#70）** // **PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）**
         let sides = capability_sides();
-        assert_eq!(sides.len(), 61, "能力总数变了"); // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.daemon-policy / daemon.status / daemon.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）；**P8a +1（plugins.marketplaces，Local-only）**；**PS1 +1（cc-bus.deploy，Local-only）**
+        assert_eq!(sides.len(), 62, "能力总数变了"); // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.daemon-policy / daemon.status / daemon.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）；**P8a +1（plugins.marketplaces，Local-only）**；**PS1 +1（cc-bus.deploy）**；**PS2 +1（cc-bus.install-state）**
         let asym = asymmetric_capabilities();
-        assert_eq!(asym.len(), 22, "不对称能力数变了"); // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
+        assert_eq!(asym.len(), 23, "不对称能力数变了"); // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
         // P3t-Y2b +1（tmux.local-census）；**P3b -1（launch.send-into 结清：P3 刀 3 让本机真的在用它 ⇒ Both，不再不对称）**
         // **P7c-1 -1（subagent.load 结清：远端展开做出来了 ⇒ Both）** —— daemon 只列候选，挑选留本侧（C1）
         let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
@@ -783,7 +786,7 @@ mod tests {
                 .or_default() += 1;
         }
         assert_eq!(kinds.get("natural"), Some(&10), "天然不对称条数变了"); // U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）。★ P3t-Y4：这两条的**理由**换过（原来引 §36 说「本地不经 IR」——§36 只绑 Windows，且那个理由已被本机探针实测证伪），但 `natural` 的**条数没变**。P3t-Y2b +1（tmux.name-census）
-        assert_eq!(kinds.get("debt"), Some(&9), "平价欠账条数变了"); // F08 -1（usage.per-account 补平） // G6 -1；E79 -1；**P7c-1 -1（subagent.load 结清：远端展开做出来了）**；**P8a +1（plugins.marketplaces：新开的本机口，远端那半要等 daemon 的 `--list-marketplaces`）**
+        assert_eq!(kinds.get("debt"), Some(&10), "平价欠账条数变了"); // F08 -1（usage.per-account 补平） // G6 -1；E79 -1；**P7c-1 -1（subagent.load 结清：远端展开做出来了）**；**P8a +1（plugins.marketplaces：新开的本机口，远端那半要等 daemon 的 `--list-marketplaces`）**
         assert_eq!(kinds.get("undecided"), Some(&3), "未裁定条数变了"); // devbench F03 +1（skill.inbox：远端项目的收件箱要不要能编辑，没人裁定过） // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
         // P3b -1（launch.send-into：它的「还没裁定」被 C1/C8 + P2 + P3 刀 3 三重证伪）
     }

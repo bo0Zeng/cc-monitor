@@ -209,6 +209,63 @@ pub fn deploy_into(claude_dir: &Path) -> Result<CcBusDeployReport, String> {
     })
 }
 
+/// `PS2` 的三态。**「没装」「已是最新」「装了但不是这一版」是三件事，不合并。**
+///
+/// ⚠ 合并任意两个都会骗人：
+/// · 把「没装」并进「不是最新」⇒ 用户以为只要点一下更新，其实是第一次装；
+/// · 把「不是最新」并进「已装」⇒ 那正是 `P4b` 卡了两天的形态 —— 装着的是旧的，
+///   而界面说「已装」，于是没人去点那颗按钮。
+///
+/// ★ 第三态今天**才**做得出来：它要一个「哪一版才算对」的真相源，而那正是 `U9`②
+/// （用户 08-13 裁「**仓内那份为准**」）。⇒ 真相源 = 内嵌的那 17 个字节串。
+/// `PS2` 摸底时立的那条判据逐字写着「**加第三态之前先答版本口径**」—— 答了，所以能加。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+pub enum CcBusInstallState {
+    /// 落点不存在（或一个内嵌文件都没有）。
+    NotInstalled,
+    /// 逐文件与内嵌一致。
+    UpToDate,
+    /// 装着的与内嵌**不一致** —— 带上**差了几个文件**，别只说「不一致」。
+    Drifted { differing: u32, missing: u32 },
+}
+
+/// 查本机装的是哪一版（**只读**，不写盘）。
+pub fn install_state_in(claude_dir: &Path) -> Result<CcBusInstallState, String> {
+    let skills = claude_dir.join("skills");
+    let dest = skills.join("cc-bus");
+    if !dest.is_dir() {
+        return Ok(CcBusInstallState::NotInstalled);
+    }
+    let mut differing = 0u32;
+    let mut missing = 0u32;
+    for (rel, bytes) in FILES {
+        let p = dest.join(rel);
+        if !p.exists() {
+            missing += 1;
+        } else if !same_content(&p, bytes) {
+            differing += 1;
+        }
+    }
+    if differing == 0 && missing == 0 {
+        Ok(CcBusInstallState::UpToDate)
+    } else if missing as usize == FILES.len() {
+        // 目录在、但一个内嵌文件都没有 ⇒ 那不是「装了个旧版」，是**根本没装**。
+        Ok(CcBusInstallState::NotInstalled)
+    } else {
+        Ok(CcBusInstallState::Drifted { differing, missing })
+    }
+}
+
+/// `PS2`：本机 cc-bus 装的是哪一版。**只读**。
+#[tauri::command]
+pub async fn cc_bus_install_state() -> Result<CcBusInstallState, String> {
+    let claude_dir = crate::paths::resolve_claude_dir().ok_or("找不到 claude 目录")?;
+    install_state_in(&claude_dir)
+}
+
 /// `PS1`：把内嵌的 cc-bus 装到本机 `<claude_dir>/skills/cc-bus/`。
 ///
 /// ★ **用户显式动作**：本命令**只**由设置页那个按钮调用，绝不在启动/后台路径上跑
@@ -275,6 +332,46 @@ mod tests {
             embedded, on_disk,
             "内嵌清单与 `shared/cc-bus/` 对不上 —— 加了文件就要加到 `FILES` 里，\
              否则装出去的是个**缺件的** skill"
+        );
+    }
+
+    /// `PS2`：**三态互相分得开**（这正是本件的正题）。
+    #[test]
+    fn the_three_install_states_are_distinguishable() {
+        let t = tmpdir("state");
+        // ① 没装
+        assert_eq!(
+            install_state_in(&t.0).unwrap(),
+            CcBusInstallState::NotInstalled
+        );
+        // ② 装了、且是这一版
+        deploy_into(&t.0).expect("部署");
+        assert_eq!(install_state_in(&t.0).unwrap(), CcBusInstallState::UpToDate);
+        // ③ 装了、但不是这一版 —— **带着差了几个**，不是一句「不一致」
+        let dest = t.0.join("skills/cc-bus");
+        std::fs::write(dest.join("SKILL.md"), b"old").unwrap();
+        std::fs::remove_file(dest.join("scripts/cc-send")).unwrap();
+        assert_eq!(
+            install_state_in(&t.0).unwrap(),
+            CcBusInstallState::Drifted {
+                differing: 1,
+                missing: 1
+            },
+            "「装了旧版」必须带上差异规模 —— 只说「不一致」用户不知道该不该在意"
+        );
+    }
+
+    /// `PS2`：目录在、但一个内嵌文件都没有 ⇒ 那是**没装**，不是「装了个旧版」。
+    ///
+    /// ⚠ 这一格是分界：把它判成 `Drifted` 会让界面说「有更新」，
+    /// 而用户点下去发现是第一次装 —— 两件事的心理预期完全不同。
+    #[test]
+    fn an_empty_dir_counts_as_not_installed() {
+        let t = tmpdir("empty");
+        std::fs::create_dir_all(t.0.join("skills/cc-bus")).unwrap();
+        assert_eq!(
+            install_state_in(&t.0).unwrap(),
+            CcBusInstallState::NotInstalled
         );
     }
 

@@ -168,7 +168,7 @@ function wrapperEntries(): Map<string, string> {
 }
 
 describe("C04a 命令名钉死", () => {
-  it("Rust 侧「声明 = 注册」，且计数恰好 141", () => {
+  it("Rust 侧「声明 = 注册」，且计数恰好 142", () => {
     const declared = rustCommands();
     const registered = registeredCommands();
 
@@ -182,7 +182,7 @@ describe("C04a 命令名钉死", () => {
     expect(onlyRegistered, "这些注册了却找不到声明 ⇒ 注册表里有死名字").toEqual([]);
 
     // 计数自检用等号：加/删命令必须红一次，逼人来更新这个数与包装层
-    expect(declared.size, `期望恰好 141 个命令，实得 ${declared.size}`).toBe(141); // U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；P3t-Y2b +1（local_tmux_names）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）**；**P8a +1（list_plugin_marketplaces，#70）**；**PS1 +1（deploy_local_cc_bus，U10b 裁开）**
+    expect(declared.size, `期望恰好 142 个命令，实得 ${declared.size}`).toBe(142); // U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；P3t-Y2b +1（local_tmux_names）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）**；**P8a +1（list_plugin_marketplaces，#70）**；**PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）**
     // ⚠ 上面那句提示原本写「期望恰好 131」而断言是 136 —— 报错文案与断言值**对不上**，
     //   本件顺手订正：它会把一次真实的计数变动报成一个不存在的数。
   });
@@ -214,7 +214,7 @@ describe("C04a 命令名钉死", () => {
     }
 
     // 计数自检：C04d 每迁一个模块进来，这个数要跟着涨（红一次提醒更新）
-    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(131) // P4c +2（cc_bus_broadcast / cc_bus_kill）; // devbench F03 +3（list_skills/read_skill_file/write_skill_file）；U8a-2c-1 +1（daemon_send_into）； Z05 +1；G6 远端分叉 +1、list_remote_tmux 进包装层 +1；U8c-2c-2 +1（render_ccm_launch）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines：每台机一个 daemon 开关，C8）** P3t-Y2b +1（local_tmux_names）；**P8a +1（list_plugin_marketplaces）**；**PS1 +1（deploy_local_cc_bus）**
+    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(132) // P4c +2（cc_bus_broadcast / cc_bus_kill）; // devbench F03 +3（list_skills/read_skill_file/write_skill_file）；U8a-2c-1 +1（daemon_send_into）； Z05 +1；G6 远端分叉 +1、list_remote_tmux 进包装层 +1；U8c-2c-2 +1（render_ccm_launch）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines：每台机一个 daemon 开关，C8）** P3t-Y2b +1（local_tmux_names）；**P8a +1（list_plugin_marketplaces）**；**PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）**
   });
 
   // 标题里的数原先写着 112，而断言早就是 119 了（Z05 起 120；local-as-remote L3a 起 121）——**标题也是记录**，
@@ -239,7 +239,7 @@ describe("C04a 命令名钉死", () => {
     // 两处是 `origin ? "A" : "B"` 的两字面量三元（`session-viewer.ts` / `views/history.ts`）、
     // 一处是 `doWrite(cmd, args)` 转发 helper 而调用方传的全是字面量（`sftp/panel.ts`）。
     // 改成静态调用 / thunk 后**盲区归零** ⇒ 下面 `DYNAMIC_ONLY` 现在是空集。
-    expect(used.size, `期望恰好 141 个字面量命令名，实得 ${used.size}`).toBe(141); // devbench F03 +3（skill 接入面三条） // U8c-2c-2 +1；U8a-2c-pre +1；P3t-Y2b +1（local_tmux_names）；**P4c +2**；**P8a +1（list_plugin_marketplaces）**；**PS1 +1（deploy_local_cc_bus）**
+    expect(used.size, `期望恰好 142 个字面量命令名，实得 ${used.size}`).toBe(142); // devbench F03 +3（skill 接入面三条） // U8c-2c-2 +1；U8a-2c-pre +1；P3t-Y2b +1（local_tmux_names）；**P4c +2**；**P8a +1（list_plugin_marketplaces）**；**PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）**
 
     // **不断言反向**（Rust ⊆ TS），但把盲区本身钉死：动态名集变了必须红一次。
     const rustOnly = [...rust].filter((c) => !used.has(c)).sort();

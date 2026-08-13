@@ -83,6 +83,7 @@ import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DriftFaceReport } from "../generated/DriftFaceReport";
 import type { MarketplaceSurvey } from "../generated/MarketplaceSurvey";
 import type { CcBusDeployReport } from "../generated/CcBusDeployReport";
+import type { CcBusInstallState } from "../generated/CcBusInstallState";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 // **panorama 一族的返回类型指向 `src/panorama/types.ts` 的手写类型，不是生成物。**
 // 不是漏了——那 10 个类型（`Overview`/`NodeView`/`SubGraph`/`Edge`/`ImpactSet`/`Symbol`/
@@ -680,6 +681,9 @@ export const commands = {
   // ⚠ **只读铁律的第 7 条例外**（`U10b` 用@08-13 裁「开」）⇒ 它是本仓**唯一**往
   // `<claude_dir>` 写的口子，必须由**用户显式点击**触发，绝不放进任何自动路径。
   deploy_local_cc_bus: () => invoke<CcBusDeployReport>("deploy_local_cc_bus"),
+  // PS2：本机装的是哪一版（**只读**）。三态刻意不合并 ——
+  // 「没装」「已是最新」「装了但不是这一版」合并任意两个都会骗人。
+  cc_bus_install_state: () => invoke<CcBusInstallState>("cc_bus_install_state"),
   // U8c-2c-2：`ccm 调用行`改由 Rust 渲染（`backend::control::ccm_invocation`）。
   // **`ok:false` 不是错误，是诚实降级** —— 调用方拿着 `reason` 去走兜底渲染器（§33）。
   render_ccm_launch: (args: { req: CliRenderRequest }) =>
