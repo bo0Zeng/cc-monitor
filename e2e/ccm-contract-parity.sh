@@ -396,6 +396,38 @@ base_env CCM_DAEMON_BIN="$W/bin/daemon-inject" bash "$CCM" resume abc-123 --agen
 ck "A′g · daemon 命令里的 \`\$(…)\` **不许**被执行（别改成 eval）" "no" \
    "$([ -f "$_MARK" ] && echo yes || echo no)"
 
+# ===== A′h：`P4e` 的**查找次序**逐档验一遍〔08-13〕=====
+# 次序（`DAEMON_BIN_RECIPE` 头注写的）：`$CCM_DAEMON_BIN` > `~/.cc-monitor/bin/` > PATH。
+# ★ 它此前**一档都没被判据看着** —— 而次序错了的症状是「用了另一个 daemon」，
+#   两个 daemon 都能答话时**完全无声**。⇒ 让三档各答一个**可分辨**的串。
+# ⚠ 用**沙箱 HOME**：那一档读的是 `$HOME/.cc-monitor/bin/`，绝不碰用户真实目录。
+mkdir -p "$W/h3/home/.cc-monitor/bin" "$W/h3/pathbin"
+for _k in env deploy path; do
+  case "$_k" in
+    env)    _f="$W/bin/dm-env" ;;
+    deploy) _f="$W/h3/home/.cc-monitor/bin/cc-monitor-remote" ;;
+    path)   _f="$W/h3/pathbin/cc-monitor-remote" ;;
+  esac
+  printf '#!/bin/sh\ncat >/dev/null\nprintf %%s "{\\"command\\":\\"%s/argvstub FROM-%s\\"}"\n' "$W/bin" "$_k" > "$_f"
+  chmod +x "$_f"
+done
+_h3() {  # $1=档位标签（只为可读，不参与判定）；其余=额外 env
+  shift
+  PATH="$W/h3/pathbin:$W/bin:$PATH" HOME="$W/h3/home" \
+    env -u CLAUDE_CONFIG_DIR -u ANTHROPIC_MODEL -u CC_BUS_ID -u CCM_ENV -u CCM_ENV_PROBE \
+        CLAUDECODE=1 CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent \
+        CCM_ACCTS_MANIFEST="$W/m.json" "$@" \
+    bash "$CCM" resume abc-123 --agent claude --cwd "$CWD" 2>&1 | grep '^ARGV|' | head -1
+}
+ck "A′h · 三者齐全 ⇒ 用 \$CCM_DAEMON_BIN" "ARGV|FROM-env" \
+   "$(_h3 env CCM_DAEMON_BIN="$W/bin/dm-env")"
+ck "A′h · 无 env ⇒ 用部署落点 ~/.cc-monitor/bin/" "ARGV|FROM-deploy" \
+   "$(_h3 deploy)"
+rm -f "$W/h3/home/.cc-monitor/bin/cc-monitor-remote"
+ck "A′h · 只剩 PATH ⇒ 用 PATH 上那份" "ARGV|FROM-path" "$(_h3 path)"
+rm -f "$W/h3/pathbin/cc-monitor-remote"
+ck "A′h · 一个都没有 ⇒ 落回本地那条" "ARGV|--resume abc-123" "$(_h3 none)"
+
 echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
 [ "$FAIL" -eq 0 ]
