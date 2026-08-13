@@ -57,4 +57,13 @@ if [ -n "${CCM_E2E_TMUX_SOCK:-}" ]; then
     fi
   fi
 fi
+# 〔`P0b` 第七拍 08-13〕**可选的帧 tap**：设了 `CCM_E2E_FRAME_TAP` 就把 daemon 的 stdout
+# 抄一份到那个文件。全链套件失败时，这是唯一能回答「**daemon 到底发了什么**」的口子 ——
+# 在它之前只能看 monitor 记了什么，而那分不清「没发」与「发了没收到」。
+# ⚠ `stdbuf -oL` 不能省：不加的话 tee 到管道会变**块缓冲**，把帧攒住、改变时序。
+# ⚠ 不设就是**原样 exec**（与本改动之前逐字同行为）——默认路径一个字节不变。
+if [ -n "${CCM_E2E_FRAME_TAP:-}" ]; then
+  exec env CLAUDE_CONFIG_DIR="$CCM_E2E_CLAUDE_DIR" "$CCM_E2E_DAEMON" "$@" \
+    | stdbuf -oL tee -a "$CCM_E2E_FRAME_TAP"
+fi
 exec env CLAUDE_CONFIG_DIR="$CCM_E2E_CLAUDE_DIR" "$CCM_E2E_DAEMON" "$@"
