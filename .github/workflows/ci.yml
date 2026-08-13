@@ -327,7 +327,11 @@ jobs:
           #   今天实测构成：**48 = e2e 28 + fake-claude 1 + cc-bus 13 + ccm 1 + scripts 1 + vendored 4**
           #   〔`P0b` 08-12 +1：`e2e/reap-orphan-daemons.sh`；`P0e` 08-12 +1：`e2e/tmux-shim.sh`
           #    —— `C7i` 隔离原语抽成一份，原本在三个套件里各抄一份〕。
-          [ "$N" -ge 48 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 48）"; exit 1; }
+          #   **2026-08-13 P4b①③ 棘到 49**：新增 `shared/cc-bus/scripts/cc-spawned-record`
+          #   （`C15` 把台账收进 `ccm` 时，**格式仍归 cc-bus** ⇒ 那段 flock 追加从 `cc-spawn`
+          #    抽成 cc-bus 自己的一个脚本，`ccm --bus-register` 调它）。
+          #   今天实测构成：**49 = e2e 28 + fake-claude 1 + cc-bus 14 + ccm 1 + scripts 1 + vendored 4**。
+          [ "$N" -ge 49 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 49）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
@@ -464,7 +468,7 @@ jobs:
       # 不过就 exit 9 中止。开发机上有正在运行的 tmux 会话与真实 ~/.cc-bus/，
       # 这条自检是为了那里；CI 上是干净 runner，自检自然通过。
       - name: cc-spawn 收编等价（B02）
-        run: bash e2e/assert-pass-floor.sh cc-spawn-uplift 25
+        run: bash e2e/assert-pass-floor.sh cc-spawn-uplift 31
 
       # G-C（解 E41）：这两套只要 node + tmux（经 tsx driver 驱真编排逻辑，不碰 daemon）。
       # 它们此前进不了 CI 的原因不是「需要什么」，而是**会踩开发者机器上的真实 tmux 会话**

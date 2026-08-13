@@ -88,6 +88,10 @@ const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../../shared/cc-bus/scripts/cc-send"),
     ),
     (
+        "scripts/cc-spawned-record",
+        include_bytes!("../../shared/cc-bus/scripts/cc-spawned-record"),
+    ),
+    (
         "scripts/cc-spawn",
         include_bytes!("../../shared/cc-bus/scripts/cc-spawn"),
     ),

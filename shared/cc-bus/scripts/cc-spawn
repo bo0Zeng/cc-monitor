@@ -3,7 +3,8 @@
 # 产物是【独立历史 + 原生读该目录文件】的长驻协作 agent(区别于 subagent:同上下文、一次性)。
 # 收掉用 cc-kill <id>;看它用 tmux attach -t <id>;跟它聊用 cc-send <id> "..."。
 set -euo pipefail
-BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
+# ⚠ `CC_BUS_HOME` 这里**不再读**:三件全搬进 ccm 之后,本脚本不碰总线目录了。
+#   它仍然要**原样传下去**(env 继承) —— ccm 调的 cc-register/cc-spawned-record 认这个变量。
 SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 # 旗标可在 <目录> 前任意顺序出现。
 tool=""
@@ -57,7 +58,7 @@ fi
 # 仓里本就有现成的协商机制(`--ccm-probe` 吐 `capabilities=`,TS 侧 `CLI_REQUIRED_CAPS` 在用),
 # 新的 shell 消费者没理由不用。
 _caps=$("$CCM_BIN" --ccm-probe 2>/dev/null | sed -n 's/^capabilities=//p')
-for _c in detach tmux-size tmux-base; do
+for _c in detach tmux-size tmux-base bus-register; do
   case ",$_caps," in
     *",$_c,"*) ;;
     *) echo "cc-spawn: ccm 版本太旧,缺能力 '$_c'($CCM_BIN)。" >&2
@@ -97,7 +98,7 @@ base="$(printf '%s' "$bn" | tr -c 'A-Za-z0-9_-' '_' | sed 's/^-*//; s/-*$//')_cc
 # 3. 建 detached 会话 + 送任务 —— **全部经 ccm**(unify-launch B02,闭合账本"起会话被写死成
 #    N 套实现"那一行)。ccm 现在负责:建会话(--detach 只建不 attach)、窗口尺寸、预信任、
 #    账号/env 注入、信任框轮询兜底、codex 的 CC_BUS_ID。
-#    cc-spawn 只保留 cc-bus 专属的部分:总线登记、台账。
+#    cc-spawn 只保留 cc-bus 专属的部分 —— C15 三件全搬完之后,**这里已经一件不剩**。
 #
 # ★★ C15〔用@08-13「cc-bus收进ccm」〕第一件:**命名避让搬进 ccm**(`--tmux-base=<基名>`)。
 #    原来这里是 `while tmux has-session -t "=$name"; do name="$base-$k"; done`,自己探一遍
@@ -116,7 +117,6 @@ base="$(printf '%s' "$bn" | tr -c 'A-Za-z0-9_-' '_' | sed 's/^-*//; s/-*$//')_cc
 #      · CC_BUS_ID 手动注入 → ccm 的 agent_needs_bus_id 只对 codex 生效(同一判断、同一理由),
 #        且它从 tmux 会话名自动派生,与这里原先注入的 $name 逐字相同(隔离 socket 实测确认)。
 #      · `-x 220 -y 50` → 未丢,改由 `--tmux-size 220x50` 表达。
-mkdir -p "$BUS"
 # **$LAUNCH 可能是多词命令行,必须分词**(B02 审计阻塞-2,实测复现)。
 # 旧实现走 `send-keys "$LAUNCH ..."`,pane 里的 shell 会对 $LAUNCH **重新分词**,所以
 # wrapper 形式一直可用——`cc-bus-install.sh:96` 就明文教用户
@@ -131,7 +131,12 @@ mkdir -p "$BUS"
 # shellcheck disable=SC2206  # 这里的分词是**有意的**,正是要复刻旧 shell 的行为
 launch_argv=($LAUNCH)
 [ ${#launch_argv[@]} -gt 0 ] || { echo "cc-spawn: 启动器为空(CCSPAWN_LAUNCH?)" >&2; exit 2; }
-ccm_args=(--tmux-base="$base" --detach --tmux-size 220x50 --cwd "$absdir" --agent "$tool" --launcher "${launch_argv[0]}")
+ccm_args=(--tmux-base="$base" --detach --bus-register --tmux-size 220x50 --cwd "$absdir" --agent "$tool" --launcher "${launch_argv[0]}")
+# ⚠ `--bus-note` **只在任务非空时给**:`need_val` 拒收空串(所有带值旗标同一条纪律),
+#   `--bus-note ""` 会当场 die「--bus-note 需要一个值」。
+#   ★ 首版就是无条件给的 —— **单测全绿、e2e 当场红四条**(1-5 号用例都带任务,
+#   6/7/8 号不带)。判据钉得了「那个旗标在」,钉不了「不带任务时它还能跑」。
+[ -n "$task" ] && ccm_args+=(--bus-note "$task")
 # 账号:转发给 ccm(它已有 --account/--base,校验与解析都在那边,这里不重复实现)
 [ -n "$acct" ] && ccm_args+=(--account "$acct")
 [ "$use_base" = 1 ] && ccm_args+=(--base)
@@ -148,14 +153,13 @@ printf '%s\n' "$_out" | grep -v '^ccm-session=' || true
 [ -n "$name" ] || { echo "cc-spawn: ccm 没报出会话名(ccm-session=) —— 版本太旧?" >&2; exit 1; }
 unset _out
 
-pane=$(tmux list-panes -t "=$name" -F '#{pane_id}' 2>/dev/null | head -1)
-[ -n "$pane" ] || { echo "cc-spawn: 建会话失败(取不到 pane)" >&2; exit 1; }
-
-# 4. spawn 自己登记(不靠 SessionStart 钩子,保证上总线)
-TMUX_PANE="$pane" "$SELFDIR/cc-register" "$name" >/dev/null 2>&1 || true
-
-# 5. 台账(加锁)
-( flock 9; printf '%s\t%s\t%s\t%s\n' "$name" "$absdir" "$(date -Iseconds)" "${task:-}" >> "$BUS/spawned.tsv" ) 9>>"$BUS/spawned.tsv.lock"
+# ★★ C15 第二、三件(总线登记 + 台账)也搬进 ccm 了(`--bus-register`/`--bus-note`)。
+# 这里原来是:自己 `tmux list-panes` 取 pane → `cc-register` → flock 追加 `spawned.tsv`。
+# 为什么必须由 **ccm** 做而不是 cc-spawn 事后补:
+#   · pane 只有**建会话的人**当场拿得到(它知道刚建的是哪个会话、什么时候建好的);
+#   · 事后补 = 中间有窗口期 —— 会话已经在跑、却还没上总线,`cc-send` 打过去石沉大海。
+# ⚠ 而**格式仍归 cc-bus**:ccm 调的是 cc-bus 自己的 `cc-register` / `cc-spawned-record`,
+#   不复刻 TSV 的列与锁(同一个格式两份实现 = 改一处漏一处)。找不到 cc-bus 时 ccm 静默 no-op。
 
 # 6. 给启动器一点启动时间。**不是**信任框兜底(那条已归 ccm),而是保留原脚本的既有时序:
 #    紧接着用户敲的 cc-send 更可能被即时处理(消息落 inbox 不丢,这只影响即时性)。

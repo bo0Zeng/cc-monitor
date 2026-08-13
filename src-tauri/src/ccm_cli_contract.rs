@@ -424,6 +424,19 @@ mod tests {
     ///
     /// ⇒ 本文件里所有读这个路径的判据，**证明的是仓内那份的性质，不是本机行为**。
     /// 别把它们读成「机器上就是这样」。两份何时同步是 `U9` 第二问 + `PS1` 的题目。
+    /// **shell 的生产段** = 剥掉 `#` 注释行 —— 直接用共享原语 `strip_hash_comment_lines`。
+    ///
+    /// ⚠ 不能用 `guard_core::production_code`：它剥的是 Rust 的 `//`，对 shell 一行都剥不掉。
+    /// 08-13 实测：`ccm` 的判据用它取「生产段」，结果被**我自己写的一句解释性注释**判红
+    /// （那句里提到了 `spawned.tsv`）。★ 剥注释器**选错了语言，等于没剥**。
+    ///
+    /// ⚠ 而首版在这里内联了一份 `filter(starts_with('#'))` —— `structural_scan` 的
+    /// 「剥注释实现只许一份」登记表**当场逮住**，逐字问「共享原语为什么不够」。
+    /// 答案是：**够**（`strip_hash_comment_lines` 就是给 `.sh`/`.yml` 用的那份）。⇒ 改成调它。
+    fn shell_production(src: &str) -> String {
+        guard_core::strip_hash_comment_lines(src)
+    }
+
     fn cc_spawn_path() -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -462,11 +475,7 @@ mod tests {
         //   「原来这里是 `while tmux has-session …`」（记录搬走了什么的**诚实注释**）判红。
         //   ★ 这是本拍第二次撞上同一族：**匹配单位比事实大** —— 判据要判的是「代码里有没有」，
         //   而 `contains` 判的是「文件里有没有」。散文里提一句被删掉的东西是**好事**，不该被拦。
-        let prod_spawn: String = src
-            .lines()
-            .filter(|l| !l.trim_start().starts_with('#'))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let prod_spawn = shell_production(&src);
         guard_core::find_pinned(&prod_spawn, "--tmux-base=\"$base\"").unwrap_or_else(|e| {
             panic!(
                 "{e}\n                 ⇒ cc-spawn 不再把**基名**交给 ccm 了。`C15` 之后避让归 ccm：\n                 cc-spawn 自己探一遍名字再传 `--tmux=<名>`，等于同一个事实算两遍，\n                 而且探完到真建之间有窗口期（`P3sc` 之后显式名撞名是 exit 3 响亮失败）。"
@@ -625,7 +634,9 @@ mod tests {
             panic!("{e}\n⇒ 撞名避让的实现不见了或有两份。`C15` 把它从 cc-spawn 收进 ccm，收进来就该只有一份。")
         });
         // ② 生产段里不许再有**第二个**裸避让循环（本仓的老病：同一个事实几份实现）。
-        let prod = guard_core::production_code(&ccm);
+        // ⚠ 用 `shell_production` 而不是 `guard_core::production_code`：后者剥的是 Rust 的 `//`，
+        //   对 shell 一行都剥不掉（本条先前能过纯属侥幸 —— ccm 的注释里刚好没提这个词）。
+        let prod = shell_production(ccm);
         //   「恰好一处」正是 `find_pinned` 的语义 —— 比 `.matches().count()` 更贴事实，
         //   而且它连**两侧边界**一起管（`matches` 会把 `while tmux has-sessionX` 也数进去）。
         guard_core::find_pinned(&prod, "while tmux has-session").unwrap_or_else(|e| {
@@ -655,13 +666,12 @@ mod tests {
             "`capabilities=` 里没有 `tmux-base` —— 调用方无从协商。实得：{caps}"
         );
         let spawn = std::fs::read_to_string(cc_spawn_path()).expect("读 cc-spawn");
-        guard_core::find_pinned(&spawn, "for _c in detach tmux-size tmux-base;").unwrap_or_else(
-            |e| {
+        guard_core::find_pinned(&spawn, "for _c in detach tmux-size tmux-base bus-register;")
+            .unwrap_or_else(|e| {
                 panic!(
                     "{e}\n⇒ `cc-spawn` 没把 `tmux-base` 列进能力协商 —— 它现在硬依赖这个模式了。"
                 )
-            },
-        );
+            });
     }
 
     /// ★ `P4b①`②：cc-spawn **从 ccm 读回名字**，且**读不到就停**。
@@ -672,11 +682,7 @@ mod tests {
     #[test]
     fn cc_spawn_reads_the_name_back_instead_of_computing_it() {
         let src = std::fs::read_to_string(cc_spawn_path()).expect("读 cc-spawn");
-        let prod: String = src
-            .lines()
-            .filter(|l| !l.trim_start().starts_with('#'))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let prod = shell_production(&src);
         // ⚠ 光钉「摘取表达式在」**不够**：D 阶段 M2 实测把它改成
         //   `name="$base"; _unused=$(… ccm-session= …)` —— 表达式还在，名字却是自己拍的，判据全绿。
         //   ⇒ 钉的必须是**赋值**：`name=` 恰好一处，且那一处就是摘取。
@@ -716,6 +722,72 @@ mod tests {
         assert!(
             bails,
             "`cc-spawn` 拿不到会话名时没有停 —— 再往下 `cc-register` 与台账会写进空名字，\n                          产出一个总线上叫 \"\" 的幽灵（`cc-list` 显示在线、`cc-send` 石沉大海）。"
+        );
+    }
+
+    /// ★ `P4b①`③〔`C15` 08-13〕：**总线登记 + 台账也搬进 `ccm`**，且**格式仍归 cc-bus**。
+    ///
+    /// # 这条判据的正题是「没有第二份格式实现」
+    ///
+    /// 「收进 ccm」最容易做歪的一步，是让 `ccm` 自己 `printf '%s\t%s\t…' >> spawned.tsv`。
+    /// 那样 TSV 的列、分隔符、锁文件命名就有了**两份**实现（cc-bus 一份、ccm 一份），
+    /// 改一处漏一处 —— 正是本仓一路在收的那一族。
+    /// ⇒ `ccm` 只负责**找到 cc-bus 的脚本、把事实告诉它**。
+    #[test]
+    fn ccm_delegates_bus_bookkeeping_instead_of_reimplementing_it() {
+        let ccm = include_str!("../../shared/ccm");
+        let prod = shell_production(ccm);
+        // ① 两件事都**委派**给 cc-bus 自己的脚本。
+        for script in ["cc-register", "cc-spawned-record"] {
+            assert!(
+                guard_core::contains_word(&prod, script),
+                "`ccm` 的 `--bus-register` 没调 cc-bus 的 `{script}` —— 那它是自己写的格式吗？"
+            );
+        }
+        // ② **不许自己拼 TSV**：`spawned.tsv` / `agents.tsv` 这两个文件名不该出现在 ccm 的生产段。
+        //    钉文件名而不是钉 `printf`：文件名是「谁拥有这个格式」的最短证据。
+        for owned_by_cc_bus in ["spawned.tsv", "agents.tsv"] {
+            assert!(
+                !prod.contains(owned_by_cc_bus),
+                "`ccm` 生产段里出现了 {owned_by_cc_bus:?} —— 那是 **cc-bus 的**文件格式。\n                              `C15` 要的是「把事实告诉总线」，不是「让 ccm 也学会写总线的文件」：\n                              两份实现改一处漏一处（本仓一路在收的那一族）。"
+            );
+        }
+        // ③ 找不到 cc-bus 时不许**一声不吭**地跳过。
+        //    「你要了登记却没登上」= 会话在跑、却不在总线上 ⇒ `cc-send` 石沉大海（假成功比失败更坏）。
+        assert!(
+            prod.contains("没有登记"),
+            "找不到 cc-bus 脚本时 `ccm` 没吭声 —— 那会产出一个在跑、却不在总线上的孤儿。"
+        );
+        // ④ `--bus-register` 只在 `--detach` 那条路上成立（不 detach 随后 `exec` 进 attach）。
+        guard_core::find_pinned(&prod, "--bus-register 需要配合 --detach").unwrap_or_else(|e| {
+            panic!("{e}\n⇒ 那道前提没了。不 detach 的话本进程随后 exec 进 attach，登记做不成。")
+        });
+    }
+
+    /// ★ `P4b①`③：`cc-spawn` **一件专属逻辑都不剩**了。
+    ///
+    /// `C15` 的验收就是这句话能不能说出口。三件（命名避让 / 总线登记 / 台账）搬完之后，
+    /// 它剩下的只有 **cc-bus 的 id 规则**（`<basename>_cc`，`cc-whoami resolve` 与之对齐）
+    /// 与参数转发 —— 那两件本来就该留在 cc-bus 这边。
+    #[test]
+    fn cc_spawn_no_longer_does_bus_bookkeeping_itself() {
+        let src = std::fs::read_to_string(cc_spawn_path()).expect("读 cc-spawn");
+        let prod = shell_production(&src);
+        for gone in ["spawned.tsv", "cc-register", "list-panes"] {
+            assert!(
+                !prod.contains(gone),
+                "`cc-spawn` 生产段里还有 {gone:?} —— `C15`〔用@08-13「cc-bus收进ccm」〕之后\n                              登记与台账归 `ccm --bus-register`。留在这里 = 两处各做一遍（还会各写一行）。"
+            );
+        }
+        guard_core::find_pinned(&prod, "--detach --bus-register").unwrap_or_else(|e| {
+            panic!("{e}\n⇒ `cc-spawn` 不再要求 ccm 做登记了 —— 那新会话就**不在总线上**：\n   `cc-list` 看不到它，`cc-send` 打过去石沉大海。")
+        });
+        // ⚠ `--bus-note` 必须是**条件给**的：`need_val` 拒收空串（带值旗标的统一纪律），
+        //   无条件写 `--bus-note "$task"` 在**没有初始任务**时会让 ccm 当场 die。
+        //   ★ 首版就是无条件的：单测全绿、`cc-spawn-uplift` 当场红四条（6/7/8 号不带任务）。
+        //   判据钉得了「那个旗标在」，钉不了「不带任务时它还能跑」——**那一格只有 e2e 够得到**。
+        guard_core::find_pinned(&prod, "[ -n \"$task\" ] && ccm_args+=(--bus-note").unwrap_or_else(
+            |e| panic!("{e}\n⇒ `--bus-note` 又变成无条件给了。任务为空时 ccm 会 die「--bus-note 需要一个值」。"),
         );
     }
 

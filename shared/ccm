@@ -208,6 +208,8 @@ attach_name=""
 use_tmux=0
 tmux_name=""
 tmux_base=""
+bus_register=0
+bus_note=""
 account=""
 use_base=0
 cwd_spec=auto
@@ -248,6 +250,11 @@ while [ $# -gt 0 ]; do
     # 见下方 `derive_tmux_name` 上面那段「撞名策略按调用方分成三条」。
     --tmux-base)   shift; need_val "--tmux-base" "${1:-}"; use_tmux=1; tmux_base="$1" ;;
     --tmux-base=*) use_tmux=1; tmux_base="${1#*=}" ;;
+    # `--bus-register` / `--bus-note`：把新会话登记上 cc-bus（`C15`〔用@08-13「cc-bus收进ccm」〕）。
+    # 见下方 `bus_register_seq` 的头注 —— **格式归 cc-bus，ccm 只负责告诉它**。
+    --bus-register) bus_register=1 ;;
+    --bus-note)    shift; need_val "--bus-note" "${1:-}"; bus_note="$1" ;;
+    --bus-note=*)  bus_note="${1#*=}" ;;
     --account)     shift; need_val "--account" "${1:-}"; account="$1" ;;
     --account=*)   account="${1#*=}" ;;
     --base)        use_base=1 ;;
@@ -266,7 +273,7 @@ while [ $# -gt 0 ]; do
     --tmux-size=*) tmux_size="${1#*=}" ;;
     --print)       do_print=1 ;;
     --ccm-probe)
-      printf 'name=ccm\nversion=%s\nself=%s\ncapabilities=new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print,detach,tmux-size,tmux-base\nagents=claude,codex\n' \
+      printf 'name=ccm\nversion=%s\nself=%s\ncapabilities=new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print,detach,tmux-size,tmux-base,bus-register\nagents=claude,codex\n' \
         "$CCM_VERSION" "$CCM_SELF"
       exit 0 ;;
     --version)     printf 'ccm %s\n' "$CCM_VERSION"; exit 0 ;;
@@ -286,6 +293,10 @@ case "$agent" in claude|codex) : ;; *) die "未知 agent: $agent（支持 claude
 [ -n "$tmux_size" ] && [ "$use_tmux" != 1 ] && die "--tmux-size 需要配合 --tmux"
 # 两种取名模式互斥：一个说「就要这个名」，一个说「以这个为底、撞了就退让」，同时给等于没说清要哪个。
 [ -n "$tmux_name" ] && [ -n "$tmux_base" ] && die "--tmux=<名> 与 --tmux-base=<基名> 互斥（前者不避让、后者避让，同时给等于没说清要哪个）"
+# `--bus-register` 只在 `--detach` 那条路上有意义：不 detach 的话本进程随后 `exec` 进 attach，
+# 登记要么来不及做、要么把用户的终端占住。**不静默忽略**（静默忽略正是本工作区在治的病）。
+[ "$bus_register" = 1 ] && [ "$detach" != 1 ] && die "--bus-register 需要配合 --detach（不 detach 那条随后 exec 进 attach，登记做不成）"
+[ -n "$bus_note" ] && [ "$bus_register" != 1 ] && die "--bus-note 需要配合 --bus-register（不登记的话这行备注没有去处）"
 # 尺寸会被拼进 `tmux new-session -x W -y H`，**必须**只允许纯数字，否则就是一条注入面。
 if [ -n "$tmux_size" ]; then
   # 不用 extglob（本脚本没开 shopt，且要保持可移植）：逐条排除法等价于「<数字>x<数字>」
@@ -708,6 +719,46 @@ if [ "$use_tmux" = 1 ]; then
   # 焊在一起就是 MASTERPLAN §0 说的那个病（「一个动作 + 若干正交修饰」被写死成一套实现），
   # `--detach` 把「要不要 attach」还原成一个独立修饰。**默认仍 attach，既有调用方零感知。**
   [ "$detach" = 1 ] || seq="$seq; tmux attach -t $t"
+
+  # ★★ `C15`〔用@08-13「cc-bus收进ccm」〕第二、三件：**总线登记 + 台账**。
+  #
+  # ## 收进来 ≠ 让 ccm 复刻 cc-bus 的格式
+  #
+  # `agents.tsv` / `spawned.tsv` 的列、分隔符、锁文件命名是 **cc-bus 的私事**（`cc-list` 等在读）。
+  # `ccm` 再写一遍 = 同一个格式两份实现，改一处漏一处 —— 正是本仓一路在收的那一族。
+  # ⇒ 这里只做两件事：**找到 cc-bus 的脚本**，**把事实告诉它**。格式仍归 cc-bus。
+  #
+  # ## 找法与「找不到」的处置
+  #
+  # `CC_BUS_SCRIPTS`（测试/部署钩子）> `<ccm 所在目录>/cc-bus/scripts`（仓内是
+  # `shared/ccm` 与 `shared/cc-bus/`；部署后是 `~/.claude/skills/ccm` 与
+  # `~/.claude/skills/cc-bus/` —— **两种形态下同一条相对路径都成立**）> PATH 上的 `cc-register`。
+  # **找不到就静默 no-op**：没装 cc-bus 的人不该被一个总线脚本挡住起会话。
+  # ⚠ 但「你要了登记却没登上」不能一声不吭 —— 那会产出一个**在跑、却不在总线上的孤儿**
+  #   （B02 审计阻塞-2 的同款形状：假成功比失败更坏）。⇒ 往 stderr 说一句，rc 不变。
+  if [ "$bus_register" = 1 ]; then
+    # ⚠ 用 `readlink -f` 解自身：部署形态下 `~/.local/bin/ccm` 是**软链**，
+    #   直接 dirname 会落到 `~/.local/bin/cc-bus/scripts`（不存在），而真身在
+    #   `~/.claude/skills/`。cc-spawn 找 ccm 时踩过同一个坑，那边也是 `readlink -f`。
+    _ccm_real="$(readlink -f "$CCM_SELF" 2>/dev/null || printf '%s' "$CCM_SELF")"
+    bus_scripts=""
+    if [ -n "${CC_BUS_SCRIPTS:-}" ]; then
+      # 显式指了就用它 —— 但**不许静默地指到空处**：指错了要当场说，不然登记默默不发生。
+      [ -x "$CC_BUS_SCRIPTS/cc-register" ] && bus_scripts="$CC_BUS_SCRIPTS"
+    elif [ -x "${_ccm_real%/*}/cc-bus/scripts/cc-register" ]; then bus_scripts="${_ccm_real%/*}/cc-bus/scripts"
+    elif command -v cc-register >/dev/null 2>&1; then bus_scripts="$(dirname "$(command -v cc-register)")"
+    fi
+    if [ -z "$bus_scripts" ]; then
+      printf 'ccm: --bus-register 要了登记，但找不到 cc-bus 的脚本（CC_BUS_SCRIPTS / %s/cc-bus/scripts / PATH）——**没有登记**\n' "${_ccm_real%/*}" >&2
+    else
+      # 登记要 pane id（`cc-register` 认 `TMUX_PANE`）。**必须在会话建出来之后取** ⇒ 拼进 seq。
+      # 整段 best-effort（`|| true`）：登记失败不该把「会话建好了」表达成失败
+      #（与上面预信任兜底那条 `|| true` 同一个理由，见其头注）。
+      seq="$seq; { _p=\$(tmux list-panes -t $t -F '#{pane_id}' 2>/dev/null | head -1)"
+      seq="$seq; [ -n \"\$_p\" ] && TMUX_PANE=\"\$_p\" $(sq "$bus_scripts/cc-register") $(sq "$tmux_name") >/dev/null 2>&1"
+      seq="$seq; $(sq "$bus_scripts/cc-spawned-record") $(sq "$tmux_name") $(sq "$cwd") $(sq "$bus_note") >/dev/null 2>&1; } || true"
+    fi
+  fi
 
   if [ "$do_print" = 1 ]; then printf '%s\n' "$seq"; exit 0; fi
   # ★★ 〔`P4b①` 08-13，`C15` 的前置〕**把最终会话名报出来**。
