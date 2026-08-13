@@ -113,14 +113,21 @@ echo "[4] 台账与总线登记仍是 cc-spawn 自己的活（未随收编丢掉
 chk "spawned.tsv 有记录" "$(grep -c '^proj_cc	' "$CC_BUS_HOME/spawned.tsv" 2>/dev/null || true)" "1"
 chk "agents.tsv 已登记" "$(cut -f1 "$CC_BUS_HOME/agents.tsv" 2>/dev/null | grep -cx 'proj_cc' || true)" "1"
 
-echo "[5] 默认复用：同目录再 spawn 不新建会话"
+# ★★ 〔`P4b` 08-12 改了语义，本段 08-13 跟改〕**默认不再复用**。
+# 用户逐字（`C14`）：「所有起会话就是起会话……**spawn 就是起, 就是 creat**」。
+# `P4b` 把 `cc-spawn` 里那段「到就用、没有才建」删掉了 —— 而本段一直在测**被删掉的那个行为**，
+# 于是每跑必败 2 条。⚠ **没人发现，是因为这套 e2e 从来没被跑过**（`ROADMAP §5 3x` 那一族）。
+# ⇒ 本段改成钉新语义：同目录再 spawn **必须新建并避让到 `-2`**。
+echo "[5] 默认新建（C14）：同目录再 spawn 建出 proj_cc-2，命名避让生效"
 CCM_NO_PRETRUST=1 timeout 30 "$CCSPAWN" "$WORK/proj" "第二个任务" > "$WORK/out2.txt" 2>&1
-chk "输出说复用" "$(grep -c '复用已有会话' "$WORK/out2.txt")" "1"
-chk "未新建 proj_cc-2" "$(tmux has-session -t '=proj_cc-2' 2>/dev/null && echo YES || echo NO)" "NO"
+chk "输出不再说复用" "$(grep -c '复用已有会话' "$WORK/out2.txt")" "0"
+chk "新建了 proj_cc-2" "$(tmux has-session -t '=proj_cc-2' 2>/dev/null && echo YES || echo NO)" "YES"
 
-echo "[6] --new 强制新建，命名避让到 -2"
+# `--new` 保留为**兼容用的 no-op**（`P4b-Y1`：外面可能有人在传它，让它报错等于弄坏别人的脚本）。
+# ⇒ 它今天与不带旗标**行为一致**：再避让一格到 `-3`。
+echo "[6] --new 仍被接受（no-op 兼容），继续避让到 -3"
 CCM_NO_PRETRUST=1 timeout 30 "$CCSPAWN" --new "$WORK/proj" > "$WORK/out3.txt" 2>&1
-chk "proj_cc-2 建起来了" "$(tmux has-session -t '=proj_cc-2' 2>/dev/null && echo YES || echo NO)" "YES"
+chk "proj_cc-3 建起来了" "$(tmux has-session -t '=proj_cc-3' 2>/dev/null && echo YES || echo NO)" "YES"
 
 echo "[7] codex 下 CC_BUS_ID 由 ccm 自动派生 = 会话名（不需要 --bus-id）"
 mkdir -p "$WORK/cx"
