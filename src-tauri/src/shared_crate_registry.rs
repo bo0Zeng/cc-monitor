@@ -1161,7 +1161,7 @@ mod tests {
         /// `(套件, 脚本名, 断言助手, 当日静态条数)` —— **只许涨**。
         const RATCHET: &[(&str, &str, &str, usize)] = &[
             ("ccm-acceptance", "ccm-acceptance.sh", "ck", 19),
-            ("ccm-pretrust", "ccm-pretrust-acceptance.sh", "ck", 13),
+            ("ccm-pretrust", "ccm-pretrust-acceptance.sh", "ck", 15),
             ("tmux-guarded", "tmux-guarded-acceptance.sh", "ck", 14),
             ("tmux-target", "tmux-target-acceptance.sh", "ck", 26),
             ("usage-probe", "usage-probe-acceptance.sh", "ck", 9),
