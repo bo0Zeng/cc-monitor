@@ -112,7 +112,15 @@ it("★ ccm 建会话必须是 detached（`new-session -d`）—— 08-06 抽样
   //   （F24 那一族：匹配单位比事实小 —— 这次是「行的选择」而不是「串的长度」。）
   const line = ccm
     .split("\n")
-    .find((l) => !l.trim().startsWith("#") && l.includes('seq="tmux new-session'));
+    // ⚠ 〔`P3sc` 08-13〕抽取口径跟着 ccm 改了一次：那一行从 `seq="tmux new-session …`
+    //   变成 `seq="{ tmux new-session …`（撞名要响亮失败 ⇒ 用 `{ … || { err; exit 3; }; }`
+    //   把它包起来）。**钉的性质一个字没变**（还是「那条真正构造命令的行必须带 `-d`」），
+    //   变的只是怎么把那一行捞出来。⇒ 改成不认 `seq="` 后面紧跟什么，只认「不是注释 +
+    //   同时含 `seq="` 与 `tmux new-session`」。
+    .find(
+      (l) =>
+        !l.trim().startsWith("#") && l.includes('seq="') && l.includes("tmux new-session"),
+    );
   // 抽取器自检：连那一行都找不到 ⇒ ccm 换了写法，下面的断言会零命中地绿。
   expect(line, "在 `shared/ccm` 里找不到 `tmux new-session` 那一行 —— 抽取器坏了或 ccm 改了形态").toBeTruthy();
   expect(

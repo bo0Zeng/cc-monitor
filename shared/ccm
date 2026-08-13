@@ -620,8 +620,22 @@ if [ "$use_tmux" = 1 ]; then
   # 已在上方校验过只含数字与单个 x，故此处直接拆开拼入无注入面。
   size_opt=""
   [ -n "$tmux_size" ] && size_opt=" -x ${tmux_size%x*} -y ${tmux_size#*x}"
-  # 幂等建闸：会话已存在 → new-session 失败被吞、`&&` 短路跳过后续 → 只 attach（不重复起）。
-  seq="tmux new-session -d -s $(sq "$tmux_name") -c $(sq "$cwd")$size_opt 2>/dev/null"
+  # ★★ 〔`P3sc` 08-13，`C15` 解除账本红线后〕**显式名撞了就响亮失败，不再静默接回**。
+  #
+  # 原来这里是「幂等建闸」：会话已存在 → new-session 失败**被吞**、`&&` 短路跳过后续
+  # → 只 attach（不重复起）。那在「同一个名字反复调」的用法下是对的，
+  # 但它与 `C14`〔用@08-12〕逐字「**所有起会话就是起会话……spawn 就是起, 就是 creat**」冲突，
+  # 而且留着一个与 `#76` **后果逐字相同**的竞态：
+  # 调用方（cc-monitor / cc-spawn）铸完名到真跑之间若有人抢占了这个名字 ⇒
+  # **静默接进别人的会话，而载荷一个字都没送**（`&&` 短路把 send-keys 跳过了）——
+  # 用户以为开了新的，实际进了别人的。
+  #
+  # ⇒ 撞名 ⇒ **退出码 3 + 说清是哪个名字**，绝不 attach。
+  # ⚠ 这**不影响**缺省名那一支：它在上游已经无条件避让（`P3s §0c` 实测），走不到这里。
+  # ⚠ 也不影响 `ccm attach <名>`：那是**另一条命令**，`P3s` 起会话与 attach 分家之后，
+  #   「我要接回已有会话」有它自己的入口，不必再靠这条静默兜。
+  seq="{ tmux new-session -d -s $(sq "$tmux_name") -c $(sq "$cwd")$size_opt 2>/dev/null"
+  seq="$seq || { printf 'ccm: tmux 会话名 %s 已被占用 —— 拒绝静默接回别人的会话（C14：spawn 就是起）\\n' $(sq "$tmux_name") >&2; exit 3; }; }"
   seq="$seq && (tmux set-option -t $t @ccm_agent $(sq "$agent") 2>/dev/null || true)"
   # F04：通道A（意图）写 @ccm_sid_expect，不写 @ccm_sid——只有通道B（poller 独立读会话文件
   # 后确认）才写 @ccm_sid，破坏性动作（kill 等）只认 @ccm_sid，不被"声明了但从未真正跑起来"
