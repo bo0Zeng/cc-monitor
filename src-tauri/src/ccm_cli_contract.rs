@@ -550,4 +550,47 @@ mod tests {
             "`-f` 与 `-x` 不在同一行了 —— 解析分支被拆开，其中一半可能已经不在那条判断上。"
         );
     }
+
+    /// `P3sc`：**显式名撞了要响亮失败，不许静默接回别人的会话**〔`C15` 解除红线后落地〕。
+    ///
+    /// # 它防的那件事，后果与 `#76` 逐字相同
+    ///
+    /// 原来那一行是「幂等建闸」：`new-session` 失败**被吞**、`&&` 短路跳过 `send-keys`
+    /// → 直接 `attach`。⇒ 调用方铸完名到真跑之间若有人抢占了这个名字，
+    /// **用户被静默接进别人的会话，而载荷一个字都没送**（send-keys 被短路跳过了）。
+    /// `C14`〔用@08-12〕逐字：「所有起会话就是起会话……**spawn 就是起, 就是 creat**」。
+    ///
+    /// # 判据钉三件（缺一件都能从缝里溜过去）
+    ///
+    /// ① 失败分支**在**（`|| { … exit 3; }`）；② 它**报得出是哪个名字**（不带名字的报错
+    /// 等于没报）；③ **`2>/dev/null` 仍在** —— 那是给 tmux 自己那句噪声用的，
+    /// 我们要的是**自己那句**说清楚，不是把 tmux 的原文糊到用户脸上。
+    #[test]
+    fn an_explicit_tmux_name_collision_fails_loudly() {
+        let ccm = include_str!("../../shared/ccm");
+        let line = ccm
+            .lines()
+            .find(|l| !l.trim_start().starts_with('#') && l.contains("seq=\"{ tmux new-session"))
+            .expect("找不到构造 new-session 的那一行 —— 抽取器坏了或 ccm 改了形态");
+        assert!(
+            line.contains(" -d "),
+            "建会话必须 detached（同 `base-flag-contract-guard` 那条，这里顺带钉住）"
+        );
+        assert!(
+            line.contains("2>/dev/null"),
+            "tmux 自己那句噪声仍该吞掉 —— 我们要的是**自己**那句说清楚"
+        );
+        let fail_branch = ccm
+            .lines()
+            .find(|l| l.contains("已被占用"))
+            .expect("撞名必须有**响亮失败**那一支 —— 静默接回别人的会话与 #76 后果逐字相同");
+        assert!(
+            fail_branch.contains("exit 3"),
+            "失败要有**非零退出码**，否则调用方（cc-spawn / monitor）判不出失败：{fail_branch}"
+        );
+        assert!(
+            fail_branch.contains("%s"),
+            "报错必须**带上是哪个名字** —— 不带名字的报错等于没报：{fail_branch}"
+        );
+    }
 }
