@@ -85,6 +85,38 @@ echo "[4] 重建之后**立刻**写 pidfile（重挂前的窗口期）"
 #   而真实台架/真实用户不会替我们留这半秒。
 chk "racy 仍有 session_added" "$(probe racy racy)" "1"
 
+echo "[5] ★ projects/ **被换 inode** 之后，行帧还得来（同族第三个）"
+# ★ 08-13：`sessions/`（第十拍）· tmux socket 目录（第二十二拍）· 本格 —— 同一个形状踩了三次。
+#   `projects/` 是 **jsonl 的来源**：它被删掉重建之后行帧永远不来，
+#   而症状是「会话还在、内容不动了」，**不报任何错**。
+# ⚠ 判据数的是 **line 帧条数**（≥2），不是「有没有帧」——第一条在删目录之前就到了，
+#   只看「有没有」会读成一切正常。
+_proj_recreate() {
+  local F="$W/projre" out="$W/projre.frames"
+  rm -rf -- "$F"; mkdir -p "$F/sessions" "$F/projects/p"
+  sleep 200 & local vpid=$!
+  local ticks; ticks=$(awk '{print $22}' "/proc/$vpid/stat")
+  local sid="projre-1111-2222-3333-444455556666"
+  CLAUDE_CONFIG_DIR="$F" timeout 35 "$D" --with-bg < /dev/null > "$out" 2>/dev/null &
+  local dp=$!
+  sleep 3
+  printf '{"pid":%d,"sessionId":"%s","cwd":"/tmp","kind":"interactive","procStart":"%s"}\n' \
+    "$vpid" "$sid" "$ticks" > "$F/sessions/$vpid.json"
+  printf '{"type":"user","sessionId":"%s","message":{"role":"user","content":"一"}}\n' "$sid" \
+    > "$F/projects/p/$sid.jsonl"
+  sleep 4
+  rm -rf -- "$F/projects"; mkdir -p "$F/projects/p"; sleep 1     # ← 换 inode
+  printf '{"type":"user","sessionId":"%s","message":{"role":"user","content":"一"}}\n' "$sid" \
+    > "$F/projects/p/$sid.jsonl"
+  printf '{"type":"user","sessionId":"%s","message":{"role":"user","content":"二"}}\n' "$sid" \
+    >> "$F/projects/p/$sid.jsonl"
+  sleep 5
+  kill "$dp" "$vpid" 2>/dev/null; wait "$dp" 2>/dev/null
+  grep -c '"kind":"line"' "$out" 2>/dev/null || true
+}
+_pl="$(_proj_recreate)"
+chk "projects 换 inode 后仍有新行帧（${_pl} ≥ 2）" "$([ "${_pl:-0}" -ge 2 ] && echo yes || echo no)" "yes"
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 if [ "$fail" -eq 0 ]; then echo "===== sessions 重挂验收全部通过 ====="; fi

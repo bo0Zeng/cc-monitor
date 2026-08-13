@@ -402,7 +402,7 @@ jobs:
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
                       "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 32" \
                       "ccm-contract-parity 61" "daemon-gate2 36" "local-backend 7" \
-                      "daemon-sessions-rewatch 4" "daemon-tmux-late-server 2"; do
+                      "daemon-sessions-rewatch 5" "daemon-tmux-late-server 2"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
               || { echo "::error::找不到调用行 'assert-pass-floor.sh $pair' —— 套件或地板被改了"; exit 1; }
           done
@@ -483,7 +483,7 @@ jobs:
       - name: cc-spawn 收编等价（B02）
         run: bash e2e/assert-pass-floor.sh cc-spawn-uplift 51
       - name: e2e - daemon sessions 重挂（P0b-Y2，#60 台架九拍的根因）
-        run: bash e2e/assert-pass-floor.sh daemon-sessions-rewatch 4
+        run: bash e2e/assert-pass-floor.sh daemon-sessions-rewatch 5
       - name: e2e - daemon 迟到的 tmux server（P0b-Y2，#60 根因）
         run: bash e2e/assert-pass-floor.sh daemon-tmux-late-server 2
 
