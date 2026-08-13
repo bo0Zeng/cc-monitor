@@ -667,6 +667,24 @@ fn watch_loop(
             return;
         }
     };
+    // ★★ `P0b-Y2`〔08-13〕：**监视 `claude_dir` 本身** —— 这是「子目录出现/被换掉」的唯一耳朵。
+    //
+    // inotify 的 watch 绑在 **inode** 上，不是路径上。`sessions/` 被 `rm -rf` 再 `mkdir`
+    // 之后是**另一个 inode**，旧 watch 还挂在那个已删的 inode 上 ⇒ 新目录里发生什么都听不见，
+    // **而且不会有任何错误**（daemon 活着、不吭声）。
+    // 监视父目录之后，`sessions` 的创建/删除会作为**父目录里的一个事件**送到，我们据此重挂。
+    if claude_dir.is_dir() {
+        if let Err(e) = debouncer
+            .watcher()
+            .watch(&claude_dir, RecursiveMode::NonRecursive)
+        {
+            // 挂不上不致命（退回「起来时是什么样就什么样」），但**要说出来**。
+            tracing::warn!(
+                "watch failed for {}: {e} —— 子目录若被重建，本 daemon 将听不见",
+                claude_dir.display()
+            );
+        }
+    }
     // Watch projects recursively; watch sessions (flat) for PID.json add/remove.
     if projects.is_dir() {
         if let Err(e) = debouncer
@@ -678,12 +696,15 @@ fn watch_loop(
     } else {
         tracing::warn!("projects dir does not exist: {}", projects.display());
     }
+    // `sessions_watched` = 「**当前这个 inode** 我挂上了没有」。事件循环里靠它决定要不要重挂。
+    let mut sessions_watched = false;
     if sessions.is_dir() {
-        if let Err(e) = debouncer
+        match debouncer
             .watcher()
             .watch(&sessions, RecursiveMode::NonRecursive)
         {
-            tracing::error!("watch failed for {}: {e}", sessions.display());
+            Ok(()) => sessions_watched = true,
+            Err(e) => tracing::error!("watch failed for {}: {e}", sessions.display()),
         }
     } else {
         // ⚠⚠ **这一支是个真缺陷，08-13 实测复现过**〔`P0b` 查 `#60` 时逮到〕：
@@ -734,6 +755,20 @@ fn watch_loop(
             WatchEvent::Notify(Ok(events)) => {
                 for ev in events {
                     let p = ev.path.as_path();
+                    // ★★ `P0b-Y2`：**`sessions/` 换了 inode 或刚出现 ⇒ 重挂 + 重扫。**
+                    //
+                    // 触发面刻意宽：`claude_dir` 里任何与 `sessions` 有关的动静都来这儿判一次
+                    //（判的是**盘上此刻的样子**，不是事件类型 —— notify 会合并事件，
+                    // 「删了又建」很可能只到一个事件，靠 kind 去分辨是猜）。
+                    if p == sessions.as_path() {
+                        rewatch_sessions(
+                            &mut debouncer,
+                            &sessions,
+                            &mut sessions_watched,
+                            &mut state,
+                            &mut sink,
+                        );
+                    }
                     // P3：**tmux socket 复活**——我们监视的正是它所在目录，socket 被
                     // unlink+create 时（P0 实测 inode 会变）这里就会命中。
                     // 只当"该重新探一次"的触发器：立刻起一次探测（若无在途），
@@ -1292,6 +1327,80 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) {
                 session_id: session_id.clone(),
                 uuid,
             });
+        }
+    }
+}
+
+/// ★★ `P0b-Y2`〔08-13〕：`<claude_dir>/sessions/` **换了 inode 或刚出现**，重新挂上并重扫。
+///
+/// # 为什么必须有这一步（九拍排除链的终点）
+///
+/// inotify 的 watch 绑在 **inode** 上。`rm -rf sessions && mkdir sessions` 之后是另一个
+/// inode，旧 watch 还挂在已删的那个上 ⇒ **新目录里发生什么都听不见，且没有任何错误**。
+/// 症状是 daemon「活着、不吭声」—— 08-13 离线对照实测：
+///
+/// | 组 | 帧 |
+/// |---|---|
+/// | 控制（不动 `sessions/`） | `hello · line · session_added · session_removed · tmux_sessions×2` |
+/// | **删掉再建** | **`hello · tmux_sessions`** |
+///
+/// 下面那一行**与 `#60` 全链台架量到的 app 路径签名逐字相同**，而台架自己在 daemon
+/// 已经开始盯之后跑了 `rm -rf -- "$CLAUDE_DIR/sessions"`（`graylight-suite.sh`）。
+///
+/// # 为什么重挂之后**必须重扫**
+///
+/// 「重建目录」与「往里写第一个文件」之间有窗口期：那次写发生在我们挂上之前的话，
+/// 事件永远不会来。⇒ 挂上就把当下的 pidfile 全过一遍（`process_session_added` 幂等：
+/// 同 sid 重复宣告会被 `active_sids` 挡掉）。
+///
+/// # 射程（如实写）
+///
+/// 这修的是**「盯着的目录被换掉/还没出现」**这一族。它是 `#60` 台架九拍拿不到读数的原因，
+/// **但「它是否也是 `#60` 本身的根因」要等台架跑出第一份可信读数才能说** —— 见 `P0b §1c`：
+/// 不拿到可信读数不写根因。
+fn rewatch_sessions(
+    debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+    sessions: &Path,
+    watched: &mut bool,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+) {
+    if !sessions.is_dir() {
+        // 目录没了：把记账翻回去，等它回来时再挂（**不再是「永不重试」**）。
+        if *watched {
+            tracing::info!(
+                "sessions 目录消失了 {} —— 解除记账，等它回来再挂",
+                sessions.display()
+            );
+            let _ = debouncer.watcher().unwatch(sessions);
+            *watched = false;
+        }
+        return;
+    }
+    // 目录在。**无条件先 unwatch 再 watch**：我们分辨不出「同一个 inode 的普通事件」与
+    // 「换了 inode」——而重挂同一个 inode 是无害的（notify 幂等），漏挂新 inode 是致命的。
+    // ⇒ 宁可多挂一次。`unwatch` 在没挂过时会报错，忽略它。
+    let _ = debouncer.watcher().unwatch(sessions);
+    match debouncer
+        .watcher()
+        .watch(sessions, RecursiveMode::NonRecursive)
+    {
+        Ok(()) => {
+            if !*watched {
+                tracing::info!("sessions 目录已（重新）挂上 watch: {}", sessions.display());
+            }
+            *watched = true;
+            // 重扫：补上「重建 → 挂上」之间那段窗口期里写进去的东西。
+            for entry in WalkDir::new(sessions).into_iter().filter_map(Result::ok) {
+                let p = entry.path();
+                if is_session_json(p) {
+                    process_session_added(p, state, sink);
+                }
+            }
+        }
+        Err(e) => {
+            *watched = false;
+            tracing::warn!("重挂 sessions watch 失败 {}: {e}（下次事件再试）", sessions.display());
         }
     }
 }
@@ -3176,6 +3285,54 @@ mod tests {
     }
 
     // === Batch6-F22：远端会话生命周期 ===
+
+    /// ★★ `P0b-Y2`〔08-13〕：**「盯着的目录被换掉」这条路必须有人重挂 + 重扫。**
+    ///
+    /// # 这条判据够得到什么、够不到什么（先说清）
+    ///
+    /// 够不到：**它真的听得见新 inode 吗** —— 那是 inotify 的运行期事实，
+    /// 只有真起 daemon、真删目录才验得出来（`e2e/daemon-sessions-rewatch.sh` 四组对照）。
+    /// 够得到：**那两件事还在不在代码里**。删掉任一件，e2e 会红 —— 但 e2e 不在 `cargo test` 里，
+    /// 有人只跑单测就会以为没事。⇒ 这条是给「改到这附近的人」的第一道提醒。
+    ///
+    /// ⚠ 判据自己的失效方式：钉字符串会被注释喂绿 ⇒ 剥掉注释再钉（本仓第 N 次防它）。
+    #[test]
+    fn the_rewatch_path_still_exists_with_its_rescan() {
+        let src = include_str!("watcher.rs");
+        let prod: String = src
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("//") && !t.starts_with("///")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            prod.contains("fn rewatch_sessions("),
+            "`rewatch_sessions` 没了 —— `sessions/` 被 rm+mkdir 之后 daemon 会**活着、不吭声**\n             \
+             （inotify 的 watch 绑在 inode 上）。那正是 `#60` 全链台架九拍拿不到读数的原因。"
+        );
+        // 调用点在（只有函数、没人调 = 死代码，e2e 会红但单测看不见）。
+        assert!(
+            prod.matches("rewatch_sessions(").count() >= 2,
+            "`rewatch_sessions` 只有定义、没有调用点。"
+        );
+        // 重扫在：只重挂不重扫的话，「重建 → 挂上」之间写进去的文件永远捞不回来
+        //（D 阶段变异 M23：只删这一步，前三组 e2e **全绿**，是第四组逼出来的）。
+        let body_start = prod
+            .find("fn rewatch_sessions(")
+            .expect("上面已确认存在");
+        let body = &prod[body_start..(body_start + 2000).min(prod.len())];
+        assert!(
+            body.contains("WalkDir::new(sessions)"),
+            "重挂之后没有重扫 —— 「重建 → 挂上」之间那段窗口期里写进去的 pidfile 会永远丢。"
+        );
+        // 父目录的耳朵在（听不见子目录出现/消失，重挂就永远不会被触发）。
+        assert!(
+            prod.contains("watch(&claude_dir, RecursiveMode::NonRecursive)"),
+            "没有监视 `claude_dir` 本身 —— 那 `sessions/` 出现或被换掉时没有任何事件会来。"
+        );
+    }
 
     /// 同 pidfile 原地换 sid（/clear）：旧 sid 立即 Removed、新 sid Added，
     /// active_sids 恰含新 sid（跨机审计实锤的假 live 泄漏回归测试）。
