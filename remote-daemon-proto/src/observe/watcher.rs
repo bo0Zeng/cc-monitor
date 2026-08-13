@@ -476,6 +476,57 @@ fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
     (pid, sock)
 }
 
+/// ★★ `P0b-Y2` 第十六拍〔08-13〕：**tmux socket 目录的推算规则**（零 server 时唯一的耳朵）。
+///
+/// # 病（`#60` 的根因）
+///
+/// `P5` 删掉 8s ticker 之后 daemon **零定时器**，之后每一拍都靠事件。而两条唤醒路
+/// **都以「已经见过 server」为前提**：tmux hook 是**观测到 server 那一刻**才装的；
+/// socket 目录的 inotify 路径是从 `probe.socket_path` 里拿的 —— 没 server 就没有路径。
+///
+/// ⇒ **daemon 起得比 tmux server 早 = 永远不再探**。08-13 全链实测：`tmux_sessions` 帧
+/// 只有一帧且内容是 `zero_sessions`，`已给 tmux server … 挂 pidfd 看守` 与 `tmux hook 已装`
+/// 一行都没有；后来建的会话它一无所知 ⇒ `@ccm_sid` 到不了 monitor ⇒ 死亡一律判归档，
+/// **灰灯永不出现**（`#60` 现象 1）。
+///
+/// # 规则按 tmux 自己的来
+///
+/// tmux 的 socket 落在 `${TMUX_TMPDIR:-/tmp}/tmux-<uid>/`。**不硬编码 `/tmp`** ——
+/// 那会在设了 `TMUX_TMPDIR` 的机器上监视错目录，而且失败是静默的。
+/// ⚠ 这里只**读**（挂 inotify），不发任何 tmux 命令 ⇒ 与 `C7i` 无关
+/// （那条红线管的是我们自己发 tmux 命令时必须带 socket 选择器）。
+/// 把 watch 挂到 socket 目录**本身**（目录在才挂，幂等）。见调用点的两段头注。
+fn watch_sock_dir_if_present(
+    debouncer: &mut notify_debouncer_mini::Debouncer<impl notify::Watcher>,
+    sock_dir: &Path,
+    watched: &mut bool,
+) {
+    if *watched || !sock_dir.is_dir() {
+        return;
+    }
+    match debouncer
+        .watcher()
+        .watch(sock_dir, RecursiveMode::NonRecursive)
+    {
+        Ok(()) => {
+            *watched = true;
+            tracing::info!(
+                "已监视 tmux socket 目录 {}（零 server 时的唯一耳朵）",
+                sock_dir.display()
+            );
+        }
+        Err(e) => tracing::warn!("监视 {} 失败: {e}", sock_dir.display()),
+    }
+}
+
+fn tmux_socket_dir() -> PathBuf {
+    let base = std::env::var_os("TMUX_TMPDIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    // SAFETY: getuid 无副作用、不会失败。
+    let uid = unsafe { libc::getuid() };
+    base.join(format!("tmux-{uid}"))
+}
 /// P3：一次完整探测（跑在一次性后台线程里）。
 ///
 /// 只在"可能有 server"时才问 pid/socket——`NoTmux`/`Unobservable` 下问了也是白问。
@@ -707,6 +758,22 @@ fn watch_loop(
     } else {
         tracing::warn!("projects dir does not exist: {}", projects.display());
     }
+    // ★★ `P0b-Y2` 第十六拍：**零 server 时也要有耳朵** —— 监视 tmux socket 目录本身。
+    // 目录不在（本机从没起过 tmux）⇒ 退一层监视它的父，等目录被创建出来。
+    // 两种情况都只当「该重新探一次」的触发器，绝不拿文件存在性判活（沿用 P3 的既定纪律）。
+    let sock_dir = tmux_socket_dir();
+    // `sock_dir_watched` = 目录**本身**挂上了没有。没挂上时退一层监视它的父
+    // （目录还不存在 —— 本机从没起过 tmux 就是这样），等它被创建出来再升级。
+    let mut sock_dir_watched = false;
+    if let Some(parent) = sock_dir.parent() {
+        if parent.is_dir() {
+            if let Err(e) = debouncer.watcher().watch(parent, RecursiveMode::NonRecursive) {
+                tracing::warn!("监视 {} 失败: {e}", parent.display());
+            }
+        }
+    }
+    watch_sock_dir_if_present(&mut debouncer, &sock_dir, &mut sock_dir_watched);
+
     // `sessions_watched` = 「**当前这个 inode** 我挂上了没有」。事件循环里靠它决定要不要重挂。
     let mut sessions_watched = false;
     if sessions.is_dir() {
@@ -784,7 +851,19 @@ fn watch_loop(
                     // unlink+create 时（P0 实测 inode 会变）这里就会命中。
                     // 只当"该重新探一次"的触发器：立刻起一次探测（若无在途），
                     // 由探测结果去重挂 pidfd / 重同步。**绝不拿文件存在性判活。**
-                    if watched_socket.as_deref() == Some(p) {
+                    // ★ 第十六拍：**已知 socket 文件**或 **socket 目录里的任何动静**都触发重探。
+                    //   后者覆盖「零 server 起步、server 后来才出现」那一族 —— 那时我们还
+                    //   不知道 socket 叫什么，只知道它会出现在这个目录里。
+                    let in_sock_dir =
+                        p.parent() == Some(sock_dir.as_path()) || p == sock_dir.as_path();
+                    // ★ **目录后来才出现**（本机第一次起 tmux）⇒ 从「监视父」升级成「监视目录」。
+                    //   不升级的话：目录创建那一下能探到一次，但**那一瞬 server 往往还没就绪**，
+                    //   而随后 socket 文件落在一个**没被监视的目录**里 ⇒ 再无事件、永远漏掉。
+                    //   （e2e 第 3 格 `TMUX_TMPDIR` 实测就是这么红的。）
+                    if p == sock_dir.as_path() && !sock_dir_watched {
+                        watch_sock_dir_if_present(&mut debouncer, &sock_dir, &mut sock_dir_watched);
+                    }
+                    if watched_socket.as_deref() == Some(p) || in_sock_dir {
                         if !tmux_inflight {
                             tmux_inflight = true;
                             let tx = events_tx.clone();
@@ -3349,6 +3428,43 @@ mod tests {
         assert!(
             prod.contains("watch(&claude_dir, RecursiveMode::NonRecursive)"),
             "没有监视 `claude_dir` 本身 —— 那 `sessions/` 出现或被换掉时没有任何事件会来。"
+        );
+    }
+
+    /// ★ `P0b-Y2` 第十六拍：**socket 目录按 `TMUX_TMPDIR` 推，不许硬编码 `/tmp`。**
+    ///
+    /// # 为什么这条是单测而不是 e2e
+    ///
+    /// 它是个**纯函数**（env → 路径），单测才是对的 acceptor。
+    /// ⚠ 第一版把它写进 e2e 的第三格，逼得那个套件自己设 `TMUX_TMPDIR` ——
+    /// 而 `C7i` **零例外**禁止 e2e 靠它做隔离，`e2e_gate_registry` 那条守卫当场拦下。
+    /// **它报得对**：判据要钉的性质与套件要用的隔离手段撞在同一个变量上时，
+    /// 该换的是**判据落在哪一层**，不是给红线开例外。
+    ///
+    /// ⚠ 硬编码 `/tmp` 的后果是**静默失效**：在设了 `TMUX_TMPDIR` 的机器上，
+    /// daemon 会去监视一个永远不会有动静的目录 —— 与修之前一模一样，且没有任何错误。
+    #[test]
+    fn tmux_socket_dir_follows_tmux_tmpdir() {
+        // ⚠ env 是进程全局的：设完必须还原，否则会污染同进程里别的测试。
+        let saved = std::env::var_os("TMUX_TMPDIR");
+        // SAFETY: 单线程内设/取环境变量；本测试跑完立即还原。
+        unsafe { std::env::set_var("TMUX_TMPDIR", "/x/y") };
+        let d = tmux_socket_dir();
+        unsafe {
+            match &saved {
+                Some(v) => std::env::set_var("TMUX_TMPDIR", v),
+                None => std::env::remove_var("TMUX_TMPDIR"),
+            }
+        }
+        let s = d.to_string_lossy();
+        assert!(
+            s.starts_with("/x/y/tmux-"),
+            "socket 目录没跟着 `TMUX_TMPDIR` 走（实得 {s}）—— \
+             硬编码 `/tmp` 会让 daemon 监视一个永远没动静的目录，且**没有任何错误**。"
+        );
+        assert!(
+            !s.starts_with("/tmp/"),
+            "socket 目录仍落在 `/tmp` 下（实得 {s}）"
         );
     }
 
