@@ -554,6 +554,43 @@ pub fn local_extract_name(build_id: &str) -> String {
     format!("cc-monitor-local-{build_id}")
 }
 
+/// 陈旧 `.partial` 的年龄阈值。
+///
+/// 释放一份 daemon 是**一次几 MB 的顺序写**（本机实测 2.4 MB），正常在毫秒级完成。
+/// 24 小时给的是**五个数量级**的余量 —— 宁可多留一天垃圾，也不要在某台慢机器上
+/// 把**正在写的**那份删掉（那会把这道防线变成它自己要防的东西）。
+const STALE_PARTIAL_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+
+/// 收掉**够老**的 `.partial` 残骸（崩在 rename 之前留下的）。
+///
+/// ⚠ **只按年龄**，不按 pid 活没活 —— 后者是平台知识，`C10` 不许它住在 backend。
+/// ⚠ 只认自己这套命名（`.<释放名>.<pid>.partial`）：目录是与远端自部署**共用**的
+/// （`~/.cc-monitor/bin`），乱扫会碰到别人的东西。
+/// ⚠ 删不掉就算了（别的进程占着 / 权限）——**清扫失败绝不能挡住释放**，那是主线动作。
+fn sweep_stale_partials(dir: &std::path::Path, extract_name: &str) {
+    let prefix = format!(".{extract_name}.");
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return; // 目录还不存在（首次释放）——没有残骸可收
+    };
+    for ent in rd.flatten() {
+        let name = ent.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !name.starts_with(&prefix) || !name.ends_with(".partial") {
+            continue;
+        }
+        let old = ent
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.elapsed().ok())
+            .map(|age| age >= STALE_PARTIAL_AGE)
+            .unwrap_or(false);
+        if old {
+            let _ = std::fs::remove_file(ent.path());
+        }
+    }
+}
+
 pub fn extract_embedded_to(
     dir: &Path,
     build_id: &str,
@@ -569,7 +606,22 @@ pub fn extract_embedded_to(
     }
     std::fs::create_dir_all(dir).map_err(|e| format!("建目录 {} 失败: {e}", dir.display()))?;
     // 先写临时文件再 rename：半截文件不许被当成可执行的 daemon（rename 在同一文件系统上原子）。
-    let tmp = dir.join(format!(".{}.partial", local_extract_name(build_id)));
+    // ★★ 临时名**带 pid**〔`P2t` 摸底 08-12〕：原来是**固定名**，两个同版本 monitor 同时释放
+    // 会写同一个 `.partial` —— 一个写到一半、另一个 `rename` 走，出来的可能是**半截文件**，
+    // 而这道 `.partial` + `rename` 存在的全部理由就是「半截文件不许被当成可执行的 daemon 起起来」。
+    // ⚠ 这不是理论：`tauri_plugin_single_instance` **只在 `#[cfg(windows)]` 注册**
+    // （`lib.rs:220`）⇒ Linux/macOS 上两个 monitor 天然并存。
+    // ⇒ 每个进程写自己那份，`rename` 仍是原子的，互不覆盖。
+    let tmp = dir.join(format!(
+        ".{}.{}.partial",
+        local_extract_name(build_id),
+        std::process::id()
+    ));
+    // 带 pid 之后，崩在中途的那些**不会再被下一次覆盖掉** ⇒ 得自己收。
+    // ⚠ 不按「pid 还活着吗」判：那是**平台知识**，而本模块按 `C10` 不许认识平台
+    // （`bind.rs::is_pid_alive` 在非 Windows 上恒 false，拿来用会误删活的）。
+    // ⇒ 按**年龄**判，阈值给得极宽（见常量头注）。
+    sweep_stale_partials(dir, &local_extract_name(build_id));
     std::fs::write(&tmp, bytes).map_err(|e| format!("写 {} 失败: {e}", tmp.display()))?;
     // `backend-split` 的 C10：**「怎么置可执行位」是平台知识，不许住在 backend**。
     // 这里只知道「写完要让它可执行」，那句话在本平台上怎么落由宿主注入
@@ -946,6 +998,80 @@ mod tests {
     /// （`the_startup_path_really_calls_this_module` 与 `the_production_entry_hands_the_stdio_consumer_down`）
     /// —— 各存一份迟早分叉：新增入口时只想得起改一处。
     const ENTRIES: &[&str] = &["start_if_present", "start_or_extract"];
+
+    /// `P2t` 摸底交付的那一刀：**两个进程不写同一个 `.partial`**。
+    ///
+    /// # 它防的是什么
+    ///
+    /// `.partial` + `rename` 存在的全部理由是「**半截文件不许被当成可执行的 daemon 起起来**」。
+    /// 而临时名原来是**固定的** ⇒ 两个同版本 monitor 同时释放会写同一个文件：
+    /// 一个写到一半、另一个 `rename` 走 —— 出来的正是这道防线要防的东西。
+    /// ⚠ 不是理论：`tauri_plugin_single_instance` **只在 `#[cfg(windows)]` 注册**
+    /// ⇒ Linux/macOS 上两个 monitor 天然并存。
+    #[test]
+    fn two_processes_do_not_share_one_partial_file() {
+        let prod = guard_core::production_code(include_str!("local_backend.rs"));
+        let at = guard_core::find_pinned(&prod, "std::process::id()")
+            .expect("临时名里必须有本进程 id —— 固定名会让两个 monitor 写同一个文件");
+        // 位置性质：那个 id 必须落在**构造 tmp 名**的那几行里，不是别处随便一处。
+        let head = prod[..at].rfind(".partial").is_some() || prod[at..].contains(".partial");
+        assert!(head, "`process::id()` 不在 `.partial` 名的构造处");
+    }
+
+    /// `P2t`：清扫只收**够老**的残骸，绝不碰新鲜的。
+    ///
+    /// ★ 这条是行为判据（真的建文件、真的调），不是形状判据 ——
+    /// 「按年龄判」这种阈值逻辑最容易写反（`>=` 写成 `<=` 一个字符的事）。
+    #[test]
+    fn the_sweep_only_takes_the_old_ones() {
+        let dir = std::env::temp_dir().join(format!(
+            "p2t-sweep-{}-{:?}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let name = "cc-monitor-remote-testbuild";
+        // 把 mtime 拨老 48h。⚠ 这一步是**判据的一部分**：首跑时我只放了「新鲜的别人的文件」，
+        // 于是把命名法过滤整个删掉**照样绿** —— 年龄检查替它挡了。
+        // **两道过滤各自的作用，必须各有一个只有它能挡住的夹具。**
+        let age_back = |p: &std::path::Path| {
+            let f = std::fs::File::options().write(true).open(p).unwrap();
+            let old = std::time::SystemTime::now() - std::time::Duration::from_secs(48 * 3600);
+            f.set_times(std::fs::FileTimes::new().set_modified(old)).unwrap();
+        };
+
+        let fresh = dir.join(format!(".{name}.4242.partial"));       // 我们的、新鲜 ⇒ 留
+        let stale = dir.join(format!(".{name}.9999.partial"));       // 我们的、够老 ⇒ 收
+        let other_fresh = dir.join("someone-elses-file");            // 别人的、新鲜 ⇒ 留
+        let other_stale = dir.join("someone-elses-old-file");        // 别人的、够老 ⇒ **仍然留**
+        for p in [&fresh, &stale, &other_fresh, &other_stale] {
+            std::fs::write(p, b"x").unwrap();
+        }
+        age_back(&stale);
+        age_back(&other_stale);
+
+        sweep_stale_partials(&dir, name);
+
+        assert!(
+            fresh.exists(),
+            "刚写的 `.partial` 被删了 —— 那正是这道防线要防的事：\
+             把**正在写的**那份删掉，等于自己制造半截文件"
+        );
+        assert!(
+            !stale.exists(),
+            "够老的残骸没被收 —— 那清扫就是个摆设（带 pid 之后它们不会再被覆盖掉）"
+        );
+        assert!(other_fresh.exists(), "碰了不属于自己命名法的文件（这个目录与远端自部署共用）");
+        assert!(
+            other_stale.exists(),
+            "把**别人的**老文件也收了 —— 这个目录与远端自部署共用，\
+             只有「够老」不构成删的理由，还得是**我们自己命名法**的"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// `P3-Y1` 的**兑现证据**〔08-12 补〕：帧 → 账本这一跳，**不起 daemon、不起 tmux**。
     ///
