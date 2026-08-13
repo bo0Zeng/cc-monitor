@@ -253,4 +253,88 @@ mod tests {
             );
         }
     }
+
+    /// `P0b`：全链台架的「没有孤儿 daemon」那一格，**人群要覆盖两族**。
+    ///
+    /// # 它防的是一个实测出来的洞
+    ///
+    /// 那一格原来只数 `remote-daemon-proto/target/...`，而 08-12 实测：盘上活着的 daemon
+    /// 走的是**部署落点** `~/.cc-monitor/bin/cc-monitor-remote`（`sftp::ensure_daemon_deployed`
+    /// 的落点）—— **那一族当时根本不在人群里**，计数器却会安心地报 0。
+    /// 这正是 `needle_anchor_registry` 那条：**匹配单位不许比事实小**。
+    ///
+    /// ★★ 本条钉的是**那两条 `pgrep` 表达式本身**（`find_pinned`：恰好一处 + 两侧有边界），
+    /// 不是「字面量在文件里出现过」—— 首跑变异当场证明后者不成立：把 `pgrep` 那行删掉，
+    /// 同一个字面量在**我自己写的说明注释**里还在，判据照样绿。
+    ///
+    /// ⚠ 本条钉「两族都数」，**不保证**盘上没有第三族。哪天 daemon 又多一个落点，
+    /// 这条会因为「新落点不在表里」而**沉默**，不会报。如实登记。
+    #[test]
+    fn the_orphan_daemon_gate_counts_both_families() {
+        let raw = read_e2e("graylight-suite.sh");
+        let src = strip_comments(&raw);
+        for expr in [
+            "pgrep -fc 'remote-daemon-proto/target/[^ ]*/cc-monitor-remote'",
+            "pgrep -fc '\\.cc-monitor/bin/cc-monitor-remote'",
+        ] {
+            assert!(
+                guard_core::find_pinned(&src, expr).is_ok(),
+                "孤儿 daemon 那一格的**可执行行**里少了这条计数：`{expr}`。\
+                 少数一族，计数器就会在真有残留时报 0（08-12 实测：部署落点那一族当时不在人群里）。\
+                 ⚠ 写进注释不算数 —— 本条剥注释后才钉。"
+            );
+        }
+    }
+
+    /// `P0b`：台架**不许再教人裸 `pkill -f`**。
+    ///
+    /// # 为什么这条值得单独钉
+    ///
+    /// 模式杀**没有「只杀我起的那些」这个概念**。本仓吃过一次：`P5L` 那拍跑
+    /// `pkill -f xdg-terminal-exec`，**把我自己的 shell 打死了**（模式命中了自己的命令行）。
+    /// 而这条建议住在一个**出错时才会被读到**的地方（ABORT 文案），
+    /// 读它的人正处在「台架坏了、想赶紧清干净」的状态 —— 最容易照着敲。
+    #[test]
+    fn the_harness_no_longer_teaches_a_bare_pattern_kill() {
+        let src = strip_comments(&read_e2e("graylight-suite.sh"));
+        assert!(
+            !guard_core::contains_word(&src, "pkill"),
+            "台架的可执行段又出现 `pkill` —— 那是模式杀，打到什么由命令行长相决定"
+        );
+        assert!(
+            guard_core::find_pinned(&src, "reap-orphan-daemons.sh").is_ok(),
+            "得给出替代品，否则被 ABORT 拦住的人只会自己去敲 pkill"
+        );
+        // 那把刀本身必须在，且**默认不杀**、按父进程判孤儿。
+        let reaper = read_e2e("reap-orphan-daemons.sh");
+        // 钉**那条判定表达式本身**，不是「文件里有 yes 这三个字母」。
+        assert!(
+            guard_core::find_pinned(&reaper, r#"[ "${1:-}" = "--yes" ] && YES=1"#).is_ok(),
+            "一把会杀进程的刀必须要求显式确认（`--yes`），且那一判定要**恰好一处**"
+        );
+        assert!(
+            guard_core::find_pinned(&reaper, r#"ppid="$(ps -o ppid= -p "$pid""#).is_ok(),
+            "孤儿判据靠的就是**读父进程**（`ps -o ppid=`）—— 没有它就退回成模式杀"
+        );
+    }
+
+    fn read_e2e(name: &str) -> String {
+        std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .unwrap()
+                .join("e2e")
+                .join(name),
+        )
+        .unwrap_or_else(|e| panic!("读不到 e2e/{name}：{e}"))
+    }
+
+    /// shell 的「剥生产段」：只留可执行行。
+    /// 与 Rust 侧 `guard_core::production_code` 同一个用意 —— 判据不该被**解释它自己的散文**喂饱。
+    fn strip_comments(src: &str) -> String {
+        src.lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 }

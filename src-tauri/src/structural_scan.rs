@@ -433,6 +433,10 @@ mod tests {
             // 而误登记的害处是具体的：登记表是「已知的第二份剥法」清单，
             // 混进一条不是剥法的，下一个人会照它去找一份并不存在的实现。
             (
+                "e2e_gate_registry.rs::strip_comments",
+                "**别的注释语法**：语料是 shell 脚本（`e2e/*.sh`），注释是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 语义上刻意只剥**整行注释**、不碰行尾注释（shell 里 `#` 可以出现在字符串中间，                 按 marker 截断会误伤 `pgrep` 模式里的 `#`）。要收口的正确做法是给共享原语加一个                 「注释前缀」参数，那是另一件事。",
+            ),
+            (
                 "cc_bus.rs::non_test_code",
                 "本地剥法：只服务本文件自己的零命中守卫，语料是本文件源码。⚠ 与共享原语重复，登记为待收口",
             ),
@@ -579,10 +583,16 @@ mod tests {
 
     #[test]
     fn comment_stripping_has_exactly_one_shared_implementation() {
-        const REGISTERED: &[(&str, &str)] = &[(
-            "profile_installer.rs",
-            "按 marker 截断整行（能吃行尾注释），语料是自己生成的 shell/rc 片段、无 `://` 字面量风险",
-        )];
+        const REGISTERED: &[(&str, &str)] = &[
+            (
+                "profile_installer.rs",
+                "按 marker 截断整行（能吃行尾注释），语料是自己生成的 shell/rc 片段、无 `://` 字面量风险",
+            ),
+            (
+                "e2e_gate_registry.rs",
+                "**别的注释语法**：语料是 shell 脚本（`e2e/*.sh`），注释前缀是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 刻意只剥**整行**：shell 里 `#` 会出现在字符串中间（本处语料就有 `pgrep` 模式），                 按 marker 截断会误伤。收口的正确做法是给共享原语加一个「注释前缀」参数，那是另一件事。",
+            ),
+        ];
 
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut found: Vec<String> = Vec::new();
