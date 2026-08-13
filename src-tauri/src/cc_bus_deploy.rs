@@ -115,6 +115,16 @@ pub struct CcBusDeployReport {
     pub unchanged: u32,
     /// 覆盖前的备份目录（`None` = 之前没装过，无需备份）。
     pub backup: Option<String>,
+    /// ★★ **装成功了、但装出来的东西现在跑不起来**时的那句话〔08-13〕。
+    ///
+    /// `C15` 之后 `cc-spawn` 硬依赖新 `ccm`（开头做能力协商，缺一条就 `exit 2`）。
+    /// 只装 cc-bus、不同步 `ccm` ⇒ **部署这一步一切正常，用户的 `cc-spawn` 当场不能用**。
+    ///
+    /// ⚠ 为什么必须回到**返回值**里而不是只写日志：这是用户点按钮换来的结果，
+    /// 而日志他不会去翻。「成功 + 一句日志」在他眼里就是**纯成功** ——
+    /// 那正是本仓一路在治的「假成功比失败更坏」。
+    /// ⚠ 它**不是错误**：装本身做完了，且用户完全可能紧接着就同步 `ccm`。
+    pub warning: Option<String>,
 }
 
 /// ★ **白名单（独立 realpath 围栏）** —— 落点只能是这一个。
@@ -187,6 +197,7 @@ pub fn deploy_into(claude_dir: &Path) -> Result<CcBusDeployReport, String> {
             written: 0,
             unchanged: FILES.len() as u32,
             backup: None,
+            warning: None,
         });
     }
 
@@ -210,6 +221,8 @@ pub fn deploy_into(claude_dir: &Path) -> Result<CcBusDeployReport, String> {
         written,
         unchanged: 0,
         backup: backup.map(|b| b.display().to_string()),
+        // 纯函数不探子进程（否则单测会依赖「本机有没有 ccm」）⇒ 这一格由命令层填。
+        warning: None,
     })
 }
 
@@ -287,7 +300,7 @@ pub async fn cc_bus_install_state() -> Result<CcBusInstallState, String> {
 /// ccm 先、cc-bus 后，但反过来也只是中间有个窗口）。拦住一个合法流程比漏报更糟。
 /// ⚠ 放在**命令层**而不是 `deploy_into` 里：后者是纯函数、被一堆单测直接调，
 /// 塞个子进程进去会让那些测试依赖「本机有没有 ccm」——那正是本仓一路在治的环境依赖型假绿。
-fn warn_if_local_ccm_too_old() {
+fn local_ccm_too_old_warning() -> Option<String> {
     // ⚠ **不自己起进程探** —— `ccm_probe::probe_with` 就是「本机 ccm 的能力集探测」，
     //   已经在 `write_site_registry::SPAWNS` 里申报过、有超时、有 `name=ccm` 首行校验
     //   （挡 PATH 里同名但无关的用户脚本）。首版我又写了一份 `Command::new(ccm)`，
@@ -299,20 +312,20 @@ fn warn_if_local_ccm_too_old() {
     //   把常量暴露出来给第二个调用方用，等于给那条判据开了个后门。
     let probe = crate::ccm_probe::probe_local_ccm_uncached(std::time::Duration::from_secs(3));
     if !probe.installed {
-        tracing::warn!("装 cc-bus：本机探不到 `ccm` —— 装出去的 cc-spawn 会报「找不到 ccm」");
-        return;
+        return Some("本机探不到 `ccm` —— 装出去的 `cc-spawn` 会报「找不到 ccm」。".into());
     }
     let missing: Vec<&str> = CC_SPAWN_NEEDS
         .iter()
         .copied()
         .filter(|c| !probe.capabilities.iter().any(|x| x == c))
         .collect();
-    if !missing.is_empty() {
-        tracing::warn!(
-            "装 cc-bus：本机 ccm 缺能力 {missing:?} ⇒ 装出去的 `cc-spawn` 会以「ccm 版本太旧」退出。\
-             **请把 `shared/ccm` 同步过去**（顺序：ccm 先、cc-bus 后）。"
-        );
+    if missing.is_empty() {
+        return None;
     }
+    Some(format!(
+        "本机 ccm 缺能力 {missing:?} ⇒ 装出去的 `cc-spawn` 会以「ccm 版本太旧」退出。\
+         请把 `shared/ccm` 同步过去（顺序：ccm 先、cc-bus 后）。"
+    ))
 }
 
 /// `cc-spawn` 开头那段能力协商要的东西 —— **与 `shared/cc-bus/scripts/cc-spawn` 同一份清单**。
@@ -328,8 +341,13 @@ const CC_SPAWN_NEEDS: &[&str] = &["detach", "tmux-size", "tmux-base", "bus-regis
 #[tauri::command]
 pub async fn deploy_local_cc_bus() -> Result<CcBusDeployReport, String> {
     let claude_dir = crate::paths::resolve_claude_dir().ok_or("找不到 claude 目录")?;
-    warn_if_local_ccm_too_old();
-    deploy_into(&claude_dir)
+    let warning = local_ccm_too_old_warning();
+    if let Some(w) = &warning {
+        tracing::warn!("{w}");
+    }
+    let mut report = deploy_into(&claude_dir)?;
+    report.warning = warning;
+    Ok(report)
 }
 
 #[cfg(test)]

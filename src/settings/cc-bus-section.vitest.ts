@@ -72,6 +72,52 @@ describe("B03 cc-bus 驾驶舱：不预取、不轮询", () => {
     expect(s.element.querySelector(".cc-bus-status")?.textContent).toContain("尚未读取");
   });
 
+  // ★★ 〔08-13〕装成功了、但装出来的东西现在跑不起来 —— 那句话必须**显示出来**。
+  //
+  // `C15` 之后 cc-spawn 硬依赖新 `ccm`（能力协商缺一条就 exit 2）。只装 cc-bus、
+  // 不同步 ccm ⇒ 部署这一步一切正常，用户的 `cc-spawn` 当场不能用。
+  // 后端同时写了日志 —— 但**用户不会去翻日志**：「成功 + 一句日志」在他眼里就是纯成功。
+  it("装完带 warning 时，那句话要出现在状态里（不许只写日志）", async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "cc_bus_install_state") return { state: "not_installed" };
+      if (cmd === "deploy_local_cc_bus")
+        return {
+          dest: "/h/.claude/skills/cc-bus",
+          written: 17,
+          unchanged: 0,
+          backup: null,
+          warning: "本机 ccm 缺能力 [\"tmux-base\"] ⇒ 装出去的 cc-spawn 会以「ccm 版本太旧」退出。",
+        };
+      throw new Error(`不该调用 ${cmd}`);
+    });
+    const s = new CcBusSection();
+    document.body.appendChild(s.element);
+    await flush();
+    (s.element.querySelector(".cc-bus-deploy") as HTMLButtonElement).click();
+    await flush();
+    const txt = s.element.querySelector(".cc-bus-status")?.textContent ?? "";
+    expect(txt, "成功文案该在").toContain("已装到 /h/.claude/skills/cc-bus");
+    expect(txt, "★ 那句警告必须一起显示 —— 否则用户眼里就是纯成功").toContain("ccm 版本太旧");
+  });
+
+  // 反向：没有 warning 时不许无中生有（同「skipped=0 时不显示那句」的既定纪律）。
+  it("没有 warning 时不显示警告标记（不制造无谓噪音）", async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "cc_bus_install_state") return { state: "not_installed" };
+      if (cmd === "deploy_local_cc_bus")
+        return { dest: "/h/x", written: 17, unchanged: 0, backup: null, warning: null };
+      throw new Error(`不该调用 ${cmd}`);
+    });
+    const s = new CcBusSection();
+    document.body.appendChild(s.element);
+    await flush();
+    (s.element.querySelector(".cc-bus-deploy") as HTMLButtonElement).click();
+    await flush();
+    expect(s.element.querySelector(".cc-bus-status")?.textContent ?? "").not.toContain("⚠");
+  });
+
   it("点「读取」才发一次 read_cc_bus_state", async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return ["aya"];
