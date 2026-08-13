@@ -68,14 +68,15 @@ tmux server（跑前跑后 `tmux -L default ls` 逐字对比，**9 个会话，�
 | `ccm-acceptance` | 19 过 / 0 败 | |
 | `ccm-pretrust-acceptance` | 13 过 / 0 败 | |
 | `ccm-print-parity` | 12 过 / 0 败 | |
-| `ccm-contract-parity` | 45 过 / 0 败 | |
+| `ccm-contract-parity` | 61 过 / 0 败 | |
 | `tmux-target-acceptance` | 26 过 / 0 败 | |
 | `daemon-fork-session` | 10 过 / 0 败 | |
 | `p3t-local-tmux` | 10 过 / 0 败 | |
-| `cc-spawn-uplift` | **31 过 / 0 败**（08-13 更新） | ★ 修前 19/2 —— 它还在测 `P4b` 删掉的行为；`C15` 收编后 +10 条 |
+| `cc-spawn-uplift` | **53 过 / 0 败**（08-13 更新） | ★ 修前 19/2 —— 它还在测 `P4b` 删掉的行为；`C15` 收编后 +10 条 |
 | `exec-bit-guard` | RC=0 | ⚠ 打了非阻断警告：`shared/cc-bus` 与 `~/.claude/skills/cc-bus` **已漂移** |
 | `daemon-sessions-rewatch` | 4 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：`sessions/` 被换 inode / 起初不存在 / 重建后立刻写 |
 | `daemon-tmux-late-server` | 2 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：**daemon 起得比 tmux server 早**（`#60` 现象 1 的根因） |
+| `cc-bus-queue-drain` | 26 过 / 0 败 | ★ 08-13 新增：`cc-busd` 死在「入队后、取走前」⇒ 那条消息**永远躺在队列里**，两侧都不知道少了一条。**本套不用 tmux** |
 | **`graylight-suite`** | **3 过 / 0 败**（08-13） | ★★ 它**不再是「跑不了」的** —— 跑法见下方 `§ 全链套件怎么跑` |
 
 **跑不了的（本机缺条件，不是没跑）**：`f40-suite` / `restart-daemon-frames` /
@@ -137,7 +138,7 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 
 | job | 套件 |
 |---|---|
-| `e2e-tmux` | tmux-target · ccm-cli · ccm-print-parity · ccm-acceptance · ccm-pretrust · ccm-contract-parity · cc-spawn-uplift · restart · resume · ccm-rbind-title |
+| `e2e-tmux` | tmux-target · ccm-cli · ccm-print-parity · ccm-acceptance · ccm-pretrust · ccm-contract-parity · cc-spawn-uplift · cc-bus-queue-drain · restart · resume · ccm-rbind-title |
 | `e2e-tmux-rust` | tmux-guarded · usage-probe · inbound-frames · daemon-gate2 · local-backend · graylight-frames · restart-frames · resume-frames · daemon-fork · daemon-sessions-rewatch · daemon-tmux-late-server |
 
 **这些套件刻意都不进本地 `npm test`**（`gate-integrity` 开放问题 1 的决定）：

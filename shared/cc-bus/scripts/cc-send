@@ -51,6 +51,43 @@ mv "$tmpq" "$qf"
 if daemon_running; then
   echo "已入队(cc-busd 处理)-> $to"
 else
+  # ★★ **先把队列里滞留的旧消息带走**〔08-13 实测事故〕
+  #
+  # 病:daemon 在跑时 cc-send 只入队(打印「已入队」——当时是真话)。若 daemon 在取走它之前
+  # 死掉/关机(POLL 默认 0.5s,这个窗口天天存在),那条消息就**永远躺在队列里**:
+  # 此后 cc-send 判定 daemon 不在、走兜底,而兜底**只处理自己刚入队的那一条**,从不回头看队列。
+  #
+  # 实测(A 正常投递 → daemon 卡住时发 B → daemon 被杀 → 再发 C、D):
+  #   收件箱 3 条 [A C D]，队列里永远躺着 1 条 [B]
+  # 发信方看到的是「已入队」、收信方 cc-recv 读到 3 条 —— **两侧都不知道少了一条**。
+  # ⚠ 与 cc-register 那条同族:失败/中断被吞掉,而后面没有人负责补。
+  #
+  # ⇒ 兜底的语义本来就是「没人管家时我顺手管一下」,那就管全:**先补投滞留的,再发自己的**
+  #  (文件名是纳秒时间戳且定长,glob 的字典序就是入队序)。
+  # ⚠ 不引入任何新机制:认领仍是原子 `mv` 到点前缀名 —— daemon 不扫点前缀、两个 cc-send
+  #   同时兜底也只有一个 mv 得到 ⇒ 不双投。被路由层拦下(rc=10)与 daemon 恢复后扫队列
+  #   的行为**逐字一致**,不在这条路径上另立语义。
+  # ⚠ 有上界:一次最多带走 CCBUS_DRAIN_MAX 条,免得堆积几百条时把一次 cc-send 拖死。
+  _drained=0; _dropped=0; _stale_fail=0; _budget="${CCBUS_DRAIN_MAX:-20}"
+  for sf in "$BUS/queue"/*.json; do
+    [ -e "$sf" ] || continue          # glob 没命中时字面量
+    [ "$sf" = "$qf" ] && continue     # 自己那条走下面的正路(它排在最后)
+    [ "$_budget" -gt 0 ] || { _stale_fail=$((_stale_fail+1)); continue; }
+    sproc="$BUS/queue/.proc.$$.${sf##*/}"
+    mv "$sf" "$sproc" 2>/dev/null || continue   # 没抢到:别人认领了,不是我的事
+    _budget=$((_budget-1))
+    set +e; route_process "$(cat "$sproc" 2>/dev/null)"; src=$?; set -e
+    case "$src" in
+      0)  rm -f "$sproc"; _drained=$((_drained+1));;
+      10) rm -f "$sproc"; _dropped=$((_dropped+1));;
+      *)  mv "$sproc" "$sf" 2>/dev/null || true; _stale_fail=$((_stale_fail+1));;
+    esac
+  done
+  if [ "$((_drained+_dropped+_stale_fail))" -gt 0 ]; then
+    # 说到 stderr:补投是**顺手**做的,不该混进 cc-send 自己那条的成败回显。
+    echo "cc-send: 队列里有滞留消息(cc-busd 曾入队但没取走)——补投 $_drained 条,被路由层拦下 $_dropped 条,仍失败/超预算 $_stale_fail 条" >&2
+  fi
+
   # 兜底:认领文件用【点前缀】(躲开 daemon 顶层队列扫描,防双投),原子改名占用后就地跑管线
   proc="$BUS/queue/.proc.$$.${qf##*/}"
   if mv "$qf" "$proc" 2>/dev/null; then
