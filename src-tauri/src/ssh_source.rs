@@ -4046,6 +4046,22 @@ async fn stream_loop(
                     .entry(host_label.clone())
                     .or_default()
                     .insert(sid.clone(), meta_for_registry);
+                // ★★ 〔`P0b` 08-13〕**这一跳此前是静默的** —— 只有 emit **失败**才打日志，
+                // 成功一个字不留。于是全链台架报「30s 内未见灰灯 tab-state」时，
+                // 日志**回答不了**最基本的那一问：**帧到 monitor 了吗？**
+                //
+                // 实测（连续两跑、四格自证全绿、读数逐字一致）：帧级套件 `graylight-daemon-frames`
+                // **12 过 / 0 败**（daemon 那侧发得对），而全链 **1 过 / 2 败**、前端
+                // `建卡 rendered=0 · drained=0`（一条会话载荷都没收到）⇒ 断点在这两者之间，
+                // 而这里正是那段路上唯一的分叉点。
+                //
+                // ⚠ 射程：本行只说「**收到了、并已 emit**」。emit 之后前端有没有建出 tab
+                // 是另一跳（那要看前端的 `[e2e] tab-state` 探针）。**别把它读成「tab 建出来了」。**
+                // ⚠ 量级：`SessionAdded` 是**每个会话一次**，不是每帧一次 ⇒ 不会淹日志
+                //（与 `tmux-observation` 那条只记变化的理由不同：那条是逐帧的）。
+                tracing::info!(
+                    "session-added: [{host_label}] sid={sid} → 已 emit 给前端"
+                );
                 if let Err(e) = app.emit(crate::bridge::events::REMOTE_SESSION_ADDED, &payload) {
                     tracing::warn!("ssh_source remote-session-added emit failed: {e}");
                 }
@@ -7564,6 +7580,43 @@ mod capped_line_tests {
     ///
     /// ⚠ 全程用 `find_pinned`（恰好一处 + 两侧有边界），**不用裸 `contains`** ——
     /// `needle_anchor_registry` 是条**递减棘轮**，它逐字写着「不许把上限调上去让今天好过」。
+    /// `P0b`：`SessionAdded` 那一跳**不许再是静默的**。
+    ///
+    /// # 它为什么值得一条判据
+    ///
+    /// 08-13 全链台架终于可信（连续两跑、四格全绿、读数一致），报的是
+    /// 「30s 内未见灰灯 tab-state」。而当时日志**回答不了最基本的那一问：帧到 monitor 了吗？**
+    /// —— 因为这一臂只有 emit **失败**才打日志，成功一个字不留。
+    /// 帧级套件 `graylight-daemon-frames` 同期 **12 过 / 0 败**（daemon 那侧发得对），
+    /// 前端 `建卡 rendered=0`（一条都没收到）⇒ 断点就在这两者之间，而这里是那段路上的分叉点。
+    ///
+    /// ⚠ **位置性质**：日志要排在 `app.emit` **之前**。排在后面的话，emit 那一跳若卡住/panic，
+    /// 就连「收到了」这件事都没留下 —— 而那正是最需要知道的一格。
+    #[test]
+    fn the_session_added_arm_is_not_silent() {
+        let prod = guard_core::production_code(include_str!("ssh_source.rs"));
+        let at = guard_core::find_pinned(&prod, "session-added: [{host_label}] sid={sid}")
+            .expect("`SessionAdded` 那一臂必须留下一行「收到了」——否则全链失败时问不出帧到没到");
+        // ⚠ **改成局部窗口，不求全局唯一**：那句 emit 生产段有 2 处（另一处是**重宣告**那条路），
+        //   `find_pinned` 当场拒收并逐字提醒「把 needle 扩到能唯一确定那个事实的大小」。
+        //   而本条要钉的性质本来就是**局部**的（「这行日志的紧后面就是那次 emit」）
+        //   ⇒ 用窗口比硬造一个全局唯一的针更贴事实。
+        // ⚠ 窗口 400 字符是启发式：够覆盖日志与 emit 之间那几行，又不至于跨到别的臂。
+        // ⚠⚠ 窗口内也**不许裸 `contains`** —— `needle_anchor_registry` 那条递减棘轮当场拦下了
+        //   第一版（它逐字：「不许把上限调上去让今天好过」）。⇒ 在窗口这个**小语料**上
+        //   仍走 `find_pinned`：恰好一处 + 两侧有边界。窗口小到只含本臂 ⇒ 唯一性天然成立。
+        let window = &prod[at..(at + 400).min(prod.len())];
+        assert!(
+            guard_core::find_pinned(
+                window,
+                "app.emit(crate::bridge::events::REMOTE_SESSION_ADDED, &payload)"
+            )
+            .is_ok(),
+            "那行日志与它要守的那次 `app.emit` 之间隔太远（或被排到了后面）——\
+             排在 emit 后面的话，emit 卡住时就连「收到了」都没留下"
+        );
+    }
+
     #[test]
     fn the_frame_arm_logs_the_observation_kind() {
         let prod = guard_core::production_code(include_str!("ssh_source.rs"));
