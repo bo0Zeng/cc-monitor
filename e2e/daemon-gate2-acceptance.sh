@@ -45,10 +45,38 @@ cleanup() {
 }
 trap cleanup EXIT
 
-pass=0; fail=0; skip=0
+pass=0; fail=0; skip=0; waived=0
+
+# ★★ **造不出的名字：登记豁免**〔`P0e` 08-13，执行的是本套件自己开的方子〕。
+#
+# 收尾原本逐字写着「本套件不接受 skip（**造不出的名字应当在纯函数轨覆盖并从表里说明**）」——
+# 而那句话一直没人执行：本机（tmux 3.6）实测把 `cc-a:b` 建成 `cc-a_b`
+# （当场用私有 socket 验过：`tmux -L p0eProbe new-session -s 'cc-a:b'` → 会话名是 `cc-a_b`）
+# ⇒ e2e 这一轨**物理上造不出这个名字**，于是每跑必 skip、必 RC=1。
+#
+# ⚠ 豁免**不是**「这条不验了」：判定表被**三方**独立读（monitor Rust / daemon Rust / 本脚本），
+#   前两轨照常验它 —— 那两轨不依赖 tmux 怎么给会话命名。本轨欠的只是「真会话」这一层。
+# ⚠ 只豁免**登记在册**的：没登记的 skip 仍然让整套 RC=1（原纪律一个字没松）。
+waiver_reason() {
+  case "$1" in
+    meta_colon) echo "tmux 会把名字里的 ':' 换成 '_'（本机 3.6 实测 cc-a:b → cc-a_b）⇒ 这一轨造不出真会话；判定由 monitor/daemon 两条纯函数轨覆盖（同一张 TSV）" ;;
+    *) echo "" ;;
+  esac
+}
+
 ok()   { printf '  PASS %s\n' "$1"; pass=$((pass+1)); }
 bad()  { printf '  FAIL %s\n' "$1"; fail=$((fail+1)); }
-skipped() { printf '  skip %s\n' "$1"; skip=$((skip+1)); }
+skipped() {
+  local id="${1%%：*}"
+  local why; why="$(waiver_reason "$id")"
+  if [ -n "$why" ]; then
+    printf '  waive %s\n        理由：%s\n' "$1" "$why"
+    waived=$((waived+1))
+  else
+    printf '  skip %s\n' "$1"
+    skip=$((skip+1))
+  fi
+}
 
 mkdir -p "$WORK/claude/projects"
 mkfifo "$IN"
@@ -235,12 +263,12 @@ if wait_for '"id":"e2e-g3-bad"'; then
 else bad "kill 形状门：5s 内无应答"; fi
 
 echo
-echo "===== 合计 PASS=$pass FAIL=$fail SKIP=$skip ====="
+echo "===== 合计 PASS=$pass FAIL=$fail SKIP=$skip WAIVED=$waived ====="
 # ⚠ **这里刻意不写数字地板。** 定框 §4：「e2e 各套通过数（CI 两处 + 本地脚本），
 #   **同一个数不许两侧各写一份**」—— 本套件初版在这里硬写了 `-ge 28`，而 CI 的
 #   `assert-pass-floor.sh daemon-gate2 28` 已经有同一个数。那正是账本记着的那个病
 #   （实测两侧都写 6/5 而真值 9/7，两侧都没棘过）。F+ 回看抓到，这里改成**导出式自检**：
 #   判定表有几行、就必须尝试过几行。加一行用例不用改这里，而它照样挡得住「静默跳过」。
-[ "$skip" -eq 0 ] || { echo "有 $skip 条被跳过 —— 本套件不接受 skip（造不出的名字应当在纯函数轨覆盖并从表里说明）"; exit 1; }
+[ "$skip" -eq 0 ] || { echo "有 $skip 条被跳过 —— 本套件不接受**未登记**的 skip（造不出的名字要进 waiver_reason 并写明纯函数轨怎么覆盖它）"; exit 1; }
 [ "$n" -eq "$ROWS" ] || { echo "判定表 $ROWS 行，只尝试了 $n 行 —— 循环被提前中断了"; exit 1; }
 [ "$fail" -eq 0 ]
