@@ -464,7 +464,7 @@ jobs:
       # 不过就 exit 9 中止。开发机上有正在运行的 tmux 会话与真实 ~/.cc-bus/，
       # 这条自检是为了那里；CI 上是干净 runner，自检自然通过。
       - name: cc-spawn 收编等价（B02）
-        run: bash e2e/assert-pass-floor.sh cc-spawn-uplift 21
+        run: bash e2e/assert-pass-floor.sh cc-spawn-uplift 25
 
       # G-C（解 E41）：这两套只要 node + tmux（经 tsx driver 驱真编排逻辑，不碰 daemon）。
       # 它们此前进不了 CI 的原因不是「需要什么」，而是**会踩开发者机器上的真实 tmux 会话**

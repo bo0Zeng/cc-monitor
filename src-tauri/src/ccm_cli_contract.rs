@@ -454,12 +454,30 @@ mod tests {
                 "`cc-spawn` 里又出现了 {gone:?} —— 默认复用回潮了。\n                 `C14`〔用 08-12〕逐字：「所有起会话就是起会话……**spawn 就是起, 就是 creat**」。"
             );
         }
-        // ② 命名避让必须还在（不复用 ≠ 不避让）。
-        guard_core::find_pinned(&src, "while tmux has-session").unwrap_or_else(|e| {
+        // ② 命名避让必须还在（不复用 ≠ 不避让）—— 但 `C15`〔用@08-13〕之后它**搬进 ccm 了**。
+        //    ⚠ 这条判据 08-12 原本钉 `cc-spawn` 里那句 `while tmux has-session`。
+        //    搬家之后**不能只是删掉它**：那样「避让还在不在」就没人钉了。改钉两件 ——
+        //    （a）cc-spawn 把基名交出去；（b）避让在 ccm 那边（另一条判据 `the_avoidance_lives_in_ccm_now`）。
+        // ⚠ 下面两条都判**剥掉 `#` 注释之后**的正文。首版没剥，当场被自己写的那句
+        //   「原来这里是 `while tmux has-session …`」（记录搬走了什么的**诚实注释**）判红。
+        //   ★ 这是本拍第二次撞上同一族：**匹配单位比事实大** —— 判据要判的是「代码里有没有」，
+        //   而 `contains` 判的是「文件里有没有」。散文里提一句被删掉的东西是**好事**，不该被拦。
+        let prod_spawn: String = src
+            .lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n");
+        guard_core::find_pinned(&prod_spawn, "--tmux-base=\"$base\"").unwrap_or_else(|e| {
             panic!(
-                "{e}\n                 ⇒ 命名避让没了。把「不复用」做成「不避让」会让同名直接建、撞上别人的会话，\n                 那正是 `C14` 要消灭的东西的另一面。"
+                "{e}\n                 ⇒ cc-spawn 不再把**基名**交给 ccm 了。`C15` 之后避让归 ccm：\n                 cc-spawn 自己探一遍名字再传 `--tmux=<名>`，等于同一个事实算两遍，\n                 而且探完到真建之间有窗口期（`P3sc` 之后显式名撞名是 exit 3 响亮失败）。"
             )
         });
+        // ⚠ 用 `contains_word` 而不是裸 `contains`：`needle_anchor_registry` 是**递减棘轮**，
+        //   本拍新加的两处裸 `contains` 当场把它从 33 顶到 35（「不许把上限调上去让今天好过」）。
+        assert!(
+            !guard_core::contains_word(&prod_spawn, "while tmux has-session"),
+            "`cc-spawn` 里又长出了自己的命名避让 —— `C15`〔用@08-13「cc-bus收进ccm」〕之后\n                          那件事归 `ccm`（`--tmux-base`）。留两份 = 改一处漏一处。"
+        );
         // ③ `--new` 保留为 no-op：外面可能有人在传，让它报错等于把别人的脚本弄坏。
         // ⚠ needle 要**唯一确定那个事实**：`--new` 在用法串与注释里也出现
         //（`find_pinned` 当场报「命中 2 处，断言指不明是哪一处」）。钉那条 case 臂本身。
@@ -591,6 +609,113 @@ mod tests {
         assert!(
             fail_branch.contains("%s"),
             "报错必须**带上是哪个名字** —— 不带名字的报错等于没报：{fail_branch}"
+        );
+    }
+
+    /// ★ `P4b①`②〔`C15` 08-13〕：**避让搬进 `ccm` 之后，它在那边、且只有一份。**
+    ///
+    /// 这条与 `cc_spawn_creates_it_never_reuses_a_live_session` 的 ② 是**一对**：
+    /// 那边钉「cc-spawn 不再自己算」，这边钉「那么它由谁算」。少任何一条，
+    /// 「不复用 ≠ 不避让」这件事就会在某次重构里悄悄丢掉。
+    #[test]
+    fn the_avoidance_lives_in_ccm_now() {
+        let ccm = include_str!("../../shared/ccm");
+        // ① 实现在，且**恰好一处**：`find_pinned` 同时管「在不在」与「是不是只有一份」。
+        guard_core::find_pinned(&ccm, "avoid_name_collision() {").unwrap_or_else(|e| {
+            panic!("{e}\n⇒ 撞名避让的实现不见了或有两份。`C15` 把它从 cc-spawn 收进 ccm，收进来就该只有一份。")
+        });
+        // ② 生产段里不许再有**第二个**裸避让循环（本仓的老病：同一个事实几份实现）。
+        let prod = guard_core::production_code(&ccm);
+        //   「恰好一处」正是 `find_pinned` 的语义 —— 比 `.matches().count()` 更贴事实，
+        //   而且它连**两侧边界**一起管（`matches` 会把 `while tmux has-sessionX` 也数进去）。
+        guard_core::find_pinned(&prod, "while tmux has-session").unwrap_or_else(|e| {
+            panic!("{e}\n⇒ `ccm` 生产段里的裸避让循环不是恰好一处（应当只有 `avoid_name_collision` 内那一处）。\n   多一处 = 避让又分叉了。")
+        });
+        // ③ 三条取名路都要**过同一份形状校验**。
+        //    只校验显式名那条等于给避让路开后门：基名不撞时**逐字变成**会话名。
+        guard_core::find_pinned(&ccm, "validate_tmux_name() {")
+            .expect("形状校验该是一个函数、且只有一份");
+        for (mode, call) in [
+            ("--tmux-base", "validate_tmux_name \"$tmux_base\""),
+            ("--tmux=<名>", "validate_tmux_name \"$tmux_name\""),
+        ] {
+            assert!(
+                prod.contains(call),
+                "取名模式 {mode} 没过形状校验（找不到 `{call}`）—— 那条路能建出 `*`/`:`/`=` 的名字，\n                              而 daemon 的 kill 主路**按设计拒收**这些字符 ⇒ 建得出来、UI 上杀不掉（F15 实测过）。"
+            );
+        }
+        // ④ 能力协商：新模式必须出现在 `capabilities=`，否则老 ccm 上 cc-spawn 报的会是
+        //    `未知选项: --tmux-base` + `建会话失败`，把「版本太旧」说成「建会话失败」。
+        let caps = ccm
+            .lines()
+            .find(|l| l.contains("capabilities="))
+            .expect("`--ccm-probe` 的 capabilities= 那行");
+        assert!(
+            guard_core::contains_word(caps, "tmux-base"),
+            "`capabilities=` 里没有 `tmux-base` —— 调用方无从协商。实得：{caps}"
+        );
+        let spawn = std::fs::read_to_string(cc_spawn_path()).expect("读 cc-spawn");
+        guard_core::find_pinned(&spawn, "for _c in detach tmux-size tmux-base;").unwrap_or_else(
+            |e| {
+                panic!(
+                    "{e}\n⇒ `cc-spawn` 没把 `tmux-base` 列进能力协商 —— 它现在硬依赖这个模式了。"
+                )
+            },
+        );
+    }
+
+    /// ★ `P4b①`②：cc-spawn **从 ccm 读回名字**，且**读不到就停**。
+    ///
+    /// 读不到还往下走的话，`cc-register` 与 `spawned.tsv` 会写进**空名字** ——
+    /// 总线上多一个叫 `""` 的幽灵，`cc-list` 显示在线、`cc-send` 石沉大海。
+    /// 本仓给这种形状起过名字：**假成功比失败更坏**（B02 审计阻塞-2 那次逐字同款）。
+    #[test]
+    fn cc_spawn_reads_the_name_back_instead_of_computing_it() {
+        let src = std::fs::read_to_string(cc_spawn_path()).expect("读 cc-spawn");
+        let prod: String = src
+            .lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n");
+        // ⚠ 光钉「摘取表达式在」**不够**：D 阶段 M2 实测把它改成
+        //   `name="$base"; _unused=$(… ccm-session= …)` —— 表达式还在，名字却是自己拍的，判据全绿。
+        //   ⇒ 钉的必须是**赋值**：`name=` 恰好一处，且那一处就是摘取。
+        let name_assigns: Vec<&str> = prod
+            .lines()
+            .map(|l| l.trim_start())
+            .filter(|l| l.starts_with("name="))
+            .collect();
+        assert_eq!(
+            name_assigns.len(),
+            1,
+            "`cc-spawn` 生产段里给 `name` 赋值 {} 处（应恰好 1 处）。多一处 = 名字有第二个来源，\n                          而只有 `ccm` 知道它真建出了哪个。实得：{name_assigns:?}",
+            name_assigns.len()
+        );
+        // ⚠ 还不够（M2 第二次实测）：`name="$base"; _unused=$(… ccm-session= …)` **也是一行**，
+        //   于是「唯一那处赋值里有摘取表达式」照样成立。⇒ 钉**整个赋值就是那次摘取**：
+        //   赋值右手边必须直接是命令替换（`name=$(`），不是先拍一个名字再顺手跑个表达式。
+        //   ⚠ 第三轮：`name=$(printf "%s" "$base"); _x=$(… ccm-session= …)` 仍然过（一行两条命令，
+        //   前两条判据都成立）。⇒ 那行必须是**纯赋值**：不许用 `;`/`&&` 在同一行串第二条命令。
+        //   ★ 到此为止不再加码 —— 判据钉的是**事实的形状**（「name 的唯一来源是 ccm 报的名字」），
+        //   不是跟人斗智。真要绕过它得先把这段注释一起改掉，那已经是明知故犯了。
+        assert!(
+            !name_assigns[0].contains(';') && !name_assigns[0].contains("&&"),
+            "给 `name` 赋值那行串了第二条命令 —— 那就分不清 `name` 到底来自哪一条了。实得：{}",
+            name_assigns[0]
+        );
+        assert!(
+            name_assigns[0].starts_with("name=$(")
+                && name_assigns[0].contains("s/^ccm-session=//p"),
+            "`name` 不是从 ccm 报的 `ccm-session=` 摘来的 —— 那它拿什么名字去登记总线？实得：{}",
+            name_assigns[0]
+        );
+        // 读不到就停：`[ -n "$name" ] || { … exit 1; }`
+        let bails = prod
+            .lines()
+            .any(|l| l.contains("[ -n \"$name\" ] ||") && l.contains("exit 1"));
+        assert!(
+            bails,
+            "`cc-spawn` 拿不到会话名时没有停 —— 再往下 `cc-register` 与台账会写进空名字，\n                          产出一个总线上叫 \"\" 的幽灵（`cc-list` 显示在线、`cc-send` 石沉大海）。"
         );
     }
 

@@ -57,7 +57,7 @@ fi
 # 仓里本就有现成的协商机制(`--ccm-probe` 吐 `capabilities=`,TS 侧 `CLI_REQUIRED_CAPS` 在用),
 # 新的 shell 消费者没理由不用。
 _caps=$("$CCM_BIN" --ccm-probe 2>/dev/null | sed -n 's/^capabilities=//p')
-for _c in detach tmux-size; do
+for _c in detach tmux-size tmux-base; do
   case ",$_caps," in
     *",$_c,"*) ;;
     *) echo "cc-spawn: ccm 版本太旧,缺能力 '$_c'($CCM_BIN)。" >&2
@@ -90,17 +90,24 @@ base="$(printf '%s' "$bn" | tr -c 'A-Za-z0-9_-' '_' | sed 's/^-*//; s/-*$//')_cc
 # ⚠ 这是那个 `or` 的**第四份**实现:P3s 数出两份(ccm 的、TS 的),P4d 的冒烟又撞出
 # daemon 的 wire mode(第三份),这里是第四份。「我数完了」这句话在这个仓里已经错过三次。
 #
-# 下面的**命名避让**必须留着:不复用 ≠ 不避让。同名直接建会撞上别人的会话,
+# 命名避让**必须留着**:不复用 ≠ 不避让。同名直接建会撞上别人的会话,
 # 那正是 C14 要消灭的东西的另一面。
-
-# 新建:同名加后缀(= 精确,防前缀误判)
-name="$base"; k=2
-while tmux has-session -t "=$name" 2>/dev/null; do name="$base-$k"; k=$((k+1)); done
+# ★★ 而 08-13(C15〔用「cc-bus收进ccm」〕)起,避让**住进 ccm 了** —— 见下面 `--tmux-base`。
 
 # 3. 建 detached 会话 + 送任务 —— **全部经 ccm**(unify-launch B02,闭合账本"起会话被写死成
 #    N 套实现"那一行)。ccm 现在负责:建会话(--detach 只建不 attach)、窗口尺寸、预信任、
 #    账号/env 注入、信任框轮询兜底、codex 的 CC_BUS_ID。
-#    cc-spawn 只保留 cc-bus 专属的部分:命名避让、总线登记、台账、复用判定。
+#    cc-spawn 只保留 cc-bus 专属的部分:总线登记、台账。
+#
+# ★★ C15〔用@08-13「cc-bus收进ccm」〕第一件:**命名避让搬进 ccm**(`--tmux-base=<基名>`)。
+#    原来这里是 `while tmux has-session -t "=$name"; do name="$base-$k"; done`,自己探一遍
+#    再把算好的名字用 `--tmux=<名>` 传进去。两条问题:
+#      ① **同一个事实算两遍** —— 探名字的人与建会话的人不是同一个,而只有后者知道结果;
+#      ② **探完到真建之间有窗口期** —— 别人可以在那一瞬插进来占掉这个名,而 P3sc 之后
+#         显式 `--tmux=<名>` 撞名是**响亮失败**(exit 3),于是 cc-spawn 会以"建会话失败"收场。
+#    ⇒ 改成把**基名**交给 ccm,由它避让并把最终名字用 `ccm-session=` 报回来(P4b① 的前置)。
+#    cc-spawn 从此**不再有 tmux 会话名的算法**,只有 base 的派生规则(`<basename>_cc`,
+#    与 `cc-whoami resolve` 对齐 —— 那是 cc-bus 的 id 规则,不是 tmux 的取名规则)。
 #
 #    删掉的原实现,逐条说明为什么不是回归:
 #      · 预信任 46 行 → ccm F11 已上提,且比这里多修了绝对路径规范化(cwd_abs)与
@@ -124,7 +131,7 @@ mkdir -p "$BUS"
 # shellcheck disable=SC2206  # 这里的分词是**有意的**,正是要复刻旧 shell 的行为
 launch_argv=($LAUNCH)
 [ ${#launch_argv[@]} -gt 0 ] || { echo "cc-spawn: 启动器为空(CCSPAWN_LAUNCH?)" >&2; exit 2; }
-ccm_args=(--tmux="$name" --detach --tmux-size 220x50 --cwd "$absdir" --agent "$tool" --launcher "${launch_argv[0]}")
+ccm_args=(--tmux-base="$base" --detach --tmux-size 220x50 --cwd "$absdir" --agent "$tool" --launcher "${launch_argv[0]}")
 # 账号:转发给 ccm(它已有 --account/--base,校验与解析都在那边,这里不重复实现)
 [ -n "$acct" ] && ccm_args+=(--account "$acct")
 [ "$use_base" = 1 ] && ccm_args+=(--base)
@@ -132,7 +139,14 @@ ccm_args=(--tmux="$name" --detach --tmux-size 220x50 --cwd "$absdir" --agent "$t
 passthru=("${launch_argv[@]:1}")
 [ -n "$task" ] && passthru+=("$task")
 [ ${#passthru[@]} -gt 0 ] && ccm_args+=(-- "${passthru[@]}")
-"$CCM_BIN" "${ccm_args[@]}" || { echo "cc-spawn: 经 ccm 建会话失败" >&2; exit 1; }
+# **名字由建它的人报**:ccm 在 `--detach` 时打一行 `ccm-session=<名>`(P4b①)。
+# stdout 捕下来只为摘那一行,**其余原样转发**(不吞 ccm 将来可能打的任何东西)。
+_out=$("$CCM_BIN" "${ccm_args[@]}") || { echo "cc-spawn: 经 ccm 建会话失败" >&2; exit 1; }
+name=$(printf '%s\n' "$_out" | sed -n 's/^ccm-session=//p' | tail -1)
+printf '%s\n' "$_out" | grep -v '^ccm-session=' || true
+# 拿不到名字就**停**:再往下 cc-register 与台账会写进空名字,产出一个总线上叫 "" 的幽灵。
+[ -n "$name" ] || { echo "cc-spawn: ccm 没报出会话名(ccm-session=) —— 版本太旧?" >&2; exit 1; }
+unset _out
 
 pane=$(tmux list-panes -t "=$name" -F '#{pane_id}' 2>/dev/null | head -1)
 [ -n "$pane" ] || { echo "cc-spawn: 建会话失败(取不到 pane)" >&2; exit 1; }

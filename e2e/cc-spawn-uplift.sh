@@ -190,6 +190,28 @@ mkdir -p "$WORK/old"
 CCM_BIN="$SANDBOX/oldccm" timeout 30 "$CCSPAWN" "$WORK/old" > "$WORK/out8.txt" 2>&1
 chk "报的是版本太旧" "$(grep -c '版本太旧' "$WORK/out8.txt")" "1"
 
+echo "[12] 【C15 08-13】命名避让**搬进 ccm 之后**仍然成立（同目录连开三个 → 名字退让）"
+# ★ 为什么这条要真跑：`P4b①`② 把避让从 cc-spawn 搬进 `ccm --tmux-base`，
+#   而**判据只能钉「实现在哪」，钉不了「它真的避让得对」** —— 名字退让是运行期事实
+#  （`tmux has-session` 的返回值决定的），只有真起会话才验得出来。
+#   ⚠ 同时也钉住那条前置：cc-spawn 现在**从 ccm 的 `ccm-session=` 读回名字**。
+#   它要是读回了错的名字，下面「台账/总线里的名字」与「真实会话名」就对不上 ——
+#   而那正是搬家最可能出的岔子（cc-spawn 报一个名、ccm 建了另一个）。
+mkdir -p "$WORK/dup"
+for _i in 1 2 3; do
+  CCM_NO_PRETRUST=1 timeout 30 "$CCSPAWN" "$WORK/dup" "任务$_i" > "$WORK/out-dup$_i.txt" 2>&1
+done
+chk "三个会话都在" \
+  "$(tmux ls -F '#{session_name}' 2>/dev/null | grep -cx 'dup_cc\|dup_cc-2\|dup_cc-3')" "3"
+# 台账/总线里的名字必须**与真实会话名逐字一致** —— 这是「读回来的名字对不对」的真判据。
+chk "台账三行、名字对得上" \
+  "$(cut -f1 "$CC_BUS_HOME/spawned.tsv" | grep -cx 'dup_cc\|dup_cc-2\|dup_cc-3')" "3"
+chk "总线三条、名字对得上" \
+  "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -cx 'dup_cc\|dup_cc-2\|dup_cc-3')" "3"
+# 提示行里报的也得是**退让后**的名字（用户照着敲 `cc-send` 的就是它）。
+chk "第三次的提示报的是 dup_cc-3" \
+  "$(sed -n 's/^已 spawn: \([^ ]*\).*/\1/p' "$WORK/out-dup3.txt")" "dup_cc-3"
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 if [ "$fail" -eq 0 ]; then echo "===== cc-spawn 收编验收全部通过 ====="; fi
