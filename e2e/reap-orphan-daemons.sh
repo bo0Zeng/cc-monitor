@@ -38,7 +38,37 @@
 set -euo pipefail
 
 YES=0
-[ "${1:-}" = "--yes" ] && YES=1
+FIXTURE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --yes)     YES=1 ;;
+    --fixture) shift; FIXTURE="${1:-}" ;;
+    *) echo "用法: $0 [--fixture <claude_dir>] [--yes]" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+# ★★ `--fixture <dir>`〔`U10g` 落地之后 08-13 加〕：**按身份收**，不再只看 `PPID == 1`。
+#
+# 病：台架起的 daemon 是 app **经 SSH exec** 的，杀掉 app **不会带走它**（SSH 会话还开着，
+# 父进程是活的 wrapper）⇒ 它既不是孤儿、又确实是上一跑的残留。
+# 本会话被这个形态挡了**三次**：下一跑的 gate 丁 数到它就 ABORT，每次都要人工核 pid。
+#
+# 而 `U10g` 量出来的身份信号正好能用：daemon 的 `/proc/<pid>/environ` 里有 `CLAUDE_CONFIG_DIR`
+#（台架的 wrapper 一律 `exec env CLAUDE_CONFIG_DIR=… daemon`）。
+# ⇒ 指定 fixture 目录 = **点名收那些盯着它的**，与父进程活不活无关。
+#
+# ⚠⚠ **红线：绝不收盯着真实 claude 目录的**。那是用户自己的 cc-monitor 在用的 daemon。
+# 下面有一道硬门：`--fixture` 的值必须落在 `/tmp/` 下，否则**拒绝执行**（不是警告，是退出）。
+# 理由与 `cc_bus_deploy::fenced_dest` 同族 —— 一把会杀进程的刀，射程要**结构性**地关死。
+if [ -n "$FIXTURE" ]; then
+  case "$FIXTURE" in
+    /tmp/*) : ;;
+    *) echo "拒绝：--fixture 只许指 /tmp 下的一次性目录（实得：$FIXTURE）" >&2
+       echo "      盯着真实 claude 目录的 daemon 是**用户自己的**，本刀绝不碰。" >&2
+       exit 2 ;;
+  esac
+fi
 
 # 两族都要数（这正是 gate 丁 原本漏掉的那一半）。
 PATTERNS=(
@@ -48,26 +78,41 @@ PATTERNS=(
 
 found=0
 orphans=()
+fixture_hits=()
 for pat in "${PATTERNS[@]}"; do
   while read -r pid; do
     [ -n "$pid" ] || continue
     found=$((found + 1))
     ppid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
     args="$(ps -o args= -p "$pid" 2>/dev/null || true)"
-    if [ "${ppid:-0}" = "1" ]; then
+    # ⚠ **按 exe 复核**：`pgrep -f` 会匹配到任何命令行里含这个模式的进程 ——
+    #   08-13 实测它数进了**我自己那条正在跑的 shell**（与本轮五次 `pkill -f` 自伤同一族）。
+    case "$(readlink -f "/proc/$pid/exe" 2>/dev/null)" in
+      *cc-monitor-remote) : ;;
+      *) found=$((found - 1)); continue ;;
+    esac
+    env_dir=""
+    [ -r "/proc/$pid/environ" ] && \
+      env_dir="$(tr '\0' '\n' < "/proc/$pid/environ" | sed -n 's/^CLAUDE_CONFIG_DIR=//p' | head -1)"
+    if [ -n "$FIXTURE" ] && [ "$env_dir" = "$FIXTURE" ]; then
+      # 身份对上了 —— **与父进程活不活无关**。台架的残留正是这一族。
+      fixture_hits+=("$pid")
+      echo "  本跑  pid=$pid ppid=$ppid 盯 $env_dir  ${args:0:60}"
+    elif [ "${ppid:-0}" = "1" ]; then
       orphans+=("$pid")
       echo "  孤儿  pid=$pid ppid=1  ${args:0:80}"
     else
       pparg="$(ps -o args= -p "${ppid:-0}" 2>/dev/null | head -c 40 || true)"
-      echo "  活着  pid=$pid ppid=$ppid ($pparg)  —— **不动它**"
+      echo "  活着  pid=$pid ppid=$ppid 盯 ${env_dir:-<默认 ~/.claude>} ($pparg)  —— **不动它**"
     fi
   done < <(pgrep -f "$pat" 2>/dev/null || true)
 done
 
-echo "  共 $found 个 daemon 进程，其中孤儿 ${#orphans[@]} 个"
+echo "  共 $found 个 daemon 进程，其中孤儿 ${#orphans[@]} 个${FIXTURE:+，盯 $FIXTURE 的 ${#fixture_hits[@]} 个}"
 
-if [ "${#orphans[@]}" -eq 0 ]; then
-  echo "  没有孤儿，什么都不做。"
+targets=("${orphans[@]}" ${fixture_hits[@]+"${fixture_hits[@]}"})
+if [ "${#targets[@]}" -eq 0 ]; then
+  echo "  没有可收的，什么都不做。"
   exit 0
 fi
 
@@ -76,11 +121,17 @@ if [ "$YES" != "1" ]; then
   exit 0
 fi
 
-for pid in "${orphans[@]}"; do
+for pid in "${targets[@]}"; do
   # 再核一次：从列出到动手之间，那个 pid 可能已经没了、甚至被别人复用。
+  # ⚠ 两族各有各的复核：孤儿看 `ppid==1`，本跑看 `CLAUDE_CONFIG_DIR` 还是不是那个 fixture。
+  env_now=""
+  [ -r "/proc/$pid/environ" ] && \
+    env_now="$(tr '\0' '\n' < "/proc/$pid/environ" | sed -n 's/^CLAUDE_CONFIG_DIR=//p' | head -1)"
   ppid_now="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ' || true)"
-  if [ "${ppid_now:-}" != "1" ]; then
-    echo "  跳过 pid=$pid —— 现在 ppid=${ppid_now:-<没了>}，不再符合孤儿判据（pid 复用是真事）"
+  if [ -n "$FIXTURE" ] && [ "$env_now" = "$FIXTURE" ]; then
+    : # 身份仍然对得上，收
+  elif [ "${ppid_now:-}" != "1" ]; then
+    echo "  跳过 pid=$pid —— 现在 ppid=${ppid_now:-<没了>} 且身份对不上，不再符合判据（pid 复用是真事）"
     continue
   fi
   kill "$pid" 2>/dev/null && echo "  已收 pid=$pid" || echo "  收不动 pid=$pid（权限？已退出？）"
