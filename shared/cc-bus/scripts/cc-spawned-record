@@ -21,8 +21,21 @@ case "$id" in *[!A-Za-z0-9_-]*|'') echo "cc-spawned-record: 非法/空 id '$id'"
 # 制表符/换行会**当场把 TSV 撕成另一行/另一列**(初始任务是用户自由文本,这条不是假想)。
 # ⚠ **不能写成 `*"$(printf '\n')"*`**:命令替换会把尾部换行剥光 ⇒ 模式变成 `**`,
 #   于是这道门**拦下一切**(首版实测:合法输入也被拒)。用 bash 的 `$'\n'`(shebang 就是 bash)。
-case "$id$dir$task" in *$'\t'*|*$'\n'*)
-  echo "cc-spawned-record: 字段含制表符或换行 —— 会撕坏 TSV" >&2; exit 2;; esac
+#
+# ★★ 08-13 实测事故:`cc-spawn <目录> "$(printf '第一行\n第二行')"` ——
+#    **登记上了总线,台账一行没有,而且一声不吭**(整段 best-effort,退出码被 `|| true` 吞掉)。
+#    ⇒ 分两类处置,别混:
+#      · `id` / `dir` 含这些字符 = **调用方给错了**(id 已有白名单;dir 是绝对路径) ⇒ 照旧硬拒;
+#      · `task` 含换行/制表符 = **用户的自由文本本来就可能这样**,这不是错误 ——
+#        ⇒ **由格式的主人自己处理**:转义成 `\n` / `\t` 写进去,信息一个字不丢,TSV 也不被撕。
+#    ★ 让调用方(`ccm`/`cc-spawn`)去猜 cc-bus 的转义规则,才是真正的耦合;
+#      而「拒收 + best-effort 吞掉」等于**悄悄丢数据**。
+case "$id$dir" in *$'\t'*|*$'\n'*)
+  echo "cc-spawned-record: id/目录 含制表符或换行 —— 会撕坏 TSV" >&2; exit 2;; esac
+# 只对 `task` 转义(它是自由文本)。`printf %b` 那侧不会再解释,写进去的就是字面 `\n`。
+task="${task//$'\\'/\\\\}"   # 先转义反斜杠自身,否则 `a\nb` 与真换行读回来分不开
+task="${task//$'\t'/\\t}"
+task="${task//$'\n'/\\n}"
 
 mkdir -p "$BUS"
 ( flock 9; printf '%s\t%s\t%s\t%s\n' "$id" "$dir" "$(date -Iseconds)" "$task" >> "$BUS/spawned.tsv" ) 9>>"$BUS/spawned.tsv.lock"
