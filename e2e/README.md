@@ -72,11 +72,36 @@ tmux server（跑前跑后 `tmux -L default ls` 逐字对比，**9 个会话，�
 | `tmux-target-acceptance` | 26 过 / 0 败 | |
 | `daemon-fork-session` | 10 过 / 0 败 | |
 | `p3t-local-tmux` | 10 过 / 0 败 | |
-| `cc-spawn-uplift` | 21 过 / 0 败 | ★ 修前 19/2 —— 它还在测 `P4b` 删掉的行为 |
+| `cc-spawn-uplift` | **31 过 / 0 败**（08-13 更新） | ★ 修前 19/2 —— 它还在测 `P4b` 删掉的行为；`C15` 收编后 +10 条 |
 | `exec-bit-guard` | RC=0 | ⚠ 打了非阻断警告：`shared/cc-bus` 与 `~/.claude/skills/cc-bus` **已漂移** |
+| `daemon-sessions-rewatch` | 4 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：`sessions/` 被换 inode / 起初不存在 / 重建后立刻写 |
+| `daemon-tmux-late-server` | 2 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：**daemon 起得比 tmux server 早**（`#60` 现象 1 的根因） |
+| **`graylight-suite`** | **3 过 / 0 败**（08-13） | ★★ 它**不再是「跑不了」的** —— 跑法见下方 `§ 全链套件怎么跑` |
 
-**跑不了的（本机缺条件，不是没跑）**：`graylight-suite` / `f40-suite` / `restart-daemon-frames` /
+**跑不了的（本机缺条件，不是没跑）**：`f40-suite` / `restart-daemon-frames` /
 `ccm-cli.test`（要 Xvfb + 跑着的 dev app）· `ccm-rbind-title`（要 Windows 的 `wt.exe`）。
+⚠ `graylight-suite` **08-13 起不在这一行里了** —— 它跑通了（3 过 / 0 败），跑法见下。
+
+## 全链套件（`graylight-suite`）怎么跑〔08-13 实测记录〕
+
+```
+Xvfb :80 -screen 0 1400x900x24 &
+DISPLAY=:80 HOME=<沙箱> CLAUDE_CONFIG_DIR=<沙箱>/.claude \
+  RUSTUP_HOME=$HOME/.rustup CARGO_HOME=$HOME/.cargo npx tauri dev &
+E2E_DISPLAY=:80 HOME=<沙箱> CLAUDE_CONFIG_DIR=<沙箱>/.claude bash e2e/graylight-suite.sh
+```
+
+四条**踩过才知道**的前提：
+
+1. **`RUSTUP_HOME`/`CARGO_HOME` 要显式指回真路径**：沙箱 `HOME` 会把 rustup 的家一起换掉，
+   `npx tauri dev` 报 `rustup could not find toolchain`。（那两个不是账号数据，与沙箱意图不冲突。）
+2. **daemon 的 `.build_id` 标记文件名逐字是 `.build_id`**（同目录隐藏文件），
+   不是 `<二进制名>.build_id` —— 写错的话 app 判「远端无版本标记」，
+   **把 wrapper 覆盖成内嵌二进制**，daemon 就用**真** `~/.claude` 起来了。
+3. **gate 丁 会因为盘上多余的 daemon 直接 ABORT**：先 `bash e2e/reap-orphan-daemons.sh` 看清楚，
+   自己上一轮留下的按 pid 精确收，认不出的用 `E2E_ACK_DAEMONS=<pid>` 点名放行（要举证）。
+4. **收尾要连 vite 一起收**：只收 `tauri dev` 那个 node 的话，vite 还占着 devUrl 端口，
+   下一次起会报 `Port 24174 is already in use`。⇒ `ss -ltnp | grep :<端口>` 按 pid 收。
 
 ★★ **这一轮真跑逮到 3 处真问题**，全都是「平时没人跑」养出来的：
 ① `local_backend` 那条 `#[ignore]` 两天里被判成「验不出来」，其实是**测试与 daemon 不在同一台
