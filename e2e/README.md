@@ -138,7 +138,7 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 | job | 套件 |
 |---|---|
 | `e2e-tmux` | tmux-target · ccm-cli · ccm-print-parity · ccm-acceptance · ccm-pretrust · ccm-contract-parity · cc-spawn-uplift · restart · resume · ccm-rbind-title |
-| `e2e-tmux-rust` | tmux-guarded · usage-probe · inbound-frames · daemon-gate2 · local-backend · graylight-frames · restart-frames · resume-frames · daemon-fork |
+| `e2e-tmux-rust` | tmux-guarded · usage-probe · inbound-frames · daemon-gate2 · local-backend · graylight-frames · restart-frames · resume-frames · daemon-fork · daemon-sessions-rewatch · daemon-tmux-late-server |
 
 **这些套件刻意都不进本地 `npm test`**（`gate-integrity` 开放问题 1 的决定）：
 `npm test` 要保持「不需要 tmux / 不需要 daemon 就能跑」，否则每个开发动作都变重。

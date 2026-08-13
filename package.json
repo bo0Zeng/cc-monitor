@@ -49,6 +49,8 @@
     "test:ccm-print-parity": "bash e2e/ccm-print-parity.sh",
     "test:usage-probe": "bash e2e/usage-probe-acceptance.sh",
     "test:daemon-fork": "bash e2e/daemon-fork-session.sh",
+    "test:daemon-sessions-rewatch": "bash e2e/daemon-sessions-rewatch.sh",
+    "test:daemon-tmux-late-server": "bash e2e/daemon-tmux-late-server.sh",
     "test:daemon-gate2": "bash e2e/daemon-gate2-acceptance.sh",
     "test:local-backend": "bash e2e/local-backend-supervise.sh",
     "test:ccm-rbind-title": "bash e2e/ccm-rbind-title.sh",
