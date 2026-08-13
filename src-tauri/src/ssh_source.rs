@@ -1554,6 +1554,36 @@ fn tmux_origin_for_sid(
 }
 
 /// F03.2：`tmux_origin_for_sid` 的公开包装——读当前 tmux 快照后调纯函数。emitter 判 idle vs archived 用。
+/// ★★ `P0b-Y2` 第十七拍〔08-13〕：从一份 `tmux ls` 原文里**摘掉**某个会话那一行。
+///
+/// # 为什么需要它（`#60` 现象 2：永久灰点）
+///
+/// 会话关闭帧到达时 `ssh_source` 会 retire 那个 sid；而下游 `classify_removed` 要查
+/// 「这个 sid 的 tmux 还在不在」——它读的是**同一份还没更新的快照** ⇒ 仍看得见那个会话
+/// ⇒ 判 `Idle`（灰）而不是 `Archive`（归档）⇒ **永久灰点、按旧 sid 也 attach 不上**。
+///
+/// 08-13 全链实测（灰灯修好之后那一跑）：`tmux 会话 cc-b471a22f 关闭 ⇒ 立刻 retire`
+/// 紧接着 `remote removed 到达 … tmux_origin=Some("e2e-loopback")` → `remote session idle-tmux`。
+/// ★ `lib.rs` 那段头注早就写下过同一个病（当时针对 `Superseded`）：
+/// 「查快照必然误判成灰点，且那份快照在 P5 删掉 ticker 之后**没有任何事件路径会刷新它**」。
+///
+/// # 为什么是「摘一行」而不是「重新探一次」
+///
+/// 重新探要跨 SSH、要等，而**我们已经知道结论了**（daemon 的正向死亡帧就是结论）。
+/// 摘一行是**把已知事实写进账本**，不是猜。
+/// ⚠ 只按**第一列（会话名）逐字相等**摘 —— 不做前缀匹配（`cc-a` 与 `cc-ab` 会互相误伤）。
+pub fn remove_tmux_line(raw: &str, name: &str) -> String {
+    let mut out: Vec<&str> = raw
+        .lines()
+        .filter(|l| l.split('\t').next() != Some(name))
+        .collect();
+    // 原文以 `\n` 结尾（`tmux ls` 的形状）—— 保持它，免得下游按行切时多出一格空行差异。
+    if raw.ends_with('\n') && !out.is_empty() {
+        out.push("");
+    }
+    out.join("\n")
+}
+
 pub fn find_tmux_origin_for_sid(sid: &str) -> Option<String> {
     tmux_origin_for_sid(&snapshot_tmux_by_origin(), sid)
 }
@@ -4206,8 +4236,20 @@ async fn stream_loop(
                 };
                 match sid {
                     Some(sid) => {
+                        // ★★ `P0b-Y2` 第十七拍：**先把这一格从账本摘掉，再 retire。**
+                        //   顺序反了的话下游 `classify_removed` 查到的还是「tmux 还在」
+                        //   ⇒ 判灰不判归档 ⇒ **永久灰点**（`#60` 现象 2，08-13 全链实测）。
+                        // ⚠ **走既有写口 `record_tmux_raw`，不新开第二个** ——
+                        //   `the_tmux_cache_has_one_writer_and_only_origin_keys` 只许两处写口，
+                        //   而它报得对：账本一旦有第三个写点，「一边存原文一边存解析后的、
+                        //   一边清一边不清」就会长出来（首版就是内联 `get_mut`，当场被拦）。
+                        // ⚠ 读-改-写不是原子的：并发的整份快照更新可能覆盖这次摘除。
+                        //   那是**良性**的 —— 下一份快照本来就是权威，它会说出同样的事实。
+                        if let Some(raw) = snapshot_tmux_by_origin().get(&host_label) {
+                            record_tmux_raw(&host_label, remove_tmux_line(raw, &name));
+                        }
                         tracing::info!(
-                            "tmux 会话 {name} 关闭（daemon 死亡帧）⇒ 立刻 retire sid={sid}"
+                            "tmux 会话 {name} 关闭（daemon 死亡帧）⇒ 已从账本摘除 + 立刻 retire sid={sid}"
                         );
                         if let Err(e) = session_changes.send(SessionChange {
                             added: vec![],
@@ -7624,6 +7666,52 @@ mod capped_line_tests {
             .is_ok(),
             "那行日志与它要守的那次 `app.emit` 之间隔太远（或被排到了后面）——\
              排在 emit 后面的话，emit 卡住时就连「收到了」都没留下"
+        );
+    }
+
+    /// ★ `P0b-Y2` 第十七拍：摘的必须是**那一格**，不许误伤前缀相同的邻居。
+    #[test]
+    fn remove_tmux_line_takes_out_exactly_that_session() {
+        // `tmux ls` 的形状：6 列、制表符分隔、以 \n 结尾。
+        let raw = "cc-a\t/x\tclaude\t0\t1\tsid-a\ncc-ab\t/y\tbash\t0\t1\tsid-ab\n";
+        let out = super::remove_tmux_line(raw, "cc-a");
+        assert!(
+            !out.lines().any(|l| l.split('\t').next() == Some("cc-a")),
+            "该摘的那一格还在：{out:?}"
+        );
+        // ⚠ **不许误伤前缀相同的邻居** —— `cc-a` 与 `cc-ab` 是两个会话。
+        assert!(
+            out.lines().any(|l| l.split('\t').next() == Some("cc-ab")),
+            "把前缀相同的邻居一起摘掉了：{out:?}"
+        );
+        assert!(out.ends_with('\n'), "尾部换行没保住：{out:?}");
+        // 摘不存在的名字 = 原样返回（幂等：同一 sid 两条路都可能到）。
+        assert_eq!(super::remove_tmux_line(raw, "cc-zzz"), raw);
+    }
+
+    /// ★ `P0b-Y2` 第十七拍：**先摘账、再 retire** 的顺序不许反。
+    ///
+    /// 反了的话下游 `classify_removed` 查到的还是「tmux 还在」⇒ 判灰不判归档
+    /// ⇒ **永久灰点**（`#60` 现象 2）。这条钉的是**位置**，不是「那行代码在」。
+    ///
+    /// ⚠ 针要钉**当下的形状**：首版钉 `*raw = remove_tmux_line(...)`（内联 `get_mut` 那版），
+    /// 而实现随后改成走 `record_tmux_raw` ⇒ 针过期，两条变异**双双存活**而判据照绿。
+    /// ★「判据的针跟不上实现」与「判据钉得太小」是同一族的两面。
+    #[test]
+    fn the_ledger_is_pruned_before_the_retire_is_sent() {
+        let prod = guard_core::production_code(include_str!("ssh_source.rs"));
+        let at = guard_core::find_pinned(
+            &prod,
+            "record_tmux_raw(&host_label, remove_tmux_line(raw, &name))",
+        )
+        .expect("会话关闭那一臂必须先把这一格从 tmux 账本里摘掉（且走既有写口）");
+        let send_at = prod[at..]
+            .find("removed: vec![RemovedSid::gone(sid)]")
+            .expect("找不到那次 retire —— 抽取面画错了");
+        assert!(
+            send_at < 900,
+            "摘账与 retire 隔了 {send_at} 字符 —— 中间插了别的东西？\n             \
+             这两件事必须紧挨着且**摘账在前**，否则下游查到的还是「tmux 还在」。"
         );
     }
 
