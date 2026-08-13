@@ -136,6 +136,21 @@ mod tests {
     #[allow(clippy::type_complexity)]
     const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         // ---- monitor 侧 ----
+        // ---- P8a：插件面只读枚举 ----
+        (
+            "src-tauri/src/plugins.rs",
+            "KNOWN_MARKETPLACES_CAP",
+            4 * 1024 * 1024,
+            "读 marketplace 登记表（本机实测 206 字节）",
+            "硬报错",
+        ),
+        (
+            "src-tauri/src/plugins.rs",
+            "MARKETPLACE_MANIFEST_CAP",
+            32 * 1024 * 1024,
+            "读单个 marketplace 的 manifest（本机实测 161 KB / 声明 276 个插件）",
+            "降级+说清",
+        ),
         (
             "src-tauri/src/local_accounts.rs",
             "MANIFEST_CAP",
@@ -783,6 +798,12 @@ mod tests {
                 // 都是**差一行**误报 —— 与其一路加，不如把它写成启发式并交代失效模式：
                 //   · 臂特别长 ⇒ **假红**（marker 落在窗口外）；
                 //   · 紧邻的**别的**语句里恰好有 marker ⇒ **假绿**。
+                //     ⚠ 〔`P8a` 08-12〕这一条**不再是假想的**，实测撞上了：把
+                //     `plugins.rs` 的降级臂改成 `Err(_why) => {}`（真·静默降级），
+                //     本条**照样绿** —— 因为**下一个** `match` 臂里的 `declared_error`
+                //     落进了同一个窗口。⇒ 本条对「同一个 `match` 里有多条臂」这种形状
+                //     **钉不住**，别读成「降级一定被说清了」；那一层今天靠站点自己的
+                //     行为判据兜（`plugins.rs` 那两条当场红）。
                 // 两种都靠人读诊断分辨。已登记进 `ROADMAP §5`。
                 const WINDOW: usize = 10;
                 let window = lines[i..(i + WINDOW).min(lines.len())].join("\n");
@@ -797,7 +818,16 @@ mod tests {
                 } else if *sem == "降级+说清" {
                     // 降级也得**把错误带出去**（塞进 `meta`/`notice`/`error` 任一）。
                     // 不带 = 静默降级，那正是这张封闭集合刻意排除的东西。
-                    ("meta", "把错误带进返回值")
+                    //
+                    // ⚠⚠ 〔`P8a` 08-12 订正〕上面这句话**从第一天起就写着「任一」，
+                    // 而代码只认 `meta`** —— 那是本表只有一个降级点（`local_accounts`）时
+                    // 留下的 **n=1 的针**：它钉的是那一处**碰巧用的字段名**，不是「把错误带出去」
+                    // 这个性质。第二个降级点一来就误报。
+                    // ⇒ 改成**认它自己承诺的那三个词**，不是为放行谁而放宽。
+                    // ★ 如实登记失效模式：`error` 这个词比 `meta` 常见，
+                    // 窗口里恰好出现别的 `error` 会**假绿** —— 与本条窗口启发式的
+                    // 既有失效模式同档，靠人读诊断分辨。
+                    ("meta|notice|error", "把错误带进返回值")
                 } else {
                     // 「跳过+说清」那一档：跳过本身不是问题，**跳过而不说是谁**才是（E4）。
                     // 变异实测：去掉那句 `warn!`，此前**没有任何判据会红** —— 这一档
@@ -816,11 +846,20 @@ mod tests {
                     while k < lines.len() && !lines[k].trim_end().ends_with(';') {
                         k += 1;
                     }
-                    lines[i..(k + 1).min(lines.len())].join("\n")
+                    // ⚠⚠ 〔`P8a` 08-12〕**这个扫描原来没有上界，而那让本条对一整类站点失灵**。
+                    //
+                    // 变异实测：把一处**真降级**的站点登记成「硬报错」⇒ 本条**照样绿**。
+                    // 原因是常量落在 `match … {` 那一行的**臂头**上，而臂们都以 `,` 收尾 ——
+                    // 扫描一路穿过整个 `match`、穿出函数，直到几十行外某条真以 `;` 收尾的
+                    // 语句，而那里的 `?` 把它喂绿了。
+                    // ⇒ 「同一条语句」这个意图本来就该有界：**封到与另外两档同一个窗口**。
+                    // 失效模式如实登记：语句真的长过 `WINDOW` 行 ⇒ **假红**（同窗口档）。
+                    lines[i..(k + 1).min(lines.len()).min(i + WINDOW)].join("\n")
                 } else {
                     window.clone()
                 };
-                if !scope.contains(need) {
+                // 针可以是**一组备选**（`|` 分隔）：命中任一即可。
+                if !need.split('|').any(|n| scope.contains(n)) {
                     bad.push(format!(
                         "  {file}:{} 用 {name}（登记「{sem}」）却没有 `{need}` —— 没有{why}",
                         i + 1

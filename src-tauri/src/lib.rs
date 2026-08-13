@@ -41,6 +41,7 @@ mod panorama;
 mod parser;
 mod paths;
 mod port_forward;
+mod plugins; // P8a：Claude Code marketplace 面的只读枚举（**不声称安装/启用**，见模块头注）
 mod profile_installer;
 mod pubkey;
 mod remote_branch; // G6：远端分叉（经 ssh 调 daemon `--fork-session`）——写面故与只读的 remote_history 分家
@@ -1150,6 +1151,7 @@ pub fn run() {
             skill_host::list_skills,
             skill_host::read_skill_file,
             skill_host::write_skill_file,
+            plugins::list_plugin_marketplaces,
             panorama::panorama_index,
             panorama::panorama_reindex,
             panorama::panorama_status,
