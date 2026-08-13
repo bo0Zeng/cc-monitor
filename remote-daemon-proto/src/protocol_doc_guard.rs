@@ -140,6 +140,62 @@ mod tests {
 
     const DOC: &str = include_str!("../../doc/IPC-PROTOCOL.md");
 
+    /// ★★ `P7c-2`〔用@08-13 的解耦约束〕：**全景协议只许暴露查询语义。**
+    ///
+    /// # 这条今天是**前提触发器**，不是空真
+    ///
+    /// daemon 今天**没有**全景（`code-picture-core` 在 daemon 侧命中 0）。本条断言的正是
+    /// 这个前提：一旦有人把全景接进 wire，下面那个计数会变、本条**当场红** ——
+    /// 红了不是坏事，是让那个人**先读完这段话**再往下写。
+    ///
+    /// # 那段话（用户 08-13 逐字给的约束，量完之后收窄成一句可验的）
+    ///
+    /// 原话是「以后要改**索引方式**以及**解析方式**或者**添加新语言**才方便」。
+    /// 三轴量完（`P7c-2 §1b`）：
+    /// · **索引方式** 在我们这层（monitor 的 22 个命令已是纯查询语义）⇒ 管得了；
+    /// · **解析方式** / **加新语言** 住在 `vendor/code-picture-core`（`Lang::` 散在 6 个文件 73 处），
+    ///   而 `C7` 逐字「vendor 不动」、`VENDOR.md` 更硬（「副本是上游的镜子，不是分身，
+    ///   要改行为**先改上游再 re-vendor**」）⇒ **daemon 的接口形状决定不了那两件**。
+    ///
+    /// ⇒ daemon 侧唯一能保证、也唯一该保证的是：**不给那条路添新障碍** ——
+    /// 协议里**不复制** grammar 清单、不暴露存储、不暴露解析开关。
+    /// 复制了才真的锁死（那时改一门语言要同时动上游、vendor、和 daemon 协议三处）。
+    ///
+    /// ⚠ 这条比用户原话**窄**。窄的那部分不是被砍掉的，是它本来就不在这一层。
+    #[test]
+    fn the_panorama_protocol_would_only_expose_query_semantics() {
+        let inbound = include_str!("inbound.rs");
+        let wire = include_str!("wire.rs");
+        // ⚠ 剥注释用**共享原语**（`guard_core::production_code`，daemon 侧经 `guard_support` 再导出）。
+        //   本会话已经栽过一次：自己内联一份 `#` 剥法，被 `structural_scan` 的
+        //   「剥注释实现只许一份」当场逮住，而答案是「共享原语早就有了，我只是没找」。
+        let prod = format!(
+            "{}{}",
+            guard_core::production_code(inbound),
+            guard_core::production_code(wire)
+        );
+        // ① 前提：今天 daemon 里没有全景。它变了就该回来读上面那段。
+        for absent in ["code_picture", "panorama"] {
+            assert!(
+                !prod.contains(absent),
+                "daemon 的协议面出现了 {absent:?} —— 全景接进来了。\n             \
+                 ⇒ 请先读本判据的头注（`P7c-2` 的解耦约束），再把下面 ② 那张禁词表核一遍。"
+            );
+        }
+        // ② 无论今天还是以后：**存储与 grammar 细节一个都不许上线**。
+        //    今天这条是真的在跑（它扫的是现有协议面），不是等以后才生效。
+        for leaked in [
+            "sqlite", "rusqlite", "tree_sitter", "grammar", "index.db", "CREATE TABLE",
+        ] {
+            assert!(
+                !prod.to_lowercase().contains(&leaked.to_lowercase()),
+                "daemon 的协议面泄漏了实现细节 {leaked:?}。\n             \
+                 协议只许说**查询语义**（overview/node/callers/callees/impact/search…）——\n             \
+                 说了存储或 grammar，换索引实现就得改协议，而改一门语言要动三处。"
+            );
+        }
+    }
+
     /// `wire.rs` 生产段里所有**会上线**的字段名。
     ///
     /// # 取法：括号配平，**不是**逐行认形状
