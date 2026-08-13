@@ -792,6 +792,14 @@ mod tests {
                 "`ccm` 生产段里出现了 {owned_by_cc_bus:?} —— 那是 **cc-bus 的**文件格式。\n                              `C15` 要的是「把事实告诉总线」，不是「让 ccm 也学会写总线的文件」：\n                              两份实现改一处漏一处（本仓一路在收的那一族）。"
             );
         }
+        // ③b 台账脚本**单独查一次**〔08-13〕：定位用的是 `cc-register`，而这两个脚本
+        //     **不是同时进来的**（`cc-spawned-record` 是 `C15` 才加的）。用户盘上那份 cc-bus
+        //     只要旧一点（`exec-bit-guard` 早就在警告仓内与 `~/.claude/skills/cc-bus` 已漂移），
+        //     就会是「登记照常、**台账悄悄没了**」—— 而整段是 best-effort，失败一个字都不会说。
+        guard_core::find_pinned(&prod, "if [ -x \"$bus_scripts/cc-spawned-record\" ]; then")
+            .unwrap_or_else(|e| {
+                panic!("{e}\n⇒ 台账脚本没被单独查 —— 旧版 cc-bus 上会「登记上了总线、台账没写」，且一声不吭。")
+            });
         // ③ 找不到 cc-bus 时不许**一声不吭**地跳过。
         //    「你要了登记却没登上」= 会话在跑、却不在总线上 ⇒ `cc-send` 石沉大海（假成功比失败更坏）。
         assert!(

@@ -785,7 +785,17 @@ if [ "$use_tmux" = 1 ]; then
       #（与上面预信任兜底那条 `|| true` 同一个理由，见其头注）。
       seq="$seq; { _p=\$(tmux list-panes -t $t -F '#{pane_id}' 2>/dev/null | head -1)"
       seq="$seq; [ -n \"\$_p\" ] && TMUX_PANE=\"\$_p\" $(sq "$bus_scripts/cc-register") $(sq "$tmux_name") >/dev/null 2>&1"
-      seq="$seq; $(sq "$bus_scripts/cc-spawned-record") $(sq "$tmux_name") $(sq "$cwd") $(sq "$bus_note") >/dev/null 2>&1; } || true"
+      # ★ 台账脚本**单独查一次**〔08-13〕：定位用的是 `cc-register`，而这两个脚本
+      #   **不是同时进来的** —— `cc-spawned-record` 是 `C15` 才加的。用户盘上那份 cc-bus
+      #   只要比它旧（`exec-bit-guard` 早就在警告仓内与 `~/.claude/skills/cc-bus` **已漂移**），
+      #   就会是「登记照常、**台账悄悄没了**」：整段是 best-effort，失败一个字都不会说。
+      #   ⇒ 缺了就说一句，然后**照旧继续**（台账没了不该挡住起会话）。
+      if [ -x "$bus_scripts/cc-spawned-record" ]; then
+        seq="$seq; $(sq "$bus_scripts/cc-spawned-record") $(sq "$tmux_name") $(sq "$cwd") $(sq "$bus_note") >/dev/null 2>&1; } || true"
+      else
+        seq="$seq; } || true"
+        printf 'ccm: %s 不在（或不可执行）—— 会话会**登记上总线但不进 spawn 台账**。cc-bus 该同步了。\n' "$bus_scripts/cc-spawned-record" >&2
+      fi
     fi
   fi
 
