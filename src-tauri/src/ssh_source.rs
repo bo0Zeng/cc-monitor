@@ -4222,6 +4222,12 @@ async fn stream_loop(
                 // ⚠ **只记「变化」，不是每帧都记**：帧由 tmux hook 驱动，逐帧记会把日志淹掉
                 // （而淹掉的日志与没有日志一样不可读）。记变化反而更有用 —— 它给的是
                 // 「何时进入不可观测、何时恢复」，那比一个计数更能回答 `#82`。
+                //
+                // ⚠⚠ **射程如实登记**〔D 阶段补审〕：这条日志给的是**区间**，不是**帧计数**。
+                // 要问「多大比例的帧是 unobservable」得再加一个计数器 —— 本件**不做**，
+                // 因为 `U3` 要的是「让这个数变得可测」，而区间对 `#82`（控制模式值不值得做）
+                // 更直接：它回答的是「不可观测**持续了多久**」。
+                // **别把本件读成「频率已经可测了」。**
                 let verdict = crate::tmux::classify_tmux_observation(&raw, observation.as_deref());
                 let kind = match &verdict {
                     crate::tmux::TmuxObservation::Backend(_) => "backend",
