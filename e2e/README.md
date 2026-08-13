@@ -15,6 +15,40 @@
   ±亚像素合法舍入摆动,幅度与 §21 病态同级、密度差一个量级——健康 ≈0.12-0.16,
   病态 ≈1.0,断言 ≤0.4(标定 2026-07-08,详 src/e2e-probe.ts 头注释)。
 
+## ★★ tmux 隔离：一律走 `tmux-shim.sh`（`C7i` 红线）
+
+**任何会碰 tmux 的套件，隔离只有一种做法**：
+
+```sh
+TMUX_SHIM_SOCK=e2eYourSuite
+# shellcheck source=e2e/tmux-shim.sh
+. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh"
+trap 'tmux_shim_cleanup' EXIT
+```
+
+它把一个 `$BIN/tmux` shim 放进 PATH 最前，`exec` 真 tmux 并**强插 `-L <私有名>`**。
+调用点一个字都不用改，连套件 shell out 出去的东西（`ccm` / `cc-spawn` 内部也裸调 tmux）
+也一并覆盖。
+
+**绝不用 `TMUX_TMPDIR` 做隔离** —— `$TMUX` 一有值就压过它。2026-08-11 一条探针就是这么把
+用户**9 个真实 tmux 会话**打没的；`C7i` 因此逐字禁掉那条路。机检在
+`src-tauri/src/e2e_gate_registry.rs`（零容忍、零例外）。
+
+⚠ 要把隔离**传给被你拉起的子进程**（比如被监护的 daemon 自己会跑 `tmux ls`）时，
+传的是 **shim 目录**、让它进子进程的 `PATH`，**不是**传 `TMUX_TMPDIR`
+（`local-backend-supervise.sh` 是现成的样板：`CCM_E2E_TMUX_SHIM_BIN`）。
+
+### 改完隔离之后怎么验（`P0d`/`P0e` 的协议，照着做）
+
+1. **跑前**记用户真实 server 的快照 —— `tmux -L default ls`
+   （**这条读命令自己也带选择器**：`C7i` 说的是「一律」）；
+2. 跑套件；
+3. **跑后**再记一次，`diff` 两份 —— **一个字都不该变**；
+4. 确认自己那台收干净了：`tmux -L <私有名> ls` 应回 `no server running`。
+
+08-12 实测两套：`restart-suite` **24 过/0 败**、`resume-suite` **17 过/0 败**，
+真实 server 跑前跑后**均为 9 个会话、逐字未变**，私有 server 均已收。
+
 ## 跑法
 
 ```bash
