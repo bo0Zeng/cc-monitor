@@ -339,7 +339,9 @@ jobs:
           #   （daemon 起得比 tmux server 早时，后来的会话看不看得见 —— `#60` 的根因形状，
           #    只有真起 daemon + 真建 tmux server 才验得出）。
           #   今天实测构成：**51 = e2e 30 + fake-claude 1 + cc-bus 14 + ccm 1 + scripts 1 + vendored 4**。
-          [ "$N" -ge 51 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 51）"; exit 1; }
+          #   **2026-08-13 棘到 52**：新增 `scripts/gate.sh`（出货前的唯一闸门 —— 它自己也要被 lint）。
+          #   今天实测构成：**52 = e2e 30 + fake-claude 1 + cc-bus 14 + ccm 1 + scripts 2 + vendored 4**。
+          [ "$N" -ge 52 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 52）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
