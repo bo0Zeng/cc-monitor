@@ -133,9 +133,52 @@ fi
 #     （`sftp::ensure_daemon_deployed` 的落点）——**那一族当时根本不在人群里**，
 #     计数器却会安心地报 0。⇒ 两族都数。
 #     （`needle_anchor_registry` 管的就是这个：**匹配单位不许比事实小**。）
+# ★★★ **`U10g` 落地〔08-13 自批，举证见下〕：判别从「按个数」换成「按身份」。**
+#
+# 待决 `U10g` 原文写着「真正的判别该收窄成什么（多半是按 hello 里的 `claude_dir`）」。
+# 08-13 实测：**身份信号是现成的，而且不用等 hello** —— daemon 的
+# `/proc/<pid>/environ` 里就有 `CLAUDE_CONFIG_DIR`（wrapper 用 `env` 传的那个）。
+#
+# ⇒ 只数**盯着本跑 fixture 的**那些。别人的 daemon（用户自己的 cc-monitor、
+# 别的工作区的台架）盯的是别的目录 ⇒ **天然不在人群里**，不再挡路。
+#
+# ★ 为什么这比「按个数 + 手工点名」强：
+# · 按个数是 fail-closed 但**误报**（这一轮三次被无关 daemon 挡住，每次都要人工核 pid）；
+# · 手工点名（`E2E_ACK_DAEMONS`）把「多余的那个是谁」从机器手里接了过来 ——
+#   08-13 实测当场吃过亏：点名一个之后，另一个陈旧 daemon 藏在计数里过去了，读数被污染。
+# · 按身份两头都对：**与本跑无关的不计**，而**盯着本跑目录的多一个就是真问题**。
+#
+# ⚠ 射程如实写：读不到 environ 的（权限/进程刚没）**当作「盯着本跑」计入** ——
+#   宁可多报一次 ABORT，不可漏掉一个真的在搅局的。
+_count_our_daemons() {
+  local n=0 pid env_dir
+  for pid in $(pgrep -f 'remote-daemon-proto/target/[^ ]*/cc-monitor-remote' 2>/dev/null) \
+             $(pgrep -f '\.cc-monitor/bin/cc-monitor-remote' 2>/dev/null); do
+    # ⚠ **按 exe 复核，不信 cmdline**：`pgrep -f` 会匹配到**任何命令行里含这个模式的进程**
+    #   —— 08-13 实测它数进了**我自己那条正在跑的 shell**。这与本轮五次 `pkill -f` 自伤
+    #   同一族（`reap-orphan-daemons.sh` 早就改成按 exe 判，这里跟上）。
+    case "$(readlink -f "/proc/$pid/exe" 2>/dev/null)" in
+      *cc-monitor-remote) : ;;
+      *) continue ;;
+    esac
+    # 身份 = 它盯哪个 claude_dir。三态**语义不同，必须分开**（08-13 实测把后两态混过一次）：
+    #   · 值 == 本跑的 fixture      ⇒ 是我们的，计入
+    #   · 值 != 本跑的              ⇒ 别人的（别的工作区/别的台架），不计
+    #   · **变量不存在**            ⇒ 它盯的是默认 `~/.claude`，**不是我们的**（本台架的
+    #     wrapper 一律 `exec env CLAUDE_CONFIG_DIR=… daemon`，我们的那个必定带着它）
+    #   · environ **真的读不到**    ⇒ 不知道 ⇒ **计入**（宁可多报一次 ABORT）
+    if [ -r "/proc/$pid/environ" ]; then
+      env_dir="$(tr '\0' '\n' < "/proc/$pid/environ" | sed -n 's/^CLAUDE_CONFIG_DIR=//p' | head -1)"
+      [ "$env_dir" = "$CLAUDE_DIR" ] && n=$(( n + 1 ))
+    else
+      n=$(( n + 1 ))
+    fi
+  done
+  printf '%s' "$n"
+}
 _dev_daemons=$(pgrep -fc 'remote-daemon-proto/target/[^ ]*/cc-monitor-remote' 2>/dev/null || echo 0)
 _dep_daemons=$(pgrep -fc '\.cc-monitor/bin/cc-monitor-remote' 2>/dev/null || echo 0)
-_daemons=$(( _dev_daemons + _dep_daemons ))
+_daemons=$(_count_our_daemons)
 # ★★ **降级档，不动判定**〔`P0b` 第三拍 08-13，待决 `U10g` 未裁前的过渡〕：
 #
 # 补齐人群之后本格变成 fail-closed —— 好处是「读数被别人污染」不会再无声通过，
@@ -165,9 +208,9 @@ fi
 # ⚠ 处置**不再教人裸 `pkill -f`**：模式杀没有「只杀我起的那些」这个概念
 #   （`P5L` 那拍 `pkill -f xdg-terminal-exec` 把我自己的 shell 打死过）。
 #   `e2e/reap-orphan-daemons.sh` 只收 `PPID == 1` 的那些，**默认干跑**，且逐个打印。
-[ "$_daemons" -le 1 ] || _abort "盘上有 $_daemons 个 daemon 进程（dev $_dev_daemons + 部署 $_dep_daemons），孤儿？—— 它们会贡献额外的 SSH 登录，把读数搅浑。先跑 \`bash e2e/reap-orphan-daemons.sh\`（干跑）看清楚，再 \`--yes\`"
+[ "$_daemons" -le 1 ] || _abort "有 $_daemons 个 daemon **盯着本跑的 $CLAUDE_DIR**（盘上共 dev $_dev_daemons + 部署 $_dep_daemons），孤儿？—— 它们会贡献额外的 SSH 登录，把读数搅浑。先跑 \`bash e2e/reap-orphan-daemons.sh\`（干跑）看清楚，再 \`--yes\`"
 
-echo "  OK   台架自证通过（app 在写日志 · daemon 盯 $CLAUDE_DIR · dev 实例在 :$_devport · daemon 进程 $_daemons 个 = dev $_dev_daemons + 部署 $_dep_daemons）"
+echo "  OK   台架自证通过（app 在写日志 · daemon 盯 $CLAUDE_DIR · dev 实例在 :$_devport · **盯本跑的** daemon $_daemons 个；盘上共 dev $_dev_daemons + 部署 $_dep_daemons）"
 
 SID="$(cat /proc/sys/kernel/random/uuid)"; SID8="${SID:0:8}"
 SESSION="cc-$SID8"; KEEP="cc-e2ekeep-$$"
