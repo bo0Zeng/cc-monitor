@@ -152,6 +152,25 @@ pub fn split_combined<'a>(raw: &'a str, marker: &str) -> (&'a str, &'a str) {
 /// （同 `mcp.rs` 那条 `CMD` 常量的形状）。
 /// 尊重 `CC_BUS_HOME`（cc-bus 自己就用这个变量定位状态目录）。
 /// 结尾 `true` 保证两个文件都不存在时命令仍 rc=0——"没装 cc-bus"不是错误，是一种状态。
+/// ## 为什么这条读面**还没**走 daemon〔`P4a2` 摸底 08-12，有读数〕
+///
+/// 常被问「远端这条为什么不走已经连着的 daemon，省掉每次一次 SSH 握手」。收益是**真的**，
+/// 代价也是真的，两边都量过：
+///
+/// **收益**：`connect_and_exec_cmd` 每次都 `connect_session` —— **不复用连接**。
+/// 实测（08-12，loopback，三次一致）：一次 SSH 握手+鉴权 **≈180ms**；
+/// 而已连着的通道上跑一条命令 **≈0ms**。真实远端还要在 180ms 上再加 RTT×握手往返数。
+/// ⇒ 每次开驾驶舱省的就是这 180ms 起步。**它不是零，但驾驶舱是按需读、不轮询**，
+/// 用户一次点击等 0.2s —— 这个量级不足以单独撑起一次架构改动。
+///
+/// **代价**：`CC_BUS_CAT_CMD` 逐字知道 `~/.cc-bus/agents.tsv` 长什么样。换传输 = 把这份
+/// **文件格式耦合搬进 daemon**，而 `P4b` 作废重写的理由逐字是「**cc-bus 后面肯定还是要变的**」——
+/// 把一个正要变的东西焊进 daemon，是拿 180ms 换一次以后更贵的返工。
+///
+/// **⚠ 解锁条件不是「`P4b` 落地」**（那件 08-12 已签收，但它只删掉了 cc-spawn 的复用判定，
+/// **`agents.tsv` 的格式契约一字未动**）——实质条件是**格式契约稳下来**。
+/// 届时的正确形状多半**不是**把 shell 串搬过去，而是 daemon 出一条**具名的读命令**
+/// （形状抄 `P4d` 那批：stdin JSON 进 / stdout JSON 出 / 能力探测口报得出来）。
 const CC_BUS_CAT_CMD: &str = concat!(
     r#"B="${CC_BUS_HOME:-$HOME/.cc-bus}"; cat "$B/agents.tsv" 2>/dev/null; "#,
     r#"printf '\n@@CCMON-CCBUS-SPLIT@@\n'; cat "$B/spawned.tsv" 2>/dev/null; true"#
@@ -1669,5 +1688,28 @@ mod tests {
         assert_eq!(sk, 0);
         assert_eq!(m[0].from, "");
         assert_eq!(m[0].text, "orphan");
+    }
+
+    /// `P4a2`：「为什么这条读面还没走 daemon」的**读数**必须留在代码里。
+    ///
+    /// # 为什么这段散文值得一条判据
+    ///
+    /// 它挡的是**重复摸底**：这个问题（「省一次握手不好吗」）已经被问过两轮，
+    /// 而两轮的结论都靠一个**具体数**（180ms）与一个**具体代价**（把正要变的文件格式
+    /// 焊进 daemon）。删掉那个数，下一个人只能靠感觉重答一遍。
+    ///
+    /// ★ 更要紧的是钉住**解锁条件的实质**：`P4a2` 原文写的是「`P4b` 落地之后」，
+    /// 而 `P4b` 08-12 已签收 —— 照字面读就该开工了。但它只删掉了 cc-spawn 的复用判定，
+    /// **`agents.tsv` 的格式契约一字未动**。⇒ 判据钉「解锁条件不是『P4b 落地』」这句话在。
+    #[test]
+    fn why_the_read_face_is_not_on_the_daemon_yet_stays_measured() {
+        let prod = guard_core::production_source(include_str!("cc_bus.rs"));
+        for needle in ["180ms", "格式契约稳下来", "解锁条件不是"] {
+            assert!(
+                prod.contains(needle),
+                "读面头注里少了「{needle}」—— 那段是 `P4a2` 摸底的全部产出，\
+                 删了它下一个人会拿感觉重答一遍「省一次握手不好吗」"
+            );
+        }
     }
 }
