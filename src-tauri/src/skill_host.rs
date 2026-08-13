@@ -170,6 +170,25 @@ pub const SKILLS: &[SkillSpec] = &[
     },
 ];
 
+/// # 为什么本仓**没有** skill 的「装/卸」UI —— 那是**不许装**，不是「还没写」〔`PS2` 08-12〕
+///
+/// 被指派「做 skill 的装卸面」的人会落在本文件。先读这段，省下几天：
+///
+/// 1. **两条 skill 一条都装不了。** `planned-build` 是 `Install::NotSupported`
+///    （用户自己装的，我们只读它的产物）；`cc-bus` 是 `ManagedTool("cc-bus")`，
+///    而 `TOOLS` 里那条 `installable: false` —— 深理由写在 `tool_registry.rs` 那条上：
+///    **落点 `~/.claude/skills/cc-bus` 被只读铁律排除**（`doc/INVARIANTS.md` 穷举的 6 条例外
+///    没有一条覆盖它，第 2 条逐字「**绝不碰** `~/.claude/`」）。
+///    ⇒ 做出来的按钮**恒灰或骗人**。要开口子得先裁 —— 待决 `U10b`。
+///
+/// 2. **「已装 / 未装 / 版本不符」的第三态今天在类型上就不存在**（见下面的 [`Presence`]）。
+///    它不是加个 UI 分支的事：得先有「装着的那份是哪个版本」这个量，而那个量**没有真相源** ——
+///    仓内那份与 `~/.claude/skills/` 那份实测**差 167 行**，拿哪份当真相源是 `U9` 第二问，**未裁**。
+///    **先画三态再去凑数据，顺序是反的。**
+///
+/// 3. ⇒ 结论：**不做那个按钮**，也不做一个恒灰的占位 —— 一个永远点不动的入口
+///    比没有入口更糟，它让人以为「功能在，只是坏了」。
+///
 /// 探测结果。**失败必须说清是哪个 skill 的哪条前提**（定框 C6）。
 #[derive(Debug, PartialEq, Eq)]
 pub enum Presence {
@@ -782,5 +801,54 @@ mod tests {
                  若真要加，先回定框 C4 加一行理由，并把 ROADMAP 的 5a 从「靶子转移」改回「活的」。"
             );
         }
+    }
+
+    /// `PS2-Y1`：「为什么没有装卸面」那段边界必须留在本文件上。
+    ///
+    /// 它省的是**几天**：下一个被指派这件事的人若不知道两条 skill 一条都装不了，
+    /// 会先去写 UI、再在联调时撞上 `installable: false`，最后才找到只读铁律那堵墙。
+    ///
+    /// ⚠ 读 `production_source`（**只剥测试段、保留注释**）—— 上一件 `P8b` 首跑就栽在
+    /// 用错剥法上：`production_code` 连 `//` 一起剥，而这类判据钉的**恰恰是注释**。
+    /// 剥测试段仍是必须的：否则本条自己这几个字面量会把自己喂绿（本会话第六次防同一个自伤）。
+    #[test]
+    fn why_there_is_no_install_ui_is_written_down_here() {
+        let prod = guard_core::production_source(include_str!("skill_host.rs"));
+        for needle in ["U10b", "U9", "installable: false", "恒灰"] {
+            assert!(
+                prod.contains(needle),
+                "宿主头注里少了「{needle}」—— 那段边界是 `PS2` 唯一的交付物"
+            );
+        }
+        // ★ 钉**说法本身**：把「不许装」写成「还没实现」是最可能的腐坏形态，
+        // 而两者的处置完全不同（一个要裁定、一个要工时）。
+        assert!(
+            prod.contains("那是**不许装**，不是「还没写」"),
+            "那句区分被改掉了 —— 它正是本件的正题"
+        );
+    }
+
+    /// `PS2-Y2`：`Presence` 今天**恰好两态**。
+    ///
+    /// ★★ 本条**不是禁止加第三态** —— 它是个**提问点**：加之前先答「装着的那份是哪个版本」
+    /// 从哪来（`U9` 第二问，实测两份差 167 行）。答了就把这条改掉，连同上面那段头注。
+    #[test]
+    fn presence_still_has_exactly_two_states() {
+        // 用穷举 match 钉：加了变体**编译期**就红在这里，比数字符串可靠。
+        let sample = Presence::Missing {
+            skill: "x".into(),
+            expected: PathBuf::from("/x"),
+        };
+        let n = match sample {
+            Presence::Found => 1,
+            Presence::Missing { .. } => 2,
+        };
+        assert_eq!(
+            n, 2,
+            "`Presence` 的变体变了。**不是不许加第三态**（「版本不符」正是 `PS2` 想要的），\
+             但加之前先答：装着的那份是**哪个版本**、这个量从哪来？—— 那是 `U9` 第二问，\
+             今天未裁，且实测仓内那份与 `~/.claude/skills/` 那份差 167 行。\
+             答了就把这条判据与 `skill_host` 头注那段一起改掉。"
+        );
     }
 }
