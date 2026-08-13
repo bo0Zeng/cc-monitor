@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# `cc-send` 兜底路径：**队列里滞留的消息不许没人管**〔08-13 实测事故〕。
+# `cc-send`：**消息没到的时候，必须有人说话**〔08-13 实测〕。
+#
+# 两件事同一族，都在这套里：
+#  ① 队列里滞留的消息没人管（`cc-busd` 死在「入队后、取走前」）——`[1]`~`[6]`；
+#  ② 收件人根本不存在（名字打错/对方还没登记）——`[7]`。
+# 共同形状：**投递没发生，而两侧都被告知一切正常**。
 #
 # ## 它守的那件事
 #
@@ -194,6 +199,21 @@ out6="$("$S/cc-send" bob "自己那条" 2>&1)"
 chk "★ 坏信封之后那条照样补投" "$(jq -r .id < "$B/inbox/bob.jsonl" | grep -c '^good-1')" "1"
 chk "  坏信封被消费掉、不再占队列" "$(qcount "$B")" "0"
 chk "  拦下计数如实（坏信封算被路由层拦下）" "$(printf '%s' "$out6" | grep -c '拦下 1 条')" "1"
+
+echo "[7] 收件人根本不存在时要说一句（把 planner 打成 planer）"
+new_bus 7
+printf 'alice\t%%1\t2026-08-13T00:00:00-07:00\n' > "$B/agents.tsv"
+out7="$("$S/cc-send" planer "把结论发给 planner" 2>&1)"
+chk "★ 未登记的收件人 ⇒ 明说" "$(printf '%s' "$out7" | grep -c "'planer' 不在已登记名单")" "1"
+chk "  但消息照发（不拦截：先发后到是正当用法）" "$(wc -l < "$B/inbox/planer.jsonl" 2>/dev/null || echo 0)" "1"
+out7b="$("$S/cc-send" alice "正常一条" 2>&1)"
+chk "  已登记的收件人**零噪音**" "$(printf '%s' "$out7b" | grep -c '不在已登记名单')" "0"
+# 名字匹配必须是**整行整字段**：planner 登记着，plan / planner2 都不算登记过
+printf 'planner\t%%2\tx\n' > "$B/agents.tsv"
+chk "  精确匹配：planner 已登记 ⇒ 不告警" "$("$S/cc-send" planner m 2>&1 | grep -c '不在已登记名单')" "0"
+chk "  精确匹配：plan（前缀）⇒ 照样告警" "$("$S/cc-send" plan m 2>&1 | grep -c '不在已登记名单')" "1"
+rm -f "$B/agents.tsv"
+chk "  agents.tsv 还不存在（第一次用）⇒ 也告警，不当成「都登记过」" "$("$S/cc-send" bob m 2>&1 | grep -c '不在已登记名单')" "1"
 
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
