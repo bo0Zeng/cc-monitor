@@ -318,6 +318,113 @@ mod tests {
         );
     }
 
+    /// ★★ `C7i` 红线的**存量债棘轮**〔`P0e` 08-12 实测〕：
+    /// **靠 `TMUX_TMPDIR` 做隔离的 e2e 脚本里，裸 `tmux` 调用只许变少。**
+    ///
+    /// # 红线逐字
+    ///
+    /// 「tmux 命令**一律带 socket 选择器**（`-S <绝对路径>` 或 `-L <名>`），
+    /// `kill-server` 不许没有选择器，**禁止靠 `TMUX_TMPDIR`/`unset TMUX` 做隔离**」。
+    ///
+    /// 它不是洁癖：08-11 一条探针写了 `TMUX_TMPDIR=… tmux kill-server`，
+    /// `TMUX` 被外层压过 ⇒ 命令打到用户**真实**的 server 上，**9 个真实会话没了**。
+    ///
+    /// # 为什么是棘轮而不是当场修光
+    ///
+    /// `P0d` 把**三套**换成了 `-L` shim，但它的人群是「那三套 + 三套已合规」——
+    /// 今天实测**还有 4 套在人群外**（`inbound-daemon-frames` / `restart-suite` /
+    /// `resume-daemon-frames` / `resume-suite`，合计 **15 处**裸调）。
+    /// ⚠ 而 `P0d` 的 acceptor 是**一次性实测** ⇒ 既拦不住回潮，也发现不了人群外的。
+    ///
+    /// 一次修光要**真跑这 4 套 e2e**（它们会起真 tmux）—— 而那正是 08-11 事故的形态。
+    /// ⇒ 先钉住「不许再长」，修的时候连同真跑一起做（那需要一个能盯着的窗口）。
+    ///
+    /// ⚠ **失效模式如实登记**：命令位的判定是启发式（行首 / `;` / `|` / `$(` / `&&` 之后）。
+    /// 写成 `eval "tm$x new-session"` 这类绕得过去；`echo` 里提到 tmux 会**误计**
+    /// （宁可多算：多算只会让棘轮更紧，少算才会漏）。
+    #[test]
+    fn bare_tmux_in_tmpdir_isolated_suites_only_goes_down() {
+        /// 08-12 全树实测：4 个脚本 / 15 处。**只许降。**
+        const CEILING: usize = 15;
+
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("e2e");
+        let mut total = 0usize;
+        let mut detail: Vec<String> = Vec::new();
+        // ⚠ 走 `guard_core::scan_tree!` 而不是自己 `read_dir` —— `scanning_guard_registry`
+        // 逐字要求：裸遍历的判据「在自己的登记表/注释/常量里找到自己 ⇒ **恒绿**，
+        // audit-0805 实测五次，**五次都不是被判据变红发现的**」。
+        // ★ 本条扫的是 `.sh`、自己是 `.rs`，**按构造读不到自己** —— 但仍走共享原语：
+        //   规矩是「用那把尺」，不是「证明这次不会自伤」（下一个抄这段的人可能就扫 `.rs` 了）。
+        for (f, src) in guard_core::scan_tree!(&dir, &["sh"]) {
+            let exec: Vec<&str> = src
+                .lines()
+                .filter(|l| !l.trim_start().starts_with('#'))
+                .collect();
+            // 人群：**自己**设 `TMUX_TMPDIR` 的（= 拿它当隔离），不是提一句的。
+            if !exec.iter().any(|l| l.contains("TMUX_TMPDIR=")) {
+                continue;
+            }
+            let n = exec.iter().filter(|l| bare_tmux_call(l)).count();
+            if n > 0 {
+                total += n;
+                detail.push(format!("  {} : {n}", f.file_name().unwrap_or_default().to_string_lossy()));
+            }
+        }
+        assert!(
+            total <= CEILING,
+            "靠 `TMUX_TMPDIR` 隔离的套件里，裸 `tmux` 调用有 {total} 处 > 棘轮上限 {CEILING}。\n\
+             ★ `C7i` 红线逐字：**禁止靠 `TMUX_TMPDIR`/`unset TMUX` 做隔离** —— \
+             08-11 那条探针就是这么把用户 **9 个真实会话**打没的。\n\
+             正确形状抄 `P0d`：一个 `$BIN/tmux` shim（`exec` 真 tmux + 强插 `-L <私有名>`）进 PATH 最前，\
+             调用点一个字都不用改（`graylight-suite.sh` 是现成的样板）。\n\
+             ⚠ **不许把上限调上去让今天好过** —— 这是递减棘轮。\n\
+             当前分布：\n{}",
+            detail.join("\n")
+        );
+        // 抽取器自检：一处都数不出来 ⇒ 人群或判定坏了，上面那条就是空绿。
+        assert!(
+            total >= 10,
+            "只数出 {total} 处 —— 判定坏了（08-12 实测 15 处），\
+             那样「没超上限」是零命中得来的，不是真的"
+        );
+    }
+
+    /// 命令位上的裸 `tmux`（没有 `-L`/`-S` 紧跟）。
+    ///
+    /// ⚠ 判定要**两条都满足**，缺一条就会数出别的东西：
+    /// ① `tmux` 前面（去空白后）是**行首**或 `;` `|` `&` `(` —— 即它在命令位；
+    /// ② 后面紧跟的是**小写子命令**（`new-session` / `ls` / …）。
+    /// 少了②，`echo "… tmux ls …"` 这类文字会被算进来 —— 首版就是这么数出 28 的
+    /// （另一把尺数 15）。**两把尺不一致就不能立棘轮**，先把尺修对。
+    fn bare_tmux_call(line: &str) -> bool {
+        let b = line.as_bytes();
+        let mut i = 0usize;
+        while let Some(off) = line[i..].find("tmux ") {
+            let at = i + off;
+            let before = line[..at].trim_end();
+            let cmd_pos = before.is_empty()
+                || before.ends_with(';')
+                || before.ends_with('|')
+                || before.ends_with('&')
+                || before.ends_with('(');
+            let pathish = at > 0 && b[at - 1] == b'/';
+            let after = line[at + 5..].trim_start();
+            let sub_cmd = after
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_lowercase());
+            let selected = after.starts_with("-L ") || after.starts_with("-S ");
+            if cmd_pos && sub_cmd && !selected && !pathish {
+                return true;
+            }
+            i = at + 5;
+        }
+        false
+    }
+
     fn read_e2e(name: &str) -> String {
         std::fs::read_to_string(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
