@@ -665,8 +665,16 @@ if [ "$use_tmux" = 1 ]; then
           cesc=${cwd_abs//\\/\\\\}; cesc=${cesc//\"/\\\"}
           ( flock 9
             if ! grep -qF "[projects.\"$cesc\"]" "$ct" 2>/dev/null; then
-              cp -p "$ct" "$ct.bak-ccm.$$" 2>/dev/null || true
-              if printf '\n[projects."%s"]\ntrust_level = "trusted"\n' "$cesc" >> "$ct" 2>/dev/null; then
+              # ★★ **备份不成就别动它**〔08-13 实测补〕：这条是**追加写**（不是 claude 那条的
+              #    「临时文件 + 校验 + 原子 rename」），而下面的失败恢复**依赖这份备份存在** ——
+              #    `cp` 失败被 `|| true` 吞掉之后，`[ -f "$ct.bak…" ]` 那条就静默跳过，
+              #    于是用户的 `config.toml` **被写了一半、又没人补回去**。
+              #    ⇒ 备份失败 = 放弃这次预信任（它本来就是 best-effort），并**说一句**。
+              #    ⚠ 与 claude 那条的差别是**写法**不同，不是我厚此薄彼：
+              #      原子替换那条即使不备份也伤不到原文件，这条不行。
+              if ! cp -p "$ct" "$ct.bak-ccm.$$" 2>/dev/null; then
+                echo "ccm: codex 预信任跳过——备份 $ct 失败（磁盘满/只读？），不敢在没有退路时追加写" >&2
+              elif printf '\n[projects."%s"]\ntrust_level = "trusted"\n' "$cesc" >> "$ct" 2>/dev/null; then
                 rm -f "$ct.bak-ccm.$$"
               else
                 [ -f "$ct.bak-ccm.$$" ] && mv -f "$ct.bak-ccm.$$" "$ct"

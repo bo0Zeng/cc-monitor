@@ -179,6 +179,24 @@ rm -f "$TMP/poll-result"
 wait_file "$TMP/poll-result" 30 || echo "      (注：等轮询兜底写 poll-result 超时)"
 ck "轮询兜底检测到信任框文本并自动按 Enter" "GOT_ENTER" "$(cat "$TMP/poll-result" 2>/dev/null || echo missing)"
 
+# ===== codex 预信任：**备份不成就别动它**〔08-13〕=====
+# ★ 这条与 claude 那条的**写法不同**，别照搬：
+#   · claude 走「临时文件 + `jq -e` 校验 + 原子 `mv`」⇒ 备份失败也伤不到原文件；
+#   · codex 是**追加写**（`>> config.toml`），而它的失败恢复**依赖那份备份存在**
+#     （`[ -f "$ct.bak…" ] && mv -f …`）。备份被 `|| true` 吞掉之后，恢复静默跳过
+#     ⇒ 用户的 config.toml **被写了一半、又没人补回去**。
+# ⚠ 怎么让 `cp` 失败而追加仍可行：**用文件名长度**。备份名多出 `.bak-ccm.<pid>`，
+#   基名 250 字符时会超 `NAME_MAX`(255) ⇒ `cp` 必败、`>>` 照常。
+#   （只读目录那招不行：更早的 `flock` 锁文件就先失败了，打不到这条分支。）
+LONGNAME="$(printf 'n%.0s' $(seq 1 245)).toml"
+printf 'x = 1\n' > "$TMP/$LONGNAME"
+CCM_CODEXTOML="$TMP/$LONGNAME" timeout 20 bash "$CCM" new --agent codex --launcher /bin/true \
+  --tmux=cc-ptlong --detach --cwd "$TMP/proj1" > /dev/null 2>"$TMP/ptlong.err" || true
+ck "备份失败时**明说**跳过预信任" "1" \
+   "$(grep -c '不敢在没有退路时追加写' "$TMP/ptlong.err")"
+ck "且 config.toml **零污染**（没被写一半）" "0" \
+   "$(grep -c 'projects' "$TMP/$LONGNAME")"
+
 echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
 [ "$FAIL" -eq 0 ]
