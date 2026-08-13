@@ -49,6 +49,43 @@ trap 'tmux_shim_cleanup' EXIT
 08-12 实测两套：`restart-suite` **24 过/0 败**、`resume-suite` **17 过/0 败**，
 真实 server 跑前跑后**均为 9 个会话、逐字未变**，私有 server 均已收。
 
+## 一次全量真跑的台账（08-13）
+
+本机（Linux + tmux 3.6）把**所有不需要 GUI/Windows 的套件**跑了一遍，每套都对照用户真实
+tmux server（跑前跑后 `tmux -L default ls` 逐字对比，**9 个会话，每次都没变**）：
+
+| 套件 | 读数 | 备注 |
+|---|---|---|
+| `restart-suite` | 24 过 / 0 败 | |
+| `resume-suite` | 17 过 / 0 败 | |
+| `inbound-daemon-frames` | 32 过 / 0 败 | |
+| `resume-daemon-frames` | 7 过 / 0 败 | |
+| `graylight-daemon-frames` | 12 过 / 0 败 | |
+| `daemon-gate2-acceptance` | 35 过 / 0 败 | ★ 修了它自己开的方子（登记豁免），此前每跑必 RC=1 |
+| `local-backend-supervise` | 7 过 / 0 败 | ★ 修前 7/1 —— 那条 `#[ignore]` 首跑就红，见 `P3 §0h-2` |
+| `tmux-guarded-acceptance` | 14 过 / 0 败 | |
+| `usage-probe-acceptance` | 11 过 / 0 败 | |
+| `ccm-acceptance` | 19 过 / 0 败 | |
+| `ccm-pretrust-acceptance` | 13 过 / 0 败 | |
+| `ccm-print-parity` | 12 过 / 0 败 | |
+| `ccm-contract-parity` | 45 过 / 0 败 | |
+| `tmux-target-acceptance` | 26 过 / 0 败 | |
+| `daemon-fork-session` | 10 过 / 0 败 | |
+| `p3t-local-tmux` | 10 过 / 0 败 | |
+| `cc-spawn-uplift` | 21 过 / 0 败 | ★ 修前 19/2 —— 它还在测 `P4b` 删掉的行为 |
+| `exec-bit-guard` | RC=0 | ⚠ 打了非阻断警告：`shared/cc-bus` 与 `~/.claude/skills/cc-bus` **已漂移** |
+
+**跑不了的（本机缺条件，不是没跑）**：`graylight-suite` / `f40-suite` / `restart-daemon-frames` /
+`ccm-cli.test`（要 Xvfb + 跑着的 dev app）· `ccm-rbind-title`（要 Windows 的 `wt.exe`）。
+
+★★ **这一轮真跑逮到 3 处真问题**，全都是「平时没人跑」养出来的：
+① `local_backend` 那条 `#[ignore]` 两天里被判成「验不出来」，其实是**测试与 daemon 不在同一台
+   tmux server**（修法：给 daemon 一条挂着 shim 的 PATH，强插同一个 `-S`）；
+② `daemon-gate2` **每跑必 RC=1**，因为它自己写的「造不出的名字应当…从表里说明」没人执行；
+③ `cc-spawn-uplift` 还在断言 `cc-spawn` **已被删掉的复用行为**（`P4b` 的 E 阶段横扫漏了它）。
+
+⇒ **「改了语义要跟改测试」这条纪律，在一套没人跑的测试上是失效的** —— 它不会红给你看。
+
 ## 跑法
 
 ```bash
