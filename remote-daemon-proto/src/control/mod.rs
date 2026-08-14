@@ -18,6 +18,10 @@
 //!   它**不实现任何命令**，只把 `--<name>` 还原成 `<name>` 去 `inbound::REGISTRY` 查那条登记、
 //!   跑它自己的 `run`。⇒ 起进程点一处不增（本模块零 `Command::new`），
 //!   `readonly_guard::spawn_registry` 的数不用动。
+//! - [`cc_bus`]（P4f）：**cc-bus 的基础命令**（`bus-list` / `bus-send`）。
+//!   起进程（转调本机的 cc-bus 命令，argv 直传不过 shell），**一处**，已登记进
+//!   `readonly_guard::ALLOWED`。⚠ 它**不读** cc-bus 的任何数据文件 ——
+//!   用户 08-13 明说「后面我可能要改ccbus」⇒ 只把它的**命令**当接口。
 //! - [`resolve_query`]：产出 `CommandPlan`（「这个会话该怎么起」）。
 //!   名字里有 `query` 但它不是观测 —— 账本 S14 明写它是 backend 的**计划面**。
 //!   按「读 / 改变世界」这条线分，产计划属于控制的前半。
@@ -29,6 +33,7 @@
 //! 那个函数根本不是 observe 的域逻辑，是通用安全读文件，搬进 `common/fs.rs` 之后
 //! 反向边自然消失。铁律 6：改结构让问题不存在。
 
+pub(crate) mod cc_bus;
 pub(crate) mod cli_control;
 pub(crate) mod fork_write;
 pub(crate) mod gate;

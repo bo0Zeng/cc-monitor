@@ -21,6 +21,7 @@
 
 #[cfg(test)]
 mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的，会把邻居测试算进来）
+mod cc_bus_boundary_guard; // P4f-Y2：daemon 不许碰 cc-bus 的数据布局（整体 #[cfg(test)]）
 mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 #[cfg(test)]，生产构建为空）
 mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
 mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
@@ -148,7 +149,7 @@ const PROTO_VERSION: u32 = 1;
 ///   wire 一个字节没变（不 bump `PROTO_VERSION`），但**二进制行为变了** ⇒ 照上面的先例 bump。
 ///   ★ **必须 bump**：旧 daemon 在这条路上是**静默失效**的（活着、不吭声、不发 `session_added`），
 ///   报同一个 id 就不会被判 stale、不会自动重装 —— 用户会带着一个永远不宣告会话的 daemon 过日子。
-const BUILD_ID: &str = "p2a-rewatch-sessions";
+const BUILD_ID: &str = "p2b-cc-bus-basics";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
@@ -219,6 +220,13 @@ const SUBCOMMANDS: &[&str] = &[
     // 分派臂按 `cli_control::spec_for` 派生（见下面那条臂），实现落在 `inbound::REGISTRY`。
     // 登记在这张表里是因为 `is_query_mode` 与 `argv_table_guard` 都读它，
     // 而且 `build_id_guard` 的指纹也取自它 ⇒ 加在这里会**逼出一次 BUILD_ID bump**，那正是要的。
+    // P4f：cc-bus 的两条基础命令。⚠ **不加这两行的后果是静默的** ——
+    // 分派臂是派生的（认得出来），但 `is_query_mode` 这道**闸门**读的是本表：
+    // 不在表里 ⇒ 当成未知 flag ⇒ 打一行 warn 之后**照常进流模式**，
+    // CLI 面看上去"存在"却永远调不到（08-13 实测到了这个形状）。
+    // ⇒ 现由 `cli_control::tests::every_cli_exposed_command_is_in_the_query_mode_gate` 钉住。
+    "--bus-list",
+    "--bus-send",
     "--daemon-probe",
     "--fork-session",
     "--kill",

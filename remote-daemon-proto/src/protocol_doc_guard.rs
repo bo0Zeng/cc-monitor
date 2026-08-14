@@ -76,6 +76,10 @@
 /// 所以下面 `dispatch_registry_is_complete` 会**反向核对**这份名单没漏文件。
 const DISPATCH_FILES: &[(&str, &str)] = &[
     ("main.rs", include_str!("main.rs")),
+    // P4f：`control/cc_bus.rs` 里有一个 `"--"` 字面量（调 `cc-send` 时显式结束旗标，
+    // 免得收件人以 `--` 开头被当成选项）。派生的文件集按「生产段里出现 `"--`」收人，
+    // 于是把它扫了进来 —— 那条判据自己写着「宁可多登记几个文件」。登记，不改判据。
+    ("control/cc_bus.rs", include_str!("control/cc_bus.rs")),
     // P4d：控制面的 CLI 入口。它**不做 match 分派**（认哪些 flag 由
     // `cli_control::spec_for` 从 `inbound::REGISTRY` 派生），但它持有
     // `PROBE_FLAG = "--daemon-probe"` 这个字面量 —— 派生的文件集因此把它扫了进来。
@@ -541,9 +545,26 @@ mod tests {
             if i % 2 == 0 {
                 continue;
             }
-            for tok in seg.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')) {
-                if !tok.is_empty() {
-                    out.insert(tok.to_string());
+            // ★★〔P4f 08-13〕**连字符要连着一起收一份**。
+            //
+            // 原来只按「字母数字下划线」切词 ⇒ `bus-list` 被切成 `bus` 与 `list`，
+            // 于是一条叫 `bus-list` 的命令**无论文档写得多全都过不了**
+            //（`documented.contains("bus-list")` 恒假）。这不是文档缺失，是**取词的射程**
+            // 画得比命名空间小 —— 本仓第一条带连字符的命令名把它照出来了。
+            //
+            // ⇒ **两种切法都收**（集合只增不减，原来能过的一条都不会变红）：
+            // 先按「允许连字符」切一遍收整词，再把它拆成原来的碎片各收一份。
+            for whole in
+                seg.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+            {
+                if whole.is_empty() {
+                    continue;
+                }
+                out.insert(whole.to_string());
+                for tok in whole.split('-') {
+                    if !tok.is_empty() {
+                        out.insert(tok.to_string());
+                    }
                 }
             }
         }

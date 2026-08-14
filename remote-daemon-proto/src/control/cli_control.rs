@@ -198,6 +198,38 @@ pub(crate) async fn run(args: &[String]) -> i32 {
 
 #[cfg(test)]
 mod tests {
+
+    /// ★★〔P4f 08-13〕**CLI 面的闸门与分派臂必须来自同一个源**。
+    ///
+    /// # 它逮的是一条实测到的静默失效
+    ///
+    /// 分派臂是派生的（`Some(f) if cli_control::handles(f)`），可 `main::is_query_mode`
+    /// 这道**闸门**读的是手写的 `SUBCOMMANDS`。于是往 `inbound::REGISTRY` 加一条命令：
+    /// 帧面立刻有了、`hello.commands` 也报了，而 CLI 面 —— 一行 warn
+    /// 「未知 flag，已忽略并照常进流模式」，然后 daemon **进了流模式**。
+    ///
+    /// 调用方看到的是：命令"存在"（能力探测报了它），调它却拿到一堆 jsonl 行。
+    /// P4d 的表里那段注释本来就写着「登记在这张表里是因为 `is_query_mode` 也读它」——
+    /// 是一条**要人记得**的纪律，而没有任何判据钉着。08-13 我就忘了，实测撞上。
+    #[test]
+    fn every_cli_exposed_command_is_in_the_query_mode_gate() {
+        let missing: Vec<String> = REGISTRY
+            .iter()
+            .filter(|s| cli_exposed(s))
+            .map(|s| flag_of(s.name))
+            .filter(|f| !crate::SUBCOMMANDS.contains(&f.as_str()))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "这些命令上了 CLI 面（分派臂认得），却不在 `main::SUBCOMMANDS` 这道闸门里：{missing:?}\n\
+             后果是**静默的**：`is_query_mode` 把它当未知 flag ⇒ 打一行 warn 之后照常进流模式\n\
+             ⇒ 调用方拿到的是一堆 jsonl 行，而不是它要的应答。把它加进 `SUBCOMMANDS`。"
+        );
+        assert!(
+            REGISTRY.iter().filter(|s| cli_exposed(s)).count() >= 5,
+            "CLI 面上不足 5 条 —— 本断言在空转"
+        );
+    }
     use super::*;
 
     /// 帧面有、CLI 面没有的命令，**逐条登记理由**。
