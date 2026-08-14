@@ -38,6 +38,7 @@ mod logging;
 mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
 mod messages;
 mod panorama;
+mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（整体 #[cfg(test)]）
 mod parser;
 mod paths;
 mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
