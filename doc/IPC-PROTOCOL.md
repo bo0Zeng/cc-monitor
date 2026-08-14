@@ -517,10 +517,16 @@ monitor 永远不会发的形状。
 
 ```text
 → {"id":"B2","cmd":"bus-send","args":{"to":"proj_cc","text":"结论在 #82"}}
-← {"kind":"reply","id":"B2","ok":true,"data":{"to":"proj_cc","sent":true}}
+← {"kind":"reply","id":"B2","ok":true,"data":{"to":"proj_cc","sent":true,"registered":true,"live":true}}
 ```
 
-`to` 收件人身份，`text` 正文；回 `sent`。argv 直传、**不过 shell**。
+`to` 收件人身份，`text` 正文；回 `sent` + **有没有人会读**：`registered`（在总线名单里吗）
+· `live`（那个会话今天活着吗，与 `bus-list` 同一套三态）。argv 直传、**不过 shell**。
+
+★ 为什么要这两个字段：两种「没人会读」今天都长得像成功 —— ① 收件人**压根没登记**
+（名字打错一个字母就会造出一个没人读的收件箱）；② 登记过、**会话早没了**。
+⚠ 它们**不改变投递**：先发后到是正当用法（对方待会儿才 `cc-register`），
+所以照发不误，只是把话说清楚。
 
 错误码分三档，**刻意分得开**（合成一个的话用户分不出「名字写错了」和「被规则拦了」）：
 

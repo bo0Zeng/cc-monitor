@@ -367,6 +367,31 @@ pub(crate) fn list_for_inbound() -> Result<serde_json::Value, (String, String)> 
     }))
 }
 
+/// 收件人**有没有人会读** —— `(在名单里吗, 会话活着吗)`。
+///
+/// `live` 与 `bus-list` 同一套三态：`true` / `false` / `null`（问不到身份空间，或不在名单里）。
+/// ⚠ 任何一步失败都**不影响投递**：这是投完之后的"顺带说一句"，不是前置条件。
+fn recipient_status(to: &str) -> (bool, serde_json::Value) {
+    let Ok(out) = run("cc-list", &[]) else {
+        return (false, serde_json::Value::Null);
+    };
+    let text = String::from_utf8_lossy(&out.stdout);
+    let rows = parse_list(&text);
+    let Some(row) = rows
+        .iter()
+        .find(|r| r.get("id").and_then(|v| v.as_str()) == Some(to))
+    else {
+        return (false, serde_json::Value::Null);
+    };
+    let joined = join_identity(vec![row.clone()], super::gate::list_sessions().ok().as_deref());
+    let live = joined
+        .first()
+        .and_then(|r| r.get("live"))
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    (true, live)
+}
+
 pub(crate) fn send_for_inbound(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (String, String)> {
@@ -382,7 +407,16 @@ pub(crate) fn send_for_inbound(
         }
     };
     classify_send(out.status.code(), &detail)?;
-    Ok(serde_json::json!({ "to": to, "sent": true }))
+    // ★ 投出去之后，把「有没有人会读」也一并回答〔用@08-13 那条架构点的另一半〕。
+    //
+    // 病：今天两种「没人会读」都只回 `sent:true` —— ① 收件人**压根没登记**
+    //（cc-send 会在 stderr 警告，但那句话到不了 daemon 的调用方）；
+    // ② 登记过、**会话早没了**（cc-bus 那份名单会过期）。
+    // ⇒ 投递照旧（先发后到是正当用法），但**说清楚**：`registered` + 三态 `live`。
+    let (registered, live) = recipient_status(&to);
+    Ok(serde_json::json!({
+        "to": to, "sent": true, "registered": registered, "live": live
+    }))
 }
 
 #[cfg(test)]
