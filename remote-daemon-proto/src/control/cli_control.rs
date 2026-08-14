@@ -103,10 +103,12 @@ pub(crate) fn spec_for(flag: &str) -> Option<&'static CommandSpec> {
 /// `cc-monitor-remote --ping` 时的形状）：**`--ping` 永远不返回**。
 /// 而这是所有失败里最坏的一种 —— 问「你活着吗」的那条命令，答案是挂住。
 ///
-/// `fields` 的头注逐字：「本命令 `args` / `data` 的字段名。**空 = 无载荷（如 `ping`）**」。
-/// ⇒ 判据现成，不用我再手写一张「哪些命令不读 stdin」的表。
+/// ⚠⚠ **第二版**〔P4f 08-13〕：原来这里写的是 `!spec.fields.is_empty()` —— 那是个**代用品**，
+/// 在当时的命令集上恰好全对，而 `bus-list`（**无输入、有输出字段**）一来就错，
+/// **它挂住等一个永远不来的输入**（实测 `--ping` 120ms 回、`--bus-list` 被掐死才停）。
+/// ⇒ 改读 `spec.takes_input`（每条命令自己说）。理由全文在 `CommandSpec::takes_input` 头注。
 pub(crate) fn reads_stdin(spec: &CommandSpec) -> bool {
-    !spec.fields.is_empty()
+    spec.takes_input
 }
 
 /// 本入口认不认这个 flag。`main` 的分派臂只问它，**不写命令字面量** ——
@@ -357,34 +359,38 @@ mod tests {
         }
     }
 
-    /// ★ D 阶段补审：**无载荷的命令不许读 stdin**，否则存活探测口会挂死。
+    /// ★ **哪些命令不收输入 —— 登记在此，加一条就要来这儿被看一眼。**
     ///
-    /// 钉的是**决定**（`reads_stdin`），不是「跑起来没挂」—— 后者要真起进程 + 一条不关的
-    /// 管道，在单测里做不了；而钉决定 + 钉 `run` 用的就是这个决定，两条合起来够。
+    /// ⚠ 本条的**上一版是恒真的**：那时 `reads_stdin` 就是 `!fields.is_empty()`，
+    /// 而判据写的是「`fields` 空 ⇒ 不读 stdin；非空 ⇒ 读」—— 两个分支各自是同一个表达式的
+    /// 复述，**永远不可能红**。`bus-list` 挂死那次它一声没吭。
+    /// ⇒ 现在钉的是**登记表与声明对不对得上**（两个独立来源），且真不真由行为判据验
+    ///（`e2e/daemon-cc-bus.sh`：声明无输入的命令，stdin 不关时必须秒回）。
     #[test]
-    fn a_command_with_no_payload_never_waits_on_stdin() {
-        let mut checked = 0usize;
-        for spec in REGISTRY.iter().filter(|s| cli_exposed(s)) {
-            if spec.fields.is_empty() {
-                assert!(
-                    !reads_stdin(spec),
-                    "{} 无载荷（`fields` 空）却要读 stdin —— 它会挂在那儿等 EOF",
-                    spec.name
-                );
-                checked += 1;
-            } else {
-                assert!(
-                    reads_stdin(spec),
-                    "{} 有载荷字段却不读 stdin —— args 永远是 {{}}",
-                    spec.name
-                );
-            }
-        }
-        assert!(
-            checked >= 1,
-            "一条无载荷命令都没扫到 —— 本断言在空转（08-12 实测 `ping` 是这种）"
+    fn the_no_input_commands_are_registered_and_declared_consistently() {
+        /// 不收入方向载荷的命令。**加一条就来这里写一行**。
+        const NO_INPUT_TODAY: &[&str] = &["bus-list", "ping"];
+        let declared: Vec<&str> = REGISTRY
+            .iter()
+            .filter(|s| !s.takes_input)
+            .map(|s| s.name)
+            .collect();
+        let mut want: Vec<&str> = NO_INPUT_TODAY.to_vec();
+        want.sort();
+        let mut got = declared.clone();
+        got.sort();
+        assert_eq!(
+            got, want,
+            "「不收输入」的命令集变了。\n\
+             ⚠ 这不是改数字了事：一条**要**输入的命令若声明成不收，它的 `args` 永远是 {{}}；\n\
+             一条**不要**输入的命令若声明成收，它会**挂在那儿等 EOF** —— \n\
+             CLI 面是给第三方 skill 调的，那是所有失败里最坏的一种（`--ping` 与 `--bus-list` 各栽过一次）。"
         );
-        // `run` 必须用的就是上面那个决定，不是另写一份判断。
+        assert!(
+            !declared.is_empty(),
+            "一条无输入命令都没有 —— 本断言在空转"
+        );
+        // `run` 必须用的就是这个决定，不是另写一份判断。
         let prod = crate::guard_support::production_code(include_str!("cli_control.rs"));
         assert!(
             prod.contains("if reads_stdin(spec) {"),
