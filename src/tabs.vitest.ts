@@ -485,6 +485,37 @@ describe("TabManager 生命周期", () => {
     expect(btn().classList.contains("act-waiting")).toBe(false);
   });
 
+  it("★ 活动信号早于 Tab 建立：远端骨架 Tab 建出来时灯必须已经是对的", () => {
+    // ⚠ **这条以前一个用例都没有**，而它是远端会话的**真实时序**：
+    // `remote-session-added` 与 `session-activity` 是两个**独立**的 Tauri 事件，
+    // 谁先到没有保证。灯先到时它进 `pendingActivity`，只有 `ensureTab` 会落实它。
+    //
+    // 不测这条的后果**恰好是最坏的那种**：`activityLightClass(null)` 返回 `""`
+    //（默认绿点，见 `session-status.ts` 头注「`busy` / `null` → 默认绿点」）——
+    // ⇒ 这一跳一旦断掉，UI 显示的是**最让人安心的颜色**，而不是错误状态。
+    // 一个"全绿"的界面既可能是"都在忙"，也可能是"灯一条都没到"，肉眼分不出。
+    //
+    // 08-14 排一个「Windows 前端会话全是绿灯」的实机现象时，这条链被逐跳读过一遍
+    // （daemon 发初始 status → monitor `status_changed` → `session-activity` →
+    // `updateActivity` → `pendingActivity` → `ensureTab` → `activityLightClass`），
+    // **每一跳都是通的**，但**没有任何一条判据在守整条链**。这一格补的就是最险的那一跳。
+    // ⚠ 只断言**可观察行为**，不戳内部 `pendingActivity`：那个字段不在 `TMInternals` 上，
+    // 戳它会让本文件 `tsc --noEmit` 红（第一版就是这么写的，当场被基线 tsc 逮住）。
+    // 而且断行为本来就更强 —— 它不关心暂存用什么数据结构实现。
+    tm.updateActivity("early-light", "idle", null);
+    // 远端骨架 Tab 走 createSkeletonTab → ensureTab（顺序不能反：它必须落实暂存的灯）
+    tm.createSkeletonTab("early-light", "/proj", "aya", null, null);
+    const btn = document.querySelector<HTMLElement>(".tab")!;
+    expect(
+      btn.classList.contains("act-idle"),
+      "灯先到、Tab 后建 ⇒ 建出来就该是红的。现在是默认绿 —— " +
+        "`pendingActivity` 没被 `ensureTab` 落实，而默认值是绿，所以这个洞不会自己暴露。",
+    ).toBe(true);
+    // 落实之后再来一次同值信号不该出问题（幂等）。
+    tm.updateActivity("early-light", "idle", null);
+    expect(btn.classList.contains("act-idle")).toBe(true);
+  });
+
   it("归档信号早于 Tab 建立：进 pendingArchive，ensureTab 时落实归档", () => {
     tm.archiveTab("early");
     expect(peek(tm).pendingArchive.has("early")).toBe(true);
