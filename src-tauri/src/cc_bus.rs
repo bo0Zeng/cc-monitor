@@ -261,6 +261,16 @@ pub async fn check_cc_bus_agent_online(origin: String, id: String) -> Result<boo
     // 调用点的死代码**，而真正在跑的那句校验**零测试覆盖**——删掉它整套测试照样全绿。
     // 这直接证伪了我自己写的「删掉任何一处校验，对应测试立刻红」。抽取纯函数是为了让断言
     // 落在调用点上，结果抽完没接上去，等于白抽。
+    // ★★ **先问身份空间**〔P4f 08-13〕：老的探法是 `tmux has-session -t '=<id>:'`，
+    //    **纯按名字** —— 而名字会被重用（今天实测过两次：敲门打进陌生人屏幕、
+    //    「收掉 agent」杀了无辜进程）。名字被别人占着时这盏灯照样亮，
+    //    用户于是把消息发进一个没人读的收件箱，而 UI 一直说它在线。
+    // ⇒ `bus-list` 已经能回答这个问题（登记 + 身份核过的三态）。让它去答。
+    // ⚠ 答不上时（没通道 / daemon 太旧 / 问不到 tmux）**回落到老探法**，
+    //    那是今天的行为，不比现在坏；但**不许**把"问不到"渲染成"不在线"。
+    if let Some(live) = online_via_daemon(&origin, &id).await {
+        return Ok(live);
+    }
     let cmd = build_online_cmd(&id)?;
     // P4a-Y1：本机跑同一条 `build_online_cmd` 产出的串。
     // 截断的 `contains("ONLINE")` 是碰运气的答案 ⇒ 与远端同档，超限拒收。
@@ -661,6 +671,38 @@ fn refuse_local_write(origin: &str, what: &str) -> Option<String> {
          读面（清单 / 在线 / inbox）本机已经通了，写面归 `P4b`（cc-bus 改调 daemon 原语）——\n\
          用户 08-12 已裁「先把确切的命令组件做出来，然后 cc-bus 可以去调用」。"
     ))
+}
+
+/// 从 `bus-list` 的回值里取某个 id 的在线状态 —— **纯函数**。
+///
+/// `None` 有两种来源，**它们都不是"不在线"**：
+/// · 这个 id 不在总线名单里（那它根本不是 agent）；
+/// · `live` 是 `null`（daemon 问不到身份空间）。
+/// ⇒ 调用方拿到 `None` 时**回落**到老探法，而不是渲染成一盏灭灯。
+pub(crate) fn live_of(agents: &[serde_json::Value], id: &str) -> Option<bool> {
+    agents
+        .iter()
+        .find(|a| a.get("id").and_then(|v| v.as_str()) == Some(id))
+        .and_then(|a| a.get("live"))
+        .and_then(|v| v.as_bool())
+}
+
+/// 问 daemon「这个 agent 在线吗」。`None` = 它答不上（调用方回落）。
+async fn online_via_daemon(origin: &str, id: &str) -> Option<bool> {
+    let client = crate::inbound_client::client_for(origin)?;
+    let listed = client
+        .call(
+            "bus-list",
+            serde_json::json!({}),
+            std::time::Duration::from_secs(15),
+        )
+        .await
+        .ok()?;
+    let agents = listed
+        .as_ref()
+        .and_then(|v| v.get("agents"))
+        .and_then(|v| v.as_array())?;
+    live_of(agents, id)
 }
 
 /// 广播走 daemon 那条路的两种失败：能不能回落到老路。
@@ -1715,6 +1757,60 @@ mod tests {
             "超时之后还留着 {n} 个子进程（marker={marker}）—— 每超时一次漏一个。\n\
              显式 `start_kill()` 只在成功路径上；超时那条要靠 `kill_on_drop(true)`。"
         );
+    }
+
+    /// ★ 在线灯**必须先问身份空间**，不能只有那条按名字的老探法。
+    ///
+    /// ⚠ 变异实测：把「先问 daemon」那一步整个拿掉，上面那条纯函数判据**照样绿** ——
+    /// 它钉的是"答案怎么算"，不是"有没有去问"。⇒ 这条钉接线本身（位置：问在前，探在后）。
+    ///
+    /// ⚠⚠ **本条的射程如实写**：它按**字面量位置**判，所以
+    /// · 真删掉那一步 ⇒ **红**（实测）；
+    /// · 把调用留在原地却不用它的结果（`if let Some(x) = None { … online_via_daemon(…) }`）
+    ///   ⇒ **绿**（我自己第一次的变异恰好是这个形状，它溜过去了）。
+    /// 后者要靠行为判据（真起 daemon 跑一遍）才逮得住，那归 daemon 侧那套 e2e。
+    /// **写下来**是因为：不写的话，下一个人会以为这条比它实际能做的更强。
+    #[test]
+    fn the_online_lamp_asks_the_identity_space_before_probing_by_name() {
+        let code = non_test_code();
+        let at = code
+            .find("pub async fn check_cc_bus_agent_online(")
+            .expect("生产段找不到在线检查 —— 判据在空转");
+        let rest = &code[at..];
+        let end = rest[1..]
+            .find("\npub ")
+            .map(|k| k + 1)
+            .unwrap_or_else(|| rest.len().min(1600));
+        let body = &rest[..end];
+        let ask = body
+            .find("online_via_daemon(")
+            .expect("在线灯没有先问身份空间 —— 那盏灯又变成「名字在就亮」了");
+        let probe = body
+            .find("build_online_cmd(")
+            .expect("找不到老探法 —— 判据的参照物没了");
+        assert!(
+            ask < probe,
+            "先按名字探、再问身份空间 ⇒ 名字被别人占着时那盏灯照样亮"
+        );
+    }
+
+    /// ★ 在线灯：**「问不到」不许渲染成「不在线」**。
+    ///
+    /// 老探法是 `tmux has-session -t '=<id>:'`（纯按名字）——名字被别人占着时它照样说在线。
+    /// 换成问 `bus-list` 之后，`None` 有两种来源（不在名单 / `live` 是 null），
+    /// **两种都要回落到老探法**，而不是直接灭灯：灭灯是一个确定的答案，而我们并不确定。
+    #[test]
+    fn the_online_lamp_falls_back_instead_of_guessing_dark() {
+        use serde_json::json;
+        let agents = vec![
+            json!({"id": "a_cc", "live": true}),
+            json!({"id": "b_cc", "live": false}),
+            json!({"id": "c_cc", "live": null}),
+        ];
+        assert_eq!(live_of(&agents, "a_cc"), Some(true));
+        assert_eq!(live_of(&agents, "b_cc"), Some(false), "确定不在线要答得出来");
+        assert_eq!(live_of(&agents, "c_cc"), None, "live=null 是「问不到」，不是「不在」");
+        assert_eq!(live_of(&agents, "nobody_cc"), None, "不在名单里也是「答不上」");
     }
 
     /// ★★ **广播不许再打进幽灵收件箱**〔P4f 08-13，用户机器上实测出来的〕。
