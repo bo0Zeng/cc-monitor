@@ -182,7 +182,8 @@ mod tests {
     ///
     /// # 沙箱：`HOME` 与 `CLAUDE_CONFIG_DIR` 都要设
     ///
-    /// daemon 的 `resolve_claude_dir()` 是 `$CLAUDE_CONFIG_DIR` 优先、`$HOME/.claude` 兜底。
+    /// daemon 的 `resolve_agent_home()`〔`S4b` 前叫 `resolve_claude_dir()`〕是
+    /// `$CLAUDE_CONFIG_DIR` 优先、`$HOME/.claude` 兜底。
     /// 只设 `HOME` 那版跑起来一切正常，隔离却是假的（P2 那条实测栽过一次，见它的头注）。
     ///
     /// ⚠ 本条**不调 `start_local_backend()`** —— 那个函数吃的是**真实**的 `~/.cc-monitor/bin`

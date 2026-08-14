@@ -19,9 +19,14 @@
 //!
 //! # ⚠ 本层**不**代表 Claude 那半已经分干净
 //!
-//! `claude_dir` 这个**参数名**还在 66 处传着（占 Claude 侧命中的 66/95）——
-//! 那是 `S4` 的题（协议去 agent 名 → 通用 home）。在 `S4` 落地之前，
-//! `watcher`/`accounts_query`/`history_query` **进不了** `S1` 的 `CORE_FILES`。
+//! 〔`S4b` 08-14 订正〕`claude_dir` 那个**参数名已经清了**（生产段 64 行 → 3 行，
+//! 剩下的 3 处全是冻结的 wire 字段名）。
+//! 而 `watcher`/`accounts_query`/`history_query` **仍然进不了** `S1` 的 `CORE_FILES` ——
+//! `S4b` 实测：改完名之后这三个文件在 `S1` 六根针下还剩 **6 / 5 / 5** 处（共 16），其中
+//! **12 处是 `crate::agents::claudecode::…` 这个适配层地址本身**（`history_query` 那 5 处**全是**），
+//! 另 4 处是散文（`watcher` 两句 warn 里的 `claude` 一词、`accounts_query` 两处
+//! `sessions/` 文案）。⇒ 卡点不再是参数名，是**通用层直接写死了一个 agent 的名字** ——
+//! 那是 `L2`（接口）的题，归 `S6`。清单在 `agent_locality_guard::ADAPTER_CALL_SITES`。
 
 pub(crate) mod accounts;
 pub(crate) mod liveness;

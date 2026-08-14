@@ -803,8 +803,12 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 | `capabilities` | tmux/pty 的**典型档**（硬编码的常见组合），文件头自陈「待后续 backend 探测细化」 | **不能**。它描述的是「这类后端通常支持什么」，不是「这台机器此刻支持什么」 |
 
 **为什么记在这里**：`resolve_query.rs` 的文件头写了这件事，但**跨项目的消费方不会读我们的 Rust 源码**。
-实现上也留着痕迹：`run(_claude_dir, …)` 的参数带下划线、`claude_dir` 标着
-`#[allow(dead_code)] // MVP 未用（不做 pidfile 消解）` —— 也就是说它**手上有 claude_dir 却没用**。
+实现上也留着痕迹：`run(_agent_home, …)` 的参数带下划线、入参字段 `ResumeSpec.claude_dir`
+（线上是 `claudeDir`）标着 `#[allow(dead_code)] // MVP 未用（不做 pidfile 消解）` ——
+也就是说它**手上有 home 目录却没用**。
+⚠ daemon 仓内的那个参数 08-14 起叫 `agent_home`（`daemon-split` 的 `S4b`：通用层的标识符里
+不许出现 agent 名字）；**`ResumeSpec` 的 `claudeDir` 字段名不受影响、原地冻结** ——
+它是与 aterm 冻结在 2026-07-18 的 stdin 契约的一部分。
 
 **要判断某个 tmux 会话是否真的存在**，用 `tmux_sessions` 帧（那是真 `tmux ls`）或自己在远端跑一次，
 别拿 `sessionName` 当答案。

@@ -61,6 +61,24 @@ mod tests {
         // `common/` 整层：`S3` 把 `projects_root` 搬进适配层之后 `common/paths.rs` 整个文件消失了
         //（它当初就违反 `common/` 三条门槛的第③条「无域知识」——`projects` 是 Claude 的布局）。
         "common/fs.rs",
+        // ── `S4b`〔08-14〕：**这一轮一个都没加，而这是量出来的，不是忘了** ────────────
+        //
+        // `S4`/`L1` 都写着「`claude_dir` 改完名，`watcher`/`accounts_query`/`history_query`
+        // 就能进表」。`S4b` 改完名之后**实测这三个文件**，那句话**不成立**：
+        // 六根针下还剩 **6 / 5 / 5** 处（共 16），其中
+        //   · **12 处是 `crate::agents::claudecode::…`** —— 适配层的**地址**本身
+        //     （`history_query` 那 5 处全是；它的 `claude` 一词只剩这一种来源）；
+        //   · 4 处是散文（`watcher` 两句 warn 里的 `claude` 一词、`accounts_query` 两处
+        //     `sessions/` 文案）。
+        //
+        // ⇒ **刻意不放宽针去凑这三个**。`S3` 设计的中间态（机器留在通用层、知识住适配层）
+        // 让通用层用「一次函数调用」拿知识 —— 而那次调用**写死了一个 agent 的名字**，
+        // 它是真耦合，不是假阳：加第三个 agent 时这 12 处每一处都要回来看。
+        // 把它豁免掉，本判据的正题就从「通用层不认识 agent」滑成「通用层不认识 agent 的**目录布局**」。
+        //
+        // 卡点因此从 `S4b` 移交 `L2`/`S6`（立接口）。那 12 处 + 另外 15 处同族已由
+        // `agent_locality_guard::ADAPTER_CALL_SITES` **逐条登记**（共 8 文件 / 27 处），
+        // 收进接口一处、那张表短一条、这里就能进一个文件。
     ];
 
     /// 人群下界：低于它说明取法坏了（路径写错 / 扩展名过滤掉）⇒ **红**，不是绿。
@@ -104,6 +122,13 @@ mod tests {
     /// 只是**今天动不了**。所以它**必须带解锁条件** ——
     /// 没有解锁条件的「冻结」只是「永久豁免」的好听说法
     /// （`every_frozen_compat_entry_states_how_it_gets_unfrozen` 钉住这条）。
+    ///
+    /// ⚠〔`S4b`〕本表与 `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS` **在 `wire.rs` 这一行
+    /// 重叠，但不是重复登记，别合并**：本表的作用域是「**已宣称通用的文件**（[`CORE_FILES`]）里的
+    /// agent **字面量**」，那张是「**整棵 `src/`** 里 `<名>_dir` 这一形的**标识符**」。
+    /// 证据是：那张表逼出了 `control/resolve_query.rs::ResumeSpec.claude_dir`（同样是冻结的
+    /// 线上字段名），而**本表看不见它** —— 那个文件不在 `CORE_FILES` 里。
+    /// ⇒ 两个不同的问题各问了一次同一个事实，删掉任一张都会漏掉另一张管的那一半。
     const FROZEN_COMPAT: &[(&str, &str, &str, &str)] = &[(
         "wire.rs",
         "claude_dir",
