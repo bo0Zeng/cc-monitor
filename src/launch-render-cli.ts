@@ -18,6 +18,18 @@
  *    #76 那种「建还是接」的歧义，可以安全走 CLI 渲染器（F03 Phase D
  *    架构审计发现：早期实现把这两种模式并入同一把闸门，导致 `renderCli` 的 attach 分支和
  *    `CLI_REQUIRED_CAPS` 里的 `"attach"` 在生产路径上永不可达——已收窄）。
+ *
+ * ★★ **〔U8c-3-r2 08-14〕本函数今天是「夹具的生成者」，不是生产渲染器**
+ *
+ * 生产那一支 U8c-2c-2 起走 Rust（`backend::control::ccm_invocation::render_ccm_invocation`），
+ * 本文件的生产段调用点**只剩 `launch-cli-golden.ts` 一处**（`launch-cli-wire.vitest.ts` 有
+ * 一条判据钉着「生产渲染路径不许再调 `tryRenderCli`」）。
+ *
+ * ⚠ 那**不等于**它可以删。它今天是 `cli-golden.json` 的**唯一生成者**，而那份夹具是
+ * 「ccm 调用行该长什么样」在本仓的**独立说法** —— `ccm_invocation.rs` 的 P1 头注逐字预告过：
+ * 「那天一到，`cli-golden.json` 就变成一个没有生成者的冻结文件，跨语言对拍会退化成
+ * 『Rust 没变』的快照」。⇒ 删它是拿一份独立说法换 ~500 行**零生产调用、零漂移风险**
+ * （夹具做全文件字节比对）的代码。**本轮复裁：不划算，不删。**
  */
 import type { LaunchContext, LaunchPlan } from "./launch-plan.ts";
 import { LAUNCH_DIMENSIONS } from "./launch-dimensions.ts";
