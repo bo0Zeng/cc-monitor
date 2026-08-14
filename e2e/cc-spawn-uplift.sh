@@ -38,7 +38,20 @@ export CC_BUS_HOME="$SANDBOX/cc-bus"
 export CCM_CLAUDEJSON="$SANDBOX/claude.json"
 export CCM_CODEXTOML="$SANDBOX/codex-config.toml"
 
-cleanup() { "$REALTMUX" -L "$SOCK" kill-server 2>/dev/null; "$REALTMUX" -L "${SOCK}b" kill-server 2>/dev/null; rm -rf "$BIN" "$SANDBOX" "$WORK"; }
+# ⚠⚠ **`set +e` 是这里的第一条**〔08-13 实测〕：本套件在 `:338` 之后 `set -e` 是**开着**的，
+# 而清理里 `kill-server` 打在**可能不存在**的 socket 上（`${SOCK}b` 只在某一格才建 server）
+# ⇒ 那条返回 1 ⇒ **trap 被 set -e 中途打断**：`rm -rf` 根本没跑到（临时目录泄漏），
+# 且整套的退出码变成 1 —— 60 格全 PASS、打印「全部通过」，而 `assert-pass-floor`（fail-closed）
+# 判它失败。**套件的裁决被清理绑架了**，这正是 gate-integrity 要防的那类事。
+# ★ 惯例本来就在：`daemon-gate2` / `graylight-suite` / `graylight-daemon-frames` /
+#   `restart-daemon-frames` 四套的 cleanup 第一行都是 `set +e`，只有本套漏了。
+#   ⇒ 量完人群是 1，**不扩登记表**，照同一个形状补上即可。
+cleanup() {
+  set +e
+  "$REALTMUX" -L "$SOCK" kill-server 2>/dev/null
+  "$REALTMUX" -L "${SOCK}b" kill-server 2>/dev/null
+  rm -rf "$BIN" "$SANDBOX" "$WORK"
+}
 trap cleanup EXIT
 
 # ===== 起飞前自检（红线守卫）：canary 双向断言 =====
