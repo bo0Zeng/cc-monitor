@@ -329,11 +329,14 @@ mod tests {
             "入方向单行",
             "拒收+回错",
         ),
+        // ⚠〔`S3` 08-14〕这条**由本护栏当场逮出来的**：daemon 的 Claude 知识搬进
+        // `agents/claudecode/` 之后，常量跟着换了住址与名字，而本表按「文件+常量名」定位 ⇒
+        // 两格同时红（「有上限没登记」+「登记的那个算不出值」）。**登记表的键随搬迁同轮改。**
         (
-            "remote-daemon-proto/src/observe/accounts_query.rs",
-            "MAX_CLAUDE_JSON_BYTES",
+            "remote-daemon-proto/src/agents/claudecode/accounts.rs",
+            "MAX_CONFIG_BYTES",
             32 * 1024 * 1024,
-            "读 `.claude.json`",
+            "读 Claude 的账号配置文件",
             "硬报错",
         ),
         (
@@ -898,7 +901,7 @@ mod tests {
             "remote-daemon-proto/src/common/fs.rs",
             "cap + 1",
             "`read_file_capped` 是 daemon 侧共用的有界读助手，上限是入参；\
-             调用方给的是 `MAX_CLAUDE_JSON_BYTES` / `MAX_MANIFEST_BYTES` 等具名常量。",
+             调用方给的是 `MAX_CONFIG_BYTES` / `MAX_MANIFEST_BYTES` 等具名常量。",
         ),
     ];
 

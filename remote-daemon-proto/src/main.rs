@@ -22,7 +22,7 @@
 #[cfg(test)]
 mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的，会把邻居测试算进来）
 mod agent_locality_guard; // S2：codex 的格式知识只许住 agents/codex/ + kind 派发点逐条登记（整体 #[cfg(test)]）
-mod agents; // S2：agent 适配层——每个 agent 一份，装它专属的知识（今天只有 codex，Claude 归 S3）
+mod agents; // S2/S3：agent 适配层——每个 agent 一份，装它专属的知识（codex + claudecode）
 mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与文件格式（整体 #[cfg(test)]）
 mod cc_bus_boundary_guard; // P4f-Y2：daemon 不许碰 cc-bus 的数据布局（整体 #[cfg(test)]）
 mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 #[cfg(test)]，生产构建为空）
@@ -637,24 +637,13 @@ async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
     out.write_all(line.as_bytes()).await
 }
 
-/// Resolve the Claude config directory:
-/// `$CLAUDE_CONFIG_DIR` if set, else `$HOME/.claude`.
+/// 解析会话数据根。
 ///
-/// On Windows (compile/smoke only — the real target is Linux) fall back to
-/// `%USERPROFILE%\.claude` when `$HOME` is unset, and finally to `.claude` in
-/// the cwd so the binary still starts for a smoke test.
+/// ⚠ `S3` 把**怎么解析**搬进了 `agents/claudecode/paths.rs`（环境变量名与目录名是
+/// Claude 的知识）。这里只剩"去问适配层" —— 今天 daemon 只服务一种 agent，
+/// 所以是写死的一句；`S5`（hello 声明看得见哪些 agent）落地时它会变成按 kind 取。
 fn resolve_claude_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os("CLAUDE_CONFIG_DIR") {
-        return PathBuf::from(dir);
-    }
-    if let Some(home) = std::env::var_os("HOME") {
-        return PathBuf::from(home).join(".claude");
-    }
-    #[cfg(windows)]
-    if let Some(profile) = std::env::var_os("USERPROFILE") {
-        return PathBuf::from(profile).join(".claude");
-    }
-    PathBuf::from(".claude")
+    agents::claudecode::paths::resolve_home()
 }
 
 /// Resolve when a SIGTERM or SIGINT (Ctrl-C) is received, for clean shutdown.

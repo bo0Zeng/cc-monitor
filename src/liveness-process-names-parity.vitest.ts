@@ -46,27 +46,31 @@ function stripLineComments(src: string): string {
     .join("\n");
 }
 
+/** daemon 侧判活词表今天的住址（`S3` 08-14 从 `watcher.rs` 搬来）。 */
+const DAEMON_LIVENESS = "remote-daemon-proto/src/agents/claudecode/liveness.rs";
+
 /**
- * 从 daemon 的 `add_time_verdict` 里抠出**那一条 cmdline 白名单分支**认的 token。
+ * 从 daemon 的判活词表里抠出 token。
  *
- * ⚠ 只抠 `let lower = cmd.to_lowercase();` 之后那一段 —— 同函数**前面**还有一个
- * `cmd.to_lowercase().contains("bg-spare")`，那是「守护池备用进程」的拦截，
- * 不是判活白名单。整函数一起抠会把 `bg-spare` 混进来。
+ * ⚠〔`S3` 08-14〕原来抠的是 `watcher.rs::add_time_verdict` 里那段**内联**的
+ * `lower.contains("claude") && lower.contains("node")`。`S3` 把它搬进了
+ * `agents/claudecode/liveness.rs::cmdline_may_be_agent` —— 本条**当场红**
+ *（抽取器自检那格先红，正是它存在的理由：搬走 ⇒ 零命中，而零命中会变成绿）。
+ *
+ * 搬迁的**副作用是好的**：原来还要小心避开同函数前面那个 `bg-spare` 拦截
+ *（守护池备用进程，不是判活白名单）；现在词表自成一个函数，抠的范围天然是准的。
+ * bg-spare 那条自检仍留着 —— 它现在钉的是「别把 watcher 的别的逻辑也搬进词表」。
  */
 function daemonTokens(): string[] {
-  const src = stripLineComments(
-    readFileSync(resolve(REPO, "remote-daemon-proto/src/observe/watcher.rs"), "utf8"),
-  );
-  const anchor = "let lower = cmd.to_lowercase();";
+  const src = stripLineComments(readFileSync(resolve(REPO, DAEMON_LIVENESS), "utf8"));
+  const anchor = "pub(crate) fn cmdline_may_be_agent";
   const at = src.indexOf(anchor);
   expect(
     at,
-    "在 watcher.rs 里找不到 `let lower = cmd.to_lowercase();` —— " +
-      "那条 cmdline 白名单分支被改写或搬走了，本条会零命中地绿",
+    `在 ${DAEMON_LIVENESS} 里找不到 \`${anchor}\` —— 判活词表被改写或又搬走了，本条会零命中地绿`,
   ).toBeGreaterThan(-1);
-  // 往后取到该 `if` 块结束（下一个只含 `}` 的行之后一行足够覆盖那条 return）
   const tail = src.slice(at, at + 400);
-  const stop = tail.indexOf("\n    }");
+  const stop = tail.indexOf("\n}");
   const region = stop > 0 ? tail.slice(0, stop) : tail;
   return [...region.matchAll(/lower\.contains\("([^"]+)"\)/g)].map((m) => m[1]).sort();
 }
@@ -91,7 +95,7 @@ describe("livenessProcessNames 跨语言 token 对拍（audit-0805 F13，E3）",
       rs,
       "★ 前端与 daemon 认的判活进程名漂开了。\n" +
         `  前端 src/agent-profile.ts::livenessProcessNames = ${JSON.stringify(ts)}\n` +
-        `  daemon remote-daemon-proto/src/observe/watcher.rs::add_time_verdict = ${JSON.stringify(rs)}\n` +
+        `  daemon ${DAEMON_LIVENESS}::cmdline_may_be_agent = ${JSON.stringify(rs)}\n` +
         "⚠ **今天没有权威方** —— `agent-profile-golden.tsv` 只有 4 个 key，不含这一项；\n" +
         "  `AgentAdapter` trait 也没有「判活进程名」这个方法。收成一份归 `daemon-api` F11。\n" +
         "  在那之前：**两边都要改**，并回来把这条对拍的期望一起改。\n" +
@@ -101,18 +105,24 @@ describe("livenessProcessNames 跨语言 token 对拍（audit-0805 F13，E3）",
   });
 
   it("★ daemon 那侧仍是「否证式 + 缺数据放行」—— 这条方向不许被顺手改掉", () => {
-    const src = stripLineComments(
-      readFileSync(resolve(REPO, "remote-daemon-proto/src/observe/watcher.rs"), "utf8"),
-    );
-    const at = src.indexOf("let lower = cmd.to_lowercase();");
+    const src = stripLineComments(readFileSync(resolve(REPO, DAEMON_LIVENESS), "utf8"));
+    const at = src.indexOf("pub(crate) fn cmdline_may_be_agent");
     const region = src.slice(at, at + 400);
     expect(
-      region.includes("!lower.trim().is_empty()"),
+      region.includes("lower.trim().is_empty()"),
       "daemon 的 cmdline 分支不再先判「cmdline 非空」—— 那意味着**读不到 cmdline 就当冒名者扔掉**，" +
         "会误杀活会话。缺数据放行是这一侧刻意的方向（前端相反）。",
     ).toBe(true);
+    const caller = stripLineComments(
+      readFileSync(resolve(REPO, "remote-daemon-proto/src/observe/watcher.rs"), "utf8"),
+    );
+    const callAt = caller.indexOf("cmdline_may_be_agent(&lower)");
     expect(
-      region.includes("Imposter"),
+      callAt,
+      "watcher 不再调 `cmdline_may_be_agent` —— 判活词表的消费点搬走了而本条没跟",
+    ).toBeGreaterThan(-1);
+    expect(
+      caller.slice(callAt, callAt + 200).includes("Imposter"),
       "daemon 的 cmdline 分支不再产出 Imposter —— 它是**否证式**的：命中白名单不代表活着，" +
         "只有明显不像才判死。改成正向识别会与前端撞成同一套语义，而两边问的不是同一个问题。",
     ).toBe(true);

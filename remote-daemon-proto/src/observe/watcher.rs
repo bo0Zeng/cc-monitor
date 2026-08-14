@@ -742,11 +742,11 @@ fn watch_loop(
     events_tx: std::sync::mpsc::Sender<WatchEvent>,
     events_rx: std::sync::mpsc::Receiver<WatchEvent>,
 ) {
-    // U2 Phase D 审计 重要-2：`projects` 这个目录名原本有**五**处，不是 `common/paths.rs`
+    // U2 Phase D 审计 重要-2：`projects` 这个目录名原本有**五**处，不是 `agents/claudecode/paths.rs`
     // 注释里写的四处 —— 这是第五处（内联的，grep `fn projects_root` 找不到它）。
     // 不收的话「合并去重」承诺的性质（改布局只改一处）根本没拿到。
-    let projects = crate::common::paths::projects_root(&claude_dir);
-    let sessions = claude_dir.join("sessions");
+    let projects = crate::agents::claudecode::paths::projects_root(&claude_dir);
+    let sessions = crate::agents::claudecode::paths::sessions_root(&claude_dir);
 
     let mut state = ReaderState::new(projects.clone(), with_bg, tail_only);
     // All frames go out through a FrameSink: a bounded-channel sender that counts
@@ -1915,7 +1915,7 @@ fn add_time_verdict(
     }
     if let Some(cmd) = cmdline {
         let lower = cmd.to_lowercase();
-        if !lower.trim().is_empty() && !lower.contains("claude") && !lower.contains("node") {
+        if !crate::agents::claudecode::liveness::cmdline_may_be_agent(&lower) {
             return AddTimeVerdict::Imposter("cmdline");
         }
     }
@@ -2067,7 +2067,7 @@ impl FrameSink {
 
 /// `true` for a regular `*.jsonl` file.
 fn is_jsonl(p: &Path) -> bool {
-    p.extension().is_some_and(|e| e == "jsonl")
+    crate::agents::claudecode::records::is_session_file(p)
 }
 
 /// `true` for a `sessions/<PID>.json` file. We only ever feed this paths under

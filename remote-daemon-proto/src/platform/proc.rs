@@ -71,13 +71,17 @@ pub(crate) fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
         .ok()
 }
 
-/// 从 `/proc/<pid>/environ` 抠 `CLAUDE_CONFIG_DIR` 的值（**只这一个键**）。
+/// 从 `/proc/<pid>/environ` 抠**某一个**环境变量的值。空值按未设算（回 `None`）。
 /// 读不到（进程已消失 / 非同 uid）→ `None`。形状照同模块的 [`proc_cmdline`]。
 ///
 /// U2 从 `accounts_query.rs` 搬来（Phase D 审计：它带着两个 `target_os` cfg 留在 observe 侧文件里，
-/// U3 一划层就会当场违反「`platform/` 是唯一允许平台 cfg 的层」）。**原头注引的 `watcher::proc_cmdline`
-/// 在 U2 之后已是悬空引用** —— `proc_cmdline` 也搬到这里了。
-pub(crate) fn proc_claude_config_dir(pid: u32) -> Option<String> {
+/// U3 一划层就会当场违反「`platform/` 是唯一允许平台 cfg 的层」）。
+///
+/// ⚠ `S3` 把**变量名**参数化了：原来它叫 `proc_claude_config_dir`、把
+/// `CLAUDE_CONFIG_DIR` 写死在这一层。`platform/` 是"唯一允许平台原语"的层，
+/// 它不该认识任何一个 agent 的环境变量叫什么 —— 那是 `agents/<名>/` 的事。
+/// 这一处是本件让 `platform/` 整层变干净、从而能进 `S1` 的 `CORE_FILES` 的**唯一**改动。
+pub(crate) fn proc_env_var(pid: u32, name: &str) -> Option<String> {
     #[cfg(target_os = "linux")]
     {
         let bytes = std::fs::read(format!("/proc/{pid}/environ")).ok()?;
@@ -86,7 +90,7 @@ pub(crate) fn proc_claude_config_dir(pid: u32) -> Option<String> {
                 continue;
             }
             let s = String::from_utf8_lossy(entry);
-            if let Some(v) = s.strip_prefix("CLAUDE_CONFIG_DIR=") {
+            if let Some(v) = s.strip_prefix(&format!("{name}=")) {
                 if v.is_empty() {
                     return None;
                 }
@@ -97,7 +101,7 @@ pub(crate) fn proc_claude_config_dir(pid: u32) -> Option<String> {
     }
     #[cfg(not(target_os = "linux"))]
     {
-        let _ = pid;
+        let _ = (pid, name);
         None
     }
 }
