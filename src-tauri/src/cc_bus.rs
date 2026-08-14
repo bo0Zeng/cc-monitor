@@ -663,6 +663,9 @@ fn refuse_local_write(origin: &str, what: &str) -> Option<String> {
     ))
 }
 
+/// cc-monitor 自己在总线上的身份 —— **发消息时用它，别让收信人看到 `unknown`**。
+pub(crate) const MONITOR_BUS_ID: &str = "cc-monitor";
+
 /// 本机发消息：走 daemon 的 `bus-send` 原语（`P4f`）。
 ///
 /// # 为什么不是"本机也拼一条 shell 串"
@@ -677,7 +680,13 @@ async fn send_via_local_daemon(id: &str, text: &str) -> Result<String, String> {
     let Some(client) = client_for(LOCAL_ORIGIN) else {
         return Err("本机 daemon 通道没起来 —— 发消息要经它（设置里可以起/停本机 daemon）。".into());
     };
-    let args = serde_json::json!({ "to": id, "text": text });
+    // ★ **以谁的身份发**〔08-13 实测〕：不给 `from` 的话，daemon 跑 `cc-send` 时不在任何
+    //   tmux pane 里，`cc-whoami` 解不出身份 ⇒ 收信人看到「来自 unknown」，
+    //   而它给的回复方式是 `cc-send unknown "…"` —— **回复直接掉进没人读的收件箱**。
+    // ⚠ 用 `MONITOR_BUS_ID` 这个固定身份：收信人至少知道**这条是从 cc-monitor 发来的**。
+    //   ⚠ 回复仍然没有归宿（没人读 `cc-monitor` 的收件箱）—— 那条已记进 ROADMAP `U17`，
+    //   不在这一刀里假装解决。
+    let args = serde_json::json!({ "to": id, "text": text, "from": MONITOR_BUS_ID });
     match client
         .call("bus-send", args, std::time::Duration::from_secs(30))
         .await

@@ -231,6 +231,30 @@ _o12="$(env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS
         "$TIMEOUT" 20 "$D" --bus-send < "$SANDBOX/mid.json" 2>/dev/null)"
 chk "  对照：120KB 照样发得出去" "$(printf '%s' "$_o12" | jq -r .sent)" "true"
 
+echo "[13] ★ 以谁的身份发：不给 from 的话，回复会掉进没人读的收件箱"
+# 实测：daemon 跑 cc-send 时不在任何 tmux pane 里 ⇒ cc-whoami 解不出身份 ⇒
+# 收信人看到「来自 unknown」，而它给的回复方式是 `cc-send unknown "…"` ——
+# **那是我们自己制造的幽灵收件箱**（同 [4] 那条打错名字的病，只是这次是工具造的）。
+# ⇒ bus-send 收可选的 from，作为 CC_BUS_ID 传给子进程（cc-whoami 优先级第一条，
+#   是 cc-bus **现成的契约**，不改它本体）。
+_fb="$SANDBOX/frombus"; mkdir -p "$_fb"/{inbox,state,log,queue}
+printf 'x_cc	x_cc:0.0	ts	1
+' > "$_fb/agents.tsv"
+_send_from() {
+  printf '%s' "$2" | env -u TMUX -u TMUX_PANE -u CC_BUS_ID CLAUDE_CONFIG_DIR="$CLA" \
+    CC_BUS_HOME="$_fb" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 20 "$D" --bus-send 2>/dev/null
+}
+: > "$_fb/inbox/x_cc.jsonl"
+_r1="$(_send_from x '{"to":"x_cc","text":"没给 from"}')"
+chk "不给 from ⇒ 回值里 from 是 null（如实回显，别让调用方以为有身份）" \
+  "$(printf '%s' "$_r1" | jq -r '.from')" "null"
+chk "  ⚠ 而收信人看到的确实是 unknown（这就是那条幽灵）" \
+  "$(jq -r .from < "$_fb/inbox/x_cc.jsonl" | tail -1)" "unknown"
+_r2="$(_send_from x '{"to":"x_cc","text":"给了 from","from":"cc-monitor"}')"
+chk "★ 给了 from ⇒ 回值回显它" "$(printf '%s' "$_r2" | jq -r '.from')" "cc-monitor"
+chk "★ 且收信人看到的就是它（不再是 unknown）" \
+  "$(jq -r .from < "$_fb/inbox/x_cc.jsonl" | tail -1)" "cc-monitor"
+
 "$REALTMUX" -L "$_SOCK" kill-server 2>/dev/null || true
 
 echo
