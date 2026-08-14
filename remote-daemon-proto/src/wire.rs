@@ -212,12 +212,14 @@ pub enum Frame {
         /// 为什么必须由 daemon 说：monitor 收到 removed 后要在「灰点（tmux 还在，可以回去
         /// attach）」和「归档」之间二选一，今天它靠**查自己缓存的那份 `tmux ls` 原文里
         /// `@ccm_sid` 还在不在**来猜。`/branch`（同 pidfile 原地换 sid）时这个猜法必错：
-        /// 旧 sid 的 tmux 格子还在、只是 `@ccm_sid` 已被 `shared/ccm` 的 poller 换成新 sid，
+        /// 旧 sid 的 tmux 格子还在、只是 `@ccm_sid` 已被换成新 sid（`U-NP④` 之前由
+        /// `shared/ccm` 的每秒 poller 换，之后由 daemon 的 `control::identity_tag` 换 ——
+        /// **换的时机与结果一样，这条推理不受影响**），
         /// 而那份缓存**在 P5 删掉 8s ticker 之后再没有任何事件路径会去刷新它**
         /// ⇒ 旧 tab 永久灰点、且按旧 sid 找不到 tmux 会话 ⇒ 杀不掉。
         ///
         /// daemon 这边本来就**分得清**这两件事——它们是两个不同的调用点。把信息发出去，
-        /// monitor 就不用猜，也就不受「缓存多旧」和「ccm 的 1s poller 什么时候回填」影响。
+        /// monitor 就不用猜，也就不受「缓存多旧」和「`@ccm_sid` 什么时候被回填」影响。
         ///
         /// 线上表现：[`RemovalCause::Gone`] **不写字段**（旧 monitor 原样工作，additive）；
         /// 只有 `Superseded` 才出现 `"cause":"superseded"`。

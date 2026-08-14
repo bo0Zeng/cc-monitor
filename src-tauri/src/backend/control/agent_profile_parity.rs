@@ -34,7 +34,7 @@
 //!
 //! # ★ 两项 ccm **独有**的决策，Rust 侧根本没有对侧
 //!
-//! `agent_has_identity`（有没有 per-PID session 文件 ⇒ 要不要起身份回填 poller）与
+//! `agent_has_identity`（有没有 per-PID session 文件 ⇒ 这个会话有没有身份）与
 //! `agent_needs_bus_id`（要不要把 tmux 会话名注入 `CC_BUS_ID`）——
 //! **monitor 的 `AgentAdapter` trait 里没有这两个方法。**
 //!
@@ -56,7 +56,10 @@ mod tests {
     const THE_TWO_CCM_ONLY_DECISIONS: &[(&str, &str)] = &[
         (
             "agent_has_identity",
-            "该 agent 有没有 per-PID session 文件（决定要不要起身份回填 poller）",
+            // ⚠ `U-NP④`（08-14）改过这句：ccm 里那条身份 poller 已删，这个决策今天
+            // 决定的是「要不要要求 daemon 在场」（身份 `@ccm_sid` 只由 daemon 打）。
+            // 与 `shared/ccm` 里同一行的措辞保持一致 —— 两处一起改，别只改一边。
+            "该 agent 有没有 per-PID session 文件（决定这个会话有没有身份、要不要要求 daemon 在场）",
         ),
         (
             "agent_needs_bus_id",

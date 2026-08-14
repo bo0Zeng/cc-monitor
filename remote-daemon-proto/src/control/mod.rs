@@ -9,6 +9,11 @@
 //!   `@ccm_sid` 与 `#{session_id}` 句柄，判定本身在共享的 `gate-core`（定框 C1）。
 //!   它**只读** tmux，但归 control/ —— 因为它是「能不能改这个会话」这个**决策**的一部分
 //!   （定框 C13：区别不在进程在哪，在它有没有决策权）。
+//! - [`identity_tag`]（`U-NP④`）：**把 `@ccm_sid` 打到 tmux 会话上**（改 tmux server 运行期状态）。
+//!   接的是 `shared/ccm` 那条**每会话一条、每秒一轮**的身份 poller 的班（用户 08-14 裁定
+//!   「不要轮询」「ccm 做到必须走 daemon」）。触发时机来自 observe 侧的 pidfile inotify
+//!   ⇒ 这是 `layering_guard` 里**第二条**登记在案的 `observe → control` 跨层边。
+//!   探测复用 [`gate::probe`]，只在真要改值时多起一个 `tmux set-option`。
 //! - [`kill`]（F04a）：**杀一个 tmux 会话**。过 §34 三道门（Gate 3 = `windows==1` 只给它），
 //!   对 `#{session_id}` 句柄下手而不是名字。⚠ 本模块落地 ≠ monitor 那条路已切过来（那是 F04b，C6 顺序）。
 //! - [`launch`]（U8a-2b）：**起 tmux 会话 / 往已有会话键入载荷**（U8a 分解里的「平面 ②」）。
@@ -37,6 +42,7 @@ pub(crate) mod cc_bus;
 pub(crate) mod cli_control;
 pub(crate) mod fork_write;
 pub(crate) mod gate;
+pub(crate) mod identity_tag;
 pub(crate) mod kill;
 pub(crate) mod launch;
 pub(crate) mod resolve_query;

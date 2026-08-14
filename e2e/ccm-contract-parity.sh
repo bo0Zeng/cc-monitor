@@ -57,6 +57,22 @@ exit 0
 SHIM
 chmod +x "$W/bin/tmux"
 
+# ★★ `U-NP④`（2026-08-14）：**本套件必须让 ccm「查得到 daemon」，否则每一条真跑都会被
+#     身份前置检查挡下**（用户裁定「ccm做到必须走daemon」：在 tmux 里起 claude 而找不到
+#     daemon ⇒ exit 2）。而 `base_env` 恰恰同时满足那三个条件（`TMUX` 有值 · agent=claude ·
+#     `HOME` 是空的沙箱）。
+# ⇒ 在**部署落点**放一份「读完 stdin、什么都不答」的 stub。它同时保住了本套件原有的两组语义：
+#   · 身份前置检查：**查得到** ⇒ 放行（本套件不测身份，测的是 argv/env 平价）；
+#   · `resume` 那条路：daemon **答不出命令** ⇒ 照旧落回本地那条（"诚实降级"那几条判据要的就是这个）。
+# ⚠ 别改成「不放 stub」——那测的就不再是平价，而是身份检查会不会把整套件打红。
+mkdir -p "$W/home/.cc-monitor/bin"
+printf '#!/bin/sh\ncat >/dev/null\nexit 0\n' > "$W/home/.cc-monitor/bin/cc-monitor-remote"
+chmod +x "$W/home/.cc-monitor/bin/cc-monitor-remote"
+_null_daemon() { # 把部署落点恢复成"答不出"的那份（A′e 会临时覆盖它）
+  printf '#!/bin/sh\ncat >/dev/null\nexit 0\n' > "$W/home/.cc-monitor/bin/cc-monitor-remote"
+  chmod +x "$W/home/.cc-monitor/bin/cc-monitor-remote"
+}
+
 cat > "$W/m.json" <<JSON
 { "version": 1, "accounts": [
   { "name": "z", "configDir": "$W/acct-z", "isDefault": true },
@@ -218,7 +234,11 @@ actual_argv_nolauncher() {   # 不给 --launcher ⇒ 默认启动器 = PATH 上�
 }
 ck "A′d · 降级观察面自检：不给 --launcher 时确实观察得到 argv" "ARGV|--resume abc-123" \
    "$(actual_argv_nolauncher resume abc-123 --agent claude)"
-ck "A′d · daemon 不在时必须落回本地（诚实降级，不是报错）" "ARGV|--resume abc-123" \
+# ⚠ `U-NP④` 订正措辞：这一格原写「daemon **不在**时必须落回本地」。今天"不在"是另一种结局
+#   （身份前置检查 exit 2，见本文件头部那段 stub 的理由），而这条判据要钉的从来是
+#   **「daemon 答不出命令时 argv 走本地那条」** —— 那正是部署落点上那份 null stub 制造的局面。
+#   两件事分开：`ccm-cli.test.sh` 的「daemon 前置检查」一节钉"不在"，这里钉"答不出"。
+ck "A′d · daemon 答不出命令时必须落回本地（诚实降级，不是报错）" "ARGV|--resume abc-123" \
    "$(env -u CCM_DAEMON_BIN bash -c 'true'; actual_argv_nolauncher resume abc-123 --agent claude)"
 # ★ 显式 --launcher 必须压过 daemon 的建议（不许静默失效）。
 ck "A′d · 显式 --launcher 优先于 daemon 建议" "ARGV|--resume abc-123" \
@@ -264,7 +284,9 @@ ck "A′e · --print 不因机器上有没有 daemon 而变" "same" \
       _p2="$(base_env bash "$CCM" resume abc-123 --cwd "$CWD" --print 2>&1)"
       BASE_EXTRA=()
       [ "$_p1" = "$_p2" ] && echo same || echo differs)"
-rm -f "$W/home/.cc-monitor/bin/cc-monitor-remote"
+# ⚠ `U-NP④`：这里原来是 `rm -f` —— 删掉之后**后面每一条真跑都会撞上身份前置检查**。
+#   改成恢复成"答不出"的那份（见本文件头部 `_null_daemon` 的理由）。
+_null_daemon
 
 # 绝对断言：差分两边一起坏掉时的最后一道。
 ck "A′ · resume 真跑的 argv 必须逐字带 --resume <sid>" "ARGV|--resume abc-123" \
@@ -413,9 +435,14 @@ for _k in env deploy path; do
 done
 _h3() {  # $1=档位标签（只为可读，不参与判定）；其余=额外 env
   shift
+  # ⚠ `TMUX` **必须显式给**〔`U-NP④` 08-14〕：本函数原来是让它从宿主环境漏进来的，
+  #   而 `U-NP④` 之后「在不在 tmux 里」会改变结局（身份前置检查只在 tmux 里要求 daemon）
+  #   ⇒ 不显式化的话，同一条判据在「开发者坐在 tmux 里」和「CI 裸 shell」上跑出两种结果。
+  #   本组要测的是**查找次序**，那件事与 tmux 无关，所以把这个变量钉死、别让它漂。
   PATH="$W/h3/pathbin:$W/bin:$PATH" HOME="$W/h3/home" \
     env -u CLAUDE_CONFIG_DIR -u ANTHROPIC_MODEL -u CC_BUS_ID -u CCM_ENV -u CCM_ENV_PROBE \
         CLAUDECODE=1 CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent \
+        TMUX=/faux/socket,1,0 \
         CCM_ACCTS_MANIFEST="$W/m.json" "$@" \
     bash "$CCM" resume abc-123 --agent claude --cwd "$CWD" 2>&1 | grep '^ARGV|' | head -1
 }
@@ -426,7 +453,21 @@ ck "A′h · 无 env ⇒ 用部署落点 ~/.cc-monitor/bin/" "ARGV|FROM-deploy" 
 rm -f "$W/h3/home/.cc-monitor/bin/cc-monitor-remote"
 ck "A′h · 只剩 PATH ⇒ 用 PATH 上那份" "ARGV|FROM-path" "$(_h3 path)"
 rm -f "$W/h3/pathbin/cc-monitor-remote"
-ck "A′h · 一个都没有 ⇒ 落回本地那条" "ARGV|--resume abc-123" "$(_h3 none)"
+# ★★ `U-NP④`（08-14）**这一格的结局变了，不是判据放宽**：
+#   这一格原本断言「一个都没有 ⇒ 落回本地那条（`ARGV|--resume abc-123`）」。
+#   用户裁定「ccm做到必须走daemon」之后，身份（`@ccm_sid`）**只**由 daemon 打、
+#   ccm 里那条每秒轮询已删 ⇒ 在 tmux 里起 claude 而一个 daemon 都找不到，
+#   正确的结局是**响亮失败**，不是「照跑，只是没有身份」（后者就是本件要根除的静默降级）。
+#   ⇒ 拆成两格：**没有逃生口时必须失败** ＋ **明示逃生口时才落回本地**。
+_h3_rc() { shift; PATH="$W/h3/pathbin:$W/bin:$PATH" HOME="$W/h3/home" \
+    env -u CLAUDE_CONFIG_DIR -u ANTHROPIC_MODEL -u CC_BUS_ID -u CCM_ENV -u CCM_ENV_PROBE \
+        CLAUDECODE=1 CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent \
+        TMUX=/faux/socket,1,0 \
+        CCM_ACCTS_MANIFEST="$W/m.json" "$@" \
+    bash "$CCM" resume abc-123 --agent claude --cwd "$CWD" >/dev/null 2>&1; printf '%s' "$?"; }
+ck "A′h · 一个都没有 ⇒ **响亮失败**（rc=2，不是悄悄没有身份）" "2" "$(_h3_rc none)"
+ck "A′h · 一个都没有 + CCM_NO_DAEMON=1（明示放弃身份）⇒ 才落回本地那条" \
+   "ARGV|--resume abc-123" "$(_h3 none CCM_NO_DAEMON=1)"
 
 echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="

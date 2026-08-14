@@ -32,7 +32,12 @@ echo "===== 契约：动作 × 修饰 ====="
 # ⚠ 它仍是**逐字等值**断言，没有降成 `contains`：三条断言各自的意图
 #（`--resume <sid>` 拼对了 / `--model` 被 export / resume 不做 auto 解析）在新串里逐字可见。
 RECIPE() { # RECIPE <sid> <本地兜底的 exec 串>
-  printf '%s' '_ccm_c=""; if [ -n "${CCM_DAEMON_BIN:-}" ] && [ -x "$CCM_DAEMON_BIN" ]; then _ccm_c="$(printf '"'"'%s'"'"' '"'"'{"sessionId":"'"$1"'"}'"'"' | "$CCM_DAEMON_BIN" --resolve 2>/dev/null | grep -o '"'"'"command":"[^"]*"'"'"' | head -1 | cut -d'"'"'"'"'"' -f4)"; fi; if [ -n "$_ccm_c" ]; then exec $_ccm_c; else '"$2"'; fi'
+  # ⚠ **`U-NP④`（08-14）订正**：这段手写期望自 `P4e`（08-13，daemon 改成**自己找**）起就腐了 ——
+  #   它还停在「只认 `$CCM_DAEMON_BIN`」的老配方，于是下面三条黄金串**静默常红**。
+  #   期望文本必须跟着 `DAEMON_BIN_RECIPE` 走（顺序 `$CCM_DAEMON_BIN` → 部署落点 → PATH），
+  #   还有 `P4e` 的 `timeout 3` 与 F10/08-13 的 `set -f`。
+  local sid_json="{\"sessionId\":\"$1\"}"
+  printf '%s' '_ccm_c=""; _ccm_db=""; if [ "${CCM_NO_DAEMON:-}" != 1 ]; then for _ccm_x in "${CCM_DAEMON_BIN:-}" "$HOME/.cc-monitor/bin/cc-monitor-remote" "$(command -v cc-monitor-remote 2>/dev/null)"; do if [ -n "$_ccm_x" ] && [ -x "$_ccm_x" ]; then _ccm_db="$_ccm_x"; break; fi; done; unset _ccm_x; fi; if [ -n "$_ccm_db" ]; then _ccm_c="$(printf '"'"'%s'"'"' '"'"''"$sid_json"''"'"' | $(command -v timeout >/dev/null 2>&1 && printf '"'"'timeout 3 '"'"') "$_ccm_db" --resolve 2>/dev/null | grep -o '"'"'"command":"[^"]*"'"'"' | head -1 | cut -d'"'"'"'"'"' -f4)"; fi; if [ -n "$_ccm_c" ]; then set -f; exec $_ccm_c; else '"$2"'; fi'
 }
 
 ck "零修饰（--cwd .）：最终 exec 与今天 ccm() 逐字节一致" \
@@ -236,8 +241,12 @@ echo "===== 会话名派生：与前端 deriveTmuxName **真值对拍**（跨语
 # 不与手写期望比，与 src/remote-launch.ts 的真实实现比。
 # **必须 env -u TMUX**：CLI 在 tmux 内会退化成"就地起"（不建嵌套会话），
 # 那时 --print 没有 tmux 命令序列可抓。生产路径是 `ssh -t … bash -lic`，$TMUX 本就不存在。
+# ⚠ **`^[{ ]*` 不能省**〔`U-NP④` 08-14 顺手修的既有腐坏〕：`P3sc`（08-13）把撞名改成
+# 「响亮失败」时，把 `tmux new-session` 包进了 `{ … || { …; exit 3; }; }` ——
+# 于是这条 `sed` 的 `^tmux` 锚点**零命中**，下面 5 条跨语言对拍**全部拿到空串、静默常红**。
+# 这正是「判据的匹配单位跟不上事实的形状」那一族：报的是「对拍不一致」，真因是抽取器失灵。
 name_of() { env -u TMUX CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent bash "$CCM" --tmux --cwd "$1" --print 2>&1 \
-            | sed -n "s/^tmux new-session -d -s \\('[^']*'\\|[^ ]*\\) .*/\\1/p" | tr -d "'"; }
+            | sed -n "s/^[{ ]*tmux new-session -d -s \\('[^']*'\\|[^ ]*\\) .*/\\1/p" | tr -d "'"; }
 if command -v npx >/dev/null 2>&1; then
   for d in /home/pi/proj "/home/pi/a  b" /home/pi/proj/// / /home/pi/.hidden.dir; do
     want="$(cd "$REPO" && npx --no-install tsx -e "
@@ -268,43 +277,79 @@ else
 fi
 
 echo
-echo "===== 身份 poller 的 sid 解析（audit-0805 F14 第六刀，报告 I-5 最后一条）====="
-# 这段解析跑在 ccm 的**每秒一轮、与会话同寿**的身份 poller 里，且 poller 是**每会话一条、
-# 跑在远端机器上**。原形态 `grep -o … | head -1 | cut` 实测每 tick 起 7 次 clone/execve；
-# 换成纯 builtin 之后 0 次（`sleep 1` 固定的 2 次不动）。
+echo "===== 身份：daemon 前置检查（U-NP④，2026-08-14 用户裁定「ccm做到必须走daemon」）====="
+# 这一节**真跑 ccm**（不是 `--print`），因为它验的是「跑到哪一步、退出码是多少、
+# launcher 到底有没有被 exec」—— 那三件 `--print` 一件都答不了。
 #
-# ⚠ 这里**从 `shared/ccm` 里抽出函数定义再 eval**，不重写一份 —— 重写一份就是同义反复，
-# 实现怎么变期望就怎么变。抽取器自检在下面第一条。
-eval "$(sed -n '/^_ccm_sid_from_file() {/,/^}/p' "$CCM")"
-ck "抽取器自检：_ccm_sid_from_file 真的从 ccm 里抽出来了（否则下面全部零命中地绿）" \
-   "function" "$(type -t _ccm_sid_from_file || echo none)"
+# ⚠ 本节替换掉的是原先「身份 poller 的 sid 解析」那 9 条：那条 **每会话一条、与会话同寿、
+#   每秒一轮** 的 poller 已被整条删除（连同它的解析器 `_ccm_sid_from_file`），
+#   `@ccm_sid` 改由 daemon 的 `control/identity_tag.rs` 在 pidfile inotify 上打。
+#   删掉的判据不是「少测了」——它测的那个东西不存在了；新的一节测的是**替代契约**。
+#
+# ★ **PATH 里刻意没有 tmux**：失败那条路上一条 tmux 命令都不该起（前置检查排在
+#   所有 tmux 调用之前）。若哪天有人把检查挪到 tmux 调用之后，这里会以"跑去碰 tmux"
+#   的形式暴露出来，而不是安静地绿。C7i：本节全程**不碰任何 tmux server**。
+DTMP="$(mktemp -d)"
+mkdir -p "$DTMP/bin" "$DTMP/home" "$DTMP/proj"
+# launcher 留痕：exec 到了才会有这个文件。
+cat > "$DTMP/bin/mark" <<MARK
+#!/bin/sh
+: > "$DTMP/ran"
+MARK
+chmod +x "$DTMP/bin/mark"
+# 一个"存在且可执行"的假 daemon —— 前置检查只查得到不查跑得起（如实边界，见 ccm 头注）。
+printf '#!/bin/sh\nexit 0\n' > "$DTMP/bin/fake-daemon"; chmod +x "$DTMP/bin/fake-daemon"
+cp "$(command -v bash)" "$DTMP/bin/bash" 2>/dev/null || ln -s "$(command -v bash)" "$DTMP/bin/bash"
 
-SIDTMP="$(mktemp -d)"
-printf '%s' '{"cwd":"/x","sessionId":"abc-123","model":"opus"}' > "$SIDTMP/ok.json"
-printf '%s' '{"sessionId" : "sp aced"}'                          > "$SIDTMP/spaced.json"
-printf '%s' '{"cwd":"/x"}'                                       > "$SIDTMP/nofield.json"
-printf '%s' 'not json at all'                                    > "$SIDTMP/garbage.json"
+# 受控运行：空环境 + 只有 bin/ 的 PATH（**没有 tmux、没有 cc-monitor-remote**）。
+idrun() { # idrun <额外 env…> —— stdout/stderr 落文件，回显退出码
+  rm -f "$DTMP/ran"
+  env -i HOME="$DTMP/home" PATH="$DTMP/bin" \
+      CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent \
+      "$@" bash "$CCM" --cwd "$DTMP/proj" --launcher "$DTMP/bin/mark" \
+      > "$DTMP/out" 2> "$DTMP/err"
+  printf '%s' "$?"
+}
 
-_ccm_sid_from_file "$SIDTMP/ok.json"
-ck "正常取出 sessionId" "abc-123" "$_ccm_sid_out"
-_ccm_sid_from_file "$SIDTMP/spaced.json"
-ck "键与冒号之间有空格、值里有空格 —— 照样取对" "sp aced" "$_ccm_sid_out"
-_ccm_sid_from_file "$SIDTMP/nofield.json"
-ck "★ 没有 sessionId 字段 → 空，且**不许残留上一次的值**（残留比读不到更坏：会拿旧 sid 去打标）" \
-   "" "$_ccm_sid_out"
-_ccm_sid_from_file "$SIDTMP/garbage.json"
-ck "整个文件不是 JSON → 空，不炸" "" "$_ccm_sid_out"
+RC="$(idrun TMUX=/faux/socket,1,0)"
+ck "★ 在 tmux 里 + 找不到 daemon ⇒ **响亮失败**（rc=2，不是静默降级）" "2" "$RC"
+ck "★ 失败时**没有** exec launcher（会话不许在没有身份的情况下起来）" \
+   "no" "$([ -f "$DTMP/ran" ] && echo yes || echo no)"
+ck "失败信息里说得出是缺什么" "yes" \
+   "$(grep -q '找不到 daemon' "$DTMP/err" && echo yes || echo no)"
+ck "失败信息里说得出**怎么办**（查找顺序 / 逃生口）" "yes" \
+   "$(grep -q 'CCM_DAEMON_BIN' "$DTMP/err" && grep -q 'CCM_NO_DAEMON' "$DTMP/err" && echo yes || echo no)"
 
-# ★ 这一条是换形态时**自测撞出来的真回归**：会话元数据文件在 claude 真写出来之前**不存在**，
-# 而那正是这条 poller 最常见的早期状态。`< "$1"` 的重定向失败由 **shell 自己**报到 stderr，
-# `2>/dev/null` 挡不住 ⇒ 少了 `[ -r ]` 那道门就会**每秒喷一行**。旧的 grep 形态没有这个问题。
-_ccm_sid_from_file "$SIDTMP/ok.json"   # 先垫一个非空值，验下一行会不会残留
-ERRTXT="$( { _ccm_sid_from_file "$SIDTMP/does-not-exist.json"; } 2>&1 >/dev/null )"
-ck "★ 文件不存在 → stderr 必须一个字都没有（poller 每秒跑一轮，喷一行就是每秒一行）" \
-   "" "$ERRTXT"
-_ccm_sid_from_file "$SIDTMP/does-not-exist.json"
-ck "文件不存在 → 结果为空，不残留上一次" "" "$_ccm_sid_out"
-rm -rf "$SIDTMP"
+RC="$(idrun TMUX=/faux/socket,1,0 CCM_DAEMON_BIN="$DTMP/bin/fake-daemon")"
+ck "找得到 daemon ⇒ 照常起（rc=0）" "0" "$RC"
+ck "找得到 daemon ⇒ launcher 真被 exec 了" "yes" \
+   "$([ -f "$DTMP/ran" ] && echo yes || echo no)"
+ck "★ 找得到 daemon ⇒ stderr **一个字都没有**（别把正常路径变吵）" "" "$(cat "$DTMP/err")"
+
+RC="$(idrun TMUX=/faux/socket,1,0 CCM_NO_DAEMON=1)"
+ck "逃生口 CCM_NO_DAEMON=1 ⇒ 放行（rc=0）" "0" "$RC"
+ck "★ 逃生口**照样说一句**（明示放弃身份 ≠ 闷声降级）" "yes" \
+   "$(grep -q 'CCM_NO_DAEMON=1' "$DTMP/err" && echo yes || echo no)"
+
+RC="$(idrun)"
+ck "不在 tmux 里 ⇒ 不拦（rc=0）—— 那里根本没有地方放 @ccm_sid，拦了也换不来身份" "0" "$RC"
+ck "★ 不在 tmux 里也**说一句**（旧版这里有窗口标题，随轮询一起没了，不许闷声）" "yes" \
+   "$(grep -q '不在 tmux 里' "$DTMP/err" && echo yes || echo no)"
+
+RC="$(env -i HOME="$DTMP/home" PATH="$DTMP/bin" TMUX=/faux/socket,1,0 \
+      CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent \
+      bash "$CCM" --cwd "$DTMP/proj" --agent codex --launcher "$DTMP/bin/mark" \
+      > "$DTMP/out" 2> "$DTMP/err"; printf '%s' "$?")"
+ck "codex 没有身份面（agent_has_identity 为假）⇒ 不要求 daemon、不吵" "0|" \
+   "$RC|$(cat "$DTMP/err")"
+
+# `--print` 是**纯的**：它在前置检查之前就退出了，缺 daemon 也照样吐串（rc=0）。
+RC="$(env -i HOME="$DTMP/home" PATH="$DTMP/bin" TMUX=/faux/socket,1,0 \
+      CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent \
+      bash "$CCM" --cwd "$DTMP/proj" --print > "$DTMP/out" 2>/dev/null; printf '%s' "$?")"
+ck "★ --print 不受前置检查影响（预言机不许因为这台机器没装 daemon 就哑掉）" "0" "$RC"
+
+rm -rf "$DTMP"
 
 echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
