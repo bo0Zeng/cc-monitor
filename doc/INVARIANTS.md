@@ -670,13 +670,36 @@ tmux 名不变（权威规格 `agents/claude-code.md` §4）。同一目录还�
 attach，都会撞进漂移 / 别的会话**（#63「两 tab 内容与 attach 不一致」、「灰会话 resume 进最新
 branch」的同一根因）。
 
-**契约**：身份回填 poller（F02 起住 `shared/ccm` 内部，取代已删除的 `shared/ccm-wrapper.sh`/
-`__ccm_rbind`）每秒从 pidfile 读当前 sid，写进 tmux user option **`@ccm_sid`**（随 /branch 实时
-更新）。选 user option 而非 pane title：**title 会被 Claude 自己的活动标题（`⠂ …`）抢写、不可靠；
-user option Claude 碰不到** = 「这个 tmux 此刻在跑哪个 sid」的权威带外信号。后端
-`tmux.rs::TMUX_LS_FMT` 末列 `#{@ccm_sid}` 读它，`TmuxSession.sid` 承载；空串（未装 ccm CLI /
-未经它启动）→ `None`。poller 读 `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions/`（账号感知；
-默认布局下与 `$HOME/.claude/sessions/` 同一 inode，故行为不变——D7 已证伪其为独立改造点）。
+**契约**（历史：这条身份信道 F02 起住 `shared/ccm` 内部，取代了已删除的
+`shared/ccm-wrapper.sh` / `__ccm_rbind` —— 留着这句是为了解释「今天为什么没有 wrapper」）：
+tmux user option **`@ccm_sid`** 记「这个 tmux 此刻在跑哪个 sid」（随 `/branch`、`/clear`
+实时更新）。选 user option 而非 pane title：**title 会被 Claude 自己的活动标题（`⠂ …`）抢写、
+不可靠；user option Claude 碰不到** = 权威带外信号。后端 `tmux.rs::TMUX_LS_FMT` 末列
+`#{@ccm_sid}` 读它，`TmuxSession.sid` 承载；空串（未装 ccm CLI / 未经它启动）→ `None`。
+
+**⚠ 谁来写它，`U-NP④`（2026-08-14）换过一次 —— 这段原文写的是「身份回填 poller（住
+`shared/ccm` 内部）**每秒**从 pidfile 读当前 sid」，那句话今天是假的。** 用户裁定逐字
+「**可以动ccm. 不要轮询**」＋「**ccm做到必须走daemon**」⇒ 那条**每会话一条、与会话同寿、
+跑在远端**的每秒循环被**整条删除，不留轮询退路**（连同它的解析器 `_ccm_sid_from_file`）。
+
+今天的写者是 **daemon**：`remote-daemon-proto/src/control/identity_tag.rs`。
+- **触发**：daemon 本来就在 inotify `<claude_dir>/sessions/`（pidfile 目录）。看到
+  `<PID>.json` 的那一刻 pid 与 sid 同时在手；`/clear`、`/branch` 原地重写同一个 pidfile
+  ⇒ modify 事件照样送到，跟着重打。**零新增节拍**。
+- **定位**（「该打到哪个 tmux 会话上」）：读 `/proc/<pid>/environ` 的 **`TMUX_PANE`**，
+  再 `display-message -p -t %N '#{session_id}'` 取句柄，对句柄 `set-option`。
+  选它是因为**没有陈旧的可能**：那个值属于进程自己（tmux 起 pane 时注入、`exec` 原样继承），
+  与旧 poller「自己读自己、写自己的会话」是同一条自指性质。
+  ⚠ 已排除的替代：让 ccm 写一个 `@ccm_pid=$$` 当 join 键 —— 跨平台但**有陈旧面**
+  （ccm 退出后值留在会话里，PID 复用时会把新 sid 打到旧会话上 ⇒ kill 杀错）。
+- **账号感知**：由 daemon 的 `claude_dir` 决定（原 poller 读
+  `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions/`；默认布局下同一 inode）。
+- **前置**：没有 daemon 时 `ccm` **响亮失败**（在 tmux 里起有身份的 agent ⇒ exit 2），
+  逃生口 `CCM_NO_DAEMON=1` 明示放弃身份、**照样往 stderr 说一句**。不许静默降级 ——
+  静默的后果是「会话起来了、monitor 绑不上、点 ↗ 弹『未绑定窗口』而没人知道为什么」。
+- **窗口标题**：`ccm` 把 `set-titles-string` 设成 `#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}`，
+  标题由 **tmux 自己按 `@ccm_sid` 合成** ⇒ 打标者是不是那个会话自己无关紧要，
+  也不需要谁周期性重打（旧 poller 里那句「每 20 秒自愈」随它一起删）。
 
 **铁律**（守 SS-5/SS-9「tab 身份钉在会话身份，找不到就报『不存在』，绝不静默换一个」）：
 - **attach / resume 定位后端，一律先按 `sid===@ccm_sid` 精确匹配**（`tabs.ts::findClaudeTmux`）。
@@ -704,9 +727,11 @@ resume 之间也没有互斥，故一个 sid 可能同时活在 ≥2 个 tmux �
 
 **F04 扩展——`@ccm_sid_expect`（意图）与 `@ccm_sid`（事实）是两个独立的 key，不是同义词**：
 `shared/ccm` 建会话/exec 时刻会**立即**声明"打算跑这个 sid"（通道A，写 `@ccm_sid_expect`）——
-这只是声明，resume 可能瞬间失败（会话已不存在/网络抖动），从未被独立确认过。只有后台 poller
-独立读到 Claude Code 自己的会话文件、确认这个 sid 真的在跑之后，才写 `@ccm_sid`（通道B，唯一
-写者）。**任何破坏性判断（Gate 2 远端半支、kill/send-keys 的身份核验）只认 `@ccm_sid`，绝不认
+这只是声明，resume 可能瞬间失败（会话已不存在/网络抖动），从未被独立确认过。只有通道B
+独立读到 Claude Code 自己的会话文件、确认这个 sid 真的在跑之后，才写 `@ccm_sid`。
+⚠ **`U-NP④`（08-14）之后通道B 的执行者是 daemon**（见上「谁来写它」那段），不再是 ccm 里
+那条每秒 poller —— 分离**更硬**了：事实的写者从「那个会话自己」变成**独立第三方**，
+而且 daemon 打标前已经过了 pidfile 的 `procStart` 冒名检查。两个 key 的语义一个字没变。**任何破坏性判断（Gate 2 远端半支、kill/send-keys 的身份核验）只认 `@ccm_sid`，绝不认
 `@ccm_sid_expect`**——否则一个从未真正跑起来过的声明会永久冒充"事实"，被后续的身份核验采信。
 两个 key 都遵循"只写不清"的既有约定（见上）；`_expect` 不进 `TMUX_LS_FMT`（守 daemon 零改动的
 范围排除），只在窄场景（idle-tmux 置信度判断，F04 本轮未做，留待以后按需评估）按需惰性查。

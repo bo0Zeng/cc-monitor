@@ -1160,7 +1160,10 @@ mod tests {
     fn dormant_e2e_suites_keep_their_assertions() {
         /// `(套件, 脚本名, 断言助手, 当日静态条数)` —— **只许涨**。
         const RATCHET: &[(&str, &str, &str, usize)] = &[
-            ("ccm-acceptance", "ccm-acceptance.sh", "ck", 19),
+            // `U-NP④`（08-14）：19 → 26。场景 3b/5ter 从「验 ccm 那条每秒 poller 打 `@ccm_sid`」
+            // 改成「验 daemon 打标的那把钥匙（`/proc/<pid>/environ` 的 `TMUX_PANE`）＋按它的算法
+            // 打一次」——poller 已整条删除，旧判据测的东西不存在了。**条数是涨的，不是删测试。**
+            ("ccm-acceptance", "ccm-acceptance.sh", "ck", 26),
             ("ccm-pretrust", "ccm-pretrust-acceptance.sh", "ck", 15),
             ("tmux-guarded", "tmux-guarded-acceptance.sh", "ck", 14),
             ("tmux-target", "tmux-target-acceptance.sh", "ck", 26),

@@ -12,10 +12,13 @@
 //!
 //! # 为什么正向要**钉条数**而不是「随便跨」
 //!
-//! 允许跨层的那条边今天**恰好一个符号**：`watcher` 调 `control::tmux_hook::install_hooks`。
-//! 它有一个具体的、说得清的理由（tmux hook 活在 server 内存里、每次 server 重起要重装，
-//! 而「server 起来了」只有 observe 知道）。**「有一个正当例外」与「这条线随便穿」是两回事**，
-//! 中间隔着的就是这个计数。多一个就红，逼下一个人把他的理由也写出来。
+//! 允许跨层的边今天**恰好两个符号**，都由 `watcher` 发起、都有具体说得清的理由：
+//! `control::tmux_hook::install_hooks`（tmux hook 活在 server 内存里、每次 server 重起要重装，
+//! 而「server 起来了」只有 observe 知道）与 `control::identity_tag::tag`（`U-NP④`：
+//! `(pid, sid)` 只在 pidfile 事件那一刻同时在手，让 control 自己去发现只能靠轮询，
+//! 而消灭轮询正是那件事的全部目的）。
+//! **「有正当例外」与「这条线随便穿」是两回事**，中间隔着的就是这个计数。
+//! 多一个就红，逼下一个人把他的理由也写出来。
 //!
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空。
 
@@ -31,7 +34,16 @@ mod tests {
     /// （`install_hooks` 的答案：不能 —— 触发时机是「tmux server 起来了」，
     /// 那是 socket 目录 inotify 观测到的事实，control 侧没有这个信号，
     /// 硬要它自己发现只能靠轮询，与 §41 零定时器铁律正面冲突。）
-    const ALLOWED_OBSERVE_TO_CONTROL: &[&str] = &["crate::control::tmux_hook::install_hooks"];
+    ///
+    /// `identity_tag::tag`（`U-NP④`，08-14）的答案**同型**：触发时机是「某个 pidfile 出现/
+    /// 原地换了 sid」，那是 `sessions/` inotify 观测到的事实（`(pid, sid)` 也只有那一刻同时在手）；
+    /// control 侧没有这个信号，硬要它自己发现只能靠轮询 —— 而本件的**全部目的**就是
+    /// 把 `shared/ccm` 那条每秒轮询消掉（用户 08-14：「不要轮询」「ccm 做到必须走 daemon」）。
+    /// 反过来做只是把轮询从 ccm 搬到 daemon。
+    const ALLOWED_OBSERVE_TO_CONTROL: &[&str] = &[
+        "crate::control::identity_tag::tag",
+        "crate::control::tmux_hook::install_hooks",
+    ];
 
     /// 收集某一层下所有 `.rs` 的 `(相对路径, 生产段)`。
     fn layer_sources(layer: &str) -> Vec<(String, String)> {

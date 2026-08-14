@@ -1166,10 +1166,13 @@ mod tests {
     /// 这些不是"要素清单"而是**血的教训清单**，每条对应一个真实踩过的坑：
     ///  - `=%s:` / `=$` ：tmux `-t` 必须精确匹配（INVARIANTS §31a）。裸目标会杀错/打错兄弟会话；
     ///    `=名` 无尾冒号则在 send-keys/capture-pane/set-option 上 rc=1 完全失效。
-    ///  - `exec` ：不能省——身份 poller 读 `sessions/$PID.json`，不 exec 则 PID 对不上。
+    ///  - `exec` ：不能省。⚠ **理由在 `U-NP④`（08-14）之后换了一条**：旧理由是
+    ///    「身份 poller 读 `sessions/$PID.json`，不 exec 则 PID 对不上」，而那条 poller 已删
+    ///    （身份改由 daemon 打，认的是 pidfile 自己的名字 = claude 的 PID）。今天留着它的
+    ///    理由是「不在 agent 与终端之间多一层 shell」＋ 本 needle 本身就是部署契约。
     ///  - `@ccm_sid` / `@ccm_agent` ：身份随行，cc-monitor 靠它精确认会话。
     ///  - `@ccm_sid_expect` ：F04——通道A（建时/exec 时立即声明"打算跑这个 sid"）写这个 key，
-    ///    与通道B（poller 独立读会话文件确认后才写的 `@ccm_sid`）分离。破坏性动作只认 `@ccm_sid`，
+    ///    与通道B（独立读会话文件确认后才写的 `@ccm_sid`；`U-NP④` 之后由 **daemon** 写）分离。破坏性动作只认 `@ccm_sid`，
     ///    不被"声明了但从未真正跑起来"的会话骗过（旧审计 D6 的坑）。
     ///
     ///    **R09 复核订正（2026-07-28）——这条分离的作用域是「`shared/ccm` 内部」，不是全仓。**
@@ -1177,7 +1180,7 @@ mod tests {
     ///    另一个是 `src/session-backend.ts::TMUX_BACKEND.createRunAttach`——**兜底渲染器**
     ///    自己拼 tmux 命令时，在 create 分支**直写裸 `@ccm_sid`**。
     ///
-    ///    那不是漏改，是 F04 Phase B 方案A 的明确取舍：兜底路径**没有 poller**，
+    ///    那不是漏改，是 F04 Phase B 方案A 的明确取舍：兜底路径**不经 ccm**，
     ///    因而没有"意图→事实"的提升机制；若那里改写 `@ccm_sid_expect`，这个 key 将
     ///    **永远不会被提升**，于是 Gate 2 的 `@ccm_sid` 半支永久判不出它 → 该会话变得不可 kill
     ///    （向后兼容回归，正是 §5.1 第 3 条要防的）。所以两侧**故意写不同的 key**。
@@ -1186,8 +1189,8 @@ mod tests {
     ///      · 本函数下方的 needle 扫描：`shared/ccm` **必须**写 `@ccm_sid_expect`；
     ///      · `src/session-backend.test.ts`（"#72 + F03.4甲′"那条黄金串）：兜底渲染器
     ///        **必须**写裸 `@ccm_sid`。已实测：把兜底侧改成 `_expect` 会让后者转红。
-    ///    **成功标准④ 不受此例外影响**——终端起会话那条路径全程在 `shared/ccm` 内
-    ///    （写 expect、poller 提升），与兜底渲染器无交集。
+    ///    **成功标准④ 不受此例外影响**——终端起会话那条路径的意图声明全程在 `shared/ccm` 内
+    ///    （写 expect；事实由 daemon 提升，见 `U-NP④`），与兜底渲染器无交集。
     ///  - `CLAUDE_CONFIG_DIR` ：账号注入必须在**最终 exec 的那个 shell 里**设。
     ///  - `--print` / `--ccm-probe` ：F03 的渲染等价断言 + 安装自检/降级判据依赖它们。
     #[test]

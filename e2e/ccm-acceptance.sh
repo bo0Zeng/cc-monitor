@@ -25,9 +25,10 @@ trap 'rm -rf "$TMP"; "$TMUX_BIN" -L "$SOCK" kill-server 2>/dev/null' EXIT
 BIN="$TMP/bin"; mkdir -p "$BIN"
 printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$TMUX_BIN" "$SOCK" > "$BIN/tmux"; chmod +x "$BIN/tmux"
 # 假 launcher：不起真 agent（真 claude 会清屏 → 探针假 PASS，F01 踩过），
-# 只把「我看到的环境」落盘，供断言。**F04 场景3b 需要它自己的 PID**（供测试往
-# `sessions/$PID.json` 里合成一个假会话文件，验证通道B poller 确实会把它读出来）——
-# `exec` 保 PID 不变，故 CCMPROBE 里的 `$$` 就是 ccm 脚本里 poller 记的 `$ccm_pid`。
+# 只把「我看到的环境」落盘，供断言。**场景 3b / 5ter 需要它自己的 PID**：
+# ⚠ `U-NP④`（08-14）之后用途换了 —— 原先是「ccm 的 poller 按 `$$` 找自己的会话文件」，
+# 那条 poller 已删；今天这个 PID 是用来**读 `/proc/<pid>/environ` 的 `TMUX_PANE`** 的，
+# 也就是 daemon 定位「该把 `@ccm_sid` 打到哪个 tmux 会话」用的那把钥匙。
 printf '#!/bin/sh\necho $$ >> %s/ccmprobe.pid\nprintf "CFG=%%s\\nPWD=%%s\\nNESTED=%%s\\n" "${CLAUDE_CONFIG_DIR:-<unset>}" "$PWD" "${CLAUDECODE:-<unset>}" >> %s/probe.log\nsleep 5\n' \
   "$TMP" "$TMP" > "$BIN/CCMPROBE"; chmod +x "$BIN/CCMPROBE"
 export PATH="$BIN:$PATH"
@@ -163,18 +164,51 @@ ck "F04：@ccm_sid（事实）此时仍未设——CCMPROBE 从未写 sessions/*
    "" "$(opt proj-cc @ccm_sid)"
 
 echo
-echo "===== 场景 3b：身份——通道B（poller）独立确认后才把 @ccm_sid_expect 提升为 @ccm_sid ====="
+echo "===== 场景 3b：身份——通道B**已搬去 daemon**（U-NP④，2026-08-14）====="
+#
+# ★★ 本场景整段改写过，**不是判据放宽**：
+#   它原来验的是「ccm 里那条每秒 poller 读到 `sessions/<PID>.json` 之后把 `@ccm_sid` 打上」。
+#   用户 08-14 裁定「**可以动ccm. 不要轮询**」＋「**ccm做到必须走daemon**」⇒ 那条 poller
+#   被**整条删掉**（连同解析器 `_ccm_sid_from_file`），`@ccm_sid` 改由 daemon 的
+#   `remote-daemon-proto/src/control/identity_tag.rs` 在 pidfile inotify 事件上打。
+#
+# ⚠ **本套件不起 daemon**（硬约束：daemon 一进流模式就往**用户真实 tmux server** 装三条
+#   全局 hook，槽位 [50]、装即覆盖）。所以这里能验、且必须验的是两件**独立于 daemon 的**事实：
+#     ① **ccm 自己确实不再打 `@ccm_sid` 了**（负向：会话文件就摆在那儿，它也不该动）——
+#        这是「poller 真没了」在真 tmux 上的读数，比读源码强；
+#     ② **daemon 打标所需的那把钥匙在**：pane 里那个进程的 `/proc/<pid>/environ` 带
+#        `TMUX_PANE`，且它解析回来的正是这个会话。daemon 的 join 就是这一步
+#        （`identity_tag::pane_of` → `gate::probe`）。钥匙在 = 那半接得上。
+#   ③ 顺带**照着 daemon 的做法**手工打一次标，验「打完之后 `@ccm_sid` 与窗口标题都对」。
+#      这一格是机制的端到端，只是把 Rust 那 20 行换成等价的三条 tmux 命令。
 reset
 ( cd "$TMP/proj" && bash "$CCM" --tmux --account z --ccm-sid deadbeef-3b --launcher CCMPROBE >/dev/null 2>&1 & )
 wait_grep . "$TMP/ccmprobe.pid" || { echo "      (注：等 CCMPROBE 落 PID 超时)"; dump_panes; }
-# CCMPROBE 落盘了自己的 PID（= ccm 脚本 poller 记的 $ccm_pid，exec 保 PID 不变）；
-# 合成一份 Claude Code 会话文件，模拟"agent 真的确认在跑这个 sid"。
 CCMPROBE_PID="$(head -1 "$TMP/ccmprobe.pid" 2>/dev/null)"
 mkdir -p "$ACCTS/z/sessions"
 [ -n "$CCMPROBE_PID" ] && printf '{"sessionId":"deadbeef-3b"}' > "$ACCTS/z/sessions/$CCMPROBE_PID.json"
-wait_opt proj-cc @ccm_sid || echo "      (注：等通道B提升 @ccm_sid 超时)"
-ck "通道B：poller 读到会话文件后，把 @ccm_sid（事实）提升为确认值" "deadbeef-3b" "$(opt proj-cc @ccm_sid)"
-ck "@ccm_sid_expect（意图）仍保留，两个 key 独立共存" "deadbeef-3b" "$(opt proj-cc @ccm_sid_expect)"
+sleep 2   # 给足「旧 poller 若还在，它早该打上了」的窗口 —— 下一条是负向断言
+ck "★ 通道B 已不在 ccm 里：会话文件就摆在那儿，ccm 也**不**打 @ccm_sid（poller 真的没了）" \
+   "" "$(opt proj-cc @ccm_sid)"
+ck "@ccm_sid_expect（意图）照旧由 ccm 打 —— 两个 key 的分离一个字没改" "deadbeef-3b" \
+   "$(opt proj-cc @ccm_sid_expect)"
+# ② daemon 的 join 钥匙：`/proc/<pid>/environ` 的 `TMUX_PANE`
+_pane=""
+[ -n "$CCMPROBE_PID" ] && [ -r "/proc/$CCMPROBE_PID/environ" ] && \
+  _pane="$(tr '\0' '\n' < "/proc/$CCMPROBE_PID/environ" 2>/dev/null | sed -n 's/^TMUX_PANE=//p' | head -1)"
+case "$_pane" in %[0-9]*) _shape=ok ;; *) _shape="bad:[$_pane]" ;; esac
+ck "★ daemon 的 join 钥匙在：agent 进程的 environ 带 TMUX_PANE（%N 形态）" "ok" "$_shape"
+ck "★ 那把钥匙解析回来正是这个会话（daemon 就是这么定位「该打哪儿」的）" "proj-cc" \
+   "$([ -n "$_pane" ] && T display-message -p -t "$_pane" '#{session_name}' 2>/dev/null)"
+# ③ 照 daemon 的做法手工打一次（三条命令 = identity_tag.rs 的等价物）
+if [ -n "$_pane" ]; then
+  _sess="$(T display-message -p -t "$_pane" '#{session_id}' 2>/dev/null)"
+  [ -n "$_sess" ] && T set-option -t "$_sess" @ccm_sid deadbeef-3b >/dev/null 2>&1
+fi
+ck "★ 按 daemon 的算法打完，@ccm_sid（事实）就位" "deadbeef-3b" "$(opt proj-cc @ccm_sid)"
+ck "★ 打完之后窗口标题 marker 立刻成立（tmux 自己按 set-titles-string 合成，不靠谁重打）" \
+   "ccm-rbind-deadbeef-3b" \
+   "$(T display-message -p -t '=proj-cc:' '#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}' 2>/dev/null)"
 
 echo
 echo "===== 场景 4：agent 轴 ====="
@@ -230,18 +264,23 @@ ck "显式名连开两次 → 仍只有一个 cc-fixed" "cc-fixed" \
    "$(T ls -F '#{session_name}' 2>/dev/null | sort | tr '\n' ' ' | sed 's/ $//')"
 
 echo
-echo "===== 场景 5ter：多开出来的那个会话**也被打上 @ccm_sid**（issue #76 的真「孤儿」判据）====="
+echo "===== 场景 5ter：多开出来的那个会话**也认得出**（issue #76 的真「孤儿」判据）====="
 #
 # 「孤儿」在本仓被用在两个意思上，别混：
 #   ① 字面「多出一个你没要的会话」—— 场景 5 反转的就是它，那个会话 monitor 看得见、有 tab
 #      （识别 Claude Code 会话靠 pidfile，与 tmux 名无关）。
 #   ② **issue #76 的真孤儿**：tmux 会话**没有 `@ccm_sid`** ⇒ cc-monitor attach / 管理不了。
 #
-# 场景 5 只证明了「会多出一个会话」，**没证明它不是第 ② 种**。ccm 的通道B（poller 按 `$$`
-# 找自己的会话文件）理论上对每个 ccm 进程各自成立，但既然 #76 就摆在那儿，这条不该靠推理。
+# 场景 5 只证明了「会多出一个会话」，**没证明它不是第 ② 种**。这条不该靠推理。
 #
-# **必须带 `--account z`**：不带的话 poller 读的是**真实 `$HOME/.claude/sessions`**，
-# 本测试要往那儿合成会话文件就等于写用户家目录。带上就落到隔离的 $ACCTS/z 里。
+# ★★ `U-NP④`（08-14）之后本场景的**判法**变了，要防的东西一个字没变：
+#   身份不再由 ccm 自己打（那条每秒 poller 已删），而由 daemon 按
+#   `/proc/<pid>/environ` 的 `TMUX_PANE` 定位后打。⇒ 「第二个会话会不会变成 #76 孤儿」
+#   这个问题，在本套件（**刻意不起 daemon**，见场景 3b 头注）上的等价形式是：
+#   **两个会话各自的 agent 进程都带着能解析回自己会话的 `TMUX_PANE`**，
+#   且**两把钥匙指向的是两个不同的会话**（串了的话 attach 会连到错的那个 —— 与旧判据同一个后果）。
+#
+# **仍然必须带 `--account z`**：不带的话下面合成的会话文件会落到**真实 `$HOME/.claude/sessions`**。
 reset
 ( cd "$TMP/proj" && bash "$CCM" --tmux --account z --launcher CCMPROBE >/dev/null 2>&1 & )
 wait_session proj-cc || echo "      (注：等 proj-cc 出现超时)"
@@ -255,11 +294,25 @@ _p1="$(sed -n '1p' "$TMP/ccmprobe.pid" 2>/dev/null)"
 _p2="$(sed -n '2p' "$TMP/ccmprobe.pid" 2>/dev/null)"
 [ -n "$_p1" ] && printf '{"sessionId":"aaaaaaaa-1111"}' > "$ACCTS/z/sessions/$_p1.json"
 [ -n "$_p2" ] && printf '{"sessionId":"bbbbbbbb-2222"}' > "$ACCTS/z/sessions/$_p2.json"
-wait_opt proj-cc @ccm_sid   || echo "      (注：等 proj-cc 的 @ccm_sid 超时)"
-wait_opt proj-cc-2 @ccm_sid || echo "      (注：等 proj-cc-2 的 @ccm_sid 超时)"
-# 两个都要有标记，且**各是各的 sid**（都有值但串了的话，attach 会连到错的那个）
-ck "第一个会话有 @ccm_sid" "aaaaaaaa-1111" "$(opt proj-cc @ccm_sid)"
-ck "★ 多开出来的第二个会话**也有** @ccm_sid（不是 #76 那种管不了的孤儿）" "bbbbbbbb-2222" \
+_pane_of() { # $1=pid → stdout: TMUX_PANE（拿不到就空）
+  [ -n "${1:-}" ] && [ -r "/proc/$1/environ" ] && \
+    tr '\0' '\n' < "/proc/$1/environ" 2>/dev/null | sed -n 's/^TMUX_PANE=//p' | head -1
+}
+_n1="$(T display-message -p -t "$(_pane_of "$_p1")" '#{session_name}' 2>/dev/null)"
+_n2="$(T display-message -p -t "$(_pane_of "$_p2")" '#{session_name}' 2>/dev/null)"
+ck "第一个会话的 agent 进程解析回自己的会话" "proj-cc" "$_n1"
+ck "★ 多开出来的第二个会话**也解析得回自己**（不是 #76 那种管不了的孤儿）" "proj-cc-2" "$_n2"
+ck "★ 两把钥匙**不许串**（串了 attach 会连到错的那个 —— 与旧判据同一个后果）" "differ" \
+   "$([ -n "$_n1" ] && [ "$_n1" != "$_n2" ] && echo differ || echo same)"
+# 照 daemon 的算法各打各的，验「两个会话拿到的是各自的 sid」——这正是旧判据的那一格。
+for _pair in "$_p1:aaaaaaaa-1111" "$_p2:bbbbbbbb-2222"; do
+  _pp="${_pair%%:*}"; _ss="${_pair##*:}"
+  _pn="$(_pane_of "$_pp")"
+  [ -n "$_pn" ] && T set-option -t "$(T display-message -p -t "$_pn" '#{session_id}' 2>/dev/null)" \
+      @ccm_sid "$_ss" >/dev/null 2>&1
+done
+ck "按 daemon 的算法打完：第一个会话拿到自己的 sid" "aaaaaaaa-1111" "$(opt proj-cc @ccm_sid)"
+ck "★ 按 daemon 的算法打完：第二个会话拿到的是**它自己的** sid（不是第一个的）" "bbbbbbbb-2222" \
    "$(opt proj-cc-2 @ccm_sid)"
 
 echo

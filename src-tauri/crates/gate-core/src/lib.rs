@@ -26,7 +26,10 @@
 //! # ⚠ `@ccm_sid` 不是 `@ccm_sid_expect`
 //!
 //! `shared/ccm` 刻意分了两个 option：通道 A（意图）写 `@ccm_sid_expect`，
-//! 只有通道 B（poller 独立读会话文件确认后）才写 `@ccm_sid`。
+//! 只有通道 B（独立读会话文件确认后）才写 `@ccm_sid`。
+//! ⚠ `U-NP④`（08-14）：通道 B 的执行者已从 `shared/ccm` 里那条每秒 poller 换成 **daemon**
+//! （`control/identity_tag.rs`，pidfile inotify 驱动）。**两个 key 的语义一个字没变**，
+//! 只是事实的写者变成了独立第三方 —— 这里的判定不受影响，改注释是因为旧措辞已不成立。
 //! 原注释逐字写着「**破坏性动作只认 `@ccm_sid`**」——
 //! 因为一个「声明了但从未真正跑起来」的 sid 不该永久冒充事实。
 //! ⇒ 调用方喂进 [`gate2`] 的必须是 `@ccm_sid`。**放宽到 `_expect` 就是把这道门拆了。**

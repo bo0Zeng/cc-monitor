@@ -1705,6 +1705,9 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
         },
     );
     state.active_sids.insert(sid.clone());
+    // `U-NP④`：身份打标（`@ccm_sid`）—— 接 `shared/ccm` 那条每秒轮询的班，见
+    // `control::identity_tag`（跨层边已登记进 `layering_guard`）。放在冒名检查**之后**。
+    crate::control::identity_tag::tag(pid, &sid);
     // P2：给这个进程实例挂 pidfd 看守（取代原先每 2s 一遍的判活扫描）。
     // `start` 就是上面 verdict 用过的那次 /proc 读，不再多读一次。
     arm_pid_watcher(&key_for_watch, pid, start, state);
