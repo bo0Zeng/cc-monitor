@@ -173,6 +173,16 @@ fn on_path(name: &str) -> Option<PathBuf> {
 /// ⚠ 找不到 `timeout(1)` 就**如实降级**：裸跑、没有期限。
 /// 那种机器上这条路会退回「可能卡住」，判据与文档都照实写（不假装有保障）。
 fn run(name: &str, args: &[&str]) -> Result<std::process::Output, CmdErr> {
+    run_as(name, args, None)
+}
+
+/// 同 [`run`]，但可以指定**以谁的身份**跑（`CC_BUS_ID`）。
+///
+/// # 为什么是环境变量而不是给 cc-send 加参数
+///
+/// `cc-whoami` 的优先级第一条逐字就是 `$CC_BUS_ID`（可选覆盖）——**这是 cc-bus 现成的契约**。
+/// 用户 08-13 逐字「细节先按原本的就行」⇒ 不动 cc-bus 本体。
+fn run_as(name: &str, args: &[&str], as_id: Option<&str>) -> Result<std::process::Output, CmdErr> {
     let bin = find(name)?;
     let secs = timeout_secs();
     // 一处 `Command::new`，两种 argv：有 `timeout(1)` 就 `timeout <secs> <bin> <args…>`。
@@ -184,10 +194,12 @@ fn run(name: &str, args: &[&str]) -> Result<std::process::Output, CmdErr> {
         None => (bin.clone(), Vec::new()),
     };
     argv.extend(args.iter().map(|a| (*a).to_string()));
-    Command::new(&prog)
-        .args(&argv)
-        .stdin(Stdio::null())
-        .output()
+    let mut cmd = Command::new(&prog);
+    cmd.args(&argv).stdin(Stdio::null());
+    if let Some(id) = as_id {
+        cmd.env("CC_BUS_ID", id);
+    }
+    cmd.output()
         .map_err(|e| {
             // ★ **E2BIG 要单独说**〔08-13 实测〕：`{"code":"failed","message":"起不来 cc-send：
             //   Argument list too long"}` 有两处不对 —— ① `failed` 是兜底桶，调用方分不出
@@ -278,7 +290,7 @@ pub(crate) fn classify_send(code: Option<i32>, detail: &str) -> Result<(), (Stri
 ///
 /// ⚠ 与 `kill::parse_name` 同一条纪律：**这不是安全边界**（argv 直传不过 shell），
 /// 更**不是**收件人合法性检查 —— 那归 cc-bus（见 [`classify_send`]）。
-fn parse_send(args: &serde_json::Value) -> Result<(String, String), CmdErr> {
+fn parse_send(args: &serde_json::Value) -> Result<(String, String, Option<String>), CmdErr> {
     let obj = args
         .as_object()
         .ok_or(("invalid_args", "args 不是对象".to_string()))?;
@@ -293,7 +305,16 @@ fn parse_send(args: &serde_json::Value) -> Result<(String, String), CmdErr> {
     if to.trim().is_empty() {
         return Err(("invalid_args", "`to` 是空的".to_string()));
     }
-    Ok((to.to_string(), text.to_string()))
+    // ★ `from` 可选：**不给就是今天的行为**（cc-whoami 在 daemon 的处境里解不出身份 ⇒ `unknown`）。
+    //   给了就以那个身份发 —— 收信人才知道是谁，回复才有地方去。
+    //   ⚠ 合法性仍归 cc-bus（`cc-whoami` 自己会消毒成 `[A-Za-z0-9_-]`），这里只判形状。
+    let from = obj
+        .get("from")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    Ok((to.to_string(), text.to_string(), from))
 }
 
 fn first_line(bytes: &[u8]) -> String {
@@ -412,9 +433,9 @@ fn recipient_status(to: &str) -> (bool, serde_json::Value) {
 pub(crate) fn send_for_inbound(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (String, String)> {
-    let (to, text) = parse_send(args).map_err(|(c, m)| (c.to_string(), m))?;
+    let (to, text, from) = parse_send(args).map_err(|(c, m)| (c.to_string(), m))?;
     // `--` 显式结束旗标：收件人万一以 `--` 开头也当收件人，不会被 cc-send 当成选项。
-    let out = run("cc-send", &["--", &to, &text]).map_err(|(c, m)| {
+    let out = run_as("cc-send", &["--", &to, &text], from.as_deref()).map_err(|(c, m)| {
         // 只有这条路带得动大载荷 ⇒ 把**实测长度**补进去（诊断里给数，别让人自己去量）。
         if c == "too_long" {
             return (
@@ -441,7 +462,11 @@ pub(crate) fn send_for_inbound(
     // ⇒ 投递照旧（先发后到是正当用法），但**说清楚**：`registered` + 三态 `live`。
     let (registered, live) = recipient_status(&to);
     Ok(serde_json::json!({
-        "to": to, "sent": true, "registered": registered, "live": live
+        "to": to, "sent": true, "registered": registered, "live": live,
+        // 回显**以谁的身份发的**：不给 `from` 时是 `null`，那时收信人看到的是
+        // cc-whoami 在 daemon 处境里解出来的东西（实测：`unknown`）——
+        // 回显出来，调用方才看得见这件事，而不是等收信人来问「谁发的」。
+        "from": from
     }))
 }
 
