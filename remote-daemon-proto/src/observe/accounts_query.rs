@@ -415,7 +415,7 @@ fn list_accounts(accts_dir: &Path) -> Vec<String> {
 }
 
 /// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
-fn session_accounts(claude_dir: &Path, accts_dir: &Path) -> Vec<String> {
+fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
     // Z01：`None` 这个 key 是账号 0（configDir 缺席）。裸起会话过去归属不到任何账号
     // （`account: null` + `bare: true`），现在它有名字了。
     let by_dir: Vec<(Option<String>, String)> = load_manifest(accts_dir)
@@ -434,7 +434,7 @@ fn session_accounts(claude_dir: &Path, accts_dir: &Path) -> Vec<String> {
         .unwrap_or_default();
 
     let mut out = Vec::new();
-    let dir = crate::agents::claudecode::paths::sessions_root(claude_dir);
+    let dir = crate::agents::claudecode::paths::sessions_root(agent_home);
     let Ok(rd) = std::fs::read_dir(&dir) else {
         return out; // 没有 sessions/ → 零行（exit 0）
     };
@@ -568,7 +568,7 @@ fn account_trust_zero(cwd: &str) -> Result<String, (String, String)> {
 }
 
 /// 查询模式入口。返回进程退出码（0 ok / 2 err），同 `history_query::run` 约定。
-pub fn run(claude_dir: &Path, args: &[String]) -> i32 {
+pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     let accts_dir = resolve_accts_dir(args);
     match args.first().map(String::as_str) {
         Some("--list-accounts") => {
@@ -578,7 +578,7 @@ pub fn run(claude_dir: &Path, args: &[String]) -> i32 {
             0
         }
         Some("--session-accounts") => {
-            for l in session_accounts(claude_dir, &accts_dir) {
+            for l in session_accounts(agent_home, &accts_dir) {
                 println!("{l}");
             }
             0

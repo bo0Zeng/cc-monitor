@@ -27,27 +27,27 @@ use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 /// 查询模式入口。返回进程退出码。
-pub fn run(claude_dir: &Path, args: &[String]) -> i32 {
+pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     let result = match args.first().map(String::as_str) {
-        Some("--list-projects") => list_projects(claude_dir),
+        Some("--list-projects") => list_projects(agent_home),
         Some("--list-sessions") => match args.get(1) {
-            Some(dir) => list_sessions(claude_dir, dir),
+            Some(dir) => list_sessions(agent_home, dir),
             None => Err("--list-sessions requires <project_dir> argument".into()),
         },
         Some("--read-session-tail") => match (args.get(1), args.get(2)) {
             (Some(p), Some(n)) => match n.parse::<usize>() {
-                Ok(n) => read_session_tail(claude_dir, p, n),
+                Ok(n) => read_session_tail(agent_home, p, n),
                 Err(_) => Err("--read-session-tail <jsonl_path> <N>: N must be a number".into()),
             },
             _ => Err("--read-session-tail requires <jsonl_path> <N> arguments".into()),
         },
         Some("--read-session") => match args.get(1) {
-            Some(p) => read_session(claude_dir, p),
+            Some(p) => read_session(agent_home, p),
             None => Err("--read-session requires <jsonl_path> argument".into()),
         },
         Some("--read-session-from-offset") => match (args.get(1), args.get(2)) {
             (Some(p), Some(o)) => match o.parse::<u64>() {
-                Ok(o) => read_session_from_offset(claude_dir, p, o),
+                Ok(o) => read_session_from_offset(agent_home, p, o),
                 Err(_) => Err(
                     "--read-session-from-offset <jsonl_path> <offset>: offset must be a number"
                         .into(),
@@ -71,8 +71,8 @@ pub fn run(claude_dir: &Path, args: &[String]) -> i32 {
 /// `{"dirName","projectPath","sessionCount","lastActivityMs"}`
 /// projectPath 从该项目**最新** jsonl 的头部记录提取 cwd（对齐本地口径：真实工作
 /// 目录，而非编码过的目录名）；提取不到则空字符串，monitor 侧回退显示 dirName。
-fn list_projects(claude_dir: &Path) -> Result<(), String> {
-    let root = projects_root(claude_dir);
+fn list_projects(agent_home: &Path) -> Result<(), String> {
+    let root = projects_root(agent_home);
     let entries =
         std::fs::read_dir(&root).map_err(|e| format!("read_dir {} failed: {e}", root.display()))?;
     let stdout = std::io::stdout();
@@ -123,7 +123,7 @@ fn list_projects(claude_dir: &Path) -> Result<(), String> {
 /// `{"sessionId","jsonlPath","startedAtMs","updatedAtMs","messageCountApprox",
 ///   "firstUserExcerpt","aiTitle","cwd"}`
 /// 元数据在远端 CPU 上扫整个文件提取（对齐本地 analyze 口径的精简版）。
-fn list_sessions(claude_dir: &Path, project_dir: &str) -> Result<(), String> {
+fn list_sessions(agent_home: &Path, project_dir: &str) -> Result<(), String> {
     // project_dir 是目录名而非路径：拒绝任何分隔符 / 上跳
     if project_dir.contains('/') || project_dir.contains('\\') || project_dir.contains("..") {
         return Err(format!("invalid project dir name: {project_dir}"));
@@ -133,7 +133,7 @@ fn list_sessions(claude_dir: &Path, project_dir: &str) -> Result<(), String> {
     // ——canonicalize 解析 symlink 后做前缀校验挡住。
     // 〔audit-0805 08-06〕**改调共享围栏**（E3）：此前这里是一份内联副本，
     // 注释写着「与 `read_session` 对齐」—— 靠手工对齐的两份迟早会漂。
-    let dir = fence_under_projects(claude_dir, Path::new(project_dir))?;
+    let dir = fence_under_projects(agent_home, Path::new(project_dir))?;
     let entries =
         std::fs::read_dir(&dir).map_err(|e| format!("read_dir {} failed: {e}", dir.display()))?;
     let stdout = std::io::stdout();
@@ -163,8 +163,8 @@ fn list_sessions(claude_dir: &Path, project_dir: &str) -> Result<(), String> {
 ///（`.jsonl` 后缀属文件路；`/` `\` `..` 预检属目录名）。
 ///
 /// `candidate` 相对路径按 root 拼；绝对路径直接用。
-fn fence_under_projects(claude_dir: &Path, candidate: &Path) -> Result<std::path::PathBuf, String> {
-    let root = projects_root(claude_dir)
+fn fence_under_projects(agent_home: &Path, candidate: &Path) -> Result<std::path::PathBuf, String> {
+    let root = projects_root(agent_home)
         .canonicalize()
         .map_err(|e| format!("projects root unavailable: {e}"))?;
     let joined = if candidate.is_absolute() {
@@ -201,7 +201,7 @@ fn fence_under_projects(claude_dir: &Path, candidate: &Path) -> Result<std::path
 ///
 /// 出：每行一个 `{"path","description","timestamp"}`（description/timestamp 拿不到就给 null，
 /// **不猜**）。错：exit 2 + stderr `{code,message}`，与 `--resolve` 同形。
-pub fn list_subagents(claude_dir: &Path, args: &[String]) -> i32 {
+pub fn list_subagents(agent_home: &Path, args: &[String]) -> i32 {
     let Some(parent) = args.get(1) else {
         eprintln!(
             "{}",
@@ -209,7 +209,7 @@ pub fn list_subagents(claude_dir: &Path, args: &[String]) -> i32 {
         );
         return 2;
     };
-    let parent_path = match fence_under_projects(claude_dir, Path::new(parent)) {
+    let parent_path = match fence_under_projects(agent_home, Path::new(parent)) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("{}", serde_json::json!({"code":"path_refused","message":e}));
@@ -272,18 +272,18 @@ pub fn list_subagents(claude_dir: &Path, args: &[String]) -> i32 {
 }
 
 fn validate_session_path(
-    claude_dir: &Path,
+    agent_home: &Path,
     jsonl_path: &str,
 ) -> Result<std::path::PathBuf, String> {
-    let target = fence_under_projects(claude_dir, Path::new(jsonl_path))?;
+    let target = fence_under_projects(agent_home, Path::new(jsonl_path))?;
     if !crate::agents::claudecode::records::is_session_file(&target) {
         return Err("refusing to read non-jsonl file".into());
     }
     Ok(target)
 }
 
-fn read_session(claude_dir: &Path, jsonl_path: &str) -> Result<(), String> {
-    let target = validate_session_path(claude_dir, jsonl_path)?;
+fn read_session(agent_home: &Path, jsonl_path: &str) -> Result<(), String> {
+    let target = validate_session_path(agent_home, jsonl_path)?;
     let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
@@ -299,11 +299,11 @@ fn read_session(claude_dir: &Path, jsonl_path: &str) -> Result<(), String> {
 /// 决策 reset（`offsetByPath`），此处 seek 过 EOF → 读空 → 透传空，安全无副作用。
 /// 透传而非逐行：monitor 侧 parse_line 管线已全，daemon 不重复造（同 `read_session`）。
 fn read_session_from_offset(
-    claude_dir: &Path,
+    agent_home: &Path,
     jsonl_path: &str,
     offset: u64,
 ) -> Result<(), String> {
-    let target = validate_session_path(claude_dir, jsonl_path)?;
+    let target = validate_session_path(agent_home, jsonl_path)?;
     let mut f = std::fs::File::open(&target).map_err(|e| format!("open failed: {e}"))?;
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
@@ -340,8 +340,8 @@ fn slice_from_offset(bytes: &[u8], offset: u64) -> &[u8] {
 /// **可计行**口径：完整（`\n` 收尾）且非 BOM/全空白——与 watcher/monitor 的
 /// 行号空间一字一致），随后原样输出可计行 [F,T)（最新 N 行）、再输出 [0,F)。
 /// monitor 据 meta 编 seq：前 T-F 行 = F+i，其余 = i。空文件 → 仅 meta。
-fn read_session_tail(claude_dir: &Path, jsonl_path: &str, n: usize) -> Result<(), String> {
-    let target = validate_session_path(claude_dir, jsonl_path)?;
+fn read_session_tail(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<(), String> {
+    let target = validate_session_path(agent_home, jsonl_path)?;
     // 审计 D：整文件 std::fs::read 在 Pi 级设备上对数百 MB 会话有 OOM 风险
     // （旧 --read-session 是 io::copy 流式）——改单遍流式扫描（环形缓冲只存
     // 最近 N 个可计行的字节偏移，O(N) 内存）+ 两次 seek 范围拷贝。

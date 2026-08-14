@@ -38,8 +38,8 @@ use walkdir::WalkDir;
 /// **先 Claude 后 Codex**，各输出每会话一行（Codex 行带 `agentKind` 标记）。
 /// 无 Codex 会话 → Codex 段零输出、Claude 段不受影响（零回归）。
 /// ⚠ Codex 那半 `S2` 已搬去 [`crate::agents::codex::usage`]——本文件只留 Claude 的口径与派发。
-pub fn run(claude_dir: &Path, _args: &[String]) -> i32 {
-    match aggregate(claude_dir).and_then(|()| crate::agents::codex::usage::aggregate()) {
+pub fn run(agent_home: &Path, _args: &[String]) -> i32 {
+    match aggregate(agent_home).and_then(|()| crate::agents::codex::usage::aggregate()) {
         Ok(()) => 0,
         Err(e) => {
             eprintln!("cc-monitor-remote usage error: {e}");
@@ -49,8 +49,8 @@ pub fn run(claude_dir: &Path, _args: &[String]) -> i32 {
 }
 
 /// 扫 projects/**/*.jsonl，按 requestId 逐字段 MAX 聚合，每有 usage 的会话输出一行 JSON。
-fn aggregate(claude_dir: &Path) -> Result<(), String> {
-    let root = projects_root(claude_dir);
+fn aggregate(agent_home: &Path) -> Result<(), String> {
+    let root = projects_root(agent_home);
     if !root.is_dir() {
         return Ok(()); // 无 projects → 无输出（exit 0）
     }
