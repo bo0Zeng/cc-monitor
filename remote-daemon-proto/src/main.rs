@@ -21,6 +21,7 @@
 
 #[cfg(test)]
 mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的，会把邻居测试算进来）
+mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与文件格式（整体 #[cfg(test)]）
 mod cc_bus_boundary_guard; // P4f-Y2：daemon 不许碰 cc-bus 的数据布局（整体 #[cfg(test)]）
 mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 #[cfg(test)]，生产构建为空）
 mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
