@@ -449,6 +449,59 @@ mod tests {
     }
 
     /// ★ 幂等：装两次，第二次**一个字节都不写**、也不留备份。
+    /// ★★ **内嵌清单不许漏掉仓里的脚本**〔08-13〕。
+    ///
+    /// `FILES` 是手写的 `include_bytes!` 清单，而 `shared/cc-bus/scripts/` 是真相源。
+    /// 08-13 往那个目录**新建过一个脚本**（`cc-spawned-record`）—— 漏进清单的后果是：
+    /// 编译照过、测试照绿，而**装出去的 cc-bus 少一个文件**，
+    /// 在用户机器上表现成「新版 cc-spawn 调一个不存在的命令」。
+    ///
+    /// ⚠ 只钉 `scripts/`：`examples/` 与 `SKILL.md` 是另一族（那边多一个示例文件
+    /// 不影响能不能跑），要钉得单独论证。**判据的人群等于它真正证明的那件事。**
+    #[test]
+    fn every_script_in_the_repo_is_embedded_for_deployment() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("仓根")
+            .join("shared/cc-bus/scripts");
+        let mut on_disk: Vec<String> = guard_core::shell_scripts(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .expect("仓根"),
+        )
+        .into_iter()
+        .filter(|p| p.replace('\\', "/").contains("shared/cc-bus/scripts/"))
+        .filter_map(|p| {
+            std::path::Path::new(&p)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_string())
+        })
+        .collect();
+        on_disk.sort();
+        assert!(
+            on_disk.len() >= 10,
+            "只列到 {} 个脚本 —— 取法坏了，本断言在空转：{on_disk:?}",
+            on_disk.len()
+        );
+        let embedded: Vec<String> = FILES
+            .iter()
+            .filter(|(rel, _)| rel.starts_with("scripts/"))
+            .map(|(rel, _)| rel.trim_start_matches("scripts/").to_string())
+            .collect();
+        let missing: Vec<&String> = on_disk.iter().filter(|f| !embedded.contains(f)).collect();
+        assert!(
+            missing.is_empty(),
+            "这些脚本在 `{}` 里，却没进内嵌清单：{missing:?}\n\
+             ⇒ 装出去的 cc-bus 会**少这几个文件**，而编译与测试都不会红。\n\
+             在 `FILES` 里加一行 `include_bytes!`。",
+            dir.display()
+        );
+        // 反向：清单里不许有仓里已经没有的（幽灵条目会让人以为还装着它）
+        let ghosts: Vec<&String> = embedded.iter().filter(|f| !on_disk.contains(f)).collect();
+        assert!(ghosts.is_empty(), "内嵌清单里有仓里没有的脚本：{ghosts:?}");
+    }
+
     #[test]
     fn deploying_twice_writes_nothing_the_second_time() {
         let t = tmpdir("idem");

@@ -1794,6 +1794,48 @@ mod tests {
         );
     }
 
+    /// ★★ **给 `agents.tsv` 加一列，不许打破读它的人**〔08-13〕。
+    ///
+    /// 今天为身份核对加了第 4 列（登记时的 pane 根进程 pid）。这张表有**四个读者**：
+    /// 本解析器 · `cc-list` · `cc-broadcast` · `cc-kill`/`cc-agents`。
+    /// 三个 shell 读者用 `read -r a b c`（多出的落进最后一个变量、且它们都不用它）；
+    /// 本解析器用 `row_fields(line, 3)`，判的是 `len < want` ⇒ **多列照过**。
+    ///
+    /// ⇒ 兼容是**设计成立的**，不是碰巧 —— 但没有判据的话，下一个把它改成
+    /// `f.len() != want` 的人不会知道自己拆掉了什么。这条钉住两个方向。
+    #[test]
+    fn adding_a_column_to_agents_tsv_does_not_break_the_reader() {
+        // 老格式（3 列）——用户机器上那 86 行今天还是这个形状
+        let (old, bad_old) = parse_agents_tsv("a_cc	a_cc:0.0	2026-07-18T07:26:31-07:00
+");
+        assert_eq!(old.len(), 1, "老三列行读不出来了");
+        assert_eq!(bad_old, 0);
+        assert_eq!(old[0].pane, "a_cc:0.0");
+        // 新格式（4 列，第 4 列是 pane 根进程 pid）
+        let (new, bad_new) = parse_agents_tsv("b_cc	b_cc:0.0	2026-08-13T00:00:00-07:00	12345
+");
+        assert_eq!(new.len(), 1, "四列行被当成坏行了 —— 加一列就把驾驶舱清空了");
+        assert_eq!(bad_new, 0);
+        assert_eq!(new[0].id, "b_cc");
+        assert_eq!(
+            new[0].registered_at, "2026-08-13T00:00:00-07:00",
+            "多出的那列串进了时间戳"
+        );
+        // 两种混在一起也要都认（迁移期的真实形状）
+        let (both, bad_both) = parse_agents_tsv(
+            "a_cc	a_cc:0.0	ts
+b_cc	b_cc:0.0	ts	12345
+",
+        );
+        assert_eq!(both.len(), 2, "新老混排时丢了行");
+        assert_eq!(bad_both, 0);
+        // 字段**不够**仍要算坏行（别把"宽容多列"做成"什么都收"）
+        let (short, bad_short) = parse_agents_tsv("c_cc	c_cc:0.0
+");
+        assert!(short.is_empty());
+        assert_eq!(bad_short, 1, "两列行该算坏行");
+    }
+
     /// ★ 在线灯：**「问不到」不许渲染成「不在线」**。
     ///
     /// 老探法是 `tmux has-session -t '=<id>:'`（纯按名字）——名字被别人占着时它照样说在线。
