@@ -367,14 +367,14 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "bus-list",
         doc_anchor: Some("#### `bus-list`"),
-        codes: &["not_installed", "failed"],
+        codes: &["not_installed", "timed_out", "failed"],
         fields: &["agents", "id", "target", "unread"],
         run: Run::Blocking(|_r| crate::control::cc_bus::list_for_inbound().map(Some)),
     },
     CommandSpec {
         name: "bus-send",
         doc_anchor: Some("#### `bus-send`"),
-        codes: &["invalid_args", "not_installed", "rejected", "failed"],
+        codes: &["invalid_args", "not_installed", "rejected", "timed_out", "failed"],
         fields: &["sent", "to"],
         run: Run::Blocking(|r| crate::control::cc_bus::send_for_inbound(&r.args).map(Some)),
     },

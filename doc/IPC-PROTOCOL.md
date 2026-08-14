@@ -500,7 +500,7 @@ monitor 永远不会发的形状。
 （agent 自己再跑 `cc-recv` 就什么都看不到了）。⇒ 「有没有新的」这个问题由 `unread` 回答，
 **没有 `bus-recv` 这条命令**。要做代读的那天，先得给 cc-bus 一个「读了但不算数」的两阶段口。
 
-错误码：`not_installed`（找不到 `cc-list`，消息里带查过哪些位置）· `failed`。
+错误码：`not_installed`（找不到 `cc-list`，消息里带查过哪些位置）· `timed_out` · `failed`。
 
 #### `bus-send`：发一条消息（P4f）
 
@@ -518,7 +518,14 @@ monitor 永远不会发的形状。
 | `invalid_args` | 缺 `to`/`text`，或 cc-send 判定收件人非法 | 形状校验 / `cc-send` rc=2 |
 | `rejected` | 被路由层拦下（ACL / 限流 / 去重 / 灭环），`bus.log` 里有对应一行 | `cc-send` rc=3 |
 | `not_installed` | 找不到 `cc-send` | 查找规则全落空 |
+| `timed_out` | 子进程跑过了期限被结束（默认 10 秒，`CC_BUS_TIMEOUT_SECS` 可调） | 子进程退出码 124 |
 | `failed` | 其它 | 其它退出码 / 起不来 |
+
+⚠ **期限住在子进程里，不在 daemon 里**：daemon 侧一个计时器都不加（零定时器铁律 +
+本文档上面那条「超时一律推给客户端」），而是给子进程套一个 `timeout` 前缀 ——
+`ccm` 问 daemon 那条早就是这么写的。找不到 `timeout` 这个命令时**如实降级**：裸跑、没有期限。
+不这么做的后果实测过：`cc-send` 卡在 flock 上时 daemon **无限等**，
+而这两条是阻塞档、`cancel` 对 `spawn_blocking` 是空操作 ⇒ 一个 worker 被占死。
 
 **收件人合法性归 cc-bus 自己**，daemon 这一层不再写第二份白名单 —— 两处规则会漂。
 

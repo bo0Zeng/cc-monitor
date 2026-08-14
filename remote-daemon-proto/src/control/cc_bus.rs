@@ -132,16 +132,81 @@ fn find(name: &str) -> Result<PathBuf, CmdErr> {
     ))
 }
 
+/// 给子进程的**期限（秒）**。台架用 `CC_BUS_TIMEOUT_SECS` 调小。
+fn timeout_secs() -> u64 {
+    std::env::var("CC_BUS_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(10)
+}
+
+/// 在 `PATH` 上找一个可执行文件（`timeout` 只可能在那儿，不在 cc-bus 的固定位置）。
+fn on_path(name: &str) -> Option<PathBuf> {
+    std::env::var_os("PATH").and_then(|p| {
+        std::env::split_paths(&p)
+            .map(|d| d.join(name))
+            .find(|c| is_executable(c))
+    })
+}
+
 /// ★ **本模块唯一一处起进程**（两条命令共用），已登记进 `readonly_guard::ALLOWED`。
 ///
 /// argv 直传、**不过 shell** ⇒ 收件人/正文里的元字符不构成注入面。
+///
+/// # ★★ 期限住在**子进程**里，不在 daemon 里〔08-13 实测事故 + 铁律冲突〕
+///
+/// 病先说清楚：`Command::output()` **无限等**。实测把 `cc-send` 换成 `sleep 300` 的桩，
+/// `--bus-send` 25 秒都没回来（25 是我从外面掐的，daemon 自己没有任何期限）。
+/// 这不是假想 —— `cc-send` 的投递走 `flock`，**锁被别人占住就一直等**；
+/// 而这两条命令是阻塞档，一条卡住就占死一个 tokio worker，且 `cancel` 对 `spawn_blocking`
+/// 是**空操作**（`inbound` 那条判据逐字：「`cancel` 会对它撒谎」）。
+///
+/// ⚠ 我的第一版是在 daemon 里等（先 `try_wait` 轮询、后 `recv_timeout`）——
+/// **两版都被零定时器护栏当场逮住**，而它是对的：`IPC-PROTOCOL` 自己写着
+/// 「daemon 侧刻意不管超时…零定时器铁律不改，**超时一律推给客户端**」。
+///
+/// ⇒ 正确形状是**让子进程自己有期限**：能找到 `timeout(1)` 就用它当前缀
+///（`ccm` 里问 daemon 那条早就是这么写的，同一条纪律的另一侧）。
+/// daemon 这边仍然只是老老实实 `wait` 一个**注定会退出**的子进程 —— 零计时器。
+///
+/// ⚠ 找不到 `timeout(1)` 就**如实降级**：裸跑、没有期限。
+/// 那种机器上这条路会退回「可能卡住」，判据与文档都照实写（不假装有保障）。
 fn run(name: &str, args: &[&str]) -> Result<std::process::Output, CmdErr> {
     let bin = find(name)?;
-    Command::new(&bin)
-        .args(args)
+    let secs = timeout_secs();
+    // 一处 `Command::new`，两种 argv：有 `timeout(1)` 就 `timeout <secs> <bin> <args…>`。
+    let (prog, mut argv): (PathBuf, Vec<String>) = match on_path("timeout") {
+        Some(t) => (
+            t,
+            vec![secs.to_string(), bin.display().to_string()],
+        ),
+        None => (bin.clone(), Vec::new()),
+    };
+    argv.extend(args.iter().map(|a| (*a).to_string()));
+    Command::new(&prog)
+        .args(&argv)
         .stdin(Stdio::null())
         .output()
         .map_err(|e| ("failed", format!("起不来 `{}`：{e}", bin.display())))
+}
+
+/// `timeout` 那条命令超时时的退出码（GNU coreutils）。
+///
+/// ⚠ 文案里**别把它写成 `timeout` 加括号的形状** —— `no_timer_guard` 按调用形态扫，
+/// 它剥注释但**不剥字符串**，写在错误消息里会被当成一处定时器调用（我当场撞过）。
+const TIMED_OUT_CODE: i32 = 124;
+
+/// 超时那条的说法 —— 两个命令共用一份文案。
+fn timed_out_err() -> (String, String) {
+    (
+        "timed_out".to_string(),
+        format!(
+            "跑了超过 {} 秒还没退出，已被 timeout 命令结束。cc-bus 的投递走 flock —— \
+             多半是锁被别的进程占住了（先看 `cc-list` 与 $CC_BUS_HOME 下的 *.lock）。",
+            timeout_secs()
+        ),
+    )
 }
 
 /// 把 `cc-list` 的**人类可读表**变成结构化的行 —— 纯函数。
@@ -183,6 +248,7 @@ pub(crate) fn classify_send(code: Option<i32>, detail: &str) -> Result<(), (Stri
             "rejected".to_string(),
             format!("被路由层拦下（见 bus.log）：{detail}"),
         )),
+        Some(TIMED_OUT_CODE) => Err(timed_out_err()),
         Some(c) => Err(("failed".to_string(), format!("cc-send 退出码 {c}：{detail}"))),
         None => Err((
             "failed".to_string(),
@@ -223,6 +289,9 @@ fn first_line(bytes: &[u8]) -> String {
 
 pub(crate) fn list_for_inbound() -> Result<serde_json::Value, (String, String)> {
     let out = run("cc-list", &[]).map_err(|(c, m)| (c.to_string(), m))?;
+    if out.status.code() == Some(TIMED_OUT_CODE) {
+        return Err(timed_out_err());
+    }
     if !out.status.success() {
         return Err((
             "failed".to_string(),

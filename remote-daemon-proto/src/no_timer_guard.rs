@@ -217,7 +217,8 @@ mod tests {
     ///
     /// 这不是豁免清单 —— 下面的断言要求生产段里的 `Duration::from_` 调用**恰好**等于
     /// 本表的条数。多出一处就红，逼人回答「这处是不是又把轮询请回来了」。
-    const REGISTERED_DURATION_USES: &[(&str, &str, &str)] = &[(
+    const REGISTERED_DURATION_USES: &[(&str, &str, &str)] = &[
+        (
         "watcher.rs",
         "Duration::from_millis(DEBOUNCE_MS)",
         "notify-debouncer 的**事件合并窗口**：它不产生唤醒，只决定「同一批文件事件攒多久\
