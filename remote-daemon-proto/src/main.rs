@@ -452,10 +452,12 @@ async fn main() {
         build_id: BUILD_ID.to_string(),
         host_arch: std::env::consts::ARCH.to_string(),
         claude_dir: claude_dir.to_string_lossy().into_owned(),
-        // DG3 wire 面已建，但 Codex **发现**（DG1）未接线 → 现只服务 Claude：codex_dir=None、kinds 空
-        // （skip → Hello 帧对 Claude 字节不变）。DG1 落地时翻成 Some(codex_dir)+["claude","codex"]。
-        codex_dir: None,
-        kinds: Vec::new(),
+        // `S4`（`D3`）：wire 面已换成通用的 `homes`（`[{agent_kind, path}]`），但 agent
+        // **发现**（DG1）仍未接线 ⇒ 今天恒空 ⇒ skip ⇒ **Hello 帧对 Claude 的字节不变**。
+        // `S5`/DG1 落地时往这里填表，**不要再加第二个目录字段** —— 那正是 `D3` 排除掉的路。
+        // ⚠ 填之前先想清楚 aterm 那边：它的 fixture 按精确字节对，多一个字段就是一次契约变更。
+        // 这一行由 `production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen` 钉住。
+        homes: Vec::new(),
         capabilities: CAPABILITIES.iter().map(|s| s.to_string()).collect(),
         emits: EMITS.iter().map(|s| s.to_string()).collect(),
         commands: inbound::COMMANDS.iter().map(|s| s.to_string()).collect(),
