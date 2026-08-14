@@ -468,13 +468,13 @@ jobs:
         run: bash e2e/assert-pass-floor.sh tmux-target 26
 
       - name: ccm CLI 契约（F02）
-        run: bash e2e/assert-pass-floor.sh ccm-cli 53
+        run: bash e2e/assert-pass-floor.sh ccm-cli 59
 
       - name: ccm --print 平价预言机（F03）
         run: bash e2e/assert-pass-floor.sh ccm-print-parity 12
 
       - name: ccm 端到端验收（F02）
-        run: bash e2e/assert-pass-floor.sh ccm-acceptance 19
+        run: bash e2e/assert-pass-floor.sh ccm-acceptance 26
 
       - name: ccm 预信任（F11）
         run: bash e2e/assert-pass-floor.sh ccm-pretrust 15
@@ -483,7 +483,7 @@ jobs:
       # 与上面两套的分工：`ccm-cli` 只跑 `--print`（全 `env -u TMUX`）、`ccm-print-parity`
       # 验渲染器意图能被接住 —— **都不比对真 exec 路**，而那正是 U9b 搬决策时会漏的地方。
       - name: ccm 契约差分对拍（U9a · S10 保住清单）
-        run: bash e2e/assert-pass-floor.sh ccm-contract-parity 61
+        run: bash e2e/assert-pass-floor.sh ccm-contract-parity 62
 
       # B02：`cc-spawn` 收编进 `ccm` 的行为等价验收。**本套件自带起飞前自检**——
       # 它经 PATH 上的 tmux shim 强制 `-L <隔离socket>`（cc-spawn/ccm/cc-register 内部都是

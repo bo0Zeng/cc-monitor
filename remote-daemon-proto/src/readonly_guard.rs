@@ -626,6 +626,16 @@ mod spawn_registry {
              这个决策的一部分（定框 C13）",
         ),
         (
+            "control/identity_tag.rs",
+            "tmux",
+            "`U-NP④`：`set-option @ccm_sid`（argv 直传）—— 把「这个 tmux 会话在跑哪个 sid」\
+             这条事实打上去。接的是 `shared/ccm` 那条**每会话一条、每秒一轮**的身份 poller 的班\
+             （用户 08-14：「不要轮询」「ccm 做到必须走 daemon」）。改的是 **tmux server 的\
+             运行期状态**，不是 daemon 自己写用户既有数据（同 `tmux_hook`）。\
+             ⚠ **探测不在这里**：它复用 `control/gate.rs` 那一处 `display-message`，\
+             所以本文件只有这一处起进程 —— 刻意不让面变大",
+        ),
+        (
             "control/cc_bus.rs",
             "<非字面量>",
             "P4f：转调本机的 cc-bus 命令（`cc-list` / `cc-send`），argv 直传不过 shell。\
@@ -717,7 +727,9 @@ mod spawn_registry {
         //
         // ⚠ 这个数**刻意不再枚举是哪几处** —— 那份清单的家是 `ALLOWED`，
         // 在报错文案里再抄一遍就是下一处会腐的散文（定框 E12）。
-        const SPAWN_SITES_TODAY: usize = 8;
+        // `U-NP④`（08-14）：8 → 9，新增 `control/identity_tag.rs` 的 `set-option @ccm_sid`。
+        // 探测那半复用 `control/gate.rs` 已有的 `display-message` ⇒ 只 +1 不是 +2。
+        const SPAWN_SITES_TODAY: usize = 9;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,
