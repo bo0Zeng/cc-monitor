@@ -66,10 +66,24 @@
 #     旧 `cct` 的做法是外层 export + 自建 tmux + send-keys，而 tmux 的 `update-environment`
 #     默认列表不含 CLAUDE_CONFIG_DIR → export 在 tmux 进程边界上被整个吃掉，账号注入 100% 失效。
 #     本 CLI 的 --tmux 因此**不在外层设 env**，而是把「同一条 ccm 命令、去掉 --tmux」送进 tmux 内部。
-#  2. `exec` 不能省：身份回填 poller 读 `~/.claude/sessions/$PID.json`，不 exec 则 PID 对不上。
+#  2. `exec` 不能省 —— **但理由在 `U-NP④`（08-14）之后换了一条，别照旧理解**：
+#     旧理由是「身份回填 poller 读 `~/.claude/sessions/$PID.json`，不 exec 则 PID 对不上」。
+#     那条 poller 已删（见 §L5），今天认 pidfile 的是 daemon，而 pidfile 的名字是
+#     **claude 自己的 PID** ⇒ 「PID 对不上」这个后果**不再存在**。留着 `exec` 的理由是
+#     另外两条：① 不在 agent 与终端之间留一层多余的 shell（信号、退出码、Ctrl-C 直传）；
+#     ② 部署契约里逐字要求它（`sftp.rs` 的 needle）。**照旧写 `exec`，但别再引用那个旧后果。**
 #  3. 所有 tmux `-t` 目标用 `=<名>:` 精确形态（见 doc/INVARIANTS.md §31a）。裸目标是
 #     「精确→名字开头→glob」三级解析，会杀错/打错兄弟会话。尾冒号不能省。
-#  4. 身份注册用**运行时自适应**而非编译期门控：装了就用，没装逐字节退化成裸 launcher。
+#  4. **身份（`@ccm_sid`）必须走 daemon —— 没有 daemon 就响亮失败，不静默降级。**
+#     ⚠ 这一条 `U-NP④`（08-14）**整条改写过**。旧文说的是「身份注册用运行时自适应而非
+#     编译期门控：装了就用，没装就无声地退化成一个普通启动器」。那句话今天是**假的**：
+#     （⚠ 旧话**刻意不逐字抄在这里** —— 钉这条的判据是「ccm 里不许再出现那句话」，
+#      连注释一起扫，抄一遍就会把它自己打红。同 `tmux_hook.rs` 头注那条纪律。）
+#     用户裁定「不要轮询」＋「ccm 做到必须走 daemon」之后，ccm 里那条每秒一轮、与会话同寿的
+#     身份 poller 被整条删掉，**没有留任何轮询退路**。于是「没装 daemon」不再是「少一个
+#     锦上添花」，而是「这个会话在 monitor 里永远绑不上、点 ↗ 弹『未绑定窗口』且没人知道
+#     为什么」。⇒ 在 tmux 里起有身份的 agent 而找不到 daemon ⇒ **exit 2 并说清怎么办**。
+#     逃生口仍在：`CCM_NO_DAEMON=1` 明示放弃身份（那时**照样往 stderr 说一句**，不闷声）。
 
 set -u
 
@@ -137,7 +151,8 @@ agent_nested_env()       {
     codex)  echo "" ;;
   esac
 }
-# 该 agent 有没有 per-PID session 文件（决定要不要起身份回填 poller）。
+# 该 agent 有没有 per-PID session 文件（决定这个会话有没有身份、要不要要求 daemon 在场）。
+# ⚠ `U-NP④` 前这行写的是「决定要不要起身份回填 poller」—— poller 已删，措辞跟着改。
 agent_has_identity()     { case "$1" in claude) return 0 ;; *) return 1 ;; esac; }
 # 该 agent 需不需要把 tmux 会话名注入 CC_BUS_ID（cc-bus 多实例身份）。
 #   codex：**需要**——它的模型-shell 沙箱(Landlock/seccomp)够不着 tmux 服务端 socket，
@@ -752,9 +767,10 @@ if [ "$use_tmux" = 1 ]; then
   seq="{ tmux new-session -d -s $(sq "$tmux_name") -c $(sq "$cwd")$size_opt 2>/dev/null"
   seq="$seq || { printf 'ccm: tmux 会话名 %s 已被占用 —— 拒绝静默接回别人的会话（C14：spawn 就是起）\\n' $(sq "$tmux_name") >&2; exit 3; }; }"
   seq="$seq && (tmux set-option -t $t @ccm_agent $(sq "$agent") 2>/dev/null || true)"
-  # F04：通道A（意图）写 @ccm_sid_expect，不写 @ccm_sid——只有通道B（poller 独立读会话文件
-  # 后确认）才写 @ccm_sid，破坏性动作（kill 等）只认 @ccm_sid，不被"声明了但从未真正跑起来"
+  # F04：通道A（意图）写 @ccm_sid_expect，不写 @ccm_sid——只有通道B（独立读会话文件后确认）
+  # 才写 @ccm_sid，破坏性动作（kill 等）只认 @ccm_sid，不被"声明了但从未真正跑起来"
   # 的会话骗过（见 doc/INVARIANTS.md 对应条目 / MASTERPLAN R10）。
+  # ⚠ `U-NP④`（08-14）：通道B 的执行者已是 **daemon**（`control/identity_tag.rs`），不是 ccm。
   [ -n "$ccm_sid" ] && seq="$seq && (tmux set-option -t $t @ccm_sid_expect $(sq "$ccm_sid") 2>/dev/null || true)"
   seq="$seq && tmux send-keys -t $t $(sq "$payload") Enter"
   # Phase D 审计（阻塞项修复）：预信任只搬了"写入"，没搬 cc-spawn 真正的安全网——写入没成功
@@ -859,7 +875,8 @@ if [ "$use_tmux" = 1 ]; then
 fi
 
 # ===== 非容器路径：在**本进程**里设好环境，然后 exec =====
-# 到这里就是最终 shell。exec 之后 PID 不变（$$），身份 poller 据此读 session 文件。
+# 到这里就是最终 shell。`exec` 之后不再多一层 shell —— 理由见头注第 2 条
+#（⚠ 那条在 `U-NP④` 换过：不再是「PID 对不上」）。
 
 # --print：吐出等价的一行 shell（供 cc-monitor 等价断言 / 调试）。
 if [ "$do_print" = 1 ]; then
@@ -910,62 +927,92 @@ unset _sname
 [ -n "$nested" ] && unset $nested
 [ -n "$cwd" ] && { cd "$cwd" || die "无法进入目录: $cwd"; }
 
-# 从 claude 的会话元数据文件里取 sessionId。**纯 builtin，不起任何外部进程。**
-# 结果写进全局 `_ccm_sid_out`（**不用 stdout**：`s="$(...)"` 那种命令替换本身就要 fork
-# 一个子 shell，正是这里要省掉的东西）。
-#
-# ⚠ 为什么不是 `grep -o … | head -1 | cut`〔audit-0805 F14 第六刀，报告 I-5 最后一条〕：
-# 这段解析跑在下面那条**每秒一轮、与会话同寿**的身份 poller 里。
-# 实测（`strace -f -c -e trace=execve,clone,clone3`，101 轮减 1 轮再除以 100）：
-#   · 管道形态 `grep -o … | head -1 | cut -d'"' -f4` ⇒ **每 tick 7 次** clone/execve
-#     （grep/head/cut 三个外部进程 + 命令替换的子 shell）
-#   · 纯 builtin 形态 ⇒ **每 tick 0 次**
-# 加上 `sleep 1` 固定的 2 次，每 tick 从 **9 次降到 2 次**。
-# 而这条 poller 是**每会话一条**、跑在**远端**机器上 —— 开五个会话就是每秒 45 次降到 10 次。
-#
-# ⚠ 它**没有**改掉「每秒醒一次」这件事本身（那要 inotify，得动 ccm 的进程模型，见 F14 §17）。
-# 改掉的是「每次醒来要付多少」。
-_ccm_sid_from_file() { # $1=会话元数据文件；结果 → $_ccm_sid_out
-  _ccm_sid_out=""
-  local _c=""
-  # ⚠ 会话元数据文件在 claude 真正写出来之前**是不存在的**，而那正是这条 poller
-  # 最常见的早期状态。裸写 `IFS= read … < "$1" 2>/dev/null` **挡不住**这一格：
-  # 重定向失败是 **shell 自己**报的，`2>/dev/null` 只管命令自身的 stderr
-  # ⇒ 会**每秒喷一行**。旧的 `grep … 2>/dev/null` 形态没有这个问题（错误由 grep 报出、
-  # 被挡住了）—— 这是换形态时**自测撞出来的真回归**。
-  #
-  # 下面两道**各自都够**（变异实测：只去掉任一道，`e2e/ccm-cli.test.sh` 那条仍绿；
-  # 两道一起去掉才红，诊断逐字打出那行「没有那个文件或目录」）。两道都留着，各有各的理由：
-  #   · `[ -r ]` —— 常见路径上直接早退，连读都不用试；
-  #   · `{ } 2>/dev/null` —— 兜住「测完到读之间文件被删」那一格竞态（`[ -r ]` 挡不住它）。
-  # ⚠ 这段话原本写的是「`[ -r ]` 这道门不能省」，**被自己的变异证伪了** —— 记在这里，
-  # 因为「哪一行在真正干活」这种断言最容易顺手写错，而它读起来像说明文。
-  [ -r "$1" ] || return 0
-  # `read -d ''` 读到 EOF 返回非 0，而内容照样落进 `_c` —— 这里的非 0 是**正常终止**不是失败。
-  { IFS= read -r -d '' _c < "$1" || true; } 2>/dev/null
-  [[ $_c =~ \"sessionId\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && _ccm_sid_out="${BASH_REMATCH[1]}"
-  return 0
-}
-
 # ===== L5 身份 =====
-# 通道A：已知 sid（cc-monitor 传的）→ 在容器内立刻打标**意图**（@ccm_sid_expect，非 @ccm_sid）。
-# F04：这是声明"即将/正在尝试跑这个 sid"，不是"确认跑起来了"——resume 可能瞬间失败（会话已不存
-# 在/网络抖动），若直接写 @ccm_sid 会让这个从未真正运行过的声明永久冒充"事实"（旧 D6 审计的坑）。
-# 只有下面通道B（poller 独立读会话文件后才写）才算数，破坏性动作只认 @ccm_sid。
+#
+# ★★ `U-NP④`（08-14）：**通道 B 整条搬去 daemon，ccm 这边一条轮询都不留。**
+#
+# 这里原先有一段**每会话一条、与会话同寿、每秒醒一次**的后台循环：读
+# `<config_dir>/sessions/$$.json` 拿 `sessionId`，写 `@ccm_sid` + 打窗口标题。
+# 它是全仓唯一那种形态的轮询，且跑在**远端**机器上（开五个会话就是五条）。
+# 用户裁定逐字：「**可以动ccm. 不要轮询**」＋「**ccm做到必须走daemon**」。
+#
+# ## 新的分工（两通道**没有**被合并掉）
+#
+#   · 通道 A（**意图**，下面这一格）：ccm 自己写 `@ccm_sid_expect` —— 「打算跑这个 sid」。
+#     resume 可能瞬间失败（会话已不存在/网络抖动），所以它**不算事实**。
+#   · 通道 B（**事实**）：`@ccm_sid` 由 **daemon** 写（`control/identity_tag.rs`）。
+#     它在 inotify `<claude_dir>/sessions/` 上看到 `<PID>.json` 时 pid 与 sid 同时在手，
+#     再用 `/proc/<pid>/environ` 的 `TMUX_PANE` 定位到该打哪个 tmux 会话。
+#     `/clear`、`/branch` 原地换 sid ⇒ pidfile 被重写 ⇒ inotify modify ⇒ 它跟着重打。
+#   · 破坏性动作（kill 等）**仍然只认 `@ccm_sid`**，一个字没放宽。
+#     事实的写者反而更硬了：从「那个会话自己」变成**独立第三方**，且 daemon 打标前
+#     已经过了 pidfile 的 `procStart` 冒名检查。
+#
+# ## 为什么不是别的路（这两条已被排除，别重新发明）
+#
+#   · ❌ ccm 自己上 `inotifywait`：破「纯 POSIX shell、零第三方」，而本文件经
+#     `sftp.rs` 的 `include_str!` 部署到**任意远端**，装没装只有运行时才知道
+#     ⇒ 还得留一条轮询退路，那就等于没删。
+#   · ❌ 「拿到 sid 就退出循环」：**安全回归** —— `/clear` 与 `/branch` 会**原地换 sid**，
+#     陈旧的 `@ccm_sid` 会让 kill **杀错会话**。
+#
+# ## 窗口标题（`ccm-rbind-<sid>`）谁来兜
+#
+# 不需要人兜，见下面 `set-titles-string` 那段：标题由 **tmux 自己从 `@ccm_sid` 合成**，
+# 与 claude 抢着写的 pane 标题彻底分开 ⇒ marker 常驻。08-14 私有 socket + 真 pty client
+# 实测：**外部**进程执行 `set-option @ccm_sid <sid>` 之后，tmux 立刻往 client 推
+# `ESC ]0;ccm-rbind-<sid> BEL` —— 打标者是不是这个会话自己无关紧要。
+# 旧循环里那句「每 20 秒重打一次自愈」在这条 format 落地之后已是余物，随它一起删。
+#
+# ⚠ **如实登记的代价**：不在 tmux 里跑（裸 `ccm`，没有 `--tmux`）时，旧循环是靠
+# `printf '\033]0;ccm-rbind-%s\007'` 直接写终端标题的 —— 那条路**没了**，
+# 因为 `@ccm_sid` 是 tmux 会话级 option，没有 tmux 就没有地方放身份。下面会为此说一句话。
+
+# 通道A：已知 sid（cc-monitor 传的）→ 立刻打标**意图**（@ccm_sid_expect，非 @ccm_sid）。
 if [ -n "$ccm_sid" ] && [ -n "${TMUX:-}" ]; then
   tmux set-option @ccm_sid_expect "$ccm_sid" >/dev/null 2>&1 || true
 fi
-# 通道B：未知 sid（new，且随 /branch 漂移）→ 后台 poller 回填。exec 后 PID 不变，故用 $$。
+# 通道B：交给 daemon。ccm 这边只做两件事——**前置检查**（没有 daemon 就响亮失败）
+# 与**让 tmux 自己合成窗口标题**。
 if agent_has_identity "$agent"; then
-  ccm_pid=$$
-  sessions_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"
+  # ★★ **前置检查排在所有 tmux 调用之前**，这个顺序是判据的一部分：
+  #    失败路径上一条 tmux 命令都不该起（`e2e` 里那几条正是在没有 tmux 的 PATH 下跑的）。
+  #
+  # 查找规则**只有一份**（`DAEMON_BIN_RECIPE`，与 `resume` 那条共用）——
+  # 顺序 `$CCM_DAEMON_BIN` → `~/.cc-monitor/bin/cc-monitor-remote` → PATH。
+  #
+  # ⚠ **如实边界**：它证明的是「这台机器上有那个二进制」，**不是**「此刻真有一个 daemon
+  #   在跑、并且正在 watch 这个 `CLAUDE_CONFIG_DIR`」。后者今天没有便宜的问法
+  #   （一次性子命令是**新起一个进程**，答不了「有没有长驻的那个」）。
+  #   ⇒ 本检查挡住的是最常见的那一格（根本没部署），别把它读成更强的保证。
+  if [ -n "${TMUX:-}" ]; then
+    eval "$DAEMON_BIN_RECIPE"
+    if [ -n "$_ccm_db" ]; then
+      :
+    elif [ "${CCM_NO_DAEMON:-}" = 1 ]; then
+      # 明示放弃身份的逃生口。**照样说一句** —— 静默降级正是本条要根除的东西。
+      printf 'ccm: CCM_NO_DAEMON=1 ⇒ 本会话不会被打上 @ccm_sid（身份归 daemon）。cc-monitor 里它绑不上窗口、点 ↗ 会说未绑定。\n' >&2
+    else
+      die "找不到 daemon（cc-monitor-remote），而身份（@ccm_sid）自 U-NP④ 起**只**由它打。
+     没有它：会话照样能起，但 cc-monitor 认不出这个 tmux 会话 —— 列表里绑不上、
+     点 ↗ 弹「未绑定窗口」、结束会话按不动，**而且没有任何地方会告诉你为什么**。
+     查找顺序：\$CCM_DAEMON_BIN → ~/.cc-monitor/bin/cc-monitor-remote → PATH 上的 cc-monitor-remote。
+     怎么办（三选一）：① 在 cc-monitor 里对这台机器跑一次部署（会把 daemon 装到第二个位置）；
+     ② 有二进制就 export CCM_DAEMON_BIN=<它的路径>；③ 明确不要身份：CCM_NO_DAEMON=1 ccm …"
+    fi
+    unset _ccm_db
+  else
+    # 不在 tmux 里 ⇒ **没有任何地方可以放身份**（`@ccm_sid` 是 tmux 会话级 option）。
+    # 这不是「没装 daemon」，装了也一样 ⇒ 不拦，但也不闷声（旧版这里有窗口标题，已随轮询删）。
+    printf 'ccm: 不在 tmux 里 ⇒ 本会话没有 @ccm_sid、也不写 ccm-rbind 窗口标题（身份归 daemon，而 daemon 只能打在 tmux 会话上）。要身份就加 --tmux。\n' >&2
+  fi
   if [ -n "${TMUX:-}" ]; then
     tmux set-option set-titles on >/dev/null 2>&1 || true
     # ★ 窗口标题**由 tmux 自己合成**，不再等于 pane 标题（`#T`）。
     #
     # 为什么改：monitor 靠扫 Windows 窗口标题里的 `ccm-rbind-<sid>` 来绑窗口，
     # 而 **claude 也在往 pane 标题写自己的状态**（转圈图标 + 当前在干什么）。
-    # 用 `#T` 时两者抢同一个位置，claude 一忙就把 marker 冲掉；下面那个循环
+    # 用 `#T` 时两者抢同一个位置，claude 一忙就把 marker 冲掉；当年那条循环
     # 每 20 秒才补一次 ⇒ **点 ↗ 时的 4 秒现扫窗口去撞 20 秒一次的脉冲，约 1/5 命中**。
     # 真机实测（2026-07-31）：四个空闲会话 marker 都在、唯独忙碌那个被冲成
     # 「⠐ 理解…」，点 ↗ 必弹「未绑定窗口」。
@@ -975,24 +1022,14 @@ if agent_has_identity "$agent"; then
     #（`bind.rs` 那句「4s 若仍偶发不足，据真机再抬」是在症状层调参——抬窗口只能提高
     #  命中率，抬到 20s 才保证，而那样点一次要等 20 秒。根因在这里。）
     #
+    # ★ `U-NP④` 复核：**正是这条 format 让「谁来打标」与「标题对不对」解耦** ——
+    #   标题由 tmux 按 `@ccm_sid` 现算，daemon 在外面写一次值，tmux 就会把新标题推给
+    #   attach 着的 client（08-14 真 pty 实测）。所以那条「每 20 秒重打」的自愈随轮询一起删，
+    #   不留残肢。
+    #
     # `#{?@ccm_sid,…,#T}`：sid 还没回填时回退 `#T`，不产出一个空的 `ccm-rbind-`。
     tmux set-option set-titles-string '#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}' >/dev/null 2>&1 || true
   fi
-  (
-    prev="" n=0
-    while kill -0 "$ccm_pid" 2>/dev/null; do
-      _ccm_sid_from_file "$sessions_dir/$ccm_pid.json"
-      s="$_ccm_sid_out"
-      n=$((n+1))
-      # sid 变了立即刷；每 20 秒重打一次自愈（外层标题可能被 PS1 转义/切窗覆写）。
-      if [ -n "$s" ] && { [ "$s" != "$prev" ] || [ $((n % 20)) -eq 0 ]; }; then
-        printf '\033]0;ccm-rbind-%s\007' "$s"
-        [ -n "${TMUX:-}" ] && tmux set-option @ccm_sid "$s" >/dev/null 2>&1
-        prev="$s"
-      fi
-      sleep 1
-    done
-  ) &
 fi
 
 # C4：resume 的 argv 向 daemon 要（拿不到就走本地那条）。

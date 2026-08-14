@@ -826,10 +826,11 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 > 照旧文档写的外部集成方会调一个不存在的函数：bash 下只打一行 command-not-found、
 > **rc=0 继续跑** ⇒ 静默不注册、↗ 永远「未绑定窗口」。入口就是 `ccm` 本身。
 
-1. **启动**：用户经 `ccm` 起 claude。`ccm` 最后 `exec` 掉自己变身 claude，
-   **exec 后 PID 不变**，所以它记的 `$$` **就是 claude 的 PID**
-   （pidfile `sessions/<PID>.json` 按 PID 命名，这是支点）。
-   注意是 `$$` 不是 `$BASHPID`：poller 跑在 `( … ) &` 子 shell 里，那里的 `$BASHPID` 是子 shell 的。
+1. **启动**：用户经 `ccm` 起 claude。`ccm` 最后 `exec` 掉自己变身 claude
+   （pidfile `sessions/<PID>.json` 按 claude 自己的 PID 命名，这是支点）。
+   ⚠ **`U-NP④`（2026-08-14）**：这一步原文还有一句「`exec` 后 PID 不变，所以 ccm 记的 `$$`
+   就是 claude 的 PID；注意是 `$$` 不是 `$BASHPID`，poller 跑在 `( … ) &` 子 shell 里」——
+   **那条 poller 已整条删除**（见下面第 3 步），ccm 不再需要认识自己的 PID，那句注意事项也随之作废。
 2. **tmux 直通**：`$TMUX` 内先 `tmux set-option set-titles on`，再
    `set-titles-string '#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}'`
    （**当前 session 级、运行时选项**，不写 tmux.conf）——否则 OSC 只落 pane title、
@@ -839,11 +840,22 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
    marker 都在、唯独忙碌那个被冲成「⠐ 理解…」，点 ↗ 必弹「未绑定窗口」。
    改成由 tmux 从 `@ccm_sid` **自己合成**之后 marker 常驻，两条路不再交叉。
    `#{?@ccm_sid,…,#T}` 的 `#T` 只是 sid 尚未回填时的回退，避免产出一个空的 `ccm-rbind-`。
-3. **marker 刷新**：后台 poller 每 1s 读 `sessions/<PID>.json` 的 `sessionId`。
-   **sid 变化时**（首现 / `/clear` / `/resume` 换 sid）**或每 20 次循环（≈20s）自愈重打**一次，
-   发 `\033]0;ccm-rbind-<sid>\007` → tmux pane title → 直通外层终端 → 经 ssh 显示层透传 →
-   **本地 WT 窗口标题**；同一分支还 `tmux set-option @ccm_sid "$s"`（上面那条 format 的取值来源，
-   也是 `doc/INVARIANTS.md` §30 的判据来源）。claude 退出（`kill -0` 失败）poller 自灭。
+3. **marker 刷新**：**由 daemon 打 `@ccm_sid`，tmux 自己合成标题**〔`U-NP④`，2026-08-14〕。
+   ⚠ 本步原文是「后台 poller 每 1s 读 `sessions/<PID>.json` … 或每 20 次循环（≈20s）自愈重打，
+   发 `\033]0;ccm-rbind-<sid>\007`」。用户裁定「不要轮询」「ccm 做到必须走 daemon」之后，
+   **那条每会话一条、与会话同寿、跑在远端的每秒循环被整条删除，不留轮询退路**。
+   今天的链路：
+   daemon（`control/identity_tag.rs`，触发源是它本来就有的 `sessions/` inotify）
+   → 读 `/proc/<pid>/environ` 的 `TMUX_PANE` 定位会话
+   → `tmux set-option -t <session_id> @ccm_sid <sid>`
+   → **tmux 按第 2 步那条 `set-titles-string` 现算标题**并推给 attach 着的 client
+   （`ESC ]0;ccm-rbind-<sid> BEL`）→ 直通外层终端 → 经 ssh 显示层透传 → **本地 WT 窗口标题**。
+   ⇒ 「自愈重打」不再需要（标题是 tmux 现算的，不是谁定期喷的）；
+   `/clear`、`/branch` 原地换 sid 时 pidfile 被重写 ⇒ inotify modify ⇒ daemon 跟着重打。
+   契约与 `doc/INVARIANTS.md` §30 同源。
+   ⚠ **代价（如实登记）**：**不在 tmux 里**跑的 `ccm` 从此**没有** rbind marker ——
+   旧 poller 是直接 `printf` OSC 到终端的，而 `@ccm_sid` 是 tmux 会话级 option、
+   没有 tmux 就没有地方放身份。ccm 会为此往 stderr 说一句，不静默。
 4. **扫描绑定**（`lib.rs` remote-session-emitter）：daemon `session_added` 后对该 sid
    起独立线程，**每 600ms 重试扫描一次、最多 15 次（≈9s）**（等远端 shell 起 + OSC 透传；`lib.rs` 里那句注释说明为什么比固定 4 次更稳健），
    `EnumWindows` + `GetWindowTextW` 找**标题子串含** `ccm-rbind-<sid>` 的首个可见窗口，

@@ -143,9 +143,14 @@ mod tests {
         (
             "shared/ccm",
             "wait-for-condition",
-            "两处：① 预信任对话框等待（6 × 0.5s，**§1.3 登记在案的例外** —— 那个对话框没有\
-             内核事件源，只能看屏）；② 1s 身份轮询（`sleep 1`）。**②是真 data-poll**，\
-             退役归 **U9b**（thin ccm 变零决策执行臂）。⚠ 一个文件两类，故按文件登记。",
+            "**只剩一处**：预信任对话框等待（6 × 0.5s，**§1.3 登记在案的例外** —— 那个对话框\
+             没有内核事件源，只能看屏）。\
+             ⚠ **`U-NP④`（2026-08-14）**：本条原来还有「② 1s 身份轮询（`sleep 1`）」，\
+             那是本仓唯一一条**与会话同寿、每会话一条、跑在远端**的每秒循环。\
+             用户裁定「不要轮询」＋「ccm 做到必须走 daemon」⇒ **整条删掉，没留轮询退路**。\
+             接班的是 daemon 的 `control/identity_tag.rs`（由 `sessions/` 的 pidfile inotify \
+             驱动，零新增节拍）。所以本文件今天**不再是两类**，是一类。\
+             钉住「它真的没了」的是本模块的 `the_identity_poller_is_gone_for_good`。",
         ),
         // ★★ **08-10（devbench F07）扩面后逮到的一族**：`shared/cc-bus/scripts/`。
         // 本表原来的人群是「`src/**/*.ts` + 写死的 `shared/ccm` 一个文件名」⇒ 这棵树整个在账外。
@@ -694,72 +699,145 @@ mod tests {
         }
     }
 
-    /// ★ **每秒醒一次的循环，每次醒来不许起外部进程**〔audit-0805 F14 第六刀〕。
+    /// ★ **身份 poller 不许回来** —— `U-NP④`（2026-08-14）之后 `shared/ccm` 里
+    /// **一条与会话同寿的循环都不许有**。
     ///
-    /// `shared/ccm` 的身份 poller 是本仓**唯一一条与会话同寿的每秒循环**，而且它
-    /// **每会话一条、跑在远端机器上**。它醒来做什么，代价要乘以「会话数 × 会话时长」。
+    /// # 这条判据取代了谁
     ///
-    /// 原来那一行是 `s="$(grep -o … | head -1 | cut -d'"' -f4)"`。
-    /// 实测（`strace -f -c -e trace=execve,clone,clone3`，101 轮减 1 轮除以 100）：
-    /// **每 tick 7 次** clone/execve（三个外部进程 + 命令替换的子 shell）；
-    /// 换成纯 builtin 的 `_ccm_sid_from_file` 之后 **0 次**。
-    /// 加上 `sleep 1` 固定的 2 次 ⇒ 每 tick 从 **9 次降到 2 次**。
+    /// 它的**上一版**叫 `the_per_second_identity_poller_spawns_nothing_per_tick`，
+    /// 钉的是「那条每秒循环每次醒来不许起外部进程」（audit-0805 F14 第六刀：管道形态
+    /// 每 tick 7 次 clone/execve，纯 builtin 0 次）。那一版的头注**自己写着**：
+    /// 「本条钉的是**每次醒来的代价**，不是醒不醒；『别每秒醒』要 inotify，
+    /// 得动 ccm 的进程模型 —— 如实登记为未做」。
     ///
-    /// ⚠ 本条钉的是「**每次醒来的代价**」，不是「醒不醒」。
-    /// 「别每秒醒」要 inotify，得动 ccm 的进程模型 —— 如实登记为未做，见 `F14 §17`。
+    /// 用户 08-14 裁定「**可以动ccm. 不要轮询**」＋「**ccm做到必须走daemon**」
+    /// ⇒ 那件「未做」被做掉了，做法不是给 ccm 上 inotify（破「纯 POSIX shell、零第三方」，
+    /// 而 ccm 要经 `include_str!` 部署到任意远端），而是**把通道 B 整条搬去 daemon**
+    ///（`remote-daemon-proto/src/control/identity_tag.rs`，由它已有的 pidfile inotify 驱动）。
+    /// ⇒ 「醒来的代价」这个量**不再存在**，钉它的判据必须换成钉「它真的没了」。
+    ///
+    /// # 为什么不是零命中的空守卫
+    ///
+    /// 它有一个真实的反向锚点：同一个文件里**仍然有**一处 `sleep`（预信任等待，
+    /// `REGISTERED` 里登记为 `wait-for-condition`）。所以「ccm 里没有轮询」这句话
+    /// 是**假的**、也不该被钉；该钉的是**那一种形态**：与会话同寿的循环。
+    /// 下面第二段断言正是靠它证明抽取器没有空转。
     #[test]
-    fn the_per_second_identity_poller_spawns_nothing_per_tick() {
-        let ccm = fs::read_to_string(repo_root().join("shared/ccm"))
+    fn the_identity_poller_is_gone_for_good() {
+        let raw = fs::read_to_string(repo_root().join("shared/ccm"))
             .expect("shared/ccm 读不到 —— 路径变了就把这条一起改");
-        let start = ccm
-            .find("while kill -0 ")
-            .expect("找不到身份 poller 的循环头 —— 它被改写或搬走了，本条会零命中地绿");
-        let body_start = start + ccm[start..].find('\n').expect("循环头没换行");
-        let end = ccm[body_start..]
-            .find("\n    done")
-            .expect("找不到循环尾 `done` —— 缩进变了？本条会把整份文件当循环体");
-        let body = &ccm[body_start..body_start + end];
-        // 抽取器自检：抽出来的必须像个循环体，不能是空的、也不能是整份文件。
+        // 剥 **shell** 整行注释：用共享原语 `strip_hash_comment_lines`，**不自己写第二份**
+        // （`structural_scan::every_comment_stripping_transformer_is_registered` 当场逮过我
+        // 一次：本条第一版内联了一个同款剥法）。⚠ 别拿 `strip_comment_lines` 代替 ——
+        // 那个认的是 `//` / `*` / `/*`（Rust/TS 那套），对 `#` 一个字都不剥。
+        // 要剥是因为本文件的散文里逐字写着下面那些形态（在解释它们为什么没了）。
+        let prod = guard_core::strip_hash_comment_lines(&raw);
         assert!(
-            (3..40).contains(&body.lines().count()),
-            "抽到 {} 行，不像那个循环体（抽取器坏了）：\n{body}",
-            body.lines().count()
+            prod.len() * 4 > raw.len(),
+            "剥注释后只剩 {} / {} 字节 —— 剥法坏了，本条在空转",
+            prod.len(),
+            raw.len()
         );
-        // ★ **整行钉**，不是子串钉〔F24〕：原来这里是 `body.contains("sleep 1")`，
-        // 而 `sleep 10` **也含有** `sleep 1` ⇒ 有人把频率从每秒改成每 10 秒时，
-        // 本条照样绿，而判据名与上面整段头注都写着「**每秒**」。
-        // 那是「匹配单位（子串）比事实（整行 `sleep 1`）小」这一族的活样本 ——
-        // audit-0805 已实测三次（F05 起流/起流程 · F16 前缀 · F19 同名参数），
-        // 三次都只在造变异时才看得见。
-        guard_core::pin_line(body, "sleep 1").unwrap_or_else(|e| {
-            panic!(
-                "身份 poller 的循环体里钉不住那一行 `sleep 1`：{e}\n\
-                 ⚠ 若是**周期改了**（比如改成 `sleep 10`），那不是把本条放宽的理由 —— \n\
-                 本条头注整段（每 tick 的代价 × 会话数 × 会话时长）都是按「每秒」算的，\n\
-                 周期变了要连头注一起重写。若是**抽错了段**，先修抽取器。\n\
-                 循环体逐字：\n{body}"
-            )
-        });
-
-        // 剥掉整行注释再判（头注里就写着 `grep -o …` 那一行原文）。
-        // ⚠ 再把**算术展开** `$((…))` 换掉：它长得像命令替换但是 builtin、不 fork。
-        // 本条第一次跑就是被 `n=$((n+1))` 误伤的 —— 诊断把循环体原文打出来才看出来。
-        let prod: String = body
-            .lines()
-            .filter(|l| !l.trim_start().starts_with('#'))
-            .collect::<Vec<_>>()
-            .join("\n")
-            .replace("$((", "«arith»");
-        for bad in ["$(", "grep ", "head ", "cut ", "sed ", "awk ", "cat "] {
+        // ★ 与会话同寿的循环，唯一写得出的形态就是「盯着一个 PID 活不活」。
+        for shape in ["while kill -0", "until kill -0", "while ! kill -0"] {
             assert!(
-                !prod.contains(bad),
-                "身份 poller 的循环体里出现了 `{bad}` —— 它每秒跑一轮、与会话同寿、\n\
-                 每会话一条且在远端机器上。实测一条 `grep|head|cut` 管道 = **每 tick 7 次** \n\
-                 clone/execve；纯 builtin 是 0 次。解析请走 `_ccm_sid_from_file`（纯 builtin，\n\
-                 结果写 `$_ccm_sid_out`，**不要用命令替换取回**——那本身就要 fork 一个子 shell）。\n\
-                 循环体逐字：\n{prod}"
+                !prod.contains(shape),
+                "`shared/ccm` 生产段里又出现了 `{shape}` —— 那是一条**与会话同寿**的循环。\n\
+                 `U-NP④` 把身份通道 B 整条搬去了 daemon（`control/identity_tag.rs`），\n\
+                 用户裁定逐字：「不要轮询」「ccm 做到必须走 daemon」。\n\
+                 ⚠ 别把它当成「加个 sleep 兜一下更稳」——那正是本件要根除的东西：\n\
+                 每会话一条、跑在**远端**机器上、与会话同寿。\n\
+                 真需要一个新的等待，先回答「它的内核事件源是什么、为什么 daemon 接不了」。"
             );
         }
+        // 反向锚点 ①：那条 poller 用的解析器也一起没了（留着就是死代码）。
+        assert!(
+            !prod.contains("_ccm_sid_from_file"),
+            "`_ccm_sid_from_file` 还在 —— 它只服务那条已删的 poller，留着就是死代码"
+        );
+        // 反向锚点 ②：**抽取器没有空转** —— 同文件里那处登记在案的 `sleep` 必须还看得见。
+        assert!(
+            prod.contains("sleep 0.5"),
+            "连预信任那处 `sleep 0.5` 都扫不到 —— 剥法或路径坏了，上面那几条是零命中地绿"
+        );
+    }
+
+    /// ★ **没有 daemon 就必须响亮地失败** —— `U-NP④` 的第二条硬要求。
+    ///
+    /// # 为什么这条要单独钉
+    ///
+    /// 删掉 poller 之后，「这台机器没装 daemon」的后果从「少一个锦上添花」变成
+    /// 「用户开了会话、monitor 绑不上、点 ↗ 弹『未绑定窗口』**而没人知道为什么**」。
+    /// 静默降级在这里是最坏的失败模式（本仓反复吃过这个亏：假成功比失败更贵）。
+    ///
+    /// ⚠ **本条只钉形状**（三件事在源码里存在且顺序对），行为那半由
+    /// `e2e/ccm-cli.test.sh` 的「daemon 前置检查」一节真跑一遍 ccm 去验
+    ///（rc=2 · 不 exec launcher · 逃生口放行）。**两条都要**：形状挡改写，行为挡「写了但不生效」。
+    #[test]
+    fn ccm_fails_loudly_when_no_daemon_can_be_found() {
+        let raw = fs::read_to_string(repo_root().join("shared/ccm")).expect("读不到 shared/ccm");
+        let prod = guard_core::strip_hash_comment_lines(&raw);
+        // ① 身份那一段真的去查了 daemon（共用同一份查找配方，不是第二套规则）。
+        let block = prod
+            .split("agent_has_identity \"$agent\"")
+            .nth(1)
+            .expect("找不到身份分支 —— 它被改写或搬走了，本条会零命中地绿");
+        assert!(
+            block.contains("eval \"$DAEMON_BIN_RECIPE\""),
+            "身份分支里没有 `eval \"$DAEMON_BIN_RECIPE\"` —— 前置检查没了，或者它另起了\n\
+             第二套查找规则（那正是 P4e 花力气收成一份的东西）"
+        );
+        // ② 找不到就 `die`（exit≠0），不是打一行日志继续。
+        let after = block
+            .split("eval \"$DAEMON_BIN_RECIPE\"")
+            .nth(1)
+            .expect("刚断言过它在");
+        assert!(
+            after.contains("die \"找不到 daemon"),
+            "找不到 daemon 之后没有 `die` —— 静默降级正是本条要挡的。\n\
+             实得（前 400 字节）：{}",
+            &after[..after.len().min(400)]
+        );
+        // ③ 逃生口存在**且会说话**：`CCM_NO_DAEMON=1` 放行，但往 stderr 说一句。
+        assert!(
+            after.contains("CCM_NO_DAEMON") && after.contains(">&2"),
+            "逃生口不见了、或它闷声放行 —— 明示放弃身份也要说一句"
+        );
+        // ④ **头注第 4 条必须跟着改**（用户 08-14 的硬要求之一）。
+        //   它原文逐字写着「身份注册用**运行时自适应**而非编译期门控：装了就用，
+        //   **没装逐字节退化成裸 launcher**」——走档 2 之后那句话是**假的**（没装 = 响亮失败）。
+        //   留着它就是本仓反复吃亏的「停滞式腐坏」：世界变了、文本没动，照它做的人会走错。
+        //   ⚠ 这是零命中守卫，但**有反向锚点**（下一条断言新话在），不会零命中地绿。
+        //
+        // ★ 针为什么一个是 `const` + `contains`、一个是 `find_pinned`（两种写法不是随手挑的）：
+        //   `needle_anchor_registry` 的递减棘轮治的是「**匹配单位比事实小** ⇒ 把事实撑大的改动
+        //   会溜过去而判据照样绿」。那条推理只对**正向**断言成立 ——
+        //   对**「这句话不许存在」**的断言，子串是**强的那一侧**（子串不在 ⇒ 整句必不在），
+        //   撑大事实反而更容易被逮到。⇒ 负向这条用具名 `const`（针成了一条可复核的事实，
+        //   不是行内字面量），正向那条用 `find_pinned`（恰好一处 + 两侧有边界，严格强于 `contains`）。
+        const BANNED_OLD_CLAIM: &str = "逐字节退化成裸 launcher";
+        assert!(
+            !raw.contains(BANNED_OLD_CLAIM),
+            "`shared/ccm` 头注里那句「（没装就）{BANNED_OLD_CLAIM}」回来了 —— 它今天是假的：\n\
+             身份只由 daemon 打，没有 daemon 就 `die`。散文与代码说的必须是同一件事。\n\
+             ⚠ 想在注释里**引用**那句旧话也会打红本条（本护栏连注释一起扫，fail-closed）——\n\
+             处置是改措辞，别把护栏改成剥注释（同 `tmux_hook.rs` 头注那条纪律）。"
+        );
+        guard_core::find_pinned(&raw, "身份（`@ccm_sid`）必须走 daemon").unwrap_or_else(|e| {
+            panic!(
+                "头注第 4 条不再声明「身份必须走 daemon」（{e}）—— 要么被改回去了，要么措辞漂了。\n\
+                 上一条（禁旧话）是零命中守卫，靠本条当反向锚点才不会零命中地绿。"
+            )
+        });
+        // ★ **顺序**也是判据：前置检查必须排在任何 `tmux` 调用之前，
+        //   否则「没有 daemon」这条路上还会去碰 tmux（e2e 正是在没有 tmux 的 PATH 下跑的）。
+        let die_at = block.find("die \"找不到 daemon").expect("刚断言过它在");
+        let tmux_at = block.find("tmux ").unwrap_or(usize::MAX);
+        assert!(
+            die_at < tmux_at,
+            "前置检查排在了 tmux 调用之后 —— 失败路径上会先去碰 tmux。\n\
+             这个顺序不是洁癖：`e2e` 那几条正是靠「PATH 里根本没有 tmux」来证明它没被碰的。"
+        );
     }
 
     /// ★ 把两处**散文纪律**变成机检：这两个文件里一处周期唤醒都不许有。

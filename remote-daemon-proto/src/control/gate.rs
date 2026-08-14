@@ -36,7 +36,7 @@
 use std::process::{Command, Stdio};
 
 /// 命令级错误：`(code, message)`。与 [`super::launch`] 同型。
-type CmdErr = (&'static str, String);
+pub(crate) type CmdErr = (&'static str, String);
 
 /// 探测回来的两样东西。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,9 +45,12 @@ pub(crate) struct Probed {
     pub(crate) session_id: String,
     /// `@ccm_sid` 的值。未设置 ⇒ 空串。
     ///
-    /// ⚠ 这是 `@ccm_sid`，**不是 `@ccm_sid_expect`**。`shared/ccm` 刻意分了两个：
-    /// 通道 A 只写意图，只有通道 B（poller 独立读会话文件确认后）才写事实，
-    /// 而**破坏性动作只认事实**。放宽到 `_expect` 就是把这道门拆了。
+    /// ⚠ 这是 `@ccm_sid`，**不是 `@ccm_sid_expect`**。刻意分了两个：
+    /// 通道 A（`shared/ccm`）只写意图，只有通道 B 才写事实，而**破坏性动作只认事实**。
+    /// 放宽到 `_expect` 就是把这道门拆了。
+    /// ⚠ `U-NP④`（08-14）之后**通道 B 的写者是 daemon 自己**（[`super::identity_tag`]，
+    /// 由 pidfile inotify 驱动），不再是 ccm 里那条每秒轮询 —— 分离更硬了（事实的写者
+    /// 变成独立第三方，且打标前已过 `procStart` 冒名检查），但两个 key 的语义一个字没变。
     pub(crate) ccm_sid: String,
     /// `#{session_windows}`。**Gate 3 只给破坏性动作用**（见 [`admit_destructive`]）。
     /// 解析不出来 ⇒ `0`，而 Gate 3 要求恰好 `1` ⇒ **fail closed**（不会误杀）。
@@ -116,7 +119,12 @@ const PROBE_FMT: &str = "#{session_id}\t#{@ccm_sid}\t#{session_windows}";
 /// 跑一次 `tmux display-message -p -t <target> '<fmt>'` 并把 stdout 取回来。
 ///
 /// `Ok(None)` = 目标不存在（输出为空，见模块头注：**不看退出码**）。
-fn probe(target: &str) -> Result<Option<Probed>, CmdErr> {
+///
+/// ⚠ `target` **不限于会话名**：tmux 的目标解析会把 pane id（`%N`）也归到它所属的会话上
+///（08-14 私有 socket 实测）。[`super::identity_tag`] 正是拿 `TMUX_PANE` 当 target 调它 ——
+/// 复用这一处等于**不新增起进程点**。⚠ 空串 target 会被 tmux 静默解析成「某个会话」，
+/// 调用方必须自己挡（`identity_tag::pane_is_safe` 就是那道门）。
+pub(crate) fn probe(target: &str) -> Result<Option<Probed>, CmdErr> {
     let out = Command::new("tmux")
         .args(["display-message", "-p", "-t", target, PROBE_FMT])
         .stdin(Stdio::null())
