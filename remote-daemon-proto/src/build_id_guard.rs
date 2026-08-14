@@ -104,6 +104,22 @@ mod tests {
             "p1z-list-subagents",
             "--account-trust\n--account-trust-zero\n--daemon-probe\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
+        // ★ p2b（P4f，08-13）：帧面新增 `bus-list` / `bus-send` —— cc-bus 的基础命令。
+        //
+        // ⚠ **必须 bump**：集成方（skill / monitor）判「这台机器有没有这条能力」看的是
+        //   `hello` 的 `commands`，而它随 daemon 二进制走。旧 daemon 报同一个 build_id
+        //   ⇒ 不判 stale ⇒ 不重装 ⇒ 这两条命令在已部署的机器上休眠。
+        // ★ CLI 面这一半**也变了**（`--bus-list` / `--bus-send` 进了 `SUBCOMMANDS`）。
+        //   ⚠ 我第一版只加了 `ch:` 那两条就以为完事，还给自己写了句「CLI 指纹看不见它，
+        //   是取法的射程」—— **那句话是错的**：CLI 指纹取自 `SUBCOMMANDS`，而 `SUBCOMMANDS`
+        //   正是 `is_query_mode` 的闸门。指纹没变**恰恰是**「这条命令的 CLI 面根本没接上」
+        //   的症状，而我把症状读成了取法的局限。实测才逮到（daemon 当场进了流模式）。
+        //   ⇒ 现在那条纪律由 `cli_control::tests::every_cli_exposed_command_is_in_the_query_mode_gate`
+        //   钉住：漏加就红，不再靠人记得。
+        (
+            "p2b-cc-bus-basics",
+            "--account-trust\n--account-trust-zero\n--bus-list\n--bus-send\n--daemon-probe\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-list\nch:bus-send\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
     ];
 
     use crate::guard_support::{assert_no_test_code, production_code};

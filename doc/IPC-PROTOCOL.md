@@ -486,6 +486,47 @@ monitor 永远不会发的形状。
 
 **今天有三条命令**：`ping` / `cancel`（骨架验收用）+ **`resolve`**（第一条真业务命令，见下），它们随 `hello` 的 `commands` 字段上线 —— 那是与分派表**同一份真相源**（`hello_commands_match_the_dispatch_table` 钉住：声明了却不接 ⇒ 客户端发过去石沉大海；接了却不声明 ⇒ 客户端不知道能用）。真业务命令从 `--resolve` 吸收开始。
 
+#### `bus-list`：谁在线 + 各自待读多少（P4f，第一条 cc-bus 命令）
+
+```text
+→ {"id":"B1","cmd":"bus-list","args":{}}
+← {"kind":"reply","id":"B1","ok":true,"data":{"agents":[{"id":"proj_cc","target":"proj_cc:0.0","unread":2}]}}
+```
+
+`agents` 是一个数组，每项三个字段：`id`（总线身份）· `target`（tmux 地址）· `unread`（待读条数）。
+
+**它是只读的**，而且**刻意只读**：cc-bus 那边真正"读消息"的命令是 `cc-recv`，
+而 `cc-recv` **会推进已读位置** —— daemon 代替人去读，等于把消息从人那里偷走
+（agent 自己再跑 `cc-recv` 就什么都看不到了）。⇒ 「有没有新的」这个问题由 `unread` 回答，
+**没有 `bus-recv` 这条命令**。要做代读的那天，先得给 cc-bus 一个「读了但不算数」的两阶段口。
+
+错误码：`not_installed`（找不到 `cc-list`，消息里带查过哪些位置）· `failed`。
+
+#### `bus-send`：发一条消息（P4f）
+
+```text
+→ {"id":"B2","cmd":"bus-send","args":{"to":"proj_cc","text":"结论在 #82"}}
+← {"kind":"reply","id":"B2","ok":true,"data":{"to":"proj_cc","sent":true}}
+```
+
+`to` 收件人身份，`text` 正文；回 `sent`。argv 直传、**不过 shell**。
+
+错误码分三档，**刻意分得开**（合成一个的话用户分不出「名字写错了」和「被规则拦了」）：
+
+| 码 | 什么情况 | 来源 |
+|---|---|---|
+| `invalid_args` | 缺 `to`/`text`，或 cc-send 判定收件人非法 | 形状校验 / `cc-send` rc=2 |
+| `rejected` | 被路由层拦下（ACL / 限流 / 去重 / 灭环），`bus.log` 里有对应一行 | `cc-send` rc=3 |
+| `not_installed` | 找不到 `cc-send` | 查找规则全落空 |
+| `failed` | 其它 | 其它退出码 / 起不来 |
+
+**收件人合法性归 cc-bus 自己**，daemon 这一层不再写第二份白名单 —— 两处规则会漂。
+
+★ **这两条命令都是转调本机的 cc-bus 命令，daemon 不读 cc-bus 的任何数据文件**
+（地址簿 / 收件箱 / 已读位置）。用户 08-13 逐字说过「后面我可能要改ccbus」⇒
+这一层只把 cc-bus 的**命令**当接口：命令是给外人用的，文件格式是给自己用的。
+由 `control/cc_bus.rs` 里的 `no_cc_bus_data_layout_leaks_into_the_daemon` 钉住。
+
 #### `kill`：杀一个 tmux 会话（F04a，**第一条破坏性入方向命令**）
 
 ```text
@@ -687,6 +728,14 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 错则 exit 2 + stderr 一行 `{code, message}`。
 
 错误写 stderr + 退出码 2（`--account-trust` 用 `--resolve` 那套结构化 `{code,message}` JSON）。**读会话那一族**（`--read-session` / `--read-session-tail` / `--read-session-from-offset` / `--fork-session`）的路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**账号一族不走这条**，各有各的判据：`--accts-dir <p>` 解析到 `~/.cc-acct-iso/config` 或 `$HOME/.claude-accts`；`--account-trust <configDir>` 靠「逐字 ∈ manifest」而非 projects 前缀；`--tmux-notify` 根本不碰文件系统。**旧 daemon 兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
+
+**P4f 追加两条**：`--bus-list` / `--bus-send`（cc-bus 的基础命令，见上面各自的小节）。
+它们与帧面走**同一个 `run`**，CLI 面这一层不写第二份实现。
+
+⚠ 加一条 CLI 命令要动**两处**：`inbound::REGISTRY`（实现与分派臂）+ `main::SUBCOMMANDS`
+（`is_query_mode` 的闸门）。只动前者的后果是**静默的** —— daemon 把它当未知 flag、
+打一行 warn 之后照常进流模式，调用方拿到一堆 jsonl 行。08-13 实测撞到过，
+现由 `cli_control::tests::every_cli_exposed_command_is_in_the_query_mode_gate` 钉住。
 
 ### 10.1 ★ `--resolve` 的返回值里**哪些是探测出来的、哪些是派生的**（E71）
 

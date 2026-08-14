@@ -424,6 +424,9 @@ mod tests {
             "read_to_string",
             "mtime_ms",
             "read_regular_capped",
+            // P4f：`PermissionsExt` 只用来**读** `mode()`（判可执行位，找 cc-bus 命令用）。
+            // ⚠ 与它同族的 `set_permissions` **不在**表里，那条仍然是写、仍然会红。
+            "PermissionsExt",
         ];
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut bad: Vec<String> = Vec::new();
@@ -620,6 +623,16 @@ mod spawn_registry {
              这个决策的一部分（定框 C13）",
         ),
         (
+            "control/cc_bus.rs",
+            "<非字面量>",
+            "P4f：转调本机的 cc-bus 命令（`cc-list` / `cc-send`），argv 直传不过 shell。\
+             程序名是**查出来的路径**（PATH 里未必有 `~/.local/bin`）⇒ 非字面量。\
+             `cc-list` **只读**；`cc-send` 会写收件人的收件箱 —— 那是**被起的那个进程**写的，\
+             与用户自己在终端里敲 `cc-send` 没有区别（同 `launch` 起 claude 的 D1 正例：\
+             收窄后的铁律管的是 **daemon 进程自身**不写用户既有数据）。\
+             ⚠ 两条命令**共用这一处**口，刻意不让面变大",
+        ),
+        (
             "observe/watcher.rs",
             "sh",
             "跑 `command -v tmux && tmux ls`（两处：探测 + 取观测）。**只读**，\
@@ -673,11 +686,22 @@ mod spawn_registry {
             while let Some(rel) = prod[from..].find("Command::new(") {
                 let at = from + rel + "Command::new(".len();
                 let tail = &prod[at..];
-                if let Some(q) = tail.find('"') {
-                    if let Some(e) = tail[q + 1..].find('"') {
-                        found.push((name.clone(), tail[q + 1..q + 1 + e].to_string()));
+                // ★★〔P4f 08-13〕**非字面量也要记**。
+                //
+                // 原来这里是「往后找第一个引号」——`Command::new(&bin)` 这种写法下，
+                // 那个引号可能在**几十行之外**的某个无关字符串上，于是：
+                // ① 记下来的"程序名"是假的；② 更坏的是它**可能与某条已登记的 pair 撞上**
+                //   （同文件里已登记 `tmux`，而后面某处正好有 `"tmux"` 字面量）⇒ 静默放行。
+                // ⇒ 认准紧跟其后的那个字符：是引号才当字面量，否则记成 `<非字面量>`，逼它单独登记。
+                let prog = if tail.starts_with('"') {
+                    match tail[1..].find('"') {
+                        Some(e) => tail[1..1 + e].to_string(),
+                        None => "<未闭合的字面量>".to_string(),
                     }
-                }
+                } else {
+                    "<非字面量>".to_string()
+                };
+                found.push((name.clone(), prog));
                 from = at;
             }
         }
@@ -690,7 +714,7 @@ mod spawn_registry {
         //
         // ⚠ 这个数**刻意不再枚举是哪几处** —— 那份清单的家是 `ALLOWED`，
         // 在报错文案里再抄一遍就是下一处会腐的散文（定框 E12）。
-        const SPAWN_SITES_TODAY: usize = 6;
+        const SPAWN_SITES_TODAY: usize = 7;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,
