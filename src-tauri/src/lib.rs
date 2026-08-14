@@ -88,6 +88,7 @@ mod gate_singleton_guard; // F03：§34 Gate 2 的身份判定在 Rust 侧只许
 #[cfg(test)]
 mod atomic_replace_registry; // audit-0805 F13：原子替换的两套 Win32 语义，谁用哪一套
 #[cfg(test)]
+mod bus_identity_registry; // cc-bus：拿 id 点名 tmux 前必须核身份（整体 #[cfg(test)]）
 mod byte_cap_registry; // audit-0805 F06：字节上限登记表（管什么量 + 超限怎么办 + 跨 crate 对拍）
 mod capability_registry;
 #[cfg(test)]
