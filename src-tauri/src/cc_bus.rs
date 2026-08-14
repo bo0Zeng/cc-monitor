@@ -663,6 +663,138 @@ fn refuse_local_write(origin: &str, what: &str) -> Option<String> {
     ))
 }
 
+/// 广播走 daemon 那条路的两种失败：能不能回落到老路。
+///
+/// 与 `daemon_route::Routed` 同一条纪律：**只有能证明"一条都没发出去"时才允许回落**。
+pub(crate) enum BroadcastRoute {
+    /// 一条都没发出去（没通道 / daemon 太旧）⇒ 远端可以回落。
+    NoChannel(String),
+    /// 已经发了一部分，或 daemon 明确拒绝 ⇒ **不许回落**（回落会把一部分人收到两遍）。
+    Failed(String),
+}
+
+/// 广播要发给谁 —— **纯函数**（`agents` 是 `bus-list` 的回值）。
+///
+/// | 情形 | 做法 |
+/// |---|---|
+/// | 身份空间答得上（有 true/false） | **只发 `live == true` 的** |
+/// | 全是 `null`（问不到 tmux） | 退回「发给所有登记的」，并标记 `liveness_unknown` |
+///
+/// ★ 第二行是刻意的：**「问不到」不等于「都不在」**。若问不到就谁都不发，
+/// 用户会看到一次「已广播给 0 个」——那是把不知道渲染成了确定。
+pub(crate) fn pick_broadcast_targets(agents: &[serde_json::Value], me: &str) -> BroadcastPlan {
+    let known: bool = agents
+        .iter()
+        .any(|a| a.get("live").map(|v| !v.is_null()).unwrap_or(false));
+    let mut targets = Vec::new();
+    let mut skipped_offline = 0usize;
+    for a in agents {
+        let Some(id) = a.get("id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if id == me {
+            continue; // 不发给自己（同 cc-broadcast）
+        }
+        let live = a.get("live").and_then(|v| v.as_bool());
+        if known && live != Some(true) {
+            skipped_offline += 1;
+            continue;
+        }
+        targets.push(id.to_string());
+    }
+    BroadcastPlan {
+        targets,
+        skipped_offline,
+        liveness_unknown: !known,
+    }
+}
+
+pub(crate) struct BroadcastPlan {
+    pub(crate) targets: Vec<String>,
+    pub(crate) skipped_offline: usize,
+    pub(crate) liveness_unknown: bool,
+}
+
+/// 广播走 daemon：`bus-list` 挑人 → 逐个 `bus-send`。
+async fn broadcast_via_daemon(origin: &str, text: &str) -> Result<String, BroadcastRoute> {
+    use crate::inbound_client::client_for;
+    let Some(client) = client_for(origin) else {
+        return Err(BroadcastRoute::NoChannel(format!(
+            "[{origin}] 没有可用的控制通道"
+        )));
+    };
+    let listed = client
+        .call(
+            "bus-list",
+            serde_json::json!({}),
+            std::time::Duration::from_secs(30),
+        )
+        .await
+        // ⚠ **分流走那唯一的一份**（`daemon_route::route_call_error`）——
+        //   我第一版在这儿自己 match 了一遍 `CallError`，守卫当场逮住：
+        //   「那是分流规则的第二份实现，它一旦与本模块漂开，一次 `wrong_owner`
+        //    就可能被另一条路重做一遍」。逮得对。
+        .map_err(|e| {
+            match crate::backend::control::daemon_route::route_call_error(&e, |code, message| {
+                format!("列总线成员被拒：{code}：{message}")
+            }) {
+                // 「证明没发出去」⇒ 远端可以回落到老路
+                crate::backend::control::daemon_route::Routed::NoChannel(why) => {
+                    BroadcastRoute::NoChannel(why)
+                }
+                crate::backend::control::daemon_route::Routed::Refused(why) => {
+                    BroadcastRoute::Failed(why)
+                }
+                crate::backend::control::daemon_route::Routed::Done => {
+                    BroadcastRoute::Failed("分流器判成已完成，这不该发生".into())
+                }
+            }
+        })?;
+    let agents = listed
+        .as_ref()
+        .and_then(|v| v.get("agents"))
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let plan = pick_broadcast_targets(&agents, MONITOR_BUS_ID);
+    let mut ok = 0usize;
+    let mut failed: Vec<String> = Vec::new();
+    for id in &plan.targets {
+        let args = serde_json::json!({ "to": id, "text": text, "from": MONITOR_BUS_ID });
+        match client
+            .call("bus-send", args, std::time::Duration::from_secs(30))
+            .await
+        {
+            Ok(_) => ok += 1,
+            // ⚠ 已经发出去一部分了 ⇒ **不许回落**（回落会让一部分人收到两遍）。
+            Err(e) => failed.push(format!("{id}（{e}）")),
+        }
+    }
+    Ok(describe_broadcast(&plan, ok, &failed))
+}
+
+/// 广播结果讲成人话 —— 纯函数。
+///
+/// ★ 三个数**分开说**：发到几个、因为不在线跳过几个、失败几个。
+/// 合成一个「已向 N 个 agent 发出广播」正是老路的病 —— 那个 N 把 78 个幽灵也算了进去。
+pub(crate) fn describe_broadcast(plan: &BroadcastPlan, ok: usize, failed: &[String]) -> String {
+    let mut msg = if plan.liveness_unknown {
+        format!("已广播给 {ok} 个**已登记** agent（问不到谁在线，所以全发了）")
+    } else {
+        format!("已广播给 {ok} 个**在线** agent")
+    };
+    if plan.skipped_offline > 0 {
+        msg.push_str(&format!(
+            "；跳过 {} 个不在线的（它们的收件箱今天没人读）",
+            plan.skipped_offline
+        ));
+    }
+    if !failed.is_empty() {
+        msg.push_str(&format!("；{} 个失败：{}", failed.len(), failed.join("、")));
+    }
+    msg
+}
+
 /// cc-monitor 自己在总线上的身份 —— **发消息时用它，别让收信人看到 `unknown`**。
 pub(crate) const MONITOR_BUS_ID: &str = "cc-monitor";
 
@@ -793,8 +925,24 @@ pub async fn cc_bus_send(origin: String, id: String, text: String) -> Result<Str
 /// UI 侧的确认必须**带数字**，一个不带数字的「确定吗」等于没问。
 #[tauri::command]
 pub async fn cc_bus_broadcast(origin: String, text: String) -> Result<String, String> {
-    if let Some(why) = refuse_local_write(&origin, "广播") {
-        return Err(why);
+    // ★★ **广播是组合，不是原语**〔P4f 08-13〕：列成员（`bus-list`）+ 逐个发（`bus-send`）。
+    //
+    // 这么做同时修掉一条**实测出来的真事故**：`cc-broadcast` 发给 `agents.tsv` 的**每一行**，
+    // 而那份名单会过期 —— 用户机器上实测 **86 行登记、只有 8 个会话还活着**
+    // ⇒ 一次广播打进 **78 个没人读的收件箱**，而它报「已向 86 个 agent 发出广播」。
+    //
+    // ⚠ 本机**没有回落**（本机 shell 写面正是 `P4a` 拒掉的东西）；远端拿不到 daemon 能力时
+    //   回落到老的 SSH 路径（`C7` 过渡期），并如实说清那次是老行为。
+    match broadcast_via_daemon(&origin, &text).await {
+        Ok(msg) => return Ok(msg),
+        Err(BroadcastRoute::NoChannel(why)) => {
+            if origin == crate::inbound_client::LOCAL_ORIGIN {
+                return Err(format!("{why}（本机没有第二条路可走）"));
+            }
+            // 远端：回落到老路（下面那段），但把原因带上
+            tracing::info!("[{origin}] 广播回落到 SSH 路径：{why}");
+        }
+        Err(BroadcastRoute::Failed(why)) => return Err(why),
     }
     let cmd = build_broadcast_cmd(&text)?;
     let cfg = cfg_of(&origin)?;
@@ -1569,6 +1717,68 @@ mod tests {
         );
     }
 
+    /// ★★ **广播不许再打进幽灵收件箱**〔P4f 08-13，用户机器上实测出来的〕。
+    ///
+    /// 老路（`cc-broadcast` 脚本）发给 `agents.tsv` 的**每一行**。用户机器实测：
+    /// **86 行登记、只有 8 个会话还活着** ⇒ 一次广播打进 **78 个没人读的收件箱**，
+    /// 而它报「已向 86 个 agent 发出广播」—— 那个数把 78 个幽灵也算了进去。
+    #[test]
+    fn broadcast_only_goes_to_the_ones_that_are_actually_there() {
+        use serde_json::json;
+        let agents = vec![
+            json!({"id": "a_cc", "live": true}),
+            json!({"id": "b_cc", "live": false}),
+            json!({"id": "c_cc", "live": true}),
+            json!({"id": MONITOR_BUS_ID, "live": true}),
+        ];
+        let plan = pick_broadcast_targets(&agents, MONITOR_BUS_ID);
+        assert_eq!(plan.targets, vec!["a_cc", "c_cc"], "只该发给活着的");
+        assert_eq!(plan.skipped_offline, 1, "不在线的要计数，不是悄悄丢掉");
+        assert!(!plan.liveness_unknown);
+        assert!(
+            !plan.targets.iter().any(|t| t == MONITOR_BUS_ID),
+            "不发给自己"
+        );
+    }
+
+    /// ★ **「问不到」不等于「都不在」**。
+    ///
+    /// 身份空间答不上时（没装 tmux 等，`live` 全是 `null`），退回「发给所有登记的」——
+    /// 若问不到就谁都不发，用户会看到一次「已广播给 0 个」，那是**把不知道渲染成了确定**。
+    #[test]
+    fn unknown_liveness_does_not_silently_become_nobody() {
+        use serde_json::json;
+        let agents = vec![
+            json!({"id": "a_cc", "live": null}),
+            json!({"id": "b_cc", "live": null}),
+        ];
+        let plan = pick_broadcast_targets(&agents, MONITOR_BUS_ID);
+        assert_eq!(plan.targets.len(), 2, "问不到时不许把人全滤掉");
+        assert!(plan.liveness_unknown, "而且要**标出来**是问不到，不是装作知道");
+        assert_eq!(plan.skipped_offline, 0);
+        let said = describe_broadcast(&plan, 2, &[]);
+        assert!(said.contains("问不到谁在线"), "话没说清：{said}");
+    }
+
+    /// ★ 三个数**分开说**：发到几个 / 跳过几个 / 失败几个。
+    #[test]
+    fn the_broadcast_wording_keeps_the_three_counts_apart() {
+        let plan = BroadcastPlan {
+            targets: vec!["a_cc".into(), "b_cc".into()],
+            skipped_offline: 78,
+            liveness_unknown: false,
+        };
+        let said = describe_broadcast(&plan, 1, &["b_cc（超时）".to_string()]);
+        assert!(said.contains("1 个**在线**"), "{said}");
+        assert!(said.contains("跳过 78 个"), "跳过的没说：{said}");
+        assert!(said.contains("1 个失败"), "失败的没说：{said}");
+        // 老路那句话的形状（把所有人算成一个 N）不许回来
+        assert!(
+            !said.contains("已向 79"),
+            "又把跳过的算进总数了：{said}"
+        );
+    }
+
     /// ★★ **三态在线不许在讲人话这一层被抹平**〔P4f 08-13，变异 M2 逼出来的〕。
     ///
     /// daemon 的 `bus-send` 回 `registered` + 三态 `live`，而 UI 拿到的是一句话。
@@ -1717,27 +1927,42 @@ mod tests {
     #[test]
     fn the_new_write_commands_refuse_local_before_asking_for_a_remote_config() {
         let code = non_test_code();
+        // ⚠ 与上一条同口径〔08-13 P4f 两次改口径〕：钉的是**本机分支在 `cfg_of` 之前**
+        //   这条性质，不是 `refuse_local_write(` 这个写法 —— `cc_bus_broadcast` 的本机路
+        //   今天是「走 daemon 组合」，不是拒绝。窗口同样按**函数边界**截，
+        //   否则会读到邻居的分支（那正是这两条判据自己栽过的坑）。
         for (name, what) in [
-            ("pub async fn cc_bus_broadcast(", "广播"),
+            ("pub async fn cc_bus_broadcast(", "broadcast_via_daemon"),
             ("pub async fn cc_bus_kill(", "收掉 agent"),
         ] {
             let at = code
                 .find(name)
                 .unwrap_or_else(|| panic!("生产段找不到 {name} —— 判据在空转"));
-            let body: String = code[at..].chars().take(1200).collect();
-            let refuse = body
-                .find("refuse_local_write(&origin, \"")
-                .unwrap_or_else(|| panic!("{name} 没有本机拒绝"));
+            let rest = &code[at..];
+            let end = rest[1..]
+                .find("\npub async fn ")
+                .or_else(|| rest[1..].find("\npub fn "))
+                .map(|k| k + 1)
+                .unwrap_or_else(|| rest.len().min(1200));
+            let body: String = rest[..end].to_string();
+            let refuse = [
+                body.find("refuse_local_write(&origin, \""),
+                body.find("origin == crate::inbound_client::LOCAL_ORIGIN"),
+            ]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or_else(|| panic!("{name} 没有本机分支"));
             let cfg = body
                 .find("cfg_of(&origin)")
                 .unwrap_or_else(|| panic!("{name} 里找不到 `cfg_of(&origin)`"));
             assert!(
                 refuse < cfg,
-                "{name} 的本机拒绝排在 `cfg_of` 后面 —— 永远走不到"
+                "{name} 的本机分支排在 `cfg_of` 后面 —— 永远走不到"
             );
             assert!(
-                body[refuse..].contains(what),
-                "{name} 的拒绝没点名它在拒绝什么"
+                body[..refuse].contains(what) || body[refuse..].contains(what),
+                "{name} 的本机分支没说清它在做什么（应含 {what:?}）"
             );
         }
     }
