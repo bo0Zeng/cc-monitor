@@ -45,11 +45,11 @@ struct ForkResult {
 /// **不接受调用方传路径**（monitor 侧那个 `validate_branch_source` 收的是路径，
 /// 这里刻意只收 sid）：daemon 是被 ssh 远程调起来的，少一个可被构造的路径入参，
 /// 就少一条路径穿越的攻击面。sid 先过格式校验，再只在 projects 下按文件名匹配。
-fn find_session_file(claude_dir: &Path, sid: &str) -> Result<PathBuf, String> {
+fn find_session_file(agent_home: &Path, sid: &str) -> Result<PathBuf, String> {
     if !is_plain_sid(sid) {
         return Err(format!("refuse fork: invalid session id {sid:?}"));
     }
-    let root = projects_root(claude_dir);
+    let root = projects_root(agent_home);
     let want = crate::agents::claudecode::records::session_file_name(sid);
     for entry in walkdir::WalkDir::new(&root)
         .max_depth(2)
@@ -131,8 +131,8 @@ fn new_session_id(source_sid: &str) -> String {
 
 /// `--fork-session <source-sid> <message-uuid>`：stdout 出一行 `ForkResult` JSON、exit 0；
 /// 出错 exit 2 + stderr 出 `{code,message}`（与 `--resolve` 同一个错误信封约定）。
-pub fn run(claude_dir: &Path, args: &[String]) -> i32 {
-    match run_inner(claude_dir, args) {
+pub fn run(agent_home: &Path, args: &[String]) -> i32 {
+    match run_inner(agent_home, args) {
         Ok(res) => {
             match serde_json::to_string(&res) {
                 Ok(s) => println!("{s}"),
@@ -150,7 +150,7 @@ fn fail(code: &str, message: &str) -> i32 {
     2
 }
 
-fn run_inner(claude_dir: &Path, args: &[String]) -> Result<ForkResult, String> {
+fn run_inner(agent_home: &Path, args: &[String]) -> Result<ForkResult, String> {
     let source_sid = args
         .get(1)
         .ok_or("usage: --fork-session <source-sid> <message-uuid>")?;
@@ -158,7 +158,7 @@ fn run_inner(claude_dir: &Path, args: &[String]) -> Result<ForkResult, String> {
         .get(2)
         .ok_or("usage: --fork-session <source-sid> <message-uuid>")?;
 
-    let source = find_session_file(claude_dir, source_sid)?;
+    let source = find_session_file(agent_home, source_sid)?;
     let lines = read_jsonl(&source)?;
     let new_sid = new_session_id(source_sid);
     let records = branch_core::build_branch_records(&lines, message_uuid, source_sid, &new_sid)?;

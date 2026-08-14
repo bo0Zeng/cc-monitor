@@ -4,14 +4,14 @@
 //!
 //! `S2` 开工前实测：Codex 的知识在三处，而**三处长得完全不一样**：
 //! `observe/codex.rs` 是抽取器、`observe/usage_query.rs` 里是
-//! `aggregate(claude_dir).and_then(|()| aggregate_codex())`、
+//! `aggregate(<home>).and_then(|()| aggregate_codex())`、
 //! `control/resolve_query.rs` 里是 `spec.agent_kind.trim() == "codex"`。
 //! grep 出其中任意一处，**都找不到另外两处**。
 //!
 //! ⇒ 「接第三个 agent 要改哪几处」这份清单，今天只住在人的脑子里。
-//! 本模块把它变成两张表 —— 而**表是会红的**。
+//! 本模块把它变成**四张表** —— 而**表是会红的**。
 //!
-//! # 两条判据，分别守两种泄漏
+//! # 四条判据，分别守四种泄漏
 //!
 //! ## ① 格式/布局知识只许住 `agents/<某个名字>/`
 //!
@@ -35,7 +35,28 @@
 //! 「agent 维度出现在**值**里」，所以 `agent_kind == "codex"` 是合法的；
 //! **不合法的是它出现在第二个地方**（那意味着又一处需要跟着改而没人知道）。
 //!
-//! # ⚠ 诚实边界（三条，都写在这里而不是只写在计划里）
+//! ## ③〔`S4b`〕通用层的**标识符**里不许出现 `<agent 名>_dir`
+//!
+//! `D3` 逐字管的是**协议字段名**。`S4b` 把同一条道理往仓内推一格：
+//! `fn run(claude_dir: &Path, …)` 这种签名让「谁是通用层」只能靠人记得 ——
+//! 协议干净了，代码里仍然是一句 agent 名。
+//!
+//! ⇒ 通用层的 home 参数一律叫 `agent_home`（`S4b` 改了 8 个文件；生产段 `claude_dir` 64 行 → 3 行）。
+//! 例外只有**冻结的 wire 字段名**（Rust 侧标识符必须与线上字段名同名，改名 = 破坏契约），
+//! 逐条登记进 [`tests::AGENT_NAMED_WIRE_FIELDS`]，**每条带解锁条件、条数有天花板**。
+//!
+//! ## ④〔`S4b`〕通用层**直呼某个适配层**的地方逐条登记
+//!
+//! `G1` 成功标准②逐字：「加一个新 agent 只需新增 `agents/<名>/`，**通用层零改动**」。
+//! 今天那句话**还不成立**，而没人数得出差多少。⇒ [`tests::ADAPTER_CALL_SITES`] 把它数出来：
+//! 通用层里每一处 `agents::<名>::…` 都是「接第三个 agent 时要回来看一眼」的地方。
+//!
+//! ★ 这张表同时是**为什么 `watcher`/`accounts_query`/`history_query` 进不了
+//! `agent_boundary_guard::CORE_FILES`** 的答案（`S4b` 实测）：把 `claude_dir` 改名之后，
+//! 这三个文件在 `S1` 六根针下的残留**全是**这些适配层地址（外加两处日志散文）。
+//! ⇒ 卡点不是参数名（`S4b` 已清），是**还没有接口**（`L2`），归 `S6`。
+//!
+//! # ⚠ 诚实边界（四条，都写在这里而不是只写在计划里）
 //!
 //! 1. 判据认的是**字面量**，不是语义。派发点里的人直接写
 //!    `format!("{base} resume {sid}")` 仍然不会红 —— 堵死它要等 `S3` 凑齐两个实现后立接口（`D4`）。
@@ -43,6 +64,9 @@
 //!    `projects/`、`.jsonl`、账号布局）今天**一处都没被这条判据管**，归 `S3`。
 //! 3. `production_code` 剥掉注释与 `#[cfg(test)] mod` ⇒ **文档与测试里怎么写都不红**。
 //!    这是刻意的（判据自己的散文里就有这些词），代价是"只在测试里泄漏格式知识"逮不到。
+//! 4. 判据③的针是 `<agent 名>_dir` 这一形，**只认得已知的两个名字**（同 `S1` 的 `4a`）。
+//!    有人在通用层写 `claude_home` / `gemini_root`，它一条都不会红。
+//!    今天的兜底是判据④：那种代码迟早要去调某个 `agents::<名>::`，那一步会被数出来。
 //!
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空。
 
@@ -121,6 +145,105 @@ mod tests {
     /// 判据要认的是「谁在拿这个**值**做判别」，不是「谁提到过这个词」。
     fn kind_literal() -> String {
         format!("\"cod{}\"", "ex")
+    }
+
+    /// 〔`S4b`〕**冻结的 wire 字段名**（`文件`, `片段`, 为什么改不动, **解锁条件**）——
+    /// 判据③唯一的例外表。
+    ///
+    /// 这三处都是**同一个 wire 字段名在 Rust 侧的落点**：两处声明 + 一处构造。
+    /// serde 直接拿 Rust 标识符当线上字段名（`rename_all` 只改大小写风格），
+    /// ⇒ 在这里改名 = **改线上契约**，而两条契约都有仓外消费方（aterm）。
+    ///
+    /// ⚠ 与 `agent_boundary_guard::FROZEN_COMPAT` **不是一张表，别合并**：
+    /// 那张的作用域是「已宣称通用的文件（`CORE_FILES`）里的 agent **字面量**」，
+    /// 本张的作用域是「**整棵 `src/`** 里 `<名>_dir` 这一形的**标识符**」。
+    /// 两者恰好在 `wire.rs` 重叠一行 —— 那是同一个事实被两个不同问题各问了一次，
+    /// 不是重复登记。★ 真正的证据在这里：`control/resolve_query.rs` 那条
+    /// **`S4` 当时没看见**（它不在 `CORE_FILES` 里，`S1` 的判据扫不到它），
+    /// 是本判据把它逼出来的 —— 两张表的作用域确实不一样。
+    ///
+    /// 两条纪律同 `FROZEN_COMPAT`：① 每条必须有非空解锁条件；② 条数有天花板且只许降。
+    const AGENT_NAMED_WIRE_FIELDS: &[(&str, &str, &str, &str)] = &[
+        (
+            "wire.rs",
+            "claude_dir",
+            "`Hello` 帧里今天**真在线上**的目录字段。`S4` 走 additive 迁移（新字段 `homes` \
+             承载 agent 维度），这个字段原地冻结 ⇒ 线上字节零变化。",
+            "monitor 与 aterm **都**改读 `homes` 之后删掉它。monitor 那半 `S4` 已做完，\
+             只剩仓外 aterm。删的那天本条同轮摘登记（下面的幽灵检查会逼着摘）。",
+        ),
+        (
+            "control/resolve_query.rs",
+            "claude_dir",
+            "`--resolve` 的 **stdin 入参** `ResumeSpec.claudeDir`（`rename_all=camelCase`）。\
+             契约与仓外 aterm 冻结在 2026-07-18，改 Rust 标识符 = 改线上字段名。\
+             ⚠ 它今天是 `#[allow(dead_code)]`（MVP 不做 pidfile 消解），**但「没用到」不等于\
+             「可以改名」** —— 别人在往里发。",
+            "aterm 那侧 `ResumeSpec` 不再发 `claudeDir` 之后（或整个 `--resolve` 契约重谈）。\
+             与上一条同源：都卡在同一个仓外消费方身上。",
+        ),
+        (
+            "main.rs",
+            "claude_dir",
+            "上面那个 `Hello.claude_dir` 的**构造点**（`claude_dir: agent_home.to_string_lossy()…`）——\
+             左边是冻结的字段名、右边已经是 `S4b` 改过的 `agent_home`。\
+             ⚠ 这一行左右刻意不一致，**不是笔误**：字段名归契约，变量名归架构。",
+            "随 `wire.rs` 那条一起走：字段删了，这一行自然没了。",
+        ),
+    ];
+
+    /// 〔`S4b`〕通用层里**直呼某个适配层**的地方（`文件`, 处数, 它在向适配层要什么）。
+    ///
+    /// # 它数的是什么 —— `G1` 成功标准②今天差多少
+    ///
+    /// 成功标准②逐字：「加一个新 agent 只需新增 `agents/<名>/`，**通用层零改动**」。
+    /// 今天不成立：下面这 8 个文件里的每一处都写死了**某一个** agent 的名字。
+    /// `S3` 的形状（「机器留在原地，通过适配层的一次函数调用拿知识」）是对的中间态，
+    /// 但它把「加一个 agent 要改哪几处」从**格式知识**挪成了**调用点** —— 数量没有归零。
+    ///
+    /// ⇒ 本表**就是那份清单**。它长了是设计在退化；`S6` 立起接口之后它应该整体缩短。
+    ///
+    /// ⚠ 与 [`KIND_DISPATCH_SITES`] 分工：那张数的是「拿 kind **值**做判别」（`D3` 允许的形状，
+    /// 今天 1 处）；本张数的是「**不判别、直接写死一个 agent**」（`D3` 管不着，因为它不在协议里）。
+    /// 两者加起来才是「接第三个 agent 的改动面」。
+    const ADAPTER_CALL_SITES: &[(&str, usize, &str)] = &[
+        ("control/fork_write.rs", 3, "会话记录根 + 会话文件命名"),
+        (
+            "control/resolve_query.rs",
+            6,
+            "resume 的默认命令与会话名前缀（**两家各三处** —— 它同时也是唯一登记的 kind 派发点）",
+        ),
+        ("main.rs", 1, "解析本机 home（`resolve_agent_home` 里唯一那句）"),
+        ("observe/accounts_query.rs", 3, "pidfile 目录 + 账号环境变量名 + `.claude.json` 信任判定"),
+        ("observe/history_query.rs", 5, "会话记录根 + 「这个文件是不是会话记录」×4"),
+        ("observe/search_query.rs", 2, "会话记录根 + 会话文件判定"),
+        ("observe/usage_query.rs", 3, "会话记录根 + 会话文件判定 + codex 侧聚合的另一半"),
+        ("observe/watcher.rs", 4, "会话记录根 + pidfile 目录 + 判活 cmdline + 会话文件判定"),
+    ];
+
+    /// 判据③的针：`<agent 名>_dir` 这一形的**标识符**。**运行时拼**（本文件散文里就有这些词）。
+    ///
+    /// ⚠ 蛇形与驼峰**都要**：serde 的 `rename_all` 会把 `claude_dir` 变成 `claudeDir`，
+    /// 只认一种就等于放过另一种写法。
+    fn agent_named_dir_needles() -> Vec<String> {
+        let mut out = Vec::new();
+        for name in [format!("clau{}", "de"), format!("cod{}", "ex")] {
+            out.push(format!("{name}_dir"));
+            let mut camel = name.clone();
+            camel.push_str("Dir");
+            out.push(camel);
+        }
+        out
+    }
+
+    /// 判据④的针：每个 agent 家的**模块路径**（`agents/codex/` → `agents::codex::`）。
+    ///
+    /// 由 [`HOMES`] 派生而不是另写一份 —— 加一个 agent 只改 `HOMES` 一处。
+    fn adapter_path_needles() -> Vec<String> {
+        HOMES
+            .iter()
+            .map(|h| h.trim_end_matches('/').replace('/', "::") + "::")
+            .collect()
     }
 
     /// 整棵 `src/` 的 `(相对路径, 生产段)`。`scan_tree!` **按构造摘掉调用者自己**。
@@ -276,6 +399,157 @@ mod tests {
         assert!(
             legal.contains(&kind_literal()),
             "kind 值判别的形状变了，第二条判据的抽取要跟着改"
+        );
+    }
+
+    /// ③〔`S4b`〕通用层的**标识符**里不许出现 `<agent 名>_dir`，例外只有冻结的 wire 字段。
+    ///
+    /// 没有这一条的话，`S4b` 改的那 60 多行会**安静地长回来**：下一个人照着旧调用点复制一个
+    /// `fn run(claude_dir: &Path, …)`，编译过、测试全绿、判据一条不响 —— 那正是 `D2` 头一句
+    /// 「没有判据的重构，正确性只能靠人记得」说的事。
+    #[test]
+    fn no_agent_named_dir_identifier_outside_agent_homes() {
+        let files = sources();
+        assert!(
+            files.len() >= 20,
+            "只遍历到 {} 个源文件 —— 遍历坏了，本断言在空转",
+            files.len()
+        );
+        let needles = agent_named_dir_needles();
+        assert!(!needles.is_empty(), "针表空了 ⇒ 本条恒绿");
+
+        let mut hits: Vec<String> = Vec::new();
+        for (rel, prod) in &files {
+            if HOMES.iter().any(|h| rel.starts_with(h)) {
+                continue; // agent 自己的家：在 `agents/codex/` 里叫 `codex_dir` 是冗余、不是越界
+            }
+            for (i, line) in prod.lines().enumerate() {
+                if needles.iter().any(|n| line.contains(n.as_str())) {
+                    hits.push(format!("{rel}:{}  {}", i + 1, line.trim()));
+                }
+            }
+        }
+        let (known, unknown): (Vec<String>, Vec<String>) = hits
+            .into_iter()
+            .partition(|h| {
+                AGENT_NAMED_WIRE_FIELDS
+                    .iter()
+                    .any(|(f, frag, _, _)| h.starts_with(&format!("{f}:")) && h.contains(frag))
+            });
+        assert!(
+            unknown.is_empty(),
+            "通用层的标识符里出现了 `<agent 名>_dir`（{} 处）：\n  {}\n\n\
+             ⇒ 通用层的 home 参数一律叫 `agent_home`（`S4b`）。协议面 `D3` 已经裁过\n\
+             「agent 维度只许出现在**值**里」；仓内同理 —— 签名里写死一个 agent 的名字，\n\
+             「谁是通用层」就又只能靠人记得了。\n\
+             ⚠ 真是冻结的 wire 字段（改名 = 破坏跨仓契约），登记进 `AGENT_NAMED_WIRE_FIELDS`，\n\
+             **并写解锁条件**；没有解锁条件的冻结只是「永久豁免」的好听说法。",
+            unknown.len(),
+            unknown.join("\n  ")
+        );
+        // 幽灵检查：登记的必须**还在命中**。字段真删掉了却不摘登记，
+        // 下一个人会以为这里还冻着、进而不敢动。
+        for (f, frag, _, _) in AGENT_NAMED_WIRE_FIELDS {
+            assert!(
+                known.iter().any(|h| h.starts_with(&format!("{f}:")) && h.contains(frag)),
+                "`AGENT_NAMED_WIRE_FIELDS` 里登记的 `{f}`（片段 `{frag}`）已经不再命中 —— \
+                 修好了就摘登记（这张表只许缩短）"
+            );
+        }
+        /// 今天恰好 3 条（同一个 wire 字段名的两处声明 + 一处构造）。**只许降不许升**。
+        const CEILING: usize = 3;
+        assert!(
+            AGENT_NAMED_WIRE_FIELDS.len() <= CEILING,
+            "`AGENT_NAMED_WIRE_FIELDS` 涨到 {} 条了（天花板 {CEILING}）。\n\
+             ⚠ 如果你正在加第三个 `<名>_dir` 字段 —— 那正是 `D3` 逐字排除掉的那条路，\n\
+             终点是 hello 里五个并列的目录字段。往 `homes` 里加一项，不要加字段。",
+            AGENT_NAMED_WIRE_FIELDS.len()
+        );
+        for (f, frag, why, unlock) in AGENT_NAMED_WIRE_FIELDS {
+            assert!(!why.trim().is_empty(), "{f}:{frag} 没写「为什么改不动」");
+            assert!(
+                unlock.trim().len() >= 20,
+                "{f}:{frag} 没写**解锁条件**（实得 {} 字节）—— 要写的是「什么条件满足之后\
+                 这一条就能删」，不是「为什么现在不能删」",
+                unlock.trim().len()
+            );
+        }
+    }
+
+    /// ④〔`S4b`〕通用层直呼适配层的地方，登记表与实得**逐条对齐**（多一处红、少一处也红）。
+    ///
+    /// 形态照 [`kind_dispatch_sites_are_enumerated_one_by_one`]：这张表**短了是好事、长了是坏事**。
+    #[test]
+    fn general_layer_adapter_call_sites_are_enumerated_one_by_one() {
+        let files = sources();
+        let needles = adapter_path_needles();
+        assert!(
+            needles.len() >= HOMES_FLOOR,
+            "从 `HOMES` 只派生出 {} 根适配层路径针（下界 {HOMES_FLOOR}）—— 派生坏了，本条在空转",
+            needles.len()
+        );
+        let mut got: Vec<(String, usize)> = Vec::new();
+        for (rel, prod) in &files {
+            if HOMES.iter().any(|h| rel.starts_with(h)) {
+                continue;
+            }
+            let n = prod
+                .lines()
+                .filter(|l| needles.iter().any(|nd| l.contains(nd.as_str())))
+                .count();
+            if n > 0 {
+                got.push((rel.clone(), n));
+            }
+        }
+        got.sort();
+        let mut want: Vec<(String, usize)> = ADAPTER_CALL_SITES
+            .iter()
+            .map(|(f, n, _)| ((*f).to_string(), *n))
+            .collect();
+        want.sort();
+        assert_eq!(
+            got, want,
+            "\n通用层直呼适配层的地方与登记表对不上。\n实得：{got:?}\n登记：{want:?}\n\
+             ⚠ **多出来的那处 = 又一个「加 agent 时要回来改」的地方** —— 先登记 + 写清它在向\n\
+             适配层要什么，然后问一句：这一处能不能改成走接口（`L2`/`S6`）？\n\
+             少掉的那处 = 真收进接口了，恭喜，摘登记（这张表短了是好事）。"
+        );
+        for (f, n, what) in ADAPTER_CALL_SITES {
+            assert!(*n > 0, "{f} 登记了 0 处 —— 那它不该在表里");
+            assert!(!what.trim().is_empty(), "{f} 没写「它在向适配层要什么」");
+        }
+    }
+
+    /// ⑤〔`S4b`〕反向夹具：③④两条的判定**真的会红**。
+    ///
+    /// 两条都是「找不到东西就绿」的形状 —— 针拼坏了（比如 `format!` 拼出空串）会**安静地全绿**。
+    #[test]
+    fn the_s4b_detectors_catch_synthetic_violations() {
+        // ③ 正向：合成的违规签名必须被逮到。
+        let bad = format!("fn run(clau{}_dir: &Path, args: &[String]) -> i32 {{}}", "de");
+        assert!(
+            agent_named_dir_needles().iter().any(|n| bad.contains(n.as_str())),
+            "③ 的判定认不出合成的违规签名 —— 它此刻是空转的"
+        );
+        // ③ 反向：改名之后的正确写法**不许**被打中（假阳会训练人绕过判据）。
+        let good = "fn run(agent_home: &Path, args: &[String]) -> i32 {}";
+        assert!(
+            !agent_named_dir_needles().iter().any(|n| good.contains(n.as_str())),
+            "③ 把改名之后的正确写法判成了违规 —— 那是假阳"
+        );
+        // ④ 正向：适配层路径针认得出真调用。
+        let call = format!("crate::agents::clau{}code::records::is_session_file(p)", "de");
+        assert!(
+            adapter_path_needles().iter().any(|n| call.contains(n.as_str())),
+            "④ 的判定认不出适配层调用 —— 它此刻是空转的"
+        );
+        // ④ 反向：**值**上的派发（`D3` 明说合法）不许被④打中 —— 那是判据②的活。
+        let value_dispatch = format!("let is_cx = spec.agent_kind.trim() == \"cod{}\";", "ex");
+        assert!(
+            !adapter_path_needles()
+                .iter()
+                .any(|n| value_dispatch.contains(n.as_str())),
+            "④ 打中了合法的值判别 —— `D3` 逐字：agent 维度**只许出现在值里**"
         );
     }
 }

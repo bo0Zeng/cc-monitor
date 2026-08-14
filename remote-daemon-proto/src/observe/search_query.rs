@@ -43,7 +43,7 @@ struct SearchOpts {
 
 /// `--search <query> [--include-tools] [--scope user|assistant] [--after-ms N] [--limit N]`。
 /// 返回进程退出码（0 ok / 2 err），与 history_query::run 同约定。
-pub fn run(claude_dir: &Path, args: &[String]) -> i32 {
+pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     // args[0] == "--search"
     let query = match args.get(1) {
         Some(q) => q.as_str(),
@@ -53,7 +53,7 @@ pub fn run(claude_dir: &Path, args: &[String]) -> i32 {
         }
     };
     let opts = parse_opts(&args[2.min(args.len())..]);
-    match search(claude_dir, query, &opts) {
+    match search(agent_home, query, &opts) {
         Ok(()) => 0,
         Err(e) => {
             eprintln!("cc-monitor-remote search error: {e}");
@@ -102,9 +102,9 @@ fn parse_opts(rest: &[String]) -> SearchOpts {
 }
 
 /// 扫 projects/**/*.jsonl，搜索匹配，每命中会话输出一行 JSON。
-fn search(claude_dir: &Path, query: &str, opts: &SearchOpts) -> Result<(), String> {
+fn search(agent_home: &Path, query: &str, opts: &SearchOpts) -> Result<(), String> {
     let q = query.trim().to_lowercase();
-    let root = projects_root(claude_dir);
+    let root = projects_root(agent_home);
     if q.is_empty() || !root.is_dir() {
         return Ok(()); // 空查询 / 无 projects → 无输出（exit 0）
     }
