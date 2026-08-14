@@ -72,7 +72,7 @@ pub const REPLY_CHANNEL_CAPACITY: usize = 256;
 /// **这是单一真相源** —— `hello` 从这里取值，`dispatch` 必须恰好处理这些。
 /// 两者由 `hello_commands_match_the_dispatch_table` 钉住，不许各写各的。
 pub const COMMANDS: &[&str] =
-    &["bus-list", "bus-send", "cancel", "kill", "launch", "ping", "resolve"];
+    &["bus-kill", "bus-list", "bus-send", "cancel", "kill", "launch", "ping", "resolve"];
 
 /// 在跑的命令登记表：`id` → 取消句柄。
 ///
@@ -391,6 +391,14 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
         fields: &["agents", "ccm_sid", "id", "live", "target", "unread"],
         takes_input: false,
         run: Run::Blocking(|_r| crate::control::cc_bus::list_for_inbound().map(Some)),
+    },
+    CommandSpec {
+        name: "bus-kill",
+        doc_anchor: Some("#### `bus-kill`"),
+        codes: &["invalid_args", "not_installed", "timed_out", "failed"],
+        fields: &["id", "killed", "stale_only"],
+        takes_input: true,
+        run: Run::Blocking(|r| crate::control::cc_bus::kill_for_inbound(&r.args).map(Some)),
     },
     CommandSpec {
         name: "bus-send",
@@ -974,7 +982,7 @@ mod tests {
         assert!(matches!(d("nope"), Disposition::Reply(..)));
 
         // P4f：两条 cc-bus 命令**要起子进程并等它退出** ⇒ 与 `launch`/`kill` 同档。
-        for c in ["bus-list", "bus-send"] {
+        for c in ["bus-list", "bus-send", "bus-kill"] {
             assert!(
                 matches!(d(c), Disposition::SpawnBlocking(..)),
                 "`{c}` 不在阻塞档上 —— 它要起 cc-bus 子进程并等它退出，会占住 tokio worker"
@@ -982,7 +990,9 @@ mod tests {
         }
 
         // 计数自检：每条已声明的命令都被上面覆盖到了（新增命令必须来这里表态）。
-        let covered = ["launch", "kill", "ping", "resolve", "cancel", "bus-list", "bus-send"];
+        let covered = [
+            "launch", "kill", "ping", "resolve", "cancel", "bus-list", "bus-send", "bus-kill",
+        ];
         let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
         assert!(
             missing.is_empty(),
@@ -1309,7 +1319,8 @@ mod structure_guards {
         for spec in super::REGISTRY {
             // F04a：`kill` 也是阻塞档 —— 它要起 tmux 子进程（探测 + kill-session）。
             // P4f：`bus-list` / `bus-send` 同样是阻塞档 —— 它们要起 cc-bus 子进程并等它退出。
-            let expected_blocking = matches!(spec.name, "launch" | "kill" | "bus-list" | "bus-send");
+            let expected_blocking =
+                matches!(spec.name, "launch" | "kill" | "bus-list" | "bus-send" | "bus-kill");
             let is_blocking = matches!(spec.run, Run::Blocking(_));
             assert_eq!(
                 is_blocking, expected_blocking,
@@ -1327,7 +1338,9 @@ mod structure_guards {
         // 计数自检：新增命令而这里没表态 ⇒ 上面那条 `expected_blocking` 会把它当非阻塞，
         // 于是真加了一条阻塞命令却没登记时会红。这里再加一条显式的覆盖面断言。
         // P4f：`bus-list` / `bus-send` 起 cc-bus 子进程并等它退出 ⇒ 与 `launch`/`kill` 同为阻塞档。
-        let known = ["cancel", "kill", "launch", "ping", "resolve", "bus-list", "bus-send"];
+        let known = [
+            "cancel", "kill", "launch", "ping", "resolve", "bus-list", "bus-send", "bus-kill",
+        ];
         let missing: Vec<&str> = super::REGISTRY
             .iter()
             .map(|s| s.name)

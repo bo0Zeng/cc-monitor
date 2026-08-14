@@ -120,6 +120,16 @@ mod tests {
             "p2b-cc-bus-basics",
             "--account-trust\n--account-trust-zero\n--bus-list\n--bus-send\n--daemon-probe\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-list\nch:bus-send\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
+        // ★ p2c（P4f 续，08-13）：新增 `bus-kill` —— 收掉一个总线成员（转调 `cc-kill`）。
+        //
+        // ⚠ **必须 bump**：monitor/skill 判「这台有没有这条能力」看的是 `hello.commands`，
+        //   它随二进制走；不 bump ⇒ 旧 daemon 报同一个 id ⇒ 不判 stale ⇒ 这条在远端休眠。
+        // ★ 与 `kill` 的分工写在 IPC-PROTOCOL：那条只杀 tmux 会话（§34 三道门，证据弱）；
+        //   这条还要清名册/台账/状态，且门在 `cc-kill` 自己那儿（证据强：登记的 pane 根进程 pid）。
+        (
+            "p2c-bus-kill",
+            "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--daemon-probe\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
     ];
 
     use crate::guard_support::{assert_no_test_code, production_code};

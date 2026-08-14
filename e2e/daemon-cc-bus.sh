@@ -17,8 +17,13 @@
 # · `CC_BUS_HOME` 同样在沙箱里，绝不碰真实 `~/.cc-bus/`；
 # · `CC_BUS_BIN_DIR` 指向**仓内**的 cc-bus 脚本（不是已装的那份）——
 #   验的是仓里这一版，与 `exec-bit-guard` 的口径一致；
-# · 用到 tmux 的只有 `[10]`（身份空间对账），且**一律经 PATH 上的 shim 强制 `-L <隔离socket>`**
-#   （`C7i`：daemon 内部是裸调 `tmux`，塞不进 `-L`，只能这样拦）；其余各格不碰 tmux；
+# · ★★ **全程把 shim 放在 PATH 最前面**，任何裸 `tmux` 都被强制 `-L <隔离socket>`
+#   （`C7i`：daemon 与 cc-bus 内部都是裸调 `tmux`，塞不进 `-L`，只能这样拦）。
+#   ⚠⚠ **这条是事故换来的**〔08-13〕：本套件原来只在用到 tmux 的那一格前面挂 shim，
+#   头注还写着「本套件不用 tmux」。后来我往 `[15]` 里加了几行裸 `tmux new-session` ——
+#   **那句过时的注释正是我省掉 shim 的理由** —— 于是 `kreal_cc` / `kocc_cc`
+#   **建到了用户的默认 socket 上**（事后按名字精确收掉了，两个里面都只有本套件的 sleep）。
+#   ⇒ 修法不是「下次记得加前缀」，是让它**写不出来**：shim 全程在 PATH 上 + 起飞前双向自检。
 # · 起的进程只有 daemon 自己（一次性 exec，`</dev/null` + `timeout`）。
 set -o pipefail
 
@@ -33,6 +38,29 @@ SANDBOX="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX"' EXIT
 BUS="$SANDBOX/bus"; CLA="$SANDBOX/claude"; EMPTY="$SANDBOX/empty"; NOHOME="$SANDBOX/nohome"
 mkdir -p "$BUS"/{inbox,state,log,queue} "$CLA/projects" "$EMPTY" "$NOHOME"
+
+# ===== 起飞前：把 tmux 钉死在隔离 socket 上（C7i）=====
+_SOCK="ccbusid$$"
+_SHIM="$SANDBOX/shim"; mkdir -p "$_SHIM"
+printf '#!/bin/bash\nexec %s -L %s "$@"\n' "$REALTMUX" "$_SOCK" > "$_SHIM/tmux"
+chmod +x "$_SHIM/tmux"
+export PATH="$_SHIM:$PATH"
+# 双向 canary：**两个方向都必须观测到确定的东西**（否定式守卫会空转，`cc-spawn-uplift` 记着为什么）。
+_canary="ccbuscanary$$"
+tmux new-session -d -s "$_canary" -c /tmp 'sleep 60' 2>/dev/null
+if ! tmux has-session -t "=$_canary" 2>/dev/null; then
+  echo "起飞前自检失败：shim 上建不出 canary"; exit 9
+fi
+if "$REALTMUX" -L default has-session -t "=$_canary" 2>/dev/null; then
+  # ⚠ **拦下之前先把自己留下的东西收干净**〔08-13 变异当场撞到〕：
+  #   第一版直接 `exit 9`，于是那个 canary **留在了用户的默认 socket 上** ——
+  #   一个"防止碰用户 tmux"的自检，自己碰了用户的 tmux。
+  #   ⇒ 收的是**按精确名字**的自己那一个，别的一律不碰。
+  "$REALTMUX" -L default kill-session -t "=$_canary" 2>/dev/null || true
+  echo "起飞前自检失败：canary 出现在**默认 socket** 上 —— shim 没拦住（已收回那个 canary）"
+  exit 9
+fi
+tmux kill-session -t "=$_canary" 2>/dev/null || true
 
 SCRIPTS="$REPO/shared/cc-bus/scripts"
 [ -x "$SCRIPTS/cc-list" ] || { echo "仓内没有 cc-list：$SCRIPTS"; exit 1; }
@@ -156,19 +184,15 @@ echo "[10] ★ 总线成员是**身份空间的子集**，不是第二套名单"
 # 只回答「谁登记过 + 还剩几条没读」。
 # ⚠ live 是**三态**：true / false / null。判据三格全钉——只钉前两格的话，
 #   「问不到就当成不在」这种最坏的读法会溜过去（把一屋子活人判成死人）。
-_SOCK="ccbusid$$"
-_SHIM="$SANDBOX/shim"; mkdir -p "$_SHIM"
-printf '#!/bin/bash\nexec %s -L %s "$@"\n' "$REALTMUX" "$_SOCK" > "$_SHIM/tmux"
-chmod +x "$_SHIM/tmux"
-PATH="$_SHIM:$PATH" tmux new-session -d -s alive_cc -c /tmp 'cat'
+tmux new-session -d -s alive_cc -c /tmp 'cat'
 sleep 0.4
-PATH="$_SHIM:$PATH" tmux set-option -t alive_cc @ccm_sid 'sid-1234' >/dev/null 2>&1
+tmux set-option -t alive_cc @ccm_sid 'sid-1234' >/dev/null 2>&1
 new_bus_state() {
   printf 'alive_cc\talive_cc:0.0\tts\t1\ngone_cc\tgone_cc:0.0\tts\t2\n' > "$BUS/agents.tsv"
   : > "$BUS/inbox/alive_cc.jsonl"; : > "$BUS/inbox/gone_cc.jsonl"
 }
 new_bus_state
-_j="$(PATH="$_SHIM:$PATH" env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
+_j="$(env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
       "$TIMEOUT" 20 "$D" --bus-list </dev/null 2>/dev/null)"
 chk "★ 活着的成员 live=true" "$(printf '%s' "$_j" | jq -r '.agents[] | select(.id=="alive_cc") | .live')" "true"
 chk "  且挂到了真身份上（@ccm_sid）" "$(printf '%s' "$_j" | jq -r '.agents[] | select(.id=="alive_cc") | .ccm_sid')" "sid-1234"
@@ -195,7 +219,7 @@ echo "[11] ★ bus-send 也要说清「有没有人会读」"
 # ⚠ 不改变投递（先发后到是正当用法），只是把话说清楚。
 printf 'alive_cc\talive_cc:0.0\tts\t1\ngone_cc\tgone_cc:0.0\tts\t2\n' > "$BUS/agents.tsv"
 _snd() {
-  printf '{"to":"%s","text":"x"}' "$1" | PATH="$_SHIM:$PATH" env CLAUDE_CONFIG_DIR="$CLA" \
+  printf '{"to":"%s","text":"x"}' "$1" | env CLAUDE_CONFIG_DIR="$CLA" \
     CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 20 "$D" --bus-send 2>/dev/null
 }
 _a="$(_snd alive_cc)"; _g="$(_snd gone_cc)"; _n="$(_snd nobody_cc)"
@@ -254,6 +278,35 @@ _r2="$(_send_from x '{"to":"x_cc","text":"给了 from","from":"cc-monitor"}')"
 chk "★ 给了 from ⇒ 回值回显它" "$(printf '%s' "$_r2" | jq -r '.from')" "cc-monitor"
 chk "★ 且收信人看到的就是它（不再是 unknown）" \
   "$(jq -r .from < "$_fb/inbox/x_cc.jsonl" | tail -1)" "cc-monitor"
+
+echo "[15] ★ bus-kill：收掉一个成员，且不许收错人"
+# ⚠ 真跑撞出来一条：我给 cc-kill 传了 `--`（那是 cc-send 的参数形状，cc-kill **不解析旗标**）
+#   ⇒ 它去杀一个名叫 `--` 的 agent（`-` 在它的白名单里，连报错都没有），
+#   三种情形全回 killed:false 而真 agent 好好活着。★ 抄参数形状前先看被调方怎么解析。
+tmux new-session -d -s kreal_cc -c /tmp 'sleep 300'; sleep 0.3
+TMUX_PANE="$(tmux list-panes -t '=kreal_cc' -F '#{pane_id}' | head -1)" \
+  CC_BUS_HOME="$BUS" bash "$SCRIPTS/cc-register" kreal_cc >/dev/null 2>&1
+tmux new-session -d -s kocc_cc -c /tmp 'sleep 300'; sleep 0.3
+TMUX_PANE="$(tmux list-panes -t '=kocc_cc' -F '#{pane_id}' | head -1)" \
+  CC_BUS_HOME="$BUS" bash "$SCRIPTS/cc-register" kocc_cc >/dev/null 2>&1
+tmux kill-session -t '=kocc_cc'; sleep 0.2
+tmux new-session -d -s kocc_cc -c /tmp 'sleep 999'; sleep 0.3     # 同名的无辜占用者
+_occpid="$(tmux list-panes -t '=kocc_cc' -F '#{pane_pid}' | head -1)"
+_dk() {
+  printf '{"id":"%s"}' "$1" | env CLAUDE_CONFIG_DIR="$CLA" \
+    CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 20 "$D" --bus-kill 2>"$SANDBOX/kerr.txt"
+}
+_k1="$(_dk kreal_cc)"
+chk "★ 真 agent：killed=true" "$(printf '%s' "$_k1" | jq -r .killed)" "true"
+chk "  会话真的没了" "$(tmux has-session -t '=kreal_cc' 2>/dev/null && echo 还在 || echo 没了)" "没了"
+_k2="$(_dk kocc_cc)"
+chk "★★ 名字被别人占：**不是 killed**，而是 stale_only" \
+  "$(printf '%s' "$_k2" | jq -c '[.killed,.stale_only]')" "[false,true]"
+chk "★★ 无辜会话还在" "$(tmux has-session -t '=kocc_cc' 2>/dev/null && echo 在 || echo 没了)" "在"
+chk "★★ 无辜进程还在" "$(ps -p "$_occpid" >/dev/null 2>&1 && echo 在 || echo 被杀了)" "在"
+_dk 'bad/id' >/dev/null
+chk "  非法 id ⇒ invalid_args（由 cc-kill 自己拒，白名单只有一份）" \
+  "$(jq -r .code < "$SANDBOX/kerr.txt" 2>/dev/null)" "invalid_args"
 
 "$REALTMUX" -L "$_SOCK" kill-server 2>/dev/null || true
 

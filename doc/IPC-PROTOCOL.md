@@ -513,6 +513,27 @@ monitor 永远不会发的形状。
 
 错误码：`not_installed`（找不到 `cc-list`，消息里带查过哪些位置）· `timed_out` · `failed`。
 
+#### `bus-kill`：收掉一个总线成员（P4f）
+
+```text
+→ {"id":"B3","cmd":"bus-kill","args":{"id":"proj_cc"}}
+← {"kind":"reply","id":"B3","ok":true,"data":{"id":"proj_cc","killed":true,"stale_only":false}}
+```
+
+`killed` = 会话真的被杀了；`stale_only` = **身份对不上**，只摘掉了那条陈旧登记
+（会话与收件箱都没动）。两种情况 `cc-kill` 都算成功，**必须分得开** ——
+「收掉了」和「那个名字现在是别人的」对用户是两件事。
+
+★ **门在懂语义的那一侧**：daemon 自己那条 `kill` 用 §34 三道门，因为它的归属证据弱
+（名字前缀 / `@ccm_sid`）；`cc-kill` 用的是强证据 —— `agents.tsv` 第 4 列（登记时记下的
+pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：**杀掉占了同名的无辜进程与会话**
+（`kill -9` 整棵树 + 删收件箱）。⇒ 这里不重写一遍门，转调它。
+
+⚠ 它做的事比 daemon 的 `kill` 多：杀会话 + 进程树 + 清名册 + 清台账 + 清那个 id 的状态。
+「多窗口要不要拦」是产品判断（账本 `U18` 待裁）；今天照收，`cc-kill` 会把窗口数打出来。
+
+错误码：`invalid_args`（id 非法/缺）· `not_installed` · `timed_out` · `failed`。
+
 #### `bus-send`：发一条消息（P4f）
 
 ```text
@@ -762,7 +783,7 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 
 错误写 stderr + 退出码 2（`--account-trust` 用 `--resolve` 那套结构化 `{code,message}` JSON）。**读会话那一族**（`--read-session` / `--read-session-tail` / `--read-session-from-offset` / `--fork-session`）的路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**账号一族不走这条**，各有各的判据：`--accts-dir <p>` 解析到 `~/.cc-acct-iso/config` 或 `$HOME/.claude-accts`；`--account-trust <configDir>` 靠「逐字 ∈ manifest」而非 projects 前缀；`--tmux-notify` 根本不碰文件系统。**旧 daemon 兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
 
-**P4f 追加两条**：`--bus-list` / `--bus-send`（cc-bus 的基础命令，见上面各自的小节）。
+**P4f 追加三条**：`--bus-list` / `--bus-send` / `--bus-kill`（cc-bus 的基础命令，见上面各自的小节）。
 它们与帧面走**同一个 `run`**，CLI 面这一层不写第二份实现。
 
 ⚠ 加一条 CLI 命令要动**两处**：`inbound::REGISTRY`（实现与分派臂）+ `main::SUBCOMMANDS`
