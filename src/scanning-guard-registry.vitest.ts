@@ -28,7 +28,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, sep } from "node:path";
+import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SRC = "src";
@@ -43,11 +43,18 @@ const SRC = "src";
  *
  * ⚠ 用 `import.meta.url` 推自己的路径，**不写死文件名** —— 写死的摘除**改名即静默失效**，
  * 而失效之后看起来和没失效一模一样（F23 第二刀刚在 `parity_ledger` 上处置过同一形态）。
+ *
+ * ⚠⚠ **同一个坑，高一层**〔08-14 实测〕：上面那句做到了「不写死**文件**名」，
+ * 却写死了**目录**名 —— 原式是 `.replace(/^.*\/cc-monitor\//, "")`。
+ * 于是在**任何一个 git worktree 里**（目录叫 `wt-daemon-split` 之类），那个 `replace`
+ * 不命中，`SELF` 停在绝对路径上、摘不掉自己 ⇒ 本文件把自己算进语料，两格当场红。
+ * 多 agent 并发用 worktree 干活时 `npm test` **必红**，而红的原因与被测的性质无关。
+ *
+ * ⇒ 改成相对 `process.cwd()`（vitest 把 cwd 设在包根，与 `allTs` 从 `"src"` 起走同一个基准）。
+ * ★ 它**不算白错**：下面那条 `files.includes(SELF)` 自检**当场把它逮住了** ——
+ * 判据自己写着「路径推错了，那条摘除就成了死规则」，这次正是它兑现的那一刻。
  */
-const SELF = fileURLToPath(import.meta.url)
-  .split(sep)
-  .join("/")
-  .replace(/^.*\/cc-monitor\//, "");
+const SELF = relative(process.cwd(), fileURLToPath(import.meta.url)).split(sep).join("/");
 
 /** 走一遍 `src/`，返回相对仓根的 `.ts` 路径。 */
 function allTs(dir: string = SRC, out: string[] = []): string[] {
