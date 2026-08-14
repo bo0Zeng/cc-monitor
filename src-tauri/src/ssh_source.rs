@@ -4212,6 +4212,18 @@ async fn stream_loop(
                         meta.waiting_for = waiting_for.clone();
                     }
                 }
+                // ★★〔08-14 实机排障补〕**这一跳与 `session_removed` 那条是同一个盲区**，
+                // 而那条已经补过、理由逐字写在下面（「分不清『收到了但没转发』与『根本没收到』」）。
+                // 本条当时漏了，代价在 08-14 兑现：用户报「Windows 前端上会话全是绿灯」，
+                // 而**绿灯正是 `status` 缺席时的默认值**（`src/session-status.ts` 逐字：
+                // `busy` / `null` → 默认绿点）⇒ 「全绿」既可能是"都在忙"，也可能是
+                // "status 一条都没到"，**两者在日志里长得一模一样**，排障当场卡死在这里。
+                // ⚠ 量级与那条一致：**每次状态变化一行**（CC 仅在状态转换时重写 pidfile，
+                // 天然稀疏），不是每帧一行 ⇒ 不会淹日志。
+                tracing::info!(
+                    "session-status: [{host_label}] sid={sid} status={status:?} \
+                     waiting_for={waiting_for:?} → 已 emit 给前端"
+                );
                 if let Err(e) = session_changes.send(SessionChange {
                     added: vec![],
                     removed: vec![],
