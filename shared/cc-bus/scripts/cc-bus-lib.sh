@@ -233,6 +233,18 @@ route_nudge() {
     last=$(cat "$nf" 2>/dev/null || echo 0); [[ "$last" =~ ^[0-9]+$ ]] || last=0
     if [ $(( now - last )) -ge "${CCBUS_NUDGE_DEBOUNCE:-2}" ]; then
       target=$(awk -F'\t' -v id="$to" '$1==id{t=$2} END{print t}' "$BUS/agents.tsv" 2>/dev/null || true)
+      # ★★ **敲门前先核这个 pane 还是不是它**〔08-13 实测误投〕
+      # 地址是名字型的(`proj_cc:0.0`)而名字会被重用 ⇒ agent 退出后同名会话被别人占着时,
+      # 敲门文字(带 Enter)会**打进陌生占用者的屏幕**。⇒ 比对登记时记下的 pane 根进程 pid。
+      # ⚠ 第 4 列为空(老表/不在 tmux 里登记的)⇒ **按老行为敲**,不制造假跳过。
+      want_pid=$(awk -F'\t' -v id="$to" '$1==id{p=$4} END{print p}' "$BUS/agents.tsv" 2>/dev/null || true)
+      if [ -n "$target" ] && [ -n "$want_pid" ]; then
+        have_pid=$(tmux display-message -p -t "=$target" '#{pane_pid}' 2>/dev/null || true)
+        if [ "$have_pid" != "$want_pid" ]; then
+          route_log "NUDGE stale $to target=$target 登记时 pid=$want_pid 现在 pid=${have_pid:-<没有这个 pane>} —— 不敲,免得打进别人的屏幕"
+          target=""
+        fi
+      fi
       if [ -n "$target" ] && tmux send-keys -t "=$target" \
            "🔔 cc-bus: 你有来自 $from 的新消息,运行 cc-recv 读取并按内容处理" 2>/dev/null; then
         sleep 0.3

@@ -13,6 +13,18 @@ if [ -z "${TMUX_PANE:-}" ]; then
   exit 1
 fi
 target=$(tmux display-message -p -t "$TMUX_PANE" '#{session_name}:#{window_index}.#{pane_index}')
+# ★★ **第 4 列：这个 pane 的身份**〔08-13 实测误投〕
+#
+# 地址是**名字型**的(`proj_cc:0.0`),而名字**会被重用** —— `cc-spawn` 就按目录基名取会话名。
+# 实测:agent 退出后,同名会话被别的进程占着,再给它发消息 ⇒ 敲门文字(带 Enter)
+# **被打进了陌生占用者的屏幕**,而真正的收件人一次也没被敲。
+#(在 shell 里那行会被当命令执行;在编辑器里会被插进正文。)
+#
+# ⇒ 记下**登记那一刻 pane 的根进程 pid**,敲门前核一次:对不上就别敲(见 route_nudge)。
+# ⚠ 只增一列、不改前三列:老表(用户盘上有 07-18 起的 86 行)第 4 列为空 ⇒ 按老行为敲,
+#   不制造假跳过;新登记的才有得核。
+pane_pid=$(tmux display-message -p -t "$TMUX_PANE" '#{pane_pid}' 2>/dev/null || true)
+case "$pane_pid" in ''|*[!0-9]*) pane_pid='' ;; esac   # 取不到就留空 = 退回老行为
 touch "$BUS/agents.tsv"
 # 上锁,避免多个 agent 同时启动时并发改 agents.tsv 丢条目
 (
@@ -42,7 +54,7 @@ touch "$BUS/agents.tsv"
   else
     : > "$tmpf"
   fi
-  printf '%s\t%s\t%s\n' "$id" "$target" "$(date -Iseconds)" >> "$tmpf"
+  printf '%s\t%s\t%s\t%s\n' "$id" "$target" "$(date -Iseconds)" "$pane_pid" >> "$tmpf"
   mv "$tmpf" "$BUS/agents.tsv"
 ) 9>>"$BUS/agents.tsv.lock"
 touch "$BUS/inbox/$id.jsonl"
