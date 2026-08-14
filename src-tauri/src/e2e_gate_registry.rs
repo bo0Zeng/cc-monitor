@@ -395,14 +395,68 @@ mod tests {
             if exec.iter().any(|l| l.contains("TMUX_TMPDIR=")) {
                 bad.push(format!("  {name} 自己设 TMUX_TMPDIR 当隔离"));
             }
+            // ★★〔08-13 事故补的〕**裸调也要拦**。
+            //
+            // 本条原来只查 `TMUX_TMPDIR=` —— 而 `bare_tmux_call` 这个判定明明就在上面，
+            // 只用在夹具自检里，**从没接到真扫描上**。缝就在这儿：一个套件既不设
+            // `TMUX_TMPDIR`、也不挂 shim、直接裸调 `tmux new-session`，它照样全绿，
+            // 而那些会话建在**用户的默认 socket** 上。
+            //
+            // 08-13 实测发生了：`daemon-cc-bus.sh` 的头注写着「本套件不用 tmux」，
+            // 我后来往里加了 tmux 用例、**照着那句过期的注释省掉了 shim** ⇒
+            // 两个 fixture 会话落到了用户的默认 socket 上（事后按精确名字收回）。
+            //
+            // ⇒ 规则：**要么挂 shim（共享原语或自建），要么每一处都自带选择器**。
+            let uses_shared_shim = exec.iter().any(|l| l.contains("tmux-shim.sh"));
+            // 自建 shim 的形状 = **两件事同时成立**：
+            // ① 往一个**名为 `tmux` 的文件**里写；② 那个文件里 `exec` 时带选择器。
+            //
+            // ⚠ 第一版只找「同一行里有 `exec` + `tmux` + `-L`」，**漏了 `cc-spawn-uplift`**
+            //   —— 它写的是 `exec "$REALTMUX" -L $SOCK "$@"`，那一行里**没有字面量 `tmux`**
+            //   （真 tmux 的路径在变量里），而且「写文件」与「exec」分在两行（heredoc）。
+            //   ⇒ 判定要按**形状**认，别按某一行的字面量。
+            let writes_a_tmux_file = exec
+                .iter()
+                .any(|l| l.contains("/tmux\"") || l.contains("/tmux'") || l.contains("/tmux <<"));
+            let execs_with_selector = exec
+                .iter()
+                .any(|l| l.contains("exec ") && (l.contains(" -L ") || l.contains(" -S ")));
+            let installs_own_shim = writes_a_tmux_file && execs_with_selector;
+            /// **允许裸调的**（文件名, 为什么）。默认拒绝，例外要写清楚。
+            const BARE_TMUX_OK: &[(&str, &str)] = &[
+                (
+                    "ccm-cli.test.sh",
+                    "那处 `tmux` 在**被断言的字符串**里 —— 它是 `ccm --print` 生成的启动串的一部分\
+                     （`if [ -n \"$TMUX\" ]; then …$(tmux display-message …)`），不是本套件在调 tmux。\
+                     ⚠ 判定是文本扫描，分不出「引号里的写法」与「真调用」；\
+                     与其把判定做成半个 shell 解析器，不如在这里登记一句话。",
+                ),
+                (
+                    "gen-idle-tmux.sh",
+                    "**夹具生成器**，不是套件：它被别的套件调用，隔离由**调用方**的 shim 提供\
+                     （调用方 PATH 上有 shim ⇒ 这里的裸 `tmux` 一样被强插 `-L`）。\
+                     ⚠ 直接手跑它会打到默认 socket —— 那是它作为「手动造夹具」工具的固有形态，\
+                     文件头注已写明用途。",
+                ),
+            ];
+            let exempt = BARE_TMUX_OK.iter().any(|(f, _)| *f == name);
+            if !uses_shared_shim && !installs_own_shim && !exempt {
+                for l in &exec {
+                    if bare_tmux_call(l) {
+                        bad.push(format!("  {name} 裸调 tmux 且没挂 shim：{}", l.trim()));
+                    }
+                }
+            }
         }
         // 抽取器自检：扫到的文件数量级对不上 ⇒ 遍历坏了，上面那条就是零命中得来的。
         assert!(scanned >= 15, "只扫到 {scanned} 个 e2e 脚本 —— 遍历坏了");
         assert!(
             bad.is_empty(),
-            "这些套件靠 `TMUX_TMPDIR` 做隔离，而 `C7i` 逐字禁止：\n{}\n\
+            "这些套件的 tmux 隔离不合 `C7i`：\n{}\n\
              ⇒ 改用共享原语 `e2e/tmux-shim.sh`（`TMUX_SHIM_SOCK=<私有名>` + `.` 进来），\
-             它把 shim 放进 PATH 最前并**强插 `-L`** —— 调用点一个字都不用改。",
+             它把 shim 放进 PATH 最前并**强插 `-L`** —— 调用点一个字都不用改。\n\
+             ⚠ 裸调那几条同理：**要么挂 shim，要么每一处自带 `-L`/`-S`**。\n\
+             08-13 实测过后果：fixture 会话建到了用户的默认 socket 上。",
             bad.join("\n")
         );
     }
