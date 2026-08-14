@@ -6,10 +6,32 @@ SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 cat >/dev/null                     # CC 从 stdin 传入 JSON(含 stop_hook_active 等),这里不需要就丢弃
 id=$("$SELFDIR/cc-whoami" 2>/dev/null || true)
 [ -n "$id" ] || exit 0             # 不在 tmux/无身份 = 不是 bus 成员,直接放行(非 bus 会话零影响)
+# ★★ **`cc-recv` 是有副作用的:它会推进已读位置**。而"喂回给 Claude"这一步在它之后
+#    ——中间任何一步失败,消息就**被消费掉却没人看见**。〔08-13 实测事故〕
+#
+# 实测触发的不是什么边角:40 条普通消息(每条约 4KB,单条都不超限)累计 160KB
+# ⇒ `jq --arg r "$reason"` 走 argv,撞 `MAX_ARG_STRLEN`(128 KiB)⇒ 钩子 rc=126、
+#    stdout 空,而**已读位置已经推到 40** ⇒ 那 40 条再也读不到。
+#    (一个 agent 离开一阵子回来,积压到这个量是正常的。)
+#
+# ⇒ 两道:① 不走 argv(`--rawfile`,jq 1.5+),把上限整个拿掉;
+#         ② 喂不回去就**把已读位置退回去** —— 宁可下轮再读一次,也不能吞掉。
+#         第二道管的是**所有**失败模式,不只是这一个。
+posf="$BUS/state/$id.pos"
+pos_before=$(cat "$posf" 2>/dev/null || echo 0)
+case "$pos_before" in ''|*[!0-9]*) pos_before=0 ;; esac
 msgs=$("$SELFDIR/cc-recv" "$id" 2>/dev/null || true)
 if [ -n "$msgs" ]; then
-  reason="你收到新的 cc-bus 消息,请先处理完再结束本轮:
-$msgs"
-  jq -cn --arg r "$reason" '{decision:"block", reason:$r}'   # 拦下结束,把消息喂给 Claude
+  rf=$(mktemp) || exit 0
+  printf '你收到新的 cc-bus 消息,请先处理完再结束本轮:\n%s' "$msgs" > "$rf" || true
+  if jq -cn --rawfile r "$rf" '{decision:"block", reason:$r}'; then   # 拦下结束,把消息喂给 Claude
+    rm -f "$rf"
+  else
+    rc=$?
+    rm -f "$rf"
+    # 没喂出去 ⇒ 退回已读位置,让它们下一轮还在。**别让"读过了"这个副作用留下来**。
+    printf '%s' "$pos_before" > "$posf" 2>/dev/null || true
+    echo "cc-bus-stop-hook: 喂回消息失败(jq rc=$rc)——已把已读位置退回 $pos_before,消息不会丢" >&2
+  fi
 fi
 exit 0

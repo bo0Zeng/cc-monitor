@@ -3,7 +3,8 @@
 #
 # 两件事同一族，都在这套里：
 #  ① 队列里滞留的消息没人管（`cc-busd` 死在「入队后、取走前」）——`[1]`~`[6]`；
-#  ② 收件人根本不存在（名字打错/对方还没登记）——`[7]`。
+#  ② 收件人根本不存在（名字打错/对方还没登记）——`[7]`；
+#  ③ Stop 钩子把消息**消费掉了却没喂回去**（`cc-recv` 有副作用，喂回在它之后）——`[8]`。
 # 共同形状：**投递没发生，而两侧都被告知一切正常**。
 #
 # ## 它守的那件事
@@ -214,6 +215,58 @@ chk "  精确匹配：planner 已登记 ⇒ 不告警" "$("$S/cc-send" planner m
 chk "  精确匹配：plan（前缀）⇒ 照样告警" "$("$S/cc-send" plan m 2>&1 | grep -c '不在已登记名单')" "1"
 rm -f "$B/agents.tsv"
 chk "  agents.tsv 还不存在（第一次用）⇒ 也告警，不当成「都登记过」" "$("$S/cc-send" bob m 2>&1 | grep -c '不在已登记名单')" "1"
+
+echo "[8] Stop 钩子：消息不许「读过了」却没人看见"
+# ★ 真事故：`cc-recv` **会推进已读位置**（有副作用），而"喂回给 Claude"在它之后。
+#   40 条普通消息（每条约 4KB，单条都不超限）累计 160KB ⇒ 原来的 `jq --arg r "$reason"`
+#   走 argv 撞 MAX_ARG_STRLEN(128 KiB) ⇒ 钩子 rc=126、stdout 空，**而位置已经推到 40**
+#   ⇒ 那 40 条再也读不到。一个 agent 离开一阵子回来，积压到这个量是正常的。
+# ⇒ 两道：① `--rawfile` 不走 argv；② 喂不回去就**把位置退回去**（管所有失败模式）。
+HOOK="$S/cc-bus-stop-hook"
+new_bus 8
+export CC_BUS_ID=hookme_cc
+python3 - "$B/inbox/hookme_cc.jsonl" <<'PYEOF'
+import json,sys
+with open(sys.argv[1],'w') as f:
+    for i in range(40):
+        f.write(json.dumps({"id":f"m{i}","from":"alice","to":"hookme_cc","ts":"x","text":"内容"*1000,
+                            "class":"direct","in_reply_to":None,"trace":"alice","hops":0,"prio":0},
+                           ensure_ascii=False)+"\n")
+PYEOF
+echo 0 > "$B/state/hookme_cc.pos"
+_hout="$(printf '{}' | bash "$HOOK" 2>/dev/null)"
+chk "★ 160KB 积压：钩子仍吐出 block 决定（不再撞 argv 上限）" \
+  "$(printf '%s' "$_hout" | jq -r '.decision // "<空>"' 2>/dev/null)" "block"
+chk "  40 条都在喂回去的正文里" \
+  "$(printf '%s' "$_hout" | jq -r .reason 2>/dev/null | grep -c '【cc-bus 来自')" "40"
+chk "  这一次推进已读位置是**对的**（消息确实送到了）" "$(cat "$B/state/hookme_cc.pos")" "40"
+
+# 第二道：喂回失败时**必须退回位置**。用一个只让带 --rawfile 那次失败的 jq 桩，
+# cc-recv 内部用的 jq 照常放行（否则连消息都读不出来，判据就测不到这条路）。
+new_bus 9
+export CC_BUS_ID=roll_cc
+python3 - "$B/inbox/roll_cc.jsonl" <<'PYEOF'
+import json,sys
+with open(sys.argv[1],'w') as f:
+    for i in range(3):
+        f.write(json.dumps({"id":f"m{i}","from":"alice","to":"roll_cc","ts":"x","text":f"第{i}条",
+                            "class":"direct","in_reply_to":None,"trace":"alice","hops":0,"prio":0},
+                           ensure_ascii=False)+"\n")
+PYEOF
+echo 0 > "$B/state/roll_cc.pos"
+mkdir -p "$SANDBOX/fakebin"
+{ echo '#!/bin/bash'
+  echo 'for a in "$@"; do [ "$a" = "--rawfile" ] && exit 7; done'
+  echo "exec $(command -v jq) \"\$@\""
+} > "$SANDBOX/fakebin/jq"
+chmod +x "$SANDBOX/fakebin/jq"
+_rout="$(printf '{}' | PATH="$SANDBOX/fakebin:$PATH" bash "$HOOK" 2>"$SANDBOX/hookerr.txt")"
+chk "★ 喂回失败 ⇒ 已读位置**退回原处**" "$(cat "$B/state/roll_cc.pos")" "0"
+chk "  三条都还读得到（没被吞）" \
+  "$(bash "$S/cc-recv" roll_cc | grep -c '【cc-bus 来自')" "3"
+chk "  且明说了（不是静默吞掉）" \
+  "$(grep -c '喂回消息失败' "$SANDBOX/hookerr.txt")" "1"
+unset CC_BUS_ID
 
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
