@@ -396,7 +396,7 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
         name: "bus-send",
         doc_anchor: Some("#### `bus-send`"),
         codes: &["invalid_args", "not_installed", "rejected", "timed_out", "failed"],
-        fields: &["sent", "to"],
+        fields: &["live", "registered", "sent", "to"],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::cc_bus::send_for_inbound(&r.args).map(Some)),
     },

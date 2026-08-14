@@ -188,6 +188,28 @@ chk "★ 问不到身份空间 ⇒ live 是 **null**（不是 false）" \
   "$(printf '%s' "$_j2" | jq -r '.agents[0].live')" "null"
 chk "  但成员本身照样列得出来（邮箱状态不依赖身份空间）" \
   "$(printf '%s' "$_j2" | jq -r '.agents | length')" "2"
+
+echo "[11] ★ bus-send 也要说清「有没有人会读」"
+# 两种「没人会读」今天都长得像成功：① 收件人压根没登记（打错一个字母就造出幽灵收件箱）；
+# ② 登记过、**会话早没了**（cc-bus 那份名单会过期）。
+# ⚠ 不改变投递（先发后到是正当用法），只是把话说清楚。
+printf 'alive_cc\talive_cc:0.0\tts\t1\ngone_cc\tgone_cc:0.0\tts\t2\n' > "$BUS/agents.tsv"
+_snd() {
+  printf '{"to":"%s","text":"x"}' "$1" | PATH="$_SHIM:$PATH" env CLAUDE_CONFIG_DIR="$CLA" \
+    CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 20 "$D" --bus-send 2>/dev/null
+}
+_a="$(_snd alive_cc)"; _g="$(_snd gone_cc)"; _n="$(_snd nobody_cc)"
+chk "★ 活着的收件人：registered=true live=true" \
+  "$(printf '%s' "$_a" | jq -c '[.registered,.live]')" "[true,true]"
+chk "★ 登记过但会话没了：registered=true **live=false**" \
+  "$(printf '%s' "$_g" | jq -c '[.registered,.live]')" "[true,false]"
+chk "★ 压根没登记：registered=false live=null" \
+  "$(printf '%s' "$_n" | jq -c '[.registered,.live]')" "[false,null]"
+chk "  三种都**照发不误**（先发后到是正当用法）" \
+  "$(printf '%s\n%s\n%s' "$_a" "$_g" "$_n" | jq -r .sent | grep -c true)" "3"
+chk "  且消息真的落进了各自的收件箱" \
+  "$(wc -l < "$BUS/inbox/nobody_cc.jsonl" 2>/dev/null || echo 0)" "1"
+
 "$REALTMUX" -L "$_SOCK" kill-server 2>/dev/null || true
 
 echo
