@@ -355,6 +355,26 @@ pub(crate) struct CommandSpec {
     /// 与真正的解析器/输出构造器实测对拍（`launch_fields_match_its_parser_and_output`）。
     /// 用一个手写清单去证明另一个手写清单是没有意义的。
     pub(crate) fields: &'static [&'static str],
+    /// 这条命令**收不收入方向载荷**（CLI 面据此决定读不读 stdin）。
+    ///
+    /// # ★★ 为什么这是显式的，而不是从 `fields` 派生〔P4f 08-13 实测〕
+    ///
+    /// 原来 `cli_control::reads_stdin` 写成 `!fields.is_empty()`。那是个**代用品**：
+    /// `fields` 的定义是「`args` **和** `data` 的字段名」，而 `kill`/`launch`/`resolve`
+    /// 恰好都有输入、`ping` 恰好零字段 ⇒ 代用品当时全对。
+    ///
+    /// `bus-list` 是第一条**无输入、却有输出字段**的命令 ⇒ 代用品判它要读 stdin
+    /// ⇒ **它挂住等一个永远不来的输入**。实测：`--ping` 120ms 回，`--bus-list` 6 秒
+    /// 被掐死、一个字都没输出。而 CLI 面正是给第三方 skill 调的。
+    ///
+    /// ⚠ 这条病仓里**修过一次**（`--ping` 第一版无条件读 stdin，`cli_control` 的头注逐字：
+    /// 「问『你活着吗』的那条命令，答案是挂住 —— 所有失败里最坏的一种」）。
+    /// 它换了扇门回来，因为守它的判据是**恒真**的（`fields.is_empty()` ⟺ `!reads_stdin`
+    /// 两边是同一个表达式，两个分支都不可能红）。
+    ///
+    /// ⇒ 改成每条命令自己说。真不真由**行为**判据验（`e2e/daemon-cc-bus.sh`：
+    /// 声明无输入的命令，在 stdin 不关时必须秒回）。
+    pub(crate) takes_input: bool,
     pub(crate) run: Run,
 }
 
@@ -369,6 +389,7 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `bus-list`"),
         codes: &["not_installed", "timed_out", "failed"],
         fields: &["agents", "id", "target", "unread"],
+        takes_input: false,
         run: Run::Blocking(|_r| crate::control::cc_bus::list_for_inbound().map(Some)),
     },
     CommandSpec {
@@ -376,6 +397,7 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `bus-send`"),
         codes: &["invalid_args", "not_installed", "rejected", "timed_out", "failed"],
         fields: &["sent", "to"],
+        takes_input: true,
         run: Run::Blocking(|r| crate::control::cc_bus::send_for_inbound(&r.args).map(Some)),
     },
     CommandSpec {
@@ -383,6 +405,7 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
         doc_anchor: None,
         codes: &[],
         fields: &["target"],
+        takes_input: true,
         run: Run::Builtin,
     },
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
@@ -399,6 +422,7 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
             "kill_failed",
         ],
         fields: &["killed", "name", "session"],
+        takes_input: true,
         run: Run::Blocking(|r| crate::control::kill::kill_for_inbound(&r.args).map(Some)),
     },
     CommandSpec {
@@ -414,6 +438,7 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
         fields: &[
             "ccm_sid", "created", "cwd", "mode", "name", "payload", "session", "typed",
         ],
+        takes_input: true,
         run: Run::Blocking(|r| crate::control::launch::launch_for_inbound(&r.args).map(Some)),
     },
     CommandSpec {
@@ -421,6 +446,7 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
         doc_anchor: None,
         codes: &[],
         fields: &[],
+        takes_input: false,
         run: Run::Async(|_r| Box::pin(async move { Ok(None) })),
     },
     // U6b-3：第一条**真业务命令**。
@@ -432,6 +458,7 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
         doc_anchor: Some("#### `resolve`"),
         codes: &["bad_request", "serialize_failed"],
         fields: &[],
+        takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {
                 let input = serde_json::to_string(&r.args)

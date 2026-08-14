@@ -132,6 +132,21 @@ chk "  码是 timed_out（不是笼统的 failed）" "$(jq -r .code < "$SANDBOX/
 chk "  消息说得出去哪儿看（flock / *.lock）" \
   "$(jq -r .message < "$SANDBOX/err8.txt" 2>/dev/null | grep -c 'flock')" "1"
 
+echo "[9] ★ 声明「不收输入」的命令，stdin 不关时必须秒回"
+# ★ 真事故：CLI 入口原来从 `fields` **派生**「要不要读 stdin」，而 `fields` 是
+#   「args 和 data 的字段名」。`bus-list` 无输入却有输出字段 ⇒ 被判成要读 stdin
+#   ⇒ **挂住等一个永远不来的输入**（实测 --ping 120ms 回、--bus-list 6 秒被掐死才停）。
+# ⚠ 守它的那条单测**是恒真的**（两个分支各是同一个表达式的复述），一声没吭。
+#   ⇒ 这一格钉**行为**：真起进程 + 一条不关的管道。声明真不真，由它说了算。
+for _c in --ping --bus-list; do
+  _t0=$(date +%s%N)
+  _o="$(env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
+        "$TIMEOUT" 6 "$D" "$_c" < <(sleep 30) 2>/dev/null)"
+  _ms=$(( ($(date +%s%N) - _t0) / 1000000 ))
+  chk "★ $_c：stdin 不关也返回了（不是挂到被掐）" \
+    "$([ -n "$_o" ] && [ "$_ms" -lt 5000 ] && echo yes || echo "no（${_ms}ms，输出 ${_o:-<空>}）")" "yes"
+done
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 [ "$fail" -eq 0 ] || exit 1
