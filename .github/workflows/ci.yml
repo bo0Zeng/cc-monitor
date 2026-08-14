@@ -412,7 +412,7 @@ jobs:
                       "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 32" \
                       "ccm-contract-parity 61" "daemon-gate2 36" "local-backend 7" \
                       "daemon-sessions-rewatch 5" "daemon-tmux-late-server 2" \
-                      "cc-bus-queue-drain 38" "daemon-cc-bus 25"; do
+                      "cc-bus-queue-drain 38" "daemon-cc-bus 31"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
               || { echo "::error::找不到调用行 'assert-pass-floor.sh $pair' —— 套件或地板被改了"; exit 1; }
           done
@@ -506,7 +506,7 @@ jobs:
       # P4f：daemon 的 cc-bus 基础命令。**要 debug daemon 二进制**（同下面 daemon-frames 三套），
       # 但不要 tmux、不要真 claude —— 它跑的是一次性 CLI（`--bus-list` / `--bus-send`）。
       - name: e2e - daemon 的 cc-bus 基础命令（P4f）
-        run: bash e2e/assert-pass-floor.sh daemon-cc-bus 25
+        run: bash e2e/assert-pass-floor.sh daemon-cc-bus 31
 
       # G-C（解 E41）：这两套只要 node + tmux（经 tsx driver 驱真编排逻辑，不碰 daemon）。
       # 它们此前进不了 CI 的原因不是「需要什么」，而是**会踩开发者机器上的真实 tmux 会话**

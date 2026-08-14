@@ -388,7 +388,7 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
         name: "bus-list",
         doc_anchor: Some("#### `bus-list`"),
         codes: &["not_installed", "timed_out", "failed"],
-        fields: &["agents", "id", "target", "unread"],
+        fields: &["agents", "ccm_sid", "id", "live", "target", "unread"],
         takes_input: false,
         run: Run::Blocking(|_r| crate::control::cc_bus::list_for_inbound().map(Some)),
     },

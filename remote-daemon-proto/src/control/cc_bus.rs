@@ -287,6 +287,63 @@ fn first_line(bytes: &[u8]) -> String {
         .to_string()
 }
 
+/// 从总线地址（`proj_cc:0.0`）里取**会话名**那一段 —— 纯函数。
+///
+/// 身份空间的键是**会话名**；总线地址是 `名字:窗口.面板`。对账按前者。
+pub(crate) fn session_name_of(target: &str) -> &str {
+    target.split(':').next().unwrap_or(target)
+}
+
+/// 把总线成员**挂到身份空间上** —— 纯函数（真身份由调用方查好传进来）。
+///
+/// # 用户提的那条架构点〔用@08-13〕
+///
+/// 逐字：「**那他不应该是身份空间的子集吗? 他应该去调用身份空间啊**」。**对的。**
+///
+/// `agents.tsv` 是 cc-bus 的**第二套名单**，它的地址会过期（会话名被重用是常态）。
+/// 08-13 实测过后果：敲门文字打进**陌生占用者**的屏幕。
+/// ⇒ 这里不再复述那份名单，而是**对账**：
+/// · `live` = 这个成员的会话名在**活着的 tmux 会话**里找得到吗（真身份说了算）；
+/// · `ccm_sid` = 那个会话绑的 Claude sid（`@ccm_sid`），空串 ⇒ 回 `null`，不猜。
+///
+/// ⚠ 拿不到身份空间（没装 tmux / 起不来）⇒ `live` 回 `null` 而不是 `false`：
+/// **「不知道」和「不在」是两件事**，混起来会让调用方把一屋子活人当成死人。
+pub(crate) fn join_identity(
+    agents: Vec<serde_json::Value>,
+    sessions: Option<&[(String, String, String)]>,
+) -> Vec<serde_json::Value> {
+    agents
+        .into_iter()
+        .map(|mut a| {
+            let target = a
+                .get("target")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let name = session_name_of(&target).to_string();
+            let (live, sid) = match sessions {
+                None => (serde_json::Value::Null, serde_json::Value::Null),
+                Some(list) => match list.iter().find(|(n, _, _)| *n == name) {
+                    None => (serde_json::Value::Bool(false), serde_json::Value::Null),
+                    Some((_, _, ccm_sid)) => (
+                        serde_json::Value::Bool(true),
+                        if ccm_sid.is_empty() {
+                            serde_json::Value::Null
+                        } else {
+                            serde_json::Value::String(ccm_sid.clone())
+                        },
+                    ),
+                },
+            };
+            if let Some(o) = a.as_object_mut() {
+                o.insert("live".to_string(), live);
+                o.insert("ccm_sid".to_string(), sid);
+            }
+            a
+        })
+        .collect()
+}
+
 pub(crate) fn list_for_inbound() -> Result<serde_json::Value, (String, String)> {
     let out = run("cc-list", &[]).map_err(|(c, m)| (c.to_string(), m))?;
     if out.status.code() == Some(TIMED_OUT_CODE) {
@@ -303,7 +360,11 @@ pub(crate) fn list_for_inbound() -> Result<serde_json::Value, (String, String)> 
         ));
     }
     let text = String::from_utf8_lossy(&out.stdout);
-    Ok(serde_json::json!({ "agents": parse_list(&text) }))
+    // ★ 去问**身份空间**谁还活着（用户 08-13 那条架构点）。问不到就回 `null`，不假装知道。
+    let sessions = super::gate::list_sessions().ok();
+    Ok(serde_json::json!({
+        "agents": join_identity(parse_list(&text), sessions.as_deref())
+    }))
 }
 
 pub(crate) fn send_for_inbound(

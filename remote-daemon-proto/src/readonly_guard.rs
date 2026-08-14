@@ -618,7 +618,10 @@ mod spawn_registry {
         (
             "control/gate.rs",
             "tmux",
-            "F03：§34 Gate 2 的探测（`display-message -p` 取 `@ccm_sid` + `#{session_id}`）。\
+            "F03：§34 Gate 2 的探测（`display-message -p` 取 `@ccm_sid` + `#{session_id}`）\
+             ＋ P4f 续刀的 `list-sessions -F`（一次列全部会话的身份三元组，供 `bus-list` \
+             判「这个总线成员的地址今天还活着吗」——**总线成员 ⊆ 活着的会话**，\
+             谁活着由身份空间说了算，不由 cc-bus 那份会过期的 agents.tsv 说了算）。\
              **只读 tmux**，不改任何状态；登记在 control/ 是因为它是「能不能改这个会话」\
              这个决策的一部分（定框 C13）",
         ),
@@ -714,7 +717,7 @@ mod spawn_registry {
         //
         // ⚠ 这个数**刻意不再枚举是哪几处** —— 那份清单的家是 `ALLOWED`，
         // 在报错文案里再抄一遍就是下一处会腐的散文（定框 E12）。
-        const SPAWN_SITES_TODAY: usize = 7;
+        const SPAWN_SITES_TODAY: usize = 8;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,

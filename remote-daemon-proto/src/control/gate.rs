@@ -54,6 +54,55 @@ pub(crate) struct Probed {
     pub(crate) windows: u32,
 }
 
+/// 列出本机所有 tmux 会话的**身份三元组**：`(会话名, session_id, @ccm_sid)`。
+///
+/// # 它是给「谁是真的」用的〔P4f 续刀 08-13，用户提的架构点〕
+///
+/// 用户逐字：「**那他不应该是身份空间的子集吗? 他应该去调用身份空间啊**」。
+///
+/// cc-bus 的 `agents.tsv` 是一份**第二套名单**：它记 `id → session:win.pane`，
+/// 而那个地址**会过期**（会话名被重用是常态 —— `cc-spawn` 就按目录基名取名；
+/// 用户盘上那份有 86 行、最早 07-18）。08-13 实测过它的后果：敲门文字被打进**陌生占用者**的屏幕。
+///
+/// ⇒ 正确的从属关系是：**总线成员 ⊆ 活着的 tmux 会话**。谁活着由**这里**说了算，
+/// `agents.tsv` 只回答「谁登记过 + 邮箱里还有几条没读」。
+///
+/// ⚠ **一次调用列全部**，不是每个成员探一次：用户那台的总线有 86 行，
+/// 逐个探就是 86 次起进程。
+///
+/// `@ccm_sid` 空 = 那个会话不是 `ccm` 起的（或还没绑 sid）—— 如实回空串，不猜。
+pub(crate) fn list_sessions() -> Result<Vec<(String, String, String)>, CmdErr> {
+    const LIST_FMT: &str = "#{session_name}\t#{session_id}\t#{@ccm_sid}";
+    let out = Command::new("tmux")
+        .args(["list-sessions", "-F", LIST_FMT])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|e| {
+            (
+                "no_tmux",
+                format!("起不来 tmux（远端装了吗？PATH 里有吗？）：{e}"),
+            )
+        })?;
+    // ⚠ **不看退出码**（同本模块 `probe`）：没有任何会话时 `tmux ls` 是非零 + 空输出，
+    //   那不是错误，是「一个都没有」。
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut it = line.split('\t');
+            let name = it.next()?.trim();
+            if name.is_empty() {
+                return None;
+            }
+            Some((
+                name.to_string(),
+                it.next().unwrap_or_default().trim().to_string(),
+                it.next().unwrap_or_default().trim().to_string(),
+            ))
+        })
+        .collect())
+}
+
 /// 探测格式串。**三个**字段用 TAB 分隔 —— `session_id` 恒是 `$<数字>`、不含 TAB，
 /// `@ccm_sid` 的字符集在 `launch::parse_request` 里收到了 `[A-Za-z0-9_-]`，
 /// `session_windows` 对一个存在的会话恒为正整数。

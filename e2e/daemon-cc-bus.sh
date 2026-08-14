@@ -17,7 +17,8 @@
 # · `CC_BUS_HOME` 同样在沙箱里，绝不碰真实 `~/.cc-bus/`；
 # · `CC_BUS_BIN_DIR` 指向**仓内**的 cc-bus 脚本（不是已装的那份）——
 #   验的是仓里这一版，与 `exec-bit-guard` 的口径一致；
-# · **不用 tmux** ⇒ `C7i` 那条红线在这里天然不成立；
+# · 用到 tmux 的只有 `[10]`（身份空间对账），且**一律经 PATH 上的 shim 强制 `-L <隔离socket>`**
+#   （`C7i`：daemon 内部是裸调 `tmux`，塞不进 `-L`，只能这样拦）；其余各格不碰 tmux；
 # · 起的进程只有 daemon 自己（一次性 exec，`</dev/null` + `timeout`）。
 set -o pipefail
 
@@ -26,6 +27,7 @@ D="$REPO/remote-daemon-proto/target/debug/cc-monitor-remote"
 [ -x "$D" ] || { echo "需要先 build daemon：cd remote-daemon-proto && cargo build"; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "需要 jq"; exit 1; }
 TIMEOUT="$(command -v timeout)" || { echo "需要 timeout"; exit 1; }
+REALTMUX="$(command -v tmux)" || { echo "需要 tmux（[10] 的身份空间对账要它）"; exit 1; }
 
 SANDBOX="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX"' EXIT
@@ -146,6 +148,47 @@ for _c in --ping --bus-list; do
   chk "★ $_c：stdin 不关也返回了（不是挂到被掐）" \
     "$([ -n "$_o" ] && [ "$_ms" -lt 5000 ] && echo yes || echo "no（${_ms}ms，输出 ${_o:-<空>}）")" "yes"
 done
+
+echo "[10] ★ 总线成员是**身份空间的子集**，不是第二套名单"
+# 〔用@08-13〕逐字：「那他不应该是身份空间的子集吗? 他应该去调用身份空间啊」。
+# cc-bus 的 agents.tsv 记的地址**会过期**（会话名被重用是常态）——08-13 实测后果是
+# 敲门文字打进**陌生占用者**的屏幕。⇒ live/ccm_sid 由 daemon 去问 tmux，agents.tsv
+# 只回答「谁登记过 + 还剩几条没读」。
+# ⚠ live 是**三态**：true / false / null。判据三格全钉——只钉前两格的话，
+#   「问不到就当成不在」这种最坏的读法会溜过去（把一屋子活人判成死人）。
+_SOCK="ccbusid$$"
+_SHIM="$SANDBOX/shim"; mkdir -p "$_SHIM"
+printf '#!/bin/bash\nexec %s -L %s "$@"\n' "$REALTMUX" "$_SOCK" > "$_SHIM/tmux"
+chmod +x "$_SHIM/tmux"
+PATH="$_SHIM:$PATH" tmux new-session -d -s alive_cc -c /tmp 'cat'
+sleep 0.4
+PATH="$_SHIM:$PATH" tmux set-option -t alive_cc @ccm_sid 'sid-1234' >/dev/null 2>&1
+new_bus_state() {
+  printf 'alive_cc\talive_cc:0.0\tts\t1\ngone_cc\tgone_cc:0.0\tts\t2\n' > "$BUS/agents.tsv"
+  : > "$BUS/inbox/alive_cc.jsonl"; : > "$BUS/inbox/gone_cc.jsonl"
+}
+new_bus_state
+_j="$(PATH="$_SHIM:$PATH" env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
+      "$TIMEOUT" 20 "$D" --bus-list </dev/null 2>/dev/null)"
+chk "★ 活着的成员 live=true" "$(printf '%s' "$_j" | jq -r '.agents[] | select(.id=="alive_cc") | .live')" "true"
+chk "  且挂到了真身份上（@ccm_sid）" "$(printf '%s' "$_j" | jq -r '.agents[] | select(.id=="alive_cc") | .ccm_sid')" "sid-1234"
+chk "★ 名单里有、会话已经没了的 live=false" "$(printf '%s' "$_j" | jq -r '.agents[] | select(.id=="gone_cc") | .live')" "false"
+
+# 第三态：**问不到身份空间**。造一个有 coreutils、只缺 tmux 的 PATH
+#（`PATH` 清空是不行的 —— 那样 cc-list 自己的 awk 也没了，测的就不是这件事了）。
+_NT="$SANDBOX/notmux"; mkdir -p "$_NT"
+for _t in bash sh env awk cat wc date tr sed grep head tail mkdir touch flock mv rm sort cut timeout; do
+  [ -x "/usr/bin/$_t" ] && ln -sf "/usr/bin/$_t" "$_NT/$_t"
+done
+chk "  台架自检：这个 PATH 里确实没有 tmux" \
+  "$(PATH="$_NT" command -v tmux >/dev/null 2>&1 && echo 有 || echo 没有)" "没有"
+_j2="$(env PATH="$_NT" CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
+       "$TIMEOUT" 20 "$D" --bus-list </dev/null 2>/dev/null)"
+chk "★ 问不到身份空间 ⇒ live 是 **null**（不是 false）" \
+  "$(printf '%s' "$_j2" | jq -r '.agents[0].live')" "null"
+chk "  但成员本身照样列得出来（邮箱状态不依赖身份空间）" \
+  "$(printf '%s' "$_j2" | jq -r '.agents | length')" "2"
+"$REALTMUX" -L "$_SOCK" kill-server 2>/dev/null || true
 
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
