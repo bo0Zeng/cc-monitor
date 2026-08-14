@@ -376,6 +376,53 @@ chmod 644 "$CC_BUS_HOME/agents.tsv"
 chk "★ 旧表读不动时**拒绝登记**，别人的地址一条不少" \
   "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -c '^r[abc]_cc$')" "3"
 
+echo "[20] 【08-13】敲门不许打进**别人的**屏幕"
+# ★ 真事故：地址是**名字型**的（`proj_cc:0.0`），而名字会被重用 —— `cc-spawn` 就按目录
+#   基名取会话名。agent 退出后同名会话被别的进程占着，再给它发消息 ⇒ 敲门文字（**带 Enter**）
+#   被打进陌生占用者的屏幕（在 shell 里那行会被当命令执行），而真正的收件人一次也没被敲。
+# ⇒ 登记时记下 pane 的根进程 pid（第 4 列），敲门前核一次。
+# ⚠ 判据要**两个方向都钉**：活着的必须照敲、陌生人必须零打扰。只钉后者的话，
+#   把敲门整个删掉也能"通过"。
+tmux new-session -d -s live_cc -c /tmp 'cat'; sleep 0.4
+_lp="$(tmux list-panes -t '=live_cc' -F '#{pane_id}' | head -1)"
+TMUX_PANE="$_lp" bash "$REPO/shared/cc-bus/scripts/cc-register" live_cc >/dev/null 2>&1
+chk "登记行带第 4 列（pane 根进程 pid，纯数字）" \
+  "$(awk -F'\t' '$1=="live_cc"{print ($4 ~ /^[0-9]+$/) ? "yes" : "no"}' "$CC_BUS_HOME/agents.tsv")" "yes"
+bash "$REPO/shared/cc-bus/scripts/cc-send" live_cc "给活着的它" >/dev/null 2>&1
+sleep 1.2
+chk "★ 方向一：活着的 agent **照样被敲**" \
+  "$( [ "$(tmux capture-pane -t 'live_cc:0.0' -p | grep -c '🔔 cc-bus')" -gt 0 ] && echo yes || echo no)" "yes"
+
+tmux new-session -d -s reuse_cc -c /tmp 'cat'; sleep 0.4
+_rp="$(tmux list-panes -t '=reuse_cc' -F '#{pane_id}' | head -1)"
+TMUX_PANE="$_rp" bash "$REPO/shared/cc-bus/scripts/cc-register" alpha_cc >/dev/null 2>&1
+tmux kill-session -t '=reuse_cc'; sleep 0.3
+tmux new-session -d -s reuse_cc -c /tmp 'cat'; sleep 0.5     # 陌生占用者，同名会话
+bash "$REPO/shared/cc-bus/scripts/cc-send" alpha_cc "只该给 alpha_cc 看的" >/dev/null 2>&1
+sleep 1.2
+chk "★ 方向二：同名会话被陌生人占着 ⇒ **零打扰**" \
+  "$(tmux capture-pane -t 'reuse_cc:0.0' -p | grep -c '🔔 cc-bus')" "0"
+# ⚠ 两个坑一次踩齐（本套件当场演示了）：`grep -c` 没命中时**既打印 0 又返回 1**。
+#   ① 写 `|| echo 0` ⇒ 再追加一个 0，读数变成 "0\n0"；
+#   ② 什么都不写 ⇒ 这里 `set -e` 是**开着**的（见上方 `:338`），赋值失败当场杀掉整套，
+#      表现为「最后一格和合计行凭空消失」——不是红，是**没跑完**。
+#   ⇒ 用本文件既有的 `|| true`（它不打印任何东西），再用 `${_n:-0}` 兜住文件不存在。
+_n="$(grep -c 'NUDGE stale alpha_cc' "$CC_BUS_HOME/log/bus.log" 2>/dev/null || true)"
+chk "  且记了一笔（不是静默跳过）" "${_n:-0}" "1"
+chk "  投递不受影响（收件箱照收）" \
+  "$(wc -l < "$CC_BUS_HOME/inbox/alpha_cc.jsonl" 2>/dev/null || echo 0)" "1"
+
+# 老表兼容：用户盘上那 86 行是 **3 列**（最早 07-18）。第 4 列为空 ⇒ 按老行为敲，
+# **不许**把它们全判成 stale（那等于把所有存量 agent 的敲门一次性关掉）。
+tmux new-session -d -s old_cc -c /tmp 'cat'; sleep 0.4
+printf 'old_cc\told_cc:0.0\t2026-07-18T07:26:31-07:00\n' > "$CC_BUS_HOME/agents.tsv"
+bash "$REPO/shared/cc-bus/scripts/cc-send" old_cc "老表照样要敲" >/dev/null 2>&1
+sleep 1.2
+chk "★ 老 3 列表（无第 4 列）**仍被敲到**" \
+  "$( [ "$(tmux capture-pane -t 'old_cc:0.0' -p | grep -c '🔔 cc-bus')" -gt 0 ] && echo yes || echo no)" "yes"
+_n="$(grep -c 'NUDGE stale old_cc' "$CC_BUS_HOME/log/bus.log" 2>/dev/null || true)"
+chk "  且没有假 stale" "${_n:-0}" "0"
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 if [ "$fail" -eq 0 ]; then echo "===== cc-spawn 收编验收全部通过 ====="; fi
