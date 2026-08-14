@@ -33,3 +33,26 @@ pub(crate) mod liveness;
 pub(crate) mod paths;
 pub(crate) mod records;
 pub(crate) mod resume;
+
+/// 本 agent 在 wire 上的 **`agent_kind` 值**〔`S5`〕。
+///
+/// ⚠ **是 `claude` 不是 `claudecode`** —— 模块名与 wire 值域是两件事，别顺手对齐：
+/// 值域由既有契约定死（`ResumeSpec.agentKind` 逐字「缺/`""`/`"claude"`=claude」·
+/// `session_added.agent_kind` 对 Claude **省略** ⇒ 缺 = claude），改它 = 改跨仓契约。
+///
+/// 它住在**适配层**而不是通用层，是为了让 `agents::REGISTRY` 那张注册表里
+/// 一个 agent 名的字面量都没有（`D3`：agent 维度只许出现在值里 —— 而这个值的**来源**
+/// 也该是那个 agent 自己）。
+pub(crate) const AGENT_KIND: &str = "claude";
+
+/// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**〔`S5`〕。
+///
+/// 「在不在」的判准是通用层的机器（`agents::visible_homes`），不是每家自己定一套 ——
+/// 那正是 `S3` 立的分界（知识住适配层、机器留通用层）在发现这件事上的兑现。
+///
+/// 恒 `Some`：[`paths::resolve_home`] 有默认值（`$HOME/.claude`，再退 cwd 下的 `.claude`），
+/// 解析不出来这种事对 Claude 不存在。签名仍取 `Option` 是为了与
+/// [`super::codex::home`] 同形（那家真的可能答不出来）。
+pub(crate) fn home() -> Option<std::path::PathBuf> {
+    Some(paths::resolve_home())
+}

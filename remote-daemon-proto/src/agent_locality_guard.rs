@@ -56,6 +56,22 @@
 //! 这三个文件在 `S1` 六根针下的残留**全是**这些适配层地址（外加两处日志散文）。
 //! ⇒ 卡点不是参数名（`S4b` 已清），是**还没有接口**（`L2`），归 `S6`。
 //!
+//! ## ⑤〔`S5`〕**注册表**那类被拆了出去 —— 它与④性质相反
+//!
+//! `S5` 往 `agents/mod.rs` 放了适配层注册表（`REGISTRY`：这个 daemon 认得哪几个 agent）。
+//! 它也是「直呼适配层」，但**方向反了**：④ 里的每一条都该被压到零（收进接口），
+//! 而注册表那几行是「加一个 agent **本来就该**动的一行」，应该**随 agent 数增长**。
+//!
+//! 两类混进同一个计数，`S6` 就没法拿那个数当成绩 —— 降了不知道是真收进接口了，
+//! 还是有人把调用点挪进注册表文件去刷数。⇒ 拆成 [`tests::AGENT_REGISTRY_SITES`]，
+//! ④ 的人群里扣掉它。**扣除的对价**是判据⑦：注册表文件的处数被钉死成 `REGISTRY.len()`
+//! （一家一行），藏不进第二样东西。
+//!
+//! ⚠ 同轮还补了一件事：④ 的针此前**只有全路径** `agents::<名>::`，
+//! 而 `agents/mod.rs` 引用两家写的是相对路径 `codex::` —— 新增的注册表**一处都没被数到**。
+//! 那是本区第二次「量具的作用域比事实**小**」（第一次是 `S4b §0b-2`）。针已扩到两种写法，
+//! 实测扩针**不改动任何既有文件的读数**（8 文件 / 27 处一字未变）。
+//!
 //! # ⚠ 诚实边界（四条，都写在这里而不是只写在计划里）
 //!
 //! 1. 判据认的是**字面量**，不是语义。派发点里的人直接写
@@ -206,6 +222,8 @@ mod tests {
     /// ⚠ 与 [`KIND_DISPATCH_SITES`] 分工：那张数的是「拿 kind **值**做判别」（`D3` 允许的形状，
     /// 今天 1 处）；本张数的是「**不判别、直接写死一个 agent**」（`D3` 管不着，因为它不在协议里）。
     /// 两者加起来才是「接第三个 agent 的改动面」。
+    /// ⚠〔`S5`〕**注册表那类不在本表里** —— 见 [`AGENT_REGISTRY_SITES`]。
+    /// 本表只装「**该被压到零**」的那一类，`S6` 的靶子就是它的总数。
     const ADAPTER_CALL_SITES: &[(&str, usize, &str)] = &[
         ("control/fork_write.rs", 3, "会话记录根 + 会话文件命名"),
         (
@@ -220,6 +238,29 @@ mod tests {
         ("observe/usage_query.rs", 3, "会话记录根 + 会话文件判定 + codex 侧聚合的另一半"),
         ("observe/watcher.rs", 4, "会话记录根 + pidfile 目录 + 判活 cmdline + 会话文件判定"),
     ];
+
+    /// 〔`S5`〕**适配层注册表**住哪几个文件（`文件`, 为什么它不该被压到零）。
+    ///
+    /// # 它为什么是**另一张表**，而不是 [`ADAPTER_CALL_SITES`] 里的一条
+    ///
+    /// 那张表里每一条的含义是**统一的**：「通用层直呼适配层 = 加一个 agent 要回来改的地方」，
+    /// 而 `S6` 的成绩就是**把那个数压下去**。
+    ///
+    /// 注册表是**性质相反**的东西：`agents/mod.rs` 里那几行是「加一个 agent **本来就该**
+    /// 动的一行」—— 它不该被压下去，反而应该**随 agent 数增长**。
+    /// 两类塞进同一个计数里，`S6` 就没法拿那个数当成绩了：降了不知道是真收进接口了，
+    /// 还是有人把调用点挪进注册表文件里去刷数。
+    ///
+    /// ⇒ 分两张表。⚠ **排除是有对价的**：
+    /// [`the_adapter_registry_is_one_line_per_agent`] 把注册表文件的处数钉死成
+    /// **恰好 `REGISTRY.len()`** —— 想往这个文件里藏一处别的直呼，当场超出、当场红。
+    /// 没有那条对价，本表就成了「把东西挪进来就不算数」的逃生舱。
+    const AGENT_REGISTRY_SITES: &[(&str, &str)] = &[(
+        "agents/mod.rs",
+        "适配层自己的索引：不写 `pub(crate) mod <名>;` 新适配层根本编不进来 ⇒ \
+         它**本来就**在「加一个 agent 必改」的清单里。`S5` 把注册表（每家的 `agent_kind` 值 + \
+         home 解析入口）放在这里，是为了不让必改的文件从 1 个变成 2 个。**一家一行**。",
+    )];
 
     /// 判据③的针：`<agent 名>_dir` 这一形的**标识符**。**运行时拼**（本文件散文里就有这些词）。
     ///
@@ -236,14 +277,36 @@ mod tests {
         out
     }
 
-    /// 判据④的针：每个 agent 家的**模块路径**（`agents/codex/` → `agents::codex::`）。
+    /// 判据④的针：每个 agent 家的**模块路径**（`agents/codex/` → `agents::codex::`），
+    /// **外加它的相对写法**（`codex::`）。
     ///
     /// 由 [`HOMES`] 派生而不是另写一份 —— 加一个 agent 只改 `HOMES` 一处。
+    ///
+    /// # ⚠〔`S5` 08-14〕相对写法那半是补上的 —— 此前它是判据④的**盲区**
+    ///
+    /// `S4b` 立这条时只拼了全路径 `agents::<名>::`，因为当时所有调用点都在
+    /// `observe/`/`control/`/`main.rs`，那里只能写全路径。**但 `agents/mod.rs` 不是** ——
+    /// 它是 `agents::` 的父模块，引用两家写的是 `claudecode::home` / `codex::home`，
+    /// 全路径针一条都打不中。
+    ///
+    /// `S5` 往 `agents/mod.rs` 加注册表时**当场撞上**这个盲区：新增的 4 处直呼适配层，
+    /// 判据④**全绿**。⇒ 补针。这是本区第二次「量具的作用域比事实**小**」
+    ///（第一次是 `S4b §0b-2`：`S1` 的判据只扫 `CORE_FILES`，看不见 `resolve_query` 那条冻结字段）。
+    ///
+    /// ★ 教训与那次同型、方向相反于"作用域比事实大"那三次：**作用域小的表现不是虚高的读数，
+    /// 是一条真实的耦合根本没进视野** —— 而它偏偏出现在"表恰好全绿"的时候。
     fn adapter_path_needles() -> Vec<String> {
-        HOMES
-            .iter()
-            .map(|h| h.trim_end_matches('/').replace('/', "::") + "::")
-            .collect()
+        let mut out = Vec::new();
+        for h in HOMES {
+            let rel = h.trim_end_matches('/');
+            // 全路径：`agents/codex/` → `agents::codex::`
+            out.push(rel.replace('/', "::") + "::");
+            // 相对写法：`agents/codex/` → `codex::`（`agents/mod.rs` 里的写法）
+            if let Some(seg) = rel.rsplit('/').next() {
+                out.push(format!("{seg}::"));
+            }
+        }
+        out
     }
 
     /// 整棵 `src/` 的 `(相对路径, 生产段)`。`scan_tree!` **按构造摘掉调用者自己**。
@@ -476,11 +539,10 @@ mod tests {
         }
     }
 
-    /// ④〔`S4b`〕通用层直呼适配层的地方，登记表与实得**逐条对齐**（多一处红、少一处也红）。
+    /// 通用层里每个文件**直呼适配层**的处数（`agents/<名>/` 自己的家不算）。
     ///
-    /// 形态照 [`kind_dispatch_sites_are_enumerated_one_by_one`]：这张表**短了是好事、长了是坏事**。
-    #[test]
-    fn general_layer_adapter_call_sites_are_enumerated_one_by_one() {
+    /// 判据④与⑦共用这一份抽取 —— 抽两遍必然漂开。
+    fn adapter_call_sites_measured() -> Vec<(String, usize)> {
         let files = sources();
         let needles = adapter_path_needles();
         assert!(
@@ -502,6 +564,23 @@ mod tests {
             }
         }
         got.sort();
+        got
+    }
+
+    /// ④〔`S4b`〕通用层直呼适配层的地方，登记表与实得**逐条对齐**（多一处红、少一处也红）。
+    ///
+    /// 形态照 [`kind_dispatch_sites_are_enumerated_one_by_one`]：这张表**短了是好事、长了是坏事**。
+    ///
+    /// ⚠〔`S5`〕人群里**扣掉注册表文件**（[`AGENT_REGISTRY_SITES`]）——
+    /// 那类是「加一个 agent 本来就该改的一行」，性质与本表相反，混进来 `S6` 就没法拿
+    /// 这个数当成绩（降了不知道是真收进接口，还是有人把调用点挪进注册表文件刷了数）。
+    /// **扣掉的对价**是判据⑦：注册表文件的处数被钉死成 `REGISTRY.len()`，藏不进第二样东西。
+    #[test]
+    fn general_layer_adapter_call_sites_are_enumerated_one_by_one() {
+        let got: Vec<(String, usize)> = adapter_call_sites_measured()
+            .into_iter()
+            .filter(|(rel, _)| !AGENT_REGISTRY_SITES.iter().any(|(f, _)| rel == f))
+            .collect();
         let mut want: Vec<(String, usize)> = ADAPTER_CALL_SITES
             .iter()
             .map(|(f, n, _)| ((*f).to_string(), *n))
@@ -518,6 +597,98 @@ mod tests {
             assert!(*n > 0, "{f} 登记了 0 处 —— 那它不该在表里");
             assert!(!what.trim().is_empty(), "{f} 没写「它在向适配层要什么」");
         }
+    }
+
+    /// ⑦〔`S5`〕**注册表文件里一家恰好一行** —— 判据④把它扣出人群之后的**对价**。
+    ///
+    /// # 没有这一条，[`AGENT_REGISTRY_SITES`] 就是逃生舱
+    ///
+    /// 判据④为了不稀释 `S6` 的靶子，把注册表文件整个扣出了人群。
+    /// 那立刻开出一条捷径：**把通用层的直呼挪进 `agents/mod.rs`**，④ 的数就掉下去了，
+    /// 而「加一个 agent 要改几处」一点没少 —— 只是换了个地方藏。
+    ///
+    /// ⇒ 本条把注册表文件的处数钉死成 **恰好 `REGISTRY.len()`**：
+    /// 一家一行，多一行就是藏了别的东西，当场红。
+    ///
+    /// ★ 与 ④ 的**方向也相反**：④ 的数应该**降到零**；本条的数应该**随 agent 数一起涨**。
+    /// 这正是拆成两张表的全部理由。
+    #[test]
+    fn the_adapter_registry_is_one_line_per_agent() {
+        let measured = adapter_call_sites_measured();
+        let agents = crate::agents::REGISTRY.len();
+        assert!(agents >= HOMES_FLOOR, "注册表只剩 {agents} 家，下界 {HOMES_FLOOR}");
+        for (file, why) in AGENT_REGISTRY_SITES {
+            assert!(!why.trim().is_empty(), "{file} 没写「它为什么不该被压到零」");
+            let n = measured
+                .iter()
+                .find(|(rel, _)| rel == file)
+                .map(|(_, n)| *n)
+                .unwrap_or(0);
+            assert_eq!(
+                n, agents,
+                "\n`{file}` 里直呼适配层的行数是 {n}，而注册表有 {agents} 家 —— 应当**一家一行**。\n\
+                 ⚠ 多出来 = 有人把别的直呼藏进了注册表文件（判据④已经把这个文件扣出人群，\n\
+                 藏进来就等于从 `S6` 的靶子上抹掉一处），或者注册表被排版成了每字段一行；\n\
+                 ⚠ 少了（尤其是 0）= 注册表没了 / 抽取坏了 ⇒ 本条与判据④的扣除都在空转。"
+            );
+        }
+    }
+
+    /// ⑥〔`S5`〕**每个 agent 家在注册表里恰好一条** —— 多一家红、少一家也红。
+    ///
+    /// # 它守的是「建了家却没人认得」这种最安静的坏法
+    ///
+    /// `S5` 之后「daemon 看得见哪些 agent」的答案由 [`crate::agents::REGISTRY`] 给。
+    /// 建了 `agents/<名>/`、知识也搬进去了、判据①②③④**全绿** —— 但忘了往注册表加一行，
+    /// 那家就**永远不会出现在 `hello.homes` 里**，而没有任何东西会说。
+    /// 这正是 `S6`（最小假 agent 走全流程）会一头撞上的坑，所以判据先立在这儿。
+    ///
+    /// ⚠ 人群取自**文件树**（`agents/<名>/` 真的存在几个）而不是 [`HOMES`] 那个常量 ——
+    /// 否则「加了一家但两处常量都忘了改」会全绿。顺带把 `HOMES` 自己也对了一次账：
+    /// 它此前只有下界（`HOMES_FLOOR`），**多写一家、写错一个名字都不会红**。
+    #[test]
+    fn every_agent_adapter_has_exactly_one_registry_entry() {
+        let files = sources();
+        // 文件树里真实存在的 agent 家：`agents/<名>/…` 的第二段。
+        let mut in_tree: Vec<String> = files
+            .iter()
+            .filter_map(|(rel, _)| rel.strip_prefix("agents/"))
+            .filter_map(|rest| rest.split_once('/').map(|(name, _)| name.to_string()))
+            .collect();
+        in_tree.sort();
+        in_tree.dedup();
+        assert!(
+            in_tree.len() >= HOMES_FLOOR,
+            "文件树里只找到 {} 个 agent 家（下界 {HOMES_FLOOR}）—— 遍历坏了，本条在空转：{in_tree:?}",
+            in_tree.len()
+        );
+
+        let mut declared: Vec<String> = HOMES
+            .iter()
+            .map(|h| h.trim_start_matches("agents/").trim_end_matches('/'))
+            .map(str::to_string)
+            .collect();
+        declared.sort();
+        assert_eq!(
+            in_tree, declared,
+            "\n`HOMES` 与文件树里的 agent 家对不上。\n实得：{in_tree:?}\n登记：{declared:?}\n\
+             ⚠ 多出来的那家**整层知识都不被判据①扫**（`HOMES` 是排除表）；\n\
+             少掉的那家反过来 —— 它自己的格式知识会被当成通用层的泄漏。"
+        );
+
+        let reg = crate::agents::REGISTRY;
+        assert_eq!(
+            reg.len(),
+            in_tree.len(),
+            "\n有 {} 个 agent 家，注册表却有 {} 条。\n\
+             ⚠ 少一条 = 那家**永远不会出现在 `hello.homes` 里**，而编译、判据①②③④全绿 —— \n\
+             `S6` 的最小假 agent 会一头撞上它。\n\
+             ⚠ 多一条 = 注册表在指一个不存在的适配层。\n\
+             家：{in_tree:?}｜注册的 kind：{:?}",
+            in_tree.len(),
+            reg.len(),
+            reg.iter().map(|a| a.kind).collect::<Vec<_>>()
+        );
     }
 
     /// ⑤〔`S4b`〕反向夹具：③④两条的判定**真的会红**。

@@ -1048,6 +1048,101 @@ mod tests {
         );
     }
 
+    /// ★ `S5` 的另一半，**刻意贴着上面那条放**：上面钉的是「生产路径给空表」，
+    /// 本条钉的是「**给空表不是因为 daemon 不会发现**」。两条合起来才是 `S5` 的口径 ——
+    /// **能填不真填**。
+    ///
+    /// # 少了本条会怎样
+    ///
+    /// 只有上面那条的话，「`homes` 恒空」与「daemon 根本没有发现能力」在判据眼里**一模一样**。
+    /// 于是有人在清理死代码时把 `agents::visible_homes` 整个删掉 —— 上面那条照样绿，
+    /// 而 `S5` 交付的东西没了、`S6` 的地基也没了，**没有任何东西会说**。
+    ///
+    /// # 它为什么要真的构造一个 `Hello` 帧
+    ///
+    /// 「能填」不只是"有个函数能列目录"，是「**填进去就能发**」：类型要正好是
+    /// `Hello.homes` 的元素类型，序列化出来要是合法的一行。否则真填那天还得再改一次形状，
+    /// 而那时改的是**跨仓契约**那一侧的东西 —— 最不该临时改形状的地方。
+    /// ⇒ 本条按生产路径**唯一**要改的那一行（`homes: Vec::new()` → `homes: visible_homes()`）
+    /// 原样搭一遍，证明那一行换过去**编得过、发得出**。
+    #[test]
+    fn the_daemon_can_already_discover_homes_it_just_does_not_send_them() {
+        // ─── ① 夹具那一半：**不依赖这台机器上装了什么**，所以能断言精确字节 ───
+        //
+        // 合成一家 agent（一个 `mkdir` 出来的 home）走一遍真正的发现路，
+        // 把结果按生产路径**唯一**要改的那一行（`homes: …`）填进 Hello。
+        // ⇒ 「能填」在这里不是"有个函数能列目录"，是**填进去就发得出、且字节是这个样子**。
+        let root = std::env::temp_dir().join(format!("ccm-s5-wire-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let home = root.join("synthetic-home");
+        std::fs::create_dir_all(&home).expect("建夹具 home");
+        fn synth_present() -> Option<std::path::PathBuf> {
+            Some(
+                std::env::temp_dir()
+                    .join(format!("ccm-s5-wire-{}", std::process::id()))
+                    .join("synthetic-home"),
+            )
+        }
+        fn synth_absent() -> Option<std::path::PathBuf> {
+            Some(
+                std::env::temp_dir()
+                    .join(format!("ccm-s5-wire-{}", std::process::id()))
+                    .join("no-such-home"),
+            )
+        }
+        #[rustfmt::skip]
+        let synth: &[crate::agents::Adapter] = &[
+            crate::agents::Adapter { kind: "synthetic", home: synth_present },
+            crate::agents::Adapter { kind: "ghost",     home: synth_absent },
+        ];
+        let discovered = crate::agents::visible_among(synth);
+        assert_eq!(
+            discovered.len(),
+            1,
+            "发现能力被掏空了（或判准放行了缺席的那家）—— 实得 {discovered:?}"
+        );
+
+        let line = to_line(&Frame::Hello {
+            v: 1,
+            build_id: "b".into(),
+            host_arch: "x86_64".into(),
+            claude_dir: "/c".into(),
+            homes: discovered,
+            capabilities: vec![],
+            emits: vec![],
+            commands: vec![],
+        })
+        .expect("填了 homes 的 hello 必须序列化得出来");
+        assert_eq!(
+            line,
+            format!(
+                "{{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\
+                 \"claude_dir\":\"/c\",\"homes\":[{{\"agent_kind\":\"synthetic\",\"path\":{}}}]}}\n",
+                serde_json::to_string(&home.to_string_lossy().into_owned()).unwrap()
+            ),
+            "发现出来的东西**塞不进** `Hello.homes`，或塞进去之后字节形状不对。\n\
+             ⇒ 真填那天还得再改一次形状 —— 而那时改的是跨仓契约那一侧，最不该临时改形状的地方。"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+
+        // ─── ② 真机那一半：跑一遍**生产入口**，只断言与世界无关的性质 ───
+        //
+        // 不断言条数 —— 那会变成"跑测试这台机器上装了几个 agent"，是世界的事实不是代码的。
+        for h in &crate::agents::visible_homes() {
+            assert!(
+                !h.agent_kind.trim().is_empty(),
+                "发现出来的项没有 agent_kind：{h:?}"
+            );
+            assert!(
+                std::path::Path::new(&h.path).is_dir(),
+                "发现出来的 {} 报了一个不是目录的 path：{}\n\
+                 ⇒ 判准（home 目录存在）与产出对不上，消费方会拿它去拼子路径",
+                h.agent_kind,
+                h.path
+            );
+        }
+    }
+
     // ─── DG3（#2D）：Codex wire additive 面 · 序列化 parity（aterm 消费侧 fixture 交叉核点）───
 
     /// **present 形**（多 agent 的 daemon）：新字段在线上、snake_case、值域正确。
