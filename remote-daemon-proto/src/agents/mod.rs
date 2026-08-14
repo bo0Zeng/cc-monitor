@@ -72,6 +72,16 @@ use std::path::{Path, PathBuf};
 pub(crate) mod claudecode;
 pub(crate) mod codex;
 
+/// 〔`S6`〕**夹具家** —— 本区验收件的最小假 agent。
+///
+/// ⚠ **那行 `#[cfg(test)]` 就是它与一个真 agent 的全部差别**（外加它不进 [`REGISTRY`]）：
+/// 生产二进制里一个字节都没有它，真 `hello.homes` 永远不会声明它。
+/// 两件事都由 `fake::tests::the_fixture_agent_never_ships` 双向钉住，
+/// 登记住 `agent_locality_guard::tests::FIXTURE_HOMES`（**带天花板**——
+/// 没有天花板的话「夹具家」就成了往 `agents/` 里塞东西躲判据①的逃生舱）。
+#[cfg(test)]
+pub(crate) mod fake;
+
 /// 一个 agent 适配层在注册表里的样子〔`S5`〕。
 ///
 /// ⚠ **刻意不是 trait**（`D4` 逐字「接口由现有能力反推，不凭空设计」；`S4b §2` 复述过一遍）。
