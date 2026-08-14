@@ -125,7 +125,7 @@ pub fn turn_context_model(v: &Value) -> Option<&str> {
 }
 
 // 此处原有 `token_usage_fields`：从 token 用量子对象读三元组、由调用方各自做
-// `input -= cached`。它与 daemon `observe/codex.rs` 的那份**逐字相同却各写一遍**
+// `input -= cached`。它与 daemon `agents/codex/parse.rs` 的那份**逐字相同却各写一遍**
 // ——U7-2 收 Claude 口径时漏了 Codex 这半。现已收进 `usage_core::codex_delta`
 // （唯一权威源），调用方直接拿映射好的增量。由 `usage.rs::kou_jing_singleton` 钉住。
 

@@ -375,7 +375,7 @@ mod kou_jing_singleton {
         // ② 四处都必须**调**那个共享函数，且自己不许再解析口径字段。
         //
         // ⚠ 人群原本只有下面头两行 —— 那是**累加点**。而 Codex 的口径住在**提取器**
-        // （daemon `observe/codex.rs` / monitor `codex_record.rs`）里，恰好落在人群之外，
+        // （daemon `agents/codex/parse.rs` / monitor `codex_record.rs`）里，恰好落在人群之外，
         // 于是本条在 Codex 双写点上**一直是绿的**（08-07 抽样才读出来：两侧各写一遍
         // `input−cached`、逐字相同、无一条判据钉住）。
         // 教训：人群按「口径可能住在哪」取，不是按「当初改的是哪两个文件」取。
@@ -391,9 +391,18 @@ mod kou_jing_singleton {
                 &["usage_core::accumulate", "usage_core::codex_delta"][..],
             ),
             (
-                "daemon observe/codex.rs",
-                include_str!("../../remote-daemon-proto/src/observe/codex.rs"),
+                "daemon agents/codex/parse.rs",
+                include_str!("../../remote-daemon-proto/src/agents/codex/parse.rs"),
                 &["usage_core::codex_delta"][..],
+            ),
+            // ⚠ `S2`（08-14）把 daemon 的 Codex **累加点**从 `observe/usage_query.rs` 搬进了
+            // `agents/codex/usage.rs`。人群按**文件名**列举 ⇒ 搬完之后那半会**静默**掉出视野
+            //（文件还在、内容少了一半，一个字都不会红）。这与上面那条 `include_str!` 的路径
+            // 失配不同：**那个是编译错，这个是无声的覆盖面缩水**。⇒ 搬到哪，人群跟到哪。
+            (
+                "daemon agents/codex/usage.rs",
+                include_str!("../../remote-daemon-proto/src/agents/codex/usage.rs"),
+                &[][..],
             ),
             // 提取器：收口后它一个口径函数都不该调（累加点在 usage.rs）。
             // 仍留在人群里是为了 ③ —— 谁把三元组抽取搬回来，字面量就会在这里冒出来。

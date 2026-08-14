@@ -71,12 +71,22 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→daemon",
         "src-tauri/src/usage.rs",
-        "remote-daemon-proto/src/observe/codex.rs",
+        "remote-daemon-proto/src/agents/codex/parse.rs",
         "★ **跨轨对拍**（同上那条的 Codex 半）：口径判据的人群原本只有「累加点」，\
          而 Codex 的口径住在**提取器**里 —— daemon 这个文件与 monitor 的 \
          `codex_record.rs` 各写一遍 `input−cached`。收口进 `usage_core::codex_delta` 后，\
          要断言 daemon 提取器**确实调了**那个唯一权威源，就必须读它的源码。\
-         ⚠ 这条边同样是 08-07 加判据时**由本护栏当场逮出来的**（实得 13 / 登记 12）。",
+         ⚠ 这条边同样是 08-07 加判据时**由本护栏当场逮出来的**（实得 13 / 登记 12）。\
+         〔`S2` 08-14〕文件从 `observe/codex.rs` 搬去了 `agents/codex/parse.rs`——\
+         **本表的键是文件对，搬迁必须同轮改键**，否则这条边会以「登记了一个不存在的文件」\
+         的形式烂在表里。",
+    ),
+    (
+        "monitor→daemon",
+        "src-tauri/src/usage.rs",
+        "remote-daemon-proto/src/agents/codex/usage.rs",
+        "★〔`S2` 08-14 新增〕daemon 的 Codex **累加点**搬进适配层后，口径判据的人群\
+         跟着扩到这里。不跟 ⇒ 那半静默掉出覆盖面（文件名还在表里、内容已经搬走一半）。",
     ),
     (
         "monitor→daemon",
