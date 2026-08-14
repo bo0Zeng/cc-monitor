@@ -20,6 +20,21 @@ posf="$BUS/state/$id.pos"
     # 显示:fromjson? 跳过非法 JSON 坏行(防毒丸卡死),// 默认容忍 v1 缺字段行
     printf '%s\n' "$new" \
       | jq -Rr 'fromjson? // empty | "【cc-bus 来自 \(.from // "?") @ \(.ts // "?") (\(.id // "-"))】\n\(.text // "")\n(回复用: cc-send \(.from // "?") \"…\")\n"'
+    # ★★ **读不懂的行照跳，但要说一句**〔08-13 实测〕
+    #
+    # 上面那个 `fromjson? // empty` 会静默丢掉解析不了的行（防毒丸卡死,那是对的),
+    # 而下面 `echo "$total" > "$posf"` **照样把已读位置推过去** ⇒ 那条消息**永远读不到了**,
+    # 且**没有任何地方提过这件事**。实测:收件箱 3 行(中间一行是半截 JSON),
+    # 显示 2 条、位置推到 3、一个字的提示都没有。
+    #
+    # ⚠ 丢弃本身不改（毒丸不能卡住整条收件箱）——改的是**沉默**：
+    # 数一下跳了几条，把行号范围说出来，人才有得查。
+    _seen=$(printf '%s\n' "$new" | grep -c . || true)
+    _ok=$(printf '%s\n' "$new" | jq -Rr 'fromjson? // empty | .id // "-"' 2>/dev/null | grep -c . || true)
+    if [ "${_seen:-0}" -gt "${_ok:-0}" ]; then
+      printf '⚠ 跳过 %s 条读不懂的消息（收件箱 %s 的第 %s..%s 行，它们不会再出现）\n' \
+        "$(( _seen - _ok ))" "$inbox" "$((pos+1))" "$total"
+    fi
     # 逐条记录 lastread-<self>__<from>=id\thops\ttrace(供 F03 因果链);坏行/非法 from 跳过
     printf '%s\n' "$new" | while IFS= read -r line; do
       [ -n "$line" ] || continue

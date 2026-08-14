@@ -412,7 +412,7 @@ jobs:
                       "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 32" \
                       "ccm-contract-parity 61" "daemon-gate2 36" "local-backend 7" \
                       "daemon-sessions-rewatch 5" "daemon-tmux-late-server 2" \
-                      "cc-bus-queue-drain 38" "daemon-cc-bus 44"; do
+                      "cc-bus-queue-drain 43" "daemon-cc-bus 44"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
               || { echo "::error::找不到调用行 'assert-pass-floor.sh $pair' —— 套件或地板被改了"; exit 1; }
           done
@@ -498,7 +498,7 @@ jobs:
       # 且 `HOME` 与 `CC_BUS_HOME` 双双落在 mktemp 沙箱里（第一版把 export 写进了命令替换、
       # 真的落到开发机的 ~/.cc-bus 上过，那道自检就是那次撞出来的）。
       - name: cc-send 滞留队列补投（cc-busd 死后消息不许没人管）
-        run: bash e2e/assert-pass-floor.sh cc-bus-queue-drain 38
+        run: bash e2e/assert-pass-floor.sh cc-bus-queue-drain 43
       - name: e2e - daemon sessions 重挂（P0b-Y2，#60 台架九拍的根因）
         run: bash e2e/assert-pass-floor.sh daemon-sessions-rewatch 5
       - name: e2e - daemon 迟到的 tmux server（P0b-Y2，#60 根因）
