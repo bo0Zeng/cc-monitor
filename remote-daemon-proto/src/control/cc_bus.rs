@@ -430,6 +430,77 @@ fn recipient_status(to: &str) -> (bool, serde_json::Value) {
     (true, live)
 }
 
+/// `bus-kill`：收掉一个总线成员（转调 `cc-kill`）。
+///
+/// # 为什么不是走 daemon 自己那条带三道门的 `kill`
+///
+/// 两者做的**不是同一件事**：`kill` 只杀 tmux 会话；`cc-kill` 还要清名册、清台账、
+/// 清那个 id 的状态 —— 那是 cc-bus 的语义，只有它自己知道要清哪些文件。
+///
+/// # 门在哪
+///
+/// daemon 的 `kill` 用 §34 三道门，因为它的归属证据**弱**（名字前缀 / `@ccm_sid`）。
+/// `cc-kill` 今天用的是**强证据**：`agents.tsv` 第 4 列（登记时记下的 pane 根进程 pid）
+/// 与登记的完整地址一起核 —— 08-13 实测过不核的后果：**杀掉占了同名的无辜进程与会话**。
+/// ⇒ 门住在懂那套语义的那一侧，不在这里重写一遍。
+///
+/// ⚠ 「多窗口要不要拦」是产品判断（`U18` 待裁）；今天照收，但 `cc-kill` 会把窗口数打出来。
+pub(crate) fn kill_for_inbound(
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, (String, String)> {
+    let id = args
+        .as_object()
+        .and_then(|o| o.get("id"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| ("invalid_args".to_string(), "缺 `id`".to_string()))?
+        .to_string();
+    // ⚠ **不加 `--`**〔08-13 真跑撞出来的〕：`cc-send` 会解析旗标（所以那边要显式结束），
+    //   而 `cc-kill` **不解析** —— 它直接取 `$1`。传了 `--` 的后果是它去杀一个名叫 `--`
+    //   的 agent（`-` 在它的白名单里，连报错都不会），三种情形全回 `killed:false`
+    //   而真 agent 的会话好好活着。★ 抄参数形状之前先看被调方怎么解析。
+    let out = run("cc-kill", &[&id]).map_err(|(c, m)| (c.to_string(), m))?;
+    let detail = {
+        let e = first_line(&out.stderr);
+        if e.is_empty() {
+            first_line(&out.stdout)
+        } else {
+            e
+        }
+    };
+    match out.status.code() {
+        Some(0) => {}
+        Some(TIMED_OUT_CODE) => return Err(timed_out_err()),
+        // cc-kill 自己的白名单校验（非法 id）
+        Some(2) => {
+            return Err((
+                "invalid_args".to_string(),
+                format!("cc-kill 拒绝了这个 id：{detail}"),
+            ))
+        }
+        Some(c) => {
+            return Err((
+                "failed".to_string(),
+                format!("cc-kill 退出码 {c}：{detail}"),
+            ))
+        }
+        None => return Err(("failed".to_string(), format!("cc-kill 被信号打断：{detail}"))),
+    }
+    // ★ **回值要说清"到底动了什么"**：会话是被杀了，还是身份对不上只摘了登记？
+    //   cc-kill 两种情况都 exit 0 —— 把它自己的说法读出来，别让调用方以为都一样。
+    let said = String::from_utf8_lossy(&out.stdout).to_string()
+        + &String::from_utf8_lossy(&out.stderr);
+    let killed = said.contains("已杀会话");
+    let stale_only = said.contains("已摘掉");
+    Ok(serde_json::json!({
+        "id": id,
+        "killed": killed,
+        // 身份对不上 ⇒ 只摘了陈旧登记，**会话与收件箱都没动**
+        "stale_only": stale_only,
+    }))
+}
+
 pub(crate) fn send_for_inbound(
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (String, String)> {
