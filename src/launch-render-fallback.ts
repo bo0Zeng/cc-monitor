@@ -16,6 +16,25 @@
  *（08-08 实测：把调用改成 `applyWraps(plan.launcher, …)` ⇒ `TS2345`）。
  * 这是本会话反复撞到的那条：**编译器替你挡住的，才是不用靠人记着的**。F03 阶段 `plan.wrap` 恒空数组，折叠逻辑独立可测，给 F04 的 rbind
  * 包裹留好落点。
+ *
+ * ★★ **〔U8c-3-r2 08-14〕本文件为什么今天还在（三问复裁的落点）**
+ *
+ * `renderLaunchCommand` 把两格切走之后，落到本文件的生产形态**只剩要外层 tmux 命令的那三格**：
+ * `container: tmux` 的 `create` / `send-into`，加上 `action: attach`。三格都要问座
+ * （`session-backend.ts`）要 `tmux new-session` / `send-keys` / `attach`，**而后端今天产不出它们**：
+ *
+ * - daemon 的 `control/launch.rs` 头注逐字「本模块**不 attach**，一次都不」（attach 必须落在
+ *   用户自己的终端里，§1.3）；生产段发 `create-or-attach` 的处数今天是 **0**；
+ * - Rust 的 `ccm_invocation` 那条只对**装了 ccm** 的主机成立；
+ * - 而 `daemonless`（每台远端主机的用户开关）今天仍在 ⇒ 没有 daemon 可问的主机**存在**。
+ *
+ * ⇒ 删本文件 = 把「没装 ccm 的远端」与「daemonless 的远端」两类主机的 `↗` 直接删掉。
+ * 三条依据各有一条会红的判据，住 `src-tauri/src/backend/control/launch_wire.rs` 的
+ * `f07_main_path_tests` —— **哪天它们红了，就是本文件可以删的那天**，别靠读注释判断。
+ *
+ * ⚠ `container: "none"` 那一格（下面 `renderEnvOps + cd + argv` 那支）**生产已不可达**
+ * （U8a-2c-pre 切到 `backend::control::payload`），今天由 `remote-launch.ts` 的五个 builder、
+ * `e2e/resume-cmd-driver.ts` 与 `launch-payload-golden.ts` 消费。**如实登记，不假装它是活的。**
  */
 import { AGENT_PROFILE } from "./agent-profile.ts";
 import {

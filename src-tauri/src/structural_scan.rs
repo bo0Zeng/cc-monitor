@@ -475,6 +475,17 @@ mod tests {
             ("shared_crate_registry.rs::job_block", "不是剥法：抽某个 job 的段落"),
             ("ssh_source.rs::parse_host_aliases", "不是剥法：解析 ssh config 的 Host 别名"),
             ("tool_registry.rs::declared_fields_of", "不是剥法：解析结构体字段声明"),
+            // 〔U8c-3-r2 08-14〕**这一格是本条判据当场逮出来的**：08-04 那份剥法是**内联**的
+            // （一串 `.lines().filter().map()`），本条看不见；把它抽成具名函数给两处共用时，
+            // 本条立刻说「你有第二份剥法」。⇒ 收口的动作反而暴露了此前没被登记的欠账。
+            (
+                "launch_wire.rs::production_ts",
+                "**整行那半已经是共享原语**（本函数转调 `strip_comment_lines`），多出来的只有\
+                 **行尾 `//` 截断** —— 共享原语刻意不剥行尾（会砍坏 `\"http:` + `//host\"`），\
+                 而本组判据必须剥（F10 逐字：行尾注释里的提及不算数）。\
+                 ⚠ 与 `tool_registry.rs` 那条的差别：**那条的安全是运气，这条的是读数** ——\
+                 `the_ts_comment_stripper_actually_strips` 对四份语料逐个断言不含该字面量",
+            ),
         ];
 
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
