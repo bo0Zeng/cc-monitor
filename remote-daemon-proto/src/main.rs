@@ -391,7 +391,7 @@ async fn main() {
         )
         .init();
 
-    let claude_dir = resolve_claude_dir();
+    let agent_home = resolve_agent_home();
 
     // issue #16：带参数 = 一次性历史查询模式，干完即退，不进流式协议。
     // 旧 daemon 不认参数会照常发 hello 进流模式——monitor 以"首行是 hello 帧"
@@ -407,14 +407,14 @@ async fn main() {
         let code = match args.first().map(String::as_str) {
             // P4b：hook 子进程走这条 —— 校验身份后给 daemon 发 SIGUSR1，**不碰文件系统**。
             Some("--tmux-notify") => control::tmux_hook::notify(&args),
-            Some("--search") => observe::search_query::run(&claude_dir, &args),
+            Some("--search") => observe::search_query::run(&agent_home, &args),
             // P7c-1：列一个父会话的 subagent 候选。**只列不挑**（匹配与排序留在 monitor）。
-            Some("--list-subagents") => observe::history_query::list_subagents(&claude_dir, &args),
-            Some("--usage") => observe::usage_query::run(&claude_dir, &args),
-            Some("--resolve") => control::resolve_query::run(&claude_dir, &args),
+            Some("--list-subagents") => observe::history_query::list_subagents(&agent_home, &args),
+            Some("--usage") => observe::usage_query::run(&agent_home, &args),
+            Some("--resolve") => control::resolve_query::run(&agent_home, &args),
             // G2（branch-anywhere）：从指定消息处分叉出一个新会话文件。
             // **daemon 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
-            Some("--fork-session") => control::fork_write::run(&claude_dir, &args),
+            Some("--fork-session") => control::fork_write::run(&agent_home, &args),
             // ★ 这几个字面量必须与 `observe::accounts_query::run` 自己认的子命令**完全一致**。
             // v3.4.0 出过一次事故：`--account-trust-zero` 在 accounts_query 里实现完整，
             // 但这里漏列 ⇒ 落进下面的 `_` 臂走历史查询 ⇒ `unknown argument` + exit 2，
@@ -424,7 +424,7 @@ async fn main() {
             Some("--list-accounts")
             | Some("--session-accounts")
             | Some("--account-trust")
-            | Some("--account-trust-zero") => observe::accounts_query::run(&claude_dir, &args),
+            | Some("--account-trust-zero") => observe::accounts_query::run(&agent_home, &args),
             // ★ P4d：控制面的 CLI 入口。**这条臂刻意不写命令字面量** ——
             // 认哪些 flag 由 `cli_control::spec_for` 从 `inbound::REGISTRY` 派生，
             // 于是「帧面加一条命令」不需要回来改这里。上面 `--resolve` 那条臂**故意留在前面**：
@@ -435,15 +435,15 @@ async fn main() {
             // 那条约束是保守的（宁可假红），照它写就是了 —— 单行形式下它钉的
             // 「臂体是一次真调用」也确实成立。
             Some(f) if control::cli_control::handles(f) => control::cli_control::run(&args).await,
-            _ => observe::history_query::run(&claude_dir, &args),
+            _ => observe::history_query::run(&agent_home, &args),
         };
         std::process::exit(code);
     }
 
-    // 一次性查询已 exit；到此必是流模式。claude_dir 日志放此（审计 correctness-重要①：
+    // 一次性查询已 exit；到此必是流模式。agent_home 日志放此（审计 correctness-重要①：
     // --resolve/一次性查询模式 stderr 只承载结构化错误/查询结果，不掺 info——兑现协议 v1 §3
     // 「错误 exit2 + stderr 纯 {code,message} JSON」，客户端可整段 JSON-parse stderr）。
-    tracing::info!("claude_dir = {}", claude_dir.display());
+    tracing::info!("agent_home = {}", agent_home.display());
 
     // (b) Emit the Hello handshake FIRST, flushed, before anything else.
     let mut stdout = BufWriter::new(tokio::io::stdout());
@@ -451,7 +451,13 @@ async fn main() {
         v: PROTO_VERSION,
         build_id: BUILD_ID.to_string(),
         host_arch: std::env::consts::ARCH.to_string(),
-        claude_dir: claude_dir.to_string_lossy().into_owned(),
+        // ⚠ **左边的字段名与右边的变量名刻意不一致**〔`S4b`〕，这不是笔误：
+        // 左边 `claude_dir` 是 **wire 字段**，冻结兼容（真在线上、仓外 aterm 在读），
+        // 登记在 `agent_boundary_guard::FROZEN_COMPAT`，带解锁条件，**不许改名**；
+        // 右边 `agent_home` 是**仓内的参数名**，`S4b` 已把它从 `claude_dir` 改过来
+        //（通用层不该在标识符里叫得出某个 agent 的名字 —— `D3` 的同一条道理往仓内推）。
+        // ⇒ 这一行正是两条纪律的交界处：**字段名归契约，变量名归架构**。
+        claude_dir: agent_home.to_string_lossy().into_owned(),
         // `S4`（`D3`）：wire 面已换成通用的 `homes`（`[{agent_kind, path}]`），但 agent
         // **发现**（DG1）仍未接线 ⇒ 今天恒空 ⇒ skip ⇒ **Hello 帧对 Claude 的字节不变**。
         // `S5`/DG1 落地时往这里填表，**不要再加第二个目录字段** —— 那正是 `D3` 排除掉的路。
@@ -491,7 +497,7 @@ async fn main() {
 
     // (c) Start the watcher reader; it returns the receiving half of the
     // bounded frame channel.
-    let (rx, poke) = observe::watcher::spawn(claude_dir, with_bg, tail_only);
+    let (rx, poke) = observe::watcher::spawn(agent_home, with_bg, tail_only);
 
     // (c2) **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
     //
@@ -644,7 +650,7 @@ async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
 /// ⚠ `S3` 把**怎么解析**搬进了 `agents/claudecode/paths.rs`（环境变量名与目录名是
 /// Claude 的知识）。这里只剩"去问适配层" —— 今天 daemon 只服务一种 agent，
 /// 所以是写死的一句；`S5`（hello 声明看得见哪些 agent）落地时它会变成按 kind 取。
-fn resolve_claude_dir() -> PathBuf {
+fn resolve_agent_home() -> PathBuf {
     agents::claudecode::paths::resolve_home()
 }
 

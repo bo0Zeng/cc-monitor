@@ -684,7 +684,7 @@ fn observation_to_frame(obs: TmuxObservation) -> Frame {
 /// Spawn the watcher reader on a dedicated blocking thread and return the
 /// receiving half of the bounded frame channel for the stdout writer to drain.
 ///
-/// `claude_dir` is the resolved `~/.claude` (or `$CLAUDE_CONFIG_DIR`). The
+/// `agent_home` is the resolved `~/.claude` (or `$CLAUDE_CONFIG_DIR`). The
 /// reader watches `<claude_dir>/projects/` recursively and
 /// `<claude_dir>/sessions/`.
 /// **P4：戳一下 watcher 的句柄** —— 故意是个**窄类型**而不是把
@@ -712,7 +712,7 @@ impl WatcherPoke {
 }
 
 pub fn spawn(
-    claude_dir: PathBuf,
+    agent_home: PathBuf,
     with_bg: bool,
     tail_only: bool,
 ) -> (mpsc::Receiver<Frame>, WatcherPoke) {
@@ -724,7 +724,7 @@ pub fn spawn(
     let poke = WatcherPoke(events_tx.clone());
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
-        .spawn(move || watch_loop(claude_dir, tx, with_bg, tail_only, events_tx, events_rx))
+        .spawn(move || watch_loop(agent_home, tx, with_bg, tail_only, events_tx, events_rx))
         .expect("spawn jsonl-watcher thread");
     (rx, poke)
 }
@@ -735,7 +735,7 @@ pub fn spawn(
 /// [`FrameSink`] whose [`FrameSink::send`] never blocks the notify callback and
 /// turns dropped frames into an [`Frame::Overflow`] signal (#32).
 fn watch_loop(
-    claude_dir: PathBuf,
+    agent_home: PathBuf,
     tx: mpsc::Sender<Frame>,
     with_bg: bool,
     tail_only: bool,
@@ -745,8 +745,8 @@ fn watch_loop(
     // U2 Phase D 审计 重要-2：`projects` 这个目录名原本有**五**处，不是 `agents/claudecode/paths.rs`
     // 注释里写的四处 —— 这是第五处（内联的，grep `fn projects_root` 找不到它）。
     // 不收的话「合并去重」承诺的性质（改布局只改一处）根本没拿到。
-    let projects = crate::agents::claudecode::paths::projects_root(&claude_dir);
-    let sessions = crate::agents::claudecode::paths::sessions_root(&claude_dir);
+    let projects = crate::agents::claudecode::paths::projects_root(&agent_home);
+    let sessions = crate::agents::claudecode::paths::sessions_root(&agent_home);
 
     let mut state = ReaderState::new(projects.clone(), with_bg, tail_only);
     // All frames go out through a FrameSink: a bounded-channel sender that counts
@@ -794,21 +794,21 @@ fn watch_loop(
             return;
         }
     };
-    // ★★ `P0b-Y2`〔08-13〕：**监视 `claude_dir` 本身** —— 这是「子目录出现/被换掉」的唯一耳朵。
+    // ★★ `P0b-Y2`〔08-13〕：**监视 `agent_home` 本身** —— 这是「子目录出现/被换掉」的唯一耳朵。
     //
     // inotify 的 watch 绑在 **inode** 上，不是路径上。`sessions/` 被 `rm -rf` 再 `mkdir`
     // 之后是**另一个 inode**，旧 watch 还挂在那个已删的 inode 上 ⇒ 新目录里发生什么都听不见，
     // **而且不会有任何错误**（daemon 活着、不吭声）。
     // 监视父目录之后，`sessions` 的创建/删除会作为**父目录里的一个事件**送到，我们据此重挂。
-    if claude_dir.is_dir() {
+    if agent_home.is_dir() {
         if let Err(e) = debouncer
             .watcher()
-            .watch(&claude_dir, RecursiveMode::NonRecursive)
+            .watch(&agent_home, RecursiveMode::NonRecursive)
         {
             // 挂不上不致命（退回「起来时是什么样就什么样」），但**要说出来**。
             tracing::warn!(
                 "watch failed for {}: {e} —— 子目录若被重建，本 daemon 将听不见",
-                claude_dir.display()
+                agent_home.display()
             );
         }
     }
@@ -856,7 +856,7 @@ fn watch_loop(
         //   —— 即便它随后被 fake-claude 建出来也不补发。
         //
         // ⚠ **不能靠「把目录建出来」修**：`<claude_dir>` 对我们是**只读**的（`INVARIANTS` 铁律）。
-        // 正确形状是**监视父目录**（`claude_dir` 本身）等它出现再挂上去，或按需重试 ——
+        // 正确形状是**监视父目录**（`agent_home` 本身）等它出现再挂上去，或按需重试 ——
         // 那是一次行为改动，要 bump `BUILD_ID` + 重编内嵌，**没在发现它的那一拍顺手做**。
         //
         // ⚠ 射程：这是 `#60`（灰灯不出现）的**候选机制**，**不是**已证实的根因 ——
@@ -895,7 +895,7 @@ fn watch_loop(
                     let p = ev.path.as_path();
                     // ★★ `P0b-Y2`：**`sessions/` 换了 inode 或刚出现 ⇒ 重挂 + 重扫。**
                     //
-                    // 触发面刻意宽：`claude_dir` 里任何与 `sessions` 有关的动静都来这儿判一次
+                    // 触发面刻意宽：`agent_home` 里任何与 `sessions` 有关的动静都来这儿判一次
                     //（判的是**盘上此刻的样子**，不是事件类型 —— notify 会合并事件，
                     // 「删了又建」很可能只到一个事件，靠 kind 去分辨是猜）。
                     // ★ `projects/` 换 inode 时也要重挂（同族第三个，见 `rewatch_dir` 头注）。
@@ -3498,8 +3498,8 @@ mod tests {
         );
         // 父目录的耳朵在（听不见子目录出现/消失，重挂就永远不会被触发）。
         assert!(
-            prod.contains("watch(&claude_dir, RecursiveMode::NonRecursive)"),
-            "没有监视 `claude_dir` 本身 —— 那 `sessions/` 出现或被换掉时没有任何事件会来。"
+            prod.contains("watch(&agent_home, RecursiveMode::NonRecursive)"),
+            "没有监视 `agent_home` 本身 —— 那 `sessions/` 出现或被换掉时没有任何事件会来。"
         );
     }
 
@@ -3525,7 +3525,7 @@ mod tests {
     /// | `rewatch_dir` | **可重入挂法本体** | 就是它负责 |
     /// | `watch_sock_dir_if_present` | socket 目录专用（多一条「目录没了翻记账」） | 同上 |
     /// | `rewatch_sessions` | `sessions/` 专用（多一件事：挂上顺带重扫 pidfile） | 同上 |
-    /// | `watch_loop` 里 `claude_dir` | **父目录的耳朵**（子目录出现/消失的唯一信号源） | 父目录被换掉 = 整个 claude_dir 没了，那时没有任何路可走，**不在这一族** |
+    /// | `watch_loop` 里 `agent_home` | **父目录的耳朵**（子目录出现/消失的唯一信号源） | 父目录被换掉 = 整个 agent_home 没了，那时没有任何路可走，**不在这一族** |
     /// | `watch_loop` 里 socket 目录的**父** | 同上（等 socket 目录出现） | 同上 |
     /// | `watch_loop` 里 `sessions` 起步那次 | 起步挂一次，之后归 `rewatch_sessions` | 已有 |
     /// | `watch_loop` 里 tmux socket **所在目录**（P3 复活探测） | 一次性触发器，socket 换 inode 由上面那条目录耳朵覆盖 | 已有 |

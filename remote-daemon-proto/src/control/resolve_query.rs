@@ -33,7 +33,17 @@ struct ResumeSpec {
     session_id: String,
     #[serde(default)]
     launch_candidates: Vec<Option<String>>,
-    #[allow(dead_code)] // MVP 未用（daemon 用自身 claude_dir 做 pidfile 查，留字段兼容）
+    /// ⚠ **冻结兼容字段，不许改名**〔`S4b`〕—— 与 `wire.rs::Hello.claude_dir` 同族。
+    ///
+    /// 它是 `--resolve` 的 **stdin 契约**（`rename_all = "camelCase"` ⇒ 线上是 `claudeDir`），
+    /// 与仓外 aterm **冻结在 2026-07-18**。Rust 侧标识符改名 = 线上字段名改名
+    ///（除非再挂一条 `serde(rename)` —— 那是把一条契约拆成两个真相源），
+    /// 所以 `S4b` 那轮「通用层标识符去 agent 名」**绕开它**，登记在
+    /// `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS`（带解锁条件）。
+    ///
+    /// ★ `S4` 只盘了 `wire.rs`，**没看见这一条** —— 因为 `S1` 的判据只扫
+    /// `CORE_FILES`，而 `control/resolve_query.rs` 不在表里。`S4b` 把它补登记了。
+    #[allow(dead_code)] // MVP 未用（daemon 用自身 agent_home 做 pidfile 查，留字段兼容）
     #[serde(default)]
     claude_dir: String,
     #[allow(dead_code)] // MVP 未用（both-down→local 回退是客户端侧决策，见 §3 三态）
@@ -72,7 +82,8 @@ struct Capabilities {
 /// | `session_name` | **派生**：纯从 sid 拼（`cc-<sid8>`），没读过 pidfile、没查过 tmux |
 /// | `capabilities` | **典型档**：硬编码的常见组合，不是这台机器此刻的实测能力 |
 ///
-/// 实现上留着痕迹：`run(_claude_dir, …)` 的参数带下划线 —— 它**手上有 `claude_dir` 却没用**。
+/// 实现上留着痕迹：`run(_agent_home, …)` 的参数带下划线 —— 它**手上有 home 目录却没用**
+///（入参 `ResumeSpec.claude_dir` 也一样标着 `#[allow(dead_code)]`）。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CommandPlan {
@@ -105,8 +116,8 @@ struct ResolveError {
 const MAX_RESOLVE_STDIN: u64 = 1 << 20; // 1 MiB
 
 /// `--resolve` 入口。stdin 读 ResumeSpec、stdout 写 CommandPlan、exit 0；出错 exit 2 + stderr JSON。
-/// `_claude_dir` 现未用（MVP 不做 pidfile 消解）；留参数与其余 query::run 一致、后续联调用。
-pub fn run(_claude_dir: &Path, _args: &[String]) -> i32 {
+/// `_agent_home` 现未用（MVP 不做 pidfile 消解）；留参数与其余 query::run 一致、后续联调用。
+pub fn run(_agent_home: &Path, _args: &[String]) -> i32 {
     let mut input = String::new();
     if let Err(e) = std::io::stdin()
         .take(MAX_RESOLVE_STDIN)
