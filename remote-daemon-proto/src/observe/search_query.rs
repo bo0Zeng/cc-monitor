@@ -16,7 +16,7 @@
 // U2/U3：这两个原来在本文件里各有一份逐字相同的副本。去向**不同**：
 // `projects_root` 跨 observe/control 两层 ⇒ `common/`；`mtime_ms` 两个调用点同属 observe
 // ⇒ U3 按 `common/` 自己的「≥2 层」门槛搬回 `observe/`。
-use crate::common::paths::projects_root;
+use crate::agents::claudecode::paths::projects_root;
 use crate::observe::fs::mtime_ms;
 use serde_json::Value;
 use std::io::Write;
@@ -117,7 +117,7 @@ fn search(claude_dir: &Path, query: &str, opts: &SearchOpts) -> Result<(), Strin
         .max_depth(2)
         .into_iter()
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_file() && e.path().extension().is_some_and(|x| x == "jsonl"))
+        .filter(|e| e.file_type().is_file() && crate::agents::claudecode::records::is_session_file(e.path()))
         .map(|e| e.into_path())
         .collect();
 

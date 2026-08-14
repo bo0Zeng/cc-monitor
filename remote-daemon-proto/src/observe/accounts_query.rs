@@ -62,8 +62,6 @@ use acct_core::{
 };
 use std::path::{Path, PathBuf};
 
-/// `.claude.json` 读取上限（照 `mcp.rs` 的 32MB 约定）。真机上它约 115KB。
-const MAX_CLAUDE_JSON_BYTES: u64 = 32 * 1024 * 1024;
 /// manifest 读取上限。账号数有限，几 MB 足矣，此处宽松给 8MB 兜底。
 const MAX_MANIFEST_BYTES: u64 = 8 * 1024 * 1024;
 /// 单个 `sessions/<PID>.json` 读取上限（正常几百字节）。
@@ -298,7 +296,8 @@ fn json_str(v: Option<&str>) -> serde_json::Value {
 // `nth(22-3)`），只是这一份把解析内联了、那一份走 `parse_starttime_from_stat`。
 // 合并前**逐条核过单位**：单位不同的话它们就不是重复，合并就是引 bug。
 use crate::common::fs::read_regular_capped;
-use crate::platform::proc::{proc_claude_config_dir, proc_starttime};
+use crate::agents::claudecode::accounts as cc_accounts;
+use crate::platform::proc::{proc_env_var, proc_starttime};
 
 /// 从 pidfile 字节里取 `procStart`（CC 写的是 starttime ticks 的十进制字符串；容忍裸数字）。
 fn parse_procstart_ticks(v: &serde_json::Value) -> Option<u64> {
@@ -435,7 +434,7 @@ fn session_accounts(claude_dir: &Path, accts_dir: &Path) -> Vec<String> {
         .unwrap_or_default();
 
     let mut out = Vec::new();
-    let dir = claude_dir.join("sessions");
+    let dir = crate::agents::claudecode::paths::sessions_root(claude_dir);
     let Ok(rd) = std::fs::read_dir(&dir) else {
         return out; // 没有 sessions/ → 零行（exit 0）
     };
@@ -489,7 +488,7 @@ fn session_accounts(claude_dir: &Path, accts_dir: &Path) -> Vec<String> {
         // （审计 R1，已在沙盒复现）。身份不符 → 当作该会话已死，不读 environ、不归属。
         let alive = session_process_identity_ok(pid, &v);
         let cfg = if alive {
-            proc_claude_config_dir(pid)
+            proc_env_var(pid, crate::agents::claudecode::paths::CONFIG_DIR_ENV)
         } else {
             None
         };
@@ -548,7 +547,7 @@ fn account_trust(
             "该 configDir 不在 manifest 的账号列表里，拒绝读取".into(),
         ));
     }
-    trust_of_claude_json(&Path::new(want).join(".claude.json"), cwd)
+    cc_accounts::trust_of_config(&cc_accounts::config_path_in(Path::new(want)), cwd)
 }
 
 /// `--account-trust-zero <cwd>`：**账号 0** 的信任预检。
@@ -562,38 +561,10 @@ fn account_trust_zero(cwd: &str) -> Result<String, (String, String)> {
     let home = home_dir().ok_or_else(|| {
         (
             "no_home".to_string(),
-            "拿不到 $HOME，无法定位账号 0 的 .claude.json".to_string(),
+            "拿不到 $HOME，无法定位账号 0 的配置文件".to_string(),
         )
     })?;
-    trust_of_claude_json(&home.join(".claude.json"), cwd)
-}
-
-/// 读某个 `.claude.json`，回答「这个 cwd 被信任过吗」。两个 trust 入口共用。
-fn trust_of_claude_json(p: &Path, cwd: &str) -> Result<String, (String, String)> {
-    if !p.exists() {
-        // 该账号还没有 .claude.json（全新账号）→ 肯定没信任过，不是错误
-        return Ok(
-            serde_json::json!({"trusted": false, "known": false, "error": serde_json::Value::Null})
-                .to_string(),
-        );
-    }
-    // 安全读：is_file 挡掉 FIFO/设备（其 metadata().len() 报 0 会骗过大小检查、
-    // read 无上限 → 远端 OOM，审计实测 symlink→/dev/zero 6 秒涨 11GB）+ take 限量。
-    let bytes = read_regular_capped(p, MAX_CLAUDE_JSON_BYTES)
-        .map_err(|e| ("claude_json_unreadable".to_string(), e))?;
-    let v: serde_json::Value = serde_json::from_slice(&bytes)
-        .map_err(|e| ("claude_json_invalid".to_string(), e.to_string()))?;
-    let entry = v.get("projects").and_then(|p| p.get(cwd));
-    let known = entry.is_some();
-    let trusted = entry
-        .and_then(|e| e.get("hasTrustDialogAccepted"))
-        .and_then(|b| b.as_bool())
-        .unwrap_or(false);
-    // 只出这三个字段——.claude.json 里有 mcpServers 的环境变量（可能含 API key）
-    Ok(
-        serde_json::json!({"trusted": trusted, "known": known, "error": serde_json::Value::Null})
-            .to_string(),
-    )
+    cc_accounts::trust_of_config(&cc_accounts::config_path_in(&home), cwd)
 }
 
 /// 查询模式入口。返回进程退出码（0 ok / 2 err），同 `history_query::run` 约定。
@@ -1040,7 +1011,7 @@ mod tests {
         // read_regular_capped 必须靠 is_file() 挡下（跟随 symlink 后目标是字符设备）。
         let link = root.join("evil.json");
         symlink("/dev/zero", &link).unwrap();
-        let r = read_regular_capped(&link, MAX_CLAUDE_JSON_BYTES);
+        let r = read_regular_capped(&link, cc_accounts::MAX_CONFIG_BYTES);
         assert!(
             r.is_err(),
             "指向 /dev/zero 的 symlink 必须被拒，而不是读爆内存"
@@ -1264,7 +1235,9 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// `trust_of_claude_json` 是两个 trust 入口共用的那份实现（避免第二份）。
+    /// `agents::claudecode::accounts::trust_of_config` 是两个 trust 入口共用的那份实现（避免第二份）。
+    /// ⚠ `S3` 把实现搬去了适配层，**本测原地留下**：它测的是"消费侧看到的行为"，
+    /// 而消费侧（`--account-trust` / `--account-trust-zero`）还在本模块。断言一字未改。
     /// 账号 0 走 `$HOME/.claude.json`——声明里 `.claude.json` 的原生根就是 home。
     #[test]
     fn trust_of_claude_json_reads_only_the_three_booleans() {
@@ -1274,7 +1247,7 @@ mod tests {
 
         // 文件不存在 ⇒ known:false，不是错误
         let v: serde_json::Value =
-            serde_json::from_str(&trust_of_claude_json(&cj, "/w").unwrap()).unwrap();
+            serde_json::from_str(&cc_accounts::trust_of_config(&cj, "/w").unwrap()).unwrap();
         assert_eq!(v["known"], false);
         assert_eq!(v["trusted"], false);
 
@@ -1284,7 +1257,7 @@ mod tests {
                 "mcpServers":{"x":{"env":{"API_KEY":"sk-SECRET"}}}}"#,
         )
         .unwrap();
-        let out = trust_of_claude_json(&cj, "/w").unwrap();
+        let out = cc_accounts::trust_of_config(&cj, "/w").unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["trusted"], true);
         assert_eq!(v["known"], true);
@@ -1369,8 +1342,10 @@ mod tests {
             "账号 0 的 trust 入口一旦收了路径参数，就重新开出了任意文件读的面"
         );
         assert!(
-            me.contains(r#"home.join(".claude.json")"#),
-            "账号 0 的 .claude.json 必须来自 $HOME（声明里它的原生根是 home）"
+            me.contains("config_path_in(&home)"),
+            "账号 0 的配置文件必须来自 $HOME（声明里它的原生根是 home）。\n\
+             ⚠ `S3` 前这条比的是字面量 `home.join(\".claude.json\")`——文件名随适配层搬走了，\n\
+             比对对象换成那个 helper 的名字，**性质一字未变**：路径的根仍必须是 $HOME。"
         );
         assert!(me.len() > 1000, "include_str! 没读到源码，上面的断言是空转");
     }

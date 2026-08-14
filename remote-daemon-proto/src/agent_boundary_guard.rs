@@ -50,10 +50,24 @@ mod tests {
         "common/mod.rs",
         "wire.rs",
         "inbound.rs",
+        // ── 以下由 `S3` 加入 ──────────────────────────────────────────
+        // `platform/` 整层：`S3` 把 `proc_claude_config_dir` 参数化成 `proc_env_var(pid, name)`
+        // 之后，这一层再没有任何一个 agent 的名字。⚠ 这是**整层**进表，不是挑干净的进 ——
+        // 「唯一允许平台原语的层」恰恰最不该认识某个 agent 叫什么。
+        "platform/proc.rs",
+        "platform/liveness.rs",
+        "platform/paths.rs",
+        "platform/signal.rs",
+        // `common/` 整层：`S3` 把 `projects_root` 搬进适配层之后 `common/paths.rs` 整个文件消失了
+        //（它当初就违反 `common/` 三条门槛的第③条「无域知识」——`projects` 是 Claude 的布局）。
+        "common/fs.rs",
     ];
 
     /// 人群下界：低于它说明取法坏了（路径写错 / 扩展名过滤掉）⇒ **红**，不是绿。
-    const CORE_FILES_FLOOR: usize = 5;
+    ///
+    /// ⚠ `S3` 把它从 5 抬到 10：**下界必须跟着覆盖面涨**，否则搬进来一批之后
+    /// 「路径全写错」这种坏法仍然过得去（剩 5 个也满足旧下界）。
+    const CORE_FILES_FLOOR: usize = 10;
 
     /// **已知欠账**（`文件:行内容片段`, 归哪一件, 为什么今天不动它）—— **递减棘轮**。
     ///
@@ -174,16 +188,31 @@ mod tests {
     /// 那正是本仓一路在防的「改数字了事」（`readonly_guard` 用 `assert_eq!` 而不是地板，同理）。
     #[test]
     fn the_core_file_list_only_grows() {
-        // 08-14 立表时的成员。**只许追加**：删任何一条都会红。
-        const AT_BIRTH: &[&str] = &[
+        // **曾经被宣称为通用层的每一个文件**。加进 `CORE_FILES` 的同一轮要追加到这里。
+        //
+        // ⚠ 写两遍是**刻意的**：它让"把某个文件移出通用层"必须是一个**显式动作**
+        //（同 `KNOWN_DEBT` 要手动摘登记）。
+        //
+        // ★ 这张表原名 `AT_BIRTH`，只装 `S1` 立表当天那 6 个 —— 于是 `S3` 后来加进
+        // `CORE_FILES` 的 5 个**可以被静默删掉**（6 个元老还在、长度也够，两条断言全绿）。
+        // **棘轮只棘到出生线，不棘到今天。** 这个洞是 `S3` 的变异台架逮出来的
+        //（M3「把 platform/proc.rs 摘掉」原本零红），不是谁记起来的。
+        const EVER_DECLARED_CORE: &[&str] = &[
+            // S1 立表当天
             "platform/mod.rs",
             "platform/pidwatch/mod.rs",
             "platform/fallback_guard.rs",
             "common/mod.rs",
             "wire.rs",
             "inbound.rs",
+            // S3 加入
+            "platform/proc.rs",
+            "platform/liveness.rs",
+            "platform/paths.rs",
+            "platform/signal.rs",
+            "common/fs.rs",
         ];
-        let missing: Vec<&str> = AT_BIRTH
+        let missing: Vec<&str> = EVER_DECLARED_CORE
             .iter()
             .filter(|f| !CORE_FILES.contains(f))
             .copied()
@@ -194,11 +223,14 @@ mod tests {
              ⇒ 删表是把判据的覆盖面缩小，等于把红变绿而问题还在。\n\
              真要移出（比如那个文件确实成了 agent 专属），在功能件里写清楚再动这条断言。"
         );
-        assert!(
-            CORE_FILES.len() >= AT_BIRTH.len(),
-            "清单变短了：{} < {}",
+        assert_eq!(
             CORE_FILES.len(),
-            AT_BIRTH.len()
+            EVER_DECLARED_CORE.len(),
+            "\n`CORE_FILES` 与棘轮表长度对不上（{} vs {}）。\n\
+             多出来 ⇒ 有人加了通用层文件却没追加进棘轮表，那一条从此可以被静默删掉；\n\
+             少了 ⇒ 上面那条会先红。**两张表必须同轮改**。",
+            CORE_FILES.len(),
+            EVER_DECLARED_CORE.len()
         );
     }
 

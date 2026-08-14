@@ -185,7 +185,7 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
         None => if is_codex {
             crate::agents::codex::resume::DEFAULT_COMMAND
         } else {
-            "claude"
+            crate::agents::claudecode::resume::DEFAULT_COMMAND
         }
         .to_string(),
     };
@@ -205,7 +205,7 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
     let command = if is_codex {
         crate::agents::codex::resume::resume_command(&base, &spec.session_id)
     } else {
-        format!("{base} --resume {}", spec.session_id)
+        crate::agents::claudecode::resume::resume_command(&base, &spec.session_id)
     };
     Ok(CommandPlan {
         command,
@@ -276,7 +276,7 @@ fn session_name_for(sid: &str, is_codex: bool) -> String {
     let prefix = if is_codex {
         crate::agents::codex::resume::SESSION_NAME_PREFIX
     } else {
-        "cc"
+        crate::agents::claudecode::resume::SESSION_NAME_PREFIX
     };
     format!("{prefix}-{head}")
 }

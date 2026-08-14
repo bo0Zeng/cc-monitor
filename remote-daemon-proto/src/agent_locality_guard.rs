@@ -13,16 +13,20 @@
 //!
 //! # 两条判据，分别守两种泄漏
 //!
-//! ## ① 格式知识只许住 `agents/<名>/`
+//! ## ① 格式/布局知识只许住 `agents/<某个名字>/`
 //!
-//! 针取 **codex 专有**的六个（`rollout-` / `token_count` / `turn_context` /
-//! `session_meta` / `event_msg` / `.codex`）。人群是**整棵 `src/`**（`scan_tree!` 自动摘掉本文件）。
+//! ⚠ **`S3` 把这条从"按 agent 分针"改成了"按住址分区"** —— 这是本判据形态上最要紧的一次变化：
 //!
-//! ⚠ **`sessions/` 刻意不是针**〔Bx 08-14 实测〕：`<claude_dir>/sessions/<PID>.json` 是
-//! **Claude 的 pidfile 目录**（`watcher` 10 处 · `accounts_query` 5 处），
-//! 而 Codex 的 `sessions/` 是它的会话记录根。**同一个词、两套语义**，它区分不了谁是谁。
-//! （它在 `S1` 的判据里当针仍然对 —— 那条针问的是「通用层知不知道会话住哪个目录」，
-//! **不问是谁的目录**。★ 针由那条判据要答的问题定，不由词定。）
+//! `S2` 时它写死 `HOME = "agents/codex/"`，针必须**专有**（能答"这是谁的知识"）。
+//! 代价是**含糊的词全用不了**：`sessions/` 两个 agent 各用各的（Claude 是 pidfile 目录、
+//! Codex 是会话记录根）、`.jsonl` 两边都用 —— 它们**确实是 agent 知识**，却因为
+//! 指不出主人而被排除在外。
+//!
+//! `S3` 之后人群改成「**排除所有 agent 家**」，判据要答的问题也跟着换成
+//! 「这是不是 agent 知识」——**后者是确定的**。于是 `"sessions"` / `"jsonl"` 这类
+//! 含糊的针从此可用，覆盖面反而更大。
+//!
+//! ★ 一般化的教训：**判据答不了的问题，先看能不能换一个更弱、但够用的问题**。
 //!
 //! ## ② 通用层的 kind 派发点**逐条登记**
 //!
@@ -46,8 +50,15 @@
 mod tests {
     use std::path::{Path, PathBuf};
 
-    /// codex 知识的唯一合法住址（相对 `src/`，前缀匹配）。
-    const HOME: &str = "agents/codex/";
+    /// **所有** agent 家的前缀（相对 `src/`）。加一个 agent = 加一行。
+    ///
+    /// 扫描时整体排除它们 —— 判据因此不需要回答「这是谁的知识」，
+    /// 只需要回答「这是不是 agent 知识」（`S3` §1b-4）。
+    const HOMES: &[&str] = &["agents/codex/", "agents/claudecode/"];
+
+    /// 人群下界：agent 家的数量。少于它说明有人把某个 agent 的家删了或改了名，
+    /// 而**判据会因此静默放行那一整家的知识** —— 那是最坏的一种绿。
+    const HOMES_FLOOR: usize = 2;
 
     /// **通用层里允许出现 `"codex"` 这个值的地方**，逐条登记 —— 形态照
     /// `layering_guard::ALLOWED_OBSERVE_TO_CONTROL`。
@@ -64,7 +75,15 @@ mod tests {
         "wire 上的 `agentKind` 是个字符串，派发必须在最接近入口处做；两条分支之后共用 CommandPlan 骨架",
     )];
 
-    /// 针：**codex 专有**，运行时拼（本文件的散文里就有这些词）。
+    /// 针：**agent 的目录布局与文件格式**，运行时拼（本文件的散文里就有这些词）。
+    ///
+    /// 前六根是 `S2` 立的（Codex 专有），后五根是 `S3` 加的 ——
+    /// 其中 `"sessions"` 与 `"jsonl"` **两个 agent 都用**，按住址分区之后才敢加。
+    ///
+    /// ⚠ 带引号的那几根是**刻意的**：`jsonl` 裸词会打中 `jsonl_path` / `read_jsonl` /
+    /// `newest_jsonl` 这一大片**变量名与函数名** —— 那是通用的流式读取机器，不是知识。
+    /// 同一个教训 `usage.rs::the_usage_kou_jing_has_exactly_one_home` 的头注也记着
+    /// （「匹配单位比事实**大**」）。
     fn needles() -> Vec<(String, &'static str)> {
         vec![
             (format!("rollo{}", "ut-"), "会话文件命名"),
@@ -73,8 +92,27 @@ mod tests {
             (format!("session_{}", "meta"), "记录类型名"),
             (format!("event_{}", "msg"), "记录类型名"),
             (format!(".cod{}", "ex"), "会话目录名"),
+            (format!("\"js{}\"", "onl"), "会话文件后缀"),
+            (format!("\"proj{}\"", "ects"), "会话目录布局"),
+            (format!("\"sessi{}\"", "ons"), "会话目录布局"),
+            (format!(".clau{}", "de"), "配置目录名"),
+            (format!("CLAUDE_CONFIG{}", "_DIR"), "账号环境变量"),
         ]
     }
+
+    /// **不是 agent 知识、但会被针打中**的地方，逐条登记 + 写清"它到底是什么"。
+    ///
+    /// ⚠ 这张表与 `S1` 的 `KNOWN_DEBT` **性质相反**，别混：
+    /// 那张是「欠账，将来要清零」；**这张是「判据看走眼了，永远留着」**。
+    /// 把假阳塞进欠账表的后果是它**永远清不掉**，于是"只会缩短"的那张表里
+    /// 长出永久居民 —— 递减棘轮就此失去意义（`S3-Y3`）。
+    const NOT_AGENT_KNOWLEDGE: &[(&str, &str, &str)] = &[(
+        "control/cc_bus.rs",
+        ".claude",
+        "这是 **cc-bus 的门牌号**（`~/.claude/skills/cc-bus/scripts`），不是 agent 知识 —— \
+         cc-bus 恰好装在那个目录下而已。`cc_bus_boundary_guard` 的头注逐字写着这条分界：\
+         「允许**命令的地址**，禁**数据布局**」。同 `S1` 的 `@ccm_sid`、`S2` 的 `sessions/` 那一族。",
+    )];
 
     /// kind 值判别的形状：带引号的 `"codex"`。
     ///
@@ -102,38 +140,65 @@ mod tests {
             .collect()
     }
 
-    /// ① codex 的格式知识只许住 `agents/codex/`。
+    /// ① 任何 agent 的目录/格式知识都只许住 `agents/<名>/`。
     #[test]
-    fn codex_format_knowledge_lives_in_exactly_one_place() {
+    fn agent_format_knowledge_lives_only_in_agent_homes() {
         let files = sources();
         assert!(
             files.len() >= 20,
             "只遍历到 {} 个源文件 —— 遍历坏了，本断言在空转",
             files.len()
         );
+        let homes_seen = HOMES
+            .iter()
+            .filter(|h| files.iter().any(|(rel, _)| rel.starts_with(**h)))
+            .count();
+        assert!(
+            homes_seen >= HOMES_FLOOR,
+            "只找到 {homes_seen} 个 agent 家（下界 {HOMES_FLOOR}）—— 有人删了或改名了某一家，\n\
+             而本判据会因此**静默放行那一整家的知识**"
+        );
         let needles = needles();
         let mut leaks: Vec<String> = Vec::new();
+        let mut excused: Vec<&str> = Vec::new();
         for (rel, prod) in &files {
-            if rel.starts_with(HOME) {
-                continue; // 唯一住址
+            if HOMES.iter().any(|h| rel.starts_with(h)) {
+                continue; // agent 自己的家
             }
             for (line_no, line) in prod.lines().enumerate() {
                 for (n, what) in &needles {
-                    if line.contains(n.as_str()) {
-                        leaks.push(format!("{rel}:{}  [{what}] {}", line_no + 1, line.trim()));
+                    if !line.contains(n.as_str()) {
+                        continue;
                     }
+                    if let Some((f, _, _)) = NOT_AGENT_KNOWLEDGE
+                        .iter()
+                        .find(|(f, frag, _)| rel == f && line.contains(frag))
+                    {
+                        excused.push(f);
+                        continue;
+                    }
+                    leaks.push(format!("{rel}:{}  [{what}] {}", line_no + 1, line.trim()));
                 }
             }
         }
         assert!(
             leaks.is_empty(),
-            "codex 的格式知识跑到 `{HOME}` 之外去了（{} 处）：\n  {}\n\
-             ⚠ 那些名字是 **Codex 的文件格式本身**（信封/事件名/文件命名/目录名）。\n\
-             它们散在通用层里，「接第三个 agent 要改哪几处」就又只住在人的脑子里了 —— \n\
-             那正是 `S2` 要消灭的病。搬进 `{HOME}`，通用层通过适配层取。",
+            "agent 的目录/格式知识跑到 `agents/*/` 之外去了（{} 处）：\n  {}\n\
+             ⚠ 那些名字是**某个 agent 的文件格式或目录布局本身**。散在通用层里，\n\
+             「接第三个 agent 要改哪几处」就又只住在人的脑子里了 —— 那正是本区要消灭的病。\n\
+             搬进 `agents/<名>/`，通用层通过适配层取；真是判据看走眼了就登记进 \n\
+             `NOT_AGENT_KNOWLEDGE`（**那张表不是欠账表**，进去的东西永远留着）。",
             leaks.len(),
             leaks.join("\n  ")
         );
+        // 反向：登记的假阳必须**真的还在命中**，否则它就是幽灵条目。
+        for (f, frag, _) in NOT_AGENT_KNOWLEDGE {
+            assert!(
+                excused.contains(f),
+                "`NOT_AGENT_KNOWLEDGE` 里登记的 `{f}`（片段 `{frag}`）已经不再命中 —— \n\
+                 代码变了而登记没跟，摘掉它"
+            );
+        }
     }
 
     /// ② 通用层里的 kind 派发点，登记表与实得**逐条对齐**（多一处红、少一处也红）。
@@ -143,7 +208,7 @@ mod tests {
         let lit = kind_literal();
         let mut hits: Vec<String> = Vec::new();
         for (rel, prod) in &files {
-            if rel.starts_with(HOME) {
+            if HOMES.iter().any(|h| rel.starts_with(h)) {
                 continue;
             }
             if prod.contains(&lit) {

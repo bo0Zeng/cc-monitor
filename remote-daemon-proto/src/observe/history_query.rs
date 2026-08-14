@@ -20,7 +20,7 @@
 // U2/U3：这两个原来在本文件里各有一份逐字相同的副本。去向**不同**：
 // `projects_root` 跨 observe/control 两层 ⇒ `common/`；`mtime_ms` 两个调用点同属 observe
 // ⇒ U3 按 `common/` 自己的「≥2 层」门槛搬回 `observe/`。
-use crate::common::paths::projects_root;
+use crate::agents::claudecode::paths::projects_root;
 use crate::observe::fs::mtime_ms;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -88,7 +88,7 @@ fn list_projects(claude_dir: &Path) -> Result<(), String> {
         if let Ok(files) = std::fs::read_dir(&dir) {
             for f in files.flatten() {
                 let p = f.path();
-                if !p.is_file() || p.extension().is_none_or(|e| e != "jsonl") {
+                if !p.is_file() || !crate::agents::claudecode::records::is_session_file(&p) {
                     continue;
                 }
                 session_count += 1;
@@ -140,7 +140,7 @@ fn list_sessions(claude_dir: &Path, project_dir: &str) -> Result<(), String> {
     let mut out = stdout.lock();
     for entry in entries.flatten() {
         let p = entry.path();
-        if !p.is_file() || p.extension().is_none_or(|e| e != "jsonl") {
+        if !p.is_file() || !crate::agents::claudecode::records::is_session_file(&p) {
             continue;
         }
         let meta = analyze_session(&p);
@@ -240,7 +240,7 @@ pub fn list_subagents(claude_dir: &Path, args: &[String]) -> i32 {
         let Some(stem) = name.strip_suffix(".meta.json") else {
             continue;
         };
-        let jsonl = meta_path.with_file_name(format!("{stem}.jsonl"));
+        let jsonl = meta_path.with_file_name(crate::agents::claudecode::records::session_file_name(stem));
         if !jsonl.is_file() {
             continue;
         }
@@ -276,7 +276,7 @@ fn validate_session_path(
     jsonl_path: &str,
 ) -> Result<std::path::PathBuf, String> {
     let target = fence_under_projects(claude_dir, Path::new(jsonl_path))?;
-    if target.extension().is_none_or(|e| e != "jsonl") {
+    if !crate::agents::claudecode::records::is_session_file(&target) {
         return Err("refusing to read non-jsonl file".into());
     }
     Ok(target)

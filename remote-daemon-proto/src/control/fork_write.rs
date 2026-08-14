@@ -28,8 +28,8 @@
 //! 记录变换走共享 crate `branch-core`（monitor 与 daemon **同一份实现**，G1）。
 //! 本模块只负责：定位源文件 → 路径守卫 → 调变换 → `O_EXCL` 落盘。
 
-// U2：合并进 `common/paths.rs`（原来这里各有一份逐字相同的副本）。
-use crate::common::paths::projects_root;
+// U2：合并去重（原来这里各有一份逐字相同的副本）；`S3` 把它搬去了 agent 适配层。
+use crate::agents::claudecode::paths::projects_root;
 use std::path::{Path, PathBuf};
 
 /// 成功时 stdout 输出的一行 JSON（camelCase，与 monitor 侧 `BranchResult` 同形）。
@@ -50,7 +50,7 @@ fn find_session_file(claude_dir: &Path, sid: &str) -> Result<PathBuf, String> {
         return Err(format!("refuse fork: invalid session id {sid:?}"));
     }
     let root = projects_root(claude_dir);
-    let want = format!("{sid}.jsonl");
+    let want = crate::agents::claudecode::records::session_file_name(sid);
     for entry in walkdir::WalkDir::new(&root)
         .max_depth(2)
         .into_iter()
@@ -61,7 +61,7 @@ fn find_session_file(claude_dir: &Path, sid: &str) -> Result<PathBuf, String> {
         }
     }
     Err(format!(
-        "refuse fork: session {sid} not found under projects/"
+        "refuse fork: session {sid} not found under the session tree"
     ))
 }
 
@@ -167,7 +167,7 @@ fn run_inner(claude_dir: &Path, args: &[String]) -> Result<ForkResult, String> {
     let dir = source
         .parent()
         .ok_or("refuse fork: source has no parent dir")?;
-    let out_path = dir.join(format!("{new_sid}.jsonl"));
+    let out_path = dir.join(crate::agents::claudecode::records::session_file_name(&new_sid));
     write_new_file(&out_path, &records)?;
 
     Ok(ForkResult {

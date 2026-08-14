@@ -30,4 +30,3 @@
 //! > 门槛只有在写规则的人也照它办时才有约束力。
 
 pub(crate) mod fs;
-pub(crate) mod paths;
