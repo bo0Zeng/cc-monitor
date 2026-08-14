@@ -663,6 +663,69 @@ fn refuse_local_write(origin: &str, what: &str) -> Option<String> {
     ))
 }
 
+/// 本机发消息：走 daemon 的 `bus-send` 原语（`P4f`）。
+///
+/// # 为什么不是"本机也拼一条 shell 串"
+///
+/// 那正是 `C1` 排除的东西（一份语义两处实现）。daemon 那条原语自己带着**六档错误码**
+/// 与**三态在线**，本机这条路只做一件事：把它们讲成人话。
+///
+/// ⚠ 老 daemon 没有这条命令 ⇒ `CallError::Unsupported`（能力协商，不是超时）
+/// ⇒ 报「这台的 daemon 太旧」，而不是含糊的失败。
+async fn send_via_local_daemon(id: &str, text: &str) -> Result<String, String> {
+    use crate::inbound_client::{client_for, LOCAL_ORIGIN};
+    let Some(client) = client_for(LOCAL_ORIGIN) else {
+        return Err("本机 daemon 通道没起来 —— 发消息要经它（设置里可以起/停本机 daemon）。".into());
+    };
+    let args = serde_json::json!({ "to": id, "text": text });
+    match client
+        .call("bus-send", args, std::time::Duration::from_secs(30))
+        .await
+    {
+        Ok(reply) => Ok(describe_send_reply(id, reply.as_ref())),
+        // ⚠ **分流走共用的那一份**（`daemon_route::route_call_error`）：
+        //   `daemon_route` 的登记表逐字要求「新增一个发送端就必须在这里表态」，
+        //   而它自己的头注记着为什么 —— 分流规则一旦有第二份实现，
+        //   「被门拒绝」就会在某一份里被洗成「换条路重做」。
+        // ★ 本发送端**没有第二条路可回落**（本机 shell 写面正是 `P4a` 拒掉的东西）
+        //   ⇒ 两档结果都只是给用户的一句话，`Routed` 的回落语义在这里是空的。
+        Err(e) => Err(
+            match crate::backend::control::daemon_route::route_call_error(&e, |code, message| {
+                format!("{code}：{message}")
+            }) {
+                crate::backend::control::daemon_route::Routed::NoChannel(why) => {
+                    format!("{why}（{id} 的消息**没有发出去**）")
+                }
+                crate::backend::control::daemon_route::Routed::Refused(why) => why,
+                crate::backend::control::daemon_route::Routed::Done => {
+                    "发消息失败（分流器判成已完成，这不该发生）".to_string()
+                }
+            },
+        ),
+    }
+}
+
+/// 把 `bus-send` 的回值讲成人话 —— 纯函数。
+///
+/// ★ 要紧的是**三态在线**别在这一层被抹平：
+/// 「发出去了」和「发出去了但没人会读」对用户是两件事（`P4f §11`）。
+pub(crate) fn describe_send_reply(id: &str, reply: Option<&serde_json::Value>) -> String {
+    let get = |k: &str| reply.and_then(|r| r.get(k)).cloned();
+    let registered = get("registered").and_then(|v| v.as_bool());
+    let live = get("live").and_then(|v| v.as_bool());
+    match (registered, live) {
+        (Some(false), _) => format!(
+            "已投递给 {id}，但**这个名字没在总线上登记过** —— 今天没有任何进程会读它的收件箱（名字打错了吗？）"
+        ),
+        (_, Some(false)) => format!(
+            "已投递给 {id}，但**它当前不在线** —— 消息留在收件箱里，它下次起来才会读到"
+        ),
+        (_, Some(true)) => format!("已投递给 {id}"),
+        // daemon 问不到身份空间（没装 tmux 等）⇒ **不假装知道**
+        _ => format!("已投递给 {id}（在不在线：问不到）"),
+    }
+}
+
 /// B03 批二：读某个 agent 的 inbox（**只读**）。
 #[tauri::command]
 pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMessage>, String> {
@@ -690,8 +753,16 @@ pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMe
 /// B03 批二：给某个 agent 发消息。**这是本模块唯一的写操作**（其余全只读）。
 #[tauri::command]
 pub async fn cc_bus_send(origin: String, id: String, text: String) -> Result<String, String> {
-    if let Some(why) = refuse_local_write(&origin, "发消息") {
-        return Err(why);
+    // ★★ **本机写面接上了**〔P4f 08-13〕。
+    //
+    // `refuse_local_write` 的拒绝理由逐字写着「写面归 `P4b`（cc-bus 改调 daemon 原语）——
+    // 用户 08-12 已裁『**先把确切的命令组件做出来，然后 cc-bus 可以去调用**』」。
+    // **那些命令组件今天做出来了**（`P4f` 的 `bus-send`）⇒ 前提到期，这一条不再拒。
+    //
+    // ⚠ 其余三条（广播 / kill / spawn）**仍然拒**：daemon 侧没有对应的原语。
+    // 拒绝理由是逐条的，不是一句通用话 —— 别把它们一起放行。
+    if origin == crate::inbound_client::LOCAL_ORIGIN {
+        return send_via_local_daemon(&id, &text).await;
     }
     let cmd = build_send_cmd(&id, &text)?;
     let cfg = cfg_of(&origin)?;
@@ -1489,6 +1560,40 @@ mod tests {
         );
     }
 
+    /// ★★ **三态在线不许在讲人话这一层被抹平**〔P4f 08-13，变异 M2 逼出来的〕。
+    ///
+    /// daemon 的 `bus-send` 回 `registered` + 三态 `live`，而 UI 拿到的是一句话。
+    /// 变异实测：把 `describe_send_reply` 改成恒说「已投递给 X」——**60 条测试全绿**。
+    /// 也就是说那三态一路传到最后一米，然后被一句话吃掉，没有任何东西看着。
+    ///
+    /// 「发出去了」和「发出去了但没人会读」对用户是两件事：后者要么名字打错了，
+    /// 要么对方不在线（消息躺在收件箱里等它下次起来）。
+    #[test]
+    fn the_delivery_wording_keeps_the_three_states_apart() {
+        use serde_json::json;
+        let say = |v: serde_json::Value| describe_send_reply("proj_cc", Some(&v));
+        let ok = say(json!({"registered": true, "live": true}));
+        let offline = say(json!({"registered": true, "live": false}));
+        let ghost = say(json!({"registered": false, "live": null}));
+        let unknown = say(json!({"registered": true, "live": null}));
+        for (a, b, why) in [
+            (&ok, &offline, "「在线」与「不在线」"),
+            (&ok, &ghost, "「在线」与「名字没登记过」"),
+            (&offline, &ghost, "「不在线」与「名字没登记过」"),
+            (&ok, &unknown, "「在线」与「问不到在不在线」"),
+        ] {
+            assert_ne!(a, b, "{why} 说的是同一句话 —— 三态被抹平了");
+        }
+        // 各自要点到实处（不是只要求"不一样"就行）
+        assert!(offline.contains("不在线"), "{offline}");
+        assert!(ghost.contains("没在总线上登记过"), "{ghost}");
+        assert!(unknown.contains("问不到"), "{unknown}");
+        // 四种都得说「已投递」—— 投递是照做的，三态只是附加说明
+        for m in [&ok, &offline, &ghost, &unknown] {
+            assert!(m.contains("已投递"), "投递本身没说清：{m}");
+        }
+    }
+
     /// ★ P4a-Y2：**写面两条必须在 `cfg_of` 之前就把本机挡掉。**
     ///
     /// ⚠ 本条是**变异逼出来的**：M5（拿掉 `cc_bus_send` 的本机拒绝）第一次跑
@@ -1496,25 +1601,52 @@ mod tests {
     /// `load_remote_config_by_label(` 的地方，而这两条走的是 `cfg_of` 这个**包装**。
     /// ⇒ 那条护栏对「隔了一层包装」是瞎的（已在它的头注里登记）。
     ///
-    /// 钉**位置**而不是「有没有这句话」：拒绝必须在 `cfg_of` 之前，
-    /// 否则用户拿到的是 `cfg_of` 那句通用话，而不是「写面归 P4b」这个真实原因。
+    /// 钉**位置**而不是「有没有这句话」：本机分支必须在 `cfg_of` 之前，
+    /// 否则用户拿到的是 `cfg_of` 那句通用话，而不是这条路真实的说法。
+    ///
+    /// ⚠⚠ **08-13 P4f 改过一次口径**：本条原来钉的是 `refuse_local_write(` 这个**写法**。
+    /// 而 `cc_bus_send` 的本机路今天**不再是拒绝** —— 它走 daemon 的 `bus-send` 原语
+    /// （拒绝理由逐字写着「等命令组件做出来」，那些组件做出来了）。
+    /// ⇒ 钉的东西从「有没有那句拒绝」改成**「本机分支在不在 `cfg_of` 前面」**：
+    /// 前者是实现，后者才是这条判据真正要保的性质。
+    /// **两种形态都算数**：`refuse_local_write(` 或 `== LOCAL_ORIGIN` 的早返回。
     #[test]
-    fn the_write_face_refuses_local_before_it_asks_for_a_remote_config() {
+    fn the_write_face_branches_on_local_before_it_asks_for_a_remote_config() {
         let code = non_test_code();
         let mut checked = 0usize;
         for (name, what) in [
-            ("pub async fn cc_bus_send(", "发消息"),
+            // ⚠ 这里的"说清在做什么"必须是**代码里**的词（`non_test_code` 剥注释）：
+            //   `cc_bus_send` 的本机分支是一次真调用，名字自己就说清了；
+            //   `cc_bus_spawn` 仍是拒绝，说清的是拒绝文案里那句。
+            ("pub async fn cc_bus_send(", "send_via_local_daemon"),
             ("pub async fn cc_bus_spawn(", "spawn 一个 agent"),
         ] {
             let at = code
                 .find(name)
                 .unwrap_or_else(|| panic!("生产段找不到 {name} —— 判据在空转"));
-            let body: String = code[at..].chars().take(1400).collect();
-            let refuse = body
-                .find("refuse_local_write(&origin, \"")
-                .unwrap_or_else(|| {
-                    panic!("{name} 没有本机拒绝 —— `<local>` 会掉进 `cfg_of` 拿到一句通用话")
-                });
+            // ⚠⚠ **窗口要按函数边界截**〔08-13 当场撞到〕：原来是「从函数名起取 1400 字」，
+            //   而 `cc_bus_send` 比 1400 字短 ⇒ 窗口**越进了下一个函数**
+            //  （`cc_bus_broadcast`），把邻居的 `refuse_local_write(` 当成了自己的，
+            //   于是位置比较拿到的是**别人的**那处，判据当场误红。
+            //   ★ 这正是本判据头注自己警告过的「块粒度」病 —— 而它发生在判据脚下。
+            let rest = &code[at..];
+            let end = rest[1..]
+                .find("\npub async fn ")
+                .or_else(|| rest[1..].find("\npub fn "))
+                .map(|k| k + 1)
+                .unwrap_or_else(|| rest.len().min(1400));
+            let body: String = rest[..end].to_string();
+            // 本机分支有**两种形态**（早返回走 daemon / 拒绝），取**先出现**的那个位置。
+            let refuse = [
+                body.find("refuse_local_write(&origin, \""),
+                body.find("origin == crate::inbound_client::LOCAL_ORIGIN"),
+            ]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or_else(|| {
+                panic!("{name} 没有本机分支 —— `<local>` 会掉进 `cfg_of` 拿到一句通用话")
+            });
             let cfg = body
                 .find("cfg_of(&origin)")
                 .unwrap_or_else(|| panic!("{name} 里找不到 `cfg_of(&origin)` —— 判据的参照物没了"));
@@ -1525,8 +1657,8 @@ mod tests {
             );
             assert!(
                 body[refuse..].contains(what),
-                "{name} 的拒绝文案没点名它在拒绝什么（应含 {what:?}）——\n\
-                 一句不说清是哪件事做不了的错误，与那句「未找到远端配置」是同一族。"
+                "{name} 的本机分支没说清它在做什么（应含 {what:?}）——\n\
+                 一句不说清是哪件事的错误，与那句「未找到远端配置」是同一族。"
             );
             checked += 1;
         }

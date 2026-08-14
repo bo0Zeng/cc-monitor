@@ -193,6 +193,11 @@ mod tests {
         // 它发的是 `probe_daemon` 里那条 `ping`：只把成败渲染成 `control=ok(..ms)` /
         // `control=failed(..)` 的诊断串，**不做任何回落决策** ⇒ 没有「该不该回落」这个问题。
         ("ssh_source.rs", Verdict::ProbeOnlyNoFallbackDecision),
+        // ★ P4f 08-13：**本机 cc-bus 写面**（`cc_bus_send` 对 `<local>`）走 daemon 的
+        // `bus-send` 原语。它没有第二条路可回落（本机 shell 写面正是 `P4a` 拒掉的东西），
+        // 两档结果都只渲染成给用户的一句话 —— 但**照样走分流器**：
+        // 分流规则有第二份实现的那天，「被门拒绝」就会在某一份里被洗成「换条路重做」。
+        ("cc_bus.rs", Verdict::UsesRouter),
     ];
 
     #[cfg(test)]
