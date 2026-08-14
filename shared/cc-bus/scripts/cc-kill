@@ -10,14 +10,38 @@ _tree(){ local p="$1" c; echo "$p"; for c in $(pgrep -P "$p" 2>/dev/null); do _t
 
 # 杀会话 + 进程树。claude 可能 trap SIGHUP 扛过 kill-session 并被 init 收养 →
 # 必须【kill-session 前】收好整棵树,【之后无条件】清 survivors(不能只看 pane_pid 存活与否)。
-if tmux has-session -t "=$id" 2>/dev/null; then
+# ★★ **杀之前先核这个会话还是不是它**〔08-13 实测事故〕
+#
+# 本脚本按**名字**杀（`-t "=$id"`），而会话名会被重用 —— `cc-spawn` 就按目录基名取名。
+# 实测：agent `proj_cc` 退出后，用户在同名会话里跑别的东西，UI 上点「收掉 agent proj_cc」
+# ⇒ **那个无辜进程被 kill -9、会话被杀**。这是今天那条「敲门打进陌生人屏幕」的同族，
+# 但后果重得多：那条只是打扰,这条是**销毁**。
+#
+# ⇒ 用 `agents.tsv` 第 4 列（登记时记下的 pane 根进程 pid,与敲门那条同一份数据）核一次：
+# · 对得上 ⇒ 照杀;
+# · **对不上 ⇒ 不杀会话、不删收件箱**,只摘掉那条陈旧登记(那也确实是"收掉"的一半),并说明;
+# · 第 4 列为空(老表)⇒ 保持老行为,但**说一句**(存量不能一刀拦死)。
+_want_pid=$(awk -F'\t' -v id="$id" '$1==id{p=$4} END{print p}' "$BUS/agents.tsv" 2>/dev/null || true)
+_identity_ok=1
+if tmux has-session -t "=$id" 2>/dev/null && [ -n "${_want_pid:-}" ]; then
+  _have_pid=$(tmux list-panes -t "=$id" -F '#{pane_pid}' 2>/dev/null | head -1)
+  if [ "${_have_pid:-}" != "$_want_pid" ]; then
+    _identity_ok=0
+    echo "cc-kill: 会话 $id 现在的根进程是 ${_have_pid:-<无>}，而登记时是 $_want_pid ——" >&2
+    echo "         **这个名字已经被别人占了，不杀它**（只摘掉那条陈旧登记）。" >&2
+  fi
+elif [ -z "${_want_pid:-}" ]; then
+  echo "cc-kill: 这条登记没有身份信息（老格式），杀之前无法核对是不是它 —— 按老行为继续。" >&2
+fi
+
+if [ "$_identity_ok" = 1 ] && tmux has-session -t "=$id" 2>/dev/null; then
   ppid=$(tmux list-panes -t "=$id" -F '#{pane_pid}' 2>/dev/null | head -1)
   procs=""; [ -n "${ppid:-}" ] && procs=$(_tree "$ppid" 2>/dev/null || true)
   tmux kill-session -t "=$id" 2>/dev/null && echo "已杀会话 $id" || echo "杀会话 $id 失败" >&2
   if [ -n "${procs:-}" ]; then
     kill $procs 2>/dev/null || true; sleep 0.3; kill -9 $procs 2>/dev/null || true
   fi
-else
+elif [ "$_identity_ok" = 1 ]; then
   echo "无 tmux 会话 $id(可能已退)"
 fi
 
@@ -40,6 +64,13 @@ if [ -f "$BUS/spawned.tsv" ]; then
   ) 8>>"$BUS/spawned.tsv.lock"
 fi
 
+# 清该 id 的状态。
+# ⚠ 身份对不上时**不删**：那个 id 的收件箱里可能还有它没读的消息，
+#   而我们刚刚才确认"这个名字现在是别人的" —— 连它是不是真的没了都不知道。
+if [ "$_identity_ok" = 0 ]; then
+  echo "已摘掉 $id 的陈旧登记（会话与收件箱都没动）"
+  exit 0
+fi
 # 清该 id 的状态:id-keyed + pair-keyed(免 respawn 同 id 串到旧因果链/旧去重)
 rm -f "$BUS/inbox/$id.jsonl" "$BUS/inbox/$id.jsonl.lock" \
       "$BUS/state/$id.pos" "$BUS/state/nudge-$id" "$BUS/state/nudge-$id.lock" \
