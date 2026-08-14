@@ -25,7 +25,9 @@ endpoint: string | null,
  */
 daemonOk: boolean, 
 /**
- * daemon hello 的人读摘要（`v=.. arch=.. claude_dir=..`）。
+ * daemon hello 的人读摘要（`v=.. arch=.. claude_home=..`）。
+ * ⚠ `S4` 起 `claude_home` 是**解析后**的值（优先 `homes`、回退 `claude_dir`），
+ * 不是某个线上字段的原样照抄。
  */
 daemonHello: string | null, 
 /**
