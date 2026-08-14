@@ -22,9 +22,16 @@ _tree(){ local p="$1" c; echo "$p"; for c in $(pgrep -P "$p" 2>/dev/null); do _t
 # · **对不上 ⇒ 不杀会话、不删收件箱**,只摘掉那条陈旧登记(那也确实是"收掉"的一半),并说明;
 # · 第 4 列为空(老表)⇒ 保持老行为,但**说一句**(存量不能一刀拦死)。
 _want_pid=$(awk -F'\t' -v id="$id" '$1==id{p=$4} END{print p}' "$BUS/agents.tsv" 2>/dev/null || true)
+# ⚠ **要问登记的那个 pane，不是"这个会话现在的 pane"**〔08-13 自己的探针撞出来的〕：
+#   第一版写 `list-panes -t "=$id" | head -1` —— 那取的是**当前窗口**的第一个 pane。
+#   用户在自己 agent 的会话里开一个新窗口，当前窗口就变了 ⇒ pid 对不上
+#   ⇒ cc-kill 会对**它自己的 agent** 说「名字被别人占了」。**假阳性比不查更坏**：
+#   它会让人以为身份核对坏了，进而把这道保护删掉。
+#   ⇒ 用 agents.tsv 第 2 列那个**完整地址**（`sess:win.pane`）精确问，与敲门那条一致。
+_want_target=$(awk -F'\t' -v id="$id" '$1==id{t=$2} END{print t}' "$BUS/agents.tsv" 2>/dev/null || true)
 _identity_ok=1
-if tmux has-session -t "=$id" 2>/dev/null && [ -n "${_want_pid:-}" ]; then
-  _have_pid=$(tmux list-panes -t "=$id" -F '#{pane_pid}' 2>/dev/null | head -1)
+if tmux has-session -t "=$id" 2>/dev/null && [ -n "${_want_pid:-}" ] && [ -n "${_want_target:-}" ]; then
+  _have_pid=$(tmux display-message -p -t "=$_want_target" '#{pane_pid}' 2>/dev/null || true)
   if [ "${_have_pid:-}" != "$_want_pid" ]; then
     _identity_ok=0
     echo "cc-kill: 会话 $id 现在的根进程是 ${_have_pid:-<无>}，而登记时是 $_want_pid ——" >&2
@@ -37,6 +44,12 @@ fi
 if [ "$_identity_ok" = 1 ] && tmux has-session -t "=$id" 2>/dev/null; then
   ppid=$(tmux list-panes -t "=$id" -F '#{pane_pid}' 2>/dev/null | head -1)
   procs=""; [ -n "${ppid:-}" ] && procs=$(_tree "$ppid" 2>/dev/null || true)
+  # ⚠ **把要销毁的东西说出来**：身份已经核准（是这个 agent 没错），但用户可能在这个会话里
+  #   开过自己的窗口。daemon 的 `kill` 原语在证据较弱时用「只杀单窗口」当第三道门；
+  #   这里证据更强（登记的 pane 根进程 pid 对上了）⇒ **照杀，但把窗口数摆出来**。
+  #   要不要在多窗口时干脆拦下，是产品判断 ⇒ 记在 ROADMAP `U18`，不在这儿替用户定。
+  _wins=$(tmux display-message -p -t "=$id:" '#{session_windows}' 2>/dev/null || true)
+  case "${_wins:-1}" in ''|1) : ;; *) echo "cc-kill: 注意，$id 有 $_wins 个窗口，一起收掉" >&2 ;; esac
   tmux kill-session -t "=$id" 2>/dev/null && echo "已杀会话 $id" || echo "杀会话 $id 失败" >&2
   if [ -n "${procs:-}" ]; then
     kill $procs 2>/dev/null || true; sleep 0.3; kill -9 $procs 2>/dev/null || true
