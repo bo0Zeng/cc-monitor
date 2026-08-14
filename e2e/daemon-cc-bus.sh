@@ -210,6 +210,27 @@ chk "  三种都**照发不误**（先发后到是正当用法）" \
 chk "  且消息真的落进了各自的收件箱" \
   "$(wc -l < "$BUS/inbox/nobody_cc.jsonl" 2>/dev/null || echo 0)" "1"
 
+echo "[12] ★ 正文太长要**归对因**：不是 cc-bus 坏了，是塞不进 argv"
+# 实测：200KB 正文 → 原来回 {"code":"failed","message":"起不来 cc-send：Argument list too long"}。
+# 两处不对：① failed 是兜底桶，调用方分不出「我的消息太长」（自己能修）与「cc-bus 坏了」；
+# ② 那句话归错了因 —— cc-send 好好的。⇒ 单独的 too_long + 实测字节数。
+# ⚠ 上限是**内核**的（MAX_ARG_STRLEN 128 KiB，P4b §7g-8b 量过：131000 OK / 131072 E2BIG），
+#   不是我们能改的东西；能保证的是**说得准**。
+python3 -c 'import json,sys; sys.stdout.write(json.dumps({"to":"alive_cc","text":"x"*200000}))' \
+  > "$SANDBOX/big.json"
+env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
+    "$TIMEOUT" 20 "$D" --bus-send < "$SANDBOX/big.json" >/dev/null 2>"$SANDBOX/err12.txt"
+chk "★ 码是 too_long（不是兜底的 failed）" "$(jq -r .code < "$SANDBOX/err12.txt" 2>/dev/null)" "too_long"
+_m12="$(jq -r .message < "$SANDBOX/err12.txt" 2>/dev/null)"
+chk "  说了实测字节数（别让人自己去量）" "$(printf '%s' "$_m12" | grep -c '200000 字节')" "1"
+chk "  明说不是 cc-bus 坏了（归因不许甩锅）" "$(printf '%s' "$_m12" | grep -c '不是 cc-bus 坏了')" "1"
+# 对照：120KB 必须仍然发得出去（免得判据把上限收窄成"长的都不让发"）
+python3 -c 'import json,sys; sys.stdout.write(json.dumps({"to":"alive_cc","text":"y"*120000}))' \
+  > "$SANDBOX/mid.json"
+_o12="$(env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
+        "$TIMEOUT" 20 "$D" --bus-send < "$SANDBOX/mid.json" 2>/dev/null)"
+chk "  对照：120KB 照样发得出去" "$(printf '%s' "$_o12" | jq -r .sent)" "true"
+
 "$REALTMUX" -L "$_SOCK" kill-server 2>/dev/null || true
 
 echo

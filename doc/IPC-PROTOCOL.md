@@ -536,6 +536,7 @@ monitor 永远不会发的形状。
 | `rejected` | 被路由层拦下（ACL / 限流 / 去重 / 灭环），`bus.log` 里有对应一行 | `cc-send` rc=3 |
 | `not_installed` | 找不到 `cc-send` | 查找规则全落空 |
 | `timed_out` | 子进程跑过了期限被结束（默认 10 秒，`CC_BUS_TIMEOUT_SECS` 可调） | 子进程退出码 124 |
+| `too_long` | 正文塞不进一次命令调用（内核单参数上限 **128 KiB**），诊断里带实测字节数 | 起进程时 `E2BIG` |
 | `failed` | 其它 | 其它退出码 / 起不来 |
 
 ⚠ **期限住在子进程里，不在 daemon 里**：daemon 侧一个计时器都不加（零定时器铁律 +

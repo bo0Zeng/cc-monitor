@@ -188,7 +188,24 @@ fn run(name: &str, args: &[&str]) -> Result<std::process::Output, CmdErr> {
         .args(&argv)
         .stdin(Stdio::null())
         .output()
-        .map_err(|e| ("failed", format!("起不来 `{}`：{e}", bin.display())))
+        .map_err(|e| {
+            // ★ **E2BIG 要单独说**〔08-13 实测〕：`{"code":"failed","message":"起不来 cc-send：
+            //   Argument list too long"}` 有两处不对 —— ① `failed` 是兜底桶，调用方分不出
+            //   「我的消息太长」（自己能修：发短点）和「cc-bus 坏了」（自己修不了）；
+            //   ② 那句话**归错了因**：cc-send 好好的，是这条消息塞不进 argv。
+            //   实测 200KB 正文必炸、120KB 能过 —— 内核的单参数上限 `MAX_ARG_STRLEN` = 128 KiB
+            //  （`P4b §7g-8b` 量过：131000 OK / 131072 E2BIG）。
+            #[cfg(unix)]
+            if e.raw_os_error() == Some(libc::E2BIG) {
+                return (
+                    "too_long",
+                    "这条消息塞不进一次命令调用（内核的单参数上限是 128 KiB）—— 发短一点。\
+                     ⚠ 不是 cc-bus 坏了。"
+                        .to_string(),
+                );
+            }
+            ("failed", format!("起不来 `{}`：{e}", bin.display()))
+        })
 }
 
 /// `timeout` 那条命令超时时的退出码（GNU coreutils）。
@@ -397,7 +414,16 @@ pub(crate) fn send_for_inbound(
 ) -> Result<serde_json::Value, (String, String)> {
     let (to, text) = parse_send(args).map_err(|(c, m)| (c.to_string(), m))?;
     // `--` 显式结束旗标：收件人万一以 `--` 开头也当收件人，不会被 cc-send 当成选项。
-    let out = run("cc-send", &["--", &to, &text]).map_err(|(c, m)| (c.to_string(), m))?;
+    let out = run("cc-send", &["--", &to, &text]).map_err(|(c, m)| {
+        // 只有这条路带得动大载荷 ⇒ 把**实测长度**补进去（诊断里给数，别让人自己去量）。
+        if c == "too_long" {
+            return (
+                c.to_string(),
+                format!("{m}（这条正文 {} 字节）", text.len()),
+            );
+        }
+        (c.to_string(), m)
+    })?;
     let detail = {
         let e = first_line(&out.stderr);
         if e.is_empty() {
