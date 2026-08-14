@@ -423,6 +423,41 @@ chk "★ 老 3 列表（无第 4 列）**仍被敲到**" \
 _n="$(grep -c 'NUDGE stale old_cc' "$CC_BUS_HOME/log/bus.log" 2>/dev/null || true)"
 chk "  且没有假 stale" "${_n:-0}" "0"
 
+echo "[21] 【08-13】收掉 agent 时**不许杀掉占了同一个名字的无辜进程**"
+# ★★ 真事故（比敲门那条重得多：那条是打扰，这条是**销毁**）：`cc-kill` 按**名字**杀
+#   （`-t "=$id"` + kill -9 整棵进程树 + 删收件箱），而会话名会被重用。
+#   实测：agent 退出后用户在同名会话里跑别的东西，UI 上点「收掉 agent」⇒ 那个无辜进程被杀。
+# ⇒ 杀之前用 agents.tsv 第 4 列（登记时的 pane 根进程 pid）核一次。
+# ⚠ 两个方向都要钉：真的那个必须照杀，无辜的必须一根汗毛不动。
+tmux new-session -d -s realk_cc -c /tmp 'sleep 300'; sleep 0.3
+TMUX_PANE="$(tmux list-panes -t '=realk_cc' -F '#{pane_id}' | head -1)" \
+  bash "$REPO/shared/cc-bus/scripts/cc-register" realk_cc >/dev/null 2>&1
+_rp="$(tmux list-panes -t '=realk_cc' -F '#{pane_pid}' | head -1)"
+bash "$REPO/shared/cc-bus/scripts/cc-kill" realk_cc >/dev/null 2>&1
+sleep 0.4
+chk "★ 方向一：真的那个 agent 照样杀得掉（会话）" \
+  "$(tmux has-session -t '=realk_cc' 2>/dev/null && echo 在 || echo 没了)" "没了"
+chk "  连进程树一起（cc-kill 的正题）" \
+  "$(ps -p "$_rp" >/dev/null 2>&1 && echo 在 || echo 没了)" "没了"
+
+tmux new-session -d -s innoc_cc -c /tmp 'sleep 300'; sleep 0.3
+TMUX_PANE="$(tmux list-panes -t '=innoc_cc' -F '#{pane_id}' | head -1)" \
+  bash "$REPO/shared/cc-bus/scripts/cc-register" innoc_cc >/dev/null 2>&1
+printf '一条没读的消息\n' > "$CC_BUS_HOME/inbox/innoc_cc.jsonl"
+tmux kill-session -t '=innoc_cc'; sleep 0.3
+tmux new-session -d -s innoc_cc -c /tmp 'sleep 999'; sleep 0.4    # 同名的无辜占用者
+_ip="$(tmux list-panes -t '=innoc_cc' -F '#{pane_pid}' | head -1)"
+bash "$REPO/shared/cc-bus/scripts/cc-kill" innoc_cc >/dev/null 2>&1
+sleep 0.4
+chk "★★ 方向二：名字被占时**无辜进程不许被杀**" \
+  "$(ps -p "$_ip" >/dev/null 2>&1 && echo 在 || echo 被杀了)" "在"
+chk "★★ 无辜会话也不许被杀" \
+  "$(tmux has-session -t '=innoc_cc' 2>/dev/null && echo 在 || echo 没了)" "在"
+chk "  但陈旧登记要摘掉（那条确实是过期的）" \
+  "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -c '^innoc_cc$')" "0"
+chk "  ★ 收件箱**不许删**（还不知道那个 agent 是不是真没了）" \
+  "$([ -f "$CC_BUS_HOME/inbox/innoc_cc.jsonl" ] && echo 在 || echo 被删了)" "在"
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 if [ "$fail" -eq 0 ]; then echo "===== cc-spawn 收编验收全部通过 ====="; fi

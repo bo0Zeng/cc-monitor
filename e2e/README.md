@@ -72,7 +72,7 @@ tmux server（跑前跑后 `tmux -L default ls` 逐字对比，**9 个会话，�
 | `tmux-target-acceptance` | 26 过 / 0 败 | |
 | `daemon-fork-session` | 10 过 / 0 败 | |
 | `p3t-local-tmux` | 10 过 / 0 败 | |
-| `cc-spawn-uplift` | **60 过 / 0 败**（08-13 更新） | ★ 修前 19/2 —— 它还在测 `P4b` 删掉的行为；`C15` 收编后 +10 条；08-13 再 +7（地址簿不许被抹 · 敲门不许打进别人屏幕） |
+| `cc-spawn-uplift` | **66 过 / 0 败**（08-13 更新） | ★ 修前 19/2 —— 它还在测 `P4b` 删掉的行为；`C15` 收编后 +10 条；08-13 再 +7（地址簿不许被抹 · 敲门不许打进别人屏幕） |
 | `exec-bit-guard` | RC=0 | ⚠ 打了非阻断警告：`shared/cc-bus` 与 `~/.claude/skills/cc-bus` **已漂移** |
 | `daemon-sessions-rewatch` | 4 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：`sessions/` 被换 inode / 起初不存在 / 重建后立刻写 |
 | `daemon-tmux-late-server` | 2 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：**daemon 起得比 tmux server 早**（`#60` 现象 1 的根因） |
