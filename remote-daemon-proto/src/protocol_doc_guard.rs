@@ -724,7 +724,14 @@ mod tests {
                 "observe/usage_query.rs",
                 include_str!("observe/usage_query.rs"),
             ),
-            ("observe/codex.rs", include_str!("observe/codex.rs")),
+            (
+                "agents/codex/parse.rs",
+                include_str!("agents/codex/parse.rs"),
+            ),
+            (
+                "agents/codex/usage.rs",
+                include_str!("agents/codex/usage.rs"),
+            ),
             (
                 "observe/turn_detect.rs",
                 include_str!("observe/turn_detect.rs"),

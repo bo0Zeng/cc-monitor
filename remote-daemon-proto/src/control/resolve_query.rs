@@ -182,7 +182,12 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
         .find(|s| !s.is_empty());
     let base = match candidate {
         Some(c) => c.to_string(),
-        None => if is_codex { "codex" } else { "claude" }.to_string(),
+        None => if is_codex {
+            crate::agents::codex::resume::DEFAULT_COMMAND
+        } else {
+            "claude"
+        }
+        .to_string(),
     };
     // 审计 security-重要①：B2 纪律**对称化**——`base` 同样进 command 串、由客户端 pty 执行，
     // 原只校验 sid、base 零校验（端到端两侧都没人查 base：客户端 B2 复校也只覆盖 sid）。补 base
@@ -198,7 +203,7 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
     // CodexInvocation.resumeInvocation**：Codex=`<base> resume <sid>`（子命令、**无 `--resume` flag、
     // 无 unset**、真机 `codex resume <SESSION_ID>` 核）；Claude=`<base> --resume <sid>`。
     let command = if is_codex {
-        format!("{base} resume {}", spec.session_id)
+        crate::agents::codex::resume::resume_command(&base, &spec.session_id)
     } else {
         format!("{base} --resume {}", spec.session_id)
     };
@@ -268,7 +273,11 @@ fn is_shell_safe_base(s: &str) -> bool {
 /// golden-parity aterm（Claude `cc-`、Codex CodexInvocation.resumeSessionName `cx-`）。客户端亦自算、daemon 顺带给。
 fn session_name_for(sid: &str, is_codex: bool) -> String {
     let head: String = sid.chars().take(8).collect();
-    let prefix = if is_codex { "cx" } else { "cc" };
+    let prefix = if is_codex {
+        crate::agents::codex::resume::SESSION_NAME_PREFIX
+    } else {
+        "cc"
+    };
     format!("{prefix}-{head}")
 }
 

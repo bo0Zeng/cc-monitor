@@ -186,7 +186,7 @@ impl CodexDelta {
 /// `reasoning_output_tokens` 是 output 的子集、`total_tokens` 冗余 ⇒ 都不单列。
 ///
 /// U7-2 把 Claude 口径收进本 crate 时**漏了 Codex 这一侧**：daemon 的
-/// `observe/codex.rs` 与 monitor 的 `codex_record.rs` 各写一份、逐字相同、
+/// daemon `agents/codex/parse.rs` 与 monitor 的 `codex_record.rs` 各写一份、逐字相同、
 /// 无一条判据钉住。由 monitor `usage.rs::kou_jing_singleton` 守住这里是唯一家。
 pub fn codex_delta(usage: &Value) -> CodexDelta {
     let g = |k: &str| usage.get(k).and_then(Value::as_u64).unwrap_or(0);
