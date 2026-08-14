@@ -111,6 +111,27 @@ out="$(d --bus-list </dev/null)"
 chk "★ 报得出**且**调得动（漏了闸门这格会红）" \
   "$(printf '%s' "$out" | jq -e 'has("agents")' >/dev/null 2>&1 && echo yes || echo no)" "yes"
 
+echo "[8] ★ cc-bus 命令卡住时，daemon 不许陪着一起卡"
+# ★ 真事故：`Command::output()` **无限等**。把 cc-send 换成 sleep 300 的桩，
+#   --bus-send 25 秒没回来（25 是从外面掐的，daemon 自己没有期限）。
+#   而这两条是阻塞档，一条卡住占死一个 tokio worker，且 cancel 对 spawn_blocking 是空操作。
+# ⚠ 修法**不是**在 daemon 里加计时器（零定时器铁律 + 协议逐字「超时一律推给客户端」）——
+#   而是让**子进程自己**有期限（timeout 前缀，同 ccm 问 daemon 那条）。
+mkdir -p "$SANDBOX/hangbin"
+printf '#!/bin/bash\nsleep 300\n' > "$SANDBOX/hangbin/cc-send"
+chmod +x "$SANDBOX/hangbin/cc-send"
+cp "$SCRIPTS/cc-list" "$SANDBOX/hangbin/cc-list"
+_t0=$(date +%s)
+printf '{"to":"x_cc","text":"hi"}' | env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" \
+    CC_BUS_BIN_DIR="$SANDBOX/hangbin" CC_BUS_TIMEOUT_SECS=2 \
+    "$TIMEOUT" 30 "$D" --bus-send >/dev/null 2>"$SANDBOX/err8.txt"
+_el=$(( $(date +%s) - _t0 ))
+chk "★ 2 秒的期限：真的在 5 秒内回来了（不是等到我们从外面掐）" \
+  "$([ "$_el" -le 5 ] && echo yes || echo "no（用了 ${_el}s）")" "yes"
+chk "  码是 timed_out（不是笼统的 failed）" "$(jq -r .code < "$SANDBOX/err8.txt" 2>/dev/null)" "timed_out"
+chk "  消息说得出去哪儿看（flock / *.lock）" \
+  "$(jq -r .message < "$SANDBOX/err8.txt" 2>/dev/null | grep -c 'flock')" "1"
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 [ "$fail" -eq 0 ] || exit 1

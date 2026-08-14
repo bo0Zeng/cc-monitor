@@ -77,7 +77,7 @@ tmux server（跑前跑后 `tmux -L default ls` 逐字对比，**9 个会话，�
 | `daemon-sessions-rewatch` | 4 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：`sessions/` 被换 inode / 起初不存在 / 重建后立刻写 |
 | `daemon-tmux-late-server` | 2 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：**daemon 起得比 tmux server 早**（`#60` 现象 1 的根因） |
 | `cc-bus-queue-drain` | 38 过 / 0 败 | ★ 08-13 新增：`cc-send` **消息没到时必须有人说话**——滞留队列没人管 + 收件人根本不存在。**本套不用 tmux** |
-| `daemon-cc-bus` | 20 过 / 0 败 | ★ 08-13 新增（`P4f`）：daemon 的 `--bus-list` / `--bus-send` 真跑。**不用 tmux**；`CLAUDE_CONFIG_DIR` 与 `CC_BUS_HOME` 双沙箱 |
+| `daemon-cc-bus` | 23 过 / 0 败 | ★ 08-13 新增（`P4f`）：daemon 的 `--bus-list` / `--bus-send` 真跑。**不用 tmux**；`CLAUDE_CONFIG_DIR` 与 `CC_BUS_HOME` 双沙箱 |
 | **`graylight-suite`** | **3 过 / 0 败**（08-13） | ★★ 它**不再是「跑不了」的** —— 跑法见下方 `§ 全链套件怎么跑` |
 
 **跑不了的（本机缺条件，不是没跑）**：`f40-suite` / `restart-daemon-frames` /
