@@ -2313,6 +2313,38 @@ pub struct LostFrameInfo {
     pub subject: Option<String>,
 }
 
+/// `hello.homes` 的一项 —— **某个 agent 在那台远端机器上的 home 目录**〔daemon-split `S4`〕。
+///
+/// 与 daemon 侧 `wire::AgentHome` 对称（这一侧刻意不依赖那个 crate，照 `InboundFrame`
+/// 一贯的做法自己解析 JSON）。字段名里没有任何一个 agent 的名字：agent 维度住在
+/// `agent_kind` 这个**值**里 —— daemon 那边 `D3` 逐字要求的形状。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentHome {
+    pub agent_kind: String,
+    pub path: String,
+}
+
+/// 从 hello 帧里解析出「Claude 的 home 目录」—— **优先 `homes`、回退 `claude_dir`**。
+///
+/// 这是 `S4` additive 迁移在消费侧的那一半。两个字段的关系：
+/// - `homes`（新，通用）：`[{agent_kind, path}]`，agent 维度在**值**里；
+/// - `claude_dir`（旧，冻结兼容）：字段名里带 agent 名，daemon 侧登记在
+///   `agent_boundary_guard::FROZEN_COMPAT`，**解锁条件是 monitor 与 aterm 都改读 `homes`**。
+///
+/// ⇒ 本函数就是 monitor 那半的兑现：从今往后 monitor **不再依赖** `claude_dir` 的存在语义，
+/// 它只是回退路径。`claude_dir` 的删除因此只卡在仓外 aterm 上，我们这边不欠。
+///
+/// ⚠ 今天的 daemon `homes` 恒空（DG1 未接线）⇒ 实际走的一直是回退分支。
+/// 这不是"没接上"，是 additive 迁移的正常中间态：先让消费侧认得新字段，
+/// 生产侧（`S5`）再开始发 —— 反过来做会有一段时间新字段被丢掉。
+pub(crate) fn claude_home_from_hello<'a>(homes: &'a [AgentHome], claude_dir: &'a str) -> &'a str {
+    homes
+        .iter()
+        .find(|h| h.agent_kind == "claude")
+        .map(|h| h.path.as_str())
+        .unwrap_or(claude_dir)
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum InboundFrame {
     /// 握手帧：连接建立后 daemon 发一次。`v` = 协议大版本，`build_id` = daemon 构建标识
@@ -2322,7 +2354,15 @@ pub enum InboundFrame {
         v: u64,
         build_id: String,
         host_arch: String,
+        /// ⚠ **原样的线上值**，不做回退解析 —— 要「Claude 的 home」请走
+        /// [`claude_home_from_hello`]（优先 `homes`）。两者分开是刻意的：
+        /// 这个字段是**冻结兼容面**（仓外 aterm 还在读它），
+        /// 把回退结果写回这里会让"daemon 到底发了什么"变得不可观测。
         claude_dir: String,
+        /// daemon-split `S4`（additive）：远端各 agent 的 home 目录表。
+        /// 旧 daemon（含今天所有已部署的）无此字段 ⇒ 空表 ⇒ 回退 `claude_dir`。
+        /// 非数组 / 元素缺字段一律滤掉，绝不 panic（同 `capabilities` 口径）。
+        homes: Vec<AgentHome>,
         /// F66（#58③）：daemon 声明的能力 token 集。旧 daemon 无此字段 → 空集
         /// （保守：按最小能力集待它，不发流模式 flag）。monitor 按此决定发
         /// `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配。
@@ -2473,6 +2513,27 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             let build_id = obj.get("build_id")?.as_str()?.to_string();
             let host_arch = obj.get("host_arch")?.as_str()?.to_string();
             let claude_dir = obj.get("claude_dir")?.as_str()?.to_string();
+            // daemon-split `S4`（additive）：`homes` = 远端各 agent 的 home 目录表
+            // （`[{agent_kind, path}]`）。旧 daemon **全部**没有这个字段 ⇒ 空表 ⇒
+            // 消费侧回退 `claude_dir`（见 `claude_home_from_hello`）。
+            // ⚠ 逐项要求 `agent_kind` 与 `path` 都是字符串，坏的那一项**单独丢掉**、
+            //   不是丢整张表 —— 同 `capabilities` 的「非数组 / 元素类型不对一律滤掉」口径。
+            //   整帧 `None` 是留给「已知 kind 但必需字段缺失」的，`homes` 不是必需字段。
+            let homes: Vec<AgentHome> = obj
+                .get("homes")
+                .and_then(|h| h.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| {
+                            let o = x.as_object()?;
+                            Some(AgentHome {
+                                agent_kind: o.get("agent_kind")?.as_str()?.to_string(),
+                                path: o.get("path")?.as_str()?.to_string(),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
             // F66（#58③，additive）：旧 daemon 无 `capabilities` 字段 → 空集（保守缺省，
             // 同 §27「status 缺失恒未知」族）。非数组 / 元素非字符串一律滤掉，绝不 panic。
             let capabilities = obj
@@ -2500,6 +2561,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                 build_id,
                 host_arch,
                 claude_dir,
+                homes,
                 capabilities,
                 commands,
             })
@@ -3948,11 +4010,16 @@ async fn stream_loop(
                 build_id,
                 host_arch,
                 claude_dir,
+                homes,
                 capabilities,
                 commands,
             }) => {
+                // `S4`：日志报的是**解析后**的 Claude home（优先 `homes`、回退 `claude_dir`），
+                // 同时把原样的 `homes` 一起打出来 —— 排障时要能一眼看出
+                // 「这台 daemon 到底发没发新字段」，那正是 additive 迁移期最常问的问题。
+                let claude_home = claude_home_from_hello(&homes, &claude_dir);
                 tracing::info!(
-                    "ssh_source daemon hello: v={v} build_id={build_id} host_arch={host_arch} claude_dir={claude_dir} caps={capabilities:?} cmds={commands:?}"
+                    "ssh_source daemon hello: v={v} build_id={build_id} host_arch={host_arch} claude_home={claude_home} homes={homes:?} caps={capabilities:?} cmds={commands:?}"
                 );
                 // U-CC1：记下**我们不认识的**能力 token。多半是远端 daemon 比 monitor 新
                 // （自动部署会把它拉回同一个 build，但手工装 / 关了自动部署的用户会长期不一致）。
@@ -5623,7 +5690,9 @@ pub struct ConnTestResult {
     pub endpoint: Option<String>,
     /// daemon 是否在 SHORT timeout 内回了可解析的 hello 帧。
     pub daemon_ok: bool,
-    /// daemon hello 的人读摘要（`v=.. arch=.. claude_dir=..`）。
+    /// daemon hello 的人读摘要（`v=.. arch=.. claude_home=..`）。
+    /// ⚠ `S4` 起 `claude_home` 是**解析后**的值（优先 `homes`、回退 `claude_dir`），
+    /// 不是某个线上字段的原样照抄。
     pub daemon_hello: Option<String>,
     /// 人读的总体状态 / 失败原因。
     pub message: String,
@@ -5798,10 +5867,12 @@ fn describe_hello(frame: &InboundFrame) -> String {
             build_id,
             host_arch,
             claude_dir,
+            homes,
             capabilities,
             commands,
         } => format!(
-            "v={v} build={build_id} arch={host_arch} claude_dir={claude_dir} caps={capabilities:?} cmds={commands:?}"
+            "v={v} build={build_id} arch={host_arch} claude_home={} caps={capabilities:?} cmds={commands:?}",
+            claude_home_from_hello(homes, claude_dir)
         ),
         other => format!("(非 hello 帧: {other:?})"),
     }
@@ -5971,12 +6042,92 @@ mod parse_frame_tests {
                 build_id: "abc123".to_string(),
                 host_arch: "aarch64".to_string(),
                 claude_dir: "/home/pi/.claude".to_string(),
+                // `S4`：本样本无 `homes` 字段（= 今天所有已部署的 daemon）→ 空表 ⇒ 回退 `claude_dir`。
+                homes: Vec::new(),
                 // F66：旧 daemon（本样本无 capabilities 字段）→ 空集（保守缺省）
                 capabilities: Vec::new(),
                 // U8a-2a：同理，无 commands 字段 → 空集 ⇒ 一条入方向命令都不发。
                 commands: Vec::new(),
             }
         );
+    }
+
+    /// ★ `S4`：`hello.homes` 的**解析 + 回退**必须有判据 —— 四种形态一次钉住。
+    ///
+    /// 它防的是 `commands` 那次同款的病（见下一条的 D 审计变异 B1）：
+    /// 字段名漂一个字母 ⇒ `homes` 永远空 ⇒ 永远走回退 ⇒ **一切照常绿**，
+    /// 而 additive 迁移实际上没发生。所以这里逐形态断言，不只断言"不 panic"。
+    #[test]
+    fn parses_hello_homes_and_falls_back_to_claude_dir() {
+        // ① 无 `homes`（= 今天所有已部署的 daemon）⇒ 空表 ⇒ 回退 `claude_dir`。
+        let old = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/old/.claude"}"#;
+        match parse_frame(old).expect("hello must parse") {
+            InboundFrame::Hello {
+                homes, claude_dir, ..
+            } => {
+                assert!(homes.is_empty(), "旧 daemon 不该凭空长出 homes");
+                assert_eq!(
+                    claude_home_from_hello(&homes, &claude_dir),
+                    "/old/.claude",
+                    "无 homes 时必须回退 claude_dir —— 这条一坏，所有已部署的 daemon 当场失去 home"
+                );
+            }
+            other => panic!("expected Hello, got {other:?}"),
+        }
+
+        // ② 有 `homes` 且含 claude 项 ⇒ **homes 优先**（`claude_dir` 故意给个不同的值，
+        //    这样"优先"是真的被验到了，而不是两边碰巧相等）。
+        let new = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/legacy/.claude","homes":[{"agent_kind":"claude","path":"/new/.claude"},{"agent_kind":"codex","path":"/new/.codex"}]}"#;
+        match parse_frame(new).expect("hello must parse") {
+            InboundFrame::Hello {
+                homes, claude_dir, ..
+            } => {
+                assert_eq!(homes.len(), 2, "两项都该解析出来：{homes:?}");
+                assert_eq!(homes[1].agent_kind, "codex");
+                assert_eq!(homes[1].path, "/new/.codex");
+                assert_eq!(
+                    claude_home_from_hello(&homes, &claude_dir),
+                    "/new/.claude",
+                    "有 homes 时必须**优先**读它 —— 回退值是 /legacy/.claude，读到它就说明优先级反了"
+                );
+            }
+            other => panic!("expected Hello, got {other:?}"),
+        }
+
+        // ③ 有 `homes` 但**没有 claude 那一项**（只服务别的 agent）⇒ 仍回退 `claude_dir`。
+        let other_only = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/legacy/.claude","homes":[{"agent_kind":"codex","path":"/new/.codex"}]}"#;
+        match parse_frame(other_only).expect("hello must parse") {
+            InboundFrame::Hello {
+                homes, claude_dir, ..
+            } => assert_eq!(
+                claude_home_from_hello(&homes, &claude_dir),
+                "/legacy/.claude",
+                "homes 非空但没有 claude 项时，不许把别的 agent 的 home 当成 claude 的"
+            ),
+            other => panic!("expected Hello, got {other:?}"),
+        }
+
+        // ④ 坏数据：非数组 / 元素不是对象 / 缺字段 / 字段类型不对
+        //    ⇒ **逐项丢掉、整帧仍解析**（`homes` 不是必需字段，坏它不该让整条 hello 变 garbage）。
+        let junk = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","homes":"not-an-array"}"#;
+        match parse_frame(junk).expect("非数组的 homes 不该让整帧变 None") {
+            InboundFrame::Hello { homes, .. } => assert!(homes.is_empty()),
+            other => panic!("expected Hello, got {other:?}"),
+        }
+        let mixed = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","homes":[7,null,{"agent_kind":"claude"},{"path":"/p"},{"agent_kind":"codex","path":42},{"agent_kind":"codex","path":"/ok"}]}"#;
+        match parse_frame(mixed).expect("坏项不该让整帧变 None") {
+            InboundFrame::Hello { homes, .. } => {
+                assert_eq!(
+                    homes,
+                    vec![AgentHome {
+                        agent_kind: "codex".to_string(),
+                        path: "/ok".to_string(),
+                    }],
+                    "只有完整且类型正确的那一项该留下：{homes:?}"
+                );
+            }
+            other => panic!("expected Hello, got {other:?}"),
+        }
     }
 
     /// ★ U8a-2a：`hello.commands` 的**解析**必须有判据。
