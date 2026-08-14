@@ -3,9 +3,36 @@
 set -uo pipefail
 BUS="${CC_BUS_HOME:-$HOME/.cc-bus}"
 [ -f "$BUS/spawned.tsv" ] || { echo "(还没 spawn 过会话)"; exit 0; }
+# ★★ **「同名会话在」不等于「它还活着」**〔08-13〕
+#
+# 这一列原来只判 `tmux has-session -t "=$id"` —— **纯按名字**。而会话名会被重用
+#（`cc-spawn` 就按目录基名取名）：agent 退出后别人占了这个名字，这里照样标「活」。
+# 今天同一族已经修过四处（敲门 / bus-list / cc-kill / UI 在线灯），这是第五处。
+#
+# ⚠ 本脚本读的 `spawned.tsv` **没有身份列**（只有 id/dir/ts/task）⇒ 去 `agents.tsv`
+# 借第 4 列（登记时记下的 pane 根进程 pid）。借得到就核，借不到就**说"核不了"**：
+#
+# | 状态 | 含义 |
+# |---|---|
+# | `活` | 同名会话在，**且身份核对通过** |
+# | `活?` | 同名会话在，但**核不了**（没登记 / 老格式没有身份列）—— 可能是它，也可能是别人占了名字 |
+# | `已退` | 没有同名会话 |
+#
+# ★ 三态而不是两态：把「核不了」并进「活」是今天这一族所有事故的共同起点。
 printf '%-18s %-6s %-40s %s\n' ID 状态 目录 初始任务
 while IFS=$'\t' read -r id dir ts task; do
   [ -n "${id:-}" ] || continue
-  if tmux has-session -t "=$id" 2>/dev/null; then st=活; else st=已退; fi
+  if ! tmux has-session -t "=$id" 2>/dev/null; then
+    st=已退
+  else
+    _want=$(awk -F'\t' -v id="$id" '$1==id{p=$4} END{print p}' "$BUS/agents.tsv" 2>/dev/null || true)
+    _tgt=$(awk -F'\t' -v id="$id" '$1==id{t=$2} END{print t}' "$BUS/agents.tsv" 2>/dev/null || true)
+    if [ -n "${_want:-}" ] && [ -n "${_tgt:-}" ]; then
+      _have=$(tmux display-message -p -t "=$_tgt" '#{pane_pid}' 2>/dev/null || true)
+      if [ "${_have:-}" = "$_want" ]; then st=活; else st=已退; fi
+    else
+      st='活?'
+    fi
+  fi
   printf '%-18s %-6s %-40s %s\n' "$id" "$st" "${dir:-}" "${task:-}"
 done < "$BUS/spawned.tsv"

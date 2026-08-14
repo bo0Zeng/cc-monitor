@@ -479,6 +479,27 @@ chk "★ 自己的 agent 开了新窗口，仍认得出是它（照杀，不误�
   "$(tmux has-session -t '=mwin_cc' 2>/dev/null && echo 还在 || echo 杀了)" "杀了"
 chk "  且把要一起收掉的窗口数说出来了" "$(printf '%s' "$_kout" | grep -c '有 2 个窗口')" "1"
 
+echo "[22] 【08-13】cc-agents 的「活」也不许只看名字（同一族第五处）"
+# 它原来只判 `tmux has-session -t "=$id"` ⇒ 名字被别人占了照样标「活」。
+# ⚠ 它读的 spawned.tsv **没有身份列** ⇒ 去 agents.tsv 借第 4 列。借不到就说"核不了"。
+# ★ 三态而不是两态：把「核不了」并进「活」正是今天这一族所有事故的共同起点。
+tmux new-session -d -s areal_cc -c /tmp 'sleep 300'; sleep 0.3
+TMUX_PANE="$(tmux list-panes -t '=areal_cc' -F '#{pane_id}' | head -1)" \
+  bash "$REPO/shared/cc-bus/scripts/cc-register" areal_cc >/dev/null 2>&1
+tmux new-session -d -s aghost_cc -c /tmp 'sleep 300'; sleep 0.3
+TMUX_PANE="$(tmux list-panes -t '=aghost_cc' -F '#{pane_id}' | head -1)" \
+  bash "$REPO/shared/cc-bus/scripts/cc-register" aghost_cc >/dev/null 2>&1
+tmux kill-session -t '=aghost_cc'; sleep 0.2
+tmux new-session -d -s aghost_cc -c /tmp 'sleep 999'; sleep 0.3   # 同名的无辜占用者
+tmux new-session -d -s anoreg_cc -c /tmp 'sleep 300'; sleep 0.3   # 有会话但没登记过
+printf 'areal_cc\t/tmp\tts\t任务A\naghost_cc\t/tmp\tts\t任务B\nanoreg_cc\t/tmp\tts\t任务C\n' \
+  > "$CC_BUS_HOME/spawned.tsv"
+_ag="$(bash "$REPO/shared/cc-bus/scripts/cc-agents")"
+_st() { printf '%s' "$_ag" | awk -v id="$1" '$1==id{print $2}'; }
+chk "★ 身份核过的 ⇒ 活" "$(_st areal_cc)" "活"
+chk "★★ 名字被别人占了 ⇒ **已退**（不再假报活）" "$(_st aghost_cc)" "已退"
+chk "★ 有会话但没登记、核不了 ⇒ **活?**（不是「活」）" "$(_st anoreg_cc)" "活?"
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 if [ "$fail" -eq 0 ]; then echo "===== cc-spawn 收编验收全部通过 ====="; fi
