@@ -53,6 +53,22 @@ fn is_false(b: &bool) -> bool {
     !*b
 }
 
+/// `hello.homes` 的一项 —— **某个 agent 在这台机器上的 home 目录**〔`S4` / `D3`〕。
+///
+/// `D3` 逐字：「agent 维度只许出现在**值**里（`agent_kind`），不许出现在**字段名**里」。
+/// 这个结构就是那条 charter 的形状：两个字段名都与任何一个 agent 无关，
+/// **接第三个 agent 是多一个元素，不是多一个字段**。
+///
+/// 它替掉的是并列 `<名>_dir` 那条路。那条路的终点 `D3` 已经写死了：
+/// hello 帧里五个并列的目录字段，而客户端要靠 `if/else` 猜哪个有值。
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AgentHome {
+    /// 哪个 agent —— **值**，与 `session_added.agent_kind` 同一套取值空间。
+    pub agent_kind: String,
+    /// 该 agent 在这台机器上的 home 目录（绝对路径）。
+    pub path: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Frame {
@@ -61,16 +77,26 @@ pub enum Frame {
         v: u32,
         build_id: String,
         host_arch: String,
+        /// ⚠ **冻结兼容字段，不是欠账**〔`S4`〕。字段名里带 agent 名，违反 `D3` ——
+        /// 但它是 hello 帧里**今天真的在线上、且有仓外消费方**（aterm，契约冻结 2026-07-18）
+        /// 的那一个。改名 = 破坏性变更，而 `D3` 自己给的出路是「bump 或走 additive 迁移」。
+        /// ⇒ 走 additive：新消费方读 `homes`，这个字段保持不动。
+        /// 解锁条件登记在 `agent_boundary_guard::FROZEN_COMPAT`（monitor 与 aterm **都**改读
+        /// `homes` 之后才能删）。**别把它挪回 `KNOWN_DEBT`** —— 那张表要清零，这条清不掉。
         claude_dir: String,
-        /// DG3（#2D，additive）：对称 `claude_dir`——Codex 记录根（`<codex_dir>/sessions`）。
-        /// skip_if_none：Codex 未启用 / 旧 daemon 省略（旧 client 忽略）。消费侧取路径用。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        codex_dir: Option<String>,
-        /// DG3（#2D，additive）：本 daemon **服务的 agent kind 集**（如 `["claude","codex"]`）——
-        /// 消费侧**显式判支持**（比「codex_dir 存在=支持 codex」推断清晰、可扩展未来第三种 agent）。
-        /// skip_if_empty：旧 daemon 省略 = 只 claude（向后兼容）。
+        /// `S4`（`D3`）：本机上**各 agent 的 home 目录**（`[{agent_kind, path}]`）。
+        ///
+        /// 它一次替掉了 DG3 那两个字段：`codex_dir`（并列的 `<名>_dir`，正是 `D3` 禁的形状）
+        /// 与 `kinds`（服务的 agent 集 —— 由本表的 `agent_kind` 直接读出，不必并列第二个来源）。
+        /// **那两个字段从来没上过线**（`main.rs` 一直硬写 `None` / 空 ⇒ skip），
+        /// 所以这次替换对任何已部署的消费方都是零影响 —— `D3` 逐字「越晚改越贵」，
+        /// 而它们还没被任何人收到的**现在**就是最便宜的一刻。
+        ///
+        /// skip_if_empty：今天 agent **发现**（DG1）未接线 ⇒ 恒空 ⇒ 省略
+        /// ⇒ **hello 帧对 Claude 的线上字节逐字节不变**（`hello_bytes_for_claude_are_frozen` 钉住）。
+        /// `S5` 落地时往这里填，**不要再加第二个目录字段**。
         #[serde(skip_serializing_if = "Vec::is_empty")]
-        kinds: Vec<String>,
+        homes: Vec<AgentHome>,
         /// F66（#58③，additive）：本 daemon 声明支持的**能力 token 集**（开放字符串，
         /// 加法式）。monitor 按此声明决定发哪些流模式 flag（`--with-bg`/`--tail-only`），
         /// **不再靠 build_id 精确匹配**——闭合 2026-07-09 那类「身份确认不了就全降级」事故。
@@ -687,8 +713,7 @@ mod tests {
                     build_id: "b".into(),
                     host_arch: "x86_64".into(),
                     claude_dir: "/home/u/.claude".into(),
-                    codex_dir: None,
-                    kinds: vec![],
+                    homes: vec![],
                     capabilities: vec!["bg".into(), "tail-only".into()],
                     emits: vec!["line".into(), "session_status".into()],
                     commands: vec![],
@@ -888,8 +913,7 @@ mod tests {
             build_id: "b".into(),
             host_arch: "x86_64".into(),
             claude_dir: "/c".into(),
-            codex_dir: None,
-            kinds: vec![],
+            homes: vec![],
             capabilities: caps,
             emits,
             commands: vec![],
@@ -986,9 +1010,50 @@ mod tests {
         assert_eq!(v["seq"], 42);
     }
 
+    /// ★ `S4` 的红线**落到生产路径上**：`main.rs` 今天必须给 `homes` 传空表。
+    ///
+    /// 下面那条 `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent` 钉的是
+    /// 「**给**空表就得到旧字节」—— 它管不了「生产那边到底给没给空表」。
+    /// 有人在 `main.rs` 里往 `homes` 填一项，那条照样全绿，而线上字节已经变了。
+    /// 本条补的正是那半：**谁在调它、生产路径上有没有第二条绕过去的路**。
+    ///
+    /// 它会在 `S5`/DG1 接线那天**故意变红**，那是设计出来的：填 `homes` 是一次
+    /// 跨仓契约变更（仓外 aterm 的 hello fixture 按精确字节对），
+    /// 必须有人当场重新裁一次，而不是顺手改过去。
+    #[test]
+    fn production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen() {
+        let prod = crate::guard_support::production_code(include_str!("main.rs"));
+        let sites: Vec<&str> = prod
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("homes:"))
+            .collect();
+        assert_eq!(
+            sites.len(),
+            1,
+            "`main.rs` 生产段里给 `homes` 赋值的地方有 {} 处（应当恰好 1 处）——\n\
+             0 处 ⇒ 抽取坏了（本断言此刻在空转）；≥2 处 ⇒ 有第二条路，红线只守住一条。\n\
+             实得：{sites:?}",
+            sites.len()
+        );
+        assert_eq!(
+            sites[0], "homes: Vec::new(),",
+            "`main.rs` 开始往 `homes` 里填东西了 ⇒ hello 帧对 Claude 的线上字节**变了**。\n\
+             这不是 bug，是 `S5`/DG1 该做的事 —— 但它是一次**跨仓契约变更**：\n\
+             仓外 aterm 的 hello fixture 按精确字节对（契约冻结 2026-07-18）。\n\
+             正确动作：与 aterm 同轮改，并同轮更新\n\
+             `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent` 的期望串。"
+        );
+    }
+
     // ─── DG3（#2D）：Codex wire additive 面 · 序列化 parity（aterm 消费侧 fixture 交叉核点）───
 
-    /// **present 形**（Codex 会话 / 支持 Codex 的 daemon）：新字段在线上、snake_case、值域正确。
+    /// **present 形**（多 agent 的 daemon）：新字段在线上、snake_case、值域正确。
+    ///
+    /// ⚠ **测试名刻意不改**〔`S4`〕：`doc/IPC-PROTOCOL.md` 与**仓外 aterm** 都按这个名字
+    /// 引用它当 fixture 真值，改名等于在跨仓契约上制造一处找不着。
+    /// 它钉的东西没变（「present 形的精确字节」），变的只是承载 agent 维度的字段 ——
+    /// `S4` 把 `codex_dir` + `kinds` 换成了通用的 `homes`（`D3`：agent 名只许在值里）。
     #[test]
     fn dg3_codex_fields_serialize_when_present() {
         let hello = to_line(&Frame::Hello {
@@ -996,17 +1061,26 @@ mod tests {
             build_id: "b".into(),
             host_arch: "x86_64".into(),
             claude_dir: "/c".into(),
-            codex_dir: Some("/home/u/.codex".into()),
-            kinds: vec!["claude".into(), "codex".into()],
+            homes: vec![
+                AgentHome {
+                    agent_kind: "claude".into(),
+                    path: "/c".into(),
+                },
+                AgentHome {
+                    agent_kind: "codex".into(),
+                    path: "/home/u/.codex".into(),
+                },
+            ],
             capabilities: vec![],
             emits: vec![],
             commands: vec![],
         })
         .unwrap();
-        // ★ 精确字节（aterm fixture 交叉核真值）：字段按声明序，codex_dir 在 claude_dir 后、kinds 次之。
+        // ★ 精确字节（aterm fixture 交叉核真值）：字段按声明序，`homes` 在 `claude_dir` 之后；
+        //   表内每项按 `AgentHome` 声明序 `agent_kind` → `path`。
         assert_eq!(
             hello,
-            "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\",\"codex_dir\":\"/home/u/.codex\",\"kinds\":[\"claude\",\"codex\"]}\n"
+            "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\",\"homes\":[{\"agent_kind\":\"claude\",\"path\":\"/c\"},{\"agent_kind\":\"codex\",\"path\":\"/home/u/.codex\"}]}\n"
         );
 
         let sa = to_line(&Frame::SessionAdded {
@@ -1051,8 +1125,7 @@ mod tests {
             build_id: "b".into(),
             host_arch: "x86_64".into(),
             claude_dir: "/c".into(),
-            codex_dir: None,
-            kinds: vec![],
+            homes: vec![],
             capabilities: vec![],
             emits: vec![],
             commands: vec![],
@@ -1061,7 +1134,9 @@ mod tests {
         assert_eq!(
             hello,
             "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\"}\n",
-            "codex_dir/kinds 空 → 省略，Hello 字节等价旧形"
+            "`homes` 空 → 省略，Hello 字节等价旧形。\n\
+             ★ 这条同时是 `S4` 的红线：换掉 `codex_dir`/`kinds` 之后，\n\
+             **Claude 那条线上的字节必须一个都没动**（右边这串是 `S4` 之前的原样）。"
         );
 
         let sa = to_line(&Frame::SessionAdded {

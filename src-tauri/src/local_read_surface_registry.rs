@@ -129,11 +129,16 @@ mod tests {
         (
             "src/ssh_source.rs",
             "remote",
-            8,
+            10,
             "★ **说的全是远端主机的 claude 目录**：daemon `hello` 帧的 `claude_dir` 字段 · \
              daemonless 那条远端 shell 串里的 `\\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects`。\
              **根本不是本机读面** ⇒ 不属 F10。\
-             ⚠ 我摸底时差点把它算成本机的 8 行 —— 同名最便宜的误导。",
+             ⚠ 我摸底时差点把它算成本机的 8 行 —— 同名最便宜的误导。\
+             〔daemon-split `S4` 08-14〕**8 → 10**：additive 迁移在消费侧多了一个解析点 —— \
+             `claude_home_from_hello`（优先 `hello.homes`、回退 `claude_dir`）加上它的两处调用。\
+             口径**没变**，还是远端：涨的两行说的仍是**远端** daemon 自陈的目录，不是本机的。\
+             ⚠ 这两行是**真的多出来的**，不是数字漂了 —— 本来可以把参数改名躲开针来保住 8，\
+             那才是「改数字了事」的镜像（为了不动数字去拧代码）。",
         ),
         (
             "src/lib.rs",
