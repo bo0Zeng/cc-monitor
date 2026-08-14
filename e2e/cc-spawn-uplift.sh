@@ -458,6 +458,27 @@ chk "  但陈旧登记要摘掉（那条确实是过期的）" \
 chk "  ★ 收件箱**不许删**（还不知道那个 agent 是不是真没了）" \
   "$([ -f "$CC_BUS_HOME/inbox/innoc_cc.jsonl" ] && echo 在 || echo 被删了)" "在"
 
+# ⚠ 台架撞名过一次：本套件早有一个 `multi_cc`（多行任务那格），而 `set -e` 下
+#   `duplicate session` 会**直接把套件打断**（没有 FAIL、没有合计行，看起来像"跑完了"）。
+#   ⇒ 新场景取名前先在本文件里搜一遍。
+# ⚠⚠ 上面那道身份核对**第一版有假阳性**（自己的探针撞出来的）：
+#   它写 `list-panes -t "=$id" | head -1`，取的是**当前窗口**的 pane ——
+#   用户在自己 agent 的会话里开一个新窗口，当前窗口就变了 ⇒ pid 对不上
+#   ⇒ cc-kill 对**它自己的 agent** 说「名字被别人占了」。
+#   ★ **假阳性比不查更坏**：它会让人以为这道保护坏了，进而把它删掉。
+#   ⇒ 改成问 agents.tsv 第 2 列那个**完整地址**（`sess:win.pane`），与敲门那条一致。
+tmux new-session -d -s mwin_cc -c /tmp 'sleep 300'; sleep 0.3
+TMUX_PANE="$(tmux list-panes -t '=mwin_cc' -F '#{pane_id}' | head -1)" \
+  bash "$REPO/shared/cc-bus/scripts/cc-register" mwin_cc >/dev/null 2>&1
+tmux new-window -t '=mwin_cc' 'sleep 300'; sleep 0.3
+chk "台架自检：这个 agent 现在有 2 个窗口" \
+  "$(tmux display-message -p -t '=mwin_cc:' '#{session_windows}')" "2"
+_kout="$(bash "$REPO/shared/cc-bus/scripts/cc-kill" mwin_cc 2>&1)"
+sleep 0.3
+chk "★ 自己的 agent 开了新窗口，仍认得出是它（照杀，不误判成「别人占了」）" \
+  "$(tmux has-session -t '=mwin_cc' 2>/dev/null && echo 还在 || echo 杀了)" "杀了"
+chk "  且把要一起收掉的窗口数说出来了" "$(printf '%s' "$_kout" | grep -c '有 2 个窗口')" "1"
+
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
 if [ "$fail" -eq 0 ]; then echo "===== cc-spawn 收编验收全部通过 ====="; fi
