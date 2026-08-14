@@ -490,10 +490,21 @@ monitor 永远不会发的形状。
 
 ```text
 → {"id":"B1","cmd":"bus-list","args":{}}
-← {"kind":"reply","id":"B1","ok":true,"data":{"agents":[{"id":"proj_cc","target":"proj_cc:0.0","unread":2}]}}
+← {"kind":"reply","id":"B1","ok":true,"data":{"agents":[
+     {"id":"proj_cc","target":"proj_cc:0.0","unread":2,"live":true,"ccm_sid":"1a2b3c4d"}]}}
 ```
 
-`agents` 是一个数组，每项三个字段：`id`（总线身份）· `target`（tmux 地址）· `unread`（待读条数）。
+`agents` 每项五个字段：`id`（总线身份）· `target`（tmux 地址）· `unread`（待读条数）
+· `live`（这个地址**今天还在不在**）· `ccm_sid`（那个会话绑的 Claude sid，没绑 ⇒ `null`）。
+
+★★ **总线成员是身份空间的子集，不是第二套名单**〔用@08-13：「那他不应该是身份空间的
+子集吗? 他应该去调用身份空间啊」〕。cc-bus 自己那份 `agents.tsv` 记的地址**会过期** ——
+会话名被重用是常态（`cc-spawn` 按目录基名取名），实测后果是敲门文字被打进**陌生占用者**
+的屏幕。⇒ `live` / `ccm_sid` 由 daemon **去问 tmux**（一次 `list-sessions` 列全部，
+不是每个成员探一次），cc-bus 那份只回答「谁登记过 + 邮箱里还剩几条」。
+
+⚠ **`live` 有三态**：`true` / `false` / `null`。拿不到身份空间（没装 tmux、起不来）时是
+`null` —— 「不知道」与「不在」是两件事，混起来会让调用方把一屋子活人当成死人。
 
 **它是只读的**，而且**刻意只读**：cc-bus 那边真正"读消息"的命令是 `cc-recv`，
 而 `cc-recv` **会推进已读位置** —— daemon 代替人去读，等于把消息从人那里偷走
