@@ -4,7 +4,8 @@
 # 两件事同一族，都在这套里：
 #  ① 队列里滞留的消息没人管（`cc-busd` 死在「入队后、取走前」）——`[1]`~`[6]`；
 #  ② 收件人根本不存在（名字打错/对方还没登记）——`[7]`；
-#  ③ Stop 钩子把消息**消费掉了却没喂回去**（`cc-recv` 有副作用，喂回在它之后）——`[8]`。
+#  ③ Stop 钩子把消息**消费掉了却没喂回去**（`cc-recv` 有副作用，喂回在它之后）——`[8]`；
+#  ④ `cc-recv` 跳过读不懂的行却**一个字都不说**——`[14]`。
 # 共同形状：**投递没发生，而两侧都被告知一切正常**。
 #
 # ## 它守的那件事
@@ -267,6 +268,43 @@ chk "  三条都还读得到（没被吞）" \
 chk "  且明说了（不是静默吞掉）" \
   "$(grep -c '喂回消息失败' "$SANDBOX/hookerr.txt")" "1"
 unset CC_BUS_ID
+
+echo "[14] ★ 读不懂的行照跳，但必须说一句"
+# `fromjson? // empty` 静默丢掉解析不了的行（防毒丸卡死，那是对的），
+# 而已读位置**照样推过去** ⇒ 那条消息永远读不到了，且没有任何地方提过。
+# ⚠ 丢弃不改（毒丸不能卡住整条收件箱）——改的是**沉默**。
+new_bus 14
+python3 - "$B/inbox/br_cc.jsonl" <<'PYEOF'
+import json,sys
+with open(sys.argv[1],'w') as f:
+    f.write(json.dumps({"id":"a","from":"alice","to":"br_cc","ts":"x","text":"第一条",
+                        "class":"direct","in_reply_to":None,"trace":"alice","hops":0,"prio":0},
+                       ensure_ascii=False)+"\n")
+    f.write('{"id":"b","from":"alice","to":"br_cc","text":"这行被截断了…\n')   # 半截 JSON
+    f.write(json.dumps({"id":"c","from":"alice","to":"br_cc","ts":"x","text":"第三条",
+                        "class":"direct","in_reply_to":None,"trace":"alice","hops":0,"prio":0},
+                       ensure_ascii=False)+"\n")
+PYEOF
+echo 0 > "$B/state/br_cc.pos"
+_rv="$(bash "$S/cc-recv" br_cc)"
+chk "两条好的照常显示" "$(printf '%s' "$_rv" | grep -c '【cc-bus 来自')" "2"
+chk "★ 那一条读不懂的**被说出来了**（不再是沉默）" \
+  "$(printf '%s' "$_rv" | grep -c '跳过 1 条读不懂')" "1"
+chk "  且说了去哪儿查（收件箱路径 + 行号范围）" \
+  "$(printf '%s' "$_rv" | grep -c 'br_cc.jsonl 的第 1..3 行')" "1"
+chk "  已读位置照样推到底（毒丸不许卡住整条收件箱）" "$(cat "$B/state/br_cc.pos")" "3"
+# 对照：全是好行时不许多嘴
+new_bus 15
+python3 - "$B/inbox/ok_cc.jsonl" <<'PYEOF'
+import json,sys
+with open(sys.argv[1],'w') as f:
+    f.write(json.dumps({"id":"a","from":"alice","to":"ok_cc","ts":"x","text":"好的",
+                        "class":"direct","in_reply_to":None,"trace":"alice","hops":0,"prio":0},
+                       ensure_ascii=False)+"\n")
+PYEOF
+echo 0 > "$B/state/ok_cc.pos"
+chk "  对照：全是好行时**零噪音**" \
+  "$(bash "$S/cc-recv" ok_cc | grep -c '跳过')" "0"
 
 echo
 echo "===== 合计 PASS=$pass FAIL=$fail ====="
