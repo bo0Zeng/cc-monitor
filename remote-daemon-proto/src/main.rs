@@ -458,11 +458,23 @@ async fn main() {
         //（通用层不该在标识符里叫得出某个 agent 的名字 —— `D3` 的同一条道理往仓内推）。
         // ⇒ 这一行正是两条纪律的交界处：**字段名归契约，变量名归架构**。
         claude_dir: agent_home.to_string_lossy().into_owned(),
-        // `S4`（`D3`）：wire 面已换成通用的 `homes`（`[{agent_kind, path}]`），但 agent
-        // **发现**（DG1）仍未接线 ⇒ 今天恒空 ⇒ skip ⇒ **Hello 帧对 Claude 的字节不变**。
-        // `S5`/DG1 落地时往这里填表，**不要再加第二个目录字段** —— 那正是 `D3` 排除掉的路。
-        // ⚠ 填之前先想清楚 aterm 那边：它的 fixture 按精确字节对，多一个字段就是一次契约变更。
-        // 这一行由 `production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen` 钉住。
+        // `S4`（`D3`）：wire 面已换成通用的 `homes`（`[{agent_kind, path}]`）。
+        //
+        // ★★〔`S5` 08-14〕**这一行是空表，但已经不是因为"做不到"了。**
+        // `agents::visible_homes()` 今天就能答出这台机器看得见哪些 agent
+        //（判准：home 目录存在；理由与被排除的另两条候选写在那个函数的头注里）。
+        // 换过去只要改这一行 —— `S5` 的口径是 **能填不真填**：
+        //   填 = 一次**跨仓契约变更**（仓外 aterm 的 hello fixture 按精确字节对），
+        //   而本机没有 aterm 仓、验不了它的运行时（前提 `P3`）
+        //   ⇒ 把"何时真填"留成一次**纯发布决策**，而不是顺手改过去。
+        // 真填那天要同轮做的三件事：① 换这一行；② 更新
+        //   `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent` 的期望串；
+        //   ③ **bump `BUILD_ID`**（那天线上字节真的变了，已部署的远端得被判 stale）。
+        // ⚠ 无论如何**不要再加第二个目录字段** —— 那正是 `D3` 排除掉的路。
+        // 这一行由 `production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen` 钉住
+        //（它会在那天**故意变红**：那是提醒，不是障碍）；旁边那条
+        // `the_daemon_can_already_discover_homes_it_just_does_not_send_them`
+        // 钉的是另一半 —— 空表不等于没能力。
         homes: Vec::new(),
         capabilities: CAPABILITIES.iter().map(|s| s.to_string()).collect(),
         emits: EMITS.iter().map(|s| s.to_string()).collect(),
@@ -648,8 +660,15 @@ async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
 /// 解析会话数据根。
 ///
 /// ⚠ `S3` 把**怎么解析**搬进了 `agents/claudecode/paths.rs`（环境变量名与目录名是
-/// Claude 的知识）。这里只剩"去问适配层" —— 今天 daemon 只服务一种 agent，
-/// 所以是写死的一句；`S5`（hello 声明看得见哪些 agent）落地时它会变成按 kind 取。
+/// Claude 的知识）。这里只剩"去问适配层" —— 今天 daemon 只服务一种 agent，所以是写死的一句。
+///
+/// ⚠〔`S5` 08-14 订正〕原注这里写着「`S5` 落地时它会变成按 kind 取」——**`S5` 没有那么做，
+/// 而且这条订正比原话更要紧**：本函数要的是**恒定**答得出的那个 home（流式 watcher 与
+/// 所有一次性子命令都拿它当根），而 `agents::visible_homes()` 只报**看得见**的那些
+///（home 目录不存在就一条都不报）。两者语义不同 ——
+/// 把这里换成"按 kind 取"会让 `~/.claude` 还没建出来的新机器上 daemon 直接失根，
+/// 而它原本是能正常起来、等 inotify 等到第一个会话的。
+/// ⇒ 真正会变的是**别处**：`main` 里 `homes:` 那一行（见上）。归 `S6`/`L2` 的接口那轮再看。
 fn resolve_agent_home() -> PathBuf {
     agents::claudecode::paths::resolve_home()
 }
