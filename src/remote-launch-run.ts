@@ -26,7 +26,13 @@ import {
 import type { LaunchModifiers } from "./launch-plan";
 import { renderFallback } from "./launch-render-fallback";
 // U8c-2c-2：`tryRenderCli` **不再是生产渲染器**（那一支已切到 Rust）——
-// 它降级为「只供 `launch-cli-golden.ts` 生成夹具」，删在 U8c-3。
+// 它降级为「只供 `launch-cli-golden.ts` 生成夹具」。
+// ⚠ 〔U8c-3-r2 08-14〕原写「删在 U8c-3」。**那个排期本身该被重问一次**：它今天是
+// `cli-golden.json` 的**唯一生成者**，而那份夹具是「ccm 调用行该长什么样」在本仓的
+// **独立说法**（Rust 侧 `ccm_invocation.rs` 的自测与实现同住一个文件，不是同一种独立）。
+// 删它 = 把跨语言对拍降级成「Rust 没变」的冻结快照 —— `ccm_invocation.rs` 的 P1 头注
+// 逐字预告过这个后果。⇒ 删它是**用一份独立说法换 ~500 行非生产代码**，
+// 而它今天零生产调用、零漂移风险（夹具字节比对钉着）。本轮复裁：**不划算，不删**。
 import type { CliRenderResult } from "./launch-render-cli";
 import type { CliRenderRequest, PayloadRenderRequest } from "./launch-cli-wire.ts";
 import type { CcmProbeResult } from "./ccm-probe.ts";
@@ -68,6 +74,9 @@ async function renderLaunchCommand(
     //
     // ⚠ **兜底那支仍在 TS**：`container: tmux` 时它要外层 tmux 命令（`session-backend.ts`），
     // 而 §33b 写死了「搬它之前必须先回答三件事」。⇒ 那支归 U8c-3。
+    // ⚠ 〔U8c-3-r2 08-14 复裁〕三问逐条重量过，**一条都没过期到可以放行**，其中 ③ 反而
+    // 从「未决」变成「已决：要」（daemonless 是活的每机开关）⇒ 比 08-04 更删不得。
+    // 三条依据各有一条会红的判据，住 `launch_wire.rs` 的 `f07_main_path_tests`。
     const r = await renderCliViaBackend(ctx, plan, probe);
     if (r.ok) return r.cmd;
     // R04① 的第二条收益（Phase D 审计指出它此前"只活在测试里"，生产侧零消费者）：

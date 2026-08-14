@@ -962,12 +962,33 @@ U8c-1 摸底后拆成三步：
 |---|---|---|
 | ① | 生产切到 daemon 的 `launch` 了吗 | ⚠ **F07 2026-08-04 订正为「部分是」**（原写「否 —— 全仓只有一处且在 `cfg(test)` 里」，那句**已过期**）：实测**生产段有一处** `backend/control/daemon_launch.rs:111`（U8a-2c-1 交付的 `daemon_send_into`）⇒ **`send-into` 那一格已切**；`create-or-attach` 与 **attach** 两格未切。`ssh_source.rs:2208` 那条 `!accepts("launch")` 仍在，但它断言的是「某个 hello 没声明 launch」，**不是「生产不调 launch」** —— 两件事。〔原文续〕~~U8a-2c 未做~~ ⚠ **F11 2026-08-04 再订正：这半句也已过期** —— **U8a-2c-1 已交付**（`daemon_send_into`，`send-into` 那一格），F04c 又接了 `send-keys`（不是「起会话」的格）。仍未切的是 **`create-or-attach` 与 attach 两格** ⇒ 该说「U8a-2c **未做完**」，不是「未做」 |
 | ② | attach 那条串归谁产 | **一半有答案**：装了 ccm 的主机 U8c-2c-2 起已是 Rust 产（`ccm attach <名>`）；**没装 ccm 的仍靠 `session-backend.ts::attach`** |
-| ③ | daemonless 的远端还要不要能起会话 | **未决** —— U12 仍是待做项 |
+| ③ | daemonless 的远端还要不要能起会话 | ⚠ **2026-08-14 第三次订正：已决，答案是「要」**（原写「**未决** —— U12 仍是待做项」）。`U12` 那个**件**确实被 `C7` 关掉了，但 `C7` 逐字裁的是「**本机**也要有后端进程」；而 `daemonless` 今天仍是**每台远端主机的用户开关**（`src/settings/machine-card.ts` 的 checkbox「daemonless 降级读取（无需 daemon）」→ `src/remote-config.ts` 的 `RemoteHostConfig.daemonless`，前端生产段 7 个文件 31 处）⇒ 那种主机**存在**，且它的 `↗` 走纯 SSH（`launch_remote_terminal` 不经 daemon）⇒ 没装 ccm 时命令只能由 monitor 自己渲染。**⇒ ③ 从软障碍（未决所以不敢删）变成硬障碍（已决为「要」所以确定不能删）**。判据：`launch_wire.rs::the_daemonless_remote_still_needs_the_ts_fallback_renderer`（开关哪天真没了它主动红） |
 
 ⇒ ⚠ **F11 2026-08-04 订正这条推论的依据**：原写「①「否」+ ③「未决」」，而 ① 早在 F07 就订正成了「**部分是**」（`send-into` 那一格已切）。**结论没变**，但依据要换成还量得准的那两条：**`create-or-attach` 与 attach 两格仍未切**（①的剩余面）**＋ ③「未决」** ⇒ 今天删不得：硬删会把「没装 ccm 的远端」与「daemonless 的远端」
 两类主机的起会话能力直接删掉，而那两类今天都还成立。
 **U8c-3 的真前置不是文档，是 U8a-2c 与 U12 两件功能** —— ⚠ **F11 订正：U8a-2c 是「未做完」不是「未做」**（`send-into` 那一格 U8a-2c-1 已交付；剩 `create-or-attach` 与 attach）。
 ⚠ **本节这三处（914 · 925 末 · 本段）与 F07 订正的那一处说的是同一句话。**F07 只订正了手头那一处 ⇒ **同族的三处又活了一轮**。**订正一句假话时，先把它的全部副本找出来**（F01 的四处「每 ~8s」是同一个病）——这条纪律由 `doc_claim_registry` 把可数的那部分变成机检。
+
+### 2026-08-14 第三次复裁（U8c-3-r2）：结论第三次不变，而这次**多了一条硬依据、少了一个假绿的量具**
+
+三问逐条重量，**没有一条过期到可以放行**：
+
+| # | 08-14 实测 | 它今天挡的是什么 |
+|---|---|---|
+| ① | **仍是「部分是」** —— 生产段发 `create-or-attach` **0 处**（`launch_wire.rs` 那条判据在量）；`attach` 结构上不归 daemon（`control/launch.rs` 头注「本模块**不 attach**，一次都不」） | 起会话的两格（create / attach）没有 Rust 承接方 |
+| ② | **仍挡着，而且不止 attach** —— `renderFallback` 的**三格**（tmux `create` / `send-into` / `attach`）全在 TS；`container:"none"` 那格 U8a-2c-pre 已切走，`ccm` 那条 U8c-2c-2 已切走，**剩下的正好就是要外层 tmux 命令的那三格** | 没装 ccm 的远端 |
+| ③ | **已决：要**（见上表 ③ 那一格） | daemonless 的远端 |
+
+⚠ **本轮真正修掉的是量具，不是结论。** F07 立的前提触发器里，依据一原式是
+`fallback.contains("session-backend") || run.contains("session-backend")` ——
+**整份文件的子串、含注释、而且是 `||`**。而 `remote-launch-run.ts` 的注释里逐字提了 4 次
+`session-backend.ts`（那些注释干的正是「解释这一格为什么还在 TS」这件事）⇒
+**把生产调用点删干净，那条依然绿**。一条**前提触发器**在它被造出来要报的那个方向上是瞎的，
+与没有判据是同一件东西。现在量的是「生产段里那个调用还在不在」。
+
+⚠ **「件关掉了」不等于「约束消失了」** —— ③ 这次栽的就是这个。本节前两次栽的是
+「结论对所以没人查理由」；这次是「**件关了所以没人查约束**」。
+两者的处置相同：**把结论留住，把依据换成还量得准的那个**，并且给它配一条会红的判据。
 
 ### 六条不变量各自的命运（U8c-1 逐条判定，别到 U8c-3 才现想）
 
