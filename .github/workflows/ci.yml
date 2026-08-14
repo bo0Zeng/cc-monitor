@@ -300,7 +300,8 @@ jobs:
             src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso \
             src-tauri/vendor/cc-acct-iso/scripts/lib.sh \
             src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso-install.sh \
-            src-tauri/vendor/cc-acct-iso/scripts/test/run-tests.sh)
+            src-tauri/vendor/cc-acct-iso/scripts/test/run-tests.sh \
+            hooks/pre-commit)
           N=$(printf '%s\n' "$FILES" | grep -c .)
           echo "shellcheck 覆盖 $N 个文件"
           # 地板：2026-07-30 实测 37（e2e 19 + cc-bus 13 + ccm 1 + vendored 4）；
@@ -348,7 +349,12 @@ jobs:
           #   今天实测构成：**51 = e2e 30 + fake-claude 1 + cc-bus 14 + ccm 1 + scripts 1 + vendored 4**。
           #   **2026-08-13 棘到 52**：新增 `scripts/gate.sh`（出货前的唯一闸门 —— 它自己也要被 lint）。
           #   今天实测构成：**52 = e2e 30 + fake-claude 1 + cc-bus 14 + ccm 1 + scripts 2 + vendored 4**。
-          [ "$N" -ge 54 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 52）"; exit 1; }
+          # **2026-08-14 棘到 55** —— 新增 `hooks/pre-commit`（C7 的机器挡，默认不启用：
+          # 要 `git config core.hooksPath hooks` 才生效）。它是被 `shell_lint_registry`
+          # **当场逮住的**：文件建出来就没进这条表达式，而计数地板照旧绿 ——
+          # 那条登记表的诊断逐字说中了「地板只会数它扫到的那些，数不出它没扫的那些」。
+          # 实测构成：55 = 上一轮 54 + hooks/pre-commit 1。
+          [ "$N" -ge 55 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 55）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 

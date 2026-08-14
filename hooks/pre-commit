@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+# C7 的机器挡：`[profile.dev]` 不许进提交。
+#
+# ⚠⚠ **本文件默认是死的**。它只有在你显式启用之后才会跑：
+#
+#     git config core.hooksPath hooks     # 启用
+#     git config --unset core.hooksPath   # 关掉
+#
+# 之所以「提交进来但不启用」：装钩子会改你本地的 git 配置，而且
+# `core.hooksPath` 一设，**你将来放进 `.git/hooks/` 的东西会全部失效** ——
+# 那是你的环境决定，不该由别人替你做。这里只把机制备好。
+#
+# 它挡什么：`src-tauri/Cargo.toml` 里的 `[profile.dev]`（本机构建瘦身的私改，
+# 逐字见项目约束 C7「不提交 Cargo.toml 的 [profile.dev]」）。
+# 2026-08-14 这条被真破过一次：一条 `A | B && C` 的链里 `B` 是 `tail`，
+# `A` 失败被洗成成功，`git add -A` 于是跑进了代码仓。已 reset 撤回，但那次是靠人发现的。
+if git diff --cached -- src-tauri/Cargo.toml | grep -q '^+\[profile\.dev\]'; then
+  echo "✗ C7：[profile.dev] 不许进提交（那是本机构建瘦身的私改）"
+  echo "  要提交这个文件的其它改动：git restore --staged src-tauri/Cargo.toml 之后单独挑 hunk"
+  exit 1
+fi
