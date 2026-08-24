@@ -39,19 +39,22 @@ function hits(code: string, ident: string): number {
  *
  * `null` = 允许出现但不钉次数（只钉「就这一个文件」）；数字 = 钉死次数（加一处就红）。
  *
- * ⚠ **`src/account-chip.ts` 那一格是一笔明账，不是豁免。**
- * 它是设置里那张账号表（`settings/accounts-section.ts`）的**同职第二处**：
- * 状态栏 chip 的账号菜单渲染同一个三态。K-A1 已经把取值收进
- * `accounts.ts::accountStatusBadge` 并把设置那侧改过去了，但 `account-chip.ts`
- * **不在 K-A1 的写区**（派工单逐条列了 11 项，它不在里面）⇒ 由 PM 落。
- * 它的替换逐字是：`accountRow` 里那段 `if (a.mode === "in-place") … else if (!a.loggedIn) …
- * else "已登录"`（今天 `src/account-chip.ts:255-265`）整段换成
- * `const s = accountStatusBadge(a); status.textContent = s.text; row.title = s.title;`。
- * **落了之后这一格应变成 0（连键一起删）**，那时 api-key 号在 chip 菜单里也不会再显示「已登录」。
+ * ⚠ **`src/account-chip.ts` 那一格已经没了（K-A1 第二轮落的），别再加回来。**
+ * 它曾经登记 `loggedIn: 1` —— 那是设置里那张账号表（`settings/accounts-section.ts`）的
+ * **同职第二处**：状态栏 chip 的账号菜单渲染同一个三态，而第一轮只改了设置那侧
+ * ⇒ api-key 号在 chip 菜单里仍显示「已登录」，`KA6a` 那段文案只堵了一半。
+ * 第二轮把 `accountRow` 里那段 `if (a.mode === "in-place") … else if (!a.loggedIn) …
+ * else "已登录"` 整段换成 `accountStatusBadge(a)`，本文件那一整行**连键一起删**
+ * ⇒ 今天 `account-chip.ts` 的 `loggedIn` 命中数是 **0**（不是被豁免成 0，是真的没有）。
+ * 阴性对照实测（第二轮 `M1`）：只删这一行、`account-chip.ts` 一字不动 ⇒ 下面第 2 条当场红，
+ * 报文逐字 `src/account-chip.ts: loggedIn 出现 1 次（登记 0）`，`offenders` 长度 1。
+ *
+ * ⇒ **登记表今天只剩 `src/accounts.ts` 一格。** 谁要往这张表加第二格，先回答一句：
+ * 「这个新落点凭什么不能走 `isSelectable` / `accountStatusBadge`」——
+ * 上面那两轮的教训是：同职两处必然漂，而漂的那一侧用户先看见。
  */
 const ALLOWED: Record<string, Record<string, number | null>> = {
   "src/accounts.ts": { loggedIn: 1, authReady: null, authKind: null },
-  "src/account-chip.ts": { loggedIn: 1, authReady: 0, authKind: 0 },
 };
 
 /** 被钉的三个字段名。 */
