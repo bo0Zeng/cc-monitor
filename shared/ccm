@@ -581,22 +581,25 @@ avoid_name_collision() {
 #   （`"name"…[^}]*"configDir"`）—— 键序一换它就**静默**解析不到。这里逐键单独取。
 # ⚠ 如实边界：这是纯文本解析，值里若有 `\"` 转义会取偏（`is_safe_config_dir` 已挡掉
 #   `configDir` 里的引号与反斜杠，`name` 没有那道谓词）。**旧版同样如此，没有变弱。**
-#   有 `jq` 时走下面两条 `jq` 分支，这份只在「无 daemon 且无 jq」时才被用到。
-json_objs_to_table() {   # stdin: 每行一个账号对象 → stdout: <name>\t<configDir>\t<0|1>
-  local l n c d
-  # ★ `|| [ -n "$l" ]` **不能省**〔08-24 实测，第一版就栽在这儿〕：`manifest_to_table`
-  #   喂进来的最后一块**没有结尾换行**（`tr '{' '\n'` 只把 `{` 换成换行，原文末尾那个 `}`
-  #   后面什么都没有）⇒ 纯 `read` 那一版把**唯一那个账号对象整块丢掉**，
-  #   表变空 ⇒ 症状是「可用: (无账号库)」而 manifest 明明在。
-  while IFS= read -r l || [ -n "$l" ]; do
-    case "$l" in *'"name"'*) : ;; *) continue ;; esac
-    n="$(printf '%s' "$l" | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-    [ -n "$n" ] || continue
-    c="$(printf '%s' "$l" | sed -n 's/.*"configDir"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-    d=0
-    printf '%s' "$l" | grep -q '"isDefault"[[:space:]]*:[[:space:]]*true' && d=1
-    printf '%s\t%s\t%s\n' "$n" "$c" "$d"
-  done
+#   有 `jq` 时两个 feeder 各走自己那条 `jq` 分支，这份**只在没有 `jq` 时**被用到
+#   （daemon 那条与文件那条**都**会落到它 —— 别把它当成「只有文件退路才用」，见 `KCM6`）。
+# ★★ **纯 bash，零外部进程**〔08-24 第二版改的，理由是一条真回归〕：
+#    第一版用 `sed`/`grep`/`awk` 实现这几个函数，于是 `e2e/ccm-cli.test.sh` 的「身份前置检查」
+#    一节当场红成 `awk: command not found` —— 那一节**刻意**只给一个装了 bash 的瘦 PATH，
+#    而它钉的是「找得到 daemon ⇒ stderr **一个字都没有**」。
+#    ⇒ 判据说的是真话：本文件经 `sftp.rs` 部署到**任意远端**，旧实现只用 `jq`（可选）+
+#      `grep`/`sed`，我却给热路径加了一条硬 `awk` 依赖。**那是可用性回归，不是测试环境的问题。**
+#    改成 bash 内建（`[[ =~ ]]` + 参数展开 + `read`）之后：零依赖、零 fork，
+#    顺带把每次查表的进程数从 1 降到 0。
+acct_row_from_slice() {   # $1=一块含单个账号对象的 JSON 文本 → stdout: <name>\t<configDir>\t<0|1>（取不到则不输出）
+  local l="$1" n="" c="" d=0
+  [[ "$l" == *'"name"'* ]] || return 0
+  # `[[ =~ ]]` 的 `[[:space:]]` 含换行 ⇒ pretty-print 的 manifest 也吃得下，不必先压成一行。
+  [[ "$l" =~ \"name\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && n="${BASH_REMATCH[1]}"
+  [ -n "$n" ] || return 0
+  [[ "$l" =~ \"configDir\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && c="${BASH_REMATCH[1]}"
+  [[ "$l" =~ \"isDefault\"[[:space:]]*:[[:space:]]*true ]] && d=1
+  printf '%s\t%s\t%s\n' "$n" "$c" "$d"
 }
 
 # daemon 的 `--list-accounts` 输出（首行 meta + 每账号一行）→ 表。
@@ -604,11 +607,14 @@ json_objs_to_table() {   # stdin: 每行一个账号对象 → stdout: <name>\t<
 #   少读一个键就少一条跨仓依赖 ⇒ 刻意**不消费** `exists`/`loggedIn`/`authKind`/`authReady`
 #   （目录在不在照旧由本文件自己 `-d` 判，与今天逐字同一个判法）。
 #   连带的好处：daemon 往那些帧里加字段，本文件一个字都不用改。
-daemon_out_to_table() {
+daemon_out_to_table() {   # $1 = daemon 的整段输出
   if command -v jq >/dev/null 2>&1; then
-    jq -r 'select(has("name")) | [.name, (.configDir // ""), (if .isDefault then "1" else "0" end)] | @tsv' 2>/dev/null
+    printf '%s\n' "$1" \
+      | jq -r 'select(has("name")) | [.name, (.configDir // ""), (if .isDefault then "1" else "0" end)] | @tsv' 2>/dev/null
   else
-    json_objs_to_table
+    local l
+    # `|| [ -n "$l" ]`：最后一行可能没有结尾换行（daemon 是 `println!`，今天有；别赌）。
+    while IFS= read -r l || [ -n "$l" ]; do acct_row_from_slice "$l"; done <<<"$1"
   fi
 }
 
@@ -619,9 +625,17 @@ manifest_to_table() {
     jq -r '.accounts[]? | select(.name) | [.name, (.configDir // ""), (if .isDefault then "1" else "0" end)] | @tsv' \
        "$CCM_ACCTS_MANIFEST" 2>/dev/null
   else
-    # 先把每个账号对象各自切成一行，再喂给共用解析器。顺带修掉旧兜底的两条脆弱假设：
-    # ①「manifest 是每账号一行的紧凑格式」（pretty-print 就失灵）；② 键序（见上）。
-    tr -d '\n' < "$CCM_ACCTS_MANIFEST" 2>/dev/null | tr '{' '\n' | json_objs_to_table
+    # 无 jq：按 `{` 切块，每块喂给共用解析器。**`read -d '{'` 是 bash 内建 ⇒ 不需要 `tr`**
+    # （第一版用的是 `tr -d '\n' | tr '{' '\n'`，两个 fork + 两条外部依赖）。
+    # 顺带修掉旧兜底的两条脆弱假设：①「manifest 是每账号一行的紧凑格式」（pretty-print 就失灵）；
+    # ② 键序（见上）。
+    # ★ `|| [ -n "$chunk" ]` **不能省**〔08-24 实测，第一版就栽在这儿〕：末尾那一块后面
+    #   没有 `{` ⇒ 纯 `read -d '{'` 会把**最后一个账号对象整块丢掉**（只有一个账号时表直接变空，
+    #   症状是「可用: (无账号库)」而 manifest 明明在）。
+    local chunk
+    while IFS= read -r -d '{' chunk || [ -n "$chunk" ]; do
+      acct_row_from_slice "$chunk"
+    done < "$CCM_ACCTS_MANIFEST"
   fi
 }
 
@@ -653,7 +667,7 @@ acct_table_load() {
     # （PATH 上捡到的同名第三方、太旧的 daemon、崩了、被 timeout 掐了 —— 全长这样）。
     case "$out" in
       *'"kind":"accounts-meta"'*)
-        _ccm_acct_tab="$(printf '%s\n' "$out" | daemon_out_to_table)"
+        _ccm_acct_tab="$(daemon_out_to_table "$out")"
         _ccm_acct_src=daemon
         unset _ccm_db
         return 0 ;;
@@ -677,24 +691,34 @@ acct_table_load() {
 # 「换号不生效」更坏。所有失败一律回空串。
 # ⚠ 目录存在性照旧**本文件自己判**（不消费 daemon 的 `exists`）—— 少一条跨仓依赖。
 account_config_dir() {
-  local dir
-  dir="$(printf '%s\n' "$_ccm_acct_tab" | awk -F'\t' -v n="$1" '$1==n{print $2; exit}')"
-  [ -n "$dir" ] && [ -d "$dir" ] || { printf ''; return; }
-  printf '%s' "$dir"
+  local want="$1" n c d
+  while IFS=$'\t' read -r n c d; do
+    [ "$n" = "$want" ] || continue
+    [ -n "$c" ] && [ -d "$c" ] && printf '%s' "$c"
+    return
+  done <<<"$_ccm_acct_tab"
+  printf ''
 }
 
 # 账号名列表（给错误信息用——报"不可用"必须同时告诉用户有哪些可用）。
 # ⚠ 尾空格要剥：旧版两条分支在这一点上**本来就不一致**（`jq … join(" ")` 无尾空格、
 #   无 jq 那条 `tr '\n' ' '` 有），而钉住它的那条判据只在装了 jq 的机器上跑过。统一成无尾空格。
 list_account_names() {
-  local names
-  names="$(printf '%s\n' "$_ccm_acct_tab" | cut -f1 | tr '\n' ' ' | sed 's/ *$//')"
-  [ -n "$names" ] && printf '%s' "$names" || printf '(无账号库)'
+  local out="" n c d
+  while IFS=$'\t' read -r n c d; do
+    [ -n "$n" ] || continue
+    out="$out${out:+ }$n"
+  done <<<"$_ccm_acct_tab"
+  [ -n "$out" ] && printf '%s' "$out" || printf '(无账号库)'
 }
 
 # 默认账号（`isDefault: true`）。多个就取第一个（与旧版 `head -1` 同语义）。
 default_account_name() {
-  printf '%s\n' "$_ccm_acct_tab" | awk -F'\t' '$3=="1"{print $1; exit}'
+  local n c d
+  while IFS=$'\t' read -r n c d; do
+    [ "$d" = 1 ] && { printf '%s' "$n"; return; }
+  done <<<"$_ccm_acct_tab"
+  printf ''
 }
 
 # 账号解析。三态：

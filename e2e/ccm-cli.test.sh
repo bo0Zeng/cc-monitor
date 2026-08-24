@@ -113,19 +113,45 @@ ck "attach 动作" \
 
 echo
 echo "===== 账号三态（D 审计 B1/B2 回归）====="
-ACCTMP="$(mktemp -d)"; mkdir -p "$ACCTMP/z" "$ACCTMP/b"
-cat > "$ACCTMP/m.json" <<JSON
+# ★★ `K-C1`（08-24）**本组的夹具改了两处，都是为了让它测的是生产形状**：
+#   ① `m.json` → `accounts.json`。daemon 的 `--list-accounts` **只收目录**（`--accts-dir`），
+#      manifest 的文件名由它自己拼（`acct-core::MANIFEST_NAME`）⇒ 叫别的名字时 ccm 判得出
+#      「这个问题 daemon 答不了」、降级读文件并**说一句**，于是这几条黄金串会多出一行 stderr。
+#      生产路径本来就是 `<目录>/accounts.json`（默认值与 cc-acct-iso 的 `ACCTS_DIR` 都是），
+#      夹具跟上去 = 测的是真形状，不是「顺手把判据改绿」。
+#   ② `CCM_DAEMON_BIN` 钉到一份**假 daemon**。不钉的话查找次序会摸到
+#      `$HOME/.cc-monitor/bin/cc-monitor-remote` —— 开发机上那是**用户的真二进制**、CI 上不存在
+#      ⇒ 同一条判据在两处走**两条不同的路**（本仓最高频那类假信号）。
+# ⚠⚠ **这几条黄金串不是 provenance 判据**：假 daemon 刻意**照抄**夹具 manifest ⇒ 文件与 daemon
+#    答同一个值 ⇒ 它们分辨不出 ccm 读了哪个（两条路输出逐字节相同）。
+#    「到底走了 daemon 没有」由下面那节「账号解析走 daemon」用**答不同值**的夹具钉。
+ACCTMP="$(mktemp -d)"; mkdir -p "$ACCTMP/z" "$ACCTMP/b" "$ACCTMP/bin"
+cat > "$ACCTMP/accounts.json" <<JSON
 { "version": 1, "accounts": [
   { "name": "z", "configDir": "$ACCTMP/z", "isDefault": true },
   { "name": "b", "configDir": "$ACCTMP/b", "isDefault": false } ] }
 JSON
-acct() { env -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/m.json" bash "$CCM" "$@" 2>&1; }
+# 假 daemon：把 `<accts-dir>/accounts.json` 原样翻成 `--list-accounts` 的帧形状。
+# **单一事实源仍是那份 manifest** —— 不在这里手抄一份账号表（抄了就有两份要同步）。
+mk_mirror_daemon() { # mk_mirror_daemon <落点>
+  cat > "$1" <<'MIRROR'
+#!/bin/sh
+[ "$1" = --list-accounts ] || { cat >/dev/null; exit 0; }
+d=""; while [ $# -gt 0 ]; do [ "$1" = --accts-dir ] && d="$2"; shift; done
+printf '{"accountZeroAware":true,"acctsDir":"%s","count":0,"enabled":true,"error":null,"kind":"accounts-meta","manifestPath":"%s/accounts.json","sharedStore":null,"updatedAt":null}\n' "$d" "$d"
+jq -c '.accounts[] | {configDir:(.configDir // null),email:"",exists:true,isDefault:(.isDefault // false),loggedIn:false,mode:"isolated",name:.name}' "$d/accounts.json" 2>/dev/null
+exit 0
+MIRROR
+  chmod +x "$1"
+}
+mk_mirror_daemon "$ACCTMP/bin/daemon"
+acct() { env -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/accounts.json" CCM_DAEMON_BIN="$ACCTMP/bin/daemon" bash "$CCM" "$@" 2>&1; }
 ck "显式 --account 注入其 configDir" \
    "export CLAUDE_CONFIG_DIR='$ACCTMP/b'; $UNSET; cd '/p' && exec claude" \
    "$(acct --cwd /p --account b --print)"
 # B1：die 在 \$(...) 里只杀子 shell —— 曾"报错后照跑"，落到继承来的账号上且 rc=0
 ck "账号不存在 → 中止（rc≠0，且不得吐出 exec）" \
-   "ccm: 账号 'nope' 不可用（不在 $ACCTMP/m.json，或其目录不存在）。可用: z b" \
+   "ccm: 账号 'nope' 不可用（不在 $ACCTMP/accounts.json，或其目录不存在）。可用: z b" \
    "$(acct --cwd /p --account nope --print)"
 ck "账号不存在 → rc=2" "2" \
    "$(acct --cwd /p --account nope --print >/dev/null 2>&1; echo $?)"
@@ -167,15 +193,17 @@ echo "===== 账号继承（F03 综合设计时发现的 bug 回归）====="
 # `--tmux` 会落进那条分支、根本不走容器路径，于是 4 条 R08 断言假红（CI 上无 TMUX 所以
 # 一直看不出来）。实测：同一份 HEAD，`TMUX` 有无决定 44/0 还是 40/4。
 # 测什么就要固定什么，不能让环境替测试选路径。
-inherit_acct() { CLAUDE_CONFIG_DIR="$ACCTMP/b" env -u TMUX -u TMUX_PANE CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/m.json" bash "$CCM" "$@" 2>&1; }
-ACCTMP="$(mktemp -d)"; mkdir -p "$ACCTMP/z" "$ACCTMP/b"
-cat > "$ACCTMP/m.json" <<JSON
+# `K-C1`：夹具改名 + 钉假 daemon，理由同上一组（那段头注逐条写了，别在这儿重抄）。
+inherit_acct() { CLAUDE_CONFIG_DIR="$ACCTMP/b" env -u TMUX -u TMUX_PANE CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/accounts.json" CCM_DAEMON_BIN="$ACCTMP/bin/daemon" bash "$CCM" "$@" 2>&1; }
+ACCTMP="$(mktemp -d)"; mkdir -p "$ACCTMP/z" "$ACCTMP/b" "$ACCTMP/bin"
+cat > "$ACCTMP/accounts.json" <<JSON
 { "version": 1, "accounts": [
   { "name": "z", "configDir": "$ACCTMP/z", "isDefault": true },
   { "name": "b", "configDir": "$ACCTMP/b", "isDefault": false } ] }
 JSON
+mk_mirror_daemon "$ACCTMP/bin/daemon"
 ck "外层已继承账号 b（无 --account/--base）→ 保留 b，不被默认号 z 静默覆盖"    "$UNSET; cd '/p' && exec claude"    "$(inherit_acct --cwd /p --print)"
-ck "裸终端（无继承）仍落 manifest 默认号 z"    "export CLAUDE_CONFIG_DIR='$ACCTMP/z'; $UNSET; cd '/p' && exec claude"    "$(env -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/m.json" bash "$CCM" --cwd /p --print 2>&1)"
+ck "裸终端（无继承）仍落 manifest 默认号 z"    "export CLAUDE_CONFIG_DIR='$ACCTMP/z'; $UNSET; cd '/p' && exec claude"    "$(env -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/accounts.json" CCM_DAEMON_BIN="$ACCTMP/bin/daemon" bash "$CCM" --cwd /p --print 2>&1)"
 ck "--base 显式清空，不受继承影响"    "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec claude"    "$(inherit_acct --cwd /p --base --print)"
 ck "--account 显式指定，优先级最高（覆盖继承的 b）"    "export CLAUDE_CONFIG_DIR='$ACCTMP/z'; $UNSET; cd '/p' && exec claude"    "$(inherit_acct --cwd /p --account z --print)"
 
@@ -205,7 +233,7 @@ ck "R08：容器路径 + 显式 --account z → 内层带 --account z（优先�
    "$(inherit_acct --tmux --cwd /p --account z --print | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
 ck "R08：容器路径 + 裸终端（无继承）→ 内层仍落默认号 z（粘滞体验不回退）" \
    "yes" \
-   "$(env -u CLAUDE_CONFIG_DIR -u TMUX -u TMUX_PANE CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/m.json" bash "$CCM" --tmux --cwd /p --print 2>&1 | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
+   "$(env -u CLAUDE_CONFIG_DIR -u TMUX -u TMUX_PANE CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/accounts.json" CCM_DAEMON_BIN="$ACCTMP/bin/daemon" bash "$CCM" --tmux --cwd /p --print 2>&1 | unesc | grep -qF -- "'--account' 'z'" && echo yes || echo no)"
 rm -rf "$ACCTMP"
 
 echo
@@ -350,6 +378,201 @@ RC="$(env -i HOME="$DTMP/home" PATH="$DTMP/bin" TMUX=/faux/socket,1,0 \
 ck "★ --print 不受前置检查影响（预言机不许因为这台机器没装 daemon 就哑掉）" "0" "$RC"
 
 rm -rf "$DTMP"
+
+echo
+echo "===== 账号解析走 daemon（K-C1，〔用@08-24「ccm要换成调用后端」〕的便宜那半）====="
+#
+# ★★ **本节的要害全在夹具：manifest 与 daemon 必须答不同的值。**
+#   「读文件」与「问 daemon」在两份数据一致时输出**逐字节相同** ⇒ 分辨不出它读了哪个。
+#   上面「账号三态」那几条黄金串正是那种形状（假 daemon 照抄夹具 manifest）——
+#   它们钉的是「注入了哪个值」，**不是**「值从哪儿来」。
+#   ⇒ 这里 manifest 写 `from-file` / daemon 答 `from-daemon`，断言落在**哪一个出现在输出里**；
+#     默认号也故意让两边指向**不同的账号**（文件说 z、daemon 说 d）。
+#   变异 `KCM1`（让两边答同一个值）就是用来证明「夹具无效时本节会说话」的。
+#
+# ★ 全节走 `--print`：账号解析在它之前就发生（`config_dir` 是**值**、逐字进黄金串），
+#   而 `--print` 之后那条真 exec 路会再往 stderr 打一句「不在 tmux 里」——
+#   那句与账号无关，混进来会让下面几条「stderr 说了什么」的断言测到别的东西。
+#   ⚠ 真起会话那条路（不是 `--print`）由 `e2e/ccm-acceptance.sh` 场景 7 在**真 tmux** 上验。
+KTMP="$(mktemp -d)"
+mkdir -p "$KTMP/accts" "$KTMP/from-file" "$KTMP/from-daemon" "$KTMP/dflt-file" "$KTMP/dflt-daemon" \
+         "$KTMP/bin" "$KTMP/nojq"
+cat > "$KTMP/accts/accounts.json" <<JSON
+{ "version": 1, "accounts": [
+  { "name": "z", "configDir": "$KTMP/from-file", "isDefault": true },
+  { "name": "d", "configDir": "$KTMP/dflt-file", "isDefault": false } ] }
+JSON
+# 假 daemon：**刻意答与文件不同的目录**，且把 isDefault 挪到另一个账号上。
+# 顺带记账（每次被调用 append 一行）⇒ 可以断言「一趟往返」而不是「每问一次一趟」。
+mk_kd() { # mk_kd <落点> <z 的 configDir> <d 的 configDir> [额外键]
+  cat > "$1" <<EOF
+#!/bin/sh
+echo call >> "$KTMP/calls"
+case "\$1" in
+  --list-accounts)
+    printf '%s\\n' '{"accountZeroAware":true,"acctsDir":"x","count":2,"enabled":true,"error":null,"kind":"accounts-meta","manifestPath":"x","sharedStore":null,"updatedAt":null}'
+    printf '%s\\n' '{"configDir":"$2","email":"","exists":true,"isDefault":false,"loggedIn":false,"mode":"isolated","name":"z"${4:-}}'
+    printf '%s\\n' '{"configDir":"$3","email":"","exists":true,"isDefault":true,"loggedIn":false,"mode":"isolated","name":"d"${4:-}}'
+    exit 0 ;;
+esac
+cat >/dev/null; exit 0
+EOF
+  chmod +x "$1"
+}
+mk_kd "$KTMP/bin/daemon" "$KTMP/from-daemon" "$KTMP/dflt-daemon"
+# 一份「答不出 --list-accounts」的 daemon（存在、可执行、但一个字都不说）。
+printf '#!/bin/sh\necho call >> "%s"\ncat >/dev/null\nexit 0\n' "$KTMP/calls" > "$KTMP/bin/mute"
+chmod +x "$KTMP/bin/mute"
+# 一份答「目录不存在」的 daemon（验：目录存在性仍由 ccm 自己 `-d` 判，不吃 daemon 的 `exists`）。
+mk_kd "$KTMP/bin/ghost" "$KTMP/no-such-dir" "$KTMP/no-such-dir-2"
+# 一份多带一个**未知字段**的 daemon（前向兼容：daemon/aterm 那边加字段不许把我们打碎）。
+mk_kd "$KTMP/bin/extra" "$KTMP/from-daemon" "$KTMP/dflt-daemon" ',"someFutureKey":{"a":1}'
+
+# 受控运行。**HOME 换成 $KTMP** —— 查找次序第二档读的是 `$HOME/.cc-monitor/bin/`，
+# 不换的话开发机上会摸到用户的真二进制、CI 上摸不到 ⇒ 同一条判据两台机器走两条路。
+# ⚠ **额外 env 与 ccm 参数必须分开两个位置**（第一版把它们混在 `"$@"` 里，`env` 当场把
+#   `--account` 读成自己的选项、`No such file or directory`，8 条断言拿到空串 —— 那是
+#   「探针自己坏了」而报出来的却像「被测行为不对」）。第 2 个参数是 `'A=1 B=2'` 形态的额外 env。
+K() { # K <daemon 路径或 -> <额外 env（可空）> <ccm 参数…>；stdout→out、stderr→err，回显 rc
+  local d="$1" xe="$2"; shift 2
+  rm -f "$KTMP/calls"; : > "$KTMP/out"; : > "$KTMP/err"
+  local -a envs=(HOME="$KTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent
+                 CCM_ACCTS_MANIFEST="$KTMP/accts/accounts.json")
+  [ "$d" != - ] && envs+=(CCM_DAEMON_BIN="$d")
+  # shellcheck disable=SC2086  # $xe 是本套件自己给的 'A=1 B=2'，要的正是分词
+  env -i PATH="/usr/bin:/bin" "${envs[@]}" $xe bash "$CCM" --cwd /p --print "$@" \
+      > "$KTMP/out" 2> "$KTMP/err"
+  printf '%s' "$?"
+}
+KOUT() { cat "$KTMP/out"; }
+KERR() { cat "$KTMP/err"; }
+KCALLS() { [ -f "$KTMP/calls" ] && grep -c . "$KTMP/calls" || echo 0; }
+GOLD() { printf "export CLAUDE_CONFIG_DIR='%s'; %s; cd '/p' && exec claude" "$1" "$UNSET"; }
+
+# ---- 夹具自检（先证明「有区分力」，再拿它去判事）----
+ck "夹具自检：无 daemon 那条环境里**真的一个 daemon 都找不到**" "yes" \
+   "$(K - "" --account z >/dev/null; grep -q '找不到 daemon' "$KTMP/err" && echo yes || echo no)"
+ck "夹具自检：两边刻意不同（from-file ≠ from-daemon）" "differ" \
+   "$([ "$KTMP/from-file" != "$KTMP/from-daemon" ] && echo differ || echo same)"
+
+# ---- KCY1：账号解析真的走了 daemon（量行为，不量源码）----
+K "$KTMP/bin/daemon" "" --account z >/dev/null
+ck "★ KCY1 · 显式 --account：daemon 在位 ⇒ configDir 来自 **daemon**（不是文件）" \
+   "$(GOLD "$KTMP/from-daemon")" "$(KOUT)"
+K - "" --account z >/dev/null
+ck "KCY1 · 反向：同一夹具、无 daemon ⇒ 来自**文件**（成对才有区分力：只有上一条时「永远读文件」也能绿）" \
+   "$(GOLD "$KTMP/from-file")" "$(KOUT)"
+K "$KTMP/bin/daemon" "" >/dev/null
+ck "★ KCY1 · 默认号那条路**也**走 daemon（文件说默认号是 z、daemon 说是 d ⇒ 拿到 d 的目录）" \
+   "$(GOLD "$KTMP/dflt-daemon")" "$(KOUT)"
+K - "" >/dev/null
+ck "KCY1 · 反向：无 daemon ⇒ 默认号是**文件**说的那个（z）" \
+   "$(GOLD "$KTMP/from-file")" "$(KOUT)"
+# ★ 一趟往返：默认号那条路要答**两个**问题（谁是默认号 / 它的目录在哪）。
+#   把 `acct_table_load` 挪进 `$(...)` 里 ⇒ 缓存被子 shell 吃掉 ⇒ 这里会变成 2。
+K "$KTMP/bin/daemon" "" >/dev/null
+ck "★ KCY1 · **一趟**往返答完全部问题（默认号那条路要答两个问题，daemon 仍只被调 1 次）" "1" "$(KCALLS)"
+K "$KTMP/bin/daemon" "" --base >/dev/null
+ck "KCY1 · --base ⇒ 压根不问 daemon（0 次；那条路不需要账号表，问了就是白付一次往返）" "0" "$(KCALLS)"
+K "$KTMP/bin/daemon" "CLAUDE_CONFIG_DIR=$KTMP/from-file" >/dev/null
+ck "KCY1 · 已继承 CLAUDE_CONFIG_DIR ⇒ 压根不问 daemon（0 次）" "0" "$(KCALLS)"
+RC="$(K "$KTMP/bin/ghost" "" --account z)"
+ck "★ KCY1 · daemon 说的目录**不存在** ⇒ 照旧 die（目录存在性由 ccm 自己 -d 判，不吃 daemon 的 exists）" \
+   "2" "$RC"
+ck "KCY1 · 上一条的可用列表来自 daemon 的答案（z d，不是文件的 z d 顺序巧合之外的东西）" "yes" \
+   "$(grep -q '可用: z d' "$KTMP/err" && echo yes || echo no)"
+
+# ---- KCY2：降级策略是裁过的，判据钉住裁的那一条（退出码 **与** stderr 文本）----
+# §0b 裁定 = 诚实降级 + **出声**。⇒ 只断退出码不够（那会让「出声」退化成「闷声」）。
+RC="$(K - "" --account z)"
+ck "★ KCY2 · 无 daemon ⇒ **照旧起得来**（rc=0，不是响亮失败）" "0" "$RC"
+ck "★ KCY2 · 无 daemon ⇒ stderr **有那句话**（降级不许闷声）" "yes" \
+   "$(grep -q '账号解析已降级' "$KTMP/err" && echo yes || echo no)"
+ck "★ KCY2 · 那句话说得出**读的是哪个文件**（诊断得能定位）" "yes" \
+   "$(grep -qF "$KTMP/accts/accounts.json" "$KTMP/err" && echo yes || echo no)"
+ck "★ KCY2 · 那句话说得出**为什么**降级（这一格：找不到 daemon）" "yes" \
+   "$(grep -q '找不到 daemon' "$KTMP/err" && echo yes || echo no)"
+ck "★ KCY2 · 那句话说清了**性质**（后端本该是唯一真相源 / 你拿到的是文件那一份）" "yes" \
+   "$(grep -q '唯一真相源' "$KTMP/err" && grep -q '文件那一份' "$KTMP/err" && echo yes || echo no)"
+K "$KTMP/bin/daemon" "" --account z >/dev/null
+ck "★ KCY2 · daemon 在位 ⇒ stderr **一个字都没有**（别把正常路径变吵）" "" "$(KERR)"
+K "$KTMP/bin/daemon" "CCM_NO_DAEMON=1" --account z >/dev/null
+ck "KCY2 · CCM_NO_DAEMON=1 ⇒ 也降级、也说话，且说的是**那一格**（明示整条关掉）" "yes" \
+   "$(grep -q 'CCM_NO_DAEMON=1（明示整条关掉 daemon）' "$KTMP/err" && echo yes || echo no)"
+ck "KCY2 · CCM_NO_DAEMON=1 ⇒ 拿到的是文件那一份（逃生口真的把 daemon 那条关掉了）" \
+   "$(GOLD "$KTMP/from-file")" "$(KOUT)"
+cp "$KTMP/accts/accounts.json" "$KTMP/accts/m.json"
+rm -f "$KTMP/calls"; : > "$KTMP/err"
+env -i PATH="/usr/bin:/bin" HOME="$KTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent \
+    CCM_ACCTS_MANIFEST="$KTMP/accts/m.json" CCM_DAEMON_BIN="$KTMP/bin/daemon" \
+    bash "$CCM" --cwd /p --account z --print > "$KTMP/out" 2> "$KTMP/err"
+ck "KCY2 · manifest 叫别的名字 ⇒ 说的是**那一格**（--accts-dir 表达不了它），不是含糊的「daemon 不可用」" "yes" \
+   "$(grep -q 'daemon 的 --accts-dir 表达不了它' "$KTMP/err" && echo yes || echo no)"
+ck "KCY2 · 那一格**不许悄悄去问 daemon**（问了就是读了另一个文件）：调用次数 0" "0" "$(KCALLS)"
+K "$KTMP/bin/mute" "" --account z >/dev/null
+ck "KCY2 · daemon 在位但**答不出** ⇒ 说的是那一格，并落回文件" "yes" \
+   "$(grep -q '答不出 --list-accounts' "$KTMP/err" && echo yes || echo no)"
+ck "KCY2 · daemon 答不出 ⇒ 值来自文件（诚实降级，不是报错、也不是空账号）" \
+   "$(GOLD "$KTMP/from-file")" "$(KOUT)"
+# ★ 反面：这句话**不许变成噪音**。压根没有账号库的机器上 ccm 就是个基座启动器。
+rm -f "$KTMP/calls"; : > "$KTMP/err"
+env -i PATH="/usr/bin:/bin" HOME="$KTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent \
+    CCM_ACCTS_MANIFEST="$KTMP/accts/nope.json" \
+    bash "$CCM" --cwd /p --print > "$KTMP/out" 2> "$KTMP/err"
+ck "★ KCY2 · **无账号库 ⇒ 一个字都不说**（降级提示不许变成每次都吵的噪音）" "" "$(cat "$KTMP/err")"
+
+# ---- KCY3（我们这一侧）：那个面加字段不许把我们打碎 ----
+# ⚠ 如实边界：这条证的是「**我们**的解析器对新增字段是宽的」，**不是**「aterm 那边不碎」——
+#   他们的 golden 向量在他们仓里，不在我们的扫描面上（件文件 §4 `KC6a`）。
+K "$KTMP/bin/extra" "" --account z >/dev/null
+ck "★ KCY3 · daemon 输出里多一个**未知字段** ⇒ 照样解析对（前向兼容；照 aterm 那条 golden 的形状）" \
+   "$(GOLD "$KTMP/from-daemon")" "$(KOUT)"
+ck "KCY3 · 多字段那次也不吵" "" "$(KERR)"
+
+# ---- KCY4：能力协商面 ----
+PROBE_K="$(env -i PATH="/usr/bin:/bin" HOME="$KTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent bash "$CCM" --ccm-probe 2>&1)"
+ck "★ KCY4 · capabilities= 里有 account-via-daemon（消费者据此分辨新旧 ccm）" "1" \
+   "$(printf '%s\n' "$PROBE_K" | sed -n 's/^capabilities=//p' | tr ',' '\n' | grep -cx 'account-via-daemon')"
+ck "KCY4 · capabilities 变了 ⇒ 版本号跟着走（既有纪律：不能只改后者）" "version=3" \
+   "$(printf '%s\n' "$PROBE_K" | grep '^version=')"
+ck "KCY4 · 用法块里有那一行（`--help` 找得到它；Rust 侧 every_advertised_capability_has_a_usage_line 也查这个）" "yes" \
+   "$(grep -q -- '--account-via-daemon' "$CCM" && echo yes || echo no)"
+
+# ---- KCM6：**无 jq** 那条兜底（本仓此前没有任何门禁走得到它）----
+# 08-24 摸底时在这一格逮到一个自己写的真缺陷（末块被 `read` 丢掉 ⇒ 表变空、
+# 症状是「可用: (无账号库)」而 manifest 明明在）。装了 jq 的机器与 CI 都走 jq 那条 ⇒ 零覆盖。
+for _b in bash sh sed; do
+  _p="$(command -v "$_b" 2>/dev/null)"; [ -n "$_p" ] && ln -sf "$_p" "$KTMP/nojq/$_b"
+done
+NOJQ() { # NOJQ <daemon 或 -> <manifest>
+  local d="$1" m="$2"
+  : > "$KTMP/err"
+  local -a envs=(HOME="$KTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$m")
+  [ "$d" != - ] && envs+=(CCM_DAEMON_BIN="$d")
+  env -i PATH="$KTMP/nojq" "${envs[@]}" bash "$CCM" --cwd /p --account z --print 2>"$KTMP/err"
+}
+ck "自检：nojq PATH 里**真的没有 jq**（不然下面两条测的还是 jq 那条）" "0" \
+   "$(ls "$KTMP/nojq" | grep -cx jq)"
+ck "★ KCM6 · 无 jq + daemon 在位 ⇒ 仍然拿 daemon 那份" \
+   "$(GOLD "$KTMP/from-daemon")" "$(NOJQ "$KTMP/bin/daemon" "$KTMP/accts/accounts.json")"
+ck "★ KCM6 · 无 jq + 无 daemon ⇒ 文件那条兜底真的解析出来了（末块不许被 read 丢掉）" \
+   "$(GOLD "$KTMP/from-file")" "$(NOJQ - "$KTMP/accts/accounts.json")"
+# pretty-print + 键序反转：旧那条 grep 兜底在这一格是**静默失灵**的（它要求 name 排在 configDir 前）。
+cat > "$KTMP/accts/pretty/accounts.json" 2>/dev/null || mkdir -p "$KTMP/accts/pretty"
+cat > "$KTMP/accts/pretty/accounts.json" <<JSON
+{
+  "version": 1,
+  "accounts": [
+    { "configDir": "$KTMP/from-file",
+      "isDefault": true,
+      "name": "z" }
+  ]
+}
+JSON
+ck "★ KCM6 · 无 jq + pretty-print + **键序反转** ⇒ 照样解析对（旧兜底在这一格静默失灵）" \
+   "$(GOLD "$KTMP/from-file")" "$(NOJQ - "$KTMP/accts/pretty/accounts.json")"
+
+rm -rf "$KTMP"
 
 echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
