@@ -129,6 +129,10 @@ describe("C01 边界生成物", () => {
       "AcctIsoStatus.ts", //          C04d 批3（**抓到漂移**：TS 原来只认 1/3 个字段）
       "ActiveSessionPayload.ts", //   C04b
       "ApiMessage.ts", //             C04c
+      // K-A1：账号的**鉴权方式**（`subscription` | `api-key`）。
+      // 加它之前 `RemoteAccount` 压根没有 ts_rs derive，两侧靠一行注释对齐 ⇒
+      // 往一侧加字段没有任何门禁会红。
+      "AuthKind.ts",
       "AutoLaunchConfig.ts", // C04d 批5a
       "BranchResult.ts", // C04d 批6a
       "CcBusAgent.ts", // C04d 批5a（CcBusState 的传递依赖）
@@ -178,6 +182,9 @@ describe("C01 边界生成物", () => {
       "ProfileKind.ts", // C04d 批5a（ProfileScan 的传递依赖）
       "ProfileScan.ts", // C04d 批5a（`size_bytes: u64` 按字节数量纲论证）
       "PushResult.ts", // C04d 批5c（**我用 grep 漏掉的那个跨行调用点**）
+      // K-A1：TS 侧 `Account` 从此是它的别名（原先是一份手抄 interface + 一句
+      // 「对齐 A2 的返回结构」的注释）。
+      "RemoteAccount.ts",
       "RemoteHealthPayload.ts", //    C02
       "RemoteProjectsResult.ts", // C04d 批6c
       "RemoteSessionAddedPayload.ts", // C02
@@ -310,7 +317,10 @@ describe("C01 边界生成物", () => {
     // **C04d 批 6c：5 → 10。** 新增 5 处都在 history/search 一族：
     // `HistoryProject.origin` · `HistorySessionEntry.origin` ·
     // `HistorySessionEntry.forked_from_session_id`/`forked_from_message_uuid` · `SessionHits.origin`。
-    expect(checked, `期望恰好 10 处 skip_serializing_if，实得 ${checked}`).toBe(10);
+    // **K-A1：10 → 12。** `RemoteAccount.auth_kind` / `RemoteAccount.auth_ready`
+    // ——两者都是 `Option`，而**缺席与 `null` 在这里语义不同**：缺席 = 旧 daemon 压根没说
+    // （前端据此回落到逐字节旧行为），`null` 会让那个 `??` 回落判据失效。⇒ 必须 `ts(optional)`。
+    expect(checked, `期望恰好 12 处 skip_serializing_if，实得 ${checked}`).toBe(12);
   });
 
   it("每一个 u64/i64 字段都配了 ts(type = …)——C03 的大整数策略，打在源上", () => {

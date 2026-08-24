@@ -51,7 +51,8 @@ export type NamedAccountModifier = Extract<AccountModifierOption, { kind: "accou
  * （只有 1 个账号时，"切到那唯一的账号"与跟随默认没有区别，不加噪）。
  *
  * F09 Phase D 审计（后端架构，重要）：`selectable` 只过 `isSelectable`（mode===isolated &&
- * loggedIn && exists），**没有**复刻旧版 `appendAccountMenuItems` 那句 `if (!a.configDir)
+ * **鉴权前提就绪** && exists —— K-A1 起第二项不再是裸 `loggedIn`，见
+ * `accounts.ts::authReady`），**没有**复刻旧版 `appendAccountMenuItems` 那句 `if (!a.configDir)
  * continue`——这是有意的行为变化，不是遗漏：旧版对 `configDir` 落空的账号是**静默隐藏**菜单项
  * （用户看不到这个账号、不知道为什么），新版是**显示、点击后走 `withAccount` 的
  * `onUnselectable` 回调**弹一次"账号不可用"的 toast（`tabs.ts::buildResumeSubmenu` 走的正是
