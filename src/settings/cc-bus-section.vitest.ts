@@ -6,13 +6,27 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { componentSources } from "../test-support/component-sources";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-// **mock 掉 accounts 模块**：`fetchAccounts` 带 TTL 缓存，跨测试会泄漏上一条的结果
+// **只 mock `fetchAccounts` 这一个导出**：它带 TTL 缓存，跨测试会泄漏上一条的结果
 // （实测：第一条测试的账号列表会被后面"取不到账号"那条读到）。它自己有测试，
 // 这里只需要它的返回值，不该顺带重测它的缓存。
-vi.mock("../accounts", () => ({
+//
+// ⚠⚠ **K-A1 第四轮（`R4`）：这里原先是一份手抄的可选性规则**，逐字
+// `(st.accounts ?? []).filter((a) => a.mode === "isolated" && a.loggedIn && a.exists)`。
+// 它是 `accounts.ts::isSelectable` 的**第二份实现**，只是住在测试侧 ——
+// 而 `KAY4` 那条零命中守卫的扫描面**按构造**排掉 `.vitest.` 文件（那一行正是「让判据
+// 读不到自己」的机制）⇒ 结构上看不见它。K-A1 把真身的第二项从 `a.loggedIn` 换成
+// `authReady(a)` 之后，这份副本**已经与真身语义相反**：一个 api-key 号
+// （`loggedIn:false` / `authReady:true`）在真身里可选、在这份替身里不可选
+// ⇒ 本节的 DOM 判据从那天起是照着**过期的规则**断的（D 阶段审计 `R4` 实测）。
+// ⇒ 改成 `vi.importActual` 把**真身整个铺进来**，只覆盖 `fetchAccounts` 一个导出。
+// **排除了什么**：① 没有取消对 `fetchAccounts` 的 mock —— 上面那条 TTL 缓存泄漏的理由
+// 今天仍然成立（`__resetAccountsCacheForTest()` 那条路要求每个用例自己喂 tauri 命令，
+// 那是把本节从「DOM 行为」测成「accounts 的缓存」）；② 没有给它补一条判据钉住
+// 「测试侧不许再手抄纯函数」—— 那要一条新的扫描面（人群是 `.vitest.` 文件本身），
+// 不在本轮写区，`account-availability-guard.vitest.ts` 头注第 5 条已把这条边界写明。
+vi.mock("../accounts", async () => ({
+  ...(await vi.importActual<typeof import("../accounts")>("../accounts")),
   fetchAccounts: vi.fn(),
-  selectableAccounts: (st: { accounts?: { mode: string; loggedIn: boolean; exists: boolean }[] }) =>
-    (st.accounts ?? []).filter((a) => a.mode === "isolated" && a.loggedIn && a.exists),
 }));
 
 import { CcBusSection } from "./cc-bus-section";
@@ -641,6 +655,21 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
       // 不可选的：未登录 / in-place 逃生口 —— 不该出现在下拉里
       { name: "gone", email: "", configDir: "/a/g", isDefault: false, mode: "isolated", exists: true, loggedIn: false },
       { name: "inplace", email: "", configDir: "/a/i", isDefault: false, mode: "in-place", exists: true, loggedIn: true },
+      // ★ K-A1 第四轮（`R4`）加的那一格：**api-key 号（没有订阅凭据、但鉴权前提就绪）
+      // 是可选的**（`KAY2`）。它就是上面那份手抄副本与真身**结论相反**的那一格 ——
+      // 手抄版断 `a.loggedIn` ⇒ 判它不可选；真身断 `authReady(a)` ⇒ 判它可选。
+      // ⇒ 这一格在，谁再把这里换回一份手抄的 `a.loggedIn` 过滤，下面那条当场红。
+      {
+        name: "apikey",
+        email: "k@x",
+        configDir: "/a/k",
+        isDefault: false,
+        mode: "isolated",
+        exists: true,
+        loggedIn: false,
+        authKind: "api-key",
+        authReady: true,
+      },
     ],
   };
   const load = async () => {
@@ -664,12 +693,12 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
     expect(sel.options[0].textContent).toContain("不指定");
   });
 
-  it("只列可选账号（未登录 / in-place 不进下拉）", async () => {
+  it("只列可选账号（未登录 / in-place 不进下拉；★ api-key 号进）", async () => {
     const s = await load();
     const opts = [...s.element.querySelectorAll<HTMLOptionElement>(".cc-bus-spawn-acct option")].map(
       (o) => o.value,
     );
-    expect(opts).toEqual(["", "z", "b"]);
+    expect(opts).toEqual(["", "z", "b", "apikey"]);
     expect(opts).not.toContain("gone");
     expect(opts).not.toContain("inplace");
   });
