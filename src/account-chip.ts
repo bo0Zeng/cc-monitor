@@ -263,18 +263,20 @@ export class AccountChip {
     // 只堵了一半 —— api-key 号在**本菜单**里仍显示「已登录」，而那正是 `KA6a` 点名的坏体验。
     // 现在两处同源，由 `account-availability-guard.vitest.ts` 钉住「不许再开第三处」。
     //
-    // ⚠ 两处文案与本轮替换**前**逐字不同，如实记在这里（都不是本轮想改的，是收敛到同一
-    // 取值源的必然结果，已上报待裁）：
-    //   ① 订阅号缺凭据：「未登录 ⚠」→「未登录」。那个 ⚠ 字形没了 —— `accountStatusBadge`
-    //      把「要不要警示」表达成 `warn: true` 这个**布尔**而不是字形，设置那侧靠
-    //      `.accounts-row-badge.warn` 的 CSS 补色。本菜单的 `.account-picker-status`
-    //      **没有** `.warn` 规则（`src/styles.css:6106-6110`），而 `styles.css` 不在本轮写区
-    //      ⇒ 没有就地补 CSS，也没有把 ⚠ 拼回 `text`（拼回去 api-key 那一支会变成
-    //      「api-key（未配置端点） ⚠」，那与本轮判据 Y2 逐字冲突）。
+    // ⚠ 两处文案与第二轮替换**前**逐字不同，如实记在这里：
+    //   ① 订阅号缺凭据：「未登录 ⚠」→「未登录」+ `.warn` 类。
+    //      ★ **第三轮已裁：警示走 CSS，不进文本。** 上一轮把这一格写成「无解」，
+    //      那只在「⚠ 必须住在**文本**里」这个前提下成立 —— 把它挪到 CSS，冲突就没了：
+    //      语义住布尔（`accountStatusBadge` 的 `warn`）、呈现住 CSS
+    //      （`.account-picker-status.warn` —— 本轮新加，`src/styles.css:6111-6119`）。
+    //      设置那侧本来就是这么做的（`.accounts-row-badge.warn`）⇒ 两处同职、同一套约定。
+    //      而 api-key 那格本来就该是 warn 色（选得中却连不上，那是警示态不是正常态），
+    //      它的文本仍逐字是「api-key（未配置端点）」—— 不拼任何字形。
     //   ② in-place：title「in-place 模式：不支持按会话切号」→
     //      「in-place 模式：cc-monitor 不支持对它按会话切号」（同义、更明确，但不逐字相同）。
     const s = accountStatusBadge(a);
     status.textContent = s.text;
+    if (s.warn) status.classList.add("warn");
     row.title = s.title;
     row.appendChild(status);
 
