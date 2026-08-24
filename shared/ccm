@@ -41,6 +41,13 @@
 #     --daemon-discover       **不是旗标**：能力 token，声明「本 ccm 会自己找本机 daemon」。
 #                             次序 $CCM_DAEMON_BIN → ~/.cc-monitor/bin/cc-monitor-remote → PATH；
 #                             `CCM_NO_DAEMON=1` 整条关掉（P4e）。resume 时用它问 daemon 要命令
+#     --account-via-daemon    **不是旗标**：能力 token（`K-C1`），声明「`--account` / 默认号的
+#                             解析走 daemon 的 `--list-accounts`，不自己读 manifest」。
+#                             消费者要它做什么：cc-monitor 列给用户看的账号表来自 daemon，
+#                             而**旧 ccm 是自己读文件的** —— 两份能不一致（daemon 有 schema
+#                             版本闸与 configDir 安全谓词，文件那份没有）⇒ 用户在 UI 里挑得到
+#                             的号，交给旧 ccm 可能报「不可用」。有这个 token = 两侧同一份答案。
+#                             缺 daemon 时**降级读文件并往 stderr 说一句**（见 `acct_table_load`）
 #   自省
 #     --print                 打印将要执行的命令，不执行
 #     --ccm-probe             打印 name/version/capabilities
@@ -89,7 +96,10 @@ set -u
 
 # 2：B02 新增 --detach / --tmux-size（capabilities 变了）。本文件经 `sftp.rs` 的
 # `include_str!` 部署到远端，版本号与 capabilities 一样是**外部可见契约**，不能只改后者。
-CCM_VERSION="2"
+# 3：`K-C1` 新增能力 token `account-via-daemon`（账号解析走 daemon 的 `--list-accounts`）。
+#    照上一行那条纪律：capabilities 变了 ⇒ 版本号跟着走。它同时是**行为**变化的版本标记 ——
+#    用户机器上那份 `~/.local/bin/ccm` 副本可能很旧（`KL4`：改它要考虑升级路径）。
+CCM_VERSION="3"
 
 # —— 自身绝对路径（--tmux 时要把自己送进容器；不依赖 PATH）——
 if [ -z "${CCM_SELF:-}" ]; then
@@ -111,6 +121,12 @@ _env_ws="${CCM_WORKSPACE:-}"; _env_am="${CCM_ACCTS_MANIFEST:-}"; _env_ev="${CCM_
 CCM_WORKSPACE="$HOME/claude-conversation"
 CCM_ENV=""                                   # 起 agent 前 eval 的 env（旧 CC_ENV 迁移到这）
 CCM_ACCTS_MANIFEST="$HOME/.claude-accts/accounts.json"
+# ★ `K-C1`：daemon 的 `--list-accounts` **只收目录**（`--accts-dir`），manifest 的文件名由
+#   它自己拼（Rust 侧 `acct-core::MANIFEST_NAME`）⇒ ccm 要判「这个 CCM_ACCTS_MANIFEST 能不能
+#   转译成一个 --accts-dir」就得知道那个文件名。**从上面这行默认值里取，不再手抄一份** ——
+#   手抄等于给同一个常量开第三个写点（Rust 一份、上面那行一份、判断处再一份）。
+#   必须在 env/配置覆盖**之前**取：覆盖之后取到的是用户指的那个名字，判断就恒真了。
+_CCM_MANIFEST_NAME="${CCM_ACCTS_MANIFEST##*/}"
 # shellcheck source=/dev/null
 [ -f "$CCM_CONFIG" ] && . "$CCM_CONFIG"
 [ -n "$_env_ws" ] && CCM_WORKSPACE="$_env_ws"
@@ -345,7 +361,7 @@ while [ $# -gt 0 ]; do
     --tmux-size=*) tmux_size="${1#*=}" ;;
     --print)       do_print=1 ;;
     --ccm-probe)
-      printf 'name=ccm\nversion=%s\nself=%s\ncapabilities=new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print,detach,tmux-size,tmux-base,bus-register,daemon-discover\nagents=claude,codex\n' \
+      printf 'name=ccm\nversion=%s\nself=%s\ncapabilities=new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print,detach,tmux-size,tmux-base,bus-register,daemon-discover,account-via-daemon\nagents=claude,codex\n' \
         "$CCM_VERSION" "$CCM_SELF"
       exit 0 ;;
     --version)     printf 'ccm %s\n' "$CCM_VERSION"; exit 0 ;;
@@ -490,44 +506,198 @@ avoid_name_collision() {
 # 终端里那一下**从来就不是**「接回我 detach 的那个」，而是「再来一个」。
 
 # ===== L2 环境：账号 =====
-# 从 cc-acct-iso 的 manifest 解析 configDir。解析不到 → 报错退出（显式选号绝不静默降级）。
-# **只回显值、绝不 die** —— 本函数在 `$(...)` 里被调用，`die`(exit 2) 只会杀掉子 shell，
-# 主流程照跑 → 用户打错账号名会**静默落到继承来的账号上**（rc=0）。实测踩过，性质比
-# 「换号不生效」更坏。所有失败一律回空串，由**顶层**判空后中止。
+#
+# ★★ `K-C1`〔用@08-24「**ccm要换成调用后端**」的便宜那半〕：
+#    **账号解析先问 daemon（`--list-accounts`）；自己读 manifest 只剩「退路」这一个身份。**
+#
+# 承接 `backend-split` `C4`（ccm 是执行臂，不是宿主）。病：「manifest 长什么样」这条语义
+# 本仓有**两份**实现，而 shell 那份更浅（不认 `version` schema 闸、不认「`configDir` 键缺席
+# = 账号 0」、没有 `is_safe_config_dir` 谓词）⇒ 同一份 manifest 两侧能给出不同答案，
+# 症状是**跑在错的号上**（见下方 R08/R11 头注那一族）。更具体的一格：cc-monitor 列给用户看的
+# 账号表**已经**来自 daemon，而它交给 ccm 的是 `--account <名>` ⇒ UI 里挑得到的号 ccm 可能报「不可用」。
+# ⇒ 名字→目录 / 名字清单 / 默认号 这三个问题**一趟 `--list-accounts` 全答完**
+#   （旧版是三个函数各读一遍文件 ⇒ 落默认号那条路实际读两遍）。
+#
+# ## `§0b` 的裁定：**诚实降级，但比 `resume` 那条严一格 —— 降级要出声**
+#
+# 于是三条通道三种哲学，**这是有意的**：身份可以牺牲（`CCM_NO_DAEMON=1` 是个安全的放弃态）·
+# `resume` 的 argv 只是建议（本地那条同样正确，降级静默）· **账号错了就是错了**
+#（既不能失败、也不能不响）。三条不跟身份的理由，一句一条：
+#  1. 「放弃账号」不是安全状态（会静默落到基座那个通常已没凭据的 config dir）⇒ 逃生口**只能**是
+#     读文件 ⇒ 退路无论如何都得留着 ⇒ 改成「没 daemon 就起不来」只换来「谁按开关」，
+#     代价却是 `zcc`/`bcc`（用户每天在敲）在没部署 daemon 的机器上直接起不来；
+#  2. 它会破掉一条已被判据钉住的纪律：`e2e/ccm-cli.test.sh` 逐字钉着「预言机不许因为这台机器
+#     没装 daemon 就哑掉」，而 `config_dir` 是**值**、逐字进黄金串 ⇒ 没法像 `BUS_ID_RECIPE` /
+#     `DAEMON_BIN_RECIPE` 那样把求值推迟到执行时；
+#  3. 而照抄 `resume` 的**静默**降级也不行 —— 换号出偏差的后果是「跑在错的号上」，
+#     身份那条头注逐字记着这一族：「不再是少一个锦上添花，而是**没人知道为什么**」。
+# **五条排除项、代价怎么算的、逐条实测读数**：住件文件
+# `.claude/planned-build/backend-consolidation/features/K-C1-ccm账号解析走daemon.md` 的 `§0b` /
+# `§0-Bx-2` —— **这里刻意不抄一遍**（论证与读数外移留住址，本文件的头注体量已经在被判据盯着：
+# `polling_registry::tests::the_identity_poller_is_gone_for_good` 有一条「剥注释后不足 1/4 就算剥法坏了」
+# 的自检，08-24 我加头注时**真的把它打红过**）。
+#
+# ## 两条如实边界（`KC6c` / `KC6b`，件文件 `§4` 是全文）
+#
+#  - `KC6c`：**「后端是账号的唯一真相源」今天只做到「优先」，不是「唯一」** ——
+#    读文件那条还在本文件里，daemon 缺位/答不出/问不对时会走它。它只是不再是默认路径，
+#    且**每次走它都会说一句** ⇒ 两个真相源并存这件事是**可观测**的，不是暗的。
+#  - `KC6b`：**多出来的那一次往返没有上限判据。** 实测（08-24 本机，30 次均值，跑真 `--print`；
+#    「改造前」那一列跑的是 `git show main:shared/ccm` 落出来的真文件）：
+#    `--account z` **23.8→145.4ms** · 落默认号 **29.2→148.1ms**（**仍只 1 次往返**，旧版 2 次 `jq`）·
+#    `--base` 两侧同为 15–16ms（那条路不问 daemon）。
+#    ★ **多出来的 ~121ms 里 ~118ms 是 `timeout` 这个包装进程，不是 daemon** ——
+#    同一条命令在**没有 `timeout` 的 PATH** 上是 **27.4ms**；`timeout 3 /bin/true` 本机 **108ms**
+#    且与秒数无关（uutils coreutils 0.8.0 的固定开销）。⇒ **摘掉包装这次改造只贵 3.3ms**；
+#    daemon 那次往返 5.35ms，比它取代的 `jq`（4.09ms）只贵 1.26ms。
+#    照样套 `timeout` 的理由见 `DAEMON_BIN_RECIPE` 头注（daemon 可能是 PATH 上捡到的第三方
+#    二进制，不封顶就是 `zcc` 永远转圈）—— 别让两侧对同一个风险有两种态度。
+#    ⚠ 容器路径（`zcct`）外层内层各解析一次 ⇒ 两笔；外层那笔是「`--account nope` 在建会话之前
+#    就 die」的校验，不能省。**逐行读数与分解住件文件 `§0-Bx-2`。**
+#
+# ## `--accts-dir` 是目录、`CCM_ACCTS_MANIFEST` 是文件 —— 对不上时**不许猜**
+#
+# `--list-accounts` 只收目录，文件名由 daemon 自己拼（`acct-core::MANIFEST_NAME`）⇒
+# `CCM_ACCTS_MANIFEST` 指到**别的文件名**时 daemon 答的是**另一个文件**。那不是它坏了，
+# 是这个问题它答不了 ⇒ 走文件那条并**说一句**（悄悄读另一个文件最坏）。
+
+# 一个账号对象（一块 JSON 切片）→ 表的一行。**daemon 输出与 manifest 共用这一份解析**
+#（daemon 那侧紧凑、manifest 可能带空格 ⇒ 模式一律容忍空白，一份够用）。
+# ⚠ **不许假设键的顺序**：daemon 侧走 `serde_json::json!{}`（BTreeMap）⇒ 键按字母序，
+#   实测 `configDir` 排在 `name` **之前**；而旧版那条 grep 兜底恰恰要求 `name` 在前
+#   （`"name"…[^}]*"configDir"`）⇒ 键序一换它就**静默**解析不到。这里逐键单独取。
+# ⚠ 如实边界（`KC6d`）：纯文本取键，值里有 `\"` 转义会取偏（`configDir` 被 daemon 的
+#   `is_safe_config_dir` 挡掉了引号与反斜杠，`name` **没有**那道谓词）。**旧版同样如此，没变弱。**
+#   有 `jq` 时两个 feeder 各走自己那条 `jq` 分支，这份**只在没有 `jq` 时**被用到
+#   （daemon 那条与文件那条**都**会落到它 —— 别当成「只有文件退路才用」，见 `KCM6`）。
+# ★★ **纯 bash，零外部进程**〔08-24 改的，理由是一条真回归〕：第一版用 `sed`/`grep`/`awk`，
+#    于是 `e2e/ccm-cli.test.sh`「身份前置检查」一节当场红成 `awk: command not found` ——
+#    那一节刻意只给一个装了 bash 的瘦 PATH。判据说的是真话：本文件经 `sftp.rs` 部署到**任意远端**,
+#    旧实现只用 `jq`（可选）+ `grep`/`sed`，我却给热路径加了一条硬 `awk` 依赖。
+#    改成 bash 内建之后：零依赖、零 fork，顺带把每次查表的进程数从 1 降到 0。
+acct_row_from_slice() {   # $1=一块含单个账号对象的 JSON 文本 → stdout: <name>\t<configDir>\t<0|1>（取不到则不输出）
+  local l="$1" n="" c="" d=0
+  [[ "$l" == *'"name"'* ]] || return 0
+  # `[[ =~ ]]` 的 `[[:space:]]` 含换行 ⇒ pretty-print 的 manifest 也吃得下，不必先压成一行。
+  [[ "$l" =~ \"name\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && n="${BASH_REMATCH[1]}"
+  [ -n "$n" ] || return 0
+  [[ "$l" =~ \"configDir\"[[:space:]]*:[[:space:]]*\"([^\"]*)\" ]] && c="${BASH_REMATCH[1]}"
+  [[ "$l" =~ \"isDefault\"[[:space:]]*:[[:space:]]*true ]] && d=1
+  printf '%s\t%s\t%s\n' "$n" "$c" "$d"
+}
+
+# daemon 的 `--list-accounts` 输出（首行 meta + 每账号一行）→ 表。
+# ⚠ **只取 name / configDir / isDefault 三个键**：那个面与仓外 aterm 共用（`K10` 半一），
+#   少读一个键就少一条跨仓依赖 ⇒ 刻意不消费 `exists`/`loggedIn`/`authKind`/`authReady`
+#   （目录在不在照旧本文件自己 `-d` 判）。连带好处：那边加字段，本文件一个字都不用改。
+daemon_out_to_table() {   # $1 = daemon 的整段输出
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s\n' "$1" \
+      | jq -r 'select(has("name")) | [.name, (.configDir // ""), (if .isDefault then "1" else "0" end)] | @tsv' 2>/dev/null
+  else
+    local l
+    # `|| [ -n "$l" ]`：最后一行可能没有结尾换行（daemon 是 `println!`，今天有；别赌）。
+    while IFS= read -r l || [ -n "$l" ]; do acct_row_from_slice "$l"; done <<<"$1"
+  fi
+}
+
+# 退路：直接读 manifest 文件。**只在 daemon 缺位 / 答不出 / 问不对时走。**
+manifest_to_table() {
+  [ -f "$CCM_ACCTS_MANIFEST" ] || return 0
+  if command -v jq >/dev/null 2>&1; then
+    jq -r '.accounts[]? | select(.name) | [.name, (.configDir // ""), (if .isDefault then "1" else "0" end)] | @tsv' \
+       "$CCM_ACCTS_MANIFEST" 2>/dev/null
+  else
+    # 无 jq：按 `{` 切块喂给共用解析器（`read -d '{'` 是 bash 内建 ⇒ 不需要 `tr`）。
+    # 顺带修掉旧兜底两条脆弱假设：①「每账号一行的紧凑格式」（pretty-print 就失灵）；② 键序（见上）。
+    # ★ `|| [ -n "$chunk" ]` **不能省**〔08-24 实测，第一版就栽在这儿〕：末块后面没有 `{`
+    #   ⇒ 纯 `read -d '{'` 把**最后一个账号对象整块丢掉**（单账号时表直接变空，
+    #   症状是「可用: (无账号库)」而 manifest 明明在）。钉它的是 `KCM6` 那三条。
+    local chunk
+    while IFS= read -r -d '{' chunk || [ -n "$chunk" ]; do
+      acct_row_from_slice "$chunk"
+    done < "$CCM_ACCTS_MANIFEST"
+  fi
+}
+
+# 账号表：一行一个账号，TAB 分隔 `<name>\t<configDir>\t<isDefault 0|1>`。
+# ★★ **必须在主流程里 load 一次，绝不在 `$(...)` 里 load**：子 shell 里填的缓存出了那层就没了
+#    ⇒ 「一趟往返」会变成每问一次一趟（默认号那条路要问两次：默认号 + 它的目录）。
+_ccm_acct_tab=""
+_ccm_acct_src=""      # daemon | file —— 只作诊断，不参与任何判定
+_ccm_acct_loaded=0
+acct_table_load() {
+  [ "$_ccm_acct_loaded" = 1 ] && return 0
+  _ccm_acct_loaded=1
+  local why="" am_dir am_name to out
+  am_dir="${CCM_ACCTS_MANIFEST%/*}"; am_name="${CCM_ACCTS_MANIFEST##*/}"
+  # 查找规则**只有一份**（`DAEMON_BIN_RECIPE`，与 resume / 身份那两条共用）。
+  eval "$DAEMON_BIN_RECIPE"
+  if [ -z "$_ccm_db" ]; then
+    if [ "${CCM_NO_DAEMON:-}" = 1 ]; then why="CCM_NO_DAEMON=1（明示整条关掉 daemon）"
+    else why="这台机器上找不到 daemon（cc-monitor-remote）"; fi
+  elif [ "$am_name" != "$_CCM_MANIFEST_NAME" ] || [ -z "$am_dir" ] || [ "$am_dir" = "$CCM_ACCTS_MANIFEST" ]; then
+    # 见上方「`--accts-dir` 是目录」那段：这个问题 daemon 答不了，不是它坏了。
+    why="CCM_ACCTS_MANIFEST 不是 <目录>/$_CCM_MANIFEST_NAME 形态，daemon 的 --accts-dir 表达不了它"
+  else
+    # 有 `timeout` 就套上、没有就裸调 —— 与 `resolve_from_daemon` 同一条纪律、同一个写法。
+    to="$(command -v timeout >/dev/null 2>&1 && printf 'timeout 3 ' || true)"
+    # shellcheck disable=SC2086  # $to 要么空、要么是 `timeout 3`，**有意不 quote**
+    out="$($to "$_ccm_db" --list-accounts --accts-dir "$am_dir" 2>/dev/null)"
+    # 「答上了」的标记 = 那行 meta 在。缺它就分不清「一个账号都没有」与「这二进制答不了」
+    # （PATH 上捡到的同名第三方 / 太旧 / 崩了 / 被 timeout 掐了 —— 全长这样）。
+    case "$out" in
+      *'"kind":"accounts-meta"'*)
+        _ccm_acct_tab="$(daemon_out_to_table "$out")"
+        _ccm_acct_src=daemon
+        unset _ccm_db
+        return 0 ;;
+      *) why="daemon（$_ccm_db）答不出 --list-accounts" ;;
+    esac
+  fi
+  unset _ccm_db
+  _ccm_acct_src=file
+  _ccm_acct_tab="$(manifest_to_table)"
+  # **降级出声**（`§0b` 裁定）。⚠ 只在**真读了一份 manifest** 时说：压根没账号库的机器上
+  # ccm 就是个基座启动器，不该被它吵（判据：「无账号库 → 退化为基座（不报错）」）。
+  [ -f "$CCM_ACCTS_MANIFEST" ] && printf 'ccm: 账号解析已降级为**直接读 manifest**（%s）—— %s。后端本该是账号的唯一真相源；两份不一致时你拿到的是文件那一份（daemon 有 schema 版本闸与 configDir 安全谓词，文件这条没有）。\n' \
+     "$CCM_ACCTS_MANIFEST" "$why" >&2
+  return 0
+}
+
+# 名字 → configDir。解析不到 → 回空串（由**顶层**判空后中止；显式选号绝不静默降级）。
+# **只回显值、绝不 die** —— 本函数在 `$(...)` 里被调用，`die`(exit 2) 只杀子 shell、主流程照跑
+# ⇒ 用户打错账号名会**静默落到继承来的账号上**（rc=0）。实测踩过，比「换号不生效」更坏。
+# ⚠ 目录存在性照旧本文件自己 `-d` 判（不消费 daemon 的 `exists`）。
 account_config_dir() {
-  local name="$1" dir=""
-  [ -f "$CCM_ACCTS_MANIFEST" ] || { printf ''; return; }
-  if command -v jq >/dev/null 2>&1; then
-    dir="$(jq -r --arg n "$name" '.accounts[] | select(.name==$n) | .configDir // empty' "$CCM_ACCTS_MANIFEST" 2>/dev/null)"
-  else
-    # 无 jq 的兜底：按 name 定位同一对象里的 configDir（manifest 是每账号一行的紧凑格式）。
-    dir="$(grep -o "\"name\"[[:space:]]*:[[:space:]]*\"$name\"[^}]*\"configDir\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" \
-            "$CCM_ACCTS_MANIFEST" 2>/dev/null | sed 's/.*"configDir"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
-  fi
-  [ -n "$dir" ] && [ -d "$dir" ] || { printf ''; return; }
-  printf '%s' "$dir"
+  local want="$1" n c d
+  while IFS=$'\t' read -r n c d; do
+    [ "$n" = "$want" ] || continue
+    [ -n "$c" ] && [ -d "$c" ] && printf '%s' "$c"
+    return
+  done <<<"$_ccm_acct_tab"
+  printf ''
 }
 
-# manifest 里的账号名列表（给错误信息用——报"不可用"必须同时告诉用户有哪些可用）。
+# 账号名列表（给错误信息用——报"不可用"必须同时告诉用户有哪些可用）。
+# ⚠ 无尾空格：旧版两条分支在这点上**本来就不一致**（`jq … join(" ")` 无、`tr '\n' ' '` 有），
+#   而钉它的判据只在装了 jq 的机器上跑过。统一成无。
 list_account_names() {
-  [ -f "$CCM_ACCTS_MANIFEST" ] || { printf '(无账号库)'; return; }
-  if command -v jq >/dev/null 2>&1; then
-    jq -r '[.accounts[].name] | join(" ")' "$CCM_ACCTS_MANIFEST" 2>/dev/null
-  else
-    grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' "$CCM_ACCTS_MANIFEST" 2>/dev/null \
-      | sed 's/.*"\([^"]*\)"$/\1/' | tr '\n' ' '
-  fi
+  local out="" n c d
+  while IFS=$'\t' read -r n c d; do
+    [ -n "$n" ] || continue
+    out="$out${out:+ }$n"
+  done <<<"$_ccm_acct_tab"
+  [ -n "$out" ] && printf '%s' "$out" || printf '(无账号库)'
 }
 
-# manifest 里的默认账号（`isDefault: true`）。
+# 默认账号（`isDefault: true`）。多个取第一个（同旧版 `head -1`）。
 default_account_name() {
-  [ -f "$CCM_ACCTS_MANIFEST" ] || { printf ''; return; }
-  if command -v jq >/dev/null 2>&1; then
-    jq -r '.accounts[] | select(.isDefault==true) | .name' "$CCM_ACCTS_MANIFEST" 2>/dev/null | head -1
-  else
-    grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"[^}]*"isDefault"[[:space:]]*:[[:space:]]*true' \
-      "$CCM_ACCTS_MANIFEST" 2>/dev/null | head -1 | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
-  fi
+  local n c d
+  while IFS=$'\t' read -r n c d; do
+    [ "$d" = 1 ] && { printf '%s' "$n"; return; }
+  done <<<"$_ccm_acct_tab"
+  printf ''
 }
 
 # 账号解析。三态：
@@ -536,8 +706,14 @@ default_account_name() {
 #   都不传            → 落 manifest 的 isDefault（复刻旧 `_cc_acct_last` 的粘滞体验）。
 #     **这条必须有**：cc-acct-iso 把凭据搬进各账号目录后，基座 `~/.claude/.credentials.json`
 #     通常已不存在 —— 不落默认号的话，最常敲的 `cc`/`cct` 会掉进一个没登录的 config dir。
+#
+# ★ `K-C1`：`acct_table_load` **在主流程里、且只在真要解析时**调 —— 两条都承重：
+#   · 在主流程（不在 `$(...)` 里）⇒ 一次进程往返答完三个问题（见它的头注）；
+#   · 只在真要解析时 ⇒ `--base` 与「已继承 CLAUDE_CONFIG_DIR」这两条路**一次 daemon 都不问**
+#     （它们本来就不需要账号表；问了就是白付一次往返，还会把 `--print` 变吵）。
 config_dir=""
 if [ -n "$account" ]; then
+  acct_table_load
   config_dir="$(account_config_dir "$account")"
   [ -n "$config_dir" ] || die "账号 '$account' 不可用（不在 $CCM_ACCTS_MANIFEST，或其目录不存在）。可用: $(list_account_names)"
 elif [ "$use_base" != 1 ] && [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then
@@ -547,6 +723,7 @@ elif [ "$use_base" != 1 ] && [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then
   # cc-monitor 精心选中的账号 X **静默覆盖**成 manifest 的 isDefault，等于账号选择完全失效。
   # 加 `-z "${CLAUDE_CONFIG_DIR:-}"` 这道闸：已有继承来的账号 → 尊重它、不覆盖；
   # 真正的"空白终端裸敲 cc/cct"（无继承）才落默认号——两个场景用同一条 if 天然区分。
+  acct_table_load
   _def="$(default_account_name)"
   if [ -n "$_def" ]; then
     config_dir="$(account_config_dir "$_def")"

@@ -65,15 +65,30 @@ chmod +x "$W/bin/tmux"
 #   · 身份前置检查：**查得到** ⇒ 放行（本套件不测身份，测的是 argv/env 平价）；
 #   · `resume` 那条路：daemon **答不出命令** ⇒ 照旧落回本地那条（"诚实降级"那几条判据要的就是这个）。
 # ⚠ 别改成「不放 stub」——那测的就不再是平价，而是身份检查会不会把整套件打红。
+# ★★ `K-C1`（08-24）：这些 stub 现在还要会答 **`--list-accounts`** ——
+#   账号解析从「ccm 自己读 manifest」改成「问 daemon」之后，本套件每一条真跑都会先问它一次。
+#   不答的话 ccm 会**降级读文件并往 stderr 说一句**（那是 `§0b` 裁的行为，不是 bug）,
+#   于是本套件测的就不再是生产形状了（生产上 daemon 在位）。
+#   ⇒ 给 stub 加一段 `--list-accounts` 前缀：把 `<accts-dir>/accounts.json` 原样翻成帧形状。
+#   **单一事实源仍是那份 manifest**，不在 stub 里手抄账号表。
+_acct_prefix() { cat <<'PRE'
+if [ "$1" = --list-accounts ]; then
+  d=""; while [ $# -gt 0 ]; do [ "$1" = --accts-dir ] && d="$2"; shift; done
+  printf '{"accountZeroAware":true,"acctsDir":"%s","count":0,"enabled":true,"error":null,"kind":"accounts-meta","manifestPath":"%s/accounts.json","sharedStore":null,"updatedAt":null}\n' "$d" "$d"
+  jq -c '.accounts[] | {configDir:(.configDir // null),email:"",exists:true,isDefault:(.isDefault // false),loggedIn:false,mode:"isolated",name:.name}' "$d/accounts.json" 2>/dev/null
+  exit 0
+fi
+PRE
+}
 mkdir -p "$W/home/.cc-monitor/bin"
-printf '#!/bin/sh\ncat >/dev/null\nexit 0\n' > "$W/home/.cc-monitor/bin/cc-monitor-remote"
-chmod +x "$W/home/.cc-monitor/bin/cc-monitor-remote"
-_null_daemon() { # 把部署落点恢复成"答不出"的那份（A′e 会临时覆盖它）
-  printf '#!/bin/sh\ncat >/dev/null\nexit 0\n' > "$W/home/.cc-monitor/bin/cc-monitor-remote"
+_null_daemon() { # 把部署落点恢复成「答得出账号、答不出 resume 命令」的那份（A′e 会临时覆盖它）
+  { printf '#!/bin/sh\n'; _acct_prefix; printf 'cat >/dev/null\nexit 0\n'; } \
+    > "$W/home/.cc-monitor/bin/cc-monitor-remote"
   chmod +x "$W/home/.cc-monitor/bin/cc-monitor-remote"
 }
+_null_daemon
 
-cat > "$W/m.json" <<JSON
+cat > "$W/accounts.json" <<JSON
 { "version": 1, "accounts": [
   { "name": "z", "configDir": "$W/acct-z", "isDefault": true },
   { "name": "b", "configDir": "$W/acct-b", "isDefault": false } ] }
@@ -95,7 +110,7 @@ base_env() {
       CLAUDECODE=1 CLAUDE_CODE_ENTRYPOINT=cli \
       CLAUDE_CODE_SESSION_ID=fake-sid CLAUDE_CODE_CHILD_SESSION=1 \
       TMUX=/faux/socket,1,0 PATH="$W/bin:$PATH" HOME="$W/home" \
-      CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$W/m.json" \
+      CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$W/accounts.json" \
       "${BASE_EXTRA[@]}" "$@"
 }
 
@@ -141,6 +156,55 @@ pair "codex + --account b + --model opus" --agent codex --account b --model opus
 # 差分退化成 `"" == ""`。上面那条自检就是逮到这个的（第一次跑当场红）。
 BASE_EXTRA=(CLAUDE_CONFIG_DIR="$W/acct-z")
 pair "claude + --base + --model（#75 逃生口）" --agent claude --base --model opus
+BASE_EXTRA=()
+
+echo
+echo "===== A″ 组：账号解析走 daemon 之后，**print 路与 exec 路必须同源**（K-C1）====="
+# ★ 为什么 A 组盖不住这一格：A 组的 `pair "claude + --account b"` 比的是 print↔exec 的**一致**,
+#   而账号解析改走 daemon 之后，两条路**各自**都要问一次 daemon（`--print` 那条也问 ——
+#   `config_dir` 是**值**、逐字进命令串，没法像 `BUS_ID_RECIPE` 那样推迟求值）。
+#   ⇒ 只要两条路一起坏（比如两条都退回读文件），A 组照样全绿。
+# ⇒ 本组的夹具让 **daemon 与文件答不同的目录**，于是「拿到哪一个」直接说出它走了哪条路。
+mkdir -p "$W/acct-daemon-b"
+cat > "$W/bin/dm-acct" <<STUB
+#!/bin/sh
+if [ "\$1" = --list-accounts ]; then
+  printf '%s\n' '{"accountZeroAware":true,"acctsDir":"x","count":1,"enabled":true,"error":null,"kind":"accounts-meta","manifestPath":"x","sharedStore":null,"updatedAt":null}'
+  printf '%s\n' '{"configDir":"$W/acct-daemon-b","email":"","exists":true,"isDefault":true,"loggedIn":false,"mode":"isolated","name":"b"}'
+  exit 0
+fi
+cat >/dev/null
+exit 0
+STUB
+chmod +x "$W/bin/dm-acct"
+# ★ 自检必须问「daemon **实际答了什么**」，不是比两个路径字面量 —— 那两个字符串恒不相等,
+#   于是「把假 daemon 改成答与 manifest 相同的目录」这一刀在它眼里毫无变化 ⇒ 恒绿。
+#   （`e2e/ccm-cli.test.sh` 那节的同款自检 08-24 就是这么栽的，这里一起改。）
+ck "A″ · 夹具自检：daemon **实际答的** b 的 configDir 与 manifest 里那个刻意不同" "differ" \
+   "$(_mf="$(jq -r '.accounts[]|select(.name=="b")|.configDir' "$W/accounts.json" 2>/dev/null)"
+      _dm="$("$W/bin/dm-acct" --list-accounts --accts-dir "$W" 2>/dev/null \
+             | jq -r 'select(.name=="b")|.configDir' 2>/dev/null)"
+      if [ -z "$_mf" ] || [ -z "$_dm" ]; then echo "抽取器坏了:[mf=$_mf][dm=$_dm]"
+      elif [ "$_mf" != "$_dm" ]; then echo differ; else echo "same:[$_dm]"; fi)"
+_a2="$(base_env CCM_DAEMON_BIN="$W/bin/dm-acct" bash "$CCM" --cwd "$CWD" --launcher env --account b 2>/dev/null \
+        | grep '^CLAUDE_CONFIG_DIR=')"
+ck "★ A″ · **exec 路**：--account b 的 configDir 来自 daemon（不是 manifest）" \
+   "CLAUDE_CONFIG_DIR=$W/acct-daemon-b" "$_a2"
+base_env CCM_DAEMON_BIN="$W/bin/dm-acct" bash "$CCM" --cwd "$CWD" --launcher env --account b --print \
+  > "$W/a2.line" 2>/dev/null
+ck "★ A″ · **print 路**跑出来的是同一个值（两条路同源；只钉 exec 路时「print 退回读文件」会存活）" \
+   "CLAUDE_CONFIG_DIR=$W/acct-daemon-b" \
+   "$(base_env bash -c "$(cat "$W/a2.line")" 2>/dev/null | grep '^CLAUDE_CONFIG_DIR=')"
+# ★ 反向那一对：同一夹具、明示关掉 daemon ⇒ **两条路都**落回文件那份。
+#   只有正向那一对时，「永远走 daemon、逃生口失效」也能全绿。
+BASE_EXTRA=(CCM_NO_DAEMON=1)
+ck "A″ · 反向（exec 路）：CCM_NO_DAEMON=1 ⇒ 落回 manifest 那份" "CLAUDE_CONFIG_DIR=$W/acct-b" \
+   "$(base_env CCM_DAEMON_BIN="$W/bin/dm-acct" bash "$CCM" --cwd "$CWD" --launcher env --account b 2>/dev/null \
+        | grep '^CLAUDE_CONFIG_DIR=')"
+base_env CCM_DAEMON_BIN="$W/bin/dm-acct" bash "$CCM" --cwd "$CWD" --launcher env --account b --print \
+  > "$W/a2b.line" 2>/dev/null
+ck "A″ · 反向（print 路）：同样落回 manifest 那份" "CLAUDE_CONFIG_DIR=$W/acct-b" \
+   "$(base_env bash -c "$(cat "$W/a2b.line")" 2>/dev/null | grep '^CLAUDE_CONFIG_DIR=')"
 BASE_EXTRA=()
 
 echo
@@ -194,11 +258,9 @@ pair_argv "new（对照组：证明差分不是只对 resume 有效）"         
 #   「显式 `--launcher` 优先于 daemon 建议」⇒ 一给 launcher 就绕开 daemon 了。
 #   ⇒ 观察 daemon 那条路只能换个法子：**让假 daemon 自己回一条以 argvstub 为首的命令**。
 #   这条是接线当天就发现的洞（网立好了，却盖不住自己要接的那条路）。
-cat > "$W/bin/faux-daemon" <<STUB
-#!/usr/bin/env bash
-cat >/dev/null
-printf '{"command":"$W/bin/argvstub --resume FROM-DAEMON","mode":"PtyInject"}\n'
-STUB
+{ printf '#!/bin/sh\n'; _acct_prefix
+  printf 'cat >/dev/null\nprintf %s "{\\"command\\":\\"%s/argvstub --resume FROM-DAEMON\\",\\"mode\\":\\"PtyInject\\"}"\n' "'%s\\n'" "$W/bin"
+} > "$W/bin/faux-daemon"
 chmod +x "$W/bin/faux-daemon"
 
 actual_argv_d() {
@@ -278,12 +340,31 @@ ck "A′e · CCM_NO_DAEMON=1 整条关掉，落回本地" "ARGV|--resume abc-123
 BASE_EXTRA=()
 # `--print` 必须**纯**：同一条命令，装没装 daemon 吐出的字节必须逐字相同
 #（吐的是**配方**不是查找结果 —— 与 BUS_ID_RECIPE 同一条纪律）。
-ck "A′e · --print 不因机器上有没有 daemon 而变" "same" \
-   "$(_p1="$(base_env bash "$CCM" resume abc-123 --cwd "$CWD" --print 2>&1)"
+#
+# ★★ `K-C1`（08-24）**这一条拆成了两格，且是收紧不是放宽** —— 原因写清楚：
+#   原来它比的是 `2>&1`（stdout+stderr）。`K-C1` 之后账号解析在 daemon 缺位时会**降级并往
+#   stderr 说一句**（`§0b` 裁的：降级不许闷声）⇒ 「装没装 daemon 连 stderr 都逐字相同」
+#   **今天是假的，而且是有意让它假的**。照原样留着，它钉的就不再是「配方纯不纯」，
+#   而是「不许有任何降级提示」—— 那会把一条已裁的行为判成回归。
+#   ⇒ 拆成：① **stdout（那条命令串）**逐字相同 —— 这才是「配方不是查找结果」的原意，
+#            而且它比原版**更严**：原版里 stdout 的差异可以被 stderr 的差异掩盖成同一个 `differs`，
+#            分不清是哪一半变了；
+#         ② 差别**只**落在 stderr 的那一句降级提示上（新增的一格：证明差别是有意的、
+#            且只在诊断面上，没有漏到命令串里）。
+ck "A′e · --print 的**命令串**不因机器上有没有 daemon 而变（配方不是查找结果）" "same" \
+   "$(_p1="$(base_env bash "$CCM" resume abc-123 --cwd "$CWD" --print 2>/dev/null)"
       BASE_EXTRA=(CCM_NO_DAEMON=1)
-      _p2="$(base_env bash "$CCM" resume abc-123 --cwd "$CWD" --print 2>&1)"
+      _p2="$(base_env bash "$CCM" resume abc-123 --cwd "$CWD" --print 2>/dev/null)"
       BASE_EXTRA=()
       [ "$_p1" = "$_p2" ] && echo same || echo differs)"
+ck "A′e · 装没装 daemon 的差别**只**落在 stderr 那句降级提示上（K-C1 §0b：降级不许闷声）" "quiet|loud" \
+   "$(_e1="$(base_env bash "$CCM" resume abc-123 --cwd "$CWD" --print 2>&1 >/dev/null)"
+      BASE_EXTRA=(CCM_NO_DAEMON=1)
+      _e2="$(base_env bash "$CCM" resume abc-123 --cwd "$CWD" --print 2>&1 >/dev/null)"
+      BASE_EXTRA=()
+      printf '%s|%s' \
+        "$([ -z "$_e1" ] && echo quiet || echo "noisy:[$_e1]")" \
+        "$(printf '%s' "$_e2" | grep -q '账号解析已降级' && echo loud || echo "silent:[$_e2]")")"
 # ⚠ `U-NP④`：这里原来是 `rm -f` —— 删掉之后**后面每一条真跑都会撞上身份前置检查**。
 #   改成恢复成"答不出"的那份（见本文件头部 `_null_daemon` 的理由）。
 _null_daemon
@@ -377,7 +458,10 @@ ck "agents= 行列出 claude 与 codex" "1" \
 # ⚠ 观察手段必须用 **PATH 上的 `claude` shim**，不能用 `--launcher`：
 #   显式 `--launcher` **绕开整个 daemon 块**（A′d 那段头注逐字记着这条）。
 #   08-13 我在这上面又栽了一次——拿 `--launcher` 探，三种坏 daemon 全「正常返回」。
-printf '#!/bin/sh\nsleep 300\n'                    > "$W/bin/bad-hang";    chmod +x "$W/bin/bad-hang"
+# ⚠ `bad-hang` 也要**先**答完 `--list-accounts` 再挂〔`K-C1` 08-24〕：
+#   本组量的是「**resume 那条路**挂住时会不会自己停」，若账号那条也陪着挂，
+#   读数就变成两条路超时的**和**（3s+3s），量的东西就不是原来那个了。
+{ printf '#!/bin/sh\n'; _acct_prefix; printf 'sleep 300\n'; } > "$W/bin/bad-hang"; chmod +x "$W/bin/bad-hang"
 printf '#!/bin/sh\ncat >/dev/null\necho 不是JSON\n' > "$W/bin/bad-garbage"; chmod +x "$W/bin/bad-garbage"
 printf '#!/bin/sh\nexit 9\n'                       > "$W/bin/bad-broken";  chmod +x "$W/bin/bad-broken"
 for _bad in hang garbage broken; do
@@ -430,7 +514,9 @@ for _k in env deploy path; do
     deploy) _f="$W/h3/home/.cc-monitor/bin/cc-monitor-remote" ;;
     path)   _f="$W/h3/pathbin/cc-monitor-remote" ;;
   esac
-  printf '#!/bin/sh\ncat >/dev/null\nprintf %%s "{\\"command\\":\\"%s/argvstub FROM-%s\\"}"\n' "$W/bin" "$_k" > "$_f"
+  { printf '#!/bin/sh\n'; _acct_prefix
+    printf 'cat >/dev/null\nprintf %%s "{\\"command\\":\\"%s/argvstub FROM-%s\\"}"\n' "$W/bin" "$_k"
+  } > "$_f"
   chmod +x "$_f"
 done
 _h3() {  # $1=档位标签（只为可读，不参与判定）；其余=额外 env
@@ -443,7 +529,7 @@ _h3() {  # $1=档位标签（只为可读，不参与判定）；其余=额外 e
     env -u CLAUDE_CONFIG_DIR -u ANTHROPIC_MODEL -u CC_BUS_ID -u CCM_ENV -u CCM_ENV_PROBE \
         CLAUDECODE=1 CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent \
         TMUX=/faux/socket,1,0 \
-        CCM_ACCTS_MANIFEST="$W/m.json" "$@" \
+        CCM_ACCTS_MANIFEST="$W/accounts.json" "$@" \
     bash "$CCM" resume abc-123 --agent claude --cwd "$CWD" 2>&1 | grep '^ARGV|' | head -1
 }
 ck "A′h · 三者齐全 ⇒ 用 \$CCM_DAEMON_BIN" "ARGV|FROM-env" \
@@ -463,7 +549,7 @@ _h3_rc() { shift; PATH="$W/h3/pathbin:$W/bin:$PATH" HOME="$W/h3/home" \
     env -u CLAUDE_CONFIG_DIR -u ANTHROPIC_MODEL -u CC_BUS_ID -u CCM_ENV -u CCM_ENV_PROBE \
         CLAUDECODE=1 CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent \
         TMUX=/faux/socket,1,0 \
-        CCM_ACCTS_MANIFEST="$W/m.json" "$@" \
+        CCM_ACCTS_MANIFEST="$W/accounts.json" "$@" \
     bash "$CCM" resume abc-123 --agent claude --cwd "$CWD" >/dev/null 2>&1; printf '%s' "$?"; }
 ck "A′h · 一个都没有 ⇒ **响亮失败**（rc=2，不是悄悄没有身份）" "2" "$(_h3_rc none)"
 ck "A′h · 一个都没有 + CCM_NO_DAEMON=1（明示放弃身份）⇒ 才落回本地那条" \
