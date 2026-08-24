@@ -47,6 +47,33 @@ cat > "$ACCTS/accounts.json" <<JSON
   { "name": "z", "configDir": "$ACCTS/z", "isDefault": true, "mode": "isolated" },
   { "name": "b", "configDir": "$ACCTS/b", "isDefault": false, "mode": "isolated" } ] }
 JSON
+# ★★ `K-C1`（08-24）：**账号解析改走 daemon 之后，本套件必须自己带一份假 daemon。**
+#
+# 两个理由，都实测过：
+#  ① 不带的话，查找次序会摸到 `$HOME/.cc-monitor/bin/cc-monitor-remote` ——
+#     开发机上那是**用户的真二进制**（本套件其余每一处都在极力避免碰用户的东西），
+#     CI 上它不存在 ⇒ 同一条判据在两处走**两条不同的路**。
+#  ② 顺带把本套件对「这台机器装没装 daemon」的隐性依赖去掉：身份前置检查
+#     （`U-NP④`：在 tmux 里起 claude 而找不到 daemon ⇒ exit 2）此前是靠**开发机恰好装了**
+#     才过的。钉一份假的之后，本套件在裸 CI runner 上也走同一条路。
+# ⚠ 这份假 daemon **只答 `--list-accounts`**，一个字节都不写盘 ⇒ 场景 3b 那条负向断言
+#   （「ccm 自己不打 @ccm_sid」）射程不变。它也**不进流模式**（那才会往 tmux server 装 hook）。
+# ⚠ **单一事实源仍是那份 manifest**：它把 `<accts-dir>/accounts.json` 原样翻成帧形状，
+#   不在这里手抄一张账号表（抄了就有两份要同步）。
+mk_mirror_daemon() { # mk_mirror_daemon <落点>
+  cat > "$1" <<'MIRROR'
+#!/bin/sh
+[ "$1" = --list-accounts ] || { cat >/dev/null; exit 0; }
+d=""; while [ $# -gt 0 ]; do [ "$1" = --accts-dir ] && d="$2"; shift; done
+printf '{"accountZeroAware":true,"acctsDir":"%s","count":0,"enabled":true,"error":null,"kind":"accounts-meta","manifestPath":"%s/accounts.json","sharedStore":null,"updatedAt":null}\n' "$d" "$d"
+jq -c '.accounts[] | {configDir:(.configDir // null),email:"",exists:true,isDefault:(.isDefault // false),loggedIn:false,mode:"isolated",name:.name}' "$d/accounts.json" 2>/dev/null
+exit 0
+MIRROR
+  chmod +x "$1"
+}
+mk_mirror_daemon "$BIN/kc1-mirror-daemon"
+export CCM_DAEMON_BIN="$BIN/kc1-mirror-daemon"
+
 CFG="$TMP/ccm-config"
 printf 'CCM_ACCTS_MANIFEST=%s\nCCM_WORKSPACE=%s\n' "$ACCTS/accounts.json" "$TMP/ws" > "$CFG"
 mkdir -p "$TMP/ws" "$TMP/proj"
@@ -322,6 +349,55 @@ name="$(T ls -F '#{session_name}' 2>/dev/null | head -1)"
 # 同时认新后缀与老前缀（老会话还在跑，不能不认），这里钉的是**新产的名字**。
 case "$name" in *-cc|*-cc-[0-9]*) r=yes ;; *) r=no ;; esac
 ck "会话名以 -cc 结尾（新命名）" "yes" "$r"
+
+echo
+echo "===== 场景 7：账号解析走 daemon（K-C1）—— **真起会话**那条路，不是 --print ====="
+#
+# ★ 与 `e2e/ccm-cli.test.sh` 那一节的分工：那节全走 `--print`（离线预言机）。
+#   本场景验的是**真的建了 tmux 会话、载荷真的被 send-keys 打进去、agent 进程真的拿到了
+#   那个 `CLAUDE_CONFIG_DIR`** —— 而账号解析在这条路上发生**两次**
+#   （外层建容器前先校验一次、内层注入时再一次），`--print` 一次都答不了「内层那次拿到了什么」。
+#   件计划 `KCY1` 点名的第二个失效面就是这个（「`--print` 那条路与真起会话那条路可能不同源」）。
+#
+# ★ 夹具的要害同 `ccm-cli`：**daemon 与 manifest 必须答不同的目录**。
+#   manifest 里 z 指向 `$ACCTS/z`，这个假 daemon 让 z 指向 `$ACCTS/z-daemon`
+#   ⇒ probe.log 里出现哪一个，就说明**内层那次**读的是哪一边。
+#   （上面场景 1–6 用的是**镜像**假 daemon：两边同值 ⇒ 那些断言钉的是「值穿过了 tmux 边界」，
+#     **不是** provenance。别把它们当 provenance 判据。）
+mkdir -p "$ACCTS/z-daemon"
+cat > "$BIN/kc1-diff-daemon" <<STUB
+#!/bin/sh
+if [ "\$1" = --list-accounts ]; then
+  printf '%s\n' '{"accountZeroAware":true,"acctsDir":"x","count":1,"enabled":true,"error":null,"kind":"accounts-meta","manifestPath":"x","sharedStore":null,"updatedAt":null}'
+  printf '%s\n' '{"configDir":"$ACCTS/z-daemon","email":"","exists":true,"isDefault":true,"loggedIn":false,"mode":"isolated","name":"z"}'
+  exit 0
+fi
+cat >/dev/null
+exit 0
+STUB
+chmod +x "$BIN/kc1-diff-daemon"
+# ★ 自检必须问「daemon **实际答了什么**」，不是比两个路径字面量（那两个字符串恒不相等 ⇒
+#   「把假 daemon 改成答与 manifest 相同的目录」那一刀在它眼里毫无变化、恒绿）。
+#   `e2e/ccm-cli.test.sh` 那节的同款自检 08-24 就是这么栽的，三处一起改。
+ck "场景7 · 夹具自检：daemon **实际答的** z 的 configDir 与 manifest 里那个刻意不同" "differ" \
+   "$(_mf="$(jq -r '.accounts[]|select(.name=="z")|.configDir' "$ACCTS/accounts.json" 2>/dev/null)"
+      _dm="$("$BIN/kc1-diff-daemon" --list-accounts --accts-dir "$ACCTS" 2>/dev/null \
+             | jq -r 'select(.name=="z")|.configDir' 2>/dev/null)"
+      if [ -z "$_mf" ] || [ -z "$_dm" ]; then echo "抽取器坏了:[mf=$_mf][dm=$_dm]"
+      elif [ "$_mf" != "$_dm" ]; then echo differ; else echo "same:[$_dm]"; fi)"
+reset
+CCM_DAEMON_BIN="$BIN/kc1-diff-daemon" \
+  bash -c "cd '$TMP/proj' && CCM_DAEMON_BIN='$BIN/kc1-diff-daemon' bash '$CCM' --tmux --account z --launcher CCMPROBE >/dev/null 2>&1 &"
+wait_probe || true
+ck "★ 场景7 · 真起会话：内层拿到的 CLAUDE_CONFIG_DIR 来自 **daemon**（不是 manifest）" \
+   "CFG=$ACCTS/z-daemon" "$(grep '^CFG=' "$TMP/probe.log" | head -1)"
+# ★ 反向那一格：同一夹具、明示关掉 daemon ⇒ 必须落回 manifest 那份（逃生口在真机上也真的通）。
+#   只有正向那一格时，「永远走 daemon、逃生口失效」也能绿。
+reset
+bash -c "cd '$TMP/proj' && CCM_NO_DAEMON=1 CCM_DAEMON_BIN='$BIN/kc1-diff-daemon' bash '$CCM' --tmux --account z --launcher CCMPROBE >/dev/null 2>&1 &"
+wait_probe || true
+ck "场景7 · 反向：CCM_NO_DAEMON=1 ⇒ 真起会话也落回 manifest 那份（诚实降级在真机上通）" \
+   "CFG=$ACCTS/z" "$(grep '^CFG=' "$TMP/probe.log" | head -1)"
 
 echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
