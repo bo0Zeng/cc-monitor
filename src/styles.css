@@ -6108,6 +6108,15 @@ body.settings-window-mode .grid-monitor-trigger {
   color: var(--text-2);
   font-size: 0.85em;
 }
+/* K-A1：与设置里那张账号表的 `.accounts-row-badge.warn` **同一套约定** ——
+   语义住布尔（`accounts.ts::accountStatusBadge` 的 `warn`），呈现住 CSS。
+   照那条的克制：只给异常态上色（同一个 `--warn`，不发明新颜色），健康态一格不动
+   （恒真的信息不携带信息，涂它只会稀释真正要跳出来的「未登录 / 逃生口 / api-key（未配置端点）」）。
+   ⇒ 警示**不回文本里去**：`text` 里不拼 ⚠ 字形（拼了会让 api-key 那一支变成
+   「api-key（未配置端点） ⚠」，钉在 `account-chip.vitest.ts` 的 `★ Y3 真发现` 那条）。 */
+.account-picker-status.warn {
+  color: var(--warn);
+}
 /* F10：菜单里当前账号行的用量摘要——只在懒加载完成后才有内容。 */
 .account-picker-usage {
   flex: none;

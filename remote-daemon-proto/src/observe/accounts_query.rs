@@ -58,7 +58,8 @@
 //!   （路径是 `$HOME/.claude.json`，写死在代码里），所以它连这个面都没有。
 
 use acct_core::{
-    is_deceptive_char, ACCTS_DIR_NAME, CREDENTIALS_NAME, MANIFEST_NAME, SUPPORTED_SCHEMA,
+    auth_kind_from_manifest, auth_ready, is_deceptive_char, ACCTS_DIR_NAME, CREDENTIALS_NAME,
+    MANIFEST_NAME, SUPPORTED_SCHEMA,
 };
 use std::path::{Path, PathBuf};
 
@@ -86,6 +87,11 @@ struct RawAccount {
     is_default: bool,
     #[serde(default)]
     mode: Option<String>,
+    /// **K-A1：鉴权方式。可以缺席** —— 缺席 = 旧 manifest = 订阅号
+    /// （裁决与排除见件计划 `KA6d`；分类规则的唯一住址是
+    /// `acct_core::auth_kind_from_manifest`，**这里不许再写一份 match**）。
+    #[serde(rename = "authKind", default)]
+    auth_kind: Option<String>,
 }
 
 struct Manifest {
@@ -363,6 +369,21 @@ fn list_accounts(accts_dir: &Path) -> Vec<String> {
                         )
                     }
                 };
+                // 只 stat 存在性，绝不读内容。
+                // **Z06 双写点**：这个文件名是「什么算已登录」的判据，而 cc-acct-iso
+                // 的 `NATIVE_IDENTITY` 声明里也各写了一份（bash 侧 `cc-acct-iso` 的
+                // `logged=` 那行）。两个进程、两种语言，无法共享常量 ⇒ 由本文件测试
+                // 模块里的 `credential_filename_matches_native_identity_declaration`
+                // 钉住（同 `TMUX_LS_FMT` 双写点那条守卫的做法）。**改这里必须改声明。**
+                // 探不到 config dir（账号 0 且 manifest 没写 sharedStore）⇒ false，
+                // 那是「不知道」，不假装已登录。
+                let credentials_present = probe_dir
+                    .as_ref()
+                    .is_some_and(|d| d.join(CREDENTIALS_NAME).exists());
+                // K-A1：鉴权方式这一维。分类与就绪**各只有一处实现**，都住 `acct-core`
+                // ——本文件与 `local_accounts.rs` 都调它，所以「两个生产者各填一个不同的
+                // 默认值」在结构上不可表示（`KAY1` 那条 acceptor 的失效模式就是这个）。
+                let auth_kind = auth_kind_from_manifest(a.auth_kind.as_deref());
                 lines.push(
                     serde_json::json!({
                         "name": a.name,
@@ -375,17 +396,14 @@ fn list_accounts(accts_dir: &Path) -> Vec<String> {
                             Some(d) if a.config_dir.is_some() => d.is_dir(),
                             _ => a.config_dir.is_none(),
                         },
-                        // 只 stat 存在性，绝不读内容。
-                        // **Z06 双写点**：这个文件名是「什么算已登录」的判据，而 cc-acct-iso
-                        // 的 `NATIVE_IDENTITY` 声明里也各写了一份（bash 侧 `cc-acct-iso` 的
-                        // `logged=` 那行）。两个进程、两种语言，无法共享常量 ⇒ 由本文件测试
-                        // 模块里的 `credential_filename_matches_native_identity_declaration`
-                        // 钉住（同 `TMUX_LS_FMT` 双写点那条守卫的做法）。**改这里必须改声明。**
-                        // 探不到 config dir（账号 0 且 manifest 没写 sharedStore）⇒ false，
-                        // 那是「不知道」，不假装已登录。
-                        "loggedIn": probe_dir
-                            .as_ref()
-                            .is_some_and(|d| d.join(CREDENTIALS_NAME).exists()),
+                        // 逐字节旧语义：仅 stat `.credentials.json` 存在性，**不代表凭据有效**
+                        // （`KA6b` 今天之后仍然成立）。可用性**不再**直接读它，走 `authReady`。
+                        "loggedIn": credentials_present,
+                        // K-A1：订阅 / api-key。旧 manifest 缺这个键 ⇒ 订阅（`KA6d`）。
+                        "authKind": auth_kind,
+                        // K-A1：「鉴权方式这一维不再阻塞它被选中」。**不等于真能连上**
+                        // （api-key 号还没有配端点的路 ⇒ `KA6a`，UI 必须把这个状态说出来）。
+                        "authReady": auth_ready(auth_kind, credentials_present),
                     })
                     .to_string(),
                 );
@@ -1348,5 +1366,125 @@ mod tests {
              比对对象换成那个 helper 的名字，**性质一字未变**：路径的根仍必须是 $HOME。"
         );
         assert!(me.len() > 1000, "include_str! 没读到源码，上面的断言是空转");
+    }
+
+    // ---- K-A1：鉴权方式这一维（生产者①） ----
+
+    /// ★ **跨生产者对拍，daemon 这一半。**
+    ///
+    /// 喂的是 `acct_core::auth_kind_parity_manifest`（**两个 crate 共用的那一份**），
+    /// 断的是 `acct_core::AUTH_KIND_PARITY_CASES` 里手写的金样。
+    /// `local_accounts.rs` 那半断的是**同一张表**，所以「两个生产者各填一个不同的默认值」
+    /// 会让其中一半当场红 —— 这正是 `KAY1` 那条 acceptor 点名的失效模式。
+    ///
+    /// ⚠ 它**只覆盖 `authKind` / `authReady` 这一维**（`KA6c`）：其余 6 个字段今天仍是
+    /// 两份实现各写一遍，这条对拍看不见它们漂。
+    #[test]
+    fn auth_kind_parity_daemon_side() {
+        let root = tmpdir("authkind-parity");
+        for c in &acct_core::AUTH_KIND_PARITY_CASES {
+            let d = root.join(c.name);
+            fs::create_dir_all(&d).unwrap();
+            if c.credentials_present {
+                fs::write(d.join(CREDENTIALS_NAME), "{\"tok\":\"SECRET-TOKEN\"}").unwrap();
+            }
+        }
+        fs::create_dir_all(root.join("shared")).unwrap();
+        write_manifest(
+            &root,
+            &acct_core::auth_kind_parity_manifest(&root.to_string_lossy()),
+        );
+        let lines = list_accounts(&root);
+        // 首行是 meta，之后一行一个账号 —— 行数自检，防「少了几行也照样逐格绿」。
+        assert_eq!(
+            lines.len(),
+            acct_core::AUTH_KIND_PARITY_CASES.len() + 1,
+            "行数对不上，逐格断言会漏掉没出来的那几个账号：{lines:?}"
+        );
+        for (i, c) in acct_core::AUTH_KIND_PARITY_CASES.iter().enumerate() {
+            let v: serde_json::Value = serde_json::from_str(&lines[i + 1]).unwrap();
+            assert_eq!(v["name"], c.name, "顺序变了，下面几格就对错人了");
+            assert_eq!(
+                v["authKind"], c.expect_auth_kind,
+                "{}：daemon 产出的 authKind 与金样不一致",
+                c.name
+            );
+            assert_eq!(
+                v["authReady"], c.expect_auth_ready,
+                "{}：daemon 产出的 authReady 与金样不一致",
+                c.name
+            );
+            // `loggedIn` 逐字节旧语义：仍然只是「凭据文件在不在」。
+            assert_eq!(
+                v["loggedIn"], c.credentials_present,
+                "{}：loggedIn 的语义被这次改动动了（它该只是 stat 结果）",
+                c.name
+            );
+        }
+        for l in &lines {
+            assert!(!l.contains("SECRET-TOKEN"), "输出里出现了凭据内容：{l}");
+        }
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// ★ `KAY4` 的 **Rust 侧那一格**（vitest 那条守卫扫不到这里）。
+    ///
+    /// 守的性质：本文件里「鉴权方式这一维」**不许有第二条计算路径** ——
+    /// `authReady` 只许来自 `acct_core::auth_ready(`，`authKind` 只许来自
+    /// `acct_core::auth_kind_from_manifest(`。有人在这儿手写一个
+    /// `if kind == "api-key" { true } else { … }`，本条红。
+    ///
+    /// ⚠ 射程如实写：它**只管本文件**（另一个生产者由
+    /// `local_accounts.rs::the_auth_dimension_has_exactly_one_computation_path` 守自己那份），
+    /// 而且是**字面量扫描** —— 把两个 helper 重新 `use` 成别名就绕得过去。
+    /// 真正的地板不是它，是 `acct-core` 里只有一份实现。
+    #[test]
+    fn the_auth_dimension_has_exactly_one_computation_path() {
+        let me = include_str!("accounts_query.rs");
+        assert!(me.len() > 20_000, "include_str! 没读到源码，本条在空转（实得 {} 字节）", me.len());
+        // 只看生产段：`#[cfg(test)]` 之前的那一半（本文件的测试段自己就会提到这些名字）。
+        let marker = "#[cfg(test)]";
+        let cut = me.find(marker).expect("找不到 #[cfg(test)] 锚点 —— 切法失效了");
+        let prod_with_comments = &me[..cut];
+        assert!(
+            prod_with_comments.len() > 15_000,
+            "生产段只切出 {} 字节 —— 锚点挪了，下面几条会零命中地绿",
+            prod_with_comments.len()
+        );
+        // **去注释口径**：本文件的注释里就在解释这一维，按裸文本数会把散文也数进来
+        // （第一版正是这么假红的：注释里两处 `api-key` 被当成了第二条计算路径）。
+        // 全部是行注释，所以按行剥就够；剥完做锚点自检，防剥过头。
+        let prod: String = prod_with_comments
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            prod.contains("fn list_accounts(accts_dir: &Path)") && prod.len() > 8_000,
+            "剥注释剥过头了（实得 {} 字节）—— 下面几条会零命中地绿",
+            prod.len()
+        );
+        assert_eq!(
+            prod.matches("auth_ready(").count(),
+            1,
+            "生产段里 `auth_ready(` 出现了不止一次 —— 要么有了第二条计算路径，要么该收进 acct-core"
+        );
+        assert_eq!(
+            prod.matches("auth_kind_from_manifest(").count(),
+            1,
+            "生产段里 `auth_kind_from_manifest(` 出现了不止一次"
+        );
+        assert_eq!(
+            prod.matches("\"authReady\"").count(),
+            1,
+            "`authReady` 这个键在生产段里被写了不止一处"
+        );
+        // 阴性对照式自检：本文件的生产段里**不许**出现 api-key 这个字面量
+        // （分类规则住 acct-core；这里出现它就意味着有人在本地又判了一次）。
+        assert_eq!(
+            prod.matches("api-key").count(),
+            0,
+            "生产段里出现了 `api-key` 字面量 —— 鉴权方式的分类只许住 acct-core"
+        );
     }
 }

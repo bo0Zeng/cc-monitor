@@ -30,9 +30,10 @@
 //! 逐字照搬）② 「是绝对路径」（**平台相关的形式**，各写各的）。
 //! **判据落在性质上，不落在表面特征上** —— 照抄 `starts_with('/')` 是抄了形式、丢了性质。
 
-use crate::accounts::{AccountsMeta, AccountsResult, RemoteAccount};
+use crate::accounts::{AccountsMeta, AccountsResult, AuthKind, RemoteAccount};
 use acct_core::{
-    is_deceptive_char, ACCTS_DIR_NAME, CREDENTIALS_NAME, MANIFEST_NAME, SUPPORTED_SCHEMA,
+    auth_ready, is_deceptive_char, ACCTS_DIR_NAME, CREDENTIALS_NAME, MANIFEST_NAME,
+    SUPPORTED_SCHEMA,
 };
 use std::path::{Path, PathBuf};
 
@@ -59,6 +60,11 @@ struct RawAccount {
     is_default: bool,
     #[serde(default)]
     mode: Option<String>,
+    /// **K-A1：鉴权方式。可以缺席** —— 缺席 = 旧 manifest = 订阅号（裁决见 `KA6d`）。
+    /// 分类规则的唯一住址是 `acct_core::auth_kind_from_manifest`（经 `AuthKind::from_manifest`），
+    /// **这里不许再写一份 match**。
+    #[serde(rename = "authKind", default)]
+    auth_kind: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -256,6 +262,15 @@ fn list_from_dir(accts_dir: &Path) -> AccountsResult {
             }
         };
         let has_cfg = a.config_dir.is_some();
+        // 只 stat 存在性，**绝不读内容**。探不到目录 ⇒ false，那是「不知道」，不假装已登录。
+        let credentials_present = probe_dir
+            .as_deref()
+            .map(|d| d.join(CREDENTIALS_NAME).is_file())
+            .unwrap_or(false);
+        // K-A1：分类与就绪各只有一处实现，都住 `acct-core` —— daemon 的
+        // `observe/accounts_query.rs` 调的是同两个函数。⇒「两个生产者各填一个不同的默认值」
+        // 在结构上不可表示（`KAY1` 那条 acceptor 点名的失效模式）。
+        let kind = AuthKind::from_manifest(a.auth_kind.as_deref());
         out.push(RemoteAccount {
             name: a.name,
             email: a.email.unwrap_or_default(),
@@ -267,11 +282,11 @@ fn list_from_dir(accts_dir: &Path) -> AccountsResult {
                 Some(d) if has_cfg => d.is_dir(),
                 _ => !has_cfg,
             },
-            // 只 stat 存在性，**绝不读内容**。探不到目录 ⇒ false，那是「不知道」，不假装已登录。
-            logged_in: probe_dir
-                .as_deref()
-                .map(|d| d.join(CREDENTIALS_NAME).is_file())
-                .unwrap_or(false),
+            // 逐字节旧语义（`KA6b`）：只是 stat 结果，**不代表凭据有效**。
+            // 可用性**不再**直接读它 —— 走下面的 `auth_ready`。
+            logged_in: credentials_present,
+            auth_kind: Some(kind),
+            auth_ready: Some(auth_ready(kind.as_contract_str(), credentials_present)),
         });
     }
 
@@ -603,6 +618,113 @@ mod tests {
     // 本机侧要认 Windows 盘符（`looks_absolute`）且必须允许 `\` 作分隔符，
     // 所以改成拒 `\..\`；daemon 是 Linux-only，直接把 `\` 当危险字符拒掉。
     // 硬合只能二选一：要么本机失去 Windows 路径，要么 daemon 失去对 `\` 的拒绝。
+
+    // ---- K-A1：鉴权方式这一维（生产者②） ----
+
+    /// ★ **跨生产者对拍，本机这一半。**
+    ///
+    /// 喂的是 `acct_core::auth_kind_parity_manifest`（daemon 那半喂的是**同一个函数**
+    /// 的输出），断的是 `acct_core::AUTH_KIND_PARITY_CASES` 里手写的金样。
+    /// ⇒ 两个生产者里任意一个自己填一个默认值，它那半当场红。
+    /// daemon 那半住 `remote-daemon-proto/src/observe/accounts_query.rs::
+    /// tests::auth_kind_parity_daemon_side`。
+    ///
+    /// ⚠ 射程如实写（`KA6c`）：**只覆盖 `authKind` / `authReady` 这一维**。
+    /// 其余 6 个字段今天仍是两份实现各写一遍，这条对拍看不见它们漂。
+    #[test]
+    fn auth_kind_parity_local_side() {
+        let sb = Sandbox::new();
+        for c in &acct_core::AUTH_KIND_PARITY_CASES {
+            let d = sb.0.join(c.name);
+            std::fs::create_dir_all(&d).unwrap();
+            if c.credentials_present {
+                // 同 `write_manifest`：文件名刻意写死，别用常量（否则测不出常量漂移）。
+                std::fs::write(d.join(".credentials.json"), "{}").unwrap();
+            }
+        }
+        std::fs::create_dir_all(sb.0.join("shared")).unwrap();
+        sb.write_manifest(&acct_core::auth_kind_parity_manifest(&sb.0.to_string_lossy()));
+        let r = list_from_dir(&sb.0);
+        assert_eq!(
+            r.accounts.len(),
+            acct_core::AUTH_KIND_PARITY_CASES.len(),
+            "账号数对不上，逐格断言会漏掉没出来的那几个：{:?}",
+            r.accounts.iter().map(|a| &a.name).collect::<Vec<_>>()
+        );
+        for (i, c) in acct_core::AUTH_KIND_PARITY_CASES.iter().enumerate() {
+            let a = &r.accounts[i];
+            assert_eq!(a.name, c.name, "顺序变了，下面几格就对错人了");
+            assert_eq!(
+                a.auth_kind.map(|k| k.as_contract_str()),
+                Some(c.expect_auth_kind),
+                "{}：本机产出的 authKind 与金样不一致",
+                c.name
+            );
+            assert_eq!(
+                a.auth_ready,
+                Some(c.expect_auth_ready),
+                "{}：本机产出的 authReady 与金样不一致",
+                c.name
+            );
+            // `loggedIn` 逐字节旧语义：仍然只是「凭据文件在不在」。
+            assert_eq!(
+                a.logged_in, c.credentials_present,
+                "{}：loggedIn 的语义被这次改动动了（它该只是 stat 结果）",
+                c.name
+            );
+        }
+    }
+
+    /// ★ `KAY4` 的 **Rust 侧那一格**（那条零命中守卫是 vitest，扫不到这里）。
+    ///
+    /// 守的性质：本文件里这一维**不许有第二条计算路径** —— `auth_ready` 只许来自
+    /// `acct_core::auth_ready(`，`authKind` 只许来自 `AuthKind::from_manifest(`。
+    /// 有人在这儿手写 `if kind == AuthKind::ApiKey { true } else { … }`，本条红。
+    ///
+    /// ⚠ 射程如实写：**只管本文件**（daemon 那份由它自己那条同名判据守），
+    /// 而且是**字面量扫描** —— 把 helper 重新 `use` 成别名就绕得过去。
+    /// 真正的地板不是它，是 `acct-core` 里只有一份实现。
+    #[test]
+    fn the_auth_dimension_has_exactly_one_computation_path() {
+        let me = include_str!("local_accounts.rs");
+        assert!(
+            me.len() > 20_000,
+            "include_str! 没读到源码，本条在空转（实得 {} 字节）",
+            me.len()
+        );
+        let cut = me
+            .find("#[cfg(test)]")
+            .expect("找不到 #[cfg(test)] 锚点 —— 切法失效了");
+        // **去注释口径**：本文件的注释里就在解释这一维，按裸文本数会把散文也数进来。
+        let prod: String = me[..cut]
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("//")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            prod.contains("fn list_from_dir(accts_dir: &Path)") && prod.len() > 4_000,
+            "剥注释剥过头了（实得 {} 字节）—— 下面几条会零命中地绿",
+            prod.len()
+        );
+        assert_eq!(
+            prod.matches("auth_ready(").count(),
+            1,
+            "生产段里 `auth_ready(` 出现了不止一次 —— 要么有了第二条计算路径，要么该收进 acct-core"
+        );
+        assert_eq!(
+            prod.matches("AuthKind::").count(),
+            1,
+            "生产段里出现了不止一处 `AuthKind::` —— 分类只许经 `AuthKind::from_manifest`"
+        );
+        assert_eq!(
+            prod.matches("ApiKey").count(),
+            0,
+            "生产段里出现了 `ApiKey` —— 按 kind 分流的规则只许住 acct-core"
+        );
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

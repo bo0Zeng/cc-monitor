@@ -214,6 +214,59 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
     }
   });
 
+  // ---- K-A1 `KA6a`：api-key 号那一行的文案 ----
+  //
+  // ★ 这条**必须是 DOM 测试**，不能只测 `accountStatusBadge` 那个纯函数：
+  // `KA6a` 要的是「用户真的看到了那句话」。取值收进 accounts.ts 之后，
+  // 这一行**有没有接上**是另一件事 —— 纯函数全绿而 DOM 还渲染旧三态，
+  // 用户看到的仍是「已登录」。
+  it("★ KA6a：api-key 号的徽章写「api-key（未配置端点）」而不是「已登录」", async () => {
+    fetchAccountsMock.mockResolvedValue(
+      ready({
+        accounts: [
+          acct({ name: A }),
+          acct({ name: B, loggedIn: false, authKind: "api-key", authReady: true }),
+        ],
+      }),
+    );
+    const el = await mount();
+    const rows = [...el.querySelectorAll(".accounts-row")];
+    const byName = (n: string) =>
+      rows.find((r) => r.querySelector(".accounts-row-name")?.textContent === n)!;
+    const apiBadge = byName(B).querySelector(".accounts-row-badge")!;
+    expect(apiBadge.textContent).toBe("api-key（未配置端点）");
+    expect(apiBadge.textContent).not.toContain("已登录");
+    expect(apiBadge.classList.contains("warn")).toBe(true);
+    // hover 得把「选得中、起得来、但请求发不出去」说清楚。
+    expect(apiBadge.getAttribute("title") ?? "").toContain("鉴权失败");
+    // 而「去登录」对它是假话 ⇒ 换成「打开终端」。
+    const btns = [...byName(B).querySelectorAll(".accounts-row-actions button")].map(
+      (b) => b.textContent,
+    );
+    expect(btns).toContain("打开终端");
+    expect(btns).not.toContain("去登录");
+    // 阴性对照同一格：订阅号那一行一个字没变。
+    const subBadge = byName(A).querySelector(".accounts-row-badge")!;
+    expect(subBadge.textContent).toBe("已登录");
+    expect(subBadge.classList.contains("warn")).toBe(false);
+  });
+
+  it("★ KA6a 反面：缺凭据的订阅号仍写「未登录」（不许被 api-key 那一支一起放宽）", async () => {
+    fetchAccountsMock.mockResolvedValue(
+      ready({
+        accounts: [acct({ name: A }), acct({ name: B, loggedIn: false, authKind: "subscription" })],
+      }),
+    );
+    const el = await mount();
+    const row = [...el.querySelectorAll(".accounts-row")].find(
+      (r) => r.querySelector(".accounts-row-name")?.textContent === B,
+    )!;
+    expect(row.querySelector(".accounts-row-badge")?.textContent).toBe("未登录");
+    expect([...row.querySelectorAll(".accounts-row-actions button")].map((b) => b.textContent)).toContain(
+      "去登录",
+    );
+  });
+
   it("当前账号那行打 .current + ★", async () => {
     fetchAccountsMock.mockResolvedValue(ready());
     const el = await mount();
