@@ -376,8 +376,15 @@ cat >/dev/null
 exit 0
 STUB
 chmod +x "$BIN/kc1-diff-daemon"
-ck "场景7 · 夹具自检：daemon 答的目录与 manifest 里那个**刻意不同**" "differ" \
-   "$([ "$ACCTS/z-daemon" != "$ACCTS/z" ] && echo differ || echo same)"
+# ★ 自检必须问「daemon **实际答了什么**」，不是比两个路径字面量（那两个字符串恒不相等 ⇒
+#   「把假 daemon 改成答与 manifest 相同的目录」那一刀在它眼里毫无变化、恒绿）。
+#   `e2e/ccm-cli.test.sh` 那节的同款自检 08-24 就是这么栽的，三处一起改。
+ck "场景7 · 夹具自检：daemon **实际答的** z 的 configDir 与 manifest 里那个刻意不同" "differ" \
+   "$(_mf="$(jq -r '.accounts[]|select(.name=="z")|.configDir' "$ACCTS/accounts.json" 2>/dev/null)"
+      _dm="$("$BIN/kc1-diff-daemon" --list-accounts --accts-dir "$ACCTS" 2>/dev/null \
+             | jq -r 'select(.name=="z")|.configDir' 2>/dev/null)"
+      if [ -z "$_mf" ] || [ -z "$_dm" ]; then echo "抽取器坏了:[mf=$_mf][dm=$_dm]"
+      elif [ "$_mf" != "$_dm" ]; then echo differ; else echo "same:[$_dm]"; fi)"
 reset
 CCM_DAEMON_BIN="$BIN/kc1-diff-daemon" \
   bash -c "cd '$TMP/proj' && CCM_DAEMON_BIN='$BIN/kc1-diff-daemon' bash '$CCM' --tmux --account z --launcher CCMPROBE >/dev/null 2>&1 &"

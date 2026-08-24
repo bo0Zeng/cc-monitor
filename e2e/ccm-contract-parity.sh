@@ -177,8 +177,15 @@ cat >/dev/null
 exit 0
 STUB
 chmod +x "$W/bin/dm-acct"
-ck "A″ · 夹具自检：daemon 答的目录与 manifest 里那个**刻意不同**" "differ" \
-   "$([ "$W/acct-daemon-b" != "$W/acct-b" ] && echo differ || echo same)"
+# ★ 自检必须问「daemon **实际答了什么**」，不是比两个路径字面量 —— 那两个字符串恒不相等,
+#   于是「把假 daemon 改成答与 manifest 相同的目录」这一刀在它眼里毫无变化 ⇒ 恒绿。
+#   （`e2e/ccm-cli.test.sh` 那节的同款自检 08-24 就是这么栽的，这里一起改。）
+ck "A″ · 夹具自检：daemon **实际答的** b 的 configDir 与 manifest 里那个刻意不同" "differ" \
+   "$(_mf="$(jq -r '.accounts[]|select(.name=="b")|.configDir' "$W/accounts.json" 2>/dev/null)"
+      _dm="$("$W/bin/dm-acct" --list-accounts --accts-dir "$W" 2>/dev/null \
+             | jq -r 'select(.name=="b")|.configDir' 2>/dev/null)"
+      if [ -z "$_mf" ] || [ -z "$_dm" ]; then echo "抽取器坏了:[mf=$_mf][dm=$_dm]"
+      elif [ "$_mf" != "$_dm" ]; then echo differ; else echo "same:[$_dm]"; fi)"
 _a2="$(base_env CCM_DAEMON_BIN="$W/bin/dm-acct" bash "$CCM" --cwd "$CWD" --launcher env --account b 2>/dev/null \
         | grep '^CLAUDE_CONFIG_DIR=')"
 ck "★ A″ · **exec 路**：--account b 的 configDir 来自 daemon（不是 manifest）" \
