@@ -9,6 +9,7 @@ import {
   currentWorkingAccount,
   accountColorsActive,
   isSelectable,
+  accountStatusBadge,
   setDefaultName,
   invalidateAccountsCache,
   type AccountsState,
@@ -254,15 +255,27 @@ export class AccountChip {
 
     const status = document.createElement("span");
     status.className = "account-picker-status";
-    if (a.mode === "in-place") {
-      status.textContent = "逃生口";
-      row.title = "in-place 模式：不支持按会话切号";
-    } else if (!a.loggedIn) {
-      status.textContent = "未登录 ⚠";
-      row.title = "该账号尚未登录——请在终端里用它 /login";
-    } else {
-      status.textContent = "已登录";
-    }
+    // K-A1（第二轮）：三态（逃生口 / api-key（未配置端点）/ 未登录 / 已登录）的取值
+    // **只住** `accounts.ts::accountStatusBadge` —— 这里不再自己判。
+    //
+    // 为什么：这一段与设置里那张账号表（`settings/accounts-section.ts:661-672`）是**同职两处**，
+    // 渲染的是同一个概念（一个账号的登录态）。第一轮只改了设置那侧，结果 `KA6a` 那段文案
+    // 只堵了一半 —— api-key 号在**本菜单**里仍显示「已登录」，而那正是 `KA6a` 点名的坏体验。
+    // 现在两处同源，由 `account-availability-guard.vitest.ts` 钉住「不许再开第三处」。
+    //
+    // ⚠ 两处文案与本轮替换**前**逐字不同，如实记在这里（都不是本轮想改的，是收敛到同一
+    // 取值源的必然结果，已上报待裁）：
+    //   ① 订阅号缺凭据：「未登录 ⚠」→「未登录」。那个 ⚠ 字形没了 —— `accountStatusBadge`
+    //      把「要不要警示」表达成 `warn: true` 这个**布尔**而不是字形，设置那侧靠
+    //      `.accounts-row-badge.warn` 的 CSS 补色。本菜单的 `.account-picker-status`
+    //      **没有** `.warn` 规则（`src/styles.css:6106-6110`），而 `styles.css` 不在本轮写区
+    //      ⇒ 没有就地补 CSS，也没有把 ⚠ 拼回 `text`（拼回去 api-key 那一支会变成
+    //      「api-key（未配置端点） ⚠」，那与本轮判据 Y2 逐字冲突）。
+    //   ② in-place：title「in-place 模式：不支持按会话切号」→
+    //      「in-place 模式：cc-monitor 不支持对它按会话切号」（同义、更明确，但不逐字相同）。
+    const s = accountStatusBadge(a);
+    status.textContent = s.text;
+    row.title = s.title;
     row.appendChild(status);
 
     // F10：只有当前账号那一行才懒加载用量摘要（其余账号不主动拉，除非用户切过去变成当前）。
