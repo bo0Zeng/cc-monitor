@@ -452,8 +452,16 @@ GOLD() { printf "export CLAUDE_CONFIG_DIR='%s'; %s; cd '/p' && exec claude" "$1"
 # ---- 夹具自检（先证明「有区分力」，再拿它去判事）----
 ck "夹具自检：无 daemon 那条环境里**真的一个 daemon 都找不到**" "yes" \
    "$(K - "" --account z >/dev/null; grep -q '找不到 daemon' "$KTMP/err" && echo yes || echo no)"
-ck "夹具自检：两边刻意不同（from-file ≠ from-daemon）" "differ" \
-   "$([ "$KTMP/from-file" != "$KTMP/from-daemon" ] && echo differ || echo same)"
+# ★★ 这条自检**必须问「daemon 实际答了什么」**，不是比两个路径字面量。
+#   第一版写的是 `[ "$KTMP/from-file" != "$KTMP/from-daemon" ]` —— 那两个字符串**恒不相等**,
+#   于是变异 `KCM1`（把假 daemon 改成答与文件相同的目录）在它眼里**毫无变化** ⇒ 恒绿。
+#   量的东西要与被判的东西对上：真去跑一次 daemon，把它答的 z 的 configDir 与 manifest 里那个比。
+ck "夹具自检：daemon **实际答的** z 的 configDir 与 manifest 里那个刻意不同（KCM1 的靶子）" "differ" \
+   "$(_mf="$(jq -r '.accounts[]|select(.name=="z")|.configDir' "$KTMP/accts/accounts.json" 2>/dev/null)"
+      _dm="$("$KTMP/bin/daemon" --list-accounts --accts-dir "$KTMP/accts" 2>/dev/null \
+             | jq -r 'select(.name=="z")|.configDir' 2>/dev/null)"
+      if [ -z "$_mf" ] || [ -z "$_dm" ]; then echo "抽取器坏了:[mf=$_mf][dm=$_dm]"
+      elif [ "$_mf" != "$_dm" ]; then echo differ; else echo "same:[$_dm]"; fi)"
 
 # ---- KCY1：账号解析真的走了 daemon（量行为，不量源码）----
 K "$KTMP/bin/daemon" "" --account z >/dev/null

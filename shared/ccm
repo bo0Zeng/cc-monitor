@@ -507,90 +507,74 @@ avoid_name_collision() {
 
 # ===== L2 环境：账号 =====
 #
-# ★★ `K-C1`〔用@08-24「**ccm要换成调用后端**」的**便宜那半**〕：
-#    **账号解析先问 daemon（`--list-accounts`），自己读 manifest 只剩「退路」这一个身份。**
+# ★★ `K-C1`〔用@08-24「**ccm要换成调用后端**」的便宜那半〕：
+#    **账号解析先问 daemon（`--list-accounts`）；自己读 manifest 只剩「退路」这一个身份。**
 #
-# ## 为什么（承接 `backend-split` `C4`：ccm 是执行臂，不是宿主）
+# 承接 `backend-split` `C4`（ccm 是执行臂，不是宿主）。病：「manifest 长什么样」这条语义
+# 本仓有**两份**实现，而 shell 那份更浅（不认 `version` schema 闸、不认「`configDir` 键缺席
+# = 账号 0」、没有 `is_safe_config_dir` 谓词）⇒ 同一份 manifest 两侧能给出不同答案，
+# 症状是**跑在错的号上**（见下方 R08/R11 头注那一族）。更具体的一格：cc-monitor 列给用户看的
+# 账号表**已经**来自 daemon，而它交给 ccm 的是 `--account <名>` ⇒ UI 里挑得到的号 ccm 可能报「不可用」。
+# ⇒ 名字→目录 / 名字清单 / 默认号 这三个问题**一趟 `--list-accounts` 全答完**
+#   （旧版是三个函数各读一遍文件 ⇒ 落默认号那条路实际读两遍）。
 #
-# 「manifest 长什么样」这条语义在本仓有**两份**实现：daemon 的
-# `remote-daemon-proto/src/observe/accounts_query.rs` 与本文件下面这几行 shell。
-# 而两份**不等价**，shell 那份更浅：不认 `version` schema 闸、不认「`configDir` 键缺席
-# = 账号 0」、没有 `is_safe_config_dir` 谓词。⇒ 同一份 manifest 两侧能给出不同答案，
-# 而那种分歧的症状是**跑在错的号上**（本文件反复消灭的那一族，见下方 R08/R11 头注）。
-# 更具体的一格：cc-monitor 列给用户看的账号表**已经**来自 daemon，而它随后交给 ccm 的
-# 是 `--account <名>` ⇒ 用户在 UI 里挑得到的号，ccm 可能报「不可用」。
+# ## `§0b` 的裁定：**诚实降级，但比 `resume` 那条严一格 —— 降级要出声**
 #
-# ⇒ 名字→目录 / 名字清单 / 默认号 这**三个问题一趟 `--list-accounts` 全答完**
-#   （今天是三个函数各读一遍文件 ⇒ 默认号那条路实际读两遍）。
+# 于是三条通道三种哲学，**这是有意的**：身份可以牺牲（`CCM_NO_DAEMON=1` 是个安全的放弃态）·
+# `resume` 的 argv 只是建议（本地那条同样正确，降级静默）· **账号错了就是错了**
+#（既不能失败、也不能不响）。三条不跟身份的理由，一句一条：
+#  1. 「放弃账号」不是安全状态（会静默落到基座那个通常已没凭据的 config dir）⇒ 逃生口**只能**是
+#     读文件 ⇒ 退路无论如何都得留着 ⇒ 改成「没 daemon 就起不来」只换来「谁按开关」，
+#     代价却是 `zcc`/`bcc`（用户每天在敲）在没部署 daemon 的机器上直接起不来；
+#  2. 它会破掉一条已被判据钉住的纪律：`e2e/ccm-cli.test.sh` 逐字钉着「预言机不许因为这台机器
+#     没装 daemon 就哑掉」，而 `config_dir` 是**值**、逐字进黄金串 ⇒ 没法像 `BUS_ID_RECIPE` /
+#     `DAEMON_BIN_RECIPE` 那样把求值推迟到执行时；
+#  3. 而照抄 `resume` 的**静默**降级也不行 —— 换号出偏差的后果是「跑在错的号上」，
+#     身份那条头注逐字记着这一族：「不再是少一个锦上添花，而是**没人知道为什么**」。
+# **五条排除项、代价怎么算的、逐条实测读数**：住件文件
+# `.claude/planned-build/backend-consolidation/features/K-C1-ccm账号解析走daemon.md` 的 `§0b` /
+# `§0-Bx-2` —— **这里刻意不抄一遍**（论证与读数外移留住址，本文件的头注体量已经在被判据盯着：
+# `polling_registry::tests::the_identity_poller_is_gone_for_good` 有一条「剥注释后不足 1/4 就算剥法坏了」
+# 的自检，08-24 我加头注时**真的把它打红过**）。
 #
-# ## §0b 的裁定：**诚实降级，但比 `resume` 那条严一格 —— 降级要出声**
+# ## 两条如实边界（`KC6c` / `KC6b`，件文件 `§4` 是全文）
 #
-# 三条通道的哲学从此是：身份 = 没 daemon 就 `exit 2`（响亮失败）；`resume` = **静默**降级；
-# **账号 = 降级但出声**。为什么账号**不**跟身份那条：
-#  1. 身份那条的逃生口（`CCM_NO_DAEMON=1` = **明示放弃身份**，会话照起）在这里**没有对应物**：
-#     「放弃账号」不是一个安全状态 —— 它等于静默落到基座那个（cc-acct-iso 搬走凭据后）
-#     通常已没有 `.credentials.json` 的 config dir。⇒ 账号这条的逃生口只能是**读文件**，
-#     也就是说**退路无论如何都得留着**。那么把默认路径改成「没 daemon 就起不来」，
-#     买到的只是「谁来按那个开关」，代价是 `zcc`/`bcc`（用户每天在敲）在没部署 daemon 的
-#     机器上直接起不来 —— 那是**可用性的真变化**，不是纯重构。
-#  2. 它会当场破掉一条**已被判据钉住、且写明了理由**的纪律：`--print` 是全仓的离线预言机，
-#     `e2e/ccm-cli.test.sh` 逐字钉着「预言机不许因为这台机器没装 daemon 就哑掉」。
-#     而 `config_dir` 是**值**、不是配方（它逐字进了黄金串 `export CLAUDE_CONFIG_DIR='…'`）
-#     ⇒ 账号解析没法像 `BUS_ID_RECIPE` / `DAEMON_BIN_RECIPE` 那样把求值推迟到执行时。
-#  3. 而「照抄 `resume` 的**静默**降级」也不行：换号出偏差的后果是「跑在错的号上」，
-#     身份那条头注逐字记着这一族的性质 ——「不再是少一个锦上添花，而是**没人知道为什么**」。
-#     ⇒ 降级必须**出声**（一行 stderr，rc 不变；照 `CCM_NO_DAEMON=1` 那句的形状）。
-#
-# **排除了什么：**
-#  - 排除「跟身份那条响亮失败」（上面 1、2）；
-#  - 排除「照抄 `resume` 的静默降级」（上面 3）；
-#  - 排除「daemon 在位时也拿文件那份去校对/合并/兜底」—— daemon 在位它就是**唯一**答案。
-#    两个答案取「更宽的那个」等于把分歧藏起来，而那正是 `KCY1` 的夹具要逮的东西；
-#  - 排除「给账号单开一个开关（如 `CCM_ACCTS_NO_DAEMON`）」—— `CCM_NO_DAEMON=1` 本来就
-#    「整条关掉」daemon 查找，账号跟着走文件是它已有语义的自然延伸，不必新造一个。
-#  - 排除「顺手把账号 0（`configDir` 键缺席 ⇒ 不注入 `CLAUDE_CONFIG_DIR`）也实现掉」——
-#    那是**加能力**，不在本件射程。daemon 给的 `configDir` 是 `null` ⇒ 落到「解析不到」，
-#    与今天读文件时逐字同一个结局（die「不可用」）。**没变好也没变坏，如实记在这儿。**
-#
-# ## 如实边界
-#
-#  - `KC6c`：**「后端是唯一真相源」这条性质今天只做到「优先」，不是「唯一」** ——
-#    manifest 读取器还在本文件里，daemon 缺位/答不出/问不对时会走它。它只是不再是默认路径，
-#    且每次走它都会**说一句** ⇒ 「两个真相源并存」是**可观测**的，不是暗的。
-#  - `KC6b`：**多出来的那一次进程往返没有上限判据**。实测（08-24，本机，30 次取均值）：
-#    `--account z --print` 24.2ms → 127ms；其中 **daemon 那次调用本身只占 5.4ms，
-#    比它取代的 `jq` 那次（9.1ms）还便宜**，多出来的 ~106ms **全部是 `timeout` 这个
-#    包装进程**（本机 `timeout` 是 uutils coreutils 0.8.0，`timeout 3 /bin/true` 实测
-#    108ms，与超时秒数无关）。为什么照样套 `timeout`：见 `DAEMON_BIN_RECIPE` 头注那段
-#    「问 daemon 要加超时」——daemon 可能是 PATH 上捡到的第三方二进制，不封顶就是
-#    `zcc` 永远转圈。**别让两侧对同一个风险有两种态度。** ⇒ 这 106ms 的账要记在
-#    「这台机器的 `timeout` 实现」上，不在本件；`resume` 那条路早就在付同一笔。
-#    ⚠ 容器路径（`zcct` = `--tmux --account z`）**外层与内层各解析一次** ⇒ 付两笔。
-#      外层那笔不能省：它是「`--account nope` 在建会话之前就 die」的那道校验。
+#  - `KC6c`：**「后端是账号的唯一真相源」今天只做到「优先」，不是「唯一」** ——
+#    读文件那条还在本文件里，daemon 缺位/答不出/问不对时会走它。它只是不再是默认路径，
+#    且**每次走它都会说一句** ⇒ 两个真相源并存这件事是**可观测**的，不是暗的。
+#  - `KC6b`：**多出来的那一次往返没有上限判据。** 实测（08-24 本机，30 次均值，跑真 `--print`；
+#    「改造前」那一列跑的是 `git show main:shared/ccm` 落出来的真文件）：
+#    `--account z` **23.8→145.4ms** · 落默认号 **29.2→148.1ms**（**仍只 1 次往返**，旧版 2 次 `jq`）·
+#    `--base` 两侧同为 15–16ms（那条路不问 daemon）。
+#    ★ **多出来的 ~121ms 里 ~118ms 是 `timeout` 这个包装进程，不是 daemon** ——
+#    同一条命令在**没有 `timeout` 的 PATH** 上是 **27.4ms**；`timeout 3 /bin/true` 本机 **108ms**
+#    且与秒数无关（uutils coreutils 0.8.0 的固定开销）。⇒ **摘掉包装这次改造只贵 3.3ms**；
+#    daemon 那次往返 5.35ms，比它取代的 `jq`（4.09ms）只贵 1.26ms。
+#    照样套 `timeout` 的理由见 `DAEMON_BIN_RECIPE` 头注（daemon 可能是 PATH 上捡到的第三方
+#    二进制，不封顶就是 `zcc` 永远转圈）—— 别让两侧对同一个风险有两种态度。
+#    ⚠ 容器路径（`zcct`）外层内层各解析一次 ⇒ 两笔；外层那笔是「`--account nope` 在建会话之前
+#    就 die」的校验，不能省。**逐行读数与分解住件文件 `§0-Bx-2`。**
 #
 # ## `--accts-dir` 是目录、`CCM_ACCTS_MANIFEST` 是文件 —— 对不上时**不许猜**
 #
-# `--list-accounts` 只收目录，文件名由 daemon 自己拼（`acct-core::MANIFEST_NAME`）。
-# 于是 `CCM_ACCTS_MANIFEST` 指到**别的文件名**时，daemon 答的是**另一个文件** ——
-# 那不是它坏了，是这个问题它答不了 ⇒ 走文件那条，并**说一句**（悄悄读另一个文件最坏）。
+# `--list-accounts` 只收目录，文件名由 daemon 自己拼（`acct-core::MANIFEST_NAME`）⇒
+# `CCM_ACCTS_MANIFEST` 指到**别的文件名**时 daemon 答的是**另一个文件**。那不是它坏了，
+# 是这个问题它答不了 ⇒ 走文件那条并**说一句**（悄悄读另一个文件最坏）。
 
-# 一个账号对象（一行 JSON 切片）→ 表的一行。**daemon 输出与 manifest 共用这一份解析**：
-# daemon 那侧是 `serde_json` 紧凑输出、manifest 可能带空格 ⇒ 模式一律容忍空白，一份够用。
+# 一个账号对象（一块 JSON 切片）→ 表的一行。**daemon 输出与 manifest 共用这一份解析**
+#（daemon 那侧紧凑、manifest 可能带空格 ⇒ 模式一律容忍空白，一份够用）。
 # ⚠ **不许假设键的顺序**：daemon 侧走 `serde_json::json!{}`（BTreeMap）⇒ 键按字母序，
-#   实测 `configDir` 排在 `name` **之前**。而旧版那条 grep 兜底恰恰要求 `name` 在前
-#   （`"name"…[^}]*"configDir"`）—— 键序一换它就**静默**解析不到。这里逐键单独取。
-# ⚠ 如实边界：这是纯文本解析，值里若有 `\"` 转义会取偏（`is_safe_config_dir` 已挡掉
-#   `configDir` 里的引号与反斜杠，`name` 没有那道谓词）。**旧版同样如此，没有变弱。**
+#   实测 `configDir` 排在 `name` **之前**；而旧版那条 grep 兜底恰恰要求 `name` 在前
+#   （`"name"…[^}]*"configDir"`）⇒ 键序一换它就**静默**解析不到。这里逐键单独取。
+# ⚠ 如实边界（`KC6d`）：纯文本取键，值里有 `\"` 转义会取偏（`configDir` 被 daemon 的
+#   `is_safe_config_dir` 挡掉了引号与反斜杠，`name` **没有**那道谓词）。**旧版同样如此，没变弱。**
 #   有 `jq` 时两个 feeder 各走自己那条 `jq` 分支，这份**只在没有 `jq` 时**被用到
-#   （daemon 那条与文件那条**都**会落到它 —— 别把它当成「只有文件退路才用」，见 `KCM6`）。
-# ★★ **纯 bash，零外部进程**〔08-24 第二版改的，理由是一条真回归〕：
-#    第一版用 `sed`/`grep`/`awk` 实现这几个函数，于是 `e2e/ccm-cli.test.sh` 的「身份前置检查」
-#    一节当场红成 `awk: command not found` —— 那一节**刻意**只给一个装了 bash 的瘦 PATH，
-#    而它钉的是「找得到 daemon ⇒ stderr **一个字都没有**」。
-#    ⇒ 判据说的是真话：本文件经 `sftp.rs` 部署到**任意远端**，旧实现只用 `jq`（可选）+
-#      `grep`/`sed`，我却给热路径加了一条硬 `awk` 依赖。**那是可用性回归，不是测试环境的问题。**
-#    改成 bash 内建（`[[ =~ ]]` + 参数展开 + `read`）之后：零依赖、零 fork，
-#    顺带把每次查表的进程数从 1 降到 0。
+#   （daemon 那条与文件那条**都**会落到它 —— 别当成「只有文件退路才用」，见 `KCM6`）。
+# ★★ **纯 bash，零外部进程**〔08-24 改的，理由是一条真回归〕：第一版用 `sed`/`grep`/`awk`，
+#    于是 `e2e/ccm-cli.test.sh`「身份前置检查」一节当场红成 `awk: command not found` ——
+#    那一节刻意只给一个装了 bash 的瘦 PATH。判据说的是真话：本文件经 `sftp.rs` 部署到**任意远端**,
+#    旧实现只用 `jq`（可选）+ `grep`/`sed`，我却给热路径加了一条硬 `awk` 依赖。
+#    改成 bash 内建之后：零依赖、零 fork，顺带把每次查表的进程数从 1 降到 0。
 acct_row_from_slice() {   # $1=一块含单个账号对象的 JSON 文本 → stdout: <name>\t<configDir>\t<0|1>（取不到则不输出）
   local l="$1" n="" c="" d=0
   [[ "$l" == *'"name"'* ]] || return 0
@@ -603,10 +587,9 @@ acct_row_from_slice() {   # $1=一块含单个账号对象的 JSON 文本 → st
 }
 
 # daemon 的 `--list-accounts` 输出（首行 meta + 每账号一行）→ 表。
-# ⚠ **只取 name / configDir / isDefault 三个键**。那个面是与仓外 aterm 共用的（`K10` 半一），
-#   少读一个键就少一条跨仓依赖 ⇒ 刻意**不消费** `exists`/`loggedIn`/`authKind`/`authReady`
-#   （目录在不在照旧由本文件自己 `-d` 判，与今天逐字同一个判法）。
-#   连带的好处：daemon 往那些帧里加字段，本文件一个字都不用改。
+# ⚠ **只取 name / configDir / isDefault 三个键**：那个面与仓外 aterm 共用（`K10` 半一），
+#   少读一个键就少一条跨仓依赖 ⇒ 刻意不消费 `exists`/`loggedIn`/`authKind`/`authReady`
+#   （目录在不在照旧本文件自己 `-d` 判）。连带好处：那边加字段，本文件一个字都不用改。
 daemon_out_to_table() {   # $1 = daemon 的整段输出
   if command -v jq >/dev/null 2>&1; then
     printf '%s\n' "$1" \
@@ -625,13 +608,11 @@ manifest_to_table() {
     jq -r '.accounts[]? | select(.name) | [.name, (.configDir // ""), (if .isDefault then "1" else "0" end)] | @tsv' \
        "$CCM_ACCTS_MANIFEST" 2>/dev/null
   else
-    # 无 jq：按 `{` 切块，每块喂给共用解析器。**`read -d '{'` 是 bash 内建 ⇒ 不需要 `tr`**
-    # （第一版用的是 `tr -d '\n' | tr '{' '\n'`，两个 fork + 两条外部依赖）。
-    # 顺带修掉旧兜底的两条脆弱假设：①「manifest 是每账号一行的紧凑格式」（pretty-print 就失灵）；
-    # ② 键序（见上）。
-    # ★ `|| [ -n "$chunk" ]` **不能省**〔08-24 实测，第一版就栽在这儿〕：末尾那一块后面
-    #   没有 `{` ⇒ 纯 `read -d '{'` 会把**最后一个账号对象整块丢掉**（只有一个账号时表直接变空，
-    #   症状是「可用: (无账号库)」而 manifest 明明在）。
+    # 无 jq：按 `{` 切块喂给共用解析器（`read -d '{'` 是 bash 内建 ⇒ 不需要 `tr`）。
+    # 顺带修掉旧兜底两条脆弱假设：①「每账号一行的紧凑格式」（pretty-print 就失灵）；② 键序（见上）。
+    # ★ `|| [ -n "$chunk" ]` **不能省**〔08-24 实测，第一版就栽在这儿〕：末块后面没有 `{`
+    #   ⇒ 纯 `read -d '{'` 把**最后一个账号对象整块丢掉**（单账号时表直接变空，
+    #   症状是「可用: (无账号库)」而 manifest 明明在）。钉它的是 `KCM6` 那三条。
     local chunk
     while IFS= read -r -d '{' chunk || [ -n "$chunk" ]; do
       acct_row_from_slice "$chunk"
@@ -664,7 +645,7 @@ acct_table_load() {
     # shellcheck disable=SC2086  # $to 要么空、要么是 `timeout 3`，**有意不 quote**
     out="$($to "$_ccm_db" --list-accounts --accts-dir "$am_dir" 2>/dev/null)"
     # 「答上了」的标记 = 那行 meta 在。缺它就分不清「一个账号都没有」与「这二进制答不了」
-    # （PATH 上捡到的同名第三方、太旧的 daemon、崩了、被 timeout 掐了 —— 全长这样）。
+    # （PATH 上捡到的同名第三方 / 太旧 / 崩了 / 被 timeout 掐了 —— 全长这样）。
     case "$out" in
       *'"kind":"accounts-meta"'*)
         _ccm_acct_tab="$(daemon_out_to_table "$out")"
@@ -677,19 +658,17 @@ acct_table_load() {
   unset _ccm_db
   _ccm_acct_src=file
   _ccm_acct_tab="$(manifest_to_table)"
-  # **降级出声**（§0b 的裁定）。⚠ 只在**真有一份 manifest 被读了**时说：压根没有账号库的
-  # 机器上 ccm 就是个基座启动器，不该被这句吵到，而那一格有判据钉着
-  #（`e2e/ccm-cli.test.sh`：「无账号库 → 退化为基座（不报错）」）。
+  # **降级出声**（`§0b` 裁定）。⚠ 只在**真读了一份 manifest** 时说：压根没账号库的机器上
+  # ccm 就是个基座启动器，不该被它吵（判据：「无账号库 → 退化为基座（不报错）」）。
   [ -f "$CCM_ACCTS_MANIFEST" ] && printf 'ccm: 账号解析已降级为**直接读 manifest**（%s）—— %s。后端本该是账号的唯一真相源；两份不一致时你拿到的是文件那一份（daemon 有 schema 版本闸与 configDir 安全谓词，文件这条没有）。\n' \
      "$CCM_ACCTS_MANIFEST" "$why" >&2
   return 0
 }
 
 # 名字 → configDir。解析不到 → 回空串（由**顶层**判空后中止；显式选号绝不静默降级）。
-# **只回显值、绝不 die** —— 本函数在 `$(...)` 里被调用，`die`(exit 2) 只会杀掉子 shell，
-# 主流程照跑 → 用户打错账号名会**静默落到继承来的账号上**（rc=0）。实测踩过，性质比
-# 「换号不生效」更坏。所有失败一律回空串。
-# ⚠ 目录存在性照旧**本文件自己判**（不消费 daemon 的 `exists`）—— 少一条跨仓依赖。
+# **只回显值、绝不 die** —— 本函数在 `$(...)` 里被调用，`die`(exit 2) 只杀子 shell、主流程照跑
+# ⇒ 用户打错账号名会**静默落到继承来的账号上**（rc=0）。实测踩过，比「换号不生效」更坏。
+# ⚠ 目录存在性照旧本文件自己 `-d` 判（不消费 daemon 的 `exists`）。
 account_config_dir() {
   local want="$1" n c d
   while IFS=$'\t' read -r n c d; do
@@ -701,8 +680,8 @@ account_config_dir() {
 }
 
 # 账号名列表（给错误信息用——报"不可用"必须同时告诉用户有哪些可用）。
-# ⚠ 尾空格要剥：旧版两条分支在这一点上**本来就不一致**（`jq … join(" ")` 无尾空格、
-#   无 jq 那条 `tr '\n' ' '` 有），而钉住它的那条判据只在装了 jq 的机器上跑过。统一成无尾空格。
+# ⚠ 无尾空格：旧版两条分支在这点上**本来就不一致**（`jq … join(" ")` 无、`tr '\n' ' '` 有），
+#   而钉它的判据只在装了 jq 的机器上跑过。统一成无。
 list_account_names() {
   local out="" n c d
   while IFS=$'\t' read -r n c d; do
@@ -712,7 +691,7 @@ list_account_names() {
   [ -n "$out" ] && printf '%s' "$out" || printf '(无账号库)'
 }
 
-# 默认账号（`isDefault: true`）。多个就取第一个（与旧版 `head -1` 同语义）。
+# 默认账号（`isDefault: true`）。多个取第一个（同旧版 `head -1`）。
 default_account_name() {
   local n c d
   while IFS=$'\t' read -r n c d; do
