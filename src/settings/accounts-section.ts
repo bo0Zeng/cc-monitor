@@ -15,6 +15,8 @@ import {
   currentWorkingAccount,
   selectableAccounts,
   isSelectable,
+  accountStatusBadge,
+  accountLoginActionLabel,
   setDefaultName,
   getModelForAccount,
   setModelForAccount,
@@ -656,18 +658,17 @@ export class AccountsSection {
     email.textContent = a.email || "—";
     row.appendChild(email);
 
+    // K-A1：三态（逃生口 / api-key（未配置端点）/ 未登录 / 已登录）的取值住
+    // `accounts.ts::accountStatusBadge` —— **这里不再自己判**。
+    // 原因不是「抽一层好看」：状态栏 chip 的账号菜单（`account-chip.ts`）渲染的是同一个
+    // 概念，两处各写一遍的结果是 `KA6a` 那段文案只改得动一处，而用户从另一处看到的
+    // 还是「已登录」。
     const badge = document.createElement("span");
     badge.className = "accounts-row-badge";
-    if (a.mode === "in-place") {
-      badge.textContent = "逃生口";
-      badge.classList.add("warn");
-      badge.title = "in-place 模式：cc-monitor 不支持对它按会话切号";
-    } else if (!a.loggedIn) {
-      badge.textContent = "未登录";
-      badge.classList.add("warn");
-    } else {
-      badge.textContent = "已登录";
-    }
+    const status = accountStatusBadge(a);
+    badge.textContent = status.text;
+    if (status.warn) badge.classList.add("warn");
+    if (status.title) badge.title = status.title;
     row.appendChild(badge);
 
     // F10：plan 用量窗口%——懒加载（点击才探测,不是面板打开就对全部账号并发起隐藏会话,
@@ -757,8 +758,10 @@ export class AccountsSection {
     if (a.mode !== "in-place") {
       const login = document.createElement("button");
       login.type = "button";
-      login.textContent = a.loggedIn ? "登录终端" : "去登录";
-      login.title = "用该账号打开一个远端终端（在里面 /login）";
+      // K-A1：对 api-key 号说「去登录」是假话（它不需要 /login，/login 也修不了缺端点）。
+      const action = accountLoginActionLabel(a);
+      login.textContent = action.label;
+      login.title = action.title;
       login.addEventListener("click", () => void this.launchStep({ kind: "login", name: a.name }));
       actions.appendChild(login);
     }
