@@ -9,27 +9,25 @@
 // **不注入 env（A4）、不重启会话（A5）、不碰本地账号（A7）**。全程走 A2 的
 // available:false 降级：未迁移 / 旧 daemon / daemonless 一律安静隐藏账号 UI，不报错。
 import { invoke } from "@tauri-apps/api/core";
+import type { AuthKind } from "./generated/AuthKind";
+import type { RemoteAccount } from "./generated/RemoteAccount";
 import { loadConfig, saveConfig } from "./config";
 import { isValidModelName } from "./shell-quote";
 import type { LaunchModifiers } from "./launch-plan";
 
-// ---- 对齐 A2（src-tauri/src/accounts.rs）的返回结构 ----
-export interface Account {
-  name: string;
-  email: string;
-  /**
-   * Z01：**可以是 null** —— 那就是账号 0（「不设 CLAUDE_CONFIG_DIR」这个状态本身）。
-   * 起它 = **什么都不设**（不是设成空串：空值 ≠ 未设）。
-   * 消费侧一律 `?? fallback`，**绝不 `|| ""` 后拼进命令行**。
-   */
-  configDir: string | null;
-  isDefault: boolean;
-  /** "isolated"（正常）/ "in-place"（逃生口，不支持切换）/ "bare"（账号 0）。 */
-  mode: string;
-  exists: boolean;
-  /** 仅 stat .credentials.json 存在性——不代表凭据有效。 */
-  loggedIn: boolean;
-}
+// ---- 账号的形状是**生成物**（K-A1），不再是一份手抄 ----
+//
+// 这里原先是一份手写 `interface Account` + 一行「对齐 A2（src-tauri/src/accounts.rs）的
+// 返回结构」的注释。那句注释是**纪律，不是判据**：往任一侧加一个字段，全仓没有一条门禁会红
+// （K-A1 Bx 复量确认：`RemoteAccount` 当时没有 `ts_rs::TS` derive，`src/generated/` 底下
+// 也没有对应文件）。现在两侧由 `src/generated/RemoteAccount.ts` 对齐 ——
+// 改 Rust 不跑 `npm run gen:types`，`generated-boundary-guard` 与 CI 的
+// `git diff --exit-code -- src/generated/` 会红。
+//
+// 名字仍叫 `Account`（全仓几十处消费点读作「账号」，而 Rust 那侧叫 `RemoteAccount`
+// 是因为它先有远端那一份）——**别名不是手抄**：字段一个都不在这儿重写。
+export type Account = RemoteAccount;
+export type { AuthKind };
 
 export interface AccountsMeta {
   enabled: boolean;
@@ -141,6 +139,95 @@ export function currentWorkingAccount(state: AccountsState): Account | null {
   return effectiveDefault(state);
 }
 
+/**
+ * K-A1：**鉴权方式这一维不再阻塞这个号被选中吗。**
+ *
+ * 这是全仓**唯一**读 `loggedIn` 的地方（`KAY4` 的零命中守卫钉住这句话，
+ * 判据住 `src/account-availability-guard.vitest.ts`）。
+ *
+ * 规则本身**不在这儿** —— 它住 `acct_core::auth_ready`，两个 Rust 生产者调它、
+ * 把结果放进 `authReady` 字段。本函数只做一件事：**对面没说时回落到旧行为**。
+ *
+ * `authReady === undefined` 只有一种来因：**旧 daemon**（本字段之前的版本压根不出这个键，
+ * monitor 会连任意版本的远端）。那时回落到 `loggedIn` = 逐字节旧行为。
+ * ⚠ 连带的诚实边界：旧 daemon 那一侧，一个 api-key 号会被判成「未登录的订阅号」
+ * ——那是**看得见**的降级（徽章写「未登录」，用户能修：更新远端 daemon）。
+ * 刻意**不**为它加一个 `authKindAware` 能力标记：新 daemon 恒出这两个键，
+ * 那个标记的「不认识」分支在结构上不可达，写出来就是一段永远不跑的代码。
+ */
+function authReady(a: Account): boolean {
+  return a.authReady ?? a.loggedIn;
+}
+
+/**
+ * 账号状态徽章（`KA6a` 的那段文案）——**两处渲染同一个概念，取值只许有一处**。
+ *
+ * 设置里的账号表（`settings/accounts-section.ts`）与状态栏 chip 的账号菜单
+ * （`account-chip.ts`）各渲染一份这个三态。K-A1 之前两处各写一遍
+ * `a.mode === "in-place" ? … : !a.loggedIn ? … : "已登录"`。
+ *
+ * ★ **`KA6a`：api-key 号今天「选得中、起得来、但请求发不出去」** ——
+ * 配端点那条路要等第三方 API 路线裁定（`BACKLOG.md` `E36` 的甲/乙/丙）。
+ * 所以它的徽章**不许写「已登录」**：那会让用户以为可以用，起了会话才在 claude 里
+ * 撞一个鉴权失败，而 UI 说这个号没问题。
+ *
+ * ⚠ 「已登录」这一档仍然只代表 `.credentials.json` 在（`KA6b`）：凭据过期/被吊销看不出来。
+ */
+export interface AccountStatusBadge {
+  /** 徽章文本。 */
+  text: string;
+  /** 是否该显示成警示态（调用方加 `warn` class）。 */
+  warn: boolean;
+  /** hover 说明；空串 = 不加 title。 */
+  title: string;
+}
+export function accountStatusBadge(a: Account): AccountStatusBadge {
+  if (a.mode === "in-place") {
+    return {
+      text: "逃生口",
+      warn: true,
+      title: "in-place 模式：cc-monitor 不支持对它按会话切号",
+    };
+  }
+  if (a.authKind === "api-key") {
+    return {
+      text: "api-key（未配置端点）",
+      warn: true,
+      title:
+        "这个号用 API key 鉴权，不看 ~/.claude 里的订阅凭据 —— 所以它可以被设为当前账号、" +
+        "会话也起得来。但 cc-monitor 今天还不会替它配 API key 与 base URL：" +
+        "请求会在 claude 那边报鉴权失败。要用它，先在该账号自己的 shell 环境里配好第三方端点。",
+    };
+  }
+  if (!authReady(a)) {
+    return {
+      text: "未登录",
+      warn: true,
+      title: "该账号尚未登录——请在终端里用它 /login",
+    };
+  }
+  return { text: "已登录", warn: false, title: "" };
+}
+
+/**
+ * 「打开该账号终端」那个按钮的文案（A6）。
+ *
+ * 与徽章同一个道理：对 api-key 号说「去登录」是**假话** —— 它不需要 `/login`，
+ * `/login` 也修不了它缺端点这件事。
+ */
+export function accountLoginActionLabel(a: Account): { label: string; title: string } {
+  if (a.authKind === "api-key") {
+    return {
+      label: "打开终端",
+      title: "用该账号打开一个远端终端（api-key 号不需要 /login，要在里面配好端点环境变量）",
+    };
+  }
+  return {
+    label: authReady(a) ? "登录终端" : "去登录",
+    title: "用该账号打开一个远端终端（在里面 /login）",
+  };
+}
+
 /** 某账号是否可被选为默认 / 用来起会话。 */
 export function isSelectable(a: Account): boolean {
   // 账号 0（mode "bare"）在这里**天然落选**。
@@ -159,7 +246,12 @@ export function isSelectable(a: Account): boolean {
   //   3. `tabs.ts:2283` 那个 `opt.kind === "base" ? … : …` 三元**不会编译报错**地把新变体
   //      送进 else 分支（拿 `opt.name === undefined` 去起会话）⇒ 加变体前必须先改它
   // 第 3 条卡 `tabs.ts` 红线 ⇒ 放开这条门槛要等红线松（见 features/Z02-PARTIAL.md）。
-  return a.mode === "isolated" && a.loggedIn && a.exists;
+  //
+  // ★ **K-A1 把第二项从 `a.loggedIn` 换成了 `authReady(a)`。**
+  // 订阅号那一支的值与 `loggedIn` **逐字节相同**（`acct_core::auth_ready` 的订阅分支就是
+  // 「凭据文件在不在」）⇒ 订阅号一格没变，包括「缺凭据 ⇒ 不可选」那道保护（`KAY3`）。
+  // 变的只有 api-key 号：它压根不用那个文件，所以不再因为缺文件而被判不可用（`KAY2`）。
+  return a.mode === "isolated" && authReady(a) && a.exists;
 }
 
 /** account-ux U8：可选账号列表（`isSelectable` 过滤）。休眠判据 / 计数一律走它，别各处再 filter 一遍。 */
@@ -198,7 +290,8 @@ export function currentAccountForBadge(state: AccountsState): Account | null {
 /**
  * account-ux U1:普通 resume 的**跟随账号**解析器(纯函数,vitest 锁死)。
  * 优先级(用户拍板:粘性优先):`会话 lastAccount → 当前账号 → null(基座)`。
- * 每级候选必须 `isSelectable`(存在的 isolated + 已登录 + 目录在)否则**下沉**下一级;
+ * 每级候选必须 `isSelectable`(isolated + **鉴权前提就绪** + 目录在)否则**下沉**下一级;
+ * (K-A1 起第二项不再是「已登录」——订阅号那一支等价，api-key 号不看凭据文件)
  * 都不可选 → null(=不注入、落基座、逐字节旧行为)。
  * **显式选号不走此函数**——那条路维持 A4 语义(withAccount 的非空 accountName 分支)。
  */
@@ -229,7 +322,7 @@ export function detectAccountMismatch(
 
 /**
  * A4：账号名 → 该账号的 CLAUDE_CONFIG_DIR（用来带账号 resume/起会话）。
- * 仅当账号存在且**可选**（isolated + 已登录 + 目录在）才给；否则 null（不可选的绝不注入）。
+ * 仅当账号存在且**可选**（isolated + 鉴权前提就绪 + 目录在）才给；否则 null（不可选的绝不注入）。
  */
 export function accountConfigDir(state: AccountsState, name: string): string | null {
   const acc = state.accounts.find((a) => a.name === name);

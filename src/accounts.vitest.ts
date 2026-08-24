@@ -32,10 +32,13 @@ import {
   invalidateAccountsCache,
   __resetAccountsCacheForTest,
   isAccountZero,
+  accountStatusBadge,
+  accountLoginActionLabel,
   type AccountsState,
   type Account,
   type SessionAccount,
 } from "./accounts";
+import { enumerateAccountModifiers } from "./launch-menu";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const loadCfg = loadConfig as unknown as ReturnType<typeof vi.fn>;
@@ -768,5 +771,160 @@ describe("Z01 账号 0（configDir 缺席）", () => {
   it("账号 0 在列不影响既有账号的解析", () => {
     const st = state({ accounts: [acct({ name: "z" }), zero()] });
     expect(accountConfigDir(st, "z")).toBe("/h/.claude-accts/z");
+  });
+});
+
+
+// ============================================================================
+// K-A1：鉴权方式那一维（`KAY2` / `KAY3`）
+// ============================================================================
+//
+// ★ **为什么这一族必须落在 TS 这一侧**：那条级联整个住在这里 ——
+// `isSelectable` 为假 ⇒ `selectableAccounts` 不收它 ⇒ 不能设为当前号 ·
+// `accountConfigDir` 返 null 从而**绝不注入** · 进不了 resume/restart 菜单 ·
+// `accountColorsActive` 因为「可选账号 ≥ 2」不成立而连账号色一起休眠。
+// **Rust 全绿而这一条没改，用户看到的还是「这个号不能用」。**
+describe("K-A1 鉴权方式：api-key 号不再因为缺凭据文件而不可用", () => {
+  /** api-key 号，**目录里没有 `.credentials.json`**（⇒ `loggedIn:false`）。 */
+  const apiKey = (name = "api") =>
+    acct({
+      name,
+      configDir: `/h/.claude-accts/${name}`,
+      loggedIn: false,
+      authKind: "api-key",
+      // 两个 Rust 生产者都会填它（值由 `acct_core::auth_ready` 算）。
+      authReady: true,
+    });
+  /** 订阅号，**同样没有凭据文件** —— `KAY3` 的阴性对照。 */
+  const subNoCred = (name = "sub") =>
+    acct({
+      name,
+      configDir: `/h/.claude-accts/${name}`,
+      loggedIn: false,
+      authKind: "subscription",
+      authReady: false,
+    });
+
+  it("★ KAY2②：isSelectable 为真", () => {
+    expect(isSelectable(apiKey())).toBe(true);
+  });
+
+  it("★ KAY3：订阅号缺凭据 —— isSelectable 仍为**假**（这道保护不许被一起放宽）", () => {
+    expect(isSelectable(subNoCred())).toBe(false);
+    // 连带：它进不了可选列表、拿不到 configDir（⇒ 绝不注入）。
+    const st = state({ accounts: [subNoCred()] });
+    expect(selectableAccounts(st)).toEqual([]);
+    expect(accountConfigDir(st, "sub")).toBeNull();
+  });
+
+  it("★ KAY2 级联①：selectableAccounts 收它", () => {
+    const st = state({ accounts: [apiKey(), subNoCred()] });
+    expect(selectableAccounts(st).map((a) => a.name)).toEqual(["api"]);
+  });
+
+  it("★ KAY2 级联②：accountConfigDir 给出目录（可选 ⇒ 会注入）", () => {
+    const st = state({ accounts: [apiKey()] });
+    expect(accountConfigDir(st, "api")).toBe("/h/.claude-accts/api");
+  });
+
+  it("★ KAY2 级联③：能当当前号 / 被 follow 解析选中 / 上徽章", () => {
+    const st = state({ accounts: [apiKey()], defaultName: "api" });
+    expect(currentWorkingAccount(st)?.name).toBe("api");
+    expect(currentAccountForBadge(st)?.name).toBe("api");
+    expect(resolveFollowAccount(st, { lastAccount: "api" })).toBe("api");
+    // 阴性对照同一格：订阅号缺凭据时这三条都该落空（下沉到基座）。
+    const bad = state({ accounts: [subNoCred()], defaultName: "sub" });
+    expect(currentAccountForBadge(bad)).toBeNull();
+    expect(resolveFollowAccount(bad, { lastAccount: "sub" })).toBeNull();
+  });
+
+  it("★ KAY2 级联④：它算进「可选账号 ≥ 2」⇒ 账号色不再休眠", () => {
+    // 一个订阅号（正常）+ 一个 api-key 号（缺凭据）= 2 个可选。
+    expect(accountColorsActive(state({ accounts: [acct({ name: "z" }), apiKey()] }))).toBe(true);
+    // 阴性对照：把 api-key 换成缺凭据的订阅号 ⇒ 只剩 1 个可选 ⇒ 仍休眠。
+    expect(accountColorsActive(state({ accounts: [acct({ name: "z" }), subNoCred()] }))).toBe(
+      false,
+    );
+  });
+
+  it("★ KAY2 级联⑤：真的进得了 resume/restart 那个菜单（走 launch-menu 的真实路径）", async () => {
+    // **不是重写一遍 filter** —— 这里驱动的是 `enumerateAccountModifiers`，
+    // 也就是 `tabs.ts` 渲染 flyout 时真正调的那个函数（它只过 `selectableAccounts`）。
+    loadCfg.mockResolvedValue({});
+    invokeMock.mockResolvedValue({
+      available: true,
+      error: null,
+      meta: {
+        enabled: true,
+        acctsDir: "/a",
+        manifestPath: "/a/x.json",
+        updatedAt: null,
+        sharedStore: null,
+        count: 2,
+        error: null,
+      },
+      accounts: [acct({ name: "z" }), apiKey()],
+    });
+    const opts = await enumerateAccountModifiers("aya");
+    expect(opts.map((o) => (o.kind === "account" ? o.name : "base"))).toEqual(["base", "z", "api"]);
+  });
+
+  it("旧 daemon（两个键都缺）⇒ 逐字节旧行为：回落到 loggedIn", () => {
+    // 这是 `authReady` 为 `undefined` 的**唯一**来因。缺席 ⇒ 按 loggedIn 判。
+    const old = acct({ name: "o", loggedIn: true });
+    expect(old.authKind).toBeUndefined();
+    expect(old.authReady).toBeUndefined();
+    expect(isSelectable(old)).toBe(true);
+    expect(isSelectable(acct({ name: "o", loggedIn: false }))).toBe(false);
+  });
+
+  it("★ 只给 authKind 不给 authReady（对面只说了一半）⇒ 仍按 loggedIn 判，不自己推", () => {
+    // 规则的唯一住址是 `acct_core::auth_ready`；TS 侧**刻意不**重写一份
+    // 「kind 是 api-key 就当就绪」——那会变成第二处实现，两边一漂就没人看得见。
+    const half = acct({ name: "h", loggedIn: false, authKind: "api-key" });
+    expect(isSelectable(half)).toBe(false);
+  });
+});
+
+describe("K-A1 KA6a：api-key 号的 UI 文案不许说「已登录」", () => {
+  const apiKey = () =>
+    acct({ name: "api", loggedIn: false, authKind: "api-key", authReady: true });
+
+  it("★ 徽章写「api-key（未配置端点）」而不是「已登录」", () => {
+    const b = accountStatusBadge(apiKey());
+    expect(b.text).toBe("api-key（未配置端点）");
+    expect(b.text).not.toContain("已登录");
+    expect(b.warn).toBe(true);
+    // hover 要把「选得中、起得来、但请求发不出去」这件事说清（不是一句「不可用」）。
+    expect(b.title).toContain("鉴权失败");
+    expect(b.title).toContain("端点");
+  });
+
+  it("★ 有凭据文件的 api-key 号也一样 —— 它压根不看那个文件", () => {
+    const b = accountStatusBadge(
+      acct({ name: "api", loggedIn: true, authKind: "api-key", authReady: true }),
+    );
+    expect(b.text).toBe("api-key（未配置端点）");
+  });
+
+  it("「去登录」按钮对 api-key 号也是假话 ⇒ 换成「打开终端」", () => {
+    expect(accountLoginActionLabel(apiKey()).label).toBe("打开终端");
+    expect(accountLoginActionLabel(apiKey()).title).not.toContain("/login）");
+  });
+
+  it("订阅号那三态一格没变（阴性对照）", () => {
+    expect(accountStatusBadge(acct({})).text).toBe("已登录");
+    expect(accountStatusBadge(acct({})).warn).toBe(false);
+    expect(accountStatusBadge(acct({ loggedIn: false })).text).toBe("未登录");
+    expect(accountStatusBadge(acct({ mode: "in-place" })).text).toBe("逃生口");
+    expect(accountLoginActionLabel(acct({})).label).toBe("登录终端");
+    expect(accountLoginActionLabel(acct({ loggedIn: false })).label).toBe("去登录");
+  });
+
+  it("逃生口优先于 api-key（in-place 压根不支持切号，先说那件事）", () => {
+    const b = accountStatusBadge(
+      acct({ mode: "in-place", authKind: "api-key", authReady: true }),
+    );
+    expect(b.text).toBe("逃生口");
   });
 });
