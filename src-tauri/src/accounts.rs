@@ -116,9 +116,31 @@ pub struct RemoteAccount {
     ///
     /// 规则的唯一住址是 `acct_core::auth_ready`，两个生产者都调它。
     /// ⚠ `true` **不等于**「真能连上」（`KA6a`），也不等于「凭据有效」（`KA6b`）。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "lenient_auth_ready",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[cfg_attr(test, ts(optional))]
     pub auth_ready: Option<bool>,
+}
+
+/// **宽容**反序列化 `authReady`：认不出的形状 ⇒ `None`，**不是**硬错。
+///
+/// # 为什么它也要一份（自审补的：同职的地方要一起治，不能只治撞到的那一处）
+///
+/// 与 [`lenient_auth_kind`] **同一个失效模式**：这一族里任何一个字段一旦硬错，
+/// `parse_accounts_lines` 的「坏行跳过」策略会让**整个账号从列表里消失**
+/// —— 而少一行是用户看不见、也没法修的那种坏。
+/// `bool` 今天不太可能变形状，但这个理由**不该由字段类型来担保** ——
+/// 担保它的是「远端 daemon 的版本我们控制不了」这件事，而那对两个字段一模一样。
+fn lenient_auth_ready<'de, D>(d: D) -> Result<Option<bool>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // 用 `Value` 收，再自己判形状：不是 bool 就当「对面没说」。
+    let raw = <Option<serde_json::Value> as serde::Deserialize>::deserialize(d)?;
+    Ok(raw.and_then(|v| v.as_bool()))
 }
 
 /// **宽容**反序列化 `authKind`：认不出的值 ⇒ `None`，**不是**硬错。
@@ -704,6 +726,33 @@ mod tests {
             accts[0].auth_kind, None,
             "认不出的值该退化成「对面没说」（⇒ 前端当订阅、保留缺凭据保护），不是当 api-key"
         );
+    }
+
+    /// ★ `authReady` 那一格**同职同治**（自审补的）：形状不对也不许丢账号。
+    ///
+    /// 与上一条是同一个失效模式（serde 硬错 + 「坏行跳过」= 静默少一行）。
+    /// 先只治撞到的那一处、放着同职的另一处，正是本仓反复栽的那个形。
+    #[test]
+    fn an_unrecognized_auth_ready_shape_does_not_silently_drop_the_account() {
+        let lines: Vec<String> = vec![
+            r#"{"kind":"accounts-meta","enabled":true,"acctsDir":"/a","manifestPath":"/a/accounts.json","updatedAt":null,"sharedStore":null,"count":2,"error":null}"#.into(),
+            r#"{"name":"z","configDir":"/a/z","mode":"isolated","exists":true,"loggedIn":true,"authKind":"api-key","authReady":"partial"}"#.into(),
+            r#"{"name":"b","configDir":"/a/b","mode":"isolated","exists":true,"loggedIn":true}"#.into(),
+        ];
+        let (_, accts) = parse_accounts_lines(&lines);
+        assert_eq!(accts.len(), 2, "authReady 形状不对让整个账号消失了");
+        assert_eq!(accts[0].auth_kind, Some(AuthKind::ApiKey), "kind 该照样透传");
+        assert_eq!(
+            accts[0].auth_ready, None,
+            "形状不对 ⇒「对面没说」⇒ 前端回落 loggedIn，而不是硬错丢行"
+        );
+        // 正常 bool 仍然要认出来 —— 否则上面那条是空真。
+        let ok: Vec<String> = vec![
+            r#"{"kind":"accounts-meta","enabled":true,"acctsDir":"/a","manifestPath":"/a/x.json","updatedAt":null,"sharedStore":null,"count":1,"error":null}"#.into(),
+            r#"{"name":"z","configDir":"/a/z","mode":"isolated","exists":true,"loggedIn":false,"authKind":"api-key","authReady":true}"#.into(),
+        ];
+        let (_, ok_accts) = parse_accounts_lines(&ok);
+        assert_eq!(ok_accts[0].auth_ready, Some(true));
     }
 
     #[test]
