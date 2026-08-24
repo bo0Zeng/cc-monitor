@@ -575,12 +575,16 @@ mod tests {
         let caps = ccm_probe_values("capabilities");
         assert_eq!(
             caps.len(),
-            16,
-            "`--ccm-probe` 的能力 token 从 16 个变成 {}：{caps:?}\n\
+            17,
+            "`--ccm-probe` 的能力 token 从 17 个变成 {}：{caps:?}\n\
              ⇒ 这是插件协商的**样板**（`E7`：一条 probe 子命令 → `key=value` 行 → \
              消费者声明它要哪些 token）。加能力是好事，但今天已有两个真实消费者\
-             （`cc-spawn` 检 `--detach` · `src/launch-render-cli.ts` 的 `CLI_REQUIRED_CAPS`），\
-             这个数变了要顺手看一眼它们。",
+             （`shared/cc-bus/scripts/cc-spawn` 检 4 个 token · `src/launch-render-cli.ts` 的 \
+             `CLI_REQUIRED_CAPS` 检 7 个），这个数变了要顺手看一眼它们。\n\
+             ⚠ 16 → 17 是 `K-C1`（08-24）加的 `account-via-daemon`。**PM 落这一格前逐个读过那两个消费者**：\
+             `cc-spawn` 是 `for _c in detach tmux-size tmux-base bus-register` 逐个查逗号列表（**子集检查**）；\
+             `CLI_REQUIRED_CAPS` 是一个 7 元必需列表（**也是子集检查**）⇒ **加 token 安全，删/改名才危险**。\
+             ⇒ 下一个人加 token 时不必重读这两处；**改名或删 token 时必须重读**。",
             caps.len()
         );
         assert_eq!(
