@@ -150,6 +150,16 @@ export function currentWorkingAccount(state: AccountsState): Account | null {
  *
  * `authReady === undefined` 只有一种来因：**旧 daemon**（本字段之前的版本压根不出这个键，
  * monitor 会连任意版本的远端）。那时回落到 `loggedIn` = 逐字节旧行为。
+ *
+ * ⚠ **`KA6b`（诚实边界，第四轮补的标签）：这里回落到的 `loggedIn` 只是 stat 了一下
+ * `.credentials.json` 在不在 —— 凭据过期 / 被吊销看不出来。**
+ * 本件一格没改这件事：它改的是「按 kind 分别判」，不是「判得准不准」。
+ * 真去验一次凭据归另一件（今天不存在、也没人认领；而且那要联网，撞用户 07-17
+ * 「无 API key / 不联网」那条板）。
+ * ⚠ 这个标签先前**只落在 Rust 侧 `auth_ready` 字段上**，`logged_in` 那一半只有实质、
+ * 没有标签（D 阶段审计 `S3`）⇒ `grep KA6b` 找不到它那一半。Rust 侧那份头注不在第四轮
+ * 写区里（改它会连带重写 `src/generated/RemoteAccount.ts` —— ts-rs 把 doc 一起导出），
+ * 所以标签先补在 TS 这一侧**唯一读 `loggedIn` 的地方**，Rust 侧那一半交回 PM。
  * ⚠ 连带的诚实边界：旧 daemon 那一侧，一个 api-key 号会被判成「未登录的订阅号」
  * ——那是**看得见**的降级（徽章写「未登录」，用户能修：更新远端 daemon）。
  * 刻意**不**为它加一个 `authKindAware` 能力标记：新 daemon 恒出这两个键，
