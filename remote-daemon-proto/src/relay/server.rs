@@ -271,14 +271,27 @@ fn rewrite_response_head(raw: &[u8]) -> Vec<u8> {
     out.into_bytes()
 }
 
-/// `--relay` 的入口。配置面只有环境变量（daemon 今天没有配置文件面）。
-pub(crate) fn run(_args: &[String]) -> i32 {
-    let port = std::env::var(ENV_PORT)
-        .ok()
+/// `--relay` 的**配置面** —— 纯函数：不读环境、不起监听、不碰网络。
+///
+/// ★ 它为什么被抽出来（回修轮 08-25，D1 `重要-6`）：先前这一段整个长在 `run()` 里，
+/// 而 `run()` 尾巴上是**永不返回**的 `serve()` ⇒ 没有任何判据调得动它。
+/// 实测：把 `run()` 的函数体整个换成 `2`，384 条判据**全绿**（审计 `CG1`）——
+/// `CCM_RELAY_PORT`/`CCM_RELAY_UPSTREAM` 的解析、两个默认值，**一样都没被量过**。
+fn resolve_config(port_env: Option<&str>, upstream_env: Option<&str>) -> Option<(u16, Base)> {
+    let port = port_env
         .and_then(|v| v.parse::<u16>().ok())
         .unwrap_or(DEFAULT_PORT);
-    let raw_base = std::env::var(ENV_UPSTREAM).unwrap_or_else(|_| DEFAULT_UPSTREAM.to_string());
-    let Some(base) = Base::parse(&raw_base) else {
+    let base = Base::parse(upstream_env.unwrap_or(DEFAULT_UPSTREAM))?;
+    Some((port, base))
+}
+
+/// `run()` 剥掉「读环境变量」之后的那一半。
+///
+/// **起监听之前的处置全在这里** ⇒ 判据打得到「基址不认识就退 2」与
+/// 「端口起不来就退出并出声」（`:16-17` 头注承诺的那条）两条。
+/// 成功那一条尾巴上是永不返回的 `serve()` ⇒ 判据够不到，登记为 `判不了`。
+fn run_with(port_env: Option<&str>, upstream_env: Option<&str>) -> i32 {
+    let Some((port, base)) = resolve_config(port_env, upstream_env) else {
         eprintln!("[relay] bad upstream base url");
         return 2;
     };
@@ -295,6 +308,14 @@ pub(crate) fn run(_args: &[String]) -> i32 {
     }
     serve(listener, Arc::new(Relay::new(base, TeeSink::to_stdout())));
     0
+}
+
+/// `--relay` 的入口。配置面只有环境变量（daemon 今天没有配置文件面）。
+/// 本函数今天**只剩「读两个环境变量」这一件事**，别往里加逻辑：加进来的就又没判据了。
+pub(crate) fn run(_args: &[String]) -> i32 {
+    let port = std::env::var(ENV_PORT).ok();
+    let upstream = std::env::var(ENV_UPSTREAM).ok();
+    run_with(port.as_deref(), upstream.as_deref())
 }
 
 #[cfg(test)]
@@ -771,6 +792,103 @@ mod tests {
             sock.is_err() || sock.expect("checked").peer_addr().is_err(),
             "中转不该在非回环地址上可达（本机地址 {local}）"
         );
+    }
+
+    /// ★ `重要-6` 之一：`--relay` 的**配置面**。期望值全是**手写字面量** ——
+    /// 拿被测的那两个常量去算期望值，本判据就自证、恒绿。
+    #[test]
+    fn the_relay_entry_resolves_its_defaults_and_lets_env_override_them() {
+        let (port, base) = resolve_config(None, None).expect("默认配置应当成立");
+        assert_eq!(port, 8788, "默认端口");
+        assert_eq!(
+            base,
+            Base {
+                tls: true,
+                host: "api.anthropic.com".to_string(),
+                port: 443
+            },
+            "默认上游"
+        );
+
+        let (port, base) =
+            resolve_config(Some("19999"), Some("http://127.0.0.1:1")).expect("env 覆盖应当成立");
+        assert_eq!(port, 19999, "CCM_RELAY_PORT 必须盖得住默认");
+        assert_eq!(
+            base,
+            Base {
+                tls: false,
+                host: "127.0.0.1".to_string(),
+                port: 1
+            },
+            "CCM_RELAY_UPSTREAM 必须盖得住默认"
+        );
+
+        // 端口读不懂 ⇒ **回默认**，不是 0、也不是崩。
+        for bad in ["not-a-port", "70000", "-1", ""] {
+            assert_eq!(
+                resolve_config(Some(bad), None).expect("应当回默认").0,
+                8788,
+                "读不懂的端口 {bad:?} 必须回默认"
+            );
+        }
+        // 基址不认识 ⇒ None（调用方据此退 2）。
+        assert!(resolve_config(None, Some("ftp://x")).is_none());
+    }
+
+    /// 把 `run_with` 扔进一条线程 + 读期限。
+    ///
+    /// ⚠⚠ **这是硬保险，不是装饰**：`run_with` 成功那一条路尾巴上是**永不返回**的 `serve()`。
+    /// 任何让它走到那儿的改动都会让整个测试台**挂住** —— 而挂住是 **CRASH，不是红**
+    ///（判定行直接掉成 0，读起来像「没有新红」）。
+    /// **实测过**：变异 `R3`（让 `resolve_config` 不再认 `port_env`）会去绑一个**空闲**端口、
+    /// 进 `serve()`，那一趟 `^test result:` 条数 = **0**，`cargo` 印的是
+    /// `has been running for over 60 seconds`。⇒ 这里把「挂住」换成「5 秒后红」。
+    fn relay_entry_exit_code_within_5s(
+        port_env: Option<String>,
+        upstream_env: Option<String>,
+    ) -> i32 {
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(run_with(port_env.as_deref(), upstream_env.as_deref()));
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(5))
+            .expect("`--relay` 入口必须**返回** —— 超时说明它没退出，而是进了 serve()")
+    }
+
+    /// ★ `重要-6` 之二：**起不来就退出并出声**（`server.rs:16-17` 头注承诺的处置）。
+    ///
+    /// ⚠ 本条全程**只碰回环**：不打任何 API、不起任何 claude、不绑非回环地址。
+    /// 成功那一条路（真起监听 + `serve()` + `TeeSink::to_stdout()` 接线）**判不了**，见件文件登记。
+    #[test]
+    fn the_relay_entry_exits_with_two_when_it_cannot_start() {
+        // ㈠ 基址不认识 —— 连监听都不起。
+        assert_eq!(
+            relay_entry_exit_code_within_5s(None, Some("not-a-url".to_string())),
+            2,
+            "基址不认识必须退 2"
+        );
+        // ㈡ 端口被占。**非空对照**：这个端口刚刚被 `listen(0)` 绑成功过
+        //    ⇒ 「绑不上」不是因为端口本来就不可用。
+        let squatter = listen(0).expect("先自己占住一个回环端口");
+        let port = squatter.local_addr().expect("addr").port();
+        // ★ 先断「端口真被 env 盖住了」，**再**去调入口 —— 不然入口会去绑**别的**端口，
+        //   绑得上就进 serve() 永不返回。这一条把那一形挡在门外，报错也更准。
+        assert_eq!(
+            resolve_config(Some(&port.to_string()), Some("http://127.0.0.1:1"))
+                .expect("配置应当成立")
+                .0,
+            port,
+            "端口必须被 env 盖住，否则下一步绑的是别的端口"
+        );
+        assert_eq!(
+            relay_entry_exit_code_within_5s(
+                Some(port.to_string()),
+                Some("http://127.0.0.1:1".to_string())
+            ),
+            2,
+            "端口起不来必须退 2（被占的端口 {port}）"
+        );
+        drop(squatter);
     }
 
     fn first_non_loopback_v4() -> Option<Ipv4Addr> {
