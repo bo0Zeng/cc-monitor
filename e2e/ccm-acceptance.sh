@@ -17,6 +17,14 @@ REPO="$(cd "$HERE/.." && pwd)"
 CCM="$REPO/shared/ccm"
 SOCK=ccmF02
 TMUX_BIN="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
+# ★★ **fail-closed：本套件对 `jq` 也是硬依赖**〔K-C1 D 阶段审计 `I4`，08-24 补〕。
+#   `K-C1` 起 `mk_mirror_daemon` 用 `jq` 把夹具 manifest 翻成 `--list-accounts` 帧形状；
+#   缺 `jq` 它**不报错、只少吐账号行** ⇒ ccm 拿到空表，症状是 `可用: (无账号库)`，
+#   **诊断指向账号库、不指向缺 jq**（场景 1 会红成那个样子）。照上面 tmux 那条同一个纪律。
+command -v jq >/dev/null 2>&1 || {
+  echo "需要 jq —— 本套件的假 daemon 靠它把夹具 manifest 翻成 --list-accounts 帧形状；"
+  echo "     缺它会静默少吐账号行（症状看着像「账号库坏了」）。这是环境缺工具，不是套件退化。"
+  exit 1; }
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"; "$TMUX_BIN" -L "$SOCK" kill-server 2>/dev/null' EXIT
