@@ -72,9 +72,7 @@ impl TeeSink {
 
     /// 一个响应开头写一行 meta，返回这一响应的序号。
     pub(crate) fn open(&self, agent: &str, key: &str) -> u64 {
-        let seq = self
-            .seq
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let seq = self.seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let line = format!(
             "{{\"__meta__\":{{\"source\":\"relay\",\"proto\":\"passthrough-v0\",\"agent\":{},\"key\":{},\"seq\":{}}}}}\n",
             json_str(agent),

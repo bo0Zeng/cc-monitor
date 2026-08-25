@@ -118,8 +118,8 @@ pub(crate) fn connect(base: &Base) -> std::io::Result<Conn> {
     }
     let name = rustls::pki_types::ServerName::try_from(base.host.clone())
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
-    let conn = rustls::ClientConnection::new(tls_config(), name)
-        .map_err(|e| std::io::Error::other(e))?;
+    let conn =
+        rustls::ClientConnection::new(tls_config(), name).map_err(|e| std::io::Error::other(e))?;
     Ok(Conn::Tls(Box::new(rustls::StreamOwned::new(conn, tcp))))
 }
 
@@ -150,7 +150,13 @@ mod tests {
     #[test]
     fn rejects_shapes_it_does_not_understand() {
         // 分母 = 我列出的这 5 形。
-        for bad in ["ftp://x", "api.example.com", "https://", "://x", "https://:443"] {
+        for bad in [
+            "ftp://x",
+            "api.example.com",
+            "https://",
+            "://x",
+            "https://:443",
+        ] {
             assert!(Base::parse(bad).is_none(), "这一形不该被接受：{bad}");
         }
     }

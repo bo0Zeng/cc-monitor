@@ -49,6 +49,9 @@ mod tests {
                 }
             }
         }
-        assert!(hits.is_empty(), "中转生产段出现非回环 bind 字面量：{hits:?}");
+        assert!(
+            hits.is_empty(),
+            "中转生产段出现非回环 bind 字面量：{hits:?}"
+        );
     }
 }

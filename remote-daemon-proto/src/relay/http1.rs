@@ -110,7 +110,8 @@ pub(crate) enum BodyView {
 impl BodyView {
     pub(crate) fn for_response(headers: &[(String, String)]) -> Self {
         let chunked = headers.iter().any(|(k, v)| {
-            k.eq_ignore_ascii_case("transfer-encoding") && v.to_ascii_lowercase().contains("chunked")
+            k.eq_ignore_ascii_case("transfer-encoding")
+                && v.to_ascii_lowercase().contains("chunked")
         });
         if chunked {
             BodyView::Chunked(ChunkedView::default())
@@ -192,7 +193,10 @@ impl ChunkedView {
 }
 
 /// 从一个已经建立的连接上读响应头部（与请求头同款逐字节读，理由相同）。
-pub(crate) fn read_response_head<R: Read>(r: &mut R, cap: usize) -> std::io::Result<Option<Vec<u8>>> {
+pub(crate) fn read_response_head<R: Read>(
+    r: &mut R,
+    cap: usize,
+) -> std::io::Result<Option<Vec<u8>>> {
     read_head(r, cap)
 }
 
@@ -235,7 +239,11 @@ mod tests {
         assert_eq!(h.method, "POST");
         assert_eq!(h.target, "/s/agentA/sid/v1/messages?beta=true");
         assert_eq!(h.content_length(), Some(3));
-        assert_eq!(h.header("AUTHORIZATION"), Some("Bearer T"), "头名大小写不敏感");
+        assert_eq!(
+            h.header("AUTHORIZATION"),
+            Some("Bearer T"),
+            "头名大小写不敏感"
+        );
         assert!(!h.is_chunked_body());
     }
 
