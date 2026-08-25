@@ -36,8 +36,8 @@ command -v jq >/dev/null 2>&1 || {
 #   两条 PATH 可以不一致（`jq` 只装在 `~/bin` 时）⇒ 那边缺 `jq` 会让 shim 变成 `exec "" "$@"`,
 #   红出来是一串莫名其妙的断言。**同样当场停，同样说真话。**
 env -i PATH="/usr/bin:/bin" sh -c 'command -v jq >/dev/null 2>&1' || {
-  echo "需要 /usr/bin 或 /bin 上的 jq —— 本套件每一处 ccm 调用都跑在 env -i PATH=/usr/bin:/bin 下，"
-  echo "     记账 shim 也只转发给那条 PATH 上的 jq。这是环境缺工具，不是套件退化。"
+  echo "需要 /usr/bin 或 /bin 上的 jq —— KREC 那节的记账 shim 只转发给那条 PATH 上的 jq。"
+  echo "     这是环境缺工具，不是套件退化。"
   exit 1; }
 
 PASS=0; FAIL=0
@@ -530,8 +530,11 @@ ck "夹具自检：daemon **实际答的** z 的 configDir 与 manifest 里那�
 #   第二轮给这条前提写的只是一句 ⚠ 注释 —— 而同一轮立的纪律正是「夹具前提要配一条成对自检」
 #   （`N2`/`N5` 是两个范例）。审计 `MU-F2`（把 `$KTMP/file-only` 从 `mkdir -p` 里删掉）实测
 #   **104/104 全绿** ⇒ 那条前提当时**空转**。今天它已经承重（`KCM6` 末块那条查的就是 `--account f`,
-#   而 `account_config_dir` 会 `-d` 判目录）—— 正因为承重，更需要这条自检把诊断分开：
-#   目录没了该红成「夹具坏了」，不该红成「末块被 read 丢掉了」（那才是射程跑偏）。
+#   而 `account_config_dir` 会 `-d` 判目录）—— 正因为承重，更需要这条自检把诊断分开。
+#   ⚠ **08-25 订正一句写宽了的话**〔审计 `S4`〕：这里原写「目录没了该红成「夹具坏了」，
+#     **不该**红成「末块被 read 丢掉了」」。**实测（08-25 重切 `MU-F2`，锚点 1/1，判定行 123）
+#     是两条都红**：这条自检 ＋「末块 f」那条。⇒ 它做到的是「让**正确的**诊断**也**出现，
+#     两条一起看就分得清是夹具坏了还是解析坏了」，**不是**「让错的诊断**不**出现」。
 ck "夹具自检：账号 f 的目录**真实存在**（不是坏账号；否则末块那条会红成「目录不存在」，射程跑偏）" "yes" \
    "$([ -d "$KTMP/file-only" ] && echo yes || echo no)"
 
@@ -596,15 +599,27 @@ ck "KCY1 · 夹具自检：无 daemon 时那份文件列表**确实更宽**（z 
 #       · 压根不用 `jq`、直接 bash 内建读那份文件（同上，零 fork）。
 #     ⇒ 它证得到的是「**没有人以 argv 或 stdin 直连的方式让 jq 读过那份 manifest**」,
 #       **不是**「所有绕法」。别把这条读成「manifest 一个字节都没被碰过」。
-# ⚠ `REALJQ` 必须在**与 ccm 同一条 PATH** 上取〔审计 `S6`，08-24 补〕：本套件其余每一处 ccm 调用
-#   都跑在 `env -i PATH="/usr/bin:/bin"` 下，而这里若用**外层** PATH，开发机上装了别版 `jq`
-#   （`~/bin` / `asdf` / `nix`）时经这个 shim 的每一条判据测的就是**另一个二进制** ——
-#   今天两者恰好同为 `/usr/bin/jq`，但那是巧合、不是纪律。
+# ⚠ `REALJQ` 必须在**与 `KREC` 这一节的 ccm 调用同一条 PATH** 上取〔审计 `S6` 08-24 补，
+#   `D3 B3` 08-25 订正它的分母〕：`KREC()` 那一处跑在 `env -i PATH="$KTMP/recbin:/usr/bin:/bin"` 下，
+#   这里若用**外层** PATH，开发机上装了别版 `jq`（`~/bin` / `asdf` / `nix`）时经这个 shim 的每一条
+#   判据测的就是**另一个二进制**。
+#   ⚠ **08-25 订正一句可证伪的话**：这里原写「本套件**其余每一处** ccm 调用都跑在
+#     `env -i PATH="/usr/bin:/bin"` 下」，**是假的**。分母 = `grep -c 'bash "\$CCM"'` = **16** 个调用点
+#     （量于 08-25），逐类：`env -i PATH="/usr/bin:/bin"` **4** 处 · `$KTMP/recbin:/usr/bin:/bin` 1 处 ·
+#     `$KTMP/nojq` 1 处 · `$DTMP/bin` 3 处 · **`env -u …`（继承外层 PATH）7 处**。⇒ **4/16，不是 16/16。**
+#   ⚠ **那 7 处继承外层 PATH 的调用没治，如实登记**〔`D3 B3` 的实质点〕：它们真跑 `manifest_to_table`
+#     的 `jq` 分支 ⇒ 外层装了别版 `jq` 时测的是另一个二进制。**不改它们**是有理由的：那 7 处
+#     （`ccm()` / `acct()` / `inherit_acct()` 等）钉的正是「**继承来的环境**」这件事，把 PATH 钉死
+#     就把它们要测的东西测没了。⇒ 改成**把那个巧合变成一条判据**（下一行），红了就说明真出现了两份。
 #   ⚠ 换成这条 PATH 之后**多了一个失败面**：顶上那道 fail-closed 量的是**外层** PATH，
 #     而这里取的是 `/usr/bin:/bin` —— 两者可以不一致（jq 只装在 `~/bin` 时）。
 #     那样 `REALJQ` 会是空串、shim 变成 `exec "" "$@"` ⇒ 一串莫名其妙的红。
 #     ⇒ 顶上那道守卫**已经把这条 PATH 也一起量了**（两条各一句话，见文件头）。
 REALJQ="$(env -i PATH="/usr/bin:/bin" sh -c 'command -v jq')"
+# ★ 把上一段那句「今天两者恰好是同一个」从**巧合**变成**判据**〔08-25，`D3 B3` 的连带面〕。
+#   红了不是套件坏了：是这台机器上真有两份 `jq`，那 7 处继承外层 PATH 的 ccm 调用测的就是另一个。
+ck "★ 自检：外层 PATH 的 jq 与 /usr/bin:/bin 上的 jq 是**同一个文件**（那 7 处继承外层 PATH 的调用才与 shim 同源）" "same" \
+   "$([ "$(command -v jq)" -ef "$REALJQ" ] && echo same || echo "外层=$(command -v jq) 瘦条=$REALJQ")"
 mkdir -p "$KTMP/recbin"
 cat > "$KTMP/recbin/jq" <<EOF
 #!/bin/sh
@@ -934,7 +949,17 @@ ck "尺子自检⑫ **活体对照**：整趟那本账不是空真（射程外�
 #     的 `else` 分支与 `manifest_to_table`+`acct_row_from_slice`。第二轮只在**最后一跑**之后量一次，
 #     而 `NOJQ()` 每跑开头都 `: > "$KTMP/cnf"`/`err` ⇒ daemon 那条路的读数被下一跑冲掉了
 #     （审计 `MU-K4`：把 `awk` 加进 `daemon_out_to_table` 的 `else`，**0 红**，而它真跑、真报
-#     `awk: command not found`）。⇒ 下面**每跑一次就地量一次**。
+#     `awk: command not found`）。⇒ 下面**该量的那两跑各就地量一次**。
+#   ⚠ **08-25 订正一句写宽了的话**〔审计 `S1`〕：这里原写「下面**每跑一次就地量一次**」，
+#     而实数是 **4 跑 / 2 量**（`NOJQ` 调用 4 处，`$(KNF)` 只 2 处，量于 08-25）——
+#     形状与它自己批评第二轮的那一处一模一样。**今天没有覆盖后果**（没被量的那两跑
+#     ——「首块 z」与「pretty-print」——走的解析器与被量的「末块 f」那跑**是同一份**
+#     `manifest_to_table`+`acct_row_from_slice`；两条解析路各一条读数已经把面盖全了）
+#     ⇒ 订正的是**那句话**，不是补两条同义反复的判据。**要量的是「每条解析路一次」，不是「每跑一次」。**
+#   ⚠ 射程如实写明（收窄到实情）：它逮得到的是「**被当成命令去 exec 而找不到**」——
+#     裸名字（handler 记）与绝对路径 ENOENT（`$0: ` 前缀记）**都算**，且**不吃重定向、不吃 locale**。
+#     它**逮不到**：① 新依赖的名字**恰好在 `$KTMP/nojq` 里**（今天只有 `bash`/`sh`/`sed` 三个）
+#     ⇒ 往热路径加 `sed` 它逮不到；② 找得到但跑失败的命令（那不是本条要判的性质）。
 ck "★ KCM6 · 无 jq + daemon 在位 ⇒ 仍然拿 daemon 那份" \
    "$(GOLD "$KTMP/from-daemon")" "$(NOJQ "$KTMP/bin/daemon" "$KTMP/accts/accounts.json")"
 ck "★ KC6d/热路径 · 无 jq + **daemon 那条**解析路（daemon_out_to_table 的 else）上零外部依赖" "0" "$(KNF)"
