@@ -1048,7 +1048,10 @@ ck "尺子自检⑮ **计数口径**：\`VAR=\"\$(<空变量> cmd …)\"\` 同�
 #     （审计 `MU-K4`：把 `awk` 加进 `daemon_out_to_table` 的 `else`，**0 红**，而它真跑、真报
 #     `awk: command not found`）。⇒ 下面**该量的那两跑各就地量一次**。
 #   ⚠ **08-25 订正一句写宽了的话**〔审计 `S1`〕：这里原写「下面**每跑一次就地量一次**」，
-#     而实数是 **4 跑 / 2 量**（`NOJQ` 调用 4 处，`$(KNF)` 只 2 处，量于 08-25）——
+#     而实数是 **4 跑 / 2 量**（量于 08-25 R7 重打：`grep -c '\$(NOJQ '` ⇒ **4**，
+#     `grep -c '^ck .*\$(KNF)'` ⇒ **2**）。⚠ **量 `$(KNF)` 必须行首锚定到 `ck`**：
+#     照抄 `grep -cF '$(KNF)'` 会读作 **3**，多出来的那一处**就是这句注释自己**
+#     〔审计 `D4` 建议-3；同族的坑上面 `KC6d` 计数那处也踩过一次〕——
 #     形状与它自己批评第二轮的那一处一模一样。**今天没有覆盖后果**（没被量的那两跑
 #     ——「首块 z」与「pretty-print」——走的解析器与被量的「末块 f」那跑**是同一份**
 #     `manifest_to_table`+`acct_row_from_slice`；两条解析路各一条读数已经把面盖全了）
@@ -1091,7 +1094,11 @@ ck "★ KC6d/热路径 · 无 jq + **文件**那条解析路（manifest_to_table
 ck "★ KC6d/整趟 · 无 jq + 无 daemon ⇒ 同上，且清单里**没有** daemon（这条路一次往返都不该起）" "" \
    "$(KALLNEW 'sed')"
 # pretty-print + 键序反转：旧那条 grep 兜底在这一格是**静默失灵**的（它要求 name 排在 configDir 前）。
-cat > "$KTMP/accts/pretty/accounts.json" 2>/dev/null || mkdir -p "$KTMP/accts/pretty"
+# ⚠ 这里原写 `cat > "…/pretty/accounts.json" 2>/dev/null || mkdir -p …` —— **重定向在
+#   `2>/dev/null` 生效之前就求值了**，所以目录还不在时那句报错**照样打到 stderr**：基线跑
+#   每次都有一行「…/accts/pretty/accounts.json: 没有那个文件或目录」。功能没坏（`||` 兜住了），
+#   但它是**基线噪音**，而基线噪音会让下一个人把真信号读漏〔审计 `D4` 建议-4；非 R6 引入〕。
+mkdir -p "$KTMP/accts/pretty"
 cat > "$KTMP/accts/pretty/accounts.json" <<JSON
 {
   "version": 1,
