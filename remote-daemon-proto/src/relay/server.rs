@@ -485,6 +485,18 @@ mod tests {
     fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
         let mut c = TcpStream::connect(addr).expect("connect relay");
         c.set_nodelay(true).expect("nodelay");
+        // ★ 风险 `5x` 的硬规矩：**任何走得到 `serve()` 的判据都必须带读期限。**
+        //
+        // `spawn_relay` 在一条线程里跑 `serve()`，而 `serve()` **永不返回**。中转那边一旦
+        // 卡住不回也不关连接，下面的 `read_to_end` / `read_to_string` 就**永远等下去**
+        // ⇒ 整个测试台挂住，`^test result:` 条数 = **0** —— 那一屏与「跑完了、没有新红」
+        // 几乎分不开（本件实测过一次：变异 `R3`，`cargo` 印
+        // `has been running for over 60 seconds`，10 分钟后手动中止）。
+        //
+        // 10 秒对回环来说宽得离谱（这几条判据实测都在 10ms 量级收工）⇒ 它只会把
+        // **挂住**换成**红**，不会把真失败盖掉。要更紧的期限由各判据自己再设（门闩那条设了 4s）。
+        c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+            .expect("read deadline（风险 5x：把挂住换成红）");
         let body = REQUEST_BODY;
         let req = format!(
             "POST {target} HTTP/1.1\r\nHost: relay\r\n{extra}Content-Length: {}\r\n\r\n{body}",
