@@ -93,12 +93,22 @@ impl Write for Conn {
     }
 }
 
-/// 系统根证书 —— 用 `webpki-roots` 内嵌的那套（不读机器上的证书目录：
-/// 本 crate 会被推到任意远端，那台机器上有什么我们不知道）。
-fn tls_config() -> Arc<rustls::ClientConfig> {
-    let roots = rustls::RootCertStore {
+/// 装进 `ClientConfig` 的那一份根证书集 —— 用 `webpki-roots` 内嵌的那套
+/// （不读机器上的证书目录：本 crate 会被推到任意远端，那台机器上有什么我们不知道）。
+///
+/// ★ 它为什么被抽成一个**有名字的生产段**（回修轮 08-25，D1 `重要-2`）：
+/// 先前这一步是 `tls_config()` 里的一个匿名字面量，而判据断的是 **crate 常量**
+/// `webpki_roots::TLS_SERVER_ROOTS` 非空 —— 那是**另一个东西**。
+/// ⇒ 把这里的根证书集整个换成空 `Vec::new()`，384 条判据**全绿**（审计 `CS` 实测）。
+/// 抽出来之后，判据打得到的就是**真正装进去的那一份**。
+fn root_store() -> rustls::RootCertStore {
+    rustls::RootCertStore {
         roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
-    };
+    }
+}
+
+fn tls_config() -> Arc<rustls::ClientConfig> {
+    let roots = root_store();
     let cfg = rustls::ClientConfig::builder_with_provider(Arc::new(
         rustls::crypto::ring::default_provider(),
     ))
@@ -170,13 +180,36 @@ mod tests {
     }
 
     /// TLS 那条路本轮**没有任何行为验证**（不许打真 API，本机也没有 HTTPS 夹具）。
-    /// 这条只证明：根证书装得进去、provider 选得中、`ClientConnection` 建得起来。
-    /// **它不证明**握手成功、证书校验正确、或逐块透传在 TLS 上成立。
+    ///
+    /// # 名字只承诺它证得了的那一半（回修轮 08-25 改名，D1 `重要-2`）
+    ///
+    /// 旧名 `tls_client_config_builds_and_carries_roots` 里的 **carries roots** 是**空真**：
+    /// 它断的是 crate 常量 `webpki_roots::TLS_SERVER_ROOTS` 非空，**不是** `tls_config()`
+    /// 真把根装了进去 ⇒ 把装配点的根证书集换成空 `Vec::new()`，它照样全绿（审计 `CS`）。
+    ///
+    /// 今天它断的是**生产段的装配函数** `root_store()` 的**根证书条数 > 0**，
+    /// 而 `tls_config()` 里那一份就是它返回的那一份（唯一调用点，就在上面几行）。
+    ///
+    /// **它仍然不证明**：握手成功 · 证书校验真的按这套根做 · 逐块透传在 TLS 上成立。
+    /// 那三样要真 TLS 行为验，本轮禁打真 API ⇒ 登记为 `判不了`，别再让名字替它们背书。
     #[test]
-    fn tls_client_config_builds_and_carries_roots() {
+    fn tls_client_config_builds_from_a_non_empty_root_store() {
+        // ★ 真查数量（>0），而且查的是**装进去的那一份**，不是 crate 常量。
+        let n = root_store().roots.len();
         assert!(
-            !webpki_roots::TLS_SERVER_ROOTS.is_empty(),
-            "内嵌根证书集不该是空的"
+            n > 0,
+            "装进 ClientConfig 的根证书集不该是空的（实测 {n} 条）"
+        );
+        // 非空对照：空的根证书集在 rustls 自己看来连服务端校验器都建不起来
+        //（`VerifierBuilderError::NoRootAnchors`）⇒ 这一条把「非空」与「它真能当校验根用」连起来。
+        assert!(
+            rustls::client::WebPkiServerVerifier::builder_with_provider(
+                Arc::new(root_store()),
+                Arc::new(rustls::crypto::ring::default_provider()),
+            )
+            .build()
+            .is_ok(),
+            "非空的根证书集应当建得起服务端校验器"
         );
         let name = rustls::pki_types::ServerName::try_from("api.example.com".to_string())
             .expect("域名应当合法");
