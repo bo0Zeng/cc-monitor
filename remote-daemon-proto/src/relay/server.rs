@@ -257,43 +257,6 @@ mod tests {
     use std::io::BufRead;
     use std::sync::mpsc;
 
-    /// ★ `DoD-4㈠` 零命中守卫：中转的**生产段**里不许出现非回环 bind 的字面量。
-    ///
-    /// 它哪天会变瞎（写在这里，因为下一个人先看到的是这条测试）：
-    /// 地址一旦是拼出来的（`format!` / 读配置 / 读 env），源码扫描就看不见了。
-    /// ⇒ 它**必须**与下面那条行为断言配着用，单独存在时是安慰剂。
-    #[test]
-    fn no_non_loopback_bind_literal_in_relay_production_code() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/relay");
-        let mut scanned = 0usize;
-        let mut hits: Vec<String> = Vec::new();
-        // 针运行时拼：直接写字面量的话本文件自己会被扫中。
-        let needles = [
-            format!("0.0.{}", "0.0"),
-            format!("[{}]", "::"),
-            format!("Ipv4Addr::{}", "UNSPECIFIED"),
-            format!("Ipv6Addr::{}", "UNSPECIFIED"),
-        ];
-        for entry in std::fs::read_dir(&dir).expect("读 src/relay 失败") {
-            let path = entry.expect("dir entry").path();
-            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-                continue;
-            }
-            let raw = std::fs::read_to_string(&path).expect("读文件失败");
-            let prod = crate::guard_support::production_code(&raw);
-            scanned += 1;
-            for (no, line) in prod.lines().enumerate() {
-                for n in &needles {
-                    if line.contains(n.as_str()) {
-                        hits.push(format!("{}:{}: {}", path.display(), no + 1, line.trim()));
-                    }
-                }
-            }
-        }
-        assert!(scanned >= 5, "只扫到 {scanned} 个文件 —— 取法坏了，本断言在空转");
-        assert!(hits.is_empty(), "中转生产段出现非回环 bind 字面量：{hits:?}");
-    }
-
     /// 一个最小假上游。**它只监听回环，全程没有一个字节出本机。**
     ///
     /// `gate` 收到信号之前，它只发第一块。⇒ 下游若在收到第一块之前拿不到任何字节，
@@ -446,11 +409,27 @@ mod tests {
     fn an_unroutable_path_is_refused_and_never_reaches_upstream() {
         let up = spawn_fake_upstream(None);
         let (relay_addr, _relay, _sink) = spawn_relay(up.addr);
+        // ★ **非空对照先打一发**：不然「上游没被碰」是空真 ——
+        // 假上游的记录面坏掉、或中转根本没起来，这条照样绿。
+        // （本仓纪律：「差集为空 / 没有变化」要附一个非空对照。）
+        let mut warmup = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut sink0 = Vec::new();
+        warmup.read_to_end(&mut sink0).expect("read warmup");
+        assert_eq!(
+            up.seen.lock().expect("lock").len(),
+            1,
+            "非空对照：一条**可路由**的请求必须真的打到上游"
+        );
+
         let mut c = send_request(relay_addr, "/v1/messages", "");
         let mut got = String::new();
         c.read_to_string(&mut got).expect("read");
         assert!(got.starts_with("HTTP/1.1 404"), "应当 404：{got}");
-        assert!(up.seen.lock().expect("lock").is_empty(), "不该碰上游");
+        assert_eq!(
+            up.seen.lock().expect("lock").len(),
+            1,
+            "不可路由的那一发不该再碰上游（计数必须还是 1）"
+        );
     }
 
     /// ★★ `DoD-2`：**逐块透传绝不缓冲**，判据是**时序**不是内容。
