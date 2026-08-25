@@ -190,9 +190,11 @@ jobs:
       # ⚠ 为什么用 `uses:` 装而不是加一步 `run:`：`shared_crate_registry::
       # every_ci_run_step_is_classified_as_local_or_unrunnable` 要求本文件里**每一条 `run:` 步骤**
       # 都在 `src-tauri/src/shared_crate_registry.rs` 的 `STEPS` 表里登记过；`uses:` 步骤不进那个人群。
-      - uses: mlugg/setup-zig@v2
+      # ⚠ 版本与 `release.yml` 那步**刻意保持一致**（`mlugg/setup-zig@v1` + zig `0.14.0`）：
+      # 那一步已经在本仓 CI 上跑过，少一个会自己变的量。
+      - uses: mlugg/setup-zig@v1
         with:
-          version: 0.14.1
+          version: 0.14.0
 
       - name: cargo fmt --check
         run: cargo fmt --check
