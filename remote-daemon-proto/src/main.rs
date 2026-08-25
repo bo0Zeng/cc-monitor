@@ -36,6 +36,7 @@ mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生
 mod observe; // U3：观测面 —— 读，不改变世界
 mod platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线）
 mod protocol_doc_guard; // U6a：IPC-PROTOCOL.md 与真实协议面的对拍
+mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
 mod readonly_guard; // F08a：daemon 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 mod wire;
 
@@ -152,7 +153,7 @@ const PROTO_VERSION: u32 = 1;
 ///   wire 一个字节没变（不 bump `PROTO_VERSION`），但**二进制行为变了** ⇒ 照上面的先例 bump。
 ///   ★ **必须 bump**：旧 daemon 在这条路上是**静默失效**的（活着、不吭声、不发 `session_added`），
 ///   报同一个 id 就不会被判 stale、不会自动重装 —— 用户会带着一个永远不宣告会话的 daemon 过日子。
-const BUILD_ID: &str = "p2c-bus-kill";
+const BUILD_ID: &str = "p2d-relay";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
@@ -243,6 +244,9 @@ const SUBCOMMANDS: &[&str] = &[
     "--read-session",
     "--read-session-from-offset",
     "--read-session-tail",
+    // K-H1：起 HTTP 中转（常驻，不是一次性查询 —— 它住在这张表里是因为
+    // `is_query_mode` 那道闸门读的是本表；不登记就会被当成未知 flag 静默进流模式）。
+    "--relay",
     "--resolve",
     "--search",
     "--session-accounts",
@@ -415,6 +419,8 @@ async fn main() {
             // G2（branch-anywhere）：从指定消息处分叉出一个新会话文件。
             // **daemon 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
             Some("--fork-session") => control::fork_write::run(&agent_home, &args),
+            // K-H1：HTTP 中转。**常驻**，起来就不返回；配置面只有环境变量。
+            Some("--relay") => relay::run(&args),
             // ★ 这几个字面量必须与 `observe::accounts_query::run` 自己认的子命令**完全一致**。
             // v3.4.0 出过一次事故：`--account-trust-zero` 在 accounts_query 里实现完整，
             // 但这里漏列 ⇒ 落进下面的 `_` 臂走历史查询 ⇒ `unknown argument` + exit 2，

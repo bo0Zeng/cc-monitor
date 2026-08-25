@@ -786,6 +786,19 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 **P4f 追加三条**：`--bus-list` / `--bus-send` / `--bus-kill`（cc-bus 的基础命令，见上面各自的小节）。
 它们与帧面走**同一个 `run`**，CLI 面这一层不写第二份实现。
 
+**`K-H1` 追加一条**：`--relay` —— 起 **HTTP 中转**（搬字节那半）。它与上面每一条都不同族：
+不是一次性查询，而是一个**常驻**进程，起来就不返回。
+
+- **只监听 `127.0.0.1`**，不对外暴露；端口默认 `8788`，`CCM_RELAY_PORT` 可盖。
+- 上游默认 `https://api.anthropic.com`，`CCM_RELAY_UPSTREAM` 可盖（`http://` 只给本机夹具用）。
+- 路由：`claude` 把 `ANTHROPIC_BASE_URL` 指到 `http://127.0.0.1:<port>/s/<agent>/<key>`，
+  中转把 `/s/<agent>/<key>` 剥掉、其余路径与查询串**原样**转给上游。
+- 响应**逐块透传绝不缓冲**；同一批字节里的 SSE 事件抄一份到**本进程的 stdout**
+  （NDJSON，每行带 `agent` / `key`；首行 `__meta__`）。要落文件由启动方重定向。
+- **请求头原样转发，但一个都不落进 tee、不落进日志。**
+- ⚠ 本刀的 tee 行**不带 `t_ns`**，也**不设上游超时** —— 两处都受 daemon 零定时器护栏所限，
+  理由与代价见 `remote-daemon-proto/src/relay/mod.rs` 头注。
+
 ⚠ 加一条 CLI 命令要动**两处**：`inbound::REGISTRY`（实现与分派臂）+ `main::SUBCOMMANDS`
 （`is_query_mode` 的闸门）。只动前者的后果是**静默的** —— daemon 把它当未知 flag、
 打一行 warn 之后照常进流模式，调用方拿到一堆 jsonl 行。08-13 实测撞到过，

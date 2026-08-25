@@ -130,6 +130,19 @@ mod tests {
             "p2c-bus-kill",
             "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--daemon-probe\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
+        // ★ p2d（`K-H1`，08-25）：新增 `--relay` —— HTTP 中转（搬字节那半）。
+        //
+        // ⚠ **必须 bump**：中转是**新的进程形态**（常驻、只听回环、按路径前缀分流）。
+        //   已部署的旧 daemon 根本没有这个口，而 monitor/skill 判 stale 只看 build_id
+        //   ⇒ 不 bump 就不重装，整件能力在已部署的远端休眠（p1r / p1t / G2 那三次的形状）。
+        // ★ 这一半是**源码半**。`main.rs:63` 那段头注逐字警告过另一半：
+        //   「只 bump 源码不 re-embed = 源码 build_id 与内嵌清单不一致的**半 bump**，更糟」。
+        //   本护栏对「半 bump」是瞎的 ⇒ re-embed 归发版那一拍（CI 交叉编译），本轮没做，
+        //   已在件文件的「没做到」里点名。
+        (
+            "p2d-relay",
+            "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--daemon-probe\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
     ];
 
     use crate::guard_support::{assert_no_test_code, production_code};
