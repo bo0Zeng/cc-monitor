@@ -36,7 +36,12 @@ impl RequestHead {
 /// **逐字节**读到 `\r\n\r\n` 为止。不用 `BufReader::read_line`：中转要在读完头之后
 /// 把**剩下的字节一个不差**地当请求体，而带缓冲的读会把请求体的头几字节吞进缓冲区。
 ///
-/// `cap` 是头部字节上限，超了返回 `None`（回 431，而不是无限吃内存）。
+/// `cap` 是头部字节上限，超了返回 `None`（而不是无限吃内存）。
+///
+/// ⚠ 订正〔回修轮 08-25，承接件文件 `判不了-6` / D1 `建议-9`〕：先前这里逐字写「回 **431**」，
+/// **盘上没有 431**。`None` 有**两个**来源（超上限 · 头没读完就 EOF），本函数**不区分**它们，
+/// 而两个调用点各自按自己的语境回：请求那一侧 `server.rs` 回 **400 Bad Request**，
+/// 响应那一侧回 **502 Bad Gateway**。要真回 431 得先让本函数把两个来源分开。
 pub(crate) fn read_head<R: Read>(r: &mut R, cap: usize) -> std::io::Result<Option<Vec<u8>>> {
     let mut buf = Vec::with_capacity(1024);
     let mut one = [0u8; 1];
