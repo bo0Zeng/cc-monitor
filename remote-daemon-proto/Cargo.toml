@@ -27,6 +27,15 @@ path = "src/main.rs"
 # local cargo cache serves these offline (serde 1.0.228 / serde_json 1.0.x,
 # tokio 1.52.x, notify 6.1.x, notify-debouncer-mini 0.4.x, walkdir 2.5.x,
 # tracing 0.1.x). Keep this list minimal.
+#
+# ⚠ 订正〔回修轮 08-25，承接 D1 `重要-4` / `漂-2`〕：**上面这句话只管它点名的那几条。**
+# `rustls` / `webpki-roots`（K-H1 加的，见本表末尾）**不在** `../src-tauri/Cargo.lock` 里 ——
+# 同一把尺子 `grep -c '^name = "rustls"$' ../src-tauri/Cargo.lock` ⇒ **0**，`webpki-roots` ⇒ **0**
+# （而上面点名的 serde / serde_json / tokio / notify / notify-debouncer-mini / walkdir /
+#  tracing / tracing-subscriber / libc 逐个量都是 1）。
+# ⇒ 这两条**没有**被 pin 到 monitor 那份 lock，**也不能**靠「monitor 早就下过」变成离线可用。
+# 准确说法：**一台从没下过 `rustls` 的机器，daemon 第一次构建必须联网**；下过之后本机缓存才服务得了它。
+# 这正是 `裁-1` 代价② 认下的那条 —— 代价认了，而这段块头注先前一个字没跟着改，于是它自己变成了假话。
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # G1：分叉的记录变换与 monitor 共用同一份（单向 path 依赖；不会把本 crate 拖进 monitor 的 workspace）。
@@ -54,11 +63,24 @@ tokio = { version = "1", features = [
 # （本 crate Cargo.lock 里 libc 0.2.186 早已解析）⇒ 声明它不动 lock、离线可用。
 # 只用 SYS_pidfd_open / poll / pollfd 三样，不引入任何 feature。
 libc = "0.2"
-# K-H1〔裁-1，08-25〕：本仓第一条加密依赖。**只准 TLS**，`K8` 那条「不引 HTTP 框架」
-# 的白名单一个字没松 —— HTTP/1.1 的请求解析与 chunked 写出仍是手写的（见 src/relay/）。
+# K-H1〔裁-1，08-25〕：**daemon 侧第一条加密依赖**，也是**本仓第一条 TLS（X.509 + 根证书链）依赖**。
+#
+# ⚠ 口径订正〔回修轮 08-25，承接 D1 `重要-4`〕：先前这里逐字写的是「**本仓**第一条加密依赖」，
+# 而下面两行同时写着「`ring` 已经在」—— **同一段注释自相矛盾**，且前半句是假的。
+# 根子是两个词混着用了，分清楚：
+#   · **依赖图**（谁的 Cargo.lock / cargo tree 里有它）：`ring 0.17.14` 在本件**之前**就已在
+#     monitor 的依赖图里 —— `git show c3cf193:src-tauri/Cargo.lock | grep -c '^name = "ring"$'` ⇒ **1**，
+#     `cargo tree -i ring --manifest-path ../src-tauri/Cargo.toml` ⇒ `ring └── russh └── monitor`。
+#     同一把尺子量 **daemon 自己**那份 lock 的同一个尖 ⇒ **0** —— 所以「**daemon 侧**第一条」是真话。
+#   · **本机 cargo 缓存**（`~/.cargo/registry/cache/` 里有没有那个 `.crate` 文件）：**只说这台机器**，
+#     与依赖图是两件事。缓存里有不等于依赖图里有，反过来也一样。
+#   ⇒ 下面「少下一棵 C 构建树」这条好处**两个口径都成立**，但它买到的是**构建时间**，不是「本仓第一条」。
+#
+# **只准 TLS**，`K8` 那条「不引 HTTP 框架」的白名单一个字没松 —— HTTP/1.1 的请求解析与
+# chunked 写出仍是手写的（见 src/relay/）。
 # 选 `rustls` 而不是 `ureq`/`hyper`：后两者是 HTTP 客户端/框架，会把「一个块」变成一层框架。
-# crypto provider 钉 `ring`（不是默认的 aws-lc-rs）：`ring-0.17.14` 本机 cargo 缓存里**已经在**
-# （`russh` 拖来的），少一棵要现下载的 C 构建树。
+# crypto provider 钉 `ring`（不是默认的 aws-lc-rs）：`ring` 是 monitor 侧 `russh` 已经在用的那一棵，
+# 复用它省掉 aws-lc-rs 那棵**另外**要现下载现编的 C 构建树。
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 webpki-roots = "1"
 notify = "6.1"
