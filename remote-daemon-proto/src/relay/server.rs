@@ -619,39 +619,44 @@ mod tests {
         gate_tx.send(()).expect("open the gate");
 
         let mut t_first = None;
-        // ㈠ 逐块门闩：读到第 i 块 ⇒ 才放行第 i+1 块。
-        for i in 1..=UPSTREAM_EVENTS {
+        let mut seen_chunks: Vec<String> = Vec::new();
+        // ㈠ 逐块门闩 + 在下游侧**数**块：读到 EOF 为止。
+        //
+        // ⚠ 块数必须是**数出来的**，不是循环次数**构造出来的**。
+        // 〔铁律 15 回打自己 —— 这一格我第一版就写错了：先写成 `for i in 1..=UPSTREAM_EVENTS`
+        //  再在末尾补一次 `body_reads += 1`，于是走到断言那一刻 `body_reads` **恒等于**
+        //  `UPSTREAM_EVENTS + 1`，而它下面那条对账拿它跟同一个常量比 ⇒ **结构性恒真**。
+        //  那正是本轮要治的 `assert!(reads >= 1)` **同一种病**，长在治它的代码里。〕
+        loop {
             let n = c.read(&mut buf).expect(
                 "上游卡在门闩上，只有中转把上一块透出来下游才会有下一块 —— \
                  读超时说明中转攒住了某一块（DoD-2 红）",
             );
-            assert!(n > 0, "读到 EOF 而没拿到第 {i} 块");
+            if n == 0 {
+                break;
+            }
             body_reads += 1;
             if t_first.is_none() {
                 t_first = Some(t0.elapsed());
             }
             acc.extend_from_slice(&buf[..n]);
-            assert!(
-                String::from_utf8_lossy(&acc).contains(&format!("{{\"i\":{i}}}")),
-                "第 {i} 块必须在这一次 read 里就到齐"
-            );
+            seen_chunks.push(String::from_utf8_lossy(&buf[..n]).to_string());
+            // 放行下一块。上游只 `recv` 该收的那几次，多发的确认积在 channel 里，无害。
             gate_tx.send(()).expect("open the gate");
         }
-        // 终止块（chunked 的 `0\r\n\r\n`）也是上游发出的一块。
-        let n = c.read(&mut buf).expect("终止块必须到");
-        assert!(n > 0, "终止块读到 EOF");
-        body_reads += 1;
-        acc.extend_from_slice(&buf[..n]);
-
-        let mut tail = Vec::new();
-        let _ = c.read_to_end(&mut tail);
         let t_last = t0.elapsed();
-        acc.extend_from_slice(&tail);
         let text = String::from_utf8_lossy(&acc).to_string();
+        // 每一块**各自单独**到达，且**按序** —— 第 i 次读到的就是第 i 个事件。
         for i in 1..=UPSTREAM_EVENTS {
+            let Some(chunk) = seen_chunks.get(i - 1) else {
+                panic!(
+                    "第 {i} 块根本没到（下游只数到 {} 块）：{text:?}",
+                    seen_chunks.len()
+                );
+            };
             assert!(
-                text.contains(&format!("{{\"i\":{i}}}")),
-                "第 {i} 块的内容也要到：{text:?}"
+                chunk.contains(&format!("{{\"i\":{i}}}")),
+                "第 {i} 次读到的应当正是第 {i} 个事件，实际读到 {chunk:?}"
             );
         }
 
@@ -673,10 +678,8 @@ mod tests {
             vec![Some(up_chunks)],
             "中转写给下游的块数必须等于上游发出的块数，且必须以干净 EOF 收尾"
         );
-        assert!(
-            t_first.expect("首块时刻") <= t_last,
-            "首块时刻必须不晚于末块时刻"
-        );
+        // ⚠ 这两个时刻**只印不断言**：`t_first` 先量、时钟单调 ⇒ `t_first <= t_last` 恒真，
+        // 断它等于加一条永远不会红的判据（同上，铁律 15 自查逮到的第二处）。
         println!(
             "[DoD-2] 首块 {:?} · 末块 {t_last:?} · 上游发出 {up_chunks} 块 · 下游数到 {body_reads} 块 · pump 写出 {:?}",
             t_first.expect("首块时刻"),
