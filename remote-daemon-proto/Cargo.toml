@@ -54,6 +54,13 @@ tokio = { version = "1", features = [
 # （本 crate Cargo.lock 里 libc 0.2.186 早已解析）⇒ 声明它不动 lock、离线可用。
 # 只用 SYS_pidfd_open / poll / pollfd 三样，不引入任何 feature。
 libc = "0.2"
+# K-H1〔裁-1，08-25〕：本仓第一条加密依赖。**只准 TLS**，`K8` 那条「不引 HTTP 框架」
+# 的白名单一个字没松 —— HTTP/1.1 的请求解析与 chunked 写出仍是手写的（见 src/relay/）。
+# 选 `rustls` 而不是 `ureq`/`hyper`：后两者是 HTTP 客户端/框架，会把「一个块」变成一层框架。
+# crypto provider 钉 `ring`（不是默认的 aws-lc-rs）：`ring-0.17.14` 本机 cargo 缓存里**已经在**
+# （`russh` 拖来的），少一棵要现下载的 C 构建树。
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "1"
 notify = "6.1"
 notify-debouncer-mini = "0.4"
 walkdir = "2.5"
