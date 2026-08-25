@@ -421,11 +421,22 @@ mod tests {
 
         assert_eq!(relay.served(), 2, "两个键必须由同一个中转实例服务");
         let tee = String::from_utf8(sink.lock().expect("lock").clone()).expect("utf8");
-        let a_lines: Vec<&str> = tee.lines().filter(|l| l.contains("sid-AAA")).collect();
-        let b_lines: Vec<&str> = tee.lines().filter(|l| l.contains("sid-BBB")).collect();
-        assert!(!a_lines.is_empty(), "A 键必须有自己的 tee 行");
-        assert!(!b_lines.is_empty(), "B 键必须有自己的 tee 行");
-        for l in &a_lines {
+        // ★ 只认**事件行**，不认 meta 行。
+        //
+        // 这一条是变异台逼出来的：第一版按「行里出现这个键」认，而每个响应开头那行
+        // `__meta__` 本来就带真键 ⇒ 把**事件**的落点写死成一个键，两边照样各自有行、全绿。
+        // 那正是「断言从『落在哪个键上』滑成『有没有到达』」那个瞎法，只是滑在 tee 这一侧。
+        let events: Vec<&str> = tee.lines().filter(|l| l.contains("\"event\"")).collect();
+        let a: Vec<&&str> = events.iter().filter(|l| l.contains("sid-AAA")).collect();
+        let b: Vec<&&str> = events.iter().filter(|l| l.contains("sid-BBB")).collect();
+        assert!(!a.is_empty(), "A 键必须有自己的**事件**行：{events:?}");
+        assert!(!b.is_empty(), "B 键必须有自己的**事件**行：{events:?}");
+        assert_eq!(
+            a.len() + b.len(),
+            events.len(),
+            "每条事件行必须恰好属于一个键，不许有第三种落点：{events:?}"
+        );
+        for l in &a {
             assert!(!l.contains("sid-BBB"), "两个键的 tee 行不许交叉：{l}");
         }
         assert!(!got.is_empty());
@@ -506,7 +517,13 @@ mod tests {
         assert_eq!(seen.len(), 1);
         assert!(seen[0].ends_with("auth=true"), "auth 头必须被转发：{seen:?}");
         let tee = String::from_utf8(sink.lock().expect("lock").clone()).expect("utf8");
-        assert!(!tee.is_empty(), "tee 不该是空的，否则本断言是空真");
+        // ★ 活体条件要按**事件行**数，不是按「tee 非空」。
+        //
+        // 这一条也是变异台逼出来的（与上面路由那条同族）：每个响应开头那行 `__meta__`
+        // 本来就会写出去 ⇒ 把 tee 的**事件**那一路整个掏空，「tee 非空」照样成立，
+        // 本断言就退化成**空真**（闸死了 `[] == []` 也成立）。7u 那一趟实测到了这个形状。
+        let events = tee.lines().filter(|l| l.contains("\"event\"")).count();
+        assert!(events >= 1, "tee 里必须真有事件行，否则本断言是空真：{tee:?}");
         assert!(!tee.contains(SENTINEL), "哨兵串泄漏进了 tee");
         assert!(!tee.contains("Authorization"), "tee 里不该有任何头名");
     }
