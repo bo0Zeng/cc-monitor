@@ -120,7 +120,12 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
             return respond_status(&mut down_w, "502 Bad Gateway");
         }
     };
-    up.write_all(&render_upstream_request(&head, &r.rest, &relay.base, body.len()))?;
+    up.write_all(&render_upstream_request(
+        &head,
+        &r.rest,
+        &relay.base,
+        body.len(),
+    ))?;
     if !body.is_empty() {
         up.write_all(&body)?;
     }
@@ -181,7 +186,12 @@ fn pump<R: Read, W: Write>(
 /// - 逐跳头不转发；`Host` 换成上游的。
 /// - `Accept-Encoding` 收窄成 `identity`（见 `super` 头注㈢）。
 /// - ⚠ **其余头一律原样转发，包括 auth 头** —— 转发但**不记录**（`K11` 裁定一）。
-fn render_upstream_request(head: &RequestHead, target: &str, base: &Base, body_len: usize) -> Vec<u8> {
+fn render_upstream_request(
+    head: &RequestHead,
+    target: &str,
+    base: &Base,
+    body_len: usize,
+) -> Vec<u8> {
     let mut out = format!("{} {} HTTP/1.1\r\n", head.method, target);
     out.push_str(&format!("Host: {}\r\n", base.host_header()));
     out.push_str("Accept-Encoding: identity\r\n");
@@ -300,7 +310,8 @@ mod tests {
                 .expect("head");
                 s.flush().expect("flush");
                 let first = b"data: {\"i\":1}\n\n";
-                s.write_all(format!("{:x}\r\n", first.len()).as_bytes()).expect("len");
+                s.write_all(format!("{:x}\r\n", first.len()).as_bytes())
+                    .expect("len");
                 s.write_all(first).expect("body");
                 s.write_all(b"\r\n").expect("crlf");
                 s.flush().expect("flush");
@@ -310,7 +321,8 @@ mod tests {
                 }
                 for i in 2..=3 {
                     let ev = format!("data: {{\"i\":{i}}}\n\n");
-                    s.write_all(format!("{:x}\r\n", ev.len()).as_bytes()).expect("len");
+                    s.write_all(format!("{:x}\r\n", ev.len()).as_bytes())
+                        .expect("len");
                     s.write_all(ev.as_bytes()).expect("body");
                     s.write_all(b"\r\n").expect("crlf");
                     s.flush().expect("flush");
@@ -452,9 +464,9 @@ mod tests {
         let mut buf = [0u8; 4096];
         let mut reads = 0usize;
         let t_first = loop {
-            let n = c.read(&mut buf).expect(
-                "上游还没发完就该拿到第 1 块 —— 读超时说明中转攒了整个响应体（DoD-2 红）",
-            );
+            let n = c
+                .read(&mut buf)
+                .expect("上游还没发完就该拿到第 1 块 —— 读超时说明中转攒了整个响应体（DoD-2 红）");
             assert!(n > 0, "读到 EOF 而没拿到第 1 块");
             reads += 1;
             acc.extend_from_slice(&buf[..n]);
@@ -469,7 +481,10 @@ mod tests {
         let t_last = t0.elapsed();
         acc.extend_from_slice(&rest);
         let text = String::from_utf8_lossy(&acc).to_string();
-        assert!(text.contains("{\"i\":2}") && text.contains("{\"i\":3}"), "后续块也要到");
+        assert!(
+            text.contains("{\"i\":2}") && text.contains("{\"i\":3}"),
+            "后续块也要到"
+        );
         assert!(reads >= 1);
         assert!(
             t_first <= t_last,
@@ -494,7 +509,10 @@ mod tests {
         // 非空对照：这个 token 真的走过这条路（上游看见了 auth 头）。
         let seen = up.seen.lock().expect("lock").clone();
         assert_eq!(seen.len(), 1);
-        assert!(seen[0].ends_with("auth=true"), "auth 头必须被转发：{seen:?}");
+        assert!(
+            seen[0].ends_with("auth=true"),
+            "auth 头必须被转发：{seen:?}"
+        );
         let tee = String::from_utf8(sink.lock().expect("lock").clone()).expect("utf8");
         // ★ 活体条件要按**事件行**数，不是按「tee 非空」。
         //
@@ -502,7 +520,10 @@ mod tests {
         // 本来就会写出去 ⇒ 把 tee 的**事件**那一路整个掏空，「tee 非空」照样成立，
         // 本断言就退化成**空真**（闸死了 `[] == []` 也成立）。7u 那一趟实测到了这个形状。
         let events = tee.lines().filter(|l| l.contains("\"event\"")).count();
-        assert!(events >= 1, "tee 里必须真有事件行，否则本断言是空真：{tee:?}");
+        assert!(
+            events >= 1,
+            "tee 里必须真有事件行，否则本断言是空真：{tee:?}"
+        );
         assert!(!tee.contains(SENTINEL), "哨兵串泄漏进了 tee");
         assert!(!tee.contains("Authorization"), "tee 里不该有任何头名");
     }
@@ -514,19 +535,24 @@ mod tests {
         )
         .expect("parse");
         let base = Base::parse("https://api.example.com").expect("base");
-        let out = String::from_utf8(render_upstream_request(&head, "/v1/x", &base, 3)).expect("utf8");
+        let out =
+            String::from_utf8(render_upstream_request(&head, "/v1/x", &base, 3)).expect("utf8");
         assert!(out.starts_with("POST /v1/x HTTP/1.1\r\n"));
         assert!(out.contains("Host: api.example.com\r\n"));
         assert!(out.contains("Accept-Encoding: identity\r\n"));
         assert!(!out.contains("gzip"), "上游的 Accept-Encoding 必须被收窄");
-        assert!(out.contains("Authorization: Bearer T\r\n"), "auth 头原样转发");
+        assert!(
+            out.contains("Authorization: Bearer T\r\n"),
+            "auth 头原样转发"
+        );
         assert_eq!(out.matches("Content-Length:").count(), 1);
         assert!(!out.contains("keep-alive"), "逐跳头不转发");
     }
 
     #[test]
     fn response_head_keeps_framing_and_forces_close() {
-        let raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n";
+        let raw =
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n";
         let out = String::from_utf8(rewrite_response_head(raw)).expect("utf8");
         assert!(out.contains("Transfer-Encoding: chunked\r\n"), "分帧不能丢");
         assert!(!out.contains("keep-alive"));
@@ -545,7 +571,8 @@ mod tests {
             return;
         };
         // 从本机的非回环地址出发去连中转 —— 绑到那个地址再 connect。
-        let sock = std::net::TcpStream::connect(SocketAddr::new(IpAddr::V4(local), relay_addr.port()));
+        let sock =
+            std::net::TcpStream::connect(SocketAddr::new(IpAddr::V4(local), relay_addr.port()));
         assert!(
             sock.is_err() || sock.expect("checked").peer_addr().is_err(),
             "中转不该在非回环地址上可达（本机地址 {local}）"
