@@ -313,12 +313,34 @@ fn embed_daemons() {
                      （前提是那个二进制**真的**是 {expected} 编出来的；不确定就删掉整个目录重来。）"
                 );
             }
+            // ★ 08-25（`K-H1` / 风险 `5v`）：**引 TLS 之后这条自救路分 arch 了。**
+            // 下面那段原本逐字写着「不需要装 zig（U-1 实测）」——`rustls` → `ring` 进来之后
+            // 那句话**变成了假话**：`ring` 的 build script 要**编 C**，而 `rust-lld` 只是个
+            // 链接器，它替不了 C 编译器。08-25 把那两条命令逐条重打，读数分岔：
+            //   x86_64  照做 **rc=0**
+            //   aarch64 照做 **rc=101** ⇒ `error occurred in cc-rs:
+            //           failed to find tool "aarch64-linux-musl-gcc"`
+            let c_cross_note: &str = if arch == "aarch64" {
+                "⚠ **这个 arch 还额外要一个 C 交叉编译器**（08-25 实测：不给就 rc=101，\n\
+                        死在 `cc-rs: failed to find tool \"aarch64-linux-musl-gcc\"` ——\n\
+                        `ring` 的 build script 要编 C，`rust-lld` 只是链接器，替不了它）。\n\
+                        **实测走得通的一条**（zig 0.14.0，08-25 本机跑到 rc=0）：\n\
+                        给上面那条 `cargo build` 前面加三个环境变量 ——\n\
+                          CC_aarch64_unknown_linux_musl=\"zig cc\" \\\n\
+                          CFLAGS_aarch64_unknown_linux_musl=\"--target=aarch64-linux-musl\" \\\n\
+                          AR_aarch64_unknown_linux_musl=\"zig ar\" \\\n\
+                        另一条是装一套提供 `aarch64-linux-musl-gcc` 的 musl 交叉工具链\n\
+                        —— **我没量过**，别当成验过的路。"
+            } else {
+                "· 这个 arch **不额外要 C 交叉编译器**（08-25 实测 rc=0）：\n\
+                        `ring` 的那点 C 用本机的 `x86_64-linux-musl-gcc` 就编过去了。"
+            };
             if embedded_id != expected {
                 panic!(
                     "内嵌 daemon {arch} 的 build_id 是 `{embedded_id}`，而 daemon 源码是 `{expected}` —— \
                      **半 bump**。装上去会被 monitor 永远判 StaleBuild 并无限重装。\n\
                      出路二选一：\n\
-                     ① 重编并同步清单。**不需要装 zig**（U-1 实测）。三步都要做，\n\
+                     ① 重编并同步清单。三步都要做，\n\
                         **前两步在 `remote-daemon-proto/` 目录下跑**：\n\
                         cd remote-daemon-proto\n\
                         cargo build --release --target {arch}-unknown-linux-musl \\\n\
@@ -330,6 +352,9 @@ fn embed_daemons() {
                         （x86_64 上不加 --config 也能链；aarch64 必须加，否则会挂在系统 ld 上。\n\
                          注意：这样编出来的形态与发版 CI 的 zigbuild 产物**不同**\n\
                          —— static-pie / 未 strip / 不同 rustc，只适合本机打包。）\n\
+                        {c_cross_note}\n\
+                        ⚠ 发版 CI（`release.yml`）走的是 `cargo zigbuild`，它自己装 zig，\n\
+                         而 `zig cc` 能编 C ⇒ **那条路多半仍通，但我没量过**，别读成量过了。\n\
                      ② 直接 `rm -rf src-tauri/embedded-daemons/`：自动部署诚实关闭，\
                         编译立刻恢复（该目录已被 gitignore，删除零代价）。"
                 );

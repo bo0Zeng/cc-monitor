@@ -172,6 +172,30 @@ jobs:
         with:
           workspaces: remote-daemon-proto
 
+      # ★ 08-25（`K-H1` / `KU10` 走「甲」）：**给这个 ubuntu job 装一个能给 Windows 编 C 的交叉工具链。**
+      #
+      # 为什么突然要它：daemon 引入 TLS（`rustls` → `ring`）之后，`ring` 的 build script 要**编 C**，
+      # 而 cc-rs 在 Linux 上给 `*-pc-windows-msvc` 找不到 MSVC 的工具 ⇒ 下面那条跨 target check
+      # **必红**（本机实测 exit 101，`error occurred in cc-rs: failed to find tool "lib.exe"`）。
+      # ⚠ 那个红**不是**我们的代码坏了：失败输出里 `Checking cc-monitor-remote` 命中 **0**，
+      #   它根本没走到我们这一行 ⇒ 「平台线的唯一真判据」当时等于**没了**。
+      #
+      # 为什么是 zig：它一个包同时给齐三样（本机逐条实测过）——
+      #   ① `zig cc` = clang，`-target x86_64-windows-gnu` 能编出 **COFF** 目标文件；
+      #   ② 自带 mingw-w64 的 libc 头（不需要下载微软 SDK，也就不需要 `xwin` 那一步下载）；
+      #   ③ `zig lib` = LLVM 的 **lib.exe 驱动**，正是 cc-rs 缺的那个归档器。
+      # ⚠ 只给归档器是**不够**的：实测把 `AR` 指向 GNU `ar` 或 `llvm-lib`，
+      #   宿主 gcc 产的是 ELF，LIB 驱动当场 `not a COFF object` ⇒ 必须有一个真发 COFF 的编译器。
+      #
+      # ⚠ 为什么用 `uses:` 装而不是加一步 `run:`：`shared_crate_registry::
+      # every_ci_run_step_is_classified_as_local_or_unrunnable` 要求本文件里**每一条 `run:` 步骤**
+      # 都在 `src-tauri/src/shared_crate_registry.rs` 的 `STEPS` 表里登记过；`uses:` 步骤不进那个人群。
+      # ⚠ 版本与 `release.yml` 那步**刻意保持一致**（`mlugg/setup-zig@v1` + zig `0.14.0`）：
+      # 那一步已经在本仓 CI 上跑过，少一个会自己变的量。
+      - uses: mlugg/setup-zig@v1
+        with:
+          version: 0.14.0
+
       - name: cargo fmt --check
         run: cargo fmt --check
 
@@ -190,6 +214,25 @@ jobs:
       #
       # 这一步之前，daemon 在 Windows 上 **RC=101 / 12 个错**，而 CI 从来不知道。
       - name: cargo check（跨 target：Windows 编得过 —— 平台线的真判据）
+        # ★ 08-25：这三个环境变量是上面那步 zig 的用法，**不改这条命令一个字符** ——
+        # `shared_crate_registry::ci_actually_runs_the_daemon_four_steps` 对下面这条 `run:` 是
+        # **整行全等**匹配（不是子串），所以 `cargo xwin check …` 那种写法会直接把它打红。
+        #
+        # ★★ 逐字说清这一步今天证什么、**不**证什么（别让下一个人把它读大一格）：
+        #   · **证**：我们自己的 Rust 代码（含中转与 TLS）在 `x86_64-pc-windows-msvc` 上
+        #     `--all-targets` 全量类型检查通过。本机实测 exit **0**，`Checking cc-monitor-remote` 命中 **1**
+        #     （⚠ 包名是 `cc-monitor-remote`，目录名才是 `remote-daemon-proto` —— 拿目录名当 needle 会永远数出 0）。
+        #   · **不证**：`ring` 的那点 C 在 **MSVC ABI** 下编得过。这里编的是 **windows-gnu ABI 的 COFF**，
+        #     因为 zig 不带 MSVC 的 libc 头（实测 `-target x86_64-windows-msvc` 直接
+        #     `'string.h' file not found`）。`cargo check` **不链接** ⇒ 那份 `.lib` 从头到尾没人用，
+        #     它存在只是为了让 build script 走完、好让检查继续走到我们的代码。
+        #   · 「`ring` 在真 Windows 上编得过」这一格由上游与真机负责：08-25 在一台真 Windows 上跑
+        #     同一份代码 `cargo check --all-targets` ⇒ EXIT=0 / 0 error（读数住 `ROADMAP` `KU10`）。
+        #   · ⇒ 这一步**没有**因此变弱：它守的一直是「我们的代码在 Windows 上编得过」，那一半一个字没动。
+        env:
+          CC_x86_64_pc_windows_msvc: zig cc
+          CFLAGS_x86_64_pc_windows_msvc: --target=x86_64-windows-gnu
+          AR_x86_64_pc_windows_msvc: zig lib
         run: cargo check --all-targets --target x86_64-pc-windows-msvc
 
       # clippy 同后端 job：仅警告，不强制
