@@ -401,6 +401,18 @@ jobs:
       #  08-13：新增 daemon-cc-bus（P4f：daemon 的 cc-bus 基础命令）⇒ 22 → 23，同样四处。）
       # 不加这条的失效模式是：有人把某一步改回裸 `npm run test:X`（或整步删掉），
       # 那套的断言数就再没人管了，而 CI **照样全绿** —— 与断言数缩水同一类病，只是换了一层。
+      # ★★ **2026-08-24 K-C1（D2 审计 `A2`）：把 ccm 那三套的地板棘到今天的实得**
+      #    `ccm-cli` **59 → 109** · `ccm-acceptance` **26 → 29** · `ccm-contract-parity` **62 → 68**
+      #    （**先跑再棘**：三套在本轮交回态下实测 109/0 · 29/0 · 68/0）。棘之前那三个数
+      #    恰好是 K-C1 改造**前**的值 ⇒ K-C1 两轮加的 **54 条断言 + 本轮 5 条一处都没被护住**，
+      #    「今天可以把它们全删掉而 CI 照样绿」—— 正是 `assert-pass-floor.sh` 头注写的那个
+      #    失效模式：**不是变红，是静默缩水**。
+      # ⚠ **同一拍必须改下面那张 `pair` 清单**（本轮就是这么改的）。审计逮到：清单此前停在
+      #    `ccm-cli 53` / `ccm-acceptance 19` / `ccm-contract-parity 61`，与调用行 59/26/62
+      #    **三处对不上** ⇒ 按本步骤的逻辑第一条不命中就 `exit 1`。那是一处**先于 K-C1** 的病
+      #    （`ci.yml` 在 `54dc560..HEAD` 之间 0 个 commit、md5 逐字相同；`git log -S'ccm-cli 53'`
+      #    指向 `0085d0d`「U-NP④」那次**只棘了调用行、没棘清单**）—— 本轮连它一起订正。
+      #    ⇒ **纪律**：改任何一套的地板 = 改**调用行 + 这张清单**两处，一拍做完。
       - name: G-A/G-C 覆盖面地板（23 套真机套件都必须带断言数地板）
         run: |
           set -euo pipefail
@@ -412,11 +424,11 @@ jobs:
           # 没有地板 ⇒ 断言被删空照样绿，正是这套机制立起来要防的那件事（我自己刚犯了一次）。
           [ "${N:-0}" -ge 23 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 23）——有套件被改回裸 npm run 或被删掉"; exit 1; }
           # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
-          for pair in "tmux-target 26" "ccm-cli 53" "ccm-print-parity 12" "ccm-acceptance 19" \
+          for pair in "tmux-target 26" "ccm-cli 109" "ccm-print-parity 12" "ccm-acceptance 29" \
                       "ccm-pretrust 15" "cc-spawn-uplift 72" "tmux-guarded 14" "usage-probe 11" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
                       "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 32" \
-                      "ccm-contract-parity 61" "daemon-gate2 36" "local-backend 7" \
+                      "ccm-contract-parity 68" "daemon-gate2 36" "local-backend 7" \
                       "daemon-sessions-rewatch 5" "daemon-tmux-late-server 2" \
                       "cc-bus-queue-drain 43" "daemon-cc-bus 50"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
@@ -430,6 +442,9 @@ jobs:
   # R00③：**真机行为验收进 CI**。**E82（2026-08-01）订正这段散文里的数**：地板值本身一直是对的
   # （下面有逐个 grep 的反向自检兜着），只是这几行注释没跟 —— 实际调用行是
   # `ccm-acceptance 19` / `usage-probe 9`，不是 15 / 7；套数也从 8 长到了 15（跨两个 job）。
+  # ⚠ **2026-08-24 订正：下面这几行散文里的数今天全是旧的**（保留是因为它们记着「哪一刀为什么棘」）。
+  #   现值以**调用行**为准：`ccm-cli 109` · `ccm-acceptance 29` · `ccm-contract-parity 68`
+  #   （K-C1 D2 `A2`；反向自检清单已同拍改）。
   # ⚠ audit-0805 F14 第六刀把 ccm-cli 棘到 53（新增 7 条：身份 poller 的 sid 解析——
   #   抽取器自检 1 + 取值 4 + 「文件不存在 stderr 必须为空」1 + 「不残留上一次」1）。
   # ⚠ audit-0805 F10 把 ccm-cli 棘到 46（新增两条：I-11 的 resume×daemon×passthru 那一格，
@@ -474,13 +489,13 @@ jobs:
         run: bash e2e/assert-pass-floor.sh tmux-target 26
 
       - name: ccm CLI 契约（F02）
-        run: bash e2e/assert-pass-floor.sh ccm-cli 59
+        run: bash e2e/assert-pass-floor.sh ccm-cli 109
 
       - name: ccm --print 平价预言机（F03）
         run: bash e2e/assert-pass-floor.sh ccm-print-parity 12
 
       - name: ccm 端到端验收（F02）
-        run: bash e2e/assert-pass-floor.sh ccm-acceptance 26
+        run: bash e2e/assert-pass-floor.sh ccm-acceptance 29
 
       - name: ccm 预信任（F11）
         run: bash e2e/assert-pass-floor.sh ccm-pretrust 15
@@ -489,7 +504,7 @@ jobs:
       # 与上面两套的分工：`ccm-cli` 只跑 `--print`（全 `env -u TMUX`）、`ccm-print-parity`
       # 验渲染器意图能被接住 —— **都不比对真 exec 路**，而那正是 U9b 搬决策时会漏的地方。
       - name: ccm 契约差分对拍（U9a · S10 保住清单）
-        run: bash e2e/assert-pass-floor.sh ccm-contract-parity 62
+        run: bash e2e/assert-pass-floor.sh ccm-contract-parity 68
 
       # B02：`cc-spawn` 收编进 `ccm` 的行为等价验收。**本套件自带起飞前自检**——
       # 它经 PATH 上的 tmux shim 强制 `-L <隔离socket>`（cc-spawn/ccm/cc-register 内部都是
