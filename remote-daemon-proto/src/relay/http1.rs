@@ -277,10 +277,83 @@ mod tests {
         assert_eq!(rest, b"BODYBYTES");
     }
 
+    /// 数「**真的**从源里读走了多少字节」的读源。
+    ///
+    /// `read_head` 的两个 `Ok(None)` 出口**返回值本身分不开** ⇒ 想让「上限」那道门
+    /// 有自己的判据，只能量它**消耗了多少**。
+    struct CountingReader {
+        inner: std::io::Cursor<Vec<u8>>,
+        consumed: usize,
+    }
+
+    impl Read for CountingReader {
+        fn read(&mut self, b: &mut [u8]) -> std::io::Result<usize> {
+            let n = self.inner.read(b)?;
+            self.consumed += n;
+            Ok(n)
+        }
+    }
+
+    /// ★ **上限那道门，单断**（回修轮之三，承接 D1 `重要-1`）。
+    ///
+    /// `read_head` 有**两个** `Ok(None)` 出口 —— ①超上限 ②头没读完就 EOF ——
+    /// 而**返回值本身分不开它们**。先前那一条判据（`head_cap_is_enforced`）只断 `is_none()`，
+    /// 于是两个出口**互相兜底**：上限整个失效、读到 EOF 照样 `None` ⇒ **绿**（审计 `CE`）；
+    /// EOF 出口改成 `Some`、上限照样先拦住 ⇒ 也**绿**（审计 `CE2`）；**只有两刀同切才红**（`CE3`）。
+    /// ⇒ 它买到的是「目录级塌陷」，而名字说的是「enforced」〔`brief` 9：N 个独立源要 N 格单断〕。
+    ///
+    /// 这一条改断**它到底读走了多少字节**：上限拦住 ⇒ 只该消耗 `CAP` 个，
+    /// **不是**把源里 9000 个全吃完。上限一旦失效，这个数当场对不上。
     #[test]
-    fn head_cap_is_enforced() {
+    fn the_cap_door_stops_the_read_at_exactly_cap_bytes() {
+        const CAP: usize = 128;
+        let mut src = CountingReader {
+            inner: std::io::Cursor::new(vec![b'a'; 9000]),
+            consumed: 0,
+        };
+        assert!(
+            read_head(&mut src, CAP).expect("io").is_none(),
+            "超上限的头不该被当成一个头返回"
+        );
+        assert_eq!(
+            src.consumed, CAP,
+            "上限拦住时只该消耗 {CAP} 字节；把源里 9000 字节全读完说明上限没生效"
+        );
+    }
+
+    /// ★ **EOF 那道门，单断**。头**没有**空行就断流 ⇒ 不许当成一个头返回。
+    ///
+    /// 源**短于**上限 ⇒ 上限那道门这一趟根本不会触发 ⇒ 能让它红的只有 EOF 这一道。
+    #[test]
+    fn the_eof_door_refuses_a_head_that_never_terminates() {
+        const CAP: usize = 128;
+        let mut src = CountingReader {
+            inner: std::io::Cursor::new(b"GET /x HTTP/1.1\r\nA: b\r\n".to_vec()),
+            consumed: 0,
+        };
+        assert!(
+            read_head(&mut src, CAP).expect("io").is_none(),
+            "没读到空行就断流的头不该被当成一个头返回"
+        );
+        // 非空对照：这一趟**真的**是撞 EOF 停的，不是撞上限停的（否则本条测的是另一道门）。
+        assert!(
+            src.consumed < CAP,
+            "源只有 {} 字节，必须短于上限 {CAP}",
+            src.consumed
+        );
+    }
+
+    /// **全断对照** —— 两道门**至少有一道**拦住了。
+    ///
+    /// 它红 ⇒ 两道门**同时**坏了（审计 `CE3` 那一刀）。**单断哪一道它都不红**，
+    /// 这正是它替不了上面那两条的原因 ⇒ 留着只作对照，**名字也不再说「enforced」**。
+    #[test]
+    fn an_over_long_head_never_comes_back_as_a_head() {
         let mut src = std::io::Cursor::new(vec![b'a'; 9000]);
         assert!(read_head(&mut src, 128).expect("io").is_none());
+        // 非空对照：`read_head` 在**正常**的头上真的会返回 `Some` —— 不然上面那句是空真。
+        let mut ok = std::io::Cursor::new(b"GET /x HTTP/1.1\r\nA: b\r\n\r\n".to_vec());
+        assert!(read_head(&mut ok, 128).expect("io").is_some());
     }
 
     #[test]
