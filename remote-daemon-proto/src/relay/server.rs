@@ -33,6 +33,16 @@ pub(crate) struct Relay {
     tee: TeeSink,
     /// 本进程服务过的请求数 —— `DoD-1㈢`「两个键由同一个中转进程服务」量的就是它。
     served: AtomicU64,
+    /// 每条连接透传收尾时落一笔 —— `DoD-2` acceptor ㈡「下游读到的块数 ≈ 上游发出的块数」量的就是它。
+    ///
+    /// `Some(n)` = 干净 EOF 收尾，`n` 是**写给下游并 flush 成功的次数**；
+    /// `None` = `pump` 以错误收尾（上游 RST 那一路）。
+    ///
+    /// ★ 这一格是回修轮补的。先前 `pump` 把块数**算出来了**（`Ok(writes)`），
+    /// 而调用点写的是 `pump(...)?;` —— 返回值**整个丢掉，没有任何消费者**
+    /// ⇒ 「块数对账」量得到、没人量。审计 `K4` 那一刀（只透第 1 块、其余攒到流末、
+    /// 一个字节不丢）因此 384 条判据全绿，而它正是「TUI 出一个 token 然后卡住」那个形状。
+    pumps: std::sync::Mutex<Vec<Option<u64>>>,
 }
 
 impl Relay {
@@ -41,7 +51,21 @@ impl Relay {
             base,
             tee,
             served: AtomicU64::new(0),
+            pumps: std::sync::Mutex::new(Vec::new()),
         }
+    }
+
+    /// 消费 `pump` 的返回值。**生产段唯一的落点** —— 没有它，返回值就又成了死值。
+    fn note_pump(&self, outcome: &std::io::Result<u64>) {
+        if let Ok(mut g) = self.pumps.lock() {
+            g.push(outcome.as_ref().ok().copied());
+        }
+    }
+
+    /// 透传收尾账。**只给判据用** —— 生产路径不读它。
+    #[cfg(test)]
+    pub(crate) fn pumps(&self) -> Vec<Option<u64>> {
+        self.pumps.lock().expect("lock").clone()
     }
 
     /// `DoD-1㈢` 的量点：本进程服务过几个请求。**只给判据用** ——
@@ -143,11 +167,15 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let mut view = BodyView::for_response(&headers);
     let mut splitter = SseSplitter::default();
     relay.tee.open(&r.agent, &r.key);
-    pump(&mut up, &mut down_w, &mut |raw| {
+    // ★ 返回值**必须落地**：它是 `DoD-2㈡`「块数对账」的唯一量点。
+    // 写成 `pump(...)?;` 就等于把它丢掉 —— 那正是审计 `K4` 能全绿的原因。
+    let outcome = pump(&mut up, &mut down_w, &mut |raw| {
         for payload in splitter.feed(&view.feed(raw)) {
             relay.tee.event(&r.agent, &r.key, &payload);
         }
-    })?;
+    });
+    relay.note_pump(&outcome);
+    outcome?;
     Ok(())
 }
 
@@ -158,13 +186,21 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
 ///
 /// 它哪天会变瞎：只要有人在这里先攒一个 `Vec` 再一次性写出去，
 /// **最终内容一模一样**，只有时序能分开两者 —— 所以它的 acceptor 量的是时序，不是内容。
+/// 〔这句头注在 08-25 兑现了：审计切出的 `K4` 正是这一形，而当时 384 条判据全绿。
+///  接住它的两条判据见 `every_chunk_reaches_the_client_before_upstream_sends_the_next_one`。〕
+///
+/// # 返回值的口径（别改这一条）
+///
+/// 返回的是**写给下游并 `flush` 成功的次数**，**不是**从上游读的次数。两者今天恒等
+/// （读一块写一块），而**恰恰是它们分家的那一天**这个数才有用：先攒后写的实现
+/// 读 N 次、只写 1 次 ⇒ 拿「读的次数」当返回值，对账那条判据就又瞎了。
 fn pump<R: Read, W: Write>(
     up: &mut R,
     down: &mut W,
     on_chunk: &mut dyn FnMut(&[u8]),
 ) -> std::io::Result<u64> {
     let mut buf = vec![0u8; READ_CHUNK];
-    let mut chunks = 0u64;
+    let mut writes = 0u64;
     loop {
         let n = match up.read(&mut buf) {
             Ok(0) => break,
@@ -174,10 +210,10 @@ fn pump<R: Read, W: Write>(
         };
         down.write_all(&buf[..n])?;
         down.flush()?;
-        chunks += 1;
+        writes += 1;
         on_chunk(&buf[..n]);
     }
-    Ok(chunks)
+    Ok(writes)
 }
 
 /// 渲染给上游的请求行 + 头。
@@ -267,38 +303,101 @@ mod tests {
     use std::io::BufRead;
     use std::sync::mpsc;
 
+    /// 假上游发几个事件块。终止块另算 ⇒ 一条响应的**块数** = `UPSTREAM_EVENTS + 1`。
+    const UPSTREAM_EVENTS: usize = 3;
+
+    /// 下游打过去的请求体。**期望值是手写字面量**，判据不许拿被测代码算它（那样自证、恒绿）。
+    const REQUEST_BODY: &str = "{\"m\":1}";
+
     /// 一个最小假上游。**它只监听回环，全程没有一个字节出本机。**
     ///
-    /// `gate` 收到信号之前，它只发第一块。⇒ 下游若在收到第一块之前拿不到任何字节，
-    /// 说明中转把响应体攒起来了 —— 那时下面那条测试会在读超时上红，而不是永远挂住。
+    /// # `gate`：**每一块**都要等下游确认（回修轮改的）
+    ///
+    /// 给了 `gate` 时，假上游发**每一块**之前都先 `recv()` 一次。
+    /// ⇒ 中转只要攒住任何一块，下游就再也等不到下一块，测试在读期限上红。
+    /// 〔旧版只在**第 1 块之后**卡一次门闩 ⇒ 「第 1 块立刻透、其余攒到流末」那一形
+    ///  一条判据都撞不上（审计 `K4` 实测 384 全绿）。那正是 `K9` 裁定四要防的形状。〕
     struct FakeUpstream {
         addr: SocketAddr,
         seen: Arc<std::sync::Mutex<Vec<String>>>,
+        /// 上游**真的收到**的请求体，逐连接一条。
+        bodies: Arc<std::sync::Mutex<Vec<Vec<u8>>>>,
+        /// 上游**真的发出**的响应体块数（每块一次 `write_all` + `flush`）。
+        /// 「上游发出的块数」是这个数，**不是**判据里写死的常量。
+        sent: Arc<AtomicU64>,
+    }
+
+    impl FakeUpstream {
+        fn sent(&self) -> u64 {
+            self.sent.load(Ordering::SeqCst)
+        }
+    }
+
+    /// 发一块 —— **一次** `write_all` + `flush`。
+    ///
+    /// 长度行 / 数据 / CRLF 分三次写会让「一块」在网线上散成三段，
+    /// 那时「下游读到的块数」就不再是上游发出的块数 ⇒ 对账那条判据要的是 1:1。
+    fn send_chunk(s: &mut TcpStream, sent: &AtomicU64, payload: &[u8]) {
+        let mut frame = format!("{:x}\r\n", payload.len()).into_bytes();
+        frame.extend_from_slice(payload);
+        frame.extend_from_slice(b"\r\n");
+        s.write_all(&frame).expect("chunk");
+        s.flush().expect("flush");
+        sent.fetch_add(1, Ordering::SeqCst);
     }
 
     fn spawn_fake_upstream(gate: Option<mpsc::Receiver<()>>) -> FakeUpstream {
         let listener = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind fake upstream");
         let addr = listener.local_addr().expect("addr");
         let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sent = Arc::new(AtomicU64::new(0));
         let seen_c = Arc::clone(&seen);
+        let bodies_c = Arc::clone(&bodies);
+        let sent_c = Arc::clone(&sent);
         std::thread::spawn(move || {
-            let mut gate = gate;
+            let gate = gate;
             for s in listener.incoming() {
                 let Ok(mut s) = s else { continue };
                 let mut r = BufReader::new(s.try_clone().expect("clone"));
                 let mut line = String::new();
                 r.read_line(&mut line).expect("read request line");
                 let mut auth = false;
+                let mut clen = 0usize;
                 loop {
                     let mut h = String::new();
                     let n = r.read_line(&mut h).expect("read header");
                     if n == 0 || h == "\r\n" {
                         break;
                     }
-                    if h.to_ascii_lowercase().starts_with("authorization:") {
+                    let lower = h.to_ascii_lowercase();
+                    if lower.starts_with("authorization:") {
                         auth = true;
                     }
+                    if let Some(v) = lower.strip_prefix("content-length:") {
+                        clen = v.trim().parse().unwrap_or(0);
+                    }
                 }
+                // ★ **真的把请求体读进来**（回修轮补的）。不读它有两条后果，本仓都实测过：
+                //   ① 「请求体到不到得了上游」**零判据** —— 把 `read_exact_body(...)` 换成
+                //      `Vec::new()`（请求体整个丢掉）⇒ 384 条全绿（审计 `CG5`）。
+                //   ② 迭代结束 drop 时接收队列里还压着未读数据 ⇒ 内核发 **RST 而不是 FIN**
+                //      ⇒ `pump` 的干净 EOF 路 `Ok(0) => break` 一次都走不到，
+                //         走的全是 `Err(e) => return Err(e)`。
+                // 读期限是**兜底**：中转若少发字节，这里要在对账那条判据上红，**不许挂住**。
+                s.set_read_timeout(Some(std::time::Duration::from_millis(2000)))
+                    .expect("upstream read deadline");
+                let mut body = vec![0u8; clen];
+                let mut filled = 0usize;
+                while filled < clen {
+                    match r.read(&mut body[filled..]) {
+                        Ok(0) => break,
+                        Ok(k) => filled += k,
+                        Err(_) => break,
+                    }
+                }
+                body.truncate(filled);
+                bodies_c.lock().expect("lock").push(body);
                 seen_c
                     .lock()
                     .expect("lock")
@@ -309,29 +408,32 @@ mod tests {
                 )
                 .expect("head");
                 s.flush().expect("flush");
-                let first = b"data: {\"i\":1}\n\n";
-                s.write_all(format!("{:x}\r\n", first.len()).as_bytes())
-                    .expect("len");
-                s.write_all(first).expect("body");
-                s.write_all(b"\r\n").expect("crlf");
-                s.flush().expect("flush");
-                if let Some(g) = gate.take() {
-                    // 等下游确认收到第一块。**这是本件那条时序判据的门闩。**
-                    let _ = g.recv();
+                for i in 1..=UPSTREAM_EVENTS {
+                    if let Some(g) = gate.as_ref() {
+                        // 等下游确认收到**上一块**。这是逐块门闩。
+                        let _ = g.recv();
+                    }
+                    send_chunk(
+                        &mut s,
+                        &sent_c,
+                        format!("data: {{\"i\":{i}}}\n\n").as_bytes(),
+                    );
                 }
-                for i in 2..=3 {
-                    let ev = format!("data: {{\"i\":{i}}}\n\n");
-                    s.write_all(format!("{:x}\r\n", ev.len()).as_bytes())
-                        .expect("len");
-                    s.write_all(ev.as_bytes()).expect("body");
-                    s.write_all(b"\r\n").expect("crlf");
-                    s.flush().expect("flush");
+                if let Some(g) = gate.as_ref() {
+                    let _ = g.recv();
                 }
                 s.write_all(b"0\r\n\r\n").expect("end");
                 s.flush().expect("flush");
+                sent_c.fetch_add(1, Ordering::SeqCst);
+                // 请求体已读干净 ⇒ 这里 drop 发的是 **FIN 不是 RST**。
             }
         });
-        FakeUpstream { addr, seen }
+        FakeUpstream {
+            addr,
+            seen,
+            bodies,
+            sent,
+        }
     }
 
     /// 起一个中转，返回 `(地址, Relay 句柄, tee 收集器)`。
@@ -362,7 +464,7 @@ mod tests {
     fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
         let mut c = TcpStream::connect(addr).expect("connect relay");
         c.set_nodelay(true).expect("nodelay");
-        let body = "{\"m\":1}";
+        let body = REQUEST_BODY;
         let req = format!(
             "POST {target} HTTP/1.1\r\nHost: relay\r\n{extra}Content-Length: {}\r\n\r\n{body}",
             body.len()
@@ -414,6 +516,27 @@ mod tests {
         for l in &a {
             assert!(!l.contains("sid-BBB"), "两个键的 tee 行不许交叉：{l}");
         }
+        // ★ `阻-2`：请求体必须**逐字节**到得了上游。
+        //
+        // 这一格先前**零判据**：把 `read_exact_body(&mut down_r, n)?` 换成 `Vec::new()`
+        // （请求体整个丢掉）⇒ 384 条判据全绿（审计 `CG5`）。成因是假上游从不读请求体
+        // ⇒ 没有任何一处看得见 body。中转搬的正是 `POST /v1/messages` 的载荷，
+        // 丢了它 claude 当场坏，而门禁全绿。
+        //
+        // 期望值是**手写字面量**，不是拿被测代码算出来的（否则本断言自证、恒绿）。
+        let bodies = up.bodies.lock().expect("lock").clone();
+        assert_eq!(
+            bodies.len(),
+            2,
+            "两发请求都要在上游侧留下请求体记录：{bodies:?}"
+        );
+        for b in &bodies {
+            assert_eq!(
+                String::from_utf8_lossy(b),
+                "{\"m\":1}",
+                "上游收到的请求体必须与下游发出的逐字节相同（丢了 / 截了都在这里红）"
+            );
+        }
         assert!(!got.is_empty());
     }
 
@@ -444,53 +567,121 @@ mod tests {
         );
     }
 
-    /// ★★ `DoD-2`：**逐块透传绝不缓冲**，判据是**时序**不是内容。
+    /// ★★ `DoD-2`：**逐块透传绝不缓冲**（`K9` 裁定四第 2 条逐字：「这是本方案唯一真正的技术点」）。
     ///
-    /// 门闩：假上游发完第 1 块就停住，直到下游确认收到第 1 块才继续。
-    /// ⇒ 若中转把响应体攒完再写，下游永远等不到第 1 块 ⇒ 读超时 ⇒ 红。
-    /// 这是**因果**证明，比「比较两个时间戳」更不 flaky；时刻仍然打印出来。
+    /// # 这条判据先前只守住了**第 1 块** —— 回修轮补的就是这个
+    ///
+    /// 旧版：门闩只卡一次（第 1 块之后），块数那一格是 `assert!(reads >= 1)`。
+    /// 那一行**结构性恒真**（`reads += 1` 在循环唯一那个 `break` 之前）⇒ 没有任何生产改动能让它红。
+    /// ⇒ 「第 1 块立刻透、其余全部攒到流末、一个字节不丢」那一形 **384 条判据全绿**（审计 `K4` 实测），
+    /// 而它正是要防的形状本身：TUI 出一个 token 然后卡住，直到整条响应结束才一次性吐完。
+    ///
+    /// # 今天有两条互相独立的判据，任一条都会红
+    ///
+    /// ㈠ **逐块门闩（因果证明）**：假上游发**每一块**之前都要等下游确认收到上一块。
+    ///    ⇒ 中转攒住**任何**一块，下游就再也等不到下一块 ⇒ 读期限到 ⇒ 红。
+    ///    比「比较两个时间戳」更不 flaky，而且射程覆盖到最后一块。
+    /// ㈡ **块数对账**（`DoD-2` acceptor ㈡ 逐字「下游读到的块数 ≈ 上游发出的块数」）：
+    ///    三个数必须是**同一个** —— 上游真的发出的块数（夹具自己数的）
+    ///    · 下游自己数到的读次数 · `pump` 返回的「写给下游并 flush 成功的次数」。
+    ///
+    /// # 为什么门闩是**逐块**的，而不是靠「上游 RST 时丢尾巴」
+    ///
+    /// 基线上假上游**从不读请求体** ⇒ 内核发 RST 不是 FIN ⇒ 先攒后写的实现会在那条
+    /// `Err(e) => return Err(e)` 上把攒着的尾巴丢掉，于是「后续块也要到」那条内容断言碰巧红。
+    /// **那是时序巧合，不是判据**：把错误路改成 `Err(_) => break`（照样吐出去、一个字节不丢），
+    /// 同一条测试当场全绿。今天假上游**读请求体**（`阻-2`）⇒ 收尾是**干净 EOF**，
+    /// 那条巧合的红**没有了**，接住 `K4` 的是上面 ㈠ ㈡ 两条真判据。
     #[test]
-    fn the_first_chunk_reaches_the_client_before_upstream_has_finished() {
+    fn every_chunk_reaches_the_client_before_upstream_sends_the_next_one() {
         let (gate_tx, gate_rx) = mpsc::channel();
         let up = spawn_fake_upstream(Some(gate_rx));
-        let (relay_addr, _relay, _sink) = spawn_relay(up.addr);
+        let (relay_addr, relay, _sink) = spawn_relay(up.addr);
         let t0 = std::time::Instant::now();
         let mut c = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
         c.set_read_timeout(Some(std::time::Duration::from_millis(4000)))
             .expect("read deadline");
 
-        // 读到第 1 个事件为止。缓冲的实现在这里会撞上上面那个读期限。
-        let mut acc = Vec::new();
         let mut buf = [0u8; 4096];
-        let mut reads = 0usize;
-        let t_first = loop {
-            let n = c
-                .read(&mut buf)
-                .expect("上游还没发完就该拿到第 1 块 —— 读超时说明中转攒了整个响应体（DoD-2 红）");
-            assert!(n > 0, "读到 EOF 而没拿到第 1 块");
-            reads += 1;
-            acc.extend_from_slice(&buf[..n]);
-            if String::from_utf8_lossy(&acc).contains("{\"i\":1}") {
-                break t0.elapsed();
-            }
-        };
-        // 到这一刻为止，上游**还没有**发第 2、3 块（它卡在门闩上）。
+        let mut acc = Vec::new();
+        // ★ 只数**响应体**的块，响应头那一段不算（它由 `handle` 在 pump 之前写出去）。
+        let mut body_reads = 0u64;
+
+        // 第 1 段：响应头。收到它才放行第 1 块。
+        let n = c.read(&mut buf).expect("响应头必须先到");
+        assert!(n > 0, "响应头读到 EOF");
+        acc.extend_from_slice(&buf[..n]);
+        assert!(
+            String::from_utf8_lossy(&acc).starts_with("HTTP/1.1 200"),
+            "第 1 段必须是响应头：{:?}",
+            String::from_utf8_lossy(&acc)
+        );
         gate_tx.send(()).expect("open the gate");
-        let mut rest = Vec::new();
-        let _ = c.read_to_end(&mut rest);
+
+        let mut t_first = None;
+        // ㈠ 逐块门闩：读到第 i 块 ⇒ 才放行第 i+1 块。
+        for i in 1..=UPSTREAM_EVENTS {
+            let n = c.read(&mut buf).expect(
+                "上游卡在门闩上，只有中转把上一块透出来下游才会有下一块 —— \
+                 读超时说明中转攒住了某一块（DoD-2 红）",
+            );
+            assert!(n > 0, "读到 EOF 而没拿到第 {i} 块");
+            body_reads += 1;
+            if t_first.is_none() {
+                t_first = Some(t0.elapsed());
+            }
+            acc.extend_from_slice(&buf[..n]);
+            assert!(
+                String::from_utf8_lossy(&acc).contains(&format!("{{\"i\":{i}}}")),
+                "第 {i} 块必须在这一次 read 里就到齐"
+            );
+            gate_tx.send(()).expect("open the gate");
+        }
+        // 终止块（chunked 的 `0\r\n\r\n`）也是上游发出的一块。
+        let n = c.read(&mut buf).expect("终止块必须到");
+        assert!(n > 0, "终止块读到 EOF");
+        body_reads += 1;
+        acc.extend_from_slice(&buf[..n]);
+
+        let mut tail = Vec::new();
+        let _ = c.read_to_end(&mut tail);
         let t_last = t0.elapsed();
-        acc.extend_from_slice(&rest);
+        acc.extend_from_slice(&tail);
         let text = String::from_utf8_lossy(&acc).to_string();
-        assert!(
-            text.contains("{\"i\":2}") && text.contains("{\"i\":3}"),
-            "后续块也要到"
+        for i in 1..=UPSTREAM_EVENTS {
+            assert!(
+                text.contains(&format!("{{\"i\":{i}}}")),
+                "第 {i} 块的内容也要到：{text:?}"
+            );
+        }
+
+        // ㈡ 块数对账 —— 三个数必须是同一个。
+        let up_chunks = up.sent();
+        // 非空对照：夹具自己得真发出这么多块，否则下面两条是空真。
+        assert_eq!(
+            up_chunks,
+            UPSTREAM_EVENTS as u64 + 1,
+            "夹具自检：上游必须真发出 {UPSTREAM_EVENTS} 个事件块 + 1 个终止块"
         );
-        assert!(reads >= 1);
-        assert!(
-            t_first <= t_last,
-            "首块时刻 {t_first:?} 必须不晚于末块时刻 {t_last:?}"
+        assert_eq!(
+            body_reads, up_chunks,
+            "下游数到的块数必须等于上游发出的块数（{up_chunks}）—— 少一块就是中转把它攒住了"
         );
-        println!("[DoD-2] 首块 {t_first:?} · 末块 {t_last:?} · 首块之前的 read 次数 {reads}");
+        // `Some(_)` 同时断言这一趟是**干净 EOF** 收尾；`None` = pump 以错误收尾（上游 RST 那一路）。
+        assert_eq!(
+            relay.pumps(),
+            vec![Some(up_chunks)],
+            "中转写给下游的块数必须等于上游发出的块数，且必须以干净 EOF 收尾"
+        );
+        assert!(
+            t_first.expect("首块时刻") <= t_last,
+            "首块时刻必须不晚于末块时刻"
+        );
+        println!(
+            "[DoD-2] 首块 {:?} · 末块 {t_last:?} · 上游发出 {up_chunks} 块 · 下游数到 {body_reads} 块 · pump 写出 {:?}",
+            t_first.expect("首块时刻"),
+            relay.pumps()
+        );
     }
 
     /// ★ `DoD-3㈡`（活体）：哨兵头必须**转发得到上游**，却**一个字节都不进 tee / 不进日志**。
