@@ -407,6 +407,15 @@ jobs:
       #    恰好是 K-C1 改造**前**的值 ⇒ K-C1 两轮加的 **54 条断言 + 本轮 5 条一处都没被护住**，
       #    「今天可以把它们全删掉而 CI 照样绿」—— 正是 `assert-pass-floor.sh` 头注写的那个
       #    失效模式：**不是变红，是静默缩水**。
+      # ★★ **2026-08-25 K-C1 第六轮：`ccm-cli` 再棘 `109` → `123`**（`ccm-acceptance 29` ·
+      #    `ccm-contract-parity 68` **不变**）。那 14 条不是零碎补丁：本轮把「热路径零外部依赖」
+      #    那把尺子整个换代（`command_not_found_handle` + `$0: ` 前缀 ⇒ `DEBUG` 陷阱数真进程），
+      #    并把**一条盖三形的单点自检**拆成**一形一条 12 条**（含 3 条反向 / 活体对照）。
+      #    ⇒ 不棘的话，这一族自检**明天就能被整族删掉而 CI 照样绿**，而它们一旦没了，
+      #    两条热路径主判据会**永远读 0、永远 PASS**（那正是它们存在的理由）。
+      #    **先跑再棘**：PM 在合并点独立重跑实测 123/0 · 68/0 · 29/0。
+      #    牙口现打（**落文件读 `$?`，不走管道** —— 管道会把 `tail` 的码当成它的）：
+      #    `123 ⇒ rc=0` · `124 ⇒ rc=1`。
       # ⚠ **同一拍必须改下面那张 `pair` 清单**（本轮就是这么改的）。审计逮到：清单此前停在
       #    `ccm-cli 53` / `ccm-acceptance 19` / `ccm-contract-parity 61`，与调用行 59/26/62
       #    **三处对不上** ⇒ 按本步骤的逻辑第一条不命中就 `exit 1`。那是一处**先于 K-C1** 的病
@@ -424,7 +433,7 @@ jobs:
           # 没有地板 ⇒ 断言被删空照样绿，正是这套机制立起来要防的那件事（我自己刚犯了一次）。
           [ "${N:-0}" -ge 23 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 23）——有套件被改回裸 npm run 或被删掉"; exit 1; }
           # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
-          for pair in "tmux-target 26" "ccm-cli 109" "ccm-print-parity 12" "ccm-acceptance 29" \
+          for pair in "tmux-target 26" "ccm-cli 123" "ccm-print-parity 12" "ccm-acceptance 29" \
                       "ccm-pretrust 15" "cc-spawn-uplift 72" "tmux-guarded 14" "usage-probe 11" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
                       "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 32" \
@@ -443,7 +452,7 @@ jobs:
   # （下面有逐个 grep 的反向自检兜着），只是这几行注释没跟 —— 实际调用行是
   # `ccm-acceptance 19` / `usage-probe 9`，不是 15 / 7；套数也从 8 长到了 15（跨两个 job）。
   # ⚠ **2026-08-24 订正：下面这几行散文里的数今天全是旧的**（保留是因为它们记着「哪一刀为什么棘」）。
-  #   现值以**调用行**为准：`ccm-cli 109` · `ccm-acceptance 29` · `ccm-contract-parity 68`
+  #   现值以**调用行**为准：`ccm-cli` **123** · `ccm-acceptance 29` · `ccm-contract-parity 68`
   #   （K-C1 D2 `A2`；反向自检清单已同拍改）。
   # ⚠ audit-0805 F14 第六刀把 ccm-cli 棘到 53（新增 7 条：身份 poller 的 sid 解析——
   #   抽取器自检 1 + 取值 4 + 「文件不存在 stderr 必须为空」1 + 「不残留上一次」1）。
@@ -489,7 +498,7 @@ jobs:
         run: bash e2e/assert-pass-floor.sh tmux-target 26
 
       - name: ccm CLI 契约（F02）
-        run: bash e2e/assert-pass-floor.sh ccm-cli 109
+        run: bash e2e/assert-pass-floor.sh ccm-cli 123
 
       - name: ccm --print 平价预言机（F03）
         run: bash e2e/assert-pass-floor.sh ccm-print-parity 12
