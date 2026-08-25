@@ -10,6 +10,18 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 CCM="$REPO/shared/ccm"
 
+# ★★ **fail-closed：本套件对 `jq` 是硬依赖**〔K-C1 D 阶段审计 `I4`，08-24 补〕。
+#   `K-C1` 起，本文件的假 daemon（`mk_mirror_daemon` / `mk_kd` 那几份）用 `jq` 把夹具
+#   manifest 翻成 `--list-accounts` 的帧形状。缺 `jq` 时它**不报错，只是少吐账号行** ——
+#   于是 ccm 拿到一张空表，症状是 `可用: (无账号库)`，**诊断指向账号库、不指向缺 jq**
+#   （审计实测：有 jq 时 mirror 吐 2 行、无 jq 时只剩 meta 那 1 行）。
+#   ⇒ 照同目录既有先例（`e2e/cc-bus-queue-drain.sh` · `e2e/daemon-cc-bus.sh`）当场停，
+#     并且**说真话**：这是环境缺工具，不是套件退化。本文件对 `npx` 早就是这个纪律。
+command -v jq >/dev/null 2>&1 || {
+  echo "需要 jq —— 本套件的假 daemon 靠它把夹具 manifest 翻成 --list-accounts 帧形状；"
+  echo "     缺它会静默少吐账号行（症状看着像「账号库坏了」）。这是环境缺工具，不是套件退化。"
+  exit 1; }
+
 PASS=0; FAIL=0
 ck() { # ck <描述> <期望> <实得>
   if [ "$2" = "$3" ]; then printf 'PASS | %s\n' "$1"; PASS=$((PASS+1))
@@ -396,11 +408,20 @@ echo "===== 账号解析走 daemon（K-C1，〔用@08-24「ccm要换成调用后
 #   ⚠ 真起会话那条路（不是 `--print`）由 `e2e/ccm-acceptance.sh` 场景 7 在**真 tmux** 上验。
 KTMP="$(mktemp -d)"
 mkdir -p "$KTMP/accts" "$KTMP/from-file" "$KTMP/from-daemon" "$KTMP/dflt-file" "$KTMP/dflt-daemon" \
-         "$KTMP/bin" "$KTMP/nojq"
+         "$KTMP/file-only" "$KTMP/bin" "$KTMP/nojq"
+# ★★ 第三个账号 `f` 是 **daemon 不知道的那一个**〔K-C1 D 阶段审计 `B2`/`I2`，08-24 补〕。
+#   为什么非它不可：原来的夹具**两侧账号名集合都是 `{z,d}`** ⇒「只读 daemon」与
+#   「读了文件再取更宽的那个 + 按名去重 + daemon 胜出」在这套夹具上**逐字节同行为**
+#   ⇒ 「daemon 在位时还去读一遍文件」这件事**不可能**被任何断言分辨（审计 `MU-A` 实测 189/189 全绿），
+#   而 `§0b` 排除项③ 却写着「那正是 KCY1 的夹具专门要逮的东西」。
+#   加一个**只有文件里有**的名字之后，「可用列表」就成了一把真的 provenance 尺子：
+#   daemon 在位时它必须**恰好**是 daemon 那一份，`f` 一个字都不许漏进来。
+#   ⚠ 它的目录**真实存在**（不是坏账号）——否则红的原因会变成「目录不存在」，射程就跑偏了。
 cat > "$KTMP/accts/accounts.json" <<JSON
 { "version": 1, "accounts": [
   { "name": "z", "configDir": "$KTMP/from-file", "isDefault": true },
-  { "name": "d", "configDir": "$KTMP/dflt-file", "isDefault": false } ] }
+  { "name": "d", "configDir": "$KTMP/dflt-file", "isDefault": false },
+  { "name": "f", "configDir": "$KTMP/file-only", "isDefault": false } ] }
 JSON
 # 假 daemon：**刻意答与文件不同的目录**，且把 isDefault 挪到另一个账号上。
 # 顺带记账（每次被调用 append 一行）⇒ 可以断言「一趟往返」而不是「每问一次一趟」。
@@ -447,6 +468,23 @@ K() { # K <daemon 路径或 -> <额外 env（可空）> <ccm 参数…>；stdout
 KOUT() { cat "$KTMP/out"; }
 KERR() { cat "$KTMP/err"; }
 KCALLS() { [ -f "$KTMP/calls" ] && grep -c . "$KTMP/calls" || echo 0; }
+# die 那句 `…不可用（…）。可用: <列表>` 里的**整段列表**（逐字，不是子串命中）。
+# 降级提示那一行不含 `。可用: ` ⇒ `head -1` 取到的一定是 die 那行。
+KAVAIL() { sed -n 's/^.*。可用: //p' "$KTMP/err" | head -1; }
+# 那句降级提示里，四个**降级原因**标记一共命中了几个。裁定要的是「说得出是哪一格」
+# ⇒ 正确答案恒为 **1**（互斥）。四条既有 `grep -q` 只查「这个子串在不在」，不查「是不是只有它」,
+# 于是把四句并成一句（`§0b` 明令禁止的那一种合并）能把四条一起绕过 —— 审计 `MU-B` 实测 160/160 全绿。
+# ⚠ 方向与直觉相反：改一个字**会红**（既有那四条会说话），**加字**才是洞 ⇒ 补的是这把「只许一格」的尺子。
+KWHY() {
+  local n=0 p
+  for p in '这台机器上找不到 daemon（cc-monitor-remote）' \
+           'CCM_NO_DAEMON=1（明示整条关掉 daemon）' \
+           'daemon 的 --accts-dir 表达不了它' \
+           '答不出 --list-accounts'; do
+    grep -qF -- "$p" "$KTMP/err" && n=$((n+1))
+  done
+  printf '%s' "$n"
+}
 GOLD() { printf "export CLAUDE_CONFIG_DIR='%s'; %s; cd '/p' && exec claude" "$1" "$UNSET"; }
 
 # ---- 夹具自检（先证明「有区分力」，再拿它去判事）----
@@ -487,8 +525,59 @@ ck "KCY1 · 已继承 CLAUDE_CONFIG_DIR ⇒ 压根不问 daemon（0 次）" "0" 
 RC="$(K "$KTMP/bin/ghost" "" --account z)"
 ck "★ KCY1 · daemon 说的目录**不存在** ⇒ 照旧 die（目录存在性由 ccm 自己 -d 判，不吃 daemon 的 exists）" \
    "2" "$RC"
-ck "KCY1 · 上一条的可用列表来自 daemon 的答案（z d，不是文件的 z d 顺序巧合之外的东西）" "yes" \
+# ⚠ 这条原来叫「上一条的可用列表**来自 daemon 的答案**」—— 那个名字比它量得到的强。
+#   它是 `grep -q` **子串**判，而夹具两侧当时都是 `{z,d}` ⇒ 对 provenance 恒真
+#   （审计 `MU-C` 实测 160/160 全绿）。**只改名、不动判定**：它真有的牙是「die 消息里那个列表
+#   确实以 daemon 那一份开头」（退实现时它红过）。provenance 由紧跟的下一条钉。
+ck "KCY1 · die 消息里那个列表**以 daemon 那份 z d 开头**（子串判 ⇒ provenance 由下一条钉，不是这条）" "yes" \
    "$(grep -q '可用: z d' "$KTMP/err" && echo yes || echo no)"
+# ★★ 上面那条是 `grep -q` **子串**判：文件里多一个 `f` 时 `可用: z d f` 照样含 `可用: z d`
+#   ⇒ 它对自己声称的 provenance **没有区分力**（审计 `MU-C`：把 `list_account_names` 改成
+#   读文件，160/160 全绿）。下面这条改成**逐字取整段列表**，于是：
+#     · `MU-C`（列表改读文件）⇒ 实得 `z d f` ⇒ 红；
+#     · `MU-A`（daemon 在位时还去读文件、取更宽的那个）⇒ 实得 `z d f` ⇒ 红。
+#   ⇒ `§0b` 排除项③「后端在位它就是**唯一**答案」这条性质，从此有判据。
+ck "★ KCY1 · 可用列表**就是 daemon 那一份**：文件里那个 daemon 没有的 f 一个字都不许漏进来" \
+   "z d" "$(KAVAIL)"
+# 成对的自检：证明 `f` **真的**在文件里、且真的会出现 —— 否则上一条恒真（拿一个压根不存在的
+# 名字去断言「它不出现」，是本仓最典型的那类空转判据）。
+K - "" --account nope >/dev/null
+ck "KCY1 · 夹具自检：无 daemon 时那份文件列表**确实更宽**（z d f）⇒ 上一条不是恒真" \
+   "z d f" "$(KAVAIL)"
+# ★★ 上面那一对钉的是「**用了**谁的值」。`§0b` 排除项③ 排的还有一半是「**读了**谁」——
+#   「daemon 在位时也拿文件那份去校对」这一刀（读了不用）在**值**上一个字节都不差,
+#   任何比输出的判据都逮不到它（审计 `MU-A` 第一刀实测 189/189 全绿）。
+#   ⇒ 换一把尺子：**记账 `jq`**。`manifest_to_table` 把 manifest 的**路径当参数**传给 `jq`,
+#     `daemon_out_to_table` 走的是管道（无文件参数）⇒「那份文件的路径出现在某次 jq 的 argv 里」
+#     就等于「有人去解析它了」，与它解析出来的值用不用**无关**。
+#   ⚠ 射程如实写明：它只逮得到**有 jq 那条路**。无 jq 时 `manifest_to_table` 是纯 bash 内建
+#     （零 fork）⇒ 那一格今天没有可观测事件、也没有判据（件文件 `§4 KC6g` 登记）。
+REALJQ="$(command -v jq)"
+mkdir -p "$KTMP/recbin"
+cat > "$KTMP/recbin/jq" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> "$KTMP/jqcalls"
+exec "$REALJQ" "\$@"
+EOF
+chmod +x "$KTMP/recbin/jq"
+KREC() { # KREC <daemon 或 -> <ccm 参数…>：同 K()，但 PATH 前置一个记账 jq
+  local d="$1"; shift
+  rm -f "$KTMP/calls" "$KTMP/jqcalls"; : > "$KTMP/out"; : > "$KTMP/err"
+  local -a envs=(HOME="$KTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent
+                 CCM_ACCTS_MANIFEST="$KTMP/accts/accounts.json")
+  [ "$d" != - ] && envs+=(CCM_DAEMON_BIN="$d")
+  env -i PATH="$KTMP/recbin:/usr/bin:/bin" "${envs[@]}" bash "$CCM" --cwd /p --print "$@" \
+      > "$KTMP/out" 2> "$KTMP/err"
+}
+KJQMF() { local n; n="$(grep -cF -- "$KTMP/accts/accounts.json" "$KTMP/jqcalls" 2>/dev/null)"; printf '%s' "${n:-0}"; }
+KREC "$KTMP/bin/daemon" --account z
+ck "★ KCY1 · daemon 在位 ⇒ 那份 manifest **一次都没被解析**（不校对、不合并、不「读了不用」）" \
+   "0" "$(KJQMF)"
+ck "KCY1 · 上一条的前提自检：这一跑确实走了 daemon（拿到的是 daemon 那个目录）" \
+   "$(GOLD "$KTMP/from-daemon")" "$(KOUT)"
+KREC - --account z
+ck "KCY1 · 夹具自检：无 daemon 时那份 manifest **确实**被解析了 1 次 ⇒ 这把尺子会说话" \
+   "1" "$(KJQMF)"
 
 # ---- KCY2：降级策略是裁过的，判据钉住裁的那一条（退出码 **与** stderr 文本）----
 # §0b 裁定 = 诚实降级 + **出声**。⇒ 只断退出码不够（那会让「出声」退化成「闷声」）。
@@ -500,6 +589,7 @@ ck "★ KCY2 · 那句话说得出**读的是哪个文件**（诊断得能定位
    "$(grep -qF "$KTMP/accts/accounts.json" "$KTMP/err" && echo yes || echo no)"
 ck "★ KCY2 · 那句话说得出**为什么**降级（这一格：找不到 daemon）" "yes" \
    "$(grep -q '找不到 daemon' "$KTMP/err" && echo yes || echo no)"
+ck "★ KCY2 · 四种降级原因**互斥**：这一格只许命中一格（不许合并成一句「daemon 不可用」）" "1" "$(KWHY)"
 ck "★ KCY2 · 那句话说清了**性质**（后端本该是唯一真相源 / 你拿到的是文件那一份）" "yes" \
    "$(grep -q '唯一真相源' "$KTMP/err" && grep -q '文件那一份' "$KTMP/err" && echo yes || echo no)"
 K "$KTMP/bin/daemon" "" --account z >/dev/null
@@ -507,6 +597,7 @@ ck "★ KCY2 · daemon 在位 ⇒ stderr **一个字都没有**（别把正常�
 K "$KTMP/bin/daemon" "CCM_NO_DAEMON=1" --account z >/dev/null
 ck "KCY2 · CCM_NO_DAEMON=1 ⇒ 也降级、也说话，且说的是**那一格**（明示整条关掉）" "yes" \
    "$(grep -q 'CCM_NO_DAEMON=1（明示整条关掉 daemon）' "$KTMP/err" && echo yes || echo no)"
+ck "KCY2 · 四种降级原因**互斥**：CCM_NO_DAEMON=1 这一格只许命中一格" "1" "$(KWHY)"
 ck "KCY2 · CCM_NO_DAEMON=1 ⇒ 拿到的是文件那一份（逃生口真的把 daemon 那条关掉了）" \
    "$(GOLD "$KTMP/from-file")" "$(KOUT)"
 cp "$KTMP/accts/accounts.json" "$KTMP/accts/m.json"
@@ -516,10 +607,12 @@ env -i PATH="/usr/bin:/bin" HOME="$KTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=
     bash "$CCM" --cwd /p --account z --print > "$KTMP/out" 2> "$KTMP/err"
 ck "KCY2 · manifest 叫别的名字 ⇒ 说的是**那一格**（--accts-dir 表达不了它），不是含糊的「daemon 不可用」" "yes" \
    "$(grep -q 'daemon 的 --accts-dir 表达不了它' "$KTMP/err" && echo yes || echo no)"
+ck "KCY2 · 四种降级原因**互斥**：--accts-dir 表达不了 这一格只许命中一格" "1" "$(KWHY)"
 ck "KCY2 · 那一格**不许悄悄去问 daemon**（问了就是读了另一个文件）：调用次数 0" "0" "$(KCALLS)"
 K "$KTMP/bin/mute" "" --account z >/dev/null
 ck "KCY2 · daemon 在位但**答不出** ⇒ 说的是那一格，并落回文件" "yes" \
    "$(grep -q '答不出 --list-accounts' "$KTMP/err" && echo yes || echo no)"
+ck "KCY2 · 四种降级原因**互斥**：答不出 这一格只许命中一格" "1" "$(KWHY)"
 ck "KCY2 · daemon 答不出 ⇒ 值来自文件（诚实降级，不是报错、也不是空账号）" \
    "$(GOLD "$KTMP/from-file")" "$(KOUT)"
 # ★ 反面：这句话**不许变成噪音**。压根没有账号库的机器上 ccm 就是个基座启动器。
@@ -536,6 +629,31 @@ K "$KTMP/bin/extra" "" --account z >/dev/null
 ck "★ KCY3 · daemon 输出里多一个**未知字段** ⇒ 照样解析对（前向兼容；照 aterm 那条 golden 的形状）" \
    "$(GOLD "$KTMP/from-daemon")" "$(KOUT)"
 ck "KCY3 · 多字段那次也不吵" "" "$(KERR)"
+# ★★ 反面那一格：**如实钉住今天的空档**〔审计 `I6`，08-24 补〕。
+#   前向兼容（那边**加**字段）我们是宽的，上面两条钉着。但那边**改键名 / 抽掉键**时会怎样，
+#   今天一条判据都没有 —— 而 `--list-accounts` 那个面正在动（`K-A1` 08-24 刚往它加了
+#   `authKind`/`authReady`）。实测的行为是：meta 那行在 ⇒ 我们判「答上了」⇒ 账号行一个都
+#   解析不出来也**照收这张空表**，`_ccm_acct_src=daemon`、**不降级、不出声**
+#   ⇒ 用户看到 `可用: (无账号库)` 而 manifest 明明在。
+#   这条判据钉的是「**今天就是这个样子**」：它红了说明有人动了这一格，好坏都得被看见。
+#   ⚠ 它**不会**因为真 daemon 改了帧形状而红（夹具在我们这一侧）——那一半住件文件 `§4 KC6g`。
+cat > "$KTMP/bin/renamed" <<EOF
+#!/bin/sh
+echo call >> "$KTMP/calls"
+case "\$1" in
+  --list-accounts)
+    printf '%s\\n' '{"accountZeroAware":true,"acctsDir":"x","count":2,"enabled":true,"error":null,"kind":"accounts-meta","manifestPath":"x","sharedStore":null,"updatedAt":null}'
+    printf '%s\\n' '{"acctName":"z","cfgDir":"$KTMP/from-daemon","primary":false}'
+    exit 0 ;;
+esac
+cat >/dev/null; exit 0
+EOF
+chmod +x "$KTMP/bin/renamed"
+RC="$(K "$KTMP/bin/renamed" "" --account z)"
+ck "★ KCY3/KC6g · 帧形状变了（账号行改键名）⇒ 今天拿到的是**空表**，照旧 die" "2" "$RC"
+ck "KCY3/KC6g · …而且**一声不吭**：不算「答不出」⇒ 不降级、不提示（今天的空档，见件文件 §4）" \
+   "ccm: 账号 'z' 不可用（不在 $KTMP/accts/accounts.json，或其目录不存在）。可用: (无账号库)" \
+   "$(KERR)"
 
 # ---- KCY4：能力协商面 ----
 PROBE_K="$(env -i PATH="/usr/bin:/bin" HOME="$KTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent bash "$CCM" --ccm-probe 2>&1)"
@@ -543,7 +661,10 @@ ck "★ KCY4 · capabilities= 里有 account-via-daemon（消费者据此分辨�
    "$(printf '%s\n' "$PROBE_K" | sed -n 's/^capabilities=//p' | tr ',' '\n' | grep -cx 'account-via-daemon')"
 ck "KCY4 · capabilities 变了 ⇒ 版本号跟着走（既有纪律：不能只改后者）" "version=3" \
    "$(printf '%s\n' "$PROBE_K" | grep '^version=')"
-ck "KCY4 · 用法块里有那一行（`--help` 找得到它；Rust 侧 every_advertised_capability_has_a_usage_line 也查这个）" "yes" \
+# ⚠ 描述里那对反引号**必须转义**〔08-24 逮到〕：不转义的话它是**命令替换**，
+#   每跑一次套件就真去 exec 一个叫 `--help` 的命令、往 stderr 吐一行 `--help: 未找到命令`，
+#   而且判定行打出来的名字**是被替换过的残句**（那一格看着像描述写漏了）。同文件另两处一直是转义的。
+ck "KCY4 · 用法块里有那一行（\`--help\` 找得到它；Rust 侧 every_advertised_capability_has_a_usage_line 也查这个）" "yes" \
    "$(grep -q -- '--account-via-daemon' "$CCM" && echo yes || echo no)"
 
 # ---- KCM6：**无 jq** 那条兜底（本仓此前没有任何门禁走得到它）----
@@ -565,6 +686,17 @@ ck "★ KCM6 · 无 jq + daemon 在位 ⇒ 仍然拿 daemon 那份" \
    "$(GOLD "$KTMP/from-daemon")" "$(NOJQ "$KTMP/bin/daemon" "$KTMP/accts/accounts.json")"
 ck "★ KCM6 · 无 jq + 无 daemon ⇒ 文件那条兜底真的解析出来了（末块不许被 read 丢掉）" \
    "$(GOLD "$KTMP/from-file")" "$(NOJQ - "$KTMP/accts/accounts.json")"
+# ★★ **热路径零外部依赖**，这一条有名字〔审计 `I5`，08-24 补〕。
+#   在此之前守这条性质的是「身份前置检查」那节的 2 条既有断言（瘦 PATH 只有 bash ⇒ 任何外部
+#   进程都会以 `command not found` 暴露）。它们**无名、诊断指错方向**（红出来写的是「正常路径
+#   变吵了」，下一个人不会想到是「热路径多了一条外部依赖」），**且射程不含无 jq 那条解析路** ——
+#   审计 `MU-K2` 实测：把 `awk` 加进 `acct_row_from_slice`，92/92 全绿。
+#   ⇒ 这条判据落在**刚跑完的这一次**（无 jq + 无 daemon ⇒ `manifest_to_table` +
+#     `acct_row_from_slice` 两个纯 bash 解析器都真跑过了），量的是「瘦 PATH 上有没有谁没找着」。
+#   ⚠ 射程如实写明：它只逮得到**不在 `$KTMP/nojq` 里**的那些外部进程（今天该目录只有
+#     `bash`/`sh`/`sed` 三个）—— 往热路径加 `sed` 它逮不到。
+ck "★ KC6d/热路径 · 无 jq 那条解析路上**零外部依赖**（瘦 PATH 上任何新 fork 都会 not found）" "0" \
+   "$(grep -cE 'not found' "$KTMP/err")"
 # pretty-print + 键序反转：旧那条 grep 兜底在这一格是**静默失灵**的（它要求 name 排在 configDir 前）。
 cat > "$KTMP/accts/pretty/accounts.json" 2>/dev/null || mkdir -p "$KTMP/accts/pretty"
 cat > "$KTMP/accts/pretty/accounts.json" <<JSON
