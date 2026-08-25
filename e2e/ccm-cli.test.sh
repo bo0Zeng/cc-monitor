@@ -36,8 +36,8 @@ command -v jq >/dev/null 2>&1 || {
 #   两条 PATH 可以不一致（`jq` 只装在 `~/bin` 时）⇒ 那边缺 `jq` 会让 shim 变成 `exec "" "$@"`,
 #   红出来是一串莫名其妙的断言。**同样当场停，同样说真话。**
 env -i PATH="/usr/bin:/bin" sh -c 'command -v jq >/dev/null 2>&1' || {
-  echo "需要 /usr/bin 或 /bin 上的 jq —— 本套件每一处 ccm 调用都跑在 env -i PATH=/usr/bin:/bin 下，"
-  echo "     记账 shim 也只转发给那条 PATH 上的 jq。这是环境缺工具，不是套件退化。"
+  echo "需要 /usr/bin 或 /bin 上的 jq —— KREC 那节的记账 shim 只转发给那条 PATH 上的 jq。"
+  echo "     这是环境缺工具，不是套件退化。"
   exit 1; }
 
 PASS=0; FAIL=0
@@ -530,8 +530,11 @@ ck "夹具自检：daemon **实际答的** z 的 configDir 与 manifest 里那�
 #   第二轮给这条前提写的只是一句 ⚠ 注释 —— 而同一轮立的纪律正是「夹具前提要配一条成对自检」
 #   （`N2`/`N5` 是两个范例）。审计 `MU-F2`（把 `$KTMP/file-only` 从 `mkdir -p` 里删掉）实测
 #   **104/104 全绿** ⇒ 那条前提当时**空转**。今天它已经承重（`KCM6` 末块那条查的就是 `--account f`,
-#   而 `account_config_dir` 会 `-d` 判目录）—— 正因为承重，更需要这条自检把诊断分开：
-#   目录没了该红成「夹具坏了」，不该红成「末块被 read 丢掉了」（那才是射程跑偏）。
+#   而 `account_config_dir` 会 `-d` 判目录）—— 正因为承重，更需要这条自检把诊断分开。
+#   ⚠ **08-25 订正一句写宽了的话**〔审计 `S4`〕：这里原写「目录没了该红成「夹具坏了」，
+#     **不该**红成「末块被 read 丢掉了」」。**实测（08-25 重切 `MU-F2`，锚点 1/1，判定行 123）
+#     是两条都红**：这条自检 ＋「末块 f」那条。⇒ 它做到的是「让**正确的**诊断**也**出现，
+#     两条一起看就分得清是夹具坏了还是解析坏了」，**不是**「让错的诊断**不**出现」。
 ck "夹具自检：账号 f 的目录**真实存在**（不是坏账号；否则末块那条会红成「目录不存在」，射程跑偏）" "yes" \
    "$([ -d "$KTMP/file-only" ] && echo yes || echo no)"
 
@@ -596,15 +599,27 @@ ck "KCY1 · 夹具自检：无 daemon 时那份文件列表**确实更宽**（z 
 #       · 压根不用 `jq`、直接 bash 内建读那份文件（同上，零 fork）。
 #     ⇒ 它证得到的是「**没有人以 argv 或 stdin 直连的方式让 jq 读过那份 manifest**」,
 #       **不是**「所有绕法」。别把这条读成「manifest 一个字节都没被碰过」。
-# ⚠ `REALJQ` 必须在**与 ccm 同一条 PATH** 上取〔审计 `S6`，08-24 补〕：本套件其余每一处 ccm 调用
-#   都跑在 `env -i PATH="/usr/bin:/bin"` 下，而这里若用**外层** PATH，开发机上装了别版 `jq`
-#   （`~/bin` / `asdf` / `nix`）时经这个 shim 的每一条判据测的就是**另一个二进制** ——
-#   今天两者恰好同为 `/usr/bin/jq`，但那是巧合、不是纪律。
+# ⚠ `REALJQ` 必须在**与 `KREC` 这一节的 ccm 调用同一条 PATH** 上取〔审计 `S6` 08-24 补，
+#   `D3 B3` 08-25 订正它的分母〕：`KREC()` 那一处跑在 `env -i PATH="$KTMP/recbin:/usr/bin:/bin"` 下，
+#   这里若用**外层** PATH，开发机上装了别版 `jq`（`~/bin` / `asdf` / `nix`）时经这个 shim 的每一条
+#   判据测的就是**另一个二进制**。
+#   ⚠ **08-25 订正一句可证伪的话**：这里原写「本套件**其余每一处** ccm 调用都跑在
+#     `env -i PATH="/usr/bin:/bin"` 下」，**是假的**。分母 = `grep -c 'bash "\$CCM"'` = **16** 个调用点
+#     （量于 08-25），逐类：`env -i PATH="/usr/bin:/bin"` **4** 处 · `$KTMP/recbin:/usr/bin:/bin` 1 处 ·
+#     `$KTMP/nojq` 1 处 · `$DTMP/bin` 3 处 · **`env -u …`（继承外层 PATH）7 处**。⇒ **4/16，不是 16/16。**
+#   ⚠ **那 7 处继承外层 PATH 的调用没治，如实登记**〔`D3 B3` 的实质点〕：它们真跑 `manifest_to_table`
+#     的 `jq` 分支 ⇒ 外层装了别版 `jq` 时测的是另一个二进制。**不改它们**是有理由的：那 7 处
+#     （`ccm()` / `acct()` / `inherit_acct()` 等）钉的正是「**继承来的环境**」这件事，把 PATH 钉死
+#     就把它们要测的东西测没了。⇒ 改成**把那个巧合变成一条判据**（下一行），红了就说明真出现了两份。
 #   ⚠ 换成这条 PATH 之后**多了一个失败面**：顶上那道 fail-closed 量的是**外层** PATH，
 #     而这里取的是 `/usr/bin:/bin` —— 两者可以不一致（jq 只装在 `~/bin` 时）。
 #     那样 `REALJQ` 会是空串、shim 变成 `exec "" "$@"` ⇒ 一串莫名其妙的红。
 #     ⇒ 顶上那道守卫**已经把这条 PATH 也一起量了**（两条各一句话，见文件头）。
 REALJQ="$(env -i PATH="/usr/bin:/bin" sh -c 'command -v jq')"
+# ★ 把上一段那句「今天两者恰好是同一个」从**巧合**变成**判据**〔08-25，`D3 B3` 的连带面〕。
+#   红了不是套件坏了：是这台机器上真有两份 `jq`，那 7 处继承外层 PATH 的 ccm 调用测的就是另一个。
+ck "★ 自检：外层 PATH 的 jq 与 /usr/bin:/bin 上的 jq 是**同一个文件**（那 7 处继承外层 PATH 的调用才与 shim 同源）" "same" \
+   "$([ "$(command -v jq)" -ef "$REALJQ" ] && echo same || echo "外层=$(command -v jq) 瘦条=$REALJQ")"
 mkdir -p "$KTMP/recbin"
 cat > "$KTMP/recbin/jq" <<EOF
 #!/bin/sh
@@ -742,55 +757,192 @@ ck "KCY4 · 用法块里有那一行（\`--help\` 找得到它；Rust 侧 every_
 for _b in bash sh sed; do
   _p="$(command -v "$_b" 2>/dev/null)"; [ -n "$_p" ] && ln -sf "$_p" "$KTMP/nojq/$_b"
 done
-# 「瘦 PATH 上有谁没找着」的记录器〔审计 `B2` 的洞 ① 与 ③，08-24 **换了尺子**；
-#  它的洞 ②（只盖一条解析路）在下面「每跑一次就地量一次」那里治〕。
-# **别再去 grep 那句话** —— 第二轮量的是 stderr 里的英文 `not found`，它有两个致命面：
+# 「这一趟真起了哪些外部进程」的记录器〔审计 `B2` 的洞 ① 与 ③，08-24 换过一次尺子；
+#  **08-25 再换一次 —— 上一版量的不是这个性质**，见下。洞 ②（只盖一条解析路）在下面
+#  「每跑一次就地量一次」那里治〕。
+# **别再去 grep `not found` 那句话**（第二轮的量法）—— 它量的是 stderr 里的英文措辞，两个致命面：
 #   ① `cmd 2>/dev/null` 的 fork **逮不到**：bash 在 exec 失败前就已经把 fd 2 换成 `/dev/null`
 #      （审计 `MU-K3` 实测 **0 红**；而 `cmd 2>/dev/null` 是真实代码里的常见写法，本文件自己就有）；
 #   ② 它认的是**英文**措辞，而 bash 那句话是**本地化**的：本机 locale 打的是「未找到命令」。
 #      今天没出事只是因为 `env -i` 顺手把 `LANG`/`LC_ALL` 也清了 —— 谁哪天透传一个 `LANG` 进来
 #      （很常见的改动），那条判据就**永远读到 0、永远 PASS**，而且没有任何东西会提醒：**永久假绿**。
-# 换成 bash 自己的 `command_not_found_handle`（经 `BASH_ENV` 注入）：它**往文件写、不往 stderr 写**
-# ⇒ 既不吃重定向、也不吃 locale。另一半（绝对路径 exec 一个不存在的文件，走的不是 handler）
-# 用 bash 错误行的 `$0: ` 前缀认 —— `$0` 是被跑的脚本路径，**同样不吃 locale**。
-# ⚠ 注入一个函数**不改被测行为**：装 handler 之后 bash 就不再自己打那句 not found（⇒ 两半不重叠），
-#   除此之外 ccm 那条路一个字节都没变（08-24 实测：带/不带 `BASH_ENV` 两跑的 stdout+stderr 逐字相同）。
+# ⚠⚠ **第三轮那把尺子（`command_not_found_handle` + `$0: ` 前缀）量的也不是这个性质**〔08-25，
+#   R6 治的就是它〕。它的两半**都**建立在「**PATH 解析失败**」上：`command_not_found_handle` 只在
+#   bash 走 PATH 查找失败时触发；`$0: ` 前缀只在 bash 自己 exec 失败时打。而**绝对路径根本不查
+#   PATH**，**非 bash 子 shell**（本机 `/bin/sh -> dash`）既没有那个 handler、错误行前缀也不是 `$0: `
+#   ⇒ 它量的是「**这台机器的瘦 PATH 上找不着**」，不是「**有没有外部依赖**」。
+#   实测（08-25，六刀都注在 `acct_row_from_slice` 的 `[ -n "$n" ] || return 0` 之后，锚点各 1/1）：
+#     `x="$(printf %s "$n" | /usr/bin/awk "{print}")"`   绝对路径 · **真存在** · **真被 exec**  ⇒ **0 红**
+#     `/nonexistent-dir/xx 2>/dev/null || true`          绝对路径 ENOENT + 重定向              ⇒ **0 红**
+#     `/nonexistent-dir/xx || true`                      同上、**只去掉重定向**（非空对照）      ⇒ 2 红
+#     `sh -c "nosuchcmd_zz" 2>/dev/null || true`         非 bash 子 shell                      ⇒ **0 红**
+#     `sh -c "nosuchcmd_zz" || true`                     同上、不重定向也一样                   ⇒ **0 红**
+#     `x="$(printf %s "$n" | awk "{print}")"`            裸名字（非空对照，证明尺子没死）        ⇒ 2 红
+#   ⇒ 第一刀注入的是一条**真的、真在跑的硬外部依赖**：把它换成一个会往文件追加一行的包装脚本，
+#     **08-25 我自己重打** —— 那一跑里它真被 exec **9 次**，而全套 **109/0 全绿、没有任何信号**。这份文件经 `sftp.rs`
+#     推到**任意远端** ⇒ 一条 `/usr/bin/awk` 在 Alpine/busybox 上就是「换号这条路整条不通」。
+# ⇒ **08-25 改成直接数「这一趟真起了哪些外部进程」**。两半互补、**互不重叠**：
+#   **半 a（handler）**：bash 走 PATH 查找**失败**的**裸名字**（`awk`/`cut`）。它往文件写、不往
+#     stderr 写 ⇒ **不吃重定向、不吃 locale**。（这一半原样留着，它在它那一形上是准的。）
+#   **半 c（`DEBUG` 陷阱 ＋ `set -T`）**〔08-25 新增，替掉旧的半 b〕：`BASH_ENV` 里装一个 DEBUG
+#     陷阱，逐条命令看 `$BASH_COMMAND` 的**命令字**（先剥掉两侧引号、剥掉 `VAR=值` / `exec` /
+#     `command` / `time` / `!` 这些前缀词；命令字是 `$VAR` / `${VAR}` 时**就地取值** —— `BASH_COMMAND`
+#     是**未展开**的原文，不取值的话 ccm 自己那句 `$to "$_ccm_db" --list-accounts` 一个字都读不到）：`type -t` 说它是 `file`（真外部二进制 —— `/usr/bin/awk` · `sh` · 以及**名字
+#     恰好在瘦 PATH 上**的 `sed`）⇒ 记一次；或者它以 `/` `./` `../` 开头而 `type -t` 说不出
+#     （绝对路径 ENOENT）⇒ 记一次。**`set -T` 让陷阱进函数、命令替换与子 shell**（实测：
+#     `_ccm_acct_tab="$(manifest_to_table)"` 那层子 shell 里 `FUNCNAME` 是全的）。
+#     它**一个字节都不看 stderr** ⇒ **重定向、locale 全都不吃**。
+#   为什么两半不重叠：半 a 只在「裸名字 ＋ PATH 上找不着」时触发，而那一形 `type -t` 恰好读作**空**
+#     且不以 `/` 开头 ⇒ 半 c 不记它。**其余每一形都归半 c。**
+#   **旧的半 b（`grep -cF "$0: " stderr`）08-25 去掉了**，两条理由：① 它吃重定向（上表第 2/3 行）；
+#     ② 它把**任何** `$0: ` 诊断行都多算成「命令没找着」—— `: > /nonexistent-dir/zz`（**零 fork、
+#     纯 bash 内建**）在它下面读作 2 红，红出来的名字却写着「零外部依赖」（审计 `MU-REDIR`）。
+#     半 c 在这一形上读 **0**，下面有一条反向对照钉住它。
+# ★★ **射程 = 那三个解析函数的调用栈之内**（`acct_row_from_slice` / `manifest_to_table` /
+#   `daemon_out_to_table`）。这是**故意收窄的，并且这一次收窄本身就是修复的一部分**：判据的名字
+#   说的就是「**那两条解析路**上零外部依赖」，而整趟 `--print` 跑里**本来就有**外部进程 ——
+#   08-25 实测（把射程放宽到整趟）：`sq` 里 **2 次 `sed`**。拿整趟的读数去判「解析路零依赖」
+#   就是**尺子的作用域与被判对象对不上**（旧尺子读作 0 只是因为 `sed` **恰好在瘦 PATH 上**，
+#   那正是它自己登记的瞎点 ①）。⇒ 栈外那一面由「身份前置检查」那节的既有断言、
+#   以及下面那两条 `★ KC6d/整趟` 判据（单向棘轮）管，**不由这两条 KC6d 判据管**。
+# ★ **逮得到 / 逮不到 —— 逐形实测，与 `shared/ccm` 那份头注是同一份话**〔铁律：射程只写在测试里
+#   等于没写；改 `acct_row_from_slice` 的人读的是那边，跑这套的人读的是这边，**两处都写才算存在**〕。
+#   **逮得到**（六形，08-25 各切一刀、每形从 0 红或 2 红变 2 红）：裸名字 · **绝对路径且真存在** ·
+#     绝对路径 ENOENT · **非 bash 子 shell** · 名字**恰好在瘦 PATH 上**的 · 命令字是**变量**的。
+#     另外两形也逮得到（08-25 实测，旧尺子逮不到）：`eval "$cmd …"` 里的命令（`eval` 重新解析
+#     ⇒ 陷阱照样触发）· 「找得到但**跑失败**」的命令（`sed --nosuchopt` ⇒ 记到 `sed`，它照样是一次真 exec）。
+#   **逮不到**（三形，同样是量出来的）：① 经非 bash 子进程再起的**孙命令**（只记到 `sh` 本身）；
+#     ② **命令字**是 `$(...)` 拼出来的（只对 `$VAR` / `${VAR}` 就地取值）；③ **位置参数**当命令字
+#     （`set -- /x; "$1"`）。**这三形是我量过的边界，不是穷举** —— 分母是我造的九形，不是「全部绕法」。
+# ⚠ 陷阱里**一个 `[[ =~ ]]` 都不许有**：`acct_row_from_slice` 是 `[[ =~ ]]` 之后**紧接着**读
+#   `${BASH_REMATCH[1]}`，而 DEBUG 陷阱正好在这两条之间触发 —— 陷阱一碰 `BASH_REMATCH`
+#   就把被测代码解析坏（读出空 name）。全部用 `case`。同理陷阱**首行存 `$?`、每条 return 都把它
+#   原样送回去**（不存的话被测代码看到的 `$?` 是陷阱的）。这两条 08-25 各实证过一次。
 cat > "$KTMP/cnf.bash" <<EOFCNF
-command_not_found_handle() { printf '%s\n' "\$1" >> "$KTMP/cnf"; return 127; }
+_KA="$KTMP/cnf"; _KC="$KTMP/ext"; _KAALL="$KTMP/cnfall"; _KCALL="$KTMP/extall"
+_kin() {   # 调用栈里有没有那三个解析函数（= 射程判据，半 a / 半 c 共用一份）
+  case " \${FUNCNAME[*]} " in
+    *" acct_row_from_slice "*|*" manifest_to_table "*|*" daemon_out_to_table "*) return 0 ;;
+  esac
+  return 1
+}
+_kext() {
+  local _r=\$? _c=\$BASH_COMMAND _w _v _t
+  while :; do
+    _w=\${_c%% *}
+    case "\$_w" in \"*\") _w=\${_w#\"}; _w=\${_w%\"} ;; \'*\') _w=\${_w#\'}; _w=\${_w%\'} ;; esac
+    case "\$_w" in                       # 命令字是 \`\$VAR\` / \`\${VAR}\` ⇒ 就地取值（BASH_COMMAND 是**未展开**的原文）
+      '\${'*'}') _v=\${_w#'\${'}; _v=\${_v%'}'} ;;
+      '\$'*)     _v=\${_w#'\$'} ;;
+      *)         _v= ;;
+    esac
+    case "\$_v" in ''|*[!A-Za-z0-9_]*|[0-9]*) _v= ;; esac
+    [ -n "\$_v" ] && { _w=\${!_v-}; _w=\${_w%% *}; }
+    case "\$_w" in
+      ''|*=*|exec|command|time|!)
+        case "\$_c" in *" "*) _c=\${_c#* }; continue ;; *) return \$_r ;; esac ;;
+      *) break ;;
+    esac
+  done
+  _t=\$(type -t "\$_w" 2>/dev/null)
+  case "\$_t" in
+    file) ;;
+    *) case "\$_w" in /*|./*|../*) ;; *) return \$_r ;; esac ;;
+  esac
+  printf '%s\n' "\$_w" >> "\$_KCALL"
+  _kin && printf '%s\n' "\$_w" >> "\$_KC"
+  return \$_r
+}
+command_not_found_handle() {
+  printf '%s\n' "\$1" >> "\$_KAALL"
+  _kin && printf '%s\n' "\$1" >> "\$_KA"
+  return 127
+}
+trap '_kext' DEBUG
+set -T
 EOFCNF
 # ★★ **瘦 PATH 那一跑的环境只许有一份**〔08-24 实测逼出来的：见下〕。尺子自检与被测跑必须走
 #   **同一条 env 构造** —— 第一版把 `BASH_ENV=…` 分别写在两处，于是我造了一刀「只把被测那一跑的
 #   `BASH_ENV` 删掉」：**自检照样绿、两条热路径判据读作 0、全套 109/0** ⇒ 尺子早已失明而没人知道。
 #   那正是本轮在治的那个病（「尺子的作用域与被判对象对不上」）在**我自己刚写的代码**里的复发。
-#   ⇒ 抽成一份数组，两边都用它；删掉里面的 `BASH_ENV` 现在会让自检当场红（`MU-CNF` 实测 1 红）。
+#   ⇒ 抽成一份数组，两边都用它。**08-25 重打这个读数**（R4 写的是「`MU-CNF` 实测 1 红」，那是
+#   自检还只有一条时的数）：删掉里面的 `BASH_ENV`（判定行 123）⇒ **10 红** = 自检 ①–⑨（期望非零
+#   那 9 条）＋ ⑫（活体对照）；**⑩⑪ 期望 0，尺子全瞎时照旧绿** —— 反向对照本来就该这样，
+#   而 ⑫ 存在的理由正是「差集恒空」这种绿不算数。
 NOJQ_ENV=(env -i PATH="$KTMP/nojq" BASH_ENV="$KTMP/cnf.bash")
+KRESET() { : > "$KTMP/err"; : > "$KTMP/cnf"; : > "$KTMP/ext"; : > "$KTMP/cnfall"; : > "$KTMP/extall"; }
 NOJQ() { # NOJQ <daemon 或 -> <manifest> [账号名，默认 z]
   local d="$1" m="$2" a="${3:-z}"
-  : > "$KTMP/err"; : > "$KTMP/cnf"
+  KRESET
   local -a envs=(HOME="$KTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$m")
   [ "$d" != - ] && envs+=(CCM_DAEMON_BIN="$d")
   "${NOJQ_ENV[@]}" "${envs[@]}" bash "$CCM" --cwd /p --account "$a" --print 2>"$KTMP/err"
 }
-# 上一次 NOJQ 那一跑里「有命令没找着」的总次数（两半相加，互不重叠）。
-KNF() { # KNF [被跑的脚本路径，默认 $CCM]
-  local who="${1:-$CCM}" a b
-  a="$(grep -c . "$KTMP/cnf" 2>/dev/null)"; b="$(grep -cF -- "$who: " "$KTMP/err" 2>/dev/null)"
+# 上一次 NOJQ / KPROBE 那一跑里，**射程内**起过的外部进程次数（两半相加，互不重叠）。
+KNF() {
+  local a b
+  a="$(grep -c . "$KTMP/cnf" 2>/dev/null)"; b="$(grep -c . "$KTMP/ext" 2>/dev/null)"
   printf '%s' "$(( ${a:-0} + ${b:-0} ))"
+}
+# 上一次那一跑里，**整趟**（不限射程）起过的、**声明清单之外**的外部命令名。空 = 没有新依赖。
+# 它是「栈外那一面」的账：谁哪天给 `--print` 这条路加一条新的外部依赖，这里会当场多出一个名字。
+# ⚠ **刻意做成单向棘轮，不是「集合逐字相等」**〔08-25 实测逼出来的〕：先前写的是「集合 == sed」，
+#   于是 `MU-E1`（删末块守卫 ⇒ 表变空 ⇒ ccm 提前 die ⇒ 连 `sq` 都没跑到）把它一起打红，实得空串。
+#   那是**诊断指错方向**（红出来写着「外部依赖」，真因是解析丢了末块）—— 正是审计 `B2` 判的那个病。
+#   单向之后：解析坏掉 ⇒ 差集空 ⇒ 这条不响（该响的是 `KCM6` 那几条）；**加一条新依赖才响**。
+# ⚠ 它是「差集该是空的」那一族 ⇒ **空真风险**（闸死了 `[] == []` 照样成立）。
+#   下面「尺子自检⑫」是它的**活体对照**：故意起一个清单外的外部进程，它必须出现在差集里。
+KALLNEW() { # KALLNEW <允许出现的名字，ERE 全词> —— 差集，去重排序、空格分隔
+  cat "$KTMP/cnfall" "$KTMP/extall" 2>/dev/null | sed "s#^$KTMP#<KTMP>#" | sort -u \
+    | grep -vxE "$1" | tr '\n' ' ' | sed 's/ *$//'
 }
 ck "自检：nojq PATH 里**真的没有 jq**（不然下面两条测的还是 jq 那条）" "0" \
    "$(ls "$KTMP/nojq" | grep -cx jq)"
-# 尺子自检（成对的那一半）：把这把尺子**要挡的三种形状**在同一条瘦 PATH 上各跑一次，
-# 并且**故意透传一个中文 locale** —— 第二轮那把尺子在这三形上分别读作 0 / 0 / 有（共 1），
-# 现在必须读作 3。少了这条自检，尺子哪天失明没有任何人会知道（`MU-K3` 就是那一刀）。
-cat > "$KTMP/nfprobe" <<'EOFNF'
-awk 'BEGIN{}' </dev/null
-cut -f1 </dev/null 2>/dev/null
-/nonexistent-dir/xx
-EOFNF
-: > "$KTMP/err"; : > "$KTMP/cnf"
-"${NOJQ_ENV[@]}" LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 bash "$KTMP/nfprobe" >/dev/null 2>"$KTMP/err"
-ck "自检：那把「零外部依赖」的尺子在三种形状上都会说话（裸 fork · stderr 被重定向的 fork · 绝对路径 ENOENT ⇒ 3）" "3" \
-   "$(KNF "$KTMP/nfprobe")"
+# ★★ **尺子自检：一形一条，不再是一条盖三形的单点**〔08-25，审计 `S2` + 本轮 DoD〕。
+#   第三轮那条自检是**一条判据盖三形**（读数 3），有两个后果：① 它只覆盖了旧尺子**碰巧会说话**的
+#   那三形，`绝对路径 · 真存在` / `绝对路径 ENOENT + 重定向` / `非 bash 子 shell` 这三形**一形都没测**
+#   （而那三形正是旧尺子的瞎点）；② 它是**单点**：谁把期望 3 改成 2，109 条里一条都不会红，
+#   而两条热路径判据从此永远读 0（审计 `S2` 逐字：「那条尺子自检承住了四刀但它是单点」）。
+#   ⇒ 拆成**一形一条**，外加**两条反向对照**（不许算的东西不许算）。每一形单独失明 ⇒ 单独一条红。
+#   ⚠ **别删这一族**：删了它们，两条 `KC6d` 判据会在尺子失明之后永远读 0、永远 PASS。
+KPROBE() { # KPROBE <in|out> <一行 shell>...  —— 把这几行放进一个**射程内 / 射程外**的函数里跑，回读 KNF
+  local where="$1" fn; shift
+  if [ "$where" = in ]; then fn=acct_row_from_slice; else fn=not_a_parser_at_all; fi
+  KRESET
+  { printf '%s() {\n' "$fn"; printf '%s\n' "$@"; printf '  return 0\n}\n%s x\n' "$fn"; } > "$KTMP/nfprobe"
+  "${NOJQ_ENV[@]}" LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 bash "$KTMP/nfprobe" >/dev/null 2>"$KTMP/err"
+  KNF
+}
+ck "尺子自检① 裸名字 fork（PATH 上找不着 ⇒ 半 a 记）" "1" \
+   "$(KPROBE in "awk 'BEGIN{}' </dev/null")"
+ck "尺子自检② 裸名字 ＋ **stderr 被重定向**（半 a 不吃重定向）" "1" \
+   "$(KPROBE in "cut -f1 </dev/null 2>/dev/null")"
+ck "尺子自检③ **绝对路径 ENOENT**（半 c 记）" "1" \
+   "$(KPROBE in "/nonexistent-dir/xx || true")"
+ck "尺子自检④ **绝对路径 ENOENT ＋ 重定向** ⇒ 照样记〔08-25 新钉：旧尺子在这一形读 **0**〕" "1" \
+   "$(KPROBE in "/nonexistent-dir/xx 2>/dev/null || true")"
+ck "尺子自检⑤ **绝对路径 ＋ 真存在的二进制** ⇒ 照样记〔08-25 新钉：旧尺子读 **0**，而它是真依赖〕" "1" \
+   "$(KPROBE in "$KTMP/nojq/sed -n 1p </dev/null")"
+ck "尺子自检⑥ **非 bash 子 shell**（dash 没有 handler、前缀也不是 \$0:）〔08-25 新钉：旧尺子读 **0**〕" "1" \
+   "$(KPROBE in "sh -c 'nosuchcmd_zz' 2>/dev/null || true")"
+ck "尺子自检⑦ 名字**恰好在瘦 PATH 上**的外部进程 ⇒ 照样记〔08-25 新钉：旧尺子登记过的瞎点 ①〕" "1" \
+   "$(KPROBE in "sed -n 1p </dev/null")"
+# ⑧ 是**加法自检**：三形同跑必须读作 3。少一形读 2、两半若重叠计数会读 4 ⇒ 「两半互不重叠」
+#   这句话在这里是**可证伪**的，不是一句断言。（KPROBE 全程透传 `LANG`/`LC_ALL=zh_CN.UTF-8`
+#   ⇒ 上面每一形都已经是在中文 locale 下量的，两半都不认措辞。）
+ck "尺子自检⑧ 三形同跑 ⇒ 恰好 3（两半相加、互不重叠；中文 locale 下量的）" "3" \
+   "$(KPROBE in "awk 'BEGIN{}' </dev/null" "/nonexistent-dir/xx 2>/dev/null || true" "sh -c 'nosuchcmd_zz' 2>/dev/null || true")"
+ck "尺子自检⑨ **命令字是变量**（\`\$to \"\$db\" …\` —— ccm 调 daemon 就是这一形）⇒ 就地取值" "1" \
+   "$(KPROBE in "to=" "db=$KTMP/nojq/sed" "\$to \"\$db\" -n 1p </dev/null")"
+ck "尺子自检⑩ **反向对照**：纯内建 ＋ 重定向失败 **不许**算成外部依赖（旧半 b 在这一形假红 2）" "0" \
+   "$(KPROBE in ": > /nonexistent-dir/zz || true")"
+ck "尺子自检⑪ **反向对照**：**射程之外**的外部进程不算（射程 = 那三个解析函数的栈内）" "0" \
+   "$(KPROBE out "$KTMP/nojq/sed -n 1p </dev/null" "awk 'BEGIN{}' </dev/null 2>/dev/null || true")"
+# ⑫ 是上面那本「整趟差集」的**活体对照**（差集该是空的 ⇒ 空真风险，见 KALLNEW 头注）：
+#   这一跑故意在**射程外**起一个外部进程，并把清单换成一个匹配不上任何东西的名字 ⇒ 差集必须非空。
+KPROBE out "$KTMP/nojq/sed -n 1p </dev/null" >/dev/null
+ck "尺子自检⑫ **活体对照**：整趟那本账不是空真（射程外起一个清单外的进程 ⇒ 差集里必须有它）" \
+   "<KTMP>/nojq/sed" "$(KALLNEW 'no-such-name-at-all')"
 # ★★ **热路径零外部依赖**，这一条有名字〔审计 `I5`，08-24 补；`B2` ②，08-24 补齐第二条解析路〕。
 #   在此之前守这条性质的是「身份前置检查」那节的 2 条既有断言（瘦 PATH 只有 bash ⇒ 任何外部
 #   进程都会以 `command not found` 暴露）。它们**无名、诊断指错方向**（红出来写的是「正常路径
@@ -800,14 +952,31 @@ ck "自检：那把「零外部依赖」的尺子在三种形状上都会说话�
 #     的 `else` 分支与 `manifest_to_table`+`acct_row_from_slice`。第二轮只在**最后一跑**之后量一次，
 #     而 `NOJQ()` 每跑开头都 `: > "$KTMP/cnf"`/`err` ⇒ daemon 那条路的读数被下一跑冲掉了
 #     （审计 `MU-K4`：把 `awk` 加进 `daemon_out_to_table` 的 `else`，**0 红**，而它真跑、真报
-#     `awk: command not found`）。⇒ 下面**每跑一次就地量一次**。
-#   ⚠ 射程如实写明（收窄到实情）：它逮得到的是「**被当成命令去 exec 而找不到**」——
-#     裸名字（handler 记）与绝对路径 ENOENT（`$0: ` 前缀记）**都算**，且**不吃重定向、不吃 locale**。
-#     它**逮不到**：① 新依赖的名字**恰好在 `$KTMP/nojq` 里**（今天只有 `bash`/`sh`/`sed` 三个）
-#     ⇒ 往热路径加 `sed` 它逮不到；② 找得到但跑失败的命令（那不是本条要判的性质）。
+#     `awk: command not found`）。⇒ 下面**该量的那两跑各就地量一次**。
+#   ⚠ **08-25 订正一句写宽了的话**〔审计 `S1`〕：这里原写「下面**每跑一次就地量一次**」，
+#     而实数是 **4 跑 / 2 量**（`NOJQ` 调用 4 处，`$(KNF)` 只 2 处，量于 08-25）——
+#     形状与它自己批评第二轮的那一处一模一样。**今天没有覆盖后果**（没被量的那两跑
+#     ——「首块 z」与「pretty-print」——走的解析器与被量的「末块 f」那跑**是同一份**
+#     `manifest_to_table`+`acct_row_from_slice`；两条解析路各一条读数已经把面盖全了）
+#     ⇒ 订正的是**那句话**，不是补两条同义反复的判据。**要量的是「每条解析路一次」，不是「每跑一次」。**
+#   ⚠ **射程不写在这里，这里只指路**〔08-25 删掉了原本贴在这儿的那份射程声明〕。
+#     它描述的是**上一版**尺子，三句话里两句今天是假的：①「绝对路径 ENOENT（`$0: ` 前缀记）」——
+#     那半（半 b）08-25 已经删了，机制不存在了；②「**不吃重定向**」—— 那正是本轮在治的**那句
+#     可证伪的假话**本身（`/nonexistent-dir/xx 2>/dev/null` 旧尺子读 0，去掉重定向读 2）；
+#     ③「往热路径加 `sed` 它逮不到」—— 今天**逮得到**（尺子自检⑦ 正在断言相反的事，
+#     08-25 实测把 `sed` 加进 `acct_row_from_slice` ⇒ 2 红）。
+#     ⇒ 整段删掉，**不在这里造第二份**：同一件事在这个文件里只该有**一处**权威住址 ——
+#     `KNF()` 上方那段「★ 逮得到 / 逮不到 —— 逐形实测」（与 `shared/ccm` 里 `acct_row_from_slice`
+#     的头注是同一份话）。★ 这一处能活到今天，正是因为它离判据**更近** —— 下一个人读的是近的那份。
 ck "★ KCM6 · 无 jq + daemon 在位 ⇒ 仍然拿 daemon 那份" \
    "$(GOLD "$KTMP/from-daemon")" "$(NOJQ "$KTMP/bin/daemon" "$KTMP/accts/accounts.json")"
 ck "★ KC6d/热路径 · 无 jq + **daemon 那条**解析路（daemon_out_to_table 的 else）上零外部依赖" "0" "$(KNF)"
+# ★ **栈外那一面的账**〔08-25 新增〕。上一条判的是**射程内**（三个解析函数的栈内）零外部依赖；
+#   这一条把**整趟** --print 起过的外部命令**名集合**钉住 —— 谁哪天给这条路加一条新的外部依赖，
+#   这里当场多出一个名字。今天这个集合说的是实话：daemon 那一次往返（有意的）＋ sq 里两次 sed。
+#   ⚠ 它不是「零依赖」，**别把这一条读成那一条**：两条判的是两个面，名字里各自写明了。
+ck "★ KC6d/整趟 · 无 jq + daemon 在位 ⇒ 整趟没有**声明清单之外**的外部命令（清单：sed · 那一次 daemon 往返）" "" \
+   "$(KALLNEW 'sed|<KTMP>/bin/daemon')"
 ck "KCM6 · 无 jq + 无 daemon ⇒ 文件那条兜底真的解析出来了（**首块** z）" \
    "$(GOLD "$KTMP/from-file")" "$(NOJQ - "$KTMP/accts/accounts.json")"
 # ★★ **末块那条要查末块那个账号**〔审计 `B3`，08-24 订正〕。第二轮这条的名字写着
@@ -819,6 +988,8 @@ ck "KCM6 · 无 jq + 无 daemon ⇒ 文件那条兜底真的解析出来了（**
 ck "★ KCM6 · 无 jq + 无 daemon ⇒ **末块**那个账号 f 也解析得出来（末块守卫 \"|| [ -n \$chunk ]\" 的靶子）" \
    "$(GOLD "$KTMP/file-only")" "$(NOJQ - "$KTMP/accts/accounts.json" f)"
 ck "★ KC6d/热路径 · 无 jq + **文件**那条解析路（manifest_to_table + acct_row_from_slice）上零外部依赖" "0" "$(KNF)"
+ck "★ KC6d/整趟 · 无 jq + 无 daemon ⇒ 同上，且清单里**没有** daemon（这条路一次往返都不该起）" "" \
+   "$(KALLNEW 'sed')"
 # pretty-print + 键序反转：旧那条 grep 兜底在这一格是**静默失灵**的（它要求 name 排在 configDir 前）。
 cat > "$KTMP/accts/pretty/accounts.json" 2>/dev/null || mkdir -p "$KTMP/accts/pretty"
 cat > "$KTMP/accts/pretty/accounts.json" <<JSON
