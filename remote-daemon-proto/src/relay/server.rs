@@ -787,6 +787,90 @@ mod tests {
         assert!(out.ends_with("\r\n\r\n"));
     }
 
+    /// ★★ `重要-5` 的**行为格**（回修轮之四 08-25，承接 D2 `重要-1(D2)`）。
+    ///
+    /// # 为什么源码扫描不够
+    ///
+    /// `nodelay_guard` 数的是**文本**：`production_code()` 只剥掉 `#[cfg(test)]` 段与**行首**
+    /// `//` 的行，字符串字面量 / 行尾注释 / 块注释里的同形文本**照样被数进去**。
+    /// D2 实测（`D2NG1`）：把 `handle` 里真的 `down.set_nodelay(true)?;` **整个删掉**、
+    /// 只留一行 `let _nagle_note = "set_nodelay(true)";` ⇒ **389 条判据全绿** ——
+    /// 「恰好两处」与「落点里要有 server.rs」两格**都被那行字符串喂饱了**。
+    ///
+    /// # 这一条判的是**真的调用**
+    ///
+    /// 量法：`try_clone()` 是 `dup` ⇒ 两个 fd 指向**同一个** socket，
+    /// 生产段在它上面 `setsockopt(TCP_NODELAY)` 之后，这个探针 `getsockopt` 读得到。
+    /// **两个方向各一格**，各自带非空对照。
+    ///
+    /// **它仍然不证明** p95 没塌 —— p95 那条要真流量，本轮禁打真 API（件文件 `判不了-4` 原样留着）。
+    #[test]
+    fn both_directions_really_disable_nagle_on_the_socket() {
+        // ㈠ 下游方向：`handle()` 真的在**这一条** socket 上关掉 Nagle。
+        let up = spawn_fake_upstream(None);
+        let listener = listen(0).expect("listen");
+        let addr = listener.local_addr().expect("addr");
+        let client = std::thread::spawn(move || {
+            let mut c = TcpStream::connect(addr).expect("connect relay");
+            // 风险 `5x`：走得到中转的判据一律带读期限，把「挂住」换成「红」。
+            c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+                .expect("read deadline（风险 5x）");
+            let body = REQUEST_BODY;
+            let req = format!(
+                "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            c.write_all(req.as_bytes()).expect("write req");
+            c.flush().expect("flush");
+            let mut got = Vec::new();
+            c.read_to_end(&mut got).expect("read response");
+            got
+        });
+        let (down, _peer) = listener.accept().expect("accept");
+        let probe = down.try_clone().expect("clone");
+        // 非空对照：进 `handle` **之前** Nagle 是开着的（内核默认 TCP_NODELAY = 0）。
+        // 没有这一格，下面那句在「内核默认就关着」的系统上是**空真**。
+        assert!(
+            !probe.nodelay().expect("getsockopt"),
+            "非空对照：accept 出来的 socket 默认该是开着 Nagle 的"
+        );
+        let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
+        let relay = Relay::new(base, TeeSink::new(Box::new(std::io::sink())));
+        handle(down, &relay).expect("handle 必须走完一条转发");
+        assert!(
+            probe.nodelay().expect("getsockopt"),
+            "下游方向：`handle()` 必须在下游 socket 上真的关掉 Nagle"
+        );
+        // ⚠ 先 drop 探针再 join：探针也是这条 socket 的一个 fd，不放手下游读不到 EOF。
+        drop(probe);
+        let got = client.join().expect("client thread");
+        assert!(
+            String::from_utf8_lossy(&got).starts_with("HTTP/1.1 200"),
+            "这一趟得真走完一条转发，否则上面那两句量的是半条连接：{:?}",
+            String::from_utf8_lossy(&got)
+        );
+
+        // ㈡ 上游方向：`upstream::connect()` 真的在**它自己**那条 socket 上关掉 Nagle。
+        let peer = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 假上游端");
+        let a = peer.local_addr().expect("addr");
+        let base2 = Base::parse(&format!("http://127.0.0.1:{}", a.port())).expect("base");
+        match upstream::connect(&base2).expect("connect upstream") {
+            upstream::Conn::Plain(s) => {
+                assert!(
+                    s.nodelay().expect("getsockopt"),
+                    "上游方向：`upstream::connect()` 必须在上游 socket 上真的关掉 Nagle"
+                );
+                // 非空对照：同一把尺子量一条**没被生产段碰过**的 socket ⇒ 必须是开着的。
+                let raw = TcpStream::connect(a).expect("connect 对照");
+                assert!(
+                    !raw.nodelay().expect("getsockopt"),
+                    "非空对照：没经生产段的 socket 默认该是开着 Nagle 的"
+                );
+            }
+            upstream::Conn::Tls(_) => panic!("`http://` 该走明文那一支"),
+        }
+    }
+
     /// ★ `DoD-4㈡` 行为那半：从**非回环**地址连不上中转的端口。
     /// 机器上没有非回环地址时**跳过并出声**，不静默当绿。
     #[test]
