@@ -416,6 +416,12 @@ jobs:
       #    **先跑再棘**：PM 在合并点独立重跑实测 123/0 · 68/0 · 29/0。
       #    牙口现打（**落文件读 `$?`，不走管道** —— 管道会把 `tail` 的码当成它的）：
       #    `123 ⇒ rc=0` · `124 ⇒ rc=1`。
+      # ★★ **2026-08-25 K-C1 第七轮：`ccm-cli` 再棘 `123` → `126`**（另两套不变）。
+      #    那 3 条是 `⑬`/`⑭`/`⑮`：前两条钉住 R7 堵上的**两个真缺口**（数组元素当命令字 ·
+      #    `${VAR:-默认}` 当命令字 —— 在 R6 下那两形注入一条**真在跑**的外部依赖，全套 123/0 全绿），
+      #    第三条钉住 `KNF()` 改名后真正在数的那个量。⇒ 不棘的话它们明天能被删掉而 CI 照样绿。
+      #    **先跑再棘**：PM 在合并点独立重跑实测 126/0 · 68/0 · 29/0，并各切一刀复核有牙。
+      #    牙口现打（**落文件读 `$?`，不走管道**）：`126 ⇒ rc=0` · `127 ⇒ rc=1`。
       # ⚠ **同一拍必须改下面那张 `pair` 清单**（本轮就是这么改的）。审计逮到：清单此前停在
       #    `ccm-cli 53` / `ccm-acceptance 19` / `ccm-contract-parity 61`，与调用行 59/26/62
       #    **三处对不上** ⇒ 按本步骤的逻辑第一条不命中就 `exit 1`。那是一处**先于 K-C1** 的病
@@ -433,7 +439,7 @@ jobs:
           # 没有地板 ⇒ 断言被删空照样绿，正是这套机制立起来要防的那件事（我自己刚犯了一次）。
           [ "${N:-0}" -ge 23 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 23）——有套件被改回裸 npm run 或被删掉"; exit 1; }
           # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
-          for pair in "tmux-target 26" "ccm-cli 123" "ccm-print-parity 12" "ccm-acceptance 29" \
+          for pair in "tmux-target 26" "ccm-cli 126" "ccm-print-parity 12" "ccm-acceptance 29" \
                       "ccm-pretrust 15" "cc-spawn-uplift 72" "tmux-guarded 14" "usage-probe 11" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
                       "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 32" \
@@ -452,7 +458,7 @@ jobs:
   # （下面有逐个 grep 的反向自检兜着），只是这几行注释没跟 —— 实际调用行是
   # `ccm-acceptance 19` / `usage-probe 9`，不是 15 / 7；套数也从 8 长到了 15（跨两个 job）。
   # ⚠ **2026-08-24 订正：下面这几行散文里的数今天全是旧的**（保留是因为它们记着「哪一刀为什么棘」）。
-  #   现值以**调用行**为准：`ccm-cli` **123** · `ccm-acceptance 29` · `ccm-contract-parity 68`
+  #   现值以**调用行**为准：`ccm-cli` **126** · `ccm-acceptance 29` · `ccm-contract-parity 68`
   #   （K-C1 D2 `A2`；反向自检清单已同拍改）。
   # ⚠ audit-0805 F14 第六刀把 ccm-cli 棘到 53（新增 7 条：身份 poller 的 sid 解析——
   #   抽取器自检 1 + 取值 4 + 「文件不存在 stderr 必须为空」1 + 「不残留上一次」1）。
@@ -498,7 +504,7 @@ jobs:
         run: bash e2e/assert-pass-floor.sh tmux-target 26
 
       - name: ccm CLI 契约（F02）
-        run: bash e2e/assert-pass-floor.sh ccm-cli 123
+        run: bash e2e/assert-pass-floor.sh ccm-cli 126
 
       - name: ccm --print 平价预言机（F03）
         run: bash e2e/assert-pass-floor.sh ccm-print-parity 12
