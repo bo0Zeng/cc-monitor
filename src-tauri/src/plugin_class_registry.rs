@@ -19,10 +19,26 @@
 //!
 //! | 候选 | 今天的形态由什么钉住 |
 //! |---|---|
-//! | `cc-bus` | 脚本族条数 · daemon 命令表里 `bus-*` 的条数 · 转调壳里**恰好一处**起进程 · 边界判据还在且针数没缩 |
+//! | `cc-bus` | 脚本族条数 · daemon 命令表里 `bus-*` 的条数 · 起进程口**恰好一处**且住在**通用调用口**里（转调壳里**零处**）· 边界判据还在且针数没缩 |
 //! | `code-picture` | monitor 的 `Cargo.toml` 那条 path 依赖**整行**存在 · daemon 的依赖清单与整棵源码树**零命中** |
 //! | `cc-spawn` | 生产段里有 `CCM_BIN` 与能力协商 · 且**零**总线数据针（「它不碰总线目录了」这句话的机检形态） |
 //! | `ccm` | `agent_*` 适配函数条数 · 每个函数两臂**是不是真的分叉** · `--ccm-probe` 的能力 token 数与 agent 数 · 它在受管工具表里 |
+//!
+//! # ⚠ 08-26：`cc-bus` 那格的起进程口**搬家了** —— 判据跟着事实走，不是放宽
+//!
+//! 到 08-25 为止，这里钉的是「**`control/cc_bus.rs` 里恰好一处** `Command::new(`」，
+//! 理由逐字是 `E5` 的默认「插件调用**复用**这一处口」。
+//! `K-W1A`（08-26）做的正是那句「复用」：把那一处口从 **cc-bus 专用的转调壳**里
+//! 抽到**通用调用口** `remote-daemon-proto/src/plugin/invoke.rs`。
+//! ⇒ 旧断言当场红了，panic 逐字是「`Command::new(` 一处都找不到 —— 事实没了，
+//! 或者抽取面画错了」。**那是钉子干对了活**：它没让这次搬家在无声中发生
+//!（同型先例：`guard_support` 的锚点在 U3 拆层时红过一次，账上判的也是「钉子干对了活」）。
+//!
+//! ★ 于是断言的**主语**跟着换了位置，而**性质一个字没松**：
+//! 从「`cc_bus.rs` 恰好一处」变成「**`plugin/invoke.rs` 恰好一处，而 `cc_bus.rs` 零处**」。
+//! 两条一起才等价于原来那一条 —— 少了后半条，「口搬走了但壳里又长回一处」就从缝里溜过去了
+//!（那正是绕开通用口的形状）。⚠ **不许把这里改成 `>= 0` / `>= 1` 之类**：
+//! 那不是跟着搬家，那是把判据换成安慰剂。
 //!
 //! # ⚠ 刻意**不钉行数**
 //!
@@ -124,8 +140,10 @@ mod tests {
             home: "shared/cc-bus/scripts",
             semantics: Semantics::CarrierIsAPlugin,
             shape: Shape::Plugin,
-            today: "一族 shell 脚本；daemon 只经命令面转调它，且转调壳里只有一处起进程口",
-            gap: "差的是「插件」这个名分与**通用口** —— 今天那套壳是 cc-bus 专用的，不是插件口",
+            today: "一族 shell 脚本；daemon 只经命令面转调它，且那唯一一处起进程口\
+                    自 08-26 起住在**通用调用口** `plugin/invoke.rs` 里，转调壳自己零处",
+            gap: "还差「插件」这个名分（`EU3`：粒度是命令还是包）—— **通用口那一半 `K-W1A` 已经补上**：\
+                  今天那处口不再是 cc-bus 专用的，壳只是它的第一个消费者",
         },
         Candidate {
             id: "code-picture",
@@ -366,7 +384,10 @@ mod tests {
     }
 
     /// `EF01-Y3`：`cc-bus` 今天**只经命令面**被够到 —— 脚本族条数 · `bus-*` 命令条数 ·
-    /// 转调壳里**恰好一处**起进程 · 边界判据还在且针没缩。
+    /// 起进程口**恰好一处**且住在通用调用口里（转调壳里**零处**）· 边界判据还在且针没缩。
+    ///
+    /// ⚠ 第 ③ 段的主语 08-26 换过位置（见模块头注那一节）：换的是**守在哪个文件**，
+    /// 不是「恰好一处」这个性质本身 —— 它今天由**两条一起**守（一处 + 零处）。
     #[test]
     fn cc_bus_is_reached_only_through_its_command_surface_today() {
         // ① 脚本族：`shell_scripts` 走的是「`.sh` 或 shebang 带 sh」，不是按后缀一种取。
@@ -398,17 +419,33 @@ mod tests {
             bus.len()
         );
 
-        // ③ 转调壳里**恰好一处**起进程 —— `E5`/`EL1` 那条「两条命令共用这一处口」。
-        let shell = rust_production("remote-daemon-proto/src/control/cc_bus.rs", 5_000);
-        guard_core::find_pinned(&shell, "Command::new(").unwrap_or_else(|e| {
+        // ③ 起进程口**恰好一处**，且那一处住在**通用调用口**里 —— `E5`/`EL1` 那条
+        //    「两条命令共用这一处口」。⚠ 08-26 `K-W1A` 把这处口从转调壳搬到了通用层，
+        //    所以这一格由**两条一起**守：口那边恰好一处 · 壳这边零处。少哪一条都会漏掉
+        //    一种真实的坏形状（多起一处 / 壳里又长回一处 = 绕开通用口）。
+        let port = rust_production("remote-daemon-proto/src/plugin/invoke.rs", 5_000);
+        guard_core::find_pinned(&port, "Command::new(").unwrap_or_else(|e| {
             panic!(
-                "cc-bus 转调壳里的起进程口不是恰好一处：{e}\n\
-                 ⇒ `E5` 的默认是「插件调用**复用**这一处口」。真要加，得同时做三件事：\
+                "通用调用口 `plugin/invoke.rs` 里的起进程口不是恰好一处：{e}\n\
+                 ⇒ `E5` 的默认是「插件调用**复用**这一处口」，08-26 起那一处就住在这个文件里。\
+                 一处都找不到 ⇒ 口又被搬走了（跟着改这里的文件名，别删断言）；\
+                 多于一处 ⇒ 通用口自己开了第二条起进程的路。真要加，得同时做三件事：\
                  改 `readonly_guard::spawn_registry::SPAWN_SITES_TODAY`（相等断言）\
                  并在 `ALLOWED` 里写明理由 · 期限仍住子进程（`timeout` 前缀）· \
                  找不到 `timeout` 时如实降级并写进头注。"
             )
         });
+        let shell = rust_production("remote-daemon-proto/src/control/cc_bus.rs", 5_000);
+        assert_eq!(
+            occurrences(&shell, "Command::new("),
+            0,
+            "cc-bus 转调壳里又长回了起进程口（{} 处）——那等于**绕开通用调用口**。\n\
+             ⇒ 08-26 之前这处口就住在这个壳里，`K-W1A` 把它抽进了 `plugin/invoke.rs`；\
+             壳今天的身份只是那处口的**第一个消费者**。壳里再起进程 = 通用口白抽了，\
+             而且下一个插件会照着壳的样子再起一处（`SPAWN_SITES_TODAY` 9 → 10 → …）。\
+             真有非走不可的理由，先去 `E5`/`EU3` 把账改了，再回来改这一条。",
+            occurrences(&shell, "Command::new(")
+        );
 
         // ④ 「零文件格式耦合」这句话**靠谁**成立 —— 那条判据还在，且针没缩。
         let boundary = guard_core::strip_comment_lines(&must_read(

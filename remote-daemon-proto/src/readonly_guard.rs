@@ -636,14 +636,24 @@ mod spawn_registry {
              所以本文件只有这一处起进程 —— 刻意不让面变大",
         ),
         (
-            "control/cc_bus.rs",
+            "plugin/invoke.rs",
             "<非字面量>",
-            "P4f：转调本机的 cc-bus 命令（`cc-list` / `cc-send`），argv 直传不过 shell。\
-             程序名是**查出来的路径**（PATH 里未必有 `~/.local/bin`）⇒ 非字面量。\
-             `cc-list` **只读**；`cc-send` 会写收件人的收件箱 —— 那是**被起的那个进程**写的，\
-             与用户自己在终端里敲 `cc-send` 没有区别（同 `launch` 起 claude 的 D1 正例：\
-             收窄后的铁律管的是 **daemon 进程自身**不写用户既有数据）。\
-             ⚠ 两条命令**共用这一处**口，刻意不让面变大",
+            "`K-W1A`（08-26）：**插件通用调用口**里唯一一处起进程 —— argv 直传不过 shell，\
+             期限靠 `timeout` 当前缀交给子进程（零定时器铁律的另一侧）。\
+             程序名是**查出来的路径**（PATH 里未必有用户级 bin 目录）⇒ 非字面量。\
+             ⚠⚠ **本条从 `control/cc_bus.rs` 搬来，同轮把它的理由订正了**：\
+             旧理由逐字写着「转调 `cc-list` / `cc-send`，**两条命令**共用」，而今天真实转调的是\
+             **三条** —— 08-13 当天稍晚进来的 `cc-kill` **从来没被写进这条豁免理由**\
+             （那个 commit 动了 8 个文件，本文件不在其中），而三条判据全绿：\
+             键里的程序名是 `<非字面量>`，三条命令**共用同一个键** ⇒ 加第三条不会红。\
+             ⇒ 这条登记覆盖的写面**今天是这样**：`cc-list` 只读；`cc-send` 写收件人的收件箱；\
+             ★ `cc-kill` **是破坏性的**（杀会话 + 清名册 + 清台账 + 清那个 id 的状态）。\
+             三者都是**被起的那个进程**在写，与用户自己在终端里敲同一条命令没有区别\
+             （同 `launch` 起 claude 的 D1 正例：收窄后的铁律管的是 **daemon 进程自身**\
+             不写用户既有数据）。\
+             ⚠ 这一处口从此是**通用**的：将来经它起的每一个插件，写面都落在这一条理由底下，\
+             而这条键**分不出**是哪个插件 —— 加一种新的被调命令时必须回来重读这一段，\
+             没有任何机检会替你想起（`K6b` 那一族，本条就是它的活体标本）",
         ),
         (
             "observe/watcher.rs",
@@ -773,6 +783,87 @@ mod spawn_registry {
         assert!(
             watcher.contains("Command::new(\"sh\")"),
             "清单登记了 watcher 起 sh，但生产段里找不到了 —— 幽灵条目"
+        );
+    }
+
+    /// ★★ `KY1′-b`〔`K-W1A` 08-26〕：**全表反向核** —— `ALLOWED` 的每一条都得对得上一处真的起进程。
+    ///
+    /// # 它补的是上面那条的哪一个洞（实测出来的，不是设想）
+    ///
+    /// [`the_registry_has_no_ghost_entries`] 只做两件事：断言每条 `why` 非空 +
+    /// **硬编码**核 `tmux_hook.rs` / `watcher.rs` 那两条。**它不核其余五条。**
+    /// ⇒ 本件搬家时如果**加**了 `plugin/invoke.rs` 的登记却**忘了删**
+    /// `control/cc_bus.rs` 那条：`ALLOWED` 变 8 条、扫到的仍是 9 处、`unregistered` 仍空
+    /// ⇒ **三条判据全绿，而表里躺着一条幽灵**。
+    ///
+    /// 本条把「硬编码那两条」换成**全表**：登记表与扫描结果做**双向**对账 ——
+    /// 正向（每处起进程都在表里）由上面那条管，反向（每条登记都对得上起进程）由本条管。
+    ///
+    /// # 它**仍然**不检查什么（射程说清，别读大一格）
+    ///
+    /// - 不检查那条 `why` **说得对不对**（`K6b` 原样保留 —— 上面那条 `ALLOWED` 里
+    ///   `cc-kill` 漏了 13 天就是这个洞的活体标本，本条也逮不住它）；
+    /// - 不检查一条登记**覆盖了几处** —— 键是 `(文件, 程序名)`，同一个键下加第二种被调命令
+    ///   不会红（同一个洞的另一面）。
+    #[test]
+    fn every_registered_entry_is_backed_by_a_real_spawn_site() {
+        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        // 与上面那条**分开走一遍树**：那边还要分类、比数，这边只回答「表里这一条今天还在吗」。
+        let mut stack = vec![src_dir.clone()];
+        let mut found: Vec<(String, String)> = Vec::new();
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read src dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                let rel = path
+                    .strip_prefix(&src_dir)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if rel == "readonly_guard.rs" {
+                    continue;
+                }
+                let prod =
+                    crate::guard_support::production_code(&std::fs::read_to_string(&path).expect("read rs"));
+                let mut from = 0usize;
+                while let Some(at) = prod[from..].find("Command::new(") {
+                    let i = from + at + "Command::new(".len();
+                    let tail = &prod[i..];
+                    let prog = if tail.starts_with('"') {
+                        match tail[1..].find('"') {
+                            Some(e) => tail[1..1 + e].to_string(),
+                            None => "<未闭合的字面量>".to_string(),
+                        }
+                    } else {
+                        "<非字面量>".to_string()
+                    };
+                    found.push((rel.clone(), prog));
+                    from = i;
+                }
+            }
+        }
+        assert!(
+            found.len() >= 5,
+            "只扫到 {} 处起进程 —— 遍历坏了，本断言在空转",
+            found.len()
+        );
+        let ghosts: Vec<String> = ALLOWED
+            .iter()
+            .filter(|(af, ap, _)| !found.iter().any(|(f, p)| f == af && p == ap))
+            .map(|(af, ap, _)| format!("{af} 起 {ap}"))
+            .collect();
+        assert!(
+            ghosts.is_empty(),
+            "这些登记在生产段里**已经找不到对应的起进程点**了：{ghosts:?}\n\
+             ⇒ 搬走了/删掉了就**同轮把登记摘掉**。留着的后果不是「多一行没用的字」——\n\
+             它会让下一个人以为那个文件还在起进程，而真正的那一处在别处、\n\
+             理由却还挂在旧地址上（`ALLOWED` 里那条漏了 `cc-kill` 13 天，就是这么来的）。"
         );
     }
 }
