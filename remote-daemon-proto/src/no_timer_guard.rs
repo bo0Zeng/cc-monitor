@@ -223,6 +223,23 @@ mod tests {
         "Duration::from_millis(DEBOUNCE_MS)",
         "notify-debouncer 的**事件合并窗口**：它不产生唤醒，只决定「同一批文件事件攒多久\
          再一起交付」。去掉它 inotify 照样推事件，只是更碎。不是定时器。",
+    ),
+        (
+        "server.rs",
+        "Duration::from_millis(30_000)",
+        "中转**下游** socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（`relay/server.rs::DOWNSTREAM_DEADLINE`）：\
+         它说的是「**这一次**阻塞的读/写最多等多久」——有字节就立刻返回，没字节就**报错**返回。\
+         它**不让任何线程自己醒来**、不产生节拍、不驱动任何循环：期限一到那条连接就被结掉，\
+         `pump` 与 `http1` 的读循环只对 `Interrupted` 重试、其余一律 `return Err`。\
+         没有它，一条半开连接会把一条线程永久钉在 `read_head` 上（D3 §2.3 实测 64 条 ⇒ 线程 4→68）。不是定时器。",
+    ),
+        (
+        "upstream.rs",
+        "Duration::from_millis(600_000)",
+        "中转**上游** socket 的 `SO_RCVTIMEO`/`SO_SNDTIMEO`（`relay/upstream.rs::UPSTREAM_DEADLINE`）：\
+         性质同上一条（一次阻塞的上限，不是唤醒），值不同是因为这一跳等的是**模型在想** ——\
+         SSE 长流上游几十秒不发字节是正常形态，所以它必须比下游那条宽得多。\
+         同样不驱动任何循环：到点即结连接，没有任何一层重试。不是定时器。",
     )];
 
     use crate::guard_support::production_code;

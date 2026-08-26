@@ -21,6 +21,7 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// 上游基址。`https` 走 TLS，`http` 走明文（**明文只给本机夹具用**）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,10 +120,48 @@ fn tls_config() -> Arc<rustls::ClientConfig> {
     Arc::new(cfg)
 }
 
+/// 上游那条 socket 的**读写期限**〔回修轮之六 08-25，D3 `阻-3(D3)` 的**后半段**〕。
+///
+/// # 它不是定时器（这句话就是 `no_timer_guard` 那张表里登记的那一行）
+///
+/// `SO_RCVTIMEO` / `SO_SNDTIMEO` 说的是「**这一次**阻塞的读/写最多等多久」：
+/// 有字节就**立刻**返回，没字节就**报错**返回。它不会让任何线程**自己醒来**，
+/// 也不产生任何节拍 —— 这正是零定时器护栏禁的那一类与它的分界。
+/// ⭐ 配套的硬约束：**期限到了就把连接结掉，不允许任何一层重试** ——
+/// 一重试它就从「阻塞有上限」变成「轮询」，而轮询正是护栏要防的东西。
+/// 今天这一条靠的是：`pump` 与 `http1` 里的读循环**只**对 `Interrupted`（EINTR）`continue`，
+/// 其余错误一律 `return Err`；`rustls` 的 `complete_io` 同形（只重试 `Interrupted`）。
+///
+/// # 值为什么是 600 秒，而不是下游那个数
+///
+/// 这一跳等的是**模型在想** —— 上游几十秒不发一个字节是 **SSE 长流的正常形态**，
+/// 不是卡死。600 秒这个数**不是我拍的**：`super` 头注逐字记着「参考实现给上游 600 秒」，
+/// 说的正是同一跳。
+///
+/// ⚙ **设错会怎样**：把它改小（比如照抄下游那 30 秒）会把一条**正在正常吐字、
+/// 只是中间想了 40 秒**的长流从中间提断，客户端拿到半条回答
+/// ⇒ **比不设期限更坏**（不设的话那条流是能走完的）。这是本格最贵的一种错。
+/// 改大则是：一条死掉但没发 FIN 的上游（NAT/conntrack 丢连接）会多钉住一条线程那么久。
+///
+/// ⚙ **我刻意不拿「Anthropic 的 SSE 会周期发 `ping`」当依据**：那要打真 API 才量得到，
+/// 而 `C7` 逐字禁「绝不起真 claude」⇒ 这个数必须在「上游合法地整段沉默」的前提下也站得住。
+///
+/// # 它**没**盖住的那一步：`connect` 本身
+///
+/// 下面 `TcpStream::connect` **没有**连接期限。本轮故意不做：读写是**真无界**
+/// （对端不发就永远不返回），而 connect 那一步有内核 SYN 重试上限与解析器自己的上限兜着。
+/// ⚙ **那个上限具体多少我没量** ⇒ 只敢说「不是无界」，不敢说「够小」。
+pub(crate) const UPSTREAM_DEADLINE: Duration = Duration::from_millis(600_000);
+
 pub(crate) fn connect(base: &Base) -> std::io::Result<Conn> {
     let tcp = TcpStream::connect((base.host.as_str(), base.port))?;
     // ★ Nagle 两个方向都要关。参考实现登记过：没关会让 p95 塌到 3504ms。
     tcp.set_nodelay(true)?;
+    // ★★ 读写期限：没有它，一条死了但没发 FIN 的上游会把一条连接线程**永久**钉在
+    //    `pump` 里那句 `up.read`（或 `read_response_head`）上。两个方向都要：
+    //    写那半钉的是 `up.write_all(&body)`（请求体最大 `BODY_CAP` = 64 MiB，远超 socket 发送缓冲）。
+    tcp.set_read_timeout(Some(UPSTREAM_DEADLINE))?;
+    tcp.set_write_timeout(Some(UPSTREAM_DEADLINE))?;
     if !base.tls {
         return Ok(Conn::Plain(tcp));
     }
